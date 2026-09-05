@@ -681,8 +681,33 @@ const RAW_SHADOW_JSX_CAP = 6;
    ที่ SortTh ซึ่งเป็นค่าเดิมเป๊ะ **หน้าตาไม่ขยับสักพิกเซล**
    🪤 อย่าอ่านว่า "หนี้ opacity ลดลง 3" — มันคือ **จุดก๊อปที่หายไป 3** ค่าดิบยังมีอยู่
    เท่าเดิมในเชิงบทบาท แค่ไม่ถูกเขียนซ้ำอีกแล้ว · 0.35 ของลูกศร "ยังไม่ได้เรียง"
-   ไม่ใช่สถานะปิดใช้งาน (กดได้ปกติ) จึงยังไม่มีปลายทางเป็น --op-disabled */
-const RAW_OPACITY_CAP = 12;
+   ไม่ใช่สถานะปิดใช้งาน (กดได้ปกติ) จึงยังไม่มีปลายทางเป็น --op-disabled 
+   ── 2026-09-05 · แยกผิว แล้วเลขเปลี่ยนความหมาย ──────────────────────
+   12 → 9 **ไม่ใช่การล้างหนี้ 3 จุด** — เพดานตัวนี้กลายเป็นของ **ฝั่ง CSS ล้วน**
+   ของจริงฝั่ง CSS มี 9 มาตลอด ส่วนอีก 3 ที่เคยรวมอยู่คือ style object ที่ regex นี้
+   บังเอิญจับได้ ⇒ ย้ายไปอยู่ใต้ RAW_OPACITY_JSX_CAP พร้อมกับอีก 21 จุดที่ไม่เคยถูกนับ
+   (ยอดจริงทั้งระบบวันนี้ = CSS 9 + style object 24 = 33 · เดิมด่านเห็นแค่ 12)
+   🪤 อย่าอ่านเลข 9 เทียบ 12 ของเมื่อวานเป็นความคืบหน้า — คนละฐานการวัด
+
+   ⚠️ เพดานตัวนี้เพิ่งมีเทสต์ผูกกับของจริงเป็นครั้งแรกในรอบเดียวกัน (opacityScale.test.mjs)
+   ก่อนหน้านี้มีแค่ assert ว่า "กฎยังอยู่" ⇒ เลข 12 ค้างมาโดยไม่มีใครรู้ว่าตรงหรือไม่
+   ซึ่งเป็นเหตุผลว่าทำไมมันถึงเพี้ยนได้นานขนาดนั้น */
+const RAW_OPACITY_CAP = 9;
+
+/* ความจางในผิว `style={{…}}` — เพดานแยกของผิวที่สอง (ตั้ง 2026-09-05)
+
+   ทำไมต้องแยกตัว ไม่ขยายเพดานเดิม: รอบ 2026-09-02 วัดไว้ว่าผิวนี้มีค่าดิบ 27 จุด
+   แต่ regex ฝั่ง CSS จับได้ 6 (22%) แล้ว **จงใจไม่ตั้งเพดานใหม่ในรอบนั้น** เพราะ
+   ตอนนั้นเพดานเดิมยังคาบสองผิวอยู่ การเติมตัวที่สองจะนับ 6 จุดซ้ำสองที่ ⇒ เงื่อนไข
+   ที่ต้องทำก่อนคือแคบตัวเดิมให้เหลือ `.css` ล้วน ซึ่งรอบนี้ทำแล้ว
+   ⇒ ตั้งแต่วันนี้ RAW_OPACITY_CAP เป็นของ CSS ล้วน · ตัวนี้เป็นของ style object ล้วน
+   ไม่มีจุดไหนถูกนับสองที่ และไม่มีผิวไหนหลุดสายตาอีก
+
+   ปลายทางของหนี้ก้อนนี้: สถานะปิดใช้งานใช้ var(--op-disabled) · เนื้อหาที่ลดความเด่น
+   ใช้ var(--op-muted) · ที่เหลือเป็นค่าเชิงข้อมูล/ของประดับ ซึ่งยังไม่มีขั้นรองรับ
+   ⚠️ กิ่ง ternary นับทีละกิ่ง ⇒ ยกจุดเดียวอาจทำเลขลง 1 หรือ 2 แล้วแต่ว่ากิ่งอีกข้าง
+   เป็น 1 (ไม่นับ) หรือเลขดิบอีกตัว — ดูข้อความฟ้องแล้วรูดตามของจริง อย่าเดา */
+const RAW_OPACITY_JSX_CAP = 24;
 
 /* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)
@@ -1455,6 +1480,7 @@ let rawTailwindSizeCount = 0;
 let rawRadiusJsxCount = 0;
 let rawShadowJsxCount = 0;
 let rawLetterSpacingJsxCount = 0;
+let rawOpacityJsxCount = 0;
 let jsxFontWeightBranchCount = 0;
 const jsxFontWeightBranchList = [];
 
@@ -1865,13 +1891,22 @@ for (const file of uiFiles) {
     rawShadowCount += 1;
   }
 
-  /* ความจางเลขดิบ (ดู RAW_OPACITY_CAP) — 0 กับ 1 ไม่นับ */
-  for (const hit of source.matchAll(/(?:^|[;{])\s*opacity:\s*([^;}]+)/g)) {
-    const value = hit[1].trim();
-    if (value.includes("var(")) continue;
-    const number = Number(value);
-    if (!Number.isFinite(number) || number === 0 || number === 1) continue;
-    rawOpacityCount += 1;
+  /* ความจางเลขดิบฝั่ง CSS (ดู RAW_OPACITY_CAP) — 0 กับ 1 ไม่นับ
+
+     ⚠️ **ครอบเฉพาะ .css ตั้งแต่ 2026-09-05** — เดิมไม่มียามไฟล์ จึงคาบผิว style object
+     มาด้วยแบบครึ่ง ๆ กลาง ๆ (จับได้ 6 จาก 27 = 22%) ทำให้เลขเดียวเป็นยอดของสองผิวที่
+     นับไม่ครบทั้งคู่ · พอฝั่ง JSX มีตัวนับของตัวเองข้างล่างแล้ว ที่นี่ต้องกันไว้ให้
+     เป็นของ CSS ล้วน ไม่งั้น 6 จุดนั้นถูกนับสองที่แล้วเพดานทั้งสองตัวโป่งพร้อมกัน
+     (`opacity:` สะกดเหมือนกันเป๊ะทั้งสองผิว ต่างจาก borderRadius/letterSpacing ที่
+      แยกด้วย camelCase ได้ ⇒ ที่นี่แยกได้ทางเดียวคือนามสกุลไฟล์) */
+  if (rel.endsWith(".css")) {
+    for (const hit of source.matchAll(/(?:^|[;{])\s*opacity:\s*([^;}]+)/g)) {
+      const value = hit[1].trim();
+      if (value.includes("var(")) continue;
+      const number = Number(value);
+      if (!Number.isFinite(number) || number === 0 || number === 1) continue;
+      rawOpacityCount += 1;
+    }
   }
 
   /* ระยะห่างตัวอักษร (ดู RAW_LETTER_SPACING_CAP)
@@ -1917,6 +1952,37 @@ for (const file of uiFiles) {
       const value = branch.text.trim();
       if (!value || value.includes("var(") || /^none$/i.test(value) || value === "inherit") continue;
       rawShadowJsxCount += 1;
+    }
+  }
+
+  /* ความจางในผิว style object (ดู RAW_OPACITY_JSX_CAP) — ผิวนี้ไม่เคยถูกนับครบเลย
+
+     🔴 ครึ่งหนึ่งของของจริงเป็น **กิ่ง ternary** (`blocked ? 0.4 : 1` ·
+     `r.cancelled ? 0.55 : 1` · `complete || active ? 1 : 0.62`) ซึ่ง regex บรรทัดเดียว
+     อ่านไม่เจอ · styleDeclarations() แตกกิ่งให้แล้วนับทีละกิ่ง = จุดที่ "จางด้วยเลขดิบ"
+     ถูกนับทุกจุดจริง ๆ ไม่ใช่นับต่อบรรทัด
+     ⚠️ กติกา "อะไรคือดิบ" ต้องตรงกับฝั่ง CSS ข้างบนทุกข้อ (ข้าม var() · ข้าม 0 กับ 1)
+     — 0/1 ไม่ใช่ขั้นของดีไซน์ ส่วนใหญ่เป็นการคืนค่าเต็มของกิ่งอีกข้าง */
+  /* 🔴 ยาม `.js` ไม่ใช่ของแถม — ต่างจาก borderRadius/boxShadow/letterSpacing ที่ชื่อ
+     camelCase ไม่มีวันโผล่ในไฟล์ .css · `opacity` สะกด **เหมือนกันเป๊ะทั้งสองผิว**
+
+     ⚠️ วัดจริง 2026-09-05: ถอดยามนี้ออกแล้วเลขยัง 24 เท่าเดิม เพราะ readStyleValue()
+     หยุดที่ `}` หรือ `,` เท่านั้น ไม่รู้จัก `;` ⇒ ค่าจาก CSS กลายเป็น `"0.5;"`
+     (หรือลากพร็อพถัดไปมาด้วย) แล้ว Number() = NaN จึงถูกข้ามไปเอง
+     **แต่นั่นคืออุบัติเหตุ ไม่ใช่สัญญา** — วันที่ readStyleValue() เพิ่ม `;` เข้าไปใน
+     ตัวหยุด (ซึ่งเป็นการแก้ที่ถูกต้องสำหรับผิว CSS) 9 จุดของฝั่งโน้นจะไหลเข้ามาที่นี่
+     ทันทีโดยไม่มีใครตั้งใจ แล้วเพดานทั้งสองตัวจะโป่งพร้อมกันโดยของจริงไม่ขยับเลย
+     ⇒ กันด้วยนามสกุลไฟล์ตรง ๆ ให้การแยกผิวเป็นเจตนา ไม่ใช่ผลข้างเคียงของพาร์สเซอร์ */
+  if (rel.endsWith(".js")) {
+    for (const { branches } of styleDeclarations(lined, "opacity")) {
+      for (const branch of branches) {
+        if (branch.kind !== "number" && branch.kind !== "string") continue;
+        const value = branch.text.trim();
+        if (value.includes("var(")) continue;
+        const number = Number(value);
+        if (!Number.isFinite(number) || number === 0 || number === 1) continue;
+        rawOpacityJsxCount += 1;
+      }
     }
   }
 
@@ -2416,6 +2482,12 @@ const failures = [
   ...(rawOpacityCount < RAW_OPACITY_CAP
     ? [`ความจางเลขดิบลดได้แล้ว: เหลือ ${rawOpacityCount} แต่ RAW_OPACITY_CAP ยังเขียน ${RAW_OPACITY_CAP} (รูดเพดานลง)`]
     : []),
+  ...(rawOpacityJsxCount > RAW_OPACITY_JSX_CAP
+    ? [`ความจางเลขดิบในผิว style object เพิ่มขึ้น: ${rawOpacityJsxCount} > เพดาน ${RAW_OPACITY_JSX_CAP} — สถานะปิดใช้งานใช้ var(--op-disabled), เนื้อหาที่ลดความเด่นใช้ var(--op-muted)`]
+    : []),
+  ...(rawOpacityJsxCount < RAW_OPACITY_JSX_CAP
+    ? [`ความจางเลขดิบในผิว style object ลดได้แล้ว: เหลือ ${rawOpacityJsxCount} แต่ RAW_OPACITY_JSX_CAP ยังเขียน ${RAW_OPACITY_JSX_CAP} (รูดเพดานลง)`]
+    : []),
   /* ── ด่านการเข้าถึงตัวแรกของ CI (บล็อกเต็มเหนือ `const HOST_TAG`) ──────────
      หัวเรื่องต้องบอก *เกณฑ์* ไม่ใช่แค่ "audit ตก" — คนที่เพิ่งโดนด่านนี้ครั้งแรกต้อง
      ค้นต่อได้ว่ามันคืออะไรและทำไมถึงเป็นกฎ ไม่ใช่คิดว่าเป็นรสนิยมของคนตั้งด่าน */
@@ -2616,7 +2688,8 @@ console.log(`  ↳ ความมนมุมเลขดิบใน className
 console.log(`เงาที่เขียนเองใน CSS: ${rawShadowCount}/${RAW_SHADOW_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`  ↳ เงาที่เขียนเองใน style object: ${rawShadowJsxCount}/${RAW_SHADOW_JSX_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`  ↳ เงาที่เขียนเองใน className: ${tailwindShadowViolations.length} (ต้องเป็น 0)`);
-console.log(`ความจางเลขดิบ: ${rawOpacityCount}/${RAW_OPACITY_CAP} (เพดาน ขึ้นไม่ได้ — CSS 9 + style object 6; อีก 21 จุดของ style object ยังหลุด ดูคอมเมนต์ในลูป)`);
+console.log(`ความจางเลขดิบใน CSS: ${rawOpacityCount}/${RAW_OPACITY_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  \u21b3 ความจางเลขดิบในผิว style object: ${rawOpacityJsxCount}/${RAW_OPACITY_JSX_CAP} (เพดาน ขึ้นไม่ได้ \u2014 นับกิ่ง ternary ด้วย ผิวนี้เพิ่งมีตัวนับ 2026-09-05)`);
 console.log(`ระยะห่างตัวอักษรค่าดิบใน CSS: ${rawLetterSpacingCount}/${RAW_LETTER_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`  ↳ ระยะห่างตัวอักษรค่าดิบใน style object: ${rawLetterSpacingJsxCount}/${RAW_LETTER_SPACING_JSX_CAP} (เพดาน ขึ้นไม่ได้ — จุดเดียวที่มีคือ px ที่ต้องกลายเป็น em)`);
 console.log(`  ↳ ระยะห่างตัวอักษรค่าดิบใน className: ${tailwindTrackingViolations.length} (ต้องเป็น 0)`);

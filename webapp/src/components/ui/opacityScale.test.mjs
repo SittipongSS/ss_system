@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 
 const src = (p) => readFileSync(new URL(p, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const GLOBALS = src("../../app/globals.css");
@@ -50,4 +51,69 @@ test("audit:ui มีเพดานความจางเลขดิบ แ�
   assert.match(AUDIT, /rawOpacityCount < RAW_OPACITY_CAP/, "ต้องฟ้องตอนลืมรูดเพดานลง");
   /* 0 กับ 1 ต้องไม่ถูกนับ ไม่งั้น keyframes ทุกอันกลายเป็นหนี้ */
   assert.match(AUDIT, /number === 0 \|\| number === 1/);
+});
+
+/* ── RAW_OPACITY_CAP เป็นของฝั่ง CSS ล้วนตั้งแต่ 2026-09-05 ────────────────────
+   ก่อนหน้านี้ regex ตัวเดียวคาบสองผิวแบบนับไม่ครบทั้งคู่ — บรรทัดรายงานของ audit
+   เขียนสารภาพไว้เองว่า "อีก 21 จุดของ style object ยังหลุด" · รอบนี้แยกเป็นสองตัวนับ
+   (ฝั่ง style object อยู่ที่ inlineScaleSurface.test.mjs · RAW_OPACITY_JSX_CAP)
+
+   🪤 และเพดานตัวนี้ **ไม่เคยมีเทสต์ผูกกับของจริงเลย** — มีแค่ assert ว่ากฎยังอยู่
+   ⇒ เลข 12 ที่ค้างมาจึงไม่มีใครรู้ว่าตรงหรือไม่ (ของจริงคือ 9) · เทสต์ข้างล่างปิดช่องนั้น
+   ด้วยกติกาเดียวกับ spacingScale/utilityTypeScale: นับเองแล้วเทียบเลขตรง ๆ */
+const CSS_OPACITY = /(?:^|[;{])\s*opacity:\s*([^;}]+)/g;
+
+function cssFiles() {
+  const out = [];
+  for (const dir of ["app", "components"]) {
+    (function walk(current) {
+      for (const entry of readdirSync(current, { withFileTypes: true })) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith(".css")) out.push(full);
+      }
+    })(path.join(process.cwd(), "src", dir));
+  }
+  return out;
+}
+
+function rawCssOpacity() {
+  const found = [];
+  for (const file of cssFiles()) {
+    /* audit ใช้ withoutBlockComments() (ลบทิ้ง ไม่คงเลขบรรทัด) — ที่นี่นับจำนวนอย่างเดียว
+       จึงตัดแบบเดียวกันพอ ไม่ต้องคงเลขบรรทัด */
+    const source = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const hit of source.matchAll(CSS_OPACITY)) {
+      const value = hit[1].trim();
+      if (value.includes("var(")) continue;
+      const number = Number(value);
+      if (!Number.isFinite(number) || number === 0 || number === 1) continue;
+      found.push(`${path.relative(process.cwd(), file)} → ${value}`);
+    }
+  }
+  return found;
+}
+
+test("regex นับความจางฝั่ง CSS ต้องเป็นตัวเดียวกับใน audit-ui.mjs", () => {
+  assert.ok(AUDIT.includes(CSS_OPACITY.source),
+    `audit-ui.mjs ไม่มี regex ตัวนี้แล้ว: ${CSS_OPACITY.source}`);
+});
+
+/* ยามนามสกุลไฟล์คือสิ่งเดียวที่แยกสองผิวออกจากกัน (`opacity` สะกดเหมือนกันเป๊ะ
+   ทั้ง CSS และ style object ต่างจาก borderRadius/boxShadow/letterSpacing)
+   ⇒ ถ้ายามหาย ทั้งสองตัวนับจะทับกันแล้วเพดานโป่งพร้อมกันโดยของจริงไม่ขยับ */
+test("ตัวนับฝั่ง CSS ต้องถูกกันไว้ให้เห็นเฉพาะไฟล์ .css", () => {
+  const at = AUDIT.indexOf("rawOpacityCount += 1;");
+  assert.ok(at > 0, "หาตัวนับ rawOpacityCount ไม่เจอ");
+  const before = AUDIT.slice(Math.max(0, at - 900), at);
+  assert.match(before, /if \(rel\.endsWith\("\.css"\)\) \{/,
+    "ตัวนับฝั่ง CSS หลุดยาม .css แล้ว — จะกวาดผิว style object มานับซ้ำกับ RAW_OPACITY_JSX_CAP");
+});
+
+test("เพดาน RAW_OPACITY_CAP ยังผูกกับของจริง (ฝั่ง CSS ล้วน)", () => {
+  const cap = Number((AUDIT.match(/const RAW_OPACITY_CAP = (\d+);/) || [])[1]);
+  assert.ok(Number.isFinite(cap), "หา RAW_OPACITY_CAP ไม่เจอ");
+  const found = rawCssOpacity();
+  assert.equal(found.length, cap,
+    `ของจริงเหลือ ${found.length} แต่เพดานเขียน ${cap} — รูดเพดานลง (ขึ้นไม่ได้)\n${found.join("\n")}`);
 });

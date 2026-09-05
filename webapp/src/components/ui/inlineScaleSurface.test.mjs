@@ -155,6 +155,7 @@ test("audit:ui มีเพดานของผิว style object ครบแ
     ["RAW_SHADOW_JSX_CAP", "rawShadowJsxCount"],
     ["RAW_LETTER_SPACING_JSX_CAP", "rawLetterSpacingJsxCount"],
     ["JSX_FONT_WEIGHT_BRANCH_CAP", "jsxFontWeightBranchCount"],
+    ["RAW_OPACITY_JSX_CAP", "rawOpacityJsxCount"],
   ]) {
     assert.match(AUDIT, new RegExp(`const ${cap} = \\d+;`), `หา ${cap} ไม่เจอ`);
     assert.match(AUDIT, new RegExp(`${counter} > ${cap}`), `${cap} ต้องฟ้องตอนเพิ่ม`);
@@ -168,6 +169,74 @@ test("audit:ui ยังอ่านกิ่งของ ternary ในผิ�
   for (const fn of ["blankBlockComments", "readStyleValue", "styleValueBranches", "styleDeclarations"]) {
     assert.match(AUDIT, new RegExp(`function ${fn}\\(`), `audit-ui.mjs ไม่มี ${fn}() แล้ว`);
   }
+});
+
+/* ── ความจาง: ผิวนี้เพิ่งมีตัวนับ 2026-09-05 ──────────────────────────────────
+   ต่างจากสามตัวข้างบนตรงที่ `opacity` **สะกดเหมือนกันเป๊ะทั้งสองผิว** (ไม่ใช่
+   camelCase ที่ไม่มีวันโผล่ใน .css) ⇒ ฝั่ง audit กันด้วย `rel.endsWith(".js")`
+   ที่นี่จึงต้องกรองไฟล์แบบเดียวกัน ไม่งั้นเลขสองฝั่งไม่มีวันตรงกัน
+
+   🪤 เดิม RAW_OPACITY_CAP ตัวเดียวคาบสองผิว แล้วนับไม่ครบทั้งคู่ (บรรทัดรายงานของ
+   audit เขียนสารภาพเองว่า "อีก 21 จุดของ style object ยังหลุด") · รอบ 2026-09-02
+   จงใจไม่ตั้งเพดานใหม่ เพราะตอนนั้นเติมตัวที่สองจะนับซ้ำกับตัวเดิม — เงื่อนไขที่ต้อง
+   ทำก่อนคือแคบตัวเดิมให้เหลือ .css ล้วน ซึ่งรอบนี้ทำแล้ว ⇒ ตอนนี้แยกขาดจากกันจริง */
+const rawOpacity = (branch) => {
+  if (branch.kind !== "number" && branch.kind !== "string") return false;
+  const value = branch.text.trim();
+  if (value.includes("var(")) return false;
+  const number = Number(value);
+  return Number.isFinite(number) && number !== 0 && number !== 1;
+};
+
+function collectJs(prop, keep) {
+  const found = [];
+  for (const file of uiFiles()) {
+    if (!file.endsWith(".js")) continue;
+    const source = blankBlockComments(fs.readFileSync(file, "utf8"));
+    for (const declaration of styleDeclarations(source, prop)) {
+      for (const branch of declaration.branches) {
+        if (keep(branch)) found.push(`${rel(file)}:${declaration.line} ${prop}: ${declaration.value}`);
+      }
+    }
+  }
+  return found;
+}
+
+/* audit ตัดคอมเมนต์บรรทัด `//` ทิ้งด้วย (`lined`) ส่วนที่นี่ตัดแค่คอมเมนต์บล็อก
+   — จงใจ **ไม่ลอก blankLineComments() มาเป็นสำเนาที่สาม** (สองสำเนาที่มีอยู่ถูกล็อก
+   ให้เท่ากันตัวอักษรต่อตัวอักษรแล้ว · สำเนาที่สามจะดริฟต์เงียบ) แทนที่จะลอก ก็พิสูจน์
+   ว่าฐานสองอันเท่ากันไปเลย: ถ้าไม่มี `opacity:` ตัวไหนอยู่หลัง `//` ผลย่อมตรงกันแน่นอน
+   วันที่มีคนเขียนขึ้นมา เทสต์นี้จะฟ้องให้ตัดสินใจ ไม่ใช่ปล่อยให้เลขสองฝั่งเพี้ยนเงียบ */
+test("ไม่มี opacity ที่ถูกคอมเมนต์ด้วย // ⇒ ฐานของสองฝั่งเท่ากัน", () => {
+  const offenders = [];
+  for (const file of uiFiles()) {
+    if (!file.endsWith(".js")) continue;
+    blankBlockComments(fs.readFileSync(file, "utf8")).split(/\r?\n/).forEach((line, index) => {
+      const at = line.indexOf("//");
+      if (at >= 0 && /(?<![\w$.])opacity\s*:/.test(line.slice(at))) {
+        offenders.push(`${rel(file)}:${index + 1}`);
+      }
+    });
+  }
+  assert.deepEqual(offenders, [],
+    "audit ตัด // ทิ้งก่อนนับ แต่เทสต์นี้ไม่ตัด ⇒ เลขสองฝั่งจะต่างกัน\n"
+    + "ทางแก้: ลบบรรทัดที่คอมเมนต์ทิ้งไปเลย หรือย้ายไปเป็นคอมเมนต์บล็อก /* … */");
+});
+
+test("เพดาน RAW_OPACITY_JSX_CAP ยังผูกกับของจริง", () => {
+  const cap = Number((AUDIT.match(/const RAW_OPACITY_JSX_CAP = (\d+);/) || [])[1]);
+  assert.ok(Number.isFinite(cap), "หา RAW_OPACITY_JSX_CAP ไม่เจอ");
+  const found = collectJs("opacity", rawOpacity);
+  assert.equal(found.length, cap,
+    `ของจริงเหลือ ${found.length} แต่เพดานเขียน ${cap} — รูดเพดานลง (ขึ้นไม่ได้)`);
+});
+
+/* กิ่ง ternary คือครึ่งหนึ่งของของจริงในผิวนี้ — ถ้าใครรื้อตัวแตกกิ่งทิ้ง เลขจะร่วงเอง
+   แล้วดูเหมือนหนี้ลดลง · ล็อกด้วยกรณีจริงที่มีอยู่ในโค้ดวันนี้ */
+test("นับกิ่ง ternary ของความจาง ไม่ใช่นับต่อบรรทัด", () => {
+  assert.ok(rawOpacity({ kind: "number", text: "0.62" }), "เลขเปล่าในกิ่งต้องถูกนับ");
+  assert.ok(!rawOpacity({ kind: "number", text: "1" }), "กิ่งที่คืนค่าเต็ม (1) ไม่ใช่หนี้");
+  assert.ok(!rawOpacity({ kind: "other", text: "row.dim" }), "นิพจน์ที่ไม่มีลิเทอรัลอ่านไม่ได้ ต้องปล่อยผ่าน");
 });
 
 test("เพดาน RAW_RADIUS_JSX_CAP ยังผูกกับของจริง", () => {
