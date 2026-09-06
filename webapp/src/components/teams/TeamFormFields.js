@@ -15,7 +15,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import {
-  TEAM_KIND_HINTS, TEAM_KIND_LABELS, allowedKindsFor, createBlockerFor, suggestTeamCode,
+  TEAM_KIND_HINTS, TEAM_KIND_LABELS, allowedKindsFor, suggestTeamCode,
 } from "@/lib/master/teams";
 import styles from "./TeamManager.module.css";
 
@@ -29,7 +29,6 @@ export default function TeamFormFields({
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const kinds = allowedKindsFor(department);
-  const blocker = mode === "create" ? createBlockerFor(value.kind) : null;
 
   return (
     <>
@@ -64,8 +63,14 @@ export default function TeamFormFields({
         </div>
       )}
 
-      {/* ⭐ คำเตือนอยู่ **ใต้ตัวที่ทำให้มันโผล่** และบอกเหตุก่อนกด ไม่ใช่ตอบ 400 ทีหลัง */}
-      {blocker && <StatusNotice tone="warning">{blocker}</StatusNotice>}
+      {/* ⭐ คำเตือนอยู่ **ใต้ตัวที่ทำให้มันโผล่** — ทีมขายผูกกับสิทธิ์เห็นข้อมูลจริง
+          สร้างแล้วมีผลทันทีกับคนที่ถูกจัดเข้าไป จึงต้องบอกก่อนกด ไม่ใช่รู้ทีหลัง */}
+      {mode === "create" && value.kind === "sales" && (
+        <StatusNotice tone="warning">
+          ทีมขายผูกกับ**สิทธิ์การเห็นข้อมูลและยอดขาย** — คนที่ถูกจัดเข้าทีมนี้จะเห็นดีล ลูกค้า
+          และเป้าของทีมนี้ทันที · ป้ายชื่อทีมในบางรายงานจะขึ้นเป็นรหัสจนกว่าจะเติมชื่อในโค้ด
+        </StatusNotice>
+      )}
 
       <label className={styles.field}>
         <span>ชื่อทีม *</span>

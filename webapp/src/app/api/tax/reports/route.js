@@ -1,5 +1,7 @@
 import { getCurrentUser } from '@/lib/authUser';
-import { viewScopeUser, canUser, userTeams, TEAMS } from '@/lib/permissions';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { viewScopeUser, canUser, userTeams } from '@/lib/permissions';
+import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { buildReport, REPORTS } from '@/lib/tax/reports';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { buildRegistrationFilesZip } from '@/lib/tax/registrationFiles';
@@ -38,10 +40,15 @@ export async function GET(request) {
   // ตระกูลเดียวกับที่ไล่เก็บอยู่ (query ที่ผิดแล้วเงียบ กลายเป็นข้อมูลที่ดูเหมือนถูก)
   const teamParam = searchParams.get('team');
   const teamFilter = (teamParam || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const unknownTeams = teamFilter.filter((t) => !TEAMS.includes(t));
+  /* ⚠️ เทียบกับ **ทะเบียนสด** ไม่ใช่ค่าคงที่ (มติ 2026-09-07) — ไม่งั้นกรองรายงานด้วยทีม
+     ที่เพิ่งสร้างไม่ได้ · รวมทีมที่ปิดแล้วด้วย เพราะรายงานย้อนหลังต้องเรียกดูทีมเก่าได้ */
+  const knownTeams = teamFilter.length
+    ? await loadSalesTeamCodes(getSupabaseAdmin(), { includeInactive: true })
+    : [];
+  const unknownTeams = teamFilter.filter((t) => !knownTeams.includes(t));
   if (unknownTeams.length) {
     return Response.json(
-      { error: `ทีมไม่ถูกต้อง: ${unknownTeams.join(', ')} (ใช้ได้: ${TEAMS.join(', ')})` },
+      { error: `ทีมไม่ถูกต้อง: ${unknownTeams.join(', ')} (ใช้ได้: ${knownTeams.join(', ')})` },
       { status: 400 },
     );
   }

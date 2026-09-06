@@ -14,6 +14,23 @@ export async function loadTeams(supabase, { department = null, includeInactive =
   return data || [];
 }
 
+/* รหัสทีมขายที่ **ใช้ได้จริงตอนนี้** เรียงตามลำดับที่ตั้งไว้ — ตัวเดียวที่ทางเขียนทุกเส้น
+   ต้องถามก่อนรับรหัสทีมจากผู้ใช้ (มติผู้ใช้ 2026-09-07 ปลดล็อกทีมขายใหม่)
+
+   ⚠️ **กรองด้วย `kind` ไม่ใช่ `department`** — ฝ่ายขายมีทั้งทีมขายและทีมปฏิบัติงาน
+   (`allowedKindsFor('SA')` คืนสองค่า) · กรองด้วยฝ่ายจะทำให้ทีมปฏิบัติงานของฝ่ายขาย
+   กลายเป็นทีมขายที่จัดคนเข้าได้ ซึ่งจะลากสิทธิ์เห็นข้อมูลไปด้วย
+   ⚠️ ทีมที่ปิดแล้วไม่อยู่ในลิสต์ — ยังอ่านป้ายย้อนหลังได้ แต่รับคนใหม่ไม่ได้ */
+export async function loadSalesTeamCodes(supabase, { includeInactive = false } = {}) {
+  let query = supabase.from('teams').select('code').eq('kind', 'sales');
+  if (!includeInactive) query = query.eq('isActive', true);
+  const { data, error } = await query
+    .order('sortOrder', { ascending: true })
+    .order('code', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => row.code);
+}
+
 export async function findTeam(supabase, code) {
   const { data, error } = await supabase.from('teams').select('*').eq('code', code).maybeSingle();
   if (error) throw error;

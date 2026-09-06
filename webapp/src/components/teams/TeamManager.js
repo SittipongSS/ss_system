@@ -333,10 +333,8 @@ export default function TeamManager({ department, title, subtitle }) {
         footer={(
           <>
             <Button tone="neutral" onClick={() => setDraft(null)} disabled={saving}>ยกเลิก</Button>
-            {/* ทีมขายยังสร้างไม่ได้จริง (ด่านสิทธิ์อ่านค่าคงที่ในโค้ด) — เหตุผลอยู่ใน
-                ฟอร์มแล้ว ปุ่มจึงกดไม่ได้แทนที่จะปล่อยให้กดแล้วเจอ 400 */}
             <Button tone="primary"
-              disabled={saving || !draft?.name?.trim() || !draft?.kind || draft?.kind === "sales"}
+              disabled={saving || !draft?.name?.trim() || !draft?.kind}
               onClick={createTeam}>
               สร้างทีม
             </Button>

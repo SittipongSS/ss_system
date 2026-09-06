@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { getCurrentUser } from '@/lib/authUser';
-import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
+import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams, viewScopeUser, isSuperuser } from '@/lib/permissions';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { customerNameError, customerNamePatch } from '@/lib/master/customerName';
 import { normalizeBrands } from '@/lib/master/brands';
@@ -150,7 +151,10 @@ export async function POST(request) {
      superuser (admin/AE Sup) ไม่มีทีมของตัวเอง จึงเลือกได้ทุกทีมเหมือนเดิม
      ⚠️ ห้ามเชื่อ body.teams ตรง ๆ สำหรับคนสายทีม — ไม่งั้นยิง API ตรงแล้วยกลูกค้า
      ให้ทีมที่ตัวเองไม่ได้อยู่ได้ */
-  const requestedTeams = Array.isArray(body.teams) ? body.teams.filter((t) => TEAMS.includes(t)) : [];
+  /* ⚠️ เทียบกับ **ทะเบียนสด** ไม่ใช่ค่าคงที่ (มติ 2026-09-07 ปลดล็อกทีมขายใหม่) —
+     ไม่งั้นยกลูกค้าให้ทีมที่เพิ่งสร้างไม่ได้ และรหัสถูกทิ้งเงียบ ๆ ไม่มี error */
+  const salesCodes = await loadSalesTeamCodes(supabase);
+  const requestedTeams = Array.isArray(body.teams) ? body.teams.filter((t) => salesCodes.includes(t)) : [];
   const mine = userTeams(user);
   const pickedTeams = isSuperuser(user?.role)
     ? requestedTeams
