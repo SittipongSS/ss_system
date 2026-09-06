@@ -5,12 +5,14 @@ import Select from "@/components/ui/Select";
 import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
-import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff } from "lucide-react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Tag from "@/components/ui/Tag";
+import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff, TriangleAlert } from "lucide-react";
 import { nextMonthKey } from "@/lib/usersTransfer";
 import { useCan } from "@/lib/roleContext";
 import {
   ROLE_LABELS,
-  TEAMS,
   TEAM_LABELS,
   TEAM_ROLES,
   DEPARTMENTS,
@@ -18,13 +20,11 @@ import {
   DEPARTMENT_NAMES_TH,
   departmentFor,
   rolesForDepartment,
-  resolveTeamAssignment,
   userTeams,
   GRANTABLE_CAPS,
   GRANTABLE_CAP_LABELS,
 } from "@/lib/permissions";
 import OptionTiles from "@/components/ui/OptionTiles";
-import ChoiceChips from "@/components/ui/ChoiceChips";
 import Modal from "@/components/Modal";
 import { fmtDate, fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import PhoneInput from "@/components/ui/PhoneInput";
@@ -34,12 +34,23 @@ import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import { apiFetch } from "@/lib/apiFetch";
 
-// team = ทีมหลัก (ยอด/เจ้าของงานที่สร้างใหม่เข้าทีมนี้) · teams = ทุกทีมที่สังกัด
-// (ขอบเขตการเห็น/แก้) — คนเดียวอยู่ได้หลายทีม เช่น AE ที่อยู่ทั้ง ODM และ Services
-const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", teams: ["ODM"], extraCaps: [] };
+/* ── ทีมไม่ได้อยู่บนหน้านี้แล้ว (มติผู้ใช้ 2026-09-06) ────────────────────────
+   ⭐ **จัดทีม = หน้า /sa/teams ที่เดียว** — หน้านี้ดูแล "คนคนนี้เป็นใคร ทำอะไรได้"
+   (ตำแหน่ง · ฝ่าย · สิทธิ์เสริม · การเข้าระบบ) ส่วน "อยู่ทีมไหน" เป็นเรื่องของทะเบียนทีม
+   ⚠️ ของเดิมมีสองที่ที่แก้ทีมได้ และ **สองที่นั้นตรวจคนละทะเบียน**: หน้านี้ตรวจกับ
+   ค่าคงที่ `TEAMS` ในโค้ด ส่วน /sa/teams ตรวจกับตาราง `teams` จริง (ปฏิเสธทีมที่ปิดแล้ว
+   และโชว์จำนวนดีล/เป้าที่ค้างก่อนกด) ⇒ ทางที่แคบกว่าและรู้ผลกระทบมากกว่าอยู่รอด
+   ⚠️ **บัญชีขายที่เพิ่งเปิดจะยังไม่มีทีม** — ป้าย "ยังไม่ได้จัดเข้าทีม" ในตารางกับ
+   โมดัลหลังสร้างบัญชีคือสองจุดเดียวที่กันไม่ให้คนใหม่ล็อกอินแล้วเจอจอว่างเงียบ ๆ */
+const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", extraCaps: [] };
 
 // ป้ายทีมของผู้ใช้หนึ่งคน — ทีมหลักขึ้นก่อนเสมอ ต่อด้วยทีมอื่นที่สังกัด
+// (เหลือไว้จุดเดียว: แยกคนชื่อซ้ำในดรอปดาวน์ "โอนงานให้ใคร" — ทรงเดียวกับ PersonSelect)
 const teamLabelsOf = (u) => userTeams(u).map((t) => TEAM_LABELS[t] || t);
+
+/* ตำแหน่งฝ่ายขายที่ยังไม่ถูกจัดเข้าทีม — `teams[]` คือขอบเขตการเห็นข้อมูลจริง
+   คนที่ว่างอยู่จะล็อกอินได้แต่ไม่เห็นดีล/ลูกค้า/เป้าเลย โดยไม่มี error ให้เห็น */
+const needsTeam = (u) => TEAM_ROLES.includes(u?.role) && userTeams(u).length === 0;
 
 /* ป้ายเรียกคนในข้อความยืนยัน — **ชื่อคน** ไม่ใช่ที่อยู่ล็อกอิน
    🐞 ของเดิมใช้ `u.email` ⇒ บัญชีที่เข้าด้วยเบอร์จะขึ้นกล่องยืนยันว่า
@@ -50,6 +61,7 @@ const personLabel = (u) => [u.firstName, u.lastName].filter(Boolean).join(" ")
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
+  const router = useRouter();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +84,6 @@ export default function UserManagement() {
     email: (u) => u.loginPhone || u.email || "",
     role: (u) => ROLE_LABELS[u.role] || u.role || "",
     department: (u) => DEPARTMENT_LABELS[u.department || departmentFor(u.role)] || "",
-    team: (u) => teamLabelsOf(u).join(", "),
     lastSignInAt: (u) => (u.lastSignInAt ? new Date(u.lastSignInAt).getTime() : null),
   });
   const sortedUsers = sort.sorted;
@@ -96,11 +107,6 @@ export default function UserManagement() {
     else setLoading(false);
   }, [canManage]);
 
-  // ทีมที่จะส่งขึ้น API — กติกาเดียวกับฝั่งเซิร์ฟเวอร์ (resolveTeamAssignment):
-  // ตำแหน่งที่ไม่ผูกทีมถูกล้างทิ้ง · ทีมหลักต้องอยู่ในชุดที่สังกัด
-  const teamPayload = (form) =>
-    resolveTeamAssignment(form.role, { team: form.team, teams: form.teams });
-
   const handleCreate = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -109,7 +115,6 @@ export default function UserManagement() {
     const byPhone = createForm.loginKind === "phone";
     const payload = {
       ...createForm,
-      ...teamPayload(createForm),
       email: byPhone ? "" : createForm.email,
       loginPhone: byPhone ? createForm.loginPhone : "",
     };
@@ -124,6 +129,19 @@ export default function UserManagement() {
         setShowCreate(false);
         setCreateForm(emptyForm);
         await fetchUsers();
+        /* ⚠️ **บัญชีขายที่เพิ่งเปิดยังไม่มีทีม** — ล็อกอินได้แต่จอว่างทุกหน้าโดยไม่มี
+           error ให้เห็น (teams[] คือขอบเขตจริงของทุกด่าน) ⇒ ปิดโมดัลแล้วต้องพาไป
+           จัดทีมต่อทันที ไม่ใช่ปล่อยให้คนสร้างจำเอาเองว่ายังเหลืออีกขั้น */
+        if (TEAM_ROLES.includes(createForm.role)) {
+          const go = await confirmAction({
+            title: "สร้างบัญชีแล้ว — ยังไม่ได้จัดเข้าทีม",
+            description: `${[createForm.firstName, createForm.lastName].filter(Boolean).join(" ") || "บัญชีใหม่"} `
+              + "ล็อกอินได้แล้ว แต่จะยังไม่เห็นดีล ลูกค้า หรือเป้าเลยจนกว่าจะถูกจัดเข้าทีม",
+            confirmLabel: "ไปหน้าจัดทีม",
+            cancelLabel: "ไว้ทีหลัง",
+          });
+          if (go) router.push("/sa/teams");
+        }
       } else {
         notifyToast.error(data.error || "เพิ่มผู้ใช้ไม่สำเร็จ");
       }
@@ -141,8 +159,6 @@ export default function UserManagement() {
       phone: u.phone || "",
       department: u.department || departmentFor(u.role) || DEPARTMENTS[0],
       role: u.role || "ae",
-      team: u.team || userTeams(u)[0] || TEAMS[0],
-      teams: userTeams(u).length ? userTeams(u) : [u.team || TEAMS[0]],
       extraCaps: Array.isArray(u.extraCaps) ? u.extraCaps : [],
       // เบอร์เข้าระบบ — มีเฉพาะบัญชีที่ล็อกอินด้วยเบอร์ (เปลี่ยนซิมแล้วต้องแก้ได้)
       loginPhone: (u.loginPhone || "").replace(/\D/g, ""),
@@ -159,7 +175,8 @@ export default function UserManagement() {
       phone: editForm.phone,
       role: editForm.role,
       department: editForm.department,
-      ...teamPayload(editForm),
+      /* ⚠️ **ไม่ส่ง team/teams** — route จะเก็บค่าเดิมไว้ให้ (ดูคอมเมนต์ที่
+         api/users/[id]/route.js) · ส่ง null มาเมื่อไรคือล้างทีมของคนนั้นทิ้ง */
       extraCaps: editForm.extraCaps || [],
     };
     /* ส่งเบอร์เข้าระบบเฉพาะตอนที่ *เปลี่ยนจริง* — ส่งทุกครั้งจะเขียนอีเมลของบัญชีซ้ำ
@@ -281,7 +298,7 @@ export default function UserManagement() {
     <Workspace
       icon={<Users size={22} />}
       title="จัดการผู้ใช้งาน"
-      subtitle="เพิ่ม / แก้ไขสิทธิ์ Role และทีม Team ของผู้ใช้ในระบบ"
+      subtitle="เพิ่ม / แก้ไขตำแหน่ง ฝ่าย และสิทธิ์ของผู้ใช้ในระบบ — จัดทีมที่หน้าจัดทีม"
       headerRight={<div className="pill ok">ทั้งหมด {users.length} คน</div>}
     >
 
@@ -316,7 +333,6 @@ export default function UserManagement() {
                   <SortTh label="อีเมล" sortKey="email" sort={sort} />
                   <SortTh label="ตำแหน่ง Role" sortKey="role" sort={sort} />
                   <SortTh label="ฝ่าย" sortKey="department" sort={sort} />
-                  <SortTh label="ทีม" sortKey="team" sort={sort} />
                   <SortTh label="เข้าใช้ล่าสุด" sortKey="lastSignInAt" sort={sort} />
                   {canManage && <th className="text-center">จัดการ</th>}
                 </tr>
@@ -324,7 +340,7 @@ export default function UserManagement() {
               <tbody>
                 {sortedUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={canManage ? 9 : 8} className="text-center py-10 text-[var(--text-3)]">
+                    <td colSpan={canManage ? 8 : 7} className="text-center py-10 text-[var(--text-3)]">
                       ยังไม่มีผู้ใช้ในระบบ
                     </td>
                   </tr>
@@ -348,6 +364,14 @@ export default function UserManagement() {
                         {ROLE_LABELS[u.role] || u.role || (
                           <span className="text-[var(--text-3)]">ไม่ระบุ (viewer)</span>
                         )}
+                        {/* ⚠️ คนไร้ทีมล็อกอินได้แต่ไม่เห็นข้อมูลอะไรเลย และ **ไม่มี error
+                            ให้เห็น** — ป้ายนี้คือจุดเดียวในหน้านี้ที่บอกว่าเขาตกหล่น
+                            (การจัดทีมจริงอยู่ที่ /sa/teams) */}
+                        {needsTeam(u) && !u.disabled && (
+                          <Link href="/sa/teams" className="ml-2 align-middle" title="ไปหน้าจัดทีม">
+                            <Tag tone="warning" icon={TriangleAlert}>ยังไม่ได้จัดเข้าทีม</Tag>
+                          </Link>
+                        )}
                       </td>
                       <td className="text-[var(--text-2)]">
                         {(() => {
@@ -356,18 +380,6 @@ export default function UserManagement() {
                           return (
                             <span title={DEPARTMENT_NAMES_TH[dep] || ""}>
                               {DEPARTMENT_LABELS[dep] || dep}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="text-[var(--text-2)]">
-                        {(() => {
-                          // อยู่หลายทีมได้ — โชว์ครบทุกทีม ทีมหลักตัวแรก (ตัวที่ยอดของใหม่เข้า)
-                          const labels = teamLabelsOf(u);
-                          if (!labels.length) return "-";
-                          return (
-                            <span title={labels.length > 1 ? `ทีมหลัก: ${labels[0]}` : undefined}>
-                              {labels.join(" + ")}
                             </span>
                           );
                         })()}
@@ -561,14 +573,9 @@ function SectionHeading({ children }) {
 }
 
 // Shared form fields for create + edit. `edit` hides email; password optional.
-// Grouped into three sections: personal info, login credentials, role & team.
+// Grouped into three sections: personal info, login credentials, role & grants.
 function UserFields({ form, setForm, requirePassword, edit, user = null }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const isTeamRole = TEAM_ROLES.includes(form.role);
-  const teams = userTeams(form);
-  // ติ๊กทีมออกแล้วทีมหลักต้องตามไปด้วย ไม่งั้นจะเหลือทีมหลักที่ตัวเองไม่ได้อยู่
-  const setTeams = (next) =>
-    setForm((f) => ({ ...f, teams: next, team: next.includes(f.team) ? f.team : (next[0] || "") }));
   const deptRoles = rolesForDepartment(form.department);
   const grants = form.extraCaps || [];
   const toggleGrant = (cap) =>
@@ -718,47 +725,9 @@ function UserFields({ form, setForm, requirePassword, edit, user = null }) {
           ))}
         </Select>
       </div>
-      {/* ทีม — ติ๊กได้หลายทีม (มติผู้ใช้ 2026-08-11: "ฝ่ายขาย Account Executive
-          อยู่ ODM กับ Service") · ชุดตายตัว 3 ตัว = แผ่นเลือก ไม่ใช่ดรอปดาวน์
-          (docs/form-design-rules.md §3) */}
-      <div className="form-group col-span-2">
-        <label>
-          ทีม {isTeamRole && <span className="text-[var(--red)]">*</span>}
-        </label>
-        {isTeamRole ? (
-          <>
-            <OptionTiles
-              multiple
-              ariaLabel="ทีมที่สังกัด"
-              value={teams}
-              onChange={(next) => setTeams(next)}
-              options={TEAMS.map((t) => ({ value: t, label: TEAM_LABELS[t] }))}
-            />
-            {teams.length === 0 && (
-              <p className="text-[11px] text-[var(--red)] mt-1">ตำแหน่งนี้ต้องเลือกอย่างน้อยหนึ่งทีม</p>
-            )}
-            {/* ทีมหลักถามเฉพาะตอนที่มันมีคำตอบให้เลือกจริง — ทีมเดียวก็คือทีมหลักอยู่แล้ว */}
-            {teams.length > 1 && (
-              <div className="form-group mt-3">
-                <label>ทีมหลัก</label>
-                <ChoiceChips
-                  ariaLabel="ทีมหลัก"
-                  value={form.team}
-                  onChange={(t) => set("team", t)}
-                  options={teams.map((t) => ({ value: t, label: TEAM_LABELS[t] }))}
-                />
-                <p className="text-[11px] text-[var(--text-3)] mt-1">
-                  ดีล/ลูกค้า/โครงการที่คนนี้สร้างใหม่จะถูกบันทึกเข้าทีมหลัก — ยอดและเป้าจึงนับที่ทีมนี้
-                  ส่วนทีมที่เหลือใช้กำหนดว่าเห็นและแก้งานของทีมไหนได้บ้าง
-                </p>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="premium-input w-full opacity-[var(--op-disabled)]">— ไม่ต้องระบุ —</div>
-        )}
-      </div>
-
+      {/* ⭐ **ไม่มีช่องทีมที่นี่แล้ว** (มติผู้ใช้ 2026-09-06) — จัดทีมอยู่ที่ /sa/teams
+          ที่เดียว ซึ่งตรวจกับทะเบียนทีมจริง (ปฏิเสธทีมที่ปิดแล้ว) และบอกจำนวนดีล/เป้า
+          ที่ค้างก่อนย้าย · บัญชีขายที่สร้างจากที่นี่จะยังไม่มีทีมจนกว่าจะจัดที่หน้านั้น */}
       {/* —— สิทธิ์เสริมรายคน (grants) —— */}
       <SectionHeading>สิทธิ์เสริม (นอกเหนือจากตำแหน่ง)</SectionHeading>
       <div className="form-group col-span-2" style={{ marginTop: -4 }}>
