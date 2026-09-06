@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, resolveTeamAssignment } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, resolveTeamUpdate } from '@/lib/permissions';
 import { isPhoneLogin, normalizeLoginPhone, phoneLoginEmail } from '@/lib/auth/loginIdentity';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
@@ -41,7 +41,14 @@ export async function PATCH(request, { params }) {
     : sanitizeExtraCaps(existingMeta.extraCaps);
 
   if (body.role !== undefined) {
-    const { team, teams } = resolveTeamAssignment(body.role, { team: body.team || null, teams: body.teams });
+    /* ⚠️ **ไม่ส่งทีมมา = ไม่แตะทีม** (ตั้งแต่หน้าผู้ใช้ถอดช่องทีมออก 2026-09-06)
+       ของเดิมอ่าน `body.team` ตรง ๆ ⇒ ทุกคำขอที่มี `role` แต่ไม่มีทีม (ซึ่งตอนนี้คือ
+       **ทุกครั้งที่แก้ชื่อ/เบอร์/สิทธิ์เสริมจากหน้าผู้ใช้**) จะล้างทีมของคนนั้นทิ้ง
+       ⚠️ ยังต้อง **ล้าง** เมื่อ role ใหม่ไม่ผูกทีม — ตรงนั้น `resolveTeamAssignment`
+       คืน {team:null, teams:[]} ให้เองอยู่แล้วไม่ว่าจะรับค่าเดิมมาหรือไม่
+       ⚠️ ทางที่ยังส่งทีมมาได้ (สคริปต์/แอดมินแก้ผ่าน API) ยังทำงานเหมือนเดิมทุกอย่าง
+       — เก็บไว้เป็นทางฉุกเฉินทางเดียวที่ตั้งทีมที่ทะเบียนไม่เปิดให้เลือกแล้วได้ */
+    const { team, teams } = resolveTeamUpdate(body.role, body, existingMeta);
     const invalid = validateIdentity(body.role, teams, body.department);
     if (invalid) return Response.json({ error: invalid }, { status: 400 });
     // Guard against self-demotion locking everyone out of user management.
