@@ -62,12 +62,21 @@ test('⭐ ทุก action ที่ route รองรับ ต้องมี
 
   const ask = { dept: 'RD', docNo: 'DR-26080001', items: [{}], committedDueDate: '2026-08-20' };
   const missing = [];
+  const unlabelled = [];
   for (const action of new Set(actions)) {
-    if (!askActionUpdate(action, ask, { reason: 'เหตุผล', previousDueDate: '2026-08-10' })) {
-      missing.push(action);
-    }
+    const u = askActionUpdate(action, ask, { reason: 'เหตุผล', previousDueDate: '2026-08-10' });
+    if (!u) { missing.push(action); continue; }
+    /* 🐞 **มีแถวลงเธรด ยังไม่พอ — ต้องมีป้ายด้วย** (เจอ 06/09/2026)
+       `answer` ถูกเพิ่มเข้าไฟล์นี้แต่ไม่ได้เติมเข้าทะเบียนป้าย ⇒ ชนิดที่ไม่รู้จักถอยไป
+       หยิบป้ายของ `comment` ⇒ **ทุกฝ่ายตอบคำร้องใบไหนก็ตาม กระดิ่งขึ้นว่า "ข้อความ"**
+       เหมือนมีคนพิมพ์คอมเมนต์มา ⇒ คนกวาดกระดิ่งเร็ว ๆ อ่านผ่าน
+       ⚠️ เทสต์ตัวบนวนแค่ 4 action ที่พิมพ์ไว้เอง เลยไม่เคยแตะ `answer` —
+          ตัวนี้วนจาก **ซอร์สของ route จริง** จึงจับได้ */
+    if (!declared('dept_request', u.kind)) unlabelled.push(`${action} → ${u.kind}`);
   }
   assert.deepEqual(missing, [], `action เหล่านี้ยังไม่มีแถวลงเธรด: ${missing.join(', ')}`);
+  assert.deepEqual(unlabelled, [],
+    `kind เหล่านี้ไม่มีป้ายในทะเบียน ⇒ กระดิ่งจะขึ้นว่า "ข้อความ": ${unlabelled.join(', ')}`);
 });
 
 test('⭐ แจ้งกำหนดส่งต้องบอกว่าเป็นวันของรอบไหน (เจอตอน UAT 2026-08-27)', () => {
