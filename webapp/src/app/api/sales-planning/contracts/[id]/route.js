@@ -8,6 +8,7 @@ import {
 import { contractQuotationNotice, newerApprovedQuotation } from '@/lib/sales/contractQuotationState';
 import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { purgeNotificationsMany } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,8 +143,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return fail('ลบได้เฉพาะร่างที่ยังไม่ออกเลขที่สัญญา — ใบที่ออกแล้วให้กดยกเลิก', 409);
   }
 
-  // ไฟล์ฉบับลงนามที่แนบกับสัญญา — กวาดก่อนแถวหาย (polymorphic ไม่มี FK cascade)
+  /* ของพ่วงที่ไม่มี FK cascade — กวาดก่อนแถวหาย (polymorphic ทั้งคู่)
+     ⚠️ **แจ้งเตือนก็ต้องกวาด** — สัญญายิงกระดิ่งอยู่สองเรื่อง (ใบเสนอราคาถูกปิด ·
+        ค้างรอลงนาม) ไม่กวาดแล้วกล่องจะมีแถวที่กดแล้วเจอ 404 ค้างอยู่ตลอดไป
+        (สัญญาไม่มีเธรด จึงไม่ผ่าน `purgeUpdates` ที่กวาดให้เองเหมือน entity อื่น) */
   await purgeAttachments('contract', id);
+  await purgeNotificationsMany(supabase, 'sales_contract', [id]);
   const { error } = await supabase.from('sales_contracts').delete().eq('id', id);
   if (error) return fail(error.message, 500);
 

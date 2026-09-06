@@ -33,11 +33,17 @@ import { notifyToast } from "@/lib/feedback";
 import {
   CONTRACT_KINDS, CONTRACT_KIND_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
 } from "@/lib/sales/contracts";
-import { hasContractTemplate, MISSING_TEMPLATE_NOTE } from "@/lib/sales/contractTemplates";
+import { hasContractTemplate } from "@/lib/sales/contractTemplates";
 import { apiFetch } from "@/lib/apiFetch";
 
 // โทนเดียวกับป้ายชนิดสัญญาในตาราง — ป้ายกดกับป้ายอ่านต้องเป็นสีเดียวกัน
 const KIND_TONE = { scent_design: "amber", manufacturing: "blue", service: "teal" };
+
+/* 🐞 สองทางเข้าเคยพูดคนละประโยค — เลน "เลือกลูกค้าก่อน" เขียนคำสั้นของตัวเอง ส่วนเลน
+   "เปิดจากดีล" ใช้ `note` ที่ API ส่งมา (คำของ MISSING_TEMPLATE_NOTE) ⇒ ผู้ใช้คนเดียวกัน
+   เห็นคำอธิบายคนละแบบขึ้นกับว่ากดมาจากไหน · ประโยคนี้เป็นคำที่ผู้ใช้ตัดสิน (31/08) เพราะบอก
+   **ทางออก** ไม่ใช่แค่ปฏิเสธ ⇒ ใช้ตัวนี้ทั้งสองเลน */
+const TEMPLATE_MISSING_NOTE = "ยังไม่มีต้นฉบับในระบบ — เลือกที่มาเป็นเอกสารภายนอกแทนได้";
 
 export default function ContractCreateModal({
   open,
@@ -244,7 +250,7 @@ export default function ContractCreateModal({
         tone: KIND_TONE[item],
         disabled: !customerId || !usable || needsTemplate,
         description: needsTemplate
-          ? "ยังไม่มีต้นฉบับในระบบ — เลือกที่มาเป็นเอกสารภายนอกแทนได้"
+          ? TEMPLATE_MISSING_NOTE
           : !customerId
             ? "เลือกลูกค้าก่อน"
             : usable
@@ -257,9 +263,12 @@ export default function ContractCreateModal({
       label: item.label,
       tone: KIND_TONE[item.kind],
       // สาย external: เหตุที่ "ยังไม่พร้อม" ของฝั่ง server คือเรื่องแม่แบบ ซึ่งไม่เกี่ยว
+      /* ⚠️ ไม่ใช้ `item.note` ของ server ตรง ๆ — คำของ server (MISSING_TEMPLATE_NOTE)
+         เขียนไว้ตอบคนที่ยิง API มา ส่วนบนจอต้องบอกทางออกที่ *กดได้ตรงนั้น* ⇒ ใช้ประโยคเดียว
+         กับอีกเลนเสมอ · `note` ยังถูกส่งมาจาก API เหมือนเดิม (ยังถูกและมีที่ใช้ฝั่ง server) */
       description: external
         ? "ใช้เอกสารภายนอกแทนได้"
-        : (item.ready ? "ออกจากแม่แบบได้" : item.note),
+        : (item.ready ? "ออกจากแม่แบบได้" : TEMPLATE_MISSING_NOTE),
       disabled: external ? false : !item.ready,
     }));
 

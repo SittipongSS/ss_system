@@ -42,6 +42,7 @@ import {
   CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_LIST_STATUSES, CONTRACT_SOURCES, CONTRACT_SOURCE_LABELS,
   CONTRACT_STATUS_LABELS,
   contractSourceOf, daysAwaitingSignature, contractStatusLabel, isExternalContract,
+  SIGNATURE_LATE_DAYS,
 } from "@/lib/sales/contracts";
 
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
@@ -110,8 +111,8 @@ export default function ContractsPage() {
     total: rows.length,
     awaiting: rows.filter((row) => row.status === "awaiting_signature").length,
     signed: rows.filter((row) => row.status === "signed").length,
-    // ค้างเกิน 14 วัน = ตัวเลขที่ทำให้ต้องโทรตาม ไม่ใช่แค่จำนวนใบ
-    overdue: rows.filter((row) => (daysAwaitingSignature(row) ?? 0) > 14).length,
+    // ค้างเกินเกณฑ์ = ตัวเลขที่ทำให้ต้องโทรตาม ไม่ใช่แค่จำนวนใบ (เกณฑ์อยู่ที่ lib/sales/contracts)
+    overdue: rows.filter((row) => (daysAwaitingSignature(row) ?? 0) > SIGNATURE_LATE_DAYS).length,
   }), [rows]);
 
   /* ── แท็บ: ทะเบียนเอกสาร | ต่อสัญญา (มติผู้ใช้ 2026-08-31) ────────────────
@@ -192,7 +193,7 @@ export default function ContractsPage() {
         <SaMetricStrip>
           <SaMetric icon={<FileSignature />} label="ทั้งหมด" value={summary.total} note="สัญญาในขอบเขตที่มองเห็น" />
           <SaMetric icon={<Clock3 />} label="รอลงนาม" value={summary.awaiting} note="ออกเลขแล้ว รอฉบับเซ็นกลับ" tone={summary.awaiting ? "warning" : "good"} />
-          <SaMetric icon={<ShieldCheck />} label="ค้างเกิน 14 วัน" value={summary.overdue} note="ใบที่ควรโทรตาม" tone={summary.overdue ? "warning" : "good"} />
+          <SaMetric icon={<ShieldCheck />} label={`ค้างเกิน ${SIGNATURE_LATE_DAYS} วัน`} value={summary.overdue} note="ใบที่ควรโทรตาม" tone={summary.overdue ? "warning" : "good"} />
           <SaMetric icon={<CheckCircle2 />} label="ลงนามแล้ว" value={summary.signed} note="มีไฟล์ฉบับเซ็นครบ" tone="good" />
         </SaMetricStrip>
 

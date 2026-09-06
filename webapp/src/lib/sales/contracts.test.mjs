@@ -221,6 +221,48 @@ test('บันทึกเพิ่มเติม: ออกได้เฉพ
    "รอหัวหน้ารับรอง" (mig 0323) เป็นโน้ตบนหมุดสุดท้าย ⇒ ทะเบียน 3 หมุด หน้าใบ 4 หมุด
    คนคนเดียวกันเปิดสองหน้านี้ห่างกันคลิกเดียวแล้วนับไม่ตรง · เหตุผลที่หน้ารายละเอียด
    เขียนไว้เองใช้ได้กับทะเบียนยิ่งกว่า: ทะเบียนคือที่ที่คนกวาดตาหาว่าใบไหนค้าง */
+/* เกณฑ์ "ค้างเกิน N วัน" ต้องมาจาก lib เดียว — เคยมีสี่สำเนา (การ์ดสรุป · ป้ายหน้าใบ ·
+   ราง · ตัวหนังสือบนป้าย) แก้เลขที่เดียวแล้วอีกสามที่โกหก
+   ⚠️ ล็อกตัวเปรียบเทียบด้วย: เท่าเกณฑ์พอดี = ยังไม่สาย · เกินหนึ่งวัน = สาย (`>` ไม่ใช่ `>=`) */
+/* ยอดรวม VAT + ตัวหนังสือ เติมจากใบเสนอราคาตอนสร้างร่าง (แก้ 2026-09-06)
+   ⚠️ ต้องเก็บเป็น **ตัวเลขดิบ** — ตัวเรนเดอร์เป็นคนจัดคอมมา/ทศนิยมจาก type:'money' */
+test('สัญญาบริการ: ยอดรวม VAT และตัวหนังสือมาจากใบเสนอราคา', async () => {
+  const { contractFieldDefaults } = await import('./contractTemplates.js');
+
+  const filled = contractFieldDefaults('service', { quotation: { totalAmount: 38199 } });
+  assert.equal(filled.totalWithVat, 38199);
+  assert.equal(typeof filled.totalWithVat, 'number', 'ห้ามเก็บสตริงที่จัดรูปแล้ว');
+  assert.match(filled.totalWithVatText, /^สามหมื่นแปดพันหนึ่งร้อยเก้าสิบเก้าบาท/);
+
+  // คนกรอกไว้เองชนะเสมอ (ฟังก์ชันเติมเฉพาะช่องว่าง)
+  const typed = contractFieldDefaults('service', {
+    quotation: { totalAmount: 38199 }, current: { totalWithVat: 40000, totalWithVatText: 'สี่หมื่นบาทถ้วน' },
+  });
+  assert.equal(typed.totalWithVat, 40000);
+  assert.equal(typed.totalWithVatText, 'สี่หมื่นบาทถ้วน');
+
+  /* ยอดว่าง = ไม่เติมอะไรเลย · "ศูนย์บาทถ้วน" จะผ่านด่านช่องบังคับไปขึ้นกระดาษเงียบ ๆ */
+  for (const q of [null, { totalAmount: 0 }, { totalAmount: null }]) {
+    const blank = contractFieldDefaults('service', { quotation: q });
+    assert.ok(!blank.totalWithVat, `ยอดว่างต้องไม่ถูกเติม (${JSON.stringify(q)})`);
+    assert.ok(!blank.totalWithVatText, 'ตัวหนังสือต้องไม่ถูกเติมเมื่อยอดว่าง');
+  }
+});
+
+test('เกณฑ์ค้างลงนามมาจากค่าเดียว และเทียบด้วย > เท่านั้น', async () => {
+  const { SIGNATURE_LATE_DAYS } = await import('./contracts.js');
+  const { contractListTrack } = await import('./contractListTrack.js');
+  const day = 86400000;
+  const at = (days) => new Date(Date.now() - days * day).toISOString();
+  const stepOf = (days) => contractListTrack({
+    status: 'awaiting_signature', contractNo: 'CT-SD-26090001-0', issuedAt: at(days),
+  }).steps.find((s) => s.key === 'issue');
+
+  assert.equal(SIGNATURE_LATE_DAYS, 14);
+  assert.equal(stepOf(SIGNATURE_LATE_DAYS).state, 'now', 'เท่าเกณฑ์พอดียังไม่สาย');
+  assert.equal(stepOf(SIGNATURE_LATE_DAYS + 1).state, 'bad', 'เกินหนึ่งวันคือสาย');
+});
+
 test('ทะเบียนสัญญา: รางสี่ขั้น ร่าง → รอลงนาม → รอหัวหน้ารับรอง → ลงนามแล้ว', async () => {
   const { contractListTrack } = await import('./contractListTrack.js');
   const { STEPS } = await import('./contractLifecycle.js');

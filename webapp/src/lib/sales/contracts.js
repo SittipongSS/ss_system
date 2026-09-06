@@ -373,6 +373,12 @@ export function isContractWaitingOnMe(contract, { userId = '', user = null, exte
   return contract.status === 'draft' || contract.status === 'awaiting_signature';
 }
 
+/* เกินกี่วันถือว่า "ต้องโทรตาม" — **เลขนี้อยู่ที่เดียว** อยู่ติดกับตัววัดที่ใช้มัน
+   ⚠️ เคยมีสี่สำเนา (การ์ดสรุปทะเบียน · ป้ายบนหน้ารายละเอียด · ราง · และ *ตัวหนังสือ*
+      บนป้ายการ์ด) ⇒ แก้เลขที่เดียวแล้วอีกสามที่โกหกทันที · ทุกที่เทียบด้วย `>` เท่ากันหมด
+   ผู้ใช้: หน้าทะเบียน (การ์ดสรุป + ป้าย) · หน้ารายละเอียด (ป้ายเตือน) · ราง · ตัวเตือนกระดิ่ง */
+export const SIGNATURE_LATE_DAYS = 14;
+
 // จำนวนวันที่ใบค้างอยู่ในขั้น "รอลงนาม" — ตัวเลขที่ฝ่ายขายใช้ตามงานจริง
 export function daysAwaitingSignature(contract, now = new Date()) {
   if (contract?.status !== 'awaiting_signature' || !contract?.issuedAt) return null;

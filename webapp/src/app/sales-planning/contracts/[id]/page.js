@@ -33,6 +33,7 @@ import {
   externalApproveError, externalApproveOpenError, externalDocKindLabel, isExternalContract,
   showExternalApprove,
   showSignedApprove, signedApproveError,
+  SIGNATURE_LATE_DAYS,
 } from "@/lib/sales/contracts";
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
@@ -327,7 +328,7 @@ export default function ContractDetailPage() {
       <span key="missing" className="ui-badge ui-badge-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</span>
     ) : null,
     contract.status === "awaiting_signature" ? (
-      <span key="waiting" className={`ui-badge${waitingDays > 14 ? ` ${styles.late}` : ""}`}>
+      <span key="waiting" className={`ui-badge${waitingDays > SIGNATURE_LATE_DAYS ? ` ${styles.late}` : ""}`}>
         รอฉบับลงนามมา {waitingDays ?? 0} วัน
       </span>
     ) : null,

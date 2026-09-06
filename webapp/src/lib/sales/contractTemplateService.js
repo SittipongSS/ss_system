@@ -65,7 +65,8 @@ export const SERVICE_TEMPLATE = {
     { key: 'lateWorkingDays', label: 'ล่าช้าเกิน (วันทำการ) จึงขยายเวลาให้ฟรี', type: 'number', required: true, default: 7 },
 
     { key: 'totalWithVat', label: 'ค่าจ้างรวม VAT 7% (บาท)', type: 'money', required: true, source: 'quotation' },
-    { key: 'totalWithVatText', label: 'ค่าจ้างรวม VAT เป็นตัวอักษร', type: 'text', required: true, hint: 'เช่น สามหมื่นแปดพันหนึ่งร้อยเก้าสิบเก้าบาทถ้วน' },
+    /* เติมจากยอดของใบเสนอราคาเหมือนช่องบน (แปลงเป็นตัวหนังสือให้) — คนแก้ทับได้ */
+    { key: 'totalWithVatText', label: 'ค่าจ้างรวม VAT เป็นตัวอักษร', type: 'text', required: true, source: 'quotation', hint: 'เช่น สามหมื่นแปดพันหนึ่งร้อยเก้าสิบเก้าบาทถ้วน' },
     /* ① มติผู้ใช้ 2026-09-03 — ยึดวันของงวดสุดท้าย · คำนวณเองไม่ได้เพราะวันที่งวด
        อยู่ในช่อง note ที่เป็นข้อความอิสระ ⇒ ให้คนกรอก ไม่ใช่เดา */
     { key: 'finalPaymentDate', label: 'ชำระครบถ้วนภายในวันที่', type: 'text', required: true, hint: 'ต้องตรงกับงวดสุดท้ายในตารางชำระ' },
