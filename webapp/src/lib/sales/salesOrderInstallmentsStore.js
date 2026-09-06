@@ -97,7 +97,11 @@ export async function ensureInstallments(supabase, { order, user, now = null, fr
  *
  * ⚠️ **จำนวนงวดต่างกันแก้ด้วยการทับยอดไม่ได้** — QT ถูกแก้หลังกด "เริ่มติดตาม" ได้
  * ⇒ ตั้งใหม่ทั้งชุด (ลบของเดิมแล้วสร้างจากแผนล่าสุด)
- * ⚠️ แลกกับ `dueDate` ที่ SA กรอกไว้ — จอเตือนไว้ก่อนแล้ว (`installmentPlanDrift`)
+ * ⭐ **แต่ของที่คนกรอกเองถูกอุ้มข้ามการตั้งใหม่ตาม `seq`** (แก้ 07/09/2026):
+ *   `coversFrom`/`coversTo` · `dueDate` · หมายเหตุ · เดิมหายทั้งหมด และหัวข้อนี้เคยเขียนว่า
+ *   "แลกกับ `dueDate` ที่ SA กรอกไว้ — จอเตือนไว้ก่อนแล้ว" ซึ่งใช้ได้ตอนที่ยังไม่มีช่วงครอบ
+ *   ⇒ วันนี้ช่วงครอบหายเมื่อไร `paidThrough` เป็น null และด่านเงินบล็อกนัดทั้งไซต์
+ *     (ดูรายละเอียดที่จุดลบข้างล่าง)
  *
  * 🛑 **แต่ห้ามลบทิ้งถ้ามีเงินบันทึกไว้แล้ว** (มติผู้ใช้ 2026-08-19) — ตั้งแต่งวดร่างเก็บ
  * `paidOn` + หลักฐานได้ ข้อความเดิมที่ว่า *"ปลอดภัยเพราะงวดร่างเป็น pending จึงไม่มี
@@ -128,10 +132,44 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
   // จำนวนไม่ตรงแผนล่าสุด ⇒ ตั้งใหม่ทั้งชุด — **เว้นใบที่มีเงินบันทึกไว้แล้ว** (ดูเหตุผลข้างบน)
   const prepaidDraft = draft.filter(installmentPrepaid);
   if (draft.length && plan.length && draft.length !== plan.length && !prepaidDraft.length) {
+    /* 🔴 **อุ้มของที่คนกรอกเองข้ามการตั้งใหม่** (แก้ 07/09/2026)
+       🐞 เดิมลบแล้วสร้างจากแผนเปล่า ⇒ `coversFrom`/`coversTo` หายไปด้วย
+         ⇒ `paidThrough` คืน null ⇒ ด่านเงินของ `visitGate` **บล็อกนัดช่างทุกโซนของไซต์**
+           ทั้งที่ลูกค้าจ่ายแล้ว — อาการเดียวกับบั๊กออก Rev. (mig 0346) แต่คนละเส้น
+           เส้นนี้เกิดตอน **กดอนุมัติใบ** ไม่ใช่ตอนออก Rev.
+       ⚠️ ตอนเขียนกติกานี้ครั้งแรก คอลัมน์ช่วงครอบยังไม่เกิด (มาที่ mig 0320) ⇒ หัวไฟล์
+         ยอมแลก `dueDate` ทิ้งโดยบอกว่า "จอเตือนไว้ก่อนแล้ว" · วันนี้ของที่หายไปด้วย
+         ไม่ใช่ความสะดวก แต่คือของที่ **หยุดงานหน้างานทั้งไซต์** ⇒ เหตุผลเดิมหมดอายุ
+       ⚠️ **อุ้มตาม `seq` ไม่ใช่ตาม id** — id ชุดใหม่คนละตัว · แผนที่งวดไม่เท่ากันแปลว่า
+         บางงวดไม่มีคู่ ⇒ งวดที่เกินมาได้ค่าว่างตามเดิม ให้คนไปเติม (ด่านยังกันอยู่:
+         งวดที่ confirmed แต่ไม่มี `coversTo` ไม่ขยับ "จ่ายถึง" แม้แต่วันเดียว)
+       ⚠️ **ไม่อุ้ม `billingRequestId`** — คำร้องขอใบวางบิลผูกกับ *งวดที่มียอดเท่านั้น*
+         และแผนที่เปลี่ยนแปลว่ายอดเปลี่ยน ⇒ ยกมาแปะงวดใหม่คือชี้คำร้องไปที่ยอดคนละตัว
+         · ระบบกันแนบซ้ำด้วยการถามว่าคำร้องใบนี้เกาะงวดไหนอยู่ ⇒ ปล่อยให้หลุดแล้ว
+           ให้คนแนบใหม่ ปลอดภัยกว่าแปะผิดงวดเงียบ ๆ */
+    const carried = new Map(draft.map((row) => [row.seq, {
+      coversFrom: row.coversFrom ?? null,
+      coversTo: row.coversTo ?? null,
+      dueDate: row.dueDate ?? null,
+      note: row.note ?? null,
+    }]));
+
     const { error } = await supabase.from(TABLE).delete().in('id', draft.map((r) => r.id));
     if (error) throw error;
     const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp });
-    return { rows: seeded.rows, frozen: true };
+
+    /* เขียนค่าที่อุ้มไว้กลับทีละงวด — ทำ **หลัง** สร้างสำเร็จเสมอ
+       ⚠️ ล้มตรงนี้ต้องไม่ลากการอนุมัติล้มตาม: งวดถูกตั้งใหม่ครบแล้ว ของที่หายคือค่าที่คน
+         กรอกเอง ซึ่งกรอกซ้ำได้ · โยน error ที่นี่ = ใบที่อนุมัติสำเร็จแล้วตอบ 500 */
+    const restored = [];
+    for (const row of seeded.rows) {
+      const keep = carried.get(row.seq);
+      if (!keep || !Object.values(keep).some((v) => v !== null)) { restored.push(row); continue; }
+      const { data, error: patchError } = await supabase.from(TABLE)
+        .update(keep).eq('id', row.id).select('*').maybeSingle();
+      restored.push(patchError ? row : (data || row));
+    }
+    return { rows: restored, frozen: true };
   }
 
   // ยังไม่เคยกด "เริ่มติดตาม" — สร้างให้ตอนอนุมัติเหมือนพฤติกรรมเดิมของ 0245

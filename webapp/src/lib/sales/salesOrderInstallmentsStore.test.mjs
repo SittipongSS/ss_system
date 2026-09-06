@@ -137,10 +137,18 @@ const fakeDb = (seed = []) => {
           payload.forEach((r) => store.set(r.id, { ...r }));
           return { select: async () => ({ data: payload, error: null }) };
         },
+        /* `eq` ต้องเป็นได้ทั้ง **await ตรง ๆ** (ของเดิม) และ **ต่อ .select().maybeSingle()**
+           (ทางที่ freeze ใช้ตอนเขียนค่าที่อุ้มไว้กลับ) ⇒ คืน thenable ที่มี select ด้วย */
         update: (patch) => ({
-          eq: async (_col, id) => {
-            store.set(id, { ...store.get(id), ...patch });
-            return { error: null };
+          eq: (_col, id) => {
+            const apply = () => {
+              store.set(id, { ...store.get(id), ...patch });
+              return store.get(id);
+            };
+            return {
+              then: (resolve) => resolve({ data: apply(), error: null }),
+              select: () => ({ maybeSingle: async () => ({ data: apply(), error: null }) }),
+            };
           },
         }),
         delete: () => ({
@@ -225,4 +233,77 @@ test('อนุมัติใบ: แผนเปลี่ยนจำนวน
   assert.deepEqual(db.calls.deleted, ['SOI-1', 'SOI-2', 'SOI-3']);
   assert.equal(db.rows().length, 2);
   assert.ok(db.rows().every((r) => r.frozenAt === '2026-08-19T03:00:00.000Z'));
+});
+
+/* ── 🐞 อนุมัติใบแล้วจำนวนงวดไม่ตรงแผน: ของที่คนกรอกเองต้องรอด (แก้ 07/09/2026) ──
+   เดิมลบงวดร่างทั้งชุดแล้วสร้างจากแผนเปล่า ⇒ `coversFrom`/`coversTo` หายไปด้วย
+   ⇒ `paidThrough` คืน null ⇒ ด่านเงินของ visitGate บล็อกนัดช่างทุกโซนของไซต์
+     ทั้งที่ลูกค้าจ่ายแล้ว — อาการเดียวกับบั๊กออก Rev. (mig 0346) แต่คนละเส้น
+   ⚠️ ตอนเขียนกติกาลบครั้งแรก คอลัมน์ช่วงครอบยังไม่เกิด (มาที่ mig 0320) ⇒ เหตุผลเดิม
+     ที่ว่า "แลกกับ dueDate ที่จอเตือนไว้แล้ว" หมดอายุไปตั้งแต่วันนั้น */
+test('🐞 ตั้งงวดใหม่แล้ว ช่วงครอบบริการ/วันกำหนด/หมายเหตุ ต้องไม่หายตาม seq', async () => {
+  const db = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, coversFrom: '2026-09-01', coversTo: '2027-02-28', dueDate: '2026-08-15', note: 'ครึ่งปีแรก' }),
+    draftRow({ id: 'SOI-2', seq: 2, coversFrom: '2027-03-01', coversTo: '2027-08-31', dueDate: '2027-02-15' }),
+    draftRow({ id: 'SOI-3', seq: 3, coversFrom: '2027-09-01', coversTo: '2028-02-29' }),
+  ]);
+  // แผนของ QT เหลือ 2 งวด แต่ของเดิมมี 3 ⇒ เข้าเส้น "ลบแล้วตั้งใหม่"
+  await freezeInstallments(db, { order: order(), user, now: '2026-08-19T03:00:00.000Z' });
+
+  const rows = db.rows();
+  assert.deepEqual(db.calls.deleted, ['SOI-1', 'SOI-2', 'SOI-3'], 'ยังตั้งใหม่ทั้งชุดเหมือนเดิม');
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((r) => r.frozenAt === '2026-08-19T03:00:00.000Z'));
+
+  // 🔑 ของที่คนกรอกเองต้องตามมาตาม seq
+  assert.equal(rows[0].coversFrom, '2026-09-01');
+  assert.equal(rows[0].coversTo, '2027-02-28', 'ช่วงครอบหาย = ด่านเงินบล็อกนัดทั้งไซต์');
+  assert.equal(rows[0].dueDate, '2026-08-15');
+  assert.equal(rows[0].note, 'ครึ่งปีแรก');
+  assert.equal(rows[1].coversTo, '2027-08-31');
+
+  // ยอด/ป้ายยังมาจากแผนล่าสุด ไม่ใช่ของเก่า
+  assert.deepEqual(rows.map((r) => r.amount), [500, 500]);
+});
+
+/* ⚠️ งวดที่แผนใหม่ไม่มีคู่ ต้องได้ค่าว่าง ไม่ใช่ยืมของงวดอื่นมาแปะ —
+   ด่านยังกันอยู่ (งวดที่ confirmed แต่ไม่มี coversTo ไม่ขยับ "จ่ายถึง") */
+test('⚠️ งวดที่เกินมาจากแผนใหม่ ต้องได้ค่าว่าง ไม่ใช่ยืมของงวดอื่น', async () => {
+  const db = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, coversFrom: '2026-09-01', coversTo: '2027-02-28' }),
+  ]);
+  const threePlan = order({
+    quotation: {
+      paymentPlan: {
+        type: 'installment',
+        installments: [
+          { label: 'มัดจำ', percent: 30 },
+          { label: 'ระหว่างทาง', percent: 30 },
+          { label: 'ก่อนส่งของ', percent: 40 },
+        ],
+      },
+    },
+  });
+  await freezeInstallments(db, { order: threePlan, user, now: '2026-08-19T03:00:00.000Z' });
+
+  const rows = db.rows();
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].coversTo, '2027-02-28', 'งวดที่มีคู่ต้องได้ของเดิม');
+  assert.equal(rows[1].coversTo ?? null, null, 'งวดใหม่ต้องว่าง ให้คนไปเติมเอง');
+  assert.equal(rows[2].coversTo ?? null, null);
+});
+
+/* 🪤 คำร้องขอใบวางบิลผูกกับ *ยอด* ของงวดนั้น — แผนเปลี่ยนแปลว่ายอดเปลี่ยน
+   ⇒ ยกมาแปะงวดใหม่คือชี้คำร้องไปที่ยอดคนละตัว · ปล่อยให้หลุดแล้วให้คนแนบใหม่ */
+test('🪤 billingRequestId ต้องไม่ถูกอุ้มข้ามการตั้งใหม่', async () => {
+  const db = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, billingRequestId: 'RQ-1', coversTo: '2027-02-28' }),
+    draftRow({ id: 'SOI-2', seq: 2, billingRequestId: 'RQ-2' }),
+    draftRow({ id: 'SOI-3', seq: 3 }),
+  ]);
+  await freezeInstallments(db, { order: order(), user, now: '2026-08-19T03:00:00.000Z' });
+
+  const rows = db.rows();
+  assert.ok(rows.every((r) => !r.billingRequestId), 'ห้ามแปะคำร้องเดิมลงงวดที่ยอดเปลี่ยนแล้ว');
+  assert.equal(rows[0].coversTo, '2027-02-28', 'แต่ช่วงครอบยังต้องตามมา');
 });
