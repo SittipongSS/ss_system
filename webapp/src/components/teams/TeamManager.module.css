@@ -1,132 +1,219 @@
-/* ── หน้าจัดทีม (ใช้ร่วมทุกฝ่าย) ─────────────────────────────────────────
-   ทีมเป็น "การ์ด" ไม่ใช่แถวตาราง — สมาชิกต้องอ่านเป็นกลุ่ม ไม่ใช่รายการยาว */
-.team {
-  margin-bottom: var(--space-4);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
+/* ── จัดทีม (ทะเบียน + หน้าทีม) ─────────────────────────────────────────
+   ⭐ รื้อ 2026-09-06: ของเดิม 132 บรรทัดเขียนการ์ด/แถวสมาชิก/ป้าย/กล่องเตือนขึ้นเอง
+   ทั้งที่มี primitive ครบอยู่แล้ว (WorkspaceSection · Table · Tag · StatusNotice)
+   ⇒ เหลือเฉพาะสิ่งที่ primitive ไม่มีจริง ๆ
+   🐞 และของเดิมอ้าง `--surface` / `--surface-2` / `--fw-regular` ซึ่ง **ไม่มีอยู่ใน
+      โทเคนของระบบ** (ถูกถอดไปพร้อมชุด alias ของ M3) ⇒ การ์ดทีมไม่มีพื้นของตัวเอง
+      และ `.leadTag` ได้ font-weight ที่ตรงข้ามกับที่ตั้งใจ */
 
-/* ทีมที่ปิดแล้วจางลง แต่ยังอยู่บนจอ — รหัสยังถูกอ้างในรายงานย้อนหลัง */
-.team[data-inactive="yes"] { opacity: var(--op-disabled); }
-
-/* ถัง "ยังไม่อยู่ทีมไหน" — ขอบประเพื่อบอกว่าไม่ใช่ทีมจริง แต่ต้องเห็นเสมอ */
-.team[data-bucket="unassigned"] {
-  border-style: dashed;
-  background: var(--surface-2);
-}
-
-.head {
+/* ป้ายกลุ่มบนหัวหน้าทีม (Workspace headerRight) */
+.headBadges {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.head h2 {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin: 0;
-  font-size: var(--fs-section-title);
-  line-height: var(--lh-thai);
+  flex-wrap: wrap;
 }
 
+/* รหัสทีม — ตัวเลขเรียงหลักเหมือนรหัสอื่นทั้งระบบ */
 .code {
-  color: var(--text-3);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-regular);
   font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ls-tabular);
+  font-weight: var(--fw-semibold);
 }
 
-.meta {
-  margin: var(--space-1) 0 0;
+/* บรรทัดรองในเซลล์ตาราง/รายชื่อ — คำขยาย ไม่ใช่ข้อมูลที่ต้องอ่านจริง
+   ⚠️ `--text-3` วัดได้ 3.94:1 บนพื้นหน้า ⇒ ใช้กับคำขยายเท่านั้น */
+.sub {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-2);
   color: var(--text-3);
-  font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
 
-.warn { color: var(--amber); }
-
-.headActions {
+/* ── การ์ด (จอตั้ง) — ลำดับข้อมูลเดียวกับคอลัมน์แรกของตาราง ─────────── */
+.cards {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
 }
 
-.members {
+.card {
+  display: block;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.card:hover { border-color: var(--border-strong); }
+.card[data-inactive="yes"] { opacity: var(--op-muted); }
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-1);
+}
+
+.cardName {
+  display: block;
+  font-size: var(--fs-9);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.cardMeta {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-4);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+/* ── รายชื่อคน (ถัง "ยังไม่อยู่ทีมไหน") ─────────────────────────────── */
+.people {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
 }
 
-.members > li {
+.people li {
   display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  font-size: var(--fs-label);
-  line-height: var(--lh-thai);
+  padding: var(--space-2-5) 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: var(--fw-bold);
-}
+.people li:last-child { border-bottom: 0; }
 
-.leadTag {
+.personName {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  color: var(--accent);
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-1);
+  gap: var(--space-2);
+  font-weight: var(--fw-semibold);
 }
 
-.role {
-  color: var(--text-3);
+/* เหตุผลที่ทำอะไรกับแถวนี้ไม่ได้ — ต้องอ่านออก ไม่ใช่ปุ่มจาง ๆ ที่ไม่บอกอะไร */
+.reason {
   margin-inline-start: auto;
-}
-
-.empty {
-  margin: 0;
+  font-size: var(--fs-3);
   color: var(--text-3);
-  font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
 
+/* ── ช่องกรอกในโมดัล ────────────────────────────────────────────────── */
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
-  font-size: var(--fs-label);
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-4);
+}
+
+.field > span {
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
 }
 
-.field > small { color: var(--text-3); line-height: var(--lh-thai); }
+.field > span small,
+.field small {
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
 
-/* ของที่จะค้างอยู่ทีมเดิม — โทนเตือน เพราะระบบไม่ย้ายให้ ต้องมีคนไปตามเก็บ */
-.impact {
-  list-style: disc;
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
-  border: 1px solid var(--amber);
+/* ค่าที่ระบบรู้แล้ว = ช่องเส้นประอ่านอย่างเดียว ไม่ใช่ดรอปดาวน์ที่จางลง
+   (docs/form-design-rules.md — ดรอปดาวน์จางอ่านเหมือน "แก้ได้ในสถานะอื่น") */
+.readonly {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  min-height: var(--ctl-h);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
-  background: var(--amber-soft);
-  color: var(--amber);
-  font-size: var(--fs-label);
+  color: var(--text-2);
   line-height: var(--lh-thai);
+}
+
+.readonly small {
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+
+/* ── แผงจัดการ (หน้าทีม) ───────────────────────────────────────────── */
+.controlStatus {
+  margin: 0;
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  color: var(--green);
+  line-height: var(--lh-thai);
+}
+
+.controlStatus[data-closed="yes"] { color: var(--text-3); }
+
+.facts {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--fs-5);
+}
+
+.facts dt {
+  margin: 0;
+  color: var(--text-3);
+}
+
+.facts dd {
+  margin: 0;
+  color: var(--text-2);
+  font-weight: var(--fw-semibold);
+  text-align: end;
+}
+
+.acts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.acts > button { width: 100%; }
+
+/* เหตุผลที่ปุ่มถัดไปกดไม่ได้ — สีเตือนที่อ่านออกจริง (`--amber` 4.43:1) */
+.why {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--amber);
+  line-height: var(--lh-thai);
+}
+
+/* รายการผลกระทบในโมดัลย้ายทีม — อยู่ใน StatusNotice อยู่แล้ว เหลือแค่ระยะ */
+.impact {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }

@@ -2433,8 +2433,9 @@ const { over: budgetOver, under: budgetUnder } = compareBudget(legacyCounts, bud
 /* `TeamManager` เข้าเกณฑ์เดียวกับ `RegistryDetailShell` — เปลือกที่ประกอบจากของกลาง
    (`Workspace`) แล้วให้หน้าจัดทีมของหลายฝ่ายใช้ร่วมกัน (`/sa/teams` · `/service/teams`)
    ⚠️ ถ้าเขียนหน้าแยกฝ่ายละไฟล์แทน มันจะเพี้ยนหากันภายในสองเดือน ซึ่งเป็นสิ่งที่
-   AGENTS.md สั่งห้ามไว้ตรง ๆ */
-const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|RegistryDetailShell|TeamManager|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
+   AGENTS.md สั่งห้ามไว้ตรง ๆ
+   `TeamDetail` = หน้าทีมรายตัว (`/sa/teams/[code]` · `/service/teams/[code]`) เกณฑ์เดียวกัน */
+const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|RegistryDetailShell|TeamManager|TeamDetail|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
 const redirectPagePattern = /from\s+["']next\/navigation["'][\s\S]*\bredirect\s*\(/;
 const visualPageFiles = pageFiles.filter((file) => !redirectPagePattern.test(fs.readFileSync(file, "utf8")));
 const shellPages = visualPageFiles.filter((file) => shellPattern.test(fs.readFileSync(file, "utf8")));

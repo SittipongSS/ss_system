@@ -33,6 +33,32 @@ export function allowedKindsFor(department) {
   return String(department ?? '').trim() === SALES_TEAM_DEPARTMENT ? ['sales', 'crew'] : ['crew'];
 }
 
+/* ⚠️ **ทีมขายใหม่ยังใช้ไม่ได้จริง** — ด่านสิทธิ์ทุกตัวอ่านรายชื่อทีมขายจากค่าคงที่
+   `TEAMS` ใน `lib/permissions.js` (ไม่ใช่จากทะเบียนนี้) และ `npm run check:teams`
+   ทำให้ CI แดงทันทีที่มีทีมขาย active ที่ไม่อยู่ในค่าคงที่นั้น
+   ⇒ จอ **โชว์ตัวเลือกไว้พร้อมเหตุผล** (กฎ "ล็อกดีกว่าซ่อน") แต่กดสร้างไม่ได้
+   ⇒ ปลดล็อกเมื่อถอดค่าคงที่ออกแล้ว (งานคนละก้อน — 44 ไฟล์ยังอ่านค่านั้นอยู่) */
+export const SALES_TEAM_CREATE_BLOCKER =
+  'ทีมขายใหม่ยังสร้างไม่ได้ — ด่านสิทธิ์ยังอ่านรายชื่อทีมขายจากค่าคงที่ในโค้ด (KA · ODM · SV) '
+  + 'สร้างไปก็ย้ายคนเข้าไม่ได้ และตัวตรวจทะเบียนใน CI จะตีกลับ';
+
+export function createBlockerFor(kind) {
+  return kind === 'sales' ? SALES_TEAM_CREATE_BLOCKER : null;
+}
+
+/* บ้านของทะเบียนทีมแต่ละฝ่าย — หน้าเดียวกันถูก mount สองที่ (มติ 2026-08-28)
+   ⚠️ เพิ่มฝ่ายใหม่ต้องเพิ่มที่นี่ **พร้อมกับ** สร้าง route จริง ไม่งั้นลิงก์บนแถวพาไป 404 */
+export const TEAMS_BASE_PATH = { SA: '/sa/teams', TS: '/service/teams' };
+
+export function teamsBasePath(department) {
+  return TEAMS_BASE_PATH[String(department ?? '').trim()] || null;
+}
+
+export function teamHref(department, code) {
+  const base = teamsBasePath(department);
+  return base && code ? `${base}/${encodeURIComponent(code)}` : null;
+}
+
 /* รหัสทีมจากชื่อ — ฝ่ายนำหน้าเสมอเพื่อไม่ให้ทีมของสองฝ่ายชนรหัสกัน
    (ทีมขายเดิม ODM/KA/SV ไม่มีคำนำหน้า เพราะรหัสถูกเขียนลง 19 ตารางไปแล้ว) */
 export function suggestTeamCode(department, name, existingCodes = []) {
