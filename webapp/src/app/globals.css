@@ -6453,6 +6453,19 @@ button.ui-workspace-back {
   background: transparent;
   box-shadow: none;
   margin: 0 var(--panel-inset) var(--panel-inset);
+  /* 🔴 ต้องมาคู่กับ margin เสมอ ห้ามลบ — `.scroll` ตั้ง `width: 100%` ไว้
+     (Table.module.css) พอบวกมาร์จินซ้าย/ขวาเข้าไปกล่องจะ over-constrained:
+     เบราว์เซอร์ทิ้ง margin-right แล้วกล่องยื่นพ้นขอบขวาการ์ดออกไปเท่ามาร์จินพอดี
+
+     🐞 บั๊กตัวเดียวกับที่ซ่อมไปแล้วใน #1616 (`[data-surface="embedded"]`) แต่กฎนี้
+     ถูกลืม เพราะอยู่คนละไฟล์ · วัดจริง 2026-09-06 ที่ /database/product-categories:
+       เว้นซ้าย 17px · ขวา **−15px** · เซลล์สุดท้ายเลยขอบการ์ด 14px
+     และหน้านั้น `.panel { overflow: hidden }` ⇒ ส่วนที่ยื่น **ถูกตัดทิ้งจริง**
+     ปุ่มในคอลัมน์ "จัดการ" หายไป 2px ไม่ใช่แค่เลยขอบ
+
+     ⚠️ ด่าน tableBoxWidth.test.mjs เดิมอ่านแค่ Table.module.css จึงผ่านทั้งที่บั๊กอยู่
+     — ขยายให้อ่านไฟล์นี้ด้วยแล้วในรอบเดียวกัน */
+  width: auto;
 }
 .ui-section-body [data-surface][data-family] {
   margin: 0;
