@@ -1,0 +1,118 @@
+/* แท็บ "พื้นที่บริการ" บนหน้าลูกค้า (เฟส 3A · จอ 11 ของม็อก)
+   ⚠️ ทรงเดียวกับ `SurveyResultTable.module.css` โดยตั้งใจ — สองจอนี้แสดงของชุดเดียวกัน
+      คนละมุม ถ้าตัวหนังสือรองคนละขนาดจะอ่านเหมือนคนละระบบ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4-5);
+}
+
+.sub {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+.muted { color: var(--text-3); }
+
+/* 🔒 มีใบสั่งวัดค้างอยู่ — ต้องสะดุดตากว่าบรรทัดรองธรรมดา เพราะมันคือเหตุที่
+   ห้ามสั่งวัดซ้ำ (สองใบสั่งวัดพื้นที่เดียวกัน = ช่างไปสองรอบ) */
+.pending {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--amber);
+  line-height: var(--lh-thai);
+}
+
+/* ข้อความสถานะของทั้งบล็อก (กำลังโหลด / ยังไม่มีของ) */
+.state {
+  padding: var(--space-6) var(--panel-inset);
+  color: var(--text-3);
+  text-align: center;
+  line-height: var(--lh-thai);
+}
+
+/* ── หนึ่งสถานที่ = หนึ่งบล็อก ─────────────────────────────────────────── */
+.site {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.siteHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--panel-inset);
+  border-bottom: 1px solid var(--border);
+}
+
+.siteHead h3 {
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+  line-height: var(--lh-thai);
+}
+
+.siteHead p {
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+.siteTags {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex-shrink: 0;
+}
+
+/* ── ประวัติการประเมิน ────────────────────────────────────────────────── */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--panel-inset);
+}
+
+.timeline > li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+/* วันที่คอลัมน์ซ้ายกว้างคงที่ — ไล่สายตาลงมาเป็นแนวเดียว */
+.tlDate {
+  flex-shrink: 0;
+  width: 92px;
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+
+.tlBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.tlBody b {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+  line-height: var(--lh-thai);
+}
+
+@media (max-width: 640px) {
+  .timeline > li { flex-direction: column; gap: var(--space-1); }
+  .tlDate { width: auto; }
+}
