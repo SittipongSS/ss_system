@@ -202,3 +202,32 @@ test("ตอนพิมพ์ต้องไม่มีกล่องเล�
   assert.match(printBlock, /max-height:\s*none/);
   assert.match(printBlock, /overflow:\s*visible/);
 });
+
+/* ── หัวตารางเป็นของ primitive ไม่ใช่ของคลาสเก่า (2026-09-06) ────────────────
+   🐞 สองโมดูลเคยดูไม่เหมือนกันเพราะ /database ใช้ `.premium-table` (มี sticky)
+   ส่วน /sales-planning ใช้ `w-full text-sm` (ไม่มี) · ความต่างโผล่ให้เห็นตอน #1627
+   ทำให้ sticky ทำงานได้จริงเป็นครั้งแรก
+   ✅ แก้โดยย้าย sticky เข้า primitive **ไม่ใช่เติมคลาสเก่าให้ฝั่งขาย** — `.premium-table`
+   ถูกนับเป็นชั้นเก่าใน uiLegacyBudget ซึ่ง ratchet ลงได้อย่างเดียว */
+test("หัวตารางปักได้จาก primitive โดยไม่ต้องพึ่งคลาสเก่า", () => {
+  const rule = rules(withoutComments).find((r) => r.selector.includes('[data-family] :global(thead th)'));
+  assert.ok(rule, "primitive ต้องมีกฎ sticky ให้ thead th เอง");
+  assert.match(rule.body, /position:\s*sticky/);
+  assert.match(rule.body, /top:\s*0/);
+  /* ต้องสูงกว่าคอลัมน์แรกของ matrix (z-index 2) ไม่งั้นเซลล์มุมถูกทับ */
+  const z = Number((rule.body.match(/z-index:\s*(\d+)/) || [])[1]);
+  assert.ok(z > 2, `z-index ต้องมากกว่า 2 (คอลัมน์ตรึงของ matrix) — ได้ ${z}`);
+});
+
+/* `.premium-table` เป็นชั้นเก่าที่ ratchet คุมอยู่แล้ว (scripts/ui-legacy-budget.json)
+   ด่านนี้เสริมอีกชั้น: ห้ามแก้ปัญหา "ตารางดูไม่เหมือนกัน" ด้วยการโรยคลาสเก่าเพิ่ม */
+test("ห้ามยกหน้าตาตารางด้วยการเติมคลาสเก่า — ต้องย้ายเข้า primitive", () => {
+  const budget = JSON.parse(fs.readFileSync(path.join(WEBAPP, "scripts", "ui-legacy-budget.json"), "utf8"));
+  const rules_ = fs.readFileSync(path.join(WEBAPP, "scripts", "uiLegacyBudget.mjs"), "utf8");
+  assert.match(rules_, /legacyTable:\s*\/[^/]*premium-table/,
+    "ตัวนับชั้นเก่าต้องยังจับ premium-table อยู่ ไม่งั้นด่านนี้ไม่มีความหมาย");
+  assert.ok(budget.modules.sales.legacyTable <= 41,
+    `เพดาน legacyTable ของงานขายขึ้นไม่ได้ — ได้ ${budget.modules.sales.legacyTable}`);
+  assert.ok(budget.modules.database.legacyTable <= 7,
+    `เพดาน legacyTable ของฐานข้อมูลขึ้นไม่ได้ — ได้ ${budget.modules.database.legacyTable}`);
+});
