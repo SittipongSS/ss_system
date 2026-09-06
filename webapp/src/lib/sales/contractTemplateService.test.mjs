@@ -24,7 +24,7 @@ const byNo = (no) => clauses.find((c) => c.no === no);
 test('⭐ สัญญาบริการมีแม่แบบแล้ว — เลิกเป็น null', () => {
   assert.equal(hasContractTemplate('service'), true);
   assert.equal(contractTemplate('service'), SERVICE_TEMPLATE);
-  assert.equal(SERVICE_TEMPLATE.version, '20260903');
+  assert.equal(SERVICE_TEMPLATE.version, '20260906');
   assert.equal(SERVICE_TEMPLATE.titleTh, 'สัญญาบริการ');
 });
 
@@ -36,6 +36,18 @@ test('ชื่อเอกสารบนกระดาษต้องตร�
   assert.equal(CONTRACT_KIND_DOC_TITLES.service, 'สัญญาบริการ');
   const scent = contractTemplate('scent_design');
   assert.equal(CONTRACT_KIND_DOC_TITLES.scent_design, scent.titleTh);
+});
+
+/* ⭐ มติผู้ใช้ 2026-09-06 — ตำแหน่งผู้ลงนามฝั่งผู้ว่าจ้างใช้คำกลาง ไม่ใช่ "กรรมการผู้จัดการ"
+   (ต้นฉบับเป็นฉบับกรอกจริงของลูกค้ารายหนึ่ง คำนั้นจึงเป็นตำแหน่งของคนคนนั้น)
+   ⚠️ ฝั่งผู้รับจ้างต้องไม่โดนด้วย — เป็นตำแหน่งจริงของผู้ลงนามเรา */
+test('ตำแหน่งผู้ลงนาม: ผู้ว่าจ้างใช้คำกลาง · ผู้รับจ้างคงตำแหน่งจริง', () => {
+  const title = SERVICE_TEMPLATE.fields.find((f) => f.key === 'clientSignerTitle');
+  assert.equal(title.default, 'ผู้มีอำนาจ/ผู้รับมอบอำนาจ');
+  const client = SERVICE_TEMPLATE.signatures.find((sig) => sig.role === 'ผู้ว่าจ้าง');
+  const contractor = SERVICE_TEMPLATE.signatures.find((sig) => sig.role === 'ผู้รับจ้าง');
+  assert.equal(client.title, '{{clientSignerTitle}}');
+  assert.equal(contractor.title, 'กรรมการผู้จัดการ');
 });
 
 /* 🔴 มติผู้ใช้ 2026-09-03 ข้อ ② — ต้นฉบับรับปาก 30 วันทำการ แล้วปรับที่ 7 วันทำการ
