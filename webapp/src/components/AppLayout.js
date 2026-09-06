@@ -22,6 +22,7 @@ import { settingsMenuItems } from '@/config/settingsNav';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { TooltipHost } from '@/components/ui/Tooltip';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
+import { DetailPinBar, DetailPinProvider } from "@/lib/ui/detailPin";
 
 /* 🪤 สองค่านี้ต้องเป็น "ตรงข้าม" ของจุดตัดใน globals.css เป๊ะ ๆ — CSS รู้เรื่องนี้
    เองไม่ได้เพราะมันคือ **พฤติกรรมของปุ่ม** ไม่ใช่หน้าตา:
@@ -1082,7 +1083,11 @@ export default function AppLayout({ children }) {
 
         {/* Main Content Area */}
         <main className="main-content">
+          <DetailPinProvider>
           <div className="page">
+            {/* ที่แขวนแถบระบุตัวใบ — ต้องเป็น **ลูกตัวแรกของ .page** เหตุผลเต็มอยู่ที่
+                DetailPinBar ใน lib/ui/detailPin.js · สูง 0 จึงไม่ดันเนื้อหาลงเลย */}
+            <DetailPinBar />
             <RoleContext.Provider value={role}>
               <ExtraCapsContext.Provider value={extraCaps}>
                 <TeamContext.Provider value={team}>
@@ -1095,6 +1100,7 @@ export default function AppLayout({ children }) {
               </ExtraCapsContext.Provider>
             </RoleContext.Provider>
           </div>
+          </DetailPinProvider>
         </main>
       </div>
 
