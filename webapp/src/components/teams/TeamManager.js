@@ -1,128 +1,149 @@
 "use client";
-// ── จัดทีม — component เดียวที่ทุกฝ่ายใช้ร่วมกัน ─────────────────────────
+// ── ทะเบียนทีม — component เดียวที่ทุกฝ่ายใช้ร่วมกัน ───────────────────────
 //
-// ⭐ **มติผู้ใช้ 2026-08-28**: จัดทีมเองได้ไม่ต้องรอแอดมิน · แยกเฉพาะฝ่าย
-//   + *"TS ก็มีแยกทีม"*
+// ⭐ **มติผู้ใช้ 2026-08-28**: จัดทีมเองได้ไม่ต้องรอแอดมิน · แยกเฉพาะฝ่าย + *"TS ก็มีแยกทีม"*
+// ⭐ **มติผู้ใช้ 2026-09-06**: รื้อทั้งเส้น — ทะเบียนเป็น **ตาราง** ทรงเดียวกับทะเบียนอื่น
+//   ทั้งเว็บ (ค้นหา · กรอง · เรียง · สลับเป็นการ์ดเมื่อจอตั้ง) และงานระดับทีมย้ายไปอยู่
+//   **หน้าทีมของตัวเอง** ที่มีลิงก์ถาวร ไม่ใช่ยัดทุกอย่างไว้ในโมดัลสามช่อง
 //
-// ⚠️ **หน้าเดียว ไม่ใช่หน้าละฝ่าย** — `/sa/teams` กับ `/service/teams` ส่ง
-//   `department` คนละค่าเข้ามาที่ตัวเดียวกัน · เขียนสองไฟล์เมื่อไรมันเพี้ยนหากัน
-//   ภายในสองเดือน (กฎ AGENTS.md ข้อแรกของ repo)
+// ⚠️ **หน้าเดียว ไม่ใช่หน้าละฝ่าย** — `/sa/teams` กับ `/service/teams` ส่ง `department`
+//   คนละค่าเข้ามาที่ตัวเดียวกัน · `scripts/audit-ui.mjs` ระบุชื่อไฟล์นี้ไว้ตรง ๆ ในรายการ
+//   เปลือกที่ใช้ร่วมกัน — แตกเป็นไฟล์ต่อฝ่ายเมื่อไรมันเพี้ยนหากันภายในสองเดือน
 //
 // ⚠️ สิ่งที่จอนี้ **ไม่มี** โดยตั้งใจ: สร้าง/ลบบัญชี · เปลี่ยน role · เปลี่ยนฝ่าย ·
-//   รีเซ็ตรหัสผ่าน — ยังเป็นของแอดมินที่ /users เหมือนเดิม
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Shield, UserRound, Users } from "lucide-react";
-import useLatestRun from "@/lib/ui/useLatestRun";
-import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+//   รีเซ็ตรหัสผ่าน — ยังเป็นของแอดมินที่ /users เหมือนเดิม (และตั้งแต่ 2026-09-06
+//   ทางกลับก็จริง: /users ไม่มีช่องทีมแล้ว ทีมมีเจ้าของที่นี่ที่เดียว)
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { Plus, Search, Shield, UserRound, Users } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
-import Input from "@/components/ui/Input";
-import OptionTiles from "@/components/ui/OptionTiles";
-import Select from "@/components/ui/Select";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import SkeletonRows from "@/components/ui/Skeleton";
-import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { TEAM_KIND_HINTS, TEAM_KIND_LABELS, sortTeams } from "@/lib/master/teams";
-import { ROLE_LABELS } from "@/lib/permissions";
-import { fmtNumber, naText } from "@/lib/format";
+import CountBadge from "@/components/ui/CountBadge";
+import StatusBadge from "@/components/ui/StatusBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Segmented from "@/components/ui/Segmented";
+import Tag from "@/components/ui/Tag";
+import Workspace, { MetricStrip, Metric, WorkspaceSection } from "@/components/ui/Workspace";
+import { TableScroll } from "@/components/ui/Table";
+import { SortMenu, SortDirButton } from "@/components/ui/ViewMenus";
+import DetailRow from "@/components/ui/DetailRow";
+import { useResponsiveView } from "@/lib/useResponsiveView";
+import { TEAM_KIND_LABELS, allowedKindsFor, teamHref } from "@/lib/master/teams";
+import { ROLE_LABELS, TEAM_ROLES } from "@/lib/permissions";
+import { fmtNumber } from "@/lib/format";
+import useTeamRegistry from "./useTeamRegistry";
+import TeamFormFields from "./TeamFormFields";
 import styles from "./TeamManager.module.css";
-import { apiFetch } from "@/lib/apiFetch";
-import { useRole } from "@/lib/roleContext";
+
+const STATUS_FILTERS = [
+  { value: "active", label: "ใช้งานอยู่" },
+  { value: "closed", label: "ปิดแล้ว" },
+  { value: "all", label: "ทั้งหมด" },
+];
+
+const SORTS = [
+  { value: "order", label: "ลำดับที่ตั้งไว้" },
+  { value: "name", label: "ชื่อทีม" },
+  { value: "members", label: "จำนวนสมาชิก" },
+];
+
+/* ⚠️ **ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็นการตัดสินใจ** (docs/form-design-rules.md) —
+   ฝ่ายที่มีทีมแบบเดียวไม่ต้องถาม แต่ฝ่ายขายมีสองแบบ ⇒ เริ่มที่ "ยังไม่เลือก" */
+const emptyDraft = (department) => {
+  const kinds = allowedKindsFor(department);
+  return { kind: kinds.length === 1 ? kinds[0] : "", name: "", note: "" };
+};
 
 export default function TeamManager({ department, title, subtitle }) {
-  /* ⚠️ ลบทีมเป็นของ **แอดมิน** อย่างเดียว — หัวหน้าฝ่ายปิดทีมได้ แต่ลบไม่ได้
-     (ด่านจริงอยู่ที่ DELETE /api/teams/[code] · ตรงนี้แค่ไม่วาดปุ่มให้คนที่กดไม่ผ่าน) */
-  const isAdmin = useRole() === "admin";
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [toast, setToast] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [editTeam, setEditTeam] = useState(null);      // ทีมที่กำลังแก้ชื่อ/หัวหน้า
-  const [movingUser, setMovingUser] = useState(null);   // คนที่กำลังย้าย
-  const [moveTarget, setMoveTarget] = useState([]);
-  const [moveImpact, setMoveImpact] = useState([]);
-  const [closing, setClosing] = useState(null);
-  const [deleting, setDeleting] = useState(null);
-  const [crewTeam, setCrewTeam] = useState(null);   // ทีมปฏิบัติงานที่กำลังจัดสมาชิก
-  const [crewIds, setCrewIds] = useState([]);
-  const [saving, setSaving] = useState(false);
+  const reg = useTeamRegistry(department);
+  const { teams, canManage, membersOf, leadOf, unassigned, loading, loadError, saving, call } = reg;
 
-  const startRun = useLatestRun();
-  const load = useCallback(async (opts) => {
-    const isLatest = startRun();
-    if (!opts?.background) setLoading(true);
-    setLoadError("");
-    try {
-      const res = await apiFetch(`/api/teams?department=${encodeURIComponent(department)}`);
-      const body = await res.json().catch(() => null);
-      if (!isLatest()) return;
-      if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนทีมไม่สำเร็จ");
-      setData(body);
-    } catch (e) {
-      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดทะเบียนทีมไม่สำเร็จ");
-    } finally {
-      if (isLatest()) setLoading(false);
-    }
-  }, [department, startRun]);
-  useEffect(() => { load(); }, [load]);
-  useRevalidateOnFocus(load);
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("active");
+  const [needLead, setNeedLead] = useState(false);
+  const [sortKey, setSortKey] = useState("order");
+  const [dir, setDir] = useState("asc");
+  const [draft, setDraft] = useState(null);   // ฟอร์มสร้างทีม (null = ปิด)
+  const [view] = useResponsiveView({ portrait: "card", landscape: "table" });
 
-  const canManage = !!data?.canManage;
-  const teams = useMemo(() => sortTeams(data?.teams || []), [data?.teams]);
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const enriched = teams.map((team) => {
+      const members = membersOf(team);
+      const lead = leadOf(team);
+      return { team, members, lead };
+    });
+    const filtered = enriched.filter(({ team, members, lead }) => {
+      if (status === "active" && team.isActive === false) return false;
+      if (status === "closed" && team.isActive !== false) return false;
+      if (needLead && lead?.name && !lead.stale) return false;
+      if (!needle) return true;
+      /* ⚠️ **ตาเห็นบนแถว = ต้องค้นเจอ** — รวมชื่อสมาชิกด้วย เพราะคำถามจริงของหัวหน้า
+         คือ "สมชายอยู่ทีมไหน" ไม่ใช่ "ทีมชื่ออะไร" · ของเดิมไม่มีช่องค้นหาเลย */
+      const hay = [
+        team.code, team.name, team.note, TEAM_KIND_LABELS[team.kind], lead?.name,
+        ...members.map((m) => m.name),
+      ].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(needle);
+    });
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortKey === "name") return a.team.name.localeCompare(b.team.name, "th");
+      if (sortKey === "members") return a.members.length - b.members.length;
+      return 0; // "order" = ลำดับจาก sortTeams (ใช้งานก่อน · sortOrder · ชื่อ)
+    });
+    return dir === "desc" ? sorted.reverse() : sorted;
+  }, [teams, membersOf, leadOf, q, status, needLead, sortKey, dir]);
 
-  /* สมาชิกของทีม — ทีมขายอ่านจาก `teams[]` ของบัญชี · ทีมปฏิบัติงานอ่านจากตาราง
-     ⚠️ สองแกนนี้ห้ามปนกัน (docs/team-management-plan.md §2) */
-  const membersOf = useCallback((team) => {
-    if (team.kind === "sales") {
-      return (data?.people || []).filter((p) => (p.teams || []).includes(team.code));
-    }
-    const ids = new Set((data?.members || []).filter((m) => m.teamCode === team.code).map((m) => m.userId));
-    return (data?.people || []).filter((p) => ids.has(p.id));
-  }, [data]);
+  const activeCount = teams.filter((t) => t.isActive !== false).length;
+  const noLeadCount = teams.filter((t) => t.isActive !== false && !leadOf(t)?.name).length;
+  const peopleCount = reg.people.length;
 
-  const assigned = useMemo(() => {
-    const ids = new Set();
-    for (const team of teams) for (const person of membersOf(team)) ids.add(person.id);
-    return ids;
-  }, [teams, membersOf]);
-
-  const unassigned = useMemo(
-    () => (data?.people || []).filter((p) => !assigned.has(p.id)),
-    [data?.people, assigned],
-  );
-
-  const call = async (url, options, okMsg) => {
-    setSaving(true);
-    try {
-      const res = await apiFetch(url, options);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
-      setToast({ kind: "success", msg: okMsg });
-      await load({ background: true });
-      return body;
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message });
-      return null;
-    } finally {
-      setSaving(false);
-    }
+  /* เมนูท้ายแถว — **ปุ่มที่กดไม่ได้ยังโชว์ พร้อมเหตุผล** (กฎ "ไม่มีสิทธิ์=ไม่โชว์ ·
+     ติดด่าน=โชว์แล้วบอกเหตุ")
+     🐞 ของเดิมเปิดโมดัลยืนยันที่ `onConfirm` เป็น undefined ⇒ กดปุ่มแดงแล้วโมดัลปิดเฉย ๆ
+        ไม่มี toast ไม่มี error — แยกไม่ออกจาก "ลบสำเร็จ" */
+  const menuFor = ({ team, members }) => {
+    const href = teamHref(department, team.code);
+    const closed = team.isActive === false;
+    return [
+      { id: "open", label: "เปิดหน้าทีม", icon: Users, href },
+      closed
+        ? {
+          id: "reopen",
+          label: "เปิดใช้งานอีกครั้ง",
+          onClick: () => call(`/api/teams/${encodeURIComponent(team.code)}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isActive: true }),
+          }, `เปิดใช้งานทีม ${team.name} แล้ว`),
+        }
+        : {
+          id: "close",
+          label: "ปิดทีม",
+          tone: "warning",
+          separatorBefore: true,
+          disabled: members.length > 0,
+          disabledReason: members.length > 0
+            ? `ยังมีสมาชิก ${fmtNumber(members.length)} คน — ย้ายออกให้หมดก่อน`
+            : undefined,
+          onClick: () => call(`/api/teams/${encodeURIComponent(team.code)}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isActive: false }),
+          }, `ปิดทีม ${team.name} แล้ว`),
+        },
+    ].filter(Boolean);
   };
 
-  const openMove = async (person) => {
-    setMovingUser(person);
-    setMoveTarget(person.teams || []);
-    setMoveImpact([]);
-    /* ⭐ บอกของที่จะค้างอยู่ทีมเดิม **ก่อนกด** — ปุ่มย้ายที่แก้แค่บัญชีจะทิ้งดีล/เป้า
-       ค้างโดยไม่มีอะไรฟ้อง (คู่มือบอกว่าย้ายทีมมี 4 ขั้น 3 ขั้นเป็นงานมือ) */
-    try {
-      const res = await apiFetch(`/api/users/${person.id}/team/impact`);
-      const body = await res.json().catch(() => null);
-      if (res.ok && Array.isArray(body?.effects)) setMoveImpact(body.effects);
-    } catch { /* ดูผลข้างเคียงไม่ได้ ไม่ใช่เหตุให้ย้ายไม่ได้ — แค่ไม่มีตัวเลขให้ดู */ }
+  const createTeam = async () => {
+    const done = await call("/api/teams", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: draft.name.trim(), department, kind: draft.kind, note: draft.note || null,
+      }),
+    }, `สร้างทีม ${draft.name.trim()} แล้ว`);
+    if (done) setDraft(null);
   };
 
   return (
@@ -131,327 +152,207 @@ export default function TeamManager({ department, title, subtitle }) {
       title={title}
       subtitle={subtitle}
       headerRight={canManage ? (
-        <Button tone="primary" onClick={() => { setNewName(""); setCreating(true); }}
+        /* ⭐ terracotta = "เริ่มของใหม่" หน้าละหนึ่งปุ่ม (navy = ยืนยันสิ่งที่ทำอยู่) */
+        <Button tone="accent" onClick={() => setDraft(emptyDraft(department))}
           icon={<Plus size={15} aria-hidden="true" />}>
           สร้างทีม
         </Button>
       ) : null}
     >
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
+      {loadError && <StatusNotice tone="error" role="alert">{loadError}</StatusNotice>}
 
-      {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
+      {loading ? <SkeletonRows rows={5} /> : loadError ? null : (
         <>
-          {teams.length === 0 ? (
-            <EmptyState icon={Users}>
-              {/* ⚠️ ข้อความต้องเดินตาม `canManage` — ปุ่ม "สร้างทีม" ไม่ถูกวาดให้คนที่จัดไม่ได้
-                  บอกให้เขา "กดปุ่มมุมขวาบน" ที่ไม่มีอยู่จริงคือชี้ไปที่ว่าง */}
-              {canManage
-                ? "ฝ่ายนี้ยังไม่มีทีม — สร้างทีมแรกได้ที่ปุ่มมุมขวาบน"
-                : "ฝ่ายนี้ยังไม่มีทีม"}
-            </EmptyState>
-          ) : teams.map((team) => {
-            const members = membersOf(team);
-            return (
-              <section key={team.code} className={styles.team} data-inactive={team.isActive === false ? "yes" : undefined}>
-                <header className={styles.head}>
-                  <div>
-                    <h2>
-                      {team.name}
-                      <span className={styles.code}>{team.code}</span>
-                      {team.isActive === false && <span className="ui-badge">ปิดใช้งาน</span>}
-                      <span className={`ui-badge ${team.kind === "sales" ? "violet" : ""}`.trim()}>
-                        {TEAM_KIND_LABELS[team.kind]}
-                      </span>
-                    </h2>
-                    <p className={styles.meta}>
-                      {fmtNumber(members.length)} คน
-                      {" · หัวหน้าทีม: "}
-                      {team.leadName ? team.leadName : <span className={styles.warn}>ยังไม่ตั้ง</span>}
-                      {team.note ? ` · ${team.note}` : ""}
-                    </p>
-                  </div>
-                  {canManage && (
-                    <div className={styles.headActions}>
-                      {team.kind === "crew" && team.isActive !== false && (
-                        <Button tone="neutral" variant="quiet" size="sm"
-                          onClick={() => { setCrewTeam(team); setCrewIds(members.map((m) => m.id)); }}>
-                          จัดสมาชิก
-                        </Button>
-                      )}
-                      <Button tone="neutral" variant="quiet" size="sm" onClick={() => setEditTeam(team)}>แก้ทีม</Button>
-                      {team.isActive !== false && (
-                        <Button tone="neutral" variant="quiet" size="sm"
-                          onClick={() => setClosing({ team, members: members.length })}>
-                          ปิดทีม
-                        </Button>
-                      )}
-                      {/* ⭐ **ลบทีม = ของแอดมิน** (มติผู้ใช้ 2026-08-30) — ใช้กับทีมที่
-                          ตั้งผิดแล้วยังไม่มีใครใช้ · ทีมที่มีประวัติแล้ว server จะตีกลับ
-                          พร้อมบอกว่าติดอะไรอยู่ (ปุ่มไม่ซ่อน เพื่อให้เหตุผลถูกอ่าน) */}
-                      {isAdmin && (
-                        <Button tone="danger" variant="quiet" size="sm"
-                          onClick={() => setDeleting({ team, members: members.length })}>
-                          ลบทีม
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </header>
+          {/* ⭐ แถบตัวเลข = สิ่งที่หัวหน้าต้องจัดการก่อน · สองใบขวากดแล้วกรองได้จริง
+              (ตัวเลขที่กดไม่ได้ทำให้คนถามว่า "แล้วคนที่ยังไม่มีทีมอยู่ไหน") */}
+          <MetricStrip>
+            <Metric icon={<Users size={16} aria-hidden="true" />} label="ทีมที่ใช้งาน"
+              value={fmtNumber(activeCount)}
+              note={teams.length - activeCount ? `ปิดแล้ว ${fmtNumber(teams.length - activeCount)} ทีม` : "ยังไม่มีทีมที่ปิด"} />
+            <Metric icon={<UserRound size={16} aria-hidden="true" />} label="คนในฝ่าย"
+              value={fmtNumber(peopleCount)}
+              note={`อยู่ทีมแล้ว ${fmtNumber(peopleCount - unassigned.length)}`} />
+            <Metric as="button" type="button" tone="warning" icon={<UserRound size={16} aria-hidden="true" />}
+              label="ยังไม่อยู่ทีมไหน" value={fmtNumber(unassigned.length)} note="กดเพื่อไปที่รายชื่อ"
+              onClick={() => document.getElementById("unassigned")?.scrollIntoView({ behavior: "smooth", block: "start" })} />
+            <Metric as="button" type="button" tone={noLeadCount ? "warning" : undefined}
+              icon={<Shield size={16} aria-hidden="true" />} label="ยังไม่ตั้งหัวหน้าทีม"
+              value={fmtNumber(noLeadCount)} note="กดเพื่อกรอง" active={needLead}
+              onClick={() => setNeedLead((v) => !v)} />
+          </MetricStrip>
 
-                {members.length === 0 ? (
-                  <p className={styles.empty}>ยังไม่มีคนในทีมนี้</p>
-                ) : (
-                  <ul className={styles.members}>
-                    {members.map((person) => (
-                      <li key={person.id}>
-                        <UserRound size={14} aria-hidden="true" />
-                        <span className={styles.name}>
-                          {person.name}
-                          {team.leadId === person.id && (
-                            <span className={styles.leadTag}><Shield size={12} aria-hidden="true" /> หัวหน้าทีม</span>
-                          )}
-                        </span>
-                        <span className={styles.role}>{ROLE_LABELS[person.role] || person.role}</span>
-                        {/* ทีมหลักบอกว่ายอดของคนนี้เข้าทีมไหน — โผล่เฉพาะคนที่อยู่หลายทีม */}
-                        {(person.teams || []).length > 1 && (
-                          <span className={styles.role}>ทีมหลัก {person.team}</span>
-                        )}
-                        {canManage && team.kind === "sales" && (
-                          <Button tone="neutral" variant="quiet" size="sm" onClick={() => openMove(person)}>ย้าย</Button>
-                        )}
-                        {/* ทีมปฏิบัติงานย้ายคนทีละคนไม่ได้ — จัดทั้งทีมทีเดียวจากปุ่ม
-                            "จัดสมาชิก" บนหัวการ์ด (คนจัดคิดเป็น "ทีมนี้มีใครบ้าง") */}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            );
-          })}
-
-          {/* ⭐ ถังนี้ต้องมีเสมอแม้ว่าง — ถังที่หายไปคือคนที่หายไปจากสายตา */}
-          <section className={styles.team} data-bucket="unassigned">
-            <header className={styles.head}>
-              <div>
-                <h2>ยังไม่อยู่ทีมไหน<span className={styles.code}>{fmtNumber(unassigned.length)} คน</span></h2>
-                <p className={styles.meta}>คนของฝ่ายนี้ที่ยังไม่ถูกจัดเข้าทีม</p>
+          <WorkspaceSection
+            icon={<Users size={18} aria-hidden="true" />}
+            title="ทะเบียนทีม"
+            actions={<CountBadge count={rows.length} label="จำนวนทีมที่แสดง" />}
+          >
+            {/* ลำดับแถบเครื่องมือเป็นข้อตกลงของเว็บ: ค้นหา · ตัวกรอง · spacer · เรียง */}
+            <div className="toolbar">
+              <div className="search-glass">
+                <Search size={16} color="var(--text-3)" aria-hidden="true" />
+                <input autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)}
+                  placeholder="ค้นชื่อทีม · รหัส · หัวหน้าทีม · ชื่อสมาชิก" aria-label="ค้นหาทีม" />
               </div>
-            </header>
-            {unassigned.length === 0 ? (
-              <p className={styles.empty}>ทุกคนในฝ่ายอยู่ทีมครบแล้ว</p>
-            ) : (
-              <ul className={styles.members}>
-                {unassigned.map((person) => (
-                  <li key={person.id}>
-                    <UserRound size={14} aria-hidden="true" />
-                    <span className={styles.name}>{person.name}</span>
-                    <span className={styles.role}>{ROLE_LABELS[person.role] || person.role}</span>
-                    {canManage && department === "SA" && (
-                      <Button tone="neutral" variant="quiet" size="sm" onClick={() => openMove(person)}>จัดเข้าทีม</Button>
-                    )}
-                  </li>
+              <Segmented ariaLabel="สถานะทีม" options={STATUS_FILTERS} value={status} onChange={setStatus} />
+              <div className="spacer" />
+              <SortMenu value={sortKey} onChange={setSortKey} options={SORTS} defaultValue="order" />
+              <SortDirButton dir={dir} onToggle={() => setDir((d) => (d === "asc" ? "desc" : "asc"))} />
+            </div>
+
+            {rows.length === 0 ? (
+              <EmptyState icon={Users}>
+                {teams.length === 0
+                  ? (canManage ? "ฝ่ายนี้ยังไม่มีทีม — สร้างทีมแรกได้ที่ปุ่มมุมขวาบน" : "ฝ่ายนี้ยังไม่มีทีม")
+                  : "ไม่มีทีมที่ตรงกับที่กรองไว้ — ลองล้างคำค้นหรือสลับสถานะ"}
+              </EmptyState>
+            ) : view === "card" ? (
+              <div className={styles.cards}>
+                {rows.map(({ team, members, lead }) => (
+                  <Link key={team.code} href={teamHref(department, team.code)} className={styles.card}
+                    data-inactive={team.isActive === false ? "yes" : undefined}>
+                    <span className={styles.cardTop}>
+                      <b className={styles.code}>{team.code}</b>
+                      <Tag tone={team.kind === "sales" ? "violet" : "teal"}>{TEAM_KIND_LABELS[team.kind]}</Tag>
+                      {team.isActive === false && <StatusBadge tone="neutral" label="ปิดใช้งาน" />}
+                    </span>
+                    <b className={styles.cardName}>{team.name}</b>
+                    <span className={styles.cardMeta}>
+                      {lead?.name ? `หัวหน้าทีม ${lead.name}` : "ยังไม่ตั้งหัวหน้าทีม"}
+                      {" · "}{fmtNumber(members.length)} คน
+                    </span>
+                  </Link>
                 ))}
+              </div>
+            ) : (
+              <TableScroll family="list" surface="embedded" cells="stacked" minWidth={780}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ทีม</th>
+                      <th>ประเภท</th>
+                      <th>หัวหน้าทีม</th>
+                      <th>สมาชิก</th>
+                      <th>สถานะ</th>
+                      <th aria-label="การจัดการ" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(({ team, members, lead }) => {
+                      const href = teamHref(department, team.code);
+                      return (
+                        <DetailRow key={team.code} href={href}>
+                          {/* ⚠️ รหัสนำ ชื่อรอง — กติกา entity ของระบบ (ตาราง = รหัสบน · ชื่อล่าง) */}
+                          <td>
+                            <Link href={href} className={styles.code}>{team.code}</Link>
+                            <span className={styles.sub}>{team.name}</span>
+                          </td>
+                          <td>
+                            <Tag tone={team.kind === "sales" ? "violet" : "teal"}>
+                              {TEAM_KIND_LABELS[team.kind]}
+                            </Tag>
+                          </td>
+                          <td>
+                            {lead?.name
+                              ? (
+                                <>
+                                  {lead.name}
+                                  {/* หัวหน้าที่ไม่ได้อยู่ในทีมแล้ว = ข้อมูลค้าง ต้องเห็นว่าค้าง */}
+                                  {lead.stale && <span className={styles.sub}>ไม่ได้อยู่ในทีมนี้แล้ว</span>}
+                                </>
+                              )
+                              : <StatusBadge tone="warning" label="ยังไม่ตั้ง" />}
+                          </td>
+                          <td>
+                            {fmtNumber(members.length)} คน
+                            {members.length > 0 && (
+                              <span className={styles.sub}>
+                                {members.slice(0, 3).map((m) => m.name).join(" · ")}
+                                {members.length > 3 ? ` · +${fmtNumber(members.length - 3)}` : ""}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {team.isActive === false
+                              ? <StatusBadge tone="neutral" label="ปิดใช้งาน" />
+                              : <StatusBadge tone="success" label="ใช้งานอยู่" />}
+                          </td>
+                          <td className="text-center">
+                            {canManage && (
+                              <RowActionMenu items={menuFor({ team, members })} busy={saving}
+                                label={`การจัดการของทีม ${team.name}`} />
+                            )}
+                          </td>
+                        </DetailRow>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableScroll>
+            )}
+          </WorkspaceSection>
+
+          {/* ⭐ ถังนี้ต้องมีเสมอแม้ว่าง — ถังที่หายไปคือคนที่หายไปจากสายตา
+              ⚠️ ตั้งแต่ /users ถอดช่องทีมออก (2026-09-06) **ที่นี่คือทางเดียว**
+                 ที่บัญชีขายเปิดใหม่จะถูกจัดเข้าทีม */}
+          <WorkspaceSection
+            id="unassigned"
+            icon={<UserRound size={18} aria-hidden="true" />}
+            title="ยังไม่อยู่ทีมไหน"
+            subtitle="คนของฝ่ายนี้ที่ยังไม่ถูกจัดเข้าทีม — คนที่ไม่มีทีมจะไม่เห็นข้อมูลของทีมไหนเลย"
+            actions={<CountBadge count={unassigned.length} tone={unassigned.length ? "warning" : "neutral"} label="จำนวนคนที่ยังไม่อยู่ทีมไหน" />}
+          >
+            {unassigned.length === 0 ? (
+              <EmptyState icon={UserRound} plain>ทุกคนในฝ่ายอยู่ทีมครบแล้ว</EmptyState>
+            ) : (
+              <ul className={styles.people}>
+                {unassigned.map((person) => {
+                  /* ⚠️ ตำแหน่งนอกสายทีมขายไม่มีทีมโดยดีไซน์ (หัวหน้าฝ่าย/เลขา/แอดมิน)
+                     🐞 ของเดิมวาดปุ่ม "จัดเข้าทีม" ให้เขาด้วย แล้วเซิร์ฟเวอร์ตอบ 400 ทุกครั้ง
+                        — คนที่เจอบ่อยที่สุดคือหัวหน้าฝ่ายขายซึ่งเป็นเจ้าของหน้านี้เอง */
+                  const eligible = department !== "SA" || TEAM_ROLES.includes(person.role);
+                  return (
+                    <li key={person.id}>
+                      <UserRound size={15} aria-hidden="true" />
+                      <span className={styles.personName}>{person.name}</span>
+                      <span className={styles.sub}>{ROLE_LABELS[person.role] || person.role}</span>
+                      {!eligible && (
+                        <span className={styles.reason}>ตำแหน่งนี้ดูได้ทุกทีมอยู่แล้ว จึงไม่ต้องสังกัดทีม</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
-          </section>
+          </WorkspaceSection>
         </>
       )}
 
-      {/* ── สร้างทีม ─────────────────────────────────────────────────── */}
-      <Modal open={creating} onClose={() => setCreating(false)} title="สร้างทีม" size="sm">
-        <label className={styles.field}>
-          <span>ชื่อทีม *</span>
-          <Input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={100}
-            placeholder="เช่น ทีมกรุงเทพตะวันออก" />
-          <small>{TEAM_KIND_HINTS[department === "SA" ? "sales" : "crew"]}</small>
-        </label>
-        <div className="form-actions">
-          <Button tone="neutral" onClick={() => setCreating(false)} disabled={saving}>ยกเลิก</Button>
-          <Button tone="primary" disabled={saving || !newName.trim()}
-            onClick={async () => {
-              const done = await call("/api/teams", {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newName.trim(), department }),
-              }, `สร้างทีม ${newName.trim()} แล้ว`);
-              if (done) setCreating(false);
-            }}>
-            สร้างทีม
-          </Button>
-        </div>
-      </Modal>
-
-      {/* ── แก้ทีม + ตั้งหัวหน้า ─────────────────────────────────────── */}
-      <Modal open={!!editTeam} onClose={() => setEditTeam(null)} title={`แก้ทีม ${editTeam?.name || ""}`} size="sm">
-        {editTeam && (
+      {/* ── สร้างทีม — ฟอร์มตัวเดียวกับตอนแก้ (TeamFormFields) ───────────── */}
+      <Modal open={!!draft} onClose={() => setDraft(null)} title="สร้างทีม"
+        subtitle={`ฝ่าย ${department}`} size="sm"
+        footer={(
           <>
-            <label className={styles.field}>
-              <span>ชื่อทีม *</span>
-              <Input value={editTeam.name} maxLength={100}
-                onChange={(e) => setEditTeam({ ...editTeam, name: e.target.value })} />
-            </label>
-            <label className={styles.field}>
-              <span>หัวหน้าทีม</span>
-              {/* ⚠️ เลือกได้เฉพาะคนในทีมนั้น — หัวหน้าที่ไม่ได้อยู่ในทีมคือข้อมูลที่ผิด */}
-              <Select
-                value={editTeam.leadId || ""}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  const person = membersOf(editTeam).find((p) => p.id === id);
-                  setEditTeam({ ...editTeam, leadId: id || null, leadName: person?.name || null });
-                }}
-              >
-                <option value="">ยังไม่ตั้ง</option>
-                {membersOf(editTeam).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            </label>
-            <label className={styles.field}>
-              <span>หมายเหตุ</span>
-              <Input as="textarea" rows={2} value={editTeam.note || ""} maxLength={500}
-                onChange={(e) => setEditTeam({ ...editTeam, note: e.target.value })} />
-            </label>
-            <div className="form-actions">
-              <Button tone="neutral" onClick={() => setEditTeam(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="primary" disabled={saving || !editTeam.name.trim()}
-                onClick={async () => {
-                  const done = await call(`/api/teams/${encodeURIComponent(editTeam.code)}`, {
-                    method: "PATCH", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      name: editTeam.name.trim(), leadId: editTeam.leadId, leadName: editTeam.leadName,
-                      note: editTeam.note, sortOrder: editTeam.sortOrder,
-                    }),
-                  }, "บันทึกทีมแล้ว");
-                  if (done) setEditTeam(null);
-                }}>
-                บันทึก
-              </Button>
-            </div>
+            <Button tone="neutral" onClick={() => setDraft(null)} disabled={saving}>ยกเลิก</Button>
+            {/* ทีมขายยังสร้างไม่ได้จริง (ด่านสิทธิ์อ่านค่าคงที่ในโค้ด) — เหตุผลอยู่ใน
+                ฟอร์มแล้ว ปุ่มจึงกดไม่ได้แทนที่จะปล่อยให้กดแล้วเจอ 400 */}
+            <Button tone="primary"
+              disabled={saving || !draft?.name?.trim() || !draft?.kind || draft?.kind === "sales"}
+              onClick={createTeam}>
+              สร้างทีม
+            </Button>
           </>
         )}
-      </Modal>
-
-      {/* ── ย้ายคน ───────────────────────────────────────────────────── */}
-      <Modal open={!!movingUser} onClose={() => setMovingUser(null)}
-        title={`ย้ายทีมของ ${movingUser?.name || ""}`} size="md">
-        {movingUser && (
-          <>
-            <p className={styles.meta}>
-              ตอนนี้อยู่: {(movingUser.teams || []).length ? movingUser.teams.join(" · ") : naText(null)}
-            </p>
-            <div className={styles.field}>
-              <span>ทีมที่สังกัด *</span>
-              {/* คนหนึ่งอยู่ได้หลายทีม — ทีมขายคือ "ขอบเขตการเห็นข้อมูล" ซ้อนกันได้ */}
-              <OptionTiles
-                multiple
-                value={moveTarget}
-                onChange={setMoveTarget}
-                ariaLabel="ทีมที่สังกัด"
-                options={teams.filter((t) => t.isActive !== false && t.kind === "sales")
-                  .map((t) => ({ value: t.code, label: t.name, description: t.code }))}
-              />
-            </div>
-            {/* ⭐ ของที่จะค้างอยู่ทีมเดิม — ระบบไม่ย้ายให้ ต้องบอกให้ครบก่อนกด */}
-            {moveImpact.length > 0 && (
-              <ul className={styles.impact}>
-                {moveImpact.map((row) => <li key={row.key}>{row.text}</li>)}
-              </ul>
-            )}
-            <div className="form-actions">
-              <Button tone="neutral" onClick={() => setMovingUser(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="primary" disabled={saving || !moveTarget.length}
-                onClick={async () => {
-                  const done = await call(`/api/users/${movingUser.id}/team`, {
-                    method: "PATCH", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ teams: moveTarget, team: moveTarget[0] }),
-                  }, `ย้าย ${movingUser.name} แล้ว`);
-                  if (done) setMovingUser(null);
-                }}>
-                ย้ายทีม
-              </Button>
-            </div>
-          </>
+      >
+        {draft && (
+          <TeamFormFields
+            mode="create"
+            department={department}
+            value={draft}
+            onChange={setDraft}
+            existingCodes={teams.map((t) => t.code)}
+          />
         )}
       </Modal>
-
-      {/* ── จัดสมาชิกทีมปฏิบัติงาน ─────────────────────────────────────
-          ⚠️ ติ๊กทั้งทีมแล้วกดครั้งเดียว ไม่ใช่ย้ายทีละคน — คนจัดคิดเป็น "ทีมนี้มีใครบ้าง"
-          และการยิงทีละคนแล้วล้มกลางทางจะเหลือทีมครึ่ง ๆ ที่คนกดไม่รู้ว่าถึงไหน */}
-      <Modal open={!!crewTeam} onClose={() => setCrewTeam(null)}
-        title={`จัดสมาชิก ${crewTeam?.name || ""}`} size="md">
-        {crewTeam && (
-          <>
-            <p className={styles.meta}>
-              ติ๊กคนที่อยู่ทีมนี้ · คนหนึ่งอยู่ได้ทีมเดียวในฝ่ายเดียวกัน
-              (ต่างจากทีมขายที่ซ้อนได้ เพราะทีมขายคือขอบเขตการเห็นข้อมูล)
-            </p>
-            <div className={styles.field}>
-              <span>สมาชิก</span>
-              <OptionTiles
-                multiple
-                value={crewIds}
-                onChange={setCrewIds}
-                ariaLabel="สมาชิกทีม"
-                options={(data?.people || []).map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                  description: ROLE_LABELS[p.role] || p.role,
-                }))}
-              />
-            </div>
-            <div className="form-actions">
-              <Button tone="neutral" onClick={() => setCrewTeam(null)} disabled={saving}>ยกเลิก</Button>
-              <Button tone="primary" disabled={saving}
-                onClick={async () => {
-                  const done = await call(`/api/teams/${encodeURIComponent(crewTeam.code)}/members`, {
-                    method: "PUT", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userIds: crewIds }),
-                  }, `จัดสมาชิกทีม ${crewTeam.name} แล้ว`);
-                  if (done) setCrewTeam(null);
-                }}>
-                บันทึกสมาชิก
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
-
-      <ConfirmDialog
-        open={!!deleting}
-        title={`ลบทีม ${deleting?.team?.name || ""}`}
-        /* ⚠️ บอกกติกาให้ครบ **ก่อน** กด — ไม่ใช่ให้กดแล้วค่อยเจอ 409
-           (รหัสทีมถูกก๊อปลงหลายตาราง ลบทีมที่มีประวัติแล้วป้ายย้อนหลังจะกลายเป็นรหัสดิบ) */
-        message={deleting?.members
-          ? `ทีมนี้ยังมีสมาชิก ${deleting.members} คน — ย้ายคนออกให้หมดก่อน`
-          : "ลบได้เฉพาะทีมที่ยังไม่มีใครใช้ (ไม่มีดีล ลีด เป้า สัญญา หรือคนสังกัด) — ถ้าเคยใช้แล้วระบบจะตีกลับ ให้ใช้ “ปิดทีม” แทน"}
-        confirmLabel="ลบทีม"
-        tone="danger"
-        onClose={() => setDeleting(null)}
-        onConfirm={deleting?.members ? undefined : async () => {
-          const done = await call(`/api/teams/${encodeURIComponent(deleting.team.code)}`, {
-            method: "DELETE",
-          }, `ลบทีม ${deleting.team.name} แล้ว`);
-          if (done) setDeleting(null);
-        }}
-      />
-
-      <ConfirmDialog
-        open={!!closing}
-        title={`ปิดทีม ${closing?.team?.name || ""}`}
-        message={closing?.members
-          ? `ทีมนี้ยังมีสมาชิก ${closing.members} คน — ย้ายคนออกให้หมดก่อนจึงจะปิดได้`
-          : "ทีมที่ปิดแล้วจะไม่ขึ้นให้เลือกใหม่ แต่ยังอ่านชื่อได้ในรายงานย้อนหลัง"}
-        confirmLabel="ปิดทีม"
-        tone="danger"
-        onClose={() => setClosing(null)}
-        onConfirm={closing?.members ? undefined : async () => {
-          const done = await call(`/api/teams/${encodeURIComponent(closing.team.code)}`, {
-            method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isActive: false }),
-          }, `ปิดทีม ${closing.team.name} แล้ว`);
-          if (done) setClosing(null);
-        }}
-      />
-
-      <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }

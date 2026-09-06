@@ -33,6 +33,51 @@ export function allowedKindsFor(department) {
   return String(department ?? '').trim() === SALES_TEAM_DEPARTMENT ? ['sales', 'crew'] : ['crew'];
 }
 
+/* ⚠️ **ทีมขายใหม่ยังใช้ไม่ได้จริง** — ด่านสิทธิ์ทุกตัวอ่านรายชื่อทีมขายจากค่าคงที่
+   `TEAMS` ใน `lib/permissions.js` (ไม่ใช่จากทะเบียนนี้) และ `npm run check:teams`
+   ทำให้ CI แดงทันทีที่มีทีมขาย active ที่ไม่อยู่ในค่าคงที่นั้น
+   ⇒ จอ **โชว์ตัวเลือกไว้พร้อมเหตุผล** (กฎ "ล็อกดีกว่าซ่อน") แต่กดสร้างไม่ได้
+   ⇒ ปลดล็อกเมื่อถอดค่าคงที่ออกแล้ว (งานคนละก้อน — 44 ไฟล์ยังอ่านค่านั้นอยู่) */
+export const SALES_TEAM_CREATE_BLOCKER =
+  'ทีมขายใหม่ยังสร้างไม่ได้ — ด่านสิทธิ์ยังอ่านรายชื่อทีมขายจากค่าคงที่ในโค้ด (KA · ODM · SV) '
+  + 'สร้างไปก็ย้ายคนเข้าไม่ได้ และตัวตรวจทะเบียนใน CI จะตีกลับ';
+
+export function createBlockerFor(kind) {
+  return kind === 'sales' ? SALES_TEAM_CREATE_BLOCKER : null;
+}
+
+/* บ้านของทะเบียนทีมแต่ละฝ่าย — หน้าเดียวกันถูก mount สองที่ (มติ 2026-08-28)
+   ⚠️ เพิ่มฝ่ายใหม่ต้องเพิ่มที่นี่ **พร้อมกับ** สร้าง route จริง ไม่งั้นลิงก์บนแถวพาไป 404 */
+export const TEAMS_BASE_PATH = { SA: '/sa/teams', TS: '/service/teams' };
+
+export function teamsBasePath(department) {
+  return TEAMS_BASE_PATH[String(department ?? '').trim()] || null;
+}
+
+/* แผนของการกด "บันทึกสมาชิก" หนึ่งครั้ง — ตรรกะล้วน แยกออกมาจาก route เพื่อให้เทสต์ได้
+   ⭐ **ติ๊กคนที่อยู่ทีมอื่น = ย้ายให้** (มติ 2026-09-06) — กติกา "คนหนึ่งอยู่ทีมปฏิบัติงาน
+   ได้ทีมเดียวต่อฝ่าย" ยังเหมือนเดิม เปลี่ยนแค่ว่าระบบบังคับให้แทนที่จะตีกลับทั้งชุด
+   ⚠️ คนที่ **อยู่ทีมนี้อยู่แล้ว** ไม่นับว่าย้าย (ไม่งั้นทุกครั้งที่กดบันทึกจะรายงานว่าย้าย
+   ทั้งทีม) · คนที่ถูกติ๊กออกไม่ได้ถูกย้ายไปไหน เขาจะกลายเป็น "ยังไม่อยู่ทีมไหน" */
+export function planCrewRoster({ code, userIds = [], existingMembers = [] } = {}) {
+  const ids = [...new Set(userIds.map((v) => String(v ?? '').trim()).filter(Boolean))];
+  const here = existingMembers.filter((m) => m.teamCode === code);
+  const movedFrom = existingMembers.filter((m) => m.teamCode !== code && ids.includes(m.userId));
+  const leaving = here.filter((m) => !ids.includes(m.userId));
+  return {
+    ids,
+    movedFrom,
+    leaving,
+    beforeIds: here.map((m) => m.userId),
+    fromTeamCodes: [...new Set(movedFrom.map((m) => m.teamCode))],
+  };
+}
+
+export function teamHref(department, code) {
+  const base = teamsBasePath(department);
+  return base && code ? `${base}/${encodeURIComponent(code)}` : null;
+}
+
 /* รหัสทีมจากชื่อ — ฝ่ายนำหน้าเสมอเพื่อไม่ให้ทีมของสองฝ่ายชนรหัสกัน
    (ทีมขายเดิม ODM/KA/SV ไม่มีคำนำหน้า เพราะรหัสถูกเขียนลง 19 ตารางไปแล้ว) */
 export function suggestTeamCode(department, name, existingCodes = []) {

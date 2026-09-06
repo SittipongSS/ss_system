@@ -10,8 +10,10 @@ import {
   allowedKindsFor,
   closeTeamBlocker,
   normalizeTeamInput,
+  planCrewRoster,
   sortTeams,
   suggestTeamCode,
+  teamHref,
   teamMoveEffects,
   unassignedMembers,
 } from './teams.js';
@@ -111,4 +113,42 @@ test('⚠️ ฝ่ายว่างต้องไม่ "ตรงกัน" 
   assert.equal(canManageTeams({ role: 'pc', extraCaps: ['team:manage'] }, ''), false);
   assert.equal(canManageTeams({ role: 'pc', extraCaps: ['team:manage'] }, null), false);
   assert.equal(canManageTeams({ role: 'ts', department: 'TS', extraCaps: ['team:manage'] }, null), false);
+});
+
+// ── จัดสมาชิกทีมปฏิบัติงานในการกดครั้งเดียว (มติ 2026-09-06) ────────────────
+/* 🐞 ของเดิมตีกลับทั้งชุดถ้ามีคนของทีมอื่นปนมา ⇒ ย้ายเจ้าหน้าที่หนึ่งคนต้องกดสองรอบ
+   สองหน้า และ **ระหว่างสองรอบนั้นเขาไม่มีทีมเลย** (หลุดจากทุกคิวงาน) */
+test('⭐ ติ๊กคนที่อยู่ทีมอื่น = ย้ายให้ ไม่ใช่ตีกลับทั้งชุด', () => {
+  const existing = [
+    { teamCode: 'TS', userId: 'u1', userName: 'ภูวดล' },
+    { teamCode: 'TS', userId: 'u2', userName: 'วีรชัย' },
+    { teamCode: 'TS-2', userId: 'u3', userName: 'อภิสิทธิ์' },
+  ];
+  const plan = planCrewRoster({ code: 'TS', userIds: ['u1', 'u3'], existingMembers: existing });
+  assert.deepEqual(plan.ids, ['u1', 'u3']);
+  assert.deepEqual(plan.movedFrom.map((m) => m.userId), ['u3'], 'u3 ย้ายมาจาก TS-2');
+  assert.deepEqual(plan.fromTeamCodes, ['TS-2']);
+  assert.deepEqual(plan.leaving.map((m) => m.userId), ['u2'], 'u2 ถูกติ๊กออก');
+  assert.deepEqual(plan.beforeIds, ['u1', 'u2']);
+});
+
+test('คนที่อยู่ทีมนี้อยู่แล้วต้องไม่ถูกนับว่า "ย้าย" — ไม่งั้นกดบันทึกทีไรก็รายงานว่าย้ายทั้งทีม', () => {
+  const existing = [{ teamCode: 'TS', userId: 'u1' }, { teamCode: 'TS', userId: 'u2' }];
+  const plan = planCrewRoster({ code: 'TS', userIds: ['u1', 'u2'], existingMembers: existing });
+  assert.deepEqual(plan.movedFrom, []);
+  assert.deepEqual(plan.leaving, []);
+});
+
+test('รายชื่อซ้ำ/ช่องว่างถูกกรองทิ้งก่อนเสมอ', () => {
+  const plan = planCrewRoster({ code: 'TS', userIds: ['u1', 'u1', ' ', '', 'u2'], existingMembers: [] });
+  assert.deepEqual(plan.ids, ['u1', 'u2']);
+});
+
+// ── ลิงก์ไปหน้าทีม (เส้นทางใหม่ 2026-09-06) ───────────────────────────────
+/* ⚠️ ฝ่ายที่ไม่มีหน้าทะเบียนของตัวเองต้องคืน null — แถวที่ลิงก์ไป path เดา ๆ จะพา 404 */
+test('teamHref: มีเฉพาะฝ่ายที่มีหน้าจริง', () => {
+  assert.equal(teamHref('SA', 'KA'), '/sa/teams/KA');
+  assert.equal(teamHref('TS', 'TS-2'), '/service/teams/TS-2');
+  assert.equal(teamHref('PC', 'X'), null, 'ฝ่ายที่ยังไม่มีหน้าทะเบียน');
+  assert.equal(teamHref('SA', ''), null);
 });
