@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { RD_ROLES, isRdRole, capsFor as capsForRole, pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { RD_ROLES, isRdRole, capsFor as capsForRole, pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, resolveTeamUpdate, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -784,12 +784,32 @@ test('มอบหมาย/ดึงงาน: "ทีมเดียวกั�
   assert.equal(canPullTask(dual, task, 'KA'), false);
 });
 
-test('validateIdentity: ตำแหน่งสายทีมต้องมีอย่างน้อยหนึ่งทีม และทุกทีมต้องถูกต้อง', () => {
+/* ⭐ **"ยังไม่ได้จัดเข้าทีม" เป็นสถานะที่ถูกต้อง** (มติผู้ใช้ 2026-09-06) — การจัดทีม
+   ย้ายไปอยู่ที่ /sa/teams ที่เดียว หน้าผู้ใช้จึงสร้างบัญชีขายโดยยังไม่มีทีมได้
+   ⚠️ ที่ยัง **ห้าม** คือทีมที่ไม่มีอยู่จริง และตำแหน่งนอกสายทีมที่ดันมีทีมติดมา */
+test('validateIdentity: ตำแหน่งสายทีมเปิดบัญชีก่อนมีทีมได้ แต่ทีมที่ระบุต้องมีจริง', () => {
   assert.equal(validateIdentity('ae', ['ODM', 'SV'], 'SA'), null);
   assert.equal(validateIdentity('ae', 'ODM', 'SA'), null, 'ค่าเดียวยังใช้ได้');
-  assert.match(validateIdentity('ae', [], 'SA'), /ต้องระบุทีม/);
+  assert.equal(validateIdentity('ae', [], 'SA'), null, 'บัญชีใหม่ยังไม่ถูกจัดเข้าทีม');
   assert.match(validateIdentity('ae', ['ODM', 'XX'], 'SA'), /ทีมไม่ถูกต้อง/);
   assert.match(validateIdentity('ra', ['ODM'], 'RA'), /ไม่ต้องระบุทีม/);
+});
+
+/* ⭐ **แก้บัญชีโดยไม่ส่งทีมมา = ห้ามแตะทีม** (มติผู้ใช้ 2026-09-06 · หน้าผู้ใช้ถอดช่องทีมออก)
+   🐞 ถ้าอ่าน body.team ตรง ๆ ทุกการแก้ชื่อ/เบอร์/สิทธิ์เสริมจะล้างทีมของคนนั้นทิ้ง
+      แล้วเขาจะมองไม่เห็นข้อมูลอะไรเลย **โดยไม่มี error ให้ใครสังเกต** */
+test('resolveTeamUpdate: ไม่ส่งทีมมา = เก็บของเดิม · ส่งมาว่าง = ตั้งใจถอดออก', () => {
+  const meta = { team: 'SV', teams: ['ODM', 'SV'] };
+  // แก้ชื่อ/สิทธิ์เสริมอย่างเดียว — ทีมต้องอยู่ครบเท่าเดิม
+  assert.deepEqual(resolveTeamUpdate('ae', { role: 'ae' }, meta), { team: 'SV', teams: ['ODM', 'SV'] });
+  // ส่งทีมมาจริง (สคริปต์/ทางฉุกเฉิน) — ยังเขียนทับได้เหมือนเดิม
+  assert.deepEqual(resolveTeamUpdate('ae', { teams: ['KA'] }, meta), { team: 'KA', teams: ['KA'] });
+  // ตั้งใจถอดออกจากทุกทีม ต่างจาก "ไม่ส่งมาเลย"
+  assert.deepEqual(resolveTeamUpdate('ae', { teams: [] }, meta), { team: null, teams: [] });
+  // เปลี่ยนไปตำแหน่งที่ไม่ผูกทีม — ต้องล้างจริง ไม่ใช่ค้างของเดิมไว้เงียบ ๆ
+  assert.deepEqual(resolveTeamUpdate('viewer', { role: 'viewer' }, meta), { team: null, teams: [] });
+  // บัญชีที่ยังไม่เคยมีทีม (เพิ่งเปิด) — แก้ชื่อแล้วต้องไม่ 400 และยังไม่มีทีมเหมือนเดิม
+  assert.deepEqual(resolveTeamUpdate('ae', { role: 'ae' }, {}), { team: null, teams: [] });
 });
 
 test('resolveTeamAssignment: ทีมหลักต้องอยู่ในชุดที่สังกัดเสมอ · ตำแหน่งไม่ผูกทีมถูกล้าง', () => {
