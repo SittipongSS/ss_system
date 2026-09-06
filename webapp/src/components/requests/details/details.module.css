@@ -137,3 +137,13 @@
   line-height: var(--lh-thai);
   color: var(--text-2);
 }
+
+/* ทางเข้าจอทำงานของ TS บนใบประเมิน — ตารางผลเป็นของผู้อ่าน (ฝ่ายขายเป็นหลัก)
+   ส่วนการกรอกผลอยู่คนละจอ เพราะเป็นคนละงานคนละสิทธิ์ */
+.surveyOpen {
+  margin: 0 0 var(--space-2-5);
+  font-size: var(--fs-4);
+}
+
+.surveyOpen a { color: var(--accent-ink); font-weight: var(--fw-semibold); }
+.surveyOpen a:hover { text-decoration: underline; }

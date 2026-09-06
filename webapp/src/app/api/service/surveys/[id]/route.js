@@ -7,7 +7,7 @@
 // ⚠️ ด่านอ่านเป็น **ด่านของคำร้อง** ไม่ใช่ด่านโมดูลบริการล้วน — ใบที่ไม่ได้ส่งถึงฝ่ายเรา
 //   ต้องอ่านไม่ได้ ถึงจะถือ `service:view` ก็ตาม (id หลุดทางลิงก์แจ้งเตือนได้)
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
-import { canDoFieldWork, canEditService, canViewRequests } from '@/lib/permissions';
+import { canDoFieldWork, canEditService, canSendSurveyResult, canViewRequests } from '@/lib/permissions';
 import { canReadRequestRow } from '@/lib/requests/access';
 import { listAttachments } from '@/lib/master/attachments';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
@@ -53,6 +53,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       filesByZone,
       visit,
       canWrite: access.ok === true,
+      /* ⭐ **คนละสิทธิ์กับ `canWrite`** — เคาะแพ็คเกจ/จุด และกดส่งผล เป็นการตัดสินใจ
+         เชิงพาณิชย์ของหัวหน้าฝ่าย ไม่ใช่การรายงานหน้างานของช่าง (แผน §5.4) */
+      canDecide: canSendSurveyResult(user),
       // เหตุผลที่เขียนไม่ได้ — จอต้องบอกเหตุ ไม่ใช่ซ่อนปุ่มเงียบ ๆ
       writeBlockedReason: access.ok ? null : (access.error || 'ไม่มีสิทธิ์บันทึกผลของใบนี้'),
     });

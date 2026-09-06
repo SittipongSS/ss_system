@@ -10,8 +10,8 @@
 //   ซึ่งเปิดเฉพาะงานที่ตัวเองถูกมอบหมาย (กติกาเดียวกับ `visitWriteAccess` ของนัด)
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound } from '@/lib/http';
-import { canDoFieldWork, canEditService } from '@/lib/permissions';
-import { normalizeSurveyPart } from '@/lib/service/survey';
+import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
+import { normalizeSurveyPart, packageNeedsNote } from '@/lib/service/survey';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 import { genId } from '@/lib/id';
@@ -128,6 +128,92 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'update', entityType: 'service_survey_zone', entityId: zoneId,
       before: row, after: data,
       summary: `บันทึกผลวัด ${data.zoneName}${data.status === 'cut' ? ' (ตัดออก)' : ''}`,
+      request: req,
+    });
+    return ok(data);
+  } catch (e) {
+    return fail(e.message, 500);
+  }
+});
+
+
+/* ── PUT: การตัดสินใจของหัวหน้า (จอส่งผล) ────────────────────────────────
+ *
+ * ⭐ **แยกเมธอดจาก PATCH โดยตั้งใจ** — ทรัพยากรเดียวกัน แต่คนละคน คนละจังหวะ
+ *   คนละชุดช่อง: `PATCH` = ช่างรายงานข้อเท็จจริงหน้างาน · `PUT` = หัวหน้าตัดสินใจ
+ *   เชิงพาณิชย์บนโต๊ะ ⇒ รวมเป็นเส้นเดียวเมื่อไร ช่างจะทับตัวเลขที่หัวหน้าเคาะไปแล้ว
+ *
+ * 🔴 ด่านสิทธิ์ **ไม่ใช่ `canEditService`** ซึ่งช่างทุกคนผ่าน — การเคาะแพ็คเกจกับจุด
+ *   คือของที่ SA จะเอาไปเสนอราคา ⇒ `canSendSurveyResult` (หัวหน้าฝ่าย TS)
+ */
+// PUT { packageQty?, packageNote?, selectedSpotIds? }
+export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id, zoneId } = await ctx.params;
+  try {
+    if (!canSendSurveyResult(user)) return forbidden('เคาะแพ็คเกจและจุดติดตั้งได้เฉพาะหัวหน้าฝ่ายบริการ');
+
+    const { data: row, error: rowError } = await supabase
+      .from('service_survey_zones').select('*').eq('id', zoneId).eq('requestId', id).maybeSingle();
+    if (rowError) return fail(rowError.message, 500);
+    if (!row) return notFound('ไม่พบพื้นที่นี้ในใบประเมิน');
+    if (row.status === 'cut') return badRequest('พื้นที่นี้ถูกตัดออกจากใบแล้ว');
+
+    const body = await req.json().catch(() => ({}));
+    const patch = {};
+
+    if (body.packageQty !== undefined) {
+      const qty = Number(body.packageQty);
+      if (body.packageQty === null || body.packageQty === '') {
+        patch.packageQty = null;
+      } else {
+        if (!Number.isInteger(qty) || qty < 1) return badRequest('จำนวนแพ็คเกจต้องเป็นจำนวนเต็มอย่างน้อย 1');
+        if (qty > 99) return badRequest('จำนวนแพ็คเกจดูเหมือนพิมพ์ผิดหลัก');
+        patch.packageQty = qty;
+      }
+    }
+
+    if (body.packageNote !== undefined) {
+      const note = String(body.packageNote ?? '').trim();
+      if (note.length > 500) return badRequest('เหตุผลยาวเกิน 500 ตัวอักษร');
+      patch.packageNote = note || null;
+    }
+
+    /* จุดที่ **เลือกติดตั้งจริง** — หัวหน้าติ๊กจากรายการที่ช่างแจ้งมา
+       ⚠️ รับเป็น **id ของจุด** ไม่ใช่ทั้งอาร์เรย์ — ส่งทั้งอาร์เรย์มาแปลว่าหัวหน้า
+         แก้ชื่อ/บันทึกของจุดได้ด้วย ซึ่งเป็นของช่าง (เขาเป็นคนไปเห็น) */
+    if (body.selectedSpotIds !== undefined) {
+      if (!Array.isArray(body.selectedSpotIds)) return badRequest('รายการจุดที่เลือกไม่ถูกต้อง');
+      const picked = new Set(body.selectedSpotIds.map((v) => String(v)));
+      const spots = Array.isArray(row.spots) ? row.spots : [];
+      const unknown = [...picked].filter((sid) => !spots.some((s) => String(s?.id) === sid));
+      if (unknown.length) return badRequest('มีจุดที่เลือกซึ่งไม่อยู่ในรายการที่ช่างแจ้งมา');
+      patch.spots = spots.map((s) => ({ ...s, selected: picked.has(String(s?.id)) }));
+    }
+
+    if (!Object.keys(patch).length) return badRequest('ไม่มีอะไรให้บันทึก');
+
+    /* ⚠️ ตรวจกฎ "ต่างจากสูตรต้องมีเหตุผล" จาก **ค่าหลังรวม patch** ไม่ใช่จาก body —
+       แก้เฉพาะเหตุผลโดยไม่ส่ง qty มาด้วย ต้องตัดสินจากตัวเลขที่มีอยู่จริง
+       ⚠️ ปล่อยให้ล้างเหตุผลทิ้งได้เมื่อยังไม่เคาะแพ็คเกจ — ด่านตอนกดส่งผลจะจับเอง
+         (บล็อกตรงนี้ด้วยจะแก้ทีละช่องไม่ได้เลย ซึ่งเป็นวิธีกรอกจริงของคน) */
+    const after = { ...row, ...patch };
+    if (Number(after.packageQty) > 0 && packageNeedsNote(after)
+      && !String(after.packageNote ?? '').trim()) {
+      return badRequest('แพ็คเกจต่างจากที่สูตรบอก — ต้องบอกเหตุผลด้วย');
+    }
+
+    patch.updatedAt = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('service_survey_zones').update(patch).eq('id', zoneId).select().single();
+    if (error) return fail(error.message, 500);
+
+    await recordAudit({
+      user, action: 'update', entityType: 'service_survey_zone', entityId: zoneId,
+      before: row, after: data,
+      summary: `เคาะผลประเมิน ${data.zoneName}`
+        + (patch.packageQty !== undefined
+          ? (data.packageQty ? ` · ${data.packageQty} แพ็คเกจ` : ' · ล้างจำนวนแพ็คเกจ')
+          : ''),
       request: req,
     });
     return ok(data);

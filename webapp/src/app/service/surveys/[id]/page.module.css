@@ -17,3 +17,14 @@
   font-size: var(--fs-4);
   line-height: var(--lh-thai);
 }
+
+/* ส่งไปแล้ว — บอกสถานะ ไม่ใช่ซ่อนปุ่มเงียบ ๆ */
+.sent {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}

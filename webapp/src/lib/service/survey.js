@@ -196,8 +196,23 @@ export function surveyResultMissing(row = {}, files = []) {
   const docs = surveyDocCounts(files);
   if (docs.plan === 0) result.push('ยังไม่มีภาพผังที่มาร์กจุดแล้ว');
   if (spotCounts(row.spots).selected === 0) result.push('ยังไม่ได้เลือกจุดที่จะติดตั้ง');
-  if (!(Number(row.packageQty) > 0)) result.push('ยังไม่ได้เคาะจำนวนแพ็คเกจ');
+  if (!(Number(row.packageQty) > 0)) {
+    result.push('ยังไม่ได้เคาะจำนวนแพ็คเกจ');
+  } else if (packageNeedsNote(row) && !String(row.packageNote ?? '').trim()) {
+    /* 🔴 **ทับสูตรแล้วต้องบอกเหตุผล** (mig 0345 · กติกาเดียวกับการตัดพื้นที่ออก)
+       ของที่ต่างไปจากสิ่งที่ SA จะเสนอราคา คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน */
+    result.push('แพ็คเกจต่างจากสูตร — ต้องบอกเหตุผล');
+  }
   return { field: surveyFieldMissing(row, files), result };
+}
+
+/** เคาะแพ็คเกจต่างจากที่สูตรบอกไหม — `false` เมื่อยังไม่ได้เคาะ หรือคำนวณสูตรไม่ได้
+ *  ⚠️ **ตรงกับสูตรไม่ต้องมีเหตุผล** — บังคับเขียนทุกแถวจะได้ข้อความขยะที่ไม่มีใครอ่าน */
+export function packageNeedsNote(row = {}) {
+  const suggested = suggestedPackages(surveyZoneSize(row.parts).volumeCbm);
+  const qty = Number(row.packageQty);
+  if (!suggested || !(qty > 0)) return false;
+  return qty !== suggested;
 }
 
 /**

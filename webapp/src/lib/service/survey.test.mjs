@@ -1,11 +1,13 @@
 // ── ตรรกะใบประเมินพื้นที่ (mig 0314) — ตัวเลขล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   CBM_PER_PACKAGE,
   SURVEY_DOC_PLAN,
   SURVEY_DOC_WIDE,
   normalizeSurveyPart,
+  packageNeedsNote,
   spotCounts,
   suggestedPackages,
   surveyFieldMissing,
@@ -164,11 +166,12 @@ test('⭐ ผังไม่บล็อกที่หน้างาน แต
 });
 
 test('⭐ จอส่งผลบล็อกสามอย่าง: ผัง · จุดที่เลือก · แพ็คเกจ', () => {
-  const full = zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], packageQty: 2 });
+  // 10×10×3 = 300 ลบ.ม. ⇒ สูตรได้ 1 — ใส่ตรงสูตรเพื่อไม่ให้ไปติดด่านเหตุผล (คนละข้อ)
+  const full = zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], packageQty: 1 });
   assert.deepEqual(surveyResultMissing(full, [wide, plan]).result, []);
 
   assert.match(surveyResultMissing(full, [wide]).result.join(' '), /ภาพผัง/);
-  assert.match(surveyResultMissing(zone({ packageQty: 2 }), [wide, plan]).result.join(' '), /เลือกจุด/);
+  assert.match(surveyResultMissing(zone({ packageQty: 1 }), [wide, plan]).result.join(' '), /เลือกจุด/);
   assert.match(surveyResultMissing({ ...full, packageQty: null }, [wide, plan]).result.join(' '), /แพ็คเกจ/);
 });
 
@@ -214,4 +217,54 @@ test('ความคืบหน้าหน้างานนับเฉพ�
   const cut = { id: 'C', status: 'cut', cutReason: 'ลูกค้าไม่เอา' };
   const p = surveyFieldProgress([done, todo, cut], { A: [wide], B: [wide] });
   assert.deepEqual({ total: p.total, done: p.done, complete: p.complete }, { total: 2, done: 1, complete: false });
+});
+
+/* 🔴 ทับสูตรแล้วต้องบอกเหตุผล (mig 0345) — กติกาเดียวกับการตัดพื้นที่ออก */
+test('🔴 แพ็คเกจต่างจากสูตรต้องมีเหตุผล · ตรงกับสูตรไม่ต้อง', () => {
+  // 10×10×3 = 300 ลบ.ม. ⇒ สูตรได้ 1
+  const base = zone({ spots: [{ id: 's', selected: true }] });
+  assert.equal(packageNeedsNote({ ...base, packageQty: 1 }), false, 'ตรงสูตร = ไม่ต้องมีเหตุผล');
+  assert.equal(packageNeedsNote({ ...base, packageQty: 3 }), true);
+  assert.equal(packageNeedsNote({ ...base, packageQty: null }), false, 'ยังไม่เคาะ = ยังไม่ถึงข้อนี้');
+
+  const files = [wide, plan];
+  assert.deepEqual(surveyResultMissing({ ...base, packageQty: 1 }, files).result, []);
+  assert.match(surveyResultMissing({ ...base, packageQty: 3 }, files).result.join(' '), /ต้องบอกเหตุผล/);
+  assert.deepEqual(
+    surveyResultMissing({ ...base, packageQty: 3, packageNote: 'กึ่งกลางแจ้ง ลมโกรก' }, files).result,
+    [],
+  );
+});
+
+/* 🐞 **รูที่เทสต์ฟังก์ชันมองไม่เห็น** — ด่านถูกหมด แต่ถ้า route ไม่เรียกก็ไม่มีผล
+   (บทเรียนจากงานสัญญา 2026-09-03: ฟังก์ชันเขียว แต่ของจริงพังเพราะ route ไม่ส่งของเข้าไป)
+   ⇒ ยามพวกนี้ผูกกับ **ซอร์สจริง** ไม่ใช่กับฟังก์ชัน */
+test('🐞 ปุ่มส่งผลต้องถามด่านตัวเดียวกับจอ และอ่านไฟล์จริงมานับ', () => {
+  const route = readFileSync(new URL('../../app/api/service/surveys/[id]/send/route.js', import.meta.url), 'utf8');
+  assert.match(route, /surveySendError\(/, 'ต้องใช้ด่านตัวเดียวกับจอ ไม่ใช่เขียนเงื่อนไขซ้ำ');
+  assert.match(route, /listAttachments\('service_survey_zone'/,
+    'ต้องนับรูปจากไฟล์จริง — เชื่อค่าที่ client ส่งมาแปลว่าส่งใบไม่มีรูปออกไปได้');
+  assert.match(route, /canSendSurveyResult\(/, 'ส่งผลได้เฉพาะหัวหน้าฝ่าย ไม่ใช่ canEditService');
+  /* ⚠️ กติกาการเปลี่ยนสถานะต้องใช้ของกลาง ไม่ใช่เขียน 'answered' เอง —
+     ใบที่ SA กดปิดไปก่อนต้องกลายเป็น closed ทันที (ปิดสองฝั่ง กดก่อน/หลังกันได้) */
+  assert.match(route, /closureStatus\(/);
+  assert.match(route, /answerRequestError\(/);
+});
+
+/* 🔴 ช่างกับหัวหน้าเขียนคนละชุดช่อง — รวมเป็นเส้นเดียวเมื่อไร ช่างจะทับตัวเลข
+   ที่หัวหน้าเคาะไปแล้วโดยไม่มีใครรู้ */
+test('🔴 เส้นของช่างต้องไม่รับ packageQty · เส้นของหัวหน้าต้องไม่รับ parts', () => {
+  const route = readFileSync(
+    new URL('../../app/api/service/surveys/[id]/zones/[zoneId]/route.js', import.meta.url), 'utf8');
+  /* ⚠️ ตัดที่ **หัวคอมเมนต์ของ PUT** ไม่ใช่ที่ `export const PUT` — คอมเมนต์นั้นเอ่ยชื่อ
+     ช่องของฝั่งหัวหน้าไว้ ถ้าตัดทีหลังมันจะตกอยู่ในก้อนของ PATCH แล้วยามจับผิดตัว */
+  const putAt = route.indexOf('/* ── PUT:');
+  const patch = route.slice(route.indexOf('export const PATCH'), putAt);
+  const put = route.slice(putAt);
+
+  assert.doesNotMatch(patch, /body\.packageQty/, 'ช่างเคาะแพ็คเกจไม่ได้');
+  assert.doesNotMatch(patch, /selectedSpotIds/, 'ช่างเลือกจุดที่จะติดตั้งไม่ได้');
+  assert.doesNotMatch(put, /body\.parts/, 'หัวหน้าแก้ขนาดที่ช่างวัดไม่ได้');
+  assert.match(put, /canSendSurveyResult\(/, 'เคาะแพ็คเกจได้เฉพาะหัวหน้า');
+  assert.match(patch, /visitWriteAccess\(/, 'ช่างเขียนได้เฉพาะใบที่ตัวเองถูกมอบหมาย');
 });
