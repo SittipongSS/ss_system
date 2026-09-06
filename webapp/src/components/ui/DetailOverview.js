@@ -1,6 +1,9 @@
-import { Children } from "react";
+"use client";
+
+import { Children, useEffect, useRef } from "react";
 import styles from "./DetailOverview.module.css";
 import { naText } from "@/lib/format";
+import { useDetailPin } from "@/lib/ui/detailPin";
 
 export function DetailStateBadge({ label, color = "var(--accent)" }) {
   if (!label) return null;
@@ -21,8 +24,56 @@ export default function DetailOverview({
   className = "",
 }) {
   const extra = Children.toArray(children);
+  const cardRef = useRef(null);
+  const pin = useDetailPin();
+  const setRecord = pin?.setRecord;
+
+  /* ── บอกเปลือกว่าใบนี้คือใบไหน และตอนนี้หัวใบยังอยู่ในสายตาหรือยัง ──────────
+     ⚠️ ต้องเป็น IntersectionObserver ไม่ใช่ onScroll — หน้ารายละเอียดมีทั้งตาราง
+     ที่เลื่อนเองและรางที่เลื่อนเอง (ทั้งคู่เพิ่งได้ scrollport ของตัวเองไปเมื่อวาน)
+     ตัวจับ scroll ที่ผูกกับ window จะไม่รู้เรื่องพวกนั้นเลย
+
+     เส้นตัด = `--scroll-anchor-top` ซึ่งรวมความสูงแถบเมนู + ความสูงแถบนี้แล้ว
+     ⇒ แถบโผล่พอดีตอนที่หัวใบเลื่อนพ้นตำแหน่งที่แถบจะไปยืน ไม่เหลื่อมกัน */
+  useEffect(() => {
+    if (!setRecord) return undefined;
+    const card = cardRef.current;
+    if (!card || typeof IntersectionObserver === "undefined") return undefined;
+
+    const pinLine = () => {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--scroll-anchor-top");
+      const value = Number.parseFloat(raw);
+      return Number.isFinite(value) ? value : 106;
+    };
+
+    let observer = null;
+    const attach = () => {
+      if (observer) observer.disconnect();
+      observer = new IntersectionObserver(
+        ([entry]) => setRecord((prev) => (prev ? { ...prev, pinned: !entry.isIntersecting } : prev)),
+        { rootMargin: `-${pinLine()}px 0px 0px 0px`, threshold: 0 },
+      );
+      observer.observe(card);
+    };
+    attach();
+    /* เส้นตัดเปลี่ยนตามความกว้างจอ (--sysbar-h เป็น 0 ที่ ≤1200px) จึงต้องผูกใหม่ */
+    window.addEventListener("resize", attach);
+    return () => {
+      window.removeEventListener("resize", attach);
+      if (observer) observer.disconnect();
+    };
+  }, [setRecord]);
+
+  /* เนื้อของแถบ — แยก effect จากตัวจับสายตา เพราะเปลี่ยนคนละจังหวะ
+     (เนื้อเปลี่ยนตอนโหลดข้อมูลเสร็จ · pinned เปลี่ยนตอนเลื่อน) */
+  useEffect(() => {
+    if (!setRecord) return undefined;
+    setRecord((prev) => ({ pinned: prev?.pinned || false, eyebrow, title: naText(title), description }));
+    return () => setRecord(null);
+  }, [setRecord, eyebrow, title, description]);
+
   return (
-    <section className={`${styles.overviewCard} ${className}`.trim()}>
+    <section ref={cardRef} className={`ui-detail-overview ${styles.overviewCard} ${className}`.trim()}>
       <div className={styles.overviewHeading}>
         <div className={styles.titleBlock}>
           {eyebrow ? <span className={styles.eyebrow}>{eyebrow}</span> : null}
