@@ -16,6 +16,9 @@
 }
 
 .fileBox {
+  /* ⚠️ ห้ามลบ — .fileInput ข้างล่างเป็น position:absolute ต้องอิงกล่องนี้
+     ไม่งั้นไปอิงกรอบหน้าจอ แล้วหลุดกรอบตัดของกล่องแม่ (บั๊กเดียวกับ StepTrack.step) */
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
