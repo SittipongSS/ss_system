@@ -415,6 +415,20 @@ export async function folderPathForEntity(entityType, entityId) {
     return costingSegments(supabase, type, entityId);
   }
 
+  /* ผลวัดพื้นที่ของใบประเมิน (mig 0314) — ไฟล์ลงโฟลเดอร์ **ของใบคำร้องแม่**
+     ⚠️ ไม่แยกโฟลเดอร์รายพื้นที่: ใบหนึ่งมีสิบพื้นที่ ⇒ สิบโฟลเดอร์ย่อยที่มีไฟล์
+       ละสองสามใบ ซึ่งเปิดหายากกว่ากองเดียวที่เรียงตามชื่อไฟล์
+     ⚠️ แถวผลวัดถูกลบพร้อมใบ (FK CASCADE) ⇒ ถ้าแยกโฟลเดอร์รายพื้นที่ จะเหลือ
+       โฟลเดอร์เปล่าค้างที่ไม่มีอะไรชี้ถึงอีก */
+  if (type === 'service_survey_zone') {
+    // ⚠️ ทิ้ง `error` แล้วตัดสินจาก `!data` ไม่ได้ — คิวรีล้มจะอ่านเหมือน "ไม่มีแถว"
+    const { data: row, error } = await supabase
+      .from('service_survey_zones').select('id, "requestId"').eq('id', entityId).maybeSingle();
+    if (error) throw error;
+    if (!row?.requestId) throw new Error('ไม่พบใบคำร้องของผลวัดนี้');
+    return costingSegments(supabase, 'dept_request', row.requestId);
+  }
+
   if (type === 'mgmt_task' || type === 'mgmt_meeting') {
     const table = type === 'mgmt_meeting' ? 'mgmt_meetings' : 'mgmt_tasks';
     const { data } = await supabase.from(table).select('id, title').eq('id', entityId).maybeSingle();

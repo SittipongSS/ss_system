@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { AlertTriangle, CheckCircle2, ClipboardList, FileText, MapPin, Phone, Play, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FileText, MapPin, Phone, Play, Ruler, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -30,6 +30,7 @@ import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtDayMonth, naText } from "@/lib/format";
+import { SURVEY_VISIT_KIND } from "@/lib/service/surveyVisit";
 import { apiFetch } from "@/lib/apiFetch";
 
 const SECTIONS = [
@@ -263,6 +264,15 @@ export default function TodayPage() {
                         <Button as="a" href={`/service/visits/${visit.id}`} tone="neutral" variant="quiet" size="sm"
                           icon={<ClipboardList size={14} aria-hidden="true" />}>
                           ใบส่งงาน
+                        </Button>
+                      )}
+                      {/* ⭐ **นัดประเมินพื้นที่ไม่ปิดงานด้วยฟอร์มเดียวกับนัดบริการ** — ของที่ต้อง
+                          กรอกคือขนาด·รูป·จุดติดตั้ง ซึ่งเป็นตารางลูกของใบคำร้อง ไม่ใช่ผลรายเครื่อง
+                          ⇒ ปุ่มพาไปจอของตัวเอง · โผล่เฉพาะนัดที่ผูกใบคำร้องจริง */}
+                      {visit.kind === SURVEY_VISIT_KIND && visit.requestId && (
+                        <Button as="a" href={`/service/surveys/${visit.requestId}`} tone="primary" size="sm"
+                          icon={<Ruler size={14} aria-hidden="true" />}>
+                          บันทึกหน้างาน
                         </Button>
                       )}
                     </div>

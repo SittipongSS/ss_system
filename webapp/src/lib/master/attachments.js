@@ -62,6 +62,10 @@ export const PARENT_TABLE = {
   project: 'projects',
   // สัญญา (mig 0278) — ไฟล์ที่ลูกค้าเซ็นแล้วเปิดผ่าน proxy /file เหมือนไฟล์ดีล
   contract: 'sales_contracts',
+  /* ผลวัดพื้นที่รายใบ × รายพื้นที่ (mig 0314) — ⚠️ บรรทัดนี้คือจุดที่ทำให้ "แนบได้แต่
+     เปิดดูไม่ได้สักไฟล์" ถ้าลืม (หัวคำร้องกับดีลเคยโดนมาแล้วทั้งคู่)
+     ⚠️ สิทธิ์ของไฟล์ไหลตาม **ใบคำร้องแม่** ไม่ใช่ตามแถวผลวัด — ดูสาขาใน route ของไฟล์ */
+  service_survey_zone: 'service_survey_zones',
   contract_addendum: 'sales_contract_addenda',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };

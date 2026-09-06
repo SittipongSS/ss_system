@@ -37,7 +37,7 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import TimeInput from "@/components/ui/TimeInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { canAnswerRequestsFor, canBeServiceAssignee } from "@/lib/permissions";
+import { canAnswerRequestsFor, canBeServiceAssignee, canDoFieldWork, canEditService } from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
@@ -1574,6 +1574,9 @@ export default function RequestDetailPage() {
       <KindDetail
         request={req}
         categories={productTypes}
+        /* ⭐ ทางเข้าจอทำงานของ TS บนใบประเมิน — โชว์เฉพาะคนที่เปิดจอนั้นได้จริง
+           (ไม่มีสิทธิ์ = ไม่โชว์ ไม่ใช่โชว์แล้วกดไปเจอ 403) */
+        canWorkSurvey={canDoFieldWork({ role, department }) || canEditService({ role, department })}
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
         rowStep={{

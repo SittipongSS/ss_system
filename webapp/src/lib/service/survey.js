@@ -120,3 +120,158 @@ export function surveyTotals(rows = []) {
   t.volumeCbm = Math.round(t.volumeCbm * 100) / 100;
   return t;
 }
+
+/* ══ ด่านหกข้อ — บล็อกคนละที่ตามว่าใครแก้ได้ (มติผู้ใช้ 2026-08-29) ══════
+ *
+ * ⭐ **หลักการเดียวที่คุมทั้งหมด: ด่านต้องบล็อกเฉพาะของที่คนตรงหน้าด่านแก้เองได้**
+ *   เอาทั้งหกข้อไปกองที่ปุ่มส่งผล หัวหน้าจะเจอด่านที่ตัวเองแก้ไม่ได้สามข้อ
+ *   (วัดขนาด · ถ่ายภาพกว้าง · ระบุจุดหน้างาน) แล้วต้องส่งช่างกลับไปใหม่ทั้งรอบ
+ *   ⇒ ดักที่ช่างตั้งแต่แรกดีกว่า เพราะตอนนั้นเขายังยืนอยู่ในที่นั้น
+ *
+ *   | ต้องครบทุกพื้นที่        | ด่านอยู่ที่        | ใครแก้ได้                    |
+ *   |--------------------------|--------------------|------------------------------|
+ *   | ขนาด ก × ย × ส           | จอหน้างาน (ช่าง)   | ช่าง — ต้องยืนหน้างานถึงวัดได้ |
+ *   | ภาพกว้าง                 | จอหน้างาน (ช่าง)   | ช่าง                          |
+ *   | จุดที่ติดตั้งได้ ≥ 1 จุด   | จอหน้างาน (ช่าง)   | ช่าง                          |
+ *   | ภาพผัง                   | จอส่งผล (หัวหน้า)  | หัวหน้า — ช่างไม่ได้ถือผังไป   |
+ *   | จุดที่เลือกติดตั้ง ≥ 1 จุด | จอส่งผล (หัวหน้า)  | หัวหน้า                       |
+ *   | จำนวนแพ็คเกจ             | จอส่งผล (หัวหน้า)  | หัวหน้า                       |
+ *
+ * 🔴 **ไม่มีข้อไหนเป็นแค่ "เตือน"** — ทับกติกาเดิมของฟอร์มปิดงาน เพราะใบปิดงานที่ขาดรูป
+ *   ยังบอกได้ว่างานเสร็จ แต่ **ใบประเมินที่ขาดรูปหรือขาดจุด คือใบที่เอาไปทำงานต่อไม่ได้เลย**
+ *
+ * ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ไม่ต้องผ่านด่านไหนเลย — มันคือพื้นที่ที่จะไม่ขาย
+ *   บังคับให้วัดของที่ตัดทิ้งคือบังคับงานที่ไม่มีใครได้ใช้
+ */
+
+/** ชนิดไฟล์แนบของแถวผลวัด — ต้องตรงกับ `ATTACHMENT_TYPES.service_survey_zone` เป๊ะ */
+export const SURVEY_DOC_WIDE = 'survey_wide';
+export const SURVEY_DOC_PLAN = 'survey_plan';
+export const SURVEY_DOC_SPOT = 'survey_spot';
+
+const isCut = (row) => (row?.status || 'ok') === 'cut';
+
+/** นับไฟล์ของแถวหนึ่งแยกตามหัวข้อ — ผู้เรียกส่ง attachments ของแถวนั้นมาให้
+ *  ⚠️ รับ `[]` เมื่อยังไม่โหลดไฟล์ ⇒ ด่านจะบอกว่า "ยังไม่มีรูป" ซึ่ง **fail-closed ถูกแล้ว**
+ *    (ปล่อยผ่านตอนยังไม่รู้ = ส่งใบที่ไม่มีรูปออกไปได้จริง) */
+export function surveyDocCounts(files = []) {
+  const rows = Array.isArray(files) ? files : [];
+  const by = (docType) => rows.filter((f) => f?.docType === docType).length;
+  return { wide: by(SURVEY_DOC_WIDE), plan: by(SURVEY_DOC_PLAN), spot: by(SURVEY_DOC_SPOT) };
+}
+
+/**
+ * 🔑 **ด่านฝั่งหน้างาน** — พื้นที่หนึ่งแถว "บันทึกเสร็จ" หรือยัง
+ * คืนอาร์เรย์ของสิ่งที่ยังขาด (ว่าง = ครบ) เพื่อให้จอโชว์เป็นเช็คลิสต์ได้ ไม่ใช่แค่ปุ่มจาง
+ *
+ * @param row    แถว `service_survey_zones`
+ * @param files  ไฟล์แนบของแถวนั้น (`entityType='service_survey_zone'`)
+ */
+export function surveyFieldMissing(row = {}, files = []) {
+  if (isCut(row)) return [];
+  const out = [];
+  const size = surveyZoneSize(row.parts);
+  if (!size.complete) {
+    out.push(size.parts === 0
+      ? 'ยังไม่ได้วัดขนาด — เพิ่มอย่างน้อยหนึ่งส่วน'
+      : `มีส่วนที่กรอกไม่ครบสามช่อง ${size.parts - size.measuredParts} ส่วน`);
+  }
+  const docs = surveyDocCounts(files);
+  if (docs.wide === 0) out.push('ยังไม่มีภาพกว้าง');
+  if (spotCounts(row.spots).total === 0) out.push('ยังไม่ได้ระบุจุดที่ติดตั้งได้');
+  return out;
+}
+
+/**
+ * 🔑 **ด่านฝั่งส่งผล** — พื้นที่หนึ่งแถวพร้อมส่งให้ฝ่ายขายหรือยัง
+ *
+ * ⚠️ **รวมของฝั่งหน้างานมาด้วยในฐานะเช็คลิสต์** — จอส่งผลต้องแสดงครบทั้งหกข้อ
+ *   ปกติสามข้อบนจะติ๊กมาแล้ว ถ้าไม่ติ๊ก (ข้อมูลมาจากทางอื่น/ใบเก่า) หัวหน้าต้องเห็น
+ *   ว่าติดอะไร เพื่อจะกด "แจ้งช่างให้กลับไป" ได้ ไม่ใช่เจอปุ่มเทาเงียบ
+ * ⇒ ผู้เรียกแยกสองกลุ่มด้วย `field` / `result` ในผลลัพธ์
+ */
+export function surveyResultMissing(row = {}, files = []) {
+  if (isCut(row)) return { field: [], result: [] };
+  const result = [];
+  const docs = surveyDocCounts(files);
+  if (docs.plan === 0) result.push('ยังไม่มีภาพผังที่มาร์กจุดแล้ว');
+  if (spotCounts(row.spots).selected === 0) result.push('ยังไม่ได้เลือกจุดที่จะติดตั้ง');
+  if (!(Number(row.packageQty) > 0)) {
+    result.push('ยังไม่ได้เคาะจำนวนแพ็คเกจ');
+  } else if (packageNeedsNote(row) && !String(row.packageNote ?? '').trim()) {
+    /* 🔴 **ทับสูตรแล้วต้องบอกเหตุผล** (mig 0345 · กติกาเดียวกับการตัดพื้นที่ออก)
+       ของที่ต่างไปจากสิ่งที่ SA จะเสนอราคา คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน */
+    result.push('แพ็คเกจต่างจากสูตร — ต้องบอกเหตุผล');
+  }
+  return { field: surveyFieldMissing(row, files), result };
+}
+
+/** เคาะแพ็คเกจต่างจากที่สูตรบอกไหม — `false` เมื่อยังไม่ได้เคาะ หรือคำนวณสูตรไม่ได้
+ *  ⚠️ **ตรงกับสูตรไม่ต้องมีเหตุผล** — บังคับเขียนทุกแถวจะได้ข้อความขยะที่ไม่มีใครอ่าน */
+export function packageNeedsNote(row = {}) {
+  const suggested = suggestedPackages(surveyZoneSize(row.parts).volumeCbm);
+  const qty = Number(row.packageQty);
+  if (!suggested || !(qty > 0)) return false;
+  return qty !== suggested;
+}
+
+/* ── ส่งผลไปแล้ว = ตัวเลขออกจากฝ่ายเราไปแล้ว ────────────────────────────────
+ *
+ * 🔑 **ด่านเดียวที่ทั้งช่างและหัวหน้าใช้ร่วมกัน** — `PATCH` (ผลวัด) และ `PUT` (การเคาะ)
+ *   ต้องถามตัวนี้ก่อนเขียนทุกครั้ง
+ *
+ * 🐞 **เจอตอน UAT 06/09/2026** — จอปิดให้แล้ว (`canWrite && !sent` · `canDecide && !sent`)
+ *   แต่ **server ไม่ได้ปิด** ⇒ ยิง API ตรงยังแก้ขนาด/แพ็คเกจของใบที่ส่งไปแล้วได้ 200
+ *   โดยไม่มีการส่งซ้ำและไม่มีร่องรอยที่ตัวใบ ⇒ SA ถือตัวเลขชุดหนึ่ง ฐานเก็บอีกชุดหนึ่ง
+ *   (กติกาเดิมของโปรเจกต์: กฎที่เขียนบนจออย่างเดียว = กฎที่ยังไม่มีจริง)
+ *
+ * ⭐ **ทางออกมีอยู่แล้ว ไม่ต้องสร้างของใหม่** — ปุ่ม "ยังไม่จบ" ของใบคำร้อง
+ *   (`action: 'reopen'`) ล้าง `answeredAt` ทิ้งพร้อมเหตุผลที่บันทึกไว้ ⇒ แก้ต่อได้ตามปกติ
+ *   ⚠️ ห้ามผูกด่านนี้กับ `status` — ใบที่ถูกดึงกลับมี status `acknowledged` เท่ากับใบที่
+ *     ยังไม่เคยส่ง · สิ่งที่ตัดสินคือ "ตัวเลขออกไปหา SA แล้วหรือยัง" = `answeredAt` ตัวเดียว
+ */
+export function surveyEditLockError(request) {
+  if (!request) return 'ไม่พบใบคำร้อง';
+  if (request.cancelledAt) return 'ใบนี้ถูกยกเลิกไปแล้ว — แก้ผลประเมินไม่ได้';
+  if (request.answeredAt) {
+    return 'ส่งผลให้ฝ่ายขายไปแล้ว — แก้ไม่ได้ · ถ้าตัวเลขเปลี่ยน ให้กด "ยังไม่จบ" ที่ใบคำร้องก่อน';
+  }
+  return null;
+}
+
+/**
+ * 🔑 **ด่านเดียวที่ทั้งปุ่มบนจอและ API ใช้ร่วมกัน** — คืนข้อความไทยเมื่อส่งผลไม่ได้ หรือ `null`
+ *
+ * @param rows          ทุกแถวของใบ
+ * @param filesByZone   `{ [zoneRowId]: ไฟล์ของแถวนั้น }`
+ * @param ctx.canSend   ผู้ใช้เป็นคนที่ส่งผลได้ไหม (หัวหน้า TS — **ไม่ใช่** `canEditService`
+ *                      ที่ช่างทุกคนผ่าน · ผู้เรียกคำนวณมาให้)
+ *
+ * ⚠️ fail-closed: ไม่ส่งบริบทมา = ปฏิเสธ
+ */
+export function surveySendError(rows = [], filesByZone = {}, { canSend = false } = {}) {
+  if (!canSend) return 'ส่งผลประเมินได้เฉพาะหัวหน้าฝ่ายบริการ';
+  const active = (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
+  if (!active.length) return 'ใบนี้ไม่มีพื้นที่ที่ต้องประเมินเหลืออยู่เลย';
+
+  /* ⚠️ **บอกชื่อพื้นที่ที่ติด ไม่ใช่แค่ "ยังไม่ครบ"** — ใบหนึ่งมีได้สิบพื้นที่
+     ข้อความที่ไม่บอกว่าพื้นที่ไหน แปลว่าหัวหน้าต้องไล่เปิดทีละอันเอง */
+  const stuck = [];
+  for (const row of active) {
+    const miss = surveyResultMissing(row, filesByZone?.[row.id] || []);
+    const all = [...miss.field, ...miss.result];
+    if (all.length) stuck.push(`${row.zoneName || 'พื้นที่'}: ${all.join(' · ')}`);
+  }
+  if (stuck.length) {
+    const show = stuck.slice(0, 3).join(' | ');
+    return `ยังส่งผลไม่ได้ — ${show}${stuck.length > 3 ? ` และอีก ${stuck.length - 3} พื้นที่` : ''}`;
+  }
+  return null;
+}
+
+/** ความคืบหน้าหน้างานของทั้งใบ — หัวจอมือถือ ("วัดแล้ว 3 / 5 พื้นที่") */
+export function surveyFieldProgress(rows = [], filesByZone = {}) {
+  const active = (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
+  const done = active.filter((r) => surveyFieldMissing(r, filesByZone?.[r.id] || []).length === 0);
+  return { total: active.length, done: done.length, complete: active.length > 0 && done.length === active.length };
+}

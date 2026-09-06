@@ -11,6 +11,7 @@
 //
 // ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ยังอยู่ในตาราง แต่ไม่เข้ายอดรวม — หายไป
 // เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วเจ้าหน้าที่ตัดทิ้งเพราะอะไร
+import Link from "next/link";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { surveyTotals, surveyZoneSummary } from "@/lib/service/survey";
@@ -34,7 +35,7 @@ const VISIT_STATE = {
   cancelled: { label: 'ยกเลิก', tone: 'plain' },
 };
 
-export default function SurveyDetail({ request }) {
+export default function SurveyDetail({ request, canWorkSurvey = false }) {
   const zones = request.surveyZones || [];
   const site = request.surveySite || null;
   const visit = request.surveyVisit || null;
@@ -72,6 +73,15 @@ export default function SurveyDetail({ request }) {
               visit.assigneeName,
             ].filter(Boolean).join(' · ')}
           </span>
+        </p>
+      )}
+
+      {/* ⭐ **ทางเข้าจอทำงานของ TS** — ตารางนี้เป็นของ *ผู้อ่าน* (ฝ่ายขายเป็นหลัก)
+          ส่วนการกรอกผลอยู่คนละจอ เพราะเป็นคนละงานคนละสิทธิ์
+          ⚠️ ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม (ไม่ใช่โชว์แล้วกดไปเจอ 403) */}
+      {canWorkSurvey && (
+        <p className={styles.surveyOpen}>
+          <Link href={`/service/surveys/${request.id}`}>เปิดจอบันทึกผล / สรุปส่งผล →</Link>
         </p>
       )}
 

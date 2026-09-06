@@ -265,6 +265,14 @@ export const FIELD_CREW_ROLES = ['ts', 'ts_senior'];
 
 /** เป็นตำแหน่งที่ออกหน้างานประจำไหม — ถามจากลิสต์กลาง ไม่ใช่เทียบ `role === 'ts'` */
 export const isFieldCrewRole = (role) => FIELD_CREW_ROLES.includes(normalizeRole(role));
+
+/** ⭐ **ส่งผลประเมินพื้นที่ให้ฝ่ายขายได้ไหม** — หัวหน้าฝ่าย TS เท่านั้น (แผน §5.4)
+ *  🔴 **ไม่ใช่ `canEditService`** ซึ่งช่างทุกคนผ่าน — การกดส่งผลคือการรับรองว่า
+ *    ตัวเลขแพ็คเกจกับจุดติดตั้งที่ SA จะเอาไปเสนอราคานั้นถูกต้อง เป็นการตัดสินใจ
+ *    เชิงพาณิชย์ ไม่ใช่การรายงานข้อเท็จจริงหน้างาน
+ *  ⚠️ แอดมินผ่าน — เก็บกวาด/แก้ให้ตอนหัวหน้าไม่อยู่ */
+export const canSendSurveyResult = (user) => user?.role === 'admin'
+  || SERVICE_HEAD_ROLES.includes(normalizeRole(user?.role));
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',

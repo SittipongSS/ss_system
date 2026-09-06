@@ -1,9 +1,23 @@
 // ── ตรรกะใบประเมินพื้นที่ (mig 0314) — ตัวเลขล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  CBM_PER_PACKAGE, normalizeSurveyPart, spotCounts, suggestedPackages,
-  surveyTotals, surveyZoneSize, surveyZoneSummary,
+  CBM_PER_PACKAGE,
+  SURVEY_DOC_PLAN,
+  SURVEY_DOC_WIDE,
+  normalizeSurveyPart,
+  packageNeedsNote,
+  spotCounts,
+  suggestedPackages,
+  surveyEditLockError,
+  surveyFieldMissing,
+  surveyFieldProgress,
+  surveyResultMissing,
+  surveySendError,
+  surveyTotals,
+  surveyZoneSize,
+  surveyZoneSummary,
 } from './survey.js';
 
 const part = (w, l, h, label = null) => ({ widthM: w, lengthM: l, heightM: h, label });
@@ -121,4 +135,164 @@ test('ยอดรวมของตัวอย่างจริงในม�
   assert.equal(t.packageQty, 7);
   assert.equal(t.spotsTotal, 12);
   assert.equal(t.spotsSelected, 9);
+});
+
+/* ══ ด่านหกข้อ — บล็อกคนละที่ตามว่าใครแก้ได้ (มติผู้ใช้ 2026-08-29) ══════ */
+
+const wide = { docType: SURVEY_DOC_WIDE };
+const plan = { docType: SURVEY_DOC_PLAN };
+const goodParts = [{ widthM: 10, lengthM: 10, heightM: 3 }];
+const zone = (over = {}) => ({ id: 'SVZ1', zoneName: 'ล็อบบี้', parts: goodParts, spots: [{ id: 's1', label: 'เสากลาง' }], ...over });
+
+test('⭐ จอหน้างานบล็อกสามอย่าง: ขนาด · ภาพกว้าง · จุดที่ติดตั้งได้', () => {
+  assert.deepEqual(surveyFieldMissing(zone(), [wide]), [], 'ครบสามอย่าง = ผ่าน');
+
+  assert.match(surveyFieldMissing(zone({ parts: [] }), [wide])[0], /ยังไม่ได้วัดขนาด/);
+  assert.match(surveyFieldMissing(zone(), [])[0], /ยังไม่มีภาพกว้าง/);
+  assert.match(surveyFieldMissing(zone({ spots: [] }), [wide])[0], /จุดที่ติดตั้งได้/);
+});
+
+/* ⚠️ ส่วนที่กรอกไม่ครบสามช่อง = **แถวเสีย** ไม่ใช่แถวที่คิดเป็น 0 */
+test('ส่วนที่กรอกไม่ครบสามช่องต้องถูกฟ้อง ไม่ใช่บวกเป็นศูนย์', () => {
+  const half = [{ widthM: 10, lengthM: 10, heightM: 3 }, { widthM: 5, lengthM: 5 }];
+  assert.match(surveyFieldMissing(zone({ parts: half }), [wide])[0], /กรอกไม่ครบสามช่อง 1 ส่วน/);
+});
+
+/* ⭐ ผังไม่บังคับที่หน้างาน — ช่างไม่ได้ถือผังไปด้วย · ด่านผังอยู่ที่ปุ่มส่งผล */
+test('⭐ ผังไม่บล็อกที่หน้างาน แต่บล็อกที่ส่งผล', () => {
+  assert.deepEqual(surveyFieldMissing(zone(), [wide]), [], 'ไม่มีผังก็จบงานหน้างานได้');
+  const miss = surveyResultMissing(zone(), [wide]);
+  assert.deepEqual(miss.field, [], 'ฝั่งหน้างานครบแล้ว');
+  assert.match(miss.result.join(' '), /ภาพผัง/);
+});
+
+test('⭐ จอส่งผลบล็อกสามอย่าง: ผัง · จุดที่เลือก · แพ็คเกจ', () => {
+  // 10×10×3 = 300 ลบ.ม. ⇒ สูตรได้ 1 — ใส่ตรงสูตรเพื่อไม่ให้ไปติดด่านเหตุผล (คนละข้อ)
+  const full = zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], packageQty: 1 });
+  assert.deepEqual(surveyResultMissing(full, [wide, plan]).result, []);
+
+  assert.match(surveyResultMissing(full, [wide]).result.join(' '), /ภาพผัง/);
+  assert.match(surveyResultMissing(zone({ packageQty: 1 }), [wide, plan]).result.join(' '), /เลือกจุด/);
+  assert.match(surveyResultMissing({ ...full, packageQty: null }, [wide, plan]).result.join(' '), /แพ็คเกจ/);
+});
+
+/* ⚠️ พื้นที่ที่ถูกตัดไม่ต้องผ่านด่านไหนเลย — บังคับให้วัดของที่จะไม่ขายคือบังคับงานเปล่า */
+test('⚠️ พื้นที่ที่ตัดออกไม่ติดด่านอะไรเลย', () => {
+  const cut = { id: 'SVZ9', zoneName: 'ห้องน้ำ', status: 'cut', cutReason: 'ลูกค้าไม่เอา', parts: [], spots: [] };
+  assert.deepEqual(surveyFieldMissing(cut, []), []);
+  assert.deepEqual(surveyResultMissing(cut, []), { field: [], result: [] });
+});
+
+test('fail-closed — ไม่ใช่หัวหน้า ส่งผลไม่ได้', () => {
+  assert.match(surveySendError([zone()], {}, {}), /หัวหน้าฝ่ายบริการ/);
+});
+
+/* ⚠️ ยังไม่โหลดไฟล์ = ยังไม่มีรูป ⇒ ด่านต้องปฏิเสธ ไม่ใช่ปล่อยผ่าน */
+test('⚠️ ไม่ส่งไฟล์มาให้ = ถือว่ายังไม่มีรูป (fail-closed)', () => {
+  const full = zone({ spots: [{ id: 's1', selected: true }], packageQty: 1 });
+  assert.match(surveySendError([full], {}, { canSend: true }), /ภาพ/);
+});
+
+/* ⚠️ ใบหนึ่งมีได้สิบพื้นที่ — ข้อความที่ไม่บอกว่าพื้นที่ไหน แปลว่าหัวหน้าต้องไล่เปิดเอง */
+test('ข้อความบอกชื่อพื้นที่ที่ติด ไม่ใช่แค่ "ยังไม่ครบ"', () => {
+  const ok = zone({ id: 'A', zoneName: 'ล็อบบี้', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const bad = zone({ id: 'B', zoneName: 'โถงลิฟต์', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const err = surveySendError([ok, bad], { A: [wide, plan], B: [wide] }, { canSend: true });
+  assert.match(err, /โถงลิฟต์/);
+  assert.doesNotMatch(err, /ล็อบบี้/, 'พื้นที่ที่ครบแล้วต้องไม่ถูกเอ่ยถึง');
+});
+
+test('ครบทุกพื้นที่ = ส่งผลได้', () => {
+  const a = zone({ id: 'A', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  assert.equal(surveySendError([a], { A: [wide, plan] }, { canSend: true }), null);
+});
+
+test('ใบที่ตัดพื้นที่ออกหมด ส่งผลไม่ได้ — ไม่มีอะไรให้ส่ง', () => {
+  const cut = { id: 'C', zoneName: 'x', status: 'cut', cutReason: 'ลูกค้าไม่เอา' };
+  assert.match(surveySendError([cut], {}, { canSend: true }), /ไม่มีพื้นที่/);
+});
+
+test('ความคืบหน้าหน้างานนับเฉพาะพื้นที่ที่ยังไม่ถูกตัด', () => {
+  const done = zone({ id: 'A' });
+  const todo = zone({ id: 'B', parts: [] });
+  const cut = { id: 'C', status: 'cut', cutReason: 'ลูกค้าไม่เอา' };
+  const p = surveyFieldProgress([done, todo, cut], { A: [wide], B: [wide] });
+  assert.deepEqual({ total: p.total, done: p.done, complete: p.complete }, { total: 2, done: 1, complete: false });
+});
+
+/* 🔴 ทับสูตรแล้วต้องบอกเหตุผล (mig 0345) — กติกาเดียวกับการตัดพื้นที่ออก */
+test('🔴 แพ็คเกจต่างจากสูตรต้องมีเหตุผล · ตรงกับสูตรไม่ต้อง', () => {
+  // 10×10×3 = 300 ลบ.ม. ⇒ สูตรได้ 1
+  const base = zone({ spots: [{ id: 's', selected: true }] });
+  assert.equal(packageNeedsNote({ ...base, packageQty: 1 }), false, 'ตรงสูตร = ไม่ต้องมีเหตุผล');
+  assert.equal(packageNeedsNote({ ...base, packageQty: 3 }), true);
+  assert.equal(packageNeedsNote({ ...base, packageQty: null }), false, 'ยังไม่เคาะ = ยังไม่ถึงข้อนี้');
+
+  const files = [wide, plan];
+  assert.deepEqual(surveyResultMissing({ ...base, packageQty: 1 }, files).result, []);
+  assert.match(surveyResultMissing({ ...base, packageQty: 3 }, files).result.join(' '), /ต้องบอกเหตุผล/);
+  assert.deepEqual(
+    surveyResultMissing({ ...base, packageQty: 3, packageNote: 'กึ่งกลางแจ้ง ลมโกรก' }, files).result,
+    [],
+  );
+});
+
+/* 🐞 **รูที่เทสต์ฟังก์ชันมองไม่เห็น** — ด่านถูกหมด แต่ถ้า route ไม่เรียกก็ไม่มีผล
+   (บทเรียนจากงานสัญญา 2026-09-03: ฟังก์ชันเขียว แต่ของจริงพังเพราะ route ไม่ส่งของเข้าไป)
+   ⇒ ยามพวกนี้ผูกกับ **ซอร์สจริง** ไม่ใช่กับฟังก์ชัน */
+test('🐞 ปุ่มส่งผลต้องถามด่านตัวเดียวกับจอ และอ่านไฟล์จริงมานับ', () => {
+  const route = readFileSync(new URL('../../app/api/service/surveys/[id]/send/route.js', import.meta.url), 'utf8');
+  assert.match(route, /surveySendError\(/, 'ต้องใช้ด่านตัวเดียวกับจอ ไม่ใช่เขียนเงื่อนไขซ้ำ');
+  assert.match(route, /listAttachments\('service_survey_zone'/,
+    'ต้องนับรูปจากไฟล์จริง — เชื่อค่าที่ client ส่งมาแปลว่าส่งใบไม่มีรูปออกไปได้');
+  assert.match(route, /canSendSurveyResult\(/, 'ส่งผลได้เฉพาะหัวหน้าฝ่าย ไม่ใช่ canEditService');
+  /* ⚠️ กติกาการเปลี่ยนสถานะต้องใช้ของกลาง ไม่ใช่เขียน 'answered' เอง —
+     ใบที่ SA กดปิดไปก่อนต้องกลายเป็น closed ทันที (ปิดสองฝั่ง กดก่อน/หลังกันได้) */
+  assert.match(route, /closureStatus\(/);
+  assert.match(route, /answerRequestError\(/);
+});
+
+/* 🔴 ช่างกับหัวหน้าเขียนคนละชุดช่อง — รวมเป็นเส้นเดียวเมื่อไร ช่างจะทับตัวเลข
+   ที่หัวหน้าเคาะไปแล้วโดยไม่มีใครรู้ */
+test('🔴 เส้นของช่างต้องไม่รับ packageQty · เส้นของหัวหน้าต้องไม่รับ parts', () => {
+  const route = readFileSync(
+    new URL('../../app/api/service/surveys/[id]/zones/[zoneId]/route.js', import.meta.url), 'utf8');
+  /* ⚠️ ตัดที่ **หัวคอมเมนต์ของ PUT** ไม่ใช่ที่ `export const PUT` — คอมเมนต์นั้นเอ่ยชื่อ
+     ช่องของฝั่งหัวหน้าไว้ ถ้าตัดทีหลังมันจะตกอยู่ในก้อนของ PATCH แล้วยามจับผิดตัว */
+  const putAt = route.indexOf('/* ── PUT:');
+  const patch = route.slice(route.indexOf('export const PATCH'), putAt);
+  const put = route.slice(putAt);
+
+  assert.doesNotMatch(patch, /body\.packageQty/, 'ช่างเคาะแพ็คเกจไม่ได้');
+  assert.doesNotMatch(patch, /selectedSpotIds/, 'ช่างเลือกจุดที่จะติดตั้งไม่ได้');
+  assert.doesNotMatch(put, /body\.parts/, 'หัวหน้าแก้ขนาดที่ช่างวัดไม่ได้');
+  assert.match(put, /canSendSurveyResult\(/, 'เคาะแพ็คเกจได้เฉพาะหัวหน้า');
+  assert.match(patch, /visitWriteAccess\(/, 'ช่างเขียนได้เฉพาะใบที่ตัวเองถูกมอบหมาย');
+});
+
+/* ── ล็อกหลังส่งผล (🐞 UAT 06/09/2026) ─────────────────────────────────────
+   จอปิดให้แล้วด้วย `!sent` แต่ server ไม่ได้ปิด ⇒ ยิง API ตรงยังแก้ตัวเลขของใบที่
+   ส่งไปแล้วได้ 200 โดยไม่มีการส่งซ้ำ · SA ถือตัวเลขชุดหนึ่ง ฐานเก็บอีกชุดหนึ่ง */
+test('🐞 ส่งผลแล้วต้องแก้ไม่ได้ทั้งสองเส้น — และต้องบอกทางออก', () => {
+  assert.equal(surveyEditLockError({ id: 'R1' }), null, 'ใบที่ยังไม่ส่งต้องแก้ได้ตามปกติ');
+  assert.match(surveyEditLockError({ id: 'R1', answeredAt: '2026-09-06T06:41:32Z' }), /ยังไม่จบ/,
+    'ต้องบอกทางออก ไม่ใช่แค่ "แก้ไม่ได้"');
+  assert.match(surveyEditLockError({ id: 'R1', cancelledAt: '2026-09-06T06:00:00Z' }), /ยกเลิก/);
+  assert.match(surveyEditLockError(null), /ไม่พบ/);
+
+  /* 🔑 **ผูกกับ `answeredAt` ไม่ใช่ `status`** — ใบที่ SA กด "ยังไม่จบ" กลับมามี
+     status `acknowledged` เท่ากับใบที่ไม่เคยส่ง ⇒ ต้องกลับมาแก้ได้ */
+  assert.equal(surveyEditLockError({ id: 'R1', status: 'acknowledged', answeredAt: null }), null);
+});
+
+test('🔴 route ของทั้งช่างและหัวหน้าต้องเรียกด่านล็อกก่อนเขียน', () => {
+  const route = readFileSync(
+    new URL('../../app/api/service/surveys/[id]/zones/[zoneId]/route.js', import.meta.url), 'utf8');
+  const putAt = route.indexOf('/* ── PUT:');
+  const patch = route.slice(route.indexOf('export const PATCH'), putAt);
+  const put = route.slice(putAt);
+
+  assert.match(route, /surveyEditLockError/, 'ต้องใช้ด่านกลาง ไม่ใช่เขียน answeredAt เองในแต่ละเส้น');
+  assert.match(patch, /requestLock\(/, 'เส้นของช่างต้องถามใบแม่ก่อนเขียน');
+  assert.match(put, /requestLock\(/, 'เส้นของหัวหน้าต้องถามใบแม่ก่อนเขียน');
 });

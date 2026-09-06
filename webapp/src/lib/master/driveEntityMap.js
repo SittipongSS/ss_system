@@ -23,6 +23,10 @@ export const FOLDER_ENTITY_TYPES = [
   'dept_request_item',
   'costing_request',
   'dept_request',
+  /* ผลวัดพื้นที่ของใบประเมิน (mig 0314) — ใช้โฟลเดอร์ **ของใบคำร้องแม่**
+     ไม่ใช่โฟลเดอร์ของตัวเอง (ดูเหตุผลที่ drive.js) แต่ยังต้องประกาศที่นี่
+     ไม่งั้นตกถัง "_รอจัดที่" ทั้งที่ตัวสร้าง path รู้จักมันแล้ว */
+  'service_survey_zone',
   'mgmt_task',
   'mgmt_meeting',
   'personal_task',

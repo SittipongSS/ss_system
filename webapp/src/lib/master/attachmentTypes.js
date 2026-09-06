@@ -3,6 +3,9 @@
 // import ได้ทั้ง client (UI dropdown/badge) และ server (validation).
 // docType ที่ไม่อยู่ในลิสต์จะตกเป็น 'other' โดยอัตโนมัติเมื่อแสดงผล.
 import { categoryOf } from "@/lib/master/categoryOf";
+/* ⚠️ **นำเข้าคีย์ชนิดรูปของใบประเมิน ไม่ประกาศซ้ำ** — ด่านที่นับรูป (`survey.js`) อ่าน
+   คีย์ชุดเดียวกัน · พิมพ์สตริงซ้ำสองที่เมื่อไร วันหนึ่งจะพิมพ์ต่างกันแล้วด่านเงียบ */
+import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT, SURVEY_DOC_WIDE } from "@/lib/service/survey";
 
 // `required: true` = เอกสารจำเป็น (โชว์เป็นการ์ดที่ต้องมี + ติ๊กถูกเมื่ออัปแล้ว).
 // `other` เป็นการ์ดเอกสารเพิ่มเติม (ไม่บังคับ, แนบได้หลายไฟล์).
@@ -187,6 +190,7 @@ export const EXTERNAL_DOC_TYPE = 'external_doc';
 export const SIGNED_CONTRACT_DOC_TYPE = 'signed_contract';
 export const SIGNED_ADDENDUM_DOC_TYPE = 'signed_addendum';
 
+
 export const ATTACHMENT_TYPES = {
   // ⭐ เอกสารของดีล (P5c) — PO · หลักฐานมัดจำ · บรีฟลูกค้า · อื่น ๆ
   // ชุดนี้ตรงกับ `sales_deal_documents.kind` ที่ 0069 ใช้อยู่แล้ว ⇒ รายการ checklist
@@ -217,6 +221,19 @@ export const ATTACHMENT_TYPES = {
     { key: SIGNED_CONTRACT_DOC_TYPE, label: 'สัญญาที่ลงนามแล้ว' },
     { key: EXTERNAL_DOC_TYPE, label: 'เอกสารที่ใช้แทนสัญญา' },
     { key: 'other', label: 'เอกสารแนบอื่นๆ' },
+  ],
+  /* ⭐ ผลวัดพื้นที่รายใบ × รายพื้นที่ (mig 0314) — **สามหัวข้อ ไม่ใช่กองเดียว**
+     (มติผู้ใช้ 2026-08-29) เพราะแต่ละหัวข้อตอบคนละคำถามและบล็อกคนละที่:
+       · ภาพกว้าง — "ที่นี่หน้าตายังไง" ช่างถ่ายหน้างาน ⇒ บล็อกที่จอหน้างาน
+       · ภาพผัง   — "เครื่องลงตรงไหน" **ผังที่ TS มาร์กจุดลงไปแล้ว** ⇒ บล็อกที่ปุ่มส่งผล
+       · ภาพจุด   — รูปของจุดติดตั้งแต่ละจุด ผูกกับรายการจุดใน `spots[]`
+     🔴 **ห้ามใช้ไฟล์ที่ SA แนบมาเป็นผัง** — ผังที่ SA แนบคือผังเปล่าของอาคาร
+        คนละของกับผังที่มาร์กแล้ว · ปุ่มลัดแบบนั้นทำให้ด่านผ่านโดยไม่มีงานเกิดขึ้นจริง
+        ซึ่งแย่กว่าไม่มีด่าน เพราะระบบจะรายงานว่า "ครบ" ทั้งที่ไม่มีใครรู้ว่าเครื่องลงตรงไหน */
+  service_survey_zone: [
+    { key: SURVEY_DOC_WIDE, label: 'ภาพกว้าง' },
+    { key: SURVEY_DOC_PLAN, label: 'ภาพผัง (มาร์กจุดแล้ว)' },
+    { key: SURVEY_DOC_SPOT, label: 'ภาพจุดติดตั้ง' },
   ],
   // บันทึกเพิ่มเติมสัญญา (mig 0282) — ฉบับที่ลูกค้าเซ็นแล้วสแกนกลับ (กติกาเดียวกับสัญญา)
   contract_addendum: [

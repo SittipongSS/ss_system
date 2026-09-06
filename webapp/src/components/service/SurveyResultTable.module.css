@@ -1,0 +1,89 @@
+/* ตารางสรุปผลประเมินของหัวหน้า TS (เฟส 3 · จอ 07)
+   ⚠️ `.req` ไม่มี selector จริงใน globals.css ⇒ ประกาศเอง */
+
+.sub {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+/* พื้นที่ที่ตัดออกยังต้องอ่านได้ — จางลง ไม่ใช่หายไป */
+.cut { opacity: var(--op-muted); }
+.cutCell { color: var(--text-2); line-height: var(--lh-thai); }
+
+.dims { font-variant-numeric: tabular-nums; }
+.dims > span { display: block; }
+
+.warnText { color: var(--amber); font-size: var(--fs-3); }
+
+/* ── จุดติดตั้ง ────────────────────────────────────────────────────────── */
+.spots { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+.spotChip {
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.spotChip[data-on] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+.spotChip:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
+.spotChip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* ── ตัวเพิ่ม/ลดแพ็คเกจ ───────────────────────────────────────────────── */
+.stepper { display: inline-flex; align-items: center; gap: var(--space-1-5); }
+
+.stepper button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.stepper button:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
+.stepper button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.stepper b { min-width: 20px; text-align: center; font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
+
+/* ⚠️ ป้ายนี้ **ไม่ใช่คำเตือน** — สูตรเป็นข้อเสนอ ไม่ใช่คำสั่ง */
+.delta { display: block; margin-top: var(--space-0-5); font-size: var(--fs-3); }
+.delta[data-tone="ok"] { color: var(--green); }
+.delta[data-tone="warn"] { color: var(--amber); }
+
+.noteBox { display: flex; flex-direction: column; gap: var(--space-0-5); margin-top: var(--space-1-5); }
+
+.req {
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  color: var(--red);
+  background: var(--red-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  align-self: flex-start;
+}
+
+/* ── รูป ──────────────────────────────────────────────────────────────── */
+.docs { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.docs span[data-low] { color: var(--red); font-weight: var(--fw-bold); }
+
+.rowMiss {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  color: var(--amber);
+  white-space: normal;
+}
