@@ -115,11 +115,22 @@ test('นับวันค้างเฉพาะใบที่รอลง�
   assert.equal(daysAwaitingSignature({ status: 'signed', issuedAt: '2026-08-10T00:00:00Z' }, now), null);
 });
 
-test('ตำแหน่งผู้ลงนามฝั่งผู้ว่าจ้างไม่มีค่าตั้งต้น — ต้นฉบับล่าสุดไม่มีบรรทัดนี้', async () => {
+/* ⭐ **มติผู้ใช้ 2026-09-06 กลับด้านจากมติ 2026-08-21** — เดิมเว้นว่างตามต้นฉบับ 13 ส.ค.
+   ที่ตัดบรรทัดนี้ออก · แต่บันทึกเพิ่มเติมกับสัญญาบริการใช้ "ผู้มีอำนาจ/ผู้รับมอบอำนาจ" ทั้งคู่
+   ⇒ ลูกค้ารายเดียวกันเซ็นสามฉบับแล้วเห็นคนละคำ · ผู้ใช้เลือกให้ทั้งสามฉบับพูดคำเดียวกัน
+   ⚠️ เป็นจุดที่ตั้งใจต่างจากต้นฉบับ — ห้ามถอดกลับเพราะ "ต้นฉบับไม่มี" โดยไม่ถามเจ้าของเรื่อง */
+test('ตำแหน่งผู้ลงนามฝั่งผู้ว่าจ้าง: สามฉบับใช้คำเดียวกัน', async () => {
   const { contractFieldDefaults } = await import('./contractTemplates.js');
-  const filled = contractFieldDefaults('scent_design', {});
-  // เว้นว่าง = ไม่พิมพ์บรรทัดตำแหน่งใต้ "ผู้ว่าจ้าง" (ฉบับ 13 ส.ค. 2569 ตัดออก)
-  assert.ok(!filled.clientSignerTitle, 'ต้องไม่มีค่าตั้งต้น');
+  const { ADDENDUM_TEMPLATE } = await import('./contractTemplateAddendum.js');
+  const WORD = 'ผู้มีอำนาจ/ผู้รับมอบอำนาจ';
+
+  assert.equal(contractFieldDefaults('scent_design', {}).clientSignerTitle, WORD);
+  assert.equal(contractFieldDefaults('service', {}).clientSignerTitle, WORD);
+  const addendumField = ADDENDUM_TEMPLATE.fields.find((f) => f.key === 'clientSignerTitle');
+  assert.equal(addendumField.default, WORD);
+  // ลบทิ้งเองยังได้ = ไม่พิมพ์บรรทัดนั้น (ต้นฉบับ 13 ส.ค. ไม่มีบรรทัดนี้)
+  const cleared = contractFieldDefaults('scent_design', { current: { clientSignerTitle: '' } });
+  assert.equal(cleared.clientSignerTitle, WORD, 'ค่าว่างถือว่ายังไม่กรอก — เติมค่าตั้งต้นให้');
 });
 
 test('ข้อ 2.9 ใช้ถ้อยคำของต้นฉบับล่าสุด — "เลขที่ใบรับแจ้งน้ำหอม"', async () => {
@@ -129,7 +140,9 @@ test('ข้อ 2.9 ใช้ถ้อยคำของต้นฉบับล
     .find((item) => item.no === 'ข้อ 2.9');
   // ฉบับ 13 ส.ค. 2569 เติมคำว่า "ใบรับแจ้ง" — จุดเดียวที่ต่างจากรุ่น 20260708
   assert.match(clause.text, /เลขที่ใบรับแจ้งน้ำหอมของ/);
-  assert.equal(SCENT_DESIGN_TEMPLATE.version, '20260813');
+  /* เลขรุ่นขึ้นต้นด้วยวันที่ของ *ต้นฉบับ* เสมอ · ตัวอักษรท้ายคือรอบแก้ของเราเอง
+     (`b` = มติ 2026-09-06 ใส่ค่าตั้งต้นตำแหน่งผู้ลงนาม) — เนื้อข้อสัญญายังเป็นฉบับ 13 ส.ค. */
+  assert.match(SCENT_DESIGN_TEMPLATE.version, /^20260813/);
 });
 
 test('ร่างลบได้จนกว่าจะออกสัญญา · ออกแล้วต้องออกฉบับแก้ไข', async () => {
