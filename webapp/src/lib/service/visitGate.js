@@ -17,7 +17,7 @@
 //    (กติกาเดียวกับ `quotationDealBlocker` ที่ GatedAction เขียนไว้)
 import { accessConflict } from './sites';
 import { termIsActive } from './terms';
-import { coversDate, hasOverdueUnconfirmed } from '@/lib/sales/paymentCoverage';
+import { coversDate, hasOverdueUnconfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { contractInForce } from '@/lib/sales/contracts';
 import { contractSpanAt } from '@/lib/sales/serviceContractLink';
 
@@ -140,7 +140,7 @@ export function evaluateVisitGate(visit, {
     if (!paid.length) {
       return {
         zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: 'SA → FN',
-        reason: 'วันนัดเกินช่วงที่เก็บเงินแล้ว หรือมีงวดเลยกำหนดที่บัญชียังไม่รับรอง',
+        reason: moneyStopReason(covered, installmentsByOrderId, visitDate),
       };
     }
     return { zoneId: zone.id, zoneName: zone.name || null, state: 'ok', owner: null, reason: null };
@@ -251,4 +251,31 @@ export const gateSummary = (items = []) => ({
    ⚠️ นี่คือจุดที่ทำให้กติกา "TS ไม่ใช่ต้นทางของงาน" ไม่กลายเป็นแรงเสียดทานรายวัน */
 export function initialVisitStatus(visit, ctx = {}) {
   return gatePassed(evaluateVisitGate(visit, ctx)) ? 'scheduled' : 'draft';
+}
+
+/* ── ทำไมเงินถึงไม่ผ่าน — สามเหตุที่แก้คนละทาง ────────────────────────────
+ * 🔴 **เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย** (กติกาของไฟล์นี้เอง) — ข้อความเดียวว่า
+ *   "วันนัดเกินช่วงที่เก็บเงินแล้ว" ทำให้ SA ไปไล่ทวงลูกค้า ทั้งที่ของจริงคือ
+ *   **บัญชียังไม่รับรองสักงวด** ซึ่งเป็นงานของ FN ไม่ใช่ของลูกค้า
+ * 🐞 เจอชัดที่สุดตอน **ใบเพิ่งออก Rev.** — งวดถูกยกมาแล้ว (mig 0346) แต่ยังไม่มีใคร
+ *   รับรอง ⇒ `paidThrough` ยังเป็น null · เหตุจริงคือ "รอบัญชีรับรองรอบใหม่"
+ *   ไม่ใช่ "ลูกค้าจ่ายไม่ถึง"
+ */
+function moneyStopReason(terms, installmentsByOrderId, visitDate) {
+  // ⚠️ หยิบเองที่นี่ — `pick` เป็นตัวช่วยในสโคปของฟังก์ชันหลัก มองไม่เห็นจากตรงนี้
+  const at = (key) => (installmentsByOrderId instanceof Map
+    ? installmentsByOrderId.get(key)
+    : installmentsByOrderId?.[key]) || [];
+  const rows = terms.flatMap((t) => at(t.salesOrderId));
+  if (!rows.length) {
+    return 'ใบสั่งขายที่ครอบโซนนี้ยังไม่มีงวดชำระ — ฝ่ายขายต้องเริ่มติดตามการชำระก่อน';
+  }
+  if (rows.some((r) => hasOverdueUnconfirmed([r], visitDate))) {
+    return 'มีงวดเลยกำหนดที่บัญชียังไม่รับรอง — ค้างชำระอยู่ ยังไม่ควรส่งคนไปเพิ่ม';
+  }
+  if (!paidThrough(rows)) {
+    return 'ยังไม่มีงวดไหนที่บัญชีรับรอง — รอฝ่ายบัญชีรับรองการชำระก่อน'
+      + ' (ใบที่เพิ่งออก Rev. ต้องให้บัญชีรับรองรอบใหม่)';
+  }
+  return 'วันนัดเกินช่วงที่เก็บเงินแล้ว — เก็บงวดถัดไปก่อนจึงจะส่งเจ้าหน้าที่ไปได้';
 }
