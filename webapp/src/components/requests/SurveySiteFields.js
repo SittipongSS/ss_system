@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layers, Plus, X } from "lucide-react";
 import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -22,6 +23,7 @@ import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { apiJson } from "@/lib/apiFetch";
 import { naText } from "@/lib/format";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
+import { sitePickSummary, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import styles from "./requestForm.module.css";
 
@@ -51,6 +53,8 @@ export default function SurveySiteFields({
   // โมดัลสร้างสถานที่ — **ฟอร์มตัวเดียวกับทะเบียนไซต์** (กฎ AGENTS.md) ไม่ใช่ฟอร์มที่สอง
   const [creatingSite, setCreatingSite] = useState(false);
   const [draft, setDraft] = useState({ name: "", floor: "", note: "" });
+  // สถานที่ที่กำลังจะสลับไป — ค้างไว้จนกว่าจะยืนยัน (null = ไม่ได้ถามอยู่)
+  const [switchTo, setSwitchTo] = useState(null);
 
   const set = (patch) => onChange({ ...value, ...patch });
 
@@ -86,16 +90,43 @@ export default function SurveySiteFields({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sites, siteId, loading, customerId, readOnly]);
 
-  // โซนของไซต์ที่เลือก — ใช้ทั้งปุ่ม "เลือกจากพื้นที่เดิม" และป้ายชื่อบนแถว
+  /* ── ทะเบียนพื้นที่ของลูกค้าทั้งราย (เฟส 3A · §5A) ────────────────────────
+     ⭐ **คำขอเดียวจบ** — เดิมยิงโซนรายไซต์ ซึ่งตอบได้แค่ "ไซต์นี้มีพื้นที่อะไร"
+        แต่จังหวะแรกของฟอร์มต้องพูดว่า *"ลูกค้ารายนี้เคยประเมินไว้แล้ว N พื้นที่ ใน M
+        สถานที่"* และแต่ละพื้นที่ต้องบอกด้วยว่า **วัดแล้วไหม ขายแล้วไหม มีใบสั่งวัดค้างไหม**
+        ⇒ ข้อมูลชุดเดียวกับแท็บ "พื้นที่บริการ" บนหน้าลูกค้า · เส้นเดียว สองจอ
+     ⚠️ ดึงตอนรู้ลูกค้าแล้วเท่านั้น — ลูกค้ามาจากดีล ก่อนเลือกดีลยังไม่มีอะไรให้ดึง
+     🔴 **ดึงไม่ได้ห้ามบล็อกการเปิดใบ** (ม็อก §12) — เพิ่มพื้นที่ใหม่ได้ตามปกติ
+        แค่บอกว่าดึงของเดิมไม่ได้ พร้อมปุ่มลองใหม่ */
+  const [registry, setRegistry] = useState(null);
+  const [registryError, setRegistryError] = useState("");
+  const [registryTick, setRegistryTick] = useState(0);
+
   useEffect(() => {
-    if (!siteId) { setSiteZones([]); return; }
+    if (!customerId) { setRegistry(null); setRegistryError(""); return undefined; }
     let alive = true;
-    apiJson(`/api/service/sites/${encodeURIComponent(siteId)}/zones`)
-      .then((rows) => { if (alive) setSiteZones(Array.isArray(rows) ? rows : []); })
-      .catch(() => { if (alive) setSiteZones([]); })
-      .finally(() => { if (alive) setPicking(false); });
+    setRegistryError("");
+    apiJson(`/api/service/customers/${encodeURIComponent(customerId)}/zones`)
+      .then((d) => { if (alive) setRegistry(d); })
+      .catch((e) => {
+        if (!alive) return;
+        setRegistry(null);
+        setRegistryError(e?.message || "ดึงพื้นที่เดิมไม่สำเร็จ");
+      });
     return () => { alive = false; };
-  }, [siteId]);
+  }, [customerId, registryTick]);
+
+  /* พื้นที่ของไซต์ที่เลือก — อ่านจากทะเบียนที่โหลดมาแล้ว ไม่ยิงซ้ำ
+     ⚠️ ต้องคง `siteZones` ไว้เป็นรูปเดิม (id/name/code) เพราะยามชื่อซ้ำและป้ายบนแถว
+        ใช้มันอยู่ · เปลี่ยนรูปเมื่อไรต้องไล่แก้ทั้งไฟล์ */
+  const siteEntry = useMemo(
+    () => (registry?.sites || []).find((s) => s.id === siteId) || null,
+    [registry, siteId],
+  );
+  useEffect(() => {
+    setSiteZones(siteEntry ? siteEntry.zones : []);
+    setPicking(false);
+  }, [siteEntry]);
 
   /* ⭐ **สร้างสถานที่ได้ตรงนี้เลย** (มติผู้ใช้ 2026-08-29 — เปิดสิทธิ์ให้ SA สร้างไซต์)
      จังหวะที่คนขายรู้ว่าลูกค้าจะติดตั้งที่ไหนคือตอนกำลังเปิดใบประเมินนี่เอง ⇒ ให้เดิน
@@ -113,13 +144,19 @@ export default function SurveySiteFields({
     return created;
   };
 
-  const pickSite = (id) => {
-    if (id === siteId) return;
-    // ⚠️ เปลี่ยนไซต์ = ล้างพื้นที่ทั้งลิสต์ — โซนเดิมที่เลือกไว้เป็นของไซต์เก่า
-    //    (handler ตรวจซ้ำอยู่แล้ว แต่ให้ผู้ใช้เห็นผลทันทีดีกว่าถูกตีกลับตอนกดส่ง)
+  const applySite = (id) => {
     set({ siteId: id, zones: [] });
     setAdding(false);
     setDraft({ name: "", floor: "", note: "" });
+  };
+
+  const pickSite = (id) => {
+    if (id === siteId) return;
+    /* ⚠️ เปลี่ยนสถานที่ = ล้างพื้นที่ทั้งลิสต์ — ของที่เลือกไว้เป็นของสถานที่เดิมทั้งชุด
+       (handler ตรวจซ้ำอยู่แล้ว แต่ให้ผู้ใช้เห็นผลทันทีดีกว่าถูกตีกลับตอนกดส่ง)
+       🔴 **ถามก่อนถ้ากรอกไว้แล้ว** — เป็นงานที่หายทั้งชุด ไม่ใช่ค่าเดียว (ม็อก §12) */
+    if (zones.length) { setSwitchTo(id); return; }
+    applySite(id);
   };
 
   const addZone = (row) => set({ zones: [...zones, row] });
@@ -131,6 +168,18 @@ export default function SurveySiteFields({
     ...siteZones.map((z) => zoneNameKey(z.name)),
   ]);
   const restZones = siteZones.filter((z) => !takenZoneIds.has(z.id));
+  /* ไทล์พื้นที่เดิมพร้อมสถานะสองแกน — เรียงตามความสำคัญที่ม็อกกำหนด
+     (⭐ วัดแล้วยังไม่ขาย ขึ้นก่อน · 🔒 ที่ล็อกอยู่ล่างสุด แต่ยังต้องเห็น) */
+  const pickTiles = zonePickList(restZones, takenZoneIds);
+  const lockedCount = pickTiles.filter((t) => t.locked).length;
+  const pickableCount = pickTiles.length - lockedCount;
+
+  /* จังหวะแรกของฟอร์มต้องพูดว่า "ลูกค้ารายนี้เคยประเมินไว้แล้วเท่าไร" ไม่ใช่ช่องเปล่า
+     ⚠️ ลูกค้าใหม่ที่ยังไม่มีพื้นที่เลย = **ซ่อนทั้งบรรทัด** ไม่ใช่โชว์เลขศูนย์ */
+  const customerSummary = registry && registry.measuredCount > 0
+    ? `ลูกค้ารายนี้ประเมินไว้แล้ว ${registry.measuredCount} พื้นที่ ใน ${registry.siteCount} สถานที่`
+      + (registry.soldCount ? ` · ขายแล้ว ${registry.soldCount}` : "")
+    : null;
   const zoneName = (row) => row.name
     || siteZones.find((z) => z.id === row.zoneId)?.name
     || row.zoneId;
@@ -160,10 +209,25 @@ export default function SurveySiteFields({
     [customerId, customerName],
   );
 
+  /* บรรทัดสรุปใต้ชื่อสถานที่ — "4 พื้นที่ · วัดแล้ว 2 · ขายแล้ว 1" (ม็อก §11)
+     ⭐ ทำให้คนเลือกไซต์ได้ถูกตั้งแต่ก่อนกด ไม่ต้องกดเข้าไปดูทีละใบ */
+  const summaryOf = (siteRow) => {
+    const entry = (registry?.sites || []).find((x) => x.id === siteRow.id);
+    if (!entry || !entry.zoneCount) return null;
+    const sum = sitePickSummary(entry);
+    return [
+      `${sum.zones} พื้นที่`,
+      sum.measured ? `วัดแล้ว ${sum.measured}` : null,
+      sum.sold ? `ขายแล้ว ${sum.sold}` : null,
+      sum.pending ? `มีใบสั่งวัดค้าง ${sum.pending}` : null,
+    ].filter(Boolean).join(" · ");
+  };
+
   const siteOptions = sites.map((s) => ({
     value: s.id,
     label: s.name || s.code || s.id,
-    description: [s.code, s.address].filter(Boolean).join(" · ") || undefined,
+    description: [[s.code, s.address].filter(Boolean).join(" · "), summaryOf(s)]
+      .filter(Boolean).join(" — ") || undefined,
     // ค้นด้วยรหัส SS หรือที่อยู่ได้ด้วย — คนจำสาขาจากถนน ไม่ใช่จากชื่อในทะเบียน
     search: [s.name, s.code, s.address, s.routeZone].filter(Boolean).join(" "),
   }));
@@ -250,6 +314,19 @@ export default function SurveySiteFields({
             ariaLabel="สถานที่ที่จะให้เข้าไปประเมิน"
           />
         )}
+        {/* ⭐ จังหวะแรกต้องบอกว่าลูกค้ารายนี้มีของเดิมเท่าไร ไม่ใช่เริ่มที่ช่องเปล่า
+            (แผน §5A: *"การจะไปรอบสองหรือถัดไป ก็จะสามารถดูได้ว่าที่เดิมหรือเพิ่มที่ใหม่"*) */}
+        {customerSummary && <small className={styles.hint}>{customerSummary}</small>}
+        {/* 🔴 ดึงของเดิมไม่ได้ ห้ามบล็อกการเปิดใบ — เพิ่มที่ใหม่ได้ตามปกติ */}
+        {!!registryError && !!customerId && (
+          <div className={styles.zoneActions}>
+            <small className={styles.hint}>ดึงพื้นที่เดิมไม่ได้ · เพิ่มที่ใหม่ได้ตามปกติ</small>
+            <Button type="button" size="sm" variant="ghost" disabled={disabled}
+              onClick={() => setRegistryTick((n) => n + 1)}>
+              ลองใหม่
+            </Button>
+          </div>
+        )}
         {canCreateSite && !!customerId && (
           <div className={styles.zoneActions}>
             <Button
@@ -262,6 +339,18 @@ export default function SurveySiteFields({
           </div>
         )}
       </div>
+
+      {/* ⚠️ ล้างพื้นที่ที่เลือกไว้ทั้งชุด = งานที่หายไปทั้งก้อน ⇒ ต้องบอกจำนวนที่จะหาย
+          ไม่ใช่ถามลอย ๆ ว่า "ยืนยันไหม" */}
+      <ConfirmDialog
+        open={!!switchTo}
+        title="เปลี่ยนสถานที่ของใบนี้"
+        message={`พื้นที่ที่เลือกไว้ ${zones.length} รายการจะถูกล้างทั้งหมด — พื้นที่เหล่านั้นเป็นของสถานที่เดิม`}
+        detail="เลือกใหม่จากพื้นที่ของสถานที่ที่เพิ่งเลือกได้ทันที"
+        confirmLabel="เปลี่ยนสถานที่"
+        onConfirm={() => { applySite(switchTo); setSwitchTo(null); }}
+        onClose={() => setSwitchTo(null)}
+      />
 
       {/* ฟอร์มไซต์ตัวเดียวกับทะเบียน — ล็อกลูกค้าไว้ที่ลูกค้าของดีล (ใบนี้เป็นของเขา) */}
       <ServiceSiteModal
@@ -318,21 +407,26 @@ export default function SurveySiteFields({
             </Button>
             {/* ⚠️ ปุ่มจางต้องบอกเหตุ (กติกาของรีโป) — "ไม่มีพื้นที่เดิมให้เลือก" กับ
                 "เลือกครบแล้ว" คนละเรื่องกัน และทางแก้คนละทาง */}
+            {/* ⚠️ นับเฉพาะที่ **ติ๊กได้จริง** — รวมที่ล็อกเข้าไปด้วยแล้วปุ่มจะบอกว่ามี 5 ให้เลือก
+                แต่กดเข้าไปติ๊กได้ 2 · ที่ล็อกยังโชว์อยู่ในแผ่น พร้อมเหตุผล */}
             <Button
-              type="button" size="sm" disabled={disabled || !restZones.length}
+              type="button" size="sm" disabled={disabled || !pickTiles.length}
               icon={<Layers size={16} />}
-              title={restZones.length ? undefined : (siteZones.length
-                ? "เลือกพื้นที่เดิมของสถานที่นี้ครบทุกรายการแล้ว"
-                : "สถานที่นี้ยังไม่มีพื้นที่ในทะเบียน — กด \"เพิ่มพื้นที่ใหม่\"")}
               onClick={() => setPicking((on) => !on)}
             >
-              เลือกจากพื้นที่เดิม{restZones.length ? ` (${restZones.length})` : ""}
+              เลือกจากพื้นที่เดิม{pickableCount ? ` (${pickableCount})` : ""}
             </Button>
-            {!restZones.length && (
+            {/* ปุ่มจางต้องบอกเหตุ และสามเหตุนี้แก้คนละทาง */}
+            {!pickTiles.length && (
               <small className={styles.hint}>
                 {siteZones.length
                   ? "เลือกพื้นที่เดิมครบทุกรายการแล้ว"
                   : "สถานที่นี้ยังไม่มีพื้นที่ในทะเบียน — เริ่มที่ “เพิ่มพื้นที่ใหม่”"}
+              </small>
+            )}
+            {!!pickTiles.length && !pickableCount && (
+              <small className={styles.hint}>
+                พื้นที่เดิมของสถานที่นี้มีใบสั่งวัดค้างอยู่ทั้งหมด {lockedCount} รายการ
               </small>
             )}
           </div>
@@ -380,10 +474,25 @@ export default function SurveySiteFields({
               >
                 ยกเลิก
               </Button>
+              {/* 🔴 ชื่อชน = ทางตัน ⇒ ต้องมี **ปุ่มพาไปทางที่ถูก** ไม่ใช่บอกเฉย ๆ
+                  (ปล่อยไปถึง insert จะได้ error ดิบจาก UNIQUE ของ mig 0297) */}
               {draftClash && (
-                <small className={styles.hint}>
-                  สถานที่นี้มีพื้นที่ชื่อนี้อยู่แล้ว — เลือกจากพื้นที่เดิมแทน
-                </small>
+                <>
+                  <small className={styles.hint}>
+                    สถานที่นี้มีพื้นที่ชื่อนี้อยู่แล้ว — ต้องการวัดพื้นที่เดิมใช่ไหม
+                  </small>
+                  <Button
+                    type="button" size="sm" variant="outline" disabled={disabled || !pickTiles.length}
+                    icon={<Layers size={16} />}
+                    onClick={() => {
+                      setAdding(false);
+                      setDraft({ name: "", floor: "", note: "" });
+                      setPicking(true);
+                    }}
+                  >
+                    สลับไปติ๊กพื้นที่เดิม
+                  </Button>
+                </>
               )}
               {/* ⚠️ ปุ่มจางต้องบอกเหตุเสมอ — ช่องชั้นว่างอยู่ก็เข้าข่าย ไม่ใช่เฉพาะตอนพิมพ์ผิด */}
               {!draftClash && !!draftFloor.error && (!!draft.floor || !!draftName) && (
@@ -392,15 +501,40 @@ export default function SurveySiteFields({
             </div>
           )}
 
+          {/* ── ไทล์พื้นที่เดิม พร้อมสถานะสองแกน (ประเมิน × ขาย) ──────────────
+              🔴 **โชว์ทั้งหมด แต่ไม่ติ๊กให้** — ไม่โชว์ = คนพิมพ์ชื่อซ้ำแล้วชน UNIQUE
+                 ของ mig 0297 · ติ๊กให้ = สั่งช่างไปเสียเที่ยว
+              ⚠️ เหตุผลเป็น **ตัวหนังสือ ไม่ใช่ tooltip** — จอสัมผัสไม่มีวันเห็น title */}
           {picking && (
             <div className={styles.zonePick}>
-              {restZones.map((zone) => (
-                <Button
-                  key={zone.id} type="button" size="sm" variant="outline" disabled={disabled}
-                  onClick={() => { addZone({ zoneId: zone.id, note: null }); setPicking(false); }}
+              {pickTiles.map((tile) => (
+                <button
+                  key={tile.id}
+                  type="button"
+                  className={styles.zoneTile}
+                  data-kind={tile.kind}
+                  disabled={disabled || tile.locked}
+                  aria-disabled={tile.locked ? "true" : undefined}
+                  onClick={() => {
+                    if (tile.locked) return;
+                    addZone({ zoneId: tile.id, note: null });
+                    setPicking(false);
+                  }}
                 >
-                  {zone.name} <span className={styles.hint}>{zone.code || ""}</span>
-                </Button>
+                  <b>{tile.name}</b>
+                  <small className={styles.hint}>
+                    {[tile.code, floorLabel(tile.floor)].filter(Boolean).join(" · ")}
+                  </small>
+                  <small className={styles.tileWhy}>{tile.reason}</small>
+                  {tile.surveyState === "done" && (
+                    <small className={styles.hint}>
+                      {[
+                        tile.areaSqm !== null ? `${tile.areaSqm} ตร.ม.` : null,
+                        tile.assessedPackages ? `${tile.assessedPackages} แพ็คเกจ` : null,
+                      ].filter(Boolean).join(" · ")}
+                    </small>
+                  )}
+                </button>
               ))}
             </div>
           )}

@@ -24,7 +24,7 @@ import StatusBadge from "@/components/excise/StatusBadge";
 // ป้ายกลางของ design system — ชื่อชนกับ StatusBadge ของสรรพสามิตข้างบน (คนละตัว:
 // ตัวนั้นรับ `status` ของทะเบียนภาษี ตัวนี้รับ `tone`+`label`) จึงตั้งชื่อแยกไว้
 import RegistryBadge from "@/components/ui/StatusBadge";
-import { siteRefillBadge } from "@/lib/service/refill";
+import CustomerZonesPanel from "@/components/service/CustomerZonesPanel";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -47,7 +47,7 @@ import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/Docume
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 
 // หน้า detail ลูกค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
 //   - แถบหัว = ตัวตน (ชื่อ/AR/ประเภท/สร้างเมื่อ) + ตัวเลขความสัมพันธ์
@@ -211,6 +211,35 @@ export default function CustomerDetails() {
         setScents(d.scents || []); setFormulas(d.formulas || []);
       })
       .catch(() => {});
+  }, [id]);
+
+  /* ทะเบียนพื้นที่บริการ (เฟส 3A · §5A) — คนละคำถามกับแท็บ "ไซต์บริการ" ข้างบน
+     ⭐ แท็บนั้นตอบเรื่อง **ปฏิบัติการ**: มีเครื่องกี่ตัว เข้าครั้งหน้าเมื่อไร น้ำหอมใกล้หมดไหม
+        แท็บนี้ตอบเรื่อง **ก่อนขาย**: พื้นที่ไหนวัดไว้แล้วเท่าไร ขายไปแล้วหรือยัง
+        ⇒ คนละคนอ่าน (TS กับ AE) คนละความละเอียด (ไซต์ กับ พื้นที่) ⇒ แยกแท็บ
+     ⚠️ โหลดแยกคำขอเพราะเป็นคนละระบบ · ผู้ใช้ที่ไม่มีสิทธิ์จะได้ 403 → แท็บไม่โผล่ */
+  const [zoneRegistry, setZoneRegistry] = useState(null);
+  const [zoneRegistryError, setZoneRegistryError] = useState("");
+  const [zoneRegistryLoading, setZoneRegistryLoading] = useState(false);
+
+  useEffect(() => {
+    if (!id) { setZoneRegistry(null); return undefined; }
+    let alive = true;
+    setZoneRegistryLoading(true);
+    setZoneRegistryError("");
+    apiJson(`/api/service/customers/${encodeURIComponent(id)}/zones`)
+      .then((d) => { if (alive) setZoneRegistry(d); })
+      /* ⚠️ 403 = ไม่มีสิทธิ์ ⇒ แท็บไม่โผล่เลย (เงียบถูกแล้ว) · error อื่นต้องบอก —
+         โหลดพังกับ "ลูกค้ารายนี้ไม่มีพื้นที่" หน้าตาเหมือนกันถ้ากลืนทั้งคู่ */
+      .catch((e) => {
+        if (!alive) return;
+        setZoneRegistry(null);
+        if (!/403|ไม่มีสิทธิ|forbidden/i.test(e?.message || "")) {
+          setZoneRegistryError(e?.message || "โหลดทะเบียนพื้นที่ไม่สำเร็จ");
+        }
+      })
+      .finally(() => { if (alive) setZoneRegistryLoading(false); });
+    return () => { alive = false; };
   }, [id]);
 
   // ไซต์บริการ (S-4) — แยกคำขอเพราะเป็นคนละระบบ (ธุรกิจบริการ ไม่ใช่ฐานข้อมูล)
@@ -693,7 +722,16 @@ export default function CustomerDetails() {
                 canViewTax && { key: "orders", label: `การยื่นชำระภาษี (${orders.length})` },
                 projects.length > 0 && { key: "projects", label: `โครงการ (${projects.length})` },
                 // โผล่เมื่อมีไซต์จริงเท่านั้น — ลูกค้า OEM ส่วนใหญ่ไม่มีระบบกระจายกลิ่น
-                serviceSites.length > 0 && { key: "serviceSites", label: `ไซต์บริการ (${serviceSites.length})` },
+                /* 🔑 **แท็บเดียว ไม่ใช่สองแท็บ** (เฟส 3A) — เดิมชื่อ "ไซต์บริการ" ตอบเรื่อง
+                   ปฏิบัติการ (เครื่อง/นัด/น้ำหอม) · ทะเบียนพื้นที่ตอบเรื่องก่อนขาย
+                   แต่ทั้งคู่คือ "สถานที่ของลูกค้ารายนี้" อ่านตารางเดียวกัน สิทธิ์ชุดเดียวกัน
+                   ⇒ วางเคียงกันคือผิดกฎบนหัวไฟล์นี้เอง: "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
+                   ⚠️ **เงื่อนไขโผล่ยังผูกกับไซต์ ไม่ใช่จำนวนพื้นที่** — ผูกกับพื้นที่แล้ว
+                      ลูกค้าที่มีสาขาแต่ยังไม่เคยประเมิน จะได้แท็บที่หายไปทั้งที่มีของ */
+                serviceSites.length > 0 && {
+                  key: "serviceZones",
+                  label: `พื้นที่บริการ (${zoneRegistry?.zoneCount || 0} พื้นที่ · ${serviceSites.length} สถานที่)`,
+                },
                 // แท็บเดียวคุมทั้งกลิ่นและสูตร — สูตรผูกกลิ่น และตอนนี้ทะเบียนกลิ่นยัง
                 // ว่างอยู่ ถ้าแยกสองแท็บจะมีแท็บโล่งค้างบนหน้าลูกค้าทุกราย
                 // โผล่เมื่อมีของจริงเท่านั้น (แพตเทิร์นเดียวกับแท็บโครงการ)
@@ -932,31 +970,14 @@ export default function CustomerDetails() {
               )
             )}
 
-            {/* ไซต์บริการ — read-only 360-view, จัดการจริงที่ระบบธุรกิจบริการ
-                ⭐ คำถามที่หน้านี้ต้องตอบคือ "ลูกค้ารายนี้มีเครื่องอยู่กี่จุด เจ้าหน้าที่จะเข้า
-                เมื่อไหร่ และมีจุดไหนน้ำหอมใกล้หมด" — ไม่ใช่รายละเอียดเครื่องรายตัว */}
-            {activeTab === "serviceSites" && (
-              <div className="grid grid-cols-1 gap-2">
-                {serviceSites.map((site) => {
-                  const badge = siteRefillBadge(site.refill);
-                  return (
-                    <RelationRow
-                      key={site.id}
-                      href={`/service/sites/${site.id}`}
-                      title={site.name}
-                      subtitle={[
-                        site.routeZone,
-                        `เครื่อง ${site.activeAssetCount ?? 0} ตัว`,
-                        site.nextVisitDate ? `ครั้งหน้า ${site.nextVisitDate}` : "ยังไม่มีนัดครั้งหน้า",
-                        site.isActive === false ? "ปิดใช้งาน" : null,
-                      ].filter(Boolean).join(" · ")}
-                      right={badge
-                        ? <RegistryBadge className="shrink-0" tone={badge.tone} label={badge.label} />
-                        : null}
-                    />
-                  );
-                })}
-              </div>
+            {/* พื้นที่บริการ — ทะเบียนก่อนขาย (เฟส 3A) · อ่านอย่างเดียวทั้งแท็บ */}
+            {activeTab === "serviceZones" && (
+              <CustomerZonesPanel
+                registry={zoneRegistry}
+                sitesOps={serviceSites}
+                loading={zoneRegistryLoading}
+                error={zoneRegistryError}
+              />
             )}
 
             {/* กลิ่น & สูตร — read-only 360-view, จัดการจริงที่ทะเบียน

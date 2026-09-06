@@ -23,7 +23,8 @@ import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentD
 import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
 import { normalizeSurveyRequest, surveyZoneNameClash } from '@/lib/service/surveyRequest';
-import { insertSurveyZones, loadSiteZones, loadSurveySite } from '@/lib/service/surveyRepo';
+import { insertSurveyZones, loadSiteZones, loadSurveySite, loadZoneSurveyLocks } from '@/lib/service/surveyRepo';
+import { surveyZoneBusyError } from '@/lib/service/zonePickState';
 import {
   deptForRequest, requestDeptError,
   legacyKindError, lineShapeForKind, requestHasPdr, requestKindLabel, requestNeedsRef,
@@ -307,6 +308,16 @@ export async function POST(request) {
        error ดิบจาก Postgres ไม่บอกว่าต้องทำอะไรต่อ · ข้อความนี้บอกรหัส ZN ที่ชนด้วย */
     const clash = surveyZoneNameClash(survey.zones, existing);
     if (clash) return Response.json({ error: clash }, { status: 400 });
+
+    /* 🔒 พื้นที่ที่มีใบสั่งวัดค้างอยู่แล้ว — จอปิดปุ่มให้แล้ว แต่ **จอที่โหลดไว้ก่อนหน้า
+       ไม่รู้ว่าอีกคนเพิ่งเปิดใบไป** ⇒ ตรวจซ้ำตอนกดส่ง ไม่งั้นช่างได้ใบสั่งวัดพื้นที่
+       เดียวกันสองใบแล้วไปเสียเที่ยว (ม็อก §12 เขียนกำกับไว้) */
+    const picked = survey.zones.map((z) => z.zoneId).filter(Boolean);
+    if (picked.length) {
+      const locks = await loadZoneSurveyLocks(supabase, picked);
+      const busy = surveyZoneBusyError(survey.zones, locks.rows, locks.requestsById);
+      if (busy) return Response.json({ error: busy }, { status: 409 });
+    }
     surveyZoneRows = { zones: survey.zones, existingZones: existing, site };
   }
 

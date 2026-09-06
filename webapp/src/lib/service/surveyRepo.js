@@ -8,6 +8,7 @@
 // "เกิดตอน SA **กดส่ง**" ไม่ใช่ตอนบันทึกร่าง ⇒ ห้ามย้ายการสร้างโซนไปไว้ตอนสร้างร่าง
 // (ถ้าย้าย ร่างที่ถูกทิ้งจะกินรหัส ZN และทิ้งโซนกำพร้าไว้ในทะเบียนของลูกค้า)
 import { genId } from '@/lib/id';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 import { insertRowWithComposedCode } from '@/lib/entityCode';
 import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, zoneCodePrefix } from '@/lib/service/zoneCode';
 import { zoneNameKey } from '@/lib/service/surveyRequest';
@@ -146,4 +147,35 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
     created += 1;
   }
   return { created, error: null };
+}
+
+
+/* ── พื้นที่ที่มีใบสั่งวัดค้างอยู่แล้ว (เฟส 3A) ─────────────────────────────
+ * 🔴 **ยามนี้ต้องอยู่ฝั่ง server ด้วย ไม่ใช่แค่ปิดปุ่มบนจอ** — ระหว่างที่ SA กรอกอยู่
+ *   อีกคนเปิดใบสั่งวัดพื้นที่เดียวกันไปแล้วได้ · จอที่โหลดไว้ก่อนไม่มีทางรู้
+ *   ⇒ ไม่ตรวจ = ช่างได้ใบสั่งวัดพื้นที่เดียวกันสองใบ แล้วไปเสียเที่ยว
+ * ⚠️ คืนทั้งแถวและใบแม่ ให้ตัวตัดสิน (`surveyZoneBusyError`) เป็นคนบอกว่าใบไหน "ยังเปิด"
+ */
+export async function loadZoneSurveyLocks(supabase, zoneIds = []) {
+  const ids = (Array.isArray(zoneIds) ? zoneIds : []).filter(Boolean);
+  if (!ids.length) return { rows: [], requestsById: new Map() };
+
+  /* 🔴 ต้องห่อ `fetchAll` — พื้นที่เดียวถูกประเมินซ้ำได้ไม่จำกัดรอบ (มติข้อ 8) และใบเดียว
+     ขอได้ถึง 60 พื้นที่ ⇒ แถวโตเร็วกว่าที่คิด · เพดาน 1,000 แถวของ PostgREST ตัดเงียบ
+     และของที่ถูกตัดคือ "ใบที่จองพื้นที่นี้อยู่" ⇒ ยามจะปล่อยผ่านโดยไม่มี error ให้เห็น
+     ⚠️ `order('id')` ปิดท้ายเสมอ — ไล่หน้าด้วยคอลัมน์ซ้ำได้แถวซ้ำและแถวหายพร้อมกัน */
+  const rows = await fetchAll(() => supabase
+    .from('service_survey_zones').select('id, "requestId", "zoneId", status')
+    .in('zoneId', ids)
+    .order('id', { ascending: true }));
+
+  const requestIds = [...new Set(rows.map((r) => r.requestId).filter(Boolean))];
+  if (!requestIds.length) return { rows, requestsById: new Map() };
+
+  const requests = await fetchAll(() => supabase
+    .from('dept_requests').select('id, "docNo", status')
+    .in('id', requestIds)
+    .order('id', { ascending: true }));
+
+  return { rows, requestsById: new Map(requests.map((r) => [r.id, r])) };
 }
