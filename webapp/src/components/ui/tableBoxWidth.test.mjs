@@ -126,3 +126,44 @@ test("รางกริดในไฟล์ที่มีตาราง ต�
     "รางที่เขียน `1fr` เปล่ามี min track เป็น auto ⇒ ตารางข้างในดันรางให้กว้างเกินกล่อง\n"
     + "เขียนเป็น minmax(0, 1fr) แทน — ผลต่างเห็นชัดที่จอแคบ (วัดที่ 375px ล้น 96px)");
 });
+
+/* ── ความสูง: หัวตารางจะปักได้ก็ต่อเมื่อกล่องมีเพดานความสูง (2026-09-06) ────────
+   🐞 `.premium-table th { position: sticky; top: 0 }` **ไม่เคยทำงานเลยสักจุด**
+   ก่อนรอบนี้ — `.scroll` มี `overflow: auto` จึงเป็น *scrollport ของ sticky* แต่ไม่มี
+   `max-height` ⇒ สูงเท่าเนื้อ ไม่มีช่วงเลื่อนแนวตั้ง หัวตารางจึงปักกับกล่องที่เลื่อน
+   ตามหน้าไปด้วย · วัดสดที่ /users: เลื่อนหน้า 600px แล้ว th ขยับตาม **600.0px เต็ม**
+   หลังแก้: เลื่อนในกล่อง 400px แล้ว th ยังห่างขอบบนกล่อง 1px เท่าเดิม = ปักจริง
+
+   ⚠️ ถอด overflow แทนไม่ได้ — CSS บังคับว่าเมื่อ overflow-x ไม่ใช่ visible แล้ว
+   overflow-y: visible จะถูกคำนวณเป็น auto ตาม ⇒ เลือกได้อย่างเดียวระหว่าง
+   "หัวปักกับหน้า" กับ "เลื่อนแนวนอนในกล่อง" */
+test("กล่องตารางต้องมีเพดานความสูง ไม่งั้นหัวตารางปักไม่ได้", () => {
+  const scroll = rules(withoutComments).find((r) => r.selector === ".scroll");
+  assert.ok(scroll, "หากฎ .scroll ไม่เจอ");
+  assert.match(scroll.body, /max-height:\s*var\(--table-viewport-max\)/,
+    "ถอด max-height เมื่อไร sticky ของ th กลับไปเป็นของตายทันที (ไม่มี error ให้เห็น)");
+  assert.match(scroll.body, /overflow:\s*auto/,
+    "ต้องยังเลื่อนได้ทั้งสองแกน — แนวนอนสำหรับตารางกว้าง แนวตั้งสำหรับหัวที่ปัก");
+});
+
+/* 🔴 พื้นกันยุบไม่ใช่ของแถม: `100dvh` คำนวณได้ **0** ในบริบทที่ยังไม่มีความสูงจริง
+   (พาเนลพรีวิว/เว็บวิวฝัง) วัดเจอตอนทดสอบ: innerHeight = 0 ⇒ กล่องเหลือสูง 2px
+   = ตารางหายทั้งใบโดยไม่มี error · `max()` ทำให้ตกมาที่พื้นแทนที่จะยุบ */
+test("เพดานความสูงต้องมีพื้นกันยุบ และผูกกับความสูงแถบเมนู", () => {
+  const globals = fs.readFileSync(path.join(WEBAPP, "src", "app", "globals.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(globals, /--table-viewport-min:\s*\d/, "ต้องมีพื้นกันยุบเป็นโทเคนของตัวเอง");
+  const token = (globals.match(/--table-viewport-max:\s*([^;]+);/) || [])[1] || "";
+  assert.match(token, /max\(/, "ต้องห่อด้วย max() ไม่งั้น dvh = 0 จะยุบตารางหายทั้งใบ");
+  assert.match(token, /var\(--table-viewport-min\)/);
+  assert.match(token, /100dvh/, "ต้องเป็น dvh ไม่ใช่ vh — แถบเบราว์เซอร์บนมือถือทำให้ vh เพี้ยน");
+  assert.match(token, /var\(--scroll-anchor-top\)/,
+    "ต้องหักความสูงแถบเมนูออก และต้องเป็นโทเคนเพราะแถบหดจาก 95 เหลือ 53px ที่จอ ≤1200");
+});
+
+test("ตอนพิมพ์ต้องไม่มีกล่องเลื่อน ไม่งั้นเนื้อที่เกินหายไปเลย", () => {
+  const printBlock = withoutComments.slice(withoutComments.indexOf("@media print"));
+  assert.ok(printBlock.startsWith("@media print"), "Table.module.css ต้องมีบล็อก @media print");
+  assert.match(printBlock, /max-height:\s*none/);
+  assert.match(printBlock, /overflow:\s*visible/);
+});
