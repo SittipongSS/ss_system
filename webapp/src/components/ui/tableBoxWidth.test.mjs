@@ -52,6 +52,41 @@ function horizontalMarginValues(declaration, property) {
 
 const isZero = (value) => /^0[a-z%]*$/.test(value.trim());
 
+/* 🐞 ด่านนี้เคยอ่าน **แค่ Table.module.css** ⇒ ผ่าน 6/6 ทั้งที่ globals.css มีกฎพี่น้อง
+   ที่พังแบบเดียวกันอยู่: `.glass-panel [data-surface="auto"][data-family]` เติมมาร์จิน
+   แนวนอนให้กล่องเดียวกัน (`.scroll` ที่ถือ width:100%) โดยไม่มี width: auto
+   ⇒ /database/product-categories ตารางยื่นพ้นการ์ด 15px แล้วถูก `overflow: hidden`
+   ของหน้านั้นเฉือนทิ้ง ปุ่มคอลัมน์จัดการหายไป 2px (วัดจริง 2026-09-06)
+   ⚠️ กล่องที่กฎพวกนี้ไปโดนคือ `.scroll` ตัวเดียวกันเสมอ — ไม่ว่ากฎจะเขียนอยู่ไฟล์ไหน
+   ด่านจึงต้องตามไปดูทุกไฟล์ที่เล็ง `[data-surface]`/`[data-family]` ไม่ใช่แค่ไฟล์ของ primitive */
+const SURFACE_TARGETING = /\[data-surface[^\]]*\]|\[data-family[^\]]*\]/;
+
+test("กฎที่เล็งกล่องตารางจากไฟล์อื่นก็ต้องคืน width: auto เมื่อเติมมาร์จิน", () => {
+  const offenders = [];
+  const files = [
+    ["src/app/globals.css", path.join(WEBAPP, "src", "app", "globals.css")],
+  ];
+  for (const [label, file] of files) {
+    const source = fs.readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const rule of rules(source)) {
+      if (!SURFACE_TARGETING.test(rule.selector)) continue;
+      let horizontal = false;
+      for (const hit of rule.body.matchAll(HORIZONTAL_MARGIN)) {
+        const property = /margin-(left|right|inline)/.test(hit[0])
+          ? hit[0].slice(hit[0].indexOf("margin"), hit[0].indexOf(":")).trim()
+          : "margin";
+        if (horizontalMarginValues(hit[1], property).some((value) => !isZero(value))) horizontal = true;
+      }
+      if (!horizontal) continue;
+      if (!/(?:^|;)\s*width\s*:\s*auto\b/.test(rule.body)) offenders.push(`${label} → ${rule.selector}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "กฎนี้เติมมาร์จินแนวนอนให้กล่องตารางที่ยังถือ width: 100% = over-constrained\n"
+    + "กล่องจะยื่นพ้นขอบการ์ด และถ้าการ์ดนั้น overflow: hidden เนื้อที่ยื่นจะถูกตัดทิ้งเลย\n"
+    + "ทางแก้: เติม `width: auto;` ในกฎเดียวกัน");
+});
+
 test(".scroll ตั้ง width: 100% ไว้ — กฎที่เติมมาร์จินแนวนอนต้องคืน width: auto ด้วย", () => {
   assert.match(withoutComments, /\.scroll\s*\{[^}]*width:\s*100%/,
     "เทสต์นี้ตั้งอยู่บนสมมติฐานว่า `.scroll` ยังตั้ง width: 100% — ถ้าเลิกตั้งแล้วให้ปรับเทสต์ตาม");
