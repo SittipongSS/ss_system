@@ -1,9 +1,19 @@
 // ── ทะเบียนติดตามต่อสัญญาบริการ (mig 0327 · แผน §PR-E) ──────────────────────
 //
-// ⭐ **"ใครใกล้หมดอายุ" คำนวณสดเสมอ ไม่เก็บลงฐาน** — วันหมดคือ `endDate` ของรอบขาย
-//   (`service_zone_terms`) ⇒ สถานะ "ใกล้หมด/หมดแล้ว" เป็นผลของวันที่ ณ ตอนเปิดหน้า
-//   ไม่ใช่คอลัมน์ที่ต้องมีคนไปอัปเดต (กติกาเดียวกับ `termIsActive` และ serviceStatus
-//   ที่ห้ามเก็บคำว่า Expired)
+// ⭐ **"ใครใกล้หมดอายุ" คำนวณสดเสมอ ไม่เก็บลงฐาน** — สถานะ "ใกล้หมด/หมดแล้ว" เป็นผล
+//   ของวันที่ ณ ตอนเปิดหน้า ไม่ใช่คอลัมน์ที่ต้องมีคนไปอัปเดต (กติกาเดียวกับ `termIsActive`
+//   และ serviceStatus ที่ห้ามเก็บคำว่า Expired)
+//
+// 🐞 **วันหมดมาจาก "สัญญา" ไม่ใช่ `service_zone_terms.endDate`** (แก้ 06/09/2026)
+//   ไฟล์นี้เคยอ่าน `term.endDate` ตามแผนฉบับก่อน mig 0324 — แต่ 0324 ย้ายแหล่งความจริง
+//   ของช่วงสัญญาไปที่ **ใบสั่งขาย** (`sales_orders.serviceContractId` →
+//   `sales_contracts.effectiveDate/expiryDate`) และถึงกับปิดป้ายบนคอลัมน์เก่าว่าห้ามเขียน
+//   ⇒ `service_zone_terms.endDate` เป็น **คอลัมน์ตาย**: ทั้งรีโปมี insert ที่เดียวซึ่ง
+//     ไม่ส่งวันมา และไม่มี `.update` สักที่ ⇒ ทุกแถวที่เกิดจริงเป็น NULL
+//   ⇒ ทะเบียนนี้ตอบ `[]` เสมอ · กระดิ่งไม่ยิงสักใบ · แถบสรุปเป็น 0 ทั้งสี่ช่องถาวร
+//   🪤 **ทางที่ผิดคือไปหาทางเติมค่าลงคอลัมน์เก่า** — ได้ความจริงสองชุดที่ต้องคอยซิงก์
+//     (โรคเดียวกับกระจกชื่อลูกค้าห้าตาราง) · `visitGate` ย้ายไปอ่านสัญญาแล้วตั้งแต่ PR-C
+//     ⇒ ที่นี่ตามไปให้ครบ จะได้เหลือคำตอบเดียวว่า "รอบนี้หมดเมื่อไร"
 //
 // ⭐ **ตาราง `service_renewal_followups` เก็บแค่ "ผลการติดตาม"** — แถวเกิดเมื่อมีคน
 //   ลงมือติดตามเท่านั้น · ไซต์ที่ยังไม่มีใครแตะจะโผล่ในทะเบียนโดยไม่มีแถวในฐาน
@@ -14,6 +24,19 @@
 import { businessDate } from '@/lib/businessDate';
 import { addDays, daysBetween } from '@/lib/sales/paymentCoverage';
 import { termOrderActive } from './terms';
+
+/* วันหมดของรอบขายหนึ่ง — **ถามที่สัญญาของใบแม่** (mig 0324)
+   ⚠️ ไม่มีสัญญาผูก = ไม่มีวันหมด = ไม่ใช่ของที่ต้องตาม (รอบปลายเปิด) ⇒ คืน null
+     ไม่ใช่เดาว่าหมดวันนี้ · ใบที่ยังไม่ผูกสัญญาเป็นเรื่องของ SA คนละคิวกัน
+   ⚠️ อ่าน `expiryDate` ตรง ๆ ไม่ผ่าน `contractSpanAt` — ตัวนั้นตอบว่า "วันนี้อยู่ในช่วงไหม"
+     ส่วนที่นี่ต้องการ *ตัววัน* เพื่อเอาไปนับถอยหลัง คนละคำถาม */
+export function termEndDate(term, ordersById, contractsById) {
+  const at = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
+  const order = at(ordersById, term?.salesOrderId);
+  const contract = order?.serviceContractId ? at(contractsById, order.serviceContractId) : null;
+  const to = String(contract?.expiryDate || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
+}
 
 /* หน้าต่างเตือน — 90 วันตามแผน §PR-E
    ⚠️ ตัวเลขนี้อยู่ที่เดียว: ทั้งทะเบียน กระดิ่ง และเทสต์อ่านจากตัวนี้ */
@@ -38,7 +61,9 @@ export function renewalState(endDate, todayIso = businessDate()) {
  * @param sites        ไซต์ทั้งหมดที่ผู้เรียกมองเห็น
  * @param zones        โซนของไซต์เหล่านั้น (ใช้แค่ map zoneId → siteId)
  * @param terms        รอบขายของโซนเหล่านั้น
- * @param ordersById   Map ใบสั่งขาย — ใช้ตัดสินว่า term ยังมีผล (termOrderActive)
+ * @param ordersById    Map ใบสั่งขาย — ใช้ตัดสินว่า term ยังมีผล (`termOrderActive`)
+ *                      **และเป็นทางไปหาสัญญา** (`serviceContractId`)
+ * @param contractsById Map สัญญา — แหล่งความจริงของวันหมด (mig 0324)
  * @param followups    แถวใน service_renewal_followups (เอาเฉพาะที่ยังเปิดอยู่มาแปะ)
  *
  * ⚠️ **term ที่ใบแม่ตายแล้วไม่นับ** — ใบถูก Rev./ยกเลิก = รอบนั้นไม่มีผล ถ้านับด้วย
@@ -48,7 +73,7 @@ export function renewalState(endDate, todayIso = businessDate()) {
  *   ตัดไซต์ที่มีเรื่องปิดครอบวันหมดเดียวกันออกผ่าน `closedEndDates`
  */
 export function renewalRows({
-  sites = [], zones = [], terms = [], ordersById = new Map(),
+  sites = [], zones = [], terms = [], ordersById = new Map(), contractsById = new Map(),
   followups = [], closedEndDates = new Map(), todayIso = businessDate(),
 } = {}) {
   const sitesById = new Map(sites.map((s) => [s.id, s]));
@@ -60,23 +85,26 @@ export function renewalRows({
     if (!termOrderActive(ordersById.get(term.salesOrderId))) continue;
     const siteId = siteOfZone.get(term.zoneId);
     if (!siteId || !sitesById.has(siteId)) continue;
-    const state = renewalState(term.endDate, todayIso);
+    const endDate = termEndDate(term, ordersById, contractsById);
+    const state = renewalState(endDate, todayIso);
     if (!state) continue;
     /* ปิดเรื่องของรอบนี้ไปแล้ว = ไม่ต้องตามซ้ำ (เก็บวันหมดที่ปิดไปแล้วต่อไซต์)
        ⚠️ เทียบด้วย "วันหมด" ไม่ใช่แค่ siteId — ต่อสัญญารอบใหม่แล้วหมดอีกครั้งในปีหน้า
        ต้องโผล่ใหม่ ไม่ใช่เงียบไปตลอดกาลเพราะเคยปิดเรื่องไปครั้งหนึ่ง */
-    if ((closedEndDates.get(siteId) || []).includes(term.endDate)) continue;
+    if ((closedEndDates.get(siteId) || []).includes(endDate)) continue;
 
     const row = bySite.get(siteId) || {
       siteId,
       site: sitesById.get(siteId),
-      endDate: term.endDate,
+      endDate,
       terms: [],
       followup: openBySite.get(siteId) || null,
     };
-    row.terms.push(term);
+    /* ⚠️ แปะวันหมดไว้กับ term ที่ผู้เรียกหยิบไปใช้ต่อ — route หา "รอบที่หมดเร็วที่สุด"
+       ด้วยการเทียบ `t.endDate === row.endDate` ซึ่งคอลัมน์จริงเป็น NULL เสมอ */
+    row.terms.push({ ...term, endDate });
     // วันหมดของแถว = วันที่เร็วที่สุดในบรรดารอบที่เข้าเขต (เตือนตามของที่จะหมดก่อน)
-    if (String(term.endDate) < String(row.endDate)) row.endDate = term.endDate;
+    if (String(endDate) < String(row.endDate)) row.endDate = endDate;
     bySite.set(siteId, row);
   }
 

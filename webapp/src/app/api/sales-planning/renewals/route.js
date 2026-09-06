@@ -35,7 +35,9 @@ async function loadRenewalContext(supabase, user) {
      ไซต์ที่หลุดจะ "ไม่ใกล้หมด" ทั้งที่หมดพรุ่งนี้ (check:rowcap คุมไว้) */
   const { data: orders, error: orderError } = orderIds.length
     ? await fetchAllResult(() => supabase.from('sales_orders')
-      .select('id, "orderNumber", status, "supersededById", "dealId", "customerId"')
+      /* ⚠️ **`serviceContractId` คือทางไปหาวันหมด** (mig 0324) — ลืมคอลัมน์นี้เมื่อไร
+         ทะเบียนกลับไปว่างเปล่าเงียบ ๆ เหมือนก่อนแก้ 06/09/2026 */
+      .select('id, "orderNumber", status, "supersededById", "dealId", "customerId", "serviceContractId"')
       .in('id', orderIds).order('id', { ascending: true }))
     : { data: [], error: null };
   if (orderError) throw new Error(orderError.message);
@@ -64,7 +66,24 @@ async function loadRenewalContext(supabase, user) {
     return deal ? inSalesViewScope(user, deal) : false;
   });
 
-  return { zones, sites, terms: visibleTerms, ordersById, dealById, followups: followups || [] };
+  /* ── สัญญาบริการ = แหล่งความจริงของ "รอบนี้หมดเมื่อไร" (mig 0324) ──────────
+     🐞 ก่อน 06/09/2026 ทะเบียนอ่าน `service_zone_terms.endDate` ซึ่งไม่มีใครเขียนเลย
+       ⇒ ตอบ `[]` เสมอ · กระดิ่งไม่ยิงสักใบ · แถบสรุปเป็น 0 ทั้งสี่ช่องถาวร
+     ⚠️ อ่านเท่าที่ใบอ้างถึงเท่านั้น — ดึงทั้งตารางคือดึงสัญญาทั้งบริษัท
+     ⚠️ ชุดคอลัมน์เดียวกับที่ `gateContext` ใช้ ⇒ สองที่อ่านของชุดเดียวกัน */
+  const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
+  const { data: contracts, error: contractError } = contractIds.length
+    ? await fetchAllResult(() => supabase.from('sales_contracts')
+      .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate"')
+      .in('id', contractIds).order('id', { ascending: true }))
+    : { data: [], error: null };
+  if (contractError) throw new Error(contractError.message);
+  const contractsById = new Map((contracts || []).map((c) => [c.id, c]));
+
+  return {
+    zones, sites, terms: visibleTerms, ordersById, dealById, contractsById,
+    followups: followups || [],
+  };
 }
 
 /* เรื่องที่ปิดไปแล้วครอบวันหมดไหนบ้าง (siteId → [วันหมด]) — ตัวกันไม่ให้เรื่องเดิม
@@ -79,7 +98,8 @@ function closedEndDatesOf(followups = []) {
 }
 
 const rowsOf = (ctx, todayIso) => renewalRows({
-  sites: ctx.sites, zones: ctx.zones, terms: ctx.terms, ordersById: ctx.ordersById,
+  sites: ctx.sites, zones: ctx.zones, terms: ctx.terms,
+  ordersById: ctx.ordersById, contractsById: ctx.contractsById,
   followups: ctx.followups, closedEndDates: closedEndDatesOf(ctx.followups), todayIso,
 });
 
