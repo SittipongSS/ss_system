@@ -11,12 +11,9 @@
 //
 // ⚠️ **ตรรกะอยู่ที่นี่ ไม่ใช่ในหน้าเว็บ** — `components/ui/StepTrack` วาดอย่างเดียว
 //    (แพตเทิร์นเดียวกับ `salesOrderListTrack.js` และ `requests/queueTrack.js`)
-import { daysAwaitingSignature, isExternalContract } from '@/lib/sales/contracts';
+import { daysAwaitingSignature, isExternalContract, SIGNATURE_LATE_DAYS } from '@/lib/sales/contracts';
 
 const step = (key, label, state, note = null) => ({ key, label, state, note });
-
-// เกินกี่วันถือว่าต้องโทรตาม — ตัวเลขเดียวกับการ์ดสรุปบนหัวทะเบียน ("ค้างเกิน 14 วัน")
-export const SIGNATURE_LATE_DAYS = 14;
 
 /**
  * รางของสัญญาหนึ่งใบ

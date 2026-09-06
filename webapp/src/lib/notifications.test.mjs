@@ -22,7 +22,7 @@ function* walk(dir) {
 }
 
 import {
-  EXCISE_BELL_KINDS, LEAD_BELL_KINDS, SERVICE_BELL_KINDS,
+  CONTRACT_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, SERVICE_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -262,7 +262,8 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   await listNotificationPage(supabase, 'u-1', { box: notificationBox('bell') });
   assert.deepEqual(calls.ors, [
     'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
-    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS].map((k) => `kind.eq.${k}`).join(','),
+    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS]
+      .map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
 
@@ -271,7 +272,8 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   // เมื่อไรกระดิ่งก็กลับไปเป็นกองเดิมที่ไม่มีใครอ่าน
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
-    ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS]);
+    ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
+      ...CONTRACT_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
@@ -351,6 +353,39 @@ test('EXCISE_BELL_KINDS ครบทุก kind ที่ยิงจริง',
   }
 });
 
+
+/* ── สัญญาเข้ากระดิ่ง (2026-09-06) ─────────────────────────────────────────
+   🪤 สัญญามีด่านเพิ่มอีกชั้นที่ลีด/สรรพสามิตไม่มี: `sales_contract` **ไม่มีเธรด**
+      ใน `UPDATE_ENTITIES` ⇒ ใส่ลง `entityTypes` แล้วเทสต์ "ทุก entity ในกล่อง
+      ต้องมีเธรดจริง" จะแดงทันที · ทางเดียวคือเข้าทาง `kinds` */
+test('⭐ สัญญาเข้ากระดิ่งด้วย kind ไม่ใช่ทั้ง entity', () => {
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('sales_contract'), false);
+  for (const kind of CONTRACT_BELL_KINDS) {
+    assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกระดิ่ง`);
+  }
+});
+
+/* ⚠️ ดริฟต์แบบเดียวกับ LEAD_BELL_KINDS: ยิง kind ใหม่จากสายสัญญาแล้วลืมเติมลิสต์
+   ⇒ แถวถูกเขียนลงตารางตามปกติแต่ไม่โผล่ในกระดิ่ง ไม่มีอะไรฟ้อง
+   · กวาดทั้ง src หาไฟล์ที่ยิง `entityType: 'sales_contract'` ไม่ไล่ตามชื่อไฟล์ */
+test('CONTRACT_BELL_KINDS ครบทุก kind ที่ยิงจริง', () => {
+  /* 🪤 **กรองด้วย `entityType: 'sales_contract'` ไม่ได้เหมือนของลีด/สรรพสามิต** —
+     ตัวทวงค้างลงนามแยกกติกา (`contractNotify.js`) ออกจากตัวยิง (route ของ cron)
+     ⇒ ไฟล์ที่ประกาศ kind กับไฟล์ที่ระบุ entityType คนละไฟล์กัน กรองแล้วตาบอดครึ่งเดียว
+     · ใช้ **คำนำหน้าชื่อ kind** เป็นตัวจับแทน ซึ่งเป็นกติกาตั้งชื่อที่ทั้งสายใช้อยู่แล้ว */
+  const kinds = new Set();
+  for (const file of walk(new URL('..', import.meta.url))) {
+    const src = readFileSync(file, 'utf8');
+    for (const [, kind] of src.matchAll(/kind: '(contract_[a-z_]+)'/g)) kinds.add(kind);
+    // ตัวที่ส่ง kind ผ่านตัวแปร (`kind: notice.kind`) — อ่านจากค่าคงที่ที่ประกาศไว้แทน
+    for (const [, kind] of src.matchAll(/_KIND = '(contract_[a-z_]+)'/g)) kinds.add(kind);
+  }
+  assert.ok(kinds.size >= 2, 'หา kind ของแจ้งเตือนสัญญาไม่เจอเลย — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of kinds) {
+    assert.ok(CONTRACT_BELL_KINDS.includes(kind),
+      `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน CONTRACT_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+  }
+});
 
 test('กล่อง + กุญแจหน้าถัดไปอยู่ด้วยกันได้ — or สองก้อนถูก and กันที่ PostgREST', async () => {
   const { calls, supabase } = pageStub([]);

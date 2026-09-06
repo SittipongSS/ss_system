@@ -41,6 +41,19 @@ test('ชื่อเอกสารบนกระดาษต้องตร�
 /* ⭐ มติผู้ใช้ 2026-09-06 — ตำแหน่งผู้ลงนามฝั่งผู้ว่าจ้างใช้คำกลาง ไม่ใช่ "กรรมการผู้จัดการ"
    (ต้นฉบับเป็นฉบับกรอกจริงของลูกค้ารายหนึ่ง คำนั้นจึงเป็นตำแหน่งของคนคนนั้น)
    ⚠️ ฝั่งผู้รับจ้างต้องไม่โดนด้วย — เป็นตำแหน่งจริงของผู้ลงนามเรา */
+/* ปลายทางจริง: ยอดที่ contractFieldDefaults เติมจากใบเสนอราคา ต้องขึ้นกระดาษถูกทั้งเลขและตัวหนังสือ
+   — ด่านนี้จับกรณี "เก็บสตริงจัดรูปแล้ว" ซึ่งจะกลายเป็น 0.00 บนเอกสาร */
+test('ยอดจากใบเสนอราคาเดินถึงกระดาษ — เลขจัดรูป + ตัวหนังสือในประโยคเดียวกัน', async () => {
+  const { contractFieldDefaults } = await import('./contractTemplates.js');
+  const { buildContractHTML } = await import('./contractDocument.js');
+  const fields = contractFieldDefaults('service', {
+    quotation: { totalAmount: 38199 }, current: CONTRACT.fields,
+  });
+  const body = buildContractHTML({ ...CONTRACT, fields }, { company: {}, quotation: QUOTATION });
+  assert.match(body, /38,199\.00 บาท/);
+  assert.match(body, /สามหมื่นแปดพันหนึ่งร้อยเก้าสิบเก้าบาทถ้วน/);
+});
+
 test('ตำแหน่งผู้ลงนาม: ผู้ว่าจ้างใช้คำกลาง · ผู้รับจ้างคงตำแหน่งจริง', () => {
   const title = SERVICE_TEMPLATE.fields.find((f) => f.key === 'clientSignerTitle');
   assert.equal(title.default, 'ผู้มีอำนาจ/ผู้รับมอบอำนาจ');

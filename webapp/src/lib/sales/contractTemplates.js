@@ -11,6 +11,7 @@
 //    ⇒ ระบบต้องบอกตรง ๆ ว่ายังไม่มีแม่แบบ ไม่ใช่แต่งข้อสัญญาขึ้นเอง
 //    (เอกสารผูกพันตามกฎหมาย — ข้อความที่ไม่มีใครอนุมัติคือความเสียหาย ไม่ใช่ช่องว่าง)
 
+import { amountInWords } from '@/lib/documents/amountInWords';
 import { customerNameIn } from '@/lib/master/customerName';
 import { SCENT_DESIGN_TEMPLATE } from './contractTemplateScentDesign';
 import { SERVICE_TEMPLATE } from './contractTemplateService';
@@ -40,8 +41,19 @@ export function contractFieldDefaults(kind, { customer = null, quotation = null,
       if (field.key === 'clientRegNo') { filled[field.key] = customer.taxId || ''; continue; }
       if (field.key === 'clientAddress') { filled[field.key] = customer.address || ''; continue; }
     }
+    /* 🐞 สาขานี้เคยรู้จักคีย์เดียวคือ `contractValue` ซึ่ง **ไม่มีแม่แบบไหนประกาศ** ⇒ เดินเข้า
+       สาขาแล้วไม่ตรงคีย์ไหนเลย · ผลคือช่อง `totalWithVat` ของสัญญาบริการที่ตั้ง source ไว้
+       ไม่เคยถูกเติม คนต้องพิมพ์ยอดเองทั้งที่ยอดอยู่ในใบเสนอราคาแล้ว (แก้ 2026-09-06)
+       ⚠️ **เก็บเป็นตัวเลขดิบ** — ตัวเรนเดอร์จัดคอมมา/ทศนิยมให้เองจาก `type: 'money'`
+          เก็บสตริงจัดรูปแล้วจะได้ "38,199.00" ผ่าน Number() เป็น NaN แล้วกลายเป็น 0.00 บนกระดาษ */
     if (field.source === 'quotation' && quotation) {
-      if (field.key === 'contractValue') { filled[field.key] = quotation.totalAmount ?? ''; continue; }
+      const total = Number(quotation.totalAmount);
+      const hasTotal = Number.isFinite(total) && total > 0;
+      if (field.key === 'totalWithVat') { if (hasTotal) filled[field.key] = total; continue; }
+      /* ตัวหนังสือคิดจากยอดเดียวกัน ไม่ให้คนพิมพ์เองสองที่แล้วขัดกันบนกระดาษ
+         ⚠️ ยอดว่าง = ไม่เติมอะไรเลย ไม่ใช่ "ศูนย์บาทถ้วน" — ช่องว่างยังติดด่าน required
+            ให้คนเห็นว่าต้องกรอก ส่วนคำว่าศูนย์บาทจะผ่านด่านไปขึ้นกระดาษเงียบ ๆ */
+      if (field.key === 'totalWithVatText') { if (hasTotal) filled[field.key] = amountInWords(total, 'th'); continue; }
     }
     if (field.default !== undefined) filled[field.key] = field.default;
   }

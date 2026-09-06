@@ -4,6 +4,7 @@ import { can } from '@/lib/permissions';
 import { holidaySet } from '@/lib/master/holidays';
 import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
 import { overdueLeadNotices } from '@/lib/sales/leadNotify';
+import { overdueSignatureNotices } from '@/lib/sales/contractNotify';
 import { notifyUsers } from '@/lib/notifications';
 import { businessDayKey } from '@/lib/datePeriods';
 import { loadUserDirectory } from '@/lib/usersRepo';
@@ -11,7 +12,8 @@ import { loadUserDirectory } from '@/lib/usersRepo';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-// GET /api/cron/daily-digest — ทวงลีดค้างเกิน SLA เข้ากล่องแจ้งเตือน **รายคน**
+// GET /api/cron/daily-digest — ทวงงานค้างเข้ากล่องแจ้งเตือน **รายคน**
+// วันนี้มีสองเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู webapp/vercel.json) ด้วย Authorization:
 // Bearer CRON_SECRET หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ
 //
@@ -75,6 +77,43 @@ async function notifyOverdueLeads(supabase) {
   return { sent, notices: notices.length };
 }
 
+/* ทวงสัญญาที่ค้างขั้น "รอลงนาม" เกินเกณฑ์ — หนึ่งคนได้เด้งเดียวต่อวันเหมือนกัน
+   กติกา "ใบไหนสาย ใครต้องรู้" อยู่ที่ `overdueSignatureNotices` (lib/sales/contractNotify.js)
+
+   ⚠️ **ต้องอยู่ที่ cron ไม่ใช่ตอนเปิดทะเบียน** — ทะเบียนสัญญากรองตามขอบเขตของคนเปิด
+      ⇒ กวาดตอนนั้นจะทวงได้เฉพาะคนที่เปิดหน้าอยู่ ซึ่งคือคนที่ไม่ต้องทวง · ที่นี่ใช้
+      สิทธิ์ admin จึงเห็นทุกใบทุกทีม */
+async function notifyOverdueContracts(supabase) {
+  const { data, error } = await supabase
+    .from('sales_contracts')
+    .select('id, "contractNo", status, "issuedAt", "ownerId", "createdBy", "customerName"')
+    .eq('status', 'awaiting_signature');
+  if (error) return { sent: 0, error: error.message };
+  if (!data?.length) return { sent: 0, reason: 'ไม่มีใบรอลงนาม' };
+
+  const now = new Date();
+  const notices = overdueSignatureNotices(data, { now, dayKey: businessDayKey(now.toISOString()) });
+  if (!notices.length) return { sent: 0, reason: 'ไม่มีใบค้างเกินเกณฑ์' };
+
+  let sent = 0;
+  for (const notice of notices) {
+    const result = await notifyUsers(supabase, {
+      userIds: notice.userIds,
+      entityType: 'sales_contract',
+      entityId: notice.entityId,
+      kind: notice.kind,
+      title: notice.title,
+      body: notice.body,
+      dedupeKey: notice.dedupeKey,
+      // สรุปหลายใบ → พาไปที่ *คิวของฉัน* ไม่ใช่ใบใดใบหนึ่ง (ตัวกรอง ?waiting=1 มีอยู่แล้ว)
+      href: '/sa/contracts?waiting=1',
+      actorName: 'สรุปประจำวัน',
+    });
+    sent += result.sent || 0;
+  }
+  return { sent, notices: notices.length };
+}
+
 export async function GET(request) {
   // ผ่านได้ 2 ทาง: Vercel Cron (Bearer CRON_SECRET) หรือ admin กดทดสอบเองจากเบราว์เซอร์
   //
@@ -95,6 +134,13 @@ export async function GET(request) {
     results.leadOverdue = await notifyOverdueLeads(supabase);
   } catch (e) {
     results.leadOverdue = { sent: 0, error: e?.message || String(e) };
+  }
+  /* ⚠️ แยก try ของตัวเอง — เรื่องหนึ่งพังต้องไม่กลืนอีกเรื่องหนึ่ง (cron รอบเดียวกัน
+     ทำสองงานที่ไม่เกี่ยวกัน · ล้มรวมกันแล้วจะไล่ไม่ออกว่าเรื่องไหนเงียบเพราะอะไร) */
+  try {
+    results.contractOverdue = await notifyOverdueContracts(supabase);
+  } catch (e) {
+    results.contractOverdue = { sent: 0, error: e?.message || String(e) };
   }
 
   return Response.json({ ok: true, at: new Date().toISOString(), results });
