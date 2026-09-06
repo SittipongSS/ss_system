@@ -117,3 +117,46 @@ test("--scroll-anchor-top ยังคำนวณจากความสูง
   assert.match(globals, /--scroll-anchor-top:\s*calc\(var\(--topbar-h\)\s*\+\s*var\(--sysbar-h\)/,
     "ถ้ากลายเป็นเลขคงที่ ชั้นจอที่ --sysbar-h เป็น 0 จะเผื่อเกินไป 42px");
 });
+
+/* ── รางขวาต้องเป็นกล่องที่ครอบความสูงตัวเอง (2026-09-06) ────────────────────
+   🐞 `.aside` เป็น sticky ในกล่องที่ไม่ครอบความสูง — ปักได้ก็จริง แต่ถ้าตัวมันสูงกว่าจอ
+   มันเลื่อนหายไปพร้อมหน้าเหมือนเนื้อหาธรรมดา ⇒ Control Panel ทั้งใบหลุดสายตา
+   และของที่หายก่อนคือสถานะซึ่งอยู่บนสุด · ทรงเดียวกับกล่องตารางที่ซ่อมวันเดียวกัน
+
+   วัดจริง (ราง 330px · ทรงหน้าคำร้อง): การ์ดจัดการ 633.3px · ทั้งราง 901.0px
+   เทียบพื้นที่ที่มีที่จอ 900 = 794px ⇒ ล้น 107px · ล้นทั้ง 5 หน้าที่วัด */
+test("รางขวาต้องมีเพดานความสูงและเลื่อนในตัวเอง", () => {
+  const source = blankComments(fs.readFileSync(
+    path.join(WEBAPP, "src", "components", "ui", "DetailPage.module.css"), "utf8"));
+  const aside = rules(source).find((r) => r.selector === ".aside");
+  assert.ok(aside, "หากฎ .aside ไม่เจอ");
+  assert.match(aside.body, /max-height:\s*var\(--pinned-box-max\)/,
+    "ถอดเพดานเมื่อไร รางที่สูงกว่าจอจะเลื่อนหายไปพร้อมหน้า ทั้งที่เขียนว่า sticky");
+  assert.match(aside.body, /overflow-y:\s*auto/,
+    "ต้องเลื่อนในตัวเองได้ ไม่งั้นส่วนที่เกินเพดานถูกตัดทิ้งแทนที่จะเลื่อนดู");
+});
+
+/* 🔴 เพดานอย่างเดียวไม่พอ — flex item มี flex-shrink: 1 เป็นค่าตั้งต้น พอกล่องแม่
+   มีเพดาน ลูกจะยอมหดลงมาให้พอดีแทนที่จะให้แม่เลื่อน · วัดจับได้ตอนทดสอบ 2026-09-06:
+   ราง max-height 770px แล้ว scrollHeight = 770 พอดี (ควรเป็น 800+) = การ์ดถูกอัด
+   หลังเติม `flex: none` วัดใหม่ได้ scrollHeight 800 · เลื่อนได้ 30px · การ์ดคงความสูงจริง */
+test("การ์ดในรางต้องไม่ยอมหด ไม่งั้นเพดานกลายเป็นตัวบีบแทนตัวเลื่อน", () => {
+  const source = blankComments(fs.readFileSync(
+    path.join(WEBAPP, "src", "components", "ui", "DetailPage.module.css"), "utf8"));
+  const rule = rules(source).find((r) => r.selector === ".aside > *");
+  assert.ok(rule, "ต้องมีกฎ `.aside > *` ที่ล็อกไม่ให้การ์ดหด");
+  assert.match(rule.body, /flex:\s*none/,
+    "ต้องเป็น `flex: none` — `flex-shrink: 0` เฉย ๆ ยังปล่อยให้การ์ดที่มี flex-basis ของตัวเองหดได้");
+});
+
+/* เพดานมีเหตุผลเฉพาะตอนรางเป็น sticky — ที่จอแคบรางไหลลงเป็นเนื้อหาปกติ
+   ถ้าเพดานยังอยู่ การ์ดจะถูกตัดทิ้งแทนที่จะไหลลงหน้า */
+test("ที่จอแคบซึ่งรางเลิกปัก ต้องล้างเพดานทิ้ง", () => {
+  const raw = fs.readFileSync(path.join(WEBAPP, "src", "components", "ui", "DetailPage.module.css"), "utf8");
+  const at = raw.indexOf("@media (max-width: 1050px)");
+  assert.ok(at > 0, "หา media query ที่รางเลิกปักไม่เจอ");
+  const block = blankComments(raw.slice(at, raw.indexOf("@media", at + 10)));
+  assert.match(block, /position:\s*static/, "สมมติฐาน: ที่ความกว้างนี้รางเลิกเป็น sticky");
+  assert.match(block, /max-height:\s*none/, "ต้องล้างเพดาน ไม่งั้นการ์ดถูกตัดทิ้ง");
+  assert.match(block, /overflow-y:\s*visible/);
+});

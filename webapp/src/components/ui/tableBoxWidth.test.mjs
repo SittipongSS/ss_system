@@ -140,7 +140,7 @@ test("รางกริดในไฟล์ที่มีตาราง ต�
 test("กล่องตารางต้องมีเพดานความสูง ไม่งั้นหัวตารางปักไม่ได้", () => {
   const scroll = rules(withoutComments).find((r) => r.selector === ".scroll");
   assert.ok(scroll, "หากฎ .scroll ไม่เจอ");
-  assert.match(scroll.body, /max-height:\s*var\(--table-viewport-max\)/,
+  assert.match(scroll.body, /max-height:\s*var\(--pinned-box-max\)/,
     "ถอด max-height เมื่อไร sticky ของ th กลับไปเป็นของตายทันที (ไม่มี error ให้เห็น)");
   assert.match(scroll.body, /overflow:\s*auto/,
     "ต้องยังเลื่อนได้ทั้งสองแกน — แนวนอนสำหรับตารางกว้าง แนวตั้งสำหรับหัวที่ปัก");
@@ -152,10 +152,10 @@ test("กล่องตารางต้องมีเพดานควา�
 test("เพดานความสูงต้องมีพื้นกันยุบ และผูกกับความสูงแถบเมนู", () => {
   const globals = fs.readFileSync(path.join(WEBAPP, "src", "app", "globals.css"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "");
-  assert.match(globals, /--table-viewport-min:\s*\d/, "ต้องมีพื้นกันยุบเป็นโทเคนของตัวเอง");
-  const token = (globals.match(/--table-viewport-max:\s*([^;]+);/) || [])[1] || "";
+  assert.match(globals, /--pinned-box-min:\s*\d/, "ต้องมีพื้นกันยุบเป็นโทเคนของตัวเอง");
+  const token = (globals.match(/--pinned-box-max:\s*([^;]+);/) || [])[1] || "";
   assert.match(token, /max\(/, "ต้องห่อด้วย max() ไม่งั้น dvh = 0 จะยุบตารางหายทั้งใบ");
-  assert.match(token, /var\(--table-viewport-min\)/);
+  assert.match(token, /var\(--pinned-box-min\)/);
   assert.match(token, /100dvh/, "ต้องเป็น dvh ไม่ใช่ vh — แถบเบราว์เซอร์บนมือถือทำให้ vh เพี้ยน");
   assert.match(token, /var\(--scroll-anchor-top\)/,
     "ต้องหักความสูงแถบเมนูออก และต้องเป็นโทเคนเพราะแถบหดจาก 95 เหลือ 53px ที่จอ ≤1200");
