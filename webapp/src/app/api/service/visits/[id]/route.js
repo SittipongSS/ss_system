@@ -10,6 +10,7 @@ import {
   VISIT_STATUS_LABELS, canDeleteVisit, holdsRequestSlot, isClosedVisit, isLiveVisit,
 } from '@/lib/service/visitStatus';
 import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
+import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
@@ -234,13 +235,43 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           (ซึ่งเป็นที่ที่ TS ทำงานจริง) ใบยังถือวันเก่า ⇒ ฝ่ายขายอ่านใบแล้วบอกลูกค้าผิดวัน
           และตัวนับ "เลยกำหนด" ก็นับจากวันที่ไม่มีใครจะไปแล้ว
        ⚠️ เขียนกลับเฉพาะ **วัน/เวลา** — สถานะของใบเป็นเรื่องของก้าวคำร้อง ไม่ใช่ของนัด */
+    /* จอของช่างต้องบอกผลจริงหลังกดปิด — "ทำไม่ได้แล้ว" เฉย ๆ ไม่ได้บอกว่าใบเดินต่อยังไง */
+    let steppedBackRequest = false;
     if (data.requestId && data.kind === 'survey') {
       const nextDate = data.scheduledDate || null;
       const nextTime = data.startTime ? String(data.startTime).slice(0, 5) : null;
       const { data: reqRow } = await supabase
-        .from('dept_requests').select('id, "committedDueDate", "committedDueTime"')
+        .from('dept_requests')
+        .select('id, status, "committedDueDate", "committedDueTime", "answeredAt", "cancelledAt"')
         .eq('id', data.requestId).maybeSingle();
-      const changed = reqRow
+
+      /* 🔴 **ถอยกลับขั้น "ลงคิว" เมื่อช่างไปแล้วเข้าไม่ได้** (§5E ② · มติข้อ 23)
+         ล้างวันบนใบ ⇒ ทั้งราง คิว ตัวนับ และปุ่มลงคิว derive จากคอลัมน์เดียวนี้
+         ⇒ ใบไหลกลับเข้าคิว "รับแล้ว ยังไม่ลงวัน" เอง · นัดเดิมค้างเป็น `unable` ในประวัติ
+         ⚠️ ต้องอยู่ **ก่อน** บล็อกซิงก์วันข้างล่าง และบล็อกนั้นต้องไม่เขียนวันกลับมาทับ */
+      const stepBack = surveyStepBackPlan({ visit: data, before, request: reqRow });
+      if (stepBack) {
+        steppedBackRequest = true;
+        const { error: backError } = await supabase.from('dept_requests')
+          .update({ ...stepBack.patch, updatedAt: nowIso }).eq('id', data.requestId);
+        if (backError) {
+          console.error('[service-visits] ถอยขั้นใบประเมินไม่สำเร็จ:', backError.message);
+        } else {
+          /* บรรทัดในเธรดคือตัวที่แจกกระดิ่ง — SA ต้องได้ทั้ง "ยังไม่ได้คำตอบ" และ **เหตุผล**
+             ไม่ใช่รู้แค่ว่าวันหายไปเฉย ๆ (แผน §5E ②) */
+          await appendUpdate(supabase, {
+            entityType: 'dept_request', entityId: data.requestId, kind: 'unable',
+            body: surveyStepBackBody(stepBack),
+            user,
+          });
+        }
+      }
+
+      /* ⚠️ **ซิงก์วันเฉพาะนัดที่ยังกินสิทธิ์อยู่** (`holdsRequestSlot`)
+         🐞 ของเดิมไม่ดูสถานะนัดเลย ⇒ PATCH นัดที่ปิดไปแล้วอีกครั้ง (แก้สรุป/แนบไฟล์)
+           จะเห็นว่าวันบนใบว่าง ≠ วันของนัด แล้ว **เขียนวันเก่ากลับลงใบ** ⇒ ใบเด้งกลับ
+           ขั้น "นัดแล้ว" เองเงียบ ๆ พร้อมวันที่ไม่มีใครจะไป (ปลุก "วันผี" ที่เพิ่งล้างไป) */
+      const changed = holdsRequestSlot(data) && reqRow
         && (String(reqRow.committedDueDate ?? '') !== String(nextDate ?? '')
           || String(reqRow.committedDueTime ?? '').slice(0, 5) !== String(nextTime ?? ''));
       if (changed) {
@@ -322,7 +353,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const plan = await findPlan(supabase, data.planId);
       if (plan) suggestion = nextAfterDone(plan, data);
     }
-    return ok({ visit: data, nextVisitSuggestion: suggestion });
+    return ok({ visit: data, nextVisitSuggestion: suggestion, steppedBackRequest });
   } catch (e) {
     return fail(e.message, 500);
   }
