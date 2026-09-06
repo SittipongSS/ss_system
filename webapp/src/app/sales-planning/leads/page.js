@@ -692,8 +692,7 @@ export default function LeadsPage() {
             />
           </div>
 
-          <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll surface="embedded"><table className="w-full text-sm">
+            <TableScroll aria-busy={loading} surface="auto"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <SortTh label="ลูกค้า/ผู้ติดต่อ" sortKey="name" sort={sort} />
@@ -803,7 +802,6 @@ export default function LeadsPage() {
                 )}
               </tbody>
             </table></TableScroll>
-          </div>
 
           {filtered.length > 0 && (
             <Pager
