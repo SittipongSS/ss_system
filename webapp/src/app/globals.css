@@ -6306,6 +6306,13 @@ button.ui-workspace-back {
   /* จุดจอดเวลากดเปลี่ยนหน้าท้ายตารางแล้วโค้ดพากลับขึ้นหัวส่วน (lib/ui/scrollToTopOf.js) */
   scroll-margin-top: var(--scroll-anchor-top);
 }
+
+/* จุดหมายของ `scrollIntoView` ที่ไม่ใช่การ์ด/ส่วนที่มีกฎของตัวเองอยู่แล้ว
+   🐞 2026-09-06: `PerformanceTab` เลื่อนไปหา `<div ref={drillRef}>` ที่เป็น div เปล่า
+   **ไม่มี scroll-margin-top เลย** ⇒ จอดที่ y=0 คือใต้แถบเมนูทั้งใบ (95px ที่จอกว้าง)
+   ⚠️ ใช้คลาสนี้แทนการเติม scroll-margin-top รายจุด — ค่านั้นต้องเดินตามความสูงแถบ
+   ซึ่งเปลี่ยนตามชั้นจอ ไม่ใช่เลขที่เขียนทิ้งไว้ได้ */
+.scroll-anchor { scroll-margin-top: var(--scroll-anchor-top); }
 .ui-section-header {
   display: flex;
   align-items: center;
