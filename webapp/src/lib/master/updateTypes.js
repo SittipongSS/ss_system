@@ -119,6 +119,9 @@ export const UPDATE_KINDS = {
        อำพันเหมือน `reschedule`/`bounce` — "ยังไม่จบ ต้องทำอะไรต่อ" ไม่ใช่ "พัง"
        `narrative` เพราะเป็นคำอธิบายถึงผู้ขอว่าทำไมยังไม่ได้คำตอบ ไม่ใช่ log ของระบบ */
     unable: { label: 'เข้าพื้นที่ไม่ได้', color: 'var(--amber)', narrative: true },
+    /* ฝ่ายปิดใบโดยไม่ได้ผล (§5E ③) — เทาเหมือน `close` เพราะมันคือการจบใบ
+       แต่แยกชนิดเพราะ **คนละความหมาย**: `close` = ได้ของแล้วผู้ขอรับ · ตัวนี้ = ไม่ได้ของ */
+    close_unassessed: { label: 'ปิดโดยไม่ได้ผล', color: 'var(--text-3)', narrative: true },
     close: { label: 'ปิดเคส', color: 'var(--text-3)' },
     cancel: { label: 'ยกเลิกเคส', color: 'var(--red)', narrative: true },
   },
