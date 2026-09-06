@@ -9,9 +9,9 @@
 // ⚠️ ด่านสิทธิ์เป็น **ด่านรายใบ** ไม่ใช่ cap ล้วน — เจ้าหน้าที่หน้างานถือ `service:work`
 //   ซึ่งเปิดเฉพาะงานที่ตัวเองถูกมอบหมาย (กติกาเดียวกับ `visitWriteAccess` ของนัด)
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, notFound } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
-import { normalizeSurveyPart, packageNeedsNote } from '@/lib/service/survey';
+import { normalizeSurveyPart, packageNeedsNote, surveyEditLockError } from '@/lib/service/survey';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 import { genId } from '@/lib/id';
@@ -58,6 +58,15 @@ function normalizeParts(input) {
   return { value: out, error: null };
 }
 
+/* ⚠️ **ทั้งสองเมธอดต้องถามใบแม่ก่อนเขียน** — แถวผลวัดเป็นลูกของใบคำร้อง และของที่
+   ล็อกคือ *ใบ* ไม่ใช่ *แถว* ⇒ อ่านที่เดียว ใช้ด่านตัวเดียว (`surveyEditLockError`) */
+async function requestLock(supabase, id) {
+  const { data, error } = await supabase
+    .from('dept_requests').select('id, "answeredAt", "cancelledAt"').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return surveyEditLockError(data);
+}
+
 // PATCH { parts?, spots?, note?, status?, cutReason? }
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id, zoneId } = await ctx.params;
@@ -71,6 +80,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       .from('service_survey_zones').select('*').eq('id', zoneId).eq('requestId', id).maybeSingle();
     if (rowError) return fail(rowError.message, 500);
     if (!row) return notFound('ไม่พบพื้นที่นี้ในใบประเมิน');
+
+    const locked = await requestLock(supabase, id);
+    if (locked) return conflict(locked);
 
     /* 🔑 **ด่านรายใบ ใช้ตัวตัดสินตัวเดียวกับนัด** — เจ้าหน้าที่หน้างานเขียนได้เฉพาะ
        ใบที่ตัวเองถูกมอบหมาย · นัดของใบประเมินคือที่เดียวที่บอกว่า "ใครไป" */
@@ -157,6 +169,9 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
     if (rowError) return fail(rowError.message, 500);
     if (!row) return notFound('ไม่พบพื้นที่นี้ในใบประเมิน');
     if (row.status === 'cut') return badRequest('พื้นที่นี้ถูกตัดออกจากใบแล้ว');
+
+    const locked = await requestLock(supabase, id);
+    if (locked) return conflict(locked);
 
     const body = await req.json().catch(() => ({}));
     const patch = {};

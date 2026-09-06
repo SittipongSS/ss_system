@@ -7,8 +7,8 @@
 // ⚠️ ด่านอ่านเป็น **ด่านของคำร้อง** ไม่ใช่ด่านโมดูลบริการล้วน — ใบที่ไม่ได้ส่งถึงฝ่ายเรา
 //   ต้องอ่านไม่ได้ ถึงจะถือ `service:view` ก็ตาม (id หลุดทางลิงก์แจ้งเตือนได้)
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
-import { canDoFieldWork, canEditService, canSendSurveyResult, canViewRequests } from '@/lib/permissions';
-import { canReadRequestRow } from '@/lib/requests/access';
+import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
+import { canOpenSurveySheet, surveyReadError } from '@/lib/service/surveyAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
@@ -19,15 +19,18 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
-    if (!canViewRequests(user)) return forbidden();
+    // ตัดคนนอกโมดูลก่อนแตะฐาน — ไม่งั้นการยิง id ไปเรื่อย ๆ บอกได้ว่าใบไหนมีอยู่จริง
+    if (!canOpenSurveySheet(user)) return forbidden();
 
     const { data: request, error: reqError } = await supabase
       .from('dept_requests').select('*').eq('id', id).maybeSingle();
     if (reqError) return fail(reqError.message, 500);
     if (!request) return notFound('ไม่พบใบคำร้อง');
-    if (!canReadRequestRow(user, request)) {
-      return forbidden('คำร้องนี้ไม่ใช่ของคุณ และไม่ได้ส่งถึงฝ่ายของคุณ');
-    }
+
+    /* 🔑 **ด่านอ่านอยู่ที่เดียว** (`surveyReadError`) — ยอมทั้งคนคุมคิวและช่างหน้างาน
+       🐞 เดิมเป็น `canViewRequests` ล้วน ซึ่งปิดประตูใส่ role `ts` ที่จอนี้ทำมาให้เขาใช้ */
+    const readError = surveyReadError(user, request);
+    if (readError) return forbidden(readError);
 
     const zones = await loadSurveyZones(supabase, id);
 

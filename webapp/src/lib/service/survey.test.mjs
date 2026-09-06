@@ -10,6 +10,7 @@ import {
   packageNeedsNote,
   spotCounts,
   suggestedPackages,
+  surveyEditLockError,
   surveyFieldMissing,
   surveyFieldProgress,
   surveyResultMissing,
@@ -267,4 +268,31 @@ test('🔴 เส้นของช่างต้องไม่รับ packa
   assert.doesNotMatch(put, /body\.parts/, 'หัวหน้าแก้ขนาดที่ช่างวัดไม่ได้');
   assert.match(put, /canSendSurveyResult\(/, 'เคาะแพ็คเกจได้เฉพาะหัวหน้า');
   assert.match(patch, /visitWriteAccess\(/, 'ช่างเขียนได้เฉพาะใบที่ตัวเองถูกมอบหมาย');
+});
+
+/* ── ล็อกหลังส่งผล (🐞 UAT 06/09/2026) ─────────────────────────────────────
+   จอปิดให้แล้วด้วย `!sent` แต่ server ไม่ได้ปิด ⇒ ยิง API ตรงยังแก้ตัวเลขของใบที่
+   ส่งไปแล้วได้ 200 โดยไม่มีการส่งซ้ำ · SA ถือตัวเลขชุดหนึ่ง ฐานเก็บอีกชุดหนึ่ง */
+test('🐞 ส่งผลแล้วต้องแก้ไม่ได้ทั้งสองเส้น — และต้องบอกทางออก', () => {
+  assert.equal(surveyEditLockError({ id: 'R1' }), null, 'ใบที่ยังไม่ส่งต้องแก้ได้ตามปกติ');
+  assert.match(surveyEditLockError({ id: 'R1', answeredAt: '2026-09-06T06:41:32Z' }), /ยังไม่จบ/,
+    'ต้องบอกทางออก ไม่ใช่แค่ "แก้ไม่ได้"');
+  assert.match(surveyEditLockError({ id: 'R1', cancelledAt: '2026-09-06T06:00:00Z' }), /ยกเลิก/);
+  assert.match(surveyEditLockError(null), /ไม่พบ/);
+
+  /* 🔑 **ผูกกับ `answeredAt` ไม่ใช่ `status`** — ใบที่ SA กด "ยังไม่จบ" กลับมามี
+     status `acknowledged` เท่ากับใบที่ไม่เคยส่ง ⇒ ต้องกลับมาแก้ได้ */
+  assert.equal(surveyEditLockError({ id: 'R1', status: 'acknowledged', answeredAt: null }), null);
+});
+
+test('🔴 route ของทั้งช่างและหัวหน้าต้องเรียกด่านล็อกก่อนเขียน', () => {
+  const route = readFileSync(
+    new URL('../../app/api/service/surveys/[id]/zones/[zoneId]/route.js', import.meta.url), 'utf8');
+  const putAt = route.indexOf('/* ── PUT:');
+  const patch = route.slice(route.indexOf('export const PATCH'), putAt);
+  const put = route.slice(putAt);
+
+  assert.match(route, /surveyEditLockError/, 'ต้องใช้ด่านกลาง ไม่ใช่เขียน answeredAt เองในแต่ละเส้น');
+  assert.match(patch, /requestLock\(/, 'เส้นของช่างต้องถามใบแม่ก่อนเขียน');
+  assert.match(put, /requestLock\(/, 'เส้นของหัวหน้าต้องถามใบแม่ก่อนเขียน');
 });
