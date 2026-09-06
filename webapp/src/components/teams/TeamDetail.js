@@ -9,7 +9,7 @@
 // ที่มีปุ่มระดับ "ทั้งทีม" และ **ปุ่มที่กดไม่ได้ยังโชว์อยู่พร้อมเหตุผลเป็นข้อความจริง**
 // (ปุ่มจาง ๆ เฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง — docs/form-design-rules.md)
 import { useMemo, useState } from "react";
-import { Hash, Shield, UserRound, Users } from "lucide-react";
+import { Check, Hash, Search, Shield, UserRound, Users } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import EmptyState from "@/components/ui/EmptyState";
@@ -20,6 +20,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import CountBadge from "@/components/ui/CountBadge";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
+import { notifyToast } from "@/components/ui/Toast";
 import Tag from "@/components/ui/Tag";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
@@ -36,7 +37,7 @@ import styles from "./TeamManager.module.css";
 export default function TeamDetail({ department, code }) {
   const isAdmin = useRole() === "admin";
   const reg = useTeamRegistry(department);
-  const { teams, canManage, membersOf, leadOf, unassigned, loading, loadError, saving, call } = reg;
+  const { teams, people, canManage, membersOf, leadOf, crewTeamByUser, loading, loadError, saving, call } = reg;
 
   const [edit, setEdit] = useState(null);        // ฟอร์มแก้ทีม
   const [moving, setMoving] = useState(null);    // คนที่กำลังย้าย (ทีมขาย)
@@ -46,6 +47,7 @@ export default function TeamDetail({ department, code }) {
   const [impactFailed, setImpactFailed] = useState(false);
   const [crewOpen, setCrewOpen] = useState(false);
   const [crewIds, setCrewIds] = useState([]);
+  const [crewQ, setCrewQ] = useState("");
 
   const team = useMemo(() => teams.find((t) => t.code === code) || null, [teams, code]);
   const members = useMemo(() => membersOf(team), [membersOf, team]);
@@ -425,10 +427,13 @@ export default function TeamDetail({ department, code }) {
       </Modal>
 
       {/* ── จัดสมาชิกทีมปฏิบัติงาน ─────────────────────────────────────
-          ⚠️ ติ๊กทั้งทีมแล้วกดครั้งเดียว ไม่ใช่ย้ายทีละคน — การยิงทีละคนแล้วล้มกลางทาง
-             จะเหลือทีมครึ่ง ๆ ที่คนกดไม่รู้ว่าถึงไหน */}
+          ⚠️ บันทึกทั้งชุดครั้งเดียว ไม่ใช่ยิงทีละคน — ยิงทีละคนแล้วล้มกลางทางจะเหลือ
+             ทีมครึ่ง ๆ ที่คนกดไม่รู้ว่าถึงไหนแล้ว
+          ⭐ **ติ๊กคนที่อยู่ทีมอื่นได้** (มติ 2026-09-06) — ระบบย้ายให้ในการกดครั้งเดียว
+             และบอกก่อนกดว่าจะย้ายมาจากทีมไหน · ของเดิมกางชื่อทุกคนในฝ่ายเป็นไทล์
+             ไม่มีช่องค้น ไม่บอกว่าใครอยู่ทีมไหน แล้วตีกลับทั้งชุดตอนบันทึก */}
       <Modal open={crewOpen} onClose={() => setCrewOpen(false)} title={`จัดสมาชิก ${team.name}`}
-        subtitle="คนหนึ่งอยู่ได้ทีมเดียวในฝ่ายนี้ — ติ๊กคนที่อยู่ทีมนี้" size="md"
+        subtitle="คนหนึ่งอยู่ได้ทีมเดียวในฝ่ายนี้ — ติ๊กคนที่อยู่ทีมอื่นได้ ระบบจะย้ายให้" size="md"
         footer={(
           <>
             <Button tone="neutral" onClick={() => setCrewOpen(false)} disabled={saving}>ยกเลิก</Button>
@@ -438,29 +443,81 @@ export default function TeamDetail({ department, code }) {
                   method: "PUT", headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ userIds: crewIds }),
                 }, `จัดสมาชิกทีม ${team.name} แล้ว`);
-                if (done) setCrewOpen(false);
+                if (!done) return;
+                /* ถอนออกจากทีมเดิมไม่สำเร็จ = คนนั้นค้างอยู่สองทีม — ต้องบอก ไม่ใช่เงียบ
+                   (เซิร์ฟเวอร์เลือกอาการนี้แทน "ไม่มีทีมเลย" เพราะเห็นได้และกดซ้ำแล้วหาย) */
+                if (done.stuck?.length) {
+                  notifyToast.error(`${done.stuck.join(", ")} ยังค้างอยู่ทีมเดิมด้วย — กดบันทึกอีกครั้ง`);
+                  return;
+                }
+                setCrewOpen(false);
               }}>
               บันทึกสมาชิก
             </Button>
           </>
         )}
       >
-        <div className={styles.field}>
-          <span>สมาชิก</span>
-          {/* ⚠️ ตอนนี้เลือกได้เฉพาะคนที่ยังไม่มีทีม + คนในทีมนี้ — เซิร์ฟเวอร์ตีกลับทั้งชุด
-              ถ้ามีคนของทีมอื่นปนมา ⇒ ไม่ควรให้ติ๊กแล้วค่อยรู้ตอนบันทึก
-              (การย้ายข้ามทีมด้วยปุ่มเดียวเป็นงานรอบถัดไป — ต้องมีเส้น API ที่ย้ายให้ครบจบ) */}
-          <OptionTiles
-            multiple
-            ariaLabel="สมาชิกทีม"
-            value={crewIds}
-            onChange={setCrewIds}
-            options={[...members, ...unassigned].map((p) => ({
-              value: p.id, label: p.name, description: ROLE_LABELS[p.role] || p.role,
-            }))}
-          />
+        <div className="search-glass">
+          <Search size={16} color="var(--text-3)" aria-hidden="true" />
+          <input autoComplete="off" value={crewQ} onChange={(e) => setCrewQ(e.target.value)}
+            placeholder="ค้นชื่อ หรือ ตำแหน่ง" aria-label="ค้นหาเจ้าหน้าที่" />
         </div>
+
+        {/* สรุปผลของการติ๊ก **ก่อนกด** — ย้ายเข้ามาจากทีมไหนบ้าง และใครหลุดออกไป */}
+        {(() => {
+          const current = new Set(members.map((m) => m.id));
+          const incoming = crewIds
+            .filter((id) => !current.has(id) && crewTeamByUser.get(id))
+            .map((id) => ({
+              name: people.find((p) => p.id === id)?.name || id,
+              from: teams.find((t) => t.code === crewTeamByUser.get(id))?.name || crewTeamByUser.get(id),
+            }));
+          const leaving = members.filter((m) => !crewIds.includes(m.id));
+          if (!incoming.length && !leaving.length) return null;
+          return (
+            <StatusNotice tone="info">
+              {incoming.length > 0 && (
+                <p>ย้ายเข้าทีมนี้ {fmtNumber(incoming.length)} คน — {incoming.map((x) => `${x.name} (จาก ${x.from})`).join(" · ")}</p>
+              )}
+              {leaving.length > 0 && (
+                <p>ออกจากทีมนี้ {fmtNumber(leaving.length)} คน — {leaving.map((m) => m.name).join(" · ")} · จะกลายเป็น “ยังไม่อยู่ทีมไหน”</p>
+              )}
+            </StatusNotice>
+          );
+        })()}
+
+        <ul className={styles.picker}>
+          {people
+            .filter((p) => {
+              const needle = crewQ.trim().toLowerCase();
+              if (!needle) return true;
+              return `${p.name} ${ROLE_LABELS[p.role] || p.role}`.toLowerCase().includes(needle);
+            })
+            .map((p) => {
+              const on = crewIds.includes(p.id);
+              const at = crewTeamByUser.get(p.id);
+              const other = at && at !== team.code;
+              return (
+                <li key={p.id}>
+                  <button type="button" aria-pressed={on}
+                    onClick={() => setCrewIds((ids) => (on ? ids.filter((x) => x !== p.id) : [...ids, p.id]))}>
+                    <span className={styles.tick} aria-hidden="true">{on ? <Check size={13} /> : null}</span>
+                    <span className={styles.pickerName}>
+                      {p.name}
+                      <span className={styles.sub}>{ROLE_LABELS[p.role] || p.role}</span>
+                    </span>
+                    {other
+                      ? <Tag tone="warning">{teams.find((t) => t.code === at)?.name || at}</Tag>
+                      : at === team.code
+                        ? <Tag tone="success">ทีมนี้</Tag>
+                        : <span className={styles.sub}>ยังไม่มีทีม</span>}
+                  </button>
+                </li>
+              );
+            })}
+        </ul>
       </Modal>
+
     </Workspace>
   );
 }

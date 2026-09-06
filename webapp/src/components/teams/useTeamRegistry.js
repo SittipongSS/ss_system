@@ -62,6 +62,14 @@ export default function useTeamRegistry(department) {
     return { id: team.leadId, name: live?.name || team.leadName || null, stale: !member };
   }, [people, membersOf]);
 
+  /* ทีมปฏิบัติงานที่คนแต่ละคนสังกัดอยู่ตอนนี้ — ใช้บอกบนจอ **ก่อนติ๊ก** ว่าคนนี้จะถูก
+     ย้ายมาจากทีมไหน · ของเดิมไม่บอกเลย แล้วเซิร์ฟเวอร์ตีกลับทั้งชุดพร้อมรายชื่อตอนกดบันทึก */
+  const crewTeamByUser = useMemo(() => {
+    const map = new Map();
+    for (const m of data?.members || []) map.set(m.userId, m.teamCode);
+    return map;
+  }, [data?.members]);
+
   const assignedIds = useMemo(() => {
     const ids = new Set();
     for (const team of teams) for (const person of membersOf(team)) ids.add(person.id);
@@ -95,6 +103,6 @@ export default function useTeamRegistry(department) {
   return {
     data, teams, people, loading, loadError, saving,
     canManage: !!data?.canManage,
-    membersOf, leadOf, unassigned, call, reload: load,
+    membersOf, leadOf, unassigned, crewTeamByUser, call, reload: load,
   };
 }

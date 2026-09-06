@@ -12,10 +12,15 @@
 //
 // ⚠️ **PUT ทั้งชุด ไม่ใช่ POST ทีละคน** — คนจัดทีมคิดเป็น "ทีมนี้มีใครบ้าง" แล้วกด
 //   ครั้งเดียว · ยิงทีละคนแล้วล้มกลางทางจะเหลือทีมครึ่ง ๆ ที่คนกดไม่รู้ว่าถึงไหนแล้ว
+//
+// ⚠️ **ติ๊กคนที่อยู่ทีมอื่นได้ ระบบย้ายให้** (มติ 2026-09-06) — กติกา "คนหนึ่งอยู่ทีมเดียว
+//   ต่อฝ่าย" ยังเหมือนเดิม เปลี่ยนแค่ว่าเส้นนี้บังคับให้ แทนที่จะตีกลับทั้งชุดให้คนไป
+//   กดเองสองรอบสองหน้า (ซึ่งระหว่างสองรอบนั้นเจ้าหน้าที่คนนั้นไม่มีทีมเลย)
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound } from '@/lib/http';
 import { canManageTeams } from '@/lib/permissions';
 import { findTeam, loadTeamMembers, loadTeams } from '@/lib/master/teamsRepo';
+import { planCrewRoster } from '@/lib/master/teams';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { businessDate } from '@/lib/businessDate';
 
@@ -46,13 +51,14 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
     const deptTeams = await loadTeams(supabase, { department: team.department });
     const crewCodes = deptTeams.filter((t) => t.kind === 'crew').map((t) => t.code);
     const existing = await loadTeamMembers(supabase, { teamCodes: crewCodes });
-    const clash = existing.filter((m) => m.teamCode !== code && ids.includes(m.userId));
-    if (clash.length) {
-      const names = clash.map((m) => m.userName || m.userId).join(', ');
-      return badRequest(`${names} อยู่ทีมอื่นของฝ่ายนี้อยู่แล้ว — ย้ายออกจากทีมเดิมก่อน`);
-    }
-
-    const before = existing.filter((m) => m.teamCode === code);
+    /* ⭐ **ติ๊กคนที่อยู่ทีมอื่น = ย้ายให้เลย** (มติผู้ใช้ 2026-09-06)
+       🐞 ของเดิมตีกลับทั้งชุดพร้อมรายชื่อ ⇒ การย้ายเจ้าหน้าที่หนึ่งคนข้ามทีมต้องกด
+          **สองรอบสองหน้า**: เปิดทีมเดิม ติ๊กออก บันทึก แล้วเปิดทีมใหม่ ติ๊กเข้า บันทึก
+          — และระหว่างสองรอบนั้นเขาไม่มีทีมเลย
+       ⚠️ ยังเป็นกติกาเดิม "คนหนึ่งอยู่ทีมปฏิบัติงานได้ทีมเดียวต่อฝ่าย" — เปลี่ยนแค่ว่า
+          ระบบบังคับกติกาให้ แทนที่จะตีกลับให้คนไปทำเอง */
+    const plan = planCrewRoster({ code, userIds: ids, existingMembers: existing });
+    const { movedFrom } = plan;
 
     const { error: delError } = await supabase.from('team_members').delete().eq('teamCode', code);
     if (delError) return fail(delError.message, 500);
@@ -70,13 +76,36 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
       if (insError) return fail(insError.message, 500);
     }
 
+    /* ⚠️ **ถอนออกจากทีมเดิมเป็นขั้นสุดท้าย ไม่ใช่ขั้นแรก** — ไม่มี transaction ให้ใช้
+       (PostgREST) ⇒ ต้องเลือกว่าถ้าล้มกลางทางจะเหลืออาการไหน:
+         ถอนก่อน แล้ว insert ล้ม ⇒ คนนั้น **ไม่มีทีมเลย** (หายจากทุกคิว ไม่มีใครสังเกต)
+         insert ก่อน แล้วถอนล้ม  ⇒ คนนั้น **อยู่สองทีม** ซึ่งเห็นได้จากทั้งสองหน้าและ
+                                   กดบันทึกซ้ำก็หายเอง
+       ⇒ เลือกอย่างหลัง และส่ง `stuck` กลับไปให้จอบอกผู้ใช้ ไม่ใช่เงียบ */
+    let stuck = [];
+    if (movedFrom.length) {
+      const { error: moveError } = await supabase.from('team_members').delete()
+        .in('userId', movedFrom.map((m) => m.userId))
+        .in('teamCode', crewCodes.filter((c) => c !== code));
+      if (moveError) stuck = movedFrom.map((m) => m.userName || m.userId);
+    }
+
+    const movedNote = movedFrom.length
+      ? ` · ย้ายมาจากทีมอื่น ${movedFrom.length} คน (${plan.fromTeamCodes.join(', ')})`
+      : '';
     await recordAudit({
       user, action: 'update', entityType: 'team_members', entityId: code,
-      before: { userIds: before.map((m) => m.userId) }, after: { userIds: ids },
-      summary: `จัดสมาชิกทีม ${team.name} (${team.department}) เป็น ${ids.length} คน`,
+      before: { userIds: plan.beforeIds }, after: { userIds: ids },
+      summary: `จัดสมาชิกทีม ${team.name} (${team.department}) เป็น ${ids.length} คน${movedNote}`
+        + (stuck.length ? ` · ถอนออกจากทีมเดิมไม่สำเร็จ ${stuck.length} คน` : ''),
       request: req,
     });
-    return ok({ teamCode: code, userIds: ids });
+    return ok({
+      teamCode: code,
+      userIds: ids,
+      moved: movedFrom.map((m) => ({ userId: m.userId, name: m.userName, fromTeamCode: m.teamCode })),
+      stuck,
+    });
   } catch (e) {
     return fail(e.message, 500);
   }

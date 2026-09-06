@@ -54,6 +54,25 @@ export function teamsBasePath(department) {
   return TEAMS_BASE_PATH[String(department ?? '').trim()] || null;
 }
 
+/* แผนของการกด "บันทึกสมาชิก" หนึ่งครั้ง — ตรรกะล้วน แยกออกมาจาก route เพื่อให้เทสต์ได้
+   ⭐ **ติ๊กคนที่อยู่ทีมอื่น = ย้ายให้** (มติ 2026-09-06) — กติกา "คนหนึ่งอยู่ทีมปฏิบัติงาน
+   ได้ทีมเดียวต่อฝ่าย" ยังเหมือนเดิม เปลี่ยนแค่ว่าระบบบังคับให้แทนที่จะตีกลับทั้งชุด
+   ⚠️ คนที่ **อยู่ทีมนี้อยู่แล้ว** ไม่นับว่าย้าย (ไม่งั้นทุกครั้งที่กดบันทึกจะรายงานว่าย้าย
+   ทั้งทีม) · คนที่ถูกติ๊กออกไม่ได้ถูกย้ายไปไหน เขาจะกลายเป็น "ยังไม่อยู่ทีมไหน" */
+export function planCrewRoster({ code, userIds = [], existingMembers = [] } = {}) {
+  const ids = [...new Set(userIds.map((v) => String(v ?? '').trim()).filter(Boolean))];
+  const here = existingMembers.filter((m) => m.teamCode === code);
+  const movedFrom = existingMembers.filter((m) => m.teamCode !== code && ids.includes(m.userId));
+  const leaving = here.filter((m) => !ids.includes(m.userId));
+  return {
+    ids,
+    movedFrom,
+    leaving,
+    beforeIds: here.map((m) => m.userId),
+    fromTeamCodes: [...new Set(movedFrom.map((m) => m.teamCode))],
+  };
+}
+
 export function teamHref(department, code) {
   const base = teamsBasePath(department);
   return base && code ? `${base}/${encodeURIComponent(code)}` : null;

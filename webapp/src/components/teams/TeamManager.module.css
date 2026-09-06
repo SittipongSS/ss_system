@@ -217,3 +217,64 @@
   flex-direction: column;
   gap: var(--space-1);
 }
+
+/* ── ตัวเลือกสมาชิกทีมปฏิบัติงาน ─────────────────────────────────────────
+   ⚠️ ไม่ใช่ `OptionTiles` — กฎเลือกคอนโทรลบอกว่าไทล์มีไว้สำหรับ "ชุดตายตัว 2–4 ตัว"
+   ส่วนรายชื่อคนไทยเต็ม ๆ หลายสิบคนต้องมีช่องค้น (docs/form-design-rules.md §3)
+   ⚠️ ไม่ใช่ `TwoPanePicker` เหมือนกัน — ตัวนั้นเป็น **ดรอปดาวน์เลือกค่าเดียว** ที่มี
+   rail กลุ่มด้านซ้าย ไม่ใช่รายการติ๊กหลายคน */
+.picker {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+
+.picker li + li { border-top: 1px solid var(--border); }
+
+.picker button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  width: 100%;
+  padding: var(--space-2-5) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.picker button:hover { background: var(--panel-solid); }
+
+/* ⚠️ สถานะ "ติ๊กแล้ว" ต้องไม่สื่อด้วย **สีอย่างเดียว** — มีเครื่องหมายถูกอยู่ในกล่องด้วย */
+.tick {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--border-strong);
+  /* ⚠️ หยิบขั้นจาก --radius-* เสมอ (ด่าน audit:ui นับเลขมุมดิบเป็นเพดาน) */
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: transparent;
+}
+
+.picker button[aria-pressed="true"] .tick {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.pickerName {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
