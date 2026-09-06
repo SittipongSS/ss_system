@@ -10,6 +10,7 @@
 //   ⚠️ แต่ **กติกาการเปลี่ยนสถานะยังใช้ของกลางตัวเดิม** (`answerRequestError` ·
 //     `closureStatus`) — เขียนกติกาซ้ำเมื่อไร สองเส้นจะเพี้ยนหากันแน่
 import { recordAudit } from '@/lib/audit';
+import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, forbidden, notFound, conflict } from '@/lib/http';
 import { canSendSurveyResult } from '@/lib/permissions';
 import { canAnswerRequest } from '@/lib/requests/access';
@@ -64,6 +65,28 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     /* สรุปที่เขียนลง audit ต้องบอก **ตัวเลขที่ส่งออกไป** ไม่ใช่แค่ "ส่งผลแล้ว" —
        ใบนี้คือของที่ SA เอาไปตั้งราคา ⇒ ต้องย้อนได้ว่าตอนส่งบอกไปเท่าไร */
     const totals = surveyTotals(zones);
+
+    /* 🔴 **บรรทัดในเธรดคือตัวที่แจกกระดิ่ง** — `appendUpdate` เรียก `notifyThreadUpdate`
+       ต่อให้เองเสมอ (lib/master/updates.js) ⇒ ไม่เขียนเธรด = ผู้ขอไม่มีทางรู้ว่าผลมาแล้ว
+       🐞 เส้นนี้ถูกเขียนใหม่เพื่อเลี่ยงด่านหกข้อ แล้วก๊อปกติกาสถานะมาครบ
+         (`answerRequestError` · `closureStatus`) **แต่ลืมก๊อปบรรทัดนี้ตามมา**
+         ⇒ TS กดส่งผล ใบพลิกเป็น "ตอบแล้ว" จริง แต่ฝั่งฝ่ายขายเงียบสนิท
+         (โรคเดียวกับที่ `costingUpdates.js` บันทึกไว้ว่าเคยเกิดมาแล้วครั้งหนึ่ง)
+       ⚠️ **ส่งแถวหลังอัปเดต (`data`) ไม่ใช่ `request`** — ข้อความอ่าน `closedAt`
+         มาตัดสินว่า "ปิดครบสองฝั่ง" หรือ "รอผู้ขอปิดเรื่อง" · ส่งแถวเก่าไปจะบอกผิด
+       ⚠️ วางไว้ **หลัง** update สำเร็จ และไม่ให้ล้มลากปุ่มส่งล้มตาม — ทั้ง `appendUpdate`
+         และ `notifyThreadUpdate` กลืน error เองอยู่แล้ว (fire-and-forget ทั้งสาย) */
+    await appendRequestEvent(supabase, {
+      request: data,
+      action: 'answer',
+      user,
+      opts: {
+        // ผู้ขอรอ "ตร.ม. กี่แพ็คเกจ" เพื่อเอาไปตั้งราคา ⇒ ให้อ่านจากกระดิ่งได้เลย
+        summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
+          + (totals.cutZones ? ` · ตัดออก ${totals.cutZones}` : ''),
+      },
+    });
+
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: request, after: data,
