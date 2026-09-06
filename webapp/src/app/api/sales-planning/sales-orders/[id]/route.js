@@ -575,6 +575,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const revision = result?.revision || null;
     // ⚠️ ลงเธรดของ **ใบเดิม** ไม่ใช่ใบ Rev. ใหม่ (คนละ id) ไม่งั้นใบเดิมจบห้วน ๆ
     await logThread('revise', { reason, toRevisionNo: revision?.revisionNo ?? null });
+
+    /* ⭐ **แผนงวดชำระถูกก๊อปไปใบใหม่แล้ว (mig 0346)** — ต้องบอกในสรุปว่าไปกี่งวด
+       🐞 ก่อน 0346 ใบ Rev. เกิดมาไม่มีงวดสักแถว ⇒ `paidThrough` เป็น null ⇒ ด่านเงิน
+         บล็อกนัดช่างทั้งไซต์ โดยไม่มีอะไรบนจอหรือใน audit บอกว่าเกิดอะไรขึ้น
+       ⚠️ นับจากของจริงที่ลงฐานแล้ว ไม่ใช่นับจากใบเดิม — ถ้า RPC เก่ายังอยู่ (ยังไม่รัน
+         migration) ตัวเลขจะเป็น 0 แล้วสรุปจะบอกความจริงว่ายังไม่ได้ก๊อป */
+    const carried = revision?.id
+      ? await loadInstallments(supabase, revision.id).catch(() => [])
+      : [];
+    const covered = carried.filter((row) => row.coversFrom && row.coversTo).length;
+
     await recordAudit({
       user,
       action: 'create',
@@ -582,7 +593,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: revision?.id || revisionId,
       before,
       after: revision,
-      summary: `ออก Rev. ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`,
+      summary: `ออก Rev. ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`
+        + (carried.length
+          ? ` · ยกแผนงวดชำระไป ${carried.length} งวด${covered ? ` (มีช่วงครอบบริการ ${covered})` : ''}`
+          : ''),
       request: req,
     });
     return ok(revision, 201);

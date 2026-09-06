@@ -212,3 +212,34 @@ test('⭐ สัญญาหมดอายุ = ติดข้อสัญญ�
   assert.equal(items.find((i) => i.key === 'contract').state, 'blocked');
   assert.notEqual(items.find((i) => i.key === 'payment')?.state, 'blocked');
 });
+
+/* ── เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย: เงินติดได้สามแบบ แก้คนละทาง ─────────
+   🐞 เจอตอนไล่บั๊ก "ออก Rev. แล้วนัดช่างถูกบล็อกทั้งไซต์" (06/09/2026) — ข้อความเดียว
+      ว่า "วันนัดเกินช่วงที่เก็บเงินแล้ว" ส่ง SA ไปไล่ทวงลูกค้า ทั้งที่ของจริงคือ
+      **บัญชียังไม่รับรองสักงวด** ซึ่งเป็นงานของ FN */
+test('🐞 เงินติดสามแบบ ต้องบอกคนละเหตุ', () => {
+  const reasonOf = (rows, date = ok.scheduledDate) => evaluateVisitGate(
+    { ...ok, scheduledDate: date },
+    { ...full, installmentsByOrderId: { SO1: rows } },
+  ).find((i) => i.key === 'payment').detail;
+
+  // ① ยังไม่มีงวดเลย — ฝ่ายขายต้องเริ่มติดตามการชำระ
+  assert.match(reasonOf([]), /ยังไม่มีงวดชำระ/);
+
+  /* ② มีงวดแล้วแต่ยังไม่มีใครรับรอง — สภาพของใบที่เพิ่งออก Rev. (mig 0346 ยกงวดมาให้
+     แล้ว แต่บัญชียังไม่รับรองรอบใหม่) ⇒ ต้องไม่บอกว่า "จ่ายไม่ถึง" */
+  const fresh = [{ status: 'pending', coversFrom: '2026-08-01', coversTo: '2026-12-31', dueDate: '2026-12-01' }];
+  assert.match(reasonOf(fresh), /ยังไม่มีงวดไหนที่บัญชีรับรอง/);
+  assert.doesNotMatch(reasonOf(fresh), /เกินช่วงที่เก็บเงิน/, 'ห้ามส่ง SA ไปไล่ทวงลูกค้า');
+
+  // ③ รับรองแล้วจริง แต่วันนัดเลยช่วงที่ครอบ — อันนี้ถึงจะเป็นเรื่องเก็บเงินงวดถัดไป
+  const paidRows = [{ status: 'confirmed', coversFrom: '2026-08-01', coversTo: '2026-09-30' }];
+  assert.match(reasonOf(paidRows, '2026-11-10'), /เกินช่วงที่เก็บเงิน/);
+
+  // ④ ค้างชำระ — ยังไม่ควรส่งคนไปเพิ่ม
+  const overdue = [
+    { status: 'confirmed', coversFrom: '2026-08-01', coversTo: '2026-12-31' },
+    { status: 'reported', dueDate: '2026-08-01' },
+  ];
+  assert.match(reasonOf(overdue), /เลยกำหนดที่บัญชียังไม่รับรอง/);
+});
