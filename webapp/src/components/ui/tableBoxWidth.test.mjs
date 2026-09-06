@@ -231,3 +231,44 @@ test("ห้ามยกหน้าตาตารางด้วยการ�
   assert.ok(budget.modules.database.legacyTable <= 7,
     `เพดาน legacyTable ของฐานข้อมูลขึ้นไม่ได้ — ได้ ${budget.modules.database.legacyTable}`);
 });
+
+/* ── กรอบซ้อนกรอบ: ห้ามเอาการ์ดเก่าห่อ TableScroll (2026-09-07) ───────────────
+   🐞 หน้าทะเบียนฝั่งงานขาย 6 จุดห่อ `<TableScroll surface="embedded">` ด้วย
+   `<div className="premium-glass-table table-responsive">` อีกชั้น ⇒ ได้สองอย่างพร้อมกัน:
+     1. **สองวง** — การ์ดนอกมีขอบ+เงา+มุมมน ส่วน embedded วาดกรอบ 1px ของตัวเองอีกวง
+     2. **สองสกอร์ล** — `.table-responsive` ใส่ `overflow-x: auto` ให้การ์ดนอก
+        ขณะที่ `.scroll` ก็เลื่อนแนวนอนได้อยู่แล้ว
+   ✅ แก้โดยถอดกรอบนอกแล้วให้ `surface="auto"` วาดการ์ดเอง — ratchet legacyTable
+   ของโมดูลงานขายลง 41 → 35 · ตรงกับที่ ProjectDealsHub.js กับ DealValueLines.js
+   เคยบันทึกไว้ว่า "TableScroll วาดพื้นให้เองแล้ว" */
+test("ห้ามห่อ TableScroll ด้วยการ์ดเก่า premium-glass-table", () => {
+  const offenders = [];
+  for (const file of jsFiles(path.join(WEBAPP, "src", "app")).concat(jsFiles(path.join(WEBAPP, "src", "components")))) {
+    const lines = fs.readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, (b) => b.replace(/[^\n]/g, " "))
+      .split(/\r?\n/);
+    lines.forEach((line, index) => {
+      if (!/className="[^"]*\bpremium-glass-table\b/.test(line)) return;
+      /* ดูสองบรรทัดถัดไป — TableScroll มักอยู่บรรทัดถัดจากกรอบพอดี */
+      const near = lines.slice(index + 1, index + 3).join(" ");
+      if (/<TableScroll\b/.test(near)) {
+        offenders.push(`${path.relative(WEBAPP, file).replaceAll("\\", "/")}:${index + 1}`);
+      }
+    });
+  }
+  /* 🪤 **ไม่ใช่ hard-zero และไม่มีลิสต์ยกเว้น** — รอบนี้ถอดได้ 6 จุด (หน้าทะเบียน
+     ฝั่งงานขาย ซึ่งเป็นที่ที่เจ้าของงานทักมา) เหลืออีก 12 จุดในหน้ารายละเอียดกับ
+     แดชบอร์ด ที่ทรงต่างกันพอจะต้องดูทีละจุด (บางตัวเป็น `fz-box premium-glass-table`
+     ที่กรอบนอกทำงานอื่นอยู่ด้วย)
+     ⇒ ใช้เพดานสองทางแบบเดียวกับ ratchet ตัวอื่นในรีโป: มากกว่านี้ = เพิ่มของใหม่ ⇒ ตก ·
+     น้อยกว่านี้ = ถอดได้แล้ว ⇒ ให้รูดเลขลง ห้ามทิ้งไว้เกินจริง
+     ⚠️ ห้ามเปลี่ยนเป็นลิสต์ยกเว้นรายไฟล์ — ทะเบียนยกเว้นคือทะเบียนที่หมดอายุเงียบ */
+  const CAP = 12;
+  assert.ok(offenders.length <= CAP,
+    `การ์ดเก่าห่อ TableScroll เพิ่มขึ้น: ${offenders.length} > เพดาน ${CAP}\n`
+    + "= สองวงซ้อนกัน + สกอร์ลแนวนอนสองชั้น\n"
+    + "ถอดกรอบนอกออกแล้วใช้ `surface=\"auto\"` ให้ TableScroll วาดการ์ดเอง\n"
+    + offenders.join("\n"));
+  assert.equal(offenders.length, CAP,
+    `ถอดได้แล้ว เหลือ ${offenders.length} แต่เพดานยังเขียน ${CAP} — รูดเพดานลง (ขึ้นไม่ได้)`);
+});

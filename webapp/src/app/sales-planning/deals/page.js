@@ -975,8 +975,7 @@ export default function SalesPlanningPipelinePage() {
             />
           </div>
 
-          <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll surface="embedded"><table className="w-full text-sm">
+            <TableScroll aria-busy={loading} surface="auto"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <SortTh label="ดีล" sortKey="name" sort={sort} />
@@ -1022,7 +1021,6 @@ export default function SalesPlanningPipelinePage() {
                 )}
               </tbody>
             </table></TableScroll>
-          </div>
 
           {/* โหมดจัดกลุ่มไม่แบ่งหน้า — แบ่งหน้าจะหั่นกลุ่มกลางคันแล้วยอดหัวกลุ่ม
               ไม่ตรงกับแถวที่เห็น · ใช้ย่อ/ขยายกลุ่มคุมความยาวแทน */}
@@ -1103,8 +1101,7 @@ export default function SalesPlanningPipelinePage() {
               </button>
             )}
           </div>
-          <div className="premium-glass-table table-responsive" aria-busy={quoteLoading}>
-            <TableScroll surface="embedded"><table className="w-full text-sm">
+            <TableScroll aria-busy={quoteLoading} surface="auto"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เลขที่</th>
@@ -1162,7 +1159,6 @@ export default function SalesPlanningPipelinePage() {
                 )}
               </tbody>
             </table></TableScroll>
-          </div>
         </div>
       </Modal>
 
@@ -1224,8 +1220,7 @@ export default function SalesPlanningPipelinePage() {
             </form>
           )}
 
-          <div className="premium-glass-table table-responsive" aria-busy={docLoading}>
-            <TableScroll surface="embedded"><table className="w-full text-sm">
+            <TableScroll aria-busy={docLoading} surface="auto"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เอกสาร</th>
@@ -1275,7 +1270,6 @@ export default function SalesPlanningPipelinePage() {
                 )}
               </tbody>
             </table></TableScroll>
-          </div>
         </div>
       </Modal>
 

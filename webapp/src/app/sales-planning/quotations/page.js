@@ -435,8 +435,7 @@ export default function QuotationsPage() {
             <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
           </div>
 
-          <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll surface="embedded"><table className="w-full text-sm">
+            <TableScroll aria-busy={loading} surface="auto"><table className="w-full text-sm">
               <thead>
                 <tr>
                   <th>เลขที่</th>
@@ -476,7 +475,6 @@ export default function QuotationsPage() {
                 )}
               </tbody>
             </table></TableScroll>
-          </div>
 
           {/* โหมดจัดกลุ่มไม่แบ่งหน้า — แบ่งหน้าจะหั่นกลุ่มคาหน้าแล้วยอดหัวกลุ่มไม่ตรงกับแถว */}
           {filtered.length > 0 && !buckets && (

@@ -273,7 +273,6 @@ export default function SalesHistoryMonthlyPage() {
           กด &ldquo;บันทึก&rdquo; ถึงมีผล
         </p>
 
-        <div className="premium-glass-table table-responsive">
           {/* family="editable" ตามของเดิม — ไม่ใช้ "matrix" (คอลัมน์แรกแช่แข็ง) เพราะ
               audit:ui จำกัดไว้เฉพาะไฟล์ในลิสต์ ไฟล์ที่ 10 ทำ CI แดงทันที */}
           <TableScroll surface="embedded" family="editable"><table className="w-full text-sm" style={{ minWidth: 1180 }}>
@@ -339,7 +338,6 @@ export default function SalesHistoryMonthlyPage() {
               })}
             </tbody>
           </table></TableScroll>
-        </div>
 
         {mismatches.length > 0 && (
           <p style={{ margin: "12px 0 0", color: "var(--amber)", fontSize: "var(--fs-6)", display: "flex", gap: 8, alignItems: "flex-start" }}>
