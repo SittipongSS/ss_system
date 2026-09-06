@@ -5,6 +5,7 @@ import { isPhoneLogin, normalizeLoginPhone, phoneLoginEmail } from '@/lib/auth/l
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
 import { syncPersonName } from '@/lib/personNameFanOut';
+import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,8 +49,14 @@ export async function PATCH(request, { params }) {
        คืน {team:null, teams:[]} ให้เองอยู่แล้วไม่ว่าจะรับค่าเดิมมาหรือไม่
        ⚠️ ทางที่ยังส่งทีมมาได้ (สคริปต์/แอดมินแก้ผ่าน API) ยังทำงานเหมือนเดิมทุกอย่าง
        — เก็บไว้เป็นทางฉุกเฉินทางเดียวที่ตั้งทีมที่ทะเบียนไม่เปิดให้เลือกแล้วได้ */
-    const { team, teams } = resolveTeamUpdate(body.role, body, existingMeta);
-    const invalid = validateIdentity(body.role, teams, body.department);
+    /* ⚠️ ทะเบียนสดเป็นตัวตัดสิน ไม่ใช่ค่าคงที่ (มติ 2026-09-07) — เส้นนี้คือทางฉุกเฉิน
+       ที่แอดมิน/สคริปต์ยังส่งทีมมาเองได้ ⇒ ต้องรับทีมที่สร้างใหม่ได้ด้วย */
+    const salesCodes = await loadSalesTeamCodes(supabase);
+    const { team, teams, dropped } = resolveTeamUpdate(body.role, body, existingMeta, { validCodes: salesCodes });
+    if (dropped.length) {
+      return Response.json({ error: `ทีมไม่ถูกต้องหรือปิดใช้งานแล้ว: ${dropped.join(', ')}` }, { status: 400 });
+    }
+    const invalid = validateIdentity(body.role, teams, body.department, { validCodes: salesCodes });
     if (invalid) return Response.json({ error: invalid }, { status: 400 });
     // Guard against self-demotion locking everyone out of user management.
     if (id === me.id && !isSuperuser(body.role)) {

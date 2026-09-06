@@ -8,7 +8,7 @@ import {
   leadBouncePatch, LEAD_BOUNCE_KINDS,
 } from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
-import { TEAMS } from '@/lib/permissions';
+import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
@@ -95,7 +95,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'screen') {
     if (!superuser) return forbidden('คัดกรองลีดได้เฉพาะแอดมินหรือ AE Supervisor');
-    if (!TEAMS.includes(body.team)) return badRequest('ต้องเลือกทีม (ODM/KA/SV)');
+    /* ⚠️ ทะเบียนสดเป็นตัวตัดสิน — ข้อความก็ต้องไม่ฮาร์ดโค้ดชื่อสามทีมเดิม
+       (มติ 2026-09-07: สร้างทีมขายใหม่ได้แล้ว) */
+    const salesCodes = await loadSalesTeamCodes(supabase);
+    if (!salesCodes.includes(body.team)) {
+      return badRequest(`ต้องเลือกทีมที่ใช้งานอยู่ (${salesCodes.join(' / ')})`);
+    }
     patch.team = body.team;
     // สองคอลัมน์ ไม่ใช่ตัวเดียวรับสองหน้าที่ (mig 0234):
     //   firstScreenedAt = ครั้งแรกตลอดกาล → ด่าน "คัดกรอง" วัดจากตัวนี้ (ตีกลับแล้วคัดใหม่

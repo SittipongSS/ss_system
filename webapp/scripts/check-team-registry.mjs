@@ -1,17 +1,26 @@
 #!/usr/bin/env node
-/* ── ทะเบียนทีมในฐาน ต้องตรงกับค่าคงที่ในโค้ด (งวด T-5) ──────────────────
+/* ── ทะเบียนทีมขายในฐาน ต้องไม่เสียของเก่า และโค้ดต้องรู้จักป้ายของทีมที่ใช้งานอยู่ ──
  *
- * ⭐ **ทำไมยังมีค่าคงที่อยู่ทั้งที่มีทะเบียนแล้ว**: ด่านสิทธิ์ทุกตัว (`inScope` ·
- *   `canEditService` · `canAccessSahamit` …) อ่านทีมแบบ **sync ตอน render** ทั้งฝั่ง
- *   client และ server ⇒ อ่านจากฐานไม่ได้โดยไม่รื้อ ADR 0015 ทั้งฉบับ
- *   ⇒ ทีมขายจึงมีสองที่โดยเจตนา: **ทะเบียนเป็นของจริงที่คนแก้** · const เป็นสำเนา
- *   ที่ด่านสิทธิ์อ่าน — และด่านนี้คือสิ่งที่ทำให้สองฝั่ง "ไม่มีวันเพี้ยนเงียบ ๆ"
+ * ⭐ **เปลี่ยนหน้าที่ 2026-09-07** (มติผู้ใช้: ปลดล็อกให้สร้างทีมขายใหม่ได้)
+ *   เดิมด่านนี้บังคับ "ทะเบียน = ค่าคงที่ TEAMS" ทั้งสองทาง ⇒ สร้างทีมขายใหม่ = ด่านแดง
+ *   แต่ **ของที่มีค่าจริงมันไม่ได้คุ้มเลย**: ลบ KA/ODM/SV ออกจากทะเบียนก็ยังผ่านฉลุย
+ *   (ตรวจจริงด้วย fixture 6 ชุด 2026-09-07)
  *
- * ตรวจสามอย่าง: รหัสครบตรงกัน · **ลำดับตรงกัน** (sortOrder ↔ ลำดับใน TEAMS) ·
- * ป้ายตรงกัน — ข้อกลางคือข้อที่เคยพลาดจริง (โค้ดมีสามชุดที่เรียงไม่ตรงกัน)
+ *   วันนี้ทางเขียนทุกเส้นเทียบกับ **ทะเบียนสด** แล้ว (`loadSalesTeamCodes`) ⇒ ทีมใหม่
+ *   ใช้งานได้เองโดยไม่ต้องแตะโค้ด · ด่านนี้จึงเหลือสองหน้าที่ที่ยังจริง:
+ *     ① **สามทีมตั้งต้นต้องไม่หายและไม่ถูกปิด** — รหัสถูกก๊อปเป็นข้อความลง 20 คอลัมน์
+ *        ใน 19 ตาราง และเป็นค่าถอยของฝั่งจอที่อ่านแบบ sync
+ *     ② **ป้ายของทีมที่โค้ดรู้จักต้องตรงกับทะเบียน** — ไม่งั้นจอกับรายงานเรียกทีมเดียวกัน
+ *        คนละชื่อ
+ *   ส่วนทีมขายใหม่ที่ยังไม่มีป้ายในโค้ด = **เตือน ไม่ตก** (ทุกจุดใช้ `TEAM_LABELS[t] || t`
+ *   จึงโชว์เป็นรหัส ไม่พัง — แต่ควรเติมป้ายให้สวย)
+ *
+ * ⚠️ ลำดับ (sortOrder ↔ ลำดับใน TEAMS) ตรวจ **เฉพาะสามทีมตั้งต้น** — ของเดิมเทียบทั้งชุด
+ *   ซึ่งทำให้การสลับลำดับบนจอทำ CI แดงในใบที่ไม่ได้แตะเรื่องนี้เลย
  *
  * ต้องมี SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY เหมือน check:refs/check:columns
  * ไม่มีคีย์ = ข้าม (เหมือนด่านพี่น้อง) ไม่ใช่ตก
+ * 🔴 วันนี้ CI **ยังไม่ได้ตั้ง secret** ⇒ ด่านนี้ถูกข้ามจริง ๆ ทุกรอบ (ci.yml:122)
  */
 import { TEAMS, TEAM_LABELS } from '../src/lib/permissions.js';
 
@@ -34,40 +43,47 @@ if (!res.ok) {
 const rows = await res.json();
 
 const problems = [];
+const warnings = [];
 
-/* ⚠️ นับเฉพาะทีมขายที่ยังใช้งาน — ทีมที่ปิดแล้วยังอยู่ในทะเบียนเพื่ออ่านป้ายย้อนหลัง
-   แต่ไม่ต้องอยู่ใน const (const คือ "ทีมที่ยังตั้งให้คนใหม่ได้") */
+/* ⚠️ นับเฉพาะทีมขายที่ยังใช้งาน — ทีมที่ปิดแล้วยังอยู่ในทะเบียนเพื่ออ่านป้ายย้อนหลัง */
 const active = rows.filter((r) => r.isActive !== false);
 const inDb = active.map((r) => r.code);
 
+// ① สามทีมตั้งต้นต้องยังอยู่และยังเปิดใช้งาน
 for (const code of TEAMS) {
-  if (!inDb.includes(code)) problems.push(`โค้ดมีทีม ${code} แต่ทะเบียนไม่มี (หรือถูกปิดไปแล้ว)`);
-}
-for (const code of inDb) {
-  if (!TEAMS.includes(code)) {
-    problems.push(`ทะเบียนมีทีมขาย ${code} แต่ค่าคงที่ TEAMS ยังไม่มี — ด่านสิทธิ์จะปฏิเสธคนที่อยู่ทีมนี้`);
+  if (!inDb.includes(code)) {
+    problems.push(`ทีมตั้งต้น ${code} หายจากทะเบียนหรือถูกปิด — รหัสนี้ถูกอ้างในข้อมูลเก่าทั้งระบบ`);
   }
 }
 
-if (!problems.length) {
-  const orderInDb = inDb.join(',');
-  const orderInCode = TEAMS.join(',');
-  if (orderInDb !== orderInCode) {
-    problems.push(`ลำดับไม่ตรง — ทะเบียน (sortOrder): ${orderInDb} · โค้ด (TEAMS): ${orderInCode}`);
+// ② ป้ายของทีมที่โค้ดรู้จัก ต้องตรงกับทะเบียน
+for (const row of active) {
+  if (TEAM_LABELS[row.code] && TEAM_LABELS[row.code] !== row.name) {
+    problems.push(`ป้ายทีม ${row.code} ไม่ตรง — ทะเบียน "${row.name}" · โค้ด "${TEAM_LABELS[row.code]}"`);
   }
-  for (const row of active) {
-    if (TEAM_LABELS[row.code] && TEAM_LABELS[row.code] !== row.name) {
-      problems.push(`ป้ายทีม ${row.code} ไม่ตรง — ทะเบียน "${row.name}" · โค้ด "${TEAM_LABELS[row.code]}"`);
-    }
+}
+
+// ทีมขายใหม่ที่โค้ดยังไม่มีป้ายให้ — เตือนอย่างเดียว (จอจะโชว์เป็นรหัส)
+for (const row of active) {
+  if (!TEAM_LABELS[row.code]) {
+    warnings.push(`ทีม ${row.code} ("${row.name}") ยังไม่มีป้ายใน TEAM_LABELS — จอจะโชว์เป็นรหัส`);
+  }
+}
+
+// ⚠️ ลำดับ: เทียบเฉพาะสามทีมตั้งต้น (ทีมใหม่แทรกตรงไหนก็ได้)
+if (!problems.length) {
+  const legacyOrder = inDb.filter((code) => TEAMS.includes(code)).join(',');
+  if (legacyOrder !== TEAMS.join(',')) {
+    problems.push(`ลำดับของทีมตั้งต้นไม่ตรง — ทะเบียน: ${legacyOrder} · โค้ด: ${TEAMS.join(',')}`);
   }
 }
 
 if (problems.length) {
-  console.error('\n❌ ทะเบียนทีมกับค่าคงที่ในโค้ดไม่ตรงกัน\n');
+  console.error('\n❌ ทะเบียนทีมขายมีปัญหา\n');
   for (const p of problems) console.error(`   · ${p}`);
-  console.error('\nแก้ที่ src/lib/permissions.js (TEAMS · TEAM_LABELS) หรือที่ทะเบียนให้ตรงกัน');
-  console.error('⚠️ ทีมขายใหม่ที่มีแต่ในทะเบียน จะถูกด่านสิทธิ์ปฏิเสธทุกจุดจนกว่าจะเพิ่มใน TEAMS\n');
+  console.error('\nแก้ที่ทะเบียน (/sa/teams) หรือที่ src/lib/permissions.js (TEAMS · TEAM_LABELS) ให้ตรงกัน\n');
   process.exit(1);
 }
 
-console.log(`check:teams ผ่าน — ทีมขาย ${inDb.length} ทีม ตรงกันทั้งรหัส ลำดับ และป้าย`);
+for (const w of warnings) console.warn(`⚠️  ${w}`);
+console.log(`check:teams ผ่าน — ทีมขายที่ใช้งานอยู่ ${inDb.length} ทีม · ทีมตั้งต้นครบ ${TEAMS.length} ทีม`);

@@ -801,28 +801,30 @@ test('validateIdentity: ตำแหน่งสายทีมเปิดบ�
 test('resolveTeamUpdate: ไม่ส่งทีมมา = เก็บของเดิม · ส่งมาว่าง = ตั้งใจถอดออก', () => {
   const meta = { team: 'SV', teams: ['ODM', 'SV'] };
   // แก้ชื่อ/สิทธิ์เสริมอย่างเดียว — ทีมต้องอยู่ครบเท่าเดิม
-  assert.deepEqual(resolveTeamUpdate('ae', { role: 'ae' }, meta), { team: 'SV', teams: ['ODM', 'SV'] });
+  assert.deepEqual(resolveTeamUpdate('ae', { role: 'ae' }, meta), { team: 'SV', teams: ['ODM', 'SV'], dropped: [] });
   // ส่งทีมมาจริง (สคริปต์/ทางฉุกเฉิน) — ยังเขียนทับได้เหมือนเดิม
-  assert.deepEqual(resolveTeamUpdate('ae', { teams: ['KA'] }, meta), { team: 'KA', teams: ['KA'] });
+  assert.deepEqual(resolveTeamUpdate('ae', { teams: ['KA'] }, meta), { team: 'KA', teams: ['KA'], dropped: [] });
   // ตั้งใจถอดออกจากทุกทีม ต่างจาก "ไม่ส่งมาเลย"
-  assert.deepEqual(resolveTeamUpdate('ae', { teams: [] }, meta), { team: null, teams: [] });
+  assert.deepEqual(resolveTeamUpdate('ae', { teams: [] }, meta), { team: null, teams: [], dropped: [] });
   // เปลี่ยนไปตำแหน่งที่ไม่ผูกทีม — ต้องล้างจริง ไม่ใช่ค้างของเดิมไว้เงียบ ๆ
-  assert.deepEqual(resolveTeamUpdate('viewer', { role: 'viewer' }, meta), { team: null, teams: [] });
+  assert.deepEqual(resolveTeamUpdate('viewer', { role: 'viewer' }, meta), { team: null, teams: [], dropped: [] });
   // บัญชีที่ยังไม่เคยมีทีม (เพิ่งเปิด) — แก้ชื่อแล้วต้องไม่ 400 และยังไม่มีทีมเหมือนเดิม
-  assert.deepEqual(resolveTeamUpdate('ae', { role: 'ae' }, {}), { team: null, teams: [] });
+  assert.deepEqual(resolveTeamUpdate('ae', { role: 'ae' }, {}), { team: null, teams: [], dropped: [] });
 });
 
 test('resolveTeamAssignment: ทีมหลักต้องอยู่ในชุดที่สังกัดเสมอ · ตำแหน่งไม่ผูกทีมถูกล้าง', () => {
-  assert.deepEqual(resolveTeamAssignment('ae', { team: 'SV', teams: ['ODM', 'SV'] }), { team: 'SV', teams: ['ODM', 'SV'] });
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'SV', teams: ['ODM', 'SV'] }), { team: 'SV', teams: ['ODM', 'SV'], dropped: [] });
   // เรียงตาม TEAMS เสมอ ไม่ใช่ตามลำดับที่ติ๊ก — ป้ายบนจอจะได้ไม่สลับที่
   assert.deepEqual(resolveTeamAssignment('ae', { team: 'SV', teams: ['SV', 'ODM'] }).teams, ['ODM', 'SV']);
   // ติ๊กทีมหลักออก → ทีมหลักเลื่อนไปตัวแรก ไม่ค้างเป็นทีมที่ตัวเองไม่ได้อยู่
-  assert.deepEqual(resolveTeamAssignment('ae', { team: 'KA', teams: ['ODM', 'SV'] }), { team: 'ODM', teams: ['ODM', 'SV'] });
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'KA', teams: ['ODM', 'SV'] }), { team: 'ODM', teams: ['ODM', 'SV'], dropped: [] });
   // ค่าขยะถูกทิ้ง · ไม่ส่ง teams มา = ใช้ทีมหลักเดี่ยว (บัญชีเก่า/ผู้เรียกสายเดิม)
-  assert.deepEqual(resolveTeamAssignment('ae', { team: 'ODM', teams: ['ODM', 'XX'] }), { team: 'ODM', teams: ['ODM'] });
-  assert.deepEqual(resolveTeamAssignment('ae', { team: 'KA' }), { team: 'KA', teams: ['KA'] });
+  /* ⚠️ รหัสที่ไม่รู้จักต้องโผล่ใน `dropped` — ผู้เรียกจะได้ตีกลับให้ดัง ไม่ใช่ทิ้งเงียบ
+     (มติ 2026-09-07: ทางเขียนเทียบทะเบียนสด บัญชีที่ไม่มีทีมคือจอว่างที่ไม่มี error) */
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'ODM', teams: ['ODM', 'XX'] }), { team: 'ODM', teams: ['ODM'], dropped: ['XX'] });
+  assert.deepEqual(resolveTeamAssignment('ae', { team: 'KA' }), { team: 'KA', teams: ['KA'], dropped: [] });
   // ตำแหน่งที่ไม่ผูกทีม: ต้องล้างทั้งสองช่อง ไม่งั้นสิทธิ์ทีมเดิมค้างหลังเปลี่ยน role
-  assert.deepEqual(resolveTeamAssignment('viewer', { team: 'ODM', teams: ['ODM'] }), { team: null, teams: [] });
+  assert.deepEqual(resolveTeamAssignment('viewer', { team: 'ODM', teams: ['ODM'] }), { team: null, teams: [], dropped: [] });
 });
 
 // ── ข้อ 4 ของรอบตรวจ: สถานะทีมที่ "เพี้ยนได้" ต้องเพี้ยนไม่ได้จริง ──────────
@@ -843,7 +845,7 @@ test('resolveTeamAssignment: ผลลัพธ์สอดคล้องเส
         assert.equal(out.team, null, 'ไม่มีทีมสังกัดแต่ยังมีทีมหลักค้าง');
       }
       // ตำแหน่งที่ไม่ผูกทีม ต้องถูกล้างทั้งสองช่องเสมอ — ไม่งั้นขอบเขตเดิมค้างหลังเปลี่ยน role
-      assert.deepEqual(resolveTeamAssignment('viewer', { team, teams }), { team: null, teams: [] });
+      assert.deepEqual(resolveTeamAssignment('viewer', { team, teams }), { team: null, teams: [], dropped: [] });
     }
   }
 });

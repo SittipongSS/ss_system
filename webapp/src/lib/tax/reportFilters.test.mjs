@@ -93,8 +93,12 @@ test('route แยก ขอบเขตของผู้ใช้ ออกจ
 });
 
 // ทีมที่พิมพ์ผิดต้องเด้ง ไม่ใช่ถูกกรองทิ้งแล้วได้ "ทุกทีม" กลับไปเงียบ ๆ
+/* ⚠️ ตั้งแต่ 2026-09-07 รายชื่อทีมที่ใช้เทียบมาจาก **ทะเบียนสด** ไม่ใช่ค่าคงที่ในโค้ด —
+   ไม่งั้นกรองรายงานด้วยทีมที่เพิ่งสร้างไม่ได้ · รวมทีมที่ปิดแล้วด้วย เพราะรายงานย้อนหลัง
+   ต้องเรียกดูทีมเก่าได้ */
 test('route เด้งทีมที่ไม่รู้จัก ไม่กรองทิ้งเงียบ ๆ', () => {
-  assert.match(reportsRoute, /const unknownTeams = teamFilter\.filter\(\(t\) => !TEAMS\.includes\(t\)\)/);
+  assert.match(reportsRoute, /loadSalesTeamCodes\(getSupabaseAdmin\(\), \{ includeInactive: true \}\)/);
+  assert.match(reportsRoute, /const unknownTeams = teamFilter\.filter\(\(t\) => !knownTeams\.includes\(t\)\)/);
   assert.match(reportsRoute, /status: 400/);
 });
 
