@@ -23,6 +23,15 @@ import path from "node:path";
 
 const WEBAPP = process.cwd();
 const blankComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, (b) => b.replace(/[^\n]/g, " "));
+const CSS = blankComments(fs.readFileSync(path.join(WEBAPP, "src", "app", "globals.css"), "utf8"));
+const GLOBALS = CSS;
+
+/* ตัดเนื้อในของกฎหนึ่งอันออกมา — รับ selector ที่มีช่องว่างด้วย (`.a b`) */
+function ruleBody(source, selector) {
+  const hit = source.match(new RegExp(
+    selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\{([^}]*)\\}"));
+  return hit ? hit[1] : null;
+}
 
 function cssFiles(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -159,4 +168,64 @@ test("ที่จอแคบซึ่งรางเลิกปัก ต้�
   assert.match(block, /position:\s*static/, "สมมติฐาน: ที่ความกว้างนี้รางเลิกเป็น sticky");
   assert.match(block, /max-height:\s*none/, "ต้องล้างเพดาน ไม่งั้นการ์ดถูกตัดทิ้ง");
   assert.match(block, /overflow-y:\s*visible/);
+});
+
+/* ── แถบระบุตัวใบ (2026-09-06) ───────────────────────────────────────────────
+   คำขอผู้ใช้: เลื่อนหน้ารายละเอียดแล้วลืมว่าดูใบไหน · ตรึงหัวใบทั้งใบทำไม่ได้
+   (วัดแล้วกินจอ 41–81% · มือถือเหลือพื้นที่อ่าน 18.9px) จึงตรึงแค่ตัวตนใบ + ทางกลับ
+
+   วัดจริงด้วย stylesheet ของแอป: หน้าไม่มีหัวใบ --detail-pin-h = 0 เพดานกล่อง 770 ·
+   หน้ามีหัวใบ = 49px เพดานกล่องหดเป็น 721 เองทั้งสาย · แถบสูง 49.0px เท่ากันทั้ง
+   เนื้อสั้นและชื่อสินค้า 70 ตัวอักษร */
+test("ความสูงแถบเข้าสูตรจุดจอด ⇒ ของที่ปักอื่นเดินตามเอง", () => {
+  const anchor = (GLOBALS.match(/--scroll-anchor-top:\s*([^;]+);/) || [])[1] || "";
+  assert.match(anchor, /var\(--detail-pin-h\)/,
+    "ถ้าไม่บวกความสูงแถบเข้าไป จุดจอด anchor · .aside · เพดานกล่องตาราง จะไม่รู้จักแถบ\n"
+    + "แล้วทุกอย่างที่เพิ่งซ่อมไปจะกลับไปจมใต้แถบอีกรอบ");
+  assert.match(CSS, /--detail-pin-h:\s*0px/,
+    "ค่าตั้งต้นต้องเป็น 0 — หน้าที่ไม่มีหัวใบต้องไม่เสียพื้นที่แม้แต่พิกเซลเดียว");
+});
+
+/* 🔴 กับดักที่ทำให้กฎนี้ตายเงียบ: `.overviewCard` เป็นชื่อจาก CSS module ซึ่งถูกแฮช
+   ตอน build ⇒ `:has(.overviewCard)` ไม่มีวันแมตช์ · ต้องจับคลาสสากลที่คอมโพเนนต์
+   พ่นออกมาคู่กันเท่านั้น */
+test("สวิตช์เปิดแถบต้องจับคลาสสากล ไม่ใช่ชื่อจาก CSS module", () => {
+  assert.match(CSS, /:root:has\(\.ui-detail-overview\)\s*\{[^}]*--detail-pin-h:\s*49px/,
+    "ต้องเปิดค่าด้วย :root:has(.ui-detail-overview)");
+  assert.ok(!/:root:has\(\.overviewCard\)/.test(CSS),
+    "`.overviewCard` เป็นคลาส module ที่ถูกแฮช — :has() จะไม่มีวันแมตช์");
+  const overview = fs.readFileSync(
+    path.join(WEBAPP, "src", "components", "ui", "DetailOverview.js"), "utf8");
+  assert.match(overview, /className=\{`ui-detail-overview \$\{styles\.overviewCard\}/,
+    "DetailOverview ต้องพ่นคลาสสากลคู่กับคลาส module ไม่งั้นสวิตช์ข้างบนไม่ทำงาน");
+});
+
+test("แถบต้องสูงคงที่จาก min-height ไม่ใช่จากเนื้อหา", () => {
+  const bar = ruleBody(CSS, ".ui-detail-pin-bar");
+  assert.ok(bar, "หากฎ .ui-detail-pin-bar ไม่เจอ");
+  assert.match(bar, /min-height:\s*var\(--detail-pin-h\)/,
+    "ถ้าความสูงมาจากเนื้อหา ค่าที่จองไว้ใน --detail-pin-h จะไม่ตรงกับของจริง");
+  const id = ruleBody(CSS, ".ui-detail-pin-id strong");
+  assert.match(id || "", /white-space:\s*nowrap/,
+    "ชื่อใบต้องไม่ตกบรรทัดสอง ไม่งั้นแถบสูงขึ้นแล้วเลขที่จองไว้ผิด");
+});
+
+/* ที่แขวนต้องไม่กินที่ในโฟลว์ ไม่งั้นทุกหน้ารายละเอียดถูกดันลง 49px ตลอดเวลา
+   = กลายเป็นแบบ "ตรึงตลอดเวลา" ที่ตัดทิ้งไปแล้วตอนเลือกแบบ */
+test("ที่แขวนสูง 0 และอยู่ในสายที่ sticky ทำงาน", () => {
+  const slot = ruleBody(CSS, ".ui-detail-pin");
+  assert.ok(slot, "หากฎ .ui-detail-pin ไม่เจอ");
+  assert.match(slot, /position:\s*sticky/);
+  assert.match(slot, /height:\s*0/,
+    "ที่แขวนต้องสูง 0 — ตัวแถบเป็น absolute ข้างใน จึงไม่ดันเนื้อหาลงเลย");
+  const layout = fs.readFileSync(path.join(WEBAPP, "src", "components", "AppLayout.js"), "utf8");
+  assert.match(layout, /<div className="page">\s*\{\/\*[\s\S]*?\*\/\}\s*<DetailPinBar \/>/,
+    "ต้องเป็นลูกตัวแรกของ .page — กล่องแม่ของหัวใบต่างกันทุกหน้า วางที่อื่นแล้วหลุดปัก");
+});
+
+test("ตอนพิมพ์ต้องถอดแถบและคืนพื้นที่ที่จองไว้", () => {
+  const printBlock = CSS.slice(CSS.indexOf("@media print"));
+  assert.match(printBlock, /--detail-pin-h:\s*0px/,
+    "ถ้าไม่คืนค่า หัวเอกสารบนกระดาษจะเยื้องลง 49px");
+  assert.match(printBlock, /\.ui-detail-pin\s*\{\s*display:\s*none/);
 });
