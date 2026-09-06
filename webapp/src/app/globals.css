@@ -636,7 +636,12 @@
   /* ความสูงแถวระบบบนหัว (จอกว้าง) — 0 เมื่อไม่มีแถวนั้น (ดูบล็อกชั้นจอ)
      ⚠️ ต้องอยู่ในโทเคน เพราะจุดยึดการเลื่อนข้างล่างบวกมันด้วย */
   --sysbar-h: 42px;
-  --scroll-anchor-top: calc(var(--topbar-h) + var(--sysbar-h) + var(--space-3));
+  /* ความสูงแถบระบุตัวใบ — 0 เป็นค่าตั้งต้น เปิดเฉพาะหน้าที่มีหัวใบ (ดูกฎ :has ข้างล่าง)
+     ⚠️ ค่านี้ **คงที่ตลอดอายุหน้า** ไม่ผูกกับว่าแถบกำลังโผล่อยู่หรือไม่ — ถ้าให้มัน
+     สลับ 0↔49 ตอนเลื่อน จุดจอดกับเพดานกล่องจะคำนวณใหม่ทุกครั้งที่แถบโผล่/หาย
+     = ตารางกระตุกทั้งหน้า · ยอมจอง 49px ไว้ล่วงหน้าดีกว่า */
+  --detail-pin-h: 0px;
+  --scroll-anchor-top: calc(var(--topbar-h) + var(--sysbar-h) + var(--detail-pin-h) + var(--space-3));
 
   /* ความสูงสูงสุดของกล่องตารางที่เลื่อนเองได้ — ตัวที่ทำให้หัวตารางปักได้จริง
      คิดจาก "พื้นที่ที่มองเห็นใต้แถบเมนู" ลบระยะหายใจท้ายจอ ⇒ กล่องเตี้ยกว่าจอเสมอ
@@ -6339,6 +6344,84 @@ button.ui-workspace-back {
    ⚠️ ใช้คลาสนี้แทนการเติม scroll-margin-top รายจุด — ค่านั้นต้องเดินตามความสูงแถบ
    ซึ่งเปลี่ยนตามชั้นจอ ไม่ใช่เลขที่เขียนทิ้งไว้ได้ */
 .scroll-anchor { scroll-margin-top: var(--scroll-anchor-top); }
+
+/* ── แถบระบุตัวใบ (2026-09-06) ────────────────────────────────────────────────
+   🔴 ต้องเป็น `:has(.ui-detail-overview)` ไม่ใช่ `:root` เปล่า — ถ้าเปิดที่ราก
+   ทุกหน้าจะจองพื้นที่ 49px ฟรี รวมหน้าที่ไม่มีหัวใบ แล้วหัววันของ /notifications
+   กับรางพรีวิวเอกสารจะถูกดันลงมาโดยไม่มีเหตุผล
+   ⚠️ คลาสตัวจับต้องเป็น **คลาสสากล** ไม่ใช่ชื่อจาก CSS module — `.overviewCard`
+   ถูกแฮชเป็น `DetailOverview-module__xxxx__overviewCard` ตอน build ⇒ `:has()` ที่
+   เขียนชื่อ module จะไม่มีวันแมตช์ · `DetailOverview` จึงพ่นคลาส `ui-detail-overview`
+   ออกมาคู่กันไว้ให้ที่นี่ใช้โดยเฉพาะ */
+:root:has(.ui-detail-overview) { --detail-pin-h: 49px; }
+
+/* ที่แขวน: สูง 0 จึงไม่กินที่ในโฟลว์เลย (เหตุผลที่ต้องอยู่ใน .page อ่านที่ detailPin.js) */
+.ui-detail-pin {
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--sysbar-h));
+  z-index: var(--z-sticky);
+  height: 0;
+}
+
+.ui-detail-pin-bar {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  /* ความสูงมาจาก min-height ไม่ใช่เนื้อหา — เนื้อยาวแค่ไหนแถบก็ 49px เท่าเดิม
+     (วัด 12 ความกว้าง × 4 ทรงเนื้อหา ได้ 49.0 ทุกค่า) ⇒ --detail-pin-h เชื่อถือได้ */
+  min-height: var(--detail-pin-h);
+  padding: 0 var(--panel-inset);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity var(--motion-fast), transform var(--motion-fast);
+}
+.ui-detail-pin-bar.is-on { opacity: 1; transform: none; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .ui-detail-pin-bar { transition: none; } }
+
+/* ⚠️ ต้องเป็น --lh-thai (1.65) ไม่ใช่เลขแน่น ๆ — สองบรรทัดนี้เป็นข้อความไทย
+   ต่ำกว่า 1.65 แล้วสระบน/วรรณยุกต์ถูกตัด (กติกาเดิมของระบบ) · วัดแล้วยังพอดี 49px:
+   eyebrow 9.5×1.65 + ชื่อ 13×1.65 = 37.2px ในกล่อง 49px */
+.ui-detail-pin-id { display: flex; flex-direction: column; min-width: 0; line-height: var(--lh-thai); }
+.ui-detail-pin-id small {
+  color: var(--accent-ink);
+  font-size: var(--fs-1);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* ⚠️ nowrap + ellipsis คือสิ่งที่ทำให้ความสูงคงที่ — ชื่อสินค้า 70 ตัวอักษรก็ไม่ดัน
+   เป็นสองบรรทัด (ท่าเดียวกับ .topnav-here-page) */
+.ui-detail-pin-id strong {
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-detail-pin-sum {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* บรรทัดสรุปหายก่อนเพื่อนเมื่อที่ไม่พอ — ชื่อใบสำคัญกว่าคำอธิบาย */
+@media (max-width: 900px) { .ui-detail-pin-sum { display: none; } }
+/* จอเล็กสุดเหลือลูกศร + เลขที่ใบ */
+@media (max-width: 680px) {
+  .ui-detail-pin-id small { display: none; }
+  .ui-detail-pin-bar { gap: var(--space-2); }
+}
 .ui-section-header {
   display: flex;
   align-items: center;
@@ -7607,6 +7690,10 @@ td > * > .text-action {
 }
 
 @media print {
+  /* แถบระบุตัวใบไม่มีความหมายบนกระดาษ และที่แขวนที่เป็น sticky อาจไปโผล่ทุกหน้า
+     ⇒ ถอดทั้งก้อน พร้อมคืนพื้นที่ที่จองไว้ให้จุดจอด (ไม่งั้นหัวเอกสารเยื้องลง 49px) */
+  :root { --detail-pin-h: 0px; }
+  .ui-detail-pin { display: none; }
   .no-print,
   .app-sidebar,
   .sidebar,
