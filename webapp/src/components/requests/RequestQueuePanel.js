@@ -1,5 +1,7 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import Pager from "@/components/ui/Pager";
+import { usePagination } from "@/lib/usePagination";
 import DetailRow from "@/components/ui/DetailRow";
 // คำร้องข้ามฝ่าย (mig 0173) — คำร้องของฉัน / คิวของฝ่ายตน
 //
@@ -130,7 +132,7 @@ export default function RequestQueuePanel({
      — ที่นั่นไม่มีปุ่มให้เปิดกลุ่มคืน และแถบความเร่งคือสิ่งเดียวที่บอกว่าใบไหนต้องรีบ
      ⚠️ ลำดับความเร่งไม่ได้หายไปด้วย — ยังเรียงด้วย `compareRequestUrgency` ตามเดิม
      (ถ้าหน้านั้นตั้งต้นด้วย `urgency`) แค่ไม่มีเส้นคั่นให้เห็นเป็นบล็อก */
-  const groups = useMemo(() => {
+  const groupsAll = useMemo(() => {
     if (showTools) {
       return groupRequestRows(visibleRows, groupBy)
         || [{ key: "__flat", label: "", rows: visibleRows, flat: true }];
@@ -138,6 +140,42 @@ export default function RequestQueuePanel({
     return groupQueueRows(visibleRows, { todayIso: today })
       .map((g) => ({ key: g.group, label: g.label, rows: g.rows }));
   }, [visibleRows, groupBy, today, showTools]);
+
+  /* ── แบ่งหน้า (2026-09-07) ─────────────────────────────────────────────────
+     คิวนี้เป็นทะเบียนใหญ่ตัวเดียวในระบบที่ไม่เคยมีตัวแบ่งหน้าเลย — อีก 18 หน้าที่
+     เป็นทะเบียนเหมือนกันมี `<Pager>` ครบ (ผู้ใช้ทักมา 2026-09-07)
+
+     🔴 **แบ่งหน้าตรง ๆ ไม่ได้ เพราะคิวนี้จัดกลุ่มตามความเร่งด่วน** — ถ้าตัด
+     `visibleRows` แล้วค่อยจัดกลุ่ม ตัวเลขบนหัวกลุ่ม (`· 3`) จะกลายเป็น "เท่าที่เห็น
+     ในหน้านี้" ทั้งที่คนอ่านคิวใช้เลขนั้นตอบคำถามว่า **ค้างอยู่กี่ใบ** ⇒ หลอกกันตรง ๆ
+
+     ท่าที่ใช้: จัดกลุ่มจากชุดเต็มก่อน → เรียงเป็นแถวเดียวตามลำดับกลุ่ม → ตัดหน้าจาก
+     ลำดับนั้น → ประกอบกลุ่มกลับเฉพาะที่อยู่ในหน้านี้ โดย **พก `total` ของกลุ่มเต็มมาด้วย**
+     ⇒ ลำดับถูก · เลขบนหัวกลุ่มเป็นจำนวนจริง · กลุ่มหนึ่งคาบสองหน้าได้ตามปกติ
+
+     ⚠️ แบ่งหน้าเฉพาะตอนเป็นคิวเต็มหน้า (`showTools`) — การ์ดที่ฝังในหน้าดีล/โครงการ
+     มีไม่กี่ใบและไม่มีที่วางตัวแบ่งหน้า */
+  const orderedRows = useMemo(
+    () => groupsAll.flatMap((g) => g.rows.map((row) => ({ row, groupKey: g.key }))),
+    [groupsAll],
+  );
+  const pager = usePagination(orderedRows, {
+    resetKey: `${scope}|${dept}|${countFilter}|${search}|${sortKey}|${sortDir}|${groupBy}|${JSON.stringify(filters)}`,
+  });
+  const paged = showTools;
+  const groups = useMemo(() => {
+    if (!paged) return groupsAll;
+    const totalByKey = new Map(groupsAll.map((g) => [g.key, g.rows.length]));
+    const meta = new Map(groupsAll.map((g) => [g.key, g]));
+    const out = [];
+    for (const { row, groupKey } of pager.pageRows) {
+      const last = out[out.length - 1];
+      if (last && last.key === groupKey) { last.rows.push(row); continue; }
+      const base = meta.get(groupKey) || {};
+      out.push({ ...base, key: groupKey, rows: [row], total: totalByKey.get(groupKey) });
+    }
+    return out;
+  }, [paged, groupsAll, pager.pageRows]);
 
   /* ⚠️ **หัวกลุ่มหายเมื่อมีกลุ่มเดียวและเปลี่ยนการจัดกลุ่มไม่ได้** — การ์ดบนหน้าดีล
      มักมี 1-3 ใบ · หัวข้อ "ยังไม่มีใครรับเรื่อง · 1" เหนือแถวเดียวคือเส้นที่ไม่ได้
@@ -606,7 +644,7 @@ export default function RequestQueuePanel({
                 {isCollapsed(g.key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                 {g.label}
                 {g.sub ? <span className={styles.arCode}>{g.sub}</span> : null}
-                {` · ${g.rows.length}`}
+                {` · ${g.total ?? g.rows.length}`}
               </button>
               )}
               {!isCollapsed(g.key) && g.rows.map((ask) => {
@@ -706,7 +744,7 @@ export default function RequestQueuePanel({
                         {isCollapsed(g.key) ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                         <strong>{g.label}</strong>
                         {g.sub ? <span className={styles.arCode}>{g.sub}</span> : null}
-                        <span className="ui-badge">{g.rows.length} {unit}</span>
+                        <span className="ui-badge">{g.total ?? g.rows.length} {unit}</span>
                       </button>
                     </td>
                   </tr>
@@ -742,6 +780,21 @@ export default function RequestQueuePanel({
           </table>
         </TableScroll>
       )}
+
+      {/* ตัวแบ่งหน้า — เฉพาะคิวเต็มหน้า (การ์ดที่ฝังในหน้าดีล/โครงการ มีไม่กี่ใบ)
+          ⚠️ `total` เป็นจำนวนหลังกรองทั้งหมด ไม่ใช่จำนวนในหน้านี้ — ตรงกับป้ายบนหัว
+          การ์ดที่นับ visibleRows เหมือนกัน ไม่งั้นสองเลขบนจอเดียวจะขัดกันเอง */}
+      {paged && pager.total > 0 ? (
+        <Pager
+          page={pager.page}
+          pageCount={pager.pageCount}
+          total={pager.total}
+          onPage={pager.setPage}
+          pageSize={pager.pageSize}
+          onPageSize={pager.setPageSize}
+          itemLabel={unit}
+        />
+      ) : null}
     </>
   );
 
