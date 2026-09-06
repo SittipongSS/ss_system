@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, normalizeRole, sanitizeExtraCaps, userTeams, resolveTeamAssignment } from '@/lib/permissions';
 import {
@@ -82,8 +83,16 @@ export async function POST(request) {
   const name = `${firstName} ${lastName}`.trim();
   const phone = (body.phone || '').trim();
   const role = body.role;
-  // อยู่ได้หลายทีม — teams คือสังกัดทั้งหมด, team คือทีมหลักที่ใช้ stamp ของใหม่
-  const { team, teams } = resolveTeamAssignment(role, { team: body.team || null, teams: body.teams });
+  /* อยู่ได้หลายทีม — teams คือสังกัดทั้งหมด, team คือทีมหลักที่ใช้ stamp ของใหม่
+     ⚠️ เทียบกับ **ทะเบียนสด** ไม่ใช่ค่าคงที่ในโค้ด (มติ 2026-09-07) — ไม่งั้นทีมขายที่
+        เพิ่งสร้างจะถูกทิ้งเงียบ ๆ แล้วบัญชีเกิดมาโดยไม่มีทีม ตอบ 201 เหมือนสำเร็จ */
+  const salesCodes = await loadSalesTeamCodes(supabase);
+  const { team, teams, dropped } = resolveTeamAssignment(
+    role, { team: body.team || null, teams: body.teams }, { validCodes: salesCodes },
+  );
+  if (dropped.length) {
+    return Response.json({ error: `ทีมไม่ถูกต้องหรือปิดใช้งานแล้ว: ${dropped.join(', ')}` }, { status: 400 });
+  }
 
   /* ── ช่องทางเข้าระบบ: อีเมล **หรือ** เบอร์โทร (มติผู้ใช้ 2026-08-30) ─────────
      ⭐ เจ้าหน้าที่หน้างานไม่มีอีเมลบริษัท ⇒ เบอร์ถูกมัดเป็นที่อยู่ล็อกอินภายใน
@@ -104,7 +113,7 @@ export async function POST(request) {
     return Response.json({ error: 'ต้องระบุอีเมลหรือเบอร์เข้าระบบ และรหัสผ่าน' }, { status: 400 });
   }
   if (password.length < 6) return Response.json({ error: 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร' }, { status: 400 });
-  const invalid = validateIdentity(role, teams, body.department);
+  const invalid = validateIdentity(role, teams, body.department, { validCodes: salesCodes });
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
   const department = normalizeDepartment(body.department) || departmentFor(role);
   // Per-user capability grants — whitelisted (GRANTABLE_CAPS) so a create call

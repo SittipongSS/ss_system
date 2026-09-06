@@ -219,7 +219,16 @@ export function rolesForDepartment(department) {
    (salesPlanning/ui.js) กับ `TEAM_ORDER` (salesPlanning.js) เรียง KA→ODM→SV ซึ่ง
    คอมเมนต์ของมันเองเขียนว่าเป็น "ลำดับทีมมาตรฐานทั้งระบบ" ⇒ หน้าวางเป้ากับหน้าผู้ใช้
    เรียงทีมคนละแบบมาตลอดโดยไม่มีใครสังเกต · ยุบเหลือชุดนี้ชุดเดียว
-   ⚠️ ลำดับนี้ต้องตรงกับ `sortOrder` ในทะเบียน `teams` (mig 0311) — มีด่าน CI คุม */
+   ⚠️ ลำดับนี้ต้องตรงกับ `sortOrder` ในทะเบียน `teams` (mig 0311) — มีด่าน CI คุม
+
+   ⭐ **ตั้งแต่ 2026-09-07 นี่คือ "สามทีมที่ seed มาแต่แรก" ไม่ใช่ "ทีมขายทั้งหมด"**
+   (มติผู้ใช้: ปลดล็อกให้สร้างทีมขายใหม่ได้) — ทะเบียน `teams` คือของจริง ส่วนสามรหัสนี้
+   เป็นรหัสที่ถูกก๊อปเป็นข้อความลง 20 คอลัมน์ใน 19 ตารางไปแล้ว **จึงห้ามหายไปจากทะเบียน**
+   ⚠️ ที่เหลืออยู่สองหน้าที่: (1) ค่าถอยเวลาไม่มีทะเบียนให้เทียบ — ฝั่งจอที่ยังอ่าน sync ได้
+   (2) รายการที่ `DELETE /api/teams/[code]` ห้ามลบเด็ดขาด
+   🔴 **ห้ามเอากลับไปใช้เป็นตัวกรองของทางเขียนอีก** — ทางเขียนต้องเทียบกับทะเบียนสด
+   (`loadSalesTeamCodes`) ไม่งั้นทีมที่สร้างใหม่จะถูก **ทิ้งเงียบ ๆ** แล้วคนในทีมนั้น
+   มองไม่เห็นข้อมูลอะไรเลยโดยไม่มี error */
 export const TEAMS = ['KA', 'ODM', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
@@ -367,14 +376,24 @@ export function attributionTeam(who, requested) {
 // สังกัดทีมที่จะเขียนลง app_metadata — ตัวเดียวที่ทั้ง API สร้าง/แก้ และฟอร์มใช้
 // (กันฝั่งใดฝั่งหนึ่งคิดกติกาเอง แล้ว "ทีมหลัก" ของสองฝั่งไม่ตรงกัน)
 //   • ตำแหน่งที่ไม่ผูกทีม → ไม่มีทีมเลย
-//   • เรียงตาม TEAMS เสมอ ให้ลำดับบนหน้าจอคงที่ไม่ว่าติ๊กเรียงยังไง
+//   • เรียงตาม `validCodes` เสมอ ให้ลำดับบนหน้าจอคงที่ไม่ว่าติ๊กเรียงยังไง
 //   • ทีมหลักต้องเป็นหนึ่งในทีมที่สังกัด ถ้าไม่ใช่ก็ถอยไปตัวแรก — ค่าที่ค้างจาก
 //     ตอนติ๊กทีมออกจะได้ไม่กลายเป็นทีมหลักที่ตัวเองไม่ได้อยู่
-export function resolveTeamAssignment(role, { team, teams } = {}) {
-  if (!TEAM_ROLES.includes(role)) return { team: null, teams: [] };
+//
+// ⭐ **`validCodes` มาจากทะเบียนสด** (มติผู้ใช้ 2026-09-07 ปลดล็อกทีมขายใหม่) —
+//   ฝั่งเซิร์ฟเวอร์ส่ง `loadSalesTeamCodes()` เข้ามา · ไม่ส่ง = ถอยไปใช้สามทีมที่ seed
+//   มาแต่แรก ซึ่งถูกต้องสำหรับฝั่งจอที่ไม่มีทะเบียนในมือ แต่ **ผิดสำหรับทางเขียน**
+//
+// ⚠️ **คืน `dropped` มาด้วย ห้ามทิ้งเงียบ** — ของเดิม `.filter()` ทิ้งรหัสที่ไม่รู้จัก
+//   แล้วคืน `teams: []` ⇒ บัญชีถูกสร้าง/แก้สำเร็จ 201 โดยไม่มีทีม แล้วเจ้าตัวเปิดระบบมา
+//   เจอจอว่างทุกหน้าโดยไม่มี error · ผู้เรียกต้องเช็ค `dropped` แล้วตีกลับให้ดัง
+export function resolveTeamAssignment(role, { team, teams } = {}, { validCodes = TEAMS } = {}) {
+  if (!TEAM_ROLES.includes(role)) return { team: null, teams: [], dropped: [] };
   const picked = userTeams(teams).length ? userTeams(teams) : userTeams(team);
-  const valid = TEAMS.filter((t) => picked.includes(t));
-  return { team: valid.includes(team) ? team : (valid[0] || null), teams: valid };
+  const order = Array.isArray(validCodes) && validCodes.length ? validCodes : TEAMS;
+  const valid = order.filter((t) => picked.includes(t));
+  const dropped = picked.filter((t) => !order.includes(t));
+  return { team: valid.includes(team) ? team : (valid[0] || null), teams: valid, dropped };
 }
 
 /* ทีมที่จะเขียนตอน **แก้บัญชีเดิม** — ต่างจาก `resolveTeamAssignment` ตรงที่รู้ว่า
@@ -388,11 +407,11 @@ export function resolveTeamAssignment(role, { team, teams } = {}) {
    `{team:null, teams:[]}` ให้เองไม่ว่าจะรับค่าเดิมมาหรือไม่ (ย้าย AE ไป viewer
    แล้วขอบเขตต้องหลุดจริง ไม่ใช่ค้างอยู่เงียบ ๆ)
    ⚠️ ส่ง `teams: []` มาเอง = ตั้งใจถอดออกจากทุกทีม ต่างจากไม่ส่งมาเลย */
-export function resolveTeamUpdate(role, body = {}, existingMeta = {}) {
+export function resolveTeamUpdate(role, body = {}, existingMeta = {}, options = {}) {
   const given = body.team !== undefined || body.teams !== undefined;
   return resolveTeamAssignment(role, given
     ? { team: body.team || null, teams: body.teams }
-    : { team: existingMeta.team || null, teams: existingMeta.teams });
+    : { team: existingMeta.team || null, teams: existingMeta.teams }, options);
 }
 
 // Sales operational base (no delete, no RA). Shared by ae / ac.
@@ -1631,7 +1650,7 @@ export function redactProductMargin(user, product) {
 // role's canonical department. Returns an error string, or null when valid.
 //
 // `team` รับได้ทั้งทีมเดียวและอาร์เรย์ (ผู้ใช้อยู่หลายทีม) — ตรวจทุกตัวในชุด
-export function validateIdentity(role, team, department) {
+export function validateIdentity(role, team, department, { validCodes = TEAMS } = {}) {
   if (!ROLES.includes(role)) return 'role ไม่ถูกต้อง';
   const teams = userTeams(team);
   if (TEAM_ROLES.includes(role)) {
@@ -1643,7 +1662,9 @@ export function validateIdentity(role, team, department) {
        ตารางผู้ใช้ขึ้นป้าย "ยังไม่ได้จัดเข้าทีม" รายแถว และหลังสร้างบัญชีมีโมดัลพาไป
        หน้าจัดทีมต่อ — ถอดป้ายพวกนั้นเมื่อไรคือปล่อยคนตกหล่นเงียบ ๆ
        ⚠️ ยังห้ามทีม *ที่ไม่มีจริง* เหมือนเดิม — ตรวจเฉพาะตัวที่ส่งมา */
-    if (teams.some((t) => !TEAMS.includes(t))) return `ทีมไม่ถูกต้อง (${TEAMS.join('/')})`;
+    const known = Array.isArray(validCodes) && validCodes.length ? validCodes : TEAMS;
+    const unknown = teams.filter((t) => !known.includes(t));
+    if (unknown.length) return `ทีมไม่ถูกต้องหรือปิดใช้งานแล้ว: ${unknown.join(', ')}`;
   } else if (teams.length) {
     return 'ตำแหน่งนี้ไม่ต้องระบุทีม';
   }

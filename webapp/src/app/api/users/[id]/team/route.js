@@ -14,7 +14,7 @@ import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { withUser, ok, fail, badRequest, forbidden, notFound } from '@/lib/http';
 import { TEAM_ROLES, canManageTeams, resolveTeamAssignment } from '@/lib/permissions';
-import { loadTeams } from '@/lib/master/teamsRepo';
+import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,8 +40,10 @@ export const PATCH = withUser(async ({ user, req, ctx }) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const registry = await loadTeams(getSupabaseAdmin(), { department: 'SA', includeInactive: false });
-    const active = new Set(registry.map((t) => t.code));
+    /* ⚠️ **กรองด้วย `kind='sales'` ไม่ใช่ `department='SA'`** — ฝ่ายขายมีทีมปฏิบัติงานได้ด้วย
+       และทีมปฏิบัติงานไม่ควรกลายเป็นทีมขาย (ทีมขายลากสิทธิ์เห็นข้อมูลไปด้วย) */
+    const salesCodes = await loadSalesTeamCodes(admin);
+    const active = new Set(salesCodes);
 
     const asked = Array.isArray(body.teams) ? body.teams : (body.team ? [body.team] : []);
     if (!asked.length) return badRequest('ต้องเลือกอย่างน้อยหนึ่งทีม');
@@ -50,7 +52,11 @@ export const PATCH = withUser(async ({ user, req, ctx }) => {
     const unknown = asked.filter((code) => !active.has(code));
     if (unknown.length) return badRequest(`ทีมไม่ถูกต้องหรือปิดใช้งานแล้ว: ${unknown.join(', ')}`);
 
-    const { team, teams } = resolveTeamAssignment(role, { team: body.team || asked[0], teams: asked });
+    /* 🐞 เดิมบรรทัดนี้กรองซ้ำด้วยค่าคงที่ `TEAMS` ⇒ ทีมที่เพิ่งสร้างผ่านด่านทะเบียนข้างบน
+       แล้วมาถูกทิ้งตรงนี้ จบด้วย 400 "ทีมไม่ถูกต้อง" ที่บอกสาเหตุผิด */
+    const { team, teams } = resolveTeamAssignment(
+      role, { team: body.team || asked[0], teams: asked }, { validCodes: salesCodes },
+    );
     if (!teams.length) return badRequest('ทีมไม่ถูกต้อง');
 
     const before = userAuditSnapshot(target);
