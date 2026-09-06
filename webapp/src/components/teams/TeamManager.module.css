@@ -278,3 +278,6 @@
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
 }
+
+/* ปุ่มท้ายแถวรายชื่อคน — ดันไปชิดขวาให้อยู่แนวเดียวกันทุกแถว */
+.rowAction { margin-inline-start: auto; }

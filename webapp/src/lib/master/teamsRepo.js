@@ -31,6 +31,23 @@ export async function loadSalesTeamCodes(supabase, { includeInactive = false } =
   return (data || []).map((row) => row.code);
 }
 
+/* คนที่ยัง "ถือ" รหัสทีมนี้อยู่ใน Supabase Auth — **ทีมขายนับที่นี่ที่เดียว**
+   🐞 ด่านปิดทีมเคยนับจาก `team_members` ซึ่งเป็นตารางของทีม **ปฏิบัติงาน** ⇒ ทีมขาย
+      นับได้ 0 เสมอ ปิดทีมที่มีคนอยู่ได้เงียบ ๆ แล้วคนกลุ่มนั้นถือรหัสทีมที่ปิดไปแล้ว
+      ซึ่งทำให้ทุกการแก้บัญชีของเขาโดนตีกลับทีหลัง (ตรวจย้อน 2026-09-07)
+   ⚠️ ต้องไล่จาก Auth ไม่ใช่ตารางแอป — สังกัดทีมขายอยู่ที่ `app_metadata` (ADR 0015) */
+export async function loadTeamHolderIds(supabase, code) {
+  const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+  if (error) throw error;
+  return (data?.users || [])
+    .filter((u) => {
+      const meta = u.app_metadata || {};
+      const teams = Array.isArray(meta.teams) ? meta.teams : [];
+      return meta.team === code || teams.includes(code);
+    })
+    .map((u) => u.id);
+}
+
 export async function findTeam(supabase, code) {
   const { data, error } = await supabase.from('teams').select('*').eq('code', code).maybeSingle();
   if (error) throw error;

@@ -23,7 +23,34 @@ const departmentFromQuery = (req, user) => {
   return asked || departmentOf(user) || '';
 };
 
+/* ── อ่าน "ป้ายชื่อทีม" อย่างเดียว — เปิดให้ทุกคนที่ล็อกอิน ────────────────────
+   ⭐ มติผู้ใช้ 2026-09-07 (ทะเบียนทีมฝั่งจอ): ทีมขายที่สร้างใหม่ต้องขึ้น **ชื่อจริง**
+   ไม่ใช่รหัสดิบ ⇒ ทุกจอต้องอ่านทะเบียนได้ ไม่ใช่แค่คนในฝ่ายนั้น
+
+   ⚠️ **ด่านฝ่ายที่มีอยู่ไม่ได้ปกป้องชื่อทีม — มันปกป้องอีกสองก้อน** คือ `members`
+   (รายชื่อสมาชิกทีมปฏิบัติงาน) กับ `people` (ไดเรกทอรีคนทั้งฝ่าย) ⇒ ตัดสองก้อนนั้นออก
+   แล้วเปิดอ่านได้ทั้งบริษัท · รหัสทีมถูกก๊อปอยู่บนดีล/ใบเสนอราคา/รายงานที่คนส่วนใหญ่
+   เห็นอยู่แล้ว การรู้ชื่อเต็มของรหัสไม่ได้เปิดอะไรใหม่
+   ⚠️ **ไม่ส่ง `note` · `leadName` · `createdByName`** — สามช่องนั้นเป็นข้อความที่คนพิมพ์เอง
+   และชื่อคน ซึ่งไม่ใช่ "ป้าย"
+   ⚠️ ต้องคืน **ก่อน** ด่านฝ่ายเสมอ ห้ามหล่นไปเส้นเดิม */
+const LABEL_COLUMNS = ['code', 'name', 'kind', 'isActive', 'sortOrder', 'department'];
+
 export const GET = withUser(async ({ user, supabase, req }) => {
+  const url = new URL(req.url);
+  if (url.searchParams.get('labels') === '1') {
+    try {
+      const kind = String(url.searchParams.get('kind') ?? '').trim();
+      const rows = await loadTeams(supabase, {});
+      const teams = rows
+        .filter((t) => !kind || t.kind === kind)
+        .map((t) => Object.fromEntries(LABEL_COLUMNS.map((c) => [c, t[c]])));
+      return ok({ teams });
+    } catch (e) {
+      return fail(e.message, 500);
+    }
+  }
+
   const department = departmentFromQuery(req, user);
   if (!department) return badRequest('ต้องระบุฝ่าย');
   /* อ่าน: คนในฝ่ายเดียวกันอ่านได้ · คนถือ cap อ่านได้ · admin อ่านได้ทุกฝ่าย */

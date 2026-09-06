@@ -36,6 +36,7 @@ import { ROLE_LABELS, TEAM_ROLES } from "@/lib/permissions";
 import { fmtNumber } from "@/lib/format";
 import useTeamRegistry from "./useTeamRegistry";
 import TeamFormFields from "./TeamFormFields";
+import TeamAssignModal from "./TeamAssignModal";
 import styles from "./TeamManager.module.css";
 
 const STATUS_FILTERS = [
@@ -67,6 +68,7 @@ export default function TeamManager({ department, title, subtitle }) {
   const [sortKey, setSortKey] = useState("order");
   const [dir, setDir] = useState("asc");
   const [draft, setDraft] = useState(null);   // ฟอร์มสร้างทีม (null = ปิด)
+  const [assigning, setAssigning] = useState(null);  // คนที่กำลังจัดเข้าทีมครั้งแรก
   const [view] = useResponsiveView({ portrait: "card", landscape: "table" });
 
   const rows = useMemo(() => {
@@ -315,9 +317,19 @@ export default function TeamManager({ department, title, subtitle }) {
                       <UserRound size={15} aria-hidden="true" />
                       <span className={styles.personName}>{person.name}</span>
                       <span className={styles.sub}>{ROLE_LABELS[person.role] || person.role}</span>
-                      {!eligible && (
+                      {!eligible ? (
                         <span className={styles.reason}>ตำแหน่งนี้ดูได้ทุกทีมอยู่แล้ว จึงไม่ต้องสังกัดทีม</span>
-                      )}
+                      ) : canManage && department === "SA" ? (
+                        /* 🔴 **ปุ่มนี้คือทางเดียวที่บัญชีขายเปิดใหม่จะได้ทีมแรก** — ตั้งแต่หน้าผู้ใช้
+                           ถอดช่องทีมออก (2026-09-06) บัญชีขายเกิดมาไม่มีทีมเสมอ และโมดัลหลัง
+                           สร้างบัญชีก็พามาหน้านี้พร้อมคำสัญญาว่าจัดต่อได้ที่นี่
+                           🐞 ตอนรื้อหน้าทะเบียน (#1633) ปุ่มนี้หายไป ⇒ ไม่มีทางไหนในระบบเลยที่จะ
+                              ให้ทีมแรกกับเขาได้ · ถอดอีกครั้งเมื่อไรต้องมีทางอื่นมาแทนก่อน */
+                        <Button tone="neutral" variant="quiet" size="sm" className={styles.rowAction}
+                          onClick={() => setAssigning(person)}>
+                          จัดเข้าทีม
+                        </Button>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -351,6 +363,20 @@ export default function TeamManager({ department, title, subtitle }) {
           />
         )}
       </Modal>
+
+      <TeamAssignModal
+        person={assigning}
+        teams={teams.filter((t) => t.kind === "sales" && t.isActive !== false)}
+        saving={saving}
+        onClose={() => setAssigning(null)}
+        onSave={async (payload) => {
+          const done = await call(`/api/users/${assigning.id}/team`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }, `จัด ${assigning.name} เข้าทีมแล้ว`);
+          if (done) setAssigning(null);
+        }}
+      />
     </Workspace>
   );
 }

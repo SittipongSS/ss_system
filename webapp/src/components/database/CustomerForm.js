@@ -37,7 +37,9 @@ import {
   AR_AUTO_HINT, AR_FIRST_NUMBER, AR_MANUAL_HINT, CODE_MODE_AUTO, CODE_MODE_MANUAL,
   arCodeParts, codeModeOf, formatArCode,
 } from "@/lib/master/masterCodes";
-import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
+/* ⚠️ ป้ายทีมอ่านจากทะเบียนจริง — ทีมที่สร้างใหม่ต้องขึ้นชื่อ ไม่ใช่รหัสดิบ */
+import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
+import { TEAMS } from "@/lib/permissions";
 import { apiFetch } from "@/lib/apiFetch";
 
 // ที่อยู่/สาขา ไม่อยู่ในนี้แล้ว — ย้ายไป addresses[] (mig 0202) ทั้งก้อน
@@ -90,7 +92,7 @@ export default function CustomerForm({
   /* ทีมที่ *เลือกได้* — superuser ไม่ส่งมา = เลือกได้ทุกทีม · คนสายทีมที่อยู่หลายทีม
      ส่งทีมของตัวเองมา แล้วเลือกได้ว่าลูกค้ารายนี้ให้ทีมไหนดูแล (มติ 2026-08-11)
      ⚠️ ด่านจริงอยู่ที่ API — ที่นี่แค่ไม่กางตัวเลือกที่กดไปก็โดนตีกลับ */
-  teamOptions = TEAMS,
+  teamOptions = TEAMS,   // ค่าถอย: สามทีมที่ seed มา (ผู้เรียกทุกรายส่งของจริงมาแล้ว)
   // ── โหมดรหัสลูกค้า (มติผู้ใช้ 2026-08-12 "แบบ A") ────────────────────────
   // onCodeMode = null (ค่าตั้งต้น) แปลว่า **ไม่มีสวิตช์** = โหมดแก้: รหัสมีอยู่แล้ว
   // สวิตช์เลือกวิธีออกรหัสจึงไม่มีความหมาย · โหมดสร้างส่งมาทั้งคู่
@@ -104,6 +106,7 @@ export default function CustomerForm({
   arAllowIssued = false,
   selfId = null,          // โหมดแก้: id ของใบนี้เอง — กันรายงานว่า "ซ้ำกับตัวเอง"
 }) {
+  const teamRegistry = useSalesTeams();
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
   const mode = codeModeOf(codeMode);
   const autoCode = !!onCodeMode && mode === CODE_MODE_AUTO;
@@ -266,7 +269,7 @@ export default function CustomerForm({
                       className={`btn text-xs ${on ? "btn-primary" : ""}`}
                       style={!canEditTeams ? { opacity: on ? 1 : 0.5, cursor: "default" } : undefined}
                     >
-                      {TEAM_LABELS[t] || t}
+                      {salesTeamLabel(teamRegistry, t)}
                     </button>
                   );
                 })}
