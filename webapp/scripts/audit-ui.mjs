@@ -861,7 +861,7 @@ const RAW_LETTER_SPACING_JSX_CAP = 1;
    ของ StatCards ไป (ตัวเลขใหญ่บนการ์ดสถิติ — คนละบทบาทกับอีก 151 จุดที่กดตัวอักษรลง
    แต่ก็ยังเป็นขนาดดิบเหมือนกัน จึงนับ) · ถ้านับโดยไม่ตัดคอมเมนต์บล็อกจะได้ 153
    เพราะ `src/components/ui/Input.js` มีคอมเมนต์อธิบายรูนี้ไว้ล่วงหน้าแล้วหนึ่งจุด */
-const RAW_TAILWIND_TYPE_CAP = 152;
+const RAW_TAILWIND_TYPE_CAP = 150;
 
 /* ── น้ำหนักตัวอักษรที่ซ่อนอยู่ในกิ่งของ ternary (style object · 2026-09-02) ──
    `fontWeightViolations` ข้างล่างเป็น **hard-zero ที่พิมพ์ 0 มาตลอด ทั้งที่มีของจริง**

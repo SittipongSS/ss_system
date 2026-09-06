@@ -377,6 +377,24 @@ export function resolveTeamAssignment(role, { team, teams } = {}) {
   return { team: valid.includes(team) ? team : (valid[0] || null), teams: valid };
 }
 
+/* ทีมที่จะเขียนตอน **แก้บัญชีเดิม** — ต่างจาก `resolveTeamAssignment` ตรงที่รู้ว่า
+   "ไม่ส่งมา" กับ "ส่งมาว่าง" คนละความหมาย
+
+   ⭐ ตั้งแต่หน้าผู้ใช้ถอดช่องทีมออก (มติ 2026-09-06) คำขอแก้บัญชี **ไม่มีทีมติดมา
+   อีกเลย** — ถ้าอ่าน `body.team` ตรง ๆ ทุกการแก้ชื่อ/เบอร์/สิทธิ์เสริมจะล้างทีมของ
+   คนนั้นทิ้ง แล้วเขาจะมองไม่เห็นข้อมูลอะไรเลยโดยไม่มี error ให้ใครสังเกต
+
+   ⚠️ **ยังต้องล้างเมื่อ role ใหม่ไม่ผูกทีม** — `resolveTeamAssignment` คืน
+   `{team:null, teams:[]}` ให้เองไม่ว่าจะรับค่าเดิมมาหรือไม่ (ย้าย AE ไป viewer
+   แล้วขอบเขตต้องหลุดจริง ไม่ใช่ค้างอยู่เงียบ ๆ)
+   ⚠️ ส่ง `teams: []` มาเอง = ตั้งใจถอดออกจากทุกทีม ต่างจากไม่ส่งมาเลย */
+export function resolveTeamUpdate(role, body = {}, existingMeta = {}) {
+  const given = body.team !== undefined || body.teams !== undefined;
+  return resolveTeamAssignment(role, given
+    ? { team: body.team || null, teams: body.teams }
+    : { team: existingMeta.team || null, teams: existingMeta.teams });
+}
+
 // Sales operational base (no delete, no RA). Shared by ae / ac.
 // PM (project management) is a SALES-only tool — every sales role views+edits it
 // (row-level team scope still applies via editScope); RA has no PM access.
@@ -1617,7 +1635,14 @@ export function validateIdentity(role, team, department) {
   if (!ROLES.includes(role)) return 'role ไม่ถูกต้อง';
   const teams = userTeams(team);
   if (TEAM_ROLES.includes(role)) {
-    if (!teams.length) return 'ตำแหน่งนี้ต้องระบุทีม (ODM/KA/SV)';
+    /* ⭐ **"ยังไม่ได้จัดเข้าทีม" เป็นสถานะที่ตั้งใจให้มีได้** (มติผู้ใช้ 2026-09-06) —
+       การจัดทีมย้ายไปเป็นของหน้า /sa/teams ที่เดียว (หน้าผู้ใช้ไม่มีช่องทีมแล้ว)
+       ⇒ บัญชีขายที่เพิ่งเปิดจะยังไม่มีทีมเสมอ จนกว่าจะถูกจัดเข้าทีมที่หน้านั้น
+       ⚠️ **คนไร้ทีมมองไม่เห็นข้อมูลอะไรเลย** เพราะ `teams[]` คือขอบเขตจริงของทุกด่าน
+       (ไม่ error ไม่เตือน แค่ว่างเปล่า) ⇒ ที่นี่ปล่อยผ่านได้ แต่ **จอต้องเตือน**:
+       ตารางผู้ใช้ขึ้นป้าย "ยังไม่ได้จัดเข้าทีม" รายแถว และหลังสร้างบัญชีมีโมดัลพาไป
+       หน้าจัดทีมต่อ — ถอดป้ายพวกนั้นเมื่อไรคือปล่อยคนตกหล่นเงียบ ๆ
+       ⚠️ ยังห้ามทีม *ที่ไม่มีจริง* เหมือนเดิม — ตรวจเฉพาะตัวที่ส่งมา */
     if (teams.some((t) => !TEAMS.includes(t))) return `ทีมไม่ถูกต้อง (${TEAMS.join('/')})`;
   } else if (teams.length) {
     return 'ตำแหน่งนี้ไม่ต้องระบุทีม';

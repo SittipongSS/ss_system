@@ -61,10 +61,33 @@ export const PATCH = withUser(async ({ user, req, ctx }) => {
     });
     if (error) return fail(error.message, 400);
 
+    /* ── ขอบเขตขยับ = ถอนสิทธิ์เอกสารร่วมบน Drive ที่ระบบเคยให้ ─────────────
+       🐞 เส้นนี้ไม่เคยถอนให้เลย ส่วน `PATCH /api/users/[id]` ถอนอยู่แล้ว ⇒ ตอนที่
+       การจัดทีมยังทำได้สองทาง ยังพอมีทางถอน · **แต่ตั้งแต่หน้าผู้ใช้ถอดช่องทีมออก
+       (2026-09-06) เส้นนี้คือทางเดียวที่ทีมขยับ** ⇒ ถ้าไม่ถอนที่นี่ สิทธิ์บน Drive
+       จะบวมทางเดียวตลอดกาล (การ *ให้* เป็นอัตโนมัติทุกครั้งที่เปิดหน้าเอกสาร)
+       ⚠️ best-effort เหมือนเส้นเดิม — ถอนไม่สำเร็จต้องไม่ทำให้การย้ายทีมล้ม
+       ⚠️ ถอนหมดแล้วให้ใหม่เอง: คนที่ยังมีสิทธิ์เห็นใบนั้นจะได้คืนตอนเปิดหน้าถัดไป */
+    let revokeNote = null;
+    if (target.email) {
+      try {
+        const { revokeGoogleDocAccess } = await import('@/lib/master/googleDocAccess');
+        const r = await revokeGoogleDocAccess(admin, target.email);
+        if (r.files) {
+          revokeNote = `ถอนสิทธิ์เอกสารร่วม ${r.revoked}/${r.files} ไฟล์`
+            + (r.failed ? ` · ค้าง ${r.failed} (กดปุ่มโล่ในหน้าผู้ใช้ซ้ำได้)` : '');
+        }
+      } catch (err) {
+        console.error('[users/team] ถอนสิทธิ์เอกสารร่วมหลังย้ายทีมไม่สำเร็จ', id, err?.message);
+        revokeNote = 'ถอนสิทธิ์เอกสารร่วมไม่สำเร็จ — กดปุ่มโล่ในหน้าผู้ใช้';
+      }
+    }
+
     await recordAudit({
       user, action: 'update', entityType: 'user', entityId: id,
       before, after: userAuditSnapshot(data.user),
-      summary: `ย้ายทีมของ ${target.email} เป็น ${teams.join(', ')} (ทีมหลัก ${team})`,
+      summary: `ย้ายทีมของ ${target.email} เป็น ${teams.join(', ')} (ทีมหลัก ${team})`
+        + (revokeNote ? ` · ${revokeNote}` : ''),
       request: req,
     });
     return ok({ id, team, teams });
