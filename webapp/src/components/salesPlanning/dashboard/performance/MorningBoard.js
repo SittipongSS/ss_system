@@ -190,12 +190,12 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         {showRest && ' · แถว "ยังไม่ได้แยกทีม" คือเป้า/ยอดที่กรอกไว้ระดับบริษัทแต่ยังไม่ได้ลงรายทีม — แถวทีมทุกแถวบวกกับแถวนี้จะได้แถวรวมท้ายตารางพอดี'}
       </p>
 
-      <div className="fz-box premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
+      <div className="premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
         {/* พื้นล่างของความกว้าง — วัดจาก min-content จริงหลังถอดคอลัมน์สถานะแล้วเผื่อขึ้น
             เล็กน้อยกันหัวตารางไทยโดนบีบ: 7 คอลัมน์ = 858px · 9 คอลัมน์ (โหมดทบ) = 1026px
             โหมดปีเพิ่มอีก 3 คอลัมน์ (ต้องทำ/เดือน · YoY · สถานะ) ≈ +360px
             ⚠️ เลขนี้ไม่ใช่ค่าประดับ — ต่ำกว่านี้คอลัมน์จะเบียดจนตัวเลขตกบรรทัด */}
-        <TableScroll surface="embedded" family="matrix"><table className="fz-table w-full text-sm" style={{ minWidth: (carry ? 1040 : 880) + (isYear ? 360 : 0) }}>
+        <TableScroll surface="embedded" family="matrix" className="fz-box"><table className="fz-table w-full text-sm" style={{ minWidth: (carry ? 1040 : 880) + (isYear ? 360 : 0) }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน / ทีม</th>

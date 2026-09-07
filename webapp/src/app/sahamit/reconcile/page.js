@@ -385,80 +385,78 @@ export default function ReconcilePage() {
             )}
           </div>
 
-          <div className="reconciliation-container">
-            <TableScroll family="matrix"><table className="reconcile-grid">
-              <thead>
-                <tr>
-                  <th>สินค้า / SKU</th>
-                  {matrix.months.map((m) => (
-                    <th key={m}><div>{m}</div></th>
-                  ))}
-                  <th style={{ textAlign: "right" }}>รวม</th>
-                </tr>
-              </thead>
-              <tbody>
-                {catGroups.flatMap(([cat, rows]) => [
-                  <tr key={`cat-${cat}`}>
-                    <td colSpan={matrix.months.length + 2} style={{ position: "static", background: "var(--panel-2)", fontWeight: "var(--fw-bold)", color: "var(--text-2)", padding: "8px 10px" }}>
-                      {cat} <span style={{ fontWeight: "var(--fw-normal)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
-                    </td>
-                  </tr>,
-                  ...rows.map((r) => {
-                    const p = productOf(r.fgCode);
-                    const meta = [p?.brandName, volLabel(p)].filter(Boolean).join(" · ");
-                    return (
-                      <tr key={r.fgCode}>
-                        <td>
-                          <div className="product-row-info">
-                            <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
-                            <span className="product-row-sku">{r.fgCode}</span>
-                            {meta && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{meta}</span>}
-                          </div>
-                        </td>
-                        {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
-                        <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
-                          <div style={{ fontWeight: "var(--fw-bold)" }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
-                        </td>
-                      </tr>
-                    );
-                  }),
-                ])}
-                {filteredRows.length === 0 && (
-                  <tr>
-                    <td colSpan={matrix.months.length + 2} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>
-                      ไม่มีสินค้าตรงตัวกรอง — ปรับตัวกรอง หรือกด “ล้างทั้งหมด”
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="recon-value-row">
-                  <td>
-                    รวมมูลค่า{view === "fc" ? " (FC)" : view === "po" ? " (PO)" : ""}
-                    {valueSummary.unpriced > 0 && (
-                      <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
-                        {" "}· {valueSummary.unpriced} SKU ไม่มีราคา
-                      </span>
-                    )}
+          <TableScroll family="matrix" className="reconciliation-container"><table className="reconcile-grid">
+            <thead>
+              <tr>
+                <th>สินค้า / SKU</th>
+                {matrix.months.map((m) => (
+                  <th key={m}><div>{m}</div></th>
+                ))}
+                <th style={{ textAlign: "right" }}>รวม</th>
+              </tr>
+            </thead>
+            <tbody>
+              {catGroups.flatMap(([cat, rows]) => [
+                <tr key={`cat-${cat}`}>
+                  <td colSpan={matrix.months.length + 2} style={{ position: "static", background: "var(--panel-2)", fontWeight: "var(--fw-bold)", color: "var(--text-2)", padding: "8px 10px" }}>
+                    {cat} <span style={{ fontWeight: "var(--fw-normal)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
                   </td>
-                  {matrix.months.map((m) => {
-                    const v = valueSummary.byMonth[m] || { fc: 0, po: 0 };
-                    return (
-                      <td key={m} style={{ textAlign: "right" }}>
-                        {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
-                        {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(v.po)}</div>}
+                </tr>,
+                ...rows.map((r) => {
+                  const p = productOf(r.fgCode);
+                  const meta = [p?.brandName, volLabel(p)].filter(Boolean).join(" · ");
+                  return (
+                    <tr key={r.fgCode}>
+                      <td>
+                        <div className="product-row-info">
+                          <span className="product-row-name" style={r.productName ? undefined : { color: "var(--amber)" }} title={r.productName || r.fgCode}>{r.productName || "— ไม่รู้จัก —"}</span>
+                          <span className="product-row-sku">{r.fgCode}</span>
+                          {meta && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{meta}</span>}
+                        </div>
                       </td>
-                    );
-                  })}
-                  <td style={{ textAlign: "right" }}>
-                    {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
-                    {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(valueSummary.gPo)}</div>}
+                      {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
+                      <td style={{ textAlign: "right", verticalAlign: "middle" }}>
+                        <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
+                        <div style={{ fontWeight: "var(--fw-bold)" }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
+                      </td>
+                    </tr>
+                  );
+                }),
+              ])}
+              {filteredRows.length === 0 && (
+                <tr>
+                  <td colSpan={matrix.months.length + 2} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>
+                    ไม่มีสินค้าตรงตัวกรอง — ปรับตัวกรอง หรือกด “ล้างทั้งหมด”
                   </td>
                 </tr>
-              </tfoot>
-            </table></TableScroll>
-          </div>
+              )}
+            </tbody>
+            <tfoot>
+              <tr className="recon-value-row">
+                <td>
+                  รวมมูลค่า{view === "fc" ? " (FC)" : view === "po" ? " (PO)" : ""}
+                  {valueSummary.unpriced > 0 && (
+                    <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
+                      {" "}· {valueSummary.unpriced} SKU ไม่มีราคา
+                    </span>
+                  )}
+                </td>
+                {matrix.months.map((m) => {
+                  const v = valueSummary.byMonth[m] || { fc: 0, po: 0 };
+                  return (
+                    <td key={m} style={{ textAlign: "right" }}>
+                      {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
+                      {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(v.po)}</div>}
+                    </td>
+                  );
+                })}
+                <td style={{ textAlign: "right" }}>
+                  {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
+                  {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(valueSummary.gPo)}</div>}
+                </td>
+              </tr>
+            </tfoot>
+          </table></TableScroll>
         </div>
       )}
 

@@ -38,8 +38,8 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
           ⇒ ต้องกว้างอย่างน้อย ~1,560px · ตารางนี้เลื่อนแนวนอนใน TableScroll อยู่แล้ว
           และคอลัมน์ชื่อตรึงซ้าย (fz-c1) จึงยังอ่านออกว่าแถวไหนของใครตอนเลื่อน
           ⚠️ ถ้าลด minWidth ลง คอลัมน์จะบีบจนเลขตัดบรรทัดกลางเซลล์ (fz-table ไม่ได้ตั้ง nowrap ให้) */}
-      <div className="fz-box premium-glass-table" style={{ "--fz-c1w": "150px" }}>
-        <TableScroll surface="embedded" family="matrix"><table className="fz-table w-full" style={{ minWidth: 1560, fontSize: "var(--fs-6)" }}>
+      <div className="premium-glass-table" style={{ "--fz-c1w": "150px" }}>
+        <TableScroll surface="embedded" family="matrix" className="fz-box"><table className="fz-table w-full" style={{ minWidth: 1560, fontSize: "var(--fs-6)" }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน</th>
