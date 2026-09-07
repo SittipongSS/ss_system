@@ -19,6 +19,7 @@ import { branchKeyOf } from '@/lib/master/customerTaxId';
 import { customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
 import { naText } from "@/lib/format";
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,10 +140,16 @@ export async function GET(request) {
   // ระบบภาษี (history:view เหมือน lib/master/relations); role อื่นไม่ได้ field นี้เลย
   // (UI ใช้การมี field เป็นสัญญาณซ่อนตัวกรอง). โหลดชุดเดียวด้วย .in() — ห้าม N+1.
   if (rows.length && canUser(user, 'history:view')) {
-    const { data: regRows, error: regError } = await supabase
-      .from('excise_registrations')
-      .select('id, productId, status')
-      .in('productId', rows.map((p) => p.id));
+    /* 🔴 ต้องยิงทีละก้อน — ลิสต์ id ทั้งทะเบียนยาวเกิน 16 KB แล้ว URL ถูกตัด
+       (วัด 2026-09-07: 435 ใบ ⇒ TypeError: fetch failed หลังรอ 7.7 วิ ⇒ ทะเบียน
+       สินค้าและ dropdown เลือกสินค้าทุกจอว่างเปล่า) เหตุผลเต็มอยู่ที่ lib */
+    const { data: regRows, error: regError } = await fetchInChunks(
+      rows.map((p) => p.id),
+      (chunk) => supabase
+        .from('excise_registrations')
+        .select('id, productId, status')
+        .in('productId', chunk),
+    );
     if (regError) return Response.json({ error: regError.message }, { status: 500 });
     const byProduct = new Map();
     for (const r of regRows || []) {
