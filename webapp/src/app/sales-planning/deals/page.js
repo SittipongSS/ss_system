@@ -49,6 +49,7 @@ import Pager from "@/components/ui/Pager";
 import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
 import { customerArIndex, customerSearchText } from "@/lib/master/customerAr";
+import { entityCodeDisplay } from "@/lib/entityCode";
 import { apiFetch } from "@/lib/apiFetch";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
@@ -275,7 +276,13 @@ export default function SalesPlanningPipelinePage() {
       if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
       if (!q) return true;
+      /* ⭐ **รหัสดีลต้องค้นเจอ** (มติผู้ใช้ 2026-09-07) — ตาเห็นบนแถวแล้วต้องพิมพ์หาได้
+         ไม่งั้นคนที่ถือรหัสจากไฟล์ Excel/ใบเสนอราคาต้องไล่หาด้วยตาเอง
+         ⚠️ ใส่ **สองรูป**: `DL-26080006` (รหัสจริงในฐาน ที่ใช้ทั้งไฟล์ Excel และ audit)
+            กับ `DL-26080006-0` (รูปที่หัวหน้ารายละเอียดโชว์ผ่าน entityCodeDisplay) —
+            คนก๊อปมาจากจอไหนก็ต้องเจอ */
       return [
+        deal.code, deal.code ? entityCodeDisplay(deal.code, 0) : null,
         deal.title, customerSearchText(deal.customerId, deal.customerName, arIndex),
         ownerNameOf(deal), deal.notes, deal.formulaName,
       ].some((v) => (v || "").toLowerCase().includes(q));
@@ -667,6 +674,12 @@ export default function SalesPlanningPipelinePage() {
         {/* prefetch={false} ทั้งลิงก์ในแถว: ลิสต์ยาว ๆ เคยยิง RSC prefetch
             ของ /sa/deals/[id] เป็นพันครั้ง/วัน (แถวละ 3 ลิงก์ × ทุกแถวที่เห็น) */}
         <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike linklike-block" title="เปิดหน้ารายละเอียดดีล">
+          {/* ⭐ รหัสดีลอยู่ **เหนือ** ชื่อดีล (กติกาตารางของระบบ: รหัสบน · ชื่อล่าง)
+              — กวาดตาลงคอลัมน์เจอรหัสที่ตำแหน่งเดียวกันทุกแถว ไม่ต้องอ่านชื่อยาว ๆ ให้จบก่อน
+              ⚠️ โชว์รหัสฐาน (`DL-26080006`) ตัวเดียวกับที่อยู่ในไฟล์ Excel และ audit —
+                 หน้ารายละเอียดต่อท้าย `-0` ตามกติกา revision ซึ่งดีลไม่มี · ช่องค้นหา
+                 รับทั้งสองรูป ไม่ให้คนก๊อปจากหน้ารายละเอียดมาแล้วหาไม่เจอ */}
+          {deal.code ? <span className="ar-code ar-code-block">{deal.code}</span> : null}
           <strong>
             {deal.title}
             {deal.forecastDrift?.hasDrift && (
@@ -899,7 +912,7 @@ export default function SalesPlanningPipelinePage() {
           <div className="toolbar">
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
+              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหารหัส / ดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
             <FilterPopover
               count={stageFilter.length + typeFilter.length + dueFilter.length + reviewFilter.length}
