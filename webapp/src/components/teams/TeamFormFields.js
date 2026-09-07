@@ -18,6 +18,7 @@ import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import {
   TEAM_CODE_MAX, TEAM_KIND_HINTS, TEAM_KIND_LABELS, allowedKindsFor, normalizeTeamCode,
+  otherTeamCodes,
 } from "@/lib/master/teams";
 import styles from "./TeamManager.module.css";
 
@@ -30,17 +31,21 @@ export default function TeamFormFields({
   members = [],
   codeLocked = false,
   codeLockReason = "",
+  ownCode = null,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const kinds = allowedKindsFor(department);
   /* ⚠️ ตรวจสด **ตอนพิมพ์** ไม่ใช่ตอนกดบันทึก — รหัสถูกก๊อปลง 20+ คอลัมน์ทันทีที่มีคนใช้
      ทีมนี้ ⇒ รู้ว่าพิมพ์ผิดตอนกดปุ่มแล้วมันสายไปหนึ่งจังหวะเสมอ
      ⚠️ ตัวตรวจตัวเดียวกับเซิร์ฟเวอร์ (`normalizeTeamCode`) — เขียนสองที่เมื่อไรมันเพี้ยนหากัน
-     ⚠️ ตอนแก้ต้องไม่นับรหัสของตัวเองเป็น "ซ้ำ" */
+     ⚠️ ตอนแก้ต้องไม่นับรหัสของตัวเองเป็น "ซ้ำ" — กรองด้วย `ownCode` (รหัสเดิมของทีม)
+     🐞 **ห้ามกรองด้วยค่าที่พิมพ์** — มันตัดรหัสที่ซ้ำออกจากลิสต์เสมอ แล้วข้อความ
+        "รหัสถูกใช้ไปแล้ว" จะไม่มีวันขึ้น ปุ่มดับเงียบโดยไม่บอกเหตุ (จับได้ก่อน merge) */
   const codeEditable = mode === "create" || !codeLocked;
-  const otherCodes = existingCodes.filter((c) => c !== value.code);
   const codeCheck = codeEditable
-    ? normalizeTeamCode(value.code, { department, existingCodes: otherCodes })
+    ? normalizeTeamCode(value.code, {
+      department, existingCodes: otherTeamCodes(existingCodes, ownCode),
+    })
     : { value: value.code, error: null };
 
   return (

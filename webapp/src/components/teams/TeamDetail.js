@@ -25,7 +25,9 @@ import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useRole } from "@/lib/roleContext";
-import { TEAM_KIND_LABELS, normalizeTeamCode, teamsBasePath } from "@/lib/master/teams";
+import {
+  TEAM_KIND_LABELS, normalizeTeamCode, otherTeamCodes, teamsBasePath,
+} from "@/lib/master/teams";
 import { ROLE_LABELS, TEAMS } from "@/lib/permissions";
 import { fmtNumber, naText } from "@/lib/format";
 import useTeamRegistry from "./useTeamRegistry";
@@ -71,7 +73,7 @@ export default function TeamDetail({ department, code }) {
     if (next === team?.code) return "";
     return normalizeTeamCode(next, {
       department,
-      existingCodes: teams.map((t) => t.code).filter((c) => c !== team?.code),
+      existingCodes: otherTeamCodes(teams.map((t) => t.code), team?.code),
     }).error || "";
   })();
 
@@ -381,6 +383,7 @@ export default function TeamDetail({ department, code }) {
             onChange={setEdit}
             members={members}
             existingCodes={teams.map((t) => t.code)}
+            ownCode={team.code}
             codeLocked={codeLocked}
             codeLockReason={codeLockReason}
           />

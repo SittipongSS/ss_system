@@ -6,12 +6,14 @@
 //   · ถัง "ยังไม่อยู่ทีมไหน" ต้องมีเสมอ
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   TEAM_CODE_MAX,
   allowedKindsFor,
   closeTeamBlocker,
   normalizeTeamCode,
   normalizeTeamInput,
+  otherTeamCodes,
   planCrewRoster,
   teamNameOf,
   sortTeams,
@@ -205,4 +207,49 @@ test('รหัสซ้ำของเดิมไม่ได้ — และ
 
 test('ไม่มีฝ่าย = ตรวจต่อไม่ได้ ต้องบอก ไม่ใช่ปล่อยผ่าน', () => {
   assert.match(normalizeTeamCode('SA-NORTH', {}).error, /ฝ่าย/);
+});
+
+/* 🐞 **บั๊กที่รอบตรวจปฏิปักษ์จับได้ก่อน merge (2026-09-07)** — ฟอร์มเคยกรองรายการรหัสที่มีอยู่
+   ด้วย **ค่าที่กำลังพิมพ์** ⇒ รหัสที่ซ้ำถูกตัดออกจากลิสต์เสมอ ⇒ สาขา "รหัสถูกใช้ไปแล้ว"
+   ของ `normalizeTeamCode` ไม่มีวันทำงาน ⇒ ผู้ใช้พิมพ์รหัสที่มีอยู่แล้ว เห็นแค่ปุ่มดับ
+   โดยไม่มีอะไรบอกว่าทำไม (ผิดกฎ GatedAction: ติดด่าน = โชว์แล้วบอกเหตุ)
+   ⇒ ตัวกรองต้องผูกกับ **รหัสเดิมของทีม** ไม่ใช่ค่าที่พิมพ์ */
+test('🔴 otherTeamCodes: กรองด้วยรหัสเดิมของทีม ไม่ใช่ค่าที่พิมพ์', () => {
+  const all = ['KA', 'ODM', 'SV', 'SA-NORTH'];
+  // ตอนสร้าง: ไม่มีรหัสเดิม ⇒ ทุกตัวยังนับเป็น "ถูกใช้แล้ว"
+  assert.deepEqual(otherTeamCodes(all, null), all);
+  assert.deepEqual(otherTeamCodes(all, ''), all);
+  // ตอนแก้: ตัดเฉพาะรหัสของทีมที่กำลังแก้
+  assert.deepEqual(otherTeamCodes(all, 'SA-NORTH'), ['KA', 'ODM', 'SV']);
+  assert.deepEqual(otherTeamCodes(all, 'sa-north'), ['KA', 'ODM', 'SV'], 'ตัวพิมพ์เล็กต้องตรงกัน');
+});
+
+test('🔴 พิมพ์รหัสที่มีอยู่แล้วต้องได้ข้อความ ไม่ใช่ปุ่มดับเงียบ', () => {
+  const all = ['KA', 'ODM', 'SV', 'SA-NORTH', 'SA-EAST'];
+  // สร้างทีมใหม่แล้วพิมพ์รหัสที่มีอยู่ = ต้องฟ้อง
+  assert.match(
+    normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes: otherTeamCodes(all, null) }).error,
+    /ถูกใช้ไปแล้ว/,
+  );
+  // แก้ทีม SA-NORTH โดยไม่เปลี่ยนรหัส = ต้องไม่ฟ้องว่าซ้ำกับตัวเอง
+  assert.equal(
+    normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes: otherTeamCodes(all, 'SA-NORTH') }).error,
+    null,
+  );
+  /* แก้ทีม SA-NORTH ไปชนรหัสของทีมอื่น = ต้องฟ้อง
+     ⚠️ ต้องใช้รหัสที่ **ผ่านด่านคำนำหน้าแล้ว** ไม่งั้นจะโดนตีกลับด้วยเหตุอื่นก่อน
+     แล้วเทสต์ผ่านโดยไม่ได้ตรวจสิ่งที่ตั้งใจตรวจ */
+  assert.match(
+    normalizeTeamCode('SA-EAST', { department: 'SA', existingCodes: otherTeamCodes(all, 'SA-NORTH') }).error,
+    /ถูกใช้ไปแล้ว/,
+  );
+});
+
+/* 🔴 ยามของรูปแบบที่พลาดมาแล้ว — ฟอร์มห้ามกรองลิสต์ด้วยค่าที่พิมพ์อีก
+   เทสต์ตรรกะข้างบนจับไม่ได้ เพราะมันป้อนลิสต์ที่กรองมาแล้วให้เอง (ซึ่งเป็นเหตุที่บั๊กเดิม
+   รอดเทสต์มาได้) ⇒ ต้องดูที่ตัวไฟล์ */
+test('🔴 TeamFormFields ต้องกรองด้วย ownCode ไม่ใช่ value.code', () => {
+  const src = readFileSync(new URL('../../components/teams/TeamFormFields.js', import.meta.url), 'utf8');
+  assert.match(src, /otherTeamCodes\(existingCodes, ownCode\)/);
+  assert.doesNotMatch(src, /existingCodes\.filter\(/, 'กรองด้วยค่าที่พิมพ์ = ข้อความ "รหัสซ้ำ" ตายสนิท');
 });

@@ -125,6 +125,19 @@ export function suggestTeamCode(department, name, existingCodes = []) {
    · ห้ามชนรหัสที่มีอยู่ (เช็คบนจอ + เซิร์ฟเวอร์เช็คซ้ำอีกชั้นด้วย 23505) */
 export const TEAM_CODE_MAX = 20;
 
+/* รหัสที่ถือว่า "ถูกใช้ไปแล้ว" สำหรับฟอร์มหนึ่งใบ — ตอนแก้ต้องไม่นับรหัสของทีมที่กำลังแก้
+   🐞 **บั๊กจริงที่รอบตรวจจับได้ก่อน merge (2026-09-07)** — ของเดิมกรองด้วย **ค่าที่พิมพ์อยู่**
+   (`c !== value.code`) ซึ่งตัดรหัสที่ซ้ำออกจากลิสต์เสมอ ⇒ สาขา "รหัสถูกใช้ไปแล้ว" ของ
+   `normalizeTeamCode` **ตายสนิท** ⇒ พิมพ์รหัสที่มีอยู่แล้ว ปุ่มดับเงียบ ๆ โดยไม่มีอะไรบอกเหตุ
+   ซึ่งเป็นสิ่งที่คอมเมนต์ในไฟล์นั้นเขียนไว้เองว่ามีไว้กัน (และผิดกฎ GatedAction ของ repo)
+   ⇒ ต้องกรองด้วย **รหัสเดิมของทีม** ที่ส่งมาแยกต่างหาก ไม่ใช่ค่าที่พิมพ์
+   ⚠️ ตอนสร้าง ไม่มีรหัสเดิม ⇒ ไม่กรองอะไรทั้งนั้น */
+export function otherTeamCodes(existingCodes = [], ownCode = null) {
+  const own = String(ownCode ?? '').trim().toUpperCase();
+  if (!own) return [...existingCodes];
+  return existingCodes.filter((c) => String(c ?? '').toUpperCase() !== own);
+}
+
 export function normalizeTeamCode(raw, { department = '', existingCodes = [] } = {}) {
   const dept = String(department ?? '').trim().toUpperCase();
   const code = String(raw ?? '').trim().toUpperCase();
