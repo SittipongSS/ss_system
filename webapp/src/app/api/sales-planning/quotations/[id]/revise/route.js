@@ -67,7 +67,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   });
   if (revMismatched.length) return badRequest(customerMismatchMessage(revMismatched));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — enforce ก่อนคิดยอดฉบับใหม่
-  body.lines = await enforceMasterPrices(supabase, revLines, quote.lines || []);
+  body.lines = await enforceMasterPrices(supabase, revLines, quote.lines || [], {
+    customerId: quote.customerId,
+  });
   const revision = buildQuotationRevisionContent(quote, body);
   if (!revision.ok) return badRequest(revision.error);
   const {

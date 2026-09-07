@@ -33,11 +33,23 @@ export function resolveSoFiling({
   products = [],
   productTypes = [],
   registrations = [],
+  ownerCustomerIds = null,
 } = {}) {
   const productById = new Map(products.filter((row) => row?.id).map((row) => [row.id, row]));
   const productByFg = new Map(products.filter((row) => row?.fgCode).map((row) => [normalizedKey(row.fgCode), row]));
-  // ทะเบียนของลูกค้าเจ้าของใบนี้เท่านั้น — ทะเบียนเป็นของคู่ (สินค้า × ลูกค้า)
-  const ownRegistration = (row) => !!row && (!salesOrder?.customerId || row.customerId === salesOrder.customerId);
+  /* ทะเบียนของลูกค้าเจ้าของใบนี้เท่านั้น — ทะเบียนเป็นของคู่ (สินค้า × ลูกค้า)
+     ⭐ มติผู้ใช้ 2026-09-07: **เลขประจำตัวผู้เสียภาษีเดียวกัน = ลูกค้าคนเดียวกัน**
+     ⇒ ใบลูกค้าใบอื่นของนิติบุคคลเดียวกันนับเป็น "ของใบนี้" ด้วย · ต้องเป็นแบบนี้เพราะ
+     ใบเสนอราคาหยิบ FG ข้ามใบลูกค้าได้แล้ว (ดู lib/master/customerTaxSiblings) แต่ตอน
+     ขึ้นทะเบียน server บังคับ `customerId = product.customerId` เลือกเองไม่ได้ ⇒ ถ้า
+     ที่นี่ยังเทียบ id ตรง ๆ ใบยื่นจะได้ `registrationId: null` แบบล้างไม่ได้
+     ⚠️ ผู้เรียกต้องส่ง `ownerCustomerIds` มาเอง (ฟังก์ชันนี้ pure ไม่ยิง query) —
+     ไม่ส่ง = พฤติกรรมเดิม เทียบ id ตรง ๆ */
+  const ownerIds = new Set(
+    (ownerCustomerIds && ownerCustomerIds.length ? ownerCustomerIds : [salesOrder?.customerId])
+      .filter(Boolean),
+  );
+  const ownRegistration = (row) => !!row && (!salesOrder?.customerId || ownerIds.has(row.customerId));
   const approvedRegistrationByProduct = new Map(
     registrations
       .filter((row) => row?.status === "approved" && ownRegistration(row))

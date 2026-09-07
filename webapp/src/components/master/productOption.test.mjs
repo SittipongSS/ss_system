@@ -30,3 +30,22 @@ test('modules that link by FG can opt into FG values without changing display ru
   assert.equal(option.value, 'FG-000-01-002-0000');
   assert.match(option.label, /^FG-000-01-002-0000 · SCENT AND SENSE/);
 });
+
+/* ⭐ FG ของใบลูกค้าอื่นในนิติบุคคลเดียวกัน (มติผู้ใช้ 2026-09-07) — ลิสต์เรียงตามรหัส
+   FG ปนกันทุกเจ้าของ ป้ายนี้จึงเป็นสัญญาณเดียวที่บอกว่าหยิบข้ามใบ */
+test('FG ข้ามใบลูกค้ามีป้ายเจ้าของบนบรรทัดรหัส และค้นเจอทั้งรหัส AR และชื่อบริษัท', () => {
+  const [option] = productSelectOptions([{
+    ...products[0],
+    ownerArCode: 'AR-148',
+    ownerName: 'บริษัท ไวท์ วูด กรีน จำกัด',
+    ownerBranchCode: '00000',
+  }]);
+  assert.match(option.label, /AR-148 · สาขา 00000/);
+  assert.match(option.search, /AR-148/);
+  assert.match(option.search, /ไวท์ วูด กรีน/);
+});
+
+test('FG ของใบลูกค้าตัวเอง = ไม่มีป้าย (ป้ายต้องแปลว่า "ข้ามใบ" เท่านั้น)', () => {
+  const [option] = productSelectOptions(products);
+  assert.doesNotMatch(option.label, /สาขา/);
+});
