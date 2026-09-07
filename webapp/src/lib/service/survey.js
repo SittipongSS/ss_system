@@ -125,6 +125,70 @@ export function surveyTotals(rows = []) {
   return t;
 }
 
+/* ══ "ที่ขอไป" เทียบ "ที่ได้กลับมา" (มติข้อ 6 · แผน §9 ข้อ 2) ═══════════
+ *
+ * ⭐ **ตัวเลขที่ SA ไม่มีทางรู้เองจากตาราง** — เขาขอไป 5 พื้นที่ ได้ผลกลับมา 5 พื้นที่
+ *   ดูผ่าน ๆ เหมือนไม่มีอะไรเปลี่ยน ทั้งที่จริง TS ตัดทิ้ง 1 และเพิ่มเองอีก 1
+ *   ⇒ ตัวเลขต้องกางออกให้เห็นทั้งสี่ตัว ไม่ใช่ให้ไปไล่นับป้ายบนแถวเอง
+ *
+ * 🔴 **"ขอไป" เป็นตัวเลขตัวเดียวในไฟล์นี้ที่ต้องนับแถวที่ถูกตัดด้วย** — สวนทางกับกติกา
+ *   ของทั้งไฟล์ที่ว่าแถว `cut` "ไม่นับรวมทุกตัวเลข ไม่ใช่นับเป็น 0" ⇒ **ห้ามรีไซเคิล
+ *   `totals.zones`** ซึ่งกรองแถวที่ถูกตัดออกไปแล้ว
+ *
+ * ⚠️ `requested` เชื่อถือได้เพราะ **ด่านสองข้อในโค้ด ไม่ใช่เพราะโครงสร้างข้อมูล**:
+ *   `PATCH` ห้ามตัดแถวที่เพิ่มหน้างาน · `DELETE` ลบได้เฉพาะแถวที่เพิ่มหน้างาน
+ *   ⇒ สองชุดไม่ทับกัน และการลบไม่ทำให้ "ขอไป" หด · CHECK ของ DB ไม่ได้ผูกให้
+ *   (ถ้าวันหนึ่งด่านนั้นเปิด ต้องกลับมาแก้ที่นี่ — `assessed` นับจากแถวจริงจึงยังถูกเสมอ)
+ */
+export function surveyChangeCounts(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const cut = list.filter(isCut);
+  const added = list.filter(isAddedZone);
+  const name = (r) => String(r?.zoneName || '').trim();
+  return {
+    requested: list.length - added.length,
+    cut: cut.length,
+    added: added.length,
+    // นับจากแถวจริงเสมอ ไม่ใช่ requested - cut + added (ดูคำเตือนข้างบน)
+    assessed: list.length - cut.length,
+    cutNames: cut.map(name).filter(Boolean),
+    addedNames: added.map(name).filter(Boolean),
+  };
+}
+
+/** ชื่อในวงเล็บแบบที่ม็อกเขียน — เกินสองอันแล้วยุบ ไม่งั้นบรรทัดยาวจนอ่านไม่ออก */
+function nameHint(names = []) {
+  const list = (names || []).filter(Boolean);
+  if (!list.length) return '';
+  if (list.length <= 2) return ` (${list.join(' · ')})`;
+  return ` (${list.slice(0, 2).join(' · ')} และอีก ${list.length - 2})`;
+}
+
+/**
+ * 🔑 **ข้อความเดียว ใช้ทั้งจอ TS · จอ SA · กระดิ่ง** — เขียนคนละที่เมื่อไรมันเพี้ยนหากัน
+ *
+ * ⭐ **สองเสียงจากตัวสร้างตัวเดียว** (ตามม็อก): บนจอของ TS เองพูดว่า "ตัด 1 (ห้องน้ำชาย)"
+ *   — เขารู้อยู่แล้วว่าใครทำ และเขาต้องการชื่อไว้ตรวจก่อนกดส่ง · ส่วนฝั่ง SA พูดว่า
+ *   "TS ตัด 1" — เขาต้องรู้ว่าใครเป็นคนตัด มากกว่าจะรู้ชื่อพื้นที่ (ซึ่งมีในตารางข้างล่างแล้ว)
+ *
+ * ⚠️ หน่วยคือ **"พื้นที่"** ไม่ใช่ "โซน" — ม็อกชุดเก่ายังเขียนว่าโซน แต่มติข้อ 19
+ *   เปลี่ยนคำไปแล้ว และ "จุด" สงวนไว้ให้ *จุดติดตั้ง* เท่านั้น
+ */
+export function surveyChangeText(counts = {}, { actor = '', withNames = false } = {}) {
+  const requested = Number(counts.requested) || 0;
+  const cut = Number(counts.cut) || 0;
+  const added = Number(counts.added) || 0;
+  const head = `ขอไป ${requested} พื้นที่`;
+  // ไม่มีอะไรเปลี่ยน = ต้องพูดออกมาตรง ๆ ไม่ใช่เงียบ (ม็อก: "ไม่มีตัด ไม่มีเพิ่ม")
+  if (!cut && !added) return `${head} · ไม่มีตัด ไม่มีเพิ่ม`;
+
+  const who = actor ? `${actor} ` : '';
+  const parts = [];
+  if (cut) parts.push(`${who}ตัด ${cut}${withNames ? nameHint(counts.cutNames) : ''}`);
+  if (added) parts.push(`${cut ? '' : who}เพิ่ม ${added}${withNames ? nameHint(counts.addedNames) : ''}`);
+  return `${head} · ${parts.join(' · ')} ⇒ ประเมินจริง ${Number(counts.assessed) || 0} พื้นที่`;
+}
+
 /* ══ ด่านหกข้อ — บล็อกคนละที่ตามว่าใครแก้ได้ (มติผู้ใช้ 2026-08-29) ══════
  *
  * ⭐ **หลักการเดียวที่คุมทั้งหมด: ด่านต้องบล็อกเฉพาะของที่คนตรงหน้าด่านแก้เองได้**
