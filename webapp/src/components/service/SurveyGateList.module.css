@@ -1,0 +1,110 @@
+/* เช็คลิสต์ด่านหกข้อบนจอสรุปส่งผล — สองกลุ่มตาม "ใครแก้ได้" (ม็อกจอ 07) */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+}
+
+.badgeOk,
+.badgeBad {
+  margin-inline-start: auto;
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+}
+
+.badgeOk { background: var(--green-soft); color: var(--green); }
+.badgeBad { background: var(--red-soft); color: var(--red); }
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  color: var(--text-3);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+/* หนึ่งข้อ = เครื่องหมาย · ข้อความ · เจ้าของ+ปุ่ม — ห่อลงบรรทัดใหม่บนมือถือ */
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 20px;
+  block-size: 20px;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.item[data-ok] .mark { background: var(--green-soft); color: var(--green); }
+
+.text {
+  flex: 1 1 240px;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  color: var(--text-1);
+}
+
+.sub { font-size: var(--fs-3); color: var(--text-3); }
+
+.who {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.owner {
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}

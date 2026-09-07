@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList, MapPinPlus, Search, Send, Undo2 } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
+import SurveyGateList from "@/components/service/SurveyGateList";
 import SurveyResultTable from "@/components/service/SurveyResultTable";
 import SurveyZoneCard from "@/components/service/SurveyZoneCard";
 import Button from "@/components/ui/Button";
@@ -25,8 +26,8 @@ import Workspace from "@/components/ui/Workspace";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import {
-  surveyAddZoneError, surveyChangeCounts, surveyChangeText,
-  surveyFieldProgress, surveySendError, surveyTotals,
+  surveyAddZoneError, surveyChangeCounts, surveyChangeText, surveyGateChecklist,
+  surveyFieldProgress, surveySendBackError, surveySendError, surveyTotals,
 } from "@/lib/service/survey";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
@@ -62,6 +63,11 @@ export default function SurveySheetPage({ params }) {
   const [addBusy, setAddBusy] = useState(false);
   const [removing, setRemoving] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);
+  /* หัวหน้าแจ้งช่างให้กลับไปเก็บงาน (แผน §5.4) — เหตุผลบังคับ เพราะช่างจะเห็นข้อความนี้
+     ในกระดิ่งแล้วต้องรู้ว่าต้องไปทำอะไร โดยไม่ต้องโทรถามกลับ */
+  const [sendingBack, setSendingBack] = useState(null);
+  const [sendBackNote, setSendBackNote] = useState("");
+  const [sendBackBusy, setSendBackBusy] = useState(false);
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -181,14 +187,43 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
+  const sendBack = async () => {
+    setSendBackBusy(true);
+    try {
+      const res = await apiJson(`/api/service/surveys/${id}/send-back`, {
+        method: "POST", json: { note: sendBackNote.trim() }, fallbackError: "แจ้งช่างไม่สำเร็จ",
+      });
+      setSendingBack(null);
+      setSendBackNote("");
+      setToast({ kind: "success", msg: `แจ้งช่างแล้ว ${res?.notified || 0} คน` });
+      await load({ background: true });
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setSendBackBusy(false);
+    }
+  };
+
   const zones = data?.zones || [];
   const progress = surveyFieldProgress(zones, data?.filesByZone || {});
   const totals = surveyTotals(zones);
   /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
      เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน */
   const changeText = surveyChangeText(surveyChangeCounts(zones), { withNames: true });
+  /* เช็คลิสต์ด่านหกข้อแยกตามเจ้าของ — ตัวเดียวกับที่ `surveySendError` ใช้ตัดสิน */
+  const gates = surveyGateChecklist(zones, data?.filesByZone || {});
   const canDecide = data?.canDecide === true;
   /* 🔑 ด่านตัวเดียวกับที่ server ใช้ — ปุ่มปิดตามนี้ และเหตุผลขึ้นเป็นตัวหนังสือ */
+  /* 🔑 ด่านตัวเดียวกับ server — ปุ่มในโมดัลปิดตามนี้ และเหตุขึ้นเป็นตัวหนังสือ
+     ⚠️ รายชื่อช่างมาจาก **นัด** ไม่ใช่จากใบ — จอไม่รู้เอง ต้องอ่านจากที่ server ส่งมา */
+  const crewIds = [data?.visit?.assigneeId, ...(data?.visit?.assistantIds || [])]
+    .filter(Boolean).map(String);
+  const sendBackGate = surveySendBackError(data?.request, {
+    canSend: canDecide,
+    note: sendBackNote,
+    gaps: gates.filter((g) => g.owner === "crew" && !g.ok),
+    crewIds,
+  });
   const sendGate = surveySendError(zones, data?.filesByZone || {}, { canSend: canDecide });
   const sent = !!data?.request?.answeredAt;
   /* 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · เหตุที่เขียนไม่ได้บอกไว้ข้างบนแล้ว */
@@ -299,6 +334,13 @@ export default function SurveySheetPage({ params }) {
             busyZone={busyZone}
             onDecide={decideZone}
           />
+          {/* ⭐ **ทางออกของปุ่มส่งผลที่กดไม่ได้** — ด่านสามข้อบนเป็นของช่าง หัวหน้าแก้เองไม่ได้
+              ⇒ ต้องมีปุ่มแจ้งอยู่ข้าง ๆ ข้อที่ติด ไม่ใช่ปุ่มเทาเงียบที่ไม่บอกว่าใครแก้ */}
+          <SurveyGateList
+            gates={gates}
+            canSendBack={canDecide && !sent}
+            onSendBack={(gate) => { setSendingBack(gate); setSendBackNote(""); }}
+          />
         </>
       ) : (
         <div className={styles.list}>
@@ -392,6 +434,37 @@ export default function SurveySheetPage({ params }) {
         onConfirm={sendGate ? undefined : send}
         onClose={() => !sendBusy && setSending(false)}
       />
+      {/* ⭐ **โมดัลต้องบอกว่าใครจะได้รับ ไม่ใช่แค่ถามว่าจะส่งไหม** — กระดิ่งของใบคำร้อง
+          ไปหาผู้ขอ (SA) เท่านั้น · ตัวที่ไปถึงช่างคือกระดิ่งอีกใบที่ยิงจากนัด
+          ⚠️ ไม่มีช่างที่ถูกมอบหมาย = server ตีกลับพร้อมเหตุ (ด่านตัวเดียวกับที่นี่) */}
+      <ConfirmDialog
+        open={!!sendingBack}
+        title="แจ้งช่างให้กลับไปเก็บงาน"
+        message={sendBackGate || `ข้อที่ติด: ${sendingBack?.label || ""}`
+          + (sendingBack?.zones?.length ? ` — ขาด ${sendingBack.zones.join(" · ")}` : "")}
+        detail={sendBackGate ? undefined
+          : "ช่างที่ถูกมอบหมายงานใบนี้จะได้กระดิ่งพร้อมข้อความนี้ · ใบยังอยู่ขั้นเดิม ไม่ต้องลงคิวใหม่"}
+        confirmLabel="แจ้งช่าง"
+        busy={sendBackBusy}
+        onConfirm={!sendBackGate ? sendBack : undefined}
+        onClose={() => !sendBackBusy && setSendingBack(null)}
+      >
+        <Input
+          value={sendBackNote}
+          disabled={sendBackBusy}
+          maxLength={500}
+          autoComplete="off"
+          autoFocus
+          placeholder="ให้กลับไปทำอะไร เช่น ถ่ายภาพกว้างห้องประชุมใหญ่เพิ่ม"
+          aria-label="สิ่งที่ให้ช่างกลับไปทำ"
+          onChange={(e) => setSendBackNote(e.target.value)}
+        />
+        {/* ปุ่มจางต้องบอกเหตุเป็นตัวหนังสือ — และบอกว่าใครจะอ่านข้อความนี้ */}
+        <p className={styles.gate} role="status">
+          {sendBackGate || "ช่างจะเห็นข้อความนี้ในกระดิ่ง"}
+        </p>
+      </ConfirmDialog>
+
       {/* 🔴 SA อาจเอาตัวเลขไปเสนอราคาไปแล้ว ⇒ โมดัลต้องบอกผลลัพธ์ตรง ๆ ไม่ใช่ถามลอย ๆ */}
       <ConfirmDialog
         open={recalling}
