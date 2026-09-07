@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
@@ -24,7 +25,7 @@ import {
 } from "@/lib/sales/reportOrderView";
 import MonthRangePicker from "@/components/ui/MonthRangePicker";
 import { useCan, useRole } from "@/lib/roleContext";
-import { TEAM_LABELS } from "@/lib/permissions";
+
 import { historyYearOptions } from "@/lib/sales/historyEntry";
 import { carryIn, closedCountOnAxis } from "@/lib/sales/performanceMath";
 import { currentMonth, formatMonthLabel, monthRangeOfWholeYear } from "@/lib/datePeriods";
@@ -67,6 +68,7 @@ const pct = (actual, target) => (target > 0 ? fmtPercent((actual / target) * 100
 const tone = (diff) => (diff >= 0 ? "cell-num-ok" : "cell-num-bad");
 
 export default function SalesReportPage() {
+  const teamRegistry = useSalesTeams();
   const canTarget = useCan("salesplan:target");
   const role = useRole();
 
@@ -348,6 +350,7 @@ function MonthTable({ data, closedCount }) {
 
 /* ── รายทีม / รายคน ───────────────────────────────────────────────────── */
 function GroupTable({ rows, idx, months, kind }) {
+  const teamRegistry = useSalesTeams();
   // ไม่มีเดือนที่แยกยอด = ไม่มีอะไรให้เทียบ ต่างจาก "ไม่มีคน" — ต้องบอกคนละแบบ
   const empty = !rows.length || !idx.length;
   const label = kind === "team" ? "ทีม" : "ผู้รับผิดชอบ";
@@ -385,8 +388,8 @@ function GroupTable({ rows, idx, months, kind }) {
                 const diff = actual - target;
                 return (
                   <tr key={row.ownerId || row.team}>
-                    <td>{kind === "team" ? (TEAM_LABELS[row.team] || row.team) : row.ownerName}</td>
-                    {kind === "person" && <td>{TEAM_LABELS[row.team] || row.team || NA}</td>}
+                    <td>{kind === "team" ? salesTeamLabel(teamRegistry, row.team) : row.ownerName}</td>
+                    {kind === "person" && <td>{row.team ? salesTeamLabel(teamRegistry, row.team) : NA}</td>}
                     <td className="num">{target ? money(target) : NA}</td>
                     <td className="num">{actual ? money(actual) : NA}</td>
                     <td className="num">
@@ -436,6 +439,7 @@ function GroupTable({ rows, idx, months, kind }) {
    ⚠️ ใบทั้งช่วงถูกส่งมากับ response อยู่แล้ว การกดค้นหาจึงเป็นการ *กรองในหน้า*
    ไม่ยิงเซิร์ฟเวอร์ใหม่ — เร็วทันที และตัวเลขตรงกับสรุปด้านบนเสมอเพราะมาจากก้อนเดียวกัน */
 function OrderSearchCard({ orders, people }) {
+  const teamRegistry = useSalesTeams();
   const [draft, setDraft] = useState({ q: "", owners: [], teams: [], finance: [] });
   const [applied, setApplied] = useState(null);   // null = ยังไม่เคยกดค้นหา
   const [groupBy, setGroupBy] = useState("none");
@@ -447,7 +451,7 @@ function OrderSearchCard({ orders, people }) {
     .filter((p) => p.ownerId)
     .map((p) => ({ value: p.ownerId, label: p.ownerName || p.ownerId })), [people]);
   const teamOptions = useMemo(() => [...new Set(orders.map((o) => o.team).filter(Boolean))]
-    .map((team) => ({ value: team, label: TEAM_LABELS[team] || team })), [orders]);
+    .map((team) => ({ value: team, label: salesTeamLabel(teamRegistry, team) })), [orders, teamRegistry]);
 
   const filterCount = draft.owners.length + draft.teams.length + draft.finance.length;
   const setDraftField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
@@ -455,7 +459,7 @@ function OrderSearchCard({ orders, people }) {
 
   const groups = useMemo(() => {
     if (!applied) return [];
-    return groupOrders(sortOrders(filterOrders(orders, applied), sortKey, sortDir), groupBy, { teamLabels: TEAM_LABELS });
+    return groupOrders(sortOrders(filterOrders(orders, applied), sortKey, sortDir), groupBy, { teamLabels: Object.fromEntries((teamRegistry || []).map((t) => [t.code, t.name])) });
   }, [applied, orders, sortKey, sortDir, groupBy]);
   const shown = groups.reduce((sum, g) => sum + g.count, 0);
   const shownTotal = groups.reduce((sum, g) => sum + g.total, 0);

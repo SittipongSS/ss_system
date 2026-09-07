@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 // หน้าลีด (/sa/leads — Sales Revamp เฟส C): คิวรับลีดของ Marketing →
@@ -23,7 +24,7 @@ import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
+
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
 import PendingFiles from "@/components/ui/PendingFiles";
@@ -93,6 +94,7 @@ function channelBadge(channel) {
 const EMPTY = [];
 
 export default function LeadsPage() {
+  const teamRegistry = useSalesTeams();
   const canLead = useCan("salesplan:lead");
   const canView = useCan("salesplan:view");
   const role = useRole();
@@ -663,7 +665,7 @@ export default function LeadsPage() {
                 {
                   key: "team", label: "ทีมเจ้าของงาน", icon: Users,
                   options: [
-                    ...TEAMS.map((t) => ({ value: t, label: `${TEAM_LABELS[t] || t} (${countBy.team[t] || 0})` })),
+                    ...activeSalesTeams(teamRegistry).map((t) => ({ value: t.code, label: `${t.name} (${countBy.team[t.code] || 0})` })),
                     // คิวกลางที่ยังไม่ถูกคัดกรอง — ไม่ใช่ "ไม่มีข้อมูล" แต่เป็นสถานะจริงของงาน
                     { value: NO_TEAM, label: `ยังไม่คัดกรอง (${countBy.team[NO_TEAM] || 0})` },
                   ],
@@ -736,7 +738,7 @@ export default function LeadsPage() {
                     </td>
                     <td className="num mono">{leadBudgetText(lead, fmtMoney, "-")}</td>
                     <td>
-                      {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : NA}
+                      {lead.team ? salesTeamLabel(teamRegistry, lead.team) : NA}
                       {assigneeNameOf(lead) && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{assigneeNameOf(lead)}</span>}
                       {/* ⭐ ใบที่ถูกตีกลับไม่มีทีม/ผู้รับ (bounce ล้างทิ้ง) ⇒ ช่องนี้ขึ้น "—" ว่าง
                           พอดี · เจ้าของ *คนก่อน* คือคำตอบของคำถามเดียวกับคอลัมน์นี้
@@ -745,7 +747,7 @@ export default function LeadsPage() {
                       {!lead.team && lead.bounce?.previousAssigneeName && (
                         <span className={styles.bounceWho}>
                           เคยอยู่กับ {lead.bounce.previousAssigneeName}
-                          {lead.bounce.previousTeam ? ` · ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam}` : ""}
+                          {lead.bounce.previousTeam ? ` · ${salesTeamLabel(teamRegistry, lead.bounce.previousTeam)}` : ""}
                         </span>
                       )}
                     </td>

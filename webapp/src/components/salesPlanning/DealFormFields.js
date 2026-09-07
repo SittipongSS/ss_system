@@ -1,11 +1,12 @@
 "use client";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import DealValueLines from "@/components/salesPlanning/DealValueLines";
 import OptionTiles from "@/components/ui/OptionTiles";
 import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import StageSteps from "@/components/ui/StageSteps";
 import ChoiceChips from "@/components/ui/ChoiceChips";
-import { TEAM_LABELS } from "@/lib/permissions";
+
 
 // ชุดช่องกรอกดีลมาตรฐาน — ใช้ร่วม 3 จุด: โมดัลหน้ารวมดีล / โมดัลหน้าดีล /
 // ฟอร์มสร้างดีลจากลีด เพื่อไม่ให้ฟอร์มเพี้ยนหากัน (กฎ AGENTS.md)
@@ -96,6 +97,7 @@ export default function DealFormFields({
      (senior แก้ดีลของทีมยังต้องเปลี่ยนเจ้าของได้) */
   lockedOwner = null,
 }) {
+  const teamRegistry = useSalesTeams();
   const set = (k) => (v) => onPatch({ [k]: v });
 
   const titleField = (
@@ -241,7 +243,7 @@ export default function DealFormFields({
         value={teamValue}
         onChange={set("team")}
         disabled={alreadyWon}
-        options={ownerTeams.map((t) => ({ value: t, label: TEAM_LABELS[t] || t }))}
+        options={ownerTeams.map((t) => ({ value: t, label: salesTeamLabel(teamRegistry, t) }))}
       />
       <small>ยอดขายและเป้าของดีลใบนี้จะถูกนับเข้าทีมที่เลือก</small>
     </div>

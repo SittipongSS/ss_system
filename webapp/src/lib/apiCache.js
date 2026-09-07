@@ -17,6 +17,16 @@ export function primeCache(url, data) {
   fetchedAt.set(url, Date.now());
 }
 
+/* ทิ้งของที่แคชไว้ของ URL นั้น — ใช้ตอน **รู้แน่ว่าเพิ่งเปลี่ยน** (กดบันทึกสำเร็จ)
+   ⚠️ ไม่มีตัวนี้ = TTL เป็นแค่ *พื้น* ไม่ใช่เพดาน: `apiCache` อยู่ระดับโมดูล มีชีวิตเท่าแท็บ
+   และถูกล้างที่เดียวคือตอนล็อกเอาต์ ⇒ แท็บที่เปิดค้างไว้จะโชว์ของเก่าไปเรื่อย ๆ แม้ TTL หมด
+   (ต้อง unmount แล้ว mount ใหม่ถึงจะยิงซ้ำ) */
+export function dropCache(url) {
+  apiCache.delete(url);
+  fetchedAt.delete(url);
+  inflight.delete(url);
+}
+
 // fetch แบบมี TTL: ถ้าเพิ่ง fetch ภายใน ttlMs คืนของเดิมโดยไม่ยิง network เลย —
 // ใช้กับ master data ที่หลายหน้าเรียกซ้ำ (products/customers/product-types/
 // holidays/assignable-users) เพื่อลดจำนวน function invocation ฝั่ง Vercel และ

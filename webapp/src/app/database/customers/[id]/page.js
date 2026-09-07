@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -9,7 +10,7 @@ import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useRole, useTeams } from "@/lib/roleContext";
-import { canEditIssuedMasterCode, isSuperuser, TEAM_LABELS } from "@/lib/permissions";
+import { canEditIssuedMasterCode, isSuperuser } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
@@ -443,7 +444,7 @@ export default function CustomerDetails() {
     </div>
   );
 
-  const teamsLabel = naText((customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", "));
+  const teamsLabel = naText((customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => teamLabelNow(t)).join(", "));
 
   // ที่อยู่ (0202) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม ไม่ใช่โชว์ว่าง
   const addresses = customerAddresses(customer);

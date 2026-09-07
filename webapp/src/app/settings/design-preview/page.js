@@ -245,7 +245,7 @@ function Swatches({ items }) {
 const DEMO_USERS = [
   { id: "u1", name: "สิทธิพงษ์ ศรีสุข", team: "KA", department: "SA", load: { holding: 4, waitingContact: 1, lateFollowUp: 0 } },
   { id: "u2", name: "ปัทมา วงศ์ทอง", team: "ODM", department: "SA", load: { holding: 11, waitingContact: 6, lateFollowUp: 2 } },
-  // อยู่สองทีม — ป้ายใต้ชื่อมาจาก `userTeams()` + `TEAM_LABELS` ไม่ใช่ช่อง team เดี่ยว
+  // อยู่สองทีม — ป้ายใต้ชื่อมาจาก `userTeams()` + ทะเบียนทีม ไม่ใช่ช่อง team เดี่ยว
   { id: "u3", name: "ธนวัฒน์ อินทรโชติ", team: "ODM", teams: ["ODM", "KA"], department: "SA", load: { holding: 0, waitingContact: 0, lateFollowUp: 0 } },
 ];
 
@@ -1450,7 +1450,7 @@ export default function DesignPreviewPage() {
             <StatusNotice tone="info" title="ตัวห่อสำเร็จรูป — ฐานเดิม แต่ผูกทะเบียนกลางไว้แล้ว">
               <code>BusinessLineSelect</code> = OptionTiles + <code>BUSINESS_LINES</code> ·{" "}
               <code>TeamPickerField</code> กับ <code>MyTeamsFilter</code> = ChoiceChips +{" "}
-              <code>TEAM_LABELS</code> — ฟอร์มใหม่<b>หยิบตัวห่อ ไม่ใช่ประกอบตัวเลือกเอง</b> เพราะทุกฟอร์ม
+              <code>salesTeamRegistry</code> — ฟอร์มใหม่<b>หยิบตัวห่อ ไม่ใช่ประกอบตัวเลือกเอง</b> เพราะทุกฟอร์ม
               {" "}เขียนลงคอลัมน์เดียวกัน ปล่อยให้ต่างคนต่างวาดเมื่อไรมันเพี้ยนหากันเสมอ (กฎเดียวกับ
               {" "}ฟอร์มสร้าง/แก้ใน <code>AGENTS.md</code>)
             </StatusNotice>

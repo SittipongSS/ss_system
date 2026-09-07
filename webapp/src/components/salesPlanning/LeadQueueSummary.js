@@ -11,12 +11,13 @@
 // ไม่งั้นหน้าจอกับแชทจะรายงานคนละเลขโดยไม่มีอะไรฟ้อง
 
 import { useMemo } from "react";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { CalendarClock, Filter, PhoneCall, TriangleAlert, Users } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Button from "@/components/ui/Button";
 import { AUTO_BOUNCE_AFTER_BUSINESS_DAYS } from "@/lib/sales/leadAutoBounce";
 import { leadQueueNotice, summarizeLeadQueue } from "@/lib/sales/leadDigest";
-import { TEAM_LABELS } from "@/lib/permissions";
+
 import styles from "./LeadQueueSummary.module.css";
 
 /* SLA ของทุกขั้นคือ 1 วันทำการ — เกินเมื่อไรถือว่าเลยกำหนด (กติกาเดียวกับ agedAtLeast) */
@@ -121,7 +122,7 @@ export default function LeadQueueSummary({
               {/* กองอยู่ทีมไหนคือคำถามแรกของขั้นนี้ — เจ้าของงานคือ Senior AE ของทีมนั้น */}
               {summary.spread.teams.map((t) => (
                 <span key={t.key} className={styles.pill}>
-                  {TEAM_LABELS[t.label] || t.label} {t.count}
+                  {teamLabelNow(t.label)} {t.count}
                 </span>
               ))}
               <Bounced count={summary.autoBounced?.spread} />
