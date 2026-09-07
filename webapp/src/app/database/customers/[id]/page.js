@@ -779,58 +779,56 @@ export default function CustomerDetails() {
                   })}
                 </div>
               ) : (
-                <div className="glass-panel">
-                  <TableScroll surface="embedded" className="border-none">
-                    <table className="premium-table">
-                      <thead>
-                        <tr>
-                          <th>รหัสสินค้า (FG Code)</th>
-                          <th>รายละเอียดสินค้า / แบรนด์</th>
-                          <th>ปริมาตร</th>
-                          <th className="num">ราคาขายปลีก</th>
-                          {canViewTax && <th className="num">ภาษีคำนวณต่อชิ้น</th>}
-                          <th className="text-center">สถานะการอนุมัติ</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {products.map((p) => {
-                          const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
-                          const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
-                          const detailHref = `/database/products/${p.id}`;
-                          return (
-                            /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก ส่วน onClick ของแถวเป็นทางลัดของเมาส์
-                               — href ต้องเป็น **ตัวแปรเดียวกัน** ทั้งสองที่ (ด่าน ROW_MIRROR เทียบข้อความนิพจน์ตรงตัว) */
-                            <DetailRow key={p.id} href={detailHref} className="clickable-row">
-                              <td className="font-semibold font-mono text-[var(--text)]">
-                                {/* prefetch={false}: ลูกค้าหนึ่งรายมีสินค้าได้หลายสิบรายการ — กัน RSC prefetch ต่อแถว */}
-                                <Link prefetch={false} href={detailHref} className="linklike">{p.fgCode}</Link>
-                              </td>
-                              <td>
-                                <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
-                                {hasBrandField(p) && (
-                                  <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {naText(brandBoth(p.brandName, p.brandNameEn))}</div>
-                                )}
-                              </td>
-                              <td className="font-mono">{p.volume} {p.volumeUnit || "ml"}</td>
-                              <td className="num font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</td>
-                              {canViewTax && (
-                                <td className="num font-mono text-[var(--text-2)]">
-                                  {isExciseCat ? (
-                                    <div className="flex items-center justify-end gap-1.5">
-                                      {taxRate > 0 && <span>{fmtMoney(taxRate)}</span>}
-                                      <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
-                                    </div>
-                                  ) : <span className="text-[var(--text-3)]">{NA}</span>}
-                                </td>
+                <TableScroll surface="auto">
+                  <table className="premium-table">
+                    <thead>
+                      <tr>
+                        <th>รหัสสินค้า (FG Code)</th>
+                        <th>รายละเอียดสินค้า / แบรนด์</th>
+                        <th>ปริมาตร</th>
+                        <th className="num">ราคาขายปลีก</th>
+                        {canViewTax && <th className="num">ภาษีคำนวณต่อชิ้น</th>}
+                        <th className="text-center">สถานะการอนุมัติ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map((p) => {
+                        const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
+                        const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                        const detailHref = `/database/products/${p.id}`;
+                        return (
+                          /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก ส่วน onClick ของแถวเป็นทางลัดของเมาส์
+                             — href ต้องเป็น **ตัวแปรเดียวกัน** ทั้งสองที่ (ด่าน ROW_MIRROR เทียบข้อความนิพจน์ตรงตัว) */
+                          <DetailRow key={p.id} href={detailHref} className="clickable-row">
+                            <td className="font-semibold font-mono text-[var(--text)]">
+                              {/* prefetch={false}: ลูกค้าหนึ่งรายมีสินค้าได้หลายสิบรายการ — กัน RSC prefetch ต่อแถว */}
+                              <Link prefetch={false} href={detailHref} className="linklike">{p.fgCode}</Link>
+                            </td>
+                            <td>
+                              <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
+                              {hasBrandField(p) && (
+                                <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {naText(brandBoth(p.brandName, p.brandNameEn))}</div>
                               )}
-                              <td className="text-center"><ProductStatusPill status={p.status} /></td>
-                            </DetailRow>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </TableScroll>
-                </div>
+                            </td>
+                            <td className="font-mono">{p.volume} {p.volumeUnit || "ml"}</td>
+                            <td className="num font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</td>
+                            {canViewTax && (
+                              <td className="num font-mono text-[var(--text-2)]">
+                                {isExciseCat ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {taxRate > 0 && <span>{fmtMoney(taxRate)}</span>}
+                                    <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
+                                  </div>
+                                ) : <span className="text-[var(--text-3)]">{NA}</span>}
+                              </td>
+                            )}
+                            <td className="text-center"><ProductStatusPill status={p.status} /></td>
+                          </DetailRow>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableScroll>
               )
             )}
 
@@ -895,60 +893,58 @@ export default function CustomerDetails() {
                   })}
                 </div>
               ) : (
-                <div className="glass-panel">
-                  <TableScroll surface="embedded" className="border-none">
-                    <table className="premium-table">
-                      <thead>
-                        <tr>
-                          <th>เลขที่ใบเสนอราคา</th>
-                          <th>PO Reference</th>
-                          <th className="text-center">จำนวนรายการ</th>
-                          <th className="num">ยอดภาษีรวม</th>
-                          <th className="text-center">กำหนดส่ง</th>
-                          <th className="text-center">สถานะชำระเงิน</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {orders.map((o) => {
-                          const isExempt = (o.totalTax || 0) === 0;
-                          const itemCount = o.items?.length || 0;
-                          return (
-                            /* ── แถวนี้ **ไม่มี** ทางลัดเมาส์บน <tr> โดยตั้งใจ (2026-09-03) ──────────────
-                                ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง — กดแล้วเปิด `<OrderDetailModal>` ในหน้าเดิม
-                                ⇒ ไม่มี URL ปลายทาง จึงใช้ `DetailRow` ไม่ได้ (href เป็น prop บังคับ และด่าน
-                                ROW_MIRROR เทียบ *ปลายทาง* ของแถวกับลิงก์ในเซลล์) · ทางลัดเมาส์บน <tr> ดิบ
-                                ได้รับยกเว้นที่ `DetailRow` จุดเดียวในระบบ ⇒ แถวนี้ต้องถอด `onClick` ทิ้ง
-                                ไม่งั้นเหลือทางเข้าให้เมาส์อย่างเดียว (ด่าน A11Y_KEYBOARD)
-                                ⇒ ทางเข้าเดียวคือ <button> ในเซลล์แรก · `.text-action-block` ให้ปุ่มกิน
-                                ทั้งเซลล์คืนเป้าเมาส์ที่กว้างขึ้น · `.premium-row` แทน `.clickable-row`
-                                เพราะแถวไม่ใช่ตัวกดแล้ว (ไม่ต้องมี cursor: pointer หลอกตา)
-                                การ์ดจอตั้งของแท็บเดียวกันเป็น <button> ครอบทั้งใบอยู่แล้ว = ท่าเดียวกัน */
-                            <tr key={o.id} className="premium-row">
-                              <td className="font-semibold font-mono text-[var(--text)]">
-                                {/* ไม่มี onClick บนแถวแล้ว ⇒ ไม่ต้อง stopPropagation
-                                    `.text-action` (เส้นประ = เกิดอะไรขึ้นตรงนี้) ไม่ใช่ `.linklike` ซึ่งแปลว่า "ไปที่อื่น" */}
-                                <button
-                                  type="button"
-                                  className="text-action text-action-block font-semibold"
-                                  onClick={() => setSelectedOrder(o)}
-                                >
-                                  {o.quotationRef}
-                                </button>
-                              </td>
-                              <td className="font-mono text-xs text-[var(--text-2)]">{naText(o.poReference)}</td>
-                              <td className="text-center font-mono font-semibold">{itemCount}</td>
-                              <td className="num font-mono font-bold text-[var(--text)]">
-                                {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
-                              </td>
-                              <td className="text-center text-xs">{naText(o.deliveryDate)}</td>
-                              <td className="text-center"><OrderStatusPill status={o.status} /></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </TableScroll>
-                </div>
+                <TableScroll surface="auto">
+                  <table className="premium-table">
+                    <thead>
+                      <tr>
+                        <th>เลขที่ใบเสนอราคา</th>
+                        <th>PO Reference</th>
+                        <th className="text-center">จำนวนรายการ</th>
+                        <th className="num">ยอดภาษีรวม</th>
+                        <th className="text-center">กำหนดส่ง</th>
+                        <th className="text-center">สถานะชำระเงิน</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orders.map((o) => {
+                        const isExempt = (o.totalTax || 0) === 0;
+                        const itemCount = o.items?.length || 0;
+                        return (
+                          /* ── แถวนี้ **ไม่มี** ทางลัดเมาส์บน <tr> โดยตั้งใจ (2026-09-03) ──────────────
+                              ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง — กดแล้วเปิด `<OrderDetailModal>` ในหน้าเดิม
+                              ⇒ ไม่มี URL ปลายทาง จึงใช้ `DetailRow` ไม่ได้ (href เป็น prop บังคับ และด่าน
+                              ROW_MIRROR เทียบ *ปลายทาง* ของแถวกับลิงก์ในเซลล์) · ทางลัดเมาส์บน <tr> ดิบ
+                              ได้รับยกเว้นที่ `DetailRow` จุดเดียวในระบบ ⇒ แถวนี้ต้องถอด `onClick` ทิ้ง
+                              ไม่งั้นเหลือทางเข้าให้เมาส์อย่างเดียว (ด่าน A11Y_KEYBOARD)
+                              ⇒ ทางเข้าเดียวคือ <button> ในเซลล์แรก · `.text-action-block` ให้ปุ่มกิน
+                              ทั้งเซลล์คืนเป้าเมาส์ที่กว้างขึ้น · `.premium-row` แทน `.clickable-row`
+                              เพราะแถวไม่ใช่ตัวกดแล้ว (ไม่ต้องมี cursor: pointer หลอกตา)
+                              การ์ดจอตั้งของแท็บเดียวกันเป็น <button> ครอบทั้งใบอยู่แล้ว = ท่าเดียวกัน */
+                          <tr key={o.id} className="premium-row">
+                            <td className="font-semibold font-mono text-[var(--text)]">
+                              {/* ไม่มี onClick บนแถวแล้ว ⇒ ไม่ต้อง stopPropagation
+                                  `.text-action` (เส้นประ = เกิดอะไรขึ้นตรงนี้) ไม่ใช่ `.linklike` ซึ่งแปลว่า "ไปที่อื่น" */}
+                              <button
+                                type="button"
+                                className="text-action text-action-block font-semibold"
+                                onClick={() => setSelectedOrder(o)}
+                              >
+                                {o.quotationRef}
+                              </button>
+                            </td>
+                            <td className="font-mono text-xs text-[var(--text-2)]">{naText(o.poReference)}</td>
+                            <td className="text-center font-mono font-semibold">{itemCount}</td>
+                            <td className="num font-mono font-bold text-[var(--text)]">
+                              {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
+                            </td>
+                            <td className="text-center text-xs">{naText(o.deliveryDate)}</td>
+                            <td className="text-center"><OrderStatusPill status={o.status} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableScroll>
               )
             )}
 

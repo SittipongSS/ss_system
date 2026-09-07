@@ -557,130 +557,128 @@ export default function TimelineWorkspace({
           />
         </div>
       </div>
-      <div className="premium-glass-table table-responsive">
-        <TableScroll><table className="premium-table timeline-task-table">
-          <colgroup>
-            <col style={{ width: 32 }} /><col style={{ width: 52 }} /><col className="timeline-col-task" />
-            <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 156 }} />
-            <col style={{ width: 124 }} /><col style={{ width: 124 }} /><col style={{ width: 58 }} />
-            <col style={{ width: 120 }} />{canEdit && <col style={{ width: 120 }} />}
-          </colgroup>
-          <thead>
-            <tr>
-              <th className="timeline-move-head" aria-label="เลื่อนลำดับ"></th><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
-              {/* วันที่คนเทียบข้ามแถว ("ขั้นไหนจบก่อน") ต้องชิดขวาเหมือนตัวเลข —
-                  UI_DESIGN_SYSTEM §ป้ายในตาราง กฎ 3 · หัวตารางชิดตามเนื้อข้างล่าง (กฎ 4) */}
-              <th>สถานะ</th><th className="num">เริ่ม</th><th className="num">เสร็จ</th><th className="num">วัน</th><th>ขึ้นกับ</th>
-              {canEdit && <th>จัดการ</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {tableGroups.map((g, gi) => (
-              <FragmentGroup key={`${g.phase}|${gi}`}>
-                <tr className="timeline-phase-row">
-                  <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
-                      {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
-                      <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-3)" }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
-                    </div>
-                  </td>
-                </tr>
-                {g.tasks.map((t) => (
-                  <tr key={t.id} className="premium-row" style={{ opacity: busyId === t.id ? 0.5 : 1 }}>
-                    <td className="timeline-move-cell">
-                      {canReorder && tableSort === "step" && (
-                        <span style={{ display: "inline-flex", flexDirection: "column" }}>
-                          <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนขึ้น" onClick={() => move(t, -1)} disabled={!!busyId}><ArrowUp size={12} aria-hidden="true" /></button>
-                          <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนลง" onClick={() => move(t, 1)} disabled={!!busyId}><ArrowDown size={12} aria-hidden="true" /></button>
-                        </span>
-                      )}
-                    </td>
-                    <td className="mono timeline-order-cell">{numberOf.get(t.id)}</td>
-                    <td style={{ fontWeight: "var(--fw-semibold)" }} title={t.note ? `${t.name}\n${t.note}` : t.name}>
-                      <span className="timeline-task-name">
-                        {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", flexShrink: 0 }} />}
-                        <span>{t.name}</span>
+      <TableScroll><table className="premium-table timeline-task-table">
+        <colgroup>
+          <col style={{ width: 32 }} /><col style={{ width: 52 }} /><col className="timeline-col-task" />
+          <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 156 }} />
+          <col style={{ width: 124 }} /><col style={{ width: 124 }} /><col style={{ width: 58 }} />
+          <col style={{ width: 120 }} />{canEdit && <col style={{ width: 120 }} />}
+        </colgroup>
+        <thead>
+          <tr>
+            <th className="timeline-move-head" aria-label="เลื่อนลำดับ"></th><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
+            {/* วันที่คนเทียบข้ามแถว ("ขั้นไหนจบก่อน") ต้องชิดขวาเหมือนตัวเลข —
+                UI_DESIGN_SYSTEM §ป้ายในตาราง กฎ 3 · หัวตารางชิดตามเนื้อข้างล่าง (กฎ 4) */}
+            <th>สถานะ</th><th className="num">เริ่ม</th><th className="num">เสร็จ</th><th className="num">วัน</th><th>ขึ้นกับ</th>
+            {canEdit && <th>จัดการ</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {tableGroups.map((g, gi) => (
+            <FragmentGroup key={`${g.phase}|${gi}`}>
+              <tr className="timeline-phase-row">
+                <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
+                    {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
+                    <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-3)" }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
+                  </div>
+                </td>
+              </tr>
+              {g.tasks.map((t) => (
+                <tr key={t.id} className="premium-row" style={{ opacity: busyId === t.id ? 0.5 : 1 }}>
+                  <td className="timeline-move-cell">
+                    {canReorder && tableSort === "step" && (
+                      <span style={{ display: "inline-flex", flexDirection: "column" }}>
+                        <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนขึ้น" onClick={() => move(t, -1)} disabled={!!busyId}><ArrowUp size={12} aria-hidden="true" /></button>
+                        <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนลง" onClick={() => move(t, 1)} disabled={!!busyId}><ArrowDown size={12} aria-hidden="true" /></button>
                       </span>
-                      {/* หมุดวางนอก .timeline-task-name เพราะกฎ `> span` ของคลาสนั้น
-                          บังคับ overflow-wrap:anywhere ให้ลูกทุกตัว ป้ายจะแตกกลางคำ */}
-                      <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey, t.dealId)} />
-                      <StepBadge badge={stepBadgeFor?.(t)} />
-                    </td>
-                    <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{naText(t.role)}</span></td>
-                    <td>
-                      {canEdit ? (
-                        <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: "var(--fs-5)" }}
-                          aria-label={`ผู้รับผิดชอบ ${t.name}`}
-                          onChange={(e) => {
-                            const u = assigneeOptions.find((x) => x.id === e.target.value);
-                            patch(t, { assigneeId: e.target.value || null, assignee: u?.name || null });
-                          }}>
-                          <option value="">{t.assignee ? compactPersonName(t.assignee) : "— ไม่ระบุ —"}</option>
-                          {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}</option>)}
-                        </Select>
-                      ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : NA}</span>}
-                    </td>
-                    <td>
-                      {canEdit ? (
-                        <StatusSelect value={t.status || "Pending"} disabled={!!busyId} aria-label={`สถานะ ${t.name}`} onChange={(status) => patch(t, { status })} />
-                      ) : (
-                        <span className="ui-badge" style={{ color: STATUS_META[t.status]?.color || "var(--text-3)" }}>
-                          {STATUS_META[t.status]?.label || naText(t.status)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="num" style={{ whiteSpace: "nowrap" }}>
-                      {canEdit ? (
-                        <DateInput compact value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} ariaLabel={`วันเริ่ม ${t.name}`} style={{ width: 116 }} />
-                      ) : fmtDate(t.startDate)}
-                      <ActualLine plan={t.startDate} actual={t.actualStartDate} />
-                    </td>
-                    <td className="num" style={{ whiteSpace: "nowrap" }}>
-                      {canEdit ? (
-                        /* ล้างช่องนี้ไม่ได้ — วันจบวิ่งตามวันเริ่ม+จำนวนวันเสมอ (ท่าเดียวกับ
-                           ช่องวันจบในมุมมองเอกสาร) · อยากให้จบเร็ว/ช้าลงให้แก้จำนวนวัน */
-                        <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => { if (v && v !== t.finishDate) patch(t, { finishDate: v }); }} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
-                      ) : fmtDate(t.finishDate)}
-                      <ActualLine plan={t.finishDate} actual={t.actualFinishDate} />
-                    </td>
-                    <td className="num">
-                      {canEdit ? (
-                        /* 🐞 key: ช่องนี้ uncontrolled (พิมพ์ได้อิสระ commit ตอน blur) แต่แถวไม่
-                           remount ⇒ ค่าที่ "คนอื่น" คำนวณให้ (แก้วันเริ่ม/วันจบ หรือ recalc
-                           หลังบันทึก) จะไม่เข้า DOM เลย เลขวันจึงค้างเป็นซากค่าเก่า
-                           ผูก key กับค่าปัจจุบันให้ React สร้าง input ใหม่เมื่อค่าเปลี่ยนจากทางอื่น
-                           (ท่าเดียวกับช่องจำนวนวันในมุมมองเอกสาร — ProjectDocumentView) */
-                        <input type="number" min="1" className="premium-input mono"
-                          key={`dur-${t.id}-${t.durationDays ?? 1}`}
-                          defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}
-                          aria-label={`จำนวนวัน ${t.name}`} disabled={!!busyId}
-                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                          onBlur={(e) => {
-                            const v = Math.max(1, Number(e.target.value) || 1);
-                            if (v !== (t.durationDays ?? 1)) patch(t, { durationDays: v });
-                          }} />
-                      ) : (naText(t.durationDays))}
-                    </td>
-                    <td>
-                      {(t.predecessors || []).length
-                        ? t.predecessors.map((p) => <span key={p} className="ui-badge" style={{ color: "var(--amber)", marginRight: 3 }}>{numberOf.get(p) || "?"}</span>)
-                        : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{NA}</span>}
-                    </td>
-                    {canEdit && (
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <button type="button" className="btn-icon" title="แทรกขั้นตอนถัดจากนี้" aria-label={`แทรกหลัง ${t.name}`} onClick={() => openAdd(t.id)} disabled={!!busyId}><Plus size={14} aria-hidden="true" /></button>
-                        <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${t.name}`} onClick={() => openEdit(t)} disabled={!!busyId}><Pencil size={14} aria-hidden="true" /></button>
-                        <button type="button" className="btn-icon danger" title="ลบ" aria-label={`ลบ ${t.name}`} onClick={() => removeTask(t)} disabled={!!busyId}><Trash2 size={14} aria-hidden="true" /></button>
-                      </td>
                     )}
-                  </tr>
-                ))}
-              </FragmentGroup>
-            ))}
-          </tbody>
-        </table></TableScroll>
-      </div>
+                  </td>
+                  <td className="mono timeline-order-cell">{numberOf.get(t.id)}</td>
+                  <td style={{ fontWeight: "var(--fw-semibold)" }} title={t.note ? `${t.name}\n${t.note}` : t.name}>
+                    <span className="timeline-task-name">
+                      {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", flexShrink: 0 }} />}
+                      <span>{t.name}</span>
+                    </span>
+                    {/* หมุดวางนอก .timeline-task-name เพราะกฎ `> span` ของคลาสนั้น
+                        บังคับ overflow-wrap:anywhere ให้ลูกทุกตัว ป้ายจะแตกกลางคำ */}
+                    <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey, t.dealId)} />
+                    <StepBadge badge={stepBadgeFor?.(t)} />
+                  </td>
+                  <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{naText(t.role)}</span></td>
+                  <td>
+                    {canEdit ? (
+                      <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: "var(--fs-5)" }}
+                        aria-label={`ผู้รับผิดชอบ ${t.name}`}
+                        onChange={(e) => {
+                          const u = assigneeOptions.find((x) => x.id === e.target.value);
+                          patch(t, { assigneeId: e.target.value || null, assignee: u?.name || null });
+                        }}>
+                        <option value="">{t.assignee ? compactPersonName(t.assignee) : "— ไม่ระบุ —"}</option>
+                        {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}</option>)}
+                      </Select>
+                    ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : NA}</span>}
+                  </td>
+                  <td>
+                    {canEdit ? (
+                      <StatusSelect value={t.status || "Pending"} disabled={!!busyId} aria-label={`สถานะ ${t.name}`} onChange={(status) => patch(t, { status })} />
+                    ) : (
+                      <span className="ui-badge" style={{ color: STATUS_META[t.status]?.color || "var(--text-3)" }}>
+                        {STATUS_META[t.status]?.label || naText(t.status)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="num" style={{ whiteSpace: "nowrap" }}>
+                    {canEdit ? (
+                      <DateInput compact value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} ariaLabel={`วันเริ่ม ${t.name}`} style={{ width: 116 }} />
+                    ) : fmtDate(t.startDate)}
+                    <ActualLine plan={t.startDate} actual={t.actualStartDate} />
+                  </td>
+                  <td className="num" style={{ whiteSpace: "nowrap" }}>
+                    {canEdit ? (
+                      /* ล้างช่องนี้ไม่ได้ — วันจบวิ่งตามวันเริ่ม+จำนวนวันเสมอ (ท่าเดียวกับ
+                         ช่องวันจบในมุมมองเอกสาร) · อยากให้จบเร็ว/ช้าลงให้แก้จำนวนวัน */
+                      <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => { if (v && v !== t.finishDate) patch(t, { finishDate: v }); }} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
+                    ) : fmtDate(t.finishDate)}
+                    <ActualLine plan={t.finishDate} actual={t.actualFinishDate} />
+                  </td>
+                  <td className="num">
+                    {canEdit ? (
+                      /* 🐞 key: ช่องนี้ uncontrolled (พิมพ์ได้อิสระ commit ตอน blur) แต่แถวไม่
+                         remount ⇒ ค่าที่ "คนอื่น" คำนวณให้ (แก้วันเริ่ม/วันจบ หรือ recalc
+                         หลังบันทึก) จะไม่เข้า DOM เลย เลขวันจึงค้างเป็นซากค่าเก่า
+                         ผูก key กับค่าปัจจุบันให้ React สร้าง input ใหม่เมื่อค่าเปลี่ยนจากทางอื่น
+                         (ท่าเดียวกับช่องจำนวนวันในมุมมองเอกสาร — ProjectDocumentView) */
+                      <input type="number" min="1" className="premium-input mono"
+                        key={`dur-${t.id}-${t.durationDays ?? 1}`}
+                        defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}
+                        aria-label={`จำนวนวัน ${t.name}`} disabled={!!busyId}
+                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                        onBlur={(e) => {
+                          const v = Math.max(1, Number(e.target.value) || 1);
+                          if (v !== (t.durationDays ?? 1)) patch(t, { durationDays: v });
+                        }} />
+                    ) : (naText(t.durationDays))}
+                  </td>
+                  <td>
+                    {(t.predecessors || []).length
+                      ? t.predecessors.map((p) => <span key={p} className="ui-badge" style={{ color: "var(--amber)", marginRight: 3 }}>{numberOf.get(p) || "?"}</span>)
+                      : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{NA}</span>}
+                  </td>
+                  {canEdit && (
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <button type="button" className="btn-icon" title="แทรกขั้นตอนถัดจากนี้" aria-label={`แทรกหลัง ${t.name}`} onClick={() => openAdd(t.id)} disabled={!!busyId}><Plus size={14} aria-hidden="true" /></button>
+                      <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${t.name}`} onClick={() => openEdit(t)} disabled={!!busyId}><Pencil size={14} aria-hidden="true" /></button>
+                      <button type="button" className="btn-icon danger" title="ลบ" aria-label={`ลบ ${t.name}`} onClick={() => removeTask(t)} disabled={!!busyId}><Trash2 size={14} aria-hidden="true" /></button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </FragmentGroup>
+          ))}
+        </tbody>
+      </table></TableScroll>
       {canAdd && (
         <div style={{ marginTop: 10 }}>
           <button type="button" className="btn ghost" onClick={() => openAdd(null)} disabled={!!busyId}>

@@ -406,73 +406,71 @@ export default function CustomerDirectory() {
           })}
         </div>
       ) : (
-        <div className="glass-panel">
-          <TableScroll surface="embedded" className="border-none" family="list">
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  {/* รหัส+ชื่อรวมเซลล์เดียว 2 บรรทัด (มติผู้ใช้ 2026-08-12) —
-                      เรียงด้วยรหัสเหมือนเดิม */}
-                  <SortTh label={`${CUSTOMER_NAME_LABEL} (AR)`} sortKey="arCode" sort={sort} />
-                  {/* สาขาเป็นครึ่งหนึ่งของ "ใบนี้คือสถานประกอบการไหน" คู่กับเลขผู้เสียภาษี
-                      (คีย์กันซ้ำคือ เลข + สาขา) — บริษัทเดียวมีได้หลายใบ ต่างกันแค่ช่องนี้
-                      จึงต้องอ่านออกจากตารางโดยไม่ต้องเปิดใบ (มติผู้ใช้ 2026-08-30) */}
-                  <SortTh label="สาขา" sortKey="branchCode" sort={sort} />
-                  <SortTh label="แบรนด์ (EN/TH)" sortKey="brands" sort={sort} />
-                  <SortTh label="ที่อยู่" sortKey="address" sort={sort} />
-                  <th>สถานะ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((c) => (
-                  /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก — onClick บนแถวเป็นทางลัด
-                     ของเมาส์เท่านั้น (ดูคอมเมนต์หัวไฟล์ ui/DetailRow.js) · ปุ่มอนุมัติ/
-                     ตีกลับในเซลล์สถานะเป็นคนละปลายทาง จึงยกเว้นให้แถวนี้ไม่ได้ */
-                  <DetailRow key={c.id} href={`/database/customers/${c.id}`} className="clickable-row" style={c.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
-                    <td>
-                      {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว)
-                          prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
-                      <Link prefetch={false} href={`/database/customers/${c.id}`} className="linklike linklike-block" title="เปิดหน้าลูกค้า">
-                        <span className="block font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</span>
-                        <strong className="block font-medium text-[var(--text)] mt-0.5">{customerNameIn(c)}</strong>
-                        <span className="block text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</span>
-                        {c.phone && <span className="block text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</span>}
-                      </Link>
-                    </td>
-                    {/* ผ่าน branchValue (เลขเปล่า) ไม่ใช่ branchLabel — หัวคอลัมน์เป็นป้าย
-                        "สาขา" อยู่แล้ว และ '00000' คือรูปที่ใช้เทียบใบต่อใบได้ (มติ 27/08) */}
-                    <td className="text-[var(--text-2)] font-mono text-[12px] whitespace-nowrap">
-                      {branchValue(c.branchCode)}
-                    </td>
-                    <td className="text-[var(--text-2)]">
-                      <div className="flex flex-wrap gap-1.5">
-                        {c.brands?.map((b, i) => (
-                          <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandBothOf(b)}</span>
-                        ))}
+        <TableScroll surface="auto" family="list">
+          <table className="premium-table">
+            <thead>
+              <tr>
+                {/* รหัส+ชื่อรวมเซลล์เดียว 2 บรรทัด (มติผู้ใช้ 2026-08-12) —
+                    เรียงด้วยรหัสเหมือนเดิม */}
+                <SortTh label={`${CUSTOMER_NAME_LABEL} (AR)`} sortKey="arCode" sort={sort} />
+                {/* สาขาเป็นครึ่งหนึ่งของ "ใบนี้คือสถานประกอบการไหน" คู่กับเลขผู้เสียภาษี
+                    (คีย์กันซ้ำคือ เลข + สาขา) — บริษัทเดียวมีได้หลายใบ ต่างกันแค่ช่องนี้
+                    จึงต้องอ่านออกจากตารางโดยไม่ต้องเปิดใบ (มติผู้ใช้ 2026-08-30) */}
+                <SortTh label="สาขา" sortKey="branchCode" sort={sort} />
+                <SortTh label="แบรนด์ (EN/TH)" sortKey="brands" sort={sort} />
+                <SortTh label="ที่อยู่" sortKey="address" sort={sort} />
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((c) => (
+                /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก — onClick บนแถวเป็นทางลัด
+                   ของเมาส์เท่านั้น (ดูคอมเมนต์หัวไฟล์ ui/DetailRow.js) · ปุ่มอนุมัติ/
+                   ตีกลับในเซลล์สถานะเป็นคนละปลายทาง จึงยกเว้นให้แถวนี้ไม่ได้ */
+                <DetailRow key={c.id} href={`/database/customers/${c.id}`} className="clickable-row" style={c.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
+                  <td>
+                    {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว)
+                        prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
+                    <Link prefetch={false} href={`/database/customers/${c.id}`} className="linklike linklike-block" title="เปิดหน้าลูกค้า">
+                      <span className="block font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</span>
+                      <strong className="block font-medium text-[var(--text)] mt-0.5">{customerNameIn(c)}</strong>
+                      <span className="block text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</span>
+                      {c.phone && <span className="block text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</span>}
+                    </Link>
+                  </td>
+                  {/* ผ่าน branchValue (เลขเปล่า) ไม่ใช่ branchLabel — หัวคอลัมน์เป็นป้าย
+                      "สาขา" อยู่แล้ว และ '00000' คือรูปที่ใช้เทียบใบต่อใบได้ (มติ 27/08) */}
+                  <td className="text-[var(--text-2)] font-mono text-[12px] whitespace-nowrap">
+                    {branchValue(c.branchCode)}
+                  </td>
+                  <td className="text-[var(--text-2)]">
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.brands?.map((b, i) => (
+                        <span key={i} className="bg-[var(--panel-2)] px-2 py-0.5 rounded text-[11px] text-[var(--text-2)]">{brandBothOf(b)}</span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="text-[var(--text-2)] max-w-[250px]">
+                    <div className="text-[11px] whitespace-normal leading-relaxed">{c.address}</div>
+                  </td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {approvalStatusOf(c) === "pending" && canApproveRow(c) ? (
+                      <ApprovalActions onDecide={(status) => decide(c, status)} />
+                    ) : (
+                      <div className="flex flex-col gap-1 items-start">
+                        <ApprovalBadge status={approvalStatusOf(c)} />
+                        {c.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                        {approvalStatusOf(c) === "rejected" && c.rejectionReason && (
+                          <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {c.rejectionReason}</div>
+                        )}
                       </div>
-                    </td>
-                    <td className="text-[var(--text-2)] max-w-[250px]">
-                      <div className="text-[11px] whitespace-normal leading-relaxed">{c.address}</div>
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      {approvalStatusOf(c) === "pending" && canApproveRow(c) ? (
-                        <ApprovalActions onDecide={(status) => decide(c, status)} />
-                      ) : (
-                        <div className="flex flex-col gap-1 items-start">
-                          <ApprovalBadge status={approvalStatusOf(c)} />
-                          {c.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
-                          {approvalStatusOf(c) === "rejected" && c.rejectionReason && (
-                            <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {c.rejectionReason}</div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </DetailRow>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        </div>
+                    )}
+                  </td>
+                </DetailRow>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
 
       {sort.sorted.length > 0 && (
