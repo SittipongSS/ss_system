@@ -45,3 +45,46 @@ test("ใบยื่นตรึงเลขภาษี + ที่อยู�
   assert.match(billPrintSource, /const taxId = order\.customerTaxId \|\| customer\.taxId/);
   assert.match(billPrintSource, /const address = order\.customerAddress \|\| customer\.address/);
 });
+
+// ── ใบยื่นผูกใบเสนอราคาต้นทาง (มติผู้ใช้ 2026-09-07 · mig 0349) ───────────────
+// ต้นทางยังเป็นใบสั่งขายที่อนุมัติแล้ว แต่ต้องผูก QT ที่เกี่ยวข้องด้วย FK ไม่ใช่สตริง
+// `quotationRef` ที่ PATCH /api/orders/[id] เปิดให้พิมพ์แก้เองได้
+test("ใบยื่นเขียน quotationId ลงใบ — อ่านจาก sales_orders ตรง ๆ ไม่ใช่จาก snapshot", () => {
+  assert.match(routeSource, /quotationId: salesOrder\.quotationId \|\| null/);
+  // ห้ามเดาจาก quotation ที่โหลดมา (ผ่านการเลือก/ตกทอดมาอีกชั้น)
+  assert.doesNotMatch(routeSource, /quotationId: salesOrder\.quotation\?\./);
+});
+
+// 🪤 migration รันด้วยมือบน Supabase ⇒ มีช่วงที่โค้ดขึ้นก่อน schema · ถ้าคอลัมน์ใหม่
+// ไม่อยู่ในลิสต์ additive การสร้างใบยื่นจะพังทั้งใบด้วย PGRST204 แทนที่จะแค่ไม่มีลิงก์
+test("quotationId อยู่ในลิสต์คอลัมน์ที่ยอมให้หายระหว่างรอ migration", () => {
+  const ordersLib = readFileSync(new URL("../tax/orders.js", import.meta.url), "utf8");
+  const additive = ordersLib.match(/ADDITIVE_ORDER_COLS = \[([\s\S]*?)\];/)[1];
+  assert.match(additive, /'quotationId'/);
+});
+
+// จอตอนสร้างต้องบอกได้ว่ากำลังยื่นตาม QT ใบไหน — ทั้งในลิสต์ตัวเลือกและในการ์ดสรุป
+test("ทั้งลิสต์ SO ที่รอยื่นและการ์ดสรุปส่งเลขใบเสนอราคามาด้วย", () => {
+  assert.match(routeSource, /quoteNumber: quoteNumberById\.get\(salesOrder\.quotationId\)/);
+  assert.match(routeSource, /quoteNumber: salesOrder\.quotation\?\.quoteNumber \|\| null/);
+});
+
+// 🪤 ลิสต์ id ยาวเกิน ~16 KB = PostgREST ต่อไม่ติด แล้วโยน TypeError ดิบ ๆ
+// (ดู lib/supabaseInChunks.js) · จำนวน SO ที่ค้างยื่นโตตามงาน จึงข้ามเส้นได้เอง
+test("โหลดเลขใบเสนอราคาแบบยิงทีละก้อน ไม่ใช่ .in() ก้อนเดียว", () => {
+  assert.match(
+    routeSource,
+    /fetchInChunks\(\s*available\.map\(\(salesOrder\) => salesOrder\.quotationId\)/,
+  );
+});
+
+// โมดัลต้องโชว์รายการที่จะยื่นจริง ไม่ใช่แค่จำนวน — API ส่ง lines มาครบอยู่แล้ว
+test("โมดัลสร้างใบยื่นวาดตารางรายการ และไม่ใช้ style ดิบ (งบ inlineStyle เต็มเพดาน)", () => {
+  const modal = readFileSync(
+    new URL("../../components/excise/SalesOrderFilingModal.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(modal, /resolution\.lines\.map\(/, "ต้องวาดรายการจริง");
+  assert.match(modal, /<TableScroll/, "ตารางต้องอยู่ใน TableScroll ตามสัญญาตารางกลาง");
+  assert.doesNotMatch(modal, /style=\{\{/, "ห้าม inline style — ใช้ CSS module");
+});

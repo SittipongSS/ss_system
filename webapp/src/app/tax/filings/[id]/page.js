@@ -2,6 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import Button from "@/components/ui/Button";
 import { useParams, useRouter } from "next/navigation";
 import { ReceiptText, Pencil, Wallet, FileCheck, MessagesSquare, Printer, ExternalLink } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
@@ -218,9 +219,21 @@ export default function FilingDetailPage() {
                 title={o.salesOrderId ? "ใบสั่งขายต้นทาง" : "เอกสารต้นทาง"}
                 meta={o.poReference || o.quotationRef || "ข้อมูลลูกค้าและทะเบียนสินค้า"}
                 actions={o.salesOrderId ? (
-                  <Link href={`/sa/sales-orders/${o.salesOrderId}`} className="btn ghost sm">
-                    <ExternalLink size={13} /> เปิด ใบสั่งขาย
-                  </Link>
+                  <>
+                    <Link href={`/sa/sales-orders/${o.salesOrderId}`} className="btn ghost sm">
+                      <ExternalLink size={13} /> เปิด ใบสั่งขาย
+                    </Link>
+                    {/* ใบเสนอราคาที่เกี่ยวข้อง (mig 0349) — ผูกด้วย FK ไม่ใช่สตริง
+                        `quotationRef` ที่พิมพ์แก้เองได้ · ใบยุคก่อนที่ยังไม่มี FK
+                        ไม่ขึ้นปุ่ม แทนที่จะพาไปหน้าที่หาไม่เจอ
+                        ⚠️ ใช้ Button primitive (as=Link) ไม่ใช่คลาส `btn` ดิบ — งบ
+                        rawButtonClass ของโมดูลนี้เต็มเพดานพอดี (22/22) */}
+                    {o.quotationId && (
+                      <Button as={Link} href={`/sa/quotations/${o.quotationId}`} variant="quiet" size="sm">
+                        <ExternalLink size={13} /> เปิด ใบเสนอราคา
+                      </Button>
+                    )}
+                  </>
                 ) : o.customerId ? (
                   <Link href={`/database/customers/${o.customerId}`} className="btn ghost sm">
                     <ExternalLink size={13} /> เปิดลูกค้า

@@ -1,5 +1,6 @@
 import { genId } from "@/lib/id";
 import { fetchInChunks } from "@/lib/supabaseInChunks";
+import { fetchAllResult } from "@/lib/supabaseFetchAll";
 import { recordAudit } from "@/lib/audit";
 import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthorized } from "@/lib/http";
 import { can, caretakerTeamsOf } from "@/lib/permissions";
@@ -138,6 +139,18 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
     available.map((salesOrder) => salesOrder.customerId),
   );
 
+  /* เลขใบเสนอราคาต้นทางของแต่ละ SO — จอตอนสร้างใบยื่นต้องบอกได้ว่ากำลังยื่นตาม
+     ใบเสนอราคาใบไหน (มติผู้ใช้ 2026-09-07) · ยิงทีละก้อนด้วยเหตุผลเดียวกับสินค้า
+     ข้างบน: id ของ QT ยาว 40 ตัวอักษร ลิสต์โตตามจำนวน SO ที่ค้างยื่น */
+  const { data: quoteRows, error: quoteError } = await fetchInChunks(
+    available.map((salesOrder) => salesOrder.quotationId),
+    (chunk) => fetchAllResult(() => supabase
+      .from("quotations").select("id, quoteNumber").in("id", chunk)
+      .order("id", { ascending: true })),
+  );
+  if (quoteError) throw quoteError;
+  const quoteNumberById = new Map((quoteRows || []).map((row) => [row.id, row.quoteNumber]));
+
   return {
     schemaReady: true,
     salesOrders: available
@@ -152,6 +165,7 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
         });
         return {
           ...salesOrder,
+          quoteNumber: quoteNumberById.get(salesOrder.quotationId) || null,
           filingItemCount: resolved.lines.length,
           filingTotalTax: resolved.totalTax,
           filingAmountToCollect: resolved.amountToCollect,
@@ -220,8 +234,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        คืนลิสต์เปล่าเหมือนเดิมเท่ากับบอกว่า "ใบนี้ไม่มีสินค้าสรรพสามิต" ซึ่งตรงข้ามกับความจริง
        ⚠️ `eligible` ต้องเป็น false เสมอเมื่อมีใบยื่นแล้ว — คิวส่งต่อ (handoffQueue) กรองด้วยค่านี้ */
     const resolved = await resolveContext(supabase, salesOrder);
-    if (existing.filing) return ok({ ...resolved, filing: existing.filing, eligible: false, schemaReady: true });
-    return ok({ filing: null, schemaReady: true, ...resolved });
+    /* ต้นทางที่จอต้องโชว์ก่อนกดสร้าง (มติผู้ใช้ 2026-09-07): เลข SO + **เลข QT ที่เกี่ยวข้อง**
+       — `loadSalesOrderContext` โหลด quotation มาอยู่แล้วสำหรับตรึงลงใบ ใช้ต่อได้เลย */
+    const source = {
+      orderNumber: salesOrder.orderNumber || null,
+      orderDate: salesOrder.orderDate || null,
+      quotationId: salesOrder.quotationId || null,
+      quoteNumber: salesOrder.quotation?.quoteNumber || null,
+    };
+    if (existing.filing) return ok({ ...resolved, source, filing: existing.filing, eligible: false, schemaReady: true });
+    return ok({ filing: null, schemaReady: true, source, ...resolved });
   } catch (error) {
     return fail(`ตรวจการยื่นชำระไม่สำเร็จ: ${error.message}`, 500);
   }
@@ -257,6 +279,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const filing = {
     id: orderId,
     salesOrderId,
+    /* ⭐ ใบเสนอราคาต้นทาง (มติผู้ใช้ 2026-09-07 · mig 0349) — ต้นทางของใบยื่นยังเป็น
+       **ใบสั่งขายที่อนุมัติแล้ว** เหมือนเดิม ตัวนี้คือ "QT ที่เกี่ยวข้อง" ผูกด้วย FK
+       ไม่ใช่สตริง `quotationRef` ที่ฝ่ายขายพิมพ์แก้เองได้
+       ⚠️ อ่านจาก `sales_orders."quotationId"` ตรง ๆ ไม่ใช่จาก snapshot ที่โหลดมา —
+       ค่า FK ต้องเป็นของจริงจากสาย QT→SO ไม่ใช่ค่าที่ผ่านการเลือก/ตกทอดมาอีกชั้น */
+    quotationId: salesOrder.quotationId || null,
     customerId: salesOrder.customerId || null,
     customerName: salesOrder.customerName || null,
     // ตรึงข้อมูลลูกค้าลงใบ: snapshot บนใบเสนอราคามาก่อน (ค่าที่ลูกค้าเห็นบนเอกสารต้นทาง)

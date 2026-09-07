@@ -755,7 +755,7 @@ const RAW_OPACITY_JSX_CAP = 24;
    ⇒ แถบ Gantt/กราฟที่กว้างตามข้อมูลจึงไม่เข้าเพดาน ซึ่งถูกแล้ว — ของพวกนั้นไม่มี
    ปลายทางเป็นโทเคน 
    📉 757 → 754 (2026-09-06) — แถวย้อนกลับของหน้าสินค้ากับ shipment-prep เลิกเขียน inline style เอง ย้ายไปใช้ .ui-workspace-back-row ของกลาง */
-const RAW_SPACING_JSX_CAP = 754;
+const RAW_SPACING_JSX_CAP = 751;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ

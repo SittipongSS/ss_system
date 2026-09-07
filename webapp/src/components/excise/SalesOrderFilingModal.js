@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileCheck2 } from "lucide-react";
 import Modal from "@/components/Modal";
+import { TableScroll } from "@/components/ui/Table";
 import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import styles from "./SalesOrderFilingModal.module.css";
 
 const EMPTY_RESOLUTION = {
   loading: false,
@@ -15,7 +17,17 @@ const EMPTY_RESOLUTION = {
   warnings: [],
   totalTax: 0,
   amountToCollect: 0,
+  // ต้นทางของใบ: เลขใบสั่งขาย + เลขใบเสนอราคาที่เกี่ยวข้อง (server ส่งมาคู่กัน)
+  source: null,
   error: "",
+};
+
+// บรรทัดที่ทะเบียนยังไม่อนุมัติ — สร้างใบยื่นได้ แต่ต้องรู้ว่าติดที่ตัวไหนก่อนกด
+const REGISTRATION_GAP = {
+  none: "ยังไม่มีทะเบียน",
+  draft: "ทะเบียนยังเป็นฉบับร่าง",
+  pending: "ทะเบียนรอนิติกรรมตรวจ",
+  rejected: "ทะเบียนถูกตีกลับ",
 };
 
 export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
@@ -73,6 +85,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
           warnings: data.warnings || [],
           totalTax: Number(data.totalTax || 0),
           amountToCollect: Number(data.amountToCollect || 0),
+          source: data.source || null,
           error: "",
         });
       })
@@ -124,7 +137,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
 
   return (
     <Modal open={open} onClose={busy ? () => {} : onClose} title="สร้างใบยื่นชำระจาก ใบสั่งขาย" size="md">
-      <div className="drawer-section" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className={`drawer-section ${styles.form}`}>
         {error && <StatusNotice tone="error">{error}</StatusNotice>}
         {!schemaReady && <StatusNotice tone="warning">ระบบเชื่อมใบสั่งขายกับใบยื่นยังไม่พร้อมใช้งาน</StatusNotice>}
 
@@ -156,27 +169,71 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
             onChange={(event) => setSalesOrderId(event.target.value)}
           >
             <option value="">{customerId && !customerOrders.length ? "ไม่มี ใบสั่งขายที่รอยื่น" : "เลือก ใบสั่งขาย"}</option>
+            {/* โชว์เลขใบเสนอราคาคู่กับเลขใบสั่งขาย — คนกดต้องรู้ว่ากำลังยื่นตาม QT ใบไหน */}
             {customerOrders.map((order) => (
               <option key={order.id} value={order.id}>
-                {order.orderNumber} · {fmtDate(order.orderDate)} · {fmtMoney(order.totalAmount)}
+                {[order.orderNumber, order.quoteNumber].filter(Boolean).join(" · ")}
+                {" · "}{fmtDate(order.orderDate)} · {fmtMoney(order.totalAmount)}
               </option>
             ))}
           </Select>
         </label>
 
         {selectedOrder && (
-          <div className="glass-panel" style={{ padding: 14 }}>
-            <div className="flex items-center gap-2" style={{ fontWeight: "var(--fw-bold)" }}>
+          <div className={`glass-panel ${styles.sourceCard}`}>
+            <div className={styles.sourceHead}>
               <FileCheck2 size={17} color="var(--accent)" />
               {selectedOrder.orderNumber}
             </div>
-            <div className="grid grid-cols-2 gap-3" style={{ marginTop: 12, fontSize: "var(--fs-7)" }}>
-              <div><span style={{ color: "var(--text-3)" }}>ยอด SO</span><div className="font-mono">{fmtMoney(selectedOrder.totalAmount)}</div></div>
-              <div><span style={{ color: "var(--text-3)" }}>รายการสรรพสามิต</span><div>{resolution.loading ? "กำลังตรวจ…" : `${resolution.lines.length} รายการ`}</div></div>
-              <div><span style={{ color: "var(--text-3)" }}>ค่าภาษี (ก่อน VAT)</span><div className="font-mono">{resolution.loading ? "…" : fmtMoney(resolution.totalTax)}</div></div>
-              <div><span style={{ color: "var(--text-3)" }}>ยอดที่ต้องเรียกเก็บ (รวม VAT 7%)</span><div className="font-mono" style={{ color: "var(--accent)", fontWeight: "var(--fw-bold)" }}>{resolution.loading ? "…" : fmtMoney(resolution.amountToCollect)}</div></div>
-              <div><span style={{ color: "var(--text-3)" }}>ทะเบียนที่ควรตรวจ</span><div>{resolution.loading ? "…" : `${resolution.warnings.length} รายการ`}</div></div>
+            {/* ต้นทางของใบยื่น: ใบสั่งขายที่อนุมัติแล้ว + ใบเสนอราคาที่เกี่ยวข้อง
+                (มติผู้ใช้ 2026-09-07) — อ่านจาก resolution.source ก่อน แล้วตกมาที่ลิสต์
+                ระหว่างที่ยังตรวจไม่เสร็จ ไม่งั้นเลข QT กะพริบหายตอนเปลี่ยนใบ */}
+            <div className={styles.sourceRefs}>
+              <span>ใบสั่งขาย <strong>{selectedOrder.orderNumber}</strong></span>
+              <span>ใบเสนอราคา <strong>{naText(resolution.source?.quoteNumber || selectedOrder.quoteNumber)}</strong></span>
+              <span>วันที่ <strong>{fmtDate(selectedOrder.orderDate)}</strong></span>
             </div>
+            <div className={styles.summaryGrid}>
+              <div><span className={styles.summaryLabel}>ยอด SO</span><div className="font-mono">{fmtMoney(selectedOrder.totalAmount)}</div></div>
+              <div><span className={styles.summaryLabel}>รายการสรรพสามิต</span><div>{resolution.loading ? "กำลังตรวจ…" : `${resolution.lines.length} รายการ`}</div></div>
+              <div><span className={styles.summaryLabel}>ค่าภาษี (ก่อน VAT)</span><div className="font-mono">{resolution.loading ? "…" : fmtMoney(resolution.totalTax)}</div></div>
+              <div><span className={styles.summaryLabel}>ยอดที่ต้องเรียกเก็บ (รวม VAT 7%)</span><div className={`font-mono ${styles.summaryStrong}`}>{resolution.loading ? "…" : fmtMoney(resolution.amountToCollect)}</div></div>
+            </div>
+
+            {/* รายการที่จะยื่นจริง — เดิมโมดัลบอกแค่จำนวนรายการ ทั้งที่ API ส่ง lines
+                มาครบ ⇒ คนกดสร้างใบภาษีโดยไม่เห็นว่ายื่นสินค้าอะไร จำนวนเท่าไร */}
+            {!resolution.loading && resolution.lines.length > 0 && (
+              <TableScroll family="list" surface="embedded" minWidth={420}>
+              <table className={styles.lineTable}>
+                <thead>
+                  <tr>
+                    <th>รหัส / รายการ</th>
+                    <th className="num">จำนวน</th>
+                    <th className="num">ภาษี/ชิ้น</th>
+                    <th className="num">ภาษีรวม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resolution.lines.map((line) => (
+                    <tr key={line.salesOrderLineId || line.productId}>
+                      <td>
+                        <span className={styles.lineCode}>{line.fgCode || "FG"}</span>
+                        <div className={styles.lineName}>{naText(line.description)}</div>
+                        {line.needsRegistration && (
+                          <span className={styles.lineGap}>
+                            {REGISTRATION_GAP[line.registrationState] || REGISTRATION_GAP.none}
+                          </span>
+                        )}
+                      </td>
+                      <td className="num mono">{naText(line.quantity)}</td>
+                      <td className="num mono">{fmtMoney(Number(line.exciseRatePerUnit || 0) + Number(line.localTaxRatePerUnit || 0))}</td>
+                      <td className="num mono">{fmtMoney(line.totalTax)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </TableScroll>
+            )}
           </div>
         )}
 
