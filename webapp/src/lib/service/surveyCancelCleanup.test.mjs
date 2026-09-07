@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { cancelCleanupSummary, zoneCleanupDecision } from './surveyCancelCleanup.js';
+import { surveyEditLockError } from './survey.js';
 import { cancelRequestError, closeUnassessedError } from '@/lib/requests/stages';
+
+/** ตัดคอมเมนต์ก่อนค้นซอร์ส — ยามที่ห้ามพูดถึงคำไหน ทำให้ไฟล์อธิบายตัวเองไม่ได้ */
+const code = (url) => readFileSync(new URL(url, import.meta.url), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 const request = (over = {}) => ({
   id: 'REQ1', kind: 'site_survey', dept: 'TS', status: 'pending',
@@ -122,4 +127,43 @@ test('🪤 ธงบูลีนของหัวข้อต้องถูก
     () => assertKind({ key: 'x', label: 'x', scope: 'XX', cancelBeforeAckOnly: 'yes' }),
     /ต้องเป็น true\/false/,
   );
+});
+
+/* ══ ปุ่มบนจอ — ของที่ #1645 สร้าง API ไว้แต่ไม่เคยต่อปลายหน้า ═══════════ */
+
+/* 🐞 ข้อความของปุ่ม "ยกเลิกคำร้อง" โยนคนไปหาปุ่มนี้มาตั้งแต่ #1645 แต่ปุ่มไม่เคยมี
+   ⇒ ใบที่ TS รับเรื่องแล้วดีลล่ม ค้างถาวร ไม่มีประตูออก */
+test('🔴 ปุ่ม "ปิดใบโดยไม่ได้ประเมิน" ต้องมีอยู่จริงบนหน้ารายละเอียดคำร้อง', () => {
+  const page = code('../../app/requests/[id]/page.js');
+  assert.match(page, /id: "close-unassessed"/);
+  assert.match(page, /label: "ปิดใบโดยไม่ได้ประเมิน"/,
+    'ป้ายต้องเป็นคำเดียวกับที่ข้อความของปุ่มยกเลิกเอ่ยถึง ไม่งั้นคนอ่าน toast แล้วยังหาปุ่มไม่เจอ');
+  assert.match(page, /action: "close-unassessed", reason: closeUnassessed\.reason/);
+  assert.match(page, /closeUnassessedError\(req, \{ reason: "x"\.repeat\(10\) \}\)/,
+    'ปุ่มต้องปิดด้วยตัวตัดสินตัวเดียวกับ server ไม่ใช่เขียนเงื่อนไขซ้ำ');
+  // กติกา ม-34: หน้าเปลือกห้ามเทียบชื่อหัวข้อเอง — ธงอยู่ในตัวตัดสินแล้ว
+  assert.doesNotMatch(page, /kind === "site_survey"/);
+});
+
+/* 🔴 สภาพ "ปิดแล้วแต่ไม่เคยตอบ" เพิ่งไปถึงได้จริงตอนปุ่มนี้ถูกสร้าง
+   ⇒ ไม่ล็อก = จอผลประเมินยังแก้ได้ทุกช่อง และยังโชว์ปุ่ม "ส่งผล" ที่กดแล้วตาย 409 */
+test('🔴 ปิดใบแล้ว จอผลประเมินต้องล็อก และต้องบอกทางที่เหลือจริง', () => {
+  const base = { id: 'R1', answeredAt: null, cancelledAt: null };
+  assert.equal(surveyEditLockError(base), null);
+  const closed = surveyEditLockError({ ...base, closedAt: '2026-09-10T00:00:00Z', status: 'closed' });
+  assert.match(closed, /ปิดไปแล้ว/);
+  assert.match(closed, /เปิดใบใหม่/, 'ไม่มีทางกลับ — ห้ามชี้ไปปุ่ม "ยังไม่จบ" ที่หายไปแล้ว');
+  // ทางปิดปกติล็อกด้วย answeredAt ไปก่อนแล้ว — บรรทัดใหม่ต้องไม่เปลี่ยนข้อความของเส้นเดิม
+  assert.match(
+    surveyEditLockError({ ...base, answeredAt: 'x', closedAt: 'y', status: 'closed' }),
+    /ยังไม่จบ/,
+  );
+});
+
+/* 🔴 ใบถูกปิดขณะที่นัดยังเปิดค้างบนตารางช่างได้จริง (ระบบไม่ปิดนัดตามใบ)
+   ⇒ ช่างแก้สรุปนัดนั้นทีหลัง = วันถูกเขียนกลับลงใบที่ปิดแล้ว ⇒ ใบโผล่กลับเข้าคิวเอง */
+test('🔴 ซิงก์วันจากนัด ต้องไม่เขียนลงใบที่จบไปแล้ว', () => {
+  const route = code('../../app/api/service/visits/[id]/route.js');
+  assert.match(route, /const requestClosedOff = !!surveyEditLockError\(reqRow\);/);
+  assert.match(route, /holdsRequestSlot\(data\) && reqRow && !requestClosedOff/);
 });

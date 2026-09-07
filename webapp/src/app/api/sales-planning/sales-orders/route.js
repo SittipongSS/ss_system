@@ -115,7 +115,9 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (orderIds.length) {
     const { data: rows, error: installmentError } = await supabase
       .from('sales_order_installments')
-      .select('salesOrderId, status, "dueDate", "coversFrom", "coversTo"')
+      /* `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" ในคอลัมน์งวดชำระ (mig 0348)
+         ⚠️ เอาแค่คอลัมน์นี้ ไม่ลากไฟล์/ผู้บันทึกมาทั้งก้อน — ตารางต้องการแค่ "มีหรือยัง" */
+      .select('salesOrderId, status, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo"')
       .in('salesOrderId', orderIds);
     // ตารางยังไม่ถูกสร้าง (ยังไม่รัน mig 0245) ต้องไม่ทำให้ทั้งหน้าพัง — คอลัมน์ว่างแทน
     if (installmentError) console.error('[sales-orders] โหลดงวดชำระไม่สำเร็จ:', installmentError.message);

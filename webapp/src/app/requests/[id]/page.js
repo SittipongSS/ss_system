@@ -58,7 +58,8 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
-  answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
+  answerRequestError, closeOutcomeError, closeRequestError, closeUnassessedError,
+  requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { dueIsStale } from "@/lib/requests/dueRound";
@@ -201,6 +202,9 @@ export default function RequestDetailPage() {
   const [cancelReason, setCancelReason] = useState("");
   // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
   const [bounceReason, setBounceReason] = useState("");
+  /* ปิดใบโดยไม่ได้ประเมิน (แผน §5E ③) — ทางออกของฝ่ายผู้รับเมื่อรับเรื่องไปแล้วแต่งานล้ม
+     ⚠️ เหตุผลบังคับ ≥10 ตัวอักษร · ผู้ขอจะเห็นข้อความนี้ในเธรดและกระดิ่ง */
+  const [closeUnassessed, setCloseUnassessed] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   // ผลลัพธ์ตอนปิดบรีฟกลิ่น — { mode: 'link'|'create'|'none', scentId, scentName, code }
@@ -424,6 +428,10 @@ export default function RequestDetailPage() {
      ตราฝั่งใดฝั่งหนึ่งแล้วแต่ยังไม่ครบ · กดได้ทั้งสองฝั่ง (ฝั่งที่กดเปลี่ยนใจ หรือ
      อีกฝั่งที่รู้ว่างานยังไม่จบจริง) — ด่านเดียวกับ server */
   const canReopen = (owner || req._mine) && !reopenRequestError(req, { reason: "x" });
+  /* 🔑 ด่านตัวเดียวกับ server — ป้อนเหตุผลปลอมยาวพอเพื่อถามเฉพาะ "ขั้นตอนพร้อมไหม"
+     (ท่าเดียวกับ `canReopen` ข้างบน) · ธง `cancelBeforeAckOnly` ของหัวข้ออยู่ในตัวตัดสิน
+     ⇒ หน้านี้ไม่ต้องรู้จักชื่อหัวข้อเลย (กติกา ม-34: ห้ามเทียบ req.kind กลางหน้าเปลือก) */
+  const canCloseUnassessed = owner && !closeUnassessedError(req, { reason: "x".repeat(10) });
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
   const needsOutcome = requestNeedsOutcome(req.kind) && !req.scentId;
   const outcomeError = outcome ? closeOutcomeError(req, outcome) : null;
@@ -1196,6 +1204,20 @@ export default function RequestDetailPage() {
         visible: owner && req.status === "pending",
       },
       {
+        /* ⭐ **ทางออกของฝ่ายผู้รับ เมื่อรับเรื่องแล้วแต่ไม่มีผลให้ส่ง** (แผน §5E ③)
+           🐞 ข้อความของปุ่ม "ยกเลิกคำร้อง" โยนคนมาหาปุ่มนี้มาตั้งแต่ #1645
+             ("ให้ฝ่ายที่รับเรื่องกด 'ปิดใบโดยไม่ได้ประเมิน' พร้อมเหตุผลแทน")
+             แต่ปุ่มไม่เคยถูกสร้าง ⇒ ใบที่ TS รับเรื่องแล้วดีลล่ม **ค้างถาวร ไม่มีประตูออก**
+           ⚠️ ป้ายต้องเป็นคำเดียวกับที่ข้อความนั้นเอ่ยถึงเป๊ะ ๆ ไม่งั้นคนอ่าน toast
+             แล้วยังหาปุ่มไม่เจอเหมือนเดิม */
+        id: "close-unassessed",
+        label: "ปิดใบโดยไม่ได้ประเมิน",
+        kind: "cancel",
+        icon: Ban,
+        onClick: () => setCloseUnassessed({ reason: "" }),
+        visible: canCloseUnassessed,
+      },
+      {
         id: "cancel",
         label: "ยกเลิกคำร้อง",
         kind: "cancel",
@@ -1709,6 +1731,56 @@ export default function RequestDetailPage() {
                 }, "เปิดเรื่องกลับมาแล้ว").then((ok) => { if (ok) setReopen(null); })}
               >
                 ยังไม่จบ
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ⭐ **ปิดใบโดยไม่ได้ประเมิน** (แผน §5E ③) — ก้าวเดียวที่พาใบซึ่งรับเรื่องไปแล้ว
+          แต่ไม่มีผลให้ส่ง ออกจากคิวได้ · ต่างจาก "ยกเลิก" เพราะงานเกิดขึ้นจริงแล้ว
+          ⚠️ **เป็นก้าวทางเดียว** — ปิดแล้วปุ่ม "ยังไม่จบ" หายไปด้วย (`reopenRequestError`
+            ตัดที่ `status === 'closed'`) ⇒ โมดัลต้องบอกตรง ๆ ไม่ใช่ถามลอย ๆ */}
+      <Modal
+        open={closeUnassessed !== null} onClose={() => setCloseUnassessed(null)} size="sm"
+        dismissible={!saving}
+        title="ปิดใบโดยไม่ได้ประเมิน"
+      >
+        {closeUnassessed && (
+          <>
+            <div className="form-group">
+              <label htmlFor="close-unassessed-why">ปิดเพราะอะไร *</label>
+              <Textarea
+                id="close-unassessed-why" rows={3} maxLength={500}
+                value={closeUnassessed.reason} disabled={saving}
+                placeholder="เช่น ลูกค้ายกเลิกโครงการทั้งหมด · ดีลล่ม ไม่ต้องเข้าพื้นที่แล้ว"
+                onChange={(e) => setCloseUnassessed({ ...closeUnassessed, reason: e.target.value })}
+              />
+              {/* ปุ่มจางต้องบอกเหตุเป็นตัวหนังสือ — และบอกว่าใครจะอ่านข้อความนี้ */}
+              <small className={styles.hint}>
+                {closeUnassessed.reason.trim().length >= 10
+                  ? "ผู้ขอจะเห็นเหตุผลนี้ในกระดิ่ง · ใบจบถาวร เปิดกลับไม่ได้"
+                  : "ต้องบอกเหตุผลอย่างน้อย 10 ตัวอักษร — ผู้ขอจะเห็นข้อความนี้"}
+              </small>
+              {/* ⚠️ นัดที่ยังเปิดอยู่ไม่ถูกยกเลิกให้ — ระบบไม่ปิดนัดตามใบทั้งเส้นทางนี้และ
+                  เส้นยกเลิก ⇒ บอกไว้ ดีกว่าให้ช่างขับไปถึงหน้างานของใบที่ปิดไปแล้ว */}
+              <small className={styles.hint}>
+                นัดที่ลงตารางช่างไว้แล้วจะไม่ถูกยกเลิกให้ — ถ้ามี ให้ไปยกเลิกที่ตารางช่างเอง
+              </small>
+            </div>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setCloseUnassessed(null)}>
+                ยกเลิก
+              </Button>
+              <Button
+                tone="danger"
+                disabled={saving || closeUnassessed.reason.trim().length < 10}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({ action: "close-unassessed", reason: closeUnassessed.reason }),
+                }, "ปิดใบแล้ว — ผู้ขอได้รับแจ้ง").then((ok) => { if (ok) setCloseUnassessed(null); })}
+              >
+                ปิดใบ
               </Button>
             </div>
           </>
