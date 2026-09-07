@@ -2,6 +2,7 @@
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { forbidden, notFound, unauthorized } from '@/lib/http';
 import { fetchAll } from '@/lib/supabaseFetchAll';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { canEditService, canPickServiceSite, canViewService } from '@/lib/permissions';
 
 // ⚠️ ด่านจริงของโมดูลบริการอยู่ตรงนี้ — proxy เห็นแค่ role จึงปล่อย `staff` ทุกฝ่าย
@@ -77,9 +78,11 @@ export async function assetCountsBySite(supabase, siteIds = []) {
      ตัวเลข "จำนวนเครื่อง" จะต่ำกว่าจริงโดยไม่มี error ให้เห็นเลย
      ⚠️ ต้อง order ด้วยคีย์ที่ unique (`id`) — เรียงด้วย status/siteId ไล่หน้าแล้ว
         ได้แถวซ้ำและแถวหายพร้อมกัน */
-  const data = await fetchAll(() => supabase
+  /* ⚠️ ซอยลิสต์ข้างนอก ไล่หน้าข้างใน — `fetchAll` แก้เพดานแถว ไม่ได้แก้ URL ยาว
+     ผลถูกยัดเข้า Map ทันที ⇒ ลำดับไม่มีความหมาย ไม่ต้องเรียงซ้ำ */
+  const data = await fetchAllInChunks(siteIds, (chunk) => supabase
     .from('service_assets').select('id, siteId, status, condition')
-    .in('siteId', siteIds).order('id', { ascending: true }));
+    .in('siteId', chunk).order('id', { ascending: true }));
   for (const row of data || []) {
     const entry = counts.get(row.siteId) || { total: 0, active: 0, inStock: 0, broken: 0 };
     entry.total += 1;
@@ -101,9 +104,10 @@ export async function assetCountsBySite(supabase, siteIds = []) {
 export async function zoneCountsBySite(supabase, siteIds = []) {
   const counts = new Map();
   if (!siteIds.length) return counts;
-  const { data, error } = await supabase
-    .from('service_zones').select('siteId').in('siteId', siteIds);
-  if (error) throw error;
+  /* นับอย่างเดียว ⇒ ลำดับไม่มีความหมาย · ต้องมี `.order()` ที่นิ่งให้ fetchAll ไล่หน้า */
+  const data = await fetchAllInChunks(siteIds, (chunk) => supabase
+    .from('service_zones').select('siteId, id').in('siteId', chunk)
+    .order('id', { ascending: true }));
   for (const row of data || []) counts.set(row.siteId, (counts.get(row.siteId) || 0) + 1);
   return counts;
 }
@@ -159,10 +163,10 @@ export async function loadAllAssets(supabase) {
 
   /* ไซต์มีไม่กี่ร้อยใบและ `.in()` ก้อนเดียวพอ — แต่ห่อไว้ด้วยเพื่อไม่ให้เป็นหนี้
      ก้อนใหม่ตอนไซต์โตข้ามพัน (ทะเบียนไซต์ยังไม่อยู่ในเพดาน rowcap) */
-  const sites = await fetchAll(() => supabase
+  const sites = await fetchAllInChunks(siteIds, (chunk) => supabase
     .from('service_sites')
     .select('id, code, name, kind, customerId, customerName, routeZone, province')
-    .in('id', siteIds).order('id', { ascending: true }));
+    .in('id', chunk).order('id', { ascending: true }), { sort: (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) });
 
   return { assets: assets || [], sites: sites || [] };
 }
