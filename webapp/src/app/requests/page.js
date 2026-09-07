@@ -454,6 +454,9 @@ export default function RequestsPage() {
 
       <RequestQueuePanel
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
+        /* หัวเรื่องอยู่บนหัวหน้าแล้ว — หัวการ์ดซ้ำอีกชั้นกิน 81px ฟรี
+           และป้ายจำนวนก็ซ้ำกับ Pager ใต้ตาราง (ดู prop sectionHeader) */
+        sectionHeader={false}
         rows={rows} board={board}
         /* กรองฝ่ายอยู่แล้วไม่เจอ = บอกว่าไม่มี **และบอกทางออก** — ข้อความตั้งต้นของ
            พาเนลพูดถึงคิวทั้งก้อน ซึ่งอ่านเหมือนระบบว่างทั้งที่แค่กรองอยู่ */
