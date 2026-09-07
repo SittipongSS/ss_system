@@ -159,8 +159,12 @@ export default function QuotationLineItems({
     const identity = productIdentity(product || line);
     /* เจ้าของ FG เมื่อไม่ใช่ใบลูกค้าใบนี้ (นิติบุคคลเดียวกัน คนละสาขา/คนละรหัส AR)
        อ่านจากลิสต์สดก่อน แล้วค่อยตกไปที่ snapshot ที่ server ประทับไว้กับบรรทัด —
-       บรรทัดในโหมดอ่านและใบสั่งขายไม่มีลิสต์สินค้าให้ค้น เหลือแต่ snapshot */
-    const owner = productOwnerTag(product) || (line.metadata?.fgOwnerArCode
+       บรรทัดในโหมดอ่านและใบสั่งขายไม่มีลิสต์สินค้าให้ค้น เหลือแต่ snapshot
+       🪤 ตัวตัดสินคือ **เจอสินค้าในลิสต์สดไหม** ไม่ใช่ "ป้ายว่างไหม" — ป้ายว่างแปลได้
+       สองอย่าง (ลิสต์บอกว่าเป็นของใบนี้เอง / ไม่มีลิสต์ให้ถาม) ถ้าใช้ `||` สองกรณีนี้
+       ยุบเป็นอันเดียว แล้วบรรทัดที่เพิ่งสลับ FG กลับมาเป็นของใบตัวเองจะยังโชว์ป้าย
+       เจ้าของเก่าค้างอยู่ (metadata เดิมถูกส่งต่อมาจนกว่า server จะล้างตอนบันทึก) */
+    const owner = product ? productOwnerTag(product) : (line.metadata?.fgOwnerArCode
       ? [line.metadata.fgOwnerArCode, line.metadata.fgOwnerBranchCode
         ? `สาขา ${line.metadata.fgOwnerBranchCode}` : ""].filter(Boolean).join(" · ")
       : "");

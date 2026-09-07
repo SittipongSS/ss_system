@@ -92,6 +92,24 @@ export async function customerTaxSiblings(supabase, customerId) {
   return [anchor, ...siblings];
 }
 
+/**
+ * รุ่นบริสุทธิ์ — ใช้กับจอที่โหลดทะเบียนลูกค้ามาไว้ในมืออยู่แล้ว (ไม่ยิง query ซ้ำ
+ * และ import เข้า client component ได้)
+ *
+ * ⚠️ เป็นตัวกรอง **การแสดงผล** เท่านั้น — ใบไหนไม่อยู่ใน `rows` (จอโหลดมาไม่ครบ)
+ * ก็แค่ไม่ขึ้นในลิสต์ ด่านจริงอยู่ฝั่ง server ที่ถามฐานเอง
+ */
+export function taxSiblingIdsFromRows(rows, customerId) {
+  if (!customerId) return [];
+  const anchor = (rows || []).find((row) => row?.id === customerId);
+  if (!anchor) return [customerId];
+  const key = taxGroupKey(anchor);
+  if (!key) return [customerId];
+  return [customerId, ...(rows || [])
+    .filter((row) => row && row.id !== customerId && taxGroupKey(row) === key && isUsableSibling(row))
+    .map((row) => row.id)];
+}
+
 /** เอาไว้ตอนต้องการแค่รายการ id (ด่านตอนบันทึก) */
 export async function customerTaxSiblingIds(supabase, customerId) {
   const rows = await customerTaxSiblings(supabase, customerId);

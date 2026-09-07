@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { customerTaxSiblingIdMap, customerTaxSiblingIds, taxGroupKey } from './customerTaxSiblings.js';
+import {
+  customerTaxSiblingIdMap, customerTaxSiblingIds, taxGroupKey, taxSiblingIdsFromRows,
+} from './customerTaxSiblings.js';
 
 /* ── "นิติบุคคลเดียวกัน" ต้องเข้มกว่าด่านตอนบันทึกลูกค้ามาก ────────────────────
    ด่านฟอร์ม (`taxIdFormatError`) ปล่อยค่าที่มีตัวอักษรผ่านทั้งหมด และ `taxIdKey`
@@ -37,17 +39,22 @@ test('เลขที่จับกลุ่มไม่ได้ = คีย�
 const fakeSupabase = (rows) => ({
   from: (table) => {
     assert.equal(table, 'customers');
-    const result = { data: rows, error: null };
-    const chain = {
-      eq: (col, value) => ({
-        maybeSingle: async () => ({ data: rows.find((r) => r[col] === value) || null, error: null }),
-      }),
-      or: () => chain,
-      order: () => chain,
-      in: async (col, ids) => ({ data: rows.filter((r) => ids.includes(r[col])), error: null }),
-      range: async () => result,
+    // `.or()` ของจริงกว้างเกินตั้งใจ (ดึงหลวมแล้วกรองซ้ำใน JS) — stub จึงคืนทุกแถว
+    // ส่วน `.in()` กรองจริงเหมือน PostgREST
+    const select = () => {
+      let scoped = rows;
+      const chain = {
+        eq: (col, value) => ({
+          maybeSingle: async () => ({ data: scoped.find((r) => r[col] === value) || null, error: null }),
+        }),
+        or: () => chain,
+        order: () => chain,
+        in: (col, values) => { scoped = scoped.filter((r) => values.includes(r[col])); return chain; },
+        range: async () => ({ data: scoped, error: null }),
+      };
+      return chain;
     };
-    return { select: () => chain };
+    return { select };
   },
 });
 
@@ -113,4 +120,22 @@ test('customerTaxSiblingIdMap: ใบที่หาไม่เจอ/ไม่
   assert.deepEqual(map.get('C-BRANCH'), ['C-BRANCH']);
   assert.deepEqual(map.get('ไม่มีใบนี้'), ['ไม่มีใบนี้']);
   assert.deepEqual((await customerTaxSiblingIdMap(sb, [])).size, 0);
+});
+
+/* รุ่นบริสุทธิ์ — จอที่ถือทะเบียนลูกค้าอยู่แล้วใช้กรองลิสต์ได้โดยไม่ยิง query
+   ต้องให้ผลตรงกับรุ่นที่ถามฐาน ไม่งั้นจอกับด่าน server พูดคนละเรื่อง */
+test('taxSiblingIdsFromRows ให้ผลตรงกับรุ่นที่ถามฐาน', async () => {
+  const rows = [HEAD, BRANCH];
+  assert.deepEqual(taxSiblingIdsFromRows(rows, 'C-BRANCH'),
+    await customerTaxSiblingIds(fakeSupabase(rows), 'C-BRANCH'));
+  assert.deepEqual(taxSiblingIdsFromRows(rows, 'C-HEAD'),
+    await customerTaxSiblingIds(fakeSupabase(rows), 'C-HEAD'));
+});
+
+test('taxSiblingIdsFromRows: ใบพี่น้องยังไม่อนุมัติ/เลขจับกลุ่มไม่ได้/ไม่มีใบในลิสต์', () => {
+  assert.deepEqual(taxSiblingIdsFromRows([BRANCH, { ...HEAD, approvalStatus: 'pending' }], 'C-BRANCH'), ['C-BRANCH']);
+  assert.deepEqual(taxSiblingIdsFromRows([{ ...BRANCH, taxId: 'N/A' }, { ...HEAD, taxId: 'N/A' }], 'C-BRANCH'), ['C-BRANCH']);
+  // จอโหลดทะเบียนมาไม่ครบ = กรองแคบไว้ก่อน (ด่านจริงอยู่ฝั่ง server)
+  assert.deepEqual(taxSiblingIdsFromRows([], 'C-BRANCH'), ['C-BRANCH']);
+  assert.deepEqual(taxSiblingIdsFromRows([HEAD, BRANCH], ''), []);
 });

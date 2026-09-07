@@ -11,6 +11,7 @@ import { productSelectOptions } from "@/components/master/productOption";
 import { exciseTaxLineForRegistration, exciseTaxTotals } from "@/lib/tax/exciseBilling";
 import Textarea from "@/components/ui/Textarea";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { taxSiblingIdsFromRows } from "@/lib/master/customerTaxSiblings";
 import { apiFetch } from "@/lib/apiFetch";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
@@ -49,11 +50,19 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
     setError(null);
   }, [open, order?.id]);
 
-  // Only the chosen customer's approved registrations are selectable — no
-  // customer picked yet means an empty list (pick a customer first).
+  /* Only the chosen customer's approved registrations are selectable — no
+     customer picked yet means an empty list (pick a customer first).
+     ⭐ "ลูกค้ารายนี้" = **นิติบุคคล** ไม่ใช่ใบลูกค้าใบเดียว (มติผู้ใช้ 2026-09-07) —
+     ใบยื่นที่ออกจาก SO อ้างทะเบียนของใบลูกค้าที่เป็นเจ้าของ FG ได้ ถ้าลิสต์นี้ยังแคบ
+     กว่าด่าน server ใบที่ถูกตีกลับจะเปิดมาเจอช่องทะเบียนว่างเปล่าโดยไม่มีคำอธิบาย
+     กรองจากทะเบียนลูกค้าที่จอโหลดมาแล้ว ไม่ยิง query เพิ่ม */
+  const ownerIds = useMemo(
+    () => new Set(taxSiblingIdsFromRows(customers, customerId)),
+    [customers, customerId],
+  );
   const approvedRegs = useMemo(
-    () => (customerId ? registrations.filter((r) => r.status === "approved" && r.customerId === customerId) : []),
-    [registrations, customerId],
+    () => (customerId ? registrations.filter((r) => r.status === "approved" && ownerIds.has(r.customerId)) : []),
+    [registrations, customerId, ownerIds],
   );
 
   // Sale price (retail incl VAT) is pulled from the master product via the
