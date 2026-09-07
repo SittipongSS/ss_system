@@ -14,6 +14,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { notifyToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/apiFetch";
 import { sortTeams } from "@/lib/master/teams";
+import { invalidateSalesTeams } from "@/lib/master/salesTeamRegistry";
 
 export default function useTeamRegistry(department) {
   const [data, setData] = useState(null);
@@ -90,6 +91,10 @@ export default function useTeamRegistry(department) {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
       notifyToast.success(okMsg);
+      /* ⚠️ ทะเบียนเปลี่ยน = ป้ายทีมทั้งเว็บเปลี่ยน — ล้างแคชฝั่งจอด้วย ไม่งั้นแท็บที่เปิด
+         ค้างไว้ (คิวลีด · หน้าวางเป้า · แถบเมนู) จะโชว์ชื่อเก่าไปเรื่อย ๆ
+         แคชอยู่ระดับโมดูล TTL เป็นแค่ *พื้น* ต้องมี mount ใหม่ถึงจะยิงซ้ำ */
+      invalidateSalesTeams();
       await load({ background: true });
       return body ?? true;
     } catch (e) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useParams, useRouter } from "next/navigation";
 import { Handshake, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, Trash2, UserRound, Users, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -24,7 +25,7 @@ import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
-import { TEAM_LABELS } from "@/lib/permissions";
+
 import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
@@ -54,7 +55,7 @@ function eventDetail(event) {
   if (event.reason) parts.push(event.reason);
   if (event.kind === "contact" && event.eventAt) parts.push(`ติดต่อเมื่อ ${fmtDateTime(event.eventAt)}`);
   // ทีมกับผู้รับผิดชอบคือ "ผลของเหตุการณ์" ของ screen/assign — เดิมทีมหายไปทั้งที่บันทึกไว้
-  if (event.team) parts.push(TEAM_LABELS[event.team] || event.team);
+  if (event.team) parts.push(teamLabelNow(event.team));
   if (event.assigneeName) parts.push(event.assigneeName);
   return parts.join(" · ");
 }
@@ -278,7 +279,7 @@ export default function LeadDetailPage() {
           facts={[
             { icon: Sparkles, label: "บริการที่สนใจ", value: SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest },
             { icon: CircleDollarSign, label: "งบประมาณ", value: leadBudgetText(lead, fmtMoney) },
-            { icon: Users, label: "ทีม", value: TEAM_LABELS[lead.team] || lead.team || "ยังไม่มอบหมาย" },
+            { icon: Users, label: "ทีม", value: lead.team ? teamLabelNow(lead.team) : "ยังไม่มอบหมาย" },
             // ชื่อจาก `assigneeId` — สำเนาชื่อในแถวไม่ขยับตอนเจ้าตัวเปลี่ยนชื่อ
             { icon: UserRound, label: "ผู้รับผิดชอบ", value: livePersonName(directory, lead.assigneeId, lead.assigneeName) || "ยังไม่มอบหมาย" },
           ]}

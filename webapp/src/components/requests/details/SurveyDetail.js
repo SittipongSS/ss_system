@@ -12,9 +12,10 @@
 // ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ยังอยู่ในตาราง แต่ไม่เข้ายอดรวม — หายไป
 // เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วเจ้าหน้าที่ตัดทิ้งเพราะอะไร
 import Link from "next/link";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
-import { surveyTotals, surveyZoneSummary } from "@/lib/service/survey";
+import { surveyChangeCounts, surveyChangeText, surveyTotals, surveyZoneSummary } from "@/lib/service/survey";
 import styles from "./details.module.css";
 
 const STATUS_LABEL = { ok: "", cut: "ตัดออก", added: "เจ้าหน้าที่เพิ่มหน้างาน" };
@@ -42,6 +43,11 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
   if (!zones.length && !site) return null;
   const totals = surveyTotals(zones);
   const measured = zones.some((z) => surveyZoneSummary(z).volumeCbm > 0);
+  /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (มติข้อ 6 · แผน §9 ข้อ 2)
+     🔑 **ขึ้นเฉพาะเมื่อของที่ได้ ≠ ของที่ขอ** — ต่างจากจอของ TS ที่ขึ้นเสมอ
+       ผู้ขอเป็นคนพิมพ์รายการนี้เองกับมือ ⇒ บอกเขาว่า "ได้ครบตามที่ขอ" คือเสียง
+       รบกวนบนใบที่ยังไม่มีใครไปวัดด้วยซ้ำ · สิ่งที่เขาไม่รู้คือ *สิ่งที่เปลี่ยน* */
+  const change = surveyChangeCounts(zones);
 
   return (
     <section className={styles.surveyWrap} aria-label="สถานที่และพื้นที่ที่ต้องประเมิน">
@@ -91,6 +97,13 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
         <p className={styles.surveyOpen}>
           <Link href={`/service/surveys/${request.id}`}>เปิดจอบันทึกผล / สรุปส่งผล →</Link>
         </p>
+      )}
+
+      {(change.cut > 0 || change.added > 0) && (
+        <StatusNotice tone="info" title={surveyChangeText(change, { actor: "TS" })}>
+          เจ้าหน้าที่ตัด/เพิ่มพื้นที่เองได้โดยไม่ต้องรออนุมัติ — ตัดออกต้องบอกเหตุผลเสมอ เพิ่มไม่ต้อง
+          · ดูว่าแถวไหนเปลี่ยนได้ที่ป้ายท้ายชื่อพื้นที่ในตารางข้างล่าง
+        </StatusNotice>
       )}
 
       <TableScroll surface="embedded" cells="stacked" minWidth={640}>
@@ -150,7 +163,10 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
               <tr>
                 <th>
                   รวม {totals.zones} พื้นที่
+                  {/* ⚠️ ต้องบอกทั้งสองทาง — เดิมมีแต่ "ตัดออก" ⇒ ใบที่ TS เพิ่มพื้นที่ให้
+                      จะอ่านเหมือนตัวเลขบวมขึ้นเองโดยไม่มีคำอธิบาย */}
                   {totals.cutZones ? <span className="cell-sub">ตัดออก {totals.cutZones}</span> : null}
+                  {totals.addedZones ? <span className="cell-sub">เพิ่มหน้างาน {totals.addedZones}</span> : null}
                 </th>
                 <td className="num">{naText(num(totals.areaSqm))}</td>
                 <td className="num">{naText(num(totals.volumeCbm))}</td>

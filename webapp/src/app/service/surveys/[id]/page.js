@@ -11,7 +11,7 @@
 //   จอไม่คำนวณเอง เพราะจอไม่รู้ user id ของตัวเอง
 import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList, Search, Send, Undo2 } from "lucide-react";
+import { ClipboardList, MapPinPlus, Search, Send, Undo2 } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import SurveyResultTable from "@/components/service/SurveyResultTable";
@@ -24,7 +24,12 @@ import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { surveyFieldProgress, surveySendError, surveyTotals } from "@/lib/service/survey";
+import {
+  surveyAddZoneError, surveyChangeCounts, surveyChangeText,
+  surveyFieldProgress, surveySendError, surveyTotals,
+} from "@/lib/service/survey";
+import { surveyRowNameClash } from "@/lib/service/surveyRequest";
+import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import { apiJson } from "@/lib/apiFetch";
 import styles from "./page.module.css";
 
@@ -50,6 +55,13 @@ export default function SurveySheetPage({ params }) {
   const [recalling, setRecalling] = useState(false);
   const [recallReason, setRecallReason] = useState("");
   const [recallBusy, setRecallBusy] = useState(false);
+  /* ช่างเพิ่มพื้นที่ที่เจอหน้างาน (มติข้อ 6) — ฟอร์มย่อของ "เพิ่มพื้นที่ใหม่" ฝั่ง SA
+     ⚠️ ชั้นบังคับเหมือนกัน เพราะมันเป็นท่อน FF ของรหัส ZN (mig 0315) */
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ name: "", floor: "", note: "" });
+  const [addBusy, setAddBusy] = useState(false);
+  const [removing, setRemoving] = useState(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -134,13 +146,57 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
+  const addZone = async () => {
+    setAddBusy(true);
+    try {
+      await apiJson(`/api/service/surveys/${id}/zones`, {
+        method: "POST", json: draft, fallbackError: "เพิ่มพื้นที่ไม่สำเร็จ",
+      });
+      setAdding(false);
+      setDraft({ name: "", floor: "", note: "" });
+      setToast({ kind: "success", msg: "เพิ่มพื้นที่แล้ว — ได้รหัสในทะเบียนเรียบร้อย" });
+      await load({ background: true });
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
+  /* ลบพื้นที่ที่เพิ่มผิด — ไม่ใช่ "ตัดออก" (ดูเหตุผลที่ route)
+     ⚠️ ไม่ใส่ `retry` — ลบซ้ำรอบสองได้ 404 แล้วจอจะบอกคนละเรื่องกับความจริง */
+  const removeZone = async () => {
+    setRemoveBusy(true);
+    try {
+      await apiJson(`/api/service/surveys/${id}/zones/${removing.id}`, {
+        method: "DELETE", fallbackError: "ลบพื้นที่ไม่สำเร็จ",
+      });
+      setRemoving(null);
+      setToast({ kind: "success", msg: "ลบพื้นที่ที่เพิ่มไว้แล้ว" });
+      await load({ background: true });
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
+
   const zones = data?.zones || [];
   const progress = surveyFieldProgress(zones, data?.filesByZone || {});
   const totals = surveyTotals(zones);
+  /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
+     เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน */
+  const changeText = surveyChangeText(surveyChangeCounts(zones), { withNames: true });
   const canDecide = data?.canDecide === true;
   /* 🔑 ด่านตัวเดียวกับที่ server ใช้ — ปุ่มปิดตามนี้ และเหตุผลขึ้นเป็นตัวหนังสือ */
   const sendGate = surveySendError(zones, data?.filesByZone || {}, { canSend: canDecide });
   const sent = !!data?.request?.answeredAt;
+  /* 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · เหตุที่เขียนไม่ได้บอกไว้ข้างบนแล้ว */
+  const addGate = surveyAddZoneError(data?.request, { canWrite: data?.canWrite === true });
+  /* ตรวจด้วยตัวเดียวกับ server — ชั้นผิดต้องรู้ตั้งแต่ตอนพิมพ์ ไม่ใช่ตอนกดแล้วเด้งกลับ */
+  const draftFloor = normalizeFloor(draft.floor);
+  const draftClash = draft.name.trim() ? surveyRowNameClash(draft.name, zones) : null;
+  const draftReady = !!draft.name.trim() && !draftClash && !draftFloor.error;
   const back = { href: "/service/today", label: "งานวันนี้" };
 
   if (loading) {
@@ -230,13 +286,20 @@ export default function SurveySheetPage({ params }) {
           ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน — ฝ่ายขายเป็นคนระบุพื้นที่ตอนเปิดใบ
         </EmptyState>
       ) : tab === "result" ? (
-        <SurveyResultTable
-          zones={zones}
-          filesByZone={data?.filesByZone || {}}
-          canDecide={canDecide && !sent}
-          busyZone={busyZone}
-          onDecide={decideZone}
-        />
+        <>
+          {/* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้โดยไม่
+              ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเองเปลี่ยน
+              อะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่ขึ้นเฉพาะตอนมีการเปลี่ยน
+              (เห็น "ไม่มีตัด ไม่มีเพิ่ม" = ยืนยันว่าไม่ได้ลืมอะไร) */}
+          <p className={styles.change} role="status">{changeText}</p>
+          <SurveyResultTable
+            zones={zones}
+            filesByZone={data?.filesByZone || {}}
+            canDecide={canDecide && !sent}
+            busyZone={busyZone}
+            onDecide={decideZone}
+          />
+        </>
       ) : (
         <div className={styles.list}>
           {zones.map((zone) => (
@@ -247,10 +310,76 @@ export default function SurveySheetPage({ params }) {
               canWrite={data?.canWrite === true && !sent}
               busy={busyZone === zone.id}
               onSave={(payload) => saveZone(zone.id, payload)}
+              onDelete={() => setRemoving(zone)}
             />
           ))}
+          {/* ⭐ **ปุ่มอยู่ท้ายลิสต์ ไม่ใช่บนหัวจอ** (ม็อกจอ 06) — ช่างจะรู้ว่ามีพื้นที่เกินมา
+              ก็ต่อเมื่อไล่วัดของที่มีในใบจนหมดแล้ว ⇒ ปุ่มควรรออยู่ตรงที่เขาไล่มาถึงพอดี */}
+          {!addGate && (
+            <Button variant="outline" icon={<MapPinPlus size={15} aria-hidden="true" />}
+              onClick={() => setAdding(true)}>
+              เพิ่มพื้นที่ที่เจอหน้างาน
+            </Button>
+          )}
         </div>
       )}
+
+      {/* ── เพิ่มพื้นที่ที่เจอหน้างาน ─────────────────────────────────────
+          ⚠️ **ไม่มีช่องเหตุผล** — แผน §9 เขียนไว้ตรง ๆ ว่า "ตัดต้องมีเหตุผลบังคับ ·
+            เพิ่มไม่ต้อง" (ของที่หายไปจากสิ่งที่ SA จะเสนอราคาคือของที่ลูกค้าจะถาม
+            ส่วนของที่เพิ่มมาคือยอดที่โตขึ้น ไม่มีใครเสียหาย) */}
+      <ConfirmDialog
+        open={adding}
+        title="เพิ่มพื้นที่ที่เจอหน้างาน"
+        message="พื้นที่นี้จะเข้าทะเบียนของลูกค้าทันทีพร้อมรหัส และเข้าไปอยู่ในผลที่ส่งให้ฝ่ายขาย"
+        detail="ฝ่ายขายจะเห็นป้าย “เจ้าหน้าที่เพิ่มหน้างาน” บนแถวนี้ — ไม่ต้องขออนุมัติก่อน"
+        confirmLabel="เพิ่มพื้นที่"
+        busy={addBusy}
+        onConfirm={draftReady ? addZone : undefined}
+        onClose={() => !addBusy && setAdding(false)}
+      >
+        <Input
+          value={draft.name} disabled={addBusy} maxLength={150} autoComplete="off" autoFocus
+          invalid={!!draftClash}
+          placeholder="ชื่อพื้นที่ เช่น โถงลิฟต์ชั้น 3"
+          aria-label="ชื่อพื้นที่"
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+        />
+        {/* ⚠️ ชั้นบังคับ — เป็นท่อน FF ของรหัสโซน ไม่มีชั้นก็ออกรหัสไม่ได้ (mig 0315) */}
+        <Input
+          value={draft.floor} disabled={addBusy} maxLength={10} autoComplete="off"
+          invalid={!!draft.floor && !!draftFloor.error}
+          placeholder="ชั้น เช่น 4 หรือ G"
+          aria-label="ชั้นของพื้นที่"
+          onChange={(e) => setDraft((d) => ({ ...d, floor: e.target.value }))}
+        />
+        <Input
+          value={draft.note} disabled={addBusy} maxLength={1000} autoComplete="off"
+          placeholder="หมายเหตุ (ไม่บังคับ)"
+          aria-label="หมายเหตุของพื้นที่"
+          onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+        />
+        {/* ปุ่มจางต้องบอกเหตุเป็นตัวหนังสือเสมอ ไม่ใช่ทูลทิป */}
+        <p className={styles.gate} role="status">
+          {!draft.name.trim()
+            ? "ต้องระบุชื่อพื้นที่"
+            : draftClash || draftFloor.error
+              || `จะได้รหัสพื้นที่ใหม่ในทะเบียนทันที · ${floorLabel(draftFloor.value)}`}
+        </p>
+      </ConfirmDialog>
+
+      {/* 🔴 ลบทิ้งได้เฉพาะพื้นที่ที่ช่างเพิ่มเอง — ของที่ SA ขอมาใช้ "ตัดออก" พร้อมเหตุผล */}
+      <ConfirmDialog
+        open={!!removing}
+        title="ลบพื้นที่ที่เพิ่มไว้"
+        message={`ลบ "${removing?.zoneName || ""}" ออกจากใบนี้`}
+        detail="ผลวัดและรูปของพื้นที่นี้จะถูกลบไปด้วย · ถ้ายังไม่มีใครใช้พื้นที่นี้ ระบบจะถอนออกจากทะเบียนของลูกค้าให้ด้วย"
+        confirmLabel="ลบทิ้ง"
+        tone="danger"
+        busy={removeBusy}
+        onConfirm={removeZone}
+        onClose={() => !removeBusy && setRemoving(null)}
+      />
 
       <ConfirmDialog
         open={sending}

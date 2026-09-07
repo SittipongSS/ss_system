@@ -118,8 +118,12 @@ export function sitePickSummary(site = {}) {
  * @param zones      พื้นที่ที่ใบนี้ขอ (หลัง normalize — แถวโซนเดิมมี `zoneId`)
  * @param openRows   แถว `service_survey_zones` ของ **ใบที่ยังเปิดอยู่** ที่แตะโซนเหล่านี้
  * @param requestsById  ใบแม่ของแถวเหล่านั้น
+ *
+ * ⭐ **การตัดสินอยู่ที่ `busySurveyRequests` · ถ้อยคำอยู่ที่ผู้เรียก** — ฟอร์มของ SA พูดว่า
+ *   "พื้นที่รายการที่ 3" (เขามีลิสต์อยู่ตรงหน้า) ส่วนช่างที่เพิ่มพื้นที่ทีละอันหน้างาน
+ *   ต้องได้ยินชื่อพื้นที่ ไม่ใช่เลขรายการที่ไม่มีอยู่บนจอเขา
  */
-export function surveyZoneBusyError(zones = [], openRows = [], requestsById = new Map()) {
+export function busySurveyRequests(openRows = [], requestsById = new Map()) {
   const get = (id) => (requestsById instanceof Map ? requestsById.get(id) : requestsById?.[id]);
   const busy = new Map();
   for (const row of Array.isArray(openRows) ? openRows : []) {
@@ -128,6 +132,11 @@ export function surveyZoneBusyError(zones = [], openRows = [], requestsById = ne
     if (!req || !REQUEST_OPEN_STATUSES.includes(req.status)) continue;
     if (!busy.has(row.zoneId)) busy.set(row.zoneId, req);
   }
+  return busy;
+}
+
+export function surveyZoneBusyError(zones = [], openRows = [], requestsById = new Map()) {
+  const busy = busySurveyRequests(openRows, requestsById);
 
   for (const [index, zone] of (Array.isArray(zones) ? zones : []).entries()) {
     if (!zone?.zoneId) continue;

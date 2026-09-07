@@ -6,11 +6,16 @@
 //   · ถัง "ยังไม่อยู่ทีมไหน" ต้องมีเสมอ
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
+  TEAM_CODE_MAX,
   allowedKindsFor,
   closeTeamBlocker,
+  normalizeTeamCode,
   normalizeTeamInput,
+  otherTeamCodes,
   planCrewRoster,
+  teamNameOf,
   sortTeams,
   suggestTeamCode,
   teamHref,
@@ -151,4 +156,100 @@ test('teamHref: มีเฉพาะฝ่ายที่มีหน้าจ�
   assert.equal(teamHref('TS', 'TS-2'), '/service/teams/TS-2');
   assert.equal(teamHref('PC', 'X'), null, 'ฝ่ายที่ยังไม่มีหน้าทะเบียน');
   assert.equal(teamHref('SA', ''), null);
+});
+
+// ── ป้ายทีมฝั่งเซิร์ฟเวอร์ (2026-09-07) ──────────────────────────────────
+/* 🔴 **ไม่รู้จัก = รหัสดิบ ห้ามถอยไป `TEAM_LABELS`** — แมปมาจากฐานสด ถ้ามีรหัสนั้น
+   ก็คือชื่อจริง · ถอยไปค่าคงที่มีผลเฉพาะตอนอ่านฐานพลาด ซึ่งตอนนั้นรหัสดิบคือความจริง
+   ส่วนชื่อเก่าคือคำโกหกที่ดูเหมือนปกติ (ทีมที่เปลี่ยนชื่อจะพิมพ์ชื่อเก่าลง Excel ตลอดไป) */
+test('⭐ teamNameOf: ทะเบียนก่อน · ไม่รู้จักคืนรหัสดิบ ไม่ใช่ชื่อจากค่าคงที่', () => {
+  const names = new Map([['KA', 'คีย์แอคเคาต์ (ทะเบียน)'], ['SA-NORTH', 'ทีมภาคเหนือ']]);
+  assert.equal(teamNameOf(names, 'KA'), 'คีย์แอคเคาต์ (ทะเบียน)');
+  assert.equal(teamNameOf(names, 'SA-NORTH'), 'ทีมภาคเหนือ', 'ทีมที่สร้างใหม่ต้องมีชื่อ');
+  assert.equal(teamNameOf(names, 'ODM'), 'ODM', 'อยู่ในค่าคงที่แต่ไม่อยู่ในทะเบียน = รหัสดิบ');
+  assert.equal(teamNameOf(null, 'KA'), 'KA', 'อ่านฐานไม่ได้ = รหัสดิบ');
+  assert.equal(teamNameOf(new Map(), ''), '', 'ไม่มีรหัส = คืนค่าที่รับมาตามเดิม');
+  assert.equal(teamNameOf(new Map(), null), null);
+});
+
+// ── รหัสทีมที่คนพิมพ์เอง (มติผู้ใช้ 2026-09-07) ────────────────────────────
+/* ⭐ ของเดิมรหัสมาจาก `suggestTeamCode` อย่างเดียว ⇒ ชื่อไทยล้วนได้ `SA` · `SA-2`
+   ซึ่งอ่านไม่ออกว่าเป็นทีมไหน — และมันคือรหัสที่ถูกก๊อปลง 20+ คอลัมน์ตลอดไป
+   ⚠️ ตัวตรวจตัวนี้ถูกเรียกทั้งฝั่งจอ (บอกตอนพิมพ์) และฝั่งเซิร์ฟเวอร์ (ด่านจริง) */
+test('⭐ รหัสที่ตั้งเองต้องขึ้นต้นด้วยฝ่าย และเป็น A-Z 0-9 ขีด เท่านั้น', () => {
+  assert.deepEqual(normalizeTeamCode('sa-north', { department: 'SA' }), { value: 'SA-NORTH', error: null },
+    'ตัวพิมพ์เล็กยกเป็นใหญ่ให้ ไม่ใช่ตีกลับ');
+  assert.match(normalizeTeamCode('NORTH', { department: 'SA' }).error, /ขึ้นต้นด้วย SA-/);
+  /* 🐞 ไทยเคยหลุดเข้ารหัสมาแล้วครั้งหนึ่ง (`TS-UAT-ทีมกรุงเ`) — รหัสเป็น route param
+     และถูกเขียนลงไฟล์ export ⇒ ต้อง ASCII ล้วน */
+  assert.match(normalizeTeamCode('SA-เหนือ', { department: 'SA' }).error, /A-Z/);
+  assert.match(normalizeTeamCode('SA NORTH', { department: 'SA' }).error, /A-Z/, 'ช่องว่างก็ไม่ได้');
+  assert.match(normalizeTeamCode('SA-', { department: 'SA' }).error, /ขีด/);
+  assert.match(normalizeTeamCode('SA--NORTH', { department: 'SA' }).error, /ขีด/);
+  assert.match(normalizeTeamCode('', { department: 'SA' }).error, /ต้องระบุรหัสทีม/);
+  assert.match(normalizeTeamCode(`SA-${'X'.repeat(TEAM_CODE_MAX)}`, { department: 'SA' }).error, /ยาวเกิน/);
+});
+
+/* 🔴 `<ฝ่าย>-<เลข>` เป็นรูปที่ `suggestTeamCode` จองไว้เป็นตัวหนีรหัสซ้ำ — คนจองไปเอง
+   แปลว่ารอบหน้าตัวสร้างอัตโนมัติวิ่งชนแล้วต้องข้ามไปเรื่อย ๆ */
+test('🔴 รูป <ฝ่าย>-<เลข> จองไว้ให้ตัวสร้างอัตโนมัติ ตั้งเองไม่ได้', () => {
+  assert.match(normalizeTeamCode('SA-2', { department: 'SA' }).error, /อัตโนมัติ/);
+  assert.equal(normalizeTeamCode('SA-2ND', { department: 'SA' }).error, null, 'มีตัวอักษรปนแล้วไม่ใช่รูปที่จอง');
+});
+
+test('รหัสซ้ำของเดิมไม่ได้ — และตอนแก้ต้องไม่นับรหัสของตัวเองเป็นซ้ำ', () => {
+  const existingCodes = ['SA-NORTH', 'KA'];
+  assert.match(normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes }).error, /ถูกใช้ไปแล้ว/);
+  /* จอส่ง existingCodes ที่กรองรหัสของทีมที่กำลังแก้ออกแล้ว — ไม่งั้นกดบันทึกโดยไม่เปลี่ยน
+     รหัสจะโดนบอกว่า "ซ้ำกับตัวเอง" */
+  assert.equal(normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes: ['KA'] }).error, null);
+});
+
+test('ไม่มีฝ่าย = ตรวจต่อไม่ได้ ต้องบอก ไม่ใช่ปล่อยผ่าน', () => {
+  assert.match(normalizeTeamCode('SA-NORTH', {}).error, /ฝ่าย/);
+});
+
+/* 🐞 **บั๊กที่รอบตรวจปฏิปักษ์จับได้ก่อน merge (2026-09-07)** — ฟอร์มเคยกรองรายการรหัสที่มีอยู่
+   ด้วย **ค่าที่กำลังพิมพ์** ⇒ รหัสที่ซ้ำถูกตัดออกจากลิสต์เสมอ ⇒ สาขา "รหัสถูกใช้ไปแล้ว"
+   ของ `normalizeTeamCode` ไม่มีวันทำงาน ⇒ ผู้ใช้พิมพ์รหัสที่มีอยู่แล้ว เห็นแค่ปุ่มดับ
+   โดยไม่มีอะไรบอกว่าทำไม (ผิดกฎ GatedAction: ติดด่าน = โชว์แล้วบอกเหตุ)
+   ⇒ ตัวกรองต้องผูกกับ **รหัสเดิมของทีม** ไม่ใช่ค่าที่พิมพ์ */
+test('🔴 otherTeamCodes: กรองด้วยรหัสเดิมของทีม ไม่ใช่ค่าที่พิมพ์', () => {
+  const all = ['KA', 'ODM', 'SV', 'SA-NORTH'];
+  // ตอนสร้าง: ไม่มีรหัสเดิม ⇒ ทุกตัวยังนับเป็น "ถูกใช้แล้ว"
+  assert.deepEqual(otherTeamCodes(all, null), all);
+  assert.deepEqual(otherTeamCodes(all, ''), all);
+  // ตอนแก้: ตัดเฉพาะรหัสของทีมที่กำลังแก้
+  assert.deepEqual(otherTeamCodes(all, 'SA-NORTH'), ['KA', 'ODM', 'SV']);
+  assert.deepEqual(otherTeamCodes(all, 'sa-north'), ['KA', 'ODM', 'SV'], 'ตัวพิมพ์เล็กต้องตรงกัน');
+});
+
+test('🔴 พิมพ์รหัสที่มีอยู่แล้วต้องได้ข้อความ ไม่ใช่ปุ่มดับเงียบ', () => {
+  const all = ['KA', 'ODM', 'SV', 'SA-NORTH', 'SA-EAST'];
+  // สร้างทีมใหม่แล้วพิมพ์รหัสที่มีอยู่ = ต้องฟ้อง
+  assert.match(
+    normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes: otherTeamCodes(all, null) }).error,
+    /ถูกใช้ไปแล้ว/,
+  );
+  // แก้ทีม SA-NORTH โดยไม่เปลี่ยนรหัส = ต้องไม่ฟ้องว่าซ้ำกับตัวเอง
+  assert.equal(
+    normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes: otherTeamCodes(all, 'SA-NORTH') }).error,
+    null,
+  );
+  /* แก้ทีม SA-NORTH ไปชนรหัสของทีมอื่น = ต้องฟ้อง
+     ⚠️ ต้องใช้รหัสที่ **ผ่านด่านคำนำหน้าแล้ว** ไม่งั้นจะโดนตีกลับด้วยเหตุอื่นก่อน
+     แล้วเทสต์ผ่านโดยไม่ได้ตรวจสิ่งที่ตั้งใจตรวจ */
+  assert.match(
+    normalizeTeamCode('SA-EAST', { department: 'SA', existingCodes: otherTeamCodes(all, 'SA-NORTH') }).error,
+    /ถูกใช้ไปแล้ว/,
+  );
+});
+
+/* 🔴 ยามของรูปแบบที่พลาดมาแล้ว — ฟอร์มห้ามกรองลิสต์ด้วยค่าที่พิมพ์อีก
+   เทสต์ตรรกะข้างบนจับไม่ได้ เพราะมันป้อนลิสต์ที่กรองมาแล้วให้เอง (ซึ่งเป็นเหตุที่บั๊กเดิม
+   รอดเทสต์มาได้) ⇒ ต้องดูที่ตัวไฟล์ */
+test('🔴 TeamFormFields ต้องกรองด้วย ownCode ไม่ใช่ value.code', () => {
+  const src = readFileSync(new URL('../../components/teams/TeamFormFields.js', import.meta.url), 'utf8');
+  assert.match(src, /otherTeamCodes\(existingCodes, ownCode\)/);
+  assert.doesNotMatch(src, /existingCodes\.filter\(/, 'กรองด้วยค่าที่พิมพ์ = ข้อความ "รหัสซ้ำ" ตายสนิท');
 });

@@ -46,8 +46,50 @@ export function zoneCleanupDecision({ zone, request, refs } = {}) {
   return { action: 'delete', reason: 'พื้นที่ที่ใบนี้สร้างและยังไม่มีใครใช้' };
 }
 
+/* ── ลบแถวผลวัดพร้อมไฟล์ของมัน ─────────────────────────────────────────
+   🔴 **แถวผลวัดถือไฟล์แนบ** (ชนิด `service_survey_zone`) — ลบแถวเฉย ๆ เหลือไฟล์กำพร้า
+     บน Drive ที่ไม่มีอะไรชี้ถึงอีก (ด่าน `attachmentCascade` ใน CI จับไว้)
+   ⚠️ **เส้นลบแถวผลวัดทุกเส้นต้องผ่านที่นี่** — ตอนนี้มีสองเส้นแล้ว (ยกเลิกใบ · ลบพื้นที่
+     ที่ช่างเพิ่มผิด) และเส้นที่สามจะลืมเรียกตัวกวาด เหมือนที่เคยเกิดมาแล้วสองครั้ง */
+export async function purgeSurveyZoneRows(supabase, rowIds = []) {
+  const ids = (Array.isArray(rowIds) ? rowIds : []).filter(Boolean);
+  if (!supabase || !ids.length) return null;
+  for (const rowId of ids) await purgeAttachments('service_survey_zone', rowId, supabase);
+  const { error } = await supabase.from('service_survey_zones').delete().in('id', ids);
+  return error ? error.message : null;
+}
+
+/* ── นับของที่ผูกกับโซนแล้วถามตัวตัดสิน ─────────────────────────────────
+   คืน `{ action, reason, label }` — ยังไม่ลบอะไรทั้งสิ้น
+   ⚠️ **"แถวของใบอื่น" = ทุกแถวของโซนนี้ ลบแถวของใบนี้** ⇒ เรียกก่อนหรือหลังลบแถวของ
+     ใบนี้ก็ได้คำตอบเดียวกัน (ก่อนลบ mine = n · หลังลบ mine = 0) */
+export async function zoneReleaseDecision(supabase, { request, zone }) {
+  const label = zone?.code || zone?.name || zone?.id || '';
+  const [{ count: allSurveys = 0 } = {}, { count: mySurveys = 0 } = {},
+    { count: terms = 0 } = {}, { count: assets = 0 } = {}] = await Promise.all([
+    supabase.from('service_survey_zones').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
+    supabase.from('service_survey_zones').select('id', { count: 'exact', head: true })
+      .eq('zoneId', zone.id).eq('requestId', request.id),
+    supabase.from('service_zone_terms').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
+    supabase.from('service_assets').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
+  ]);
+  const decision = zoneCleanupDecision({
+    zone,
+    request,
+    refs: { otherSurveyRows: Math.max(0, allSurveys - mySurveys), terms, assets },
+  });
+  return { ...decision, label };
+}
+
+/** โซนที่ตัดสินแล้วว่าลบได้ — ลบจริง · คืนข้อความ error หรือ `null` */
+export async function deleteZoneRow(supabase, zoneId) {
+  const { error } = await supabase.from('service_zones').delete().eq('id', zoneId);
+  // FK ยังกันอยู่ = มีของที่ตัวนับมองไม่เห็น ⇒ เก็บไว้ ดีกว่าฝืนลบ
+  return error ? error.message : null;
+}
+
 /**
- * เก็บกวาดจริง — คืนสรุปไว้เขียนลงเธรด/audit
+ * เก็บกวาดจริงตอนยกเลิกใบ — คืนสรุปไว้เขียนลงเธรด/audit
  * ⚠️ **ห้ามโยน error ออกไป** — ผู้เรียกอยู่หลังจุดที่ใบถูกยกเลิกสำเร็จแล้ว
  *   ล้มตรงนี้ = ใบที่ยกเลิกสำเร็จตอบ 500 · ของที่ค้างคือโซนเปล่า ซึ่งลบทีหลังได้
  */
@@ -58,48 +100,31 @@ export async function cleanupCancelledSurveyZones(supabase, { request }) {
   try {
     const { data: rows } = await supabase
       .from('service_survey_zones').select('id, "zoneId"').eq('requestId', request.id);
-    const zoneIds = [...new Set((rows || []).map((r) => r.zoneId).filter(Boolean))];
-    if (!zoneIds.length) return out;
+    const byZone = new Map();
+    for (const row of rows || []) {
+      if (!row.zoneId) continue;
+      if (!byZone.has(row.zoneId)) byZone.set(row.zoneId, []);
+      byZone.get(row.zoneId).push(row.id);
+    }
+    if (!byZone.size) return out;
 
     const { data: zones } = await supabase
-      .from('service_zones').select('id, code, name, "createdAt"').in('id', zoneIds);
+      .from('service_zones').select('id, code, name, "createdAt"').in('id', [...byZone.keys()]);
 
     for (const zone of zones || []) {
-      /* นับของที่อ้างถึงโซนนี้ — **แถวผลวัดของใบอื่น** เท่านั้นที่นับ
-         (แถวของใบนี้เองกำลังจะไปพร้อมใบ ไม่ใช่หลักฐานว่ามีคนอื่นใช้) */
-      const [{ count: allSurveys = 0 } = {}, { count: mySurveys = 0 } = {},
-        { count: terms = 0 } = {}, { count: assets = 0 } = {}] = await Promise.all([
-        supabase.from('service_survey_zones').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
-        supabase.from('service_survey_zones').select('id', { count: 'exact', head: true })
-          .eq('zoneId', zone.id).eq('requestId', request.id),
-        supabase.from('service_zone_terms').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
-        supabase.from('service_assets').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
-      ]);
+      /* ⚠️ **ตัดสินก่อนลบแถวผลวัด** — ลบแถวก่อนแล้วโซนถูกเก็บไว้ (ขายไปแล้ว/มีเครื่อง)
+         จะได้โซนที่ไม่เหลือประวัติการวัดเลย ซึ่งเป็นของที่มีค่าที่สุดของทะเบียน */
+      const decision = await zoneReleaseDecision(supabase, { request, zone });
+      if (decision.action !== 'delete') { out.kept.push(`${decision.label} (${decision.reason})`); continue; }
 
-      const decision = zoneCleanupDecision({
-        zone,
-        request,
-        refs: { otherSurveyRows: Math.max(0, allSurveys - mySurveys), terms, assets },
-      });
-      const label = zone.code || zone.name || zone.id;
+      /* FK ของ `service_survey_zones.zoneId` เป็น RESTRICT ⇒ แถวต้องไปก่อนโซน
+         (แถวเหล่านี้จะถูกลบตาม CASCADE ของใบอยู่แล้ว แต่ใบยังไม่ถูกลบ มันแค่ `cancelled`) */
+      const purgeError = await purgeSurveyZoneRows(supabase, byZone.get(zone.id));
+      if (purgeError) { out.kept.push(`${decision.label} (ลบแถวผลวัดไม่ได้: ${purgeError})`); continue; }
 
-      if (decision.action !== 'delete') { out.kept.push(`${label} (${decision.reason})`); continue; }
-
-      /* ⚠️ ลบแถวผลวัดของใบนี้ก่อน — FK ของ `service_survey_zones.zoneId` เป็น RESTRICT
-         (แถวเหล่านี้จะถูกลบตาม CASCADE ของใบอยู่แล้ว แต่ใบยังไม่ถูกลบ มันแค่ `cancelled`)
-         🔴 **แถวผลวัดถือไฟล์แนบ** (ชนิด `service_survey_zone`) — ลบแถวเฉย ๆ เหลือไฟล์
-           กำพร้าบน Drive ที่ไม่มีอะไรชี้ถึงอีก (ด่าน `attachmentPurge` ใน CI จับไว้) */
-      const { data: myRows } = await supabase.from('service_survey_zones')
-        .select('id').eq('zoneId', zone.id).eq('requestId', request.id);
-      for (const row of myRows || []) await purgeAttachments('service_survey_zone', row.id, supabase);
-      await supabase.from('service_survey_zones').delete().eq('zoneId', zone.id).eq('requestId', request.id);
-      const { error } = await supabase.from('service_zones').delete().eq('id', zone.id);
-      if (error) {
-        // FK ยังกันอยู่ = มีของที่ตัวนับมองไม่เห็น ⇒ เก็บไว้ ดีกว่าฝืนลบ
-        out.kept.push(`${label} (ลบไม่ได้: ${error.message})`);
-      } else {
-        out.deleted.push(label);
-      }
+      const dropError = await deleteZoneRow(supabase, zone.id);
+      if (dropError) out.kept.push(`${decision.label} (ลบไม่ได้: ${dropError})`);
+      else out.deleted.push(decision.label);
     }
   } catch (e) {
     // เงียบแบบมีร่องรอย — ผู้เรียกเขียนสรุปลง audit อยู่แล้ว

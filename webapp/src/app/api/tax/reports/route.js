@@ -1,7 +1,7 @@
 import { getCurrentUser } from '@/lib/authUser';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { viewScopeUser, canUser, userTeams } from '@/lib/permissions';
-import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
+import { loadSalesTeamCodes, loadTeamNames } from '@/lib/master/teamsRepo';
 import { buildReport, REPORTS } from '@/lib/tax/reports';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { buildRegistrationFilesZip } from '@/lib/tax/registrationFiles';
@@ -53,7 +53,16 @@ export async function GET(request) {
     );
   }
 
+  /* ป้ายทีมของไฟล์/ตาราง — โหลดครั้งเดียวต่อคำขอ แล้วส่งลงไปกับ filter
+     ⚠️ อ่านไม่ได้ = ปล่อยเป็นรหัสดิบ **แต่ต้องส่งเสียง** ไม่งั้น "ไฟล์ขึ้นรหัสแทนชื่อ"
+     จะเป็นอาการเดียวที่เห็น โดยไม่มีอะไรบอกว่าเพราะอะไร */
+  const teamNames = await loadTeamNames(getSupabaseAdmin()).catch((err) => {
+    console.warn('[tax/reports] อ่านชื่อทีมไม่สำเร็จ — คอลัมน์ทีมจะขึ้นเป็นรหัส', err?.message);
+    return null;
+  });
+
   const filter = {
+    teamNames,
     from: searchParams.get('from') || null,
     to: searchParams.get('to') || null,
     scopeTeam,

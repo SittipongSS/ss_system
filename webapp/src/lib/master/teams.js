@@ -38,9 +38,8 @@ export function allowedKindsFor(department) {
    ตอนบันทึกบัญชี (ตอบสำเร็จทั้งที่ไม่มีทีม)
    ⇒ วันนี้ทางเขียนเทียบกับทะเบียนสด (`loadSalesTeamCodes`) แล้ว ทั้งสร้างบัญชี · แก้บัญชี ·
    ย้ายทีม · ยกลูกค้าให้ทีม · คัดกรองลีด
-   ⚠️ **สิ่งที่ยังต้องทำมือหลังสร้างทีมขายใหม่**: ป้ายชื่อทีมในบางจอยังอ่านจาก `TEAM_LABELS`
-   ซึ่งมีแค่สามทีมเดิม ⇒ ทีมใหม่จะโชว์เป็น "รหัส" จนกว่าจะเติมป้าย (ทุกจุดใช้
-   `TEAM_LABELS[t] || t` จึงไม่พังแต่ชื่อไม่สวย)
+   ✅ **ไม่ต้องทำอะไรด้วยมือแล้ว** (2026-09-07 รอบสอง) — `TEAM_LABELS` ถูกลบทิ้ง
+   ชื่อทีมมีบ้านเดียวคือทะเบียน · ทุกจอและทุกไฟล์ export อ่านจากที่นั่น
    ⚠️ ด่าน `npm run check:teams` เปลี่ยนหน้าที่แล้ว: เดิมห้ามมีทีมนอกค่าคงที่ · ตอนนี้ยืนยันว่า
    **สามทีมตั้งต้นต้องไม่หายไปจากทะเบียน** ซึ่งเป็นสิ่งที่มีค่าจริง (รหัสถูกอ้างใน 19 ตาราง) */
 
@@ -71,6 +70,17 @@ export function planCrewRoster({ code, userIds = [], existingMembers = [] } = {}
   };
 }
 
+/* ป้ายของรหัสทีมสำหรับ **ฝั่งเซิร์ฟเวอร์** — 🔴 **ไม่รู้จัก = คืนรหัสดิบ ห้ามถอยไป `TEAM_LABELS`**
+   แมปมาจากฐานสด ⇒ ถ้ามีรหัสนั้นก็คือชื่อจริง · ถอยไปค่าคงที่มีผลเฉพาะตอนอ่านฐานพลาด
+   ซึ่งตอนนั้น **รหัสดิบคือความจริง ส่วนชื่อเก่าคือคำโกหกที่ดูเหมือนปกติ** — ทีมที่ถูก
+   เปลี่ยนชื่อในทะเบียนจะพิมพ์ชื่อเก่าลงไฟล์ Excel ตลอดไปโดยไม่มีอะไรบอกว่าเพี้ยน
+   ⚠️ ไม่เติมขีด/ช่องว่างแทนค่าว่างให้ — แต่ละที่ใช้คนละอย่างโดยตั้งใจ (Excel ใช้ "" ·
+   รายงานภาษีใช้ "-") ⇒ คืนค่าที่รับมาตามเดิมเมื่อไม่มีรหัส */
+export function teamNameOf(names, code) {
+  if (!code) return code;
+  return names?.get?.(code) || code;
+}
+
 export function teamHref(department, code) {
   const base = teamsBasePath(department);
   return base && code ? `${base}/${encodeURIComponent(code)}` : null;
@@ -99,6 +109,62 @@ export function suggestTeamCode(department, name, existingCodes = []) {
     if (!existingCodes.includes(candidate)) return candidate;
   }
   return `${stem}-${Date.now()}`;
+}
+
+/* ── รหัสทีมที่คนพิมพ์เอง (มติผู้ใช้ 2026-09-07) ──────────────────────────────
+   ⭐ ของเดิมรหัสมาจาก `suggestTeamCode` อย่างเดียว ⇒ ชื่อไทยล้วนได้ `SA` · `SA-2` · `SA-3`
+      ซึ่งอ่านไม่ออกว่าเป็นทีมไหน และมันคือรหัสที่จะถูกก๊อปลง 20+ คอลัมน์ตลอดไป
+   ⚠️ ตัวสร้างอัตโนมัติยังอยู่ — มันคือ **ค่าตั้งต้นในช่อง** ไม่ใช่คำตอบสุดท้ายอีกต่อไป
+
+   กติกา (ทุกข้อมีเหตุผลด้านข้อมูล ไม่ใช่รสนิยม):
+   · `A-Z0-9-` เท่านั้น — รหัสเป็น route param (`/api/teams/[code]`) และถูกเขียนลง
+     ไฟล์ export · ไทย/ช่องว่างเคยหลุดเข้ามาแล้วครั้งหนึ่ง (`TS-UAT-ทีมกรุงเ`)
+   · ขึ้นต้นด้วย `<ฝ่าย>-` — ทีมของสองฝ่ายชนรหัสกันไม่ได้
+   · ห้ามรูป `<ฝ่าย>-<เลข>` — ตัวสร้างอัตโนมัติจองรูปนี้ไว้เป็นตัวหนีรหัสซ้ำ
+     คนจองไปเอง = รอบหน้าตัวสร้างวิ่งชนแล้วต้องข้ามไปเรื่อย ๆ
+   · ห้ามชนรหัสที่มีอยู่ (เช็คบนจอ + เซิร์ฟเวอร์เช็คซ้ำอีกชั้นด้วย 23505) */
+export const TEAM_CODE_MAX = 20;
+
+/* รหัสที่ถือว่า "ถูกใช้ไปแล้ว" สำหรับฟอร์มหนึ่งใบ — ตอนแก้ต้องไม่นับรหัสของทีมที่กำลังแก้
+   🐞 **บั๊กจริงที่รอบตรวจจับได้ก่อน merge (2026-09-07)** — ของเดิมกรองด้วย **ค่าที่พิมพ์อยู่**
+   (`c !== value.code`) ซึ่งตัดรหัสที่ซ้ำออกจากลิสต์เสมอ ⇒ สาขา "รหัสถูกใช้ไปแล้ว" ของ
+   `normalizeTeamCode` **ตายสนิท** ⇒ พิมพ์รหัสที่มีอยู่แล้ว ปุ่มดับเงียบ ๆ โดยไม่มีอะไรบอกเหตุ
+   ซึ่งเป็นสิ่งที่คอมเมนต์ในไฟล์นั้นเขียนไว้เองว่ามีไว้กัน (และผิดกฎ GatedAction ของ repo)
+   ⇒ ต้องกรองด้วย **รหัสเดิมของทีม** ที่ส่งมาแยกต่างหาก ไม่ใช่ค่าที่พิมพ์
+   ⚠️ ตอนสร้าง ไม่มีรหัสเดิม ⇒ ไม่กรองอะไรทั้งนั้น */
+export function otherTeamCodes(existingCodes = [], ownCode = null) {
+  const own = String(ownCode ?? '').trim().toUpperCase();
+  if (!own) return [...existingCodes];
+  return existingCodes.filter((c) => String(c ?? '').toUpperCase() !== own);
+}
+
+export function normalizeTeamCode(raw, { department = '', existingCodes = [] } = {}) {
+  const dept = String(department ?? '').trim().toUpperCase();
+  const code = String(raw ?? '').trim().toUpperCase();
+  if (!dept) return { value: null, error: 'ต้องระบุฝ่ายเจ้าของทีม' };
+  if (!code) return { value: null, error: 'ต้องระบุรหัสทีม' };
+  if (!/^[A-Z0-9-]+$/.test(code)) {
+    return { value: null, error: 'รหัสทีมใช้ได้เฉพาะ A-Z 0-9 และขีด (-)' };
+  }
+  if (code.startsWith('-') || code.endsWith('-') || code.includes('--')) {
+    return { value: null, error: 'ขีดต้องอยู่ระหว่างตัวอักษร ห้ามขึ้นต้น ลงท้าย หรือติดกันสองตัว' };
+  }
+  if (code.length > TEAM_CODE_MAX) {
+    return { value: null, error: `รหัสทีมยาวเกิน ${TEAM_CODE_MAX} ตัวอักษร` };
+  }
+  if (!code.startsWith(`${dept}-`)) {
+    return { value: null, error: `รหัสทีมต้องขึ้นต้นด้วย ${dept}- (กันรหัสชนกับทีมของฝ่ายอื่น)` };
+  }
+  if (new RegExp(`^${dept}-\\d+$`).test(code)) {
+    return {
+      value: null,
+      error: `${dept}-<ตัวเลข> เป็นรูปที่ระบบใช้ตั้งรหัสให้อัตโนมัติ — ตั้งรหัสที่อ่านออกว่าเป็นทีมไหน`,
+    };
+  }
+  if (existingCodes.includes(code)) {
+    return { value: null, error: `รหัส ${code} ถูกใช้ไปแล้ว` };
+  }
+  return { value: code, error: null };
 }
 
 export function normalizeTeamInput(body = {}, { department = null } = {}) {

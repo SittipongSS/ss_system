@@ -211,165 +211,173 @@ export default function QuotationLineItems({
 
   return (
     <>
-      <div className="premium-glass-table table-responsive">
-        {/* cells="stacked": เซลล์รายการซ้อนหลายบรรทัด (SKU+ชื่อ+หมายเหตุ / ช่อง+หน่วย)
-            — ค่าตั้งต้น middle ทำคอนโทรลแต่ละคอลัมน์ลอยคนละระดับ (กฎ 5) */}
-        {/* minWidth=900 คือพื้นคอลัมน์ของตารางนี้ (เหตุผลอยู่ที่ .linesTable) — ต้องส่ง
-            ผ่าน prop ไม่ใช่ min-width ในคลาส เพราะ `.scroll table` ของ Table.module.css
-            อ่าน --table-min-width ด้วย specificity ที่สูงกว่าคลาสของหน้า
-            container=inline-size ให้กฎ "แคบกว่า 900 = การ์ด" วัดจากความกว้างที่
-            ตารางมีจริง ไม่ใช่ความกว้างจอ (คอลัมน์เอกสารแคบกว่าจอเสมอ และแคบไม่เท่ากัน
-            ตามว่ามีแถบข้างหรือไม่) */}
-        <TableScroll surface="embedded" family="editable" cells="stacked" minWidth={900} className={styles.linesContainer}><table className={`w-full text-sm ${styles.linesTable}`}>
-          <thead>
-            <tr>
-              <th className={styles.rowNumber} style={{ width: 36 }}>#</th>
-              <th>รายการ</th>
-              {/* หัวคอลัมน์ตัวเลขชิดขวาให้ตรงกับตัวเลขในช่องกรอก (numeric-input ชิดขวา) */}
-              <th className={styles.numHeader} style={{ width: 120 }}>จำนวน</th>
-              <th className={styles.numHeader} style={{ width: 130 }}>ราคา/หน่วย</th>
-              <th style={{ width: 210 }}>ส่วนลดรายการ</th>
-              {/* 150px รับยอดรายบรรทัดถึงหลักสิบล้าน (จำนวนหลักพัน × ราคาหลักหมื่น) ไม่ล้นช่อง */}
-              <th className="num" style={{ width: 150 }}>จำนวนเงิน</th>
-              {editable && <th style={{ width: 40 }}></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line, index) => (
-              <tr key={line.id || index} className="premium-row">
-                <td className={styles.rowNumber}>{index + 1}</td>
-                <td>
-                  <div className={styles.lineDescriptionCell}>
-                    {editable && line._lineKind === "product" && (
-                      <SearchableSelect
-                        entity="product"
-                        size="sm"
-                        className="w-full"
-                        value={line.productId || ""}
-                        onChange={(productId) => selectLineProduct(index, productId)}
-                        ariaLabel={`เลือกสินค้า รายการ ${index + 1}`}
-                        placeholder="เลือก FG / สินค้า..."
-                        options={productOptions}
-                      />
-                    )}
-                    {(line.productId || line.fgCode) ? (
-                      (() => {
-                        const fg = fgDisplayFor(line);
-                        return (
-                          <div className={styles.fgInfo} title="ข้อมูลจากฐานข้อมูลสินค้า — แก้ที่ฐานข้อมูลสินค้า">
-                            <span className={styles.fgInfoMeta}><strong>{fg.code || "FG"}</strong>{fg.brand && <> · {fg.brand}</>}</span>
-                            <div className={styles.fgInfoName}>
-                              {editable ? (naText(fg.name)) : <ReadableText text={fg.name} lines={3} />}
-                            </div>
-                            {fg.owner && (
-                              <span className={styles.fgInfoOwner}>FG ของ {fg.owner}</span>
-                            )}
+      {/* ⚠️ คลาสการ์ดเก่าอยู่บน TableScroll เอง ไม่ใช่ div ที่ห่ออีกชั้น (2026-09-07)
+          🐞 เดิมเป็น `<div class="premium-glass-table table-responsive"><TableScroll …>`
+          ⇒ วัดจริงที่ /sales-planning/quotations/new (1440): กรอบมนซ้อนกันสามชั้น
+          ขอบสีเดียวกัน มุมมน 13px เท่ากัน ห่างกันชั้นละ 17px
+            การ์ดหัวข้อ  ซ้าย 28  กว้าง 1026
+            กรอบเก่า     ซ้าย 47  กว้าง  988   ← ชั้นนี้ไม่ได้ทำอะไรที่ TableScroll ไม่ทำ
+            กล่องตาราง   ซ้าย 64  กว้าง  954
+          ⚠️ ยุบทิ้งเฉย ๆ ไม่ได้ — ตารางนี้ไม่ใช่ `.premium-table` เซลล์กับหัวตาราง
+          กินสไตล์จาก `.premium-glass-table thead th/tbody td` ⇒ ต้อง **ย้ายคลาสลงมา**
+          ไม่ใช่ลบ (นับใน uiLegacyBudget เท่าเดิม ไม่ใช่เพิ่ม) */}
+      {/* cells="stacked": เซลล์รายการซ้อนหลายบรรทัด (SKU+ชื่อ+หมายเหตุ / ช่อง+หน่วย)
+          — ค่าตั้งต้น middle ทำคอนโทรลแต่ละคอลัมน์ลอยคนละระดับ (กฎ 5) */}
+      {/* minWidth=900 คือพื้นคอลัมน์ของตารางนี้ (เหตุผลอยู่ที่ .linesTable) — ต้องส่ง
+          ผ่าน prop ไม่ใช่ min-width ในคลาส เพราะ `.scroll table` ของ Table.module.css
+          อ่าน --table-min-width ด้วย specificity ที่สูงกว่าคลาสของหน้า
+          container=inline-size ให้กฎ "แคบกว่า 900 = การ์ด" วัดจากความกว้างที่
+          ตารางมีจริง ไม่ใช่ความกว้างจอ (คอลัมน์เอกสารแคบกว่าจอเสมอ และแคบไม่เท่ากัน
+          ตามว่ามีแถบข้างหรือไม่) */}
+      <TableScroll surface="embedded" family="editable" cells="stacked" minWidth={900} className={`premium-glass-table table-responsive ${styles.linesContainer}`}><table className={`w-full text-sm ${styles.linesTable}`}>
+        <thead>
+          <tr>
+            <th className={styles.rowNumber} style={{ width: 36 }}>#</th>
+            <th>รายการ</th>
+            {/* หัวคอลัมน์ตัวเลขชิดขวาให้ตรงกับตัวเลขในช่องกรอก (numeric-input ชิดขวา) */}
+            <th className={styles.numHeader} style={{ width: 120 }}>จำนวน</th>
+            <th className={styles.numHeader} style={{ width: 130 }}>ราคา/หน่วย</th>
+            <th style={{ width: 210 }}>ส่วนลดรายการ</th>
+            {/* 150px รับยอดรายบรรทัดถึงหลักสิบล้าน (จำนวนหลักพัน × ราคาหลักหมื่น) ไม่ล้นช่อง */}
+            <th className="num" style={{ width: 150 }}>จำนวนเงิน</th>
+            {editable && <th style={{ width: 40 }}></th>}
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((line, index) => (
+            <tr key={line.id || index} className="premium-row">
+              <td className={styles.rowNumber}>{index + 1}</td>
+              <td>
+                <div className={styles.lineDescriptionCell}>
+                  {editable && line._lineKind === "product" && (
+                    <SearchableSelect
+                      entity="product"
+                      size="sm"
+                      className="w-full"
+                      value={line.productId || ""}
+                      onChange={(productId) => selectLineProduct(index, productId)}
+                      ariaLabel={`เลือกสินค้า รายการ ${index + 1}`}
+                      placeholder="เลือก FG / สินค้า..."
+                      options={productOptions}
+                    />
+                  )}
+                  {(line.productId || line.fgCode) ? (
+                    (() => {
+                      const fg = fgDisplayFor(line);
+                      return (
+                        <div className={styles.fgInfo} title="ข้อมูลจากฐานข้อมูลสินค้า — แก้ที่ฐานข้อมูลสินค้า">
+                          <span className={styles.fgInfoMeta}><strong>{fg.code || "FG"}</strong>{fg.brand && <> · {fg.brand}</>}</span>
+                          <div className={styles.fgInfoName}>
+                            {editable ? (naText(fg.name)) : <ReadableText text={fg.name} lines={3} />}
                           </div>
-                        );
-                      })()
+                          {fg.owner && (
+                            <span className={styles.fgInfoOwner}>FG ของ {fg.owner}</span>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    editable ? (
+                      <input
+                        className="premium-input"
+                        value={line.description || ""}
+                        placeholder={line._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"}
+                        onChange={(event) => setLine(index, { description: event.target.value })}
+                      />
                     ) : (
-                      editable ? (
-                        <input
-                          className="premium-input"
-                          value={line.description || ""}
-                          placeholder={line._lineKind === "product" ? "รายละเอียดสินค้าจะเติมอัตโนมัติ" : "รายละเอียด"}
-                          onChange={(event) => setLine(index, { description: event.target.value })}
-                        />
-                      ) : (
-                        <div className="readable-field is-compact">
-                          <ReadableText text={line.description} lines={3} empty={<span className="readable-field-empty">ไม่มีรายละเอียด</span>} />
-                        </div>
-                      )
-                    )}
-                    {/* หมายเหตุรายบรรทัด (metadata.note) — โชว์ใต้รายการในใบเสนอราคา
-                        บรรทัดที่ผูกสินค้าได้ข้อความตั้งต้นจากทะเบียนสินค้า (mig 0317)
-                        แก้ทับได้เสมอ · แก้แล้วธง noteAuto หลุด (lineNoteEdit) ⇒ ใบภาษา
-                        อังกฤษพิมพ์ข้อความที่พิมพ์เอง ไม่ใช่คู่แปลของสินค้า */}
-                    {editable
-                      ? ((line._noteOpen || line.metadata?.note)
-                        ? (
-                          <>
-                            <Textarea rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: lineNoteEdit(line.metadata, event.target.value) })} />
-                            {line.metadata?.noteAuto && (
-                              <span className={styles.noteFromMaster}>หมายเหตุตั้งต้นจากทะเบียนสินค้า — แก้เฉพาะใบนี้ได้</span>
-                            )}
-                          </>
-                        )
-                        /* คู่แฝดของ DealValueLines — คลี่ <Textarea> ในเซลล์เดิม
-                           ไม่มีปลายทางให้ไป จึงเป็น `.text-action` ไม่ใช่ `.linklike`
-                           ⚠️ สองไฟล์นี้คือคอนโทรลตัวเดียวกันที่ก๊อปกันมา ควรยกเป็น
-                           component ร่วมรอบหน้า (AGENTS.md §"ฟอร์มแก้ = ฟอร์มสร้าง") */
-                        : <button type="button" className="text-action" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
-                      : (line.metadata?.note && (
-                        <div className={styles.noteReadonly}>
-                          <strong>หมายเหตุ:</strong>
-                          <ReadableText text={line.metadata.note} lines={3} />
-                        </div>
-                      ))}
-                  </div>
-                </td>
-                <td data-label="จำนวน">
-                  <MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} />
-                  {/* บรรทัดที่ผูกสินค้า: หน่วยล็อกตามฐานข้อมูลสินค้า (เหมือนราคา — มติ 2026-07-23)
-                      บรรทัดที่พิมพ์เอง (ค่าบริการ ฯลฯ) ไม่มี master ให้ผูก จึงเลือกเองได้
-                      นับ _lineKind ด้วย เพราะแถวสินค้าที่ยังไม่ได้เลือกสินค้ายังไม่มี productId —
-                      ถ้าไม่นับ จะให้เลือกหน่วยแล้วโดน master ทับทิ้งตอนเลือกสินค้า */}
-                  {(line.productId || line.fgCode || line._lineKind === "product")
-                    ? (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>)
-                    : (editable
+                      <div className="readable-field is-compact">
+                        <ReadableText text={line.description} lines={3} empty={<span className="readable-field-empty">ไม่มีรายละเอียด</span>} />
+                      </div>
+                    )
+                  )}
+                  {/* หมายเหตุรายบรรทัด (metadata.note) — โชว์ใต้รายการในใบเสนอราคา
+                      บรรทัดที่ผูกสินค้าได้ข้อความตั้งต้นจากทะเบียนสินค้า (mig 0317)
+                      แก้ทับได้เสมอ · แก้แล้วธง noteAuto หลุด (lineNoteEdit) ⇒ ใบภาษา
+                      อังกฤษพิมพ์ข้อความที่พิมพ์เอง ไม่ใช่คู่แปลของสินค้า */}
+                  {editable
+                    ? ((line._noteOpen || line.metadata?.note)
                       ? (
-                        <Select
-                          className="premium-select"
-                          value={line.unit || DEFAULT_SALE_UNIT}
-                          onChange={(event) => setLine(index, { unit: event.target.value })}
-                          aria-label={`หน่วย รายการ ${index + 1}`}
-                        >
-                          {unitOptions(SALE_UNITS, line.unit).map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </Select>
+                        <>
+                          <Textarea rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: lineNoteEdit(line.metadata, event.target.value) })} />
+                          {line.metadata?.noteAuto && (
+                            <span className={styles.noteFromMaster}>หมายเหตุตั้งต้นจากทะเบียนสินค้า — แก้เฉพาะใบนี้ได้</span>
+                          )}
+                        </>
                       )
-                      : (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>))}
+                      /* คู่แฝดของ DealValueLines — คลี่ <Textarea> ในเซลล์เดิม
+                         ไม่มีปลายทางให้ไป จึงเป็น `.text-action` ไม่ใช่ `.linklike`
+                         ⚠️ สองไฟล์นี้คือคอนโทรลตัวเดียวกันที่ก๊อปกันมา ควรยกเป็น
+                         component ร่วมรอบหน้า (AGENTS.md §"ฟอร์มแก้ = ฟอร์มสร้าง") */
+                      : <button type="button" className="text-action" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
+                    : (line.metadata?.note && (
+                      <div className={styles.noteReadonly}>
+                        <strong>หมายเหตุ:</strong>
+                        <ReadableText text={line.metadata.note} lines={3} />
+                      </div>
+                    ))}
+                </div>
+              </td>
+              <td data-label="จำนวน">
+                <MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} />
+                {/* บรรทัดที่ผูกสินค้า: หน่วยล็อกตามฐานข้อมูลสินค้า (เหมือนราคา — มติ 2026-07-23)
+                    บรรทัดที่พิมพ์เอง (ค่าบริการ ฯลฯ) ไม่มี master ให้ผูก จึงเลือกเองได้
+                    นับ _lineKind ด้วย เพราะแถวสินค้าที่ยังไม่ได้เลือกสินค้ายังไม่มี productId —
+                    ถ้าไม่นับ จะให้เลือกหน่วยแล้วโดน master ทับทิ้งตอนเลือกสินค้า */}
+                {(line.productId || line.fgCode || line._lineKind === "product")
+                  ? (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>)
+                  : (editable
+                    ? (
+                      <Select
+                        className="premium-select"
+                        value={line.unit || DEFAULT_SALE_UNIT}
+                        onChange={(event) => setLine(index, { unit: event.target.value })}
+                        aria-label={`หน่วย รายการ ${index + 1}`}
+                      >
+                        {unitOptions(SALE_UNITS, line.unit).map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </Select>
+                    )
+                    : (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>))}
 </td>
-                <td data-label="ราคา/หน่วย">
-                  <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
-                  {/* เตือนเฉพาะตอนรู้แน่ว่า master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
-                      ไม่ต้องมีคำอธิบายกำกับ ช่องถูกล็อกอยู่แล้วและมี tooltip บอกที่มา
-                      สินค้าที่ไม่อยู่ในลิสต์ (รออนุมัติ/พักใช้) = ไม่รู้ราคา ไม่ใช่ไม่มีราคา — ดู masterPriceStateFor */}
-                  {editable && line.productId && masterPriceStateFor(line.productId) === "unpriced" && (
-                    <Link prefetch={false} href={`/database/products/${line.productId}`} target="_blank" className={styles.fgCode} style={{ color: "var(--amber)" }}>
-                      ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →
-                    </Link>
-                  )}
-                  {/* ราคาในทะเบียนสินค้าถูกแก้หลังใบนี้บันทึกครั้งล่าสุด — บอกตัวเลขที่จะได้
-                      และบอกว่าต้องกดอะไรถึงจะเปลี่ยน (ห้ามเปลี่ยนให้เองบนจอ: ยอดรวมทั้งใบ
-                      คิดที่ server ตอนบันทึก ⇒ แถวกับยอดจะไม่ตรงกันจนกว่าจะบันทึก) */}
-                  {editable && masterPriceDriftFor(line) !== null && (
-                    <span className={styles.priceHint}>
-                      ราคาในฐานข้อมูลตอนนี้ {fmtMoney(masterPriceDriftFor(line))} — กดบันทึกเพื่ออัปเดต
-                    </span>
-                  )}
-                </td>
-                <td data-label="ส่วนลดรายการ">
-                  <div className={styles.discountControls}>
-                    <Select className="premium-select" value={line.discountType || ""} disabled={!editable} onChange={(event) => setLine(index, { discountType: event.target.value || null, discountValue: event.target.value ? line.discountValue : 0 })}>
-                      <option value="">ไม่ลด</option>
-                      <option value="percent">%</option>
-                      <option value="amount">บาท</option>
-                    </Select>
-                    <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => setLine(index, { discountValue: clampDiscount(line.discountType, value) ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} />
-                  </div>
-                </td>
-                <td className={`num mono ${styles.lineAmount}`} data-label="จำนวนเงิน">{fmtMoney(quoteLineNet(line).lineTotal)}</td>
-                {editable && (
-                  <td className={styles.rowActions}><button type="button" className="btn-icon danger" onClick={() => removeLine(index)} aria-label={`ลบรายการ ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
+              <td data-label="ราคา/หน่วย">
+                <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
+                {/* เตือนเฉพาะตอนรู้แน่ว่า master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
+                    ไม่ต้องมีคำอธิบายกำกับ ช่องถูกล็อกอยู่แล้วและมี tooltip บอกที่มา
+                    สินค้าที่ไม่อยู่ในลิสต์ (รออนุมัติ/พักใช้) = ไม่รู้ราคา ไม่ใช่ไม่มีราคา — ดู masterPriceStateFor */}
+                {editable && line.productId && masterPriceStateFor(line.productId) === "unpriced" && (
+                  <Link prefetch={false} href={`/database/products/${line.productId}`} target="_blank" className={styles.fgCode} style={{ color: "var(--amber)" }}>
+                    ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →
+                  </Link>
                 )}
-              </tr>
-            ))}
-            {!lines.length && <tr><td colSpan={editable ? 7 : 6} className={styles.emptyRows}>ยังไม่มีรายการ — กด “เพิ่มสินค้า” หรือ “เพิ่มรายการเอง”</td></tr>}
-          </tbody>
-        </table></TableScroll>
-      </div>
+                {/* ราคาในทะเบียนสินค้าถูกแก้หลังใบนี้บันทึกครั้งล่าสุด — บอกตัวเลขที่จะได้
+                    และบอกว่าต้องกดอะไรถึงจะเปลี่ยน (ห้ามเปลี่ยนให้เองบนจอ: ยอดรวมทั้งใบ
+                    คิดที่ server ตอนบันทึก ⇒ แถวกับยอดจะไม่ตรงกันจนกว่าจะบันทึก) */}
+                {editable && masterPriceDriftFor(line) !== null && (
+                  <span className={styles.priceHint}>
+                    ราคาในฐานข้อมูลตอนนี้ {fmtMoney(masterPriceDriftFor(line))} — กดบันทึกเพื่ออัปเดต
+                  </span>
+                )}
+              </td>
+              <td data-label="ส่วนลดรายการ">
+                <div className={styles.discountControls}>
+                  <Select className="premium-select" value={line.discountType || ""} disabled={!editable} onChange={(event) => setLine(index, { discountType: event.target.value || null, discountValue: event.target.value ? line.discountValue : 0 })}>
+                    <option value="">ไม่ลด</option>
+                    <option value="percent">%</option>
+                    <option value="amount">บาท</option>
+                  </Select>
+                  <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => setLine(index, { discountValue: clampDiscount(line.discountType, value) ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} />
+                </div>
+              </td>
+              <td className={`num mono ${styles.lineAmount}`} data-label="จำนวนเงิน">{fmtMoney(quoteLineNet(line).lineTotal)}</td>
+              {editable && (
+                <td className={styles.rowActions}><button type="button" className="btn-icon danger" onClick={() => removeLine(index)} aria-label={`ลบรายการ ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
+              )}
+            </tr>
+          ))}
+          {!lines.length && <tr><td colSpan={editable ? 7 : 6} className={styles.emptyRows}>ยังไม่มีรายการ — กด “เพิ่มสินค้า” หรือ “เพิ่มรายการเอง”</td></tr>}
+        </tbody>
+      </table></TableScroll>
 
       <div className={styles.totalsWrap}>
         <div className={styles.totalsPanel}>

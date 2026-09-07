@@ -5,7 +5,8 @@
 // เพราะนามสกุลไม่เคยอยู่ในหน้าจอเลย และคนชื่อต้นเหมือนกัน+อักษรนามสกุลเดียวกัน
 // จะแยกกันไม่ออก. ที่นี่จึงโชว์ชื่อเต็ม และค้นได้ทั้งชื่อ นามสกุล ทีม และอีเมล
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { TEAM_LABELS, DEPARTMENT_LABELS, userTeams } from "@/lib/permissions";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
+import { DEPARTMENT_LABELS, userTeams } from "@/lib/permissions";
 
 // ⭐ ชื่อที่ตัวเลือกนี้เขียนลง DB กับตัวจับคู่กลับเป็น id ต้องใช้กฎเดียวกันเสมอ
 // จึงอยู่ไฟล์ล้วนไฟล์เดียว (เทสต์เรียกได้ตรง ๆ ด้วย)
@@ -15,12 +16,12 @@ export { personIdByName };
 
 /** คำที่ใช้ค้น — ชื่อเต็ม (มีนามสกุล) + อีเมล + ทีม/ฝ่าย เพื่อพิมพ์ "KA" แล้วเห็นทั้งทีมได้ */
 export const personSearchText = (u) =>
-  [fullName(u), u?.email, ...userTeams(u), ...userTeams(u).map((t) => TEAM_LABELS[t]), u?.department]
+  [fullName(u), u?.email, ...userTeams(u), ...userTeams(u).map((t) => teamLabelNow(t)), u?.department]
     .filter(Boolean).join(" ");
 
 // คนอยู่ได้หลายทีม ⇒ โชว์ครบ ไม่งั้นพิมพ์ชื่อทีมรองแล้วเจอคน แต่บรรทัดใต้ชื่อบอกอีกทีม
 const personMeta = (u) => [
-  userTeams(u).map((t) => TEAM_LABELS[t] || t).join(" + ") || null,
+  userTeams(u).map((t) => teamLabelNow(t)).join(" + ") || null,
   u?.department ? (DEPARTMENT_LABELS[u.department] || u.department) : null,
 ].filter(Boolean).join(" · ");
 

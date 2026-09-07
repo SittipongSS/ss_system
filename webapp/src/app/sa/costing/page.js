@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 // หน้ารายการใบขอราคาผลิต (mig 0141) — ทุกฝ่ายที่เกี่ยวข้องใช้หน้าเดียวกัน
 // แต่เห็นคนละชุด: ฝ่ายขายเห็นตาม scope ดีล, RD/PC เห็นคิวทั้งฝ่ายตน,
 // ผู้บริหาร/viewer เห็นทั้งหมด (กรองจริงที่ API ผ่าน canViewCostingRequest)
@@ -23,7 +24,7 @@ import CostingRequestForm, {
 } from "@/components/costing/CostingRequestForm";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
-import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
+
 import { apiFetch } from "@/lib/apiFetch";
 import {
   COSTING_STATUSES,
@@ -38,6 +39,7 @@ import {
 const EMPTY = [];
 
 export default function CostingListPage() {
+  const teamRegistry = useSalesTeams();
   const router = useRouter();
   const canCreate = useCan("costing:edit");
   const [rows, setRows] = useState([]);
@@ -186,7 +188,7 @@ export default function CostingListPage() {
             {
               key: "team",
               label: "ทีม",
-              options: TEAMS.map((t) => ({ value: t, label: TEAM_LABELS[t] || t })),
+              options: activeSalesTeams(teamRegistry).map((t) => ({ value: t.code, label: t.name })),
               selected: teamFilter,
               onChange: setTeamFilter,
             },

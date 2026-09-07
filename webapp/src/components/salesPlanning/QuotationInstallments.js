@@ -108,47 +108,48 @@ export default function QuotationInstallments({
             รวม {fmtPercent(pctSum)}{Math.abs(pctSum - 100) < 0.01 ? "" : " (ต้อง 100%)"}
           </span>
         </div>
-        <div className="premium-glass-table table-responsive">
-          <TableScroll surface="embedded" family="editable" className={styles.installmentScroll}><table className="w-full text-sm">
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}>งวด</th>
-                <th>รายละเอียด</th>
-                <th style={{ width: 90 }}>%</th>
-                <th className="num" style={{ width: 120 }}>จำนวนเงิน</th>
-                <th>หมายเหตุ</th>
-                {split && !disabled && <th style={{ width: 40 }}></th>}
+        {/* ⚠️ คลาสการ์ดเก่าอยู่บน TableScroll เอง ไม่ใช่ div ที่ห่ออีกชั้น (2026-09-07)
+            เหตุผลเดียวกับ QuotationLineItems — กรอบมนซ้อนกันสามชั้นบนหน้าเดียวกัน
+            ยุบทิ้งเฉย ๆ ไม่ได้เพราะเซลล์กินสไตล์จาก `.premium-glass-table tbody td` */}
+        <TableScroll surface="embedded" family="editable" className={`premium-glass-table table-responsive ${styles.installmentScroll}`}><table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th style={{ width: 40 }}>งวด</th>
+              <th>รายละเอียด</th>
+              <th style={{ width: 90 }}>%</th>
+              <th className="num" style={{ width: 120 }}>จำนวนเงิน</th>
+              <th>หมายเหตุ</th>
+              {split && !disabled && <th style={{ width: 40 }}></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={index} className="premium-row">
+                <td className={styles.rowNumber}>{index + 1}</td>
+                <td>{split
+                  ? disabled
+                    ? <div className="readable-field is-compact"><ReadableText text={row.label} lines={2} empty={<span className="readable-field-empty">งวดที่ {index + 1}</span>} /></div>
+                    : <input className="premium-input" value={row.label} placeholder={`งวดที่ ${index + 1}`} onChange={(event) => updateInstallment(index, { label: event.target.value })} />
+                  : <span className={styles.readonlyValue}>{row.label}</span>}</td>
+                <td>{split
+                  ? disabled
+                    ? <span className={`${styles.readonlyValue} mono`}>{pctText(row.percent)}</span>
+                    /* ⚠️ ช่องกรอกต้องได้ค่าดิบ — จัดรูปแบบใน value แล้วผู้ใช้พิมพ์ต่อไม่ได้ */
+                    : <input type="number" min="0" max="100" step="0.01" className="premium-input mono" value={row.percent} onChange={(event) => updateInstallment(index, { percent: event.target.value })} />
+                  : <span className={`${styles.readonlyValue} mono`}>{pctText(100)}</span>}</td>
+                <td className="num mono">{fmtMoney(amounts[index]?.amount || 0)}</td>
+                <td>{split
+                  ? disabled
+                    ? <div className="readable-field is-compact"><ReadableText text={row.note} lines={3} empty={<span className="readable-field-empty">{NA}</span>} /></div>
+                    : <input className="premium-input" value={row.note} placeholder="เช่น ก่อนเริ่มงาน" onChange={(event) => updateInstallment(index, { note: event.target.value })} />
+                  : <span className={styles.readonlyValue}>{NA}</span>}</td>
+                {split && !disabled && (
+                  <td><button type="button" className="btn-icon danger" disabled={rows.length <= 2} onClick={() => removeInstallment(index)} aria-label={`ลบงวด ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
+                )}
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={index} className="premium-row">
-                  <td className={styles.rowNumber}>{index + 1}</td>
-                  <td>{split
-                    ? disabled
-                      ? <div className="readable-field is-compact"><ReadableText text={row.label} lines={2} empty={<span className="readable-field-empty">งวดที่ {index + 1}</span>} /></div>
-                      : <input className="premium-input" value={row.label} placeholder={`งวดที่ ${index + 1}`} onChange={(event) => updateInstallment(index, { label: event.target.value })} />
-                    : <span className={styles.readonlyValue}>{row.label}</span>}</td>
-                  <td>{split
-                    ? disabled
-                      ? <span className={`${styles.readonlyValue} mono`}>{pctText(row.percent)}</span>
-                      /* ⚠️ ช่องกรอกต้องได้ค่าดิบ — จัดรูปแบบใน value แล้วผู้ใช้พิมพ์ต่อไม่ได้ */
-                      : <input type="number" min="0" max="100" step="0.01" className="premium-input mono" value={row.percent} onChange={(event) => updateInstallment(index, { percent: event.target.value })} />
-                    : <span className={`${styles.readonlyValue} mono`}>{pctText(100)}</span>}</td>
-                  <td className="num mono">{fmtMoney(amounts[index]?.amount || 0)}</td>
-                  <td>{split
-                    ? disabled
-                      ? <div className="readable-field is-compact"><ReadableText text={row.note} lines={3} empty={<span className="readable-field-empty">{NA}</span>} /></div>
-                      : <input className="premium-input" value={row.note} placeholder="เช่น ก่อนเริ่มงาน" onChange={(event) => updateInstallment(index, { note: event.target.value })} />
-                    : <span className={styles.readonlyValue}>{NA}</span>}</td>
-                  {split && !disabled && (
-                    <td><button type="button" className="btn-icon danger" disabled={rows.length <= 2} onClick={() => removeInstallment(index)} aria-label={`ลบงวด ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table></TableScroll>
-        </div>
+            ))}
+          </tbody>
+        </table></TableScroll>
       </div>
     </>
   );

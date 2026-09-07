@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 // รายงานความพร้อมลายเซ็นอิเล็กทรอนิกส์ (Phase 5B go-live gate)
 //
 // mig 0125 บังคับว่าผู้อนุมัติต้องมีลายเซ็นในบัญชีก่อน ไม่งั้นอนุมัติใบเสนอราคา/SO ไม่ได้ (409)
@@ -9,7 +10,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Signature, AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
-import { ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
+import { ROLE_LABELS } from "@/lib/permissions";
 import { canViewSignatureCoverage, isGoLiveReady } from "@/lib/admin/signatureCoverage";
 import { accessState } from "@/lib/accessGate";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
@@ -20,7 +21,6 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import { naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
-
 
 const FILTERS = [
   { v: "all", label: "ทั้งหมด" },
@@ -210,7 +210,7 @@ export default function SignatureCoveragePage() {
                       {row.email && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.email}</div>}
                     </td>
                     <td>{ROLE_LABELS[row.role] || row.role}</td>
-                    <td>{TEAM_LABELS[row.team] || naText(row.team)}</td>
+                    <td>{row.team ? teamLabelNow(row.team) : naText(null)}</td>
                     <td style={{ textAlign: "right" }}>{naText(row.openDeals)}</td>
                     <td style={{ textAlign: "right", fontWeight: row.pendingQuotations && !row.hasSignature ? 700 : 400, color: row.pendingQuotations && !row.hasSignature ? "var(--red)" : undefined }}>
                       {naText(row.pendingQuotations)}

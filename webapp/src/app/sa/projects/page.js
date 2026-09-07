@@ -402,50 +402,48 @@ export default function ProjectsIndexPage() {
             <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
           </div>
 
-          <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll surface="embedded"><table className="w-full text-sm">
-              <thead>
+          <TableScroll surface="embedded" className="premium-glass-table table-responsive" aria-busy={loading}><table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th>โครงการ</th>
+                <th>ลูกค้า</th>
+                <th>ดีล</th>
+                <th className="num">FC Total</th>
+                <th className="num">Actual</th>
+                <th className="num">FC คงเหลือ</th>
+                <th>ขั้นตอน</th>
+                <th>ผู้ดูแล (AE)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวโครงการข้างในเป็น `projectRow` ตัวเดียวกัน */}
+              {buckets ? buckets.map((bucket) => {
+                const bucketCollapsed = collapsed.has(bucket.key);
+                return (
+                  <Fragment key={bucket.key}>
+                    <TableGroupRow
+                      colSpan={8}
+                      label={bucket.label}
+                      sub={bucket.sub}
+                      badge={`${bucket.count} โครงการ`}
+                      total={money(bucket.total)}
+                      totalTitle="FC Total รวมของกลุ่มนี้"
+                      collapsed={bucketCollapsed}
+                      onToggle={() => toggleBucket(bucket.key)}
+                    />
+                    {!bucketCollapsed && bucket.items.map(projectRow)}
+                  </Fragment>
+                );
+              }) : pageRows.map(projectRow)}
+              {!filtered.length && !loading && (
                 <tr>
-                  <th>โครงการ</th>
-                  <th>ลูกค้า</th>
-                  <th>ดีล</th>
-                  <th className="num">FC Total</th>
-                  <th className="num">Actual</th>
-                  <th className="num">FC คงเหลือ</th>
-                  <th>ขั้นตอน</th>
-                  <th>ผู้ดูแล (AE)</th>
+                  <td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
+                    ยังไม่มีโครงการตามตัวกรองนี้
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวโครงการข้างในเป็น `projectRow` ตัวเดียวกัน */}
-                {buckets ? buckets.map((bucket) => {
-                  const bucketCollapsed = collapsed.has(bucket.key);
-                  return (
-                    <Fragment key={bucket.key}>
-                      <TableGroupRow
-                        colSpan={8}
-                        label={bucket.label}
-                        sub={bucket.sub}
-                        badge={`${bucket.count} โครงการ`}
-                        total={money(bucket.total)}
-                        totalTitle="FC Total รวมของกลุ่มนี้"
-                        collapsed={bucketCollapsed}
-                        onToggle={() => toggleBucket(bucket.key)}
-                      />
-                      {!bucketCollapsed && bucket.items.map(projectRow)}
-                    </Fragment>
-                  );
-                }) : pageRows.map(projectRow)}
-                {!filtered.length && !loading && (
-                  <tr>
-                    <td colSpan={8} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีโครงการตามตัวกรองนี้
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table></TableScroll>
-          </div>
+              )}
+            </tbody>
+          </table></TableScroll>
           {/* โหมดจัดกลุ่มไม่แบ่งหน้า — แบ่งหน้าจะหั่นกลุ่มคาหน้าแล้วยอดหัวกลุ่มไม่ตรงกับแถว */}
           {filtered.length > 0 && !buckets && (
             <Pager

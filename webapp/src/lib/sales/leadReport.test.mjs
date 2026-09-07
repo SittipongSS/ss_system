@@ -45,12 +45,32 @@ test('ช่องที่ไม่มีค่าเป็นค่าว่�
 
 /* ป้ายต้องมาจากทะเบียนกลาง ไม่ใช่สะกดเองในไฟล์รายงาน — ไม่งั้นไฟล์กับหน้าจอ
    จะใช้คำคนละชุด แล้วคนอ่านสองที่จะเถียงกันว่าอันไหนถูก */
+
+/* ⚠️ ค่าในแมป **ต่างจากค่าคงที่โดยตั้งใจ** — ถ้า assert ค่าที่ค่าคงที่ให้พอดี เทสต์จะเขียว
+   แม้แมปจะถูกประกาศแล้วไม่ถูกใช้/ไม่ถูกส่งต่อ ซึ่งคือชนิดของเทสต์ที่หลอกตัวเอง */
+const TEAM_NAMES = new Map([['KA', 'คีย์แอคเคาต์ (ทะเบียน)'], ['SA-NORTH', 'ทีมภาคเหนือ']]);
+
 test('ป้ายสถานะ/ช่องทาง/ทีม ใช้คำเดียวกับหน้าจอ', () => {
-  const row = leadReportRow({ status: 'contacted', channel: 'phone', team: 'KA', serviceInterest: 'other' });
+  const row = leadReportRow(
+    { status: 'contacted', channel: 'phone', team: 'KA', serviceInterest: 'other' },
+    { teamNames: TEAM_NAMES },
+  );
   assert.equal(row.status, 'ติดต่อแล้ว');
   assert.equal(row.channel, 'โทรเข้า');
-  assert.equal(row.team, 'Key Account');
+  assert.equal(row.team, 'คีย์แอคเคาต์ (ทะเบียน)', 'ต้องมาจากทะเบียน ไม่ใช่ค่าคงที่');
   assert.equal(row.serviceInterest, 'อื่นๆ (ระบุ)');
+});
+
+/* ⭐ เคสที่ค่าคงที่ตอบไม่ได้เลย — ทีมที่สร้างหลังปลดล็อก (2026-09-07) */
+test('ทีมที่สร้างใหม่ต้องขึ้นชื่อจริงในไฟล์', () => {
+  assert.equal(leadReportRow({ team: 'SA-NORTH' }, { teamNames: TEAM_NAMES }).team, 'ทีมภาคเหนือ');
+});
+
+/* 🔴 ไม่มีในทะเบียน = **รหัสดิบ ไม่ใช่ชื่อจากค่าคงที่** — แมปมาจากฐานสด ถ้าไม่มีรหัสนั้น
+   แปลว่าอ่านไม่ได้หรือทีมถูกลบ · โชว์ชื่อเก่าจากโค้ดคือคำโกหกที่ดูเหมือนปกติ */
+test('ไม่มีในทะเบียน = รหัสดิบ ไม่ถอยไปค่าคงที่', () => {
+  assert.equal(leadReportRow({ team: 'KA' }).team, 'KA');
+  assert.equal(leadReportRow({ team: 'KA' }, { teamNames: new Map() }).team, 'KA');
 });
 
 test('เหตุผลไม่ไปต่อขึ้นเฉพาะใบที่ปิดแล้ว', () => {

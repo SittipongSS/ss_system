@@ -1,4 +1,5 @@
 import { withUser, forbidden, unauthorized } from '@/lib/http';
+import { loadTeamNames } from '@/lib/master/teamsRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { applyLeadScope } from '@/lib/sales/leads';
 import { canExportLeadReport, leadReportFilename } from '@/lib/sales/leadReport';
@@ -50,12 +51,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   const leads = data || [];
+  /* ป้ายทีมในไฟล์ Excel — โหลดครั้งเดียวต่อคำขอ · อ่านไม่ได้ = รหัสดิบ แต่ต้องส่งเสียง */
+  const teamNames = await loadTeamNames(supabase).catch((err) => {
+    console.warn('[lead-report] อ่านชื่อทีมไม่สำเร็จ — คอลัมน์ทีมจะขึ้นเป็นรหัส', err?.message);
+    return null;
+  });
   const now = new Date().toISOString();
   const buffer = await buildLeadReportBuffer(leads, {
     from,
     to,
     generatedAt: `${businessDate(now)} ${businessTimeKey(now)}`,
     by: user.name || null,
+    teamNames,
   });
 
   return new Response(buffer, {
