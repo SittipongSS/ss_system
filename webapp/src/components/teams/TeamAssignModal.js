@@ -18,6 +18,7 @@ import Modal from "@/components/Modal";
 import OptionTiles from "@/components/ui/OptionTiles";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { ROLE_LABELS } from "@/lib/permissions";
+import { salesTeamLabel } from "@/lib/master/salesTeamRegistry";
 import { naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 import styles from "./TeamManager.module.css";
@@ -53,13 +54,23 @@ export default function TeamAssignModal({ person, teams, saving, onClose, onSave
 
   if (!person) return null;
   const first = !(person.teams || []).length;
+  /* ทีมที่สังกัดอยู่ตอนนี้ — **ชื่อจริง ไม่ใช่รหัสดิบ** (มติ 2026-09-07: ชื่อทีมมีบ้านเดียว
+     คือทะเบียน) · ของเดิมพิมพ์ `person.teams.join(" · ")` ซึ่งพลาดสองอย่างพร้อมกัน:
+     ① โชว์รหัสในจอที่บรรทัดถัดไปโชว์ชื่อ — คนอ่านไม่รู้ว่าเป็นทีมเดียวกัน
+     ② ` · ` เป็นตัวคั่นของ "รหัส · ชื่อ" ทั้งระบบ ⇒ "KA · SV" อ่านได้ว่าทีมเดียวชื่อ SV
+     ⇒ คั่นด้วยจุลภาค และแปลรหัสผ่านทะเบียนที่จอนี้ถืออยู่แล้ว
+     ⚠️ ทีมที่ปิดแล้วไม่อยู่ใน `teams` (เป็นรายการตัวเลือก) ⇒ `salesTeamLabel` ถอยไป
+        คืนรหัสดิบให้เอง ซึ่งถูกต้องตามกติกา "ไม่มีในทะเบียน = รหัสดิบ" */
+  const currentLabel = (person.teams || [])
+    .map((code) => salesTeamLabel(teams, code))
+    .join(", ");
 
   return (
     <Modal
       open
       onClose={onClose}
       title={first ? `จัดเข้าทีม — ${person.name}` : `ย้ายทีมของ ${person.name}`}
-      subtitle={`${ROLE_LABELS[person.role] || person.role} · ตอนนี้อยู่ ${naText((person.teams || []).join(" · "))}`}
+      subtitle={`${ROLE_LABELS[person.role] || person.role} · ตอนนี้อยู่ ${naText(currentLabel)}`}
       size="md"
       footer={(
         <>
