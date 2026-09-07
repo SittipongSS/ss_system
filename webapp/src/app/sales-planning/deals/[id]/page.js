@@ -594,6 +594,9 @@ export default function DealOverviewPage() {
        สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
     const missingFields = missingDealFieldsMessage(dealForm, {
       legacyWon: dealForm.legacy && dealForm.stage === "won",
+      // ดีลที่ปิด Won แล้วไม่ต้องมีตารางรายหมวด — หมวด/ปริมาตร/จำนวนมาจากใบที่รับ
+      // และจอล็อกตารางไว้อยู่แล้ว (มติผู้ใช้ 2026-09-08)
+      alreadyWon,
       title: dealForm.title,
     });
     if (missingFields) { setError(missingFields); setSavingDeal(false); return; }
