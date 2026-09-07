@@ -29,6 +29,7 @@
 
 .doneBadge,
 .todoBadge,
+.addedBadge,
 .cutBadge {
   display: inline-flex;
   align-items: center;
@@ -44,6 +45,8 @@
 .doneBadge { background: var(--green-soft); color: var(--green); }
 .todoBadge { background: var(--amber-soft); color: var(--amber); }
 .cutBadge { background: var(--panel-2); color: var(--text-3); }
+/* ป้ายที่มา (accent) — คนละแกนกับป้ายความคืบหน้า จึงใช้สีของตัวเอง ไม่ใช่เขียว/เหลือง */
+.addedBadge { background: var(--accent-soft); color: var(--accent-ink); }
 
 .block {
   display: flex;

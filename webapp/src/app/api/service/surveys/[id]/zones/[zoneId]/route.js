@@ -11,7 +11,8 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
-import { normalizeSurveyPart, packageNeedsNote, surveyEditLockError } from '@/lib/service/survey';
+import { deleteZoneRow, purgeSurveyZoneRows, zoneReleaseDecision } from '@/lib/service/surveyCancelCleanup';
+import { normalizeSurveyPart, packageNeedsNote, surveyAddZoneError, surveyEditLockError } from '@/lib/service/survey';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 import { genId } from '@/lib/id';
@@ -109,9 +110,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     /* ⚠️ **ตัดพื้นที่ต้องบอกเหตุผลเสมอ** (CHECK ของ mig 0314 บังคับอีกชั้น) — ของที่หายไป
        จากสิ่งที่ SA จะเสนอราคา คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน
-       ⚠️ `'added'` ไม่รับที่นี่ — พื้นที่ที่เพิ่มหน้างานเกิดจากเส้นสร้างแถว ไม่ใช่การแก้สถานะ */
+       ⚠️ `'added'` ไม่รับที่นี่ — พื้นที่ที่เพิ่มหน้างานเกิดจาก **เส้นสร้างแถว** (`POST ../zones`)
+         ไม่ใช่การแก้สถานะของแถวที่ SA ขอมา */
     if (body.status !== undefined) {
       if (!['ok', 'cut'].includes(body.status)) return badRequest('สถานะพื้นที่ไม่ถูกต้อง');
+      /* 🔴 **พื้นที่ที่ช่างเพิ่มเองหน้างาน ตัดออกไม่ได้ — ต้องลบทิ้ง** (`DELETE` ข้างล่าง)
+         ① ทางเทคนิค: คอลัมน์เดียวเก็บได้ค่าเดียว ⇒ เขียน `'cut'` ทับ = ป้าย "เพิ่มหน้างาน"
+            หายถาวร แล้วกด "เอากลับเข้าใบ" จะได้แถวที่โผล่มาเป็นของ SA ทั้งที่ SA ไม่เคยขอ
+         ② ทางความหมาย: "ตัดออก" แปลว่า *SA ขอมาแล้วเราไม่ทำ* ⇒ ต้องมีเหตุผลให้เขาอ่าน
+            ส่วนพื้นที่ที่เขาไม่เคยขอ ไม่มีอะไรต้องอธิบาย — แค่ไม่ต้องมีอยู่ */
+      if (row.status === 'added') {
+        return badRequest('พื้นที่นี้ช่างเพิ่มเองหน้างาน — ถ้าไม่เอาแล้วให้ลบทิ้ง ไม่ใช่ตัดออก');
+      }
       patch.status = body.status;
       if (body.status === 'cut') {
         const reason = String(body.cutReason ?? row.cutReason ?? '').trim();
@@ -232,6 +242,75 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
     return ok(data);
+  } catch (e) {
+    return fail(e.message, 500);
+  }
+});
+
+
+/* ── DELETE: ลบพื้นที่ที่เพิ่มผิด ─────────────────────────────────────────
+ *
+ * 🔴 **ต้องมาคู่กับปุ่มเพิ่มเสมอ ไม่ใช่ของแถม** — ด่านหกข้อ (`surveySendError`) บล็อก
+ *   **ทั้งใบ ไม่ใช่รายแถว** ⇒ แถวที่กดเพิ่มผิดแล้วกรอกไม่จบ (พิมพ์ชื่อผิด · กดซ้ำ · เพิ่ม
+ *   แล้วรู้ทีหลังว่าเป็นพื้นที่ของตึกข้าง ๆ) จะ **ล็อกใบไม่ให้ส่งผลตลอดกาล** และไม่มี
+ *   ปุ่มไหนในระบบพาออกมาได้เลย เพราะ "ตัดออก" ก็ใช้กับแถวชนิดนี้ไม่ได้ (ดู `PATCH`)
+ *
+ * ⚠️ **เฉพาะแถวที่ช่างเพิ่มเอง** — แถวที่ SA ขอมาห้ามหาย · ของที่ไม่ทำใช้ "ตัดออก"
+ *   พร้อมเหตุผล เพราะ SA ต้องรู้ว่าสิ่งที่เขาขอไปหายไปไหน
+ */
+export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
+  const { id, zoneId } = await ctx.params;
+  try {
+    const canEditAll = canEditService(user);
+    if (!canEditAll && !canDoFieldWork(user)) return forbidden();
+
+    const { data: row, error: rowError } = await supabase
+      .from('service_survey_zones').select('*').eq('id', zoneId).eq('requestId', id).maybeSingle();
+    if (rowError) return fail(rowError.message, 500);
+    if (!row) return notFound('ไม่พบพื้นที่นี้ในใบประเมิน');
+    if (row.status !== 'added') {
+      return badRequest('ลบได้เฉพาะพื้นที่ที่ช่างเพิ่มเองหน้างาน'
+        + ' — พื้นที่ที่ฝ่ายขายขอมา ให้ใช้ "ตัดพื้นที่นี้ออก" พร้อมเหตุผล');
+    }
+
+    const { data: request, error: reqError } = await supabase
+      .from('dept_requests').select('*').eq('id', id).maybeSingle();
+    if (reqError) return fail(reqError.message, 500);
+
+    const visit = await findSurveyVisit(supabase, id);
+    const access = visitWriteAccess({ user, visit, canEditAll });
+    const gate = surveyAddZoneError(request, { canWrite: access.ok === true });
+    if (gate) return access.ok ? conflict(gate) : forbidden(access.error || gate);
+
+    /* ⚠️ **ตัดสินชะตาโซนก่อนลบแถว** — โซนที่ขายไปแล้ว/มีเครื่องต้องอยู่ต่อ และต้องอยู่
+       *พร้อมประวัติการวัด* ⇒ ถามก่อนว่าจะลบโซนไหม แล้วค่อยแตะแถว
+       (ตัวนับให้คำตอบเดียวกันทั้งก่อนและหลังลบแถว — ดูหัวข้อของ `zoneReleaseDecision`) */
+    let zone = null;
+    if (row.zoneId) {
+      const { data } = await supabase
+        .from('service_zones').select('id, code, name, "createdAt"').eq('id', row.zoneId).maybeSingle();
+      zone = data || null;
+    }
+    const decision = zone ? await zoneReleaseDecision(supabase, { request, zone }) : null;
+
+    const purgeError = await purgeSurveyZoneRows(supabase, [row.id]);
+    if (purgeError) return fail(purgeError, 500);
+
+    let zoneDropped = false;
+    if (decision?.action === 'delete') {
+      const dropError = await deleteZoneRow(supabase, zone.id);
+      zoneDropped = !dropError;
+    }
+
+    await recordAudit({
+      user, action: 'delete', entityType: 'service_survey_zone', entityId: row.id,
+      before: row,
+      summary: `ลบพื้นที่ที่เพิ่มหน้างาน ${row.zoneName} ออกจากใบ ${request?.docNo || id}`
+        + (zoneDropped ? ` · ถอนพื้นที่ ${decision.label} ออกจากทะเบียนด้วย` : '')
+        + (zone && !zoneDropped ? ` · เก็บพื้นที่ ${decision.label} ไว้ในทะเบียน (${decision.reason})` : ''),
+      request: req,
+    });
+    return ok({ id: row.id, zoneDropped });
   } catch (e) {
     return fail(e.message, 500);
   }

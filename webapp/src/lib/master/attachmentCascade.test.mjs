@@ -29,6 +29,7 @@ const PARENT_TABLES = [...new Set(Object.values(PARENT_TABLE))];
 const ROLLBACK_ONLY = {
   'app/api/orders/route.js': 'rollback ใบสั่งซื้อที่เพิ่งสร้างเมื่อขั้นถัดไปล้ม',
   'app/api/sa/requests/route.js': 'rollback คำร้องที่เพิ่งสร้างเมื่อออกเลขที่/บรรทัดล้ม',
+  'app/api/service/surveys/[id]/zones/route.js': 'rollback แถวพื้นที่ที่เพิ่งเพิ่มหน้างานเมื่อออกรหัส ZN ล้ม',
   'app/api/sahamit/forecast/rounds/[id]/create-sales-deal/route.js': 'rollback ดีลที่เพิ่งสร้างจากรอบพยากรณ์',
   'app/api/sahamit/po/[id]/settle-deal/route.js': 'rollback ดีลที่เพิ่งสร้างตอนปิด PO',
   'app/api/sahamit/po/[id]/create-project/route.js': 'rollback โครงการที่เพิ่งสร้างจาก PO',
