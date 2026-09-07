@@ -1,0 +1,46 @@
+/* ── โมดัลบันทึกใบกำกับภาษีของงวด — ทรงเดียวกับโมดัลรับรองการชำระ ──────────
+   สีและระยะมาจากตัวแปรกลางทั้งหมด — ห้ามใส่ค่าดิบ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* งวดที่กำลังออกใบให้ — ป้ายซ้าย ค่าขวา (ชุดเดียวกับ InstallmentConfirmDialog) */
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--fs-6);
+}
+
+.facts dt { color: var(--text-3); }
+.facts dd { margin: 0; text-align: right; }
+
+/* ไฟล์ที่แนบไว้แล้ว — ต้องเปิดดูได้ก่อนตัดสินใจแนบทับ */
+.current {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+.currentLabel {
+  font-size: var(--fs-6);
+  color: var(--text-3);
+}
+
+.file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  color: var(--accent-ink);
+}
+
+.file:hover { text-decoration: underline; }

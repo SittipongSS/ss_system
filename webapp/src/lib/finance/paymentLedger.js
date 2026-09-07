@@ -15,6 +15,7 @@
 import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
+import { taxInvoicePending } from '@/lib/sales/taxInvoice';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -95,6 +96,17 @@ export function ledgerRow({
        (`/api/sales-planning/sales-orders/[id]/payment-file?installment=&i=`) */
     evidence: (Array.isArray(installment.evidence) ? installment.evidence : [])
       .map((file, index) => ({ index, fileName: file?.fileName || `ไฟล์ ${index + 1}` })),
+    /* ── ใบกำกับภาษีของงวด (mig 0348 · มติผู้ใช้ 2026-09-07) ────────────────
+       ⚠️ **ตัวนี้เป็น whitelist ไม่ได้ spread แถวดิบมา** — ลืมเติมที่นี่แล้วค่าหาย
+       เงียบ ๆ ทั้งจอ ทั้ง Excel ทั้งช่องค้น โดยไม่มี error ให้เห็น (คำเตือนของไฟล์เอง
+       ข้างบน) · ค่างวดมาจาก `.select('*')` ⇒ คอลัมน์ใหม่ **มาถึง server เอง**
+       ซึ่งทำให้หลงคิดว่าทำแค่ migration ก็พอ
+       ⚠️ ส่งแค่ "มีไฟล์ไหม" ไม่ส่ง path — ทางเปิดไฟล์คือ route ที่ตรวจสิทธิ์เอง
+       (`payment-file?installment=<id>&doc=tax_invoice`) */
+    taxInvoiceNo: installment.taxInvoiceNo || '',
+    taxInvoiceDate: installment.taxInvoiceDate || null,
+    taxInvoiceFileName: installment.taxInvoiceFile?.fileName || '',
+    hasTaxInvoiceFile: Boolean(installment.taxInvoiceFile?.storagePath),
   };
 }
 
@@ -116,6 +128,19 @@ export function pendingConfirmations(rows = []) {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
       return (Number(b.amount) || 0) - (Number(a.amount) || 0);
     });
+}
+
+/**
+ * งวดที่ **เงินเข้าแล้วแต่ยังไม่มีใบกำกับ** — คิวที่สองของฝ่ายบัญชี (มติผู้ใช้ 2026-09-07)
+ *
+ * ⭐ แยกจาก `pendingConfirmations` โดยตั้งใจ: คนละงาน คนละจังหวะ และป้ายตัวเลขบนเมนู
+ * นับคิวแรกอยู่ ⇒ เอามารวมกันเมื่อไร เลขบนเมนูจะไม่ตรงกับของที่เห็นตอนกดเข้าไป
+ * ⚠️ เรียงงวดเก่าก่อน (วันที่จ่ายจริง แล้วค่อยกำหนดชำระ) — ของค้างที่นานที่สุดต้องขึ้นก่อน
+ */
+export function pendingTaxInvoices(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && taxInvoicePending(row))
+    .sort((a, b) => String(a.paidOn || a.dueDate || '9999').localeCompare(String(b.paidOn || b.dueDate || '9999')));
 }
 
 /**
@@ -146,6 +171,11 @@ export const LEDGER_COLUMNS = [
   { key: 'statusLabel', label: 'สถานะ' },
   { key: 'reportedByName', label: 'ผู้แจ้งชำระ' },
   { key: 'confirmedByName', label: 'ผู้รับรอง (บัญชี)' },
+  /* ใบกำกับภาษี (mig 0348) — ต้องอยู่ในไฟล์ด้วย ไม่ใช่เห็นแต่บนจอ: บัญชีกระทบยอด
+     VAT จากไฟล์นี้ และ "งวดไหนยังไม่ออกใบ" คือของค้างที่ต้องเคลียร์ทุกงวด
+     ⚠️ เลขที่ **ห้ามใส่ flag** — ใส่ `date:true` จะยัด numFmt วันที่ทับข้อความ */
+  { key: 'taxInvoiceNo', label: 'เลขที่ใบกำกับภาษี' },
+  { key: 'taxInvoiceDate', label: 'วันที่ใบกำกับภาษี', date: true },
 ];
 
 /**
@@ -166,6 +196,11 @@ export function ledgerSummary(rows = []) {
     overdueCount: list.filter((r) => r.overdue).length,
     overdueAmount: sum((r) => r.overdue),
     awaitingCount: list.filter((r) => r.status === 'reported').length,
+    /* ⭐ ของค้าง "เงินเข้าแล้วแต่ยังไม่มีใบกำกับ" (มติผู้ใช้ 2026-09-07 — บริษัทเก็บ VAT
+       ⇒ ทุกงวดที่ลูกค้าจ่ายต้องมีใบ) · เป็น **คิวที่สอง** ของฝ่ายบัญชี คนละแกนกับคิว
+       "รอรับรอง" ⇒ ต้องเป็นตัวเลขของตัวเอง ไม่ใช่เอาไปบวกรวมกัน */
+    missingInvoiceCount: list.filter(taxInvoicePending).length,
+    missingInvoiceAmount: sum(taxInvoicePending),
   };
 }
 
@@ -242,7 +277,7 @@ export function orderStateIndex(rows = []) {
  */
 export function filterLedger(rows = [], {
   status = [], from = null, to = null, q = '', overdueOnly = false,
-  orderState = [], orderStates = null, line = [],
+  orderState = [], orderStates = null, line = [], taxInvoice = '',
 } = {}) {
   const wanted = Array.isArray(status) ? status.filter(Boolean) : [];
   const wantedOrders = Array.isArray(orderState) ? orderState.filter(Boolean) : [];
@@ -260,6 +295,11 @@ export function filterLedger(rows = [], {
        เหมือนยังเก็บไม่ครบทันที ทั้งที่บางใบเก็บครบไปแล้ว */
     if (wantedOrders.length && !wantedOrders.includes(orderStates?.get(r.orderId) || ORDER_STATE_OPEN)) return false;
     if (overdueOnly && !r.overdue) return false;
+    /* ใบกำกับภาษี: 'missing' = เงินเข้า/แจ้งแล้วแต่ยังไม่มีเลข · 'issued' = มีแล้ว
+       ⚠️ ว่าง = ไม่กรอง (ค่าที่ไม่รู้จักก็ไม่กรอง — ตัวกรองที่พิมพ์ผิดใน URL ต้องไม่
+       ทำให้ทะเบียนว่างเปล่าโดยไม่มีคำอธิบาย) */
+    if (taxInvoice === 'missing' && !taxInvoicePending(r)) return false;
+    if (taxInvoice === 'issued' && !String(r.taxInvoiceNo || '').trim()) return false;
     /* ⚠️ **งวดที่ยังไม่มีกำหนดชำระถูกตัดออกเมื่อกรองช่วงวัน** — และนั่นถูกต้องตาม
        ความหมายของตัวกรอง ("ครบกำหนดในช่วงนี้") แต่มัน **เงียบ** ไม่ได้: `ledgerSummary`
        คิดจากแถวที่เหลือ ⇒ ยอดค้างบนหัวจอลดลงตามโดยไม่มีอะไรบอก และงวดไม่มีวันกำหนด
@@ -271,7 +311,10 @@ export function filterLedger(rows = [], {
     if (needle) {
       /* ⚠️ `referenceDoc` อยู่ในชุดค้นด้วย — เหตุผลเดียวกับตารางรายการ SO
          (IS-26080017): คำถามที่เข้ามาจริงคือ "PO เลขนี้ใบไหน เก็บถึงไหนแล้ว" */
-      const hay = [r.orderNumber, r.quoteNumber, r.referenceDoc, r.customerName, r.customerCode, r.label]
+      /* ⚠️ `taxInvoiceNo` อยู่ในชุดค้นด้วย — กฎ "ตาเห็นบนแถว = ต้องค้นเจอ" และคำถาม
+         จริงของบัญชีคือ "ใบกำกับเลขนี้เป็นของงวดไหน" (เหมือนที่ถามด้วยเลข PO) */
+      const hay = [r.orderNumber, r.quoteNumber, r.referenceDoc, r.customerName, r.customerCode,
+        r.label, r.taxInvoiceNo]
         .join(' ').toLowerCase();
       if (!hay.includes(needle)) return false;
     }
@@ -394,6 +437,11 @@ export function groupLedgerByOrder(rows = []) {
         count: rowsInOrder.length,
         overdue: rowsInOrder.some((r) => r.overdue),
         awaiting: rowsInOrder.filter((r) => r.status === 'reported').length,
+        /* ใบกำกับที่ออกแล้ว / ที่ยังค้าง — คิดจากงวดใน **ก้อนที่ผ่านตัวกรองแล้ว** ต่างจาก
+           `orderPaidThrough` เพราะนี่เป็นตัวเลขของ *แถวที่ตาเห็นอยู่* ไม่ใช่ค่าระดับใบ
+           ที่ต้องนิ่งไม่ว่ากรองอะไร (กรอง "ยังไม่มีใบกำกับ" แล้วเห็น 0/2 คือคำตอบที่ถูก) */
+        invoiced: rowsInOrder.filter((r) => String(r.taxInvoiceNo || '').trim()).length,
+        invoicePending: rowsInOrder.filter(taxInvoicePending).length,
         rejected: rowsInOrder.filter((r) => r.status === 'rejected').length,
         complete: rowsInOrder.length > 0 && rowsInOrder.every((r) => r.status === 'confirmed'),
         // งวดที่ด่วนที่สุด — ใช้ทั้งจัดลำดับก้อนและโชว์บนแถวที่ยุบอยู่

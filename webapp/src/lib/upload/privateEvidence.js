@@ -7,7 +7,8 @@
 // ⚠️ ด่านสิทธิ์ของทั้งสามทางต้องเหมือนกันเป๊ะ — ถ้าก๊อปไว้สามที่ วันหนึ่งจะเหลือทางที่
 // ลืมอัปเดตแล้วกลายเป็นรูให้แนบไฟล์ใส่ใบที่ปิดไปแล้ว
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { canConfirmPayment } from '@/lib/permissions';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 
 export const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET
@@ -65,6 +66,26 @@ const TARGETS = {
       ? 'ใบสั่งขายนี้ยกเลิก/ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบหลักฐานการชำระไม่ได้'
       : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/payments/`,
+  },
+  /* ⭐ ใบกำกับภาษีของงวดชำระ (mig 0348 · มติผู้ใช้ 2026-09-07)
+   *
+   * ⚠️ **โฟลเดอร์ที่สี่ และเป็นตัวแรกที่ `allow` ไม่ใช่ฝ่ายขาย** — ใบกำกับเป็นของ
+   * ฝ่ายบัญชีล้วน (FN ออกใบแล้วบันทึกเอง · SA มาเปิดดู/โหลดจากแผงงวดได้) ⇒ ด่านเขียน
+   * ต้องเป็น `canConfirmPayment` ไม่ใช่ `canEditSalesPlanning` ซึ่ง role `finance`
+   * **ไม่มี** (permissions.js: finance ถือแค่ `salesplan:view`)
+   * 🔴 ถ้าปล่อยให้ตกไปใช้ด่านตั้งต้น ปุ่มจะขึ้นให้ FN กดตามปกติแล้วตายที่ 403 ของ
+   * `/api/upload/session` โดย error ไปโผล่ **ใต้โมดัล** มองไม่เห็น (อาการเดียวกับ
+   * IS-26080026 ที่ด่านไฟล์แคบกว่าด่านปุ่ม)
+   * ⚠️ ด่าน **สถานะ** ใช้ชุดเดียวกับหลักฐานการชำระ — ใบที่ยกเลิก/ตีกลับ/ถูกออก Rev.
+   * ทับแล้ว ไม่มีใบกำกับให้แนบอีก */
+  sales_order_tax_invoice: {
+    table: 'sales_orders',
+    notFound: 'ไม่พบใบสั่งขาย',
+    gate: (row) => (SO_PAYMENT_EVIDENCE_CLOSED.includes(row.status)
+      ? 'ใบสั่งขายนี้ยกเลิก/ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบใบกำกับภาษีไม่ได้'
+      : null),
+    prefix: (entityId) => `sales-orders/${safeId(entityId)}/tax-invoices/`,
+    allow: (user) => canConfirmPayment(user),
   },
 };
 
@@ -175,6 +196,22 @@ export function isQuotationEvidencePath(storagePath, quotationId = null) {
 
 export { QUOTATION_EVIDENCE_FOLDERS };
 
+/* โฟลเดอร์ของ **ใบสั่งขาย** เอง (payments/ · tax-invoices/) — อ่านจากทะเบียนเดียวกับ
+   ตอนเขียนด้วยเหตุผลเดียวกับข้างบน: #1391 เพิ่มโฟลเดอร์แล้วลืมด่านอ่าน จน 6 งวด
+   บน prod เปิดไฟล์ไม่ได้ · ตัวที่ห้าที่จะเพิ่มวันหน้าเข้ามาเอง */
+const SALES_ORDER_EVIDENCE_FOLDERS = Object.values(TARGETS)
+  .filter((target) => target.table === 'sales_orders')
+  .map((target) => target.prefix('__ID__').replace('sales-orders/__ID__/', '').replace(/\/$/, ''));
+
+/** path นี้เป็นไฟล์ที่แนบไว้ใต้ใบสั่งขายใบนั้นไหม (ส่ง orderId เสมอ — ผูก id กันการก๊อป ref ข้ามใบ) */
+export function isSalesOrderEvidencePath(storagePath, orderId = null) {
+  const folders = SALES_ORDER_EVIDENCE_FOLDERS.join('|');
+  const id = orderId ? safeId(orderId) : '[a-zA-Z0-9_-]+';
+  return new RegExp(`^sales-orders/${id}/(${folders})/`).test(String(storagePath || ''));
+}
+
+export { SALES_ORDER_EVIDENCE_FOLDERS };
+
 /**
  * ด่าน **สถานะเอกสาร** ของ entityType นั้น — คืนข้อความผิดพลาด หรือ null เมื่อผ่าน
  *
@@ -195,13 +232,30 @@ export function privateEvidencePrefix(entityType, entityId) {
 }
 
 /**
- * ตรวจว่า user แนบไฟล์ใส่เอกสารใบนี้ได้ไหม (สิทธิ์ฝ่ายขาย + ขอบเขตดีลเจ้าของใบ + สถานะใบ)
+ * ด่าน **สิทธิ์** ของ entityType นั้น — คืน true/false โดยไม่แตะฐานข้อมูล
+ *
+ * ⭐ ยกออกมาคู่กับ `privateEvidenceStatusError` ด้วยเหตุผลเดียวกัน: ทดสอบได้โดยไม่ต้องมี
+ * DB · และเพราะโฟลเดอร์แต่ละอันไม่ได้เป็นของฝ่ายเดียวกันอีกต่อไป (ใบกำกับเป็นของบัญชี)
+ * ⚠️ ตัวที่ไม่ประกาศ `allow` ใช้ด่านตั้งต้น = ฝ่ายขาย + ขอบเขตดีล **เหมือนเดิมเป๊ะ**
+ * ⇒ FN ยังอัปสลิปการชำระไม่ได้ (คนรับรองเงินต้องไม่ใช่คนส่งหลักฐานเงิน)
+ */
+export function privateEvidenceAllows(entityType, user, { deal = null } = {}) {
+  const target = TARGETS[entityType];
+  if (!target) return false;
+  if (target.allow) return target.allow(user, { deal });
+  return canEditSalesPlanning(user) && inSalesEditScope(user, deal);
+}
+
+/**
+ * ตรวจว่า user แนบไฟล์ใส่เอกสารใบนี้ได้ไหม (สิทธิ์ของโฟลเดอร์นั้น + ขอบเขตดีลเจ้าของใบ + สถานะใบ)
  * คืน { ok:true } หรือ { ok:false, error, status } พร้อมตอบกลับผู้ใช้ได้ทันที
  */
 export async function checkPrivateEvidenceScope(user, entityType, entityId) {
   const target = TARGETS[entityType];
   if (!target) return { ok: false, error: 'forbidden', status: 403 };
-  if (!entityId || !canEditSalesPlanning(user)) return { ok: false, error: 'forbidden', status: 403 };
+  /* ด่านหยาบก่อนแตะ DB — `salesplan:view` เป็น superset ของทั้งฝ่ายขายและฝ่ายบัญชี
+     (ด่านจริงคือ `privateEvidenceAllows` ข้างล่าง ซึ่งต่างกันรายโฟลเดอร์) */
+  if (!entityId || !canViewSalesPlanning(user)) return { ok: false, error: 'forbidden', status: 403 };
 
   const supabase = getSupabaseAdmin();
   const { data: row, error: rowError } = await supabase
@@ -215,7 +269,11 @@ export async function checkPrivateEvidenceScope(user, entityType, entityId) {
   const { data: deal, error: dealError } = await supabase
     .from('sales_deals').select('*').eq('id', row.dealId).maybeSingle();
   if (dealError) return { ok: false, error: dealError.message, status: 500 };
-  if (!deal || !inSalesEditScope(user, deal)) return { ok: false, error: 'forbidden', status: 403 };
+  /* ⚠️ ใบที่ไม่มีดีล (`dealId` ว่าง) ยังผ่านได้ถ้าโฟลเดอร์นั้นไม่ได้ใช้ขอบเขตดีล —
+     ด่านตั้งต้นยังตกที่ `inSalesEditScope(user, null)` = false เหมือนเดิม */
+  if (!privateEvidenceAllows(entityType, user, { deal })) {
+    return { ok: false, error: 'forbidden', status: 403 };
+  }
 
   return { ok: true };
 }

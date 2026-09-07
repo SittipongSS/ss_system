@@ -430,6 +430,8 @@ export default function SalesOrderDetailPage() {
           coverage: "บันทึกช่วงครอบบริการแล้ว",
           link: "แนบคำร้องขอเอกสารกับงวดนี้แล้ว",
           unlink: "ถอดคำร้องออกจากงวดแล้ว",
+          "tax-invoice": "บันทึกใบกำกับภาษีของงวดแล้ว",
+          "tax-invoice-clear": "ลบใบกำกับภาษีของงวดแล้ว",
         }[action] || "อัปเดตเรียบร้อยแล้ว",
       });
       return true;

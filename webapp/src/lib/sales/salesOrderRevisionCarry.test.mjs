@@ -49,7 +49,12 @@ test('🔴 ต้องบังคับ pending และห้ามก๊อ
   const block = insert.slice(0, insert.indexOf('UPDATE public.sales_orders'));
 
   assert.match(block, /'pending'/, 'สถานะต้องถูกบังคับเป็น pending');
-  for (const banned of ['evidence', 'paidOn', 'reportedAt', 'confirmedAt', 'frozenAt', 'billingRequestId']) {
+  /* ⚠️ `taxInvoiceNo` เป็น substring ของ `taxInvoiceNoXxx` ที่อาจเพิ่มวันหน้า —
+     ยามนี้เทียบด้วย includes ⇒ ห้ามตั้งชื่อคอลัมน์ใหม่ที่ขึ้นต้นด้วยชื่อพวกนี้
+     ⭐ ใบกำกับภาษี (0348) **ห้ามอุ้มข้ามใบ Rev.** — ใบที่ออกไปแล้วผูกกับยอดของใบเดิม
+     ซึ่งอ่านย้อนได้ตลอด · ก๊อปมาแขวนใบใหม่ = เอกสารภาษีชี้ยอดคนละตัว */
+  for (const banned of ['evidence', 'paidOn', 'reportedAt', 'confirmedAt', 'frozenAt', 'billingRequestId',
+    'taxInvoiceNo', 'taxInvoiceDate', 'taxInvoiceRequestId', 'taxInvoiceItemId', 'taxInvoiceFile']) {
     assert.ok(!block.includes(banned),
       `ห้ามก๊อป ${banned} — เงินที่รับมาจริงอยู่ที่ใบเดิมซึ่งอ่านย้อนได้ตลอด`);
   }

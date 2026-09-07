@@ -24,7 +24,8 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, Flag, Receipt, Search, Wallet, Wrench,
+  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, Receipt, Search,
+  Wallet, Wrench,
 } from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
@@ -40,11 +41,12 @@ import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
   LEDGER_GROUP_OPTIONS, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
   LEDGER_STATUS, LEDGER_STATUS_KEYS, groupAsOrder, groupLedgerBuckets, groupLedgerByOrder,
-  groupNote, ledgerSortDir, pendingConfirmations, sortLedgerGroups,
+  groupNote, ledgerSortDir, pendingConfirmations, pendingTaxInvoices, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
 import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConfirmDialog";
+import TaxInvoiceDialog from "@/components/salesPlanning/TaxInvoiceDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
 import styles from "./page.module.css";
@@ -52,7 +54,7 @@ import { apiFetch } from "@/lib/apiFetch";
 
 /* คีย์ที่เป็น "ตัวกรองของข้อมูล" — ชุดนี้ตัวเดียวที่ส่งขึ้น API และที่ปุ่มล้างจะลบ
    (ที่เหลือ `group` `sort` `dir` เป็นมุมมองบนจอ ล้างตัวกรองแล้วต้องยังอยู่) */
-const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue"];
+const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue", "taxInvoice"];
 
 export default function FinancePaymentsPage() {
   const router = useRouter();
@@ -77,6 +79,10 @@ export default function FinancePaymentsPage() {
   const to = params.get("to") || "";
   const q = params.get("q") || "";
   const overdue = params.get("overdue") === "1";
+  /* ใบกำกับภาษีของงวด (mig 0348) — "missing" = เงินเข้าแล้วยังไม่ออกใบ · "issued" = ออกแล้ว
+     ⚠️ บริษัทเก็บ VAT ⇒ ทุกงวดที่จ่ายแล้วต้องมีใบ ตัวกรองนี้จึงเป็น **ของค้างจริง**
+     ไม่ใช่มุมมองเสริม (มติผู้ใช้ 2026-09-07) */
+  const taxInvoice = params.get("taxInvoice") || "";
   const groupBy = params.get("group") || "none";
   const sortKey = params.get("sort") || LEDGER_SORT_DEFAULT;
   const sortDir = params.get("dir") || ledgerSortDir(sortKey);
@@ -94,8 +100,12 @@ export default function FinancePaymentsPage() {
     if (to) sp.set("to", to);
     if (q) sp.set("q", q);
     if (overdue) sp.set("overdue", "1");
+    /* ⚠️ **บรรทัดนี้คือเส้นเลือด** — `download()` ใช้ `query` ตัวเดียวกัน ⇒ ลืมเติม
+       ที่นี่ = ชิปตัวกรองติดอยู่บนจอแต่ทั้งจอทั้งไฟล์ Excel ไม่ถูกกรอง (และลืมใน
+       dep array = query ค้างค่าเก่า fetch ไม่ยิงใหม่) */
+    if (taxInvoice) sp.set("taxInvoice", taxInvoice);
     return sp;
-  }, [status, orderState, line, from, to, q, overdue]);
+  }, [status, orderState, line, from, to, q, overdue, taxInvoice]);
 
   /* เขียนกลับจาก **params ทั้งชุด** ไม่ใช่จาก `query` — เขียนจาก query เมื่อไร
      การกดตัวกรองหนึ่งครั้งจะลบ group/sort/dir ทิ้งเงียบ ๆ */
@@ -109,7 +119,9 @@ export default function FinancePaymentsPage() {
   const setListFilter = useCallback((key, values) => setParam(key, values.join(",")), [setParam]);
 
   const filtering = FILTER_KEYS.some((key) => params.get(key));
-  const filterCount = statusFilter.length + orderStateFilter.length + lineFilter.length + (overdue ? 1 : 0);
+  /* ⚠️ ผลบวกเขียนมือ — `FILTER_KEYS` ให้ฟรีแค่ `filtering` กับ `clearFilters` ตัวนับบนปุ่มต้องบวกเอง */
+  const filterCount = statusFilter.length + orderStateFilter.length + lineFilter.length
+    + (overdue ? 1 : 0) + (taxInvoice ? 1 : 0);
 
   /* ล้างตัวกรอง = ล้างเฉพาะชั้นข้อมูล **แต่คงมุมมองไว้** — คนกดล้างอยากเห็นของครบ
      ไม่ได้อยากให้การจัดกลุ่ม/การเรียงที่เพิ่งตั้งไว้หายไปด้วย */
@@ -211,8 +223,15 @@ export default function FinancePaymentsPage() {
      ⚠️ นับจาก **แถวที่กรองแล้ว** — ตัวกรองบนหน้าคุมทั้งคิวและทะเบียน ไม่งั้นกรองดู
      ลูกค้ารายเดียวแล้วคิวยังโชว์ของคนอื่น = สองส่วนบนหน้าเดียวพูดคนละเรื่อง */
   const queue = useMemo(() => pendingConfirmations(rows), [rows]);
+  /* ⭐ **คิวที่สอง: เงินเข้าแล้วแต่ยังไม่ออกใบกำกับ** (มติผู้ใช้ 2026-09-07)
+     บริษัทเก็บ VAT ⇒ ทุกงวดที่ลูกค้าจ่ายต้องมีใบกำกับ ⇒ ของค้างชุดนี้เคลียร์ได้จริง
+     ⚠️ **แยกจากคิวแรก** — ป้ายตัวเลขบนเมนูนับ `reported` อยู่ · เอามารวมกันเมื่อไร
+     เลขบนเมนูจะไม่ตรงกับของที่เห็นตอนกดเข้ามา */
+  const invoiceQueue = useMemo(() => pendingTaxInvoices(rows), [rows]);
   const [queueOpen, setQueueOpen] = useState(false);   // "ดูอีก n งวด"
+  const [invoiceQueueOpen, setInvoiceQueueOpen] = useState(false);
   const [confirmFor, setConfirmFor] = useState(null);
+  const [invoiceFor, setInvoiceFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
   const [acting, setActing] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -242,6 +261,8 @@ export default function FinancePaymentsPage() {
   const QUEUE_PREVIEW = 3;
   const queueShown = queueOpen ? queue : queue.slice(0, QUEUE_PREVIEW);
   const queueTotal = queue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const invoiceShown = invoiceQueueOpen ? invoiceQueue : invoiceQueue.slice(0, QUEUE_PREVIEW);
+  const invoiceTotal = invoiceQueue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
   /* ── แถวของ "ใบ" หนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────────
      ⚠️ ยกออกมาเป็นฟังก์ชันตัวเดียว ไม่ใช่เขียนซ้ำในสองสาขาของ tbody
@@ -317,6 +338,14 @@ export default function FinancePaymentsPage() {
           {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
           {note ? <span className="cell-sub">{note.label}</span> : null}
         </td>
+        {/* ออกใบกำกับไปกี่งวดแล้ว — ค้างเมื่อไรเป็นตัวเลขเตือน เพราะทุกงวดที่จ่ายแล้ว
+            ต้องมีใบ (บริษัทเก็บ VAT · มติผู้ใช้ 2026-09-07) */}
+        <td className={`num mono ${group.invoicePending ? "cell-num-bad" : ""}`.trim()}>
+          {group.invoiced}/{group.count}
+          {group.invoicePending
+            ? <span className="cell-sub">ค้าง {group.invoicePending} งวด</span>
+            : null}
+        </td>
         <td>
           <Link
             prefetch={false}
@@ -360,6 +389,15 @@ export default function FinancePaymentsPage() {
               onClick={() => setFilter("status", "reported")}
             />
             <Metric icon={<Wallet />} label="ค้างรับทั้งหมด" value={fmtMoney(summary.outstandingAmount)} note="ทุกงวดที่ยังไม่ถูกคอนเฟิร์ม" />
+            {/* ⭐ ของค้างของ **เอกสาร** ไม่ใช่ของเงิน (มติผู้ใช้ 2026-09-07 — เก็บ VAT
+                ⇒ ทุกงวดที่จ่ายแล้วต้องมีใบกำกับ) · กดแล้วกรองให้เลยเหมือนการ์ดอื่น */}
+            <Metric
+              as="button" type="button"
+              icon={<FileText />} label="ยังไม่ออกใบกำกับ" value={`${summary.missingInvoiceCount} งวด`}
+              note={fmtMoney(summary.missingInvoiceAmount)}
+              tone={summary.missingInvoiceCount ? "warning" : "good"}
+              onClick={() => setFilter("taxInvoice", taxInvoice === "missing" ? "" : "missing")}
+            />
             <Metric
               as="button" type="button"
               icon={<AlarmClock />} label="เลยกำหนด" value={`${summary.overdueCount} งวด`}
@@ -437,6 +475,57 @@ export default function FinancePaymentsPage() {
           </WorkspaceSection>
         )}
 
+        {/* ── คิวที่สอง: เอกสารที่ยังค้าง (มติผู้ใช้ 2026-09-07) ──────────────────
+            ⚠️ อยู่ **ใต้** คิวรับรอง เพราะเงินมาก่อนเอกสารเสมอ — งวดที่ยังไม่รับรอง
+            จะโผล่ที่คิวบนอยู่แล้ว และจะไหลลงมาคิวนี้เองหลังกดรับรอง
+            ⚠️ ขึ้นเฉพาะตอนมีของค้าง — คิวว่างที่โชว์ตลอดคือเสียงรบกวน */}
+        {invoiceQueue.length > 0 && (
+          <WorkspaceSection
+            icon={<FileText size={17} />}
+            title={`ยังไม่ออกใบกำกับ ${invoiceQueue.length} งวด · ${fmtMoney(invoiceTotal)}`}
+            subtitle="เงินเข้าแล้วแต่ยังไม่ได้บันทึกใบกำกับภาษี — บันทึกเลขที่ วันที่ และแนบไฟล์ได้จากที่นี่"
+          >
+            <div className={styles.queue}>
+              {invoiceShown.map((row) => (
+                <div key={row.id} className={styles.qrow}>
+                  <div className={styles.qmain}>
+                    <div>
+                      <Link
+                        prefetch={false}
+                        href={`/sa/sales-orders/${row.orderId}#payment`}
+                        target="_blank" rel="noreferrer"
+                        className={`linklike mono ${styles.openLink}`}
+                        title="เปิดใบในแท็บใหม่"
+                      >
+                        <strong>{row.orderNumber}</strong>
+                        <ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
+                      </Link>
+                      <span className={styles.qsep}>·</span>
+                      <span>{row.label || `งวดที่ ${row.seq}`}</span>
+                    </div>
+                    <span className="cell-sub">
+                      {row.customerName}
+                      {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
+                      {` · ${LEDGER_STATUS[row.status]?.label || row.status}`}
+                    </span>
+                  </div>
+                  <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
+                  <Button size="sm" tone="primary" disabled={acting} onClick={() => setInvoiceFor(row)}>
+                    บันทึกใบกำกับ
+                  </Button>
+                </div>
+              ))}
+              {invoiceQueue.length > QUEUE_PREVIEW && (
+                <div className={styles.qmore}>
+                  <Button size="sm" variant="quiet" onClick={() => setInvoiceQueueOpen((v) => !v)}>
+                    {invoiceQueueOpen ? "ย่อคิว" : `ดูอีก ${invoiceQueue.length - QUEUE_PREVIEW} งวด`}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </WorkspaceSection>
+        )}
+
         <WorkspaceSection
           icon={<Wallet size={17} />}
           title="งวดชำระทั้งหมด"
@@ -453,7 +542,7 @@ export default function FinancePaymentsPage() {
               <input autoComplete="off"
                 defaultValue={q}
                 onChange={(e) => setFilter("q", e.target.value)}
-                placeholder="ค้นหาเลข SO / QT / เอกสารอ้างอิง / ลูกค้า / ชื่องวด"
+                placeholder="ค้นหาเลข SO / QT / เอกสารอ้างอิง / ลูกค้า / ชื่องวด / เลขใบกำกับ"
               />
             </div>
             <FilterPopover
@@ -482,6 +571,20 @@ export default function FinancePaymentsPage() {
                   key: "status", label: "สถานะงวด", icon: Flag,
                   options: LEDGER_STATUS_KEYS.map((key) => ({ value: key, label: LEDGER_STATUS[key].label })),
                   selected: statusFilter, onChange: (values) => setListFilter("status", values),
+                },
+                {
+                  /* ใบกำกับภาษี (mig 0348) — สองถังพอ: ค้าง กับ ออกแล้ว
+                     ⚠️ "ค้าง" นับเฉพาะงวดที่แจ้ง/รับรองแล้ว — งวดที่ยังไม่ถึงกำหนดจ่าย
+                     ไม่ใช่ของค้าง มันยังไม่มีเงินให้ออกใบ */
+                  key: "taxInvoice", label: "ใบกำกับภาษี", icon: FileText,
+                  options: [
+                    { value: "missing", label: `ยังไม่ออกใบ${summary?.missingInvoiceCount ? ` (${summary.missingInvoiceCount})` : ""}` },
+                    { value: "issued", label: "ออกใบแล้ว" },
+                  ],
+                  selected: taxInvoice ? [taxInvoice] : [],
+                  /* ถังเดียวเลือกได้ทีละอัน — เลือกทั้งสองพร้อมกันไม่มีความหมาย
+                     (ค้าง ∪ ออกแล้ว = ทั้งหมด) ⇒ เอาค่าสุดท้ายที่กด */
+                  onChange: (values) => setFilter("taxInvoice", values[values.length - 1] || ""),
                 },
                 {
                   key: "overdue", label: "ความด่วน", icon: AlarmClock,
@@ -532,7 +635,7 @@ export default function FinancePaymentsPage() {
             <SortDirButton dir={sortDir} onToggle={() => setParam("dir", sortDir === "asc" ? "desc" : "asc")} />
           </div>
 
-          <TableScroll surface="embedded" cells="stacked" minWidth={1200} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={1320} aria-busy={loading}>
               <table className="w-full text-sm">
                 <thead>
                   {/* ⭐ 9 → 6 คอลัมน์ (มติผู้ใช้ 2026-08-13 · แบบ ก)
@@ -548,6 +651,9 @@ export default function FinancePaymentsPage() {
                     <th className="num">ค้างรับ</th>
                     <th className="num">จ่ายถึง</th>
                     <th className="num">กำหนดถัดไป</th>
+                    {/* ใบกำกับภาษี (mig 0348) — ตารางเป็น **หนึ่งใบหนึ่งแถว** ⇒ ใส่ได้แค่
+                        ตัวนับ ไม่ใช่เลขใบ · เลขรายงวดอยู่ในไฟล์ Excel และบนใบ SO */}
+                    <th className="num">ใบกำกับ</th>
                     <th aria-label="เปิดใบ" />
                   </tr>
                 </thead>
@@ -562,7 +668,7 @@ export default function FinancePaymentsPage() {
                         {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
                             ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
                         <TableGroupRow
-                          colSpan={7}
+                          colSpan={8}
                           label={bucket.label}
                           sub={bucket.sub}
                           badge={`${bucket.count} ใบ`}
@@ -577,7 +683,7 @@ export default function FinancePaymentsPage() {
                   }) : pageRows.map(orderRow)}
                   {!rows.length && !loading && (
                     <TableEmpty
-                      colSpan={7}
+                      colSpan={8}
                       title={filtering ? "ไม่มีงวดที่ตรงกับตัวกรอง" : "ยังไม่มีงวดชำระในระบบ"}
                       description={filtering
                         ? "ลองขยายช่วงวันหรือล้างตัวกรอง"
@@ -606,6 +712,24 @@ export default function FinancePaymentsPage() {
           error={actionError}
           onClose={() => { setConfirmFor(null); setActionError(""); }}
           onConfirm={async (row) => { if (await runAction(row, "confirm")) setConfirmFor(null); }}
+        />
+
+        {/* ⭐ โมดัลใบกำกับตัวเดียวกับที่การ์ดงวดบนใบ SO ใช้ — หนึ่งฟอร์ม สองทางเรียก
+            ⚠️ **แยกจากโมดัลรับรอง** โดยตั้งใจ (ดูหัวไฟล์ TaxInvoiceDialog) */}
+        <TaxInvoiceDialog
+          open={!!invoiceFor}
+          row={invoiceFor}
+          order={invoiceFor ? { id: invoiceFor.orderId, orderNumber: invoiceFor.orderNumber, customerName: invoiceFor.customerName } : null}
+          todayIso={todayIso}
+          busy={acting}
+          error={actionError}
+          onClose={() => { setInvoiceFor(null); setActionError(""); }}
+          onSubmit={async (values) => {
+            if (await runAction(invoiceFor, "tax-invoice", values)) setInvoiceFor(null);
+          }}
+          onClear={async () => {
+            if (await runAction(invoiceFor, "tax-invoice-clear")) setInvoiceFor(null);
+          }}
         />
 
         {/* ตีกลับใช้ ReasonDialog ตัวเดียวกับการ์ดบนใบ — เหตุผลบังคับชุดเดียวกัน */}
