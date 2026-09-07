@@ -235,19 +235,79 @@ export function surveyDocCounts(files = []) {
  * @param row    แถว `service_survey_zones`
  * @param files  ไฟล์แนบของแถวนั้น (`entityType='service_survey_zone'`)
  */
+/* ══ ทะเบียนด่านหกข้อ — ประกาศที่เดียว ══════════════════════════════════
+ *
+ * 🔴 **เจ้าของด่านต้องอ่านออกจากข้อมูล ไม่ใช่จากลำดับที่คนเขียนจำได้** — จอสรุปต้องแยก
+ *   "ข้อที่ช่างเท่านั้นแก้ได้" ออกจาก "ข้อที่หัวหน้าแก้เองได้" เพื่อวางปุ่ม
+ *   "แจ้งช่างให้กลับไป" ให้ถูกข้อ ⇒ `owner` เป็นข้อมูลของด่าน ไม่ใช่ของจอ
+ *
+ * ⚠️ **ลำดับในลิสต์คือลำดับที่ผู้ใช้เห็น** และเป็นลำดับเดียวกับที่ข้อความ "ยังขาด…"
+ *   เคยเรียงมาแต่เดิม — สลับเมื่อไร ข้อความบนจอสลับตาม
+ * ⚠️ `missing(row, files)` คืน **ข้อความไทยหรือ `null`** — ห้ามคืน boolean เปล่า
+ *   เพราะข้อความบอกได้ละเอียดกว่า ("ครบไม่ครบสามช่องกี่ส่วน")
+ */
+export const SURVEY_GATES = [
+  {
+    key: 'size',
+    owner: 'crew',
+    label: 'ขนาด ก × ย × ส ครบทุกพื้นที่',
+    missing: (row) => {
+      const size = surveyZoneSize(row.parts);
+      if (size.complete) return null;
+      return size.parts === 0
+        ? 'ยังไม่ได้วัดขนาด — เพิ่มอย่างน้อยหนึ่งส่วน'
+        : `มีส่วนที่กรอกไม่ครบสามช่อง ${size.parts - size.measuredParts} ส่วน`;
+    },
+  },
+  {
+    key: 'wide',
+    owner: 'crew',
+    label: 'ภาพกว้างครบทุกพื้นที่',
+    missing: (row, files) => (surveyDocCounts(files).wide === 0 ? 'ยังไม่มีภาพกว้าง' : null),
+  },
+  {
+    key: 'spots',
+    owner: 'crew',
+    label: 'จุดที่ติดตั้งได้ อย่างน้อย 1 จุดต่อพื้นที่',
+    missing: (row) => (spotCounts(row.spots).total === 0 ? 'ยังไม่ได้ระบุจุดที่ติดตั้งได้' : null),
+  },
+  {
+    key: 'plan',
+    owner: 'head',
+    label: 'ภาพผังที่มาร์กจุดแล้ว',
+    missing: (row, files) => (surveyDocCounts(files).plan === 0 ? 'ยังไม่มีภาพผังที่มาร์กจุดแล้ว' : null),
+  },
+  {
+    key: 'picked',
+    owner: 'head',
+    label: 'เลือกจุดที่จะติดตั้งแล้ว',
+    missing: (row) => (spotCounts(row.spots).selected === 0 ? 'ยังไม่ได้เลือกจุดที่จะติดตั้ง' : null),
+  },
+  {
+    key: 'package',
+    owner: 'head',
+    label: 'เคาะจำนวนแพ็คเกจแล้ว',
+    missing: (row) => {
+      if (!(Number(row.packageQty) > 0)) return 'ยังไม่ได้เคาะจำนวนแพ็คเกจ';
+      /* 🔴 **ทับสูตรแล้วต้องบอกเหตุผล** (mig 0345 · กติกาเดียวกับการตัดพื้นที่ออก)
+         ของที่ต่างไปจากสิ่งที่ SA จะเสนอราคา คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน */
+      if (packageNeedsNote(row) && !String(row.packageNote ?? '').trim()) {
+        return 'แพ็คเกจต่างจากสูตร — ต้องบอกเหตุผล';
+      }
+      return null;
+    },
+  },
+];
+
+const gatesOf = (owner) => SURVEY_GATES.filter((g) => g.owner === owner);
+
+const missingFor = (owner, row, files) => gatesOf(owner)
+  .map((gate) => gate.missing(row, files || []))
+  .filter(Boolean);
+
 export function surveyFieldMissing(row = {}, files = []) {
   if (isCut(row)) return [];
-  const out = [];
-  const size = surveyZoneSize(row.parts);
-  if (!size.complete) {
-    out.push(size.parts === 0
-      ? 'ยังไม่ได้วัดขนาด — เพิ่มอย่างน้อยหนึ่งส่วน'
-      : `มีส่วนที่กรอกไม่ครบสามช่อง ${size.parts - size.measuredParts} ส่วน`);
-  }
-  const docs = surveyDocCounts(files);
-  if (docs.wide === 0) out.push('ยังไม่มีภาพกว้าง');
-  if (spotCounts(row.spots).total === 0) out.push('ยังไม่ได้ระบุจุดที่ติดตั้งได้');
-  return out;
+  return missingFor('crew', row, files);
 }
 
 /**
@@ -260,18 +320,46 @@ export function surveyFieldMissing(row = {}, files = []) {
  */
 export function surveyResultMissing(row = {}, files = []) {
   if (isCut(row)) return { field: [], result: [] };
-  const result = [];
-  const docs = surveyDocCounts(files);
-  if (docs.plan === 0) result.push('ยังไม่มีภาพผังที่มาร์กจุดแล้ว');
-  if (spotCounts(row.spots).selected === 0) result.push('ยังไม่ได้เลือกจุดที่จะติดตั้ง');
-  if (!(Number(row.packageQty) > 0)) {
-    result.push('ยังไม่ได้เคาะจำนวนแพ็คเกจ');
-  } else if (packageNeedsNote(row) && !String(row.packageNote ?? '').trim()) {
-    /* 🔴 **ทับสูตรแล้วต้องบอกเหตุผล** (mig 0345 · กติกาเดียวกับการตัดพื้นที่ออก)
-       ของที่ต่างไปจากสิ่งที่ SA จะเสนอราคา คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน */
-    result.push('แพ็คเกจต่างจากสูตร — ต้องบอกเหตุผล');
-  }
-  return { field: surveyFieldMissing(row, files), result };
+  return { field: missingFor('crew', row, files), result: missingFor('head', row, files) };
+}
+
+/**
+ * 🔑 **เช็คลิสต์ด่านของทั้งใบ แยกตามเจ้าของ** — ของที่จอสรุปต้องกางให้หัวหน้าเห็น
+ *
+ * 🐞 **วันนี้จอกลืนสองกลุ่มรวมกัน** — `SurveyResultTable` เคย `[...field, ...result].join(' · ')`
+ *   ลงคอลัมน์เดียว ⇒ หัวหน้าเห็นประโยคยาวประโยคเดียวโดยไม่รู้ว่าข้อไหนตัวเองแก้ได้
+ *   และข้อไหนต้องให้ช่างกลับไป ทั้งที่ตัวแยกมีมาตั้งแต่แรก (แค่ไม่มีใครใช้)
+ *
+ * ⚠️ นับจาก **พื้นที่ที่ยังอยู่ในใบ** เท่านั้น — แถวที่ถูกตัดออกไม่ต้องผ่านด่านไหนเลย
+ *   (บังคับให้วัดของที่ตัดทิ้ง คือบังคับงานที่ไม่มีใครได้ใช้)
+ *
+ * @returns `[{ key, owner, label, ok, done, total, zones: [ชื่อพื้นที่ที่ยังขาด] }]`
+ */
+export function surveyGateChecklist(rows = [], filesByZone = {}) {
+  const active = (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
+  return SURVEY_GATES.map((gate) => {
+    const zones = [];
+    for (const row of active) {
+      if (gate.missing(row, filesByZone?.[row.id] || [])) {
+        zones.push(String(row.zoneName || '').trim() || 'พื้นที่ไม่มีชื่อ');
+      }
+    }
+    return {
+      key: gate.key,
+      owner: gate.owner,
+      label: gate.label,
+      ok: zones.length === 0,
+      done: active.length - zones.length,
+      total: active.length,
+      zones,
+    };
+  });
+}
+
+/** ด่านที่ยังติดและ **ช่างเท่านั้นที่แก้ได้** — ตัวเดียวที่ตัดสินว่าปุ่ม "แจ้งช่างให้กลับไป"
+ *  มีเรื่องให้แจ้งไหม · ทั้งปุ่มบนจอและ route ถามตัวนี้ */
+export function surveyCrewGaps(rows = [], filesByZone = {}) {
+  return surveyGateChecklist(rows, filesByZone).filter((g) => g.owner === 'crew' && !g.ok);
 }
 
 /** เคาะแพ็คเกจต่างจากที่สูตรบอกไหม — `false` เมื่อยังไม่ได้เคาะ หรือคำนวณสูตรไม่ได้
@@ -305,6 +393,54 @@ export function surveyEditLockError(request) {
     return 'ส่งผลให้ฝ่ายขายไปแล้ว — แก้ไม่ได้ · ถ้าตัวเลขเปลี่ยน ให้กด "ยังไม่จบ" ที่ใบคำร้องก่อน';
   }
   return null;
+}
+
+/* ══ แจ้งช่างให้กลับไป (แผน §5.4 บรรทัด 604) ═════════════════════════════
+ *
+ * 🐞 **หัวหน้าเจอทางตันมาตั้งแต่เฟส 3** — ด่านสามข้อบนของหกข้อเป็นของช่าง (ขนาด ·
+ *   ภาพกว้าง · จุดที่ติดตั้งได้) ซึ่ง **หัวหน้าแก้เองไม่ได้ ต้องยืนอยู่หน้างานถึงจะทำได้**
+ *   ⇒ วันนี้เขาเห็นแค่ปุ่มส่งผลที่กดไม่ได้ กับประโยคยาวประโยคเดียวที่รวมทุกข้อไว้ด้วยกัน
+ *   และ **ไม่มีทางบอกช่างในระบบเลย** ต้องเดินไปตามหรือโทร
+ *   ⭐ แผนเขียนคำนี้ไว้เอง: "ไม่ใช่ปุ่มเทาเงียบ" — ปุ่มที่กดไม่ได้ต้องมีทางออกอยู่ข้าง ๆ
+ *
+ * 🔴 **ทิศทางที่สาม — คำเดิมใช้ไม่ได้ทั้งคู่** (`hops.js`)
+ *   **ตีกลับ** = ผู้รับเรื่องส่งคืนผู้ยื่น (TS → SA) · **ดึงกลับ** = คนที่ส่งเอาคืนเอง
+ *   ส่วนนี่คือ **หัวหน้า → ลูกน้องในฝ่ายเดียวกัน** ซึ่งไม่ข้ามฝ่ายเลย ⇒ ใช้คำของม็อกตรง ๆ
+ *
+ * ⚠️ **ไม่แตะสถานะใบและไม่แตะนัด** — ต่างจาก "เข้าพื้นที่ไม่ได้" (§5E ②) ที่ถอยใบกลับ
+ *   ขั้นลงคิวเพราะยังไม่มีผลวัดสักแถว · กรณีนี้ผลวัดค้างอยู่บนใบแล้ว และของที่ขาดจะถูก
+ *   เติม **ลงแถวเดิม** (`UNIQUE (requestId, zoneId)` ห้ามใบเดียวมีสองแถวต่อพื้นที่)
+ *   ⇒ มันคือ "รอบเดิมที่ยังไม่จบ" ไม่ใช่รอบวัดใหม่ ⇒ ถอยขั้นเมื่อไรคือทิ้งงานที่ทำมาแล้ว
+ *   ⚠️ และพลิกนัดที่ปิดว่า `done` ให้เป็น `unable` เพื่อยืมกลไกเดิม = โกหกประวัติ
+ */
+export function surveySendBackError(request, {
+  canSend = false, note = '', gaps = [], crewIds = [],
+} = {}) {
+  if (!canSend) return 'แจ้งช่างให้กลับไปได้เฉพาะหัวหน้าฝ่ายบริการ';
+  const locked = surveyEditLockError(request);
+  if (locked) return locked;
+  if (!gaps.length) {
+    return 'ของฝั่งหน้างานครบทุกข้อแล้ว — ไม่มีอะไรให้ช่างกลับไปทำ';
+  }
+  /* 🔴 **ปุ่มที่แจ้งไม่ถึงใครคือปุ่มที่โกหก** — กระดิ่งของใบคำร้องไปหาผู้ขอ (SA) เท่านั้น
+     ช่างไม่อยู่ในทะเบียนผู้รับ และเปิดหน้าคำร้องก็ไม่ได้ (403) ⇒ คนที่จะได้รับแจ้งจริง
+     มีทางเดียวคือคนที่ถูกมอบหมายบน **นัด** ของใบนี้ */
+  if (!crewIds.length) {
+    return 'ใบนี้ยังไม่มีช่างที่ถูกมอบหมาย — แจ้งไม่ถึงใคร ให้ลงคิวก่อน';
+  }
+  if (String(note).trim().length < 10) {
+    return 'ต้องบอกว่าให้กลับไปทำอะไร อย่างน้อย 10 ตัวอักษร — ช่างจะเห็นข้อความนี้';
+  }
+  return null;
+}
+
+/** ข้อความบรรทัดเธรด/กระดิ่ง — เขียนที่เดียว ใช้ทั้ง route และเทสต์
+ *  ⚠️ ต้องบอก **ข้อที่ติดพร้อมชื่อพื้นที่** ไม่ใช่แค่ "ยังไม่ครบ" — ช่างต้องรู้ว่าไปที่ไหน
+ *    ทำอะไร โดยไม่ต้องเปิดจอไล่อ่านทีละพื้นที่ */
+export function surveySendBackBody(gaps = [], note = '') {
+  const lines = (gaps || []).map((g) => `${g.label} — ขาด ${g.zones.join(' · ')}`);
+  return `หัวหน้าแจ้งให้กลับไปเก็บงานหน้างาน — ${String(note).trim().slice(0, 300)}`
+    + (lines.length ? ` · ${lines.join(' · ')}` : '');
 }
 
 /* ══ ช่างเพิ่มพื้นที่ที่เจอหน้างาน (มติข้อ 6 · §9) ═══════════════════════
