@@ -1,6 +1,5 @@
 import { genId } from "@/lib/id";
-import { fetchInChunks } from "@/lib/supabaseInChunks";
-import { fetchAllResult } from "@/lib/supabaseFetchAll";
+import { fetchAllInChunks, fetchInChunks } from "@/lib/supabaseInChunks";
 import { recordAudit } from "@/lib/audit";
 import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthorized } from "@/lib/http";
 import { can, caretakerTeamsOf } from "@/lib/permissions";
@@ -141,15 +140,15 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
 
   /* เลขใบเสนอราคาต้นทางของแต่ละ SO — จอตอนสร้างใบยื่นต้องบอกได้ว่ากำลังยื่นตาม
      ใบเสนอราคาใบไหน (มติผู้ใช้ 2026-09-07) · ยิงทีละก้อนด้วยเหตุผลเดียวกับสินค้า
-     ข้างบน: id ของ QT ยาว 40 ตัวอักษร ลิสต์โตตามจำนวน SO ที่ค้างยื่น */
-  const { data: quoteRows, error: quoteError } = await fetchInChunks(
+     ข้างบน: id ของ QT ยาว 40 ตัวอักษร ลิสต์โตตามจำนวน SO ที่ค้างยื่น
+     ไม่ต้องส่ง `sort` — ผลเข้า Map ลำดับไม่มีความหมาย (`.order()` ที่นี่มีไว้ให้การ
+     ไล่หน้าในก้อนมีลำดับนิ่ง ไม่ใช่เพื่อเรียงผลลัพธ์) */
+  const quoteRows = await fetchAllInChunks(
     available.map((salesOrder) => salesOrder.quotationId),
-    (chunk) => fetchAllResult(() => supabase
-      .from("quotations").select("id, quoteNumber").in("id", chunk)
-      .order("id", { ascending: true })),
+    (chunk) => supabase.from("quotations").select("id, quoteNumber").in("id", chunk)
+      .order("id", { ascending: true }),
   );
-  if (quoteError) throw quoteError;
-  const quoteNumberById = new Map((quoteRows || []).map((row) => [row.id, row.quoteNumber]));
+  const quoteNumberById = new Map(quoteRows.map((row) => [row.id, row.quoteNumber]));
 
   return {
     schemaReady: true,
