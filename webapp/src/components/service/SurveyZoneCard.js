@@ -27,7 +27,7 @@ import styles from "./SurveyZoneCard.module.css";
 const emptyPart = () => ({ id: `new-${Math.random().toString(36).slice(2, 9)}`, label: "", widthM: "", lengthM: "", heightM: "" });
 const emptySpot = () => ({ id: `new-${Math.random().toString(36).slice(2, 9)}`, label: "", note: "" });
 
-export default function SurveyZoneCard({ zone, files = [], canWrite = false, busy = false, onSave }) {
+export default function SurveyZoneCard({ zone, files = [], canWrite = false, busy = false, onSave, onDelete }) {
   const [parts, setParts] = useState(() => (Array.isArray(zone.parts) && zone.parts.length ? zone.parts : [emptyPart()]));
   const [spots, setSpots] = useState(() => (Array.isArray(zone.spots) ? zone.spots : []));
   const [note, setNote] = useState(zone.note || "");
@@ -36,6 +36,9 @@ export default function SurveyZoneCard({ zone, files = [], canWrite = false, bus
   const [error, setError] = useState("");
 
   const isCut = zone.status === "cut";
+  /* พื้นที่ที่ช่างเจอเองหน้างาน — ป้ายต้องขึ้นทุกจอ ไม่งั้น SA อ่านผลแล้วนึกว่าตัวเองขอไป
+     (มติข้อ 6: "ตัดสินเองได้ แต่ต้องมีป้ายบอก") */
+  const isAdded = zone.status === "added";
   const size = useMemo(() => surveyZoneSize(parts), [parts]);
   const packages = suggestedPackages(size.volumeCbm);
   const docs = surveyDocCounts(files);
@@ -63,6 +66,8 @@ export default function SurveyZoneCard({ zone, files = [], canWrite = false, bus
           <b>{zone.zoneName}</b>
           {zone.floor ? <span className={styles.sub}>ชั้น {zone.floor}</span> : null}
         </div>
+        {/* ป้ายบอกที่มาของพื้นที่ — คนละแกนกับป้ายความคืบหน้าข้างล่าง จึงอยู่คู่กันได้ */}
+        {isAdded && <span className={styles.addedBadge}>เพิ่มหน้างาน</span>}
         {/* ป้ายบอกสภาพของพื้นที่นี้ — ไม่ใช่ของทั้งใบ */}
         {isCut
           ? <span className={styles.cutBadge}>ตัดออก</span>
@@ -242,7 +247,15 @@ export default function SurveyZoneCard({ zone, files = [], canWrite = false, bus
           <Button tone="primary" disabled={busy} onClick={() => save()}>
             {busy ? "กำลังบันทึก…" : "บันทึกพื้นที่นี้"}
           </Button>
-          {cutting ? (
+          {/* 🔴 **พื้นที่ที่เพิ่มเองต้องลบได้ ไม่ใช่ตัดออก** — ด่านส่งผลบล็อกทั้งใบ ⇒ แถวที่
+              กดเพิ่มผิดแล้วกรอกไม่จบจะล็อกใบตลอดกาล · และ "ตัดออก" จะเขียนทับป้าย
+              "เพิ่มหน้างาน" หายไปเลย (server ปฏิเสธไว้อีกชั้น) */}
+          {isAdded ? (
+            <Button size="sm" tone="danger" variant="outline" disabled={busy}
+              icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => onDelete?.()}>
+              ลบพื้นที่นี้ทิ้ง
+            </Button>
+          ) : cutting ? (
             <div className={styles.cutBox}>
               {/* ⚠️ ตัดพื้นที่ออกต้องบอกเหตุผลเสมอ — ของที่หายไปจากสิ่งที่ SA จะเสนอราคา
                   คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน */}

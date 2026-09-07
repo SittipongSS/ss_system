@@ -95,9 +95,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       action: 'answer',
       user,
       opts: {
-        // ผู้ขอรอ "ตร.ม. กี่แพ็คเกจ" เพื่อเอาไปตั้งราคา ⇒ ให้อ่านจากกระดิ่งได้เลย
+        /* ผู้ขอรอ "ตร.ม. กี่แพ็คเกจ" เพื่อเอาไปตั้งราคา ⇒ ให้อ่านจากกระดิ่งได้เลย
+           🔴 **พื้นที่ที่ TS เพิ่มเองต้องอยู่ในกระดิ่ง ไม่ใช่ให้ไปเจอเองในตาราง** (แผน §9
+             ข้อ 3) — TS เพิ่มได้โดยไม่ต้องขออนุมัติ ⇒ จังหวะที่ SA จะรู้เรื่องมีจังหวะนี้
+             จังหวะเดียว และเขาคือคนที่เอาตัวเลขนี้ไปตั้งราคาต่อ */
         summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
           + (totals.cutZones ? ` · ตัดออก ${totals.cutZones}` : '')
+          + (totals.addedZones ? ` · TS เพิ่มหน้างาน ${totals.addedZones}` : '')
           + (diff.length ? ` · ⚠️ แก้จากรอบก่อน: ${diff.join(' · ')}` : ''),
       },
     });
@@ -108,6 +112,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       summary: `ส่งผลประเมิน ${request.docNo || id} — ${totals.zones} พื้นที่ · `
         + `${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
         + (totals.cutZones ? ` · ตัดออก ${totals.cutZones}` : '')
+        + (totals.addedZones ? ` · เพิ่มหน้างาน ${totals.addedZones}` : '')
         + (data.status === 'closed' ? ' · ปิดครบสองฝั่ง' : ''),
       request: req,
     });
