@@ -148,39 +148,37 @@ export default function SalesKpiDashboard() {
                 </ResponsiveContainer></ChartCanvas>
               </div>
 
-              <div className="premium-glass-table table-responsive">
-                <TableScroll surface="embedded"><table className="premium-table">
-                  <thead><tr><th>ทีม</th><th className="num">คน</th><th className="num">งาน</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">คะแนน</th></tr></thead>
-                  <tbody>
-                    {teams.map((t) => (
-                      /* ⚠️ เดิมทั้งแถวเป็น `onClick` ที่เมาส์กดได้แต่คีย์บอร์ดเข้าไม่ถึงเลย
-                         (WCAG 2.1.1 — 7 เซลล์เป็นตัวเลขกับ ScoreBadge ล้วน) ⇒ ย้ายตัวสลับ
-                         มาไว้ที่ชื่อทีมเป็น <button> จริง · "กำลังกรองทีมนี้อยู่" เป็น
-                         **สถานะ** ไม่ใช่แค่การกด ⇒ aria-pressed (ไม่งั้นโปรแกรมอ่านหน้าจอ
-                         เห็นแค่พื้นหลังจาง ๆ ที่มันอ่านไม่ออก) */
-                      <tr key={t.team} className={`premium-row ${chartTeamFilter === t.team ? "active" : ""}`} style={{ backgroundColor: chartTeamFilter === t.team ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined }}>
-                        <td>
-                          <button
-                            type="button"
-                            className="text-action"
-                            aria-pressed={chartTeamFilter === t.team}
-                            onClick={() => setChartTeamFilter(prev => prev === t.team ? "" : t.team)}
-                            style={{ fontWeight: "var(--fw-bold)" }}
-                          >
-                            {t.team}
-                          </button>
-                        </td>
-                        <td className="num">{t.people}</td>
-                        <td className="num">{t.total}</td>
-                        <td className="num">{t.completed}</td>
-                        <td className="num">{fmtPct(t.completionPct)}</td>
-                        <td className="num">{fmtPct(t.onTimePct)}</td>
-                        <td className="num"><ScoreBadge value={t.score} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table></TableScroll>
-              </div>
+              <TableScroll surface="auto"><table className="premium-table">
+                <thead><tr><th>ทีม</th><th className="num">คน</th><th className="num">งาน</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">คะแนน</th></tr></thead>
+                <tbody>
+                  {teams.map((t) => (
+                    /* ⚠️ เดิมทั้งแถวเป็น `onClick` ที่เมาส์กดได้แต่คีย์บอร์ดเข้าไม่ถึงเลย
+                       (WCAG 2.1.1 — 7 เซลล์เป็นตัวเลขกับ ScoreBadge ล้วน) ⇒ ย้ายตัวสลับ
+                       มาไว้ที่ชื่อทีมเป็น <button> จริง · "กำลังกรองทีมนี้อยู่" เป็น
+                       **สถานะ** ไม่ใช่แค่การกด ⇒ aria-pressed (ไม่งั้นโปรแกรมอ่านหน้าจอ
+                       เห็นแค่พื้นหลังจาง ๆ ที่มันอ่านไม่ออก) */
+                    <tr key={t.team} className={`premium-row ${chartTeamFilter === t.team ? "active" : ""}`} style={{ backgroundColor: chartTeamFilter === t.team ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined }}>
+                      <td>
+                        <button
+                          type="button"
+                          className="text-action"
+                          aria-pressed={chartTeamFilter === t.team}
+                          onClick={() => setChartTeamFilter(prev => prev === t.team ? "" : t.team)}
+                          style={{ fontWeight: "var(--fw-bold)" }}
+                        >
+                          {t.team}
+                        </button>
+                      </td>
+                      <td className="num">{t.people}</td>
+                      <td className="num">{t.total}</td>
+                      <td className="num">{t.completed}</td>
+                      <td className="num">{fmtPct(t.completionPct)}</td>
+                      <td className="num">{fmtPct(t.onTimePct)}</td>
+                      <td className="num"><ScoreBadge value={t.score} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></TableScroll>
             </SaSection>
           )}
 
@@ -204,34 +202,32 @@ export default function SalesKpiDashboard() {
               </div>
             )}
 
-            <div className="premium-glass-table table-responsive">
-              <TableScroll surface="embedded"><table className="premium-table">
-                <thead>
-                  <tr>
-                    <th>ผู้รับผิดชอบ</th><th>ทีม</th><th className="num">งาน</th><th className="num">กำลังทำ</th><th className="num">เลยกำหนด</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">ความยาก</th><th className="num">คะแนน</th>
+            <TableScroll surface="auto"><table className="premium-table">
+              <thead>
+                <tr>
+                  <th>ผู้รับผิดชอบ</th><th>ทีม</th><th className="num">งาน</th><th className="num">กำลังทำ</th><th className="num">เลยกำหนด</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">ความยาก</th><th className="num">คะแนน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.userId} className="premium-row">
+                    <td style={{ fontWeight: "var(--fw-bold)" }}>{r.name}<div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>{naText(r.role)}</div></td>
+                    <td>{naText(r.team)}</td>
+                    <td className="num">{r.total}</td>
+                    <td className="num">{r.active}</td>
+                    <td className="num" style={{ color: r.overdue ? "var(--red)" : undefined }}>{r.overdue}</td>
+                    <td className="num">{r.completed}</td>
+                    <td className="num">{fmtPct(r.completionPct)}</td>
+                    <td className="num">{fmtPct(r.onTimePct)}</td>
+                    <td className="num">{fmtPct(r.difficultyPct)}</td>
+                    <td className="num"><ScoreBadge value={r.score} /></td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.userId} className="premium-row">
-                      <td style={{ fontWeight: "var(--fw-bold)" }}>{r.name}<div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>{naText(r.role)}</div></td>
-                      <td>{naText(r.team)}</td>
-                      <td className="num">{r.total}</td>
-                      <td className="num">{r.active}</td>
-                      <td className="num" style={{ color: r.overdue ? "var(--red)" : undefined }}>{r.overdue}</td>
-                      <td className="num">{r.completed}</td>
-                      <td className="num">{fmtPct(r.completionPct)}</td>
-                      <td className="num">{fmtPct(r.onTimePct)}</td>
-                      <td className="num">{fmtPct(r.difficultyPct)}</td>
-                      <td className="num"><ScoreBadge value={r.score} /></td>
-                    </tr>
-                  ))}
-                  {!rows.length && (
-                    <tr><td colSpan={10} style={{ textAlign: "center", color: "var(--text-3)", padding: 18 }}>ไม่มีข้อมูลในช่วงวันที่นี้</td></tr>
-                  )}
-                </tbody>
-              </table></TableScroll>
-            </div>
+                ))}
+                {!rows.length && (
+                  <tr><td colSpan={10} style={{ textAlign: "center", color: "var(--text-3)", padding: 18 }}>ไม่มีข้อมูลในช่วงวันที่นี้</td></tr>
+                )}
+              </tbody>
+            </table></TableScroll>
           </SaSection>
         </div>
       )}

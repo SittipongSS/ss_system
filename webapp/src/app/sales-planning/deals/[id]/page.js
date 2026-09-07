@@ -1021,33 +1021,31 @@ export default function DealOverviewPage() {
             </>
           )}>
             {(data.dealTasks || []).length ? (
-              <div className="premium-glass-table table-responsive">
-                <TableScroll surface="embedded"><table className="premium-table">
-                  <thead>
-                    <tr>
-                      <th>งาน</th>
-                      <th>สถานะ</th>
-                      <th>ผู้รับผิดชอบ</th>
-                      <th>กำหนดเสร็จ</th>
-                      <th>หมวด</th>
+              <TableScroll surface="auto"><table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>งาน</th>
+                    <th>สถานะ</th>
+                    <th>ผู้รับผิดชอบ</th>
+                    <th>กำหนดเสร็จ</th>
+                    <th>หมวด</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.dealTasks.map((task) => (
+                    <tr key={task.id} className="premium-row">
+                      <td style={{ fontWeight: "var(--fw-bold)" }}>
+                        {task.title}
+                        {task.note && <ReadableText text={task.note} lines={2} style={{ marginTop: 2, color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-medium)" }} />}
+                      </td>
+                      <td><TaskStatusBadge status={task.status} /></td>
+                      <td>{task.assigneeName || naText(task.ownerName)}</td>
+                      <td>{task.dueDate ? fmtDate(task.dueDate) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
+                      <td>{task.category || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {data.dealTasks.map((task) => (
-                      <tr key={task.id} className="premium-row">
-                        <td style={{ fontWeight: "var(--fw-bold)" }}>
-                          {task.title}
-                          {task.note && <ReadableText text={task.note} lines={2} style={{ marginTop: 2, color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-medium)" }} />}
-                        </td>
-                        <td><TaskStatusBadge status={task.status} /></td>
-                        <td>{task.assigneeName || naText(task.ownerName)}</td>
-                        <td>{task.dueDate ? fmtDate(task.dueDate) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
-                        <td>{task.category || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table></TableScroll>
-              </div>
+                  ))}
+                </tbody>
+              </table></TableScroll>
             ) : (
               <Empty>ยังไม่มีงานของดีลนี้ — กด “สร้างงาน” ได้จากตรงนี้ ดีลถูกผูกให้แล้ว</Empty>
             )}
@@ -1311,22 +1309,20 @@ export default function DealOverviewPage() {
                 <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
               </div>
               {(data.quotations || []).length ? (
-                <div className="premium-glass-table table-responsive">
-                  <TableScroll surface="embedded"><table className="w-full text-sm">
-                    <thead>
-                      <tr><th>เลขที่</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr>
-                    </thead>
-                    <tbody>
-                      {data.quotations.map((quote) => (
-                        <tr key={quote.id} className="premium-row">
-                          <td className="mono"><Link href={`/sa/quotations/${quote.id}`} className="linklike">{quote.quoteNumber}</Link></td>
-                          <td>{quoteStatusBadge(quote.status)}</td>
-                          <td className="num mono">{money(quote.totalAmount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table></TableScroll>
-                </div>
+                <TableScroll surface="embedded" className="premium-glass-table table-responsive"><table className="w-full text-sm">
+                  <thead>
+                    <tr><th>เลขที่</th><th>สถานะ</th><th className="num">ยอดรวม</th></tr>
+                  </thead>
+                  <tbody>
+                    {data.quotations.map((quote) => (
+                      <tr key={quote.id} className="premium-row">
+                        <td className="mono"><Link href={`/sa/quotations/${quote.id}`} className="linklike">{quote.quoteNumber}</Link></td>
+                        <td>{quoteStatusBadge(quote.status)}</td>
+                        <td className="num mono">{money(quote.totalAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table></TableScroll>
               ) : <Empty>ยังไม่มีใบเสนอราคา — สร้างได้จากเมนู <Link href="/sa/quotations" className="linklike">ใบเสนอราคา</Link></Empty>}
             </section>
             )}
@@ -1339,21 +1335,19 @@ export default function DealOverviewPage() {
                 <div className="spacer" />
                 <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู ใบสั่งขาย</Link>
               </div>
-              <div className="premium-glass-table table-responsive">
-                <TableScroll surface="embedded"><table className="w-full text-sm">
-                  <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th><th>ใบยื่นภาษี</th></tr></thead>
-                  <tbody>{data.salesOrders.map((order) => (
-                    <tr key={order.id} className="premium-row">
-                      <td className="mono"><Link href={`/sa/sales-orders/${order.id}`} className="linklike">{order.orderNumber}</Link></td>
-                      <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
-                      <td className="num mono">{money(order.status === "approved" ? order.actualAmount : 0)}</td>
-                      {/* ปลายทางของ SO — เดิมหน้าดีลจบที่ SO ต้องไปเปิดหน้า SO ถึงจะรู้ว่าภาษีเดินถึงไหน.
-                          ว่าง = ไม่มีสินค้าสรรพสามิตต้องยื่น (คิวกลางกรองให้แล้ว) ไม่ใช่งานค้าง */}
-                      <td>{filingOf(order.id)}</td>
-                    </tr>
-                  ))}</tbody>
-                </table></TableScroll>
-              </div>
+              <TableScroll surface="embedded" className="premium-glass-table table-responsive"><table className="w-full text-sm">
+                <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th><th>ใบยื่นภาษี</th></tr></thead>
+                <tbody>{data.salesOrders.map((order) => (
+                  <tr key={order.id} className="premium-row">
+                    <td className="mono"><Link href={`/sa/sales-orders/${order.id}`} className="linklike">{order.orderNumber}</Link></td>
+                    <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
+                    <td className="num mono">{money(order.status === "approved" ? order.actualAmount : 0)}</td>
+                    {/* ปลายทางของ SO — เดิมหน้าดีลจบที่ SO ต้องไปเปิดหน้า SO ถึงจะรู้ว่าภาษีเดินถึงไหน.
+                        ว่าง = ไม่มีสินค้าสรรพสามิตต้องยื่น (คิวกลางกรองให้แล้ว) ไม่ใช่งานค้าง */}
+                    <td>{filingOf(order.id)}</td>
+                  </tr>
+                ))}</tbody>
+              </table></TableScroll>
             </section>
             )}
 
@@ -1368,22 +1362,20 @@ export default function DealOverviewPage() {
                 <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>เอกสาร</h2>
               </div>
               {(data.documents || []).length ? (
-                <div className="premium-glass-table table-responsive">
-                  <TableScroll surface="embedded"><table className="w-full text-sm">
-                    <thead>
-                      <tr><th>เอกสาร</th><th>สถานะ</th><th>กำหนด</th></tr>
-                    </thead>
-                    <tbody>
-                      {data.documents.map((doc) => (
-                        <tr key={doc.id} className="premium-row">
-                          <td>{doc.title}<span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{doc.kind}</span></td>
-                          <td>{stageBadge(doc.status)}</td>
-                          <td className="mono">{naText(doc.dueDate)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table></TableScroll>
-                </div>
+                <TableScroll surface="embedded" className="premium-glass-table table-responsive"><table className="w-full text-sm">
+                  <thead>
+                    <tr><th>เอกสาร</th><th>สถานะ</th><th>กำหนด</th></tr>
+                  </thead>
+                  <tbody>
+                    {data.documents.map((doc) => (
+                      <tr key={doc.id} className="premium-row">
+                        <td>{doc.title}<span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{doc.kind}</span></td>
+                        <td>{stageBadge(doc.status)}</td>
+                        <td className="mono">{naText(doc.dueDate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table></TableScroll>
               ) : <Empty>ยังไม่มีรายการเอกสาร</Empty>}
             </section>
             )}

@@ -38,49 +38,47 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
           ⇒ ต้องกว้างอย่างน้อย ~1,560px · ตารางนี้เลื่อนแนวนอนใน TableScroll อยู่แล้ว
           และคอลัมน์ชื่อตรึงซ้าย (fz-c1) จึงยังอ่านออกว่าแถวไหนของใครตอนเลื่อน
           ⚠️ ถ้าลด minWidth ลง คอลัมน์จะบีบจนเลขตัดบรรทัดกลางเซลล์ (fz-table ไม่ได้ตั้ง nowrap ให้) */}
-      <div className="premium-glass-table" style={{ "--fz-c1w": "150px" }}>
-        <TableScroll surface="embedded" family="matrix" className="fz-box"><table className="fz-table w-full" style={{ minWidth: 1560, fontSize: "var(--fs-6)" }}>
-          <thead>
-            <tr>
-              <th className="fz-c1">พนักงาน</th>
-              {MONTH_LABELS.map((m) => <th key={m} className="num">{m}</th>)}
+      <TableScroll surface="embedded" family="matrix" className="premium-glass-table fz-box" style={{ "--fz-c1w": "150px" }}><table className="fz-table w-full" style={{ minWidth: 1560, fontSize: "var(--fs-6)" }}>
+        <thead>
+          <tr>
+            <th className="fz-c1">พนักงาน</th>
+            {MONTH_LABELS.map((m) => <th key={m} className="num">{m}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {matrix.people.map((p) => (
+            <tr key={p.id} className="premium-row">
+              {/* ⭐ ตัวกดอยู่ **ในเซลล์** ไม่ใช่ onClick บน <td> — คีย์บอร์ดกดไม่ถึง <td>
+                  และเติม role/tabIndex ให้มันจะทับ role="cell" ทิ้ง (WCAG 1.3.1 · 2.1.1)
+                  🪤 เป็น <button> ไม่ใช่ <Link>: การเจาะรายคน **ไม่มี URL ปลายทาง**
+                     (onDrill สลับมุมมองในหน้าเดิม) ⇒ `.text-action` เส้นประ = "เกิดอะไรขึ้นตรงนี้"
+                     ส่วนเส้นทึบ + accent ของ `.linklike` สงวนไว้ให้ลิงก์ที่พาไปหน้าอื่น
+                  🪤 ครอบเฉพาะ <strong> ชื่อคน ไม่ครอบบรรทัดทีม — `text-decoration` ไหลลงไปยัง
+                     block descendant และวาดด้วยสีของบรรพบุรุษ (ลูกยกเลิกเองไม่ได้) ⇒ บรรทัดทีม
+                     จะได้เส้นประไปด้วย · โรคเดียวกับที่ `.linklike-block > strong` ต้องแก้
+                     และตรงกับคำอธิบายบนหัวตารางที่เขียนว่า "คลิกชื่อเพื่อเจาะรายคน" */}
+              <td className="fz-c1" style={{ whiteSpace: "nowrap" }}>
+                <button type="button" className="text-action" onClick={() => onDrill({ scope: "person", person: p.id })} title="คลิกเพื่อเจาะรายคน">
+                  <strong>{p.name}</strong>
+                </button>
+                {p.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}>{p.team}</span>}
+              </td>
+              {MONTH_LABELS.map((_, i) => {
+                const diff = Number(p.actual[i] || 0) - Number(p.target[i] || 0);
+                const hasTarget = Number(p.target[i] || 0) > 0;
+                const isClosed = i < closedCount;
+                return (
+                  <td key={i} className="num mono" style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
+                    <span style={{ display: "inline-block", padding: "2px 6px", ...cellStyle(diff, hasTarget, isClosed) }}>
+                      {!isClosed ? "–" : hasTarget || Number(p.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${money(diff)}` : NA}
+                    </span>
+                  </td>
+                );
+              })}
             </tr>
-          </thead>
-          <tbody>
-            {matrix.people.map((p) => (
-              <tr key={p.id} className="premium-row">
-                {/* ⭐ ตัวกดอยู่ **ในเซลล์** ไม่ใช่ onClick บน <td> — คีย์บอร์ดกดไม่ถึง <td>
-                    และเติม role/tabIndex ให้มันจะทับ role="cell" ทิ้ง (WCAG 1.3.1 · 2.1.1)
-                    🪤 เป็น <button> ไม่ใช่ <Link>: การเจาะรายคน **ไม่มี URL ปลายทาง**
-                       (onDrill สลับมุมมองในหน้าเดิม) ⇒ `.text-action` เส้นประ = "เกิดอะไรขึ้นตรงนี้"
-                       ส่วนเส้นทึบ + accent ของ `.linklike` สงวนไว้ให้ลิงก์ที่พาไปหน้าอื่น
-                    🪤 ครอบเฉพาะ <strong> ชื่อคน ไม่ครอบบรรทัดทีม — `text-decoration` ไหลลงไปยัง
-                       block descendant และวาดด้วยสีของบรรพบุรุษ (ลูกยกเลิกเองไม่ได้) ⇒ บรรทัดทีม
-                       จะได้เส้นประไปด้วย · โรคเดียวกับที่ `.linklike-block > strong` ต้องแก้
-                       และตรงกับคำอธิบายบนหัวตารางที่เขียนว่า "คลิกชื่อเพื่อเจาะรายคน" */}
-                <td className="fz-c1" style={{ whiteSpace: "nowrap" }}>
-                  <button type="button" className="text-action" onClick={() => onDrill({ scope: "person", person: p.id })} title="คลิกเพื่อเจาะรายคน">
-                    <strong>{p.name}</strong>
-                  </button>
-                  {p.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}>{p.team}</span>}
-                </td>
-                {MONTH_LABELS.map((_, i) => {
-                  const diff = Number(p.actual[i] || 0) - Number(p.target[i] || 0);
-                  const hasTarget = Number(p.target[i] || 0) > 0;
-                  const isClosed = i < closedCount;
-                  return (
-                    <td key={i} className="num mono" style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
-                      <span style={{ display: "inline-block", padding: "2px 6px", ...cellStyle(diff, hasTarget, isClosed) }}>
-                        {!isClosed ? "–" : hasTarget || Number(p.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${money(diff)}` : NA}
-                      </span>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table></TableScroll>
-      </div>
+          ))}
+        </tbody>
+      </table></TableScroll>
     </section>
   );
 }

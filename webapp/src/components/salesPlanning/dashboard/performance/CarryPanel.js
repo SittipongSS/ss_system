@@ -75,38 +75,36 @@ export default function CarryPanel({ row, label, closedCount }) {
         เดือนไหนปิดไม่ถึงเป้า ยอดที่ขาดจะถูกทบเข้าเดือนถัดไป · "เป้า + ทบ" = ยอดที่ต้องปิดเดือนนั้นถ้าจะล้างยอดทบให้หมด
       </p>
       <CarryChart rows={rows} />
-      <div className="premium-glass-table table-responsive" style={{ marginTop: 14 }}>
-        <TableScroll surface="embedded"><table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th>เดือน</th>
-              <th className="num">Target</th>
-              <th className="num">ทบยกมา</th>
-              <th className="num">เป้า + ทบ</th>
-              <th className="num">Actual</th>
-              <th className="num">± เดือนนี้</th>
-              <th className="num">ทบสะสม</th>
+      <TableScroll surface="embedded" className="premium-glass-table table-responsive" style={{ marginTop: 14 }}><table className="w-full text-sm">
+        <thead>
+          <tr>
+            <th>เดือน</th>
+            <th className="num">Target</th>
+            <th className="num">ทบยกมา</th>
+            <th className="num">เป้า + ทบ</th>
+            <th className="num">Actual</th>
+            <th className="num">± เดือนนี้</th>
+            <th className="num">ทบสะสม</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className="premium-row" style={r.actual == null ? { opacity: "var(--op-muted)" } : undefined}>
+              <td>{MONTH_LABELS[i]}</td>
+              <td className="num mono">{money(r.target)}</td>
+              <td className="num mono" style={{ color: r.carryIn > 0 ? "var(--red)" : "var(--text-3)" }}>{r.carryIn > 0 ? money(r.carryIn) : NA}</td>
+              <td className="num mono" style={{ fontWeight: "var(--fw-semibold)" }}>{money(r.mustClose)}</td>
+              <td className="num mono" style={{ color: "var(--green)" }}>{r.actual == null ? "–" : money(r.actual)}</td>
+              <td className="num mono" style={{ color: r.diff == null ? "var(--text-3)" : r.diff >= 0 ? "var(--green)" : "var(--red)" }}>
+                {r.diff == null ? "–" : `${r.diff >= 0 ? "+" : ""}${money(r.diff)}`}
+              </td>
+              <td className="num mono" style={{ fontWeight: "var(--fw-semibold)", color: r.cumAfter == null ? "var(--text-3)" : r.cumAfter >= 0 ? "var(--green)" : "var(--red)" }}>
+                {r.cumAfter == null ? "–" : `${r.cumAfter >= 0 ? "+" : ""}${money(r.cumAfter)}`}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} className="premium-row" style={r.actual == null ? { opacity: "var(--op-muted)" } : undefined}>
-                <td>{MONTH_LABELS[i]}</td>
-                <td className="num mono">{money(r.target)}</td>
-                <td className="num mono" style={{ color: r.carryIn > 0 ? "var(--red)" : "var(--text-3)" }}>{r.carryIn > 0 ? money(r.carryIn) : NA}</td>
-                <td className="num mono" style={{ fontWeight: "var(--fw-semibold)" }}>{money(r.mustClose)}</td>
-                <td className="num mono" style={{ color: "var(--green)" }}>{r.actual == null ? "–" : money(r.actual)}</td>
-                <td className="num mono" style={{ color: r.diff == null ? "var(--text-3)" : r.diff >= 0 ? "var(--green)" : "var(--red)" }}>
-                  {r.diff == null ? "–" : `${r.diff >= 0 ? "+" : ""}${money(r.diff)}`}
-                </td>
-                <td className="num mono" style={{ fontWeight: "var(--fw-semibold)", color: r.cumAfter == null ? "var(--text-3)" : r.cumAfter >= 0 ? "var(--green)" : "var(--red)" }}>
-                  {r.cumAfter == null ? "–" : `${r.cumAfter >= 0 ? "+" : ""}${money(r.cumAfter)}`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table></TableScroll>
-      </div>
+          ))}
+        </tbody>
+      </table></TableScroll>
     </section>
   );
 }
