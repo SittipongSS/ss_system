@@ -84,6 +84,39 @@ export function forecastMonthOfDeal(deal, monthKey) {
   return { month: null, basis: null };
 }
 
+/* ── หมวดจากรหัส FG (มติผู้ใช้ 2026-09-07: "ถ้ามีใบเสนอราคา ก็ดึงหมวดมาจากหมวดของ FG") ──
+ *
+ * ⭐ **รหัส FG อุ้มหมวดไว้ในตัวมันเอง** — `FG-336-01-009-1290` ⇒ หมวด `01-009`
+ *    (ท่อนที่ 3 กับ 4) · วัดของจริง 2026-09-07: สินค้าทั้ง 440 รายการในทะเบียน
+ *    หมวดตรงกับท่อน 3-4 ของรหัสตัวเอง **ทุกใบ ไม่มีข้อยกเว้น**
+ * ⭐ **ต้องอ่านจากข้อความในบรรทัดด้วย** — คนพิมพ์รหัสลงช่องรายละเอียดกันเยอะ
+ *    (47 บรรทัด 3,427,770 บาท ในใบที่มีสิทธิ์วันนี้) มักเป็นรูปสั้น `FG-321-03-002`
+ *    ที่ไม่มีท้าย ⇒ หาในทะเบียนไม่เจอ แต่ตัวรหัสบอกหมวดได้อยู่ดี
+ * ⚠️ **ไม่ใช่การเดา** — นี่คือการอ่านรหัสจริงที่คนกรอกไว้ ต่างจากการยืมหมวดของดีล
+ *    มาแปะ (ซึ่งผู้ใช้ปฏิเสธ 2026-09-07: "ต้องอ้างอิงหมวดจริง หลายหมวดก็ต้องหลายหมวด")
+ */
+const FG_CODE = /FG-\d{3}-\d{2}-\d{3}(?:-\d+)?/i;
+
+export const normalizeFgCode = (value) => {
+  const text = String(value || '').replace(/\s+/g, '').toUpperCase();
+  return FG_CODE.test(text) && text.startsWith('FG-') ? text : null;
+};
+
+/** รหัส FG ตัวแรกที่ฝังอยู่ในข้อความ (ช่องรายละเอียดที่พิมพ์เอง) */
+export function fgCodeInText(text) {
+  const found = String(text || '').replace(/\s+/g, '').toUpperCase().match(FG_CODE);
+  return found ? found[0] : null;
+}
+
+/** หมวดที่รหัส FG ชี้ไป — `FG-336-01-009-1290` → `01-009` · รูปที่ไม่ใช่ FG → null */
+export function fgCategoryCode(fgCode) {
+  const code = normalizeFgCode(fgCode) || fgCodeInText(fgCode);
+  if (!code) return null;
+  const parts = code.split('-');
+  const category = `${parts[2]}-${parts[3]}`;
+  return /^\d{2}-\d{3}$/.test(category) ? category : null;
+}
+
 const num = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -117,18 +150,39 @@ export function allocateToLines(lines, total) {
   return rows.map((row, index) => ({ ...row, fcAmount: shares[index] }));
 }
 
-/* บรรทัดจากใบเสนอราคา — หมวด/ปริมาตรมาจากทะเบียนสินค้าผ่าน productId
- * ⚠️ 27% ของบรรทัดจริง (89/329 เมื่อ 2026-09-02) **ไม่มีทั้ง productId และ fgCode**
- *    เพราะพิมพ์เป็นข้อความล้วน ("PERFUME LOTION" 30,000 ชิ้น) ⇒ ลงกอง "ไม่ระบุหมวด"
- *    ตามมติผู้ใช้ 2026-09-02 · ห้ามเดาหมวดจากหมวดของดีล เพราะดีลใบเดียวมีได้หลายหมวด */
-function quotationLineRows(lines, productById) {
+/* บรรทัดจากใบเสนอราคา — หมวด/ปริมาตรมาจากทะเบียนสินค้า
+ *
+ * ⭐ **บันไดหาหมวดสามขั้น** (มติผู้ใช้ 2026-09-07) — ตกขั้นแรกแล้วยังไปต่อได้:
+ *      1. `productId` → ทะเบียนสินค้า (ได้ครบทั้งหมวด ปริมาตร หน่วย)
+ *      2. `fgCode` บนบรรทัด → ทะเบียนสินค้าด้วยรหัส FG
+ *      3. รหัส FG ที่ **พิมพ์อยู่ในช่องรายละเอียด** → ทะเบียน · ถ้าไม่มีในทะเบียน
+ *         ก็ยังอ่านหมวดจากตัวรหัสได้ (ท่อน 3-4 — ดู `fgCategoryCode`)
+ * ⚠️ ขั้น 2-3 ให้ **หมวดอย่างเดียว ไม่ให้ปริมาตร** เมื่อรหัสไม่มีในทะเบียน — ฝ่ายผลิต
+ *    ต้องอ่านออกว่าแถวนี้รู้แค่หมวด ⇒ คืน `categoryFrom` มาให้ไฟล์ติดป้าย
+ * ⚠️ ที่เหลือคือข้อความล้วนจริง ๆ ("PERFUME LOTION" 30,000 ชิ้น) — ยังลงกอง
+ *    "ไม่ระบุหมวด" · **ห้ามยืมหมวดของดีลมาแปะ** เพราะดีลใบเดียวมีได้หลายหมวด
+ *    (มติผู้ใช้ 2026-09-07: "ต้องอ้างอิงหมวดจริง หลายหมวดก็ต้องหลายหมวด") */
+function quotationLineRows(lines, productById, productByFg = new Map()) {
   return [...(lines || [])]
     .sort((a, b) => num(a.sortOrder) - num(b.sortOrder))
     .map((line) => {
-      const product = line.productId ? productById.get(line.productId) : null;
+      const byId = line.productId ? productById.get(line.productId) : null;
+      const ownFg = normalizeFgCode(line.fgCode);
+      const textFg = ownFg ? null : fgCodeInText(line.description);
+      const product = byId
+        || (ownFg ? productByFg.get(ownFg) : null)
+        || (textFg ? productByFg.get(textFg) : null)
+        || null;
+      const fgCode = line.fgCode || product?.fgCode || textFg || null;
+      const categoryCode = product?.categoryCode || fgCategoryCode(fgCode);
+      const categoryFrom = !categoryCode ? null
+        : (byId && byId.categoryCode) ? 'product'
+          : product ? 'fg-registry'
+            : (ownFg ? 'fg-code' : 'fg-text');
       return {
-        categoryCode: product?.categoryCode || null,
-        fgCode: line.fgCode || product?.fgCode || null,
+        categoryCode: categoryCode || null,
+        categoryFrom,
+        fgCode,
         description: line.description || product?.productDescription || null,
         qty: num(line.qty),
         unit: line.unit || product?.saleUnit || null,
@@ -149,6 +203,7 @@ function valueItemRows(items) {
     .sort((a, b) => num(a.seq) - num(b.seq))
     .map((item) => ({
       categoryCode: item.categoryCode || null,
+      categoryFrom: item.categoryCode ? 'manual' : null,
       fgCode: null,
       description: item.note || null,
       qty: num(item.qty),
@@ -167,26 +222,40 @@ function valueItemRows(items) {
  * @returns บรรทัดที่ `fcAmount` รวมกันได้เท่ากับ FC ของดีลเสมอ
  */
 export function forecastBreakdownOfDeal(deal, context = {}) {
-  const { quotationLines, valueItems, productById = new Map(), quoteNumber = null } = context;
+  const {
+    quotationLines, valueItems, productById = new Map(), productByFg = new Map(),
+    quoteNumber = null,
+    /* ⭐ ใบที่ **มีอยู่แต่ FC ไม่ได้เดินตาม** (มติผู้ใช้ 2026-09-07: "ถ้ามีใบเสนอราคา
+       ก็ดึงหมวดมาจากหมวดของ FG") — ใช้เฉพาะตอนไม่มีแถวรายหมวดที่ AE กรอก
+       ⚠️ **เอามาแค่ "รายการ" ไม่ได้เอา "ยอด"** — ยอดยังปันส่วนจาก `projectValue`
+          ของดีลเหมือนเดิม ⇒ ยอดรวมไฟล์ไม่ขยับสักบาท และไม่แตะ `forecastSource`
+       ⭐ ทางนี้คือทางเดียวที่ดีล **Won** จะได้รายหมวด — FC ของดีลปิดถูกแช่แข็ง
+          (`won_frozen`) ระบบไม่มีวันสลับให้เดินตามใบอีกแล้ว */
+    fallbackQuotationLines = null, fallbackQuoteNumber = null,
+  } = context;
   const total = num(deal?.projectValue);
   const followsQuotation = deal?.forecastSource === 'quotation';
 
-  const raw = followsQuotation
-    ? quotationLineRows(quotationLines, productById)
+  const own = followsQuotation
+    ? quotationLineRows(quotationLines, productById, productByFg)
     : valueItemRows(valueItems);
+  const usedFallback = !own.length && Boolean(fallbackQuotationLines?.length);
+  const raw = usedFallback
+    ? quotationLineRows(fallbackQuotationLines, productById, productByFg)
+    : own;
 
   /* ไม่มีบรรทัดให้แตก (ดีลที่ยังไม่ได้กรอกรายหมวด · ใบที่ไม่มีบรรทัด) — ยังต้องมี
      ตัวตนในรายงาน ไม่งั้นยอดรวมไฟล์น้อยกว่าแดชบอร์ดแบบเงียบ ๆ */
   const lines = raw.length ? raw : [{
-    categoryCode: null, fgCode: null, description: null,
+    categoryCode: null, categoryFrom: null, fgCode: null, description: null,
     qty: 0, unit: null, volume: null, volumeUnit: null, unitPrice: 0, amount: money(total),
   }];
 
   return allocateToLines(lines, total).map((line) => ({
     ...line,
     dealId: deal?.id || null,
-    source: followsQuotation ? 'quotation' : 'manual',
-    quoteNumber: followsQuotation ? quoteNumber : null,
+    source: followsQuotation ? 'quotation' : (usedFallback ? 'quotation_lines' : 'manual'),
+    quoteNumber: followsQuotation ? quoteNumber : (usedFallback ? fallbackQuoteNumber : null),
     categoryLabel: line.categoryCode || UNCATEGORIZED,
     // ปริมาตรรวมของบรรทัด = ขนาดต่อหนึ่งหน่วยขาย × จำนวน (ดู dealValueItems: volume
     // ไม่เข้าสูตรคิดเงิน แต่เป็นตัวที่ฝ่ายผลิตใช้วางแผน)

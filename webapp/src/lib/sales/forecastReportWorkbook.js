@@ -56,7 +56,8 @@ export function monthColumnLabel(month) {
    แยกสองชุดเพราะสองชีตตอบคนละคำถาม แต่กริดเดือนทางขวาเหมือนกันเป๊ะ */
 export const SUMMARY_LEAD_COLUMNS = [
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
-  { key: 'categoryName', label: 'ชื่อหมวด', width: 28 },
+  { key: 'categoryMain', label: 'หมวดหลัก', width: 18 },
+  { key: 'categorySub', label: 'หมวดย่อย', width: 28 },
   { key: 'unit', label: 'หน่วยขาย', width: 12 },
   { key: 'volume', label: 'ขนาด/หน่วย', width: 12, number: true },
   { key: 'qty', label: 'จำนวนรวม', width: 13, number: true },
@@ -72,7 +73,7 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'ownerName', label: 'ผู้ดูแล (AE)', width: 20 },
   { key: 'team', label: 'ทีม', width: 8 },
   { key: 'stage', label: 'ขั้น', width: 14 },
-  { key: 'monthBasisLabel', label: 'เดือนมาจาก', width: 15 },
+  { key: 'monthBasisLabel', label: 'ที่มาของเดือน', width: 16 },
   /* ⭐ เดือนที่คาดว่าจะปิดการขาย — **คนละช่องกับเดือนในกริด** (มติผู้ใช้ 2026-09-07)
      กริด = เดือนที่ลูกค้ารับของ · ช่องนี้ = เดือนที่คาดว่าจะปิดยอด ⇒ วางคู่กันให้เห็น
      ว่าดีลใบไหนปิดปีนี้แต่ส่งของปีหน้า · รูปแบบ `2026-09` ตามที่ผู้ใช้ขอ (เรียง/กรอง
@@ -81,7 +82,9 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'sourceLabel', label: 'ที่มา FC', width: 13 },
   { key: 'quoteNumber', label: 'เลขที่ใบเสนอราคา', width: 18 },
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
-  { key: 'categoryName', label: 'ชื่อหมวด', width: 26 },
+  { key: 'categoryMain', label: 'หมวดหลัก', width: 18 },
+  { key: 'categorySub', label: 'หมวดย่อย', width: 26 },
+  { key: 'categoryFromLabel', label: 'ที่มาของหมวด', width: 17 },
   { key: 'fgCode', label: 'รหัส FG', width: 14 },
   { key: 'description', label: 'รายละเอียด', width: 34 },
   { key: 'qty', label: 'จำนวน', width: 11, number: true },
@@ -93,7 +96,23 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'amount', label: 'มูลค่าบรรทัด', width: 14, money: true },
 ];
 
-const SOURCE_LABEL = { quotation: 'ใบเสนอราคา', manual: 'กรอกเอง' };
+const SOURCE_LABEL = {
+  quotation: 'ใบเสนอราคา',
+  manual: 'กรอกเอง',
+  /* ดีลที่ FC ไม่ได้เดินตามใบ แต่รายงานยืม **รายการ** ในใบมาแตกบรรทัด (ยอดยังเป็น
+     ของดีล) — ส่วนใหญ่คือดีล Won ที่ FC แช่แข็งแล้ว (มติผู้ใช้ 2026-09-07) */
+  quotation_lines: 'รายการจากใบ',
+};
+
+/* หมวดของบรรทัดมาจากไหน — ฝ่ายวางแผนต้องแยกออกว่าแถวไหนมีข้อมูลสินค้าครบ
+   และแถวไหนรู้แค่หมวดเพราะอ่านจากรหัส FG ที่พิมพ์ไว้ (ไม่มีปริมาตรให้) */
+const CATEGORY_FROM_LABEL = {
+  product: 'ทะเบียนสินค้า',
+  manual: 'AE กรอก',
+  'fg-registry': 'รหัส FG',
+  'fg-code': 'รหัส FG (ไม่มีในทะเบียน)',
+  'fg-text': 'รหัส FG ในรายละเอียด',
+};
 
 /* ⚠️ แถวที่เดือนไม่ได้มาจาก "วันที่สิ้นสุด" ต้องอ่านออกทันที — ไม่งั้นฝ่ายวางแผนผลิต
    จะเชื่อว่าเป็นเดือนส่งของจริงทั้งไฟล์ ทั้งที่ 42% ของยอดยังเป็นเดือนที่ถอยมาจาก
@@ -196,15 +215,16 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
 /**
  * @param lines   บรรทัดจาก forecastBreakdownOfDeal + บริบทของดีล (month/dealCode/…)
  * @param meta    { year, months, generatedAt, by, categoryNames, teamNames }
+ *                `categoryNames` = Map รหัสหมวด→{ main, sub } (สองช่องแยกกัน ไม่ใช่สตริงเดียว)
  *                `teamNames` = Map รหัสทีม→ชื่อ จากทะเบียนจริง (ไม่ส่ง = คอลัมน์ทีมเป็นรหัส)
  */
 export async function buildForecastReportBuffer(lines = [], meta = {}) {
   const categoryNames = meta.categoryNames || new Map();
   const months = meta.months?.length ? meta.months : monthsInRows(lines);
-  const named = (row) => ({
-    ...row,
-    categoryName: row.categoryCode ? (categoryNames.get(row.categoryCode) || null) : null,
-  });
+  const named = (row) => {
+    const name = row.categoryCode ? categoryNames.get(row.categoryCode) : null;
+    return { ...row, categoryMain: name?.main || null, categorySub: name?.sub || null };
+  };
 
   const book = new ExcelJS.Workbook();
   book.creator = 'Scent & Sense';
@@ -236,6 +256,7 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
       stage: STAGE_LABELS?.[row.stage] || row.stage,
       team: teamNameOf(meta.teamNames, row.team),
       sourceLabel: SOURCE_LABEL[row.source] || row.source,
+      categoryFromLabel: CATEGORY_FROM_LABEL[row.categoryFrom] || null,
       monthBasisLabel: MONTH_BASIS_LABEL[row.monthBasis] || MONTH_BASIS_LABEL.expectedCloseDate,
     })),
     `${stamp} · ${MONTH_AXIS_NOTE}`
