@@ -24,11 +24,21 @@ const NA = '—';
 const MONTH_LABEL = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
   'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
+/* ⭐ คอลัมน์สุดท้ายก่อน "รวมทั้งปี" — ยอดของดีลที่ยังไม่กรอกวันที่สิ้นสุด
+   (มติผู้ใช้ 2026-09-07) · เดิมยอดพวกนี้ถูกเดาเดือนจากวันปิดการขายแล้ววางปนกับ
+   เดือนที่รู้จริง ⇒ ฝ่ายวางแผนอ่านทั้งกริดเป็นเดือนส่งของ ทั้งที่ 28% ของยอดไม่ใช่
+   ⚠️ ต้องเป็น **คอลัมน์ในกริดเดียวกัน** ไม่ใช่ชีตแยก — ยอดรวมแนวนอนของแต่ละแถว
+      จึงยังเท่ากับ FC ของแถวนั้นเสมอ และ "รวมทั้งปี" ยังเท่ากับยอดรวมของไฟล์ */
+const UNSCHEDULED_KEY = 'unscheduled';
+const UNSCHEDULED_LABEL = 'ยังไม่ระบุเดือน';
+
 /* ⚠️ ต้องเขียนไว้บนหัวไฟล์ทั้งสองชีต — ไฟล์นี้เดินทางไปถึงคนที่ไม่ได้อยู่ในระบบ
    ถ้าเขาเอาไปเทียบกับแดชบอร์ดแล้วเดือนไม่ตรง จะกลายเป็นเรื่องว่า "เลขไหนถูก"
    ทั้งที่มันตอบคนละคำถาม (ของต้องเสร็จเมื่อไร vs รายได้ลงเดือนไหน) */
 const MONTH_AXIS_NOTE = 'เดือนในตารางคือ "วันที่สิ้นสุด" ของดีล = เดือนที่ลูกค้าต้องการรับของ'
   + ' (ดีลสหมิตรใช้เดือนที่ลูกค้าขอของ) — ไม่ใช่เดือนที่ปิดยอด'
+  + ` · ดีลที่ยังไม่กรอกวันที่สิ้นสุด ยอดไปอยู่คอลัมน์ "${UNSCHEDULED_LABEL}" ท้ายกริด`
+  + ' ไม่ถูกเดาเดือนให้ (ยอดยังนับรวมในไฟล์เหมือนเดิม)'
   + ' ⇒ **ทั้งการกระจายรายเดือนและยอดรวมทั้งปี ต่างจากแดชบอร์ดโดยเจตนา** เพราะ'
   + ' (ก) ดีลที่ปิดปีนี้แต่ส่งของปีหน้าจะย้ายไปอยู่ไฟล์ของปีหน้า และ'
   + ' (ข) ไฟล์นี้ไม่รวมดีลที่แพ้แล้ว · เทียบยอดกับแดชบอร์ดตรง ๆ ไม่ได้';
@@ -53,7 +63,6 @@ export const SUMMARY_LEAD_COLUMNS = [
   { key: 'volumeTotal', label: 'ปริมาตรรวม', width: 14, number: true },
   { key: 'volumeUnit', label: 'หน่วยปริมาตร', width: 12 },
   { key: 'dealCount', label: 'จำนวนดีล', width: 10, number: true },
-  { key: 'guessedAmount', label: '⚠ ยอดที่เดาเดือน', width: 16, money: true },
 ];
 
 export const DEAL_LEAD_COLUMNS = [
@@ -64,6 +73,11 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'team', label: 'ทีม', width: 8 },
   { key: 'stage', label: 'ขั้น', width: 14 },
   { key: 'monthBasisLabel', label: 'เดือนมาจาก', width: 15 },
+  /* ⭐ เดือนที่คาดว่าจะปิดการขาย — **คนละช่องกับเดือนในกริด** (มติผู้ใช้ 2026-09-07)
+     กริด = เดือนที่ลูกค้ารับของ · ช่องนี้ = เดือนที่คาดว่าจะปิดยอด ⇒ วางคู่กันให้เห็น
+     ว่าดีลใบไหนปิดปีนี้แต่ส่งของปีหน้า · รูปแบบ `2026-09` ตามที่ผู้ใช้ขอ (เรียง/กรอง
+     ใน Excel ได้ตรง ๆ ต่างจาก "ก.ย. 26" ที่เรียงตามตัวอักษรแล้วเพี้ยน) */
+  { key: 'expectedCloseMonth', label: 'เดือนที่คาดการณ์ปิด', width: 17 },
   { key: 'sourceLabel', label: 'ที่มา FC', width: 13 },
   { key: 'quoteNumber', label: 'เลขที่ใบเสนอราคา', width: 18 },
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
@@ -91,9 +105,8 @@ const MONTH_BASIS_LABEL = {
   forecastMonth: '⚠ ถอยจากเดือน FC',
 };
 
-/* เดือนที่ "รู้จริง" — สองที่มานี้คือวันรับของจริง ส่วนที่เหลือคือเดาจากวันปิดการขาย
-   ⚠️ ชีตสรุปต้องบอกสัดส่วนของที่เดา ไม่ใช่โชว์แต่ชีตรายดีล — ของจริง 2026-09-02
-      47% ของยอดในชีตสรุปเป็นเดือนที่ถอยมา ถ้าไม่บอก ฝ่ายวางแผนอ่านทั้งชีตเป็นวันส่งจริง */
+/* ⚠️ ป้าย "⚠ ถอยจาก…" ยังต้องอยู่ แม้ยอดจะไปกอง "ยังไม่ระบุเดือน" แล้ว — คนอ่าน
+   ชีตรายดีลต้องรู้ว่าแถวนี้ไม่มีวันส่งของ ไม่ใช่แค่เห็นว่ายอดอยู่คอลัมน์ท้าย */
 
 
 const cell = (value) => (value === null || value === undefined || value === '' ? NA : value);
@@ -102,8 +115,13 @@ const cell = (value) => (value === null || value === undefined || value === '' ?
  * ⚠️ **แถวรวมท้ายตารางเป็นตัวเลขจริง ไม่ใช่สูตร** — คนรับส่วนใหญ่กรอง/ซ่อนแถวทันที
  *    ที่เปิด ถ้าเป็น SUM ของช่วง ตัวเลขจะเปลี่ยนตามการกรองแล้วไม่ตรงกับหัวไฟล์อีก */
 function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
-  const monthKeys = months;
-  const width = leadColumns.length + monthKeys.length + 1;
+  /* ช่องในกริด = 12 เดือน + กอง "ยังไม่ระบุเดือน" — เดินด้วยลิสต์เดียวทุกที่
+     (หัวตาราง · แถวข้อมูล · แถวรวม) ไม่งั้นคอลัมน์ท้ายหลุดจากผลรวมได้เงียบ ๆ */
+  const slotKeys = [...months, UNSCHEDULED_KEY];
+  const width = leadColumns.length + slotKeys.length + 1;
+  const slotValue = (shaped, key) => (key === UNSCHEDULED_KEY
+    ? shaped.unscheduled ?? null
+    : shaped.months?.[key] ?? null);
 
   const info = sheet.addRow([infoText]);
   info.font = { name: FONT, size: 10 };
@@ -112,7 +130,8 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
 
   const header = sheet.addRow([
     ...leadColumns.map((c) => c.label),
-    ...monthKeys.map(monthColumnLabel),
+    ...months.map(monthColumnLabel),
+    UNSCHEDULED_LABEL,
     'รวมทั้งปี',
   ]);
   header.font = { name: FONT, size: 11, bold: true, color: { argb: HEADER_TEXT } };
@@ -122,19 +141,20 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
   });
   sheet.columns = [
     ...leadColumns.map((c) => ({ key: c.key, width: c.width })),
-    ...monthKeys.map((month) => ({ key: month, width: 14 })),
+    ...months.map((month) => ({ key: month, width: 14 })),
+    { key: UNSCHEDULED_KEY, width: 16 },
     { key: 'total', width: 16 },
   ];
   // ตรึงหัวตาราง **และคอลัมน์ระบุแถว** — เลื่อนไปเดือน ธ.ค. แล้วยังต้องรู้ว่าแถวไหน
   sheet.views = [{ state: 'frozen', xSplit: leadColumns.length, ySplit: 2 }];
 
-  const monthTotals = monthKeys.map(() => 0);
+  const slotTotals = slotKeys.map(() => 0);
   let grandTotal = 0;
 
   for (const shaped of rows) {
     const values = [
       ...leadColumns.map((c) => cell(shaped[c.key])),
-      ...monthKeys.map((month) => cell(shaped.months?.[month])),
+      ...slotKeys.map((key) => cell(slotValue(shaped, key))),
       cell(shaped.total ?? shaped.fcAmount),
     ];
     const row = sheet.addRow(values);
@@ -144,10 +164,10 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
       if (c.money) row.getCell(index + 1).numFmt = '#,##0.00';
       else if (c.number) row.getCell(index + 1).numFmt = '#,##0.###';
     });
-    monthKeys.forEach((month, index) => {
+    slotKeys.forEach((key, index) => {
       const at = leadColumns.length + index + 1;
       row.getCell(at).numFmt = '#,##0.00';
-      monthTotals[index] += Number(shaped.months?.[month] || 0);
+      slotTotals[index] += Number(slotValue(shaped, key) || 0);
     });
     row.getCell(width).numFmt = '#,##0.00';
     grandTotal += Number(shaped.total ?? shaped.fcAmount ?? 0);
@@ -157,7 +177,7 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
     const totalRow = sheet.addRow([
       'รวม',
       ...leadColumns.slice(1).map(() => ''),
-      ...monthTotals.map((value) => Math.round(value * 100) / 100),
+      ...slotTotals.map((value) => Math.round(value * 100) / 100),
       Math.round(grandTotal * 100) / 100,
     ]);
     totalRow.font = { name: FONT, size: 11, bold: true };
