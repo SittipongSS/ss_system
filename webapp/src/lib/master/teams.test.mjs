@@ -7,8 +7,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  TEAM_CODE_MAX,
   allowedKindsFor,
   closeTeamBlocker,
+  normalizeTeamCode,
   normalizeTeamInput,
   planCrewRoster,
   teamNameOf,
@@ -166,4 +168,41 @@ test('⭐ teamNameOf: ทะเบียนก่อน · ไม่รู้จ
   assert.equal(teamNameOf(null, 'KA'), 'KA', 'อ่านฐานไม่ได้ = รหัสดิบ');
   assert.equal(teamNameOf(new Map(), ''), '', 'ไม่มีรหัส = คืนค่าที่รับมาตามเดิม');
   assert.equal(teamNameOf(new Map(), null), null);
+});
+
+// ── รหัสทีมที่คนพิมพ์เอง (มติผู้ใช้ 2026-09-07) ────────────────────────────
+/* ⭐ ของเดิมรหัสมาจาก `suggestTeamCode` อย่างเดียว ⇒ ชื่อไทยล้วนได้ `SA` · `SA-2`
+   ซึ่งอ่านไม่ออกว่าเป็นทีมไหน — และมันคือรหัสที่ถูกก๊อปลง 20+ คอลัมน์ตลอดไป
+   ⚠️ ตัวตรวจตัวนี้ถูกเรียกทั้งฝั่งจอ (บอกตอนพิมพ์) และฝั่งเซิร์ฟเวอร์ (ด่านจริง) */
+test('⭐ รหัสที่ตั้งเองต้องขึ้นต้นด้วยฝ่าย และเป็น A-Z 0-9 ขีด เท่านั้น', () => {
+  assert.deepEqual(normalizeTeamCode('sa-north', { department: 'SA' }), { value: 'SA-NORTH', error: null },
+    'ตัวพิมพ์เล็กยกเป็นใหญ่ให้ ไม่ใช่ตีกลับ');
+  assert.match(normalizeTeamCode('NORTH', { department: 'SA' }).error, /ขึ้นต้นด้วย SA-/);
+  /* 🐞 ไทยเคยหลุดเข้ารหัสมาแล้วครั้งหนึ่ง (`TS-UAT-ทีมกรุงเ`) — รหัสเป็น route param
+     และถูกเขียนลงไฟล์ export ⇒ ต้อง ASCII ล้วน */
+  assert.match(normalizeTeamCode('SA-เหนือ', { department: 'SA' }).error, /A-Z/);
+  assert.match(normalizeTeamCode('SA NORTH', { department: 'SA' }).error, /A-Z/, 'ช่องว่างก็ไม่ได้');
+  assert.match(normalizeTeamCode('SA-', { department: 'SA' }).error, /ขีด/);
+  assert.match(normalizeTeamCode('SA--NORTH', { department: 'SA' }).error, /ขีด/);
+  assert.match(normalizeTeamCode('', { department: 'SA' }).error, /ต้องระบุรหัสทีม/);
+  assert.match(normalizeTeamCode(`SA-${'X'.repeat(TEAM_CODE_MAX)}`, { department: 'SA' }).error, /ยาวเกิน/);
+});
+
+/* 🔴 `<ฝ่าย>-<เลข>` เป็นรูปที่ `suggestTeamCode` จองไว้เป็นตัวหนีรหัสซ้ำ — คนจองไปเอง
+   แปลว่ารอบหน้าตัวสร้างอัตโนมัติวิ่งชนแล้วต้องข้ามไปเรื่อย ๆ */
+test('🔴 รูป <ฝ่าย>-<เลข> จองไว้ให้ตัวสร้างอัตโนมัติ ตั้งเองไม่ได้', () => {
+  assert.match(normalizeTeamCode('SA-2', { department: 'SA' }).error, /อัตโนมัติ/);
+  assert.equal(normalizeTeamCode('SA-2ND', { department: 'SA' }).error, null, 'มีตัวอักษรปนแล้วไม่ใช่รูปที่จอง');
+});
+
+test('รหัสซ้ำของเดิมไม่ได้ — และตอนแก้ต้องไม่นับรหัสของตัวเองเป็นซ้ำ', () => {
+  const existingCodes = ['SA-NORTH', 'KA'];
+  assert.match(normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes }).error, /ถูกใช้ไปแล้ว/);
+  /* จอส่ง existingCodes ที่กรองรหัสของทีมที่กำลังแก้ออกแล้ว — ไม่งั้นกดบันทึกโดยไม่เปลี่ยน
+     รหัสจะโดนบอกว่า "ซ้ำกับตัวเอง" */
+  assert.equal(normalizeTeamCode('SA-NORTH', { department: 'SA', existingCodes: ['KA'] }).error, null);
+});
+
+test('ไม่มีฝ่าย = ตรวจต่อไม่ได้ ต้องบอก ไม่ใช่ปล่อยผ่าน', () => {
+  assert.match(normalizeTeamCode('SA-NORTH', {}).error, /ฝ่าย/);
 });

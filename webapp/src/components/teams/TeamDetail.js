@@ -25,8 +25,8 @@ import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useRole } from "@/lib/roleContext";
-import { TEAM_KIND_LABELS, teamsBasePath } from "@/lib/master/teams";
-import { ROLE_LABELS } from "@/lib/permissions";
+import { TEAM_KIND_LABELS, normalizeTeamCode, teamsBasePath } from "@/lib/master/teams";
+import { ROLE_LABELS, TEAMS } from "@/lib/permissions";
 import { fmtNumber, naText } from "@/lib/format";
 import useTeamRegistry from "./useTeamRegistry";
 import TeamFormFields from "./TeamFormFields";
@@ -54,6 +54,26 @@ export default function TeamDetail({ department, code }) {
     () => teams.filter((t) => t.kind === "sales" && t.isActive !== false),
     [teams],
   );
+
+  /* ── รหัสทีมแก้ได้ไหม (มติผู้ใช้ 2026-09-07) ────────────────────────────
+     ⚠️ จอรู้ได้แค่สองข้อ — ทีมตั้งต้น และ "ยังมีคนอยู่" · ของค้างอีก 19 ตารางต้องถามฐาน
+     ⇒ ล็อกเฉพาะสองข้อที่รู้แน่ ที่เหลือปล่อยให้กดแล้วให้เซิร์ฟเวอร์บอกเหตุ
+     (กติกาเดียวกับปุ่มลบทีม: ไม่ซ่อนเพื่อให้เหตุผลที่ตีกลับถูกอ่าน) */
+  const codeLocked = !!team && (TEAMS.includes(team.code) || members.length > 0);
+  const codeLockReason = !team ? "" : (TEAMS.includes(team.code)
+    ? "ทีมตั้งต้นของระบบ — รหัสถูกอ้างในข้อมูลเก่าทั้งระบบ"
+    : (members.length > 0 ? `ทีมนี้มีสมาชิก ${fmtNumber(members.length)} คน — ย้ายออกก่อนจึงจะเปลี่ยนรหัสได้` : ""));
+  /* ⚠️ ปุ่มบันทึกต้องดับด้วย **กติกาเดียวกับเซิร์ฟเวอร์** ไม่ใช่แค่ "ไม่ว่าง" —
+     ไม่งั้นกดได้แล้วโดนตีกลับด้วยเหตุที่จอรู้อยู่แล้วตั้งแต่ตอนพิมพ์ */
+  const editCodeError = (() => {
+    if (!edit || codeLocked) return "";
+    const next = (edit.code || "").trim().toUpperCase();
+    if (next === team?.code) return "";
+    return normalizeTeamCode(next, {
+      department,
+      existingCodes: teams.map((t) => t.code).filter((c) => c !== team?.code),
+    }).error || "";
+  })();
 
   const saveMove = async (payload) => {
     const done = await call(`/api/users/${moving.id}/team`, {
@@ -148,7 +168,11 @@ export default function TeamDetail({ department, code }) {
 
             {canManage && (
               <div className={styles.acts}>
-                <Button tone="primary" onClick={() => setEdit({ ...team })}>แก้ชื่อ / หัวหน้าทีม / หมายเหตุ</Button>
+                {/* ⚠️ ป้ายปุ่มต้องบอกว่าแก้อะไรได้ **ตามสถานะจริง** — รหัสแก้ได้เฉพาะทีมที่
+                    ยังไม่มีใครใช้ ⇒ เขียนตายตัวว่า "แก้รหัส" ไม่ได้ */}
+                <Button tone="primary" onClick={() => setEdit({ ...team })}>
+                  {codeLocked ? "แก้ชื่อ / หัวหน้าทีม / หมายเหตุ" : "แก้รหัส / ชื่อ / หัวหน้าทีม / หมายเหตุ"}
+                </Button>
                 {team.kind === "crew" && !closed && (
                   <Button tone="neutral" onClick={() => { setCrewIds(members.map((m) => m.id)); setCrewOpen(true); }}>
                     จัดสมาชิก
@@ -325,15 +349,24 @@ export default function TeamDetail({ department, code }) {
         footer={(
           <>
             <Button tone="neutral" onClick={() => setEdit(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="primary" disabled={saving || !edit?.name?.trim()}
+            <Button tone="primary" disabled={saving || !edit?.name?.trim() || !!editCodeError}
               onClick={async () => {
+                const nextCode = (edit.code || "").trim().toUpperCase();
+                const renaming = !codeLocked && nextCode !== team.code;
                 const done = await call(`/api/teams/${encodeURIComponent(team.code)}`, {
                   method: "PATCH", headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     name: edit.name.trim(), leadId: edit.leadId, leadName: edit.leadName, note: edit.note,
+                    /* ⚠️ ส่ง `code` เฉพาะตอนที่แก้ได้จริง — ส่งไปทุกครั้งแปลว่าเซิร์ฟเวอร์
+                       ต้องวิ่งสแกนการใช้งาน 19 ตารางทุกครั้งที่มีคนแก้แค่หมายเหตุ */
+                    ...(renaming ? { code: nextCode } : {}),
                   }),
-                }, "บันทึกทีมแล้ว");
-                if (done) setEdit(null);
+                }, renaming ? `เปลี่ยนรหัสทีมเป็น ${nextCode} แล้ว` : "บันทึกทีมแล้ว");
+                if (!done) return;
+                setEdit(null);
+                /* ⚠️ รหัสคือ URL ของหน้านี้ — ไม่ย้ายตาม = หน้าค้างอยู่ที่รหัสที่ไม่มีแล้ว
+                   แล้วรีเฟรชทีเดียวได้ "ไม่พบทีม" (ใช้ท่าเดียวกับปุ่มลบ) */
+                if (renaming && base) window.location.assign(`${base}/${encodeURIComponent(nextCode)}`);
               }}>
               บันทึก
             </Button>
@@ -341,7 +374,26 @@ export default function TeamDetail({ department, code }) {
         )}
       >
         {edit && (
-          <TeamFormFields mode="edit" department={department} value={edit} onChange={setEdit} members={members} />
+          <TeamFormFields
+            mode="edit"
+            department={department}
+            value={edit}
+            onChange={setEdit}
+            members={members}
+            existingCodes={teams.map((t) => t.code)}
+            codeLocked={codeLocked}
+            codeLockReason={codeLockReason}
+          />
+        )}
+        {/* ⭐ ช่องที่ยังแก้ได้บนจอ **ยังตกด่านเซิร์ฟเวอร์ได้** — จอรู้แค่เรื่องสมาชิก
+            ส่วนดีล/ลีด/เป้า/ลูกค้า/สินค้าที่ค้างอยู่ ต้องถามฐาน ⇒ บอกไว้ก่อนกด */}
+        {edit && !codeLocked && (edit.code || "").trim().toUpperCase() !== team.code && (
+          <StatusNotice tone="warning">
+            {/* ⚠️ `StatusNotice` ไม่แปลง markdown — `**...**` ออกมาเป็นดอกจันจริงบนจอ
+                (เจอตอน UAT 2026-09-07 · ของเดิมในฟอร์มสร้างทีมก็เป็นแบบนี้อยู่) */}
+            เปลี่ยนรหัสได้เฉพาะทีมที่<strong>ยังไม่มีใครใช้</strong> — ระบบจะไล่ดูดีล ลีด เป้า สัญญา
+            ลูกค้า และสินค้าตอนกดบันทึก ถ้าเจอของค้างจะตีกลับพร้อมบอกว่าติดอะไรอยู่
+          </StatusNotice>
         )}
       </Modal>
 

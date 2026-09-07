@@ -6,16 +6,18 @@
 //   ⇒ คนสร้างทีมไม่มีทางใส่หมายเหตุตั้งแต่แรก และไม่มีทางรู้ว่าจะได้รหัสอะไร
 //
 // โหมดต่างกันผ่าน props เท่านั้น:
-//   mode="create" → เลือกประเภททีมได้ · โชว์ **รหัสที่จะได้** จากชื่อที่พิมพ์
-//   mode="edit"   → ประเภทกับรหัสเป็นช่องอ่านอย่างเดียว (ทั้งคู่ตั้งครั้งเดียว เปลี่ยนไม่ได้)
-//                   และมีช่องหัวหน้าทีม ซึ่งเลือกได้เฉพาะคนที่อยู่ในทีมนั้นจริง
+//   mode="create" → เลือกประเภททีมได้ · **รหัสพิมพ์เองได้** (ตั้งต้นจากชื่อที่พิมพ์)
+//   mode="edit"   → ประเภทเป็นช่องอ่านอย่างเดียว (ตั้งครั้งเดียว) · รหัสแก้ได้ **เฉพาะทีม
+//                   ที่ยังไม่มีใครใช้** (`codeLocked` มาจากจอ ซึ่งรู้ว่าทีมมีสมาชิก/ของค้างไหม
+//                   — เซิร์ฟเวอร์ตรวจซ้ำอีกชั้นเสมอ) และมีช่องหัวหน้าทีมซึ่งเลือกได้เฉพาะ
+//                   คนที่อยู่ในทีมนั้นจริง
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import {
-  TEAM_KIND_HINTS, TEAM_KIND_LABELS, allowedKindsFor, suggestTeamCode,
+  TEAM_CODE_MAX, TEAM_KIND_HINTS, TEAM_KIND_LABELS, allowedKindsFor, normalizeTeamCode,
 } from "@/lib/master/teams";
 import styles from "./TeamManager.module.css";
 
@@ -26,9 +28,20 @@ export default function TeamFormFields({
   onChange,
   existingCodes = [],
   members = [],
+  codeLocked = false,
+  codeLockReason = "",
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const kinds = allowedKindsFor(department);
+  /* ⚠️ ตรวจสด **ตอนพิมพ์** ไม่ใช่ตอนกดบันทึก — รหัสถูกก๊อปลง 20+ คอลัมน์ทันทีที่มีคนใช้
+     ทีมนี้ ⇒ รู้ว่าพิมพ์ผิดตอนกดปุ่มแล้วมันสายไปหนึ่งจังหวะเสมอ
+     ⚠️ ตัวตรวจตัวเดียวกับเซิร์ฟเวอร์ (`normalizeTeamCode`) — เขียนสองที่เมื่อไรมันเพี้ยนหากัน
+     ⚠️ ตอนแก้ต้องไม่นับรหัสของตัวเองเป็น "ซ้ำ" */
+  const codeEditable = mode === "create" || !codeLocked;
+  const otherCodes = existingCodes.filter((c) => c !== value.code);
+  const codeCheck = codeEditable
+    ? normalizeTeamCode(value.code, { department, existingCodes: otherCodes })
+    : { value: value.code, error: null };
 
   return (
     <>
@@ -67,8 +80,9 @@ export default function TeamFormFields({
           สร้างแล้วมีผลทันทีกับคนที่ถูกจัดเข้าไป จึงต้องบอกก่อนกด ไม่ใช่รู้ทีหลัง */}
       {mode === "create" && value.kind === "sales" && (
         <StatusNotice tone="warning">
-          ทีมขายผูกกับ**สิทธิ์การเห็นข้อมูลและยอดขาย** — คนที่ถูกจัดเข้าทีมนี้จะเห็นดีล ลูกค้า
-          และเป้าของทีมนี้ทันที · ป้ายชื่อทีมในบางรายงานจะขึ้นเป็นรหัสจนกว่าจะเติมชื่อในโค้ด
+          {/* 🐞 ของเดิมเขียน `**...**` ซึ่ง `StatusNotice` ไม่แปลง ⇒ ดอกจันโผล่บนจอจริง */}
+          ทีมขายผูกกับ<strong>สิทธิ์การเห็นข้อมูลและยอดขาย</strong> — คนที่ถูกจัดเข้าทีมนี้จะเห็นดีล
+          ลูกค้า และเป้าของทีมนี้ทันที
         </StatusNotice>
       )}
 
@@ -82,17 +96,42 @@ export default function TeamFormFields({
         />
       </label>
 
-      <div className={styles.field}>
-        <span>รหัสทีม <small>— ตั้งครั้งเดียว เปลี่ยนทีหลังไม่ได้</small></span>
-        {/* ⚠️ **รหัสถูกก๊อปเป็นข้อความลง 20 คอลัมน์ใน 19 ตาราง** ทันทีที่มีคนใช้ทีมนี้
-            ⇒ ต้องเห็นก่อนกดสร้าง · ชื่อไทยล้วนจะได้รหัสเป็นตัวย่อฝ่าย + เลขรัน
-            (`suggestTeamCode` ตัวเดียวกับที่เซิร์ฟเวอร์ใช้ — ค่าที่เซิร์ฟเวอร์คืนคือตัวจริง) */}
-        <p className={`${styles.readonly} ${styles.code}`}>
-          {mode === "edit"
-            ? value.code
-            : suggestTeamCode(department, value.name, existingCodes)}
-        </p>
-      </div>
+      {/* ── รหัสทีม ─────────────────────────────────────────────────────────
+          ⚠️ **รหัสถูกก๊อปเป็นข้อความลง 20+ คอลัมน์** ทันทีที่มีคนใช้ทีมนี้ ⇒ พอมีของค้าง
+             แม้แถวเดียวก็เปลี่ยนไม่ได้อีกเลย · ช่วงที่ยังว่างคือช่วงเดียวที่แก้ได้จริง */}
+      {codeEditable ? (
+        <label className={styles.field}>
+          <span>
+            รหัสทีม *{" "}
+            <small>
+              — {mode === "create"
+                ? "ใช้ในลิงก์ ในไฟล์ export และในรายงานย้อนหลัง"
+                : "แก้ได้เพราะทีมนี้ยังไม่มีใครใช้ — พอมีของค้างแล้วจะแก้ไม่ได้อีก"}
+            </small>
+          </span>
+          <Input
+            value={value.code || ""}
+            onChange={(e) => set({ code: e.target.value.toUpperCase() })}
+            maxLength={TEAM_CODE_MAX}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={`${department}-NORTH`}
+          />
+          {/* ⚠️ บอกเหตุ **ใต้ช่อง** ตอนพิมพ์ ไม่ใช่ toast ตอนกด — คนต้องเห็นว่าตัวไหนผิด */}
+          {value.code && codeCheck.error
+            ? <small className={styles.codeError}>{codeCheck.error}</small>
+            : <small>ตัวพิมพ์ใหญ่ ตัวเลข และขีด · ขึ้นต้นด้วย {department}-</small>}
+        </label>
+      ) : (
+        <div className={styles.field}>
+          <span>รหัสทีม <small>— เปลี่ยนไม่ได้แล้ว</small></span>
+          <p className={`${styles.readonly} ${styles.code}`}>
+            {value.code}
+            {/* ⭐ ปุ่มที่กดไม่ได้ต้องบอกเหตุ (กติกา GatedAction) — ช่องที่ล็อกก็เหมือนกัน */}
+            <small>{codeLockReason || "ทีมนี้ถูกใช้ไปแล้ว — ข้อมูลเก่าเก็บรหัสนี้ไว้เป็นข้อความ"}</small>
+          </p>
+        </div>
+      )}
 
       {mode === "edit" && (
         <label className={styles.field}>

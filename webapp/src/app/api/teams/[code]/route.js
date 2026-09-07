@@ -7,13 +7,17 @@
 //      (`TEAM_STAMPED_COLUMNS` + สมาชิก + สังกัดใน app_metadata) · มีของค้างแม้แถวเดียว
 //      ให้ปิดทีมแทน (`isActive = false`)
 //
-// ⚠️ **รหัสทีมแก้ไม่ได้** — เปลี่ยนรหัส = แถวเก่าทั้งหมดชี้ทีมที่ไม่มีอยู่
+// ⭐ **รหัสทีมแก้ได้แล้ว — แต่เฉพาะทีมที่ยังไม่มีใครใช้** (มติผู้ใช้ 2026-09-07)
+//   เหตุผลเดิมที่ห้ามยังจริงทุกคำ: รหัสถูกก๊อปเป็น *ข้อความ* ลง 20+ คอลัมน์ ไม่ใช่ FK
+//   ⇒ เปลี่ยนรหัสของทีมที่ถูกใช้แล้ว = แถวเก่าทั้งหมดชี้ทีมที่ไม่มีอยู่
+//   ⇒ ด่านเดียวกับ "ลบทีม" เป๊ะ (`scanTeamUsage` + คนที่ถือรหัสใน Auth) — พิมพ์รหัสผิด
+//      ตอนสร้างแล้วแก้ไม่ได้เลย คือเหตุที่คนไปสร้างทีมใหม่ทิ้งของเก่าไว้เกลื่อนทะเบียน
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@/lib/http';
 import { TEAMS, canManageTeams } from '@/lib/permissions';
-import { TEAM_STAMPED_COLUMNS, deleteTeamBlocker } from '@/lib/master/teamUsage';
-import { closeTeamBlocker, normalizeTeamInput } from '@/lib/master/teams';
-import { findTeam, loadTeamHolderIds, loadTeamMembers } from '@/lib/master/teamsRepo';
+import { deleteTeamBlocker, scanTeamUsage } from '@/lib/master/teamUsage';
+import { closeTeamBlocker, normalizeTeamCode, normalizeTeamInput } from '@/lib/master/teams';
+import { findTeam, loadTeamHolderIds, loadTeamMembers, loadTeams } from '@/lib/master/teamsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +31,38 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const body = await req.json().catch(() => ({}));
     const { value, error } = normalizeTeamInput({ ...before, ...body }, { department: before.department });
     if (error) return badRequest(error);
+
+    /* ── เปลี่ยนรหัสทีม — เฉพาะทีมที่ยังไม่มีใครใช้ ────────────────────────
+       ⚠️ `code` ไม่ได้อยู่ใน `normalizeTeamInput` โดยตั้งใจ (มันเป็น key ไม่ใช่ field)
+       ⚠️ **ไม่ส่ง code มา = ไม่แตะ** — ส่งมาเท่าเดิมก็ไม่ถือว่าเปลี่ยน */
+    const askedCode = String(body.code ?? '').trim().toUpperCase();
+    const nextCode = askedCode && askedCode !== code ? askedCode : null;
+    if (nextCode) {
+      /* 🔴 สามทีมตั้งต้นห้ามแตะรหัส — ถูกอ้างในข้อมูลเก่าทั้งระบบ และเป็นค่าถอยของฝั่งจอ */
+      if (TEAMS.includes(code)) {
+        return conflict(`${before.name} เป็นทีมตั้งต้นของระบบ — เปลี่ยนรหัสไม่ได้`);
+      }
+      const all = await loadTeams(supabase, {});
+      const parsed = normalizeTeamCode(nextCode, {
+        department: before.department,
+        existingCodes: all.map((t) => t.code),
+      });
+      if (parsed.error) return badRequest(parsed.error);
+
+      /* ด่านเดียวกับ "ลบทีม" — รหัสที่ถูกใช้ไปแล้วเปลี่ยนไม่ได้ เพราะแถวเก่าถือ *ข้อความ*
+         ไม่ใช่ FK ⇒ เปลี่ยนแล้วมันชี้ทีมที่ไม่มีอยู่ โดยไม่มีอะไรพัง ให้เห็น */
+      const usage = await scanTeamUsage(supabase, code);
+      const used = usage.filter((u) => u.count > 0);
+      const holders = await loadTeamHolderIds(supabase, code);
+      const crew = await loadTeamMembers(supabase, { teamCodes: [code] });
+      if (holders.length || crew.length) {
+        return conflict(`ทีมนี้มีสมาชิกอยู่ ${holders.length || crew.length} คน — เปลี่ยนรหัสไม่ได้`);
+      }
+      if (used.length) {
+        const detail = used.map((u) => `${u.label} ${u.count}`).join(' · ');
+        return conflict(`ทีมนี้ถูกใช้ไปแล้ว (${detail}) — เปลี่ยนรหัสไม่ได้ เพราะข้อมูลเก่าเก็บรหัสเดิมไว้เป็นข้อความ`);
+      }
+    }
 
     /* ปิดทีมที่ยังมีคนอยู่ไม่ได้ — คนจะหลุดออกจากทุกจอเงียบ ๆ
        ⚠️ นับสมาชิกจากของจริง ไม่ใช่จากตัวเลขที่จอส่งมา
@@ -43,18 +79,31 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     const { data, error: updateError } = await supabase.from('teams')
-      .update({ ...value, department: before.department, kind: before.kind, updatedAt: new Date().toISOString() })
+      .update({
+        ...value,
+        ...(nextCode ? { code: nextCode } : {}),
+        department: before.department,
+        kind: before.kind,
+        updatedAt: new Date().toISOString(),
+      })
       .eq('code', code).select().single();
     if (updateError) {
-      if (updateError.code === '23505') return conflict(`ฝ่ายนี้มีทีมชื่อ “${value.name}” อยู่แล้ว`);
+      /* ⚠️ 23505 มาได้จากสองกุญแจ (รหัส · ฝ่าย+ชื่อ) — ตอบผิดกุญแจ = คนไล่แก้ผิดช่อง */
+      if (updateError.code === '23505') {
+        return conflict(/teams_pkey|\(code\)/i.test(`${updateError.message} ${updateError.details || ''}`)
+          ? `รหัส ${nextCode || code} ถูกใช้ไปแล้ว — ตั้งรหัสอื่น`
+          : `ฝ่ายนี้มีทีมชื่อ “${value.name}” อยู่แล้ว`);
+      }
       return fail(updateError.message, 500);
     }
 
     await recordAudit({
       user, action: 'update', entityType: 'team', entityId: code, before, after: data,
-      summary: before.isActive && !data.isActive
-        ? `ปิดทีม ${data.name} (${data.department})`
-        : `แก้ทีม ${data.name} (${data.department})`,
+      summary: nextCode
+        ? `เปลี่ยนรหัสทีม ${before.name}: ${code} → ${nextCode}`
+        : (before.isActive && !data.isActive
+          ? `ปิดทีม ${data.name} (${data.department})`
+          : `แก้ทีม ${data.name} (${data.department})`),
       request: req,
     });
     return ok(data);
@@ -76,15 +125,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (!team) return notFound('ไม่พบทีม');
 
     /* 🔴 **นับของจริงทุกตาราง ก่อนตัดสิน** — ไม่ใช่ถามแค่จำนวนสมาชิก · ตกหล่นตารางไหน
-       คือลบทีมที่ยังถูกอ้างอยู่ได้เงียบ ๆ (ลิสต์อยู่ที่ `TEAM_STAMPED_COLUMNS`) */
-    const usage = [];
-    for (const { table, column, label } of TEAM_STAMPED_COLUMNS) {
-      const { count, error } = await supabase
-        .from(table).select('*', { count: 'exact', head: true }).eq(column, code);
-      // อ่านไม่ได้ = **ไม่รู้ว่าว่างจริงไหม** ⇒ ห้ามเดาว่าว่าง (ลบผิดแล้วย้อนไม่ได้)
-      if (error) return fail(`ตรวจการใช้งานทีมที่ตาราง ${table} ไม่สำเร็จ: ${error.message}`, 500);
-      usage.push({ label, count: count || 0 });
-    }
+       คือลบทีมที่ยังถูกอ้างอยู่ได้เงียบ ๆ (ลิสต์อยู่ที่ `TEAM_STAMPED_COLUMNS`)
+       ⚠️ ตัวสแกนตัวเดียวกับที่ด่าน "เปลี่ยนรหัสทีม" ใช้ — อ่านไม่ได้มันโยน error เอง
+       (ห้ามเดาว่าว่าง: ลบผิดแล้วย้อนไม่ได้) */
+    const usage = await scanTeamUsage(supabase, code);
 
     // ทีมขาย: สังกัดอยู่ที่ `app_metadata` ของผู้ใช้ ไม่ใช่ตาราง ⇒ ต้องไล่จาก Auth
     // (ตัวเดียวกับที่ด่านปิดทีมใช้ — เขียนสองที่เมื่อไรมันเพี้ยนหากัน)
