@@ -40,6 +40,9 @@ const VALID_LINE_SHAPES = ['product_dev', 'document', 'billing_doc'];
 
 // export เพื่อให้เทสต์พิสูจน์ได้ว่าด่านนี้ **ยิงจริง** — ด่านที่ไม่มีใครเคยเห็นมันทำงาน
 // คือด่านที่อาจพังเงียบมานานแล้ว
+/* ธงบูลีนที่ทะเบียนหัวข้อรู้จัก — เพิ่มธงใหม่ต้องมาเติมที่นี่ด้วย ไม่งั้นพิมพ์ผิดแล้วเงียบ */
+const BOOLEAN_FLAGS = ['hasItems', 'deliversRows', 'cancelBeforeAckOnly'];
+
 export function assertKind(kind, seen = new Set()) {
   const at = `หัวข้อคำร้อง "${kind?.key || '(ไม่มี key)'}"`;
   if (!kind?.key) throw new Error(`${at}: ต้องมี key`);
@@ -58,6 +61,15 @@ export function assertKind(kind, seen = new Set()) {
   }
   for (const ref of kind.needs || []) {
     if (!VALID_REFS.includes(ref)) throw new Error(`${at}: needs "${ref}" ไม่มีใน REQUEST_NEEDS`);
+  }
+  /* 🪤 **คีย์ระดับบนสุดไม่เคยมี whitelist** — พิมพ์ชื่อธงผิดหนึ่งตัว (`cancelBeforeAckOnly`
+     เป็น `cancelBeforeAck`) จะผ่านด่านนี้เงียบ ๆ แล้ว **ด่านที่พึ่งธงนั้นไม่ทำงาน**
+     โดยไม่มี error ให้ใครเห็น · ธงบูลีนคือกลุ่มที่พลาดง่ายที่สุดเพราะไม่มีใครอ่านค่า
+     ⇒ ตรวจชนิด และตรวจว่าชื่ออยู่ในทะเบียนที่รู้จัก */
+  for (const flag of BOOLEAN_FLAGS) {
+    if (flag in kind && typeof kind[flag] !== 'boolean') {
+      throw new Error(`${at}: ธง "${flag}" ต้องเป็น true/false`);
+    }
   }
   for (const ref of kind.optionalRefs || []) {
     if (!VALID_OPTIONAL_REFS.includes(ref)) {

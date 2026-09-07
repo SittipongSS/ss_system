@@ -10,6 +10,7 @@ import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 import SignaturePad from "./SignaturePad";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
@@ -34,6 +35,14 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [signing, setSigning] = useState(false);
+  /* ⭐ **"ไปแล้วเข้าไม่ได้" เป็นทางปิดของตัวเอง** (§5E ② · มติข้อ 23)
+     🐞 ก่อนหน้านี้ไม่มีจอไหนปิดนัดเป็น `unable` ได้เลย — นัดที่ไม่มีเครื่องในไซต์
+       (เช่นนัดประเมินพื้นที่) `deriveVisitStatus([])` คืน `'done'` เสมอ ⇒ ช่างที่ไปแล้ว
+       เข้าอาคารไม่ได้ ปิดได้ทางเดียวคือ "เข้าแล้ว" ซึ่งไม่จริง
+     ⚠️ เหตุผลบังคับ ≥10 ตัวอักษร — ด่านเดียวกับ CHECK ของ mig 0300 (ตรวจที่นี่ก่อน
+       เพื่อไม่ให้คนหน้างานเจอ error ภาษาอังกฤษดิบของ Postgres) */
+  const [unable, setUnable] = useState(false);
+  const [unableReason, setUnableReason] = useState("");
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -165,7 +174,8 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     .map((a) => ({ assetId: a.id, ...(results[a.id] || {}) }))
     .filter((r) => ASSET_OUTCOMES.includes(r.outcome));
   const pending = pendingAssets(assets, resultRows);
-  const derived = deriveVisitStatus(resultRows);
+  const derived = unable ? "unable" : deriveVisitStatus(resultRows);
+  const unableTooShort = unable && unableReason.trim().length < 10;
 
   const setOutcome = (assetId, outcome) => setResults((prev) => ({
     ...prev,
@@ -178,20 +188,26 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
   const submit = async () => {
     /* ⚠️ ทุกเครื่องที่ยังใช้งานอยู่ต้องมีคำตอบก่อนปิด — ไม่งั้นสถานะที่สรุปจากลูก
        จะสรุปจากข้อมูลไม่ครบ แล้วใบที่ "ทำไม่ครบ" จะถูกปิดเป็น "เสร็จ" */
-    if (pending.length) {
+    /* ไปแล้วเข้าไม่ได้ = ไม่มีผลรายเครื่องให้กรอก ⇒ ข้ามด่านนั้นไปเลย
+       แต่เหตุผลต้องมี — ทั้งใบและกระดิ่งของฝ่ายขายพึ่งข้อความนี้ */
+    if (unable) {
+      if (unableTooShort) { setError("บอกเหตุผลอย่างน้อย 10 ตัวอักษร — ฝ่ายขายจะเห็นข้อความนี้"); return; }
+    } else if (pending.length) {
       setError(`ยังไม่ได้ระบุผลของ ${pending.length} รายการ: ${pending.map((a) => a.label).join(" · ")}`);
       return;
     }
-    for (const row of resultRows) {
-      const { error: invalid } = normalizeAssetResult(row);
-      if (invalid) { setError(invalid); return; }
+    if (!unable) {
+      for (const row of resultRows) {
+        const { error: invalid } = normalizeAssetResult(row);
+        if (invalid) { setError(invalid); return; }
+      }
     }
     setBusy(true);
     setError("");
     try {
       /* บันทึกผลรายเครื่อง **ก่อน** ปิดใบ — server สรุปสถานะจากแถวจริงใน DB
          (closeFromAssets) ไม่ใช่จากค่าที่จอส่งมา ⇒ ลำดับนี้สลับไม่ได้ */
-      if (activeAssets.length) {
+      if (activeAssets.length && !unable) {
         const res = await apiFetch(`/api/service/visits/${visit.id}/assets`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -200,7 +216,12 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "บันทึกผลรายเครื่องไม่สำเร็จ");
       }
-      await onSubmit({ ...form, closeFromAssets: activeAssets.length > 0, status: derived });
+      await onSubmit({
+        ...form,
+        closeFromAssets: activeAssets.length > 0 && !unable,
+        status: derived,
+        ...(unable ? { unableReason: unableReason.trim() } : {}),
+      });
     } catch (e) {
       setError(e.message || "ปิดงานไม่สำเร็จ");
     } finally {
@@ -224,6 +245,44 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
           ตอนปิดงาน = เลขที่พิมพ์ย้อนหลัง ไม่ใช่เวลาจริง)
           ⇒ แสดงอย่างเดียว · แก้ย้อนหลังทำได้จากหน้ารายละเอียดนัด และใบจะติดธง
           `actualTimeEdited` ให้เห็นว่าแก้ (ด่าน check:thaitime กันรูปเดิมไว้แล้ว) */}
+      {/* ⭐ **ผลของการไปครั้งนี้ — ถามก่อนทุกอย่าง** (§5E ② · มติข้อ 23)
+          ช่างที่ไปถึงแล้วเข้าอาคารไม่ได้ ต้องมีทางปิดที่ตรงกับความจริง ไม่ใช่ถูกบังคับ
+          ให้ปิดเป็น "เข้าแล้ว" · เลือก "เข้าไม่ได้" ปุ๊บ ใบต้นเรื่องจะถอยกลับขั้นลงคิวเอง
+          ⚠️ ชิปไม่ใช่ปุ่มหลักของจอ — ชุดตัวเลือกสั้นตายตัวต้องกางให้เห็น (กติกาคอนโทรล) */}
+      <section className={styles.block}>
+        <h3 className={styles.blockTitle}>ผลของการเข้าครั้งนี้</h3>
+        <ChoiceChips
+          value={unable ? "unable" : "entered"}
+          onChange={(next) => { setUnable(next === "unable"); setError(""); }}
+          options={[
+            { value: "entered", label: "เข้าพื้นที่ได้" },
+            { value: "unable", label: "ไปแล้วเข้าไม่ได้" },
+          ]}
+          disabled={busy}
+          ariaLabel="ผลของการเข้าครั้งนี้"
+        />
+        {unable && (
+          <>
+            <Input
+              value={unableReason}
+              disabled={busy}
+              maxLength={500}
+              autoComplete="off"
+              placeholder="เข้าไม่ได้เพราะอะไร เช่น อาคารไม่อนุญาตให้เข้าวันหยุด"
+              aria-label="เหตุผลที่เข้าไม่ได้"
+              invalid={!!unableReason && unableTooShort}
+              onChange={(e) => setUnableReason(e.target.value)}
+            />
+            {/* ปุ่มจางต้องบอกเหตุเป็นตัวหนังสือ — และบอกด้วยว่าใครจะอ่านข้อความนี้ */}
+            <p className={styles.note}>
+              {unableTooShort
+                ? "บอกเหตุผลอย่างน้อย 10 ตัวอักษร"
+                : "ฝ่ายขายจะได้รับแจ้งพร้อมเหตุผลนี้ และใบจะกลับไปขั้นลงคิวให้ TS ลงวันใหม่"}
+            </p>
+          </>
+        )}
+      </section>
+
       <section className={styles.block}>
         <h3 className={styles.blockTitle}>เวลาที่เข้าจริง</h3>
         <p className={styles.note}>

@@ -18,7 +18,7 @@ import { closureStatus } from '@/lib/requests/closure';
 import { answerRequestError } from '@/lib/requests/stages';
 import { listAttachments } from '@/lib/master/attachments';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
-import { surveySendError, surveyTotals } from '@/lib/service/survey';
+import { surveySendError, surveyTotals, surveyTotalsDiff } from '@/lib/service/survey';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +76,20 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
          มาตัดสินว่า "ปิดครบสองฝั่ง" หรือ "รอผู้ขอปิดเรื่อง" · ส่งแถวเก่าไปจะบอกผิด
        ⚠️ วางไว้ **หลัง** update สำเร็จ และไม่ให้ล้มลากปุ่มส่งล้มตาม — ทั้ง `appendUpdate`
          และ `notifyThreadUpdate` กลืน error เองอยู่แล้ว (fire-and-forget ทั้งสาย) */
+    /* 🔴 **ส่งรอบใหม่หลังดึงกลับ ต้องบอกส่วนต่างเก่า→ใหม่** (§5E ④)
+       จุดอันตรายที่สุดของทั้งแผน: SA อาจเอาตัวเลขผิดไปเสนอราคาไปแล้ว ⇒ ข้อความว่า
+       "ใบถูกแก้" เฉย ๆ ไม่พอ · ตัวเลขที่ส่งไปรอบก่อนถูกตรึงไว้ใน meta ของแถว `recall`
+       ⚠️ ไม่มีแถว `recall` = ส่งรอบแรก ⇒ ไม่มีอะไรให้เทียบ (ปกติ ไม่ใช่ข้อผิดพลาด) */
+    let diff = [];
+    try {
+      const { data: recalls } = await supabase
+        .from('entity_updates')
+        .select('meta, "createdAt"')
+        .eq('entityType', 'dept_request').eq('entityId', id).eq('kind', 'recall')
+        .order('createdAt', { ascending: false }).limit(1);
+      diff = surveyTotalsDiff(recalls?.[0]?.meta?.totals || null, totals);
+    } catch { /* เทียบไม่ได้ = ส่งตามปกติ · ห้ามลากปุ่มส่งล้มเพราะเรื่องข้อความ */ }
+
     await appendRequestEvent(supabase, {
       request: data,
       action: 'answer',
@@ -83,7 +97,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       opts: {
         // ผู้ขอรอ "ตร.ม. กี่แพ็คเกจ" เพื่อเอาไปตั้งราคา ⇒ ให้อ่านจากกระดิ่งได้เลย
         summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
-          + (totals.cutZones ? ` · ตัดออก ${totals.cutZones}` : ''),
+          + (totals.cutZones ? ` · ตัดออก ${totals.cutZones}` : '')
+          + (diff.length ? ` · ⚠️ แก้จากรอบก่อน: ${diff.join(' · ')}` : ''),
       },
     });
 

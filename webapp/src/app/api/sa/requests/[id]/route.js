@@ -31,7 +31,7 @@ import { normalizeScentBriefs, scentBriefNameError } from '@/lib/requests/scentB
 import {
   acknowledgeRequestError, commitDueRequestError, rescheduleRequestError,
   bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
-  canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
+  canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError, closeUnassessedError,
   assignRequestDocNo, deleteRequestError, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
 import {
@@ -65,6 +65,7 @@ import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { sanitizeMentions } from '@/lib/master/mentions';
 import { purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
+import { cancelCleanupSummary, cleanupCancelledSurveyZones } from '@/lib/service/surveyCancelCleanup';
 
 export const dynamic = 'force-dynamic';
 
@@ -216,6 +217,8 @@ export async function PATCH(request, { params }) {
   let ackFanOut = false;
   // เหตุผลที่ต้องไหลไปถึงเธรด (นอกเหนือจาก cancel/bounce ที่เก็บลง patch อยู่แล้ว)
   let eventReason = null;
+  // ใบประเมินที่ถูกยกเลิก ต้องเก็บกวาดพื้นที่ที่ตัวเองสร้าง (§5E ③) — ทำหลัง update สำเร็จ
+  let cleanupSurveyZonesAfter = false;
   /* ⚠️ **ครึ่งหลังของ "ลงคิว" ล้มได้โดยที่ใบบันทึกไปแล้ว** — ใบกับนัดอยู่คนละคำสั่ง
      (PostgREST ไม่มีทรานแซกชันครอบ) ⇒ ต้อง **บอกผู้ใช้** ไม่ใช่ log เงียบ ๆ
      แล้วปล่อยให้คนคิดว่าเจ้าหน้าที่เห็นงานแล้วทั้งที่ตารางว่าง */
@@ -792,6 +795,25 @@ export async function PATCH(request, { params }) {
       eventReason = reason;
       summary = `ยังไม่จบ — ถอนการปิดของ${closure.deptDone ? before.dept || 'ฝ่ายผู้รับ' : 'ผู้ขอ'}`
         + ` ${before.docNo || id} — ${reason}`;
+    } else if (action === 'close-unassessed') {
+      /* ⭐ **ฝ่ายปิดใบโดยไม่ได้ผล** (§5E ③) — ทางออกคู่กับด่าน "ยกเลิกได้ก่อนรับเรื่อง"
+         ใบที่ดีลล่มหลังฝ่ายรับเรื่องแล้ว ต้องมีประตูออก ไม่งั้นค้างตลอดกาล
+         ⚠️ **ไม่ใช่ "ยกเลิก"** — งานเกิดขึ้นจริงแล้ว แค่ไม่ได้ผล ⇒ ใบเป็น `closed`
+            พร้อมเหตุผล อ่านย้อนได้ว่าเคยจะไปแล้วไม่ได้ไป */
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `ปิดใบทางนี้ได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const reason = String(body.reason ?? '').trim();
+      const err = closeUnassessedError(before, { reason });
+      if (err) return Response.json({ error: err }, { status: /ต้องบอก/.test(err) ? 400 : 409 });
+      patch.closedById = user?.id ?? null;
+      patch.closedByName = user?.name ?? null;
+      patch.closedAt = nowIso;
+      /* ปิดข้างเดียวโดยไม่มีผล = จบใบเลย ไม่ใช่ `closureStatus` (ซึ่งรอ `answeredAt`
+         ที่จะไม่มีวันมา) · ใบนี้จบด้วยการยอมรับว่าไม่ได้ผล ไม่ใช่ด้วยการได้ผล */
+      patch.status = 'closed';
+      eventReason = reason;
+      summary = `${before.dept} ปิดใบโดยไม่ได้ประเมิน ${before.docNo || id} — ${reason}`;
     } else if (action === 'cancel') {
       if (!canManageRequest(user, before)) {
         return Response.json({ error: 'ยกเลิกได้เฉพาะผู้เปิดเรื่อง' }, { status: 403 });
@@ -804,6 +826,10 @@ export async function PATCH(request, { params }) {
       patch.cancelReason = reason.slice(0, 500);
       patch.cancelledAt = nowIso;
       summary = `ยกเลิกคำร้อง ${before.docNo || id}`;
+      /* ⭐ ใบประเมินที่ถูกยกเลิก ต้องเก็บกวาดพื้นที่ที่ตัวเองสร้างไว้ (§5E ③)
+         ⚠️ ทำ **หลัง** ใบถูกยกเลิกสำเร็จ (ดูจุดเรียกท้าย handler) — เก็บกวาดก่อนแล้วใบ
+           ยกเลิกไม่สำเร็จ = ลบพื้นที่ของใบที่ยังมีชีวิตอยู่ */
+      cleanupSurveyZonesAfter = before.kind === 'site_survey';
     } else if (action === 'pdr-ref') {
       /* ⭐ **ออกเลขที่เอกสารย้อนหลังทีละใบ** (มติผู้ใช้ 2026-08-20) — ใบที่รับเรื่อง
          ไปก่อน mig 0271 ไม่มีเลข และ **ไม่ backfill อัตโนมัติ** เพราะการไล่ออกเลขให้
@@ -1014,6 +1040,19 @@ export async function PATCH(request, { params }) {
     if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
 
     const after = await findRequest(supabase, id);
+
+    /* ⭐ **ยกเลิกใบประเมิน = เก็บกวาดพื้นที่ที่ใบนี้สร้างไว้** (§5E ③ · มติข้อ 24)
+       🐞 ก่อนหน้านี้ยกเลิกแล้วโซนค้างในทะเบียนของลูกค้าถาวร ⇒ ไปโผล่เป็นไทล์ให้ติ๊ก
+         ในใบรอบหน้า และนับอยู่ในแท็บ "พื้นที่บริการ" ทั้งที่ไม่เคยมีใครไปวัดจริง
+       🔴 ลบเฉพาะที่ **ใบนี้สร้างและยังไม่มีใครใช้** — ที่ขายไปแล้ว/มีเครื่อง/มีใบอื่น
+         อ้างถึง ต้องอยู่ต่อ (FK RESTRICT กันอีกชั้น) · ตัวตัดสินอยู่ที่เดียว
+       ⚠️ ไม่โยน error — ใบยกเลิกสำเร็จแล้ว ล้มตรงนี้ต้องไม่ทำให้ตอบ 500 */
+    if (cleanupSurveyZonesAfter) {
+      const cleanup = await cleanupCancelledSurveyZones(supabase, { request: after || before });
+      const note = cancelCleanupSummary(cleanup);
+      if (note) summary = `${summary} — ${note}`;
+    }
+
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id, before, after, summary, request,
     });

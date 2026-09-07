@@ -2,7 +2,7 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
-import { requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes';
+import { requestCancelBeforeAckOnly, requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
@@ -277,6 +277,43 @@ export function cancelRequestError(request) {
   if (request.status === 'cancelled') return 'คำร้องนี้ถูกยกเลิกไปแล้ว';
   if (request.status === 'closed') return 'คำร้องที่ปิดแล้วยกเลิกไม่ได้';
   if (request.status === 'answered') return 'คำร้องนี้ตอบแล้ว — ปิดเรื่องแทนการยกเลิก';
+  /* ⭐ **บางหัวข้อยกเลิกได้ก่อนฝ่ายรับเรื่องเท่านั้น** (มติข้อ 24 ของใบประเมิน)
+     งานที่ต้องส่งคนออกไปหน้างาน พอฝ่ายรับเรื่องแล้วแปลว่ามีคนลงแรงจริง — บางใบ
+     ขับรถไปวัดมาแล้วด้วย ⇒ ยกเลิกทิ้งเฉย ๆ คือลบงานที่เกิดขึ้นแล้ว
+     ⚠️ **เป็นธงรายหัวข้อ ไม่ใช่กฎกลาง** — หัวข้ออื่นใช้ "ยกเลิก" เป็นทางออกมาตรฐาน
+        หลังรับเรื่อง (ดู `closeRequestError` ที่โยนคนมาหาคำนี้ถึงสามจุด)
+     ⚠️ บอก **ทางออก** ด้วย ไม่ใช่แค่ห้าม — ใบที่ดีลล่มหลังรับเรื่องต้องไปต่อได้ */
+  if (requestCancelBeforeAckOnly(request.kind) && request.acknowledgedAt) {
+    return `${request.dept || 'ฝ่ายที่รับเรื่อง'} รับเรื่องไปแล้ว — ยกเลิกไม่ได้`
+      + ' ให้ฝ่ายที่รับเรื่องกด “ปิดใบโดยไม่ได้ประเมิน” พร้อมเหตุผลแทน';
+  }
+  return null;
+}
+
+/* ── ฝ่ายปิดใบโดยไม่ได้ผลงาน (§5E ③ · ทางออกคู่กับ `cancelBeforeAckOnly`) ──
+ * ⭐ **ไม่ใช่ "ยกเลิก"** — งานเกิดขึ้นจริงแล้ว (คนขับรถไปแล้วก็มี) แค่ไม่ได้ผล
+ *   ใบยังอยู่ในประวัติ อ่านย้อนได้ว่าเคยจะไปแล้วไม่ได้ไป
+ * 🔴 **มีเฉพาะหัวข้อที่ปิดประตูยกเลิกหลังรับเรื่อง** — ไม่งั้นเป็นประตูที่สองให้ฝ่าย
+ *   ลากปิดใบเองในหัวข้อที่ตั้งใจให้ผู้ขอเป็นคนปิด (กติกา "ปิดสองฝั่ง")
+ * ⚠️ เหตุผลบังคับ ≥10 ตัวอักษร เหมือนทุกทางออกที่ทำลายความคาดหวังของอีกฝ่าย
+ */
+export function closeUnassessedError(request, { reason = '' } = {}) {
+  if (!request) return 'ไม่พบคำร้อง';
+  if (!requestCancelBeforeAckOnly(request.kind)) {
+    return 'หัวข้อนี้ไม่มีขั้น "ปิดโดยไม่ได้ผล" — ใช้การยกเลิกใบตามปกติ';
+  }
+  if (request.status === 'closed') return 'คำร้องนี้ปิดแล้ว';
+  if (request.status === 'cancelled') return 'คำร้องนี้ถูกยกเลิกไปแล้ว';
+  if (request.status === 'draft') return 'ร่างที่ยังไม่ส่ง ปิดไม่ได้';
+  if (!request.acknowledgedAt) {
+    return 'ยังไม่ได้รับเรื่อง — ผู้เปิดเรื่องยกเลิกใบได้เองตามปกติ';
+  }
+  /* ⚠️ ส่งผลไปแล้วห้ามปิดทางนี้ — ผลอยู่ในมือ SA แล้ว การปิดเป็นเรื่องของเขา
+     (ปิดทางนี้ = ลบสิทธิ์ตัดสินของอีกฝั่งทั้งที่ได้ของไปแล้ว) */
+  if (request.answeredAt) return 'ส่งผลให้ผู้ขอไปแล้ว — ให้ผู้ขอกดปิดเรื่องเอง';
+  if (String(reason).trim().length < 10) {
+    return 'ต้องบอกเหตุผลอย่างน้อย 10 ตัวอักษร — ผู้ขอจะเห็นข้อความนี้';
+  }
   return null;
 }
 

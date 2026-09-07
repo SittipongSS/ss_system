@@ -585,8 +585,8 @@ const SWALLOWED_ONCLICK = [
   /* สองจุดนี้โดนกลืนเพราะ `accept: "image/*"` ที่บรรทัด 74 ของไฟล์เดียวกัน
      อ่านด้วยมือแล้ว 2026-09-02: ทั้งคู่อยู่บน <Button> = คอมโพเนนต์ ไม่ใช่ host element
      จึงอยู่นอกขอบเขตด่านนี้อยู่แล้ว ต่อให้ด่านมองเห็นก็ไม่นับ */
-  "src/components/service/CloseVisitSheet.js:369",
-  "src/components/service/CloseVisitSheet.js:382",
+  "src/components/service/CloseVisitSheet.js:428",
+  "src/components/service/CloseVisitSheet.js:441",
   // JSDoc ที่เขียนว่า "href แทน onClick = รายการที่พาไปหน้าอื่น" — คอมเมนต์จริง ล้างถูกแล้ว
   "src/components/ui/RowActionMenu.js:25",
   /* คอมเมนต์ไทยของรอบการ์ด 2026-09-02 ที่ **ยกโค้ดเก่ามาอ้าง** ว่าเดิมเขียนอะไรไว้

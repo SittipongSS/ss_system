@@ -127,6 +127,12 @@
 .surveyWrap tr[data-cut] > td { color: var(--text-3); }
 
 /* แถบนัดของเจ้าหน้าที่บนใบประเมิน — สถานะก่อน แล้วรายละเอียดตามหลังในบรรทัดเดียว */
+.surveyUnable {
+  color: var(--amber);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
 .surveyVisit {
   display: flex;
   flex-wrap: wrap;

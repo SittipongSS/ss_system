@@ -142,7 +142,11 @@ export default function TodayPage() {
     // ⭐ server เสนอนัดรอบถัดไปมา — บอกวันให้เห็น แต่ไม่สร้างให้เอง
     const suggestion = data?.nextVisitSuggestion;
     const closedAs = VISIT_STATUS_LABELS[data?.visit?.status] || "ปิดงาน";
-    setToast(suggestion
+    /* ⭐ **บอกผลที่เกิดกับ *ใบ* ด้วย ไม่ใช่แค่ผลของนัด** (§5E ②) — ช่างที่ปิดว่าเข้าไม่ได้
+       ต้องรู้ว่าเรื่องไปต่อยังไง ไม่ใช่เห็นแค่ "ทำไม่ได้แล้ว" แล้วเดาเองว่าต้องทำอะไรอีก */
+    setToast(data?.steppedBackRequest
+      ? { kind: "success", msg: `${closedAs} · ใบประเมินกลับไปขั้นลงคิวแล้ว — TS จะลงวันใหม่ และฝ่ายขายได้รับแจ้งพร้อมเหตุผล` }
+      : suggestion
       ? { kind: "success", msg: `${closedAs} · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าจัดคิวเจ้าหน้าที่` }
       : { kind: "success", msg: `${closedAs}แล้ว` });
     setClosing(null);
