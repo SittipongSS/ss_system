@@ -278,9 +278,9 @@ export default function SalesPlanningPipelinePage() {
       if (!q) return true;
       /* ⭐ **รหัสดีลต้องค้นเจอ** (มติผู้ใช้ 2026-09-07) — ตาเห็นบนแถวแล้วต้องพิมพ์หาได้
          ไม่งั้นคนที่ถือรหัสจากไฟล์ Excel/ใบเสนอราคาต้องไล่หาด้วยตาเอง
-         ⚠️ ใส่ **สองรูป**: `DL-26080006` (รหัสจริงในฐาน ที่ใช้ทั้งไฟล์ Excel และ audit)
-            กับ `DL-26080006-0` (รูปที่หัวหน้ารายละเอียดโชว์ผ่าน entityCodeDisplay) —
-            คนก๊อปมาจากจอไหนก็ต้องเจอ */
+         ⚠️ ยังรับรูป `DL-26080006-0` ด้วย — หัวหน้ารายละเอียดเคยโชว์รูปนั้น (ต่อ `-0`
+            ตามกติกา revision ที่ดีลไม่มี · เลิกแล้ว 2026-09-07) คนที่ก๊อปเก็บไว้ก่อนหน้า
+            หรือส่งต่อกันในแชต ต้องยังหาเจอ */
       return [
         deal.code, deal.code ? entityCodeDisplay(deal.code, 0) : null,
         deal.title, customerSearchText(deal.customerId, deal.customerName, arIndex),
