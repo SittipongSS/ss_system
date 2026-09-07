@@ -1,4 +1,5 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canViewSalesPlanning, inSalesViewScope, isClosedStage } from '@/lib/salesPlanning';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { isQuotationAwaitingMyApproval, isQuotationWaitingOnMe } from '@/lib/sales/quotationWorkflow';
@@ -68,8 +69,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const customerIds = [...new Set(rows.map((q) => q.customerId).filter(Boolean))];
   let arById = new Map();
   if (customerIds.length) {
-    const { data: customers, error: customerError } = await supabase
-      .from('customers').select('id, "arCode"').in('id', customerIds);
+    /* ยิงทีละก้อน — id ลูกค้าเป็น 'CUS-'+uuid ยาว 40 ตัวอักษร ⇒ URL เกิน 16 KB ที่ ~330 ราย
+       ทะเบียนลูกค้าวันนี้ 523 ราย (เหตุผลเต็มที่ lib/supabaseInChunks.js) */
+    const { data: customers, error: customerError } = await fetchInChunks(customerIds, (chunk) => supabase
+      .from('customers').select('id, "arCode"').in('id', chunk));
     if (customerError) return fail(customerError.message, 500);
     arById = new Map((customers || []).map((c) => [c.id, String(c.arCode || '').trim() || null]));
   }

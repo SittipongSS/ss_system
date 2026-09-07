@@ -9,6 +9,7 @@
 //
 // ⚠️ exceljs ต้องใช้ Node runtime — ห้ามเป็น edge
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, stampOrderPaidThrough, undatedHiddenBy } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
@@ -111,8 +112,10 @@ async function loadLedger(supabase, todayIso) {
   const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
   const customerById = new Map();
   if (customerIds.length) {
-    const { data: customers, error: customerError } = await supabase
-      .from('customers').select('id, name, "nameEn", "arCode"').in('id', customerIds);
+    /* ยิงทีละก้อน — id ลูกค้าเป็น 'CUS-'+uuid ยาว 40 ตัวอักษร ⇒ URL เกิน 16 KB ที่ ~330 ราย
+       ทะเบียนลูกค้าวันนี้ 523 ราย (เหตุผลเต็มที่ lib/supabaseInChunks.js) */
+    const { data: customers, error: customerError } = await fetchInChunks(customerIds, (chunk) => supabase
+      .from('customers').select('id, name, "nameEn", "arCode"').in('id', chunk));
     if (customerError) throw customerError;
     /* 🐞 ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้แถวไร้ชื่อทั้งบนจอและในไฟล์ Excel ที่บัญชีโหลดไป
        ⇒ ตัดสินชื่อที่จะวาดตั้งแต่ตรงนี้ ทางเดียวกันทั้งสองปลายทาง */
