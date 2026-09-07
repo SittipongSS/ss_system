@@ -5,8 +5,10 @@ import {
 } from '@/lib/salesPlanning';
 import {
   canExportForecastReport, forecastBreakdownOfDeal, forecastMonthOfDeal,
-  monthsInRows, monthsOfYear,
+  monthsInRows, monthsOfYear, normalizeFgCode,
 } from '@/lib/sales/forecastBreakdown';
+import { eligibleForecastQuotations } from '@/lib/sales/forecastSource';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { buildForecastReportBuffer, forecastReportFilename } from '@/lib/sales/forecastReportWorkbook';
 import { businessDate } from '@/lib/businessDate';
 import { loadTeamNames } from '@/lib/master/teamsRepo';
@@ -60,8 +62,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     fetchAllResult(() => supabase.from('sales_deals')
       .select('id, code, title, stage, "customerName", "ownerId", "ownerName", team, "endDate", "expectedCloseDate", "forecastMonth", metadata, "projectValue", "forecastSource", "forecastQuotationId"')
       .order('id', { ascending: true })),
+    /* ต้องอ่านช่องที่ `eligibleForecastQuotations` ใช้ให้ครบ — รายงานเลือก "ใบที่ควร
+       ยึด" ด้วยกติกาเดียวกับ FC ไม่ใช่กติกาของตัวเอง (สองรูลบุ๊กเพี้ยนหากันแน่นอน) */
     fetchAllResult(() => supabase.from('quotations')
-      .select('id, "quoteNumber"').order('id', { ascending: true })),
+      .select('id, "dealId", "quoteNumber", "baseNumber", "revisionNo", status, "approvalStatus", "totalAmount", "vatAmount", "createdAt"')
+      .order('id', { ascending: true })),
     fetchAllResult(() => supabase.from('sales_deal_value_items')
       .select('*').order('id', { ascending: true })),
     fetchAllResult(() => supabase.from('products')
@@ -75,26 +80,65 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (result.error) return fail(result.error.message, 500);
   }
 
-  /* บรรทัดใบเสนอราคาโหลดเฉพาะใบที่มีดีลชี้อยู่จริง — ตารางนี้โตตามทุกใบที่เคยออก
-     (523 แถวเมื่อ 2026-09-02) แต่ที่รายงานใช้คือเศษเสี้ยว ⇒ แคบก่อนอ่านเสมอ */
-  const pointedIds = [...new Set(deals.data
-    .filter((deal) => deal.forecastSource === 'quotation' && deal.forecastQuotationId)
-    .map((deal) => deal.forecastQuotationId))];
-  const lines = pointedIds.length
-    ? await fetchAllResult(() => supabase.from('quotation_lines')
-      .select('id, "quotationId", "productId", "fgCode", description, qty, unit, "unitPrice", "lineTotal", "sortOrder"')
-      .in('quotationId', pointedIds).order('id', { ascending: true }))
-    : { data: [], error: null };
+  const itemsByDealId = new Set(valueItems.data.map((item) => item.dealId));
+  const quotationsByDeal = new Map();
+  for (const quotation of quotations.data) {
+    if (!quotation.dealId) continue;
+    if (!quotationsByDeal.has(quotation.dealId)) quotationsByDeal.set(quotation.dealId, []);
+    quotationsByDeal.get(quotation.dealId).push(quotation);
+  }
+
+  /* ⭐ **ใบสำรองสำหรับดีลที่ยังไม่มีรายหมวด** (มติผู้ใช้ 2026-09-07)
+     ดีลที่ FC ไม่ได้เดินตามใบ และ AE ยังไม่กรอกตารางรายหมวด — ถ้ามีใบที่มีสิทธิ์อยู่
+     ให้เอา **รายการ** ในใบมาแตกบรรทัด (ยอดยังปันส่วนจาก projectValue เหมือนเดิม)
+     ⚠️ ใบที่ลูกค้า **รับแล้ว** ชนะเสมอ — ดีล Won คือความจริงที่เกิดขึ้นแล้ว ไม่ใช่
+        ประมาณการ ⇒ ห้ามให้กติกา "ยอดต่ำสุด" ไปเลือกใบอื่นแทนใบที่รับ
+     ⚠️ ตัวเลือกที่เหลือใช้ `eligibleForecastQuotations` ตัวเดียวกับ FC — ห้ามเขียน
+        เงื่อนไข status/approvalStatus ซ้ำที่นี่ */
+  const fallbackQuoteByDeal = new Map();
+  for (const deal of deals.data) {
+    if (deal.forecastSource === 'quotation') continue;
+    if (itemsByDealId.has(deal.id)) continue;
+    const candidates = eligibleForecastQuotations(quotationsByDeal.get(deal.id) || []);
+    if (!candidates.length) continue;
+    const accepted = candidates.filter((quotation) => quotation.status === 'accepted');
+    fallbackQuoteByDeal.set(deal.id, accepted.length ? accepted[0] : candidates[0]);
+  }
+
+  /* บรรทัดใบเสนอราคาโหลดเฉพาะใบที่รายงานใช้จริง — ตารางนี้โตตามทุกใบที่เคยออก
+     แต่ที่รายงานใช้คือเศษเสี้ยว ⇒ แคบก่อนอ่านเสมอ
+     🪤 ลิสต์ id โตตามจำนวนดีล ⇒ `.in()` ก้อนเดียวชนเพดาน URL 16 KB ของ undici แล้ว
+        โยน `TypeError: fetch failed` ทั้งที่ไม่มีอะไรผิด — ต้องซอยด้วย fetchInChunks */
+  const usedQuoteIds = [...new Set([
+    ...deals.data
+      .filter((deal) => deal.forecastSource === 'quotation' && deal.forecastQuotationId)
+      .map((deal) => deal.forecastQuotationId),
+    ...[...fallbackQuoteByDeal.values()].map((quotation) => quotation.id),
+  ])];
+  const lines = await fetchInChunks(usedQuoteIds, (chunk) => fetchAllResult(() => supabase
+    .from('quotation_lines')
+    .select('id, "quotationId", "productId", "fgCode", description, qty, unit, "unitPrice", "lineTotal", "sortOrder"')
+    .in('quotationId', chunk).order('id', { ascending: true })));
   if (lines.error) return fail(lines.error.message, 500);
 
   const productById = new Map(products.data.map((row) => [row.id, row]));
+  /* ทะเบียนสินค้าค้นด้วยรหัส FG — บรรทัดใบที่ไม่มี productId แต่มีรหัส FG (บนช่องของมันเอง
+     หรือพิมพ์อยู่ในรายละเอียด) ยังหาหมวด/ปริมาตรเจอ (มติผู้ใช้ 2026-09-07) */
+  const productByFg = new Map();
+  for (const row of products.data) {
+    const code = normalizeFgCode(row.fgCode);
+    if (code && !productByFg.has(code)) productByFg.set(code, row);
+  }
   const quoteNumberById = new Map(quotations.data.map((row) => [row.id, row.quoteNumber]));
   /* ชื่อหมวดบนรายงาน = "กลุ่ม · ชนิด" (เช่น "ODM · เทียนหอม") — รหัส `01-003` อย่างเดียว
      อ่านไม่ออกสำหรับฝ่ายผลิต/จัดซื้อที่ไม่ได้อยู่กับรหัสทั้งวัน · ชื่อไทยก่อน ถ้าไม่มี
      ค่อยใช้อังกฤษ (ทะเบียนมีทั้งสองช่อง และบางแถวกรอกมาไม่ครบ) */
   const categoryNames = new Map(productTypes.data.map((row) => [
     `${row.mainCategoryCode}-${row.typeCode}`,
-    [row.mainCategoryName, row.nameTh || row.nameEn].filter(Boolean).join(' · ') || null,
+    /* ⭐ **แยกสองช่อง หมวดหลัก · หมวดย่อย** (มติผู้ใช้ 2026-09-08) — เดิมต่อเป็น
+       สตริงเดียว "ODM · เทียนหอม" ซึ่งกรอง/จัดกลุ่มใน Excel ตามหมวดหลักไม่ได้เลย
+       ต้องมานั่งแยกข้อความเอง · ฝ่ายวางแผนดูรวมทั้งกลุ่มก่อน แล้วค่อยเจาะชนิด */
+    { main: row.mainCategoryName || null, sub: row.nameTh || row.nameEn || null },
   ]));
   /* ป้ายทีมของไฟล์ — ใช้ทั้งหัวเรื่อง (ขอบเขต) และคอลัมน์ "ทีม" ในชีตรายดีล
      ⚠️ อ่านไม่ได้ = รหัสดิบ แต่ต้องส่งเสียง (ไฟล์ที่ขึ้นรหัสแทนชื่อคืออาการเดียวที่เห็น) */
@@ -123,11 +167,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (year && String(month || '').slice(0, 4) !== year) continue;
     if (!Number(deal.projectValue)) continue;
 
+    const fallbackQuote = fallbackQuoteByDeal.get(deal.id) || null;
     const breakdown = forecastBreakdownOfDeal(deal, {
       quotationLines: linesByQuote.get(deal.forecastQuotationId) || [],
       valueItems: itemsByDeal.get(deal.id) || [],
       productById,
+      productByFg,
       quoteNumber: quoteNumberById.get(deal.forecastQuotationId) || null,
+      fallbackQuotationLines: fallbackQuote ? linesByQuote.get(fallbackQuote.id) || [] : null,
+      fallbackQuoteNumber: fallbackQuote ? fallbackQuote.quoteNumber : null,
     });
     for (const line of breakdown) {
       rows.push({
