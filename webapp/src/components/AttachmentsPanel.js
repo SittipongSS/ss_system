@@ -610,6 +610,15 @@ export default function AttachmentsPanel({
   if (inlineUpload) {
     const inlineType = types[0]?.key || "other";
     const busy = uploadingType === inlineType;
+    /* 🐞 **พาเนลที่ประกาศหัวข้อของตัวเองแล้ว ยังโชว์ไฟล์ของหัวข้ออื่นด้วย** — จอบันทึก
+       หน้างานมีพาเนลสามอัน (ภาพกว้าง · ภาพผัง · ภาพจุดติดตั้ง) ที่ชี้ entity เดียวกัน
+       ⇒ อัปภาพกว้างหนึ่งรูป แล้วมันไปโผล่ครบทั้งสามหัวข้อ และเลข "N ไฟล์" ของทุกอัน
+         เท่ากันหมด ทั้งที่ตัวนับบนหัวข้อ (`surveyDocCounts`) นับแยกถูกต้อง
+       ⇒ ช่างอ่านว่า "ภาพผังมีแล้ว" ทั้งที่ยังไม่มี
+       ⚠️ กรองเฉพาะเมื่อผู้เรียก **ประกาศ `docTypes` มาเอง** — ผู้เรียกอีก 11 จุดที่ส่งแค่
+         `inlineUpload` ใช้ทะเบียนของ entity ทั้งชุด กรองแล้วไฟล์ของเขาจะหาย */
+    const scoped = Array.isArray(docTypes) && docTypes.length === 1;
+    const shown = scoped ? items.filter((it) => it.docType === inlineType) : items;
 
     return (
       <div className="mt-1" {...(fileUploads ? intake.zoneProps : {})}>
@@ -647,16 +656,16 @@ export default function AttachmentsPanel({
               <span>{busy ? "กำลังแนบ..." : "แนบไฟล์"}</span>
             </button>
           )}
-          {!loading && items.length > 0 && (
-            <span className="text-[11px] text-[var(--text-3)]">{items.length} ไฟล์</span>
+          {!loading && shown.length > 0 && (
+            <span className="text-[11px] text-[var(--text-3)]">{shown.length} ไฟล์</span>
           )}
         </div>
 
         {googleDocActions}
 
-        {!loading && items.length > 0 && (() => {
-          const photos = items.filter(isPreviewableImage);
-          const files = items.filter((it) => !isPreviewableImage(it));
+        {!loading && shown.length > 0 && (() => {
+          const photos = shown.filter(isPreviewableImage);
+          const files = shown.filter((it) => !isPreviewableImage(it));
           return (
             <>
               {photos.length > 0 && <PhotoGrid photos={photos} />}
