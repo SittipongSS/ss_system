@@ -6590,6 +6590,36 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
    ชิปฟ้าในคิวแต่ไม่มีสีบนภาพรวม · ป้ายเดียวกันสองสีคือสิ่งที่ผู้ใช้ทักเอง */
 .ui-metric.is-info strong { color: var(--blue); }
 
+/* ── ทรงเตี้ย: ป้ายกับตัวเลขอยู่บรรทัดเดียว หมายเหตุลงบรรทัดสอง (2026-09-07) ──
+   opt-in ผ่าน `data-density="compact"` — ไม่ส่งมา = ไม่แมตช์ แถบอื่นทั้งระบบเท่าเดิม
+   ใช้ที่หน้าคิวคำร้อง ซึ่งของเหนือตารางกินไป 562px จากจอ 900
+
+   วัดจริง 1440×900 · 5 ช่อง: 97px → 66px
+
+   🪤 ต้องเป็น `> span:not(.ui-metric-icon)` **ห้ามเป็น `> span` เฉย ๆ** —
+      `Metric` วางกรอบไอคอนเป็นลูกตรงอีกใบ กฎ `display: flex` จะไปทับ
+      `display: grid; place-items: center` ของ `.ui-metric-icon` ข้างบน
+      แล้ว svg 16px หลุดไปชิดซ้ายในกรอบ 32px ทุกช่อง **โดยไม่มีด่านไหนจับได้**
+
+   ⚠️ ห้ามแตะ `line-height` ของ strong — มติ 2026-08-14 กลับมติเรื่องนี้ไปแล้ว
+      รอบหนึ่ง (สระไทยโดนเฉือน) ความสูงที่ลดมาจากการยุบสองบรรทัดเป็นบรรทัดเดียว
+      กับ padding ไม่ใช่จากกล่องบรรทัด
+   ⚠️ ห้ามใส่ `white-space: nowrap` ให้ small — ป้ายคือ **ชื่อของปุ่มกรอง**
+      ยอมให้ตกบรรทัดดีกว่าโดน … ตัดจนแยก "ยังไม่รับเรื่อง" กับ "ยังไม่ได้ให้วัน" ไม่ออก
+   ⚠️ หมายเหตุยังต้องอยู่บนจอ ไม่ใช่ซ่อน — `button.ui-metric:hover` กับ
+      `.ui-metric.is-active` ใช้พื้นสีเดียวกัน (ประกาศเดียวกันข้างบน) หมายเหตุ
+      "กำลังใช้ตัวกรองนี้" จึงเป็นสิ่งเดียวที่บอกว่าตัวกรองไหนเปิดอยู่ */
+.ui-metric-strip[data-density="compact"] .ui-metric { padding: var(--space-2) var(--space-4); }
+.ui-metric-strip[data-density="compact"] .ui-metric > span:not(.ui-metric-icon) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+.ui-metric-strip[data-density="compact"] .ui-metric small { flex: 0 1 auto; min-width: 0; }
+.ui-metric-strip[data-density="compact"] .ui-metric strong { flex: 0 0 auto; margin-top: 0; }
+.ui-metric-strip[data-density="compact"] .ui-metric em { flex: 0 0 100%; }
+
 @media (max-width: 900px) {
   .premium-header { align-items: stretch; flex-direction: column; gap: var(--space-3-5); }
   .ui-workspace-header-actions { width: 100%; margin-left: 0; justify-content: flex-start; }
