@@ -11,6 +11,8 @@ import {
   forecastBreakdownOfDeal,
   forecastMonthOfDeal,
   gridForecastLines,
+  isScheduledRow,
+  monthsInRows,
   monthsOfYear,
   summarizeForecastLines,
 } from './forecastBreakdown.js';
@@ -252,4 +254,70 @@ test('ยอดรวมของไฟล์เท่ากับผลบว�
   ];
   const sum = all.reduce((s, r) => s + r.fcAmount, 0);
   assert.equal(Math.round(sum * 100) / 100, 1096600);
+});
+
+/* ── กอง "ยังไม่ระบุเดือน" (มติผู้ใช้ 2026-09-07) ────────────────────────────
+   ก่อนหน้านี้ยอดของดีลที่ไม่มีวันที่สิ้นสุด ถูกถอยไปใช้วันปิดการขายแล้ววางลงช่องเดือน
+   ปนกับเดือนที่รู้จริง ⇒ ฝ่ายวางแผนผลิตอ่านทั้งกริดเป็นเดือนส่งของ ทั้งที่ 28% ไม่ใช่ */
+
+test('เดือนที่ถอยมาจากวันปิดการขาย ไม่ลงช่องเดือน — ไปกอง "ยังไม่ระบุเดือน"', () => {
+  const months = monthsOfYear('2026');
+  const [row] = gridForecastLines([{
+    month: '2026-09', monthBasis: 'expectedCloseDate', fcAmount: 180000, categoryLabel: 'x',
+  }], months);
+  assert.equal(row.months['2026-09'], null, 'ห้ามแอบวางลงเดือนที่เดามา');
+  assert.equal(row.unscheduled, 180000);
+  assert.equal(row.total, 180000, 'ยอดยังอยู่ในไฟล์ ไม่ใช่หายไป');
+});
+
+test('วันสิ้นสุด/เดือนที่ลูกค้าขอ (สหมิตร) = เดือนจริง ลงช่องเดือนตามปกติ', () => {
+  const months = monthsOfYear('2026');
+  for (const basis of ['endDate', 'demandMonth']) {
+    const [row] = gridForecastLines([{
+      month: '2026-09', monthBasis: basis, fcAmount: 1000, categoryLabel: 'x',
+    }], months);
+    assert.equal(row.months['2026-09'], 1000, basis);
+    assert.equal(row.unscheduled, null, basis);
+  }
+});
+
+test('ดีลที่ไม่มีเดือนเลย ก็ไปกอง "ยังไม่ระบุเดือน" ไม่ใช่หายจากกริดเงียบ ๆ', () => {
+  const months = monthsOfYear('2026');
+  const [row] = gridForecastLines([{ month: null, monthBasis: null, fcAmount: 110000 }], months);
+  assert.equal(row.unscheduled, 110000);
+  assert.equal(Object.values(row.months).every((value) => value === null), true);
+});
+
+test('แถวสรุปแยกยอดที่ยังไม่รู้เดือนออกจากช่องเดือน แต่ยอดรวมของหมวดยังเท่าเดิม', () => {
+  const months = monthsOfYear('2026');
+  const [row] = summarizeForecastLines([
+    { month: '2026-09', monthBasis: 'endDate', categoryLabel: '01-002', categoryCode: '01-002', unit: 'ชิ้น', qty: 100, fcAmount: 200000, dealId: 'A' },
+    { month: '2026-09', monthBasis: 'expectedCloseDate', categoryLabel: '01-002', categoryCode: '01-002', unit: 'ชิ้น', qty: 50, fcAmount: 180000, dealId: 'B' },
+  ], months);
+  assert.equal(row.months['2026-09'], 200000, 'เฉพาะยอดที่รู้เดือนจริง');
+  assert.equal(row.unscheduled, 180000);
+  assert.equal(row.fcAmount, 380000, 'ยอดรวมของหมวดต้องเท่าผลบวกทั้งสองก้อน');
+  assert.equal(row.dealCount, 2);
+});
+
+test('หมวดที่รู้เดือนครบ ไม่มีกอง "ยังไม่ระบุเดือน" ค้างเป็นศูนย์', () => {
+  const [row] = summarizeForecastLines([
+    { month: '2026-09', monthBasis: 'endDate', categoryLabel: '01-002', unit: 'ชิ้น', qty: 1, fcAmount: 100, dealId: 'A' },
+  ], monthsOfYear('2026'));
+  assert.equal(row.unscheduled, null, 'ไม่มี = ขีด ไม่ใช่ 0');
+});
+
+test('แกนเดือนของไฟล์ที่ไม่ระบุปี ไม่สร้างคอลัมน์จากเดือนที่เดามา', () => {
+  const rows = [
+    { month: '2026-09', monthBasis: 'endDate', fcAmount: 1 },
+    { month: '2026-12', monthBasis: 'expectedCloseDate', fcAmount: 1 },
+  ];
+  assert.deepEqual(monthsInRows(rows), ['2026-09'], 'ธ.ค. ต้องไม่กลายเป็นคอลัมน์ว่าง');
+});
+
+/* ผู้เรียกเก่า/เทสต์ที่ไม่ได้ส่ง monthBasis มาต้องไม่เปลี่ยนพฤติกรรม */
+test('แถวที่ไม่มี monthBasis ถือว่ารู้เดือน (ของเดิมไม่พัง)', () => {
+  assert.equal(isScheduledRow({ month: '2026-09' }), true);
+  assert.equal(isScheduledRow({ month: '2026-09', monthBasis: 'forecastMonth' }), false);
+  assert.equal(isScheduledRow({ month: null }), false);
 });

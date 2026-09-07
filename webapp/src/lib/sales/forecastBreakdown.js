@@ -57,6 +57,19 @@ export const canExportForecastReport = (role) => isSuperuser(role) || role === '
  */
 export const MONTH_BASIS = ['endDate', 'demandMonth', 'expectedCloseDate', 'forecastMonth'];
 
+/* ── เดือนที่ "รู้จริง" กับกอง "ยังไม่ระบุเดือน" (มติผู้ใช้ 2026-09-07) ────────
+ *
+ * ⭐ **เฉพาะ `endDate`/`demandMonth` เท่านั้นที่นับว่ารู้เดือนรับของจริง** — ที่เหลือ
+ *    คือถอยมาจากวันปิดการขาย ซึ่งเป็นคนละคำถาม ⇒ ยอดพวกนั้น **ห้ามลงช่องเดือน**
+ *    ไปกองที่คอลัมน์ "ยังไม่ระบุเดือน" ท้ายกริดแทน · ของจริง 2026-09-07: 29 ดีล
+ *    12,824,400 บาท ที่เคยถูกเดาเดือนให้แบบเงียบ ๆ จนฝ่ายวางแผนอ่านเป็นเดือนส่งจริง
+ * ⚠️ **ยอดยังอยู่ในไฟล์เสมอ** ไม่ใช่ตัดทิ้ง — ยอดรวมทั้งไฟล์จึงไม่เปลี่ยน เปลี่ยนแค่
+ *    ว่ามันไปนั่งช่องไหน · แถวที่ไม่มี `monthBasis` เลย (ผู้เรียกเก่า/เทสต์) ถือว่ารู้เดือน
+ */
+export const SCHEDULED_BASIS = ['endDate', 'demandMonth'];
+export const isScheduledBasis = (basis) => !basis || SCHEDULED_BASIS.includes(basis);
+export const isScheduledRow = (row) => isScheduledBasis(row?.monthBasis) && !!row?.month;
+
 export function forecastMonthOfDeal(deal, monthKey) {
   const sources = [
     ['endDate', deal?.endDate],
@@ -198,9 +211,11 @@ export const summaryKeyOf = (row) => [
 export const monthsOfYear = (year) => Array.from({ length: 12 },
   (unused, index) => `${year}-${String(index + 1).padStart(2, '0')}`);
 
-/* เดือนที่พบจริงในข้อมูล (เรียงแล้ว) — ใช้เมื่อไม่ได้ระบุปี */
+/* เดือนที่พบจริงในข้อมูล (เรียงแล้ว) — ใช้เมื่อไม่ได้ระบุปี
+   ⚠️ นับเฉพาะแถวที่ **รู้เดือนรับของจริง** ไม่งั้นเดือนที่ถอยมาจากวันปิดการขายจะสร้าง
+      คอลัมน์ที่ไม่มีวันมียอดลง (ยอดของมันไปอยู่ "ยังไม่ระบุเดือน" แล้ว) */
 export const monthsInRows = (rows = []) => [
-  ...new Set(rows.map((row) => row.month).filter(Boolean)),
+  ...new Set(rows.filter(isScheduledRow).map((row) => row.month)),
 ].sort();
 
 const blankGrid = (months) => Object.fromEntries(months.map((month) => [month, null]));
@@ -229,7 +244,7 @@ export function summarizeForecastLines(rows = [], months = null) {
         volumeTotal: 0,
         hasVolume: false,
         fcAmount: 0,
-        guessedAmount: 0,
+        unscheduled: 0,
         months: blankGrid(axis),
         deals: new Set(),
       });
@@ -238,19 +253,18 @@ export function summarizeForecastLines(rows = [], months = null) {
     group.qty += num(row.qty);
     if (row.volumeTotal != null) { group.volumeTotal += num(row.volumeTotal); group.hasVolume = true; }
     group.fcAmount = money(group.fcAmount + num(row.fcAmount));
-    /* ยอดที่เดือน "เดามา" (ไม่ได้มาจากวันที่สิ้นสุด/เดือนที่ลูกค้าขอ) — ชีตสรุปต้อง
-       บอกสัดส่วนนี้ ไม่งั้นทุกช่องเดือนอ่านเหมือนเดือนส่งของจริงเท่ากันหมด */
-    if (row.monthBasis && !['endDate', 'demandMonth'].includes(row.monthBasis)) {
-      group.guessedAmount = money(group.guessedAmount + num(row.fcAmount));
-    }
-    addToMonth(group.months, row.month, row.fcAmount);
+    /* ⭐ ยอดที่ยังไม่รู้เดือนรับของ **ไม่ลงช่องเดือน** — ไปกองคอลัมน์ท้ายกริด
+       (มติผู้ใช้ 2026-09-07) · เดิมถูกเดาเดือนให้จากวันปิดการขายแล้ววางปนกับเดือนจริง
+       ทำให้ฝ่ายวางแผนอ่านทั้งกริดเป็นเดือนส่งของจริงทั้งที่ 28% ของยอดไม่ใช่ */
+    if (isScheduledRow(row)) addToMonth(group.months, row.month, row.fcAmount);
+    else group.unscheduled = money(group.unscheduled + num(row.fcAmount));
     if (row.dealId) group.deals.add(row.dealId);
   }
   return [...groups.values()]
     .map((group) => ({
       ...group,
       volumeTotal: group.hasVolume ? money(group.volumeTotal) : null,
-      guessedAmount: group.guessedAmount > 0 ? group.guessedAmount : null,
+      unscheduled: group.unscheduled > 0 ? group.unscheduled : null,
       dealCount: group.deals.size,
       deals: undefined,
     }))
@@ -260,12 +274,19 @@ export function summarizeForecastLines(rows = [], months = null) {
       || (Number(a.volume ?? 0) - Number(b.volume ?? 0)));
 }
 
-/** แถวราย deal-บรรทัด พร้อมกริดเดือน — หนึ่งบรรทัดลงเดือนเดียวเสมอ (ดีลมีเดือน FC เดียว) */
+/** แถวราย deal-บรรทัด พร้อมกริดเดือน — หนึ่งบรรทัดลงช่องเดียวเสมอ (ดีลมีเดือน FC เดียว)
+ *  แถวที่ยังไม่รู้เดือนรับของลงช่อง `unscheduled` แทนช่องเดือน — `total` เท่าเดิมทั้งสองทาง */
 export function gridForecastLines(rows = [], months = null) {
   const axis = months || monthsInRows(rows);
   return rows.map((row) => {
     const grid = blankGrid(axis);
-    addToMonth(grid, row.month, row.fcAmount);
-    return { ...row, months: grid, total: money(row.fcAmount) };
+    const scheduled = isScheduledRow(row);
+    if (scheduled) addToMonth(grid, row.month, row.fcAmount);
+    return {
+      ...row,
+      months: grid,
+      unscheduled: scheduled ? null : money(row.fcAmount),
+      total: money(row.fcAmount),
+    };
   });
 }
