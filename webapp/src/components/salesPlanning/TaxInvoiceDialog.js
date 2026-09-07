@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { Paperclip } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 import DateInput from "@/components/ui/DateInput";
 import PendingFiles from "@/components/ui/PendingFiles";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -132,7 +133,14 @@ export default function TaxInvoiceDialog({
 
         <label className="form-group">
           <span>เลขที่ใบกำกับภาษี *</span>
-          <input
+          {/* ⚠️ ต้องใช้ primitive `Input` ไม่ใช่ `<input>` ดิบ — คลาส `.premium-input`
+              (ความสูง `--ctl-h` · padding · วงโฟกัส) ประกอบอยู่ที่นั่นที่เดียว
+              🐞 รอบแรกเขียน `<input>` เปล่า ⇒ ช่องไม่มี padding ตัวอักษรชนขอบซ้าย
+              และเตี้ยกว่าช่องวันที่ข้าง ๆ · `audit:ui` จับไม่ได้เพราะมันนับ *คลาสดิบ*
+              ไม่ได้นับ element ที่ลืมคลาส
+              ⭐ `mono` เพราะเป็นเลขเอกสาร — ตัวเลขความกว้างเท่ากัน ไม่ขยับตอนพิมพ์ */}
+          <Input
+            mono
             autoComplete="off"
             value={no}
             maxLength={MAX_TAX_INVOICE_NO}

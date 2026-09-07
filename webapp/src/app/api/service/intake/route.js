@@ -10,6 +10,7 @@
 //   (นัดยังมีชีวิตไหม) — ห้ามเขียนเงื่อนไขซ้ำที่นี่
 import { withUser, ok, fail } from '@/lib/http';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { requireService, loadSites } from '@/lib/service/sitesRepo';
 import { loadPlans, loadVisits } from '@/lib/service/visitsRepo';
 import { loadAllZones, loadTerms } from '@/lib/service/termsRepo';
@@ -43,31 +44,26 @@ export const GET = withUser(async ({ user, supabase }) => {
     const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
 
     const [lines, terms, projects, deals, zones, sites, plans, visits] = await Promise.all([
-      orderIds.length
-        ? fetchAllResult(() => supabase.from('sales_order_lines')
+      /* ⚠️ ซอยลิสต์ข้างนอก ไล่หน้าข้างใน — `fetchAllResult` แก้เพดานแถว ไม่ได้แก้
+         URL ยาว (มันส่งตัวกรองก้อนเดิมไปทุกหน้า) · ซอยตาม `salesOrderId` ⇒ บรรทัด
+         ของใบเดียวกันอยู่ก้อนเดียวเสมอ ลำดับ sortOrder ภายในใบจึงไม่เสีย */
+      fetchAllInChunks(orderIds, (chunk) => supabase.from('sales_order_lines')
           // ⚠️ ไม่ดึงราคา/ส่วนลด — ฝ่ายบริการไม่ต้องใช้ และยิ่งดึงมามาก
           //    ยิ่งมีของหลุดออกทาง response โดยไม่ตั้งใจ
           // "serviceRounds" = ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326) — TS ใช้ตอนวางรอบ
           .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds"')
-          .in('salesOrderId', orderIds)
+          .in('salesOrderId', chunk)
           .order('salesOrderId', { ascending: true })
           .order('sortOrder', { ascending: true })
-          .order('id', { ascending: true })).then((r) => { if (r.error) throw r.error; return r.data || []; })
-        : [],
+          .order('id', { ascending: true })),
       loadTerms(supabase),
       /* ⚠️ ห่อ fetchAllResult ทั้งคู่ — จำนวนโครงการ/ดีลโตตามจำนวนใบสั่งขาย
          ที่อนุมัติแล้ว ซึ่งวันหนึ่งเกิน 1,000 แน่ · PostgREST ตัดที่ 1,000 เงียบ ๆ
          แล้วใบที่หลุดจะ "ตอบไม่ได้ว่าสายอะไร" ทั้งที่โครงการระบุไว้ชัดเจน */
-      projectIds.length
-        ? fetchAllResult(() => supabase.from('projects').select('id, line')
-          .in('id', projectIds).order('id', { ascending: true }))
-          .then((r) => { if (r.error) throw r.error; return r.data || []; })
-        : [],
-      dealIds.length
-        ? fetchAllResult(() => supabase.from('sales_deals').select('id, line')
-          .in('id', dealIds).order('id', { ascending: true }))
-          .then((r) => { if (r.error) throw r.error; return r.data || []; })
-        : [],
+      fetchAllInChunks(projectIds, (chunk) => supabase.from('projects').select('id, line')
+        .in('id', chunk).order('id', { ascending: true })),
+      fetchAllInChunks(dealIds, (chunk) => supabase.from('sales_deals').select('id, line')
+        .in('id', chunk).order('id', { ascending: true })),
       loadAllZones(supabase),
       loadSites(supabase),
       loadPlans(supabase),
@@ -83,17 +79,15 @@ export const GET = withUser(async ({ user, supabase }) => {
        ⚠️ ยิงเป็นก้อนเดียว ห้ามยิงรายใบในลูป (N+1) · `orderIds` ประกาศไว้ข้างบนแล้ว */
     const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
     const [instRows, contractRows] = await Promise.all([
-      orderIds.length
-        ? fetchAllResult(() => supabase.from('sales_order_installments')
-          .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo"')
-          .in('salesOrderId', orderIds)
-          .order('salesOrderId', { ascending: true }).order('id', { ascending: true }))
-          .then(({ data }) => data || [])
-        : Promise.resolve([]),
-      contractIds.length
-        ? supabase.from('sales_contracts').select('id, "contractNo", status').in('id', contractIds)
-          .then(({ data }) => data || [])
-        : Promise.resolve([]),
+      /* งวดชำระ: ซอยตาม `salesOrderId` ⇒ งวดของใบเดียวกันอยู่ก้อนเดียว ลำดับไม่เสีย
+         ⚠️ ของเดิมกลืน error ทิ้ง (`.then(({ data }) => data || [])`) ⇒ พังแล้ว
+         คอลัมน์งวดว่างทั้งหน้าเงียบ ๆ · ตอนนี้โยนออกมาให้ catch ของ route จับ */
+      fetchAllInChunks(orderIds, (chunk) => supabase.from('sales_order_installments')
+        .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo", id')
+        .in('salesOrderId', chunk)
+        .order('salesOrderId', { ascending: true }).order('id', { ascending: true })),
+      fetchAllInChunks(contractIds, (chunk) => supabase.from('sales_contracts')
+        .select('id, "contractNo", status').in('id', chunk).order('id', { ascending: true })),
     ]);
     const installmentsByOrderId = new Map();
     for (const r of instRows) {
