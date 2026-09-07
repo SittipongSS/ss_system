@@ -11,8 +11,9 @@ import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
-import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES } from "@/components/salesPlanning/ui";
-import { TEAM_LABELS } from "@/lib/permissions";
+import { MONTH_LABELS, TARGET_OWNER_ROLES } from "@/components/salesPlanning/ui";
+/* ⚠️ รายชื่อทีมมาจากทะเบียนจริง (มติ 2026-09-07) — ค่าคงที่มีแค่สามทีมที่ seed มาแต่แรก */
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import {
   buildHistoryRows, historyRowKey, historySaveItems,
   historyYearOptions, isMonthClosed, isMonthEditable, resolveYearTotal,
@@ -60,9 +61,27 @@ export default function SalesHistoryMonthlyPage() {
   /* แถวที่แสดง = บริษัท → ทีม → คนในทีม → คนที่มีข้อมูลค้างแต่ย้าย/ออกไปแล้ว
      ต้องคำนวณจาก savedRows ด้วย ไม่ใช่จากรายชื่อผู้ใช้อย่างเดียว ไม่งั้นตัวเลขของคนที่
      ออกไปแล้วจะยังถูกนับในฐานข้อมูลโดยไม่มีใครเห็นและแก้ไม่ได้ */
+  /* ⚠️ **ทีมที่ส่งเข้าไปคือตัวตัดสินว่าแถวไหนถูกวาด** — `buildHistoryRows` วนตามลิสต์นี้
+     ⇒ แถวของทีมที่ไม่อยู่ในลิสต์หายไปเงียบ ๆ ทั้งที่ยังอยู่ในฐานและยังถูกเอาไปทับบน
+     แท็บผลงาน · หน้านี้กัน "คนที่ย้าย/ออกไปแล้ว" ไว้อยู่แล้ว แต่ลืมกัน "ทีมที่ปิดไปแล้ว
+     หรือทีมที่เพิ่งสร้าง" ⇒ ต้องรวมทีมที่มีของอยู่จริงใน savedRows เข้ามาด้วยเสมอ */
+  const teamRegistry = useSalesTeams();
+  const teamsToShow = useMemo(() => {
+    const base = activeSalesTeams(teamRegistry).map((t) => t.code);
+    const seen = new Set(base);
+    const extra = [];
+    for (const row of savedRows || []) {
+      const code = row?.team || null;
+      if (!code || seen.has(code)) continue;
+      seen.add(code);
+      extra.push(code);
+    }
+    return [...base, ...extra];
+  }, [teamRegistry, savedRows]);
+
   const rowDefs = useMemo(
-    () => buildHistoryRows({ teams: SALES_TEAMS, users, savedRows, ownerRoles: TARGET_OWNER_ROLES }),
-    [users, savedRows],
+    () => buildHistoryRows({ teams: teamsToShow, users, savedRows, ownerRoles: TARGET_OWNER_ROLES }),
+    [teamsToShow, users, savedRows],
   );
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
@@ -212,9 +231,9 @@ export default function SalesHistoryMonthlyPage() {
 
   const rowLabel = (row) => {
     if (row.scope === "company") return { title: "ทั้งบริษัท", sub: "รวมทุกทีม" };
-    if (row.scope === "team") return { title: `ทีม ${TEAM_LABELS[row.team] || row.team}`, sub: "รวมทั้งทีม" };
+    if (row.scope === "team") return { title: `ทีม ${salesTeamLabel(teamRegistry, row.team)}`, sub: "รวมทั้งทีม" };
     if (row.detached?.gone) return { title: row.ownerName, sub: "ออกจากระบบแล้ว" };
-    if (row.detached) return { title: row.ownerName, sub: `ย้ายไปทีม ${TEAM_LABELS[row.detached.movedTo] || naText(row.detached.movedTo)} แล้ว` };
+    if (row.detached) return { title: row.ownerName, sub: `ย้ายไปทีม ${row.detached.movedTo ? salesTeamLabel(teamRegistry, row.detached.movedTo) : naText(null)} แล้ว` };
     return { title: row.ownerName, sub: null };
   };
 

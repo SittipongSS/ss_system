@@ -12,8 +12,11 @@ import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-rea
 import Workspace from "@/components/ui/Workspace";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeams } from "@/lib/roleContext";
-import { userTeams, TEAM_LABELS } from "@/lib/permissions";
-import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import { userTeams } from "@/lib/permissions";
+import { MONTH_LABELS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+/* ⚠️ รายชื่อทีมมาจาก **ทะเบียนจริง** ไม่ใช่ค่าคงที่ (มติ 2026-09-07) — ค่าคงที่มีแค่สามทีม
+   ที่ seed มาแต่แรก ⇒ ทีมขายที่สร้างใหม่จะไม่มีแถวให้ตั้งเป้า และยอดรวมจะขาดไปเงียบ ๆ */
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { fmtNumber, naText, NA } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
@@ -108,8 +111,26 @@ export default function SalesPlanningTargetsPage() {
     [rowsFor],
   );
 
-  // คนอยู่หลายทีมได้ ⇒ กางเป้าของทุกทีมที่สังกัด ไม่ใช่แค่ทีมหลัก
-  const teamsToShow = useMemo(() => (isSuper ? SALES_TEAMS : myTeams), [isSuper, myTeams]);
+  /* คนอยู่หลายทีมได้ ⇒ กางเป้าของทุกทีมที่สังกัด ไม่ใช่แค่ทีมหลัก
+     ⚠️ **ต้องรวมทีมที่ "มีของ" ในปีนี้ด้วย แม้จะปิดไปแล้วหรือไม่ใช่ทีมของเรา**
+     🐞 ของเดิมวนตามลิสต์คงที่อย่างเดียว ⇒ แถวเป้าของทีมที่ไม่อยู่ในลิสต์ถูกทิ้งเงียบ:
+        ไม่มีแถวให้เห็น แก้ไม่ได้ เกลี่ยออกไม่ได้ **แต่ยังอยู่ในฐานและยังถูกเอาไปทับ
+        บนแท็บผลงาน** (overlayHistory สร้างแถวทีมให้ทุกรหัสที่มันเจอ) = ตัวเลขผี
+        ซึ่งเป็นอาการเดียวกับที่หน้านี้กันไว้ให้ "คนที่หลุดทีม" อยู่แล้ว แต่ลืมกันให้ "ทีม" */
+  const teamRegistry = useSalesTeams();
+  const teamsToShow = useMemo(() => {
+    const base = isSuper ? activeSalesTeams(teamRegistry).map((t) => t.code) : myTeams;
+    const seen = new Set(base);
+    const extra = [];
+    for (const row of targets) {
+      const code = row?.team || null;
+      if (!code || seen.has(code)) continue;
+      if (!Number(row.targetAmount)) continue;   // ไม่มีตัวเลขจริง = ไม่ต้องกางแถว
+      seen.add(code);
+      extra.push(code);
+    }
+    return [...base, ...extra];
+  }, [isSuper, myTeams, teamRegistry, targets]);
 
   const baseTree = useMemo(() => {
     const teams = teamsToShow.map((t) => {
@@ -216,7 +237,7 @@ export default function SalesPlanningTargetsPage() {
   const canEditNode = useCallback(() => canTarget, [canTarget]);
 
   const labelOf = (node) =>
-    node.level === "sa" ? "SA รวมทั้งฝ่าย" : node.level === "team" ? `ทีม ${TEAM_LABELS[node.team] || node.team}` : node.ownerName;
+    node.level === "sa" ? "SA รวมทั้งฝ่าย" : node.level === "team" ? `ทีม ${salesTeamLabel(teamRegistry, node.team)}` : node.ownerName;
 
   const startEdit = (node, field, current) => {
     if (!canEditNode(node)) return;
@@ -453,7 +474,7 @@ export default function SalesPlanningTargetsPage() {
                   <FragmentRows key={t.team}>
                     {renderRow(t, isSuper ? 1 : 0, {
                       bold: true, gap: true, allocLabel: "รวมราย AE",
-                      label: `${TEAM_LABELS[t.team] || t.team} (${t.team})`,
+                      label: `${salesTeamLabel(teamRegistry, t.team)} (${t.team})`,
                       collapsible: true, collapsed: isCollapsed, onToggle: () => toggleTeam(t.team),
                       rowClass: styles.rowTeam,
                     })}

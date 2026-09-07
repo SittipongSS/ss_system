@@ -11,9 +11,15 @@ import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp }
 import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole } from "@/lib/roleContext";
-import { userTeams, TEAM_LABELS } from "@/lib/permissions";
+import { userTeams } from "@/lib/permissions";
 import { fmtNumber, fmtPercent } from "@/lib/format";
-import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+import { MONTH_LABELS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
+/* ⚠️ รายชื่อทีมมาจากทะเบียนจริง (มติ 2026-09-07) · **สองลิสต์คนละหน้าที่**
+   `activeCodes`  = ทีมที่ยังเปิดอยู่ → ใช้กับทุกอย่างที่ **แบ่งเป้าปีหน้า** (ขั้น 3–4)
+   `historyCodes` = ทีมที่ **มีของจริงในอดีต** รวมทีมที่ปิดไปแล้ว → ใช้กับขั้น 1 (ยอดย้อนหลัง)
+   🔴 ใช้ active กับยอดย้อนหลัง = ยอดรวมขาดเงียบ ๆ · ใช้ all กับการแบ่งเป้า = ทีมที่ปิดแล้ว
+      ได้เป้าปีหน้า — ทั้งสองแบบไม่มี error ให้เห็น */
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { cachedFetchJson } from "@/lib/apiCache";
 import {
   DEFAULT_GROWTH_CAP,
@@ -44,6 +50,15 @@ export default function SalesTargetPlanPage() {
   const canTarget = useCan("salesplan:target");
   const role = useRole();
   const isSuper = role === "admin" || role === "ae_supervisor";
+
+  const teamRegistry = useSalesTeams();
+  /* ⚠️ ต้อง memo — `activeSalesTeams(...).map(...)` สร้างอาเรย์ใหม่ทุกเรนเดอร์
+     ถ้าหลุดเข้าไปใน dep array ของอะไรที่ยิง API จะกลายเป็นลูป */
+  const activeCodes = useMemo(
+    () => activeSalesTeams(teamRegistry).map((t) => t.code),
+    [teamRegistry],
+  );
+  const teamLabel = useCallback((code) => salesTeamLabel(teamRegistry, code), [teamRegistry]);
 
   // Plan year is selectable — default to the current year so the earliest year
   // still open for planning is first; the head can switch to next year after.
@@ -85,6 +100,25 @@ export default function SalesTargetPlanPage() {
 
   const latestHistYear = historyYears[historyYears.length - 1];
 
+  /* ทีมที่ขั้น 1 (ยอดย้อนหลัง) ต้องแสดง = ทีมที่ยังเปิด **บวก** ทีมที่มีของจริงอยู่แล้ว
+     ⚠️ ทีมที่ปิดไปแล้วยังมียอดจริงย้อนหลัง — ตัดออกคือยอด "รวมทีม" ขาดเงียบ ๆ
+     ⚠️ ทีมที่ถูกลบออกจากทะเบียนจริง ๆ เป็นไปไม่ได้ถ้ามีของค้าง (TEAM_STAMPED_COLUMNS
+        บล็อกการลบไว้) แต่ยังกวาดจากข้อมูลอยู่ดี เพราะถูกกว่าการเชื่อสมมติฐาน */
+  const historyCodes = useMemo(() => {
+    const seen = new Set(activeCodes);
+    const extra = [];
+    for (const code of [
+      ...teamRegistry.map((t) => t.code),
+      ...Object.keys(systemActuals?.[latestHistYear]?.byTeam || {}),
+      ...Object.keys(teamHist),
+    ]) {
+      if (!code || seen.has(code)) continue;
+      seen.add(code);
+      extra.push(code);
+    }
+    return [...activeCodes, ...extra];
+  }, [activeCodes, teamRegistry, systemActuals, latestHistYear, teamHist]);
+
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
   const load = useCallback(async (opts) => {
@@ -117,8 +151,17 @@ export default function SalesTargetPlanPage() {
       }
       setCompanyHist(company);
 
+      /* ⚠️ **ขับด้วยข้อมูล ไม่ใช่รายชื่อทีม** — ห้ามเอาลิสต์ทีมเข้ามาใน `load`
+         `useEffect(() => load(), [load])` + `useRevalidateOnFocus(load)` ผูกกับ identity
+         ของ `load` ⇒ ลิสต์ที่สร้างใหม่ทุกเรนเดอร์จะยิง /api/sales-planning/history
+         (ซึ่งกวาด sales_deals ทั้งตาราง) วนไม่รู้จบ = อุบัติเหตุ egress ไม่ใช่บั๊ก UI
+         ⚠️ ทีมที่เปิดใหม่และยังไม่มีประวัติ = ไม่มีคีย์ ซึ่งถูกแล้ว ทุกจุดอ่าน `teamHist[t] || 0` */
+      const codesInData = new Set([
+        ...(rows || []).filter((r) => r.period === latestHistYear && r.team && !r.ownerId).map((r) => r.team),
+        ...Object.keys(sys?.[latestHistYear]?.byTeam || {}),
+      ]);
       const teams = {};
-      for (const t of SALES_TEAMS) {
+      for (const t of codesInData) {
         const saved = (rows || []).find((r) => r.period === latestHistYear && r.team === t && !r.ownerId);
         const sysT = Number(sys?.[latestHistYear]?.byTeam?.[t] || 0);
         teams[t] = saved ? Number(saved.actualAmount || 0) : Math.round(sysT);
@@ -150,9 +193,11 @@ export default function SalesTargetPlanPage() {
   }, [projection, finalTarget]);
 
   // ---- Step 3: team split preview (by last-year team actual) ----
+  /* ⚠️ **แบ่งเป้าปีหน้าใช้เฉพาะทีมที่ยังเปิดอยู่** — ทีมที่ปิดแล้วต้องไม่ได้เป้าใหม่
+     และการตัดออกทำให้สัดส่วนที่เหลือถูกหารใหม่เป็น 100% ให้เอง (splitByProportion) */
   const teamWeights = useMemo(
-    () => SALES_TEAMS.map((t) => ({ key: t, weight: Number(teamHist[t] || 0) })),
-    [teamHist],
+    () => activeCodes.map((t) => ({ key: t, weight: Number(teamHist[t] || 0) })),
+    [teamHist, activeCodes],
   );
   const suggestedTeamSplit = useMemo(
     () => splitByProportion(finalTarget, teamWeights),
@@ -168,15 +213,15 @@ export default function SalesTargetPlanPage() {
   // ---- Step 4: per-person split + seasonal ----
   const teamMembers = useMemo(() => {
     const map = {};
-    for (const t of SALES_TEAMS) {
+    for (const t of activeCodes) {
       map[t] = users.filter((u) => TARGET_OWNER_ROLES.includes(u.role) && userTeams(u).includes(t));
     }
     return map;
-  }, [users]);
+  }, [users, activeCodes]);
 
   const seedPersonTargets = useCallback(() => {
     const next = {};
-    for (const t of SALES_TEAMS) {
+    for (const t of activeCodes) {
       const members = teamMembers[t] || [];
       const weights = members.map((m) => ({
         key: m.id,
@@ -186,7 +231,7 @@ export default function SalesTargetPlanPage() {
       for (const { key, amount } of parts) next[key] = amount;
     }
     setPersonTargets(next);
-  }, [teamMembers, teamTargets, systemActuals, latestHistYear]);
+  }, [teamMembers, teamTargets, systemActuals, latestHistYear, activeCodes]);
 
   const seedSeason = useCallback(() => {
     const byMonth = systemActuals?.[latestHistYear]?.byMonth;
@@ -241,7 +286,10 @@ export default function SalesTargetPlanPage() {
        (`Object.hasOwn` ใน api/sales-planning/history) ⇒ ของเดิมที่ส่ง `targetAmount: 0`
        ติดมาด้วย = เป้ารายปีของทีมที่เคยบันทึกไว้ถูกล้างเป็น 0 ทุกครั้งที่กด "ถัดไป"
        จากขั้น 1 · กติกาเดียวกับที่ `lib/sales/historyEntry` เขียนเตือนไว้ (แก้ 2026-08-24) */
-    for (const t of SALES_TEAMS) {
+    /* ⚠️ **เขียนเฉพาะทีมที่ขั้น 1 วาดไว้จริง** — `Object.keys(teamHist)` ทำให้ชุดที่เขียน
+       เป็นเซตย่อยของชุดที่ผู้ใช้เห็นเสมอ · วนตามลิสต์อื่นเมื่อไร ยอดจริงของทีมที่ไม่ได้
+       อยู่ในหน้าจะถูกเขียนทับด้วย 0 เงียบ ๆ (ตระกูลเดียวกับที่แก้ไป 2026-08-24) */
+    for (const t of Object.keys(teamHist)) {
       items.push({ period: latestHistYear, periodType: "year", team: t, ownerId: null, actualAmount: Number(teamHist[t] || 0), source: "manual" });
     }
     const res = await apiFetch("/api/sales-planning/history", {
@@ -256,9 +304,9 @@ export default function SalesTargetPlanPage() {
      ในแถวเป็นสำเนา ณ ตอนวางเป้า (ของจริงบน prod มีแถวที่ยังเป็นนามสกุลเดิม) */
   const nodeLabel = useCallback((node) => {
     if (node.ownerId) return users.find((u) => u.id === node.ownerId)?.name || node.ownerName || node.ownerId;
-    if (node.team) return `ทีม ${TEAM_LABELS[node.team] || node.team}`;
+    if (node.team) return `ทีม ${teamLabel(node.team)}`;
     return "SA รวมทั้งฝ่าย";
-  }, [users]);
+  }, [users, teamLabel]);
 
   // รายชื่อยาว ๆ ในโมดัลอ่านไม่ไหว — ตัดที่ 8 แล้วบอกว่าเหลืออีกกี่แถว
   const nameList = useCallback((rows) => {
@@ -285,7 +333,7 @@ export default function SalesTargetPlanPage() {
 
     const nodes = planNodes({
       finalTarget,
-      teams: SALES_TEAMS,
+      teams: activeCodes,
       teamTargets,
       teamMembers,
       personTargets,
@@ -420,6 +468,8 @@ export default function SalesTargetPlanPage() {
         <div className="glass-panel" style={{ padding: 20 }} aria-busy={loading}>
           {step === 1 && (
             <Step1History
+              teams={historyCodes}
+              teamLabel={teamLabel}
               years={historyYears}
               companyHist={companyHist}
               setCompanyHist={setCompanyHist}
@@ -440,6 +490,8 @@ export default function SalesTargetPlanPage() {
           )}
           {step === 3 && (
             <Step3TeamSplit
+              teams={activeCodes}
+              teamLabel={teamLabel}
               finalTarget={finalTarget}
               teamHist={teamHist}
               latestYear={latestHistYear}
@@ -451,6 +503,8 @@ export default function SalesTargetPlanPage() {
           )}
           {step === 4 && (
             <Step4PersonSeason
+              teams={activeCodes}
+              teamLabel={teamLabel}
               targetYear={targetYear}
               teamMembers={teamMembers}
               teamTargets={teamTargets}
@@ -560,7 +614,7 @@ function ValueModeToggle({ value, onChange, ariaLabel }) {
   );
 }
 
-function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHist, latestYear, systemActuals }) {
+function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHist, latestYear, systemActuals, teams, teamLabel }) {
   const setC = (y, field, v) => setCompanyHist((h) => ({ ...h, [y]: { ...h[y], [field]: v, source: field === "actual" ? "mixed" : (h[y]?.source || "manual") } }));
   return (
     <div className="flex flex-col gap-5">
@@ -610,15 +664,15 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
           ใช้เป็นสัดส่วนตั้งต้นในการแบ่งเป้าลงทีม (ขั้นที่ 3)
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-          {SALES_TEAMS.map((t) => (
+          {teams.map((t) => (
             <div key={t} className="glass-panel" style={{ padding: 12 }}>
-              <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)", marginBottom: 6 }}>{TEAM_LABELS[t] || t} <span style={{ color: "var(--text-3)" }}>({t})</span></div>
+              <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)", marginBottom: 6 }}>{teamLabel(t)} <span style={{ color: "var(--text-3)" }}>({t})</span></div>
               <MoneyInput value={Number(teamHist[t] || 0)} onChange={(v) => setTeamHist((h) => ({ ...h, [t]: v }))} />
             </div>
           ))}
         </div>
         <div style={{ marginTop: 8, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-          รวมทีม {fmt(sum(SALES_TEAMS.map((t) => teamHist[t])))} · บริษัทปี {latestYear} {fmt(companyHist[latestYear]?.actual)}
+          รวมทีม {fmt(sum(teams.map((t) => teamHist[t])))} · บริษัทปี {latestYear} {fmt(companyHist[latestYear]?.actual)}
         </div>
       </div>
     </div>
@@ -680,9 +734,9 @@ function Step2Projection({ projection, cap, finalTarget, setFinalTarget, targetY
   );
 }
 
-function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTargets, setTeamTargets, reseed }) {
-  const totalActual = sum(SALES_TEAMS.map((t) => teamHist[t]));
-  const allocated = sum(SALES_TEAMS.map((t) => teamTargets[t]));
+function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTargets, setTeamTargets, reseed, teams, teamLabel }) {
+  const totalActual = sum(teams.map((t) => teamHist[t]));
+  const allocated = sum(teams.map((t) => teamTargets[t]));
   const remaining = Number(finalTarget || 0) - allocated;
   return (
     <div className="flex flex-col gap-5">
@@ -714,13 +768,13 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
           </tr>
         </thead>
         <tbody>
-          {SALES_TEAMS.map((t) => {
+          {teams.map((t) => {
             const actual = Number(teamHist[t] || 0);
-            const share = totalActual > 0 ? actual / totalActual : 1 / SALES_TEAMS.length;
+            const share = totalActual > 0 ? actual / totalActual : 1 / (teams.length || 1);
             const sug = suggested.find((s) => s.key === t)?.amount || 0;
             return (
               <tr key={t} className="premium-row">
-                <td style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t] || t} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
+                <td style={{ fontWeight: "var(--fw-bold)" }}>{teamLabel(t)} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
                 <td className="num mono">{fmt(actual)}</td>
                 <td className="num mono" style={{ color: "var(--text-3)" }}>{pct(share)}</td>
                 <td className="num mono" style={{ color: "var(--text-3)" }}>{fmt(sug)}</td>
@@ -746,11 +800,11 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
   );
 }
 
-function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets, setPersonTargets, monthPct, setMonthPct, seasonSumPct, reseedPeople, reseedSeason }) {
+function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets, setPersonTargets, monthPct, setMonthPct, seasonSumPct, reseedPeople, reseedSeason, teams, teamLabel }) {
   const [personMode, setPersonMode] = useState("amount");
   const [seasonMode, setSeasonMode] = useState("percent");
   const setMonth = (i, v) => setMonthPct((arr) => arr.map((x, j) => (j === i ? Math.max(0, v) : x)));
-  const annualTarget = sum(SALES_TEAMS.map((t) => teamTargets[t]));
+  const annualTarget = sum(teams.map((t) => teamTargets[t]));
   const monthlyValues = monthPct.map((p) => annualTarget * (Number(p || 0) / 100));
   return (
     <div className="flex flex-col gap-6">
@@ -768,14 +822,14 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
           <ValueModeToggle value={personMode} onChange={setPersonMode} ariaLabel="รูปแบบกรอกเป้ารายบุคคล" />
           <button type="button" className="btn sm" onClick={reseedPeople} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> คำนวณสัดส่วนใหม่</button>
         </div>
-        {SALES_TEAMS.map((t) => {
+        {teams.map((t) => {
           const members = teamMembers[t] || [];
           const teamTot = Number(teamTargets[t] || 0);
           const alloc = sum(members.map((m) => personTargets[m.id]));
           return (
             <div key={t} className="glass-panel" style={{ padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t] || t}</span>
+                <span style={{ fontWeight: "var(--fw-bold)" }}>{teamLabel(t)}</span>
                 <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เป้าทีม {fmt(teamTot)}</span>
                 <span style={{ marginLeft: "auto", fontSize: "var(--fs-5)", fontWeight: "var(--fw-bold)", color: alloc === teamTot ? "var(--green)" : alloc > teamTot ? "var(--red)" : "var(--amber)" }}>
                   แบ่งแล้ว {fmt(alloc)}{alloc !== teamTot && ` (${alloc > teamTot ? "เกิน" : "เหลือ"} ${fmt(Math.abs(teamTot - alloc))})`}
@@ -843,7 +897,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
             </tr>
             <tr>
               <td style={{ fontWeight: "var(--fw-bold)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>บริษัท</td>
-              {distributeBySeasonal(sum(SALES_TEAMS.map((t) => teamTargets[t])), monthPct.map((p) => p / 100)).map((v, i) => (
+              {distributeBySeasonal(sum(teams.map((t) => teamTargets[t])), monthPct.map((p) => p / 100)).map((v, i) => (
                 <td key={i} className="num mono" style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", padding: "3px 4px" }}>{fmt(v)}</td>
               ))}
             </tr>
