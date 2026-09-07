@@ -570,41 +570,39 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
           กรอกยอดของแต่ละปี — ปีที่ระบบมีดีลปิดแล้วจะเติมยอด “ขายจริง” ให้อัตโนมัติ (แก้ทับได้)
         </p>
       </div>
-      <div className="fz-box">
-        <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table w-full text-sm">
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", minWidth: 90 }}>ปี</th>
-              <th className="num" style={{ minWidth: 140 }}>เป้า</th>
-              <th className="num" style={{ minWidth: 140 }}>ขายจริง</th>
-              <th className="num" style={{ minWidth: 90 }}>% ทำได้</th>
-              <th style={{ minWidth: 90, textAlign: "center" }}>ที่มา</th>
-            </tr>
-          </thead>
-          <tbody>
-            {years.map((y) => {
-              const row = companyHist[y] || {};
-              const attain = row.target > 0 ? (Number(row.actual || 0) / Number(row.target)) * 100 : null;
-              const hasSystem = Number(systemActuals?.[y]?.total || 0) > 0;
-              return (
-                <tr key={y} className="premium-row">
-                  <td style={{ fontWeight: "var(--fw-bold)" }}>{y}</td>
-                  <td className="num"><MoneyInput value={Number(row.target || 0)} onChange={(v) => setC(y, "target", v)} /></td>
-                  <td className="num"><MoneyInput value={Number(row.actual || 0)} onChange={(v) => setC(y, "actual", v)} /></td>
-                  <td className="num mono" style={{ color: attain == null ? "var(--text-3)" : attain >= 100 ? "var(--green)" : "var(--amber)", fontWeight: "var(--fw-bold)" }}>
-                    {attain == null ? "–" : fmtPercent(attain)}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <span className="ui-badge" style={{ color: hasSystem ? "var(--teal)" : "var(--text-3)" }}>
-                      {hasSystem ? "ระบบ" : "กรอกเอง"}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table></TableScroll>
-      </div>
+      <TableScroll surface="embedded" family="editable" className="fz-box"><table className="fz-table premium-glass-table w-full text-sm">
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", minWidth: 90 }}>ปี</th>
+            <th className="num" style={{ minWidth: 140 }}>เป้า</th>
+            <th className="num" style={{ minWidth: 140 }}>ขายจริง</th>
+            <th className="num" style={{ minWidth: 90 }}>% ทำได้</th>
+            <th style={{ minWidth: 90, textAlign: "center" }}>ที่มา</th>
+          </tr>
+        </thead>
+        <tbody>
+          {years.map((y) => {
+            const row = companyHist[y] || {};
+            const attain = row.target > 0 ? (Number(row.actual || 0) / Number(row.target)) * 100 : null;
+            const hasSystem = Number(systemActuals?.[y]?.total || 0) > 0;
+            return (
+              <tr key={y} className="premium-row">
+                <td style={{ fontWeight: "var(--fw-bold)" }}>{y}</td>
+                <td className="num"><MoneyInput value={Number(row.target || 0)} onChange={(v) => setC(y, "target", v)} /></td>
+                <td className="num"><MoneyInput value={Number(row.actual || 0)} onChange={(v) => setC(y, "actual", v)} /></td>
+                <td className="num mono" style={{ color: attain == null ? "var(--text-3)" : attain >= 100 ? "var(--green)" : "var(--amber)", fontWeight: "var(--fw-bold)" }}>
+                  {attain == null ? "–" : fmtPercent(attain)}
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <span className="ui-badge" style={{ color: hasSystem ? "var(--teal)" : "var(--text-3)" }}>
+                    {hasSystem ? "ระบบ" : "กรอกเอง"}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table></TableScroll>
 
       <div>
         <h3 style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", marginBottom: 4 }}>สัดส่วนยอดขายจริงรายทีม (ปี {latestYear})</h3>
@@ -698,53 +696,51 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
         <button type="button" className="btn" onClick={reseed}><RotateCcw size={15} aria-hidden="true" /> คำนวณสัดส่วนใหม่</button>
       </div>
 
-      <div className="fz-box">
-        <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table target-team-table w-full text-sm">
-          <colgroup>
-            <col style={{ width: "27%" }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "24%" }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", minWidth: 150 }}>ทีม</th>
-              <th className="num" style={{ minWidth: 130 }}>ขายจริงปี {latestYear}</th>
-              <th className="num" style={{ minWidth: 80 }}>สัดส่วน</th>
-              <th className="num" style={{ minWidth: 130 }}>แนะนำ</th>
-              <th className="num" style={{ minWidth: 150 }}>เป้าที่ตั้ง</th>
-            </tr>
-          </thead>
-          <tbody>
-            {SALES_TEAMS.map((t) => {
-              const actual = Number(teamHist[t] || 0);
-              const share = totalActual > 0 ? actual / totalActual : 1 / SALES_TEAMS.length;
-              const sug = suggested.find((s) => s.key === t)?.amount || 0;
-              return (
-                <tr key={t} className="premium-row">
-                  <td style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t] || t} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
-                  <td className="num mono">{fmt(actual)}</td>
-                  <td className="num mono" style={{ color: "var(--text-3)" }}>{pct(share)}</td>
-                  <td className="num mono" style={{ color: "var(--text-3)" }}>{fmt(sug)}</td>
-                  <td className="num"><MoneyInput value={Number(teamTargets[t] || 0)} onChange={(v) => setTeamTargets((h) => ({ ...h, [t]: v }))} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ fontWeight: "var(--fw-bold)" }}>
-              <td>รวม</td>
-              <td className="num mono">{fmt(totalActual)}</td>
-              <td className="num mono">{fmtPercent(100)}</td>
-              <td className="num mono">{fmt(finalTarget)}</td>
-              <td className="num mono" style={{ color: remaining === 0 ? "var(--green)" : remaining < 0 ? "var(--red)" : "var(--amber)" }}>
-                {fmt(allocated)}
-              </td>
-            </tr>
-          </tfoot>
-        </table></TableScroll>
-      </div>
+      <TableScroll surface="embedded" family="editable" className="fz-box"><table className="fz-table premium-glass-table target-team-table w-full text-sm">
+        <colgroup>
+          <col style={{ width: "27%" }} />
+          <col style={{ width: "18%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "18%" }} />
+          <col style={{ width: "24%" }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", minWidth: 150 }}>ทีม</th>
+            <th className="num" style={{ minWidth: 130 }}>ขายจริงปี {latestYear}</th>
+            <th className="num" style={{ minWidth: 80 }}>สัดส่วน</th>
+            <th className="num" style={{ minWidth: 130 }}>แนะนำ</th>
+            <th className="num" style={{ minWidth: 150 }}>เป้าที่ตั้ง</th>
+          </tr>
+        </thead>
+        <tbody>
+          {SALES_TEAMS.map((t) => {
+            const actual = Number(teamHist[t] || 0);
+            const share = totalActual > 0 ? actual / totalActual : 1 / SALES_TEAMS.length;
+            const sug = suggested.find((s) => s.key === t)?.amount || 0;
+            return (
+              <tr key={t} className="premium-row">
+                <td style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t] || t} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
+                <td className="num mono">{fmt(actual)}</td>
+                <td className="num mono" style={{ color: "var(--text-3)" }}>{pct(share)}</td>
+                <td className="num mono" style={{ color: "var(--text-3)" }}>{fmt(sug)}</td>
+                <td className="num"><MoneyInput value={Number(teamTargets[t] || 0)} onChange={(v) => setTeamTargets((h) => ({ ...h, [t]: v }))} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr style={{ fontWeight: "var(--fw-bold)" }}>
+            <td>รวม</td>
+            <td className="num mono">{fmt(totalActual)}</td>
+            <td className="num mono">{fmtPercent(100)}</td>
+            <td className="num mono">{fmt(finalTarget)}</td>
+            <td className="num mono" style={{ color: remaining === 0 ? "var(--green)" : remaining < 0 ? "var(--red)" : "var(--amber)" }}>
+              {fmt(allocated)}
+            </td>
+          </tr>
+        </tfoot>
+      </table></TableScroll>
       <GapBanner target={Number(finalTarget || 0)} allocated={allocated} label="แบ่งลงทีมแล้ว" />
     </div>
   );
@@ -822,39 +818,37 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
           </span>
           <button type="button" className="btn sm" onClick={reseedSeason} style={{ marginLeft: "auto" }}><RotateCcw size={14} aria-hidden="true" /> ใช้ฤดูกาลปีก่อน</button>
         </div>
-        <div className="fz-box">
-          <TableScroll surface="embedded" family="editable"><table className="fz-table premium-glass-table w-full text-sm">
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", minWidth: 70 }}></th>
-                {MONTH_LABELS.map((m) => <th key={m} className="num" style={{ minWidth: 62 }}>{m}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="premium-row">
-                <td style={{ fontWeight: "var(--fw-bold)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{seasonMode === "percent" ? "%" : "มูลค่า"}</td>
-                {monthPct.map((p, i) => (
-                  <td key={i} className="num" style={{ padding: "3px 4px" }}>
-                    {seasonMode === "percent" ? (
-                      <TwoDecimalInput value={p} suffix="%" onChange={(v) => setMonth(i, v)} />
-                    ) : (
-                      <TwoDecimalInput
-                        value={monthlyValues[i]}
-                        onChange={(v) => setMonth(i, annualTarget > 0 ? (v / annualTarget) * 100 : 0)}
-                      />
-                    )}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td style={{ fontWeight: "var(--fw-bold)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>บริษัท</td>
-                {distributeBySeasonal(sum(SALES_TEAMS.map((t) => teamTargets[t])), monthPct.map((p) => p / 100)).map((v, i) => (
-                  <td key={i} className="num mono" style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", padding: "3px 4px" }}>{fmt(v)}</td>
-                ))}
-              </tr>
-            </tbody>
-          </table></TableScroll>
-        </div>
+        <TableScroll surface="embedded" family="editable" className="fz-box"><table className="fz-table premium-glass-table w-full text-sm">
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", minWidth: 70 }}></th>
+              {MONTH_LABELS.map((m) => <th key={m} className="num" style={{ minWidth: 62 }}>{m}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="premium-row">
+              <td style={{ fontWeight: "var(--fw-bold)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{seasonMode === "percent" ? "%" : "มูลค่า"}</td>
+              {monthPct.map((p, i) => (
+                <td key={i} className="num" style={{ padding: "3px 4px" }}>
+                  {seasonMode === "percent" ? (
+                    <TwoDecimalInput value={p} suffix="%" onChange={(v) => setMonth(i, v)} />
+                  ) : (
+                    <TwoDecimalInput
+                      value={monthlyValues[i]}
+                      onChange={(v) => setMonth(i, annualTarget > 0 ? (v / annualTarget) * 100 : 0)}
+                    />
+                  )}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td style={{ fontWeight: "var(--fw-bold)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>บริษัท</td>
+              {distributeBySeasonal(sum(SALES_TEAMS.map((t) => teamTargets[t])), monthPct.map((p) => p / 100)).map((v, i) => (
+                <td key={i} className="num mono" style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", padding: "3px 4px" }}>{fmt(v)}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table></TableScroll>
         <p style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
           เป้าแต่ละเดือน = เป้าทั้งปีของแต่ละคน/ทีม × % เดือนนั้น (เดือน ธ.ค. รับเศษปัด) · กด “ยืนยันวางเป้า” เพื่อบันทึกลงตารางเป้าปี {targetYear}
         </p>
