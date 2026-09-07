@@ -167,12 +167,31 @@ test('🔴 คอลัมน์ jsonb ต้องประกาศวิธ�
   assert.equal(jsonb.match, 'jsonbArray');
 });
 
-test('🔴 route ลบทีมต้องเป็นของแอดมินและต้องตรวจการใช้งานจริง', () => {
+/* ── ยามของ route ทีมรายใบ — **อ่านทีละ handler ห้ามอ่านทั้งไฟล์** ─────────────
+   🐞 **ยามพวกนี้เคยเป็นยามปลอม** (จับได้จากรอบตรวจปฏิปักษ์ก่อน merge #1657):
+   ของเดิม `assert.match(src, ...)` ยิงใส่ **ทั้งไฟล์** และใช้ `[\s\S]*?` คร่อมข้าม
+   ขอบ handler ⇒ เงื่อนไขที่ยามคิดว่าตรวจ PATCH อยู่ กลับถูกสนองด้วยโค้ดใน DELETE
+   พิสูจน์ด้วยการลบบล็อก `if (TEAMS.includes(code)) return conflict(...)` ใน PATCH ทิ้ง
+   แล้วเทสต์ยังเขียวครบ เพราะ `protectedCode: TEAMS.includes(code)` ของ DELETE
+   ที่อยู่ต่ำลงไปกว่า 90 บรรทัดมารับหน้าที่แทน
+   ⇒ ทั้งสองทิศเป็นปัญหาเดียวกัน: `scanTeamUsage(supabase, code)` วันนี้อยู่ทั้งใน PATCH
+   และ DELETE ⇒ ยามของ DELETE ก็ถูกสนองด้วยโค้ดของ PATCH ได้เหมือนกัน
+   ⇒ **ตัดเอาเฉพาะตัว handler ก่อนเสมอ** แล้วค่อยตรวจ */
+const handlerSource = (name) => {
   const src = readFileSync(new URL('../../app/api/teams/[code]/route.js', import.meta.url), 'utf8');
-  assert.match(src, /export const DELETE/);
-  assert.match(src, /user\?\.role !== 'admin'/, 'หัวหน้าฝ่ายปิดทีมได้ แต่ลบไม่ได้');
+  const start = src.indexOf(`export const ${name}`);
+  assert.ok(start >= 0, `ไม่พบ handler ${name} ใน route ทีมรายใบ`);
+  /* ตัดที่ handler ตัวถัดไป — `export const dynamic` เป็นตัวพิมพ์เล็ก จึงไม่ถูกนับ */
+  const after = src.slice(start + 1);
+  const next = after.search(/\nexport const [A-Z]+/);
+  return next === -1 ? src.slice(start) : src.slice(start, start + 1 + next);
+};
+
+test('🔴 route ลบทีมต้องเป็นของแอดมินและต้องตรวจการใช้งานจริง', () => {
+  const del = handlerSource('DELETE');
+  assert.match(del, /user\?\.role !== 'admin'/, 'หัวหน้าฝ่ายปิดทีมได้ แต่ลบไม่ได้');
   // ⚠️ ต้องเรียก **ตัวสแกนกลาง** ไม่ใช่ลูปของตัวเอง — ลูปที่ก๊อปไว้จะพลาดคอลัมน์ jsonb
-  assert.match(src, /scanTeamUsage\(supabase, code\)/);
+  assert.match(del, /scanTeamUsage\(supabase, code\)/);
 });
 
 /* ── เปลี่ยนรหัสทีม ต้องเดินด่านเดียวกับลบทีม (มติผู้ใช้ 2026-09-07) ────────
@@ -180,19 +199,22 @@ test('🔴 route ลบทีมต้องเป็นของแอดมิ
       ทั้งหมดชี้ทีมที่ไม่มีอยู่ **โดยไม่มีอะไรพังให้เห็น** (ต่างจากลบทีมที่อย่างน้อยยัง
       มี FK ของ `team_members` คอยขวาง) ⇒ ด่านต้องเข้มเท่ากันเป๊ะ */
 test('🔴 PATCH เปลี่ยนรหัสทีมต้องสแกนการใช้งานจริงก่อน และห้ามแตะทีมตั้งต้น', () => {
-  const src = readFileSync(new URL('../../app/api/teams/[code]/route.js', import.meta.url), 'utf8');
-  assert.match(src, /const nextCode = /, 'ต้องแยกเคส "ส่ง code มาแต่เท่าเดิม" ออกจาก "เปลี่ยนรหัส"');
-  assert.match(src, /if \(nextCode\) \{[\s\S]*?scanTeamUsage\(supabase, code\)/,
+  /* 🔴 **ตัดเอาเฉพาะ PATCH** — ยิงใส่ทั้งไฟล์เมื่อไร DELETE จะมารับหน้าที่แทนเงียบ ๆ
+     (ดูคอมเมนต์เหนือ `handlerSource`) */
+  const patch = handlerSource('PATCH');
+  assert.match(patch, /const nextCode = /, 'ต้องแยกเคส "ส่ง code มาแต่เท่าเดิม" ออกจาก "เปลี่ยนรหัส"');
+  /* ⚠️ `[\s\S]*?` ยังจำเป็นอยู่ (โค้ดระหว่างสองจุดยาวหลายบรรทัด) แต่ตอนนี้มันวิ่งได้
+     อย่างมากแค่ถึงท้าย PATCH ไม่ข้ามไปหา DELETE อีก */
+  assert.match(patch, /if \(nextCode\) \{[\s\S]*?scanTeamUsage\(supabase, code\)/,
     'เปลี่ยนรหัสต้องสแกนการใช้งานก่อนเขียนเสมอ');
-  assert.match(src, /if \(nextCode\) \{[\s\S]*?TEAMS\.includes\(code\)/,
+  assert.match(patch, /if \(nextCode\) \{[\s\S]*?TEAMS\.includes\(code\)/,
     'สามทีมตั้งต้นเปลี่ยนรหัสไม่ได้');
-  assert.match(src, /loadTeamHolderIds\(supabase, code\)/, 'ทีมขายนับสมาชิกจาก Auth ไม่ใช่ตาราง');
+  assert.match(patch, /loadTeamHolderIds\(supabase, code\)/, 'ทีมขายนับสมาชิกจาก Auth ไม่ใช่ตาราง');
 });
 
 /* ⚠️ ไม่ส่ง `code` มา = ห้ามวิ่งสแกน 19 ตาราง — แก้หมายเหตุอย่างเดียวไม่ควรจ่ายราคานั้น */
 test('แก้ทีมโดยไม่เปลี่ยนรหัส ต้องไม่วิ่งสแกนการใช้งาน', () => {
-  const src = readFileSync(new URL('../../app/api/teams/[code]/route.js', import.meta.url), 'utf8');
-  const patch = src.slice(src.indexOf('export const PATCH'), src.indexOf('export const DELETE'));
+  const patch = handlerSource('PATCH');
   const scanAt = patch.indexOf('scanTeamUsage');
   const guardAt = patch.indexOf('if (nextCode) {');
   assert.ok(guardAt >= 0 && scanAt > guardAt, 'ตัวสแกนต้องอยู่ **ใน** เงื่อนไขเปลี่ยนรหัส');
