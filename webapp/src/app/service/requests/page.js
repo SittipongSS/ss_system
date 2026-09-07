@@ -113,6 +113,9 @@ export default function ServiceRequestsPage() {
 
       <RequestQueuePanel
         scope="queue" dept={DEPT} rows={rows} board={board}
+        /* หัวเรื่องอยู่บนหัวหน้าแล้ว — หัวการ์ดซ้ำอีกชั้นกิน 81px ฟรี
+           และป้ายจำนวนก็ซ้ำกับ Pager ใต้ตาราง (ดู prop sectionHeader) */
+        sectionHeader={false}
         loading={loading} loadError={loadError} reload={reload}
       />
       </div>
