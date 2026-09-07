@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { getCurrentUser } from '@/lib/authUser';
 import { attributionTeam, canDeleteRecord, redactProductMargin, userTeams, viewScopeUser } from '@/lib/permissions';
 import { teamInClause } from '@/lib/teamScope';
@@ -169,18 +170,19 @@ async function withQueueFacts(supabase, rows, user) {
   if (!rows.length) return rows;
   const productIds = [...new Set(rows.map((r) => r.productId).filter(Boolean))];
   const [{ data: products, error: prodErr }, readiness] = await Promise.all([
-    productIds.length
-      // จำกัดแถวชัดเจน — อ่านได้อย่างมากเท่าจำนวน id ที่ขอ (ดู check:rowcap)
-      /* ⭐ **คอลัมน์เพิ่มไม่ใช่แถวเพิ่ม** (มติผู้ใช้ 2026-08-28) — คิวโชว์ข้อมูลชุด
-         เดียวกับรายงานแล้ว (ขนาด · ราคาปลีกรวม/ถอด VAT · ต้นทุนแจกแจง+กำไร) ยังเป็น
-         query เดิมก้อนเดิม ⇒ ไม่กระทบงบ egress ที่เพิ่งลดมา (ดู docs) และไม่ย้อนกลับ
-         ไปโหลด `/api/products` ทั้งทะเบียนแบบก่อนหน้า */
-      ? supabase.from('products')
-        .select('id, volume, "volumeUnit", "retailPriceIncVat", "retailPriceExVat", "costPrice",'
-          + ' "materialCost", "laborCost", "shippingCost", "factoryProfit",'
-          + ' "exciseTax", "localTax", "isExciseTaxable"')
-        .in('id', productIds).limit(productIds.length)
-      : Promise.resolve({ data: [] }),
+    // จำกัดแถวชัดเจน — อ่านได้อย่างมากเท่าจำนวน id ที่ขอ (ดู check:rowcap)
+    /* ⭐ **คอลัมน์เพิ่มไม่ใช่แถวเพิ่ม** (มติผู้ใช้ 2026-08-28) — คิวโชว์ข้อมูลชุด
+       เดียวกับรายงานแล้ว (ขนาด · ราคาปลีกรวม/ถอด VAT · ต้นทุนแจกแจง+กำไร) ยังเป็น
+       query เดิมก้อนเดิม ⇒ ไม่กระทบงบ egress ที่เพิ่งลดมา (ดู docs) และไม่ย้อนกลับ
+       ไปโหลด `/api/products` ทั้งทะเบียนแบบก่อนหน้า
+       ⚠️ ยิงทีละก้อน — id สินค้าเป็น 'PRD-'+uuid ยาว 40 ตัวอักษร URL เกิน 16 KB
+       ที่ ~330 ใบ · `.limit()` ต้องเป็น `chunk.length` ไม่ใช่ทั้งลิสต์ ไม่งั้นเพดาน
+       แถวหลวมกว่าที่ check:rowcap ตั้งใจ */
+    fetchInChunks(productIds, (chunk) => supabase.from('products')
+      .select('id, volume, "volumeUnit", "retailPriceIncVat", "retailPriceExVat", "costPrice",'
+        + ' "materialCost", "laborCost", "shippingCost", "factoryProfit",'
+        + ' "exciseTax", "localTax", "isExciseTaxable"')
+      .in('id', chunk).limit(chunk.length)),
     registrationRequirementsBatch(supabase, rows),
   ]);
   if (prodErr) throw prodErr;

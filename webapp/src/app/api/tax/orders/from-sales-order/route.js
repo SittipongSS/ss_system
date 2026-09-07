@@ -1,4 +1,5 @@
 import { genId } from "@/lib/id";
+import { fetchInChunks } from "@/lib/supabaseInChunks";
 import { recordAudit } from "@/lib/audit";
 import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthorized } from "@/lib/http";
 import { can, caretakerTeamsOf } from "@/lib/permissions";
@@ -116,13 +117,12 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
   if (lineError) throw lineError;
   const productIds = [...new Set((lines || []).map((line) => line.productId).filter(Boolean))];
   const [{ data: products, error: productError }, { data: productTypes, error: typeError }, registrationResult] = await Promise.all([
-    productIds.length
-      ? supabase.from("products").select("*").in("id", productIds)
-      : Promise.resolve({ data: [], error: null }),
+    /* ยิงทีละก้อน — id สินค้าเป็น 'PRD-'+uuid ยาว 40 ตัวอักษร ⇒ URL เกิน 16 KB ที่ ~330 ใบ
+       ทะเบียนสินค้าวันนี้ 435 ใบ · รูปเดียวกับบั๊กที่ทำ /api/products ล่มไปแล้ว */
+    fetchInChunks(productIds, (chunk) => supabase.from("products").select("*").in("id", chunk)),
     supabase.from("product_types").select("mainCategoryCode, typeCode, isExcise, requiresFdaNotice"),
-    productIds.length
-      ? supabase.from("excise_registrations").select("id, productId, customerId, status").eq("status", "approved").in("productId", productIds)
-      : Promise.resolve({ data: [], error: null }),
+    fetchInChunks(productIds, (chunk) => supabase.from("excise_registrations")
+      .select("id, productId, customerId, status").eq("status", "approved").in("productId", chunk)),
   ]);
   if (productError) throw productError;
   if (typeError) throw typeError;

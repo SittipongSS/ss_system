@@ -8,6 +8,7 @@
 import { resolveSoFiling } from '@/lib/excise/soFiling';
 import { customerTaxSiblingIdMap } from '@/lib/master/customerTaxSiblings';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales/handoffQueue';
 
 const LIST_CAP = 100;
@@ -81,13 +82,12 @@ async function loadAwaitingFiling(supabase, dealIds) {
 
   const productIds = [...new Set((lines || []).map((line) => line.productId).filter(Boolean))];
   const [productResult, typeResult, registrationResult] = await Promise.all([
-    productIds.length
-      ? supabase.from('products').select('*').in('id', productIds)
-      : Promise.resolve({ data: [], error: null }),
+    /* ยิงทีละก้อน — id สินค้าเป็น 'PRD-'+uuid ยาว 40 ตัวอักษร ⇒ URL เกิน 16 KB ที่ ~330 ใบ
+       ทะเบียนสินค้าวันนี้ 435 ใบ · รูปเดียวกับบั๊กที่ทำ /api/products ล่มไปแล้ว */
+    fetchInChunks(productIds, (chunk) => supabase.from('products').select('*').in('id', chunk)),
     supabase.from('product_types').select('mainCategoryCode, typeCode, isExcise, requiresFdaNotice'),
-    productIds.length
-      ? supabase.from('excise_registrations').select('id, productId, customerId, status').eq('status', 'approved').in('productId', productIds)
-      : Promise.resolve({ data: [], error: null }),
+    fetchInChunks(productIds, (chunk) => supabase.from('excise_registrations')
+      .select('id, productId, customerId, status').eq('status', 'approved').in('productId', chunk)),
   ]);
   raise('โหลดข้อมูลสินค้าไม่สำเร็จ', productResult.error);
   raise('โหลดหมวดสินค้าไม่สำเร็จ', typeResult.error);
