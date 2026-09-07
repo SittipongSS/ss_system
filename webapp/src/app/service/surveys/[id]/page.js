@@ -11,13 +11,14 @@
 //   จอไม่คำนวณเอง เพราะจอไม่รู้ user id ของตัวเอง
 import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList, Search, Send } from "lucide-react";
+import { ClipboardList, Search, Send, Undo2 } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import SurveyResultTable from "@/components/service/SurveyResultTable";
 import SurveyZoneCard from "@/components/service/SurveyZoneCard";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Input from "@/components/ui/Input";
 import Tabs from "@/components/ui/Tabs";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
@@ -45,6 +46,10 @@ export default function SurveySheetPage({ params }) {
   useEffect(() => { setTab(urlTab); }, [urlTab]);
   const [sending, setSending] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
+  /* ดึงผลกลับมาแก้ (§5E ④) — เหตุผลบังคับ เพราะ SA อาจเอาตัวเลขไปเสนอราคาแล้ว */
+  const [recalling, setRecalling] = useState(false);
+  const [recallReason, setRecallReason] = useState("");
+  const [recallBusy, setRecallBusy] = useState(false);
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -112,6 +117,23 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
+  const recall = async () => {
+    setRecallBusy(true);
+    try {
+      await apiJson(`/api/service/surveys/${id}/recall`, {
+        method: "POST", json: { reason: recallReason.trim() }, fallbackError: "ดึงผลกลับไม่สำเร็จ",
+      });
+      setRecalling(false);
+      setRecallReason("");
+      setToast({ kind: "success", msg: "ดึงผลกลับมาแก้แล้ว — ฝ่ายขายได้รับแจ้งพร้อมตัวเลขเดิม" });
+      await load({ background: true });
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setRecallBusy(false);
+    }
+  };
+
   const zones = data?.zones || [];
   const progress = surveyFieldProgress(zones, data?.filesByZone || {});
   const totals = surveyTotals(zones);
@@ -156,6 +178,14 @@ export default function SurveySheetPage({ params }) {
             <Button tone="primary" icon={<Send size={15} aria-hidden="true" />}
               onClick={() => setSending(true)}>
               ส่งผลให้ฝ่ายขาย
+            </Button>
+          )}
+          {/* ⭐ **ดึงผลกลับมาแก้** (§5E ④) — ทางเดียวที่แก้ตัวเลขหลังส่งไปแล้ว
+              ไม่มีสิทธิ์ = ไม่โชว์ · เห็นแล้วกดได้เลย (ด่านเหตุผลอยู่ในโมดัล) */}
+          {tab === "result" && canDecide && sent && (
+            <Button tone="danger" variant="outline" icon={<Undo2 size={15} aria-hidden="true" />}
+              onClick={() => setRecalling(true)}>
+              ดึงผลกลับมาแก้
             </Button>
           )}
         </>
@@ -233,6 +263,35 @@ export default function SurveySheetPage({ params }) {
         onConfirm={sendGate ? undefined : send}
         onClose={() => !sendBusy && setSending(false)}
       />
+      {/* 🔴 SA อาจเอาตัวเลขไปเสนอราคาไปแล้ว ⇒ โมดัลต้องบอกผลลัพธ์ตรง ๆ ไม่ใช่ถามลอย ๆ */}
+      <ConfirmDialog
+        open={recalling}
+        title="ดึงผลประเมินกลับมาแก้"
+        message={`ตัวเลขที่ส่งไปแล้ว (${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ) จะถูกถอนออกจากมือฝ่ายขาย`}
+        detail="ฝ่ายขายได้รับแจ้งทันทีพร้อมตัวเลขเดิม · ตอนส่งรอบใหม่ ระบบจะบอกส่วนต่างให้เขาเห็น"
+        confirmLabel="ดึงกลับมาแก้"
+        busy={recallBusy}
+        onConfirm={recallReason.trim().length >= 10 ? recall : undefined}
+        onClose={() => !recallBusy && setRecalling(false)}
+      >
+        <Input
+          value={recallReason}
+          disabled={recallBusy}
+          maxLength={500}
+          autoComplete="off"
+          autoFocus
+          placeholder="แก้อะไร เพราะอะไร เช่น กรอกแพ็คเกจล็อบบี้ผิดจาก 2 เป็น 3"
+          aria-label="เหตุผลที่ดึงผลกลับ"
+          onChange={(e) => setRecallReason(e.target.value)}
+        />
+        {/* ปุ่มจางต้องบอกเหตุเป็นตัวหนังสือ — และบอกว่าใครจะอ่านข้อความนี้ */}
+        <p className={styles.gate} role="status">
+          {recallReason.trim().length >= 10
+            ? "ฝ่ายขายจะเห็นเหตุผลนี้ในกระดิ่ง"
+            : "ต้องบอกเหตุผลอย่างน้อย 10 ตัวอักษร — ฝ่ายขายจะเห็นข้อความนี้"}
+        </p>
+      </ConfirmDialog>
+
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );

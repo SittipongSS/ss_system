@@ -11,6 +11,8 @@ import {
   spotCounts,
   suggestedPackages,
   surveyEditLockError,
+  surveyRecallError,
+  surveyTotalsDiff,
   surveyFieldMissing,
   surveyFieldProgress,
   surveyResultMissing,
@@ -306,4 +308,62 @@ test('🔴 route ของทั้งช่างและหัวหน้า
   assert.match(route, /surveyEditLockError/, 'ต้องใช้ด่านกลาง ไม่ใช่เขียน answeredAt เองในแต่ละเส้น');
   assert.match(patch, /requestLock\(/, 'เส้นของช่างต้องถามใบแม่ก่อนเขียน');
   assert.match(put, /requestLock\(/, 'เส้นของหัวหน้าต้องถามใบแม่ก่อนเขียน');
+});
+
+/* ══ §5E ④ ดึงผลประเมินกลับมาแก้ (มติข้อ 25) ═══════════════════════════════
+   🔴 กลไกเดิมใช้ไม่ได้ — `reopenRequestError` บล็อก `closed` ไว้ชัดเจน แต่กรณีนี้
+      คือ *หลัง SA ปิดใบไปแล้ว* พอดี ⇒ เป็นความสามารถใหม่ ต้องมีด่านของตัวเอง */
+test('🔑 ดึงผลกลับ: สิทธิ์ · สถานะ · เหตุผล ครบสามชั้น', () => {
+  const sent = { id: 'R1', answeredAt: '2026-09-06T00:00:00Z', closedAt: '2026-09-07T00:00:00Z' };
+  const reason = 'กรอกแพ็คเกจล็อบบี้ผิดจาก 2 เป็น 3';
+
+  assert.equal(surveyRecallError(sent, { reason, canRecall: true }), null,
+    'ใบที่ปิดครบสองฝั่งแล้วต้องดึงกลับได้ — นี่คือเหตุผลที่ข้อนี้มีอยู่');
+
+  assert.match(surveyRecallError(sent, { reason, canRecall: false }), /หัวหน้าฝ่ายบริการ/);
+  assert.match(surveyRecallError(sent, { reason: 'สั้น', canRecall: true }), /10 ตัวอักษร/);
+  // ยังไม่เคยส่งผล = แก้ได้อยู่แล้ว ไม่ต้องดึงกลับ
+  assert.match(surveyRecallError({ id: 'R1' }, { reason, canRecall: true }), /ยังไม่ได้ส่งผล/);
+  assert.match(surveyRecallError({ ...sent, cancelledAt: 'x' }, { reason, canRecall: true }), /ยกเลิก/);
+  assert.match(surveyRecallError(null, { reason, canRecall: true }), /ไม่พบ/);
+});
+
+/* 🔴 **จุดอันตรายที่สุดของทั้งแผน** — SA อาจเอาตัวเลขผิดไปเสนอราคาไปแล้ว
+   ⇒ ต้องบอกส่วนต่างตรง ๆ ไม่ใช่แค่ "ใบถูกแก้" */
+test('🔴 ส่วนต่างต้องบอกเป็นเลขเก่า→ใหม่ เฉพาะตัวที่ใช้ตั้งราคา', () => {
+  const before = { zones: 3, areaSqm: 320, packageQty: 6, spotsSelected: 4 };
+  const after = { zones: 3, areaSqm: 300, packageQty: 5, spotsSelected: 9 };
+  const diff = surveyTotalsDiff(before, after);
+
+  assert.deepEqual(diff, ['ตร.ม. 320 → 300', 'แพ็คเกจ 6 → 5']);
+  // จุดติดตั้งเป็นของหน้างาน ไม่ใช่ตัวคูณราคา ⇒ ไม่ต้องรบกวน SA
+  assert.ok(!diff.join(' ').includes('9'));
+  // ไม่มีอะไรเปลี่ยน / ไม่มีของเทียบ = เงียบ (ส่งรอบแรกก็เข้าทางนี้)
+  assert.deepEqual(surveyTotalsDiff(before, before), []);
+  assert.deepEqual(surveyTotalsDiff(null, after), []);
+});
+
+test('🔴 route ดึงกลับต้องล้างตราปิดทั้งสองฝั่ง และตรึงตัวเลขเดิมไว้ในเธรด', () => {
+  const route = readFileSync(
+    new URL('../../app/api/service/surveys/[id]/recall/route.js', import.meta.url), 'utf8');
+
+  assert.match(route, /surveyRecallError\(/, 'ต้องใช้ด่านตัวเดียวกับปุ่มบนจอ');
+  assert.match(route, /answeredAt: null/);
+  /* ⚠️ ล้าง `closedAt` ด้วย — ไม่งั้นใบค้างสภาพที่ผู้ขอปิดแล้วแต่ฝ่ายยังไม่ตอบ
+     ซึ่งไม่มีปุ่มไหนพาออกมาได้ */
+  assert.match(route, /closedAt: null/);
+  assert.match(route, /kind: 'recall'/, 'ต้องเขียนเธรด ไม่งั้น SA ไม่ได้กระดิ่ง');
+  assert.match(route, /meta: \{ totals \}/, 'ต้องตรึงตัวเลขเดิมไว้ให้รอบส่งถัดไปเทียบ');
+  /* ⚠️ ไม่แตะวันบนใบ — ต่างจาก §5E ② ตรงนี้ไม่ต้องไปวัดใหม่
+     ⚠️ ตัดคอมเมนต์ออกก่อนตรวจ — หัวไฟล์ต้องอธิบายได้ว่า *ไม่* แตะอะไร (ยามที่ห้าม
+        พูดถึงชื่อคอลัมน์ = ยามที่บังคับให้ลบเหตุผลทิ้ง — บทเรียนเดียวกับ renewals) */
+  const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(code, /committedDueDate/);
+});
+
+test('🔴 ส่งผลรอบใหม่ต้องหยิบตัวเลขเดิมจากแถว recall มาเทียบ', () => {
+  const send = readFileSync(
+    new URL('../../app/api/service/surveys/[id]/send/route.js', import.meta.url), 'utf8');
+  assert.match(send, /surveyTotalsDiff\(/);
+  assert.match(send, /\.eq\('kind', 'recall'\)/, 'ต้องอ่านแถวดึงกลับล่าสุด');
 });

@@ -75,6 +75,14 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
           </span>
         </p>
       )}
+      {/* 🔴 **นัดที่ปิดเป็น "เข้าไม่ได้" ต้องบอกเหตุผล** (§5E ②) — ป้ายลอย ๆ ทำให้
+          ฝ่ายขายรู้แค่ว่ายังไม่ได้คำตอบ แต่ตอบลูกค้าไม่ได้ว่าเพราะอะไร
+          ⚠️ ใบถอยกลับขั้นลงคิวไปแล้ว ⇒ บรรทัดนี้คือหลักฐานว่าทำไมวันบนใบถึงหายไป */}
+      {visit?.status === 'unable' && visit.unableReason && (
+        <p className={styles.surveyVisit}>
+          <span className={styles.surveyUnable}>เข้าไม่ได้เพราะ {visit.unableReason}</span>
+        </p>
+      )}
 
       {/* ⭐ **ทางเข้าจอทำงานของ TS** — ตารางนี้เป็นของ *ผู้อ่าน* (ฝ่ายขายเป็นหลัก)
           ส่วนการกรอกผลอยู่คนละจอ เพราะเป็นคนละงานคนละสิทธิ์

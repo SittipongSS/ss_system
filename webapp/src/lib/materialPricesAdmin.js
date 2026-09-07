@@ -345,7 +345,10 @@ export async function findRequest(supabase, id) {
           ยังมีชีวิตเป็นแถวเก่ากว่าแถวที่ปิดได้ · จอที่เห็นแถวที่ปิดจะโชว์ปุ่ม "ลงคิวใหม่"
           ซึ่ง server ตีกลับ 409 ทุกครั้ง (มันเห็นนัดที่ยังเปิดอยู่) ⇒ ถามนัดที่ยังมีชีวิต
           ก่อน ไม่มีค่อยเอาแถวล่าสุดมาโชว์เป็น *ประวัติ* */
-    const visitCols = 'id, code, "scheduledDate", "startTime", status, "assigneeName"';
+    /* ⚠️ **`unableReason` ต้องอยู่ในลิสต์** (§5E ②) — นัดที่ปิดเป็น "เข้าไม่ได้" ค้างไว้
+       ในประวัติเพื่อให้อ่านย้อนได้ว่าไปกี่รอบกว่าจะเข้าได้ · ไม่ดึงมา = หน้ารายละเอียด
+       โชว์ป้าย "เข้าไม่ได้" ลอย ๆ โดยไม่มีทางบอกได้เลยว่าเพราะอะไร */
+    const visitCols = 'id, code, "scheduledDate", "startTime", status, "assigneeName", "unableReason"';
     const { data: liveRows } = await supabase
       .from('service_visits').select(visitCols)
       .eq('requestId', id)

@@ -122,6 +122,9 @@ export const UPDATE_KINDS = {
     /* ฝ่ายปิดใบโดยไม่ได้ผล (§5E ③) — เทาเหมือน `close` เพราะมันคือการจบใบ
        แต่แยกชนิดเพราะ **คนละความหมาย**: `close` = ได้ของแล้วผู้ขอรับ · ตัวนี้ = ไม่ได้ของ */
     close_unassessed: { label: 'ปิดโดยไม่ได้ผล', color: 'var(--text-3)', narrative: true },
+    /* 🔴 TS ดึงผลที่ส่งไปแล้วกลับมาแก้ (§5E ④) — **แดง ไม่ใช่อำพัน**
+       เพราะ SA อาจเอาตัวเลขนั้นไปเสนอราคาไปแล้ว ⇒ ต้องสะดุดตาที่สุดในเธรด */
+    recall: { label: 'ดึงผลกลับมาแก้', color: 'var(--red)', narrative: true },
     close: { label: 'ปิดเคส', color: 'var(--text-3)' },
     cancel: { label: 'ยกเลิกเคส', color: 'var(--red)', narrative: true },
   },
