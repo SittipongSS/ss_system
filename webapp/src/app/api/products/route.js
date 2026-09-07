@@ -15,6 +15,8 @@ import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling'
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { customerSnapshotName } from '@/lib/master/customerName';
+import { branchKeyOf } from '@/lib/master/customerTaxId';
+import { customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
 import { naText } from "@/lib/format";
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
@@ -69,6 +71,23 @@ export async function GET(request) {
   // scope so the project product-picker can see all of its customer's FGs.
   // The approval gate + isActive filter + margin redaction below still apply.
   const customerId = url.searchParams.get('customerId');
+  /* `?taxSiblings=1` — ขยายขอบเขตจาก "ใบลูกค้าใบนี้" เป็น "นิติบุคคลนี้" คือใบลูกค้า
+     ทุกใบที่ใช้เลขประจำตัวผู้เสียภาษีเดียวกัน (มติผู้ใช้ 2026-09-07 — บริษัทเดียวเปิด
+     ใบไว้หลายใบตามสาขา/ยุคของรหัส AR แต่ FG ผูกกับใบเดียว)
+     ⚠️ **opt-in โดยตั้งใจ** ไม่ไปเปลี่ยนความหมายของ `?customerId=` ที่มีอยู่เดิม —
+     ผู้เรียกอื่นและด่านตอนบันทึกต้องเห็นภาพเดียวกันเสมอ ใครอยากได้ขอบเขตกว้างต้องขอเอง
+     ⚠️ ไม่มีผลกับ `?manage=1` (หน้าทะเบียนสินค้า) ซึ่งข้ามด่านอนุมัติ/พักใช้ และคืน
+     ทั้งแถว — ขยายขอบเขตให้จอนั้นด้วยจะกลายเป็นการเปิดของที่ยังไม่อนุมัติข้ามใบลูกค้า */
+  const taxSiblings = url.searchParams.get('taxSiblings') === '1';
+
+  /* resolve ใบพี่น้อง **นอก** buildQuery — `fetchAllResult` เรียก buildQuery ซ้ำทุกหน้า
+     ถ้าอยู่ข้างในจะยิงถามทะเบียนลูกค้าใหม่ทุกหน้าที่ไล่ */
+  const owners = customerId && taxSiblings && !manage
+    ? await customerTaxSiblings(supabase, customerId)
+    : [];
+  // ไม่มีใบพี่น้อง (หรือไม่ได้ขอ) = ขอบเขตเดิมเป๊ะ · หาใบตั้งต้นไม่เจอก็ยังกรองด้วย
+  // id เดิม ไม่ใช่ปล่อยทั้งทะเบียนหลุด
+  const scopeIds = customerId ? (owners.length ? owners.map((c) => c.id) : [customerId]) : null;
 
   /* ⚠️ ต้องไล่ทีละหน้า — เพดาน 1,000 แถวของ PostgREST ตัดเงียบ ๆ ไม่มี error
      ทะเบียน FG เรียง `createdAt` มากไปน้อย ⇒ ถ้าโดนตัด **สินค้าเก่าหายก่อน** แล้ว
@@ -78,7 +97,7 @@ export async function GET(request) {
     let query = supabase.from('products').select(manage ? '*' : PRODUCT_PICKER_COLUMNS)
       .order('createdAt', { ascending: false })
       .order('id', { ascending: true });
-    if (customerId) query = query.eq('customerId', customerId);
+    if (scopeIds) query = query.in('customerId', scopeIds);
     // NO team scope on read (มติ 2026-07-20): the FG catalog is shared master data,
     // like product_types. `product.team` records who CREATED the row, not who owns
     // the product — the owner is the customer — so scoping reads by it hid FGs from
@@ -98,6 +117,23 @@ export async function GET(request) {
   // the management view. Filtered in JS so it stays resilient before migration
   // 0036 runs (missing column reads as undefined → treated as active).
   const rows = manage ? (data || []) : (data || []).filter((p) => p.isActive !== false);
+  /* ป้าย "FG ตัวนี้เป็นของใบลูกค้าใบไหน" — ติดเฉพาะตัวที่ **ไม่ใช่** ของใบที่ถามมา
+     ⇒ มีป้าย = ของอีกใบของนิติบุคคลเดียวกัน · ไม่มีป้าย = ของใบนี้เอง
+     แนบทีหลังแบบเดียวกับ `registrationStatus` ข้างล่าง จึงไม่ต้องแตะ
+     PRODUCT_PICKER_COLUMNS · **ห้ามอ่านจาก `products.customerName`** — ช่องนั้นเป็น
+     สำเนาที่ไม่มี cascade (ดู lib/master/customerNameMirrors) จะได้ชื่อค้างยุคก่อน */
+  if (owners.length > 1) {
+    const byOwner = new Map(owners.map((c) => [c.id, c]));
+    for (const p of rows) {
+      if (p.customerId === customerId) continue;
+      const owner = byOwner.get(p.customerId);
+      if (!owner) continue;
+      p.ownerCustomerId = owner.id;
+      p.ownerArCode = owner.arCode || null;
+      p.ownerName = owner.name || null;
+      p.ownerBranchCode = branchKeyOf(owner.branchCode);
+    }
+  }
   // สถานะขึ้นทะเบียนสรรพสามิตสรุปราย FG ('none'|'in_progress'|'approved') สำหรับ
   // ตัวกรองหน้า list — ข้อมูลทะเบียนเป็นความลับของระบบภาษี จึงแนบเฉพาะผู้ที่เห็น
   // ระบบภาษี (history:view เหมือน lib/master/relations); role อื่นไม่ได้ field นี้เลย

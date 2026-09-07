@@ -6,6 +6,7 @@
 // รับ supabase client มาเป็นพารามิเตอร์ (ไม่ import เอง) — my-dashboard ส่งตัวที่ผูก
 // สิทธิ์ผู้ใช้มา ส่วน cron ส่ง service-role มา
 import { resolveSoFiling } from '@/lib/excise/soFiling';
+import { customerTaxSiblingIdMap } from '@/lib/master/customerTaxSiblings';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales/handoffQueue';
 
@@ -98,6 +99,13 @@ async function loadAwaitingFiling(supabase, dealIds) {
     linesByOrder.get(line.salesOrderId).push(line);
   });
 
+  // ทะเบียนสรรพสามิตอยู่ใต้ใบลูกค้าที่เป็นเจ้าของ FG ซึ่งอาจเป็นอีกใบของนิติบุคคล
+  // เดียวกัน — โหลดชุดเดียว (สองคิวรีคงที่) ห้ามถามทีละใบในลูป
+  const ownerIdsByCustomer = await customerTaxSiblingIdMap(
+    supabase,
+    candidates.map((order) => order.customerId),
+  );
+
   return candidates
     .map((order) => {
       const resolved = resolveSoFiling({
@@ -106,6 +114,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
         products: productResult.data || [],
         productTypes: typeResult.data || [],
         registrations: registrationResult.data || [],
+        ownerCustomerIds: ownerIdsByCustomer.get(order.customerId) || null,
       });
       return { ...order, filingItemCount: resolved.lines.length, filingTotalTax: resolved.totalTax, eligible: resolved.eligible };
     })

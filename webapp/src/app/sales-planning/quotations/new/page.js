@@ -124,14 +124,16 @@ function NewQuotationInner() {
     return () => { alive = false; };
   }, []);
 
-  // FG ของ **ลูกค้าที่เลือก** เท่านั้น (มติผู้ใช้ 2026-08-17) — เดิมดึงทั้งทะเบียน
-  // แล้วดรอปดาวน์โชว์สินค้าของลูกค้าทุกราย หยิบข้ามรายได้เงียบ ๆ
+  // FG ของ **นิติบุคคลของลูกค้าที่เลือก** (มติผู้ใช้ 2026-08-17 · ขยาย 2026-09-07) —
+  // เดิมดึงทั้งทะเบียน แล้วดรอปดาวน์โชว์สินค้าของลูกค้าทุกราย หยิบข้ามรายได้เงียบ ๆ
+  // `taxSiblings=1` = รวม FG ของใบลูกค้าอื่นที่ใช้เลขประจำตัวผู้เสียภาษีเดียวกัน
+  // (บริษัทเดียวเปิดใบไว้หลายใบตามสาขา/ยุคของรหัส AR) — แถวพวกนั้นมีป้ายบอกเจ้าของ
   // ?customerId= ตั้งใจข้าม team scope ฝั่ง API (FG ของลูกค้ารายนี้อาจถูกขึ้นทะเบียน
   // โดยทีมอื่น) — ด่านอนุมัติ/พักใช้/redact กำไร ยังทำงานเหมือนเดิม
   useEffect(() => {
     if (!customerId) { setProducts([]); return; }
     let alive = true;
-    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}`)
+    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}&taxSiblings=1`)
       .then((rows) => { if (alive) setProducts(Array.isArray(rows) ? rows : []); })
       .catch(() => { if (alive) setProducts([]); });
     return () => { alive = false; };

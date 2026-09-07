@@ -6,6 +6,7 @@ import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
+import { customerTaxSiblingIdMap, customerTaxSiblingIds } from "@/lib/master/customerTaxSiblings";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { NA } from "@/lib/format";
 
@@ -131,6 +132,11 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
     if (!linesByOrder.has(line.salesOrderId)) linesByOrder.set(line.salesOrderId, []);
     linesByOrder.get(line.salesOrderId).push(line);
   });
+  // ทะเบียนของ "นิติบุคคล" ไม่ใช่ของใบลูกค้าใบเดียว — โหลดชุดเดียวสองคิวรี ห้าม N+1
+  const ownerIdsByCustomer = await customerTaxSiblingIdMap(
+    supabase,
+    available.map((salesOrder) => salesOrder.customerId),
+  );
 
   return {
     schemaReady: true,
@@ -142,6 +148,7 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
           products: products || [],
           productTypes: productTypes || [],
           registrations: registrationResult.data || [],
+          ownerCustomerIds: ownerIdsByCustomer.get(salesOrder.customerId) || null,
         });
         return {
           ...salesOrder,
@@ -158,13 +165,17 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
 
 async function resolveContext(supabase, salesOrder) {
   const productIds = [...new Set((salesOrder.lines || []).map((line) => line.productId).filter(Boolean))];
+  // ใบลูกค้าทุกใบของนิติบุคคลนี้ — ทะเบียนอยู่ใต้ใบที่เป็นเจ้าของ FG ซึ่งอาจไม่ใช่ใบที่ขาย
+  const ownerCustomerIds = salesOrder.customerId
+    ? await customerTaxSiblingIds(supabase, salesOrder.customerId)
+    : [];
   const [{ data: products, error: productError }, { data: productTypes, error: typeError }, registrationResult] = await Promise.all([
     productIds.length
       ? supabase.from("products").select("*").in("id", productIds)
       : Promise.resolve({ data: [], error: null }),
     supabase.from("product_types").select("mainCategoryCode, typeCode, isExcise, requiresFdaNotice"),
-    productIds.length && salesOrder.customerId
-      ? supabase.from("excise_registrations").select("id, productId, customerId, status").eq("customerId", salesOrder.customerId).in("productId", productIds)
+    productIds.length && ownerCustomerIds.length
+      ? supabase.from("excise_registrations").select("id, productId, customerId, status").in("customerId", ownerCustomerIds).in("productId", productIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (productError) throw productError;
@@ -176,6 +187,7 @@ async function resolveContext(supabase, salesOrder) {
     products: products || [],
     productTypes: productTypes || [],
     registrations: registrationResult.data || [],
+    ownerCustomerIds,
   });
 }
 
