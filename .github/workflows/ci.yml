@@ -93,6 +93,12 @@ jobs:
       - name: Thai-time ratchet
         run: npm run check:thaitime
 
+      # เบราว์เซอร์ตัดบรรทัดไทยด้วยพจนานุกรม ICU ซึ่งอ่านคำทับศัพท์ผิดแล้วขโมยตัวสะกด
+      # ของคำหน้า ⇒ คำขาดกลางบนจอแคบ · ไม่มี CSS ตัวไหนแก้ได้ (วัดครบแล้ว)
+      # ด่านนี้ใช้ Intl.Segmenter ของ Node ซึ่งเป็น ICU ชุดเดียวกับ Chrome — ไม่ต้องมี secret
+      - name: Thai line-break ratchet
+        run: npm run check:thaiwrap
+
       # ด่านตรึงภูมิภาคของฟังก์ชัน — ฐานข้อมูลอยู่สิงคโปร์ และค่าใน Vercel dashboard
       # เป็น iad1 (เวอร์จิเนีย) โดยที่ตัวเลือก sin1 ไม่มีให้เลือกในหน้านั้นด้วยซ้ำ
       # ⇒ `regions` ใน vercel.json เป็นตัวเดียวที่กันไว้ · ลบทิ้งเมื่อไร ฟังก์ชันย้าย

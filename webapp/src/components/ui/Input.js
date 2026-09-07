@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
+import { thaiWrapText } from "@/lib/thaiWrap";
 
 /* ช่องกรอกกลางของระบบ — ที่เดียวที่ได้รับอนุญาตให้เขียนคลาส `premium-input`
 
@@ -52,7 +53,15 @@ const Input = forwardRef(function Input({
      "ผิด" ในเชิงความหมายด้วย ไม่งั้นคนที่ใช้ screen reader ไม่รู้เลยว่าช่องไหนพลาด */
   const invalidProp = invalid && props["aria-invalid"] === undefined ? { "aria-invalid": "true" } : {};
 
-  return <Component ref={ref} className={classes} {...invalidProp} {...props} />;
+  /* ⚠️ `placeholder` เป็น **attribute** จึงใส่ span ไม่ได้ — ได้แค่ ZWSP บอกขอบคำ
+     (`thaiWrapText`) ซึ่งแก้อาการหนักคือ "ขโมยตัวสะกดของคำหน้า" ได้ ส่วนการตัด
+     *ข้างใน* คำยังกันไม่ได้ที่นี่ · คุ้มเพราะ placeholder ของ textarea ขึ้นหลายบรรทัด
+     ⚠️ ZWSP ใน placeholder ไม่กระทบค่าที่ผู้ใช้พิมพ์ — คนละช่องกัน */
+  const placeholderProp = typeof props.placeholder === "string"
+    ? { placeholder: thaiWrapText(props.placeholder) }
+    : {};
+
+  return <Component ref={ref} className={classes} {...invalidProp} {...props} {...placeholderProp} />;
 });
 
 export default Input;

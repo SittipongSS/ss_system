@@ -1,3 +1,4 @@
+import thaiText from "@/components/ThaiText";
 import styles from "./DetailPage.module.css";
 import Link from "next/link";
 import { naText } from "@/lib/format";
@@ -49,6 +50,6 @@ export function DetailCard({ id, icon: Icon, eyebrow, title, meta, actions, chil
 }
 
 export function ContextCard({ href, eyebrow, title, subtitle, badges, facts, icon: Icon }) {
-  const content = <><div className={styles.contextTop}>{Icon ? <span className={styles.contextIcon}><Icon size={16} /></span> : null}<span><small>{eyebrow}</small><strong>{naText(title)}</strong></span></div>{subtitle ? <p className={styles.contextSubtitle}>{subtitle}</p> : null}{badges ? <div className={styles.contextBadges}>{badges}</div> : null}{facts?.length ? <dl className={styles.contextFacts}>{facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{naText(fact.value)}</dd></div>)}</dl> : null}</>;
+  const content = <><div className={styles.contextTop}>{Icon ? <span className={styles.contextIcon}><Icon size={16} /></span> : null}<span><small>{eyebrow}</small><strong>{naText(title)}</strong></span></div>{subtitle ? <p className={styles.contextSubtitle}>{thaiText(subtitle)}</p> : null}{badges ? <div className={styles.contextBadges}>{badges}</div> : null}{facts?.length ? <dl className={styles.contextFacts}>{facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{naText(fact.value)}</dd></div>)}</dl> : null}</>;
   return href ? <Link href={href} className={styles.contextCard}>{content}</Link> : <div className={styles.contextCard}>{content}</div>;
 }
