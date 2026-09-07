@@ -282,43 +282,112 @@ test("ห้ามยกหน้าตาตารางด้วยการ�
     `เพดาน legacyTable ของฐานข้อมูลขึ้นไม่ได้ — ได้ ${budget.modules.database.legacyTable}`);
 });
 
-/* ── กรอบซ้อนกรอบ: ห้ามเอาการ์ดเก่าห่อ TableScroll (2026-09-07) ───────────────
-   🐞 หน้าทะเบียนฝั่งงานขาย 6 จุดห่อ `<TableScroll surface="embedded">` ด้วย
-   `<div className="premium-glass-table table-responsive">` อีกชั้น ⇒ ได้สองอย่างพร้อมกัน:
-     1. **สองวง** — การ์ดนอกมีขอบ+เงา+มุมมน ส่วน embedded วาดกรอบ 1px ของตัวเองอีกวง
-     2. **สองสกอร์ล** — `.table-responsive` ใส่ `overflow-x: auto` ให้การ์ดนอก
-        ขณะที่ `.scroll` ก็เลื่อนแนวนอนได้อยู่แล้ว
-   ✅ แก้โดยถอดกรอบนอกแล้วให้ `surface="auto"` วาดการ์ดเอง — ratchet legacyTable
-   ของโมดูลงานขายลง 41 → 35 · ตรงกับที่ ProjectDealsHub.js กับ DealValueLines.js
-   เคยบันทึกไว้ว่า "TableScroll วาดพื้นให้เองแล้ว" */
-test("ห้ามห่อ TableScroll ด้วยการ์ดเก่า premium-glass-table", () => {
-  const offenders = [];
+/* ── กรอบมนซ้อนกรอบมนรอบตาราง ─────────────────────────────────────────────
+   🐞 รอบแรก (2026-09-07): หน้าทะเบียนฝั่งงานขาย 6 จุดห่อ `<TableScroll
+   surface="embedded">` ด้วย `<div className="premium-glass-table table-responsive">`
+   อีกชั้น ⇒ สองวงซ้อน + สกอร์ลแนวนอนสองชั้น · ถอดออกแล้ว ratchet legacyTable
+   ของงานขายลง 41 → 35
+
+   🐞 รอบสอง (2026-09-07 เย็น): ผู้ใช้ส่งภาพหน้าใบเสนอราคามาว่า "ซ้อนตารางเยอะจัง"
+   วัดสดที่ /sales-planning/quotations/new (1440×900) — กรอบมน 13px ขอบสีเดียวกัน
+   ซ้อนกัน **สามชั้น** ห่างกันชั้นละ ~17px:
+     การ์ดหัวข้อ (.card)                    ซ้าย 28  กว้าง 1026
+     .premium-glass-table.table-responsive  ซ้าย 47  กว้าง  988  ← ชั้นนี้ไม่ทำอะไรใหม่
+     .scroll[data-surface="embedded"]       ซ้าย 64  กว้าง  954
+   ⚠️ ที่นี่ยุบทิ้งเฉย ๆ ไม่ได้แบบรอบแรก — ตารางใบเสนอราคาไม่ใช่ `.premium-table`
+   เซลล์กับหัวตารางกินสไตล์จาก `.premium-glass-table thead th / tbody td`
+   ⇒ **ย้ายคลาสลงมาอยู่บน element เดียวกับ TableScroll** ไม่ใช่ลบ
+   (uiLegacyBudget นับเท่าเดิม ไม่ใช่เพิ่ม) · หลังแก้: 3 กรอบ → 2 กรอบ
+
+   ⚠️ ตัวจับกว้างขึ้นในรอบสอง — เดิมดูเฉพาะคำว่า `premium-glass-table` และมองไป
+   ข้างหน้าแค่ 2 บรรทัด · ตอนนี้คิด "คลาสที่วาดกรอบการ์ด" สดจาก globals.css
+   (ตัวเลือกคลาสเดี่ยวที่ตั้งทั้งเส้นขอบและมุมมนในกฎเดียว) แล้วเดินขึ้น 12 บรรทัด
+   ⇒ เห็น `.glass-panel` ของหน้าทะเบียนด้วย · เลขจึงโตจาก 12 เป็น 16
+   **ไม่ใช่ของเพิ่ม แต่เป็นของที่เพิ่งมองเห็น** */
+function framedCardClasses(globalsCss) {
+  const names = new Set();
+  for (const hit of globalsCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = hit[1].trim();
+    const body = hit[2];
+    if (selector.startsWith("@")) continue;
+    if (!/border(?:-top)?:\s*[1-9]/.test(body)) continue;
+    if (!/border-radius/.test(body)) continue;
+    for (const part of selector.split(",")) {
+      const one = part.trim().match(/^\.([A-Za-z][\w-]*)$/);
+      if (one) names.add(one[1]);
+    }
+  }
+  return names;
+}
+
+function framedWrappers() {
+  const globalsCss = fs.readFileSync(path.join(WEBAPP, "src", "app", "globals.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  const framed = framedCardClasses(globalsCss);
+  const OPEN = /<(div|section)\b[^>]*className="([^"]*)"/;
+  const CLOSE = /<\/(?:div|section)>/;
+  const found = [];
+
   for (const file of jsFiles(path.join(WEBAPP, "src", "app")).concat(jsFiles(path.join(WEBAPP, "src", "components")))) {
     const lines = fs.readFileSync(file, "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, (b) => b.replace(/[^\n]/g, " "))
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, (b) => b.replace(/[^\n]/g, " "))
       .split(/\r?\n/);
     lines.forEach((line, index) => {
-      if (!/className="[^"]*\bpremium-glass-table\b/.test(line)) return;
-      /* ดูสองบรรทัดถัดไป — TableScroll มักอยู่บรรทัดถัดจากกรอบพอดี */
-      const near = lines.slice(index + 1, index + 3).join(" ");
-      if (/<TableScroll\b/.test(near)) {
-        offenders.push(`${path.relative(WEBAPP, file).replaceAll("\\", "/")}:${index + 1}`);
+      if (!line.includes("<TableScroll")) return;
+      const where = (n, cls) => found.push(`${path.relative(WEBAPP, file).replaceAll("\\", "/")}:${n} .${cls}`);
+      /* div กับ TableScroll เขียนบรรทัดเดียวกันก็มี — ตรวจส่วนหน้าของบรรทัดก่อน */
+      const before = line.slice(0, line.indexOf("<TableScroll"));
+      const inline = before.match(OPEN);
+      if (inline && !CLOSE.test(before.slice(before.lastIndexOf("<")))) {
+        for (const cls of framed) {
+          if (new RegExp(`(^|\\s)${cls}($|\\s)`).test(inline[2])) where(index + 1, cls);
+        }
+        return;
+      }
+      for (let up = index - 1; up >= Math.max(0, index - 12); up -= 1) {
+        if (CLOSE.test(lines[up])) break;
+        const open = lines[up].match(OPEN);
+        if (!open) continue;
+        for (const cls of framed) {
+          if (new RegExp(`(^|\\s)${cls}($|\\s)`).test(open[2])) where(up + 1, cls);
+        }
+        break;
       }
     });
   }
-  /* 🪤 **ไม่ใช่ hard-zero และไม่มีลิสต์ยกเว้น** — รอบนี้ถอดได้ 6 จุด (หน้าทะเบียน
-     ฝั่งงานขาย ซึ่งเป็นที่ที่เจ้าของงานทักมา) เหลืออีก 12 จุดในหน้ารายละเอียดกับ
-     แดชบอร์ด ที่ทรงต่างกันพอจะต้องดูทีละจุด (บางตัวเป็น `fz-box premium-glass-table`
-     ที่กรอบนอกทำงานอื่นอยู่ด้วย)
-     ⇒ ใช้เพดานสองทางแบบเดียวกับ ratchet ตัวอื่นในรีโป: มากกว่านี้ = เพิ่มของใหม่ ⇒ ตก ·
-     น้อยกว่านี้ = ถอดได้แล้ว ⇒ ให้รูดเลขลง ห้ามทิ้งไว้เกินจริง
+  return found;
+}
+
+test("ห้ามห่อ TableScroll ด้วยการ์ดที่มีกรอบอยู่แล้ว", () => {
+  const offenders = framedWrappers();
+  /* 🪤 **ไม่ใช่ hard-zero และไม่มีลิสต์ยกเว้น** — ที่เหลือเป็นหน้ารายละเอียดกับ
+     แดชบอร์ดที่ทรงต่างกันพอจะต้องเปิดดูทีละจุดว่าชั้นที่ห่ออยู่เป็น "การ์ดที่มีของ
+     อย่างอื่นด้วย" หรือ "กรอบเปล่าที่ห่อตารางอย่างเดียว"
+     ⇒ เพดานสองทาง: มากกว่านี้ = เพิ่มของใหม่ ⇒ ตก · น้อยกว่านี้ = ถอดได้แล้ว ⇒ รูดลง
      ⚠️ ห้ามเปลี่ยนเป็นลิสต์ยกเว้นรายไฟล์ — ทะเบียนยกเว้นคือทะเบียนที่หมดอายุเงียบ */
-  const CAP = 12;
+  const CAP = 16;
   assert.ok(offenders.length <= CAP,
-    `การ์ดเก่าห่อ TableScroll เพิ่มขึ้น: ${offenders.length} > เพดาน ${CAP}\n`
-    + "= สองวงซ้อนกัน + สกอร์ลแนวนอนสองชั้น\n"
-    + "ถอดกรอบนอกออกแล้วใช้ `surface=\"auto\"` ให้ TableScroll วาดการ์ดเอง\n"
+    `การ์ดที่มีกรอบห่อ TableScroll เพิ่มขึ้น: ${offenders.length} > เพดาน ${CAP}\n`
+    + "= กรอบมนซ้อนกัน (และบางที่ได้สกอร์ลแนวนอนสองชั้นแถมมาด้วย)\n"
+    + "ถ้าตารางไม่ได้พึ่งสไตล์ของคลาสนอก ให้ถอดกรอบนอกแล้วใช้ `surface=\"auto\"`\n"
+    + "ถ้าพึ่งอยู่ ให้ **ย้ายคลาสไปไว้บน <TableScroll className=…>** ไม่ใช่ห่ออีกชั้น\n"
     + offenders.join("\n"));
   assert.equal(offenders.length, CAP,
     `ถอดได้แล้ว เหลือ ${offenders.length} แต่เพดานยังเขียน ${CAP} — รูดเพดานลง (ขึ้นไม่ได้)`);
 });
+
+/* สองจุดบนหน้าใบเสนอราคาต้องไม่ไหลกลับ — ตัวนับข้างบนเป็นเพดานรวม
+   ถ้าใครห่อกลับที่นี่แล้วไปถอดที่อื่น ยอดยังเท่าเดิมและเพดานไม่ฟ้อง */
+for (const target of [
+  "src/components/salesPlanning/QuotationLineItems.js",
+  "src/components/salesPlanning/QuotationInstallments.js",
+]) {
+  test(`${target.split("/").pop()} — คลาสการ์ดเก่าต้องอยู่บน TableScroll เอง`, () => {
+    const source = fs.readFileSync(path.join(WEBAPP, target), "utf8")
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+    assert.doesNotMatch(source, /<div className="premium-glass-table[^"]*">/,
+      "ห้ามกลับไปห่อด้วย div — กรอบมนจะซ้อนกันสามชั้นเหมือนที่ผู้ใช้ทักมา");
+    assert.match(source, /<TableScroll[^>]*premium-glass-table table-responsive/,
+      "ตารางนี้ไม่ใช่ .premium-table เซลล์ยังต้องพึ่งสไตล์ของคลาสเก่า ⇒ ย้ายมา ไม่ใช่ลบ");
+  });
+}
