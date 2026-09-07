@@ -32,7 +32,8 @@ import { SortMenu, SortDirButton } from "@/components/ui/ViewMenus";
 import DetailRow from "@/components/ui/DetailRow";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import {
-  TEAM_KIND_LABELS, allowedKindsFor, normalizeTeamCode, suggestTeamCode, teamHref,
+  SALES_TEAM_DEPARTMENT, TEAM_KIND_LABELS, allowedKindsFor, normalizeTeamCode, suggestTeamCode,
+  teamHref,
 } from "@/lib/master/teams";
 import { ROLE_LABELS, TEAM_ROLES } from "@/lib/permissions";
 import { fmtNumber } from "@/lib/format";
@@ -325,7 +326,14 @@ export default function TeamManager({ department, title, subtitle }) {
             id="unassigned"
             icon={<UserRound size={18} aria-hidden="true" />}
             title="ยังไม่อยู่ทีมไหน"
-            subtitle="คนของฝ่ายนี้ที่ยังไม่ถูกจัดเข้าทีม — คนที่ไม่มีทีมจะไม่เห็นข้อมูลของทีมไหนเลย"
+            /* ⚠️ **คำอธิบายต้องตรงกับความหมายของทีมในฝ่ายนั้น** — ทีมขายผูกสิทธิ์
+               (ไม่มีทีม = ไม่เห็นข้อมูล) ส่วนทีมปฏิบัติงานไม่แตะสิทธิ์เลย
+               🐞 ของเดิมเขียนข้อความของทีมขายไว้ตายตัว ⇒ บนจอฝ่ายบริการมันขัดกับ
+                  คำโปรยของหน้าเดียวกันตรง ๆ ("ไม่กระทบสิทธิ์การเข้าถึงข้อมูล")
+                  แล้วคนอ่านต้องเดาว่าบรรทัดไหนจริง (พบตอน UAT 2026-09-07) */
+            subtitle={department === SALES_TEAM_DEPARTMENT
+              ? "คนของฝ่ายนี้ที่ยังไม่ถูกจัดเข้าทีม — คนที่ไม่มีทีมจะไม่เห็นข้อมูลของทีมไหนเลย"
+              : "คนของฝ่ายนี้ที่ยังไม่ถูกจัดเข้าทีม — จัดคนเข้าทีมได้ที่หน้าทีม ปุ่ม “จัดสมาชิก”"}
             actions={<CountBadge count={unassigned.length} tone={unassigned.length ? "warning" : "neutral"} label="จำนวนคนที่ยังไม่อยู่ทีมไหน" />}
           >
             {unassigned.length === 0 ? (

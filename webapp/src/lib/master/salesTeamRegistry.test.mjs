@@ -3,6 +3,7 @@
 // ⚠️ ทดสอบเฉพาะส่วนที่เป็นตรรกะล้วน (ตัว hook ต้องมี React runtime จึงไม่แตะที่นี่)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { activeSalesTeams, salesTeamLabel, FALLBACK_SALES_TEAMS } from './salesTeamRegistry.js';
 import { TEAMS } from '@/lib/permissions';
 
@@ -44,4 +45,16 @@ test('⭐ ไม่มี TEAM_LABELS ในระบบแล้ว — ชื�
   const perms = await import('@/lib/permissions');
   assert.equal(perms.TEAM_LABELS, undefined, 'ห้ามเอาสำเนาชื่อทีมกลับมาไว้ในโค้ด');
   assert.ok(Array.isArray(perms.TEAMS), 'TEAMS (รหัสสามตัวที่ seed มา) ยังอยู่ — ใช้เป็นค่าสำรองและรายการห้ามลบ');
+});
+
+/* 🔴 **จอที่โชว์ "ทีมที่สังกัดอยู่ตอนนี้" ต้องแปลรหัสเป็นชื่อ** (พบตอน UAT 2026-09-07)
+   ของเดิมโมดัลจัดเข้าทีม/ย้ายทีมพิมพ์ `person.teams.join(" · ")` ⇒ พลาดสองอย่าง:
+   ① โชว์ **รหัสดิบ** ในจอที่บรรทัดถัดไปโชว์ชื่อ — ขัดกับมติ "ชื่อทีมมีบ้านเดียวคือทะเบียน"
+   ② ` · ` เป็นตัวคั่นของ "รหัส · ชื่อ" ทั้งระบบ ⇒ "KA · SV" อ่านได้ว่าทีมเดียวชื่อ SV
+   เทสต์ตรรกะจับไม่ได้ เพราะ `salesTeamLabel` เองทำงานถูกอยู่แล้ว — คนที่ผิดคือตัวเรียก
+   ⇒ ยามนี้ดูที่ตัวไฟล์ (รูปแบบเดียวกับยามของ `otherTeamCodes`) */
+test('🔴 โมดัลจัดเข้าทีม/ย้ายทีม ต้องแปลรหัสผ่านทะเบียน ไม่ใช่พิมพ์รหัสดิบ', () => {
+  const src = readFileSync(new URL('../../components/teams/TeamAssignModal.js', import.meta.url), 'utf8');
+  assert.match(src, /salesTeamLabel\(teams, code\)/, 'ต้องแปลรหัสเป็นชื่อจากทะเบียนที่จอถืออยู่');
+  assert.doesNotMatch(src, /person\.teams \|\| \[\]\)\.join\(/, 'ห้ามพิมพ์รหัสดิบต่อกันเอง');
 });
