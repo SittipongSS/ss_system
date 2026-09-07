@@ -23,7 +23,7 @@ import {
   installmentReportOutcome, paymentNotRequired, paymentRollup, previewInstallments,
 } from "@/lib/sales/salesOrderPayments";
 import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
-import { orderHasServiceRounds } from "@/lib/sales/serviceOrders";
+import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
 import styles from "./SalesOrderPaymentPanel.module.css";
 
 /* การ์ด "การชำระ" ของใบสั่งขาย (mig 0245/0246) — **แบบ ข** (มติผู้ใช้ 2026-08-13)
@@ -107,6 +107,11 @@ export default function SalesOrderPaymentPanel({
   /* ⚠️ ประกาศ **ก่อน** `gate` โดยตั้งใจ — `gate` อ่านค่านี้ ถ้าวันหนึ่งมีใครเรียก
      `gate()` ระหว่างสองบรรทัด จะได้ ReferenceError จาก TDZ แทนที่จะเงียบ */
   const hasServiceRounds = orderHasServiceRounds(order, order?.lines);
+  /* 🔑 **โชว์ช่องกว้างกว่าด่านเงิน โดยตั้งใจ** — ใบบนเส้นบริการที่บรรทัดยังไม่มีรหัส FG
+     (บรรทัด "พิมพ์เอง" ของใบเสนอราคา) ต้องกรอกช่วงครอบได้ ไม่งั้น "จ่ายถึง" ว่างตลอดกาล
+     ⚠️ **ห้ามเอาตัวนี้ไปแทน `hasServiceRounds` ที่ `gate`** — นั่นคือด่านที่บล็อกการรับรอง
+       เปลี่ยนเมื่อไร ใบจริง 22 ใบรับรองงวดไม่ได้ทันที (หยุดรับเงิน) */
+  const showCoverage = orderOnServiceLine(order);
 
   /* ⚠️ `serviceRounds` ต้องส่งเสมอ — ด่านรับรองงวดใช้ตัดสินว่าต้องมีช่วงครอบก่อนไหม
      (ไม่ส่ง = ไม่บล็อก ⇒ ใบบริการจะรับรองได้ทั้งที่ช่วงครอบว่าง ซึ่งคือกับดักเดิม) */
@@ -264,7 +269,7 @@ export default function SalesOrderPaymentPanel({
       {/* ⭐ "จ่ายถึง" — ค่าที่ทั้งเส้นบริการห้อยอยู่ (มติผู้ใช้ 2026-08-30 "จ่ายก่อนบริการเสมอ")
           บอกตรง ๆ ว่านัดหลังวันนี้จะลงคิวไม่ได้ เพื่อให้ฝ่ายขายรู้ก่อนที่ TS จะมาถาม
           ⚠️ นับเฉพาะงวดที่ **บัญชีรับรองแล้ว** — "แจ้งแล้ว" ไม่ขยับค่านี้แม้แต่วันเดียว */}
-      {hasServiceRounds && !isPreview ? (
+      {showCoverage && !isPreview ? (
         <StatusNotice tone={coverage.paidThrough ? "success" : "warning"}>
           {coverage.paidThrough ? (
             <>
@@ -315,14 +320,14 @@ export default function SalesOrderPaymentPanel({
         /* surface="auto" = ตารางมีขอบ/มุมมน/พื้นของตัวเอง (ตัวแปรกลางใน Table.module.css)
            เดิมใช้ "embedded" ซึ่งไม่มีขอบ ⇒ ตารางลอยอยู่ในการ์ดโดยไม่มีกรอบ (ผู้ใช้ขอเพิ่มขอบ)
            ⚠️ ใช้ตัวแปรของ primitive ไม่เขียน border ทับเองในโมดูลนี้ — ไม่งั้นได้ทรงที่สอง */
-        <TableScroll family="editable" surface="auto" cells="stacked" minWidth={hasServiceRounds ? 980 : 840}>
+        <TableScroll family="editable" surface="auto" cells="stacked" minWidth={showCoverage ? 980 : 840}>
           <table className={`${styles.table} ${isPreview ? styles.preview : ""}`.trim()}>
             <thead>
               <tr>
                 {single ? null : <th className={styles.seqCol}>งวด</th>}
                 <th>รายละเอียด</th>
                 <th>กำหนด / จ่ายจริง</th>
-                {hasServiceRounds ? <th>ครอบคลุมบริการ</th> : null}
+                {showCoverage ? <th>ครอบคลุมบริการ</th> : null}
                 <th className="num">ยอด</th>
                 <th>หลักฐาน</th>
                 {/* ⭐ ใบกำกับภาษีของงวด (mig 0348) — ฝ่ายขายเปิดไฟล์จากที่นี่ไปส่งลูกค้า
@@ -468,7 +473,7 @@ export default function SalesOrderPaymentPanel({
                         (มติ 2026-08-30: รอบเลื่อน/งดได้ตลอดอายุสัญญา ผูกเลขรอบแล้วเพี้ยนเงียบ)
                         ⚠️ งวดที่บัญชีรับรองแล้วแต่ช่องนี้ว่าง = ไม่ถูกนับเข้า "จ่ายถึง" ⇒ ต้องเห็นว่าว่าง
                         ไม่ใช่เงียบ ๆ (ขีดของระบบผ่าน NA ไม่ใช่ "-" ดิบ) */}
-                    {hasServiceRounds ? (() => {
+                    {showCoverage ? (() => {
                       /* ⭐ แก้ได้ในตารางเลย (มติผู้ใช้ 2026-08-30 รอบสอง) — ท่าเดียวกับ
                          ตารางไทม์ไลน์ของดีล: `DateInput compact` ในเซลล์ + ร่าง + ปุ่มบันทึกรวม
                          ⚠️ **ด่านเดียวกับ API** (`gate(row,"coverage")`) ⇒ งวดที่บัญชีรับรองแล้ว
@@ -572,7 +577,7 @@ export default function SalesOrderPaymentPanel({
                     <tr className={styles.detailRow}>
                       {/* ⚠️ ตัวเลขนี้ต้องขยับทุกครั้งที่เพิ่ม/ลดคอลัมน์ — ไม่งั้นแถวเหตุผลตีกลับ
                           กินความกว้างผิดเฉพาะแถวที่ถูกตีกลับ (เคสที่ไม่ได้เจอทุกวัน) */}
-                      <td className={styles.detail} colSpan={(single ? 7 : 8) + (hasServiceRounds ? 1 : 0)}>
+                      <td className={styles.detail} colSpan={(single ? 7 : 8) + (showCoverage ? 1 : 0)}>
                         <div className={styles.rejected}>
                           <strong>บัญชีตีกลับ · {row.rejectedByName || "ฝ่ายบัญชี"}</strong>
                           <ReadableText text={row.rejectedReason} lines={3} />

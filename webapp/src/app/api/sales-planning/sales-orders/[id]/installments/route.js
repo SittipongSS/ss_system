@@ -54,7 +54,23 @@ async function loadOrderForUser(supabase, user, id) {
     .from('sales_order_lines').select('id, fgCode').eq('salesOrderId', order.id);
   if (lineError) throw lineError;
 
-  return { order: { ...order, quotation: quotation || null, deal, lines: lines || [] } };
+  /* 🐞 **โครงการหายไปจากก้อนที่ส่งให้ด่านเงิน** — ตัวตัดสินสายธุรกิจอ่าน "โครงการก่อน
+     แล้วดีล" แต่ที่นี่แนบมาแต่ดีล ⇒ ใบที่สายมาจากโครงการถูกอ่านว่า "ไม่ใช่ใบบริการ"
+     แล้วด่าน "ต้องมีช่วงครอบก่อนรับรอง" ถูกข้ามเงียบ ๆ (fail-open)
+     ⚠️ ผู้เรียกเคยส่ง `{ project: order.project }` เข้า ctx ซึ่ง **ตัวรับไม่เคยอ่านคีย์นี้**
+       (มันรับ `projectsById`) ⇒ อ่านโค้ดแล้วเข้าใจว่าแก้แล้ว ทั้งที่ไม่เคยมีผล
+       ⇒ ทางแก้คือ **แนบของจริงมาให้** แล้วปล่อยตัวถอยของฟังก์ชันอ่าน `order.project` เอง
+     ⚠️ วัดบนฐานจริง 08/09: ไม่มีใบไหนที่พลิกเข้าด่านเงินจากการแก้นี้ (0 ใบ)
+       ⇒ ไม่มีใครถูกแช่แข็งการรับเงิน · แต่รูปิดไว้ก่อนใบถัดไปจะมา */
+  let project = null;
+  if (order.projectId) {
+    const { data, error: projectError } = await supabase
+      .from('projects').select('id, line').eq('id', order.projectId).maybeSingle();
+    if (projectError) throw projectError;
+    project = data || null;
+  }
+
+  return { order: { ...order, quotation: quotation || null, deal, project, lines: lines || [] } };
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -159,7 +175,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       paidOn, reason, billingRequestId, coversFrom, coversTo,
       taxInvoiceNo, taxInvoiceDate,
       rows: siblings, orderTotal: order.totalAmount,
-      serviceRounds: orderHasServiceRounds(order, order.lines, { project: order.project }),
+      serviceRounds: orderHasServiceRounds(order, order.lines),
     });
     if (gate) return badRequest(gate);
 
