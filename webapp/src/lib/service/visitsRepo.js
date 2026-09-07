@@ -1,5 +1,6 @@
 // ── Data access ของรอบบริการ + ตารางนัด (mig 0188) ───────────────────────
 import { forbidden, notFound } from '@/lib/http';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { canDoFieldWork } from '@/lib/permissions';
 import { visitWriteAccess } from './visitAccess';
 import { VISIT_STATUSES, isClosedVisit, isOpenVisit } from './visitStatus';
@@ -119,16 +120,19 @@ export async function siteScheduleContext(supabase, siteIds = [], todayIso) {
     return out.get(id);
   };
 
-  const { data: done, error: doneError } = await supabase
+  /* ⚠️ ซอยลิสต์ข้างนอก — URL ยาวเกิน 16 KB แล้วซ็อกเก็ตถูกตัด (lib/supabaseInChunks)
+     ⭐ ลำดับไม่ต้องเรียงซ้ำ: ข้างล่างหา **ค่ามากสุดต่อไซต์** ด้วยการเทียบทีละแถว
+     ซึ่งไม่ขึ้นกับลำดับ · `.order()` คงไว้ให้ fetchAll ไล่หน้าได้นิ่ง */
+  const done = await fetchAllInChunks(ids, (chunk) => supabase
     .from('service_visits')
-    .select('siteId, actualDate')
-    .in('siteId', ids)
+    .select('siteId, actualDate, id')
+    .in('siteId', chunk)
     /* 🐞 เดิม `.eq('status','done')` ⇒ นัดที่เติมได้ 4 จาก 10 เครื่อง (partial) ไม่นับเป็น
        วันเติมล่าสุด ทั้งที่เติมจริง แล้วระบบเตือน "น้ำหอมจะหมด" ซ้ำทั้งที่เพิ่งไปเติมมา */
     .in('status', CLOSED_VISITED)
     .in('kind', ['refill', 'maintenance', 'install'])
-    .order('actualDate', { ascending: false });
-  if (doneError) throw doneError;
+    .order('actualDate', { ascending: false })
+    .order('id', { ascending: true }));
   for (const row of done || []) {
     const entry = seed(row.siteId);
     if (row.actualDate && (!entry.lastRefillDate || row.actualDate > entry.lastRefillDate)) {
@@ -136,17 +140,18 @@ export async function siteScheduleContext(supabase, siteIds = [], todayIso) {
     }
   }
 
-  const { data: upcoming, error: upcomingError } = await supabase
+  /* ⭐ เช่นเดียวกัน — ข้างล่างหา **ค่าน้อยสุดต่อไซต์** ไม่ขึ้นกับลำดับ */
+  const upcoming = await fetchAllInChunks(ids, (chunk) => supabase
     .from('service_visits')
-    .select('siteId, scheduledDate')
-    .in('siteId', ids)
+    .select('siteId, scheduledDate, id')
+    .in('siteId', chunk)
     /* 🐞 เดิม `.eq('status','scheduled')` ⇒ นัดที่เจ้าหน้าที่กดเริ่มงานแล้ว (in_progress) ไม่นับเป็น
        "มีนัดครอบ" ⇒ refillStatus เด้ง soon/overdue ขณะที่เจ้าหน้าที่ยืนอยู่หน้าเครื่องพอดี
        ⚠️ ร่างไม่นับ — ยังไม่ผ่านด่าน ยังไม่ใช่นัดที่ครอบอะไรได้ */
     .in('status', OPEN_STATUSES)
     .gte('scheduledDate', todayIso)
-    .order('scheduledDate', { ascending: true });
-  if (upcomingError) throw upcomingError;
+    .order('scheduledDate', { ascending: true })
+    .order('id', { ascending: true }));
   for (const row of upcoming || []) {
     const entry = seed(row.siteId);
     if (row.scheduledDate && (!entry.nextVisitDate || row.scheduledDate < entry.nextVisitDate)) {
@@ -164,13 +169,15 @@ export async function assetsForSites(supabase, siteIds = []) {
   if (!ids.length) return out;
   /* 🔴 ห่อ fetchAll ด้วยเหตุผลเดียวกับ assetCountsBySite — เครื่อง 1,239 ตัวเกิน
      เพดาน 1,000 แถว และตัวเรียกส่ง siteId ของทุกไซต์เข้ามา */
-  const data = await fetchAll(() => supabase
+  /* ⚠️ ซอยลิสต์ข้างนอก · ซอยตาม `siteId` ⇒ แถวของไซต์เดียวกันอยู่ก้อนเดียวเสมอ
+     ลำดับภายในไซต์จึงไม่เสีย ไม่ต้องเรียงซ้ำ */
+  const data = await fetchAllInChunks(ids, (chunk) => supabase
     .from('service_assets')
     /* ⚠️ ต้องมี `qty` ด้วย — ภาระของเจ้าหน้าที่นับเป็น **จุด** ไม่ใช่แถว (visitLoad.js)
        ชุดอุปกรณ์ 1 แถวมีได้หลายจุด (สบู่ 242 จุด) · ไม่ดึงมา = ตารางจัดคิวประเมินงานต่ำ
        โดยไม่มีอะไรฟ้อง (พบตอน UAT 2026-08-28: ไซต์ 14 จุด ขึ้นเป็น "3 จุด") */
     .select('id, siteId, label, status, condition, qty, bottleMl, mlPerDay, installedAt, productName')
-    .in('siteId', ids).order('id', { ascending: true }));
+    .in('siteId', chunk).order('id', { ascending: true }));
   for (const row of data || []) {
     if (!out.has(row.siteId)) out.set(row.siteId, []);
     out.get(row.siteId).push(row);
@@ -183,10 +190,10 @@ export async function assetsForSites(supabase, siteIds = []) {
 export async function sitesForVisits(supabase, visits = []) {
   const ids = [...new Set(visits.map((v) => v.siteId).filter(Boolean))];
   if (!ids.length) return new Map();
-  const { data, error } = await supabase
+  /* ผลเข้า Map ทันที ⇒ ลำดับไม่มีความหมาย */
+  const data = await fetchAllInChunks(ids, (chunk) => supabase
     .from('service_sites')
     .select('id, code, name, routeZone, customerName, accessFrom, accessTo, accessDays, accessNote, mapUrl, contactName, contactPhone')
-    .in('id', ids);
-  if (error) throw error;
+    .in('id', chunk).order('id', { ascending: true }));
   return new Map((data || []).map((row) => [row.id, row]));
 }

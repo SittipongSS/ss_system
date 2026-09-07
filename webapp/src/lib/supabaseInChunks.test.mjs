@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { fetchInChunks, IN_CHUNK_SIZE } from "./supabaseInChunks.js";
+import { fetchInChunks, fetchAllInChunks, byColumns, IN_CHUNK_SIZE } from "./supabaseInChunks.js";
 import { guardedFetch, POSTGREST_URL_LIMIT } from "./supabaseAdmin.js";
 
 /* ── ลิสต์ id ที่ยาวเกินทำให้ PostgREST ต่อไม่ติด (2026-09-07) ─────────────────
@@ -106,4 +106,92 @@ test("/api/products ต้องยิงทะเบียนสรรพสา
   assert.match(source, /fetchInChunks\(/, "จุดนี้คือจุดที่พังจริง — ห้ามกลับไปใช้ .in() ตรง ๆ");
   assert.doesNotMatch(source, /\.in\('productId',\s*rows\.map/,
     "ลิสต์ทั้งทะเบียนยาวเกิน 16 KB แล้ว");
+});
+
+/* ── fetchAllInChunks — ซอยข้างนอก ไล่หน้าข้างใน ───────────────────────────
+   🪤 `fetchAll` **ไม่ได้ช่วยเรื่อง URL ยาว** — มันไล่ `.range()` ทีละหน้าโดยส่ง
+   ตัวกรองก้อนเดิมไปทุกหน้า ⇒ ลิสต์ยาวเกินก็ยาวเกินทุกหน้า · สองอย่างนี้แก้คนละ
+   ปัญหาและต้องซ้อนกันตามลำดับนี้เท่านั้น */
+
+/** query ปลอมที่ทำตัวเหมือน PostgREST: ตัดที่ 1,000 แถวต่อหน้า + เรียงต่อก้อน */
+function fakeTable(rowsByKey, pageSize = 1000) {
+  const calls = [];
+  return {
+    calls,
+    query(chunk, order) {
+      const rows = chunk.flatMap((k) => rowsByKey[k] || []);
+      if (order) rows.sort(order);
+      calls.push({ size: chunk.length, rows: rows.length });
+      return {
+        range(from, to) {
+          return Promise.resolve({ data: rows.slice(from, Math.min(to + 1, from + pageSize)), error: null });
+        },
+      };
+    },
+  };
+}
+
+test("ซอยข้างนอก ไล่หน้าข้างใน — ได้ครบทั้งที่เกินทั้งสองเพดาน", async () => {
+  /* 400 คีย์ × 6 แถว = 2,400 แถว ⇒ เกินเพดานแถว 1,000 **และ** ลิสต์ยาวเกิน URL */
+  const rowsByKey = {};
+  const keys = Array.from({ length: 400 }, (_, i) => `SVS-${String(i).padStart(4, "0")}`);
+  for (const k of keys) rowsByKey[k] = Array.from({ length: 6 }, (_, j) => ({ siteId: k, id: `${k}-${j}` }));
+  const t = fakeTable(rowsByKey);
+  const rows = await fetchAllInChunks(keys, (chunk) => t.query(chunk));
+  assert.equal(rows.length, 2400, "ต้องได้ครบ ไม่โดนตัดที่ 1,000");
+  assert.ok(t.calls.every((c) => c.size <= IN_CHUNK_SIZE), `ก้อนต้องไม่เกิน ${IN_CHUNK_SIZE}`);
+  assert.equal(new Set(rows.map((r) => r.id)).size, 2400, "ห้ามมีแถวซ้ำจากการไล่หน้า");
+});
+
+test("ลิสต์ว่างต้องไม่ยิงเลย", async () => {
+  let calls = 0;
+  const rows = await fetchAllInChunks([], () => { calls += 1; return { range: () => Promise.resolve({ data: [], error: null }) }; });
+  assert.deepEqual(rows, []);
+  assert.equal(calls, 0);
+});
+
+test("เรียงซ้ำหลังรวมก้อน — PostgREST เรียงต่อก้อน ไม่ได้เรียงทั้งชุด", async () => {
+  /* ก้อนแรกได้ชื่อ z, ก้อนสองได้ชื่อ a ⇒ ถ้าไม่เรียงซ้ำจะได้ z ก่อน a */
+  const rowsByKey = {};
+  const keys = Array.from({ length: 300 }, (_, i) => `k${String(i).padStart(3, "0")}`);
+  keys.forEach((k, i) => { rowsByKey[k] = [{ siteId: k, name: i < 150 ? "z" : "a", id: k }]; });
+  const t = fakeTable(rowsByKey);
+  const unsorted = await fetchAllInChunks(keys, (chunk) => t.query(chunk));
+  assert.equal(unsorted[0].name, "z", "ยืนยันว่าถ้าไม่เรียงซ้ำ ลำดับข้ามก้อนเพี้ยนจริง");
+  const sorted = await fetchAllInChunks(keys, (chunk) => t.query(chunk), { sort: byColumns("name", "id") });
+  assert.equal(sorted[0].name, "a", "เรียงซ้ำแล้วต้องได้ a ขึ้นก่อน");
+  assert.deepEqual(sorted.map((r) => r.name), [...sorted.map((r) => r.name)].sort());
+});
+
+test("byColumns — เรียงหลายชั้น ทิศทางได้ และค่าว่างไปท้ายเสมอ", () => {
+  const rows = [
+    { a: 2, b: "x" }, { a: 1, b: "y" }, { a: 1, b: "x" }, { a: null, b: "z" },
+  ];
+  assert.deepEqual([...rows].sort(byColumns("a", "b")).map((r) => `${r.a}${r.b}`),
+    ["1x", "1y", "2x", "nullz"]);
+  assert.deepEqual([...rows].sort(byColumns(["a", "desc"])).map((r) => r.a),
+    [2, 1, 1, null], "ค่าว่างไปท้ายแม้เรียงลง (ตาม NULLS LAST ของ PostgREST)");
+});
+
+/* ── สัญญาข้ามไฟล์: โมดูลบริการต้องไม่กลับไปยิงก้อนเดียว ─────────────────── */
+test("โมดูลบริการต้องซอยลิสต์ทุกจุดที่ .in() รับลิสต์ที่โตได้", () => {
+  const files = [
+    "src/app/api/service/customers/[customerId]/zones/route.js",
+    "src/lib/service/sitesRepo.js",
+    "src/lib/service/visitsRepo.js",
+    "src/app/api/service/intake/route.js",
+  ];
+  const offenders = [];
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(WEBAPP, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const hit of source.matchAll(/\.in\(\s*[^,]+,\s*([^)]*)\)/g)) {
+      const arg = hit[1].trim();
+      /* ลิสต์คงที่ในโค้ด (สถานะ/ชนิด) กับตัวแปร `chunk` คือของที่ถูกแล้ว */
+      if (arg === "chunk" || arg.startsWith("[") || /^[A-Z_]+$/.test(arg)) continue;
+      offenders.push(`${file} → .in(…, ${arg})`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "โมดูลบริการรับข้อมูลเก่าเข้ามาทีเดียว (F-8) ⇒ ลิสต์กระโดดเต็มขนาดในก้าวเดียว\n"
+    + "ต้องยิงผ่าน fetchAllInChunks เสมอ\n" + offenders.join("\n"));
 });

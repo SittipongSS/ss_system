@@ -1,3 +1,5 @@
+import { fetchAll } from './supabaseFetchAll.js';
+
 // ── ส่งลิสต์ id เข้า .in() ทีละก้อน ไม่ให้ URL ยาวเกินจนต่อไม่ติด ────────────
 //
 // 🐞 **บั๊กจริง (พบ 2026-09-07):** `/api/products` ตอบ 500 `TypeError: fetch failed`
@@ -47,4 +49,46 @@ export async function fetchInChunks(ids, makeQuery, { chunkSize = IN_CHUNK_SIZE 
     rows.push(...(data || []));
   }
   return { data: rows, error: null };
+}
+
+/**
+ * `fetchAll` ซ้อนใน `fetchInChunks` — ใช้กับจุดที่ทั้งสองปัญหาเจอกัน
+ *
+ * ⚠️ **`fetchAll` อย่างเดียวไม่ช่วยเรื่อง URL ยาว** — มันไล่ `.range()` ทีละหน้า
+ * แต่ **ส่งตัวกรองก้อนเดิมไปทุกหน้า** ⇒ ถ้าลิสต์ยาวเกิน ทุกหน้าก็ยาวเกินเหมือนกัน
+ * ⇒ ต้องซอยลิสต์ **ข้างนอก** แล้วค่อยไล่หน้า **ข้างใน** ตามลำดับนี้เท่านั้น
+ *
+ * @param ids       ลิสต์ค่าที่จะกรอง
+ * @param makeQuery `(chunk) => query` — ต้องมี `.order()` ที่นิ่ง (กติกาเดียวกับ fetchAll)
+ * @param sort      ตัวเปรียบเทียบสำหรับเรียงซ้ำหลังรวมก้อน
+ *                  🔴 **PostgREST เรียงต่อก้อน ไม่ได้เรียงทั้งชุด** — จุดไหนที่ผลถูกใช้
+ *                  ตามลำดับจริง (ไม่ใช่ยัดเข้า Map หรือหาค่ามาก/น้อยสุด) ต้องส่งมา
+ * @returns ทุกแถวรวมกัน — โยน error แบบเดียวกับ `fetchAll`
+ */
+export async function fetchAllInChunks(ids, makeQuery, { chunkSize = IN_CHUNK_SIZE, sort = null } = {}) {
+  const unique = [...new Set((ids || []).filter((id) => id !== null && id !== undefined))];
+  if (!unique.length) return [];
+  const size = Math.max(1, Math.floor(chunkSize));
+  const rows = [];
+  for (let from = 0; from < unique.length; from += size) {
+    rows.push(...await fetchAll(() => makeQuery(unique.slice(from, from + size))));
+  }
+  return sort ? rows.sort(sort) : rows;
+}
+
+/** เรียงตามคอลัมน์ตามลำดับที่ให้มา — คู่กับ `sort` ของ fetchAllInChunks
+ *  ใช้ชื่อคอลัมน์ชุดเดียวกับที่ส่งให้ `.order()` จะได้ไม่หลุดกัน */
+export function byColumns(...columns) {
+  return (a, b) => {
+    for (const column of columns) {
+      const [key, dir] = Array.isArray(column) ? column : [column, 'asc'];
+      const x = a?.[key], y = b?.[key];
+      if (x === y) continue;
+      /* ค่าว่างไปท้ายเสมอ ไม่ว่าจะเรียงขึ้นหรือลง — PostgREST ตั้งต้น NULLS LAST */
+      if (x === null || x === undefined) return 1;
+      if (y === null || y === undefined) return -1;
+      return (x < y ? -1 : 1) * (dir === 'desc' ? -1 : 1);
+    }
+    return 0;
+  };
 }
