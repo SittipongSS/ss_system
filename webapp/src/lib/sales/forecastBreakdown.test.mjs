@@ -10,6 +10,8 @@ import {
   allocateToLines,
   forecastBreakdownOfDeal,
   forecastMonthOfDeal,
+  fgCategoryCode,
+  fgCodeInText,
   gridForecastLines,
   isScheduledRow,
   monthsInRows,
@@ -320,4 +322,126 @@ test('แถวที่ไม่มี monthBasis ถือว่ารู้�
   assert.equal(isScheduledRow({ month: '2026-09' }), true);
   assert.equal(isScheduledRow({ month: '2026-09', monthBasis: 'forecastMonth' }), false);
   assert.equal(isScheduledRow({ month: null }), false);
+});
+
+/* ── หมวดจากรหัส FG (มติผู้ใช้ 2026-09-07) ─────────────────────────────────
+   "ต้องอ้างอิงหมวดจริง หลายหมวดก็ต้องหลายหมวด · ถ้ามีใบเสนอราคา ก็ดึงหมวดมาจากหมวดของ FG"
+   ⇒ ห้ามยืมหมวดของดีลมาแปะ แต่รหัส FG บนบรรทัดถือเป็นหมวดจริง */
+
+test('รหัส FG อุ้มหมวดไว้ในตัว — อ่านได้ทั้งรูปเต็มและรูปสั้นที่คนพิมพ์เอง', () => {
+  assert.equal(fgCategoryCode('FG-336-01-009-1290'), '01-009', 'รูปเต็มจากทะเบียน');
+  assert.equal(fgCategoryCode('FG-321-03-002'), '03-002', 'รูปสั้นที่คนพิมพ์ในช่องรายละเอียด');
+  assert.equal(fgCategoryCode('fg-088-04-005'), '04-005', 'ตัวพิมพ์เล็กก็ต้องอ่านออก');
+  assert.equal(fgCategoryCode('PERFUME LOTION'), null, 'ข้อความล้วนต้องไม่ถูกเดา');
+  assert.equal(fgCategoryCode(''), null);
+  assert.equal(fgCategoryCode(null), null);
+});
+
+test('อ่านรหัส FG ที่ฝังอยู่ในข้อความได้ แต่ไม่จับอะไรที่ไม่ใช่รหัส', () => {
+  assert.equal(fgCodeInText('FG-321-03-002 ขวดแก้ว'), 'FG-321-03-002');
+  assert.equal(fgCodeInText('สินค้า FG-336-01-009-1290 จำนวน 100'), 'FG-336-01-009-1290');
+  assert.equal(fgCodeInText('BODY PERFUME'), null);
+  assert.equal(fgCodeInText('FG-12-3'), null, 'รูปไม่ครบต้องไม่ถูกนับ');
+});
+
+const fgProduct = (over = {}) => ({
+  id: 'P9', fgCode: 'FG-336-01-009-1290', productDescription: 'สเปรย์ 50 ml',
+  categoryCode: '01-009', volume: 50, volumeUnit: 'ml', saleUnit: 'ชิ้น', ...over,
+});
+
+test('บรรทัดที่ไม่มี productId แต่มีรหัส FG ในทะเบียน ได้ทั้งหมวดและปริมาตร', () => {
+  const [row] = forecastBreakdownOfDeal(
+    { id: 'D1', projectValue: 50000, forecastSource: 'quotation' },
+    {
+      quotationLines: [line({ productId: null, fgCode: 'FG-336-01-009-1290', lineTotal: 50000 })],
+      productById: new Map(),
+      productByFg: new Map([['FG-336-01-009-1290', fgProduct()]]),
+    },
+  );
+  assert.equal(row.categoryCode, '01-009');
+  assert.equal(row.categoryFrom, 'fg-registry');
+  assert.equal(row.volume, 50, 'อยู่ในทะเบียน = ได้ปริมาตรด้วย');
+  assert.equal(row.fcAmount, 50000);
+});
+
+test('รหัส FG ที่พิมพ์ในช่องรายละเอียดและไม่มีในทะเบียน — ได้หมวด แต่ไม่ได้ปริมาตร', () => {
+  const [row] = forecastBreakdownOfDeal(
+    { id: 'D2', projectValue: 750000, forecastSource: 'quotation' },
+    {
+      quotationLines: [line({ productId: null, fgCode: null, description: 'FG-321-03-002', lineTotal: 750000 })],
+      productById: new Map(),
+      productByFg: new Map(),
+    },
+  );
+  assert.equal(row.categoryCode, '03-002', 'รหัสบอกหมวดได้แม้ไม่มีในทะเบียน');
+  assert.equal(row.categoryFrom, 'fg-text');
+  assert.equal(row.volume, null, 'ไม่มีในทะเบียน = ไม่มีปริมาตรให้ ห้ามเดา');
+  assert.equal(row.fcAmount, 750000);
+});
+
+test('ข้อความล้วนที่ไม่มีรหัสอะไรเลย ยังลงกอง "ไม่ระบุหมวด" — ห้ามยืมหมวดของดีล', () => {
+  const [row] = forecastBreakdownOfDeal(
+    { id: 'D3', projectValue: 1140000, forecastSource: 'quotation', categoryCode: '01-002' },
+    {
+      quotationLines: [line({ productId: null, fgCode: null, description: 'PERFUME LOTION', lineTotal: 1140000 })],
+      productById: new Map(),
+      productByFg: new Map(),
+    },
+  );
+  assert.equal(row.categoryCode, null);
+  assert.equal(row.categoryLabel, UNCATEGORIZED);
+  assert.equal(row.categoryFrom, null);
+});
+
+/* ── ใบสำรอง: ดีลที่ไม่ได้เดินตามใบ แต่มีใบอยู่ (มติผู้ใช้ 2026-09-07) ───────
+   ทางเดียวที่ดีล Won จะได้รายหมวด — FC ของดีลปิดถูกแช่แข็ง ระบบไม่สลับให้เดินตามใบ */
+
+test('ดีลที่ยังไม่กรอกรายหมวด ยืม "รายการ" จากใบมาแตกบรรทัด แต่ยอดยังเป็นของดีล', () => {
+  const rows = forecastBreakdownOfDeal(
+    { id: 'D4', projectValue: 100000, forecastSource: 'manual', stage: 'won' },
+    {
+      valueItems: [],
+      productById: new Map([['P1', product()]]),
+      fallbackQuotationLines: [
+        line({ id: 'L1', lineTotal: 90000, sortOrder: 0 }),
+        line({ id: 'L2', lineTotal: 30000, sortOrder: 1 }),
+      ],
+      fallbackQuoteNumber: 'QT-26080001-0',
+    },
+  );
+  assert.equal(rows.length, 2, 'แตกตามบรรทัดของใบ');
+  assert.equal(rows[0].source, 'quotation_lines');
+  assert.equal(rows[0].quoteNumber, 'QT-26080001-0');
+  assert.equal(rows[0].categoryCode, '01-002', 'หมวดมาจากทะเบียนสินค้าของบรรทัด');
+  assert.equal(
+    rows.reduce((sum, row) => sum + row.fcAmount, 0), 100000,
+    'ยอดรวมยังเป็น projectValue ของดีล ไม่ใช่ยอดบนใบ (120,000)',
+  );
+});
+
+test('แถวที่ AE กรอกเองชนะใบสำรองเสมอ — ของที่คนพิมพ์ไว้ต้องไม่ถูกทับ', () => {
+  const rows = forecastBreakdownOfDeal(
+    { id: 'D5', projectValue: 90000, forecastSource: 'manual' },
+    {
+      valueItems: [{ seq: 1, categoryCode: '02-001', qty: 1, unit: 'ชิ้น', unitPrice: 90000, amount: 90000 }],
+      productById: new Map([['P1', product()]]),
+      fallbackQuotationLines: [line({ lineTotal: 50000 })],
+      fallbackQuoteNumber: 'QT-26080002-0',
+    },
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].source, 'manual');
+  assert.equal(rows[0].categoryCode, '02-001');
+  assert.equal(rows[0].quoteNumber, null);
+});
+
+test('ไม่มีทั้งแถวที่กรอกและใบสำรอง — ยังเหลือแถวเดียวที่ถือยอดไว้ครบ', () => {
+  const rows = forecastBreakdownOfDeal(
+    { id: 'D6', projectValue: 110000, forecastSource: 'manual' },
+    { valueItems: [], productById: new Map(), fallbackQuotationLines: [] },
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].source, 'manual');
+  assert.equal(rows[0].fcAmount, 110000);
+  assert.equal(rows[0].categoryLabel, UNCATEGORIZED);
 });

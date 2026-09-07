@@ -82,6 +82,7 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'quoteNumber', label: 'เลขที่ใบเสนอราคา', width: 18 },
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
   { key: 'categoryName', label: 'ชื่อหมวด', width: 26 },
+  { key: 'categoryFromLabel', label: 'หมวดมาจาก', width: 17 },
   { key: 'fgCode', label: 'รหัส FG', width: 14 },
   { key: 'description', label: 'รายละเอียด', width: 34 },
   { key: 'qty', label: 'จำนวน', width: 11, number: true },
@@ -93,7 +94,23 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'amount', label: 'มูลค่าบรรทัด', width: 14, money: true },
 ];
 
-const SOURCE_LABEL = { quotation: 'ใบเสนอราคา', manual: 'กรอกเอง' };
+const SOURCE_LABEL = {
+  quotation: 'ใบเสนอราคา',
+  manual: 'กรอกเอง',
+  /* ดีลที่ FC ไม่ได้เดินตามใบ แต่รายงานยืม **รายการ** ในใบมาแตกบรรทัด (ยอดยังเป็น
+     ของดีล) — ส่วนใหญ่คือดีล Won ที่ FC แช่แข็งแล้ว (มติผู้ใช้ 2026-09-07) */
+  quotation_lines: 'รายการจากใบ',
+};
+
+/* หมวดของบรรทัดมาจากไหน — ฝ่ายวางแผนต้องแยกออกว่าแถวไหนมีข้อมูลสินค้าครบ
+   และแถวไหนรู้แค่หมวดเพราะอ่านจากรหัส FG ที่พิมพ์ไว้ (ไม่มีปริมาตรให้) */
+const CATEGORY_FROM_LABEL = {
+  product: 'ทะเบียนสินค้า',
+  manual: 'AE กรอก',
+  'fg-registry': 'รหัส FG',
+  'fg-code': 'รหัส FG (ไม่มีในทะเบียน)',
+  'fg-text': 'รหัส FG ในรายละเอียด',
+};
 
 /* ⚠️ แถวที่เดือนไม่ได้มาจาก "วันที่สิ้นสุด" ต้องอ่านออกทันที — ไม่งั้นฝ่ายวางแผนผลิต
    จะเชื่อว่าเป็นเดือนส่งของจริงทั้งไฟล์ ทั้งที่ 42% ของยอดยังเป็นเดือนที่ถอยมาจาก
@@ -236,6 +253,7 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
       stage: STAGE_LABELS?.[row.stage] || row.stage,
       team: teamNameOf(meta.teamNames, row.team),
       sourceLabel: SOURCE_LABEL[row.source] || row.source,
+      categoryFromLabel: CATEGORY_FROM_LABEL[row.categoryFrom] || null,
       monthBasisLabel: MONTH_BASIS_LABEL[row.monthBasis] || MONTH_BASIS_LABEL.expectedCloseDate,
     })),
     `${stamp} · ${MONTH_AXIS_NOTE}`
