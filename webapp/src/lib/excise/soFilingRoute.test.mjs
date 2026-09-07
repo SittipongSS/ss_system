@@ -71,11 +71,15 @@ test("ทั้งลิสต์ SO ที่รอยื่นและกา�
 
 // 🪤 ลิสต์ id ยาวเกิน ~16 KB = PostgREST ต่อไม่ติด แล้วโยน TypeError ดิบ ๆ
 // (ดู lib/supabaseInChunks.js) · จำนวน SO ที่ค้างยื่นโตตามงาน จึงข้ามเส้นได้เอง
+// ใช้ตัวห่อกลาง `fetchAllInChunks` (ซอยนอก ไล่หน้าใน) ไม่ประกอบเอง — ทั้งระบบ
+// พูดสำนวนเดียว คนอ่านทีหลังไม่ต้องหยุดคิดว่าจุดนี้ต่างจากที่อื่นตรงไหน
 test("โหลดเลขใบเสนอราคาแบบยิงทีละก้อน ไม่ใช่ .in() ก้อนเดียว", () => {
   assert.match(
     routeSource,
-    /fetchInChunks\(\s*available\.map\(\(salesOrder\) => salesOrder\.quotationId\)/,
+    /fetchAllInChunks\(\s*available\.map\(\(salesOrder\) => salesOrder\.quotationId\)/,
   );
+  // ทุกก้อนต้องมีลำดับที่นิ่ง ไม่งั้นการไล่หน้าในก้อนได้แถวซ้ำ+แถวหายพร้อมกัน
+  assert.match(routeSource, /\.from\("quotations"\)[\s\S]{0,120}\.order\("id"/);
 });
 
 // โมดัลต้องโชว์รายการที่จะยื่นจริง ไม่ใช่แค่จำนวน — API ส่ง lines มาครบอยู่แล้ว
