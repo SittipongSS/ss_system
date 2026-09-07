@@ -18,7 +18,7 @@ import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrou
 import { usePagination } from "@/lib/usePagination";
 import { useCan, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
-import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
+import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
 import Segmented from "@/components/ui/Segmented";
@@ -53,10 +53,24 @@ function paymentCell(payment) {
      ⚠️ ตัวเลขยังเป็นพระเอกของช่อง (ชิดขวา tabular กวาดตาเทียบข้ามแถวได้) บรรทัดสถานะ
      จึงเล็กและจางกว่า ไม่ใช่ป้ายเต็มตัว — ไม่งั้นคอลัมน์นี้จะแย่งสายตาจากคอลัมน์สถานะเอกสาร */
   const note = salesOrderPaymentNote(payment);
+  /* ⭐ ใบกำกับภาษี (mig 0348 · มติผู้ใช้ 2026-09-07) — บรรทัดของตัวเอง ไม่ปนกับบรรทัด
+     สถานะเงินข้างบน เพราะเป็นคนละแกนและเดินไม่พร้อมกัน (ใบที่เก็บครบแล้วยังค้างเอกสารได้)
+     ⚠️ เงียบเมื่อยังไม่มีงวดที่ต้องมีใบ — ไม่งั้นคอลัมน์นี้มีสามบรรทัดทุกแถวทั้งหน้า */
+  const invoice = salesOrderTaxInvoiceNote(payment);
   return (
     <>
       <span className={tone} title={why}>{paid}/{count}</span>
       {note ? <span className={`cell-sub ${NOTE_TONE[note.tone] || ""}`.trim()}>{note.label}</span> : null}
+      {invoice ? (
+        <span
+          className={`cell-sub ${NOTE_TONE[invoice.tone] || ""}`.trim()}
+          title={invoice.tone === "success"
+            ? "ออกใบกำกับครบทุกงวดที่ลูกค้าจ่ายแล้ว"
+            : "นับเฉพาะงวดที่ลูกค้าจ่ายแล้ว — ฝ่ายบัญชีเป็นคนบันทึกใบกำกับ"}
+        >
+          {invoice.label}
+        </span>
+      ) : null}
     </>
   );
 }

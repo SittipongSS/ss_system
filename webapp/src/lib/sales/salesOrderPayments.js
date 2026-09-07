@@ -546,6 +546,12 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
     const overdue = list.filter(
       (r) => r.status !== 'confirmed' && r.dueDate && todayIso && String(r.dueDate) < String(todayIso),
     ).length;
+    /* ⭐ ใบกำกับภาษี (mig 0348) — **คนละแกนกับเงิน** จึงนับแยก ไม่ใช่ยัดรวมกับ `paid`
+       ฐานคือ "งวดที่ต้องมีใบ" = งวดที่แจ้ง/รับรองแล้ว (บริษัทเก็บ VAT ⇒ จ่ายแล้วต้องมีใบ)
+       ไม่ใช่จำนวนงวดทั้งใบ — งวดที่ยังไม่ถึงกำหนดจ่ายยังไม่มีเงินให้ออกใบ
+       ⚠️ ต้องมี `taxInvoiceNo` ใน `.select()` ของผู้เรียก ไม่งั้นได้ 0 ทุกใบเงียบ ๆ */
+    const needsInvoice = list.filter((r) => ['reported', 'confirmed'].includes(r.status));
+    const invoiced = needsInvoice.filter((r) => String(r.taxInvoiceNo || '').trim()).length;
     return {
       tracked: true,
       paid,
@@ -554,11 +560,16 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
       overdue,
       reviewing: list.filter((r) => r.status === 'reported').length,
       rejected: list.filter((r) => r.status === 'rejected').length,
+      invoiceNeeded: needsInvoice.length,
+      invoiced,
     };
   }
   const planned = paymentScheduleRows(plan).length;
   if (!planned) return null;
-  return { tracked: false, paid: 0, count: planned, complete: false, overdue: 0, reviewing: 0, rejected: 0 };
+  return {
+    tracked: false, paid: 0, count: planned, complete: false, overdue: 0, reviewing: 0, rejected: 0,
+    invoiceNeeded: 0, invoiced: 0,
+  };
 }
 
 /**
@@ -585,4 +596,27 @@ export function salesOrderPaymentNote(payment) {
   if (payment.reviewing) return { label: `รอบัญชีรับรอง ${payment.reviewing} งวด`, tone: 'warning' };
   if (payment.complete) return { label: 'เก็บครบแล้ว', tone: 'success' };
   return { label: 'รอลูกค้าชำระ', tone: 'idle' };
+}
+
+/**
+ * ใบกำกับภาษีของใบนี้ออกครบหรือยัง — บรรทัดของตารางรายการ SO (มติผู้ใช้ 2026-09-07)
+ *
+ * > *"ฝั่ง SA จะดูจากระบบบริหารงานขาย รู้ได้ไงว่างวดไหนมีใบกำกับแล้ว"*
+ *
+ * ⭐ **แยกจาก `salesOrderPaymentNote`** — เงินกับเอกสารเป็นคนละแกนและเดินไม่พร้อมกัน
+ * (กติกาเดียวกับที่หน้าทะเบียนของบัญชีแยกเป็นสองคิว) · ยัดรวมบรรทัดเดียวเมื่อไร
+ * เรื่องที่ด่วนกว่าจะกลบอีกเรื่องหายทุกครั้ง
+ *
+ * ⚠️ **เงียบเมื่อยังไม่มีงวดที่ต้องมีใบ** — ใบที่ลูกค้ายังไม่จ่ายสักงวดไม่ใช่ของค้าง
+ * เอกสาร · ขึ้นบรรทัดทุกแถวเมื่อไรคอลัมน์นี้จะกลายเป็นเสียงรบกวนทั้งหน้า
+ *
+ * @returns {{label: string, tone: 'warning'|'success'}|null}
+ */
+export function salesOrderTaxInvoiceNote(payment) {
+  if (!payment?.tracked) return null;
+  const needed = Number(payment.invoiceNeeded) || 0;
+  if (!needed) return null;
+  const invoiced = Number(payment.invoiced) || 0;
+  if (invoiced >= needed) return { label: 'ใบกำกับครบ', tone: 'success' };
+  return { label: `ใบกำกับ ${invoiced}/${needed}`, tone: 'warning' };
 }
