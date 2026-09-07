@@ -135,7 +135,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ค่อยใช้อังกฤษ (ทะเบียนมีทั้งสองช่อง และบางแถวกรอกมาไม่ครบ) */
   const categoryNames = new Map(productTypes.data.map((row) => [
     `${row.mainCategoryCode}-${row.typeCode}`,
-    [row.mainCategoryName, row.nameTh || row.nameEn].filter(Boolean).join(' · ') || null,
+    /* ⭐ **แยกสองช่อง หมวดหลัก · หมวดย่อย** (มติผู้ใช้ 2026-09-08) — เดิมต่อเป็น
+       สตริงเดียว "ODM · เทียนหอม" ซึ่งกรอง/จัดกลุ่มใน Excel ตามหมวดหลักไม่ได้เลย
+       ต้องมานั่งแยกข้อความเอง · ฝ่ายวางแผนดูรวมทั้งกลุ่มก่อน แล้วค่อยเจาะชนิด */
+    { main: row.mainCategoryName || null, sub: row.nameTh || row.nameEn || null },
   ]));
   /* ป้ายทีมของไฟล์ — ใช้ทั้งหัวเรื่อง (ขอบเขต) และคอลัมน์ "ทีม" ในชีตรายดีล
      ⚠️ อ่านไม่ได้ = รหัสดิบ แต่ต้องส่งเสียง (ไฟล์ที่ขึ้นรหัสแทนชื่อคืออาการเดียวที่เห็น) */

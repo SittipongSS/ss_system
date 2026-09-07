@@ -56,7 +56,8 @@ export function monthColumnLabel(month) {
    แยกสองชุดเพราะสองชีตตอบคนละคำถาม แต่กริดเดือนทางขวาเหมือนกันเป๊ะ */
 export const SUMMARY_LEAD_COLUMNS = [
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
-  { key: 'categoryName', label: 'ชื่อหมวด', width: 28 },
+  { key: 'categoryMain', label: 'หมวดหลัก', width: 18 },
+  { key: 'categorySub', label: 'หมวดย่อย', width: 28 },
   { key: 'unit', label: 'หน่วยขาย', width: 12 },
   { key: 'volume', label: 'ขนาด/หน่วย', width: 12, number: true },
   { key: 'qty', label: 'จำนวนรวม', width: 13, number: true },
@@ -81,7 +82,8 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'sourceLabel', label: 'ที่มา FC', width: 13 },
   { key: 'quoteNumber', label: 'เลขที่ใบเสนอราคา', width: 18 },
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
-  { key: 'categoryName', label: 'ชื่อหมวด', width: 26 },
+  { key: 'categoryMain', label: 'หมวดหลัก', width: 18 },
+  { key: 'categorySub', label: 'หมวดย่อย', width: 26 },
   { key: 'categoryFromLabel', label: 'หมวดมาจาก', width: 17 },
   { key: 'fgCode', label: 'รหัส FG', width: 14 },
   { key: 'description', label: 'รายละเอียด', width: 34 },
@@ -213,15 +215,16 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
 /**
  * @param lines   บรรทัดจาก forecastBreakdownOfDeal + บริบทของดีล (month/dealCode/…)
  * @param meta    { year, months, generatedAt, by, categoryNames, teamNames }
+ *                `categoryNames` = Map รหัสหมวด→{ main, sub } (สองช่องแยกกัน ไม่ใช่สตริงเดียว)
  *                `teamNames` = Map รหัสทีม→ชื่อ จากทะเบียนจริง (ไม่ส่ง = คอลัมน์ทีมเป็นรหัส)
  */
 export async function buildForecastReportBuffer(lines = [], meta = {}) {
   const categoryNames = meta.categoryNames || new Map();
   const months = meta.months?.length ? meta.months : monthsInRows(lines);
-  const named = (row) => ({
-    ...row,
-    categoryName: row.categoryCode ? (categoryNames.get(row.categoryCode) || null) : null,
-  });
+  const named = (row) => {
+    const name = row.categoryCode ? categoryNames.get(row.categoryCode) : null;
+    return { ...row, categoryMain: name?.main || null, categorySub: name?.sub || null };
+  };
 
   const book = new ExcelJS.Workbook();
   book.creator = 'Scent & Sense';
