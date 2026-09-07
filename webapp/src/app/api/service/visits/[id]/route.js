@@ -11,6 +11,7 @@ import {
 } from '@/lib/service/visitStatus';
 import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
+import { surveyEditLockError } from '@/lib/service/survey';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
@@ -271,7 +272,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          🐞 ของเดิมไม่ดูสถานะนัดเลย ⇒ PATCH นัดที่ปิดไปแล้วอีกครั้ง (แก้สรุป/แนบไฟล์)
            จะเห็นว่าวันบนใบว่าง ≠ วันของนัด แล้ว **เขียนวันเก่ากลับลงใบ** ⇒ ใบเด้งกลับ
            ขั้น "นัดแล้ว" เองเงียบ ๆ พร้อมวันที่ไม่มีใครจะไป (ปลุก "วันผี" ที่เพิ่งล้างไป) */
-      const changed = holdsRequestSlot(data) && reqRow
+      /* 🔴 **ใบที่จบไปแล้วห้ามรับวันใหม่** — ตั้งแต่มีปุ่ม "ปิดใบโดยไม่ได้ประเมิน" (§5E ③)
+         ใบถูกปิดขณะที่นัดยังเปิดค้างบนตารางช่างได้จริง ⇒ ช่างแก้สรุปนัดนั้นทีหลังเมื่อไร
+         วันจะถูกเขียนกลับลงใบที่ปิดไปแล้ว แล้วใบโผล่กลับเข้าคิว "นัดแล้ว" เองเงียบ ๆ
+         ⚠️ ใช้ตัวตัดสินของผลประเมินตัวเดียวกัน (`surveyEditLockError`) ไม่เขียนเงื่อนไขซ้ำ */
+      const requestClosedOff = !!surveyEditLockError(reqRow);
+      const changed = holdsRequestSlot(data) && reqRow && !requestClosedOff
         && (String(reqRow.committedDueDate ?? '') !== String(nextDate ?? '')
           || String(reqRow.committedDueTime ?? '').slice(0, 5) !== String(nextTime ?? ''));
       if (changed) {

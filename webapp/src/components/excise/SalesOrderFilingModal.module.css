@@ -1,0 +1,92 @@
+/* หน้าตาตอนสร้างใบยื่นชำระ (มติผู้ใช้ 2026-09-07: "เอาต้นแบบมาจาก QT")
+   — เดิมโมดัลบอกแค่ "N รายการ" กับยอดรวม คนกดจึงไม่เห็นว่ากำลังยื่นสินค้าอะไรบ้าง
+   ทั้งที่ API ส่ง `lines` มาครบอยู่แล้ว · ที่นี่วาดเป็นตารางเอกสารเหมือนใบเสนอราคา
+
+   ⚠️ ทุกกฎอยู่ในไฟล์นี้ ห้ามใช้ style={{…}} เพิ่มในโมดัลนั้น — งบ inlineStyle ของ
+   โมดูลภาษีสรรพสามิตเต็มเพดานพอดี (117/117) เพิ่มอีกตัวเดียว audit:ui แดงทันที */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* การ์ด "ต้นทางของใบนี้" — เลขใบสั่งขาย (ต้นทางจริง) คู่กับเลขใบเสนอราคาที่เกี่ยวข้อง */
+.sourceCard {
+  padding: var(--panel-inset);
+}
+
+.sourceHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--fw-bold);
+}
+
+.sourceRefs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.sourceRefs strong {
+  color: var(--text-2);
+  font-weight: var(--fw-bold);
+}
+
+.summaryGrid {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--fs-7);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.summaryLabel {
+  color: var(--text-3);
+}
+
+.summaryStrong {
+  color: var(--accent);
+  font-weight: var(--fw-bold);
+}
+
+/* ตารางรายการที่จะยื่น — ทรงเดียวกับตารางรายการบนเอกสารขาย */
+.lineTable {
+  width: 100%;
+  margin-top: var(--space-3);
+  font-size: var(--fs-3);
+}
+
+.lineTable th {
+  padding-bottom: var(--space-1);
+  color: var(--text-3);
+  font-weight: var(--fw-medium);
+  text-align: left;
+}
+
+.lineTable td {
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.lineCode {
+  color: var(--text-2);
+  font-weight: var(--fw-bold);
+}
+
+.lineName {
+  overflow-wrap: break-word;
+  color: var(--text);
+}
+
+/* บรรทัดที่ยังไม่มีทะเบียนสรรพสามิตอนุมัติ — สร้างใบยื่นได้ แต่ต้องเห็นว่าตัวไหน */
+.lineGap {
+  display: block;
+  color: var(--amber);
+  font-size: var(--fs-2);
+}

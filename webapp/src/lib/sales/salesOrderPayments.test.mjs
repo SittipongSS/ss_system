@@ -17,7 +17,9 @@ import {
   paymentNotRequired,
   paymentLockReason,
   paymentRollup,
+  salesOrderPaymentCell,
   salesOrderPaymentNote,
+  salesOrderTaxInvoiceNote,
   paymentState,
   previewInstallments,
   withLiveAmounts,
@@ -700,4 +702,42 @@ test('ฝ่ายขายแจ้งชำระ (ปลายทาง repor
     installmentActionError(frozenPending, 'report', sales, { paidOn: '2026-09-01', evidence: [{}], serviceRounds: true }),
     null,
   );
+});
+
+/* ── ใบกำกับภาษีในตารางรายการ SO (mig 0348 · มติผู้ใช้ 2026-09-07) ────────
+   > *"ฝั่ง SA จะดูจากระบบบริหารงานขาย รู้ได้ไงว่างวดไหนมีใบกำกับแล้ว"* */
+
+const inst = (over = {}) => ({ status: 'confirmed', dueDate: '2026-08-01', ...over });
+
+test('ตัวนับใบกำกับคิดจากงวดที่ "ต้องมีใบ" ไม่ใช่งวดทั้งใบ', () => {
+  const cell = salesOrderPaymentCell([
+    inst({ taxInvoiceNo: 'IV-1' }),
+    inst({ status: 'reported' }),
+    inst({ status: 'pending' }),   // ยังไม่จ่าย = ยังไม่มีเงินให้ออกใบ ⇒ ไม่นับ
+  ], null, '2026-09-07', 100000);
+  assert.equal(cell.invoiceNeeded, 2);
+  assert.equal(cell.invoiced, 1);
+});
+
+test('🔴 ช่องว่างล้วนไม่นับว่ามีใบ (btrim เหมือน CHECK ของ 0348)', () => {
+  const cell = salesOrderPaymentCell([inst({ taxInvoiceNo: '   ' })], null, '2026-09-07', 100000);
+  assert.equal(cell.invoiced, 0);
+  assert.equal(cell.invoiceNeeded, 1);
+});
+
+test('บรรทัดใบกำกับ: ครบ / ค้าง / เงียบ', () => {
+  assert.deepEqual(
+    salesOrderTaxInvoiceNote({ tracked: true, invoiceNeeded: 2, invoiced: 2 }),
+    { label: 'ใบกำกับครบ', tone: 'success' },
+  );
+  assert.deepEqual(
+    salesOrderTaxInvoiceNote({ tracked: true, invoiceNeeded: 2, invoiced: 1 }),
+    { label: 'ใบกำกับ 1/2', tone: 'warning' },
+  );
+  /* ⚠️ ยังไม่มีงวดที่ลูกค้าจ่าย = ไม่ใช่ของค้างเอกสาร ⇒ ต้องเงียบ
+     ไม่งั้นคอลัมน์นี้มีสามบรรทัดทุกแถวทั้งหน้า */
+  assert.equal(salesOrderTaxInvoiceNote({ tracked: true, invoiceNeeded: 0, invoiced: 0 }), null);
+  // ใบที่ยังไม่เริ่มติดตาม ตัวเลขมาจากแผนใน QT ไม่ใช่ของจริง ⇒ พูดเรื่องเอกสารไม่ได้
+  assert.equal(salesOrderTaxInvoiceNote({ tracked: false, invoiceNeeded: 0, invoiced: 0 }), null);
+  assert.equal(salesOrderTaxInvoiceNote(null), null);
 });

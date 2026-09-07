@@ -755,7 +755,7 @@ const RAW_OPACITY_JSX_CAP = 24;
    ⇒ แถบ Gantt/กราฟที่กว้างตามข้อมูลจึงไม่เข้าเพดาน ซึ่งถูกแล้ว — ของพวกนั้นไม่มี
    ปลายทางเป็นโทเคน 
    📉 757 → 754 (2026-09-06) — แถวย้อนกลับของหน้าสินค้ากับ shipment-prep เลิกเขียน inline style เอง ย้ายไปใช้ .ui-workspace-back-row ของกลาง */
-const RAW_SPACING_JSX_CAP = 754;
+const RAW_SPACING_JSX_CAP = 751;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
@@ -869,7 +869,7 @@ const RAW_TAILWIND_TYPE_CAP = 150;
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
      src/app/pm/tasks/page.js:1106                     isToday ? 700 : 500
-     src/app/sales-planning/deals/[id]/page.js:153     s.state === "current" ? 800 : 650
+     src/app/sales-planning/deals/[id]/page.js:152     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:215   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:218   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
@@ -883,7 +883,7 @@ const RAW_TAILWIND_TYPE_CAP = 150;
    ให้ยืนยันว่า *โค้ดยังเป็นตัวเดิม* ก่อนแก้เลขเสมอ (2026-09-02: pm/tasks 1047 → 1061
    เพราะรอบแถวตารางแทรกลิงก์เข้าไปด้านบน — โค้ดบรรทัดนั้นไม่ได้แตะเลย)
 
-   🐞 **บั๊กจริงที่เจอจากการวัด ไม่ใช่ข้อสงสัย**: deals/[id]/page.js:153 =
+   🐞 **บั๊กจริงที่เจอจากการวัด ไม่ใช่ข้อสงสัย**: deals/[id]/page.js:152 =
    `s.state === "current" ? 800 : 650` แต่ globals.css โหลด @font-face มาแค่ 400/500/600/700
    (ตรงกับ --fw-normal/medium/semibold/bold) ⇒ ตามกฎ font matching ของ CSS ทั้ง 650 และ
    800 ตกลงมาที่ 700 เท่ากัน = **ขั้นตอน "ปัจจุบัน" กับขั้นอื่นหนาเท่ากันบนจอ**

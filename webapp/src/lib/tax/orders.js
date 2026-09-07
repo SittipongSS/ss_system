@@ -30,6 +30,10 @@ const ADDITIVE_ORDER_COLS = [
   'projectRef', 'dealRef',
   // mig 0211 — แยกเป็น 3 ค่าให้ตรงกับใบเสนอราคา/ใบสั่งขาย/ไทม์ไลน์
   'projectCode', 'dealTitle', 'dealType',
+  // mig 0349 — ใบเสนอราคาต้นทางผูกด้วย FK (มติผู้ใช้ 2026-09-07) · ต้องอยู่ในลิสต์นี้
+  // เพราะ migration รันด้วยมือบน Supabase ⇒ ช่วงที่โค้ดขึ้นก่อน schema การสร้างใบยื่น
+  // ต้องไม่พังทั้งใบ แค่ไม่มีลิงก์ QT ไปก่อน
+  'quotationId',
 ];
 
 const isMissingColumnError = (error, cols) =>

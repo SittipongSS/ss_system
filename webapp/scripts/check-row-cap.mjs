@@ -78,7 +78,13 @@ const GROWING_TABLES = Object.keys(CAPS);
 /* ⚠️ "มีเพดานแล้ว" ต้องมาจาก **คำสั่งเดียวกัน** เท่านั้น — เดิมด่านนี้กวาดหน้าต่าง 14
    บรรทัดแล้วหา `.limit(` ในนั้น ซึ่งพลาดได้สองทาง: `.limit()` ของคำสั่งข้างเคียงปล่อย
    ของจริงผ่านฟรี · และคำสั่งที่ต่อ `.limit()` ทีหลังผ่านตัวแปรถูกนับเป็นความผิดทั้งที่ไม่ผิด */
-const capped = (text) => /\.(range|limit|single|maybeSingle)\(/.test(text) || /fetchAll(?:Result)?\s*\(/.test(text);
+/* 🐞 **มองไม่เห็น `fetchAllInChunks`** (แก้ 2026-09-07) — ตัวห่อรุ่นใหม่ที่ซอยลิสต์ id
+   ข้างนอกแล้ว **เรียก `fetchAll` ไล่หน้าอยู่ข้างใน** (lib/supabaseInChunks.js) จึงมีเพดาน
+   แถวครบเหมือนกันทุกประการ · แต่ตัวจับเดิมเขียนไว้ว่า `fetchAll(?:Result)?\s*\(` ซึ่ง
+   ไม่แมตช์ `fetchAllInChunks(` ⇒ 17 จุดของโมดูลบริการที่เพิ่งแก้ให้ปลอดภัยขึ้น
+   กลับถูกนับเป็นหนี้ก้อนใหม่ทันทีที่ merge
+   🪤 บทเรียน: เพิ่มตัวห่อใหม่ = ต้องไปบอกด่านที่นับตัวห่อเก่าด้วยเสมอ */
+const capped = (text) => /\.(range|limit|single|maybeSingle)\(/.test(text) || /fetchAll(?:Result|InChunks)?\s*\(/.test(text);
 
 /* `select('id', { count: 'exact', head: true })` ไม่คืนแถวสักแถว (คืนแต่ตัวเลขใน header)
    เพดาน max_rows จึงไม่เกี่ยวเลย — เดิมนับเป็นความผิด ทำให้ตัวเลขหนี้บวมเกินจริง */
@@ -102,7 +108,7 @@ const WRITE_THEN_SELECT = /\.(insert|update|upsert|delete)\(/;
    (ของจริงที่โดน: `pm/my-work/route.js` · `pm/project-tasks/route.js` · `lib/pm/taskKpi.js`)
    มองย้อน 4 บรรทัดพอ — ตัวห่อกับ `.from(` อยู่ห่างกันไม่เกินนั้นในทุกจุดที่ใช้จริง */
 function wrappedInFetchAll(lines, start) {
-  return /fetchAll(?:Result)?\s*\(/.test(lines.slice(Math.max(0, start - 4), start).join('\n'));
+  return /fetchAll(?:Result|InChunks)?\s*\(/.test(lines.slice(Math.max(0, start - 4), start).join('\n'));
 }
 
 /* ก้อน "คำสั่งเดียว": ไล่จนวงเล็บสมดุลและเจอ `;` หรือจนกว่าจะขึ้นคำสั่งใหม่
