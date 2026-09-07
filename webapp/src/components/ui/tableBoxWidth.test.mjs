@@ -175,10 +175,32 @@ test("รางกริดในไฟล์ที่มีตาราง ต�
 test("กล่องตารางต้องมีเพดานความสูง ไม่งั้นหัวตารางปักไม่ได้", () => {
   const scroll = rules(withoutComments).find((r) => r.selector === ".scroll");
   assert.ok(scroll, "หากฎ .scroll ไม่เจอ");
-  assert.match(scroll.body, /max-height:\s*var\(--pinned-box-max\)/,
-    "ถอด max-height เมื่อไร sticky ของ th กลับไปเป็นของตายทันที (ไม่มี error ให้เห็น)");
   assert.match(scroll.body, /overflow:\s*auto/,
     "ต้องยังเลื่อนได้ทั้งสองแกน — แนวนอนสำหรับตารางกว้าง แนวตั้งสำหรับหัวที่ปัก");
+
+  /* 🔴 เพดานเป็น **opt-in** ตั้งแต่ 2026-09-07 — ห้ามอยู่บน `.scroll` เปล่า
+     สูตรเพดานคิดจาก `100dvh − --scroll-anchor-top` (106px) = สมมติว่ากล่องเริ่ม
+     ใต้แถบเมนูทันที · วัดจริงที่ /requests กล่องเริ่มที่ y=639 ⇒ เพี้ยน 533px
+     ⇒ กล่องล้นจอเสมอ ⇒ สกรอลล์สองชั้นทุกหน้ารายการ (วัด 1366/1440/1920
+     ได้หน้าเลื่อน 642px เท่ากันหมด = เป็นผลของโครงสร้าง ไม่ใช่ของข้อมูล) */
+  assert.doesNotMatch(scroll.body, /max-height:/,
+    "เพดานต้องไม่อยู่บน .scroll เปล่า — ให้เปิดเป็นรายจุดด้วย prop `pinned`");
+
+  const pinned = rules(withoutComments).find((r) => r.selector === '.scroll[data-pinned="true"]');
+  assert.ok(pinned, 'ต้องมีกฎ .scroll[data-pinned="true"] ไว้ให้จุดที่เปิดเพดานเอง');
+  assert.match(pinned.body, /max-height:\s*var\(--pinned-box-max\)/,
+    "ถอด max-height เมื่อไร sticky ของ th กลับไปเป็นของตายทันที (ไม่มี error ให้เห็น)");
+});
+
+/* ── prop `pinned` ต้องยังต่อสายถึง CSS จริง ────────────────────────────────
+   CSS กับ JS อยู่คนละไฟล์ เปลี่ยนชื่อ attribute ฝั่งใดฝั่งหนึ่งแล้วเงียบสนิท */
+test("prop pinned ต้องตั้งต้นเป็นปิด และส่ง data-pinned ให้ตรงกับ CSS", () => {
+  const source = fs.readFileSync(path.join(WEBAPP, "src", "components", "ui", "Table.js"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(source, /pinned\s*=\s*false/,
+    "ต้องตั้งต้นเป็นปิด — เปิดให้ทุกที่คือสิ่งที่ #1627 ทำแล้วได้สกรอลล์สองชั้น");
+  assert.match(source, /data-pinned=\{pinned \? "true" : undefined\}/,
+    'ต้องส่งเป็น "true" ตรง ๆ ให้ตรงกับตัวเลือก .scroll[data-pinned="true"]');
 });
 
 /* 🔴 พื้นกันยุบไม่ใช่ของแถม: `100dvh` คำนวณได้ **0** ในบริบทที่ยังไม่มีความสูงจริง
@@ -201,6 +223,34 @@ test("ตอนพิมพ์ต้องไม่มีกล่องเล�
   assert.ok(printBlock.startsWith("@media print"), "Table.module.css ต้องมีบล็อก @media print");
   assert.match(printBlock, /max-height:\s*none/);
   assert.match(printBlock, /overflow:\s*visible/);
+});
+
+/* ── กฎพิมพ์ต้อง **ชนะ** ไม่ใช่แค่ **มีอยู่** (2026-09-07) ────────────────────
+   🪤 ยามข้างบนค้นสตริงอย่างเดียว · `@media` ไม่เพิ่มความจำเพาะให้เลย ⇒ วันไหน
+   มีคนตั้ง max-height บนตัวเลือกที่แคบกว่า `.scroll` (เช่น `.scroll[data-pinned]`
+   = (0,2,0)) กฎพิมพ์ (0,1,0) จะแพ้ ตารางยาวถูกตัดหายตอนพิมพ์ **โดย CI เขียว**
+   เกือบเกิดจริงตอนย้ายเพดานมาเป็น opt-in รอบนี้ */
+test("printBeatsCaps — ทุกตัวเลือกที่ตั้งเพดานไว้ ต้องถูกถอดในบล็อกพิมพ์ด้วย", () => {
+  const printAt = withoutComments.indexOf("@media print");
+  const outside = withoutComments.slice(0, printAt);
+  const printBlock = withoutComments.slice(printAt);
+
+  const capping = rules(outside)
+    .filter((r) => /max-height:|overflow(?:-y)?:\s*(?:auto|scroll)/.test(r.body))
+    .map((r) => r.selector)
+    .filter((sel) => /(^|[\s,>])\.scroll(?![\w-])/.test(sel));
+  assert.ok(capping.length > 0, "ไม่เจอตัวเลือกที่ตั้งเพดาน/overflow บน .scroll เลย — ตัวจับน่าจะพัง");
+
+  const printSelectors = [...printBlock.matchAll(/([^{}]+)\{/g)]
+    .map((hit) => hit[1].trim().replace(/\s+/g, " "))
+    .filter((sel) => !sel.startsWith("@"))
+    .flatMap((sel) => sel.split(",").map((one) => one.trim()));
+
+  const missing = capping.filter((sel) => !printSelectors.includes(sel));
+  assert.deepEqual(missing, [],
+    "ตัวเลือกพวกนี้ตั้งเพดาน/overflow ไว้แต่ไม่ถูกถอดในบล็อก @media print\n"
+    + "@media ไม่เพิ่มความจำเพาะ ⇒ กฎพิมพ์แพ้ แล้วตารางยาวถูกตัดหายตอนพิมพ์เงียบ ๆ\n"
+    + missing.map((sel) => `  · ${sel}`).join("\n"));
 });
 
 /* ── หัวตารางเป็นของ primitive ไม่ใช่ของคลาสเก่า (2026-09-06) ────────────────
