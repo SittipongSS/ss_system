@@ -51,6 +51,8 @@ const fakeSupabase = (rows) => ({
         order: () => chain,
         in: (col, values) => { scoped = scoped.filter((r) => values.includes(r[col])); return chain; },
         range: async () => ({ data: scoped, error: null }),
+        // builder จริงของ supabase-js เป็น thenable — `fetchInChunks` await ตัว query ตรง ๆ
+        then: (resolve) => resolve({ data: scoped, error: null }),
       };
       return chain;
     };
@@ -138,4 +140,38 @@ test('taxSiblingIdsFromRows: ใบพี่น้องยังไม่อน
   // จอโหลดทะเบียนมาไม่ครบ = กรองแคบไว้ก่อน (ด่านจริงอยู่ฝั่ง server)
   assert.deepEqual(taxSiblingIdsFromRows([], 'C-BRANCH'), ['C-BRANCH']);
   assert.deepEqual(taxSiblingIdsFromRows([HEAD, BRANCH], ''), []);
+});
+
+/* 🪤 ลิสต์ id / ตัวกรอง ยาวเกิน ~16 KB = PostgREST ต่อไม่ติด แล้วโยน
+   `TypeError: fetch failed` ดิบ ๆ (ดู lib/supabaseInChunks.js · #1660)
+   คิวส่งงานกับลิสต์ใบยื่นภาษีส่งลูกค้าเข้ามาหลักร้อยได้ ⇒ ต้องซอยทั้งสองฝั่ง */
+test('customerTaxSiblingIdMap ซอยลิสต์ id และตัวกรองเป็นก้อน — ไม่ยิงก้อนเดียวยาว ๆ', async () => {
+  const many = Array.from({ length: 400 }, (_, i) => cust({
+    id: `CUS-${String(i).padStart(4, '0')}`,
+    arCode: `AR-${i}`,
+    // เลขคนละตัวทุกใบ ⇒ ได้ 400 คีย์ = ตัวกรองยาวสุด
+    taxId: String(1000000000000 + i),
+  }));
+  const calls = { in: [], or: [] };
+  const sb = {
+    from: () => {
+      let scoped = many;
+      const chain = {
+        eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+        or: (filter) => { calls.or.push(filter.length); return chain; },
+        order: () => chain,
+        in: (col, values) => { calls.in.push(values.length); scoped = many.filter((r) => values.includes(r[col])); return chain; },
+        range: async () => ({ data: scoped, error: null }),
+        then: (resolve) => resolve({ data: scoped, error: null }),
+      };
+      return { select: () => chain };
+    },
+  };
+  const map = await customerTaxSiblingIdMap(sb, many.map((c) => c.id));
+  assert.equal(map.size, 400);
+  assert.deepEqual(map.get('CUS-0007'), ['CUS-0007']); // เลขไม่ซ้ำใคร = ไม่มีพี่น้อง
+  assert.ok(calls.in.length > 1, 'ลิสต์ id ต้องถูกซอย');
+  assert.ok(Math.max(...calls.in) <= 150, `ก้อน id ใหญ่สุด ${Math.max(...calls.in)} ต้องไม่เกิน 150`);
+  assert.ok(calls.or.length > 1, 'ตัวกรองต้องถูกซอย');
+  assert.ok(Math.max(...calls.or) < 8000, `ตัวกรองยาวสุด ${Math.max(...calls.or)} ไบต์ ต้องห่างจากเพดาน 16 KB`);
 });

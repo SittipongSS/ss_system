@@ -12,6 +12,7 @@
 // ⚠️ **แยกไฟล์จาก `customerTaxId.js` โดยตั้งใจ** — ไฟล์นั้นประกาศไว้ว่าไม่มี import
 // ฝั่ง server เพราะฟอร์มในเบราว์เซอร์ import ตรง ๆ · ตัวนี้แตะ supabase จึงอยู่ที่นี่
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import {
   TAX_ID_LENGTH, taxIdKey, taxIdMatchFilter, taxIdMatches,
 } from '@/lib/master/customerTaxId';
@@ -128,10 +129,14 @@ export async function customerTaxSiblingIdMap(supabase, customerIds = []) {
   const out = new Map(ids.map((id) => [id, [id]]));
   if (!ids.length) return out;
 
-  // ไล่ทีละหน้าเหมือนทุกจุดอ่าน — ลิสต์ id ยาวเกิน 1,000 ได้ถ้าจอต้นทางไม่ได้จำกัดไว้
-  const { data: anchors, error } = await fetchAllResult(() => supabase
-    .from('customers').select(FIELDS).in('id', ids)
-    .order('id', { ascending: true }));
+  /* ⚠️ ยิงทีละก้อน ไม่ใช่ `.in()` ก้อนเดียว — PostgREST รับตัวกรองทาง query string
+     ของ GET ⇒ id 40 ตัวอักษรคูณจำนวนใบ พอเกิน ~16 KB Node/undici ตัดซ็อกเก็ตทิ้ง
+     แล้วโยน `TypeError: fetch failed` ดิบ ๆ ออกมา (เหตุผลเต็มอยู่ที่
+     lib/supabaseInChunks.js — /api/products เคยล้มทั้งระบบเพราะเรื่องนี้ #1660)
+     ผู้เรียกตัวนี้คือคิวส่งงานกับลิสต์ใบยื่นภาษี ซึ่งจำนวนใบโตตามงาน ⇒ ข้ามเส้นได้เอง */
+  const { data: anchors, error } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
+    .from('customers').select(FIELDS).in('id', chunk)
+    .order('id', { ascending: true })));
   if (error) throw error;
 
   const keyByAnchor = new Map();
@@ -144,16 +149,28 @@ export async function customerTaxSiblingIdMap(supabase, customerIds = []) {
   }
   if (!keys.size) return out;
 
-  const filter = [...keys].map((key) => taxIdMatchFilter(key)).filter(Boolean).join(',');
-  if (!filter) return out;
-  const { data, error: poolError } = await fetchAllResult(() => supabase
-    .from('customers').select(FIELDS).or(filter)
-    .order('arCode', { ascending: true })
-    .order('id', { ascending: true }));
-  if (poolError) throw poolError;
+  /* ตัวกรองก็ยาวได้เหมือนลิสต์ id — หนึ่งคีย์กิน ~90 ไบต์ (`eq` สองรูป + `like` ที่ใส่
+     wildcard คั่นทุกหลัก) ⇒ ลูกค้าหลักร้อยรายก็ทะลุ 16 KB แล้ว · ซอยเป็นก้อนละ 40 คีย์
+     (~3.6 KB) แล้วแต่ละก้อนยังไล่หน้าเองกันเพดาน 1,000 แถว */
+  const pool = [];
+  const keyList = [...keys];
+  for (let from = 0; from < keyList.length; from += 40) {
+    const filter = keyList.slice(from, from + 40)
+      .map((key) => taxIdMatchFilter(key)).filter(Boolean).join(',');
+    if (!filter) continue;
+    const { data, error: poolError } = await fetchAllResult(() => supabase
+      .from('customers').select(FIELDS).or(filter)
+      .order('arCode', { ascending: true })
+      .order('id', { ascending: true }));
+    if (poolError) throw poolError;
+    pool.push(...(data || []));
+  }
 
   const byKey = new Map();
-  for (const row of data || []) {
+  const seen = new Set();
+  for (const row of pool) {
+    if (seen.has(row?.id)) continue;
+    seen.add(row?.id);
     const key = taxGroupKey(row);
     if (!key || !keys.has(key) || !isUsableSibling(row)) continue;
     if (!byKey.has(key)) byKey.set(key, []);
