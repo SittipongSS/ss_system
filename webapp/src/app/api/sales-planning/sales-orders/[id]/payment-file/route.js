@@ -2,12 +2,16 @@
 // สิทธิ์คุมด้วย view-scope ของดีลเจ้าของ — แพตเทิร์นเดียวกับ quotations/[id]/file
 // ⚠️ ฝ่ายบัญชีต้องเปิดไฟล์นี้ได้ (scope 'all' ของ role finance) ไม่งั้นคอนเฟิร์มโดยไม่เห็นสลิป
 // ?installment=<id>&i=<index> ชี้ไฟล์ในอาเรย์ evidence ของงวดนั้น (default 0).
+// ?installment=<id>&doc=tax_invoice ชี้ไฟล์ **ใบกำกับภาษี** ของงวดนั้น (mig 0348) ซึ่งเป็น
+// object เดี่ยว ไม่ใช่อาเรย์ — 1 งวด : 1 ใบ (มติผู้ใช้ 2026-09-07)
+// ⚠️ ด่านอ่านกว้างกว่าด่านเขียนโดยตั้งใจ: **บัญชีเป็นคนแนบ แต่ฝ่ายขายต้องเปิดดู/โหลดได้**
+//    (โปรเซสจริง: FN ใส่ใบกำกับ แล้ว SA มาเอาไปส่งลูกค้า)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { loadScoped } from '@/lib/scopedRow';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
-import { isQuotationEvidencePath } from '@/lib/upload/privateEvidence';
+import { isQuotationEvidencePath, isSalesOrderEvidencePath } from '@/lib/upload/privateEvidence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,19 +33,22 @@ export async function GET(request, { params }) {
 
   const { data: row, error: rowError } = await supabase
     .from('sales_order_installments')
-    .select('id, salesOrderId, evidence')
+    .select('id, salesOrderId, evidence, "taxInvoiceFile"')
     .eq('id', installmentId)
     .maybeSingle();
   if (rowError) return Response.json({ error: rowError.message }, { status: 500 });
   // ⚠️ ต้องเช็คว่างวดนี้เป็นของใบนี้จริง — ไม่งั้นเดา id งวดของใบที่ตัวเองไม่มีสิทธิ์ได้
   if (!row || row.salesOrderId !== order.id) return Response.json({ error: 'ไม่พบงวด' }, { status: 404 });
 
-  const list = Array.isArray(row.evidence) ? row.evidence : [];
-  const att = list[Number(url.searchParams.get('i')) || 0];
+  /* ไฟล์ใบกำกับเป็น object เดี่ยว ไม่ใช่อาเรย์ ⇒ แยกทางตั้งแต่ตรงนี้
+     (ยัดเข้า evidence ไม่ได้ — evidence คือ "หลักฐานที่ลูกค้าจ่าย" คนละความจริงกัน
+     และ CHECK ของ 0245 บังคับให้ evidence เป็น array เสมอ) */
+  const att = url.searchParams.get('doc') === 'tax_invoice'
+    ? row.taxInvoiceFile
+    : (Array.isArray(row.evidence) ? row.evidence : [])[Number(url.searchParams.get('i')) || 0];
   if (!att?.storagePath) return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
 
   const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
-  const safeOrderId = String(order.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
   // ⚠️ งวดแรกอาจ **ยืมไฟล์มาจากหลักฐานที่แนบไว้ใต้ใบเสนอราคาต้นทาง** (สลิปโอนเงินตอน
   //    ปิด Won หรือเอกสารยืนยันคำสั่งซื้อ) ⇒ path จะขึ้นต้นด้วย `quotations/…` ไม่ใช่
   //    โฟลเดอร์ของใบสั่งขาย · ยอมรับทั้งสองแหล่ง แต่ไม่ยอมรับ path อื่นเลย เพื่อไม่ให้
@@ -50,7 +57,7 @@ export async function GET(request, { params }) {
   // 🐞 เดิมเขียนรายการโฟลเดอร์ไว้เองในบรรทัดนี้ (`won` อย่างเดียว) แล้ว #1391 เพิ่ม
   //    `order-confirmation` โดยไม่มีใครกลับมาแก้ที่นี่ ⇒ งวดที่ยืมไฟล์ยืนยันคำสั่งซื้อมา
   //    ตอบ "ไม่พบไฟล์แนบ" ทุกใบ · ตอนนี้ถามจากทะเบียนเดียวกับที่ใช้ตอนเขียนไฟล์
-  const allowed = String(att.storagePath).startsWith(`sales-orders/${safeOrderId}/payments/`)
+  const allowed = isSalesOrderEvidencePath(att.storagePath, order.id)
     || isQuotationEvidencePath(att.storagePath, order.quotationId);
   if (att.storageBucket !== privateBucket || !allowed) {
     return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });

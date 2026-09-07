@@ -131,7 +131,15 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
 
   // จำนวนไม่ตรงแผนล่าสุด ⇒ ตั้งใหม่ทั้งชุด — **เว้นใบที่มีเงินบันทึกไว้แล้ว** (ดูเหตุผลข้างบน)
   const prepaidDraft = draft.filter(installmentPrepaid);
-  if (draft.length && plan.length && draft.length !== plan.length && !prepaidDraft.length) {
+  /* ⭐ **งวดที่มีใบกำกับภาษีแล้วก็ห้ามตั้งใหม่** (mig 0348 · มติผู้ใช้ 2026-09-07)
+     เหตุผลเดียวกับ `prepaidDraft` แต่หนักกว่า: ใบกำกับเป็นเอกสารกฎหมายที่ออกไปหา
+     ลูกค้าแล้ว · ลบแถวทิ้ง = เลข/วัน/ไฟล์หายพร้อมกันโดยไม่มี error และ store ไม่เขียน
+     audit ⇒ กู้ไม่ได้เลย (ไม่มีถังขยะ · audit_logs.before คือทางกู้ทางเดียวของระบบนี้)
+     ⚠️ ต้องเป็น predicate แยก **ห้ามขยาย `installmentPrepaid`** — ตัวนั้นคุมสถานะบนจอ
+     (`prepaid`) และตัวกรองลำดับงวดด้วย · งวดที่มีใบกำกับแต่ยังไม่มีวันจ่ายไม่ใช่ "จ่ายแล้ว" */
+  const invoicedDraft = draft.filter((row) => !!row.taxInvoiceNo);
+  if (draft.length && plan.length && draft.length !== plan.length
+    && !prepaidDraft.length && !invoicedDraft.length) {
     /* 🔴 **อุ้มของที่คนกรอกเองข้ามการตั้งใหม่** (แก้ 07/09/2026)
        🐞 เดิมลบแล้วสร้างจากแผนเปล่า ⇒ `coversFrom`/`coversTo` หายไปด้วย
          ⇒ `paidThrough` คืน null ⇒ ด่านเงินของ `visitGate` **บล็อกนัดช่างทุกโซนของไซต์**

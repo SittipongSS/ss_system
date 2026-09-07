@@ -19,6 +19,7 @@
 // ไฟล์นี้จึงไม่ export อะไรที่ชื่อ `actual*` เลย และมีเทสต์ล็อกไว้
 import { canConfirmPayment, canUser } from '@/lib/permissions';
 import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
+import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
 
 export const INSTALLMENT_STATUSES = ['pending', 'reported', 'confirmed', 'rejected'];
 
@@ -473,6 +474,14 @@ export function installmentActionError(row, action, user, options = {}) {
     }
     if (action === 'unlink' && !row.billingRequestId) return 'งวดนี้ยังไม่ได้ผูกคำร้อง';
     return null;
+  }
+
+  /* ── ใบกำกับภาษีของงวด (mig 0348 · มติผู้ใช้ 2026-09-07) ────────────────
+     ด่านอยู่ในไฟล์ของตัวเอง (`lib/sales/taxInvoice.js`) เพราะเป็นความจริงคนละก้อน
+     กับสถานะการชำระ และมีผู้เรียกสองทาง (ทะเบียนการชำระ + แผงงวดบนใบ SO)
+     ⚠️ **ต้องอยู่เหนือ catch-all** ไม่งั้นได้ 'คำสั่งไม่ถูกต้อง' ทั้งที่ปุ่มเปิดอยู่ */
+  if (action === 'tax-invoice' || action === 'tax-invoice-clear') {
+    return taxInvoiceActionError(row, action, user, options);
   }
 
   if (action === 'confirm' || action === 'reject') {

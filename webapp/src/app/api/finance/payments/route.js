@@ -169,6 +169,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       orderState: listParam(url.searchParams.get('orderState')),
       // service | other — เกณฑ์เต็มของ "ใบมีรอบบริการ" (มติผู้ใช้ 2026-08-30)
       line: listParam(url.searchParams.get('line')),
+      /* missing | issued — ใบกำกับภาษีของงวด (mig 0348)
+         ⚠️ ต้องอยู่ใน literal นี้ ไม่งั้น API เมินพารามิเตอร์เงียบ ๆ **ทั้งจอและไฟล์**
+         (ไฟล์ Excel ใช้ query ชุดเดียวกัน) แล้วชิปตัวกรองจะติดอยู่โดยข้อมูลไม่ถูกกรอง */
+      taxInvoice: url.searchParams.get('taxInvoice') || '',
       orderStates,
     };
     const filtered = sortLedger(filterLedger(all, filters));

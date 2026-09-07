@@ -250,6 +250,41 @@ export async function PATCH(request, { params }) {
       if (scentError) console.error('[requests] เขียนวันส่งลูกค้าลงทะเบียนกลิ่นไม่สำเร็จ:', scentError.message);
     }
 
+    /* ── เลขใบกำกับไหลกลับลงงวดชำระ (mig 0348 · มติผู้ใช้ 2026-09-07) ─────
+       ⭐ **ทางพิเศษ ไม่ใช่ทางหลัก** — ปกติ FN ออกใบกำกับแล้วบันทึกที่ทะเบียนการชำระ
+       ตรง ๆ · เส้นนี้ใช้ตอนลูกค้าขอไฟล์ก่อนจ่าย จึงมีคำร้องเกิดก่อนงวด
+       ⇒ ถ้างวดผูกคำร้องใบนี้ไว้ เลขที่ FN กรอกตอนกดส่งงานต้องไหลลงงวดเอง
+       ไม่งั้น FN ต้องพิมพ์เลขเดิมซ้ำอีกที่ = เลขมีสองบ้านทันที
+
+       ⚠️ **หนึ่งงวดเท่านั้น** — คำร้องใบหนึ่งแขวนได้งวดเดียวโดยกติกา (route ของงวด
+       ตรวจตอน `link`) · เจอมากกว่าหนึ่งแถว = ข้อมูลเพี้ยน ไม่เดา ปล่อยให้ FN กรอกเอง
+       ⚠️ **วันที่เติมให้เฉพาะตอนยังว่าง** — ของจริงคือวันบนใบกำกับซึ่งที่นี่ไม่รู้
+       ใช้วันไทยของก้าวส่งเป็นค่าตั้งต้น แล้ว FN แก้ทีหลังได้ที่ทะเบียนการชำระ
+       ⚠️ ล้มแล้ว **ไม่ throw** — ก้าวของแถวบันทึกสำเร็จไปแล้ว (เหตุผลเดียวกับสองบล็อกข้างบน) */
+    if (hop === 'ready' && row.lineKind === 'billing_doc' && row.docType === 'tax_invoice'
+      && patch.docNumber) {
+      const { data: linked, error: linkedError } = await supabase
+        .from('sales_order_installments')
+        .select('id, "taxInvoiceDate"')
+        .eq('billingRequestId', id)
+        .limit(2);
+      if (linkedError) {
+        console.error('[requests] หางวดที่ผูกคำร้องใบกำกับไม่สำเร็จ:', linkedError.message);
+      } else if (linked?.length === 1) {
+        const { error: stampError } = await supabase.from('sales_order_installments').update({
+          taxInvoiceNo: patch.docNumber,
+          taxInvoiceRequestId: id,
+          taxInvoiceItemId: itemId,
+          taxInvoiceById: user?.id ?? null,
+          taxInvoiceByName: user?.name ?? null,
+          taxInvoiceAt: nowIso,
+          ...(linked[0].taxInvoiceDate ? {} : { taxInvoiceDate: today }),
+          updatedAt: nowIso,
+        }).eq('id', linked[0].id);
+        if (stampError) console.error('[requests] เขียนเลขใบกำกับลงงวดชำระไม่สำเร็จ:', stampError.message);
+      }
+    }
+
     /* ── ใบตามแถว ────────────────────────────────────────────────────────
        ⚠️ **ก้าวรายแถวไม่แตะการรับเรื่องของใบแล้ว** (มติผู้ใช้ 2026-08-20) — ใบต้องถูก
        รับเรื่องก่อนถึงจะมาถึงบรรทัดนี้ได้ (ด่านข้างบน) ⇒ เหลือแค่ผลของ "แถวครบ/ไม่ครบ" */

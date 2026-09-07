@@ -38,6 +38,8 @@ const ALLOWED_CALLERS = {
     'ไฟล์ตอนรับแสตมป์ — ยิง POST /api/master/attachments เองในบรรทัดถัดไป',
   'components/service/CloseVisitSheet.js':
     'รูปหน้างาน/ลายเซ็นผู้รับงาน — ref ลงคอลัมน์ของ `service_visits`',
+  'components/salesPlanning/TaxInvoiceDialog.js':
+    'ไฟล์ใบกำกับภาษีของงวด — ref ลงคอลัมน์ `sales_order_installments.taxInvoiceFile` (mig 0348)',
   'components/issues/ReportIssueModal.js':
     'ไฟล์แนบเรื่องแจ้งปัญหา — ลงเธรด /api/updates ตั้งใจไม่ผ่านตาราง attachments',
 };

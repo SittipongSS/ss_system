@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import {
   LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir,
-  ledgerSummary, orderStateIndex, pendingConfirmations, sortLedger, sortLedgerGroups,
-  stampOrderPaidThrough, undatedHiddenBy
+  ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
+  sortLedgerGroups, stampOrderPaidThrough, undatedHiddenBy
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -635,4 +635,79 @@ test('ก้อนของใบพกเอกสารอ้างอิง�
 test('ไฟล์ที่บัญชีดาวน์โหลดมีช่วงครอบบริการด้วย ไม่ใช่เห็นแต่บนจอ', () => {
   const keys = LEDGER_COLUMNS.map((c) => c.key);
   assert.ok(keys.includes('coversFrom') && keys.includes('coversTo'));
+});
+
+/* ── ใบกำกับภาษีรายงวด (mig 0348 · มติผู้ใช้ 2026-09-07) ──────────────────
+ *
+ * ⚠️ ค่าใหม่ต้องผ่าน **สี่ด่าน** กว่าจะถึงคนใช้: `ledgerRow` → ตาราง/สรุป → ชุดค้น →
+ * `LEDGER_COLUMNS` (ไฟล์ Excel) · ตกด่านไหนก็หายเงียบโดยไม่มี error สักตัว
+ * เพราะทุกด่านเป็น literal ไม่ได้ spread แถวดิบ
+ */
+const INVOICED = {
+  status: 'confirmed', paidOn: '2026-08-10',
+  taxInvoiceNo: 'IV-6809001', taxInvoiceDate: '2026-09-01',
+  taxInvoiceFile: { storagePath: 'sales-orders/SOR-1/tax-invoices/a.pdf', fileName: 'iv.pdf' },
+};
+
+test('🔴 ledgerRow พกเลข/วัน/ไฟล์ใบกำกับมาถึงจอ (whitelist ตกแล้วหายเงียบ)', () => {
+  const r = make(INVOICED);
+  assert.equal(r.taxInvoiceNo, 'IV-6809001');
+  assert.equal(r.taxInvoiceDate, '2026-09-01');
+  assert.equal(r.taxInvoiceFileName, 'iv.pdf');
+  assert.equal(r.hasTaxInvoiceFile, true);
+  // ⚠️ ไม่ส่ง path ออกไปหน้าเว็บ — ทางเปิดไฟล์คือ route ที่ตรวจสิทธิ์เอง
+  assert.equal(r.taxInvoiceFile, undefined);
+  // งวดที่ยังไม่ออกใบต้องได้ค่าว่าง ไม่ใช่ undefined (ตาราง/Excel อ่านตรง ๆ)
+  const blank = make({ status: 'confirmed' });
+  assert.equal(blank.taxInvoiceNo, '');
+  assert.equal(blank.taxInvoiceDate, null);
+  assert.equal(blank.hasTaxInvoiceFile, false);
+});
+
+test('🔴 ไฟล์ Excel ต้องมีคอลัมน์ใบกำกับ และเลขต้องไม่ถูกจัดรูปเป็นวันที่', () => {
+  const col = Object.fromEntries(LEDGER_COLUMNS.map((c) => [c.key, c]));
+  assert.ok(col.taxInvoiceNo, 'ไฟล์ต้องมีเลขที่ใบกำกับ');
+  assert.ok(col.taxInvoiceDate?.date, 'วันที่ใบกำกับต้องถูกจัดรูปเป็นวัน');
+  assert.ok(!col.taxInvoiceNo.date && !col.taxInvoiceNo.num,
+    'เลขที่เป็นข้อความ — ใส่ flag แล้ว numFmt จะทับค่าจริง');
+  // ⚠️ ค่าต้องออกมาจริงในรายงาน ไม่ใช่แค่หัวคอลัมน์สวย (exportExcel อ่าน r[c.key])
+  const report = ledgerReport([make(INVOICED)]);
+  assert.equal(report.rows[0].taxInvoiceNo, 'IV-6809001');
+});
+
+test('🔴 ค้นด้วยเลขใบกำกับต้องเจอ (ตาเห็นบนแถว = ต้องค้นเจอ)', () => {
+  const rows = [make(INVOICED), make({ seq: 2, status: 'confirmed' })];
+  assert.equal(filterLedger(rows, { q: 'IV-6809001' }).length, 1);
+});
+
+test('ตัวกรองใบกำกับ: missing / issued / ว่าง', () => {
+  const rows = [make(INVOICED), make({ seq: 2, status: 'confirmed' }), make({ seq: 3 })];
+  assert.equal(filterLedger(rows, { taxInvoice: 'issued' }).length, 1);
+  // งวด `pending` (ยังไม่ถึงกำหนดจ่าย) ไม่ใช่ของค้าง — ยังไม่มีเงินให้ออกใบ
+  assert.equal(filterLedger(rows, { taxInvoice: 'missing' }).length, 1);
+  assert.equal(filterLedger(rows, { taxInvoice: '' }).length, 3);
+  // ค่าที่ไม่รู้จักต้องไม่กรอง ไม่ใช่ทำให้ทะเบียนว่างเปล่าโดยไม่มีคำอธิบาย
+  assert.equal(filterLedger(rows, { taxInvoice: 'zzz' }).length, 3);
+});
+
+test('สรุปยอดมีของค้าง "ยังไม่ออกใบกำกับ" แยกจากคิวรับรอง', () => {
+  const summary = ledgerSummary([make(INVOICED), make({ seq: 2, status: 'confirmed' })]);
+  assert.equal(summary.missingInvoiceCount, 1);
+  assert.equal(summary.missingInvoiceAmount, 15000);
+});
+
+test('คิวที่สองเรียงของค้างที่นานที่สุดขึ้นก่อน', () => {
+  const queue = pendingTaxInvoices([
+    make({ seq: 2, status: 'confirmed', paidOn: '2026-08-12' }),
+    make({ seq: 3, status: 'confirmed', paidOn: '2026-07-01' }),
+    make(INVOICED),
+  ]);
+  assert.equal(queue.length, 2);
+  assert.equal(queue[0].paidOn, '2026-07-01');
+});
+
+test('ก้อนของใบบอกว่าออกใบกำกับไปกี่งวดแล้ว', () => {
+  const [group] = groupLedgerByOrder([make(INVOICED), make({ seq: 2, status: 'confirmed' })]);
+  assert.equal(group.invoiced, 1);
+  assert.equal(group.invoicePending, 1);
 });

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   SO_PAYMENT_EVIDENCE_CLOSED,
+  isSalesOrderEvidencePath,
+  privateEvidenceAllows,
   privateEvidenceStatusError,
 } from '@/lib/upload/privateEvidence';
 import { installmentActionError } from '@/lib/sales/salesOrderPayments';
@@ -54,4 +56,41 @@ test('ปุ่มกับไฟล์ต้องเดินทางเด�
 
 test('entityType ที่ไม่รู้จักไม่ผ่านด่าน', () => {
   assert.equal(privateEvidenceStatusError('made_up_type', { status: 'draft' }), 'forbidden');
+});
+
+/* ── ใบกำกับภาษีของงวด (mig 0348) — โฟลเดอร์แรกที่เจ้าของไม่ใช่ฝ่ายขาย ────────
+ *
+ * ⭐ FN เป็นคนออกใบกำกับ ⇒ ต้องอัปไฟล์ได้ · แต่ role `finance` **ไม่มี** `salesplan:edit`
+ * ⇒ ด่านตั้งต้นของ `privateEvidence` ปฏิเสธเขาทุกครั้ง (403 จาก /api/upload/session
+ * ที่ไปโผล่ใต้โมดัล มองไม่เห็น — อาการเดียวกับ IS-26080026)
+ * ⚠️ และต้อง **ไม่กว้างเกินไป**: FN ยังอัปสลิปการชำระไม่ได้ เพราะคนรับรองเงินต้องไม่ใช่
+ * คนส่งหลักฐานเงิน (ด่านนี้คือสิ่งที่กันไม่ให้ปุ่มกับไฟล์เดินคนละทางในทิศตรงข้าม)
+ */
+const FN = { id: 'U-FN', role: 'finance', department: 'FN', permissions: null };
+const DEAL = { id: 'D-1', ownerId: 'U-1', team: 'A' };
+
+test('ใบกำกับภาษี: ฝ่ายบัญชี (FN) อัปไฟล์ได้', () => {
+  assert.equal(privateEvidenceAllows('sales_order_tax_invoice', FN, { deal: DEAL }), true);
+});
+
+test('🔴 ใบกำกับภาษี: FN อัปได้เฉพาะโฟลเดอร์ของตัวเอง — สลิปการชำระยังอัปไม่ได้', () => {
+  assert.equal(privateEvidenceAllows('sales_order_payment_evidence', FN, { deal: DEAL }), false);
+});
+
+test('ใบกำกับภาษี: ใบที่ยกเลิก/ตีกลับ/ถูกออก Rev. ทับ แนบไม่ได้', () => {
+  for (const status of SO_PAYMENT_EVIDENCE_CLOSED) {
+    const error = privateEvidenceStatusError('sales_order_tax_invoice', { status });
+    assert.ok(error, `สถานะ ${status} ต้องถูกปฏิเสธ`);
+  }
+  assert.equal(privateEvidenceStatusError('sales_order_tax_invoice', { status: 'approved' }), null);
+});
+
+/* 🐞 #1391 ซ้ำ: เพิ่มโฟลเดอร์ใหม่แล้วลืมด่าน **อ่าน** ⇒ อัปสำเร็จแต่กดดูได้ 404
+   ยามนี้ผูกด่านอ่านเข้ากับทะเบียนโฟลเดอร์ตัวเดียวกับตอนเขียน */
+test('🔴 ด่านอ่านต้องรู้จักโฟลเดอร์ใบกำกับ ไม่งั้นอัปได้แต่เปิดไม่ได้', () => {
+  assert.equal(isSalesOrderEvidencePath('sales-orders/SO-1/tax-invoices/a.pdf', 'SO-1'), true);
+  assert.equal(isSalesOrderEvidencePath('sales-orders/SO-1/payments/a.pdf', 'SO-1'), true);
+  // ผูกกับใบ — ก๊อป ref ข้ามใบแล้วเปิดไฟล์ของใบอื่นไม่ได้
+  assert.equal(isSalesOrderEvidencePath('sales-orders/SO-2/tax-invoices/a.pdf', 'SO-1'), false);
+  assert.equal(isSalesOrderEvidencePath('sales-orders/SO-1/somewhere/a.pdf', 'SO-1'), false);
 });

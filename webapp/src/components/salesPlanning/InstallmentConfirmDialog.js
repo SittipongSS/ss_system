@@ -73,6 +73,15 @@ export default function InstallmentConfirmDialog({
           <dd>{row.paidOn ? fmtDate(row.paidOn) : <span className="cell-quiet">ไม่ได้ระบุ</span>}</dd>
           <dt>ผู้แจ้ง</dt>
           <dd>{row.reportedByName || <span className="cell-quiet">{NA}</span>}</dd>
+          {/* ⭐ ใบกำกับภาษี (mig 0348) — **อ่านอย่างเดียว ไม่มีช่องกรอก** (มติผู้ใช้ 2026-09-07)
+              บันทึกใบกำกับเป็นคนละคำสั่งกับการรับรองเงิน เพราะ `confirm` ถอนคืนยาก
+              ส่วนเลขพิมพ์ผิดได้ทุกวัน · ที่โชว์ตรงนี้เพราะคนกดควรรู้ว่างวดนี้ออกใบไปหรือยัง */}
+          <dt>ใบกำกับภาษี</dt>
+          <dd>
+            {row.taxInvoiceNo
+              ? <span className="mono">{row.taxInvoiceNo}{row.taxInvoiceDate ? ` · ${fmtDate(row.taxInvoiceDate)}` : ""}</span>
+              : <span className="cell-quiet">ยังไม่ออกใบ — บันทึกได้หลังรับรอง</span>}
+          </dd>
         </dl>
 
         {/* 🔴 หลักฐาน — เปิดดูได้ก่อนกด · ไม่มีไฟล์เลยต้องเตือน ไม่ใช่ปล่อยผ่านเงียบ ๆ */}
