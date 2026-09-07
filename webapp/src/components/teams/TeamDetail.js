@@ -14,7 +14,6 @@ import Button from "@/components/ui/Button";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
-import OptionTiles from "@/components/ui/OptionTiles";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import SkeletonRows from "@/components/ui/Skeleton";
 import CountBadge from "@/components/ui/CountBadge";
@@ -29,9 +28,9 @@ import { useRole } from "@/lib/roleContext";
 import { TEAM_KIND_LABELS, teamsBasePath } from "@/lib/master/teams";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { fmtNumber, naText } from "@/lib/format";
-import { apiFetch } from "@/lib/apiFetch";
 import useTeamRegistry from "./useTeamRegistry";
 import TeamFormFields from "./TeamFormFields";
+import TeamAssignModal from "./TeamAssignModal";
 import styles from "./TeamManager.module.css";
 
 export default function TeamDetail({ department, code }) {
@@ -41,10 +40,6 @@ export default function TeamDetail({ department, code }) {
 
   const [edit, setEdit] = useState(null);        // ฟอร์มแก้ทีม
   const [moving, setMoving] = useState(null);    // คนที่กำลังย้าย (ทีมขาย)
-  const [moveTeams, setMoveTeams] = useState([]);
-  const [movePrimary, setMovePrimary] = useState("");
-  const [moveImpact, setMoveImpact] = useState([]);
-  const [impactFailed, setImpactFailed] = useState(false);
   const [crewOpen, setCrewOpen] = useState(false);
   const [crewIds, setCrewIds] = useState([]);
   const [crewQ, setCrewQ] = useState("");
@@ -60,31 +55,10 @@ export default function TeamDetail({ department, code }) {
     [teams],
   );
 
-  const openMove = async (person) => {
-    const current = person.teams?.length ? person.teams : [team.code];
-    setMoving(person);
-    setMoveTeams(current);
-    setMovePrimary(person.team || current[0] || "");
-    setMoveImpact([]);
-    setImpactFailed(false);
-    /* ⭐ บอกของที่จะค้างอยู่ทีมเดิม **ก่อนกด** — ระบบไม่ย้ายดีล/เป้าให้โดยเจตนา
-       ⚠️ ดึงไม่สำเร็จต้อง **บอกว่าไม่รู้** ไม่ใช่เงียบ — ของเดิม `catch {}` เฉย ๆ
-          ⇒ จอที่ดึงพลาดหน้าตาเหมือน "ไม่มีอะไรต้องเตือน" เป๊ะ */
-    try {
-      const res = await apiFetch(`/api/users/${person.id}/team/impact`);
-      const body = await res.json().catch(() => null);
-      if (res.ok && Array.isArray(body?.effects)) setMoveImpact(body.effects);
-      else setImpactFailed(true);
-    } catch { setImpactFailed(true); }
-  };
-
-  const saveMove = async () => {
+  const saveMove = async (payload) => {
     const done = await call(`/api/users/${moving.id}/team`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      /* ⭐ **ทีมหลักเป็นคำตอบของคน ไม่ใช่ผลข้างเคียงของลำดับที่วาด** (มติ 2026-09-06)
-         🐞 ของเดิมส่ง `team: teams[0]` — OptionTiles เรียงค่าตาม `options` เสมอ ⇒ ทีมหลัก
-            เปลี่ยนเงียบ ๆ ทุกครั้งที่ติ๊ก แล้วดีล/ยอดใหม่ไปขึ้นทีมที่ไม่มีใครเลือก */
-      body: JSON.stringify({ teams: moveTeams, team: movePrimary || moveTeams[0] }),
+      body: JSON.stringify(payload),
     }, `ย้ายทีมของ ${moving.name} แล้ว`);
     if (done) setMoving(null);
   };
@@ -319,7 +293,7 @@ export default function TeamDetail({ department, code }) {
                               items={[
                                 team.kind === "sales" && {
                                   id: "move", label: "ย้ายทีม / แก้ทีมที่สังกัด",
-                                  onClick: () => openMove(person),
+                                  onClick: () => setMoving(person),
                                 },
                                 {
                                   id: "lead",
@@ -371,60 +345,13 @@ export default function TeamDetail({ department, code }) {
         )}
       </Modal>
 
-      {/* ── ย้ายทีม (ทีมขาย) ─────────────────────────────────────────── */}
-      <Modal open={!!moving} onClose={() => setMoving(null)} title={`ย้ายทีมของ ${moving?.name || ""}`}
-        subtitle={moving ? `${ROLE_LABELS[moving.role] || moving.role} · ตอนนี้อยู่ ${naText((moving.teams || []).join(" · "))}` : undefined}
-        size="md"
-        footer={(
-          <>
-            <Button tone="neutral" onClick={() => setMoving(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="primary" disabled={saving || !moveTeams.length} onClick={saveMove}>ย้ายทีม</Button>
-          </>
-        )}
-      >
-        {moving && (
-          <>
-            <div className={styles.field}>
-              <span>ทีมที่สังกัด * <small>— เห็นข้อมูลของทุกทีมที่ติ๊ก</small></span>
-              <OptionTiles
-                multiple
-                ariaLabel="ทีมที่สังกัด"
-                value={moveTeams}
-                onChange={(next) => {
-                  setMoveTeams(next);
-                  if (!next.includes(movePrimary)) setMovePrimary(next[0] || "");
-                }}
-                options={salesTeams.map((t) => ({ value: t.code, label: t.name, description: t.code }))}
-              />
-            </div>
-            {/* ⭐ ทีมหลักถามเฉพาะตอนที่มันมีคำตอบให้เลือกจริง — ทีมเดียวก็คือทีมหลักอยู่แล้ว */}
-            {moveTeams.length > 1 && (
-              <div className={styles.field}>
-                <span>ทีมหลัก * <small>— ดีลและยอดใหม่จะขึ้นทีมนี้</small></span>
-                <OptionTiles
-                  ariaLabel="ทีมหลัก"
-                  value={movePrimary}
-                  onChange={setMovePrimary}
-                  options={salesTeams.filter((t) => moveTeams.includes(t.code))
-                    .map((t) => ({ value: t.code, label: t.name, description: t.code }))}
-                />
-              </div>
-            )}
-            {moveImpact.length > 0 && (
-              <StatusNotice tone="warning" title="ของที่ค้างอยู่จะไม่ย้ายตามให้">
-                <ul className={styles.impact}>
-                  {moveImpact.map((row) => <li key={row.key}>{row.text}</li>)}
-                </ul>
-              </StatusNotice>
-            )}
-            {impactFailed && (
-              <StatusNotice tone="warning">
-                ดูรายการที่ค้างอยู่ไม่ได้ตอนนี้ — ย้ายได้ตามปกติ แต่ให้ไปไล่ดีล/เป้าที่ค้างเองหลังย้าย
-              </StatusNotice>
-            )}
-          </>
-        )}
-      </Modal>
+      <TeamAssignModal
+        person={moving}
+        teams={salesTeams}
+        saving={saving}
+        onClose={() => setMoving(null)}
+        onSave={saveMove}
+      />
 
       {/* ── จัดสมาชิกทีมปฏิบัติงาน ─────────────────────────────────────
           ⚠️ บันทึกทั้งชุดครั้งเดียว ไม่ใช่ยิงทีละคน — ยิงทีละคนแล้วล้มกลางทางจะเหลือ
