@@ -1138,42 +1138,40 @@ export default function TasksPage() {
         </EmptyState>
       ) : view === "table" ? (
         /* ── Table view ── */
-        <div className="premium-glass-table table-responsive">
-          <TableScroll surface="embedded"><table className="premium-table">
-            <thead>
-              <tr>
-                <SortTh label="สถานะ" sortKey="status" sort={sort} />
-                <SortTh label="ชื่องาน" sortKey="name" sort={sort} />
-                {scope === "mine" && <th>บทบาทของฉัน</th>}
-                <th>หมวด</th>
-                {scope !== "mine" && <th>ผู้รับมอบหมาย</th>}
-                <th>ความยาก</th>
-                <SortTh label="กำหนดเสร็จ" sortKey="due" sort={sort} />
-                <th>เชื่อมโยง</th>
-                <th style={{ width: "70px", textAlign: "right" }}>จัดการ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวงานข้างในเป็น `taskRow` ตัวเดียวกับโหมดปกติ
-                  ⚠️ colSpan = 8 เท่าจำนวนคอลัมน์จริง (สองคอลัมน์สลับกันตามสโคป ไม่ได้บวกกัน) */}
-              {buckets ? buckets.map((bucket) => {
-                const bucketCollapsed = collapsed.has(bucket.key);
-                return (
-                  <Fragment key={bucket.key}>
-                    <TableGroupRow
-                      colSpan={8}
-                      label={bucket.label}
-                      badge={`${bucket.count} งาน`}
-                      collapsed={bucketCollapsed}
-                      onToggle={() => toggleBucket(bucket.key)}
-                    />
-                    {!bucketCollapsed && bucket.items.map(taskRow)}
-                  </Fragment>
-                );
-              }) : pageRows.map(taskRow)}
-            </tbody>
-          </table></TableScroll>
-        </div>
+        <TableScroll surface="auto"><table className="premium-table">
+          <thead>
+            <tr>
+              <SortTh label="สถานะ" sortKey="status" sort={sort} />
+              <SortTh label="ชื่องาน" sortKey="name" sort={sort} />
+              {scope === "mine" && <th>บทบาทของฉัน</th>}
+              <th>หมวด</th>
+              {scope !== "mine" && <th>ผู้รับมอบหมาย</th>}
+              <th>ความยาก</th>
+              <SortTh label="กำหนดเสร็จ" sortKey="due" sort={sort} />
+              <th>เชื่อมโยง</th>
+              <th style={{ width: "70px", textAlign: "right" }}>จัดการ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวงานข้างในเป็น `taskRow` ตัวเดียวกับโหมดปกติ
+                ⚠️ colSpan = 8 เท่าจำนวนคอลัมน์จริง (สองคอลัมน์สลับกันตามสโคป ไม่ได้บวกกัน) */}
+            {buckets ? buckets.map((bucket) => {
+              const bucketCollapsed = collapsed.has(bucket.key);
+              return (
+                <Fragment key={bucket.key}>
+                  <TableGroupRow
+                    colSpan={8}
+                    label={bucket.label}
+                    badge={`${bucket.count} งาน`}
+                    collapsed={bucketCollapsed}
+                    onToggle={() => toggleBucket(bucket.key)}
+                  />
+                  {!bucketCollapsed && bucket.items.map(taskRow)}
+                </Fragment>
+              );
+            }) : pageRows.map(taskRow)}
+          </tbody>
+        </table></TableScroll>
       ) : (
         /* ── List view (cards) ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: "12px" }}>

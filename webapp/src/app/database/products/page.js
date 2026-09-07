@@ -562,93 +562,91 @@ export default function ProductRegistry() {
           })}
         </div>
       ) : (
-        <div className="glass-panel">
-          <TableScroll surface="embedded" className="border-none" family="list">
-            <table className="premium-table">
-              <thead>
-                <tr>
-                  <SortTh label="รายละเอียดสินค้า (FG Code)" sortKey="product" sort={sort} />
-                  <SortTh label="หมวดหมู่" sortKey="category" sort={sort} />
-                  <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
-                  <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
-                  {/* หัวบอกว่าเลขหลัก (ตัวที่เรียง) คือราคาก่อน VAT — อีกสองบรรทัดอยู่ในช่อง */}
-                  {canSeeCost && <SortTh label="ราคาผลิต (ก่อน VAT)" sortKey="cost" sort={sort} className="num" />}
-                  <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
-                  <th>สถานะ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((p) => {
-                  const flags = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes);
-                  const isExciseCat = flags.isExcise;
-                  const cat = categoryLabelOf(p);
-                  /* href ตัวเดียวส่งให้ทั้งแถวและลิงก์ในเซลล์ — ด่าน ROW_MIRROR เทียบ *ข้อความนิพจน์*
-                     ตรงตัว ไม่ใช่แค่ "ไปหน้าเดียวกัน" (เขียนคนละรูปเมื่อไหร่โดนฟ้องทันที)
-                     ⚠️ ตัวนี้เป็น **สตริง** และ **บังชื่อ** `detailHref` ระดับคอมโพเนนต์ซึ่งเป็น
-                        *ฟังก์ชัน* (คนละมุมมองใช้คนละตัว · ฝั่งการ์ดเรียก `detailHref(p)`) */
-                  const detailHref = `/database/products/${p.id}`;
-                  return (
-                    /* แถวเป็น DetailRow: onClick ของ <tr> เหลือเป็น **ทางลัดของเมาส์** ส่วนทางเข้าจริง
-                       ของคีย์บอร์ด/โปรแกรมอ่านหน้าจอคือ <Link> ในเซลล์แรก (ท่าเดียวกับหน้าดีล/ลีด/โครงการ)
-                       🗑️ ทางลัดเคยเป็น `open(p)` (window.location = โหลดหน้าใหม่ทั้งใบ) — ย้ายมาเป็น
-                       router.push ของ DetailRow แล้ว และ `open()` ถูกลบทิ้งในรอบการ์ด 2026-09-02
-                       (การ์ดจอแนวตั้งเป็นที่เรียกสุดท้ายของมัน) */
-                    <DetailRow key={p.id} href={detailHref} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
-                      <td>
-                        {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว)
-                            prefetch={false}: ทะเบียนสินค้ายาว — กัน RSC prefetch ต่อแถว */}
-                        <Link prefetch={false} href={detailHref} className="linklike linklike-block" title="เปิดหน้าสินค้า">
-                          <span className="mono block text-[12px] text-[var(--accent)]">{p.fgCode}</span>
-                          <strong className="block font-semibold mt-0.5">{productNameBoth(p)}</strong>
-                        </Link>
-                      </td>
-                      <td>
-                        {cat ? (
-                          <div className="text-xs leading-tight">
-                            {/* รหัสหมวดบน · ชื่อ EN·TH ล่าง — กลุ่มหลักฝังในรหัสอยู่แล้ว */}
-                            <div className="mono text-[11px] text-[var(--text-3)]">{p.categoryCode || categoryOf(p.fgCode)}</div>
-                            <div className="text-[var(--text-2)]">{cat.sub}</div>
-                          </div>
-                        ) : <span className="text-[var(--text-3)]">{NA}</span>}
-                      </td>
-                      <td className="text-[var(--text-2)]">{naText(brandBoth(p.brandName, p.brandNameEn))}</td>
-                      <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
-                      {canSeeCost && (
-                        <td className="num mono text-[var(--text-2)]">
-                          {fmtMoneyOrDash(p.costPrice)}
-                          <CostVatLines costPrice={p.costPrice} />
-                        </td>
-                      )}
+        <TableScroll surface="auto" family="list">
+          <table className="premium-table">
+            <thead>
+              <tr>
+                <SortTh label="รายละเอียดสินค้า (FG Code)" sortKey="product" sort={sort} />
+                <SortTh label="หมวดหมู่" sortKey="category" sort={sort} />
+                <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
+                <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
+                {/* หัวบอกว่าเลขหลัก (ตัวที่เรียง) คือราคาก่อน VAT — อีกสองบรรทัดอยู่ในช่อง */}
+                {canSeeCost && <SortTh label="ราคาผลิต (ก่อน VAT)" sortKey="cost" sort={sort} className="num" />}
+                <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((p) => {
+                const flags = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes);
+                const isExciseCat = flags.isExcise;
+                const cat = categoryLabelOf(p);
+                /* href ตัวเดียวส่งให้ทั้งแถวและลิงก์ในเซลล์ — ด่าน ROW_MIRROR เทียบ *ข้อความนิพจน์*
+                   ตรงตัว ไม่ใช่แค่ "ไปหน้าเดียวกัน" (เขียนคนละรูปเมื่อไหร่โดนฟ้องทันที)
+                   ⚠️ ตัวนี้เป็น **สตริง** และ **บังชื่อ** `detailHref` ระดับคอมโพเนนต์ซึ่งเป็น
+                      *ฟังก์ชัน* (คนละมุมมองใช้คนละตัว · ฝั่งการ์ดเรียก `detailHref(p)`) */
+                const detailHref = `/database/products/${p.id}`;
+                return (
+                  /* แถวเป็น DetailRow: onClick ของ <tr> เหลือเป็น **ทางลัดของเมาส์** ส่วนทางเข้าจริง
+                     ของคีย์บอร์ด/โปรแกรมอ่านหน้าจอคือ <Link> ในเซลล์แรก (ท่าเดียวกับหน้าดีล/ลีด/โครงการ)
+                     🗑️ ทางลัดเคยเป็น `open(p)` (window.location = โหลดหน้าใหม่ทั้งใบ) — ย้ายมาเป็น
+                     router.push ของ DetailRow แล้ว และ `open()` ถูกลบทิ้งในรอบการ์ด 2026-09-02
+                     (การ์ดจอแนวตั้งเป็นที่เรียกสุดท้ายของมัน) */
+                  <DetailRow key={p.id} href={detailHref} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
+                    <td>
+                      {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว)
+                          prefetch={false}: ทะเบียนสินค้ายาว — กัน RSC prefetch ต่อแถว */}
+                      <Link prefetch={false} href={detailHref} className="linklike linklike-block" title="เปิดหน้าสินค้า">
+                        <span className="mono block text-[12px] text-[var(--accent)]">{p.fgCode}</span>
+                        <strong className="block font-semibold mt-0.5">{productNameBoth(p)}</strong>
+                      </Link>
+                    </td>
+                    <td>
+                      {cat ? (
+                        <div className="text-xs leading-tight">
+                          {/* รหัสหมวดบน · ชื่อ EN·TH ล่าง — กลุ่มหลักฝังในรหัสอยู่แล้ว */}
+                          <div className="mono text-[11px] text-[var(--text-3)]">{p.categoryCode || categoryOf(p.fgCode)}</div>
+                          <div className="text-[var(--text-2)]">{cat.sub}</div>
+                        </div>
+                      ) : <span className="text-[var(--text-3)]">{NA}</span>}
+                    </td>
+                    <td className="text-[var(--text-2)]">{naText(brandBoth(p.brandName, p.brandNameEn))}</td>
+                    <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
+                    {canSeeCost && (
                       <td className="num mono text-[var(--text-2)]">
-                        {fmtMoneyOrDash(p.retailPriceIncVat)}
-                        {(isExciseCat || flags.requiresFdaNotice) && (
-                          <div className="mt-0.5 flex items-center justify-end gap-1.5">
-                            {isExciseCat && taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
-                            {isExciseCat && <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>}
-                            {flags.requiresFdaNotice && <span className="status-pill info text-[10px]">จดแจ้ง อย.</span>}
-                          </div>
-                        )}
+                        {fmtMoneyOrDash(p.costPrice)}
+                        <CostVatLines costPrice={p.costPrice} />
                       </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
-                          <ApprovalActions onDecide={(status) => decide(p, status)} />
-                        ) : (
-                          <div className="flex flex-col gap-1 items-start">
-                            <ApprovalBadge status={approvalStatusOf(p)} />
-                            {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
-                            {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
-                              <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </DetailRow>
-                  );
-                })}
-              </tbody>
-            </table>
-          </TableScroll>
-        </div>
+                    )}
+                    <td className="num mono text-[var(--text-2)]">
+                      {fmtMoneyOrDash(p.retailPriceIncVat)}
+                      {(isExciseCat || flags.requiresFdaNotice) && (
+                        <div className="mt-0.5 flex items-center justify-end gap-1.5">
+                          {isExciseCat && taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
+                          {isExciseCat && <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>}
+                          {flags.requiresFdaNotice && <span className="status-pill info text-[10px]">จดแจ้ง อย.</span>}
+                        </div>
+                      )}
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
+                        <ApprovalActions onDecide={(status) => decide(p, status)} />
+                      ) : (
+                        <div className="flex flex-col gap-1 items-start">
+                          <ApprovalBadge status={approvalStatusOf(p)} />
+                          {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                          {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
+                            <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </DetailRow>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
 
       {sort.sorted.length > 0 && (
