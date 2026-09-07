@@ -78,6 +78,32 @@ export function normalizeSurveyZones(input) {
   return { value: out, error: null };
 }
 
+/* ── พื้นที่ที่ช่างเจอหน้างาน (มติข้อ 6) ─────────────────────────────────
+   ⭐ **ฟอร์มเดียวกับ "เพิ่มพื้นที่ใหม่" ของ SA ย่อลงให้พอกรอกด้วยมือเดียว** —
+      ชื่อ + ชั้น + หมายเหตุ · ชั้น **บังคับ** เหมือนกัน เพราะมันอยู่ในตัวรหัส ZN (mig 0315)
+   ⚠️ ไม่มีช่อง `status` ให้ client ส่ง — ค่านั้นเป็นข้อเท็จจริงของ *เส้นทาง* ที่แถวเกิด
+      ไม่ใช่ของที่ผู้ใช้เลือก (ปล่อยให้ส่งมาได้เมื่อไร ใบของ SA จะย้อมตัวเองเป็น 'added' ได้) */
+export function normalizeAddedZone(input = {}) {
+  const name = text(input?.name, 150);
+  if (!name) return { value: null, error: 'ต้องระบุชื่อพื้นที่' };
+  const floor = normalizeFloor(input?.floor);
+  if (floor.error) return { value: null, error: floor.error };
+  const note = String(input?.note ?? '').trim();
+  if (note.length > 1000) return { value: null, error: 'หมายเหตุยาวเกิน 1000 ตัวอักษร' };
+  return { value: { name, floor: floor.value, note: note || null }, error: null };
+}
+
+/* ชื่อชนกับพื้นที่ที่ใบนี้มีอยู่แล้ว — ตีกลับตั้งแต่ก่อนแตะฐาน
+   ⚠️ เทียบด้วย `zoneNameKey` ตัวเดียวกับ unique index ของ DB · และเทียบกับ **ทุกแถว**
+      รวมแถวที่ถูกตัดออก — ตัดออกแล้วยังอยู่ในใบ ชื่อซ้ำจะอ่านไม่ออกว่าอันไหนคืออันไหน */
+export function surveyRowNameClash(name, rows = []) {
+  const key = zoneNameKey(name);
+  const hit = (Array.isArray(rows) ? rows : []).find((r) => zoneNameKey(r?.zoneName) === key);
+  if (!hit) return null;
+  return `ใบนี้มีพื้นที่ชื่อ "${hit.zoneName}" อยู่แล้ว`
+    + (hit.status === 'cut' ? ' (ถูกตัดออก — เอากลับเข้าใบแทนการเพิ่มใหม่)' : '');
+}
+
 /* ── ชื่อพื้นที่ใหม่ชนกับโซนที่มีอยู่แล้วในไซต์นั้น ───────────────────────
    ⚠️ ต้องเรียกหลังรู้ว่าไซต์ไหน (route อ่านโซนของไซต์นั้นมาส่งให้)
    ⭐ ข้อความต้องบอก **รหัส ZN** ของตัวที่ชน — ไม่งั้นคนหาไม่เจอว่าซ้ำกับอันไหน */

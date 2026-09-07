@@ -71,7 +71,11 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
                 <td>
                   <b>{zone.zoneName}</b>
                   <span className={styles.sub}>
-                    {[zone.floor ? `ชั้น ${zone.floor}` : null, zone.zoneId ? null : "พื้นที่ใหม่"]
+                    {/* ⚠️ "เพิ่มหน้างาน" ต้องอ่านออกจาก `status` ไม่ใช่จาก `!zoneId` — พื้นที่ที่
+                        ช่างเพิ่มได้รหัส ZN ทันที ส่วนพื้นที่ใหม่ของ SA รอถึงตอนกดส่งใบ */}
+                    {[zone.floor ? `ชั้น ${zone.floor}` : null,
+                      zone.status === "added" ? "ช่างเพิ่มหน้างาน" : null,
+                      zone.zoneId ? null : "พื้นที่ใหม่"]
                       .filter(Boolean).join(" · ") || naText(null)}
                   </span>
                 </td>
