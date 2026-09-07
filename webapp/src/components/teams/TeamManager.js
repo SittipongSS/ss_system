@@ -31,7 +31,9 @@ import { TableScroll } from "@/components/ui/Table";
 import { SortMenu, SortDirButton } from "@/components/ui/ViewMenus";
 import DetailRow from "@/components/ui/DetailRow";
 import { useResponsiveView } from "@/lib/useResponsiveView";
-import { TEAM_KIND_LABELS, allowedKindsFor, teamHref } from "@/lib/master/teams";
+import {
+  TEAM_KIND_LABELS, allowedKindsFor, normalizeTeamCode, suggestTeamCode, teamHref,
+} from "@/lib/master/teams";
 import { ROLE_LABELS, TEAM_ROLES } from "@/lib/permissions";
 import { fmtNumber } from "@/lib/format";
 import useTeamRegistry from "./useTeamRegistry";
@@ -55,7 +57,9 @@ const SORTS = [
    ฝ่ายที่มีทีมแบบเดียวไม่ต้องถาม แต่ฝ่ายขายมีสองแบบ ⇒ เริ่มที่ "ยังไม่เลือก" */
 const emptyDraft = (department) => {
   const kinds = allowedKindsFor(department);
-  return { kind: kinds.length === 1 ? kinds[0] : "", name: "", note: "" };
+  /* `codeTouched` = คนพิมพ์รหัสเองแล้ว ⇒ หยุดให้รหัสเดินตามชื่อ
+     (ไม่ส่งขึ้นเซิร์ฟเวอร์ — เป็นสถานะของฟอร์มล้วน) */
+  return { kind: kinds.length === 1 ? kinds[0] : "", name: "", note: "", code: "", codeTouched: false };
 };
 
 export default function TeamManager({ department, title, subtitle }) {
@@ -138,13 +142,34 @@ export default function TeamManager({ department, title, subtitle }) {
     ].filter(Boolean);
   };
 
+  const existingCodes = useMemo(() => teams.map((t) => t.code), [teams]);
+  /* ⚠️ ปุ่มสร้างต้องดับด้วยกติกาเดียวกับเซิร์ฟเวอร์ ไม่ใช่แค่ "ชื่อไม่ว่าง" */
+  const draftCodeError = draft
+    ? normalizeTeamCode(draft.code, { department, existingCodes }).error || ""
+    : "";
+
+  /* รหัสเดินตามชื่อจนกว่าคนจะพิมพ์รหัสเอง — พิมพ์เองแล้วห้ามเขียนทับ
+     ⚠️ ของเดิมรหัสมาจากตัวสร้างอย่างเดียว ⇒ ชื่อไทยล้วนได้ `SA` · `SA-2` ซึ่งอ่านไม่ออก
+        ว่าเป็นทีมไหน และมันคือรหัสที่จะถูกก๊อปลง 20+ คอลัมน์ตลอดไป */
+  const changeDraft = (next) => {
+    const touched = draft?.codeTouched || (next.code ?? "") !== (draft?.code ?? "");
+    if (touched) { setDraft({ ...next, codeTouched: true }); return; }
+    /* ⚠️ **เติมให้เฉพาะรหัสที่ใช้ได้จริง** — ชื่อไทยล้วนทำให้ตัวสร้างคืนแค่ `SA`
+       ซึ่งตกด่านของตัวเอง ⇒ ระบบเติมค่าผิดให้แล้วขึ้นข้อความแดงต่อว่าคนพิมพ์
+       (เห็นตอน UAT 2026-09-07) · เติมไม่ได้ก็ปล่อยว่าง ให้ placeholder ทำหน้าที่ */
+    const guess = suggestTeamCode(department, next.name, existingCodes);
+    const usable = !normalizeTeamCode(guess, { department, existingCodes }).error;
+    setDraft({ ...next, codeTouched: false, code: usable ? guess : "" });
+  };
+
   const createTeam = async () => {
+    const code = (draft.code || "").trim().toUpperCase();
     const done = await call("/api/teams", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: draft.name.trim(), department, kind: draft.kind, note: draft.note || null,
+        name: draft.name.trim(), department, kind: draft.kind, note: draft.note || null, code,
       }),
-    }, `สร้างทีม ${draft.name.trim()} แล้ว`);
+    }, `สร้างทีม ${draft.name.trim()} (${code}) แล้ว`);
     if (done) setDraft(null);
   };
 
@@ -346,7 +371,7 @@ export default function TeamManager({ department, title, subtitle }) {
           <>
             <Button tone="neutral" onClick={() => setDraft(null)} disabled={saving}>ยกเลิก</Button>
             <Button tone="primary"
-              disabled={saving || !draft?.name?.trim() || !draft?.kind}
+              disabled={saving || !draft?.name?.trim() || !draft?.kind || !!draftCodeError}
               onClick={createTeam}>
               สร้างทีม
             </Button>
@@ -358,8 +383,8 @@ export default function TeamManager({ department, title, subtitle }) {
             mode="create"
             department={department}
             value={draft}
-            onChange={setDraft}
-            existingCodes={teams.map((t) => t.code)}
+            onChange={changeDraft}
+            existingCodes={existingCodes}
           />
         )}
       </Modal>
