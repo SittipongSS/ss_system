@@ -24,12 +24,25 @@ export function dealFieldLabels({ legacyWon = false } = {}) {
   };
 }
 
-/** ช่องที่ยังขาด — คืนเป็น **คีย์** ให้ผู้เรียกแปลงเป็นป้ายเอง (server ไม่ต้องรู้ภาษาจอ) */
-export function missingDealFieldKeys(draft = {}) {
+/** ช่องที่ยังขาด — คืนเป็น **คีย์** ให้ผู้เรียกแปลงเป็นป้ายเอง (server ไม่ต้องรู้ภาษาจอ)
+ *
+ * 🐞 **`alreadyWon` = ดีลที่ปิด Won ไปแล้ว ไม่บังคับตารางมูลค่ารายหมวด** (มติผู้ใช้
+ *    2026-09-08: "won จาก QT ก็ดึงหมวด ปริมาตร จำนวน ยอดมาอยู่แล้ว")
+ *    ⇒ ของจริงก่อนแก้: **57 จาก 167 ดีล Won บันทึกฟอร์มแก้ไม่ได้เลยสักครั้ง** — จอล็อก
+ *      ตารางไว้ (`DealFormFields` `disabled={alreadyWon}`) เพราะยอดของดีล Won คือ
+ *      Actual จากใบสั่งขาย ห้ามพิมพ์ทับ แต่ด่านนี้กลับสั่งให้กรอก ⇒ ด่านสั่งกรอก
+ *      จอไม่ให้กรอก ไม่มีทางออก · แก้หมายเหตุสักบรรทัดก็บันทึกไม่ได้
+ *    ⭐ 52 ใน 57 ใบนั้นมีใบเสนอราคาที่ลูกค้ารับแล้ว (หมวด/ปริมาตร/จำนวนอยู่ในใบครบ
+ *      และรายงาน FC อ่านจากใบตรง ๆ ตั้งแต่ #1678) ⇒ ตารางนี้ไม่มีหน้าที่กับดีล Won
+ * ⚠️ **ตอน "สร้าง" ดีลเก่าที่ Won ยังบังคับเหมือนเดิม** — ผู้เรียกฝั่งสร้าง
+ *    (`DealCreateModal`) ไม่ส่ง `alreadyWon` มา · ดีลเก่าไม่มีใบให้ดึง ยอดปิดจึงต้อง
+ *    มาจากตารางที่คนกรอก
+ */
+export function missingDealFieldKeys(draft = {}, { alreadyWon = false } = {}) {
   const blank = (value) => !String(value ?? '').trim();
   return [
     ['stage', blank(draft.stage)],
-    ['valueItems', !(draft.valueItems || []).length],
+    ['valueItems', !alreadyWon && !(draft.valueItems || []).length],
     ['expectedCloseDate', blank(draft.expectedCloseDate)],
     ['startDate', blank(draft.startDate)],
     ['endDate', blank(draft.endDate)],
@@ -37,8 +50,8 @@ export function missingDealFieldKeys(draft = {}) {
 }
 
 /** ข้อความเดียวที่บอกทุกช่องที่ขาด — กดครั้งเดียวรู้ครบ ไม่ใช่เจอทีละช่อง */
-export function missingDealFieldsMessage(draft = {}, { legacyWon = false, title = null } = {}) {
-  const keys = missingDealFieldKeys(draft);
+export function missingDealFieldsMessage(draft = {}, { legacyWon = false, alreadyWon = false, title = null } = {}) {
+  const keys = missingDealFieldKeys(draft, { alreadyWon });
   if (!keys.length) return null;
   const labels = dealFieldLabels({ legacyWon });
   const named = keys.map((key) => labels[key] || key).join(' · ');
