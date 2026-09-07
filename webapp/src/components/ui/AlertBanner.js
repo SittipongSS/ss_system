@@ -8,6 +8,7 @@
 //
 // ⚠️ **ปุ่มต้องพาไปที่ตัวกรอง ไม่ใช่บอกเฉย ๆ** — เตือนแล้วยังต้องไล่หาเองในตาราง
 // ร้อยแถว คนจะเลิกอ่านแถบนี้ภายในสัปดาห์เดียว (บทเรียนจากแถบทบทวน FC)
+import thaiText from "@/components/ThaiText";
 import styles from "./AlertBanner.module.css";
 
 /**
@@ -21,7 +22,7 @@ export default function AlertBanner({ tone = "warning", icon: Icon, children, ac
   return (
     <div className={styles.banner} data-tone={tone} role="status">
       {Icon && <Icon size={16} aria-hidden="true" className={styles.icon} />}
-      <p className={styles.text}>{children}</p>
+      <p className={styles.text}>{typeof children === "string" ? thaiText(children) : children}</p>
       {action}
     </div>
   );

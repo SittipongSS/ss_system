@@ -13,6 +13,7 @@
  *   หลายฉบับ   ใบอนุมัติหลายเลขที่ → ระบบไม่เดา เลือกเองว่าใบไหนคือ FC
  */
 
+import thaiText from "@/components/ThaiText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
@@ -170,7 +171,7 @@ export default function ForecastReviewPage() {
       {error ? <StatusNotice tone="danger" onDismiss={() => setError("")}>{error}</StatusNotice> : null}
       {info ? <StatusNotice tone="success" onDismiss={() => setInfo("")}>{info}</StatusNotice> : null}
 
-      <p className={styles.lead}>{active.lead}</p>
+      <p className={styles.lead}>{thaiText(active.lead)}</p>
 
       {!loading && !shown.length ? (
         <EmptyState icon={CheckCircle2}>{active.empty}</EmptyState>

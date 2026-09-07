@@ -114,3 +114,32 @@ test('🔴 ThaiText ต้องห่อคำด้วย nowrap และห�
     'ต้องวาดตัวคำดิบ ๆ ไม่ใช่ใส่อักขระคั่น');
   assert.match(css, /white-space:\s*nowrap/, 'คลาส .word ต้องห้ามตัดกลางคำ');
 });
+
+/* 🔴 **ยามของการต่อท่อ** — โมดูลนี้ถูกต่อเข้ากับ primitive ที่วาดร้อยแก้ว
+   ถอดออกจากตัวไหนแล้วจอนั้นกลับไปตัดขาดกลางคำ **โดยไม่มีเทสต์ไหนแดง** ถ้าไม่มีข้อนี้
+   (โรคเดียวกับที่เจอมาแล้วในงานชุดนี้: ยามที่คุมตรรกะ แต่ไม่มีใครคุม *ตัวเรียก*)
+   ⚠️ เพิ่มจุดต่อใหม่แล้วต้องมาเติมในลิสต์นี้ด้วย ไม่งั้นมันหลุดหายได้เงียบ ๆ เหมือนกัน */
+test('🔴 primitive ที่วาดร้อยแก้วต้องยังเรียก thaiText อยู่', async () => {
+  const { readFileSync: read } = await import('node:fs');
+  const WIRED = [
+    ['../components/ui/Workspace.js', 'คำโปรยหัวหน้าจอและหัวหมวด'],
+    ['../components/Modal.js', 'คำโปรยใต้ชื่อโมดัล'],
+    ['../components/ui/StatusNotice.js', 'แถบแจ้งสถานะ'],
+    ['../components/ui/EmptyState.js', 'ข้อความตอนไม่มีข้อมูล'],
+    ['../components/ui/DetailPage.js', 'คำโปรยของการ์ดบริบท'],
+    ['../components/ui/ConfirmDialog.js', 'คำอธิบายของกล่องยืนยัน'],
+    ['../components/ui/AlertBanner.js', 'แถบเตือนพร้อมทางไปจัดการ'],
+    ['../components/ui/RowActionMenu.js', 'เหตุผลที่เมนูแถวกดไม่ได้'],
+  ];
+  const missing = WIRED.filter(([file]) => !/thaiText\(/.test(read(new URL(file, import.meta.url), 'utf8')));
+  assert.deepEqual(missing.map(([f, why]) => `${f} (${why})`), [],
+    'primitive เหล่านี้เคยต่อท่อไว้แล้ว — ถอดออกเมื่อไรจอนั้นกลับไปตัดขาดกลางคำ');
+});
+
+/* ⚠️ `placeholder` เป็น attribute จึงใส่ span ไม่ได้ — `Input` ใช้ `thaiWrapText`
+   (ZWSP อย่างเดียว) ซึ่งแก้อาการหนัก "ขโมยตัวสะกดคำหน้า" ได้ แต่กันตัดกลางคำไม่ได้ */
+test('🔴 Input ต้องแปลง placeholder ด้วย thaiWrapText', async () => {
+  const { readFileSync: read } = await import('node:fs');
+  const src = read(new URL('../components/ui/Input.js', import.meta.url), 'utf8');
+  assert.match(src, /thaiWrapText\(props\.placeholder\)/);
+});

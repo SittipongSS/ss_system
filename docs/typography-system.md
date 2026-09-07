@@ -392,8 +392,27 @@ placeholder — ผู้ใช้อธิบายว่า "เหมือ�
 (ขัดกฎ "ตาเห็นบนแถว = ต้องค้นเจอ") · `nowrap` ให้ผลเท่ากันโดยตัวหนังสือยังสะอาด
 
 ⚠️ **ห้ามฝัง ZWSP ในสตริงต้นทาง** — มองไม่เห็นใน editor, ทำให้ `includes()` พัง,
-หลุดลงไฟล์ export · แปลงตอนแสดงผลเท่านั้น ผ่าน primitive ที่วาดคำโปรย
-(`Workspace` · `Modal` · `StatusNotice` · `EmptyState` · `DetailPage`)
+หลุดลงไฟล์ export · **แปลงตอนแสดงผลเท่านั้น**
+
+**จุดที่ต่อท่อไว้แล้ว** (`thaiText()` ใน `components/ThaiText.js`):
+
+| primitive | ครอบข้อความอะไร |
+|---|---|
+| `Workspace` | คำโปรยหัวหน้าจอ + หัวหมวด |
+| `Modal` | คำโปรยใต้ชื่อโมดัล |
+| `StatusNotice` | แถบแจ้งสถานะ |
+| `EmptyState` | ข้อความตอนไม่มีข้อมูล |
+| `DetailPage` (ContextCard) | คำโปรยการ์ดบริบท |
+| `ConfirmDialog` | คำอธิบาย + รายละเอียดของกล่องยืนยัน |
+| `AlertBanner` | แถบเตือนพร้อมทางไปจัดการ |
+| `RowActionMenu` | เหตุผลที่เมนูแถวกดไม่ได้ |
+| `Input` / `Textarea` | `placeholder` — **ZWSP อย่างเดียว** (attribute ใส่ span ไม่ได้) |
+
+หน้าไหนวาดร้อยแก้วเองโดยไม่ผ่าน primitive ต้องเรียก `thaiText()` เอง
+(วันนี้มี `app/home` การ์ดระบบ · `app/sa/forecast-review` คำโปรยของแต่ละกอง)
+
+🔴 **มียามคุมการต่อท่อ** ใน `thaiWrap.test.mjs` — ถอด `thaiText` ออกจาก primitive ตัวไหน
+เทสต์แดงทันที · เพิ่มจุดต่อใหม่ต้องมาเติมในลิสต์นั้นด้วย ไม่งั้นมันหลุดหายเงียบได้เหมือนกัน
 
 **ด่าน** `npm run check:thaiwrap` — ไล่ข้อความไทยทั้ง `src/` ผ่าน `Intl.Segmenter('th')`
 ของ Node (ICU ชุดเดียวกับ Chrome) แล้วนับรอยต่อที่อ่านผิด · **เพดาน ขึ้นไม่ได้**
