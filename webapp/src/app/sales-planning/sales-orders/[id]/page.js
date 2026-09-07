@@ -91,7 +91,7 @@ import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPayment
 import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
 import Tabs from "@/components/ui/Tabs";
 import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
-import { orderHasServiceRounds, serviceRoundsSold } from "@/lib/sales/serviceOrders";
+import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/lib/sales/serviceOrders";
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
@@ -702,8 +702,15 @@ export default function SalesOrderDetailPage() {
     [installments, todayIso],
   );
 
-  /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับทุกที่ในระบบ (ดีลสาย SERVICE + บรรทัด 02-001) */
-  const hasServiceRounds = orderHasServiceRounds(order, order?.lines, { project: order?.project });
+  /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับด่านเงิน (สาย SERVICE + บรรทัดหมวด 02-001)
+     ⚠️ เดิมส่ง `{ project }` เข้า ctx ซึ่ง **ตัวรับไม่เคยอ่านคีย์นี้** (มันรับ `projectsById`)
+       ⇒ เป็นอาร์กิวเมนต์ตายที่อ่านแล้วเข้าใจผิดว่าทำงาน · ตัวถอยของฟังก์ชันอ่าน
+       `order.project` ให้อยู่แล้ว จึงตัดทิ้ง ไม่ใช่แก้ชื่อคีย์ */
+  const hasServiceRounds = orderHasServiceRounds(order, order?.lines);
+  /* 🔑 **เส้นบริการ — กว้างกว่า และตั้งใจให้กว้าง** (ดูเหตุผลเต็มที่ `orderOnServiceLine`)
+     วัดจริง 08/09: ใบบนเส้นบริการ 30 ใบ แต่เข้าเกณฑ์แคบแค่ 8 ⇒ อีก 22 ใบเปิดแท็บสัญญา
+     ไม่ได้เลย ทั้งที่เป็นงานบริการจริง และสัญญาคือด่านแรกของทั้งเส้น */
+  const onServiceLine = orderOnServiceLine(order);
   // รวมรอบทั้งใบ — คำนวณจากบรรทัดที่มีอยู่แล้ว ไม่ยิง API (ตัวเลขรายบรรทัดอยู่ในตาราง
   // แต่ยอดรวมทั้งใบไม่เคยมีที่ไหนบอก)
   const roundsSold = serviceRoundsSold(order?.lines);
@@ -718,7 +725,11 @@ export default function SalesOrderDetailPage() {
 
      ⚠️ แท็บ "สัญญา" กับ "งานบริการ" ขึ้นเฉพาะใบที่มีรอบบริการ — เกณฑ์เดียวกับการ์ด
      สัญญาเดิมเป๊ะ ๆ (ไม่ได้เปลี่ยนพฤติกรรม แค่ย้ายที่อยู่) */
-  const tabKeys = ["overview", ...(hasServiceRounds ? ["contract"] : []), "payment",
+  /* ⚠️ **สองแท็บใช้คนละเกณฑ์โดยตั้งใจ** — "สัญญา" เป็นด่านแรกของเส้นบริการทั้งเส้น
+     ⇒ ต้องเปิดให้ใบบนเส้นบริการทุกใบ · ส่วน "งานบริการ" มีตารางกรอกจำนวนรอบที่ตีกลับ
+     บรรทัดนอกหมวด 02-001 (`validateServiceRoundsPatch`) ⇒ เปิดกว้างจะได้แท็บที่เปิดได้
+     แต่ไม่มีแถวให้กรอก */
+  const tabKeys = ["overview", ...(onServiceLine ? ["contract"] : []), "payment",
     ...(hasServiceRounds ? ["service"] : []), "history"];
   const urlTab = searchParams.get("tab");
   /* 🪤 `#payment` จากทะเบียนการชำระของฝ่ายบัญชี — ของเดิมเป็น anchor ไปการ์ดกลางหน้า
@@ -734,7 +745,7 @@ export default function SalesOrderDetailPage() {
        ตอนตรวจทีหลัง) ⇒ ถามซ้ำอีกครั้งเมื่อใบมาถึง
        ⚠️ ห้ามตัด `urlTab` ออก — ลิงก์ `?tab=` ต้องยังทำงานตอนสลับใบไปมาด้วย */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlTab, hasServiceRounds, order?.id]);
+  }, [urlTab, hasServiceRounds, onServiceLine, order?.id]);
   // ใบเปลี่ยนสายกลางคัน (Rev./แก้บรรทัด) แล้วแท็บที่เลือกอยู่หายไป = จอว่างเปล่า
   const activeTab = tabKeys.includes(tab) ? tab : "overview";
   const selectTab = (next) => {
@@ -968,8 +979,11 @@ export default function SalesOrderDetailPage() {
             /* ⭐ **สัญญาบริการอยู่บนหัวใบ ไม่ใช่หลังแท็บ** — งานบริการทั้งเส้นเดินได้ก็ต่อ
                เมื่อใบนี้มีสัญญาที่มีผล ⇒ เป็นคำถามแรกของคนเปิดใบ ไม่ใช่ของที่ต้องไปตาม
                ข้อมูลมากับ GET ของใบอยู่แล้ว (`order.serviceContract`) ไม่ต้องยิงเพิ่ม
-               ⚠️ ขึ้นเฉพาะใบที่มีรอบบริการ — ใบสายสินค้าไม่มีสัญญาบริการให้พูดถึง */
-            ...(hasServiceRounds ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract, { linkedId: order.serviceContractId }) }, {
+               ⚠️ ขึ้นเฉพาะใบบนเส้นบริการ — ใบสายสินค้าไม่มีสัญญาบริการให้พูดถึง */
+            ...(onServiceLine ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract, { linkedId: order.serviceContractId }) }] : []),
+            /* "รอบที่ขาย" อ่านจากคอลัมน์รายบรรทัดซึ่งกรอกได้เฉพาะบรรทัดหมวด 02-001
+               ⇒ ผูกกับเกณฑ์แคบ ไม่ใช่เส้นบริการ (ไม่งั้นได้ขีดลอย ๆ บนใบที่กรอกไม่ได้) */
+            ...(hasServiceRounds ? [{
               icon: Repeat,
               label: "รอบบริการที่ขาย",
               value: roundsSold == null ? NA : `${roundsSold} รอบ`,
