@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, useState } from "react";
-import { CalendarClock, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
+import { CalendarClock, FileText, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -15,6 +15,7 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
+import TaxInvoiceDialog from "./TaxInvoiceDialog";
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
@@ -47,6 +48,8 @@ export default function SalesOrderPaymentPanel({
   const [unconfirmFor, setUnconfirmFor] = useState(null);
   const [confirmFor, setConfirmFor] = useState(null);
   const [linkFor, setLinkFor] = useState(null);
+  // ใบกำกับภาษีของงวด (mig 0348) — โมดัลตัวเดียวกับที่ทะเบียนการชำระของบัญชีใช้
+  const [invoiceFor, setInvoiceFor] = useState(null);
   /* ⭐ ร่างช่วงครอบที่ยังไม่บันทึก (มติผู้ใช้ 2026-08-30 รอบสอง — แก้ในตารางแทนโมดัล)
      ⚠️ **ไม่ auto-save** ตามกฎฟอร์มของ repo — พิมพ์ลงร่างก่อน แล้วกดปุ่มบันทึกรวมทีเดียว
      ท่าเดียวกับตารางไทม์ไลน์ของดีล (`DealTimelineTable`: drafts → saveDrafts) */
@@ -312,7 +315,7 @@ export default function SalesOrderPaymentPanel({
         /* surface="auto" = ตารางมีขอบ/มุมมน/พื้นของตัวเอง (ตัวแปรกลางใน Table.module.css)
            เดิมใช้ "embedded" ซึ่งไม่มีขอบ ⇒ ตารางลอยอยู่ในการ์ดโดยไม่มีกรอบ (ผู้ใช้ขอเพิ่มขอบ)
            ⚠️ ใช้ตัวแปรของ primitive ไม่เขียน border ทับเองในโมดูลนี้ — ไม่งั้นได้ทรงที่สอง */
-        <TableScroll family="editable" surface="auto" cells="stacked" minWidth={hasServiceRounds ? 820 : 680}>
+        <TableScroll family="editable" surface="auto" cells="stacked" minWidth={hasServiceRounds ? 980 : 840}>
           <table className={`${styles.table} ${isPreview ? styles.preview : ""}`.trim()}>
             <thead>
               <tr>
@@ -322,6 +325,9 @@ export default function SalesOrderPaymentPanel({
                 {hasServiceRounds ? <th>ครอบคลุมบริการ</th> : null}
                 <th className="num">ยอด</th>
                 <th>หลักฐาน</th>
+                {/* ⭐ ใบกำกับภาษีของงวด (mig 0348) — ฝ่ายขายเปิดไฟล์จากที่นี่ไปส่งลูกค้า
+                    ได้เลย (โปรเซสจริง: FN ใส่ใบกำกับ แล้ว SA มาเอาไป) */}
+                <th>ใบกำกับภาษี</th>
                 <th>สถานะ</th>
                 <th aria-label="การจัดการ" />
               </tr>
@@ -408,6 +414,16 @@ export default function SalesOrderPaymentPanel({
                   !gate(row, "unlink") && {
                     id: "unlink-doc", icon: Unlink, tone: "warning", label: "ถอดคำร้องออกจากงวด",
                     onClick: () => onAction(row, "unlink"),
+                  },
+                  /* ── ใบกำกับภาษีของงวด (mig 0348 · มติผู้ใช้ 2026-09-07) ────────
+                     ⭐ **ของฝ่ายบัญชี** — ด่านคือ `canConfirmPayment` ⇒ ฝ่ายขายเห็นข้อมูล
+                     บนคอลัมน์และเปิดไฟล์ได้ แต่ไม่มีรายการนี้ในเมนู
+                     ⚠️ ส่งค่าหลอกให้ด่านตรวจรูปแบบผ่าน (เหมือนที่ `report`/`reject` ทำ) —
+                     ด่านจริงตอนกดอยู่ในโมดัล */
+                  !gate(row, "tax-invoice", { taxInvoiceNo: "x", taxInvoiceDate: todayIso }) && {
+                    id: "tax-invoice", icon: FileText,
+                    label: row.taxInvoiceNo ? "แก้ไขใบกำกับภาษี" : "บันทึกใบกำกับภาษี",
+                    onClick: () => { onClearError?.(); setInvoiceFor(row); },
                   },
                 ].filter(Boolean);
 
@@ -505,6 +521,30 @@ export default function SalesOrderPaymentPanel({
                       ) : <span className={styles.none}>{NA}</span>}
                     </td>
                     <td>
+                      {row.taxInvoiceNo ? (
+                        <>
+                          <span className="mono">{row.taxInvoiceNo}</span>
+                          {row.taxInvoiceDate ? <small>{fmtDate(row.taxInvoiceDate)}</small> : null}
+                          {row.taxInvoiceFile?.storagePath ? (
+                            <a
+                              href={`/api/sales-planning/sales-orders/${order.id}/payment-file?installment=${encodeURIComponent(row.id)}&doc=tax_invoice`}
+                              target="_blank" rel="noreferrer" className={styles.fileLink}
+                              title={row.taxInvoiceFile.fileName || "ไฟล์ใบกำกับภาษี"}
+                            >
+                              <Paperclip size={13} aria-hidden="true" />
+                              <span className="cell-ellipsis">{row.taxInvoiceFile.fileName || "ไฟล์ใบกำกับ"}</span>
+                            </a>
+                          ) : null}
+                        </>
+                      ) : (
+                        /* งวดที่เงินเข้าแล้วแต่ยังไม่มีใบ = ของค้างจริง (บริษัทเก็บ VAT)
+                           ⇒ ต้องเห็นว่าค้าง ไม่ใช่ขีดเงียบ ๆ เหมือนช่องที่ไม่เกี่ยว */
+                        ["reported", "confirmed"].includes(row.status)
+                          ? <span className={styles.overdue}>ยังไม่ออกใบ</span>
+                          : <span className={styles.none}>{NA}</span>
+                      )}
+                    </td>
+                    <td>
                       {/* ⚠️ อ่านจาก `installmentDisplayStatus` ไม่ใช่ `row.status` ตรง ๆ —
                           งวดร่างที่บันทึกเงินไว้แล้วยังเป็น `pending` ใน DB (CHECK ของ 0259)
                           ป้าย "รอชำระ" บนงวดที่มีสลิปแนบอยู่คือจอที่โกหก */}
@@ -532,7 +572,7 @@ export default function SalesOrderPaymentPanel({
                     <tr className={styles.detailRow}>
                       {/* ⚠️ ตัวเลขนี้ต้องขยับทุกครั้งที่เพิ่ม/ลดคอลัมน์ — ไม่งั้นแถวเหตุผลตีกลับ
                           กินความกว้างผิดเฉพาะแถวที่ถูกตีกลับ (เคสที่ไม่ได้เจอทุกวัน) */}
-                      <td className={styles.detail} colSpan={(single ? 6 : 7) + (hasServiceRounds ? 1 : 0)}>
+                      <td className={styles.detail} colSpan={(single ? 7 : 8) + (hasServiceRounds ? 1 : 0)}>
                         <div className={styles.rejected}>
                           <strong>บัญชีตีกลับ · {row.rejectedByName || "ฝ่ายบัญชี"}</strong>
                           <ReadableText text={row.rejectedReason} lines={3} />
@@ -700,6 +740,26 @@ export default function SalesOrderPaymentPanel({
         onConfirm={async (target) => {
           const done = await onAction(target, "confirm");
           if (done) setConfirmFor(null);
+        }}
+      />
+
+      {/* ⭐ โมดัลใบกำกับตัวเดียวกับคิวบนทะเบียนการชำระ — หนึ่งฟอร์ม สองทางเรียก
+          ⚠️ ปุ่ม "ลบใบกำกับ" มีที่นี่ด้วย เพราะแนบผิดใบแล้วต้องถอนได้จากที่ที่เห็นของ */}
+      <TaxInvoiceDialog
+        open={!!invoiceFor}
+        row={invoiceFor}
+        order={order}
+        todayIso={todayIso}
+        busy={!!busy}
+        error={error}
+        onClose={() => setInvoiceFor(null)}
+        onSubmit={async (values) => {
+          const done = await onAction(invoiceFor, "tax-invoice", values);
+          if (done) setInvoiceFor(null);
+        }}
+        onClear={async () => {
+          const done = await onAction(invoiceFor, "tax-invoice-clear");
+          if (done) setInvoiceFor(null);
         }}
       />
 

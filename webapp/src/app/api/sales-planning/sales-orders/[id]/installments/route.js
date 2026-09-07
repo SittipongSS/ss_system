@@ -2,6 +2,13 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
+import {
+  PRIVATE_EVIDENCE_BUCKET, privateEvidencePrefix,
+} from '@/lib/upload/privateEvidence';
+import {
+  findLinkedTaxInvoiceItem, mirrorTaxInvoiceToRequestItem, taxInvoiceClearPatch,
+  taxInvoiceConflict, taxInvoicePatch,
+} from '@/lib/sales/taxInvoice';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
   installmentActionError, installmentReportOutcome, withLiveAmounts,
@@ -137,6 +144,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const reason = String(body.reason || '').trim();
 
     const billingRequestId = String(body.billingRequestId || '').trim();
+    // ใบกำกับภาษีของงวด (mig 0348) — ด่านค่าอยู่ที่ `taxInvoiceActionError` (เรียกผ่าน gate ข้างล่าง)
+    const taxInvoiceNo = String(body.taxInvoiceNo || '').trim();
+    const taxInvoiceDate = String(body.taxInvoiceDate || '').trim();
     /* งวดอื่นของใบเดียวกัน — ด่าน "ไล่ลำดับงวด" ต้องเห็นทั้งใบ ไม่ใช่แค่แถวที่กด
        (อ่านสดที่นี่ ไม่เชื่อค่าที่ client ส่งมา) */
     const siblings = await loadInstallments(supabase, order.id);
@@ -147,6 +157,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        (ไม่ส่ง = ไม่บล็อก ⇒ ใบบริการรับรองได้ทั้งที่ช่วงครอบว่าง ซึ่งคือกับดักเดิม) */
     const gate = installmentActionError(row, action, user, {
       paidOn, reason, billingRequestId, coversFrom, coversTo,
+      taxInvoiceNo, taxInvoiceDate,
       rows: siblings, orderTotal: order.totalAmount,
       serviceRounds: orderHasServiceRounds(order, order.lines, { project: order.project }),
     });
@@ -263,9 +274,51 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         return badRequest(`คำร้อง ${request.docNo || ''} ถูกผูกกับงวดที่ ${taken[0].seq} ไปแล้ว`);
       }
       patch = { billingRequestId: request.id };
+    } else if (action === 'tax-invoice') {
+      /* ── บันทึกใบกำกับภาษีของงวดนี้ (mig 0348 · มติผู้ใช้ 2026-09-07) ───────
+         โปรเซสหลัก: FN ออกใบแล้วมาบันทึกที่นี่ **ไม่ต้องมีคำร้อง** · ถ้างวดนี้ผูก
+         คำร้องไว้อยู่แล้ว (ลูกค้าขอไฟล์ก่อน) เลขจะถูกเขียนลงบรรทัดคำร้องด้วย
+         ⇒ เลขมีบ้านเดียวเสมอ ไม่มีสองที่ที่ไม่ตรงกัน
+         ⚠️ กันเลขซ้ำที่นี่ ไม่ใช่ที่ UNIQUE ของ DB (ดูเหตุผลใน lib/sales/taxInvoice.js) */
+      const conflict = await taxInvoiceConflict(supabase, { installmentId, no: taxInvoiceNo });
+      if (conflict) return badRequest(conflict);
+      /* ⚠️ **ต้องส่ง options ให้ sanitize** — ต่างจากที่เรียกเปล่าตอน `report`
+         ไม่ส่ง = รับ ref ที่ชี้ไฟล์ไหนก็ได้ใน bucket มาเป็นใบกำกับของงวดนี้ */
+      const file = sanitizeEvidenceAttachments(
+        body.taxInvoiceFile ? [body.taxInvoiceFile] : [],
+        {
+          allowedStorageBucket: PRIVATE_EVIDENCE_BUCKET,
+          allowedStoragePathPrefix: privateEvidencePrefix('sales_order_tax_invoice', order.id),
+        },
+      )[0]
+        /* ⚠️ ไม่ส่งไฟล์มา = **เก็บไฟล์เดิมไว้** ไม่ใช่ล้าง — จอไม่เคยได้ ref ของไฟล์เดิม
+           (ทะเบียนส่งมาแค่ชื่อไฟล์) ⇒ ถ้าล้างตามที่ payload ว่างมา การแก้แค่เลขจะลบ
+           ไฟล์ใบกำกับทิ้งเงียบ ๆ · ทางลบคือ action `tax-invoice-clear` */
+        || row.taxInvoiceFile || null;
+      const linkedItem = await findLinkedTaxInvoiceItem(supabase, row.billingRequestId);
+      patch = taxInvoicePatch({
+        no: taxInvoiceNo, date: taxInvoiceDate, file,
+        requestId: linkedItem ? row.billingRequestId : null,
+        itemId: linkedItem?.id || null,
+        user, now,
+      });
+    } else if (action === 'tax-invoice-clear') {
+      /* ล้างของที่แนบผิดใบ — ร่องรอยอยู่ที่ audit (before/after ทั้งแถว)
+         ⚠️ ล้างสำเนาบนบรรทัดคำร้องด้วย ไม่งั้นเลขที่ถอนแล้วยังค้างให้ผู้ขอเห็น */
+      patch = taxInvoiceClearPatch();
     }
 
     const updated = await updateInstallment(supabase, installmentId, patch);
+    /* สำเนาบนบรรทัดคำร้อง — เขียน **หลัง** ของหลักสำเร็จเสมอ และล้มเงียบได้
+       (ของหลักเก็บแล้ว ถ้าโยน error ที่นี่ ผู้ใช้จะเห็น "บันทึกไม่สำเร็จ" ทั้งที่เก็บแล้ว) */
+    if (action === 'tax-invoice' && patch.taxInvoiceItemId) {
+      await mirrorTaxInvoiceToRequestItem(supabase, {
+        itemId: patch.taxInvoiceItemId, no: patch.taxInvoiceNo,
+      });
+    }
+    if (action === 'tax-invoice-clear' && row.taxInvoiceItemId) {
+      await mirrorTaxInvoiceToRequestItem(supabase, { itemId: row.taxInvoiceItemId, no: null });
+    }
     await recordAudit({
       user,
       action: 'update',
