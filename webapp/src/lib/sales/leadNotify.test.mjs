@@ -32,12 +32,28 @@ test('ไม่มี ae_supervisor ในระบบ → ถอยไปหา
   assert.deepEqual(n.userIds, ['root'], 'ไม่มีใครรับแจ้งเตือน = ความล้มเหลวเงียบแบบเดิม');
 });
 
+
+/* ⚠️ ค่าในแมป **ต่างจากค่าคงที่โดยตั้งใจ** — ถ้า assert ค่าที่ค่าคงที่ให้พอดี เทสต์จะเขียว
+   แม้แมปจะถูกประกาศแล้วไม่ถูกใช้/ไม่ถูกส่งต่อ ซึ่งคือชนิดของเทสต์ที่หลอกตัวเอง */
+const TEAM_NAMES = new Map([['KA', 'คีย์แอคเคาต์ (ทะเบียน)'], ['SA-NORTH', 'ทีมภาคเหนือ']]);
+
 test('คัดกรองเข้าทีม → Senior AE + AC ของทีมนั้นเท่านั้น', () => {
-  const n = notice({ action: 'screen', lead: lead({ team: 'KA' }), actorId: 'sup' });
+  const n = notice({ action: 'screen', lead: lead({ team: 'KA' }), actorId: 'sup', teamNames: TEAM_NAMES });
   assert.deepEqual(n.userIds.sort(), ['ac-ka', 'sen-ka'], 'AC กระจายลีดได้ จึงต้องรู้ด้วย');
   assert.ok(!n.userIds.includes('sen-sv'), 'หัวหน้าทีมอื่นต้องไม่ถูกกวน');
   assert.ok(!n.userIds.includes('ae-ka'), 'AE ยังไม่ใช่เจ้าของ — รู้ตอนถูกมอบหมาย');
-  assert.match(n.title, /ลีดเข้าทีม Key Account รอกระจาย/);
+  assert.match(n.title, /ลีดเข้าทีม คีย์แอคเคาต์ \(ทะเบียน\) รอกระจาย/, 'ชื่อทีมต้องมาจากทะเบียน');
+});
+
+/* ⚠️ หัวเรื่องนี้ถูกเขียนลงตาราง notifications **ถาวร** — ทีมที่ยังไม่มีชื่อในแมปจะค้าง
+   เป็นรหัสตลอดไปแม้เติมชื่อทีหลัง ⇒ เทสต์นี้ล็อกว่าแมปต้องมาถึงจริง */
+test('ทีมที่สร้างใหม่ต้องขึ้นชื่อจริงในหัวเรื่องแจ้งเตือน', () => {
+  // ทีมที่สร้างหลังปลดล็อกมีคนอยู่จริงได้ — ใส่ผู้กระจายของทีมนั้นเข้าไปในทะเบียนคน
+  const dir = new Map([...DIR, ['sen-north', { id: 'sen-north', name: 'ธนกร', role: 'senior_ae', team: 'SA-NORTH' }]]);
+  const n = leadHandoffNotice({
+    action: 'screen', lead: lead({ team: 'SA-NORTH' }), directory: dir, actorId: 'sup', teamNames: TEAM_NAMES,
+  });
+  assert.match(n.title, /ลีดเข้าทีม ทีมภาคเหนือ รอกระจาย/);
 });
 
 test('มอบหมาย → เฉพาะ AE ผู้รับคนเดียว', () => {

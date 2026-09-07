@@ -9,6 +9,8 @@ import {
 } from '@/lib/sales/forecastBreakdown';
 import { buildForecastReportBuffer, forecastReportFilename } from '@/lib/sales/forecastReportWorkbook';
 import { businessDate } from '@/lib/businessDate';
+import { loadTeamNames } from '@/lib/master/teamsRepo';
+import { teamNameOf } from '@/lib/master/teams';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -89,6 +91,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     `${row.mainCategoryCode}-${row.typeCode}`,
     [row.mainCategoryName, row.nameTh || row.nameEn].filter(Boolean).join(' · ') || null,
   ]));
+  /* ป้ายทีมของไฟล์ — ใช้ทั้งหัวเรื่อง (ขอบเขต) และคอลัมน์ "ทีม" ในชีตรายดีล
+     ⚠️ อ่านไม่ได้ = รหัสดิบ แต่ต้องส่งเสียง (ไฟล์ที่ขึ้นรหัสแทนชื่อคืออาการเดียวที่เห็น) */
+  const teamNames = await loadTeamNames(supabase).catch((err) => {
+    console.warn('[forecast-report] อ่านชื่อทีมไม่สำเร็จ — คอลัมน์ทีมจะขึ้นเป็นรหัส', err?.message);
+    return null;
+  });
+
   const linesByQuote = new Map();
   for (const line of lines.data) {
     if (!linesByQuote.has(line.quotationId)) linesByQuote.set(line.quotationId, []);
@@ -141,12 +150,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const scopeLabel = salesPlanningViewScope(user.role) === 'all'
     ? 'ทั้งบริษัท'
     // ไม่มีทีม = ขอบเขตพิสูจน์ไม่ได้ ⇒ เขียนตรง ๆ ดีกว่าโชว์ "ทีม —" ที่อ่านเหมือนทีมชื่อขีด
-    : (user.team ? `ทีม ${user.team}` : 'เฉพาะที่มองเห็น (ไม่ระบุทีม)');
+    : (user.team ? `ทีม ${teamNameOf(teamNames, user.team)}` : 'เฉพาะที่มองเห็น (ไม่ระบุทีม)');
   const buffer = await buildForecastReportBuffer(rows, {
     year,
     scopeLabel,
     months: year ? monthsOfYear(year) : monthsInRows(rows),
     categoryNames,
+    teamNames,
     generatedAt: today,
     by: user.name || user.id || null,
   });

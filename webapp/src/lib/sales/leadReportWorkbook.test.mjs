@@ -45,13 +45,18 @@ test('บรรทัดแรกบอกช่วง จำนวนใบ แ
   assert.match(info, /วันไทย/);
 });
 
+
+/* ⚠️ ค่าในแมป **ต่างจากค่าคงที่โดยตั้งใจ** — ถ้า assert ค่าที่ค่าคงที่ให้พอดี เทสต์จะเขียว
+   แม้แมปจะถูกประกาศแล้วไม่ถูกใช้/ไม่ถูกส่งต่อ ซึ่งคือชนิดของเทสต์ที่หลอกตัวเอง */
+const TEAM_NAMES = new Map([['KA', 'คีย์แอคเคาต์ (ทะเบียน)'], ['SA-NORTH', 'ทีมภาคเหนือ']]);
+
 test('แถวข้อมูลใช้ป้ายไทยและวันไทย', async () => {
-  const sheet = await reopen(await buildLeadReportBuffer(LEADS, {}));
+  const sheet = await reopen(await buildLeadReportBuffer(LEADS, { teamNames: TEAM_NAMES }));
   const at = (label) => LEAD_REPORT_COLUMNS.findIndex((c) => c.label === label) + 1;
   const row = sheet.getRow(3);
   assert.equal(row.getCell(at('ชื่อผู้ติดต่อ')).value, 'สมชาย ใจดี');
   assert.equal(row.getCell(at('ช่องทาง')).value, 'โทรเข้า');
-  assert.equal(row.getCell(at('ทีม')).value, 'Key Account');
+  assert.equal(row.getCell(at('ทีม')).value, 'คีย์แอคเคาต์ (ทะเบียน)', 'แมปต้องถูกส่งต่อลงถึงแถว');
   assert.equal(row.getCell(at('สถานะ')).value, 'ติดต่อแล้ว');
   // 31 ก.ค. 17:30Z = 1 ส.ค. เวลาไทย — ไฟล์ต้องบอกวันไทย
   assert.equal(row.getCell(at('วันที่รับ')).value, '2026-08-01');
@@ -73,4 +78,14 @@ test('ไม่มีลีดในช่วง = ไฟล์ยังเป�
   const sheet = await reopen(await buildLeadReportBuffer([], { from: '2026-01-01', to: '2026-01-02' }));
   assert.deepEqual(sheet.getRow(2).values.slice(1), LEAD_REPORT_COLUMNS.map((c) => c.label));
   assert.match(String(sheet.getRow(1).getCell(1).value), /0 ใบ/);
+});
+
+/* 🔴 จุดเดียวที่แมปหล่นหายได้เงียบ ๆ คือการส่งต่อจาก workbook ลง leadReportRow —
+   ถ้าลืมส่ง ไฟล์ยังออกปกติ แค่ทีมที่สร้างใหม่กลายเป็นรหัสดิบ · เทสต์นี้คือด่านของจุดนั้น */
+test('ป้ายทีมถูกส่งต่อจาก meta ลงถึงแถว — ทีมใหม่ต้องขึ้นชื่อจริง', async () => {
+  const sheet = await reopen(await buildLeadReportBuffer(
+    [{ id: 'LEAD-c3', team: 'SA-NORTH', status: 'new' }], { teamNames: TEAM_NAMES },
+  ));
+  const at = (label) => LEAD_REPORT_COLUMNS.findIndex((c) => c.label === label) + 1;
+  assert.equal(sheet.getRow(3).getCell(at('ทีม')).value, 'ทีมภาคเหนือ');
 });

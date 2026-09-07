@@ -11,6 +11,7 @@ import {
   closeTeamBlocker,
   normalizeTeamInput,
   planCrewRoster,
+  teamNameOf,
   sortTeams,
   suggestTeamCode,
   teamHref,
@@ -151,4 +152,18 @@ test('teamHref: มีเฉพาะฝ่ายที่มีหน้าจ�
   assert.equal(teamHref('TS', 'TS-2'), '/service/teams/TS-2');
   assert.equal(teamHref('PC', 'X'), null, 'ฝ่ายที่ยังไม่มีหน้าทะเบียน');
   assert.equal(teamHref('SA', ''), null);
+});
+
+// ── ป้ายทีมฝั่งเซิร์ฟเวอร์ (2026-09-07) ──────────────────────────────────
+/* 🔴 **ไม่รู้จัก = รหัสดิบ ห้ามถอยไป `TEAM_LABELS`** — แมปมาจากฐานสด ถ้ามีรหัสนั้น
+   ก็คือชื่อจริง · ถอยไปค่าคงที่มีผลเฉพาะตอนอ่านฐานพลาด ซึ่งตอนนั้นรหัสดิบคือความจริง
+   ส่วนชื่อเก่าคือคำโกหกที่ดูเหมือนปกติ (ทีมที่เปลี่ยนชื่อจะพิมพ์ชื่อเก่าลง Excel ตลอดไป) */
+test('⭐ teamNameOf: ทะเบียนก่อน · ไม่รู้จักคืนรหัสดิบ ไม่ใช่ชื่อจากค่าคงที่', () => {
+  const names = new Map([['KA', 'คีย์แอคเคาต์ (ทะเบียน)'], ['SA-NORTH', 'ทีมภาคเหนือ']]);
+  assert.equal(teamNameOf(names, 'KA'), 'คีย์แอคเคาต์ (ทะเบียน)');
+  assert.equal(teamNameOf(names, 'SA-NORTH'), 'ทีมภาคเหนือ', 'ทีมที่สร้างใหม่ต้องมีชื่อ');
+  assert.equal(teamNameOf(names, 'ODM'), 'ODM', 'อยู่ในค่าคงที่แต่ไม่อยู่ในทะเบียน = รหัสดิบ');
+  assert.equal(teamNameOf(null, 'KA'), 'KA', 'อ่านฐานไม่ได้ = รหัสดิบ');
+  assert.equal(teamNameOf(new Map(), ''), '', 'ไม่มีรหัส = คืนค่าที่รับมาตามเดิม');
+  assert.equal(teamNameOf(new Map(), null), null);
 });

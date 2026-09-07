@@ -15,7 +15,8 @@ const SHEET = 'ลีด';
 
 /**
  * @param leads  แถวจาก `sales_leads` (กรองช่วง/ขอบเขตมาแล้ว)
- * @param meta   { from, to, generatedAt, by } — บอกที่มาของไฟล์
+ * @param meta   { from, to, generatedAt, by, teamNames } — บอกที่มาของไฟล์
+ *               `teamNames` = Map รหัสทีม→ชื่อ จากทะเบียนจริง (ไม่ส่ง = ป้ายเป็นรหัสดิบ)
  */
 export async function buildLeadReportBuffer(leads = [], meta = {}) {
   const book = new ExcelJS.Workbook();
@@ -43,7 +44,9 @@ export async function buildLeadReportBuffer(leads = [], meta = {}) {
   sheet.columns = LEAD_REPORT_COLUMNS.map((c) => ({ key: c.key, width: c.width }));
 
   for (const lead of leads) {
-    const shaped = leadReportRow(lead);
+    /* ⚠️ **ต้องส่งแมปต่อ** — จุดนี้คือที่เดียวที่แมปจะหล่นหายได้เงียบ ๆ แล้วไฟล์
+       ยังออกมาปกติ (ป้ายกลายเป็นรหัสดิบเฉพาะทีมที่สร้างใหม่) */
+    const shaped = leadReportRow(lead, { teamNames: meta.teamNames || null });
     const row = sheet.addRow(LEAD_REPORT_COLUMNS.map((c) => shaped[c.key]));
     row.font = { name: FONT, size: 11 };
     LEAD_REPORT_COLUMNS.forEach((c, index) => {
