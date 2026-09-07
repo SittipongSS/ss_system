@@ -12,7 +12,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden } from '@/lib/http';
 import { canManageTeams, departmentOf } from '@/lib/permissions';
-import { normalizeTeamInput, suggestTeamCode } from '@/lib/master/teams';
+import { normalizeTeamCode, normalizeTeamInput, suggestTeamCode } from '@/lib/master/teams';
 import { loadTeamMembers, loadTeams } from '@/lib/master/teamsRepo';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
@@ -88,9 +88,20 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   try {
     const existing = await loadTeams(supabase, {});
-    /* รหัสออกจากชื่อ + ฝ่ายนำหน้า · **รหัสเปลี่ยนทีหลังไม่ได้** เพราะถูกก๊อปเป็น
-       ข้อความลง 19 ตารางทันทีที่มีคนใช้ทีมนี้ */
-    const code = suggestTeamCode(department, value.name, existing.map((t) => t.code));
+    const existingCodes = existing.map((t) => t.code);
+    /* ⭐ **รหัสตั้งเองได้แล้ว** (มติผู้ใช้ 2026-09-07) — ตัวสร้างอัตโนมัติเหลือเป็นค่าตั้งต้น
+       ในช่อง ไม่ใช่คำตอบสุดท้าย · ชื่อไทยล้วนเคยได้รหัส `SA` · `SA-2` ซึ่งอ่านไม่ออกว่าทีมไหน
+       ⚠️ ด่านอยู่ที่ **เซิร์ฟเวอร์** ไม่ใช่แค่จอ — จอเช็คให้รู้ตัวก่อนกด แต่คนยิง API ตรงได้
+       ⚠️ รหัสนี้แก้ทีหลังได้ **เฉพาะตอนที่ยังไม่มีใครใช้** (PATCH ของ `[code]`) */
+    const asked = String(body.code ?? '').trim();
+    let code;
+    if (asked) {
+      const parsed = normalizeTeamCode(asked, { department, existingCodes });
+      if (parsed.error) return badRequest(parsed.error);
+      code = parsed.value;
+    } else {
+      code = suggestTeamCode(department, value.name, existingCodes);
+    }
 
     const { data, error: insertError } = await supabase.from('teams').insert({
       code,
@@ -99,7 +110,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       createdByName: user.name || null,
     }).select().single();
     if (insertError) {
-      if (insertError.code === '23505') return conflict(`ฝ่ายนี้มีทีมชื่อ “${value.name}” อยู่แล้ว`);
+      /* ⚠️ 23505 มาได้จาก **สองกุญแจ** — primary key (`code`) กับ unique (ฝ่าย, ชื่อ)
+         ตอบผิดกุญแจ = คนแก้ชื่อวนอยู่นาน ทั้งที่ตัวที่ชนคือรหัส (แข่งกันสร้างพร้อมกัน) */
+      if (insertError.code === '23505') {
+        return conflict(/teams_pkey|\(code\)/i.test(`${insertError.message} ${insertError.details || ''}`)
+          ? `รหัส ${code} ถูกใช้ไปแล้ว — ตั้งรหัสอื่น`
+          : `ฝ่ายนี้มีทีมชื่อ “${value.name}” อยู่แล้ว`);
+      }
       return fail(insertError.message, 500);
     }
 
