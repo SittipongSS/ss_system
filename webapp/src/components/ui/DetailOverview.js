@@ -4,6 +4,7 @@ import { Children, useEffect, useRef } from "react";
 import styles from "./DetailOverview.module.css";
 import { naText } from "@/lib/format";
 import { useDetailPin } from "@/lib/ui/detailPin";
+import { cssLengthPx } from "@/lib/ui/cssLength";
 
 export function DetailStateBadge({ label, color = "var(--accent)" }) {
   if (!label) return null;
@@ -40,11 +41,12 @@ export default function DetailOverview({
     const card = cardRef.current;
     if (!card || typeof IntersectionObserver === "undefined") return undefined;
 
-    const pinLine = () => {
-      const raw = getComputedStyle(document.documentElement).getPropertyValue("--scroll-anchor-top");
-      const value = Number.parseFloat(raw);
-      return Number.isFinite(value) ? value : 106;
-    };
+    /* 🐞 เดิมเขียน `Number.parseFloat(getPropertyValue("--scroll-anchor-top"))`
+       ซึ่งได้ **NaN ทุกครั้ง** — โทเคนนั้นเป็น `calc()` ที่เบราว์เซอร์ไม่คลี่ให้ตอน
+       อ่านผ่าน getPropertyValue (ได้สตริง "calc(52px + 0px + 49px + 12px)")
+       ⇒ ตกไปใช้ค่าคงที่ 106 ตลอด · วัดจริงที่จอ 1100px ค่าจริงคือ 113 ⇒ เพี้ยน 7px
+       และตัวผูกใหม่ตอน resize ข้างล่าง **ไม่มีความหมายเลย** เพราะค่าไม่เคยเปลี่ยน */
+    const pinLine = () => cssLengthPx("--scroll-anchor-top", 106);
 
     let observer = null;
     const attach = () => {
