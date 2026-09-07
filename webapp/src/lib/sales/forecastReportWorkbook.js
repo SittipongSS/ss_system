@@ -73,7 +73,7 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'ownerName', label: 'ผู้ดูแล (AE)', width: 20 },
   { key: 'team', label: 'ทีม', width: 8 },
   { key: 'stage', label: 'ขั้น', width: 14 },
-  { key: 'monthBasisLabel', label: 'เดือนมาจาก', width: 15 },
+  { key: 'monthBasisLabel', label: 'ที่มาของเดือน', width: 16 },
   /* ⭐ เดือนที่คาดว่าจะปิดการขาย — **คนละช่องกับเดือนในกริด** (มติผู้ใช้ 2026-09-07)
      กริด = เดือนที่ลูกค้ารับของ · ช่องนี้ = เดือนที่คาดว่าจะปิดยอด ⇒ วางคู่กันให้เห็น
      ว่าดีลใบไหนปิดปีนี้แต่ส่งของปีหน้า · รูปแบบ `2026-09` ตามที่ผู้ใช้ขอ (เรียง/กรอง
@@ -84,7 +84,7 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
   { key: 'categoryMain', label: 'หมวดหลัก', width: 18 },
   { key: 'categorySub', label: 'หมวดย่อย', width: 26 },
-  { key: 'categoryFromLabel', label: 'หมวดมาจาก', width: 17 },
+  { key: 'categoryFromLabel', label: 'ที่มาของหมวด', width: 17 },
   { key: 'fgCode', label: 'รหัส FG', width: 14 },
   { key: 'description', label: 'รายละเอียด', width: 34 },
   { key: 'qty', label: 'จำนวน', width: 11, number: true },
