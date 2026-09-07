@@ -427,6 +427,8 @@ export default function SalesPlanningPipelinePage() {
        สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
     const missingFields = missingDealFieldsMessage(dealForm, {
       legacyWon: dealForm.legacy && dealForm.stage === "won",
+      // เหมือนหน้ารายละเอียด — ดีลที่ปิดแล้วไม่บังคับตารางรายหมวด (มติผู้ใช้ 2026-09-08)
+      alreadyWon: isWonStage(dealForm.stage),
       title: dealForm.title,
     });
     if (missingFields) { setError(missingFields); setSubmitting(false); return; }
@@ -1086,8 +1088,8 @@ export default function SalesPlanningPipelinePage() {
               projects={projects}
               showProject
               categories={categories}
-              stages={editableStages(dealForm.stage === "won")}
-              alreadyWon={dealForm.stage === "won"}
+              stages={editableStages(isWonStage(dealForm.stage))}
+              alreadyWon={isWonStage(dealForm.stage)}
               owners={owners}
             />
             <div className="form-action-bar">
