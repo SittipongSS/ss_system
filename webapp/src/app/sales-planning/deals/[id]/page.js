@@ -42,7 +42,6 @@ import { quotationDealBlocker } from "@/lib/sales/quotationSourcePicker";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
-import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
@@ -798,7 +797,11 @@ export default function DealOverviewPage() {
             eyebrow="รายละเอียดดีล"
             title={deal.title}
             description={<>
-              {deal.code && <span className="mono" style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>{entityCodeDisplay(deal.code, 0)}</span>}
+              {/* ⚠️ **รหัสดีลไม่มีท้าย `-R`** (มติผู้ใช้ 2026-09-07) — เดิมใช้ `entityCodeDisplay`
+                  ซึ่งต่อ `-0` เสมอตามกติกา revision ของ QT/SO/โครงการ แต่ **ดีลไม่มี revision**
+                  ⇒ หัวหน้านี้เคยโชว์ `DL-26080006-0` คนละรูปกับตารางดีล ไฟล์ FC (Excel)
+                  audit และทุกที่ที่อ้างถึงดีล ซึ่งใช้รหัสฐานล้วน */}
+              {deal.code && <span className="mono" style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>{deal.code}</span>}
               {/* รหัส AR นำหน้าชื่อลูกค้าบนหัวหน้ารายละเอียดทุกหน้า (มติผู้ใช้ 2026-08-21)
                   — รหัสอ่านสดจากทะเบียน (`deal.customer`) ไม่ใช่ค่าที่ประทับไว้ในแถว */}
               <span>ลูกค้า: {customerHeadline(deal.customerName || deal.customer?.name, deal.customer?.arCode) || "ไม่ผูกลูกค้า"}</span>
