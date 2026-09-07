@@ -43,7 +43,13 @@ export default function QueueCountStrip({
   const metas = queueCountMeta({ scope });
   return (
     // จำนวนช่องต่างกันตามมุมมอง — `MetricStrip` นับลูกเองแล้ว ผู้เรียกไม่ต้องบอก
-    <MetricStrip aria-label={ariaLabel}>
+    //
+    // ⭐ `data-density="compact"` = ป้ายกับตัวเลขอยู่บรรทัดเดียว (2026-09-07)
+    // แถบนี้อยู่บนหน้าคิวซึ่งของเหนือตารางกินไปแล้ว 562px จาก 900 ⇒ ทรงปกติ
+    // (สูง 97px) แพงเกินไปสำหรับที่ที่มันอยู่ · วัดจริงหลังย่อ: 66px
+    // ⚠️ เป็น attribute ไม่ใช่ prop ใหม่ — `MetricStrip` กระจาย `...props` ลง
+    // <section> อยู่แล้ว ⇒ ไม่ต้องแตะ primitive และแถบอื่นทั้งระบบไม่ขยับ
+    <MetricStrip aria-label={ariaLabel} data-density="compact">
       {metas.map((meta) => {
         const on = filter && activeKey === meta.key;
         const Icon = ICONS[meta.key];
