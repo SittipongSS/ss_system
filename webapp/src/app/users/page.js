@@ -1,5 +1,6 @@
 "use client";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
@@ -13,7 +14,6 @@ import { nextMonthKey } from "@/lib/usersTransfer";
 import { useCan } from "@/lib/roleContext";
 import {
   ROLE_LABELS,
-  TEAM_LABELS,
   TEAM_ROLES,
   DEPARTMENTS,
   DEPARTMENT_LABELS,
@@ -46,7 +46,7 @@ const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "",
 
 // ป้ายทีมของผู้ใช้หนึ่งคน — ทีมหลักขึ้นก่อนเสมอ ต่อด้วยทีมอื่นที่สังกัด
 // (เหลือไว้จุดเดียว: แยกคนชื่อซ้ำในดรอปดาวน์ "โอนงานให้ใคร" — ทรงเดียวกับ PersonSelect)
-const teamLabelsOf = (u) => userTeams(u).map((t) => TEAM_LABELS[t] || t);
+const teamLabelsOf = (u) => userTeams(u).map((t) => teamLabelNow(t));
 
 /* ตำแหน่งฝ่ายขายที่ยังไม่ถูกจัดเข้าทีม — `teams[]` คือขอบเขตการเห็นข้อมูลจริง
    คนที่ว่างอยู่จะล็อกอินได้แต่ไม่เห็นดีล/ลูกค้า/เป้าเลย โดยไม่มี error ให้เห็น */

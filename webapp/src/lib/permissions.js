@@ -230,7 +230,12 @@ export function rolesForDepartment(department) {
    (`loadSalesTeamCodes`) ไม่งั้นทีมที่สร้างใหม่จะถูก **ทิ้งเงียบ ๆ** แล้วคนในทีมนั้น
    มองไม่เห็นข้อมูลอะไรเลยโดยไม่มี error */
 export const TEAMS = ['KA', 'ODM', 'SV'];
-export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
+/* 🔴 **`TEAM_LABELS` ถูกลบแล้ว (2026-09-07)** — ชื่อทีมมีบ้านเดียวคือทะเบียน `teams`
+   ฝั่งจออ่านผ่าน `lib/master/salesTeamRegistry` · ฝั่งเซิร์ฟเวอร์ผ่าน `loadTeamNames`
+   ⚠️ **ห้ามเอาสำเนาชื่อกลับมาไว้ในโค้ด** — ของเดิมทำให้สองฝั่งตอบไม่เหมือนกัน: จอถอยไป
+   ค่าคงที่แล้วโชว์ **ชื่อเก่าอย่างมั่นใจ** หลังเปลี่ยนชื่อทีม ส่วน Excel ที่เซิร์ฟเวอร์สร้าง
+   โชว์ **รหัสดิบ** — ไม่มีอันไหนจริง · และมันทำให้ "เปลี่ยนชื่อทีม" กลายเป็นงานที่ต้องแก้โค้ด
+   แล้ว deploy ทุกครั้ง */
 
 // Assignable roles (for the user-management UI), with Thai labels.
 export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];

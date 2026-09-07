@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { loginPhoneOf } from "@/lib/auth/loginIdentity";
 import { AlertTriangle, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import PhoneInput from "@/components/ui/PhoneInput";
@@ -9,7 +10,7 @@ import Workspace from "@/components/ui/Workspace";
 import Toast from "@/components/ui/Toast";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import SignatureVault from "@/components/account/SignatureVault";
-import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, TEAM_LABELS, userTeams } from "@/lib/permissions";
+import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, userTeams } from "@/lib/permissions";
 import { fmtDateTime, fmtName, naText, NA } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
@@ -104,7 +105,7 @@ export default function AccountPage() {
 
   const roleLabel = ROLE_LABELS[profile?.role] || naText(profile?.role);
   // อยู่ได้หลายทีม — โชว์ครบ ทีมหลักขึ้นก่อน (ยอดของใหม่เข้าทีมแรก)
-  const teamLabel = naText(userTeams(profile).map((t) => TEAM_LABELS[t] || t).join(" + "));
+  const teamLabel = naText(userTeams(profile).map((t) => teamLabelNow(t)).join(" + "));
   const departmentCode = profile?.department ? (DEPARTMENT_LABELS[profile.department] || profile.department) : NA;
   const departmentName = profile?.department ? DEPARTMENT_NAMES_TH[profile.department] : "";
   const displayName = profile ? (fmtName(profile) || profile.email) : "";

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
+import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Home, AirVent, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
@@ -8,7 +9,7 @@ import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { devBypassUser } from '@/lib/devBypass';
 import { canUser, canManageTeams, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canDoFieldWork,
-  canEditService, canViewService, canAnswerRequestsFor, canAnswerServiceRequests, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+  canEditService, canViewService, canAnswerRequestsFor, canAnswerServiceRequests, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -75,6 +76,11 @@ export default function AppLayout({ children }) {
   const pathname = usePathname();
   // เปลี่ยนหน้าจากเมนูแล้วจอเคยค้างที่เดิม — ดูเหตุผลใน useScrollTopOnNavigate
   useScrollTopOnNavigate();
+  /* ⭐ **เปลือกเป็นเจ้าของการโหลดทะเบียนทีม** — เปลือกอยู่ทุกหน้า ⇒ โหลดที่นี่ครั้งเดียว
+     แล้วสแนปช็อตในโมดูลอุ่นให้ทุกจอที่เรียก `teamLabelNow()` (ตัวช่วยที่เรียก hook ไม่ได้)
+     ⚠️ ถอด hook บรรทัดนี้ออกเมื่อไร ทุกจอที่ใช้ `teamLabelNow` จะค้างที่รหัสทีม
+     จนกว่าจะมีอย่างอื่นบังคับให้เรนเดอร์ใหม่ */
+  const teamRegistry = useSalesTeams();
   const [role, setRole] = useState(null);
   const [team, setTeam] = useState(null);
   const [teams, setTeams] = useState([]);
@@ -951,7 +957,7 @@ export default function AppLayout({ children }) {
               userName={userName}
               userInitials={userInitials}
               roleLabel={teams.length
-                ? `${ROLE_LABELS[role] || role} · ${teams.map((t) => TEAM_LABELS[t] || t).join(' + ')}`
+                ? `${ROLE_LABELS[role] || role} · ${teams.map((t) => salesTeamLabel(teamRegistry, t)).join(' + ')}`
                 : (ROLE_LABELS[role] || role)}
               roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'ra' || role === 'secretary' || role === 'executive' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
               isDark={isDark}

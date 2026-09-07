@@ -11,6 +11,7 @@
 // นัดนั้นจะไปโผล่ผิดวัน (server จึงส่งช่วงเผื่อขอบมาให้ ดู calendarRange)
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
@@ -21,7 +22,7 @@ import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { leadScopes, TEAM_LABELS } from "@/lib/permissions";
+import { leadScopes } from "@/lib/permissions";
 import { LEAD_STATUS_LABELS, MEETING_MODE_LABELS } from "@/lib/sales/leads";
 import { isInLocalMonth } from "@/lib/sales/leadCalendar";
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
@@ -161,7 +162,7 @@ export default function SalesCalendarPage() {
     entry.company,
     MEETING_MODE_LABELS[entry.meetingMode] || null,
     entry.assigneeName,
-    TEAM_LABELS[entry.team] || entry.team,
+    entry.team ? teamLabelNow(entry.team) : entry.team,
     LEAD_STATUS_LABELS[entry.status] || entry.status,
   ].filter(Boolean).join(" · ");
 
@@ -276,7 +277,7 @@ export default function SalesCalendarPage() {
                       </span>
                       <span className={styles.cardMeta}>
                         <span>{entry.assigneeName || "ยังไม่มอบหมาย"}</span>
-                        <span>{TEAM_LABELS[entry.team] || naText(entry.team)}</span>
+                        <span>{entry.team ? teamLabelNow(entry.team) : naText(null)}</span>
                         <span>{LEAD_STATUS_LABELS[entry.status] || entry.status}</span>
                       </span>
                     </button>

@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Inbox, Filter, Users, PhoneCall, CalendarClock, Ban, PieChart as PieIcon } from "lucide-react";
@@ -13,7 +14,7 @@ import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as S
 import {
   CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS, LEAD_SLA_STAGES, leadSlaNote, slaPendingTone,
 } from "@/lib/sales/leads";
-import { TEAM_LABELS } from "@/lib/permissions";
+
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtName, fmtPercent, naText, NA } from "@/lib/format";
@@ -528,8 +529,8 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
               {(kpi?.byAssignee || []).map((a) => (
                 <tr key={a.assigneeId} className="premium-row">
                   <td>{livePersonName(directory, a.assigneeId, a.name) || fmtName({ name: a.name })}</td>
-                  {/* ป้ายทีมเต็ม ("Key Account") ไม่ใช่รหัสดิบ ("KA") — ที่อื่นในระบบใช้ TEAM_LABELS หมด */}
-                  <td>{TEAM_LABELS[a.team] || naText(a.team)}</td>
+                  {/* ป้ายทีมเต็ม ("Key Account") ไม่ใช่รหัสดิบ ("KA") — ชื่อมาจากทะเบียนจริง */}
+                  <td>{a.team ? teamLabelNow(a.team) : naText(null)}</td>
                   <td className="num mono">{a.assigned}</td>
                   <td className="num mono">{a.contacted}</td>
                   {/* 🐞 % เปล่า ๆ โกหกได้เต็มปาก — ตัวหารคือ "ใบที่ติดต่อแล้ว" ไม่ใช่ "ใบที่รับมอบ"

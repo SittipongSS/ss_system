@@ -20,6 +20,7 @@
 // จะไม่ส่งค่านี้โดยตั้งใจ: ดีลนั้นสร้างจากศูนย์ ไม่ได้มาจากลีด
 
 import { useRef, useState } from "react";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useRouter } from "next/navigation";
 import { Check, CircleAlert, Plus, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -28,7 +29,7 @@ import Tabs from "@/components/ui/Tabs";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { initialDealForm } from "@/components/salesPlanning/ui";
 import { CREATABLE_STAGES } from "@/lib/salesPlanning";
-import { TEAM_LABELS } from "@/lib/permissions";
+
 import styles from "./DealCreateModal.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
@@ -283,7 +284,7 @@ export default function DealCreateModal({
       subtitle={lead ? (
         <>
           ลีด: <strong>{lead.contactName}</strong>{lead.company ? ` · ${lead.company}` : ""}
-          {lead.team ? ` · ทีม ${TEAM_LABELS[lead.team] || lead.team}` : ""}
+          {lead.team ? ` · ทีม ${teamLabelNow(lead.team)}` : ""}
           {lead.assigneeName ? ` · ${lead.assigneeName}` : ""}
         </>
       ) : null}

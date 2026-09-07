@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, LayoutGrid, LogOut, Settings, ShieldCheck, TriangleAlert, UserRound, Users } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
-import { canUser, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
+import { canUser, normalizeRole, userTeams, ROLE_LABELS } from "@/lib/permissions";
 import { devBypassUser } from "@/lib/devBypass";
 import { fmtName } from "@/lib/format";
 import {
@@ -171,7 +172,7 @@ export default function HomeHubPage() {
   }
 
   const roleLabel = ROLE_LABELS[session.role] || session.role;
-  const teamLabel = session.team ? (TEAM_LABELS[session.team] || session.team) : null;
+  const teamLabel = session.team ? teamLabelNow(session.team) : null;
   const canOpenUsers = canUser(userContext, "users:manage") || canUser(userContext, "users:view");
   const recentLanding = recentSystem ? systemLandingForUser(recentSystem, userContext) : null;
   const countClass = `count-${Math.min(Math.max(visibleSystems.length, 1), 6)}`;

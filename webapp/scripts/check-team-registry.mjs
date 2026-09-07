@@ -10,10 +10,9 @@
  *   ใช้งานได้เองโดยไม่ต้องแตะโค้ด · ด่านนี้จึงเหลือสองหน้าที่ที่ยังจริง:
  *     ① **สามทีมตั้งต้นต้องไม่หายและไม่ถูกปิด** — รหัสถูกก๊อปเป็นข้อความลง 20 คอลัมน์
  *        ใน 19 ตาราง และเป็นค่าถอยของฝั่งจอที่อ่านแบบ sync
- *     ② **ป้ายของทีมที่โค้ดรู้จักต้องตรงกับทะเบียน** — ไม่งั้นจอกับรายงานเรียกทีมเดียวกัน
- *        คนละชื่อ
- *   ส่วนทีมขายใหม่ที่ยังไม่มีป้ายในโค้ด = **เตือน ไม่ตก** (ทุกจุดใช้ `TEAM_LABELS[t] || t`
- *   จึงโชว์เป็นรหัส ไม่พัง — แต่ควรเติมป้ายให้สวย)
+ *     ② ~~ป้ายของทีมที่โค้ดรู้จักต้องตรงกับทะเบียน~~ — **ตายไปแล้ว (2026-09-07)** พร้อมกับ
+ *        `TEAM_LABELS` · ชื่อทีมมีบ้านเดียวคือทะเบียน ไม่มีสำเนาในโค้ดให้เพี้ยนอีก
+ *        และกฎข้อนี้เองคือสิ่งที่ทำให้ "เปลี่ยนชื่อทีม" กลายเป็นเหตุการณ์ที่ทำ CI แดง
  *
  * ⚠️ ลำดับ (sortOrder ↔ ลำดับใน TEAMS) ตรวจ **เฉพาะสามทีมตั้งต้น** — ของเดิมเทียบทั้งชุด
  *   ซึ่งทำให้การสลับลำดับบนจอทำ CI แดงในใบที่ไม่ได้แตะเรื่องนี้เลย
@@ -22,7 +21,7 @@
  * ไม่มีคีย์ = ข้าม (เหมือนด่านพี่น้อง) ไม่ใช่ตก
  * 🔴 วันนี้ CI **ยังไม่ได้ตั้ง secret** ⇒ ด่านนี้ถูกข้ามจริง ๆ ทุกรอบ (ci.yml:122)
  */
-import { TEAMS, TEAM_LABELS } from '../src/lib/permissions.js';
+import { TEAMS } from '../src/lib/permissions.js';
 
 const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
@@ -43,7 +42,6 @@ if (!res.ok) {
 const rows = await res.json();
 
 const problems = [];
-const warnings = [];
 
 /* ⚠️ นับเฉพาะทีมขายที่ยังใช้งาน — ทีมที่ปิดแล้วยังอยู่ในทะเบียนเพื่ออ่านป้ายย้อนหลัง */
 const active = rows.filter((r) => r.isActive !== false);
@@ -53,20 +51,6 @@ const inDb = active.map((r) => r.code);
 for (const code of TEAMS) {
   if (!inDb.includes(code)) {
     problems.push(`ทีมตั้งต้น ${code} หายจากทะเบียนหรือถูกปิด — รหัสนี้ถูกอ้างในข้อมูลเก่าทั้งระบบ`);
-  }
-}
-
-// ② ป้ายของทีมที่โค้ดรู้จัก ต้องตรงกับทะเบียน
-for (const row of active) {
-  if (TEAM_LABELS[row.code] && TEAM_LABELS[row.code] !== row.name) {
-    problems.push(`ป้ายทีม ${row.code} ไม่ตรง — ทะเบียน "${row.name}" · โค้ด "${TEAM_LABELS[row.code]}"`);
-  }
-}
-
-// ทีมขายใหม่ที่โค้ดยังไม่มีป้ายให้ — เตือนอย่างเดียว (จอจะโชว์เป็นรหัส)
-for (const row of active) {
-  if (!TEAM_LABELS[row.code]) {
-    warnings.push(`ทีม ${row.code} ("${row.name}") ยังไม่มีป้ายใน TEAM_LABELS — จอจะโชว์เป็นรหัส`);
   }
 }
 
@@ -81,9 +65,8 @@ if (!problems.length) {
 if (problems.length) {
   console.error('\n❌ ทะเบียนทีมขายมีปัญหา\n');
   for (const p of problems) console.error(`   · ${p}`);
-  console.error('\nแก้ที่ทะเบียน (/sa/teams) หรือที่ src/lib/permissions.js (TEAMS · TEAM_LABELS) ให้ตรงกัน\n');
+  console.error('\nแก้ที่ทะเบียน (/sa/teams) หรือที่ src/lib/permissions.js (TEAMS) ให้ตรงกัน\n');
   process.exit(1);
 }
 
-for (const w of warnings) console.warn(`⚠️  ${w}`);
 console.log(`check:teams ผ่าน — ทีมขายที่ใช้งานอยู่ ${inDb.length} ทีม · ทีมตั้งต้นครบ ${TEAMS.length} ทีม`);

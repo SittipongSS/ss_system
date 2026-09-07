@@ -10,11 +10,12 @@
 //
 // ตัวเลขมาจาก `lib/sales/leadWorkload.js` — **ของค้าง ณ ตอนนี้ ไม่ใช่ผลงานรายเดือน**
 import { personFullName } from "@/lib/ui/personName";
-import { TEAM_LABELS, userTeams } from "@/lib/permissions";
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
+import { userTeams } from "@/lib/permissions";
 import { WORKLOAD_FIELDS, EMPTY_WORKLOAD } from "@/lib/sales/leadWorkload";
 import styles from "./PersonLoadSelect.module.css";
 
-const metaOf = (user) => userTeams(user).map((t) => TEAM_LABELS[t] || t).join(" + ");
+const metaOf = (user) => userTeams(user).map((t) => teamLabelNow(t)).join(" + ");
 
 /* ช่อง `alert` เป็นศูนย์ = ดี · มากกว่าศูนย์ = ต้องเห็นแต่ไกล
    ช่องนับเฉย ๆ ไม่ทาสี — ถือ 11 ใบไม่ได้แปลว่าผิด แปลว่าต้องชั่งน้ำหนักเอง */

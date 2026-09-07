@@ -15,7 +15,10 @@
 // เรื่อง "สิทธิ์ตาม role/ทีม" ไม่ใช่ "ยังไม่ถึงเวลา"
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
-import { hasTeam, isSuperuser, userTeams, TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import { hasTeam, isSuperuser, userTeams, TEAMS } from "@/lib/permissions";
+/* ⚠️ โมดูลนี้เรียก hook ไม่ได้ — อ่านสแนปช็อตทะเบียนที่ `AppLayout` โหลดไว้
+   (`useSalesTeams()` ที่เปลือก) · ยังไม่โหลด = ขึ้นรหัสทีม ไม่ใช่ชื่อเก่าจากค่าคงที่ */
+import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { fmtDate, fmtName } from "@/lib/format";
 import {
   LEAD_STATUS_LABELS,
@@ -275,8 +278,8 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
                    "ปุ่มที่กดไม่ได้ต้องบอกเหตุผลติดปุ่ม · จางเฉย ๆ คือสิ่งที่ทำให้คน
                    คิดว่าระบบพัง" · ตัวเลือกที่จางโดยไม่มีคำอธิบายก็เข้าข่ายเดียวกัน */
                 label: locked
-                  ? `${TEAM_LABELS[team] || team} — ส่งกลับจากทีมนี้มาแล้ว ${AUTO_BOUNCE_MAX_ROUNDS} รอบ`
-                  : TEAM_LABELS[team] || team,
+                  ? `${teamLabelNow(team)} — ส่งกลับจากทีมนี้มาแล้ว ${AUTO_BOUNCE_MAX_ROUNDS} รอบ`
+                  : teamLabelNow(team),
                 disabled: locked,
               };
             }),
@@ -309,7 +312,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           },
           lead?.bounce?.previousAssigneeName && {
             label: "เคยถือโดย",
-            value: `${lead.bounce.previousAssigneeName}${lead.bounce.previousTeam ? ` (ทีม ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam})` : ""}`,
+            value: `${lead.bounce.previousAssigneeName}${lead.bounce.previousTeam ? ` (ทีม ${teamLabelNow(lead.bounce.previousTeam)})` : ""}`,
           },
           lead?.bounce?.lastReason && { label: "เหตุที่ส่งกลับ", value: lead.bounce.lastReason },
           lead?.handoff?.screenNote && { label: "ผู้คัดกรองฝาก", value: `“${lead.handoff.screenNote}”` },

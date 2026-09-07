@@ -598,7 +598,10 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
   // ชื่อคนต้องอ่านจาก id ไม่ใช่สำเนาชื่อในแถว (prod มีชื่อย่อ/ชื่อเก่าค้างอยู่)
   assert.match(tabSource, /livePersonName\(directory, a\.assigneeId, a\.name\)/);
   assert.match(tabSource, /livePersonName\(directory, c\.createdBy, c\.name\)/);
-  assert.match(tabSource, /TEAM_LABELS\[a\.team\]/, 'คอลัมน์ทีมต้องเป็นป้ายเต็ม ไม่ใช่รหัสดิบ');
+  /* ⚠️ กลับด้านจากเดิม (2026-09-07): ป้ายทีมต้องมาจาก **ทะเบียนจริง** ไม่ใช่ค่าคงที่
+     — ค่าคงที่มีแค่สามทีมที่ seed มาแต่แรก ทีมที่สร้างใหม่จะขึ้นเป็นรหัสตลอดไป */
+  assert.match(tabSource, /teamLabelNow\(a\.team\)/, 'คอลัมน์ทีมต้องอ่านชื่อจากทะเบียน');
+  assert.doesNotMatch(tabSource, /\bTEAM_LABELS\b/, 'ห้ามกลับไปอ่านค่าคงที่');
   /* % ที่ไม่มีตัวหารกำกับ = คนที่ติดต่อไป 2 ใบจาก 11 ใบขึ้น 100.00% ได้หน้าตาเฉย
      (การ์ด SLA ข้างบนโชว์ "ทัน x/y" อยู่แล้ว — สองที่บนจอเดียวกันต้องเชื่อถือได้เท่ากัน) */
   assert.match(tabSource, /\{a\.slaHit\}\/\{a\.contacted\}/,
