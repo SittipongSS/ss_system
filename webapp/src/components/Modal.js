@@ -1,4 +1,5 @@
 "use client";
+import thaiText from "./ThaiText";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -138,7 +139,7 @@ export default function Modal({
         <div className="drawer-header">
           <div>
             <h3 id={titleId} className="drawer-title">{title}</h3>
-            {subtitle ? <div className="drawer-subtitle">{subtitle}</div> : null}
+            {subtitle ? <div className="drawer-subtitle">{thaiText(subtitle)}</div> : null}
           </div>
           {dismissible && (
             <button type="button" className="drawer-close" onClick={onClose} aria-label="ปิด">

@@ -1,5 +1,6 @@
 "use client";
 
+import thaiText from "@/components/ThaiText";
 import { Children } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -41,7 +42,7 @@ export default function Workspace({
             <h1>
               {icon && <span className="premium-header-icon">{icon}</span>} {title}
             </h1>
-            {subtitle && <p>{subtitle}</p>}
+            {subtitle && <p>{thaiText(subtitle)}</p>}
           </div>
           {headerRight && <div className="ui-workspace-header-actions">{headerRight}</div>}
         </header>
@@ -80,7 +81,7 @@ export function WorkspaceSection({
             {icon}
             <div>
               <h2>{title}</h2>
-              {subtitle && <p>{subtitle}</p>}
+              {subtitle && <p>{thaiText(subtitle)}</p>}
             </div>
           </div>
           {actions && <div className="ui-section-actions">{actions}</div>}

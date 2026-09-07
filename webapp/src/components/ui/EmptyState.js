@@ -1,5 +1,6 @@
 "use client";
 
+import thaiText from "@/components/ThaiText";
 import Button from "./Button";
 
 // สถานะว่างกลางของระบบ — ไอคอน + ข้อความ (+ ปุ่มทำงาน) อยู่กึ่งกลางในกล่อง glass-panel
@@ -20,7 +21,7 @@ export default function EmptyState({ icon: Icon, children, onClick, dashed = fal
   return (
     <Tag type={onClick ? "button" : undefined} onClick={onClick} className={cls} style={style}>
       {Icon && <Icon size={26} className="es-icon" />}
-      <div>{children}</div>
+      <div>{typeof children === "string" ? thaiText(children) : children}</div>
       {action && !onClick && (
         <Button tone="primary" size="sm" className="es-action" onClick={action.onClick}>
           {action.label}

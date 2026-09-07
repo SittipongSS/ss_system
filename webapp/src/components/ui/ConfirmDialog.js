@@ -1,5 +1,6 @@
 "use client";
 
+import thaiText from "@/components/ThaiText";
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -148,8 +149,8 @@ export default function ConfirmDialog({
           <Icon size={20} />
         </div>
         <div className="confirm-dialog-copy" id={descriptionId}>
-          {resolvedDescription && <p>{resolvedDescription}</p>}
-          {detail && <p className="confirm-dialog-detail">{detail}</p>}
+          {resolvedDescription && <p>{thaiText(resolvedDescription)}</p>}
+          {detail && <p className="confirm-dialog-detail">{thaiText(detail)}</p>}
         </div>
         {children ? <div className="confirm-dialog-extra">{children}</div> : null}
         {resolvedError ? (

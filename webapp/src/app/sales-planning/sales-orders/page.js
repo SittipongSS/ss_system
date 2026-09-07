@@ -53,25 +53,44 @@ function paymentCell(payment) {
      ⚠️ ตัวเลขยังเป็นพระเอกของช่อง (ชิดขวา tabular กวาดตาเทียบข้ามแถวได้) บรรทัดสถานะ
      จึงเล็กและจางกว่า ไม่ใช่ป้ายเต็มตัว — ไม่งั้นคอลัมน์นี้จะแย่งสายตาจากคอลัมน์สถานะเอกสาร */
   const note = salesOrderPaymentNote(payment);
-  /* ⭐ ใบกำกับภาษี (mig 0348 · มติผู้ใช้ 2026-09-07) — บรรทัดของตัวเอง ไม่ปนกับบรรทัด
-     สถานะเงินข้างบน เพราะเป็นคนละแกนและเดินไม่พร้อมกัน (ใบที่เก็บครบแล้วยังค้างเอกสารได้)
-     ⚠️ เงียบเมื่อยังไม่มีงวดที่ต้องมีใบ — ไม่งั้นคอลัมน์นี้มีสามบรรทัดทุกแถวทั้งหน้า */
-  const invoice = salesOrderTaxInvoiceNote(payment);
   return (
     <>
       <span className={tone} title={why}>{paid}/{count}</span>
       {note ? <span className={`cell-sub ${NOTE_TONE[note.tone] || ""}`.trim()}>{note.label}</span> : null}
-      {invoice ? (
-        <span
-          className={`cell-sub ${NOTE_TONE[invoice.tone] || ""}`.trim()}
-          title={invoice.tone === "success"
-            ? "ออกใบกำกับครบทุกงวดที่ลูกค้าจ่ายแล้ว"
-            : "นับเฉพาะงวดที่ลูกค้าจ่ายแล้ว — ฝ่ายบัญชีเป็นคนบันทึกใบกำกับ"}
-        >
-          {invoice.label}
-        </span>
-      ) : null}
     </>
+  );
+}
+
+/* ── ใบกำกับภาษีของใบ (mig 0348 · มติผู้ใช้ 2026-09-07 รอบสอง) ────────────
+   ⭐ **คอลัมน์ของตัวเอง ไม่ใช่บรรทัดใต้ตัวเลขงวด** — เงินกับเอกสารเป็นคนละแกนและ
+   เดินไม่พร้อมกัน (ใบที่เก็บเงินครบแล้วยังค้างเอกสารได้) · รอบแรกทำเป็นบรรทัดที่สาม
+   ใต้ช่องงวดชำระ แล้วผู้ใช้ขอให้แยกออกมา เพราะกวาดตาเทียบข้ามแถวไม่ได้เมื่อมันซ้อน
+   อยู่ใต้ตัวเลขอื่น
+
+   ⚠️ **ไม่ทาสีแดงตอนค้าง** ต่างจากทะเบียนของบัญชี — การออกใบเป็นงานของ FN ไม่ใช่ของ
+   SA และของค้างวันนี้มีเป็นร้อยงวด ⇒ แดงทั้งคอลัมน์ = เสียงรบกวนที่ไม่มีใครกดอะไรได้
+   เขียวเมื่อครบก็พอ ที่เหลืออ่านจากตัวเลข
+   ⚠️ ตัวส่วนคือ **งวดที่ต้องมีใบ** (จ่ายแล้ว) ไม่ใช่จำนวนงวดทั้งใบ — ดู
+   `salesOrderTaxInvoiceNote` */
+function taxInvoiceCell(payment) {
+  const invoice = salesOrderTaxInvoiceNote(payment);
+  if (!invoice) {
+    return (
+      <span className="cell-num-idle" title="ยังไม่มีงวดที่ลูกค้าจ่าย — ยังไม่ถึงจังหวะออกใบกำกับ">
+        {NA}
+      </span>
+    );
+  }
+  const complete = invoice.tone === "success";
+  return (
+    <span
+      className={complete ? "cell-num-ok" : undefined}
+      title={complete
+        ? "ออกใบกำกับครบทุกงวดที่ลูกค้าจ่ายแล้ว"
+        : "นับเฉพาะงวดที่ลูกค้าจ่ายแล้ว — ฝ่ายบัญชีเป็นคนบันทึกใบกำกับ"}
+    >
+      {payment.invoiced}/{payment.invoiceNeeded}
+    </span>
   );
 }
 
@@ -294,7 +313,7 @@ export default function SalesOrdersPage() {
   /* ⚠️ colSpan ต้องเดินตามจำนวนคอลัมน์จริง ไม่ใช่เลข 4 ที่พิมพ์ค้างไว้ — หัวกลุ่ม/แถวว่าง
      ที่ colSpan สั้นกว่าตารางจะเปิดช่องว่างท้ายแถวให้เห็นเลย */
   const serviceView = lineView === "SERVICE";
-  const columnCount = serviceView ? 7 : 4;
+  const columnCount = serviceView ? 8 : 5;
 
   const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
@@ -382,6 +401,7 @@ export default function SalesOrdersPage() {
                       กำหนด {fmtDate(row.paymentDueDate)}
                     </span>
                   </td>
+                  <td className="num mono">{taxInvoiceCell(row.payment)}</td>
                   {/* ⭐ สามคอลัมน์ท้ายขึ้นเฉพาะมุมมองสายบริการ — คำถามที่คอลัมน์ชุดเดิม
                       ตอบไม่ได้: สัญญาผูกหรือยัง · เงินครอบบริการถึงเมื่อไร · เดินไปกี่รอบ */}
                   {serviceView && <td>{serviceContractCell(row.service)}</td>}
@@ -504,7 +524,7 @@ export default function SalesOrdersPage() {
                 · "สถานะ" ป้ายเดียวบอกได้แค่จุดปัจจุบัน ⇒ แทนด้วย **รางสามขั้น**
               ⚠️ รางไม่ใช่การตกแต่ง — สามขั้นคือสามแกนคนละคอลัมน์ใน DB ที่เดินไม่พร้อมกัน
               (`status` · `financeStatus` · งวดชำระ) ตรรกะอยู่ใน `salesOrderListTrack` พร้อมเทสต์ */}
-          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1060 : 820} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1160 : 920} aria-busy={loading}>
             <table className="w-full text-sm">
               {/* ⚠️ **4 คอลัมน์** — "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (มติผู้ใช้ 2026-08-18)
                   ทั้งคู่เป็นเรื่องการชำระของใบเดียวกัน และวันครบกำหนดคือคุณสมบัติของงวด
@@ -512,6 +532,8 @@ export default function SalesOrdersPage() {
               <thead><tr>
                 <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
                 <th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ · กำหนด</th>
+                {/* ใบกำกับภาษี (mig 0348) — คนละแกนกับเงิน ⇒ คอลัมน์ของตัวเอง */}
+                <th className="num">ใบกำกับ</th>
                 {serviceView && <th>สัญญา</th>}
                 {serviceView && <th className="num">จ่ายถึง</th>}
                 {serviceView && <th className="num">รอบที่เดิน</th>}
