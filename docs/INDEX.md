@@ -117,6 +117,7 @@
 | [webapp/BOUNDARY_MAP_PLAN.md](../webapp/BOUNDARY_MAP_PLAN.md) | 9/13 | กำลังดำเนินการ |
 | [webapp/CUSTOMER_BRAND_PRODUCT_PLAN.md](../webapp/CUSTOMER_BRAND_PRODUCT_PLAN.md) | P0 เสร็จ · P1 ขึ้นไปยังไม่ลงมือ | กำลังดำเนินการ |
 | [webapp/SAHAMIT_REMAINING_PLAN.md](../webapp/SAHAMIT_REMAINING_PLAN.md) · [SAHAMIT_SHIFT_SUGGESTION_PLAN.md](../webapp/SAHAMIT_SHIFT_SUGGESTION_PLAN.md) | งานค้างสายสหมิตร | กำลังดำเนินการ |
+| [sahamit-rework-scope.md](sahamit-rework-scope.md) | **รื้อระบบสหมิตรทั้งเส้น** (มติ 2026-09-08) — แผนที่ของเดิม ท่อ FC/PO/Actual · จุดที่ต้องรื้อ 10 ข้อ · ของที่แตะแล้วเสี่ยงกระทบยอดที่นับไปแล้ว · **ยังไม่ลงมือ ทำที่อื่น** | รอดำเนินการ |
 | [webapp/SALES_PM_ROADMAP.md](../webapp/SALES_PM_ROADMAP.md) | 4/5 | กำลังดำเนินการ |
 | [webapp/PM_COMMAND_CENTER_PLAN.md](../webapp/PM_COMMAND_CENTER_PLAN.md) · [PM_RESPONSIVE_PRODUCTIVITY_PLAN.md](../webapp/PM_RESPONSIVE_PRODUCTIVITY_PLAN.md) | ⚠️ ยังไม่เริ่มสักสเต็ป · **ground truth ในเอกสารเก่าแล้ว ต้องสำรวจใหม่ก่อนรื้อฟื้น** | รอดำเนินการ |
 
