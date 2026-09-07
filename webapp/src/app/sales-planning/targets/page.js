@@ -437,63 +437,61 @@ export default function SalesPlanningTargetsPage() {
         )}
 
         <div className={`glass-panel ${styles.tableCard}`} aria-busy={loading}>
-          <div className="fz-box">
-            <TableScroll surface="embedded" family="editable"><table className="fz-table">
-              <thead>
-                <tr>
-                  <th className={`fz-c1 ${styles.nameCell}`}>ทีม / รายบุคคล</th>
-                  {MONTH_LABELS.map((m) => <th key={m} className={`num ${styles.monthCell}`}>{m}</th>)}
-                  <th className={`fz-cr num ${styles.totalCell}`}>รวมทั้งปี</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isSuper && renderRow(view.sa, 0, { bold: true, gap: true, allocLabel: "รวมเป้าทีม", rowClass: styles.rowSa })}
-                {view.teams.map((t) => {
-                  const isCollapsed = !!collapsed[t.team];
-                  return (
-                    <FragmentRows key={t.team}>
-                      {renderRow(t, isSuper ? 1 : 0, {
-                        bold: true, gap: true, allocLabel: "รวมราย AE",
-                        label: `${TEAM_LABELS[t.team] || t.team} (${t.team})`,
-                        collapsible: true, collapsed: isCollapsed, onToggle: () => toggleTeam(t.team),
-                        rowClass: styles.rowTeam,
-                      })}
-                      {!isCollapsed && t.members.map((m) => renderRow(m, isSuper ? 2 : 1))}
-                      {!isCollapsed && !t.members.length && (
-                        <tr><td colSpan={14} className={styles.emptyTeam}>ยังไม่มี AE ในทีมนี้</td></tr>
-                      )}
-                    </FragmentRows>
-                  );
-                })}
-                {!teamsToShow.length && (
-                  <tr><td colSpan={14} className={styles.emptyTable}>ไม่พบทีมที่คุณดูแล</td></tr>
-                )}
-              </tbody>
-              {teamsToShow.length > 0 && (
-                <tfoot>
-                  {/* สองแถวรวมตรึงซ้อนกันท้ายตาราง — ความสูง/ระยะตรึง/พื้น อยู่ใน
-                      page.module.css (.footRow / .footTop / .footBottom) แถวบนต้องรู้
-                      ความสูงของแถวล่างจึงตรึงที่ 34px พอดี */}
-                  {[
-                    { label: "รวมเป้าทีมที่ตั้ง", months: grandMonths, total: grandTotal, cls: styles.footTop },
-                    { label: "รวมราย AE (ทุกทีม)", months: grandMemberMonths, total: grandMemberTotal, cls: styles.footBottom },
-                  ].map((r) => (
-                    <tr key={r.label} className={`${styles.footRow} ${r.cls}`}>
-                      <td className={`fz-c1 fz-foot ${styles.nameCell}`}>{r.label}</td>
-                      {r.months.map((v, i) => (
-                        <td key={i} className={`num mono tabular-nums fz-foot ${styles.monthCell} ${v ? "" : styles.footZero}`}>
-                          {v ? compact(v) : NA}
-                        </td>
-                      ))}
-                      <td className={`fz-cr num mono tabular-nums fz-foot ${styles.totalCell}`}>
-                        {money(r.total)}
-                      </td>
-                    </tr>
-                  ))}
-                </tfoot>
+          <TableScroll surface="embedded" family="editable" className="fz-box"><table className="fz-table">
+            <thead>
+              <tr>
+                <th className={`fz-c1 ${styles.nameCell}`}>ทีม / รายบุคคล</th>
+                {MONTH_LABELS.map((m) => <th key={m} className={`num ${styles.monthCell}`}>{m}</th>)}
+                <th className={`fz-cr num ${styles.totalCell}`}>รวมทั้งปี</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isSuper && renderRow(view.sa, 0, { bold: true, gap: true, allocLabel: "รวมเป้าทีม", rowClass: styles.rowSa })}
+              {view.teams.map((t) => {
+                const isCollapsed = !!collapsed[t.team];
+                return (
+                  <FragmentRows key={t.team}>
+                    {renderRow(t, isSuper ? 1 : 0, {
+                      bold: true, gap: true, allocLabel: "รวมราย AE",
+                      label: `${TEAM_LABELS[t.team] || t.team} (${t.team})`,
+                      collapsible: true, collapsed: isCollapsed, onToggle: () => toggleTeam(t.team),
+                      rowClass: styles.rowTeam,
+                    })}
+                    {!isCollapsed && t.members.map((m) => renderRow(m, isSuper ? 2 : 1))}
+                    {!isCollapsed && !t.members.length && (
+                      <tr><td colSpan={14} className={styles.emptyTeam}>ยังไม่มี AE ในทีมนี้</td></tr>
+                    )}
+                  </FragmentRows>
+                );
+              })}
+              {!teamsToShow.length && (
+                <tr><td colSpan={14} className={styles.emptyTable}>ไม่พบทีมที่คุณดูแล</td></tr>
               )}
-            </table></TableScroll>
-          </div>
+            </tbody>
+            {teamsToShow.length > 0 && (
+              <tfoot>
+                {/* สองแถวรวมตรึงซ้อนกันท้ายตาราง — ความสูง/ระยะตรึง/พื้น อยู่ใน
+                    page.module.css (.footRow / .footTop / .footBottom) แถวบนต้องรู้
+                    ความสูงของแถวล่างจึงตรึงที่ 34px พอดี */}
+                {[
+                  { label: "รวมเป้าทีมที่ตั้ง", months: grandMonths, total: grandTotal, cls: styles.footTop },
+                  { label: "รวมราย AE (ทุกทีม)", months: grandMemberMonths, total: grandMemberTotal, cls: styles.footBottom },
+                ].map((r) => (
+                  <tr key={r.label} className={`${styles.footRow} ${r.cls}`}>
+                    <td className={`fz-c1 fz-foot ${styles.nameCell}`}>{r.label}</td>
+                    {r.months.map((v, i) => (
+                      <td key={i} className={`num mono tabular-nums fz-foot ${styles.monthCell} ${v ? "" : styles.footZero}`}>
+                        {v ? compact(v) : NA}
+                      </td>
+                    ))}
+                    <td className={`fz-cr num mono tabular-nums fz-foot ${styles.totalCell}`}>
+                      {money(r.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tfoot>
+            )}
+          </table></TableScroll>
         </div>
 
         <div className={styles.hint}>

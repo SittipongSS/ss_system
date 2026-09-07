@@ -2722,9 +2722,12 @@ h1, h2, h3, h4, h5, h6 {
   z-index: 2;
 }
 /* เต็มจอ: ให้กริดใช้ความสูงเกือบเต็ม (หักแถบเครื่องมือ+เลเจนด์) */
-.recon-fs .reconciliation-container { max-height: calc(100dvh - 150px); }
+.recon-fs .reconciliation-container.reconciliation-container { max-height: calc(100dvh - 150px); }
 
-.reconciliation-container {
+/* ⚠️ ต้องอยู่บน element เดียวกับ `.scroll` ของ TableScroll ห้ามห่อเป็น div อีกชั้น
+   (เหตุผลเดียวกับ `.fz-box` — กล่องเลื่อนซ้อนกันทำให้หัวตารางปักผิดกล่อง)
+   ชื่อคลาสซ้ำสองครั้งเพื่อชนะ `.scroll { max-height }` ที่โหลดทีหลัง */
+.reconciliation-container.reconciliation-container {
   overflow: auto;
   /* max-height (not fixed height) so the box shrinks to content on short grids
      yet caps + scrolls internally on tall ones (keeps the sticky header useful).
@@ -7012,7 +7015,20 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
    frozen column comes from --fz-c1w (the width of the first frozen column).
    Defined after .premium-glass-table so overflow:auto wins when both classes
    share an element. */
-.fz-box {
+/* ⚠️ คลาสนี้ต้องอยู่บน **element เดียวกับ `.scroll` ของ TableScroll** ห้ามเอาไปแปะ
+   บน div ที่ห่อ TableScroll อีกที (2026-09-07)
+
+   🐞 เดิมเขียนเป็น `<div class="fz-box"><TableScroll …>` = กล่องเลื่อนซ้อนกันสองชั้น
+   นอก 650px (100dvh−250) · ใน 770px (--pinned-box-max = 100dvh−130) — กล่องในสูงกว่า
+   กล่องนอก 120px คงที่ทุกความสูงจอ · `thead th` / `tfoot td.fz-foot` ปักกับกล่อง **ใน**
+   ⇒ วัดสดที่ /sa/targets (1440×900): เลื่อนกล่องนอกลงสุด หัวเดือนหลุดจอไป −135px
+   แถวรวมสองแถวถึงจะโผล่ ⇒ **หัวกับแถวรวมไม่มีทางเห็นพร้อมกัน** บนหน้าที่กรอกเงิน
+   12 เดือน × ราย AE · เกิดตอน #1627 ใส่เพดานให้ `.scroll` ไม่มีด่านไหนเห็น
+
+   ⚠️ ชื่อคลาสซ้ำสองครั้งไม่ใช่ของประดับ — ต้องชนะ `.scroll { max-height }` ของ
+   Table.module.css ซึ่งเป็น (0,1,0) เท่ากันแต่โหลดทีหลัง (module ตามหลัง globals)
+   เพดาน 250px ที่นี่วัดจากของเหนือกริดของหน้านั้นจริง ๆ ใกล้ความจริงกว่า 130px กลาง */
+.fz-box.fz-box {
   overflow: auto;
   /* cap tall grids so header/footer stay useful; short grids shrink to content */
   max-height: calc(100dvh - 250px);
