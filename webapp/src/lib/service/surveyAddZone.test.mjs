@@ -7,7 +7,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { isAddedZone, surveyAddZoneError, surveyTotals } from './survey.js';
+import {
+  isAddedZone, surveyAddZoneError, surveyChangeCounts, surveyChangeText, surveyTotals,
+} from './survey.js';
 import { normalizeAddedZone, surveyRowNameClash } from './surveyRequest.js';
 import { busySurveyRequests, surveyZoneBusyError } from './zonePickState.js';
 
@@ -143,9 +145,9 @@ test('🔴 ลบแถวแล้วโซนกำพร้าต้องถ
   assert.match(route, /deleteZoneRow\(/);
 });
 
-test('🔑 กระดิ่งตอนส่งผลต้องบอกว่ามีพื้นที่ที่ TS เพิ่มเอง (แผน §9 ข้อ 3)', () => {
+test('🔑 กระดิ่งตอนส่งผลต้องบอกว่ามีพื้นที่ที่ TS ตัด/เพิ่มเอง (แผน §9 ข้อ 3)', () => {
   const send = code('../../app/api/service/surveys/[id]/send/route.js');
-  assert.match(send, /totals\.addedZones \? ` · TS เพิ่มหน้างาน/);
+  assert.match(send, /surveyChangeText\(change, \{ actor: 'TS' \}\)/);
 });
 
 test('🔑 ป้าย "เพิ่มหน้างาน" ต้องขึ้นทั้งจอช่างและจอสรุป (แผน §9 ข้อ 1)', () => {
@@ -168,4 +170,95 @@ test('🔑 จอหน้างานต้องมีปุ่มเพิ่
   assert.match(page, /method: "POST", json: draft/);
   assert.match(page, /method: "DELETE"/);
   assert.match(page, /surveyAddZoneError\(/, 'ปุ่มต้องปิดด้วยด่านตัวเดียวกับ server');
+});
+
+/* ══ "ที่ขอไป" เทียบ "ที่ได้กลับมา" (มติข้อ 6 · แผน §9 ข้อ 2) ═══════════ */
+
+const zone = (status, zoneName) => ({ status, zoneName, parts: [], spots: [] });
+
+test('🔑 นับสี่ตัวตามตัวอย่างในม็อก: ขอไป 5 · ตัด 1 · เพิ่ม 1 ⇒ ประเมินจริง 5', () => {
+  const rows = [
+    zone('ok', 'ล็อบบี้'), zone('ok', 'โซนค้าปลีก'), zone('ok', 'โซนอาหาร'),
+    zone('ok', 'ทางเชื่อม'), zone('cut', 'ห้องน้ำชาย'), zone('added', 'โถงลิฟต์'),
+  ];
+  const c = surveyChangeCounts(rows);
+  assert.equal(c.requested, 5);
+  assert.equal(c.cut, 1);
+  assert.equal(c.added, 1);
+  assert.equal(c.assessed, 5);
+});
+
+/* 🔴 "ขอไป" เป็นตัวเลขตัวเดียวที่ต้องนับแถวที่ถูกตัดด้วย — สวนทางกับทั้งไฟล์
+   ⇒ รีไซเคิล totals.zones เมื่อไรจะได้ 4 แทนที่จะเป็น 5 */
+test('🔴 "ขอไป" ต้องนับแถวที่ถูกตัดด้วย — ห้ามรีไซเคิล totals.zones', () => {
+  const rows = [zone('ok', 'A'), zone('cut', 'B')];
+  assert.equal(surveyTotals(rows).zones, 1, 'totals.zones กรองแถวที่ถูกตัดออก');
+  assert.equal(surveyChangeCounts(rows).requested, 2, 'แต่ SA ขอไปสองพื้นที่');
+});
+
+test('ใบเก่าที่ยังไม่มี status = ของที่ SA ขอมาทั้งหมด', () => {
+  const c = surveyChangeCounts([{ zoneName: 'A' }, { zoneName: 'B' }]);
+  assert.equal(c.requested, 2);
+  assert.equal(c.assessed, 2);
+  assert.equal(surveyChangeCounts([]).requested, 0);
+  assert.equal(surveyChangeCounts().requested, 0);
+});
+
+/* ⭐ สองเสียงจากตัวสร้างตัวเดียว (ม็อก 1883 vs 1954) */
+test('🔑 จอ TS ได้ชื่อพื้นที่ในวงเล็บ · ฝั่ง SA ได้คำว่าใครเป็นคนทำ', () => {
+  const c = surveyChangeCounts([
+    zone('ok', 'ล็อบบี้'), zone('cut', 'ห้องน้ำชาย'), zone('added', 'โถงลิฟต์'),
+  ]);
+  const ts = surveyChangeText(c, { withNames: true });
+  assert.match(ts, /ขอไป 2 พื้นที่/);
+  assert.match(ts, /ตัด 1 \(ห้องน้ำชาย\)/);
+  assert.match(ts, /เพิ่ม 1 \(โถงลิฟต์\)/);
+  assert.match(ts, /⇒ ประเมินจริง 2 พื้นที่/);
+
+  const sa = surveyChangeText(c, { actor: 'TS' });
+  assert.match(sa, /TS ตัด 1 · เพิ่ม 1/);
+  assert.doesNotMatch(sa, /\(/, 'ฝั่ง SA ไม่ต้องมีชื่อในวงเล็บ — ตารางข้างล่างบอกอยู่แล้ว');
+});
+
+/* ⚠️ หน่วยคือ "พื้นที่" ไม่ใช่ "โซน" (มติข้อ 19) — ม็อกชุดเก่ายังเขียนว่าโซน
+   และคำว่า "จุด" สงวนไว้ให้จุดติดตั้งเท่านั้น */
+test('🔴 หน่วยต้องเป็น "พื้นที่" ไม่ใช่ "โซน" หรือ "จุด"', () => {
+  const text = surveyChangeText(surveyChangeCounts([zone('ok', 'A'), zone('added', 'B')]));
+  assert.doesNotMatch(text, /โซน/);
+  assert.doesNotMatch(text, /จุด/);
+  assert.match(text, /พื้นที่/);
+});
+
+test('ไม่มีอะไรเปลี่ยน = พูดออกมาตรง ๆ ไม่ใช่เงียบ', () => {
+  assert.equal(
+    surveyChangeText(surveyChangeCounts([zone('ok', 'A'), zone('ok', 'B')])),
+    'ขอไป 2 พื้นที่ · ไม่มีตัด ไม่มีเพิ่ม',
+  );
+});
+
+test('ชื่อเกินสองอันถูกยุบ — บรรทัดยาวจนอ่านไม่ออกคือบรรทัดที่ไม่มีใครอ่าน', () => {
+  const rows = ['A', 'B', 'C', 'D'].map((n) => zone('cut', n));
+  const text = surveyChangeText(surveyChangeCounts(rows), { withNames: true });
+  assert.match(text, /\(A · B และอีก 2\)/);
+});
+
+/* ── ยามผูกกับซอร์สจริง ──────────────────────────────────────────────── */
+test('🔑 บรรทัดสรุปต้องขึ้นทั้งจอ TS · จอ SA · กระดิ่ง จากตัวสร้างตัวเดียว', () => {
+  const page = code('../../app/service/surveys/[id]/page.js');
+  assert.match(page, /surveyChangeText\(surveyChangeCounts\(zones\), \{ withNames: true \}\)/);
+
+  const detail = code('../../components/requests/details/SurveyDetail.js');
+  assert.match(detail, /surveyChangeText\(change, \{ actor: "TS" \}\)/);
+  assert.match(detail, /change\.cut > 0 \|\| change\.added > 0/,
+    'ฝั่งผู้ขอขึ้นเฉพาะตอนของที่ได้ต่างจากที่ขอ — เขาพิมพ์รายการนี้เองกับมือ');
+
+  const send = code('../../app/api/service/surveys/[id]/send/route.js');
+  assert.match(send, /surveyChangeText\(change, \{ actor: 'TS' \}\)/);
+  assert.doesNotMatch(send, /totals\.cutZones \? ` · ตัดออก/,
+    'กระดิ่งต้องเลิกนับเองแล้วใช้ข้อความกลาง ไม่งั้นจอกับกระดิ่งนับคนละแบบ');
+});
+
+test('🔑 แถวรวมท้ายตารางฝั่ง SA ต้องบอกทั้งตัดและเพิ่ม', () => {
+  const detail = code('../../components/requests/details/SurveyDetail.js');
+  assert.match(detail, /totals\.addedZones \? <span className="cell-sub">เพิ่มหน้างาน/);
 });

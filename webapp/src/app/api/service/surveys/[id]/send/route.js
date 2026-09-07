@@ -18,7 +18,9 @@ import { closureStatus } from '@/lib/requests/closure';
 import { answerRequestError } from '@/lib/requests/stages';
 import { listAttachments } from '@/lib/master/attachments';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
-import { surveySendError, surveyTotals, surveyTotalsDiff } from '@/lib/service/survey';
+import {
+  surveyChangeCounts, surveyChangeText, surveySendError, surveyTotals, surveyTotalsDiff,
+} from '@/lib/service/survey';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +67,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     /* สรุปที่เขียนลง audit ต้องบอก **ตัวเลขที่ส่งออกไป** ไม่ใช่แค่ "ส่งผลแล้ว" —
        ใบนี้คือของที่ SA เอาไปตั้งราคา ⇒ ต้องย้อนได้ว่าตอนส่งบอกไปเท่าไร */
     const totals = surveyTotals(zones);
+    // "ที่ขอไป" เทียบ "ที่ได้กลับมา" — ตัวสร้างข้อความเดียวกับที่ขึ้นบนจอทั้งสองฝั่ง
+    const change = surveyChangeCounts(zones);
 
     /* 🔴 **บรรทัดในเธรดคือตัวที่แจกกระดิ่ง** — `appendUpdate` เรียก `notifyThreadUpdate`
        ต่อให้เองเสมอ (lib/master/updates.js) ⇒ ไม่เขียนเธรด = ผู้ขอไม่มีทางรู้ว่าผลมาแล้ว
@@ -96,12 +100,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       user,
       opts: {
         /* ผู้ขอรอ "ตร.ม. กี่แพ็คเกจ" เพื่อเอาไปตั้งราคา ⇒ ให้อ่านจากกระดิ่งได้เลย
-           🔴 **พื้นที่ที่ TS เพิ่มเองต้องอยู่ในกระดิ่ง ไม่ใช่ให้ไปเจอเองในตาราง** (แผน §9
-             ข้อ 3) — TS เพิ่มได้โดยไม่ต้องขออนุมัติ ⇒ จังหวะที่ SA จะรู้เรื่องมีจังหวะนี้
-             จังหวะเดียว และเขาคือคนที่เอาตัวเลขนี้ไปตั้งราคาต่อ */
+           🔴 **สิ่งที่ TS ตัด/เพิ่มเองต้องอยู่ในกระดิ่ง ไม่ใช่ให้ไปเจอเองในตาราง** (แผน §9
+             ข้อ 3) — TS ทำได้โดยไม่ต้องขออนุมัติ ⇒ จังหวะที่ SA จะรู้เรื่องมีจังหวะนี้
+             จังหวะเดียว และเขาคือคนที่เอาตัวเลขนี้ไปตั้งราคาต่อ
+           ⚠️ **ข้อความเดียวกับที่ขึ้นบนจอทั้งสองฝั่ง** (`surveyChangeText`) — เขียนคนละที่
+             เมื่อไร กระดิ่งกับจอจะนับคนละแบบ แล้วไม่มีใครรู้ว่าอันไหนจริง
+           ⚠️ เงียบเมื่อไม่มีอะไรเปลี่ยน — "ไม่มีตัด ไม่มีเพิ่ม" ซ้ำกับเลขพื้นที่ที่อยู่ต้นบรรทัด */
         summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
-          + (totals.cutZones ? ` · ตัดออก ${totals.cutZones}` : '')
-          + (totals.addedZones ? ` · TS เพิ่มหน้างาน ${totals.addedZones}` : '')
+          + (change.cut || change.added ? ` — ${surveyChangeText(change, { actor: 'TS' })}` : '')
           + (diff.length ? ` · ⚠️ แก้จากรอบก่อน: ${diff.join(' · ')}` : ''),
       },
     });
@@ -111,8 +117,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       before: request, after: data,
       summary: `ส่งผลประเมิน ${request.docNo || id} — ${totals.zones} พื้นที่ · `
         + `${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
-        + (totals.cutZones ? ` · ตัดออก ${totals.cutZones}` : '')
-        + (totals.addedZones ? ` · เพิ่มหน้างาน ${totals.addedZones}` : '')
+        + (change.cut || change.added ? ` · ${surveyChangeText(change, { actor: 'TS' })}` : '')
         + (data.status === 'closed' ? ' · ปิดครบสองฝั่ง' : ''),
       request: req,
     });

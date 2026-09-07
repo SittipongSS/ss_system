@@ -28,3 +28,18 @@
   font-size: var(--fs-4);
   line-height: var(--lh-thai);
 }
+
+/* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — แถบบริบทเงียบ ๆ เหนือตารางผล
+   ⚠️ ไม่ใช่ notice สีฟ้าแบบฝั่งฝ่ายขาย: บนจอนี้มันคือ *สรุปงานของตัวเอง* ไม่ใช่ข่าว
+   ⚠️ `margin-block` ถูก `.ui-workspace > *` ล้างทิ้ง ⇒ ระยะห่างมาจาก gap ของเปลือก
+      ส่วนช่องว่างใต้แถบสร้างด้วย padding ของกล่องเอง */
+.change {
+  margin: 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}

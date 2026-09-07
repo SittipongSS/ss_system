@@ -24,7 +24,10 @@ import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { surveyAddZoneError, surveyFieldProgress, surveySendError, surveyTotals } from "@/lib/service/survey";
+import {
+  surveyAddZoneError, surveyChangeCounts, surveyChangeText,
+  surveyFieldProgress, surveySendError, surveyTotals,
+} from "@/lib/service/survey";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import { apiJson } from "@/lib/apiFetch";
@@ -181,6 +184,9 @@ export default function SurveySheetPage({ params }) {
   const zones = data?.zones || [];
   const progress = surveyFieldProgress(zones, data?.filesByZone || {});
   const totals = surveyTotals(zones);
+  /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
+     เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน */
+  const changeText = surveyChangeText(surveyChangeCounts(zones), { withNames: true });
   const canDecide = data?.canDecide === true;
   /* 🔑 ด่านตัวเดียวกับที่ server ใช้ — ปุ่มปิดตามนี้ และเหตุผลขึ้นเป็นตัวหนังสือ */
   const sendGate = surveySendError(zones, data?.filesByZone || {}, { canSend: canDecide });
@@ -280,13 +286,20 @@ export default function SurveySheetPage({ params }) {
           ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน — ฝ่ายขายเป็นคนระบุพื้นที่ตอนเปิดใบ
         </EmptyState>
       ) : tab === "result" ? (
-        <SurveyResultTable
-          zones={zones}
-          filesByZone={data?.filesByZone || {}}
-          canDecide={canDecide && !sent}
-          busyZone={busyZone}
-          onDecide={decideZone}
-        />
+        <>
+          {/* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้โดยไม่
+              ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเองเปลี่ยน
+              อะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่ขึ้นเฉพาะตอนมีการเปลี่ยน
+              (เห็น "ไม่มีตัด ไม่มีเพิ่ม" = ยืนยันว่าไม่ได้ลืมอะไร) */}
+          <p className={styles.change} role="status">{changeText}</p>
+          <SurveyResultTable
+            zones={zones}
+            filesByZone={data?.filesByZone || {}}
+            canDecide={canDecide && !sent}
+            busyZone={busyZone}
+            onDecide={decideZone}
+          />
+        </>
       ) : (
         <div className={styles.list}>
           {zones.map((zone) => (
