@@ -16,6 +16,7 @@ import { withUser, ok, fail } from '@/lib/http';
 import { businessDate } from '@/lib/businessDate';
 import { canViewService } from '@/lib/permissions';
 import { fetchAll } from '@/lib/supabaseFetchAll';
+import { fetchAllInChunks, byColumns } from '@/lib/supabaseInChunks';
 import { loadSites, requireService } from '@/lib/service/sitesRepo';
 import { customerZoneRegistry } from '@/lib/service/zoneRegistry';
 
@@ -38,53 +39,54 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const siteIds = sites.map((s) => s.id);
     if (!siteIds.length) return ok({ ...customerZoneRegistry({}), canOpenSiteRegistry });
 
-    /* 🔴 ต้องห่อ `fetchAll` ทุกก้อน — เพดาน 1,000 แถวของ PostgREST ตัดเงียบ
+    /* 🔴 ต้องห่อ `fetchAllInChunks` ทุกก้อน — สองปัญหาคนละตัวเจอกันที่นี่
+       ① เพดาน 1,000 แถวของ PostgREST ตัดเงียบ (นั่นคือหน้าที่ของ fetchAll ข้างใน)
+       ② ลิสต์ id ยาวเกิน ⇒ URL เกิน 16 KB แล้วซ็อกเก็ตถูกตัด (fetchInChunks ข้างนอก)
+       ⚠️ `fetchAll` อย่างเดียวแก้ข้อ ② ไม่ได้ — มันส่งตัวกรองก้อนเดิมไปทุกหน้า
+       ⚠️ เรียงซ้ำหลังรวมก้อนด้วย `byColumns` — PostgREST เรียงต่อก้อน ไม่ได้เรียงทั้งชุด
+       เพดาน 1,000 แถวของ PostgREST ตัดเงียบ
        ลูกค้ารายใหญ่มีได้หลายร้อยสาขา × หลายโซน × ประเมินหลายรอบ ⇒ แถวผลวัด
        โตเร็วที่สุดในสามก้อนนี้ · ไม่ห่อ = ตัวเลขต่ำกว่าจริงโดยไม่มี error ให้เห็น
        ⚠️ ต้อง `order` ด้วยคีย์ที่ unique (`id`) ปิดท้าย — เรียงด้วยคอลัมน์ซ้ำได้
           แล้วไล่หน้าจะได้แถวซ้ำและแถวหายพร้อมกัน */
-    const zones = await fetchAll(() => supabase
-      .from('service_zones').select('*').in('siteId', siteIds)
+    const zones = await fetchAllInChunks(siteIds, (chunk) => supabase
+      .from('service_zones').select('*').in('siteId', chunk)
       .order('siteId', { ascending: true })
       .order('name', { ascending: true })
-      .order('id', { ascending: true }));
+      .order('id', { ascending: true }), { sort: byColumns('siteId', 'name', 'id') });
 
     const zoneIds = zones.map((z) => z.id);
     const [surveys, terms] = zoneIds.length
       ? await Promise.all([
-        fetchAll(() => supabase
-          .from('service_survey_zones').select('*').in('zoneId', zoneIds)
+        fetchAllInChunks(zoneIds, (chunk) => supabase
+          .from('service_survey_zones').select('*').in('zoneId', chunk)
           .order('zoneId', { ascending: true })
-          .order('id', { ascending: true })),
-        fetchAll(() => supabase
-          .from('service_zone_terms').select('*').in('zoneId', zoneIds)
+          .order('id', { ascending: true }), { sort: byColumns('zoneId', 'id') }),
+        fetchAllInChunks(zoneIds, (chunk) => supabase
+          .from('service_zone_terms').select('*').in('zoneId', chunk)
           .order('zoneId', { ascending: true })
-          .order('id', { ascending: true })),
+          .order('id', { ascending: true }), { sort: byColumns('zoneId', 'id') }),
       ])
       : [[], []];
 
     /* ใบสั่งขายแม่ — ตัวตัดสิน "ขายแล้ว/ยังไม่ขาย" (`termOrderActive`)
        ⚠️ อ่านมาเท่าที่ term อ้างถึงเท่านั้น · ดึงทั้งตารางคือดึงใบขายทั้งบริษัท */
     const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
-    const orders = orderIds.length
-      ? await fetchAll(() => supabase
-        .from('sales_orders').select('id, status, "supersededById", "orderNumber"')
-        .in('id', orderIds)
-        .order('id', { ascending: true }))
-      : [];
+    const orders = await fetchAllInChunks(orderIds, (chunk) => supabase
+      .from('sales_orders').select('id, status, "supersededById", "orderNumber"')
+      .in('id', chunk)
+      .order('id', { ascending: true }), { sort: byColumns('id') });
 
     /* ใบประเมินที่แตะโซนพวกนี้ — ใช้สองที่:
        ① 🔒 "โซนนี้มีใบอื่นสั่งวัดไว้แล้ว" (ฟอร์มเปิดใบต้องล็อกไม่ให้ติ๊กซ้ำ)
        ② ไทม์ไลน์ "ประวัติการประเมิน" บนแท็บ
        ⚠️ อ่านเท่าที่แถวผลวัดอ้างถึง — ดึงทั้งตารางคือดึงคำร้องทั้งบริษัท */
     const requestIds = [...new Set(surveys.map((r) => r.requestId).filter(Boolean))];
-    const requests = requestIds.length
-      ? await fetchAll(() => supabase
-        .from('dept_requests')
-        .select('id, "docNo", status, title, "dealId", "committedDueDate", "answeredAt", "closedAt", "createdAt"')
-        .in('id', requestIds)
-        .order('id', { ascending: true }))
-      : [];
+    const requests = await fetchAllInChunks(requestIds, (chunk) => supabase
+      .from('dept_requests')
+      .select('id, "docNo", status, title, "dealId", "committedDueDate", "answeredAt", "closedAt", "createdAt"')
+      .in('id', chunk)
+      .order('id', { ascending: true }), { sort: byColumns('id') });
 
     /* ⚠️ อ่านนาฬิกาที่ server ครั้งเดียวแล้วส่งลงไป — ห้ามให้ตัวคำนวณอ่านเอง
        (กติกา "วันนี้มาจากนาฬิกาไทยเสมอ" + ด่าน check:thaitime) */
