@@ -81,6 +81,33 @@ test("registration state ignores another customer's registration for the same FG
   assert.equal(result.lines[0].needsRegistration, true);
 });
 
+/* ⭐ มติผู้ใช้ 2026-09-07: เลขประจำตัวผู้เสียภาษีเดียวกัน = ลูกค้าคนเดียวกัน
+   ใบเสนอราคาหยิบ FG ข้ามใบลูกค้าของนิติบุคคลเดียวกันได้แล้ว แต่ตอนขึ้นทะเบียน server
+   บังคับ `customerId = product.customerId` เลือกเองไม่ได้ ⇒ ถ้าที่นี่ยังเทียบ id ตรง ๆ
+   ใบยื่นจะได้ registrationId: null แบบล้างไม่ได้ (ไม่มีหน้าจอไหนแก้ได้เลย) */
+test("ทะเบียนของใบลูกค้าอื่นในนิติบุคคลเดียวกัน = นับเป็นของใบนี้", () => {
+  const result = resolveSoFiling({
+    salesOrder, productTypes, products,
+    lines: [{ id: "L-1", productId: "P-1", qty: 1 }],
+    registrations: [{ id: "R-9", productId: "P-1", customerId: "C-สาขาอื่น", status: "approved" }],
+    ownerCustomerIds: ["C-1", "C-สาขาอื่น"],
+  });
+  assert.equal(result.lines[0].registrationState, "approved");
+  assert.equal(result.lines[0].registrationId, "R-9");
+  assert.equal(result.lines[0].needsRegistration, false);
+});
+
+test("ownerCustomerIds ไม่ครอบคลุม = ยังตัดทะเบียนของนิติบุคคลอื่นทิ้งเหมือนเดิม", () => {
+  const result = resolveSoFiling({
+    salesOrder, productTypes, products,
+    lines: [{ id: "L-1", productId: "P-1", qty: 1 }],
+    registrations: [{ id: "R-9", productId: "P-1", customerId: "C-OTHER", status: "approved" }],
+    ownerCustomerIds: ["C-1", "C-สาขาอื่น"],
+  });
+  assert.equal(result.lines[0].registrationState, "none");
+  assert.equal(result.lines[0].needsRegistration, true);
+});
+
 test("registration gap warning names the FG and says who it is stuck on", () => {
   const result = resolveSoFiling({
     salesOrder, productTypes, products,

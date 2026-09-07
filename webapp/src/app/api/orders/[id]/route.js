@@ -7,6 +7,7 @@ import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { orderStatusUpdate } from '@/lib/master/recordUpdates';
 import { exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
+import { customerTaxSiblingIds } from '@/lib/master/customerTaxSiblings';
 
 export const dynamic = 'force-dynamic';
 // GET /api/orders/[id]
@@ -149,10 +150,17 @@ export async function PATCH(request, { params }) {
     if (regErr) return Response.json({ error: regErr.message }, { status: 500 });
     const regMap = new Map((regs || []).map((r) => [r.id, r]));
 
-    // Every line's registration must be approved + belong to the order's
-    // customer (legacy orders without a customerId skip the ownership check).
+    /* Every line's registration must be approved + belong to the order's
+       customer (legacy orders without a customerId skip the ownership check).
+       ⭐ "ลูกค้ารายนี้" = **นิติบุคคล** ไม่ใช่ใบลูกค้าใบเดียว (มติผู้ใช้ 2026-09-07) —
+       ใบยื่นที่ออกจาก SO อ้างทะเบียนของใบลูกค้าที่เป็นเจ้าของ FG ได้ (ดู resolveSoFiling)
+       ⇒ ถ้าด่านนี้ยังเทียบ id ตรง ๆ ใบที่ถูกตีกลับจะ **แก้แล้วส่งกลับไม่ได้เลย**
+       เพราะโมดัลส่ง registrationId เดิมกลับมาแล้วโดนตีตกที่นี่ทุกครั้ง */
+    const ownerIds = new Set(order.customerId
+      ? await customerTaxSiblingIds(supabase, order.customerId)
+      : []);
     for (const r of regMap.values()) {
-      if (order.customerId && r.customerId !== order.customerId) {
+      if (order.customerId && !ownerIds.has(r.customerId)) {
         return Response.json({ error: `ทะเบียน ${r.fgCode} ไม่ใช่ของลูกค้ารายนี้` }, { status: 400 });
       }
       if (r.status !== 'approved') {

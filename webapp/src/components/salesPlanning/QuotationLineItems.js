@@ -20,7 +20,7 @@ import {
 } from "@/lib/sales/quoteLines";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
-import { productSelectOptions } from "@/components/master/productOption";
+import { productOwnerTag, productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
@@ -157,7 +157,18 @@ export default function QuotationLineItems({
   const fgDisplayFor = (line) => {
     const product = line.productId ? products.find((item) => item.id === line.productId) : null;
     const identity = productIdentity(product || line);
-    return { code: identity.code, brand: identity.brand, name: identity.detail };
+    /* เจ้าของ FG เมื่อไม่ใช่ใบลูกค้าใบนี้ (นิติบุคคลเดียวกัน คนละสาขา/คนละรหัส AR)
+       อ่านจากลิสต์สดก่อน แล้วค่อยตกไปที่ snapshot ที่ server ประทับไว้กับบรรทัด —
+       บรรทัดในโหมดอ่านและใบสั่งขายไม่มีลิสต์สินค้าให้ค้น เหลือแต่ snapshot
+       🪤 ตัวตัดสินคือ **เจอสินค้าในลิสต์สดไหม** ไม่ใช่ "ป้ายว่างไหม" — ป้ายว่างแปลได้
+       สองอย่าง (ลิสต์บอกว่าเป็นของใบนี้เอง / ไม่มีลิสต์ให้ถาม) ถ้าใช้ `||` สองกรณีนี้
+       ยุบเป็นอันเดียว แล้วบรรทัดที่เพิ่งสลับ FG กลับมาเป็นของใบตัวเองจะยังโชว์ป้าย
+       เจ้าของเก่าค้างอยู่ (metadata เดิมถูกส่งต่อมาจนกว่า server จะล้างตอนบันทึก) */
+    const owner = product ? productOwnerTag(product) : (line.metadata?.fgOwnerArCode
+      ? [line.metadata.fgOwnerArCode, line.metadata.fgOwnerBranchCode
+        ? `สาขา ${line.metadata.fgOwnerBranchCode}` : ""].filter(Boolean).join(" · ")
+      : "");
+    return { code: identity.code, brand: identity.brand, name: identity.detail, owner };
   };
   // ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่
   // server enforce ตอนบันทึก; retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น.
@@ -259,6 +270,9 @@ export default function QuotationLineItems({
                           <div className={styles.fgInfoName}>
                             {editable ? (naText(fg.name)) : <ReadableText text={fg.name} lines={3} />}
                           </div>
+                          {fg.owner && (
+                            <span className={styles.fgInfoOwner}>FG ของ {fg.owner}</span>
+                          )}
                         </div>
                       );
                     })()

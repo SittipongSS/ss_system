@@ -170,14 +170,16 @@ export default function QuotationEditorPage() {
     })();
     return () => { alive = false; };
   }, [quote?.customerId]);
-  // FG ของ **ลูกค้าบนใบนี้** เท่านั้น (มติผู้ใช้ 2026-08-17) — กติกาเดียวกับหน้าสร้าง
+  // FG ของ **นิติบุคคลของลูกค้าบนใบนี้** (มติผู้ใช้ 2026-08-17 · ขยาย 2026-09-07)
+  // `taxSiblings=1` = รวม FG ของใบลูกค้าอื่นที่ใช้เลขประจำตัวผู้เสียภาษีเดียวกัน
+  // (บริษัทเดียวเปิดใบไว้หลายใบตามสาขา/ยุคของรหัส AR) — กติกาเดียวกับหน้าสร้าง
   // ⚠️ บรรทัดเดิมที่ผูก FG ของลูกค้ารายอื่น (ใบเก่าก่อนมีด่านนี้) จะไม่อยู่ในลิสต์แล้ว
   // แต่ยังแสดง/บันทึกได้ปกติ: ตารางอ่านคำอธิบายจาก snapshot ในบรรทัดเอง และด่าน
   // ฝั่ง server ยกเว้นสินค้าที่ใบนี้ถืออยู่ก่อนแล้ว
   useEffect(() => {
     const customerId = quote?.customerId;
     if (!customerId) { setProducts([]); return; }
-    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}`)
+    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}&taxSiblings=1`)
       .then((d) => setProducts(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, [quote?.customerId]);

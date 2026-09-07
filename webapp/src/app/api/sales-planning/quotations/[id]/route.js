@@ -282,7 +282,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (mismatched.length) return badRequest(customerMismatchMessage(mismatched));
     // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — แก้ราคาต้องแก้ที่
     // ฐานข้อมูลสินค้า; สินค้าที่หายจาก master คงราคาเดิมของใบ (fallback before.lines)
-    newLines = await enforceMasterPrices(supabase, newLines, before.lines || []);
+    newLines = await enforceMasterPrices(supabase, newLines, before.lines || [], {
+      customerId: before.customerId,
+    });
     // ใบว่าง (0 รายการ) เก็บเป็นร่างได้ — ใส่รหัส FG ทีหลัง; การส่ง/รับใบมี guard ยอด>0 อยู่แล้ว
     if (!newLines.length && (body.status === 'sent' || before.status === 'sent')) {
       return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
