@@ -614,7 +614,7 @@ function Step1History({ years, companyHist, setCompanyHist, teamHist, setTeamHis
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           {SALES_TEAMS.map((t) => (
             <div key={t} className="glass-panel" style={{ padding: 12 }}>
-              <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)", marginBottom: 6 }}>{TEAM_LABELS[t]} <span style={{ color: "var(--text-3)" }}>({t})</span></div>
+              <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)", marginBottom: 6 }}>{TEAM_LABELS[t] || t} <span style={{ color: "var(--text-3)" }}>({t})</span></div>
               <MoneyInput value={Number(teamHist[t] || 0)} onChange={(v) => setTeamHist((h) => ({ ...h, [t]: v }))} />
             </div>
           ))}
@@ -723,7 +723,7 @@ function Step3TeamSplit({ finalTarget, teamHist, latestYear, suggested, teamTarg
               const sug = suggested.find((s) => s.key === t)?.amount || 0;
               return (
                 <tr key={t} className="premium-row">
-                  <td style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t]} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
+                  <td style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t] || t} <span style={{ color: "var(--text-3)" }}>({t})</span></td>
                   <td className="num mono">{fmt(actual)}</td>
                   <td className="num mono" style={{ color: "var(--text-3)" }}>{pct(share)}</td>
                   <td className="num mono" style={{ color: "var(--text-3)" }}>{fmt(sug)}</td>
@@ -779,7 +779,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
           return (
             <div key={t} className="glass-panel" style={{ padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t]}</span>
+                <span style={{ fontWeight: "var(--fw-bold)" }}>{TEAM_LABELS[t] || t}</span>
                 <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เป้าทีม {fmt(teamTot)}</span>
                 <span style={{ marginLeft: "auto", fontSize: "var(--fs-5)", fontWeight: "var(--fw-bold)", color: alloc === teamTot ? "var(--green)" : alloc > teamTot ? "var(--red)" : "var(--amber)" }}>
                   แบ่งแล้ว {fmt(alloc)}{alloc !== teamTot && ` (${alloc > teamTot ? "เกิน" : "เหลือ"} ${fmt(Math.abs(teamTot - alloc))})`}

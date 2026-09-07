@@ -1,6 +1,8 @@
 "use client";
 import ChoiceChips from "@/components/ui/ChoiceChips";
-import { TEAM_LABELS } from "@/lib/permissions";
+/* ⚠️ ป้ายทีมอ่านจาก **ทะเบียนจริง** ไม่ใช่ค่าคงที่ (มติ 2026-09-07) — ทีมขายที่สร้างใหม่
+   ต้องขึ้นชื่อจริง ไม่ใช่รหัสดิบ · hook คืนค่าสำรองทันทีในรอบแรก จอจึงไม่ว่าง/ไม่กระพริบ */
+import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 
 // ── ช่อง "งานใบนี้เข้าทีมไหน" (มติผู้ใช้ 2026-08-11 รอบสอง) ────────────────
 //
@@ -22,6 +24,7 @@ export default function TeamPickerField({
   disabled = false,
   className = "form-group col-span-2",
 }) {
+  const registry = useSalesTeams();
   if (teams.length < 2) return null;
   return (
     <div className={className}>
@@ -31,7 +34,7 @@ export default function TeamPickerField({
         value={value}
         onChange={onChange}
         disabled={disabled}
-        options={teams.map((t) => ({ value: t, label: TEAM_LABELS[t] || t }))}
+        options={teams.map((t) => ({ value: t, label: salesTeamLabel(registry, t) }))}
       />
       {hint ? <p className="text-[11px] text-[var(--text-3)] mt-1">{hint}</p> : null}
     </div>

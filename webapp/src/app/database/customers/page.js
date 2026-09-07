@@ -7,7 +7,10 @@ import Link from "next/link";
 import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { isSuperuser, TEAMS } from "@/lib/permissions";
+import { isSuperuser } from "@/lib/permissions";
+/* ⚠️ รายชื่อทีมมาจากทะเบียนจริง (มติ 2026-09-07) — ของเดิมใช้ค่าคงที่ ⇒ ยกลูกค้าให้ทีมขาย
+   ที่เพิ่งสร้างไม่ได้จากจอ ทั้งที่ API รับแล้ว */
+import { activeSalesTeams, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { canApproveMasterRecord } from "@/lib/master/approvalControl";
 import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -50,6 +53,11 @@ export default function CustomerDirectory() {
   const canEdit = useCan("customers:edit");
   const role = useRole();
   const superuser = isSuperuser(role);
+  const teamRegistry = useSalesTeams();
+  const allSalesTeamCodes = useMemo(
+    () => activeSalesTeams(teamRegistry).map((t) => t.code),
+    [teamRegistry],
+  );
   const myTeam = useTeam();
   const myTeams = useTeams();
   // May this user approve THIS record? Senior AE only own team; supervisor/admin
@@ -499,7 +507,7 @@ export default function CustomerDirectory() {
             onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
             showTeams={superuser || myTeams.length > 1}
             canEditTeams={superuser || myTeams.length > 1}
-            teamOptions={superuser ? TEAMS : myTeams}
+            teamOptions={superuser ? allSalesTeamCodes : myTeams}
             codeMode={codeMode}
             onCodeMode={setCodeMode}
             nextArNumber={nextArNumber}

@@ -13,7 +13,7 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@
 import { TEAMS, canManageTeams } from '@/lib/permissions';
 import { TEAM_STAMPED_COLUMNS, deleteTeamBlocker } from '@/lib/master/teamUsage';
 import { closeTeamBlocker, normalizeTeamInput } from '@/lib/master/teams';
-import { findTeam, loadTeamMembers } from '@/lib/master/teamsRepo';
+import { findTeam, loadTeamHolderIds, loadTeamMembers } from '@/lib/master/teamsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,10 +29,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return badRequest(error);
 
     /* ปิดทีมที่ยังมีคนอยู่ไม่ได้ — คนจะหลุดออกจากทุกจอเงียบ ๆ
-       ⚠️ นับสมาชิกจากตารางจริง ไม่ใช่จากตัวเลขที่จอส่งมา */
+       ⚠️ นับสมาชิกจากของจริง ไม่ใช่จากตัวเลขที่จอส่งมา
+       🐞 **และต้องนับให้ถูกตาราง** — ของเดิมนับจาก `team_members` ซึ่งเป็นของทีม
+          **ปฏิบัติงาน** เท่านั้น ⇒ ทีมขายได้ 0 เสมอ ปิดทีมที่มีคนอยู่ได้เงียบ ๆ
+          แล้วคนกลุ่มนั้นค้างอยู่กับรหัสทีมที่ปิดไปแล้ว ซึ่งทำให้ทุกการแก้บัญชีของเขา
+          โดนตีกลับทีหลังโดยไม่มีจอไหนบอกว่าเกิดอะไรขึ้น (ตรวจย้อน 2026-09-07) */
     if (before.isActive && value.isActive === false) {
-      const members = await loadTeamMembers(supabase, { teamCodes: [code] });
-      const blocker = closeTeamBlocker(before, { memberCount: members.length });
+      const memberCount = before.kind === 'sales'
+        ? (await loadTeamHolderIds(supabase, code)).length
+        : (await loadTeamMembers(supabase, { teamCodes: [code] })).length;
+      const blocker = closeTeamBlocker(before, { memberCount });
       if (blocker) return conflict(blocker);
     }
 
@@ -81,14 +87,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     // ทีมขาย: สังกัดอยู่ที่ `app_metadata` ของผู้ใช้ ไม่ใช่ตาราง ⇒ ต้องไล่จาก Auth
-    const { data: userList } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-    const memberUserIds = (userList?.users || [])
-      .filter((u) => {
-        const meta = u.app_metadata || {};
-        const teams = Array.isArray(meta.teams) ? meta.teams : [];
-        return meta.team === code || teams.includes(code);
-      })
-      .map((u) => u.id);
+    // (ตัวเดียวกับที่ด่านปิดทีมใช้ — เขียนสองที่เมื่อไรมันเพี้ยนหากัน)
+    const memberUserIds = await loadTeamHolderIds(supabase, code);
 
     const blocker = deleteTeamBlocker(team, {
       usage, memberUserIds, protectedCode: TEAMS.includes(code),
