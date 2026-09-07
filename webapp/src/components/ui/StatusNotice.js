@@ -1,5 +1,6 @@
 "use client";
 
+import thaiText from "@/components/ThaiText";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import styles from "./StatusNotice.module.css";
 import Button from "./Button";
@@ -29,7 +30,7 @@ export default function StatusNotice({
       <span className={styles.icon} aria-hidden="true"><Icon size={18} /></span>
       <div className={styles.copy}>
         {title ? <strong className={styles.title}>{title}</strong> : null}
-        <div className={styles.message}>{children}</div>
+        <div className={styles.message}>{typeof children === "string" ? thaiText(children) : children}</div>
       </div>
       {action ? <div className={styles.action}>{action}</div> : null}
       {onDismiss ? (

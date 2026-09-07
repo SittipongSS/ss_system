@@ -11,6 +11,7 @@
 // ⚠️ ต้องเปิดผ่าน portal + position:fixed เหมือน ui-select-menu/FilterPopover —
 // วางเป็น absolute ในแถวจะโดน `overflow` ของกล่องตาราง (TableScroll) ตัดหายทันที
 
+import thaiText from "@/components/ThaiText";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -132,7 +133,7 @@ export default function RowActionMenu({ items = [], label = "การจัด�
             {item.icon ? <item.icon size={15} aria-hidden="true" /> : <span className={styles.noIcon} />}
             <span className={styles.itemLabel}>
               {item.label}
-              {reason ? <small className={styles.itemReason}>{reason}</small> : null}
+              {reason ? <small className={styles.itemReason}>{thaiText(reason)}</small> : null}
             </span>
           </>
         );

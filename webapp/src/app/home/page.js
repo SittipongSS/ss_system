@@ -1,5 +1,6 @@
 "use client";
 
+import thaiText from "@/components/ThaiText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import Link from "next/link";
@@ -218,7 +219,7 @@ export default function HomeHubPage() {
                   <span className="home-system-icon"><RecentIcon size={22} aria-hidden="true" /></span>
                   <div>
                     <strong>{recentSystem.label}</strong>
-                    <span>{recentSystem.description}</span>
+                    <span>{thaiText(recentSystem.description)}</span>
                   </div>
                 </div>
                 <Link
@@ -272,7 +273,7 @@ export default function HomeHubPage() {
                     </span>
                     <span className="home-system-copy">
                       <strong>{system.label}</strong>
-                      <span id={descriptionId}>{system.description}</span>
+                      <span id={descriptionId}>{thaiText(system.description)}</span>
                     </span>
                   </>
                 );

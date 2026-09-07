@@ -1,0 +1,5 @@
+/* คำทับศัพท์ที่ห้ามตัดกลาง — ดูเหตุผลเต็มที่ thaiWrap.js
+   ⚠️ ใช้ CSS module ไม่ใช่ style ตรง ๆ เพราะด่าน audit:ui ตรึงจำนวน inline style ไว้ */
+.word {
+  white-space: nowrap;
+}
