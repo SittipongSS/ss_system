@@ -9,10 +9,10 @@
 // สร้างไฟล์จริง (ท่าเดียวกับ productCategoryWorkbook ที่แยก import จาก workbook)
 
 import { businessDate } from '@/lib/businessDate';
+import { teamNameOf } from '@/lib/master/teams';
 import {
   LEAD_CHANNEL_LABELS, LEAD_STATUS_LABELS, SERVICE_INTEREST_LABELS, leadLostText,
 } from '@/lib/sales/leads';
-import { TEAM_LABELS } from '@/lib/permissions';
 
 /* 🔴 ไฟล์นี้มี **ชื่อ เบอร์โทร อีเมล ของลูกค้า** — ต่างจากแท็บ KPI ที่เห็นแต่ตัวเลขรวม
    "ดูตัวเลขรวมได้" กับ "โหลดรายชื่อลูกค้าออกไปได้" เป็นคนละสิทธิ์ (มติผู้ใช้ 2026-08-27:
@@ -62,7 +62,7 @@ export const LEAD_REPORT_COLUMNS = [
  * ⚠️ ป้ายทุกตัวมาจากทะเบียนกลาง (`LEAD_STATUS_LABELS` ฯลฯ) ไม่ใช่สะกดเองที่นี่ —
  * ไม่งั้นไฟล์ที่ส่งออกจะใช้คำคนละชุดกับหน้าจอ แล้วคนอ่านสองที่จะเถียงกันว่าอันไหนถูก
  */
-export function leadReportRow(lead = {}) {
+export function leadReportRow(lead = {}, { teamNames = null } = {}) {
   return {
     code: lead.id || '',
     contactName: lead.contactName || '',
@@ -73,7 +73,7 @@ export function leadReportRow(lead = {}) {
     serviceInterest: SERVICE_INTEREST_LABELS[lead.serviceInterest] || lead.serviceInterest || '',
     budget: money(lead.budget),
     budgetMax: money(lead.budgetMax),
-    team: TEAM_LABELS[lead.team] || lead.team || '',
+    team: teamNameOf(teamNames, lead.team) || '',
     assigneeName: lead.assigneeName || '',
     status: LEAD_STATUS_LABELS[lead.status] || lead.status || '',
     createdAt: day(lead.createdAt),

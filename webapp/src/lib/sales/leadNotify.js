@@ -18,7 +18,8 @@
 import { after } from 'next/server';
 import { notifyUsers } from '@/lib/notifications';
 import { LEAD_CHANNEL_LABELS } from '@/lib/sales/leads';
-import { hasTeam, TEAM_LABELS } from '@/lib/permissions';
+import { hasTeam } from '@/lib/permissions';
+import { teamNameOf } from '@/lib/master/teams';
 
 /* ตำแหน่งที่ "คัดกรอง" ได้ — คิวกลางเป็นของหัวหน้าฝ่ายขาย
    admin เป็น **ตัวสำรอง** ใช้เมื่อไม่มี ae_supervisor ในระบบเลย: ไม่มีใครรับแจ้งเตือน
@@ -34,7 +35,9 @@ const usersWhere = (directory, predicate) =>
 
 const nameOf = (lead) => [lead?.contactName, lead?.company].filter(Boolean).join(' · ') || 'ลีด';
 const channelOf = (lead) => LEAD_CHANNEL_LABELS[lead?.channel] || lead?.channel || '-';
-const teamOf = (lead) => TEAM_LABELS[lead?.team] || lead?.team || '-';
+/* ⚠️ **ข้อความนี้ถูกเขียนลงตาราง notifications ถาวร** — ทีมที่ยังไม่มีชื่อในแมปจะค้าง
+   เป็นรหัสดิบตลอดไป แม้เติมชื่อทีหลัง ⇒ แมปต้องมาถึงจุดนี้จริง ๆ ไม่ใช่แค่ประกาศไว้ */
+const teamOf = (lead, teamNames) => teamNameOf(teamNames, lead?.team) || '-';
 
 /**
  * ใครต้องรู้ + ข้อความว่าอะไร สำหรับจุดส่งมอบหนึ่งจุด — ฟังก์ชันบริสุทธิ์ เทสต์ได้
@@ -45,7 +48,7 @@ const teamOf = (lead) => TEAM_LABELS[lead?.team] || lead?.team || '-';
  * @param actorId   คนที่กดปุ่ม — ไม่ต้องแจ้งตัวเอง
  * @returns {{userIds: string[], title: string, body: string|null}|null}
  */
-export function leadHandoffNotice({ action, lead, directory, actorId, previousAssigneeId, reason } = {}) {
+export function leadHandoffNotice({ action, lead, directory, actorId, previousAssigneeId, reason, teamNames = null } = {}) {
   if (!lead?.id) return null;
   const who = nameOf(lead);
   let userIds = [];
@@ -61,7 +64,7 @@ export function leadHandoffNotice({ action, lead, directory, actorId, previousAs
     if (!lead.team) return null; // คัดกรองแล้วต้องมีทีมเสมอ — ไม่มีทีม = ไม่รู้จะบอกใคร
     userIds = usersWhere(directory, (u) => SPREADERS.includes(u.role) && hasTeam(u, lead.team));
     // เว้นวรรคหลัง "ทีม" — ชื่อทีมทุกตัวเป็นอังกฤษ ("New ODM") ติดกันแล้วอ่านสะดุด
-    title = `ลีดเข้าทีม ${teamOf(lead)} รอกระจาย · ${who}`;
+    title = `ลีดเข้าทีม ${teamOf(lead, teamNames)} รอกระจาย · ${who}`;
     /* ⭐ ข้อความที่ผู้คัดกรองฝากไว้ต้องมาถึงคนรับ ไม่ใช่นอนอยู่ในตารางเหตุการณ์
        สิ่งที่รอบก่อนติดคือของที่มีค่าที่สุดตอนส่งมอบ — ตกหล่นตรงนี้แล้วคนรับเริ่มนับหนึ่งใหม่ */
     body = reason ? `${reason} — มอบหมายผู้รับผิดชอบภายใน 1 วันทำการ` : 'มอบหมายผู้รับผิดชอบภายใน 1 วันทำการ';
@@ -224,11 +227,26 @@ export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}
  * ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จแล้ว จึงห้ามเพิ่ม latency และห้าม throw
  */
 export function notifyLeadHandoff(supabase, { action, lead, directory, actor, previousAssigneeId, reason } = {}) {
-  const notice = leadHandoffNotice({
-    action, lead, directory, actorId: actor?.id, previousAssigneeId, reason,
-  });
-  if (!notice) return;
+  if (!lead?.id) return;
   const deliver = async () => {
+    /* ⚠️ **โหลดชื่อทีมข้างในนี้ ไม่ใช่ก่อนหน้า** — ฟังก์ชันนี้ถูกเรียกหลัง DB เขียนสำเร็จ
+       และห้ามเพิ่ม latency ให้คำขอของผู้ใช้ · `after()` รันหลังตอบกลับไปแล้ว
+       ⚠️ ต้องการเฉพาะตอนคัดกรอง (ขั้นเดียวที่ข้อความมีชื่อทีม) — ขั้นอื่นไม่ต้องยิงฐานเพิ่ม
+       ⚠️ อ่านไม่ได้ = ปล่อยเป็นรหัสดิบ **แต่ต้องส่งเสียง** ไม่งั้นข้อความที่ถูกเขียนถาวร
+          จะกลายเป็นรหัสโดยไม่มีใครรู้ว่าทำไม */
+    let teamNames = null;
+    if (action === 'screen' && lead.team) {
+      try {
+        const { loadTeamNames } = await import('@/lib/master/teamsRepo');
+        teamNames = await loadTeamNames(supabase);
+      } catch (err) {
+        console.warn('[leadNotify] อ่านชื่อทีมไม่สำเร็จ — หัวเรื่องจะขึ้นเป็นรหัสทีม', err?.message);
+      }
+    }
+    const notice = leadHandoffNotice({
+      action, lead, directory, actorId: actor?.id, previousAssigneeId, reason, teamNames,
+    });
+    if (!notice) return;
     await notifyUsers(supabase, {
       userIds: notice.userIds,
       entityType: 'lead',

@@ -11,7 +11,7 @@
 import ExcelJS from 'exceljs';
 import { gridForecastLines, monthsInRows, summarizeForecastLines } from '@/lib/sales/forecastBreakdown';
 import { STAGE_LABELS } from '@/lib/salesPlanning';
-import { TEAM_LABELS } from '@/lib/permissions';
+import { teamNameOf } from '@/lib/master/teams';
 import { fmtNumber } from '@/lib/format';
 
 const FONT = 'Leelawadee UI';
@@ -175,7 +175,8 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
 
 /**
  * @param lines   บรรทัดจาก forecastBreakdownOfDeal + บริบทของดีล (month/dealCode/…)
- * @param meta    { year, months, generatedAt, by, categoryNames }
+ * @param meta    { year, months, generatedAt, by, categoryNames, teamNames }
+ *                `teamNames` = Map รหัสทีม→ชื่อ จากทะเบียนจริง (ไม่ส่ง = คอลัมน์ทีมเป็นรหัส)
  */
 export async function buildForecastReportBuffer(lines = [], meta = {}) {
   const categoryNames = meta.categoryNames || new Map();
@@ -213,7 +214,7 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
       /* ⚠️ แปลงคำที่เป็น enum อังกฤษก่อนลงไฟล์ — ไฟล์นี้ไปถึงคนที่ไม่ได้อยู่ในระบบ
          'timeline_proposed' / 'deposit_pending' ในคอลัมน์ "ขั้น" อ่านไม่ออก */
       stage: STAGE_LABELS?.[row.stage] || row.stage,
-      team: TEAM_LABELS?.[row.team] || row.team,
+      team: teamNameOf(meta.teamNames, row.team),
       sourceLabel: SOURCE_LABEL[row.source] || row.source,
       monthBasisLabel: MONTH_BASIS_LABEL[row.monthBasis] || MONTH_BASIS_LABEL.expectedCloseDate,
     })),

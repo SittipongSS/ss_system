@@ -48,6 +48,21 @@ export async function loadTeamHolderIds(supabase, code) {
     .map((u) => u.id);
 }
 
+/* รหัสทีม → ชื่อทีม สำหรับ **ป้ายฝั่งเซิร์ฟเวอร์** (ไฟล์ export · แจ้งเตือน · รายงาน)
+   ⚠️ **รวมทีมที่ปิดแล้ว และไม่กรอง `kind`** — ตัวนี้ตอบคำถาม "รหัสนี้ชื่ออะไร" ซึ่งเป็น
+      คำถามของ *ของเก่า* ทั้งนั้น (ลีดปีที่แล้ว · ทะเบียนภาษีย้อนหลัง · ดีลที่ปิดไปแล้ว)
+      กรองอะไรออก = แถวนั้นได้รหัสดิบกลับไปเงียบ ๆ
+   🔴 **ห้ามใช้เป็นด่านของทางเขียน** — กว้างกว่า `loadSalesTeamCodes` โดยตั้งใจ
+      ทางเขียนถาม `loadSalesTeamCodes` เท่านั้น (ทีมที่ปิดแล้วต้องรับคนใหม่ไม่ได้)
+   ⚠️ ฝั่งจอห้ามเรียก — จอมี `useSalesTeams()` / `salesTeamLabel()` ใน salesTeamRegistry */
+export async function loadTeamNames(supabase) {
+  const { data, error } = await supabase.from('teams').select('code, name');
+  if (error) throw error;
+  const map = new Map();
+  for (const row of data || []) if (row?.code && row?.name) map.set(row.code, row.name);
+  return map;
+}
+
 export async function findTeam(supabase, code) {
   const { data, error } = await supabase.from('teams').select('*').eq('code', code).maybeSingle();
   if (error) throw error;

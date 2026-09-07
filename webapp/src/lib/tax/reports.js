@@ -16,7 +16,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { applyTeamScope, asList } from '@/lib/tax/reportFilters';
 import { ORDER_SELECT } from '@/lib/tax/orders';
 import { statusMeta } from '@/lib/excise/workflow';
-import { TEAM_LABELS } from '@/lib/permissions';
+import { teamNameOf } from '@/lib/master/teams';
 import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { fmtNumber } from '@/lib/format';
@@ -34,7 +34,9 @@ const inRange = (value, from, to) => {
 const sum = (arr, pick) => arr.reduce((s, x) => s + (Number(pick(x)) || 0), 0);
 const money = (v) => '฿' + fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const statusLabel = (s) => statusMeta(s).label;
-const teamLabel = (t) => (t ? (TEAM_LABELS[t] || t) : '-');
+/* ป้ายทีมมาจากทะเบียนจริงที่ route โหลดมาให้ (filter.teamNames) — ผูกครั้งเดียวต่อรายงาน
+   ไม่ใช่ต่อแถว · ไม่ส่งมา = คืนรหัสดิบ (ดูเหตุผลที่ `teamNameOf`) */
+const teamLabelOf = (names) => (t) => (t ? teamNameOf(names, t) : '-');
 const two = (a, b) => `${a}\n${b}`;
 
 async function fetchRegistrations(filter = {}) {
@@ -87,6 +89,7 @@ export async function registrationReport(filter = {}) {
       && (!idSet || idSet.has(r.id)),
   );
   const products = await fetchProductMap();
+  const teamName = teamLabelOf(filter.teamNames);
 
   const rows = regs.map((r) => {
     const p = products.get(r.productId) || {};
@@ -100,7 +103,7 @@ export async function registrationReport(filter = {}) {
       size: p.volume != null ? `${p.volume} ${p.volumeUnit || 'ml'}` : '-',
       customer: two(r.customerName || '-', r.taxId || '-'),
       retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
-      owner: two(r.assignee || '-', teamLabel(r.team)),
+      owner: two(r.assignee || '-', teamName(r.team)),
       status: statusLabel(r.status),
     };
     if (margin) {
@@ -219,6 +222,9 @@ export async function missingRetailPriceReport(filter = {}) {
 
   // ⚠️ กฎ "ต้องเสียภาษีไหม / ขาดราคาไหม" อยู่ที่ `lib/tax/taxableProducts.js` ที่เดียว
   // — หน้าสินค้าใน /database ใช้ตัวเดียวกัน ไม่งั้นสองจอตอบคนละเลข (เคยเป็นแบบนั้นมาแล้ว)
+  /* 🐞 คอลัมน์เดียวกันกับรายงานข้างบน แต่ของเดิมพิมพ์ **รหัสดิบ** ไม่เคยผ่านตัวแปลป้ายเลย
+     ⇒ สองรายงานจากไฟล์เดียวกันเรียกทีมเดียวกันคนละแบบ */
+  const teamName = teamLabelOf(filter.teamNames);
   const rows = missingRetailPriceProducts(products, types)
     .map((p) => ({
       id: p.id,
@@ -226,7 +232,7 @@ export async function missingRetailPriceReport(filter = {}) {
         + '\n' + (productDisplayName(p) || ''),
       customer: p.customerName || '',
       category: p.categoryCode || '',
-      owner: [p.assignee, p.team].filter(Boolean).join('\n'),
+      owner: [p.assignee, p.team ? teamName(p.team) : null].filter(Boolean).join('\n'),
       state: [p.approvalStatus === 'approved' ? 'อนุมัติแล้ว' : 'รออนุมัติ',
         p.isActive === false ? 'เลิกใช้' : 'ใช้งาน'].join(' · '),
     }))

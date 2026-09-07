@@ -71,6 +71,17 @@ export function planCrewRoster({ code, userIds = [], existingMembers = [] } = {}
   };
 }
 
+/* ป้ายของรหัสทีมสำหรับ **ฝั่งเซิร์ฟเวอร์** — 🔴 **ไม่รู้จัก = คืนรหัสดิบ ห้ามถอยไป `TEAM_LABELS`**
+   แมปมาจากฐานสด ⇒ ถ้ามีรหัสนั้นก็คือชื่อจริง · ถอยไปค่าคงที่มีผลเฉพาะตอนอ่านฐานพลาด
+   ซึ่งตอนนั้น **รหัสดิบคือความจริง ส่วนชื่อเก่าคือคำโกหกที่ดูเหมือนปกติ** — ทีมที่ถูก
+   เปลี่ยนชื่อในทะเบียนจะพิมพ์ชื่อเก่าลงไฟล์ Excel ตลอดไปโดยไม่มีอะไรบอกว่าเพี้ยน
+   ⚠️ ไม่เติมขีด/ช่องว่างแทนค่าว่างให้ — แต่ละที่ใช้คนละอย่างโดยตั้งใจ (Excel ใช้ "" ·
+   รายงานภาษีใช้ "-") ⇒ คืนค่าที่รับมาตามเดิมเมื่อไม่มีรหัส */
+export function teamNameOf(names, code) {
+  if (!code) return code;
+  return names?.get?.(code) || code;
+}
+
 export function teamHref(department, code) {
   const base = teamsBasePath(department);
   return base && code ? `${base}/${encodeURIComponent(code)}` : null;
