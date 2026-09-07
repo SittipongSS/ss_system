@@ -30,6 +30,9 @@
 
 .navigation {
   gap: var(--space-1);
+  /* ⚠️ ห้ามลบ — .srOnly ข้างล่างเป็น position:absolute ต้องมีบล็อกอ้างอิงใกล้ตัว
+     ไม่งั้นไปอิงกรอบหน้าจอ แล้วหลุดกรอบตัดของกล่องแม่ (บั๊กเดียวกับ StepTrack.step) */
+  position: relative;
 }
 
 .srOnly {
