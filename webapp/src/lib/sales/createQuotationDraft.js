@@ -37,9 +37,19 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   if (mismatched.length) throw new QuotationDraftError(customerMismatchMessage(mismatched));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
   // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
-  let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
+  let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []), [], {
+    customerId: deal.customerId,
+  });
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
-  if (!lines.length && body.seedFromProject) lines = await seedLinesFromProject(supabase, deal);
+  if (!lines.length && body.seedFromProject) {
+    lines = await seedLinesFromProject(supabase, deal);
+    /* 🪤 ด่านข้างบนตรวจ `body.lines` ซึ่งตอนนี้ว่าง — บรรทัดที่ seed มาจากโครงการ
+       ไม่เคยผ่านด่านเลย · โครงการผูกลูกค้าคนละใบกับดีลได้ ⇒ ต้องตรวจซ้ำที่นี่
+       (ผ่าน `enforceMasterPrices` ด้วย เพื่อให้บรรทัด seed ได้ป้ายเจ้าของเหมือนกัน) */
+    const seedMismatch = await customerMismatchedLines(supabase, lines, { customerId: deal.customerId });
+    if (seedMismatch.length) throw new QuotationDraftError(customerMismatchMessage(seedMismatch));
+    lines = await enforceMasterPrices(supabase, lines, [], { customerId: deal.customerId });
+  }
   if (body.status === 'sent' && !lines.length) {
     throw new QuotationDraftError('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
   }

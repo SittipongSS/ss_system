@@ -1,6 +1,8 @@
 // helper บรรทัดใบเสนอราคา (เฟส D) — ใช้ร่วมระหว่าง route สร้าง (deals/[id]/quotations)
 // และ route แก้ไข (quotations/[id]): normalize บรรทัดจาก client + seed จาก FG ของโครงการ.
 import { genId } from '@/lib/id';
+import { branchKeyOf } from '@/lib/master/customerTaxId';
+import { customerTaxSiblingIds, customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
 import { normalizeDiscountValue, quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
 import {
@@ -187,8 +189,16 @@ export async function customerMismatchedLines(supabase, lines = [], {
     .select('id, fgCode, customerId, customerName, productDescription')
     .in('id', ids);
   if (error) throw error;
-  return (data || [])
-    .filter((product) => product.customerId && product.customerId !== customerId)
+  const suspects = (data || []).filter((p) => p.customerId && p.customerId !== customerId);
+  if (!suspects.length) return [];
+  /* ⭐ มติผู้ใช้ 2026-09-07: **เลขประจำตัวผู้เสียภาษีเดียวกัน = ลูกค้าคนเดียวกัน** —
+     บริษัทเดียวเปิดใบลูกค้าไว้หลายใบ (สาขา/รหัส AR คนละยุค) FG จึงอยู่ใต้ใบใดใบหนึ่ง
+     ⇒ ขอบเขตที่ถูกคือ "นิติบุคคล" ไม่ใช่ "ใบลูกค้า"
+     ⚠️ ถามทะเบียนลูกค้า **เฉพาะตอนมีตัวต้องสงสัยจริง** — ทางบันทึกปกติ (FG ของใบ
+     ตัวเอง) จะไม่ยิง query เพิ่มเลย และเทสต์ที่ส่ง `supabase = null` เข้ามายังผ่าน */
+  const allowed = new Set(await customerTaxSiblingIds(supabase, customerId));
+  return suspects
+    .filter((product) => !allowed.has(product.customerId))
     .map((product) => ({
       productId: product.id,
       fgCode: product.fgCode || null,
@@ -203,7 +213,8 @@ export function customerMismatchMessage(mismatched = []) {
     .map((row) => `${row.fgCode || row.name}${row.ownerName ? ` (ของ ${row.ownerName})` : ''}`)
     .join(', ');
   return `สินค้าที่เลือกไม่ใช่ของลูกค้ารายนี้: ${detail} — FG ผูกกับลูกค้าเจ้าของสินค้า `
-    + 'เลือกได้เฉพาะ FG ของลูกค้าที่ออกใบให้ (ถ้าเป็นสินค้าของลูกค้ารายนี้จริง '
+    + 'เลือกได้เฉพาะ FG ของลูกค้าที่ออกใบให้ หรือของใบลูกค้าอื่นที่ใช้เลขประจำตัว'
+    + 'ผู้เสียภาษีเดียวกัน (ถ้าเป็นสินค้าของลูกค้ารายนี้จริง '
     + 'ให้แก้เจ้าของสินค้าที่ฐานข้อมูลสินค้าก่อน)';
 }
 
@@ -215,15 +226,41 @@ export function customerMismatchMessage(mismatched = []) {
 //   ในใบ (previousLines); บรรทัดใหม่ = 0 จนกว่าจะตั้งราคาใน master (ส่ง/Won มี guard
 //   ยอด > 0 กันอยู่แล้ว) — ค่าที่ client ส่งมาไม่ถูกใช้เด็ดขาด
 // - สินค้าหายจาก master (ถูกลบ) → คงราคา/คำอธิบายเดิมที่บันทึกไว้ในใบ
-export async function enforceMasterPrices(supabase, lines = [], previousLines = []) {
+export async function enforceMasterPrices(supabase, lines = [], previousLines = [], { customerId = null } = {}) {
   const ids = [...new Set(lines.filter((l) => l.productId).map((l) => l.productId))];
   if (!ids.length) return lines;
   const { data, error } = await supabase
     .from('products')
-    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice')
+    .select('id, fgCode, customerId, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice')
     .in('id', ids);
   if (error) throw error;
   const productById = new Map((data || []).map((p) => [p.id, p]));
+  /* ประทับ "FG ตัวนี้เป็นของใบลูกค้าใบไหน" ลงบรรทัด — ทำที่นี่ ไม่ใช่ที่หน้าจอ เพราะ
+     บรรทัดเกิดได้หลายทาง (ฟอร์ม · seed จากโครงการ · Rev. · ยิง API ตรง) ถ้าประทับที่
+     ฟอร์ม ช่องนี้จะแปลว่า "ไม่ใช่ของสาขาอื่น **หรือ** ไม่มีใครผ่านฟอร์ม" ซึ่งใช้เป็น
+     หลักฐานไม่ได้เลย · ตรงข้ามกับ `ownerArCode` ของ `GET /api/products` ที่เป็นค่าสด
+     สำหรับดรอปดาวน์ ตัวนี้เป็น snapshot ที่ค้างอยู่กับใบ
+     ⚠️ metadata ไม่อยู่ใน approvalFingerprint ⇒ ใบที่อนุมัติแล้วไม่หลุดสถานะ */
+  const crossOwned = customerId
+    ? [...new Set((data || [])
+      .filter((p) => p.customerId && p.customerId !== customerId)
+      .map((p) => p.customerId))]
+    : [];
+  const ownerById = new Map();
+  if (crossOwned.length) {
+    for (const row of await customerTaxSiblings(supabase, customerId)) ownerById.set(row.id, row);
+  }
+  const ownerMetaOf = (master) => {
+    const owner = master && master.customerId && master.customerId !== customerId
+      ? ownerById.get(master.customerId)
+      : null;
+    if (!owner) return null;
+    return {
+      fgOwnerCustomerId: owner.id,
+      fgOwnerArCode: owner.arCode || null,
+      fgOwnerBranchCode: branchKeyOf(owner.branchCode),
+    };
+  };
   const prevById = new Map(
     previousLines.filter((l) => l?.productId).map((l) => [l.productId, l]),
   );
@@ -248,7 +285,11 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
         descriptionTh: prev?.metadata?.descriptionTh ?? line.metadata?.descriptionTh,
         descriptionEn: prev?.metadata?.descriptionEn ?? line.metadata?.descriptionEn,
       };
+    const ownerMeta = ownerMetaOf(master);
     const metadata = { ...(line.metadata || {}), ...languageMeta, productBrand };
+    // ของใบตัวเอง = ลบร่องรอยเก่าทิ้ง ไม่ใช่ปล่อยค้าง (เปลี่ยนสินค้าบนบรรทัดเดิมได้)
+    if (ownerMeta) Object.assign(metadata, ownerMeta);
+    else { delete metadata.fgOwnerCustomerId; delete metadata.fgOwnerArCode; delete metadata.fgOwnerBranchCode; }
     // หน่วยผูก master เช่นกัน (มติ 2026-07-23) — freeze จากสินค้าตอนบันทึก; สินค้าถูกลบ = คงเดิม
     const unit = master ? (master.saleUnit || DEFAULT_SALE_UNIT) : (prev?.unit ?? line.unit ?? DEFAULT_SALE_UNIT);
     if (
@@ -259,6 +300,7 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
       && productBrand === (line.metadata?.productBrand || '')
       && languageMeta.descriptionTh === line.metadata?.descriptionTh
       && languageMeta.descriptionEn === line.metadata?.descriptionEn
+      && (ownerMeta?.fgOwnerCustomerId ?? null) === (line.metadata?.fgOwnerCustomerId ?? null)
     ) return line;
     const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
     return {

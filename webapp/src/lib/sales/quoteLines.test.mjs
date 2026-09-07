@@ -12,10 +12,28 @@ import {
   refreshFgLinesForDisplay,
 } from './quoteLines.js';
 
-// stub supabase: คืนราคา master ตาม map ที่กำหนด
-const fakeSupabase = (products) => ({
+/* stub supabase: คืนราคา master ตาม map ที่กำหนด
+   `customers` เข้ามาด้วยตั้งแต่ 2026-09-07 — ด่าน "FG ของลูกค้ารายอื่น" ต้องถาม
+   ทะเบียนลูกค้าว่าเป็นนิติบุคคลเดียวกันไหม (customerTaxSiblings) · ไม่ส่ง customers
+   มา = ทุกใบไม่มีเลข ⇒ ไม่มีใบพี่น้อง = พฤติกรรมก่อนหน้าเป๊ะ */
+const fakeSupabase = (products, customers = []) => ({
   from: (table) => {
-    assert.equal(table, 'products');
+    assert.ok(table === 'products' || table === 'customers', `unexpected table: ${table}`);
+    if (table === 'customers') {
+      const rows = customers;
+      const result = { data: rows, error: null };
+      const chain = {
+        eq: (col, value) => ({
+          maybeSingle: async () => ({ data: rows.find((c) => c[col] === value) || null, error: null }),
+        }),
+        or: () => chain,
+        order: () => chain,
+        in: async () => result,
+        // fetchAllResult ไล่ทีละหน้าด้วย .range() — หน้าเดียวจบเพราะ stub คืนไม่เต็มหน้า
+        range: async () => result,
+      };
+      return { select: () => chain };
+    }
     return {
       select: () => ({
         in: async (col, ids) => ({
@@ -207,6 +225,49 @@ test('บรรทัด FG ของลูกค้ารายอื่น = �
   assert.equal(bad[0].fgCode, 'FG-P1');
   assert.match(customerMismatchMessage(bad), /ลูกค้าบี/);
 });
+
+/* ⭐ มติผู้ใช้ 2026-09-07: เลขประจำตัวผู้เสียภาษีเดียวกัน = ลูกค้าคนเดียวกัน
+   บริษัทเดียวเปิดใบลูกค้าไว้หลายใบตามสาขา FG จึงอยู่ใต้ใบใดใบหนึ่ง */
+const TAX = '0105561194100';
+const siblingCustomers = [
+  { id: 'C-เรา', arCode: 'AR-636', name: 'บริษัทเดียวกัน สาขา 2', taxId: TAX, branchCode: '00002', isActive: true, approvalStatus: 'approved' },
+  { id: 'C-สาขาอื่น', arCode: 'AR-148', name: 'บริษัทเดียวกัน สนญ.', taxId: TAX, branchCode: '00000', isActive: true, approvalStatus: 'approved' },
+];
+
+test('บรรทัด FG ของใบลูกค้าอื่นที่เลขผู้เสียภาษีเดียวกัน = ผ่าน', async () => {
+  const sb = fakeSupabase(
+    [{ id: 'P1', fgCode: 'FG-P1', customerId: 'C-สาขาอื่น', customerName: 'บริษัทเดียวกัน สนญ.' }],
+    siblingCustomers,
+  );
+  assert.deepEqual(await customerMismatchedLines(sb, [mismatchLine('P1')], { customerId: 'C-เรา' }), []);
+});
+
+// 🪤 ใบที่ยังไม่อนุมัติ/ถูกตีกลับ ต้องไม่เข้ากลุ่ม — ไม่งั้นเปิดใบลูกค้าใหม่ (ลงเป็น
+// pending เอง ไม่ต้องมีคนอนุมัติ) ใส่เลขบริษัทเป้าหมาย แล้วดูดทะเบียน FG เขาได้
+test('ใบพี่น้องที่ยังไม่อนุมัติ = ไม่นับเป็นนิติบุคคลเดียวกัน', async () => {
+  const sb = fakeSupabase(
+    [{ id: 'P1', fgCode: 'FG-P1', customerId: 'C-สาขาอื่น', customerName: 'บริษัทเดียวกัน สนญ.' }],
+    [siblingCustomers[0], { ...siblingCustomers[1], approvalStatus: 'rejected' }],
+  );
+  const bad = await customerMismatchedLines(sb, [mismatchLine('P1')], { customerId: 'C-เรา' });
+  assert.equal(bad.length, 1);
+});
+
+// 🪤 เลขขยะที่ผ่านด่านฟอร์มมาได้ ('N/A' · เลขซ้ำตัวเดียว) ต้องไม่จับกลุ่ม
+// ไม่งั้นบริษัทคนละรายที่กรอกเหมือนกันจะสลับทะเบียน FG กัน
+for (const junk of ['N/A', '000000000000', '', null]) {
+  test(`เลขที่จับกลุ่มไม่ได้ (${junk ?? 'null'}) = ไม่มีใบพี่น้อง`, async () => {
+    const sb = fakeSupabase(
+      [{ id: 'P1', fgCode: 'FG-P1', customerId: 'C-สาขาอื่น', customerName: 'ลูกค้าบี' }],
+      [
+        { id: 'C-เรา', arCode: 'AR-1', name: 'เรา', taxId: junk, branchCode: '00000', isActive: true, approvalStatus: 'approved' },
+        { id: 'C-สาขาอื่น', arCode: 'AR-2', name: 'ลูกค้าบี', taxId: junk, branchCode: '00001', isActive: true, approvalStatus: 'approved' },
+      ],
+    );
+    const bad = await customerMismatchedLines(sb, [mismatchLine('P1')], { customerId: 'C-เรา' });
+    assert.equal(bad.length, 1);
+  });
+}
 
 test('บรรทัด FG ของลูกค้ารายนี้เอง = ผ่าน', async () => {
   const sb = fakeSupabase([{ id: 'P1', fgCode: 'FG-P1', customerId: 'C-เรา' }]);
