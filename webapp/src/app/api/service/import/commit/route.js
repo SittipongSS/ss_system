@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!canImportServiceData(user)) return forbidden('ต้องเป็นหัวหน้าฝ่ายบริการขึ้นไปจึงนำเข้าข้อมูลเก่าได้');
+  if (!canImportServiceData(user)) return forbidden('นำเข้าข้อมูลเก่าได้เฉพาะผู้ดูแลระบบ — เขียนทีเดียวหลายร้อยแถวและถอนคืนไม่ได้');
 
   const input = await readImportRequest(req);
   if (input.error) return badRequest(input.error);
