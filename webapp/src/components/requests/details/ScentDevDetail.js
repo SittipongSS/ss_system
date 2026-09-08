@@ -152,7 +152,7 @@ export default function ScentDevDetail({
                 {perfumerStep?.canAssign ? (
                   <GatedAction
                     blocker={perfumerStep.blockerOf?.(g) || ""}
-                    size="sm" variant="quiet" icon={UserPlus} disabled={saving}
+                    size="sm" variant="quiet" icon={<UserPlus size={14} />} disabled={saving}
                     onClick={() => perfumerStep.onAssign?.(g)}
                   >
                     {g.perfumer?.name || "แจกงาน"}

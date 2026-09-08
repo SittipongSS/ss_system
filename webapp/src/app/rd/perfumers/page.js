@@ -253,7 +253,7 @@ function RowGroup({ group, today, canAssign, collapsed, onToggle, onAssign }) {
               <div className={styles.sub}>
                 <GatedAction
                   blocker={row.blocker}
-                  size="sm" variant="quiet" icon={UserPlus}
+                  size="sm" variant="quiet" icon={<UserPlus size={14} />}
                   onClick={() => onAssign(row)}
                 >
                   {row.perfumer.name ? "เปลี่ยนผู้ปรุง" : "แจกงาน"}
