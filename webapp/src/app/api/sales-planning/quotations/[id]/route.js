@@ -500,23 +500,31 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const childOrderIds = await (async () => {
     // ใบเดียวมี SO ไม่กี่ใบ แต่ยังต้องผ่าน fetchAllResult ตามด่าน check:rowcap —
     // จุดอ่านที่ไม่มีเพดานห้ามเพิ่มใหม่ ไม่ว่าจะมั่นใจแค่ไหนว่าแถวน้อย
-    const { data } = await fetchAllResult(() => supabase
+    /* 🔴 ทิ้ง error ที่นี่ = เก็บ id ของ SO ลูกไม่ได้ แล้ว **ไฟล์แนบของใบพวกนั้น
+       กลายเป็นกำพร้าค้างใน bucket** โดยไม่มีอะไรฟ้อง (โรคเดียวกับ [[evidence-file-purge]])
+       ⇒ โยนออกไปให้ผู้เรียกตัดสิน ดีกว่าลบใบสำเร็จแล้วทิ้งขยะไว้เงียบ ๆ */
+    const { data, error } = await fetchAllResult(() => supabase
       .from('sales_orders').select('id')
       .eq('quotationId', id)
       .order('id', { ascending: true }));
+    if (error) throw error;
     return (data || []).map((row) => row.id);
-  })().catch(() => []);
+  })();
 
+  /* เหตุผลเดียวกับ childOrderIds ข้างบน — อ่านไม่ได้ = ไฟล์ PDF ฉบับตรึงกลายเป็น
+     กำพร้าถาวร (path มี snapshotId ที่หายไปพร้อมแถว) ⇒ ต้องหยุดก่อนลบ ไม่ใช่ลบไปเงียบ ๆ */
   const issuedPdfRefs = await (async () => {
-    const { data: snapshots } = await supabase
+    const { data: snapshots, error: snapErr } = await supabase
       .from('issued_documents').select('id').eq('documentType', 'quotation').eq('documentId', id);
+    if (snapErr) throw snapErr;
     const ids = (snapshots || []).map((row) => row.id);
     if (!ids.length) return [];
-    const { data: artifacts } = await supabase
+    const { data: artifacts, error: artErr } = await supabase
       .from('issued_document_pdf_artifacts')
       .select('storageBucket, storagePath').in('issuedDocumentId', ids);
+    if (artErr) throw artErr;
     return artifacts || [];
-  })().catch(() => []);
+  })();
 
   // force: ปลด logical ref (metadata.acceptedQuotationId) ที่ชี้มาใบนี้ก่อนลบ.
   // sales_orders.quotationId เป็น ON DELETE CASCADE จึงหายเองที่ระดับ DB.

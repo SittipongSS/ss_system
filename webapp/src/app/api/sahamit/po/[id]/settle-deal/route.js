@@ -45,9 +45,12 @@ async function loadPoWithLines(supabase, customerId, id) {
 
 // บรรทัด PO ที่เชื่อมไปแล้ว — ตรรกะการตัดสินอยู่ที่ lib/sahamit/settleLines (มีเทสต์)
 async function loadSettledLines(supabase, customerId, poId) {
-  const { data } = await supabase
+  /* 🔴 ลิสต์นี้บอกว่า "บรรทัดไหนเชื่อมดีลไปแล้ว" — อ่านไม่ได้แล้วคืน [] แปลว่า
+     "ยังไม่เชื่อมสักบรรทัด" ⇒ ระบบเสนอให้สร้างดีลซ้ำกับที่มีอยู่แล้ว */
+  const { data, error } = await supabase
     .from('sales_deals').select('id, stage, metadata')
     .eq('customerId', customerId).eq('metadata->>sahamitPoId', poId);
+  if (error) throw error;
   return resolveSettledLines(data || []);
 }
 
