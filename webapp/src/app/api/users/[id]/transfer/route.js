@@ -82,12 +82,15 @@ export async function POST(request, { params }) {
     const periods = [...new Set((fromRows || []).map((r) => r.period))];
     let toRows = [];
     if (periods.length) {
-      const { data } = await supabase
+      /* 🔴 เป้าที่ปลายทาง **มีอยู่แล้ว** — อ่านไม่ได้แล้วคืน [] แปลว่า "ปลายทางว่าง"
+         ⇒ ตัววางแผนสร้างแถวใหม่ทับแทนที่จะรวมยอด · เส้นนี้เขียนข้อมูลจริง */
+      const { data, error } = await supabase
         .from('sales_targets')
         .select('id, period, targetAmount')
         .eq('ownerId', toUserId)
         .eq('periodType', 'month')
         .in('period', periods);
+      if (error) throw error;
       toRows = data || [];
     }
 

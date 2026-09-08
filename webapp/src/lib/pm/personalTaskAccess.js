@@ -4,7 +4,10 @@ import { can, hasTeam, isReadOnlyObserver, isRdRole, isSuperuser, normalizeDepar
 // ทุกรายส่งค่านี้เข้า hasTeam ซึ่งรับทั้งค่าเดียวและอาร์เรย์
 async function userIdentity(supabase, id) {
   if (!id) return { team: [], department: null };
-  const { data } = await supabase.auth.admin.getUserById(id);
+  /* 🔴 ค่านี้ไปเป็น **ด่านสิทธิ์** — อ่านไม่ได้แล้วคืนทีมว่าง = ปฏิเสธการเข้าถึง
+     โดยไม่มีใครรู้ว่าทำไม · โยนออกไปให้เห็นเป็น error ดีกว่าเงียบแล้วโทษสิทธิ์ */
+  const { data, error } = await supabase.auth.admin.getUserById(id);
+  if (error) throw error;
   const meta = data?.user?.app_metadata || {};
   return { team: userTeams(meta), department: normalizeDepartment(meta.department) || null };
 }

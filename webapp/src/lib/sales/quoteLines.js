@@ -91,10 +91,13 @@ function qtyFromProjectProduct(row) {
 // (ราคาผลิต — กติกาเดียวกับ enforceMasterPrices)
 export async function seedLinesFromProject(supabase, deal) {
   if (!deal.projectId) return [];
-  const { data } = await supabase
+  /* 🔴 อ่านไม่ได้แล้วคืน [] = ใบเสนอราคาถูกสร้างแบบ **ไม่มีบรรทัดสักบรรทัด**
+     โดยไม่มีอะไรบอกว่า seed ล้มเหลว */
+  const { data, error } = await supabase
     .from('project_products')
     .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice, "docNote", "docNoteEn")')
     .eq('projectId', deal.projectId);
+  if (error) throw error;
   return (data || []).map((row, index) => {
     const qty = qtyFromProjectProduct(row);
     const unitPrice = toMoney(row.product?.[QUOTE_PRICE_FIELD]);

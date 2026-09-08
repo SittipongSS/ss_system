@@ -142,7 +142,8 @@ export async function productRelations(supabase, productId, user) {
   let projRows = [];
   const projectIds = [...new Set((ppRes.data || []).map((r) => r.projectId).filter(Boolean))];
   if (projectIds.length) {
-    const { data } = await supabase.from('projects').select(PROJECT_COLS).in('id', projectIds);
+    const { data, error } = await supabase.from('projects').select(PROJECT_COLS).in('id', projectIds);
+    if (error) throw error;
     projRows = data || [];
   }
 
