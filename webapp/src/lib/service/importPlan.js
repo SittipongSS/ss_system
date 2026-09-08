@@ -10,6 +10,10 @@
 // Excel งอกลูกค้าได้ = สร้างลูกค้าซ้ำที่ไม่มีใครตามลบ ⇒ ชื่อที่ไม่ตรงทะเบียน
 // ตกรายงานให้คนไปสร้าง/แก้ชื่อในทะเบียนก่อน
 import { customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
+import { findProvinceByName } from '@/lib/master/thaiAdmin';
+import { customerCodeSegment } from '@/lib/master/masterCodes';
+import { siteCodePrefix } from './siteCode';
+import { normalizeFloor } from './zoneCode';
 import { nameKey } from './importValues';
 import { isAssetOnSite } from './sites';
 
@@ -65,6 +69,45 @@ export function indexAssetCounts(assets = []) {
   return index;
 }
 
+/* ══ ของที่ "ต้องมีถึงจะสร้างได้" — ตรวจตั้งแต่ตอนวางแผน ═══════════════
+ *
+ * 🐞 **จอบอก "จะสร้างไซต์ 145" แล้วสร้างได้ 0** — ด่านสองตัวที่ตกจริงตอนลงมือ
+ *   (ประกอบรหัสไซต์ไม่ได้ · ชั้นของโซนไม่อยู่ในรูปมาตรฐาน) **ไม่เคยถูกตรวจตอนพรีวิว**
+ *   ⇒ หน้าที่โฆษณาตัวเองว่า "ตรวจก่อนเสมอ ไม่มีปุ่มนำเข้าที่ยังไม่ได้ดูผล" พาคนไปกด
+ *     ยืนยันการเขียนที่ย้อนไม่ได้ โดยที่ตัวเลขทั้งสี่ตัวบนจอไม่ต่างกันเลยระหว่างไฟล์ที่
+ *     ใช้ได้กับไฟล์ที่สร้างไม่ได้สักแถว
+ *   ⚠️ เคสที่เจ็บที่สุดคือ "จังหวัดถูก แต่ไม่มีคอลัมน์ชั้น" — ได้ **ไซต์เปล่าค้างในทะเบียน
+ *     ทั้งกอง · โซน 0 · เครื่อง 0** ไม่ใช่ล้มทั้งยวงให้รู้ตัว
+ *
+ * ⭐ **ที่นี่คือปลายทางที่ตั้งใจไว้ตั้งแต่แรก ไม่ใช่ที่ชั้นอ่าน** — `buildDraft` ไม่รู้ว่าแถวนี้
+ *   จะ *สร้าง* ไซต์หรือ *ใช้ของเดิม* (ไซต์ที่มีอยู่แล้วไม่ต้องใช้จังหวัดเลย) ⇒ คนที่รู้คือ
+ *   ตัววางแผน เพราะมันเป็นคนตัดสิน `action` เอง
+ *   ⚠️ ผูกกับ `action === 'create'` เท่านั้น — ห้ามเช็ก `!province` ลอย ๆ ไม่งั้นแถว
+ *     `use` / `reuse-new` (ซึ่งไม่มีฟิลด์พวกนี้ติดมาด้วยซ้ำ) จะตกทั้งที่ไม่ต้องใช้
+ *
+ * ⚠️ **ใช้ตัวตัดสินชุดเดียวกับตอนลงมือเป๊ะ ๆ** (`siteCodePrefix` · `findProvinceByName`
+ *   · `normalizeFloor`) — เขียนเงื่อนไขย่อ ๆ เองเมื่อไร พรีวิวกับของจริงจะเพี้ยนหากัน
+ *   คนละแบบ ซึ่งแย่กว่าไม่ตรวจเลย ('G' truthy แต่ตกด่าน · "กทม." ไม่ตรงทะเบียน)
+ */
+function newSiteBlocker(customer, site) {
+  const arCode = customer?.arCode || null;
+  const province = findProvinceByName(site.province);
+  const { error } = siteCodePrefix({ arCode, provinceCode: province?.code });
+  if (!error) return null;
+  /* ⚠️ **สามเหตุที่สร้างไม่ได้ พูดคนละเรื่องกัน** (ข้อความชุดเดียวกับตอนลงมือ) —
+     ลูกค้าไม่มีรหัส AR / ชีตไม่มีคอลัมน์จังหวัด / สะกดจังหวัดไม่ตรงทะเบียน
+     รวบเป็นข้อความเดียวเมื่อไร คนแก้ไฟล์จะไปแก้ผิดที่ */
+  if (customerCodeSegment(arCode) === null) return `ไซต์ “${site.name}”: ${error}`;
+  return site.province
+    ? `ไซต์ “${site.name}”: จังหวัด “${site.province}” ไม่ตรงกับทะเบียนจังหวัด`
+    : `ไซต์ “${site.name}”: ชีตไม่มีจังหวัด — รหัสไซต์ประกอบจากภาคและจังหวัด`;
+}
+
+function newZoneBlocker(zone) {
+  const { error } = normalizeFloor(zone.floor);
+  return error ? `โซน “${zone.name}”: ${error}` : null;
+}
+
 /* วางแผนทั้งไฟล์
    snapshot = { customers, sites, zones, assets }
    คืน { rows, summary } — rows เรียงตามลำดับในไฟล์เสมอ (คนไล่ตามชีตได้) */
@@ -117,8 +160,14 @@ export function planImport(drafts = [], snapshot = {}) {
       siteRef = plannedSite.ref;
       sitePlan = { action: 'reuse-new', ref: plannedSite.ref, name: plannedSite.name };
     } else {
+      /* ⚠️ **ตรวจก่อนจอง `ref`** — จองแล้วค่อยตก จะทำให้แถวถัดไปของไซต์เดียวกันเห็นเป็น
+         `reuse-new` แล้วรายงานว่า "จะสร้าง" ทั้งที่ไม่มีใครสร้างมันเลย
+         ⭐ ผลพลอยได้: แถวแรกที่เว้นจังหวัดว่างจะไม่กินสิทธิ์ไซต์นั้นไปอีกต่อไป ⇒ แถวถัดไป
+            ที่กรอกจังหวัดมาครบได้เป็นคนสร้างแทน (เดิมค่าของแถวหลังถูกทิ้งเงียบ) */
+      const blocker = newSiteBlocker(customer, draft.site);
+      if (blocker) blocking.push(blocker);
       siteRef = `new-site-${plannedSites.size + 1}`;
-      plannedSites.set(sKey, { ref: siteRef, name: draft.site.name, customerId: customer.id });
+      if (!blocker) plannedSites.set(sKey, { ref: siteRef, name: draft.site.name, customerId: customer.id });
       sitePlan = {
         action: 'create', ref: siteRef, name: draft.site.name,
         customerId: customer.id, customerName: customerSnapshotName(customer),
@@ -142,10 +191,23 @@ export function planImport(drafts = [], snapshot = {}) {
         zoneRef = planned.ref;
         zonePlan = { action: 'reuse-new', ref: planned.ref, name: planned.name };
       } else {
+        const blocker = newZoneBlocker(draft.zone);
+        if (blocker) blocking.push(blocker);
         zoneRef = `new-zone-${plannedZones.size + 1}`;
-        plannedZones.set(zKey, { ref: zoneRef, name: draft.zone.name });
+        if (!blocker) plannedZones.set(zKey, { ref: zoneRef, name: draft.zone.name });
         zonePlan = { action: 'create', ref: zoneRef, siteRef, name: draft.zone.name, floor: draft.zone.floor || null };
       }
+    }
+
+    /* ตกด่าน "สร้างไม่ได้" = แถวออกเป็นรายงาน **ก่อน** แตะตัวนับเครื่อง
+       ⚠️ ต้องอยู่เหนือบล็อกเครื่อง ไม่งั้น `plannedAssets` ถูกจองด้วยแถวที่ไม่มีวันเกิด
+         แล้วแถวถัดไปของชุดเดียวกันถูกข้ามว่า "มีอยู่แล้ว" */
+    if (blocking.length) {
+      return {
+        rowNumber: draft.rowNumber, status: ROW_ERROR, issues, blocking,
+        customerName: customerNameIn(customer), siteName: draft.site.name,
+        site: null, zone: null, assets: [], carried: draft.carried,
+      };
     }
 
     // ── เครื่อง ──

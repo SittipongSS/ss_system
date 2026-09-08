@@ -4,20 +4,28 @@ import assert from 'node:assert/strict';
 import { ROW_ERROR, ROW_OK, ROW_SKIP, planImport, reportRows } from './importPlan.js';
 import { buildDrafts, matchHeaders } from './importSheet.js';
 
-const headers = ['ลูกค้า', 'ชื่อไซต์', 'โซน', 'จำนวนเครื่อง', 'ชนิดอุปกรณ์'];
+/* ⚠️ **fixture ต้องเป็นไฟล์ที่นำเข้าได้จริง** — ชุดเดิมไม่มีคอลัมน์จังหวัด/ชั้นเลย
+   ซึ่งแปลว่าทุกเทสต์ในไฟล์นี้ทดสอบบนไฟล์ที่ **สร้างไซต์ไม่ได้สักแถว** โดยไม่มีใครรู้
+   (ด่านสองตัวนั้นอยู่ฝั่งลงมือ ไม่เคยถูกตรวจตอนวางแผน — คือรูที่ใบนี้ปิด) */
+const headers = ['ลูกค้า', 'ชื่อไซต์', 'จังหวัด', 'โซน', 'ชั้น', 'จำนวนเครื่อง', 'ชนิดอุปกรณ์'];
 const { map } = matchHeaders(headers);
-const sheet = (rows) => buildDrafts(rows.map((values) => headers.map((h) => values[h] ?? '')), map);
+/* ค่าตั้งต้นให้ครบพอสร้างได้ — เทสต์ที่จะทดสอบ *ด่าน* ค่อยเขียนทับเป็นค่าว่าง/ค่าผิด */
+const FILLED = { 'จังหวัด': 'กรุงเทพมหานคร', 'ชั้น': '2' };
+const sheet = (rows) => buildDrafts(
+  rows.map((values) => headers.map((h) => ({ ...FILLED, ...values })[h] ?? '')), map,
+);
 
 const snapshot = {
   customers: [
-    { id: 'C1', name: 'Jim Thompson' },
-    { id: 'C2', name: 'CP LAND' },
-    { id: 'C3', name: 'ซ้ำ จำกัด' },
-    { id: 'C4', name: 'ซ้ำ จำกัด' },
+    // ⚠️ ต้องมี `arCode` — รหัสไซต์ประกอบจากรหัสลูกค้า + จังหวัด
+    { id: 'C1', name: 'Jim Thompson', arCode: 'AR-101' },
+    { id: 'C2', name: 'CP LAND', arCode: 'AR-102' },
+    { id: 'C3', name: 'ซ้ำ จำกัด', arCode: 'AR-103' },
+    { id: 'C4', name: 'ซ้ำ จำกัด', arCode: 'AR-104' },
     // ลูกค้าที่มีแต่ชื่ออังกฤษ (ไทยว่าง) — เคยไม่เข้าดัชนีเลย
-    { id: 'C5', name: null, nameEn: 'Aroma Global' },
+    { id: 'C5', name: null, nameEn: 'Aroma Global', arCode: 'AR-105' },
     // สองภาษาย่อยเป็นคีย์เดียวกัน — ต้องไม่ถูกนับสองรอบ
-    { id: 'C6', name: 'DUFRY', nameEn: 'Dufry' },
+    { id: 'C6', name: 'DUFRY', nameEn: 'Dufry', arCode: 'AR-106' },
   ],
   sites: [{ id: 'S1', customerId: 'C1', code: 'SS-26080001', name: 'Outlet 93' }],
   zones: [{ id: 'Z1', siteId: 'S1', code: 'ZN-26080001', name: 'ชั้น 2' }],
@@ -150,8 +158,11 @@ test('เลขแถวในผลตรงกับเลขแถวใน�
 
 // ── จังหวัด/ชั้น เดินทางถึงแผน (mig 0315) ────────────────────────────────
 //
-// ⭐ ตัววางแผนไม่ตัดสินว่าค่าถูกไหม — มันแค่ต้อง **ไม่ทำหาย** · ด่านจริงอยู่ตอนสร้าง
-//    (`importRepo` เรียก siteCodePrefix/zoneCodePrefix) เพราะที่นั่นเห็นทะเบียนจังหวัด
+// ⭐ ค่าต้อง **ไม่หาย** ระหว่างทาง — และตั้งแต่ 08/09/2026 ตัววางแผนก็ **ตัดสินด้วย**
+//    ว่าค่าใช้ได้ไหม (ดูบล็อก "ของที่ต้องมีถึงจะสร้างได้" ข้างล่าง)
+//    🐞 เดิมด่านอยู่ฝั่งลงมืออย่างเดียว ⇒ พรีวิวบอก "จะสร้างไซต์ 145" แล้วสร้างได้ 0
+//    ⚠️ ด่านฝั่งลงมือยังอยู่ต่อในฐานะตาข่ายชั้นสอง — `normalizeFloor` ที่นั่นไม่ได้เป็น
+//       แค่ด่าน มันคือค่าที่เขียนลงคอลัมน์ `floor` จริง ('G' → 'GF')
 const geoHeaders = ['ลูกค้า', 'ชื่อไซต์', 'โซน', 'จังหวัด', 'ชั้น'];
 const geoMap = matchHeaders(geoHeaders).map;
 const geoSheet = (rows) => buildDrafts(rows.map((v) => geoHeaders.map((h) => v[h] ?? '')), geoMap);
@@ -173,4 +184,77 @@ test('ไซต์ที่มีอยู่แล้วไม่ต้อง�
   assert.equal(rows[0].site.action, 'use');
   assert.equal(rows[0].zone.action, 'create');
   assert.equal(rows[0].zone.floor, '4');
+});
+
+/* ══ ด่านของแถวที่ "จะสร้าง" — ปิดรูที่พรีวิวเคยตาบอด ═══════════════════ */
+
+/* 🐞 เคสที่เจ็บที่สุด: จังหวัดถูก แต่ชีตไม่มีคอลัมน์ชั้น ⇒ ของเดิมได้ **ไซต์เปล่าค้าง
+   ในทะเบียนทั้งกอง · โซน 0 · เครื่อง 0** ไม่ใช่ล้มทั้งยวงให้รู้ตัว */
+test('🔴 ไม่มีจังหวัด = แถวออกเป็นรายงานตั้งแต่พรีวิว ไม่ใช่ไปตายตอนกดยืนยัน', () => {
+  const { rows, summary } = planImport(
+    sheet([{ 'ลูกค้า': 'CP LAND', 'ชื่อไซต์': 'สาขาใหม่', 'จังหวัด': '', 'โซน': 'ล็อบบี้' }]),
+    snapshot,
+  );
+  assert.equal(rows[0].status, ROW_ERROR);
+  assert.match(rows[0].blocking[0], /ชีตไม่มีจังหวัด/);
+  assert.equal(summary.newSites, 0, 'ตัวนับต้องไม่สัญญาของที่สร้างไม่ได้');
+  assert.equal(summary.newZones, 0);
+});
+
+test('🔴 จังหวัดสะกดไม่ตรงทะเบียน ต้องบอกว่าเป็นคนละเรื่องกับ "ไม่มีจังหวัด"', () => {
+  const { rows } = planImport(
+    sheet([{ 'ลูกค้า': 'CP LAND', 'ชื่อไซต์': 'สาขาใหม่', 'จังหวัด': 'กทม.' }]),
+    snapshot,
+  );
+  assert.equal(rows[0].status, ROW_ERROR);
+  assert.match(rows[0].blocking[0], /ไม่ตรงกับทะเบียนจังหวัด/);
+});
+
+test('🔴 ลูกค้าไม่มีรหัส AR ที่ใช้ได้ ต้องตกตั้งแต่พรีวิว', () => {
+  const noAr = { ...snapshot, customers: [{ id: 'CX', name: 'ไม่มีรหัส', arCode: null }] };
+  const { rows } = planImport(sheet([{ 'ลูกค้า': 'ไม่มีรหัส', 'ชื่อไซต์': 'สาขาใหม่' }]), noAr);
+  assert.equal(rows[0].status, ROW_ERROR);
+  assert.match(rows[0].blocking[0], /รหัสลูกค้า \(AR\)/);
+});
+
+/* ⚠️ 'G' truthy แต่ตกด่าน — เช็ก truthiness แทนตัวตัดสินจริงเมื่อไร พรีวิวจะบอกว่าผ่าน
+   แล้วไปตายตอนสร้างอยู่ดี (เป็นรูเดิมคนละหน้า) */
+test('🔴 ชั้นที่รูปไม่ถูกต้องตกด่าน — และต้องใช้ตัวตัดสินตัวเดียวกับตอนสร้าง', () => {
+  const { rows } = planImport(
+    sheet([{ 'ลูกค้า': 'CP LAND', 'ชื่อไซต์': 'สาขาใหม่', 'โซน': 'ล็อบบี้', 'ชั้น': 'ชั้นบนสุด' }]),
+    snapshot,
+  );
+  assert.equal(rows[0].status, ROW_ERROR);
+  assert.match(rows[0].blocking[0], /โซน “ล็อบบี้”/);
+  // 'G' เป็นรูปที่ normalizeFloor รับได้ (→ GF) ⇒ ต้องผ่าน
+  const ok = planImport(
+    sheet([{ 'ลูกค้า': 'CP LAND', 'ชื่อไซต์': 'สาขาใหม่ 2', 'โซน': 'ล็อบบี้', 'ชั้น': 'G' }]),
+    snapshot,
+  );
+  assert.equal(ok.rows[0].status, ROW_OK);
+});
+
+/* ⭐ ด่านผูกกับ `action === 'create'` เท่านั้น — แถวที่ใช้ของเดิมไม่ต้องมีค่าพวกนี้เลย */
+test('ไซต์/โซนที่มีอยู่แล้ว ไม่ต้องผ่านด่านจังหวัด/ชั้น', () => {
+  const { rows } = planImport(
+    sheet([{ 'ลูกค้า': 'Jim Thompson', 'ชื่อไซต์': 'Outlet 93', 'จังหวัด': '', 'โซน': 'ชั้น 2', 'ชั้น': '', 'จำนวนเครื่อง': '5' }]),
+    snapshot,
+  );
+  assert.notEqual(rows[0].status, ROW_ERROR);
+  assert.equal(rows[0].site.action, 'use');
+  assert.equal(rows[0].zone.action, 'use');
+});
+
+/* 🐞 บั๊กที่ด่านนี้ปิดไปด้วย: จังหวัดที่อยู่ **แถวที่สอง** ของไซต์เดียวกันเคยถูกทิ้งเงียบ
+   เพราะแถวแรกจองสิทธิ์ไซต์ไปแล้วทั้งที่ตัวเองไม่มีจังหวัด ⇒ ทั้งไซต์สร้างไม่ได้ */
+test('🐞 แถวแรกที่ไม่มีจังหวัด ต้องไม่กินสิทธิ์ไซต์ของแถวที่กรอกครบ', () => {
+  const { rows, summary } = planImport(sheet([
+    { 'ลูกค้า': 'CP LAND', 'ชื่อไซต์': 'สาขาร่วม', 'จังหวัด': '', 'โซน': 'ล็อบบี้' },
+    { 'ลูกค้า': 'CP LAND', 'ชื่อไซต์': 'สาขาร่วม', 'จังหวัด': 'เชียงใหม่', 'โซน': 'ชั้น 3' },
+  ]), snapshot);
+  assert.equal(rows[0].status, ROW_ERROR);
+  assert.equal(rows[1].status, ROW_OK);
+  assert.equal(rows[1].site.action, 'create');
+  assert.equal(rows[1].site.province, 'เชียงใหม่');
+  assert.equal(summary.newSites, 1, 'ไซต์ต้องยังถูกสร้างจากแถวที่กรอกครบ');
 });
