@@ -150,11 +150,17 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   if (can(user.role, 'salesplan:view')) {
     jobs.push(attempt('quotations', async () => {
-      const { data } = await supabase
+      /* 🔴 ต้องรับ `error` มาโยนต่อ — supabase **ไม่ throw** มันคืน { data: null, error }
+         ⇒ `const { data }` เปล่า ๆ ทำให้ query ที่พังกลายเป็น `[]` แล้วป้ายขึ้น **0**
+         โดย `attempt()` ข้างบนไม่เห็นอะไรเลย ไม่มีแม้แต่บรรทัด log
+         โยนแล้ว attempt จะ log + ปล่อยให้เมนูนั้น **ไม่มีป้าย** ซึ่งอ่านออกว่าผิดปกติ
+         ต่างจากเลข 0 ที่อ่านเหมือน "ไม่มีงานค้าง" (ดู [[nav-count-badges]]) */
+      const { data, error } = await supabase
         .from('quotations')
         .select('id, status, approvalStatus, createdBy, rejectionReason, deal:sales_deals(ownerId, stage)')
         .in('status', QUOTATION_ACTIONABLE_STATUSES)
         .limit(5000);
+      if (error) throw error;
       return (data || []).filter((row) => isQuotationWaitingOnMe(row, {
         userId: user.id,
         dealOwnerId: row.deal?.ownerId ?? null,
@@ -242,7 +248,8 @@ export const GET = withUser(async ({ user, supabase }) => {
        ทุกคน · ผลคือร่างกลุ่มนั้นถูกนับเกินจนกว่าจะมีคนเปิดทะเบียน — ซึ่งคือที่ที่
        ป้ายพาไปพอดี แล้วมันก็หายไปเอง */
     jobs.push(attempt('contracts', async () => {
-      const { data } = await supabase
+      // เหตุผลเดียวกับตัวนับใบเสนอราคาข้างบน — ทิ้ง error = ป้ายขึ้น 0 เงียบ
+      const { data, error } = await supabase
         .from('sales_contracts')
         /* ⚠️ ไม่ต้องกรอง scope ตามดีลเหมือน route ของทะเบียน — สองเลนนี้แคบตัวเอง
            อยู่แล้ว: เลนเจ้าของเทียบ `ownerId`/`createdBy` เป็นรายใบ ส่วนเลนผู้รับรอง
@@ -318,11 +325,13 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   if (canApproveProjectClose(user)) {
     jobs.push(attempt('projectCloses', async () => {
-      const { data } = await supabase
+      // เหตุผลเดียวกับตัวนับใบเสนอราคาข้างบน — ทิ้ง error = ป้ายขึ้น 0 เงียบ
+      const { data, error } = await supabase
         .from('projects')
         .select('id, "closeStatus", "closeRequestedBy"')
         .eq('closeStatus', 'pending_close')
         .limit(5000);
+      if (error) throw error;
       return (data || []).filter((row) => isProjectCloseWaitingOnMe(row, user)).length;
     }));
   }
