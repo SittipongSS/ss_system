@@ -47,6 +47,7 @@ export {
 
 export {
   canAnswerRequest,
+  canAssignBriefPerfumer,
   canManageRequest,
   canViewRequest,
   canReadRequestRow,

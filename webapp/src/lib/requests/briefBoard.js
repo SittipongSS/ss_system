@@ -13,6 +13,7 @@ import { hopLabel } from '@/lib/requests/hops';
    แค่ไหน · ประกอบที่นี่ (ตัวสร้างแถว) ไม่ใช่ใน JSX — กฎหลังบั๊กรางซ้ำ #1033 */
 import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
 import { reworkBriefOf } from '@/lib/requests/rework';
+import { briefPerfumer } from '@/lib/requests/briefPerfumer';
 
 // ผลลัพธ์จากลูกค้า → ป้าย + โทน · ยังไม่ตอบ = ยังไม่ถึงตาลูกค้า ไม่ใช่ลูกค้าเงียบ
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
@@ -128,6 +129,11 @@ export function briefBoard(briefs = [], items = []) {
       id: b.id,
       label: b.label || `กลิ่นที่ ${i + 1}`,
       brief: b.brief || null,
+      /* ⭐ **เจ้าของกลิ่นเดินมากับกลุ่ม** (mig 0350) — ตัวสร้างกลุ่มนี้ประกอบ object
+         ใหม่ทั้งก้อน ⇒ คอลัมน์ที่ไม่ถูกยกมาตรงนี้จะ **หายเงียบ ๆ** แม้ `findRequest`
+         จะส่งมาครบแล้วก็ตาม (`select('*')`) · ตารางบนหน้าใบจึงจะไม่มีวันรู้ว่าใครถือ
+         ⚠️ อ่านผ่าน `briefPerfumer()` ที่เดียว ห้ามหยิบ `b.perfumerName` ตรง ๆ ที่จอ */
+      perfumer: briefPerfumer(b),
       directions,
       summary: groupSummary(directions),
       // "ยังไม่ได้ลงมือ" = บรีฟที่ยังไม่มี direction ไหนตอบเลย — ตัวเลขที่บอกว่างานยัง
@@ -142,6 +148,8 @@ export function briefBoard(briefs = [], items = []) {
       id: null,
       label: 'ยังไม่ผูกบรีฟ',
       brief: null,
+      // ก้อนนี้ไม่ใช่บรีฟจริง (แถวกำพร้าจากข้อมูลเก่า) ⇒ ไม่มีเจ้าของกลิ่นให้แจก
+      perfumer: briefPerfumer({}),
       directions: lineage(orphans.map((r) => directionRow(r, rows))),
       summary: groupSummary(lineage(orphans.map((r) => directionRow(r, rows)))),
       untouched: false,

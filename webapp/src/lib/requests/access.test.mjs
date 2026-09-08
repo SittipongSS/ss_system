@@ -10,7 +10,7 @@ import {
   REQUEST_ANSWER_DEPARTMENTS, ROLES, canAnswerRequestsFor, canViewCosting, canViewRequests,
 } from '../permissions.js';
 import { REQUEST_DEPTS } from '../master/requestTypes.js';
-import { canAnswerRequest, canManageRequest, canReadRequestRow, canViewRequest } from './access.js';
+import { canAnswerRequest, canAssignBriefPerfumer, canManageRequest, canReadRequestRow, canViewRequest } from './access.js';
 
 // ฝ่ายโรงงานทุกฝ่าย — ต้องลองให้ครบ ไม่ใช่แค่ RD/PC ที่รู้ว่าผ่าน
 const STAFF_DEPARTMENTS = ['PC', 'PD', 'WH', 'RD', 'QC', 'TS', 'FN'];
@@ -162,4 +162,48 @@ test('เจ้าของใบยังทำได้เหมือนเ�
 test('ไม่ได้ล็อกอิน = ไม่ได้อะไรเลย แม้ใบจะมีทีมตรงกัน', () => {
   assert.equal(canManageRequest(null, svRequest), false);
   assert.equal(canManageRequest({ role: 'ae', team: 'SV' }, svRequest), false, 'ไม่มี id = ไม่ใช่คน');
+});
+
+/* ── แจกกลิ่นให้ผู้ปรุง: หัวหน้าแจก · ผู้ปรุงดูอย่างเดียว (มติผู้ใช้ 2026-09-08) ──
+ *
+ * ⚠️ ด่านนี้เป็น **ด่านเดียวในระบบที่แยกตำแหน่งในฝ่าย RD ออกจากกัน** — ที่เหลือทั้งหมด
+ * ยังถือ cap ชุดเดียวกัน (มติ 2026-09-01 "ต่างแค่ป้าย") ⇒ เทสต์ชุดนี้คือสิ่งเดียว
+ * ที่กันไม่ให้ใครเผลอเปิดกว้างกลับไปตอน refactor
+ */
+const rdRequest = { dept: 'RD', status: 'acknowledged', requestedById: 'USR-SA', team: 'SV' };
+const rdUser = (role) => ({ id: `USR-${role}`, role, department: 'RD' });
+
+test('หัวหน้าและผู้ประสานงานของฝ่าย RD แจกกลิ่นได้', () => {
+  for (const role of ['rd', 'rd_coordinator', 'rd_supervisor']) {
+    assert.equal(canAssignBriefPerfumer(rdUser(role), rdRequest), true, role);
+  }
+});
+
+test('ผู้ปรุงและนักเคมีเห็นตารางได้ แต่แจกงานไม่ได้', () => {
+  for (const role of ['rd_perfumer', 'rd_chemist']) {
+    assert.equal(canAnswerRequest(rdUser(role), rdRequest), true, `${role} ต้องยังตอบใบได้เหมือนเดิม`);
+    assert.equal(canAssignBriefPerfumer(rdUser(role), rdRequest), false, role);
+  }
+});
+
+/* กติกา admin-full-rights — แอดมินต้องทำได้ทุกอย่าง รวมของที่ผูกกับตำแหน่งในฝ่ายอื่น */
+test('แอดมินแจกได้ทุกใบ', () => {
+  assert.equal(canAssignBriefPerfumer({ id: 'USR-ADMIN', role: 'admin' }, rdRequest), true);
+});
+
+/* ⚠️ `isSuperuser` = admin || ae_supervisor ⇒ ถ้าด่านนี้ใช้ isSuperuser หัวหน้าฝ่ายขาย
+   จะแจกงานปรุงกลิ่นได้ด้วย ซึ่งไม่มีใครสั่ง · เทสต์นี้คือตัวกันเรื่องนั้นโดยเฉพาะ */
+test('หัวหน้าฝ่ายขายผ่านด่านใบได้ แต่ต้องแจกกลิ่นไม่ได้', () => {
+  const salesHead = { id: 'USR-AES', role: 'ae_supervisor', department: 'SA' };
+  assert.equal(canAnswerRequest(salesHead, rdRequest), true, 'break-glass ของใบยังเปิดตามเดิม');
+  assert.equal(canAssignBriefPerfumer(salesHead, rdRequest), false);
+});
+
+test('หัวหน้า RD แจกกลิ่นในใบของฝ่ายอื่นไม่ได้', () => {
+  assert.equal(canAssignBriefPerfumer(rdUser('rd_supervisor'), { ...rdRequest, dept: 'TS' }), false);
+});
+
+test('ไม่ได้ล็อกอิน / ไม่มีใบ = แจกไม่ได้', () => {
+  assert.equal(canAssignBriefPerfumer(null, rdRequest), false);
+  assert.equal(canAssignBriefPerfumer(rdUser('rd_supervisor'), null), false);
 });

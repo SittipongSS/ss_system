@@ -266,7 +266,19 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/ser
    ตั้งแต่บรรทัดแรกของ `lockedOut`
    ⚠️ อ่านอย่างเดียวจริง ๆ — route มีแต่ `export const GET` และตัวเลขทุกตัวถูกตัด
    ขอบเขตด้วย `user.id` ในตัว handler อยู่แล้ว */
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance', '/api/nav', '/api/teams'];
+/* 🐞 **บั๊กจริง (พบ 2026-09-08 ตอนทำตารางงานผู้ปรุงกลิ่น):** `/api/rd` ไม่เคยอยู่ใน
+   ลิสต์ไหนเลย ทั้งที่โมดูล RD มี endpoint ของตัวเองมาตั้งแต่ 2026-08-29
+   ⇒ default-deny ตอบ 403 ให้ **ทุก role ที่ไม่ใช่แอดมิน** รวมคนของฝ่ายเอง
+   ⇒ แท็บ "ใบสั่งขายที่เกี่ยวข้อง" (`/rd/sales-orders` → `/api/rd/sales-orders`)
+   ใช้ไม่ได้เลยสำหรับ rd · rd_perfumer · rd_chemist · rd_coordinator · rd_supervisor
+   ตั้งแต่วันแรก — เห็นแต่ toast คำว่า `forbidden` เปล่า ๆ (ข้อความอังกฤษจาก proxy
+   ไม่ใช่ข้อความไทยของ handler = ลายนิ้วมือว่าโดนตัดที่นี่)
+   ⚠️ แอดมินไม่มีทางเจอ เพราะผ่านตั้งแต่บรรทัดแรกของ `lockedOut` (users:manage) ·
+   เทสต์เดิมตรวจแค่ **หน้า** `/rd` กับ `/rd/requests` ไม่เคยตรวจ `/api/rd/*`
+   ⚠️ **อ่านอย่างเดียวจริง ๆ** — ทุก route ใต้ `/api/rd` มีแต่ `export const GET`
+   และมีด่าน `canAccessRd` ในตัว handler เองซึ่งแคบกว่าที่นี่ (proxy เห็นแค่
+   method + path) · ทางเขียนของฝ่ายยังเดินผ่าน `/api/sa/requests/...` ตามเดิม */
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance', '/api/nav', '/api/teams', '/api/rd'];
 
 /* เส้นของ "จัดทีม" ที่คนถือ `team:manage` เขียนได้ — ทะเบียนทีมทั้งชุด + ย้ายทีมรายคน
    (`/api/teams`, `/api/teams/<code>`, `/api/teams/<code>/members`, `/api/users/<id>/team`)

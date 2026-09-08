@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, AirVent, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
+import { Home, AirVent, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu, SprayCan } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -474,6 +474,14 @@ export default function AppLayout({ children }) {
            "ที่ฉันเปิด" ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ประวัติงานของฝ่าย
            อยู่ในแท็บ "ประวัติ" ของคิวนี้แล้ว */
         { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') || p.startsWith('/requests') },
+        /* ⭐ **ตารางงานผู้ปรุงกลิ่น** (mig 0350 · มติผู้ใช้ 2026-09-08) — คิวข้างบนนับเป็น
+           **ใบ** ส่วนหน้านี้นับเป็น **กลิ่น** · ใบพัฒนากลิ่นหนึ่งใบมีได้ถึง 4 ก้อนแจกให้
+           คนละคนปรุง ⇒ คำถาม "กลิ่นก้อนนี้อยู่ในมือใคร" ตอบจากคิวไม่ได้เลย
+           ⚠️ **ด่านเป็นชุดเดียวกับเมนูอื่นของโมดูล** (`requests:answer` + `canAccessRd`)
+           โดยตั้งใจ — ผู้ปรุงต้องเห็นตารางของตัวเอง แม้จะแจกงานไม่ได้ · ด่านที่แคบกว่า
+           เมนูจะทำให้คนที่งานอยู่ในมือมองไม่เห็นงานตัวเอง
+           ⚠️ `shortName` เพราะชื่อเต็มล้นช่องแถบล่างของจอมือถือ (~71px ที่ 375px) */
+        { href: '/rd/perfumers', name: 'งานผู้ปรุงกลิ่น', shortName: 'ผู้ปรุง', icon: SprayCan, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/perfumers') },
         /* ⭐ **ใบสั่งขายที่เกี่ยวข้อง** (มติผู้ใช้ 2026-08-29) — บรีฟกลิ่นเกิดจากใบสั่งขาย
            ฝ่ายจึงต้องเห็นว่าออร์เดอร์นั้นสั่ง FG อะไร · มาคู่กับการปิดเมนู "บริหารงานขาย"
            ของฝ่ายนี้ (แพตเทิร์นเดียวกับที่ฝ่าย FN ได้เอกสารของตัวเองไปไว้ในโมดูลตัวเอง)

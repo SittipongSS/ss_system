@@ -16,8 +16,9 @@
 // สองทรงและรางสองทรงพร้อมกัน ซึ่งเป็นสิ่งที่ `audit:ui` กับกฎ "primitive อยู่ที่
 // components/ui เท่านั้น" ห้ามไว้ · ตอนนี้ฝั่งกรอกกับฝั่งอ่านหน้าตาเหมือนกันจริง
 import { useState } from "react";
-import { FlaskConical, Send } from "lucide-react";
+import { FlaskConical, Send, UserPlus } from "lucide-react";
 import Button from "@/components/ui/Button";
+import GatedAction from "@/components/ui/GatedAction";
 import EmptyState from "@/components/ui/EmptyState";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
@@ -43,6 +44,10 @@ import { apiFetch } from "@/lib/apiFetch";
 
 export default function ScentDevDetail({
   request, board, canEditAttachments, saving, rowStep, onReload, onDeliver, today = null, due = null,
+  /* ⭐ **แจกกลิ่นได้จากในใบด้วย** (mig 0350) — `{ canAssign, blockerOf, onAssign }`
+     ⚠️ ต้องมีทั้งสองทาง (ที่นี่ + ตารางงานผู้ปรุงกลิ่น) เพราะหัวหน้าอ่านบรีฟอยู่บนใบ
+     แล้วอยากแจกทันที · วางปุ่มไว้จอเดียวคือให้สองจอมีอำนาจไม่เท่ากันบนของชิ้นเดียวกัน */
+  perfumerStep = null,
 }) {
   /* ⭐ **เปิดมาที่แท็บที่มีเนื้อ** (มติผู้ใช้ 2026-08-09) — ใบร่าง/ใบที่เพิ่งส่งยังไม่มี
      direction สักตัว เปิดมาเจอแท็บ "งาน" ที่ว่างเปล่าทุกครั้ง ⇒ ตั้งต้นที่แบบฟอร์ม
@@ -133,17 +138,31 @@ export default function ScentDevDetail({
                Control Panel · กดที่ก้อนไหน โมดัลผูกบรีฟก้อนนั้นให้เลย ไม่ต้องเลือกซ้ำ
                ⚠️ เงื่อนไขเดียวกับปุ่มเดิมเป๊ะ (`rowStep.canDept` = ฝ่ายปลายทางที่รับเรื่อง
                แล้ว) — ที่ย้ายคือ *ที่วาง* ไม่ใช่ด่าน */
-            renderGroupStep={rowStep?.canDept && onDeliver ? (g) => (
+            renderGroupStep={(perfumerStep?.canAssign || (rowStep?.canDept && onDeliver)) ? (g) => (
               <>
                 {/* ⚠️ ชิปตัวเดียวกับปุ่มรายแถว **และกติกาเดียวกัน** — ตารางเดียวมีปุ่ม
                     ติดชิปกับไม่ติดปนกันไม่ได้ ⇒ เงื่อนไขต้องตรงกับ `RowStepActions`
                     (ขึ้นเฉพาะตอนสองฝั่งสดพร้อมกัน · มติผู้ใช้ 2026-08-26) */}
-                {rowStep.canDept && rowStep.canRequester && (
+                {rowStep && rowStep.canDept && rowStep.canRequester && (
                   <OwnerTag owner="dept" deptLabel={rowStep.deptLabel} />
                 )}
-                <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
-                  <Send size={14} /> ส่งงาน
-                </Button>
+                {/* ⭐ **แจกกลิ่นก้อนนี้จากในใบ** (mig 0350) — ปุ่มรอง ไม่แย่งที่ปุ่มหลัก
+                    ⚠️ `blocker` มาจากด่านฝั่งเซิร์ฟเวอร์ตัวเดียวกับที่ API ใช้ปฏิเสธจริง
+                    ⇒ โชว์เสมอ บอกเหตุตอนกด (กลิ่นที่ส่งไปแล้วเปลี่ยนผู้ปรุงไม่ได้) */}
+                {perfumerStep?.canAssign ? (
+                  <GatedAction
+                    blocker={perfumerStep.blockerOf?.(g) || ""}
+                    size="sm" variant="quiet" icon={UserPlus} disabled={saving}
+                    onClick={() => perfumerStep.onAssign?.(g)}
+                  >
+                    {g.perfumer?.name || "แจกงาน"}
+                  </GatedAction>
+                ) : null}
+                {rowStep?.canDept && onDeliver ? (
+                  <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
+                    <Send size={14} /> ส่งงาน
+                  </Button>
+                ) : null}
               </>
             ) : null}
             renderStep={rowStep ? (d) => {

@@ -7,7 +7,9 @@
 //          ก้าวแยกจากการรับเรื่อง) · answer (ชนิดที่ไม่มี
 //          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก) ·
 //          pdr-ref (ออกเลขที่เอกสาร PDR ย้อนหลังให้ใบที่รับเรื่องไปก่อน mig 0271) ·
-//          pdr-ref-manual (RD กรอก/แก้เลขเองในช่วงเปลี่ยนผ่าน mig 0272)
+//          pdr-ref-manual (RD กรอก/แก้เลขเองในช่วงเปลี่ยนผ่าน mig 0272) ·
+//          assign (จัดคนระดับ **ใบ** mig 0230) · assign-brief (แจกผู้ปรุงระดับ
+//          **กลิ่น** mig 0350 — เขียนตาราง dept_request_scents ไม่ใช่หัวใบ)
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
@@ -30,10 +32,12 @@ import { listAttachments, purgeAttachments } from '@/lib/master/attachments';
 import { normalizeScentBriefs, scentBriefNameError } from '@/lib/requests/scentBriefs';
 import {
   acknowledgeRequestError, commitDueRequestError, rescheduleRequestError,
-  bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
+  bounceRequestError, answerRequestError, canAnswerRequest, canAssignBriefPerfumer, canManageRequest,
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError, closeUnassessedError,
   assignRequestDocNo, deleteRequestError, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
+import { briefBoard } from '@/lib/requests/briefBoard';
+import { assignBriefPerfumerError, briefPerfumerPatch } from '@/lib/requests/briefPerfumer';
 import {
   lineShapeForKind, requestHasItems, requestHasPdr, requestKindLabel, requestNeedsRef,
   requestShapeError,
@@ -697,6 +701,62 @@ export async function PATCH(request, { params }) {
       summary = patch.assigneeId || patch.assigneeName
         ? `มอบหมายให้ ${patch.assigneeName || patch.assigneeId}`
         : `ถอนการมอบหมาย${before.assigneeName ? ` (เดิม ${before.assigneeName})` : ''}`;
+    } else if (action === 'assign-brief') {
+      /* ⭐ **แจกกลิ่นให้ผู้ปรุงทีละก้อน** (mig 0350 · มติผู้ใช้ 2026-09-08) — คนละแกน
+         กับ `assign` ข้างบน: ตัวนั้นจัดคนระดับ *ใบ* (ใบละคน) ตัวนี้จัดคนระดับ *กลิ่น*
+         (ใบหนึ่งมีได้เท่าจำนวนบรีฟ) · ปิดคำถามที่ค้างมาตั้งแต่ 2026-09-01 ว่า
+         "จ่ายงานหรือหยิบเอง" ⇒ **จ่ายงาน หัวหน้าเป็นคนแจก**
+
+         ⚠️ **ด่านแคบกว่า `assign`** — ต้องเป็นหัวหน้า/ผู้ประสานงานของฝ่าย ไม่ใช่แค่
+         "ตอบใบนี้ได้" · ผู้ปรุงเห็นตารางครบแต่แจกงานให้ตัวเองไม่ได้ (มติผู้ใช้)
+
+         ⚠️ **เขียนตารางลูก ไม่ใช่ `patch` ของหัวใบ** — PostgREST ไม่มี transaction
+         ข้ามตาราง ⇒ เขียนตรงนี้ให้จบก่อน แล้วปล่อยให้หางของ handler อัปเดต
+         `updatedAt` ของหัวใบตามปกติ (คิวจะได้เรียงใหม่/ดึงของใหม่ถูก)
+
+         ⚠️ **ไม่ลงเธรดและไม่เด้งกระดิ่งโดยตั้งใจ** (มติผู้ใช้ 2026-09-08:
+         *"ไม่ต้องเด้ง — เห็นเองจากตาราง"*) · กลไกที่ทำให้เงียบคือ `askActionUpdate`
+         และ `dealRequestUpdate` คืน `null` ให้ action ที่ไม่รู้จัก ⇒ **ห้ามเติม
+         `assign-brief` เข้าทะเบียนชนิดของเธรด** ถ้ายังไม่มีมติใหม่ · ร่องรอยยังครบใน
+         `audit_logs` ผ่าน `summary` ข้างล่าง
+         🪤 ถ้าลงเธรด คนที่โดนเด้งจะเป็น **ผู้ขอ (SA)** ไม่ใช่ผู้ปรุง — `recipients`
+         ของ `dept_request` คืน `[requestedById]` ล้วน (lib/master/updateAccess.js)
+         ⇒ ได้ผลตรงข้ามกับที่ต้องการเป๊ะ ๆ: กวนคนที่ไม่เกี่ยว เงียบกับคนที่เกี่ยว */
+      if (!canAssignBriefPerfumer(user, before)) {
+        return Response.json(
+          { error: 'แจกกลิ่นได้เฉพาะหัวหน้าฝ่ายและผู้ประสานงานของฝ่าย' },
+          { status: 403 },
+        );
+      }
+      const briefId = String(body.briefId || '').trim();
+      // ⚠️ หากลุ่มจาก `briefBoard` ไม่ใช่จาก `before.briefs` ตรง ๆ — ตัวตัดสินว่า
+      // "ส่งกลิ่นไปแล้วหรือยัง" อ่านจาก direction ที่ผูกกับบรีฟ ซึ่งประกอบที่นั่นที่เดียว
+      const group = briefBoard(before.briefs || [], before.items || [])
+        .find((g) => g.id && g.id === briefId);
+      const err = assignBriefPerfumerError(before, group, {
+        perfumerId: body.perfumerId ?? null,
+        perfumerName: body.perfumerName ?? null,
+      });
+      if (err) return Response.json({ error: err }, { status: 409 });
+      const briefPatch = briefPerfumerPatch({
+        perfumerId: body.perfumerId ?? null,
+        perfumerName: body.perfumerName ?? null,
+        by: user,
+        nowIso,
+      });
+      // ⚠️ `.eq('requestId', id)` คู่กับ id ของบรีฟเสมอ — กันการยิง briefId ของใบอื่น
+      // เข้ามาทางเส้นนี้ (ด่านสิทธิ์ข้างบนผูกกับ **ใบ** ไม่ใช่กับบรีฟ)
+      const { error: briefError } = await supabase
+        .from('dept_request_scents')
+        .update({ ...briefPatch, updatedAt: nowIso })
+        .eq('id', briefId)
+        .eq('requestId', id);
+      if (briefError) {
+        return Response.json({ error: briefError.message || 'แจกกลิ่นไม่สำเร็จ' }, { status: 500 });
+      }
+      summary = briefPatch.perfumerName
+        ? `แจกกลิ่น "${group.label}" ให้ ${briefPatch.perfumerName}`
+        : `ถอนการแจกกลิ่น "${group.label}"${group.perfumer?.name ? ` (เดิม ${group.perfumer.name})` : ''}`;
     // ⚠️ action `approve` (ประตูหัวหน้าสายงานขาย · mig 0216) เคยอยู่ตรงนี้ — ถอดออก
     // ทั้งขั้นตามมติผู้ใช้ 2026-08-16 · RD รับเรื่องแล้วลงมือได้เลย · ผู้เรียกที่ยังยิง
     // `action: 'approve'` มาจะตกท้าย else เป็น 400 "action ไม่ถูกต้อง" ซึ่งถูกแล้ว

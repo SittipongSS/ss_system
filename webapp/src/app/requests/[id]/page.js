@@ -58,9 +58,11 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
-  answerRequestError, closeOutcomeError, closeRequestError, closeUnassessedError,
+  answerRequestError, canAssignBriefPerfumer, closeOutcomeError, closeRequestError, closeUnassessedError,
   requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
+import { assignBriefPerfumerError } from "@/lib/requests/briefPerfumer";
+import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { dueIsStale } from "@/lib/requests/dueRound";
 import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
@@ -184,6 +186,9 @@ export default function RequestDetailPage() {
   /* ⭐ มอบหมายผู้รับผิดชอบ (mig 0230) — `null` = ปิดโมดัล · สตริง = id ที่เลือกอยู่
      (สตริงว่าง = "ยังไม่ระบุ" ซึ่งแปลว่าถอนการมอบหมาย) */
   const [assign, setAssign] = useState(null);
+  /* ⭐ แจกกลิ่นก้อนหนึ่งให้ผู้ปรุง (mig 0350) — `null` = ปิดโมดัล · ค่าคือ **ก้อนบรีฟ**
+     จาก `briefBoard` (มี `directions` ให้ด่านตัดสินว่ากลิ่นถูกส่งไปแล้วหรือยัง) */
+  const [assignBrief, setAssignBrief] = useState(null);
   /* ⚠️ ชื่อ `directory` ไม่ใช่ `people` — `people` ถูกใช้ไปแล้วกับ **แถวคนบนหัวใบ**
      (`requestHeaderPeople`) ซึ่งเป็นคนละเรื่องกันสิ้นเชิง
      ⚠️ `usePeopleDirectory` รวมคนที่ปิดบัญชีแล้วด้วย (ใบเก่าต้องอ่านชื่อออก) —
@@ -360,6 +365,11 @@ export default function RequestDetailPage() {
   // ตัวนี้คุม `canDept` ของรางห้าก้าว ⇒ ถามผิดคำถามแปลว่าฝ่ายเจ้าของเรื่อง
   // เห็นแต่ป้าย "รอฝ่ายปลายทางรับเรื่อง" และกดอะไรไม่ได้เลยทั้งใบ
   const owner = canAnswerRequestsFor(me, req.dept);
+  /* ⭐ **แจกกลิ่นให้ผู้ปรุงได้จากในใบ** (mig 0350 · มติผู้ใช้ 2026-09-08) — ด่านตัวเดียว
+     กับที่ API ใช้ปฏิเสธจริง ⇒ ปุ่มกับ API เห็นตรงกันเสมอ · หัวหน้า/ผู้ประสานงานเท่านั้น
+     ⚠️ รายชื่อมาจากก้อนเดียวกับช่องผู้เซ็น PDR (`/api/pm/assignable-users`) — ไม่ยิงเพิ่ม */
+  const canAssignPerfumer = canAssignBriefPerfumer(me, req);
+  const perfumerPeople = signerPeople.filter((p) => p.role === "rd_perfumer");
   /* ⭐ **วันที่ถืออยู่เป็นของรอบก่อน** (มติผู้ใช้ 2026-08-25) — เปลี่ยนคำบนปุ่ม/โมดัล
      จาก "แจ้งกำหนดส่ง" เป็น "แจ้งวันส่งรอบแก้" · ตัวตัดสินอยู่ที่ `lib/requests/dueRound.js`
      ตัวเดียวกับที่ราง คิว และด่านฝั่ง server ใช้ ⇒ ปุ่มกับ API เห็นตรงกันเสมอ */
@@ -1620,6 +1630,13 @@ export default function RequestDetailPage() {
         /* ปุ่มลงมือของ "ก้อนงาน" ในตารางสรุป — พัฒนากลิ่นใช้เป็นปุ่มส่งงานรายบรีฟ
            ส่วนพัฒนาสูตรใช้เป็นปุ่มส่งรวบหลายแถว (ทั้งคู่คือของที่เคยอยู่บน Control Panel) */
         onDeliver={openDelivery}
+        /* ⭐ ปุ่มแจกกลิ่นในแถวของบรีฟ (mig 0350) — `blockerOf` เรียกด่านฝั่งเดียวกับ
+           API ทีละก้อน ⇒ กลิ่นที่ส่งไปแล้วยังเห็นปุ่ม แต่กดแล้วบอกเหตุ */
+        perfumerStep={{
+          canAssign: canAssignPerfumer,
+          blockerOf: (g) => assignBriefPerfumerError(req, g, {}) || "",
+          onAssign: setAssignBrief,
+        }}
         bulkReady={{
           count: bulkReadyRows(req.items || []).length,
           onOpen: () => setBulkReady({
@@ -2000,6 +2017,28 @@ export default function RequestDetailPage() {
           );
         })()}
       </Modal>
+
+      {/* ⭐ แจกกลิ่นก้อนหนึ่งให้ผู้ปรุง (mig 0350) — โมดัลตัวเดียวกับที่ตารางงาน
+          ผู้ปรุงกลิ่น (`/rd/perfumers`) ใช้ · สองจอมีอำนาจเท่ากันบนของชิ้นเดียวกัน
+          ⚠️ แปลง `id` ของก้อนบรีฟเป็น `briefId` ให้ตรงรูปแถวที่โมดัลรับ — ตารางฝั่ง
+          โน้นส่ง `briefId` มาอยู่แล้ว จุดต่างเดียวคือชื่อคีย์ของก้อน */}
+      <BriefPerfumerModal
+        row={assignBrief && {
+          briefId: assignBrief.id,
+          label: assignBrief.label,
+          perfumer: assignBrief.perfumer,
+        }}
+        perfumers={perfumerPeople}
+        saving={saving}
+        onClose={() => setAssignBrief(null)}
+        onSubmit={({ briefId, perfumerId, perfumerName }) => call("", {
+          method: "PATCH",
+          body: JSON.stringify({ action: "assign-brief", briefId, perfumerId, perfumerName }),
+        }, perfumerId ? "แจกงานแล้ว" : "ถอนการแจกแล้ว").then((ok) => {
+          if (ok) setAssignBrief(null);
+          return ok;
+        })}
+      />
 
       {/* มอบหมายผู้รับผิดชอบ — ช่องเลือกคนตัวกลางของระบบ (`PersonSelect`)
           ⚠️ **เลือก "ยังไม่ระบุ" = ถอนการมอบหมาย** ไม่ใช่ปิดโมดัลเฉย ๆ — คนลาออก/
