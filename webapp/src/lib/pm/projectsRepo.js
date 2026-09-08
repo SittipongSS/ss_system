@@ -27,7 +27,10 @@ export async function loadProject(supabase, idOrCode) {
 export async function teamProjectIds(supabase, team) {
   const teams = userTeams(team);
   if (!teams.length) return [];
-  const { data } = await supabase.from('projects').select('id').in('team', teams);
+  /* 🔴 ลิสต์นี้เป็น **ขอบเขตการมองเห็น** — อ่านไม่ได้แล้วคืน [] แปลว่า
+     "ทีมนี้ไม่มีโครงการ" ซึ่งอ่านเหมือนข้อมูลจริง ไม่ใช่ความผิดพลาด */
+  const { data, error } = await supabase.from('projects').select('id').in('team', teams);
+  if (error) throw error;
   return (data || []).map((p) => p.id);
 }
 

@@ -50,7 +50,7 @@ export default function ServiceSitesPage() {
   // ⚠️ cap อย่างเดียวไม่พอ — service:edit ถือกว้างทั้ง staff และ sales role
   // ฝ่าย TS / ทีม SV คือตัวกั้นจริง (เหมือนที่ server ทำใน requireService)
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
-  // นำเข้าเป็นก้อนแคบกว่าการแก้รายใบ — หัวหน้าฝ่ายบริการขึ้นไปเท่านั้น (F-8)
+  // นำเข้าเป็นก้อนแคบกว่าการแก้รายใบ — **แอดมินเท่านั้น** (F-8 · มติ 2026-08-30)
   const canImport = useMemo(
     () => canImportServiceData({ role, team, teams, department }),
     [role, team, teams, department],

@@ -62,7 +62,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   let extraPersonal = [];
   if (scope === 'all') {
-    const { data } = await allPersonal(supabase);
+    /* 🔴 รับ `error` ด้วย — supabase ไม่ throw มันคืน { data: null, error }
+       ⇒ ทิ้ง error = แดชบอร์ดขาดงานไปเงียบ ๆ โดยไม่มีอะไรบอกว่าโหลดไม่ครบ */
+    const { data, error } = await allPersonal(supabase);
+    if (error) throw error;
     extraPersonal = data || [];
   } else if (scope === 'team') {
     const dept = normalizeDepartment(user.department);

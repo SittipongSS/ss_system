@@ -23,12 +23,15 @@ function toQty(value) {
 
 async function nextPrepNumber(supabase, now = new Date()) {
   const prefix = `SP-${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const { data } = await supabase
+  /* 🔴 ทิ้ง error ไม่ได้เด็ดขาด — อ่านเลขล่าสุดไม่สำเร็จ = `last` undefined
+     ⇒ next กลับไปเป็น 1 แล้ว **ออกเลขที่ทับใบเก่า** (ดู [[document-number-formats]]) */
+  const { data, error } = await supabase
     .from('shipment_prep')
     .select('prepNumber')
     .ilike('prepNumber', `${prefix}%`)
     .order('prepNumber', { ascending: false })
     .limit(1);
+  if (error) throw error;
   const last = data?.[0]?.prepNumber;
   const next = last ? (parseInt(last.slice(prefix.length), 10) || 0) + 1 : 1;
   return `${prefix}${String(next).padStart(3, '0')}`;
