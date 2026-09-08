@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
-import { can } from '@/lib/permissions';
+import { RD_ROLES, can } from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -428,6 +428,31 @@ test('ฝ่าย R&D เปิดโมดูลของตัวเองไ
     const user = { role, extraCaps: [] };
     assert.equal(lockedOut(user, '/rd', 'GET', false), false, `${role} /rd`);
     assert.equal(lockedOut(user, '/rd/requests', 'GET', false), false, `${role} /rd/requests`);
+  }
+});
+
+/* 🐞 บั๊กจริง 2026-09-08: หน้าเปิดได้ แต่ **เส้น API ของโมดูลเดียวกัน** ไม่เคยถูก
+   ลงทะเบียน ⇒ `/rd/sales-orders` เรนเดอร์ครบแล้วยิง `/api/rd/sales-orders` ตกด่าน
+   403 สำหรับคนของฝ่ายทุกคน · เทสต์ข้างบนจับไม่ได้เพราะตรวจแต่ path ของ **หน้า**
+   ⚠️ ต้องไล่ role ของฝ่ายให้ครบทั้งห้าตัว ไม่ใช่แค่ `rd` — สี่ตำแหน่งที่เพิ่มเข้ามา
+   (#1555) เป็นคนละสตริงกัน ด่านที่เขียนด้วยชื่อ role จึงพลาดทีละตัวได้เงียบ ๆ */
+test('เส้น API ของโมดูล R&D ต้องอ่านได้จริงสำหรับคนของฝ่าย ไม่ใช่แค่แอดมิน', () => {
+  for (const role of RD_ROLES) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/rd/sales-orders', 'GET', true), false, `${role} GET /api/rd/sales-orders`);
+    assert.equal(lockedOut(user, '/api/rd/perfumer-board', 'GET', true), false, `${role} GET /api/rd/perfumer-board`);
+  }
+});
+
+/* ⚠️ เปิดเฉพาะ **ทางอ่าน** — ทุก route ใต้ `/api/rd` มีแต่ GET โดยตั้งใจ (ของฝ่าย
+   เป็นมุมมองบนเอกสารของคนอื่น ไม่ใช่เจ้าของ) · ทางเขียนของฝ่ายเดินผ่าน `/api/sa`
+   ซึ่งมีด่านของตัวเองอยู่แล้ว ⇒ ถ้าวันหนึ่งมี POST/PATCH ใต้ `/api/rd` จริง
+   เทสต์นี้จะเป็นตัวบังคับให้ตัดสินใจเปิดอย่างตั้งใจ ไม่ใช่หลุดตามมากับ prefix */
+test('/api/rd ยังปิดทางเขียนสำหรับคนที่ไม่ใช่แอดมิน', () => {
+  for (const role of RD_ROLES) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/rd/perfumer-board', 'PATCH', true), true, `${role} PATCH /api/rd`);
+    assert.equal(lockedOut(user, '/api/rd/perfumer-board', 'POST', true), true, `${role} POST /api/rd`);
   }
 });
 

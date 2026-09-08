@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 const GUARDED = [
   "app/service/assets/page.js",
   "app/requests/page.js",
+  "app/rd/perfumers/page.js",
   "app/notifications/page.js",
   "app/finance/payments/page.js",
   "app/sa/calendar/page.js",

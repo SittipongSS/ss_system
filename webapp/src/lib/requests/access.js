@@ -1,7 +1,7 @@
 // ── สิทธิ์ต่อคำร้องหนึ่งใบ ─────────────────────────────────────────────────
 // ⭐ **R-1 ปิดแล้ว** — ด่าน "เห็นเมนูคำร้องไหม" คือ `canViewRequests` ไม่ใช่
 // `canViewCosting` อีกต่อไป (ดู lib/permissions.js) · ไฟล์นี้คุม "ใบนี้ใครแตะได้"
-import { canAnswerRequestsFor, isReadOnlyObserver, isSuperuser, userTeams } from '@/lib/permissions';
+import { canAnswerRequestsFor, canUser, isRdLead, isReadOnlyObserver, isSuperuser, userTeams } from '@/lib/permissions';
 
 // ตอบ/รับเรื่อง = ฝ่ายเจ้าของคำร้อง + admin break-glass
 //
@@ -10,6 +10,21 @@ import { canAnswerRequestsFor, isReadOnlyObserver, isSuperuser, userTeams } from
 export function canAnswerRequest(user, request) {
   if (!request) return false;
   return canAnswerRequestsFor(user, request.dept);
+}
+
+/* ── แจกกลิ่นให้ผู้ปรุง = "ตอบใบนี้ได้" + "เป็นหัวหน้าของฝ่าย" (มติผู้ใช้ 2026-09-08) ──
+ *
+ * ⭐ **สองชั้น ไม่ใช่ชั้นเดียว** — ชั้นแรกคือด่านเดิมของใบ (ฝ่ายถูกต้อง + ถือ
+ * `requests:answer`) ชั้นที่สองคือ *ตำแหน่งในฝ่าย* · ตัดชั้นแรกทิ้งเมื่อไร หัวหน้า RD
+ * จะแจกกลิ่นในใบของฝ่ายอื่นได้ · ตัดชั้นที่สองทิ้งเมื่อไร ผู้ปรุงจะแจกงานให้ตัวเองได้
+ *
+ * ⚠️ **แอดมินผ่านด้วย `users:manage` ไม่ใช่ `isSuperuser`** — `isSuperuser` คือ
+ * `admin || ae_supervisor` ⇒ ใช้ตัวนั้นแปลว่าหัวหน้าฝ่ายขายแจกงานปรุงกลิ่นได้ด้วย
+ * ซึ่งไม่มีใครสั่ง (กติกา `admin-full-rights` พูดถึงแอดมิน ไม่ใช่ superuser ทั้งชุด)
+ */
+export function canAssignBriefPerfumer(user, request) {
+  if (!canAnswerRequest(user, request)) return false;
+  return isRdLead(user?.role) || canUser(user, 'users:manage');
 }
 
 // ── ทีมเดียวกัน = ใบเดียวกัน (มติผู้ใช้ 2026-08-11) ───────────────────────
