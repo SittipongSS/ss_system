@@ -260,10 +260,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         } else {
           /* บรรทัดในเธรดคือตัวที่แจกกระดิ่ง — SA ต้องได้ทั้ง "ยังไม่ได้คำตอบ" และ **เหตุผล**
              ไม่ใช่รู้แค่ว่าวันหายไปเฉย ๆ (แผน §5E ②) */
+          /* 🐞 **ห้ามส่ง `user.id` เข้าเธรดของใบคำร้อง** — `notifyThreadUpdate` แจกกระดิ่ง
+             ให้ "คนที่เคยโพสต์" ด้วย ⇒ ช่างที่กดปิดนัดเป็น "เข้าไม่ได้" กลายเป็น past
+             author ของใบนั้น**ถาวร** แล้วได้กระดิ่งทุกความเคลื่อนไหวของใบตลอดไป
+             🔴 และกระดิ่งนั้นพาไป `/requests/[id]` ซึ่ง role `ts` **เปิดไม่ได้ (403)**
+               — ได้ toast `forbidden` อังกฤษเปล่า ๆ · เป็นรูสายพันธุ์เดียวกับที่
+               `send-back` ปิดไปแล้ว (ยิงกระดิ่งของช่างแยก + href ไปจอที่เขาเปิดได้)
+             ⇒ เก็บ **ชื่อ** ไว้ให้ SA อ่านว่าใครแจ้ง แต่ไม่ผูก `authorId` */
           await appendUpdate(supabase, {
             entityType: 'dept_request', entityId: data.requestId, kind: 'unable',
             body: surveyStepBackBody(stepBack),
-            user,
+            user: { name: user?.name || null, department: user?.department || null },
           });
         }
       }

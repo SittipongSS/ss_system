@@ -49,6 +49,12 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     if (!open || !visit) return;
     setError("");
     setDraftItem({ label: "", qty: "", unit: "", assetId: "" });
+    /* 🐞 **ชิป "ไปแล้วเข้าไม่ได้" กับเหตุผลไม่เคยถูกล้าง** — แผ่นเดียวถูกใช้ซ้ำทุกใบ
+       ⇒ ปิดใบแรกเป็น "เข้าไม่ได้ เพราะอาคารปิด" แล้วเปิดใบถัดไป ชิปยังติดอยู่พร้อม
+         เหตุผลของใบก่อน · กดบันทึกได้เลยโดยไม่มีอะไรฟ้อง = ใบที่สองถูกปิดว่าเข้าไม่ได้
+         ด้วยเหตุผลของงานคนละที่ และใบนั้นถอยกลับขั้นลงคิวไปด้วย (§5E ②) */
+    setUnable(false);
+    setUnableReason("");
     setForm(closeFormDefaults(visit));
     (async () => {
       try {
