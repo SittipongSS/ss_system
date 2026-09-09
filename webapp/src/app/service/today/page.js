@@ -25,7 +25,7 @@ import { canDoFieldWork } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
 import { VISIT_STATUS_LABELS, isClosedVisit } from "@/lib/service/visitStatus";
-import { groupVisits, openCount, overdueDays } from "@/lib/service/myVisits";
+import { closeVisitPayload, groupVisits, openCount, overdueDays } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
@@ -133,8 +133,11 @@ export default function TodayPage() {
     const res = await apiFetch(`/api/service/visits/${closing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      // stamp:'end' = ให้ server ประทับเวลาจบด้วยนาฬิกาไทย · ฟอร์มไม่ส่งเวลามาเอง
-      body: JSON.stringify({ ...form, stamp: "end" }),
+      /* stamp:'end' = ให้ server ประทับเวลาจบด้วยนาฬิกาไทย · ฟอร์มไม่ส่งเวลามาเอง
+         ⚠️ **ใบที่ปิดไปแล้วต้องไม่ส่ง `stamp`** — ปุ่มเดียวกันนี้เป็นทั้ง "ปิดงาน" และ
+           "แก้ผลการเข้า" · ส่งไปกับใบที่ปิดแล้ว = 409 ทุกครั้ง (ตัวตัดสินอยู่ที่
+           `closeVisitPayload` เพื่อให้เทสต์ได้โดยไม่ต้องมี DOM) */
+      body: JSON.stringify(closeVisitPayload(closing, form)),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.error || "ปิดงานไม่สำเร็จ");

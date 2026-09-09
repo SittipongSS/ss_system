@@ -35,7 +35,7 @@ const EMPTY = {
   siteId: "", kind: "refill", scheduledDate: "", startTime: "", endTime: "",
   assigneeId: "", assigneeName: "", assistantIds: [], status: "scheduled",
   actualDate: "", actualStartTime: "", actualEndTime: "", summary: "", note: "",
-  rescheduleReason: "",
+  rescheduleReason: "", unableReason: "",
 };
 
 export default function ServiceVisitModal({
@@ -70,6 +70,7 @@ export default function ServiceVisitModal({
         summary: visit.summary || "",
         note: visit.note || "",
         rescheduleReason: "",   // ไม่ค้างจากรอบก่อน — เหตุผลผูกกับการเลื่อนครั้งนี้เท่านั้น
+        unableReason: visit.unableReason || "",
       });
     } else {
       // คลิกช่องว่างบนปฏิทิน = รู้วันและเจ้าหน้าที่อยู่แล้ว — เติมให้เลย
@@ -120,7 +121,16 @@ export default function ServiceVisitModal({
 
   const submit = async (override = null) => {
     const payload = override ? { ...form, ...override } : form;
-    const { error: invalid } = normalizeVisitInput(payload);
+    /* 🐞 **นัดประเมินพื้นที่กดบันทึกไม่ได้เลยสักปุ่ม** — ตัวตรวจปฏิเสธ `kind: 'survey'`
+       เพราะนัดประเมินเกิดได้ทางเดียวคือจากใบคำร้อง (ห้ามสร้างมือ) · route ของ PATCH
+       ส่ง `existingKind` ให้อยู่แล้ว แต่จอไม่ส่ง ⇒ ตายที่ด่านฝั่ง client ก่อนยิง API ด้วยซ้ำ
+       ⇒ ร่างนัดประเมินที่ติดด่าน ปล่อยเข้าคิวไม่ได้ตลอดกาล และโมดัลนี้เป็นที่เดียว
+         ในระบบที่ปล่อยร่างเข้าคิวได้
+       ⚠️ ถามด้วย **อาร์กิวเมนต์ชุดเดียวกับ server** ไม่ใช่ผ่อนด่านฝั่งจอ */
+    const { error: invalid } = normalizeVisitInput(
+      payload,
+      editing && visit?.kind ? { existingKind: visit.kind } : {},
+    );
     if (invalid) { setError(invalid); return; }
     // ตรวจฝั่งหน้าจอด้วย เพื่อให้ผู้ใช้เห็นก่อนกด ไม่ใช่โดน server ตีกลับ
     if (rescheduling && !form.rescheduleReason.trim()) {
@@ -279,6 +289,27 @@ export default function ServiceVisitModal({
                 <small className={styles.hint}>สถานะนี้มาจากปุ่มเริ่มงาน/ปิดงานของเจ้าหน้าที่ แก้จากที่นี่ไม่ได้</small>
               )}
             </label>
+
+            {/* ⭐ **"ทำไม่ได้" เลือกได้จากที่นี่โดยตั้งใจ** — เป็นทางออกที่คนจัดคิวต้องมี
+                เมื่อช่างไปแล้วทำไม่ได้แต่ปิดเองไม่ทัน (แผ่นปิดงานอยู่บนจอ "งานวันนี้" เท่านั้น)
+                🐞 แต่เดิม **ไม่มีช่องเหตุผลให้กรอก** ทั้งที่ DB บังคับ ≥10 ตัวอักษร
+                  ⇒ เลือกได้ กดบันทึกแล้วเจอ error ที่สั่งให้กรอกช่องซึ่งไม่มีอยู่บนจอ */}
+            {form.status === "unable" && (
+              <label className={`${styles.field} ${styles.wide}`}>
+                <span>ทำไม่ได้เพราะอะไร *</span>
+                <Input
+                  value={form.unableReason}
+                  onChange={change("unableReason")}
+                  placeholder="เช่น อาคารไม่อนุญาตให้เข้าวันหยุด · ลูกค้าไม่อยู่ ไม่มีคนเปิดห้อง"
+                  maxLength={500}
+                />
+                <small className={styles.hint}>
+                  {form.unableReason.trim().length >= 10
+                    ? "ผู้ขอจะเห็นเหตุผลนี้ — ใบประเมินจะถอยกลับขั้นลงคิวให้เอง"
+                    : "อย่างน้อย 10 ตัวอักษร (ฐานข้อมูลบังคับ)"}
+                </small>
+              </label>
+            )}
 
             {/* ⭐ ด่านเข้าไซต์ — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน (มติผู้ใช้ 2026-08-28)
                 แสดงเป็น **รายการติ๊กพร้อมชื่อคนที่แก้ได้** ไม่ใช่ปุ่มเทา —
