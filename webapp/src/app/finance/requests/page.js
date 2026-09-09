@@ -50,7 +50,7 @@ export default function FinanceRequestsPage() {
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await apiFetch("/api/sa/requests", { cache: "no-store" });
+      const res = await apiFetch(`/api/sa/requests?dept=${DEPT}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setRequests(Array.isArray(d) ? d : []);

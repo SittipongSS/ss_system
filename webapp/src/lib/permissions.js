@@ -1785,6 +1785,10 @@ const SCOPE_OWNS_MINE = {
   calendar: (role) => SALES_ROW_HOLDER_ROLES.includes(role),
   leads: (role) => SALES_ROW_HOLDER_ROLES.includes(role) || role === 'marketing',
   requests: (role) => !isSuperuser(role) && !isReadOnlyObserver(role),
+  /* tasks — `mine` = เจ้าของ ∪ ผู้รับมอบ ∪ คนดึงมาทำแทน ∪ **คนที่มอบหมายให้คนอื่น**
+     ⇒ แอดมิน/หัวหน้าฝ่ายมีงานของตัวเองจริงบนหน้านี้ (ต่างจากคิวคำร้อง) และหน้านี้
+     ชื่อ "งานของฉัน" อยู่แล้ว · เหลือแต่ผู้สังเกตการณ์ที่ไม่มีงานเลย */
+  tasks: (role) => !isReadOnlyObserver(role),
 };
 
 /** ขอบเขตที่ควรเปิดมาเจอ — แคบสุดที่ยังมีของ · ถอยเป็นตัวกว้างสุดเมื่อไม่มีตัวไหนผ่าน

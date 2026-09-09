@@ -19,6 +19,9 @@ import { loadRequests } from '@/lib/materialPricesAdmin';
  * @param status     กรองสถานะ (ถ้ามี)
  * @param lean       ผู้เรียกที่ **นับ** ไม่ใช่ **แสดง** — ข้ามการเติมชื่อโครงการ/รหัส AR
  *                   (ดู loadRequests · ตัวกรองแถวไม่แตะสองช่องนั้น ตัวเลขจึงไม่เปลี่ยน)
+ * @param dept       ขอ **คิวของฝ่ายนี้เท่านั้น** (หน้า /rd|/finance|/service/requests) —
+ *                   คนละแกนกับ `scope` ซึ่งถามว่า "ใครเป็นคนเปิด" · ไม่มีสิทธิ์ตอบให้
+ *                   ฝ่ายนั้น = เมินพารามิเตอร์ ถอยไปทางปกติ (ไม่มีทางกว้างขึ้น)
  * @returns { rows, scope, explicit }
  *   rows     ติดธง `_mine` มาแล้ว
  *   scope    ขอบเขตที่ใช้จริงหลังถอยตามสิทธิ์ — 'all' เมื่อ admin ไม่ได้ระบุมา
@@ -28,11 +31,30 @@ import { loadRequests } from '@/lib/materialPricesAdmin';
  * ตั้งแต่เปิดให้ทีมทำแทนกันได้ (ม-100) สองอย่างนี้ไม่เท่ากันแล้ว · หน้ารายละเอียด
  * ติดธงชื่อเดียวกันแต่คนละความหมาย อย่า "แก้ให้ตรงกัน" โดยไม่อ่านสองที่ก่อน
  */
-export async function loadVisibleRequests(supabase, user, { scopeParam = null, status = null, lean = false } = {}) {
+export async function loadVisibleRequests(supabase, user, { scopeParam = null, status = null, lean = false, dept: deptParam = null } = {}) {
   const scope = resolveScope(user, scopeParam);
   const explicit = REQUEST_SCOPES.includes(scopeParam);
   const scopeWhere = scopeFilter(user, scope);
   const decorate = (rows) => rows.map((r) => ({ ...r, _mine: r.requestedById === user?.id }));
+
+  /* ⭐ **คิวของฝ่าย — กรองที่ API ไม่ใช่ที่จอ** (หน้าฝ่ายกรองด้วย `deptQueueRows` อยู่แล้ว
+     แต่นั่นคือ *หลัง* ข้อมูลถึงเบราว์เซอร์) · ของเดิมหน้าฝ่ายไม่ส่งอะไรมาเลย ⇒ ผู้ดูแล
+     ระบบ/หัวหน้าฝ่ายขายเปิด /rd/requests แล้วได้คำร้องของ **ทุกฝ่าย** ลงเบราว์เซอร์
+     ก่อนค่อยซ่อน — ผิดกฎข้อเดียวกับที่ lib/requests/scope.js เขียนเตือนไว้
+     ⚠️ **ไม่ใช่ทางลัดข้ามด่าน** — ขอฝ่ายที่ตัวเองตอบไม่ได้ = เมินพารามิเตอร์แล้วถอยไป
+     ทางปกติ ไม่ใช่ปฏิเสธทั้งคำขอ (กติกาเดียวกับ resolveScope: ถอยลงมา ไม่ตีกลับ)
+     ⚠️ ร่างของคนอื่นยังไม่ถูกส่ง = ยังไม่ใช่งานของฝ่าย — ตัดเหมือนทางปกติเป๊ะ
+     ส่วนผู้ดูแลระบบเห็นร่างได้เหมือนเดิม (สาขา superuser ข้างล่างก็ไม่เคยตัด) */
+  const deptQueue = deptParam && REQUEST_ANSWER_DEPARTMENTS.includes(deptParam)
+    && (isSuperuser(user?.role) || canAnswerRequestsFor(user, deptParam))
+    ? deptParam : null;
+  if (deptQueue) {
+    const deptRows = await loadRequests(supabase, { status, lean, dept: deptQueue });
+    const visible = isSuperuser(user?.role)
+      ? deptRows
+      : deptRows.filter((r) => r.status !== 'draft' || r.requestedById === user?.id);
+    return { rows: decorate(visible), scope: 'dept', explicit };
+  }
 
   // ⚠️ **ผู้ดูแลระบบที่ไม่ได้ระบุขอบเขตต้องเห็นทุกใบ** — ของเดิมเอาค่าตั้งต้น "ของฉัน"
   // มาใช้ ⇒ admin ที่ไม่ได้เปิดใบเองเห็นคิวว่างทั้งที่มีงานอยู่จริง (ผู้ใช้เจอเองบนจอ)

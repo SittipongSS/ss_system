@@ -1,4 +1,4 @@
-import { normalizeDepartment, pmTaskScopes, can, isRdRole } from '@/lib/permissions';
+import { normalizeDepartment, pmTaskScopes, defaultScope, can, isRdRole } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { REQUEST_OPEN_STATUSES } from '@/lib/deptRequests';
 import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
@@ -39,10 +39,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!can(user.role, 'pm:view')) return forbidden(); // PM เป็นเครื่องมือฝ่ายขาย — RA ไม่มีสิทธิ์
 
   const allowed = pmTaskScopes(user.role);
-  let scope = new URL(req.url).searchParams.get('scope') || 'mine';
-  // Fall back to the role's first (default) allowed scope, not a hardcoded 'mine':
-  // a viewer's only scope is 'all', so requesting 'mine' must resolve to 'all'.
-  if (!allowed.includes(scope)) scope = allowed[0];
+  // ค่าตั้งต้นมาจากตัวกลาง `defaultScope` = แคบสุดที่ไม่ว่างโดยโครงสร้าง (มติผู้ใช้
+  // 2026-09-08) — ตัวเดียวกับที่จอใช้ ⇒ จอกับ API ตอบตรงกันตั้งแต่รอบแรก ไม่ต้องรอ
+  // ให้ API แก้ค่าให้แล้วโหลดซ้ำ · ผู้สังเกตการณ์มีขอบเขตเดียวคือ 'all' จึงไม่ตกไป 'mine'
+  const requested = new URL(req.url).searchParams.get('scope');
+  const scope = allowed.includes(requested) ? requested : defaultScope(allowed, user, 'tasks');
 
   // ── งาน personal_tasks (ระบบติดตามงาน — ผู้มีสิทธิ์ต้องเห็น "งาน" ทั้งหมดในขอบเขต) ──
   //   • mine = งานที่ฉันเป็นเจ้าของ หรือถูกมอบหมายให้ฉัน

@@ -29,7 +29,7 @@ import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import { isSuperuser, isRdRole, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
+import { isSuperuser, isRdRole, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, defaultScope, pmTaskScopes, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate, naText, NA } from "@/lib/format";
@@ -179,7 +179,12 @@ export default function TasksPage() {
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
 
-  const [scope, setScope] = useStickyState("scope", "mine");
+  /* ⭐ ค่าตั้งต้นมาจากตัวกลางตัวเดียวกับอีกสี่จอ (มติผู้ใช้ 2026-09-08) — ของเดิม
+     ฝังค่า "mine" ไว้ตายตัวแล้วให้ API แก้ให้ทีหลัง (`d.scope !== sc` ⇒ setScope)
+     ⇒ ผู้สังเกตการณ์ที่มีขอบเขตเดียวคือ "ทั้งหมด" ต้องโหลดสองรอบทุกครั้งที่เข้าหน้า
+     ⚠️ ส่งแค่ `{ role }` พอ — ผิว tasks ตัดสิน "ของฉัน" จากตำแหน่งอย่างเดียว
+     ไม่ได้ถามทีม (ขอบเขต "ทีม" ของฝ่าย RD คือฝ่าย ไม่ใช่ทีมขาย) */
+  const [scope, setScope] = useStickyState("scope", defaultScope(pmTaskScopes(role), { role }, "tasks"));
   const [mineView, setMineView] = useState(MINE_TASK_VIEWS.RESPONSIBLE);
   const [allowedScopes, setAllowedScopes] = useState(["mine"]);
   const [personalTasks, setPersonalTasks] = useState([]);
