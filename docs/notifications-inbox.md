@@ -22,6 +22,7 @@
 | จุดส่งมอบลีด (`notifyLeadHandoff`) | `lead_create` · `lead_screen` · `lead_assign` · `lead_bounce` | ลีดเปลี่ยนมือ |
 | สรุปเช้า (`/api/cron/daily-digest`) | `lead_overdue` | ลีดค้างเกิน SLA 1 วันทำการ |
 | มอบหมายงาน (`notifyTaskAssigned`) | `task_assign` | งานเปลี่ยนมือ: มอบให้คนอื่น · ย้ายมือ · รับช่วงงาน · ถอนการมอบหมาย |
+| ใบกำกับภาษีของงวด (`notifyTaxInvoice`) | `sales_order_tax_invoice` · `sales_order_tax_invoice_cleared` | บัญชีบันทึก/ถอนใบกำกับของงวดชำระ → เจ้าของใบ + เจ้าของดีล (ลิงก์ไปแท็บการชำระที่กดโหลดไฟล์ได้) |
 
 ผู้รับ = คนที่ผูกกับแถวแม่ (`updateAccess`) + คนที่เคยโพสต์ในเธรดนั้น + คนที่ถูก `@`
 − คนที่เพิ่งลงมือเอง · **ห้ามใช้ "ทุกคนในฝ่าย"** (มติ 14 — ซ้ำกับ Chat webhook แล้วกล่องจะตาย)

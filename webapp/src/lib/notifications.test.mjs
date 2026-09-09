@@ -22,7 +22,8 @@ function* walk(dir) {
 }
 
 import {
-  CONTRACT_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, SERVICE_BELL_KINDS,
+  CONTRACT_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, SALES_ORDER_BELL_KINDS,
+  SERVICE_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -262,7 +263,8 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   await listNotificationPage(supabase, 'u-1', { box: notificationBox('bell') });
   assert.deepEqual(calls.ors, [
     'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
-    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS]
+    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
+      ...SALES_ORDER_BELL_KINDS]
       .map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
@@ -273,7 +275,7 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
     ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
-      ...CONTRACT_BELL_KINDS]);
+      ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
@@ -384,6 +386,33 @@ test('CONTRACT_BELL_KINDS ครบทุก kind ที่ยิงจริง
   for (const kind of kinds) {
     assert.ok(CONTRACT_BELL_KINDS.includes(kind),
       `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน CONTRACT_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+  }
+});
+
+/* ⚠️ ดริฟต์ตัวเดียวกับสัญญา และเหตุผลเดียวกันเป๊ะ: ไฟล์ที่ **ประกาศ** kind
+   (`sales/taxInvoiceNotify.js`) กับไฟล์ที่ **ยิง** (route ของงวดชำระ) คนละไฟล์
+   ⇒ กรองด้วย `entityType: 'sales_order'` แล้วตาบอดครึ่งเดียว · จับด้วยคำนำหน้าชื่อ kind */
+test('SALES_ORDER_BELL_KINDS ครบทุก kind ที่ยิงจริง', () => {
+  const kinds = new Set();
+  for (const file of walk(new URL('..', import.meta.url))) {
+    const src = readFileSync(file, 'utf8');
+    for (const [, kind] of src.matchAll(/kind: '(sales_order_[a-z_]+)'/g)) kinds.add(kind);
+    for (const [, kind] of src.matchAll(/_KIND = '(sales_order_[a-z_]+)'/g)) kinds.add(kind);
+  }
+  assert.ok(kinds.size >= 2, 'หา kind ของแจ้งเตือนใบสั่งขายไม่เจอเลย — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of kinds) {
+    assert.ok(SALES_ORDER_BELL_KINDS.includes(kind),
+      `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน SALES_ORDER_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+  }
+});
+
+/* 🪤 ใบสั่งขาย **ไม่มีเธรด** โดยมติ (เหตุการณ์ของใบสะท้อนเข้าเธรดของดีลแทน)
+   ⇒ ใส่ 'sales_order' ลง entityTypes ไม่ได้ · เทสต์ข้างล่างบังคับอยู่แล้วว่าทุก
+   entityType ในกล่องต้องมีเธรด แต่ปักหมุดตรงนี้ด้วยเพื่อให้เหตุผลอยู่ใกล้ของ */
+test('⭐ ใบสั่งขายเข้ากระดิ่งด้วย kind ไม่ใช่ทั้ง entity', () => {
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('sales_order'), false);
+  for (const kind of SALES_ORDER_BELL_KINDS) {
+    assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกระดิ่ง`);
   }
 });
 
