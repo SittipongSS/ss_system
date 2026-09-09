@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Flag, Search, UserRound, Wallet } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -179,6 +179,26 @@ const PAYMENT_FILTERS = {
   untracked: { label: "ยังไม่เริ่มติดตาม", match: (row) => !row.payment?.tracked },
 };
 
+/* ── ตัวกรองใบกำกับภาษี (mig 0348 · มติผู้ใช้ 2026-09-09) ──────────────────
+   ⭐ **กลุ่มของตัวเอง ไม่ใช่ตัวเลือกที่ห้าของ "การชำระ"** — ตัวเลือกในกลุ่มเดียวกัน
+   เป็น OR กัน (`.some`) ⇒ ยัดรวมเมื่อไร "เก็บเงินครบแล้ว + ยังไม่ออกใบกำกับ" จะกลาย
+   เป็น "อย่างใดอย่างหนึ่ง" ซึ่งตรงข้ามกับที่คนกดคาดหวัง · คนละกลุ่ม = AND กัน
+   (เงินกับเอกสารเป็นคนละแกน — เหตุผลเดียวกับที่แยกคอลัมน์ออกมาใน #1677)
+
+   ⚠️ **อ่านจาก `salesOrderTaxInvoiceNote` ตัวเดียวกับที่คอลัมน์ใช้** ไม่คิดเงื่อนไขเอง —
+   ตัวส่วนคือ "งวดที่จ่ายแล้ว" ซึ่งเป็นกติกาที่เขียนไว้ที่นั่นแล้ว · เขียนซ้ำที่นี่
+   เมื่อไร วันหนึ่งชิปตัวกรองกับตัวเลขในคอลัมน์จะไม่ตรงกันโดยไม่มีใครรู้ */
+const INVOICE_FILTERS = {
+  missing: {
+    label: "ยังไม่ออกใบกำกับ",
+    match: (row) => salesOrderTaxInvoiceNote(row.payment)?.tone === "warning",
+  },
+  complete: {
+    label: "ออกใบกำกับครบ",
+    match: (row) => salesOrderTaxInvoiceNote(row.payment)?.tone === "success",
+  },
+};
+
 /* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
    ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้ */
 function compareOrders(a, b, key, dir) {
@@ -216,6 +236,7 @@ export default function SalesOrdersPage() {
   const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
   const [lineView, setLineView] = useStickyState("lineView", "all");
   const [paymentFilter, setPaymentFilter] = useStickyState("paymentFilter", EMPTY);
+  const [invoiceFilter, setInvoiceFilter] = useStickyState("invoiceFilter", EMPTY);
   /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
@@ -265,6 +286,7 @@ export default function SalesOrdersPage() {
       if (statusFilter.length && !statusFilter.includes(row.status)) return false;
       // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
       if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
+      if (invoiceFilter.length && !invoiceFilter.some((key) => INVOICE_FILTERS[key]?.match(row))) return false;
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
       // ⚠️ รหัส AR ขึ้นเป็นชิปบนทุกแถวแล้ว (ดูเซลล์ลูกค้าข้างล่าง) จึงต้องค้นเจอด้วย
@@ -272,7 +294,7 @@ export default function SalesOrdersPage() {
       return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
-  }, [query, rows, statusFilter, paymentFilter, waitingOnMeOnly, lineView]);
+  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, waitingOnMeOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
      "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
@@ -317,10 +339,11 @@ export default function SalesOrdersPage() {
 
   const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
-  const filterCount = statusFilter.length + paymentFilter.length + (waitingOnMeOnly ? 1 : 0);
+  const filterCount = statusFilter.length + paymentFilter.length + invoiceFilter.length
+    + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
@@ -473,7 +496,9 @@ export default function SalesOrdersPage() {
             <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / AR / ดีล / เอกสารอ้างอิง" /></div>
             <FilterPopover
               count={filterCount}
-              onClear={() => { setStatusFilter([]); setPaymentFilter([]); setWaitingOnMeOnly(false); }}
+              onClear={() => {
+                setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setWaitingOnMeOnly(false);
+              }}
               groups={[
                 {
                   key: "status", label: "สถานะเอกสาร", icon: Flag,
@@ -484,6 +509,11 @@ export default function SalesOrdersPage() {
                   key: "payment", label: "การชำระ", icon: Wallet,
                   options: Object.entries(PAYMENT_FILTERS).map(([value, { label }]) => ({ value, label })),
                   selected: paymentFilter, onChange: setPaymentFilter,
+                },
+                {
+                  key: "invoice", label: "ใบกำกับภาษี", icon: FileText,
+                  options: Object.entries(INVOICE_FILTERS).map(([value, { label }]) => ({ value, label })),
+                  selected: invoiceFilter, onChange: setInvoiceFilter,
                 },
                 {
                   key: "mine", label: "งานของฉัน", icon: UserRound,
