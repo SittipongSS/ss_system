@@ -142,12 +142,32 @@ export const CONTRACT_BELL_KINDS = Object.freeze([
   'contract_signature_overdue',
 ]);
 
+/* ── ใบสั่งขาย: ผลลัพธ์จากฝ่ายบัญชีที่ฝ่ายขายต้องรู้ทันที (mig 0348) ────────
+ *
+ * ⭐ เข้ากล่องเฉพาะ **เหตุการณ์ที่ AE ต้องลงมือต่อ** ไม่ใช่ทุกความเคลื่อนไหวของใบ —
+ * ใบกำกับออกแล้ว = หยิบไฟล์ไปส่งลูกค้าได้ · ถูกถอนคืน = ต้องแจ้งลูกค้ากลับ
+ *
+ * 🪤 **ทำไมไม่ใส่ `'sales_order'` ลง `entityTypes`** ทั้งที่สั้นกว่า: เหตุผลเดียวกับ
+ * สัญญา — ลากทุกความเคลื่อนไหวของใบเข้ากล่องจนคำร้องตกขอบ 30 แถว และเทสต์บังคับว่า
+ * ทุก `entityType` ในกล่องต้องมีเธรดใน `UPDATE_ENTITIES` ซึ่งใบสั่งขาย**ไม่มีเธรด**
+ * โดยมติ (เหตุการณ์ของใบถูกสะท้อนเข้าเธรดของดีลแทน) ⇒ ใส่แล้วเทสต์แดงทันที
+ *
+ * ⚠️ ชุดนี้ต้องตรงกับ kind ที่ยิงจริง · notifications.test.mjs กวาดทั้ง src
+ *    หา `kind: 'sales_order_…'` และ `_KIND = 'sales_order_…'` มาเทียบ ดริฟต์แล้วแดง */
+export const SALES_ORDER_BELL_KINDS = Object.freeze([
+  // บัญชีบันทึกใบกำกับภาษีของงวด → เจ้าของใบ + เจ้าของดีล (หยิบไฟล์ไปส่งลูกค้าได้)
+  'sales_order_tax_invoice',
+  // บัญชีถอนใบกำกับคืน → คนเดียวกัน (อาจส่งไฟล์ให้ลูกค้าไปแล้ว)
+  'sales_order_tax_invoice_cleared',
+]);
+
 export const NOTIFICATION_BOXES = {
   bell: {
     entityTypes: ['dept_request', 'system_issue'],
     kinds: [
       'task_assign',
       ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
+      ...SALES_ORDER_BELL_KINDS,
     ],
   },
 };

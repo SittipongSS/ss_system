@@ -9,6 +9,7 @@ import {
   findLinkedTaxInvoiceItem, mirrorTaxInvoiceToRequestItem, taxInvoiceClearPatch,
   taxInvoiceConflict, taxInvoicePatch,
 } from '@/lib/sales/taxInvoice';
+import { notifyTaxInvoice } from '@/lib/sales/taxInvoiceNotify';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
   installmentActionError, installmentReportOutcome, withLiveAmounts,
@@ -345,6 +346,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       summary: `${action} งวด ${row.seq} ของ ${order.orderNumber}`,
       request: req,
     });
+    /* ── กระดิ่งแจ้งฝ่ายขาย (มติผู้ใช้ 2026-09-09) ─────────────────────────
+       ⭐ ยิงที่นี่จุดเดียวพอ — ทั้งทะเบียนของบัญชีและการ์ดงวดบนใบ SO ลง PATCH ตัวนี้
+       ตัวเดียวกัน (`/api/finance/payments` มีแต่ GET)
+       ⚠️ **ไม่ await และห้ามให้ throw หลุด** — `catch` ท้ายเราต์จะเปลี่ยนการบันทึกที่
+       สำเร็จไปแล้วให้เป็น 500 แล้ว FN เห็น "บันทึกไม่สำเร็จ" ทั้งที่เก็บแล้ว
+       (กติกาเดียวกับ mirror ข้างบน) */
+    if (action === 'tax-invoice' || action === 'tax-invoice-clear') {
+      notifyTaxInvoice(supabase, {
+        order,
+        // ถอนใบแล้วแถวไม่มีเลขอีก ⇒ ข้อความรอบถอนอ่านจากแถว **ก่อน** แก้
+        installment: action === 'tax-invoice' ? updated : row,
+        actor: user,
+        cleared: action === 'tax-invoice-clear',
+      });
+    }
     return ok({
       installment: updated,
       installments: withLiveAmounts(
