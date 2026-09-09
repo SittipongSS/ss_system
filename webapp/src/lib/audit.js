@@ -61,7 +61,12 @@ export async function recordAudit({
   try {
     const supabase = getSupabaseAdmin();
     const changedKeys = action === 'update' ? diffKeys(before, after) : null;
-    await supabase.from('audit_logs').insert({
+    /* 🔴 ต้องรับ `error` มาเอง — supabase **ไม่ throw** ⇒ `catch` ข้างล่างที่เขียนไว้
+       ตามกฎหัวไฟล์ ("log พลาดก็แค่ log.error ทิ้ง") **ไม่เคยทำงานสักครั้ง**
+       ⇒ audit ที่เขียนไม่ลงหายเงียบสนิท ไม่มีแม้แต่บรรทัด log
+       ⚠️ เรื่องนี้แพงเป็นพิเศษ: `audit_logs.before` คือ **ทางเดียว** ที่กู้ข้อมูล
+       ที่ถูกลบได้ (ระบบไม่มีถังขยะ — ดู [[deleted-data-recovery]]) */
+    const { error } = await supabase.from('audit_logs').insert({
       actorId: user?.id != null ? String(user.id) : null,
       actorName: user?.name ?? null,
       actorRole: user?.role ?? null,
@@ -76,6 +81,7 @@ export async function recordAudit({
       ipAddress: ipFrom(request),
       createdAt: new Date().toISOString(),
     });
+    if (error) throw error;
   } catch (e) {
     // Audit ต้องไม่พัง action ของผู้ใช้ — log แล้วกลืน error.
     console.error('[audit] record failed', action, entityType, entityId, e?.message || e);
