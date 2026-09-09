@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import {
   ROLES, SCOPE_ORDER, defaultScope, leadScopes, salesDealScopes, userTeams,
 } from './permissions.js';
+import { pmTaskScopes } from './permissions.js';
 import { REQUEST_SCOPES, canUseScope } from './requests/scope.js';
 import { DEAL_HOLDER_ROLES } from './sales/dealOwner.js';
 
@@ -150,4 +151,50 @@ test('เพรดิเคต "ของฉัน" ทุกจอต้อง�
   assert.match(deals, /activeScope === "mine"\) return !!me\?\.id &&/);
   const calendar = readFileSync(join(ROOT, 'src/app/sa/calendar/page.js'), 'utf8');
   assert.match(calendar, /activeScope === "mine"\) return !!meId &&/);
+});
+
+/* หน้า "งานของฉัน" (/pm/tasks) — `mine` ที่นี่นับ **คนที่มอบหมายให้คนอื่น** ด้วย
+   ⇒ แอดมิน/หัวหน้าฝ่ายมีงานของตัวเองจริง ต่างจากคิวคำร้อง · เหลือแต่ผู้สังเกตการณ์
+   ที่ไม่มีงานเลยและมีขอบเขตเดียวคือ "ทั้งหมด" */
+test('คิวงาน: ทุกตำแหน่งที่มีงานของตัวเองได้ "ของฉัน" · ผู้สังเกตการณ์ได้ "ทั้งหมด"', () => {
+  for (const role of ROLES) {
+    const want = ['viewer', 'executive'].includes(role) ? 'all' : 'mine';
+    assert.equal(defaultScope(pmTaskScopes(role), as(role, TEAM), 'tasks'), want, role);
+  }
+});
+
+/* จอกับ API ต้องตอบตรงกันตั้งแต่รอบแรก — ของเดิมจอฝัง "mine" ไว้ตายตัวแล้วให้ API
+   แก้ค่าให้ทีหลัง ⇒ ผู้สังเกตการณ์โหลดสองรอบทุกครั้งที่เข้าหน้า */
+test('คิวงาน: จอกับ API ใช้ defaultScope ตัวเดียวกัน ไม่ฝังค่าตายตัว', () => {
+  const page = readFileSync(join(ROOT, 'src/app/pm/tasks/page.js'), 'utf8');
+  assert.match(page, /useStickyState\("scope", defaultScope\(pmTaskScopes\(role\), \{ role \}, "tasks"\)\)/);
+  const route = readFileSync(join(ROOT, 'src/app/api/pm/my-work/route.js'), 'utf8');
+  assert.match(route, /allowed\.includes\(requested\) \? requested : defaultScope\(allowed, user, 'tasks'\)/);
+  assert.doesNotMatch(route, /scope = allowed\[0\]/, 'ห้ามกลับไปเดาค่าตั้งต้นเองที่ API');
+});
+
+/* ── คิวของฝ่าย (/rd|/finance|/service/requests) ────────────────────────────
+   ที่นั่น**ไม่มี**สามแท็บ ของฉัน/ทีม/ทั้งหมด โดยเจตนา — ฝ่ายต้องเห็นงานของฝ่ายครบ
+   ไม่ว่าใครเปิด · สิ่งที่ต้องเหมือนกันคือ "กรองที่ API ไม่ใช่ที่จอ" */
+test('คิวฝ่าย: ทั้งสามหน้าส่ง ?dept= ให้ API กรอง ไม่ใช่ดึงมาทั้งระบบแล้วซ่อน', () => {
+  for (const page of [
+    'src/app/rd/requests/page.js',
+    'src/app/finance/requests/page.js',
+    'src/app/service/requests/page.js',
+  ]) {
+    const src = readFileSync(join(ROOT, page), 'utf8');
+    assert.match(src, /apiFetch\(`\/api\/sa\/requests\?dept=\$\{DEPT\}`/, page);
+    assert.doesNotMatch(src, /apiFetch\("\/api\/sa\/requests"/, `${page}: ยังดึงมาทั้งระบบ`);
+  }
+});
+
+/* 🔴 `?dept=` ต้องไม่กลายเป็นทางลัดอ่านคิวฝ่ายอื่น — ด่านอยู่ที่ตัวโหลด ไม่ใช่ที่จอ */
+test('คิวฝ่าย: ?dept= ผ่านด่าน canAnswerRequestsFor เสมอ', () => {
+  const lib = readFileSync(join(ROOT, 'src/lib/requests/visibleRows.js'), 'utf8');
+  assert.match(lib, /REQUEST_ANSWER_DEPARTMENTS\.includes\(deptParam\)/);
+  assert.match(lib, /isSuperuser\(user\?\.role\) \|\| canAnswerRequestsFor\(user, deptParam\)/);
+  // ร่างของคนอื่นยังไม่ใช่งานของฝ่าย — ต้องตัดเหมือนทางปกติ
+  assert.match(lib, /deptRows\.filter\(\(r\) => r\.status !== 'draft' \|\| r\.requestedById === user\?\.id\)/);
+  const route = readFileSync(join(ROOT, 'src/app/api/sa/requests/route.js'), 'utf8');
+  assert.match(route, /dept: url\.searchParams\.get\('dept'\)/);
 });

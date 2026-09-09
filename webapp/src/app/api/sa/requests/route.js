@@ -36,7 +36,7 @@ import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/sa/requests?status=pending,acknowledged&dealId=D-1
+// GET /api/sa/requests?status=pending,acknowledged&dealId=D-1&dept=RD
 export async function GET(request) {
   try {
     const user = await getCurrentUser();
@@ -50,8 +50,10 @@ export async function GET(request) {
     // สิทธิ์ไม่พอให้ถอยลงมา ไม่ปฏิเสธ ⇒ ลิงก์ที่แชร์กันไว้ไม่พังในมือคนสิทธิ์น้อยกว่า
     // ⚠️ ตัวเลือกใบ + ธง `_mine` อยู่ที่ lib/requests/visibleRows.js ที่เดียว —
     // ตัวเลขบนเมนู (/api/nav/counts) ต้องนับจากชุดเดียวกับที่หน้านี้แสดง
+    // `?dept=` — คิวของฝ่าย (หน้า /rd|/finance|/service/requests) · คนละแกนกับ `?scope=`
+    // ซึ่งถามว่า "ใครเป็นคนเปิด" · ด่านอยู่ใน loadVisibleRequests (ตอบให้ฝ่ายนั้นไม่ได้ = เมิน)
     const { rows, scope } = await loadVisibleRequests(supabase, user, {
-      scopeParam: url.searchParams.get('scope'), status,
+      scopeParam: url.searchParams.get('scope'), status, dept: url.searchParams.get('dept'),
     });
     return Response.json(
       rows.filter((r) => !dealId || r.dealId === dealId),

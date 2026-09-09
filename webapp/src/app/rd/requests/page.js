@@ -53,11 +53,12 @@ export default function RdRequestsPage() {
 
   // ⚠️ **ไม่มีตัวสลับขอบเขต** — ขอบเขตกรองด้วย "ใครเป็นคนเปิด" ซึ่งไม่มีความหมาย
   // สำหรับคิวของฝ่าย (ฝ่ายต้องเห็นงานของฝ่ายครบเสมอ ไม่ว่าใครเปิด)
-  // API คืนคิวของฝ่ายที่ผู้ใช้ตอบได้มาให้อยู่แล้ว — ด่านจริงอยู่ที่นั่น
+  // ⭐ ส่ง `?dept=` ให้ API กรองมาให้ — ของเดิมไม่ส่งอะไรเลย ⇒ ผู้ดูแลระบบ/หัวหน้า
+  // ฝ่ายขายได้คำร้องของ **ทุกฝ่าย** ลงเบราว์เซอร์ก่อนแล้วค่อยซ่อนด้วย deptQueueRows
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await apiFetch("/api/sa/requests", { cache: "no-store" });
+      const res = await apiFetch(`/api/sa/requests?dept=${DEPT}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setRequests(Array.isArray(d) ? d : []);
