@@ -27,15 +27,25 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (access.response) return access.response;
 
     const body = await req.json().catch(() => ({}));
-    /* 🐞 **สถานะตั้งต้นต้องเดินตามประเภทไซต์** (UAT 2026-09-02) — `normalizeAssetInput`
-       ตั้ง `active` เมื่อไม่ได้ส่งมา ⇒ สร้างเครื่องใน **ไซต์คลัง** โดนตีกลับด้วย
-       500 + ข้อความของ trigger (mig 0332) ทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิด
-       ⚠️ ต้องอยู่ที่ **server** ไม่ใช่แค่ค่าตั้งต้นในฟอร์ม — เส้นที่ยิง API ตรง
-          (ตัวนำเข้า · สคริปต์ · เครื่องมือภายนอก) ไม่ได้เดินผ่านฟอร์ม */
-    const withDefaults = body.status
-      ? body
-      : { ...body, status: isWarehouseSite(access.site) ? 'in_stock' : 'active' };
-    const { value, error } = normalizeAssetInput(withDefaults);
+
+    /* 🔴 **ไซต์คลังรับเครื่องเข้าตรง ๆ ไม่ได้อีกแล้ว (mig 0344)** — เส้นนี้ผูก `siteId`
+       ให้เสมอ ⇒ สองสถานะที่เป็นไปได้ล้มทั้งคู่ที่ชั้นฐานข้อมูล:
+         · `in_stock` ผิด CHECK `service_assets_place_by_status` (ว่าง ⇒ ต้องไม่มีไซต์)
+         · `active`  โดน trigger ของ mig 0332 ('เครื่องที่อยู่ในคลังใช้สถานะ "ใช้งาน" ไม่ได้')
+       🔄 ของเดิมเติม `in_stock` ให้เมื่อเป็นคลัง — ถูกตอน 0332 (คลังเป็นไซต์จริง) และ
+          กลายเป็น **500 ที่การันตี** ตั้งแต่ 0344 ⇒ ตอบเป็นภาษาคนพร้อมทางออกแทน */
+    if (isWarehouseSite(access.site)) {
+      return badRequest('ไซต์คลังรับเครื่องเข้าตรง ๆ ไม่ได้ — ขึ้นทะเบียนที่หน้าทะเบียนเครื่อง แล้วใช้คำสั่ง "ติดตั้งเข้าไซต์"');
+    }
+
+    /* เครื่องที่เพิ่มจากหน้าไซต์ = เครื่องที่ **ติดตั้งอยู่ที่ไซต์นั้น** เสมอ · สถานะอื่น
+       (ว่าง · ซ่อม · ปลดระวาง) เป็นผลของคำสั่ง ⇒ ตีกลับ ไม่ใช่เมินเงียบ
+       ⚠️ ฟอร์มไม่ส่ง `status` มาแล้ว — ด่านนี้กันเส้นที่ยิง API ตรง */
+    if (body.status && body.status !== 'active') {
+      return badRequest('เพิ่มเครื่องจากหน้าไซต์ได้เฉพาะเครื่องที่ติดตั้งอยู่ — สถานะอื่นตั้งที่หน้าทะเบียนเครื่อง หรือใช้คำสั่งย้าย');
+    }
+
+    const { value, error } = normalizeAssetInput(body);
     if (error) return badRequest(error);
 
     // ⚠️ โซนต้องเป็นของไซต์เดียวกัน — เชื่อ id จาก client ตรง ๆ ไม่ได้

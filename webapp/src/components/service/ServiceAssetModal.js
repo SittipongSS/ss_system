@@ -1,27 +1,33 @@
 "use client";
 // ── ฟอร์มอุปกรณ์บริการ (mig 0187 + 0298) — ตัวเดียวใช้ทั้ง "เพิ่ม" และ "แก้ไข" ──
 // กฎ AGENTS.md: ห้ามเขียนฟอร์มแก้แยกอีกชุด · ต่างกันได้แค่ "โหมด" ผ่าน props
-//   asset = null → โหมดสร้าง (ไม่มีช่องสถานะ — เครื่องใหม่เริ่มที่ 'ใช้งาน' เสมอ)
-//   asset = row  → โหมดแก้ (มีช่องสถานะ + วันที่ถอด)
+//   asset = null → โหมดสร้าง (เครื่องที่เพิ่มจากหน้าไซต์ = เครื่องที่ติดตั้งอยู่ที่นั่น)
+//   asset = row  → โหมดแก้ (สถานะโชว์เป็นข้อความอ่านอย่างเดียว)
+//
+// 🔒 **สถานะกับวันที่ถอดไม่ใช่ช่องของฟอร์มนี้** (ข้อยกเว้นของกฎ "แก้ = มีสถานะ" ใน
+//   AGENTS.md — เหตุผลด้านข้อมูล ไม่ใช่ความสะดวก) เดิมโหมดแก้มี dropdown สี่ค่า:
+//     · เลือก "ว่าง" ⇒ ผิด CHECK `service_assets_place_by_status` (mig 0344) = 500 ทุกครั้ง
+//     · อีกสามค่า = ทางลัดปลดระวาง/ส่งซ่อมที่ไม่มีเหตุผลและไม่มีประวัติ
+//   ⇒ ย้ายไปเป็นคำสั่งที่หน้าเครื่อง `/service/assets/[id]` ทางเดียว (`assetFormLockError`)
 //
 // ชนิดอุปกรณ์ (มติ 2026-08-02 ข้อ 12-14): ไม่ใช่ทุกตัวเป็นเครื่องกระจายกลิ่น —
 //   diffuser = แถวละเครื่อง (serial · ค่าตั้ง work/pause) · reed/soap/alcohol =
 //   แถวเดียวทั้งชุด + จำนวนจุด · ช่องบนฟอร์มจึงเปลี่ยนตามชนิด
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
-import { ASSET_STATUSES, ASSET_STATUS_LABELS, isWarehouseSite, normalizeAssetInput } from "@/lib/service/sites";
+import { ASSET_STATUS_LABELS, normalizeAssetInput } from "@/lib/service/sites";
 import { ASSET_KINDS, ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import styles from "./ServiceSiteModal.module.css";
 
 const EMPTY = {
   kind: "diffuser", zoneId: "", label: "", model: "", serial: "", colour: "",
   floor: "", spot: "", qty: "", productName: "",
-  bottleMl: "", mlPerDay: "", installedAt: "", removedAt: "",
-  status: "active", note: "", settings: {},
+  bottleMl: "", mlPerDay: "", installedAt: "",
+  note: "", settings: {},
 };
 
 // ค่าตั้งเฉพาะชนิด — คีย์ต้องตรงทะเบียน assetKinds.js (API ปัดคีย์แปลกปลอมทิ้ง)
@@ -46,17 +52,13 @@ const SETTING_INPUTS = {
   ],
 };
 
-export default function ServiceAssetModal({ open, asset = null, zones = [], site = null, onClose, onSave }) {
+export default function ServiceAssetModal({ open, asset = null, zones = [], onClose, onSave }) {
   const editing = !!asset;
-  /* 🐞 **ค่าตั้งต้นของสถานะต้องเดินตามประเภทไซต์** (UAT 2026-09-02) — เดิมตั้ง
-     `active` ตายตัว ⇒ เพิ่มเครื่องเข้า **ไซต์คลัง** แล้วโดน trigger ของ mig 0332
-     ตีกลับด้วย 500 + ข้อความภาษาฐานข้อมูล ทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิดเลย
-     (เครื่องในคลังต้องเป็น `in_stock` โดยนิยาม) */
-  const defaultForm = useMemo(
-    () => ({ ...EMPTY, status: isWarehouseSite(site) ? 'in_stock' : 'active' }),
-    [site],
-  );
-  const [form, setForm] = useState(defaultForm);
+  /* 🔄 เคยตั้งสถานะตั้งต้นตามประเภทไซต์ (คลัง ⇒ `in_stock`) — ถอดทั้งก้อนแล้ว:
+     ฟอร์มนี้ไม่ส่ง `status` อีกต่อไป และ route เป็นคนตัดสินให้ (เครื่องที่เพิ่มจาก
+     หน้าไซต์คือเครื่องที่ติดตั้งอยู่ที่นั่น) · ไซต์คลังไม่รับเครื่องเข้าตรง ๆ แล้ว
+     ตั้งแต่ mig 0344 — route ตอบเป็นภาษาคนพร้อมทางออก */
+  const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -79,13 +81,11 @@ export default function ServiceAssetModal({ open, asset = null, zones = [], site
         bottleMl: asset.bottleMl == null ? "" : String(asset.bottleMl),
         mlPerDay: asset.mlPerDay == null ? "" : String(asset.mlPerDay),
         installedAt: asset.installedAt || "",
-        removedAt: asset.removedAt || "",
-        status: asset.status || "active",
         note: asset.note || "",
         settings: (asset.settings && typeof asset.settings === "object") ? asset.settings : {},
       }
-      : defaultForm);
-  }, [open, asset, defaultForm]);
+      : EMPTY);
+  }, [open, asset]);
 
   const change = (field) => (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
   const changeSetting = (key) => (event) =>
@@ -213,22 +213,17 @@ export default function ServiceAssetModal({ open, asset = null, zones = [], site
           </label>
         ))}
 
-        {/* โหมดสร้างไม่มีสถานะ/วันถอด — เครื่องใหม่เริ่มที่ "ใช้งาน" เสมอ (กฎ AGENTS.md) */}
+        {/* 🔒 อ่านอย่างเดียว — ไม่ใช่ dropdown ที่ disabled (ช่องเทาอ่านว่า "เดี๋ยวก็แก้ได้")
+            ⚠️ ต้องบอก **ที่ไป** ด้วย ไม่ใช่แค่บอกว่าแก้ที่นี่ไม่ได้ — ดูหัวไฟล์ */}
         {editing && (
-          <>
-            <label className={styles.field}>
-              <span>สถานะ</span>
-              <Select value={form.status} onChange={change("status")}>
-                {ASSET_STATUSES.map((status) => (
-                  <option key={status} value={status}>{ASSET_STATUS_LABELS[status]}</option>
-                ))}
-              </Select>
-            </label>
-            <label className={styles.field}>
-              <span>วันที่ถอด</span>
-              <DateInput value={form.removedAt} onChange={(iso) => setForm((prev) => ({ ...prev, removedAt: iso }))} />
-            </label>
-          </>
+          <div className={styles.field}>
+            <span>สถานะ</span>
+            <p className={styles.readonlyValue}>{ASSET_STATUS_LABELS[asset.status] || asset.status}</p>
+            <small>
+              เปลี่ยนสถานะ · ย้ายไซต์ · ส่งซ่อม · ปลดระวาง ทำที่หน้าเครื่อง (กดชื่อเครื่องในตาราง)
+              — คำสั่งที่นั่นบันทึกวันที่ เหตุผล และคนสั่งลงประวัติให้
+            </small>
+          </div>
         )}
 
         <label className={`${styles.field} ${styles.wide}`}>
