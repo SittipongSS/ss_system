@@ -16,8 +16,19 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   let query = supabase.from('projects').select('*').order('createdAt', { ascending: false });
   if (viewScope(user?.role) === 'team') {
+    /* 🐞 **`projects."ownerId"` เป็น uuid** (mig 0008) ต่างจาก ownerId ของตารางอื่นที่เป็น text
+       ⇒ ผู้ใช้สมมติตอน devBypass (`id` ไม่ใช่ uuid โดยเจตนา ดู lib/devBypass.js) ทำให้
+       Postgres ตีกลับทั้งคำสั่ง `22P02 invalid input syntax for type uuid` แล้วเราท์นี้
+       ตอบ 500 ⇒ **หน้ารวมโครงการเปิดไม่ขึ้นเลยตอน UAT** (เจอตอน UAT 2026-09-09)
+       ⚠️ **แก้ที่คำสั่ง ไม่ใช่ที่ id** — id ที่ไม่ใช่ uuid คือด่านสุดท้ายที่กันไม่ให้
+       เซสชัน UAT ปั๊มเจ้าของ/ผู้อนุมัติผีลงฐานข้อมูลจริง (โหมดนี้ proxy ข้ามด่านเขียน
+       ทั้งหมด และเขียนลง prod ตรง ๆ — ดู proxy.js:32 กับ [[dev-db-is-prod-db]])
+       ผู้ใช้สมมติไม่มีทางเป็นเจ้าของโครงการอยู่แล้ว ⇒ ตัดเงื่อนไขเจ้าของทิ้งได้ตรง ๆ
+       เหลือขอบเขตทีม ซึ่งเป็นความจริงของบัญชีนั้น */
     const own = user?.id ?? '';
-    query = query.or(`${teamInClause(user)},ownerId.eq.${own}`);
+    query = user?.devBypass
+      ? query.or(teamInClause(user))
+      : query.or(`${teamInClause(user)},ownerId.eq.${own}`);
   }
 
   const { data, error } = await query;
