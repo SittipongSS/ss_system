@@ -11,6 +11,8 @@
 //   - กดเสร็จขั้นหนึ่ง → ขั้นถัดที่เชื่อมกันจะยังคงสถานะเดิม (Pending) จนกว่าผู้ใช้จะเริ่มทำ (In Progress)
 //   - ถอยจากเสร็จ / ลบ-แก้ predecessor → คำนวณใหม่ทั้งกราฟ (ขั้นถัดที่ไม่พร้อมแล้ว → กลับเป็น Pending)
 
+import { throwFirstError } from '@/lib/supabaseWriteBatch';
+
 export function computeAutoStatuses(tasks) {
   const byId = new Map((tasks || []).map((t) => [t.id, t]));
   const next = new Map();
@@ -39,14 +41,21 @@ export async function propagateAndPersist(supabase, projectId, { dealId = null }
   if (!projectId && !dealId) return;
   let q = supabase.from('project_tasks').select('*');
   q = projectId ? q.eq('projectId', projectId) : q.is('projectId', null).eq('dealId', dealId);
-  const { data: all } = await q.order('stepOrder', { ascending: true });
+  /* 🔴 อ่านไม่ได้ต้องรู้ — เดิม `const { data: all }` แล้ว `if (!all) return`
+     ⇒ query ที่พังกลายเป็น "ไม่มีงานสักขั้น" แล้วข้ามการคำนวณสถานะทั้งกราฟเงียบ ๆ */
+  const { data: all, error: readError } = await q.order('stepOrder', { ascending: true });
+  if (readError) throw readError;
   if (!all || !all.length) return;
   const next = computeAutoStatuses(all);
   const changed = all.filter((t) => next.get(t.id) !== t.status);
   if (!changed.length) return;
-  await Promise.all(changed.map((t) =>
-    supabase.from('project_tasks')
-      .update({ status: next.get(t.id), updatedAt: new Date().toISOString() })
-      .eq('id', t.id)
-  ));
+  /* 🔴 ผลของชุด write ต้องถูกอ่าน — ทิ้งทั้งก้อน = อัปเดตพลาดไปกี่แถวก็ไม่รู้
+     แล้วสถานะเพี้ยนเป็นบางขั้น ซึ่งอ่านเหมือนข้อมูลจริง */
+  throwFirstError(
+    await Promise.all(changed.map((t) =>
+      supabase.from('project_tasks')
+        .update({ status: next.get(t.id), updatedAt: new Date().toISOString() })
+        .eq('id', t.id))),
+    'ปรับสถานะงานอัตโนมัติ',
+  );
 }
