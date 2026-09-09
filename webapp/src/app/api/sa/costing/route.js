@@ -102,8 +102,13 @@ export async function POST(request) {
     // ถ้าผูก FG มาแล้วตั้งแต่เปิดใบ (เช่น re-order) — snapshot สูตรจากสินค้า (mig 0112)
     let formula = { formulaName: null, formulaCode: null, formulaDate: null };
     if (raw.productId) {
-      const { data: product } = await supabase
+      /* ⚠️ ทิ้ง error = snapshot ที่ไม่ได้ snapshot — ใบต้นทุนถูกสร้างโดยช่องสูตร
+         ว่างเปล่า ทั้งที่สินค้ามีสูตรอยู่ · อ่านไม่ได้ต้องหยุด ไม่ใช่สร้างใบครึ่งใบ */
+      const { data: product, error: productError } = await supabase
         .from('products').select('formulaName, formulaCode, formulaDate').eq('id', raw.productId).maybeSingle();
+      if (productError) {
+        return Response.json({ error: `${at}: อ่านสูตรของสินค้าไม่สำเร็จ — ${productError.message}` }, { status: 500 });
+      }
       if (product) formula = product;
     }
 

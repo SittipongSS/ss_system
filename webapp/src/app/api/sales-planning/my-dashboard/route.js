@@ -56,6 +56,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .in('status', ['draft', 'pending', 'acknowledged']),
   ]);
 
+  /* 🔴 supabase ไม่ throw — ทุกก้อนต้องเช็ค `error` เอง ไม่งั้นก้อนที่พังกลายเป็น []
+     แล้วแดชบอร์ดขึ้น "ไม่มีดีล/ไม่มีลีด/ไม่มีงาน" ทั้งที่ของอยู่ครบ
+     (โรคเดียวกับที่คอมเมนต์ข้างบนบันทึกไว้ว่า `.single()` เคยทำให้จอขึ้น
+     "ยังไม่ตั้งเป้า" ทั้งที่ตั้งไว้แล้ว) */
+  for (const res of [targetRes, dealsRes, leadsRes, tasksByOwner, tasksByAssignee, tasksByProxy, myRequestsRes]) {
+    if (res?.error) throw res.error;
+  }
+
   const targetRows = targetRes.data || [];
   const target = targetRows.reduce((sum, row) => sum + Number(row.targetAmount || 0), 0);
   const myDeals = dealsRes.data || [];
