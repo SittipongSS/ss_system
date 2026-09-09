@@ -19,7 +19,7 @@ import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 import FilterPopover from "@/components/ui/FilterPopover";
-import { canSeeLeadKpi, leadScopes } from "@/lib/permissions";
+import { canSeeLeadKpi, defaultScope, leadScopes } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
@@ -148,12 +148,13 @@ export default function LeadsPage() {
      (ซ่อนที่ปิดแล้ว = เลือกสถานะที่ยังเปิดอยู่) และการติ๊กไว้เงียบ ๆ ทำให้ผู้ใช้
      เห็นจำนวนลีดไม่ตรงกับที่มีจริงโดยไม่รู้ตัว · ตอนนี้ไม่ติ๊กอะไรไว้ = เห็นทุกใบ */
   /* ขอบเขตที่กำลังดู — "ของฉัน / ทีม / ทั้งหมด" (มติผู้ใช้ 2026-08-05)
-     ⚠️ ตั้งต้นที่ตัว **กว้างสุด** ไม่ใช่ตัวแรก: วันนี้ทุกคนเห็นทุกใบที่ API คืนมา
-     ถ้าตั้งต้นเป็น "ของฉัน" คนที่เคยเห็นคิวทั้งทีมจะเปิดหน้ามาแล้วของหายไปเฉย ๆ
-     (หน้าดีลตั้งต้นที่ตัวแรกได้เพราะมันเป็นแบบนั้นมาแต่ต้น) */
+     ⚠️ ค่าตั้งต้นมาจาก `defaultScope` = **แคบสุดที่ไม่ว่างโดยโครงสร้าง** (มติผู้ใช้
+     2026-09-08 · แทนกติกา "กว้างสุด" เดิม) — "ของฉัน" ของคิวลีดนับทั้งใบที่ถูกมอบให้
+     และใบที่ตัวเองกรอก ⇒ marketing ที่กรอกลีดเองก็เปิดมาที่ "ของฉัน" เหมือน AE
+     ส่วน AC ไม่ถือลีดเอง (งานถูกปั๊มเป็นชื่อ AE ที่ถูกเลือก) ⇒ ถอยไป "ทีม" */
   const scopes = useMemo(() => leadScopes(role), [role]);
   const [scope, setScope] = useStickyState("scope", null);
-  const activeScope = scope && scopes.includes(scope) ? scope : scopes[scopes.length - 1];
+  const activeScope = scope && scopes.includes(scope) ? scope : defaultScope(scopes, { role, team, teams }, "leads");
 
   const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
   const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
@@ -292,7 +293,10 @@ export default function LeadsPage() {
      การ์ดสรุปตอบคำถาม "ของใครค้างอยู่" ซึ่งต้องนิ่งไม่ว่าจะพิมพ์ค้นหาอะไรอยู่ —
      ตัวกรองมีไว้ *หาใบ* ไม่ใช่เปลี่ยนภาพรวม (และการ์ดเองเป็นตัวสั่งตัวกรอง) */
   const scopedLeads = useMemo(() => leads.filter((l) => {
-    if (activeScope === "mine" && meId) return l.assigneeId === meId || l.createdBy === meId;
+    // ⚠️ ต้อง **ปิดไว้ก่อน** ระหว่างที่ meId ยังไม่มา — ปล่อยผ่านเมื่อไรจอแรกจะโชว์
+    // ลีดทั้งทีมใต้ป้าย "ของฉัน" (และ `assigneeId === meId` จะเป็น null === null
+    // ⇒ ลีดที่ยังไม่คัดกรองทุกใบผ่านตัวกรอง) · หน้าดีล/ปฏิทินปิดไว้แบบนี้อยู่แล้ว
+    if (activeScope === "mine") return !!meId && (l.assigneeId === meId || l.createdBy === meId);
     // "ทีมของฉัน" = ทุกทีมที่สังกัด (คนเดียวอยู่ได้หลายทีม)
     if (activeScope === "team" && teams.length) return teams.includes(l.team) && myTeams.matches(l.team);
     return true;
@@ -303,7 +307,7 @@ export default function LeadsPage() {
     const result = leads.filter((l) => {
       // ขอบเขต: "ของฉัน" = ถูกมอบให้เรา หรือเรากรอกเข้ามา (ตรงกับสาขา ae ของ
       // applyLeadScope) · "ทีม" = ทีมเดียวกับเรา · "ทั้งหมด" = ไม่กรอง
-      if (activeScope === "mine" && meId && !(l.assigneeId === meId || l.createdBy === meId)) return false;
+      if (activeScope === "mine" && !(meId && (l.assigneeId === meId || l.createdBy === meId))) return false;
       if (activeScope === "team" && teams.length && !(teams.includes(l.team) && myTeams.matches(l.team))) return false;
       if (statusFilter.length && !statusFilter.includes(l.status)) return false;
       // ลีดที่ยังไม่คัดกรองไม่มีทีม (team = null) — ต้องมีตัวเลือกของตัวเอง

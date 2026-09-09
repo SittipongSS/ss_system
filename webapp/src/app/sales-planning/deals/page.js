@@ -14,7 +14,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canSeeDealKpi, hasTeam, isSuperuser, salesDealScopes } from "@/lib/permissions";
+import { canSeeDealKpi, defaultScope, hasTeam, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
@@ -111,9 +111,10 @@ export default function SalesPlanningPipelinePage() {
   // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
   const team = useTeam();
   const teams = useTeams();
-  /* ⚠️ ตั้งต้นที่ขอบเขต **กว้างสุด** ไม่ใช่ "ของฉัน" — เดิมตั้งต้นที่ตัวแรกของลิสต์
-     ซึ่งคือ mine เสมอ ⇒ แอดมิน/หัวหน้าฝ่ายที่ไม่ได้เป็นเจ้าของดีลสักใบ เปิดหน้ามาเจอ
-     KPI เป็น 0 ทุกช่องทั้งที่ตารางข้างล่างมีดีลเต็มไปหมด (null = ยังไม่ได้เลือกเอง) */
+  /* ⚠️ ค่าตั้งต้นมาจาก `defaultScope` = **แคบสุดที่ไม่ว่างโดยโครงสร้าง**
+     (มติผู้ใช้ 2026-09-08 · null = ยังไม่ได้เลือกเอง) — AE/Senior AE ถือดีลเอง จึงเปิดมา
+     ที่ "ของฉัน" · AC ถือดีลไม่ได้แต่มีทีม ⇒ "ทีม" · แอดมิน/หัวหน้าฝ่ายไม่มีทั้งสองอย่าง
+     ⇒ "ทั้งหมด" ซึ่งยังกันบั๊กเดิม (เปิดมาเจอ KPI 0 ทุกช่องทั้งที่ตารางมีดีลเต็ม) ไว้ */
   /* วันนี้ — จับใน effect ตามกฎ react-hooks/purity (ห้ามอ่านนาฬิการะหว่าง render)
      ใช้ตัดสิน "FC เลยกำหนด" และนับถอยหลังก่อนขึ้นเดือนใหม่ */
   const [today, setToday] = useState(null);
@@ -250,7 +251,7 @@ export default function SalesPlanningPipelinePage() {
   );
 
   const allowedScopes = salesDealScopes(role);
-  const activeScope = scope && allowedScopes.includes(scope) ? scope : allowedScopes[allowedScopes.length - 1];
+  const activeScope = scope && allowedScopes.includes(scope) ? scope : defaultScope(allowedScopes, viewer, "deals");
 
   /* 🐞 ตัวสลับขอบเขตเคยกรองแค่ตัวเลข KPI — ตารางข้างล่างไม่ขยับเลย ผู้ใช้กด "ของฉัน"
      แล้วเห็นตัวเลขเปลี่ยนแต่รายการเท่าเดิม อ่านไม่ออกว่าปุ่มทำอะไรกันแน่

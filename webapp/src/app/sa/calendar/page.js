@@ -22,7 +22,7 @@ import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { leadScopes } from "@/lib/permissions";
+import { defaultScope, leadScopes } from "@/lib/permissions";
 import { LEAD_STATUS_LABELS, MEETING_MODE_LABELS } from "@/lib/sales/leads";
 import { isInLocalMonth } from "@/lib/sales/leadCalendar";
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
@@ -116,9 +116,12 @@ export default function SalesCalendarPage() {
   useRevalidateOnFocus(load);
 
   /* ขอบเขต "ของฉัน / ทีม / ทุกทีม" — กรองภายในสิ่งที่ API คืนมาแล้วเท่านั้น
-     ด่านจริงอยู่ที่ applyLeadScope ฝั่ง server · ตั้งต้นที่ตัวกว้างสุดเหมือนหน้าคิวลีด */
+     ด่านจริงอยู่ที่ applyLeadScope ฝั่ง server · ค่าตั้งต้น = แคบสุดที่ไม่ว่างโดย
+     โครงสร้าง เหมือนหน้าคิวลีด (defaultScope)
+     ⚠️ ปฏิทินเทียบ `assigneeId` อย่างเดียว **ไม่มี createdBy** ⇒ ผิวนี้คือ "calendar"
+     ไม่ใช่ "leads": marketing ที่กรอกลีดเองไม่มีนัดของตัวเอง จึงต้องไม่เปิดมาที่ "ของฉัน" */
   const scopes = useMemo(() => leadScopes(role), [role]);
-  const activeScope = scope && scopes.includes(scope) ? scope : scopes[scopes.length - 1];
+  const activeScope = scope && scopes.includes(scope) ? scope : defaultScope(scopes, { role, team, teams }, "calendar");
   const visible = useMemo(() => entries.filter((entry) => {
     // ตัดวันที่ server ถ่างเผื่อขอบมาให้ก่อน — ดู isInLocalMonth ว่าทำไมต้องตัดที่นี่
     if (!isInLocalMonth(entry.at, cursor.y, cursor.m)) return false;

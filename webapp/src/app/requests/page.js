@@ -37,7 +37,7 @@ const TAB_BLURB = {
   history: "เรื่องที่จบแล้ว — เลือกขอบเขตได้ตามสิทธิ์",
 };
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
-import { REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor } from "@/lib/permissions";
+import { REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor, defaultScope } from "@/lib/permissions";
 import { REQUEST_DEPT_LABELS } from "@/lib/master/requestTypes";
 import { deptsInSharedQueue } from "@/lib/requests/modules";
 import { compareRequestUrgency } from "@/lib/deptRequests";
@@ -104,9 +104,12 @@ export default function RequestsPage() {
   // ⭐ ตัวสลับขอบเขต — **กรองที่ API ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
   // กรองที่จอแปลว่าคำร้องของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จาก
   // แท็บ Network โดยไม่ต้องมีความรู้อะไรเลย
-  // 🐞 **ตั้งต้นที่ขอบเขตกว้างสุดที่สิทธิ์ยอม ไม่ใช่ "ของฉัน" ตายตัว** — ผู้ดูแลระบบ
-  // ที่ไม่ได้เปิดใบเองเห็นหน้าว่างเปล่าทั้งสามแท็บ · #1038 แก้ฝั่ง API ไว้แล้วแต่
-  // **หน้านี้ส่ง `?scope=mine` มาเสมอ** ⇒ ด่านฝั่ง API ไม่มีวันได้ทำงาน
+  // 🐞 **#1038** — ผู้ดูแลระบบที่ไม่ได้เปิดใบเองเคยเห็นหน้าว่างเปล่าทั้งสามแท็บ
+  // เพราะหน้านี้ส่ง `?scope=mine` มาเสมอ ⇒ ด่านฝั่ง API ไม่มีวันได้ทำงาน
+  // กติกาตั้งต้นปัจจุบันอยู่ในบล็อกข้างล่าง (`defaultScope`) ซึ่งกันเคสนั้นไว้ด้วยการ
+  // ไม่ให้ superuser/ผู้สังเกตการณ์ตกมาที่ "ของฉัน"
+  /* ลิงก์จากหน้าดีล (`?dealId=`) — ต้องอ่านก่อนตั้งค่าขอบเขต ดูเหตุผลใต้บล็อกนี้ */
+  const dealIdParam = searchParams.get("dealId");
   /* ⭐ **ลิงก์ที่ระบุแท็บมาเปิดที่ขอบเขต "ของฉัน" เสมอ** (มติผู้ใช้ 2026-08-15) —
      แท็บบทบาทมีผลเฉพาะขอบเขตนี้ (ดู `visibleQueueRows`) · เปิด `?tab=history` ด้วย
      ขอบเขตกว้างเมื่อไร แท็บถูกซ่อนและพารามิเตอร์ถูกเมินเงียบ ๆ ⇒ คนส่งลิงก์ "ประวัติ"
@@ -114,14 +117,23 @@ export default function RequestsPage() {
      ⚠️ **ตั้งครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่าต่อ** — เฝ้าเมื่อไรผู้ใช้จะสลับไป
      ทีม/ทั้งหมดไม่ได้เลย เพราะ `setTab` เขียน `?tab=` ลง URL ทุกครั้งที่กดแท็บ
      (บทเรียนเดียวกับ `?owner=` และ `?count=` ในไฟล์นี้)
-     ⚠️ ยอมรับเฉพาะค่าที่เป็นแท็บจริง — `?tab=อะไรก็ไม่รู้` ต้องไม่บีบขอบเขตให้แคบลง */
-  const [scope, setScope] = useState(() => (
+     ⚠️ ยอมรับเฉพาะค่าที่เป็นแท็บจริง — `?tab=อะไรก็ไม่รู้` ต้องไม่บีบขอบเขตให้แคบลง
+     ⭐ เปิดเปล่า ๆ (ไม่มี `?tab=`) ใช้ `defaultScope` = **แคบสุดที่ไม่ว่างโดยโครงสร้าง**
+     (มติผู้ใช้ 2026-09-08 · แทน `.pop()` เดิมที่ให้ตัวกว้างสุดเสมอ) — คนที่เปิดใบเอง
+     เป็นงานประจำได้ "ของฉัน" · แอดมิน/หัวหน้าฝ่าย/ผู้สังเกตการณ์ไม่มีใบของตัวเอง
+     และไม่มีทีม ⇒ ได้ "ทั้งหมด" เท่าเดิม (กัน #1038 หน้าว่างไว้เหมือนเดิม)
+     🐞 **`?dealId=` ต้องได้ขอบเขตกว้างสุดเหมือนเดิม ไม่ใช่ `defaultScope`** — คำร้อง
+     ของดีลใบหนึ่งเปิดโดยใครก็ได้ในทีม (AC เปิดแทน AE เป็นเรื่องปกติ) แต่ "ของฉัน"
+     ฝั่ง API = `requestedById` ของเราเท่านั้น ⇒ กด "ดูคำร้อง" จากหน้าดีลแล้วเจอ
+     รายการว่างใต้หัวข้อ "คำร้องของดีล … เท่านั้น" ทั้งที่ดีลมีใบค้างอยู่ */
+  const [scope, setScope] = useState(() => {
     // ใช้ `wanted` ไม่ใช่ `urlTab` ดิบ ⇒ ลิงก์เก่า (`?tab=queue-RD`) ที่ถูกแปลงเป็น
     // "todo" ได้ขอบเขตที่ทำให้แท็บนั้นมีผลด้วยเหมือนกัน
-    tabKeys.includes(wanted)
-      ? "mine"
-      : REQUEST_SCOPES.filter((s) => canUseScope(me, s)).pop() || "mine"
-  ));
+    if (tabKeys.includes(wanted)) return "mine";
+    const allowed = REQUEST_SCOPES.filter((s) => canUseScope(me, s));
+    if (dealIdParam) return allowed[allowed.length - 1] || "mine";
+    return defaultScope(allowed, me, "requests") || "mine";
+  });
   const [activeScope, setActiveScope] = useState("mine");
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
@@ -214,7 +226,6 @@ export default function RequestsPage() {
   // `tab` — กดมาแล้วได้คิวทั้งก้อน ไม่ได้กรองและไม่ได้เติมดีลให้ฟอร์ม
   // ตอนนี้ดีลบังคับทุกหัวข้อแล้ว การเติมล่วงหน้าจึงมีค่ากว่าเดิม: มาจากหน้าดีลไหน
   // ก็เปิดคำร้องของดีลนั้นได้เลยไม่ต้องไล่หาในโครงการ
-  const dealIdParam = searchParams.get("dealId");
   /* ⭐ **โหลดเฉพาะดีลใบที่ลิงก์ส่งมา ไม่ใช่ทะเบียนทั้งระบบ**
      🐞 ของเดิมยิง `/api/sales-planning/deals` (ไม่มีตัวกรองเดือน/ปีเลย = สแกนทั้งตาราง)
      **ทุกครั้งที่เปิดคิว** เพื่อเอามาหาแถวเดียวแล้วทิ้งที่เหลือทั้งหมด — และคนส่วนใหญ่
