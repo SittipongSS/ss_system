@@ -12,6 +12,7 @@
 // ⚠️ ทุกตัวพรีวิว (`*Manifest`) เป็น query ล้วน ไม่ลบอะไร — `?dryRun=1` กับตัวลบจริง
 //   เดินเส้นเดียวกัน ⇒ สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ
 import { fetchAll } from '@/lib/supabaseFetchAll';
+import { runSteps } from '@/lib/supabaseWriteBatch';
 import { isClosedVisit } from '@/lib/service/visitStatus';
 import { purgeAttachments } from '@/lib/master/attachments';
 
@@ -183,34 +184,44 @@ export async function deleteSiteDeep(supabase, siteId) {
   const zoneIds = idsOf(zones);
   const assetIds = idsOf(assets);
 
-  /* 1) นัด — CASCADE พาลูกสองตารางไปเอง (`service_visit_items` · `service_visit_assets`)
-        ⇒ ปลด RESTRICT ที่เครื่องถืออยู่ให้เสร็จก่อนแตะเครื่อง */
-  await supabase.from('service_visits').delete().eq('siteId', siteId);
-
-  // 2) ประวัติการย้ายของเครื่องในไซต์นี้ (CASCADE อยู่แล้ว — ลบให้ลำดับอ่านออก)
-  if (assetIds.length) {
-    await supabase.from('service_asset_moves').delete().in('assetId', assetIds);
-    /* แถวที่ **ชี้เข้ามา** จากเครื่องอื่น (fromSite/toSite) เป็น SET NULL อยู่แล้ว
-       ปล่อยไว้ — เป็นประวัติของเครื่องที่ยังอยู่ ไม่ใช่ของไซต์นี้ */
-  }
-
-  // 3) เครื่อง
-  await supabase.from('service_assets').delete().eq('siteId', siteId);
+  /* 🔴 **ทุกขั้นต้องตรวจ error** — supabase ไม่ throw · เดิมมีแต่ขั้นสุดท้าย
+     (`service_sites`) ที่ตรวจ ⇒ ขั้นกลางพังแล้วขั้นสุดท้ายผ่าน = **ไซต์หายไปแต่
+     เครื่อง/โซน/นัดยังอยู่** ชี้ไปยังแถวที่ไม่มีแล้ว โดยไม่มีอะไรฟ้อง
+     และระบบไม่มีถังขยะ ⇒ กู้กลับไม่ได้
+     ⚠️ ลำดับสำคัญ — ขั้นหลังพึ่งว่าขั้นก่อนสำเร็จจริง (RESTRICT ของเครื่องต้อง
+     ถูกปลดก่อนถึงจะลบเครื่องได้) ⇒ ใช้ runSteps ที่หยุดทันทีที่ขั้นไหนพัง */
+  await runSteps([
+    // 1) นัด — CASCADE พาลูกสองตารางไปเอง (`service_visit_items` · `service_visit_assets`)
+    //    ⇒ ปลด RESTRICT ที่เครื่องถืออยู่ให้เสร็จก่อนแตะเครื่อง
+    ['ลบนัดของไซต์', () => supabase.from('service_visits').delete().eq('siteId', siteId)],
+    /* 2) ประวัติการย้ายของเครื่องในไซต์นี้ (CASCADE อยู่แล้ว — ลบให้ลำดับอ่านออก)
+          แถวที่ **ชี้เข้ามา** จากเครื่องอื่น (fromSite/toSite) เป็น SET NULL อยู่แล้ว
+          ปล่อยไว้ — เป็นประวัติของเครื่องที่ยังอยู่ ไม่ใช่ของไซต์นี้ */
+    ...(assetIds.length
+      ? [['ลบประวัติการย้ายเครื่อง', () => supabase.from('service_asset_moves').delete().in('assetId', assetIds)]]
+      : []),
+    // 3) เครื่อง
+    ['ลบเครื่องในไซต์', () => supabase.from('service_assets').delete().eq('siteId', siteId)],
+  ]);
 
   // 4) ลูกของโซน แล้วค่อยโซน
   if (zoneIds.length) {
-    await supabase.from('service_zone_terms').delete().in('zoneId', zoneIds);
+    await runSteps([
+      ['ลบเงื่อนไขของโซน', () => supabase.from('service_zone_terms').delete().in('zoneId', zoneIds)],
+    ]);
     await purgeSurveyZoneFiles(supabase, { zoneIds });
-    await supabase.from('service_survey_zones').delete().in('zoneId', zoneIds);
+    await runSteps([
+      ['ลบผลประเมินของโซน', () => supabase.from('service_survey_zones').delete().in('zoneId', zoneIds)],
+    ]);
   }
-  await supabase.from('service_zones').delete().eq('siteId', siteId);
 
-  // 5) ที่เหลือของไซต์
-  await supabase.from('service_renewal_followups').delete().eq('siteId', siteId);
-  await supabase.from('service_plans').delete().eq('siteId', siteId);
-
-  const { error } = await supabase.from('service_sites').delete().eq('id', siteId);
-  if (error) throw error;
+  // 5) โซน แล้วที่เหลือของไซต์ แล้วค่อยตัวไซต์
+  await runSteps([
+    ['ลบโซน', () => supabase.from('service_zones').delete().eq('siteId', siteId)],
+    ['ลบรายการต่อสัญญา', () => supabase.from('service_renewal_followups').delete().eq('siteId', siteId)],
+    ['ลบรอบบริการ', () => supabase.from('service_plans').delete().eq('siteId', siteId)],
+    ['ลบไซต์', () => supabase.from('service_sites').delete().eq('id', siteId)],
+  ]);
 }
 
 /* ── รอบบริการหนึ่งรอบ (break-glass) ────────────────────────────────────────

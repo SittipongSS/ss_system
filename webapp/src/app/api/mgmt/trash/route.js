@@ -15,6 +15,9 @@ export const GET = withUser(async ({ user, supabase }) => {
       supabase.from('mgmt_meetings').select('*').not('deletedAt', 'is', null).order('deletedAt', { ascending: false }),
       supabase.from('mgmt_rock_improve').select('*').not('deletedAt', 'is', null).order('deletedAt', { ascending: false }),
     ]);
+    /* 🔴 supabase ไม่ throw ⇒ `catch` ข้างล่างไม่เคยทำงาน · อ่านไม่ได้แล้วคืน []
+       = "ถังขยะว่าง" ซึ่งแปลว่า **ไม่มีอะไรให้กู้** ทั้งที่ของยังอยู่ครบ */
+    for (const res of [tasks, meetings, rocks]) if (res.error) throw res.error;
     return ok({ tasks: tasks.data || [], meetings: meetings.data || [], rocks: rocks.data || [] });
   } catch (e) {
     return fail(e.message, 500);

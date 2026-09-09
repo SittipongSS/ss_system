@@ -187,19 +187,27 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
     // 🐞 เส้นนี้เคยขยับแต่ `stage` ไม่แตะ `probability` — ดีลที่ออกใบเสนอราคาไปแล้ว
     // จึงค้าง FC 20% ทั้งที่กติกาบอกว่าออกใบแล้ว = 50% (มติผู้ใช้ 2026-08-05)
     const nextProbability = await resolveProbability(supabase, { ...deal, stage: nextStage });
-    const { data: patchedDeal } = await supabase
+    /* 🔴 ต้องรับ `error` — supabase ไม่ throw · เดิมเขียน `patchedDeal || deal`
+       ⇒ update ที่พังกลายเป็น "ใช้ดีลเดิมต่อ" แล้วโค้ดข้างล่าง **ยังลงประวัติว่า
+       ขั้นเปลี่ยนแล้ว** ⇒ ดีลค้างขั้นเดิมใน DB แต่เส้นเรื่องบอกว่าไปขั้นเสนอราคาแล้ว
+       และ `daysInStage` (นับจาก stageHistory[0]) เพี้ยนตาม — ขัดกันเงียบ ๆ */
+    const { data: patchedDeal, error: stageError } = await supabase
       .from('sales_deals')
       .update({ stage: nextStage, probability: nextProbability, updatedAt: new Date().toISOString() })
       .eq('id', deal.id)
       .select()
       .single();
+    if (stageError) throw new QuotationDraftError(stageError.message, 500);
     updatedDeal = patchedDeal || deal;
     // ⚠️ ทุกเส้นทางที่ขยับ stage ต้องลงประวัติ — ไม่ใช่แค่ audit log
     // 🐞 เส้นนี้เคยเป็นเส้นเดียวที่ลืม (create-project / link-project / timeline /
     // PATCH ดีล / accept RPC เขียนกันครบ) ผลคือขั้น "เสนอราคา" หายจากเส้นเรื่องของดีล
     // และ `daysInStage` บนหน้าดีล (นับจาก stageHistory[0].changedAt) ไปนับจากการ
     // เปลี่ยนสถานะ**ครั้งก่อน** = "อยู่ขั้นนี้มากี่วัน" ยาวเกินจริงเงียบ ๆ
-    await supabase.from('sales_deal_stage_history').insert({
+    /* 🔴 เขียนประวัติไม่ลงก็ต้องรู้ — คอมเมนต์ข้างบนบันทึกไว้เองว่าเคยลืมลงประวัติ
+       แล้ว "ขั้นเสนอราคาหายจากเส้นเรื่อง" · ถ้าทิ้ง error ที่นี่ อาการเดิมกลับมาได้
+       โดยไม่มีอะไรฟ้องเลย */
+    const { error: historyError } = await supabase.from('sales_deal_stage_history').insert({
       id: genId('DSH'),
       dealId: deal.id,
       fromStage: deal.stage,
@@ -207,6 +215,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       changedBy: user.id || null,
       changedByName: user.name || null,
     });
+    if (historyError) throw new QuotationDraftError(historyError.message, 500);
   }
 
   await recordAudit({

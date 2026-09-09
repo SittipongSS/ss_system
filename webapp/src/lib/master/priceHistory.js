@@ -38,7 +38,9 @@ export async function recordProductPriceHistory({
     if (changeType === 'update' && !hasPriceChange(before, after)) return;
 
     const supabase = getSupabaseAdmin();
-    await supabase.from('product_price_history').insert({
+    /* 🔴 เหตุผลเดียวกับ lib/audit.js — supabase ไม่ throw ⇒ `catch` ข้างล่าง
+       ไม่เคยทำงาน ⇒ ประวัติราคาที่เขียนไม่ลงหายเงียบ */
+    const { error } = await supabase.from('product_price_history').insert({
       productId: String(productId),
       changedBy: user?.id != null ? String(user.id) : null,
       changedByName: user?.name ?? null,
@@ -49,6 +51,7 @@ export async function recordProductPriceHistory({
       metadata,
       createdAt: new Date().toISOString(),
     });
+    if (error) throw error;
   } catch (e) {
     console.error('[price-history] record failed', productId, e?.message || e);
   }
