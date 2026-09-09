@@ -32,7 +32,7 @@ import {
 } from "@/lib/requests/pdrTargets";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
-import { briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
+import { briefHasContent, briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
 import {
   PDR_ARTWORK, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
   PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible, pdrFormProgress,
@@ -358,6 +358,26 @@ export default function PdrForm({
   // เป็น **เพดาน** ไม่ใช่จำนวนที่ต้องเท่ากัน
   const merged = scentCount != null && scentCount > 1 && briefs.length === 1;
   const canMerge = scentCount != null && scentCount > 1;
+  /* ⭐ **ใบที่ไม่มีใบสั่งขายกำหนดจำนวนกลิ่น** (พัฒนาสูตรรูปแบบ NPD · 2026-09-09) —
+     จำนวนบล็อกบรีฟของบรีฟกลิ่นมาจากจำนวนกลิ่นที่ขายใน SO เสมอ ⇒ หัวข้อที่ผูกแค่
+     ดีลจะได้ส่วนนี้ว่างถาวรและไม่มีทางกรอก · โหมดนี้ให้ **เพิ่ม/ลบเอง**
+     ⚠️ ต่ำสุด 1 ก้อน — ด่านฝั่ง API (`normalizeScentBriefs`) ตีกลับใบที่ไม่มีบรีฟเลย
+     ⇒ ปล่อยให้ลบก้อนสุดท้ายได้ = ฟอร์มพาไปตกด่านที่ตัวเองมองไม่เห็น */
+  const freeBlocks = scentCount == null;
+  const addBrief = () => onBriefsChange([...briefs, { label: "" }]);
+  const removeBrief = async (i) => {
+    if (briefs.length <= 1) return;
+    if (briefHasContent(briefs[i] || {})) {
+      const ok = await confirmAction({
+        title: "ลบบล็อกบรีฟ",
+        description: `บรีฟก้อนที่ ${i + 1} ที่กรอกไว้จะถูกลบ — ยืนยันไหม`,
+        confirmLabel: "ลบก้อนนี้",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    onBriefsChange(briefs.filter((_, j) => j !== i));
+  };
   // ⚠️ **สลับโหมดต้องไม่ทิ้งของที่พิมพ์ไปแล้ว** (มติผู้ใช้ 2026-08-08) — ของเดิมล้าง
   // ทุกก้อนทุกครั้ง แม้แต่ตอนแยก 1 → N ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย
   // · รวบแล้วก้อนที่มีเนื้อจะหายจริง ⇒ **ถามก่อน** ด้วยโมดัลของบ้าน ไม่ใช่ `confirm()`
@@ -624,12 +644,24 @@ export default function PdrForm({
             ลูกค้าบอกมาแนวเดียวสำหรับทุกกลิ่น? กด &ldquo;รวบเป็นบรีฟเดียว&rdquo; จะได้ไม่ต้องพิมพ์ซ้ำ
           </small>
         )}
+        {/* ⭐ ใบที่ไม่มี SO เป็นเพดาน — คนกรอกเป็นคนบอกเองว่าอยากได้กี่แนว */}
+        {freeBlocks && (
+          <div className={styles.topicAction}>
+            <Button variant="quiet" size="sm" disabled={disabled} onClick={addBrief}>
+              เพิ่มบล็อกบรีฟ
+            </Button>
+          </div>
+        )}
         {!briefs.length ? (
           // ⚠️ บรรทัดจางลอย ๆ ในพื้นที่ว่าง ๆ อ่านเหมือนหน้าโหลดไม่ครบ — ส่วนนี้จะว่าง
           // ทุกครั้งจนกว่าจะเลือกใบสั่งขาย จึงต้องเป็นสถานะว่างที่บอกทางออก
           <EmptyState icon={FlaskConical}>
             ยังไม่มีบล็อกบรีฟ
-            <small>เลือกใบสั่งขายในแท็บ &ldquo;งาน&rdquo; ก่อน — บล็อกจะขึ้นตามจำนวนกลิ่นที่ขายในใบนั้น</small>
+            <small>
+              {freeBlocks
+                ? "กด “เพิ่มบล็อกบรีฟ” เพื่อเริ่ม — ใบนี้ไม่มีใบสั่งขายกำหนดจำนวนกลิ่น"
+                : "เลือกใบสั่งขายในแท็บ “งาน” ก่อน — บล็อกจะขึ้นตามจำนวนกลิ่นที่ขายในใบนั้น"}
+            </small>
           </EmptyState>
         ) : briefs.map((brief, i) => (
           <div key={i} className={styles.briefCard}>
@@ -641,6 +673,15 @@ export default function PdrForm({
               <span className={styles.briefTitle}>
                 {merged ? "บรีฟรวมทุกกลิ่น" : (brief.label || `กลิ่นที่ ${i + 1}`)}
               </span>
+              {/* ลบได้เฉพาะโหมดที่คนคุมจำนวนเอง และเหลือก้อนสุดท้ายลบไม่ได้ (ด่าน API) */}
+              {freeBlocks && briefs.length > 1 && (
+                <Button
+                  variant="quiet" size="sm" tone="danger" disabled={disabled}
+                  onClick={() => removeBrief(i)}
+                >
+                  ลบก้อนนี้
+                </Button>
+              )}
             </div>
             {/* ⭐ **บังคับก่อนกดส่ง ไม่ใช่ก่อนบันทึกร่าง** (มติผู้ใช้ 2026-08-10) — ป้ายบอก
                 ล่วงหน้าว่าช่องนี้ข้ามไม่ได้ตอนส่ง ส่วนด่านจริงอยู่ที่ API ตัวเดียวกับที่

@@ -2,7 +2,7 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
-import { requestCancelBeforeAckOnly, requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes';
+import { requestCancelBeforeAckOnly, requestUsesDeliveredRows, requestUsesItems, requestUsesPdr } from '@/lib/master/requestTypes';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
@@ -71,7 +71,7 @@ export function requestRowsClosurePatch(request, items = [], nowIso) {
 export function submitRequestError(request, items = []) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status !== 'draft') return 'คำร้องนี้ส่งไปแล้ว';
-  if (requestHasItems(request.kind) && !items.length) {
+  if (requestUsesItems(request) && !items.length) {
     return 'ต้องมีรายการอย่างน้อย 1 รายการก่อนส่ง';
   }
   // ⭐ วันที่ต้องการรับงานบังคับทุกคำร้อง (มติผู้ใช้ 2026-08-08) — ร่างใหม่ถูกด่าน
@@ -217,9 +217,9 @@ export function closeRequestError(request, items = []) {
     return 'ร่างที่ยังไม่ส่ง ปิดไม่ได้ — ลบร่างทิ้ง หรือยกเลิกใบแทน';
   }
 
-  // ⭐ ถาม **ใบนี้มีแถวอยู่จริงไหม** ไม่ใช่ `requestHasItems(kind)`
+  // ⭐ ถาม **ใบนี้มีแถวอยู่จริงไหม** ไม่ใช่ `requestUsesItems(request)`
   //
-  // 🐞 ของจริงที่เดินวงแล้วเจอ: `requestHasItems` ตอบว่า "ชนิดนี้ให้ SA สร้างแถว
+  // 🐞 ของจริงที่เดินวงแล้วเจอ: `requestUsesItems` ตอบว่า "ชนิดนี้ให้ SA สร้างแถว
   // ตั้งแต่ตอนเปิดใบไหม" ซึ่งพัฒนากลิ่นตอบ **ไม่** (แถวเกิดตอน RD ส่งของ) ⇒ ด่านนี้
   // ถูกข้ามทั้งก้อน ⇒ ปิดใบพัฒนากลิ่นได้ตั้งแต่ RD ยังส่งกลิ่นไม่ครบ · กลิ่นที่ค้าง
   // ระหว่างทางหายไปเงียบ ๆ ไม่มีใครเห็นว่ายังมีของที่ลูกค้ายังไม่ตอบ
@@ -247,8 +247,20 @@ export function closeRequestError(request, items = []) {
      ซึ่งเป็นกับดักเดียวกับที่ทำให้ต้องมีด่าน `draft` ข้างบน
      ⚠️ ทางออกของใบที่ฝ่ายส่งอะไรไม่ได้จริง ๆ คือ **ยกเลิก** ไม่ใช่ปิด — คำเดียวกับ
      ด่าน `pending` ข้างบน */
-  if (!rows.length && requestDeliversRows(request.kind) && request.status !== 'answered') {
+  if (!rows.length && requestUsesDeliveredRows(request) && request.status !== 'answered') {
     return `${requestSideText(request, 'dept', 'ยังไม่ได้ส่งงานสักรายการ')} — ยกเลิกแทนการปิด`;
+  }
+
+  /* 🔴 **ใบที่งานทั้งใบอยู่ในแบบฟอร์ม PDR และไม่มีแถวเลย** (พัฒนาสูตรรูปแบบ NPD ·
+     2026-09-09) — ด่านข้างบนทั้งสามตัวผ่านหมด: มี 0 แถวจึงไม่ติด "เดินไม่จบ" ·
+     สถานะไม่ใช่ `pending` แล้ว · และหัวข้อไม่ได้ประกาศ `deliversRows`
+     ⇒ ผู้ขอกดปิดได้ตั้งแต่วันที่ RD เพิ่งรับเรื่อง โดยยังไม่มีอะไรส่งกลับมาสักชิ้น
+     ซึ่งเป็น**อาการเดียวกับ 🐞 ข้างบนเป๊ะ** แค่มาจากหัวข้อคนละตัว
+     ⚠️ เกณฑ์คือ "ฝ่ายประกาศว่าตอบแล้วหรือยัง" (`answeredAt`) ไม่ใช่จำนวนแถว —
+     ใบ NPD ยังไม่มีทางสร้างแถวเลยจนกว่าจะมีทางส่งของของมันเอง */
+  if (!rows.length && requestUsesPdr(request) && !requestUsesItems(request)
+      && request.status !== 'answered') {
+    return `${requestSideText(request, 'dept', 'ยังไม่ได้ตอบกลับ')} — ยกเลิกแทนการปิด`;
   }
 
   /* ⭐ **ปิดได้เมื่อลูกค้าคอนเฟิร์มครบตามจำนวนที่สั่ง** (มติผู้ใช้ 2026-08-18)

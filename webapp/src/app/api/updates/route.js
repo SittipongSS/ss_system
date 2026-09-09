@@ -140,7 +140,7 @@ export async function POST(request) {
          ตัวงาน ⇒ ข้อความจากอีกฝั่งคือหลักฐานว่ายังไม่จบ ไม่ต้องให้ใครไปกด "ยังไม่จบ"
          ⚠️ ใบที่มีแถวไม่หลุดตามข้อความ — ตัวงานคือแถว ถามกันระหว่างทางเป็นเรื่องปกติ */
       const clears = replyClearsClosure(parent, {
-        side, threadOnly: requestIsThreadOnly(parent?.kind) && !(parent?.items || []).length,
+        side, threadOnly: requestIsThreadOnly(parent) && !(parent?.items || []).length,
       });
       if (clears === 'dept') Object.assign(turnPatch, { answeredAt: null, answeredById: null, answeredByName: null, status: 'acknowledged' });
       if (clears === 'requester') Object.assign(turnPatch, { closedAt: null, closedById: null, closedByName: null, status: 'acknowledged' });

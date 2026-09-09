@@ -27,7 +27,8 @@ import { insertSurveyZones, loadSiteZones, loadSurveySite, loadZoneSurveyLocks }
 import { surveyZoneBusyError } from '@/lib/service/zonePickState';
 import {
   deptForRequest, requestDeptError,
-  legacyKindError, lineShapeForKind, requestHasPdr, requestKindLabel, requestNeedsRef,
+  legacyKindError, requestLineShape, requestUsesPdr, requestKindLabel, requestNeedsRef,
+  requestVariantKey,
   requestShapeError,
   requestStepKey,
 } from '@/lib/master/requestTypes';
@@ -89,6 +90,12 @@ export async function POST(request) {
 
   const body = await request.json().catch(() => ({}));
   const kind = body.kind;
+  /* ⭐ **รูปแบบงานของหัวข้อที่มีสองแบบ** (พัฒนาสูตร standard | npd · mig 0351) —
+     ว่าง = รูปแบบตั้งต้นของหัวข้อ · ค่าที่ไม่มีในทะเบียนถูก `requestShapeError`
+     ตีกลับข้างล่าง (ไม่มี CHECK ที่ DB โดยเจตนา — เหตุผลเดียวกับ `kind`)
+     ⚠️ เก็บเป็นค่าที่ **ตัดสินแล้ว** ไม่ใช่ค่าดิบจาก client: แถวที่เก็บ null ไว้จะอ่าน
+     กำกวมทันทีที่วันหนึ่งมีการเปลี่ยนรูปแบบตั้งต้นของหัวข้อ */
+  const variant = requestVariantKey({ kind, variant: body.variant });
 
   // หัวข้อที่เลิกใช้แล้วเปิดใบใหม่ไม่ได้ — ฟอร์มกรองออกให้แล้ว แต่ยิงตรงยังได้
   const retired = legacyKindError(kind);
@@ -111,7 +118,11 @@ export async function POST(request) {
   // ⭐ **บรรทัดมีหลายรูปร่าง** (พัฒนาสูตร · เอกสาร · ใบวางบิล) กฎคนละชุดสิ้นเชิง —
   // route ไม่ตัดสินเองว่ารูปร่างไหนตรวจยังไง แต่ถามทะเบียนรูปร่างบรรทัด ซึ่งอยู่ใน
   // บ้านของฝ่ายที่เป็นเจ้าของรูปร่างนั้น (P7b) ⇒ เพิ่มรูปร่างใหม่ ไฟล์นี้ไม่ต้องแก้
-  const lineShape = lineShapeForKind(kind);
+  /* ⚠️ **รูปร่างบรรทัดขึ้นกับรูปแบบของใบด้วย** (2026-09-09) — พัฒนาสูตรรูปแบบ NPD
+     ไม่มีบรรทัดเลย ⇒ ส่ง `{ kind, variant }` ไม่ใช่ `kind` เฉย ๆ ไม่งั้นแถวที่หลุด
+     มากับ body จะถูกเขียนลงใบที่ไม่มีที่ให้มันอยู่ */
+  const subject = { kind, variant };
+  const lineShape = requestLineShape(subject);
   const normalized = normalizeLinesFor(lineShape, body.items, {
     dept,
     kindLabel: requestKindLabel(kind),
@@ -350,7 +361,7 @@ export async function POST(request) {
     let pdrColumns = {};
     let briefRows = [];
     let targetRows = [];
-    if (requestHasPdr(kind)) {
+    if (requestUsesPdr(subject)) {
       const { columns, error: pdrError } = normalizePdr(body.pdr);
       if (pdrError) return Response.json({ error: pdrError }, { status: 400 });
       pdrColumns = columns;
@@ -424,6 +435,10 @@ export async function POST(request) {
       // ก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (ไม่ใช่แค่เมินค่านั้นทิ้ง)
       // หมวดสินค้าย้ายไปอยู่ **รายแถว** (`dept_request_items.categoryCode` — 0204)
       stepKey: requestStepKey(kind),
+      /* ⚠️ ใส่คีย์เฉพาะหัวข้อที่มีรูปแบบจริง — หัวข้ออื่นเก็บ null ไว้เฉย ๆ ก็ได้
+         แต่ PostgREST ปฏิเสธ **ทั้งก้อน** ถ้า mig 0351 ยังไม่รัน (บทเรียน 0225
+         ที่คอมเมนต์ข้างบนเล่าไว้) ⇒ ใบของหัวข้ออื่นต้องยังเปิดได้ระหว่างรอ migration */
+      ...(variant ? { variant } : {}),
       scentId: body.scentId || null,
       formulaId: body.formulaId || null,
       customerId,

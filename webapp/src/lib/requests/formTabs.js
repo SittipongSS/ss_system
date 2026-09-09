@@ -13,7 +13,7 @@
 // `requestShapeError`/`requestFormBlocker` ที่ server ใช้ · เทสต์ผูกไว้ว่า
 // "ไม่มีแท็บไหนขาด ⟺ requestFormBlocker ผ่าน" ถ้าใครเพิ่มกฎข้างเดียวเทสต์จะแตก
 import {
-  lineShapeForKind, requestHasItems, requestHasPdr, requestKindMeta, requestNeedsRef,
+  requestLineShape, requestUsesItems, requestUsesPdr, requestKindMeta, requestNeedsRef,
 } from '@/lib/master/requestTypes';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { PDR_SECTIONS, pdrArtworkError, pdrFormProgress } from '@/lib/requests/pdrFields';
@@ -105,8 +105,9 @@ export function requiredChecks(form = {}) {
       // (`normalizeLinesFor`) ไม่ใช่นับความยาวอาเรย์ · กด "เพิ่มรายการ" เฉย ๆ
       // แล้วไม่เลือกอะไรต้องยังขึ้นว่าขาดอยู่
       tab: 'subject', label: 'รายการที่กรอกครบอย่างน้อย 1 รายการ',
-      applies: requestHasItems(kind),
-      ok: !normalizeLinesFor(lineShapeForKind(kind), form.items).error,
+      // ⚠️ ส่ง **ทั้งฟอร์ม** ไม่ใช่ `kind` — รูปแบบ NPD ของพัฒนาสูตรไม่มีตารางแถว
+      applies: requestUsesItems(form),
+      ok: !normalizeLinesFor(requestLineShape(form), form.items).error,
     },
     // ── แท็บ "กำหนดและไฟล์" ─────────────────────────────────────────────
     {
@@ -123,7 +124,7 @@ export function requiredChecks(form = {}) {
       // ติ๊กว่ามีภาพประกอบแล้วต้องแนบจริง — ไฟล์อยู่แท็บ "กำหนดและไฟล์"
       // ⚠️ ใช้ `pdrArtworkError` ตัวเดียวกับด่านส่ง/server ไม่ใช่เขียนเงื่อนไขใหม่
       tab: 'due', label: 'ไฟล์ภาพประกอบบรรจุภัณฑ์',
-      applies: requestHasPdr(kind) && (form.pdr || {}).packagingArtwork === 'has',
+      applies: requestUsesPdr(form) && (form.pdr || {}).packagingArtwork === 'has',
       ok: !pdrArtworkError(form.pdr || {}, { attachmentCount: (form.files || []).length, stage: 'submit' }),
     },
   ].filter((c) => c.applies);
@@ -153,12 +154,12 @@ function optionalCounts(form, kind, optionalRefs) {
   add('work', optionalRefs.includes('product'), (form.productIds || []).length > 0);
 
   // หัวข้อที่ใช้ PDR ไม่มีช่อง "รายละเอียด" ธรรมดา — แบบฟอร์มแทนที่มันไปแล้ว
-  add('subject', !requestHasPdr(kind), filled(form.body));
+  add('subject', !requestUsesPdr(form), filled(form.body));
   add('subject', requestNeedsRef(kind, 'scent'), filled(form.scentId));
   add('subject', requestNeedsRef(kind, 'formula'), filled(form.formulaId));
 
   // แบบฟอร์ม PDR นับรวมอยู่ใน "รายละเอียด" — มันคือเนื้อของสิ่งที่ขอ ไม่ใช่คนละเรื่อง
-  if (requestHasPdr(kind)) {
+  if (requestUsesPdr(form)) {
     const values = form.pdr || {};
     for (const section of PDR_SECTIONS) {
       const p = pdrFormProgress(section, values);

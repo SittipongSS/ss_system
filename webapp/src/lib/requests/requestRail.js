@@ -7,7 +7,7 @@
 // ⚠️ **ใบบอกว่า "รอใคร" · แถวบอกว่า "แต่ละ direction ไปถึงไหน"** — ขั้น แก้ไข/คอนเฟิร์ม/
 // ราคา อยู่ที่ก้าวถัดไปท้ายเธรด (NextStepBar) เพราะ direction A คอนเฟิร์ม B ขอแก้ C ไม่เอา
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
-import { requestDeliversRows, requestKindMeta } from '@/lib/master/requestTypes';
+import { requestUsesDeliveredRows, requestKindMeta } from '@/lib/master/requestTypes';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { requestReplyTurn, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { requestClosure } from '@/lib/requests/closure';
@@ -56,7 +56,7 @@ function middleStep(request) {
     // ⭐ ไม่มีแถวแปลว่าอะไร ขึ้นกับหัวข้อ (มติผู้ใช้ 2026-08-09): หัวข้อที่ฝ่ายสร้าง
     // แถวเองตอนส่ง (พัฒนากลิ่น) คือรอ **ของ** จริง ๆ · หัวข้อไม่มีแถวเลย
     // (สอบถามข้อมูล) ของไม่มีอยู่ในสาย — คำที่ถูกคือรอ **คำตอบ**
-    if (requestDeliversRows(request.kind)) {
+    if (requestUsesDeliveredRows(request)) {
       // "ส่งงาน" คำเดียวกับปุ่ม (ม-120) — รางเล่าก้าวเดียวกับที่ปุ่มกด
       return {
         label: requestWaitLabel(request, 'dept', 'ส่งงาน'),

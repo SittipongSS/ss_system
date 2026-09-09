@@ -10,7 +10,7 @@
 //
 // ⚠️ ปิดเรื่อง/ยกเลิกแล้วแก้ไม่ได้ทั้งคู่ — ใบที่จบแล้วเป็นบันทึก ไม่ใช่ของที่ยังแก้ได้
 import { canAnswerRequest, canManageRequest } from '@/lib/requests/access';
-import { requestHasPdr } from '@/lib/master/requestTypes';
+import { requestUsesPdr } from '@/lib/master/requestTypes';
 
 // ขั้นที่ผู้ขอยังถือสิทธิ์แก้อยู่
 const REQUESTER_STAGES = ['draft', 'pending'];
@@ -18,7 +18,7 @@ const REQUESTER_STAGES = ['draft', 'pending'];
 const DEPT_STAGES = ['acknowledged', 'answered'];
 
 export function pdrEditor(request) {
-  if (!request || !requestHasPdr(request.kind)) return null;
+  if (!request || !requestUsesPdr(request)) return null;
   if (REQUESTER_STAGES.includes(request.status)) return 'requester';
   if (DEPT_STAGES.includes(request.status)) return 'dept';
   return null;
@@ -40,7 +40,7 @@ export function canEditPdr(user, request) {
  */
 export function editPdrError(request, user) {
   if (!request) return 'ไม่พบคำร้อง';
-  if (!requestHasPdr(request.kind)) return 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR';
+  if (!requestUsesPdr(request)) return 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR';
   const side = pdrEditor(request);
   if (!side) return 'คำร้องปิดแล้ว — แก้แบบฟอร์มไม่ได้';
   if (canEditPdr(user, request)) return null;

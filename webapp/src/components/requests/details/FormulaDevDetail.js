@@ -4,7 +4,9 @@
 // ⭐ **1 หัวข้อ = 1 component** — ต่างจากพัฒนากลิ่นสี่อย่าง และทุกอย่างอยู่ในไฟล์นี้
 // ไม่ใช่เป็น `kind === 'formula_dev'` แทรกกลางหน้าที่ทุกหัวข้อใช้ร่วมกัน:
 //
-//   1 **ไม่มี PDR** — บรีฟอยู่ในช่อง "รายละเอียด" ของใบและ `spec` รายแถว
+//   1 **สองรูปแบบในหัวข้อเดียว** (มติผู้ใช้ 2026-09-09) — `standard` บรีฟอยู่ในช่อง
+//     "รายละเอียด" ของใบและ `spec` รายแถว (ของเดิม ม-40) · `npd` ใช้ **แบบฟอร์ม PDR**
+//     แทน และไม่มีตารางแถวเลย ⇒ จอนี้ต้องมีทั้งสองหน้าตา ไม่ใช่หน้าตาเดียว
 //   2 **ไม่มีกระทบยอด SO** — หัวข้อนี้ไม่ผูกใบสั่งขาย (ม-40) ไม่มีตัวเลขให้เทียบ
 //   3 **โครงสองชั้น** — คำร้อง → แถว (หมวด × กลิ่น) ไม่มีชั้นบรีฟ
 //   4 **ปลายทางคือทะเบียนสูตร** — 1 แถว = สูตร 1 ตัว (`formulas_identity_uk`)
@@ -20,6 +22,8 @@ import { isScentRegistrar } from "@/lib/master/scents";
 import { useRole } from "@/lib/roleContext";
 import { RowStepActions } from "@/components/requests/NextStepBar";
 import RequestRows from "./RequestRows";
+import PdrReadRail from "./PdrReadRail";
+import { requestUsesPdr } from "@/lib/master/requestTypes";
 import { ListChecks, Send } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -62,8 +66,18 @@ export default function FormulaDevDetail({
       return item ? <RowStepActions row={item} {...rowStep} /> : null;
     }
     : null;
+  /* ⭐ **ใบรูปแบบ NPD ไม่มีแถวเลย** — กระดานสรุปกับปุ่มส่งงานจึงไม่มีอะไรให้แสดง
+     🐞 ถ้าปล่อยให้เรนเดอร์ตามเดิม จะได้การ์ด "สรุปทั้งใบ" ที่มีแต่หัว (FormulaDevBoard
+     คืน null ตอน 0 แถว) = การ์ดเปล่าที่อ่านเหมือนหน้าโหลดไม่เสร็จ
+     ⚠️ ถามจากทะเบียน (`requestUsesPdr`) ไม่ใช่เทียบชื่อรูปแบบในจอ */
+  const usesPdr = requestUsesPdr(request);
   return (
     <>
+      {/* ⭐ **แบบฟอร์ม PDR ต้องมีที่อ่านบนใบ ไม่ใช่มีแค่ที่กรอกกับที่พิมพ์**
+          รางเดียวกับที่ใบพัฒนากลิ่นใช้ (`PdrReadRail` ของกลาง) ⇒ สองหัวข้อที่ใช้
+          แบบฟอร์มเดียวกันอ่านเหมือนกันเป๊ะ */}
+      {usesPdr && <PdrReadRail request={request} />}
+
       {/* 🐞 **เคยมี `RequestRows` ยืนเดี่ยวตรงนี้เหนือตาราง** ⇒ ไล่แถวชุดเดียวกันสองรอบ
           ชื่อกลิ่นและป้ายสถานะโผล่ซ้ำ (IS-26080021 — อาการเดียวกับสายกลิ่นเป๊ะ)
           ⇒ ย้ายเข้าไปเป็นเนื้อของแถวที่กางได้ ไม่ใช่ก้อนแยกข้างบน */}
@@ -74,6 +88,7 @@ export default function FormulaDevDetail({
       {/* ⭐ **ปุ่มส่งรวบอยู่กับตาราง ไม่ใช่ Control Panel** (มติผู้ใช้ 2026-08-18) —
           ปุ่มส่งงานทุกแบบอยู่ที่เดียวกับรายการที่มันส่ง · Control Panel เหลือปุ่มปลายทาง
           ⚠️ เงื่อนไขเดิม: โผล่เมื่อมีแถวพร้อมส่ง ≥ 2 (แถวเดียวใช้ปุ่มในแถวของมันเอง) */}
+      {!usesPdr && (
       <DetailCard
         icon={ListChecks} title="สรุปทั้งใบ"
         actions={rowStep?.canDept && bulkReady?.count >= 2 ? (
@@ -98,6 +113,7 @@ export default function FormulaDevDetail({
         }}
       />
       </DetailCard>
+      )}
 
       {/* ⚠️ แถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 — FormulaPanel) — โครง
           การ์ดจัดการมีทุกหัวข้อแล้ว (ม-123) · ห้ามวาดซ้ำที่นี่อีก */}

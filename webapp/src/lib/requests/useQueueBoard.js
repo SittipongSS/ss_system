@@ -83,7 +83,9 @@ export function matchesQueueSearch(request, term, { kindLabel = () => '' } = {})
        ⇒ กติกาของฟังก์ชันนี้เอง ("ตาเห็นบนแถว = ต้องค้นเจอ") บังคับให้มีสองคีย์นี้ */
     request?.dealCode,
     request?.dealName,
-    kindLabel(request?.kind),
+    // ⚠️ ส่ง **ทั้งใบ** — ป้ายบนแถวคือ "ชื่อหัวข้อ · รูปแบบ" (`requestKindLabelFull`)
+    // ⇒ ส่งแค่ `kind` แล้วพิมพ์ "NPD" จะหาไม่เจอทั้งที่คำนั้นอยู่บนจอ
+    kindLabel(request),
     request?.dept,
   ].filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
 }

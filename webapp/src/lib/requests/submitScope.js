@@ -4,13 +4,13 @@
 // ตอนกดส่ง (หน้ารายละเอียดคำร้อง) ต้องเล่าเรื่องเดียวกัน · เดิมโมดัลนับเองด้วย
 // `items.length` ⇒ ใบพัฒนากลิ่นขึ้น "0 กลิ่น → RD" ทุกใบ ทั้งที่เธรดของใบเดียวกัน
 // เขียนว่า "บรีฟ 3 ก้อน" ถูกต้องอยู่แล้ว (ผู้ใช้เจอเอง 2026-09-03)
-import { requestDeliversRows } from '@/lib/master/requestTypes';
+import { requestUsesDeliveredRows, requestUsesItems, requestUsesPdr } from '@/lib/master/requestTypes';
 
 /**
  * "ส่งอะไรไป" ของใบนี้ — **ไม่ใช่จำนวนบรรทัดเสมอไป**
  *
  * 🐞 เดิมเขียน `${items.length} รายการ` ตายตัว ⇒ หัวข้อที่ **ฝ่ายปลายทางเป็นคนสร้าง
- * แถวตอนส่งงาน** (พัฒนากลิ่น — ดู `requestDeliversRows`) ได้บรรทัดแรกของเธรดว่า
+ * แถวตอนส่งงาน** (พัฒนากลิ่น — ดู `requestUsesDeliveredRows`) ได้บรรทัดแรกของเธรดว่า
  * "ส่งเคสถึงฝ่าย RD — 0 รายการ" ทุกใบ ซึ่งอ่านเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ยังไม่มีแถว
  * ตั้งแต่แรก (โรคเดียวกับ "รายการ 0 · ตอบแล้ว 0/0" ที่หัวใบเคยเป็น)
  *
@@ -26,7 +26,13 @@ export default function submitScope(ask) {
   const zones = (ask?.surveyZones || []).length;
   if (zones) return `${zones} พื้นที่`;
   const items = (ask?.items || []).length;
-  if (!requestDeliversRows(ask?.kind)) return `${items} รายการ`;
+  if (!requestUsesDeliveredRows(ask)) {
+    /* ⭐ **ใบที่ไม่มีตารางแถวเลยต้องไม่พูดว่า "0 รายการ"** — พัฒนาสูตรรูปแบบ NPD
+       ส่งไปพร้อมแบบฟอร์ม PDR ไม่ใช่รายการ · ประโยคนี้ขึ้นเป็นบรรทัดแรกของเธรด
+       และในโมดัลยืนยันตอนกดส่ง ⇒ นับของที่ใบนั้นไม่มีคือบอกผิดสองที่พร้อมกัน */
+    if (!requestUsesItems(ask) && requestUsesPdr(ask)) return 'แบบฟอร์ม PDR';
+    return `${items} รายการ`;
+  }
   const briefs = (ask?.briefs || []).length;
   return briefs ? `บรีฟ ${briefs} ก้อน` : 'รายละเอียดอยู่ในใบ';
 }

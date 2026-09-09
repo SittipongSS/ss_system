@@ -5,7 +5,7 @@
 // กันจริง: ฝั่งใบขอราคาผลิตคำนวณ `kind` ใหม่เองจนไม่ตรงกับที่ฟอร์มแสดง และไม่เคย
 // ส่ง scentId/formulaId ที่หัวข้อนั้นบังคับ → 400 ทุกครั้ง
 import {
-  lineShapeForKind, requestHasItems, requestHasPdr, requestNeedsRef, requestShapeError,
+  requestLineShape, requestUsesItems, requestUsesPdr, requestNeedsRef, requestShapeError,
 } from '@/lib/master/requestTypes';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
@@ -32,7 +32,7 @@ export function requestFormBlocker(form) {
   //  ด่านฝั่งจอจะหลวมกว่า server เงียบ ๆ ทันที)
   const shape = requestShapeError(form.kind, {
     ...form,
-    items: requestHasItems(form.kind) ? form.items : undefined,
+    items: requestUsesItems(form) ? form.items : undefined,
   });
   if (shape) return shape;
 
@@ -41,8 +41,8 @@ export function requestFormBlocker(form) {
   // อะไรเลยก็ผ่านด่านฝั่งจอ แล้วไปตายที่ server ตอนกดบันทึก (เสียรอบไปหนึ่งรอบ)
   // ⚠️ **ใช้ตัวตรวจตัวเดียวกับ server** (`normalizeLinesFor`) ไม่ใช่เขียนกฎซ้ำ —
   // กฎรายแถวอยู่ในรูปร่างบรรทัดของฝ่ายนั้น ๆ ที่เดียว
-  if (requestHasItems(form.kind)) {
-    const { error: lineError } = normalizeLinesFor(lineShapeForKind(form.kind), form.items);
+  if (requestUsesItems(form)) {
+    const { error: lineError } = normalizeLinesFor(requestLineShape(form), form.items);
     if (lineError) return lineError;
   }
 
@@ -51,7 +51,7 @@ export function requestFormBlocker(form) {
   // ฟอร์มถือไฟล์ได้แล้ว (`value.files`) ⇒ บังคับตั้งแต่ตอนบันทึกร่างได้จริง และดีกว่า
   // ปล่อยให้ไปติดตอนกดส่งซึ่งเป็นคนละหน้ากัน
   // ⚠️ ใช้ `pdrArtworkError` ตัวเดียวกับ server ไม่ใช่เขียนเงื่อนไขใหม่
-  if (requestHasPdr(form.kind)) {
+  if (requestUsesPdr(form)) {
     const artwork = pdrArtworkError(form.pdr || {}, {
       attachmentCount: (form.files || []).length,
       stage: 'submit',
@@ -89,6 +89,11 @@ export function requestFormBlocker(form) {
 export function requestPayload(form, extra = {}) {
   return {
     kind: form.kind,
+    /* ⭐ **รูปแบบงานต้องอยู่ใน payload** (2026-09-09) — ลิสต์นี้เป็น whitelist:
+       คีย์ที่ไม่ได้เขียนไว้ที่นี่ **ไม่เคยถึง API** และของที่มันคุมจะถูกทิ้งเงียบ ๆ
+       (ดู 🐞 ของช่อง PDR ข้างล่าง — 21 ช่องหายไปเป็นสัปดาห์ด้วยเหตุนี้)
+       ⚠️ ว่าง = ให้ server ใช้รูปแบบตั้งต้นของหัวข้อ ไม่ใช่ error */
+    variant: form.variant || null,
     dept: form.dept || null,
     // ทีมเจ้าของคำร้อง — ว่าง = ทีมหลักของคนเปิด (server เติมให้ผ่าน attributionTeam)
     // ช่องนี้โผล่บนฟอร์มเฉพาะตอนคนเปิดอยู่หลายทีม (มติ 2026-08-11)
@@ -125,7 +130,7 @@ export function requestPayload(form, extra = {}) {
     // ส่วนนี้" ทุกใบ · ของจริงที่ผู้ใช้เจอบนจอ ไม่ใช่เคสสมมติ
     // ⚠️ `pdrTargets` (ข้อ 2.2/2.3 · mig 0229) ต้องเดินทางมากับ `pdr` เสมอ — ลืมส่ง
     // แล้วอาการจะเหมือนบั๊กข้างบนเป๊ะ: กรอกครบ กดบันทึก แล้วรายการหายทั้งชุด
-    ...(requestHasPdr(form.kind) ? {
+    ...(requestUsesPdr(form) ? {
       pdr: form.pdr || {},
       briefs: form.briefs || [],
       pdrTargets: form.pdrTargets || [],
@@ -145,7 +150,7 @@ export function requestPayload(form, extra = {}) {
       zones: form.zones || [],
       requestedDueTime: form.requestedDueTime || null,
     } : {}),
-    ...(requestHasItems(form.kind) ? { items: form.items || [] } : {}),
+    ...(requestUsesItems(form) ? { items: form.items || [] } : {}),
     ...extra,
   };
 }

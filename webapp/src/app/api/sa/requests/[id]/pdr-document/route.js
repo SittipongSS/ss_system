@@ -7,7 +7,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import { canReadRequestRow } from '@/lib/requests/access';
 import { findRequest } from '@/lib/materialPricesAdmin';
-import { requestHasPdr } from '@/lib/master/requestTypes';
+import { requestUsesPdr } from '@/lib/master/requestTypes';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { renderPdrDocument } from '@/lib/requests/pdrDocument';
 
@@ -22,7 +22,7 @@ export async function GET(_request, { params }) {
   const row = await findRequest(supabase, id);
   if (!row) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
   if (!canReadRequestRow(user, row)) return Response.json({ error: 'forbidden' }, { status: 403 });
-  if (!requestHasPdr(row.kind)) {
+  if (!requestUsesPdr(row)) {
     return Response.json({ error: 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR' }, { status: 400 });
   }
 

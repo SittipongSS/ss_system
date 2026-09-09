@@ -40,8 +40,31 @@ const VALID_LINE_SHAPES = ['product_dev', 'document', 'billing_doc'];
 
 // export เพื่อให้เทสต์พิสูจน์ได้ว่าด่านนี้ **ยิงจริง** — ด่านที่ไม่มีใครเคยเห็นมันทำงาน
 // คือด่านที่อาจพังเงียบมานานแล้ว
-/* ธงบูลีนที่ทะเบียนหัวข้อรู้จัก — เพิ่มธงใหม่ต้องมาเติมที่นี่ด้วย ไม่งั้นพิมพ์ผิดแล้วเงียบ */
-const BOOLEAN_FLAGS = ['hasItems', 'deliversRows', 'cancelBeforeAckOnly'];
+/* ธงบูลีนที่ทะเบียนหัวข้อรู้จัก — เพิ่มธงใหม่ต้องมาเติมที่นี่ด้วย ไม่งั้นพิมพ์ผิดแล้วเงียบ
+   ⚠️ `hasPdr` เพิ่งเข้าลิสต์ 2026-09-10 — มันอยู่บน `scent_dev` มาตั้งแต่ mig 0213
+   โดย **ไม่เคยถูกตรวจชนิดเลย** ⇒ พิมพ์เป็น `hasPDR` เมื่อไรก็ผ่านด่านนี้เงียบ ๆ แล้ว
+   ฟอร์ม PDR หายทั้งหัวข้อโดยไม่มี error ให้ใครเห็น (โรคเดียวกับที่คอมเมนต์ข้างล่างกัน) */
+const BOOLEAN_FLAGS = ['hasItems', 'deliversRows', 'cancelBeforeAckOnly', 'hasPdr'];
+
+/* ⭐ **คีย์ระดับบนสุดที่ทะเบียนรู้จัก** (2026-09-10) — เดิมไม่มี whitelist เลย
+   คอมเมนต์ข้างล่างในฟังก์ชันเขียนกับดักนี้ไว้เองแล้ว ("พิมพ์ชื่อธงผิดหนึ่งตัวจะผ่าน
+   ด่านนี้เงียบ ๆ") แต่กันได้เฉพาะธงบูลีนที่มีชื่ออยู่ในลิสต์ ⇒ คีย์ที่พิมพ์ผิดทั้งตัว
+   (`varaints`) ยังหลุด · ที่นี่ปิดทางนั้น: คีย์ที่ไม่รู้จัก = build พัง ไม่ใช่ธงที่เงียบ */
+const KIND_KEYS = [
+  'key', 'label', 'dept', 'scope', 'legacy', 'needs', 'optionalRefs',
+  'hasItems', 'lineShape', 'lineKind', 'lineNoun', 'deliversRows', 'hasPdr',
+  'cancelBeforeAckOnly', 'stepKey', 'dealType', 'form', 'summary', 'hint',
+  'variants', 'defaultVariant',
+];
+
+/* ⭐ **รูปแบบงานในหัวข้อเดียว** (มติผู้ใช้ 2026-09-09 · พัฒนาสูตร standard | NPD) —
+   ธงที่บอก "ใบหน้าตาแบบไหน" ย้ายจากระดับหัวข้อมาอยู่ในรูปแบบ เมื่อหัวข้อประกาศ
+   `variants` · ที่เหลือ (ฝ่าย · scope · needs · stepKey) ยังเป็นของหัวข้อเพราะมัน
+   คือ **ตัวตน** ของใบ ไม่ใช่รูปทรงของฟอร์ม
+   ⚠️ ทำไมไม่แตกเป็นหัวข้อที่สอง: `kind` ฝังอยู่ใน `docNo` ซึ่ง DB ห้ามแก้
+   (`guard_dept_request` · mig 0173) และผูก stepKey/ไทม์ไลน์ ⇒ สลับรูปแบบกลางคัน
+   จะกลายเป็น "ลบใบเปิดใหม่" ซึ่งไม่ใช่สวิตช์ */
+const VARIANT_FLAGS = ['label', 'hasItems', 'lineShape', 'deliversRows', 'hasPdr', 'hint'];
 
 export function assertKind(kind, seen = new Set()) {
   const at = `หัวข้อคำร้อง "${kind?.key || '(ไม่มี key)'}"`;
@@ -83,9 +106,7 @@ export function assertKind(kind, seen = new Set()) {
   }
   // หัวข้อที่มีบรรทัดต้องบอกด้วยว่าบรรทัดหน้าตาแบบไหน — ไม่บอก = ตกไปเป็น
   // 'material' เงียบ ๆ แล้วผู้ใช้เจอตารางวัสดุในหัวข้อที่ไม่เกี่ยวกับวัสดุ
-  if (kind.lineShape && !VALID_LINE_SHAPES.includes(kind.lineShape)) {
-    throw new Error(`${at}: lineShape "${kind.lineShape}" ไม่รู้จัก`);
-  }
+  // (กฎอยู่ใน `assertShape` ข้างล่าง — ที่เดียว ใช้ทั้งหัวข้อและรูปแบบ)
   // ⚠️ `hasTiers` ไม่มีอีกแล้ว — ตาราง `dept_request_item_tiers` ถูก DROP ใน 0219
   // ตีกลับตั้งแต่ตอนโหลดถ้ามีใครประกาศมาอีก ไม่ใช่ปล่อยให้เป็นธงที่ไม่มีใครอ่าน
   if ('hasTiers' in kind) {
@@ -109,13 +130,55 @@ export function assertKind(kind, seen = new Set()) {
   for (const key of Object.keys(kind.form || {})) {
     if (!(key in FORM_DEFAULTS)) throw new Error(`${at}: form."${key}" ไม่ใช่คีย์ที่รู้จัก`);
   }
-  if (kind.lineShape && !kind.hasItems) throw new Error(`${at}: lineShape ต้องมากับ hasItems`);
+  for (const key of Object.keys(kind)) {
+    if (!KIND_KEYS.includes(key)) throw new Error(`${at}: คีย์ "${key}" ไม่ใช่คีย์ที่ทะเบียนรู้จัก`);
+  }
+  /* ⭐ **กฎรูปทรงชุดเดียว ใช้ทั้งหัวข้อที่ไม่มีรูปแบบและทุกรูปแบบของหัวข้อที่มี** —
+     ถ้าเขียนแยกสองชุด รูปแบบใหม่จะหลุดกฎที่หัวข้อธรรมดาโดนอยู่ (เช่น hasItems
+     ที่ไม่มี lineShape ⇒ แถวที่ normalize ไม่ได้) */
+  if (kind.variants) {
+    for (const flag of ['hasItems', 'lineShape', 'deliversRows', 'hasPdr']) {
+      if (flag in kind) {
+        throw new Error(`${at}: ประกาศ "${flag}" ที่หัวข้อไม่ได้เมื่อมี variants — ย้ายไปไว้ในรูปแบบ`);
+      }
+    }
+    const names = Object.keys(kind.variants);
+    if (names.length < 2) throw new Error(`${at}: variants ต้องมีอย่างน้อย 2 รูปแบบ`);
+    if (!kind.defaultVariant) throw new Error(`${at}: มี variants แล้วต้องบอก defaultVariant`);
+    if (!names.includes(kind.defaultVariant)) {
+      throw new Error(`${at}: defaultVariant "${kind.defaultVariant}" ไม่มีใน variants`);
+    }
+    for (const name of names) {
+      const variant = kind.variants[name] || {};
+      const atVariant = `${at} รูปแบบ "${name}"`;
+      if (!variant.label) throw new Error(`${atVariant}: ต้องมี label — ปุ่มบนฟอร์มใช้ค่านี้`);
+      for (const key of Object.keys(variant)) {
+        if (!VARIANT_FLAGS.includes(key)) throw new Error(`${atVariant}: คีย์ "${key}" ไม่รู้จัก`);
+      }
+      for (const flag of BOOLEAN_FLAGS) {
+        if (flag in variant && typeof variant[flag] !== 'boolean') {
+          throw new Error(`${atVariant}: ธง "${flag}" ต้องเป็น true/false`);
+        }
+      }
+      assertShape(variant, atVariant);
+    }
+  } else {
+    assertShape(kind, at);
+  }
+}
+
+/* กฎรูปทรงของ "ใบหน้าตาแบบไหน" — เรียกจาก assertKind ทั้งสองทาง (ดูข้างบน) */
+function assertShape(shape, at) {
+  if (shape.lineShape && !VALID_LINE_SHAPES.includes(shape.lineShape)) {
+    throw new Error(`${at}: lineShape "${shape.lineShape}" ไม่รู้จัก`);
+  }
+  if (shape.lineShape && !shape.hasItems) throw new Error(`${at}: lineShape ต้องมากับ hasItems`);
   // ⭐ ทางกลับ: มีบรรทัดแล้วต้องบอกว่าบรรทัดหน้าตาแบบไหน — เดิมตกไปเป็น 'material'
   // เงียบ ๆ ซึ่งเป็นรูปร่างที่ไม่มีอยู่แล้ว ⇒ ตกหล่นตอนนี้ = แถวที่ normalize ไม่ได้
-  if (kind.hasItems && !kind.lineShape) throw new Error(`${at}: hasItems ต้องมากับ lineShape`);
+  if (shape.hasItems && !shape.lineShape) throw new Error(`${at}: hasItems ต้องมากับ lineShape`);
   // ฝ่ายสร้างแถวเองตอนส่ง = หัวข้อนั้นต้อง **ไม่มีบรรทัดตอนเปิด** ไม่งั้นจะได้แถว
   // สองชุด (ที่ผู้ขอกรอก กับที่ฝ่ายสร้าง) ที่ไม่มีใครรู้ว่าอันไหนคือของจริง
-  if (kind.deliversRows && kind.hasItems) {
+  if (shape.deliversRows && shape.hasItems) {
     throw new Error(`${at}: deliversRows ใช้กับหัวข้อที่มีบรรทัดตอนเปิดไม่ได้`);
   }
 }

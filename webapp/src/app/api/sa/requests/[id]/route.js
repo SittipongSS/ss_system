@@ -39,12 +39,14 @@ import {
 import { briefBoard } from '@/lib/requests/briefBoard';
 import { assignBriefPerfumerError, briefPerfumerPatch } from '@/lib/requests/briefPerfumer';
 import {
-  lineShapeForKind, requestHasItems, requestHasPdr, requestKindLabel, requestNeedsRef,
+  requestLineShape, requestUsesItems, requestUsesPdr, requestKindLabel, requestNeedsRef,
+  requestVariantKey, requestVariantLabel,
   requestShapeError,
 } from '@/lib/master/requestTypes';
 import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
+import { requestVariantSwitchError } from '@/lib/requests/variantSwitch';
 import {
   lineDiffIsEmpty, lineShapeEditable, requestLineDiff, requestLineEditError,
 } from '@/lib/requests/requestLineEdit';
@@ -314,7 +316,7 @@ export async function PATCH(request, { params }) {
          คีย์อะไรก็ได้จาก body ไปยัด patch (นั่นคือทางเปิดให้เขียนคอลัมน์อื่นทั้งตาราง)
          ⚠️ **ไม่ตรวจว่าเป็นชื่อคนที่ถือตำแหน่งนั้นจริง** โดยตั้งใจ — ค่านี้คือ "ชื่อบน
          กระดาษ" ซึ่งฟอร์ม PDR ให้พิมพ์อิสระอยู่แล้ว (คนเซ็นที่ไม่มีบัญชีมีจริง) */
-      if (requestHasPdr(before.kind) && body.pdrSigners && typeof body.pdrSigners === 'object') {
+      if (requestUsesPdr(before) && body.pdrSigners && typeof body.pdrSigners === 'object') {
         for (const f of PDR_SIGNER_FIELDS) {
           const raw = body.pdrSigners[f.key];
           if (raw === undefined) continue;
@@ -426,6 +428,15 @@ export async function PATCH(request, { params }) {
 
       const next = requestEditPatch(body);
 
+      /* ── รูปแบบงาน (พัฒนาสูตร standard ↔ NPD · มติ 2026-09-09) ───────────
+         ⚠️ **ไม่ได้อยู่ใน `REQUEST_EDIT_PATCH_FIELDS` โดยตั้งใจ** — ช่องในลิสต์นั้น
+         เป็นข้อความล้วนที่เขียนทับได้เสมอ ส่วนรูปแบบมีด่านของตัวเอง (สถานะ · เลขที่
+         แบบฟอร์ม · แถวที่ค้างอยู่) ⇒ ปนเข้าไปในลิสต์คือด่านที่ไม่มีใครเห็น
+         ⚠️ ไม่ส่งคีย์มา = ไม่แตะของเดิม (แพตเทิร์นเดียวกับ items/pdrTargets) */
+      if (body.variant !== undefined) {
+        next.variant = requestVariantKey({ kind: before.kind, variant: body.variant });
+      }
+
       /* ── เวลาที่ต้องการให้เข้าพื้นที่ (หัวข้อที่มีสถานที่) ────────────────────
          🐞 ช่อง "ช่วงเวลาที่ต้องการ" **กางอยู่บนฟอร์มแก้** (`showTime` ของ
             RequestEditableFields) แต่ `requestEditPatch` ไม่มีคีย์นี้ ⇒ คนแก้เวลาแล้ว
@@ -448,8 +459,8 @@ export async function PATCH(request, { params }) {
          เดียวกับ `pdrTargets` · ส่งอาเรย์ว่างมาถูกตีกลับที่ `normalizeLinesFor`
          ด้วยข้อความ "ต้องมีรายการอย่างน้อย 1 รายการ" ตัวเดียวกับตอนเปิดใบ */
       let nextItems = before.items;
-      if (Array.isArray(body.items) && requestHasItems(before.kind)) {
-        const lineShape = lineShapeForKind(before.kind);
+      if (Array.isArray(body.items) && requestUsesItems(before)) {
+        const lineShape = requestLineShape(before);
         if (!lineShapeEditable(lineShape)) {
           return Response.json({
             error: 'รายการของหัวข้อนี้ไม่ได้กรอกตอนเปิดใบ — แก้ทางนี้ไม่ได้',
@@ -528,8 +539,21 @@ export async function PATCH(request, { params }) {
       });
       if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
 
+      /* ⚠️ **ด่านสลับรูปแบบอ่านบรรทัดชุดใหม่** ด้วยเหตุผลเดียวกับด่านรูปทรงข้างบน —
+         ลบแถวออกให้หมดแล้วสลับเป็น NPD ในการกดบันทึกครั้งเดียวต้องผ่านได้
+         (`variantSwitch.js` อธิบายว่าทำไมด่านนี้ไม่ลบแถวให้เอง) */
+      if (next.variant !== undefined) {
+        const switchError = requestVariantSwitchError(before, next.variant, nextItems);
+        if (switchError) return Response.json({ error: switchError }, { status: 409 });
+      }
+
       Object.assign(patch, next);
-      summary = `แก้ข้อมูลคำร้อง ${before.docNo || before.id}`;
+      /* ⭐ **สลับรูปแบบต้องเห็นในเธรด** — มันเปลี่ยนรูปของทั้งใบ (ตารางรายการหาย ·
+         แบบฟอร์ม PDR โผล่) ⇒ คนที่เปิดใบวันถัดมาต้องอ่านออกว่าใครเปลี่ยนตอนไหน
+         ไม่ใช่เห็นแค่ "แก้ข้อมูลคำร้อง" เหมือนแก้ชื่อเรื่อง */
+      summary = next.variant !== undefined && next.variant !== requestVariantKey(before)
+        ? `สลับรูปแบบงานเป็น ${requestVariantLabel({ kind: before.kind, variant: next.variant })} · ${before.docNo || before.id}`
+        : `แก้ข้อมูลคำร้อง ${before.docNo || before.id}`;
     } else if (action === 'pdr') {
       // ⭐ แก้แบบฟอร์ม PDR — สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" (ดู lib/requests/pdrEdit.js)
       const denied = editPdrError(before, user);
@@ -779,7 +803,7 @@ export async function PATCH(request, { params }) {
     } else if (action === 'answer') {
       // ชนิดที่ไม่มีบรรทัด: ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง ผู้ตอบกดเองว่าตอบแล้ว
       // (ชนิดที่มีบรรทัดใช้ /answer ซึ่ง derive สถานะจากรายการให้อัตโนมัติ)
-      if (requestHasItems(before.kind)) {
+      if (requestUsesItems(before)) {
         return Response.json({ error: 'ชนิดนี้ตอบเป็นรายบรรทัด' }, { status: 400 });
       }
       if (!canAnswerRequest(user, before)) {
