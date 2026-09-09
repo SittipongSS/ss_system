@@ -1752,3 +1752,60 @@ export function salesDealScopes(role) {
   if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
   return ['mine'];
 }
+
+/* ── ขอบเขตตั้งต้นของตัวสลับ "ของฉัน / ทีม / ทั้งหมด" (มติผู้ใช้ 2026-09-08) ────
+   กลับทิศจากกติกาเดิม (2026-08-05) ที่ตั้งต้นที่ตัว **กว้างสุด** เสมอ
+   ⇒ AE/Senior AE ที่มีงานของตัวเองเปิดหน้ามาเจอกองของทั้งทีม ต้องไล่หางานตัวเอง
+   กติกาใหม่: **แคบสุดที่ไม่ว่างโดยโครงสร้าง** — ของฉัน → ทีม → ทั้งหมด
+
+   ⚠️ **"ไม่มี" = ไม่มีโดยโครงสร้าง ไม่ใช่วันนี้ไม่มีแถว** — AE ที่เคลียร์คิวหมด
+   ต้องเห็น "คิวของคุณว่าง" ไม่ใช่ถูกพาไปดูของทีมเงียบ ๆ · และค่าตั้งต้นต้องคำนวณ
+   ได้ตั้งแต่ก่อนข้อมูลมาถึง ไม่งั้นหน้าจะกระพริบสลับขอบเขตหลังโหลดเสร็จ
+
+   ⚠️ **ไม่ใช่ด่านสิทธิ์** — เลือกได้เฉพาะจากลิสต์ที่ชั้นสิทธิ์ส่งมาแล้วเท่านั้น
+   (leadScopes / salesDealScopes / REQUEST_SCOPES ที่ผ่าน canUseScope)
+   ⚠️ ข้อ "ทีม" ต้องถาม `userTeams(user).length` **ไม่ใช่** "ลิสต์มี team ไหม" —
+   canUseScope ปล่อย superuser ที่ไม่มีทีมผ่าน แต่ scopeFilter จะถอยขอบเขตนั้น
+   กลับไปเป็นของตัวเอง ⇒ ป้ายเขียน "ทีม" แต่ได้แถวของ "ของฉัน" */
+export const SCOPE_ORDER = ['mine', 'team', 'all'];
+
+/* ตำแหน่งที่ "ถือแถวของตัวเอง" ได้จริงในแต่ละคิว — ตัดสินจากตำแหน่ง ไม่ใช่จำนวนแถว
+   ⚠️ ต้องตรงกับเพรดิเคต "ของฉัน" ของหน้านั้นจริง ๆ ไม่งั้นได้ค่าตั้งต้นที่ว่างเปล่า
+     deals    — `deal.ownerId === me.id` · ac/ae_supervisor/admin ถือดีลไม่ได้
+                (ดู DEAL_HOLDER_ROLES ใน lib/sales/dealOwner.js — มีเทสต์คุมให้ตรงกัน)
+     leads    — `assigneeId === me || createdBy === me` ⇒ marketing ที่กรอกลีดเองนับด้วย
+     calendar — `entry.assigneeId === me` อย่างเดียว **ไม่มี createdBy** ⇒ marketing ไม่นับ
+     requests — `requestedById === me` ∪ คิวของฝ่ายตัวเอง ⇒ ทุกคนที่ทำงานจริงมีของตัวเอง
+                ยกเว้นผู้กำกับ/ผู้สังเกตการณ์ ซึ่งไม่ได้เปิดใบเองเป็นงานประจำ
+   ⚠️ ac อยู่ในสายขาย (deals/leads/calendar) ไม่ได้ — เป็นหลังบ้านของทีม งานถูกปั๊ม
+   เป็นชื่อ AE ที่ถูกเลือกเสมอ ⇒ "ของฉัน" ของ AC บนสามคิวนั้นว่างโดยโครงสร้าง */
+const SALES_ROW_HOLDER_ROLES = ['ae', 'senior_ae'];
+const SCOPE_OWNS_MINE = {
+  deals: (role) => SALES_ROW_HOLDER_ROLES.includes(role),
+  calendar: (role) => SALES_ROW_HOLDER_ROLES.includes(role),
+  leads: (role) => SALES_ROW_HOLDER_ROLES.includes(role) || role === 'marketing',
+  requests: (role) => !isSuperuser(role) && !isReadOnlyObserver(role),
+};
+
+/** ขอบเขตที่ควรเปิดมาเจอ — แคบสุดที่ยังมีของ · ถอยเป็นตัวกว้างสุดเมื่อไม่มีตัวไหนผ่าน
+ *  @param {string[]} allowed ลิสต์ขอบเขตของ role นั้น (เรียงแคบ→กว้าง)
+ *  @param {object} user ผู้ใช้ที่กำลังเปิดหน้า (ต้องมี role และทีม)
+ *  @param {'deals'|'leads'|'calendar'|'requests'} surface คิวที่กำลังเปิด */
+export function defaultScope(allowed, user, surface) {
+  const list = Array.isArray(allowed) ? allowed : [];
+  if (!list.length) return null;
+  const role = normalizeRole(user?.role);
+  const ownsMine = SCOPE_OWNS_MINE[surface] || (() => false);
+  const inhabited = {
+    mine: ownsMine(role),
+    team: userTeams(user).length > 0,
+    all: true, // "ทั้งหมด" คือเซตที่สิทธิ์เปิดให้ ⇒ ไม่มีวันว่างโดยโครงสร้าง
+  };
+  for (const scope of SCOPE_ORDER) if (list.includes(scope) && inhabited[scope]) return scope;
+  /* ไม่มีตัวไหน "มีของ" เลย — ถอยไปตัวแคบสุดเพื่อไม่ให้ป้ายโกหก
+     ⚠️ สาขานี้เอื้อมถึงได้เฉพาะลิสต์ที่**ไม่มี "ทั้งหมด"** (เพราะ all ไม่มีวันว่าง)
+     ⇒ ถอยแล้วเป็น "ของฉัน" เสมอ กันบั๊กแอดมินเปิดมาเจอจอว่าง (#1038) ไว้ได้เหมือนเดิม
+     เคสจริงที่ลงมาถึงนี่: AC ที่ยังไม่ถูกจัดทีม — "ทีม" ของเขาจะถูก scopeFilter
+     ถอยกลับไปเป็นแถวของตัวเองอยู่ดี ป้ายจึงต้องไม่เขียนว่า "ทีม" */
+  return list[0];
+}

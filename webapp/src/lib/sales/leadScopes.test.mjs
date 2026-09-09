@@ -88,11 +88,13 @@ test('AE เหลือตัวเลือกเดียว → หน้า
   assert.match(page, /scopes\.length > 1 && \(/, 'ตัวเลือกเดียวต้องไม่โชว์ปุ่ม');
 });
 
-/* ตั้งต้นที่ตัวกว้างสุด — ไม่งั้นคนที่เคยเห็นคิวทั้งทีมจะเปิดหน้ามาแล้วของหายไปเฉย ๆ
-   (พฤติกรรมวันนี้คือเห็นทุกใบที่ API คืนมา) */
-test('ตั้งต้นที่ขอบเขตกว้างสุด ไม่ใช่ "ของฉัน"', () => {
+/* ค่าตั้งต้น = **แคบสุดที่ไม่ว่างโดยโครงสร้าง** (มติผู้ใช้ 2026-09-08 — แทนกติกา
+   "กว้างสุด" ของ 2026-08-05) · หน้าต้องไม่คำนวณเอง ไม่งั้นสี่จอเลื่อนออกจากกัน */
+test('ตั้งต้นด้วย defaultScope ไม่ใช่ตัวกว้างสุด', () => {
   const page = readFileSync(join(ROOT, 'src/app/sales-planning/leads/page.js'), 'utf8');
-  assert.match(page, /scopes\[scopes\.length - 1\]/, 'ค่าตั้งต้นต้องเป็นตัวสุดท้าย (กว้างสุด)');
+  assert.match(page, /defaultScope\(scopes, \{ role, team, teams \}, "leads"\)/,
+    'ค่าตั้งต้นต้องมาจาก defaultScope ของ permissions.js');
+  assert.doesNotMatch(page, /scopes\[scopes\.length - 1\]/, 'ห้ามกลับไปตั้งต้นที่ตัวกว้างสุด');
 });
 
 test('"ของฉัน" นับทั้งใบที่ถูกมอบให้ และใบที่ตัวเองกรอก — ตรงกับ applyLeadScope', () => {
@@ -124,10 +126,11 @@ test('หน้าดีล: ขอบเขตกรองทั้ง KPI แ�
   assert.match(src, /if \(!inScopeDeal\(deal\)\) return false;/, 'ตารางต้องใช้ตัวกรองร่วมด้วย');
 });
 
-test('ทั้งสองหน้าตั้งต้นที่ขอบเขตกว้างสุด', () => {
+test('ทั้งสองหน้าตั้งต้นด้วย defaultScope ตัวกลาง', () => {
   for (const [name, src] of [['ดีล', dealsPage()], ['ลีด', leadsPage()]]) {
-    assert.match(src, /Scopes\[[a-zA-Z]+Scopes\.length - 1\]|scopes\[scopes\.length - 1\]/,
-      `หน้า${name}: ค่าตั้งต้นต้องเป็นตัวสุดท้าย (กว้างสุด)`);
+    assert.match(src, /defaultScope\(/, `หน้า${name}: ค่าตั้งต้นต้องมาจาก defaultScope`);
+    assert.doesNotMatch(src, /Scopes\[[a-zA-Z]+Scopes\.length - 1\]|scopes\[scopes\.length - 1\]/,
+      `หน้า${name}: ห้ามกลับไปตั้งต้นที่ตัวกว้างสุด`);
   }
 });
 
