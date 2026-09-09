@@ -111,7 +111,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       .eq('reviewMonth', reviewMonth),
     team,
   );
-  const { data: before } = await beforeQuery.maybeSingle();
+  /* ⚠️ ต้องรับ `error` — ทิ้งไว้แล้ว `before` เป็น undefined ⇒ เดินสาย insert
+     แทน update · unique (reviewMonth, team) ของ mig 0069 กันแถวซ้ำไว้จริง แต่ผู้ใช้
+     จะได้ error "duplicate key" ซึ่งชี้ผิดเหตุ แทนที่จะรู้ว่าอ่านของเดิมไม่สำเร็จ */
+  const { data: before, error: beforeError } = await beforeQuery.maybeSingle();
+  if (beforeError) return fail(beforeError.message, 500);
 
   const row = {
     reviewMonth,
