@@ -4,6 +4,7 @@ import { canForceDelete, isDryRun, isForceRequest } from '@/lib/forceDelete';
 import { assetForceManifest, deleteAssetDeep } from '@/lib/service/forceDeleteService';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { assetDeleteError, assetHistoryCount } from '@/lib/service/assetDelete';
+import { assetFormLockError } from '@/lib/service/assetMoves';
 import { normalizeAssetInput } from '@/lib/service/sites';
 import { findAsset, findZone, requireSite } from '@/lib/service/sitesRepo';
 
@@ -19,6 +20,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!before) return notFound('ไม่พบเครื่องในไซต์นี้');
 
     const body = await req.json().catch(() => ({}));
+
+    /* 🔑 **สถานะกับวันที่ถอดไม่ใช่ช่องของฟอร์มนี้** — เปลี่ยนได้ทางคำสั่งที่
+       `/api/service/assets/[id]/moves` เท่านั้น (ดูเหตุผลเต็มที่ `assetFormLockError`)
+       ⚠️ ค่าที่ไม่ได้ส่งมา จะถูก `{ ...before, ...body }` ข้างล่างคงของเดิมไว้ให้เอง */
+    const locked = assetFormLockError(before, body);
+    if (locked) return conflict(locked);
+
     const { value, error } = normalizeAssetInput({ ...before, ...body });
     if (error) return badRequest(error);
 

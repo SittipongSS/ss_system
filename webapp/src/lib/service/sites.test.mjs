@@ -314,30 +314,31 @@ test('ป้ายไทยครบทุกค่าที่ CHECK ใน DB 
   assert.equal(ASSET_STATUS_LABELS.removed, 'ปลดระวาง', 'mig 0332 เปลี่ยนความหมายจาก "ถอดออกแล้ว"');
 });
 
-/* 🐞 **บั๊กที่ UAT 2026-09-02 จับได้** — ฟอร์มเพิ่มเครื่องตั้ง `status: 'active'`
-   ตายตัว ⇒ เพิ่มเครื่องเข้า **ไซต์คลัง** โดน trigger ของ mig 0332 ตีกลับด้วย
-   500 + ข้อความภาษาฐานข้อมูล ทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิด
-   ⇒ ค่าตั้งต้นต้องเดินตามประเภทไซต์ · เทสต์นี้ตรึงคู่ (ประเภทไซต์ → สถานะตั้งต้น) */
-test('🔴 คู่ที่ trigger ยอมรับ: คลังคู่กับ in_stock · ไซต์ลูกค้าคู่กับ active', () => {
+/* 🔄 **กฎนี้กลับด้านตอน mig 0344** — เดิม (0332) คลังเป็นไซต์จริง ⇒ เครื่องในคลัง
+   คู่กับ `in_stock` **ที่มี siteId เป็นไซต์คลัง** และเทสต์เดิมตรึงคู่นั้นไว้
+   ตั้งแต่ 0344 `in_stock` แปลว่า **ไม่มีที่อยู่** (CHECK `service_assets_place_by_status`)
+   ⇒ คู่เดิมกลายเป็นสิ่งที่ฐานข้อมูลตีกลับ 100% และเส้น "เพิ่มเครื่องเข้าไซต์คลัง"
+     ไม่มีสถานะไหนเป็นไปได้เลย ⇒ route ต้องตอบเป็นภาษาคนพร้อมทางออก
+   (ทางเข้าของเครื่องที่ยังไม่ติดตั้งคือหน้าทะเบียนเครื่อง — `machineAdd.js`) */
+test('🔴 หลัง mig 0344: in_stock ต้องไม่มีไซต์ ⇒ ไซต์คลังไม่มีสถานะไหนรับได้เลย', () => {
   assert.equal(isWarehouseSite({ kind: 'warehouse' }), true);
   assert.equal(isWarehouseSite({ kind: 'customer' }), false);
 
-  // สถานะตั้งต้นที่ฟอร์มควรเลือกให้ — ตรงกับที่ trigger ยอมรับ
-  const defaultStatus = (site) => (isWarehouseSite(site) ? 'in_stock' : 'active');
-  assert.equal(defaultStatus({ kind: 'warehouse' }), 'in_stock');
-  assert.equal(defaultStatus({ kind: 'customer' }), 'active');
-  assert.equal(defaultStatus(null), 'active', 'ไม่รู้ไซต์ = ไซต์ลูกค้า (เส้นทางเดิม)');
+  // สถานะที่เส้น "เพิ่มเครื่องในไซต์" (ผูก siteId เสมอ) ใช้ได้ — เหลือค่าเดียว
+  const placedStatus = (site) => (isWarehouseSite(site) ? null : 'active');
+  assert.equal(placedStatus({ kind: 'customer' }), 'active');
+  assert.equal(placedStatus(null), 'active', 'ไม่รู้ไซต์ = ไซต์ลูกค้า (เส้นทางเดิม)');
+  assert.equal(placedStatus({ kind: 'warehouse' }), null, 'คลัง = ต้องตีกลับ ไม่ใช่เดาสถานะให้');
 
   for (const s of ['in_stock', 'active']) assert.ok(ASSET_STATUSES.includes(s));
 });
 
-/* 🐞 **บั๊กรอบสอง (UAT 2026-09-02)** — รอบแรกแก้แค่ค่าตั้งต้นในฟอร์ม แต่ `normalizeAssetInput`
-   ยังตั้ง `active` เองเมื่อไม่ได้ส่ง status มา ⇒ เส้นที่ยิง API ตรง (ตัวนำเข้า · สคริปต์)
-   ยังโดน trigger ตีกลับด้วย 500 เหมือนเดิม
-   ⇒ ค่าตั้งต้นต้องตัดสินที่ **server** โดยดูประเภทไซต์ ไม่ใช่หวังว่าทุกคนจะส่ง status มา */
-test('🔴 ไม่ส่ง status มา = normalizeAssetInput ตั้ง active เสมอ (route ต้องเป็นคนเติมให้)', () => {
+/* ⚠️ `normalizeAssetInput` **ไม่รู้จักไซต์** จึงตัดสินคู่ (สถานะ ↔ ที่อยู่) เองไม่ได้
+   ⇒ ค่าตั้งต้น `active` ของมันถูกสำหรับเส้นที่ผูก siteId เสมอ (เพิ่มเครื่องในไซต์)
+     ส่วนเส้นทะเบียนเครื่องส่ง `status` มาเองทุกครั้ง (`machineAddError` เป็นคนตรวจคู่) */
+test('ไม่ส่ง status มา = normalizeAssetInput ตั้ง active เสมอ (คนเรียกเป็นคนตัดสินคู่)', () => {
   const { value } = normalizeAssetInput({ label: 'เครื่อง A' });
-  assert.equal(value.status, 'active', 'ตัวนี้ไม่รู้จักไซต์ ⇒ route ต้องเติม in_stock ให้เองเมื่อเป็นคลัง');
+  assert.equal(value.status, 'active', 'ตัวนี้ไม่รู้จักไซต์ ⇒ ด่านคู่สถานะ/ที่อยู่อยู่ที่ผู้เรียก');
 
   // เมื่อ route เติมมาให้แล้ว ต้องผ่านและคงค่าไว้
   const stocked = normalizeAssetInput({ label: 'เครื่อง A', status: 'in_stock' });
