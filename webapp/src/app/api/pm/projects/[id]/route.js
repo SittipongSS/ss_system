@@ -427,9 +427,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   let productWarning = null;
   if (body.projectProducts && Array.isArray(body.projectProducts)) {
     // Delete existing
-    await supabase.from('project_products').delete().eq('projectId', id);
-    // Insert new
-    if (body.projectProducts.length > 0) {
+    // ⚠️ ลบไม่ลงต้องไม่ insert ต่อ — insert ข้างล่างใช้ id ใหม่ทุกแถว ⇒ เคยเดินต่อ
+    //    แล้วสินค้าในโครงการซ้อนเป็นสองชุดโดยไม่มีอะไรฟ้อง · หัวโครงการบันทึกไปแล้ว
+    //    ข้างบน จึงตอบเป็น warning ทางเดียวกับ insert พลาด ไม่ใช่ 500
+    const { error: clearErr } = await supabase.from('project_products').delete().eq('projectId', id);
+    if (clearErr) {
+      console.error('Failed to clear products during PATCH:', clearErr.message);
+      productWarning = 'อัปเดตรายการสินค้า (FG) ไม่สำเร็จ — รายการเดิมยังอยู่ ลองบันทึกใหม่อีกครั้ง';
+    } else if (body.projectProducts.length > 0) {
+      // Insert new
       const ppRows = body.projectProducts.map((p) => ({
         id: genId('PP'),
         projectId: id,
@@ -481,8 +487,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // กันการลบ project ทิ้งไว้ให้ดีลกำพร้า. โครงการกำพร้า (0 ดีล) เท่านั้นที่ลบตรงนี้ได้.
   // การลบดีล "ไม่ลบโครงการให้อัตโนมัติ" — ลบดีลครบแล้วโครงการจะว่าง แล้วค่อยลบที่นี่.
   if (!force) {
-    const { count: linkedCount } = await supabase
+    /* 🐞 เคยทิ้ง error ⇒ นับไม่ขึ้น = ได้ 0 = **ด่านเปิดเอง** แล้วลบโครงการที่มีดีลผูก
+       (FK เป็น SET NULL ⇒ ดีลหลุดจากโครงการเงียบ ๆ ไม่มีอะไรฟ้อง) */
+    const { count: linkedCount, error: linkedError } = await supabase
       .from('sales_deals').select('id', { count: 'exact', head: true }).eq('projectId', id);
+    if (linkedError) return fail(linkedError.message, 500);
     if ((linkedCount || 0) > 0) {
       return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่ผูกทั้งหมดที่หน้า "บริหารงานขาย" ก่อน แล้วจึงลบโครงการที่นี่ได้ (การลบดีลจะไม่ลบโครงการให้อัตโนมัติ)');
     }

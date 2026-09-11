@@ -192,9 +192,15 @@ export async function POST(request, { params }) {
       if (itemError) throw itemError;
     }
   } catch (e) {
-    // ย้อนลบกลิ่นที่เพิ่งสร้าง — ของค้างในทะเบียนคือของที่คนอื่นจะเลือกไปใช้ต่อ
+    /* ย้อนลบกลิ่นที่เพิ่งสร้าง — ของค้างในทะเบียนคือของที่คนอื่นจะเลือกไปใช้ต่อ
+       🐞 เดิมเขียน `.delete().eq(…).catch(() => {})` — builder ของ supabase **ไม่มี
+       `.catch`** (มีแค่ `then`) ⇒ TypeError ตั้งแต่ก่อนคำขอจะถูกยิง ⇒ **ย้อนไม่เคย
+       เกิดสักครั้ง** กลิ่นค้างในทะเบียนทุกรอบที่พัง และ TypeError หลุดจาก catch นี้
+       ไปเป็น 500 กลบข้อความจริงของ `e`
+       ทีละตัวโดยเจตนา — ตัวที่ถูกแถวรอบแก้ผูกไปแล้วลบไม่ลง ต้องไม่ลากตัวอื่นล้มตาม */
     for (const { scent } of created) {
-      await supabase.from('scents').delete().eq('id', scent.id).catch(() => {});
+      const { error: undoError } = await supabase.from('scents').delete().eq('id', scent.id);
+      if (undoError) console.error('[request items] ย้อนลบกลิ่นไม่สำเร็จ', scent.id, undoError.message);
     }
     return Response.json({ error: e.message }, { status: 400 });
   }
