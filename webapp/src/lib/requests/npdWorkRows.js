@@ -21,25 +21,13 @@
 // ⚠️ ไฟล์นี้ **ล้วน ไม่แตะ DB** — จอใช้บอกล่วงหน้าในโมดัลรับเรื่อง · ตัวเขียนจริงอยู่ `npdWorkRowsApply.js`
 import { pdrTargetSizeText } from '@/lib/requests/pdrTargets';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
+import { npdTargetPairs, pairKey } from '@/lib/requests/npdPairs';
+
+// คู่ หมวด × กลิ่น อยู่ `npdPairs.js` (โมดูลใบไม้ที่ `stages.js` ใช้ด้วย) — ส่งต่อให้ผู้เรียกเดิม
+export { npdTargetPairs };
 
 // เพดานเดียวกับช่องรายละเอียดของแถว product_dev (`normalizeProductDevItems`)
 const SPEC_MAX = 2000;
-
-const pairKey = (categoryCode, scentId) => `${String(categoryCode ?? '').trim()}::${String(scentId ?? '').trim()}`;
-
-/** แถวสินค้าใน PDR → คู่ หมวด × กลิ่น ที่ไม่ซ้ำ ตามลำดับที่ปรากฏครั้งแรก (แถวที่ยังไม่เลือกกลิ่นข้าม) */
-export function npdTargetPairs(targets = []) {
-  const map = new Map();
-  for (const t of targets || []) {
-    const categoryCode = String(t?.categoryCode ?? '').trim();
-    const scentId = String(t?.scentId ?? '').trim();
-    if (!categoryCode || !scentId) continue;
-    const key = pairKey(categoryCode, scentId);
-    if (!map.has(key)) map.set(key, { key, categoryCode, scentId, targets: [] });
-    map.get(key).targets.push(t);
-  }
-  return [...map.values()];
-}
 
 /**
  * รายละเอียดของแถวงาน — สินค้าทุกตัวในแบบฟอร์มที่ใช้คู่นี้ ("100 ml · 500 ชิ้น — ขวดแก้วสีชา")
@@ -121,15 +109,20 @@ export function npdWorkRowsError(plan) {
  *       และ "บันทึกแบบฟอร์มอีกครั้ง" ซ่อมไม่ได้เพราะกลิ่นเดิมได้ข้อยกเว้นไม่ตรวจซ้ำ
  * ⚠️ ไม่ตรวจ "ใช้ทำสูตรได้" — กลิ่นที่ใบถืออยู่แล้วถูกเลิกใช้ทีหลังยังต้องแตกแถวได้ (ยกเว้นเดียวกับการบันทึก)
  * @param scents แถวกลิ่นของ `plan.insert` จาก DB · @returns ข้อความที่อ้างเลขสินค้าในแบบฟอร์ม (ไม่ใช่ลำดับคู่)
+ * @param skipMissing จอส่ง true — ทะเบียนบนจอโหลดครั้งเดียวตอนเปิดหน้า กลิ่นที่ลงทะเบียนทีหลังจะ "ไม่พบ"
+ *        ทั้งที่มีจริง (รีวิวรอบ 4) ⇒ จอบล็อกเฉพาะที่เห็นชัดว่าเป็นของลูกค้ารายอื่น ที่เหลือให้ server ตัดสิน
  */
-export function npdWorkRowsScentError(plan, targets = [], scents = [], { customerId = null } = {}) {
+export function npdWorkRowsScentError(plan, targets = [], scents = [], { customerId = null, skipMissing = false } = {}) {
   const byId = new Map((scents || []).map((x) => [x.id, x]));
   for (const p of plan?.insert || []) {
     const index = (targets || []).findIndex((t) => String(t?.scentId ?? '').trim() === p.scentId
       && String(t?.categoryCode ?? '').trim() === p.categoryCode);
     const at = `สินค้ารายการที่ ${index + 1}`;
     const scent = byId.get(p.scentId);
-    if (!scent) return `${at}: ไม่พบกลิ่นนี้ในทะเบียนแล้ว`;
+    if (!scent) {
+      if (skipMissing) continue;
+      return `${at}: ไม่พบกลิ่นนี้ในทะเบียนแล้ว`;
+    }
     if (customerId && scent.customerId !== customerId) {
       return `${at}: กลิ่น ${scent.code || scent.name} เป็นของลูกค้ารายอื่นแล้ว`;
     }
@@ -156,11 +149,12 @@ export function npdWorkRowsSummary({ inserted = [], removed = [] } = {}) {
  * ⚠️ ห้ามประทับตราฝ่ายเพิ่มจากการบันทึกที่ไม่ได้แตะแถว (รีวิวรอบสอง) — ฝ่ายกด "ยังไม่จบ" แล้วแก้แค่ชื่อเรื่อง
  *    ใบต้องไม่เด้งกลับเป็น "ตอบแล้ว" เงียบ ๆ · การถอน (แถวยังไม่จบแต่ใบถือตรา) ยังทำ — เป็นทางซ่อมของหัวใบที่
  *    เขียนไม่สำเร็จหลังงอกแถวรอบก่อน
- * ⚠️ `unsynced` = งอกแถวของคู่ใหม่ไม่สำเร็จ (รีวิวรอบ 3) — สินค้าในแบบฟอร์มยังไม่มีรายการงาน = งานยังไม่จบ
- *    ⇒ นับเป็นแถวค้างหนึ่งแถวแล้วถอนตรา · ไม่งั้นใบ "ตอบแล้ว" ค้างตรา ผู้ขอกดปิดถาวรได้ทั้งที่สินค้านั้นไม่มีแถว
+ * ⚠️ **ถอนได้ทั้งสองตรา** (รีวิวรอบ 4) — ตราผู้ขอ (`closedAt`) ที่ค้างอยู่ตอนตราฝ่ายว่างก็ต้องหลุด ไม่งั้นฝ่ายกด
+ *    "ตอบแล้ว" ครั้งเดียวใบปิดถาวรทั้งที่ผู้ขอยังไม่เห็นงานเพิ่ม
+ * ⚠️ `request.targets` ต้องเป็น **ชุดหลังบันทึก** — คู่ที่งอกแถวไม่สำเร็จนับเป็นงานค้างผ่าน `npdUncoveredPairs`
  */
-export function npdSyncClosurePatch({ request, rows = [], nowIso, wroteRows = false, unsynced = false }) {
-  const patch = requestRowsClosurePatch(request, unsynced ? [...rows, { lineKind: 'product_dev' }] : rows, nowIso);
+export function npdSyncClosurePatch({ request, rows = [], nowIso, wroteRows = false }) {
+  const patch = requestRowsClosurePatch(request, rows, nowIso);
   if (wroteRows) return patch;
-  return patch.answeredAt === null ? patch : {};
+  return patch.answeredAt === null || patch.closedAt === null ? patch : {};
 }

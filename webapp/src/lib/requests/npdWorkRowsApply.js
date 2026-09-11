@@ -8,7 +8,7 @@ import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { purgeAttachments } from '@/lib/master/attachments';
 
 /**
- * เขียนแผนลงตาราง — คืน `{ inserted, removed, kept, error, insertFailed }` (`inserted` = แถวที่เขียนจริงพร้อมป้าย)
+ * เขียนแผนลงตาราง — คืน `{ inserted, removed, kept, error }` (`inserted` = แถวที่เขียนจริงพร้อมป้าย)
  *
  * @param plan ผลของ `planNpdWorkRows`
  * @param ctx.items แถวงานที่ใบมีตอนนี้ (หา sortOrder ถัดไป)
@@ -19,10 +19,8 @@ export async function applyNpdWorkRows(supabase, {
   requestId, customerId = null, items: knownItems = [], plan, ack = {}, nowIso,
 }) {
   let items = knownItems;
-  // `insertFailed` = มีคู่ที่ต้องงอกแต่ไม่ได้งอก ⇒ ผู้เรียกต้องถือว่างานยังไม่จบ (ถอนตราปิด) จนกว่าจะบันทึกซ่อม
-  const result = { inserted: [], removed: [], kept: [], error: null, insertFailed: false };
+  const result = { inserted: [], removed: [], kept: [], error: null };
   if (!plan) return result;
-  const insertFail = (message) => ({ ...result, error: message, insertFailed: true });
 
   /* ⚠️ **อ่านแถวสดก่อนงอก** (รีวิว ม-144) — สองคนกดรับเรื่อง/บันทึกแบบฟอร์มพร้อมกัน ต่างคนต่างวางแผนจาก
      ภาพเดิม (ยังไม่มีแถว) แล้วงอกซ้ำทุกคู่ · แถวต้นทางของ NPD ลบที่แถวไม่ได้ ⇒ ซ้ำแล้วค้างถาวร
@@ -31,7 +29,7 @@ export async function applyNpdWorkRows(supabase, {
   if (toInsert.length) {
     const { data: fresh, error: freshError } = await supabase.from('dept_request_items')
       .select('categoryCode, scentId, sortOrder, lineKind').eq('requestId', requestId);
-    if (freshError) return insertFail(freshError.message);
+    if (freshError) return { ...result, error: freshError.message };
     const have = new Set((fresh || []).filter((r) => r.lineKind === 'product_dev')
       .map((r) => `${r.categoryCode}::${r.scentId}`));
     toInsert = toInsert.filter((p) => !have.has(`${p.categoryCode}::${p.scentId}`));
@@ -45,7 +43,7 @@ export async function applyNpdWorkRows(supabase, {
     }));
     // ⭐ ป้ายจากทะเบียน (หมวด · รหัส ชื่อกลิ่น) ตัวเดียวกับที่ Standard ใช้ + ด่านกลิ่นข้ามลูกค้า
     const labelled = await resolveLineLabels(supabase, drafts, { lineShape: 'product_dev', customerId });
-    if (labelled.error) return insertFail(labelled.error);
+    if (labelled.error) return { ...result, error: labelled.error };
     const rows = labelled.items.map((r) => ({
       id: `DRI-${randomUUID()}`,
       requestId,
@@ -62,7 +60,7 @@ export async function applyNpdWorkRows(supabase, {
       updatedAt: nowIso,
     }));
     const { error } = await supabase.from('dept_request_items').insert(rows);
-    if (error) return insertFail(error.message);
+    if (error) return { ...result, error: error.message };
     result.inserted = rows;
   }
 

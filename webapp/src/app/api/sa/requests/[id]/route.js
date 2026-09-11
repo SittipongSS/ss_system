@@ -29,6 +29,7 @@ import {
   planNpdWorkRows,
 } from '@/lib/requests/npdWorkRows';
 import { applyNpdWorkRows } from '@/lib/requests/npdWorkRowsApply';
+import { npdUncoveredError } from '@/lib/requests/npdPairs';
 import { requestProgress } from '@/lib/requests/stages';
 import { categoryLabel } from '@/lib/master/categoryOf';
 import { PDR_SIGNER_FIELDS, pdrArtworkError } from '@/lib/requests/pdrFields';
@@ -868,10 +869,11 @@ export async function PATCH(request, { params }) {
           ...applied.inserted,
         ];
         // ⚠️ ไม่มีแถวถูกเขียน = ถอนตราได้อย่างเดียว ห้ามประทับเพิ่ม (เหตุผลที่ `npdSyncClosurePatch`)
+        /* ⚠️ ส่งแถวสินค้า **ชุดใหม่** — คู่ที่งอกแถวไม่สำเร็จต้องนับเป็นงานค้าง (`npdUncoveredPairs`) · ชุดเดิม
+           = คู่ที่เพิ่งเอาออกถูกนับค้างแทน แล้วตราหลุดทั้งที่งานครบ */
         Object.assign(patch, npdSyncClosurePatch({
-          request: before, rows: nextRows, nowIso,
+          request: { ...before, targets: nextTargets ?? before.targets }, rows: nextRows, nowIso,
           wroteRows: !!(applied.inserted.length || applied.removed.length),
-          unsynced: !!applied.insertFailed,
         }));
         npdRowsNote = npdWorkRowsSummary(applied);
         // แถวที่แผนจะถอนแต่เพิ่งถูกส่งสูตรระหว่างบันทึก — ไม่ถูกถอน (ตัวเขียนกันไว้) ⇒ ต้องบอก ไม่ใช่เงียบ
@@ -1069,6 +1071,9 @@ export async function PATCH(request, { params }) {
       if (rowBased && !(answerRows.length && requestProgress(answerRows).complete)) {
         return Response.json({ error: 'ชนิดนี้ตอบเป็นรายบรรทัด — ส่งงานในรายการให้ครบก่อน' }, { status: 400 });
       }
+      // NPD: แถวครบแต่สินค้าในแบบฟอร์มบางตัวยังไม่มีแถว (งอกไม่สำเร็จ) = ยังไม่ครบ · รวมใบ 0 แถว (รีวิวรอบ 4)
+      const uncoveredError = npdUncoveredError(before, answerRows);
+      if (uncoveredError) return Response.json({ error: uncoveredError }, { status: 409 });
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `ตอบได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
       }

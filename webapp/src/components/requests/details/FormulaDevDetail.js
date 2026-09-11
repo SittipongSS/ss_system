@@ -29,6 +29,7 @@ import { ListChecks, Send } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { apiFetch } from "@/lib/apiFetch";
+import { responseWarningText } from "@/lib/apiWarnings";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
 // ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
@@ -54,7 +55,11 @@ export default function FormulaDevDetail({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || "ลบรายการไม่สำเร็จ"); return; }
       setDeleteRow(null);
-      await onReload?.();
+      // ลบสำเร็จแต่ของประกอบเขียนไม่ลง (ตราปิดของใบ) — ต้องถึงตาคน ไม่ใช่แค่ log ฝั่ง server (#1701)
+      // ⚠️ มีคำเตือน = รีโหลดแบบเงียบ — รีโหลดปกติขึ้นหน้าโหลดแทนทั้งใบ แล้วคอมโพเนนต์นี้ (กับข้อความ) หายไปด้วย
+      const warning = responseWarningText(data);
+      if (warning) setError(warning);
+      await onReload?.(warning ? { background: true } : undefined);
     } finally { setDeleting(false); }
   };
 

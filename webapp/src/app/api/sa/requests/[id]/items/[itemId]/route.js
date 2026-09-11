@@ -375,11 +375,16 @@ export async function DELETE(request, { params }) {
     const remaining = (before.items || []).filter((i) => i.id !== itemId);
     const nowIso = new Date().toISOString();
     const headPatch = requestRowsClosurePatch(before, remaining, nowIso);
+    let closureWarning = null;
     if (Object.keys(headPatch).length) {
       const { error: headError } = await supabase.from('dept_requests')
         .update({ ...headPatch, updatedAt: nowIso }).eq('id', id);
-      // ⚠️ ไม่ throw — แถวถูกลบไปแล้วจริง · ล้มตรงนี้ต้องไม่ข้ามการเก็บกวาดทะเบียน/เธรด/audit ข้างล่าง
-      if (headError) console.error('[requests] คิดตราปิดหลังลบแถวไม่สำเร็จ:', headError.message);
+      /* ⚠️ ไม่ throw — แถวถูกลบไปแล้วจริง · ล้มตรงนี้ต้องไม่ข้ามการเก็บกวาดทะเบียน/เธรด/audit ข้างล่าง
+         แต่ต้องบอกจอ (`_warning` · กติกา #1701) — เงียบ = ใบค้าง "กำลังดำเนินการ" ทั้งที่แถวครบ ไม่มีใครรู้ว่าทำไม */
+      if (headError) {
+        console.error('[requests] คิดตราปิดหลังลบแถวไม่สำเร็จ:', headError.message);
+        closureWarning = 'ลบรายการแล้ว แต่ปรับสถานะใบไม่สำเร็จ — ถ้าใบยังไม่ขึ้น "ตอบแล้ว" ทั้งที่รายการครบ ให้กด "ตอบแล้ว" เอง';
+      }
     }
 
     // ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามเมื่อไม่มีใครอ้างต่อแล้ว
@@ -418,7 +423,9 @@ export async function DELETE(request, { params }) {
       before: row, request,
       summary: `ลบรายการในคำร้อง ${before.docNo || id}`,
     });
-    return Response.json({ ok: true, registryRemoved, registryKept });
+    return Response.json({
+      ok: true, registryRemoved, registryKept, ...(closureWarning ? { _warning: closureWarning } : {}),
+    });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }

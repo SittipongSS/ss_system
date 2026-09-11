@@ -6,6 +6,7 @@ import {
   requestCancelBeforeAckOnly, requestPdrRowsPickScent, requestUsesDeliveredRows, requestUsesItems, requestUsesPdr,
 } from '@/lib/master/requestTypes';
 import { pdrTargetsSubmitError } from '@/lib/requests/pdrTargets';
+import { npdUncoveredError, npdUncoveredPairs } from '@/lib/requests/npdPairs';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
@@ -59,7 +60,8 @@ export function requestRowsClosurePatch(request, items = [], nowIso) {
   if (!['acknowledged', 'answered'].includes(request.status)) return patch;
   if (!items.length) return patch;
 
-  const complete = requestProgress(items).complete;
+  // ⭐ NPD: สินค้าในแบบฟอร์มที่ยังไม่มีแถวงาน = งานยังไม่จบ (ม-144 · เหตุผลที่ `npdUncoveredPairs`)
+  const complete = requestProgress(items).complete && !npdUncoveredPairs(request, items).length;
   const answeredAt = complete ? (request.answeredAt || nowIso) : null;
   const closedAt = complete ? (request.closedAt || null) : null;
   if ((request.answeredAt || null) !== answeredAt) {
@@ -263,6 +265,10 @@ export function closeRequestError(request, items = []) {
   if (!rows.length && request.status === 'pending') {
     return 'ยังไม่มีใครรับเรื่องเลย — ยกเลิกแทนการปิด';
   }
+  /* ⭐ NPD (ม-144 · รีวิวรอบ 4): สินค้าในแบบฟอร์ม PDR ที่ยังไม่มีแถวงาน (งอกไม่สำเร็จ) = งานค้าง · ปิดแล้ว
+     แก้แบบฟอร์มไม่ได้อีก ⇒ สินค้านั้นไม่มีวันได้งาน · ข้อความบอกทางซ่อม (บันทึกแบบฟอร์มซ้ำ) */
+  const uncoveredError = npdUncoveredError(request, rows);
+  if (uncoveredError) return uncoveredError;
 
   /* 🐞 **ใบที่ฝ่ายยังไม่ส่งอะไรเลย ปิดได้** (ผลตรวจ 2026-08-17 — เดินฟังก์ชันจริง:
      `scent_dev` · `acknowledged` · 0 แถว ⇒ คืน null)

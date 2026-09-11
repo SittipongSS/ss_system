@@ -6,6 +6,7 @@ import {
   npdWorkRowsSummary, planNpdWorkRows,
 } from './npdWorkRows.js';
 import { closeRequestError, requestRowsClosurePatch } from './stages.js';
+import { npdUncoveredError, npdUncoveredPairs } from './npdPairs.js';
 import { deleteRequestRowError } from './rowDelete.js';
 import submitScope from './submitScope.js';
 import {
@@ -183,14 +184,59 @@ test('⭐ บันทึกแบบฟอร์มที่ไม่ได้�
   assert.equal(npdSyncClosurePatch({ request: reopened, rows: settled, nowIso: 'now', wroteRows: true }).answeredAt, 'now');
 });
 
-test('⭐ งอกแถวคู่ใหม่ไม่สำเร็จ = งานยังไม่จบ ถอนตรา — ผู้ขอปิดถาวรทั้งที่สินค้าไม่มีแถวไม่ได้ (รีวิวรอบ 3)', () => {
+test('⭐ คู่ในแบบฟอร์มที่ไม่มีแถวงาน = งานค้าง — ตรา/ปิด/ตอบ ไม่ผ่าน จนกว่าบันทึกซ่อม (รีวิวรอบ 4)', () => {
   const settled = [row('DRI-1', '01-009', 'SC-1', { answerStatus: 'declined', outcome: 'rejected', readyAt: 'x' })];
-  const answered = npd({ status: 'answered', answeredAt: 'before' });
-  // แถวที่มีจบครบ แต่คู่ที่เพิ่งเพิ่มในแบบฟอร์มงอกแถวไม่ได้ ⇒ ต้องไม่ค้างตรา "ตอบแล้ว"
-  assert.deepEqual(npdSyncClosurePatch({ request: answered, rows: settled, nowIso: 'now' }), {});
-  const patch = npdSyncClosurePatch({ request: answered, rows: settled, nowIso: 'now', unsynced: true });
+  const targets = [T('01-009', 'SC-1'), T('01-006', 'SC-9')]; // SC-9 เพิ่มในแบบฟอร์มแต่งอกแถวไม่สำเร็จ
+  assert.deepEqual(npdUncoveredPairs(npd({ targets }), settled).map((p) => p.key), ['01-006::SC-9']);
+  // ใบไม่ใช่ NPD ไม่มีวันนับ (ธงรูปทรงตัดสิน ไม่ใช่ข้อมูล)
+  assert.deepEqual(npdUncoveredPairs({ kind: 'formula_dev', variant: 'standard', targets }, settled), []);
+
+  // บันทึกที่งอกไม่สำเร็จ (ไม่มีแถวถูกเขียน) ถอนตราที่ถืออยู่ — คิดจากแบบฟอร์มชุดใหม่
+  const answered = npd({ status: 'answered', answeredAt: 'before', targets });
+  const patch = npdSyncClosurePatch({ request: answered, rows: settled, nowIso: 'now' });
   assert.equal(patch.answeredAt, null);
   assert.equal(patch.status, 'acknowledged');
+
+  // ก้าวอื่น (ราคา · ผลลูกค้า · ลบแถว) คิดตราใหม่ด้วยตัวเดียวกัน — ต้องไม่ประทับคืน
+  const open = npd({ status: 'acknowledged', answeredAt: null, targets });
+  assert.deepEqual(requestRowsClosurePatch(open, settled, 'now'), {});
+  // ด่านปิดของผู้ขอ + ด่านตอบของฝ่ายบอกทางซ่อม
+  assert.match(closeRequestError(open, settled), /ยังไม่มีรายการงาน — .*บันทึกแบบฟอร์มอีกครั้ง/);
+  assert.match(npdUncoveredError(open, settled), /1 รายการ/);
+
+  // บันทึกซ่อมงอกแถวได้ ⇒ ครบ ประทับได้
+  const repaired = [...settled, row('DRI-9', '01-006', 'SC-9', { answerStatus: 'declined', outcome: 'rejected' })];
+  assert.equal(requestRowsClosurePatch(open, repaired, 'now').answeredAt, 'now');
+  assert.equal(closeRequestError(npd({ status: 'answered', answeredAt: 'now', targets }), repaired), null);
+
+  // เอาคู่ออกจากแบบฟอร์ม (แถวถอนแล้ว) — ชุดใหม่ไม่มีคู่นั้น ต้องไม่ถูกนับค้าง
+  const trimmed = npd({ status: 'answered', answeredAt: 'before', targets: [T('01-009', 'SC-1')] });
+  assert.deepEqual(npdSyncClosurePatch({ request: trimmed, rows: settled, nowIso: 'now' }), {});
+});
+
+test('⭐ บันทึกที่ไม่เขียนแถวถอนตราผู้ขอด้วย ถ้าตราฝ่ายว่างอยู่แล้ว (รีวิวรอบ 4)', () => {
+  const settled = [row('DRI-1', '01-009', 'SC-1', { answerStatus: 'declined', outcome: 'rejected', readyAt: 'x' })];
+  // ฝ่ายกด "ยังไม่จบ" แล้วผู้ขอกดปิดฝั่งตัวเอง — จากนั้นเพิ่มสินค้าแต่งอกแถวไม่สำเร็จ
+  const halfClosed = npd({
+    status: 'acknowledged', answeredAt: null, closedAt: 'c', closedById: 'U-SA', closedByName: 'SA',
+    targets: [T('01-009', 'SC-1'), T('01-006', 'SC-9')],
+  });
+  assert.deepEqual(
+    npdSyncClosurePatch({ request: halfClosed, rows: settled, nowIso: 'now' }),
+    { closedAt: null, closedById: null, closedByName: null },
+  );
+});
+
+test('จอข้ามกลิ่นที่ไม่พบในทะเบียนบนจอ (โหลดตอนเปิดหน้า) — บล็อกเฉพาะของลูกค้ารายอื่นที่เห็นชัด', () => {
+  const targets = [T('01-009', 'SC-NEW'), T('01-006', 'SC-X')];
+  const plan = planNpdWorkRows({ targets, items: [] });
+  const scents = [{ id: 'SC-X', code: 'X', customerId: 'CUS-2' }];
+  assert.match(npdWorkRowsScentError(plan, targets, scents, { customerId: 'CUS-1' }), /สินค้ารายการที่ 1: ไม่พบกลิ่น/);
+  assert.match(
+    npdWorkRowsScentError(plan, targets, scents, { customerId: 'CUS-1', skipMissing: true }),
+    /สินค้ารายการที่ 2: กลิ่น X เป็นของลูกค้ารายอื่นแล้ว/,
+  );
+  assert.equal(npdWorkRowsScentError(plan, targets, [], { customerId: 'CUS-1', skipMissing: true }), null);
 });
 
 test('⭐ ตราที่ระบบประทับ/ถอนล้างชื่อคนกด "ตอบแล้ว" รอบก่อน (mig 0306 · รีวิวรอบ 3)', () => {
