@@ -155,7 +155,7 @@ export default function ServiceZonePage({ params }) {
                 { label: "อาคาร", value: zone.building },
               ]}
             />
-            {/* จุดติดตั้ง (mig 0353) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซนในหน้าไซต์
+            {/* จุดติดตั้ง (mig 0354) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซนในหน้าไซต์
                 ⚠️ เลขลำดับนำหน้าชื่อ — ชื่อจุดไม่บังคับไม่ซ้ำ (ContextCard ใช้ป้ายเป็น key) */}
             <ContextCard
               icon={Crosshair} eyebrow="จุดติดตั้ง" title={`${fmtNumber(zoneSpots.length)} จุด`}

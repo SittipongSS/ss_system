@@ -27,7 +27,8 @@ import { customerCodeSegment } from '@/lib/master/masterCodes';
       "สาขา สีลม" กับ "สาขาสีลม" ไม่ชนกัน · คนพิมพ์ไทยเว้นวรรคไม่สม่ำเสมอ และคนคีย์ของเก่า
       ทีละแห่งคือคนที่จะพิมพ์ชื่อเดิมคนละแบบในอีกสัปดาห์ · ชื่อที่ต่างกันแค่ช่องว่างแทบไม่เคย
       เป็นคนละที่จริง ⇒ กันไว้ก่อนดีกว่าได้สองใบประวัติแยกร่าง */
-const dupKey = (name) => nameKey(name).replace(/\s+/g, '');
+export const legacyNameKey = (name) => nameKey(name).replace(/\s+/g, '');
+const dupKey = legacyNameKey;
 
 /** โซนต่อหนึ่งครั้ง — กันฟอร์มที่วนสร้างผิดเป็นร้อยโซน (ไซต์จริงใหญ่สุดในชีตไม่ถึงนี้) */
 export const LEGACY_ZONE_MAX = 60;

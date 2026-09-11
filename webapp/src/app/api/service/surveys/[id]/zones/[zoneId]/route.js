@@ -287,8 +287,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
        (ตัวนับให้คำตอบเดียวกันทั้งก่อนและหลังลบแถว — ดูหัวข้อของ `zoneReleaseDecision`) */
     let zone = null;
     if (row.zoneId) {
+      // `*` — ตัวตัดสินต้องเห็นจุดติดตั้งของโซน (mig 0354 · เหตุผลเต็มที่ surveyCancelCleanup.js)
       const { data } = await supabase
-        .from('service_zones').select('id, code, name, "createdAt"').eq('id', row.zoneId).maybeSingle();
+        .from('service_zones').select('*').eq('id', row.zoneId).maybeSingle();
       zone = data || null;
     }
     const decision = zone ? await zoneReleaseDecision(supabase, { request, zone }) : null;

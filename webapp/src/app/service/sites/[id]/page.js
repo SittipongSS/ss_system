@@ -491,7 +491,7 @@ export default function ServiceSiteDetailPage({ params }) {
               <thead>
                 <tr>
                   <th>โซน</th>
-                  {/* จุดติดตั้ง (mig 0353) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซน */}
+                  {/* จุดติดตั้ง (mig 0354) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซน */}
                   <th className={styles.numCol}>จุดติดตั้ง</th>
                   <th className={styles.numCol}>อุปกรณ์</th>
                   <th>สถานะ</th>

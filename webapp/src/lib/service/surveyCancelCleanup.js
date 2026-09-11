@@ -31,6 +31,14 @@ export function zoneCleanupDecision({ zone, request, refs } = {}) {
     return { action: 'keep', reason: 'พื้นที่นี้มีอยู่ในทะเบียนก่อนใบนี้ — ไม่ใช่ของที่ใบนี้สร้าง' };
   }
 
+  /* ②ก **มีคนคีย์จุดติดตั้งลงทะเบียนโซนแล้ว** (mig 0354 — โมดัลเพิ่มไซต์ย้อนหลัง/แก้โซน) = ทะเบียน
+     ของลูกค้า ไม่ใช่ขยะของใบนี้ · ใบประเมินไม่เคยเขียนจุดลงโซน ⇒ จุดบนโซนมาจากคนเสมอ
+     🐞 ไม่มีข้อนี้ = ใบประเมินที่ติ๊กโซนชื่อเดียวกัน (เกิดหลังใบ) แล้วถูกยกเลิก ลบโซนพร้อมจุดที่คีย์ไว้ทิ้ง
+     ⚠️ ถ้าวันหนึ่งก๊อป "จุดที่เลือกติดตั้ง" จากใบประเมินลงโซน (มติข้อ D) ต้องกลับมาทบทวนข้อนี้ */
+  if (Array.isArray(zone.spots) && zone.spots.length > 0) {
+    return { action: 'keep', reason: 'พื้นที่นี้มีจุดติดตั้งในทะเบียนแล้ว — เก็บไว้' };
+  }
+
   // ② มีใครใช้อยู่ไหม
   const others = Number(refs?.otherSurveyRows || 0);
   const terms = Number(refs?.terms || 0);
@@ -108,8 +116,10 @@ export async function cleanupCancelledSurveyZones(supabase, { request }) {
     }
     if (!byZone.size) return out;
 
+    /* `*` ไม่ใช่รายชื่อคอลัมน์ — ตัวตัดสินต้องเห็น `spots` (mig 0354) และ `*` ไม่พังในช่วงที่
+       คอลัมน์ยังไม่มี (รายชื่อที่มี spots จะ error ⇒ zones = null ⇒ ตัวกวาดเงียบทั้งเส้น) */
     const { data: zones } = await supabase
-      .from('service_zones').select('id, code, name, "createdAt"').in('id', [...byZone.keys()]);
+      .from('service_zones').select('*').in('id', [...byZone.keys()]);
 
     for (const zone of zones || []) {
       /* ⚠️ **ตัดสินก่อนลบแถวผลวัด** — ลบแถวก่อนแล้วโซนถูกเก็บไว้ (ขายไปแล้ว/มีเครื่อง)

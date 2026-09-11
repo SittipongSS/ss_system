@@ -82,8 +82,11 @@ export default function ServiceSitesPage() {
   const [showInactive, setShowInactive] = useStickyState("showInactive", false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /* `silent` = ดึงใหม่เงียบ ๆ ไม่สลับเป็นโครงร่าง — ใช้หลังบันทึกจากโมดัล
+     🐞 Workspace วาด `loading ? โครงร่าง : children` ⇒ load() ธรรมดาหลังบันทึกไซต์ย้อนหลัง
+        ถอดโมดัลออกจากจอกลางคัน (state หาย) ⇒ จอผลที่มีรหัสจริง / "ส่งส่วนที่เหลืออีกครั้ง" ไม่เคยขึ้น */
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setLoadError("");
     try {
       const res = await apiFetch("/api/service/sites");
@@ -95,7 +98,7 @@ export default function ServiceSitesPage() {
       // หน้าตาเหมือนกันจนแยกไม่ออก
       setLoadError(e.message || "โหลดทะเบียนไซต์ไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -239,6 +242,7 @@ export default function ServiceSitesPage() {
   );
 
   return (
+    <>
     <Workspace
       icon={<MapPin size={20} aria-hidden="true" />}
       title="ไซต์บริการ"
@@ -361,14 +365,17 @@ export default function ServiceSitesPage() {
         />
       )}
 
-      {canEdit && (
-        <LegacySiteModal
-          open={legacyOpen}
-          onClose={() => setLegacyOpen(false)}
-          onSaved={() => { load(); }}
-        />
-      )}
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
+    {/* ⚠️ อยู่ **นอก** Workspace โดยตั้งใจ — Workspace สลับ children เป็นโครงร่างตอน loading
+        โมดัลที่อยู่ข้างในจะถูกถอดทิ้งพร้อม state ทุกครั้งที่หน้าโหลดใหม่ (เหตุผลเต็มที่ load ข้างบน) */}
+    {canEdit && (
+      <LegacySiteModal
+        open={legacyOpen}
+        onClose={() => setLegacyOpen(false)}
+        onSaved={() => { load({ silent: true }); }}
+      />
+    )}
+    </>
   );
 }

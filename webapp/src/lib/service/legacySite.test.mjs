@@ -195,3 +195,35 @@ test('⭐ ฟอร์มสร้าง = ฟอร์มแก้: โมด�
   assert.match(read('components/service/ServiceSiteModal.js'), /<ServiceSiteFields/);
   assert.match(read('components/service/ServiceZoneModal.js'), /<ServiceZoneFields/);
 });
+
+/* ── จากรอบ review (2026-09-11) ───────────────────────────────────────────── */
+
+test('🔴 นับจุดเฉพาะที่ฐานคืนมา — ห้ามถอยไปนับที่ขอ (กรณีเดียวที่ไม่คืนคือจุดถูกทิ้ง)', () => {
+  assert.doesNotMatch(ROUTE, /Array\.isArray\(data\.spots\) \? data\.spots\.length : zone\.value\.spots\.length/);
+  assert.match(ROUTE, /const savedSpots = Array\.isArray\(data\.spots\) \? data\.spots\.length : 0;/);
+});
+
+test('🔴 ตรวจคอลัมน์ spots ก่อนเขียนแถวแรก — ตัวออกรหัสทิ้งคอลัมน์ที่ไม่มีเงียบ ๆ', () => {
+  const check = ROUTE.indexOf('zoneSpotsColumnError(supabase)');
+  const firstInsert = ROUTE.indexOf('insertRowWithComposedCode(\n');
+  assert.ok(check > 0 && check < firstInsert, 'ต้องตรวจก่อน insert แรก');
+  const zonePost = read('app/api/service/sites/[id]/zones/route.js');
+  assert.ok(zonePost.indexOf('zoneSpotsColumnError(supabase)') < zonePost.indexOf('insertRowWithComposedCode('),
+    'POST โซนทางปกติก็ต้องตรวจก่อนเขียน');
+});
+
+test('🔴 ไซต์ซ้ำจาก server ผูกกับลูกค้า+ชื่อที่ส่งไป — แก้สองช่องนี้แล้วต้องทิ้ง', () => {
+  assert.match(MODAL, /useEffect\(\(\) => \{ setDuplicate\(null\); \}, \[form\.customerId, form\.name\]\);/);
+});
+
+test('โหมดเติมต่อตัดโซนที่ไซต์มีอยู่แล้วออกให้ — ทางกู้ของ "บันทึกแล้วเน็ตหลุด" ต้องไม่ตัน', () => {
+  assert.match(MODAL, /const already = drafts\.filter\(\(z\) => z\.name\.trim\(\) && have\.has\(legacyNameKey\(z\.name\)\)\)/);
+  assert.match(MODAL, /setZones\(pending\)/);
+});
+
+test('🐞 บันทึกแล้วหน้าทะเบียนรีโหลดแบบเงียบ + โมดัลอยู่นอก Workspace — จอผลต้องไม่หาย', () => {
+  const page = read('app/service/sites/page.js');
+  assert.match(page, /onSaved=\{\(\) => \{ load\(\{ silent: true \}\); \}\}/);
+  assert.ok(page.indexOf('</Workspace>') < page.indexOf('<LegacySiteModal'),
+    'LegacySiteModal ต้องอยู่หลัง </Workspace> — Workspace สลับ children เป็นโครงร่างตอน loading');
+});

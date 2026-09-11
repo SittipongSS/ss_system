@@ -127,6 +127,8 @@
 
 .contextMark { color: var(--green); flex: none; }
 
+.resumeNote { margin-bottom: var(--space-3); }
+
 .contextText {
   flex: 1 1 260px;
   min-width: 0;

@@ -1,4 +1,4 @@
-// ── จุดติดตั้งของโซน (mig 0353) — ตัวตรวจรูป + ยามของทางเขียน ──────────────────
+// ── จุดติดตั้งของโซน (mig 0354) — ตัวตรวจรูป + ยามของทางเขียน ──────────────────
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -75,8 +75,8 @@ test('🔑 ทุกทางที่เขียนจุดลงฐานอ
   }
 });
 
-test('migration 0353: คอลัมน์ spots เป็น array เสมอ (ค่าตั้งต้น + CHECK)', () => {
-  const sql = readFileSync('supabase/migrations/0353_service_zone_spots.sql', 'utf8');
+test('migration 0354: คอลัมน์ spots เป็น array เสมอ (ค่าตั้งต้น + CHECK)', () => {
+  const sql = readFileSync('supabase/migrations/0354_service_zone_spots.sql', 'utf8');
   assert.match(sql, /ADD COLUMN IF NOT EXISTS spots jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
   assert.match(sql, /CHECK \(jsonb_typeof\(spots\) = 'array'\)/);
 });

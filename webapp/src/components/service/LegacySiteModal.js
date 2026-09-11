@@ -26,7 +26,7 @@ import ServiceSiteFields, { useServiceSiteForm } from "./ServiceSiteFields";
 import ServiceZoneFields, { ZONE_FORM_EMPTY } from "./ServiceZoneFields";
 import { ApiNetworkError, apiJson } from "@/lib/apiFetch";
 import {
-  legacyPlanCounts, legacyPlanMessage, planLegacySiteRow, planLegacyZones,
+  legacyNameKey, legacyPlanCounts, legacyPlanMessage, planLegacySiteRow, planLegacyZones,
 } from "@/lib/service/legacySite";
 import { SITE_CODE_HINT, siteRunOf } from "@/lib/service/siteCode";
 import { normalizeFloor } from "@/lib/service/zoneCode";
@@ -74,6 +74,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [duplicate, setDuplicate] = useState(null);    // จาก server (409) — ของ client อยู่ใน sitePlan
+  const [resumeNote, setResumeNote] = useState("");   // โซนในฟอร์มที่ไซต์ปลายทางมีอยู่แล้ว (ตัดออกให้)
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -92,8 +93,14 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     setPreview(null);
     setResult(null);
     setDuplicate(null);
+    setResumeNote("");
     setError("");
   }, [open]);
+
+  /* ไซต์ซ้ำที่ server บอก (409) เป็นของ "ลูกค้า + ชื่อ" ชุดที่ส่งไปตอนนั้น — แก้สองช่องนี้แล้ว
+     ต้องทิ้ง ไม่งั้นปุ่ม "เติมโซน/จุดต่อในไซต์นี้" พาไปเติมไซต์ของลูกค้าอีกราย
+     (409 ตั้งค่าโดยไม่แตะฟอร์ม ⇒ effect นี้ไม่ลบค่าที่เพิ่งได้มา) */
+  useEffect(() => { setDuplicate(null); }, [form.customerId, form.name]);
 
   /* รายชื่อลูกค้า — โหลดครั้งแรกที่เปิด (หน้าทะเบียนไซต์ไม่ได้ถือไว้) */
   useEffect(() => {
@@ -151,11 +158,24 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     setError("");
     try {
       const rows = await apiJson(`/api/service/sites/${site.id}/zones`, { fallbackError: "โหลดโซนของไซต์ไม่สำเร็จ" });
-      setExistingZones(Array.isArray(rows) ? rows : []);
+      const existing = Array.isArray(rows) ? rows : [];
+      setExistingZones(existing);
       setTarget({ id: site.id, code: site.code || null, name: site.name, customerName: site.customerName || customer?.name || null });
-      const nextZones = draftZones ?? zones;
-      setZones(nextZones);
-      setActiveKey(nextZones[0]?.key || null);
+      /* ⭐ **ตัดโซนที่ไซต์มีอยู่แล้วออกให้เอง** — ทางหลักที่มาถึงตรงนี้คือ "กดบันทึกแล้วเน็ตหลุด →
+         กดใหม่ชนไซต์ซ้ำ" ซึ่งแปลว่าไซต์ **และโซน** อาจบันทึกไปแล้ว · ถ้าคงไว้ ทุกโซนจะชนด่านชื่อซ้ำ
+         แล้วคนจะเปลี่ยนชื่อหนีจนได้โซนซ้อน (ตัวนำเข้าก็เทียบกุญแจเดียวกันแล้วข้ามของที่มีอยู่) */
+      const have = new Set(existing.map((z) => legacyNameKey(z.name)));
+      const drafts = draftZones ?? zones;
+      const already = drafts.filter((z) => z.name.trim() && have.has(legacyNameKey(z.name)));
+      const pending = drafts.filter((z) => !already.includes(z));
+      setZones(pending);
+      setActiveKey(pending[0]?.key || null);
+      setResumeNote(already.length
+        ? `ไซต์นี้มีโซน ${already.map((z) => `“${z.name.trim()}”`).join(" · ")} อยู่แล้ว — ตัดออกจากรายการที่จะเติม`
+          + " (ถ้าเพิ่งกดบันทึกแล้วเน็ตหลุด แปลว่าบันทึกไปแล้ว ดูได้ที่หน้าไซต์)"
+        : "");
+      // ไซต์มีอยู่จริง (อาจเพิ่งถูกสร้างในรอบที่ไม่รู้ผล) — ให้ทะเบียนข้างหลังเห็น
+      if (already.length) onSaved?.(null);
       setDuplicate(null);
       setPreview(null);
       setResult(null);
@@ -169,6 +189,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
 
   const leaveResume = () => {
     setTarget(null);
+    setResumeNote("");
     setExistingZones([]);
     setPreview(null);
     go("site");
@@ -227,6 +248,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
         method: "POST", json: payload({ preview: true }), fallbackError: "ตรวจไม่สำเร็จ",
       });
       setPreview(data);
+      setDuplicate(null);
       setStep("review");
     } catch (e) {
       handleApiError(e);
@@ -266,6 +288,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     setPreview(null);
     setResult(null);
     setDuplicate(null);
+    setResumeNote("");
     // ไซต์ที่เพิ่งสร้างต้องขึ้นในรายการ "ไซต์ของลูกค้ารายนี้" (และด่านชื่อซ้ำ) — ดึงใหม่
     setSitesReload((n) => n + 1);
     go("site");
@@ -431,6 +454,17 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     body = (
       <>
         {contextStrip}
+        {resumeNote && target && (
+          <StatusNotice tone="info" className={styles.resumeNote}
+            action={(
+              <Button size="sm" tone="neutral" as={Link} href={`/service/sites/${target.id}`}
+                icon={<ExternalLink size={14} aria-hidden="true" />}>
+                เปิดหน้าไซต์
+              </Button>
+            )}>
+            {resumeNote}
+          </StatusNotice>
+        )}
         <div className={styles.zoneLayout}>
           <nav className={styles.zoneRail} aria-label="โซนของไซต์นี้">
             <p className={styles.railCap}><span>โซน · {zones.length}</span><span>จุด</span></p>
@@ -590,6 +624,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
 
   if (step === "done" && result) {
     const failed = (result.zones || []).filter((z) => z.error);
+    const spotLost = (result.zones || []).filter((z) => !z.error && z.spotError);
     const total = (result.zones || []).length;
     const plannedSpots = zones.reduce((sum, z) => sum + z.spots.length, 0);
     body = result.partial ? (
@@ -610,12 +645,18 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
               <span className={styles.planText}>
                 {z.name}{z.error ? "" : ` · ${z.spotCount} จุด`}
                 {z.error && <small className={styles.planError}>{z.error}</small>}
+                {!z.error && z.spotError && <small className={styles.planError}>{z.spotError}</small>}
               </span>
               <span className={styles.planNote} data-tone={z.error ? "bad" : "ok"}>{z.error ? "ไม่ได้สร้าง" : "สร้างแล้ว"}</span>
             </li>
           ))}
         </ul>
-        <p className={styles.hint}>แก้แล้วส่งซ้ำ — ระบบส่งเฉพาะของที่ยังไม่ได้สร้าง ไม่สร้างไซต์/โซนซ้อน</p>
+        {failed.length > 0 && (
+          <p className={styles.hint}>แก้แล้วส่งซ้ำ — ระบบส่งเฉพาะของที่ยังไม่ได้สร้าง ไม่สร้างไซต์/โซนซ้อน</p>
+        )}
+        {spotLost.length > 0 && (
+          <p className={styles.hint}>โซนที่จุดติดตั้งไม่ครบถูกสร้างแล้ว — เติมจุดที่ปุ่มแก้ไขโซนในหน้าไซต์ (ส่งซ้ำจะได้โซนซ้ำ)</p>
+        )}
       </>
     ) : (
       <>
@@ -648,7 +689,13 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     footer = result.partial ? (
       <>
         <Button tone="neutral" onClick={onClose} disabled={busy}>ปิดไว้ก่อน</Button>
-        <Button tone="primary" onClick={retryRemaining} disabled={busy}>ส่งส่วนที่เหลืออีกครั้ง</Button>
+        {failed.length > 0 ? (
+          <Button tone="primary" onClick={retryRemaining} disabled={busy}>ส่งส่วนที่เหลืออีกครั้ง</Button>
+        ) : (
+          <Button tone="primary" as={Link} href={`/service/sites/${result.site.id}`}>
+            เปิดหน้าไซต์ {result.site.code || result.site.name}
+          </Button>
+        )}
       </>
     ) : (
       <>

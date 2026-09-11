@@ -174,7 +174,7 @@ export default function CustomerZonesPanel({
                                 <small className={styles.sub}>จาก {zone.spotsTotal}</small>
                               </>
                             ) : zone.registeredSpots ? (
-                              /* ไม่เคยประเมิน แต่ทะเบียนโซนมีจุด (ของเก่า — mig 0353) · ป้ายบอกที่มา
+                              /* ไม่เคยประเมิน แต่ทะเบียนโซนมีจุด (ของเก่า — mig 0354) · ป้ายบอกที่มา
                                  เพราะไม่ใช่ "เลือกติดตั้ง/ที่ติดตั้งได้" แบบผลประเมิน */
                               <>
                                 <b>{zone.registeredSpots}</b>

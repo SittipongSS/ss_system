@@ -27,7 +27,9 @@ import { checkSiteReferences } from '@/lib/service/siteReferences';
 import {
   legacyPlanCounts, legacyPlanMessage, planLegacySiteRow, planLegacyZones,
 } from '@/lib/service/legacySite';
-import { findCustomer, findSite, loadSites, loadZones, requireService } from '@/lib/service/sitesRepo';
+import {
+  findCustomer, findSite, loadSites, loadZones, requireService, zoneSpotsColumnError,
+} from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +99,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
 
     const counts = legacyPlanCounts(planned.zones);
+
+    /* คอลัมน์จุดต้องมีก่อนเขียนแถวแรก — ไม่งั้นไซต์/โซนเกิดแต่จุดหายเงียบ (ดู zoneSpotsColumnError)
+       ตรวจตั้งแต่พรีวิว: จอขั้น ③ ต้องไม่บอก "ผ่านทุกด่าน" ในเมื่อบันทึกจริงจะเสียของ */
+    if (counts.spots > 0) {
+      const schemaError = await zoneSpotsColumnError(supabase);
+      if (schemaError) return fail(schemaError, 503);
+    }
 
     /* ── 2) พรีวิว — ไม่เขียนอะไร ────────────────────────────────────────── */
     if (preview) {
@@ -171,14 +180,19 @@ export const POST = withUser(async ({ user, supabase, req }) => {
         });
         continue;
       }
+      /* ⚠️ นับเฉพาะที่ฐานคืนมา — ห้ามถอยไปนับจากที่ขอ (ของเดิมทำ) เพราะกรณีเดียวที่ `spots`
+         ไม่กลับมาคือจุดถูกทิ้ง ⇒ ถอยไปนับที่ขอ = บอก "บันทึก 3 จุด" ทั้งที่ฐานมี 0 */
+      const savedSpots = Array.isArray(data.spots) ? data.spots.length : 0;
       zoneResults.push({
-        key: zone.key, id: data.id, code: data.code, name: data.name,
-        spotCount: Array.isArray(data.spots) ? data.spots.length : zone.value.spots.length,
+        key: zone.key, id: data.id, code: data.code, name: data.name, spotCount: savedSpots,
+        ...(savedSpots < zone.value.spots.length
+          ? { spotError: `จุดติดตั้งถูกบันทึก ${savedSpots}/${zone.value.spots.length} จุด — เติมที่ปุ่มแก้ไขโซนในหน้าไซต์` }
+          : {}),
       });
       await recordAudit({
         user, action: 'create', entityType: 'service_zone', entityId: data.id, after: data,
         summary: `เพิ่มโซนย้อนหลัง ${data.code || data.id} · ${data.name} ที่ไซต์ ${siteRow.code || siteRow.name}`
-          + ` · จุดติดตั้ง ${zone.value.spots.length} จุด`,
+          + ` · จุดติดตั้ง ${savedSpots} จุด`,
         request: req,
       });
     }
@@ -191,7 +205,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
         zones: zoneResults.length - failed.length,
         spots: zoneResults.reduce((sum, z) => sum + (z.error ? 0 : z.spotCount || 0), 0),
       },
-      partial: failed.length > 0,
+      partial: failed.length > 0 || zoneResults.some((z) => z.spotError),
     }, target ? 200 : 201);
   } catch (e) {
     return fail(e.message, 500);

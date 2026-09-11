@@ -5,7 +5,7 @@ import { canForceDelete, isDryRun, isForceRequest } from '@/lib/forceDelete';
 import { deleteZoneDeep, zoneForceManifest } from '@/lib/service/forceDeleteService';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { normalizeZoneInput } from '@/lib/service/zones';
-import { findZone, requireSite } from '@/lib/service/sitesRepo';
+import { findZone, requireSite, zoneSpotsColumnError } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,10 +19,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!before) return notFound('ไม่พบโซนในไซต์นี้');
 
     const body = await req.json().catch(() => ({}));
-    /* จุดติดตั้ง (mig 0353) — ไม่ส่ง `spots` มา = ใช้ของเดิมทั้งชุด (id คงเดิม) ·
+    /* จุดติดตั้ง (mig 0354) — ไม่ส่ง `spots` มา = ใช้ของเดิมทั้งชุด (id คงเดิม) ·
        จุดใหม่จากจอ (`new-…`) ได้ id จริงที่นี่ */
     const { value, error } = normalizeZoneInput({ ...before, ...body }, { makeSpotId: () => genId('SPT') });
     if (error) return badRequest(error);
+    // คอลัมน์ยังไม่มี = PostgREST ตอบ 500 ภาษาอังกฤษ ⇒ บอกเหตุเป็นไทยแทน (mig 0354)
+    if ('spots' in value) {
+      const schemaError = await zoneSpotsColumnError(supabase);
+      if (schemaError) return fail(schemaError, 503);
+    }
 
     const { data, error: updateError } = await supabase
       .from('service_zones')
