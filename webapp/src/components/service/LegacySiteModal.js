@@ -185,6 +185,8 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   const siteDuplicate = duplicate || sitePlan.duplicate;
   const codePreview = target?.code || (sitePlan.prefix ? `${sitePlan.prefix}····` : SITE_CODE_HINT);
   const activeZone = zones.find((z) => z.key === activeKey) || null;
+  // ร่างว่าง (เปิดแล้วปิดโดยไม่ได้กรอกอะไร) ไม่ต้องขึ้นป้าย "ร่างยังอยู่"
+  const hasDraft = !!(form.customerId || form.name.trim() || zones.length || target);
 
   const go = (next) => { setError(""); setDraftResumed(false); setStep(next); };
 
@@ -764,7 +766,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
         </div>
       )}
     >
-      {draftResumed && step !== "done" && (
+      {draftResumed && hasDraft && step !== "done" && (
         <StatusNotice tone="info" className={styles.resumeNote}
           action={(
             <Button size="sm" tone="neutral" variant="quiet" onClick={() => startOver()}
