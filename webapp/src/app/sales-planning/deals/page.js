@@ -1066,14 +1066,9 @@ export default function SalesPlanningPipelinePage() {
           defaultOwnerId={defaultOwnerId}
           lockedOwner={lockedOwner}
           onClose={() => setCreateModal(false)}
-          onCreated={(created) => {
+          onCreated={() => {
             setCreateModal(false);
-            // ดีลเกิดแต่ของประกอบไม่ครบ (ไทม์ไลน์ไม่เกิด / แถวมูลค่ารายหมวดเขียนไม่ลง)
-            // — บอกทันที ไม่ปล่อยเงียบ
-            const warnings = (created || [])
-              .flatMap((d) => [d?.timelineWarning, d?.valueItemsWarning])
-              .filter(Boolean);
-            if (warnings.length) setError(warnings.join(" · "));
+            // ดีลเกิดแต่ของประกอบไม่ครบ — โมดัลทักเองแล้ว (ทุกทางเข้าได้เท่ากัน ดู DealCreateModal)
             load();
           }}
         />

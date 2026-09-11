@@ -152,3 +152,52 @@ test("ด่านสิทธิ์ไฟล์แนบ: อ่านแถว
   assert.match(list, /async function loadParent[\s\S]*?if \(error\) throw error;[\s\S]*?\n}/,
     "loadParent คืน null เมื่ออ่านพัง = GET ตอบ [] ('ยังไม่แนบ' ทั้งที่แนบครบ)");
 });
+
+/* ── เขียนแล้วไม่ดูผล: `await supabase.from(t).update(…)` เปล่า ๆ (2026-09-11) ─────
+   ไล่ครบ 33 จุด (workflow ตรวจแบบแย้งทุกกลุ่ม) — ของจริงที่เจอ เช่น
+   · ผูก/ย้ายดีลเข้าโครงการ: ถอนไทม์ไลน์ไม่ลงแล้วลบโครงการต่อ ⇒ FK cascade พาไทม์ไลน์
+     ทั้งชุดของดีลหายถาวร · ตีดีลกลับไม่ลง ⇒ ดีลชี้โครงการใหม่ ไทม์ไลน์อยู่โครงการเก่า
+   · แก้ประเภท/หมวดดีล: ลบไทม์ไลน์ชุดเดิมก่อนแล้ว insert ชุดใหม่ไม่ลง ⇒ ดีลไม่เหลือไทม์ไลน์
+   · ปิดนัดช่าง "เปลี่ยนเครื่อง": ทะเบียนยังโชว์ตัวเก่าใช้งานอยู่ ตัวใหม่ไม่มีวันติดตั้ง
+   · ลบงานส่วนตัว: ปลดล็อกงานต่อเนื่องไม่ลง ⇒ ใบถัดไปรองานที่ไม่มีอยู่แล้วตลอดไป
+   · สัญญาที่ออกเลขแล้ว: ตรึงเนื้อไม่ลงแต่ส่งเนื้อสดไปพิมพ์ ⇒ ฉบับที่ลูกค้าเซ็นไม่ถูกเก็บ
+   ทุกจุดตอนนี้อ่าน error แล้วหยุด / เตือนกลับจอ (ดู lib/apiWarnings) / log ตามผลที่เสีย
+
+   ด่านสองชั้น:
+   ① update/insert/upsert ที่ทิ้งผล = **ศูนย์** (ยกเว้นโมดูลสหมิตรที่พักรื้อไว้ทั้งเส้น)
+   ② ที่เหลือ (ลบย้อนข้อมูลหลังตอบ error ไปแล้ว + สหมิตร) = เพดานสองทาง: เพิ่มไม่ได้ ·
+      ลดแล้วต้องลดตัวเลขตาม ไม่งั้นช่องว่างถูกเติมกลับเงียบ ๆ */
+const BARE_WRITE_BUDGET = 49;
+
+function bareWrites() {
+  const found = [];
+  for (const file of SRC_FILES) {
+    const lines = readKeepLines(file).split("\n");
+    lines.forEach((line, i) => {
+      if (!/^\s*await (?:supabase|client|db|sb|getSupabaseAdmin\(\))(?:\s*$|\s*\.)/.test(line)) return;
+      let stmt = "";
+      for (let j = i; j < lines.length && j < i + 40; j += 1) {
+        stmt += `${lines[j]}\n`;
+        if (/;\s*(\/\/.*)?$/.test(lines[j])) break;
+      }
+      const op = (stmt.match(/\.(insert|update|upsert|delete)\(/) || [])[1];
+      if (op) found.push({ where: `${file}:${i + 1}`, op, sahamit: /sahamit/.test(file) });
+    });
+  }
+  return found;
+}
+
+test("update/insert/upsert ต้องรับผลเสมอ — ห้าม await เปล่า ๆ", () => {
+  const offenders = bareWrites()
+    .filter((w) => w.op !== "delete" && !w.sahamit)
+    .map((w) => `${w.where} (${w.op})`);
+  assert.deepEqual(offenders, [], `เขียนแล้วไม่ดูผล (supabase ไม่ throw — พังแล้วตอบสำเร็จ):\n${offenders.join("\n")}`);
+});
+
+test(`ลบที่ทิ้งผล + สหมิตร: เพดานสองทาง = ${BARE_WRITE_BUDGET}`, () => {
+  const rest = bareWrites().filter((w) => w.op === "delete" || w.sahamit);
+  assert.ok(rest.length <= BARE_WRITE_BUDGET,
+    `เพิ่มขึ้นเป็น ${rest.length} — รับ { error } ของคำสั่งใหม่ อย่าขยับเพดาน`);
+  assert.equal(rest.length, BARE_WRITE_BUDGET,
+    `ลดลงเหลือ ${rest.length} แล้ว — แก้ BARE_WRITE_BUDGET ให้ตรง ไม่งั้นช่องว่างถูกเติมกลับเงียบ ๆ`);
+});

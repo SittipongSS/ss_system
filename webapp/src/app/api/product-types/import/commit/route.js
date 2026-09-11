@@ -31,10 +31,13 @@ export async function POST(request) {
   });
   if (error) {
     const message = error.message || '';
+    // ป้ายสถานะ run เป็นแค่บันทึกประวัติ: RPC ย้อนกลับทั้งก้อนแล้ว และตรวจ status/expiresAt
+    // เองทุกรอบ ⇒ เขียนป้ายพลาด = run ค้าง 'previewed' ซึ่งกดซ้ำก็ไม่นำเข้าซ้ำ · log ไว้พอ
     if (includesCode(message, 'product_category_import_expired')) {
-      await supabase.from('product_category_import_runs')
+      const { error: expireError } = await supabase.from('product_category_import_runs')
         .update({ status: 'expired', error: 'Preview หมดอายุ' })
         .eq('id', runId).eq('status', 'previewed');
+      if (expireError) console.error('[product-category-import-commit] mark expired', runId, expireError.message);
       return Response.json({ error: 'Preview หมดอายุ กรุณาอัปโหลดไฟล์ใหม่' }, { status: 410 });
     }
     if (includesCode(message, 'product_category_import_actor_mismatch')) {
@@ -51,9 +54,10 @@ export async function POST(request) {
       .some((code) => includesCode(message, `product_category_import_${code}`))) {
       return Response.json({ error: 'Preview ยังมีข้อมูลที่ไม่สามารถนำเข้าได้' }, { status: 422 });
     }
-    await supabase.from('product_category_import_runs')
+    const { error: markFailedError } = await supabase.from('product_category_import_runs')
       .update({ status: 'failed', error: 'Commit ไม่สำเร็จ' })
       .eq('id', runId).eq('status', 'previewed');
+    if (markFailedError) console.error('[product-category-import-commit] mark failed', runId, markFailedError.message);
     console.error('[product-category-import-commit]', error);
     return Response.json({ error: 'นำเข้าหมวดสินค้าไม่สำเร็จ' }, { status: 500 });
   }

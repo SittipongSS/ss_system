@@ -95,9 +95,12 @@ export async function listDepartments(supabase, { includeInactive = false } = {}
 
 // ── Updates feed (ประวัติการแก้ไข, polymorphic) ──────────────────────
 // เขียนหลัง write สำเร็จ (คู่กับ recordAudit). ไม่ throw — feed พลาดไม่ทำ action พัง.
+// คืน { error } (ข้อความ หรือ null) — ผู้เรียกที่แถวนี้ *คือ* ตัวงาน (คอมเมนต์ที่คนพิมพ์
+// ผ่าน POST /api/mgmt/updates) ต้องเช็คเอง ไม่งั้นตอบ 201 ทั้งที่ไม่ได้บันทึก
+// (สัญญาเดียวกับ lib/master/updates)
 export async function appendUpdate(supabase, { entityType, entityId, kind = 'edit', body = null, meta = {}, user = null }) {
   try {
-    await supabase.from('mgmt_updates').insert({
+    const { error } = await supabase.from('mgmt_updates').insert({
       entityType,
       entityId: String(entityId),
       kind,
@@ -107,8 +110,14 @@ export async function appendUpdate(supabase, { entityType, entityId, kind = 'edi
       authorName: user?.name ?? null,
       createdAt: new Date().toISOString(),
     });
+    if (error) {
+      console.error('[mgmt] appendUpdate failed', entityType, entityId, error.message);
+      return { error: error.message };
+    }
+    return { error: null };
   } catch (e) {
     console.error('[mgmt] appendUpdate failed', entityType, entityId, e?.message || e);
+    return { error: e?.message || String(e) };
   }
 }
 

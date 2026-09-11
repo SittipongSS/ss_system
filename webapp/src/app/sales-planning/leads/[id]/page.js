@@ -31,6 +31,8 @@ import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
 import { apiFetch } from "@/lib/apiFetch";
+import { notifyToast } from "@/components/ui/Toast";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 
 /* ป้ายของ `lead_events.kind` — ต้องครบทุกค่าที่ CHECK ของตารางยอมรับ (mig 0199)
    ไม่งั้นเหตุการณ์จะโชว์เป็นชื่อ kind ดิบบนไทม์ไลน์
@@ -178,6 +180,9 @@ export default function LeadDetailPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "ทำรายการไม่สำเร็จ");
+      // ลีดขยับแล้วแต่ประวัติไม่ลง — toast ไม่ใช่ setError: load() ข้างล่างล้าง error ทิ้งทันที
+      const warning = responseWarningText(body);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       await load();
       return true;
     } catch (e) {

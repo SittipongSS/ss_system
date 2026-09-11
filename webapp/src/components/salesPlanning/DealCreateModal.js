@@ -32,6 +32,8 @@ import { CREATABLE_STAGES } from "@/lib/salesPlanning";
 
 import styles from "./DealCreateModal.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import { notifyToast } from "@/components/ui/Toast";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
@@ -192,6 +194,11 @@ export default function DealCreateModal({
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || `สร้างดีล ${draft.title} ไม่สำเร็จ`);
+          /* ดีลเกิดแต่ของประกอบไม่ครบ (ไทม์ไลน์ · แถวมูลค่า · สถานะลีดต้นทาง) — ทักทันทีที่รู้
+             ไม่รอจบลูป: ผูกโครงการข้างล่างพังเมื่อไร ลูปโยนออกแล้วคำเตือนนี้จะหายไปด้วย
+             และโมดัลเป็นที่เดียวที่เห็นทุกทางเข้า (หน้ารวมดีล · หน้าโครงการ · ลีดสองหน้า) */
+          const createdWarning = responseWarningText(data);
+          if (createdWarning) notifyToast.warning(`${draft.title}: ${createdWarning}`, RESPONSE_WARNING_TOAST);
           // บันทึกทันทีที่ดีลเกิด **ก่อน**ลองผูกโครงการ — ถ้าผูกพลาดแล้วผู้ใช้กดใหม่
           // ต้องไม่สร้างดีลซ้ำ เหลือแค่ผูกอย่างเดียว
           state.dealId = data.id;
@@ -207,10 +214,12 @@ export default function DealCreateModal({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ projectId: draft.projectId, startDate: draft.startDate || undefined }),
           });
+          const linked = await linkRes.json().catch(() => ({}));
           if (!linkRes.ok) {
-            throw new Error((await linkRes.json().catch(() => ({}))).error
-              || `สร้างดีล ${draft.title} แล้ว แต่เชื่อมโครงการไม่สำเร็จ`);
+            throw new Error(linked.error || `สร้างดีล ${draft.title} แล้ว แต่เชื่อมโครงการไม่สำเร็จ`);
           }
+          const linkWarning = responseWarningText(linked);
+          if (linkWarning) notifyToast.warning(`${draft.title}: ${linkWarning}`, RESPONSE_WARNING_TOAST);
           state.linked = true;
           result[draft._key] = { ...state };
           setDone({ ...result });

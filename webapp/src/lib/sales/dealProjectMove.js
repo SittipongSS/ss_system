@@ -53,14 +53,28 @@ export const nextStepOrder = (tasks = []) =>
 
 // ── ตัวย้ายจริง (ต้องมี supabase) ─────────────────────────────────────────
 // คืน `applied` = สิ่งที่ย้ายไปแล้ว ผู้เรียกเก็บไว้ถอนคืนเมื่อขั้นถัดไปพัง
+//
+// ตัวถอนคืน (`rollback*`) คืน `failed` = แถวที่ถอนไม่ลง ([] = คืนครบ)
+// 🐞 เดิมไม่อ่าน `error` ของการถอนเลย ⇒ แถวที่ถอนไม่ลงค้างชี้โครงการปลายทางเงียบ ๆ
+//    ทั้งที่ดีลถูกตีกลับแล้ว = ไทม์ไลน์/งานของดีลแตกสองโครงการ ขณะที่ผู้ใช้เห็นแค่
+//    "ย้ายไม่สำเร็จ" แล้วเข้าใจว่าไม่มีอะไรขยับ
+// ⚠️ ถอนพังแล้ว **เดินต่อ** โดยเจตนา — หยุดกลางทางคือทิ้งแถวที่เหลือไว้ผิดที่เพิ่ม
+
+/** ต่อท้ายข้อความ error เมื่อถอนคืนไม่ครบ ('' = ครบ) */
+export function rollbackFailureNote(failed = []) {
+  if (!failed.length) return '';
+  const ids = failed.map((row) => (row.table ? `${row.table} ${row.id}` : row.id));
+  const shown = ids.length > 5 ? `${ids.slice(0, 5).join(', ')} และอีก ${ids.length - 5}` : ids.join(', ');
+  return ` — ถอนคืนไม่สำเร็จ ${failed.length} แถว (${shown}) ยังค้างอยู่ที่โครงการปลายทาง แจ้งผู้ดูแลระบบ`;
+}
 
 export async function moveSegmentTasks(supabase, moves = []) {
   const applied = [];
   for (const move of moves) {
     const { error } = await supabase.from('project_tasks').update(move.to).eq('id', move.id);
     if (error) {
-      await rollbackSegmentTasks(supabase, applied);
-      throw new Error(`ย้ายไทม์ไลน์ของดีลไม่สำเร็จ: ${error.message}`);
+      const stranded = await rollbackSegmentTasks(supabase, applied);
+      throw new Error(`ย้ายไทม์ไลน์ของดีลไม่สำเร็จ: ${error.message}${rollbackFailureNote(stranded)}`);
     }
     applied.push(move);
   }
@@ -68,9 +82,15 @@ export async function moveSegmentTasks(supabase, moves = []) {
 }
 
 export async function rollbackSegmentTasks(supabase, applied = []) {
+  const failed = [];
   for (const move of applied) {
-    await supabase.from('project_tasks').update(move.from).eq('id', move.id);
+    const { error } = await supabase.from('project_tasks').update(move.from).eq('id', move.id);
+    if (error) {
+      console.error('[deal move] ถอนไทม์ไลน์คืนโครงการเดิมไม่สำเร็จ', move.id, error.message);
+      failed.push({ id: move.id, message: error.message });
+    }
   }
+  return failed;
 }
 
 /**
@@ -84,8 +104,8 @@ export async function moveDealMirrors(supabase, { dealId, toProjectId }) {
     const { data, error } = await supabase.from(table).select('id, projectId').eq('dealId', dealId);
     // อ่านไม่ได้ = ยังไม่รู้ว่ามีอะไรต้องย้าย — หยุดแล้วถอนคืน ดีกว่าเดินต่อแบบตาบอด
     if (error) {
-      await rollbackDealMirrors(supabase, applied);
-      throw new Error(`อ่าน ${table} ที่ผูกดีลไม่สำเร็จ: ${error.message}`);
+      const stranded = await rollbackDealMirrors(supabase, applied);
+      throw new Error(`อ่าน ${table} ที่ผูกดีลไม่สำเร็จ: ${error.message}${rollbackFailureNote(stranded)}`);
     }
     // ⚠️ ก๊อปค่าเดิมออกมาเป็นของตัวเอง ไม่ถือ reference ของแถว — ค่าถอนคืนต้องเป็น
     // "ค่าก่อนเขียน" เสมอ ไม่ใช่ค่าที่เพิ่งถูกเขียนทับไปแล้ว
@@ -96,8 +116,8 @@ export async function moveDealMirrors(supabase, { dealId, toProjectId }) {
     const { error: updateError } = await supabase
       .from(table).update({ projectId: toProjectId }).in('id', rows.map((row) => row.id));
     if (updateError) {
-      await rollbackDealMirrors(supabase, applied);
-      throw new Error(`ย้าย ${table} ตามดีลไม่สำเร็จ: ${updateError.message}`);
+      const stranded = await rollbackDealMirrors(supabase, applied);
+      throw new Error(`ย้าย ${table} ตามดีลไม่สำเร็จ: ${updateError.message}${rollbackFailureNote(stranded)}`);
     }
     applied.push({ table, rows });
   }
@@ -105,6 +125,7 @@ export async function moveDealMirrors(supabase, { dealId, toProjectId }) {
 }
 
 export async function rollbackDealMirrors(supabase, applied = []) {
+  const failed = [];
   for (const { table, rows } of applied) {
     // จัดกลุ่มตามค่าเดิม — คืนทีละกลุ่ม ไม่ใช่ยัดค่าเดียวทับทั้งชุด
     const byProject = new Map();
@@ -114,9 +135,14 @@ export async function rollbackDealMirrors(supabase, applied = []) {
       byProject.get(key).push(row.id);
     }
     for (const [projectId, ids] of byProject) {
-      await supabase.from(table).update({ projectId }).in('id', ids);
+      const { error } = await supabase.from(table).update({ projectId }).in('id', ids);
+      if (error) {
+        console.error('[deal move] ถอน', table, 'คืนโครงการเดิมไม่สำเร็จ', ids, error.message);
+        failed.push(...ids.map((id) => ({ table, id, message: error.message })));
+      }
     }
   }
+  return failed;
 }
 
 /** สรุปจำนวนที่ย้าย ไว้เขียนลง audit/เธรด — `[{ table, rows }]` → `{ table: n }` */

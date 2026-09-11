@@ -15,10 +15,22 @@ import { advanceStage, dealAuditLabel, dealTypeOf } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
 import {
   mirrorCounts, moveDealMirrors, moveSegmentTasks,
-  nextStepOrder, planSegmentMove, rollbackSegmentTasks,
+  nextStepOrder, planSegmentMove, rollbackFailureNote, rollbackSegmentTasks,
 } from '@/lib/sales/dealProjectMove';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForDeal, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+
+/* ปล่อยขั้นตอนที่รับเลี้ยงไปแล้วกลับเป็นไทม์ไลน์ลอยของดีล — คืนข้อความต่อท้าย error
+   ('' = ปล่อยครบ)
+   🐞 เดิมไม่อ่าน error ของการปล่อย ⇒ ปล่อยไม่ลง = ขั้นตอนค้างในโครงการทั้งที่ดีลไม่ได้ผูก
+      (ไทม์ไลน์ของดีลแตกครึ่ง หายจากหน้าดีล) แต่ผู้ใช้เห็นแค่ "ไม่สำเร็จ" เหมือนไม่มีอะไรขยับ */
+async function releaseAdoptedTasks(supabase, dealId, taskIds) {
+  if (!taskIds.length) return '';
+  const { error } = await supabase.from('project_tasks').update({ projectId: null }).in('id', taskIds);
+  if (!error) return '';
+  console.error('[link-project] ปล่อยไทม์ไลน์ที่รับเลี้ยงคืนเป็นของดีลไม่สำเร็จ', dealId, taskIds, error.message);
+  return rollbackFailureNote(taskIds.map((id) => ({ id })));
+}
 
 /**
  * ผูกดีลเข้าโครงการ (หรือย้ายข้ามโครงการเมื่อ `move`) — เนื้อในของ
@@ -99,9 +111,14 @@ export async function linkDealToProject(supabase, {
   if (existingError) return { error: existingError.message, status: 500 };
   // DL1: ดีลมีไทม์ไลน์ลอยของตัวเองแล้ว → โครงการ "รับเลี้ยง" ชุดเดิม (เติม projectId
   // + ต่อ stepOrder ท้าย + pin ราก segment กันโดนดูดไป anchor โครงการ) — ไม่ gen ซ้ำ
-  const { data: floating } = await supabase
+  // 🐞 เดิมไม่อ่าน error ⇒ อ่านพัง = floating เป็น null = ตกไปทาง gen แม่แบบ: โครงการได้
+  //    segment เปล่า ดีลผูกสำเร็จ แต่ไทม์ไลน์ลอยตัวจริง (สถานะ/วันจริง/ผู้รับผิดชอบ) ค้าง
+  //    projectId=null — หน้าดีลอ่านไทม์ไลน์ลอยเฉพาะตอนยังไม่ผูก ⇒ หายจากทุกจอ
+  //    ⇒ ยังไม่มีอะไรถูกเขียน ณ จุดนี้ หยุดได้เลย
+  const { data: floating, error: floatingError } = await supabase
     .from('project_tasks').select('*').eq('dealId', deal.id).is('projectId', null)
     .order('stepOrder', { ascending: true });
+  if (floatingError) return { error: `อ่านไทม์ไลน์ลอยของดีลไม่สำเร็จ: ${floatingError.message}`, status: 500 };
   let insertedTasks = [];
   let adopted = 0;
   let movedSegment = [];   // ย้ายข้ามโครงการ: แถวที่ย้ายแล้ว (ไว้ถอนคืน)
@@ -131,9 +148,8 @@ export async function linkDealToProject(supabase, {
       }).eq('id', t.id);
       if (adoptErr) {
         // ถอนคืน: ปล่อยชุดที่ย้ายแล้วกลับเป็น task ลอยของดีลตามเดิม
-        await supabase.from('project_tasks').update({ projectId: null })
-          .in('id', floating.slice(0, i).map((x) => x.id));
-        return { error: `ย้ายไทม์ไลน์ของดีลเข้าโครงการไม่สำเร็จ: ${adoptErr.message}`, status: 500 };
+        const undoNote = await releaseAdoptedTasks(supabase, deal.id, floating.slice(0, i).map((x) => x.id));
+        return { error: `ย้ายไทม์ไลน์ของดีลเข้าโครงการไม่สำเร็จ: ${adoptErr.message}${undoNote}`, status: 500 };
       }
     }
     adopted = floating.length;
@@ -205,18 +221,16 @@ export async function linkDealToProject(supabase, {
   ).select().single();
   if (linkErr) {
     if (insertedTasks.length) await supabase.from('project_tasks').delete().in('id', insertedTasks.map((t) => t.id));
-    if (adopted) {
-      await supabase.from('project_tasks').update({ projectId: null })
-        .in('id', (floating || []).map((x) => x.id));
-    }
-    if (movedSegment.length) await rollbackSegmentTasks(supabase, movedSegment);
+    // ถอนไม่ครบ = ต้องบอกในข้อความ (ดู releaseAdoptedTasks / rollbackSegmentTasks)
+    const undoNote = (adopted ? await releaseAdoptedTasks(supabase, deal.id, (floating || []).map((x) => x.id)) : '')
+      + rollbackFailureNote(movedSegment.length ? await rollbackSegmentTasks(supabase, movedSegment) : []);
     if (linkErr.code === 'PGRST116') {
       return {
-        error: fromProject ? 'ดีลถูกย้ายไปโครงการอื่นแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง' : 'ดีลนี้ผูกโครงการแล้ว',
+        error: (fromProject ? 'ดีลถูกย้ายไปโครงการอื่นแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง' : 'ดีลนี้ผูกโครงการแล้ว') + undoNote,
         status: 409,
       };
     }
-    return { error: linkErr.message, status: 500 };
+    return { error: linkErr.message + undoNote, status: 500 };
   }
 
   /* ของที่ mirror โครงการจากดีล (งาน/คำร้อง/ใบสั่งขาย/งานผลิต) ต้องเดินตามดีล
@@ -235,17 +249,35 @@ export async function linkDealToProject(supabase, {
     movedMirrors = await moveDealMirrors(supabase, { dealId: deal.id, toProjectId: project.id });
   } catch (mirrorError) {
     if (fromProject) {
-      await supabase.from('sales_deals')
+      /* 🐞 เดิมไม่อ่าน error ของการตีดีลกลับ ⇒ ตีกลับไม่ลง = ดีลค้างชี้โครงการใหม่ ขณะที่
+         ไทม์ไลน์ถูกถอนกลับโครงการเดิม (mirror ถอนตัวเองไปแล้ว) แล้วผู้ใช้เห็นแค่ข้อความ
+         ของ mirror เหมือนการย้ายไม่เกิดเลย
+         ⇒ ตีกลับไม่ลง = **ไม่ถอนไทม์ไลน์ตาม** ให้ไทม์ไลน์อยู่กับโครงการที่แถวดีลชี้อยู่จริง
+         แล้วบอกตรง ๆ ว่าค้างที่ไหน (ย้ายกลับโครงการเดิมด้วยปุ่มย้ายได้ตามปกติ) */
+      const { error: revertError } = await supabase.from('sales_deals')
         .update({ projectId: deal.projectId, metadata: deal.metadata || null, updatedAt: now })
         .eq('id', deal.id);
-      await rollbackSegmentTasks(supabase, movedSegment);
-      return { error: mirrorError.message, status: 500 };
+      if (revertError) {
+        console.error('[link-project] ตีดีลกลับโครงการเดิมไม่สำเร็จ', deal.id, fromProject.id, revertError.message);
+        return {
+          error: `${mirrorError.message} — และตีดีลกลับโครงการเดิมไม่สำเร็จ (${revertError.message}): ดีลกับไทม์ไลน์ค้างอยู่ที่โครงการ ${project.code || project.id} แต่ของที่ผูกดีลยังอยู่โครงการ ${fromProject.code || fromProject.id} — โหลดหน้าใหม่แล้วตรวจก่อนทำต่อ`,
+          status: 500,
+        };
+      }
+      const stranded = await rollbackSegmentTasks(supabase, movedSegment);
+      return { error: mirrorError.message + rollbackFailureNote(stranded), status: 500 };
     }
+    console.error('[link-project] ย้ายของที่ผูกดีลเข้าโครงการไม่สำเร็จ', deal.id, project.id, mirrorError.message);
     mirrorWarning = `ผูกโครงการแล้ว แต่ย้ายของที่เปิดไว้ก่อนหน้าเข้าโครงการไม่สำเร็จ: ${mirrorError.message}`;
   }
 
+  /* 🐞 เดิมไม่อ่าน error ⇒ ดีลขยับขั้นไปแล้วแต่ไม่มีแถวประวัติ — ขั้นนี้หายจากเส้นเรื่อง
+     ของดีล และ daysInStage นับจากการเปลี่ยนครั้งก่อน (ยาวเกินจริง) โดยไม่มีใครรู้
+     ⚠️ เตือน ไม่ใช่ error — ดีลผูกโครงการไปแล้ว ตอบพังแล้วคนกดซ้ำจะชน 409 "ผูกแล้ว" และ
+     โมดัลปิด Won จะหยุดก่อนปิดการขายทั้งที่ผูกสำเร็จ */
+  let historyWarning = null;
   if (deal.stage !== nextStage) {
-    await supabase.from('sales_deal_stage_history').insert({
+    const { error: historyError } = await supabase.from('sales_deal_stage_history').insert({
       id: genId('DSH'),
       dealId: deal.id,
       fromStage: deal.stage,
@@ -253,7 +285,15 @@ export async function linkDealToProject(supabase, {
       changedBy: user?.id || null,
       changedByName: user?.name || null,
     });
+    if (historyError) {
+      console.error('[link-project] บันทึกประวัติสถานะดีลไม่สำเร็จ', deal.id, `${deal.stage} → ${nextStage}`, historyError.message);
+      historyWarning = `ผูกโครงการแล้ว แต่บันทึกประวัติการเปลี่ยนสถานะดีลไม่สำเร็จ (เส้นเรื่องของดีลจะไม่มีขั้นนี้): ${historyError.message}`;
+    }
   }
+  /* คืนในคีย์ `warning` · ⚠️ ณ 2026-09-11 ผู้เรียกยังไม่มีทางไหนโชว์คีย์นี้ (runAction ของ
+     หน้าดีล · ProjectDealsHub · DealCreateModal · หน้ารวมดีล อ่านแค่ !ok และ route accept ของ
+     โมดัลปิด Won ไม่ส่งต่อ) ⇒ ตอนนี้ร่องรอยเดียวคือ console.error — เตือนถึงคนกดต้องแก้ฝั่งผู้เรียก */
+  const warning = [mirrorWarning, historyWarning].filter(Boolean).join(' · ');
 
   // เส้นเรื่องของโครงการต้องรู้ว่ามีดีลใบใหม่เข้ามาร่วม — ความเคลื่อนไหวของดีลใบนี้
   // จะเริ่มไหลเข้าหน้าโครงการทันที ถ้าไม่มีบรรทัดบอกจะอ่านเหมือนโผล่มาเฉย ๆ
@@ -290,7 +330,7 @@ export async function linkDealToProject(supabase, {
       project: { id: project.id, code: project.code, name: project.name },
       appendedTasks: insertedTasks.length + adopted,
       adoptedTasks: adopted,
-      ...(mirrorWarning ? { warning: mirrorWarning } : {}),
+      ...(warning ? { warning } : {}),
       ...(!fromProject ? { linkedMirrors: mirrorCounts(movedMirrors) } : {}),
       ...(fromProject ? {
         movedFrom: { id: fromProject.id, code: fromProject.code, name: fromProject.name },

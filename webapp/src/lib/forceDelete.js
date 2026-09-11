@@ -451,22 +451,25 @@ export async function salesOrderForcePreview(supabase, order) {
 
 // เก็บกวาด logical ref ของใบเสนอราคาที่ไม่มี FK: metadata.acceptedQuotationId ของ
 // ดีลที่ชี้มาใบนี้ (mig 0098 jsonb). ปลดออกกันชี้ค้าง.
+// ⚠️ โยน error เมื่ออ่าน/ปลดไม่สำเร็จ — ผู้เรียกรันก่อน force_delete_quotation จึงหยุดได้
+//    ทั้งที่ยังไม่มีอะไรถูกลบ (กดลบซ้ำได้ ไม่มีของซ้ำ)
+// 🐞 เดิมห่อ try/catch เป็น best-effort แต่ supabase ไม่ throw ⇒ อ่าน/ปลดพลาดแล้วลบใบต่อ
+//    เงียบ ๆ · RPC ล้างคีย์นี้ให้เฉพาะดีลที่ stage = 'won' (revert_deal_out_of_won, mig 0168)
+//    ⇒ ดีล 'in_project' เหลือ acceptedQuotationId ชี้ใบที่ไม่มีแล้ว และ hasAcceptedQuote()
+//    ของ dealLifecycle ซ่อนปุ่มลบดีลไว้ถาวรทั้งที่ API ยอมให้ลบ
 export async function cleanupQuotationOrphans(supabase, quote) {
   if (!quote?.dealId) return;
-  try {
-    const { data: deal } = await supabase
-      .from('sales_deals').select('id, metadata').eq('id', quote.dealId).maybeSingle();
-    if (deal?.metadata?.acceptedQuotationId === quote.id) {
-      const nextMeta = { ...deal.metadata };
-      delete nextMeta.acceptedQuotationId;
-      // ⚠️ `metadata` คือสิ่งที่แดชบอร์ดอ่าน — ไม่ขยับ `updatedAt` = สแตมป์ไม่ขยับ
-      // = ตัวเลขค้างได้ถึง 5 นาทีหลังบังคับลบใบเสนอราคา (ดู lib/sales/dashboardStamp)
-      await supabase.from('sales_deals')
-        .update({ metadata: nextMeta, updatedAt: new Date().toISOString() }).eq('id', deal.id);
-    }
-  } catch {
-    // best-effort — ไม่ให้ทำลาย flow การลบหลัก
-  }
+  const { data: deal, error: readError } = await supabase
+    .from('sales_deals').select('id, metadata').eq('id', quote.dealId).maybeSingle();
+  if (readError) throw new Error(`อ่านดีลของใบเสนอราคาไม่สำเร็จ: ${readError.message}`);
+  if (deal?.metadata?.acceptedQuotationId !== quote.id) return;
+  const nextMeta = { ...deal.metadata };
+  delete nextMeta.acceptedQuotationId;
+  // ⚠️ `metadata` คือสิ่งที่แดชบอร์ดอ่าน — ไม่ขยับ `updatedAt` = สแตมป์ไม่ขยับ
+  // = ตัวเลขค้างได้ถึง 5 นาทีหลังบังคับลบใบเสนอราคา (ดู lib/sales/dashboardStamp)
+  const { error } = await supabase.from('sales_deals')
+    .update({ metadata: nextMeta, updatedAt: new Date().toISOString() }).eq('id', deal.id);
+  if (error) throw new Error(`ปลดใบเสนอราคาออกจากดีลไม่สำเร็จ: ${error.message}`);
 }
 
 // ── ทะเบียนกลิ่น / ทะเบียนสูตร (mig 0171 · 0232) ──────────────────────

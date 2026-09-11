@@ -30,6 +30,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!ENTITY_TYPES.includes(entityType) || !entityId) return badRequest('entityType/entityId ไม่ถูกต้อง');
   if (!text) return badRequest('กรุณากรอกข้อความ');
 
-  await appendUpdate(supabase, { entityType, entityId, kind: 'comment', body: text, user });
+  /* แถวนี้ *คือ* ตัวงาน (คอมเมนต์ที่คนพิมพ์) ไม่ใช่ร่องรอยประกอบ — appendUpdate ไม่ throw
+     แต่คืน { error } · 🐞 เดิมไม่ดูแล้วตอบ 201 เสมอ ⇒ จอล้างช่องพิมพ์ ข้อความหายทั้งที่ไม่ได้บันทึก */
+  const { error } = await appendUpdate(supabase, { entityType, entityId, kind: 'comment', body: text, user });
+  if (error) return fail(`บันทึกความคิดเห็นไม่สำเร็จ: ${error}`, 500);
   return ok({ ok: true }, 201);
 });

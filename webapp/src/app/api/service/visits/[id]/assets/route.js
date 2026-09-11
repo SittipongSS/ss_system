@@ -17,6 +17,7 @@ import { IN_CHUNK_SIZE } from '@/lib/supabaseInChunks';
 import { brokenReportPlan } from '@/lib/service/visitConditionReport';
 import { commitAssetMove } from '@/lib/service/assetMoveCommit';
 import { businessDate } from '@/lib/businessDate';
+import { runSteps } from '@/lib/supabaseWriteBatch';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,8 +133,15 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
 
     /* ── แจ้งเครื่องชำรุด (ข้อ H) — ตรวจ **ก่อนเขียนอะไรเลย** ─────────────────────
        เครื่องที่แจ้งไม่ได้ (ไม่ได้ติดตั้งอยู่ที่ไซต์นี้ · ปลดระวางแล้ว) ต้องตีกลับทั้งคำขอ
-       ไม่ใช่บันทึกผลไปครึ่งหนึ่งแล้วค่อยบอกว่าแจ้งไม่ได้ (เหตุผลเต็มที่ visitConditionReport.js) */
-    const brokenPlan = brokenReportPlan({ visit, reports, siteAssets, today: businessDate() });
+       ไม่ใช่บันทึกผลไปครึ่งหนึ่งแล้วค่อยบอกว่าแจ้งไม่ได้ (เหตุผลเต็มที่ visitConditionReport.js)
+       🐞 กดบันทึกซ้ำตาม 409/500 ท้าย PUT เคยติดด่านนี้เอง — PUT ล้มแล้วจอไม่โหลดใหม่ ⇒ เครื่องที่รอบก่อน
+         แจ้งชำรุด + เปลี่ยนออกสำเร็จ (ตอนนี้แช่แข็งแล้ว) ถูกส่งกลับมาพร้อมสวิตช์ชำรุดเดิม ⇒ 400
+         "แจ้งได้เฉพาะเครื่องที่ติดตั้งอยู่" ⇒ เครื่องที่ค้างไม่ได้ลงทะเบียนสักที และจอไม่บอกทางออก
+       ⇒ ผลแช่แข็งที่ส่งมาซ้ำ (ผ่านด่านข้างบนแล้ว = ค่าเดิมทุกช่อง) + ทะเบียนชำรุดอยู่แล้ว = เงียบ
+         เหมือน `skipped` ของแผน · แจ้งใหม่บนเครื่องแช่แข็งที่ทะเบียนยังไม่ชำรุด ยังตีกลับเหมือนเดิม */
+    const conditionById = new Map(siteAssets.map((a) => [a.id, a.condition]));
+    const liveReports = reports.filter((r) => !(frozenById.has(r.assetId) && conditionById.get(r.assetId) === 'broken'));
+    const brokenPlan = brokenReportPlan({ visit, reports: liveReports, siteAssets, today: businessDate() });
     if (brokenPlan.errors.length) return badRequest(brokenPlan.errors.map((e) => e.error).join(' · '));
     // โหลดไซต์ก่อนเขียน — โยนหลังเขียนผลไปแล้ว = ผลบันทึกแต่ไม่มีเครื่องไหนถูกแจ้งชำรุด + 500
     const reportSite = brokenPlan.moves.length ? await findSite(supabase, visit.siteId) : null;
@@ -182,6 +190,7 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
        ⚠️ guard `condition: 'ok'` — สองคนแจ้งพร้อมกัน/ผู้จัดคิวแก้สภาพระหว่างทาง ต้องไม่ได้แถว
           ประวัติ "แจ้งว่าชำรุด" ซ้อนสองแถว */
     const reported = { moved: [], failed: [] };
+    const reportFailedIds = new Set();
     if (brokenPlan.moves.length) {
       for (const { asset, input } of brokenPlan.moves) {
         const label = asset.label || asset.code || asset.id;
@@ -191,6 +200,7 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
         });
         if (result.error) {
           reported.failed.push(label);
+          reportFailedIds.add(asset.id);
           continue;
         }
         reported.moved.push(label);
@@ -206,16 +216,36 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
     // ⚠️ เฉพาะแถวที่เพิ่งเขียน — ของที่แช่แข็งไว้ถูกเปลี่ยนไปแล้ว (ยิงซ้ำ = ปลดระวางซ้ำ)
     const swaps = incoming.filter((v) => v.outcome === 'swapped');
     const stampDate = visit.actualDate || visit.scheduledDate;
+    /* 🐞 ของเดิมยิงสองคำสั่งนี้โดยไม่อ่าน error — ล้มแล้วยังตอบ 200 ⇒ ใบบอก "เปลี่ยนเครื่อง"
+         แต่ทะเบียนยังโชว์ตัวเก่า "ใช้งาน" ที่ไซต์ (รอบหน้าถูกนับเป็นเครื่องที่ต้องไปทำ)
+         และตัวใหม่ไม่มีวันติดตั้ง · จอไปปิดใบต่อโดยไม่มีใครรู้
+       ⇒ ล้มแล้วตีกลับให้กดบันทึกอีกครั้ง แบบเดียวกับแจ้งชำรุด (ยิงซ้ำปลอดภัย: ผลเขียนทับค่าเดิม
+         · ทั้งสองคำสั่งตั้งค่าเดิมซ้ำได้)
+       ⚠️ **ลงวันติดตั้งตัวใหม่ก่อน แล้วค่อยปลดตัวเก่า** — ตัวเก่าปลดสำเร็จเมื่อไร ผลของมันแช่แข็ง
+          (frozenResultRows) แล้วกดซ้ำจะไม่เข้าวงนี้อีก ⇒ ถ้าปลดก่อนแล้วลงวันล้ม ตัวใหม่ไม่มีวันติดตั้งถาวร */
+    const swapped = { moved: [], failed: [] };
     for (const swap of swaps) {
-      await supabase.from('service_assets')
-        .update({ status: 'removed', removedAt: stampDate, updatedAt: new Date().toISOString() })
-        .eq('id', swap.assetId).eq('siteId', visit.siteId);
+      /* 🐞 เครื่องที่แจ้งชำรุดล้มในรอบนี้เคยถูกปลดต่อ ⇒ ผลแช่แข็ง ทะเบียนยังไม่ชำรุด ⇒ กดซ้ำตาม 409
+           ข้างล่างโดนตีกลับ 400 (แจ้งได้เฉพาะเครื่องที่ติดตั้งอยู่) และประวัติ "เสียก่อนถูกเอาออก" หายถาวร
+         ⇒ ยังไม่ปลด ปล่อยให้รอบกดซ้ำทำครบทั้งแจ้งชำรุดและเปลี่ยนเครื่อง */
+      if (reportFailedIds.has(swap.assetId)) continue;
+      const asset = siteAssets.find((a) => a.id === swap.assetId);
+      const label = asset?.label || asset?.code || swap.assetId;
       const target = siteAssets.find((a) => a.id === swap.replacedByAssetId);
-      // เครื่องแทนที่ยังไม่เคยระบุวันติดตั้ง = เพิ่งเอาเข้ามาวันนี้
-      if (target && !target.installedAt) {
-        await supabase.from('service_assets')
-          .update({ installedAt: stampDate, updatedAt: new Date().toISOString() })
-          .eq('id', target.id).eq('siteId', visit.siteId);
+      try {
+        await runSteps([
+          // เครื่องแทนที่ยังไม่เคยระบุวันติดตั้ง = เพิ่งเอาเข้ามาวันนี้
+          ...(target && !target.installedAt ? [['ลงวันติดตั้งเครื่องที่เอามาแทน', () => supabase.from('service_assets')
+            .update({ installedAt: stampDate, updatedAt: new Date().toISOString() })
+            .eq('id', target.id).eq('siteId', visit.siteId)]] : []),
+          ['ปลดระวางเครื่องเดิม', () => supabase.from('service_assets')
+            .update({ status: 'removed', removedAt: stampDate, updatedAt: new Date().toISOString() })
+            .eq('id', swap.assetId).eq('siteId', visit.siteId)],
+        ]);
+        swapped.moved.push(label);
+      } catch (e) {
+        console.error('[service-visit-assets] เปลี่ยนเครื่องลงทะเบียนไม่สำเร็จ', id, swap.assetId, e.message);
+        swapped.failed.push(label);
       }
     }
 
@@ -223,7 +253,7 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'update', entityType: 'service_visit', entityId: id,
       before: { results: before }, after: { results: saved },
       summary: `บันทึกผลรายเครื่องของนัด ${visit.code || id} · ${saved.length} รายการ`
-        + (swaps.length ? ` · เปลี่ยนเครื่อง ${swaps.length}` : '')
+        + (swapped.moved.length ? ` · เปลี่ยนเครื่อง ${swapped.moved.length}` : '')
         + (reported.moved.length ? ` · แจ้งชำรุด ${reported.moved.length}` : ''),
       request: req,
     });
@@ -233,6 +263,10 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
        เครื่องที่แจ้งสำเร็จแล้วถูกข้าม · ผลรายเครื่องเขียนทับค่าเดิม) */
     if (reported.failed.length) {
       return conflict(`บันทึกผลแล้ว แต่แจ้งชำรุดไม่สำเร็จ ${reported.failed.length} เครื่อง (${reported.failed.join(' · ')}) — กดบันทึกอีกครั้ง`);
+    }
+    // เปลี่ยนเครื่องลงทะเบียนไม่ครบ — เหตุผลเดียวกับข้างบน: ห้ามให้จอไปปิดใบต่อทั้งที่ทะเบียนยังเป็นตัวเก่า
+    if (swapped.failed.length) {
+      return fail(`บันทึกผลแล้ว แต่ลงทะเบียนเปลี่ยนเครื่องไม่สำเร็จ ${swapped.failed.length} เครื่อง (${swapped.failed.join(' · ')}) — กดบันทึกอีกครั้ง`, 500);
     }
     return ok(saved);
   } catch (e) {

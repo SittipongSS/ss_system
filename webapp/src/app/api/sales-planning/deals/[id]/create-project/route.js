@@ -140,6 +140,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     },
   };
 
+  // DL1: ดีลมีไทม์ไลน์ลอยของตัวเองอยู่แล้ว → โครงการใหม่ "รับเลี้ยง" ชุดเดิม
+  // (เติม projectId — คงขั้นตอน/จำนวนวัน/สถานะ/ความคืบหน้า) แทนการ gen ใหม่ทับ
+  // 🐞 เดิมอ่านหลัง insert โครงการและไม่อ่าน error ⇒ อ่านพัง = floating เป็น null = ตกไปทาง
+  //    gen แม่แบบ: โครงการได้ segment เปล่า ดีลผูกสำเร็จ แต่ไทม์ไลน์ลอยตัวจริง (สถานะ/วันจริง/
+  //    ผู้รับผิดชอบ) ค้าง projectId=null — หน้าดีลอ่านไทม์ไลน์ลอยเฉพาะตอนยังไม่ผูก ⇒ หายจากทุกจอ
+  //    ⇒ อ่านก่อนสร้างโครงการ: พัง = หยุดตรงนี้ ยังไม่มีอะไรถูกเขียน (ไม่ต้องถอนโครงการ)
+  const { data: floating, error: floatingError } = await supabase
+    .from('project_tasks').select('*').eq('dealId', deal.id).is('projectId', null)
+    .order('stepOrder', { ascending: true });
+  if (floatingError) return fail(`อ่านไทม์ไลน์ของดีลไม่สำเร็จ: ${floatingError.message}`, 500);
+
   let project = null;
   let error = null;
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -161,13 +172,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
 
   setHolidays([...(await holidaySet())]);
-  // DL1: ดีลมีไทม์ไลน์ลอยของตัวเองอยู่แล้ว → โครงการใหม่ "รับเลี้ยง" ชุดเดิม
-  // (เติม projectId — คงขั้นตอน/จำนวนวัน/สถานะ/ความคืบหน้า) แทนการ gen ใหม่ทับ
-  const { data: floating } = await supabase
-    .from('project_tasks').select('*').eq('dealId', deal.id).is('projectId', null)
-    .order('stepOrder', { ascending: true });
+  // `floating` = ไทม์ไลน์ลอยของดีล อ่านไว้ก่อนสร้างโครงการแล้ว (ดูข้างบน)
   let insertedTasks = [];
   let adopted = 0;
+  let dateSyncWarning = null;
   if ((floating || []).length) {
     const { error: adoptErr } = await supabase.from('project_tasks')
       .update({ projectId: project.id })
@@ -178,13 +186,24 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // กับหัวโครงการ/Gantt) — recalculateGraph คงจำนวนวัน+ลำดับ+predecessors ไว้
     // ถ้าวันเริ่มโครงการตรงกับ anchor เดิมอยู่แล้ว ผลลัพธ์ไม่ต่าง = ไม่มีการ update
     const recalced = recalculateGraph(floating, startDate);
-    await Promise.all(
+    /* 🐞 เดิมทิ้งผลของ Promise.all ทั้งก้อน ⇒ เลื่อนไม่ลงบางแถว = ไทม์ไลน์ที่รับเลี้ยงเกาะ
+       วันเริ่มโครงการครึ่ง ๆ (ขั้นถัดไปเริ่มก่อนขั้นก่อนหน้าจบ · Gantt ไม่ตรงหัวโครงการ)
+       แต่ตอบ 201 เหมือนครบ
+       ⚠️ เตือน ไม่ใช่ 500 — โครงการเกิดแล้วและขั้นตอนถูกรับเลี้ยงแล้ว (ทางพังข้างบนไม่ถอน
+       โครงการ) ตอบพัง = คนกดซ้ำได้โครงการใบที่สอง ส่วนไทม์ไลน์ตัวจริงค้างอยู่ใบแรก */
+    const syncResults = await Promise.all(
       recalced
         .filter((r, i) => r.startDate !== floating[i].startDate || r.finishDate !== floating[i].finishDate)
         .map((r) => supabase.from('project_tasks').update({
           startDate: r.startDate, finishDate: r.finishDate, cellsOverride: r.cellsOverride ?? null,
         }).eq('id', r.id)),
     );
+    const syncFailed = syncResults.filter((r) => r?.error);
+    if (syncFailed.length) {
+      console.error('[create-project] เลื่อนไทม์ไลน์ที่รับเลี้ยงตามวันเริ่มโครงการไม่ครบ', deal.id, project.id,
+        `${syncFailed.length}/${syncResults.length}`, syncFailed[0].error.message);
+      dateSyncWarning = `สร้างโครงการแล้ว แต่เลื่อนไทม์ไลน์ของดีลให้ตรงวันเริ่มโครงการไม่ครบ (${syncFailed.length} จาก ${syncResults.length} ขั้นตอน ยังเป็นวันเดิม) — ตรวจวันที่ในไทม์ไลน์ของโครงการ: ${syncFailed[0].error.message}`;
+    }
   } else {
     // เฟส B: task ชุดก่อตั้งติดป้ายดีลเจ้าของ (timeline segment ต่อดีล — mig 0090)
     let templateOptions;
@@ -246,9 +265,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (linkError) {
     // คืน task ที่รับเลี้ยงมาเป็นไทม์ไลน์ลอยของดีลก่อนลบโครงการ — ไม่งั้น FK cascade
     // ของ projects จะพาไทม์ไลน์เดิมของดีลหายไปด้วย
+    // 🐞 เดิมไม่อ่าน error ของการคืน แล้วลบโครงการต่อทันที ⇒ คืนไม่ลง = cascade ลบไทม์ไลน์
+    //    ของดีลทิ้งถาวร (สถานะ/วันจริง/ผู้รับผิดชอบที่ทำมาทั้งชุด · ระบบไม่มีถังขยะ)
+    //    ⇒ คืนไม่ลง = **เก็บโครงการไว้ ไม่ลบ** แล้วบอกรหัสที่ไทม์ไลน์ค้างอยู่
     if (adopted) {
-      await supabase.from('project_tasks').update({ projectId: null })
+      const { error: releaseError } = await supabase.from('project_tasks').update({ projectId: null })
         .in('id', (floating || []).map((t) => t.id));
+      if (releaseError) {
+        console.error('[create-project] คืนไทม์ไลน์ของดีลก่อนถอนโครงการไม่สำเร็จ', deal.id, project.id, releaseError.message);
+        const linkReason = linkError.code === 'PGRST116' ? 'ดีลนี้ผูกโครงการแล้ว' : linkError.message;
+        return fail(`ผูกดีลกับโครงการใหม่ไม่สำเร็จ (${linkReason}) และคืนไทม์ไลน์ของดีลไม่สำเร็จ (${releaseError.message}) — ไทม์ไลน์ของดีลค้างอยู่ในโครงการ ${project.code || project.id} ซึ่งเก็บไว้ไม่ลบเพื่อไม่ให้ไทม์ไลน์หาย อย่ากดสร้างซ้ำ แจ้งผู้ดูแลระบบ`, 500);
+      }
     }
     await supabase.from('projects').delete().eq('id', project.id);
     if (linkError.code === 'PGRST116') return conflict('ดีลนี้ผูกโครงการแล้ว');
@@ -270,8 +297,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // บันทึกประวัติเฉพาะเมื่อ stage เปลี่ยนจริง (ดีลที่ผ่าน timeline_proposed มาแล้ว
   // nextStage === deal.stage → เดิมเขียนแถว from===to ปลอม เหมือน link-project/timeline)
+  // 🐞 เดิมไม่อ่าน error ⇒ ดีลขยับขั้นแล้วแต่ไม่มีแถวประวัติ — ขั้นนี้หายจากเส้นเรื่องของดีล
+  //    และ daysInStage นับยาวเกินจริงโดยไม่มีใครรู้
+  // ⚠️ เตือน ไม่ใช่ 500 — โครงการเกิดและผูกดีลไปแล้ว ตอบพังแล้วคนกดซ้ำได้แค่ 409 "ผูกแล้ว"
+  let historyWarning = null;
   if (deal.stage !== nextStage) {
-    await supabase.from('sales_deal_stage_history').insert({
+    const { error: historyError } = await supabase.from('sales_deal_stage_history').insert({
       id: genId('DSH'),
       dealId: deal.id,
       fromStage: deal.stage,
@@ -279,7 +310,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       changedBy: user.id || null,
       changedByName: user.name || null,
     });
+    if (historyError) {
+      console.error('[create-project] บันทึกประวัติสถานะดีลไม่สำเร็จ', deal.id, `${deal.stage} → ${nextStage}`, historyError.message);
+      historyWarning = `สร้างโครงการแล้ว แต่บันทึกประวัติการเปลี่ยนสถานะดีลไม่สำเร็จ (เส้นเรื่องของดีลจะไม่มีขั้นนี้): ${historyError.message}`;
+    }
   }
+  /* ⚠️ จอหลังสร้างโครงการ (handlePmSuccess ของหน้าดีล) โชว์แค่ `productWarning` คีย์เดียว
+     ⇒ ทุกเรื่องที่คนกดต้องรู้รวมไว้ในคีย์นั้น ไม่ใช่แค่ FG
+     🐞 เดิมเรื่องอื่น (mirror) ไปอยู่คีย์ `warning` ที่ไม่มีจอไหนอ่าน = เตือนเท่ากับไม่เตือน */
+  const warning = [productWarning, mirrorWarning, dateSyncWarning, historyWarning].filter(Boolean).join(' · ');
 
   // บรรทัดแรกของเส้นเรื่องโครงการ: บอกว่าโครงการนี้เกิดจากดีลใบไหน
   await appendUpdate(supabase, {
@@ -310,8 +349,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   return ok({
     project: { ...project, tasks: insertedTasks },
     deal: updatedDeal,
-    productWarning,
+    productWarning: warning || null,   // รวมทุกเรื่อง (ดูข้างบน) — ห้ามแยกกลับไปคีย์ที่จอไม่อ่าน
     linkedMirrors: mirrorCounts(linkedMirrors),
-    ...(mirrorWarning ? { warning: mirrorWarning } : {}),
   }, 201);
 });

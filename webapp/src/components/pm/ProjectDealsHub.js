@@ -33,6 +33,8 @@ import { createClient } from "@/lib/supabaseBrowser";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./ProjectDealsHub.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import { notifyToast } from "@/components/ui/Toast";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -494,6 +496,9 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || (moving ? "ย้ายดีลไม่สำเร็จ" : "ผูกดีลไม่สำเร็จ"));
+      // ผูกแล้วแต่ของประกอบไม่ครบ (ประวัติสถานะ · ย้ายของที่ผูกดีล) — ดู lib/apiWarnings
+      const warning = responseWarningText(data);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       setLinkOpen(false);
       await onChanged?.();
     } catch (error) {

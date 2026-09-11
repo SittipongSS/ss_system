@@ -143,12 +143,15 @@ export async function POST(request, { params }) {
         perfumerId: briefById.get(row.briefId)?.perfumerId || null,
         perfumerName: briefById.get(row.briefId)?.perfumerName || before.pdrSignPerfumer || null,
       }, user, { accepted: true });
+      // ⚠️ เข้า `created` ทันทีที่กลิ่นเกิด — ก่อนเขียนต่อ ไม่งั้นถ้าขั้นถัดไปพัง
+      // catch ข้างล่างย้อนลบไม่ถึงตัวนี้ แล้วกลิ่นค้างในทะเบียน
+      created.push({ row, scent });
       // ⭐ **วันผลิตอยู่บนตัวกลิ่น · วันส่งลูกค้ายังไม่เกิด** (มติผู้ใช้ 2026-08-08 ·
       // ม-66 · mig 0224) — ตอนนี้ของเพิ่งออกจากมือ RD มาถึงฝ่ายขาย ยังไม่ถึงลูกค้า
       // 🐞 เดิมเขียน `sentAt` ตรงนี้ด้วยวันเดียวกับ `readyAt` ⇒ ทะเบียนบอกว่าส่ง
       // ลูกค้าแล้วตั้งแต่วันที่ RD ส่งมอบ ซึ่งเร็วกว่าความจริงเสมอ
       // ⇒ `scents.sentAt` เขียนตอน SA กดก้าว "ส่งให้ลูกค้า" แทน (items/[itemId])
-      await supabase.from('scents').update({
+      const { error: stampError } = await supabase.from('scents').update({
         // ⭐ ทะเบียนย้อนกลับได้ว่ากลิ่นตัวนี้มาจากบรีฟไหน (ข้อที่ผู้ใช้ขอ · mig 0213)
         // เก็บตรงบน scents ไม่ให้ต้อง join ผ่านแถว direction
         briefId: row.briefId,
@@ -157,7 +160,13 @@ export async function POST(request, { params }) {
         producedByName: user?.name ?? null,
         updatedAt: nowIso,
       }).eq('id', scent.id);
-      created.push({ row, scent });
+      /* 🐞 เดิมไม่อ่าน `error` ⇒ พังแล้วเดินต่อเงียบ ๆ — กลิ่นเข้าทะเบียนโดย **ไม่มี
+         วันผลิต** (ช่องนี้มีที่ scents ที่เดียว แถวคำร้องไม่ได้เก็บ) และไม่รู้ว่าตอบบรีฟ
+         ก้อนไหน · ตอนนี้ยังไม่มีแถวคำร้องสักแถว ⇒ ล้มทั้งชุดแล้วย้อนลบกลิ่นได้สะอาด
+         กดส่งใหม่ไม่เกิดของซ้ำ */
+      if (stampError) {
+        throw new Error(`บันทึกวันผลิต/บรีฟลงกลิ่น ${row.code} ไม่สำเร็จ: ${stampError.message}`);
+      }
     }
 
     // 2) แถวคำร้อง — **รอบแก้เติมลงแถวเดิม · ที่เหลือสร้างใหม่** (#1049)
@@ -208,13 +217,27 @@ export async function POST(request, { params }) {
   /* ⭐ ใบที่เคยขึ้น "ตอบแล้ว" ต้องถอยกลับเป็น "รับเรื่องแล้ว" เมื่อมีแถวใหม่
      ใช้ตัวเดิมที่ route ก้าวรายแถวใช้ (`deriveRequestStatusAfterAnswer`) ⇒ กติกา
      "ครบทุกแถว = answered" อยู่ที่เดียว ไม่มีใครคิดเองสองที่
-     ⚠️ ตัวนั้นกัน `closed`/`cancelled` ไว้ให้แล้ว จึงไม่ต้องเช็คซ้ำ */
-  const afterAdd = await findRequest(supabase, id);
-  const closurePatch = requestRowsClosurePatch(afterAdd, afterAdd.items || [], nowIso);
-  if (Object.keys(closurePatch).length) {
-    await supabase.from('dept_requests')
-      .update({ ...closurePatch, updatedAt: nowIso })
-      .eq('id', id);
+     ⚠️ ตัวนั้นกัน `closed`/`cancelled` ไว้ให้แล้ว จึงไม่ต้องเช็คซ้ำ
+     🐞 เดิมไม่อ่าน `error` ⇒ ถอยสถานะพังเงียบ ใบค้าง "ตอบแล้ว" ทั้งที่มีแถวใหม่รอเดิน
+       และ **ไม่หายเอง** — ก้าวรายแถว/ใส่ราคา (items/[itemId]) ตีกลับใบที่ไม่อยู่สถานะเปิด
+       ⇒ แถวใหม่เดินต่อไม่ได้เลย จนกว่าจะมีคนกด "ยังไม่จบ" ที่ใบ
+     ⚠️ **เตือน ไม่ใช่ 500** — กลิ่นกับแถวลงฐานไปแล้ว · ตอบพังแล้วโมดัลค้าง คนกดส่งซ้ำ
+       จะชนรหัสกลิ่นซ้ำ และไฟล์ประกอบที่จอรออัปหลังส่งสำเร็จจะไม่ถูกอัปเลย
+       ⇒ ส่ง `_warning` (จอทักโทนเตือนแทนเขียว) พร้อมบอกทางออก */
+  let statusWarning = null;
+  try {
+    const afterAdd = await findRequest(supabase, id);
+    const closurePatch = requestRowsClosurePatch(afterAdd, afterAdd?.items || [], nowIso);
+    if (Object.keys(closurePatch).length) {
+      const { error: closureError } = await supabase.from('dept_requests')
+        .update({ ...closurePatch, updatedAt: nowIso })
+        .eq('id', id);
+      if (closureError) throw closureError;
+    }
+  } catch (e) {
+    console.error('[request items] ปรับสถานะใบตามแถวใหม่ไม่สำเร็จ', id, e.message);
+    statusWarning = 'ส่งกลิ่นเข้าทะเบียนแล้ว แต่ปรับสถานะใบไม่สำเร็จ — ถ้าใบยังขึ้น "ตอบแล้ว" '
+      + `ให้กด "ยังไม่จบ" เพื่อเปิดใบกลับ ไม่งั้นรายการใหม่เดินต่อไม่ได้ (${e.message})`;
   }
 
   // 3) ร่องรอย — หนึ่งเหตุการณ์ต่อการส่งหนึ่งครั้ง ไม่ใช่ต่อแถว (คนอ่านเธรดสนใจ
@@ -228,12 +251,26 @@ export async function POST(request, { params }) {
     user,
   }).catch(() => {});
 
+  /* ⚠️ อ่านสภาพสุดท้าย **ครั้งเดียว · อ่านพังไม่ล้ม** แล้วใช้ทั้ง audit และ response
+     🐞 เดิมเรียก `findRequest` สองรอบตรงนี้ (อาร์กิวเมนต์ `after:` ถูกประเมินก่อนเข้า try
+       ของ recordAudit + อีกรอบใน body) · ตัวนั้น throw ⇒ อ่านสะดุดครั้งเดียวก็ 500 ทั้งที่
+       กลิ่นกับแถวลงฐานครบแล้ว ⇒ โมดัลค้าง ไฟล์ประกอบ (ม-91) ไม่ถูกอัป กดส่งซ้ำชน
+       "รหัสถูกใช้ไปแล้ว" — อาการเดียวกับที่ขั้นปรับสถานะข้างบนกันไว้
+     ⇒ อ่านไม่ได้ก็ตอบ `{}` · จออ่าน body แค่ `_warning`/`error` แล้วโหลดใบใหม่เอง */
+  const after = await findRequest(supabase, id).catch((e) => {
+    console.error('[request items] อ่านใบหลังส่งกลิ่นไม่สำเร็จ', id, e?.message);
+    return null;
+  });
+
   await recordAudit({
     user, action: 'update', entityType: 'dept_request', entityId: id,
-    before, after: await findRequest(supabase, id),
+    before, after,
     summary: `ส่งกลิ่น ${created.length} รายการ (${before.docNo || id})`,
     request,
   });
 
-  return Response.json(await findRequest(supabase, id), { status: 201 });
+  return Response.json({
+    ...(after || {}),
+    ...(statusWarning ? { _warning: statusWarning } : {}),
+  }, { status: 201 });
 }
