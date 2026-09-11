@@ -4,13 +4,11 @@
 //   รับคืนจากซ่อม · แจ้งสภาพ · ปลดระวาง · ทุกอันเขียนแถวประวัติ **แล้วค่อย**
 //   ตอกค่าลงตัวเครื่อง ⇒ `siteId`/`status` บนเครื่องเป็นภาพสรุปของแถวล่าสุด
 //   ไม่ใช่แหล่งข้อมูลคู่แข่งที่เดินหนีประวัติได้
-import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, notFound, conflict } from '@/lib/http';
 import { canEditService } from '@/lib/permissions';
-import {
-  MOVE_LABELS, assetMoveError, assetMovePatch, assetMoveRow,
-} from '@/lib/service/assetMoves';
+import { MOVE_LABELS, assetMoveError } from '@/lib/service/assetMoves';
+import { commitAssetMove } from '@/lib/service/assetMoveCommit';
 import { findAssetById, findSite, requireService } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
@@ -39,38 +37,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     });
     if (gate) return badRequest(gate);
 
-    const patch = assetMovePatch(asset, kind, body);
-    const row = assetMoveRow(asset, kind, body, { fromSite, toSite });
-
-    /* ⚠️ **ไม่มีทรานแซกชันในชั้นนี้** (ทุก route ของโมดูลยิงทีละคำสั่ง) — เขียน
-       ประวัติก่อน แล้วค่อยตอกค่าลงเครื่อง · ถ้าคำสั่งที่สองล้ม จะเหลือแถวประวัติ
-       ที่ไม่ตรงกับตัวเครื่อง ซึ่ง **อ่านออกว่าผิด** (ไทม์ไลน์บอกว่าย้ายแล้วแต่หัวใบ
-       ยังอยู่ที่เดิม) — ดีกว่าลำดับกลับกันที่จะได้เครื่องย้ายแล้วไม่มีประวัติ
-       ซึ่งเงียบสนิทและตามกลับไม่ได้ */
-    const { data: move, error: moveError } = await supabase
-      .from('service_asset_moves')
-      .insert({
-        id: genId('SVM'),
-        ...row,
-        createdById: user.id || null,
-        createdByName: user.name || user.email || null,
-      })
-      .select('*').maybeSingle();
-    if (moveError) return fail(moveError.message, 500);
-
-    /* optimistic guard — กันสองคนสั่งพร้อมกัน (คนหนึ่งย้าย อีกคนส่งซ่อม)
-       คำสั่งที่มาทีหลังต้องเด้ง ไม่ใช่เขียนทับเงียบ ๆ */
-    const { data: after, error: updateError } = await supabase
-      .from('service_assets')
-      .update({ ...patch, updatedAt: new Date().toISOString() })
-      .eq('id', id).eq('status', asset.status)
-      .select('*').maybeSingle();
-    if (updateError) return fail(updateError.message, 500);
-    if (!after) {
-      // ลบแถวประวัติที่เพิ่งเขียนทิ้ง — คำสั่งไม่ได้เกิดขึ้นจริง
-      await supabase.from('service_asset_moves').delete().eq('id', move.id);
-      return conflict('สถานะเครื่องเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่');
+    /* ⭐ ลำดับการเขียน (ประวัติก่อน → ตอกค่าลงเครื่อง → ลบประวัติทิ้งถ้าไม่ได้เขียนจริง)
+       อยู่ที่ตัวช่วยกลางตัวเดียว — นัดถอนเครื่องใช้ตัวเดียวกัน (`assetMoveCommit.js`) */
+    const result = await commitAssetMove(supabase, {
+      asset, kind, input: body, fromSite, toSite, user,
+    });
+    if (result.error) {
+      return result.status === 409 ? conflict(result.error) : fail(result.error, 500);
     }
+    const { asset: after, move, row } = result;
 
     const where = row.toSiteName ? ` → ${row.toSiteName}` : '';
     await recordAudit({

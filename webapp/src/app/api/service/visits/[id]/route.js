@@ -13,12 +13,18 @@ import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
 import { surveyEditLockError } from '@/lib/service/survey';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
-import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
+import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
 import { isSuperuser } from '@/lib/permissions';
 import { PLANNING_FIELD_ERROR, planningFieldsIn } from '@/lib/service/visitAccess';
-import { deriveVisitStatus } from '@/lib/service/visitAssets';
+import { REMOVE_VISIT_KIND, deriveVisitStatus } from '@/lib/service/visitAssets';
+import {
+  retrievalApplies, retrievalBlockedMessage, retrievalCandidateIds, retrievalKindSwitchError,
+  retrievalPlan, retrievalStatusLockError,
+} from '@/lib/service/visitRetrieval';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { commitAssetMove } from '@/lib/service/assetMoveCommit';
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate } from '@/lib/format';
 import { businessTimeKey } from '@/lib/datePeriods';
@@ -50,8 +56,18 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       access.visit,
       gateContextForSite(gateCtx, access.visit.siteId, { site: null }),
     );
+    /* ⭐ **เครื่องที่นัดนี้แตะ แต่ไม่ได้อยู่ที่ไซต์นี้แล้ว** — แยกเป็นคีย์ของมันเอง
+       🐞 นัดถอนเครื่องที่ปิดแล้ว: ทุกเครื่องที่ถอนออก "ไม่มีไซต์" ⇒ `loadAssets(siteId)`
+         ไม่เห็นมัน ⇒ ใบส่งงานของนัดถอนว่างทั้งใบ และแผ่นปิดงานหาชื่อเครื่องไม่เจอ
+       ⚠️ **ห้ามรวมเข้า `assets`** — จอใช้ `assets` ตัดสินว่าเครื่องไหนต้องตอบ (`pendingAssets`)
+          และเป็นตัวเลือกเครื่องที่เอามาแทน · เครื่องที่ถอนแล้วถูกติดตั้งที่อื่นเป็น "ใช้งาน"
+          ⇒ รวมเข้าไปเมื่อไร จอจะบังคับให้ตอบผลของเครื่องที่อยู่ไซต์อื่น */
+    const onSite = new Set(assets.map((a) => a.id));
+    const offSiteIds = [...new Set(results.flatMap((r) => [r.assetId, r.replacedByAssetId]))]
+      .filter((assetId) => assetId && !onSite.has(assetId));
+    const resultAssets = offSiteIds.length ? await loadAssetsByIds(supabase, offSiteIds) : [];
     return ok({
-      visit: access.visit, items, assets, zones, results,
+      visit: access.visit, items, assets, zones, results, resultAssets,
       zoneGates: gate.zoneGates || [],
     });
   } catch (e) {
@@ -115,6 +131,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ⚠️ `existingKind` = นี่คือการ *แก้* ของเดิม ไม่ใช่การสร้าง (ดูคอมเมนต์ในตัวด่าน)
     const { value, error } = normalizeVisitInput({ ...before, ...body }, { existingKind: before.kind });
     if (error) return badRequest(error);
+
+    /* 🔴 **ช่างเลื่อนวันที่เข้าจริงของนัดถอนที่ปิดแล้วไม่ได้** — วันนี้คือตัวตัดสินว่าเครื่องไหน
+       "อยู่ที่ไซต์ตอนไปถอน" (เครื่องที่ติดตั้งทีหลังถอนผ่านนัดนี้ไม่ได้) และเป็นวันที่ในประวัติ
+       ของเครื่องที่ถอนไปแล้ว · ปล่อยให้เลื่อน = เลื่อนวันไปหลังวันติดตั้งของเครื่องสัญญาใหม่
+       แล้วถอนมันออกผ่านนัดเก่าได้ · แผ่นปิดงานไม่ส่งวันใหม่มาอยู่แล้ว (ส่งค่าเดิมกลับ)
+       ⚠️ ผู้จัดคิวแก้ได้ตามปกติ (แก้เวลาย้อนหลังเป็นหน้าที่ของฟอร์มแก้นัด) */
+    if (access.ownWorkOnly && before.kind === REMOVE_VISIT_KIND && isClosedVisit(before)
+      && String(value.actualDate ?? '') !== String(before.actualDate ?? '')) {
+      return forbidden('วันที่เข้าจริงของนัดถอนเครื่องที่ปิดงานแล้ว ต้องให้ผู้จัดคิวเป็นคนแก้');
+    }
+
+    // 🔴 นัดที่มีผลรายเครื่องแล้วเปลี่ยนชนิดเข้า/ออกจาก "ถอนเครื่อง" ไม่ได้ — ดูเหตุผลที่ตัวตัดสิน
+    if (value.kind !== before.kind && (value.kind === REMOVE_VISIT_KIND || before.kind === REMOVE_VISIT_KIND)) {
+      const { count: resultCount, error: countError } = await supabase
+        .from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('visitId', id);
+      if (countError) return fail(countError.message, 500);
+      const kindSwitch = retrievalKindSwitchError(before, value, { hasResults: (resultCount || 0) > 0 });
+      if (kindSwitch) return badRequest(kindSwitch);
+    }
 
     /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
        ⚠️ ตรวจจาก **ค่าหลังแก้** (`value`) ไม่ใช่ค่าเดิม — คนกดปล่อยเข้าคิวพร้อมกับ
@@ -200,6 +235,49 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         .some((k) => String(patch[k] ?? '') !== String(before[k] ?? '').slice(0, 5));
       // ⚠️ ธงติดค้างทางเดียว — แก้แล้วคือแก้แล้ว ย้อนค่ากลับไม่ได้ล้างประวัติ
       if (touched && (before.actualStartTime || before.actualEndTime)) patch.actualTimeEdited = true;
+    }
+
+    /* ── นัดถอนเครื่อง: ทะเบียนต้องขยับตาม (เหตุผลเต็มที่ lib/service/visitRetrieval.js) ──
+       ⚠️ ตรวจ **ก่อน** เขียนใบ — เครื่องที่ถอนไม่ได้ตอนปิดครั้งแรก (วันที่ขัดกับทะเบียน)
+          ต้องตีกลับทั้งคำขอ ไม่ใช่ปิดใบไปแล้วค่อยบอกว่าเครื่องยังค้างอยู่ที่ไซต์
+       ⚠️ ใช้ค่า **หลังแก้** ของใบ (`nextVisit`) — วันที่เข้าจริงเพิ่งถูกประทับข้างบน */
+    let retrieval = null;
+    let retrievalFromSite = null;
+    if (before.kind === REMOVE_VISIT_KIND) {
+      const nextVisit = { ...before, ...patch };
+      const [{ data: retrievalRows, error: retrievalRowsError }, retrievalSiteAssets] = await Promise.all([
+        supabase.from('service_visit_assets').select('assetId, outcome').eq('visitId', id),
+        loadAssets(supabase, before.siteId),
+      ]);
+      if (retrievalRowsError) return fail(retrievalRowsError.message, 500);
+      // ถอนเครื่องออกไปแล้ว ⇒ ใบต้องปิดเป็น "เข้าแล้ว/ทำไม่ครบ" ตลอดไป (ไม่ใช่เข้าไม่ได้/ยกเลิก/เปิดกลับ)
+      const statusLock = retrievalStatusLockError(nextVisit, retrievalRows || [], retrievalSiteAssets);
+      if (statusLock) return conflict(statusLock);
+      if (retrievalApplies(before, nextVisit)) {
+        /* ประวัติ return/install/transfer ของเครื่องที่ผลบอกว่าถอนแล้ว — ใช้แยก "ถอนไปแล้วแล้ว
+           มีคนติดตั้งคืน" (ห้ามถอนทับ) ออกจาก "ยังไม่เคยถอนสำเร็จ" (ต้องลองใหม่) */
+        const { data: priorMoves, error: priorMovesError } = await fetchInChunks(
+          retrievalCandidateIds(retrievalRows || []),
+          (chunk) => supabase.from('service_asset_moves')
+            .select('assetId, kind, note, movedAt, createdAt')
+            .in('kind', ['return', 'install', 'transfer']).in('assetId', chunk),
+        );
+        if (priorMovesError) return fail(priorMovesError.message, 500);
+        /* 🔴 **บันทึกซ้ำใช้วันที่เข้าจริงเดิมของใบ ไม่ใช่ค่าที่ส่งมา** — วันที่เข้าจริงไม่ใช่ช่อง
+           ของแผน (ช่างแก้ได้) ⇒ ถ้าเชื่อค่าที่ส่งมา ช่างเลื่อนวันของนัดถอนเก่าไปหลังวันติดตั้ง
+           ของเครื่องใหม่ที่ไซต์ แล้วถอนมันออกได้ผ่านด่านวันที่ */
+        const planVisit = isClosedVisit(before) && before.actualDate
+          ? { ...nextVisit, actualDate: before.actualDate } : nextVisit;
+        retrieval = retrievalPlan({
+          visit: planVisit, results: retrievalRows || [], siteAssets: retrievalSiteAssets,
+          priorMoves: priorMoves || [],
+        });
+        const blocked = retrievalBlockedMessage(retrieval.blocked);
+        if (blocked) return badRequest(blocked);
+        /* ⚠️ โหลดไซต์ **ก่อนเขียนใบ** — ถ้าไปโหลดหลัง update แล้วมันโยน ใบปิดไปแล้วแต่ไม่มีเครื่อง
+           ไหนถูกถอน ไม่มีเธรด "ปิดงาน" และจอได้ 500 ที่อ่านว่า "ไม่ได้ปิด" */
+        if (retrieval.moves.length) retrievalFromSite = await findSite(supabase, before.siteId);
+      }
     }
 
     /* ── เปิดนัดประเมินที่ปิดไปแล้วกลับมา = อาจได้นัดเปิดสองใบต่อหนึ่งคำร้อง ────
@@ -313,9 +391,46 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
 
+    /* ── ถอนเครื่องออกจากไซต์ — หลังเขียนใบสำเร็จแล้วเท่านั้น ─────────────────
+       ⭐ คำสั่ง `return` ตัวเดียวกับปุ่มที่หน้าเครื่อง (ทางเขียนเดียว `commitAssetMove`)
+       ⚠️ ล้มรายเครื่องไม่ตีกลับทั้งคำขอ — ใบปิดไปแล้ว และการบันทึกครั้งถัดไปจะปรับให้ตรงเอง
+          (แผนตัดสินจากสภาพปัจจุบัน) ⇒ บอกจอว่าเครื่องไหนค้าง แทน 500 ที่อ่านว่า "ไม่ได้ปิด"
+       ⚠️ guard `siteId` — เครื่องที่ผู้จัดคิวย้ายไปไซต์อื่นระหว่างทาง ต้องไม่ถูกถอนจากที่ใหม่ */
+    const retrieved = { moved: [], failed: [] };
+    if (retrieval?.moves.length) {
+      for (const { asset, input } of retrieval.moves) {
+        const label = asset.label || asset.code || asset.id;
+        const result = await commitAssetMove(supabase, {
+          asset, kind: 'return', input, fromSite: retrievalFromSite, user, guard: { siteId: data.siteId },
+        });
+        if (result.error) {
+          retrieved.failed.push({ assetId: asset.id, label, error: result.error });
+          continue;
+        }
+        retrieved.moved.push({ assetId: asset.id, label });
+        await recordAudit({
+          user, action: 'update', entityType: 'service_asset', entityId: asset.id,
+          before: asset, after: result.asset,
+          summary: `ถอดออกจากไซต์ ${asset.serial || label} · ถอนตามนัด ${data.code || id}`,
+          request: req,
+        });
+      }
+    }
+    /* ⚠️ เครื่องที่ถอนไม่สำเร็จต้องอยู่ในเธรดของนัดด้วย — toast ของช่างหายไปพร้อมจอ และนัด
+       ที่เลยวันแล้วหายจากหน้างานวันนี้ทันทีที่ปิด ⇒ ผู้จัดคิวต้องเห็นจากนัดเองว่ามีเครื่องค้าง
+       (บันทึกนัดนี้อีกครั้ง = ระบบลองถอนให้ใหม่) */
+    const retrievedText = [
+      retrieved.moved.length ? `ถอนเครื่องออกจากไซต์ ${retrieved.moved.length} เครื่อง` : null,
+      retrieved.failed.length
+        ? `ถอนไม่สำเร็จ ${retrieved.failed.length} เครื่อง (${retrieved.failed.map((f) => f.label).join(' · ')}) — บันทึกนัดนี้อีกครั้งเพื่อลองใหม่`
+        : null,
+    ].filter(Boolean).join(' · ') || null;
+
     await recordAudit({
       user, action: 'update', entityType: 'service_visit', entityId: id, before, after: data,
-      summary: `แก้นัดเข้าบริการ ${data.code || id} · ${data.scheduledDate}`, request: req,
+      summary: `แก้นัดเข้าบริการ ${data.code || id} · ${data.scheduledDate}`
+        + (retrievedText ? ` · ${retrievedText}` : ''),
+      request: req,
     });
 
     // ── เหตุการณ์ที่ต้องเล่าย้อนหลังได้ ลงเธรดกลาง (S-5) ────────────────
@@ -334,7 +449,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         entityType: 'service_visit', entityId: id, kind: 'done',
         body: [
           `${VISIT_STATUS_LABELS[data.status]} · เข้าจริง ${data.actualDate}`,
-          data.unableReason, data.summary,
+          data.unableReason, retrievedText, data.summary,
         ].filter(Boolean).join(' — '),
         user,
       });
@@ -366,7 +481,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const plan = await findPlan(supabase, data.planId);
       if (plan) suggestion = nextAfterDone(plan, data);
     }
-    return ok({ visit: data, nextVisitSuggestion: suggestion, steppedBackRequest });
+    return ok({
+      visit: data, nextVisitSuggestion: suggestion, steppedBackRequest,
+      // จอของช่างบอกผลที่เกิดกับทะเบียน — "ปิดแล้ว" เฉย ๆ ไม่บอกว่าเครื่องออกจากไซต์หรือยัง
+      retrieval: retrieval ? { moved: retrieved.moved.length, failed: retrieved.failed } : null,
+    });
   } catch (e) {
     return fail(e.message, 500);
   }

@@ -13,8 +13,8 @@
 //   ของแถวล่าสุด ⇒ เดินหนีกันไม่ได้ · ก่อนมีมันประวัติการย้ายไม่มีที่เก็บเลย
 //   (`installedAt`/`removedAt` มีคู่เดียวต่อเครื่อง ⇒ ย้ายรอบสองทับรอบแรกทิ้ง)
 import { fmtPercent } from '@/lib/format';
-import { ASSET_OUTCOME_LABELS } from './visitAssets';
-import { isAssetOnSite } from './sites';
+import { assetOutcomeLabel } from './visitAssets';
+import { ASSET_CONDITION_LABELS, isAssetOnSite } from './sites';
 import { MOVE_LABELS } from './assetMoves';
 
 /* เหตุการณ์ของเครื่อง เรียงใหม่สุดก่อน
@@ -49,7 +49,8 @@ export function assetTimeline({ asset, results = [], items = [], visits = [], mo
       kind: isReplacement ? 'installed_as_replacement' : result.outcome,
       label: isReplacement
         ? `เอามาแทน ${assetsById.get(result.assetId)?.label || result.assetId}`
-        : ASSET_OUTCOME_LABELS[result.outcome] || result.outcome,
+        // นัดถอนพูด "ถอนแล้ว/ถอนไม่ได้" — ผลเดียวกันในฐาน ต่างแค่คำ
+        : assetOutcomeLabel(result.outcome, visit?.kind),
       detail: isReplacement ? null : result.reason || null,
       replacedBy: result.outcome === 'swapped' && !isReplacement
         ? assetsById.get(result.replacedByAssetId)?.label || result.replacedByAssetId
@@ -67,7 +68,11 @@ export function assetTimeline({ asset, results = [], items = [], visits = [], mo
       key: `move-${move.id}`,
       date: move.movedAt,
       kind: `move_${move.kind}`,
-      label: MOVE_LABELS[move.kind] || move.kind,
+      /* "แจ้งเปลี่ยนสภาพ" เฉย ๆ ไม่บอกว่าเสียหรือหาย — ช่างแจ้งชำรุดจากหน้างานได้แล้ว (ข้อ H)
+         ⇒ บอกทิศทางด้วย ("แจ้งว่าชำรุด" / "แจ้งว่าปกติ") */
+      label: move.kind === 'condition' && ASSET_CONDITION_LABELS[move.conditionAfter]
+        ? `แจ้งว่า${ASSET_CONDITION_LABELS[move.conditionAfter]}`
+        : MOVE_LABELS[move.kind] || move.kind,
       // เล่าเป็น "จากไหนไปไหน" ไม่ใช่แค่ปลายทาง — ไม่งั้นอ่านไม่ออกว่าย้ายมาจากที่ใด
       detail: [
         move.kind === 'transfer' && from && to ? `${from} → ${to}` : (to || from),
@@ -78,15 +83,18 @@ export function assetTimeline({ asset, results = [], items = [], visits = [], mo
     });
   }
 
-  /* ⚠️ สองแถวนี้เหลือไว้สำหรับเครื่องที่ **เกิดก่อน mig 0335** (ไม่มีแถว move เลย)
-     ⇒ ประวัติเก่ายังอ่านได้ · เครื่องที่มี move แล้วไม่ต้องขึ้นซ้ำ */
-  if (!moves.length) {
-    if (asset.installedAt) {
-      rows.push({ key: `installed-${asset.id}`, date: asset.installedAt, kind: 'installed', label: 'ติดตั้งที่หน้างาน', detail: null, used: null });
-    }
-    if (asset.removedAt) {
-      rows.push({ key: `removed-${asset.id}`, date: asset.removedAt, kind: 'removed', label: 'ถอดออกจากหน้างาน', detail: null, used: null });
-    }
+  /* ⚠️ สองแถวนี้เล่าสิ่งที่ **ไม่มีแถว move รองรับ** — เครื่องที่เกิดก่อน mig 0335 หรือ
+     ถูกติดตั้ง/ถอดผ่านทางที่ไม่ได้เขียนประวัติ ⇒ ประวัติเก่ายังอ่านได้
+     🐞 ของเดิมซ่อนทั้งคู่ทันทีที่มี move **ใดก็ได้** สักแถว ⇒ เครื่องเก่าที่ถูกถอนออกจากไซต์
+       (มีแค่ move "ถอดออกจากไซต์") วันติดตั้งเดิมหายจากหน้า เหลือแต่วันที่ถอน
+     ⇒ ซ่อนเฉพาะเมื่อมี move ที่ **เล่าเรื่องเดียวกัน** อยู่แล้ว: ติดตั้ง ↔ install/transfer
+       (สองคำสั่งนี้ตั้ง installedAt ใหม่) · ถอด ↔ return/retire (ตั้ง removedAt) */
+  const told = new Set(moves.map((m) => m.kind));
+  if (asset.installedAt && !told.has('install') && !told.has('transfer')) {
+    rows.push({ key: `installed-${asset.id}`, date: asset.installedAt, kind: 'installed', label: 'ติดตั้งที่หน้างาน', detail: null, used: null });
+  }
+  if (asset.removedAt && !told.has('return') && !told.has('retire')) {
+    rows.push({ key: `removed-${asset.id}`, date: asset.removedAt, kind: 'removed', label: 'ถอดออกจากหน้างาน', detail: null, used: null });
   }
 
   return rows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));

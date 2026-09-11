@@ -11,12 +11,14 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import ChoiceChips from "@/components/ui/ChoiceChips";
+import StatusBadge from "@/components/ui/StatusBadge";
 import SignaturePad from "./SignaturePad";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
-import { VISIT_STATUS_LABELS } from "@/lib/service/visitStatus";
+import { VISIT_STATUS_LABELS, isClosedVisit } from "@/lib/service/visitStatus";
 import {
-  ASSET_OUTCOMES, ASSET_OUTCOME_LABELS, deriveVisitStatus, normalizeAssetResult, pendingAssets,
+  ASSET_OUTCOMES, REMOVE_VISIT_KIND, assetOutcomeLabel, assetOutcomesFor, deriveVisitStatus,
+  normalizeAssetResult, pendingAssets,
 } from "@/lib/service/visitAssets";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
@@ -28,6 +30,12 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
   const [form, setForm] = useState(() => closeFormDefaults(null));
   const [items, setItems] = useState([]);
   const [assets, setAssets] = useState([]);
+  // เครื่องที่นัดนี้เคยแตะ แต่ไม่ได้อยู่ที่ไซต์นี้แล้ว (ถอนออก/ย้ายไป) — ไว้หาชื่ออย่างเดียว
+  const [resultAssets, setResultAssets] = useState([]);
+  // เครื่องที่มีผลอยู่ในนัดนี้แล้ว (ตามฐาน) — นัดถอนที่ปิดแล้วต้องโชว์ชุดนี้เสมอ
+  const [seededIds, setSeededIds] = useState(() => new Set());
+  // โหลดข้อมูลนัดใหม่โดยไม่ล้างฟอร์ม — ใช้หลังบันทึกผลสำเร็จแต่ปิดใบล้ม
+  const [reloadKey, setReloadKey] = useState(0);
   // ผลรายเครื่อง: Map<assetId, { outcome, reason, replacedByAssetId }>
   const [results, setResults] = useState({});
   const [draftItem, setDraftItem] = useState({ label: "", qty: "", unit: "", assetId: "" });
@@ -56,6 +64,14 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     setUnable(false);
     setUnableReason("");
     setForm(closeFormDefaults(visit));
+  }, [open, visit]);
+
+  /* ⚠️ **แยกการโหลดข้อมูลออกจากการล้างฟอร์ม** — หลังบันทึกผลรายเครื่องสำเร็จแต่ปิดใบล้ม
+     (เน็ตหลุด) ต้องโหลดใหม่ ให้เครื่องที่ server เพิ่งแช่แข็ง (ถูกเปลี่ยนออก) กลายเป็นแถว
+     อ่านอย่างเดียว · ไม่งั้นช่างแก้แถวที่จอยังโชว์ว่าแก้ได้ แล้วโดน 409 ตอนกดใหม่
+     แต่การโหลดใหม่ต้อง **ไม่ล้างสรุปงาน/รูป/ลายเซ็นที่ช่างเพิ่งกรอก** */
+  useEffect(() => {
+    if (!open || !visit) return;
     (async () => {
       try {
         /* GET นัดคืน visit + items + assets + zones + results มาในคำขอเดียว —
@@ -65,6 +81,8 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         if (!res.ok) throw new Error(data?.error || "โหลดข้อมูลนัดไม่สำเร็จ");
         setItems(Array.isArray(data?.items) ? data.items : []);
         setAssets(Array.isArray(data?.assets) ? data.assets : []);
+        setResultAssets(Array.isArray(data?.resultAssets) ? data.resultAssets : []);
+        setSeededIds(new Set((data?.results || []).map((row) => row.assetId)));
         const seed = {};
         for (const row of data?.results || []) {
           seed[row.assetId] = {
@@ -78,7 +96,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         setError(e.message);
       }
     })();
-  }, [open, visit]);
+  }, [open, visit, reloadKey]);
 
   /* ⚠️ ต้องอยู่ **เหนือ** `if (!visit) return null` — hook เรียกใต้ early return
      ไม่ได้ (rules-of-hooks) · `addPhoto` ประกาศทีหลังได้ เพราะ callback ถูกเรียก
@@ -175,12 +193,33 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     }
   };
 
-  const activeAssets = assets.filter((a) => a.status === "active");
+  const removing = visit.kind === REMOVE_VISIT_KIND;
+  /* 🔴 แก้ผลของนัดถอนที่ปิดแล้ว = ถามเฉพาะเครื่องที่ **อยู่ที่ไซต์ตอนวันที่ของนัด** — เครื่องที่
+     ติดตั้งทีหลัง (ลูกค้ากลับมาต่อสัญญา) ไม่ใช่งานของนัดเก่า · กางมันขึ้นมาให้ตอบ = บังคับให้ช่าง
+     เลือก "ถอนแล้ว/ถอนไม่ได้" ให้เครื่องของสัญญาใหม่ (server ตีกลับอยู่แล้ว — จอต้องไม่ถาม)
+     ⚠️ เครื่องที่มีผลในนัดนี้อยู่แล้ว **ต้องโชว์เสมอ** แม้ติดตั้งคืนทีหลัง — ไม่โชว์ = ไม่ถูกส่ง
+        กลับไป แล้ว PUT (เขียนทับทั้งชุด) ลบผลของมันทิ้ง
+     ⚠️ ใบที่ยังไม่ปิดไม่กรอง — เครื่องที่วันติดตั้งในทะเบียนผิด (อนาคต) ยังตั้งอยู่ตรงหน้าช่างจริง
+        ต้องให้ติ๊กได้ แล้วด่านของ server บอกให้แก้วัน ไม่ใช่ซ่อนจนมันค้างที่ไซต์เงียบ ๆ */
+  const closedRemove = removing && isClosedVisit(visit) && !!visit.actualDate;
+  const belongs = (a) => seededIds.has(a.id) || !a.installedAt || String(a.installedAt) <= String(visit.actualDate);
+  const activeAssets = assets.filter((a) => a.status === "active" && (!closedRemove || belongs(a)));
+  const activeIds = new Set(activeAssets.map((a) => a.id));
   const resultRows = activeAssets
     .map((a) => ({ assetId: a.id, ...(results[a.id] || {}) }))
     .filter((r) => ASSET_OUTCOMES.includes(r.outcome));
-  const pending = pendingAssets(assets, resultRows);
-  const derived = unable ? "unable" : deriveVisitStatus(resultRows);
+  /* 🔒 **ผลที่แช่แข็งแล้ว** — ผลของเครื่องที่ไม่ได้ติดตั้งอยู่ที่ไซต์นี้แล้ว (ถอนออก ·
+     ถูกเปลี่ยน · ส่งซ่อม) · เป็นประวัติที่เกิดไปแล้ว server ไม่ยอมให้แก้และไม่ลบทิ้ง
+     ⚠️ ต้อง **นับรวม** ตอนสรุปสถานะใบ — ไม่งั้นนัดถอนที่ถอนครบแล้วกด "แก้ผลการเข้า"
+        จะเหลือผลแค่เครื่องที่ถอนไม่ได้ แล้วใบกลายเป็น "ทำไม่ได้" ทั้งใบ */
+  const frozenRows = Object.entries(results)
+    .filter(([assetId, row]) => !activeIds.has(assetId) && ASSET_OUTCOMES.includes(row?.outcome))
+    .map(([assetId, row]) => ({ assetId, ...row }));
+  const knownAssets = new Map([...resultAssets, ...assets].map((a) => [a.id, a]));
+  const outcomes = assetOutcomesFor(visit.kind);
+  // ⚠️ ถามเฉพาะเครื่องที่จอกางให้ตอบ (`activeAssets`) — ไม่ใช่ทุกเครื่องของไซต์
+  const pending = pendingAssets(activeAssets, resultRows);
+  const derived = unable ? "unable" : deriveVisitStatus([...resultRows, ...frozenRows]);
   const unableTooShort = unable && unableReason.trim().length < 10;
 
   const setOutcome = (assetId, outcome) => setResults((prev) => ({
@@ -210,6 +249,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     }
     setBusy(true);
     setError("");
+    let resultsSaved = false;
     try {
       /* บันทึกผลรายเครื่อง **ก่อน** ปิดใบ — server สรุปสถานะจากแถวจริงใน DB
          (closeFromAssets) ไม่ใช่จากค่าที่จอส่งมา ⇒ ลำดับนี้สลับไม่ได้ */
@@ -221,15 +261,19 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         });
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "บันทึกผลรายเครื่องไม่สำเร็จ");
+        resultsSaved = true;
       }
       await onSubmit({
         ...form,
-        closeFromAssets: activeAssets.length > 0 && !unable,
+        // มีผลที่แช่แข็งไว้ = server ต้องสรุปสถานะจากแถวในฐานด้วย แม้ไม่มีเครื่องให้ติ๊กแล้ว
+        closeFromAssets: (activeAssets.length > 0 || frozenRows.length > 0) && !unable,
         status: derived,
         ...(unable ? { unableReason: unableReason.trim() } : {}),
       });
     } catch (e) {
       setError(e.message || "ปิดงานไม่สำเร็จ");
+      // ผลรายเครื่องลงฐานแล้วแต่ปิดใบล้ม — โหลดใหม่ให้แถวที่ server แช่แข็งแล้วเป็นอ่านอย่างเดียว
+      if (resultsSaved) setReloadKey((key) => key + 1);
     } finally {
       setBusy(false);
     }
@@ -305,13 +349,21 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
           ทำแล้ว Reed 6 ขวดยังไม่ได้ทำ ⇒ ปิด done ก็โกหก ปิด unable ก็โกหก
           ⚠️ ไม่มีปุ่มให้เลือกสถานะของใบ — ใบสรุปจากลูกเสมอ ถ้าให้เลือกเอง คนจะกด
           "เสร็จ" เพราะเป็นปุ่มที่จบงานเร็วที่สุด แล้ว "ทำไม่ครบ" จะไม่มีวันปรากฏ */}
-      {activeAssets.length > 0 && (
+      {(activeAssets.length > 0 || frozenRows.length > 0) && (
         <section className={styles.block}>
           <h3 className={styles.blockTitle}>
             อุปกรณ์ในไซต์
-            <span className={styles.progress}>{resultRows.length} / {activeAssets.length}</span>
+            {activeAssets.length > 0 && (
+              <span className={styles.progress}>{resultRows.length} / {activeAssets.length}</span>
+            )}
           </h3>
-          <p className={styles.note}>ติ๊กทีละตัว — สถานะของใบจะสรุปจากตรงนี้เอง</p>
+          {/* ⭐ นัดถอนต้องบอกผลที่ตามมา — ติ๊ก "ถอนแล้ว" ไม่ใช่แค่จดว่าทำ แต่ย้ายเครื่องออก
+              จากทะเบียนของไซต์นี้จริง (ผ่านคำสั่ง "ถอดออกจากไซต์" พร้อมประวัติ) */}
+          <p className={styles.note}>
+            {removing
+              ? "ติ๊กทีละตัว — เครื่องที่ “ถอนแล้ว” จะออกจากไซต์นี้และกลับเป็น “ว่าง” ในทะเบียนทันทีที่ปิดงาน"
+              : "ติ๊กทีละตัว — สถานะของใบจะสรุปจากตรงนี้เอง"}
+          </p>
           {activeAssets.map((asset) => {
             const row = results[asset.id] || {};
             return (
@@ -325,14 +377,37 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
                     </small>
                   </span>
                   <span className="segmented" role="group" aria-label={`ผลของ ${asset.label}`}>
-                    {ASSET_OUTCOMES.map((outcome) => (
+                    {outcomes.map((outcome) => (
                       <button key={outcome} type="button" aria-pressed={row.outcome === outcome}
                         onClick={() => setOutcome(asset.id, outcome)}>
-                        {ASSET_OUTCOME_LABELS[outcome]}
+                        {assetOutcomeLabel(outcome, visit.kind)}
                       </button>
                     ))}
                   </span>
                 </div>
+
+                {/* ⭐ **แจ้งเครื่องชำรุด** (ข้อ H) — ของเดิมช่างที่เห็นเครื่องเสียกับตาไม่มีทางบอก
+                    ทะเบียนเลย (คำสั่งแจ้งสภาพอยู่หน้าเครื่องซึ่ง role ช่างเปิดไม่ได้)
+                    ⚠️ แจ้งได้ทางเดียว ปกติ → ชำรุด · เครื่องที่ชำรุดอยู่แล้วโชว์เป็นป้าย ไม่ใช่
+                       สวิตช์ที่ปิดได้ — แก้กลับเป็นปกติเป็นเรื่องของคนที่ซ่อม/เช็คแล้ว
+                    ⚠️ ซ่อนตอนเลือก "ไปแล้วเข้าไม่ได้" — ทางนั้นไม่บันทึกผลรายเครื่องเลย */}
+                {asset.condition === "broken" ? (
+                  <div className={styles.brokenRow}>
+                    <StatusBadge tone="danger" size="sm" label="ชำรุด" />
+                    <small className={styles.note}>ทะเบียนบันทึกไว้แล้ว — ผู้จัดคิวแก้กลับเป็นปกติที่หน้าเครื่องหลังซ่อม</small>
+                  </div>
+                ) : !unable && (
+                  <div className={styles.brokenRow}>
+                    <button type="button" className={`ui-switch ${styles.brokenSwitch}`}
+                      data-on={row.broken ? "1" : undefined} aria-pressed={row.broken ? "true" : "false"}
+                      onClick={() => setField(asset.id, "broken", !row.broken)}>
+                      <i aria-hidden="true" />เครื่องชำรุด
+                    </button>
+                    {row.broken && (
+                      <small className={styles.note}>ปิดงานแล้วทะเบียนจะบันทึกว่า “ชำรุด” พร้อมอาการ — หัวหน้าเห็นที่หน้าเครื่อง</small>
+                    )}
+                  </div>
+                )}
 
                 {row.outcome === "swapped" && (
                   <label className={styles.assetField}>
@@ -351,14 +426,19 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
                   </label>
                 )}
 
-                {row.outcome && row.outcome !== "done" && (
+                {/* แจ้งชำรุดใช้ช่องเดียวกับเหตุผล — ทำแล้วแต่เครื่องมีปัญหาก็มีจริง (ต้องมีอาการ) */}
+                {row.outcome && (row.outcome !== "done" || row.broken) && (
                   <label className={styles.assetField}>
-                    <span>เหตุผล *</span>
+                    <span>{!row.broken ? "เหตุผล *" : row.outcome === "done" ? "อาการที่พบ *" : "เหตุผล และอาการที่พบ *"}</span>
                     <Input as="textarea" rows={2} value={row.reason || ""}
                       onChange={(e) => setField(asset.id, "reason", e.target.value)}
                       maxLength={500}
-                      placeholder={row.outcome === "swapped"
+                      placeholder={row.broken && row.outcome === "done"
+                        ? "เช่น ปั๊มไม่พ่น มีเสียงดังผิดปกติ"
+                        : row.outcome === "swapped"
                         ? "เช่น เครื่องชำรุด ไม่พ่น นำเครื่องสำรองมาเปลี่ยน"
+                        : removing
+                        ? "เช่น ลูกค้ายังไม่ให้ถอด ขอคุยกับฝ่ายขายก่อน"
                         : "เช่น ยังอยู่ในขั้นตอนปรับสูตร ทีม RD ขอให้รอรอบหน้า"} />
                   </label>
                 )}
@@ -366,7 +446,37 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
             );
           })}
 
-          {resultRows.length > 0 && (
+          {/* 🔒 อ่านอย่างเดียว — ไม่ใช่ปุ่มที่ disabled (ปุ่มจางอ่านว่า "เดี๋ยวก็กดได้")
+              ⚠️ ต้องบอก **ทางแก้** ด้วย: ถอนผิดเครื่อง ผู้จัดคิวสั่งติดตั้งกลับที่หน้าเครื่อง */}
+          {frozenRows.length > 0 && (
+            <>
+              {/* ทางแก้ต้องมีอยู่จริง — "ติดตั้งเข้าไซต์" ใช้ได้กับเครื่องที่ถูกถอน (ว่าง) เท่านั้น
+                  เครื่องที่ถูกเปลี่ยนออก (ปลดระวาง) หรือส่งซ่อม ไม่มีคำสั่งนั้นให้กด */}
+              <p className={styles.note}>
+                {removing
+                  ? "บันทึกไว้แล้ว — เครื่องเหล่านี้ถูกถอนออกจากไซต์นี้แล้ว ผลของมันแก้จากตรงนี้ไม่ได้ (ถ้าถอนผิด ให้ผู้จัดคิวสั่ง “ติดตั้งเข้าไซต์” ที่หน้าเครื่อง)"
+                  : "บันทึกไว้แล้ว — เครื่องเหล่านี้ถูกเปลี่ยนออก ส่งซ่อม หรือย้ายออกจากไซต์นี้แล้ว ผลของมันแก้จากตรงนี้ไม่ได้"}
+              </p>
+              {frozenRows.map((row) => {
+                const asset = knownAssets.get(row.assetId);
+                return (
+                  <div key={row.assetId} className={styles.assetRow}>
+                    <div className={styles.assetHead}>
+                      <span className={styles.assetName}>
+                        {asset?.label || row.assetId}
+                        <small>{naText([asset?.model, asset?.serial].filter(Boolean).join(" · "))}</small>
+                      </span>
+                      <StatusBadge tone={row.outcome === "done" ? "success" : "warning"} size="sm"
+                        label={assetOutcomeLabel(row.outcome, visit.kind)} />
+                    </div>
+                    {row.reason ? <p className={styles.note}>{row.reason}</p> : null}
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {resultRows.length + frozenRows.length > 0 && (
             <p className={`${styles.derived} ${derived === "done" ? "" : styles.derivedWarn}`}>
               ใบนี้จะปิดเป็น <b>{VISIT_STATUS_LABELS[derived]}</b>
               {pending.length > 0 && ` · ยังไม่ได้ระบุผลอีก ${pending.length} รายการ`}

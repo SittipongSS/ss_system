@@ -81,7 +81,9 @@ export const MOVE_RESULT = {
        ระบบคำสั่งที่ตั้งใจให้เป็นทางเดียว ⇒ ไทม์ไลน์ของเครื่องขาดช่วงเงียบ ๆ
    ⚠️ ด่านนี้เป็นชั้น **server** — ถอดช่องออกจากฟอร์มอย่างเดียวไม่พอ เส้นที่ยิง API ตรง
       (สคริปต์ · จอที่ค้างไว้ตั้งแต่ก่อนแก้) ยังส่งค่ามาได้ */
-export const MOVE_ONLY_FIELDS = [['status', 'สถานะ'], ['removedAt', 'วันที่ถอด']];
+/* 🔄 เติม `condition` (ข้อ H) — ช่างแจ้งชำรุดผ่านนัดได้แล้วพร้อมแถวประวัติ ⇒ ฟอร์มแก้ข้อมูล
+   ต้องไม่เป็นทางลัดพลิกสภาพเครื่องเงียบ ๆ (ฟอร์มไม่มีช่องนี้ ด่านนี้กันเส้นที่ยิง API ตรง) */
+export const MOVE_ONLY_FIELDS = [['status', 'สถานะ'], ['removedAt', 'วันที่ถอด'], ['condition', 'สภาพเครื่อง']];
 
 // ค่าว่างมีหลายหน้า (null · undefined · '') — เทียบเป็นสตริงให้เป็นค่าเดียวกันหมด
 const sameFieldValue = (a, b) => String(a ?? '') === String(b ?? '');
@@ -93,7 +95,7 @@ export function assetFormLockError(before = {}, body = {}) {
     if (sameFieldValue(body[field], before?.[field])) continue;
     return `แก้${label}ที่ฟอร์มไม่ได้ — ใช้คำสั่งที่หน้าเครื่อง`
       + ` (${MOVE_LABELS.install} · ${MOVE_LABELS.transfer} · ${MOVE_LABELS.return}`
-      + ` · ${MOVE_LABELS.repair} · ${MOVE_LABELS.retire})`
+      + ` · ${MOVE_LABELS.repair} · ${MOVE_LABELS.condition} · ${MOVE_LABELS.retire})`
       + ' เพื่อให้ระบบบันทึกวันที่ เหตุผล และคนสั่งลงประวัติ';
   }
   return null;

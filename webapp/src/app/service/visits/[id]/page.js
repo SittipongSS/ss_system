@@ -59,7 +59,9 @@ export default function VisitReportPage({ params }) {
   useRevalidateOnFocus(load);
 
   const report = useMemo(() => (data ? buildVisitReport({
-    visit: data.visit, site, zones: data.zones, assets: data.assets,
+    /* ⭐ รวมเครื่องที่นัดนี้แตะแต่ย้ายออกไปแล้ว (`resultAssets`) — นัดถอนเครื่องที่ปิดแล้ว
+       ทุกเครื่องไม่มีไซต์ ⇒ ไม่รวม = ใบส่งงานของนัดถอนว่างทั้งใบ */
+    visit: data.visit, site, zones: data.zones, assets: [...(data.assets || []), ...(data.resultAssets || [])],
     results: data.results, items: data.items,
     // ผลด่านรายโซนจาก server — ใบส่งงานตัดโซนที่งดบริการพร้อมเหตุ
     zoneGates: data.zoneGates,

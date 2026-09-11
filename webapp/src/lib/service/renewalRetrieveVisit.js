@@ -19,8 +19,11 @@ import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { initialVisitStatus } from '@/lib/service/visitGate';
 import { loadVisitGateContext, gateContextForSite } from '@/lib/service/gateContext';
 import { businessDate } from '@/lib/businessDate';
+import { REMOVE_VISIT_KIND } from '@/lib/service/visitAssets';
 
-export const RETRIEVE_VISIT_KIND = 'remove';
+// ⚠️ ค่าเดียวกับที่นัดปิดแล้วใช้ตัดสินว่าต้องถอนเครื่องออกจากทะเบียน (visitRetrieval.js)
+//    — ชี้ที่เดียวกัน ไม่งั้นวันหนึ่งสองที่พูดคนละคำแล้วนัดถอนปิดไปโดยทะเบียนไม่ขยับอีก
+export const RETRIEVE_VISIT_KIND = REMOVE_VISIT_KIND;
 
 /* สถานะที่นับว่า "ยังมีนัดถอนค้างอยู่" — ร่าง/ขึ้นตาราง/กำลังทำ/เลื่อน นับหมด
    มีแต่ปิดจบแล้ว (done/partial/unable) หรือยกเลิกเท่านั้นที่นับว่า "ไม่มีนัดค้าง"

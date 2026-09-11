@@ -87,14 +87,21 @@ export default function ServiceAssetPage({ params }) {
     [data?.zoneAssets, asset],
   );
 
+  /* นัดทุกใบที่ประวัติของเครื่องอ้างถึง — ไซต์ปัจจุบัน + ไซต์เก่า/ก่อนถูกถอน (`historyVisits`)
+     ⚠️ ใช้กับ **ประวัติ** เท่านั้น · วันเติมถัดไป (ข้างล่าง) ต้องดูเฉพาะนัดของไซต์ปัจจุบัน */
+  const timelineVisits = useMemo(
+    () => [...(data?.visits || []), ...(data?.historyVisits || [])],
+    [data?.visits, data?.historyVisits],
+  );
+
   const timeline = useMemo(() => assetTimeline({
     asset,
     results: data?.results || [],
     items: data?.items || [],
-    visits: data?.visits || [],
+    visits: timelineVisits,
     moves: data?.moves || [],
     assetsById,
-  }), [asset, data, assetsById]);
+  }), [asset, data, assetsById, timelineVisits]);
 
   const outlier = useMemo(() => settingOutlier(asset, data?.zoneAssets || []), [asset, data?.zoneAssets]);
 
@@ -368,6 +375,9 @@ export default function ServiceAssetPage({ params }) {
                     {row.replacedBy && <span> → {row.replacedBy}</span>}
                     {row.detail && <span className={styles.reason}>{row.detail}</span>}
                     {row.used && <span className={styles.reason}>ใช้ไป: {row.used}</span>}
+                    {/* ใครสั่ง/ใครแจ้ง — ประกอบไว้ตั้งแต่ mig 0335 แต่ไม่เคยขึ้นจอ · ช่างแจ้งชำรุด
+                        จากหน้างานได้แล้ว (ข้อ H) หัวหน้าต้องรู้ว่าถามใครต่อ */}
+                    {row.by && <span className={styles.reason}>โดย {row.by}</span>}
                   </span>
                   {row.visitId && (
                     <Link href={`/service/visits/${row.visitId}`} className={styles.visitLink}>ใบส่งงาน</Link>
@@ -390,7 +400,7 @@ export default function ServiceAssetPage({ params }) {
                 ภายในสองสัปดาห์ แล้วป้ายจริงก็ถูกเมินไปด้วย */}
             <div><dt>สถานะน้ำหอม</dt><dd>{naText(refill?.label)}</dd></div>
             <div><dt>ล่าสุดเข้าเมื่อ</dt><dd>{naText(timeline.find((r) => r.visitId)?.date)}</dd></div>
-            <div><dt>ชนิดงานล่าสุด</dt><dd>{naText(VISIT_KIND_LABELS[(data.visits || []).find((v) => v.id === timeline.find((r) => r.visitId)?.visitId)?.kind])}</dd></div>
+            <div><dt>ชนิดงานล่าสุด</dt><dd>{naText(VISIT_KIND_LABELS[timelineVisits.find((v) => v.id === timeline.find((r) => r.visitId)?.visitId)?.kind])}</dd></div>
           </dl>
           {asset.note && <p className={styles.note}>{asset.note}</p>}
         </DetailCard>

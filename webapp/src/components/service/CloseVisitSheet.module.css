@@ -174,6 +174,21 @@
   font-weight: var(--fw-semibold);
 }
 
+/* แจ้งเครื่องชำรุด (ข้อ H) — สวิตช์ + คำอธิบายผลที่ตามมา
+   ⚠️ สวิตช์กลาง `.ui-switch` สูงแค่ตัวหนังสือ ⇒ ยืดพื้นที่กดให้เท่าปุ่มจอสัมผัส (มติข้อ 3)
+      ช่างกดด้วยนิ้วบนมือถือหน้างาน ไม่ใช่เมาส์ */
+.brokenRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.brokenSwitch {
+  min-height: var(--ctl-h-touch);
+}
+
 /* สถานะที่ใบจะถูกปิด — บอกผลก่อนกด ไม่ใช่ให้เซอร์ไพรส์หลังบันทึก */
 .derived {
   margin: var(--space-3) 0 0;

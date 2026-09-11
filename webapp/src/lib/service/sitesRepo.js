@@ -148,6 +148,17 @@ export async function findAssetById(supabase, assetId) {
   return data || null;
 }
 
+/* หาเครื่องหลายตัวด้วย id — ไม่สนว่าตอนนี้อยู่ไซต์ไหน (หรือไม่มีไซต์)
+   ⭐ มีไว้ให้ **ประวัติ** อ่านเครื่องที่ย้ายออกไปแล้ว: นัดถอนเครื่องที่ปิดไปแล้ว ผลรายเครื่อง
+     ยังชี้เครื่องที่ตอนนี้ "ว่าง" (ไม่มีไซต์) ⇒ `loadAssets(siteId)` มองไม่เห็นมันอีก
+     แล้วใบส่งงาน/แผ่นปิดงานของนัดนั้นจะหาชื่อเครื่องไม่เจอ
+   ⚠️ ห่อ `fetchAllInChunks` — ลิสต์ id มาจากผลของนัดซึ่งโตตามไซต์ (กฎ PostgREST 16 KB) */
+export async function loadAssetsByIds(supabase, ids = []) {
+  return fetchAllInChunks(ids, (chunk) => supabase
+    .from('service_assets').select('*')
+    .in('id', chunk).order('id', { ascending: true }));
+}
+
 /* ทะเบียนเครื่องรวมทุกไซต์ (เฟส B) — เครื่องทุกตัว + ชื่อไซต์/ลูกค้าที่มันอยู่
    ⚠️ **สองรอบแล้ว map ไม่ใช้ PostgREST embed** — embed ลากคอลัมน์ของไซต์ไปกับทุกแถว
       ทำให้ egress บวม (79% ของ egress ทั้งระบบเป็น PostgREST อยู่แล้ว) และ order
