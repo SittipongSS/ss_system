@@ -60,6 +60,8 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
         body: JSON.stringify({ entityType: "task", entityId: task.id, body: text }),
       });
       if (res.ok) { setComment(""); loadUpdates(); }
+      // ไม่สำเร็จ = ข้อความยังอยู่ในช่อง กดส่งซ้ำได้ — แต่ต้องบอก ไม่ใช่เงียบ
+      else notifyToast.error((await res.json().catch(() => ({}))).error || "บันทึกความคิดเห็นไม่สำเร็จ");
     } finally { setBusy(false); }
   };
 

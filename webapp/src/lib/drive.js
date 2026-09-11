@@ -225,10 +225,15 @@ export async function ensureFolderPath(segments, ctx) {
     const folderId = await ensureFolder(seg.name, parentId, ctx);
     if (seg.cache && folderId !== seg.cachedId) {
       // cache ใหม่ลง DB (ครั้งแรก หรือของเดิมหายไปแล้ว)
-      await getSupabaseAdmin()
+      // จดไม่ได้ = ไม่ล้มการอัปโหลด (โฟลเดอร์ถูกแล้ว) · รอบหน้าหาด้วยชื่อแทนและเจอตัวเดิม
+      // ถ้าชื่อยังไม่เปลี่ยน — ชื่อลูกค้า/สินค้าเปลี่ยนก่อนจดสำเร็จเมื่อไร ไฟล์จะแตกสองโฟลเดอร์
+      const { error: cacheError } = await getSupabaseAdmin()
         .from(seg.cache.table)
         .update({ driveFolderId: folderId })
         .eq('id', seg.cache.id);
+      if (cacheError) {
+        console.error('[drive] จด driveFolderId ไม่สำเร็จ', seg.cache.table, seg.cache.id, folderId, cacheError.message);
+      }
     }
     parentId = folderId;
   }
@@ -600,12 +605,18 @@ export async function uploadForEntity({ entityType, entityId, buffer, name, mime
 async function clearFolderCache(entityType, entityId) {
   const supabase = getSupabaseAdmin();
   const type = resolveEntityAlias(entityType);
+  // supabase ไม่ throw — ต้องโยนเองให้ตกลง catch ข้างล่าง ไม่งั้นล้างพลาดแล้วเงียบ
+  // (id ที่ค้างยังถูก folderAlive ตรวจซ้ำทุกรอบ ⇒ ไม่ทำให้เกิดโฟลเดอร์ที่สอง แต่ต้องมี log)
+  const clearCache = async (table, id) => {
+    const { error } = await supabase.from(table).update({ driveFolderId: null }).eq('id', id);
+    if (error) throw new Error(`${table}/${id}: ${error.message}`);
+  };
   try {
     if (type === 'customer' || type === 'order') {
       const customerId = type === 'customer'
         ? entityId
         : (await supabase.from('orders').select('customerId').eq('id', entityId).maybeSingle()).data?.customerId;
-      if (customerId) await supabase.from('customers').update({ driveFolderId: null }).eq('id', customerId);
+      if (customerId) await clearCache('customers', customerId);
       return;
     }
     if (type === 'product' || type === 'registration') {
@@ -617,10 +628,8 @@ async function clearFolderCache(entityType, entityId) {
         .from('products').select('id, customerId').eq('id', productId).maybeSingle();
       if (productError) throw productError; // ให้ตกลง catch ข้างล่าง = ได้ log ที่บอกสาเหตุจริง
       if (!product) return;
-      await supabase.from('products').update({ driveFolderId: null }).eq('id', product.id);
-      if (product.customerId) {
-        await supabase.from('customers').update({ driveFolderId: null }).eq('id', product.customerId);
-      }
+      await clearCache('products', product.id);
+      if (product.customerId) await clearCache('customers', product.customerId);
     }
   } catch (err) {
     // ล้าง cache ไม่สำเร็จ = รอบถัดไปจะพังซ้ำ แต่ห้ามกลบ error เดิมของการอัปโหลด

@@ -52,7 +52,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // ใบที่ออกเลขแล้วเท่านั้นที่เก็บเนื้อไว้ — ร่างต้องเรนเดอร์สดทุกครั้ง ไม่งั้นจะ
     // พิมพ์ร่างเก่าออกมาหลังแก้ช่องกรอก
     if (contract.contractNo) {
-      await supabase.from('sales_contracts').update({ issuedHtml: html }).eq('id', id);
+      /* 🐞 เดิมไม่ดูผลการตรึง — ตรึงพลาดแล้วยังส่งเนื้อสดออกไปพิมพ์ ⇒ กระดาษที่ลูกค้าถือ
+         ไม่ได้ถูกเก็บไว้ที่ไหน · เปิดครั้งหน้าเรนเดอร์สดใหม่ (แม่แบบ/ทะเบียนลูกค้าอาจเปลี่ยน
+         ไปแล้ว) แล้วฉบับ *นั้น* กลายเป็นฉบับตรึงแทน = พิมพ์ซ้ำไม่ตรงกับที่ลูกค้าเซ็น
+         ⇒ ตีกลับแทนการส่งเนื้อที่ยังไม่ได้ตรึง · GET นี้ idempotent เปิดใหม่ได้ ไม่มีอะไรซ้ำ */
+      const { error: freezeError } = await supabase
+        .from('sales_contracts').update({ issuedHtml: html }).eq('id', id);
+      if (freezeError) {
+        return fail(`เก็บเนื้อสัญญาฉบับที่ออกแล้วไม่สำเร็จ — ลองเปิดเอกสารอีกครั้ง (${freezeError.message})`, 500);
+      }
     }
   }
 

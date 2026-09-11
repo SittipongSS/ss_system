@@ -12,6 +12,7 @@ import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
 import { appendUpdate, listUpdates, purgeUpdates } from '@/lib/master/updates';
 import { notifyTaskAssigned } from '@/lib/pm/taskAssignNotify';
 import { businessDate } from '@/lib/businessDate';
+import { runSteps } from '@/lib/supabaseWriteBatch';
 
 export const dynamic = 'force-dynamic';
 
@@ -205,8 +206,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     let cursor = prev;
     for (let hop = 0; cursor?.predecessorId && hop < 20; hop += 1) {
       if (cursor.predecessorId === id) return badRequest('ผูกแล้วสายงานจะวนกลับมาที่งานนี้');
-      const { data: up } = await supabase
+      const { data: up, error: upError } = await supabase
         .from('personal_tasks').select('id, predecessorId').eq('id', cursor.predecessorId).maybeSingle();
+      // 🐞 อ่านพลาดเคยได้ null = "สุดสายแล้ว" ⇒ ผูกวน (3 ใบขึ้นไป) หลุดด่าน งานในวงรอกันเองตลอดไป
+      // ยังไม่มีการเขียนใด ๆ ก่อนถึงตรงนี้ ตีกลับได้ กดซ้ำไม่ซ้ำ
+      if (upError) return fail(upError.message, 500);
       cursor = up || null;
     }
     predecessor = prev;
@@ -344,11 +348,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ── ปิดงานใบนี้ = ปลดล็อกงานที่ต่อจากมัน (mig 0266) ────────────────────
   // ปลดเฉพาะใบที่ยังติดล็อกอยู่ และคืนเป็น "รอดำเนินการ" ไม่ใช่ "กำลังทำ" — คนต้อง
   // กดเริ่มเอง (กติกาเดียวกับ lib/pm/status.js ของขั้นตอนไทม์ไลน์)
-  // ไม่เช็ค error โดยตั้งใจ: ปลดล็อกพลาดต้องไม่ทำให้การปิดงานที่สำเร็จแล้วตีกลับ
+  // พลาดแล้ว log ไม่ตีกลับโดยตั้งใจ: ปลดล็อกพลาดต้องไม่ทำให้การปิดงานที่สำเร็จแล้วตีกลับ
   if (task.status !== TASK_STATUS_COMPLETED && data.status === TASK_STATUS_COMPLETED) {
-    const { data: followers } = await supabase
+    const { data: followers, error: followersError } = await supabase
       .from('personal_tasks').select('id, title, status').eq('predecessorId', id);
-    for (const next of followersToUnlock(followers)) {
+    /* 🐞 อ่านพลาดเคยได้ null → followersToUnlock(null) โยน TypeError *หลัง* งานปิดไปแล้ว
+       ⇒ จอบอกว่าบันทึกไม่สำเร็จ · เธรด/ดีลไม่ได้แถว "เสร็จ" · กดซ้ำก็ไม่ปลดล็อกให้อีก
+       (สถานะเป็น Completed อยู่แล้ว เงื่อนไขข้างบนไม่เข้า) ใบถัดไปค้างรอเงียบ ๆ */
+    if (followersError) console.error('[personal-tasks] อ่านงานต่อเนื่องไม่สำเร็จ — ไม่ได้ปลดล็อก', id, followersError.message);
+    for (const next of followersToUnlock(followers || [])) {
       const { data: unlocked, error: unlockError } = await supabase.from('personal_tasks')
         .update({ ...UNLOCK_PATCH, updatedBy: user.id, updatedAt: new Date().toISOString() })
         .eq('id', next.id).select().single();
@@ -421,15 +429,30 @@ export const DELETE = withUser(async ({ user, supabase, ctx, req }) => {
 
   /* งานที่ต่อจากใบนี้ต้องไม่ค้างรอ "งานที่ไม่มีอยู่แล้ว" (ลิงก์เป็น logical ไม่มี FK)
      — ปลดล็อกใบที่ยังติดอยู่ แล้วตัดสายให้ทุกใบ ก่อนลบตัวมันเอง */
-  const { data: followers } = await supabase
+  /* 🐞 เดิมสองขั้นนี้ "สั่งแล้วไม่ดูผล" — ปลดล็อก/ตัดสายพังแล้วยังเดินไปลบงานต่อ
+     ⇒ ใบถัดไปค้าง "รอคนอื่น · รองาน X ให้เสร็จก่อน" ทั้งที่ X ไม่มีแล้ว จนกว่าจะมีคน
+     มากดเปลี่ยนสถานะเอง (PATCH ปลดสายทีหลังก็ไม่ปลดล็อกให้ — งานที่ยัง "รอคนอื่น"
+     ตกกิ่ง nextStatus === Blocked ใน PATCH ก่อนถึงกิ่งปลดสายเสมอ) ⇒ พังขั้นไหนหยุดก่อนแตะ
+     ไฟล์แนบ/เธรด/แถวงาน กดลบซ้ำได้
+     ⚠️ ลำดับ "ปลดล็อกก่อน ตัดสายทีหลัง" ต้องคงไว้ — กดซ้ำยังหาใบถัดไปเจอจาก
+     predecessorId เดิม · สลับกันแล้วตัดสายผ่านแต่ปลดล็อกพัง รอบหน้าจะหาใบที่ต้องปลดไม่เจอ */
+  const { data: followers, error: followersError } = await supabase
     .from('personal_tasks').select('id, title, status').eq('predecessorId', id);
-  for (const next of followersToUnlock(followers)) {
-    await supabase.from('personal_tasks')
-      .update({ ...UNLOCK_PATCH, updatedBy: user.id, updatedAt: new Date().toISOString() })
-      .eq('id', next.id);
-  }
-  if (followers?.length) {
-    await supabase.from('personal_tasks').update({ predecessorId: null }).eq('predecessorId', id);
+  if (followersError) return fail(followersError.message, 500);
+  try {
+    await runSteps([
+      ...followersToUnlock(followers || []).map((next) => [
+        `ปลดล็อกงานต่อเนื่อง ${next.id}`,
+        () => supabase.from('personal_tasks')
+          .update({ ...UNLOCK_PATCH, updatedBy: user.id, updatedAt: new Date().toISOString() })
+          .eq('id', next.id),
+      ]),
+      ...(followers?.length
+        ? [['ตัดสายงานต่อเนื่อง', () => supabase.from('personal_tasks').update({ predecessorId: null }).eq('predecessorId', id)]]
+        : []),
+    ]);
+  } catch (e) {
+    return fail(e.message, 500);
   }
 
   await purgeAttachments('personal_task', id);

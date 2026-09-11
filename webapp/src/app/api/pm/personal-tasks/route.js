@@ -191,10 +191,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // สร้างงานจากข้อความ = ถือว่า "เห็นแล้ว" — ติดธงรับทราบให้ในจังหวะเดียวกัน
   // (กติกาเดียวกับ /api/updates/[id] action=acknowledge: ใครอ่านเธรดได้ก็รับทราบได้
   //  ซึ่งคนที่มาถึงตรงนี้ผ่าน canViewRequest มาแล้ว)
+  // พลาดแล้ว log ไม่ตีกลับ — งานสร้างไปแล้ว ตอบ 500 = กดซ้ำได้งานซ้ำ · ธงนี้เป็นแค่
+  // ป้าย "รับทราบแล้ว" ในเธรด (ไม่มีด่านไหนอ่าน) และกดรับทราบเองในเธรดได้
   if (inquiryMessageId) {
-    await supabase.from('entity_updates')
+    const { error: ackError } = await supabase.from('entity_updates')
       .update({ acknowledgedBy: user.id, acknowledgedAt: new Date().toISOString() })
       .eq('id', inquiryMessageId);
+    if (ackError) console.error('[personal-tasks] ติดธงรับทราบข้อความต้นทางไม่สำเร็จ', data.id, inquiryMessageId, ackError.message);
   }
   /* มอบงานให้คนอื่นตั้งแต่ตอนสร้าง = จุดส่งมอบเหมือนกัน — ต้องเด้งหาผู้รับ
      ไม่งั้นเขารู้ตัวก็ต่อเมื่อบังเอิญเปิดหน้า "งานของฉัน"

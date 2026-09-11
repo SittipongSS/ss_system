@@ -85,18 +85,23 @@ export async function ensureGoogleDocAccess(supabase, attachments, { email, role
     }
     granted += 1;
     // จำไว้ในแถว — ครั้งหน้าไม่ต้องยิง Drive อีก
-    // ⚠️ อ่าน-แล้ว-เขียนแบบนี้แข่งกันได้ถ้าเปิดสองแท็บพร้อมกัน · ผลแย่สุดคือชื่อหาย
-    // ไปหนึ่งรายการแล้วรอบหน้าให้สิทธิ์ซ้ำ (Drive รับซ้ำได้) ไม่ใช่สิทธิ์รั่ว
+    // ⚠️ อ่าน-แล้ว-เขียนแบบนี้แข่งกันได้ถ้าสองคนเปิดพร้อมกัน · ผลแย่สุดคือชื่อหายไปหนึ่ง
+    // รายการ — รอบหน้าที่เจ้าของชื่อเปิดจะให้+จดซ้ำ (Drive รับซ้ำได้) แต่ถ้าเขาไม่ได้เปิด
+    // อีกเลย ตัวถอนจะหาไฟล์นี้ไม่เจอ (อาการเดียวกับจดพลาดข้างล่าง)
     const next = grantedList(att).includes(email) ? grantedList(att) : [...grantedList(att), email];
     const nextRoles = { ...grantedRoles(att), [email]: role };
-    try {
-      await supabase
-        .from('attachments')
-        .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next, [ROLES_KEY]: nextRoles } })
-        .eq('id', att.id);
-    } catch (err) {
-      // จำไม่ได้ = รอบหน้าให้สิทธิ์ซ้ำ (Drive รับได้) — ไม่ใช่เหตุให้ทั้งคำขอล้ม
-      console.error('[googleDocAccess] จดสิทธิ์ที่ให้ไปแล้วไม่สำเร็จ', att.id, err?.message);
+    /* 🐞 เดิมห่อ try/catch แต่ supabase ไม่ throw ⇒ จดพลาดแล้วเงียบสนิท · และผลไม่ใช่แค่
+       "รอบหน้าให้สิทธิ์ซ้ำ": ตัวถอนทั้งสองทาง (ปุ่มโล่/ย้ายทีม · ลบแถว) หาไฟล์จาก
+       `accessGranted` ทางเดียว ⇒ permission ที่ให้แล้วแต่ไม่ได้จด **ถอนไม่เจอ** · คนที่
+       ย้ายทีมไปแล้วไม่ได้เปิดหน้านี้อีก ก็ไม่มีรอบหน้าให้จดซ้ำ ⇒ สิทธิ์ค้างบน Drive ถาวร
+       ⚠️ ยังห้ามล้มทั้งคำขอ (ดูข้างบน) ⇒ ดังพร้อม fileId/อีเมล ให้ตามถอนด้วยมือได้ */
+    const { error: recordError } = await supabase
+      .from('attachments')
+      .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next, [ROLES_KEY]: nextRoles } })
+      .eq('id', att.id);
+    if (recordError) {
+      console.error('[googleDocAccess] ⚠️ ให้สิทธิ์บน Drive แล้วแต่จดไม่สำเร็จ — ตัวถอนจะหาไฟล์นี้ไม่เจอ',
+        `att=${att.id}`, `file=${att.metadata.googleFileId}`, `email=${email}`, `role=${role}`, recordError.message);
     }
   }
   return granted;
@@ -162,10 +167,10 @@ export async function revokeAttachmentGrants(att, deps = {}) {
 export async function revokeGoogleDocAccess(supabase, email, deps = {}) {
   /* ⭐ **สี่ตัวเลข ไม่ใช่สาม** (ผลตรวจรอบ 13 · ค-3)
      files       — แถวที่ระบบจดว่าเคยให้สิทธิ์คนนี้
-     revoked     — permission ที่ **ถูกลบบน Drive จริง**
+     revoked     — permission ที่ **ถูกลบบน Drive จริง** (และล้างชื่อออกจากบันทึกแล้ว)
      alreadyGone — ไม่มีอะไรให้ถอน (แถวไม่มี fileId หรือ Drive ไม่มี permission ของอีเมลนี้)
                    ⇒ ล้างชื่อออกจากบันทึกได้เลย ถือว่าเรียบร้อย
-     failed      — Drive ตอบ error ⇒ **คงชื่อไว้** ให้กดซ้ำได้
+     failed      — Drive ตอบ error หรือล้างชื่อในบันทึกไม่สำเร็จ ⇒ **ชื่อยังอยู่** ให้กดซ้ำได้
 
      🐞 เดิม `result.revoked += 1` อยู่นอกเงื่อนไข `if (fileId)` และไม่อ่านค่าที่
      `revokeFileRole` คืน (มันคืน `false` เมื่อไม่เจอ permission) ⇒ ตัวเลขบนจอนับ
@@ -188,9 +193,9 @@ export async function revokeGoogleDocAccess(supabase, email, deps = {}) {
   const drive = deps.drive || await import('@/lib/drive');
   for (const att of rows) {
     const fileId = att.metadata?.googleFileId;
+    let revokedOnDrive;
     try {
-      if (fileId && await drive.revokeFileRole(fileId, email)) result.revoked += 1;
-      else result.alreadyGone += 1;
+      revokedOnDrive = Boolean(fileId && await drive.revokeFileRole(fileId, email));
     } catch (err) {
       // ⚠️ ล้มแล้ว **ห้ามลบชื่อออกจาก accessGranted** — ไม่งั้นจะหาไฟล์ใบนี้ไม่เจออีก
       // เลยตอนกดซ้ำ กลายเป็นสิทธิ์ค้างถาวรที่ไม่มีใครรู้
@@ -203,14 +208,22 @@ export async function revokeGoogleDocAccess(supabase, email, deps = {}) {
     // "เคยให้ role นี้แล้ว" ทั้งที่สิทธิ์ถูกถอนไปแล้ว
     const nextRoles = { ...grantedRoles(att) };
     delete nextRoles[email];
-    try {
-      await supabase
-        .from('attachments')
-        .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next, [ROLES_KEY]: nextRoles } })
-        .eq('id', att.id);
-    } catch (err) {
-      console.error('[googleDocAccess] ล้างรายชื่อที่ถอนแล้วไม่สำเร็จ', att.id, err?.message);
+    /* 🐞 เดิม try/catch เปล่า (supabase ไม่ throw) และนับ revoked ไปก่อนแล้ว ⇒ ล้างพลาด
+       จอขึ้น "ถอนแล้ว" แต่บันทึกยังมีชื่อ + role ⇒ `needsGrant` คิดว่าเคยให้แล้ว คนที่ยังมี
+       สิทธิ์เห็นใบนั้นจึง **ไม่ได้คืนเอง** ตอนเปิดหน้าถัดไป (กรอบพรีวิวว่างไม่มีกำหนด)
+       ⇒ นับเป็น failed ให้จอบอกกดซ้ำ · รอบสองเข้าทาง alreadyGone แล้วล้างชื่อให้เอง */
+    const { error: clearError } = await supabase
+      .from('attachments')
+      .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next, [ROLES_KEY]: nextRoles } })
+      .eq('id', att.id);
+    if (clearError) {
+      console.error('[googleDocAccess] ล้างรายชื่อที่ถอนแล้วไม่สำเร็จ (Drive ไม่มีสิทธิ์ค้างแล้ว)',
+        att.id, email, clearError.message);
+      result.failed += 1;
+      continue;
     }
+    if (revokedOnDrive) result.revoked += 1;
+    else result.alreadyGone += 1;
   }
   return result;
 }

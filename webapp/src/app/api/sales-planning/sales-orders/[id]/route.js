@@ -748,16 +748,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     /* ⭐ เข้าคิวบัญชีทันทีที่ AE Supervisor อนุมัติ (mig 0250)
        ⚠️ **ไม่แตะ Actual** — ยอดเข้าไปแล้วตอน RPC อนุมัติ บัญชีเป็นคนละแกน (มติ 2026-08-13)
        ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว ตั้งธงล้มต้องไม่ roll back
-       ใบที่ธงไม่ติดจะไม่โผล่ในคิวบัญชี ซึ่งกู้ได้ด้วยการอนุมัติซ้ำหรือแก้มือ */
+       ใบที่ธงไม่ติดจะไม่โผล่ในคิวบัญชี ซึ่งกู้ได้ด้วยการอนุมัติซ้ำหรือแก้มือ
+       🐞 เดิมไม่อ่าน `error` ของ update — supabase ไม่ throw ⇒ catch ข้างล่างไม่เคยทำงาน
+          ธงล้มแล้วเงียบสนิทไม่มีแม้แต่ log: ใบขึ้น "อนุมัติแล้ว" แต่ financeStatus ค้าง NULL
+          ซึ่งอ่านเหมือนใบก่อน mig 0250 ("ไม่มีขั้นบัญชี") ⇒ หลุดคิวบัญชีโดยไม่มีใครรู้
+          ⚠️ ตอบ 500 ไม่ได้ — อนุมัติ commit แล้ว คนกดซ้ำจะเจอ "ไม่ได้รออนุมัติ" แทน */
     try {
       /* ⭐ **ใบยอด 0 ไม่ต้องเข้าคิวบัญชี** (มติ 2026-08-18 · ขยายมาแกนนี้ 26/08) —
          ตรงกับงวดชำระที่ตัดใบยอด 0 ออกอยู่แล้ว · ธงค้างเป็น NULL = "ไม่มีขั้นนี้"
          ซึ่งเป็นความหมายเดียวกับใบที่ออกก่อน mig 0250 */
       if (!paymentNotRequired(before.totalAmount)) {
-        await supabase.from('sales_orders')
+        const { error: financeFlagError } = await supabase.from('sales_orders')
           .update({ financeStatus: 'pending' })
           .eq('id', id)
           .is('financeStatus', null);
+        if (financeFlagError) console.error('sales order finance queue flag failed', id, financeFlagError.message);
       }
     } catch (financeFlagError) {
       console.error('sales order finance queue flag failed', id, financeFlagError);

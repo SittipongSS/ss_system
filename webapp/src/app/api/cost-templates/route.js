@@ -79,10 +79,20 @@ export async function POST(request) {
   if (insertError) {
     // แม่แบบลบไม่ได้ (guard) — ซ่อนทิ้งแทน ไม่ให้เหลือใบเปล่าที่กินสิทธิ์ unique
     // ของหมวดนั้นไว้จนสร้างใหม่ไม่ได้
-    await supabase
+    // 🐞 เดิมไม่ดูผลการซ่อน — ซ่อนพลาด = ใบเปล่า 0 บรรทัดค้างเป็นแม่แบบที่ใช้งานอยู่
+    //    ของหมวด แล้วกดสร้างซ้ำได้ 409 "มีแม่แบบที่ใช้งานอยู่แล้ว" โดยไม่รู้ว่ามาจากไหน
+    //    ⇒ บอกในข้อความ error เดียวกัน (ย้อนต่อไม่ได้แล้ว: ลบใบไม่ได้เพราะ guard)
+    const { error: hideError } = await supabase
       .from('product_type_cost_templates')
       .update({ isHidden: true, hiddenAt: new Date().toISOString(), hiddenById: user?.id ?? null, hiddenByName: user?.name ?? null })
       .eq('id', templateId);
+    if (hideError) {
+      console.error('[cost-templates] ซ่อนแม่แบบเปล่าไม่สำเร็จ', templateId, hideError.message);
+      return Response.json({
+        error: `${insertError.message} — และซ่อนแม่แบบเปล่าที่สร้างค้างไว้ไม่สำเร็จ: `
+          + `โหลดหน้าใหม่ แล้วแก้บรรทัดหรือซ่อนแม่แบบของหมวด ${categoryCode} ใบนั้นแทนการสร้างใหม่`,
+      }, { status: 500 });
+    }
     return Response.json({ error: insertError.message }, { status: 500 });
   }
 
