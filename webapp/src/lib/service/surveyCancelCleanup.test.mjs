@@ -107,11 +107,25 @@ test('🔴 โซนที่มีจุดติดตั้งในทะเ
   assert.equal(zoneCleanupDecision({ zone: zone({ spots: [] }), request: request(), refs: {} }).action, 'delete');
 });
 
-test('ตัวกวาดทั้งสองเส้นอ่านโซนทั้งแถว — ตัวตัดสินต้องเห็น spots', () => {
+test('ตัวกวาดทั้งสองเส้นอ่านโซนทั้งแถว — ตัวตัดสินต้องเห็น spots และตัวชี้เจ้าของ', () => {
   const read = (rel) => readFileSync(`src/${rel}`, 'utf8');
   for (const rel of ['lib/service/surveyCancelCleanup.js', 'app/api/service/surveys/[id]/zones/[zoneId]/route.js']) {
-    assert.doesNotMatch(read(rel), /from\('service_zones'\)\.select\('id, code, name, "createdAt"'\)/, rel);
+    // ⚠️ ยืนยันแบบบวก — ลิสต์คอลัมน์ที่ขาด createdBySurveyRequestId = ⓪ เก็บทุกโซน = ปิดการลบเงียบ ๆ
+    assert.match(read(rel), /from\('service_zones'\)\.select\('\*'\)/, rel);
   }
+});
+
+test('⭐ ตัวกวาดหาโซนที่ใบสร้างแต่ไม่เคยได้ผูกด้วย (ล้มคั่นกลางระหว่างสร้างโซนกับผูกแถว)', () => {
+  const cleanup = code('./surveyCancelCleanup.js');
+  assert.match(cleanup, /\.eq\('createdBySurveyRequestId', request\.id\)/);
+});
+
+test('🔴 สร้างโซนจากใบต้องผ่านด่านคอลัมน์ตัวชี้ก่อน — ตัวออกรหัสทิ้งคอลัมน์ที่ไม่มีเงียบ ๆ', () => {
+  const repo = code('./surveyRepo.js');
+  const guard = repo.indexOf('await zoneSurveyOwnerColumnError(supabase)');
+  const firstInsert = repo.indexOf('insertRowWithComposedCode(\n');
+  assert.ok(guard > 0 && guard < firstInsert, 'ด่านต้องมาก่อน insert โซนแถวแรก');
+  assert.match(repo, /error\.code === '42703'/);
 });
 
 /* ══ ตัวชี้เจ้าของ (mig 0355) — เลิกเดาจากเวลา ══════════════════════════════
@@ -147,7 +161,8 @@ test('🔑 ตัวชี้เจ้าของเขียนที่ mater
   // ช่างเพิ่มพื้นที่หน้างาน = ออกรหัสผ่านตัวเดียวกัน (ไม่ได้ insert โซนเอง)
   const addZone = code('../../app/api/service/surveys/[id]/zones/route.js');
   assert.match(addZone, /materializeSurveyZones\(supabase, \{\s*requestId: id,/);
-  assert.doesNotMatch(addZone, /from\('service_zones'\)\.insert/);
+  // ทุกโซนเกิดผ่านตัวออกรหัส ZN — ห้ามมีการออกรหัส/สร้างโซนเองในเส้นนี้ (จะไม่ได้ตัวชี้)
+  assert.doesNotMatch(addZone, /insertRowWithComposedCode\(|scope: 'ZN'/);
   // ทางอื่นที่สร้างโซนต้องไม่เขียนตัวชี้ (คนเพิ่มเอง/นำเข้า = ของทะเบียน ไม่ใช่ของใบ)
   for (const rel of [
     '../../app/api/service/sites/[id]/zones/route.js',
