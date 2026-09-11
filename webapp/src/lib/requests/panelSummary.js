@@ -36,7 +36,7 @@ const LEAD_BY_SHAPE = Object.freeze({
  * ตัวเลขของการ์ด "สรุปใบนี้" — ทรงเดียวทุกหัวข้อ
  *
  * @param request ใบพร้อม `items` · `dept`
- * @param lineShape รูปร่างบรรทัดของหัวข้อ (`lineShapeForKind`) — null = ใบไม่มีบรรทัด
+ * @param lineShape รูปร่างบรรทัดของหัวข้อ (`requestLineShape`) — null = ใบไม่มีบรรทัด
  * @returns null เมื่อไม่มีบรรทัดให้นับ (หัวข้อเธรดล้วนใช้การ์ดขั้นของใบแทน)
  */
 export function requestPanelSummary(request, lineShape = null) {

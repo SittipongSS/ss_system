@@ -16,6 +16,8 @@ export const SCENT_REF_TARGETS = Object.freeze([
   ['dept_request_items', 'scentId'],
   ['dept_request_items', 'producedScentId'],
   ['material_prices', 'scentId'],
+  // แถวสินค้าของแบบฟอร์ม PDR (mig 0352) — ใบพัฒนาสูตร NPD เลือกกลิ่นจากทะเบียนรายแถว
+  ['dept_request_pdr_targets', 'scentId'],
 ]);
 
 /** [ตาราง, คอลัมน์] ที่เป็น FK `ON DELETE RESTRICT` เข้า `formulas` */

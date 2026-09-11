@@ -18,11 +18,15 @@ import {
 // เพดานเดียวกับบรรทัดคำร้อง — ใบที่ขอเป็นร้อยกลิ่นคือข้อมูลผิด ไม่ใช่งานจริง
 export const MAX_SCENT_BRIEFS = 40;
 
-// ความยาวตาม CHECK ของ 0213 เป๊ะ
-const LIMITS = {
-  label: 200, brief: 4000, researchTopic: 500,
-  inspiration: 2000, likedNotes: 2000, dislikedNotes: 2000, scentotypeNote: 500,
+// ความยาวตาม CHECK ของ 0213 — หรือ **แคบกว่า** ได้ ห้ามหลวมกว่า
+// ⭐ researchTopic / scentotypeNote 500 → 200 (มติผู้ใช้ 2026-09-11) — สองช่องนี้เป็น
+//    ช่องบรรทัดเดียว เพดาน 500 ทำให้พิมพ์ยาวจนล้นกล่องบนกระดาษ · วัด prod ก่อนแคบลง:
+//    ยาวสุด 3 และ 120 ตัวอักษร (31 บรีฟ) ⇒ ไม่มีบรีฟเก่าที่แก้ไม่ได้เพราะเพดานใหม่
+export const BRIEF_LIMITS = {
+  label: 200, brief: 4000, researchTopic: 200,
+  inspiration: 2000, likedNotes: 2000, dislikedNotes: 2000, scentotypeNote: 200,
 };
+const LIMITS = BRIEF_LIMITS;
 
 const TEXT_FIELDS = ['brief', 'researchTopic', 'inspiration', 'likedNotes', 'dislikedNotes'];
 

@@ -25,3 +25,12 @@ test('ของไม่ครบต้องไม่ระเบิด', () =>
   assert.equal(submitScope(null), '0 รายการ');
   assert.equal(submitScope(undefined), '0 รายการ');
 });
+
+/* ⭐ **ใบที่งานอยู่ในแบบฟอร์ม ไม่ใช่ในแถว** (พัฒนาสูตรรูปแบบ NPD · 2026-09-09)
+   🐞 ถ้าตกไปสาขา "นับรายการ" ประโยคแรกของเธรดจะเป็น "ส่งเคสถึงฝ่าย RD — 0 รายการ"
+   ซึ่งเป็นอาการเดียวกับที่หัวไฟล์ของ `submitScope.js` บอกว่ามันมีอยู่เพื่อกัน */
+test('พัฒนาสูตรรูปแบบ NPD เล่าด้วยแบบฟอร์ม ไม่ใช่ "0 รายการ"', () => {
+  assert.equal(submitScope({ kind: 'formula_dev', variant: 'npd', items: [] }), 'แบบฟอร์ม PDR');
+  assert.equal(submitScope({ kind: 'formula_dev', variant: 'standard', items: [{}, {}] }), '2 รายการ');
+  assert.equal(submitScope({ kind: 'formula_dev', items: [{}] }), '1 รายการ', 'ไม่ระบุรูปแบบ = standard');
+});

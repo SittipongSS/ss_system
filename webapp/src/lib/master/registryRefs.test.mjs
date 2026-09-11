@@ -9,10 +9,11 @@ import {
 import { deleteScentError } from './scents.js';
 import { deleteFormulaError } from './formulas.js';
 
-const MIGRATION = readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/0232_registry_pointer_restrict.sql'),
-  'utf8',
-);
+// ⚠️ อ่าน **ทุกใบที่วาง pointer เข้าทะเบียน** — 0232 วางชุดแรก · 0352 เพิ่มกลิ่นรายแถว
+// ของแบบฟอร์ม PDR · เพิ่มเป้าหมายใหม่ต้องเพิ่มชื่อไฟล์ migration ที่นี่ด้วย
+const MIGRATION = ['0232_registry_pointer_restrict.sql', '0352_pdr_product_rows.sql']
+  .map((f) => readFileSync(path.join(process.cwd(), 'supabase/migrations', f), 'utf8'))
+  .join('\n');
 
 test('registryRefTargets — เลือกรายการตามชนิดทะเบียน', () => {
   assert.deepEqual(registryRefTargets('scent'), SCENT_REF_TARGETS);
@@ -32,10 +33,10 @@ test('🔴 ทุกเป้าหมายในทะเบียนต้อ
     const pattern = new RegExp(
       `FOREIGN KEY \\("${column}"\\)[\\s\\S]{0,80}?ON DELETE RESTRICT`,
     );
-    assert.match(MIGRATION, pattern, `${table}.${column} ต้องถูกตั้งเป็น RESTRICT ใน 0232`);
+    assert.match(MIGRATION, pattern, `${table}.${column} ต้องถูกตั้งเป็น RESTRICT (0232/0352)`);
     assert.ok(
       MIGRATION.includes(`public.${table}`),
-      `0232 ต้องพูดถึงตาราง ${table}`,
+      `migration ต้องพูดถึงตาราง ${table}`,
     );
   }
 });

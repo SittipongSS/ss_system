@@ -24,7 +24,12 @@ import { scentCountForOrder } from '@/lib/requests/scentDesignOrders';
 import { categoryLabel } from '@/lib/master/categoryOf';
 import { fmtDate, fmtNumber } from '@/lib/format';
 // แถวข้อ 2.2/2.3 อยู่คนละตาราง — รางต้องบวกตัวนับของมันเข้ามาเอง (ดู `pdrRailSections`)
-import { pdrTargetValuesFrom, pdrTargetsProgress } from '@/lib/requests/pdrTargets';
+import {
+  PDR_TEXTURE_OPTIONS, pdrTargetValuesFrom, pdrTargetsProgress, pdrTargetsScentCount,
+} from '@/lib/requests/pdrTargets';
+import { BRAND_ARCHETYPES } from '@/lib/requests/kinds/rd/scentBriefTypes';
+import { addressTextIn, customerAddresses, primaryBillingAddress } from '@/lib/master/addresses';
+import { requestPdrRowsPickScent, requestUsesScentBriefs } from '@/lib/master/requestTypes';
 
 export const PDR_REQUEST_TYPES = [
   { value: 'new_product', label: 'New Product' },
@@ -33,10 +38,9 @@ export const PDR_REQUEST_TYPES = [
   { value: 'cost_reduction', label: 'Cost Reduction' },
 ];
 
-export const PDR_TEXTURES = [
-  { value: 'standard', label: 'STANDARD' },
-  { value: 'premium', label: 'PREMIUM' },
-];
+// ⚠️ ต้นทางอยู่ที่ `pdrTargets.js` (ข้อ 2.5 ย้ายลงแถวสินค้า · mig 0352) — ช่องหัวใบเดิม
+//    (legacy) กับแถวสินค้าต้องใช้ชุดเดียวกัน · ประกาศซ้ำตรงนี้ไม่ได้ (วงจร import)
+export const PDR_TEXTURES = PDR_TEXTURE_OPTIONS;
 
 export const PDR_CUSTOMER_KINDS = [
   { value: 'new', label: 'ลูกค้าใหม่' },
@@ -93,10 +97,14 @@ const labelOf = (list, value) => list.find((o) => o.value === value)?.label || n
  *   key      ชื่อช่องในฟอร์ม (สั้น — อยู่ในบริบท PDR อยู่แล้ว)
  *   column   คอลัมน์บนแถวคำร้อง (mig 0214 · prefix `pdr` กันปนกับกลไกคำร้อง)
  *   label    ป้ายชื่อ — **ชุดเดียวทั้งสามจอ**
- *   no       เลขข้อบนกระดาษ FM-RD-01 (เช่น '1.1') — เอกสารพิมพ์นำหน้าป้าย
- *            ⚠️ **แยกจาก label โดยตั้งใจ** เพราะบนจอผู้ใช้ไม่ได้ถือกระดาษอยู่ตรงหน้า
- *            เลขข้อจึงเป็นสัญญาณรบกวน · แต่บนกระดาษมันคือสิ่งที่ RD ใช้อ้างกันทางโทรศัพท์
+ *   no       เลขข้อบนกระดาษ FM-RD-01 (เช่น '1.1') — เอกสารพิมพ์นำหน้าป้าย **และฟอร์ม
+ *            ก็แสดงแล้ว** (มติผู้ใช้ 2026-09-11 · ทับเหตุผลเดิมที่ว่าบนจอเป็นสัญญาณรบกวน)
+ *            — AE กับ RD คุยกันด้วยเลขข้อ ฟอร์มที่ไม่มีเลขต้องไล่หาว่า "ข้อ 2.4" คือช่องไหน
+ *            ⚠️ ยังแยกจาก label โดยตั้งใจ — จอสรุปกับตัวอ่านป้ายอื่นใช้ป้ายเปล่า
  *            ช่องที่ไม่มีบนกระดาษ (ดีล) ไม่มี `no`
+ *   switch   (type) ธงจริง/เท็จ เก็บเป็น boolean — ค่าในฟอร์มเป็น 'true' | 'false' | ''
+ *   notes    (type) ข้อความเขียนต่อของช่องติ๊กหลายตัว (`of` = key ของช่องติ๊ก) · jsonb
+ *   docHidden  ไม่พิมพ์เป็นแถวของตัวเองบนกระดาษ/จอสรุป (ค่าถูกพิมพ์ผ่านช่องอื่น)
  *   hint     คำขยายในวงเล็บ · ฟอร์มแสดงต่อท้ายป้าย จอแสดง/เอกสารไม่แสดง (กินที่)
  *   type     'text' | 'money' | 'date' | 'select' | 'tick' | 'derived'
  *   options  ตัวเลือกของ select — ใช้แปลงค่าดิบเป็นป้ายด้วย
@@ -109,6 +117,9 @@ const labelOf = (list, value) => list.find((o) => o.value === value)?.label || n
 export const PDR_SECTIONS = [
   {
     key: 'request',
+    // ⭐ `paperNo` = เลขหมวดบนกระดาษ — Request Information ไม่มีเลข (มติผู้ใช้ 2026-09-11:
+    // รางเคยนับเอง 1–5 แล้วไม่ตรงกับเลขข้อ "หมวด 3 ทำไมข้อย่อยเป็น 2")
+    paperNo: null,
     title: 'ข้อมูลคำขอ',
     note: 'ผู้ร้องขอ วันที่ และแผนก ระบบเติมให้จากคนที่เปิดใบ',
     fields: [
@@ -158,7 +169,10 @@ export const PDR_SECTIONS = [
   },
   {
     key: 'customer',
-    title: 'ข้อมูลลูกค้า',
+    paperNo: '1',
+    // ⭐ "ข้อมูลลูกค้า/แบรนด์" (มติผู้ใช้ 2026-09-11) — ครึ่งหนึ่งของหมวดนี้คือเรื่องแบรนด์
+    // (ชื่อแบรนด์ · Mood & Tone · ทิศทาง · Archetype) ไม่ใช่เรื่องบริษัทลูกค้า
+    title: 'ข้อมูลลูกค้า/แบรนด์',
     fields: [
       // ⭐ 1.1/1.2 มาจาก **ทะเบียนลูกค้า** (มติผู้ใช้) ไม่ใช่ช่องกรอกซ้ำ — พิมพ์ซ้ำ
       // เมื่อไรก็ได้เบอร์สองชุดที่ขัดกัน และเบอร์ที่ RD โทรจะเป็นเบอร์ที่เก่ากว่า
@@ -171,18 +185,26 @@ export const PDR_SECTIONS = [
       // (รหัส PJ) เป็นอีกสิ่งหนึ่งจริง ๆ ⇒ ใช้คำเดียวกันบนจอจะชี้ผิดตัว
       {
         key: 'deal', label: 'ดีล', docLabel: 'โครงการ',
-        type: 'derived', derive: 'deal', from: 'เติมจาก SO',
+        type: 'derived', derive: 'deal', from: 'เติมจาก SO', fromDealOnly: 'เติมจากดีล',
       },
       { key: 'contactName', no: '1.1', label: 'ชื่อผู้ติดต่อ', type: 'derived', derive: 'contactName', from: 'เติมจากทะเบียนลูกค้า' },
       { key: 'contactPhone', no: '1.2', label: 'Phone / Line', type: 'derived', derive: 'contactPhone', from: 'เติมจากทะเบียนลูกค้า' },
-      { key: 'customer', no: '1.3', label: 'ชื่อบริษัท', type: 'derived', derive: 'customer', from: 'เติมจาก SO' },
+      { key: 'customer', no: '1.3', label: 'ชื่อบริษัท', type: 'derived', derive: 'customer', from: 'เติมจาก SO', fromDealOnly: 'เติมจากดีล' },
       { key: 'customerBrand', no: '1.4', column: 'pdrCustomerBrand', max: 200, label: 'ชื่อแบรนด์', type: 'text' },
       // ⭐ สามช่องนี้เป็นข้อความยาว (IS-26080006 · 2026-08-12) — `type` ที่นี่ไม่ได้
       // เลือกคอนโทรลให้ฟอร์ม (`PdrForm` เป็นเจ้าของชนิดช่องกรอก) แต่ต้องตรงกับของจริง
       // ไม่งั้นทะเบียนกลายเป็นเอกสารที่โกหกคนอ่านคนถัดไป
       { key: 'moodTone', no: '1.5', column: 'pdrMoodTone', max: 500, label: 'Mood & Tone', type: 'textarea' },
       { key: 'brandDirection', no: '1.6', column: 'pdrBrandDirection', max: 500, label: 'ทิศทางการเติบโตของแบรนด์', type: 'textarea' },
-      { key: 'shipTo', no: '1.7', column: 'pdrShipTo', max: 500, label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'textarea' },
+      /* ⭐ **1.7 = ที่อยู่ลูกค้าจากทะเบียน · 1.7.1 = ที่อยู่จัดส่งตัวอย่าง** (มติผู้ใช้
+         2026-09-11) — เดิม 1.7 เป็นช่องพิมพ์ที่อยู่จัดส่งอย่างเดียว ⇒ ที่อยู่ลูกค้าที่ระบบรู้
+         อยู่แล้วต้องพิมพ์ซ้ำทุกใบ · ตอนนี้ดึงที่อยู่หลัก (ออกบิล) ของลูกค้ามาให้ แล้วมี
+         สวิตช์ว่าส่งตัวอย่างไปที่เดียวกันไหม ปิด = พิมพ์ที่อยู่จัดส่งเอง
+         ⚠️ อ่านสดจากทะเบียน ไม่ snapshot — เอกสาร PDR ไม่ถูกแช่แข็ง (ช่อง 1.1/1.2 ก็อ่านสด) */
+      { key: 'customerAddress', no: '1.7', label: 'ที่อยู่ลูกค้า', type: 'derived', derive: 'customerAddress', from: 'เติมจากทะเบียนลูกค้า' },
+      // ⚠️ ไม่มีแถวของตัวเองบนกระดาษ — ผลของมันคือค่าที่ 1.7.1 พิมพ์ (`docHidden`)
+      { key: 'shipToSameAsCustomer', column: 'pdrShipToSameAsCustomer', label: 'ส่งตัวอย่างไปที่อยู่เดียวกับลูกค้า', type: 'switch', docHidden: true },
+      { key: 'shipTo', no: '1.7.1', column: 'pdrShipTo', max: 500, label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'textarea', hideWhenOn: 'shipToSameAsCustomer' },
       {
         key: 'customerKind', no: '1.8', column: 'pdrCustomerKind', max: 40, label: 'ประเภทลูกค้า',
         type: 'select', options: PDR_CUSTOMER_KINDS,
@@ -223,8 +245,9 @@ export const PDR_SECTIONS = [
       // เป็นแค่คำขยายป้าย ไม่มีที่ให้กรอกคำตอบ ⇒ ไม่มีใครตอบ
       // ⚠️ เงื่อนไขการโผล่มาจากทะเบียน (`showForMulti`) ไม่ใช่ `if` ในฟอร์ม — กติกา
       // เดียวกับช่อง "อื่น ๆ" ของบรรจุภัณฑ์/เอกสาร
+      // ⚠️ เพดาน 500 → 200 (ผลตรวจช่องยาว/สั้น 2026-09-11) — บรรทัดเดียว · ของจริงยาวสุด ≤67 ตัว
       {
-        key: 'fragranceUse', column: 'pdrFragranceUse', max: 500,
+        key: 'fragranceUse', column: 'pdrFragranceUse', max: 200,
         label: 'หัวน้ำหอมนี้นำไปใช้กับสินค้าประเภทใด', type: 'text',
         hint: 'เช่น น้ำหอม EDP · น้ำยาปรับผ้านุ่ม · เทียนหอม',
         showForMulti: { key: 'productKinds', value: PDR_FRAGRANCE_OIL_CODE },
@@ -239,13 +262,24 @@ export const PDR_SECTIONS = [
       {
         key: 'scentCount', no: '1.12', label: 'จำนวนกลิ่นที่ต้องการพัฒนา',
         type: 'derived', derive: 'scentCount', from: 'เติมจากใบสั่งขาย',
+        fromDealOnly: 'นับกลิ่นไม่ซ้ำจากแถวสินค้าในหมวด 2',
       },
       { key: 'wantedAt', no: '1.13', column: 'pdrWantedAt', label: 'วันที่ต้องการสินค้า', type: 'date' },
       { key: 'sellFrom', no: '1.14', column: 'pdrSellFrom', label: 'วันที่ต้องการจำหน่าย', type: 'date' },
+      /* ⭐ **1.15 Archetype ของแบรนด์** (มติผู้ใช้ 2026-09-11 · mig 0352) — ไฟล์ PDR ของ AE
+         วางไว้ที่ 2.1.6 ในกล่องบรีฟ แต่มันเป็นของ **แบรนด์** ไม่ใช่รายกลิ่น และใบพัฒนาสูตร
+         ไม่มีบรีฟแล้ว ⇒ ต่อท้ายหมวด 1 (เลขเดิมไม่เลื่อน) ใช้ร่วมสองหัวข้อ
+         ติ๊กได้หลายตัว + เขียนต่อได้ (ท่าเดียวกับ Scentotype · มติผู้ใช้) */
+      {
+        key: 'archetypes', no: '1.15', column: 'pdrArchetypes', label: 'Archetype ของแบรนด์',
+        type: 'multi', options: BRAND_ARCHETYPES, notes: 'archetypeNotes',
+      },
+      { key: 'archetypeNotes', column: 'pdrArchetypeNotes', max: 200, label: 'Archetype — เขียนต่อ', type: 'notes', of: 'archetypes', docHidden: true },
     ],
   },
   {
     key: 'spec',
+    paperNo: '2',
     title: 'ข้อกำหนดผลิตภัณฑ์',
     fields: [
       // ⭐ **2.2/2.3 ย้ายไปเป็นรายการรายสินค้าแล้ว** (มติผู้ใช้ 2026-08-10 · mig 0229)
@@ -253,9 +287,13 @@ export const PDR_SECTIONS = [
       // ตารางลูก `dept_request_pdr_targets` ไม่ใช่คอลัมน์บนหัวใบ จึงไม่มี `column`
       // ที่นี่ และ **ไม่ผ่าน `normalizePdr`** (ด่านอยู่ที่ `lib/requests/pdrTargets.js`
       // แพตเทิร์นเดียวกับบรีฟกลิ่น)
+      /* ⭐ **ข้อ 2.1–2.7 เป็นรายสินค้าทั้งหมดแล้ว** (มติผู้ใช้ 2026-09-11 · mig 0352) — แถวถือ
+         กลิ่น (ใบพัฒนาสูตร) · ต้นทุน · ราคาขาย · MOQ · เนื้อ · สี · ขนาด · จำนวน · หมายเหตุ
+         ⚠️ ป้าย/เลขข้อของแต่ละช่องในแถวอยู่ที่ `PDR_TARGET_SPEC`/`PDR_TARGET_LABELS`
+         (pdrTargets.js) ที่เดียว · ช่องนี้เป็นแค่ "รายการสินค้า" จึงไม่มีเลขข้อของตัวเอง */
       {
-        key: 'targets', no: '2.2', label: 'Target Cost / KG · Target Price / Unit',
-        hint: 'ต้นทุน F/FB ไม่รวมบรรจุภัณฑ์ และราคาขายต่อชิ้น — รายสินค้า', type: 'targets',
+        key: 'targets', label: 'สินค้าที่ขอพัฒนา',
+        hint: 'กรอกข้อ 2.x แยกรายสินค้า', type: 'targets',
       },
       // ⚠️ สองช่องเดิม **เก็บไว้อ่านใบเก่า** — ตัวเลขเดียวทั้งใบที่ไม่รู้ว่าเป็นของหมวดไหน
       // ย้ายมาลงตารางใหม่ไม่ได้โดยไม่เดา · ฟอร์มไม่เขียนลงแล้ว แต่จอสรุป/เอกสารยังพิมพ์
@@ -268,20 +306,24 @@ export const PDR_SECTIONS = [
         key: 'targetPrice', column: 'pdrTargetPrice', label: 'Target Price / Unit (บันทึกไว้เดิม)',
         type: 'money', legacy: true,
       },
-      { key: 'moq', no: '2.4', column: 'pdrMoq', max: 100, label: 'MOQ ที่คาดหวัง', type: 'text' },
+      /* ⚠️ **สี่ช่องระดับใบเดิม (2.4–2.7) เก็บไว้อ่านใบเก่าเท่านั้น** (mig 0352) — ย้ายไปเป็น
+         รายสินค้าในแถว 2.x แล้ว · ค่าเดิมเป็นข้อความรวมทั้งใบ แตกลงแถวอัตโนมัติไม่ได้โดยไม่เดา
+         ⇒ `legacy`: ฟอร์มไม่เขียน · จอสรุป/เอกสารพิมพ์เฉพาะใบที่มีค่า (กติกาเดียวกับ targetCost) */
+      { key: 'moq', no: '2.4', column: 'pdrMoq', max: 100, label: 'MOQ ที่คาดหวัง (บันทึกไว้เดิม)', type: 'text', legacy: true },
       {
-        key: 'texture', no: '2.5', column: 'pdrTexture', max: 40, label: 'ลักษณะเนื้อผลิตภัณฑ์',
-        type: 'select', options: PDR_TEXTURES,
+        key: 'texture', no: '2.5', column: 'pdrTexture', max: 40, label: 'ลักษณะเนื้อผลิตภัณฑ์ (บันทึกไว้เดิม)',
+        type: 'select', options: PDR_TEXTURES, legacy: true,
       },
-      { key: 'color', no: '2.6', column: 'pdrColor', max: 200, label: 'สีเนื้อผลิตภัณฑ์', type: 'text' },
-      { key: 'packSize', no: '2.7', column: 'pdrPackSize', max: 500, label: 'ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น', type: 'text' },
+      { key: 'color', no: '2.6', column: 'pdrColor', max: 200, label: 'สีเนื้อผลิตภัณฑ์ (บันทึกไว้เดิม)', type: 'text', legacy: true },
+      { key: 'packSize', no: '2.7', column: 'pdrPackSize', max: 500, label: 'ขนาดบรรจุภัณฑ์และจำนวนต่อกลิ่น (บันทึกไว้เดิม)', type: 'text', legacy: true },
       // 2.8 รูปแบบบรรจุภัณฑ์ — กระดาษรวม ขวด/ฝา/กล่อง กับ มี/ไม่มีภาพประกอบ ไว้ข้อเดียว
       {
         key: 'packagingForms', no: '2.8', column: 'pdrPackagingForms', label: 'รูปแบบบรรจุภัณฑ์',
         type: 'multi', options: PDR_PACKAGING_FORMS, group: 'รูปแบบบรรจุภัณฑ์',
       },
+      // ⚠️ เพดาน 500 → 200 (ผลตรวจช่องยาว/สั้น 2026-09-11) — บรรทัดเดียว · ของจริงยาวสุด ≤67 ตัว
       {
-        key: 'packagingFormsOther', column: 'pdrPackagingFormsOther', max: 500,
+        key: 'packagingFormsOther', column: 'pdrPackagingFormsOther', max: 200,
         label: 'รูปแบบบรรจุภัณฑ์ — อื่น ๆ ระบุ', type: 'text', wide: true,
         group: 'รูปแบบบรรจุภัณฑ์', showForMulti: { key: 'packagingForms', value: 'other' },
         placeholder: 'เช่น ถุงซิป · หลอดบีบ · ขวดสเปรย์',
@@ -315,13 +357,15 @@ export const PDR_SECTIONS = [
         key: 'documents', column: 'pdrDocuments', label: 'เอกสารที่ลูกค้าต้องการ',
         type: 'multi', options: PDR_DOCUMENTS,
       },
+      // ⚠️ เพดาน 500 → 200 (ผลตรวจช่องยาว/สั้น 2026-09-11) — บรรทัดเดียว · ของจริงยาวสุด ≤67 ตัว
       {
-        key: 'documentsOther', column: 'pdrDocumentsOther', max: 500, label: 'เอกสาร — อื่น ๆ ระบุ',
+        key: 'documentsOther', column: 'pdrDocumentsOther', max: 200, label: 'เอกสาร — อื่น ๆ ระบุ',
         type: 'text', wide: true, showForDocument: 'other',
         placeholder: 'ระบุชื่อเอกสารที่ลูกค้าขอ',
       },
+      // ⚠️ เพดาน 500 → 200 (ผลตรวจช่องยาว/สั้น 2026-09-11) — บรรทัดเดียว · ของจริงยาวสุด ≤67 ตัว
       {
-        key: 'exportDocNote', column: 'pdrExportDocNote', max: 500, label: 'เอกสารส่งออก — ระบุ',
+        key: 'exportDocNote', column: 'pdrExportDocNote', max: 200, label: 'เอกสารส่งออก — ระบุ',
         type: 'text', wide: true, showForDocument: 'export',
         placeholder: 'ประเทศปลายทาง / ชนิดเอกสาร',
       },
@@ -376,8 +420,27 @@ export const PDR_SECTIONS = [
   },
 ];
 
+/* ── ป้าย + เลขข้อของบรีฟรายกลิ่น (ข้อ 2.1.x · พัฒนากลิ่นเท่านั้น) ──────────────
+   ⭐ ที่เดียวของสามจอ (ฟอร์ม · จอสรุป · เอกสาร) — บรีฟอยู่คนละตาราง (mig 0213) จึงไม่อยู่ใน
+   `PDR_SECTIONS` แต่คำต้องเป็นชุดเดียวกันด้วยเหตุผลเดียวกับทะเบียนช่องข้างบน
+   ⭐ **2.1.4 = Performance · 2.1.5 = Scentotype** ตามไฟล์ PDR ของ AE (มติผู้ใช้ 2026-09-11)
+   — สลับกับลำดับเดิม · Archetype (2.1.6 ในไฟล์นั้น) ย้ายไปเป็นข้อ 1.15 ระดับใบ
+   `paper` = คำเต็มบนกระดาษเมื่อยาวกว่าป้ายบนจอ */
+export const PDR_BRIEF_LABELS = Object.freeze({
+  label: { label: 'ชื่อเรียก' },
+  brief: { label: 'บรีฟกลิ่น' },
+  inspiration: { no: '2.1.1', label: 'แรงบันดาลใจ', paper: 'แรงบันดาลใจ (Why แก่นของแบรนด์)' },
+  likedNotes: { no: '2.1.2', label: 'ช่วงกลิ่นที่ชื่นชอบ' },
+  dislikedNotes: { no: '2.1.3', label: 'กลิ่นที่ End-user ไม่ชอบ' },
+  researchTopic: { label: 'ให้ทำวิจัยเรื่อง', paper: 'หากต้องการให้ทำวิจัย ระบุ' },
+  performance: { no: '2.1.4', label: 'Performance ของกลิ่น' },
+  scentotypes: { no: '2.1.5', label: 'Scentotype' },
+});
+
 // ทุกช่องที่มีคอลัมน์จริง — ใช้ตรวจว่าไม่มีคอลัมน์ไหนหลุดจากจอ
 export const PDR_FIELDS = PDR_SECTIONS.flatMap((s) => s.fields);
+// key → คอลัมน์ — ใช้ตอนช่องหนึ่งต้องอ่านค่าของอีกช่อง (สวิตช์ 1.7.1 · ข้อความเขียนต่อ 1.15)
+const FIELD_COLUMN = Object.fromEntries(PDR_FIELDS.filter((f) => f.column).map((f) => [f.key, f.column]));
 
 /* ช่องผู้เซ็นบนเอกสาร — **ที่เดียว** ที่ทั้งฟอร์ม PDR และกล่องรับเรื่องอ่านว่ามีช่องอะไร
    ⚠️ อ่านจากทะเบียนเดียวกัน ไม่ใช่ไล่เขียนชื่อช่องซ้ำ — สองที่จะเพี้ยนหากันทันทีที่
@@ -414,6 +477,9 @@ export function pdrFieldText(field, request = {}, context = {}) {
       case 'deal': return context.deal || null;
       case 'contactName': return context.contactName || null;
       case 'contactPhone': return context.contactPhone || null;
+      // ⭐ 1.7 ที่อยู่หลัก (ออกบิล) ของลูกค้า — ประกอบที่ `pdrContext` ด้วยตัวกลางของทะเบียน
+      // ที่อยู่ (`addressTextIn`) ห้ามต่อสตริงเอง (บทเรียน "ที่อยู่หางซ้ำ" · "สาขาหาย")
+      case 'customerAddress': return context.customerAddress || null;
       // ⚠️ วันเดียวกับ `requestedDueDate` ของกลไกคำร้อง ไม่ใช่คอลัมน์ใหม่
       case 'sampleDue': return context.sampleDue ?? sampleDueText(request);
       // ⚠️ ใบที่ไม่ได้ติ๊กด่วนต้องได้ค่าว่าง **ไม่ใช่ค่าที่ค้างจากตอนเคยติ๊ก** —
@@ -438,11 +504,29 @@ export function pdrFieldText(field, request = {}, context = {}) {
 
   const raw = request[field.column];
 
+  // ⭐ ธงจริง/เท็จ (1.7.1 สวิตช์) — ไม่มีแถวของตัวเองบนกระดาษ แต่จอ/เธรดยังอ่านได้
+  if (field.type === 'switch') return raw === true ? 'ใช่' : raw === false ? 'ไม่ใช่' : null;
+  // ข้อความเขียนต่อพิมพ์ติดกับช่องติ๊กของมัน (ดู `notes` ของช่อง multi) ไม่ใช่แถวแยก
+  if (field.type === 'notes') return null;
+
+  // ⭐ 1.7.1 — เปิดสวิตช์ "ส่งไปที่อยู่เดียวกับลูกค้า" = ไม่มีที่อยู่จัดส่งของตัวเอง
+  // ⚠️ `true` เท่านั้น — NULL/false คือใช้ข้อความ (ใบเก่าทุกใบพิมพ์เหมือนเดิม · mig 0352)
+  if (field.hideWhenOn && request[FIELD_COLUMN[field.hideWhenOn]] === true) {
+    return 'ที่อยู่เดียวกับลูกค้า (ข้อ 1.7)';
+  }
+
   // ⚠️ ช่องติ๊กหลายตัวมาเป็น array — ว่างคือ "ยังไม่ได้เลือก" ไม่ใช่ค่าที่แสดงเป็น []
   if (field.type === 'multi') {
     const list = Array.isArray(raw) ? raw : [];
     if (!list.length) return null;
-    return list.map((v) => labelOf(field.options || [], v) || String(v)).join(' · ');
+    // ⭐ ช่องที่มีข้อความเขียนต่อ (1.15 Archetype) — พิมพ์ต่อท้ายตัวที่ติ๊ก ท่าเดียวกับ
+    // Scentotype บนกระดาษ ("☑ CAREGIVER — ดูแลแขกเหมือนคนในบ้าน")
+    const notes = field.notes ? (request[FIELD_COLUMN[field.notes]] || {}) : {};
+    return list.map((v) => {
+      const text = labelOf(field.options || [], v) || String(v);
+      const note = String(notes?.[v] ?? '').trim();
+      return note ? `${text} — ${note}` : text;
+    }).join(' · ');
   }
 
   // ⭐ หมวดสินค้าหลายรายการ — ป้ายมาจากทะเบียนที่ผู้เรียกส่งมา (`context.categories`)
@@ -476,6 +560,10 @@ export function pdrFieldText(field, request = {}, context = {}) {
  * ทั้งที่ยังอยู่ในฐานข้อมูล
  */
 export function pdrFieldVisible(field, values = {}) {
+  // ⭐ 1.7.1 ที่อยู่จัดส่ง — ซ่อนเมื่อเปิดสวิตช์ "ส่งไปที่อยู่เดียวกับลูกค้า" (ค่าฟอร์ม 'true')
+  if (field?.hideWhenOn) return String(values[field.hideWhenOn] ?? '') !== 'true';
+  // สวิตช์กับข้อความเขียนต่อมีคอนโทรลของตัวเองติดกับช่องแม่ — ไม่ใช่ช่องที่วาดเดี่ยว
+  if (field?.type === 'switch' || field?.type === 'notes') return true;
   if (field?.showFor) return field.showFor.includes(values.requestType);
   if (field?.showForDocument) {
     const list = Array.isArray(values.documents) ? values.documents : [];
@@ -515,7 +603,9 @@ export function pdrFormProgress(section, values = {}) {
     // ⚠️ `targets` (ข้อ 2.2/2.3) เก็บอยู่คนละตาราง ไม่ได้อยู่ใน `values` ⇒ นับที่นี่
     // แล้วเกจจะขาดหนึ่งช่องตลอดกาล · ตัวนับของมันอยู่ที่ `pdrTargetsProgress`
     // ซึ่งรางเลือกส่วนบวกเข้ามาเอง (บทเรียนเดียวกับเกจ 12% ใน form-design-rules)
+    // ⚠️ สวิตช์ไม่ใช่ "ช่องที่ต้องกรอก" (ปิดก็คือคำตอบหนึ่ง) · ข้อความเขียนต่อเว้นว่างได้
     .filter((f) => f.type !== 'derived' && f.type !== 'targets' && !f.legacy
+      && f.type !== 'switch' && f.type !== 'notes'
       && pdrFieldVisible(f, values));
   const filled = fields.filter((f) => {
     const v = values?.[f.key];
@@ -569,11 +659,12 @@ export function pdrArtworkError(values = {}, { attachmentCount = 0, stage = null
  * ก้อนของระบบ) จึงแทรกด้วยมือตรงตำแหน่งเดิม — ระหว่างลูกค้ากับสเปก · เลขหมวด
  * จึงข้ามมันไป ตรงกับเลขข้อบนกระดาษ
  */
-export function pdrRailSections(values = {}, briefs = [], targets = []) {
+export function pdrRailSections(values = {}, briefs = [], targets = [], { withBriefs = true } = {}) {
   const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
-  // เลขหมวด = ลำดับใน `PDR_SECTIONS` ที่เดียว — เขียนเลขในป้ายด้วยมือเมื่อไร
-  // แทรกหมวดใหม่แล้วเลขจะเพี้ยนเงียบ ๆ
-  const labelOfSection = (key) => `${PDR_SECTIONS.findIndex((s) => s.key === key) + 1} ${of(key).title}`;
+  /* ⭐ **เลขหมวด = เลขบนกระดาษ** (`paperNo`) ไม่ใช่ลำดับในราง (มติผู้ใช้ 2026-09-11) —
+     🐞 เดิมนับ index+1 ⇒ "3 ข้อกำหนดผลิตภัณฑ์" แต่ข้อย่อยข้างในเป็น 2.x ผู้ใช้ถามเอง
+     ว่าทำไม · Request Information / Regulatory / Final Review บนกระดาษไม่มีเลข */
+  const labelOfSection = (key) => [of(key).paperNo, of(key).title].filter(Boolean).join(' ');
   const count = (key) => ({ ...pdrFormProgress(of(key), values), optional: !!of(key).optional });
   // ⚠️ หมวดสเปกมีทั้งช่องธรรมดาและ **แถวรายสินค้า** (ข้อ 2.2/2.3 · mig 0229) ที่อยู่
   // คนละตาราง ⇒ บวกสองตัวนับเข้าด้วยกัน ไม่งั้นเลข "กรอกแล้ว/ทั้งหมด" บนหัวหมวด
@@ -587,9 +678,11 @@ export function pdrRailSections(values = {}, briefs = [], targets = []) {
   return [
     section('request'),
     section('customer'),
-    {
+    /* ⚠️ ใบที่เลือกกลิ่นจากทะเบียน (พัฒนาสูตร NPD) ไม่มีส่วนนี้เลย — ผู้เรียกบอกด้วย
+       `withBriefs` ที่อ่านจากทะเบียนหัวข้อ (`requestUsesScentBriefs`) ไม่ใช่เดาจากจำนวนก้อน */
+    ...(withBriefs ? [{
       key: 'briefs',
-      label: 'บรีฟกลิ่น',
+      label: '2.1 บรีฟกลิ่น',
       // ⚠️ นับ **ก้อนที่มีเนื้อบรีฟ** ไม่ใช่ก้อนที่มีชื่อ — ชื่อเรียกที่เว้นว่างไว้จะถูก
       // เติม "กลิ่นที่ N" ให้ตอนบันทึก (scentBriefs.js) ⇒ ถ้านับชื่อ เกจจะเด้งเป็น
       // เต็มทันทีที่กดบันทึกครั้งแรก ทั้งที่ยังไม่ได้เขียนบรีฟสักตัว
@@ -597,7 +690,7 @@ export function pdrRailSections(values = {}, briefs = [], targets = []) {
         total: briefs.length,
         filled: briefs.filter((b) => String(b?.brief || '').trim()).length,
       },
-    },
+    }] : []),
     { key: 'spec', label: labelOfSection('spec'), count: specCount() },
     section('regulatory'),
     section('signers'),
@@ -616,6 +709,7 @@ export function pdrRailSectionsFromRequest(request = {}, briefs = [], targets = 
     pdrValuesFrom(request),
     briefs,
     (targets || []).map(pdrTargetValuesFrom),
+    { withBriefs: requestUsesScentBriefs(request) },
   );
 }
 
@@ -630,8 +724,38 @@ export function pdrRailSectionsFromRequest(request = {}, briefs = [], targets = 
  *
  * ⚠️ ปิดไว้เป็นค่าตั้งต้น — ผู้เรียกอื่น (และเทสต์) ยังได้คู่ [ป้าย, ค่า] เหมือนเดิม
  */
+/**
+ * ก้อน context ที่ฟอร์ม PDR ใช้วาดช่องเส้นประ — รวม "ของที่ server ประกอบ" กับ "ของที่คิดสดจากฟอร์ม"
+ *
+ * ⭐ **โหมดแก้ใช้ก้อนของ server เป็นฐาน** (`req.pdrContext`) — หน้ารายละเอียดไม่ได้โหลดทะเบียน
+ *    ลูกค้า/โครงการมาทั้งชุด · 🐞 เดิมคิดฝั่งจอทั้งสองโหมด ⇒ โหมดแก้ได้ผู้ติดต่อ/ที่อยู่เป็นเส้นประ
+ * ⚠️ สองค่าที่ **ต้องคิดสดเสมอ** เพราะเปลี่ยนตามที่กำลังพิมพ์: วันส่งตัวอย่าง (จากช่องวันที่ของใบ)
+ *    กับจำนวนกลิ่น (ใบที่เลือกกลิ่นรายแถว = นับจากแถวในฟอร์ม · ใบพัฒนากลิ่น = จาก SO ที่เลือก
+ *    ถอยไปค่าของ server เมื่อฟอร์มยังไม่รู้)
+ * @param form ค่าฟอร์มทั้งใบ (ต้องมี kind/variant/pdrTargets) · @param derived ผลของ `pdrContext` ฝั่งจอ
+ * @param serverContext `req.pdrContext` (โหมดแก้) หรือ null · @param soScentCount จำนวนกลิ่นจาก SO ที่เลือก
+ */
+export function pdrFormContext({ form = {}, derived = {}, serverContext = null, soScentCount = null } = {}) {
+  const scentCount = requestPdrRowsPickScent(form)
+    ? pdrTargetsScentCount(Array.isArray(form.pdrTargets) ? form.pdrTargets : [])
+    : (soScentCount ?? serverContext?.scentCount ?? null);
+  return { ...(serverContext || derived), sampleDue: derived.sampleDue ?? null, scentCount };
+}
+
+/**
+ * "ค่านี้มาจากไหน" ของช่องที่ระบบเติม — ใบที่ผูกแค่ดีล (พัฒนาสูตร NPD · เลือกกลิ่นจาก
+ * ทะเบียนรายแถว) ไม่มีใบสั่งขาย ⇒ คำว่า "เติมจาก SO" จะชี้ไปของที่ใบนี้ไม่มี
+ * ⚠️ ถามทะเบียนหัวข้อด้วยทั้งใบ ไม่ใช่เดาจาก `salesOrderId` ว่าง (ร่างพัฒนากลิ่นที่ยังไม่
+ *    เลือก SO ก็ว่าง แต่ช่องยังจะเติมจาก SO เมื่อเลือกแล้ว)
+ */
+export function pdrFieldFrom(field, request = {}) {
+  return (field?.fromDealOnly && requestPdrRowsPickScent(request)) ? field.fromDealOnly : field?.from || null;
+}
+
 export function pdrSectionRows(section, request = {}, {
   includeEmpty = false, context = {}, withSource = false,
+  // ⭐ ต่อเลขข้อบนกระดาษหน้าป้าย ("1.4 ชื่อแบรนด์") — จอสรุปใช้ ให้พูดเลขเดียวกับฟอร์มและเอกสาร
+  numbered = false,
 } = {}) {
   return (section?.fields || [])
     // ⚠️ ช่อง `legacy` โผล่เฉพาะใบที่มีค่าจริง — ใบใหม่ไม่เขียนลงช่องนี้แล้ว ปล่อยให้
@@ -639,14 +763,15 @@ export function pdrSectionRows(section, request = {}, {
     .filter((f) => !f.legacy || (pdrFieldText(f, request, context) ?? '') !== '')
     // ⚠️ ข้อ 2.2/2.3 ไม่ใช่คู่ป้าย/ค่า แต่เป็น **ตารางรายสินค้า** (mig 0229) — ผู้เรียก
     // วาดเองจาก `request.targets` · ลากมาเป็นแถวว่างที่นี่จะได้บรรทัดที่ไม่มีวันมีค่า
-    .filter((f) => f.type !== 'targets')
+    .filter((f) => f.type !== 'targets' && !f.docHidden)
     .map((f) => {
       const value = pdrFieldText(f, request, context);
-      if (!withSource) return [f.label, value];
-      const from = f.type === 'derived' ? f.from || null : null;
+      const label = numbered && f.no ? `${f.no} ${f.label}` : f.label;
+      if (!withSource) return [label, value];
+      const from = f.type === 'derived' ? pdrFieldFrom(f, request) : null;
       // ⚠️ บางช่องระบบเติมค่าคงที่ (แผนก = "การขายและบริการ") แล้ว `from` ก็เขียนคำ
       // เดียวกัน ⇒ จะได้บรรทัดเดียวกันสองครั้งติดกัน · ที่มาที่พูดซ้ำกับค่าไม่ได้บอกอะไร
-      return [f.label, value, from && String(from).trim() === String(value ?? '').trim() ? null : from];
+      return [label, value, from && String(from).trim() === String(value ?? '').trim() ? null : from];
     })
     .filter(([, v]) => includeEmpty || (v != null && String(v).trim() !== ''));
 }
@@ -683,7 +808,10 @@ export const pdrIsArrayField = (field) => ['multi', 'categories'].includes(field
  * (เดิมไล่เขียนมือ ⇒ ช่องใหม่เป็น undefined แล้ว React ด่าเรื่อง uncontrolled input)
  */
 export const emptyPdr = () => Object.fromEntries(
-  PDR_FIELDS.filter((f) => f.column).map((f) => [f.key, pdrIsArrayField(f) ? [] : '']),
+  // ⚠️ สวิตช์เริ่มที่ '' (ยังไม่ตอบ) ไม่ใช่เปิดไว้ให้ — "ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็น
+  // การตัดสินใจ" (กติกาฟอร์ม) · ส่งตัวอย่างผิดที่เพราะสวิตช์เปิดมาเอง แย่กว่าพิมพ์ที่อยู่
+  PDR_FIELDS.filter((f) => f.column).map((f) => [f.key,
+    pdrIsArrayField(f) ? [] : f.type === 'notes' ? {} : '']),
 );
 
 /**
@@ -701,6 +829,9 @@ export function pdrValuesFrom(row = {}) {
       // ช่องอาเรย์ต้องกลับมาเป็นอาเรย์ — ไม่งั้น `String([])` ได้ "" แล้วค่าที่ติ๊กไว้
       // หายทั้งชุดตอนเปิดโหมดแก้ (และช่องที่เรียก `.map()` จะพังทั้งหมวด)
       if (pdrIsArrayField(f)) return [f.key, Array.isArray(raw) ? raw : []];
+      if (f.type === 'notes') return [f.key, raw && typeof raw === 'object' ? { ...raw } : {}];
+      // ⚠️ boolean → 'true' | 'false' · NULL → '' (ยังไม่ตอบ) — แยกสามสถานะให้ออก
+      if (f.type === 'switch') return [f.key, raw === true ? 'true' : raw === false ? 'false' : ''];
       return [f.key, raw == null ? '' : String(raw)];
     }),
   );
@@ -709,7 +840,7 @@ export function pdrValuesFrom(row = {}) {
 export function pdrSectionGroups(section, request = null, context = {}) {
   // ⚠️ ข้อ 2.2/2.3 เป็นตารางรายสินค้า (mig 0229) ไม่ใช่คู่ป้าย/ค่า — ผู้เรียกวาดเอง
   // จาก `request.targets` · ปล่อยเข้ามาที่นี่จะได้กล่องว่างบนกระดาษที่ไม่มีวันมีค่า
-  const keep = (field) => field.type !== 'targets'
+  const keep = (field) => field.type !== 'targets' && !field.docHidden
     && (!field.legacy || !request || (pdrFieldText(field, request, context) ?? '') !== '');
   const out = [];
   for (const field of (section?.fields || []).filter(keep)) {
@@ -769,6 +900,9 @@ function sampleDueText(request = {}) {
 // ไม่ใช่จำนวนก้อนบรีฟ (ดูเหตุผลที่ `case 'scentCount'`) · ไม่ส่งมา = ช่องนั้นขึ้น N/A
 export function pdrContext({
   request = {}, project = null, customer = null, deal = null, briefs = [], salesOrderLines = null,
+  /* แถวสินค้าข้อ 2.x — ใบที่เลือกกลิ่นจากทะเบียน (พัฒนาสูตร NPD) นับ 1.12 จากกลิ่นในแถว
+     ⚠️ ใบพัฒนากลิ่นยังนับจาก SO เสมอ (ดูเหตุผลที่ `case 'scentCount'`) */
+  targets = null,
   // ⚠️ ทะเบียนหมวดสินค้า — ช่อง `type:'categories'` เก็บแต่รหัส (`MM-TTT`) ชื่อจึงต้อง
   // มาจากทะเบียน · ไม่ส่งมา = จอ/กระดาษพิมพ์รหัสเปล่า ("01-005 · 01-003") ซึ่งอ่านไม่ออก
   // ⇒ อยู่ใน context ตัวกลางที่เดียว ไม่ใช่ต่างจอต่างเดินสายเอง (จอไหนลืมก็เพี้ยนจอนั้น)
@@ -790,7 +924,15 @@ export function pdrContext({
     // Phone / Line เป็นช่องเดียวบนกระดาษ — ต่อกันด้วย · เมื่อมีทั้งคู่
     contactPhone: [phone, line].filter(Boolean).join(' · ') || null,
     sampleDue: sampleDueText(request),
-    scentCount: salesOrderLines ? scentCountForOrder(salesOrderLines) : null,
+    /* ⚠️ **ทะเบียนหัวข้อเป็นคนตัดสินว่านับจากไหน** ไม่ใช่ "มีบรรทัด SO ไหม" — ใบที่ไม่มี
+       SO ได้ `salesOrderLines = []` (ไม่ใช่ null) จาก findRequest ⇒ เช็คความจริงของ
+       อาเรย์จะนับ SO ว่างได้ 0 แล้ว 1.12 ของ NPD ขึ้นว่างทุกใบ */
+    scentCount: requestPdrRowsPickScent(request)
+      ? pdrTargetsScentCount(Array.isArray(targets) ? targets : [])
+      : salesOrderLines ? scentCountForOrder(salesOrderLines) : null,
+    // ⭐ 1.7 — ที่อยู่หลัก (ออกบิล) จากทะเบียน · ตัวกลางถอยไปอ่านคอลัมน์สำเนาเดิมเองเมื่อ
+    // ลูกค้ายังไม่มี `addresses` (ใบรายการลูกค้าส่งมาแต่สำเนา) ⇒ ฝั่งจอกับฝั่งเซิร์ฟเวอร์ได้คำเดียวกัน
+    customerAddress: customer ? (addressTextIn(primaryBillingAddress(customerAddresses(customer)), 'th') || null) : null,
     briefs,
     categories,
   };

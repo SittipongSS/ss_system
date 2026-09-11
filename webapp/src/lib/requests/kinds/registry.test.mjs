@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { KINDS_BY_OWNER, REQUEST_KINDS, assertKind } from './registry.js';
 import {
   REQUEST_DEPTS, REQUEST_KIND_LIST, kindsForDept, requestKindFamily,
@@ -152,5 +153,33 @@ test('ฟอร์มไม่ตัดสินอะไรจากชื่�
   const hits = src.split('\n')
     .filter((line) => !line.trimStart().startsWith('//'))
     .filter((line) => /\bkind === ["']/.test(line) && !/item\.kind/.test(line));
+  assert.deepEqual(hits, []);
+});
+
+
+test('ตัวอ่านรูปทรงต้องได้ "ทั้งใบ" ไม่ใช่ `.kind`', () => {
+  /* 🔴 ratchet ของงานรูปแบบงาน (2026-09-09) — `requestUsesPdr(req.kind)` เขียนถูก
+     ไวยากรณ์และ **ไม่พังตอน build** แต่ทำให้ใบ NPD ถูกตัดสินด้วยรูปแบบตั้งต้นเงียบ ๆ
+     ⇒ จอโชว์แบบฟอร์ม PDR แต่เซิร์ฟเวอร์ตอบ "หัวข้อนี้ไม่มีแบบฟอร์ม PDR"
+     ⚠️ สแกนทั้ง src ไม่ใช่แค่ไฟล์เดียว — ด่านพวกนี้กระจายอยู่ทั้งจอ ลิบ และ API */
+  const READERS = ['requestUsesPdr', 'requestUsesItems', 'requestUsesDeliveredRows', 'requestLineShape',
+    'requestPdrScentSource', 'requestUsesScentBriefs', 'requestPdrRowsPickScent'];
+  const files = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' })
+    .split('\n')
+    .filter((f) => /\.(js|mjs)$/.test(f))
+    // ไฟล์นี้เองเขียนแพตเทิร์นไว้ในสตริงของ regex — ไม่งั้นเทสต์จับตัวเอง
+    .filter((f) => !f.endsWith('kinds/registry.test.mjs'));
+  const hits = [];
+  for (const file of files) {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) return;
+      for (const fn of READERS) {
+        // ⚠️ จับเฉพาะ **อาร์กิวเมนต์ตัวแรกที่เป็น `x.kind` ตรง ๆ** — object literal
+        // `{ kind: req.kind, variant }` คือการส่งทั้งรูปทรงอย่างถูกต้อง ไม่ใช่บั๊ก
+        if (new RegExp(`\\b${fn}\\(\\s*[\\w.?]+\\.kind\\s*[,)]`).test(line)) hits.push(`${file}:${i + 1}`);
+      }
+    });
+  }
   assert.deepEqual(hits, []);
 });

@@ -47,7 +47,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import StepTrack from "@/components/ui/StepTrack";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
-import { REQUEST_DEPT_LABELS, requestKindLabel, requestLineNoun } from "@/lib/master/requestTypes";
+import { REQUEST_DEPT_LABELS, requestKindLabelFull, requestLineNoun } from "@/lib/master/requestTypes";
 
 export default function RequestQueuePanel({
   scope = "mine", dept = null, rows = [],
@@ -131,7 +131,7 @@ export default function RequestQueuePanel({
       filterRequestRows(
         rows
           .filter((r) => (countFilter ? matchesQueueCount(r, countFilter, { todayIso: today }) : true))
-          .filter((r) => matchesQueueSearch(r, search, { kindLabel: requestKindLabel })),
+          .filter((r) => matchesQueueSearch(r, search, { kindLabel: requestKindLabelFull })),
         showTools ? filters : {},
       ),
       { key: sortKey, dir: sortDir },
@@ -367,7 +367,7 @@ export default function RequestQueuePanel({
             <div className={styles.docCell}>{titleLink}</div>
             <div className={styles.subText}>
               {[
-                cols.includes("kind") ? null : requestKindLabel(ask.kind),
+                cols.includes("kind") ? null : requestKindLabelFull(ask),
                 /* ลูกค้าอยู่ในบรรทัดรองเฉพาะตอนไม่มีคอลัมน์ของตัวเอง (ชุด "linked") */
                 !cols.includes("customer") && ask.title && ask.customerName ? ask.customerName : null,
                 ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
@@ -403,7 +403,7 @@ export default function RequestQueuePanel({
             {ask.urgent && !cols.includes("urgent") && !cols.includes("doc") && (
               <div><span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span></div>
             )}
-            <div className={styles.kindCell}>{requestKindLabel(ask.kind)}</div>
+            <div className={styles.kindCell}>{requestKindLabelFull(ask)}</div>
             {!cols.includes("dept") && ask.dept
               ? <div className={styles.subText}>→ {ask.dept}</div> : null}
           </>
@@ -687,7 +687,7 @@ export default function RequestQueuePanel({
                     <span className={styles.subText}>
                       {[
                         ask.docNo || "ร่าง",
-                        requestKindLabel(ask.kind),
+                        requestKindLabelFull(ask),
                         ask.title && ask.customerName ? ask.customerName : null,
                         ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
                         // วันที่ร้องขอ — ชุดเดียวกับตาราง (การ์ดกับตารางต้องพูดตรงกัน)

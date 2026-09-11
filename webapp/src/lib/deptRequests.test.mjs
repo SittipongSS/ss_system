@@ -44,7 +44,7 @@ import {
   requestNeedsRef,
   REQUEST_KINDS,
   requestDocScope,
-  requestHasItems,
+  requestUsesItems,
   requestShapeError,
   requestStepKey,
   PLANNED_REQUEST_DEPTS,
@@ -116,11 +116,15 @@ test('ฝ่ายผู้ตอบ: หัวข้อที่ล็อกไ
   assert.equal(deptForRequest('info', {}), null);
 });
 
-test('ชนิดที่มีบรรทัด = พัฒนาสูตร · ขอเอกสาร', () => {
-  assert.equal(requestHasItems('formula_dev'), true);
-  assert.equal(requestHasItems('document'), true);
-  assert.equal(requestHasItems('scent_dev'), false);   // แถวเกิดตอน RD ส่ง
-  assert.equal(requestHasItems('info'), false);
+test('ชนิดที่มีบรรทัด = พัฒนาสูตร (รูปแบบ standard) · ขอเอกสาร', () => {
+  // ⚠️ **ถามด้วยทั้งใบ ไม่ใช่ชื่อหัวข้อ** — พัฒนาสูตรตอบคนละคำตอบสองรูปแบบ
+  // (ส่งชื่อหัวข้อเปล่า ๆ ได้คำตอบของรูปแบบตั้งต้น ซึ่งใช้ได้เฉพาะหัวข้อที่ไม่มีรูปแบบ)
+  assert.equal(requestUsesItems({ kind: 'formula_dev' }), true, 'ไม่ระบุรูปแบบ = standard');
+  assert.equal(requestUsesItems({ kind: 'formula_dev', variant: 'standard' }), true);
+  assert.equal(requestUsesItems({ kind: 'formula_dev', variant: 'npd' }), false, 'NPD กรอกแบบฟอร์ม PDR ไม่มีตารางแถว');
+  assert.equal(requestUsesItems('document'), true);
+  assert.equal(requestUsesItems('scent_dev'), false);   // แถวเกิดตอน RD ส่ง
+  assert.equal(requestUsesItems('info'), false);
 });
 
 test('สิ่งที่ต้องผูกต่างกันตามหัวข้อ (มติ 2026-08-03 รอบสอง · ม-40)', () => {
@@ -311,9 +315,36 @@ test('ชนิดที่ไม่มีบรรทัดส่งได้�
   assert.match(submitRequestError(req({ kind: 'formula_dev', status: 'draft' }), []), /อย่างน้อย 1 รายการ/);
 });
 
+test('⭐ พัฒนาสูตร NPD กดส่งได้เมื่อมีสินค้า ≥ 1 และทุกแถวเลือกกลิ่นจากทะเบียนแล้ว', () => {
+  const npd = (targets) => req({
+    kind: 'formula_dev', variant: 'npd', status: 'draft', requestedDueDate: '2569-09-30', targets,
+  });
+  // NPD ไม่มีตารางรายการ ⇒ ด่าน "ต้องมีรายการ" ของ standard ต้องไม่โดน
+  assert.match(submitRequestError(npd([]), []), /สินค้าที่ขอพัฒนาอย่างน้อย 1 รายการ/);
+  assert.match(submitRequestError(npd(undefined), []), /อย่างน้อย 1 รายการ/, 'ไม่ได้โหลดแถวมา = ไม่ผ่าน');
+  assert.match(submitRequestError(npd([{ scentId: 'SC-1' }, { scentId: null }]), []), /รายการที่ 2 ยังไม่ได้เลือกกลิ่น/);
+  assert.equal(submitRequestError(npd([{ scentId: 'SC-1' }]), []), null);
+  // พัฒนากลิ่นไม่มีด่านนี้ — กลิ่นมาจากบรีฟ (แถวสินค้าไม่มีกลิ่นเลย)
+  assert.equal(submitRequestError(req({
+    kind: 'scent_dev', status: 'draft', requestedDueDate: '2569-09-30', targets: [],
+  }), []), null);
+});
+
 test('ปิดเรื่อง: ใบที่มีแถวต้องจบครบ · ใบที่ไม่มีแถวผู้ขอตัดสินเอง', () => {
   assert.match(closeRequestError(req({ kind: 'formula_dev' }), [{ answerStatus: 'pending' }]), /ยังเดินไม่จบ/);
   assert.equal(closeRequestError(req({ kind: 'formula_dev' }), [{ answerStatus: 'done' }]), null);
+  /* 🔴 **ใบ NPD ไม่มีแถวเลย ⇒ ด่านทั้งสามข้างบนผ่านหมด** (2026-09-09) — ผู้ขอจะกดปิด
+     ได้ตั้งแต่วันที่ RD เพิ่งรับเรื่อง โดยยังไม่มีอะไรส่งกลับมาสักชิ้น ซึ่งเป็นอาการ
+     เดียวกับ 🐞 ของพัฒนากลิ่นที่ `closeRequestError` เขียนกันไว้แล้ว แค่มาคนละหัวข้อ */
+  assert.match(
+    closeRequestError(req({ kind: 'formula_dev', variant: 'npd', status: 'acknowledged' }), []),
+    /ยกเลิกแทนการปิด/,
+  );
+  assert.equal(
+    closeRequestError(req({ kind: 'formula_dev', variant: 'npd', status: 'answered' }), []),
+    null,
+    'ฝ่ายกด "ตอบแล้ว" เองแล้ว = ปิดได้ (ทางออกเดียวกับพัฒนากลิ่น)',
+  );
   // สอบถามที่รับเรื่องแล้ว ผู้ขอปิดเองได้แม้ยังไม่ answered
   assert.equal(closeRequestError(req({ kind: 'info', status: 'acknowledged' }), []), null);
   // แต่ที่ยังไม่มีใครรับเลย ให้ยกเลิกแทน (ปิดทั้งที่ไม่มีใครแตะ = ซ่อนงานที่ไม่ได้ทำ)
@@ -348,6 +379,18 @@ test('⭐ ปิดใบไม่ได้จนลูกค้าคอนเ�
   );
   // ใบที่ไม่ผูก SO (พัฒนาสูตร/ขอเอกสาร) ไม่มีอะไรให้เทียบ ⇒ ด่านเดิมล้วน
   assert.equal(closeRequestError(req({ kind: 'formula_dev' }), [{ answerStatus: 'done' }]), null);
+  /* 🔴 **ใบ NPD ไม่มีแถวเลย ⇒ ด่านทั้งสามข้างบนผ่านหมด** (2026-09-09) — ผู้ขอจะกดปิด
+     ได้ตั้งแต่วันที่ RD เพิ่งรับเรื่อง โดยยังไม่มีอะไรส่งกลับมาสักชิ้น ซึ่งเป็นอาการ
+     เดียวกับ 🐞 ของพัฒนากลิ่นที่ `closeRequestError` เขียนกันไว้แล้ว แค่มาคนละหัวข้อ */
+  assert.match(
+    closeRequestError(req({ kind: 'formula_dev', variant: 'npd', status: 'acknowledged' }), []),
+    /ยกเลิกแทนการปิด/,
+  );
+  assert.equal(
+    closeRequestError(req({ kind: 'formula_dev', variant: 'npd', status: 'answered' }), []),
+    null,
+    'ฝ่ายกด "ตอบแล้ว" เองแล้ว = ปิดได้ (ทางออกเดียวกับพัฒนากลิ่น)',
+  );
 });
 
 test('🐞 ปิดร่างที่ยังไม่ส่งไม่ได้ — ปิดแล้วลบไม่ได้ตลอดกาล (รอบ 12 · ค-1)', () => {
@@ -1008,4 +1051,13 @@ test('🔴 requeue: ใบที่มีวันแล้วต้องกด
 test('🔴 หัวข้อที่มีสถานที่ = ทะเบียนต้องบอกว่าต้องการ site (ตัวคุมของด่านเวลาในทางแก้ใบ)', () => {
   assert.equal(requestNeedsRef('site_survey', 'site'), true);
   assert.equal(requestNeedsRef('doc_request', 'site'), false);
+});
+
+test('⭐ รับเรื่องใบ NPD ที่ไม่มีสินค้า/ไม่มีกลิ่นไม่ได้ — ตาข่ายชั้นสุดท้ายของกฎกดส่ง (ผลรีวิวรอบสอง)', () => {
+  const npd = (targets) => req({ kind: 'formula_dev', variant: 'npd', status: 'pending', targets });
+  assert.match(acknowledgeRequestError(npd([])), /อย่างน้อย 1 รายการ.*ตีกลับ/);
+  assert.match(acknowledgeRequestError(npd([{ scentId: '' }])), /ยังไม่ได้เลือกกลิ่น/);
+  assert.equal(acknowledgeRequestError(npd([{ scentId: 'SC-1' }])), null);
+  // หัวข้ออื่นไม่ถูกกระทบ
+  assert.equal(acknowledgeRequestError(req({ kind: 'scent_dev', status: 'pending', targets: [] })), null);
 });

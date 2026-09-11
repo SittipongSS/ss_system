@@ -101,9 +101,10 @@ export function requestLineNoun(kind) {
   return REQUEST_KINDS[kind]?.lineNoun || 'รายการ';
 }
 
-// หัวข้อนี้ใช้แบบฟอร์ม PDR ไหม — ฟอร์มอ่านธงจากทะเบียน ไม่เช็คชื่อหัวข้อเอง
-export function requestHasPdr(kind) {
-  return !!REQUEST_KINDS[kind]?.hasPdr;
+// ใบนี้ใช้แบบฟอร์ม PDR ไหม — อ่านจากทะเบียน (หัวข้อ + รูปแบบ) ไม่เช็คชื่อหัวข้อเอง
+// ⚠️ รับ **ทั้งใบ** ไม่ใช่ `req.kind` — พัฒนาสูตรตอบไม่เหมือนกันสองรูปแบบ
+export function requestUsesPdr(subject) {
+  return !!shapeOf(subject)?.hasPdr;
 }
 
 // ⚠️ `requestNeedsApprovalKind` เคยอยู่ตรงนี้ (mig 0216) — ถอดพร้อมขั้น "ยืนยันให้
@@ -114,19 +115,116 @@ export function requestHasPdr(kind) {
 // เป็นก้าวของตัวเอง ("แจ้งกำหนดส่ง" · `commitDueRequestError` ใน `stages.js`)
 // ⇒ ธงรายชนิดไม่มีความหมายอีกต่อไป อย่าประกาศกลับมา
 
-// ฝ่ายปลายทางสร้างแถวเองตอนส่งของไหม (พัฒนากลิ่น — แบบหน้าจอ §04)
 // อ้างอิงเพิ่มที่หัวข้อนี้รับได้ (ไม่บังคับ) — 'quotation' | 'salesOrder' | 'product'
 // (ม-88 · ต่างจาก `needs` ตรงที่ว่างได้ และด่านตรวจแค่ของมีจริง+ดีลตรงกัน)
 export function requestOptionalRefs(kind) {
   return REQUEST_KINDS[kind]?.optionalRefs || [];
 }
 
-export function requestDeliversRows(kind) {
-  return !!REQUEST_KINDS[kind]?.deliversRows;
+/* ── รูปแบบงานในหัวข้อเดียว (มติผู้ใช้ 2026-09-09) ───────────────────────
+ *
+ * ⭐ **ธงรูปทรงเป็นของ "ใบ" ไม่ใช่ของ "หัวข้อ" อีกต่อไป** — พัฒนาสูตรมีสองรูปแบบ
+ * (`standard` มีตารางแถว · `npd` ใช้แบบฟอร์ม PDR) ⇒ ตัวอ่านต้องเห็นทั้งใบ
+ * ไม่ใช่แค่ชื่อหัวข้อ · หัวข้อที่ไม่มี `variants` ตอบเหมือนเดิมทุกประการ
+ *
+ * 🔴 **ทำไมเปลี่ยนชื่อฟังก์ชันทั้งชุด** (`requestHasItems` → `requestUsesItems` ฯลฯ)
+ * — ถ้าคงชื่อเดิมไว้แล้วแค่รับ object เพิ่ม จุดที่ยังส่ง `kind` มาเฉย ๆ จะ **ตอบ
+ * ด้วยรูปแบบตั้งต้นเงียบ ๆ** ⇒ จอโชว์ฟอร์ม PDR แต่ด่านฝั่งเซิร์ฟเวอร์ตอบว่า
+ * "หัวข้อนี้ไม่มีแบบฟอร์ม PDR" ซึ่งเป็นครึ่งสถานะที่หายากที่สุด · เปลี่ยนชื่อ =
+ * ทุกจุดที่ลืมแปลงพังตอน build ไม่ใช่ตอนผู้ใช้กดส่ง
+ *
+ * ⚠️ **ส่ง "ทั้งใบ" เสมอ ห้ามส่ง `req.kind`** — มีเทสต์ ratchet กันไว้
+ * (`lib/requests/kinds/registry.test.mjs`) เพราะการส่งแค่ชื่อหัวข้อคือบั๊กเดียวกัน
+ * กับที่ย่อหน้าบนอธิบาย แค่เขียนถูกไวยากรณ์
+ */
+export function requestVariants(kind) {
+  return REQUEST_KINDS[kind]?.variants || null;
 }
 
-export function requestHasItems(kind) {
-  return !!REQUEST_KINDS[kind]?.hasItems;
+export function requestDefaultVariant(kind) {
+  return REQUEST_KINDS[kind]?.defaultVariant || null;
+}
+
+// ชื่อรูปแบบที่ใบนี้ใช้จริง — ใบเก่า/ค่าเพี้ยนตกไปที่รูปแบบตั้งต้น (ไม่ใช่ error:
+// คอลัมน์เพิ่งเกิด mig 0351 และแถวเก่าทุกใบคือ standard ตามนิยาม)
+export function requestVariantKey(subject) {
+  const kind = typeof subject === 'string' ? subject : subject?.kind;
+  const variants = requestVariants(kind);
+  if (!variants) return null;
+  const asked = typeof subject === 'string' ? null : subject?.variant;
+  return asked && variants[asked] ? asked : requestDefaultVariant(kind);
+}
+
+/* ⭐ **ค่ารูปแบบตรวจที่ทะเบียน ไม่ใช่ CHECK ใน DB** — แพตเทิร์นเดียวกับ `kind`
+   (คอมเมนต์หัวไฟล์: ชุดชนิดเป็นเรื่องของงาน ไม่ใช่ของ schema) ⇒ วันที่ฝ่ายอื่น
+   อยากได้รูปแบบของตัวเองคือแก้ไฟล์เดียว ไม่ใช่ออก migration แก้ CHECK บน prod
+   ⚠️ ว่าง = ใช้รูปแบบตั้งต้น (ไม่ใช่ error) — ใบเก่าทุกใบไม่มีค่านี้ */
+export function requestVariantError(kind, variant) {
+  const asked = String(variant ?? '').trim();
+  if (!asked) return null;
+  const variants = requestVariants(kind);
+  if (!variants) return `หัวข้อ "${requestKindLabel(kind)}" ไม่มีรูปแบบให้เลือก`;
+  if (!variants[asked]) return `รูปแบบ "${asked}" ไม่มีในหัวข้อ "${requestKindLabel(kind)}"`;
+  return null;
+}
+
+// รูปทรงที่ใช้ตัดสินทุกด่าน = ธงของหัวข้อ + ธงของรูปแบบที่ใบนี้ใช้
+function shapeOf(subject) {
+  const kind = typeof subject === 'string' ? subject : subject?.kind;
+  const meta = REQUEST_KINDS[kind];
+  if (!meta) return null;
+  if (!meta.variants) return meta;
+  return { ...meta, ...(meta.variants[requestVariantKey(subject)] || {}) };
+}
+
+export function requestVariantLabel(subject) {
+  const kind = typeof subject === 'string' ? subject : subject?.kind;
+  const key = requestVariantKey(subject);
+  return key ? (requestVariants(kind)?.[key]?.label || key) : null;
+}
+
+// คำอธิบายของหัวข้อ — เลือกรูปแบบแล้วใช้คำของรูปแบบนั้น
+/* ⭐ **ป้ายที่คนอ่านบนคิว** — ชื่อหัวข้อ + รูปแบบเมื่อไม่ใช่รูปแบบตั้งต้น
+   ("พัฒนาสูตร · NPD") · รูปแบบตั้งต้นไม่ต่อท้ายอะไร เพราะใบส่วนใหญ่เป็นตัวนั้น
+   และป้ายที่ยาวขึ้นทุกแถวคือ noise
+   ⚠️ **ตาเห็นบนแถว = ต้องค้นเจอ** — ที่ไหนใช้ป้ายนี้วาด ที่นั่นต้องส่งตัวเดียวกันเข้า
+   `matchesQueueSearch` ด้วย ไม่งั้นพิมพ์ "NPD" แล้วคิวว่าง ทั้งที่คำนั้นอยู่บนจอ */
+export function requestKindLabelFull(subject) {
+  const kind = typeof subject === 'string' ? subject : subject?.kind;
+  const label = requestKindLabel(kind);
+  const key = requestVariantKey(subject);
+  if (!key || key === requestDefaultVariant(kind)) return label;
+  return `${label} · ${requestVariantLabel(subject)}`;
+}
+
+export function requestKindHint(subject) {
+  return shapeOf(subject)?.hint || null;
+}
+
+// ฝ่ายปลายทางสร้างแถวเองตอนส่งของไหม (พัฒนากลิ่น — แบบหน้าจอ §04)
+export function requestUsesDeliveredRows(subject) {
+  return !!shapeOf(subject)?.deliversRows;
+}
+
+export function requestUsesItems(subject) {
+  return !!shapeOf(subject)?.hasItems;
+}
+
+/* ⭐ กลิ่นของแบบฟอร์ม PDR มาจากไหน — 'briefs' | 'registry' | null (ใบที่ไม่ใช้ PDR)
+   ⚠️ รับ **ทั้งใบ** เหมือนตัวอ่านรูปทรงตัวอื่น (มี ratchet) — พัฒนาสูตรตอบต่างกันสองรูปแบบ */
+export function requestPdrScentSource(subject) {
+  const shape = shapeOf(subject);
+  return shape?.hasPdr ? shape.pdrScents || null : null;
+}
+
+// ใบนี้มีส่วน "บรีฟกลิ่น" (ข้อ 2.1) ไหม — พัฒนากลิ่นมี · พัฒนาสูตร NPD ไม่มี
+export function requestUsesScentBriefs(subject) {
+  return requestPdrScentSource(subject) === 'briefs';
+}
+
+// แถวสินค้าของ PDR เลือกกลิ่นจากทะเบียนไหม — พัฒนาสูตร NPD เท่านั้น
+export function requestPdrRowsPickScent(subject) {
+  return requestPdrScentSource(subject) === 'registry';
 }
 
 /* ⭐ **หัวข้อที่ยกเลิกได้ก่อนฝ่ายรับเรื่องเท่านั้น** (แผนใบประเมิน §5E ③ · มติข้อ 24)
@@ -263,10 +361,12 @@ export function deptForRequest(kind, { dept } = {}) {
 // ⚠️ **ไม่มีค่าถอยหลังแล้ว** — เดิมหัวข้อที่มีบรรทัดแต่ไม่ประกาศ `lineShape` ตกไปเป็น
 // 'material' เงียบ ๆ · รูปร่างนั้นถูกถอดใน mig 0219 ⇒ ทะเบียนบังคับให้ประกาศเอง
 // (`registry.js` โยนตอนโหลดถ้า hasItems แล้วไม่มี lineShape)
-export function lineShapeForKind(kind) {
-  const meta = REQUEST_KINDS[kind];
-  if (!meta?.hasItems) return null;
-  return meta.lineShape || null;
+// ⚠️ รับ **ทั้งใบ**: รูปแบบ `npd` ของพัฒนาสูตรไม่มีบรรทัดเลย ⇒ คืน null ที่นี่คือ
+// ตัวที่ทำให้ตารางแถวหายจากฟอร์มจริง ๆ (`RequestEditableFields` เลือกตารางจากค่านี้)
+export function requestLineShape(subject) {
+  const shape = shapeOf(subject);
+  if (!shape?.hasItems) return null;
+  return shape.lineShape || null;
 }
 
 export function kindsForDept(dept) {
@@ -345,6 +445,16 @@ export function requestDocScope(kind) {
 export function requestShapeError(kind, body = {}) {
   if (!isRequestKind(kind)) return 'ชนิดคำร้องไม่ถูกต้อง';
   const meta = REQUEST_KINDS[kind];
+  /* ⭐ **รูปทรงมาจากใบ ไม่ใช่หัวข้อ** (2026-09-09) — ด่านข้างล่างถามว่า "ต้องมี
+     รายการไหม" ซึ่งพัฒนาสูตรตอบไม่เหมือนกันสองรูปแบบ · `body` มีทั้ง `kind` และ
+     `variant` อยู่แล้วทั้งตอนสร้างและตอนแก้ (ฝั่ง API spread แถวเดิมเข้ามา) */
+  const shape = { ...meta, ...(meta.variants?.[requestVariantKey({ kind, variant: body.variant })] || {}) };
+  /* 🔴 **ตรวจรูปแบบเฉพาะหัวข้อที่มีรูปแบบให้เลือก** (ผลรีวิวรอบสอง 2026-09-11) — ทุกแถวของ
+     `dept_requests` เก็บ `variant = 'standard'` (DEFAULT ของ mig 0351 · คอลัมน์อยู่กับทุกหัวข้อ)
+     และทางแก้ใบ spread แถวเดิมเข้ามา ⇒ ถ้าตรวจทุกหัวข้อ ใบพัฒนากลิ่น/เอกสาร/วางบิล/สอบถาม
+     **แก้ไม่ได้สักใบ** ("ไม่มีรูปแบบให้เลือก") · หัวข้อที่ไม่มีรูปแบบไม่มีใครอ่านค่านี้อยู่แล้ว */
+  const variantError = meta.variants ? requestVariantError(kind, body.variant) : null;
+  if (variantError) return variantError;
 
   // ── ของที่หัวข้อนี้ต้องอ้างถึง (มติผู้ใช้ 2026-08-03 รอบสอง) ────────────
   // ถามก่อนทุกข้อเพราะอยู่ต้นฟอร์ม — ตีกลับเรื่องท้าย ๆ ก่อนทั้งที่ข้อแรกยังไม่ครบ
@@ -397,8 +507,19 @@ export function requestShapeError(kind, body = {}) {
   // วัสดุ แต่บนคิวรวมและในเธรดดีล บรรทัดวัสดุมองไม่เห็น เหลือแต่ช่องว่าง
   if (!String(body.title ?? '').trim()) return 'ต้องระบุชื่อเรื่อง';
 
-  if (meta.hasItems && (!Array.isArray(body.items) || body.items.length === 0)) {
+  if (shape.hasItems && (!Array.isArray(body.items) || body.items.length === 0)) {
     return 'ต้องมีรายการอย่างน้อย 1 รายการ';
+  }
+  /* 🔴 **รูปแบบที่ไม่มีบรรทัดต้องไม่มีบรรทัดจริง ๆ** — ไม่ใช่แค่ "ไม่บังคับ" ·
+     แถวที่หลุดเข้ามากับใบ NPD จะมองไม่เห็นบนจอ (ตารางถูกซ่อนตามรูปแบบ) แต่ยัง
+     นับใน `requestProgress` และค้างเป็นสูตรที่ไม่มีใครรู้ว่ามาจากไหน */
+  /* ⚠️ **ยกเว้นรูปทรงที่ฝ่ายสร้างแถวเองตอนส่งของ** (`deliversRows` · พัฒนากลิ่น) — แถวของ
+     ใบพวกนั้นเกิดทีหลังโดย RD (direction) ไม่ใช่ของที่ผู้ขอกรอก · 🐞 ด่านนี้เคยครอบทุกรูปทรง
+     ที่ไม่มีตาราง ⇒ ทางแก้ใบส่ง `items: before.items` เข้ามา แล้วใบพัฒนากลิ่นที่ RD ส่ง
+     direction แล้ว **แก้หัวใบ/PDR ไม่ได้อีกเลย** (ผลรีวิวก่อน merge 2026-09-11)
+     ⚠️ POST ไม่ได้อาศัยข้อยกเว้นนี้ — ทางสร้างใบไม่เขียนแถวให้รูปทรงที่ไม่มีตารางอยู่แล้ว */
+  if (!shape.hasItems && !shape.deliversRows && Array.isArray(body.items) && body.items.length) {
+    return `รูปแบบ "${requestVariantLabel({ kind, variant: body.variant })}" ไม่มีตารางรายการ — ลบรายการออกก่อน`;
   }
 
   if (String(body.title ?? '').length > 200) return 'ชื่อเรื่องยาวเกิน 200 ตัวอักษร';

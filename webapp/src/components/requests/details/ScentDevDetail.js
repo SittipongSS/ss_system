@@ -21,7 +21,7 @@ import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
 import EmptyState from "@/components/ui/EmptyState";
 import Tabs from "@/components/ui/Tabs";
-import SectionRail from "@/components/ui/SectionRail";
+import PdrReadRail from "./PdrReadRail";
 import BriefBoard from "@/components/requests/BriefBoard";
 // ⭐ แก้ทะเบียนกลิ่นจากในใบ (มติผู้ใช้ 2026-08-18) — โมดัลใช้ฟอร์มเดียวกับหน้าทะเบียน
 import RegistryEditModal from "@/components/requests/RegistryEditModal";
@@ -32,13 +32,7 @@ import { useRole } from "@/lib/roleContext";
 import RequestRows from "./RequestRows";
 import { ListChecks } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
-import PdrSummary from "@/components/requests/PdrSummary";
 import { OwnerTag, RowStepActions } from "@/components/requests/NextStepBar";
-// ⚠️ รางหมวดของทั้งสองโหมดมาจากตัวเดียวกัน — โหมดแก้ส่งค่าฟอร์ม โหมดอ่านส่งแถวคำร้อง
-// แล้วตัวลิบแปลงให้เอง ⇒ เลขบนรางก่อนกด "แก้ไข" กับหลังกดต้องตรงกันเสมอ
-import {
-  PDR_SECTIONS, pdrRailSectionsFromRequest,
-} from "@/lib/requests/pdrFields";
 import styles from "./details.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -60,7 +54,6 @@ export default function ScentDevDetail({
      · ตอนนี้แท็บงานมีสถานะรออะไรอยู่บอกชัด (EmptyState ข้างล่าง) ⇒ เข้ามาแล้วรู้เรื่อง
      และการเด้งแท็บตามข้อมูลทำให้ผู้ใช้เจอหน้าคนละหน้ากันในใบที่ดูเหมือนกัน */
   const [view, setView] = useState("work");
-  const [sectionKey, setSectionKey] = useState(PDR_SECTIONS[0].key);
   /* ⭐ ทะเบียนที่กำลังแก้อยู่ — ค่าคือก้อน `registry` ของแถวนั้น (id + kind)
      ⚠️ **ด่านจริงอยู่ที่ API** ที่นี่แค่ไม่โชว์ปุ่มให้คนที่แก้ไม่ได้ (รหัสกลิ่น = RD เท่านั้น) */
   const [editRegistry, setEditRegistry] = useState(null);
@@ -191,24 +184,13 @@ export default function ScentDevDetail({
           ต้องไล่หาว่าของที่อยากแก้อยู่ตรงไหน
           ⇒ ตอนนี้แบบฟอร์มอยู่ในแท็บ "รายละเอียด" ของ `RequestForm` เหมือนตอนเปิดใบเป๊ะ
           ⚠️ ฝั่งอ่านยังอยู่ที่นี่ตามเดิม — มันคือ *เนื้อของใบ* ไม่ใช่โหมดแก้ */}
-      {view === "pdr" && (
-        <div className={styles.pdrBlock}>
-          <SectionRail
-            // ⭐ รายชื่อหมวดมาจากที่เดียว (`pdrRailSections`) และมี "บรีฟกลิ่น"
-            // เป็นหมวดของตัวเองเหมือนฝั่งกรอก — เดิมบรีฟถูกวาดค้างไว้บนสุดนอกราง
-            // ⇒ เลือกหมวด 4 แล้วยังเห็นบรีฟอยู่ข้างบน อ่านเหมือนสองหน้ามาต่อกัน
-            sections={pdrRailSectionsFromRequest(request, request.briefs || [], request.targets || [])}
-            value={sectionKey}
-            onChange={setSectionKey}
-            ariaLabel="หมวดของแบบฟอร์ม"
-          >
-            {/* ⚠️ **ไม่มีปุ่มระดับใบตรงนี้แล้ว** (มติผู้ใช้ 2026-08-09) — "ออกเอกสาร"
-                กับ "แก้ไข" ทำอะไรกับ *ทั้งใบ* จึงอยู่ที่แผงจัดการ · ปุ่มระดับใบกระจาย
-                สองที่คือสิ่งที่ ม-49 ห้ามไว้ */}
-            <PdrSummary request={request} briefs={request.briefs || []} section={sectionKey} />
-          </SectionRail>
-        </div>
-      )}
+      {/* ⭐ **แท็บนี้อ่านอย่างเดียว** (มติผู้ใช้ 2026-08-24: "หน้าแก้ต้องเหมือนหน้าสร้าง
+          ทุกๆหัวข้อ") — เดิมโหมดแก้ PDR ถูกวาดตรงนี้อีกชุดหนึ่ง ⇒ ใบพัฒนากลิ่นมีพื้นที่แก้
+          **สองแห่งในหน้าเดียว** · ตอนนี้แบบฟอร์มอยู่ในแท็บ "รายละเอียด" ของ `RequestForm`
+          เหมือนตอนเปิดใบเป๊ะ ส่วนฝั่งอ่านคือรางนี้ ซึ่งเป็น **ของกลาง** ใช้ร่วมกับ
+          พัฒนาสูตรรูปแบบ NPD (`PdrReadRail`) */}
+      {view === "pdr" && <PdrReadRail request={request} />}
+
       {/* ⚠️ บอกผลลัพธ์ให้ครบก่อนกด — ลบทีเดียวหายสองที่ */}
       {/* ⚠️ บอกผลลัพธ์ให้ครบก่อนกด — ลบทีเดียวหายสองที่
           ⚠️ เนื้อความส่งทาง `description` ไม่ใช่ children — `ConfirmDialog` ไม่ได้

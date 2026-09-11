@@ -120,6 +120,12 @@ export function requestLineDiff(before = [], next = [], { lineShape = null } = {
     for (const f of fields) if (!sameValue(old[f], row[f])) patch[f] = normValue(row[f]);
     if (old.sortOrder !== sortOrder) patch.sortOrder = sortOrder;
     if (!Object.keys(patch).length) continue;
+    /* ⭐ **แถวที่เดินก้าวแล้ว: ป้ายกับลำดับที่ต่างไปไม่ใช่การแก้ของผู้ขอ** (ผลรีวิวก่อน merge
+       2026-09-11 · บั๊กเดิมบน main) — ป้ายเป็น snapshot ที่ถูกเขียนต่อทีหลังได้ (ส่งสูตรแล้วต่อ
+       "→ FM-…" · ทะเบียนเปลี่ยนชื่อ) และลำดับเว้นช่องได้เมื่อฝ่ายลบแถวกลาง ⇒ เดิมแก้แค่ชื่อเรื่อง
+       ก็ได้ 409 "เดินก้าวไปแล้ว" ทั้งใบ · ช่องที่ผู้ขอเป็นเจ้าของจริง (หมวด/กลิ่น/ชนิด/รายละเอียด)
+       ยังตีกลับเหมือนเดิม และแถวนั้นไม่ถูกเขียนทับป้าย/ลำดับ */
+    if (!isRowUntouched(old) && Object.keys(patch).every((k) => k === 'label' || k === 'sortOrder')) continue;
     if (!isRowUntouched(old)) {
       return {
         ...empty,

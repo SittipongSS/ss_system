@@ -85,7 +85,11 @@ const PDR_PREVIEW_BRIEF = {
   performance: ['lasting', 'diffusive'],
 };
 
+/* ⚠️ **`kind` ต้องมาด้วย** — เอกสารถามทะเบียนหัวข้อด้วยทั้งใบว่ากลิ่นมาจากไหน (บรีฟ | ทะเบียน
+   รายแถว · ม-143) · ไม่มี `kind` = ไม่มีรูปทรง ⇒ พรีวิวพิมพ์ทาง "ไม่มีบรีฟกลิ่น" แล้วกล่อง 2.1
+   หายจากใบตัวอย่าง (ผลรีวิวก่อน merge 2026-09-11) · ใบตัวอย่างเป็นพัฒนากลิ่น — แบบที่มีทุกส่วน */
 const pdrPreviewRequest = () => ({
+  kind: 'scent_dev',
   docNo: 'RQ-SB-26070001',
   customerName: 'บริษัท ตัวอย่าง จำกัด',
   status: 'pending',
@@ -99,9 +103,11 @@ const pdrPreviewRequest = () => ({
   pdrCustomerKind: 'new',
   pdrProductKinds: ['01-001', '02-010'],
   pdrWantedAt: '2026-09-15',
-  pdrMoq: '1,000 ขวด',
-  pdrTexture: 'premium',
-  pdrPackSize: '50 ml · 1,000 ชิ้น/กลิ่น',
+  // ⚠️ ไม่ใส่ pdrMoq/pdrTexture/pdrPackSize (ช่องหัวใบเดิม) — ข้อ 2.4–2.7 ย้ายลงแถวสินค้าแล้ว
+  //    (mig 0352) ใส่ไปจะได้บรรทัด "(บันทึกไว้เดิม)" บนใบตัวอย่าง ซึ่งใบใหม่ไม่มีทางมี
+  pdrShipToSameAsCustomer: true,
+  pdrArchetypes: ['caregiver', 'explorer'],
+  pdrArchetypeNotes: { caregiver: 'อบอุ่น ใส่ใจรายละเอียด' },
   pdrPackagingForms: ['bottle', 'cap', 'box'],
   pdrPackagingArtwork: 'none',
   pdrDocuments: ['coa', 'msds', 'ifra'],
@@ -121,6 +127,8 @@ const pdrPreviewRequest = () => ({
       fPricePerKg: 1200,
       fbOn: false,
       pricePerUnit: 590,
+      moqValue: 1000, moqUnit: 'ขวด', texture: 'premium', color: 'ใส ไม่แต่งสี',
+      sizeValue: 50, sizeUnit: 'ml', qtyValue: 1000, qtyUnit: 'ชิ้น',
     },
     {
       categoryCode: '02-010',
@@ -129,6 +137,8 @@ const pdrPreviewRequest = () => ({
       fbNote: 'เบสน้ำ ไม่มีแอลกอฮอล์',
       fbPricePerKg: 880,
       pricePerUnit: 250,
+      moqValue: 500, moqUnit: 'ชิ้น', texture: 'standard',
+      sizeValue: 100, sizeUnit: 'ml', qtyValue: 500, qtyUnit: 'ชิ้น', note: 'ขวดสเปรย์หัวฉีดละออง',
     },
   ],
   // ค่าที่ปกติ server เติมให้ (`findRequest`) — พรีวิวเป็นฝั่ง client จึงป้อนตรง ๆ
@@ -139,6 +149,7 @@ const pdrPreviewRequest = () => ({
     contactName: 'คุณตัวอย่าง ผู้ติดต่อ',
     contactPhone: '081-234-5678 · @example',
     customer: 'บริษัท ตัวอย่าง จำกัด',
+    customerAddress: '99/9 ถนนตัวอย่าง แขวงตัวอย่าง เขตตัวอย่าง กรุงเทพฯ 10110 (สำนักงานใหญ่)',
     deal: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
     sampleDue: '2026-08-20',
     scentCount: 3,

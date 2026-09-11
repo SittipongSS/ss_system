@@ -15,7 +15,7 @@
 // "รูปแบบของเลข" แล้วส่งชิ้นส่วนให้ฟังก์ชันออกเลข ห้ามประกอบเลขเองแล้วส่งไปเขียน
 import { businessDate, businessMonthKey } from '@/lib/businessDate';
 import { BUDDHIST_YEAR_OFFSET } from '@/lib/format';
-import { requestHasPdr } from '@/lib/master/requestTypes';
+import { requestUsesPdr } from '@/lib/master/requestTypes';
 
 export const PDR_REF_RUNNING_WIDTH = 3;
 
@@ -97,7 +97,7 @@ export function pdrRefMode(request) {
  */
 export function pdrRefNoError(request) {
   if (!request) return 'ไม่พบคำร้อง';
-  if (!requestHasPdr(request.kind)) return 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR';
+  if (!requestUsesPdr(request)) return 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR';
   if (request.pdrRefNo) return 'ใบนี้มีเลขที่เอกสารแล้ว';
   // ⚠️ ยึด `acknowledgedAt` ไม่ใช่ `status` — ใบที่เดินไปไกลแล้ว (ตอบ/ปิด) ยังต้อง
   // ออกเลขย้อนหลังได้ · ส่วนใบที่ยังไม่มีใครรับ ยังไม่มีวันที่จะเอามาทำ DDMMYY
@@ -115,7 +115,7 @@ export function pdrRefNoError(request) {
  * ช่วงกรอกเอง ระบบจึงต้อง **ไม่** ออกเลขให้ตอนกดรับเรื่อง
  */
 export function issuesPdrRefNoOnAcknowledge(request, now = new Date()) {
-  if (!request || !requestHasPdr(request.kind) || request.pdrRefNo) return false;
+  if (!request || !requestUsesPdr(request) || request.pdrRefNo) return false;
   return businessMonthKey(now) >= PDR_REF_AUTO_FROM_MONTH;
 }
 
@@ -156,7 +156,7 @@ export function normalizePdrRefNo(value) {
  */
 export function pdrRefManualError(request, value) {
   if (!request) return 'ไม่พบคำร้อง';
-  if (!requestHasPdr(request.kind)) return 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR';
+  if (!requestUsesPdr(request)) return 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR';
   if (!request.acknowledgedAt) return 'ยังไม่ได้รับเรื่อง — กรอกเลขที่เอกสารได้หลังฝ่ายรับเรื่อง';
   if (pdrRefMode(request) === 'auto') {
     return 'ใบนี้อยู่ช่วงที่ระบบออกเลขให้เอง — กรอกเองไม่ได้';

@@ -18,8 +18,9 @@ const STANDARD = {
   accentKey: 'terracotta',
 };
 
+// ⚠️ `kind` ต้องมาด้วย — บรีฟกลิ่นพิมพ์เฉพาะรูปทรงที่มีบรีฟ (พัฒนากลิ่น) ตามทะเบียนหัวข้อ
 const render = (over = {}) => renderPdrDocument({
-  request: { docNo: 'SB-26070001', customerName: 'บริษัท ตัวอย่าง จำกัด', status: 'pending' },
+  request: { kind: 'scent_dev', docNo: 'SB-26070001', customerName: 'บริษัท ตัวอย่าง จำกัด', status: 'pending' },
   briefs: [],
   company: COMPANY_PROFILE_FALLBACK,
   standard: STANDARD,
@@ -226,9 +227,12 @@ test('ตัวเลือกพิมพ์ครบทุกตัวพร�
 
 // ⭐ เลขข้อคือสิ่งที่ RD ใช้อ้างกันทางโทรศัพท์ ("ข้อ 2.8 ลูกค้ายังไม่ตอบ")
 test('เลขข้อบนกระดาษพิมพ์นำหน้าป้าย และไม่หลุดไปอยู่บนจอ', () => {
-  const html = render();
-  for (const no of ['1.1', '1.10', '1.14', '2.2', '2.8', '2.9', '2.10']) {
-    assert.match(html, new RegExp(`<span class="no">${no.replace('.', '\\.')}</span>`), `ขาดเลขข้อ ${no}`);
+  // ⚠️ ข้อ 2.1–2.7 อยู่ในกล่องสินค้า (mig 0352) — ใบที่ไม่มีสินค้าไม่มีเลขพวกนั้นให้พิมพ์
+  const html = render({
+    request: { kind: 'scent_dev', docNo: 'SB-1', status: 'pending', targets: [{ categoryCode: '01-006' }] },
+  });
+  for (const no of ['1.1', '1.7', '1.7.1', '1.10', '1.14', '1.15', '2.1', '2.2', '2.7.3', '2.8', '2.9', '2.10']) {
+    assert.match(html, new RegExp(`<span class="no">${no.replaceAll('.', '\\.')}</span>`), `ขาดเลขข้อ ${no}`);
   }
   // ป้ายในทะเบียนต้องยังไม่มีเลขปน — จอกับฟอร์มอ่านป้ายชุดเดียวกันนี้
   assert.equal(PDR_FIELDS.some((f) => /^\d/.test(f.label)), false);
@@ -246,4 +250,83 @@ test('ข้อที่กระดาษรวมไว้กล่องเ�
     const cellHtml = row.exec(html)?.[1] || '';
     for (const text of inside) assert.ok(cellHtml.includes(text), `ข้อ ${no} ขาด "${text}"`);
   }
+});
+
+// ── แบบฟอร์มรอบใหม่ (มติผู้ใช้ 2026-09-11 · mig 0352) ─────────────────────────
+const TARGET = {
+  categoryCode: '01-006', scentId: 'SC-1', scentCode: 'PF9120101', scentName: 'Lumière Signature',
+  fOn: true, fNote: 'Woody Floral', fPricePerKg: 1800, pricePerUnit: 390,
+  moqValue: 1000, moqUnit: 'ชิ้น', texture: 'standard', color: 'ใส',
+  sizeValue: 100, sizeUnit: 'ml', qtyValue: 500, qtyUnit: 'ชิ้น', note: 'ขวดแก้วสีชา',
+};
+const NPD = {
+  kind: 'formula_dev', variant: 'npd', docNo: 'RQ-FD-26090012', status: 'pending',
+  targets: [TARGET, { ...TARGET, scentId: 'SC-2', scentCode: 'PF9120102', scentName: 'Lumière Lobby', sizeValue: 50 }],
+  pdrContext: { scentCount: 2, customerAddress: '99/1 ถ.รัชดาภิเษก กรุงเทพฯ 10400' },
+};
+
+test('⭐ หมวด 1 ชื่อใหม่ "Customer / Brand Information · ข้อมูลลูกค้า/แบรนด์"', () => {
+  assert.match(render(), /<h3>1\. Customer \/ Brand Information · ข้อมูลลูกค้า\/แบรนด์<\/h3>/);
+});
+
+test('⭐ พัฒนาสูตร NPD: ไม่มีกล่องบรีฟ · บอกว่ากลิ่นไปอยู่ไหน · กล่องสินค้าพิมพ์กลิ่นจากทะเบียน', () => {
+  const html = render({ request: NPD, briefs: [BRIEF] });
+  // บรีฟที่หลุดมาต้องไม่ถูกพิมพ์ — ตัวตัดสินคือทะเบียนหัวข้อ ไม่ใช่จำนวนก้อน
+  assert.equal(html.includes('บรีฟกลิ่นที่'), false);
+  assert.equal(html.includes('กลิ่นที่ต้องการ / บรีฟกลิ่น'), false);
+  assert.match(html, /ไม่มีบรีฟกลิ่น — กลิ่นเลือกจากทะเบียนในข้อ 2\.1/);
+  assert.match(html, /<h4>สินค้าที่ 1 — /);
+  assert.match(html, /<h4>สินค้าที่ 2 — /);
+  assert.match(html, /กลิ่น \(จากทะเบียน\)<\/span>\s*<span class="subBody">PF9120101 Lumière Signature/);
+  assert.match(html, /100 ml · 500 ชิ้น/);
+  assert.match(html, /1,000 ชิ้น/, 'MOQ ต้องคั่นหลักพัน');
+  // 2.5 พิมพ์ครบทุกตัวเลือกพร้อมช่องติ๊ก
+  assert.match(html, /<li class="on">☑ STANDARD<\/li><li>☐ PREMIUM<\/li>/);
+  // 1.12 บอกว่านับจากไหน
+  assert.match(html, /นับจากกลิ่นของสินค้าในข้อ 2/);
+});
+
+test('พัฒนากลิ่น: กล่องสินค้าพิมพ์ 2.1 ว่า "ตามบรีฟ" · บรีฟพิมพ์ 2.1.4 Performance ก่อน 2.1.5 Scentotype', () => {
+  const html = render({
+    request: { kind: 'scent_dev', docNo: 'SB-1', status: 'pending', targets: [{ ...TARGET, scentId: null }] },
+    briefs: [BRIEF],
+  });
+  assert.match(html, /ตามบรีฟกลิ่นข้อ 2\.1 ด้านบน/);
+  assert.equal(html.includes('ไม่มีบรีฟกลิ่น'), false);
+  const perf = html.indexOf('<span class="no">2.1.4</span>Performance');
+  const st = html.indexOf('<span class="no">2.1.5</span>Scentotype');
+  assert.ok(perf > 0 && st > perf, 'ลำดับต้องเป็น 2.1.4 Performance → 2.1.5 Scentotype');
+});
+
+test('1.7 ที่อยู่ลูกค้าจากทะเบียน · 1.7.1 เปิดสวิตช์ = "ที่อยู่เดียวกับลูกค้า" · สวิตช์ไม่มีแถวของตัวเอง', () => {
+  const same = render({ request: { ...NPD, pdrShipToSameAsCustomer: true, pdrShipTo: 'ค้างจากเดิม' } });
+  assert.match(same, /ที่อยู่ลูกค้า<\/th><td>99\/1 ถ\.รัชดาภิเษก/);
+  assert.match(same, /ที่อยู่จัดส่งตัวอย่าง<\/th><td>ที่อยู่เดียวกับลูกค้า \(ข้อ 1\.7\)/);
+  assert.equal(same.includes('ส่งตัวอย่างไปที่อยู่เดียวกับลูกค้า</th>'), false, 'สวิตช์ต้องไม่มีแถวบนกระดาษ');
+  // ⚠️ ใบเก่า (สวิตช์ NULL) พิมพ์ข้อความเดิมตามเดิม — ไม่ต้อง backfill
+  const old = render({ request: { ...NPD, pdrShipTo: 'โกดังบางนา' } });
+  assert.match(old, /ที่อยู่จัดส่งตัวอย่าง<\/th><td>โกดังบางนา/);
+});
+
+test('1.15 Archetype: พิมพ์ครบ 12 ตัว · ตัวที่ติ๊กต่อข้อความเขียนต่อ', () => {
+  const html = render({
+    request: { ...NPD, pdrArchetypes: ['caregiver'], pdrArchetypeNotes: { caregiver: 'ดูแลแขกเหมือนคนในบ้าน' } },
+  });
+  assert.match(html, /<li class="on">☑ CAREGIVER — ดูแลแขกเหมือนคนในบ้าน<\/li>/);
+  for (const label of ['INNOCENT', 'EVERYMAN', 'HERO', 'EXPLORER', 'REBEL', 'LOVER', 'CREATOR', 'JESTER', 'SAGE', 'MAGICIAN', 'RULER']) {
+    assert.match(html, new RegExp(`<li>☐ ${label}</li>`), `ขาด ${label}`);
+  }
+  assert.equal(html.includes('Archetype — เขียนต่อ</th>'), false, 'ข้อความเขียนต่อต้องไม่มีแถวแยก');
+});
+
+test('ใบที่ยังไม่มีสินค้า = แถว N/A ไม่ใช่หายไปทั้งข้อ', () => {
+  const html = render({ request: { ...NPD, targets: [] } });
+  assert.match(html, /<th>สินค้าที่ขอพัฒนา<\/th><td><span class="na">N\/A<\/span>/);
+});
+
+// ⚠️ สินค้ามากต้องดันหน้าเพิ่ม ไม่ใช่ยัดลงแผ่นเดิมจน `overflow: hidden` กินทิ้ง
+test('สินค้ายิ่งมาก หน้ายิ่งเพิ่ม — กล่องสินค้าเข้าโมเดลต้นทุนด้วย', () => {
+  const one = sheets(render({ request: { ...NPD, targets: [TARGET] } }));
+  const many = sheets(render({ request: { ...NPD, targets: Array.from({ length: 8 }, () => TARGET) } }));
+  assert.ok(many > one, `8 สินค้าต้องใช้หน้ามากกว่า 1 สินค้า (${many} vs ${one})`);
 });

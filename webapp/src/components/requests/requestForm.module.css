@@ -726,3 +726,41 @@
   gap: var(--space-1);
   margin-top: var(--space-2);
 }
+
+/* ── เลขข้อบนกระดาษนำหน้าป้าย (PDR FM-RD-01 · มติผู้ใช้ 2026-09-11) ──────────────
+   ⭐ สีดินเผาแยกเลขจากป้าย ให้กวาดตาหา "ข้อ 2.7.1" ได้เร็วตอนวางกระดาษไว้ข้าง ๆ
+   ⚠️ `--accent-ink` ไม่ใช่ `--accent` — ตัวอักษรเล็กบนพื้นอ่อนต้องผ่าน 4.5:1 (WCAG AA)
+   ⚠️ กว้างขั้นต่ำเท่า "2.7.1" — ป้ายในคอลัมน์เดียวกันจะเริ่มแนวเดียวกัน */
+.pdrNo {
+  display: inline-block;
+  min-width: 2.6rem;
+  margin-right: var(--space-1-5);
+  color: var(--accent-ink);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ช่องที่ระบบเติมแบบหลายบรรทัด (1.7 ที่อยู่ลูกค้า) — ชิดบน ตัดบรรทัดตามข้อความ
+   ⚠️ line-height ≥ 1.65 — กล่องที่ห่อภาษาไทยหลายบรรทัด สระบน/ล่างต้องไม่ชนกัน */
+.derivedLong {
+  align-items: flex-start;
+  white-space: pre-line;
+  line-height: var(--lh-thai);
+  min-height: 4.5rem;
+}
+
+/* ตัวเลข + หน่วย (ข้อ 2.4 · 2.7.1 · 2.7.2) — ตัวเลขกินที่ หน่วยกว้างคงที่ติดขวา */
+.amountPair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7rem;
+  gap: var(--space-2);
+}
+
+/* แถวของสวิตช์ในแบบฟอร์ม PDR (`SwitchRow`) — สูงเท่าช่องกรอก ให้แนวตรงกับช่องข้าง ๆ */
+.switchRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--ctl-h);
+}

@@ -17,10 +17,47 @@ test('ไม่มีช่องไหนบังคับ — ใบเปล
   assert.equal(error, null);
   // ⚠️ ช่องติ๊กหลายตัวคืน `[]` ไม่ใช่ null — คอลัมน์เป็น NOT NULL DEFAULT '{}' (0218)
   // ส่ง null ไปจะโดน constraint ตีกลับด้วย error ดิบจาก Postgres
+  // ⚠️ ข้อความเขียนต่อ (jsonb NOT NULL DEFAULT '{}' · 0352) คืน `{}` ด้วยเหตุผลเดียวกัน
   for (const [column, v] of Object.entries(columns)) {
-    assert.equal(Array.isArray(v) ? v.length === 0 : v === null, true, column);
+    const empty = Array.isArray(v) ? v.length === 0
+      : v && typeof v === 'object' ? Object.keys(v).length === 0 : v === null;
+    assert.equal(empty, true, column);
   }
   assert.equal(normalizePdr(null).error, null);
+});
+
+test('1.7.1 สวิตช์ที่อยู่จัดส่ง: สามสถานะ · เปิดแล้วล้างที่อยู่ที่พิมพ์ค้าง', () => {
+  // ⚠️ ค่าที่อ่านไม่ออกเป็น NULL ไม่ใช่ false — "ไม่รู้" ต้องไม่กลายเป็น "ตอบว่าไม่"
+  assert.equal(normalizePdr({}).columns.pdrShipToSameAsCustomer, null);
+  assert.equal(normalizePdr({ shipToSameAsCustomer: '' }).columns.pdrShipToSameAsCustomer, null);
+  assert.equal(normalizePdr({ shipToSameAsCustomer: 'yes' }).columns.pdrShipToSameAsCustomer, null);
+  assert.equal(normalizePdr({ shipToSameAsCustomer: 'false' }).columns.pdrShipToSameAsCustomer, false);
+  assert.equal(normalizePdr({ shipToSameAsCustomer: false }).columns.pdrShipToSameAsCustomer, false);
+
+  const off = normalizePdr({ shipToSameAsCustomer: 'false', shipTo: 'โกดังบางนา' });
+  assert.equal(off.columns.pdrShipTo, 'โกดังบางนา');
+  // 🔴 เปิดสวิตช์ = ไม่มีที่อยู่จัดส่งของตัวเอง — ข้อความค้างต้องหาย ไม่งั้นเอกสารพิมพ์
+  // คนละที่กับที่จอบอก และปิดสวิตช์วันหลังที่อยู่เก่าจะโผล่กลับมาเหมือนเพิ่งพิมพ์
+  const on = normalizePdr({ shipToSameAsCustomer: 'true', shipTo: 'โกดังบางนา' });
+  assert.equal(on.columns.pdrShipToSameAsCustomer, true);
+  assert.equal(on.columns.pdrShipTo, null);
+});
+
+test('1.15 Archetype: ข้อความเขียนต่อเก็บเฉพาะตัวที่ยังติ๊ก · ว่างได้ · มีเพดาน', () => {
+  const r = normalizePdr({
+    archetypes: ['caregiver', 'sage'],
+    archetypeNotes: { caregiver: '  ดูแลแขกเหมือนคนในบ้าน ', sage: '', hero: 'ติ๊กออกไปแล้ว' },
+  });
+  assert.equal(r.error, null);
+  assert.deepEqual(r.columns.pdrArchetypes, ['caregiver', 'sage']);
+  // ติ๊กออกแล้ว (hero) ข้อความต้องหายตาม · เว้นว่าง (sage) ไม่ต้องเก็บ key ว่าง
+  assert.deepEqual(r.columns.pdrArchetypeNotes, { caregiver: 'ดูแลแขกเหมือนคนในบ้าน' });
+  assert.deepEqual(normalizePdr({ archetypeNotes: 'ไม่ใช่ object' }).columns.pdrArchetypeNotes, {});
+  assert.match(
+    normalizePdr({ archetypes: ['hero'], archetypeNotes: { hero: 'ก'.repeat(201) } }).error,
+    /Archetype.*ยาวเกิน 200/,
+  );
+  assert.match(normalizePdr({ archetypes: Array(13).fill(0).map((_, i) => `a${i}`) }).error, /ไม่เกิน 12/);
 });
 
 test('ช่องติ๊กหลายตัว: ตัดค่าซ้ำ · กันจำนวนเกิน · ไม่ตรวจว่าอยู่ในชุดตัวเลือกไหม', () => {

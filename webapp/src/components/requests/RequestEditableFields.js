@@ -10,7 +10,7 @@ import Textarea from "@/components/ui/Textarea";
 import DocumentLines from "@/components/requests/DocumentLines";
 import ProductDevLines from "@/components/requests/ProductDevLines";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
-import { lineShapeForKind, requestHasPdr, requestKindMeta } from "@/lib/master/requestTypes";
+import { requestLineShape, requestUsesPdr, requestKindMeta } from "@/lib/master/requestTypes";
 import { billAmountFor, billFieldInit } from "@/lib/requests/billingQuotations";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import styles from "./requestForm.module.css";
@@ -48,7 +48,9 @@ import styles from "./requestForm.module.css";
 export function RequestTitleBodyFields({ value = {}, onChange, disabled = false, idPrefix = "req" }) {
   const kind = value.kind || "";
   const copy = requestKindMeta(kind)?.form || {};
-  const hasPdr = requestHasPdr(kind);
+  // ⚠️ ถาม **ทั้งใบ** ไม่ใช่ `kind` — พัฒนาสูตรมีสองรูปแบบ และรูปแบบ NPD คือตัวที่
+  // แทนช่อง "รายละเอียด" ด้วยแบบฟอร์ม PDR (รูปแบบ standard ยังมีช่องนี้เหมือนเดิม)
+  const hasPdr = requestUsesPdr(value);
   const set = (patch) => onChange?.({ ...value, ...patch });
 
   return (
@@ -165,13 +167,15 @@ export function RequestDueUrgentFields({
  * วันที่/ด่วน — **ชนิดเอกสารกับรายละเอียดรายบรรทัดแก้ไม่ได้เลย** ทางเดียวคือลบทั้งใบ
  * เปิดใหม่ (ทำได้เฉพาะร่าง) · อาการเดียวกันกับ "ขอใบวางบิล" และ "พัฒนาสูตร"
  *
- * ⚠️ เลือกตารางจาก **รูปร่างบรรทัด** (`lineShapeForKind`) ไม่ใช่ `kind === "..."`
+ * ⚠️ เลือกตารางจาก **รูปร่างบรรทัด** (`requestLineShape`) ไม่ใช่ `kind === "..."`
  * — กติกาเดิมของฟอร์ม (มี ratchet ห้ามไว้) · หัวข้อใหม่ที่ใช้รูปร่างเดิมได้ตารางฟรี
  * ⚠️ `scent_dev` ไม่มีตารางตรงนี้โดยตั้งใจ — แถวของมันเกิดตอน RD กดส่งงาน
  * ไม่ได้กรอกตอนเปิดใบ (ดู `rd/lineShapes.js`)
  */
 export function RequestLineFields({
-  kind, value = [], onChange, disabled = false,
+  /* ⚠️ **รับทั้งใบ ไม่ใช่แค่ `kind`** (2026-09-09) — รูปแบบ NPD ของพัฒนาสูตรไม่มี
+     บรรทัดเลย ⇒ `requestLineShape` คืน null แล้วตารางหายไปทั้งก้อนตรงนี้ */
+  subject, value = [], onChange, disabled = false,
   categories = [], scents = [], customerId = null,
   /* ⭐ **บรรทัดหยุดแก้ก่อนหัวใบหนึ่งขั้น** (มติผู้ใช้ 2026-09-01) — ใบที่รับเรื่องแล้ว
      ยังแก้หัวใบได้ แต่แถวเดินก้าวไปแล้วทั้งใบ ⇒ ตารางต้อง **เทาพร้อมบอกเหตุ**
@@ -185,8 +189,8 @@ export function RequestLineFields({
      คือยอดหรืออะไร ไม่งั้นทุกครั้งที่มีของใหม่มาแปะ ต้องมาแก้ตารางกลางอีกรอบ */
   detailExtra = null,
 }) {
-  const lineShape = lineShapeForKind(kind);
-  const copy = requestKindMeta(kind)?.form || {};
+  const lineShape = requestLineShape(subject);
+  const copy = requestKindMeta(subject?.kind)?.form || {};
   if (!lineShape || lineShape === "scent_dev") return null;
 
   const lock = linesDisabled == null ? disabled : linesDisabled;

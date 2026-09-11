@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
+import { VARIANT_SWITCHABLE_STATUSES, requestVariantLock, requestVariantSideLock } from "@/lib/requests/variantSwitch";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -43,10 +44,11 @@ import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFa
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import submitScope from "@/lib/requests/submitScope";
 import { scentBriefNameError } from "@/lib/requests/scentBriefs";
+import { submitRequestError } from "@/lib/requests/stages";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
-  requestHasPdr, requestKindMeta, requestNeedsRef,
+  requestUsesPdr, requestKindMeta, requestNeedsRef, requestPdrRowsPickScent, requestVariantKey,
 } from "@/lib/master/requestTypes";
 import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
@@ -82,7 +84,7 @@ import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
 import {
-  lineShapeForKind, requestDeliversRows, requestHasItems, requestKindLabel,
+  requestLineShape, requestUsesDeliveredRows, requestUsesItems, requestKindLabel,
 } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
@@ -236,7 +238,11 @@ export default function RequestDetailPage() {
      ในวินาทีแรก (โรคเดียวกับ productTypes ข้างบน) */
   const [registry, setRegistry] = useState({ customers: [], scents: [], formulas: [] });
   const hasFormulaRows = (req?.items || []).some((i) => i.lineKind === "product_dev");
-  const needsCustomers = hasFormulaRows || req?.kind === "scent_dev";
+  /* ⭐ ใบที่เลือกกลิ่นจากทะเบียนรายแถวสินค้า (พัฒนาสูตร NPD · ข้อ 2.1) — โหมดแก้ต้องมี
+     ทะเบียนกลิ่นให้เลือก · ไม่โหลด = ช่องกลิ่นว่างทุกแถวทั้งที่ใบเลือกไว้แล้ว */
+  const pdrPicksScent = req ? requestPdrRowsPickScent(req) : false;
+  const needsScents = hasFormulaRows || pdrPicksScent;
+  const needsCustomers = needsScents || req?.kind === "scent_dev";
   useEffect(() => {
     if (!needsCustomers) return;
     const get = (url) => apiFetch(url, { cache: "no-store" })
@@ -245,11 +251,11 @@ export default function RequestDetailPage() {
       .catch(() => []);
     Promise.all([
       get("/api/customers"),
-      // กลิ่น/สูตรใช้เฉพาะฟอร์มสูตร — ใบสายกลิ่นไม่ต้องลากทั้งทะเบียนมาเปล่า ๆ
-      hasFormulaRows ? get("/api/master/scents") : [],
+      // กลิ่นใช้กับฟอร์มสูตร/แถวสินค้า NPD · สูตรใช้เฉพาะฟอร์มสูตร — ใบอื่นไม่ลากทั้งทะเบียนมาเปล่า ๆ
+      needsScents ? get("/api/master/scents") : [],
       hasFormulaRows ? get("/api/master/formulas") : [],
     ]).then(([customers, scents, formulas]) => setRegistry({ customers, scents, formulas }));
-  }, [needsCustomers, hasFormulaRows]);
+  }, [needsCustomers, needsScents, hasFormulaRows]);
   /* ค่าตั้งต้นของฟอร์มส่งงาน — ลูกค้า/กลิ่น/หมวด เป็นของที่ **แถวรู้อยู่แล้ว** ⇒ เติมให้
      แล้วล็อกไว้ (ดู prop `locked` ของ FormulaForm) · ลูกค้ายกจากใบ ไม่ใช่จากกลิ่น
      เพื่อให้ตรงกับที่ server ตัดสิน (route ของแถว) */
@@ -374,7 +380,6 @@ export default function RequestDetailPage() {
      จาก "แจ้งกำหนดส่ง" เป็น "แจ้งวันส่งรอบแก้" · ตัวตัดสินอยู่ที่ `lib/requests/dueRound.js`
      ตัวเดียวกับที่ราง คิว และด่านฝั่ง server ใช้ ⇒ ปุ่มกับ API เห็นตรงกันเสมอ */
   const dueStale = dueIsStale(req, req.items);
-  const showPdr = requestHasPdr(req.kind);
   /* ⭐ **ก้าว "แจ้งกำหนดส่ง" ของใบประเมินคือ "ลงคิว"** (แผน เฟส 2) — วัน เวลา เจ้าหน้าที่
      และนัดบนตารางเกิดพร้อมกัน ⇒ โมดัลเดียวกันแต่ถามครบสามอย่าง
      ⚠️ ธงมาจาก **ทะเบียนหัวข้อ** (`needs` มี `site`) ไม่ใช่ `kind === '...'` กลางหน้า
@@ -416,7 +421,7 @@ export default function RequestDetailPage() {
   // ชนิด) มี progress.complete = false เสมอเพราะ total = 0 · เดิมเงื่อนไขปิดใบอ่านจาก
   // ตัวนี้ตรง ๆ ทำให้ **ปุ่มปิดไม่เคยโผล่เลย** คำร้องพวกนั้นค้างถาวร
   // → ใช้ด่านของ lib เป็นตัวตัดสินที่เดียว (ตัวเดียวกับที่ server ใช้) ไม่คิดเอง
-  const hasItems = requestHasItems(req.kind);
+  const hasItems = requestUsesItems(req);
   // ⭐ ปิดสองฝ่าย (ม-89) — ปุ่มปิดเป็นของ **ผู้ขอ** เท่านั้น · ฝ่ายปลายทางจบงาน
   // ของตัวผ่านรายการ (ส่งเอกสาร/ปฏิเสธ) ไปแล้ว การปิดคือผู้ขอยืนยันรับงานทั้งใบ
   // ⚠️ เก็บ **ประโยค** ไว้ด้วย ไม่ใช่แค่ true/false — ผู้ขอที่กดปิดไม่ได้ต้องรู้ว่า
@@ -432,7 +437,7 @@ export default function RequestDetailPage() {
      🐞 เดิมเงื่อนไขนี้เป็นจริงกับพัฒนากลิ่นมาตลอด แต่ถูกปุ่ม "ส่งงาน" บังไว้ · พอปุ่มนั้น
      ย้ายลงตาราง (2026-08-18) ปุ่ม "ตอบแล้ว" ก็โผล่ขึ้นมาเป็นปุ่มหลักของ RD ทันที
      ซึ่งเป็นทางลัดปิดงานที่ข้ามสถานะจริงของ direction */
-  const canMarkAnswered = !hasItems && !requestDeliversRows(req.kind)
+  const canMarkAnswered = !hasItems && !requestUsesDeliveredRows(req)
     && owner && !answerRequestError(req) && !closure.deptDone;
   /* ⭐ **"ยังไม่จบ" — ถอนตราปิดที่กดไปแล้ว** (มติผู้ใช้ 2026-08-20) · โผล่เฉพาะตอนมี
      ตราฝั่งใดฝั่งหนึ่งแล้วแต่ยังไม่ครบ · กดได้ทั้งสองฝั่ง (ฝั่งที่กดเปลี่ยนใจ หรือ
@@ -634,7 +639,7 @@ export default function RequestDetailPage() {
              (mig 0271 · 0272) · เลขอัตโนมัติใช้วันที่ของวินาทีที่กดและแก้ทีหลังไม่ได้
              ส่วนช่วงกรอกเองต้องบอกให้ชัดว่ายังต้องไปกดอีกปุ่ม ไม่งั้นคนกดจะเข้าใจว่า
              จบแล้ว แล้วเอกสารออกไปโดยไม่มีเลข */
-          + (!requestHasPdr(req.kind) ? ""
+          + (!requestUsesPdr(req) ? ""
             : issuesPdrRefNoOnAcknowledge(req)
               ? " · ระบบจะออกเลขที่เอกสารของ PDR (วันที่วันนี้) ให้ในจังหวะเดียวกัน"
               : " · เดือนนี้ยังไม่ออกเลขให้เอง — รับเรื่องแล้วกด \"กรอกเลขที่เอกสาร\" ใส่เลขจากกระดาษ"),
@@ -773,13 +778,19 @@ export default function RequestDetailPage() {
          ทันทีโดยที่แบบฟอร์มยังไม่ถูกเขียน ไม่ใช่บันทึกครึ่งเดียวแล้วบอกว่าพลาด */
       onClick: async () => {
         if (canEditInfo) {
+          /* ⚠️ บรรทัดถูกล็อก (รับเรื่องแล้ว) = **ไม่ส่ง `items` ไปเลย** — server ถือว่าไม่แตะบรรทัด ·
+             🐞 เดิมส่งแถวกลับทุกครั้ง แล้วแถวที่เดินก้าวไปแล้ว (ส่งสูตรแล้ว · ลูกค้าขอแก้ = แถวซ้ำ
+             หมวด × กลิ่น) ทำให้แก้แค่ชื่อเรื่องก็โดนตีกลับทั้งใบ (ผลรีวิวก่อน merge 2026-09-11) */
+          const { items: draftItems, ...draftRest } = editDraft;
           const ok = await call("", {
             method: "PATCH",
-            body: JSON.stringify({ action: "update", ...editDraft }),
-          }, canEditPdrNow ? null : "แก้ข้อมูลคำร้องแล้ว");
+            body: JSON.stringify({
+              action: "update", ...draftRest, ...(lineEditBlocker ? {} : { items: draftItems }),
+            }),
+          }, pdrEditableInDraft ? null : "แก้ข้อมูลคำร้องแล้ว");
           if (!ok) return;
         }
-        if (canEditPdrNow) {
+        if (pdrEditableInDraft) {
           const ok = await call("", {
             method: "PATCH",
             body: JSON.stringify({
@@ -809,7 +820,11 @@ export default function RequestDetailPage() {
          "ด่านจริงอยู่ที่ API ตัวเดียวกับที่หน้าจอถาม" แต่หน้าจอไม่เคยถาม
          ⚠️ ด่านฝั่ง server ยังอยู่ครบ — อันนี้เป็นชั้นบอกทาง ไม่ใช่ชั้นกัน */
       onClick: () => {
-        const briefNameError = scentBriefNameError(req.briefs || [], { stage: "submit" });
+        /* ⭐ ด่านรูปทรงของใบ (รวม "สินค้าทุกแถวต้องเลือกกลิ่น" ของพัฒนาสูตร NPD) —
+           ฟังก์ชันตัวเดียวกับที่ route ใช้ตัดสิน 409 · ไม่ถามก่อน = โมดัลเปิดแล้วค่อยโดน
+           ตีกลับเป็น toast ใต้โมดัล (บทเรียน 2026-09-03 ข้างบน) */
+        const shapeError = submitRequestError(req, req.items || []);
+        const briefNameError = shapeError || scentBriefNameError(req.briefs || [], { stage: "submit" });
         if (briefNameError) {
           setToast({ kind: "error", msg: briefNameError });
           return;
@@ -828,6 +843,13 @@ export default function RequestDetailPage() {
               คำตอบตั้งแต่จังหวะนี้พอดี · เติมค่าเดิมของใบไว้ก่อน คนกดจะได้เห็นว่ามี
               อะไรกรอกไว้แล้วบ้าง ไม่ใช่ช่องว่างที่กดยืนยันแล้วลบของเดิมทิ้ง */
         onClick: () => {
+          /* ⭐ ด่านเดียวกับ route (`acknowledgeRequestError`) ถามก่อนเปิดโมดัล — ใบ NPD ที่ไม่มี
+             สินค้า/กลิ่นต้องบอกเหตุตั้งแต่กด ไม่ใช่ยืนยันแล้วค่อยโดน 409 ใต้โมดัล (กติกา GatedAction) */
+          const ackError = acknowledgeRequestError(req);
+          if (ackError) {
+            setToast({ kind: "error", msg: ackError });
+            return;
+          }
           setAckSigners(Object.fromEntries(
             PDR_SIGNER_FIELDS.map((f) => [f.key, req[f.column] || ""]),
           ));
@@ -948,7 +970,19 @@ export default function RequestDetailPage() {
     && REQUEST_EDITABLE_STATUSES.includes(req.status);
   /* บรรทัดหยุดแก้ก่อนหัวใบหนึ่งขั้น — เทาไว้พร้อมเหตุผล ไม่ใช่ปล่อยให้พิมพ์แล้วโดน 409 */
   const lineEditBlocker = hasItems ? requestLineEditError(req) : null;
-  const canEditPdrNow = requestHasPdr(req.kind) && !!req._canEditPdr;
+  const canEditPdrNow = requestUsesPdr(req) && !!req._canEditPdr;
+  /* ⭐ **แก้ PDR ในรอบแก้นี้ได้ไหม — ถามด้วยรูปแบบที่กำลังเลือกในฟอร์ม** (ผลรีวิวก่อน merge
+     2026-09-11) — 🐞 เดิมใช้ `canEditPdrNow` ของใบที่บันทึกไว้ ⇒ สลับ Standard → NPD แล้ว
+     แบบฟอร์มเทาทั้งแผงโดยไม่มีเหตุผล · สลับ NPD → Standard แล้วก้าวที่สองยิง `pdr` ใส่ใบที่
+     ไม่มี PDR แล้ว ⇒ 403 ทั้งที่การสลับบันทึกไปแล้ว
+     ⚠️ สลับรูปแบบได้เฉพาะก่อนรับเรื่อง = ช่วงที่สิทธิ์ PDR เป็นของผู้ขอ (`pdrEdit.js`) ⇒ ใบที่
+        เพิ่งสลับเข้าโหมด PDR ใช้สิทธิ์แก้หัวใบแทนได้ตรงความหมาย · server ตรวจซ้ำอยู่ดี */
+  const pdrEditableInDraft = !!editDraft && requestUsesPdr(editDraft)
+    && (requestUsesPdr(req)
+      ? canEditPdrNow
+      // ⚠️ สิทธิ์ฝั่งผู้ขอเท่านั้น (`_mine` = canManageRequest ของ server) ไม่ใช่ `canEditInfo` — ตัวนั้น
+      //    รวมฝ่ายปลายทางด้วย แต่ PDR ก่อนรับเรื่องเป็นของผู้ขอ (`pdrEdit.js`) ⇒ RD สลับแล้วเซฟครึ่งเดียว
+      : !!req._mine && VARIANT_SWITCHABLE_STATUSES.includes(req.status));
   // ⭐ ประโยค "ทำไมแก้ไม่ได้ตอนนี้" — server ตัดสินมาให้แล้ว (`editPdrError`) หน้าจอ
   /* เหตุผลที่แก้ไม่ได้ — **มาจาก server ทั้งสองฝั่ง ไม่คิดเอง**
      · ใบที่มีแบบฟอร์ม PDR ⇒ `_editPdrBlocker` (สิทธิ์สลับมือตอนรับเรื่อง)
@@ -956,7 +990,7 @@ export default function RequestDetailPage() {
      🐞 เดิมฝั่งขวาเป็น `null` ตายตัว ⇒ ใบขอเอกสาร/ขอใบวางบิล/พัฒนาสูตร/สอบถาม
      พอฝ่ายกด "รับเรื่อง" **ปุ่มแก้หายไปทั้งปุ่มโดยไม่มีเหตุผลบนจอ** ทั้งที่ประโยค
      ไทยรออยู่ใน `requestEditError` แล้ว (ผลตรวจ 2026-08-24) */
-  const editBlocker = (requestHasPdr(req.kind) ? req._editPdrBlocker : req._editBlocker) || null;
+  const editBlocker = (requestUsesPdr(req) ? req._editPdrBlocker : req._editBlocker) || null;
 
   /* ⭐ เปิดโมดัลส่งงาน **ของบรีฟก้อนเดียว** (มติผู้ใช้ 2026-08-18) — ปุ่มอยู่ในแถว
      ของบรีฟนั้นในตารางสรุปทั้งใบ
@@ -1011,7 +1045,7 @@ export default function RequestDetailPage() {
         kind: "open",
         icon: Printer,
         onClick: () => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank"),
-        visible: requestHasPdr(req.kind),
+        visible: requestUsesPdr(req),
       },
       {
         /* ⭐ **ปุ่มแก้ปุ่มเดียว** (มติผู้ใช้ 2026-08-10) — เดิมแยกเป็น "แก้ข้อมูลคำร้อง"
@@ -1030,6 +1064,11 @@ export default function RequestDetailPage() {
              (ฟอร์มเป็น controlled ล้วน · คีย์ที่ขาดกลายเป็น uncontrolled input) */
           setEditDraft(emptyRequestForm({
               kind: req.kind,
+              /* ⭐ รูปแบบงานเข้าโหมดแก้ด้วย — ไม่พาไป = ฟอร์มตกไปใช้รูปแบบตั้งต้น
+                 แล้วใบ NPD จะเปิดมาเป็นหน้าตา standard (ตารางแถวโผล่ · PDR หาย) */
+              /* ⚠️ `requestVariantKey` ไม่ใช่ `req.variant` ดิบ — ทุกแถวเก็บ 'standard' (DEFAULT ของ
+                 mig 0351) แม้หัวข้อที่ไม่มีรูปแบบ · ส่งค่านั้นกลับไปคือส่งรูปแบบให้หัวข้อที่ไม่มี */
+              variant: requestVariantKey(req) || "",
               dept: req.dept || "",
               team: req.team || "",
               title: req.title || "",
@@ -1056,7 +1095,7 @@ export default function RequestDetailPage() {
                  แถวด้วย id · ลืมบรรทัดนี้ = ทุกแถวกลายเป็นแถวใหม่แล้วของเดิมถูกลบ
                  พร้อมไฟล์แนบที่ผูกกับ id นั้น (บั๊กเดียวกับที่ `pdrValuesFrom` กันไว้
                  ฝั่ง PDR) */
-              items: hasItems ? lineFormRows(req.items || [], lineShapeForKind(req.kind)) : [],
+              items: hasItems ? lineFormRows(req.items || [], requestLineShape(req)) : [],
               // ยอดที่ขอวางบิล — ส่งคู่เสมอ server คิดใหม่จากยอดจริงของใบอยู่ดี
               billPercent: req.billPercent ?? null,
               billAmount: req.billAmount ?? null,
@@ -1103,7 +1142,7 @@ export default function RequestDetailPage() {
            (มติ GatedAction) · ใบที่มี PDR โชว์เสมอเพราะสิทธิ์สลับมือไปอีกฝั่ง
            คนที่เห็นปุ่มหายจะไม่รู้ว่าต้องไปบอกใคร */
         visible: (canEditInfo || canEditPdrNow
-          || (!!editBlocker && (requestHasPdr(req.kind) || req._mine || owner)))
+          || (!!editBlocker && (requestUsesPdr(req) || req._mine || owner)))
           && !editing,
         disabled: !canEditInfo && !canEditPdrNow,
         disabledReason: editBlocker,
@@ -1150,7 +1189,7 @@ export default function RequestDetailPage() {
         kind: "edit",
         icon: Hash,
         onClick: () => setConfirm({ kind: "pdr-ref" }),
-        visible: canAnswer && requestHasPdr(req.kind) && !pdrRefNoError(req),
+        visible: canAnswer && requestUsesPdr(req) && !pdrRefNoError(req),
       },
       {
         /* ⭐ **ช่วงเปลี่ยนผ่าน: กรอกเลขเอง** (มติผู้ใช้ 2026-08-20 · mig 0272) — ใบที่
@@ -1166,7 +1205,7 @@ export default function RequestDetailPage() {
         icon: Hash,
         onClick: () => setRefDraft(req.pdrRefNo || ""),
         visible: canAnswer
-          && requestHasPdr(req.kind)
+          && requestUsesPdr(req)
           && pdrRefMode(req) === "manual"
           && (!req.pdrRefNo || canEditPdrRefManual(req)),
       },
@@ -1406,9 +1445,14 @@ export default function RequestDetailPage() {
             /* ⚠️ **สองด่าน สลับมือคนละจังหวะ** — คนที่แก้ PDR ได้อาจแก้หัวใบไม่ได้แล้ว
                (และกลับกัน) ⇒ เทาส่วนที่ไม่ใช่ของตัวเอง ไม่ใช่ซ่อน · server ตัดสิน */
             disabled={saving || !canEditInfo}
-            pdrDisabled={saving || !canEditPdrNow}
+            pdrDisabled={saving || !pdrEditableInDraft}
             linesDisabled={saving || !canEditInfo || !!lineEditBlocker}
             linesNote={lineEditBlocker}
+            /* ⭐ **สลับรูปแบบงานได้ถึงก่อนรับเรื่อง** (มติผู้ใช้ 2026-09-09) — ด่านตัวเดียว
+               กับที่ API ใช้ (`variantSwitchError`) ⇒ ปุ่มที่เทาไว้กับคำตอบของเซิร์ฟเวอร์
+               พูดประโยคเดียวกัน · ถามด้วยรูปแบบที่ **กำลังเลือกอยู่ในฟอร์ม** เพื่อให้
+               ข้อความอัปเดตตามของที่คนกำลังจะทำ ไม่ใช่ค่าที่บันทึกไว้เมื่อวาน */
+            variantLock={requestVariantLock(req) || requestVariantSideLock(!!req._mine)}
             people={signerPeople}
             lockKind
             deferMentions
@@ -1428,6 +1472,9 @@ export default function RequestDetailPage() {
               salesOrder: req.refSalesOrder?.orderNumber || req.salesOrderId || "",
             }}
             billBaseAmount={req.billBaseAmount ?? null}
+            /* ค่าที่แบบฟอร์ม PDR เติมให้ (ผู้ติดต่อ · ที่อยู่ 1.7 · ดีล) — server ประกอบไว้แล้ว
+               หน้านี้ไม่ได้โหลดทะเบียนลูกค้ามา ⇒ ไม่ส่ง = ช่องเส้นประทั้งแผงในโหมดแก้ */
+            pdrContext={req.pdrContext || null}
             /* ทะเบียนที่ช่อง "อ้างอิงเพิ่ม" กับตารางบรรทัดต้องใช้ — โหลดตอนกดแก้
                เท่านั้น (ใบส่วนใหญ่ไม่เคยถูกแก้ ⇒ ไม่ต้องจ่ายตอนเปิดอ่าน) */
             quotations={editRefs.quotations}
@@ -2674,7 +2721,7 @@ export default function RequestDetailPage() {
             ⚠️ โชว์เฉพาะช่องที่ **มีคนถือตำแหน่งนั้นจริง** — ช่องที่ไม่มีใครเลือกได้
             (Sale & Marketing Manager ที่ยังไม่มี role ในระบบ) เป็นช่องเปล่าที่กินที่
             เฉย ๆ · ยังพิมพ์เองได้ที่ฟอร์ม PDR เหมือนเดิม */}
-        {confirm?.kind === "acknowledge" && ackSigners && requestHasPdr(req.kind)
+        {confirm?.kind === "acknowledge" && ackSigners && requestUsesPdr(req)
           ? PDR_SIGNER_FIELDS.map((f) => {
             const picks = f.roles?.length
               ? signerPeople.filter((p) => f.roles.includes(p.role))

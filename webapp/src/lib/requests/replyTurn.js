@@ -11,7 +11,7 @@
 // ⚠️ จุดอ่อนที่รู้ตัว: ฝ่ายโพสต์โน้ตกลางทาง ("ขอเวลา 2 วัน") ป้ายจะพลิกไปฝั่งผู้ขอ
 // ทั้งที่งานยังอยู่ที่ฝ่าย — มันแก้ตัวเองในข้อความถัดไป · อย่าเพิ่งเติมปุ่มกดทับจนกว่า
 // จะเจอของจริงบ่อยพอ (ปุ่มที่ไม่มีใครกด = หนี้ UI)
-import { requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes';
+import { requestUsesDeliveredRows, requestUsesItems } from '@/lib/master/requestTypes';
 
 /**
  * หัวข้อที่ **ทั้งใบคือเธรด** — ไม่มีบรรทัดตั้งแต่เปิดใบ และฝ่ายไม่ได้สร้างแถวตอนส่งงาน
@@ -20,8 +20,10 @@ import { requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes'
  * หัวข้อที่มีแถวมีขั้นของแถวเล่าอยู่แล้วว่าใครค้าง ("รอ RD ทำต่อ" / "รอ SA ทำต่อ")
  * ซึ่งละเอียดกว่าเธรด ⇒ ทับด้วยการพลิกตามข้อความล่าสุดเมื่อไรคือทำให้ข้อมูลหยาบลง
  */
-export function requestIsThreadOnly(kind) {
-  return !requestHasItems(kind) && !requestDeliversRows(kind);
+export function requestIsThreadOnly(request) {
+  // ⚠️ รับ **ทั้งใบ** — พัฒนาสูตรรูปแบบ NPD ไม่มีแถว จึงเดินด้วยเธรดล้วนเหมือน
+  // สอบถามข้อมูล ส่วนรูปแบบ standard มีแถวเล่าเองว่าใครค้าง
+  return !requestUsesItems(request) && !requestUsesDeliveredRows(request);
 }
 
 /**
@@ -73,7 +75,7 @@ export function requestSideText(request, side, verb) {
  */
 export function requestReplyTurn(request) {
   if (!request || request.status !== 'acknowledged') return null;
-  if (!requestIsThreadOnly(request.kind)) return null;
+  if (!requestIsThreadOnly(request)) return null;
   /* ⚠️ **ถามว่าใบนี้มีแถวอยู่จริงไหม ไม่ใช่เชื่อทะเบียนชนิดอย่างเดียว** — บทเรียน
      เดียวกับด่านปิดเรื่อง (`closeRequestError`): ใบที่มีแถวจริงมีขั้นของแถวเล่าอยู่แล้ว
      ว่าใครค้าง ซึ่งละเอียดกว่าเธรด ⇒ ทับด้วยการพลิกตามข้อความล่าสุดคือทำให้หยาบลง

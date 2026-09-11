@@ -13,10 +13,12 @@ import {
   resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
 import { SCENTOTYPES, SCENT_PERFORMANCE } from '@/lib/requests/kinds/rd/scentBriefTypes';
-import { PDR_SECTIONS, pdrFieldText, pdrSectionGroups } from '@/lib/requests/pdrFields';
-import { PDR_TARGET_KINDS } from '@/lib/requests/pdrTargets';
+import {
+  PDR_BRIEF_LABELS, PDR_SECTIONS, pdrFieldText, pdrSectionGroups,
+} from '@/lib/requests/pdrFields';
+import { PDR_TARGET_SPEC, pdrTargetFacts, pdrTargetSizeText } from '@/lib/requests/pdrTargets';
+import { requestPdrScentSource, requestUsesScentBriefs } from '@/lib/master/requestTypes';
 import { categoryLabel } from '@/lib/master/categoryOf';
-import { fmtNumber } from '@/lib/format';
 
 const PDR_KEY = 'pdr';
 
@@ -31,9 +33,11 @@ const PAPER_STATUS = [
 
 // หัวข้อบนกระดาษ — ภาษาอังกฤษล้วนตามต้นฉบับ FM-RD-01 · หัวข้อที่ไม่มีบนกระดาษ
 // (ผู้เซ็น) ใช้คำอังกฤษของตารางลายเซ็นแทน
+// ⭐ หมวด 1 เปลี่ยนชื่อเป็น "ข้อมูลลูกค้า/แบรนด์" (มติผู้ใช้ 2026-09-11) — ต่อคำไทยท้ายหัว
+//    เพราะหมวดนี้ถือข้อมูลแบรนด์ด้วย (1.4–1.6 · 1.15 Archetype) ไม่ใช่แค่ตัวลูกค้า
 const PAPER_HEADINGS = {
   request: 'Request Information',
-  customer: '1. Customer Information',
+  customer: '1. Customer / Brand Information · ข้อมูลลูกค้า/แบรนด์',
   spec: '2. Product Specifications',
   regulatory: 'Regulatory & Compliance Requirements',
 };
@@ -117,10 +121,24 @@ const COST = {
   // ตาราง 60.85mm + หัวข้อของตัวเอง 12.7mm
   signatures: 73.6,
   status: 7.9,
+  // ⭐ กล่องสินค้าหนึ่งตัว (ข้อ 2.1–2.7.3 · mig 0352) — ซ้าย 28% หัวสินค้า · ขวาสองคอลัมน์
+  // ห้าแถว (2.1 เต็มแถว · 2.2|2.3 · 2.4|2.5 · 2.6|2.7.1 · 2.7.2|2.7.3)
+  // ── รอบวัด 2026-09-11 (headless Chrome · offsetHeight) ─────────────────
+  //   ข้อความสั้นทุกช่อง (N/A ครึ่งหนึ่ง)          61.65 + margin 2 = 63.65mm
+  //   F+FB สองท่อน · หมายเหตุ 38 ตัว               66.67 + margin 2 = 68.67mm
+  //   หมายเหตุ 300 ตัว + รายละเอียด F 120 ตัว      124.09 + margin 2 = 126.09mm
+  // ⇒ ฐาน 66 (ครอบกล่องสั้นเผื่อ 2.3mm) + `halfWrapCost` ของช่องที่ยาวได้ (โมเดลได้
+  //   80.4 / 128.4 สำหรับสองกล่องหลัง = ประเมินสูงกว่าจริงทุกกล่อง ซึ่งเป็นทิศที่ปลอดภัย)
+  product: 66,
+  // บรรทัด "ไม่มีบรีฟกลิ่น" ของใบที่เลือกกลิ่นจากทะเบียน — วัดได้ 8.73 + margin 2mm
+  noBrief: 11,
 };
 
 // ข้อความยาวตกบรรทัด — ช่องค่ากว้าง ~118mm ที่ 8.4pt ≈ 75 ตัวอักษรไทยต่อบรรทัด
 const wrapCost = (text) => Math.max(0, Math.ceil(String(text || '').length / 75) - 1) * COST.note;
+// ครึ่งคอลัมน์ขวาของกล่องสินค้า (~60mm) — วัดจริงได้ ~34 ตัวอักษรไทยเต็มความกว้างต่อบรรทัด
+// ⚠️ ตั้ง 30 ไม่ใช่ 34 — ประเมินต่ำ = เนื้อหาหายใต้ `overflow: hidden` · ประเมินสูง = แค่หน้าหลวม
+const halfWrapCost = (text) => Math.max(0, Math.ceil(String(text || '').length / 30) - 1) * COST.note;
 
 // ── ชิ้นส่วนที่พิมพ์ในช่องค่า ─────────────────────────────────────────────
 //
@@ -146,7 +164,49 @@ function tickLine(field, text) {
   </div>`;
 }
 
+/* ⭐ ช่องติ๊กที่มีข้อความเขียนต่อ (1.15 Archetype · 12 ตัวเลือก) — พิมพ์ครบทุกตัวเหมือนช่องติ๊ก
+   อื่น แต่ **สามคอลัมน์** (12 บรรทัดเรียงลงกินครึ่งแผ่น) · ตัวที่ติ๊กเต็มแถวพร้อมข้อความต่อท้าย
+   (ท่าเดียวกับ Scentotype บนกระดาษ: "☑ CAREGIVER — ดูแลแขกเหมือนคนในบ้าน") */
+const NOTES_OF = Object.fromEntries(
+  PDR_SECTIONS.flatMap((s) => s.fields).filter((f) => f.type === 'notes').map((f) => [f.of, f]),
+);
+function notedOptionList(field, request) {
+  const picked = new Set(Array.isArray(request[field.column]) ? request[field.column] : []);
+  const notes = request[NOTES_OF[field.key]?.column] || {};
+  return `<ul class="opts cols">${(field.options || []).map((o) => {
+    const on = picked.has(o.value);
+    const note = on ? String(notes[o.value] ?? '').trim() : '';
+    return `<li${on ? ' class="on"' : ''}>${on ? TICK_ON : TICK_OFF} ${esc(o.label)}${note ? ` — ${esc(note)}` : ''}</li>`;
+  }).join('')}</ul>`;
+}
+/* ต้นทุนของกริดสามคอลัมน์ — **เดินตามการวางจริงของ CSS grid** ไม่ใช่นับแบบรวมก้อน
+   🐞 รอบแรกนับ "ติ๊ก + ceil(ไม่ติ๊ก/3)" ⇒ ประเมินต่ำ (ผลรีวิวก่อน merge 2026-09-11): ตัวที่ติ๊ก
+      กินเต็มแถว (`grid-column: 1 / -1`) และ auto-placement เดินหน้าอย่างเดียว ⇒ แถวที่ยังไม่เต็ม
+      ก่อนหน้ามันถูกปิดทิ้ง · และข้อความเขียนต่อ (≤200 ตัว) ตกบรรทัดในช่องค่า ~75 ตัว/บรรทัด
+      ⇒ ต้นทุนต่ำกว่าจริง = เนื้อหาถูก `overflow: hidden` ของแผ่นกินทิ้ง */
+const notedOptionCost = (field, request) => {
+  const picked = new Set(Array.isArray(request[field.column]) ? request[field.column] : []);
+  const notes = request[NOTES_OF[field.key]?.column] || {};
+  let lines = 0;
+  let fill = 0;
+  for (const o of field.options || []) {
+    if (picked.has(o.value)) {
+      if (fill) { lines += 1; fill = 0; }
+      // ⚠️ 55 ตัว/บรรทัด ไม่ใช่ 75 ของช่องค่าทั่วไป — ตัวที่ติ๊กเป็นตัวหนา และวัดจริง (2026-09-11 ·
+      //    ข้อความ 200 ตัวติดกัน) ได้ ~60 ตัว/บรรทัด · ตั้งต่ำกว่าจริงไว้ ประเมินเกิน = แค่หน้าหลวม
+      const text = `${o.label} — ${String(notes[o.value] ?? '').trim()}`;
+      lines += Math.max(1, Math.ceil(text.length / 55));
+      continue;
+    }
+    fill += 1;
+    if (fill === 3) { lines += 1; fill = 0; }
+  }
+  if (fill) lines += 1;
+  return COST.option * lines;
+};
+
 function fieldValueHtml(field, request, context) {
+  if (field.type === 'multi' && NOTES_OF[field.key]) return notedOptionList(field, request);
   if (field.type === 'select' || field.type === 'multi') {
     return optionList(field.options || [], request[field.column]);
   }
@@ -156,6 +216,7 @@ function fieldValueHtml(field, request, context) {
 }
 
 function fieldValueCost(field, request, context) {
+  if (field.type === 'multi' && NOTES_OF[field.key]) return notedOptionCost(field, request);
   if (field.type === 'select' || field.type === 'multi') {
     return COST.option * (field.options || []).length;
   }
@@ -174,65 +235,63 @@ function groupRow(group, request, context) {
   const head = `${group.no ? `<span class="no">${esc(group.no)}</span>` : ''}${esc(title)}`;
   // ช่องเดี่ยวที่มี hint (เช่นโน้ตสีแดงข้อ 1.11) — กระดาษเขียนโน้ตไว้ในช่องค่า
   const single = group.fields.length === 1 ? group.fields[0] : null;
-  const note = single && single.type !== 'tick' && single.hint
-    ? `<span class="note">${esc(single.hint)}</span>` : '';
+  // ⭐ 1.12 ของใบที่เลือกกลิ่นจากทะเบียน — บอกว่านับจากไหน (ใบพัฒนากลิ่นนับจาก SO ตามเดิม)
+  const hint = single?.key === 'scentCount' && requestPdrScentSource(request) === 'registry'
+    ? 'นับจากกลิ่นของสินค้าในข้อ 2' : single?.hint;
+  const note = single && single.type !== 'tick' && hint
+    ? `<span class="note">${esc(hint)}</span>` : '';
   const body = group.fields.map((f) => fieldValueHtml(f, request, context)).join('');
   // ⚠️ ขอบบนล่างของช่องคิด **ครั้งเดียวต่อแถว** ไม่ใช่ต่อช่องที่อยู่ในแถวเดียวกัน ·
   // ต้นทุนของแถวข้อความธรรมดา (COST.row) รวมขอบไว้แล้วจึงไม่บวกซ้ำ
   const stacked = group.fields.some((f) => ['select', 'multi', 'tick'].includes(f.type));
-  const cost = (stacked ? COST.optionBase : 0)
+  const cost = (stacked ? COST.optionBase : 0) + (note && !single?.hint ? COST.note : 0)
     + group.fields.reduce((sum, f) => sum + fieldValueCost(f, request, context), 0);
   return { tr: `<tr><th>${head}</th><td>${body}${note}</td></tr>`, cost };
 }
 
-// ── 2.2 / 2.3 · ต้นทุนและราคาขายเป้าหมาย รายสินค้า (mig 0229) ────────────
+// ── ข้อ 2.1–2.7 รายสินค้า (mig 0229 · 0352) — กล่องละหนึ่งสินค้า ─────────────
 //
-// ⭐ **บนจอกรอกเป็นตารางเดียว แต่บนกระดาษแยกสองข้อ** (มติผู้ใช้ 2026-08-10) —
-// ฟอร์ม FM-RD-01 นับข้อ 2.2 กับ 2.3 แยกกัน · รวมเป็นข้อเดียวบนกระดาษเมื่อไร เลขข้อ
-// ของทั้งแผ่นจะเลื่อนไม่ตรงกับต้นฉบับที่ทุกคนถืออยู่
-//
-// ⚠️ ใบที่ยังไม่มีรายการต้องได้กล่อง N/A เหมือนช่องอื่น ไม่ใช่หายไปทั้งข้อ — กระดาษที่
+// ⭐ **กล่องทรงเดียวกับบรีฟกลิ่น** (มติผู้ใช้ 2026-09-11 · ม็อกไฟนอล) — ซ้าย: "สินค้าที่ N —
+// หมวด" + ขนาด · จำนวน · ขวา: ข้อ 2.1–2.7.3 สองคอลัมน์ · เดิมพิมพ์ 2.2/2.3 เป็นสองแถวที่
+// รวมทุกสินค้า ⇒ พอสเปกย้ายลงแถว คนอ่านต้องไล่จับคู่เองว่าบรรทัดไหนของสินค้าไหน
+// ⚠️ ข้อความทุกข้อมาจาก `pdrTargetFacts` ตัวเดียวกับจอสรุป · ข้อ 2.5 พิมพ์ครบทุกตัวเลือก
+//    พร้อมช่องติ๊กเหมือนช่องติ๊กอื่นบนกระดาษ
+// ⚠️ ใบที่ยังไม่มีรายการต้องได้แถว N/A เหมือนช่องอื่น ไม่ใช่หายไปทั้งข้อ — กระดาษที่
 // พิมพ์ออกไปต้องบอกได้ว่า "ถามแล้วแต่ยังไม่มีคำตอบ"
-function targetRows(request, categoryName) {
-  const list = Array.isArray(request.targets) ? request.targets : [];
-  const money = (v) => (v == null || v === '' ? null : fmtNumber(v));
+const TEXTURE_SPEC = PDR_TARGET_SPEC.find((f) => f.key === 'texture');
 
-  const costLines = list.map((t) => {
-    const parts = [];
-    for (const kind of PDR_TARGET_KINDS) {
-      if (!t[kind.onField]) continue;
-      const price = money(t[kind.priceField]);
-      const note = String(t[kind.noteField] || '').trim();
-      parts.push(`${kind.label}${note ? ` ${note}` : ''}${price ? ` ${price} บาท/Kg` : ''}`);
-    }
-    return parts.length ? `${categoryName(t.categoryCode)} — ${parts.join(' · ')}` : null;
-  }).filter(Boolean);
-
-  const unitLines = list.map((t) => {
-    const price = money(t.pricePerUnit);
-    return price ? `${categoryName(t.categoryCode)} — ${price} บาท/ชิ้น` : null;
-  }).filter(Boolean);
-
-  const row = (no, label, lines) => ({
-    tr: `<tr><th><span class="no">${esc(no)}</span>${esc(label)}</th><td>${
-      lines.length ? `<ul class="opts">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : cell(null)
-    }</td></tr>`,
-    cost: COST.row + COST.note * Math.max(0, lines.length - 1),
-  });
-
-  return [
-    row('2.2', 'Target Cost / KG (F/FB ไม่รวมบรรจุภัณฑ์)', costLines),
-    row('2.3', 'Target Price / Unit (ราคาขาย)', unitLines),
-  ];
+function productBlock(row, index, { categoryName, scentSource }) {
+  const facts = pdrTargetFacts(row, { scentSource });
+  const sub = (f) => {
+    const body = f.key === 'texture'
+      ? optionList(TEXTURE_SPEC.options, row.texture)
+      : `<span class="subBody">${cell(f.value)}</span>`;
+    return `<div class="sub${f.key === 'scent' ? ' wide' : ''}">
+      <span class="subHead"><span class="no">${esc(f.no)}</span>${esc(f.label)}</span>${body}
+    </div>`;
+  };
+  return `<section class="briefBlock prodBlock">
+    <div class="briefLeft">
+      <h4>สินค้าที่ ${index + 1} — ${esc(categoryName(row.categoryCode))}</h4>
+      <p class="briefText">${cell(pdrTargetSizeText(row))}</p>
+    </div>
+    <div class="briefRight prodRight">${facts.map(sub).join('')}</div>
+  </section>`;
 }
+
+const productCost = (row, { scentSource }) => {
+  const facts = pdrTargetFacts(row, { scentSource });
+  const long = facts.filter((f) => f.key === 'cost' || f.key === 'note' || f.key === 'color');
+  return COST.product + long.reduce((sum, f) => sum + halfWrapCost(f.value), 0);
+};
 
 // ── 2.1 บรีฟกลิ่น — สองคอลัมน์เหมือนกระดาษ ───────────────────────────────
 //
 // ⭐ กระดาษวาง "กลิ่นที่ต้องการ / บรีฟกลิ่น" ไว้คอลัมน์ซ้าย แล้ว 2.1.1–2.1.5 เรียงลง
 // คอลัมน์ขวาในกล่องเดียวกัน — เรียงเป็นแถวเดี่ยวเหมือนหัวข้ออื่นจะอ่านคนละจังหวะกับกระดาษ
 //
-// ⚠️ Scentotype (2.1.4) และ Performance (2.1.5) พิมพ์ครบทุกตัวเลือกพร้อมช่องติ๊ก ·
-// 2.1.4 มีเส้นให้เขียนต่อหลังทุกตัวบนกระดาษ ⇒ ตัวที่ติ๊กแล้วพิมพ์ข้อความต่อท้าย (mig 0222)
+// ⚠️ Performance (2.1.4) และ Scentotype (2.1.5) พิมพ์ครบทุกตัวเลือกพร้อมช่องติ๊ก ·
+// Scentotype มีเส้นให้เขียนต่อหลังทุกตัวบนกระดาษ ⇒ ตัวที่ติ๊กแล้วพิมพ์ข้อความต่อท้าย (mig 0222)
 function briefBlock(brief = {}, index = 0, total = 1) {
   const title = total > 1 ? `2.1 บรีฟกลิ่นที่ ${index + 1}` : '2.1 กลิ่นที่ต้องการ / บรีฟกลิ่น';
   const picked = new Set(brief.scentotypes || []);
@@ -248,26 +307,30 @@ function briefBlock(brief = {}, index = 0, total = 1) {
     <span class="subBody">${cell(value)}</span>
   </div>`;
 
+  // ⚠️ ป้าย + เลขข้อจากทะเบียน `PDR_BRIEF_LABELS` — 2.1.4 Performance · 2.1.5 Scentotype
+  //    ตามไฟล์ของ AE (มติผู้ใช้ 2026-09-11 · สลับกับลำดับเดิม)
+  const L = PDR_BRIEF_LABELS;
+  const paper = (key) => L[key].paper || L[key].label;
   return `<section class="briefBlock">
     <div class="briefLeft">
       <h4>${esc(title)}${brief.label ? ` — ${esc(brief.label)}` : ''}</h4>
       <p class="briefText">${cell(brief.brief)}</p>
       <div class="sub">
-        <span class="subHead">หากต้องการให้ทำวิจัย ระบุ</span>
+        <span class="subHead">${esc(paper('researchTopic'))}</span>
         <span class="subBody">${cell(brief.researchTopic)}</span>
       </div>
     </div>
     <div class="briefRight">
-      ${sub('2.1.1', 'แรงบันดาลใจ (Why แก่นของแบรนด์)', brief.inspiration)}
-      ${sub('2.1.2', 'ช่วงกลิ่นที่ชื่นชอบ', brief.likedNotes)}
-      ${sub('2.1.3', 'กลิ่นที่ End-user ไม่ชอบ', brief.dislikedNotes)}
+      ${sub(L.inspiration.no, paper('inspiration'), brief.inspiration)}
+      ${sub(L.likedNotes.no, paper('likedNotes'), brief.likedNotes)}
+      ${sub(L.dislikedNotes.no, paper('dislikedNotes'), brief.dislikedNotes)}
       <div class="sub">
-        <span class="subHead"><span class="no">2.1.4</span>Scentotype</span>
-        ${scentotypes}
+        <span class="subHead"><span class="no">${esc(L.performance.no)}</span>${esc(L.performance.label)}</span>
+        ${optionList(SCENT_PERFORMANCE, brief.performance)}
       </div>
       <div class="sub">
-        <span class="subHead"><span class="no">2.1.5</span>Performance ของกลิ่น</span>
-        ${optionList(SCENT_PERFORMANCE, brief.performance)}
+        <span class="subHead"><span class="no">${esc(L.scentotypes.no)}</span>${esc(L.scentotypes.label)}</span>
+        ${scentotypes}
       </div>
     </div>
   </section>`;
@@ -457,20 +520,44 @@ export function renderPdrDocument({
   pushSection('customer');
 
   items.push({ type: 'heading', section: 'spec', html: `<h3>${esc(PAPER_HEADINGS.spec)}</h3>`, cost: COST.heading });
-  // ⚠️ ใบที่ยังไม่มีบรีฟก็ต้องได้กล่อง 2.1 เปล่า — กระดาษที่พิมพ์ไปเขียนมือต่อได้
-  const list = briefs.length ? briefs : [{}];
-  for (const [index, brief] of list.entries()) {
+  const scentSource = requestPdrScentSource(request);
+  if (requestUsesScentBriefs(request)) {
+    // ⚠️ ใบที่ยังไม่มีบรีฟก็ต้องได้กล่อง 2.1 เปล่า — กระดาษที่พิมพ์ไปเขียนมือต่อได้
+    const list = briefs.length ? briefs : [{}];
+    for (const [index, brief] of list.entries()) {
+      items.push({
+        type: 'atom',
+        section: 'spec',
+        heading: PAPER_HEADINGS.spec,
+        html: briefBlock(brief, index, list.length),
+        cost: briefCost(brief),
+      });
+    }
+  } else {
+    /* ⭐ ใบที่เลือกกลิ่นจากทะเบียน (พัฒนาสูตร NPD) — **บอกว่าไม่มีบรีฟ** ไม่ใช่เว้นไปเฉย ๆ
+       RD ที่คุ้นกับกระดาษพัฒนากลิ่นจะมองหากล่อง 2.1 · บรรทัดนี้บอกว่ากลิ่นไปอยู่ที่ไหน */
     items.push({
-      type: 'atom',
-      section: 'spec',
-      heading: PAPER_HEADINGS.spec,
-      html: briefBlock(brief, index, list.length),
-      cost: briefCost(brief),
+      type: 'atom', section: 'spec', heading: PAPER_HEADINGS.spec,
+      html: '<p class="noBrief">ไม่มีบรีฟกลิ่น — กลิ่นเลือกจากทะเบียนในข้อ 2.1 ของสินค้าแต่ละตัว</p>',
+      cost: COST.noBrief,
     });
   }
-  // ⚠️ 2.2/2.3 ต้องมาก่อนข้ออื่นของหมวดสเปก — เรียงตามเลขข้อบนกระดาษ
-  for (const { tr, cost } of targetRows(request, (code) => categoryLabel(code, context.categories || []))) {
-    items.push({ type: 'row', section: 'spec', heading: PAPER_HEADINGS.spec, tr, cost });
+  // ⭐ สินค้ารายตัว (ข้อ 2.1–2.7.3) — ต้องมาก่อนข้ออื่นของหมวดสเปก ตามเลขข้อบนกระดาษ
+  const targets = Array.isArray(request.targets) ? request.targets : [];
+  const categoryName = (code) => categoryLabel(code, context.categories || []) || code;
+  if (!targets.length) {
+    items.push({
+      type: 'row', section: 'spec', heading: PAPER_HEADINGS.spec,
+      tr: `<tr><th>สินค้าที่ขอพัฒนา</th><td>${cell(null)}</td></tr>`,
+      cost: COST.row,
+    });
+  }
+  for (const [index, row] of targets.entries()) {
+    items.push({
+      type: 'atom', section: 'spec', heading: PAPER_HEADINGS.spec,
+      html: productBlock(row, index, { categoryName, scentSource }),
+      cost: productCost(row, { scentSource }),
+    });
   }
   const specSection = PDR_SECTIONS.find((s) => s.key === 'spec');
   for (const group of pdrSectionGroups(specSection, request, context)) {
@@ -562,6 +649,17 @@ export function renderPdrDocument({
       .pdr .sub:last-child { margin-bottom: 0; }
       .pdr .subHead { display: block; color: var(--doc-navy); font-size: 7.8pt; font-weight: 600; }
       .pdr .subBody { display: block; overflow-wrap: anywhere; }
+
+      /* 1.15 Archetype — สามคอลัมน์ · ตัวที่ติ๊กเต็มแถวพร้อมข้อความเขียนต่อ */
+      .pdr .opts.cols { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 3mm; }
+      .pdr .opts.cols li.on { grid-column: 1 / -1; }
+
+      /* ข้อ 2.1–2.7 รายสินค้า — กล่องทรงเดียวกับบรีฟ · ซ้ายแคบ (หัวสินค้า) ขวาสองคอลัมน์ */
+      .pdr .prodBlock { grid-template-columns: 28% 72%; margin-bottom: 2mm; }
+      .pdr .prodRight { display: grid; grid-template-columns: 1fr 1fr; column-gap: 3mm; }
+      .pdr .prodRight .sub.wide { grid-column: 1 / -1; }
+      .pdr .noBrief { margin: 0 0 2mm; padding: 1.6mm 1.8mm; font-size: 8.4pt; line-height: 1.65;
+        color: var(--doc-muted); border: .35mm dashed var(--doc-line-strong); }
 
       .pdr .blk { break-inside: avoid; }
       .pdr table.sign { width: 100%; border-collapse: collapse; }

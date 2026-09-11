@@ -39,13 +39,15 @@ import TeamPickerField from "@/components/ui/TeamPickerField";
 import { canCreateServiceSite, userTeams } from "@/lib/permissions";
 import SurveySiteFields from "@/components/requests/SurveySiteFields";
 import PdrForm from "@/components/requests/PdrForm";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { pdrRailSections } from "@/lib/requests/pdrFields";
-import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
+import { emptyPdr, pdrContext, pdrFormContext } from "@/lib/requests/pdrFields";
 import {
   PLANNED_REQUEST_DEPTS, requestOptionalRefs, defaultRequestDept,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
-  kindsForDept, requestHasItems,
-  requestHasPdr,
+  kindsForDept, requestUsesItems,
+  requestUsesPdr, requestVariants, requestVariantKey,
+  requestPdrScentSource, requestUsesScentBriefs,
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
@@ -98,6 +100,10 @@ export const emptyRequestForm = (over = {}) => ({
   productTypeId: "",  // หมวดสินค้าที่จะขึ้นตัวอย่าง
   dept: defaultRequestDept(over?.kind),
   kind: "",
+  /* รูปแบบงานของหัวข้อที่มีสองแบบ (พัฒนาสูตร: standard | npd · มติ 2026-09-09)
+     ⚠️ ว่าง = รูปแบบตั้งต้นของหัวข้อ — ห้ามตั้งค่าเดาไว้ที่นี่ เพราะฟอร์มนี้ใช้กับ
+     ทุกหัวข้อ และหัวข้ออื่นไม่มีรูปแบบให้เลือกเลย */
+  variant: "",
   title: "",
   body: "",
   urgent: false,
@@ -198,6 +204,14 @@ export default function RequestForm({
   /* รายชื่อผู้ใช้ — ตอนนี้มีผู้ใช้รายเดียวคือช่องผู้เซ็นของแบบฟอร์ม PDR
      (ส่งต่อทั้งก้อน ฟอร์มนี้ไม่ตัดสินว่าใครคู่กับช่องไหน) */
   people = [],
+  /* ⭐ **เหตุผลที่สลับรูปแบบงานไม่ได้** (พัฒนาสูตร standard ↔ NPD · มติ 2026-09-09)
+     null = สลับได้ · มีข้อความ = เทาปุ่มไว้แล้ว **บอกเหตุ** ไม่ใช่ซ่อนทั้งชุด
+     (กติกาบ้าน: ติดด่าน = โชว์แล้วบอกเหตุตอนกด · ไม่มีสิทธิ์เท่านั้นที่ซ่อน)
+     ค่าตั้งต้น = ฝั่งสร้างสลับได้เสมอ ⇒ หน้าเปิดใบไม่ต้องรู้จักพร็อพนี้ */
+  variantLock = null,
+  /* ⭐ ค่าที่ server ประกอบให้แบบฟอร์ม PDR ของใบนี้ (`req.pdrContext`) — โหมดแก้เท่านั้น
+     (ฝั่งสร้างยังไม่มีใบ จึงคำนวณพรีวิวจากทะเบียนที่โหลดมาเอง) */
+  pdrContext: pdrContextOfRequest = null,
 }) {
   const isEdit = mode === "edit";
   const set = (patch) => onChange({ ...value, ...patch });
@@ -212,7 +226,38 @@ export default function RequestForm({
   // (ของเดิมผูกกับหัวข้อเก่าที่เปิดใบใหม่ไม่ได้แล้ว หัวข้อที่ใช้จริงเลยไม่เคยได้ข้อความ
   //  ของตัวเอง) · ทะเบียนเติมค่ากลางให้ครบทุกคีย์แล้ว จึงอ่านตรง ๆ ได้ไม่ต้อง fallback
   const copy = meta.form || {};
-  const hasItems = requestHasItems(kind);
+  // ⚠️ ทั้ง `hasItems` และ `hasPdr` อ่านจาก **ทั้งใบ** — พัฒนาสูตรตอบต่างกันสองรูปแบบ
+  const hasItems = requestUsesItems(value);
+  /* ⭐ **รูปแบบงานของหัวข้อที่มีสองแบบ** (มติผู้ใช้ 2026-09-09) — ทะเบียนบอกว่ามีไหม
+     ฟอร์มไม่รู้จักชื่อหัวข้อ — มี ratchet ห้ามเทียบชื่อหัวข้อในไฟล์นี้ */
+  const variants = requestVariants(kind);
+  const variantKey = requestVariantKey(value);
+  /* ⚠️ **สลับรูปแบบต้องไม่ทิ้งของที่พิมพ์ไปแล้วเงียบ ๆ** — ถามด้วยโมดัลของบ้านก่อน
+     แล้วบอกให้ตรงว่าอะไรจะหาย (แพตเทิร์นเดียวกับ `switchMode` ของ PdrForm)
+     ⭐ **ล้างเฉพาะฝั่งที่รูปแบบใหม่ไม่มีที่ให้อยู่** (ตารางรายการ) — ของ PDR ไม่ถูกลบ
+     เลยแม้แต่ตอนสลับกลับ: มันอยู่คนละคอลัมน์ และกลับมาโหมด NPD แล้วได้คืนครบ
+     (ไม่มีถังขยะในระบบนี้ ⇒ ไม่ลบดีกว่าลบแล้วกู้ไม่ได้) */
+  const pickVariant = async (next) => {
+    if (!next || next === variantKey) return;
+    const dropsItems = !requestUsesItems({ kind, variant: next }) && items.length > 0;
+    if (dropsItems) {
+      const ok = await confirmAction({
+        title: `สลับเป็นรูปแบบ ${variants?.[next]?.label || next}`,
+        // ⚠️ บอกตรง ๆ ว่าหายจริงตอนบันทึก พร้อมไฟล์แนบรายแถว — ไม่มีถังขยะให้กู้ (ผลรีวิวรอบสอง)
+        description: `รูปแบบนี้ไม่มีตารางรายการ — รายการที่กรอกไว้ ${items.length} แถวจะถูกลบเมื่อกดบันทึก (รวมไฟล์แนบของแต่ละรายการ) และกู้คืนไม่ได้`,
+        confirmLabel: "สลับรูปแบบ",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    /* ⚠️ **ไม่หว่านบล็อกบรีฟแล้ว** (มติผู้ใช้ 2026-09-11) — รอบแรกของงานนี้ NPD มีบรีฟ
+       ที่เพิ่ม/ลบเอง จึงต้องหว่านก้อนแรกให้ · ตอนนี้ NPD เลือกกลิ่นจากทะเบียนรายแถว
+       สินค้า (`pdrScents: 'registry'`) และ server ตีกลับบรีฟที่หลุดมากับรูปทรงนี้ */
+    set({
+      variant: next,
+      ...(dropsItems ? { items: [] } : {}),
+    });
+  };
   const dept = value.dept || "";
 
   // ช่องที่ต้องกรอกมาจากทะเบียนหัวข้อที่เดียว — ห้ามเขียน `kind === "..."` ในฟอร์ม
@@ -254,7 +299,7 @@ export default function RequestForm({
   const selectedSo = salesOrders.find((so) => so.id === value.salesOrderId) || null;
   const soDeal = selectedSo ? deals.find((d) => d.id === selectedSo.dealId) || null : null;
   const stepLabel = requestStepLabel(kind);
-  const hasPdr = requestHasPdr(kind);
+  const hasPdr = requestUsesPdr(value);
   // ⭐ จำนวนกลิ่นมาจากใบสั่งขาย ไม่ใช่ช่องที่คนกรอก — ใบที่ผ่านด่านย่อมมีจำนวนเสมอ
   // (ดู lib/requests/scentDesignOrders.js) · ผู้เรียกส่งบรรทัดของ SO มาให้
   const scentCount = selectedSo ? scentCountForOrder(selectedSo.lines || []) : null;
@@ -271,21 +316,31 @@ export default function RequestForm({
   // 🐞 ก่อนหน้านี้หน้านี้ส่งแค่ `customer`/`deal` ⇒ ผู้ร้องขอ AC · ชื่อผู้ติดต่อ ·
   // Phone/Line · วันที่คาดหวังตัวอย่าง ขึ้นเป็นเส้นประ "เติมจาก…" ค้างอยู่ทั้งที่
   // เลือกใบสั่งขายแล้ว — ส่วนหน้ารายละเอียดกับเอกสารเติมครบ ⇒ จอเดียวกันคนละคำตอบ
+  /* ⭐ **ลูกค้า/ดีลของใบมาจาก SO ก่อน แล้วถอยไปดีล** — 🐞 เดิมอ่านจาก SO อย่างเดียว
+     ⇒ พัฒนาสูตร NPD (ผูกแค่ดีล ไม่มี SO) ได้ช่อง 1.1–1.3 · 1.7 เป็นเส้นประทั้งแผง
+     และตัวเลือกกลิ่นข้อ 2.1 ไม่รู้ว่าต้องกรองกลิ่นของลูกค้าไหน
+     ⚠️ โหมดแก้ไม่ได้โหลดดีลมาทั้งชุด ⇒ ถอยไปใช้ลูกค้าที่ใบประทับไว้ (`lockedRefs`) */
+  const pdrDeal = soDeal || selectedDeal;
+  const pdrCustomerId = selectedSo?.customerId || selectedDeal?.customerId || lockedRefs.customerId || null;
   const pdrDerived = pdrContext({
     // ⚠️ `requestedDueDate`/`urgent` อยู่บนฟอร์ม ไม่ใช่บนแถวที่บันทึกแล้ว — ส่งเข้าไป
     // ในรูปเดียวกับแถวคำร้อง เพื่อให้ตัวคำนวณเป็นตัวเดียวกันจริง ๆ ไม่ใช่แค่คล้ายกัน
-    // ⚠️ รูปเดียวกับแถวคำร้องจริง เพื่อให้ตัวคำนวณเป็นตัวเดียวกัน ไม่ใช่แค่คล้ายกัน
     // ⭐ `requestedByName` = คนที่กำลังเปิดใบ — ทำให้ "ผู้ร้องขอ (AE)" พรีวิวได้
     //    ตั้งแต่ยังไม่บันทึก (โครงการที่ระบุผู้ดูแลไว้ยังชนะเสมอ ตามลำดับใน pdrContext)
+    // ⚠️ `kind`/`variant` ต้องมาด้วย — 1.12 ของใบที่เลือกกลิ่นจากทะเบียนนับจากแถวสินค้า
+    //    และ `pdrContext` ถามทะเบียนหัวข้อด้วยทั้งใบ (ไม่ใช่ชื่อหัวข้อ)
     request: {
+      kind,
+      variant: value.variant,
       requestedDueDate: value.requestedDueDate,
       urgent: value.urgent,
-      customerName: selectedSo?.customerName || null,
+      customerName: selectedSo?.customerName || selectedDeal?.customerName || null,
       requestedByName: me?.name || null,
     },
-    project: projects.find((p) => p.id === (soDeal?.projectId || value.projectId)) || null,
-    customer: customers.find((c) => c.id === selectedSo?.customerId) || null,
-    deal: soDeal,
+    project: projects.find((p) => p.id === (pdrDeal?.projectId || value.projectId)) || null,
+    customer: customers.find((c) => c.id === pdrCustomerId) || null,
+    deal: pdrDeal,
+    targets: value.pdrTargets || [],
     briefs: value.briefs || [],
     // ⚠️ จำนวนกลิ่นมาจากบรรทัดของใบสั่งขาย ไม่ใช่จำนวนก้อนบรีฟ — ฟอร์มต้องโชว์เลข
     // เดียวกับที่จะพิมพ์ลงกระดาษ ไม่งั้นคนกรอกเห็น 3 แต่เอกสารออกมา 1 (โหมดบรีฟรวม)
@@ -323,7 +378,21 @@ export default function RequestForm({
   const missingAll = formTabs.flatMap((t) => t.required.missing.map((m) => ({ ...m, tabLabel: t.label })));
   const requiredTotal = formTabs.reduce((n, t) => n + t.required.total, 0);
   const requiredFilled = formTabs.reduce((n, t) => n + t.required.filled, 0);
-  const railSections = hasPdr ? pdrRailSections(value.pdr || {}, value.briefs || [], value.pdrTargets || []) : [];
+  const railSections = hasPdr
+    ? pdrRailSections(value.pdr || {}, value.briefs || [], value.pdrTargets || [], {
+      withBriefs: requestUsesScentBriefs(value),
+    })
+    : [];
+  /* ⭐ ค่าที่ PdrForm แสดงเป็นช่องเส้นประ — โหมดแก้ใช้ก้อนที่ **server ประกอบ** (`pdrContext`
+     ของใบ) เพราะหน้ารายละเอียดไม่ได้โหลดทะเบียนลูกค้า/โครงการมาทั้งชุด · 🐞 เดิมคำนวณ
+     ฝั่งจอทั้งสองโหมด ⇒ โหมดแก้ได้ผู้ติดต่อ/ที่อยู่เป็นเส้นประ ทั้งที่หน้าอ่านข้างบนมีครบ
+     ⚠️ วันส่งตัวอย่างกับจำนวนกลิ่นยังคิดสดจากฟอร์ม — สองค่านี้เปลี่ยนตามที่กำลังพิมพ์ */
+  const pdrContextForForm = pdrFormContext({
+    form: value,
+    derived: pdrDerived,
+    serverContext: isEdit ? pdrContextOfRequest : null,
+    soScentCount: scentCount,
+  });
   const activeRail = railSections.some((r) => r.key === pdrSection) ? pdrSection : "request";
 
   /* หัวข้อของฝ่ายนี้ จัดกลุ่มตามตระกูล — ลำดับกลุ่มมาจากลำดับของ `kindsForDept`
@@ -567,6 +636,33 @@ export default function RequestForm({
       {/* ── แท็บ "งาน" — ของที่หัวข้อนั้นต้องอ้าง ─────────────────────────
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
       {activeTab === "work" && (<>
+      {/* ── รูปแบบงานของหัวข้อที่มีสองแบบ (พัฒนาสูตร: Standard | NPD) ────────
+          ⭐ **อยู่ต้นแท็บแรก** เพราะมันเปลี่ยนรูปฟอร์มทั้งใบ (NPD = แบบฟอร์ม PDR
+          แทนบรีฟสั้น · ไม่มีตารางรายการ) ⇒ ถามก่อนที่คนจะเริ่มกรอกของที่จะหาย
+          ⭐ แผ่นเลือก ไม่ใช่ดรอปดาวน์/สวิตช์เปิดปิด — สองตัวเลือกนี้เป็น **โหมดที่มีชื่อ**
+          คนละงานกัน ไม่ใช่ธงเปิด/ปิดของอย่างเดียวกัน (กติกาคอนโทรล v2 · แพตเทิร์น
+          เดียวกับ `source` ของสัญญา generated | external)
+          ⚠️ ทะเบียนบอกว่าหัวข้อไหนมีรูปแบบ — ห้ามเทียบชื่อหัวข้อในไฟล์นี้ (มี ratchet) */}
+      {variants && (
+        <div className="form-grid cols-1">
+          <div className="field">
+            <label id="req-variant-label">รูปแบบงาน</label>
+            <OptionTiles
+              value={variantKey}
+              onChange={pickVariant}
+              disabled={disabled || !!variantLock}
+              ariaLabel="รูปแบบงาน"
+              options={Object.entries(variants).map(([key, v]) => ({
+                value: key,
+                label: v.label,
+                description: v.hint,
+              }))}
+            />
+            {/* เหตุผลที่กดไม่ได้อยู่ติดปุ่มเสมอ — กฎเดียวกับปุ่ม "เปลี่ยนฝ่าย/หัวข้อ" */}
+            {variantLock && <small className={styles.hint}>{variantLock}</small>}
+          </div>
+        </div>
+      )}
       {/* ── ขอเอกสารการเงิน: ใบเสนอราคาเป็นต้นทาง (ม-ค · ม-ง) ──────────────
           ⭐ ของจริงในแชทอ้าง `ใบเสนอราคา : Q#260731-0006` แล้วขอ "50% ก่อนผลิต"
           ⇒ ใบคือสิ่งแรกที่คนเลือก · ดีล/ลูกค้า/AE/AC เติมตามมาให้ดู ไม่ใช่ช่องกรอก
@@ -1037,7 +1133,7 @@ export default function RequestForm({
           ตัวนี้อยู่ที่นี่ที่เดียว ⇒ ฝั่งแก้จึงไม่มีบรรทัดให้แก้เลย (ผู้ใช้แจ้ง 2026-08-24)
           ⚠️ การเลือกตารางตามรูปร่างบรรทัดย้ายเข้าไปในของกลางแล้ว — ที่นี่ไม่ตัดสินเอง */}
       <RequestLineFields
-        kind={kind}
+        subject={value}
         value={items}
         onChange={(rows) => set({ items: rows })}
         categories={productTypes}
@@ -1104,9 +1200,15 @@ export default function RequestForm({
             people={people}
             /* ⚠️ ส่ง `pdrContext()` ทั้งก้อน ไม่แตกเป็นพร็อพรายตัว — ฝั่งหน้าแก้ PDR
                เคยลืมไป 8 ตัวแล้วช่องเติมเองกลายเป็นเส้นประทั้งแผง (ดูหัวพร็อพของ PdrForm)
-               ⚠️ `scentCount` ของหน้านี้คำนวณสด ๆ จากใบสั่งขายที่เพิ่งเลือก จึงทับของใน
-               ก้อนซึ่งอาจยังว่างตอนกำลังกรอก */
-            context={{ ...pdrDerived, scentCount }}
+               ⚠️ `scentCount` คำนวณสดจากใบสั่งขายที่เพิ่งเลือก / แถวสินค้าที่กำลังกรอก */
+            context={pdrContextForForm}
+            /* ⭐ ที่มาของกลิ่น (บรีฟ | ทะเบียนรายแถว) — ทะเบียนหัวข้อตัดสินจากทั้งใบ
+               ฟอร์มไม่รู้จักชื่อหัวข้อ (ratchet ห้าม) */
+            scentSource={requestPdrScentSource(value)}
+            scents={scents}
+            customerId={pdrCustomerId}
+            // โหมดแก้ล็อกดีลไว้แล้วเสมอ · ฝั่งสร้างถามจากช่องดีลของฟอร์ม
+            dealChosen={isEdit || !!value.dealId}
           />
         </SectionRail>
       )}

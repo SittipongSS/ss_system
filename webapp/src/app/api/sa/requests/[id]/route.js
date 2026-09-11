@@ -21,8 +21,10 @@ import { randomUUID } from 'crypto';
 import { assignPatch, assignRequestError } from '@/lib/requests/assign';
 import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
-import { pdrChangeSummary } from '@/lib/requests/pdrChanges';
-import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
+import { pdrChangeSummary, pdrTargetChangeLines } from '@/lib/requests/pdrChanges';
+import { normalizePdrTargets, pdrTargetsSubmitError } from '@/lib/requests/pdrTargets';
+import { pdrTargetKeep, pdrTargetScentCheck } from '@/lib/requests/pdrTargetScents';
+import { categoryLabel } from '@/lib/master/categoryOf';
 import { PDR_SIGNER_FIELDS, pdrArtworkError } from '@/lib/requests/pdrFields';
 import {
   assignPdrRefNo, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
@@ -39,12 +41,17 @@ import {
 import { briefBoard } from '@/lib/requests/briefBoard';
 import { assignBriefPerfumerError, briefPerfumerPatch } from '@/lib/requests/briefPerfumer';
 import {
-  lineShapeForKind, requestHasItems, requestHasPdr, requestKindLabel, requestNeedsRef,
+  requestLineShape, requestUsesItems, requestUsesPdr, requestKindLabel, requestNeedsRef,
+  requestPdrRowsPickScent, requestUsesScentBriefs,
+  requestVariantKey, requestVariantLabel,
   requestShapeError,
 } from '@/lib/master/requestTypes';
 import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
+import {
+  requestEditVariant, requestVariantSideLock, requestVariantSwitchError,
+} from '@/lib/requests/variantSwitch';
 import {
   lineDiffIsEmpty, lineShapeEditable, requestLineDiff, requestLineEditError,
 } from '@/lib/requests/requestLineEdit';
@@ -210,6 +217,8 @@ export async function PATCH(request, { params }) {
      เพราะปุ่มออกเลขย้อนหลังใช้วันที่รับเรื่องของใบนั้น ไม่ใช่วันที่กดปุ่ม */
   let pdrRefAt = null;
   let summary = '';
+  // ป้ายรูปแบบใหม่เมื่อ action `update` สลับรูปแบบงาน — ส่งต่อให้ประโยคในเธรด
+  let variantChange = null;
   // รายการเปลี่ยนแปลงของ PDR — ใช้ตอนเขียนเธรดท้าย handler
   let pdrChanges = null;
   /* แผนเขียน **บรรทัด** ของ action 'update' — ประกอบตอนตรวจ แล้วเขียนหลังหัวใบผ่าน
@@ -241,10 +250,12 @@ export async function PATCH(request, { params }) {
       // ⚠️ **บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ** — หน้า `/requests/new` แนบไฟล์ไม่ได้
       // (ไฟล์ต้องมี id ของคำร้องให้เกาะก่อน) ⇒ บังคับตอนสร้างจะกลายเป็นกำแพงที่
       // ผ่านไม่ได้เลย · จังหวะกดส่งคือจังหวะที่แนบได้แล้วและยังแก้ทัน
-      const artworkError = pdrArtworkError(
+      // ⚠️ เฉพาะใบที่ใช้ PDR — ใบที่สลับกลับเป็น Standard ยังเก็บคอลัมน์ PDR เดิมไว้ (โดยตั้งใจ)
+      //    แต่ไม่มีจอไหนโชว์แล้ว ⇒ ค่า "มีภาพประกอบ" ที่ค้างอยู่ต้องไม่กั้นการส่ง (ผลรีวิวรอบสาม)
+      const artworkError = requestUsesPdr(before) ? pdrArtworkError(
         { packagingArtwork: before.pdrPackagingArtwork },
         { attachmentCount: (await listAttachments('dept_request', id)).length, stage: 'submit' },
-      );
+      ) : null;
       if (artworkError) return Response.json({ error: artworkError }, { status: 409 });
 
       // ⭐ **ชื่อเรียกบรีฟต้องครบก่อนส่ง** (มติผู้ใช้ 2026-08-10) — ด่านเดียวกับ artwork
@@ -314,7 +325,7 @@ export async function PATCH(request, { params }) {
          คีย์อะไรก็ได้จาก body ไปยัด patch (นั่นคือทางเปิดให้เขียนคอลัมน์อื่นทั้งตาราง)
          ⚠️ **ไม่ตรวจว่าเป็นชื่อคนที่ถือตำแหน่งนั้นจริง** โดยตั้งใจ — ค่านี้คือ "ชื่อบน
          กระดาษ" ซึ่งฟอร์ม PDR ให้พิมพ์อิสระอยู่แล้ว (คนเซ็นที่ไม่มีบัญชีมีจริง) */
-      if (requestHasPdr(before.kind) && body.pdrSigners && typeof body.pdrSigners === 'object') {
+      if (requestUsesPdr(before) && body.pdrSigners && typeof body.pdrSigners === 'object') {
         for (const f of PDR_SIGNER_FIELDS) {
           const raw = body.pdrSigners[f.key];
           if (raw === undefined) continue;
@@ -426,6 +437,75 @@ export async function PATCH(request, { params }) {
 
       const next = requestEditPatch(body);
 
+      /* ── รูปแบบงาน (พัฒนาสูตร standard ↔ NPD · มติ 2026-09-09) ───────────
+         ⚠️ **ไม่ได้อยู่ใน `REQUEST_EDIT_PATCH_FIELDS` โดยตั้งใจ** — ช่องในลิสต์นั้น
+         เป็นข้อความล้วนที่เขียนทับได้เสมอ ส่วนรูปแบบมีด่านของตัวเอง (สถานะ · เลขที่
+         แบบฟอร์ม · แถวที่ค้างอยู่) ⇒ ปนเข้าไปในลิสต์คือด่านที่ไม่มีใครเห็น
+         ⚠️ ไม่ส่งคีย์มา = ไม่แตะของเดิม (แพตเทิร์นเดียวกับ items/pdrTargets) */
+      /* 🔴 **เฉพาะหัวข้อที่มีรูปแบบให้เลือก และห้ามเขียน null** (ผลรีวิวก่อน merge 2026-09-11)
+         🐞 เดิมแปลงทุกค่าที่ส่งมาด้วย `requestVariantKey` ซึ่งคืน null ให้หัวข้อที่ไม่มีรูปแบบ
+            ⇒ patch ได้ `variant: null` ลงคอลัมน์ NOT NULL (mig 0351) ⇒ **แก้ใบหัวข้ออื่นทุกใบ
+            ได้ 500** (ฟอร์มแก้ส่ง `variant` มาเสมอ) และใบพัฒนากลิ่นบันทึก PDR ต่อไม่ได้
+         ⚠️ ค่าที่ไม่รู้จักต้องตีกลับ ไม่ใช่แปลงเป็นรูปแบบตั้งต้นเงียบ ๆ — ไม่งั้นใบ NPD
+            ที่ส่งค่าเพี้ยนมาจะถูกสลับกลับเป็น Standard โดยไม่มีใครสั่ง
+         ⚠️ ค่าว่าง = ไม่แตะของเดิม (ฟอร์มเก่าที่ยังไม่รู้จักช่องนี้) */
+      const variantPick = requestEditVariant(before, body.variant);
+      if (variantPick.error) return Response.json({ error: variantPick.error }, { status: 400 });
+      if (variantPick.variant !== undefined) next.variant = variantPick.variant;
+      /* ⭐ **รูปทรงของใบหลังบันทึกนี้** — บรรทัดต้องตัดสินด้วยรูปแบบปลายทาง ไม่ใช่ของเดิม
+         🐞 เดิมใช้ `before` ⇒ standard → NPD: ฟอร์มล้างแถวเหลือ `[]` แล้วตกด่าน "ต้องมีรายการ
+            อย่างน้อย 1 รายการ" · NPD → standard: แถวที่เพิ่งกรอกถูกข้าม แล้วตกด่านเดียวกัน
+            ⇒ สลับไม่ได้ทั้งสองทิศ (ผลรีวิวก่อน merge 2026-09-11) */
+      const target = next.variant ? { ...before, variant: next.variant } : before;
+      const switching = next.variant !== undefined && next.variant !== requestVariantKey(before);
+      if (switching) {
+        // ⚠️ ด่านคนตัวเดียวกับที่จอเทาปุ่ม (`requestVariantSideLock`) — ฝ่ายปลายทางแก้หัวใบได้
+        //    ตอนรอรับเรื่อง แต่สลับรูปแบบไม่ได้ (PDR ช่วงนั้นเป็นของผู้ขอ)
+        const sideLock = requestVariantSideLock(canManageRequest(user, before));
+        if (sideLock) return Response.json({ error: sideLock }, { status: 403 });
+        /* ⭐ **สลับเข้า NPD หลังส่งแล้ว = ต้องผ่านกฎตอนกดส่งของ NPD ในบันทึกเดียวกัน** (ผลรีวิวรอบสอง)
+           🐞 ไม่ตรวจ ⇒ ก้าวนี้บันทึก (รายการเดิมถูกลบ) แล้วก้าว PDR ตกด่าน "ต้องมีสินค้า/กลิ่น" ⇒
+              ใบรอรับเรื่องที่เป็น NPD เปล่า · ฟอร์มส่ง `pdrTargets` มากับ `...editDraft` อยู่แล้ว
+           ⚠️ ตรวจก่อนเขียนอะไรทั้งนั้น · ตัวเขียนจริงยังเป็นก้าว `pdr` ข้างหลัง (สิทธิ์คนละชุด) */
+        /* ⚠️ **ทุกสถานะ ไม่ใช่เฉพาะหลังส่ง** (ผลรีวิวรอบสาม) — ร่างที่สลับเข้า NPD แล้วก้าว PDR
+           ตกด่าน (เช่นแถวสินค้าอ้างหมวดที่ถอดออกจาก 1.11) = รูปแบบถูกสลับ + รายการเดิมถูกลบ
+           ทั้งที่ของที่กรอกไม่ถูกบันทึก · ตรวจชุดเดียวกับก้าว `pdr` ก่อนเขียนอะไรทั้งนั้น
+           ส่วน "ต้องมีสินค้า + กลิ่น" เป็นกฎของใบที่ส่งแล้วเท่านั้น (ร่างเว้นว่างได้) */
+        if (requestUsesPdr(target)) {
+          const checkedPdr = normalizePdr(body.pdr);
+          if (checkedPdr.error) return Response.json({ error: checkedPdr.error }, { status: 400 });
+          const submitted = before.status !== 'draft';
+          if (Array.isArray(body.pdrTargets)) {
+            const { targets: switchTargets, error: switchTargetError } = normalizePdrTargets(body.pdrTargets, {
+              categoryCodes: checkedPdr.columns.pdrProductKinds || before.pdrProductKinds || [],
+              pickScent: requestPdrRowsPickScent(target),
+            });
+            if (switchTargetError) return Response.json({ error: switchTargetError }, { status: 400 });
+            if (requestPdrRowsPickScent(target) && submitted) {
+              const submitError = pdrTargetsSubmitError(switchTargets);
+              if (submitError) return Response.json({ error: submitError }, { status: 400 });
+            }
+            const scentCheck = await pdrTargetScentCheck(supabase, switchTargets, {
+              customerId: before.customerId,
+              keep: pdrTargetKeep(before.targets, body.pdrTargets),
+            });
+            if (scentCheck.error) return Response.json({ error: scentCheck.error }, { status: 400 });
+          } else if (requestPdrRowsPickScent(target) && submitted) {
+            return Response.json({ error: pdrTargetsSubmitError([]) }, { status: 400 });
+          }
+          /* ⭐ กฎกดส่งอีกข้อของใบ PDR — ติ๊ก "มีภาพประกอบ" แล้วต้องแนบไฟล์ · ใบที่ส่งมาเป็น Standard
+             ไม่เคยผ่านข้อนี้ (ตรวจเฉพาะใบที่ใช้ PDR ตอนกดส่ง) ⇒ สลับเข้า PDR หลังส่งต้องตรวจที่นี่
+             (รีวิวรอบสี่) */
+          if (submitted) {
+            const artworkError = pdrArtworkError(
+              { packagingArtwork: checkedPdr.columns.pdrPackagingArtwork },
+              { attachmentCount: (await listAttachments('dept_request', id)).length, stage: 'submit' },
+            );
+            if (artworkError) return Response.json({ error: artworkError }, { status: 400 });
+          }
+        }
+      }
+
       /* ── เวลาที่ต้องการให้เข้าพื้นที่ (หัวข้อที่มีสถานที่) ────────────────────
          🐞 ช่อง "ช่วงเวลาที่ต้องการ" **กางอยู่บนฟอร์มแก้** (`showTime` ของ
             RequestEditableFields) แต่ `requestEditPatch` ไม่มีคีย์นี้ ⇒ คนแก้เวลาแล้ว
@@ -448,8 +528,22 @@ export async function PATCH(request, { params }) {
          เดียวกับ `pdrTargets` · ส่งอาเรย์ว่างมาถูกตีกลับที่ `normalizeLinesFor`
          ด้วยข้อความ "ต้องมีรายการอย่างน้อย 1 รายการ" ตัวเดียวกับตอนเปิดใบ */
       let nextItems = before.items;
-      if (Array.isArray(body.items) && requestHasItems(before.kind)) {
-        const lineShape = lineShapeForKind(before.kind);
+      if (Array.isArray(body.items) && requestUsesItems(before) && !requestUsesItems(target)) {
+        /* ⭐ สลับไปรูปแบบที่ไม่มีตาราง — ฟอร์มถามยืนยันแล้วล้างแถวเหลือ `[]` ⇒ บันทึกครั้งเดียว
+           ลบแถวเดิม + สลับรูปแบบ · ส่งแถวค้างมา = ปล่อยให้ `requestVariantSwitchError` ข้างล่าง
+           ตีกลับพร้อมจำนวนแถว (ด่านนั้นอ่าน `nextItems` ชุดนี้) ไม่ลบให้เอง */
+        if (body.items.length) {
+          nextItems = body.items;
+        } else {
+          const plan = requestLineDiff(before.items, [], { lineShape: requestLineShape(before) });
+          if (plan.error) return Response.json({ error: plan.error }, { status: 409 });
+          const lineDenied = lineDiffIsEmpty(plan) ? null : requestLineEditError(before);
+          if (lineDenied) return Response.json({ error: lineDenied }, { status: 409 });
+          lineWrites = lineDiffIsEmpty(plan) ? null : plan;
+          nextItems = [];
+        }
+      } else if (Array.isArray(body.items) && requestUsesItems(target)) {
+        const lineShape = requestLineShape(target);
         if (!lineShapeEditable(lineShape)) {
           return Response.json({
             error: 'รายการของหัวข้อนี้ไม่ได้กรอกตอนเปิดใบ — แก้ทางนี้ไม่ได้',
@@ -522,14 +616,35 @@ export async function PATCH(request, { params }) {
          บล็อกของมันเอง ไม่ใช่ผ่านฟอร์มแก้หัวใบ) ⇒ ทุกการกดบันทึกตกด่านทันที
          ⇒ ส่ง **แถวพื้นที่ที่มีอยู่จริง** เข้าไปให้ด่านเห็นใบทั้งใบตามเจตนาของมัน
          (`findRequest` โหลด `surveyZones` มาให้แล้วสำหรับหัวข้อนี้) */
+      // ⚠️ `variant` = รูปแบบของใบ **หลังบันทึกนี้** ไม่ใช่ค่าดิบในแถว (หัวข้อที่ไม่มีรูปแบบ = ไม่ส่ง)
       const shapeError = requestShapeError(before.kind, {
         zones: before.surveyZones || [],
-        ...before, ...next, items: nextItems,
+        ...before, ...next,
+        variant: requestVariantKey(target) ?? undefined,
+        items: nextItems,
       });
       if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
 
+      /* ⚠️ **ด่านสลับรูปแบบอ่านบรรทัดชุดใหม่** ด้วยเหตุผลเดียวกับด่านรูปทรงข้างบน —
+         ลบแถวออกให้หมดแล้วสลับเป็น NPD ในการกดบันทึกครั้งเดียวต้องผ่านได้
+         (`variantSwitch.js` อธิบายว่าทำไมด่านนี้ไม่ลบแถวให้เอง) */
+      if (next.variant !== undefined) {
+        const switchError = requestVariantSwitchError(before, next.variant, nextItems);
+        if (switchError) return Response.json({ error: switchError }, { status: 409 });
+      }
+
       Object.assign(patch, next);
-      summary = `แก้ข้อมูลคำร้อง ${before.docNo || before.id}`;
+      /* ⭐ **สลับรูปแบบต้องเห็นในเธรด** — มันเปลี่ยนรูปของทั้งใบ (ตารางรายการหาย ·
+         แบบฟอร์ม PDR โผล่) ⇒ คนที่เปิดใบวันถัดมาต้องอ่านออกว่าใครเปลี่ยนตอนไหน
+         ไม่ใช่เห็นแค่ "แก้ข้อมูลคำร้อง" เหมือนแก้ชื่อเรื่อง */
+      if (switching) {
+        const label = requestVariantLabel({ kind: before.kind, variant: next.variant });
+        summary = `สลับรูปแบบงานเป็น ${label} · ${before.docNo || before.id}`;
+        // 🐞 เดิมลงแค่ audit — คอมเมนต์ข้างบนบอกว่า "ต้องเห็นในเธรด" แต่เธรดขึ้นประโยคแก้ทั่วไป
+        variantChange = label;
+      } else {
+        summary = `แก้ข้อมูลคำร้อง ${before.docNo || before.id}`;
+      }
     } else if (action === 'pdr') {
       // ⭐ แก้แบบฟอร์ม PDR — สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" (ดู lib/requests/pdrEdit.js)
       const denied = editPdrError(before, user);
@@ -545,12 +660,41 @@ export async function PATCH(request, { params }) {
          ⚠️ ไม่ส่ง `pdrTargets` มา = ไม่แตะของเดิมเลย (ผู้เรียกที่แก้แค่ส่วนอื่น) ·
          ส่งอาเรย์ว่างมา = สั่งลบทั้งชุด ซึ่งต่างกัน */
       let nextTargets = null;
+      let nextTargetScents = [];
       if (Array.isArray(body.pdrTargets)) {
         const { targets, error: targetError } = normalizePdrTargets(body.pdrTargets, {
           categoryCodes: columns.pdrProductKinds || before.pdrProductKinds || [],
+          // ⭐ ข้อ 2.1 กลิ่นรายสินค้า — ทะเบียนหัวข้อตัดสินจาก **ทั้งใบ** (kind + variant)
+          pickScent: requestPdrRowsPickScent(before),
         });
         if (targetError) return Response.json({ error: targetError }, { status: 400 });
+        /* ⚠️ ด่านเดียวกับตอนเปิดใบ — ลูกค้าของใบมาจาก `before` (ทางนี้เปลี่ยนดีลไม่ได้)
+           ⭐ **ตรวจเฉพาะกลิ่นที่เพิ่งเลือก** (`keepIds` = กลิ่นที่ใบนี้ถืออยู่แล้ว) — 🐞 เดิมตรวจ
+              ทุกแถวทุกครั้ง ⇒ กลิ่นที่ถูก "เลิกใช้" ทีหลังล็อก PDR ทั้งใบของทุกคำร้องที่อ้างมัน
+              (แก้ช่องอื่นก็บันทึกไม่ได้) · กลิ่นที่ผ่านด่านไปแล้วตอนเลือกคือของที่ตกลงกันแล้ว */
+        const checked = await pdrTargetScentCheck(supabase, targets, {
+          customerId: before.customerId,
+          // แถวเดิม (ฟอร์มพา `id` มาด้วย · `pdrTargetValuesFrom`) ที่ยังถือกลิ่นเดิม
+          keep: pdrTargetKeep(before.targets, body.pdrTargets),
+        });
+        if (checked.error) return Response.json({ error: checked.error }, { status: 400 });
+        /* ⭐ **ส่งแล้ว = กฎของตอนกดส่งยังต้องจริงอยู่** (ผลรีวิวก่อน merge 2026-09-11) — ร่างเว้น
+           กลิ่นได้ แต่ใบที่ส่งไปแล้วถูกแก้จนไม่มีสินค้า/ไม่มีกลิ่นได้เมื่อไร RD ก็ถือใบที่ส่ง
+           ของไม่ได้ (สูตรมีตัวตนเป็น หมวด × กลิ่น) · ด่านตัวเดียวกับ `submitRequestError` */
+        if (requestPdrRowsPickScent(before) && before.status !== 'draft') {
+          const submitError = pdrTargetsSubmitError(targets);
+          if (submitError) return Response.json({ error: submitError }, { status: 400 });
+        }
         nextTargets = targets;
+        nextTargetScents = checked.scents;
+      }
+
+      /* ⭐ รูปทรงที่ไม่มีบรีฟกลิ่น (พัฒนาสูตร NPD · `pdrScents: 'registry'`) — ส่งบรีฟมา
+         = ตีกลับ ไม่ใช่เขียนลงตารางที่ไม่มีจอไหนโชว์ · อาเรย์ว่างผ่านได้ (ไม่มีอะไรต้องทำ) */
+      if (!requestUsesScentBriefs(before) && Array.isArray(body.briefs) && body.briefs.length) {
+        return Response.json({
+          error: 'รูปแบบงานนี้ไม่มีบรีฟกลิ่น — เลือกกลิ่นจากทะเบียนในรายการสินค้า (ข้อ 2.1) แทน',
+        }, { status: 400 });
       }
 
       // บรีฟรายกลิ่น — เขียนทับทั้งชุด (แก้ = ส่งมาใหม่ทั้งก้อน ไม่ใช่ patch รายช่อง)
@@ -617,19 +761,49 @@ export async function PATCH(request, { params }) {
          เดิม เพราะบรีฟมี direction ของ RD ชี้กลับมา (`dept_request_items.briefId`)
          แต่แถวราคาไม่มีใครชี้ถึง ⇒ ลบ-เขียนใหม่คือท่าที่ตรงกับความหมาย: ผู้ใช้จัด
          ลำดับใหม่/เอาออก/เพิ่มได้อิสระในรอบเดียว (ด่านตรวจอยู่ข้างบนก่อนเขียนอะไรลง DB) */
+      /* ⚠️ **เขียนชุดใหม่ก่อน แล้วค่อยลบชุดเก่า** (ผลรีวิวก่อน merge 2026-09-11) — 🐞 เดิมลบก่อน
+         แล้ว insert ⇒ insert ล้ม (กลิ่นถูกลบระหว่างทาง → FK ของ 0352 · CHECK) = แถวสินค้าหาย
+         ทั้งชุดโดยไม่มีถังขยะ · ลำดับนี้ล้มตรงไหนก็เหลือของเดิมครบ (อย่างแย่ได้ชุดซ้ำ ซึ่งเห็น
+         และแก้ได้) · ไม่มี transaction ใน PostgREST จึงเลือกทิศที่ไม่ทำของหาย */
       if (nextTargets) {
-        const { error: clearError } = await supabase
-          .from('dept_request_pdr_targets').delete().eq('requestId', id);
-        if (clearError) throw clearError;
-        if (nextTargets.length) {
-          const { error: insertError } = await supabase.from('dept_request_pdr_targets')
-            .insert(nextTargets.map((t) => ({ ...t, id: `DPT-${randomUUID()}`, requestId: id })));
+        const rows = nextTargets.map((t) => ({ ...t, id: `DPT-${randomUUID()}`, requestId: id }));
+        if (rows.length) {
+          const { error: insertError } = await supabase.from('dept_request_pdr_targets').insert(rows);
           if (insertError) throw insertError;
+        }
+        /* ⚠️ ลบ **เฉพาะแถวที่ใบมีก่อนบันทึกนี้** (id จาก `before`) ไม่ใช่ "ทุกแถวที่ไม่ใช่ของใหม่" —
+           สองคนกดบันทึกพร้อมกัน แบบหลังจะลบแถวที่อีกคนเพิ่งเขียนจนเหลือ 0 แถว (ผลรีวิวรอบสอง) ·
+           แบบนี้อย่างแย่ได้ชุดซ้ำ ซึ่งเห็นและแก้ได้ · `.in()` ปลอดภัยจากเพดาน 16 KB (≤ 20 แถว) */
+        const oldIds = (before.targets || []).map((t) => t.id).filter(Boolean);
+        if (oldIds.length) {
+          const { error: clearError } = await supabase
+            .from('dept_request_pdr_targets').delete().eq('requestId', id).in('id', oldIds);
+          if (clearError) throw clearError;
         }
       }
       /* ⭐ เก็บ "ช่องไหนเปลี่ยนจากอะไรเป็นอะไร" ไว้ลงเธรด (IS-26080021) — ต้องคิด
          **ก่อน** เขียน patch ลง DB เพราะหลังจากนั้น `before` ไม่มีค่าเดิมให้เทียบแล้ว */
-      pdrChanges = pdrChangeSummary(before, columns);
+      /* ⭐ แถวสินค้าด้วย (mig 0352) — สเปก 2.4–2.7 ย้ายลงแถวแล้ว ไม่ตามมาดูแถว = RD แก้
+         ขนาด/กลิ่นของสินค้าแล้ว SA ไม่มีทางรู้ · ป้ายกลิ่นจากทะเบียน (ของเดิมติดมากับ
+         `findRequest` · ของใหม่มาจากด่านกลิ่นข้างบน) ไม่ใช่ id ที่ไม่มีใครอ่านออก */
+      const scentText = new Map([
+        ...(before.targets || []).filter((t) => t.scentId)
+          .map((t) => [t.scentId, [t.scentCode, t.scentName].filter(Boolean).join(' ')]),
+        ...nextTargetScents.map((x) => [x.id, [x.code, x.name].filter(Boolean).join(' ')]),
+      ]);
+      // หมวดเป็นชื่อจากทะเบียน (ชุดเดียวกับจอ/กระดาษ · `findRequest` แนบมาใน pdrContext) ไม่ใช่รหัสดิบ
+      const categories = before.pdrContext?.categories || [];
+      const targetLines = nextTargets
+        ? pdrTargetChangeLines(before.targets || [], nextTargets, {
+          scentLabel: (sid) => scentText.get(sid) || sid,
+          categoryLabel: (code) => categoryLabel(code, categories) || code,
+          // จับคู่ด้วย id ที่ฟอร์มพามา — normalizer ตัด id ทิ้ง จึงอ่านจากแถวดิบของ body
+          nextIds: body.pdrTargets.map((r) => r?.id || null),
+        })
+        : [];
+      pdrChanges = pdrChangeSummary(before, columns, targetLines, {
+        categoryLabel: (code) => categoryLabel(code, categories) || code,
+      });
       summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}`;
     } else if (action === 'reschedule') {
       // ⭐ **เลื่อนวันกำหนดส่ง** — RD แจ้งวันไปแล้วเปลี่ยนใจได้ (มติผู้ใช้)
@@ -779,7 +953,7 @@ export async function PATCH(request, { params }) {
     } else if (action === 'answer') {
       // ชนิดที่ไม่มีบรรทัด: ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง ผู้ตอบกดเองว่าตอบแล้ว
       // (ชนิดที่มีบรรทัดใช้ /answer ซึ่ง derive สถานะจากรายการให้อัตโนมัติ)
-      if (requestHasItems(before.kind)) {
+      if (requestUsesItems(before)) {
         return Response.json({ error: 'ชนิดนี้ตอบเป็นรายบรรทัด' }, { status: 400 });
       }
       if (!canAnswerRequest(user, before)) {
@@ -1140,6 +1314,7 @@ export async function PATCH(request, { params }) {
         // ⚠️ อ่านจาก `patch` ไม่ใช่ `body` — ตอนถอนมอบหมาย `patch` เป็น null ชัดเจน
         // ส่วน body อาจไม่ส่งคีย์มาเลย แล้วเธรดจะเขียนว่า "มอบหมายให้ undefined"
         assigneeName: patch.assigneeName ?? null,
+        variantChange,
       },
       user,
       mentions,

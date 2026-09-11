@@ -61,7 +61,8 @@ test('เลือกซ้ำตัวเดิมไม่ใช่ข้อ�
 test('ความยาวช่องต้องไม่หลวมกว่า CHECK ของ 0213', () => {
   // หลวมกว่า = ได้ error ดิบจาก Postgres แทนข้อความไทยที่บอกว่าต้องแก้ตรงไหน
   assert.match(normalizeScentBriefs([{ ...ok, brief: 'ก'.repeat(4001) }]).error, /ยาวเกิน 4000/);
-  assert.match(normalizeScentBriefs([{ ...ok, researchTopic: 'ก'.repeat(501) }]).error, /ยาวเกิน 500/);
+  // ⭐ ช่องบรรทัดเดียวแคบกว่า CHECK ได้ (500 → 200 · มติผู้ใช้ 2026-09-11) — ห้ามแค่หลวมกว่า
+  assert.match(normalizeScentBriefs([{ ...ok, researchTopic: 'ก'.repeat(201) }]).error, /ยาวเกิน 200/);
   assert.match(normalizeScentBriefs([{ ...ok, inspiration: 'ก'.repeat(2001) }]).error, /ยาวเกิน 2000/);
   assert.match(normalizeScentBriefs([{ ...ok, label: 'ก'.repeat(201) }]).error, /ยาวเกิน 200/);
   // ช่องว่างเก็บเป็น null ไม่ใช่ '' — DB ยอมทั้งคู่ แต่ null อ่านง่ายกว่าตอน query
