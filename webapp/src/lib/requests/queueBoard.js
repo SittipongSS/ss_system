@@ -11,7 +11,7 @@ import {
 } from '@/lib/requests/statuses';
 import { requestRowSummary } from '@/lib/requests/rowStage';
 import { requestReplyTurn, requestWaitLabel } from '@/lib/requests/replyTurn';
-import { requestClosure } from '@/lib/requests/closure';
+import { closureWaitLabel, requestClosure, requestClosureStarted } from '@/lib/requests/closure';
 import { npdUncoveredPairs } from '@/lib/requests/npdPairs';
 // ⚠️ ดึงตัวเรียงจาก `queue.js` ตรง ๆ ไม่ผ่าน façade `deptRequests.js` — façade
 // re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
@@ -57,12 +57,15 @@ function baseNextStep(request) {
      🐞 ของเดิมใบ `answered` ตกด่านบรรทัดล่าง (`REQUEST_OPEN_STATUSES` ไม่มี answered)
      ⇒ คืน null ⇒ ใบตกไปแท็บ "ประวัติ" ทันทีที่ฝ่ายตอบ ทั้งที่ผู้ขอยังไม่ได้ปิด */
   const closure = requestClosure(request);
-  if (closure.complete) return null;
+  if (closure.complete || closure.cancelled) return null;
   if (closure.waitingSide === 'requester') {
-    return { owner: 'requester', label: requestWaitLabel(request, 'requester', 'ปิด') };
+    return { owner: 'requester', label: closureWaitLabel(request, 'requester') };
   }
+  /* ⭐ **ผู้ขอปิดแล้ว = "รอ RD ปิด" ไม่ใช่ "รอ RD ตอบ"** (ม-145) — คำเดิมชนกับตาตอบใน
+     เธรด (`replyTurn`) ⇒ 18 ใบที่ผู้ขอปิดไปแล้วอ่านเหมือนใบที่ยังไม่มีใครแตะ ·
+     ปุ่มที่ฝ่ายเห็นตอนนี้ก็ชื่อ "ปิดเรื่อง" อยู่แล้ว ป้ายกับปุ่มจึงพูดคำเดียวกัน */
   if (closure.waitingSide === 'dept') {
-    return { owner: 'dept', label: requestWaitLabel(request, 'dept', 'ตอบ') };
+    return { owner: 'dept', label: closureWaitLabel(request, 'dept') };
   }
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return null;
 
@@ -168,8 +171,12 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
      ฝ่ายกดตราแล้วแต่ผู้ขอยังไม่ปิด = ใบยังไม่จบ · แท็บนับมันอยู่แล้ว (มีก้าวถัดไป)
      ⇒ ถ้าแถบตัวเลขไม่นับ จะได้อาการ "กดตัวเลข 0 แล้วเจอสามใบ" ที่คอมเมนต์ข้างบนกันไว้ */
   if (!REQUEST_OPEN_STATUSES.concat('answered').includes(request?.status)) return false;
+  /* ⚠️ **ใบที่มีตราปิดแล้วไม่นับเรื่องวัน** (ม-145) — ฝั่งหนึ่งบอกแล้วว่างานจบ ที่เหลือคือ
+     อีกฝั่งกดปิด ⇒ ไม่ใช่ "เลยกำหนด" และไม่ใช่ "ยังไม่ได้ให้วัน" · ตัวกรองกับช่องกำหนดส่ง
+     (`requestDueText`) ต้องตัดสินตรงกัน ไม่งั้นกด "เลยกำหนด" แล้วเจอแถวที่ไม่มีตัวแดง */
+  const closureStarted = requestClosureStarted(request);
   // ยังไม่ได้ให้วัน — ใบที่ยังเดินอยู่แต่ไม่มีใครรับปากวันไหนไว้เลย
-  if (key === 'undated') return !liveDueDate(request);
+  if (key === 'undated') return !closureStarted && !liveDueDate(request);
   const next = requestNextStep(request);
 
   if (key === 'unacked') return request.status === 'pending';
@@ -178,7 +185,7 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
   // คนละทางแก้ · รวมกันเมื่อไรตัวเลขจะบอกไม่ได้ว่าต้องไปทำอะไร)
   if (key === 'overdue') {
     const due = liveDueDate(request);
-    return !!todayIso && !!due && String(due) < String(todayIso);
+    return !closureStarted && !!todayIso && !!due && String(due) < String(todayIso);
   }
   if (key === 'working') return next?.owner === 'dept' && request.status !== 'pending';
   // ⭐ ตัวที่ 4 — ใบที่ฝ่ายทำส่วนของตัวเองเสร็จแล้วแต่ยังปิดไม่ได้
@@ -261,17 +268,44 @@ export const QUEUE_TABS = [
  *   scope 'mine'        → กรองด้วยแท็บบทบาท (รอฉันตอบ / ที่ฉันเปิด / ประวัติ)
  *   scope 'team'/'all'  → แสดงทุกใบที่ขอบเขตโหลดมา ไม่กรองด้วย "ฉัน" อีกชั้น
  */
+/**
+ * ใบนี้ **จบแล้ว** หรือยัง — ตัวตัดสินเดียวของ "ย้ายไปประวัติ" ทุกจอ (ม-145)
+ *
+ * ⭐ จบ = ไม่มีก้าวถัดไปแล้ว: ปิดครบสองฝั่ง (หรือปิดโดยไม่ได้ผล) · ยกเลิก
+ * ⚠️ **ตราเดียวยังไม่จบ** (มติ 2026-08-20) — ใบที่ปิดฝั่งเดียวยังเป็นงานค้างของอีกฝั่ง
+ * ต้องอยู่ในคิวต่อ ไม่ใช่ย้ายไปประวัติ (ตัวเลขบนเมนูนับมันอยู่)
+ * ⚠️ ห้ามเขียนเงื่อนไขสถานะดิบแทน (`status === 'closed'`) — ใบตอบแล้วรอผู้ขอปิดกระจาย
+ * อยู่ทั้ง `acknowledged` และ `answered` · ใบยกเลิกที่มีตราค้างก็ต้องนับว่าจบ
+ */
+export function requestSettled(request) {
+  return !requestNextStep(request);
+}
+
+// ตัวตัดสิน "เลิกนับถอยหลังวันส่ง" อยู่ที่ closure.js — ส่งต่อให้จอที่ import จากไฟล์นี้
+export { requestClosureStarted };
+
 export function visibleQueueRows(rows = [], { scope = 'mine', tab, myDepts = [] } = {}) {
-  if (scope !== 'mine') return [...rows];
+  /* ⭐ **ขอบเขตทีม/ทั้งหมดแยกประวัติออกด้วย** (ม-145 · มติผู้ใช้ 2026-09-11 — *"พอเรื่อง
+     ไหนปิดแล้ว อยากให้โยกออกไปในส่วนของประวัติ เพื่อลดความรกของตารางคิว"*) — ของเดิม
+     คืนทุกใบ ⇒ ใบที่ปิด/ยกเลิกแล้วปนอยู่ในคิว (47/181 ใบ) และมักลอยขึ้นบนเพราะวันส่ง
+     เก่า · หน้า 1 จาก 25 แถวเคยเป็นใบที่จบแล้ว 14 แถว
+     ⚠️ **ยังไม่กรองด้วย "ฉัน"** — กติกา ม-106 (แอดมินเห็นหน้าว่าง) ไม่ขยับ: แบ่งแค่
+     "ยังไม่จบ / จบแล้ว" จากชุดที่ขอบเขตโหลดมา ไม่ใช่แท็บบทบาท */
+  if (scope !== 'mine') {
+    return rows.filter((r) => (tab === 'history' ? requestSettled(r) : !requestSettled(r)));
+  }
   return queueTabRows(rows, { tab, myDepts });
 }
 
 export function queueTabRows(rows = [], { tab, myDepts = [] } = {}) {
-  if (tab === 'mine') return rows.filter((r) => r._mine);
+  /* ⭐ **"ที่ฉันเปิด" = ใบของฉันที่ยังไม่จบ** (ม-145) — ของเดิมรวมใบที่ปิด/ยกเลิกแล้ว
+     ด้วย ⇒ แท็บตั้งต้นของผู้ขอโตไม่หยุด (บางคนเจอใบที่จบแล้ว 8 จาก 12) และใบเดียวกัน
+     โผล่ทั้งแท็บนี้และแท็บประวัติ · ใบที่จบแล้วอยู่แท็บประวัติที่เดียว */
+  if (tab === 'mine') return rows.filter((r) => r._mine && !requestSettled(r));
   if (tab === 'history') {
     // ⚠️ ประวัติ = **ใบที่จบแล้ว** ไม่ใช่ "ทุกใบ" — ถ้ารวมใบที่ยังเปิดอยู่ด้วย
     // มันจะซ้ำกับสองแท็บแรกและไม่มีใครรู้ว่าต้องดูแท็บไหน
-    return rows.filter((r) => !requestNextStep(r));
+    return rows.filter(requestSettled);
   }
   // todo — ตาของฝ่ายที่ฉันอยู่ · ใบร่างของตัวเองไม่นับ (ยังไม่ได้ส่ง = ตาฉันเอง
   // แต่มันอยู่แท็บ "ที่ฉันเปิด" แล้ว · โผล่สองที่จะทำให้ตัวเลขบนแท็บบวกกันเกินจริง)
@@ -325,12 +359,22 @@ export const QUEUE_GROUPS = [
 
 export function requestGroupKey(request, { todayIso = null } = {}) {
   if (!request) return 'settled';
-  // ⚠️ ก่อนด่าน `REQUEST_OPEN_STATUSES` — ใบตีกลับเป็น `draft` จึงไม่ผ่านด่านนั้น
+  // ⚠️ ก่อนด่าน "จบแล้ว" — ใบตีกลับเป็น `draft` ซึ่งยังมีก้าวถัดไป (ผู้ขอต้องแก้)
   if (request.status === 'draft' && request.bouncedAt) return 'bounced';
-  if (!REQUEST_OPEN_STATUSES.includes(request.status)) return 'settled';
+  // ร่างที่ยังไม่เคยส่งไม่ใช่งานของใครในคิว — อยู่กลุ่มท้ายเหมือนเดิม
+  if (request.status === 'draft') return 'settled';
+  /* 🐞 **"จบแล้ว" ต้องใช้ตัวตัดสินเดียวกับแท็บประวัติ** (ม-145) — ของเดิมอ่าน
+     `REQUEST_OPEN_STATUSES` ⇒ ใบ `answered` ที่ยังรอผู้ขอกดปิด ("รอ SA ปิด") ตกกลุ่ม
+     "จบแล้ว" บนการ์ดหน้าดีล/โครงการ ทั้งที่ป้ายของมันเองบอกว่ายังรออยู่ · และการ์ด
+     "เริ่มที่นี่" ไม่เคยชี้ใบพวกนี้ ขณะที่ป้ายตัวเลขบนเมนูนับมัน */
+  if (requestSettled(request)) return 'settled';
   if (request.status === 'pending') return 'unacked';
+  /* ⚠️ ใบที่มีตราปิดแล้วไม่ใช่ "เลยกำหนด" — ฝั่งหนึ่งบอกแล้วว่างานจบ ที่ค้างคือการกดปิด
+     ของอีกฝั่ง (ตัวตัดสินเดียวกับช่องกำหนดส่งและแถบตัวเลข · `requestClosureStarted`) */
   const due = liveDueDate(request);
-  if (todayIso && due && String(due) < String(todayIso)) return 'overdue';
+  if (todayIso && due && String(due) < String(todayIso) && !requestClosureStarted(request)) {
+    return 'overdue';
+  }
   return 'open';
 }
 
@@ -443,7 +487,7 @@ export const DEPT_QUEUE_TAB_KEYS = ['todo', 'waiting', 'history'];
 
 export function deptQueueRows(rows = [], { dept, tab = 'todo' } = {}) {
   const mine = rows.filter((r) => r?.dept === dept && r?.status !== 'draft');
-  if (tab === 'history') return mine.filter((r) => !requestNextStep(r));
+  if (tab === 'history') return mine.filter(requestSettled);
   const owner = tab === 'waiting' ? 'requester' : 'dept';
   return mine.filter((r) => requestNextStep(r)?.owner === owner);
 }
@@ -500,7 +544,12 @@ export function bouncedDaysText(request, { todayIso = null } = {}) {
 export function requestDueText(request, { todayIso = null } = {}) {
   const due = liveDueDate(request);
   if (!due) return null;
-  if (!todayIso) return { date: due, note: null, overdue: false };
+  /* 🐞 **ใบที่จบแล้ว/มีฝั่งปิดแล้วไม่นับถอยหลังอีก** (ม-145) — ของเดิมไม่ดูสถานะเลย
+     ⇒ ใบที่ปิดครบสองฝั่งขึ้น "เลย 37 วัน" สีแดง ซึ่งเป็นสัญญาณ "ยังไม่จบ" ที่ดังที่สุด
+     บนแถว · วันที่ยังโชว์ (เป็นหลักฐานว่าตกลงวันไหนไว้) แต่ไม่มีคำนับถอยหลัง */
+  if (!todayIso || requestClosureStarted(request) || requestSettled(request)) {
+    return { date: due, note: null, overdue: false };
+  }
 
   // ⚠️ ต่างกันเป็น "วัน" ไม่ใช่ชั่วโมง — ทั้งสองค่าเป็น YYYY-MM-DD ของวันไทย
   // (businessDate) · ใช้ Date.parse กับ T00:00:00Z ทั้งคู่จึงไม่มีปัญหาเขตเวลา

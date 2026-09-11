@@ -17,6 +17,8 @@ import { fmtDate } from '@/lib/format';
 import { requestKindLabel } from '@/lib/master/requestTypes';
 import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosure } from '@/lib/requests/closure';
+import { businessDayKey } from '@/lib/datePeriods';
 
 /* ชนิดของงานในคิว — ป้ายบนชิปกรอง · เรียงตาม "ความใกล้ตัวคนขาย" ไม่ใช่ตามตัวอักษร
    ⚠️ คีย์ตรงกับ `kind` ของแถว — เพิ่มชนิดใหม่ต้องเติมที่นี่ ไม่งั้นชิปจะไม่มีให้กด
@@ -114,6 +116,34 @@ export function buildMyQueue({
   const out = [];
 
   for (const request of requests) {
+    /* ⭐ **ช่วงปิดสองฝั่ง — กติกาเดียวกับคิวคำร้อง** (ม-145) · ใบที่ปิดครบ/ยกเลิกไม่ใช่ของค้าง
+       · ฝ่ายตอบแล้ว = **ของค้างของเรา** คือกดปิดเรื่อง (วันเริ่มค้าง = วันที่ฝ่ายตอบ)
+       · เราปิดแล้ว = รอฝ่ายกดปิด ไม่มีวันให้นับถอยหลัง
+       🐞 ของเดิมใบที่ผู้ขอปิดแล้วยังขึ้น "รอฝ่ายตอบ · เลย N วัน" ในกลุ่มเลยกำหนด ขณะที่คิว
+       บอก "รอ RD ปิด" · และใบที่รอผู้ขอปิดไม่อยู่ในคิวนี้เลย (API ไม่โหลด `answered`) */
+    const closure = requestClosure(request);
+    if (closure.complete || closure.cancelled) continue;
+    /* ⚠️ เราปิดฝั่งตัวเองแล้ว = ไม่มีอะไรให้เราทำ ⇒ ไม่อยู่ในคิวของเรา (ตัวตัดสินเดียวกับ
+       "กำหนดการของฉัน") · 🐞 รอบแรกใส่ไว้แบบ `waiting` ⇒ ไปอยู่หัวข้อ "ครบกำหนดวันนี้" ทั้งที่
+       ช่องวันเขียน "ไม่มีกำหนด" (รีวิวจับได้) · ยังตามได้ที่ /requests แท็บ "ที่ฉันเปิด" */
+    if (closure.waitingSide === 'dept') continue;
+    if (closure.waitingSide === 'requester') {
+      out.push(row({
+        kind: 'request',
+        id: request.id,
+        step: 'ปิดเรื่อง',
+        title: request.title || request.customerName || requestKindLabel(request.kind),
+        sub: [request.docNo || 'ร่าง', requestKindLabel(request.kind), request.customerName]
+          .filter(Boolean).join(' · '),
+        // วันไทยของตราฝ่าย (timestamptz) — ตัดสตริงตรง ๆ ได้วัน UTC ⇒ ตอบก่อน 7 โมงเช้าเพี้ยนไปหนึ่งวัน
+        due: businessDayKey(request.answeredAt),
+        basis: 'waiting',
+        href: `/requests/${request.id}`,
+        urgent: !!request.urgent,
+        todayIso,
+      }));
+      continue;
+    }
     // ใบตีกลับคือของค้างของ **ผู้ขอ** — วันที่ใช้เรียงคือวันที่ถูกตีกลับ
     const bounced = request.status === 'draft' && request.bouncedAt;
     /* ⚠️ **ใบที่ฝ่ายยังไม่รับปากต้องมีวันเหมือนกัน แต่คนละความหมาย** — เดิมที่นี่อ่านแต่

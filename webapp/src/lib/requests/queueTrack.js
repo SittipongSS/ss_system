@@ -20,7 +20,7 @@ import { requestProgress } from '@/lib/requests/stages';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { fmtDate } from '@/lib/format';
 import { requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
-import { requestClosure } from '@/lib/requests/closure';
+import { requestClosedOn, requestClosure } from '@/lib/requests/closure';
 
 const step = (key, label, state, note = null) => ({ key, label, state, note });
 
@@ -110,7 +110,9 @@ export function requestQueueTrack(request = {}) {
      กว้าง 215px ทั้งที่แถวส่วนใหญ่เขียนแค่ "ยังไม่ปิด" · ย้ายมาแปะกับขั้นที่มันเป็น
      เจ้าของเวลานั้นจริง ๆ แล้วถอดคอลัมน์ออก (ดู REQUEST_COLUMN_PRESETS.queue)
      ⚠️ `closedAt` คือฝั่งผู้ขอ · ใบเก่าที่ปิดก่อนกฎสองฝั่งอาจมีแต่ `answeredAt` */
-  const closedOn = fmtDate(request.closedAt || request.answeredAt);
+  // วันที่ใบจบจริง = ตราหลังสุด (ม-145) — ตัวเดียวกับคอลัมน์วันที่ปิดเรื่องและตัวเรียงประวัติ
+  // ไม่งั้นแถวเดียวบอกวันปิดสองวัน (tooltip หมุด vs คอลัมน์)
+  const closedOn = requestClosedOn(request) ? fmtDate(requestClosedOn(request)) : null;
   const closeStep = closure.complete
     ? step('close', 'ปิด', 'done', [
       closure.requesterDone && closure.deptDone
@@ -118,10 +120,10 @@ export function requestQueueTrack(request = {}) {
         : null,
       closedOn ? `เมื่อ ${closedOn}` : null,
     ].filter(Boolean).join(' · ') || null)
+    /* ⚠️ สองฝั่งใช้คำเดียวกัน "รอ <ฝั่ง> ปิดเรื่อง" (ม-145) — ของเดิมฝั่งฝ่ายเขียน
+       "รอ RD ตอบ" ซึ่งเป็นคำของตาตอบในเธรด ⇒ อ่านไม่ออกว่าผู้ขอปิดไปแล้ว */
     : closure.waitingSide
-      ? step('close', 'ปิด', 'now', closure.waitingSide === 'requester'
-        ? requestWaitLabel(request, 'requester', 'ปิดเรื่อง')
-        : requestWaitLabel(request, 'dept', 'ตอบ'))
+      ? step('close', 'ปิด', 'now', requestWaitLabel(request, closure.waitingSide, 'ปิดเรื่อง'))
       : step('close', 'ปิด', 'todo');
 
   return { cancelled: false, steps: [sendStep, ackStep, dueStep, answerStep, closeStep] };

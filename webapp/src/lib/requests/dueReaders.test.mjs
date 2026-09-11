@@ -29,6 +29,8 @@ const DECIDERS = [
   'src/components/requests/requestUi.js',
   'src/app/api/sales-planning/my-schedule/route.js',
   'src/app/pm/tasks/page.js',
+  // ม-145 — ตารางแจกงานผู้ปรุงตัดสิน "เลยกำหนด" รายกลิ่นเอง (รีวิวจับได้ว่าตกรายการ)
+  'src/lib/rd/perfumerBoard.js',
 ];
 
 // ตัดคอมเมนต์ออกก่อนเทียบ — คอมเมนต์ที่เล่าว่าเคยผิดยังไงต้องไม่ทำเทสต์แดง
@@ -74,4 +76,35 @@ test('⭐ ตัวตัดสินมีตัวเดียว — liveDueD
   const src = readFileSync('src/lib/requests/dueRound.js', 'utf8');
   assert.match(src, /export function liveDueDate/);
   assert.match(src, /export function dueIsStale/);
+});
+
+/* ── ม-145 · มีฝั่งปิดแล้ว = เลิกนับถอยหลังวันส่ง ทุกจอ ─────────────────────
+   🐞 รอบแรกแก้แค่คิว (`queueBoard`) ⇒ ใบที่ผู้ขอปิดแล้วยังขึ้น "เลยกำหนด" บนแดชบอร์ดขาย ·
+   กำหนดการของฉัน · หน้างาน RD ขณะที่คิวบอก "รอ RD ปิด" — โรคเดียวกับที่ยามข้างบนกันไว้
+   ⇒ ไฟล์ที่ตัดสินคำว่า "เลยกำหนด/ยังไม่ให้วัน" ต้องถามตัวตัดสินกลางของการปิด */
+const CLOSURE_AWARE = [
+  'src/lib/requests/queue.js',
+  'src/lib/requests/queueBoard.js',
+  'src/lib/requests/headerFacts.js',
+  'src/lib/requests/dueCalendar.js',
+  'src/lib/salesPlanning/myQueue.js',
+  'src/lib/salesPlanning/mySchedule.js',
+  'src/components/requests/requestUi.js',
+  'src/app/api/sales-planning/my-schedule/route.js',
+  'src/lib/rd/perfumerBoard.js',
+];
+
+test('🔴 ไฟล์ที่ตัดสินเรื่องวัน ต้องรู้ว่าใบที่มีฝั่งปิดแล้วไม่มีวันให้ทวง', () => {
+  for (const path of CLOSURE_AWARE) {
+    assert.match(
+      code(path), /requestClosureStarted|requestClosure\(/,
+      `${path} ต้องถาม requestClosureStarted (หรือ requestClosure) — ไม่งั้นใบที่ผู้ขอปิดแล้ว`
+      + ' จะขึ้น "เลยกำหนด" ขัดกับคิวที่บอก "รอ RD ปิด"',
+    );
+  }
+  // ไฟล์ที่ตัดสินเรื่องวันทุกไฟล์ต้องอยู่ในรายการนี้ด้วย (ยกเว้นตัวเรียงกับจอที่ยืมป้ายจาก requestUi)
+  const exempt = new Set(['src/lib/requests/queueList.js', 'src/app/pm/tasks/page.js']);
+  for (const path of DECIDERS) {
+    if (!exempt.has(path)) assert.ok(CLOSURE_AWARE.includes(path), `${path} ขาดจาก CLOSURE_AWARE`);
+  }
 });

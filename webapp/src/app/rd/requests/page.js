@@ -32,7 +32,7 @@ const DEPT = "RD";
 const TAB_BLURB = {
   todo: "งานที่รอ RD ทำต่อ — ใบใหม่สุดอยู่บนสุด สลับเป็นเรียงตามความเร่งได้ที่ปุ่มเรียง",
   waiting: "ส่งของไปแล้ว รอผู้ขอรับ/ส่งลูกค้า/ตอบกลับ — ไม่ใช่งานค้างของเรา แต่ต้องตามได้",
-  history: "เรื่องที่จบแล้วทั้งหมดของ RD",
+  history: "เรื่องที่ปิดครบสองฝั่งหรือยกเลิกแล้วของ RD — ปิดล่าสุดอยู่บนสุด",
 };
 
 export default function RdRequestsPage() {
@@ -49,7 +49,18 @@ export default function RdRequestsPage() {
   const tabKeys = DEPT_QUEUE_TAB_KEYS;
   const urlTab = searchParams.get("tab");
   const tab = tabKeys.includes(urlTab) ? urlTab : "todo";
-  const setTab = (next) => router.replace(`/rd/requests?tab=${next}`, { scroll: false });
+  /* ⭐ ประวัติเรียง "ปิดล่าสุดก่อน" (ม-145) — ความเร่งไม่มีความหมายกับใบที่จบแล้ว และดัน
+     ใบที่ยกเลิกก่อนมีใครรับเรื่องขึ้นบนสุด · ออกจากประวัติกลับไปแบบเรียงตั้งต้นของหน้า
+     ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้ */
+  const inHistory = tab === "history";
+  const { setSort } = board;
+  useEffect(() => { setSort(inHistory ? "closed" : "created"); }, [inHistory, setSort]);
+  /* ⚠️ เข้าประวัติแล้วล้างตัวกรองตัวเลข (ม-145) — แถบตัวเลขถูกซ่อนในประวัติ (ทุกช่อง
+     นับเฉพาะใบที่ยังเดินอยู่ = ศูนย์ทั้งแถบ) ⇒ ตัวกรองที่ค้างมาจะให้ตารางว่างเปล่า */
+  const setTab = (next) => {
+    if (next === "history") board.setCountFilter(null);
+    router.replace(`/rd/requests?tab=${next}`, { scroll: false });
+  };
 
   // ⚠️ **ไม่มีตัวสลับขอบเขต** — ขอบเขตกรองด้วย "ใครเป็นคนเปิด" ซึ่งไม่มีความหมาย
   // สำหรับคิวของฝ่าย (ฝ่ายต้องเห็นงานของฝ่ายครบเสมอ ไม่ว่าใครเปิด)
@@ -132,7 +143,8 @@ export default function RdRequestsPage() {
         />
       </div>
 
-      {!loading && !loadError && (
+      {/* ไม่มีแถบตัวเลขในประวัติ — ทุกช่องเป็นศูนย์ (ม-145 · ม-80 ข้อ 3) */}
+      {!loading && !loadError && tab !== "history" && (
         <QueueCountStrip
           counts={counts}
           filter activeKey={board.countFilter}
@@ -147,6 +159,9 @@ export default function RdRequestsPage() {
         /* หัวเรื่องอยู่บนหัวหน้าแล้ว — หัวการ์ดซ้ำอีกชั้นกิน 81px ฟรี
            และป้ายจำนวนก็ซ้ำกับ Pager ใต้ตาราง (ดู prop sectionHeader) */
         sectionHeader={false}
+        /* ประวัติโชว์ "วันที่ปิดเรื่อง" สองฝั่งแทนกำหนดส่ง (ม-145 · preset `history`) */
+        columns={tab === "history" ? "history" : "queue"}
+        emptyText={tab === "history" ? `ยังไม่มีเรื่องของ ${DEPT} ที่จบแล้ว` : null}
         loading={loading} loadError={loadError} reload={reload}
       />
       </div>

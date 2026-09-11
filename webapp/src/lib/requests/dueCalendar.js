@@ -9,6 +9,7 @@
 // ใครให้วัน* ⇒ ปฏิทินจะโล่งกว่าความจริงมาก · จึงต้องคู่กับตัวเลข "ยังไม่ได้ให้วัน"
 // ที่กดไปคิวได้เสมอ (`undated`) ไม่งั้นคนอ่านจะสรุปว่าสัปดาห์นี้ว่าง
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosureStarted } from '@/lib/requests/closure';
 
 const DAY_MS = 86400000;
 
@@ -67,6 +68,9 @@ export function dueCalendar(rows = [], { startIso, todayIso = null } = {}) {
   let dated = 0;
 
   for (const request of rows) {
+    // มีฝั่งปิดแล้ว = ไม่ใช่คำสัญญาที่ต้องตาม (ม-145) — ผู้เรียกกรองมาแล้ว กันไว้อีกชั้น
+    // เพราะปฏิทินตัดสิน "เลยกำหนด" เอง (ไฟล์นี้อยู่ใน DECIDERS ของ dueReaders.test)
+    if (requestClosureStarted(request)) continue;
     const due = liveDueDate(request)?.slice(0, 10) || null;
     if (!due) { undated += 1; continue; }
     dated += 1;

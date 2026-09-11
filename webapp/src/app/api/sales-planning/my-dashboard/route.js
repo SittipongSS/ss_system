@@ -54,9 +54,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        ที่ **ไม่มีใครกำลังทำอยู่** (ฝ่ายปล่อยมือแล้ว ผู้ขอยังไม่รู้ตัว)
        ⚠️ รวม `draft` ด้วยโดยตั้งใจ — ใบตีกลับกลับไปเป็นร่าง · ตัวกรองฝั่งล่างจะตัด
        ร่างที่ยังไม่เคยส่งออกเอง (ร่างเปล่าไม่ใช่ของค้าง มันคือของที่ยังไม่เริ่ม) */
+    /* ⭐ รวม `answered` (ม-145) — ฝ่ายตอบแล้วรอเรากดปิด คือของค้างของผู้ขอจริง ๆ · เดิมไม่โหลด
+       ⇒ ใบ "รอ SA ปิด" ไม่เคยโผล่บนแดชบอร์ดของคนที่ต้องกด (`buildMyQueue` ตัดสินต่อ) */
     supabase.from('dept_requests').select('*')
       .eq('requestedById', user.id)
-      .in('status', ['draft', 'pending', 'acknowledged']),
+      .in('status', ['draft', 'pending', 'acknowledged', 'answered']),
   ]);
 
   /* 🔴 supabase ไม่ throw — ทุกก้อนต้องเช็ค `error` เอง ไม่งั้นก้อนที่พังกลายเป็น []

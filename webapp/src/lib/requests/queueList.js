@@ -13,6 +13,7 @@ import { compareRequestUrgency } from '@/lib/requests/queue';
 import { requestKindLabel } from '@/lib/master/requestTypes';
 import { requestAssignee } from '@/lib/requests/assign';
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosedOn } from '@/lib/requests/closure';
 
 // ค่าที่ใช้แทน "ไม่มีข้อมูลในมิตินี้" — ต้องเป็นคีย์จริง ไม่ใช่ null เพราะมันต้อง
 // ถูกเลือกในตัวกรองได้ ("ยังไม่มีคนรับ" คือสิ่งที่หัวหน้าอยากกรองที่สุด)
@@ -134,16 +135,23 @@ export const REQUEST_SORT_OPTIONS = [
   { key: 'created', label: 'วันที่ร้องขอ' },
   { key: 'docNo', label: 'เลขที่' },
   { key: 'customer', label: 'ลูกค้า' },
+  /* ⭐ ม-145 — แท็บประวัติตั้งต้นเรียงตัวนี้ (ปิดล่าสุดก่อน) · "ความเร่ง" ไม่มีความหมาย
+     กับใบที่จบแล้ว และดันใบที่ยกเลิกก่อนมีใครรับเรื่องขึ้นบนสุด (เรียงใบไม่มี
+     `acknowledgedAt` ก่อน) ⇒ ประวัติเปิดมาเจอใบยกเลิกเก่า ๆ แทนใบที่เพิ่งปิด */
+  { key: 'closed', label: 'วันที่ปิดเรื่อง' },
 ];
 
 // ทิศตั้งต้นต่อคีย์ — กำหนดส่ง/ความเร่ง "ใกล้สุดก่อน", ตัวหนังสือ ก→ฮ, วันที่ร้องขอ = ใหม่ก่อน
-export const requestSortDefaultDir = (key) => (key === 'created' ? 'desc' : 'asc');
+export const requestSortDefaultDir = (key) => (key === 'created' || key === 'closed' ? 'desc' : 'asc');
 
 // ค่าที่ใช้เทียบของแต่ละคีย์ — คืน '' เมื่อใบนั้นไม่มีค่าในคีย์นี้
 const sortValue = (row, key) => {
   // ⚠️ เรียงตามวันที่ยังเป็นคำสัญญาอยู่จริง — ใบที่รอแจ้งวันรอบใหม่ไปกองกับใบไม่มีวัน
   if (key === 'due') return String(liveDueDate(row) || '');
   if (key === 'created') return String(row.createdAt || '');
+  /* วันที่ใบจบจริง = ตราหลังสุดของสองฝั่ง (ปิดครบเกิดตอนฝั่งที่สองกด) · ใบยกเลิกใช้วันยกเลิก
+     ⚠️ ไม่ใช่ `closedAt` อย่างเดียว — ฝ่ายกดทีหลังได้ (9 จาก 36 ใบที่ปิดแล้ว วัด 2026-09-11) */
+  if (key === 'closed') return String(requestClosedOn(row) || '');
   if (key === 'docNo') return String(row.docNo || '');
   if (key === 'customer') {
     const facet = requestFacet(row, 'customer');

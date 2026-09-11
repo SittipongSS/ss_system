@@ -11,6 +11,8 @@
 // `briefPerfumer()` ให้แล้ว · เขียนกฎซ้ำเมื่อไร ตารางนี้กับหน้าใบจะเริ่มตอบไม่ตรงกัน
 import { briefBoard } from '@/lib/requests/briefBoard';
 import { assignBriefPerfumerError, briefScentSent } from '@/lib/requests/briefPerfumer';
+import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosureStarted } from '@/lib/requests/closure';
 
 /* คีย์ของกองที่ยังไม่มีใครปรุง — ต้องเป็นคีย์จริง ไม่ใช่ null เพราะมันเป็น "แถวหนึ่ง"
    ในตารางเดียวกับคน (และเป็นกองที่หัวหน้าต้องจัดการก่อนอย่างอื่น)
@@ -44,8 +46,11 @@ export function perfumerBoardRows(requests = []) {
         status: request.status || null,
         // กำหนดที่ฝ่ายรับปากไว้ ถ้ายังไม่แจ้งวันให้ถอยไปวันที่ผู้ขอต้องการ — ตารางนี้
         // ต้องเรียงตาม "ต้องเสร็จเมื่อไร" ได้เสมอ ไม่ใช่ว่างเปล่าจนกว่าจะมีคนแจ้งวัน
-        dueDate: request.committedDueDate || request.requestedDueDate || null,
-        committed: !!request.committedDueDate,
+        // ⚠️ ผ่าน `liveDueDate` — วันของรอบที่ส่งไปแล้วไม่ใช่คำสัญญาของรอบนี้ (กติกา dueReaders)
+        dueDate: liveDueDate(request) || request.requestedDueDate || null,
+        committed: !!liveDueDate(request),
+        // มีฝั่งปิดแล้ว = ไม่ใช่งานที่ "เลยกำหนด" (ม-145 · ตัวตัดสินเดียวกับคิว)
+        closureStarted: requestClosureStarted(request),
         perfumer: group.perfumer,
         // ⭐ ตัวตัดสินว่าปุ่มแจกกดได้ไหม — โชว์เสมอ บอกเหตุตอนกด (กฎ UI ของระบบ)
         sent,
@@ -100,7 +105,7 @@ export function perfumerGroups(rows = [], { todayIso = null } = {}) {
    ⚠️ ตัวสร้างแถวไม่มีสิทธิ์รู้ว่า "วันนี้" คือวันไหน (กติกาเดียวกับ `rowIdleStamps`)
    ⚠️ กลิ่นที่ส่งไปแล้วไม่เลยกำหนด แม้วันจะผ่านมานานแค่ไหน — งานจบไปแล้ว */
 export function isOverdue(row, todayIso) {
-  if (!row?.dueDate || !todayIso || row.sent) return false;
+  if (!row?.dueDate || !todayIso || row.sent || row.closureStarted) return false;
   return String(row.dueDate).slice(0, 10) < String(todayIso).slice(0, 10);
 }
 

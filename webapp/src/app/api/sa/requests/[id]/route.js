@@ -1128,7 +1128,7 @@ export async function PATCH(request, { params }) {
       });
       summary = (patch.status === 'closed'
         ? `ปิดเรื่อง ${before.docNo || id} · ครบสองฝั่ง`
-        : `ผู้ขอปิดฝั่งตัวเอง ${before.docNo || id} — ${requestSideText(before, 'dept', 'ยังไม่ตอบ')}`)
+        : `ผู้ขอปิดฝั่งตัวเอง ${before.docNo || id} — ${requestSideText(before, 'dept', 'ยังไม่ปิด')}`)
         + (linked?.created ? ' · เพิ่มกลิ่นเข้าทะเบียน' : linked?.scentId ? ' · ผูกกลิ่นในทะเบียน' : '');
     } else if (action === 'reopen') {
       /* ⭐ **"ยังไม่จบ" — ถอนตราปิดที่กดไปแล้ว** (มติผู้ใช้ 2026-08-20) — กดได้ทั้ง

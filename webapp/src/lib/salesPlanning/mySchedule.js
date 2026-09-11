@@ -14,6 +14,7 @@
 // กับ `lib/sales/leadCalendar.js` (server ส่งช่วงเผื่อขอบมาให้ แล้วฝั่งจอเป็นคนตัดจริง)
 
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosureStarted } from '@/lib/requests/closure';
 
 /** มุมมองปฏิทิน — คีย์ตรงกับค่าที่จำไว้ใน localStorage */
 export const SCHEDULE_VIEWS = [
@@ -318,6 +319,8 @@ export function buildScheduleDueItems({ tasks = [], requests = [], todayIso = nu
   }
 
   for (const request of requests) {
+    // มีฝั่งปิดแล้ว = ไม่มีวันให้ตามอีก (ม-145 · ตัวตัดสินเดียวกับคิว) — ไม่ขึ้นปฏิทิน
+    if (requestClosureStarted(request)) continue;
     // ⚠️ วันของรอบก่อนไม่ใช่คำสัญญาที่ยังอยู่ ⇒ ถอยไปวันที่ผู้ขอต้องการ พร้อมโน้ต
     //    "ฝ่ายยังไม่แจ้งวันส่ง" ซึ่งเป็นความจริงของรอบนี้ (ตรวจย้อนหลัง 2026-08-26)
     const committed = isoDay(liveDueDate(request));

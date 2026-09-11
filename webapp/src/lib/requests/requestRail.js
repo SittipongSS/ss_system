@@ -31,6 +31,11 @@ const evidence = (...parts) => parts.filter(Boolean).join(' · ') || null;
 // บรรทัดใต้ขั้น "ปิดเรื่อง" — ครบสองฝั่ง = โชว์ทั้งคู่ · ยังไม่ครบ = บอกว่าเหลือใคร
 function closureHint(request) {
   const closure = requestClosure(request);
+  /* 🐞 ใบยกเลิกเคยได้ "ต้องปิดทั้งสองฝั่งถึงจะจบ" ใต้ขั้นสุดท้าย (= คำอธิบายของการ์ด
+     เพราะใบยกเลิกชี้ขั้นนี้) ⇒ อ่านเหมือนยังต้องมีคนไปกดปิด ทั้งที่ใบจบไปแล้ว (ม-145) */
+  if (closure.cancelled) {
+    return request.cancelledAt ? `ยกเลิกเมื่อ ${fmtDate(request.cancelledAt)}` : 'ยกเลิกแล้ว';
+  }
   if (closure.complete) {
     return evidence(
       request.closedByName && `ปิดโดย ${request.closedByName}`,
@@ -40,14 +45,26 @@ function closureHint(request) {
   if (closure.waitingSide === 'requester') {
     return `${requestSideText(request, 'dept', 'ตอบแล้ว')} — ${requestWaitLabel(request, 'requester', 'ปิดเรื่อง')}`;
   }
+  // ⚠️ "รอ RD ปิดเรื่อง" ไม่ใช่ "รอ RD ตอบ" — คำเดียวกับป้ายในตาราง (ม-145)
   if (closure.waitingSide === 'dept') {
-    return `${requestSideText(request, 'requester', 'ปิดแล้ว')} — ${requestWaitLabel(request, 'dept', 'ตอบ')}`;
+    return `${requestSideText(request, 'requester', 'ปิดแล้ว')} — ${requestWaitLabel(request, 'dept', 'ปิดเรื่อง')}`;
   }
   return 'ต้องปิดทั้งสองฝั่งถึงจะจบ';
 }
 
 // ขั้นกลาง — สรุปจากแถวข้างใน ไม่ใช่คำตายตัว
 function middleStep(request) {
+  /* 🐞 **ผู้ขอปิดแล้ว = งานไม่ได้อยู่ที่ "ตาใครตอบ" อีก** (ม-145) — ใบสอบถามที่ RD ตอบ
+     ในเธรดแล้วผู้ขอกดปิดโดยไม่พิมพ์อะไร ขั้นนี้เคยขึ้น "รอ SA ตอบ" + "RD ตอบในเธรดแล้ว —
+     รอคนเปิดเรื่องตอบกลับ" (อ่านจากคนโพสต์ล่าสุด) ขณะที่ตารางบอก "รอ RD …" ⇒ สองจอ
+     ชี้คนละฝั่ง · สิ่งที่เหลือจริงคือฝ่ายกดปิดฝั่งตัวเอง */
+  if (requestClosure(request).waitingSide === 'dept') {
+    // โน้ตเป็นหลักฐาน (ใคร · เมื่อไร) — ประโยค "รอใคร" อยู่ใต้ขั้นปิดเรื่องแล้ว ไม่พูดซ้ำ
+    return {
+      label: requestWaitLabel(request, 'dept', 'ปิดเรื่อง'),
+      hint: evidence(requestSideText(request, 'requester', 'ปิดแล้ว'), fmtDate(request.closedAt)),
+    };
+  }
   const items = request.items || [];
   const summary = requestRowSummary(items);
   const awaitingPrice = items.filter((i) => rowStage(i) === 'awaiting_price').length;
