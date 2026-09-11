@@ -173,6 +173,13 @@ export default function CustomerZonesPanel({
                                 <b>{zone.spotsSelected}</b>
                                 <small className={styles.sub}>จาก {zone.spotsTotal}</small>
                               </>
+                            ) : zone.registeredSpots ? (
+                              /* ไม่เคยประเมิน แต่ทะเบียนโซนมีจุด (ของเก่า — mig 0353) · ป้ายบอกที่มา
+                                 เพราะไม่ใช่ "เลือกติดตั้ง/ที่ติดตั้งได้" แบบผลประเมิน */
+                              <>
+                                <b>{zone.registeredSpots}</b>
+                                <small className={styles.sub}>ทะเบียนโซน</small>
+                              </>
                             ) : <span className={styles.muted}>{naText(null)}</span>}
                           </td>
                           <td className="a-right">

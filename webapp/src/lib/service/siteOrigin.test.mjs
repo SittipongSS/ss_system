@@ -47,3 +47,20 @@ test('⭐ ฟอร์มในใบคำร้องยังเป็นท�
 test('การนำเข้าชีตเก่ายังสร้างไซต์ได้ตามมติ — ไม่ใช่ของหลุด', () => {
   assert.match(read('lib/service/importRepo.js'), /insertRowWithComposedCode/);
 });
+
+/* ⭐ **ข้อยกเว้นที่สอง: "เพิ่มไซต์ย้อนหลัง"** (มติผู้ใช้ 2026-09-11) — ไซต์ที่มีอยู่ก่อนมีระบบ
+   ไม่มีใบประเมินให้เกิด และตัวนำเข้าเป็นของผู้ดูแลระบบคนเดียว ⇒ มติ 08/09 เขียนไว้แล้วว่า
+   "ทางที่เหลือคือเพิ่มไซต์ทีละใบที่ทะเบียน" แต่ไม่เคยมีปุ่ม
+   ⚠️ ข้อยกเว้นนี้ **แคบโดยรูป** — โมดัลของมันเองยิงเส้นของมันเอง (`/api/service/legacy-sites`)
+      ไม่ใช่ฟอร์มไซต์โหมดสร้าง + POST /api/service/sites ⇒ ยามข้อแรกข้างบนยังจับการ "เผลอ"
+      เปิดทางสร้างไซต์ปกติที่ทะเบียนได้ครบเหมือนเดิม */
+test('ข้อยกเว้น "เพิ่มไซต์ย้อนหลัง" — ปุ่มแยก สิทธิ์แก้งานบริการ ยิงเส้นของตัวเอง', () => {
+  const page = read('app/service/sites/page.js');
+  assert.match(page, /<LegacySiteModal/);
+  assert.match(page, /\{canEdit && \(\s*<LegacySiteModal/, 'โมดัลต้องอยู่หลังสิทธิ์ canEdit');
+  const modal = read('components/service/LegacySiteModal.js');
+  assert.match(modal, /apiJson\("\/api\/service\/legacy-sites"/);
+  assert.doesNotMatch(modal, /["'`]\/api\/service\/sites["'`]\s*,\s*\{[\s\S]{0,120}POST/,
+    'โมดัลย้อนหลังต้องไม่ยิง POST /api/service/sites — ทางนั้นเป็นของใบคำร้อง');
+  assert.doesNotMatch(modal, /<ServiceSiteModal\b/, 'ใช้ ServiceSiteFields (ช่องชุดเดียวกัน) ไม่ใช่เปิดฟอร์มไซต์โหมดสร้าง');
+});

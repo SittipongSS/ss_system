@@ -1,0 +1,424 @@
+/* โมดัลเพิ่มไซต์ย้อนหลัง (มติผู้ใช้ 2026-09-11 · ม็อก mockups/legacy-site)
+   ⚠️ ห้าม style={{…}} และห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet
+   สี/ระยะมาจากตัวแปรกลางทั้งหมด */
+
+/* ── รางขั้น — รายการบอกตำแหน่ง ไม่ใช่ปุ่มกด (แบบเดียวกับ IntakeWizard)
+   กดข้ามขั้นไม่ได้เพราะขั้นหลังต้องผ่านด่านของขั้นก่อน ⇒ ปุ่มไปมาอยู่ที่แถบท้าย */
+.steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+
+.steps > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.steps > li[data-active="yes"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+.steps > li[data-done="yes"] {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.stepNo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-4);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── แถบท้าย: ข้อความสถานะชิดซ้าย ปุ่มชิดขวา ─────────────────────────── */
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.footNote {
+  margin-right: auto;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.footNote[data-ok="yes"] { color: var(--green); }
+
+/* ── ขั้น ① ────────────────────────────────────────────────────────── */
+/* รหัสที่จะออก — ค่าที่ฟอร์มนี้ไม่ได้ให้กรอก จึงเป็นข้อความ ไม่ใช่ช่องที่ disabled */
+.codeValue {
+  margin: 0;
+  min-height: var(--ctl-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted { color: var(--text-3); }
+
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.siteList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.siteList > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.siteList > li + li { border-top: 1px solid var(--border); }
+
+/* ── แถบบริบทของไซต์ (ขั้น ② ③) ─────────────────────────────────────── */
+.context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.contextMark { color: var(--green); flex: none; }
+
+.contextText {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+/* ── ขั้น ②: รางโซนซ้าย + ช่องของโซนที่เลือก ───────────────────────────── */
+.zoneLayout {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 680px) {
+  .zoneLayout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.zoneRail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-right: var(--space-3);
+  border-right: 1px solid var(--border);
+}
+
+@media (max-width: 680px) {
+  .zoneRail { padding-right: 0; border-right: 0; }
+}
+
+.railCap {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 var(--space-1);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.zoneItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.zoneItem:hover { background: var(--surface-2); }
+
+.zoneItem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.zoneItem[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.zoneFloor {
+  min-width: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  color: var(--text-3);
+}
+
+.zoneName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zoneName[data-empty="yes"] { color: var(--amber); }
+
+.zoneCount {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-label);
+  color: var(--text-3);
+}
+
+.existing {
+  margin-top: var(--space-3);
+}
+
+.existing ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.existing li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.railHint {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.zoneMain { min-width: 0; }
+
+.zoneMainHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.zoneEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.zoneEmpty > p {
+  margin: 0;
+  color: var(--text-2);
+  line-height: var(--lh-thai);
+}
+
+/* ── ขั้น ③ + หน้าผล ─────────────────────────────────────────────────── */
+.section {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--fs-section-title);
+  line-height: var(--lh-thai);
+}
+
+.section:first-of-type { margin-top: 0; }
+
+.hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.plan {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.plan > li {
+  display: grid;
+  grid-template-columns: minmax(170px, auto) minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  line-height: var(--lh-thai);
+}
+
+.plan > li + li { border-top: 1px solid var(--border); }
+
+/* โซนเยื้องใต้ไซต์ — บอกลำดับชั้นด้วยตำแหน่ง ไม่ต้องมีหัวข้อ */
+.plan > li.planZone { padding-left: var(--space-6); }
+
+@media (max-width: 640px) {
+  .plan > li { grid-template-columns: minmax(0, 1fr) auto; }
+  .plan > li > .planCode { grid-column: 1 / -1; }
+}
+
+.planCode {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+.planText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.planSpots,
+.planError {
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.planError { color: var(--red); }
+
+.planNote {
+  font-size: var(--fs-label);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.planNote[data-tone="ok"] { color: var(--green); }
+.planNote[data-tone="bad"] { color: var(--red); }
+
+.frozen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.frozen > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checklist > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.checklist > li > svg { margin-top: 0.3em; color: var(--text-3); }
+.checklist > li[data-done="yes"] > svg { color: var(--green); }
+
+.checklist > li > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+}
+
+.checklist small {
+  font-size: var(--fs-label);
+  color: var(--text-3);
+}
+
+.who {
+  font-size: var(--fs-label);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.notice { margin-top: var(--space-3); }
+
+.codes {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  line-height: var(--lh-thai);
+}

@@ -30,7 +30,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (access.response) return access.response;
 
     const body = await req.json().catch(() => ({}));
-    const { value, error } = normalizeZoneInput(body);
+    const { value, error } = normalizeZoneInput(body, { makeSpotId: () => genId('SPT') });
     if (error) return badRequest(error);
 
     /* รหัส `ZN-CCCC-FF-DDDDD` (mig 0315) — CCCC มาจากรหัสไซต์แม่ · FF คือชั้นที่เพิ่งกรอก
