@@ -39,8 +39,11 @@ export const pendingApprovalCountOf = (d) => (isWonDeal(d) ? dealPendingApproval
 // ⇒ ใบที่ค้างข้ามเดือนเลื่อนมาอยู่เดือนใหม่เอง · เดือนที่ปิดไปแล้ว/ปีก่อนไม่มีวันเห็นยอดนี้
 // ⚠️ ห้ามใช้ wonMonthOf (ดีลรออนุมัติไม่มี wonMonth → ตกไปเดือน confirmedAt แบบ UTC)
 // ⚠️ ห้ามใช้ businessMonthKey ของ lib/businessDate (คืน 'YYMM' สำหรับเลขเอกสาร)
+// ⭐ "มีใบรออนุมัติ" = ยอด > 0 **หรือมีใบ** — ใบยอด 0 บาทถูกกฎตั้งแต่ mig 0197 และ trigger
+//    ของ mig 0353 เขียนคีย์ทั้งคู่เมื่อ count > 0 · ถ้าดูแค่ยอด ใบพวกนี้หลุดจากแดชบอร์ด/ลิ้นชัก/
+//    แดชบอร์ดของฉัน ขณะที่รายงานเป้า หน้า SO และหน้าดีลนับจำนวนใบอยู่ (splitSalesOrderAmounts)
 export const pendingApprovalMonthOf = (d, now = new Date()) => (
-  pendingApprovalAmountOf(d) > 0 ? currentMonth(now) : null
+  pendingApprovalAmountOf(d) > 0 || pendingApprovalCountOf(d) > 0 ? currentMonth(now) : null
 );
 
 // FC Total preserves every forecast made in the period (Open + Won + Lost)

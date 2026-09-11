@@ -12,6 +12,7 @@ import {
 import { canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
+import { isLiveSalesOrder } from '@/lib/sales/handoffQueue';
 import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
   inSalesEditScope, inSalesViewScope, normalizeDiscountValue, quoteTotals, toMoney,
@@ -51,12 +52,26 @@ async function loadQuote(supabase, id) {
     data.deal.project = project || null;
   }
   if (data?.status === 'accepted') {
-    const { data: salesOrder } = await supabase
+    /* 🐞 เดิม `.maybeSingle()` — unique ของ quotationId ถูกถอดตั้งแต่ mig 0161 (สาย Rev. ของ SO)
+       และ 0169 เปิดให้ออกใบใหม่หลังยกเลิก ⇒ QT ที่มี SO มากกว่าหนึ่งแถว maybeSingle ตอบ error
+       ที่ถูกทิ้งเงียบ ⇒ การ์ดใบสั่งขายหายจากหน้าใบเสนอราคา รวมถึงยอด "รออนุมัติ" ของใบที่ยื่นอยู่
+       (มติผู้ใช้ 2026-09-11 · mig 0353)
+       ⭐ เลือก **ใบที่ยังมีชีวิต** (`isLiveSalesOrder` — นิยามเดียวกับด่าน 0169) ก่อน · ไม่มีเลย
+          ถอยไปใบล่าสุด = พฤติกรรมเดิมของ QT ที่มี SO ใบเดียว (ใบยกเลิกยังโชว์ป้าย "ยกเลิก")
+       ⚠️ อ่านไม่ขึ้น ≠ ไม่มีใบ — โยนเหมือน query ใบเสนอราคาข้างบน ไม่งั้นจอชวนกด "สร้างใบสั่งขาย" ซ้ำ */
+    const { data: salesOrders, error: salesOrderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, orderNumber, status, orderDate, actualAmount')
+      .select('id, orderNumber, status, orderDate, actualAmount, supersededById, createdAt')
       .eq('quotationId', data.id)
-      .maybeSingle();
-    data.salesOrder = salesOrder || null;
+      .order('createdAt', { ascending: false })
+      .order('id', { ascending: true }));
+    if (salesOrderError) throw salesOrderError;
+    const rows = salesOrders || [];
+    data.salesOrder = rows.find(isLiveSalesOrder) || rows[0] || null;
+    // ด่าน "ย้อนการรับ" ต้องดู **ทุกใบ** กติกาเดียวกับ RPC unaccept (0138/0170: มีใบที่ไม่ใช่
+    // cancelled สักใบ = บล็อก) — ดูแค่ใบที่เลือกโชว์ไม่พอ: สาย Rev. ที่ฉบับใหม่ถูกยกเลิก ใบที่
+    // เลือกโชว์คือใบยกเลิก แต่ใบต้นทาง 'revised' ยังค้าง ⇒ ปุ่มขึ้นแล้วกดไปโดน 409 ทุกครั้ง
+    data.hasNonCancelledSalesOrder = rows.some((row) => row.status !== 'cancelled');
   }
   return data;
 }

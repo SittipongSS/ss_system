@@ -28,9 +28,12 @@ import { useCan, useRole } from "@/lib/roleContext";
 
 import { historyYearOptions } from "@/lib/sales/historyEntry";
 import { carryIn, closedCountOnAxis } from "@/lib/sales/performanceMath";
+import { matchPendingApprovalRows, pendingApprovalRowKey } from "@/lib/sales/reportPendingApproval";
+import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import { currentMonth, formatMonthLabel, monthRangeOfWholeYear } from "@/lib/datePeriods";
-import { fmtMoney, fmtPercent, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import StatusNotice from "@/components/ui/StatusNotice";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -151,6 +154,12 @@ export default function SalesReportPage() {
   const peopleActualTotal = sum((data?.people || []).map((p) => sum(splitIdx.map((i) => p.actual[i]))));
   const companySplitActual = sum(splitIdx.map((i) => company?.actual[i]));
 
+  /* ⭐ ใบสั่งขาย "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — ก้อนแยกจาก API
+     ลงเดือนปัจจุบันเสมอ ⇒ **ไม่ผ่านด่าน closedCount** (เดือนที่ยังไม่จบ = เดือนเดียวที่มันมีได้)
+     ⛔ ไม่เข้า rowStat / cmp / splitIdx / carryIn / แถบเตือนยอดไม่ตรง — ขายจริงเท่าเดิมทุกตัว */
+  const pendingApproval = data?.pendingApproval?.month ? data.pendingApproval : null;
+  const hasPendingApproval = Number(pendingApproval?.count || 0) > 0;
+
   if (!canTarget) {
     return (
       <Workspace icon={<ChartColumn size={22} />} title="รายงานยอดขาย" back={{ href: "/sa/targets", label: "กลับหน้าวางเป้า" }}>
@@ -165,7 +174,7 @@ export default function SalesReportPage() {
     <Workspace
       icon={<ChartColumn size={22} />}
       title="รายงานยอดขาย"
-      subtitle="เป้าเทียบยอดขายจริงตามช่วงที่เลือก · เจาะลงถึงใบสั่งขายที่อนุมัติแล้ว"
+      subtitle="เป้าเทียบยอดขายจริงตามช่วงที่เลือก · เจาะลงถึงใบสั่งขายที่อนุมัติแล้ว · ใบรออนุมัติแยกไว้ ไม่นับเป็นยอดขาย"
       back={{ href: "/sa/targets", label: "กลับหน้าวางเป้า" }}
       loading={loading}
       headerRight={
@@ -181,7 +190,9 @@ export default function SalesReportPage() {
       <div className="flex flex-col gap-4">
         {error && <StatusNotice tone="error">{error}</StatusNotice>}
 
-        <section className="ui-metric-strip">
+        {/* ช่องที่ 5 "รออนุมัติ" มีเฉพาะช่วงที่คร่อมเดือนนี้และมีใบค้าง — แถบต้องบอกจำนวนช่องเอง
+            (ไม่ส่ง = 4 คอลัมน์ ช่องที่ 5 ตกบรรทัด) */}
+        <section className="ui-metric-strip" data-cols={hasPendingApproval ? "5" : undefined}>
           <span className="ui-metric">
             <span className="ui-metric-icon"><ChartColumn size={16} /></span>
             <span>
@@ -214,6 +225,22 @@ export default function SalesReportPage() {
               </strong>
               <em>{cmp.target > 0 ? `เทียบเป้าของ ${targetIdx.length} เดือนนั้น` : "ไม่มีเป้าให้เทียบ"}</em></span>
           </span>
+          {/* ยอดรออนุมัติ — ช่องของตัวเอง ไม่ใช่บรรทัดรองของ "ขายจริง" เพราะช่องนั้นนับเฉพาะเดือนที่จบแล้ว
+              ส่วนยอดนี้อยู่เดือนปัจจุบันเสมอ · คำว่า "รออนุมัติ" สีสถานะเดียวกับ PendingApprovalAmount
+              ตัวเลขสีข้อความปกติ (ไม่ใช่เขียวของขายจริง) */}
+          {hasPendingApproval && (
+            <span className="ui-metric">
+              <span className="ui-metric-icon"><ClipboardList size={16} /></span>
+              <span>
+                <small>
+                  <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span>
+                  {" "}· {formatMonthLabel(pendingApproval.month)}
+                </small>
+                <strong>{money(pendingApproval.amount)}</strong>
+                <em>{pendingApproval.count} ใบ · ยังไม่นับเป็นขายจริง</em>
+              </span>
+            </span>
+          )}
         </section>
 
         {/* กระทบยอดสามระดับ — ระบบเก็บบริษัท/ทีม/รายคนเป็นสามเส้นแยกกัน ไม่ได้บวกขึ้นไป
@@ -247,7 +274,10 @@ export default function SalesReportPage() {
         <SummaryCard
           scope={scope} onScope={setScope}
           data={data} months={months} closedCount={closedCount} splitIdx={splitIdx}
+          pendingApproval={pendingApproval}
         />
+
+        {hasPendingApproval && <PendingApprovalCard pendingApproval={pendingApproval} />}
 
         <OrderSearchCard orders={data?.orders || []} people={data?.people || []} />
       </div>
@@ -256,7 +286,7 @@ export default function SalesReportPage() {
 }
 
 /* ── การ์ดสรุป — หัวการ์ดถือตัวสลับมุมมอง เนื้อในเปลี่ยนตามที่เลือก ────────── */
-function SummaryCard({ scope, onScope, data, months, closedCount, splitIdx }) {
+function SummaryCard({ scope, onScope, data, months, closedCount, splitIdx, pendingApproval }) {
   return (
     <section className="ui-section">
       <div className="ui-section-header">
@@ -275,19 +305,20 @@ function SummaryCard({ scope, onScope, data, months, closedCount, splitIdx }) {
           *ลูกตรง* ของ `.ui-section` โดยคิดว่าไม่มีชั้นนี้ พอไม่มี body ตารางจะกว้างเกินการ์ด
           32px แล้วโดน `overflow: hidden` ตัดคอลัมน์ขวาสุดทิ้งโดยเลื่อนตามไปดูไม่ได้ */}
       <div className="ui-section-body">
-        {scope === "month" && <MonthTable data={data} closedCount={closedCount} />}
-        {scope === "team" && <GroupTable rows={data?.teams || []} idx={splitIdx} months={months} kind="team" />}
-        {scope === "person" && <GroupTable rows={data?.people || []} idx={splitIdx} months={months} kind="person" />}
+        {scope === "month" && <MonthTable data={data} closedCount={closedCount} pendingApproval={pendingApproval} />}
+        {scope === "team" && <GroupTable rows={data?.teams || []} idx={splitIdx} months={months} kind="team" pendingApproval={pendingApproval} />}
+        {scope === "person" && <GroupTable rows={data?.people || []} idx={splitIdx} months={months} kind="person" pendingApproval={pendingApproval} />}
       </div>
     </section>
   );
 }
 
 /* ── รายเดือน ─────────────────────────────────────────────────────────── */
-function MonthTable({ data, closedCount }) {
+function MonthTable({ data, closedCount, pendingApproval }) {
   const months = data?.months || [];
   const company = data?.company;
   if (!company) return null;
+  const hasPending = Number(pendingApproval?.count || 0) > 0;
 
   /* ทบยอด: เป้าที่ต้องปิดของเดือนนี้ = เป้าเดือนนี้ + ยอดที่ขาดสะสมในปีเดียวกัน
      ⭐ รีเซ็ตทุกต้นปีปฏิทิน (มติผู้ใช้ 2026-08-26) — `carryIn` รับ months แล้วตัดรอบให้เอง */
@@ -324,7 +355,13 @@ function MonthTable({ data, closedCount }) {
                   <td className="num">{target ? money(target) : NA}</td>
                   <td className="num">{carry ? money(carry) : NA}</td>
                   <td className="num">{mustClose ? money(mustClose) : NA}</td>
-                  <td className="num">{actual ? money(actual) : NA}</td>
+                  <td className="num">
+                    {actual ? money(actual) : NA}
+                    {/* บรรทัดรองของเดือนปัจจุบันเท่านั้น — ไม่เข้าส่วนต่าง/%/ทบยอดของแถวนี้ */}
+                    {pendingApproval?.month === month && (
+                      <PendingApprovalAmount amount={pendingApproval.amount} count={pendingApproval.count} />
+                    )}
+                  </td>
                   <td className="num">
                     {closed && mustClose ? <span className={tone(diff)}>{money(diff)}</span> : NA}
                   </td>
@@ -343,18 +380,38 @@ function MonthTable({ data, closedCount }) {
       <div className={`ui-table-footer ${styles.footNote}`}>
         เรียงตามเวลาจริง ข้ามปีปฏิทินได้ · ทบยอดที่ขาดเข้างวดถัดไปและรีเซ็ตทุกต้นปี ·
         {" "}เดือนที่ยังไม่จบไม่คิด % และไม่เข้าผลรวมด้านบน · เดือนที่ไม่ได้ตั้งเป้าขึ้นขีด ไม่ใช่ 0%
+        {hasPending && (
+          <>
+            {" "}· <b>{PENDING_APPROVAL_LABEL}</b> = ใบสั่งขายที่ยื่นแล้วรอ AE Supervisor อนุมัติ
+            {" "}โชว์ไว้ใต้ขายจริงของเดือนนี้ ไม่นับในขายจริง ทบยอด ส่วนต่าง และ %
+          </>
+        )}
       </div>
     </>
   );
 }
 
 /* ── รายทีม / รายคน ───────────────────────────────────────────────────── */
-function GroupTable({ rows, idx, months, kind }) {
+function GroupTable({ rows, idx, months, kind, pendingApproval }) {
   const teamRegistry = useSalesTeams();
   // ไม่มีเดือนที่แยกยอด = ไม่มีอะไรให้เทียบ ต่างจาก "ไม่มีคน" — ต้องบอกคนละแบบ
   const empty = !rows.length || !idx.length;
   const label = kind === "team" ? "ทีม" : "ผู้รับผิดชอบ";
   const pick = (arr) => idx.reduce((s, i) => s + Number(arr[i] || 0), 0);
+  /* ยอดรออนุมัติของเดือนนี้ตามเจ้าของดีลปัจจุบัน — บรรทัดรองใต้ขายจริง ไม่ได้อยู่ในช่วง idx
+     (idx = เดือนที่จบแล้วเท่านั้น) จึงไม่เข้าเรียงลำดับ ส่วนต่าง หรือ %
+     คน/ทีมที่มีแต่ใบรออนุมัติ (ไม่มีเป้า/ขายจริงในช่วง) ต้องเติมแถวให้ ไม่งั้นยอดหายจากตาราง */
+  const { byKey: pendingByKey, extra: pendingOnly } = matchPendingApprovalRows(pendingApproval, rows, kind);
+  const pendingGroups = [...pendingByKey.values()];
+  const pendingTotal = pendingGroups.reduce((s, g) => s + g.amount, 0);
+  const pendingCount = pendingGroups.reduce((s, g) => s + g.count, 0);
+  const hasPending = Number(pendingApproval?.count || 0) > 0;
+  /* ใบรออนุมัติที่ไม่มีแถวในตารางนี้ — ดีลไม่มีเจ้าของ (ทั้งสองมุม) หรือเจ้าของไม่ได้อยู่ทีมไหน
+     (มุมรายทีม) เข้าเฉพาะยอดบริษัท ⇒ แถวรวมน้อยกว่าช่อง "รออนุมัติ" บนหัวรายงาน
+     ต้องบอกส่วนที่ขาดไว้ ไม่งั้นกระทบยอดกับหัวรายงานในที่ประชุมไม่ได้ (เหตุผลเดียวกับแถวรวม) */
+  const pendingOutsideCount = Math.max(0, Number(pendingApproval?.count || 0) - pendingCount);
+  const pendingOutside = Math.max(0, Number(pendingApproval?.amount || 0) - pendingTotal);
+  const groupName = (row) => (kind === "team" ? salesTeamLabel(teamRegistry, row.team) : row.ownerName);
   return (
     <>
       {empty ? (
@@ -365,6 +422,14 @@ function GroupTable({ rows, idx, months, kind }) {
             {" "}ก่อนหน้านั้นยอดถูกกรอกไว้ระดับบริษัทอย่างเดียว จึงเทียบราย{label}ไม่ได้
             {" "}(เดือนที่ยังไม่จบก็ยังไม่นับ)
           </span>
+          {/* ช่วงที่มีแต่เดือนปัจจุบัน (หรือเดือน ม.ค.) ตารางนี้ว่างเสมอ — ใบรออนุมัติต้องไม่หายเงียบ
+              ชี้ไปการ์ดรายใบที่มีคอลัมน์ผู้รับผิดชอบ/ทีมอยู่แล้ว */}
+          {hasPending && (
+            <span>
+              <b>{PENDING_APPROVAL_LABEL}</b> ของเดือนนี้ {pendingApproval.count} ใบ
+              {" "}— ดูราย{label}ได้ที่การ์ด “ใบสั่งขาย{PENDING_APPROVAL_LABEL}” ด้านล่าง
+            </span>
+          )}
         </div>
       ) : (
         <TableScroll surface="embedded" family="list">
@@ -386,12 +451,16 @@ function GroupTable({ rows, idx, months, kind }) {
                 const target = pick(row.target);
                 const actual = pick(row.actual);
                 const diff = actual - target;
+                const pendingRow = pendingByKey.get(pendingApprovalRowKey(kind, row));
                 return (
                   <tr key={row.ownerId || row.team}>
-                    <td>{kind === "team" ? salesTeamLabel(teamRegistry, row.team) : row.ownerName}</td>
+                    <td>{groupName(row)}</td>
                     {kind === "person" && <td>{row.team ? salesTeamLabel(teamRegistry, row.team) : NA}</td>}
                     <td className="num">{target ? money(target) : NA}</td>
-                    <td className="num">{actual ? money(actual) : NA}</td>
+                    <td className="num">
+                      {actual ? money(actual) : NA}
+                      {pendingRow && <PendingApprovalAmount amount={pendingRow.amount} count={pendingRow.count} />}
+                    </td>
                     <td className="num">
                       {target ? <span className={tone(diff)}>{money(diff)}</span> : NA}
                     </td>
@@ -399,14 +468,30 @@ function GroupTable({ rows, idx, months, kind }) {
                   </tr>
                 );
               })}
+              {pendingOnly.map((group) => (
+                <tr key={`pending-approval:${pendingApprovalRowKey(kind, group)}`}>
+                  <td>{groupName(group)}</td>
+                  {kind === "person" && <td>{group.team ? salesTeamLabel(teamRegistry, group.team) : NA}</td>}
+                  <td className="num">{NA}</td>
+                  <td className="num">
+                    {NA}
+                    <PendingApprovalAmount amount={group.amount} count={group.count} />
+                  </td>
+                  <td className="num">{NA}</td>
+                  <td className="num">{NA}</td>
+                </tr>
+              ))}
             </tbody>
             {/* แถวรวม — ต้องมี เพราะคนอ่านต้องกระทบยอดกับหัวรายงานได้ทันทีในที่ประชุม */}
             <tfoot>
               <tr>
-                <td>รวม {rows.length} {kind === "team" ? "ทีม" : "คน"}</td>
+                <td>รวม {rows.length + pendingOnly.length} {kind === "team" ? "ทีม" : "คน"}</td>
                 {kind === "person" && <td>{NA}</td>}
                 <td className={`num ${styles.colMoneySm}`}>{money(rows.reduce((s, r) => s + pick(r.target), 0))}</td>
-                <td className={`num ${styles.colMoney}`}>{money(rows.reduce((s, r) => s + pick(r.actual), 0))}</td>
+                <td className={`num ${styles.colMoney}`}>
+                  {money(rows.reduce((s, r) => s + pick(r.actual), 0))}
+                  <PendingApprovalAmount amount={pendingTotal} count={pendingCount} />
+                </td>
                 <td className="num">
                   {money(rows.reduce((s, r) => s + pick(r.actual) - pick(r.target), 0))}
                 </td>
@@ -423,9 +508,85 @@ function GroupTable({ rows, idx, months, kind }) {
           คิดเฉพาะ <b>{idx.length} เดือน</b>ที่จบแล้วและมีการแยกยอดราย{label}จริง
           {idx.length ? ` (${months[idx[0]] ? formatMonthLabel(months[idx[0]]) : ""} – ${months[idx.at(-1)] ? formatMonthLabel(months[idx.at(-1)]) : ""})` : ""}
           {" "}· ยอดรวมจาก<b>ใบสั่งขายที่อนุมัติแล้ว</b> และเดือนที่กรอกยอดย้อนหลังไว้
+          {hasPending && (
+            <>
+              {" "}· <b>{PENDING_APPROVAL_LABEL}</b> = ใบที่ยื่นแล้วของเดือนนี้ ({formatMonthLabel(pendingApproval.month)})
+              {" "}ตามเจ้าของดีลปัจจุบัน ไม่นับในขายจริง ส่วนต่าง และ %
+              {pendingOutsideCount > 0 && (
+                <>
+                  {" "}· อีก {pendingOutsideCount} ใบ ({money(pendingOutside)})
+                  {kind === "team" ? " ดีลไม่มีเจ้าของหรือเจ้าของไม่ได้อยู่ทีมไหน" : " ดีลไม่มีเจ้าของ"}
+                  {" "}จึงนับเฉพาะในยอดบริษัท
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
     </>
+  );
+}
+
+/* ── ใบสั่งขายรออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) ──────────────────────
+   การ์ดแยกจาก "ใบสั่งขาย" ข้างล่างโดยตั้งใจ — ตารางนั้นคือใบที่ **นับแล้ว** (ยอดรวมที่ค้นเจอ ·
+   ป้าย "ไม่คิดเงิน" · ขั้นบัญชี) ถ้าเอาใบรออนุมัติไปปน ยอดรวมจะบวมและขึ้น "รอตรวจ" ของบัญชี
+   ให้ใบที่บัญชียังตรวจไม่ได้ ⇒ ที่นี่ไม่มีขั้นบัญชี และผู้รับผิดชอบคือเจ้าของดีลปัจจุบัน
+   (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ · mig 0294) · ใบน้อยและเป็นของค้างชั่วคราว จึงกางเลย */
+function PendingApprovalCard({ pendingApproval }) {
+  const teamRegistry = useSalesTeams();
+  const orders = pendingApproval?.orders || [];
+  return (
+    <section className="ui-section">
+      <div className="ui-section-header">
+        <div className="ui-section-title">
+          <ClipboardList size={17} aria-hidden="true" />
+          <div>
+            <h2>ใบสั่งขาย{PENDING_APPROVAL_LABEL}</h2>
+            <p>
+              {pendingApproval.count} ใบ · ยอดก่อน VAT {money(pendingApproval.amount)} ·
+              {" "}โชว์ไว้ที่เดือนนี้ ({formatMonthLabel(pendingApproval.month)}) ยังไม่นับเป็นขายจริง —
+              {" "}อนุมัติแล้วยอดลงเดือนที่อนุมัติ
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="ui-section-body">
+        <TableScroll surface="embedded" family="list">
+          <table>
+            <thead>
+              <tr>
+                <th className={styles.colDoc}>ใบสั่งขาย</th>
+                <th className={`num ${styles.colMoney}`}>ใบเสนอราคา</th>
+                <th className={styles.colName}>ลูกค้า</th>
+                <th className={styles.colDoc}>ผู้รับผิดชอบ</th>
+                <th className={styles.colTeam}>ทีม</th>
+                <th className={styles.colPeriod}>ยื่นเมื่อ</th>
+                <th className={`num ${styles.colMoney}`}>ยอดก่อน VAT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.id}>
+                  <td><a href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</a></td>
+                  <td className="num">{o.quoteNumber || NA}</td>
+                  <td>{o.customerName || NA}</td>
+                  <td>{o.ownerName || NA}</td>
+                  <td>{o.team ? salesTeamLabel(teamRegistry, o.team) : NA}</td>
+                  <td>{o.submittedAt ? fmtDate(o.submittedAt) : NA}</td>
+                  <td className="num">{money(o.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={6}>รวม {pendingApproval.count} ใบ</td>
+                <td className="num">{money(pendingApproval.amount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </TableScroll>
+      </div>
+    </section>
   );
 }
 

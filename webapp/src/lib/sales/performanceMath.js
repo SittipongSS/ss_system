@@ -21,6 +21,27 @@ import { monthsForYear } from '@/lib/datePeriods';
 
 const zeros = (n) => Array(n).fill(0);
 
+/* ── ยอด SO "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) ──────────────────────
+   แถวทุกระดับถือสองเส้นเพิ่ม: `pendingApproval` (ยอดก่อน VAT) · `pendingApprovalCount` (จำนวนใบ)
+   ⭐ **เส้นแยกจาก `actual` เสมอ** — ไม่บวกเข้า actual · ขาด/เกิน · % · ทบยอด · YoY ·
+      แผนที่ความร้อน · กราฟสะสม · ยอดที่กรอกย้อนหลัง (`overlayHistory`) ไม่แตะเส้นนี้เลย
+   ⭐ server วางยอดนี้ไว้ที่ **เดือนปัจจุบันเวลาไทย** เท่านั้น (อนุมัติย้อนหลังไม่ได้) ⇒
+      เดือนที่จบแล้ว/ปีก่อนเป็น 0 เสมอ คณิตที่ดูเฉพาะเดือนที่จบแล้วจึงไม่มีทางเห็นมัน
+   ⚠️ ชื่อ `pending` เปล่า ๆ ห้ามใช้ — ชนกับ `statusOf` key 'pending' (= รอปิดยอด) */
+const PENDING_KEYS = ['pendingApproval', 'pendingApprovalCount'];
+
+/** แถวว่างของแกนหนึ่ง ๆ — ที่เดียวที่ประกาศว่าแถวมีเส้นอะไรบ้าง
+ *  (เดิมเขียนซ้ำใน buildMatrix กับ overlayHistory ⇒ เส้นใหม่หลุดเงียบจากที่หนึ่งได้) */
+const blankRow = (axis, size) => ({
+  months: axis,
+  target: zeros(size),
+  fcTotal: zeros(size),
+  forecast: zeros(size),
+  actual: zeros(size),
+  pendingApproval: zeros(size),
+  pendingApprovalCount: zeros(size),
+});
+
 /** ปีของงวดเดือน — ใช้ตัดรอบทบยอด (ทบไม่ข้ามปีปฏิทิน) */
 const yearOfKey = (monthKey) => String(monthKey || '').slice(0, 4);
 
@@ -39,13 +60,20 @@ export function monthsOfDashboards(dashboards) {
 //
 // `months` = แกนเวลาที่ต้องการ (ไม่ส่ง = ใช้ทั้ง 12 เดือนของปีที่พบใน dashboards
 // เพื่อคงพฤติกรรมเดิมของผู้เรียกที่ยังคิดเป็นรายปี) · เดือนที่ไม่มีข้อมูลได้ 0
+//
+// ยอดรออนุมัติอ่านจากช่อง `pendingApproval` / `pendingApprovalCount` ของ totals ·
+// byOwner · byTeam (มติ 2026-09-11) — payload เก่าที่ค้างใน apiCache ไม่มีสองช่องนี้
+// ⇒ ได้ 0 ไม่ใช่ NaN
 export function buildMatrix(yearDashboards, { months } = {}) {
   const axis = (Array.isArray(months) && months.length)
     ? months.slice()
     : monthsForYear(yearOfKey(monthsOfDashboards(yearDashboards)[0]) || '') ;
   const size = axis.length || 12;
   const axisIndex = new Map(axis.map((key, i) => [key, i]));
-  const blank = () => ({ months: axis, target: zeros(size), fcTotal: zeros(size), forecast: zeros(size), actual: zeros(size) });
+  const blank = () => blankRow(axis, size);
+  const addPending = (target, source, mi) => {
+    for (const key of PENDING_KEYS) target[key][mi] += Number(source?.[key] || 0);
+  };
 
   const company = blank();
   const people = new Map();
@@ -59,6 +87,7 @@ export function buildMatrix(yearDashboards, { months } = {}) {
     company.fcTotal[mi] += Number(totals.fullForecast || 0);
     company.forecast[mi] += Number(totals.weightedForecast || 0);
     company.actual[mi] += Number(totals.wonValue || 0);
+    addPending(company, totals, mi);
 
     for (const row of dashboard.byOwner || []) {
       // คีย์เดียวกับ buildYearRows เดิมของหน้า /sa — ownerId ก่อน, ไม่มีก็ team+ชื่อ
@@ -71,6 +100,7 @@ export function buildMatrix(yearDashboards, { months } = {}) {
       p.fcTotal[mi] += Number(row.fcTotal || 0);
       p.forecast[mi] += Number(row.weighted || 0);
       p.actual[mi] += Number(row.won || 0);
+      addPending(p, row, mi);
     }
 
     for (const row of dashboard.byTeam || []) {
@@ -83,6 +113,7 @@ export function buildMatrix(yearDashboards, { months } = {}) {
       t.fcTotal[mi] += Number(row.fcTotal || 0);
       t.forecast[mi] += Number(row.weighted || 0);
       t.actual[mi] += Number(row.won || 0);
+      addPending(t, row, mi);
     }
   }
 
@@ -110,11 +141,15 @@ export function buildMatrix(yearDashboards, { months } = {}) {
    2. เดือน+ทีมไหน **มีแถวรายคน** แต่ไม่มีแถวของทีมเอง ⇒ ยอดทีม = ผลรวมคนในทีมนั้น
    3. เดือนไหนมีระดับทีมขยับ แต่ไม่มีแถวบริษัท ⇒ ยอดบริษัท = ผลรวมทุกทีม
    ⚠️ ส่วนที่ยัง**ไม่**กระทบกัน (เช่น แถวบริษัทใหญ่กว่าผลรวมทีม เพราะครึ่งปีแรกกรอก
-   มาแค่ระดับบริษัท) ไม่ถูกกลบเงียบ — `unallocatedRow` ดึงออกมาเป็นแถวของตัวเอง */
+   มาแค่ระดับบริษัท) ไม่ถูกกลบเงียบ — `unallocatedRow` ดึงออกมาเป็นแถวของตัวเอง
+
+   ⛔ ยอดรออนุมัติ (`pendingApproval*`) **ไม่ถูกทับ/ไม่ roll up จากที่นี่เด็ดขาด**
+   (มติ 2026-09-11) — แถวประวัติถือแค่ Actual ที่กรอกมือ ส่วนรออนุมัติเป็นสถานะสดของ
+   ใบสั่งขายเสมอ · แถวที่ overlay สร้างใหม่ได้เส้นรออนุมัติเป็นศูนย์ครบความยาวแกน */
 export function overlayHistory(matrix, rows) {
   const axis = matrix?.company?.months || [];
   const size = matrix?.company?.target?.length || axis.length || 12;
-  const blank = () => ({ months: axis, target: zeros(size), fcTotal: zeros(size), forecast: zeros(size), actual: zeros(size) });
+  const blank = () => blankRow(axis, size);
   // งวดของแถวประวัติ: หาในแกนก่อน แล้วค่อยถอยไปเลขเดือน (ผู้เรียกดึงประวัติทีละปีอยู่แล้ว)
   const indexOf = (period) => {
     const key = String(period || '').slice(0, 7);
@@ -196,19 +231,33 @@ export function overlayHistory(matrix, rows) {
      กรอกไว้แค่ระดับบริษัท แถวทีมจึงเป็น 0 ทั้งหกเดือน
    · Actual: ยอดกรอกย้อนหลังระดับบริษัทที่ยังไม่ได้แตกลงทีม (`overlayHistory` ข้อ 3)
    ⇒ ดึงส่วนต่างออกมาเป็นแถวของตัวเอง แถวทีม + แถวนี้ = แถวรวมบริษัทเป๊ะทุกคอลัมน์
-   ห้ามเอาไปบวกใส่ทีมไหนเป็นการเดา — ข้อมูลว่าเป็นของทีมไหนไม่มีอยู่จริง */
+   ห้ามเอาไปบวกใส่ทีมไหนเป็นการเดา — ข้อมูลว่าเป็นของทีมไหนไม่มีอยู่จริง
+   ⚠️ รายชื่อเส้นเขียนตรง ๆ — เส้นที่ลืมใส่จะได้ undefined แล้วการกระทบยอดพังเงียบ
+   (ยอดรออนุมัติเพิ่มเข้ามา 2026-09-11 · เทสต์วนครบทุกเส้นกันไว้แล้ว) */
 export function unallocatedRow(matrix) {
   const company = matrix?.company || {};
   const size = company.target?.length || 0;
   const minus = (key) => Array.from({ length: size }, (_, i) => (
     Number(company[key]?.[i] || 0) - (matrix.teams || []).reduce((sum, t) => sum + Number(t[key]?.[i] || 0), 0)
   ));
-  return { team: null, months: company.months || null, target: minus('target'), fcTotal: minus('fcTotal'), forecast: minus('forecast'), actual: minus('actual') };
+  return {
+    team: null,
+    months: company.months || null,
+    target: minus('target'),
+    fcTotal: minus('fcTotal'),
+    forecast: minus('forecast'),
+    actual: minus('actual'),
+    // ปัดเป็นสตางค์ — เศษทศนิยมจากการลบ (เช่น 0.1 + 0.2) ทำให้แถวนี้โผล่ "รออนุมัติ ฿0.00"
+    // ลอย ๆ เพราะจอโชว์บรรทัดนี้เมื่อยอด > 0 · เส้นอื่นคงเดิม (rowHasValue มีค่าเผื่อ 1e-9 อยู่แล้ว)
+    pendingApproval: minus('pendingApproval').map((v) => Math.round(v * 100) / 100),
+    pendingApprovalCount: minus('pendingApprovalCount'),
+  };
 }
 
-/** แถวนี้มีอะไรให้แสดงไหมในช่วง [startIdx..endIdx] (ทุกค่าเป็น 0 = ซ่อนแถวทิ้ง) */
+/** แถวนี้มีอะไรให้แสดงไหมในช่วง [startIdx..endIdx] (ทุกค่าเป็น 0 = ซ่อนแถวทิ้ง)
+ *  นับยอดรออนุมัติด้วย — แถวที่มีแต่ใบรออนุมัติยังมีของให้ดู (ใบ 0 บาทนับจากจำนวนใบ) */
 export function rowHasValue(row, startIdx, endIdx) {
-  const keys = ['target', 'fcTotal', 'forecast', 'actual'];
+  const keys = ['target', 'fcTotal', 'forecast', 'actual', ...PENDING_KEYS];
   for (let i = Math.max(0, startIdx); i <= endIdx; i += 1) {
     for (const key of keys) if (Math.abs(Number(row?.[key]?.[i] || 0)) > 1e-9) return true;
   }
@@ -290,6 +339,12 @@ export function closedCountOnAxis(months, now) {
 }
 
 // สถิติของงวด [startIdx..endIdx] ของแถวหนึ่ง (คน/ทีม/บริษัท).
+//
+// ⭐ ยอดรออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) คืนเป็นช่องแยก `pendingApproval` /
+// `pendingApprovalCount` — `actual` · `diff` · `pct` · `carry` ยังเป็น Actual ล้วน
+// ข้อยกเว้นเดียวที่ตั้งใจ: `projected` (ยอดคาดจบงวด) = Actual + รออนุมัติ + FC คงเหลือ
+// เพราะใบที่ยื่นแล้วเกือบแน่นอน — ดีลของมันเป็น Won แล้วจึงหลุดจาก FC คงเหลือ ถ้าไม่นับ
+// "คาดขาด" เกินจริงเท่ายอดทั้งก้อน (ก.ย. 2026 ทีม KA เกินจริง 993,000)
 export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount = 12 }) {
   const target = sumRange(row.target, startIdx, endIdx);
   const carry = carryOn ? carryIn(row.target, row.actual, startIdx, closedCount, row.months || null) : 0;
@@ -297,6 +352,8 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
   const fcTotal = sumRange(row.fcTotal || [], startIdx, endIdx);
   const forecast = sumRange(row.forecast, startIdx, endIdx);
   const actual = sumRange(row.actual, startIdx, endIdx);
+  const pendingApproval = sumRange(row.pendingApproval || [], startIdx, endIdx);
+  const pendingApprovalCount = sumRange(row.pendingApprovalCount || [], startIdx, endIdx);
   return {
     target,
     carry,
@@ -304,7 +361,9 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
     fcTotal,
     forecast,
     actual,
-    projected: actual + forecast,
+    pendingApproval,
+    pendingApprovalCount,
+    projected: actual + pendingApproval + forecast,
     diff: actual - mustClose,
     pct: mustClose > 0 ? (actual / mustClose) * 100 : null,
     fcPct: mustClose > 0 ? (forecast / mustClose) * 100 : null,
@@ -326,6 +385,7 @@ export function statusOf(stat, { periodKind }) {
     return { key: 'missed', label: '✗ ขาด', tone: 'red', amount: short };
   }
   if (periodKind === 'current') {
+    // projected ของ windowStat นับยอดรออนุมัติแล้ว (มติ 2026-09-11) — รูปผลลัพธ์ไม่เปลี่ยน
     if (stat.projected >= stat.mustClose - 1e-9) {
       return { key: 'running_on_track', label: 'กำลังวิ่ง · คาดจบถึงเป้า', tone: 'green', amount: 0 };
     }
@@ -360,7 +420,11 @@ export function statusOf(stat, { periodKind }) {
    `windowStat().diff` ของงวดปีที่เทียบเป้าทั้ง 12 เดือน สองเลขนี้อยู่ในตารางเดียวกันได้
    แต่ต้องติดป้ายให้ต่างกัน ไม่งั้นอ่านแล้วขัดกันเอง
 
-   ปีที่จบไปแล้ว closedCount = ytdCount = 12 ⇒ สองฐานเท่ากัน ผลลัพธ์ไม่เปลี่ยนจากเดิม */
+   ปีที่จบไปแล้ว closedCount = ytdCount = 12 ⇒ สองฐานเท่ากัน ผลลัพธ์ไม่เปลี่ยนจากเดิม
+
+   ยอดรออนุมัติ (มติ 2026-09-11): `pendingApprovalYtd` / `pendingApprovalCountYtd` เป็นเลข
+   **แสดงคู่กับ Actual สะสมเท่านั้น** ช่วงเดียวกับ `actualYtd` · ไม่เข้า gap · achv ·
+   needPerMonth · yoy (server วางยอดนี้ที่เดือนปัจจุบันเสมอ ฐานเดือนที่จบแล้วจึงไม่เห็นมัน) */
 export function yearSummary(row, { closedCount = 12, ytdCount = closedCount, lastYearActual = null } = {}) {
   const targetYear = sumRange(row.target, 0, 11);
   const targetClosed = sumRange(row.target, 0, closedCount - 1);
@@ -379,6 +443,8 @@ export function yearSummary(row, { closedCount = 12, ytdCount = closedCount, las
     targetClosed,
     actualClosed,
     actualYtd,
+    pendingApprovalYtd: sumRange(row.pendingApproval || [], 0, ytdCount - 1),
+    pendingApprovalCountYtd: sumRange(row.pendingApprovalCount || [], 0, ytdCount - 1),
     gap: actualClosed - targetClosed,
     achv: targetClosed > 0 ? (actualClosed / targetClosed) * 100 : null,
     remainMonths,

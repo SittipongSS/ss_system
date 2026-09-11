@@ -34,8 +34,12 @@ export default function PendingApprovalAmount({
       title="ใบสั่งขายยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual (อนุมัติแล้วยอดจะเข้าเดือนที่อนุมัติ)"
     >
       {prefix}
-      <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span>{" "}
-      {fmtMoney(value)}
+      {/* คำกับตัวเลขห้ามแยกบรรทัด — ในเซลล์แคบเคยขึ้น "รออนุมัติ" ลอยอยู่บรรทัดเดียว
+          แล้วตัวเลขตกไปบรรทัดล่าง อ่านเหมือนสองเรื่อง · ให้ไปตัดก่อน "· N ใบ" แทน */}
+      <span className="so-pending-approval-main">
+        <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span>{" "}
+        {fmtMoney(value)}
+      </span>
       {orders > 1 ? <span className="so-pending-approval-count"> · {orders} ใบ</span> : null}
     </span>
   );

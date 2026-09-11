@@ -51,3 +51,17 @@
 .lineBadgeUnset {
   color: var(--amber);
 }
+
+/* ยอด SO "รออนุมัติ" ในหมายเหตุของการ์ด Actual (มติผู้ใช้ 2026-09-11 · mig 0353)
+   หมายเหตุของ .ui-metric เป็น nowrap + overflow hidden ⇒ ช่องแคบ (จอ 2 คอลัมน์)
+   ตัวเลขจะโดนเฉือนหายเงียบ ๆ แบบไม่มี … เพราะชิ้นนี้เป็นกล่องลูก · ยอมให้ตัดบรรทัดแทน
+   ⚠️ `.so-pending-approval` ตัวกลางตั้งขนาดของบรรทัดรองในตาราง (fs-5) ไว้ ใน note ของการ์ด
+      (`.ui-metric em` = fs-1) มันจะใหญ่กว่าตัว note และใหญ่กว่าป้าย "Actual" ของการ์ดเอง
+      ⇒ รับขนาดจาก note (ทรงเดียวกับการ์ดบนแดชบอร์ดส่วนตัว/หน้ารายการดีล) · สี/คำ
+      "รออนุมัติ" ยังเป็นของตัวกลางทุกอย่าง
+   🪤 ต่อ `:global(.so-pending-approval)` ให้ specificity ชนะกฎตัวกลางแน่ ๆ — คลาสเดี่ยว
+      เท่ากัน (0,1,0) แล้วผลขึ้นกับลำดับ chunk ของ CSS หลัง build */
+.metricPending:global(.so-pending-approval) {
+  font-size: inherit;
+  white-space: normal;
+}

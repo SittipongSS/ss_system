@@ -20,12 +20,17 @@ import { useCan, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
+import {
+  PENDING_APPROVAL_LABEL, SALES_ORDER_STATUS_LABELS, salesOrderActual, salesOrderAmountKind, splitSalesOrderAmounts,
+} from "@/lib/sales/salesOrderWorkflow";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import StepTrack from "@/components/ui/StepTrack";
 import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
 
-const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
+// ป้ายสถานะชุดกลาง — เดิมเป็นสำเนาในไฟล์ที่ขาด revised / approval_revoked จนแถวพวกนั้นโชว์ค่าดิบ
+const STATUS = SALES_ORDER_STATUS_LABELS;
 function statusBadge(status, className = "") {
   const color = { draft: "var(--text-3)", pending_approval: "var(--amber)", approved: "var(--green)", rejected: "var(--red)", cancelled: "var(--red)" }[status] || "var(--text-3)";
   // ขอบ/พื้นมาจาก .ui-badge ที่ derive จาก currentColor อยู่แล้ว — ตั้ง color พอ
@@ -145,7 +150,10 @@ const SORT_OPTIONS = [
   { value: "recent", label: "ล่าสุด", dir: "asc" },
   { value: "order", label: "เลขที่ใบ", dir: "desc" },
   { value: "customer", label: "ลูกค้า", dir: "asc" },
-  { value: "actual", label: "Actual", dir: "desc" },
+  /* ⚠️ เรียงตามยอดของใบทุกสถานะ (actualAmount) — ป้ายจึงเป็น "ยอดก่อน VAT" ตามหัวคอลัมน์
+     ไม่ใช่ "Actual" (มติผู้ใช้ 2026-09-11: ใบรออนุมัติโชว์ยอดแต่ไม่ใช่ Actual)
+     ⭐ `value` คงเป็น "actual" — ค่าถูกจำไว้ใน useStickyState ของผู้ใช้แล้ว */
+  { value: "actual", label: "ยอดก่อน VAT", dir: "desc" },
   { value: "due", label: "กำหนดชำระ", dir: "asc" },
 ];
 const SORT_DEFAULT = "recent";
@@ -303,6 +311,9 @@ export default function SalesOrdersPage() {
     return [...filtered].sort((a, b) => compareOrders(a, b, sortKey, sortDir));
   }, [filtered, sortKey, sortDir]);
 
+  /* ⭐ `weight` ของถัง = **Actual ล้วน** (ใบอนุมัติแล้ว) ผ่าน `salesOrderActual` ตัวกลาง
+     ยอด "รออนุมัติ" ของถังคิดแยกตอนวาดหัวกลุ่มจาก `bucket.items` ชุดเดียวกัน
+     (มติผู้ใช้ 2026-09-11 · mig 0353) — ห้ามบวกรวมเข้า weight ไม่งั้นยอดหัวกลุ่มอ่านเป็น Actual */
   const buckets = useMemo(() => {
     if (groupBy === "none") return null;
     return bucketList(sorted, (row) => {
@@ -311,7 +322,7 @@ export default function SalesOrdersPage() {
           key: row.customerArCode || String(row.customerName || "").trim(),
           label: row.customerName || "ไม่ระบุลูกค้า",
           sub: row.customerArCode || null,
-          weight: row.status === "approved" ? Number(row.actualAmount) || 0 : 0,
+          weight: salesOrderActual(row),
         };
       }
       if (groupBy === "owner") {
@@ -321,13 +332,13 @@ export default function SalesOrdersPage() {
           key: row.deal?.ownerId || name,
           label: name ? fmtName(name) : "ไม่ระบุผู้ดูแล",
           sub: row.deal?.team || null,
-          weight: row.status === "approved" ? Number(row.actualAmount) || 0 : 0,
+          weight: salesOrderActual(row),
         };
       }
       return {
         key: row.status,
         label: STATUS[row.status] || row.status,
-        weight: row.status === "approved" ? Number(row.actualAmount) || 0 : 0,
+        weight: salesOrderActual(row),
       };
     });
   }, [sorted, groupBy]);
@@ -362,12 +373,21 @@ export default function SalesOrdersPage() {
     [rows, financeShell],
   );
 
-  const summary = useMemo(() => ({
-    total: rows.length,
-    pending: rows.filter((row) => row.status === "pending_approval").length,
-    approved: rows.filter((row) => row.status === "approved").length,
-    actual: rows.reduce((sum, row) => sum + (row.status === "approved" ? Number(row.actualAmount) || 0 : 0), 0),
-  }), [rows]);
+  /* ⭐ ตัวเลขบนการ์ดทั้งแถบคิดจาก `rows` ชุดเดียวกัน (ทุกใบในขอบเขตที่ดูได้ ไม่ใช่ตามตัวกรอง)
+     ผ่าน `splitSalesOrderAmounts` ตัวกลาง — กติกาเดียวกับ cache บนดีล (mig 0353)
+     · Actual = ใบอนุมัติแล้วเท่านั้น (เหมือนเดิม)
+     · รออนุมัติ = `pending_approval` เท่านั้น **ยอดแยก ไม่บวกเข้า Actual** (มติผู้ใช้ 2026-09-11)
+       ⚠️ ห้ามนับด้วย `status !== "approved"` — ร่าง/ตีกลับ/ยกเลิกมี actualAmount ตั้งแต่ร่าง */
+  const summary = useMemo(() => {
+    const amounts = splitSalesOrderAmounts(rows);
+    return {
+      total: rows.length,
+      pending: amounts.pendingApprovalCount,
+      pendingApproval: amounts.pendingApproval,
+      approved: amounts.actualCount,
+      actual: amounts.actual,
+    };
+  }, [rows]);
 
   /* ── แถวของใบสั่งขายหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────
      ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
@@ -378,6 +398,7 @@ export default function SalesOrdersPage() {
      ⚠️ ตารางคิวคำร้องถอดกฎเดียวกันไปพร้อมกัน — สองตารางต้องอ่านเหมือนกัน */
   const orderRow = (row) => {
     const track = salesOrderListTrack(row);
+    const amountKind = salesOrderAmountKind(row);
     return (
                 <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
                   <td>
@@ -408,10 +429,22 @@ export default function SalesOrdersPage() {
                     <span className="cell-sub">{naText(row.deal?.title)}</span>
                   </td>
                   {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
-                      ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง */}
-                  <td className={`num mono ${row.status === "approved" ? "" : "cell-num-idle"}`.trim()}>
+                      ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง
+                      ⭐ **สามทาง** (มติผู้ใช้ 2026-09-11 · mig 0353) ผ่าน `salesOrderAmountKind`:
+                        อนุมัติแล้ว = ยอดปกติ (นับ Actual)
+                        รออนุมัติ   = ยอดปกติ + บรรทัดรอง "รออนุมัติ · ยังไม่นับ Actual" (คำเป็น amber)
+                                      — ยื่นแล้ว เป็นยอดที่กำลังจะเข้า ไม่ใช่ใบนิ่ง ⇒ ไม่หรี่
+                        ที่เหลือ    = หรี่ + "ยังไม่นับเป็น Actual" เหมือนเดิม */}
+                  <td className={`num mono ${amountKind === "excluded" ? "cell-num-idle" : ""}`.trim()}>
                     {fmtMoney(row.actualAmount)}
-                    {row.status === "approved" ? null : <span className="cell-sub">ยังไม่นับเป็น Actual</span>}
+                    {amountKind === "actual" ? null
+                      : amountKind === "pending_approval"
+                        ? (
+                          <span className="cell-sub">
+                            <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span> · ยังไม่นับ Actual
+                          </span>
+                        )
+                        : <span className="cell-sub">ยังไม่นับเป็น Actual</span>}
                   </td>
                   {/* ⭐ งวดชำระ — นับเฉพาะงวดที่ **บัญชีคอนเฟิร์ม** (กฎเดียวกับทั้งระบบ)
                       บรรทัดรองบอกเรื่องที่ด่วนที่สุดเรื่องเดียว (ดู salesOrderPaymentNote) */}
@@ -463,7 +496,18 @@ export default function SalesOrdersPage() {
 
         <SaMetricStrip>
           <SaMetric icon={<ClipboardList />} label="ใบสั่งขายทั้งหมด" value={summary.total} note="เอกสารในขอบเขตที่คุณดูได้" />
-          <SaMetric icon={<ClipboardCheck />} label="รอตรวจอนุมัติ" value={summary.pending} note="รอ AE Supervisor ดำเนินการ" tone={summary.pending ? "warning" : "good"} />
+          {/* ⭐ ยอดของใบรออนุมัติอยู่ใต้จำนวนใบ (มติผู้ใช้ 2026-09-11 · mig 0353) — ก่อนนี้
+              993,000 บาทของ 8 ใบหายจากทั้งแถบ · ยอดก่อน VAT ฐานเดียวกับ Actual ข้าง ๆ
+              แต่ **ไม่รวมเข้าการ์ด Actual** — คนละกองเสมอ */}
+          <SaMetric
+            icon={<ClipboardCheck />}
+            label="รอตรวจอนุมัติ"
+            value={summary.pending}
+            note={summary.pending
+              ? `${fmtMoney(summary.pendingApproval)} ก่อน VAT · ยังไม่นับ Actual`
+              : "รอ AE Supervisor ดำเนินการ"}
+            tone={summary.pending ? "warning" : "good"}
+          />
           <SaMetric icon={<BadgeCheck />} label="อนุมัติแล้ว" value={summary.approved} note="เอกสารที่ถูกนับเป็น Actual" tone="good" />
           <SaMetric icon={<CircleDollarSign />} label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะ SO ที่อนุมัติแล้ว" tone="good" />
         </SaMetricStrip>
@@ -475,7 +519,12 @@ export default function SalesOrdersPage() {
           unit="ใบ"
           title={financeShell ? "ต้องทำตอนนี้ — ใบที่เก็บครบแล้ว รอปิด" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
           primary={(o) => o.orderNumber}
-          secondary={(o) => `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`}
+          /* ⭐ คิวรออนุมัติโชว์ **ยอดก่อน VAT** ตัวเดียวกับการ์ด "รอตรวจอนุมัติ" (มติ 2026-09-11)
+             — เดิมเป็น totalAmount รวม VAT ⇒ ใบเดียวกันมีสองยอด "รออนุมัติ" บนหน้าเดียว
+             ⚠️ คิวของเปลือกบัญชี (ใบเก็บครบรอปิด) ยังเป็นยอดรวม VAT = เงินที่เก็บจริง */
+          secondary={(o) => (financeShell
+            ? `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`
+            : `${naText(o.customerName)} · ${fmtMoney(o.actualAmount)} ก่อน VAT`)}
           rowHref={(o) => `/sa/sales-orders/${o.id}`}
           renderAction={(o) => (
             <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">
@@ -561,7 +610,10 @@ export default function SalesOrdersPage() {
                   ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
               <thead><tr>
                 <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
-                <th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ · กำหนด</th>
+                {/* ⭐ "ยอดก่อน VAT" ไม่ใช่ "Actual ก่อน VAT" (มติผู้ใช้ 2026-09-11) — คอลัมน์นี้
+                    โชว์ยอดของใบทุกสถานะ (รออนุมัติ/ร่าง/ตีกลับ) · แถวไหนเป็น Actual หรือไม่
+                    บอกด้วยบรรทัดรองในเซลล์ ส่วน Actual รวมอยู่ที่การ์ดบนหัวหน้า */}
+                <th className="num">ยอดก่อน VAT</th><th className="num">งวดชำระ · กำหนด</th>
                 {/* ใบกำกับภาษี (mig 0348) — คนละแกนกับเงิน ⇒ คอลัมน์ของตัวเอง
                     ⭐ **หัวคอลัมน์บอกตัวส่วน** (มติผู้ใช้ 2026-09-08) — ตัวเลขในช่องนี้กับ
                     ช่อง "งวดชำระ" ข้าง ๆ เป็นเศษส่วนคนละฐาน (`1/2` กับ `0/1` บนแถวเดียวกัน
@@ -579,6 +631,24 @@ export default function SalesOrdersPage() {
                     กับโหมดปกติ — ห้ามก๊อปสองสำเนา (AGENTS.md) */}
                 {buckets ? buckets.map((bucket) => {
                   const bucketCollapsed = collapsed.has(bucket.key);
+                  /* ⭐ ยอดหัวกลุ่มสองกอง (มติผู้ใช้ 2026-09-11 · mig 0353) — Actual = `bucket.total`
+                     (weight ข้างบน) · รออนุมัติคิดจาก `bucket.items` ชุดเดียวกับแถวที่เห็น
+                     ⇒ ถัง "รออนุมัติ" ของโหมดจัดตามสถานะไม่ขึ้น ฿0.00 เฉย ๆ อีก
+                     ไม่มีใบรออนุมัติ = หน้าตาเดิมทุก px · มีแต่ใบรออนุมัติ = ไม่พิมพ์ "Actual ฿0.00" นำ */
+                  const pendingOfBucket = splitSalesOrderAmounts(bucket.items);
+                  const bucketTotal = pendingOfBucket.pendingApprovalCount
+                    ? (
+                      <>
+                        {bucket.total > 0 ? `Actual ${fmtMoney(bucket.total)}` : null}
+                        <PendingApprovalAmount
+                          inline
+                          amount={pendingOfBucket.pendingApproval}
+                          count={pendingOfBucket.pendingApprovalCount}
+                          prefix={bucket.total > 0 ? " · " : ""}
+                        />
+                      </>
+                    )
+                    : fmtMoney(bucket.total);
                   return (
                     <Fragment key={bucket.key}>
                       <TableGroupRow
@@ -586,8 +656,8 @@ export default function SalesOrdersPage() {
                         label={bucket.label}
                         sub={bucket.sub}
                         badge={`${bucket.count} ใบ`}
-                        total={fmtMoney(bucket.total)}
-                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว)"
+                        total={bucketTotal}
+                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว) · ยอดรออนุมัติแยกไว้ ไม่นับเป็น Actual"
                         collapsed={bucketCollapsed}
                         onToggle={() => toggleBucket(bucket.key)}
                       />

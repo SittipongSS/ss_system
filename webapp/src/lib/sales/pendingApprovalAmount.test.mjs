@@ -104,6 +104,10 @@ test('เดือนของยอดรออนุมัติ = เดื�
   assert.equal(pendingApprovalMonthOf(deal, new Date('2026-09-30T17:30:00Z')), '2026-10');
   // ไม่มียอด = ไม่มีเดือน
   assert.equal(pendingApprovalMonthOf({ stage: 'won', metadata: {} }, new Date('2026-09-11T08:00:00Z')), null);
+  // ใบยอด 0 บาทที่รออนุมัติจริง (mig 0197 · trigger 0353 เขียนคีย์เมื่อ count > 0) ก็มีเดือน —
+  // ไม่งั้นแดชบอร์ด/ลิ้นชักนับใบน้อยกว่ารายงานเป้าและหน้า SO ที่นับจากแถวใบตรง ๆ
+  assert.equal(pendingApprovalMonthOf({ stage: 'won', metadata: { soPendingAmount: 0, soPendingCount: 1 } }, new Date('2026-09-11T08:00:00Z')), '2026-09');
+  assert.equal(pendingApprovalMonthOf({ stage: 'quotation', metadata: { soPendingAmount: 0, soPendingCount: 1 } }, new Date('2026-09-11T08:00:00Z')), null);
 });
 
 test('rollup โครงการ: รออนุมัติแยกช่อง ไม่อยู่ใน actual / totalValue / variance', () => {

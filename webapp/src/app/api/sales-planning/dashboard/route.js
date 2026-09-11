@@ -1,9 +1,11 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { bumpStamp, cachedJson } from '@/lib/serverCache';
-import { DASHBOARD_CACHE_PREFIX, loadDashboardStamp } from '@/lib/sales/dashboardStamp';
+import { DASHBOARD_CACHE_PREFIX, dashboardCacheKey, loadDashboardStamp } from '@/lib/sales/dashboardStamp';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { currentMonth } from '@/lib/datePeriods';
 import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, normalizedOwnerName, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { isEmptyDashboardBucket, pendingApprovalFields, rollupPendingApproval } from '@/lib/sales/pendingApprovalRollup';
 import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
 import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
 import { loadUserDirectory } from '@/lib/usersRepo';
@@ -30,6 +32,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // สแกนดีลรอบเดียว + ดึงเป้าทุกเดือนรอบเดียว แล้ว aggregate 12 เดือนใน JS.
   const yearParam = sp.get('year');
   const year = /^\d{4}$/.test(yearParam || '') ? yearParam : null;
+  /* ⭐ นาฬิกาเดียวต่อ request (มติผู้ใช้ 2026-09-11 · mig 0353) — ยอด SO "รออนุมัติ"
+     ลงเดือนปัจจุบันเวลาไทยเสมอ ⇒ คีย์ cache · เดือนตั้งต้น · ตัวรวมยอด ต้องเห็นเดือนเดียวกัน
+     (อ่านนาฬิกาแยกหลายจุดแล้วคร่อมเที่ยงคืนต้นเดือน = คีย์เดือนหนึ่ง ข้างในอีกเดือน) */
+  const now = new Date();
   try {
     /* ⭐ **สดทันทีที่ข้อมูลเปลี่ยน โดยไม่ทิ้ง cache** (แก้ 2026-08-25) — ของเดิมรอ TTL
        อย่างเดียว ⇒ ปิดดีล Won เสร็จ **กด F5 กี่รอบก็ยังเห็นเลขเก่า** เพราะ cache อยู่
@@ -43,10 +49,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     bumpStamp(DASHBOARD_CACHE_PREFIX, await loadDashboardStamp(supabase));
 
     if (year) {
-      return ok(await cachedJson(`sales-dashboard:year:${year}`, DASHBOARD_TTL_MS, () => buildYearDashboards(supabase, year)));
+      return ok(await cachedJson(dashboardCacheKey(`year:${year}`, now), DASHBOARD_TTL_MS, () => buildYearDashboards(supabase, year, now)));
     }
-    const month = monthKey(sp.get('month')) || monthKey(new Date().toISOString());
-    return ok(await cachedJson(`sales-dashboard:${month}`, DASHBOARD_TTL_MS, () => buildDashboard(supabase, month)));
+    // เดือนตั้งต้น = เดือนไทย (เดิมตัดจากสตริง ISO = เดือน UTC → ตี 0–7 ของวันที่ 1 ได้เดือนก่อน)
+    const month = monthKey(sp.get('month')) || currentMonth(now);
+    return ok(await cachedJson(dashboardCacheKey(month, now), DASHBOARD_TTL_MS, () => buildDashboard(supabase, month, now)));
   } catch (e) {
     return fail(e.message, 500);
   }
@@ -72,17 +79,17 @@ async function loadOwnerResolver(supabase) {
   return buildOwnerResolver(directory.values());
 }
 
-async function buildDashboard(supabase, month) {
+async function buildDashboard(supabase, month, now) {
   const [visibleDeals, resolveOwner, { data: targets, error: targetsError }] = await Promise.all([
     loadAllDeals(supabase),
     loadOwnerResolver(supabase),
     supabase.from('sales_targets').select('*').eq('targetMonth', month),
   ]);
   if (targetsError) throw new Error(targetsError.message);
-  return aggregateMonth(visibleDeals, targets || [], month, resolveOwner);
+  return aggregateMonth(visibleDeals, targets || [], month, resolveOwner, now);
 }
 
-async function buildYearDashboards(supabase, year) {
+async function buildYearDashboards(supabase, year, now) {
   const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
   const [visibleDeals, resolveOwner, { data: targets, error: targetsError }] = await Promise.all([
     loadAllDeals(supabase),
@@ -93,11 +100,11 @@ async function buildYearDashboards(supabase, year) {
   // shape ต่อเดือนเหมือน response โหมด ?month= ทุกประการ — client ใช้โค้ดเดิมได้เลย
   return {
     year,
-    months: months.map((m) => aggregateMonth(visibleDeals, (targets || []).filter((t) => t.targetMonth === m), m, resolveOwner)),
+    months: months.map((m) => aggregateMonth(visibleDeals, (targets || []).filter((t) => t.targetMonth === m), m, resolveOwner, now)),
   };
 }
 
-function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null) {
+function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null, now = new Date()) {
 
   // กติกา Won/open/ยอด/เดือน — ใช้ชุดกลางร่วมกับ drill-down modal (lib/sales/dashboardMetrics)
   const isWon = isWonDeal;
@@ -154,7 +161,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
 
   // Per type: FC Total = Open + Won + Lost, Actual = Won actual,
   // FC remaining = Open only. Lost stays in FC Total so forecast misses remain visible.
-  const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0 }]));
+  const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0, ...pendingApprovalFields() }]));
   for (const d of monthDeals) {
     const b = typeMap[dealTypeOf(d)];
     if (isWon(d)) { b.actual += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
@@ -165,7 +172,8 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
 
   // แถว "ผี": ไม่มีทั้งเป้า/won/คาดการณ์/จำนวนดีล — เกิดจาก target ค้างค่า 0
   // หรือถังที่ถูกสร้างโดยไม่มีข้อมูลจริง → ตัดทิ้งไม่ให้โผล่บนหน้า.
-  const isEmptyBucket = (b) => !b.target && !b.won && !b.weighted && !b.lost && !b.openCount && !b.wonCount;
+  // ⭐ ถังที่มีแต่ยอด "รออนุมัติ" ไม่ใช่ผี (2026-09-11 · mig 0353) — กติกาอยู่ที่ lib (เทสต์ได้)
+  const isEmptyBucket = isEmptyDashboardBucket;
 
   // Per-SA breakdown: target (person-level rows) vs won vs weighted forecast.
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
@@ -181,7 +189,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
     const cleanName = normalizedOwnerName(name);
     const key = acc ? `u|${acc.id}` : (cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned'));
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: acc?.id || id || null, ownerName: acc?.name || name || 'ไม่ระบุ', team: acc?.team || team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
+      ownerMap[key] = { ownerId: acc?.id || id || null, ownerName: acc?.name || name || 'ไม่ระบุ', team: acc?.team || team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields() };
     } else {
       ownerMap[key].ownerId ||= id || null;
       ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;
@@ -199,10 +207,6 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
-  const byOwner = Object.values(ownerMap)
-    .filter((b) => !isEmptyBucket(b))
-    .map((b) => ({ ...b, gap: b.target - b.won }))
-    .sort((a, b) => b.target - a.target || b.won - a.won);
 
   // Per-team breakdown. เป้าต่อทีม = team-level (ownerId ว่าง) ถ้ามี, ไม่งั้นรวมราย SA
   // — กันบวกซ้ำเมื่อทีมมี target ทั้งสองแบบ (เดิมบวกรวมทั้งคู่ = เป้าเบิ้ล).
@@ -210,7 +214,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 } };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields() };
     return teamMap[key];
   };
   // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
@@ -234,6 +238,28 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
+
+  /* ── ยอด SO "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) ─────────────────────
+     **รอบแยก ไม่ขี่ลูป Won ข้างบน** — ยอดนี้ลงเดือนปัจจุบันเวลาไทยเสมอ ส่วน Won ลงเดือน
+     wonMonthOf · ดีลที่ Won เดือนก่อนแล้วมีใบใหม่รออนุมัติจึงไม่อยู่ใน wonDeals ของเดือนนี้
+     ⭐ ลงถังคน/ทีม/หมวดเดียวกับที่ Actual ของดีลนั้นลง (ตัวหาถังชุดเดียวกับลูปข้างบน)
+     ⛔ ช่องแยก pendingApproval/pendingApprovalCount เท่านั้น — ไม่แตะ won/wonValue/wonCount/
+        fcTotal/gap/variance (หน้าเติมยอดจากระบบคัดลอก won/wonValue ไปเก็บ sales_history ถาวร)
+     ⚠️ ต้องอยู่ก่อนกรองถังผีด้านล่าง — คนที่เดือนนี้มีแต่ใบรออนุมัติต้องยังมีแถว */
+  const pendingApprovalTotals = rollupPendingApproval(visibleDeals, month, {
+    now,
+    attribute: [
+      (d) => ownerBucket(d.ownerId, d.ownerName, d.team),
+      (d) => teamBucket(d.team),
+      (d) => typeMap[dealTypeOf(d)],
+    ],
+  });
+
+  const byOwner = Object.values(ownerMap)
+    .filter((b) => !isEmptyBucket(b))
+    .map((b) => ({ ...b, gap: b.target - b.won }))
+    .sort((a, b) => b.target - a.target || b.won - a.won);
+
   /* 🐞 เดิมตัดถัง null ทิ้ง ("ดีลไม่ระบุทีม") ⇒ ยอดรวมบริษัทกับผลรวมรายทีม **ไม่ตรงกัน**
      โดยไม่มีอะไรบอก — ดีลไร้ทีมยังถูกนับใน totals แต่หายจากตารางทีม
 
@@ -271,6 +297,9 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null)
       fullForecast,
       remainingForecast,
       targetGap: targetAmount - wonValue,
+      // ยอด SO รออนุมัติ — ช่องแยกจาก wonValue เสมอ (ดูรอบรวมยอดด้านบน)
+      pendingApproval: pendingApprovalTotals.pendingApproval,
+      pendingApprovalCount: pendingApprovalTotals.pendingApprovalCount,
     },
     byStage: Object.values(byStage),
     byForecast,

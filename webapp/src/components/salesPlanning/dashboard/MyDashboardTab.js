@@ -30,8 +30,10 @@ import { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace
 import {
   MY_QUEUE_KINDS, buildMyQueue, groupMyQueue, myQueueCounts,
 } from "@/lib/salesPlanning/myQueue";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import ScheduleSection from "./ScheduleSection";
 import styles from "./DashboardShell.module.css";
+import tabStyles from "./MyDashboardTab.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
 const ACTIVITY_KIND_LABEL = {
@@ -123,6 +125,11 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   const actual = Number(data?.wonValue || 0);
   const targetGap = Number(data?.targetGap || 0);
   const targetPct = target > 0 ? (actual / target) * 100 : 0;
+  /* ยอด SO "รออนุมัติ" ของงวด (มติผู้ใช้ 2026-09-11 · mig 0353) — **ช่องแยกจาก actual**
+     ⛔ ไม่แตะ actual / targetGap / targetPct — "ขาดอีก", สีเขียว "เกินเป้า" และ % ที่ปิดได้
+        ยังเป็น Actual ล้วน · route ส่งมาเฉพาะงวดที่ครอบเดือนปัจจุบัน (เวลาไทย) งวดอื่นเป็น 0 */
+  const pendingApproval = Number(data?.pendingApproval || 0);
+  const pendingApprovalCount = Number(data?.pendingApprovalCount || 0);
   /* ทุกป้ายของ "ตัวเลขงวด" ต้องบอกงวดเอง — ตัวเลือกเดือนกับติ๊ก "ทุกเดือน" อยู่บนหัวหน้า
      ส่วนตัวเลขอยู่กลางหน้า · เขียน "เดือนนี้" ตายตัวไม่ได้ ทั้งเพราะติ๊กทั้งปีได้ และ
      เพราะเลือกเดือนย้อนหลังได้อยู่แล้ว (ของเดิมเขียน "เดือนนี้" ทุกที่ = โกหกทั้งคู่) */
@@ -145,7 +152,9 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         <MetricStrip aria-label="ยอดของฉัน">
           {/* ⚠️ **สี่ช่องนี้ต้องเป็นเลขคนละตัวจริง ๆ** — เป้า(เงิน) · ยอดปิดได้(เงิน) ·
               สัดส่วน(%) · ท่อ(เงิน+จำนวนใบ) · เดิมช่อง "เป้า" โชว์ % อยู่แล้ว การเพิ่ม
-              ช่อง % อีกใบจึงต้องย้ายให้ช่องเป้ากลับไปโชว์ "ยอดเป้า" ไม่งั้นเลขซ้ำกันสองที่ */}
+              ช่อง % อีกใบจึงต้องย้ายให้ช่องเป้ากลับไปโชว์ "ยอดเป้า" ไม่งั้นเลขซ้ำกันสองที่
+              ⭐ ยอด SO "รออนุมัติ" (2026-09-11) **ไม่ใช่ช่องที่ห้า** — เป็นบรรทัดรองในหมายเหตุของ
+              "ยอดปิดได้" (มันคือคำตอบของคำถามเดียวกัน: ยอดถึงไหนแล้ว + อะไรกำลังจะเข้า) */}
           <Metric
             icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
             value={hasTarget ? fmtMoney(target) : NA}
@@ -154,9 +163,19 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           <Metric
             icon={<CheckCircle2 />} label="ยอดปิดได้" value={fmtMoney(actual)}
             /* ⚠️ ไม่มีเป้า = ไม่มีอะไรให้เทียบ ⇒ บอกงวดแทน ห้ามเขียน "ขาดอีก" จากเป้า 0
-               (เป้า 0 กับ "ยังไม่ตั้งเป้า" คนละเรื่อง — ดู empty-value-rule) */
-            note={!hasTarget ? `ปิดได้ใน${scopeLabel}`
-              : targetGap > 0 ? `ขาดอีก ${fmtMoney(targetGap)}` : `เกินเป้า ${fmtMoney(-targetGap)}`}
+               (เป้า 0 กับ "ยังไม่ตั้งเป้า" คนละเรื่อง — ดู empty-value-rule)
+               ⭐ บรรทัดสอง = ยอด SO รออนุมัติ แยกจากยอดปิดได้ (ชิ้นกลางไม่เรนเดอร์เมื่อไม่มีใบ)
+               ⛔ ห้ามเอามาหักจาก "ขาดอีก" — ถ้าอยากโชว์ "ถ้าอนุมัติครบ" ต้องเป็นข้อความแยกที่มีป้ายเอง */
+            note={(
+              <>
+                {!hasTarget ? `ปิดได้ใน${scopeLabel}`
+                  : targetGap > 0 ? `ขาดอีก ${fmtMoney(targetGap)}` : `เกินเป้า ${fmtMoney(-targetGap)}`}
+                <PendingApprovalAmount
+                  amount={pendingApproval} count={pendingApprovalCount}
+                  className={tabStyles.metricPending}
+                />
+              </>
+            )}
             tone={hasTarget && targetGap <= 0 ? "good" : undefined}
           />
           <Metric

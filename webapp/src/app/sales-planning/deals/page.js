@@ -53,10 +53,16 @@ import { entityCodeDisplay } from "@/lib/entityCode";
 import { apiFetch } from "@/lib/apiFetch";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
-
-/* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอดปิดจริง นอกนั้นใช้ยอดคาดการณ์
-   (กติกาเดียวกับคอลัมน์มูลค่าและ KPI — ยอดรวมหัวกลุ่มต้องบวกจากเลขเดียวกับในแถว) */
-const dealValue = (deal) => Number((isWonStage(deal.stage) ? deal.wonValue ?? deal.projectValue : deal.projectValue) || 0);
+/* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอด Actual (SO อนุมัติแล้ว) นอกนั้นใช้ยอดคาดการณ์
+   ตัวเดียวกันทั้งคอลัมน์มูลค่า · การเรียง · ยอดหัวกลุ่ม · KPI (lib/sales/dealAmountDisplay)
+   ⭐ ยอด SO "รออนุมัติ" วางเป็นชิ้นแยก (PendingApprovalAmount) เสมอ — ไม่บวกเข้าตัวเลขหลัก
+      (มติผู้ใช้ 2026-09-11 · mig 0353)
+   🪤 ของเดิมอ่าน `wonValue` ดิบแล้ว `??` ถอยไป FC — ถอยไม่เคยเกิด (trigger เขียน 0 ไม่ใช่ null)
+      และข้ามด่าน actualSource ที่ภาพรวมใช้ */
+import { compareDealDisplayValue, dealDisplayValue, sumDealDisplay } from "@/lib/sales/dealAmountDisplay";
+import { pendingApprovalAmountOf, pendingApprovalCountOf } from "@/lib/sales/dashboardMetrics";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import styles from "./page.module.css";
 
 /* 🪤 ค่าตั้งต้นของตัวกรองต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
    ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าที่ไหนก็ตามคิดว่า
@@ -296,11 +302,8 @@ export default function SalesPlanningPipelinePage() {
       // `0 || 99` = 99 → เรียงตามสถานะทีไร ลีดตกไปท้ายสุดแทนที่จะขึ้นหัว
       const rank = (s) => { const i = stageIndex(s); return i < 0 ? 99 : i; };
       if (sortKey === "status") return (rank(a.stage) - rank(b.stage)) * mul;
-      if (sortKey === "amount") {
-        const valA = isWonStage(a.stage) ? (a.wonValue ?? a.projectValue ?? 0) : (a.projectValue ?? 0);
-        const valB = isWonStage(b.stage) ? (b.wonValue ?? b.projectValue ?? 0) : (b.projectValue ?? 0);
-        return (valA - valB) * mul;
-      }
+      // ตัวเลขเดียวกับคอลัมน์มูลค่า — ยอดรออนุมัติเป็นแค่ตัวตัดสินตอนเสมอกัน
+      if (sortKey === "amount") return compareDealDisplayValue(a, b) * mul;
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
       return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? -1 : 1) * mul;
     });
@@ -335,11 +338,17 @@ export default function SalesPlanningPipelinePage() {
         key = deal.ownerId || deal.team || "__none";
         label = ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "ไม่ระบุผู้ดูแล");
       }
-      const group = map.get(key) || { key, label, sub, deals: [], total: 0, missing: key === "__none" };
+      const group = map.get(key) || {
+        key, label, sub, deals: [], total: 0, pendingApproval: 0, pendingApprovalCount: 0, missing: key === "__none",
+      };
       // ดีลใบแรกของกลุ่มอาจผูกก่อนออกรหัส — เอาค่าแรกที่มีจริง
       if (!group.sub && sub) group.sub = sub;
       group.deals.push(deal);
-      group.total += dealValue(deal);
+      group.total += dealDisplayValue(deal);
+      /* ยอดรออนุมัติของกลุ่มเป็นกองแยก — ไม่บวกเข้า total และไม่ใช้เรียงกลุ่ม
+         (มติผู้ใช้ 2026-09-11) · บวกจากตัวเดียวกับบรรทัดรองในแถว */
+      group.pendingApproval += pendingApprovalAmountOf(deal);
+      group.pendingApprovalCount += pendingApprovalCountOf(deal);
       map.set(key, group);
     }
     return [...map.values()].sort((a, b) => {
@@ -747,8 +756,11 @@ export default function SalesPlanningPipelinePage() {
           onSaved={load}
         />
       </td>
-      <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won)" : "มูลค่าคาดการณ์"}>
-        {fmtMoney(dealValue(deal))}
+      <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won · Actual — ไม่รวมยอด SO รออนุมัติ)" : "มูลค่าคาดการณ์"}>
+        {fmtMoney(dealDisplayValue(deal))}
+        {/* บรรทัดรอง "รออนุมัติ" — เฉพาะดีล Won ที่มี SO ยื่นแล้วยังไม่อนุมัติ (ไม่มี = ไม่เรนเดอร์)
+            ⚠️ ไม่รวมกับตัวเลขบน — บนคือ Actual ล่างคือยอดที่ยังไม่นับ (มติผู้ใช้ 2026-09-11) */}
+        <PendingApprovalAmount amount={pendingApprovalAmountOf(deal)} count={pendingApprovalCountOf(deal)} />
       </td>
       <td className="num" onClick={(event) => event.stopPropagation()}>
         {/* ก้าวถัดไป 1 ปุ่ม + เมนู "…" รวมที่เหลือ (มติผู้ใช้ 2026-08-01)
@@ -840,10 +852,26 @@ export default function SalesPlanningPipelinePage() {
     .filter((d) => !["won", "lost", "in_project"].includes(d.stage))
     .reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const wonDeals = kpiDeals.filter((d) => isWonStage(d.stage));
-  const wonValue = wonDeals.reduce(
-    (sum, d) => sum + Number(d.wonValue ?? d.projectValue ?? 0),
-    0,
-  );
+  /* ยอด Won = Actual ตัวเดียวกับคอลัมน์มูลค่า · ยอดรออนุมัติบวกจากชุดเดียวกับตัวนับ Won
+     ข้าง ๆ (wonDeals ของ kpiDeals) ไม่ใช่จากตาราง — KPI กับตารางกรองคนละชั้นอยู่แล้ว */
+  const wonTotals = sumDealDisplay(wonDeals);
+  const wonValue = wonTotals.value;
+  const wonHasPending = wonTotals.pendingApproval > 0 || wonTotals.pendingApprovalCount > 0;
+  /* note ของการ์ด Won: มีใบรออนุมัติ ⇒ บอกคำว่า Actual กำกับตัวเลขแรกเสมอ (แม้เป็น ฿0.00)
+     แล้ววางยอดรออนุมัติเป็น **บรรทัดของตัวเอง** ใต้มัน — ไม่งั้น "ยังไม่มียอด Won" จะอ่านว่าไม่มีอะไรเลย
+     🪤 ห้ามวางต่อท้ายบรรทัดเดียวกัน (inline): `.ui-metric em` เป็น nowrap + ตัดท้าย "…"
+        แถบ 4 ช่องบนจอโน้ตบุ๊ก ~1280px เหลือที่ให้ note ราว 170px แต่ "Actual ฿X · รออนุมัติ ฿Y · N ใบ"
+        ยาว ~250px ⇒ ยอดรออนุมัติ (ตัวที่ผู้ใช้ขอให้เห็น) ถูกตัดทิ้งเป็น "…" เงียบ ๆ */
+  const wonNote = wonHasPending ? (
+    <>
+      Actual {fmtMoney(wonValue)}
+      <PendingApprovalAmount
+        amount={wonTotals.pendingApproval}
+        count={wonTotals.pendingApprovalCount}
+        className={styles.metricPending}
+      />
+    </>
+  ) : (wonValue > 0 ? fmtMoney(wonValue) : "ยังไม่มียอด Won");
   const lostDeals = kpiDeals.filter((d) => d.stage === "lost");
 
   // ⚠️ ไล่ประเภทจาก DEAL_TYPE_LABELS ไม่ใช่พิมพ์เอง — คำโปรยนี้เคยค้างที่ 3 ประเภท
@@ -894,7 +922,7 @@ export default function SalesPlanningPipelinePage() {
               <SaMetricStrip>
                 <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note="ตามขอบเขตและเดือนที่เลือก" />
                 <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />
-                <SaMetric icon={<CheckCircle2 />} label="ปิดสำเร็จ (Won)" value={wonDeals.length} note={wonValue > 0 ? fmtMoney(wonValue) : "ยังไม่มียอด Won"} tone="good" />
+                <SaMetric icon={<CheckCircle2 />} label="ปิดสำเร็จ (Won)" value={wonDeals.length} note={wonNote} tone="good" />
                 <SaMetric icon={<Ban />} label="ไม่ไปต่อ (Lost)" value={lostDeals.length} note="ดีลที่ปิดโดยไม่เกิดยอดขาย" tone={lostDeals.length ? "danger" : undefined} />
               </SaMetricStrip>
             </>
@@ -1020,7 +1048,12 @@ export default function SalesPlanningPipelinePage() {
                             <strong>{group.label}</strong>
                             {group.sub ? <span className="ar-code">{group.sub}</span> : null}
                             <span className="ui-badge">{group.deals.length} ดีล</span>
-                            <span className="group-total mono" title="มูลค่ารวมของกลุ่ม (Won ใช้ยอดปิดจริง)">{fmtMoney(group.total)}</span>
+                            <span className="group-total mono" title="มูลค่ารวมของกลุ่ม (Won ใช้ยอด Actual — ไม่รวมยอดรออนุมัติ)">{fmtMoney(group.total)}</span>
+                            {/* ยอดรออนุมัติของกลุ่ม = ตัวเลขแยกข้างยอดรวม ไม่ใช่ส่วนหนึ่งของมัน
+                                ⚠️ มี " · " นำหน้าเสมอ — กฎ `tr.group-row` ใน globals ผูกกับ
+                                `.premium-glass-table` ซึ่งตารางนี้ไม่มีแล้ว (#1639) ⇒ หัวกลุ่มไม่ใช่
+                                flex ไม่มี gap · ไม่มีตัวคั่น ตัวเลขสองตัวจะติดกันเป็นก้อนเดียว */}
+                            <PendingApprovalAmount amount={group.pendingApproval} count={group.pendingApprovalCount} inline prefix=" · " />
                           </button>
                         </td>
                       </tr>

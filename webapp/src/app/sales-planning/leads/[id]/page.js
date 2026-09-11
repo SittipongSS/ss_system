@@ -33,6 +33,10 @@ import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/Lead
 import { apiFetch } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
+import { STAGE_LABELS } from "@/lib/salesPlanning";
+import { isWonDeal, pendingApprovalAmountOf, pendingApprovalCountOf } from "@/lib/sales/dashboardMetrics";
+import { dealDisplayValue } from "@/lib/sales/dealAmountDisplay";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 
 /* ป้ายของ `lead_events.kind` — ต้องครบทุกค่าที่ CHECK ของตารางยอมรับ (mig 0199)
    ไม่งั้นเหตุการณ์จะโชว์เป็นชื่อ kind ดิบบนไทม์ไลน์
@@ -346,7 +350,40 @@ export default function LeadDetailPage() {
           >
             {lead.relatedDeals?.length ? (
               <ContextGrid>
-                {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={Handshake} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: naText(deal.forecastMonth) }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
+                {/* มูลค่าบนการ์ด (มติผู้ใช้ 2026-09-11 · mig 0353) — Won = Actual (SO อนุมัติแล้ว)
+                    + บรรทัดรอง "รออนุมัติ" แยก · ดีลเปิด = มูลค่าคาดการณ์
+                    🐞 เดิมอ่าน `wonValue ?? projectValue` ไม่ดูขั้น ⇒ ดีลเปิดขึ้น ฿0.00 ทุกใบ
+                       (trigger เขียน wonValue = 0 ไม่ใช่ null · `??` ไม่เคยถอยไป FC)
+                    ป้ายขั้นอ่านจาก STAGE_LABELS — เดิมโชว์คีย์ดิบ เช่น "won" */}
+                {lead.relatedDeals.map((deal) => (
+                  <ContextCard
+                    key={deal.id}
+                    icon={Handshake}
+                    href={`/sales-planning/deals/${deal.id}`}
+                    eyebrow="ดีลจาก Lead"
+                    title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`}
+                    subtitle={deal.customerName || lead.company || lead.contactName}
+                    badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: isWonDeal(deal) ? "var(--green)" : "var(--accent)" }}>{STAGE_LABELS[deal.stage] || deal.stage}</span></>}
+                    facts={[
+                      { label: "Forecast", value: naText(deal.forecastMonth) },
+                      isWonDeal(deal)
+                        ? {
+                          label: "มูลค่าปิดจริง",
+                          value: (
+                            <>
+                              {fmtMoney(dealDisplayValue(deal))}
+                              <PendingApprovalAmount
+                                amount={pendingApprovalAmountOf(deal)}
+                                count={pendingApprovalCountOf(deal)}
+                                className={styles.dealPending}
+                              />
+                            </>
+                          ),
+                        }
+                        : { label: "มูลค่าคาดการณ์", value: fmtMoney(dealDisplayValue(deal)) },
+                    ]}
+                  />
+                ))}
               </ContextGrid>
             ) : (
               <p className="empty">

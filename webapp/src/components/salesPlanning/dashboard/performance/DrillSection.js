@@ -30,7 +30,16 @@ const CHART_BUCKETS = [
   { value: "year", label: "ปี" },
 ];
 
-const BLANK = { target: Array(12).fill(0), fcTotal: Array(12).fill(0), forecast: Array(12).fill(0), actual: Array(12).fill(0) };
+// แถวว่างต้องมีทุกเส้นที่ matrix มี — รวมยอด SO รออนุมัติ (มติ 2026-09-11) ไม่งั้นการ์ด/กราฟ
+// ที่อ่านเส้นนั้นได้ undefined
+const BLANK = {
+  target: Array(12).fill(0),
+  fcTotal: Array(12).fill(0),
+  forecast: Array(12).fill(0),
+  actual: Array(12).fill(0),
+  pendingApproval: Array(12).fill(0),
+  pendingApprovalCount: Array(12).fill(0),
+};
 
 export default function DrillSection({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, scope, team, person, period, onChange }) {
   // แถวข้อมูลของมุมมองที่เลือก + Actual ปีก่อนของมุมมองเดียวกัน (ถ้ามี)
