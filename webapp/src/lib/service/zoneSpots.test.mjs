@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  ZONE_SPOT_MAX, normalizeZoneInput, normalizeZoneSpots, spotBatchLabels,
+  ZONE_SPOT_MAX, normalizeZoneInput, normalizeZoneSpots, spotBatchLabels, spotBatchStart,
 } from './zones.js';
 
 const read = (rel) => readFileSync(`src/${rel}`, 'utf8');
@@ -53,6 +53,15 @@ test('⭐ "เพิ่มหลายจุด" นับต่อจากท�
   assert.deepEqual(spotBatchLabels(2, 0), []);
   assert.deepEqual(spotBatchLabels(2, -4), []);
   assert.deepEqual(spotBatchLabels(0, '2'), ['จุดที่ 1', 'จุดที่ 2']);
+});
+
+test('🐞 เลขเริ่มของ "เพิ่มหลายจุด" ข้ามเลขที่มีอยู่ — ลบกลางรายการแล้วเพิ่มต้องไม่ได้ชื่อซ้ำ', () => {
+  const afterDelete = [{ label: 'จุดที่ 1' }, { label: 'จุดที่ 3' }];
+  assert.equal(spotBatchStart(afterDelete), 3);
+  assert.deepEqual(spotBatchLabels(spotBatchStart(afterDelete), 1), ['จุดที่ 4']);
+  assert.equal(spotBatchStart([{ label: 'ข้างประตู' }, { label: 'หลังเคาน์เตอร์' }]), 2);
+  assert.equal(spotBatchStart([]), 0);
+  assert.equal(spotBatchStart([{ label: 'จุดที่ 9 ฝั่งซ้าย' }]), 1, 'ชื่อที่แก้แล้วไม่นับเป็นเลข');
 });
 
 test('🔴 normalizeZoneInput เขียน `spots` เฉพาะเมื่อส่งมา — ทางสร้างโซนอื่นไม่แตะคอลัมน์', () => {

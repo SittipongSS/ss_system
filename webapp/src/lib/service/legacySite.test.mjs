@@ -100,7 +100,7 @@ test('จุดติดตั้ง: id ชั่วคราวของจอ
   assert.equal(ok.zones[0].value.spots[1].note, 'ผนังซ้าย');
 
   const bad = planLegacyZones([zone({ spots: [{ id: 'new-1', label: '  ' }] })]);
-  assert.match(bad.errors[0], /^โซน “ล็อบบี้”: จุดติดตั้งแถวที่ 1 ยังไม่มีชื่อ/);
+  assert.match(bad.errors[0], /^โซนที่ 1 “ล็อบบี้”: จุดติดตั้งแถวที่ 1 ยังไม่มีชื่อ/);
 });
 
 test('🔴 ชื่อโซนซ้ำ — กับโซนที่ไซต์มีอยู่แล้ว และกันเองในฟอร์ม (บอกแถว ไม่ใช่ 23505 กลางทาง)', () => {
@@ -113,6 +113,13 @@ test('🔴 ชื่อโซนซ้ำ — กับโซนที่ไซ�
   assert.match(errors[0], /มีอยู่แล้วในไซต์ \(ZN-1005-GF-10001\)/);
   assert.match(errors[1], /อยู่ในฟอร์มนี้แล้ว \(แถวที่ 2\)/);
   assert.deepEqual(zones.map((z) => z.key), ['b']);
+});
+
+test('ชื่อซ้ำถูกจับแม้แถวแรกมีเหตุอื่น — บอกครบในครั้งเดียว ไม่ใช่แก้ชั้นแล้วค่อยเจอว่าซ้ำ', () => {
+  const { errors } = planLegacyZones([zone({ floor: '' }), zone({ key: 'z2', floor: '3' })]);
+  assert.equal(errors.length, 2, errors.join(' | '));
+  assert.match(errors[0], /^โซนที่ 1 “ล็อบบี้”: ต้องระบุชั้น/);
+  assert.match(errors[1], /^โซนที่ 2 “ล็อบบี้”: ชื่อซ้ำกับโซนที่อยู่ในฟอร์มนี้แล้ว \(แถวที่ 1\)/);
 });
 
 test('โซนยังไม่มีชื่อ — ข้อความบอกลำดับแถวแทน', () => {
@@ -226,4 +233,15 @@ test('🐞 บันทึกแล้วหน้าทะเบียนรี
   assert.match(page, /onSaved=\{\(\) => \{ load\(\{ silent: true \}\); \}\}/);
   assert.ok(page.indexOf('</Workspace>') < page.indexOf('<LegacySiteModal'),
     'LegacySiteModal ต้องอยู่หลัง </Workspace> — Workspace สลับ children เป็นโครงร่างตอน loading');
+});
+
+test('บันทึกก้อนเดียวกับที่ตรวจ — ขั้น ③ โชว์อะไร ลงฐานอย่างนั้น', () => {
+  assert.match(MODAL, /setPreviewPayload\(snapshot\)/);
+  assert.match(MODAL, /json: previewPayload \|\| payload\(\), fallbackError: "บันทึกไม่สำเร็จ"/);
+});
+
+test('ร่างอยู่ข้ามการปิด/เปิด · รายชื่อลูกค้าดึงใหม่ทุกครั้งที่เปิด (ออกรหัส AR แล้วกลับมาทำต่อได้)', () => {
+  assert.match(MODAL, /useServiceSiteForm\(\{ open, resetOnOpen: false \}\)/);
+  assert.match(MODAL, /\}, \[open, customersReload\]\);/);
+  assert.doesNotMatch(MODAL, /if \(!open \|\| customers\.length\) return/);
 });

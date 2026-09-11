@@ -33,10 +33,10 @@ const dupKey = legacyNameKey;
 /** โซนต่อหนึ่งครั้ง — กันฟอร์มที่วนสร้างผิดเป็นร้อยโซน (ไซต์จริงใหญ่สุดในชีตไม่ถึงนี้) */
 export const LEGACY_ZONE_MAX = 60;
 
-/** ป้ายของโซนในข้อความ — ยังไม่มีชื่อก็ต้องบอกได้ว่าแถวไหน */
+/** ป้ายของโซนในข้อความ — **เลขแถวนำเสมอ** (ชื่อซ้ำกันสองแถว ข้อความต้องบอกได้ว่าแถวไหน) */
 const zoneLabel = (zone, index) => {
   const name = String(zone?.name ?? '').trim();
-  return name ? `โซน “${name}”` : `โซนที่ ${index + 1}`;
+  return name ? `โซนที่ ${index + 1} “${name}”` : `โซนที่ ${index + 1}`;
 };
 
 /**
@@ -111,15 +111,17 @@ export function planLegacyZones(zones = [], { existingZones = [], siteCode = nul
 
   list.forEach((zone, index) => {
     const label = zoneLabel(zone, index);
-    const { value, error } = normalizeZoneInput({ ...zone, spots: zone?.spots ?? [] }, { makeSpotId });
-    if (error) { errors.push(`${label}: ${error}`); return; }
-
-    const key = dupKey(value.name);
-    if (seen.has(key)) {
+    /* ชื่อซ้ำตรวจ **ก่อน** ช่องอื่น และจองชื่อไว้แม้แถวนี้มีเหตุอื่น — ไม่งั้นแถวที่ชั้นว่างจะหลุด
+       จากการเทียบ แล้วแก้ชั้นเสร็จค่อยเจอว่าชื่อซ้ำอีกรอบ (บอกครบในครั้งเดียว) */
+    const key = dupKey(zone?.name);
+    if (key && seen.has(key)) {
       errors.push(`${label}: ชื่อซ้ำกับโซนที่${seen.get(key)}`);
       return;
     }
-    seen.set(key, `อยู่ในฟอร์มนี้แล้ว (แถวที่ ${index + 1})`);
+    if (key) seen.set(key, `อยู่ในฟอร์มนี้แล้ว (แถวที่ ${index + 1})`);
+
+    const { value, error } = normalizeZoneInput({ ...zone, spots: zone?.spots ?? [] }, { makeSpotId });
+    if (error) { errors.push(`${label}: ${error}`); return; }
 
     /* โหมดเติมต่อ: ไซต์ปลายทางต้องออกรหัสโซนได้ (ไซต์รหัสรูปเดิมออกไม่ได้) ·
        โหมดสร้าง: ไซต์ยังไม่มีรหัส — ชั้นถูกตรวจรูปแล้วใน normalizeZoneInput ก็พอ */

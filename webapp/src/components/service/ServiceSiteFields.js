@@ -91,8 +91,11 @@ function formFromSite(site) {
  * @param site              แถวไซต์ (โหมดแก้) · `null` = โหมดสร้าง
  * @param defaults          ค่าตั้งต้นของโหมด **สร้าง** (ผู้เรียกที่รู้คำตอบอยู่แล้ว เช่นรู้ลูกค้า)
  * @param customerAddresses ที่อยู่ของลูกค้า ถ้าผู้เรียกมีอยู่แล้ว — ไม่ส่ง = ดึงเองตามลูกค้าที่เลือก
+ * @param resetOnOpen       false = ไม่ล้างฟอร์มทุกครั้งที่เปิด (ผู้เรียกเรียก `reset()` เอง)
  */
-export function useServiceSiteForm({ open, site = null, defaults = null, customerAddresses = [] }) {
+export function useServiceSiteForm({
+  open, site = null, defaults = null, customerAddresses = [], resetOnOpen = true,
+}) {
   const editing = !!site;
   const [form, setForm] = useState(SITE_FORM_EMPTY);
   const [pickedAddressId, setPickedAddressId] = useState("");
@@ -112,10 +115,11 @@ export function useServiceSiteForm({ open, site = null, defaults = null, custome
     setPickedAddressId(site?.customerAddressId || (nextDefaults?.customerAddressId ?? ""));
   }, [site]);
 
+  /* `resetOnOpen = false` = ผู้เรียกคุมการเริ่มใหม่เอง (โมดัลหลายขั้นที่เก็บร่างข้ามการปิด/เปิด) */
   useEffect(() => {
-    if (!open) return;
+    if (!open || !resetOnOpen) return;
     reset(defaults);
-  }, [open, reset, defaults]);
+  }, [open, reset, defaults, resetOnOpen]);
 
   /* ทะเบียนจังหวัดโหลดครั้งเดียวตอนเปิดโมดัล — ห้าม import ทะเบียน 650KB ตรง ๆ
      (server-only) · โหลดไม่ได้ = ช่องว่างแล้วบันทึกไม่ผ่านด่าน ซึ่งบอกเหตุอยู่แล้ว */

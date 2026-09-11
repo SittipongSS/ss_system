@@ -14,7 +14,9 @@ import { naText } from "@/lib/format";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import { SPECIAL_FLOORS, normalizeFloor } from "@/lib/service/zoneCode";
-import { ZONE_SPOT_LABEL_MAX, ZONE_SPOT_MAX, ZONE_SPOT_NOTE_MAX, spotBatchLabels } from "@/lib/service/zones";
+import {
+  ZONE_SPOT_LABEL_MAX, ZONE_SPOT_MAX, ZONE_SPOT_NOTE_MAX, spotBatchLabels, spotBatchStart,
+} from "@/lib/service/zones";
 import styles from "./ServiceSiteModal.module.css";
 import spotStyles from "./ServiceZoneFields.module.css";
 
@@ -56,7 +58,8 @@ function ZoneSpotsEditor({ spots, onChange }) {
   const list = Array.isArray(spots) ? spots : [];
   const room = Math.max(0, ZONE_SPOT_MAX - list.length);
   const batchCount = Math.floor(Number(batch) || 0);
-  const batchLabels = batchCount > 0 ? spotBatchLabels(list.length, Math.min(batchCount, room)) : [];
+  const batchStart = spotBatchStart(list);
+  const batchLabels = batchCount > 0 ? spotBatchLabels(batchStart, Math.min(batchCount, room)) : [];
 
   const patch = (id, field, value) => {
     onChange(list.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
@@ -177,7 +180,7 @@ function ZoneSpotsEditor({ spots, onChange }) {
           {!room
             ? `ครบ ${ZONE_SPOT_MAX} จุดต่อโซนแล้ว — แยกเป็นอีกโซน`
             : batchLabels.length
-              ? `ได้ “${batchLabels[0]}${batchLabels.length > 1 ? `–${batchLabels.length + list.length}` : ""}” — แก้ชื่อทีหลังได้`
+              ? `ได้ “${batchLabels[0]}${batchLabels.length > 1 ? `–${batchStart + batchLabels.length}` : ""}” — แก้ชื่อทีหลังได้`
               : "ใช้ตอนชีตมีแค่จำนวนจุดไม่มีชื่อ — ได้ “จุดที่ 1…N” ไว้แก้ชื่อทีหลัง"}
         </small>
       </div>

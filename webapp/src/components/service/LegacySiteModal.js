@@ -13,10 +13,11 @@
 //
 // 🔑 **โหมดเติมต่อ** (`target`) — ไซต์มีอยู่แล้ว (ชื่อซ้ำ · สำเร็จบางส่วน · กดบันทึกแล้วเน็ตหลุด)
 //   ⇒ ข้ามขั้น ① ไปเติมโซน/จุดในไซต์นั้น ไม่สร้างไซต์ซ้อน
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, ArrowRight, Check, CheckSquare, ExternalLink, Lock, Pencil, Plus, Square, Trash2,
+  ArrowLeft, ArrowRight, Check, CheckSquare, ExternalLink, Lock, Pencil, Plus, RefreshCw, RotateCcw,
+  Square, Trash2,
 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -63,8 +64,11 @@ const zoneCodePreview = (siteCode, floor) => {
 };
 
 export default function LegacySiteModal({ open, onClose, onSaved }) {
-  const ctl = useServiceSiteForm({ open });
-  const { form } = ctl;
+  /* ⭐ **ร่างอยู่ข้ามการปิด/เปิด** — กด Esc/กากบาทกลางทางแล้วของที่คีย์ไว้ (ไซต์ + โซนหลายสิบจุด)
+     ต้องไม่หาย · เริ่มใบใหม่เฉพาะเปิดครั้งแรก · เปิดหลังบันทึกเสร็จ · หรือกด "เริ่มใหม่" เอง
+     (โมดัลอยู่ตลอดอายุหน้า — หน้าทะเบียนวางไว้นอก Workspace จึงไม่ถูกถอดตอนโหลดใหม่) */
+  const ctl = useServiceSiteForm({ open, resetOnOpen: false });
+  const { form, reset: resetSiteForm } = ctl;
 
   const [step, setStep] = useState("site");
   const [target, setTarget] = useState(null);           // { id, code, name, customerName } — โหมดเติมต่อ
@@ -77,41 +81,73 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   const [resumeNote, setResumeNote] = useState("");   // โซนในฟอร์มที่ไซต์ปลายทางมีอยู่แล้ว (ตัดออกให้)
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [previewPayload, setPreviewPayload] = useState(null); // ของที่ตรวจแล้ว = ของที่บันทึก
+  const [draftResumed, setDraftResumed] = useState(false);
+  const finishedRef = useRef(true);                    // true = เปิดครั้งหน้าเริ่มใบใหม่
 
   const [customers, setCustomers] = useState([]);
+  const [customersReload, setCustomersReload] = useState(0);
   const [customersError, setCustomersError] = useState("");
   const [customerSites, setCustomerSites] = useState({ customerId: null, rows: [], loading: false });
   const [sitesReload, setSitesReload] = useState(0);
 
-  useEffect(() => {
-    if (!open) return;
+  /* เริ่มใบใหม่ทั้งโมดัล — `siteDefaults` = ค่าที่ยกมาให้ (เช่น "อีกแห่ง" คงลูกค้า+จังหวัด) */
+  const startOver = (siteDefaults = null) => {
+    resetSiteForm(siteDefaults);
     setStep("site");
     setTarget(null);
     setExistingZones([]);
     setZones([]);
     setActiveKey(null);
     setPreview(null);
+    setPreviewPayload(null);
     setResult(null);
     setDuplicate(null);
     setResumeNote("");
+    setDraftResumed(false);
     setError("");
-  }, [open]);
+    finishedRef.current = false;
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    if (finishedRef.current) {
+      resetSiteForm(null);
+      setStep("site");
+      setTarget(null);
+      setExistingZones([]);
+      setZones([]);
+      setActiveKey(null);
+      setPreview(null);
+      setPreviewPayload(null);
+      setResult(null);
+      setDuplicate(null);
+      setResumeNote("");
+      setDraftResumed(false);
+      finishedRef.current = false;
+    } else {
+      setDraftResumed(true);
+    }
+    setError("");
+  }, [open, resetSiteForm]);
 
   /* ไซต์ซ้ำที่ server บอก (409) เป็นของ "ลูกค้า + ชื่อ" ชุดที่ส่งไปตอนนั้น — แก้สองช่องนี้แล้ว
      ต้องทิ้ง ไม่งั้นปุ่ม "เติมโซน/จุดต่อในไซต์นี้" พาไปเติมไซต์ของลูกค้าอีกราย
      (409 ตั้งค่าโดยไม่แตะฟอร์ม ⇒ effect นี้ไม่ลบค่าที่เพิ่งได้มา) */
   useEffect(() => { setDuplicate(null); }, [form.customerId, form.name]);
 
-  /* รายชื่อลูกค้า — โหลดครั้งแรกที่เปิด (หน้าทะเบียนไซต์ไม่ได้ถือไว้) */
+  /* รายชื่อลูกค้า — **ดึงใหม่ทุกครั้งที่เปิด** (หน้าทะเบียนไซต์ไม่ได้ถือไว้)
+     🐞 เดิมดึงครั้งเดียวตลอดอายุหน้า ⇒ ไปออกรหัส AR ที่ทะเบียนลูกค้าแล้วกลับมา ขั้น ① ยังบอก
+        "ไม่มีรหัส AR" จนกว่าจะรีเฟรชทั้งหน้า · ปุ่ม "ตรวจอีกครั้ง" บนป้ายเตือนก็ดึงใหม่ได้ */
   useEffect(() => {
-    if (!open || customers.length) return undefined;
+    if (!open) return undefined;
     let alive = true;
     setCustomersError("");
     apiJson("/api/customers", { fallbackError: "โหลดรายชื่อลูกค้าไม่สำเร็จ" })
       .then((data) => { if (alive) setCustomers(Array.isArray(data) ? data : (data?.rows || [])); })
       .catch((e) => { if (alive) setCustomersError(e.message); });
     return () => { alive = false; };
-  }, [open, customers.length]);
+  }, [open, customersReload]);
 
   /* ไซต์ที่ลูกค้ารายนี้มีอยู่แล้ว — ให้เห็นก่อนกดต่อ + กันชื่อซ้ำตั้งแต่บนจอ
      ⚠️ ทุกชนิดทุกสถานะ (`kind=all` · รวมที่ปิดใช้งาน) — ตรงกับที่ server ตรวจ */
@@ -150,7 +186,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   const codePreview = target?.code || (sitePlan.prefix ? `${sitePlan.prefix}····` : SITE_CODE_HINT);
   const activeZone = zones.find((z) => z.key === activeKey) || null;
 
-  const go = (next) => { setError(""); setStep(next); };
+  const go = (next) => { setError(""); setDraftResumed(false); setStep(next); };
 
   /* ── โหมดเติมต่อ — ไซต์มีอยู่แล้ว ⇒ ไปเติมโซน/จุด ไม่สร้างไซต์ ───────────── */
   const enterResume = async (site, draftZones = null) => {
@@ -227,9 +263,10 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     ...extra,
   });
 
-  const handleApiError = (e) => {
+  const handleApiError = (e, { committing = false } = {}) => {
     if (e?.data?.duplicate) setDuplicate(e.data.duplicate);
-    if (e instanceof ApiNetworkError) {
+    // "ไม่รู้ผล" จริงเฉพาะตอนบันทึก — พรีวิวไม่เขียนอะไร เน็ตหลุดตอนนั้นแค่กดตรวจใหม่
+    if (e instanceof ApiNetworkError && committing) {
       setError(`${e.message} · ไม่รู้ผลว่าบันทึกไปแล้วหรือยัง — กดใหม่ได้ ถ้าเจอว่าไซต์ซ้ำ ให้กด “เติมโซน/จุดต่อในไซต์นี้”`);
       return;
     }
@@ -243,11 +280,15 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     if (errors.length) { setError(legacyPlanMessage(errors)); return; }
     setBusy(true);
     setError("");
+    /* ⭐ ถ่ายของที่ส่งไปตรวจเก็บไว้ แล้วบันทึก **ก้อนเดียวกันนั้น** — ระหว่างรอพรีวิวช่องยังพิมพ์ได้
+       ถ้าบันทึกจาก state สด ของที่ขั้น ③ โชว์กับของที่ลงฐานอาจไม่ใช่ชุดเดียวกัน */
+    const snapshot = payload();
     try {
       const data = await apiJson("/api/service/legacy-sites", {
-        method: "POST", json: payload({ preview: true }), fallbackError: "ตรวจไม่สำเร็จ",
+        method: "POST", json: { ...snapshot, preview: true }, fallbackError: "ตรวจไม่สำเร็จ",
       });
       setPreview(data);
+      setPreviewPayload(snapshot);
       setDuplicate(null);
       setStep("review");
     } catch (e) {
@@ -265,13 +306,14 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     setError("");
     try {
       const data = await apiJson("/api/service/legacy-sites", {
-        method: "POST", json: payload(), fallbackError: "บันทึกไม่สำเร็จ",
+        method: "POST", json: previewPayload || payload(), fallbackError: "บันทึกไม่สำเร็จ",
       });
       setResult(data);
       setStep("done");
+      finishedRef.current = !data.partial;   // บันทึกครบ = เปิดครั้งหน้าเริ่มใบใหม่ · บางส่วน = ยังมีของค้าง
       onSaved?.(data);
     } catch (e) {
-      handleApiError(e);
+      handleApiError(e, { committing: true });
     } finally {
       setBusy(false);
     }
@@ -280,18 +322,9 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   /* ── หลังบันทึก ───────────────────────────────────────────────────── */
   const anotherSite = () => {
     // ลูกค้าหนึ่งรายมี ~2.6 ไซต์ ⇒ คงลูกค้า + จังหวัดไว้ให้ ที่เหลือเริ่มใหม่
-    ctl.reset({ customerId: form.customerId, provinceCode: form.provinceCode, province: form.province });
-    setTarget(null);
-    setExistingZones([]);
-    setZones([]);
-    setActiveKey(null);
-    setPreview(null);
-    setResult(null);
-    setDuplicate(null);
-    setResumeNote("");
+    startOver({ customerId: form.customerId, provinceCode: form.provinceCode, province: form.province });
     // ไซต์ที่เพิ่งสร้างต้องขึ้นในรายการ "ไซต์ของลูกค้ารายนี้" (และด่านชื่อซ้ำ) — ดึงใหม่
     setSitesReload((n) => n + 1);
-    go("site");
   };
 
   const retryRemaining = () => {
@@ -326,10 +359,17 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
             tone="warning"
             title="ลูกค้ารายนี้ยังไม่มีรหัสลูกค้า (AR)"
             action={(
-              <Button size="sm" tone="neutral" as={Link} href={`/database/customers/${customer.id}`} target="_blank"
-                icon={<ExternalLink size={14} aria-hidden="true" />}>
-                เปิดทะเบียนลูกค้า
-              </Button>
+              <div className={styles.inlineActions}>
+                <Button size="sm" tone="neutral" as={Link} href={`/database/customers/${customer.id}`} target="_blank"
+                  icon={<ExternalLink size={14} aria-hidden="true" />}>
+                  เปิดทะเบียนลูกค้า
+                </Button>
+                {/* ออกรหัสในแท็บใหม่แล้วกลับมา — ดึงรายชื่อลูกค้าใหม่โดยไม่ต้องรีเฟรชทั้งหน้า */}
+                <Button size="sm" tone="neutral" variant="quiet" onClick={() => setCustomersReload((n) => n + 1)}
+                  icon={<RefreshCw size={14} aria-hidden="true" />}>
+                  ตรวจอีกครั้ง
+                </Button>
+              </div>
             )}
           >
             ออกรหัสที่ทะเบียนลูกค้าก่อนจึงสร้างไซต์ได้ — รหัสไซต์ประกอบจากรหัสลูกค้า
@@ -441,7 +481,8 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
             ? `ยังขาด ${sitePlan.errors.length} ข้อ — กด “ต่อไป” เพื่อดูว่าขาดอะไร`
             : "ครบแล้ว — ต่อไปกรอกโซนและจุดติดตั้ง"}
         </span>
-        <Button tone="neutral" onClick={onClose} disabled={busy}>ยกเลิก</Button>
+        {/* ปิดแล้วร่างอยู่ต่อ — "ยกเลิก" จะอ่านว่าทิ้งของที่คีย์ไว้ ซึ่งไม่ใช่สิ่งที่เกิด */}
+        <Button tone="neutral" onClick={onClose} disabled={busy}>ปิดไว้ก่อน</Button>
         <Button tone="primary" onClick={nextFromSite} disabled={busy}
           icon={<ArrowRight size={15} aria-hidden="true" />}>
           ต่อไป: โซนและจุดติดตั้ง
@@ -723,6 +764,17 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
         </div>
       )}
     >
+      {draftResumed && step !== "done" && (
+        <StatusNotice tone="info" className={styles.resumeNote}
+          action={(
+            <Button size="sm" tone="neutral" variant="quiet" onClick={() => startOver()}
+              icon={<RotateCcw size={14} aria-hidden="true" />}>
+              เริ่มใหม่
+            </Button>
+          )}>
+          ร่างที่ยังไม่บันทึกยังอยู่ — ทำต่อได้เลย
+        </StatusNotice>
+      )}
       {body}
       {error && <p className="form-error" role="alert">{error}</p>}
       {step !== "site" && !target && duplicateActions}

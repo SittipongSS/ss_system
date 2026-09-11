@@ -64,6 +64,17 @@ export function spotBatchLabels(existingCount = 0, count = 0) {
   return Array.from({ length: n }, (_, i) => `จุดที่ ${start + i + 1}`);
 }
 
+/** เลขเริ่มของ "เพิ่มหลายจุด" — มากกว่าทั้งจำนวนจุดและเลขสูงสุดของ "จุดที่ N" ที่มีอยู่
+ *  🐞 นับจากจำนวนอย่างเดียว: มี "จุดที่ 1–3" ลบ "จุดที่ 2" แล้วเพิ่มอีก 1 = ได้ "จุดที่ 3" ซ้ำ */
+export function spotBatchStart(spots = []) {
+  const list = Array.isArray(spots) ? spots : [];
+  const numbered = list
+    .map((s) => /^จุดที่\s*(\d+)$/.exec(String(s?.label ?? '').trim())?.[1])
+    .filter(Boolean)
+    .map(Number);
+  return Math.max(list.length, 0, ...numbered);
+}
+
 /** @param makeSpotId ตัวออก id ของจุดใหม่ — server ส่ง `() => genId('SPT')` · จอไม่ต้องส่ง */
 export function normalizeZoneInput(body = {}, { makeSpotId = null } = {}) {
   const name = String(body.name ?? '').trim().replace(/\s+/g, ' ');
