@@ -268,6 +268,9 @@ test('⭐ คิว + รางฝ่าย: ใบ NPD แถวครบแต
   assert.equal(next.owner, 'dept');
   assert.doesNotMatch(next.label, /ปิดเรื่อง/);
   assert.notEqual(requestStageKey({ ...stuck, items: settled }), 'waiting');
+  // แถวที่เหลือรอผู้ขอ (ส่งสูตรแล้ว) — สินค้าที่ไม่มีแถวยังเป็นงานฝ่ายก่อน (รีวิวรอบ 6)
+  const sentRow = [row('DRI-1', '01-009', 'SC-1', { readyAt: 'x' })];
+  assert.equal(requestNextStep({ ...stuck, items: sentRow }).owner, 'dept');
   // ไม่มีสินค้าค้าง (หรือคิวไม่ได้ดึงแถวสินค้ามา) = ป้ายเดิม
   assert.equal(requestNextStep({ ...npd({ ...base, targets: [T('01-009', 'SC-1')] }), items: settled }).label, 'รอปิดเรื่อง');
   assert.equal(requestNextStep({ ...npd({ ...base, targets: undefined }), items: settled }).label, 'รอปิดเรื่อง');

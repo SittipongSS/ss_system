@@ -459,6 +459,11 @@ export default function RequestDetailPage() {
     && (req.items || []).length > 0 && progress.complete
     ? npdUncoveredError(req, req.items || [])
     : null;
+  /* ⭐ ป้ายบนแผงของฝ่าย: สินค้าในแบบฟอร์มที่ยังไม่มีแถวงาน — โชว์ทุกจังหวะ ไม่ใช่เฉพาะตอนแถวครบ (รีวิวรอบ 6):
+     แถวที่เหลือรอผู้ขออยู่ / ปุ่มหลักเป็น "แจ้งกำหนดส่ง" ⇒ ปุ่มจางไม่มีที่โผล่ แต่ฝ่ายคือคนเดียวที่ซ่อมได้ */
+  const npdRowsNotice = owner && ["acknowledged", "answered"].includes(req.status)
+    ? npdUncoveredError(req, req.items || [])
+    : null;
   /* ⭐ **"ยังไม่จบ" — ถอนตราปิดที่กดไปแล้ว** (มติผู้ใช้ 2026-08-20) · โผล่เฉพาะตอนมี
      ตราฝั่งใดฝั่งหนึ่งแล้วแต่ยังไม่ครบ · กดได้ทั้งสองฝั่ง (ฝั่งที่กดเปลี่ยนใจ หรือ
      อีกฝั่งที่รู้ว่างานยังไม่จบจริง) — ด่านเดียวกับ server */
@@ -1094,6 +1099,11 @@ export default function RequestDetailPage() {
      พอฝ่ายกด "รับเรื่อง" **ปุ่มแก้หายไปทั้งปุ่มโดยไม่มีเหตุผลบนจอ** ทั้งที่ประโยค
      ไทยรออยู่ใน `requestEditError` แล้ว (ผลตรวจ 2026-08-24) */
   const editBlocker = (requestUsesPdr(req) ? req._editPdrBlocker : req._editBlocker) || null;
+  // ป้ายอุปสรรคของคนที่กำลังดู (ช่อง `notices` ของแผงจัดการ) — เหตุที่แก้ไม่ได้ · สินค้า NPD ที่ยังไม่มีแถวงาน
+  const controlNotices = [
+    editBlocker && !canEditInfo && !canEditPdrNow ? editBlocker : null,
+    npdRowsNotice,
+  ].filter(Boolean);
 
   /* ⭐ เปิดโมดัลส่งงาน **ของบรีฟก้อนเดียว** (มติผู้ใช้ 2026-08-18) — ปุ่มอยู่ในแถว
      ของบรีฟนั้นในตารางสรุปทั้งใบ
@@ -1135,7 +1145,10 @@ export default function RequestDetailPage() {
         kind: "approve",
         icon: CheckCheck,
         onClick: () => setConfirm({ kind: "answer" }),
-        visible: canMarkAnswered && primaryAction?.id === "commit-due",
+        // NPD ที่ติดสินค้าไม่มีแถวงาน — จางพร้อมเหตุเหมือนปุ่มหลัก (ไม่หายเงียบตอนปุ่มหลักเป็นแจ้งกำหนดส่ง)
+        disabled: !canMarkAnswered && !!npdAnswerBlocker,
+        disabledReason: !canMarkAnswered ? npdAnswerBlocker : null,
+        visible: (canMarkAnswered || !!npdAnswerBlocker) && primaryAction?.id === "commit-due",
       },
       /* ⚠️ **"ส่งงานหลายรายการ" ย้ายไปหัวการ์ดตารางสรุปทั้งใบแล้ว** (มติผู้ใช้
          2026-08-18) — ปุ่มส่งงานทุกแบบอยู่กับตาราง Control Panel เหลือปุ่มปลายทาง */
@@ -1707,8 +1720,8 @@ export default function RequestDetailPage() {
               busy={saving}
               /* ⚠️ ป้ายเปล่า ไม่ทาสีเอง — โทนตั้งต้นของป้ายเป็นกลางอยู่แล้ว และนี่คือ
                  ข้อเท็จจริง (ตอนนี้เป็นของฝ่ายไหน) ไม่ใช่คำเตือน */
-              notices={editBlocker && !canEditInfo && !canEditPdrNow ? (
-                <span className="ui-badge">{editBlocker}</span>
+              notices={controlNotices.length ? (
+                <>{controlNotices.map((text) => <span key={text} className="ui-badge">{text}</span>)}</>
               ) : null}
             />
             {/* ⚠️ **การ์ดบริบทไม่อยู่ในรางแล้ว** (2026-08-18) — ย้ายขึ้นไปเป็นแถว

@@ -1,7 +1,8 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
 import { pdrContext } from '@/lib/requests/pdrFields';
 import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
-import { isRowSettled } from '@/lib/requests/rowStage';
+import { requestRowSummary } from '@/lib/requests/rowStage';
+import { MAX_PDR_TARGETS } from '@/lib/requests/pdrTargets';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
@@ -212,18 +213,24 @@ export async function loadRequests(supabase, {
     .order('sortOrder', { ascending: true });
   if (itemError) throw itemError;
 
-  /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่แถวงานจบครบ** (ม-144 · รีวิวรอบ 5) — คิวต้องรู้ว่ามีสินค้าที่ยังไม่มี
-     แถวงานไหม (`npdUncoveredPairs`) ไม่งั้นป้ายขึ้น "รอปิดเรื่อง" ตาผู้ขอ ทั้งที่ด่านปิดตีกลับและคนซ่อมคือฝ่าย
-     ⚠️ ดึงเฉพาะใบที่คำตอบเปลี่ยนได้จริง — ใบที่แถวยังค้างเป็นตาฝ่ายอยู่แล้ว ⇒ ปกติ query นี้ไม่วิ่งเลย
-     (`findRequest` ดึงแถวสินค้าเต็มของตัวเองทับอีกชั้น) */
+  /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่คิวต้องใช้ตัดสิน "ตาใคร"** (ม-144 · รีวิวรอบ 5–6) — สินค้าที่ยังไม่มีแถวงาน
+     (`npdUncoveredPairs`) คืองานของฝ่าย · ไม่ดึง ⇒ ป้ายขึ้นตาผู้ขอ ("รอปิดเรื่อง"/"รอ SA ทำต่อ") แล้วหลุดจากคิว
+     ของฝ่าย ทั้งที่ฝ่ายคือคนเดียวที่ซ่อมได้
+     ⚠️ ดึงเฉพาะใบที่คำตอบเปลี่ยนได้จริง = เงื่อนไขเดียวกับจุดที่ `requestNextStep` เช็ค: รับเรื่องแล้ว ยังไม่มีตรา
+        (มีตรา ⇒ คิวตอบจากตราก่อน) และไม่มีแถวรอฝ่าย (มี ⇒ ตาฝ่ายอยู่แล้ว) · แถวรอผู้ขอยังนับ (ฝ่ายมาก่อน)
+        ⇒ ปกติชุดนี้ว่าง ไม่มี query เพิ่ม · ใบเดียว (`findRequest`) ไม่ดึง — มันโหลดแถวสินค้าเต็มของตัวเองทับ */
   const itemsOf = (requestId) => (items || []).filter((i) => i.requestId === requestId);
-  const npdCandidateIds = asks.filter((a) => requestUsesDeliveredRows(a) && requestPdrRowsPickScent(a)
-    && ['acknowledged', 'answered'].includes(a.status)
-    && itemsOf(a.id).length && itemsOf(a.id).every(isRowSettled)).map((a) => a.id);
+  const npdCandidateIds = id ? [] : asks.filter((a) => {
+    if (!requestUsesDeliveredRows(a) || !requestPdrRowsPickScent(a)) return false;
+    if (a.status !== 'acknowledged' || a.answeredAt || a.closedAt) return false;
+    const rows = itemsOf(a.id);
+    return rows.length > 0 && requestRowSummary(rows).waitingDept === 0;
+  }).map((a) => a.id);
   let npdTargets = [];
   if (npdCandidateIds.length) {
     const { data, error: npdTargetError } = await supabase.from('dept_request_pdr_targets')
-      .select('requestId, categoryCode, scentId').in('requestId', npdCandidateIds).limit(1000);
+      .select('requestId, categoryCode, scentId').in('requestId', npdCandidateIds)
+      .limit(npdCandidateIds.length * MAX_PDR_TARGETS);
     if (npdTargetError) throw npdTargetError;
     npdTargets = data || [];
   }
