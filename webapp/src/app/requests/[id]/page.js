@@ -46,7 +46,7 @@ import submitScope from "@/lib/requests/submitScope";
 import { scentBriefNameError } from "@/lib/requests/scentBriefs";
 import { submitRequestError } from "@/lib/requests/stages";
 import { npdWorkRowsError, npdWorkRowsScentError, planNpdWorkRows } from "@/lib/requests/npdWorkRows";
-import { npdUncoveredPairs } from "@/lib/requests/npdPairs";
+import { npdUncoveredError, npdUncoveredPairs } from "@/lib/requests/npdPairs";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
@@ -454,6 +454,11 @@ export default function RequestDetailPage() {
     && !npdUncoveredPairs(req, req.items || []).length;
   const canMarkAnswered = ((!hasItems && !requestUsesDeliveredRows(req)) || rowsAllDone)
     && owner && !answerRequestError(req) && !closure.deptDone;
+  // เหตุที่ปุ่ม "ตอบแล้ว" ของใบ NPD กดไม่ได้ทั้งที่แถวครบ — ข้อความตัวเดียวกับด่านของ server
+  const npdAnswerBlocker = owner && !closure.deptDone && !answerRequestError(req)
+    && (req.items || []).length > 0 && progress.complete
+    ? npdUncoveredError(req, req.items || [])
+    : null;
   /* ⭐ **"ยังไม่จบ" — ถอนตราปิดที่กดไปแล้ว** (มติผู้ใช้ 2026-08-20) · โผล่เฉพาะตอนมี
      ตราฝั่งใดฝั่งหนึ่งแล้วแต่ยังไม่ครบ · กดได้ทั้งสองฝั่ง (ฝั่งที่กดเปลี่ยนใจ หรือ
      อีกฝั่งที่รู้ว่างานยังไม่จบจริง) — ด่านเดียวกับ server */
@@ -705,9 +710,10 @@ export default function RequestDetailPage() {
                  ⇒ บอกเฉพาะทางที่มีจริง: งานเพิ่มมีได้แค่ใบที่ฝ่ายสร้างแถวเอง (รีวิวรอบ 4) */
               + (!(req.items || []).length
                 ? " · ถ้ามีคนถามกลับในเธรด เครื่องหมายนี้จะถูกถอนเองแล้วใบกลับมาที่คุณ"
-                : requestUsesDeliveredRows(req)
-                  ? ` · ถ้ามีงานเพิ่ม (ส่งรายการใหม่${requestPdrRowsPickScent(req) ? " · เพิ่มสินค้าในแบบฟอร์ม PDR" : ""})`
-                    + " หรือมีคนกด \"ยังไม่จบ\" เครื่องหมายนี้จะถูกถอนแล้วใบกลับมาที่คุณ"
+                /* ใบ "ตอบแล้ว" ส่งรายการใหม่จากจอไม่ได้ (ปุ่มส่งงานเปิดเฉพาะใบที่ยังเดิน) · NPD เพิ่มงานได้ทางเดียวคือ
+                   เพิ่มสินค้าในแบบฟอร์ม PDR (รีวิวรอบ 5) */
+                : requestUsesDeliveredRows(req) && requestPdrRowsPickScent(req)
+                  ? " · ถ้าเพิ่มสินค้าในแบบฟอร์ม PDR หรือมีคนกด \"ยังไม่จบ\" เครื่องหมายนี้จะถูกถอนแล้วใบกลับมาที่คุณ"
                   : " · ถ้ามีคนกด \"ยังไม่จบ\" เครื่องหมายนี้จะถูกถอนแล้วใบกลับมาที่คุณ")),
         confirmLabel: requesterDone ? "ปิดเรื่อง" : "ตอบแล้ว",
       };
@@ -1001,6 +1007,18 @@ export default function RequestDetailPage() {
           icon: CheckCheck,
           onClick: () => setConfirm({ kind: "answer" }),
         }
+        /* ⭐ NPD: แถวครบแต่สินค้าในแบบฟอร์มบางตัวยังไม่มีรายการงาน (งอกไม่สำเร็จ) — ฝ่ายคือคนเดียวที่ซ่อมได้
+           (บันทึกแบบฟอร์มซ้ำ) ⇒ ปุ่ม "ตอบแล้ว" ต้องโชว์จางพร้อมเหตุ ไม่ใช่หายเงียบ (กติกา GatedAction · รีวิวรอบ 5) */
+        : npdAnswerBlocker
+          ? {
+            id: "answer",
+            label: "ตอบแล้ว",
+            kind: "approve",
+            icon: CheckCheck,
+            disabled: true,
+            disabledReason: npdAnswerBlocker,
+            onClick: () => {},
+          }
         : canClose
           ? {
             id: "close",

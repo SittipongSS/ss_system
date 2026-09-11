@@ -12,6 +12,7 @@ import {
 import { requestRowSummary } from '@/lib/requests/rowStage';
 import { requestReplyTurn, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { requestClosure } from '@/lib/requests/closure';
+import { npdUncoveredPairs } from '@/lib/requests/npdPairs';
 // ⚠️ ดึงตัวเรียงจาก `queue.js` ตรง ๆ ไม่ผ่าน façade `deptRequests.js` — façade
 // re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
 import { compareRequestUrgency } from '@/lib/requests/queue';
@@ -92,6 +93,12 @@ function baseNextStep(request) {
      ถอยไปใช้คำว่า "ผู้ขอ" เฉพาะใบเก่าที่ไม่มี `requesterDept` (ดู `replyTurn.js`) */
   const summary = requestRowSummary(items);
   if (summary.waitingDept > 0) {
+    return { owner: 'dept', label: requestWaitLabel(request, 'dept', 'ทำต่อ') };
+  }
+  /* ⭐ NPD: สินค้าในแบบฟอร์ม PDR ที่ยังไม่มีแถวงาน (งอกไม่สำเร็จ) = งานของฝ่าย (บันทึกแบบฟอร์มซ้ำ) · ไม่เช็ค
+     ⇒ แถวครบแล้วตกไป "รอปิดเรื่อง" ตาผู้ขอ ทั้งที่ด่านปิดตีกลับ (รีวิว ม-144 รอบ 5) · `targets` มากับใบเฉพาะที่
+     `loadRequests` ดึงให้ (ใบ NPD ที่แถวจบครบ) — ไม่มี = [] ไม่เปลี่ยนอะไร */
+  if (npdUncoveredPairs(request, items).length) {
     return { owner: 'dept', label: requestWaitLabel(request, 'dept', 'ทำต่อ') };
   }
   if (summary.waitingRequester > 0) {

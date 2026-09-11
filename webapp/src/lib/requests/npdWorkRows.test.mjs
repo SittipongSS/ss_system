@@ -7,6 +7,8 @@ import {
 } from './npdWorkRows.js';
 import { closeRequestError, requestRowsClosurePatch } from './stages.js';
 import { npdUncoveredError, npdUncoveredPairs } from './npdPairs.js';
+import { requestNextStep } from './queueBoard.js';
+import { requestStageKey } from './deptOverview.js';
 import { deleteRequestRowError } from './rowDelete.js';
 import submitScope from './submitScope.js';
 import {
@@ -256,4 +258,17 @@ test('⭐ ตราที่ระบบประทับ/ถอนล้าง
   );
   // ตราไม่เปลี่ยน = ไม่แตะชื่อ (คนกด "ตอบแล้ว" เองยังได้เครดิต)
   assert.deepEqual(requestRowsClosurePatch(manual, settled, 'now'), {});
+});
+
+test('⭐ คิว + รางฝ่าย: ใบ NPD แถวครบแต่มีสินค้าไม่มีแถวงาน = งานของฝ่าย ไม่ใช่ "รอปิดเรื่อง" (รีวิวรอบ 5)', () => {
+  const settled = [row('DRI-1', '01-009', 'SC-1', { answerStatus: 'declined', outcome: 'rejected', readyAt: 'x' })];
+  const base = { dept: 'RD', requesterDept: 'SA', status: 'acknowledged', answeredAt: null, closedAt: null };
+  const stuck = npd({ ...base, targets: [T('01-009', 'SC-1'), T('01-006', 'SC-9')] });
+  const next = requestNextStep({ ...stuck, items: settled });
+  assert.equal(next.owner, 'dept');
+  assert.doesNotMatch(next.label, /ปิดเรื่อง/);
+  assert.notEqual(requestStageKey({ ...stuck, items: settled }), 'waiting');
+  // ไม่มีสินค้าค้าง (หรือคิวไม่ได้ดึงแถวสินค้ามา) = ป้ายเดิม
+  assert.equal(requestNextStep({ ...npd({ ...base, targets: [T('01-009', 'SC-1')] }), items: settled }).label, 'รอปิดเรื่อง');
+  assert.equal(requestNextStep({ ...npd({ ...base, targets: undefined }), items: settled }).label, 'รอปิดเรื่อง');
 });

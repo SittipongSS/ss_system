@@ -1,6 +1,7 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
 import { pdrContext } from '@/lib/requests/pdrFields';
 import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
+import { isRowSettled } from '@/lib/requests/rowStage';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
@@ -211,6 +212,23 @@ export async function loadRequests(supabase, {
     .order('sortOrder', { ascending: true });
   if (itemError) throw itemError;
 
+  /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่แถวงานจบครบ** (ม-144 · รีวิวรอบ 5) — คิวต้องรู้ว่ามีสินค้าที่ยังไม่มี
+     แถวงานไหม (`npdUncoveredPairs`) ไม่งั้นป้ายขึ้น "รอปิดเรื่อง" ตาผู้ขอ ทั้งที่ด่านปิดตีกลับและคนซ่อมคือฝ่าย
+     ⚠️ ดึงเฉพาะใบที่คำตอบเปลี่ยนได้จริง — ใบที่แถวยังค้างเป็นตาฝ่ายอยู่แล้ว ⇒ ปกติ query นี้ไม่วิ่งเลย
+     (`findRequest` ดึงแถวสินค้าเต็มของตัวเองทับอีกชั้น) */
+  const itemsOf = (requestId) => (items || []).filter((i) => i.requestId === requestId);
+  const npdCandidateIds = asks.filter((a) => requestUsesDeliveredRows(a) && requestPdrRowsPickScent(a)
+    && ['acknowledged', 'answered'].includes(a.status)
+    && itemsOf(a.id).length && itemsOf(a.id).every(isRowSettled)).map((a) => a.id);
+  let npdTargets = [];
+  if (npdCandidateIds.length) {
+    const { data, error: npdTargetError } = await supabase.from('dept_request_pdr_targets')
+      .select('requestId, categoryCode, scentId').in('requestId', npdCandidateIds).limit(1000);
+    if (npdTargetError) throw npdTargetError;
+    npdTargets = data || [];
+  }
+  const npdCandidates = new Set(npdCandidateIds);
+
   /* ⭐ **ชื่อโครงการมาด้วยตั้งแต่ตอนโหลดคิว** (มติผู้ใช้ 2026-08-11) — คิวจัดกลุ่ม
      ตามโครงการได้แล้ว แต่แถวเก็บแค่ `projectId` ⇒ หัวกลุ่มจะเป็น uuid ที่ไม่มีใคร
      อ่านออก · `findRequest` โหลดโครงการอยู่แล้วแต่นั่นคือตอนเปิด **ใบเดียว**
@@ -266,7 +284,8 @@ export async function loadRequests(supabase, {
   // mig 0219 พร้อมหัวข้อขอราคา (ม-28) · ราคาในโมเดลใหม่เป็นราคาเดียวต่อแถว
   return asks.map((a) => ({
     ...a,
-    items: (items || []).filter((i) => i.requestId === a.id),
+    items: itemsOf(a.id),
+    ...(npdCandidates.has(a.id) ? { targets: npdTargets.filter((t) => t.requestId === a.id) } : {}),
     // แบนเป็นสองช่อง ไม่ใช่ก้อน `project` ซ้อน — แถวคิวถูกส่งลงจอตรง ๆ และของซ้อน
     // ชั้นทำให้ต้องเช็ค null สองชั้นทุกที่ที่อ่าน
     projectCode: projectById.get(a.projectId)?.code ?? null,
