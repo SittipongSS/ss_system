@@ -8,17 +8,26 @@
 // variance (วัดความแม่น FC). นิยามตรงกับ dashboard เดิม (fullForecast/remainingForecast).
 // ห้ามกรอกมูลค่าที่ตัวโครงการ — rollup จากดีลเสมอ (กัน double-count).
 import { DEAL_TYPES, dealTypeOf, isOpenStage, isWonStage } from '@/lib/salesPlanning';
-import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
+import {
+  dealActualFromSalesOrders,
+  dealPendingApprovalAmount,
+  dealPendingApprovalCount,
+} from '@/lib/sales/salesOrderWorkflow';
 
 // Actual ของดีล — อ่าน cache ที่ DB คำนวณจาก Approved SO เท่านั้น.
 export const wonAmt = dealActualFromSalesOrders;
+// ยอด SO "รออนุมัติ" ของดีล (mig 0353) — แยกจาก Actual · นับเฉพาะดีล Won (อยู่ในกิ่ง Won ด้านล่าง)
+export const pendingApprovalAmt = dealPendingApprovalAmount;
 export const forecastAmt = (d) => Number(d?.projectValue ?? 0);
 // 'in_project' = สถานะเก่าก่อน mig 0082 (ยุบเป็น won) — ข้อมูลเก่าอาจยังมี
 // (นิยามอยู่ที่ isWonStage/isOpenStage ใน lib/salesPlanning — เดิมไฟล์นี้มีสำเนาของตัวเอง)
 export const isWonDeal = (d) => isWonStage(d?.stage);
 export const isOpenDeal = (d) => isOpenStage(d?.stage);
 
-const emptyBucket = () => ({ fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0 });
+const emptyBucket = () => ({
+  fcTotal: 0, actual: 0, pendingApproval: 0, pendingApprovalCount: 0,
+  fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0,
+});
 
 // rollupDeals(deals[]) → ตัวเลขรวม + แยกตามประเภทดีล 3 ค่า + เดือน FC ถัดไป
 export function rollupDeals(deals = []) {
@@ -29,7 +38,13 @@ export function rollupDeals(deals = []) {
   for (const d of deals) {
     const buckets = [total, byType[dealTypeOf(d)]];
     if (isWonDeal(d)) {
-      for (const b of buckets) { b.actual += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
+      for (const b of buckets) {
+        b.actual += wonAmt(d);
+        b.pendingApproval += pendingApprovalAmt(d);
+        b.pendingApprovalCount += dealPendingApprovalCount(d);
+        b.fcTotal += forecastAmt(d);
+        b.wonCount += 1;
+      }
     } else if (d?.stage === 'lost') {
       for (const b of buckets) b.lostCount += 1;
     } else {
@@ -42,6 +57,9 @@ export function rollupDeals(deals = []) {
   return {
     fcTotal: total.fcTotal,
     actual: total.actual,
+    // ยอด SO ที่ยื่นแล้วรออนุมัติ — **ไม่อยู่ใน actual / totalValue / variance** (มติ 2026-09-11)
+    pendingApproval: total.pendingApproval,
+    pendingApprovalCount: total.pendingApprovalCount,
     fcRemaining: total.fcRemaining,
     // "มูลค่าโครงการ" = ยอดจริงที่เก็บแล้ว + ที่ยังต้องตามปิด
     totalValue: total.actual + total.fcRemaining,

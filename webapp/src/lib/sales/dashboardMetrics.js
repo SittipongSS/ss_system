@@ -2,7 +2,12 @@
 // และ drill-down modal ฝั่ง client ต้องใช้ชุดเดียวกัน ไม่งั้นตัวเลขบนการ์ด KPI
 // กับรายการดีลที่กดเข้าไปดูไม่ตรงกัน (ผลตรวจระบบขาย 2026-07-16)
 import { isOpenStage, isWonStage, monthKey } from '@/lib/salesPlanning';
-import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
+import { currentMonth } from '@/lib/datePeriods';
+import {
+  dealActualFromSalesOrders,
+  dealPendingApprovalAmount,
+  dealPendingApprovalCount,
+} from '@/lib/sales/salesOrderWorkflow';
 
 // Won นับรวม in_project (ดีลเก่าที่ปิดแล้วแปลงเป็นโครงการ) — กติกาอยู่ที่ isWonStage
 // ตัวกลาง สองตัวนี้เป็นแค่รูปที่รับ "ทั้งดีล" ให้เรียกง่ายในตัวกรอง
@@ -21,6 +26,22 @@ export const isRealLostDeal = (d) => d?.stage === 'lost' && !isAdministrativeLos
 
 // ยอด Actual ของดีล Won — อ่านผ่าน cache wonValue เฉพาะเมื่อยืนยันว่ามาจาก Approved SO
 export const wonAmountOf = (d) => dealActualFromSalesOrders(d);
+
+// ยอด "รออนุมัติ" ของดีล (SO ยื่นแล้ว รอ AE Supervisor · mig 0353) — **แยกจาก Actual เสมอ**
+// ⭐ นับเฉพาะดีล Won: ดีลที่ยังเปิดมี FC อยู่ใน FC คงเหลือแล้ว นับซ้ำไม่ได้ (ของจริงแทบ
+//    เกิดไม่ได้ — สร้าง SO ได้ต้องมีใบเสนอราคาที่รับแล้ว ซึ่งพาดีลเป็น Won ในจังหวะเดียวกัน)
+// ⛔ ห้ามบวกเข้า wonValue / won / actual / เป้า / % / ขาด-เกิน — ส่งเป็นช่องแยกเสมอ
+export const pendingApprovalAmountOf = (d) => (isWonDeal(d) ? dealPendingApprovalAmount(d) : 0);
+export const pendingApprovalCountOf = (d) => (isWonDeal(d) ? dealPendingApprovalCount(d) : 0);
+
+// เดือนของยอดรออนุมัติ = **เดือนปัจจุบัน (เวลาไทย) เสมอ** (มติผู้ใช้ 2026-09-11)
+// อนุมัติย้อนหลังไม่ได้ ถ้าอนุมัติวันนี้ Actual ก็ลงเดือนนี้ (wonMonth = เดือนของ approvedAt)
+// ⇒ ใบที่ค้างข้ามเดือนเลื่อนมาอยู่เดือนใหม่เอง · เดือนที่ปิดไปแล้ว/ปีก่อนไม่มีวันเห็นยอดนี้
+// ⚠️ ห้ามใช้ wonMonthOf (ดีลรออนุมัติไม่มี wonMonth → ตกไปเดือน confirmedAt แบบ UTC)
+// ⚠️ ห้ามใช้ businessMonthKey ของ lib/businessDate (คืน 'YYMM' สำหรับเลขเอกสาร)
+export const pendingApprovalMonthOf = (d, now = new Date()) => (
+  pendingApprovalAmountOf(d) > 0 ? currentMonth(now) : null
+);
 
 // FC Total preserves every forecast made in the period (Open + Won + Lost)
 // so forecast misses remain auditable. FC remaining is the Open portion only.
