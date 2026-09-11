@@ -16,7 +16,7 @@
  *   ไม่มี error ไม่มี warning มีแค่ทุกหน้าช้าลงข้ามมหาสมุทรแปซิฟิก
  *
  * ตรวจของจริงบน production ได้ด้วย (ท่อนที่ **สอง** คือ region ของฟังก์ชัน):
- *   curl -sI https://ss-team.vercel.app/api/version | grep x-vercel-id
+ *   curl -sI https://suk.scentandsense.co.th/api/version | grep x-vercel-id
  *   → x-vercel-id: sin1::sin1::…   ✅
  *
  * รัน: npm run check:region
