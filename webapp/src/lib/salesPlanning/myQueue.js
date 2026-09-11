@@ -14,11 +14,60 @@
 // ⚠️ **ที่นี่ไม่รู้จัก React และไม่ยิง API** — รับก้อนที่ API ส่งมาแล้วแปลงเป็นแถว
 // รูปเดียวกันหมด · เทสต์จึงเรียกได้ตรง ๆ โดยไม่ต้องมีจอ
 import { fmtDate } from '@/lib/format';
-import { requestKindLabel } from '@/lib/master/requestTypes';
+import { requestKindLabel, requestLineNoun } from '@/lib/master/requestTypes';
 import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosure } from '@/lib/requests/closure';
 import { businessDayKey } from '@/lib/datePeriods';
+import { requestNextStep } from '@/lib/requests/queueBoard';
+import { requestReplyTurn } from '@/lib/requests/replyTurn';
+import { nextByStageFor, rowStage } from '@/lib/requests/rowStage';
+import { rowIdleStamps } from '@/lib/requests/rowTrack';
+
+/* ── ตาผู้ขอในคิวคำร้อง ⇒ แถวของเรา (2026-09-11 · ต่อจาก ม-145) ─────────────────
+   🐞 แดชบอร์ดเขียน "รอฝ่ายตอบ" ให้ทุกใบที่ยังไม่ปิด (และ "เลย N วัน" เมื่อวันผ่าน) ขณะที่คิว
+   บอกว่าเป็นตาผู้ขอ — วัดของจริง 2026-09-11: 25 ใบ · สองแบบที่พลาด: ใบสอบถามที่ฝ่ายตอบในเธรด
+   ล่าสุด ("รอ SA ตอบ") กับใบที่มีแถวรอผู้ขอ (รับของ · ส่งลูกค้า · บันทึกคำตอบ · ได้รับเอกสาร)
+   ⇒ ถาม `requestNextStep` ตัวเดียวกับคิว · ตาฝ่ายยังใช้กติกาวันส่งเดิมทุกตัวอักษร */
+
+// คำสั่งของแถว — ปุ่มบนหน้าใบ "ได้รับแล้ว" เป็นป้ายสถานะเมื่ออยู่ในคอลัมน์ "ต้องทำอะไร"
+const REQUESTER_ROW_STEP = { 'ได้รับแล้ว': 'ยืนยันรับเอกสาร' };
+
+const stampDay = (ms) => (Number.isFinite(ms) ? businessDayKey(new Date(ms).toISOString()) : null);
+
+/**
+ * ต้องทำอะไร + ค้างตั้งแต่เมื่อไร สำหรับใบที่คิวบอกว่าเป็นตาผู้ขอ — คืน `{ step, since }`
+ *
+ * ⚠️ **ต้องมีวันเสมอ** — แถว `basis: 'waiting'` ไปหัวข้อ "ครบกำหนดวันนี้" (`myQueueGroupKey`) ⇒ ไม่มีวัน =
+ *   หัวข้อบอกครบกำหนดแต่ช่องวันเขียน "ไม่มีกำหนด" (บทเรียนรีวิว ม-145) · ถอยไปวันรับเรื่อง/วันเปิดใบ
+ */
+function requesterTurn(request, next) {
+  const fallback = businessDayKey(request.acknowledgedAt || request.submittedAt || request.createdAt);
+  // สอบถาม: ฝ่ายตอบในเธรดล่าสุด ⇒ ค้างที่เราตั้งแต่ข้อความนั้น
+  if (requestReplyTurn(request)?.side === 'requester') {
+    return { step: 'ตอบกลับในเธรด', since: businessDayKey(request.lastReplyAt) || fallback };
+  }
+  const items = request.items || [];
+  const waiting = items
+    .map((item) => ({ item, next: nextByStageFor(item)[rowStage(item)] }))
+    .filter((x) => x.next?.owner === 'requester');
+  if (waiting.length) {
+    const label = waiting[0].next.label;
+    const step = REQUESTER_ROW_STEP[label] || label;
+    // แถวที่ค้างนานสุดเป็นตัวบอกว่าค้างมากี่วัน (ก้าวล่าสุดของแถวนั้น · ตัวเดียวกับคอลัมน์ "ค้างมา")
+    const oldest = Math.min(...waiting.map((x) => rowIdleStamps(x.item).at).filter(Number.isFinite));
+    return {
+      step: waiting.length > 1 ? `${step} · ${waiting.length} ${requestLineNoun(request.kind)}` : step,
+      since: stampDay(oldest) || fallback,
+    };
+  }
+  // ทุกแถวจบแล้ว ("รอปิดเรื่อง") — ค้างตั้งแต่แถวสุดท้ายจบ
+  if (next?.label === 'รอปิดเรื่อง') {
+    const last = Math.max(...items.map((item) => rowIdleStamps(item).at).filter(Number.isFinite));
+    return { step: 'ปิดเรื่อง', since: stampDay(last) || fallback };
+  }
+  return { step: next?.label || 'ทำต่อ', since: fallback };
+}
 
 /* ชนิดของงานในคิว — ป้ายบนชิปกรอง · เรียงตาม "ความใกล้ตัวคนขาย" ไม่ใช่ตามตัวอักษร
    ⚠️ คีย์ตรงกับ `kind` ของแถว — เพิ่มชนิดใหม่ต้องเติมที่นี่ ไม่งั้นชิปจะไม่มีให้กด
@@ -146,6 +195,26 @@ export function buildMyQueue({
     }
     // ใบตีกลับคือของค้างของ **ผู้ขอ** — วันที่ใช้เรียงคือวันที่ถูกตีกลับ
     const bounced = request.status === 'draft' && request.bouncedAt;
+    /* ⭐ ตาผู้ขอตามคิวคำร้อง (ไม่ใช่ใบตีกลับ ซึ่งมีแถวของตัวเองข้างล่าง) ⇒ คำสั่งของเรา + วันเริ่มค้าง
+       ⚠️ ต้องมี `items` ติดมา (API แดชบอร์ดเติมให้) — ไม่มีแถว = คิวตอบจากหัวใบล้วน ซึ่งผิดกับใบรายแถว */
+    const next = bounced ? null : requestNextStep(request);
+    if (next?.owner === 'requester') {
+      const turn = requesterTurn(request, next);
+      out.push(row({
+        kind: 'request',
+        id: request.id,
+        step: turn.step,
+        title: request.title || request.customerName || requestKindLabel(request.kind),
+        sub: [request.docNo || 'ร่าง', requestKindLabel(request.kind), request.customerName]
+          .filter(Boolean).join(' · '),
+        due: turn.since,
+        basis: 'waiting',
+        href: `/requests/${request.id}`,
+        urgent: !!request.urgent,
+        todayIso,
+      }));
+      continue;
+    }
     /* ⚠️ **ใบที่ฝ่ายยังไม่รับปากต้องมีวันเหมือนกัน แต่คนละความหมาย** — เดิมที่นี่อ่านแต่
        `committedDueDate` ⇒ ใบที่ยังไม่รับปากตกไปกลุ่ม "ไม่มีกำหนด" ขณะที่ปฏิทินบนหน้า
        เดียวกัน (lib/salesPlanning/mySchedule) วางมันบน `requestedDueDate` = **ใบเดียวกัน
@@ -162,7 +231,8 @@ export function buildMyQueue({
       title: request.title || request.customerName || requestKindLabel(request.kind),
       sub: [request.docNo || 'ร่าง', requestKindLabel(request.kind), request.customerName]
         .filter(Boolean).join(' · '),
-      due: bounced ? String(request.bouncedAt).slice(0, 10) : committed || requested,
+      // วันไทยของวันที่ถูกตีกลับ (timestamptz) — ตัดสตริงตรง ๆ ได้วัน UTC
+      due: bounced ? businessDayKey(request.bouncedAt) : committed || requested,
       // ตีกลับ/ยังไม่รับปาก = ค้างที่เรา (ไม่มีคำสัญญา) · ใบที่รับปากแล้ว = กำหนดจริง
       basis: bounced || !committed ? 'waiting' : 'deadline',
       href: `/requests/${request.id}`,

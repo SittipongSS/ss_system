@@ -11,7 +11,9 @@
 //
 // ⚠️ **หนึ่งคำสั่งรวม ไม่ใช่รายใบ** — หน้าเหล่านี้มีได้หลายสิบใบต่อคน · ดึงรายใบคือ
 // N+1 (โรคที่หน้าคำร้องเพิ่งถอด 8 endpoint ทิ้งไป)
-const NEEDED = 'id,requestId,derivedFromItemId,createdAt,ackAt,readyAt,pickedUpAt,sentAt,outcome,answerStatus';
+/* + `lineKind` (สายเอกสารมีก้าวของตัวเอง · `nextByStageFor`) และ `outcomeAt` (ก้าวล่าสุดของแถว · `rowIdleStamps`)
+   — แดชบอร์ดขายใช้บอก "ต้องทำอะไร · ค้างมากี่วัน" ของใบที่เป็นตาผู้ขอ (2026-09-11) */
+const NEEDED = 'id,requestId,derivedFromItemId,createdAt,ackAt,readyAt,pickedUpAt,sentAt,outcome,outcomeAt,answerStatus,lineKind';
 
 /**
  * เติม `items` ให้ใบที่โหลดมาแบบหัวใบล้วน — คืน array ชุดใหม่ ไม่แก้ของเดิม

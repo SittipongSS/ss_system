@@ -400,3 +400,26 @@ test('ตารางว่างเพราะคำค้น/ตัวกร�
   assert.match(panel, /rows\.length > 0 && \(String\(search \|\| ""\)\.trim\(\) \|\| filterCount > 0\)/);
   assert.match(panel, /if \(requestClosureStarted\(ask\) \|\| requestSettled\(ask\)\) return/);
 });
+
+test('แดชบอร์ดขายกับคิวคำร้องตอบตรงกันว่า "ตาใคร" — ตาผู้ขอไม่ใช่ "รอฝ่ายตอบ" (2026-09-11 · 25 ใบ)', async () => {
+  const { buildMyQueue } = await import('../salesPlanning/myQueue.js');
+  const today = '2026-09-11';
+  const cases = [
+    ask({ id: 'THREAD-SA', lastReplySide: 'dept', lastReplyAt: '2026-09-05T03:00:00Z' }),      // รอ SA ตอบ
+    ask({ id: 'THREAD-RD', lastReplySide: 'requester', lastReplyAt: '2026-09-05T03:00:00Z' }), // รอ RD ตอบ
+    ask({ id: 'ROWS-SA', kind: 'scent_dev', items: [{ id: 'x', ackAt: '2026-09-01', readyAt: '2026-09-03' }] }),
+    ask({ id: 'ROWS-RD', kind: 'scent_dev', items: [{ id: 'y', ackAt: '2026-09-01' }] }),
+  ];
+  const queue = Object.fromEntries(buildMyQueue({ todayIso: today, requests: cases }).map((r) => [r.id, r]));
+  for (const request of cases) {
+    const owner = requestNextStep(request)?.owner;
+    const row = queue[request.id];
+    if (owner === 'requester') {
+      assert.notEqual(row.step, 'รอฝ่ายตอบ', `${request.id}: คิวบอกตาผู้ขอ`);
+      assert.equal(row.basis, 'waiting', request.id);
+      assert.equal(row.overdue, false, `${request.id}: ของที่ค้างที่เราไม่ใช่ "เลยกำหนด" ของฝ่าย`);
+    } else {
+      assert.equal(row.step, 'รอฝ่ายตอบ', `${request.id}: คิวบอกตาฝ่าย`);
+    }
+  }
+});
