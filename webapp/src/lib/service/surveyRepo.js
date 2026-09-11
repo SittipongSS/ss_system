@@ -77,6 +77,21 @@ export async function insertSurveyZones(supabase, { requestId, zones, existingZo
   return { rows, error: null };
 }
 
+/* ── คอลัมน์ตัวชี้เจ้าของพร้อมหรือยัง (mig 0355) ─────────────────────────────────
+   🐞 ตัวออกรหัส (`create_entity_rows_with_code` → `master_row_columns`) **ทิ้งคีย์ที่ไม่มีคอลัมน์
+      เงียบ ๆ** ⇒ deploy ก่อนรันมิก = โซนจากใบเกิดโดยไม่มีตัวชี้ ถาวร (ไม่มี backfill) ⇒ ยกเลิกใบ/
+      ช่างลบพื้นที่ทีหลัง ตัวกวาดจะไม่ลบโซนเปล่านั้นให้ — เงียบสนิท (บทเรียนเดียวกับ spots mig 0354)
+   ⇒ ถามคอลัมน์ก่อนสร้างโซนแถวแรก (limit 0 — ไม่ดึงข้อมูล) · และเพราะเป็น select ที่ **เอ่ยชื่อคอลัมน์**
+      ด่าน CI check:columns จึงเห็นมัน = แดงจนกว่าจะรันมิก (การเขียนผ่าน RPC ด่านนั้นมองไม่เห็น) */
+export async function zoneSurveyOwnerColumnError(supabase) {
+  const { error } = await supabase.from('service_zones').select('"createdBySurveyRequestId"').limit(0);
+  if (!error) return null;
+  // 42703 = ไม่มีคอลัมน์จริง · อย่างอื่น (เน็ต/สิทธิ์) ห้ามโทษ migration
+  return error.code === '42703'
+    ? 'ระบบยังไม่พร้อมบันทึกเจ้าของพื้นที่ (ยังไม่ได้รัน migration 0355) — แจ้งผู้ดูแลระบบ · ยังไม่ได้สร้างพื้นที่'
+    : `ตรวจความพร้อมของทะเบียนพื้นที่ไม่สำเร็จ — ${error.message} · ยังไม่ได้สร้างพื้นที่ ลองใหม่อีกครั้ง`;
+}
+
 /* ── ตอนกดส่งใบ: พื้นที่ใหม่ได้รหัส ZN ตรงนี้ ──────────────────────────
    คืน `{ created, error }` — `created` = จำนวนโซนที่เพิ่งเกิด (ไว้เขียนลง audit)
    ⚠️ ไม่มีทรานแซกชันครอบ PostgREST ⇒ ออกแบบให้ **รันซ้ำได้**: แถวที่มี `zoneId`
@@ -113,6 +128,10 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
   }
   if (!toCreate.length) return { created: 0, error: null };
 
+  // ตัวชี้เจ้าของต้องลงได้ก่อนสร้างโซนแถวแรก (ทางผูกตามชื่อข้างบนไม่ต้องใช้คอลัมน์นี้ จึงไม่ถูกกั้น)
+  const ownerColumnError = await zoneSurveyOwnerColumnError(supabase);
+  if (ownerColumnError) return { created: 0, error: ownerColumnError };
+
   /* ⚠️ **ยิงทีละแถว ไม่ใช่ทั้งชุด** (mig 0315) — รหัสโซนมีชั้นอยู่ในท่อนหน้าเลขรัน
      ⇒ พื้นที่คนละชั้นใช้ prefix คนละตัว และ RPC รับ prefix เดียวต่อหนึ่งคำสั่ง
      ⭐ ล้มกลางทางไม่เป็นไร: แถวที่สำเร็จได้ `zoneId` แล้ว รอบถัดไปข้ามให้เอง
@@ -127,6 +146,10 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
       siteId,
       name: row.zoneName,
       floor: row.floor,
+      /* 🔑 **ใบนี้เป็นเจ้าของโซนที่เพิ่งสร้าง** (mig 0355) — ตัวเก็บกวาดตอนยกเลิกใบ (§5E ③) ลบได้
+         เฉพาะโซนที่ชี้ใบนั้น · โซนที่ "ผูกตามชื่อ" ข้างบนไม่ได้ช่องนี้ = ของทะเบียน ไม่ใช่ของใบ
+         ⚠️ ที่นี่ที่เดียวที่เขียน — ทุกทางที่ใบประเมินสร้างโซนผ่านฟังก์ชันนี้ (SA กดส่ง · ช่างเพิ่มหน้างาน) */
+      createdBySurveyRequestId: requestId,
       createdById: user?.id ? String(user.id) : null,
       createdByName: user?.name || null,
     };

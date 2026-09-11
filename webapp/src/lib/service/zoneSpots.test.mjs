@@ -72,6 +72,12 @@ test('🔴 normalizeZoneInput เขียน `spots` เฉพาะเมื�
   assert.match(normalizeZoneInput({ ...base, spots: [{ label: '' }] }).error, /ยังไม่มีชื่อ/);
 });
 
+test('🔴 ฟอร์มโซนปลอมตัวชี้เจ้าของไม่ได้ — normalizeZoneInput ไม่ส่ง createdBySurveyRequestId ต่อ', () => {
+  const { value } = normalizeZoneInput({ name: 'ล็อบบี้', floor: 'G', createdBySurveyRequestId: 'REQ-X' });
+  assert.equal('createdBySurveyRequestId' in value, false,
+    'ตัวชี้นี้ตัดสินว่าตัวกวาดลบโซนได้ไหม — ต้องมาจาก materializeSurveyZones เท่านั้น');
+});
+
 test('🔑 ทุกทางที่เขียนจุดลงฐานออก id ให้จุดใหม่ — ไม่มีจุดที่ id ว่าง', () => {
   for (const rel of [
     'app/api/service/sites/[id]/zones/route.js',
