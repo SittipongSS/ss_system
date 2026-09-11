@@ -67,13 +67,14 @@ export async function deleteAssetDeep(supabase, assetId) {
   /* ลำดับสำคัญ: ปลด RESTRICT ก่อนเสมอ
      ⚠️ `replacedByAssetId` ต้องล้างเป็น NULL ไม่ใช่ลบแถว — แถวนั้นเป็นประวัติของ
         **เครื่องอื่น** ที่ถูกเปลี่ยน ลบทิ้งคือลบประวัติของคนที่ไม่เกี่ยว */
-  await supabase.from('service_visit_assets')
-    .update({ replacedByAssetId: null }).eq('replacedByAssetId', assetId);
-  await supabase.from('service_visit_assets').delete().eq('assetId', assetId);
-  // moves เป็น CASCADE อยู่แล้ว — ลบตรงนี้เพื่อให้ลำดับอ่านออกและไม่พึ่ง DB เงียบ ๆ
-  await supabase.from('service_asset_moves').delete().eq('assetId', assetId);
-  const { error } = await supabase.from('service_assets').delete().eq('id', assetId);
-  if (error) throw error;
+  await runSteps([
+    ['ปลดเครื่องที่ถูกเปลี่ยนแทน', () => supabase.from('service_visit_assets')
+      .update({ replacedByAssetId: null }).eq('replacedByAssetId', assetId)],
+    ['ลบประวัติเครื่องในใบส่งงาน', () => supabase.from('service_visit_assets').delete().eq('assetId', assetId)],
+    // moves เป็น CASCADE อยู่แล้ว — ลบตรงนี้เพื่อให้ลำดับอ่านออกและไม่พึ่ง DB เงียบ ๆ
+    ['ลบประวัติการย้ายเครื่อง', () => supabase.from('service_asset_moves').delete().eq('assetId', assetId)],
+    ['ลบเครื่อง', () => supabase.from('service_assets').delete().eq('id', assetId)],
+  ]);
 }
 
 /* ── โซนหนึ่งโซน ─────────────────────────────────────────────────────────
@@ -109,13 +110,18 @@ async function purgeSurveyZoneFiles(supabase, { zoneId = null, zoneIds = null })
 }
 
 export async function deleteZoneDeep(supabase, zoneId) {
-  await supabase.from('service_zone_terms').delete().eq('zoneId', zoneId);
+  /* ขั้นไหนพังต้องหยุดก่อนถึงขั้นถัดไป — โดยเฉพาะก่อนกวาดไฟล์: ลบเงื่อนไขไม่ลงแล้ว
+     เดินต่อ = ไฟล์บน Drive หายไปแล้วแต่แถวผลวัดยังอยู่ ชี้ไปหาไฟล์ที่ไม่มีแล้ว */
+  await runSteps([
+    ['ลบเงื่อนไขของโซน', () => supabase.from('service_zone_terms').delete().eq('zoneId', zoneId)],
+  ]);
   /* ⚠️ **แถวผลวัดถือไฟล์แนบ** (mig 0314 + ชนิด `service_survey_zone`) — ลบแถวเฉย ๆ
      จะเหลือไฟล์กำพร้าบน Drive ที่ไม่มีอะไรชี้ถึงอีก (โรคเดียวกับ bucket หลักฐานการชำระ) */
   await purgeSurveyZoneFiles(supabase, { zoneId });
-  await supabase.from('service_survey_zones').delete().eq('zoneId', zoneId);
-  const { error } = await supabase.from('service_zones').delete().eq('id', zoneId);
-  if (error) throw error;
+  await runSteps([
+    ['ลบผลวัดของโซน', () => supabase.from('service_survey_zones').delete().eq('zoneId', zoneId)],
+    ['ลบโซน', () => supabase.from('service_zones').delete().eq('id', zoneId)],
+  ]);
 }
 
 /* ── ไซต์ทั้งใบ ──────────────────────────────────────────────────────────

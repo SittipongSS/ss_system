@@ -5,6 +5,7 @@ import { purgeUpdatesMany } from '@/lib/master/updates';
 import { userTeams } from '@/lib/permissions';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { runSteps } from '@/lib/supabaseWriteBatch';
 
 // Resolve a URL segment to a project. Internal ids ('PRJ-######') and human
 // project codes ('PJ-YYMMNNN') never collide, so accept either: try id first,
@@ -59,36 +60,49 @@ export async function deleteProjectDeep(supabase, projectId) {
     supabase.from('personal_tasks').select('id', { count: 'exact', head: true }).eq('projectId', projectId),
     supabase.from('project_doc_revisions').select('id', { count: 'exact', head: true }).eq('projectId', projectId),
   ]);
+  /* 🐞 ทุกขั้นข้างล่างเคย "สั่งแล้วไม่ดูผล" (supabase ไม่ throw) — ขั้นไหนพังก็เดินต่อจน
+     ลบแถวโครงการทิ้ง ⇒ **โครงการหายแต่ลูกที่ไม่มี FK ค้างเป็นกำพร้า** ชี้ไปหาโครงการที่
+     ไม่มีแล้ว และระบบไม่มีถังขยะให้กู้ · อ่านที่พังก็อันตรายเท่ากัน: อ่านรายการคำร้อง
+     ไม่ขึ้น = ได้ลิสต์ว่าง = ข้ามทั้งช่วงไปลบโครงการเลย
+     ⇒ อ่านต้องโยน · เขียนต้องผ่าน runSteps ที่หยุดทันทีก่อนถึงแถวโครงการ */
   // Logical-link children: remove before the project row disappears.
   /* ไฟล์แนบของงานใต้โครงการต้องไปก่อนแถว — polymorphic ไม่มี FK cascade
      (เส้นลบงานทีละใบเรียก purgeAttachments อยู่แล้ว เส้นชุดนี้เคยหลุด) */
   {
     // ⚠️ ไล่ทีละหน้า — เหตุผลเดียวกับ forceDelete: ตัดที่ 1,000 = ไฟล์แนบค้างกำพร้า
-    const { data: tasks } = await fetchAllResult(() => supabase
+    const { data: tasks, error: tasksError } = await fetchAllResult(() => supabase
       .from('personal_tasks').select('id').eq('projectId', projectId).order('id', { ascending: true }));
+    if (tasksError) throw tasksError;
     for (const task of tasks || []) await purgeAttachments('personal_task', task.id, supabase);
   }
-  await supabase.from('personal_tasks').delete().eq('projectId', projectId);
-  await supabase.from('project_doc_revisions').delete().eq('projectId', projectId);
-  // ของเข้า (mig 0176) — projectId เป็น logical link ไม่มี FK เช่นกัน
-  await supabase.from('material_deliveries').delete().eq('projectId', projectId);
+  await runSteps([
+    ['ลบงานใต้โครงการ', () => supabase.from('personal_tasks').delete().eq('projectId', projectId)],
+    ['ลบประวัติเอกสารโครงการ', () => supabase.from('project_doc_revisions').delete().eq('projectId', projectId)],
+    // ของเข้า (mig 0176) — projectId เป็น logical link ไม่มี FK เช่นกัน
+    ['ลบรายการของเข้า', () => supabase.from('material_deliveries').delete().eq('projectId', projectId)],
+  ]);
   // dept_requests.projectId is a no-FK logical link (mig 0173) — clean the thread +
   // its messages + any task created from it, else they orphan silently.
-  const { data: inqs } = await supabase.from('dept_requests').select('id').eq('projectId', projectId);
+  const { data: inqs, error: inqsError } = await supabase.from('dept_requests').select('id').eq('projectId', projectId);
+  if (inqsError) throw inqsError;
   const inquiryIds = (inqs || []).map((r) => r.id);
   if (inquiryIds.length) {
     // เธรดเป็น polymorphic ไม่มี FK — กวาดเอง (บรรทัด/ชั้นจำนวนมี FK CASCADE แล้ว)
     await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
     {
-      const { data: tasks } = await fetchAllResult(() => supabase
+      const { data: tasks, error: inqTasksError } = await fetchAllResult(() => supabase
         .from('personal_tasks').select('id').in('inquiryId', inquiryIds).order('id', { ascending: true }));
+      if (inqTasksError) throw inqTasksError;
       for (const task of tasks || []) await purgeAttachments('personal_task', task.id, supabase);
     }
-    await supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds);
-    // ⚠️ guard_dept_request บล็อกการลบคำร้องที่ส่งแล้ว — ต้องผ่าน RPC ทีละใบ
-    for (const requestId of inquiryIds) {
-      await supabase.rpc('force_delete_dept_request', { p_id: requestId });
-    }
+    await runSteps([
+      ['ลบงานที่เกิดจากคำร้อง', () => supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds)],
+      // ⚠️ guard_dept_request บล็อกการลบคำร้องที่ส่งแล้ว — ต้องผ่าน RPC ทีละใบ
+      ...inquiryIds.map((requestId) => [
+        `ลบคำร้อง ${requestId}`,
+        () => supabase.rpc('force_delete_dept_request', { p_id: requestId }),
+      ]),
+    ]);
   }
   // เธรดของตัวโครงการเอง (entity_updates + notifications) — polymorphic ไม่มี FK
   // เช่นกัน ไม่กวาด = กระดิ่งเหลือแถวที่กดแล้วไปเจอโครงการที่ไม่มีแล้ว

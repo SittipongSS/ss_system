@@ -14,7 +14,9 @@ import { deleteProjectDeep, projectHasExciseRegistrations } from './projectsRepo
 //   .from(t).delete().eq(..)/.in(..)  → records op
 // deleteProjectDeep นับด้วย select(...{head:true}) และดึงรายการคำร้องด้วย
 // select('id') — fake นี้ตอบทั้ง count และ data พร้อมกันเลยใช้ได้ทั้งสองทาง.
-function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [] } = {}) {
+// `errors` — คีย์ `select:<table>` · `delete:<table>` · `rpc:<fn>` ⇒ ตอบ { error } แทน
+// (supabase ไม่ throw — ความล้มเหลวมาเป็นค่าที่คืน ไม่ใช่ exception)
+function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [], errors = {} } = {}) {
   return {
     from(table) {
       return {
@@ -23,15 +25,20 @@ function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [] } = {}) {
              (ที่ `purgeAttachments` เรียก) ใช้ `.eq().eq().order()` ส่วนการหางาน
              ใต้โครงการใช้ `.eq()` ชั้นเดียว · เดิม fake รองรับชั้นเดียวเลยพังทันที
              ที่ deleteProjectDeep เริ่มกวาดไฟล์แนบ (ซึ่งเป็นพฤติกรรมที่ต้องการ) */
-          const result = () => Promise.resolve({
-            count: counts[table] ?? 0,
-            data: rows[table] ?? [],
-            error: null,
-          });
+          const failed = errors[`select:${table}`];
+          const result = () => Promise.resolve(failed
+            ? { count: null, data: null, error: failed }
+            : { count: counts[table] ?? 0, data: rows[table] ?? [], error: null });
+          /* ⚠️ `.order()` ต้องคืน chain ที่ไปต่อ `.range()` ได้ — `fetchAll` ไล่ทีละหน้า
+             ด้วย `.range()` · 🪤 เดิม `.order` คืน promise ตรง ๆ ⇒ `.range is not a
+             function` ⇒ `fetchAllResult` กลืนเป็น `{ error }` แล้ว deleteProjectDeep
+             ทิ้ง error นั้น ⇒ **ช่วงกวาดไฟล์แนบของงานไม่เคยถูกรันในเทสต์นี้เลย** เทสต์
+             ผ่านเพราะบั๊กตัวเดียวกับที่มันควรจับ */
           const chain = {
             eq: () => chain,
             in: () => chain,
-            order: result,
+            order: () => chain,
+            range: result,
             then: (resolve, reject) => result().then(resolve, reject),
           };
           return chain;
@@ -41,7 +48,7 @@ function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [] } = {}) {
           // + purgeNotificationsMany ใช้ท่าหลัง) · เดิม hardcode ชื่อ 'entity_updates'
           // ไว้ตัวเดียว พอเพิ่มตารางที่ใช้ท่าเดียวกันเทสต์ก็ล้มด้วย TypeError ทันที
           // → ทำเป็น chain ที่นับ op ตอนถูก await หรือตอนจบด้วย .in() แทน
-          const done = () => { ops.push(table); return Promise.resolve({ error: null }); };
+          const done = () => { ops.push(table); return Promise.resolve({ error: errors[`delete:${table}`] || null }); };
           const chain = {
             eq: () => chain,
             in: done,
@@ -52,7 +59,10 @@ function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [] } = {}) {
       };
     },
     // คำร้องลบผ่าน RPC เท่านั้น — guard_dept_request (0173) บล็อกการลบตรง
-    rpc(fn, args) { ops.push(`rpc:${fn}`); rpcArgs.push(args); return Promise.resolve({ error: null }); },
+    rpc(fn, args) {
+      ops.push(`rpc:${fn}`); rpcArgs.push(args);
+      return Promise.resolve({ error: errors[`rpc:${fn}`] || null });
+    },
   };
 }
 
@@ -93,6 +103,24 @@ test('deleteProjectDeep: ไม่มีคำร้องผูก → ยั�
   assert.equal(ops[ops.length - 1], 'projects', 'ต้องกวาดของลูกให้หมดก่อนลบตัวโครงการ');
   assert.deepEqual(removed, { personalTasks: 0, docRevisions: 0, inquiries: 0 });
 });
+
+/* 🐞 ทุกขั้นของ cascade เคย "สั่งแล้วไม่ดูผล" — ขั้นไหนพังก็เดินต่อจนลบแถวโครงการ
+   ⇒ โครงการหาย ลูกที่ไม่มี FK ค้างเป็นกำพร้า ระบบไม่มีถังขยะให้กู้ · ทุกกรณีข้างล่าง
+   ต้อง **โยน และไม่แตะแถว projects เลย** */
+for (const [label, errors, rows] of [
+  ['RPC ลบคำร้องพัง', { 'rpc:force_delete_dept_request': { message: 'guard' } }, { dept_requests: [{ id: 'DR1' }] }],
+  // อ่านรายการคำร้องไม่ขึ้น = เคยได้ลิสต์ว่าง = ข้ามทั้งช่วงไปลบโครงการเลย
+  ['อ่านรายการคำร้องพัง', { 'select:dept_requests': { message: 'timeout' } }, {}],
+  ['ลบงานใต้โครงการพัง', { 'delete:personal_tasks': { message: 'fk' } }, {}],
+  ['ลบรายการของเข้าพัง', { 'delete:material_deliveries': { message: 'fk' } }, {}],
+]) {
+  test(`deleteProjectDeep: ${label} → หยุดก่อนถึงแถวโครงการ`, async () => {
+    const ops = [];
+    const supabase = fakeSupabase({ ops, errors, rows });
+    await assert.rejects(deleteProjectDeep(supabase, 'PRJ-3'));
+    assert.equal(ops.includes('projects'), false, `ลบแถวโครงการไปแล้วทั้งที่ขั้นก่อนหน้าพัง: ${ops.join(' → ')}`);
+  });
+}
 
 test('projectHasExciseRegistrations reflects the count', async () => {
   assert.equal(await projectHasExciseRegistrations(fakeSupabase({ counts: { excise_registrations: 0 } }), 'PRJ-1'), false);

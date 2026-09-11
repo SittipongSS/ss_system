@@ -203,7 +203,9 @@ export async function cleanupDealOrphans(supabase, dealId) {
 // personal_tasks + project_doc_revisions + dept_requests ให้แล้ว): ทะเบียนสรรพสามิต
 // (mig 0066 — ไม่มี FK) ปกติถูก "บล็อก" การลบ; เมื่อ force ผู้ดูแลเลือกลบพ่วง.
 export async function forceDeleteProjectExcise(supabase, projectId) {
-  await supabase.from('excise_registrations').delete().eq('projectId', projectId);
+  // ต้องโยน — ผู้เรียกลบโครงการต่อทันที ลบทะเบียนไม่ลงแล้วเดินต่อ = ทะเบียนกำพร้า (ไม่มี FK)
+  const { error } = await supabase.from('excise_registrations').delete().eq('projectId', projectId);
+  if (error) throw new Error(`ลบทะเบียนสรรพสามิตของโครงการไม่สำเร็จ: ${error.message}`);
 }
 
 // ── ใบยื่นชำระภาษี: ด่านที่ break-glass ก็ข้ามไม่ได้ ────────────────────────
