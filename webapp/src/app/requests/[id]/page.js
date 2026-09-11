@@ -1102,7 +1102,8 @@ export default function RequestDetailPage() {
   // ป้ายอุปสรรคของคนที่กำลังดู (ช่อง `notices` ของแผงจัดการ) — เหตุที่แก้ไม่ได้ · สินค้า NPD ที่ยังไม่มีแถวงาน
   const controlNotices = [
     editBlocker && !canEditInfo && !canEditPdrNow ? editBlocker : null,
-    npdRowsNotice,
+    // ปุ่มหลักจางด้วยเหตุเดียวกันอยู่แล้ว (การ์ดเขียนเหตุไว้เหนือปุ่ม) — ไม่พูดประโยคเดิมซ้ำสองบรรทัด
+    primaryAction?.disabled && primaryAction?.disabledReason === npdRowsNotice ? null : npdRowsNotice,
   ].filter(Boolean);
 
   /* ⭐ เปิดโมดัลส่งงาน **ของบรีฟก้อนเดียว** (มติผู้ใช้ 2026-08-18) — ปุ่มอยู่ในแถว

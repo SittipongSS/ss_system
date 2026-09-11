@@ -2,7 +2,7 @@
 import { pdrContext } from '@/lib/requests/pdrFields';
 import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
 import { requestRowSummary } from '@/lib/requests/rowStage';
-import { MAX_PDR_TARGETS } from '@/lib/requests/pdrTargets';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
@@ -228,9 +228,10 @@ export async function loadRequests(supabase, {
   }).map((a) => a.id);
   let npdTargets = [];
   if (npdCandidateIds.length) {
-    const { data, error: npdTargetError } = await supabase.from('dept_request_pdr_targets')
-      .select('requestId, categoryCode, scentId').in('requestId', npdCandidateIds)
-      .limit(npdCandidateIds.length * MAX_PDR_TARGETS);
+    /* ⚠️ ดึงให้ครบทุกหน้า เรียงนิ่ง (รีวิวรอบ 7) — เพดานคิดจาก 20 แถวต่อใบใช้ไม่ได้: ก้าวบันทึกแบบฟอร์มเขียนชุดใหม่
+       ก่อนลบชุดเดิม ⇒ ใบที่ลบไม่สำเร็จมีได้ 40 แถว แล้วตัดแบบไม่เรียงทำให้อีกใบได้ targets ว่างเงียบ ๆ */
+    const { data, error: npdTargetError } = await fetchAllResult(() => supabase.from('dept_request_pdr_targets')
+      .select('id, requestId, categoryCode, scentId').in('requestId', npdCandidateIds).order('id'));
     if (npdTargetError) throw npdTargetError;
     npdTargets = data || [];
   }
