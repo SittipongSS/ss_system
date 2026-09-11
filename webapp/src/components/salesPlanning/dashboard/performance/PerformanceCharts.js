@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useId, useMemo, useRef, useState } from "react";
 import { BarChart3, TrendingUp, Sigma } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { yoySeries, cumulativeSeries } from "@/lib/sales/performanceMath";
+import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import { fmtMoney } from "@/lib/format";
 import { pctFmt, SeriesLegend } from "./shared";
 import ChartCard from "@/components/ui/ChartCard";
-import { CHART_SERIES } from "@/lib/chartTheme";
+import { CHART_COMPARISON_OPACITY, CHART_SERIES } from "@/lib/chartTheme";
 
 // กราฟของแท็บผลงานขาย — SVG เขียนเอง (แอปไม่มี chart library, แพตเทิร์นเดียวกับ
 // DashboardCharts เดิม): เทียบ Target/Forecast/Actual + เส้นประ Actual ปีก่อน,
@@ -18,6 +19,14 @@ const SERIES = [
   { key: "forecast", label: "Forecast", color: CHART_SERIES.forecast },
   { key: "actual", label: "Actual", color: CHART_SERIES.actual },
 ];
+
+/* ยอด SO รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) — แท่งซ้อน (stack) บนแท่ง Actual
+   ⛔ ไม่ใช่ series ที่ 4: `CHART_SERIES` ล็อกไว้ 3 สี (chartTheme.test) ⇒ ใช้สีของ Actual
+      จางด้วย CHART_COMPARISON_OPACITY + ลายเฉียง แยกด้วยสิ่งที่ไม่ใช่ hue
+   ⚠️ ไม่อยู่ใน SERIES โดยเจตนา — barW หารด้วย SERIES.length และแท่งนี้ไม่มีช่องของตัวเอง
+   ⛔ กราฟ YoY กับยอดสะสมยังเป็น Actual ล้วน (ยอดนี้ยังไม่นับเป็นยอดขาย) */
+const PENDING = { key: "pendingApproval", label: PENDING_APPROVAL_LABEL, color: CHART_SERIES.actual };
+const ZERO_YEAR = Array(12).fill(0);
 
 const QUARTER_LABELS = ["Q1", "Q2", "Q3", "Q4"];
 
@@ -47,11 +56,19 @@ function labelsFor(period, year) {
   return [String(year)];
 }
 
-// กราฟแท่งกลุ่ม T/F/A + เส้นประปีก่อนซ้อนทับ. data = [{label, target, forecast, actual, lastYear}]
+// กราฟแท่งกลุ่ม T/F/A + เส้นประปีก่อนซ้อนทับ. data = [{label, target, forecast, actual, pendingApproval, lastYear}]
 function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
+  // id ของลายเฉียงต้องไม่ซ้ำข้ามกราฟในหน้าเดียว — ตัดอักขระที่ใช้ใน url(#…) ไม่ได้ทิ้ง
+  const hatchId = `perf-pending-hatch-${useId().replace(/[^\w-]/g, "")}`;
   const W = 960, H = height, padL = 110, padR = 16, padT = 16, padB = 40;
   const plotW = W - padL - padR, plotH = H - padT - padB;
-  const rawMax = Math.max(1, ...data.flatMap((d) => [...SERIES.map((s) => Number(d[s.key] || 0)), Number(d.lastYear || 0)]));
+  // ยอดของแท่ง Actual ที่มีรออนุมัติซ้อน = Actual + รออนุมัติ — สเกลต้องครอบยอดรวมนี้
+  const rawMax = Math.max(1, ...data.flatMap((d) => [
+    ...SERIES.map((s) => Number(d[s.key] || 0)),
+    Number(d.actual || 0) + Number(d[PENDING.key] || 0),
+    Number(d.lastYear || 0),
+  ]));
+  const hasPending = data.some((d) => Number(d[PENDING.key] || 0) > 0);
   const max = niceMax(rawMax);
   const groups = data.length || 1;
   const groupW = plotW / groups;
@@ -68,7 +85,14 @@ function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
 
   return (
     <div style={{ width: "100%", overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="กราฟเทียบ Target Forecast Actual" style={{ display: "block", minWidth: Math.max(420, groups * 46) }} onMouseLeave={onLeave}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`กราฟเทียบ Target Forecast Actual${hasPending ? ` (${PENDING.label}ซ้อนบนแท่ง Actual)` : ""}`} style={{ display: "block", minWidth: Math.max(420, groups * 46) }} onMouseLeave={onLeave}>
+        {hasPending && (
+          <defs>
+            <pattern id={hatchId} patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+              <rect width="2" height="6" fill={PENDING.color} />
+            </pattern>
+          </defs>
+        )}
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" strokeDasharray={i === 0 ? "0" : "3 3"} />
@@ -82,17 +106,28 @@ function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
               {SERIES.map((s, si) => {
                 const v = Number(d[s.key] || 0);
                 const bh = v > 0 ? Math.max(1, plotH - (y(v) - padT)) : 0;
+                const bx = gx + si * barW;
+                // รออนุมัติวางต่อบนยอดแท่ง Actual ช่องเดียวกัน (ไม่ได้บวกเข้า Actual — tooltip แยกกัน)
+                const pending = s.key === "actual" ? Number(d[PENDING.key] || 0) : 0;
+                const ph = pending > 0 ? Math.max(1, y(v) - y(v + pending)) : 0;
                 return (
-                  <rect
-                    key={s.key}
-                    x={gx + si * barW}
-                    y={y(v)}
-                    width={barW - 2}
-                    height={bh}
-                    rx="2"
-                    fill={s.color}
-                    onMouseMove={(e) => onHover && onHover(e, d.label, s.label, s.color, v)}
-                  />
+                  <Fragment key={s.key}>
+                    <rect
+                      x={bx}
+                      y={y(v)}
+                      width={barW - 2}
+                      height={bh}
+                      rx="2"
+                      fill={s.color}
+                      onMouseMove={(e) => onHover && onHover(e, d.label, s.label, s.color, v)}
+                    />
+                    {pending > 0 && (
+                      <g onMouseMove={(e) => onHover && onHover(e, d.label, PENDING.label, PENDING.color, pending)}>
+                        <rect x={bx} y={y(v) - ph} width={barW - 2} height={ph} rx="2" fill={PENDING.color} fillOpacity={CHART_COMPARISON_OPACITY} />
+                        <rect x={bx} y={y(v) - ph} width={barW - 2} height={ph} rx="2" fill={`url(#${hatchId})`} />
+                      </g>
+                    )}
+                  </Fragment>
                 );
               })}
               <text x={cx(gi)} y={H - padB + 18} textAnchor="middle" fontSize="11" fill="var(--text-2)">{d.label}</text>
@@ -217,10 +252,20 @@ export default function PerformanceCharts({ row, lastYear, label, year, closedCo
     const t = toPeriod(row.target, period);
     const f = toPeriod(row.forecast, period);
     const a = toPeriod(row.actual, period);
+    // แถวจาก payload เก่า/แถวว่างอาจไม่มีเส้นรออนุมัติ ⇒ ถือเป็นศูนย์
+    const p = toPeriod(row.pendingApproval || ZERO_YEAR, period);
     // ปีก่อนโชว์เฉพาะเมื่อมียอด (ไม่งั้นเส้นแบนศูนย์ทำให้อ่านผิด)
     const ly = lastYear && lastYear.some((v) => Number(v || 0) > 0) ? toPeriod(lastYear, period) : null;
-    return labels.map((lb, i) => ({ label: lb, target: t[i] || 0, forecast: f[i] || 0, actual: a[i] || 0, lastYear: ly ? ly[i] : null }));
+    return labels.map((lb, i) => ({
+      label: lb,
+      target: t[i] || 0,
+      forecast: f[i] || 0,
+      actual: a[i] || 0,
+      [PENDING.key]: p[i] || 0,
+      lastYear: ly ? ly[i] : null,
+    }));
   }, [row, lastYear, period, year]);
+  const mainHasPending = mainData.some((d) => d[PENDING.key] > 0);
 
   // เดือนที่ยังวิ่งอยู่ไม่มีจุด — ยอดครึ่งเดือนเทียบเดือนเต็มของปีก่อนได้หลุมปลอม
   const yoyData = useMemo(() => {
@@ -235,7 +280,16 @@ export default function PerformanceCharts({ row, lastYear, label, year, closedCo
       <Panel
         icon={<BarChart3 size={17} aria-hidden="true" />}
         title={`Target vs Forecast vs Actual — ${label}`}
-        legend={<SeriesLegend items={[...SERIES.map((s) => ({ label: s.label, color: s.color })), { label: `Actual ${year - 1}`, color: "var(--text-3)", dashed: true }]} />}
+        desc={mainHasPending ? `${PENDING.label} = ใบสั่งขายที่ยื่นแล้ว ซ้อนบนแท่ง Actual ให้เห็น — ยังไม่นับเป็น Actual` : undefined}
+        legend={(
+          <SeriesLegend
+            items={[
+              ...SERIES.map((s) => ({ label: s.label, color: s.color })),
+              ...(mainHasPending ? [{ label: PENDING.label, swatchClass: "perf-swatch-pending" }] : []),
+              { label: `Actual ${year - 1}`, color: "var(--text-3)", dashed: true },
+            ]}
+          />
+        )}
       >
         <GroupedBarsWithLine data={mainData} onHover={onHover} onLeave={onLeave} />
       </Panel>

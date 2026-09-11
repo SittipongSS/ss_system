@@ -7,7 +7,7 @@ import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
 import TaskCreateButton from "@/components/pm/TaskCreateButton";
 import RequestCreateButton from "@/components/requests/RequestCreateButton";
-
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -62,6 +62,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
+import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -72,7 +73,6 @@ function driftText(it) {
 }
 
 const money = (value) => fmtMoney(value);
-
 /* เนื้อความย่อของรายการที่ยืมมาแสดงในเธรด — ยาวกว่านี้แล้วเส้นเรื่องจะถูกกลบด้วย
    เนื้อหาของเรื่องอื่น · จบด้วย … เพื่อบอกว่ายังมีต่อที่ต้นทาง (กดลิงก์ไปอ่านได้) */
 const clipText = (value, max = 160) => {
@@ -348,6 +348,29 @@ export default function DealOverviewPage() {
   const canEdit = !!data?.canEdit;
   const role = useRole();
   const alreadyWon = isWonStage(deal?.stage);
+  /* ยอด Actual กับยอด SO "รออนุมัติ" ของดีล — สองตัวเลขแยกกันเสมอ (มติผู้ใช้ 2026-09-11 · mig 0353)
+     · Actual อ่าน cache บนดีลผ่านด่าน actualSource (ตัวเดียวกับภาพรวม)
+     · รออนุมัติรวมจากแถว SO ที่หน้านี้โหลดมาอยู่แล้ว (ทุกสถานะ) ⇒ สดเสมอ และไม่ต้องรอ
+       mig 0353 รันก่อน · กติกาเดียวกับ cache บนดีลทุกตัวอักษร (splitSalesOrderAmounts)
+     ⛔ ห้ามบวกรออนุมัติเข้า Actual หรือเอาไปคิด "ต่างจากคาดการณ์" */
+  const dealActual = dealActualFromSalesOrders(deal);
+  const soAmounts = splitSalesOrderAmounts(data?.salesOrders || []);
+  /* ช่องยอดของ SO หนึ่งใบ — สามสถานะ (salesOrderAmountKind):
+       actual           อนุมัติแล้ว = Actual ตามเดิม
+       pending_approval ยอดจริงของใบ + ป้าย "รออนุมัติ" (เดิมขึ้น ฿0.00 จนดีลดูไม่มีมูลค่า)
+       excluded         ร่าง/ตีกลับ/ย้อนอนุมัติ/ออก Rev. แล้ว/ยกเลิก = ยอดจาง + "ไม่นับ" */
+  const soAmountCell = (order) => {
+    const kind = salesOrderAmountKind(order);
+    if (kind === "actual") return money(salesOrderActual(order));
+    if (kind === "pending_approval") {
+      return <PendingApprovalAmount amount={salesOrderPendingApprovalAmount(order)} count={1} inline />;
+    }
+    return (
+      <span className="cell-num-idle" title="สถานะนี้ไม่นับเป็น Actual และไม่นับเป็นยอดรออนุมัติ">
+        {money(Math.max(0, Number(order?.actualAmount) || 0))} · ไม่นับ
+      </span>
+    );
+  };
   // สายภาษีของแต่ละ SO — 3 กรณีที่ต้องอ่านออกจากตาเดียว:
   //   มีใบยื่นแล้ว → ป้ายสถานะ + ลิงก์ไปใบนั้น
   //   ยังไม่มีแต่อยู่ในคิวกลาง → "รอออกใบยื่น" (SO อนุมัติแล้วและมีสินค้าสรรพสามิตจริง)
@@ -929,12 +952,21 @@ export default function DealOverviewPage() {
           <>
           <section id="deal-kpi" className="kpi-grid" style={{ gridTemplateColumns: "none", gridAutoFlow: "column", gridAutoColumns: "minmax(180px, 1fr)", overflowX: "auto" }}>
             {alreadyWon ? (
+              /* ⭐ ค่าหลัก = Actual (SO อนุมัติแล้ว) · ส่วนต่างเทียบ FC คิดจาก Actual อย่างเดียว
+                 SO ที่ยื่นแล้วรออนุมัติขึ้นเป็นบรรทัดรองแยก — เดิมดีลแบบนี้ขึ้น ฿0.00 พร้อม
+                 "ต่าง = FC ทั้งก้อน" อ่านเป็นพลาดเป้าทั้งใบ (มติผู้ใช้ 2026-09-11)
+                 🪤 ของเดิมอ่าน `wonValue ?? projectValue` — ถอยไม่เคยเกิด (trigger เขียน 0) */
               <Stat
                 label="มูลค่าปิดจริง (Won)"
-                value={money(deal.wonValue ?? deal.projectValue)}
-                hint={Number(deal.projectValue) !== Number(deal.wonValue ?? deal.projectValue)
-                  ? `คาดการณ์ ${money(deal.projectValue)} · ต่าง ${money(Number(deal.projectValue) - Number(deal.wonValue ?? deal.projectValue))}`
-                  : `ตรงกับคาดการณ์`}
+                value={money(dealActual)}
+                hint={(
+                  <>
+                    {(Number(deal.projectValue) || 0) !== dealActual
+                      ? `คาดการณ์ ${money(deal.projectValue)} · ต่าง ${money((Number(deal.projectValue) || 0) - dealActual)}`
+                      : "ตรงกับคาดการณ์"}
+                    <PendingApprovalAmount amount={soAmounts.pendingApproval} count={soAmounts.pendingApprovalCount} />
+                  </>
+                )}
               />
             ) : (
               /* ⭐ mig 0337: บอก **ที่มา** มาด้วยเสมอ — ตัวเลขเดียวกันอ่านคนละความหมาย
@@ -1354,12 +1386,16 @@ export default function DealOverviewPage() {
                 <Link href="/sa/sales-orders" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนู ใบสั่งขาย</Link>
               </div>
               <TableScroll surface="embedded" className="premium-glass-table table-responsive"><table className="w-full text-sm">
-                <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">Actual ก่อน VAT</th><th>ใบยื่นภาษี</th></tr></thead>
+                {/* หัวคอลัมน์เป็น "ยอดก่อน VAT" ไม่ใช่ "Actual" — ในคอลัมน์มีทั้ง Actual · รออนุมัติ
+                    และใบที่ไม่นับ แต่ละแถวบอกกองของตัวเองด้วยคำกำกับ (soAmountCell) */}
+                <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">ยอดก่อน VAT</th><th>ใบยื่นภาษี</th></tr></thead>
                 <tbody>{data.salesOrders.map((order) => (
                   <tr key={order.id} className="premium-row">
                     <td className="mono"><Link href={`/sa/sales-orders/${order.id}`} className="linklike">{order.orderNumber}</Link></td>
-                    <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
-                    <td className="num mono">{money(order.status === "approved" ? order.actualAmount : 0)}</td>
+                    {/* ป้ายสถานะจากทะเบียนกลาง — map ที่เขียนเองเดิมขาด revised/approval_revoked
+                        (ขึ้นคำอังกฤษดิบ) และเรียกร่างว่า "ร่าง" ต่างจากหน้า SO */}
+                    <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{SALES_ORDER_STATUS_LABELS[order.status] || order.status}</span></td>
+                    <td className="num mono">{soAmountCell(order)}</td>
                     {/* ปลายทางของ SO — เดิมหน้าดีลจบที่ SO ต้องไปเปิดหน้า SO ถึงจะรู้ว่าภาษีเดินถึงไหน.
                         ว่าง = ไม่มีสินค้าสรรพสามิตต้องยื่น (คิวกลางกรองให้แล้ว) ไม่ใช่งานค้าง */}
                     <td>{filingOf(order.id)}</td>

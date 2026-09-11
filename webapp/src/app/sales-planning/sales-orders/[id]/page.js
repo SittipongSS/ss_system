@@ -53,6 +53,7 @@ import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/Quotation
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import {
+  PENDING_APPROVAL_LABEL,
   SALES_ORDER_CANCEL_REASONS,
   canCancelSalesOrder,
   canHardDeleteSalesOrder,
@@ -62,7 +63,10 @@ import {
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
   isCustomerCancelReason,
+  salesOrderAmountKind,
 } from "@/lib/sales/salesOrderWorkflow";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { currentMonth, formatMonthLabel } from "@/lib/datePeriods";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
 // ⚠️ ป้ายขั้นดีลมาจาก STAGE_LABELS ที่เดียว — ของเดิมพิมพ์ค่าดิบจาก DB ("won")
 // ลงจอ ทั้งที่หน้าดีล/คิวใช้ป้ายไทยกันหมด (ดู lib/salesPlanning.js)
@@ -106,7 +110,14 @@ import {
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
-  pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)" },
+  /* ⭐ ใบรออนุมัติมีคำอธิบายของตัวเองแล้ว (มติผู้ใช้ 2026-09-11 · mig 0353) — ยอดของใบนี้
+     ขึ้นบนภาพรวม/ดีล/โครงการเป็น "รออนุมัติ" แยกจาก Actual · เดิมว่างเปล่า ทั้งที่สถานะอื่น
+     ทุกตัวบอกผลต่อ Actual ของมัน */
+  pending_approval: {
+    label: "รอ AE Supervisor อนุมัติ",
+    color: "var(--amber)",
+    description: `ยอดขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนดีลและโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ (อนุมัติแล้วเข้า Actual ของเดือนที่อนุมัติ)`,
+  },
   approved: { label: "อนุมัติแล้ว", color: "var(--green)", description: "ยอดถูกนับเป็น Actual แล้ว" },
   rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)", description: "แก้ไขตามเหตุผลแล้วส่งอนุมัติใหม่" },
   approval_revoked: { label: "ย้อนการอนุมัติแล้ว", color: "var(--red)", description: "ยอดหลุดจาก Actual แล้ว · แก้ฉบับเดิมไม่ได้ ต้องออก Rev." },
@@ -352,11 +363,16 @@ export default function SalesOrderDetailPage() {
     setEditMode(false);
   }
 
+  /* ⭐ จังหวะที่ยอดกลายเป็น "รออนุมัติ" คือปุ่มนี้ (มติผู้ใช้ 2026-09-11 · mig 0353) — โมดัล
+     ต้องบอกว่าเงินไปอยู่ไหน ไม่ใช่บอกแค่ว่าเอกสารถูกล็อก (กติกา approval-confirm-modals #1223) */
   function openSubmitConfirm() {
     setConfirmState({
       title: "ยื่นอนุมัติ ใบสั่งขาย",
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
-      detail: "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
+      detail: [
+        "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
+        `ยอด ${fmtMoney(order.actualAmount)} (ก่อน VAT) จะขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนภาพรวม ดีล และโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ`,
+      ].join("\n"),
       confirmLabel: "ยื่นอนุมัติ",
       action: () => requestAction("submit"),
     });
@@ -455,13 +471,16 @@ export default function SalesOrderDetailPage() {
   async function review(action) {
     if (action === "approve") {
       /* ⚠️ การกดครั้งนี้ทำ 4 อย่างพร้อมกัน ไม่ใช่แค่ปั๊มสถานะ — เดิมโมดัลบอกแต่ยอด Actual
-         ทั้งที่ตอนเพิ่ม mig 0245/0250 มันเริ่มสร้างงวดชำระและส่งใบเข้าคิวบัญชีไปด้วย */
+         ทั้งที่ตอนเพิ่ม mig 0245/0250 มันเริ่มสร้างงวดชำระและส่งใบเข้าคิวบัญชีไปด้วย
+         ⭐ ข้อแรกบอกทางของเงิน (มติผู้ใช้ 2026-09-11 · mig 0353): ยอดย้ายออกจาก "รออนุมัติ"
+         เข้า Actual ของ **เดือนที่กด** — Actual ลงเดือนของ approvedAt เวลาไทย
+         (`currentMonth()` เวลาไทย · ห้าม businessMonthKey ที่คืน YYMM ของเลขเอกสาร) */
       setConfirmState({
         ...approvalPrompt({
           title: "อนุมัติ ใบสั่งขาย",
           subject: `ใบสั่งขาย ${order.orderNumber}`,
           effects: [
-            `ยอด Actual ${fmtMoney(order.actualAmount)} เข้าดีลทันที`,
+            `ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`,
             "สร้างงวดชำระตามแผนการชำระที่ระบุไว้ใน QT",
             "เปิดขั้นของบัญชีบนใบนี้ — บัญชีปิดใบได้เมื่อเก็บเงินครบทุกงวด",
             "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
@@ -761,6 +780,21 @@ export default function SalesOrderDetailPage() {
   }
 
   const approved = order.status === "approved";
+  /* ⭐ ยอดของใบนี้อยู่กองไหน (มติผู้ใช้ 2026-09-11 · mig 0353) — ตัวตัดสินกลางตัวเดียวกับ
+     ตาราง SO ทุกจอ: 'actual' | 'pending_approval' | 'excluded' */
+  const amountKind = salesOrderAmountKind(order);
+  /* 🐞 แถบเน้นท้ายตารางรายการเคยเขียน "Actual ก่อน VAT" สีเขียว **ทุกสถานะ** ขณะที่การ์ดสรุป
+     ข้าง ๆ บอก "ยังไม่นับ" ⇒ ใบเดียวกันพูดสองเรื่อง · ป้ายและสีเดินตามกองของยอดแล้ว:
+     อนุมัติ = เขียว Actual · รออนุมัติ = amber (ห้ามเขียว) · ที่เหลือ = ยอดของใบเฉย ๆ สีกลาง */
+  const amountHighlight = {
+    id: "actual",
+    value: fmtMoney(order.actualAmount),
+    ...(amountKind === "actual"
+      ? { label: "Actual ก่อน VAT", tone: "success" }
+      : amountKind === "pending_approval"
+        ? { label: `${PENDING_APPROVAL_LABEL} (ก่อน VAT)`, tone: "warning" }
+        : { label: "ยอดก่อน VAT", tone: "neutral" }),
+  };
   /* ⭐ **สิทธิ์แก้ = cap ของคน × ขอบเขตของใบ** — `canEdit` ที่ server ส่งมาคิด
      `canEditSalesPlanning(user) && inSalesEditScope(user, deal)` ตัวเดียวกับที่ทุก action
      ใน PATCH ใช้ปฏิเสธ ⇒ ปุ่มกับหลังบ้านขัดกันไม่ได้ (แพตเทิร์นเดียวกับหน้าสัญญา)
@@ -789,7 +823,12 @@ export default function SalesOrderDetailPage() {
     { label: "จัดทำร่าง", hint: order.createdByName || "ผู้จัดทำ" },
     { label: "ยื่นอนุมัติ", hint: order.submittedAt ? fmtDate(order.submittedAt) : "รอผู้จัดทำ" },
     { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
-    { label: "นับ Actual", hint: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
+    {
+      label: "นับ Actual",
+      hint: approved ? fmtMoney(order.actualAmount)
+        : amountKind === "pending_approval" ? `${PENDING_APPROVAL_LABEL} ${fmtMoney(order.actualAmount)}`
+          : "ยังไม่นับ",
+    },
   ];
   /* ⭐ ขั้นบัญชีตรวจใบ (mig 0250) — ต่อท้ายรางก้าว **หลัง "นับ Actual"** โดยตั้งใจ
      เพราะ Actual เข้าไปแล้วตั้งแต่ AE Supervisor กด บัญชีไม่ได้กั้นยอด (มติ 2026-08-13)
@@ -971,7 +1010,7 @@ export default function SalesOrderDetailPage() {
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
-            // (ที่นั่นมี "Actual ก่อน VAT" พร้อมสถานะ "ยังไม่นับ" อยู่แล้ว) — วันครบกำหนด
+            // (ที่นั่นมี "Actual ก่อน VAT" พร้อมกองของยอด — Actual/รออนุมัติ/ยังไม่นับ) — วันครบกำหนด
             // เป็นสิ่งที่คนเปิดใบอยากรู้ทันทีมากกว่า
             { icon: CalendarDays, label: "กำหนดชำระ", value: fmtDate(order.paymentDueDate) },
             { icon: FileText, label: "อ้างอิง QT", value: naText(order.quotation?.quoteNumber) },
@@ -1050,7 +1089,22 @@ export default function SalesOrderDetailPage() {
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
                 discountRow,
                 { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
-                { id: "actual", label: "Actual ก่อน VAT", value: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
+                /* ⭐ ใบรออนุมัติโชว์ยอดพร้อมคำว่า "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353)
+                   — เดิม "ยังไม่นับ" เฉย ๆ จนอ่านเหมือนใบไม่มีมูลค่า · ผ่านชิ้นกลาง
+                   PendingApprovalAmount ให้หน้าตาเดียวกับทุกจอ · ร่าง/ตีกลับ/ยกเลิก คงเดิม */
+                {
+                  id: "actual",
+                  label: "Actual ก่อน VAT",
+                  value: approved ? fmtMoney(order.actualAmount)
+                    : amountKind === "pending_approval"
+                      ? (
+                        <>
+                          <PendingApprovalAmount amount={order.actualAmount} count={1} />
+                          <span className={styles.pendingSummaryNote}>ยังไม่นับเป็น Actual</span>
+                        </>
+                      )
+                      : "ยังไม่นับ",
+                },
                 /* 🔴 บรรทัดนี้คือ **ยอดที่เก็บเงินได้** ไม่ใช่ Actual — Actual เป็นยอดเต็ม
                    ของใบเสมอ ต่อให้แบ่งจ่ายกี่งวด (ยืนยันกับผู้ใช้ 2026-08-13)
                    วางไว้ใต้ Actual โดยตั้งใจ ให้เห็นคู่กันว่าคนละตัว */
@@ -1122,7 +1176,7 @@ export default function SalesOrderDetailPage() {
                 { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
               ]}
               grandTotal={fmtMoney(order.totalAmount)}
-              highlightRows={[{ id: "actual", label: "Actual ก่อน VAT", value: fmtMoney(order.actualAmount), tone: "success" }]}
+              highlightRows={[amountHighlight]}
             />
           </DetailCard>
 
@@ -1327,7 +1381,7 @@ export default function SalesOrderDetailPage() {
               <ShieldAlert size={20} color="var(--amber)" aria-hidden="true" />
               <div style={{ color: "var(--text-2)", fontSize: "var(--fs-7)" }}>
                 <strong style={{ color: "var(--text)" }}>กรณีพิเศษเมื่อยังไม่มีผู้ตรวจสอบคนที่สอง</strong>
-                <p style={{ margin: "4px 0 0" }}>คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — การอนุมัติจะนับ Actual {fmtMoney(order.actualAmount)} ทันที และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override</p>
+                <p style={{ margin: "4px 0 0" }}>คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — การอนุมัติจะย้ายยอด {fmtMoney(order.actualAmount)} จาก “{PENDING_APPROVAL_LABEL}” เข้า Actual ของเดือน {formatMonthLabel(currentMonth())} ทันที และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override</p>
               </div>
             </div>
             <div className="action-bar" style={{ marginTop: 0 }}>
@@ -1348,9 +1402,11 @@ export default function SalesOrderDetailPage() {
         description={{
           revoke: `SO ${order.orderNumber} จะหลุดจากยอด Actual ทันที และแก้ฉบับเดิมไม่ได้ — ขั้นถัดไปคือกด "ออก Rev."`,
         }[workflowForm?.action] || `SO ${order.orderNumber} จะกลับเป็นฉบับร่างและแก้ไขได้`}
+        /* ดึงกลับ = ใบออกจากกอง "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — บอกยอดที่หายไป
+           จากภาพรวม/ดีล/โครงการ ให้คนกดรู้ก่อน ไม่ต้องไปงงทีหลังว่ายอดหายไปไหน */
         detail={{
           revoke: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
-        }[workflowForm?.action] || "หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่"}
+        }[workflowForm?.action] || `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" จนกว่าจะยื่นใหม่ · หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่`}
         label="เหตุผล"
         value={workflowForm?.reason || ""}
         onChange={(reason) => setWorkflowForm((current) => ({ ...current, reason }))}
@@ -1369,6 +1425,8 @@ export default function SalesOrderDetailPage() {
       <ReasonDialog
         open={!!rejectForm}
         title="ตีกลับให้ผู้จัดทำแก้ไข"
+        /* ตีกลับ = ยอดออกจากกอง "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — เดิมไม่มีบรรทัดผลลัพธ์เลย */
+        detail={`ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" — ใบกลับไปให้ผู้จัดทำแก้ไขแล้วยื่นใหม่ ยังไม่นับเป็น Actual`}
         label="เหตุผลที่ตีกลับ"
         value={rejectForm?.reason || ""}
         onChange={(reason) => setRejectForm({ reason })}
@@ -1383,7 +1441,12 @@ export default function SalesOrderDetailPage() {
       {cancelForm && (
         <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก ใบสั่งขาย" size="sm" dismissible={!busy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ color: "var(--text-2)", margin: 0 }}>หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก</p>
+            {/* ใบรออนุมัติที่ผู้ตรวจยกเลิก = ยอดออกจากกอง "รออนุมัติ" ไม่ใช่จาก Actual (มติ 2026-09-11) */}
+            <p style={{ color: "var(--text-2)", margin: 0 }}>
+              {amountKind === "pending_approval"
+                ? `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" ทันที — เลือกเหตุผลที่ยกเลิก`
+                : "หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก"}
+            </p>
             <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล</span>
               <Select value={cancelForm.code} onChange={(e) => setCancelForm((f) => ({ ...f, code: e.target.value }))}>

@@ -235,6 +235,24 @@
   color: var(--red);
 }
 
+/* ยอด "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — ทรงเดียวกับชิ้นกลาง PendingApprovalAmount:
+   **ป้ายเป็น amber สถานะ · ตัวเลขเป็นสีข้อความรอง** ห้ามเขียวของ Actual ไม่งั้นอ่านเป็นยอดที่นับแล้ว */
+.warningTotal {
+  background: color-mix(in srgb, var(--amber) 9%, transparent);
+  color: var(--text-2);
+}
+
+.warningTotal > span {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
+}
+
+/* ยอดของใบที่ยังไม่อยู่กองไหน (ร่าง/ตีกลับ/ยกเลิก) — ตัวเลขข้อเท็จจริงของเอกสาร ไม่มีสีสถานะ */
+.neutralTotal {
+  background: color-mix(in srgb, var(--text-3) 8%, transparent);
+  color: var(--text-2);
+}
+
 /* ── ที่แคบกว่าพื้นตาราง: รายการกลายเป็นการ์ดต่อรายการ ──────────────────────
    ตารางต้องการ 900px (อ่านเหตุผลที่ .linesTable) — ที่แคบกว่านั้นผู้ใช้เห็นแค่
    "# + รายการ" ส่วน จำนวน/ราคา/ส่วนลด/ยอด ถูกซ่อนหลังการเลื่อนแนวนอน แถมขอบขวา

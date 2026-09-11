@@ -4,6 +4,9 @@ import { TableScroll } from "@/components/ui/Table";
 import { Fragment, useMemo } from "react";
 import { Sun } from "lucide-react";
 import { rowHasValue, unallocatedRow, windowStat, yearSummary } from "@/lib/sales/performanceMath";
+import { currentMonth } from "@/lib/datePeriods";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import { closedThroughLabel, money, pctFmt, periodLabel, ProgressBar } from "./shared";
 import { NA } from "@/lib/format";
 
@@ -26,6 +29,11 @@ import { NA } from "@/lib/format";
 // · "ขาด / เกิน" = Actual − เป้า**ทั้งงวด** (โหมดปี = เป้าทั้ง 12 เดือน) — เหลืออีกเท่าไรถึงปิดปี
 // · "สถานะ" = Actual YTD − Target **YTD** — ตอนนี้ตามแผนอยู่ไหม (เดือนที่ยังไม่ถึงไม่นับ)
 // ปี 2026 ณ ส.ค. ต่างกันราว 56 ล้าน — ป้ายกำกับคือสิ่งเดียวที่กันคนอ่านสลับกัน
+//
+// 🧾 **ยอด SO รออนุมัติ** (มติผู้ใช้ 2026-09-11 · mig 0353) — บรรทัดรองใต้ตัวเลข Actual
+// ไม่ใช่คอลัมน์ใหม่ (minWidth ด้านล่างวัดมือไว้) · กดแล้วเปิดรายดีล metric 'pendingApproval'
+// ของ **เดือนปัจจุบันเวลาไทยเสมอ** (ยอดนี้อยู่เดือนนั้นเดือนเดียว ไม่ว่างวดที่ดูจะกว้างแค่ไหน)
+// ⛔ ขาด/เกิน · % ปิดได้ · YoY · สถานะ ยังเป็น Actual ล้วน — แถบใน % ปิดได้ แค่วาดต่อท้ายให้เห็น
 
 /* `now` มากับ {...common} แต่บอร์ดนี้ไม่ได้ใช้แล้ว — เคยใช้ตัวเดียวคือหา periodKind
    ให้คอลัมน์สถานะ ซึ่งถอดออกไปแล้ว (มติผู้ใช้ 2026-08-03) จึงไม่รับไว้ในลายเซ็น
@@ -62,6 +70,9 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
   const rest = useMemo(() => unallocatedRow(matrix), [matrix]);
   const prevRest = useMemo(() => (prevMatrix ? unallocatedRow(prevMatrix) : null), [prevMatrix]);
   const showRest = rowHasValue(rest, win.startIdx, win.endIdx);
+  // คำอธิบายเรื่องรออนุมัติโผล่เฉพาะงวดที่มีใบจริง (ยอดบริษัทครอบทุกแถวอยู่แล้ว)
+  const companyStat = statOf(matrix.company);
+  const anyPending = companyStat.pendingApproval > 0 || companyStat.pendingApprovalCount > 0;
 
   // Actual ปีก่อนของแถวเดียวกัน — ฐานของ YoY (ไม่มีฐาน = คอลัมน์แสดง "–")
   const lastYearActualOf = (row, isTeam, isTotal, isRest) => {
@@ -73,10 +84,12 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
 
   // เดือนที่ส่งให้ modal รายดีล: งวดเดือน = เดือนนั้น, งวดใหญ่กว่า = ทั้งปี (กรองปีแทน)
   const dealMonth = kind === "month" ? `${year}-${String(win.startIdx + 1).padStart(2, "0")}` : null;
-  const openMetricDeals = (row, isTeam, metric) =>
+  // ยอดรออนุมัติอยู่ที่เดือนปัจจุบันเวลาไทยเท่านั้น ⇒ เจาะที่เดือนนั้นเสมอ ไม่ใช่ทั้งปี/ไตรมาส
+  const pendingMonth = currentMonth();
+  const openMetricDeals = (row, isTeam, metric, { month = dealMonth, dealYear = String(year) } = {}) =>
     onDealDrill?.({
-      month: dealMonth,
-      year: String(year),
+      month,
+      year: dealYear,
       ownerId: row.id !== "company" && !isTeam && row.id && !String(row.id).includes(":") ? row.id : null,
       ownerName: row.id !== "company" && !isTeam ? row.name : null,
       team: isTeam ? row.team : row.team || null,
@@ -102,6 +115,24 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         {money(value)}
       </button>
     ) : <span className="mono" style={{ color }}>{money(value)}</span>;
+    // บรรทัดรองใต้ Actual: ยอด SO รออนุมัติของงวด — โผล่เฉพาะแถวที่มีใบ (ชิ้นแสดงผลกลางชิ้นเดียวทุกจอ)
+    const hasPending = s.pendingApproval > 0 || s.pendingApprovalCount > 0;
+    const pendingAmount = hasPending ? (
+      <PendingApprovalAmount amount={s.pendingApproval} count={s.pendingApprovalCount} className="perf-pending-sub" />
+    ) : null;
+    // ชื่อปุ่มต้องมีข้อความที่ตาเห็นครบทั้งท่อน "รออนุมัติ ฿X · N ใบ" (WCAG 2.5.3 Label in Name —
+    // สั่งด้วยเสียงตามที่อ่านบนจอได้) · "· N ใบ" โผล่เมื่อ > 1 ใบ ตามชิ้นกลาง PendingApprovalAmount
+    const pendingName = `${PENDING_APPROVAL_LABEL} ${money(s.pendingApproval)}${s.pendingApprovalCount > 1 ? ` · ${s.pendingApprovalCount} ใบ` : ""}`;
+    const pendingLine = !hasPending || isRest ? pendingAmount : (
+      <button
+        type="button"
+        className="perf-pending-drill"
+        onClick={() => openMetricDeals(row, isTeam, "pendingApproval", { month: pendingMonth, dealYear: pendingMonth.slice(0, 4) })}
+        aria-label={`ดูรายละเอียด ${label} · ${pendingName}`}
+      >
+        {pendingAmount}
+      </button>
+    );
     return (
       <tr
         className={`premium-row${isRest ? " perf-rest-row" : ""}`}
@@ -136,7 +167,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         {carry && <td className={cellClass("num mono")} style={{ fontWeight: "var(--fw-semibold)" }}>{money(s.mustClose)}</td>}
         <td className={cellClass("num")}>{metricButton(s.fcTotal, "fcTotal", "var(--blue)", "FC Total")}</td>
         <td className={cellClass("num")}>{metricButton(s.forecast, "remaining", "var(--amber)", "FC คงเหลือ")}</td>
-        <td className={cellClass("num")} style={{ fontWeight: "var(--fw-semibold)" }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}</td>
+        <td className={cellClass("num")} style={{ fontWeight: "var(--fw-semibold)" }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}{pendingLine}</td>
         <td className={cellClass("num mono")} style={{ color: s.diff >= 0 ? "var(--green)" : "var(--red)" }}>
           {s.diff >= 0 ? "+" : ""}{money(s.diff)}
         </td>
@@ -185,7 +216,8 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         สรุป Target, FC Total, FC คงเหลือ และ Actual รายคน/รายทีม
         {carry ? ' · "ต้องปิด" = เป้า + ยอดทบยกมา' : " · โหมดเป้าปกติ (ไม่ทบยอด)"}
-        {" "}· แถบ: เขียว = Actual · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกตัวเลขเพื่อดูรายการดีล
+        {" "}· แถบ: เขียว = Actual{anyPending ? ` · เขียวจางลายเฉียง = ${PENDING_APPROVAL_LABEL}` : ""} · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกตัวเลขเพื่อดูรายการดีล
+        {anyPending && ` · "${PENDING_APPROVAL_LABEL}" ใต้ Actual = ใบสั่งขายที่ยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับใน Actual, ขาด / เกิน และ % ปิดได้`}
         {isYear && ` · "ขาด / เกิน" เทียบเป้าทั้ง 12 เดือน ส่วน "สถานะ" เทียบเป้าเฉพาะเดือนที่จบแล้ว (${through}) — เดือนที่กำลังวิ่งไม่นับ`}
         {showRest && ' · แถว "ยังไม่ได้แยกทีม" คือเป้า/ยอดที่กรอกไว้ระดับบริษัทแต่ยังไม่ได้ลงรายทีม — แถวทีมทุกแถวบวกกับแถวนี้จะได้แถวรวมท้ายตารางพอดี'}
       </p>

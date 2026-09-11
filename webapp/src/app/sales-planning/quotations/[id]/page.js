@@ -27,6 +27,9 @@ import QuotationLineItems, { newManualLine, newProductLine } from "@/components/
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { SALES_ORDER_STATUS_LABELS, salesOrderAmountKind } from "@/lib/sales/salesOrderWorkflow";
+import { isLiveSalesOrder } from "@/lib/sales/handoffQueue";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { CONFIRM_DOC_TYPE_LABELS } from "@/lib/sales/orderConfirmationDocs";
 import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
@@ -455,7 +458,7 @@ export default function QuotationEditorPage() {
   // ย้อนการรับ = เครื่องมือ supervisor/แอดมินกรณีรับใบผิดก่อนมี SO — มี SO ที่ยังไม่
   // ยกเลิกอยู่ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ); เหตุผลบังคับ 10–500 ตัวอักษร
   const canUnaccept = quote?.status === "accepted" && canUnacceptQuotation(role)
-    && (!quote.salesOrder || quote.salesOrder.status === "cancelled");
+    && !quote.hasNonCancelledSalesOrder;
   const unacceptReasonValidation = unacceptForm ? unacceptReasonError(unacceptForm.reason) : "";
   const doUnaccept = async () => {
     if (unacceptReasonValidation) return;
@@ -990,18 +993,35 @@ export default function QuotationEditorPage() {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <Link href={`/sa/sales-orders/${quote.salesOrder.id}`} className="linklike mono" style={{ fontWeight: "var(--fw-bold)" }}>{quote.salesOrder.orderNumber}</Link>
-                  <span className="ui-badge" style={{ color: quote.salesOrder.status === "approved" ? "var(--green)" : quote.salesOrder.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[quote.salesOrder.status] || quote.salesOrder.status}</span>
-                  <span style={{ color: "var(--text-2)" }}>Actual ก่อน VAT {fmtMoney(quote.salesOrder.status === "approved" ? quote.salesOrder.actualAmount : 0)}</span>
+                  {/* ป้ายสถานะอ่านจากทะเบียนกลาง SALES_ORDER_STATUS_LABELS — แผนที่ที่พิมพ์เองตรงนี้
+                      เคยไม่มี "ย้อนการอนุมัติแล้ว"/"ออกฉบับแก้ไขแล้ว" ⇒ ขึ้นค่าดิบจาก DB */}
+                  <span className="ui-badge" style={{ color: quote.salesOrder.status === "approved" ? "var(--green)" : quote.salesOrder.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{SALES_ORDER_STATUS_LABELS[quote.salesOrder.status] || quote.salesOrder.status}</span>
+                  {/* 🐞 ใบรออนุมัติเคยขึ้น "Actual ก่อน VAT ฿0.00" ข้างป้าย "รออนุมัติ" — ตรงกับที่
+                      ผู้ใช้แจ้ง 2026-09-11 · ยอดสามทางผ่านตัวตัดสินกลาง `salesOrderAmountKind` (mig 0353):
+                        อนุมัติ    = Actual ก่อน VAT ฿X
+                        รออนุมัติ  = รออนุมัติ ฿X · ยังไม่นับ Actual (ชิ้นกลาง — ห้ามเรียกว่า Actual)
+                        ที่เหลือ   = ยอดก่อน VAT ฿X · ยังไม่นับ Actual */}
+                  <span style={{ color: "var(--text-2)" }}>
+                    {salesOrderAmountKind(quote.salesOrder) === "actual"
+                      ? `Actual ก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)}`
+                      : salesOrderAmountKind(quote.salesOrder) === "pending_approval"
+                        ? <><PendingApprovalAmount inline amount={quote.salesOrder.actualAmount} count={1} /> ก่อน VAT · ยังไม่นับ Actual</>
+                        : `ยอดก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)} · ยังไม่นับ Actual`}
+                  </span>
                 </div>
               </RelatedDocumentCard>
             )}
 
-            {quote.status === "accepted" && !quote.salesOrder && canEditCap && (
+            {/* ⭐ ปุ่มสร้างเดินตาม "ใบที่ยังมีชีวิต" (`isLiveSalesOrder` = ด่านเดียวกับ RPC ของ mig 0169)
+                ไม่ใช่ "มีแถวไหม" — route คืนใบที่ยกเลิกแล้วมาเมื่อไม่มีใบที่มีชีวิต (โชว์ป้าย "ยกเลิก")
+                ⇒ เดิม `!quote.salesOrder` ซ่อนปุ่มทั้งที่ 0169 เปิดให้ออกใบใหม่ และแถบเตือนบนทะเบียน
+                ใบเสนอราคานับใบนี้ว่า "ยังไม่ได้ออก" แล้วชวนมากดที่นี่ = ทางตัน (2026-09-11) */}
+            {quote.status === "accepted" && !isLiveSalesOrder(quote.salesOrder) && canEditCap && (
               <RelatedDocumentCard
                 icon={ClipboardList}
                 eyebrow="DOWNSTREAM DOCUMENT"
                 title="ใบสั่งขาย"
-                meta="ยังไม่ได้สร้างเอกสารปลายทาง"
+                meta={quote.salesOrder ? "ใบสั่งขายเดิมถูกยกเลิกแล้ว — ออกใบใหม่จากใบเสนอราคานี้ได้" : "ยังไม่ได้สร้างเอกสารปลายทาง"}
                 actions={<Link href={salesOrderFormHref} className="btn btn-primary"><Plus size={14} /> สร้างใบสั่งขาย</Link>}
               >
                 <p style={{ color: "var(--text-2)", marginTop: 0 }}>กรอกเอกสารยืนยันคำสั่งซื้อ กำหนดชำระรายงวด และเงินที่ลูกค้าจ่ายมาแล้ว ในหน้าเดียว แล้วออกใบเพื่อยื่นให้ AE Supervisor อนุมัติ</p>

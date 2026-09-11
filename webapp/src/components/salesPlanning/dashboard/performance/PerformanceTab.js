@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { buildMatrix, closedMonths, overlayHistory, ytdMonths, windowForPeriod } from "@/lib/sales/performanceMath";
+import { currentMonth } from "@/lib/datePeriods";
 import { apiCache } from "@/lib/apiCache";
 import { SALES_TEAMS } from "@/components/salesPlanning/ui";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
@@ -43,9 +44,12 @@ export default function PerformanceTab({ year }) {
   const pathname = usePathname();
   const yearNum = Number(year);
   const prevYear = String(yearNum - 1);
+  /* "เดือนนี้" ของทั้งแท็บ = เดือนปัจจุบัน **เวลาไทย** (เดิมใช้นาฬิกาเครื่อง getMonth)
+     ⚠️ ต้องตรงกับที่ server วางยอด SO รออนุมัติ (currentMonth · มติ 2026-09-11) —
+     ไม่งั้นช่วงรอยต่อเดือน เครื่องที่ตั้งโซนอื่นจะเห็นยอดนั้นตกไปเดือนที่ "จบแล้ว"/"ยังไม่ถึง" */
   const now = useMemo(() => {
-    const d = new Date();
-    return { year: d.getFullYear(), monthIdx: d.getMonth() };
+    const [y, m] = currentMonth().split("-").map(Number);
+    return { year: y, monthIdx: m - 1 };
   }, []);
   const closedCount = closedMonths(yearNum, now);
   const ytdCount = ytdMonths(yearNum, now);
@@ -138,6 +142,7 @@ export default function PerformanceTab({ year }) {
   }, []);
 
   // คลิกช่อง Actual ในบอร์ด → modal รายดีลชุดเดียวกับแดชบอร์ดเดิม (กติกา wonMonth ตรงกัน)
+  // บรรทัด "รออนุมัติ" ใต้ Actual → modal เดียวกัน metric 'pendingApproval' เดือนปัจจุบัน (2026-09-11)
   const [dealFilter, setDealFilter] = useState(null);
 
   /* งวดของทั้งแท็บ — คำนวณที่เดียวแล้วส่งลงไป (แถบคุม + แถบความคืบหน้า + ตารางติดตาม)

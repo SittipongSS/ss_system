@@ -2,16 +2,23 @@ import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { canEditSalesTarget, canViewSalesPlanning, isWonStage, monthKey, normalizeTargetPeriod, resolveTargetRowScope, toMoney, yearKey } from '@/lib/salesPlanning';
+import { canEditSalesTarget, canViewSalesPlanning, isWonStage, normalizeTargetPeriod, resolveTargetRowScope, toMoney, yearKey } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
+import { wonMonthOf } from '@/lib/sales/dashboardMetrics';
 
 export const dynamic = 'force-dynamic';
 
 // Sum won deals into a { [year]: { total, byTeam, byOwner, byMonth } } shape so
 // the wizard can pre-fill historical actuals for years the system already knows.
+//
+// ⛔ **Actual ล้วน — ห้ามมียอด SO "รออนุมัติ" ปน** (มติผู้ใช้ 2026-09-11 · mig 0353)
+// ตัวช่วยวางเป้าเอา systemActuals ไปเติมช่อง "ขายจริง" แล้ว POST ลง `sales_history`
+// ⇒ ยอดที่ยังไม่มีใครอนุมัติจะถูกแช่เป็นยอดจริงถาวร และแถวนั้นทับตัวเลขระบบในรายงาน
+// ผลงานขายต่อไปเรื่อย ๆ (ล็อกไว้ใน lib/sales/myDashboardPendingApproval.test.mjs)
+// ⭐ เดือน Won มาจาก wonMonthOf ตัวกลาง — เดิมก๊อปลำดับ fallback ไว้เอง แก้ที่กลางแล้วไม่ถึงที่นี่
 function aggregateWonDeals(deals) {
   const wonAmt = dealActualFromSalesOrders;
-  const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
+  const wonMonth = wonMonthOf;
   const isWon = (d) => isWonStage(d.stage);
   const years = {};
   for (const d of deals || []) {

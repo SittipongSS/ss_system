@@ -20,6 +20,20 @@ async function loadLead(supabase, id) {
 
 // นโยบายแก้/ลบอยู่ที่ lib/sales/leads.js (canEditLead/canDeleteLead) — ใช้ร่วมกับหน้า list
 
+/* คีย์ metadata ของดีลที่การ์ด "ดีลจากลีดนี้" อ่าน (มติผู้ใช้ 2026-09-11 · mig 0353)
+   actualSource = ด่านของ Actual (dealActualFromSalesOrders) · soPending* = ยอด SO รออนุมัติ
+   ⚠️ ส่งเฉพาะคีย์เหล่านี้ ไม่ใช่ metadata ทั้งก้อน — คนเปิดหน้าลีดได้บางตำแหน่ง (marketing)
+      ไม่มีสิทธิ์หน้าดีล · การ์ดต้องใช้คีย์ไหนเพิ่ม เติมที่ลิสต์นี้
+   ⭐ คีย์ที่ไม่มีค่าไม่ส่ง (ไม่มีใบรออนุมัติ = ไม่มีคีย์ · ตัวอ่านฝั่งจอถือว่า 0 เอง) */
+const DEAL_CARD_METADATA_KEYS = ['actualSource', 'soPendingAmount', 'soPendingCount'];
+function dealCardMetadata(metadata) {
+  const out = {};
+  for (const key of DEAL_CARD_METADATA_KEYS) {
+    if (metadata?.[key] != null) out[key] = metadata[key];
+  }
+  return out;
+}
+
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewLeads(user)) return forbidden();
@@ -29,16 +43,28 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // scope รายแถวเหมือนหน้า list (applyLeadScope) — เดิม route รายตัวไม่กรอง ทำให้
   // เปิดอ่านลีดข้ามทีม (PII + ดีลที่เกี่ยวข้อง) ได้จาก id ตรง ๆ
   if (!inLeadScope(user, lead)) return forbidden();
-  const [{ data: events }, { data: relatedDeals }] = await Promise.all([
+  /* `metadata` ของดีลต้องมาด้วย (มติผู้ใช้ 2026-09-11 · mig 0353) — การ์ด "ดีลจากลีดนี้"
+     อ่าน Actual ผ่านด่าน actualSource และยอด SO รออนุมัติ (soPendingAmount/soPendingCount)
+     จาก metadata · ไม่มีมัน = จอแยก Actual กับรออนุมัติไม่ออก เหลือแต่ wonValue ดิบ (0) */
+  const [
+    { data: events, error: eventsError },
+    { data: relatedDeals, error: relatedDealsError },
+  ] = await Promise.all([
     supabase.from('lead_events').select('*').eq('leadId', id).order('createdAt', { ascending: false }),
-    supabase.from('sales_deals').select('id, code, title, customerName, stage, dealType, projectValue, wonValue, probability, forecastMonth, projectId').eq('leadId', id).order('createdAt', { ascending: false }),
+    supabase.from('sales_deals').select('id, code, title, customerName, stage, dealType, projectValue, wonValue, probability, forecastMonth, projectId, metadata').eq('leadId', id).order('createdAt', { ascending: false }),
   ]);
+  /* supabase ไม่ throw — อ่านไม่ขึ้นแล้วตกเป็น [] หน้าตาเหมือนคำตอบว่า "ไม่มี" ทุกประการ
+     · ดีลที่ผูก: การ์ดขึ้น "ยังไม่มีดีล" และ canDelete ข้างล่างเปิดปุ่มลบให้ (DELETE ยังกันซ้ำ
+       แต่ผู้ใช้กดแล้วเจอ 409 ที่เดาไม่ได้) · ประวัติ: บริบทตีกลับ/ส่งต่อบนจอหายเงียบ
+     ⇒ ตอบ error ให้จอบอกว่าโหลดไม่สำเร็จ แทนการโชว์ลีดครึ่งใบ */
+  if (eventsError) return fail(`อ่านประวัติลีดไม่สำเร็จ: ${eventsError.message}`, 500);
+  if (relatedDealsError) return fail(`อ่านดีลที่ผูกลีดไม่สำเร็จ: ${relatedDealsError.message}`, 500);
   // canDelete คำนวณที่นี่เหมือน canEdit — หน้ารายละเอียดจะได้ไม่ต้องคิดนโยบายซ้ำ
   // (หน้า list คิดฝั่ง client เพราะมีลีดหลายใบในจอเดียว ไม่คุ้มยิงถามทีละใบ)
   return ok({
     ...lead,
     events: events || [],
-    relatedDeals: relatedDeals || [],
+    relatedDeals: (relatedDeals || []).map((deal) => ({ ...deal, metadata: dealCardMetadata(deal.metadata) })),
     canEdit: canEditLead(user, lead),
     // ⚠️ ต้องรวมด่าน "มีดีลผูกอยู่" ที่ DELETE บังคับด้วย ไม่งั้นปุ่มลบโผล่แล้วกดได้
     // 409 เสมอ = error ที่ผู้ใช้เดาไม่ได้ (บทเรียนเดียวกับปุ่มลบดีลที่มีใบ accepted)
