@@ -16,6 +16,7 @@ import {
   cancelRequestError,
   closeOutcomeError,
   closeRequestError,
+  closeUnassessedError,
   compareRequestUrgency,
   deleteRequestError,
   deriveRequestStatusAfterAnswer,
@@ -29,6 +30,7 @@ import {
   submitRequestError,
 } from './deptRequests.js';
 import { followUpRowFrom } from './requests/hops.js';
+import { queueTabRows, requestNextStep, waitingOnMeRows } from './requests/queueBoard.js';
 import { OUTCOME_REGISTRY_BY_KIND } from './requests/outcomes.js';
 import { requestFormBlocker, requestPayload } from './master/requestCreate.js';
 import {
@@ -353,7 +355,8 @@ test('ปิดเรื่อง: ใบที่มีแถวต้องจ
 
 test('⭐ ปิดใบไม่ได้จนลูกค้าคอนเฟิร์มครบตามจำนวนใน SO (มติผู้ใช้ 2026-08-18)', () => {
   // SO สั่ง 3 · ส่งไป 1 · ลูกค้าคอนเฟิร์ม 1 ⇒ ทุกแถวจบแล้วก็จริง แต่ของยังขาด 2
-  const so = { salesOrderLines: [{ qty: 3 }] };
+  // ⚠️ บรรทัดต้องเป็นงานออกแบบกลิ่น (03-002) — ด่านนับเฉพาะบรรทัดพวกนี้ (ม-146)
+  const so = { salesOrderLines: [{ qty: 3, fgCode: 'FG-1-03-002' }] };
   const oneConfirmed = [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }];
   assert.match(
     closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }), oneConfirmed),
@@ -390,6 +393,131 @@ test('⭐ ปิดใบไม่ได้จนลูกค้าคอนเ�
     closeRequestError(req({ kind: 'formula_dev', variant: 'npd', status: 'answered' }), []),
     null,
     'ฝ่ายกด "ตอบแล้ว" เองแล้ว = ปิดได้ (ทางออกเดียวกับพัฒนากลิ่น)',
+  );
+});
+
+/* ── ม-146 · ด่านคอนเฟิร์ม SO เป็นของพัฒนากลิ่นเท่านั้น + ห้ามปิดทั้งสองประตู ────────────
+   🐞 ของจริง 2026-09-11: RQ-DF-26090041 · RQ-DF-26090042 (เอกสารการเงิน) · DC-26080004 (ขอเอกสาร)
+   ขึ้น "รอ SA ปิด" แต่ปุ่มปิดจาง "ลูกค้าคอนเฟิร์ม 0 จาก N ในใบสั่งขาย" และยกเลิกไม่ได้เพราะตอบแล้ว ·
+   SB-26080005 (พัฒนากลิ่น) ติดแบบเดียวกัน — ทางออกเดียวคือ "ยังไม่จบ" ซึ่งวนกลับที่เดิม */
+test('🔴 ด่าน "ลูกค้าคอนเฟิร์มครบตาม SO" ใช้เฉพาะหัวข้อที่ประกาศ closeNeedsSoConfirm', () => {
+  const so = { salesOrderId: 'SO-1', salesOrderLines: [{ qty: 5, fgCode: 'FG-1-03-002' }] };
+  const delivered = [{ answerStatus: 'done' }, { answerStatus: 'done' }];
+  // เอกสารการเงิน / ขอเอกสาร อ้าง SO ได้ แต่แถวไม่มีขั้น "ลูกค้าคอนเฟิร์ม" ⇒ ด่านนี้ไม่เกี่ยว
+  for (const kind of ['billing_doc', 'document']) {
+    assert.equal(REQUEST_KINDS[kind]?.closeNeedsSoConfirm, undefined, `${kind} ต้องไม่มีธง`);
+    assert.equal(
+      closeRequestError(req({ kind, dept: kind === 'billing_doc' ? 'FN' : 'RD', status: 'answered', ...so }), delivered),
+      null,
+      `${kind} ที่ส่งเอกสารครบแล้วต้องปิดได้ แม้ผูก SO`,
+    );
+  }
+  // พัฒนากลิ่นยังติดด่านเดิมทุกข้อ (ม-131)
+  assert.equal(REQUEST_KINDS.scent_dev.closeNeedsSoConfirm, true);
+  assert.match(
+    closeRequestError(req({ kind: 'scent_dev', status: 'answered', ...so }),
+      [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }]),
+    /คอนเฟิร์ม 1 จาก 5/,
+  );
+  // มีแค่พัฒนากลิ่นที่ประกาศธงนี้ — หัวข้อใหม่ต้องตั้งใจเปิดเอง ไม่ใช่ได้มาเพราะผูก SO
+  assert.deepEqual(
+    Object.entries(REQUEST_KINDS).filter(([, k]) => k.closeNeedsSoConfirm).map(([key]) => key),
+    ['scent_dev'],
+  );
+});
+
+test('🔴 ใบที่ตอบแล้ว: ปิดได้ = ห้ามยกเลิก · ปิดไม่ได้ = ยกเลิกได้ (ไม่มีทางตัน)', () => {
+  const so = { salesOrderId: 'SO-1', salesOrderLines: [{ qty: 1, fgCode: 'FG-1-03-002' }] };
+  const rejected = [{ answerStatus: 'declined', outcome: 'rejected' }];
+  // SB-26080005 — ลูกค้าไม่เอา ⇒ ปิดไม่ได้ (โดยตั้งใจ) ⇒ ต้องยกเลิกได้
+  const stuck = req({ kind: 'scent_dev', status: 'answered', answeredAt: '2026-08-27T00:00:00Z', ...so });
+  assert.match(closeRequestError(stuck, rejected), /ยกเลิกใบ/);
+  assert.equal(cancelRequestError(stuck, rejected), null);
+  // ลูกค้าคอนเฟิร์มครบ ⇒ ปิดได้ ⇒ ยกเลิกยังห้าม (ประวัติต้องบอกว่าจบด้วยของ)
+  const done = [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }];
+  assert.equal(closeRequestError(stuck, done), null);
+  assert.match(cancelRequestError(stuck, done), /ปิดเรื่องแทนการยกเลิก/);
+  // ผู้เรียกเดิมที่ไม่ส่งแถว — ใบที่ปิดได้ยังห้ามยกเลิกเหมือนเดิม
+  assert.match(cancelRequestError(req({ kind: 'info', status: 'answered' })), /ปิดเรื่องแทนการยกเลิก/);
+});
+
+test('🔴 ทุกหัวข้อ ทุกสถานะที่ยังไม่จบ ต้องมีทางออกอย่างน้อยหนึ่งทาง', () => {
+  const rowSets = {
+    none: [],
+    pending: [{ answerStatus: 'pending' }],
+    done: [{ answerStatus: 'done' }],
+    confirmed: [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }],
+    rejected: [{ answerStatus: 'declined', outcome: 'rejected' }],
+  };
+  // บรรทัด SO เป็นงานออกแบบกลิ่น (03-002) — ตัวหารเดียวกับที่ด่านของพัฒนากลิ่นนับ
+  const soSets = { noSo: {}, so: { salesOrderId: 'SO-1', salesOrderLines: [{ qty: 3, fgCode: 'FG-1-03-002' }] } };
+  const dead = [];
+  let cases = 0;
+  // ⚠️ REQUEST_KIND_LIST คือรายชื่อคีย์ (สตริง) — รอบแรกอ่าน `k.key` ⇒ ทุกเคสได้ kind undefined
+  //    และเทสต์นี้ไม่เคยแตะธงของหัวข้อไหนเลย (รีวิวจับได้)
+  for (const key of REQUEST_KIND_LIST) {
+    const k = REQUEST_KINDS[key];
+    // หัวข้อที่ไม่มีแถวเลย (ไม่ hasItems และไม่ deliversRows) ทดสอบแค่ชุดว่าง — ชุดอื่นเป็นไปไม่ได้
+    const rowsFor = k.hasItems || k.deliversRows || k.variants
+      ? Object.entries(rowSets) : [['none', []]];
+    for (const status of ['pending', 'acknowledged', 'answered']) {
+      for (const [rowsName, rows] of rowsFor) {
+        for (const [soName, so] of Object.entries(soSets)) {
+          cases += 1;
+          const r = req({
+            kind: key, dept: k.dept, status, ...so,
+            acknowledgedAt: status === 'pending' ? null : '2026-09-01T00:00:00Z',
+            answeredAt: status === 'answered' ? '2026-09-05T00:00:00Z' : null,
+          });
+          // ทางออกของใบ: ผู้ขอปิด · ผู้ขอยกเลิก · ฝ่ายปิดโดยไม่ได้ผล (หัวข้อที่ปิดประตูยกเลิก)
+          const exits = [
+            closeRequestError(r, rows),
+            cancelRequestError(r, rows),
+            closeUnassessedError(r, { reason: 'x'.repeat(10) }),
+          ];
+          if (exits.every(Boolean)) dead.push(`${k.key}/${status}/${rowsName}/${soName}: ${exits[0]}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(dead, []);
+  assert.ok(cases > 60, `ต้องไล่ครบทุกหัวข้อจริง (ได้ ${cases} เคส)`);
+});
+
+test('🔴 ใบที่ยกเลิกหลังฝ่ายตอบแล้ว จบจริง — ไม่ค้างคิวเป็น "รอ SA ปิด" (รีวิว ม-146)', () => {
+  // ยกเลิกเก็บแค่ status/cancelledAt · `answeredAt` ยังอยู่ (เป็นหลักฐานของฝ่าย)
+  const cancelled = req({
+    kind: 'scent_dev', status: 'cancelled', answeredAt: '2026-08-26T08:31:39Z', cancelledAt: '2026-09-11T03:00:00Z',
+  });
+  assert.equal(requestNextStep(cancelled), null);
+  assert.deepEqual(queueTabRows([cancelled], { tab: 'history' }), [cancelled]);
+  assert.deepEqual(queueTabRows([{ ...cancelled, _mine: true }], { tab: 'todo' }), []);
+  assert.deepEqual(waitingOnMeRows([{ ...cancelled, _mine: true }]), []);
+});
+
+test('ด่านยกเลิกใช้แถวของใบเองเมื่อผู้เรียกไม่ส่งมา — ไม่ตัดสินต่างจากปุ่มปิด', () => {
+  const so = { salesOrderId: 'SO-1', salesOrderLines: [{ qty: 1, fgCode: 'FG-1-03-002' }] };
+  const items = [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }];
+  const closable = req({ kind: 'scent_dev', status: 'answered', ...so, items });
+  assert.equal(closeRequestError(closable, items), null);
+  // ไม่ส่ง items มา ⇒ อ่าน request.items (ไม่ใช่ถือว่าไม่มีแถว แล้วด่านปิดตอบผิดว่าปิดไม่ได้)
+  assert.match(cancelRequestError(closable), /ปิดเรื่องแทนการยกเลิก/);
+});
+
+test('ด่านพัฒนากลิ่นนับเฉพาะบรรทัดออกแบบกลิ่นใน SO — ของอื่นที่ขายปนไม่ทำให้ปิดไม่ได้', () => {
+  const mixed = {
+    salesOrderId: 'SO-1',
+    salesOrderLines: [
+      { qty: 3, fgCode: 'FG-1-03-002' },          // SIGNATURE SCENT DESIGN ×3
+      { qty: 10, fgCode: 'FG-1-01-001-0001' },    // สินค้า ×10 — ไม่ใช่งานของ RD ในใบนี้
+    ],
+  };
+  const allConfirmed = [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 3 }];
+  assert.equal(closeRequestError(req({ kind: 'scent_dev', status: 'answered', ...mixed }), allConfirmed), null);
+  assert.match(
+    closeRequestError(req({ kind: 'scent_dev', status: 'answered', ...mixed }),
+      [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 2 }]),
+    /คอนเฟิร์ม 2 จาก 3/,
   );
 });
 

@@ -62,7 +62,8 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
-  answerRequestError, canAssignBriefPerfumer, closeOutcomeError, closeRequestError, closeUnassessedError,
+  answerRequestError, canAssignBriefPerfumer, cancelRequestError, closeOutcomeError, closeRequestError,
+  closeUnassessedError,
   requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { assignBriefPerfumerError } from "@/lib/requests/briefPerfumer";
@@ -73,6 +74,7 @@ import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
 import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
+import { scentDesignLines } from "@/lib/requests/scentDesignOrders";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { deliveryRowLabel, normalizeFormulaDelivery } from "@/lib/requests/delivery";
@@ -449,6 +451,8 @@ export default function RequestDetailPage() {
   // บรรทัด "ปิดแล้วกี่ฝั่ง" — ตัวเดียวกับที่ตารางคิววาดใต้ป้ายสถานะ (ม-145)
   const closureLine = requestClosureLine(req);
   const closeBlocker = closeRequestError(req, req.items || []);
+  // ด่านยกเลิกตัวเดียวกับ server — ใบที่ตอบแล้วยกเลิกได้เมื่อปิดไม่ได้เท่านั้น (ม-146)
+  const cancelBlocker = cancelRequestError(req, req.items || []);
   const canClose = !closeBlocker && req._mine && !closure.requesterDone;
   /* ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
      ⚠️ **หัวข้อที่ฝ่ายสร้างแถวเองตอนส่ง (`deliversRows`) ไม่นับว่า "ไม่มีบรรทัด"** —
@@ -615,7 +619,9 @@ export default function RequestDetailPage() {
 
   // ⚠️ คืน null เมื่อ "ยังไม่มีอะไรให้เทียบ" — แถบจะไม่ขึ้นเลย ดีกว่าขึ้นแถบเขียว
   // ว่าครบแล้วตอนที่ยังไม่มีใครคอนเฟิร์มอะไร
-  const reconcile = soReconcile({ lines: req.salesOrderLines, items: req.items });
+  /* ⚠️ ตัวเลขชุดเดียวกับด่านปิด (`closeRequestError` · ม-146) — นับเฉพาะบรรทัดออกแบบกลิ่นของ SO
+     ไม่งั้นการ์ดบอก "3 จาก 13" ขณะที่ด่านตัดสินจาก 3 จาก 3 (หรือกลับกัน) */
+  const reconcile = soReconcile({ lines: scentDesignLines(req.salesOrderLines || []), items: req.items });
   // ⭐ **ก้อนเดียว กระจายสองที่** — เนื้อกลางหน้า (`KindDetail`) กับการ์ดขวา
   // (`KindPanel`) ต้องได้ชุดเดียวกัน
   // 🐞 เดิมประกอบสามบรรทัดนี้ไว้ที่ `KindDetail` ที่เดียว แล้ว `KindPanel` ไม่ได้รับเลย
@@ -1051,7 +1057,9 @@ export default function RequestDetailPage() {
              lib ตัวเดียวกับที่ API ใช้ ⇒ สิ่งที่จอบอกกับสิ่งที่ server บังคับตรงกันเสมอ
              ⚠️ เฉพาะใบที่ยังเดินอยู่ — ใบที่ปิด/ยกเลิกไปแล้วจบของมันแล้ว ไม่ต้องมีปุ่ม
              ค้างไว้ให้เข้าใจผิดว่ายังทำอะไรได้ */
-          : req._mine && REQUEST_OPEN_STATUSES.includes(req.status) && closeBlocker
+          /* ⚠️ รวม `answered` (ม-146) — ใบที่ฝ่ายตอบแล้วแต่ผู้ขอยังปิดไม่ได้ ต้องเห็นว่าติดอะไร
+             · เดิมกันด้วย REQUEST_OPEN_STATUSES ⇒ ใบ "รอ SA ปิด" ที่ติดด่านไม่มีปุ่มปิดให้เห็นเลย */
+          : req._mine && REQUEST_OPEN_STATUSES.concat("answered").includes(req.status) && closeBlocker
             ? {
               id: "close",
               label: "ปิดเรื่อง",
@@ -1400,7 +1408,15 @@ export default function RequestDetailPage() {
         kind: "cancel",
         icon: Ban,
         onClick: () => setCancelReason(" "),
-        visible: req._mine && !["closed", "cancelled", "answered"].includes(req.status),
+        /* ⭐ ใบที่ตอบแล้วโชว์ปุ่มนี้ **เฉพาะตอนที่ปิดไม่ได้** (ม-146) — ด่านตัวเดียวกับ server
+           (`cancelRequestError` ถาม `closeRequestError`) · 🐞 เดิมซ่อนทุกใบที่ตอบแล้ว ⇒ ปุ่มปิดจาง
+           พร้อมเหตุผล "…หรือยกเลิกใบถ้าลูกค้าไม่เอาแล้ว" แต่ไม่มีปุ่มยกเลิกให้กด (SB-26080005)
+           ⚠️ สถานะอื่นที่ติดด่าน (ประเมินพื้นที่หลังรับเรื่อง) = **จางพร้อมเหตุผล** ไม่ใช่กดได้แล้วโดน
+           409 ใต้โมดัล (กฎ UI: ติดเงื่อนไข = โชว์แล้วบอกเหตุ · ด่านตัวเดียวกับ server) */
+        visible: req._mine && !["closed", "cancelled"].includes(req.status)
+          && (req.status !== "answered" || !cancelBlocker),
+        disabled: !!cancelBlocker,
+        disabledReason: cancelBlocker || undefined,
       },
     ],
   });
