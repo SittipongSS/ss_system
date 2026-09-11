@@ -163,7 +163,9 @@ jobs:
         if: steps.ff.outputs.deployed == 'true'
         env:
           # โดเมนของ production — ตั้งเป็น repo variable ทับได้ถ้าย้ายโดเมน
-          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://ss-team.vercel.app' }}
+          # ss-team.vercel.app ถูกลบออกจากโปรเจกต์แล้ว (2026-09-11) ห้ามใช้เป็นค่าสำรองอีก:
+          # ชื่อนั้นว่างให้คนอื่นจองได้ และ curl ด้านล่างไม่ตาม redirect
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://suk.scentandsense.co.th' }}
           EXPECTED_SHA: ${{ steps.ff.outputs.sha }}
         run: |
           set -euo pipefail
