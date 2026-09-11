@@ -245,3 +245,31 @@ test('ร่างอยู่ข้ามการปิด/เปิด · ร
   assert.match(MODAL, /\}, \[open, customersReload\]\);/);
   assert.doesNotMatch(MODAL, /if \(!open \|\| customers\.length\) return/);
 });
+
+/* ── รอบยืนยัน (review ของ commit ที่แก้) ─────────────────────────────────── */
+
+test('🐞 ถอยออกจากโหมดเติมต่อ = คืนร่างโซนที่ตัดไปตอนเข้า (ไม่งั้นโซน+จุดที่คีย์ไว้หายถาวร)', () => {
+  assert.match(MODAL, /setCutZones\(already\)/);
+  assert.match(MODAL, /const leaveResume = \(\) => \{[\s\S]{0,200}setZones\(\(prev\) => \[\.\.\.prev, \.\.\.cutZones\]\)/);
+});
+
+test('ลิงก์ที่ออกจากหน้าระหว่างมีร่างเปิดแท็บใหม่ — ร่างอยู่ได้แค่ตลอดอายุหน้านี้', () => {
+  for (const href of ['/service/sites/${siteDuplicate.id}', '/service/sites/${target.id}']) {
+    const at = MODAL.indexOf(`href={\`${href}\`}`);
+    assert.ok(at > 0, href);
+    assert.match(MODAL.slice(at, at + 80), /target="_blank"/, `${href} ต้อง target="_blank"`);
+  }
+});
+
+test('ชื่อโซนที่มีแต่เครื่องหมายก็ถูกเทียบซ้ำ — ไม่หลุดไปชน unique ของฐานกลางทาง', () => {
+  const { errors } = planLegacyZones([zone({ name: '-', floor: 'G' }), zone({ key: 'z2', name: ' - ', floor: '1' })]);
+  assert.equal(errors.length, 1, errors.join(' | '));
+  assert.match(errors[0], /ชื่อซ้ำ/);
+});
+
+test('ด่านคอลัมน์จุดโทษ migration เฉพาะ 42703 · PATCH ถามเฉพาะเมื่อจอส่งจุดมา', () => {
+  const repo = read('lib/service/sitesRepo.js');
+  assert.match(repo, /error\.code === '42703'/);
+  const patchRoute = read('app/api/service/sites/[id]/zones/[zoneId]/route.js');
+  assert.match(patchRoute, /if \(body\.spots !== undefined\) \{\s*const schemaError = await zoneSpotsColumnError\(supabase\);/);
+});

@@ -23,8 +23,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        จุดใหม่จากจอ (`new-…`) ได้ id จริงที่นี่ */
     const { value, error } = normalizeZoneInput({ ...before, ...body }, { makeSpotId: () => genId('SPT') });
     if (error) return badRequest(error);
-    // คอลัมน์ยังไม่มี = PostgREST ตอบ 500 ภาษาอังกฤษ ⇒ บอกเหตุเป็นไทยแทน (mig 0354)
-    if ('spots' in value) {
+    /* คอลัมน์ยังไม่มี = PostgREST ตอบ 500 ภาษาอังกฤษ ⇒ บอกเหตุเป็นไทยแทน (mig 0354)
+       ถามเฉพาะเมื่อจอส่งจุดมา — `before.spots` มีอยู่ = คอลัมน์มีแล้ว ไม่ต้องถามทุกการแก้ชื่อ */
+    if (body.spots !== undefined) {
       const schemaError = await zoneSpotsColumnError(supabase);
       if (schemaError) return fail(schemaError, 503);
     }

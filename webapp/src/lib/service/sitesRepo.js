@@ -127,9 +127,11 @@ export async function findZone(supabase, siteId, zoneId) {
    ⇒ ถามคอลัมน์ครั้งเดียวก่อนเขียนแถวแรก (limit 0 — ไม่ดึงข้อมูล) คืนข้อความไทยที่บอกทางแก้ หรือ null */
 export async function zoneSpotsColumnError(supabase) {
   const { error } = await supabase.from('service_zones').select('spots').limit(0);
-  return error
+  if (!error) return null;
+  // 42703 = ไม่มีคอลัมน์จริง · อย่างอื่น (เน็ต/สิทธิ์) ห้ามโทษ migration — คนจะไปรันซ้ำผิดเรื่อง
+  return error.code === '42703'
     ? 'ระบบยังไม่พร้อมเก็บจุดติดตั้ง (ยังไม่ได้รัน migration 0354) — แจ้งผู้ดูแลระบบ · ยังไม่ได้บันทึกอะไร'
-    : null;
+    : `ตรวจความพร้อมของจุดติดตั้งไม่สำเร็จ — ${error.message} · ยังไม่ได้บันทึกอะไร ลองใหม่อีกครั้ง`;
 }
 
 export async function loadZones(supabase, siteId) {

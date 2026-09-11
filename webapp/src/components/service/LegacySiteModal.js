@@ -79,6 +79,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   const [result, setResult] = useState(null);
   const [duplicate, setDuplicate] = useState(null);    // จาก server (409) — ของ client อยู่ใน sitePlan
   const [resumeNote, setResumeNote] = useState("");   // โซนในฟอร์มที่ไซต์ปลายทางมีอยู่แล้ว (ตัดออกให้)
+  const [cutZones, setCutZones] = useState([]);       // ร่างที่ตัดออกตอนเข้าโหมดเติมต่อ — ถอยออกแล้วคืนให้
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [previewPayload, setPreviewPayload] = useState(null); // ของที่ตรวจแล้ว = ของที่บันทึก
@@ -104,6 +105,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     setResult(null);
     setDuplicate(null);
     setResumeNote("");
+    setCutZones([]);
     setDraftResumed(false);
     setError("");
     finishedRef.current = false;
@@ -123,6 +125,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
       setResult(null);
       setDuplicate(null);
       setResumeNote("");
+      setCutZones([]);
       setDraftResumed(false);
       finishedRef.current = false;
     } else {
@@ -188,7 +191,10 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   // ร่างว่าง (เปิดแล้วปิดโดยไม่ได้กรอกอะไร) ไม่ต้องขึ้นป้าย "ร่างยังอยู่"
   const hasDraft = !!(form.customerId || form.name.trim() || zones.length || target);
 
-  const go = (next) => { setError(""); setDraftResumed(false); setStep(next); };
+  const go = (next) => { setError(""); setStep(next); };
+  /* ป้าย "ร่างยังอยู่" มีไว้ตอนเปิดกลับมาเท่านั้น — ขยับขั้นทางไหนก็ตาม (ปุ่มถัดไป · พรีวิว ·
+     เติมต่อ · บันทึก) ป้ายหาย ⇒ ปุ่ม "เริ่มใหม่" ไม่ค้างบนจอระหว่างที่คำขอยังวิ่งอยู่ */
+  useEffect(() => { setDraftResumed(false); }, [step]);
 
   /* ── โหมดเติมต่อ — ไซต์มีอยู่แล้ว ⇒ ไปเติมโซน/จุด ไม่สร้างไซต์ ───────────── */
   const enterResume = async (site, draftZones = null) => {
@@ -207,6 +213,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
       const already = drafts.filter((z) => z.name.trim() && have.has(legacyNameKey(z.name)));
       const pending = drafts.filter((z) => !already.includes(z));
       setZones(pending);
+      setCutZones(already);
       setActiveKey(pending[0]?.key || null);
       setResumeNote(already.length
         ? `ไซต์นี้มีโซน ${already.map((z) => `“${z.name.trim()}”`).join(" · ")} อยู่แล้ว — ตัดออกจากรายการที่จะเติม`
@@ -216,6 +223,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
       if (already.length) onSaved?.(null);
       setDuplicate(null);
       setPreview(null);
+      setPreviewPayload(null);
       setResult(null);
       setStep("zones");
     } catch (e) {
@@ -225,11 +233,16 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     }
   };
 
+  /* ถอยออกจากโหมดเติมต่อ = คืนร่างที่ตัดไปตอนเข้า — ไซต์ใหม่ยังไม่มีโซน ร่างพวกนั้นใช้ได้ทั้งหมด
+     🐞 ไม่คืน = โซนที่คีย์ไว้ (พร้อมจุด) หายถาวร ทั้งที่ผู้ใช้แค่กดผิดไซต์แล้วถอย */
   const leaveResume = () => {
     setTarget(null);
     setResumeNote("");
+    setZones((prev) => [...prev, ...cutZones]);
+    setCutZones([]);
     setExistingZones([]);
     setPreview(null);
+    setPreviewPayload(null);
     go("site");
   };
 
@@ -269,7 +282,10 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     if (e?.data?.duplicate) setDuplicate(e.data.duplicate);
     // "ไม่รู้ผล" จริงเฉพาะตอนบันทึก — พรีวิวไม่เขียนอะไร เน็ตหลุดตอนนั้นแค่กดตรวจใหม่
     if (e instanceof ApiNetworkError && committing) {
-      setError(`${e.message} · ไม่รู้ผลว่าบันทึกไปแล้วหรือยัง — กดใหม่ได้ ถ้าเจอว่าไซต์ซ้ำ ให้กด “เติมโซน/จุดต่อในไซต์นี้”`);
+      setError(target
+        // โหมดเติมต่อไม่มีด่านไซต์ซ้ำ — โซนที่บันทึกไปแล้วจะชนด่านชื่อโซนซ้ำตอนกดตรวจใหม่แทน
+        ? `${e.message} · ไม่รู้ผลว่าบันทึกไปแล้วหรือยัง — ย้อนกลับแล้วกดตรวจใหม่ โซนที่บันทึกไปแล้วจะขึ้นว่าชื่อซ้ำ (เอาออกได้เลย)`
+        : `${e.message} · ไม่รู้ผลว่าบันทึกไปแล้วหรือยัง — กดใหม่ได้ ถ้าเจอว่าไซต์ซ้ำ ให้กด “เติมโซน/จุดต่อในไซต์นี้”`);
       return;
     }
     setError(e.message || "ทำรายการไม่สำเร็จ");
@@ -339,7 +355,11 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
      กดใหม่มาชนไซต์ที่เพิ่งสร้างไปเอง) ใช้ปุ่มชุดเดียวกัน */
   const duplicateActions = siteDuplicate ? (
     <div className={styles.inlineActions}>
-      <Button size="sm" tone="neutral" as={Link} href={`/service/sites/${siteDuplicate.id}`}>เปิดไซต์เดิม</Button>
+      {/* แท็บใหม่ — ร่างอยู่ได้แค่ตลอดอายุหน้านี้ ออกจากหน้า = ร่างหาย */}
+      <Button size="sm" tone="neutral" as={Link} href={`/service/sites/${siteDuplicate.id}`} target="_blank"
+        icon={<ExternalLink size={14} aria-hidden="true" />}>
+        เปิดไซต์เดิม
+      </Button>
       <Button size="sm" onClick={() => enterResume({ ...siteDuplicate, customerName: customer?.name })} disabled={busy}>
         เติมโซน/จุดต่อในไซต์นี้
       </Button>
@@ -500,7 +520,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
         {resumeNote && target && (
           <StatusNotice tone="info" className={styles.resumeNote}
             action={(
-              <Button size="sm" tone="neutral" as={Link} href={`/service/sites/${target.id}`}
+              <Button size="sm" tone="neutral" as={Link} href={`/service/sites/${target.id}`} target="_blank"
                 icon={<ExternalLink size={14} aria-hidden="true" />}>
                 เปิดหน้าไซต์
               </Button>
@@ -732,6 +752,11 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
     footer = result.partial ? (
       <>
         <Button tone="neutral" onClick={onClose} disabled={busy}>ปิดไว้ก่อน</Button>
+        {/* ผลบางส่วนค้างไว้ข้ามการปิด/เปิด (ยังมีของเหลือ) — ต้องมีทางเริ่มไซต์ใหม่ด้วย ไม่งั้นติดจอนี้ */}
+        <Button tone="neutral" variant="quiet" onClick={() => startOver()} disabled={busy}
+          icon={<RotateCcw size={14} aria-hidden="true" />}>
+          เริ่มไซต์ใหม่
+        </Button>
         {failed.length > 0 ? (
           <Button tone="primary" onClick={retryRemaining} disabled={busy}>ส่งส่วนที่เหลืออีกครั้ง</Button>
         ) : (
@@ -769,7 +794,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
       {draftResumed && hasDraft && step !== "done" && (
         <StatusNotice tone="info" className={styles.resumeNote}
           action={(
-            <Button size="sm" tone="neutral" variant="quiet" onClick={() => startOver()}
+            <Button size="sm" tone="neutral" variant="quiet" onClick={() => startOver()} disabled={busy}
               icon={<RotateCcw size={14} aria-hidden="true" />}>
               เริ่มใหม่
             </Button>
