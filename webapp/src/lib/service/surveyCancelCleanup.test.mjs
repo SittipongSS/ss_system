@@ -13,7 +13,10 @@ const request = (over = {}) => ({
   id: 'REQ1', kind: 'site_survey', dept: 'TS', status: 'pending',
   acknowledgedAt: null, createdAt: '2026-09-01T00:00:00Z', ...over,
 });
-const zone = (over = {}) => ({ id: 'ZN1', code: 'ZN-A-01', createdAt: '2026-09-02T00:00:00Z', ...over });
+/* ค่าตั้งต้น = โซนที่ **ใบนี้สร้าง** (mig 0355 · materializeSurveyZones เขียนตัวชี้) — เคสที่ลบได้ */
+const zone = (over = {}) => ({
+  id: 'ZN1', code: 'ZN-A-01', createdAt: '2026-09-02T00:00:00Z', createdBySurveyRequestId: 'REQ1', ...over,
+});
 
 /* ══ ยกเลิกได้ก่อน TS รับเรื่องเท่านั้น (มติข้อ 24) ══════════════════════ */
 
@@ -108,6 +111,50 @@ test('ตัวกวาดทั้งสองเส้นอ่านโซ�
   const read = (rel) => readFileSync(`src/${rel}`, 'utf8');
   for (const rel of ['lib/service/surveyCancelCleanup.js', 'app/api/service/surveys/[id]/zones/[zoneId]/route.js']) {
     assert.doesNotMatch(read(rel), /from\('service_zones'\)\.select\('id, code, name, "createdAt"'\)/, rel);
+  }
+});
+
+/* ══ ตัวชี้เจ้าของ (mig 0355) — เลิกเดาจากเวลา ══════════════════════════════
+   🐞 เคสที่ปิด: SA เปิดใบขอ "Lobby" → ก่อนกดส่ง TS คีย์โซน "Lobby" เองที่หน้าไซต์ (0 จุด)
+      → กดส่งแล้วใบ "ผูก" แถวเข้าโซนนั้นตามชื่อ → ยกเลิกใบ ⇒ เดิม "เกิดหลังใบ + ไม่มีใครใช้" = ลบ */
+test('🔴 โซนที่ TS คีย์เองหลังใบถูกเปิด (ไม่มีตัวชี้) — ห้ามลบ ต่อให้ไม่มีจุดและไม่มีใครใช้', () => {
+  const d = zoneCleanupDecision({
+    zone: zone({ createdBySurveyRequestId: null, spots: [] }), request: request(), refs: {},
+  });
+  assert.equal(d.action, 'keep');
+  assert.match(d.reason, /ไม่ได้เกิดจากใบประเมิน/);
+  // ช่องไม่มีอยู่เลย (แถวก่อนมิก 0355 / select ที่ไม่มีคอลัมน์) = ไม่ลบเหมือนกัน
+  const { createdBySurveyRequestId, ...legacy } = zone();
+  assert.equal(createdBySurveyRequestId, 'REQ1');
+  assert.equal(zoneCleanupDecision({ zone: legacy, request: request(), refs: {} }).action, 'keep');
+});
+
+test('🔴 โซนที่ใบอื่นสร้าง — ใบนี้แค่ผูกตามชื่อ ห้ามลบ', () => {
+  const d = zoneCleanupDecision({ zone: zone({ createdBySurveyRequestId: 'REQ2' }), request: request(), refs: {} });
+  assert.equal(d.action, 'keep');
+  assert.match(d.reason, /ใบอื่น/);
+});
+
+test('✅ โซนที่ใบนี้สร้าง + ยังไม่มีใครใช้ — ลบ (เส้นยกเลิกใบ และเส้นช่างลบพื้นที่ที่เพิ่มหน้างาน)', () => {
+  // ช่างเพิ่มพื้นที่หน้างานก็สร้างผ่าน materializeSurveyZones ⇒ ได้ตัวชี้ของใบเดียวกัน
+  const added = zoneCleanupDecision({ zone: zone(), request: request({ status: 'acknowledged' }), refs: {} });
+  assert.equal(added.action, 'delete');
+});
+
+test('🔑 ตัวชี้เจ้าของเขียนที่ materializeSurveyZones ที่เดียว · ทั้งสองทางของใบประเมินผ่านฟังก์ชันนี้', () => {
+  const repo = code('./surveyRepo.js');
+  assert.match(repo, /createdBySurveyRequestId: requestId,/);
+  // ช่างเพิ่มพื้นที่หน้างาน = ออกรหัสผ่านตัวเดียวกัน (ไม่ได้ insert โซนเอง)
+  const addZone = code('../../app/api/service/surveys/[id]/zones/route.js');
+  assert.match(addZone, /materializeSurveyZones\(supabase, \{\s*requestId: id,/);
+  assert.doesNotMatch(addZone, /from\('service_zones'\)\.insert/);
+  // ทางอื่นที่สร้างโซนต้องไม่เขียนตัวชี้ (คนเพิ่มเอง/นำเข้า = ของทะเบียน ไม่ใช่ของใบ)
+  for (const rel of [
+    '../../app/api/service/sites/[id]/zones/route.js',
+    '../../app/api/service/legacy-sites/route.js',
+    './importRepo.js',
+  ]) {
+    assert.doesNotMatch(code(rel), /createdBySurveyRequestId/, rel);
   }
 });
 

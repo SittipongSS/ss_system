@@ -127,6 +127,10 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
       siteId,
       name: row.zoneName,
       floor: row.floor,
+      /* 🔑 **ใบนี้เป็นเจ้าของโซนที่เพิ่งสร้าง** (mig 0355) — ตัวเก็บกวาดตอนยกเลิกใบ (§5E ③) ลบได้
+         เฉพาะโซนที่ชี้ใบนั้น · โซนที่ "ผูกตามชื่อ" ข้างบนไม่ได้ช่องนี้ = ของทะเบียน ไม่ใช่ของใบ
+         ⚠️ ที่นี่ที่เดียวที่เขียน — ทุกทางที่ใบประเมินสร้างโซนผ่านฟังก์ชันนี้ (SA กดส่ง · ช่างเพิ่มหน้างาน) */
+      createdBySurveyRequestId: requestId,
       createdById: user?.id ? String(user.id) : null,
       createdByName: user?.name || null,
     };
