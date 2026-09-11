@@ -107,11 +107,20 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { data: updatedDeal, error: upErr } = await supabase
     .from('sales_deals').update(patch).eq('id', deal.id).select().single();
   if (upErr) return fail(upErr.message, 500);
+  /* 🐞 เดิมไม่รับ error — insert พัง = ดีลขยับไปขั้นเสนอไทม์ไลน์แล้ว แต่เส้นเรื่องไม่มี
+     บรรทัดนี้ และ daysInStage นับจากการเปลี่ยนครั้งก่อน (อาการเดียวกับ createQuotationDraft)
+     ⚠️ ห้ามตอบ 500: ขั้นตอน + stage ลงไปแล้ว กดซ้ำจะเจอ "ดีลนี้มีไทม์ไลน์แล้ว" (409)
+     และประวัติก็ไม่ถูกเขียนอยู่ดี ⇒ log + ส่งคำเตือนกลับไปกับผลลัพธ์ */
+  let stageHistoryWarning = null;
   if (patch.stage) {
-    await supabase.from('sales_deal_stage_history').insert({
+    const { error: historyError } = await supabase.from('sales_deal_stage_history').insert({
       id: genId('DSH'), dealId: deal.id, fromStage: deal.stage, toStage: patch.stage,
       changedBy: user.id || null, changedByName: user.name || null,
     });
+    if (historyError) {
+      console.error(`[deal-timeline ${deal.id}] บันทึกประวัติสถานะ ${deal.stage} → ${patch.stage} ไม่สำเร็จ:`, historyError.message);
+      stageHistoryWarning = `สร้างไทม์ไลน์แล้ว แต่ลงประวัติการเปลี่ยนสถานะไม่สำเร็จ: ${historyError.message}`;
+    }
   }
 
   await recordAudit({
@@ -119,7 +128,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `สร้างไทม์ไลน์ของดีล ${dealAuditLabel(deal)} (${genLine ? `${genLine} · ` : ''}${genType}${categoryCode ? ` · หมวด ${categoryCode}` : ''} · ${inserted.length} ขั้นตอน)`,
     request: req,
   });
-  return ok({ deal: updatedDeal, tasks: inserted }, 201);
+  return ok({ deal: updatedDeal, tasks: inserted, ...(stageHistoryWarning ? { stageHistoryWarning } : {}) }, 201);
 });
 
 // DELETE /api/sales-planning/deals/[id]/timeline — ลบไทม์ไลน์ลอย (ไว้สร้างใหม่)

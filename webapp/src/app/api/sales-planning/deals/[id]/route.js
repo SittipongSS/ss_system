@@ -119,9 +119,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (String(before.customerId || '') !== String(nextCustomerId || '')) {
       let customer = null;
       if (nextCustomerId) {
-        const { data } = await supabase
+        const { data, error: customerError } = await supabase
           .from('customers').select('id, name, "nameEn", team, teams, "approvalStatus", "isActive"')
           .eq('id', nextCustomerId).maybeSingle();
+        // อ่านไม่ได้ ≠ ไม่มีลูกค้ารายนี้ — ไม่งั้นด่านตอบ "ไม่พบลูกค้าที่เลือก" ผิดเรื่อง
+        if (customerError) return fail(customerError.message, 500);
         customer = data || null;
         // ขอบเขตทีมตรวจที่นี่ (ต้องใช้ user) — ที่เหลือเป็นกติกาบริสุทธิ์ใน lib
         const teams = caretakerTeamsOf(customer);
@@ -138,6 +140,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           supabase.from('sales_orders').select('id', { count: 'exact', head: true }).eq('dealId', before.id),
           supabase.from('dept_requests').select('id', { count: 'exact', head: true }).eq('dealId', before.id),
         ]);
+        /* 🐞 เดิมไม่ดู error — นับพลาด = count เป็น null → 0 ⇒ ด่านเห็นว่ายังไม่มีเอกสาร
+           แล้วปล่อยสลับลูกค้าบนดีลที่มี QT/SO/คำร้องอยู่แล้ว (อาการ DL-26080193 ข้างบน)
+           ยังไม่ได้เขียนอะไรเลย ⇒ หยุดตรงนี้ปลอดภัย */
+        const countError = q.error || so.error || rq.error;
+        if (countError) return fail(countError.message, 500);
         counts = { quotations: q.count || 0, salesOrders: so.count || 0, requests: rq.count || 0 };
       }
       const gateError = dealCustomerPatchError({
@@ -314,10 +321,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   /* แถวมูลค่ารายหมวด — เขียนทับทั้งชุดหลังแถวดีลผ่าน optimistic lock แล้ว
      ⚠️ ล้มตรงนี้ = ยอดรวมในแถวดีลเป็นของใหม่แต่แถวยังเป็นของเก่า ⇒ ต้องตอบ error
-     ให้ผู้ใช้กดบันทึกซ้ำ (เขียนทับทั้งชุด กดซ้ำจึงปลอดภัยเสมอ) */
+     ให้ผู้ใช้กดบันทึกซ้ำ (เขียนทับทั้งชุด กดซ้ำจึงปลอดภัยเสมอ)
+     🐞 เดิม return 500 ทันทีตรงนี้ ⇒ ข้ามทุกอย่างข้างล่าง (regen/เลื่อนไทม์ไลน์ · ประวัติ
+     สถานะ · เธรด FC · snapshot FC · audit) ทั้งที่แถวดีลเปลี่ยนไปแล้ว และกดซ้ำก็ไม่ได้คืน
+     — รอบสอง before คือค่าใหม่แล้ว ทุกเงื่อนไข "เปลี่ยนไหม" ข้างล่างจึงเป็นเท็จ
+     ⇒ จำ error ไว้ ทำของประกอบให้ครบก่อน แล้วค่อยตอบ 500 ท้าย handler */
+  let valueItemsError = null;
   if (preparedItems) {
     const { error: itemsError } = await saveDealValueItems(supabase, id, preparedItems);
-    if (itemsError) return fail(`บันทึกรายการมูลค่าคาดการณ์ไม่สำเร็จ: ${itemsError}`, 500);
+    if (itemsError) {
+      console.error(`[deal-patch ${id}] บันทึกรายการมูลค่าคาดการณ์ไม่สำเร็จ:`, itemsError);
+      valueItemsError = itemsError;
+    }
   }
 
   /* ประเภทดีล/สายธุรกิจ/หมวดสินค้าเปลี่ยน = template ของไทม์ไลน์เปลี่ยน → gen ชุดขั้นตอนใหม่
@@ -325,27 +340,67 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      - เฉพาะไทม์ไลน์ลอย (ผูกโครงการแล้วจัดการฝั่ง PM ตามกติกาเดิม)
      - เฉพาะเมื่อยังไม่เริ่มทำสักขั้น (ทุก task ยัง Pending) — เริ่มแล้วห้ามทิ้งงานคน
      - gen ชุดใหม่ไม่ได้ (template ว่าง/ไม่ตรงหมวด) = คงชุดเดิมไว้ ไม่ลบทิ้งก่อน */
+  /* ไทม์ไลน์ตามไม่ทัน = ต้องบอก ไม่ใช่ตอบ 200 เงียบ ๆ — บันทึกซ้ำไม่ช่วย เพราะรอบสอง
+     before คือค่าใหม่แล้ว (typeChanged/วันเริ่มเปลี่ยน เป็นเท็จหมด) · ห้าม 500 เพราะแถวดีล
+     ลงไปแล้ว ⇒ log + timelineWarning คู่กับ stageHistoryWarning */
+  let timelineWarning = null;
+  const addTimelineWarning = (message) => {
+    timelineWarning = timelineWarning ? `${timelineWarning} · ${message}` : message;
+  };
   let regenerated = false;
   const typeChanged = 'dealType' in patch && (patch.dealType || null) !== (before.dealType || null);
   const categoryChanged = 'categoryCode' in patch && (patch.categoryCode || null) !== (before.categoryCode || null);
   // สายเปลี่ยน = แม่แบบคนละใบ ⇒ ต้อง regen ด้วยเงื่อนไขเดียวกับประเภท/หมวด
   const lineChanged = 'line' in patch && (patch.line || null) !== (before.line || null);
   if ((typeChanged || categoryChanged || lineChanged) && !data.projectId) {
-    const { data: floating } = await supabase
+    const { data: floating, error: floatingError } = await supabase
       .from('project_tasks').select('id, status')
       .eq('dealId', id).is('projectId', null);
-    if (floating?.length && floating.every((t) => t.status === 'Pending')) {
+    if (floatingError) {
+      console.error(`[deal-patch ${id}] อ่านไทม์ไลน์ลอยก่อน regen ไม่สำเร็จ:`, floatingError.message);
+      addTimelineWarning(`บันทึกดีลแล้ว แต่ไทม์ไลน์ยังเป็นชุดเดิม (อ่านไทม์ไลน์เดิมไม่สำเร็จ): ${floatingError.message}`);
+    } else if (floating?.length && floating.every((t) => t.status === 'Pending')) {
+      let freshRows = [];
       try {
-        const { rows: freshRows } = await buildDealTimelineRows(supabase, data);
-        if (freshRows.length) {
+        ({ rows: freshRows } = await buildDealTimelineRows(supabase, data));
+      } catch (genError) {
+        // template ของประเภทใหม่ยังไม่พร้อม (หรืออ่าน template ไม่ขึ้น) — คงไทม์ไลน์เดิมไว้
+        console.error(`[deal-patch ${id}] gen ไทม์ไลน์ตามประเภท/สาย/หมวดใหม่ไม่ได้:`, genError.message);
+        addTimelineWarning(`บันทึกดีลแล้ว แต่ไทม์ไลน์ยังเป็นชุดเดิม: ${genError.message}`);
+      }
+      if (freshRows.length) {
+        /* 🐞 เดิมลบชุดเดิมก่อนแล้วค่อยใส่ชุดใหม่ และไม่ดู error ของ insert ⇒ ใส่ไม่ลง = ดีล
+           ไม่เหลือไทม์ไลน์ลอยสักขั้น ตอบ 200 เงียบ ๆ (ผิดกติกา "ไม่ลบทิ้งก่อน" ข้างบนเอง)
+           ทางกู้เหลือแค่ปุ่ม "สร้างไทม์ไลน์" ซึ่งดันขั้นไปเสนอไทม์ไลน์ด้วย
+           ⇒ ใส่ชุดใหม่ก่อน แล้วลบเฉพาะ id ชุดเดิมที่ตรวจแล้วว่า Pending (ไม่มี unique/FK
+           ชี้ project_tasks ⇒ สองชุดอยู่ร่วมกันชั่วครู่ได้) */
+        const { error: insError } = await supabase.from('project_tasks').insert(freshRows);
+        if (insError) {
+          console.error(`[deal-patch ${id}] ใส่ไทม์ไลน์ชุดใหม่ไม่สำเร็จ (คงชุดเดิมไว้):`, insError.message);
+          addTimelineWarning(`บันทึกดีลแล้ว แต่ไทม์ไลน์ยังเป็นชุดเดิม (สร้างชุดใหม่ไม่สำเร็จ): ${insError.message}`);
+        } else {
           const { error: dropError } = await supabase
-            .from('project_tasks').delete().eq('dealId', id).is('projectId', null);
+            .from('project_tasks').delete()
+            .eq('dealId', id).is('projectId', null)
+            .in('id', floating.map((t) => t.id));
           if (!dropError) {
-            const { error: insError } = await supabase.from('project_tasks').insert(freshRows);
-            regenerated = !insError;
+            regenerated = true;
+          } else {
+            // ชุดเดิมลบไม่ออก = ซ้อนสองชุด ⇒ ถอนชุดใหม่ออก ให้เหลือชุดเดิมชุดเดียว
+            const { error: undoError } = await supabase
+              .from('project_tasks').delete().in('id', freshRows.map((t) => t.id));
+            if (undoError) {
+              regenerated = true; // ชุดใหม่ค้างอยู่ — ไม่เลื่อนวันซ้ำทับกราฟที่ปนกันสองชุด
+              console.error(`[deal-patch ${id}] ไทม์ไลน์ซ้อนสองชุด — ลบชุดเดิมไม่ได้ (${dropError.message}) และถอนชุดใหม่ไม่ได้ (${undoError.message}) · ชุดใหม่:`,
+                freshRows.map((t) => t.id));
+              addTimelineWarning(`บันทึกดีลแล้ว แต่ไทม์ไลน์ของดีลซ้อนกันสองชุด — ลบไทม์ไลน์แล้วสร้างใหม่ที่หน้าดีล: ${dropError.message}`);
+            } else {
+              console.error(`[deal-patch ${id}] ลบไทม์ไลน์ชุดเดิมไม่สำเร็จ (ถอนชุดใหม่ออกแล้ว):`, dropError.message);
+              addTimelineWarning(`บันทึกดีลแล้ว แต่ไทม์ไลน์ยังเป็นชุดเดิม (แทนที่ชุดเดิมไม่สำเร็จ): ${dropError.message}`);
+            }
           }
         }
-      } catch { /* template ของประเภทใหม่ยังไม่พร้อม — คงไทม์ไลน์เดิมไว้ */ }
+      }
     }
   }
 
@@ -354,29 +409,45 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ผูกแล้ว segment อยู่ใต้ anchor ของโครงการ จัดการที่หน้าโครงการตามกติกาเดิม.
   // (regen ข้างบนใช้ startDate ใหม่เป็น anchor แล้ว — ไม่ต้องเลื่อนซ้ำ)
   if (!regenerated && 'startDate' in body && (data.startDate || null) !== (before.startDate || null) && !data.projectId) {
-    const { data: floating } = await supabase
+    const { data: floating, error: floatingError } = await supabase
       .from('project_tasks').select('*')
       .eq('dealId', id).is('projectId', null)
       .order('stepOrder', { ascending: true });
-    if (floating?.length) {
+    if (floatingError) {
+      console.error(`[deal-patch ${id}] อ่านไทม์ไลน์ลอยเพื่อเลื่อนตามวันเริ่มไม่สำเร็จ:`, floatingError.message);
+      addTimelineWarning(`บันทึกดีลแล้ว แต่ยังไม่ได้เลื่อนไทม์ไลน์ตามวันเริ่มใหม่: ${floatingError.message}`);
+    } else if (floating?.length) {
       setHolidays([...(await holidaySet())]);
       // เกณฑ์ anchor เดียวกับตอน gen ไทม์ไลน์ดีล: ไม่ระบุวันเริ่ม = วันนี้
       const recalced = recalculateGraph(floating, data.startDate || todayStr());
-      await Promise.all(
+      /* 🐞 เดิมทิ้งผลของ Promise.all ทั้งก้อน — พลาดกี่ขั้นก็ไม่รู้ ไทม์ไลน์/Gantt เลื่อน
+         ครึ่ง ๆ กลาง ๆ ทั้งที่ startDate ของดีลเป็นวันใหม่แล้ว และบันทึกซ้ำไม่เลื่อนให้อีก */
+      const results = await Promise.all(
         recalced
           .filter((r, i) => r.startDate !== floating[i].startDate || r.finishDate !== floating[i].finishDate)
           .map((r) => supabase.from('project_tasks').update({
             startDate: r.startDate, finishDate: r.finishDate, cellsOverride: r.cellsOverride ?? null,
           }).eq('id', r.id)),
       );
+      const failed = results.filter((r) => r.error);
+      if (failed.length) {
+        console.error(`[deal-patch ${id}] เลื่อนไทม์ไลน์ตามวันเริ่มไม่สำเร็จ ${failed.length}/${results.length} ขั้นตอน:`, failed[0].error.message);
+        addTimelineWarning(`บันทึกดีลแล้ว แต่เลื่อนไทม์ไลน์ตามวันเริ่มใหม่ไม่ครบ (${failed.length} จาก ${results.length} ขั้นตอน): ${failed[0].error.message}`);
+      }
     }
   }
 
   // เฟส B: เลิก sync ชื่อดีล→ชื่อโครงการ — โครงการมีได้หลายดีล ชื่อไม่ผูกกันอีกต่อไป
   // (ฝั่งโครงการ→ดีล ตัดคู่กันใน api/pm/projects/[id]/route.js)
 
+  /* 🐞 เดิมไม่รับ error — insert พัง = ขั้นใน DB เปลี่ยนแล้ว แต่เส้นเรื่องของดีลไม่มี
+     บรรทัดนี้ และ `daysInStage` (นับจาก stageHistory[0]) ไปนับจากการเปลี่ยนครั้งก่อน
+     ⚠️ ห้ามตอบ 500: แถวดีลลงไปแล้ว ผู้ใช้จะเห็น "บันทึกไม่สำเร็จ" ทั้งที่
+     สำเร็จ และกดซ้ำก็ไม่ช่วย — รอบสอง before.stage คือขั้นใหม่แล้ว ประวัติจึงไม่ถูกเขียน
+     อยู่ดี (แถม FC/เธรด/audit ข้างล่างหายไปด้วย) ⇒ log + ส่งคำเตือนกลับไปกับดีล */
+  let stageHistoryWarning = null;
   if (before.stage !== data.stage) {
-    await supabase.from('sales_deal_stage_history').insert({
+    const { error: historyError } = await supabase.from('sales_deal_stage_history').insert({
       id: genId('DSH'),
       dealId: data.id,
       fromStage: before.stage,
@@ -384,6 +455,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       changedBy: user.id || null,
       changedByName: user.name || null,
     });
+    if (historyError) {
+      console.error(`[deal-patch ${data.id}] บันทึกประวัติสถานะ ${before.stage} → ${data.stage} ไม่สำเร็จ:`, historyError.message);
+      stageHistoryWarning = `บันทึกดีลแล้ว แต่ลงประวัติการเปลี่ยนสถานะไม่สำเร็จ: ${historyError.message}`;
+    }
   }
 
   // 🐞 ตัวเลขที่ขยับเคยลงแต่ตาราง forecast (เพื่อ KPI) แล้ว **ไม่มีใครเห็นบนหน้าจอ
@@ -394,7 +469,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (before.forecastMonth !== data.forecastMonth || before.projectValue !== data.projectValue || before.probability !== data.probability) {
-    await supabase.from('sales_deal_forecasts').insert({
+    // snapshot ประวัติ FC — รายงาน FC อ่านจาก sales_deals ไม่ใช่ตารางนี้ · พลาดแค่ log
+    const { error: forecastError } = await supabase.from('sales_deal_forecasts').insert({
       id: genId('DFC'),
       dealId: data.id,
       forecastMonth: data.forecastMonth || monthKey(new Date().toISOString()),
@@ -404,6 +480,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       createdBy: user.id || null,
       createdByName: user.name || null,
     });
+    if (forecastError) console.error(`[deal-patch ${data.id}] บันทึกประวัติ FC ไม่สำเร็จ:`, forecastError.message);
   }
 
   await recordAudit({
@@ -417,7 +494,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
 
-  return ok(data);
+  // แถวมูลค่าพังตอบ 500 ให้กดบันทึกซ้ำ (ดูที่ saveDealValueItems) — ของประกอบข้างบนลงครบแล้ว
+  // คำเตือนอื่นพ่วงไปในข้อความเดียวกัน ไม่งั้นหายไปพร้อม body ของ 200
+  if (valueItemsError) {
+    const others = [stageHistoryWarning, timelineWarning].filter(Boolean);
+    return fail(`บันทึกรายการมูลค่าคาดการณ์ไม่สำเร็จ: ${valueItemsError}${others.length ? ` · ${others.join(' · ')}` : ''}`, 500);
+  }
+
+  // ท่าเดียวกับ timelineWarning/valueItemsWarning ของ POST — ดีลบันทึกแล้วแต่ของประกอบไม่ครบ
+  // ⚠️ ยังไม่มีจอไหนอ่านสองช่องนี้ (ฟอร์มแก้ดีลอ่าน body แค่ตอน !res.ok)
+  return ok({
+    ...data,
+    ...(stageHistoryWarning ? { stageHistoryWarning } : {}),
+    ...(timelineWarning ? { timelineWarning } : {}),
+  });
 });
 
 // ลบดีล = ลบเฉพาะดีล + ลูกฝั่งขาย (activities/history/forecasts/quotations/

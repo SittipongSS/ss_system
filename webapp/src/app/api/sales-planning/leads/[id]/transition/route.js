@@ -253,13 +253,40 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { data, error } = await supabase.from('sales_leads').update(patch).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
-  await supabase.from('lead_events').insert(event);
+  /* 🐞 เดิม insert นี้ไม่รับ error — ล้มเมื่อไร (เช่น kind ที่ CHECK ยังไม่รับ แบบที่ create_deal
+     เคยล้มเงียบ · ดู leadEventKinds.test) ลีดขยับไปแล้วแต่ประวัติไม่มีบรรทัดนั้นโดยไม่มีใครรู้
+     และประวัตินี้ **ไม่ใช่แค่ไทม์ไลน์**: นัดหาย ⇒ ปฏิทิน/กำหนดการของฉันไม่เห็นนัด + KPI นับ
+     "ถึงขั้นนัด" ขาด · ตีกลับหาย ⇒ nextMeetingAt ไม่เจอขอบรอบ นัดของเจ้าของเก่าฟื้นบนลีด
+     ของเจ้าของใหม่ และคนคัดกรองไม่เห็นว่าเคยส่งทีมไหนไปแล้ว
+     log แนบ `event` ทั้งก้อน — เวลานัด/รูปแบบนัดไม่มีที่อื่นเก็บ (audit มีแค่ reason ส่วน
+     `after.meetingAt` คือนัดถัดไป ไม่ใช่นัดนี้) แอดมินเติมแถวคืนได้จาก log
+     ตอบอย่างไรแยกตาม action — ดูใต้ recordAudit */
+  const { error: eventError } = await supabase.from('lead_events').insert(event);
+  if (eventError) {
+    console.error(`[lead transition] บันทึกประวัติ ${action} ของลีด ${id} ไม่สำเร็จ:`, eventError.message, event);
+  }
 
   await recordAudit({
     user, action: 'update', entityType: 'sales_lead', entityId: id, before: lead, after: data,
     summary: `ลีด ${lead.contactName}: ${lead.status} → ${data.status} (${action}${event.reason ? ` — ${event.reason}` : ''})`,
     request: req,
   });
+
+  /* ⭐ ประวัติล้ม: followup/meeting **ตอบล้ม** · ที่เหลือตอบสำเร็จ + `historyWarning`
+     followup/meeting — `lead_events` คือที่เก็บเดียวของสิ่งที่ผู้ใช้กรอก (หมายเหตุติดตามอยู่ใน
+     event.reason เท่านั้น · ปฏิทิน/กำหนดการของฉันอ่านนัดจาก kind='meeting' เท่านั้น)
+     และ **กดซ้ำปลอดภัย**: ทั้งคู่อยู่ใน LEAD_TRANSITIONS ของสถานะปลายทางตัวเอง ⇒ ผ่านด่าน ·
+     patch เขียนค่าเดิมซ้ำ (followUpAt เดิม · firstContactAt คงค่ารอบแรก · meetingAt คิดจากชุด
+     เดิมเพราะแถวที่ล้มไม่มีอยู่) · ไม่มีแจ้งเตือนส่งมอบ · 🐞 เดิมตอบ 200 ⇒ RecordActionMenu
+     ปิดกล่อง (`ok !== false`) เวลานัด/หมายเหตุที่พิมพ์หายทั้งที่ไม่มีที่ไหนเก็บ
+     ⚠️ audit เขียนก่อนตอบล้มโดยเจตนา — แถวลีดขยับไปแล้วจริง (contacted → meeting ·
+     followUpAt ถูกล้าง) ข้าม audit แล้วกดซ้ำ `before` ของรอบสองเป็นค่าใหม่ ค่าเดิมหายจาก audit
+     ที่เหลือ (screen/assign/reassign/contact/disqualify/bounce) กดซ้ำติดด่านสถานะ/ด่าน
+     "ถือลีดอยู่แล้ว" ⇒ ตอบล้ม = ทางตัน ทั้งที่แถวลีดเขียนไปแล้ว และแจ้งเตือนส่งมอบข้างล่าง
+     ต้องยิงต่อ (ทีม/AE ที่เพิ่งได้ลีดต้องรู้ตัว) */
+  if (eventError && (action === 'followup' || action === 'meeting')) {
+    return fail(`บันทึก${action === 'meeting' ? 'นัดประชุม' : 'การติดตาม'}ลงประวัติลีดไม่สำเร็จ: ${eventError.message} — กดบันทึกอีกครั้ง`, 500);
+  }
 
   /* กล่องแจ้งเตือนรายคน — แจ้ง **คนที่ต้องลงมือต่อ** ไม่ใช่ทั้งห้อง
      ครอบ 3 จังหวะ: คัดกรองเข้าทีม (→ Senior AE/AC ของทีม) · มอบหมาย (→ AE ผู้รับ) ·
@@ -279,6 +306,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // จุดส่งมอบ 2–3/3: แจ้งคนรับช่วงถัดไปให้เริ่มนับ SLA (fire-and-forget หลังเขียน DB).
 
-  return ok(data);
+  // historyWarning: ลีดขยับแล้วแต่ประวัติไม่ถูกบันทึก (ดูข้างบน) — ท่าเดียวกับ timelineWarning ของ POST /deals
+  // ⚠️ ยังไม่มีจอไหนอ่านช่องนี้ (runTransition สองหน้าอ่าน body แค่ตอน !res.ok)
+  return ok(eventError
+    ? { ...data, historyWarning: `บันทึกลีดแล้ว แต่บันทึกประวัติ (${action}) ไม่สำเร็จ — แจ้งแอดมินให้ตรวจ` }
+    : data);
 });
 

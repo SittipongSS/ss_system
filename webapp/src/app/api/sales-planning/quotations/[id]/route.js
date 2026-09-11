@@ -528,7 +528,15 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   // force: ปลด logical ref (metadata.acceptedQuotationId) ที่ชี้มาใบนี้ก่อนลบ.
   // sales_orders.quotationId เป็น ON DELETE CASCADE จึงหายเองที่ระดับ DB.
-  if (force) await cleanupQuotationOrphans(supabase, before);
+  // ⚠️ มันโยนเมื่ออ่าน/ปลดไม่สำเร็จ (ยังไม่มีอะไรถูกลบ ณ จุดนี้) — withUser ไม่ดัก exception
+  //    ปล่อยหลุด = 500 เปล่าไม่มีข้อความ ⇒ ครอบแล้วตอบเหตุผลจริง
+  if (force) {
+    try {
+      await cleanupQuotationOrphans(supabase, before);
+    } catch (e) {
+      return fail(e.message, 500);
+    }
+  }
 
   // ใบที่มีหลักฐาน/ฉบับตรึงต้องลบผ่าน RPC break-glass (mig 0152) — มันตั้ง session flag ให้
   // guard ยอม DELETE แล้วเก็บกวาดตามลำดับ FK: SO ลูก (ซึ่ง cascade เองไม่ได้เพราะลูกของมัน

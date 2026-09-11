@@ -129,7 +129,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { data, error } = await supabase.from('sales_leads').insert(row).select().single();
   if (error) return fail(error.message, 500);
 
-  await supabase.from('lead_events').insert({
+  const { error: eventError } = await supabase.from('lead_events').insert({
     id: genId('LEV'),
     leadId: data.id,
     kind: 'create',
@@ -138,6 +138,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     createdBy: user.id || null,
     createdByName: user.name || null,
   });
+  // ลีดเกิดแล้ว ตอบล้มตรงนี้ = กดซ้ำได้ลีดซ้ำ · "รับลีดโดย/วันที่รับ" ยังอยู่บนแถว + audit
+  if (eventError) console.error('[leads] บันทึกประวัติรับลีดไม่สำเร็จ', data.id, eventError.message);
 
   await recordAudit({
     user, action: 'create', entityType: 'sales_lead', entityId: data.id, after: data,

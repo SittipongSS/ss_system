@@ -339,7 +339,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
   }
 
-  await supabase.from('sales_deal_stage_history').insert({
+  /* ประวัติสถานะแรก + snapshot FC แรก — ดีลเกิดแล้ว ห้ามตอบ 500 (กดสร้างซ้ำ = ดีลซ้ำ)
+     แถวหายไม่กระทบตัวเลขไหน: daysInStage ถอยไปนับจาก createdAt ซึ่งเป็นเวลาเดียวกัน
+     และรายงาน FC อ่านจาก sales_deals ⇒ เสียแค่บรรทัด "เริ่ม → …" ในเส้นเรื่อง · log ไว้ */
+  const { error: historyError } = await supabase.from('sales_deal_stage_history').insert({
     id: genId('DSH'),
     dealId: data.id,
     fromStage: null,
@@ -347,7 +350,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     changedBy: user.id || null,
     changedByName: user.name || null,
   });
-  await supabase.from('sales_deal_forecasts').insert({
+  if (historyError) console.error(`[deal-create ${data.id}] บันทึกประวัติสถานะแรกไม่สำเร็จ:`, historyError.message);
+  const { error: forecastError } = await supabase.from('sales_deal_forecasts').insert({
     id: genId('DFC'),
     dealId: data.id,
     forecastMonth: data.forecastMonth || monthKey(new Date().toISOString()),
@@ -357,6 +361,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     createdBy: user.id || null,
     createdByName: user.name || null,
   });
+  if (forecastError) console.error(`[deal-create ${data.id}] บันทึก snapshot FC แรกไม่สำเร็จ:`, forecastError.message);
 
   await recordAudit({
     user,
@@ -370,20 +375,33 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // ถ้าดีลนี้สร้างมาจากลีด (ผ่าน guard ด้านบนแล้ว): เปลี่ยนสถานะลีดเป็น qualified
   // (ครั้งแรก) + บันทึก event "create_deal" ทุกครั้ง (ลีด 1 ใบมีได้หลายดีล — นับ conversion ครบ)
+  let leadWarning = null;
   if (sourceLead) {
     const leadId = sourceLead.id;
     const lead = sourceLead;
     {
       const now = new Date().toISOString();
+      // สถานะลีดหลังจบเส้นนี้ตามจริง — event ข้างล่างต้องไม่อ้าง qualified ถ้าเขียนไม่ลง
+      let leadStatusAfter = lead.status;
       // อัปเดตสถานะเฉพาะครั้งแรก (ยังไม่ qualified) — ครั้งถัดไปคงสถานะเดิม
       if (lead.status !== 'qualified') {
-        const { data: updatedLead } = await supabase.from('sales_leads')
+        /* 🐞 เดิมไม่รับ error — อัปเดตพัง = ลีดค้าง contacted/meeting ทั้งที่แตกดีลไปแล้ว
+           ⇒ cron ตีกลับอัตโนมัติ (contacted เลยวันติดตาม) ส่งลีดที่ปิดแล้วกลับคิวคัดกรอง +
+           ทวงเลยนัดต่อ · audit เขียน after ที่แต่งขึ้น `{ ...lead, status: 'qualified' }`
+           ⚠️ ห้ามตอบ 500: ดีลเกิดแล้ว กดสร้างซ้ำ = ดีลซ้ำ ⇒ log + leadWarning */
+        const { data: updatedLead, error: leadUpdateError } = await supabase.from('sales_leads')
           .update({ status: 'qualified', closedAt: now, updatedAt: now }).eq('id', leadId).select().single();
-        await recordAudit({
-          user, action: 'update', entityType: 'sales_lead', entityId: leadId,
-          before: lead, after: updatedLead || { ...lead, status: 'qualified' },
-          summary: `ลีด → qualified (สร้างดีล ${dealAuditLabel(data)})`, request: req,
-        });
+        if (leadUpdateError) {
+          console.error(`[deal-create ${data.id}] ปิดลีด ${leadId} เป็น qualified ไม่สำเร็จ:`, leadUpdateError.message);
+          leadWarning = `สร้างดีลแล้ว แต่เปลี่ยนสถานะลีดต้นทางเป็น "${LEAD_STATUS_LABELS.qualified}" ไม่สำเร็จ: ${leadUpdateError.message} — ลีดยังค้างสถานะเดิม (ระบบอาจตีกลับอัตโนมัติ) แจ้งแอดมิน`;
+        } else {
+          leadStatusAfter = 'qualified';
+          await recordAudit({
+            user, action: 'update', entityType: 'sales_lead', entityId: leadId,
+            before: lead, after: updatedLead,
+            summary: `ลีด → qualified (สร้างดีล ${dealAuditLabel(data)})`, request: req,
+          });
+        }
       }
       // event ต่อดีล — บันทึกทุกครั้ง (แม้ลีด qualified อยู่แล้ว) เพื่อให้ conversion นับครบ
       //
@@ -399,7 +417,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
         leadId,
         kind: 'create_deal',
         fromStatus: lead.status,
-        toStatus: 'qualified',
+        toStatus: leadStatusAfter,
         createdBy: user.id || null,
         createdByName: user.name || null,
         eventAt: now,
@@ -410,11 +428,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
   }
 
-  // timelineWarning / valueItemsWarning: ดีลสร้างสำเร็จแต่ของประกอบไม่ครบ —
+  // timelineWarning / valueItemsWarning / leadWarning: ดีลสร้างสำเร็จแต่ของประกอบไม่ครบ —
   // โมดัลใช้แจ้งต่อ (ไม่ใช่ error: ดีลเกิดจริงแล้ว กดสร้างซ้ำจะได้ดีลซ้ำ)
+  // ⚠️ leadWarning ยังไม่มีจอไหนอ่าน — โมดัลฝั่งลีดไม่มี onCreated และพาไปหน้าดีลเลย
   return ok({
     ...data,
     ...(timelineWarning ? { timelineWarning } : {}),
     ...(valueItemsWarning ? { valueItemsWarning } : {}),
+    ...(leadWarning ? { leadWarning } : {}),
   }, 201);
 });
