@@ -53,6 +53,8 @@ import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import { notifyToast } from "@/components/ui/Toast";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 
 /* ไอคอนของสามด่าน — ป้ายกับกติกาอยู่ที่ `LEAD_SLA_STAGES` (lib ฝั่งข้อมูลไม่ import react) */
 const SLA_STAGE_ICONS = { screen: <Filter />, assign: <Users />, contact: <PhoneCall /> };
@@ -438,7 +440,11 @@ export default function LeadsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildLeadTransitionPayload({ action: actionId, values, users })),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "ทำรายการไม่สำเร็จ");
+      // ลีดขยับแล้วแต่ประวัติไม่ลง — ดู lib/apiWarnings
+      const warning = responseWarningText(body);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       await load();
       return true;
     } catch (e) {

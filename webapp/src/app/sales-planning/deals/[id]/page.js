@@ -59,6 +59,8 @@ import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
+import { notifyToast } from "@/components/ui/Toast";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
@@ -437,7 +439,11 @@ export default function DealOverviewPage() {
     setError("");
     try {
       const res = await apiFetch(url, opts);
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "ทำรายการไม่สำเร็จ");
+      // สำเร็จแต่ของประกอบไม่ครบ (ประวัติสถานะ · ไทม์ไลน์ · ย้ายของที่ผูกดีล) — ดู lib/apiWarnings
+      const warning = responseWarningText(body);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       await load();
       return true;
     } catch (e) {
@@ -610,14 +616,20 @@ export default function DealOverviewPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...dealForm, customerName }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
+      const saved = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(saved.error || "บันทึกไม่สำเร็จ");
+      const savedWarning = responseWarningText(saved);
+      if (savedWarning) notifyToast.warning(savedWarning, RESPONSE_WARNING_TOAST);
       if (dealForm.projectId && !deal.projectId) {
         const linkRes = await apiFetch(`/api/sales-planning/deals/${id}/link-project`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
         });
-        if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || "บันทึกดีลแล้ว แต่เชื่อมโครงการไม่สำเร็จ");
+        const linked = await linkRes.json().catch(() => ({}));
+        if (!linkRes.ok) throw new Error(linked.error || "บันทึกดีลแล้ว แต่เชื่อมโครงการไม่สำเร็จ");
+        const linkWarning = responseWarningText(linked);
+        if (linkWarning) notifyToast.warning(linkWarning, RESPONSE_WARNING_TOAST);
       }
       setDealModalOpen(false);
       await load();

@@ -869,7 +869,7 @@ const RAW_TAILWIND_TYPE_CAP = 150;
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
      src/app/pm/tasks/page.js:1111                     isToday ? 700 : 500
-     src/app/sales-planning/deals/[id]/page.js:152     s.state === "current" ? 800 : 650
+     src/app/sales-planning/deals/[id]/page.js:154     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:215   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:218   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
