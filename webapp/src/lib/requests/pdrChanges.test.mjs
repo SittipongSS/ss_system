@@ -158,3 +158,10 @@ test('บรรทัด "เอาสินค้าออก" ขึ้นก�
   const summary = pdrChangeSummary({}, header, ['สินค้าที่ 2 (เดิม): เอาออก (02-010)']);
   assert.match(summary.split('\n')[0], /เอาออก/);
 });
+
+test('บรรทัด "รายการงานตามแบบฟอร์ม PDR" ขึ้นก่อนบรรทัดหัวใบ (ม-144)', () => {
+  const header = Object.fromEntries(['pdrMoq', 'pdrColor', 'pdrPackSize', 'pdrCustomerBrand', 'pdrMoodTone',
+    'pdrBrandDirection', 'pdrShipTo', 'pdrFragranceUse', 'pdrExportDocNote'].map((c) => [c, 'ใหม่']));
+  const summary = pdrChangeSummary({}, header, ['รายการงานตามแบบฟอร์ม PDR: เพิ่ม 1 (สเปรย์ · S1)']);
+  assert.match(summary.split('\n')[0], /^รายการงานตามแบบฟอร์ม PDR/);
+});

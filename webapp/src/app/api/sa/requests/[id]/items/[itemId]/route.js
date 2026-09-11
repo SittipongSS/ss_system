@@ -369,6 +369,19 @@ export async function DELETE(request, { params }) {
     const { error: rowError } = await supabase.from('dept_request_items').delete().eq('id', itemId);
     if (rowError) throw rowError;
 
+    /* ⭐ **คิดตราปิดของใบใหม่หลังลบแถว** (รีวิว ม-144 · บั๊กเดิมทุกหัวข้อที่มีแถว) — ลบแถวที่ค้างตัวสุดท้าย
+       (เช่นแถวรอบแก้) แล้วแถวที่เหลือจบครบหมด แต่ใบยังค้าง "รับเรื่องแล้ว" ไม่มีตราฝั่งฝ่าย ⇒ ปุ่ม "ตอบแล้ว"
+       ไม่มี (ใบตอบรายแถว) ปิดก็ไม่จบ = ทางออกเดียวคือยกเลิก · ตัวคิดตัวเดียวกับก้าวรายแถว */
+    const remaining = (before.items || []).filter((i) => i.id !== itemId);
+    const nowIso = new Date().toISOString();
+    const headPatch = requestRowsClosurePatch(before, remaining, nowIso);
+    if (Object.keys(headPatch).length) {
+      const { error: headError } = await supabase.from('dept_requests')
+        .update({ ...headPatch, updatedAt: nowIso }).eq('id', id);
+      // ⚠️ ไม่ throw — แถวถูกลบไปแล้วจริง · ล้มตรงนี้ต้องไม่ข้ามการเก็บกวาดทะเบียน/เธรด/audit ข้างล่าง
+      if (headError) console.error('[requests] คิดตราปิดหลังลบแถวไม่สำเร็จ:', headError.message);
+    }
+
     // ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามเมื่อไม่มีใครอ้างต่อแล้ว
     let registryRemoved = null;
     let registryKept = null;

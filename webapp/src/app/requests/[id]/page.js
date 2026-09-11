@@ -45,6 +45,7 @@ import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import submitScope from "@/lib/requests/submitScope";
 import { scentBriefNameError } from "@/lib/requests/scentBriefs";
 import { submitRequestError } from "@/lib/requests/stages";
+import { npdWorkRowsError, npdWorkRowsScentError, planNpdWorkRows } from "@/lib/requests/npdWorkRows";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
@@ -437,7 +438,10 @@ export default function RequestDetailPage() {
      🐞 เดิมเงื่อนไขนี้เป็นจริงกับพัฒนากลิ่นมาตลอด แต่ถูกปุ่ม "ส่งงาน" บังไว้ · พอปุ่มนั้น
      ย้ายลงตาราง (2026-08-18) ปุ่ม "ตอบแล้ว" ก็โผล่ขึ้นมาเป็นปุ่มหลักของ RD ทันที
      ซึ่งเป็นทางลัดปิดงานที่ข้ามสถานะจริงของ direction */
-  const canMarkAnswered = !hasItems && !requestUsesDeliveredRows(req)
+  /* ⭐ ใบรายแถวที่แถวจบครบแล้วแต่ตราฝ่ายหลุด (เคยกด "ยังไม่จบ") — ฝ่ายประทับคืนเองได้ ด่านเดียวกับ action
+     `answer` ของ server (รีวิวรอบสอง ม-144) · ใบที่แถวยังค้างยังไม่มีปุ่มนี้ (ตอบผ่านรายการ) */
+  const rowsAllDone = (req.items || []).length > 0 && progress.complete;
+  const canMarkAnswered = ((!hasItems && !requestUsesDeliveredRows(req)) || rowsAllDone)
     && owner && !answerRequestError(req) && !closure.deptDone;
   /* ⭐ **"ยังไม่จบ" — ถอนตราปิดที่กดไปแล้ว** (มติผู้ใช้ 2026-08-20) · โผล่เฉพาะตอนมี
      ตราฝั่งใดฝั่งหนึ่งแล้วแต่ยังไม่ครบ · กดได้ทั้งสองฝั่ง (ฝั่งที่กดเปลี่ยนใจ หรือ
@@ -642,7 +646,15 @@ export default function RequestDetailPage() {
           + (!requestUsesPdr(req) ? ""
             : issuesPdrRefNoOnAcknowledge(req)
               ? " · ระบบจะออกเลขที่เอกสารของ PDR (วันที่วันนี้) ให้ในจังหวะเดียวกัน"
-              : " · เดือนนี้ยังไม่ออกเลขให้เอง — รับเรื่องแล้วกด \"กรอกเลขที่เอกสาร\" ใส่เลขจากกระดาษ"),
+              : " · เดือนนี้ยังไม่ออกเลขให้เอง — รับเรื่องแล้วกด \"กรอกเลขที่เอกสาร\" ใส่เลขจากกระดาษ")
+          /* ⭐ พัฒนาสูตร NPD (ม-144) — บอกล่วงหน้าว่ากดแล้ว **ได้รายการส่งสูตรกี่รายการ** (ตัววางแผนตัวเดียว
+             กับที่ server ใช้) · สเปรย์กลิ่นเดียวกันหลายขนาดรวมเป็นสูตรเดียว ต้องไม่ทำให้คนกดงงว่าหายไปไหน */
+          + (requestUsesDeliveredRows(req) && requestPdrRowsPickScent(req)
+            ? (() => {
+              const n = planNpdWorkRows({ targets: req.targets, items: req.items }).insert.length;
+              return n ? ` · ระบบจะแตกสินค้าในแบบฟอร์ม PDR เป็นรายการส่งสูตร ${n} รายการ (หนึ่งรายการต่อคู่หมวด × กลิ่น)` : "";
+            })()
+            : ""),
         confirmLabel: "รับเรื่อง",
       };
     }
@@ -670,11 +682,17 @@ export default function RequestDetailPage() {
         description: req.docNo || "",
         /* ⭐ ปิดสองฝั่ง (มติผู้ใช้ 2026-08-20) — โมดัลต้องบอกว่ากดแล้วใบ **ยังไม่จบ**
            ไม่งั้นฝ่ายเข้าใจว่าจบแล้วและเลิกตามงาน */
-        detail: "ชนิดนี้ไม่มีรายการให้ระบบนับ — ผู้ตอบเป็นคนบอกเองว่าตอบครบแล้ว"
+        detail: ((req.items || []).length
+          ? "รายการในใบจบครบแล้ว — ยืนยันว่าฝั่งฝ่ายตอบครบ (ใช้เมื่อเคยกด \"ยังไม่จบ\" แล้วไม่มีงานเพิ่ม)"
+          : "ชนิดนี้ไม่มีรายการให้ระบบนับ — ผู้ตอบเป็นคนบอกเองว่าตอบครบแล้ว")
           + (requesterDone
             ? `\n${requestSideText(req, "requester", "ปิดฝั่งตัวเองแล้ว")} — กดปุ่มนี้คือใบจบถาวร เปิดกลับไม่ได้`
             : `\nใบยังไม่จบจนกว่า${requestSideLabel(req, "requester")}จะกด "ปิดเรื่อง" ด้วย`
-              + " · ถ้ามีคนถามกลับในเธรด เครื่องหมายนี้จะถูกถอนเองแล้วใบกลับมาที่คุณ"),
+              /* ⚠️ ใบมีแถว: คำถามในเธรดไม่ถอนตรา (`replyClearsClosure` ถอนเฉพาะใบไม่มีแถว) — ถอนด้วยงานเพิ่ม
+                 หรือปุ่ม "ยังไม่จบ" · บอกผิดทาง = ฝ่ายรอให้ใบเด้งกลับทั้งที่มันไม่เด้ง (รีวิว ม-144 รอบ 3) */
+              + ((req.items || []).length
+                ? " · ถ้ามีงานเพิ่ม (รายการใหม่ · ลูกค้าขอแก้) หรือมีคนกด \"ยังไม่จบ\" เครื่องหมายนี้จะถูกถอนแล้วใบกลับมาที่คุณ"
+                : " · ถ้ามีคนถามกลับในเธรด เครื่องหมายนี้จะถูกถอนเองแล้วใบกลับมาที่คุณ")),
         confirmLabel: requesterDone ? "ปิดเรื่อง" : "ตอบแล้ว",
       };
     }
@@ -777,6 +795,38 @@ export default function RequestDetailPage() {
          ⚠️ ยิงหัวใบก่อน แล้วค่อยแบบฟอร์ม — หัวใบล้ม (เช่นลืมเหตุผลด่วน) ต้องหยุด
          ทันทีโดยที่แบบฟอร์มยังไม่ถูกเขียน ไม่ใช่บันทึกครึ่งเดียวแล้วบอกว่าพลาด */
       onClick: async () => {
+        /* ⭐ ด่านแถวงานของ NPD ถามก่อนเขียนอะไร (ตัววางแผนตัวเดียวกับ server · ม-144) — แบบฟอร์มจะทิ้งสินค้าที่
+           ส่งสูตร/มีผลลูกค้าแล้ว = ก้าว `pdr` โดน 409 **หลัง** หัวใบบันทึกไปแล้ว ⇒ บันทึกครึ่งเดียว (รีวิว ม-144) */
+        if (pdrEditableInDraft && requestUsesDeliveredRows(req) && requestPdrRowsPickScent(req)
+            && ["acknowledged", "answered"].includes(req.status)) {
+          /* ⚠️ **อ่านใบสดก่อนตัดสิน ไม่ใช้ `req` ของตอนเปิดหน้า** (รีวิว ม-144 รอบ 3) — ไฟล์บนแถวอัป/ลบได้จาก
+             กล่องไฟล์ของแถวและโมดัลส่งงาน (กดยกเลิก) โดยจอไม่โหลดใบใหม่ · ใช้ `_hasFiles` ค้าง = ไฟล์ที่เพิ่งอัป
+             หลุดด่านแล้วบันทึกครึ่งเดียว · ไฟล์ที่ลบไปแล้วยังบล็อกจนต้อง F5 (ร่างที่พิมพ์หาย) */
+          let fresh;
+          try {
+            const res = await apiFetch(`/api/sa/requests/${id}`, { cache: "no-store" });
+            fresh = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(fresh?.error || "โหลดคำร้องไม่สำเร็จ");
+          } catch (e) {
+            setToast({ kind: "error", msg: e.message });
+            return;
+          }
+          // ด่านชุดเดียวกับ server: แถวที่ส่งแล้ว · แถวที่มีไฟล์แนบ (`_hasFiles` จาก findRequest) · เจ้าของกลิ่นของคู่ใหม่
+          const plan = planNpdWorkRows({
+            targets: editDraft.pdrTargets,
+            items: fresh.items,
+            rowsWithFiles: new Set((fresh.items || []).filter((i) => i._hasFiles).map((i) => i.id)),
+          });
+          const rowsError = npdWorkRowsError(plan)
+            || (registry.scents.length
+              ? npdWorkRowsScentError(plan, editDraft.pdrTargets, registry.scents, { customerId: fresh.customerId })
+              : null);
+          if (rowsError) {
+            setReq(fresh); // ให้แถวบนจอตรงกับเหตุที่บอก (เช่นแถวที่อีกคนเพิ่งส่งสูตร) · ร่างที่แก้ค้างอยู่ครบ
+            setToast({ kind: "error", msg: rowsError });
+            return;
+          }
+        }
         if (canEditInfo) {
           /* ⚠️ บรรทัดถูกล็อก (รับเรื่องแล้ว) = **ไม่ส่ง `items` ไปเลย** — server ถือว่าไม่แตะบรรทัด ·
              🐞 เดิมส่งแถวกลับทุกครั้ง แล้วแถวที่เดินก้าวไปแล้ว (ส่งสูตรแล้ว · ลูกค้าขอแก้ = แถวซ้ำ
@@ -845,7 +895,18 @@ export default function RequestDetailPage() {
         onClick: () => {
           /* ⭐ ด่านเดียวกับ route (`acknowledgeRequestError`) ถามก่อนเปิดโมดัล — ใบ NPD ที่ไม่มี
              สินค้า/กลิ่นต้องบอกเหตุตั้งแต่กด ไม่ใช่ยืนยันแล้วค่อยโดน 409 ใต้โมดัล (กติกา GatedAction) */
-          const ackError = acknowledgeRequestError(req);
+          /* ⭐ NPD (ม-144): กลิ่นในแบบฟอร์มที่ย้ายไปเป็นของลูกค้ารายอื่นหลังส่ง — ด่านเดียวกับ route
+             (`npdWorkRowsScentError`) ถามก่อนเปิดโมดัล ไม่งั้น 409 ขึ้นเป็น toast ใต้โมดัลที่ค้างอยู่ (รีวิวรอบ 3) */
+          const ackError = acknowledgeRequestError(req)
+            || (requestUsesDeliveredRows(req) && requestPdrRowsPickScent(req) && registry.scents.length
+              ? (() => {
+                const msg = npdWorkRowsScentError(
+                  planNpdWorkRows({ targets: req.targets, items: req.items }),
+                  req.targets, registry.scents, { customerId: req.customerId },
+                );
+                return msg ? `${msg} — ให้ผู้ขอแก้แบบฟอร์ม PDR หรือตีกลับ` : null;
+              })()
+              : null);
           if (ackError) {
             setToast({ kind: "error", msg: ackError });
             return;

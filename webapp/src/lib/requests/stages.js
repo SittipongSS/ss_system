@@ -54,12 +54,23 @@ export function deriveRequestStatusAfterAnswer(items = [], currentStatus = 'ackn
 export function requestRowsClosurePatch(request, items = [], nowIso) {
   const patch = {};
   if (!request || ['cancelled', 'closed'].includes(request.status)) return patch;
+  // ⚠️ ตราปิดมีความหมายหลังรับเรื่องเท่านั้น — ใบร่าง/รอรับเรื่องต้องไม่ถูก `closureStatus` ดันเป็น
+  //    "รับเรื่องแล้ว" จากแถวที่ลบ/เพิ่ม (ผู้เรียกใหม่ เช่นทางลบแถว ไม่ต้องจำเงื่อนไขนี้เอง)
+  if (!['acknowledged', 'answered'].includes(request.status)) return patch;
   if (!items.length) return patch;
 
   const complete = requestProgress(items).complete;
   const answeredAt = complete ? (request.answeredAt || nowIso) : null;
   const closedAt = complete ? (request.closedAt || null) : null;
-  if ((request.answeredAt || null) !== answeredAt) patch.answeredAt = answeredAt;
+  if ((request.answeredAt || null) !== answeredAt) {
+    patch.answeredAt = answeredAt;
+    /* ⚠️ ตราที่ระบบประทับ/ถอนต้องไม่มีชื่อคน (mig 0306) — ใบมีแถวกด "ตอบแล้ว" เองได้หลัง "ยังไม่จบ"
+       (ม-144) ⇒ ชื่อคนกดค้างแล้วไปติดตราอัตโนมัติรอบถัดไป ("RD ตอบ · สมชาย") · ล้างเฉพาะที่มีค่า */
+    if (request.answeredById || request.answeredByName) {
+      patch.answeredById = null;
+      patch.answeredByName = null;
+    }
+  }
   if (!complete && request.closedAt) {
     patch.closedAt = null;
     patch.closedById = null;
@@ -270,17 +281,8 @@ export function closeRequestError(request, items = []) {
     return `${requestSideText(request, 'dept', 'ยังไม่ได้ส่งงานสักรายการ')} — ยกเลิกแทนการปิด`;
   }
 
-  /* 🔴 **ใบที่งานทั้งใบอยู่ในแบบฟอร์ม PDR และไม่มีแถวเลย** (พัฒนาสูตรรูปแบบ NPD ·
-     2026-09-09) — ด่านข้างบนทั้งสามตัวผ่านหมด: มี 0 แถวจึงไม่ติด "เดินไม่จบ" ·
-     สถานะไม่ใช่ `pending` แล้ว · และหัวข้อไม่ได้ประกาศ `deliversRows`
-     ⇒ ผู้ขอกดปิดได้ตั้งแต่วันที่ RD เพิ่งรับเรื่อง โดยยังไม่มีอะไรส่งกลับมาสักชิ้น
-     ซึ่งเป็น**อาการเดียวกับ 🐞 ข้างบนเป๊ะ** แค่มาจากหัวข้อคนละตัว
-     ⚠️ เกณฑ์คือ "ฝ่ายประกาศว่าตอบแล้วหรือยัง" (`answeredAt`) ไม่ใช่จำนวนแถว —
-     ใบ NPD ยังไม่มีทางสร้างแถวเลยจนกว่าจะมีทางส่งของของมันเอง */
-  if (!rows.length && requestUsesPdr(request) && !requestUsesItems(request)
-      && request.status !== 'answered') {
-    return `${requestSideText(request, 'dept', 'ยังไม่ได้ตอบกลับ')} — ยกเลิกแทนการปิด`;
-  }
+  /* ⚠️ ด่านเฉพาะ "ใบ PDR ที่ไม่มีแถว" (ม-141) ถูกถอด — พัฒนาสูตร NPD ประกาศ `deliversRows` แล้ว
+     (ม-144) จึงตกด่าน "ยังไม่ได้ส่งงานสักรายการ" ข้างบนตัวเดียวกับพัฒนากลิ่น */
 
   /* ⭐ **ปิดได้เมื่อลูกค้าคอนเฟิร์มครบตามจำนวนที่สั่ง** (มติผู้ใช้ 2026-08-18)
      "เงื่อนไขพัฒนากลิ่นคือ ส่ง direction และลูกค้าคอนเฟิร์ม ครบ ตามจำนวน"

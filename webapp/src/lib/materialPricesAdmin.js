@@ -1,5 +1,6 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
 import { pdrContext } from '@/lib/requests/pdrFields';
+import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
@@ -445,6 +446,19 @@ export async function findRequest(supabase, id) {
   });
 
   const items = await attachRowPrice(supabase, withBriefs.items || []);
+  /* ⭐ แถวงานต้นทางของพัฒนาสูตร NPD ที่มีไฟล์แนบ (ม-144) — แบบฟอร์ม PDR ถอนแถวพวกนี้ไม่ได้ (ถอน = กวาดไฟล์)
+     ⇒ จอต้องรู้ก่อนกดบันทึก ไม่งั้นหัวใบบันทึกไปแล้วค่อยโดนตีกลับที่ก้าวแบบฟอร์ม (บันทึกครึ่งเดียว)
+     ⚠️ ถามเฉพาะใบที่มีแถวแบบนี้ · ≤ 20 แถว ⇒ `.in()` ปลอดภัย · `.limit` = ขอบเขตชัด (check:rowcap) */
+  const npdRootIds = requestUsesDeliveredRows(withBriefs) && requestPdrRowsPickScent(withBriefs)
+    ? items.filter((i) => i.lineKind === 'product_dev' && !i.derivedFromItemId).map((i) => i.id)
+    : [];
+  if (npdRootIds.length) {
+    const { data: files, error: filesError } = await supabase.from('attachments')
+      .select('entityId').eq('entityType', 'dept_request_item').in('entityId', npdRootIds).limit(1000);
+    if (filesError) throw filesError;
+    const withFiles = new Set((files || []).map((f) => f.entityId));
+    for (const item of items) if (withFiles.has(item.id)) item._hasFiles = true;
+  }
 
   // ── ป้ายอ้างอิง QT/SO (ม-88) — จอโชว์ **เลขที่** ไม่ใช่ id ────────────────
   // โหลดเฉพาะตอนเปิดใบเดียว · ตามกลับไม่เจอ (ใบถูกลบ) = คืน null แล้วจอบอกตรง ๆ

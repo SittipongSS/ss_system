@@ -10,6 +10,7 @@
 // ⚠️ **ลบได้เฉพาะช่วงที่ยังไม่มีใครใช้ผลของมัน** — พอลูกค้าตอบหรือมีราคาออกมาแล้ว
 // แถวนั้นเป็นหลักฐาน ไม่ใช่ของที่พิมพ์ผิดอีกต่อไป (ทางออกคือก้าว "ตอบไม่ได้" / ยกเลิกใบ)
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
+import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
 
 export function deleteRequestRowError(request, row) {
   if (!request) return 'ไม่พบคำร้อง';
@@ -18,6 +19,12 @@ export function deleteRequestRowError(request, row) {
     return 'คำร้องนี้ไม่ได้เปิดอยู่ — ลบรายการไม่ได้';
   }
   // ผลลัพธ์จากลูกค้า = มีการตัดสินใจของอีกฝั่งผูกอยู่แล้ว
+  /* ⭐ แถวงานของพัฒนาสูตร NPD **มาจากแบบฟอร์ม PDR** (ม-144) — ลบที่แถวแล้วบันทึกแบบฟอร์มครั้งหน้าระบบ
+     จะงอกกลับมาเอง ⇒ ทางที่ถูกคือเอาสินค้าออกจากแบบฟอร์ม (ระบบถอนแถวให้ถ้ายังไม่มีใครแตะ)
+     ⚠️ เฉพาะแถวต้นทาง — แถวรอบแก้ (`derivedFromItemId`) เกิดจากก้าวของแถว ลบตามกติกาเดิมได้ */
+  if (requestUsesDeliveredRows(request) && requestPdrRowsPickScent(request) && !row.derivedFromItemId) {
+    return 'รายการนี้มาจากแบบฟอร์ม PDR — เอาสินค้าออกจากแบบฟอร์มแทน (ระบบถอนรายการให้เองถ้ายังไม่ส่งสูตร)';
+  }
   if (row.outcome) return 'รายการนี้ลูกค้าตอบมาแล้ว ลบไม่ได้ — ใช้ก้าวของแถวแทน';
   // ราคาที่ตอบไปแล้วเข้าไปอยู่ในทะเบียนราคากลาง (rev ของวัสดุ) ⇒ ถอยไม่ได้
   if (row.answeredRevisionId) return 'รายการนี้ตอบราคาไปแล้ว ลบไม่ได้';

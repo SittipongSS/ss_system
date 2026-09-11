@@ -24,6 +24,12 @@ import { normalizePdr } from '@/lib/requests/pdr';
 import { pdrChangeSummary, pdrTargetChangeLines } from '@/lib/requests/pdrChanges';
 import { normalizePdrTargets, pdrTargetsSubmitError } from '@/lib/requests/pdrTargets';
 import { pdrTargetKeep, pdrTargetScentCheck } from '@/lib/requests/pdrTargetScents';
+import {
+  npdSyncClosurePatch, npdWorkRowsEmpty, npdWorkRowsError, npdWorkRowsScentError, npdWorkRowsSummary,
+  planNpdWorkRows,
+} from '@/lib/requests/npdWorkRows';
+import { applyNpdWorkRows } from '@/lib/requests/npdWorkRowsApply';
+import { requestProgress } from '@/lib/requests/stages';
 import { categoryLabel } from '@/lib/master/categoryOf';
 import { PDR_SIGNER_FIELDS, pdrArtworkError } from '@/lib/requests/pdrFields';
 import {
@@ -42,7 +48,7 @@ import { briefBoard } from '@/lib/requests/briefBoard';
 import { assignBriefPerfumerError, briefPerfumerPatch } from '@/lib/requests/briefPerfumer';
 import {
   requestLineShape, requestUsesItems, requestUsesPdr, requestKindLabel, requestNeedsRef,
-  requestPdrRowsPickScent, requestUsesScentBriefs,
+  requestPdrRowsPickScent, requestUsesDeliveredRows, requestUsesScentBriefs,
   requestVariantKey, requestVariantLabel,
   requestShapeError,
 } from '@/lib/master/requestTypes';
@@ -236,6 +242,11 @@ export async function PATCH(request, { params }) {
      (PostgREST ไม่มีทรานแซกชันครอบ) ⇒ ต้อง **บอกผู้ใช้** ไม่ใช่ log เงียบ ๆ
      แล้วปล่อยให้คนคิดว่าเจ้าหน้าที่เห็นงานแล้วทั้งที่ตารางว่าง */
   let visitWarning = null;
+  /* ⭐ แถวงานของพัฒนาสูตร NPD (ม-144) — แผนที่ต้องเขียน **หลัง** หัวใบบันทึกสำเร็จ (เหตุผลเดียวกับ
+     `ackFanOut`: หัวใบล้ม แถวต้องไม่ถูกแตะ) · ล้มแล้วไม่ throw แต่ต้องบอก (`_warning`) */
+  let npdRowsPlan = null;
+  let npdRowsAck = null;
+  let npdRowsWarning = null;
 
   try {
     if (action === 'submit') {
@@ -316,6 +327,28 @@ export async function PATCH(request, { params }) {
          ⚠️ ทำ **หลัง** หัวใบเขียนสำเร็จ (ดูท้าย handler) ไม่ใช่ตรงนี้ — หัวใบล้มแล้ว
          แถวต้องไม่ถูกแตะ · แค่ติดธงไว้ก่อน */
       ackFanOut = true;
+      /* ⭐ **พัฒนาสูตร NPD: รับเรื่อง = แตกแถวสินค้าใน PDR เป็นแถวงาน** (ม-144 · มติผู้ใช้ "เอา ก")
+         หนึ่งแถวต่อคู่ หมวด × กลิ่นที่ไม่ซ้ำ แล้ว RD ส่งสูตรรายแถวแบบเดียวกับ Standard
+         ⚠️ ถามทะเบียนหัวข้อด้วยทั้งใบ (`deliversRows` + เลือกกลิ่นจากทะเบียน) ไม่ใช่ชื่อหัวข้อ
+         ⚠️ แถวสินค้า/กลิ่นครบแน่นอนแล้ว — `acknowledgeRequestError` ข้างบนตีกลับใบที่ไม่ครบ */
+      if (requestUsesDeliveredRows(before) && requestPdrRowsPickScent(before)) {
+        npdRowsPlan = planNpdWorkRows({ targets: before.targets, items: before.items });
+        npdRowsAck = { ackAt: businessDate(), ackById: user?.id ?? null, ackByName: user?.name ?? null };
+        /* ⚠️ กลิ่นของคู่ที่จะงอกต้องผ่านด่านของตัวเขียนแถว **ก่อน** รับเรื่อง (รีวิว ม-144) — กลิ่นถูกย้าย
+           เจ้าของ/ลบหลังผู้ขอส่ง = ตัวเขียนแถวตีกลับทั้งก้อน แล้วใบที่รับเรื่อง/ออกเลขไปแล้วไม่มีแถวสักแถว */
+        const ids = [...new Set(npdRowsPlan.insert.map((p) => p.scentId))];
+        if (ids.length) {
+          const { data: scentRows, error: scentError } = await supabase
+            .from('scents').select('id, code, name, "customerId"').in('id', ids);
+          if (scentError) throw scentError;
+          const ownerError = npdWorkRowsScentError(npdRowsPlan, before.targets, scentRows || [], {
+            customerId: before.customerId,
+          });
+          if (ownerError) {
+            return Response.json({ error: `${ownerError} — ให้ผู้ขอแก้แบบฟอร์ม PDR หรือตีกลับ` }, { status: 409 });
+          }
+        }
+      }
       /* ⭐ **เลือกผู้เซ็นบนเอกสารได้ตั้งแต่รับเรื่อง** (มติผู้ใช้ 2026-09-02) — ช่องพวกนี้
          อยู่ในแท็บที่ห้าของแบบฟอร์ม PDR ⇒ วัดจากใบจริง **16 จาก 18 ใบไม่เคยถูกกรอก**
          แล้วเอกสารที่พิมพ์ออกไปเป็นเส้นว่างทั้งตาราง · จังหวะรับเรื่องคือจังหวะที่ฝ่าย
@@ -687,6 +720,37 @@ export async function PATCH(request, { params }) {
         }
         nextTargets = targets;
         nextTargetScents = checked.scents;
+        /* ⭐ **แถวงานของ NPD ตามแบบฟอร์มหลังรับเรื่อง** (ม-144) — คู่หมวด × กลิ่นใหม่งอกแถวงาน ·
+           คู่ที่หายถอนแถวที่ยังไม่มีใครแตะ · ⚠️ คู่ที่หายแต่ส่งสูตร/มีผลลูกค้าแล้ว = **ปฏิเสธ**
+           ตรงนี้ ก่อนเขียนอะไรทั้งนั้น (ของที่ส่งไปแล้วเอาออกจากใบเงียบ ๆ ไม่ได้)
+           ⚠️ ก่อนรับเรื่องยังไม่มีแถวงาน (เกิดตอนรับเรื่อง) · ปิด/ยกเลิกแล้วแก้ PDR ไม่ได้อยู่แล้ว */
+        if (requestUsesDeliveredRows(before) && requestPdrRowsPickScent(before)
+            && ['acknowledged', 'answered'].includes(before.status)) {
+          /* แถวต้นทางที่มีไฟล์แนบ — ถอนเงียบ ๆ ไม่ได้ (ถอน = กวาดไฟล์ทิ้ง ไม่มีถังขยะ) · ≤ 20 แถว ⇒ `.in()` ปลอดภัย */
+          const rootIds = (before.items || [])
+            .filter((r) => r.lineKind === 'product_dev' && !r.derivedFromItemId).map((r) => r.id);
+          let rowsWithFiles = new Set();
+          if (rootIds.length) {
+            // `.limit` = ขอบเขตชัด (ถามแค่ "แถวไหนมีไฟล์" ของ ≤ 20 แถว · ด่าน check:rowcap)
+            const { data: files, error: filesError } = await supabase.from('attachments')
+              .select('entityId').eq('entityType', 'dept_request_item').in('entityId', rootIds)
+              .limit(1000);
+            // ⚠️ supabase ไม่ throw — อ่านพลาดต้องหยุด ไม่ใช่ถือว่า "ไม่มีไฟล์" แล้วกวาดทิ้ง
+            if (filesError) throw filesError;
+            rowsWithFiles = new Set((files || []).map((f) => f.entityId));
+          }
+          npdRowsPlan = planNpdWorkRows({ targets, items: before.items, rowsWithFiles });
+          const rowsError = npdWorkRowsError(npdRowsPlan)
+            // กลิ่นของคู่ใหม่ต้องผ่านด่านเจ้าของ แม้กลิ่นเดิมจะได้ข้อยกเว้นไม่ตรวจซ้ำตอนบันทึก
+            || npdWorkRowsScentError(npdRowsPlan, targets, checked.scents, { customerId: before.customerId });
+          if (rowsError) return Response.json({ error: rowsError }, { status: 409 });
+          // แถวใหม่อยู่ใต้รอบรับเรื่องเดิม — วันรับเรื่องของใบ ไม่ใช่วันนี้ (กติกาเดียวกับแถวรอบแก้)
+          npdRowsAck = {
+            ackAt: before.acknowledgedAt ? businessDate(before.acknowledgedAt) : businessDate(),
+            ackById: before.acknowledgedById ?? null,
+            ackByName: before.acknowledgedByName ?? null,
+          };
+        }
       }
 
       /* ⭐ รูปทรงที่ไม่มีบรีฟกลิ่น (พัฒนาสูตร NPD · `pdrScents: 'registry'`) — ส่งบรีฟมา
@@ -781,6 +845,44 @@ export async function PATCH(request, { params }) {
           if (clearError) throw clearError;
         }
       }
+      /* ⭐ เขียนแถวงานตามแผน (ม-144) หลังแถวสินค้าบันทึกแล้ว · แล้ว **คิดตราปิดของใบใหม่จากแถวจริง**
+         🐞 ไม่คิด ⇒ งอกแถวใหม่ตอนใบ "ตอบแล้ว" แล้วใบค้างสถานะนั้น (ก้าวรายแถวถูกปฏิเสธเพราะใบไม่ได้
+            เปิดอยู่) · ⚠️ ล้มแล้วไม่ throw — บอกผ่าน `_warning` แล้วบันทึกซ้ำเพื่อซ่อมได้ */
+      let npdRowsNote = null;
+      if (npdRowsPlan) {
+        const applied = npdWorkRowsEmpty(npdRowsPlan)
+          ? { inserted: [], removed: [], error: null }
+          : await applyNpdWorkRows(supabase, {
+            requestId: id, customerId: before.customerId, items: before.items || [],
+            plan: npdRowsPlan, ack: npdRowsAck || {}, nowIso,
+          });
+        if (applied.error) {
+          npdRowsWarning = `บันทึกแบบฟอร์มแล้ว แต่ปรับรายการงานตามแบบฟอร์มไม่สำเร็จ (${applied.error}) — กดบันทึกอีกครั้งเพื่อซ่อม`;
+          console.error('[requests] แถวงาน NPD:', applied.error);
+        }
+        /* ⭐ คิดตราปิดจากแถวจริง **ทุกครั้งที่บันทึก ไม่ใช่เฉพาะตอนแผนมีงาน** (รีวิว ม-144) — หัวใบที่เขียน
+           ไม่สำเร็จรอบก่อน (หรือตราที่เพี้ยนจากทางอื่น) ต้องซ่อมได้ด้วยการบันทึกซ้ำ · แผนว่าง = ไม่มีผลถ้าตรงอยู่แล้ว */
+        const removedIds = new Set(applied.removed.map((r) => r.id));
+        const nextRows = [
+          ...(before.items || []).filter((r) => !removedIds.has(r.id)),
+          ...applied.inserted,
+        ];
+        // ⚠️ ไม่มีแถวถูกเขียน = ถอนตราได้อย่างเดียว ห้ามประทับเพิ่ม (เหตุผลที่ `npdSyncClosurePatch`)
+        Object.assign(patch, npdSyncClosurePatch({
+          request: before, rows: nextRows, nowIso,
+          wroteRows: !!(applied.inserted.length || applied.removed.length),
+          unsynced: !!applied.insertFailed,
+        }));
+        npdRowsNote = npdWorkRowsSummary(applied);
+        // แถวที่แผนจะถอนแต่เพิ่งถูกส่งสูตรระหว่างบันทึก — ไม่ถูกถอน (ตัวเขียนกันไว้) ⇒ ต้องบอก ไม่ใช่เงียบ
+        if (applied.kept?.length) {
+          npdRowsWarning = [npdRowsWarning,
+            `สินค้า ${applied.kept.map((r) => `"${r.label || r.categoryCode}"`).join(' · ')} เพิ่งถูกส่งสูตร — `
+            + 'รายการงานไม่ได้ถูกถอน ใส่สินค้าคู่นั้นกลับเข้าแบบฟอร์ม'].filter(Boolean).join(' · ');
+        }
+      }
+      // ⚠️ กันไม่ให้ `npdRowsPlan` ของก้าวนี้ถูกเขียนซ้ำท้าย handler (บล็อกนั้นเป็นของ `acknowledge`)
+      npdRowsPlan = null;
       /* ⭐ เก็บ "ช่องไหนเปลี่ยนจากอะไรเป็นอะไร" ไว้ลงเธรด (IS-26080021) — ต้องคิด
          **ก่อน** เขียน patch ลง DB เพราะหลังจากนั้น `before` ไม่มีค่าเดิมให้เทียบแล้ว */
       /* ⭐ แถวสินค้าด้วย (mig 0352) — สเปก 2.4–2.7 ย้ายลงแถวแล้ว ไม่ตามมาดูแถว = RD แก้
@@ -801,10 +903,14 @@ export async function PATCH(request, { params }) {
           nextIds: body.pdrTargets.map((r) => r?.id || null),
         })
         : [];
-      pdrChanges = pdrChangeSummary(before, columns, targetLines, {
+      pdrChanges = pdrChangeSummary(before, columns, [
+        // แถวงานที่งอก/ถอนตามแบบฟอร์ม ขึ้นก่อน — เป็นผลที่ฝ่ายขายต้องรู้ที่สุดของการแก้ครั้งนี้
+        ...(npdRowsNote ? [npdRowsNote] : []),
+        ...targetLines,
+      ], {
         categoryLabel: (code) => categoryLabel(code, categories) || code,
       });
-      summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}`;
+      summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}${npdRowsNote ? ` · ${npdRowsNote}` : ''}`;
     } else if (action === 'reschedule') {
       // ⭐ **เลื่อนวันกำหนดส่ง** — RD แจ้งวันไปแล้วเปลี่ยนใจได้ (มติผู้ใช้)
       // ⚠️ ใบที่ยังไม่เคยแจ้งวันไปทาง `commit-due` — ด่านที่ `stages.js` กันไว้แล้ว
@@ -953,8 +1059,15 @@ export async function PATCH(request, { params }) {
     } else if (action === 'answer') {
       // ชนิดที่ไม่มีบรรทัด: ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง ผู้ตอบกดเองว่าตอบแล้ว
       // (ชนิดที่มีบรรทัดใช้ /answer ซึ่ง derive สถานะจากรายการให้อัตโนมัติ)
-      if (requestUsesItems(before)) {
-        return Response.json({ error: 'ชนิดนี้ตอบเป็นรายบรรทัด' }, { status: 400 });
+      /* ⚠️ ใบที่ **ฝ่ายสร้างแถวตอนส่งของ** และมีแถวแล้ว (พัฒนากลิ่น · พัฒนาสูตร NPD) ก็ตอบเป็นรายแถว —
+         จอซ่อนปุ่มนี้อยู่แล้ว (`canMarkAnswered`) · 🐞 เดิม API ยังรับ ⇒ ใบกลายเป็น "ตอบแล้ว" ทั้งที่แถว
+         ยังค้าง แล้วทุกก้าวรายแถวโดน 409 (สถานะนั้นไม่นับว่าเปิดอยู่) จนกว่าจะมีคนกด "ยังไม่จบ" */
+      /* ⭐ แต่ **แถวจบครบแล้วแต่ตราฝ่ายหลุด** (ฝ่ายกด "ยังไม่จบ" ไปแล้วเปลี่ยนใจ · หัวใบเขียนไม่สำเร็จรอบก่อน)
+         ฝ่ายประทับคืนเองได้ — ทางเดียวที่ตราฝ่ายของใบรายแถวกลับมาโดยไม่ต้องสร้างงานปลอม (รีวิวรอบสอง ม-144) */
+      const answerRows = before.items || [];
+      const rowBased = requestUsesItems(before) || (requestUsesDeliveredRows(before) && answerRows.length);
+      if (rowBased && !(answerRows.length && requestProgress(answerRows).complete)) {
+        return Response.json({ error: 'ชนิดนี้ตอบเป็นรายบรรทัด — ส่งงานในรายการให้ครบก่อน' }, { status: 400 });
       }
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `ตอบได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
@@ -1001,6 +1114,9 @@ export async function PATCH(request, { params }) {
       patch.closedById = user?.id ?? null;
       patch.closedByName = user?.name ?? null;
       patch.closedAt = nowIso;
+      /* ⚠️ **ผู้ขอปิดได้แค่ฝั่งตัวเอง — ไม่ประทับตราแทนฝ่าย** (รีวิวรอบสอง ม-144) · ตราฝ่ายที่หลุดไป (เช่นฝ่าย
+         กด "ยังไม่จบ" เพราะจะเพิ่มงาน) ต้องกลับมาด้วยมือฝ่ายเอง ("ตอบแล้ว" เมื่อแถวจบครบ — ดู action `answer`)
+         ไม่งั้นการถอนของฝ่ายถูกผู้ขอลบทิ้งด้วยคลิกเดียว แล้วใบปิดถาวร */
       patch.status = closureStatus({
         status: before.status, answeredAt: before.answeredAt, closedAt: nowIso,
       });
@@ -1173,6 +1289,24 @@ export async function PATCH(request, { params }) {
        ⚠️ ล้มแล้ว **ไม่ throw** — ใบถูกรับเรื่องไปแล้วจริง ย้อนไม่ได้ · ปล่อยให้ทั้ง
        request ล้มจะได้ผู้ใช้กดซ้ำแล้วเจอ "รับเรื่องไปแล้ว" ทั้งที่ของจริงบันทึกแล้ว
        (เหตุผลเดียวกับบล็อกวันส่งของ items route) */
+    /* ⭐ แถวงานของ NPD — เขียนก่อน `ackFanOut` และประทับ `ackAt` ของตัวเองอยู่แล้ว (ไม่พึ่งลำดับ)
+       ⚠️ ล้มแล้วไม่ throw — ใบรับเรื่อง/ออกเลขที่ไปแล้วจริง · ตัววางแผน idempotent ⇒ บันทึกแบบฟอร์ม
+          PDR อีกครั้งจะงอกแถวที่ขาดให้เอง (ทางซ่อมที่บอกไว้ในคำเตือน) */
+    if (npdRowsPlan && !npdWorkRowsEmpty(npdRowsPlan)) {
+      const applied = await applyNpdWorkRows(supabase, {
+        requestId: id, customerId: before.customerId, items: before.items || [],
+        plan: npdRowsPlan, ack: npdRowsAck || {}, nowIso,
+      });
+      if (applied.error) {
+        npdRowsWarning = `บันทึกแล้ว แต่สร้าง/ปรับรายการงานตามแบบฟอร์ม PDR ไม่สำเร็จ (${applied.error}) — `
+          + 'กดแก้ไขแล้วบันทึกแบบฟอร์ม PDR อีกครั้งเพื่อซ่อม';
+        console.error('[requests] แถวงาน NPD:', applied.error);
+      } else {
+        const note = npdWorkRowsSummary(applied);
+        if (note) summary = `${summary} · ${note}`;
+      }
+    }
+
     if (ackFanOut) {
       const { error: ackError } = await supabase.from('dept_request_items').update({
         ackAt: businessDate(),
@@ -1323,7 +1457,8 @@ export async function PATCH(request, { params }) {
     return Response.json({
       ...after,
       // ครึ่งหลังของงานล้ม — จอต้องทักเป็นคำเตือน ไม่ใช่ขึ้น "สำเร็จ" เฉย ๆ
-      ...(visitWarning ? { _warning: visitWarning } : {}),
+      ...(visitWarning || npdRowsWarning
+        ? { _warning: [visitWarning, npdRowsWarning].filter(Boolean).join(' · ') } : {}),
       _mine: canManageRequest(user, after),
       _canEditPdr: canEditPdr(user, after),
       // ต้องคืนคู่กับ `_editPdrBlocker` เสมอ — จอตัดสินว่าจะโชว์ปุ่มแก้แบบกดไม่ได้

@@ -21,8 +21,8 @@ import { requestUsesDeliveredRows, requestUsesItems } from '@/lib/master/request
  * ซึ่งละเอียดกว่าเธรด ⇒ ทับด้วยการพลิกตามข้อความล่าสุดเมื่อไรคือทำให้ข้อมูลหยาบลง
  */
 export function requestIsThreadOnly(request) {
-  // ⚠️ รับ **ทั้งใบ** — พัฒนาสูตรรูปแบบ NPD ไม่มีแถว จึงเดินด้วยเธรดล้วนเหมือน
-  // สอบถามข้อมูล ส่วนรูปแบบ standard มีแถวเล่าเองว่าใครค้าง
+  // ⚠️ รับ **ทั้งใบ** — รูปแบบของใบตัดสิน ไม่ใช่ชื่อหัวข้อ · พัฒนาสูตร NPD ประกาศ `deliversRows` แล้ว
+  // (ม-144 · ระบบแตกแถวงานให้ตอนรับเรื่อง) จึงไม่ใช่ใบเธรดล้วนอีกต่อไป เหมือนพัฒนากลิ่น
   return !requestUsesItems(request) && !requestUsesDeliveredRows(request);
 }
 
