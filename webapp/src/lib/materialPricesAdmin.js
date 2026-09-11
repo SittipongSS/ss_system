@@ -2,7 +2,8 @@
 import { pdrContext } from '@/lib/requests/pdrFields';
 import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
 import { requestRowSummary } from '@/lib/requests/rowStage';
-import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchAll } from '@/lib/supabaseFetchAll';
+import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
@@ -193,25 +194,34 @@ export async function priceRegistryEntry(supabase, {
 export async function loadRequests(supabase, {
   id = null, dept = null, status = null, requestedById = null, team = null, lean = false,
 } = {}) {
-  let query = supabase.from('dept_requests').select('*');
-  if (id) query = query.eq('id', id);
-  if (dept) query = query.eq('dept', dept);
-  if (status?.length) query = query.in('status', status);
-  if (requestedById) query = query.eq('requestedById', requestedById);
-  // ⚠️ ขอบเขต "ทีม" กรองที่นี่ ไม่ใช่ที่จอ (กับดักข้อ 9) — กรองที่จอแปลว่าคำร้อง
-  // ของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จากแท็บ Network
-  // `team` รับได้ทั้งทีมเดียวและอาร์เรย์ — คนเปิดคิวอยู่ได้หลายทีม (scopeFilter)
-  if (team) query = Array.isArray(team) ? query.in('team', team) : query.eq('team', team);
-  const { data: asks, error } = await query.order('createdAt', { ascending: false });
-  if (error) throw error;
-  if (!asks?.length) return [];
+  /* ⭐ **ทุกการอ่านในตัวโหลดนี้โตตามจำนวนใบ** (2026-09-11) — ใบคำร้อง 74 → 188 ใน 26 วัน
+     · หัวใบ: เพดาน Max rows 1,000 แถว (เกินแล้วได้ไม่ครบโดยไม่มี error) ⇒ ไล่หน้าด้วย `fetchAll`
+     · แถว/โครงการ/ลูกค้า/ดีล: ลิสต์ id เข้า `.in()` ⇒ URL ยาวตามจำนวนใบ · แถวคำร้องวัดจริง 188 ใบ
+       = 7,985 ไบต์ จากเพดาน 14,000 (`POSTGREST_URL_LIMIT`) ⇒ ชนที่ ~330 ใบ ≈ กลางเดือน ต.ค. 69
+       แล้วคิว "ทั้งหมด" ของแอดมิน + ป้ายตัวเลขบนเมนู (`loadVisibleRequests` ตัวเดียวกัน) ล้มทั้งคู่
+       ⇒ ซอยลิสต์ข้างนอก ไล่หน้าข้างใน (`fetchAllInChunks` · lib/supabaseInChunks.js) */
+  const asks = await fetchAll(() => {
+    let query = supabase.from('dept_requests').select('*');
+    if (id) query = query.eq('id', id);
+    if (dept) query = query.eq('dept', dept);
+    if (status?.length) query = query.in('status', status);
+    if (requestedById) query = query.eq('requestedById', requestedById);
+    // ⚠️ ขอบเขต "ทีม" กรองที่นี่ ไม่ใช่ที่จอ (กับดักข้อ 9) — กรองที่จอแปลว่าคำร้อง
+    // ของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จากแท็บ Network
+    // `team` รับได้ทั้งทีมเดียวและอาร์เรย์ — คนเปิดคิวอยู่ได้หลายทีม (scopeFilter)
+    if (team) query = Array.isArray(team) ? query.in('team', team) : query.eq('team', team);
+    // ⚠️ `id` ต่อท้ายให้ลำดับนิ่งข้ามหน้า (กติกาของ fetchAll) — ใบที่สร้างวินาทีเดียวกันมีจริง
+    return query.order('createdAt', { ascending: false }).order('id', { ascending: true });
+  });
+  if (!asks.length) return [];
 
-  const { data: items, error: itemError } = await supabase
-    .from('dept_request_items')
-    .select('*')
-    .in('requestId', asks.map((a) => a.id))
-    .order('sortOrder', { ascending: true });
-  if (itemError) throw itemError;
+  // PostgREST เรียงต่อก้อน ไม่ได้เรียงทั้งชุด ⇒ เรียงซ้ำหลังรวม (ลำดับแถวในใบ = sortOrder)
+  const items = await fetchAllInChunks(
+    asks.map((a) => a.id),
+    (chunk) => supabase.from('dept_request_items').select('*').in('requestId', chunk)
+      .order('sortOrder', { ascending: true }).order('id', { ascending: true }),
+    { sort: byColumns('sortOrder', 'id') },
+  );
 
   /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่คิวต้องใช้ตัดสิน "ตาใคร"** (ม-144 · รีวิวรอบ 5–6) — สินค้าที่ยังไม่มีแถวงาน
      (`npdUncoveredPairs`) คืองานของฝ่าย · ไม่ดึง ⇒ ป้ายขึ้นตาผู้ขอ ("รอปิดเรื่อง"/"รอ SA ทำต่อ") แล้วหลุดจากคิว
@@ -230,10 +240,9 @@ export async function loadRequests(supabase, {
   if (npdCandidateIds.length) {
     /* ⚠️ ดึงให้ครบทุกหน้า เรียงนิ่ง (รีวิวรอบ 7) — เพดานคิดจาก 20 แถวต่อใบใช้ไม่ได้: ก้าวบันทึกแบบฟอร์มเขียนชุดใหม่
        ก่อนลบชุดเดิม ⇒ ใบที่ลบไม่สำเร็จมีได้ 40 แถว แล้วตัดแบบไม่เรียงทำให้อีกใบได้ targets ว่างเงียบ ๆ */
-    const { data, error: npdTargetError } = await fetchAllResult(() => supabase.from('dept_request_pdr_targets')
-      .select('id, requestId, categoryCode, scentId').in('requestId', npdCandidateIds).order('id'));
-    if (npdTargetError) throw npdTargetError;
-    npdTargets = data || [];
+    // ซอยลิสต์ใบด้วย — ใบ NPD ที่เข้าเงื่อนไขโตตามจำนวนใบเหมือนกัน (ผลเข้า filter รายใบ ไม่ต้องเรียงซ้ำ)
+    npdTargets = await fetchAllInChunks(npdCandidateIds, (chunk) => supabase.from('dept_request_pdr_targets')
+      .select('id, requestId, categoryCode, scentId').in('requestId', chunk).order('id'));
   }
   const npdCandidates = new Set(npdCandidateIds);
 
@@ -245,10 +254,9 @@ export async function loadRequests(supabase, {
   const projectIds = lean ? [] : [...new Set(asks.map((a) => a.projectId).filter(Boolean))];
   let projects = [];
   if (projectIds.length) {
-    const { data, error: projectError } = await supabase
-      .from('projects').select('id, code, name').in('id', projectIds);
-    if (projectError) throw projectError;
-    projects = data || [];
+    // ซอยลิสต์ — โครงการที่ไม่ซ้ำโตตามจำนวนใบ (ผลเข้า Map ไม่ต้องเรียงซ้ำ)
+    projects = await fetchAllInChunks(projectIds, (chunk) => supabase
+      .from('projects').select('id, code, name').in('id', chunk).order('id'));
   }
   const projectById = new Map(projects.map((p) => [p.id, p]));
 
@@ -260,12 +268,11 @@ export async function loadRequests(supabase, {
   const customerIds = lean ? [] : [...new Set(asks.map((a) => a.customerId).filter(Boolean))];
   let customers = [];
   if (customerIds.length) {
-    const { data, error: customerError } = await supabase
+    // ⚠️ id ลูกค้ายาว 40 ตัวอักษร (CUS-uuid) — ชนเพดาน URL เร็วกว่าตารางอื่นเกือบเท่าตัว
+    customers = await fetchAllInChunks(customerIds, (chunk) => supabase
       // `brands` = ทะเบียนแบรนด์ของลูกค้า — ใช้แปลงรหัสแบรนด์ที่ดีลเก็บไว้เป็นชื่อ
       // สองภาษา (`brandDisplayFromList`) · ดีลเก็บแค่ข้อความที่ผู้ใช้เลือกตอนนั้น
-      .from('customers').select('id, "arCode", brands').in('id', customerIds);
-    if (customerError) throw customerError;
-    customers = data || [];
+      .from('customers').select('id, "arCode", brands').in('id', chunk).order('id'));
   }
   const arById = new Map(customers.map((c) => [c.id, String(c.arCode || '').trim() || null]));
   const brandsById = new Map(customers.map((c) => [c.id, c.brands]));
@@ -278,10 +285,8 @@ export async function loadRequests(supabase, {
   const dealIds = lean ? [] : [...new Set(asks.map((a) => a.dealId).filter(Boolean))];
   let deals = [];
   if (dealIds.length) {
-    const { data, error: dealError } = await supabase
-      .from('sales_deals').select('id, metadata, code, title').in('id', dealIds);
-    if (dealError) throw dealError;
-    deals = data || [];
+    deals = await fetchAllInChunks(dealIds, (chunk) => supabase
+      .from('sales_deals').select('id, metadata, code, title').in('id', chunk).order('id'));
   }
   const brandByDeal = new Map(deals.map((d) => [d.id, String(d.metadata?.brand || '').trim()]));
   // ⭐ ดีลเป็นคอลัมน์ของตัวเองในคิวแล้ว (มติผู้ใช้ 2026-08-20) — query เดิมอยู่แล้ว
