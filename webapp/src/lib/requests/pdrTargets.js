@@ -204,7 +204,10 @@ export function normalizePdrTargets(input, { categoryCodes = null, pickScent = f
 
     const categoryCode = String(raw.categoryCode ?? '').trim();
     if (!categoryCode) return { targets: [], error: `${at}: ยังไม่ได้เลือกประเภทสินค้า` };
-    if (categoryCode.length > 40) return { targets: [], error: `${at}: รหัสประเภทสินค้าไม่ถูกต้อง` };
+    /* ⚠️ รูป MM-TTT เท่านั้น — ตัวเดียวกับ CHECK ของ `dept_request_items.categoryCode` (0204) ·
+       แถวสินค้าของ NPD ถูกแตกเป็นแถวงานตอนรับเรื่อง (ม-144) ⇒ รหัสรูปอื่นหลุดมาถึงจังหวะนั้น =
+       insert ตกที่ CHECK หลังหัวใบบันทึกไปแล้ว · ตัวเลือกบนจอมาจากทะเบียนหมวดซึ่งเป็นรูปนี้เสมอ */
+    if (!/^\d{2}-\d{3}$/.test(categoryCode)) return { targets: [], error: `${at}: รหัสประเภทสินค้าไม่ถูกต้อง` };
     // ⚠️ ผูกกับ 1.11 — เอาหมวดออกจาก 1.11 แล้วแถวที่ค้างอยู่ต้องถูกทัก ไม่ใช่เงียบ
     if (allowed && !allowed.has(categoryCode)) {
       return {

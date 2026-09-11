@@ -1,5 +1,8 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
 import { pdrContext } from '@/lib/requests/pdrFields';
+import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
+import { requestRowSummary } from '@/lib/requests/rowStage';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
@@ -210,6 +213,30 @@ export async function loadRequests(supabase, {
     .order('sortOrder', { ascending: true });
   if (itemError) throw itemError;
 
+  /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่คิวต้องใช้ตัดสิน "ตาใคร"** (ม-144 · รีวิวรอบ 5–6) — สินค้าที่ยังไม่มีแถวงาน
+     (`npdUncoveredPairs`) คืองานของฝ่าย · ไม่ดึง ⇒ ป้ายขึ้นตาผู้ขอ ("รอปิดเรื่อง"/"รอ SA ทำต่อ") แล้วหลุดจากคิว
+     ของฝ่าย ทั้งที่ฝ่ายคือคนเดียวที่ซ่อมได้
+     ⚠️ ดึงเฉพาะใบที่คำตอบเปลี่ยนได้จริง = เงื่อนไขเดียวกับจุดที่ `requestNextStep` เช็ค: รับเรื่องแล้ว ยังไม่มีตรา
+        (มีตรา ⇒ คิวตอบจากตราก่อน) และไม่มีแถวรอฝ่าย (มี ⇒ ตาฝ่ายอยู่แล้ว) · แถวรอผู้ขอยังนับ (ฝ่ายมาก่อน)
+        ⇒ ปกติชุดนี้ว่าง ไม่มี query เพิ่ม · ใบเดียว (`findRequest`) ไม่ดึง — มันโหลดแถวสินค้าเต็มของตัวเองทับ */
+  const itemsOf = (requestId) => (items || []).filter((i) => i.requestId === requestId);
+  const npdCandidateIds = id ? [] : asks.filter((a) => {
+    if (!requestUsesDeliveredRows(a) || !requestPdrRowsPickScent(a)) return false;
+    if (a.status !== 'acknowledged' || a.answeredAt || a.closedAt) return false;
+    const rows = itemsOf(a.id);
+    return rows.length > 0 && requestRowSummary(rows).waitingDept === 0;
+  }).map((a) => a.id);
+  let npdTargets = [];
+  if (npdCandidateIds.length) {
+    /* ⚠️ ดึงให้ครบทุกหน้า เรียงนิ่ง (รีวิวรอบ 7) — เพดานคิดจาก 20 แถวต่อใบใช้ไม่ได้: ก้าวบันทึกแบบฟอร์มเขียนชุดใหม่
+       ก่อนลบชุดเดิม ⇒ ใบที่ลบไม่สำเร็จมีได้ 40 แถว แล้วตัดแบบไม่เรียงทำให้อีกใบได้ targets ว่างเงียบ ๆ */
+    const { data, error: npdTargetError } = await fetchAllResult(() => supabase.from('dept_request_pdr_targets')
+      .select('id, requestId, categoryCode, scentId').in('requestId', npdCandidateIds).order('id'));
+    if (npdTargetError) throw npdTargetError;
+    npdTargets = data || [];
+  }
+  const npdCandidates = new Set(npdCandidateIds);
+
   /* ⭐ **ชื่อโครงการมาด้วยตั้งแต่ตอนโหลดคิว** (มติผู้ใช้ 2026-08-11) — คิวจัดกลุ่ม
      ตามโครงการได้แล้ว แต่แถวเก็บแค่ `projectId` ⇒ หัวกลุ่มจะเป็น uuid ที่ไม่มีใคร
      อ่านออก · `findRequest` โหลดโครงการอยู่แล้วแต่นั่นคือตอนเปิด **ใบเดียว**
@@ -265,7 +292,8 @@ export async function loadRequests(supabase, {
   // mig 0219 พร้อมหัวข้อขอราคา (ม-28) · ราคาในโมเดลใหม่เป็นราคาเดียวต่อแถว
   return asks.map((a) => ({
     ...a,
-    items: (items || []).filter((i) => i.requestId === a.id),
+    items: itemsOf(a.id),
+    ...(npdCandidates.has(a.id) ? { targets: npdTargets.filter((t) => t.requestId === a.id) } : {}),
     // แบนเป็นสองช่อง ไม่ใช่ก้อน `project` ซ้อน — แถวคิวถูกส่งลงจอตรง ๆ และของซ้อน
     // ชั้นทำให้ต้องเช็ค null สองชั้นทุกที่ที่อ่าน
     projectCode: projectById.get(a.projectId)?.code ?? null,
@@ -445,6 +473,19 @@ export async function findRequest(supabase, id) {
   });
 
   const items = await attachRowPrice(supabase, withBriefs.items || []);
+  /* ⭐ แถวงานต้นทางของพัฒนาสูตร NPD ที่มีไฟล์แนบ (ม-144) — แบบฟอร์ม PDR ถอนแถวพวกนี้ไม่ได้ (ถอน = กวาดไฟล์)
+     ⇒ จอต้องรู้ก่อนกดบันทึก ไม่งั้นหัวใบบันทึกไปแล้วค่อยโดนตีกลับที่ก้าวแบบฟอร์ม (บันทึกครึ่งเดียว)
+     ⚠️ ถามเฉพาะใบที่มีแถวแบบนี้ · ≤ 20 แถว ⇒ `.in()` ปลอดภัย · `.limit` = ขอบเขตชัด (check:rowcap) */
+  const npdRootIds = requestUsesDeliveredRows(withBriefs) && requestPdrRowsPickScent(withBriefs)
+    ? items.filter((i) => i.lineKind === 'product_dev' && !i.derivedFromItemId).map((i) => i.id)
+    : [];
+  if (npdRootIds.length) {
+    const { data: files, error: filesError } = await supabase.from('attachments')
+      .select('entityId').eq('entityType', 'dept_request_item').in('entityId', npdRootIds).limit(1000);
+    if (filesError) throw filesError;
+    const withFiles = new Set((files || []).map((f) => f.entityId));
+    for (const item of items) if (withFiles.has(item.id)) item._hasFiles = true;
+  }
 
   // ── ป้ายอ้างอิง QT/SO (ม-88) — จอโชว์ **เลขที่** ไม่ใช่ id ────────────────
   // โหลดเฉพาะตอนเปิดใบเดียว · ตามกลับไม่เจอ (ใบถูกลบ) = คืน null แล้วจอบอกตรง ๆ

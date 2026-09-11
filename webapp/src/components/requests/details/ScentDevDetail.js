@@ -35,6 +35,7 @@ import { DetailCard } from "@/components/ui/DetailPage";
 import { OwnerTag, RowStepActions } from "@/components/requests/NextStepBar";
 import styles from "./details.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import { responseWarningText } from "@/lib/apiWarnings";
 
 export default function ScentDevDetail({
   request, board, canEditAttachments, saving, rowStep, onReload, onDeliver, today = null, due = null,
@@ -74,7 +75,11 @@ export default function ScentDevDetail({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || "ลบรายการไม่สำเร็จ"); return; }
       setDeleteRow(null);
-      await onReload?.();
+      // ลบสำเร็จแต่ของประกอบเขียนไม่ลง (ตราปิดของใบ) — ต้องถึงตาคน ไม่ใช่แค่ log ฝั่ง server (#1701)
+      // ⚠️ มีคำเตือน = รีโหลดแบบเงียบ — รีโหลดปกติขึ้นหน้าโหลดแทนทั้งใบ แล้วคอมโพเนนต์นี้ (กับข้อความ) หายไปด้วย
+      const warning = responseWarningText(data);
+      if (warning) setError(warning);
+      await onReload?.(warning ? { background: true } : undefined);
     } finally { setDeleting(false); }
   };
 
