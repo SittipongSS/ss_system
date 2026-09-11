@@ -92,6 +92,25 @@ test('🔴 ขายไปแล้ว / มีเครื่อง / มีใ
   }
 });
 
+/* 🐞 mig 0354: จุดติดตั้งบนโซนมาจากคนคีย์เสมอ (ใบประเมินไม่เขียนลงโซน) ⇒ โซนที่มีจุด = ทะเบียน
+   ต่อให้เกิดหลังใบและไม่มีใครอ้างถึง — เคสจริง: TS คีย์ไซต์ย้อนหลังระหว่างที่ใบของ SA ค้างอยู่ */
+test('🔴 โซนที่มีจุดติดตั้งในทะเบียนแล้ว ห้ามลบ — ต่อให้เกิดหลังใบและไม่มีใครใช้', () => {
+  const d = zoneCleanupDecision({
+    zone: zone({ spots: [{ id: 'SPT-1', label: 'ข้างประตู' }] }), request: request(), refs: {},
+  });
+  assert.equal(d.action, 'keep');
+  assert.match(d.reason, /จุดติดตั้ง/);
+  // จุดว่าง = ไม่ใช่เหตุให้เก็บ (ค่าตั้งต้นของทุกโซนคือ [])
+  assert.equal(zoneCleanupDecision({ zone: zone({ spots: [] }), request: request(), refs: {} }).action, 'delete');
+});
+
+test('ตัวกวาดทั้งสองเส้นอ่านโซนทั้งแถว — ตัวตัดสินต้องเห็น spots', () => {
+  const read = (rel) => readFileSync(`src/${rel}`, 'utf8');
+  for (const rel of ['lib/service/surveyCancelCleanup.js', 'app/api/service/surveys/[id]/zones/[zoneId]/route.js']) {
+    assert.doesNotMatch(read(rel), /from\('service_zones'\)\.select\('id, code, name, "createdAt"'\)/, rel);
+  }
+});
+
 /* fail-closed: ไม่รู้เวลา = ไม่ลบ · ของในทะเบียนลูกค้าห้ามหายเพราะเดา */
 test('⚠️ ไม่รู้เวลาสร้าง = ไม่ลบ', () => {
   assert.equal(zoneCleanupDecision({ zone: zone({ createdAt: null }), request: request(), refs: {} }).action, 'keep');

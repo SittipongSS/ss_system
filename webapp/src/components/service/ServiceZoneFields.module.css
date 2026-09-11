@@ -1,0 +1,102 @@
+/* ตัวแก้จุดติดตั้งของโซน (mig 0354) — ใช้ร่วมโมดัลโซนและโมดัลเพิ่มไซต์ย้อนหลัง
+   ⚠️ ห้าม style={{…}} และห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.row + .row { border-top: 1px solid var(--border); }
+
+.row[data-open="yes"] { background: var(--surface-2); }
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+/* เลขลำดับ — ตัวเลขความกว้างเท่ากัน ไม่ขยับเมื่อเกินสิบ */
+.no {
+  flex: none;
+  min-width: var(--space-5);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-label);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+.label {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ยังไม่มีชื่อ = ผ่านด่านไม่ได้ ⇒ บอกด้วยสีเตือน ไม่ใช่เทาเหมือนค่าว่างธรรมดา */
+.label[data-empty="yes"] { color: var(--amber); }
+
+.note {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tools {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--space-0-5);
+  flex: none;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3) var(--space-2) var(--space-7);
+}
+
+.bodyActions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.or {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* ช่องจำนวน — กว้างพอเลขสามหลัก ไม่ยืดเต็มแถว */
+.batchInput { width: calc(var(--space-9) * 2); flex: none; }
+
+.addHint {
+  flex: 1 1 220px;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}

@@ -12,7 +12,7 @@
 //      ทั้งก้อน แยกไม่ออกว่า Lobby หรือ Reception)
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Clock, FileText, Layers, MapPin, Package, Wrench } from "lucide-react";
+import { AlertTriangle, Clock, Crosshair, FileText, Layers, MapPin, Package, Wrench } from "lucide-react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -29,6 +29,8 @@ import { fmtNumber, naText } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { businessMonthKey } from "@/lib/datePeriods";
 import styles from "./page.module.css";
+
+const SPOT_PREVIEW = 12;
 import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceZonePage({ params }) {
@@ -114,6 +116,8 @@ export default function ServiceZonePage({ params }) {
   const itemsOfVisit = (visitId) => (data.items || [])
     .filter((i) => i.visitId === visitId && i.assetId && zoneAssets.some((a) => a.id === i.assetId));
 
+  const zoneSpots = Array.isArray(zone.spots) ? zone.spots : [];
+
   return (
     <Workspace hideHeader back={back}>
       <DetailOverview
@@ -150,6 +154,13 @@ export default function ServiceZonePage({ params }) {
                 { label: "ชั้น", value: floorLabel(zone.floor) },
                 { label: "อาคาร", value: zone.building },
               ]}
+            />
+            {/* จุดติดตั้ง (mig 0354) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซนในหน้าไซต์
+                ⚠️ เลขลำดับนำหน้าชื่อ — ชื่อจุดไม่บังคับไม่ซ้ำ (ContextCard ใช้ป้ายเป็น key) */}
+            <ContextCard
+              icon={Crosshair} eyebrow="จุดติดตั้ง" title={`${fmtNumber(zoneSpots.length)} จุด`}
+              subtitle={zoneSpots.length > SPOT_PREVIEW ? `แสดง ${SPOT_PREVIEW} จุดแรก — ทั้งหมดอยู่ที่ปุ่มแก้ไขโซนในหน้าไซต์` : undefined}
+              facts={zoneSpots.slice(0, SPOT_PREVIEW).map((s, i) => ({ label: `${i + 1}. ${s.label}`, value: s.note }))}
             />
             <ContextCard
               icon={Wrench} eyebrow="อุปกรณ์ในโซน" title={`${fmtNumber(zoneAssets.length)} ตัว`}

@@ -1,10 +1,11 @@
 // ── API โซนรายตัว (mig 0297) ──────────────────────────────────────────────
+import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { canForceDelete, isDryRun, isForceRequest } from '@/lib/forceDelete';
 import { deleteZoneDeep, zoneForceManifest } from '@/lib/service/forceDeleteService';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { normalizeZoneInput } from '@/lib/service/zones';
-import { findZone, requireSite } from '@/lib/service/sitesRepo';
+import { findZone, requireSite, zoneSpotsColumnError } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!before) return notFound('ไม่พบโซนในไซต์นี้');
 
     const body = await req.json().catch(() => ({}));
-    const { value, error } = normalizeZoneInput({ ...before, ...body });
+    /* จุดติดตั้ง (mig 0354) — ไม่ส่ง `spots` มา = ใช้ของเดิมทั้งชุด (id คงเดิม) ·
+       จุดใหม่จากจอ (`new-…`) ได้ id จริงที่นี่ */
+    const { value, error } = normalizeZoneInput({ ...before, ...body }, { makeSpotId: () => genId('SPT') });
     if (error) return badRequest(error);
+    /* คอลัมน์ยังไม่มี = PostgREST ตอบ 500 ภาษาอังกฤษ ⇒ บอกเหตุเป็นไทยแทน (mig 0354)
+       ถามเฉพาะเมื่อจอส่งจุดมา — `before.spots` มีอยู่ = คอลัมน์มีแล้ว ไม่ต้องถามทุกการแก้ชื่อ */
+    if (body.spots !== undefined) {
+      const schemaError = await zoneSpotsColumnError(supabase);
+      if (schemaError) return fail(schemaError, 503);
+    }
 
     const { data, error: updateError } = await supabase
       .from('service_zones')

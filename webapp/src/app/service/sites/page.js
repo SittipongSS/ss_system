@@ -13,9 +13,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Archive, Building2, LayoutGrid, MapPin, Navigation, Search, Table2, Upload,
+  Archive, Building2, History, LayoutGrid, MapPin, Navigation, Search, Table2, Upload,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import LegacySiteModal from "@/components/service/LegacySiteModal";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Input from "@/components/ui/Input";
@@ -60,6 +61,7 @@ export default function ServiceSitesPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState(null);
+  const [legacyOpen, setLegacyOpen] = useState(false);
   /* toast "ลบไซต์แล้ว" ข้ามหน้ามาจากหน้ารายละเอียด (ลบสำเร็จแล้วไม่มีข้อมูลเหลือให้
      อยู่หน้านั้นต่อ) — อ่านครั้งเดียวตอน mount แล้วเคลียร์ query ทิ้ง ไม่งั้น refresh
      หน้านี้ซ้ำจะเห็น toast เดิมค้าง */
@@ -80,8 +82,11 @@ export default function ServiceSitesPage() {
   const [showInactive, setShowInactive] = useStickyState("showInactive", false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /* `silent` = ดึงใหม่เงียบ ๆ ไม่สลับเป็นโครงร่าง — ใช้หลังบันทึกจากโมดัล
+     🐞 Workspace วาด `loading ? โครงร่าง : children` ⇒ load() ธรรมดาหลังบันทึกไซต์ย้อนหลัง
+        ถอดโมดัลออกจากจอกลางคัน (state หาย) ⇒ จอผลที่มีรหัสจริง / "ส่งส่วนที่เหลืออีกครั้ง" ไม่เคยขึ้น */
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setLoadError("");
     try {
       const res = await apiFetch("/api/service/sites");
@@ -93,7 +98,7 @@ export default function ServiceSitesPage() {
       // หน้าตาเหมือนกันจนแยกไม่ออก
       setLoadError(e.message || "โหลดทะเบียนไซต์ไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -101,7 +106,10 @@ export default function ServiceSitesPage() {
   /* ⚠️ **หน้านี้ไม่มีฟอร์มไซต์แล้ว** (มติ 2026-08-30) — สร้างไม่ได้ (ไซต์เกิดจาก
      ใบคำร้อง) และ *แก้* อยู่ที่หน้ารายละเอียดของไซต์นั้น ⇒ ทะเบียนลูกค้า · โมดัล ·
      ตัวบันทึก ถูกถอดออกทั้งชุด ไม่ใช่ปล่อยไว้เป็นโค้ดที่ไม่มีทางถูกเรียก
-     🐞 โค้ดตายแบบนั้นคือสิ่งที่ทำให้คนอ่านเชื่อว่าหน้านี้ยังแก้ไซต์ได้ */
+     🐞 โค้ดตายแบบนั้นคือสิ่งที่ทำให้คนอ่านเชื่อว่าหน้านี้ยังแก้ไซต์ได้
+     ⭐ **ข้อยกเว้นเดียว: "เพิ่มไซต์ย้อนหลัง"** (มติผู้ใช้ 2026-09-11) — คีย์ไซต์ที่มีอยู่ก่อน
+     มีระบบ (ไซต์ · โซน · จุดติดตั้ง) ด้วยโมดัลของมันเอง ไม่ใช่ฟอร์มไซต์โหมดสร้าง
+     (`LegacySiteModal` · ยาม `siteOrigin.test.mjs` บันทึกข้อยกเว้นนี้) */
 
   const activeCount = useMemo(() => sites.filter((s) => s.isActive !== false).length, [sites]);
   const inactiveCount = sites.length - activeCount;
@@ -172,6 +180,16 @@ export default function ServiceSitesPage() {
           นำเข้าข้อมูลเก่า
         </Button>
       )}
+      {/* ⭐ **เพิ่มไซต์ย้อนหลัง** (มติผู้ใช้ 2026-09-11) — ของเก่าที่ติดตั้งอยู่ก่อนมีระบบ ทีละแห่ง
+          · สีกลาง ไม่ใช่สีแบรนด์: งานย้ายข้อมูลเก่า ทะเบียนไม่ควรดูเหมือนที่ที่ไซต์ใหม่เกิด
+          · ไอคอนนาฬิกาย้อนหลัง ไม่ยืมหมุดแผนที่ของ entity ไซต์
+          · สิทธิ์ = canEditService (ไม่มีสิทธิ์ = ไม่เห็นปุ่มเลย) — ตรงกับด่านของ API */}
+      {canEdit && (
+        <Button tone="neutral" onClick={() => setLegacyOpen(true)}
+          icon={<History size={15} aria-hidden="true" />}>
+          เพิ่มไซต์ย้อนหลัง
+        </Button>
+      )}
     </>
   );
 
@@ -224,6 +242,7 @@ export default function ServiceSitesPage() {
   );
 
   return (
+    <>
     <Workspace
       icon={<MapPin size={20} aria-hidden="true" />}
       title="ไซต์บริการ"
@@ -249,6 +268,8 @@ export default function ServiceSitesPage() {
       ) : sites.length === 0 ? (
         <EmptyState icon={MapPin}>
           ยังไม่มีไซต์บริการในระบบ — ไซต์เกิดจากใบคำร้อง &ldquo;ประเมินพื้นที่&rdquo; ที่ฝ่ายขายเปิดให้ลูกค้า
+          {/* บอกทางของ "ของเก่า" เฉพาะคนที่กดปุ่มได้ — คนอื่นไม่เห็นปุ่ม ข้อความนี้จะชี้ไปที่ของที่ไม่มี */}
+          {canEdit && <> · ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ เพิ่มได้ที่ปุ่ม &ldquo;เพิ่มไซต์ย้อนหลัง&rdquo;</>}
         </EmptyState>
       ) : sort.sorted.length === 0 ? (
         /* ⚠️ ค้นไม่เจอ ≠ ไม่มีไซต์ — ตารางว่างเปล่าโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
@@ -346,5 +367,15 @@ export default function ServiceSitesPage() {
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
+    {/* ⚠️ อยู่ **นอก** Workspace โดยตั้งใจ — Workspace สลับ children เป็นโครงร่างตอน loading
+        โมดัลที่อยู่ข้างในจะถูกถอดทิ้งพร้อม state ทุกครั้งที่หน้าโหลดใหม่ (เหตุผลเต็มที่ load ข้างบน) */}
+    {canEdit && (
+      <LegacySiteModal
+        open={legacyOpen}
+        onClose={() => setLegacyOpen(false)}
+        onSaved={() => { load({ silent: true }); }}
+      />
+    )}
+    </>
   );
 }

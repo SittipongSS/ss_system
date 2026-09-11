@@ -491,6 +491,8 @@ export default function ServiceSiteDetailPage({ params }) {
               <thead>
                 <tr>
                   <th>โซน</th>
+                  {/* จุดติดตั้ง (mig 0354) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซน */}
+                  <th className={styles.numCol}>จุดติดตั้ง</th>
                   <th className={styles.numCol}>อุปกรณ์</th>
                   <th>สถานะ</th>
                   {canEdit && <th aria-label="การทำงาน" />}
@@ -515,6 +517,7 @@ export default function ServiceSiteDetailPage({ params }) {
                           {zone.note ? `${zone.building || zone.floor ? " · " : ""}${zone.note}` : ""}
                         </div>
                       </td>
+                      <td className={styles.numCol}>{Array.isArray(zone.spots) ? zone.spots.length : 0}</td>
                       <td className={styles.numCol}>{zoneAssets.length}</td>
                       <td><span className="ui-badge">{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></td>
                       {canEdit && (

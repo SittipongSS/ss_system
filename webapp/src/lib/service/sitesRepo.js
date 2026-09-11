@@ -120,6 +120,20 @@ export async function findZone(supabase, siteId, zoneId) {
   return data || null;
 }
 
+/* ── คอลัมน์จุดติดตั้งพร้อมหรือยัง (mig 0354) — ตรวจก่อนเขียนจุดลงโซน ─────────────
+   🐞 ตัวออกรหัส `create_entity_rows_with_code` สร้างรายการคอลัมน์จาก `master_row_columns`
+      ซึ่ง **ทิ้งคีย์ที่ไม่มีคอลัมน์เงียบ ๆ** ⇒ deploy ก่อนรัน mig = โซนถูกสร้างแต่จุดหาย โดยไม่มี
+      error สักตัว (ทางสร้าง) · ทาง PATCH ได้ 500 ข้อความดิบภาษาอังกฤษ
+   ⇒ ถามคอลัมน์ครั้งเดียวก่อนเขียนแถวแรก (limit 0 — ไม่ดึงข้อมูล) คืนข้อความไทยที่บอกทางแก้ หรือ null */
+export async function zoneSpotsColumnError(supabase) {
+  const { error } = await supabase.from('service_zones').select('spots').limit(0);
+  if (!error) return null;
+  // 42703 = ไม่มีคอลัมน์จริง · อย่างอื่น (เน็ต/สิทธิ์) ห้ามโทษ migration — คนจะไปรันซ้ำผิดเรื่อง
+  return error.code === '42703'
+    ? 'ระบบยังไม่พร้อมเก็บจุดติดตั้ง (ยังไม่ได้รัน migration 0354) — แจ้งผู้ดูแลระบบ · ยังไม่ได้บันทึกอะไร'
+    : `ตรวจความพร้อมของจุดติดตั้งไม่สำเร็จ — ${error.message} · ยังไม่ได้บันทึกอะไร ลองใหม่อีกครั้ง`;
+}
+
 export async function loadZones(supabase, siteId) {
   const { data, error } = await supabase
     .from('service_zones').select('*').eq('siteId', siteId)

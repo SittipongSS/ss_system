@@ -7,7 +7,7 @@ import { insertRowWithComposedCode } from '@/lib/entityCode';
 import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, zoneCodePrefix } from '@/lib/service/zoneCode';
 import { genId } from '@/lib/id';
 import { normalizeZoneInput } from '@/lib/service/zones';
-import { loadZones, requireSite } from '@/lib/service/sitesRepo';
+import { loadZones, requireSite, zoneSpotsColumnError } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +30,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (access.response) return access.response;
 
     const body = await req.json().catch(() => ({}));
-    const { value, error } = normalizeZoneInput(body);
+    const { value, error } = normalizeZoneInput(body, { makeSpotId: () => genId('SPT') });
     if (error) return badRequest(error);
+    // จุดติดตั้ง (mig 0354) — ตัวออกรหัสทิ้งคอลัมน์ที่ไม่มีเงียบ ๆ ⇒ ตรวจก่อน ไม่งั้นโซนเกิดแต่จุดหาย
+    if (value.spots?.length) {
+      const schemaError = await zoneSpotsColumnError(supabase);
+      if (schemaError) return fail(schemaError, 503);
+    }
 
     /* รหัส `ZN-CCCC-FF-DDDDD` (mig 0315) — CCCC มาจากรหัสไซต์แม่ · FF คือชั้นที่เพิ่งกรอก
        ⚠️ ประกอบก่อน insert: ไซต์ที่ยังเป็นรหัสรูปเดิมต้องถูกตีกลับพร้อมเหตุผล

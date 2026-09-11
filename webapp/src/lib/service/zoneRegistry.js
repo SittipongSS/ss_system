@@ -93,6 +93,10 @@ export function zoneRegistryRow(zone = {}, {
     volumeCbm: latest ? size.volumeCbm : null,
     spotsTotal: latest ? spots.total : 0,
     spotsSelected: latest ? spots.selected : 0,
+    /* จุดติดตั้งที่ **ทะเบียนโซน** ถือเอง (mig 0354 · คีย์จากโมดัลเพิ่มไซต์ย้อนหลัง/แก้โซน)
+       ⚠️ คนละชุดกับสองเลขบน (ผลใบประเมิน ณ วันประเมิน) — มติข้อ D: ยังไม่ซิงก์กันรอบนี้
+       ⇒ จอโชว์เลขนี้เฉพาะโซนที่ไม่มีผลประเมิน (ของเก่าที่ไม่เคยประเมิน) ไม่รวมเข้ากัน */
+    registeredSpots: Array.isArray(zone.spots) ? zone.spots.length : 0,
     assessedPackages: latest?.packageQty ?? null,
     // สูตรเสนอไว้เท่าไร — ไว้ให้จอเทียบกับที่หัวหน้าเคาะจริง (ไม่ใช่คำเตือน)
     suggestedPackages: latest ? suggestedPackages(size.volumeCbm) : null,
