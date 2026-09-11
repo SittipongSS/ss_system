@@ -14,6 +14,9 @@ import {
   requestVariantLabel,
   requestKindLabelFull,
   requestShapeError,
+  requestPdrScentSource,
+  requestPdrRowsPickScent,
+  requestUsesScentBriefs,
 } from '../master/requestTypes.js';
 import { requestVariantLock, requestVariantSwitchError } from './variantSwitch.js';
 import { assertKind } from './kinds/registry.js';
@@ -118,8 +121,27 @@ test('ทะเบียนตีกลับรูปแบบที่ปร�
     // คีย์ระดับบนสุดที่พิมพ์ผิดต้องพังตอน build ไม่ใช่เงียบ
     [{ ...base, varaints: {} }, /ไม่ใช่คีย์ที่ทะเบียนรู้จัก/],
     [{ ...base, hasPdr: 'yes' }, /ต้องเป็น true\/false/],
+    // ⭐ ใช้ PDR แล้วต้องบอกว่ากลิ่นมาจากไหน (mig 0352) — ไม่บอก = ฟอร์มเดาเอง
+    [{ ...base, hasPdr: true }, /ต้องบอก pdrScents/],
+    [{ ...base, hasPdr: true, pdrScents: 'magic' }, /ต้องบอก pdrScents/],
+    [{ ...base, pdrScents: 'briefs' }, /ใช้ได้เฉพาะรูปทรงที่มี hasPdr/],
   ];
   for (const [kind, re] of bad) {
     assert.throws(() => assertKind(kind), re, JSON.stringify(kind));
   }
+});
+
+test('⭐ ที่มาของกลิ่นใน PDR: พัฒนากลิ่น = บรีฟ · พัฒนาสูตร NPD = ทะเบียนรายแถว (มติผู้ใช้ 2026-09-11)', () => {
+  assert.equal(requestPdrScentSource({ kind: 'scent_dev' }), 'briefs');
+  assert.equal(requestUsesScentBriefs({ kind: 'scent_dev' }), true);
+  assert.equal(requestPdrRowsPickScent({ kind: 'scent_dev' }), false);
+
+  assert.equal(requestPdrScentSource(npd()), 'registry');
+  assert.equal(requestUsesScentBriefs(npd()), false, 'NPD ไม่มีบรีฟกลิ่น — กลิ่นใหม่เกิดที่พัฒนากลิ่นเท่านั้น (ม-40)');
+  assert.equal(requestPdrRowsPickScent(npd()), true);
+
+  // ไม่มี PDR = ไม่มีคำตอบ ไม่ใช่เดาเป็นบรีฟ
+  assert.equal(requestPdrScentSource(std()), null);
+  assert.equal(requestUsesScentBriefs(std()), false);
+  assert.equal(requestPdrScentSource({ kind: 'info' }), null);
 });

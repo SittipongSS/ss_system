@@ -54,7 +54,7 @@ const KIND_KEYS = [
   'key', 'label', 'dept', 'scope', 'legacy', 'needs', 'optionalRefs',
   'hasItems', 'lineShape', 'lineKind', 'lineNoun', 'deliversRows', 'hasPdr',
   'cancelBeforeAckOnly', 'stepKey', 'dealType', 'form', 'summary', 'hint',
-  'variants', 'defaultVariant',
+  'variants', 'defaultVariant', 'pdrScents',
 ];
 
 /* ⭐ **รูปแบบงานในหัวข้อเดียว** (มติผู้ใช้ 2026-09-09 · พัฒนาสูตร standard | NPD) —
@@ -64,7 +64,15 @@ const KIND_KEYS = [
    ⚠️ ทำไมไม่แตกเป็นหัวข้อที่สอง: `kind` ฝังอยู่ใน `docNo` ซึ่ง DB ห้ามแก้
    (`guard_dept_request` · mig 0173) และผูก stepKey/ไทม์ไลน์ ⇒ สลับรูปแบบกลางคัน
    จะกลายเป็น "ลบใบเปิดใหม่" ซึ่งไม่ใช่สวิตช์ */
-const VARIANT_FLAGS = ['label', 'hasItems', 'lineShape', 'deliversRows', 'hasPdr', 'hint'];
+const VARIANT_FLAGS = ['label', 'hasItems', 'lineShape', 'deliversRows', 'hasPdr', 'pdrScents', 'hint'];
+
+/* ⭐ **กลิ่นของแบบฟอร์ม PDR มาจากไหน** (มติผู้ใช้ 2026-09-11) — ฟอร์มเดียวใช้ร่วมสองหัวข้อ
+   ต่างกันแค่ที่มาของกลิ่น:
+     'briefs'   = บรีฟกลิ่นข้อ 2.1 (พัฒนากลิ่น — กลิ่นยังไม่เกิด RD ออกแบบจากบรีฟ)
+     'registry' = เลือกกลิ่นจากทะเบียนรายแถวสินค้า (พัฒนาสูตร NPD — ม-40 ทำจากกลิ่นที่มีแล้ว)
+   ⚠️ **บังคับประกาศทุกรูปทรงที่ใช้ PDR** — ถ้ามีค่าตั้งต้นเงียบ ๆ วันที่มีคนเพิ่มรูปทรงใหม่
+   แล้วลืมประกาศ ใบนั้นจะได้/เสียบรีฟกลิ่นโดยไม่มี error ให้ใครเห็น */
+const PDR_SCENT_SOURCES = ['briefs', 'registry'];
 
 export function assertKind(kind, seen = new Set()) {
   const at = `หัวข้อคำร้อง "${kind?.key || '(ไม่มี key)'}"`;
@@ -169,6 +177,12 @@ export function assertKind(kind, seen = new Set()) {
 
 /* กฎรูปทรงของ "ใบหน้าตาแบบไหน" — เรียกจาก assertKind ทั้งสองทาง (ดูข้างบน) */
 function assertShape(shape, at) {
+  if (shape.hasPdr && !PDR_SCENT_SOURCES.includes(shape.pdrScents)) {
+    throw new Error(`${at}: ใช้แบบฟอร์ม PDR แล้วต้องบอก pdrScents ('briefs' | 'registry')`);
+  }
+  if (!shape.hasPdr && shape.pdrScents != null) {
+    throw new Error(`${at}: pdrScents ใช้ได้เฉพาะรูปทรงที่มี hasPdr`);
+  }
   if (shape.lineShape && !VALID_LINE_SHAPES.includes(shape.lineShape)) {
     throw new Error(`${at}: lineShape "${shape.lineShape}" ไม่รู้จัก`);
   }

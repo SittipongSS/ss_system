@@ -505,7 +505,7 @@ export async function unlinkRegistryRefs(supabase, kind, id) {
 }
 
 export async function scentForcePreview(supabase, scent) {
-  const [requestItems, requestedItems, requests, formulas, products, materials] = await Promise.all([
+  const [requestItems, requestedItems, requests, formulas, products, materials, pdrRows] = await Promise.all([
     countBy(supabase, 'dept_request_items', 'producedScentId', scent.id),
     // ⚠️ สองแถวนี้เพิ่มหลัง mig 0232 — เดิมไม่ได้นับ ทั้งที่มันเป็น pointer ที่หายเงียบ
     // ได้เหมือนกัน ⇒ พรีวิวเคยบอกน้อยกว่าความจริง
@@ -514,6 +514,8 @@ export async function scentForcePreview(supabase, scent) {
     countBy(supabase, 'formulas', 'scentId', scent.id),
     countBy(supabase, 'products', 'scentId', scent.id),
     countBy(supabase, 'material_prices', 'scentId', scent.id),
+    // แถวสินค้าของแบบฟอร์ม PDR (mig 0352) — ใบพัฒนาสูตร NPD เลือกกลิ่นจากทะเบียนรายแถว
+    countBy(supabase, 'dept_request_pdr_targets', 'scentId', scent.id),
   ]);
   const cascade = [
     line('บรรทัดคำร้องที่ผลิตกลิ่นนี้ขึ้นมา (ปลดการเชื่อมโยง คำร้องยังอยู่)', requestItems),
@@ -522,6 +524,7 @@ export async function scentForcePreview(supabase, scent) {
     line('สูตรที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง สูตรยังอยู่)', formulas),
     line('สินค้าที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง สินค้ายังอยู่)', products),
     line('วัสดุในทะเบียนที่อ้างกลิ่นนี้ (ปลดการเชื่อมโยง)', materials),
+    line('สินค้าในแบบฟอร์ม PDR ที่เลือกกลิ่นนี้ (ปลดการเชื่อมโยง แถวสินค้ายังอยู่)', pdrRows),
   ].filter((r) => r.count > 0);
   const notes = [];
   // ⚠️ ปลดแล้วต่อกลับไม่ได้ — ไม่มีที่ไหนเก็บไว้ว่ากลิ่นตัวไหนมาจากคำร้องใบไหน

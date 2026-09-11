@@ -1,4 +1,4 @@
-// ── คำศัพท์ของบรีฟกลิ่น (PDR 2.1.4 · 2.1.5) ─────────────────────────────
+// ── คำศัพท์ของบรีฟกลิ่น (PDR 2.1.4 · 2.1.5) + Archetype ของแบรนด์ (PDR 1.15) ──
 //
 // ⚠️ **ทะเบียนฝั่งโค้ด ไม่ผูก CHECK ที่ DB** (mig 0213) — เพิ่ม Scentotype ตัวใหม่
 // ควรแก้ไฟล์เดียว ไม่ใช่ออก migration ทุกครั้ง · แพตเทิร์นเดียวกับ docTypes/requestTypes
@@ -6,7 +6,9 @@
 // ⚠️ ค่าที่เก็บคือ **key ไม่ใช่ป้ายชื่อ** — เปลี่ยนคำบนจอแล้วของเก่าต้องไม่กลายเป็นขยะ
 // (โรคประจำถิ่นของ repo คือ "จับคู่ด้วยข้อความ" ซึ่ง mig 0171 บันทึกไว้แล้วว่าเจ็บจริง)
 
-// PDR 2.1.4 — เลือกได้หลายอย่าง (มติผู้ใช้ 2026-08-06)
+// PDR 2.1.5 — เลือกได้หลายอย่าง (มติผู้ใช้ 2026-08-06)
+// ⚠️ เลขข้อสลับกับ Performance ตามไฟล์ PDR ของ AE (Rev.02 __ AE · มติผู้ใช้ 2026-09-11)
+//    — ค่าที่เก็บไม่เปลี่ยน เปลี่ยนแค่ลำดับที่วาดบนจอ/กระดาษ
 export const SCENTOTYPES = [
   { value: 'cheerer', label: 'CHEERER' },
   { value: 'admirer', label: 'ADMIRER' },
@@ -15,13 +17,34 @@ export const SCENTOTYPES = [
   { value: 'counselor', label: 'COUNSELOR' },
 ];
 
-// PDR 2.1.5 — เลือกได้หลายอย่าง · กลิ่นหนึ่งติดทนและ Impact แรงพร้อมกันได้
+// PDR 2.1.4 — เลือกได้หลายอย่าง · กลิ่นหนึ่งติดทนและ Impact แรงพร้อมกันได้
 export const SCENT_PERFORMANCE = [
   { value: 'lasting', label: 'กลิ่นติดทน (กลิ่นค้างผิว)' },
   { value: 'diffusive', label: 'กลิ่นฟุ้งกระจาย' },
   { value: 'air_lasting', label: 'กลิ่นค้างอากาศ' },
   { value: 'first_impact', label: 'Impact แรก' },
 ];
+
+/* PDR 1.15 — Archetype ของแบรนด์ 12 แบบ · เลือกได้หลายอย่าง + เขียนต่อได้รายตัว
+   ⭐ **ระดับใบ ไม่ใช่รายกลิ่น** (มติผู้ใช้ 2026-09-11) — ไฟล์ของ AE วางไว้ที่ 2.1.6 ในกล่อง
+   บรีฟ แต่ Archetype เป็นบุคลิกของ**แบรนด์** ไม่ใช่ของกลิ่นตัวใดตัวหนึ่ง และใบพัฒนาสูตร
+   NPD ไม่มีบรีฟกลิ่นเลย ⇒ ย้ายมาหมวด 1 ต่อท้าย 1.14 ให้ทั้งสองหัวข้อกรอกได้
+   ป้ายเป็นอังกฤษตัวใหญ่ตามกระดาษ (ชื่อเฉพาะของโมเดล 12 Archetypes — ไม่แปล) */
+export const BRAND_ARCHETYPES = [
+  { value: 'innocent', label: 'INNOCENT' },
+  { value: 'everyman', label: 'EVERYMAN' },
+  { value: 'hero', label: 'HERO' },
+  { value: 'caregiver', label: 'CAREGIVER' },
+  { value: 'explorer', label: 'EXPLORER' },
+  { value: 'rebel', label: 'REBEL' },
+  { value: 'lover', label: 'LOVER' },
+  { value: 'creator', label: 'CREATOR' },
+  { value: 'jester', label: 'JESTER' },
+  { value: 'sage', label: 'SAGE' },
+  { value: 'magician', label: 'MAGICIAN' },
+  { value: 'ruler', label: 'RULER' },
+];
+export const BRAND_ARCHETYPE_VALUES = BRAND_ARCHETYPES.map((t) => t.value);
 
 const byValue = (list) => new Map(list.map((t) => [t.value, t]));
 const SCENTOTYPE_MAP = byValue(SCENTOTYPES);

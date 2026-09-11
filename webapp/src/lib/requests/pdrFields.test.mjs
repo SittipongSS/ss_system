@@ -14,6 +14,7 @@ import {
 import { pdrTargetValuesFrom } from './pdrTargets.js';
 import { normalizePdr } from './pdr.js';
 import { renderPdrDocument } from './pdrDocument.js';
+import { requestUsesScentBriefs } from '../master/requestTypes.js';
 
 test('ทะเบียนครอบคลุมคอลัมน์ pdr* ครบทุกตัว — ไม่มีช่องไหนกรอกได้แต่ไม่มีที่แสดง', () => {
   // `normalizePdr` คือฝั่งเขียน · ทะเบียนคือฝั่งอ่าน ⇒ ต้องเป็นชุดเดียวกันเป๊ะ
@@ -23,7 +24,8 @@ test('ทะเบียนครอบคลุมคอลัมน์ pdr* �
   // + 3 ของ 0227: หมวดสินค้าหลายรายการ · "อื่น ๆ" ของบรรจุภัณฑ์และเอกสาร
   // + 1 ของ 0228: หัวน้ำหอมนำไปใช้กับอะไร
   // + 1 ของ 0261: AE Supervisor ย้ายจาก `approvedByName` มาเป็นชื่อบนกระดาษ (ม-124)
-  assert.equal(PDR_COLUMNS.length, 39);
+  // + 3 ของ 0352: สวิตช์ที่อยู่จัดส่ง (1.7.1) · Archetype ของแบรนด์ + ข้อความเขียนต่อ (1.15)
+  assert.equal(PDR_COLUMNS.length, 42);
 });
 
 test('ชื่อผู้เซ็นเป็นช่องบนกระดาษ ไม่ใช่ role — ป้ายตรงกับตารางลายเซ็นของ FM-RD-01', () => {
@@ -114,14 +116,18 @@ test('⭐ วันที่ร้องขออ่านจาก submittedAt 
 test('บนจอซ่อนช่องว่าง · บนเอกสารพิมพ์ครบทุกช่อง', () => {
   const spec = PDR_SECTIONS.find((s) => s.key === 'spec');
   const req = { pdrMoq: '50' };
-  assert.deepEqual(pdrSectionRows(spec, req), [['MOQ ที่คาดหวัง', '50']]);
+  // ⭐ MOQ ย้ายไปอยู่รายสินค้าแล้ว (mig 0352) — ช่องระดับใบเหลือเป็น `legacy` ที่พิมพ์
+  //    เฉพาะใบเก่าที่มีค่า และป้ายบอกตรง ๆ ว่าเป็นค่าที่บันทึกไว้เดิม
+  assert.deepEqual(pdrSectionRows(spec, req), [['MOQ ที่คาดหวัง (บันทึกไว้เดิม)', '50']]);
   // ⚠️ ตัวหารไม่ใช่ `spec.fields.length` ดิบ ๆ — ข้อ 2.2/2.3 เป็นตารางรายสินค้า
   // (mig 0229) ไม่ใช่คู่ป้าย/ค่า และช่อง `legacy` โผล่เฉพาะใบที่มีค่าจริง
   const printable = spec.fields.filter((f) => f.type !== 'targets' && !f.legacy);
-  assert.equal(pdrSectionRows(spec, req, { includeEmpty: true }).length, printable.length);
+  // +1 = MOQ ที่ใบนี้มีค่าในช่องเดิม (legacy ที่มีค่ายังพิมพ์)
+  assert.equal(pdrSectionRows(spec, req, { includeEmpty: true }).length, printable.length + 1);
+  assert.equal(pdrSectionRows(spec, {}, { includeEmpty: true }).length, printable.length);
   // ใบเก่าที่มีค่าในช่องเดิมยังต้องพิมพ์ออกกระดาษ ไม่ใช่หายไปพร้อมการย้ายโครง
   const legacy = pdrSectionRows(spec, { ...req, pdrTargetCost: 1200 });
-  assert.deepEqual(legacy, [['Target Cost / KG (บันทึกไว้เดิม)', '1,200'], ['MOQ ที่คาดหวัง', '50']]);
+  assert.deepEqual(legacy, [['Target Cost / KG (บันทึกไว้เดิม)', '1,200'], ['MOQ ที่คาดหวัง (บันทึกไว้เดิม)', '50']]);
 });
 
 // ── สามจออ่านจากทะเบียนเดียวกันจริงไหม ────────────────────────────────────
@@ -185,10 +191,18 @@ test('⭐ แถว 2.2/2.3 ต้องถูกเดินสายครบ�
     'src/app/api/sa/requests/route.js': [/normalizePdrTargets/],
     'src/app/api/sa/requests/[id]/route.js': [/normalizePdrTargets/],
     // โหลดแถวมากับใบ · จอสรุป · เอกสาร
+    // ⭐ จอสรุปกับเอกสารอ่านข้อ 2.1–2.7 ผ่าน `pdrTargetFacts` ตัวเดียวกัน (mig 0352) —
+    //    ไม่ใช่ต่างคนต่างไล่ `PDR_TARGET_KINDS` เองแบบเดิม
     'src/lib/materialPricesAdmin.js': [/dept_request_pdr_targets/],
-    'src/components/requests/PdrSummary.js': [/PDR_TARGET_KINDS/],
-    'src/lib/requests/pdrDocument.js': [/PDR_TARGET_KINDS/],
+    'src/components/requests/PdrSummary.js': [/pdrTargetFacts/],
+    'src/lib/requests/pdrDocument.js': [/pdrTargetFacts/],
+    // ด่านกลิ่นรายแถว (ข้อ 2.1) ทั้งสองทางของ server + ด่านกดส่ง
+    'src/lib/requests/stages.js': [/pdrTargetsSubmitError/],
   };
+  for (const file of ['src/app/api/sa/requests/route.js', 'src/app/api/sa/requests/[id]/route.js']) {
+    assert.match(readFileSync(file, 'utf8'), /pdrTargetScentCheck/, `${file}: ขาดด่านกลิ่นรายแถว`);
+    assert.match(readFileSync(file, 'utf8'), /pickScent: requestPdrRowsPickScent\(/, `${file}: ไม่ได้บอก normalizer ว่าเก็บกลิ่นไหม`);
+  }
   for (const [file, patterns] of Object.entries(wired)) {
     const src = readFileSync(file, 'utf8');
     for (const re of patterns) assert.match(src, re, `${file}: ขาด ${re}`);
@@ -550,6 +564,7 @@ test('⭐ เลือกหมวดหัวน้ำหอมแล้วช�
 // · สเปก 6/13 → 4/10 · และป้ายหมวดก็คนละชุด (ฝั่งอ่านมีเลขนำ ฝั่งแก้ไม่มี)
 test('⭐ รางหมวด PDR: โหมดอ่านกับโหมดแก้ต้องได้ป้ายและเลขชุดเดียวกัน', () => {
   const row = {
+    kind: 'scent_dev',
     pdrRequestType: 'new_product',
     pdrCustomerKind: 'existing',
     pdrSignPerfumer: 'คุณเอ',
@@ -561,8 +576,20 @@ test('⭐ รางหมวด PDR: โหมดอ่านกับโหม�
   // ปุ่ม "แก้ไข" เปิดโหมดแก้ด้วยตัวแปลงชุดนี้เป๊ะ (ดู /requests/[id] · action `edit`)
   const edit = pdrRailSections(
     pdrValuesFrom(row), briefs, row.targets.map(pdrTargetValuesFrom),
+    { withBriefs: requestUsesScentBriefs(row) },
   );
   assert.deepEqual(read, edit);
+  assert.ok(read.some((s) => s.key === 'briefs'), 'พัฒนากลิ่นต้องมีหมวดบรีฟ');
+});
+
+test('⭐ พัฒนาสูตร NPD ไม่มีหมวดบรีฟกลิ่น — กลิ่นมาจากทะเบียนรายแถวสินค้า', () => {
+  // มติผู้ใช้ 2026-09-11 · ม-40: กลิ่นใหม่เกิดได้ทางเดียวคือใบพัฒนากลิ่น
+  // ⚠️ ส่งบรีฟหลงมาก็ต้องไม่โผล่ — ตัวตัดสินคือทะเบียนหัวข้อ ไม่ใช่จำนวนก้อน
+  const rail = pdrRailSectionsFromRequest(
+    { kind: 'formula_dev', variant: 'npd' }, [{ brief: 'หลงมา' }], [],
+  );
+  assert.ok(!rail.some((s) => s.key === 'briefs'));
+  assert.deepEqual(rail.map((s) => s.key), ['request', 'customer', 'spec', 'regulatory', 'signers']);
 });
 
 test('⭐ ตัวหารของเกจต้องไม่นับช่องที่คนกรอกแตะไม่ได้', () => {
@@ -588,14 +615,19 @@ test('หมวดที่ไม่มีช่องบังคับต้�
   assert.ok(!spec.count.optional);
 });
 
-test('เลขนำหน้าหมวดมาจากลำดับใน PDR_SECTIONS — บรีฟกลิ่นไม่มีเลข', () => {
-  const rail = pdrRailSectionsFromRequest({}, [], []);
+test('⭐ เลขหมวดบนราง = เลขบนกระดาษ ไม่ใช่ลำดับในราง', () => {
+  // 🐞 เดิมนับ index+1 ⇒ "3 ข้อกำหนดผลิตภัณฑ์" แต่ข้อย่อยข้างในเป็น 2.x — ผู้ใช้ถามเอง
+  //    ว่าทำไม (2026-09-11) · หมวดที่กระดาษไม่มีเลข (ข้อมูลคำขอ/เอกสาร/ผู้เซ็น) ต้องไม่มีเลข
+  const rail = pdrRailSectionsFromRequest({ kind: 'scent_dev' }, [], []);
   assert.deepEqual(rail.map((s) => s.key), [
     'request', 'customer', 'briefs', 'spec', 'regulatory', 'signers',
   ]);
-  assert.equal(rail[0].label, `1 ${PDR_SECTIONS[0].title}`);
-  assert.equal(rail[2].label, 'บรีฟกลิ่น');
-  assert.equal(rail[5].label, `5 ${PDR_SECTIONS[4].title}`);
+  const byKey = Object.fromEntries(rail.map((s) => [s.key, s.label]));
+  assert.equal(byKey.request, PDR_SECTIONS.find((s) => s.key === 'request').title);
+  assert.equal(byKey.customer, '1 ข้อมูลลูกค้า/แบรนด์');
+  assert.equal(byKey.briefs, '2.1 บรีฟกลิ่น');
+  assert.equal(byKey.spec, '2 ข้อกำหนดผลิตภัณฑ์');
+  assert.ok(!/^\d/.test(byKey.regulatory) && !/^\d/.test(byKey.signers));
 });
 
 /* ── ช่องผู้เซ็นผูกกับตำแหน่งในระบบ (มติผู้ใช้ 2026-09-01) ──────────────────
@@ -642,4 +674,35 @@ test('PDR_SIGNER_FIELDS = ช่องของหมวด signers ตัวเ
     // ทุกช่องต้องอยู่ใน PDR_COLUMNS ด้วย ไม่งั้นด่าน "คอลัมน์หลุดจากจอ" มองไม่เห็น
     assert.ok(PDR_COLUMNS.includes(f.column), `${f.key}: ไม่อยู่ใน PDR_COLUMNS`);
   }
+});
+
+test('ช่องที่ระบบเติมบอกที่มาตามรูปทรงของใบ — ใบที่ผูกแค่ดีลต้องไม่อ้าง "SO" ที่ไม่มี', () => {
+  const customer = PDR_SECTIONS.find((s) => s.key === 'customer');
+  const sources = (request) => Object.fromEntries(
+    pdrSectionRows(customer, request, { includeEmpty: true, withSource: true })
+      .map(([label, , from]) => [label, from]),
+  );
+  const npd = sources({ kind: 'formula_dev', variant: 'npd' });
+  assert.equal(npd['ดีล'], 'เติมจากดีล');
+  assert.equal(npd['ชื่อบริษัท'], 'เติมจากดีล');
+  assert.equal(npd['จำนวนกลิ่นที่ต้องการพัฒนา'], 'นับกลิ่นไม่ซ้ำจากแถวสินค้าในหมวด 2');
+  const scent = sources({ kind: 'scent_dev' });
+  assert.equal(scent['ดีล'], 'เติมจาก SO');
+  assert.equal(scent['จำนวนกลิ่นที่ต้องการพัฒนา'], 'เติมจากใบสั่งขาย');
+});
+
+test('⭐ 1.12 ของใบ NPD นับกลิ่นไม่ซ้ำจากแถวสินค้า — ไม่ใช่จาก SO ว่างที่ findRequest ส่งมาเป็น []', () => {
+  // 🐞 findRequest ส่ง `salesOrderLines = []` (ไม่ใช่ null) ให้ใบที่ไม่มี SO ⇒ ถ้าเช็คแค่ความจริง
+  //    ของอาเรย์ จะนับ SO ว่างได้ 0 แล้ว 1.12 ของ NPD ขึ้นว่างทุกใบ
+  const ctx = pdrContext({
+    request: { kind: 'formula_dev', variant: 'npd' },
+    salesOrderLines: [],
+    targets: [{ scentId: 'A' }, { scentId: 'B' }, { scentId: 'A' }],
+  });
+  assert.equal(ctx.scentCount, 2);
+  const address = pdrContext({
+    customer: { addresses: [{ id: 'A1', address: '99/1 ถ.รัชดาภิเษก', useFor: 'both', isPrimary: true }] },
+  });
+  assert.match(address.customerAddress, /99\/1 ถ\.รัชดาภิเษก/);
+  assert.equal(pdrContext({ customer: { name: 'ไม่มีที่อยู่' } }).customerAddress, null);
 });

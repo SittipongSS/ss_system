@@ -17,7 +17,9 @@ const TEXT_LIMITS = Object.fromEntries(
 );
 
 // ช่องติ๊กหลายตัว — เก็บเป็น text[] ตามแพตเทิร์นของ dept_request_scents (0213)
-const MAX_ITEMS = { pdrPackagingForms: 10, pdrDocuments: 20, pdrProductKinds: 20 };
+// ⚠️ ทุกคอลัมน์ text[] ของทะเบียนต้องมีเพดานที่นี่ — ไม่มีแล้ว `list.length > undefined`
+//    เป็น false เสมอ = ไม่มีเพดานเลยเงียบ ๆ (เทสต์ตรวจให้ครบทุกช่อง)
+export const MAX_ITEMS = { pdrPackagingForms: 10, pdrDocuments: 20, pdrProductKinds: 20, pdrArchetypes: 12 };
 
 const AMOUNTS = ['pdrProjectValue', 'pdrTargetCost', 'pdrTargetPrice'];
 const DATES = ['pdrWantedAt', 'pdrSellFrom'];
@@ -51,6 +53,18 @@ export function normalizePdr(input) {
 
   for (const [field, column] of Object.entries(FIELD_TO_COLUMN)) {
     const value = raw[field];
+
+    /* ⭐ สวิตช์ (1.7.1 "ส่งตัวอย่างไปที่อยู่เดียวกับลูกค้า") — สามสถานะ
+       true | false | NULL (ยังไม่ตอบ) · รับได้ทั้ง boolean และสตริงของฟอร์ม
+       ⚠️ ค่าอื่นเป็น NULL ไม่ใช่ false — "ไม่รู้" ต้องไม่กลายเป็น "ตอบว่าไม่" เงียบ ๆ */
+    if (FIELD_TYPE[field] === 'switch') {
+      columns[column] = value === true || value === 'true' ? true
+        : value === false || value === 'false' ? false : null;
+      continue;
+    }
+
+    // ข้อความเขียนต่อของช่องติ๊ก — ตรวจหลังลูป เพราะต้องรู้ว่าติ๊กตัวไหนไว้
+    if (FIELD_TYPE[field] === 'notes') continue;
 
     // ⚠️ ช่องติ๊กหลายตัว — **ไม่ตรวจว่าค่าอยู่ในชุดตัวเลือกไหม** ตามแพตเทิร์นของ
     // 0213: ชุดตัวเลือกอยู่ฝั่งโค้ดและยังเปลี่ยนได้ · ที่ตรวจคือรูปแบบและจำนวน
@@ -100,6 +114,36 @@ export function normalizePdr(input) {
       };
     }
     columns[column] = text || null;
+  }
+
+  /* ⭐ ข้อความเขียนต่อ (1.15 Archetype) — `{ key: ข้อความ }` · เก็บเฉพาะตัวที่**ยังติ๊กอยู่**
+     ⚠️ ติ๊กออกแล้วข้อความต้องหายตาม — ไม่งั้นติ๊กกลับวันหลังจะได้ข้อความเก่าที่ไม่มีใครเห็น
+     ว่ายังค้างอยู่ (แพตเทิร์นเดียวกับ scentotypeNotes ของบรีฟ · `normalizeScentBriefs`) */
+  for (const field of PDR_FIELDS.filter((f) => f.type === 'notes' && f.column)) {
+    const ticked = new Set(columns[FIELD_TO_COLUMN[field.of]] || []);
+    const input = raw[field.key] && typeof raw[field.key] === 'object' && !Array.isArray(raw[field.key])
+      ? raw[field.key] : {};
+    const kept = {};
+    for (const [key, v] of Object.entries(input)) {
+      if (!ticked.has(key)) continue;
+      const text = String(v ?? '').trim();
+      if (!text) continue;
+      if (text.length > field.max) {
+        return {
+          columns: {},
+          error: `${at(field.key)} ยาวเกิน ${field.max} ตัวอักษร (พิมพ์มา ${text.length})`,
+        };
+      }
+      kept[key] = text;
+    }
+    columns[field.column] = kept;
+  }
+
+  /* ⭐ 1.7.1 — เปิดสวิตช์ "ส่งไปที่อยู่เดียวกับลูกค้า" = ไม่มีที่อยู่จัดส่งของตัวเอง
+     ⚠️ ล้างข้อความทิ้ง ไม่ใช่เก็บไว้เงียบ ๆ — ไม่งั้นปิดสวิตช์วันหลังจะเจอที่อยู่เก่า
+     โผล่กลับมาเหมือนเพิ่งพิมพ์ และเอกสาร/เธรดจะพิมพ์คนละที่อยู่กับที่จอบอก */
+  for (const field of PDR_FIELDS.filter((f) => f.hideWhenOn && f.column)) {
+    if (columns[FIELD_TO_COLUMN[field.hideWhenOn]] === true) columns[field.column] = null;
   }
   return { columns, error: null };
 }

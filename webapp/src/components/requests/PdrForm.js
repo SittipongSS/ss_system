@@ -27,15 +27,21 @@ import { categoryLabel } from "@/lib/master/categoryOf";
 import { fmtNumber } from "@/lib/format";
 import EmptyState from "@/components/ui/EmptyState";
 import EditableLineList from "@/components/ui/EditableLineList";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
-  PDR_TARGET_KINDS, emptyPdrTarget, pdrTargetFilled,
+  PDR_TARGET_KINDS, PDR_TARGET_LABELS, PDR_TARGET_SPEC, emptyPdrTarget, pdrTargetFilled,
+  pdrTargetSpecText,
 } from "@/lib/requests/pdrTargets";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
-import { briefHasContent, briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
+import { isScentUsable } from "@/lib/master/scents";
+import { unitOptions } from "@/lib/master/units";
 import {
-  PDR_ARTWORK, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
-  PDR_REQUEST_TYPES, PDR_SECTIONS, PDR_TEXTURES, pdrFieldVisible, pdrFormProgress,
+  BRAND_ARCHETYPES, SCENTOTYPES, SCENT_PERFORMANCE,
+} from "@/lib/requests/kinds/rd/scentBriefTypes";
+import { BRIEF_LIMITS, briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
+import {
+  PDR_BRIEF_LABELS, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
+  PDR_REQUEST_TYPES, PDR_SECTIONS, pdrFieldVisible, pdrFormProgress,
 } from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
 
@@ -60,10 +66,22 @@ const cap = (key) => FIELD[key]?.max;
 
 const withBlank = (options) => [{ value: "", label: "— เลือก —" }, ...options];
 
+/* ⭐ **เลขข้อบนกระดาษนำหน้าป้าย** (มติผู้ใช้ 2026-09-11: "เพิ่มเลขข้อด้วย") — AE กรอก
+   โดยวางกระดาษ FM-RD-01 ไว้ข้าง ๆ · เลขมาจากทะเบียน (`no`) ที่เดียวกับที่เอกสารพิมพ์
+   ⚠️ เป็น `<span>` ในป้าย ไม่ใช่ข้อความต่อหน้า — ชื่อที่โปรแกรมอ่านจอได้ = "1.4 ชื่อแบรนด์"
+   ซึ่งตรงกับที่ตาเห็น แต่สีแยกให้กวาดตาหาเลขได้ */
+function No({ no }) {
+  return no ? <span className={styles.pdrNo}>{no}</span> : null;
+}
+const numbered = (key, text = label(key)) => <><No no={FIELD[key]?.no} />{text}</>;
+// หัวส่วนบนราง = เลขหมวดบนกระดาษ + ชื่อ (หมวดที่กระดาษไม่มีเลขก็ไม่มีเลข)
+const sectionTitle = (key) => [SECTION[key].paperNo, SECTION[key].title].filter(Boolean).join(" ");
+
+
 // ⭐ ติ๊กได้หลายอัน — chip ที่กดสลับได้ ชุดเดียวกับ Scentotype/Performance ในบรีฟ
 // ⚠️ **ไม่ติ๊กไว้ล่วงหน้า** (มติผู้ใช้เรื่องหมวดเอกสาร) — ค่าเริ่มต้นที่ติ๊กไว้ให้
 // แปลว่าไม่มีใครตัดสินใจ แล้วเสียงลืมติ๊กของที่ควรมีจริงจะกลืนหายไปกับค่าเริ่มต้น
-function ChipPicker({ label, options, value, onChange, disabled, hint }) {
+function ChipPicker({ label, options, value, onChange, disabled, hint, children = null }) {
   const list = Array.isArray(value) ? value : [];
   const toggle = (v) => onChange(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   return (
@@ -84,16 +102,41 @@ function ChipPicker({ label, options, value, onChange, disabled, hint }) {
         })}
       </div>
       {hint && <small className={styles.hint}>{hint}</small>}
+      {children}
+    </div>
+  );
+}
+
+/* สวิตช์ "ข้อนี้เกี่ยวไหม" ของแบบฟอร์ม — ทรงเดียวทุกที่ (1.7.1 · 1.10 · 2.2 F/FB · 2.8 ภาพประกอบ · 2.9)
+   ⚠️ ยกเป็นตัวเดียว (2026-09-11) — เดิมเขียนแถว `ui-switch` ซ้ำ 4 ที่ด้วยระยะ Tailwind ดิบ
+   (`gap-[14px]`) ซึ่ง `audit:ui` นับเป็นหนี้ · เพิ่มสวิตช์ใหม่ = เรียกตัวนี้ ไม่ใช่ก๊อปแถว */
+function SwitchRow({ on, onToggle, disabled, children }) {
+  return (
+    <div className={styles.switchRow}>
+      <button
+        type="button" className="ui-switch" disabled={disabled}
+        data-on={on ? "1" : undefined} aria-pressed={on}
+        onClick={onToggle}
+      >
+        <i aria-hidden="true" />{children}
+      </button>
     </div>
   );
 }
 
 // ช่องที่ระบบเติมให้ — เส้นประ อ่านอย่างเดียว (แพตเทิร์นเดียวกับ "เติมจาก SO")
-function Derived({ label, value, from, wide = false }) {
+// `long` = ข้อความหลายบรรทัด (ที่อยู่) — ชิดบนและตัดบรรทัดตามข้อความ ไม่ใช่กลางกล่อง
+function Derived({ label, value, from, wide = false, long = false, note = null }) {
   return (
     <div className={wide ? "form-group col-span-2" : "form-group"}>
       <span className={styles.fieldLabel}>{label}</span>
-      <div className={styles.derived} data-empty={value ? undefined : "1"}>{value || from}</div>
+      <div
+        className={long ? `${styles.derived} ${styles.derivedLong}` : styles.derived}
+        data-empty={value ? undefined : "1"}
+      >
+        {value || from}
+      </div>
+      {note && <small className={styles.hint}>{note}</small>}
     </div>
   );
 }
@@ -141,22 +184,16 @@ function Section({ title, note, children, open = false, progress = null, flat = 
 // เหตุ-ผลชัดกว่ากล่องติ๊กเล็ก ๆ
 // ⚠️ ค่าที่เก็บยังเป็น string เหมือนเดิม (" " = เปิดแต่ยังไม่พิมพ์) — เอกสารกับจอสรุป
 // อ่านค่าเดิมอยู่ ห้ามเปลี่ยนเป็น boolean
+// ⭐ **ช่องยาว ไม่ใช่บรรทัดเดียว** (มติผู้ใช้ 2026-09-11 · ข้อ 1.10 และ 2.9) — เพดาน
+// 500/2000 ตัวอักษรในกล่องบรรทัดเดียวคือพิมพ์แล้วอ่านย้อนไม่ได้ (กติกา "ช่องยาวทรงเดียว")
 function TickAndWrite({ label, value, onChange, disabled, max }) {
   const on = value != null && value !== "";
   return (
     <div className="form-group">
-      <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
-        <button
-          type="button" className="ui-switch" disabled={disabled}
-          data-on={on ? "1" : undefined} aria-pressed={on}
-          onClick={() => onChange(on ? "" : " ")}
-        >
-          <i aria-hidden="true" />{label}
-        </button>
-      </div>
+      <SwitchRow on={on} disabled={disabled} onToggle={() => onChange(on ? "" : " ")}>{label}</SwitchRow>
       {on && (
-        <Input
-          value={value.trim()} disabled={disabled} aria-label={label} maxLength={max}
+        <Textarea
+          rows={3} value={value.trim()} disabled={disabled} aria-label={label} maxLength={max}
           onChange={(e) => onChange(e.target.value || " ")}
         />
       )}
@@ -164,19 +201,26 @@ function TickAndWrite({ label, value, onChange, disabled, max }) {
   );
 }
 
-/* ── ข้อ 2.2 + 2.3 · ต้นทุนและราคาขายเป้าหมาย "รายสินค้า" (mig 0229) ──────
+/* ── ข้อ 2.1–2.7 "รายสินค้า" (mig 0229 · 0352) ─────────────────────────────
  *
- * ⭐ **ตารางเดียวจบทั้งสองข้อ** (มติผู้ใช้ 2026-08-10) — เดิมเป็นช่องเงินสองช่อง
- * ตัวเลขเดียวทั้งใบ ⇒ ใบที่ขอ Room Spray + Reed Diffuser + Sachet พร้อมกันกรอกได้
- * แค่ราคาเดียว · ตอนนี้หนึ่งแถว = สินค้าหนึ่งตัว ถือทั้งต้นทุน F/FB ต่อกิโล และ
- * ราคาขายต่อชิ้น ⇒ เปิดสินค้าตัวไหนก็คิดกำไรของตัวนั้นได้ในที่เดียว
- * (เอกสาร FM-RD-01 ยังพิมพ์แยก 2.2/2.3 ตามกระดาษ — คนละเรื่องกับตอนกรอก)
+ * ⭐ **หนึ่งแถว = สินค้าหนึ่งตัว ถือทุกข้อที่เป็นสเปกของสินค้าตัวนั้น** — เดิมแถวถือแค่
+ * ต้นทุน F/FB (2.2) กับราคาขาย (2.3) ส่วน MOQ · เนื้อ · สี · ขนาด/จำนวน เป็นช่องระดับใบ
+ * ⇒ ขอสองหมวดในใบเดียวแล้วระบบไม่รู้ว่าขนาดไหนเป็นของสินค้าไหน (มติผู้ใช้ 2026-09-11:
+ * *"MOQ / ลักษณะเนื้อ / สีเนื้อ / หมายเหตุ ควรไปอยู่รายสินค้าที่ขอพัฒนา"*)
+ * ⭐ **ข้อ 2.1 กลิ่นจากทะเบียน** — เฉพาะใบที่เลือกกลิ่นรายแถว (พัฒนาสูตร NPD · ม-40:
+ * สูตรทำจากกลิ่นที่มีอยู่ กลิ่นใหม่เกิดที่พัฒนากลิ่นเท่านั้น) · ร่างเว้นว่างได้ บังคับตอนส่ง
  *
  * ⚠️ **หมวดมาจากข้อ 1.11 ของใบเดียวกัน** ไม่ใช่ทะเบียนทั้งหมด — ใบประกาศไว้แล้วว่า
- * ขอพัฒนาหมวดอะไร · เลือกนอกนั้นได้เมื่อไร 1.11 กับ 2.2 จะขัดกันเองเงียบ ๆ
+ * ขอพัฒนาหมวดอะไร · เลือกนอกนั้นได้เมื่อไร 1.11 กับ 2.x จะขัดกันเองเงียบ ๆ
+ * (มติผู้ใช้: *"1.11 ควรก่อน 2.2 เพราะพัฒนากลิ่นเป็นแบบนั้น"*)
  * ⚠️ **เลือกซ้ำหมวดได้** — Room Spray 50ml กับ 100ml คนละต้นทุน (มติผู้ใช้)
+ * ⚠️ ป้าย/เลขข้อ/เพดานทุกข้ออ่านจาก `PDR_TARGET_SPEC` / `PDR_TARGET_LABELS` —
+ * จอสรุปกับเอกสารอ่านชุดเดียวกัน
  */
-function PdrTargetList({ targets, onChange, productKinds, categories, disabled }) {
+function PdrTargetList({
+  targets, onChange, productKinds, categories, disabled,
+  pickScent = false, scents = [], customerId = null,
+}) {
   const rows = Array.isArray(targets) ? targets : [];
   const kinds = Array.isArray(productKinds) ? productKinds : [];
   const [pick, setPick] = useState("");
@@ -189,8 +233,49 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
     onChange([...rows, emptyPdrTarget(pick)]);
     setActive(rows.length);
   };
+  /* ⚠️ กลิ่นข้ามลูกค้าไม่ได้ (มติ 9) และกลิ่นร่าง/เลิกใช้ทำสูตรไม่ได้ — กรองที่ต้นทาง
+     (ตัวกรองเดียวกับตารางพัฒนาสูตร standard · `ProductDevLines`) · server ตรวจซ้ำด้วย
+     `pdrTargetScentError` เพราะตัวกรองบนจอไม่กันคนยิง API ตรง */
+  const scentOptions = pickScent ? scents
+    .filter((x) => isScentUsable(x) && (!customerId || x.customerId === customerId))
+    .map((x) => ({
+      value: x.id,
+      label: `${x.code ? `${x.code} · ` : ""}${x.name}`,
+      search: [x.code, x.name, x.customerTradeName].filter(Boolean).join(" "),
+    })) : [];
+  const scentText = (id) => {
+    if (!id) return "";
+    const x = scents.find((sc) => sc.id === id);
+    return x ? [x.code, x.name].filter(Boolean).join(" ") : "";
+  };
+  const size = PDR_TARGET_SPEC.find((f) => f.key === "size");
+  const qty = PDR_TARGET_SPEC.find((f) => f.key === "qty");
+  const specOf = (key) => PDR_TARGET_SPEC.find((f) => f.key === key);
 
   const row = rows[active];
+  // ช่องตัวเลข + หน่วย (2.4 · 2.7.1 · 2.7.2) — ตัวเลขกับหน่วยอยู่แถวเดียวกันเสมอ
+  const amountField = (f) => (
+    <div className="form-group" key={f.key}>
+      <label htmlFor={`pdr-target-${f.key}`}><No no={f.no} />{f.label}</label>
+      <div className={styles.amountPair}>
+        {/* ตัวเลขชิดขวาเหมือนช่องเงินข้าง ๆ (`numeric-input`) — คอลัมน์ตัวเลขอ่านเทียบกันได้ */}
+        <Input
+          id={`pdr-target-${f.key}`} type="number" inputMode="decimal" min="0" step="any" mono
+          className="numeric-input"
+          value={row[f.valueField] ?? ""} disabled={disabled}
+          onChange={(e) => patch(active, { [f.valueField]: e.target.value })}
+        />
+        {/* ⚠️ `unitOptions` พ่วงหน่วยเดิมที่หลุดลิสต์ไว้ — ไม่งั้นช่องเด้งเป็นค่าแรกเงียบ ๆ */}
+        <Select
+          value={row[f.unitField] || f.defaultUnit} disabled={disabled}
+          aria-label={`หน่วยของ${f.label}`}
+          onChange={(e) => patch(active, { [f.unitField]: e.target.value })}
+          options={unitOptions(f.units, row[f.unitField])}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className="form-group col-span-2">
       <span className={styles.fieldLabel}>{label("targets")}</span>
@@ -223,21 +308,20 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
         )}
         renderSummary={(i) => {
           const r = rows[i];
-          // ⚠️ ตัวเลขบนแถวยุบต้องจัดรูปแบบเหมือนในช่องกรอก — ช่องโชว์ "1,200.00"
-          // แต่แถวยุบเคยโชว์ "1200" ดิบ ๆ อ่านเหมือนคนละค่ากัน (`fmtNumber` ของกลาง)
-          const baht = (v) => (v === "" || v == null ? null : fmtNumber(v));
-          const bits = [];
-          for (const kind of PDR_TARGET_KINDS) {
-            if (!r[kind.onField]) continue;
-            const price = baht(r[kind.priceField]);
-            bits.push(`${kind.label}${price ? ` ${price} บาท/Kg` : ""}`);
-          }
-          if (baht(r.pricePerUnit)) bits.push(`ขาย ${baht(r.pricePerUnit)} บาท/ชิ้น`);
+          /* ⭐ แถวยุบบอก "สินค้าตัวไหน" ให้แยกออกจากกันได้ — หมวด + ขนาด ในบรรทัดหลัก
+             (หมวดซ้ำได้ ⇒ ขนาดคือตัวที่ทำให้สองแถวต่างกัน) · จำนวน · กลิ่น · ราคา ในบรรทัดรอง
+             ⚠️ ตัวเลขผ่านตัวจัดรูปแบบกลาง — แถวยุบเคยโชว์ "1200" ดิบ ๆ ข้างช่องที่โชว์ "1,200.00" */
+          const sizeText = pdrTargetSpecText(size, r);
+          const bits = [
+            pdrTargetSpecText(qty, r),
+            pickScent ? scentText(r.scentId) || "ยังไม่เลือกกลิ่น" : "",
+            r.pricePerUnit !== "" && r.pricePerUnit != null ? `ขาย ${fmtNumber(r.pricePerUnit)} บาท/ชิ้น` : "",
+          ].filter(Boolean);
           return (
             <>
               <span className="line-summary-dot" data-ok={pdrTargetFilled(r) ? "1" : undefined} />
-              <span className="line-summary-main">{nameOf(r.categoryCode)}</span>
-              <span className="line-summary-sub">{bits.join(" · ") || "ยังไม่กรอกราคา"}</span>
+              <span className="line-summary-main">{[nameOf(r.categoryCode), sizeText].filter(Boolean).join(" · ")}</span>
+              <span className="line-summary-sub">{bits.join(" · ") || "ยังไม่กรอก"}</span>
             </>
           );
         }}
@@ -255,28 +339,50 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
                 }}
               />
             </div>
+            {/* ⭐ 2.1 กลิ่นจากทะเบียน — ขึ้นก่อนต้นทุน เพราะต้นทุนหัวน้ำหอมขึ้นกับกลิ่น */}
+            {pickScent && (
+              <div className="form-group">
+                {/* ⚠️ ป้ายเป็น span — `SearchableSelect` ไม่รับ `id` ⇒ `<label htmlFor>` จะชี้ไม่ถึง
+                    ชื่อที่โปรแกรมอ่านจอได้มาจาก `ariaLabel` แทน */}
+                <span className={styles.fieldLabel}>
+                  <No no={PDR_TARGET_LABELS.scent.no} />{PDR_TARGET_LABELS.scent.label} <b>*</b>
+                </span>
+                <SearchableSelect
+                  value={row.scentId || ""} disabled={disabled}
+                  onChange={(v) => patch(active, { scentId: v || "" })}
+                  options={scentOptions}
+                  placeholder="เลือกกลิ่นจากทะเบียน"
+                  ariaLabel={`${PDR_TARGET_LABELS.scent.label} — ${nameOf(row.categoryCode)}`}
+                  emptyText={customerId
+                    ? "ลูกค้ารายนี้ยังไม่มีกลิ่นที่ใช้ได้ — ต้องผ่านคำร้องพัฒนากลิ่นก่อน"
+                    : "เลือกดีลก่อน แล้วจะเห็นกลิ่นของลูกค้ารายนั้น"}
+                />
+                {/* ⚠️ บังคับตอนกดส่ง ไม่ใช่ตอนบันทึกร่าง (มติผู้ใช้ 2026-09-11) — ด่านจริง
+                    อยู่ที่ `pdrTargetsSubmitError` ตัวเดียวกับที่ server ใช้ */}
+                <small className={styles.hint}>
+                  เฉพาะกลิ่นของลูกค้าเจ้าของดีลที่พร้อมใช้ · บังคับก่อนกดส่ง · กลิ่นใหม่ต้องเปิดคำร้องพัฒนากลิ่นก่อน
+                </small>
+              </div>
+            )}
+            <span className={styles.fieldLabel}>
+              <No no={PDR_TARGET_LABELS.cost.no} />{PDR_TARGET_LABELS.cost.label}
+            </span>
             {/* สวิตช์ F/FB — เปิดแล้วค่อยงอกช่องรายละเอียดกับราคา (ท่าเดียวกับ
                 `TickAndWrite` ของข้อ 1.10/2.9) · เปิดพร้อมกันทั้งคู่ได้ */}
             {PDR_TARGET_KINDS.map((kind) => {
               const on = !!row[kind.onField];
               return (
                 <div className="form-group" key={kind.key}>
-                  <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
-                    <button
-                      type="button" className="ui-switch" disabled={disabled}
-                      data-on={on ? "1" : undefined} aria-pressed={on}
-                      onClick={() => patch(active, { [kind.onField]: !on })}
-                    >
-                      <i aria-hidden="true" />{kind.label}
-                    </button>
-                  </div>
+                  <SwitchRow on={on} disabled={disabled} onToggle={() => patch(active, { [kind.onField]: !on })}>
+                    {kind.label}
+                  </SwitchRow>
                   {on && (
                     <div className="form-grid cols-2">
                       <div className="form-group">
                         <label htmlFor={`pdr-target-note-${kind.key}`}>รายละเอียด</label>
                         <Input
                           id={`pdr-target-note-${kind.key}`} value={row[kind.noteField] || ""}
-                          disabled={disabled}
+                          disabled={disabled} maxLength={200}
                           onChange={(e) => patch(active, { [kind.noteField]: e.target.value })}
                         />
                       </div>
@@ -296,11 +402,42 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
             {/* ⭐ ข้อ 2.3 — **ราคาต่อแถว ไม่ใช่ต่อ F/FB** (มติผู้ใช้): ชิ้นที่ขายมีชิ้นเดียว
                 ไม่ได้แยกตามว่าข้างในเป็นหัวน้ำหอมหรือเนื้อสาร */}
             <div className="form-group">
-              <label htmlFor="pdr-target-unit">ราคาขาย (บาท/ชิ้น) — ข้อ 2.3</label>
+              <label htmlFor="pdr-target-unit"><No no={PDR_TARGET_LABELS.price.no} />{PDR_TARGET_LABELS.price.label}</label>
               <MoneyInput
                 id="pdr-target-unit" value={row.pricePerUnit} disabled={disabled}
                 onChange={(v) => patch(active, { pricePerUnit: v ?? "" })}
               />
+            </div>
+            {/* ⭐ 2.4–2.7 รายสินค้า (mig 0352) — ตัวเลข + หน่วย เทียบ/นับได้ ไม่ใช่ข้อความอิสระ */}
+            <div className="form-grid cols-2">
+              {amountField(specOf("moq"))}
+              <div className="form-group">
+                <label htmlFor="pdr-target-texture"><No no={specOf("texture").no} />{specOf("texture").label}</label>
+                <Select
+                  id="pdr-target-texture" value={row.texture || ""} disabled={disabled}
+                  onChange={(e) => patch(active, { texture: e.target.value })}
+                  options={withBlank(specOf("texture").options)}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="pdr-target-color"><No no={specOf("color").no} />{specOf("color").label}</label>
+                <Input
+                  id="pdr-target-color" value={row.color || ""} disabled={disabled}
+                  maxLength={specOf("color").max}
+                  onChange={(e) => patch(active, { color: e.target.value })}
+                />
+              </div>
+              <div className="form-group" aria-hidden="true" />
+              {amountField(size)}
+              {amountField(qty)}
+              <div className="form-group col-span-2">
+                <label htmlFor="pdr-target-note"><No no={specOf("note").no} />{specOf("note").label}</label>
+                <Textarea
+                  id="pdr-target-note" rows={3} value={row.note || ""} disabled={disabled}
+                  maxLength={specOf("note").max}
+                  onChange={(e) => patch(active, { note: e.target.value })}
+                />
+              </div>
             </div>
           </>
         )}
@@ -342,13 +479,23 @@ export default function PdrForm({
      ⚠️ ไม่ส่งมา = ช่องยังพิมพ์เองได้เหมือนเดิมทุกประการ — คนที่ไม่มีสิทธิ์เรียก API
      รายชื่อ (ไม่มี `pm:view`) ต้องกรอกฟอร์มได้ปกติ ไม่ใช่เจอช่องที่ใช้ไม่ได้ */
   people = [],
+  /* ⭐ **กลิ่นของใบมาจากไหน** — ค่าจากทะเบียนหัวข้อ (`requestPdrScentSource`) ที่ผู้เรียก
+     ถามด้วยทั้งใบ · 'briefs' = บรีฟรายกลิ่น (พัฒนากลิ่น) · 'registry' = เลือกจากทะเบียน
+     รายแถวสินค้า (พัฒนาสูตร NPD · มติผู้ใช้ 2026-09-11) · ฟอร์มไม่รู้จักชื่อหัวข้อ */
+  scentSource = null,
+  // ทะเบียนกลิ่น + ลูกค้าเจ้าของใบ — ใช้เฉพาะ `scentSource === 'registry'` (ข้อ 2.1)
+  scents = [], customerId = null,
 }) {
   // ⚠️ อ่านจาก `context` ก้อนเดียว — ชื่อคีย์ตรงกับที่ `pdrContext()` คืนมาเป๊ะ
   // ห้ามรับเป็นพร็อพแยกอีก (ดูเหตุผลที่หัวพร็อพ)
   const {
     scentCount = null, customer = null, deal = null, requester = null,
-    coordinator = null, contactName = null, contactPhone = null,
+    coordinator = null, contactName = null, contactPhone = null, customerAddress = null,
   } = context;
+  const usesBriefs = scentSource === "briefs";
+  const pickScent = scentSource === "registry";
+  // ที่มาของช่องเส้นประ — ใบที่ผูกแค่ดีลไม่มี SO ให้ "เติมจาก" (ตัวเดียวกับ `pdrFieldFrom` ของจอสรุป)
+  const fromOf = (key) => (pickScent && FIELD[key].fromDealOnly) || FIELD[key].from;
   const rail = section != null;
   // ตัวที่เลือกค้างไว้ก่อนกด "เพิ่ม" — ยังไม่ใช่ข้อมูลของใบ (ท่าเดียวกับ FG)
   const [kindPick, setKindPick] = useState("");
@@ -358,26 +505,22 @@ export default function PdrForm({
   // เป็น **เพดาน** ไม่ใช่จำนวนที่ต้องเท่ากัน
   const merged = scentCount != null && scentCount > 1 && briefs.length === 1;
   const canMerge = scentCount != null && scentCount > 1;
-  /* ⭐ **ใบที่ไม่มีใบสั่งขายกำหนดจำนวนกลิ่น** (พัฒนาสูตรรูปแบบ NPD · 2026-09-09) —
-     จำนวนบล็อกบรีฟของบรีฟกลิ่นมาจากจำนวนกลิ่นที่ขายใน SO เสมอ ⇒ หัวข้อที่ผูกแค่
-     ดีลจะได้ส่วนนี้ว่างถาวรและไม่มีทางกรอก · โหมดนี้ให้ **เพิ่ม/ลบเอง**
-     ⚠️ ต่ำสุด 1 ก้อน — ด่านฝั่ง API (`normalizeScentBriefs`) ตีกลับใบที่ไม่มีบรีฟเลย
-     ⇒ ปล่อยให้ลบก้อนสุดท้ายได้ = ฟอร์มพาไปตกด่านที่ตัวเองมองไม่เห็น */
-  const freeBlocks = scentCount == null;
-  const addBrief = () => onBriefsChange([...briefs, { label: "" }]);
-  const removeBrief = async (i) => {
-    if (briefs.length <= 1) return;
-    if (briefHasContent(briefs[i] || {})) {
-      const ok = await confirmAction({
-        title: "ลบบล็อกบรีฟ",
-        description: `บรีฟก้อนที่ ${i + 1} ที่กรอกไว้จะถูกลบ — ยืนยันไหม`,
-        confirmLabel: "ลบก้อนนี้",
-        tone: "danger",
-      });
-      if (!ok) return;
-    }
-    onBriefsChange(briefs.filter((_, j) => j !== i));
-  };
+  /* ⚠️ **ไม่มีโหมด "เพิ่ม/ลบบล็อกบรีฟเอง" แล้ว** — รอบแรกของงาน NPD (ม-141) ให้ใบที่ไม่มี
+     SO เพิ่มบรีฟเองได้ · มติผู้ใช้ 2026-09-11 ถอดบรีฟออกจาก NPD ทั้งหมด (กลิ่นมาจาก
+     ทะเบียนรายแถวสินค้า) ⇒ บรีฟเหลือเฉพาะพัฒนากลิ่น ซึ่งจำนวนก้อนมาจาก SO เสมอ */
+  const archetypes = Array.isArray(value.archetypes) ? value.archetypes : [];
+  const archetypeNotes = value.archetypeNotes && typeof value.archetypeNotes === "object"
+    ? value.archetypeNotes : {};
+  /* ข้อ 2.4–2.7 แบบเดิมทั้งใบ (ก่อน mig 0352) — ฟอร์มไม่เขียนแล้ว แต่ใบเก่าที่มีค่าต้อง
+     **เห็นว่ามี** ตอนแก้ ไม่ใช่หายไปเงียบ ๆ (ค่ายังเดินทางกลับไปกับ `value` ตอนบันทึก) */
+  const legacySpec = ["moq", "texture", "color", "packSize"]
+    .map((key) => {
+      const raw = String(value[key] ?? "").trim();
+      if (!raw) return null;
+      const text = FIELD[key].options?.find((o) => o.value === raw)?.label || raw;
+      return `${FIELD[key].no} ${FIELD[key].label.replace(/\s*\(บันทึกไว้เดิม\)$/, "")}: ${text}`;
+    })
+    .filter(Boolean);
   // ⚠️ **สลับโหมดต้องไม่ทิ้งของที่พิมพ์ไปแล้ว** (มติผู้ใช้ 2026-08-08) — ของเดิมล้าง
   // ทุกก้อนทุกครั้ง แม้แต่ตอนแยก 1 → N ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย
   // · รวบแล้วก้อนที่มีเนื้อจะหายจริง ⇒ **ถามก่อน** ด้วยโมดัลของบ้าน ไม่ใช่ `confirm()`
@@ -420,7 +563,7 @@ export default function PdrForm({
 
       {show("request") && (
 
-      <Section flat={rail} title={SECTION.request.title} open note={SECTION.request.note} progress={pdrFormProgress(SECTION.request, value)}>
+      <Section flat={rail} title={sectionTitle("request")} open note={SECTION.request.note} progress={pdrFormProgress(SECTION.request, value)}>
         <div className="form-grid cols-2">
           {/* ⚠️ **ไม่มีแถว "วันที่ร้องขอ" ที่ฟอร์มกรอก** (มติผู้ใช้ 2026-08-09) — ระบบ
               ออกให้เองตอนกดส่ง (`submittedAt`) คนกรอกทำอะไรกับมันไม่ได้ ⇒ วางไว้ก็เป็น
@@ -456,15 +599,15 @@ export default function PdrForm({
 
       {show("customer") && (
 
-      <Section flat={rail} title={SECTION.customer.title} progress={pdrFormProgress(SECTION.customer, value)}>
+      <Section flat={rail} title={sectionTitle("customer")} progress={pdrFormProgress(SECTION.customer, value)}>
         <div className="form-grid cols-2">
           {/* ⚠️ นำหน้าผู้ติดต่อ (มติผู้ใช้) — "งานนี้คืองานไหน" ต้องรู้ก่อนรายละเอียดคน */}
-          <Derived label={label("deal")} value={deal} from={FIELD.deal.from} />
-          <Derived label={label("contactName")} value={contactName} from={FIELD.contactName.from} />
-          <Derived label={label("contactPhone")} value={contactPhone} from={FIELD.contactPhone.from} />
-          <Derived label={label("customer")} value={customer} from={FIELD.customer.from} />
+          <Derived label={numbered("deal")} value={deal} from={fromOf("deal")} />
+          <Derived label={numbered("contactName")} value={contactName} from={fromOf("contactName")} />
+          <Derived label={numbered("contactPhone")} value={contactPhone} from={fromOf("contactPhone")} />
+          <Derived label={numbered("customer")} value={customer} from={fromOf("customer")} />
           <div className="form-group">
-            <label htmlFor="pdr-brand">{label("customerBrand")}</label>
+            <label htmlFor="pdr-brand">{numbered("customerBrand")}</label>
             <Input id="pdr-brand" value={value.customerBrand} disabled={disabled}
               maxLength={cap("customerBrand")} onChange={(e) => set({ customerBrand: e.target.value })} />
           </div>
@@ -476,22 +619,50 @@ export default function PdrForm({
               และเป็นข้อความพรรณนาเพดาน 500 เท่ากัน — ทิ้งไว้บรรทัดเดียวคือสร้าง
               ความไม่เหมือนกันใบใหม่ในฟอร์มเดียวกัน */}
           <div className="form-group">
-            <label htmlFor="pdr-mood">{label("moodTone")}</label>
+            <label htmlFor="pdr-mood">{numbered("moodTone")}</label>
             <Textarea id="pdr-mood" rows={3} value={value.moodTone} disabled={disabled}
               maxLength={cap("moodTone")} onChange={(e) => set({ moodTone: e.target.value })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-dir">{label("brandDirection")}</label>
+            <label htmlFor="pdr-dir">{numbered("brandDirection")}</label>
             <Textarea id="pdr-dir" rows={3} value={value.brandDirection} disabled={disabled}
               maxLength={cap("brandDirection")} onChange={(e) => set({ brandDirection: e.target.value })} />
           </div>
+          {/* ⚠️ เว้นช่องขวาของ 1.6 ไว้ — ให้ 1.7 กับสวิตช์ 1.7.1 อยู่แถวเดียวกันซ้ายขวา */}
+          <div className="form-group" aria-hidden="true" />
+          {/* ⭐ 1.7 ที่อยู่ลูกค้า — **อ่านสดจากทะเบียน** (มติผู้ใช้ 2026-09-11) แทนช่องพิมพ์
+              "ที่อยู่จัดส่ง" เดิม · ที่อยู่ที่ลูกค้าตั้งไว้ในทะเบียนคือของจริง พิมพ์ซ้ำในใบ
+              = สำเนาที่เพี้ยนจากทะเบียนได้เงียบ ๆ (บทเรียน "ที่อยู่หางซ้ำ" ของใบเสนอราคา) */}
+          <Derived
+            label={numbered("customerAddress")} value={customerAddress}
+            from={FIELD.customerAddress.from} long
+            note={customerAddress
+              ? "ดึงจากทะเบียนลูกค้า — แก้ที่หน้าลูกค้า"
+              : customer ? "ลูกค้ารายนี้ยังไม่มีที่อยู่ในทะเบียน — เพิ่มที่หน้าลูกค้า หรือพิมพ์ที่อยู่จัดส่งเองในข้อ 1.7.1" : null}
+          />
+          {/* ⭐ 1.7.1 — สวิตช์ "ส่งไปที่อยู่เดียวกับลูกค้า" · เปิด = ไม่มีช่องให้พิมพ์
+              ⚠️ ค่าตั้งต้น **ไม่เปิดให้** ("ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็นการตัดสินใจ")
+              — ส่งตัวอย่างผิดที่เพราะสวิตช์เปิดมาเอง แย่กว่าต้องพิมพ์ที่อยู่
+              ⚠️ เปิดแล้วข้อความที่พิมพ์ค้างถูกล้างตอนบันทึก (`normalizePdr`) ไม่ใช่เก็บเงียบ */}
           <div className="form-group">
-            <label htmlFor="pdr-ship">{label("shipTo")}</label>
-            <Textarea id="pdr-ship" rows={3} value={value.shipTo} disabled={disabled}
-              maxLength={cap("shipTo")} onChange={(e) => set({ shipTo: e.target.value })} />
+            <SwitchRow
+              on={value.shipToSameAsCustomer === "true"} disabled={disabled}
+              onToggle={() => set({
+                shipToSameAsCustomer: value.shipToSameAsCustomer === "true" ? "false" : "true",
+              })}
+            >
+              {FIELD.shipToSameAsCustomer.label}
+            </SwitchRow>
+            {pdrFieldVisible(FIELD.shipTo, value) && (
+              <>
+                <label htmlFor="pdr-ship">{numbered("shipTo")}</label>
+                <Textarea id="pdr-ship" rows={3} value={value.shipTo} disabled={disabled}
+                  maxLength={cap("shipTo")} onChange={(e) => set({ shipTo: e.target.value })} />
+              </>
+            )}
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-ckind">{label("customerKind")}</label>
+            <label htmlFor="pdr-ckind">{numbered("customerKind")}</label>
             <Select id="pdr-ckind" value={value.customerKind} disabled={disabled}
               maxLength={cap("customerKind")} onChange={(e) => set({ customerKind: e.target.value })} options={withBlank(PDR_CUSTOMER_KINDS)} />
           </div>
@@ -499,7 +670,7 @@ export default function PdrForm({
               โครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นที่อยู่ในดีล/SO ใบนี้ · ลูกค้าอาจจ่ายค่า
               ออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน (ผู้ใช้ทักมาเอง) */}
           <div className="form-group">
-            <label htmlFor="pdr-value">{label("projectValue")}</label>
+            <label htmlFor="pdr-value">{numbered("projectValue")}</label>
             <MoneyInput id="pdr-value" value={value.projectValue} disabled={disabled}
               placeholder={FIELD.projectValue.placeholder}
               onChange={(v) => set({ projectValue: v ?? "" })} />
@@ -507,7 +678,7 @@ export default function PdrForm({
         </div>
         {/* ⭐ ข้อ 1.10 บนกระดาษ — อยู่ระหว่าง 1.9 กับ 1.11 ตามลำดับกระดาษ ไม่ใช่ท้ายสุด
             (AE กรอกโดยวางกระดาษไว้ข้าง ๆ ลำดับที่ไม่ตรงทำให้ต้องกระโดดหาไปมา) */}
-        <span className={styles.fieldLabel}>{FIELD.targetDemographic.group} — ติ๊กแล้วเขียนต่อ</span>
+        <span className={styles.fieldLabel}><No no={FIELD.targetDemographic.no} />{FIELD.targetDemographic.group} — ติ๊กแล้วเขียนต่อ</span>
         <TickAndWrite label={label("targetDemographic")} disabled={disabled} max={cap("targetDemographic")}
           value={value.targetDemographic} onChange={(v) => set({ targetDemographic: v })} />
         <TickAndWrite label={label("targetPsychographic")} disabled={disabled} max={cap("targetPsychographic")}
@@ -526,7 +697,7 @@ export default function PdrForm({
               เอกสารอ่านใบเก่าเท่านั้น (ดูธง `legacy` ในทะเบียน) */}
           <div className="form-group col-span-2">
             <span className={styles.fieldLabel}>
-              {label("productKinds")}
+              {numbered("productKinds")}
             </span>
             <div className={styles.pickAdd}>
               <ProductCategorySelect
@@ -553,6 +724,11 @@ export default function PdrForm({
                 เพิ่ม
               </Button>
             </div>
+            {/* ⭐ 1.11 มาก่อนแถวสินค้าหมวด 2 — แถวเลือกได้เฉพาะหมวดที่ติ๊กตรงนี้ (มติผู้ใช้:
+                "1.11 ควรก่อน 2.2 ถ้าเรียงตามลำดับการทำ เพราะพัฒนากลิ่นเป็นแบบนั้น") */}
+            <small className={styles.hint}>
+              เลือกประเภทสินค้าที่นี่ก่อน — แถวสินค้าในหมวด 2 เลือกได้เฉพาะหมวดที่ติ๊ก
+            </small>
             {!!(value.productKinds || []).length && (
               <ul className={styles.fileList}>
                 {(value.productKinds || []).map((code) => {
@@ -590,32 +766,57 @@ export default function PdrForm({
           {/* ⚠️ เต็มแถวเพื่อ **ดันสองวันที่ให้อยู่บรรทัดเดียวกัน** (มติผู้ใช้ 2026-08-09) —
               ช่องหมวดสินค้าด้านบนกินเต็มแถว ทำให้ parity พลิก ถ้าปล่อยตัวนี้ครึ่งแถว
               "วันที่ต้องการสินค้า" จะไปจับคู่กับมันแทน แล้ว "วันที่ต้องการจำหน่าย" เหลือเดี่ยว */}
+          {/* ⭐ 1.12 — พัฒนากลิ่นนับจากใบสั่งขาย · พัฒนาสูตร NPD นับกลิ่นไม่ซ้ำในแถวสินค้า
+              (ตัวตัดสินอยู่ที่ `pdrContext` ที่เดียว ฟอร์มแค่แสดง) */}
           <Derived
-            label={label("scentCount")}
+            label={numbered("scentCount")}
             value={scentCount != null ? `${scentCount} กลิ่น` : ""}
-            from={FIELD.scentCount.from}
+            from={fromOf("scentCount")}
             wide
           />
           <div className="form-group">
-            <label htmlFor="pdr-want">{label("wantedAt")}</label>
+            <label htmlFor="pdr-want">{numbered("wantedAt")}</label>
             <DateInput id="pdr-want" value={value.wantedAt} disabled={disabled}
               onChange={(v) => set({ wantedAt: v })} />
           </div>
           <div className="form-group">
-            <label htmlFor="pdr-sell">{label("sellFrom")}</label>
+            <label htmlFor="pdr-sell">{numbered("sellFrom")}</label>
             <DateInput id="pdr-sell" value={value.sellFrom} disabled={disabled}
               onChange={(v) => set({ sellFrom: v })} />
           </div>
+          {/* ⭐ 1.15 Archetype ของแบรนด์ (มติผู้ใช้ 2026-09-11) — ไฟล์ของ AE วางไว้ที่ 2.1.6
+              ในกล่องบรีฟ แต่มันเป็นบุคลิกของ **แบรนด์** และใบพัฒนาสูตร NPD ไม่มีบรีฟ ⇒ ระดับใบ
+              ⭐ ติ๊กแล้วมีช่องเขียนต่อตามตัวที่ติ๊ก (ท่าเดียวกับ Scentotype) · เว้นว่างได้
+              ⚠️ ข้อความของตัวที่ติ๊กออกถูกทิ้งตอนบันทึก (`normalizePdr`) */}
+          <ChipPicker
+            label={numbered("archetypes")} options={BRAND_ARCHETYPES} disabled={disabled}
+            value={archetypes} onChange={(v) => set({ archetypes: v })}
+          >
+            {BRAND_ARCHETYPES.filter((t) => archetypes.includes(t.value)).map((t) => (
+              <div key={t.value} className={styles.scentotypeNote}>
+                <label htmlFor={`pdr-archetype-${t.value}`}>{t.label}</label>
+                <Input
+                  id={`pdr-archetype-${t.value}`} disabled={disabled}
+                  value={archetypeNotes[t.value] || ""}
+                  placeholder="เขียนต่อได้ (เว้นว่างได้)"
+                  maxLength={cap("archetypeNotes")}
+                  onChange={(e) => set({ archetypeNotes: { ...archetypeNotes, [t.value]: e.target.value } })}
+                />
+              </div>
+            ))}
+          </ChipPicker>
         </div>
       </Section>
 
       )}
 
-      {/* ⭐ ชั้นกลางของโครงสามชั้น — จำนวนก้อนมาจากใบสั่งขาย ไม่มีปุ่มเพิ่ม/ลบ */}
-      {show("briefs") && (
+      {/* ⭐ ชั้นกลางของโครงสามชั้น — จำนวนก้อนมาจากใบสั่งขาย ไม่มีปุ่มเพิ่ม/ลบ
+          ⚠️ **เฉพาะรูปทรงที่มีบรีฟ** (พัฒนากลิ่น) — พัฒนาสูตร NPD เลือกกลิ่นจากทะเบียนราย
+          แถวสินค้าแทน ⇒ ไม่มีส่วนนี้เลย ทั้งบนรางและในลิ้นชัก */}
+      {usesBriefs && show("briefs") && (
       <Section
         flat={rail}
-        title={`บรีฟกลิ่น${briefs.length ? ` — ${briefs.length} ก้อน` : ""}`}
+        title={`2.1 บรีฟกลิ่น${briefs.length ? ` — ${briefs.length} ก้อน` : ""}`}
         open={briefs.length > 0}
         note="กรอกทีละก้อนได้ ไม่ต้องครบถึงจะบันทึก"
       >
@@ -644,24 +845,12 @@ export default function PdrForm({
             ลูกค้าบอกมาแนวเดียวสำหรับทุกกลิ่น? กด &ldquo;รวบเป็นบรีฟเดียว&rdquo; จะได้ไม่ต้องพิมพ์ซ้ำ
           </small>
         )}
-        {/* ⭐ ใบที่ไม่มี SO เป็นเพดาน — คนกรอกเป็นคนบอกเองว่าอยากได้กี่แนว */}
-        {freeBlocks && (
-          <div className={styles.topicAction}>
-            <Button variant="quiet" size="sm" disabled={disabled} onClick={addBrief}>
-              เพิ่มบล็อกบรีฟ
-            </Button>
-          </div>
-        )}
         {!briefs.length ? (
           // ⚠️ บรรทัดจางลอย ๆ ในพื้นที่ว่าง ๆ อ่านเหมือนหน้าโหลดไม่ครบ — ส่วนนี้จะว่าง
           // ทุกครั้งจนกว่าจะเลือกใบสั่งขาย จึงต้องเป็นสถานะว่างที่บอกทางออก
           <EmptyState icon={FlaskConical}>
             ยังไม่มีบล็อกบรีฟ
-            <small>
-              {freeBlocks
-                ? "กด “เพิ่มบล็อกบรีฟ” เพื่อเริ่ม — ใบนี้ไม่มีใบสั่งขายกำหนดจำนวนกลิ่น"
-                : "เลือกใบสั่งขายในแท็บ “งาน” ก่อน — บล็อกจะขึ้นตามจำนวนกลิ่นที่ขายในใบนั้น"}
-            </small>
+            <small>เลือกใบสั่งขายในแท็บ “งาน” ก่อน — บล็อกจะขึ้นตามจำนวนกลิ่นที่ขายในใบนั้น</small>
           </EmptyState>
         ) : briefs.map((brief, i) => (
           <div key={i} className={styles.briefCard}>
@@ -673,22 +862,13 @@ export default function PdrForm({
               <span className={styles.briefTitle}>
                 {merged ? "บรีฟรวมทุกกลิ่น" : (brief.label || `กลิ่นที่ ${i + 1}`)}
               </span>
-              {/* ลบได้เฉพาะโหมดที่คนคุมจำนวนเอง และเหลือก้อนสุดท้ายลบไม่ได้ (ด่าน API) */}
-              {freeBlocks && briefs.length > 1 && (
-                <Button
-                  variant="quiet" size="sm" tone="danger" disabled={disabled}
-                  onClick={() => removeBrief(i)}
-                >
-                  ลบก้อนนี้
-                </Button>
-              )}
             </div>
             {/* ⭐ **บังคับก่อนกดส่ง ไม่ใช่ก่อนบันทึกร่าง** (มติผู้ใช้ 2026-08-10) — ป้ายบอก
                 ล่วงหน้าว่าช่องนี้ข้ามไม่ได้ตอนส่ง ส่วนด่านจริงอยู่ที่ API ตัวเดียวกับที่
                 หน้าจอถาม (`scentBriefNameError`) · ร่างยังบันทึกได้ทั้งที่ยังว่าง
                 ⚠️ ไม่ใส่ `required` บน input — จะบล็อกการบันทึกร่างซึ่งขัดกับมติเดิม */}
             <div className="form-group">
-              <label htmlFor={`brief-label-${i}`}>ชื่อเรียก <b>*</b></label>
+              <label htmlFor={`brief-label-${i}`}>{PDR_BRIEF_LABELS.label.label} <b>*</b></label>
               <Input
                 id={`brief-label-${i}`} value={brief.label || ""} disabled={disabled}
                 placeholder="เช่น แนวสดชื่น"
@@ -699,42 +879,67 @@ export default function PdrForm({
               </small>
             </div>
             <div className="form-group">
-              <label htmlFor={`brief-body-${i}`}>บรีฟกลิ่น</label>
+              <label htmlFor={`brief-body-${i}`}>{PDR_BRIEF_LABELS.brief.label}</label>
               <Textarea
-                id={`brief-body-${i}`} rows={3} maxLength={4000}
+                id={`brief-body-${i}`} rows={3} maxLength={BRIEF_LIMITS.brief}
                 value={brief.brief || ""} disabled={disabled}
                 placeholder="โทนกลิ่นที่ต้องการ · ตัวอย่างอ้างอิง · ข้อจำกัด"
                 onChange={(e) => setBrief(i, { brief: e.target.value })}
               />
             </div>
+            {/* ⭐ 2.1.1–2.1.3 เป็น **ช่องยาว** (มติผู้ใช้ 2026-09-11) — เพดาน 2,000 ตัวอักษรใน
+                กล่องบรรทัดเดียวคือพิมพ์แล้วอ่านย้อนไม่ได้ · "ให้ทำวิจัยเรื่อง" เป็นหัวข้อสั้น
+                คงบรรทัดเดียว เพดาน 200 · เพดานมาจาก `BRIEF_LIMITS` ตัวเดียวกับด่าน server */}
             <div className="form-grid cols-2">
+              {[
+                ["inspiration", "insp"], ["likedNotes", "like"], ["dislikedNotes", "dis"],
+              ].map(([key, id]) => (
+                <div className="form-group" key={key}>
+                  <label htmlFor={`brief-${id}-${i}`}>
+                    <No no={PDR_BRIEF_LABELS[key].no} />{PDR_BRIEF_LABELS[key].label}
+                  </label>
+                  <Textarea
+                    id={`brief-${id}-${i}`} rows={3} value={brief[key] || ""} disabled={disabled}
+                    maxLength={BRIEF_LIMITS[key]}
+                    onChange={(e) => setBrief(i, { [key]: e.target.value })}
+                  />
+                </div>
+              ))}
               <div className="form-group">
-                <label htmlFor={`brief-insp-${i}`}>แรงบันดาลใจ</label>
-                <Input id={`brief-insp-${i}`} value={brief.inspiration || ""} disabled={disabled}
-                  onChange={(e) => setBrief(i, { inspiration: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label htmlFor={`brief-like-${i}`}>ช่วงกลิ่นที่ชื่นชอบ</label>
-                <Input id={`brief-like-${i}`} value={brief.likedNotes || ""} disabled={disabled}
-                  onChange={(e) => setBrief(i, { likedNotes: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label htmlFor={`brief-dis-${i}`}>กลิ่นที่ End-user ไม่ชอบ</label>
-                <Input id={`brief-dis-${i}`} value={brief.dislikedNotes || ""} disabled={disabled}
-                  onChange={(e) => setBrief(i, { dislikedNotes: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label htmlFor={`brief-res-${i}`}>ให้ทำวิจัยเรื่อง</label>
+                <label htmlFor={`brief-res-${i}`}>{PDR_BRIEF_LABELS.researchTopic.label}</label>
                 <Input id={`brief-res-${i}`} value={brief.researchTopic || ""} disabled={disabled}
+                  maxLength={BRIEF_LIMITS.researchTopic}
                   onChange={(e) => setBrief(i, { researchTopic: e.target.value })} />
               </div>
             </div>
+            <div className="form-group">
+              <span className={styles.fieldLabel}>
+                <No no={PDR_BRIEF_LABELS.performance.no} />{PDR_BRIEF_LABELS.performance.label}
+              </span>
+              <div className={styles.mentionPicker}>
+                {SCENT_PERFORMANCE.map((t) => {
+                  const on = (brief.performance || []).includes(t.value);
+                  return (
+                    <button
+                      key={t.value} type="button" disabled={disabled} aria-pressed={on}
+                      className={`chip ${on ? styles.tierChipOn : styles.tierChip}`}
+                      onClick={() => toggle(i, "performance", t.value)}
+                    >
+                      {on ? "✓ " : ""}{t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             {/* เลือกได้หลายอย่างทั้งคู่ (มติผู้ใช้) — chip ที่กดสลับได้ ไม่ใช่ดรอปดาวน์
-                ⭐ **Scentotype มีเส้นให้เขียนต่อหลังทุกตัวบนกระดาษ** (ข้อ 2.1.4) ⇒ ติ๊ก
+                ⭐ **2.1.4 Performance มาก่อน 2.1.5 Scentotype** ตามไฟล์ PDR ของ AE (มติผู้ใช้
+                2026-09-11) · **Scentotype มีเส้นให้เขียนต่อหลังทุกตัวบนกระดาษ** ⇒ ติ๊ก
                 แล้วมีช่องข้อความโผล่ตามตัวที่ติ๊ก (mig 0222) · ไม่ติ๊ก = ไม่มีช่อง
                 ⚠️ ข้อความของตัวที่ถูกติ๊กออกจะถูกทิ้งตอนบันทึก (ดู scentBriefs.js) */}
             <div className="form-group">
-              <span className={styles.fieldLabel}>Scentotype</span>
+              <span className={styles.fieldLabel}>
+                <No no={PDR_BRIEF_LABELS.scentotypes.no} />{PDR_BRIEF_LABELS.scentotypes.label}
+              </span>
               <div className={styles.mentionPicker}>
                 {SCENTOTYPES.map((t) => {
                   const on = (brief.scentotypes || []).includes(t.value);
@@ -753,7 +958,7 @@ export default function PdrForm({
                 <div key={t.value} className={styles.scentotypeNote}>
                   <label htmlFor={`brief-${i}-st-${t.value}`}>{t.label}</label>
                   <Input
-                    id={`brief-${i}-st-${t.value}`} disabled={disabled}
+                    id={`brief-${i}-st-${t.value}`} disabled={disabled} maxLength={BRIEF_LIMITS.scentotypeNote}
                     value={(brief.scentotypeNotes || {})[t.value] || ""}
                     placeholder="เขียนต่อได้ (เว้นว่างได้)"
                     onChange={(e) => setBrief(i, {
@@ -763,23 +968,6 @@ export default function PdrForm({
                 </div>
               ))}
             </div>
-            <div className="form-group">
-              <span className={styles.fieldLabel}>Performance ของกลิ่น</span>
-              <div className={styles.mentionPicker}>
-                {SCENT_PERFORMANCE.map((t) => {
-                  const on = (brief.performance || []).includes(t.value);
-                  return (
-                    <button
-                      key={t.value} type="button" disabled={disabled} aria-pressed={on}
-                      className={`chip ${on ? styles.tierChipOn : styles.tierChip}`}
-                      onClick={() => toggle(i, "performance", t.value)}
-                    >
-                      {on ? "✓ " : ""}{t.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         ))}
       </Section>
@@ -787,7 +975,7 @@ export default function PdrForm({
 
       {show("spec") && (
 
-      <Section flat={rail} title={SECTION.spec.title} progress={pdrFormProgress(SECTION.spec, value)}>
+      <Section flat={rail} title={sectionTitle("spec")} progress={pdrFormProgress(SECTION.spec, value)}>
         <div className="form-grid cols-2">
           <PdrTargetList
             targets={targets}
@@ -795,31 +983,22 @@ export default function PdrForm({
             productKinds={value.productKinds}
             categories={categories}
             disabled={disabled}
+            pickScent={pickScent}
+            scents={scents}
+            customerId={customerId}
           />
-          <div className="form-group">
-            <label htmlFor="pdr-moq">{label("moq")}</label>
-            <Input id="pdr-moq" value={value.moq} disabled={disabled}
-              maxLength={cap("moq")} onChange={(e) => set({ moq: e.target.value })} />
-          </div>
-          {/* ⭐ ขนาดบรรจุอยู่ติด MOQ (มติผู้ใช้ 2026-08-09) — สองข้อนี้ตอบคำถาม
-              เดียวกันของฝ่ายผลิต ("สั่งขั้นต่ำเท่าไร บรรจุขนาดไหน") จึงต้องอ่านคู่กัน */}
-          <div className="form-group">
-            <label htmlFor="pdr-pack">{label("packSize")}</label>
-            <Input id="pdr-pack" value={value.packSize} disabled={disabled}
-              maxLength={cap("packSize")} onChange={(e) => set({ packSize: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label htmlFor="pdr-tex">{label("texture")}</label>
-            <Select id="pdr-tex" value={value.texture} disabled={disabled}
-              maxLength={cap("texture")} onChange={(e) => set({ texture: e.target.value })} options={withBlank(PDR_TEXTURES)} />
-          </div>
-          <div className="form-group">
-            <label htmlFor="pdr-color">{label("color")}</label>
-            <Input id="pdr-color" value={value.color} disabled={disabled}
-              maxLength={cap("color")} onChange={(e) => set({ color: e.target.value })} />
-          </div>
+          {/* ⚠️ **ไม่มีช่อง MOQ / เนื้อ / สี / ขนาดระดับใบแล้ว** — ย้ายลงแถวสินค้าข้างบน (mig 0352)
+              ใบเก่าที่กรอกไว้แบบเดิมยังโชว์ให้เห็นตรงนี้ (อ่านอย่างเดียว) และพิมพ์ลงเอกสาร
+              ตามเดิม · ไม่แตกลงแถวให้อัตโนมัติ เพราะข้อความรวมทั้งใบแตกไม่ได้โดยไม่เดา */}
+          {legacySpec.length > 0 && (
+            <div className="form-group col-span-2">
+              <small className={styles.hint}>
+                ใบนี้มีข้อ 2.4–2.7 ที่บันทึกไว้แบบเดิม (ทั้งใบ): {legacySpec.join(" · ")} — กรอกใหม่รายสินค้าด้านบนได้
+              </small>
+            </div>
+          )}
           <ChipPicker
-            label={label("packagingForms")} options={PDR_PACKAGING_FORMS} disabled={disabled}
+            label={numbered("packagingForms")} options={PDR_PACKAGING_FORMS} disabled={disabled}
             value={value.packagingForms} onChange={(v) => set({ packagingForms: v })}
           />
           {/* เงื่อนไขการโผล่มาจากทะเบียน (`showForMulti`) เหมือนชุดเอกสาร */}
@@ -837,16 +1016,12 @@ export default function PdrForm({
                 ซึ่งกติกาคอนโทรล v2 บอกให้ใช้สวิตช์ · และเปิดแล้ว **บังคับแนบไฟล์**
                 ⚠️ ค่าที่เก็บยังเป็น 'has'/'none' เหมือนเดิม — เอกสารกับจอสรุปอ่าน
                 ค่าเดิมอยู่ ห้ามเปลี่ยนเป็น boolean เพราะแถวเก่าจะอ่านไม่ออก */}
-            <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
-              <button
-                type="button" className="ui-switch" disabled={disabled}
-                data-on={value.packagingArtwork === "has" ? "1" : undefined}
-                aria-pressed={value.packagingArtwork === "has"}
-                onClick={() => set({ packagingArtwork: value.packagingArtwork === "has" ? "none" : "has" })}
-              >
-                <i aria-hidden="true" /><ImageIcon size={13} aria-hidden="true" /> ภาพประกอบ
-              </button>
-            </div>
+            <SwitchRow
+              on={value.packagingArtwork === "has"} disabled={disabled}
+              onToggle={() => set({ packagingArtwork: value.packagingArtwork === "has" ? "none" : "has" })}
+            >
+              <ImageIcon size={13} aria-hidden="true" /> ภาพประกอบ
+            </SwitchRow>
             {/* ⚠️ มติผู้ใช้: บอกว่ามี = ต้องแนบจริง · บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ
                 (หน้าเปิดคำร้องยังแนบไฟล์ไม่ได้ ต้องมี id ของใบก่อน — ด่านจริงอยู่ที่
                 `pdrArtworkError` ซึ่งผู้เรียกส่ง stage: 'submit' เข้าไป) */}
@@ -859,7 +1034,7 @@ export default function PdrForm({
               หน้าทั้งสามคำ เหมือนข้อ 1.10 · ทำเป็นช่องเปล่าแล้วเสียข้อมูลว่า "ข้อไหน
               ลูกค้าสนใจ" ตอนที่ยังไม่ได้เขียนรายละเอียด */}
           <div className="form-group col-span-2">
-            <span className={styles.fieldLabel}>{FIELD.vpAttribute.group} — ติ๊กแล้วเขียนต่อ</span>
+            <span className={styles.fieldLabel}><No no={FIELD.vpAttribute.no} />{FIELD.vpAttribute.group} — ติ๊กแล้วเขียนต่อ</span>
             {["vpAttribute", "vpBenefit", "vpValue"].map((key) => (
               <TickAndWrite
                 key={key} label={label(key)} disabled={disabled} max={cap(key)}
@@ -868,7 +1043,7 @@ export default function PdrForm({
             ))}
           </div>
           <div className="form-group col-span-2">
-            <label htmlFor="pdr-sample">{label("brandSample")}</label>
+            <label htmlFor="pdr-sample">{numbered("brandSample")}</label>
             {/* ⭐ ข้อความยาว (มติผู้ใช้ 2026-08-09) — ลูกค้ามักยกตัวอย่างหลายแบรนด์
                 พร้อมเหตุผล ช่องบรรทัดเดียวทำให้พิมพ์แล้วอ่านย้อนไม่ได้ */}
             <Textarea
@@ -885,7 +1060,7 @@ export default function PdrForm({
 
       {show("regulatory") && (
 
-      <Section flat={rail} title={SECTION.regulatory.title} note={SECTION.regulatory.note} progress={pdrFormProgress(SECTION.regulatory, value)}>
+      <Section flat={rail} title={sectionTitle("regulatory")} note={SECTION.regulatory.note} progress={pdrFormProgress(SECTION.regulatory, value)}>
         <ChipPicker
           label={label("documents")} options={PDR_DOCUMENTS} disabled={disabled}
           value={value.documents} onChange={(v) => set({ documents: v })}
@@ -929,7 +1104,7 @@ export default function PdrForm({
           ⚠️ ช่องวนจากทะเบียนโดยตั้งใจ — ป้ายตำแหน่งต้องตรงกับที่กระดาษพิมพ์เป๊ะ
           ไล่เขียนมือเมื่อไรก็เพี้ยนจากกระดาษเมื่อนั้น */}
       {show("signers") && (
-      <Section flat={rail} title={SECTION.signers.title} note={SECTION.signers.note} progress={pdrFormProgress(SECTION.signers, value)}>
+      <Section flat={rail} title={sectionTitle("signers")} note={SECTION.signers.note} progress={pdrFormProgress(SECTION.signers, value)}>
         {SECTION.signers.fields.map((f) => {
           /* ⭐ **เสนอชื่อคนที่ถือตำแหน่งนั้น แต่ไม่บังคับ** — `combo` + `<datalist>`
              ⇒ เลือกจากรายชื่อก็ได้ พิมพ์เองก็ได้ (คนเซ็นที่ไม่มีบัญชีต้องไม่ถูกกั้น)

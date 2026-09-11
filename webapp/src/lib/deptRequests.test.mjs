@@ -315,6 +315,21 @@ test('ชนิดที่ไม่มีบรรทัดส่งได้�
   assert.match(submitRequestError(req({ kind: 'formula_dev', status: 'draft' }), []), /อย่างน้อย 1 รายการ/);
 });
 
+test('⭐ พัฒนาสูตร NPD กดส่งได้เมื่อมีสินค้า ≥ 1 และทุกแถวเลือกกลิ่นจากทะเบียนแล้ว', () => {
+  const npd = (targets) => req({
+    kind: 'formula_dev', variant: 'npd', status: 'draft', requestedDueDate: '2569-09-30', targets,
+  });
+  // NPD ไม่มีตารางรายการ ⇒ ด่าน "ต้องมีรายการ" ของ standard ต้องไม่โดน
+  assert.match(submitRequestError(npd([]), []), /สินค้าที่ขอพัฒนาอย่างน้อย 1 รายการ/);
+  assert.match(submitRequestError(npd(undefined), []), /อย่างน้อย 1 รายการ/, 'ไม่ได้โหลดแถวมา = ไม่ผ่าน');
+  assert.match(submitRequestError(npd([{ scentId: 'SC-1' }, { scentId: null }]), []), /รายการที่ 2 ยังไม่ได้เลือกกลิ่น/);
+  assert.equal(submitRequestError(npd([{ scentId: 'SC-1' }]), []), null);
+  // พัฒนากลิ่นไม่มีด่านนี้ — กลิ่นมาจากบรีฟ (แถวสินค้าไม่มีกลิ่นเลย)
+  assert.equal(submitRequestError(req({
+    kind: 'scent_dev', status: 'draft', requestedDueDate: '2569-09-30', targets: [],
+  }), []), null);
+});
+
 test('ปิดเรื่อง: ใบที่มีแถวต้องจบครบ · ใบที่ไม่มีแถวผู้ขอตัดสินเอง', () => {
   assert.match(closeRequestError(req({ kind: 'formula_dev' }), [{ answerStatus: 'pending' }]), /ยังเดินไม่จบ/);
   assert.equal(closeRequestError(req({ kind: 'formula_dev' }), [{ answerStatus: 'done' }]), null);

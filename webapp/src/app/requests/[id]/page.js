@@ -44,10 +44,11 @@ import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFa
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import submitScope from "@/lib/requests/submitScope";
 import { scentBriefNameError } from "@/lib/requests/scentBriefs";
+import { submitRequestError } from "@/lib/requests/stages";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
-  requestUsesPdr, requestKindMeta, requestNeedsRef,
+  requestUsesPdr, requestKindMeta, requestNeedsRef, requestPdrRowsPickScent,
 } from "@/lib/master/requestTypes";
 import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
@@ -237,7 +238,11 @@ export default function RequestDetailPage() {
      ในวินาทีแรก (โรคเดียวกับ productTypes ข้างบน) */
   const [registry, setRegistry] = useState({ customers: [], scents: [], formulas: [] });
   const hasFormulaRows = (req?.items || []).some((i) => i.lineKind === "product_dev");
-  const needsCustomers = hasFormulaRows || req?.kind === "scent_dev";
+  /* ⭐ ใบที่เลือกกลิ่นจากทะเบียนรายแถวสินค้า (พัฒนาสูตร NPD · ข้อ 2.1) — โหมดแก้ต้องมี
+     ทะเบียนกลิ่นให้เลือก · ไม่โหลด = ช่องกลิ่นว่างทุกแถวทั้งที่ใบเลือกไว้แล้ว */
+  const pdrPicksScent = req ? requestPdrRowsPickScent(req) : false;
+  const needsScents = hasFormulaRows || pdrPicksScent;
+  const needsCustomers = needsScents || req?.kind === "scent_dev";
   useEffect(() => {
     if (!needsCustomers) return;
     const get = (url) => apiFetch(url, { cache: "no-store" })
@@ -246,11 +251,11 @@ export default function RequestDetailPage() {
       .catch(() => []);
     Promise.all([
       get("/api/customers"),
-      // กลิ่น/สูตรใช้เฉพาะฟอร์มสูตร — ใบสายกลิ่นไม่ต้องลากทั้งทะเบียนมาเปล่า ๆ
-      hasFormulaRows ? get("/api/master/scents") : [],
+      // กลิ่นใช้กับฟอร์มสูตร/แถวสินค้า NPD · สูตรใช้เฉพาะฟอร์มสูตร — ใบอื่นไม่ลากทั้งทะเบียนมาเปล่า ๆ
+      needsScents ? get("/api/master/scents") : [],
       hasFormulaRows ? get("/api/master/formulas") : [],
     ]).then(([customers, scents, formulas]) => setRegistry({ customers, scents, formulas }));
-  }, [needsCustomers, hasFormulaRows]);
+  }, [needsCustomers, needsScents, hasFormulaRows]);
   /* ค่าตั้งต้นของฟอร์มส่งงาน — ลูกค้า/กลิ่น/หมวด เป็นของที่ **แถวรู้อยู่แล้ว** ⇒ เติมให้
      แล้วล็อกไว้ (ดู prop `locked` ของ FormulaForm) · ลูกค้ายกจากใบ ไม่ใช่จากกลิ่น
      เพื่อให้ตรงกับที่ server ตัดสิน (route ของแถว) */
@@ -809,7 +814,11 @@ export default function RequestDetailPage() {
          "ด่านจริงอยู่ที่ API ตัวเดียวกับที่หน้าจอถาม" แต่หน้าจอไม่เคยถาม
          ⚠️ ด่านฝั่ง server ยังอยู่ครบ — อันนี้เป็นชั้นบอกทาง ไม่ใช่ชั้นกัน */
       onClick: () => {
-        const briefNameError = scentBriefNameError(req.briefs || [], { stage: "submit" });
+        /* ⭐ ด่านรูปทรงของใบ (รวม "สินค้าทุกแถวต้องเลือกกลิ่น" ของพัฒนาสูตร NPD) —
+           ฟังก์ชันตัวเดียวกับที่ route ใช้ตัดสิน 409 · ไม่ถามก่อน = โมดัลเปิดแล้วค่อยโดน
+           ตีกลับเป็น toast ใต้โมดัล (บทเรียน 2026-09-03 ข้างบน) */
+        const shapeError = submitRequestError(req, req.items || []);
+        const briefNameError = shapeError || scentBriefNameError(req.briefs || [], { stage: "submit" });
         if (briefNameError) {
           setToast({ kind: "error", msg: briefNameError });
           return;
@@ -1436,6 +1445,9 @@ export default function RequestDetailPage() {
               salesOrder: req.refSalesOrder?.orderNumber || req.salesOrderId || "",
             }}
             billBaseAmount={req.billBaseAmount ?? null}
+            /* ค่าที่แบบฟอร์ม PDR เติมให้ (ผู้ติดต่อ · ที่อยู่ 1.7 · ดีล) — server ประกอบไว้แล้ว
+               หน้านี้ไม่ได้โหลดทะเบียนลูกค้ามา ⇒ ไม่ส่ง = ช่องเส้นประทั้งแผงในโหมดแก้ */
+            pdrContext={req.pdrContext || null}
             /* ทะเบียนที่ช่อง "อ้างอิงเพิ่ม" กับตารางบรรทัดต้องใช้ — โหลดตอนกดแก้
                เท่านั้น (ใบส่วนใหญ่ไม่เคยถูกแก้ ⇒ ไม่ต้องจ่ายตอนเปิดอ่าน) */
             quotations={editRefs.quotations}

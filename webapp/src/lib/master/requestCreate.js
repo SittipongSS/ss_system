@@ -6,6 +6,7 @@
 // ส่ง scentId/formulaId ที่หัวข้อนั้นบังคับ → 400 ทุกครั้ง
 import {
   requestLineShape, requestUsesItems, requestUsesPdr, requestNeedsRef, requestShapeError,
+  requestUsesScentBriefs,
 } from '@/lib/master/requestTypes';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
@@ -132,7 +133,9 @@ export function requestPayload(form, extra = {}) {
     // แล้วอาการจะเหมือนบั๊กข้างบนเป๊ะ: กรอกครบ กดบันทึก แล้วรายการหายทั้งชุด
     ...(requestUsesPdr(form) ? {
       pdr: form.pdr || {},
-      briefs: form.briefs || [],
+      // ⚠️ บรีฟเฉพาะรูปทรงที่มีบรีฟ — พัฒนาสูตร NPD เลือกกลิ่นรายแถวสินค้าแทน และ server
+      //    ตีกลับบรีฟที่หลุดมากับรูปทรงนั้น (ฟอร์มที่สลับจากพัฒนากลิ่นมาอาจยังถือก้อนค้างไว้)
+      ...(requestUsesScentBriefs(form) ? { briefs: form.briefs || [] } : {}),
       pdrTargets: form.pdrTargets || [],
     } : {}),
     // หัวข้อที่ไม่มีบรรทัดต้องไม่ส่ง items ไปเลย ไม่ใช่ส่ง [] — server ใช้หัวข้อเป็น

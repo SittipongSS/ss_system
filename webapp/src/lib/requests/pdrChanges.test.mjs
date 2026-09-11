@@ -5,7 +5,7 @@
 // "แก้แบบฟอร์ม PDR" ⇒ ค่าที่หายไปไม่มีร่องรอย · เทสต์นี้ล็อกว่ามีร่องรอยจริง
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pdrChangeLines, pdrChangeSummary } from './pdrChanges.js';
+import { pdrChangeLines, pdrChangeSummary, pdrTargetChangeLines } from './pdrChanges.js';
 import { askActionUpdate } from '../costingUpdates.js';
 
 test('ไม่เปลี่ยนอะไร = ไม่มีบรรทัด และ summary เป็น null', () => {
@@ -72,4 +72,37 @@ test('askActionUpdate ต่อรายการเปลี่ยนแปล�
   const withChanges = askActionUpdate('pdr', ask, { pdrChanges: 'Mood & Tone: ก → ข' });
   assert.equal(withChanges.kind, 'pdr');
   assert.match(withChanges.body, /^แก้แบบฟอร์ม PDR\nMood & Tone: ก → ข$/);
+});
+
+// ── mig 0352: สวิตช์ · ข้อความเขียนต่อ · แถวสินค้า ──────────────────────────────
+test('สวิตช์กับข้อความเขียนต่อต้องอ่านออกในเธรด ไม่ใช่ "true" / "[object Object]"', () => {
+  const lines = pdrChangeLines(
+    { pdrShipToSameAsCustomer: null, pdrArchetypeNotes: { sage: 'รู้ลึก' } },
+    { pdrShipToSameAsCustomer: true, pdrArchetypeNotes: { sage: 'รู้ลึกจริง' } },
+  );
+  assert.ok(lines.some((l) => /ส่งตัวอย่างไปที่อยู่เดียวกับลูกค้า: \(ว่าง\) → ใช่/.test(l)), lines.join('\n'));
+  // 🐞 เทียบด้วย String() แล้ว object ทุกตัวเท่ากัน ⇒ แก้ข้อความแล้วเธรดไม่เคยเห็น
+  assert.ok(lines.some((l) => /SAGE: รู้ลึก → SAGE: รู้ลึกจริง/.test(l)), lines.join('\n'));
+  assert.deepEqual(pdrChangeLines(
+    { pdrArchetypeNotes: { a: 'x', b: 'y' } }, { pdrArchetypeNotes: { b: 'y', a: 'x' } },
+  ), [], 'ลำดับ key ต่างกันไม่ใช่การแก้');
+});
+
+test('⭐ แก้สเปกรายสินค้าต้องขึ้นเธรด — บอกว่าสินค้าที่เท่าไร ข้อไหน เดิมเป็นอะไร', () => {
+  const before = [{ categoryCode: '02-010', sizeValue: 50, sizeUnit: 'ml', texture: 'standard', scentId: 'SC-1' }];
+  const next = [
+    { categoryCode: '02-010', sizeValue: 100, sizeUnit: 'ml', texture: 'premium', scentId: 'SC-2' },
+    { categoryCode: '01-003' },
+  ];
+  const lines = pdrTargetChangeLines(before, next, {
+    scentLabel: (id) => ({ 'SC-1': 'S001 มะลิ', 'SC-2': 'S002 กุหลาบ' })[id] || id,
+  });
+  assert.ok(lines.includes('สินค้าที่ 1 · 2.7.1 ขนาดบรรจุ: 50 ml → 100 ml'), lines.join('\n'));
+  assert.ok(lines.includes('สินค้าที่ 1 · 2.5 ลักษณะเนื้อผลิตภัณฑ์: STANDARD → PREMIUM'), lines.join('\n'));
+  assert.ok(lines.includes('สินค้าที่ 1 · 2.1 กลิ่น: S001 มะลิ → S002 กุหลาบ'), lines.join('\n'));
+  assert.ok(lines.includes('สินค้าที่ 2: เพิ่มใหม่ (01-003)'), lines.join('\n'));
+  assert.deepEqual(pdrTargetChangeLines(before, before), [], 'ไม่ได้แก้ = ไม่มีบรรทัด');
+  // บรรทัดแถวต่อท้ายหัวใบในข้อความเดียว
+  assert.match(pdrChangeSummary({}, {}, lines), /สินค้าที่ 1/);
+  assert.equal(pdrChangeSummary({}, {}, []), null);
 });

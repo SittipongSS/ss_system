@@ -21,8 +21,9 @@ import { randomUUID } from 'crypto';
 import { assignPatch, assignRequestError } from '@/lib/requests/assign';
 import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
-import { pdrChangeSummary } from '@/lib/requests/pdrChanges';
+import { pdrChangeSummary, pdrTargetChangeLines } from '@/lib/requests/pdrChanges';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
+import { pdrTargetScentCheck } from '@/lib/requests/pdrTargetScents';
 import { PDR_SIGNER_FIELDS, pdrArtworkError } from '@/lib/requests/pdrFields';
 import {
   assignPdrRefNo, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
@@ -40,6 +41,7 @@ import { briefBoard } from '@/lib/requests/briefBoard';
 import { assignBriefPerfumerError, briefPerfumerPatch } from '@/lib/requests/briefPerfumer';
 import {
   requestLineShape, requestUsesItems, requestUsesPdr, requestKindLabel, requestNeedsRef,
+  requestPdrRowsPickScent, requestUsesScentBriefs,
   requestVariantKey, requestVariantLabel,
   requestShapeError,
 } from '@/lib/master/requestTypes';
@@ -569,12 +571,27 @@ export async function PATCH(request, { params }) {
          ⚠️ ไม่ส่ง `pdrTargets` มา = ไม่แตะของเดิมเลย (ผู้เรียกที่แก้แค่ส่วนอื่น) ·
          ส่งอาเรย์ว่างมา = สั่งลบทั้งชุด ซึ่งต่างกัน */
       let nextTargets = null;
+      let nextTargetScents = [];
       if (Array.isArray(body.pdrTargets)) {
         const { targets, error: targetError } = normalizePdrTargets(body.pdrTargets, {
           categoryCodes: columns.pdrProductKinds || before.pdrProductKinds || [],
+          // ⭐ ข้อ 2.1 กลิ่นรายสินค้า — ทะเบียนหัวข้อตัดสินจาก **ทั้งใบ** (kind + variant)
+          pickScent: requestPdrRowsPickScent(before),
         });
         if (targetError) return Response.json({ error: targetError }, { status: 400 });
+        // ⚠️ ด่านเดียวกับตอนเปิดใบ — ลูกค้าของใบมาจาก `before` (ทางนี้เปลี่ยนดีลไม่ได้)
+        const checked = await pdrTargetScentCheck(supabase, targets, { customerId: before.customerId });
+        if (checked.error) return Response.json({ error: checked.error }, { status: 400 });
         nextTargets = targets;
+        nextTargetScents = checked.scents;
+      }
+
+      /* ⭐ รูปทรงที่ไม่มีบรีฟกลิ่น (พัฒนาสูตร NPD · `pdrScents: 'registry'`) — ส่งบรีฟมา
+         = ตีกลับ ไม่ใช่เขียนลงตารางที่ไม่มีจอไหนโชว์ · อาเรย์ว่างผ่านได้ (ไม่มีอะไรต้องทำ) */
+      if (!requestUsesScentBriefs(before) && Array.isArray(body.briefs) && body.briefs.length) {
+        return Response.json({
+          error: 'รูปแบบงานนี้ไม่มีบรีฟกลิ่น — เลือกกลิ่นจากทะเบียนในรายการสินค้า (ข้อ 2.1) แทน',
+        }, { status: 400 });
       }
 
       // บรีฟรายกลิ่น — เขียนทับทั้งชุด (แก้ = ส่งมาใหม่ทั้งก้อน ไม่ใช่ patch รายช่อง)
@@ -653,7 +670,18 @@ export async function PATCH(request, { params }) {
       }
       /* ⭐ เก็บ "ช่องไหนเปลี่ยนจากอะไรเป็นอะไร" ไว้ลงเธรด (IS-26080021) — ต้องคิด
          **ก่อน** เขียน patch ลง DB เพราะหลังจากนั้น `before` ไม่มีค่าเดิมให้เทียบแล้ว */
-      pdrChanges = pdrChangeSummary(before, columns);
+      /* ⭐ แถวสินค้าด้วย (mig 0352) — สเปก 2.4–2.7 ย้ายลงแถวแล้ว ไม่ตามมาดูแถว = RD แก้
+         ขนาด/กลิ่นของสินค้าแล้ว SA ไม่มีทางรู้ · ป้ายกลิ่นจากทะเบียน (ของเดิมติดมากับ
+         `findRequest` · ของใหม่มาจากด่านกลิ่นข้างบน) ไม่ใช่ id ที่ไม่มีใครอ่านออก */
+      const scentText = new Map([
+        ...(before.targets || []).filter((t) => t.scentId)
+          .map((t) => [t.scentId, [t.scentCode, t.scentName].filter(Boolean).join(' ')]),
+        ...nextTargetScents.map((x) => [x.id, [x.code, x.name].filter(Boolean).join(' ')]),
+      ]);
+      const targetLines = nextTargets
+        ? pdrTargetChangeLines(before.targets || [], nextTargets, { scentLabel: (sid) => scentText.get(sid) || sid })
+        : [];
+      pdrChanges = pdrChangeSummary(before, columns, targetLines);
       summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}`;
     } else if (action === 'reschedule') {
       // ⭐ **เลื่อนวันกำหนดส่ง** — RD แจ้งวันไปแล้วเปลี่ยนใจได้ (มติผู้ใช้)

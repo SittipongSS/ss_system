@@ -210,6 +210,23 @@ export function requestUsesItems(subject) {
   return !!shapeOf(subject)?.hasItems;
 }
 
+/* ⭐ กลิ่นของแบบฟอร์ม PDR มาจากไหน — 'briefs' | 'registry' | null (ใบที่ไม่ใช้ PDR)
+   ⚠️ รับ **ทั้งใบ** เหมือนตัวอ่านรูปทรงตัวอื่น (มี ratchet) — พัฒนาสูตรตอบต่างกันสองรูปแบบ */
+export function requestPdrScentSource(subject) {
+  const shape = shapeOf(subject);
+  return shape?.hasPdr ? shape.pdrScents || null : null;
+}
+
+// ใบนี้มีส่วน "บรีฟกลิ่น" (ข้อ 2.1) ไหม — พัฒนากลิ่นมี · พัฒนาสูตร NPD ไม่มี
+export function requestUsesScentBriefs(subject) {
+  return requestPdrScentSource(subject) === 'briefs';
+}
+
+// แถวสินค้าของ PDR เลือกกลิ่นจากทะเบียนไหม — พัฒนาสูตร NPD เท่านั้น
+export function requestPdrRowsPickScent(subject) {
+  return requestPdrScentSource(subject) === 'registry';
+}
+
 /* ⭐ **หัวข้อที่ยกเลิกได้ก่อนฝ่ายรับเรื่องเท่านั้น** (แผนใบประเมิน §5E ③ · มติข้อ 24)
  * 🔴 **ห้ามรัดด่านกลางให้แคบทั้งระบบ** — หัวข้ออื่น *ตั้งใจ* ให้ยกเลิกหลังรับเรื่องได้
  *   และมันเป็นทางออกทางเดียวด้วย: `closeRequestError` โยนคนไปหาคำว่า "ยกเลิกแทนการปิด"

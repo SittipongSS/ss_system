@@ -19,6 +19,7 @@ import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
+import { pdrTargetScentCheck } from '@/lib/requests/pdrTargetScents';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
@@ -28,6 +29,7 @@ import { surveyZoneBusyError } from '@/lib/service/zonePickState';
 import {
   deptForRequest, requestDeptError,
   legacyKindError, requestLineShape, requestUsesPdr, requestKindLabel, requestNeedsRef,
+  requestPdrRowsPickScent, requestUsesScentBriefs,
   requestVariantKey,
   requestShapeError,
   requestStepKey,
@@ -374,8 +376,21 @@ export async function POST(request) {
       // ("ตรวจก่อน insert เสมอ") แต่บรีฟหลุดออกไปอยู่นอกกฎ
       // ⚠️ `scentCount` — ชื่อออปชันต้องตรงกับที่ `normalizeScentBriefs` อ่าน · เดิมส่ง
       // `expected` ซึ่งไม่มีใครอ่าน ⇒ เพดาน "บรีฟห้ามเกินจำนวนกลิ่นที่ขาย" ไม่เคยทำงาน
-      const { briefs, error: briefError } = normalizeScentBriefs(body.briefs, { scentCount });
-      if (briefError) return Response.json({ error: briefError }, { status: 400 });
+      /* ⭐ **บรีฟกลิ่นเฉพาะรูปทรงที่ประกาศ `pdrScents: 'briefs'`** (มติผู้ใช้ 2026-09-11) —
+         พัฒนาสูตร NPD เลือกกลิ่นจากทะเบียนรายแถวสินค้าแทน · เดิมเรียกด่านบรีฟทุกใบ PDR
+         ⇒ ใบ NPD ที่ไม่มีบรีฟตกที่ "ต้องมีบรีฟอย่างน้อย 1 ก้อน" เปิดไม่ได้เลย
+         ⚠️ ส่งบรีฟมากับรูปทรงที่ไม่มีบรีฟ = ตีกลับ ไม่ใช่ทิ้งเงียบ ๆ (กติกาเดียวกับแถวรายการ
+         ของ NPD ใน `requestShapeError`) */
+      let briefs = [];
+      if (requestUsesScentBriefs(subject)) {
+        const checked = normalizeScentBriefs(body.briefs, { scentCount });
+        if (checked.error) return Response.json({ error: checked.error }, { status: 400 });
+        briefs = checked.briefs;
+      } else if (Array.isArray(body.briefs) && body.briefs.length) {
+        return Response.json({
+          error: 'รูปแบบงานนี้ไม่มีบรีฟกลิ่น — เลือกกลิ่นจากทะเบียนในรายการสินค้า (ข้อ 2.1) แทน',
+        }, { status: 400 });
+      }
 
       // ⭐ ข้อ 2.2/2.3 · ต้นทุน/ราคาขายรายสินค้า (mig 0229) — ตรวจก่อน insert เหมือน
       // บรีฟ ด้วยเหตุผลเดียวกันที่เขียนไว้ข้างบน (ตกด่านหลัง insert = ใบร่างค้างที่จอง
@@ -384,8 +399,13 @@ export async function POST(request) {
       // แปลว่าฟอร์มกับใบไม่ตรงกัน ต้องถูกทัก ไม่ใช่เขียนลงเงียบ ๆ
       const { targets, error: targetError } = normalizePdrTargets(body.pdrTargets, {
         categoryCodes: pdrColumns.pdrProductKinds || [],
+        pickScent: requestPdrRowsPickScent(subject),
       });
       if (targetError) return Response.json({ error: targetError }, { status: 400 });
+      // ⚠️ กลิ่นข้ามลูกค้า/ร่าง/ถูกลบ — ตัวกรองบนจอไม่กันคนยิง API ตรง (มติ 9)
+      // `customerId` derive จากดีลไปแล้วข้างบน ไม่ใช่ค่าที่ client ส่ง
+      const { error: scentError } = await pdrTargetScentCheck(supabase, targets, { customerId });
+      if (scentError) return Response.json({ error: scentError }, { status: 400 });
       targetRows = targets.map((t) => ({ ...t, id: `DPT-${randomUUID()}`, requestId }));
       briefRows = briefs.map((b) => ({
         id: `DRS-${randomUUID()}`,

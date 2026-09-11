@@ -13,40 +13,37 @@
 // ไม่บังคับ ⇒ แสดงช่องว่างครบทุกช่องจะกลบของที่กรอกจริงจนหาไม่เจอ
 // (เอกสารทำกลับกัน — ที่นั่นช่องว่างต้องพิมพ์เป็นเส้นให้เขียนมือ)
 import { scentPerformanceLabel, scentotypeLabel } from "@/lib/requests/kinds/rd/scentBriefTypes";
-import { PDR_SECTIONS, pdrSectionRows } from "@/lib/requests/pdrFields";
-import { PDR_TARGET_KINDS } from "@/lib/requests/pdrTargets";
+import { PDR_BRIEF_LABELS, PDR_SECTIONS, pdrSectionRows } from "@/lib/requests/pdrFields";
+import { pdrTargetFacts, pdrTargetSizeText } from "@/lib/requests/pdrTargets";
+import { requestPdrScentSource, requestUsesScentBriefs } from "@/lib/master/requestTypes";
 import { categoryLabel } from "@/lib/master/categoryOf";
 import ReadableText from "@/components/ui/ReadableText";
 import styles from "./requestForm.module.css";
-import { fmtNumber } from "@/lib/format";
 
-/* ── 2.2/2.3 ฝั่งอ่าน — ตารางเดียวเหมือนฝั่งกรอก (mig 0229) ──────────────
-   ⚠️ ประกอบ **แถวป้าย/ค่า** ส่งเข้า `Facts` ตัวเดิม ไม่วาดตารางของตัวเอง — จอนี้มี
-   รูปแบบเดียวทั้งหน้า และช่องว่างต้องอ่านเป็น N/A เหมือนช่องอื่นทุกช่อง */
+/* ── ข้อ 2.1–2.7 ฝั่งอ่าน — รายสินค้า (mig 0229 · 0352) ─────────────────────
+   ⭐ **หนึ่งแถวป้าย/ค่า ต่อสินค้าหนึ่งตัว** — ป้าย = "สินค้าที่ N · หมวด · ขนาด · จำนวน"
+   ค่า = ข้อ 2.1–2.7.3 บรรทัดละข้อ · เดิมแยกเป็นสองแถว (2.2 ทุกสินค้า / 2.3 ทุกสินค้า)
+   ⇒ พอสเปกย้ายลงแถว การอ่านแยกตามข้อจะต้องไล่จับคู่เองว่าบรรทัดไหนของสินค้าไหน
+   ⚠️ ข้อความทุกบรรทัดมาจาก `pdrTargetFacts` ตัวเดียวกับเอกสาร — ช่องว่างพิมพ์ N/A
+   ตามกติกาของ PDR (จอกับกระดาษต้องตรงกัน)
+   ⚠️ ประกอบ **แถวป้าย/ค่า** ส่งเข้า `Facts` ตัวเดิม ไม่วาดตารางของตัวเอง */
 function targetFacts(request) {
   const list = Array.isArray(request.targets) ? request.targets : [];
   const categories = request.pdrContext?.categories || [];
-  const money = (v) => (v == null || v === "" ? null : fmtNumber(v));
   const nameOf = (code) => categoryLabel(code, categories) || code;
-
-  const cost = list.map((t) => {
-    const parts = PDR_TARGET_KINDS.filter((k) => t[k.onField]).map((k) => {
-      const note = String(t[k.noteField] || "").trim();
-      const price = money(t[k.priceField]);
-      return `${k.label}${note ? ` ${note}` : ""}${price ? ` ${price} บาท/Kg` : ""}`;
-    });
-    return parts.length ? `${nameOf(t.categoryCode)} — ${parts.join(" · ")}` : null;
-  }).filter(Boolean);
-
-  const unit = list.map((t) => {
-    const price = money(t.pricePerUnit);
-    return price ? `${nameOf(t.categoryCode)} — ${price} บาท/ชิ้น` : null;
-  }).filter(Boolean);
-
-  return [
-    ["Target Cost / KG (F/FB ไม่รวมบรรจุภัณฑ์)", cost.join("\n")],
-    ["Target Price / Unit (ราคาขาย)", unit.join("\n")],
-  ];
+  const scentSource = requestPdrScentSource(request);
+  if (!list.length) return [["สินค้าที่ขอพัฒนา", ""]];
+  return list.map((t, i) => {
+    const facts = pdrTargetFacts(t, { scentSource });
+    return [
+      [`สินค้าที่ ${i + 1}`, nameOf(t.categoryCode), pdrTargetSizeText(t)].filter(Boolean).join(" · "),
+      facts.map((f) => `${f.no} ${f.label}: ${f.value || "N/A"}`).join("\n"),
+      null,
+      // ⚠️ กางครบทุกข้อ ไม่พับที่ 4 บรรทัดเหมือนช่องข้อความ — นี่คือสเปกของสินค้า RD ต้อง
+      //    เห็นครบทั้งก้อน (หมายเหตุยาวยังตัดบรรทัดตามปกติ)
+      { lines: facts.length + 4 },
+    ];
+  });
 }
 
 function Facts({ rows }) {
@@ -58,14 +55,14 @@ function Facts({ rows }) {
   if (!rows.length) return <small className={styles.hint}>ยังไม่ได้กรอกส่วนนี้</small>;
   return (
     <dl className={styles.pdrFacts}>
-      {rows.map(([label, value, source]) => {
+      {rows.map(([label, value, source, opts]) => {
         const text = value == null ? "" : String(value).trim();
         return (
           <div key={label} className={styles.pdrFact}>
             <dt>{label}</dt>
             <dd>
               {text
-                ? <ReadableText text={text} lines={4} />
+                ? <ReadableText text={text} lines={opts?.lines ?? 4} />
                 : <span className={styles.naValue}>N/A</span>}
               {/* ⭐ **ที่มาของค่าที่ระบบเติมให้** — ช่องพวกนี้คนกรอกแตะไม่ได้
                   ⇒ ถ้าไม่บอก คนอ่านจะแยกไม่ออกระหว่าง "ระบบเติมให้แล้ว" กับ
@@ -105,6 +102,11 @@ export default function PdrSummary({ request, briefs = [], section = null }) {
   const show = (key) => !rail || section === key;
   const list = rail ? PDR_SECTIONS.filter((s) => s.key === section) : PDR_SECTIONS;
   if (!request) return null;
+  // ⚠️ บรีฟเฉพาะรูปทรงที่มีบรีฟ (พัฒนากลิ่น) — พัฒนาสูตร NPD เลือกกลิ่นรายแถวสินค้าแทน
+  const usesBriefs = requestUsesScentBriefs(request);
+  // หัวส่วน = เลขหมวดบนกระดาษ + ชื่อ (ชุดเดียวกับรางและฟอร์ม)
+  const titleOf = (s) => [s.paperNo, s.title].filter(Boolean).join(" ");
+  const briefTitle = `2.1 บรีฟกลิ่น${briefs.length ? ` — ${briefs.length} ก้อน` : ""}`;
   const briefBlocks = !briefs.length ? (
     <small className={styles.hint}>ใบนี้ยังไม่มีบรีฟรายกลิ่น</small>
   ) : briefs.map((b, i) => (
@@ -127,44 +129,40 @@ export default function PdrSummary({ request, briefs = [], section = null }) {
         </div>
       )}
 
-      {show("briefs") && (rail ? (
+      {usesBriefs && show("briefs") && (rail ? (
         <div className={styles.pdrFlat}>
-          <h5 className={styles.pdrFlatTitle}>
-            บรีฟกลิ่น{briefs.length ? ` — ${briefs.length} ก้อน` : ""}
-          </h5>
+          <h5 className={styles.pdrFlatTitle}>{briefTitle}</h5>
           {briefBlocks}
         </div>
       ) : (
         /* ⭐ นอกราง: บรีฟขึ้นก่อนและกางไว้ — RD หยิบงานแล้วต้องเห็นทันที ไม่ต้องกดหา */
         <details className={styles.pdrSection} open>
-          <summary className={styles.pdrSummary}>
-            บรีฟกลิ่น{briefs.length ? ` — ${briefs.length} ก้อน` : ""}
-          </summary>
+          <summary className={styles.pdrSummary}>{briefTitle}</summary>
           <div className={styles.pdrBody}>{briefBlocks}</div>
         </details>
       ))}
 
       {list.map((section_) => (rail ? (
         <div key={section_.key} className={styles.pdrFlat}>
-          <h5 className={styles.pdrFlatTitle}>{section_.title}</h5>
+          <h5 className={styles.pdrFlatTitle}>{titleOf(section_)}</h5>
           <Facts rows={[
             ...(section_.key === "spec" ? targetFacts(request) : []),
             ...pdrSectionRows(section_, request, {
-              includeEmpty: true, withSource: true,
+              includeEmpty: true, withSource: true, numbered: true,
               context: { ...(request.pdrContext || {}), briefs },
             }),
           ]} />
         </div>
       ) : (
         <details key={section_.key} className={styles.pdrSection}>
-          <summary className={styles.pdrSummary}>{section_.title}</summary>
+          <summary className={styles.pdrSummary}>{titleOf(section_)}</summary>
           <div className={styles.pdrBody}>
             {/* ⚠️ `includeEmpty` — จอต้องแสดงช่องว่างเป็น N/A เหมือนกระดาษ
                 (มติผู้ใช้ 2026-08-07) ไม่ใช่ซ่อนทิ้งแล้วอ่านไม่ออกว่าถามหรือยัง */}
             <Facts rows={[
               ...(section_.key === "spec" ? targetFacts(request) : []),
               ...pdrSectionRows(section_, request, {
-                includeEmpty: true, withSource: true,
+                includeEmpty: true, withSource: true, numbered: true,
                 context: { ...(request.pdrContext || {}), briefs },
               }),
             ]} />
@@ -175,25 +173,30 @@ export default function PdrSummary({ request, briefs = [], section = null }) {
   );
 }
 
+const L = PDR_BRIEF_LABELS;
+const numberedBrief = (key) => [L[key].no, L[key].label].filter(Boolean).join(" ");
+
 // ช่องของบรีฟหนึ่งก้อน — แยกออกมาเพื่อให้ทั้งโหมดรางและโหมดลิ้นชักใช้ก้อนเดียวกัน
 function BriefFacts({ brief: b }) {
   return (
     <>
       {/* บรีฟเป็นช่องหลักของก้อนนี้ — ว่างก็ต้องเห็นว่าว่าง (N/A) ไม่ใช่หายไป */}
+      {/* ⚠️ ป้าย + เลขข้อจากทะเบียน `PDR_BRIEF_LABELS` — ชุดเดียวกับฟอร์มและเอกสาร
+          (2.1.4 Performance · 2.1.5 Scentotype ตามไฟล์ของ AE · มติผู้ใช้ 2026-09-11) */}
       <Facts rows={[
-        ["บรีฟกลิ่น", b.brief],
-        ["แรงบันดาลใจ", b.inspiration],
-        ["ช่วงกลิ่นที่ชื่นชอบ", b.likedNotes],
-        ["กลิ่นที่ End-user ไม่ชอบ", b.dislikedNotes],
-        ["ให้ทำวิจัยเรื่อง", b.researchTopic],
-        // ⭐ ข้อความต่อท้าย Scentotype รายตัว (ข้อ 2.1.4 บนกระดาษ · mig 0222)
+        [L.brief.label, b.brief],
+        [numberedBrief("inspiration"), b.inspiration],
+        [numberedBrief("likedNotes"), b.likedNotes],
+        [numberedBrief("dislikedNotes"), b.dislikedNotes],
+        [L.researchTopic.label, b.researchTopic],
+        // ⭐ ข้อความต่อท้าย Scentotype รายตัว (mig 0222)
         ...(b.scentotypes || []).map((t) => [
-          `Scentotype — ${scentotypeLabel(t)}`, (b.scentotypeNotes || {})[t],
+          `${L.scentotypes.label} — ${scentotypeLabel(t)}`, (b.scentotypeNotes || {})[t],
         ]),
       ]} />
       <dl className={styles.pdrFacts}>
-        <Chips label="Scentotype" values={b.scentotypes} textOf={scentotypeLabel} />
-        <Chips label="Performance ของกลิ่น" values={b.performance} textOf={scentPerformanceLabel} />
+        <Chips label={numberedBrief("performance")} values={b.performance} textOf={scentPerformanceLabel} />
+        <Chips label={numberedBrief("scentotypes")} values={b.scentotypes} textOf={scentotypeLabel} />
       </dl>
     </>
   );

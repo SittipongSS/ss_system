@@ -2,7 +2,10 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
-import { requestCancelBeforeAckOnly, requestUsesDeliveredRows, requestUsesItems, requestUsesPdr } from '@/lib/master/requestTypes';
+import {
+  requestCancelBeforeAckOnly, requestPdrRowsPickScent, requestUsesDeliveredRows, requestUsesItems, requestUsesPdr,
+} from '@/lib/master/requestTypes';
+import { pdrTargetsSubmitError } from '@/lib/requests/pdrTargets';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
@@ -73,6 +76,14 @@ export function submitRequestError(request, items = []) {
   if (request.status !== 'draft') return 'คำร้องนี้ส่งไปแล้ว';
   if (requestUsesItems(request) && !items.length) {
     return 'ต้องมีรายการอย่างน้อย 1 รายการก่อนส่ง';
+  }
+  /* ⭐ ใบที่เลือกกลิ่นจากทะเบียนรายสินค้า (พัฒนาสูตร NPD) — ต้องมีสินค้า ≥ 1 และทุกแถว
+     มีกลิ่นก่อนส่ง · ร่างเว้นว่างได้ (มติผู้ใช้ 2026-09-11)
+     ⚠️ อ่าน `request.targets` จากตัวใบ ไม่ใช่พารามิเตอร์เพิ่ม — `findRequest` โหลดมาให้
+     ทุกใบอยู่แล้ว · ผู้เรียกที่ลืมส่งพารามิเตอร์จะทำให้ด่านผ่านเงียบ ๆ */
+  if (requestPdrRowsPickScent(request)) {
+    const targetError = pdrTargetsSubmitError(request.targets);
+    if (targetError) return targetError;
   }
   // ⭐ วันที่ต้องการรับงานบังคับทุกคำร้อง (มติผู้ใช้ 2026-08-08) — ร่างใหม่ถูกด่าน
   // `requestShapeError` กันตั้งแต่ POST แล้ว · ด่านนี้กัน **ร่างเก่า** ที่เกิดก่อนมติ

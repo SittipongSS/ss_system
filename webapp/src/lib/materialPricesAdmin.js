@@ -301,6 +301,21 @@ export async function findRequest(supabase, id) {
     .from('dept_request_pdr_targets').select('*').eq('requestId', id)
     .order('sortOrder', { ascending: true });
   if (targetError) throw targetError;
+  /* ⭐ ข้อ 2.1 กลิ่นรายสินค้า (mig 0352 · พัฒนาสูตร NPD) — จอ/เอกสารโชว์ **รหัส · ชื่อ**
+     ไม่ใช่ id · อ่านสดจากทะเบียน ไม่ประทับลงแถว (กติกาเดียวกับรหัส ZN ข้างล่าง)
+     ⚠️ ตามกลับไม่เจอ = null แล้วจอบอกตรง ๆ · FK เป็น RESTRICT จึงไม่ควรเกิด */
+  const targetScentIds = [...new Set((targets || []).map((t) => t.scentId).filter(Boolean))];
+  if (targetScentIds.length) {
+    const { data: scentRows, error: scentError } = await supabase
+      .from('scents').select('id, code, name').in('id', targetScentIds);
+    if (scentError) throw scentError;
+    const byId = new Map((scentRows || []).map((x) => [x.id, x]));
+    for (const t of targets) {
+      const scent = t.scentId ? byId.get(t.scentId) : null;
+      t.scentCode = scent?.code || null;
+      t.scentName = scent?.name || null;
+    }
+  }
   /* ⭐ พื้นที่ที่ต้องประเมิน (mig 0314) — ของ **ใบ** ไม่ใช่ของทะเบียนโซน
      ⚠️ โหลดคู่กับบรีฟด้วยเหตุผลเดียวกัน: ทั้งจอ TS และจอ SA อ่านก้อนเดียวกัน
      ⚠️ **โหลดเฉพาะตอนเปิดใบเดียว** — คิวโชว์จำนวนจาก `surveyZoneCount` ที่ประทับ
@@ -388,7 +403,11 @@ export async function findRequest(supabase, id) {
     withBriefs.customerId
       // ⚠️ `arCode` เพิ่มมาเพื่อหัวใบ (ม-98) — ใบเก็บแค่ `customerName` ตอนเปิด
       // รหัสลูกค้าอยู่ที่ทะเบียนที่เดียว ไม่ประทับลงใบ (ดูเหตุผลใน headerFacts.js)
-      ? supabase.from('customers').select('id, name, "nameEn", "arCode", contacts, "contactPerson", "contactPhone"')
+      /* ⭐ ที่อยู่ 4 คอลัมน์ — PDR 1.7 "ที่อยู่ลูกค้า" อ่านสดจากทะเบียน (มติผู้ใช้ 2026-09-11)
+         ⚠️ ต้องครบทั้งลิสต์ใหม่และคอลัมน์สำเนาเดิม — `customerAddresses` ถอยไปอ่านสำเนา
+         เมื่อลูกค้ายังไม่มี `addresses` · ขาดตัวไหน = ลูกค้ากลุ่มนั้นได้ 1.7 ว่างเงียบ ๆ
+         ⚠️ ใช้ประกอบข้อความใน `pdrContext` เท่านั้น — ไม่ส่งออกทาง `refCustomer` */
+      ? supabase.from('customers').select('id, name, "nameEn", "arCode", contacts, "contactPerson", "contactPhone", addresses, address, "shippingAddress", "branchCode"')
         .eq('id', withBriefs.customerId).maybeSingle().then((r) => r.data)
       : null,
     withBriefs.dealId
@@ -421,6 +440,8 @@ export async function findRequest(supabase, id) {
   withBriefs.pdrContext = pdrContext({
     request: withBriefs, project, customer, deal, briefs: briefs || [], salesOrderLines,
     categories: categories || [],
+    // 1.12 ของใบที่ไม่มีใบสั่งขาย (พัฒนาสูตร NPD) นับกลิ่นจากแถวสินค้า
+    targets: targets || [],
   });
 
   const items = await attachRowPrice(supabase, withBriefs.items || []);

@@ -14,6 +14,7 @@
 // "ไม่มีแท็บไหนขาด ⟺ requestFormBlocker ผ่าน" ถ้าใครเพิ่มกฎข้างเดียวเทสต์จะแตก
 import {
   requestLineShape, requestUsesItems, requestUsesPdr, requestKindMeta, requestNeedsRef,
+  requestUsesScentBriefs,
 } from '@/lib/master/requestTypes';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { PDR_SECTIONS, pdrArtworkError, pdrFormProgress } from '@/lib/requests/pdrFields';
@@ -169,7 +170,8 @@ function optionalCounts(form, kind, optionalRefs) {
     // บรีฟรายกลิ่น — จำนวนก้อนมาจากใบสั่งขาย ก้อนที่เขียนเนื้อบรีฟแล้วถือว่ากรอก
     // ⚠️ ไม่นับ "ชื่อเรียก" — ชื่อที่เว้นว่างจะถูกเติม "กลิ่นที่ N" ให้ตอนบันทึก
     // (scentBriefs.js) ⇒ นับชื่อแล้วเกจจะเต็มเองโดยที่ยังไม่มีใครเขียนบรีฟ
-    for (const brief of form.briefs || []) {
+    // ⚠️ เฉพาะรูปทรงที่มีบรีฟ — ก้อนค้างของใบที่สลับหัวข้อมาต้องไม่นับเข้าเกจ NPD
+    for (const brief of requestUsesScentBriefs(form) ? form.briefs || [] : []) {
       counts.subject.total += 1;
       if (filled(brief?.brief)) counts.subject.filled += 1;
     }

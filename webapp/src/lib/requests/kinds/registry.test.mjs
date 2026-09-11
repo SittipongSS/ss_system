@@ -162,7 +162,8 @@ test('ตัวอ่านรูปทรงต้องได้ "ทั้ง
      ไวยากรณ์และ **ไม่พังตอน build** แต่ทำให้ใบ NPD ถูกตัดสินด้วยรูปแบบตั้งต้นเงียบ ๆ
      ⇒ จอโชว์แบบฟอร์ม PDR แต่เซิร์ฟเวอร์ตอบ "หัวข้อนี้ไม่มีแบบฟอร์ม PDR"
      ⚠️ สแกนทั้ง src ไม่ใช่แค่ไฟล์เดียว — ด่านพวกนี้กระจายอยู่ทั้งจอ ลิบ และ API */
-  const READERS = ['requestUsesPdr', 'requestUsesItems', 'requestUsesDeliveredRows', 'requestLineShape'];
+  const READERS = ['requestUsesPdr', 'requestUsesItems', 'requestUsesDeliveredRows', 'requestLineShape',
+    'requestPdrScentSource', 'requestUsesScentBriefs', 'requestPdrRowsPickScent'];
   const files = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' })
     .split('\n')
     .filter((f) => /\.(js|mjs)$/.test(f))
