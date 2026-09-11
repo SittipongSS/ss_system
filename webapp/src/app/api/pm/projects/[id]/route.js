@@ -427,9 +427,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   let productWarning = null;
   if (body.projectProducts && Array.isArray(body.projectProducts)) {
     // Delete existing
-    await supabase.from('project_products').delete().eq('projectId', id);
-    // Insert new
-    if (body.projectProducts.length > 0) {
+    // ⚠️ ลบไม่ลงต้องไม่ insert ต่อ — insert ข้างล่างใช้ id ใหม่ทุกแถว ⇒ เคยเดินต่อ
+    //    แล้วสินค้าในโครงการซ้อนเป็นสองชุดโดยไม่มีอะไรฟ้อง · หัวโครงการบันทึกไปแล้ว
+    //    ข้างบน จึงตอบเป็น warning ทางเดียวกับ insert พลาด ไม่ใช่ 500
+    const { error: clearErr } = await supabase.from('project_products').delete().eq('projectId', id);
+    if (clearErr) {
+      console.error('Failed to clear products during PATCH:', clearErr.message);
+      productWarning = 'อัปเดตรายการสินค้า (FG) ไม่สำเร็จ — รายการเดิมยังอยู่ ลองบันทึกใหม่อีกครั้ง';
+    } else if (body.projectProducts.length > 0) {
+      // Insert new
       const ppRows = body.projectProducts.map((p) => ({
         id: genId('PP'),
         projectId: id,

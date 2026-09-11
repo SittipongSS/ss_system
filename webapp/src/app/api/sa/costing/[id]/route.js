@@ -181,7 +181,9 @@ export async function PATCH(request, { params }) {
 
     if (categoryChanged) {
       // กางบรรทัดใหม่ทั้งชุด (ตรวจแล้วว่าไม่มีราคาที่ตอบไว้จะหาย)
-      await supabase.from('costing_item_components').delete().eq('itemId', current.id);
+      // ⚠️ ลบไม่ลงต้องหยุด — เดินต่อ = บรรทัดของหมวดเก่ากับหมวดใหม่ซ้อนกันในรายการเดียว
+      const { error: clearError } = await supabase.from('costing_item_components').delete().eq('itemId', current.id);
+      if (clearError) return Response.json({ error: clearError.message }, { status: 500 });
       const { error: compError } = await supabase.from('costing_item_components')
         .insert(componentRowsFromTemplate(current.id, templateFor(raw.categoryCode).lines));
       if (compError) return Response.json({ error: compError.message }, { status: 500 });
