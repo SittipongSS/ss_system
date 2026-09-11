@@ -5715,6 +5715,23 @@ button.empty-state { width: 100%; font: inherit; }
   color: var(--text-3);
   font-size: var(--fs-5);
 }
+/* ยอด SO "รออนุมัติ" — ชิ้นเดียวทุกจอ (components/salesPlanning/PendingApprovalAmount ·
+   มติผู้ใช้ 2026-09-11 · mig 0353) · วางข้างยอด Actual เพื่อ "แยกให้รู้" ไม่ใช่รวมยอด
+   ⚠️ คำว่า "รออนุมัติ" = สีสถานะ amber (ตรงป้ายสถานะ SO) · ตัวเลข = สีข้อความรอง
+      ห้ามใช้เขียวของ Actual ไม่งั้นอ่านเป็นยอดที่นับแล้ว */
+.so-pending-approval {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-variant-numeric: tabular-nums;
+}
+.so-pending-approval.is-block { display: block; }
+.so-pending-approval-main { white-space: nowrap; }
+.so-pending-approval-tag {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
+}
+.so-pending-approval-count { color: var(--text-3); }
+
 /* ข้อความหรี่ในเซลล์ที่ไม่ใช่ตัวเลข (`.cell-num-idle` มีไว้สำหรับคอลัมน์ตัวเลข) */
 .cell-quiet { color: var(--text-3); }
 .cell-num-ok { color: var(--green); }
@@ -7187,7 +7204,8 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   color: var(--text-2);
   font-style: italic;
 }
-.performance-tracking-table .fz-table tr.perf-rest-row .mono { font-style: normal; }
+.performance-tracking-table .fz-table tr.perf-rest-row .mono,
+.performance-tracking-table .fz-table tr.perf-rest-row .perf-pending-sub { font-style: normal; }
 .perf-rest-label { font-weight: var(--fw-semibold); }
 .perf-rest-note {
   display: block;
@@ -7197,9 +7215,70 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   font-weight: var(--fw-normal);
 }
 
+/* ── ยอด SO "รออนุมัติ" บนแท็บผลงานขาย (มติผู้ใช้ 2026-09-11 · mig 0353) ──────────
+   แถบ/ตัวอย่างสี = สีเดียวกับ Actual แต่จาง (--op-muted 0.55 = CHART_COMPARISON_OPACITY
+   ของกราฟ) + ลายเฉียง ⇒ แยกจาก Actual ด้วยสิ่งที่ไม่ใช่ hue (CHART_SERIES ล็อก 3 สี)
+   ⚠️ สีไม่ใช่สัญญาณเดียว: ทุกจุดที่วาดมีคำว่า "รออนุมัติ" กำกับ (title / legend / aria-label)
+   ความกว้างของส่วนในแถบมาจากตัวแปร --perf-pending-w ที่รางตั้งให้ (ไม่เพิ่ม style ก้อนใหม่) */
+.perf-seg-pending,
+.perf-swatch-pending {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 2px,
+    color-mix(in srgb, var(--panel) 60%, transparent) 2px 4px
+  );
+  opacity: var(--op-muted);
+}
+.perf-seg-pending {
+  display: block;
+  flex: none;
+  height: 100%;
+  width: var(--perf-pending-w, 0);
+  background-color: var(--green);
+}
+.perf-seg-animated { transition: width var(--motion-slow); }
+.perf-swatch-pending { background-color: var(--chart-actual); }
+
+/* บรรทัดรออนุมัติใต้ตัวเลข Actual ของตารางติดตาม — กดแล้วเปิดรายดีลของเดือนปัจจุบัน
+   เซลล์ Actual ตัวหนา ⇒ ตัวเลขของบรรทัดนี้คืนน้ำหนักปกติ (คำว่ารออนุมัติหนาเองจากชิ้นกลาง) */
+.perf-pending-sub { font-weight: var(--fw-normal); }
+.perf-pending-drill {
+  appearance: none;
+  display: block;
+  min-height: 24px;
+  margin-left: auto;
+  padding: 0 var(--space-0-5);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+  text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+}
+.perf-pending-drill:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.perf-pending-drill:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
+}
+/* ต่อท้ายในบรรทัดตัวเลขของแถบความคืบหน้า — ขนาดตามบรรทัดนั้น ไม่ใช่ขนาดบรรทัดรองของชิ้นกลาง */
+.so-pending-approval.perf-pending-inline { font-size: inherit; }
+/* การ์ด "Actual สะสม" ที่มีบรรทัดรออนุมัติต่อท้าย note — **ไม่ตัดบรรทัดเลย** ยอมให้การ์ดสูงขึ้น
+   note ของการ์ดกลางตัดที่ 2 บรรทัด ⇒ บรรทัดรออนุมัติถูกตัดทิ้งเงียบ ๆ · ยกเป็น 3 ก็ยังไม่พอ:
+   การ์ดแคบสุด (minmax 190px ≈ เนื้อความกว้าง 158px) "จบแล้ว ฿X + เดือนนี้ ฿Y" กิน 2 บรรทัด
+   แล้ว "รออนุมัติ ฿993,000.00 · 8 ใบ" ตกเป็นอีก 2 = 4 บรรทัด ⇒ ยอดเงินโดนเฉือนท้ายด้วย …
+   (กติกาเดียวกับการ์ดยอดปิดได้ของแดชบอร์ดของฉัน: ตัดบรรทัดได้ ตัดยอดเงินไม่ได้) */
+.perf-kpi-pending .ui-kpi-hint {
+  display: block;
+  -webkit-line-clamp: none;
+}
+
 @media (max-width: 680px) {
   .table-row-link,
-  .table-metric-button { min-height: 40px; }
+  .table-metric-button,
+  .perf-pending-drill { min-height: 40px; }
 }
 .sales-overview-grid th.num,
 .sales-overview-grid td.num {

@@ -149,6 +149,62 @@ export function salesOrderActual(order) {
   return order?.status === 'approved' ? Math.max(0, Number(order.actualAmount) || 0) : 0;
 }
 
+/* ── ยอด "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) ─────────────────────────
+   SO ที่ยื่นแล้วรอ AE Supervisor อนุมัติ — **โชว์ยอดได้ แต่ไม่ใช่ Actual** เดิมทุกจอ
+   ตีเป็น 0 จนดีล Won ดูเหมือนไม่มีมูลค่า (หลุดจาก FC คงเหลือเพราะ Won แล้ว + ยังไม่เข้า
+   Actual เพราะยังไม่อนุมัติ)
+   ⭐ นับเฉพาะ `pending_approval` — ร่าง/ตีกลับ/ย้อนอนุมัติ/ยกเลิก ไม่ใช่ "รออนุมัติ"
+      (`status !== 'approved'` จะดึงพวกนั้นมาปนเงียบ ๆ เพราะ actualAmount มีค่าตั้งแต่ร่าง)
+   ⭐ ยอด = `actualAmount` (ก่อน VAT) ตัวเดียวกับ Actual — ห้ามใช้ totalAmount
+   ⛔ ห้ามบวกเข้า Actual / เป้า / % / ขาด-เกิน ทุกกรณี — ยอดที่หน้า "เติมยอดจากระบบ"
+      และตัวช่วยวางเป้าคัดลอกไปเก็บใน sales_history ถาวร อ่านจาก Actual ทั้งหมด
+   ⚠️ ชื่อเลี่ยงคำว่า pending เปล่า ๆ — financeStatus 'pending' (รอบัญชีตรวจ) ·
+      สถานะงวด 'pending' · statusOf 'pending' (รอปิดยอด) มีความหมายอื่นอยู่แล้ว */
+export const PENDING_APPROVAL_LABEL = SALES_ORDER_STATUS_LABELS.pending_approval;
+
+export function salesOrderPendingApprovalAmount(order) {
+  return order?.status === 'pending_approval' ? Math.max(0, Number(order.actualAmount) || 0) : 0;
+}
+
+// สามสถานะของยอดบนแถว SO — ใช้ตัดสินสี/ป้ายของเซลล์ยอดในทุกตาราง SO
+//   'actual'           อนุมัติแล้ว นับเป็น Actual
+//   'pending_approval' ยื่นแล้วรออนุมัติ โชว์ยอดแยก ยังไม่นับ
+//   'excluded'         ร่าง/ตีกลับ/ย้อนอนุมัติ/ออก Rev. แล้ว/ยกเลิก — ไม่นับทั้งสองกอง
+export function salesOrderAmountKind(order) {
+  if (order?.status === 'approved') return 'actual';
+  if (order?.status === 'pending_approval') return 'pending_approval';
+  return 'excluded';
+}
+
+// รวมยอดจากแถว SO ตรง ๆ (หน้ารายการ SO · ตาราง SO ในดีล/โครงการ · รายงาน)
+// ⭐ ผลต้องตรงกับ cache บนดีล (sync_sales_order_actual) — กติกาเดียวกันทุกตัวอักษร
+export function splitSalesOrderAmounts(orders = []) {
+  const out = { actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0 };
+  for (const order of orders || []) {
+    const kind = salesOrderAmountKind(order);
+    if (kind === 'actual') {
+      out.actual += salesOrderActual(order);
+      out.actualCount += 1;
+    } else if (kind === 'pending_approval') {
+      out.pendingApproval += salesOrderPendingApprovalAmount(order);
+      out.pendingApprovalCount += 1;
+    }
+  }
+  return out;
+}
+
+// อ่านยอดรออนุมัติของดีลจาก cache ที่ DB เขียนให้ (metadata.soPendingAmount/Count · mig 0353)
+// ⭐ ไม่มีคีย์ = 0 — JS ขึ้น production ได้ก่อนรัน migration โดยไม่มีอะไรพัง
+// ⭐ ไม่ต้องดู actualSource: สองคีย์นี้มีแต่ trigger ฝั่ง DB เป็นคนเขียน (enforce ถอดค่าที่
+//    หน้าจอส่งมาทิ้งทุกครั้ง) · ตัวกรอง "นับเฉพาะดีล Won" อยู่ที่ตัวรวมยอด (dashboardMetrics)
+export function dealPendingApprovalAmount(deal) {
+  return Math.max(0, Number(deal?.metadata?.soPendingAmount) || 0);
+}
+
+export function dealPendingApprovalCount(deal) {
+  return Math.max(0, Math.trunc(Number(deal?.metadata?.soPendingCount) || 0));
+}
+
 // sales_deals.wonValue is only a compatibility cache. Treat it as Actual only
 // when the database marked the value as derived from approved Sale Orders —
 // หรือเป็น 'legacy': ดีลเก่าจากระบบเดิมที่กรอก "มูลค่าที่ปิด" ตรงตอนย้ายระบบ

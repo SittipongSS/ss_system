@@ -1,8 +1,10 @@
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesTarget } from '@/lib/salesPlanning';
-import { businessMonthKey, isMonthValue, monthsInRange, normalizeMonthRange } from '@/lib/datePeriods';
+import { businessMonthKey, currentMonth, isMonthValue, monthsInRange, normalizeMonthRange } from '@/lib/datePeriods';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { reportPendingApproval } from '@/lib/sales/reportPendingApproval';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +20,10 @@ export const dynamic = 'force-dynamic';
  *
  * ⚠️ "ของใคร" อ่านจาก `sales_orders."ownerId"` ที่ **แช่ไว้ตอนอนุมัติ** (mig 0292)
  * ไม่ใช่เจ้าของดีลปัจจุบัน — ไม่งั้นย้ายดีลแล้วยอดของเดือนที่จ่ายคอมไปแล้วย้ายตาม
+ *
+ * ⭐ ใบ **รออนุมัติ** (มติผู้ใช้ 2026-09-11 · mig 0353) คืนเป็นช่อง `pendingApproval` แยก
+ * ไม่ปนเข้า actual[] / orders[] · ลงเดือนปัจจุบันเวลาไทยเสมอ · ของเจ้าของดีล *ปัจจุบัน*
+ * (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ) — กติกาทั้งหมดอยู่ที่ lib/sales/reportPendingApproval
  */
 
 const money = (v) => Number(v || 0);
@@ -79,6 +85,35 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   for (const line of lines || []) {
     lineCount.set(line.salesOrderId, (lineCount.get(line.salesOrderId) || 0) + 1);
   }
+
+  /* ── ใบสั่งขายที่รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) ──────────────────
+     โชว์แยกจากขายจริง — ยอดของมันลง **เดือนปัจจุบัน (เวลาไทย) เสมอ** ไม่ใช่เดือนในใบ
+     ⇒ ช่วงที่ไม่มีเดือนนี้ไม่ต้องถามฐานเลย (เดือนที่ปิดแล้ว/ปีก่อนไม่มีวันเห็นยอดนี้)
+     ไม่มีตัวกรอง approvedAt เพราะ "รออนุมัติ" เป็นสถานะ ณ ตอนนี้ ไม่ใช่เหตุการณ์ในช่วง
+     ⚠️ ห้ามต่อ id ของใบพวกนี้เข้า `.in('salesOrderId', ids)` ข้างบน — ก้อนนั้นไม่ได้ซอย
+        (เพดาน URL 16 KB) และจำนวนบรรทัดของใบรออนุมัติไม่มีจอไหนใช้ */
+  const now = new Date();
+  const { data: pendingOrders, error: pendingError } = slot.has(currentMonth(now))
+    ? await fetchAllResult(() => supabase
+      .from('sales_orders')
+      .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", status, "submittedAt", "vatAmount", "totalAmount", "actualAmount", metadata')
+      .eq('status', 'pending_approval')
+      .order('id', { ascending: true }))
+    : { data: [], error: null };
+  if (pendingError) return fail(pendingError.message, 500);
+
+  /* เจ้าของดีล **ปัจจุบัน** — `sales_orders."ownerId"` ยังว่างจนกว่าจะอนุมัติ (แช่ตอนอนุมัติ ·
+     mig 0294) ห้ามเดาจากใบ · stage ไว้กรอง "นับเฉพาะดีล Won" ให้ตรงกับแดชบอร์ด
+     ลิสต์ id โตตามจำนวนใบที่ค้าง ⇒ ซอยด้วย fetchInChunks ตั้งแต่วันแรก */
+  const { data: pendingDeals, error: pendingDealError } = await fetchInChunks(
+    (pendingOrders || []).map((o) => o.dealId),
+    (chunk) => fetchAllResult(() => supabase
+      .from('sales_deals')
+      .select('id, stage, "ownerId", "ownerName"')
+      .in('id', chunk)
+      .order('id', { ascending: true })),
+  );
+  if (pendingDealError) return fail(pendingDealError.message, 500);
 
   /* ── ยอดที่กรอกย้อนหลัง ──────────────────────────────────────────────
      เดือนที่มีแถวนี้ = ยอดมาจากการกรอกมือ **ทับ** ยอดจากใบ (กติกาเดียวกับแท็บผลงานขาย)
@@ -169,6 +204,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     });
   }
 
+  /* ยอดรออนุมัติ — ก้อนแยก ไม่เคยแตะ rows ข้างบน (actual[] / history[] / แถวทีมที่รวมจากสมาชิก)
+     ⇒ ขายจริง ทบยอด % ส่วนต่าง และแถบเตือนยอดบริษัทไม่ตรงรายคน เท่าเดิมทุกตัวเลข */
+  const pendingApproval = reportPendingApproval({
+    orders: pendingOrders,
+    deals: pendingDeals,
+    months,
+    person,
+    now,
+  });
+
   const all = [...rows.values()];
   return ok({
     range,
@@ -176,6 +221,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     company: all.find((r) => r.scope === 'company') || null,
     teams: all.filter((r) => r.scope === 'team'),
     people: all.filter((r) => r.scope === 'owner'),
+    pendingApproval,
     orders: inRange.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,

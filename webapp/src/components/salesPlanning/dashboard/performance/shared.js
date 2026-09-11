@@ -1,7 +1,7 @@
 "use client";
-
 import { fmtMoney, fmtNumber } from "@/lib/format";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
+import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 
 // ชิ้นส่วนเล็กที่ใช้ร่วมกันในแท็บผลงานขาย — เก็บที่เดียวให้แถบคุมงวด/แถบความคืบหน้า/
 // ตารางติดตาม/แผงทบยอด พูดถึงงวดเดียวกันด้วยคำเดียวกันและฟอร์แมตตัวเลขเหมือนกัน
@@ -58,10 +58,10 @@ export function periodOptions(kind, year) {
    กติกา `statusOf` ยังอยู่ที่ lib/sales/performanceMath.js พร้อมเทสต์ ถ้าจะเอาป้าย
    กลับมาให้เรียกจากที่นั่น อย่าเขียนกติกาสถานะขึ้นใหม่ */
 
-// แถบความคืบหน้าของงวด: เขียว = Actual, ส้ม = Forecast (ต่อท้าย), ขีดเข้ม = ต้องปิด.
-// สเกล = ค่ามากสุดของ (ต้องปิด, Actual+Forecast) เพื่อให้ทุกส่วนอยู่ในกรอบเสมอ.
+// แถบงวด: เขียว = Actual · เขียวจางลายเฉียง = รออนุมัติ · ส้ม = Forecast · ขีดเข้ม = ต้องปิด
+// สเกล = ค่ามากสุดของ (ต้องปิด, Actual+รออนุมัติ+Forecast) ให้ทุกส่วนอยู่ในกรอบ (2026-09-11)
 export function ProgressBar({ stat, height = 8 }) {
-  const scale = Math.max(stat.mustClose, stat.actual + stat.forecast, 1);
+  const scale = Math.max(stat.mustClose, stat.actual + (stat.pendingApproval || 0) + stat.forecast, 1);
   const w = (v) => `${Math.min(100, (v / scale) * 100)}%`;
   return (
     <div style={{ position: "relative", minWidth: 110 }}>
@@ -69,10 +69,14 @@ export function ProgressBar({ stat, height = 8 }) {
         style={{
           display: "flex", overflow: "hidden", height,
           borderRadius: height / 2, background: "var(--panel-2)",
-          border: "1px solid var(--border)",
+          border: "1px solid var(--border)", "--perf-pending-w": w(stat.pendingApproval || 0),
         }}
       >
         <i style={{ display: "block", height: "100%", width: w(stat.actual), background: "var(--green)" }} />
+        {/* ยอด SO รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) — ต่อท้าย Actual ด้วยสีเดียวกัน
+            แต่จาง + ลายเฉียง (.perf-seg-pending) ไม่ใช่ Actual · ความกว้างมาทางตัวแปร CSS
+            ของรางด้านบน · ตัวเลข % ข้างแถบยังเป็น Actual ล้วน */}
+        {stat.pendingApproval > 0 && <i className="perf-seg-pending" title={`${PENDING_APPROVAL_LABEL} ${money(stat.pendingApproval)}`} />}
         <i style={{ display: "block", height: "100%", width: w(stat.forecast), background: "var(--amber)", opacity: 0.75 }} />
       </div>
       {stat.mustClose > 0 && (
@@ -90,6 +94,8 @@ export function ProgressBar({ stat, height = 8 }) {
 }
 
 // legend สีสามค่า — ใช้หัวการ์ด/แผงต่าง ๆ
+// `swatchClass` = ตัวอย่างที่สีเดียวแทนไม่ได้ (รออนุมัติ = เขียวจางลายเฉียง) — ไม่ส่ง `color`
+// คู่กับมัน ไม่งั้น background ของ style ทับลายของคลาส
 export function SeriesLegend({ items }) {
   return (
     <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
@@ -97,6 +103,7 @@ export function SeriesLegend({ items }) {
         <span key={s.label} className="flex items-center gap-1.5" style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
           <span
             aria-hidden="true"
+            className={s.swatchClass}
             style={{
               width: 11, height: s.line ? 3 : 11, borderRadius: 3, display: "inline-block",
               background: s.dashed ? "none" : s.color,

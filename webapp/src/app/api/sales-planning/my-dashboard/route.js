@@ -1,12 +1,11 @@
 import { withUser, ok, fail, unauthorized } from '@/lib/http';
-import { monthKey, forecastAmount, isOpenStage, isWonStage } from '@/lib/salesPlanning';
+import { monthKey } from '@/lib/salesPlanning';
 import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 import { taskCreditId } from '@/lib/permissions';
-import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
-import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
+import { summarizeMyDeals } from '@/lib/sales/myDashboardTotals';
 import { businessDate } from '@/lib/businessDate';
-import { isYearValue } from '@/lib/datePeriods';
+import { businessDayKey, currentMonth, isYearValue } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +13,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
 
   const params = new URL(req.url).searchParams;
-  const month = monthKey(params.get('month')) || monthKey(new Date().toISOString());
+  /* นาฬิกาตัวเดียวของคำขอนี้ — ทั้งค่าถอยของ `month` และเดือนของยอดรออนุมัติอ่านจากตัวนี้
+     ⚠️ ค่าถอยเดิมเป็น `monthKey(new Date().toISOString())` = เดือนตาม UTC (ตี 0–7 วันที่ 1
+     ได้เดือนก่อน) · ใช้ currentMonth (เวลาไทย) ตัวเดียวกับที่ตัดสินเดือนของยอดรออนุมัติ */
+  const now = new Date();
+  const month = monthKey(params.get('month')) || currentMonth(now);
   /* year=YYYY = "ทุกเดือนของปีนั้น" (ติ๊ก "ทุกเดือน" บนหัวแดชบอร์ด) — กติกาเดียวกับ
      ลีด/ดีล (มติ 2026-07-29): ทุกเดือน**ของปีที่เลือก** ไม่ใช่ทุกปีตั้งแต่เปิดระบบ
      ⚠️ `month` ยังส่งมาเสมอ ตัวนี้แค่ขยายขอบเป็นทั้งปีของเดือนนั้น */
@@ -78,45 +81,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .filter((task) => (seenTaskIds.has(task.id) ? false : seenTaskIds.add(task.id)));
   const todayBangkok = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
+  }).format(now);
   const taskSummary = summarizeOpenTasks(myTasks, todayBangkok);
 
-  const isWon = (d) => isWonStage(d.stage);
-  const isOpen = (d) => isOpenStage(d.stage);
-  
-  const wonAmt = dealActualFromSalesOrders;
-  const wonMonth = (d) => monthKey(d.metadata?.wonMonth) || monthKey(d.confirmedAt) || monthKey(d.metadata?.poReceivedDate) || monthKey(d.forecastMonth);
-
-  // ยอดปิดได้ของงวดที่เลือก — เดือนเดียว หรือทั้งปีเมื่อติ๊ก "ทุกเดือน"
-  const inPeriod = (d) => (year ? String(wonMonth(d) || '').slice(0, 4) === year : wonMonth(d) === month);
-  const wonDealsThisMonth = myDeals.filter(d => isWon(d) && inPeriod(d));
-  const wonValue = wonDealsThisMonth.reduce((sum, d) => sum + wonAmt(d), 0);
-  
-  // Calculate Pipeline (Open Deals)
-  const openDeals = myDeals.filter(isOpen);
-  const pipelineValue = openDeals.reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
-  const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
-
-  // Group Pipeline by Probability (FC%) — ระดับมาจาก lib/sales/forecastLevels
-  // (แหล่งเดียว) เดิมก๊อปลิสต์ไว้ที่นี่เอง แล้วต้องไล่แก้ตามทุกครั้งที่ระดับเปลี่ยน
-  const fcLevels = FORECAST_VALUES;
-  const snapFc = snapForecastLevel;
-
-  const byForecast = fcLevels.map(level => {
-    const dealsInLevel = openDeals.filter(d => snapFc(d.probability) === level);
-    return {
-      level,
-      count: dealsInLevel.length,
-      value: dealsInLevel.reduce((sum, d) => sum + Number(d.projectValue || 0), 0)
-    };
-  });
+  /* ยอดของงวด (ยอดปิดได้ · รออนุมัติ · ส่วนต่างกับเป้า · ท่อ) — กติกาอยู่ที่
+     `lib/sales/myDashboardTotals` ทั้งหมด (เทสต์ได้โดยไม่มี supabase)
+     ⭐ ยอด SO รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) มาเป็นช่องแยก `pendingApproval` /
+        `pendingApprovalCount` — `wonValue` · `targetGap` ยังเป็น Actual ล้วนเหมือนเดิม
+     ⚠️ ไม่ต้องมี query ใหม่ — ยอดรออนุมัติเป็น cache บน `sales_deals.metadata` ที่ select('*') มาแล้ว */
+  const totals = summarizeMyDeals(myDeals, { month, year, target, now });
 
   // Action Items: Leads that need immediate attention
   // e.g., 'assigned' or 'screened' (needs contact), or 'meeting' (has upcoming meeting)
-  const todayStr = businessDate();
-  const actionLeads = activeLeads.filter(l => 
-    ['assigned', 'screened'].includes(l.status) || 
-    (l.status === 'meeting' && l.meetingAt && String(l.meetingAt).slice(0, 10) >= todayStr)
+  const todayStr = businessDate(now);
+  /* ⚠️ `meetingAt` เป็น timestamptz — วันของนัดต้องเป็นวันไทย (`businessDayKey`) เดิมตัด
+     `.slice(0, 10)` จากสตริง ISO = วันตาม UTC ⇒ นัดก่อน 7 โมงเช้าหลุดจากรายการในวันนัดเอง */
+  const actionLeads = activeLeads.filter(l =>
+    ['assigned', 'screened'].includes(l.status) ||
+    (l.status === 'meeting' && l.meetingAt && (businessDayKey(l.meetingAt) || '') >= todayStr)
   );
 
   // Feed ส่วนตัว: รวมความเคลื่อนไหวของดีลที่ผู้ใช้ดูแลกับงานที่ผู้ใช้รับผิดชอบ
@@ -209,12 +191,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     target,
     // แยก "ยังไม่ตั้งเป้า" (ไม่มี record ของงวดนี้) ออกจาก "เป้า = 0 จริง" — UI ใช้ตัดสินว่าจะแสดง dash แทน ฿0.00
     hasTarget: targetRows.length > 0,
-    wonValue,
-    pipelineValue,
-    weightedForecast,
-    targetGap: target - wonValue,
-    openDealsCount: openDeals.length,
-    byForecast,
+    // ยอดปิดได้ = Actual (SO อนุมัติแล้ว) เท่านั้น
+    wonValue: totals.wonValue,
+    /* ยอด SO "รออนุมัติ" ของงวด — **แยกจาก wonValue** · มีค่าเฉพาะงวดที่ครอบเดือนปัจจุบัน
+       (เวลาไทย) เพราะอนุมัติวันนี้ Actual ลงเดือนนี้ · จอวางไว้ใต้ยอดปิดได้ ไม่บวกรวม */
+    pendingApproval: totals.pendingApproval,
+    pendingApprovalCount: totals.pendingApprovalCount,
+    pipelineValue: totals.pipelineValue,
+    weightedForecast: totals.weightedForecast,
+    // เป้า − Actual ล้วน — ขับทั้ง "ขาดอีก/เกินเป้า" และสีเขียวบนการ์ด (ห้ามหักยอดรออนุมัติ)
+    targetGap: totals.targetGap,
+    openDealsCount: totals.openDealsCount,
+    byForecast: totals.byForecast,
     activeLeads,
     actionLeads,
     taskSummary,

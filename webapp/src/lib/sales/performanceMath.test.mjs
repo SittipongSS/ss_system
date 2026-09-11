@@ -521,7 +521,7 @@ test('unallocatedRow: แถวทีมทุกแถว + ส่วนที�
     { period: '2026-02', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 45 },
   ]);
   const rest = unallocatedRow(m);
-  for (const key of ['target', 'fcTotal', 'forecast', 'actual']) {
+  for (const key of ['target', 'fcTotal', 'forecast', 'actual', 'pendingApproval', 'pendingApprovalCount']) {
     for (let i = 0; i < 12; i += 1) {
       const teams = m.teams.reduce((sum, t) => sum + Number(t[key][i] || 0), 0);
       assert.equal(teams + rest[key][i], m.company[key][i], `${key} เดือน ${i + 1} ต้องกระทบกันได้`);
@@ -549,4 +549,207 @@ test('rowHasValue: จับได้ทั้งค่าบวกและค�
   r.actual[5] = -3;
   assert.equal(rowHasValue(r, 0, 4), false);
   assert.equal(rowHasValue(r, 5, 5), true, 'ยอดติดลบ (ทีมรวมกันเกินบริษัท) ก็ต้องโชว์');
+});
+
+
+/* ---------- ยอด SO รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) ---------- */
+
+/* รูปของจริงวันที่ผู้ใช้แจ้ง (11/09/2026): SO รออนุมัติ 8 ใบ 993,000 บนดีล Won ของทีม KA
+   ทุกใบ Actual 0 · server วางยอดนี้ที่ **เดือนปัจจุบัน** (ก.ย. = index 8) เท่านั้น
+   (ย่อหลักเป็นพันเพื่อให้อ่านเทสต์ง่าย) */
+const PENDING_MONTH_IDX = 8;
+const pendingDashboards = () => [
+  {
+    month: '2026-08',
+    totals: { targetAmount: 100, fullForecast: 50, weightedForecast: 20, wonValue: 70 },
+    byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 100, won: 70, weighted: 20, fcTotal: 50 }],
+    byTeam: [{ team: 'KA', target: 100, won: 70, weighted: 20, fcTotal: 50 }],
+  },
+  {
+    month: '2026-09',
+    totals: { targetAmount: 1000, fullForecast: 1100, weightedForecast: 50, wonValue: 0, pendingApproval: 993, pendingApprovalCount: 8 },
+    byOwner: [
+      { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 600, won: 0, weighted: 30, fcTotal: 700, pendingApproval: 693, pendingApprovalCount: 5 },
+      { ownerId: 'u2', ownerName: 'บี', team: 'KA', target: 400, won: 0, weighted: 20, fcTotal: 400, pendingApproval: 300, pendingApprovalCount: 3 },
+    ],
+    byTeam: [{ team: 'KA', target: 1000, won: 0, weighted: 50, fcTotal: 1100, pendingApproval: 993, pendingApprovalCount: 8 }],
+  },
+];
+const withoutPending = (dashboards) => dashboards.map((d) => {
+  const strip = ({ pendingApproval, pendingApprovalCount, ...rest }) => rest;
+  return { ...d, totals: strip(d.totals), byOwner: d.byOwner.map(strip), byTeam: d.byTeam.map(strip) };
+});
+
+test('รออนุมัติ: buildMatrix เติมเส้นแยก 12 ช่องทุกระดับ (บริษัท/ทีม/คน)', () => {
+  const m = buildMatrix(pendingDashboards());
+  const i = PENDING_MONTH_IDX;
+  assert.equal(m.company.pendingApproval.length, 12);
+  assert.equal(m.company.pendingApprovalCount.length, 12);
+  assert.equal(m.company.pendingApproval[i], 993);
+  assert.equal(m.company.pendingApprovalCount[i], 8);
+  const ka = m.teams.find((t) => t.team === 'KA');
+  assert.equal(ka.pendingApproval[i], 993);
+  assert.equal(ka.pendingApprovalCount[i], 8);
+  assert.equal(m.people.find((p) => p.id === 'u1').pendingApproval[i], 693);
+  assert.equal(m.people.find((p) => p.id === 'u1').pendingApprovalCount[i], 5);
+  assert.equal(m.people.find((p) => p.id === 'u2').pendingApproval[i], 300);
+  assert.equal(m.company.pendingApproval[i - 1], 0, 'เดือนที่จบแล้วไม่มีวันเห็นยอดนี้');
+});
+
+test('⛔ รออนุมัติไม่ไหลเข้า Actual/Target/FC ของ matrix — เส้นเดิมเท่ากับตอนไม่มีช่องนี้เป๊ะ', () => {
+  const a = buildMatrix(pendingDashboards());
+  const b = buildMatrix(withoutPending(pendingDashboards()));
+  for (const key of ['target', 'fcTotal', 'forecast', 'actual']) {
+    assert.deepEqual(a.company[key], b.company[key], `company.${key}`);
+    assert.deepEqual(a.teams.map((t) => t[key]), b.teams.map((t) => t[key]), `teams.${key}`);
+    assert.deepEqual(a.people.map((p) => p[key]), b.people.map((p) => p[key]), `people.${key}`);
+  }
+  assert.equal(a.company.actual[PENDING_MONTH_IDX], 0);
+});
+
+test('รออนุมัติ: payload เก่าที่ไม่มีช่องนี้ (ค้างใน apiCache) ได้ 0 ครบแกน ไม่ใช่ NaN/undefined', () => {
+  const m = buildMatrix(yearMonths('2026'));
+  for (const r of [m.company, ...m.teams, ...m.people]) {
+    assert.deepEqual(r.pendingApproval, fill(0));
+    assert.deepEqual(r.pendingApprovalCount, fill(0));
+  }
+  // แกนข้ามปีก็ได้ความยาวเท่าแกน
+  const cross = buildMatrix([dash('2026-01', { target: 1, won: 1 })], { months: ['2025-12', '2026-01'] });
+  assert.deepEqual(cross.company.pendingApproval, [0, 0]);
+  assert.deepEqual(cross.people[0].pendingApprovalCount, [0, 0]);
+  // แถวที่ไม่มีเส้นนี้เลย (fixture เก่า/BLANK เก่า) — windowStat กับ yearSummary ได้ 0
+  const s = windowStat(row(fill(10), fill(5), fill(1)), { startIdx: 0, endIdx: 11, carryOn: false, closedCount: 12 });
+  assert.equal(s.pendingApproval, 0);
+  assert.equal(s.pendingApprovalCount, 0);
+  assert.equal(s.projected, 72, 'ไม่มีรออนุมัติ = Actual + Forecast เหมือนเดิม');
+  const y = yearSummary(row(fill(10), fill(5)), { closedCount: 8, ytdCount: 9 });
+  assert.equal(y.pendingApprovalYtd, 0);
+  assert.equal(y.pendingApprovalCountYtd, 0);
+});
+
+test('⛔ overlayHistory ทับ Actual ได้ แต่ไม่แตะเส้นรออนุมัติเลย — เป็นสถานะสดของใบเสมอ', () => {
+  const built = buildMatrix(pendingDashboards());
+  const before = {
+    company: [...built.company.pendingApproval],
+    companyCount: [...built.company.pendingApprovalCount],
+    teams: built.teams.map((t) => [...t.pendingApproval]),
+    people: built.people.map((p) => [...p.pendingApproval]),
+  };
+  const i = PENDING_MONTH_IDX;
+  const m = overlayHistory(built, [
+    { period: '2026-09', team: null, ownerId: null, actualAmount: 5000 }, // แถวบริษัท
+    { period: '2026-09', team: 'KA', ownerId: null, actualAmount: 4000 }, // แถวทีม
+    { period: '2026-09', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 3000 }, // แถวรายคน
+    { period: '2026-09', team: 'SV', ownerId: 'u9', ownerName: 'ซี', actualAmount: 100 }, // คน+ทีมที่ไม่มีดีล
+  ]);
+  assert.equal(m.company.actual[i], 5000, 'Actual ถูกทับตามกติกาเดิม');
+  assert.deepEqual(m.company.pendingApproval, before.company);
+  assert.deepEqual(m.company.pendingApprovalCount, before.companyCount);
+  assert.deepEqual(m.teams.filter((t) => t.team === 'KA').map((t) => t.pendingApproval), before.teams);
+  assert.deepEqual(m.people.filter((p) => p.id !== 'u9').map((p) => p.pendingApproval), before.people);
+  // แถวที่ overlay สร้างขึ้นใหม่ได้เส้นรออนุมัติศูนย์ครบแกน (ไม่ใช่ undefined)
+  const newcomer = m.people.find((p) => p.id === 'u9');
+  assert.deepEqual(newcomer.pendingApproval, fill(0));
+  assert.deepEqual(newcomer.pendingApprovalCount, fill(0));
+  const sv = m.teams.find((t) => t.team === 'SV');
+  assert.deepEqual(sv.pendingApproval, fill(0));
+  assert.deepEqual(sv.pendingApprovalCount, fill(0));
+});
+
+test('รออนุมัติ: แถวทีม + "ยังไม่ได้แยกทีม" = บริษัท · rowHasValue เห็นแถวที่มีแต่รออนุมัติ', () => {
+  // ยอดระดับบริษัทที่ยังไม่ลงทีม (เช่น byTeam จาก server รุ่นเก่ายังไม่ส่งช่องนี้ครบ)
+  const dashboards = pendingDashboards();
+  dashboards[1].byTeam = [{ team: 'KA', target: 1000, won: 0, weighted: 50, fcTotal: 1100, pendingApproval: 693, pendingApprovalCount: 5 }];
+  const m = buildMatrix(dashboards);
+  const rest = unallocatedRow(m);
+  for (const key of ['pendingApproval', 'pendingApprovalCount']) {
+    for (let i = 0; i < 12; i += 1) {
+      const teams = m.teams.reduce((sum, t) => sum + t[key][i], 0);
+      assert.equal(teams + rest[key][i], m.company[key][i], `${key} เดือน ${i + 1} ต้องกระทบกันได้`);
+    }
+  }
+  assert.equal(rest.pendingApproval[PENDING_MONTH_IDX], 300);
+  assert.equal(rest.pendingApprovalCount[PENDING_MONTH_IDX], 3);
+  assert.deepEqual(rest.actual, fill(0), 'ส่วนต่างของรออนุมัติไม่ไหลเข้า Actual ของแถวนี้');
+  assert.equal(rowHasValue(rest, PENDING_MONTH_IDX, PENDING_MONTH_IDX), true, 'แถวที่เหลือแต่ยอดรออนุมัติยังต้องโชว์');
+  assert.equal(rowHasValue(rest, 0, 7), false);
+  // แยกครบทุกทีม ⇒ แถวศูนย์ ซ่อนได้
+  assert.equal(rowHasValue(unallocatedRow(buildMatrix(pendingDashboards())), 0, 11), false);
+});
+
+test('rowHasValue: ใบรออนุมัติยอด 0 บาท (ถูกกฎตั้งแต่ mig 0197) นับจากจำนวนใบ', () => {
+  const r = { target: fill(0), fcTotal: fill(0), forecast: fill(0), actual: fill(0), pendingApproval: fill(0), pendingApprovalCount: fill(0) };
+  assert.equal(rowHasValue(r, 0, 11), false);
+  r.pendingApprovalCount[PENDING_MONTH_IDX] = 1;
+  assert.equal(rowHasValue(r, PENDING_MONTH_IDX, PENDING_MONTH_IDX), true);
+});
+
+test('รออนุมัติ: windowStat รวมในงวดเป็นช่องแยก · projected นับด้วย · Actual/ขาด-เกิน/% ไม่ขยับ', () => {
+  const m = buildMatrix(pendingDashboards());
+  const i = PENDING_MONTH_IDX;
+  const sep = windowStat(m.company, { startIdx: i, endIdx: i, carryOn: false, closedCount: i });
+  assert.equal(sep.pendingApproval, 993);
+  assert.equal(sep.pendingApprovalCount, 8);
+  assert.equal(sep.actual, 0, 'Actual ไม่รวมรออนุมัติ');
+  assert.equal(sep.diff, -1000, 'ขาด / เกิน เทียบ Actual ล้วน');
+  assert.equal(sep.pct, 0, '% ปิดได้ เทียบ Actual ล้วน');
+  assert.equal(sep.fcPct, 5, 'FC% ยังเป็น FC คงเหลือล้วน');
+  assert.equal(sep.projected, 0 + 993 + 50, 'ยอดคาดจบงวด = Actual + รออนุมัติ + FC คงเหลือ');
+  // งวดใหญ่ที่ครอบเดือนปัจจุบันได้ยอดทั้งก้อน · งวดที่ไม่ครอบได้ 0
+  assert.equal(windowStat(m.company, { startIdx: 6, endIdx: 8, carryOn: false, closedCount: i }).pendingApproval, 993);
+  assert.equal(windowStat(m.company, { startIdx: 0, endIdx: 11, carryOn: false, closedCount: i }).pendingApprovalCount, 8);
+  const aug = windowStat(m.company, { startIdx: 7, endIdx: 7, carryOn: false, closedCount: i });
+  assert.equal(aug.pendingApproval, 0);
+  assert.equal(aug.pendingApprovalCount, 0);
+  // รายทีม/รายคนใช้สูตรเดียวกัน
+  assert.equal(windowStat(m.teams[0], { startIdx: i, endIdx: i, carryOn: false, closedCount: i }).pendingApproval, 993);
+  assert.equal(windowStat(m.people.find((p) => p.id === 'u2'), { startIdx: i, endIdx: i, carryOn: false, closedCount: i }).pendingApprovalCount, 3);
+});
+
+test('⛔ รออนุมัติไม่หักยอดทบ — ทบยกมาคิดจาก Actual ล้วนแม้เดือนนั้นมีใบรออนุมัติ', () => {
+  const r = { ...row([10, 10], [4, 0]), pendingApproval: [6, 0], pendingApprovalCount: [1, 0] };
+  const s = windowStat(r, { startIdx: 1, endIdx: 1, carryOn: true, closedCount: 1 });
+  assert.equal(s.carry, 6, 'ม.ค. ขาด 6 ต้องทบมาเต็ม ไม่ถูกยอดรออนุมัติหักล้าง');
+  assert.equal(s.mustClose, 16);
+  const m = buildMatrix(pendingDashboards());
+  const sep = windowStat(m.company, { startIdx: PENDING_MONTH_IDX, endIdx: PENDING_MONTH_IDX, carryOn: true, closedCount: PENDING_MONTH_IDX });
+  assert.equal(sep.carry, 30, 'ส.ค. เป้า 100 ได้ 70 ⇒ ทบ 30');
+  assert.deepEqual(carryTable(r, { closedCount: 1 }), carryTable(row([10, 10], [4, 0]), { closedCount: 1 }));
+});
+
+test('รออนุมัติ: งวดที่วิ่งอยู่ — ใบที่ยื่นแล้วนับใน "คาดจบถึงเป้า" · รูปผลลัพธ์ statusOf ไม่เปลี่ยน', () => {
+  const base = row(fill(10), fill(0), fill(0));
+  base.actual[2] = 1;
+  base.forecast[2] = 2;
+  const pending = { ...base, pendingApproval: [0, 0, 7, ...fill(0).slice(3)], pendingApprovalCount: [0, 0, 2, ...fill(0).slice(3)] };
+  const s = windowStat(pending, { startIdx: 2, endIdx: 2, carryOn: false, closedCount: 2 });
+  assert.equal(s.projected, 10);
+  assert.deepEqual(statusOf(s, { periodKind: 'current' }), { key: 'running_on_track', label: 'กำลังวิ่ง · คาดจบถึงเป้า', tone: 'green', amount: 0 });
+  // ไม่นับรออนุมัติ = "คาดขาด" เกินจริงเท่ายอดทั้งก้อน (อาการที่ผู้ใช้เจอ)
+  const without = windowStat(base, { startIdx: 2, endIdx: 2, carryOn: false, closedCount: 2 });
+  assert.deepEqual(statusOf(without, { periodKind: 'current' }), { key: 'running_behind', label: 'กำลังวิ่ง · คาดขาด', tone: 'amber', amount: 7 });
+});
+
+test('รออนุมัติ: yearSummary คืนยอดแสดงคู่ Actual สะสม · gap/achv/needPerMonth/yoy ไม่ขยับ', () => {
+  const base = row(fill(10), [12, 8, 1]);
+  const pending = { ...base, pendingApproval: [0, 0, 5], pendingApprovalCount: [0, 0, 2] };
+  const a = yearSummary(base, { ...RUNNING, lastYearActual: fill(10) });
+  const b = yearSummary(pending, { ...RUNNING, lastYearActual: fill(10) });
+  assert.equal(b.pendingApprovalYtd, 5);
+  assert.equal(b.pendingApprovalCountYtd, 2);
+  assert.equal(a.pendingApprovalYtd, 0);
+  for (const key of ['targetYear', 'actualYtd', 'actualClosed', 'targetClosed', 'gap', 'achv', 'remainMonths', 'needPerMonth', 'yoy']) {
+    assert.equal(b[key], a[key], `${key} ต้องเป็น Actual ล้วน`);
+  }
+  // ปีอนาคต (ytdCount 0) ไม่มีช่วงให้รวม
+  assert.equal(yearSummary(pending, { closedCount: 0, ytdCount: 0 }).pendingApprovalYtd, 0);
+});
+
+test('unallocatedRow ปัดยอดรออนุมัติเป็นสตางค์ — เศษทศนิยมไม่โผล่เป็น "รออนุมัติ ฿0.00"', () => {
+  const zeros = () => Array(12).fill(0);
+  const company = { target: zeros(), fcTotal: zeros(), forecast: zeros(), actual: zeros(), pendingApproval: zeros(), pendingApprovalCount: zeros() };
+  company.pendingApproval[8] = 0.3;
+  const team = (v) => ({ ...company, pendingApproval: Object.assign(zeros(), { 8: v }) });
+  const rest = unallocatedRow({ company, teams: [team(0.1), team(0.2)] });
+  assert.equal(rest.pendingApproval[8] > 0, false);
 });

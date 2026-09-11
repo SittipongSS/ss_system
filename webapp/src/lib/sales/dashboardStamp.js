@@ -22,8 +22,22 @@
 // ⚠️ ตัวเลขนี้เป็น I/O wait เกือบทั้งหมด ไม่ใช่ CPU — โควตา Active CPU ที่ TTL ซื้อมา
 // จึงยังอยู่ครบ (นั่นคือเหตุผลที่ไม่ลด TTL ลงแทน)
 
+import { currentMonth } from '@/lib/datePeriods';
+
 /** คีย์ prefix ของ cache แดชบอร์ด — ใช้ร่วมกับ `bumpStamp` */
 export const DASHBOARD_CACHE_PREFIX = 'sales-dashboard';
+
+/**
+ * คีย์ cache ของแดชบอร์ดหนึ่งก้อน (`year:YYYY` หรือ `YYYY-MM`) + **เดือนปัจจุบันเวลาไทย**
+ *
+ * ⭐ ยอด SO "รออนุมัติ" ลงเดือนปัจจุบันเสมอ (มติผู้ใช้ 2026-09-11 · mig 0353) ⇒ ผลลัพธ์
+ * ขึ้นกับนาฬิกาด้วย ไม่ใช่แค่ข้อมูล · ข้ามเดือนแล้วสแตมป์ไม่ขยับ (ไม่มีแถวไหนถูกแก้)
+ * ถ้าคีย์ไม่มีเดือนปัจจุบัน ของที่ cache ไว้ก่อนเที่ยงคืนจะยังโชว์ยอดรออนุมัติที่เดือนเก่า
+ * ต่อไปจนครบ TTL · prefix ยังเป็น DASHBOARD_CACHE_PREFIX ⇒ `bumpStamp` ล้างได้ครบเหมือนเดิม
+ */
+export function dashboardCacheKey(scope, now = new Date()) {
+  return `${DASHBOARD_CACHE_PREFIX}:${scope}@${currentMonth(now)}`;
+}
 
 /** รวมค่าที่อ่านได้จากตารางหนึ่งให้เป็นข้อความสั้น ๆ (ฟังก์ชันล้วน — เทสต์ได้ตรง ๆ) */
 export function tableStamp(latestUpdatedAt, rowCount) {

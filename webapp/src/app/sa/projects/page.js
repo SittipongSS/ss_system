@@ -9,6 +9,8 @@ import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 // หน้ารวมโครงการ (/sa/projects — เฟส B, SALES_REVAMP_PLAN §5):
 // โครงการ = ภาชนะรวมดีล (SCENT→NPD→RE-ORDER…) — ตารางทุกโครงการพร้อม KPI
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
+// + ยอด SO "รออนุมัติ" เป็นบรรทัดรองใต้ Actual ทั้งแถบ KPI และต่อแถว — ตัวเลขแยก
+//   ไม่รวมเข้า Actual (มติผู้ใช้ 2026-09-11 · mig 0353 · lib/pm/projectPendingApproval)
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useSearchParams } from "next/navigation";
@@ -25,6 +27,8 @@ import { dealTypeTooltip, summarizeProjectDealTypes } from "@/lib/sales/projectD
 import styles from "./page.module.css";
 import { CLOSED_WORK_STATUSES, PROJECT_WORK_STATUSES, projectStatusLabel } from "@/lib/pm/projectLifecycle";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { sumProjectRollups } from "@/lib/pm/projectPendingApproval";
 import { fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { BUSINESS_LINES, businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
@@ -202,17 +206,8 @@ export default function ProjectsIndexPage() {
     });
 
   // KPI รวมของโครงการที่กรองอยู่ — บวกจาก rollup ต่อโครงการ (นิยามเดียวกับต่อแถว)
-  const totals = useMemo(() => {
-    const t = { fcTotal: 0, actual: 0, fcRemaining: 0, deals: 0 };
-    for (const p of filtered) {
-      const r = p.dealsRollup || {};
-      t.fcTotal += Number(r.fcTotal || 0);
-      t.actual += Number(r.actual || 0);
-      t.fcRemaining += Number(r.fcRemaining || 0);
-      t.deals += Number(r.dealCount || 0);
-    }
-    return t;
-  }, [filtered]);
+  // ยอด SO รออนุมัติรวมเป็นกองแยก (pendingApproval) ไม่ปนกับ actual — มติ 2026-09-11
+  const totals = useMemo(() => sumProjectRollups(filtered), [filtered]);
 
   const taskProgress = (p) => {
     const tasks = p.tasks || [];
@@ -282,7 +277,12 @@ export default function ProjectsIndexPage() {
                       ) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}
                     </td>
                     <td className="num mono">{money(r.fcTotal || 0)}</td>
-                    <td className="num mono" style={{ color: "var(--green)" }}>{money(r.actual || 0)}</td>
+                    {/* ยอด SO รออนุมัติเป็นบรรทัดรองในเซลล์ Actual — ไม่เพิ่มคอลัมน์ (colSpan คงเดิม)
+                        ชิ้นกลางระบายสีเอง จึงไม่ติดเขียวของเซลล์ · ไม่มีใบรออนุมัติ = ไม่เรนเดอร์ */}
+                    <td className="num mono" style={{ color: "var(--green)" }}>
+                      {money(r.actual || 0)}
+                      <PendingApprovalAmount amount={r.pendingApproval} count={r.pendingApprovalCount} />
+                    </td>
                     <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                     <td>{taskProgress(p)}</td>
                     <td>{p.aeOwner ? fmtName({ name: p.aeOwner }) : (naText(p.team))}</td>
@@ -323,7 +323,25 @@ export default function ProjectsIndexPage() {
 
         <SaMetricStrip>
           <SaMetric icon={<BarChart3 />} label="FC Total" value={money(totals.fcTotal)} note="แผนทั้งหมดของโครงการที่แสดง" />
-          <SaMetric icon={<LineChart />} label="Actual" value={money(totals.actual)} note="ยอดจาก ใบสั่งขายที่อนุมัติแล้ว" tone="good" />
+          {/* ยอด SO รออนุมัติวางเป็นบรรทัดที่สองของ note — ตัวเลข Actual ยังเป็นใบอนุมัติล้วน
+              ⚠️ amber ของแถบนี้แปลว่า "FC คงเหลือ" อยู่แล้ว ชิ้นรออนุมัติจึงมีคำกำกับเสมอ
+              (ไม่ใช้สีเป็นสัญญาณเดียว) · ไม่มีใบรออนุมัติ = เหลือ note เดิมบรรทัดเดียว */}
+          <SaMetric
+            icon={<LineChart />}
+            label="Actual"
+            value={money(totals.actual)}
+            note={(
+              <>
+                ยอดจาก ใบสั่งขายที่อนุมัติแล้ว
+                <PendingApprovalAmount
+                  amount={totals.pendingApproval}
+                  count={totals.pendingApprovalCount}
+                  className={styles.metricPending}
+                />
+              </>
+            )}
+            tone="good"
+          />
           <SaMetric icon={<Target />} label="FC คงเหลือ" value={money(totals.fcRemaining)} note="ดีลเปิดที่ยังต้องตามปิด" tone={totals.fcRemaining ? "warning" : undefined} />
           <SaMetric icon={<Layers />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} note="ตามตัวกรองปัจจุบัน" />
           {/* ⚠️ เคยมีตัวนับ "ยังไม่ระบุสาย" อยู่ตรงนี้ — ถอดออก (มติผู้ใช้ 2026-08-05)

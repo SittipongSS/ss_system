@@ -21,6 +21,10 @@
 .addressList dd { margin: 0; color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-medium); line-height: var(--lh-text); white-space: pre-wrap; }
 .snapshotNote { margin: var(--space-3) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
 
+/* บรรทัดรองใต้ยอด "รออนุมัติ" บนการ์ดสรุป (มติผู้ใช้ 2026-09-11 · mig 0353) — ค่าในการ์ด
+   เป็นตัวหนาทั้งช่อง (dd ของ DocumentSummaryCard) ⇒ คำอธิบายต้องถอดน้ำหนักเองให้อ่านเป็นหมายเหตุ */
+.pendingSummaryNote { display: block; color: var(--text-3); font-size: var(--fs-4); font-weight: var(--fw-normal); }
+
 .revisionList { display: grid; gap: var(--space-2); }
 .revisionLink {
   display: flex;

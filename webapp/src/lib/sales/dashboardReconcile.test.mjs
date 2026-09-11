@@ -27,6 +27,25 @@ test('byTeam ต้องไม่ทิ้งถังของดีลที�
   );
 });
 
+/* 🐞 ลิ้นชักรายดีลของแถว "ไม่ระบุทีม" เคยโชว์ดีลทุกทีมทั้งบริษัท (ป้ายนี้หลุดไป `return true`)
+   ⇒ ช่องบนตารางคิดจากถัง null (ดีลไร้ทีม) แต่ลิ้นชักรวมทุกดีล ยอดสองที่ไม่ตรงกัน
+   2026-09-11: ช่อง "รออนุมัติ" ของแถวนี้เปิดลิ้นชักได้ด้วย (mig 0353) — ต้องกระทบกันเหมือนทุก metric */
+test('ลิ้นชักของแถว "ไม่ระบุทีม" = ดีลที่ไม่มีทีมเท่านั้น (ตรงกับถัง null ของ route)', () => {
+  const modal = readFileSync(join(ROOT, 'src/components/salesPlanning/DealDrillDownModal.js'), 'utf8');
+  const perf = readFileSync(join(ROOT, 'src/lib/sales/performanceMath.js'), 'utf8');
+  // ป้ายแถวต้องเป็นคีย์เดียวกับที่ buildMatrix ตั้งให้ถัง null
+  assert.match(modal, /const NO_TEAM_ROW = "ไม่ระบุทีม";/);
+  assert.match(perf, /\|\| 'ไม่ระบุทีม'/, 'buildMatrix เปลี่ยนป้ายถัง null แล้ว — NO_TEAM_ROW ของลิ้นชักต้องตามไปด้วย');
+  // route: ถัง null = ดีลที่ team ว่าง (null หรือสตริงว่าง)
+  assert.match(route, /const teamKey = \(team\) => team \|\| 'ไม่ระบุ';/);
+  const scope = modal.slice(modal.indexOf('let filtered = (data || []).filter('), modal.indexOf('if (filter.metric === "won")'));
+  assert.match(scope, /if \(filter\.team === NO_TEAM_ROW\) return !d\.team;/);
+  assert.match(scope, /if \(filter\.team\) return d\.team === filter\.team;/);
+  assert.doesNotMatch(scope, /filter\.team !== "ไม่ระบุทีม"/, 'ห้ามให้ป้าย "ไม่ระบุทีม" หลุดไปเป็นทุกดีล');
+  // เช็กแถวคนก่อนแถวทีม — แถวรายคนในกลุ่ม "ไม่ระบุทีม" ยังจับด้วยตัวตนคน ไม่ใช่ทีมว่าง
+  assert.ok(scope.indexOf('dealMatchesOwner(d, filter)') < scope.indexOf('NO_TEAM_ROW'));
+});
+
 /* **ดีลไร้ทีมยังเกิดได้อยู่** — เหตุผลของเทสต์ข้างบน (ถัง null ต้องโชว์) จึงยังจริง
    2026-08-11: ฟอร์มมีช่องทีมแล้ว แต่ช่องนั้นให้เลือกได้เฉพาะ "ทีมของเจ้าของ" เท่านั้น
    ⇒ เจ้าของที่ไม่มีทีม (admin/AE Sup เปิดดีลเอง) ยังได้ดีลไร้ทีมเหมือนเดิม

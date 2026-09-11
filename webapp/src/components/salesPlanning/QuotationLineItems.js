@@ -34,6 +34,17 @@ export const newManualLine = () => ({
   discountType: null, discountValue: 0, source: "manual",
 });
 
+/* โทนของแถบเน้นท้ายตาราง (`highlightRows[].tone`) — ไม่ส่ง = เขียว (ค่าเดิมทุก px)
+   ⭐ `warning`/`neutral` เพิ่มตอนหน้าใบสั่งขายโชว์ยอดสามกอง (มติผู้ใช้ 2026-09-11 · mig 0353):
+     success = Actual (อนุมัติแล้ว) · warning = รออนุมัติ (ห้ามเขียว) · neutral = ยอดของใบเฉย ๆ
+   ⚠️ อ้างคลาสตรง ๆ ทีละตัว ไม่ประกอบชื่อ — ด่าน CSS กำพร้าต้องมองเห็นทุกคลาส */
+const HIGHLIGHT_TONE = {
+  success: styles.successTotal,
+  danger: styles.dangerTotal,
+  warning: styles.warningTotal,
+  neutral: styles.neutralTotal,
+};
+
 export function QuotationReadOnlyLineItems({
   lines = [],
   /* ⭐ `showServiceRounds` — โชว์ "รอบบริการที่ขายไว้" ใต้คำอธิบายของบรรทัดหมวด 02-001
@@ -111,7 +122,7 @@ export function QuotationReadOnlyLineItems({
             </div>
           ) : null}
           {highlightRows.map((row, index) => (
-            <div key={row.id || row.label || index} className={`${styles.highlightTotal} ${row.tone === "danger" ? styles.dangerTotal : styles.successTotal}`}>
+            <div key={row.id || row.label || index} className={`${styles.highlightTotal} ${HIGHLIGHT_TONE[row.tone] || styles.successTotal}`}>
               <span>{row.label}</span>
               <strong className="mono">{naText(row.value)}</strong>
             </div>

@@ -2,6 +2,7 @@
 
 import { Target, TrendingUp, LineChart, Percent, CalendarClock, ArrowUpRight } from "lucide-react";
 import UiKpiCard from "@/components/ui/KpiCard";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { yearSummary } from "@/lib/sales/performanceMath";
 import { closedThroughLabel, money, pctFmt } from "./shared";
 
@@ -15,13 +16,18 @@ import { closedThroughLabel, money, pctFmt } from "./shared";
 // ⚠️ **ทุกใบที่เทียบเป้า/ปีก่อน ต้องมีป้ายบอกฐานว่านับถึงเดือนไหน** — ตัวเลขพวกนี้
 // นับเฉพาะเดือนที่จบแล้ว ไม่รวมเดือนที่กำลังวิ่ง (ดูเหตุผลใน `yearSummary`)
 // ส่วนใบ "Actual สะสม" เป็นข้อเท็จจริงล้วน จึงรวมเดือนที่วิ่งอยู่ด้วย
+//
+// 🧾 ยอด SO รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) — บรรทัดท้ายของ note ใบ "Actual สะสม"
+// ช่วงเดียวกับตัวเลขของใบ (ytd) · ไม่เข้าตัวเลขของใบไหนเลย รวมทั้ง % Achievement / ต้องทำ/เดือน
 
 export default function PerformanceKpiCards({ row, lastYear, label, year, closedCount, ytdCount, carry }) {
-  const { targetYear, actualClosed, actualYtd, gap, achv, remainMonths, needPerMonth, yoy } =
+  const { targetYear, actualClosed, actualYtd, pendingApprovalYtd, pendingApprovalCountYtd, gap, achv, remainMonths, needPerMonth, yoy } =
     yearSummary(row, { closedCount, ytdCount, lastYearActual: lastYear });
 
   const through = closedThroughLabel(closedCount);
   const running = actualYtd - actualClosed; // ยอดของเดือนที่ยังวิ่งอยู่
+  const actualHint = closedCount >= 12 || running <= 0 ? `รวมทั้งหมด (${through})` : `จบแล้ว ${money(actualClosed)} + เดือนนี้ ${money(running)}`;
+  const hasPending = pendingApprovalYtd > 0 || pendingApprovalCountYtd > 0;
   const gapLabel = carry ? `ยอดทบสะสม (${through})` : `ผลต่างสะสมเทียบเป้า (${through})`;
   const gapHint = achv == null
     ? "ยังไม่มีเดือนที่จบให้เทียบ"
@@ -37,8 +43,17 @@ export default function PerformanceKpiCards({ row, lastYear, label, year, closed
       value: money(actualYtd),
       // แยกให้เห็นว่าเท่าไรมาจากเดือนที่ปิดแล้ว เท่าไรคือเดือนที่ยังวิ่ง — เลขสองฐาน
       // ในแถบเดียวกันจะได้ไม่ชวนสงสัยว่าทำไมใบอื่นได้ตัวเลขคนละชุด
-      hint: closedCount >= 12 || running <= 0 ? `รวมทั้งหมด (${through})` : `จบแล้ว ${money(actualClosed)} + เดือนนี้ ${money(running)}`,
+      // + บรรทัดรออนุมัติ (ขึ้นบรรทัดด้วย <br> ให้ line-clamp นับบรรทัดตรง · คลาส
+      //   perf-kpi-pending เผื่อเป็น 3 บรรทัด ไม่งั้นบรรทัดรออนุมัติถูกตัดทิ้งเงียบ ๆ)
+      hint: hasPending ? (
+        <>
+          {actualHint}
+          <br />
+          <PendingApprovalAmount inline amount={pendingApprovalYtd} count={pendingApprovalCountYtd} />
+        </>
+      ) : actualHint,
       color: "var(--green)",
+      className: hasPending ? "perf-kpi-pending" : undefined,
     },
     { icon: <TrendingUp size={18} />, label: gapLabel, value: achv == null ? "–" : `${gap >= 0 ? "+" : ""}${money(gap)}`, hint: gapHint, color: achv == null ? undefined : gap >= 0 ? "var(--green)" : "var(--red)" },
     {
@@ -67,7 +82,7 @@ export default function PerformanceKpiCards({ row, lastYear, label, year, closed
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
       {cards.map((c) => (
-        <UiKpiCard key={c.label} icon={c.icon} label={c.label} value={c.value} hint={c.hint} color={c.color} interactive={false} />
+        <UiKpiCard key={c.label} icon={c.icon} label={c.label} value={c.value} hint={c.hint} color={c.color} className={c.className} interactive={false} />
       ))}
     </div>
   );

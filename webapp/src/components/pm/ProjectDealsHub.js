@@ -16,8 +16,10 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { updateKindMeta } from "@/lib/master/updateTypes";
 import { useCan } from "@/lib/roleContext";
-import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/salesPlanning";
+import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { hasPendingApproval, projectDealValue, projectSalesOrderAmount } from "@/lib/pm/projectPendingApproval";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -51,6 +53,9 @@ const QUOTE_STATUS = {
   revised: { label: "ถูกแก้ไข", color: "var(--amber)" },
   closed: { label: "ปิด (ดีลจบด้วยใบอื่น)", color: "var(--text-3)" },
 };
+/* สีป้ายสถานะใบสั่งขาย ตามผลต่อยอด (salesOrderAmountKind) — เขียว = นับเป็น Actual ·
+   amber = รออนุมัติ (สีเดียวกับคำ "รออนุมัติ" ทั้งระบบ) · เทา = ไม่นับ */
+const SO_AMOUNT_TONE = { actual: "var(--green)", pending_approval: "var(--amber)", excluded: "var(--text-3)" };
 const localToday = () => {
   const now = new Date();
   const pad = (value) => String(value).padStart(2, "0");
@@ -85,8 +90,10 @@ const displayText = (value, fallback = "-") => {
    ของที่ "ดูทีละใบ" (ใบเสนอราคารายใบ · AE · เดือน forecast · ขั้นที่กำลังทำ) อยู่ในแถวขยาย
    ⇒ เพิ่มคอลัมน์ใหม่ให้ถามก่อนว่ามันอยู่ฝั่งไหน อย่าให้แถวยาวจนเลขเงินไม่มีที่อยู่ */
 function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder, filtering, canMoveUp, canMoveDown, moving, onMoveUp, onMoveDown, columnCount }) {
-  const closed = isWonStage(deal.stage);
-  const value = closed ? (deal.wonValue ?? deal.projectValue) : deal.projectValue;
+  /* Won = Actual (ตัวเดียวกับ KPI ข้างบน) + ยอด SO รออนุมัติเป็นบรรทัดแยก · เปิด/แพ้ = FC
+     🐞 เดิมอ่าน `wonValue ?? projectValue` ดิบ ⇒ ดีล Won ที่ SO ยังรออนุมัติขึ้น ฿0.00
+     "ปิดจริง" (มติผู้ใช้ 2026-09-11 · รายละเอียดใน lib/pm/projectPendingApproval) */
+  const { closed, value, pendingApproval, pendingApprovalCount } = projectDealValue(deal);
   const pct = seg.total ? Math.round((seg.done / seg.total) * 100) : 0;
   return (
     <>
@@ -110,10 +117,13 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
           {deal.formulaName && <div className={styles.subLine}>สูตร {displayText(deal.formulaName)}</div>}
         </td>
         <td>{stageBadge(deal.stage)}</td>
-        {/* สีตามผลของดีล = ข้อมูล ไม่ใช่สไตล์ (เขียว = ปิดได้จริง · แดง = แพ้) */}
+        {/* สีตามผลของดีล = ข้อมูล ไม่ใช่สไตล์ (เขียว = Actual · แดง = แพ้)
+            ป้ายใต้ตัวเลขเขียน "Actual" ตรงกับ KPI — ยอดรออนุมัติมีคำกำกับของมันเอง
+            และระบายสีเองทั้งชิ้น จึงไม่ติดเขียวของเซลล์ (อ่านไม่เป็นยอดที่นับแล้ว) */}
         <td className="num mono tabular-nums" style={{ color: closed ? "var(--green)" : deal.stage === "lost" ? "var(--red)" : "inherit" }}>
           {fmtMoney(value)}
-          <div className={styles.valueNote}>{closed ? "ปิดจริง" : `FC${deal.forecastMonth ? ` · ${deal.forecastMonth}` : ""}`}</div>
+          <div className={styles.valueNote}>{closed ? "Actual" : `FC${deal.forecastMonth ? ` · ${deal.forecastMonth}` : ""}`}</div>
+          {closed && <PendingApprovalAmount amount={pendingApproval} count={pendingApprovalCount} />}
         </td>
         <td className="num mono tabular-nums">{quotes.length || <span className={styles.muted}>{NA}</span>}</td>
         <td>
@@ -247,14 +257,29 @@ export function ProjectQuotationsCard({ project: p, canEdit = false }) {
       {salesOrders.length ? (
         <div>
           <TableScroll surface="embedded"><table>
-            <thead><tr><th>เลขที่ SO</th><th>ดีล</th><th>สถานะ</th><th className="num">Actual</th></tr></thead>
+            {/* หัวคอลัมน์เป็น "ยอดก่อน VAT" ไม่ใช่ "Actual" — คอลัมน์นี้มีทั้งยอดนับแล้ว ยอดรออนุมัติ
+                และยอดที่ไม่นับ แต่ละเซลล์บอกกองของตัวเอง (ชื่อเดียวกับตาราง SO ในหน้าดีล) */}
+            <thead><tr><th>เลขที่ SO</th><th>ดีล</th><th>สถานะ</th><th className="num">ยอดก่อน VAT</th></tr></thead>
             <tbody>{salesOrders.map((order) => {
               const deal = dealById.get(order.dealId);
+              /* ยอดสามทาง (มติผู้ใช้ 2026-09-11): อนุมัติแล้ว = Actual · รออนุมัติ = ยอดใบติดคำ
+                 "รออนุมัติ" (เดิมขึ้น ฿0.00 คู่ป้ายรออนุมัติ) · ที่เหลือ = ยอดในใบแบบจาง + "ไม่นับ"
+                 แทน ฿0.00 ที่อ่านเหมือนใบมูลค่าศูนย์ — หน้าตาเดียวกับตาราง SO ในหน้าดีล */
+              const amount = projectSalesOrderAmount(order);
               return <tr key={order.id} className="premium-row">
                 <td><Link prefetch={false} href={`/sa/sales-orders/${order.id}`} className="linklike mono">{order.orderNumber}</Link></td>
                 <td>{deal ? <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : NA}</td>
-                <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
-                <td className="num mono tabular-nums">{fmtMoney(order.status === "approved" ? order.actualAmount : 0)}</td>
+                {/* คำมาจากทะเบียนสถานะกลาง · สีป้าย = ผลต่อยอด (ข้อมูล ไม่ใช่สไตล์) */}
+                <td><span className="ui-badge" style={{ color: SO_AMOUNT_TONE[amount.kind] }}>{naText(amount.statusLabel)}</span></td>
+                <td className="num mono tabular-nums">
+                  {amount.kind === "actual" && fmtMoney(amount.amount)}
+                  {amount.kind === "pending_approval" && <PendingApprovalAmount amount={amount.amount} count={1} inline />}
+                  {amount.kind === "excluded" && (
+                    <span className="cell-num-idle" title="สถานะนี้ไม่นับเป็น Actual และไม่นับเป็นยอดรออนุมัติ">
+                      {fmtMoney(amount.documentAmount)} · ไม่นับ
+                    </span>
+                  )}
+                </td>
               </tr>;
             })}</tbody>
           </table></TableScroll>
@@ -579,11 +604,18 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
       {/* KPI รวมระดับโครงการ — สูตรเดียวกับ projectRollup (FC Total / Actual / FC คงเหลือ)
           ⚠️ เงินล้วน: ตัวนับ "ดีลในโครงการ" ถูกถอดออก (มติผู้ใช้ 2026-08-05) เพราะบอก
-          เรื่องเดียวกับหัวตารางด้านล่าง "ดีลในโครงการ (N)" ที่อยู่ห่างกันไม่ถึงหนึ่งจอ */}
+          เรื่องเดียวกับหัวตารางด้านล่าง "ดีลในโครงการ (N)" ที่อยู่ห่างกันไม่ถึงหนึ่งจอ
+          ⭐ ยอด SO รออนุมัติของดีล Won เป็นบรรทัดรองใต้ Actual — ไม่รวมเข้าตัวเลข Actual
+          (มติผู้ใช้ 2026-09-11 · mig 0353) · ไม่มีใบรออนุมัติ = ไม่วางบรรทัดรองเลย */}
       {r && (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           <Kpi label="FC Total" value={fmtMoney(r.fcTotal)} />
-          <Kpi label="Actual" value={fmtMoney(r.actual)} color="var(--green)" />
+          <Kpi
+            label="Actual"
+            value={fmtMoney(r.actual)}
+            color="var(--green)"
+            hint={hasPendingApproval(r) ? <PendingApprovalAmount amount={r.pendingApproval} count={r.pendingApprovalCount} /> : null}
+          />
           <Kpi label="FC คงเหลือ" value={fmtMoney(r.fcRemaining)} color={r.fcRemaining > 0 ? "var(--amber)" : undefined} />
           <Kpi label="ใบเสนอที่รับแล้ว" value={fmtMoney(acceptedTotal)} hint={`ทั้งหมด ${(p.quotations || []).length} ใบ`} />
         </div>
