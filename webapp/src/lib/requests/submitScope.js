@@ -4,7 +4,7 @@
 // ตอนกดส่ง (หน้ารายละเอียดคำร้อง) ต้องเล่าเรื่องเดียวกัน · เดิมโมดัลนับเองด้วย
 // `items.length` ⇒ ใบพัฒนากลิ่นขึ้น "0 กลิ่น → RD" ทุกใบ ทั้งที่เธรดของใบเดียวกัน
 // เขียนว่า "บรีฟ 3 ก้อน" ถูกต้องอยู่แล้ว (ผู้ใช้เจอเอง 2026-09-03)
-import { requestUsesDeliveredRows, requestUsesItems, requestUsesPdr } from '@/lib/master/requestTypes';
+import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
 
 /**
  * "ส่งอะไรไป" ของใบนี้ — **ไม่ใช่จำนวนบรรทัดเสมอไป**
@@ -26,13 +26,14 @@ export default function submitScope(ask) {
   const zones = (ask?.surveyZones || []).length;
   if (zones) return `${zones} พื้นที่`;
   const items = (ask?.items || []).length;
-  if (!requestUsesDeliveredRows(ask)) {
-    /* ⭐ **ใบที่ไม่มีตารางแถวเลยต้องไม่พูดว่า "0 รายการ"** — พัฒนาสูตรรูปแบบ NPD
-       ส่งไปพร้อมแบบฟอร์ม PDR ไม่ใช่รายการ · ประโยคนี้ขึ้นเป็นบรรทัดแรกของเธรด
-       และในโมดัลยืนยันตอนกดส่ง ⇒ นับของที่ใบนั้นไม่มีคือบอกผิดสองที่พร้อมกัน */
-    if (!requestUsesItems(ask) && requestUsesPdr(ask)) return 'แบบฟอร์ม PDR';
-    return `${items} รายการ`;
+  /* ⭐ พัฒนาสูตร NPD — ส่งไปพร้อมแบบฟอร์ม PDR · แถวงานเกิดทีหลังตอน RD รับเรื่อง (ม-144) ⇒ เล่าเป็น
+     จำนวนสินค้าในแบบฟอร์ม ไม่ใช่ "รายละเอียดอยู่ในใบ" ของทางพัฒนากลิ่น (ใบนี้ไม่มีบรีฟ) */
+  if (requestPdrRowsPickScent(ask)) {
+    const products = (ask?.targets || []).length;
+    return products ? `แบบฟอร์ม PDR · สินค้า ${products} รายการ` : 'แบบฟอร์ม PDR';
   }
+  // ⚠️ ทางเฉพาะ "ใบ PDR ที่ไม่มีตารางแถว" ของ ม-141 ถูกถอด — NPD ตอบที่บล็อกข้างบนแล้ว (ม-144)
+  if (!requestUsesDeliveredRows(ask)) return `${items} รายการ`;
   const briefs = (ask?.briefs || []).length;
   return briefs ? `บรีฟ ${briefs} ก้อน` : 'รายละเอียดอยู่ในใบ';
 }

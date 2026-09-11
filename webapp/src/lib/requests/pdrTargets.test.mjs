@@ -58,26 +58,26 @@ test('หมวดต้องอยู่ในข้อ 1.11 — เอาห�
 });
 
 test('ตัวเลขอ่านไม่ออก/ติดลบ ต้องบอกว่าแถวไหนช่องไหน', () => {
-  const kg = normalizePdrTargets([{ categoryCode: 'a', fOn: true, fPricePerKg: '1,200.-' }]).error;
+  const kg = normalizePdrTargets([{ categoryCode: '01-001', fOn: true, fPricePerKg: '1,200.-' }]).error;
   assert.match(kg, /รายการที่ 1/);
   assert.match(kg, /บาท\/Kg/);
   assert.match(kg, /1,200\.-/);
 
-  const unit = normalizePdrTargets([{ categoryCode: 'a', pricePerUnit: '-5' }]).error;
+  const unit = normalizePdrTargets([{ categoryCode: '01-001', pricePerUnit: '-5' }]).error;
   assert.match(unit, /บาท\/ชิ้น/);
   assert.match(unit, /ไม่ติดลบ/);
 
-  const fb = normalizePdrTargets([{ categoryCode: 'a', fbOn: true, fbPricePerKg: 'สามพัน' }]).error;
+  const fb = normalizePdrTargets([{ categoryCode: '01-001', fbOn: true, fbPricePerKg: 'สามพัน' }]).error;
   assert.match(fb, /เนื้อสาร \(FB\)/);
 });
 
 test('ด่านอื่น: ไม่เลือกหมวด · รายละเอียดยาวเกิน · เกินจำนวนแถว', () => {
   assert.match(normalizePdrTargets([{ categoryCode: '  ' }]).error, /ยังไม่ได้เลือกประเภทสินค้า/);
   assert.match(
-    normalizePdrTargets([{ categoryCode: 'a', fOn: true, fNote: 'ก'.repeat(201) }]).error,
+    normalizePdrTargets([{ categoryCode: '01-001', fOn: true, fNote: 'ก'.repeat(201) }]).error,
     /ยาวเกิน 200/,
   );
-  const many = Array.from({ length: MAX_PDR_TARGETS + 1 }, () => ({ categoryCode: 'a' }));
+  const many = Array.from({ length: MAX_PDR_TARGETS + 1 }, () => ({ categoryCode: '01-001' }));
   assert.match(normalizePdrTargets(many).error, new RegExp(`สูงสุด ${MAX_PDR_TARGETS}`));
 });
 
@@ -120,10 +120,10 @@ test('ทางกลับ: แถวจาก DB → ค่าฟอร์ม 
 
 test('เกจนับเฉพาะแถวที่กรอกจริง — กดเพิ่มเฉย ๆ ยังไม่นับ', () => {
   assert.equal(pdrTargetFilled(emptyPdrTarget('02-010')), false);
-  assert.equal(pdrTargetFilled({ categoryCode: 'a', fOn: true }), true);
-  assert.equal(pdrTargetFilled({ categoryCode: 'a', pricePerUnit: '590' }), true);
+  assert.equal(pdrTargetFilled({ categoryCode: '01-001', fOn: true }), true);
+  assert.equal(pdrTargetFilled({ categoryCode: '01-001', pricePerUnit: '590' }), true);
   assert.deepEqual(
-    pdrTargetsProgress([emptyPdrTarget('a'), { categoryCode: 'b', fbOn: true }]),
+    pdrTargetsProgress([emptyPdrTarget('01-001'), { categoryCode: '01-002', fbOn: true }]),
     { total: 2, filled: 1 },
   );
 });
@@ -154,7 +154,7 @@ test('⭐ ทุกคีย์ของแถวเดินครบวง: �
 });
 
 test('สเปกรายสินค้า: ตัวเลขไม่ติดลบ · หน่วยต้องอยู่ในลิสต์ · หน่วยไม่มีตัวเลข = ไม่เก็บ', () => {
-  const row = (over) => normalizePdrTargets([{ categoryCode: 'a', ...over }]);
+  const row = (over) => normalizePdrTargets([{ categoryCode: '01-001', ...over }]);
   assert.match(row({ sizeValue: '-5' }).error, /ขนาดบรรจุ ต้องเป็นตัวเลขไม่ติดลบ/);
   assert.match(row({ qtyValue: 'สามขวด' }).error, /จำนวนต่อกลิ่น ต้องเป็นตัวเลข/);
   assert.match(row({ sizeValue: '50', sizeUnit: 'ถัง' }).error, /หน่วยของขนาดบรรจุ "ถัง" ไม่อยู่ในลิสต์/);
@@ -170,13 +170,13 @@ test('สเปกรายสินค้า: ตัวเลขไม่ติ
 
 test('⭐ กลิ่นรายแถวเก็บเฉพาะรูปทรงที่เลือกกลิ่นจากทะเบียน — ที่อื่นล้างทิ้ง', () => {
   // ใบพัฒนากลิ่นไม่มีช่องนี้ ค่าที่หลุดมาจะไปโผล่บนกระดาษเหมือนใบนี้ขอกลิ่นเดิม
-  assert.equal(normalizePdrTargets([{ categoryCode: 'a', scentId: 'SC-1' }]).targets[0].scentId, null);
+  assert.equal(normalizePdrTargets([{ categoryCode: '01-001', scentId: 'SC-1' }]).targets[0].scentId, null);
   assert.equal(
-    normalizePdrTargets([{ categoryCode: 'a', scentId: ' SC-1 ' }], { pickScent: true }).targets[0].scentId,
+    normalizePdrTargets([{ categoryCode: '01-001', scentId: ' SC-1 ' }], { pickScent: true }).targets[0].scentId,
     'SC-1',
   );
   // ⭐ ร่างเว้นว่างได้ — ด่านอยู่ตอนกดส่ง (`pdrTargetsSubmitError`) ไม่ใช่ตอนบันทึก
-  assert.equal(normalizePdrTargets([{ categoryCode: 'a' }], { pickScent: true }).error, null);
+  assert.equal(normalizePdrTargets([{ categoryCode: '01-001' }], { pickScent: true }).error, null);
 });
 
 test('⭐ ด่านกดส่งของ NPD: ต้องมีสินค้า ≥ 1 และทุกแถวต้องมีกลิ่น', () => {
@@ -211,10 +211,10 @@ test('1.12 จำนวนกลิ่นของใบ NPD = กลิ่น�
 });
 
 test('เกจนับสเปกรายสินค้าด้วย แต่หน่วยตั้งต้นอย่างเดียวไม่นับ', () => {
-  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('a') }), false, 'หน่วยตั้งต้นไม่ใช่การกรอก');
-  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('a'), sizeValue: '50' }), true);
-  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('a'), scentId: 'SC-1' }), true);
-  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('a'), note: 'ฝาไม้' }), true);
+  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('01-001') }), false, 'หน่วยตั้งต้นไม่ใช่การกรอก');
+  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('01-001'), sizeValue: '50' }), true);
+  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('01-001'), scentId: 'SC-1' }), true);
+  assert.equal(pdrTargetFilled({ ...emptyPdrTarget('01-001'), note: 'ฝาไม้' }), true);
 });
 
 test('สิทธิ์ไม่ตรวจกลิ่นซ้ำเป็นของ "แถวเดิมที่ถือกลิ่นเดิม" และใช้ได้ครั้งเดียวต่อแถว', async () => {

@@ -176,8 +176,9 @@ export function pdrChangeSummary(before = {}, columns = {}, extraLines = [], opt
   /* ⚠️ **"เอาสินค้าออก" ขึ้นก่อนทุกบรรทัด** — เพดาน MAX_LINES ตัดท้าย ⇒ ถ้าบรรทัดหัวใบมาก่อน
      (ล้างค่าเดิม 4 ช่อง + แก้อีกไม่กี่ช่อง) บรรทัดที่บอกว่าสินค้าหายไปจะถูกกลืน (รีวิวรอบสี่) */
   const extra = extraLines || [];
-  const removals = extra.filter((l) => /: เอาออก \(/.test(l));
-  const lines = [...removals, ...pdrChangeLines(before, columns, opts), ...extra.filter((l) => !removals.includes(l))];
+  // ⭐ บรรทัดสำคัญขึ้นก่อน: รายการงานที่งอก/ถอนตามแบบฟอร์ม (ม-144) และสินค้าที่ถูกเอาออก
+  const lead = extra.filter((l) => /^รายการงานตามแบบฟอร์ม PDR:|: เอาออก \(/.test(l));
+  const lines = [...lead, ...pdrChangeLines(before, columns, opts), ...extra.filter((l) => !lead.includes(l))];
   if (!lines.length) return null;
   const shown = lines.slice(0, MAX_LINES);
   const rest = lines.length - shown.length;

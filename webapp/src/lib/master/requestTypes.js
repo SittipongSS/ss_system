@@ -510,16 +510,22 @@ export function requestShapeError(kind, body = {}) {
   if (shape.hasItems && (!Array.isArray(body.items) || body.items.length === 0)) {
     return 'ต้องมีรายการอย่างน้อย 1 รายการ';
   }
-  /* 🔴 **รูปแบบที่ไม่มีบรรทัดต้องไม่มีบรรทัดจริง ๆ** — ไม่ใช่แค่ "ไม่บังคับ" ·
-     แถวที่หลุดเข้ามากับใบ NPD จะมองไม่เห็นบนจอ (ตารางถูกซ่อนตามรูปแบบ) แต่ยัง
-     นับใน `requestProgress` และค้างเป็นสูตรที่ไม่มีใครรู้ว่ามาจากไหน */
+  /* 🔴 **รูปแบบที่ผู้ขอไม่กรอกตาราง ต้องไม่รับแถวจากผู้ขอจริง ๆ** — ไม่ใช่แค่ "ไม่บังคับ" ·
+     แถวที่หลุดเข้ามากับใบ NPD ตอนเปิด/แก้จะไม่ผ่านตัวสร้างแถวของระบบ (ม-144) แต่ยังนับใน
+     `requestProgress` และค้างเป็นสูตรที่ไม่มีใครรู้ว่ามาจากไหน */
   /* ⚠️ **ยกเว้นรูปทรงที่ฝ่ายสร้างแถวเองตอนส่งของ** (`deliversRows` · พัฒนากลิ่น) — แถวของ
      ใบพวกนั้นเกิดทีหลังโดย RD (direction) ไม่ใช่ของที่ผู้ขอกรอก · 🐞 ด่านนี้เคยครอบทุกรูปทรง
      ที่ไม่มีตาราง ⇒ ทางแก้ใบส่ง `items: before.items` เข้ามา แล้วใบพัฒนากลิ่นที่ RD ส่ง
      direction แล้ว **แก้หัวใบ/PDR ไม่ได้อีกเลย** (ผลรีวิวก่อน merge 2026-09-11)
      ⚠️ POST ไม่ได้อาศัยข้อยกเว้นนี้ — ทางสร้างใบไม่เขียนแถวให้รูปทรงที่ไม่มีตารางอยู่แล้ว */
-  if (!shape.hasItems && !shape.deliversRows && Array.isArray(body.items) && body.items.length) {
-    return `รูปแบบ "${requestVariantLabel({ kind, variant: body.variant })}" ไม่มีตารางรายการ — ลบรายการออกก่อน`;
+  /* ⭐ แถวที่ **มีอยู่ในฐานแล้ว** (มี id) ของรูปทรงที่ฝ่าย/ระบบสร้างแถว ผ่านได้ — ทางแก้ใบส่ง
+     `before.items` เข้ามา · แถวไม่มี id = ของใหม่จากผู้ขอ = ตีกลับเหมือนเดิม (ใบ NPD ตอนเปิด) */
+  const clientRows = Array.isArray(body.items)
+    ? body.items.filter((i) => !shape.deliversRows || !i?.id)
+    : [];
+  if (!shape.hasItems && clientRows.length) {
+    // หัวข้อที่ไม่มีรูปแบบให้เลือกใช้ชื่อหัวข้อ — `requestVariantLabel` คืน null แล้วข้อความขึ้น "null"
+    return `${requestVariantLabel({ kind, variant: body.variant }) ? `รูปแบบ "${requestVariantLabel({ kind, variant: body.variant })}"` : `หัวข้อ "${requestKindLabel(kind)}"`} ไม่มีตารางรายการ — ลบรายการออกก่อน`;
   }
 
   if (String(body.title ?? '').length > 200) return 'ชื่อเรื่องยาวเกิน 200 ตัวอักษร';
