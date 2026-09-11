@@ -16,6 +16,48 @@ export const ASSET_OUTCOME_LABELS = {
   swapped: 'เปลี่ยนเครื่อง',
 };
 
+/* ── นัดถอนเครื่อง (`remove`) ใช้ผลชุดเดียวกัน แต่ **พูดคนละคำ** ──────────────
+   ⭐ ค่าในฐานยังเป็น done/unable เหมือนเดิม (CHECK ของ mig 0301 ลิสต์ไว้แค่สามค่า)
+     — ต่างแค่ป้าย: ช่างที่ถือเครื่องออกจากร้านต้องเห็น "ถอนแล้ว" ไม่ใช่ "ทำแล้ว"
+   ⚠️ **"เปลี่ยนเครื่อง" ไม่มีความหมายในนัดถอน** — เอาเครื่องสำรองมาใส่แทนในวันที่ลูกค้า
+     เลิกสัญญา = ติดตั้งใหม่ ไม่ใช่ถอน ⇒ ตัดออกจากตัวเลือก และ route ตีกลับซ้ำอีกชั้น */
+export const REMOVE_VISIT_KIND = 'remove';
+
+export const REMOVE_OUTCOME_LABELS = {
+  done: 'ถอนแล้ว',
+  unable: 'ถอนไม่ได้',
+};
+
+/** ผลที่เลือกได้ของนัดชนิดนี้ */
+export function assetOutcomesFor(kind) {
+  return kind === REMOVE_VISIT_KIND ? ['done', 'unable'] : ASSET_OUTCOMES;
+}
+
+/** ป้ายของผลรายเครื่อง ตามชนิดของนัดที่ผลนั้นเกิด */
+export function assetOutcomeLabel(outcome, kind) {
+  if (kind === REMOVE_VISIT_KIND && REMOVE_OUTCOME_LABELS[outcome]) return REMOVE_OUTCOME_LABELS[outcome];
+  return ASSET_OUTCOME_LABELS[outcome] || outcome;
+}
+
+/* ── ผลที่ "แช่แข็ง" แล้ว — ผลของเครื่องที่ **ไม่ได้ติดตั้งอยู่ที่ไซต์นี้แล้ว** ──────
+   🐞 **บันทึกผลซ้ำเคยลบผลของเครื่องพวกนี้ทิ้งเงียบ ๆ** — PUT เขียนทับทั้งชุด (ลบทุกแถว
+     ของนัดแล้วใส่ใหม่) แต่แผ่นปิดงานกางเฉพาะเครื่อง "ใช้งาน" ของไซต์ ⇒ เครื่องที่ถูก
+     "เปลี่ยน" ไปแล้ว (ปลดระวาง) หรือส่งซ่อม หรือถูกถอนออก (ไม่มีไซต์) ไม่อยู่ในรายการที่
+     ส่งกลับมา ⇒ แถวผลของมันหายตอนกด "แก้ผลการเข้า" · ใบส่งงานเหลือแต่เครื่องที่ยังอยู่
+   ⇒ แถวของเครื่องที่ไม่ใช่ "ใช้งานที่ไซต์นี้" คือ **ประวัติที่เกิดไปแล้ว** แก้จากแผ่นนี้ไม่ได้
+   @param beforeRows แถวผลเดิมของนัด · siteAssets = `loadAssets(visit.siteId)` (ทุกสถานะ) */
+export function frozenResultRows(beforeRows = [], siteAssets = []) {
+  const live = new Set(siteAssets.filter((a) => a.status === 'active').map((a) => a.id));
+  return (beforeRows || []).filter((r) => r?.assetId && !live.has(r.assetId));
+}
+
+/** แถวที่ส่งมาซ้ำกับของที่แช่แข็งไว้ "เหมือนเดิมทุกช่อง" หรือไม่ (ค่าว่างนับเท่ากัน) */
+export function sameAssetResult(a = {}, b = {}) {
+  const same = (x, y) => String(x ?? '') === String(y ?? '');
+  return same(a.outcome, b.outcome) && same(a.reason, b.reason)
+    && same(a.replacedByAssetId, b.replacedByAssetId);
+}
+
 /* ⭐ **สถานะของใบสรุปจากลูก** (มติ 2026-08-02 ข้อ 6) — เจ้าหน้าที่ไม่ได้เลือกเองว่าใบนี้
    จบแบบไหน · ถ้าให้เลือก คนจะกด "เสร็จ" เพราะเป็นปุ่มที่จบงานได้เร็วที่สุดเสมอ
    แล้ว "ทำไม่ครบ" จะไม่มีวันปรากฏในระบบทั้งที่ของจริงเกิดทุกเดือน
@@ -35,9 +77,12 @@ export function deriveVisitStatus(results = []) {
   return 'partial';
 }
 
-/* ตรวจผลรายเครื่องหนึ่งแถว — คืน { value, error }
+/* ตรวจผลรายเครื่องหนึ่งแถว — คืน { value, broken, error }
    ⚠️ ตรวจซ้ำที่นี่ทั้งที่ DB มี CHECK อยู่แล้ว เพราะข้อความจาก Postgres เป็นภาษาอังกฤษดิบ
-   ที่ไม่บอกว่าต้องทำอะไรต่อ (ผู้ใช้คือเจ้าหน้าที่ที่ยืนอยู่หน้างาน) */
+   ที่ไม่บอกว่าต้องทำอะไรต่อ (ผู้ใช้คือเจ้าหน้าที่ที่ยืนอยู่หน้างาน)
+   ⭐ `broken` = ช่างแจ้งว่าเครื่องชำรุด (ข้อ H) — **อยู่นอก `value` โดยตั้งใจ**: `value`
+     ถูกกางลงแถว `service_visit_assets` ตรง ๆ ซึ่งไม่มีคอลัมน์นี้ · สภาพเครื่องเป็นของ
+     ทะเบียน (`service_assets.condition` + แถวประวัติ) ไม่ใช่ของผลรายนัด */
 export function normalizeAssetResult(raw = {}) {
   const assetId = String(raw.assetId ?? '').trim();
   if (!assetId) return { value: null, error: 'ต้องระบุอุปกรณ์' };
@@ -50,6 +95,14 @@ export function normalizeAssetResult(raw = {}) {
     return { value: null, error: `“${ASSET_OUTCOME_LABELS[outcome]}” ต้องบอกเหตุผลอย่างน้อย 5 ตัวอักษร` };
   }
   if (reason.length > 500) return { value: null, error: 'เหตุผลยาวเกิน 500 ตัวอักษร' };
+
+  /* แจ้งชำรุดต้องบอก **อาการ** — หัวหน้าที่เปิดหน้าเครื่องทีหลังต้องรู้ว่าเสียยังไง ส่งซ่อม
+     หรือแค่ต้องไปเช็คซ้ำ · ใช้ช่องเหตุผลเดียวกับผลรายเครื่อง (ทำแล้วแต่เครื่องมีปัญหาก็มีจริง)
+     ⚠️ ต้องเป็น `true` จริง ๆ — สตริง "false" จากฟอร์มเก่าต้องไม่กลายเป็นแจ้งชำรุด */
+  const broken = raw.broken === true;
+  if (broken && reason.length < 5) {
+    return { value: null, error: 'แจ้งเครื่องชำรุดต้องบอกอาการอย่างน้อย 5 ตัวอักษร' };
+  }
 
   const replacedByAssetId = String(raw.replacedByAssetId ?? '').trim();
   if (outcome === 'swapped' && !replacedByAssetId) {
@@ -66,6 +119,7 @@ export function normalizeAssetResult(raw = {}) {
       reason: reason || null,
       replacedByAssetId: outcome === 'swapped' ? replacedByAssetId : null,
     },
+    broken,
     error: null,
   };
 }

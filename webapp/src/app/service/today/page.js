@@ -147,11 +147,29 @@ export default function TodayPage() {
     const closedAs = VISIT_STATUS_LABELS[data?.visit?.status] || "ปิดงาน";
     /* ⭐ **บอกผลที่เกิดกับ *ใบ* ด้วย ไม่ใช่แค่ผลของนัด** (§5E ②) — ช่างที่ปิดว่าเข้าไม่ได้
        ต้องรู้ว่าเรื่องไปต่อยังไง ไม่ใช่เห็นแค่ "ทำไม่ได้แล้ว" แล้วเดาเองว่าต้องทำอะไรอีก */
+    /* ⭐ นัดถอนเครื่อง: บอกผลที่เกิดกับ **ทะเบียน** ด้วย — เครื่องที่ถอนไม่สำเร็จยังค้างอยู่
+       ที่ไซต์ ต้องบอกชื่อและบอกทางแก้ (บันทึกนัดซ้ำ = ระบบลองถอนให้อีกรอบ) ไม่ใช่ขึ้นเขียวเฉย ๆ
+       ⚠️ ทางแก้ต้องไปถึงได้จริง — นัดที่เลยวันแล้วหายจากหน้านี้ทันทีที่ปิด (ปุ่ม "แก้ผลการเข้า"
+          หายไปด้วย) ⇒ ชี้ไปที่ผู้จัดคิว ซึ่งเห็นรายการเดียวกันในเธรดของนัด */
+    const retrieval = data?.retrieval;
+    const retrievalFailed = retrieval?.failed || [];
+    if (retrievalFailed.length) {
+      setToast({
+        kind: "error",
+        msg: `${closedAs} · แต่ถอนออกจากไซต์ไม่สำเร็จ ${retrievalFailed.length} เครื่อง (${retrievalFailed.map((f) => f.label).join(" · ")}) — แจ้งผู้จัดคิวให้เปิดนัดนี้แล้วบันทึกอีกครั้ง ระบบจะลองถอนให้ใหม่`,
+      });
+      setClosing(null);
+      await load();
+      return;
+    }
+    const retrievalText = retrieval?.moved ? ` · ถอนเครื่องออกจากไซต์ ${retrieval.moved} เครื่อง — ทะเบียนเป็น “ว่าง” แล้ว` : "";
+    /* 🐞 ข้อความสำรองเคยเป็น `${closedAs}แล้ว` ⇒ ปิดเป็น "เข้าแล้ว" ได้ toast "เข้าแล้วแล้ว"
+       (นัดที่ไม่มีรอบ เช่นนัดถอนเครื่อง ตกทางนี้ทุกใบ) */
     setToast(data?.steppedBackRequest
       ? { kind: "success", msg: `${closedAs} · ใบประเมินกลับไปขั้นลงคิวแล้ว — TS จะลงวันใหม่ และฝ่ายขายได้รับแจ้งพร้อมเหตุผล` }
       : suggestion
       ? { kind: "success", msg: `${closedAs} · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าจัดคิวเจ้าหน้าที่` }
-      : { kind: "success", msg: `${closedAs}แล้ว` });
+      : { kind: "success", msg: `ปิดงานแล้ว · ${closedAs}${retrievalText}` });
     setClosing(null);
     await load();
   };

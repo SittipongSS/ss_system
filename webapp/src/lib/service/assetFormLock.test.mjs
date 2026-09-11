@@ -35,6 +35,11 @@ test('🔴 วันที่ถอดก็เป็นของคำสั่
   assert.match(assetFormLockError(asset(), { removedAt: '2026-09-09' }), /วันที่ถอด/);
 });
 
+test('🔴 สภาพเครื่องก็เป็นของคำสั่ง — พลิก "ชำรุด" กลับเป็น "ปกติ" ผ่านฟอร์มแก้ไม่ได้', () => {
+  assert.match(assetFormLockError(asset({ condition: 'broken' }), { condition: 'ok' }), /สภาพเครื่อง/);
+  assert.equal(assetFormLockError(asset({ condition: 'broken' }), { condition: 'broken' }), null);
+});
+
 test('ส่งค่าเดิมกลับมา = ไม่ใช่การเปลี่ยน (จอส่งทั้งฟอร์มเสมอ)', () => {
   assert.equal(assetFormLockError(asset(), { label: 'ใหม่', status: 'active' }), null);
   assert.equal(assetFormLockError(asset({ removedAt: '2026-08-01' }),
@@ -49,7 +54,8 @@ test('ค่าว่างสามหน้า (null · undefined · "") น�
 });
 
 test('ทะเบียนช่องที่ล็อกตรงกับที่ตั้งใจ — เพิ่มช่องต้องมาแก้เทสต์นี้', () => {
-  assert.deepEqual(MOVE_ONLY_FIELDS.map(([f]) => f), ['status', 'removedAt']);
+  // condition เติมตอนข้อ H: สภาพเครื่องเปลี่ยนได้ทางคำสั่ง (หน้าเครื่อง) กับทางนัด (ช่างแจ้ง) เท่านั้น
+  assert.deepEqual(MOVE_ONLY_FIELDS.map(([f]) => f), ['status', 'removedAt', 'condition']);
   for (const [, label] of MOVE_ONLY_FIELDS) assert.ok(label, 'ทุกช่องต้องมีป้ายไทย');
 });
 

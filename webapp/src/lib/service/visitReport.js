@@ -14,7 +14,7 @@
 //    หัวหน้าจะปิดแจ้งเตือนภายในสัปดาห์เดียว (มติ 2026-08-02 ข้อ 10)
 import { VISIT_KIND_LABELS } from './rounds';
 import { VISIT_STATUS_LABELS } from './visitStatus';
-import { ASSET_OUTCOME_LABELS } from './visitAssets';
+import { assetOutcomeLabel } from './visitAssets';
 import { ASSET_KIND_LABELS } from './assetKinds';
 import { accessWindowText } from './sites';
 
@@ -44,8 +44,22 @@ export function reportFlags({ visit, results = [], assetsById = new Map() } = {}
   if (unable.length) {
     flags.push({
       kind: 'asset_unable', tone: 'warning',
-      label: `ทำไม่ได้ ${unable.length} รายการ`,
+      label: `${assetOutcomeLabel('unable', visit.kind)} ${unable.length} รายการ`,
       detail: unable.map((r) => `${name(r.assetId)}${r.reason ? ` — ${r.reason}` : ''}`).join(' · '),
+    });
+  }
+
+  /* ⭐ เครื่องที่นัดนี้แตะแล้ว **ทะเบียนบอกว่าชำรุดอยู่** (ข้อ H) — ช่างแจ้งจากแผ่นปิดงาน
+     หรือชำรุดค้างมาก่อน · ทั้งสองแบบคือของที่หัวหน้าต้องตามต่อ (ส่งซ่อม/เอาเครื่องสำรองไป)
+     ⚠️ อ่านจาก **สภาพปัจจุบันในทะเบียน** ไม่ใช่จากผลรายนัด — ผลรายนัดไม่มีคอลัมน์สภาพ
+        และเครื่องที่ซ่อมแล้ว (กลับเป็นปกติ) ต้องหายจากป้ายเอง ไม่ค้างบนใบเก่าตลอดไป */
+  const brokenIds = [...new Set(results.map((r) => r.assetId))]
+    .filter((assetId) => assetsById.get(assetId)?.condition === 'broken');
+  if (brokenIds.length) {
+    flags.push({
+      kind: 'broken', tone: 'warning',
+      label: `เครื่องชำรุด ${brokenIds.length} ตัว`,
+      detail: brokenIds.map(name).join(' · '),
     });
   }
 
@@ -135,7 +149,8 @@ export function buildVisitReport({
         suspendedReason: suspended ? (blockedZone.get(asset.zoneId) || 'โซนนี้ยังไม่ผ่านด่านสัญญา/การชำระ') : null,
         spec,
         outcome: result.outcome,
-        outcomeLabel: ASSET_OUTCOME_LABELS[result.outcome] || result.outcome,
+        // นัดถอนพูด "ถอนแล้ว/ถอนไม่ได้" — ค่าในฐานเหมือนกัน ต่างแค่คำ
+        outcomeLabel: assetOutcomeLabel(result.outcome, visit.kind),
         reason: result.reason || null,
         replacedBy: result.replacedByAssetId ? (assetsById.get(result.replacedByAssetId)?.label || result.replacedByAssetId) : null,
         used: used.map((i) => ({ label: i.label, qty: i.qty, unit: i.unit })),
