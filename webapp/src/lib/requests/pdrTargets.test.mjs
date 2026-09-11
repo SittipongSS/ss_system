@@ -216,3 +216,13 @@ test('เกจนับสเปกรายสินค้าด้วย แ�
   assert.equal(pdrTargetFilled({ ...emptyPdrTarget('a'), scentId: 'SC-1' }), true);
   assert.equal(pdrTargetFilled({ ...emptyPdrTarget('a'), note: 'ฝาไม้' }), true);
 });
+
+test('สิทธิ์ไม่ตรวจกลิ่นซ้ำเป็นของ "แถวเดิมที่ถือกลิ่นเดิม" และใช้ได้ครั้งเดียวต่อแถว', async () => {
+  const { pdrTargetKeep } = await import('./pdrTargetScents.js');
+  const keep = pdrTargetKeep([{ id: 'DPT-1', scentId: 'SC-old' }], [{ id: 'DPT-1' }, { id: 'DPT-1' }, {}]);
+  assert.equal(keep({ scentId: 'SC-old' }, 0), true, 'แถวเดิม กลิ่นเดิม');
+  assert.equal(keep({ scentId: 'SC-old' }, 1), false, 'id เดิมซ้ำในแถวที่สอง = ไม่ได้สิทธิ์');
+  assert.equal(keep({ scentId: 'SC-old' }, 2), false, 'แถวใหม่หยิบกลิ่นเดิมมาใช้ต้องโดนตรวจ');
+  const keep2 = pdrTargetKeep([{ id: 'DPT-1', scentId: 'SC-old' }], [{ id: 'DPT-1' }]);
+  assert.equal(keep2({ scentId: 'SC-new' }, 0), false, 'แถวเดิมที่เปลี่ยนกลิ่น = กลิ่นใหม่ต้องโดนตรวจ');
+});

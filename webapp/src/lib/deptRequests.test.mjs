@@ -1052,3 +1052,12 @@ test('🔴 หัวข้อที่มีสถานที่ = ทะเบ
   assert.equal(requestNeedsRef('site_survey', 'site'), true);
   assert.equal(requestNeedsRef('doc_request', 'site'), false);
 });
+
+test('⭐ รับเรื่องใบ NPD ที่ไม่มีสินค้า/ไม่มีกลิ่นไม่ได้ — ตาข่ายชั้นสุดท้ายของกฎกดส่ง (ผลรีวิวรอบสอง)', () => {
+  const npd = (targets) => req({ kind: 'formula_dev', variant: 'npd', status: 'pending', targets });
+  assert.match(acknowledgeRequestError(npd([])), /อย่างน้อย 1 รายการ.*ตีกลับ/);
+  assert.match(acknowledgeRequestError(npd([{ scentId: '' }])), /ยังไม่ได้เลือกกลิ่น/);
+  assert.equal(acknowledgeRequestError(npd([{ scentId: 'SC-1' }])), null);
+  // หัวข้ออื่นไม่ถูกกระทบ
+  assert.equal(acknowledgeRequestError(req({ kind: 'scent_dev', status: 'pending', targets: [] })), null);
+});

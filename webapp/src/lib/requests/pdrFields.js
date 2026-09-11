@@ -725,6 +725,24 @@ export function pdrRailSectionsFromRequest(request = {}, briefs = [], targets = 
  * ⚠️ ปิดไว้เป็นค่าตั้งต้น — ผู้เรียกอื่น (และเทสต์) ยังได้คู่ [ป้าย, ค่า] เหมือนเดิม
  */
 /**
+ * ก้อน context ที่ฟอร์ม PDR ใช้วาดช่องเส้นประ — รวม "ของที่ server ประกอบ" กับ "ของที่คิดสดจากฟอร์ม"
+ *
+ * ⭐ **โหมดแก้ใช้ก้อนของ server เป็นฐาน** (`req.pdrContext`) — หน้ารายละเอียดไม่ได้โหลดทะเบียน
+ *    ลูกค้า/โครงการมาทั้งชุด · 🐞 เดิมคิดฝั่งจอทั้งสองโหมด ⇒ โหมดแก้ได้ผู้ติดต่อ/ที่อยู่เป็นเส้นประ
+ * ⚠️ สองค่าที่ **ต้องคิดสดเสมอ** เพราะเปลี่ยนตามที่กำลังพิมพ์: วันส่งตัวอย่าง (จากช่องวันที่ของใบ)
+ *    กับจำนวนกลิ่น (ใบที่เลือกกลิ่นรายแถว = นับจากแถวในฟอร์ม · ใบพัฒนากลิ่น = จาก SO ที่เลือก
+ *    ถอยไปค่าของ server เมื่อฟอร์มยังไม่รู้)
+ * @param form ค่าฟอร์มทั้งใบ (ต้องมี kind/variant/pdrTargets) · @param derived ผลของ `pdrContext` ฝั่งจอ
+ * @param serverContext `req.pdrContext` (โหมดแก้) หรือ null · @param soScentCount จำนวนกลิ่นจาก SO ที่เลือก
+ */
+export function pdrFormContext({ form = {}, derived = {}, serverContext = null, soScentCount = null } = {}) {
+  const scentCount = requestPdrRowsPickScent(form)
+    ? pdrTargetsScentCount(Array.isArray(form.pdrTargets) ? form.pdrTargets : [])
+    : (soScentCount ?? serverContext?.scentCount ?? null);
+  return { ...(serverContext || derived), sampleDue: derived.sampleDue ?? null, scentCount };
+}
+
+/**
  * "ค่านี้มาจากไหน" ของช่องที่ระบบเติม — ใบที่ผูกแค่ดีล (พัฒนาสูตร NPD · เลือกกลิ่นจาก
  * ทะเบียนรายแถว) ไม่มีใบสั่งขาย ⇒ คำว่า "เติมจาก SO" จะชี้ไปของที่ใบนี้ไม่มี
  * ⚠️ ถามทะเบียนหัวข้อด้วยทั้งใบ ไม่ใช่เดาจาก `salesOrderId` ว่าง (ร่างพัฒนากลิ่นที่ยังไม่

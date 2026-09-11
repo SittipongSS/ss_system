@@ -161,3 +161,16 @@ test('แถวใหม่ผ่าน diff ได้เสมอ — ด่า
   assert.equal(plan.insert.length, 1, 'diff ไม่ได้กันแถวใหม่ — ด่านอยู่ที่ requestLineEditError');
   assert.match(requestLineEditError({ status: 'acknowledged' }), /แก้รายการทางฟอร์มไม่ได้/);
 });
+
+test('⭐ แถวที่เดินก้าวแล้ว: ป้ายที่ถูกต่อทีหลังกับลำดับที่เว้นช่อง ไม่ใช่การแก้ — แก้หัวใบต้องไม่โดนตีกลับ', () => {
+  const moved = { id: 'DRI-1', lineKind: 'product_dev', categoryCode: '01-005', scentId: 'SC-1',
+    label: 'เทียนหอม · S1 Rose → FM-0001', spec: null, qty: null, unit: null, sortOrder: 2,
+    ackAt: '2026-09-01T00:00:00Z', readyAt: '2026-09-05T00:00:00Z' };
+  // ฟอร์มส่งแถวเดิมกลับ — ป้าย derive ใหม่ไม่มีท้าย "→ FM" และลำดับนับใหม่เป็น 1
+  const plan = requestLineDiff([moved], [{ ...moved, label: 'เทียนหอม · S1 Rose', sortOrder: undefined }], { lineShape: 'product_dev' });
+  assert.equal(plan.error, null);
+  assert.deepEqual(plan.update, [], 'ไม่เขียนทับป้าย/ลำดับของแถวที่เดินแล้ว');
+  // แต่แก้ช่องที่ผู้ขอเป็นเจ้าของบนแถวที่เดินแล้วยังโดนตีกลับเหมือนเดิม
+  const edited = requestLineDiff([moved], [{ ...moved, scentId: 'SC-2' }], { lineShape: 'product_dev' });
+  assert.match(edited.error, /เดินก้าวไปแล้ว/);
+});

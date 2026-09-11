@@ -106,3 +106,55 @@ test('⭐ แก้สเปกรายสินค้าต้องขึ้�
   assert.match(pdrChangeSummary({}, {}, lines), /สินค้าที่ 1/);
   assert.equal(pdrChangeSummary({}, {}, []), null);
 });
+
+test('1.11 ในเธรดใช้ชื่อหมวดชุดเดียวกับบรรทัดแถวสินค้า — ไม่ใช่รหัสดิบ', () => {
+  const names = { '01-005': 'เทียนหอม', '01-006': 'ก้านหอม' };
+  const summary = pdrChangeSummary(
+    { pdrProductKinds: ['01-005'] }, { pdrProductKinds: ['01-005', '01-006'] }, [],
+    { categoryLabel: (c) => names[c] },
+  );
+  assert.match(summary, /เทียนหอม → เทียนหอม, ก้านหอม/);
+});
+
+test('⭐ เอาสินค้าที่ 1 ออก — เธรดบอกว่าเอาอะไรออก ไม่ใช่เล่าว่าสินค้าที่ 1 เปลี่ยนทุกช่อง (จับคู่ด้วย id)', () => {
+  const before = [
+    { id: 'DPT-a', categoryCode: '02-020', fOn: true, fPricePerKg: 1200 },
+    { id: 'DPT-b', categoryCode: '01-005', sizeValue: 100, sizeUnit: 'ml' },
+  ];
+  const next = [{ categoryCode: '01-005', sizeValue: 100, sizeUnit: 'ml' }];
+  const lines = pdrTargetChangeLines(before, next, { nextIds: ['DPT-b'] });
+  assert.deepEqual(lines, ['สินค้าที่ 1 (เดิม): เอาออก (02-020)'], lines.join('\n'));
+  // เพิ่มแถวใหม่ + แก้แถวเดิมที่ย้ายตำแหน่ง
+  const moved = pdrTargetChangeLines(before, [
+    { categoryCode: '01-009' },
+    { categoryCode: '01-005', sizeValue: 50, sizeUnit: 'ml' },
+    { categoryCode: '02-020', fOn: true, fPricePerKg: 1200 },
+  ], { nextIds: [null, 'DPT-b', 'DPT-a'] });
+  assert.ok(moved.includes('สินค้าที่ 1: เพิ่มใหม่ (01-009)'), moved.join('\n'));
+  assert.ok(moved.includes('สินค้าที่ 2 · 2.7.1 ขนาดบรรจุ: 100 ml → 50 ml'), moved.join('\n'));
+  assert.equal(moved.length, 2, 'แถวที่แค่ย้ายตำแหน่งไม่ใช่การแก้');
+});
+
+test('ช่องตัวเลือกในเธรดพิมพ์ป้าย ไม่ใช่ key ที่เก็บ', () => {
+  const lines = pdrChangeLines({ pdrArchetypes: ['caregiver', 'explorer'] }, { pdrArchetypes: ['explorer'] });
+  assert.ok(lines.some((l) => /CAREGIVER, EXPLORER → EXPLORER/.test(l)), lines.join('\n'));
+});
+
+test('แทนที่สินค้าทุกแถว — ยังจับคู่ด้วย id (เอาออก + เพิ่มใหม่) ไม่ถอยไปเทียบตามตำแหน่ง', () => {
+  const before = [
+    { id: 'DPT-a', categoryCode: '02-020', fOn: true, fPricePerKg: 1200 },
+    { id: 'DPT-b', categoryCode: '02-010' },
+  ];
+  assert.deepEqual(
+    pdrTargetChangeLines(before, [{ categoryCode: '01-005', sizeValue: 100, sizeUnit: 'ml' }], { nextIds: [null] }),
+    ['สินค้าที่ 1 (เดิม): เอาออก (02-020)', 'สินค้าที่ 2 (เดิม): เอาออก (02-010)', 'สินค้าที่ 1: เพิ่มใหม่ (01-005)'],
+  );
+  assert.deepEqual(pdrTargetChangeLines([], [{ categoryCode: '01-005' }], { nextIds: [null] }), ['สินค้าที่ 1: เพิ่มใหม่ (01-005)']);
+});
+
+test('บรรทัด "เอาสินค้าออก" ขึ้นก่อนบรรทัดหัวใบ — เพดานบรรทัดของเธรดต้องไม่กลืนมัน', () => {
+  const header = Object.fromEntries(['pdrMoq', 'pdrColor', 'pdrPackSize', 'pdrCustomerBrand', 'pdrMoodTone',
+    'pdrBrandDirection', 'pdrShipTo', 'pdrFragranceUse', 'pdrExportDocNote'].map((c) => [c, 'ใหม่']));
+  const summary = pdrChangeSummary({}, header, ['สินค้าที่ 2 (เดิม): เอาออก (02-010)']);
+  assert.match(summary.split('\n')[0], /เอาออก/);
+});

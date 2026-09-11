@@ -191,9 +191,12 @@ function TickAndWrite({ label, value, onChange, disabled, max }) {
   return (
     <div className="form-group">
       <SwitchRow on={on} disabled={disabled} onToggle={() => onChange(on ? "" : " ")}>{label}</SwitchRow>
+      {/* ⚠️ แสดงค่าตามที่พิมพ์ **ไม่ trim** — 🐞 เดิม `value.trim()` ทุก render ⇒ Enter ขึ้นบรรทัดใหม่
+          หรือเคาะวรรคท้ายแล้วหายทันที (ช่องยาวพิมพ์หลายบรรทัดไม่ได้เลย · ผลรีวิวก่อน merge)
+          ตัดเฉพาะค่าพิเศษ " " (เปิดแล้วแต่ยังไม่พิมพ์) · `normalizePdr` trim ตอนบันทึกอยู่แล้ว */}
       {on && (
         <Textarea
-          rows={3} value={value.trim()} disabled={disabled} aria-label={label} maxLength={max}
+          rows={3} value={value === " " ? "" : value} disabled={disabled} aria-label={label} maxLength={max}
           onChange={(e) => onChange(e.target.value || " ")}
         />
       )}
@@ -219,7 +222,7 @@ function TickAndWrite({ label, value, onChange, disabled, max }) {
  */
 function PdrTargetList({
   targets, onChange, productKinds, categories, disabled,
-  pickScent = false, scents = [], customerId = null,
+  pickScent = false, scents = [], customerId = null, dealChosen = false,
 }) {
   const rows = Array.isArray(targets) ? targets : [];
   const kinds = Array.isArray(productKinds) ? productKinds : [];
@@ -236,13 +239,26 @@ function PdrTargetList({
   /* ⚠️ กลิ่นข้ามลูกค้าไม่ได้ (มติ 9) และกลิ่นร่าง/เลิกใช้ทำสูตรไม่ได้ — กรองที่ต้นทาง
      (ตัวกรองเดียวกับตารางพัฒนาสูตร standard · `ProductDevLines`) · server ตรวจซ้ำด้วย
      `pdrTargetScentError` เพราะตัวกรองบนจอไม่กันคนยิง API ตรง */
-  const scentOptions = pickScent ? scents
+  /* ⚠️ **ยังไม่เลือกดีล = ไม่มีตัวเลือก** ไม่ใช่ทุกกลิ่นของทุกลูกค้า — เลือกกลิ่นไว้ก่อนแล้วค่อยเลือก
+     ดีลจะได้ค่าค้างที่ไปตกด่าน server · แต่ **ดีลที่ยังไม่ผูกลูกค้า** (prod 60/444 ดีล) ต้องยังเลือก
+     ได้ — ไม่งั้นใบ NPD บนดีลพวกนั้นกดส่งไม่ได้ตลอดกาล (ผลรีวิวรอบสอง) · กติกาเดียวกับตาราง
+     พัฒนาสูตร standard (`ProductDevLines`) และ server (`pdrTargetScentError` ข้ามข้อลูกค้าเมื่อใบไม่มีลูกค้า) */
+  const toOption = (x, note = "") => ({
+    value: x.id,
+    label: `${x.code ? `${x.code} · ` : ""}${x.name}${note}`,
+    search: [x.code, x.name, x.customerTradeName].filter(Boolean).join(" "),
+  });
+  const scentOptions = pickScent && dealChosen ? scents
     .filter((x) => isScentUsable(x) && (!customerId || x.customerId === customerId))
-    .map((x) => ({
-      value: x.id,
-      label: `${x.code ? `${x.code} · ` : ""}${x.name}`,
-      search: [x.code, x.name, x.customerTradeName].filter(Boolean).join(" "),
-    })) : [];
+    .map((x) => toOption(x)) : [];
+  /* ⭐ กลิ่นที่ใบถืออยู่แล้วแต่หลุดตัวกรอง (เลิกใช้/ย้ายเจ้าของทีหลัง) ต้อง **ยังโชว์เป็นค่าที่เลือก**
+     — server ยอมเก็บไว้ (ตรวจเฉพาะกลิ่นที่เพิ่งเลือก) · ไม่พ่วงไว้ = ช่องบังคับขึ้นว่างทั้งที่มีค่า
+     (แพตเทิร์นเดียวกับ `unitOptions` ที่พ่วงหน่วยเดิมที่หลุดลิสต์) */
+  const optionsFor = (current) => {
+    if (!current || scentOptions.some((o) => o.value === current)) return scentOptions;
+    const held = scents.find((x) => x.id === current);
+    return held ? [...scentOptions, toOption(held, " (ค่าเดิม — ใช้ทำสูตรไม่ได้แล้ว)")] : scentOptions;
+  };
   const scentText = (id) => {
     if (!id) return "";
     const x = scents.find((sc) => sc.id === id);
@@ -350,13 +366,16 @@ function PdrTargetList({
                 <SearchableSelect
                   value={row.scentId || ""} disabled={disabled}
                   onChange={(v) => patch(active, { scentId: v || "" })}
-                  options={scentOptions}
+                  options={optionsFor(row.scentId)}
                   placeholder="เลือกกลิ่นจากทะเบียน"
                   ariaLabel={`${PDR_TARGET_LABELS.scent.label} — ${nameOf(row.categoryCode)}`}
-                  emptyText={customerId
-                    ? "ลูกค้ารายนี้ยังไม่มีกลิ่นที่ใช้ได้ — ต้องผ่านคำร้องพัฒนากลิ่นก่อน"
-                    : "เลือกดีลก่อน แล้วจะเห็นกลิ่นของลูกค้ารายนั้น"}
+                  emptyText={!dealChosen
+                    ? "เลือกดีลก่อน แล้วจะเห็นกลิ่นของลูกค้ารายนั้น"
+                    : "ลูกค้ารายนี้ยังไม่มีกลิ่นที่ใช้ได้ — ต้องผ่านคำร้องพัฒนากลิ่นก่อน"}
                 />
+                {dealChosen && !customerId && (
+                  <small className={styles.hint}>ดีลนี้ยังไม่ผูกลูกค้า — แสดงกลิ่นของทุกลูกค้า ผูกลูกค้าให้ดีลก่อนจะช่วยกันเลือกผิด</small>
+                )}
                 {/* ⚠️ บังคับตอนกดส่ง ไม่ใช่ตอนบันทึกร่าง (มติผู้ใช้ 2026-09-11) — ด่านจริง
                     อยู่ที่ `pdrTargetsSubmitError` ตัวเดียวกับที่ server ใช้ */}
                 <small className={styles.hint}>
@@ -484,7 +503,8 @@ export default function PdrForm({
      รายแถวสินค้า (พัฒนาสูตร NPD · มติผู้ใช้ 2026-09-11) · ฟอร์มไม่รู้จักชื่อหัวข้อ */
   scentSource = null,
   // ทะเบียนกลิ่น + ลูกค้าเจ้าของใบ — ใช้เฉพาะ `scentSource === 'registry'` (ข้อ 2.1)
-  scents = [], customerId = null,
+  // `dealChosen` แยก "ยังไม่เลือกดีล" ออกจาก "ดีลยังไม่ผูกลูกค้า" (สองสถานะ ทางแก้คนละทาง)
+  scents = [], customerId = null, dealChosen = false,
 }) {
   // ⚠️ อ่านจาก `context` ก้อนเดียว — ชื่อคีย์ตรงกับที่ `pdrContext()` คืนมาเป๊ะ
   // ห้ามรับเป็นพร็อพแยกอีก (ดูเหตุผลที่หัวพร็อพ)
@@ -986,6 +1006,7 @@ export default function PdrForm({
             pickScent={pickScent}
             scents={scents}
             customerId={customerId}
+            dealChosen={dealChosen}
           />
           {/* ⚠️ **ไม่มีช่อง MOQ / เนื้อ / สี / ขนาดระดับใบแล้ว** — ย้ายลงแถวสินค้าข้างบน (mig 0352)
               ใบเก่าที่กรอกไว้แบบเดิมยังโชว์ให้เห็นตรงนี้ (อ่านอย่างเดียว) และพิมพ์ลงเอกสาร
@@ -995,6 +1016,17 @@ export default function PdrForm({
               <small className={styles.hint}>
                 ใบนี้มีข้อ 2.4–2.7 ที่บันทึกไว้แบบเดิม (ทั้งใบ): {legacySpec.join(" · ")} — กรอกใหม่รายสินค้าด้านบนได้
               </small>
+              {/* ⭐ ย้ายลงแถวสินค้าแล้วต้อง **ล้างของเดิมได้** — ไม่งั้นกระดาษพิมพ์ทั้งค่าเดิม (ทั้งใบ) และ
+                  ค่าใหม่ (รายสินค้า) ซ้อนกันตลอดไป (ผลรีวิวก่อน merge 2026-09-11) · ล้างในฟอร์มเท่านั้น
+                  ยังไม่ถึง DB จนกดบันทึก (กดยกเลิกการแก้ = ได้คืน) */}
+              <div className={styles.topicAction}>
+                <Button
+                  variant="quiet" size="sm" disabled={disabled}
+                  onClick={() => set({ moq: "", texture: "", color: "", packSize: "" })}
+                >
+                  ล้างค่าที่บันทึกไว้แบบเดิม
+                </Button>
+              </div>
             </div>
           )}
           <ChipPicker

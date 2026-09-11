@@ -110,6 +110,14 @@ export function acknowledgeRequestError(request) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'draft') return 'คำร้องนี้ยังไม่ถูกส่ง';
   if (request.status !== 'pending') return 'คำร้องนี้รับเรื่องไปแล้ว';
+  /* ⭐ **ตาข่ายชั้นสุดท้ายของกฎกดส่ง NPD** (ผลรีวิวรอบสอง 2026-09-11) — ใบที่ส่งแล้วถูกแก้/สลับ
+     จนไม่มีสินค้าหรือไม่มีกลิ่นได้หลายทาง (ทางแก้เดินสองก้าว ไม่มี transaction) · รับเรื่องใบแบบนั้น
+     = ออกเลขที่ FM-RD-01 ให้งานที่ RD ทำต่อไม่ได้ และหลังจากนั้นสลับรูปแบบก็ไม่ได้อีก
+     ⚠️ อ่าน `request.targets` จากตัวใบ (`findRequest` โหลดให้) — ปุ่มบนจอถามตัวเดียวกัน */
+  if (requestPdrRowsPickScent(request)) {
+    const targetError = pdrTargetsSubmitError(request.targets);
+    if (targetError) return `${targetError} — ให้ผู้ขอแก้แบบฟอร์ม PDR หรือตีกลับ`;
+  }
   return null;
 }
 

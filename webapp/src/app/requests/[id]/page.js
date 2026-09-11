@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
-import { requestVariantLock } from "@/lib/requests/variantSwitch";
+import { VARIANT_SWITCHABLE_STATUSES, requestVariantLock, requestVariantSideLock } from "@/lib/requests/variantSwitch";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -48,7 +48,7 @@ import { submitRequestError } from "@/lib/requests/stages";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
-  requestUsesPdr, requestKindMeta, requestNeedsRef, requestPdrRowsPickScent,
+  requestUsesPdr, requestKindMeta, requestNeedsRef, requestPdrRowsPickScent, requestVariantKey,
 } from "@/lib/master/requestTypes";
 import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
@@ -778,13 +778,19 @@ export default function RequestDetailPage() {
          ทันทีโดยที่แบบฟอร์มยังไม่ถูกเขียน ไม่ใช่บันทึกครึ่งเดียวแล้วบอกว่าพลาด */
       onClick: async () => {
         if (canEditInfo) {
+          /* ⚠️ บรรทัดถูกล็อก (รับเรื่องแล้ว) = **ไม่ส่ง `items` ไปเลย** — server ถือว่าไม่แตะบรรทัด ·
+             🐞 เดิมส่งแถวกลับทุกครั้ง แล้วแถวที่เดินก้าวไปแล้ว (ส่งสูตรแล้ว · ลูกค้าขอแก้ = แถวซ้ำ
+             หมวด × กลิ่น) ทำให้แก้แค่ชื่อเรื่องก็โดนตีกลับทั้งใบ (ผลรีวิวก่อน merge 2026-09-11) */
+          const { items: draftItems, ...draftRest } = editDraft;
           const ok = await call("", {
             method: "PATCH",
-            body: JSON.stringify({ action: "update", ...editDraft }),
-          }, canEditPdrNow ? null : "แก้ข้อมูลคำร้องแล้ว");
+            body: JSON.stringify({
+              action: "update", ...draftRest, ...(lineEditBlocker ? {} : { items: draftItems }),
+            }),
+          }, pdrEditableInDraft ? null : "แก้ข้อมูลคำร้องแล้ว");
           if (!ok) return;
         }
-        if (canEditPdrNow) {
+        if (pdrEditableInDraft) {
           const ok = await call("", {
             method: "PATCH",
             body: JSON.stringify({
@@ -837,6 +843,13 @@ export default function RequestDetailPage() {
               คำตอบตั้งแต่จังหวะนี้พอดี · เติมค่าเดิมของใบไว้ก่อน คนกดจะได้เห็นว่ามี
               อะไรกรอกไว้แล้วบ้าง ไม่ใช่ช่องว่างที่กดยืนยันแล้วลบของเดิมทิ้ง */
         onClick: () => {
+          /* ⭐ ด่านเดียวกับ route (`acknowledgeRequestError`) ถามก่อนเปิดโมดัล — ใบ NPD ที่ไม่มี
+             สินค้า/กลิ่นต้องบอกเหตุตั้งแต่กด ไม่ใช่ยืนยันแล้วค่อยโดน 409 ใต้โมดัล (กติกา GatedAction) */
+          const ackError = acknowledgeRequestError(req);
+          if (ackError) {
+            setToast({ kind: "error", msg: ackError });
+            return;
+          }
           setAckSigners(Object.fromEntries(
             PDR_SIGNER_FIELDS.map((f) => [f.key, req[f.column] || ""]),
           ));
@@ -958,6 +971,18 @@ export default function RequestDetailPage() {
   /* บรรทัดหยุดแก้ก่อนหัวใบหนึ่งขั้น — เทาไว้พร้อมเหตุผล ไม่ใช่ปล่อยให้พิมพ์แล้วโดน 409 */
   const lineEditBlocker = hasItems ? requestLineEditError(req) : null;
   const canEditPdrNow = requestUsesPdr(req) && !!req._canEditPdr;
+  /* ⭐ **แก้ PDR ในรอบแก้นี้ได้ไหม — ถามด้วยรูปแบบที่กำลังเลือกในฟอร์ม** (ผลรีวิวก่อน merge
+     2026-09-11) — 🐞 เดิมใช้ `canEditPdrNow` ของใบที่บันทึกไว้ ⇒ สลับ Standard → NPD แล้ว
+     แบบฟอร์มเทาทั้งแผงโดยไม่มีเหตุผล · สลับ NPD → Standard แล้วก้าวที่สองยิง `pdr` ใส่ใบที่
+     ไม่มี PDR แล้ว ⇒ 403 ทั้งที่การสลับบันทึกไปแล้ว
+     ⚠️ สลับรูปแบบได้เฉพาะก่อนรับเรื่อง = ช่วงที่สิทธิ์ PDR เป็นของผู้ขอ (`pdrEdit.js`) ⇒ ใบที่
+        เพิ่งสลับเข้าโหมด PDR ใช้สิทธิ์แก้หัวใบแทนได้ตรงความหมาย · server ตรวจซ้ำอยู่ดี */
+  const pdrEditableInDraft = !!editDraft && requestUsesPdr(editDraft)
+    && (requestUsesPdr(req)
+      ? canEditPdrNow
+      // ⚠️ สิทธิ์ฝั่งผู้ขอเท่านั้น (`_mine` = canManageRequest ของ server) ไม่ใช่ `canEditInfo` — ตัวนั้น
+      //    รวมฝ่ายปลายทางด้วย แต่ PDR ก่อนรับเรื่องเป็นของผู้ขอ (`pdrEdit.js`) ⇒ RD สลับแล้วเซฟครึ่งเดียว
+      : !!req._mine && VARIANT_SWITCHABLE_STATUSES.includes(req.status));
   // ⭐ ประโยค "ทำไมแก้ไม่ได้ตอนนี้" — server ตัดสินมาให้แล้ว (`editPdrError`) หน้าจอ
   /* เหตุผลที่แก้ไม่ได้ — **มาจาก server ทั้งสองฝั่ง ไม่คิดเอง**
      · ใบที่มีแบบฟอร์ม PDR ⇒ `_editPdrBlocker` (สิทธิ์สลับมือตอนรับเรื่อง)
@@ -1041,7 +1066,9 @@ export default function RequestDetailPage() {
               kind: req.kind,
               /* ⭐ รูปแบบงานเข้าโหมดแก้ด้วย — ไม่พาไป = ฟอร์มตกไปใช้รูปแบบตั้งต้น
                  แล้วใบ NPD จะเปิดมาเป็นหน้าตา standard (ตารางแถวโผล่ · PDR หาย) */
-              variant: req.variant || "",
+              /* ⚠️ `requestVariantKey` ไม่ใช่ `req.variant` ดิบ — ทุกแถวเก็บ 'standard' (DEFAULT ของ
+                 mig 0351) แม้หัวข้อที่ไม่มีรูปแบบ · ส่งค่านั้นกลับไปคือส่งรูปแบบให้หัวข้อที่ไม่มี */
+              variant: requestVariantKey(req) || "",
               dept: req.dept || "",
               team: req.team || "",
               title: req.title || "",
@@ -1418,14 +1445,14 @@ export default function RequestDetailPage() {
             /* ⚠️ **สองด่าน สลับมือคนละจังหวะ** — คนที่แก้ PDR ได้อาจแก้หัวใบไม่ได้แล้ว
                (และกลับกัน) ⇒ เทาส่วนที่ไม่ใช่ของตัวเอง ไม่ใช่ซ่อน · server ตัดสิน */
             disabled={saving || !canEditInfo}
-            pdrDisabled={saving || !canEditPdrNow}
+            pdrDisabled={saving || !pdrEditableInDraft}
             linesDisabled={saving || !canEditInfo || !!lineEditBlocker}
             linesNote={lineEditBlocker}
             /* ⭐ **สลับรูปแบบงานได้ถึงก่อนรับเรื่อง** (มติผู้ใช้ 2026-09-09) — ด่านตัวเดียว
                กับที่ API ใช้ (`variantSwitchError`) ⇒ ปุ่มที่เทาไว้กับคำตอบของเซิร์ฟเวอร์
                พูดประโยคเดียวกัน · ถามด้วยรูปแบบที่ **กำลังเลือกอยู่ในฟอร์ม** เพื่อให้
                ข้อความอัปเดตตามของที่คนกำลังจะทำ ไม่ใช่ค่าที่บันทึกไว้เมื่อวาน */
-            variantLock={requestVariantLock(req)}
+            variantLock={requestVariantLock(req) || requestVariantSideLock(!!req._mine)}
             people={signerPeople}
             lockKind
             deferMentions

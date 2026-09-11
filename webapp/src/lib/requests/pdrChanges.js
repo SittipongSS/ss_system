@@ -34,8 +34,19 @@ const notesText = (value) => Object.entries(value && typeof value === 'object' ?
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(' · ');
 
-/** ค่าหนึ่งช่อง → ข้อความอ่านออก · ว่าง = "(ว่าง)" ไม่ใช่สตริงเปล่า */
-function readable(field, value) {
+/** ค่าหนึ่งช่อง → ข้อความอ่านออก · ว่าง = "(ว่าง)" ไม่ใช่สตริงเปล่า
+ *  `categoryLabel` = ป้ายหมวดจากทะเบียน (ช่อง 1.11) — ไม่ส่ง = รหัสดิบ */
+function readable(field, value, { categoryLabel = null } = {}) {
+  if (field.type === 'categories' && categoryLabel) {
+    const list = (Array.isArray(value) ? value : []).map((v) => String(v ?? '').trim()).filter(Boolean);
+    return list.length ? clip(list.map((c) => categoryLabel(c) || c).join(', ')) : '(ว่าง)';
+  }
+  // ช่องตัวเลือก — พิมพ์ **ป้าย** ไม่ใช่ key ที่เก็บ ("caregiver" → "CAREGIVER") · ค่าที่ไม่รู้จักพิมพ์ดิบ
+  if (Array.isArray(field.options) && field.options.length && (field.type === 'multi' || field.type === 'select')) {
+    const labelOf = (v) => field.options.find((o) => o.value === v)?.label || v;
+    const list = (Array.isArray(value) ? value : [value]).map((v) => String(v ?? '').trim()).filter(Boolean);
+    return list.length ? clip(list.map(labelOf).join(', ')) : '(ว่าง)';
+  }
   // ⚠️ สองชนิดนี้ `String()` ตรง ๆ ไม่ได้ — ได้ "[object Object]" / "true" ลงเธรด
   if (field.type === 'switch') return value === true ? 'ใช่' : value === false ? 'ไม่ใช่' : '(ว่าง)';
   if (field.type === 'notes') return clip(notesText(value)) || '(ว่าง)';
@@ -70,13 +81,13 @@ function same(field, a, b) {
  * ⚠️ วนจาก `columns` ไม่ใช่จากทะเบียนทั้งชุด — ผู้เรียกที่แก้แค่บางส่วนส่งมาไม่ครบ
  * ทุกช่อง การวนทะเบียนจะอ่านช่องที่ไม่ได้ส่งมาเป็น "ถูกล้างเป็นว่าง" ทั้งแผง
  */
-export function pdrChangeLines(before = {}, columns = {}) {
+export function pdrChangeLines(before = {}, columns = {}, opts = {}) {
   const lines = [];
   for (const [column, next] of Object.entries(columns)) {
     const field = FIELD_BY_COLUMN[column];
     if (!field) continue;                       // คอลัมน์ที่ไม่ได้อยู่ในทะเบียน = ไม่ใช่ช่องที่คนกรอก
     if (same(field, before[column], next)) continue;
-    lines.push(`${field.label}: ${readable(field, before[column])} → ${readable(field, next)}`);
+    lines.push(`${field.label}: ${readable(field, before[column], opts)} → ${readable(field, next, opts)}`);
   }
   return lines;
 }
@@ -84,8 +95,8 @@ export function pdrChangeLines(before = {}, columns = {}) {
 /* ── แถวสินค้า (ข้อ 2.1–2.7 รายสินค้า · mig 0229 + 0352) ────────────────────
    ⭐ ย้ายสเปกลงแถวแล้ว **ต้องตามไปดูแถวด้วย** — ไม่งั้น RD แก้ขนาดบรรจุของสินค้า SA
       ไม่มีทางรู้ (โรคเดียวกับที่ IS-26080021 แก้ไปแล้วสำหรับหัวใบ)
-   ⚠️ เทียบ **ตามลำดับแถว** — แถวไม่มี id ถาวร (PATCH ลบแล้ว insert ใหม่ทุกครั้ง) และ
-      ลำดับคือ "สินค้าที่ N" ที่ตาเห็นบนจอและบนกระดาษ */
+   ⚠️ จับคู่ด้วย **id ที่ฟอร์มพามา** (`nextIds`) — id ของแถวเปลี่ยนทุกครั้งที่บันทึก (เขียนชุดใหม่
+      แล้วลบชุดเดิม) แต่ภายในหนึ่งการบันทึก id ที่ฟอร์มถืออยู่ชี้แถวเดิมได้ถูก · ไม่ส่ง = เทียบตามลำดับ */
 const TARGET_COLUMNS = [
   { key: 'categoryCode', label: 'ประเภทสินค้า', text: (r, o) => o.categoryLabel(r.categoryCode) },
   { key: 'scentId', label: `${PDR_TARGET_LABELS.scent.no} กลิ่น`, text: (r, o) => o.scentLabel(r.scentId) },
@@ -108,21 +119,49 @@ const TARGET_COLUMNS = [
  */
 export function pdrTargetChangeLines(before = [], next = [], {
   scentLabel = (id) => id, categoryLabel = (code) => code,
+  /* id ของแถวเดิมที่ฟอร์มส่งมาคู่กับ `next[i]` (`pdrTargetValuesFrom` พา id มา) — มีเมื่อไร **จับคู่
+     ด้วย id** · 🐞 จับตามตำแหน่งอย่างเดียว ⇒ เอาสินค้าที่ 1 ออก เธรดกลายเป็น "สินค้าที่ 1 เปลี่ยน
+     หมวด…" 7 บรรทัดปลอม แล้วบรรทัด "เอาออก" ถูกเพดานบรรทัดกลืน (ผลรีวิวรอบสาม) */
+  nextIds = null,
 } = {}) {
   const o = { scentLabel: (id) => (id ? scentLabel(id) : ''), categoryLabel: (c) => (c ? categoryLabel(c) : '') };
   const a = Array.isArray(before) ? before : [];
   const b = Array.isArray(next) ? next : [];
   const lines = [];
   const text = (col, row) => String(col.text(row, o) ?? '').trim();
+  const name = (row) => text(TARGET_COLUMNS[0], row) || '—';
+  const diff = (at, x, y) => {
+    for (const col of TARGET_COLUMNS) {
+      const p = text(col, x); const q = text(col, y);
+      if (p === q) continue;
+      lines.push(`${at} · ${col.label}: ${clip(p) || '(ว่าง)'} → ${clip(q) || '(ว่าง)'}`);
+    }
+  };
+
+  const byId = new Map(a.filter((r) => r?.id).map((r) => [r.id, r]));
+  // ⚠️ ผู้เรียกส่ง `nextIds` มา = จับคู่ด้วย id **เสมอ** แม้ไม่มี id ไหนรอด — 🐞 เดิมถอยไปจับตาม
+  //    ตำแหน่งเมื่อแทนที่ทุกแถว ⇒ เอาออกทั้งหมดแล้วเพิ่มใหม่ เธรดขึ้น "แก้ทุกช่อง" ปลอม (รีวิวรอบสี่)
+  if (Array.isArray(nextIds)) {
+    const ids = nextIds;
+    const used = new Set();
+    // เอาออกขึ้นก่อน — เป็นบรรทัดที่สำคัญที่สุดและต้องไม่ถูกเพดานบรรทัดของเธรดกลืน
+    const kept = new Set(ids.filter((id) => id && byId.has(id)));
+    a.forEach((r, i) => { if (!kept.has(r.id)) lines.push(`สินค้าที่ ${i + 1} (เดิม): เอาออก (${name(r)})`); });
+    b.forEach((row, i) => {
+      const id = ids[i];
+      const old = id && byId.has(id) && !used.has(id) ? byId.get(id) : null;
+      if (!old) { lines.push(`สินค้าที่ ${i + 1}: เพิ่มใหม่ (${name(row)})`); return; }
+      used.add(id);
+      diff(`สินค้าที่ ${i + 1}`, old, row);
+    });
+    return lines;
+  }
+
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
     const at = `สินค้าที่ ${i + 1}`;
-    if (!a[i]) { lines.push(`${at}: เพิ่มใหม่ (${text(TARGET_COLUMNS[0], b[i]) || '—'})`); continue; }
-    if (!b[i]) { lines.push(`${at}: เอาออก (${text(TARGET_COLUMNS[0], a[i]) || '—'})`); continue; }
-    for (const col of TARGET_COLUMNS) {
-      const x = text(col, a[i]); const y = text(col, b[i]);
-      if (x === y) continue;
-      lines.push(`${at} · ${col.label}: ${clip(x) || '(ว่าง)'} → ${clip(y) || '(ว่าง)'}`);
-    }
+    if (!a[i]) { lines.push(`${at}: เพิ่มใหม่ (${name(b[i])})`); continue; }
+    if (!b[i]) { lines.push(`${at}: เอาออก (${name(a[i])})`); continue; }
+    diff(at, a[i], b[i]);
   }
   return lines;
 }
@@ -132,8 +171,13 @@ export function pdrTargetChangeLines(before = [], next = [], {
  * (ผู้เรียกจะได้ไม่ต้องลงเธรดว่า "แก้แล้ว" ทั้งที่ค่าเหมือนเดิมทุกช่อง)
  * @param {string[]} extraLines บรรทัดของส่วนที่ไม่ใช่หัวใบ (แถวสินค้า) — ต่อท้ายหัวใบ
  */
-export function pdrChangeSummary(before = {}, columns = {}, extraLines = []) {
-  const lines = [...pdrChangeLines(before, columns), ...(extraLines || [])];
+export function pdrChangeSummary(before = {}, columns = {}, extraLines = [], opts = {}) {
+  // ⚠️ ป้ายหมวดชุดเดียวกับบรรทัดแถวสินค้า — เดิม 1.11 พิมพ์รหัสดิบข้างบรรทัดแถวที่เป็นชื่อ
+  /* ⚠️ **"เอาสินค้าออก" ขึ้นก่อนทุกบรรทัด** — เพดาน MAX_LINES ตัดท้าย ⇒ ถ้าบรรทัดหัวใบมาก่อน
+     (ล้างค่าเดิม 4 ช่อง + แก้อีกไม่กี่ช่อง) บรรทัดที่บอกว่าสินค้าหายไปจะถูกกลืน (รีวิวรอบสี่) */
+  const extra = extraLines || [];
+  const removals = extra.filter((l) => /: เอาออก \(/.test(l));
+  const lines = [...removals, ...pdrChangeLines(before, columns, opts), ...extra.filter((l) => !removals.includes(l))];
   if (!lines.length) return null;
   const shown = lines.slice(0, MAX_LINES);
   const rest = lines.length - shown.length;

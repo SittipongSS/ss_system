@@ -41,14 +41,13 @@ import SurveySiteFields from "@/components/requests/SurveySiteFields";
 import PdrForm from "@/components/requests/PdrForm";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { pdrRailSections } from "@/lib/requests/pdrFields";
-import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
-import { pdrTargetsScentCount } from "@/lib/requests/pdrTargets";
+import { emptyPdr, pdrContext, pdrFormContext } from "@/lib/requests/pdrFields";
 import {
   PLANNED_REQUEST_DEPTS, requestOptionalRefs, defaultRequestDept,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
   kindsForDept, requestUsesItems,
   requestUsesPdr, requestVariants, requestVariantKey,
-  requestPdrRowsPickScent, requestPdrScentSource, requestUsesScentBriefs,
+  requestPdrScentSource, requestUsesScentBriefs,
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
@@ -244,7 +243,8 @@ export default function RequestForm({
     if (dropsItems) {
       const ok = await confirmAction({
         title: `สลับเป็นรูปแบบ ${variants?.[next]?.label || next}`,
-        description: `รูปแบบนี้ไม่มีตารางรายการ — รายการที่กรอกไว้ ${items.length} แถวจะถูกล้างออกจากฟอร์ม`,
+        // ⚠️ บอกตรง ๆ ว่าหายจริงตอนบันทึก พร้อมไฟล์แนบรายแถว — ไม่มีถังขยะให้กู้ (ผลรีวิวรอบสอง)
+        description: `รูปแบบนี้ไม่มีตารางรายการ — รายการที่กรอกไว้ ${items.length} แถวจะถูกลบเมื่อกดบันทึก (รวมไฟล์แนบของแต่ละรายการ) และกู้คืนไม่ได้`,
         confirmLabel: "สลับรูปแบบ",
         tone: "danger",
       });
@@ -387,14 +387,12 @@ export default function RequestForm({
      ของใบ) เพราะหน้ารายละเอียดไม่ได้โหลดทะเบียนลูกค้า/โครงการมาทั้งชุด · 🐞 เดิมคำนวณ
      ฝั่งจอทั้งสองโหมด ⇒ โหมดแก้ได้ผู้ติดต่อ/ที่อยู่เป็นเส้นประ ทั้งที่หน้าอ่านข้างบนมีครบ
      ⚠️ วันส่งตัวอย่างกับจำนวนกลิ่นยังคิดสดจากฟอร์ม — สองค่านี้เปลี่ยนตามที่กำลังพิมพ์ */
-  const pdrScentCount = requestPdrRowsPickScent(value)
-    ? pdrTargetsScentCount(value.pdrTargets || [])
-    : (scentCount ?? (isEdit ? (pdrContextOfRequest?.scentCount ?? null) : null));
-  const pdrFormContext = {
-    ...(isEdit && pdrContextOfRequest ? pdrContextOfRequest : pdrDerived),
-    sampleDue: pdrDerived.sampleDue,
-    scentCount: pdrScentCount,
-  };
+  const pdrContextForForm = pdrFormContext({
+    form: value,
+    derived: pdrDerived,
+    serverContext: isEdit ? pdrContextOfRequest : null,
+    soScentCount: scentCount,
+  });
   const activeRail = railSections.some((r) => r.key === pdrSection) ? pdrSection : "request";
 
   /* หัวข้อของฝ่ายนี้ จัดกลุ่มตามตระกูล — ลำดับกลุ่มมาจากลำดับของ `kindsForDept`
@@ -1203,12 +1201,14 @@ export default function RequestForm({
             /* ⚠️ ส่ง `pdrContext()` ทั้งก้อน ไม่แตกเป็นพร็อพรายตัว — ฝั่งหน้าแก้ PDR
                เคยลืมไป 8 ตัวแล้วช่องเติมเองกลายเป็นเส้นประทั้งแผง (ดูหัวพร็อพของ PdrForm)
                ⚠️ `scentCount` คำนวณสดจากใบสั่งขายที่เพิ่งเลือก / แถวสินค้าที่กำลังกรอก */
-            context={pdrFormContext}
+            context={pdrContextForForm}
             /* ⭐ ที่มาของกลิ่น (บรีฟ | ทะเบียนรายแถว) — ทะเบียนหัวข้อตัดสินจากทั้งใบ
                ฟอร์มไม่รู้จักชื่อหัวข้อ (ratchet ห้าม) */
             scentSource={requestPdrScentSource(value)}
             scents={scents}
             customerId={pdrCustomerId}
+            // โหมดแก้ล็อกดีลไว้แล้วเสมอ · ฝั่งสร้างถามจากช่องดีลของฟอร์ม
+            dealChosen={isEdit || !!value.dealId}
           />
         </SectionRail>
       )}

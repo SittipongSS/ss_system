@@ -14,10 +14,25 @@
 // เขียนรูปแบบไม่สำเร็จ = ใบเสียของโดยที่ไม่มีถังขยะให้กู้ (ดู [[deleted-data-recovery]])
 // ส่วนของ PDR ที่กรอกไว้ **ไม่ถูกลบเลยแม้แต่ตอนสลับกลับ** — มันอยู่คนละคอลัมน์
 // และกลับมาโหมดเดิมแล้วได้คืนครบ
-import { requestUsesItems, requestVariantError, requestVariantKey } from '@/lib/master/requestTypes';
+import {
+  requestUsesItems, requestVariantError, requestVariantKey, requestVariants,
+} from '@/lib/master/requestTypes';
 
 // ขั้นที่ยังสลับรูปแบบได้ — ก่อนฝ่ายรับเรื่องเท่านั้น (เหตุผลอยู่หัวไฟล์)
 export const VARIANT_SWITCHABLE_STATUSES = Object.freeze(['draft', 'pending']);
+
+/**
+ * **คนนี้**สลับรูปแบบได้ไหม — คืนเหตุผลไทย หรือ null
+ *
+ * ⭐ **เฉพาะฝั่งผู้ขอ** (ผลรีวิวรอบสอง 2026-09-11) — สลับได้ก่อนรับเรื่องเท่านั้น ซึ่งเป็นช่วงที่
+ * แบบฟอร์ม PDR เป็นของผู้ขอ (`pdrEdit.js`) · 🐞 ปล่อยฝ่ายปลายทาง (ที่แก้หัวใบได้ตอนรอรับเรื่อง)
+ * สลับเข้า NPD ได้ ⇒ บันทึกหัวใบผ่าน (รายการถูกลบ) แล้วก้าว PDR โดน 403 = ใบ NPD เปล่าที่เขา
+ * กรอกต่อเองก็ไม่ได้
+ * @param isRequesterSide `canManageRequest(user, request)` (จอใช้ `_mine` ที่ server คำนวณมาให้)
+ */
+export function requestVariantSideLock(isRequesterSide) {
+  return isRequesterSide ? null : 'สลับรูปแบบงานได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน';
+}
 
 /**
  * **จังหวะ**นี้สลับรูปแบบได้ไหม — คืนเหตุผลไทย หรือ null ถ้าสลับได้
@@ -69,4 +84,21 @@ export function requestVariantSwitchError(request, variant, items = []) {
     return `รูปแบบที่เลือกไม่มีตารางรายการ — ลบรายการ ${rows} แถวออกก่อนแล้วค่อยสลับ`;
   }
   return null;
+}
+
+/**
+ * ค่า `variant` ที่ทางแก้ใบ (PATCH `update`) จะเขียน — คืน `{ variant, error }`
+ * · `variant: undefined` = ไม่แตะคอลัมน์ · มีค่า = รูปแบบที่ขอ (ผ่านทะเบียนแล้ว)
+ *
+ * 🔴 **ห้ามคืน null** (ผลรีวิวก่อน merge 2026-09-11) — คอลัมน์เป็น NOT NULL (mig 0351) และฟอร์ม
+ *    แก้ส่ง `variant` มาทุกครั้ง · เดิมแปลงด้วย `requestVariantKey` ซึ่งคืน null ให้หัวข้อที่ไม่มี
+ *    รูปแบบ ⇒ **แก้ใบหัวข้ออื่นทุกใบได้ 500** · หัวข้อที่ไม่มีรูปแบบจึงไม่แตะคอลัมน์เลย
+ * ⚠️ ค่าที่ไม่รู้จักตีกลับ ไม่ใช่แปลงเป็นรูปแบบตั้งต้นเงียบ ๆ (ใบ NPD จะถูกสลับเป็น Standard
+ *    โดยไม่มีใครสั่ง) · ค่าว่าง = ไม่แตะของเดิม
+ */
+export function requestEditVariant(request, asked) {
+  const value = String(asked ?? '').trim();
+  if (!value || !request || !requestVariants(request.kind)) return { variant: undefined, error: null };
+  const error = requestVariantError(request.kind, value);
+  return error ? { variant: undefined, error } : { variant: value, error: null };
 }

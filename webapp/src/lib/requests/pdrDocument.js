@@ -179,10 +179,30 @@ function notedOptionList(field, request) {
     return `<li${on ? ' class="on"' : ''}>${on ? TICK_ON : TICK_OFF} ${esc(o.label)}${note ? ` — ${esc(note)}` : ''}</li>`;
   }).join('')}</ul>`;
 }
+/* ต้นทุนของกริดสามคอลัมน์ — **เดินตามการวางจริงของ CSS grid** ไม่ใช่นับแบบรวมก้อน
+   🐞 รอบแรกนับ "ติ๊ก + ceil(ไม่ติ๊ก/3)" ⇒ ประเมินต่ำ (ผลรีวิวก่อน merge 2026-09-11): ตัวที่ติ๊ก
+      กินเต็มแถว (`grid-column: 1 / -1`) และ auto-placement เดินหน้าอย่างเดียว ⇒ แถวที่ยังไม่เต็ม
+      ก่อนหน้ามันถูกปิดทิ้ง · และข้อความเขียนต่อ (≤200 ตัว) ตกบรรทัดในช่องค่า ~75 ตัว/บรรทัด
+      ⇒ ต้นทุนต่ำกว่าจริง = เนื้อหาถูก `overflow: hidden` ของแผ่นกินทิ้ง */
 const notedOptionCost = (field, request) => {
-  const picked = Array.isArray(request[field.column]) ? request[field.column].length : 0;
-  const rest = Math.max(0, (field.options || []).length - picked);
-  return COST.option * (picked + Math.ceil(rest / 3));
+  const picked = new Set(Array.isArray(request[field.column]) ? request[field.column] : []);
+  const notes = request[NOTES_OF[field.key]?.column] || {};
+  let lines = 0;
+  let fill = 0;
+  for (const o of field.options || []) {
+    if (picked.has(o.value)) {
+      if (fill) { lines += 1; fill = 0; }
+      // ⚠️ 55 ตัว/บรรทัด ไม่ใช่ 75 ของช่องค่าทั่วไป — ตัวที่ติ๊กเป็นตัวหนา และวัดจริง (2026-09-11 ·
+      //    ข้อความ 200 ตัวติดกัน) ได้ ~60 ตัว/บรรทัด · ตั้งต่ำกว่าจริงไว้ ประเมินเกิน = แค่หน้าหลวม
+      const text = `${o.label} — ${String(notes[o.value] ?? '').trim()}`;
+      lines += Math.max(1, Math.ceil(text.length / 55));
+      continue;
+    }
+    fill += 1;
+    if (fill === 3) { lines += 1; fill = 0; }
+  }
+  if (fill) lines += 1;
+  return COST.option * lines;
 };
 
 function fieldValueHtml(field, request, context) {

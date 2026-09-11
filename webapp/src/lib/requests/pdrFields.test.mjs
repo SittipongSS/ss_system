@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import {
   PDR_COLUMNS, PDR_FIELDS, PDR_FRAGRANCE_OIL_CODE, PDR_SECTIONS, PDR_SIGNER_FIELDS,
   pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrIsArrayField,
-  pdrRailSections, pdrRailSectionsFromRequest,
+  pdrFormContext, pdrRailSections, pdrRailSectionsFromRequest,
   pdrSectionGroups, pdrSectionRows, pdrValuesFrom,
 } from './pdrFields.js';
 import { pdrTargetValuesFrom } from './pdrTargets.js';
@@ -705,4 +705,24 @@ test('⭐ 1.12 ของใบ NPD นับกลิ่นไม่ซ้ำจ
   });
   assert.match(address.customerAddress, /99\/1 ถ\.รัชดาภิเษก/);
   assert.equal(pdrContext({ customer: { name: 'ไม่มีที่อยู่' } }).customerAddress, null);
+});
+
+test('⭐ context ของฟอร์ม: โหมดแก้ใช้ก้อนของ server · วันส่งตัวอย่างกับจำนวนกลิ่นคิดสดจากฟอร์ม', () => {
+  const derived = { contactName: null, sampleDue: '30/09/2026', scentCount: null };
+  const server = { contactName: 'คุณเอ', customerAddress: '99/1', sampleDue: '01/01/2026', scentCount: 3 };
+  // พัฒนากลิ่น โหมดแก้ — ฐานจาก server · SO ที่เลือกในฟอร์มยังไม่มี ⇒ จำนวนจาก server
+  const edit = pdrFormContext({ form: { kind: 'scent_dev' }, derived, serverContext: server });
+  assert.equal(edit.contactName, 'คุณเอ');
+  assert.equal(edit.customerAddress, '99/1');
+  assert.equal(edit.sampleDue, '30/09/2026', 'วันส่งตัวอย่างต้องตามช่องวันที่ที่กำลังแก้');
+  assert.equal(edit.scentCount, 3);
+  assert.equal(pdrFormContext({ form: { kind: 'scent_dev' }, derived, serverContext: server, soScentCount: 5 }).scentCount, 5);
+  // NPD — นับจากแถวสินค้าในฟอร์มเสมอ (ไม่ใช่ค่าเก่าของ server)
+  const npd = pdrFormContext({
+    form: { kind: 'formula_dev', variant: 'npd', pdrTargets: [{ scentId: 'A' }, { scentId: 'B' }, { scentId: '' }] },
+    derived, serverContext: server,
+  });
+  assert.equal(npd.scentCount, 2);
+  // ฝั่งสร้าง — ไม่มี server ⇒ ฐานคือของที่คิดฝั่งจอ
+  assert.equal(pdrFormContext({ form: { kind: 'scent_dev' }, derived }).contactName, null);
 });

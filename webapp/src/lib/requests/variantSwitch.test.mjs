@@ -18,7 +18,9 @@ import {
   requestPdrRowsPickScent,
   requestUsesScentBriefs,
 } from '../master/requestTypes.js';
-import { requestVariantLock, requestVariantSwitchError } from './variantSwitch.js';
+import {
+  requestEditVariant, requestVariantLock, requestVariantSideLock, requestVariantSwitchError,
+} from './variantSwitch.js';
 import { assertKind } from './kinds/registry.js';
 
 const npd = (over = {}) => ({ kind: 'formula_dev', variant: 'npd', ...over });
@@ -144,4 +146,61 @@ test('⭐ ที่มาของกลิ่นใน PDR: พัฒนาก�
   assert.equal(requestPdrScentSource(std()), null);
   assert.equal(requestUsesScentBriefs(std()), false);
   assert.equal(requestPdrScentSource({ kind: 'info' }), null);
+});
+
+// 🔴 ผลรีวิวก่อน merge 2026-09-11 — ทางแก้ใบเขียน `variant: null` ลงคอลัมน์ NOT NULL ให้ทุกหัวข้อ
+//    ที่ไม่มีรูปแบบ (ฟอร์มแก้ส่ง variant มาทุกครั้ง) ⇒ แก้ใบหัวข้ออื่นทุกใบได้ 500
+test('⭐ ทางแก้ใบ: หัวข้อที่ไม่มีรูปแบบไม่แตะคอลัมน์ variant เลย · ค่าเพี้ยนตีกลับ ไม่ใช่แปลงเงียบ', () => {
+  for (const kind of ['scent_dev', 'info', 'document', 'billing_doc', 'site_survey']) {
+    for (const asked of ['standard', '', 'npd', undefined]) {
+      assert.deepEqual(
+        requestEditVariant({ kind, variant: 'standard' }, asked),
+        { variant: undefined, error: null },
+        `${kind} · ${asked}`,
+      );
+    }
+  }
+  assert.deepEqual(requestEditVariant(npd(), 'standard'), { variant: 'standard', error: null });
+  assert.deepEqual(requestEditVariant(npd(), ''), { variant: undefined, error: null }, 'ว่าง = ไม่แตะ');
+  // ⚠️ ค่าที่ไม่รู้จักต้องไม่กลายเป็น Standard เงียบ ๆ (ใบ NPD จะถูกสลับโดยไม่มีใครสั่ง)
+  const bad = requestEditVariant(npd(), 'mystery');
+  assert.equal(bad.variant, undefined);
+  assert.match(bad.error, /ไม่มีในหัวข้อ/);
+});
+
+test('ใบพัฒนากลิ่นที่ RD ส่ง direction แล้ว ยังแก้หัวใบได้ — ด่าน "ไม่มีตาราง" ไม่ครอบรูปทรงที่ฝ่ายสร้างแถวเอง', () => {
+  const base = {
+    title: 'ออกแบบกลิ่น', dealId: 'D-1', salesOrderId: 'SO-1', requestedDueDate: '2026-09-30',
+  };
+  // ทางแก้ใบส่งแถวเดิม (direction ของ RD) เข้าด่านรูปทรง
+  assert.equal(requestShapeError('scent_dev', { ...base, items: [{ id: 'DRI-1' }] }), null);
+  // NPD ยังตีกลับแถวที่หลุดมาเหมือนเดิม
+  assert.match(
+    requestShapeError('formula_dev', { ...base, variant: 'npd', items: [{}] }),
+    /ไม่มีตารางรายการ/,
+  );
+});
+
+// 🔴 ผลรีวิวรอบสอง 2026-09-11 — ทุกแถวเก็บ variant = 'standard' (DEFAULT ของ mig 0351) แม้หัวข้อที่ไม่มี
+//    รูปแบบ · ทางแก้ใบ spread แถวเดิมเข้าด่านรูปทรง ⇒ เดิมตอบ "ไม่มีรูปแบบให้เลือก" ทุกใบ
+test('⭐ ด่านรูปทรงไม่อ่าน variant ของหัวข้อที่ไม่มีรูปแบบ — แถวจาก DB (variant: standard) ต้องผ่านเหมือนไม่มีคีย์', () => {
+  const body = {
+    title: 'ก', dealId: 'D-1', salesOrderId: 'SO-1', quotationId: 'Q-1', billAmount: 100,
+    requestedDueDate: '2026-09-30', items: [{}], zones: [{}], siteId: 'S-1', scentId: 'SC-1', formulaId: 'F-1',
+  };
+  for (const kind of ['scent_dev', 'info', 'document', 'billing_doc', 'site_survey']) {
+    assert.equal(
+      requestShapeError(kind, { ...body, variant: 'standard' }),
+      requestShapeError(kind, body),
+      `${kind}: variant ที่เป็น DEFAULT ของคอลัมน์ต้องไม่เปลี่ยนผลของด่าน`,
+    );
+    assert.doesNotMatch(String(requestShapeError(kind, { ...body, variant: 'standard' })), /ไม่มีรูปแบบให้เลือก/, kind);
+  }
+  // หัวข้อที่มีรูปแบบยังตีกลับค่าเพี้ยนเหมือนเดิม
+  assert.match(requestShapeError('formula_dev', { ...body, variant: 'mystery' }), /ไม่มีในหัวข้อ/);
+});
+
+test('สลับรูปแบบได้เฉพาะฝั่งผู้ขอ — ฝ่ายปลายทางแก้หัวใบได้ตอนรอรับเรื่อง แต่สลับไม่ได้', () => {
+  assert.equal(requestVariantSideLock(true), null);
+  assert.match(requestVariantSideLock(false), /เฉพาะผู้เปิดคำร้อง/);
 });

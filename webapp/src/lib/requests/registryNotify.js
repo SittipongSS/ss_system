@@ -27,8 +27,18 @@ export async function logRegistryChangeToRequests(supabase, {
         .or(`producedScentId.eq.${id},scentId.eq.${id}`);
     const { data, error } = await query;
     if (error) throw error;
+    /* ⭐ ทางที่สาม (mig 0352): กลิ่นที่ **แถวสินค้าของแบบฟอร์ม PDR** เลือกไว้ (พัฒนาสูตร NPD
+       ข้อ 2.1) — ใบ NPD ไม่มีแถวใน `dept_request_items` เลย ⇒ ไม่ถามตารางนี้ = ใบพวกนั้น
+       ไม่เคยเห็นว่ากลิ่นที่ขอถูกเปลี่ยนชื่อ/รหัส (ผลรีวิวก่อน merge 2026-09-11) */
+    let pdrRows = [];
+    if (kind !== 'formula') {
+      const { data: rows, error: pdrError } = await supabase
+        .from('dept_request_pdr_targets').select('requestId').eq('scentId', id);
+      if (pdrError) throw pdrError;
+      pdrRows = rows || [];
+    }
 
-    const requestIds = [...new Set((data || []).map((r) => r.requestId).filter(Boolean))];
+    const requestIds = [...new Set([...(data || []), ...pdrRows].map((r) => r.requestId).filter(Boolean))];
     for (const entityId of requestIds) {
       await appendUpdate(supabase, {
         entityType: 'dept_request',

@@ -449,7 +449,11 @@ export function requestShapeError(kind, body = {}) {
      รายการไหม" ซึ่งพัฒนาสูตรตอบไม่เหมือนกันสองรูปแบบ · `body` มีทั้ง `kind` และ
      `variant` อยู่แล้วทั้งตอนสร้างและตอนแก้ (ฝั่ง API spread แถวเดิมเข้ามา) */
   const shape = { ...meta, ...(meta.variants?.[requestVariantKey({ kind, variant: body.variant })] || {}) };
-  const variantError = requestVariantError(kind, body.variant);
+  /* 🔴 **ตรวจรูปแบบเฉพาะหัวข้อที่มีรูปแบบให้เลือก** (ผลรีวิวรอบสอง 2026-09-11) — ทุกแถวของ
+     `dept_requests` เก็บ `variant = 'standard'` (DEFAULT ของ mig 0351 · คอลัมน์อยู่กับทุกหัวข้อ)
+     และทางแก้ใบ spread แถวเดิมเข้ามา ⇒ ถ้าตรวจทุกหัวข้อ ใบพัฒนากลิ่น/เอกสาร/วางบิล/สอบถาม
+     **แก้ไม่ได้สักใบ** ("ไม่มีรูปแบบให้เลือก") · หัวข้อที่ไม่มีรูปแบบไม่มีใครอ่านค่านี้อยู่แล้ว */
+  const variantError = meta.variants ? requestVariantError(kind, body.variant) : null;
   if (variantError) return variantError;
 
   // ── ของที่หัวข้อนี้ต้องอ้างถึง (มติผู้ใช้ 2026-08-03 รอบสอง) ────────────
@@ -509,7 +513,12 @@ export function requestShapeError(kind, body = {}) {
   /* 🔴 **รูปแบบที่ไม่มีบรรทัดต้องไม่มีบรรทัดจริง ๆ** — ไม่ใช่แค่ "ไม่บังคับ" ·
      แถวที่หลุดเข้ามากับใบ NPD จะมองไม่เห็นบนจอ (ตารางถูกซ่อนตามรูปแบบ) แต่ยัง
      นับใน `requestProgress` และค้างเป็นสูตรที่ไม่มีใครรู้ว่ามาจากไหน */
-  if (!shape.hasItems && Array.isArray(body.items) && body.items.length) {
+  /* ⚠️ **ยกเว้นรูปทรงที่ฝ่ายสร้างแถวเองตอนส่งของ** (`deliversRows` · พัฒนากลิ่น) — แถวของ
+     ใบพวกนั้นเกิดทีหลังโดย RD (direction) ไม่ใช่ของที่ผู้ขอกรอก · 🐞 ด่านนี้เคยครอบทุกรูปทรง
+     ที่ไม่มีตาราง ⇒ ทางแก้ใบส่ง `items: before.items` เข้ามา แล้วใบพัฒนากลิ่นที่ RD ส่ง
+     direction แล้ว **แก้หัวใบ/PDR ไม่ได้อีกเลย** (ผลรีวิวก่อน merge 2026-09-11)
+     ⚠️ POST ไม่ได้อาศัยข้อยกเว้นนี้ — ทางสร้างใบไม่เขียนแถวให้รูปทรงที่ไม่มีตารางอยู่แล้ว */
+  if (!shape.hasItems && !shape.deliversRows && Array.isArray(body.items) && body.items.length) {
     return `รูปแบบ "${requestVariantLabel({ kind, variant: body.variant })}" ไม่มีตารางรายการ — ลบรายการออกก่อน`;
   }
 
