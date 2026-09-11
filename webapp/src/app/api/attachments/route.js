@@ -40,7 +40,11 @@ async function loadParent(supabase, entityType, entityId) {
     || COSTING_ATTACHMENT_TABLE[entityType]
     || SALES_ATTACHMENT_TABLE[entityType];
   if (!table) return null;
-  const { data } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
+  const { data, error } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
+  /* ⚠️ อ่านพังต้องโยน ไม่ใช่คืน null — null แปลว่า "ไม่มีระเบียนนี้" ⇒ GET ตอบ [] แล้ว
+     การ์ดเอกสารบังคับบนหน้าลูกค้าขึ้น "ยังไม่แนบ" ทั้งที่แนบครบ (คนไปทวงเอกสารซ้ำ
+     — เหตุผลเดียวกับที่ GET ไม่กรองแถวทิ้ง ดูข้างล่าง) */
+  if (error) throw error;
   return data || null;
 }
 
@@ -55,7 +59,12 @@ export async function GET(request) {
 
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
-  const parent = await loadParent(supabase, entityType, entityId);
+  let parent;
+  try {
+    parent = await loadParent(supabase, entityType, entityId);
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 });
+  }
   if (!parent) return Response.json([]); // ไม่มี entity → ไม่มีเอกสาร
   const allowed = await canViewAttachmentParent(supabase, entityType, parent, user);
   if (!allowed) {
@@ -145,7 +154,12 @@ export async function POST(request) {
     if (urlError) return Response.json({ error: urlError }, { status: 400 });
   }
 
-  const parent = await loadParent(supabase, entityType, entityId);
+  let parent;
+  try {
+    parent = await loadParent(supabase, entityType, entityId);
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 });
+  }
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });
   const allowedEdit = await canEditAttachmentParent(supabase, entityType, parent, user);
   if (!allowedEdit) {

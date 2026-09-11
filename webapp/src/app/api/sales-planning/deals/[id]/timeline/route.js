@@ -37,9 +37,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (deal.stage === 'lost') return badRequest('ดีล Lost แล้ว สร้างไทม์ไลน์ไม่ได้');
   if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว — จัดการไทม์ไลน์ที่หน้าโครงการ');
 
-  const { count: existing } = await supabase
+  // นับไม่ขึ้น = ห้ามถือว่ายังไม่มี — ไม่งั้นได้ไทม์ไลน์ซ้อนสองชุด
+  const { count: existing, error: existingError } = await supabase
     .from('project_tasks').select('id', { count: 'exact', head: true })
     .eq('dealId', deal.id).is('projectId', null);
+  if (existingError) return fail(existingError.message, 500);
   if ((existing || 0) > 0) return conflict('ดีลนี้มีไทม์ไลน์แล้ว — ลบก่อนถ้าต้องการสร้างใหม่');
 
   const body = await req.json().catch(() => ({}));

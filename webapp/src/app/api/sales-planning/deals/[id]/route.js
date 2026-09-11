@@ -461,9 +461,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     // DELETE quotation) เพราะ FK cascade จะพาใบ accepted + Sale Order หายเงียบ
     // โดย audit ไม่บันทึกเอกสารการเงินที่ถูกทำลาย. ต้องย้อนการรับ (0138) หรือ
     // ย้อน Won ผ่านยกเลิก SO (0116) ก่อน.
-    const { count: acceptedCount } = await supabase
+    // ⚠️ นับไม่ขึ้นต้องหยุด ไม่ใช่ถือว่า 0 — ด่านนี้คือสิ่งเดียวที่กั้น cascade ข้างบนไว้
+    const { count: acceptedCount, error: acceptedError } = await supabase
       .from('quotations').select('id', { count: 'exact', head: true })
       .eq('dealId', id).eq('status', 'accepted');
+    if (acceptedError) return fail(acceptedError.message, 500);
     if ((acceptedCount || 0) > 0) {
       return conflict('ดีลนี้มีใบเสนอราคาที่รับแล้ว (Won) — ลบไม่ได้ เพราะเป็นหลักฐานยอด Actual: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ”; ถ้ายังไม่มี SO ให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
     }
