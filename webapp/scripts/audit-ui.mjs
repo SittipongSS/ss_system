@@ -633,7 +633,7 @@ const RAW_RADIUS_CAP = 21;
      src/components/salesPlanning/dashboard/performance/shared.js:71 → `height / 2`
      src/components/ui/Skeleton.js:5 → `radius` (มาจาก prop ค่าตั้งต้น 6)
    ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่ */
-const RAW_RADIUS_JSX_CAP = 73;
+const RAW_RADIUS_JSX_CAP = 72;
 
 /* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 

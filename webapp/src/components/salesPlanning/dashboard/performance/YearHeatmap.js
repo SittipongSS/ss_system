@@ -19,8 +19,15 @@ function cellStyle(diff, hasTarget, isClosed) {
     color: tone,
     fontWeight: "var(--fw-semibold)",
     background: `color-mix(in srgb, ${tone} ${mag}%, transparent)`,
-    borderRadius: 6,
   };
+}
+
+/* ± ของเดือนหนึ่ง — ใช้ตัวเดียวกันทั้งแถวรายคนและแถวรวม ไม่งั้นสองแถวคิดคนละสูตร */
+function monthDiffCell(row, i, closedCount) {
+  const diff = Number(row.actual[i] || 0) - Number(row.target[i] || 0);
+  const hasTarget = Number(row.target[i] || 0) > 0;
+  const isClosed = i < closedCount;
+  return { diff, hasTarget, isClosed, text: !isClosed ? "–" : hasTarget || Number(row.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${money(diff)}` : NA };
 }
 
 export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
@@ -38,7 +45,7 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
           ⇒ ต้องกว้างอย่างน้อย ~1,560px · ตารางนี้เลื่อนแนวนอนใน TableScroll อยู่แล้ว
           และคอลัมน์ชื่อตรึงซ้าย (fz-c1) จึงยังอ่านออกว่าแถวไหนของใครตอนเลื่อน
           ⚠️ ถ้าลด minWidth ลง คอลัมน์จะบีบจนเลขตัดบรรทัดกลางเซลล์ (fz-table ไม่ได้ตั้ง nowrap ให้) */}
-      <TableScroll surface="embedded" family="matrix" className="premium-glass-table fz-box" style={{ "--fz-c1w": "150px" }}><table className="fz-table w-full" style={{ minWidth: 1560, fontSize: "var(--fs-6)" }}>
+      <TableScroll surface="embedded" family="matrix" className="premium-glass-table fz-box" style={{ "--fz-c1w": "150px" }}><table className="fz-table fz-heatmap w-full" style={{ minWidth: 1560, fontSize: "var(--fs-6)" }}>
         <thead>
           <tr>
             <th className="fz-c1">พนักงาน</th>
@@ -57,20 +64,18 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
                      block descendant และวาดด้วยสีของบรรพบุรุษ (ลูกยกเลิกเองไม่ได้) ⇒ บรรทัดทีม
                      จะได้เส้นประไปด้วย · โรคเดียวกับที่ `.linklike-block > strong` ต้องแก้
                      และตรงกับคำอธิบายบนหัวตารางที่เขียนว่า "คลิกชื่อเพื่อเจาะรายคน" */}
-              <td className="fz-c1" style={{ whiteSpace: "nowrap" }}>
+              <td className="fz-c1">
                 <button type="button" className="text-action" onClick={() => onDrill({ scope: "person", person: p.id })} title="คลิกเพื่อเจาะรายคน">
                   <strong>{p.name}</strong>
                 </button>
                 {p.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}>{p.team}</span>}
               </td>
               {MONTH_LABELS.map((_, i) => {
-                const diff = Number(p.actual[i] || 0) - Number(p.target[i] || 0);
-                const hasTarget = Number(p.target[i] || 0) > 0;
-                const isClosed = i < closedCount;
+                const c = monthDiffCell(p, i, closedCount);
                 return (
-                  <td key={i} className="num mono" style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
-                    <span style={{ display: "inline-block", padding: "2px 6px", ...cellStyle(diff, hasTarget, isClosed) }}>
-                      {!isClosed ? "–" : hasTarget || Number(p.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${money(diff)}` : NA}
+                  <td key={i} className="num mono">
+                    <span className="heat-chip" style={cellStyle(c.diff, c.hasTarget, c.isClosed)}>
+                      {c.text}
                     </span>
                   </td>
                 );
@@ -78,6 +83,25 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
             </tr>
           ))}
         </tbody>
+        {/* แถวรวมทั้งบริษัท ตรึงล่าง (มติผู้ใช้ 2026-09-12) — ไล่ดูรายคนไปจนสุดตารางแล้ว
+            ยังต้องเห็นว่าเดือนนั้นทั้งบริษัทเกินหรือขาด · `fz-foot` = ตรึงล่าง ·
+            เซลล์แรกเป็น `fz-c1 fz-foot` = มุมซ้ายล่าง ตรึงสองแกนพร้อมกันทั้งแถว
+            ⚠️ ไม่มีปุ่มเจาะ — ระดับบริษัทไม่ใช่ "คน" (กติกาเดียวกับแถวรวมของบอร์ดเช้า) */}
+        <tfoot>
+          <tr className="premium-row">
+            <td className="fz-c1 fz-foot"><strong>รวมทั้งบริษัท</strong></td>
+            {MONTH_LABELS.map((_, i) => {
+              const c = monthDiffCell(matrix.company, i, closedCount);
+              return (
+                <td key={i} className="num mono fz-foot">
+                  <span className="heat-chip" style={cellStyle(c.diff, c.hasTarget, c.isClosed)}>
+                    {c.text}
+                  </span>
+                </td>
+              );
+            })}
+          </tr>
+        </tfoot>
       </table></TableScroll>
     </section>
   );

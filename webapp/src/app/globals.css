@@ -7130,16 +7130,43 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .fz-table .fz-c2 { position: sticky; left: var(--fz-c1w, 150px); z-index: 2; }
 .fz-table .fz-cr { position: sticky; right: 0; z-index: 2; border-left: 1px solid var(--border); }
 /* corners: edge cells inside the frozen header/footer sit above both axes
-   — ใช้พื้นผิวเดียวกับหัว/ท้ายตาราง (panel-2 ทับ --bg) ให้กลืนกันและทึบสนิท */
-.fz-table thead .fz-c1,
-.fz-table thead .fz-c2,
-.fz-table thead .fz-cr,
-.fz-table tfoot .fz-c1,
-.fz-table tfoot .fz-c2,
-.fz-table tfoot .fz-cr {
-  z-index: 5;
+   — ใช้พื้นผิวเดียวกับหัว/ท้ายตาราง (panel-2 ทับ --bg) ให้กลืนกันและทึบสนิท
+   🐞 **ต้องเขียน `th.`/`td.` ให้ครบ** (2026-09-12) — เดิมเขียน `.fz-table tfoot .fz-c1`
+      = (0,2,1) ซึ่ง **แพ้** `.fz-table tfoot td.fz-foot` = (0,2,2) ที่ตั้ง z-index: 3
+      ⇒ มุมของแถวท้าย "ไม่เคยได้ 5" ตามที่คอมเมนต์ข้างบนสัญญาไว้เลย มันเสมอกับเซลล์
+      ตัวเลขในแถวเดียวกันแล้วแพ้ด้วยลำดับ DOM ⇒ คอลัมน์ที่ตรึงซ้ายทับป้ายแถวรวม
+      (วัดที่กริดวางเป้า /sa/targets: มุมหัว 5 เสมอกับหัวอื่น · มุมท้าย 3 เสมอกับตัวเลข)
+   ⚠️ 6 ไม่ใช่ 5 — ต้องสูงกว่าเซลล์มุมของ Table.module.css (`thead th:first-child`
+      = (0,3,1) ชนะทุกกฎที่นี่ด้วย pseudo-class) ให้สองไฟล์พูดตรงกัน */
+.fz-table thead th.fz-c1,
+.fz-table thead th.fz-c2,
+.fz-table thead th.fz-cr,
+.fz-table tfoot td.fz-c1,
+.fz-table tfoot td.fz-c2,
+.fz-table tfoot td.fz-cr {
+  z-index: 6;
   background: linear-gradient(var(--panel-2), var(--panel-2)) var(--bg);
+  /* เงาสองด้านพร้อมกัน: ขอบขวาของคอลัมน์ที่ตรึง + ขอบบนของแถวท้าย — มุมเป็นเซลล์
+     เดียวที่อยู่บนทั้งสองเส้น ถ้าเขียนแค่เส้นเดียวรางคอลัมน์จะขาดหายตรงแถวรวม */
+  box-shadow:
+    6px 0 10px -6px rgba(0, 0, 0, 0.22),
+    0 -8px 18px color-mix(in srgb, var(--text) 6%, transparent);
 }
+.fz-table thead th.fz-cr,
+.fz-table tfoot td.fz-cr {
+  box-shadow:
+    -6px 0 10px -6px rgba(0, 0, 0, 0.22),
+    0 -8px 18px color-mix(in srgb, var(--text) 6%, transparent);
+}
+/* ⭐ โฟกัสต้องไม่จอดอยู่ใต้แถว/หัวที่ตรึงไว้ (WCAG 2.2 · 2.4.11 Focus Not Obscured)
+   กด Tab ไล่ปุ่มในตาราง เบราว์เซอร์เลื่อนให้เซลล์ "พอดีขอบ" ซึ่งคือใต้แถวรวมที่ตรึงอยู่
+   ⇒ กันระยะไว้เท่าความสูงแถว (สองขั้นรวม 64px ครอบแถวสูงสุด 62px ของบอร์ดเช้า) */
+.fz-table tbody td {
+  /* เฉพาะขอบล่าง — `scroll-margin-top` ของทั้งระบบสงวนไว้ให้ `--scroll-anchor-top`
+     (จุดจอดใต้แถบเมนู · ดู scrollAnchorOffset.test.mjs) คนละเรื่องกับแถวรวมที่ตรึงล่าง */
+  scroll-margin-bottom: calc(var(--space-9) + var(--space-6));
+}
+
 /* the lift-on-hover transform breaks sticky positioning inside the scroll box */
 .fz-table .premium-row:hover {
   transform: none;
@@ -7184,17 +7211,40 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 }
 .performance-tracking-table .fz-c1 { min-width: 150px; }
 
-/* Performance totals belong after the final data row. A vertically sticky
-   footer masks the last salesperson row while the matrix is scrolling, so
-   this table keeps only the first column horizontally pinned. */
-.performance-tracking-table .fz-table tfoot td.fz-foot {
-  position: static;
-  box-shadow: none;
-}
+/* แถวรวมของตารางผลงานตรึงล่าง (มติผู้ใช้ 2026-09-12 "อยากให้ freeze footer ยอดรวมด้วย")
+   — เดิมตั้งใจไม่ตรึงเพราะแถวที่ตรึงล่างจะบังแถวพนักงานแถวสุดท้ายระหว่างเลื่อน
+   ⇒ ยอมแลก: ยอดรวมทั้งบริษัทต้องอ่านได้ตลอดเวลาที่ไล่ดูรายคน สำคัญกว่าการเห็น
+   แถวสุดท้ายพร้อมกัน (เลื่อนถึงล่างสุด แถวสุดท้ายก็โผล่ครบเหมือนเดิม)
+   ⚠️ ตรึงทั้งแถวพร้อมกันเสมอ — เซลล์แรกมีทั้ง `fz-c1` และ `fz-foot` ถ้ากฎไหนปิด
+   `position`/`bottom` ของฝั่งใดฝั่งหนึ่ง ป้ายกับตัวเลขจะหลุดคนละบรรทัดทันที
+   (🐞 ที่เคยเกิด: กฎเก่าปิด `.fz-foot` เป็น static แล้วเปิด sticky กลับที่ `.fz-c1`
+   เพื่อตรึงแนวนอน ⇒ `bottom: 0` ที่ตกค้างทำให้ป้าย "รวมทั้งบริษัท" ลอยติดขอบล่าง
+   ห่างจากตัวเลขแถวตัวเองได้ถึง 155px) */
 .performance-tracking-table .fz-table tfoot td.fz-c1 {
+  /* มุมซ้ายล่าง: ตรึงสองแกน — ต้องอยู่เหนือคอลัมน์แรกที่เลื่อนผ่านข้างใต้
+     (z-index ของมุมมาจาก Table.module.css: thead/tfoot first-child = 6) */
   position: sticky;
   left: 0;
-  z-index: 5;
+  bottom: 0;
+}
+
+/* ── heatmap ทั้งปี (± เทียบเป้ารายเดือน) ────────────────────────────────────
+   ค่าคงที่ของเซลล์อยู่ที่คลาส เหลืออินไลน์เฉพาะ "สีที่มาจากข้อมูล" (cellStyle) เท่านั้น
+   — กติกา inlineStyle ของ ui-legacy-budget: สไตล์คงที่ต้องอยู่ใน CSS */
+.fz-heatmap td {
+  padding: var(--space-1-5) var(--space-2);
+  white-space: nowrap;
+}
+.fz-heatmap .heat-chip {
+  display: inline-block;
+  padding: var(--space-0-5) var(--space-1-5);
+  border-radius: var(--radius);
+}
+/* แถวรวมทั้งบริษัทของ heatmap — ตรึงล่างผ่าน .fz-foot (ดูกฎ .fz-table tfoot td.fz-foot) */
+.fz-heatmap tfoot tr {
+  background: var(--panel-2);
+  font-weight: var(--fw-bold);
+  border-top: 2px solid var(--border);
 }
 
 /* แถว "ยังไม่ได้แยกทีม" — เป้า/ยอดระดับบริษัทที่ยังไม่ได้ลงรายทีม (ดู unallocatedRow)
@@ -7853,6 +7903,21 @@ td > * > .text-action {
   }
   .shipment-print-head {
     position: static;
+  }
+  /* ตารางตรึง: บนกระดาษไม่มี "กล่องเลื่อน" ⇒ เพดาน/overflow ต้องหายไป **และ** ต้องถอด
+     sticky ทุกตัวด้วย ไม่งั้นมันไปปักกับกล่องหน้ากระดาษแทน (แถวรวมทับแถวข้อมูล/โผล่ซ้ำ)
+     ⚠️ `.fz-box.fz-box` ชื่อซ้ำสองครั้ง — ต้องเขียนซ้ำที่นี่ด้วยถึงจะชนะเพดานของตัวเอง */
+  .fz-box.fz-box {
+    max-height: none;
+    overflow: visible;
+  }
+  .fz-table thead th,
+  .fz-table tfoot td,
+  .fz-table .fz-c1,
+  .fz-table .fz-c2,
+  .fz-table .fz-cr {
+    position: static;
+    box-shadow: none;
   }
   .shipment-page-number {
     right: 0;
