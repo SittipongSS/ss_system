@@ -7,6 +7,13 @@
 // ⚠️ จับคู่ด้วย `stepKey` ไม่ใช่ `projectTaskId` — `mergeTemplateTasks` ลบ/สร้าง task
 // ใหม่ตอน resync แม่แบบ ผูก id ตรง ๆ แล้วหมุดหลุดเงียบ (ดู lib/pm/schedule.js)
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
+import { requestClosure } from '@/lib/requests/closure';
+
+/* ใบที่ยังไม่จบ = ยังเดินอยู่ **หรือปิดไปฝั่งเดียว** (ม-145 · มติปิดสองฝั่ง 2026-08-20)
+   🐞 เดิมนับแค่ pending/acknowledged ⇒ ใบ `answered` ที่รอผู้ขอกดปิดเงียบบนหมุดไทม์ไลน์
+   ขณะที่การ์ดคำร้องบนหน้าเดียวกันจัดมันไว้ "กำลังดำเนินการ" ป้าย "รอ SA ปิด" */
+const stillOpen = (r) => (REQUEST_OPEN_STATUSES.includes(r.status) || r.status === 'answered')
+  && !requestClosure(r).complete;
 
 // คืน Map(stepKey → คำร้อง[]) · เรียงเรื่องที่ยังค้างขึ้นก่อนเสมอ เพราะหมุดมีไว้
 // เตือนว่า "ขั้นนี้มีเรื่องรออยู่" ไม่ใช่ไว้ดูประวัติ
@@ -27,7 +34,7 @@ export function requestsByStepKey(requests = []) {
   }
   for (const list of byStep.values()) {
     list.sort((a, b) => {
-      const open = (r) => (REQUEST_OPEN_STATUSES.includes(r.status) ? 0 : 1);
+      const open = (r) => (stillOpen(r) ? 0 : 1);
       if (open(a) !== open(b)) return open(a) - open(b);
       return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
     });
@@ -46,6 +53,6 @@ export function stepPinSummary(byStep, stepKey, taskDealId = null) {
   const all = stepKey ? byStep?.get(stepKey) : null;
   const list = (all || []).filter((r) => !r.dealId || r.dealId === taskDealId);
   if (!list.length) return null;
-  const open = list.filter((r) => REQUEST_OPEN_STATUSES.includes(r.status)).length;
+  const open = list.filter(stillOpen).length;
   return { total: list.length, open, first: list[0] };
 }

@@ -6,6 +6,7 @@ import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 import { summarizeMyDeals } from '@/lib/sales/myDashboardTotals';
 import { businessDate } from '@/lib/businessDate';
 import { businessDayKey, currentMonth, isYearValue } from '@/lib/datePeriods';
+import { attachReworkRows } from '@/lib/requests/reworkRows';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,9 +55,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        ที่ **ไม่มีใครกำลังทำอยู่** (ฝ่ายปล่อยมือแล้ว ผู้ขอยังไม่รู้ตัว)
        ⚠️ รวม `draft` ด้วยโดยตั้งใจ — ใบตีกลับกลับไปเป็นร่าง · ตัวกรองฝั่งล่างจะตัด
        ร่างที่ยังไม่เคยส่งออกเอง (ร่างเปล่าไม่ใช่ของค้าง มันคือของที่ยังไม่เริ่ม) */
+    /* ⭐ รวม `answered` (ม-145) — ฝ่ายตอบแล้วรอเรากดปิด คือของค้างของผู้ขอจริง ๆ · เดิมไม่โหลด
+       ⇒ ใบ "รอ SA ปิด" ไม่เคยโผล่บนแดชบอร์ดของคนที่ต้องกด (`buildMyQueue` ตัดสินต่อ) */
     supabase.from('dept_requests').select('*')
       .eq('requestedById', user.id)
-      .in('status', ['draft', 'pending', 'acknowledged']),
+      .in('status', ['draft', 'pending', 'acknowledged', 'answered']),
   ]);
 
   /* 🔴 supabase ไม่ throw — ทุกก้อนต้องเช็ค `error` เอง ไม่งั้นก้อนที่พังกลายเป็น []
@@ -170,8 +173,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   /* คำร้องที่เป็น "ของค้างของฉัน" จริง ๆ — ร่างที่ยังไม่เคยส่งไม่นับ (ยังไม่เริ่ม)
      แต่ร่างที่ **ถูกตีกลับ** นับ เพราะฝ่ายส่งคืนมาให้เราแก้แล้ว */
-  const myRequests = (myRequestsRes.data || [])
-    .filter((r) => r.status !== 'draft' || r.bouncedAt);
+  /* ⚠️ เติมแถวให้ด้วย (2026-09-11) — "ต้องทำอะไร" ของใบถาม `requestNextStep` ตัวเดียวกับคิวคำร้อง ซึ่งอ่าน
+     แถวเพื่อตัดสินว่าตาใคร (รับของ · ส่งลูกค้า · บันทึกคำตอบ) · หัวใบล้วน = ใบรายแถวถูกอ่านเป็น "รอฝ่ายเริ่ม"
+     ⚠️ เติมไม่สำเร็จไม่ล้มทั้งหน้า (สัญญาของ `attachReworkRows`) — ถอยไปอ่านจากหัวใบเหมือนเดิม */
+  const myRequests = await attachReworkRows(supabase, (myRequestsRes.data || [])
+    .filter((r) => r.status !== 'draft' || r.bouncedAt));
 
   const [monthYear, monthNumber] = month.split('-').map(Number);
   const periodFrom = year ? `${year}-01-01` : `${month}-01`;

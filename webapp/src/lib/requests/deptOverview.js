@@ -12,6 +12,8 @@
 import { requestNextStep, requestDueText } from '@/lib/requests/queueBoard';
 import { FACET_NONE } from '@/lib/requests/queueList';
 import { requestAssignee } from '@/lib/requests/assign';
+import { requestClosedOn } from '@/lib/requests/closure';
+import { businessDayKey } from '@/lib/datePeriods';
 
 /* คีย์ของกองที่ยังไม่มีใครรับ — ต้องเป็นคีย์จริง ไม่ใช่ null เพราะมันเป็นแถวหนึ่ง
    ในตารางเดียวกับคน (กองที่ต้องแจกก่อนอย่างอื่น)
@@ -128,7 +130,9 @@ export function deptPipeline(rows = [], { todayIso = null, month = null } = {}) 
     const stage = byKey.get(key);
     if (!stage) continue;
     if (key === 'closed') {
-      const closedMonth = String(request.closedAt || '').slice(0, 7);
+      /* เดือนที่ใบจบจริง (ตราหลังสุด · เวลาไทย) — ม-145 · ผู้ขอปิด ส.ค. ฝ่ายกด ก.ย. = ปิดเดือน ก.ย.
+         ตรงกับแท็บประวัติที่สายพานนี้ลิงก์ไป (เดิมอ่าน `closedAt` ตัด UTC ⇒ ใบหายจากทั้งสองเดือน) */
+      const closedMonth = String(businessDayKey(requestClosedOn(request)) || '').slice(0, 7);
       if (!closedMonth || (monthKey && closedMonth !== monthKey)) continue;
     }
     stage.requests += 1;

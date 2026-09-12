@@ -34,7 +34,8 @@ import { businessDate } from "@/lib/businessDate";
 // คำโปรยของแต่ละแท็บ — บอกว่ากำลังดูอะไรอยู่ ไม่ใช่ชื่อแท็บซ้ำอีกรอบ
 const TAB_BLURB = {
   todo: "เรื่องที่รอคุณหรือฝ่ายของคุณทำต่อ — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ",
-  history: "เรื่องที่จบแล้ว — เลือกขอบเขตได้ตามสิทธิ์",
+  // ⭐ "เลือกขอบเขตได้" เป็นจริงแล้ว (ม-145) — ทีม/ทั้งหมดมีประวัติของตัวเอง
+  history: "เรื่องที่ปิดครบสองฝั่งหรือยกเลิกแล้ว — ปิดล่าสุดอยู่บนสุด · เลือกขอบเขตได้ตามสิทธิ์",
 };
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor, defaultScope } from "@/lib/permissions";
@@ -46,7 +47,8 @@ import { apiFetch } from "@/lib/apiFetch";
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
 
-const MINE_BLURB = "คำร้องที่คุณเปิดถึงฝ่ายอื่น — พัฒนากลิ่น พัฒนาสูตร ขอเอกสาร สอบถามข้อมูล ติดตามของเข้า";
+// ⚠️ "ที่ยังไม่จบ" (ม-145) — ใบที่ปิดครบ/ยกเลิกแล้วย้ายไปแท็บประวัติ ไม่ปนในแท็บนี้อีก
+const MINE_BLURB = "คำร้องที่คุณเปิดถึงฝ่ายอื่นและยังไม่จบ — ใบที่ปิดครบแล้วอยู่แท็บ \"ประวัติ\"";
 // มาจากหน้าดีล (`?dealId=`) ต้องบอกว่ากำลังดูแค่ดีลนั้น ไม่ใช่ทั้งหมด — ไม่งั้น
 // "ไม่มีคำร้องของคุณ" อ่านเหมือนระบบว่าง ทั้งที่แค่กรองอยู่
 const mineBlurb = (deal) => (deal
@@ -98,8 +100,21 @@ export default function RequestsPage() {
   // แจ้งเตือน · /go/DR-…) — เด้งเข้าแท็บที่กลืนมันไป ไม่ใช่ตกลง "ที่ฉันเปิด" เงียบ ๆ
   const wanted = String(urlTab || "").startsWith("queue") ? "todo" : urlTab;
   const tab = tabKeys.includes(wanted) ? wanted : defaultTab;
+  /* ⭐ ประวัติเรียง "ปิดล่าสุดก่อน" (ม-145) — ความเร่งไม่มีความหมายกับใบที่จบแล้ว และดัน
+     ใบที่ยกเลิกก่อนมีใครรับเรื่องขึ้นบนสุด · ออกจากประวัติกลับไปแบบเรียงตั้งต้นของหน้า
+     ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้ */
+  const inHistory = tab === "history";
+  const { setSort } = board;
+  useEffect(() => { setSort(inHistory ? "closed" : "urgency"); }, [inHistory, setSort]);
 
-  const setTab = (next) => router.replace(`/requests?tab=${next}`, { scroll: false });
+  /* ⚠️ เข้าประวัติแล้วล้างตัวกรองตัวเลข (ม-145) — แถบตัวเลขนับเฉพาะใบที่ยังเดินอยู่
+     ⇒ ในประวัติทุกช่องเป็นศูนย์และแถบถูกซ่อน · ตัวกรองที่ค้างมาจากคิวจะให้ตารางว่าง
+     พร้อมคำแนะนำ "กดตัวเลขซ้ำ" ที่ไม่มีตัวเลขให้กด */
+  // `next` ว่าง = ถอด `?tab=` ออก — ใช้กับ "ในคิว" ของทีม/ทั้งหมด (เหตุผลอยู่ที่ตัวสลับ)
+  const setTab = (next) => {
+    if (next === "history") board.setCountFilter(null);
+    router.replace(next ? `/requests?tab=${next}` : "/requests", { scroll: false });
+  };
 
   // ⭐ ตัวสลับขอบเขต — **กรองที่ API ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
   // กรองที่จอแปลว่าคำร้องของทีมอื่นถูกส่งถึงเบราว์เซอร์แล้วค่อยซ่อน เปิดดูได้จาก
@@ -111,9 +126,9 @@ export default function RequestsPage() {
   /* ลิงก์จากหน้าดีล (`?dealId=`) — ต้องอ่านก่อนตั้งค่าขอบเขต ดูเหตุผลใต้บล็อกนี้ */
   const dealIdParam = searchParams.get("dealId");
   /* ⭐ **ลิงก์ที่ระบุแท็บมาเปิดที่ขอบเขต "ของฉัน" เสมอ** (มติผู้ใช้ 2026-08-15) —
-     แท็บบทบาทมีผลเฉพาะขอบเขตนี้ (ดู `visibleQueueRows`) · เปิด `?tab=history` ด้วย
-     ขอบเขตกว้างเมื่อไร แท็บถูกซ่อนและพารามิเตอร์ถูกเมินเงียบ ๆ ⇒ คนส่งลิงก์ "ประวัติ"
-     กับคนกดเปิดเห็นคนละหน้ากันโดยไม่มีอะไรบอก
+     แท็บบทบาทมีผลเฉพาะขอบเขตนี้ (ดู `visibleQueueRows`) · เปิด `?tab=todo` ด้วย
+     ขอบเขตกว้างเมื่อไร แท็บถูกซ่อนและพารามิเตอร์ถูกเมินเงียบ ๆ ⇒ คนส่งลิงก์กับคนกดเปิด
+     เห็นคนละหน้ากันโดยไม่มีอะไรบอก (⚠️ ยกเว้น `history` ตั้งแต่ ม-145 — ดูในบล็อก)
      ⚠️ **ตั้งครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่าต่อ** — เฝ้าเมื่อไรผู้ใช้จะสลับไป
      ทีม/ทั้งหมดไม่ได้เลย เพราะ `setTab` เขียน `?tab=` ลง URL ทุกครั้งที่กดแท็บ
      (บทเรียนเดียวกับ `?owner=` และ `?count=` ในไฟล์นี้)
@@ -129,7 +144,11 @@ export default function RequestsPage() {
   const [scope, setScope] = useState(() => {
     // ใช้ `wanted` ไม่ใช่ `urlTab` ดิบ ⇒ ลิงก์เก่า (`?tab=queue-RD`) ที่ถูกแปลงเป็น
     // "todo" ได้ขอบเขตที่ทำให้แท็บนั้นมีผลด้วยเหมือนกัน
-    if (tabKeys.includes(wanted)) return "mine";
+    /* ⭐ **`?tab=history` ไม่บีบขอบเขตแล้ว** (ม-145) — ทีม/ทั้งหมดมีประวัติของตัวเอง
+       (`visibleQueueRows`) ⇒ เหตุผลเดิม ("แท็บถูกซ่อนแล้วพารามิเตอร์ถูกเมิน") ไม่จริง
+       สำหรับประวัติอีก · ปล่อยให้ได้ขอบเขตตั้งต้นของคนนั้น แอดมินที่กดกลับจากใบที่
+       ปิดแล้วจึงเห็นประวัติของทั้งระบบ ไม่ใช่ "ของฉัน" ที่แทบว่าง (กับดัก #1038) */
+    if (tabKeys.includes(wanted) && wanted !== "history") return "mine";
     const allowed = REQUEST_SCOPES.filter((s) => canUseScope(me, s));
     if (dealIdParam) return allowed[allowed.length - 1] || "mine";
     return defaultScope(allowed, me, "requests") || "mine";
@@ -187,7 +206,20 @@ export default function RequestsPage() {
     () => (deptFilter === "all" ? scopedRequests : scopedRequests.filter((r) => r.dept === deptFilter)),
     [scopedRequests, deptFilter],
   );
-  const mine = useMemo(() => requests.filter((r) => r._mine), [requests]);
+  /* ⚠️ แถวของแท็บ "ที่ฉันเปิด" มาจาก `queueTabRows` ตัวเดียวกับเลขบนแท็บ (ม-145) —
+     แท็บนี้ตัดใบที่จบแล้วออก ถ้าหน้านี้กรอง `_mine` เองอีกชุด เลขบนแท็บกับตารางจะขัดกัน */
+  const mine = useMemo(() => queueTabRows(requests, { tab: "mine", myDepts }), [requests, myDepts]);
+  /* ⭐ **ตัวสลับ "ในคิว / ประวัติ" ของขอบเขตทีม/ทั้งหมด** (ม-145) — แท็บบทบาทยังซ่อน
+     (ม-106) แต่ใบที่จบแล้วต้องออกจากคิวทุกขอบเขต ⇒ สองตัวเลือกที่อ่านจาก `?tab=`
+     ตัวเดียวกับแท็บบทบาท (ไม่เพิ่มคีย์แท็บที่สี่ — R-4) */
+  const openCount = useMemo(
+    () => visibleQueueRows(requests, { scope: activeScope, tab: defaultTab, myDepts }).length,
+    [requests, activeScope, defaultTab, myDepts],
+  );
+  const historyCount = useMemo(
+    () => visibleQueueRows(requests, { scope: activeScope, tab: "history", myDepts }).length,
+    [requests, activeScope, myDepts],
+  );
   // 🐞 subtitle ของหน้านี้บอกไว้ตั้งแต่ต้นว่า "เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ"
   // แต่ไม่มีใครเรียงจริง — API คืนมาเรียง createdAt ล้วน · ตัวเรียงมีอยู่แล้วใน lib
   // (compareRequestUrgency) แต่มีแค่หน้า dashboard RD ที่เรียก
@@ -332,7 +364,9 @@ export default function RequestsPage() {
       icon={<MessageCircleQuestion size={22} />}
       title="คำร้องข้ามฝ่าย"
       subtitle={!roleTabsApply
-        ? `ทุกใบใน${SCOPE_LABELS[activeScope]} — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ`
+        ? (tab === "history"
+          ? `ใบที่ปิดครบสองฝั่งหรือยกเลิกแล้วใน${SCOPE_LABELS[activeScope]} — ปิดล่าสุดอยู่บนสุด`
+          : `ใบที่ยังไม่จบใน${SCOPE_LABELS[activeScope]} — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ`)
         : tab === "todo" ? TAB_BLURB.todo
           : tab === "history" ? TAB_BLURB.history
             : mineBlurb(dealParam)}
@@ -392,6 +426,22 @@ export default function RequestsPage() {
             count: queueTabRows(requests, { tab: t.key, myDepts }).length,
           }))}
         />}
+        {/* ⭐ ทีม/ทั้งหมด — แยกคิวกับประวัติ (ม-145) · ตำแหน่งเดียวกับแท็บบทบาท
+            (ต่อจากขอบเขต) เพราะทำหน้าที่เดียวกัน: แบ่งชุดที่ขอบเขตโหลดมาอีกชั้น
+            ⚠️ "ในคิว" ไม่ใช่ "ยังไม่จบ" — คำนั้นเป็นชื่อปุ่มถอนตราปิดบนหน้าใบอยู่แล้ว */}
+        {!roleTabsApply && <Segmented
+          ariaLabel="คิวหรือประวัติของคำร้อง"
+          className="scope-toggle"
+          value={tab === "history" ? "history" : "open"}
+          /* ⚠️ "ในคิว" = **ถอด `?tab=` ออก** ไม่ใช่เขียนแท็บบทบาทลง URL — `?tab=todo|mine`
+             บีบขอบเขตเป็น "ของฉัน" ตอนเปิดหน้าใหม่ (กติกา set-once ข้างบน) ⇒ รีเฟรช/กดย้อน
+             กลับแล้วแอดมินตกไปหน้าเกือบว่างของ #1038 (รีวิวจับได้) */
+          onChange={(v) => setTab(v === "history" ? "history" : null)}
+          options={[
+            { value: "open", label: "ในคิว", count: openCount },
+            { value: "history", label: "ประวัติ", count: historyCount },
+          ]}
+        />}
         {/* ⭐ ฝ่ายปลายทาง — ชั้นที่สามของ "คัดชุดข้อมูลให้แคบลง" ต่อจากขอบเขตกับแท็บ
             ⚠️ อยู่ **หลัง** แท็บ: แท็บตอบว่า "ใบไหนเป็นงานของฉัน" ส่วนฝ่ายตอบว่า
             "ใบพวกนั้นส่งไปที่ไหน" ⇒ สลับที่กันแล้วอ่านเหมือนฝ่ายคุมแท็บ
@@ -450,8 +500,10 @@ export default function RequestsPage() {
         />
       )}
 
-      {/* แถบตัวเลข — component เดียวกับภาพรวมฝ่าย · ที่นี่กดแล้ว **กรองในที่** */}
-      {!loading && !loadError && (
+      {/* แถบตัวเลข — component เดียวกับภาพรวมฝ่าย · ที่นี่กดแล้ว **กรองในที่**
+          ⚠️ ไม่มีในประวัติ (ม-145 · ม-80 ข้อ 3) — ทุกช่องนับเฉพาะใบที่ยังเดินอยู่ ⇒ ศูนย์
+          ทั้งแถบ = ปุ่มกรองที่กดแล้วเงียบ */}
+      {!loading && !loadError && tab !== "history" && (
         <QueueCountStrip
           counts={counts}
           filter activeKey={board.countFilter}
@@ -469,11 +521,19 @@ export default function RequestsPage() {
            และป้ายจำนวนก็ซ้ำกับ Pager ใต้ตาราง (ดู prop sectionHeader) */
         sectionHeader={false}
         rows={rows} board={board}
+        /* ประวัติโชว์ "วันที่ปิดเรื่อง" สองฝั่งแทนกำหนดส่ง (ม-145 · preset `history`) */
+        columns={tab === "history" ? "history" : "queue"}
         /* กรองฝ่ายอยู่แล้วไม่เจอ = บอกว่าไม่มี **และบอกทางออก** — ข้อความตั้งต้นของ
            พาเนลพูดถึงคิวทั้งก้อน ซึ่งอ่านเหมือนระบบว่างทั้งที่แค่กรองอยู่ */
         emptyText={deptLabel
           ? `ไม่มีคำร้องถึงฝ่าย ${deptLabel} ในมุมมองนี้ — กด "ทุกฝ่าย" เพื่อดูทั้งหมด`
-          : null}
+          : tab === "history"
+            ? "ยังไม่มีเรื่องที่จบแล้วในมุมมองนี้"
+            /* ทีม/ทั้งหมด "ในคิว" — ข้อความตั้งต้นของพาเนลพูดถึง "ของคุณ"/"ฝ่ายคุณ" ซึ่งไม่ใช่
+               ชุดนี้ · ว่างเพราะทุกใบจบแล้ว ต้องบอกให้ไปดูประวัติ */
+            : !roleTabsApply
+              ? "ไม่มีใบที่ยังไม่จบในขอบเขตนี้ — ใบที่จบแล้วอยู่ที่ \"ประวัติ\""
+              : null}
         loading={loading} loadError={loadError} reload={reload}
       />
       </div>

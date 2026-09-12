@@ -15,7 +15,7 @@ import {
 import { quoteTargetError } from '@/lib/master/updateQuote';
 import { sanitizeMentions } from '@/lib/master/mentions';
 import { appendUpdate, findUpdate, listUpdates } from '@/lib/master/updates';
-import { replyClearsClosure } from '@/lib/requests/closure';
+import { closureClearedUpdate, replyClearsClosure } from '@/lib/requests/closure';
 import { requestIsThreadOnly } from '@/lib/requests/replyTurn';
 import { recordAudit } from '@/lib/audit';
 
@@ -148,6 +148,35 @@ export async function POST(request) {
       const { error: turnError } = await supabase.from('dept_requests')
         .update(turnPatch).eq('id', entityId);
       if (turnError) console.error('[updates] stamp lastReplySide failed', turnError.message);
+
+      /* ⭐ **ตราหลุดต้องมีร่องรอย** (ม-145 · มติผู้ใช้ 2026-09-11 "คงกติกาเดิม แต่บันทึก
+         ให้เห็น") — ของเดิมเขียนแค่แถวข้อความ ⇒ บรรทัด "ปิดเคส"/"ตอบเรื่องแล้ว" เดิมยังเป็น
+         บรรทัดปิดล่าสุดของเธรด ขณะที่ตารางบอกว่ายังไม่ปิด (เจอจริง 4 ใบ) · และไม่มี audit
+         ของใบเลย ⇒ ย้อนดูไม่ได้ว่าตราหายไปเมื่อไรเพราะอะไร
+         ⚠️ เขียนเฉพาะตอนอัปเดตใบสำเร็จ — เล่าว่าตราหลุดทั้งที่ยังอยู่ = เธรดโกหกอีกทาง
+         ⚠️ กลืน error เหมือนบล็อกข้างบน (ข้อความของคนบันทึกสำเร็จไปแล้ว) · แถวนี้ `quiet`
+         เพราะข้อความที่เพิ่งพิมพ์เด้งแจ้งเตือนไปแล้ว */
+      if (clears && !turnError) {
+        const cleared = closureClearedUpdate(parent, clears);
+        if (cleared) {
+          await appendUpdate(supabase, {
+            entityType, entityId, ...cleared, user,
+          });
+        }
+        const stampKeys = clears === 'dept'
+          ? ['answeredAt', 'answeredById', 'answeredByName', 'status']
+          : ['closedAt', 'closedById', 'closedByName', 'status'];
+        await recordAudit({
+          user,
+          action: 'update',
+          entityType: 'dept_request',
+          entityId,
+          before: Object.fromEntries(stampKeys.map((k) => [k, parent?.[k] ?? null])),
+          after: Object.fromEntries(stampKeys.map((k) => [k, turnPatch[k] ?? null])),
+          summary: `${cleared?.body || 'ถอนการปิดอัตโนมัติ'} (${parent?.docNo || entityId})`,
+          request,
+        });
+      }
     }
 
     await recordAudit({

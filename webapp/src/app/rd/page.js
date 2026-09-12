@@ -23,7 +23,7 @@ import Button from "@/components/ui/Button";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import { businessDate } from "@/lib/businessDate";
 import {
-  nextUpRows, queueCounts, requestNextStep, startHereRequest,
+  nextUpRows, queueCounts, requestClosureStarted, requestNextStep, requestSettled, startHereRequest,
 } from "@/lib/requests/queueBoard";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
@@ -69,6 +69,13 @@ export default function RdOverviewPage() {
     [requests],
   );
   const counts = queueCounts(deptRows, { todayIso: today });
+  /* ใบของฝ่ายที่ยังเป็นคำสัญญาค้าง — ปฏิทินรับแต่ชุดนี้ (ม-145): ใบที่จบแล้ว (ตัวตัดสินเดียว
+     กับแท็บประวัติ) และใบที่มีฝั่งปิดแล้ว (ตัวเดียวกับช่องกำหนดส่ง/แถบตัวเลขที่เลิกนับ
+     "เลยกำหนด") ไม่ใช่คำสัญญาที่ต้องตามอีก */
+  const openDeptRows = useMemo(
+    () => deptRows.filter((r) => !requestSettled(r) && !requestClosureStarted(r)),
+    [deptRows],
+  );
 
   /* ⭐ **สายพานนับเป็นกลิ่น ไม่ใช่ใบ** (มติผู้ใช้ 2026-08-12 · แบบ ค) — ภาระจริงของ
      ฝ่ายคือจำนวนกลิ่นที่ต้องปรุง · ใบพัฒนากลิ่นหนึ่งใบมีได้ 5 กลิ่น ⇒ "ค้าง 8 ใบ"
@@ -177,9 +184,12 @@ export default function RdOverviewPage() {
       {/* ⭐ **ปฏิทินคำสัญญา** (มติผู้ใช้ 2026-08-12 · แบบ ข) — อยู่ **เหนือคิวถัดไป**
           เพราะมันตอบคำถามของคนที่กำลังจะ *รับปากวันใหม่* ซึ่งเกิดก่อนการลงมือทำ
           ⚠️ ป้อน `deptRows` ทั้งก้อน ไม่ใช่ `nextUp` — ปฏิทินต้องเห็นทุกใบที่มีวัน
-          ไม่ใช่แค่ห้าใบถัดไป */}
+          ไม่ใช่แค่ห้าใบถัดไป
+          🐞 **แต่เฉพาะใบที่ยังไม่จบ** (ม-145) — สัญญาของ `dueCalendar` บอกไว้ว่ารับแต่ใบที่
+          ยังเดินอยู่ · ของเดิมป้อนใบที่ปิด/ยกเลิกไปด้วย ⇒ ใบที่ปิดแล้วขึ้นปฏิทินเป็น "เลย
+          กำหนด" และใบยกเลิกที่ไม่มีวันไปบวก "ยังไม่ได้ให้วัน" */}
       {!loading && !loadError && (
-        <DueWeekPanel rows={deptRows} todayIso={today} queueHref="/rd/requests" />
+        <DueWeekPanel rows={openDeptRows} todayIso={today} queueHref="/rd/requests" />
       )}
 
       {/* ⭐ **ตารางเดียวกับคิว** (มติผู้ใช้ 2026-08-08) — เดิมหน้านี้เขียนตารางของตัวเอง

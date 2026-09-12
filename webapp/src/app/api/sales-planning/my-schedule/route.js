@@ -6,6 +6,7 @@ import { fetchAll, fetchAllResult } from '@/lib/supabaseFetchAll';
 import { businessDate } from '@/lib/businessDate';
 import { attachReworkRows } from '@/lib/requests/reworkRows';
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosureStarted } from '@/lib/requests/closure';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,7 +104,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .filter((task) => task.status !== 'Completed')
     .filter((task) => (seenTask.has(task.id) ? false : seenTask.add(task.id)));
 
-  const requests = requestsResult.data || [];
+  /* ⚠️ ใบที่เรากดปิดฝั่งตัวเองแล้วไม่ใช่กำหนดการของเรา (ม-145) — ที่เหลือคือฝ่ายกดปิด ไม่มี
+     วันให้ตาม · เดิมขึ้น "รอฝ่ายส่งงาน" สีแดงขณะที่คิวบอก "รอ RD ปิด" (ตัวตัดสินเดียวกับคิว) */
+  const requests = (requestsResult.data || []).filter((request) => !requestClosureStarted(request));
   /* 🐞 **เคยอ่าน `committedDueDate` ดิบ ทั้งที่บรรทัดบนโหลดแถวมาให้แล้ว** (ตรวจย้อนหลัง
      2026-08-26) — `attachReworkRows` ข้างบนมีไว้เพื่อบรรทัดนี้โดยเฉพาะ แต่ตอนนั้น
      แก้ที่ `lib/salesPlanning/mySchedule.js` อย่างเดียวแล้วคิดว่าจบ · route ตัวนี้

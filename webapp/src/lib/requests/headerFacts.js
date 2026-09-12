@@ -15,6 +15,7 @@
 import { fmtDate } from '@/lib/format';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -147,11 +148,15 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
   // ⚠️ วันของรอบก่อน = ยังไม่มีวันของรอบนี้ ⇒ การ์ดหัวใบต้องไม่ขัดกับรางใต้มัน
   const committed = liveDueDate(request) || '';
 
+  /* ⚠️ ใบที่จบแล้ว/มีฝั่งปิดแล้วไม่นับถอยหลังอีก (ม-145) — "เลยกำหนดมา 22 วัน" ข้างการ์ดที่เขียน
+     "ปิดครบ 2/2" คือสัญญาณ "ยังไม่จบ" ที่คิว/แดชบอร์ดเลิกพูดไปแล้ว (รีวิวจับได้) */
+  const closure = requestClosure(request);
+  const noCountdown = requestClosureStarted(request) || closure.complete || closure.cancelled;
   facts.push({
     key: 'requestedDue',
     label: 'ผู้ขอต้องการรับงาน',
     value: wanted ? fmtDate(wanted) : '—',
-    sub: wanted ? countdownLabel(wanted, now) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
+    sub: wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
   });
 
   const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;
@@ -160,12 +165,24 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
     label: `${request.dept || 'ฝ่าย'} กำหนดส่ง`,
     // ⚠️ "ยังไม่ระบุ" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง "ไม่มีกำหนด" และ "ระบบไม่รู้"
     // ซึ่งคนละเรื่องกัน (บทเรียนเดียวกับคอลัมน์วันในคิว RD)
-    value: committed ? fmtDate(committed) : 'ยังไม่ระบุ',
+    /* ⚠️ ไม่มีวันและไม่มีใครต้องแจ้งแล้ว (จบ/ยกเลิก/มีฝั่งปิด) = ขีด ตรงกับช่องกำหนดส่งในคิว (ม-145)
+       · "ยังไม่ระบุ" แปลว่ายังรอวันอยู่ ซึ่งไม่จริงสำหรับใบพวกนี้ */
+    value: committed ? fmtDate(committed) : (noCountdown ? '—' : 'ยังไม่ระบุ'),
     // ⚠️ คำนี้ต้องตรงกับปุ่ม (มติผู้ใช้ 2026-08-19) — วันกำหนดส่งไม่ได้เกิดตอนกดรับ
     // เรื่องอีกแล้ว มันเป็นก้าว "แจ้งกำหนดส่ง" ที่ฝ่ายกดทีหลังได้
-    sub: committed ? (gap?.text || null) : requestSideText(request, 'dept', 'ยังไม่ได้แจ้งกำหนดส่ง'),
+    sub: committed ? (gap?.text || null) : noDueReason(request, closure),
     tone: committed ? gap?.tone || null : 'muted',
   });
 
   return facts;
+}
+
+/* ทำไมไม่มีวันกำหนดส่ง — บอกตามสถานะจริงของการปิด (ม-145) · 🐞 รอบแรกเขียนรวบว่า "ปิดเรื่องแล้ว
+   อย่างน้อยหนึ่งฝั่ง" ⇒ ใบยกเลิกถูกบอกว่าปิด และใบปิดครบก็ยังเขียน "อย่างน้อยหนึ่งฝั่ง" */
+function noDueReason(request, closure) {
+  if (closure.cancelled) return 'ยกเลิกแล้ว — ไม่มีกำหนดส่ง';
+  if (closure.complete) return requestSideText(request, 'dept', 'ไม่ได้แจ้งกำหนดส่ง — ปิดครบแล้ว');
+  if (closure.requesterDone) return requestSideText(request, 'requester', 'ปิดแล้ว — ไม่ต้องแจ้งกำหนดส่ง');
+  if (closure.deptDone) return requestSideText(request, 'dept', 'ตอบครบแล้ว — ไม่ได้แจ้งกำหนดส่ง');
+  return requestSideText(request, 'dept', 'ยังไม่ได้แจ้งกำหนดส่ง');
 }

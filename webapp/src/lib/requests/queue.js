@@ -2,6 +2,7 @@
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestKindLabel } from '@/lib/master/requestTypes';
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosureStarted } from '@/lib/requests/closure';
 
 // ── กำหนดวันตอบ ─────────────────────────────────────────────────────────
 // ผู้ตอบรับปากวันด้วยก้าว "แจ้งกำหนดส่ง" (แยกจากการรับเรื่อง — มติผู้ใช้ 2026-08-19)
@@ -9,6 +10,8 @@ import { liveDueDate } from '@/lib/requests/dueRound';
 export function requestDueTone(request, todayIso) {
   if (!request || !todayIso) return null;
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return null;
+  // มีฝั่งปิดแล้ว = ไม่มีวันให้ตามอีก (ม-145 · ตัวตัดสินเดียวกับคิว)
+  if (requestClosureStarted(request)) return null;
   /* ⚠️ **ผ่าน `liveDueDate` ไม่ใช่อ่านคอลัมน์ดิบ** — วันของรอบก่อนไม่ใช่คำสัญญาที่
      ยังอยู่ ⇒ ตกกิ่ง "รอกำหนดส่ง" ข้างล่างซึ่งเป็นคำที่ถูกอยู่แล้ว (2026-08-26) */
   const due = liveDueDate(request);
@@ -35,7 +38,11 @@ export function compareRequestUrgency(a, b) {
      ซึ่งเป็นอดีต ⇒ อ่านดิบแล้วมันจะลอยขึ้นหัวคิวเสมือนด่วนที่สุด ทั้งที่ยังไม่มีใคร
      รับปากอะไรสำหรับงานที่กำลังทำอยู่ · ไปกองกับใบไม่มีวัน ('9999') ตามกติกาเดียว
      กับตัวนับ `undated` และกลุ่มของคิว (ตรวจย้อนหลัง 2026-08-26) */
-  return String(liveDueDate(a) || '9999').localeCompare(String(liveDueDate(b) || '9999'));
+  /* ⚠️ ใบที่มีฝั่งปิดแล้วไปกองกับใบไม่มีวัน (ม-145) — มันไม่ "เลยกำหนด" แล้ว (ไม่แดง ·
+     ไม่อยู่กลุ่มเลยกำหนด) · เรียงด้วยวันเก่าของมันเมื่อไร มันจะลอยเหนือใบที่เลยกำหนดจริง
+     และการ์ด "เริ่มที่นี่" (ซึ่งจัดกลุ่มก่อน) จะชี้ใบที่ไม่ใช่แถวบนสุดของคิว */
+  const dueOf = (r) => (requestClosureStarted(r) ? null : liveDueDate(r));
+  return String(dueOf(a) || '9999').localeCompare(String(dueOf(b) || '9999'));
 }
 
 // ป้ายสรุปหนึ่งบรรทัดสำหรับคิว/ฟีด — ชนิด + หัวเรื่อง (หรือจำนวนรายการ)

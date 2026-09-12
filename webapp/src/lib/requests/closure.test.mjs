@@ -43,8 +43,9 @@ test('⭐ คิวยังนับใบที่ปิดฝั่งเด�
   const deptDone = requestNextStep(ask({ status: 'answered', answeredAt: NOW }));
   assert.deepEqual(deptDone, { owner: 'requester', label: 'รอ SA ปิด' });
 
+  // ⭐ ม-145: "รอ RD ปิด" ไม่ใช่ "รอ RD ตอบ" — คำเดิมชนกับตาตอบในเธรด ⇒ อ่านไม่ออกว่าผู้ขอปิดแล้ว
   const requesterDone = requestNextStep(ask({ closedAt: NOW }));
-  assert.deepEqual(requesterDone, { owner: 'dept', label: 'รอ RD ตอบ' });
+  assert.deepEqual(requesterDone, { owner: 'dept', label: 'รอ RD ปิด' });
 
   // ครบสองฝั่ง = ไม่มีก้าวเหลือ (เข้าประวัติ)
   assert.equal(requestNextStep(ask({ status: 'closed', answeredAt: NOW, closedAt: NOW })), null);
@@ -61,7 +62,7 @@ test('รางบนตาราง — ขั้น "ปิด" เขีย�
 
   const requesterOnly = requestQueueTrack(ask({ closedAt: NOW }));
   assert.equal(stateOf(requesterOnly, 'answer'), 'now');
-  assert.equal(noteOf(requesterOnly, 'close'), 'รอ RD ตอบ');
+  assert.equal(noteOf(requesterOnly, 'close'), 'รอ RD ปิดเรื่อง');
 
   const both = requestQueueTrack(ask({ status: 'closed', answeredAt: NOW, closedAt: NOW }));
   assert.equal(stateOf(both, 'close'), 'done');

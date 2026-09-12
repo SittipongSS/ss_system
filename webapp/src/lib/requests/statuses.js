@@ -59,6 +59,11 @@ export const REQUEST_OPEN_STATUSES = ['pending', 'acknowledged'];
 // (ใบที่ไม่มี `items` ติดมา = ไม่รู้ว่ามีรอบแก้ไหม ⇒ ตอบเท่าเดิมเป๊ะ ไม่เดา)
 export function requestAwaitingDue(request) {
   if (request?.status !== 'acknowledged') return false;
+  /* 🐞 **ผู้ขอปิดฝั่งตัวเองไปแล้ว = ไม่มีวันส่งให้รับปากอีก** (ม-145) — ของเดิมป้าย
+     "รอกำหนดส่ง" ทับทั้งตาราง หัวใบ และปุ่มหลักของฝ่าย ⇒ ใบที่ผู้ขอบอกว่าจบแล้ว
+     กลายเป็น "ฝ่ายยังไม่แจ้งวัน" และปุ่มหลักของ RD เป็น "แจ้งกำหนดส่ง" แทน "ปิดเรื่อง"
+     (RQ-IQ-26090043 · RQ-26080095 ค้างมา 9 วันแบบนี้) · สิ่งที่เหลือคือฝ่ายกดปิดเท่านั้น */
+  if (request?.closedAt) return false;
   if (!String(request?.committedDueDate ?? '').trim()) return true;
   return dueIsStale(request, request?.items);
 }

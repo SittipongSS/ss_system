@@ -190,7 +190,8 @@ export function askActionUpdate(action, ask, {
     // ปิดฝั่งผู้ขอ ≠ ใบจบ — ใบจบเมื่อฝ่ายมีตราด้วย (`answeredAt`)
     return {
       kind: 'close',
-      body: ask.answeredAt ? 'ปิดเรื่อง — ครบสองฝั่ง' : `ผู้ขอปิดฝั่งตัวเอง — รอ ${dept} ตอบ`,
+      // "รอ RD ปิด" คำเดียวกับป้ายในคิว (ม-145) — "รอ RD ตอบ" ชนกับตาตอบในเธรด
+      body: ask.answeredAt ? 'ปิดเรื่อง — ครบสองฝั่ง' : `ผู้ขอปิดฝั่งตัวเอง — รอ ${dept} ปิด`,
       meta: { dept },
     };
   }

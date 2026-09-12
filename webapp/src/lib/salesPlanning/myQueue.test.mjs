@@ -219,3 +219,89 @@ test('คำร้องที่ฝ่ายรับปากแล้ว ใ�
   assert.equal(row.overdue, true);
   assert.equal(row.step, 'รอฝ่ายตอบ');
 });
+
+/* ── ตาผู้ขอตามคิวคำร้อง (2026-09-11) ─────────────────────────────────────────
+   🐞 แดชบอร์ดเขียน "รอฝ่ายตอบ · เลย N วัน" ให้ทุกใบที่ยังไม่ปิด ขณะที่คิว /requests บอกว่าเป็นตาผู้ขอ
+   (วัดของจริง 25 ใบ) ⇒ "ต้องทำอะไร" ถาม `requestNextStep` ตัวเดียวกับคิว · ตาฝ่ายยังเหมือนเดิม */
+test('⭐ สอบถามที่ฝ่ายตอบในเธรดล่าสุด = "ตอบกลับในเธรด" ค้างตั้งแต่ข้อความของฝ่าย ไม่ใช่ "รอฝ่ายตอบ · เลยกำหนด"', () => {
+  const [row] = build({
+    requests: [{
+      id: 'IQ', docNo: 'RQ-IQ-1', kind: 'info', dept: 'RD', status: 'acknowledged',
+      committedDueDate: '2026-08-01', lastReplySide: 'dept', lastReplyAt: '2026-08-09T20:00:00Z', items: [],
+    }],
+  });
+  assert.equal(row.step, 'ตอบกลับในเธรด');
+  assert.equal(row.basis, 'waiting');
+  assert.equal(row.overdue, false);
+  // ตี 3 วันที่ 10 เวลาไทย = 9 ส.ค. UTC — วันเริ่มค้างต้องเป็นวันไทย
+  assert.equal(row.due, '2026-08-10');
+  assert.equal(row.dueText, 'ค้างมา 2 วัน');
+  assert.equal(myQueueGroupKey(row), 'today');
+});
+
+test('ใบรายแถวที่ของรอผู้ขอ = คำสั่งของปุ่มบนแถว · นับจากแถวที่ค้างนานสุด', () => {
+  const base = { dept: 'RD', status: 'acknowledged', committedDueDate: '2026-08-01' };
+  const [scent] = build({
+    requests: [{
+      ...base, id: 'SB', docNo: 'SB-1', kind: 'scent_dev',
+      items: [
+        { id: 'a', ackAt: '2026-08-01', readyAt: '2026-08-05' },                 // รอรับของ
+        { id: 'b', ackAt: '2026-08-01', readyAt: '2026-08-08' },                 // รอรับของ
+      ],
+    }],
+  });
+  assert.equal(scent.step, 'รับของ · 2 กลิ่น');
+  assert.equal(scent.due, '2026-08-05', 'ค้างนับจากแถวที่รอนานสุด');
+  assert.equal(scent.overdue, false);
+
+  const [doc] = build({
+    requests: [{
+      ...base, id: 'DC', docNo: 'DC-1', kind: 'document',
+      items: [{ id: 'c', lineKind: 'document', ackAt: '2026-08-01', readyAt: '2026-08-11' }],
+    }],
+  });
+  // ปุ่มบนหน้าใบคือ "ได้รับแล้ว" — ในคอลัมน์ "ต้องทำอะไร" ต้องเป็นคำสั่ง
+  assert.equal(doc.step, 'ยืนยันรับเอกสาร');
+  assert.equal(doc.due, '2026-08-11');
+
+  // ทุกแถวจบแล้วแต่ยังไม่มีตรา (เช่นหลัง "ยังไม่จบ") = "ปิดเรื่อง" ค้างตั้งแต่แถวสุดท้ายจบ
+  const [allDone] = build({
+    requests: [{
+      ...base, id: 'DC2', docNo: 'DC-2', kind: 'document',
+      items: [{ id: 'd', lineKind: 'document', ackAt: '2026-08-01', readyAt: '2026-08-03', answerStatus: 'done', outcomeAt: '2026-08-06' }],
+    }],
+  });
+  assert.equal(allDone.step, 'ปิดเรื่อง');
+  assert.equal(allDone.due, '2026-08-06');
+});
+
+test('ตาฝ่ายยังใช้กติกาวันส่งเดิม — ของที่ค้างที่ฝ่ายยังเป็น "รอฝ่ายตอบ" และเลยกำหนดได้', () => {
+  const [row] = build({
+    requests: [{
+      id: 'SB2', docNo: 'SB-2', kind: 'scent_dev', dept: 'RD', status: 'acknowledged', committedDueDate: '2026-08-10',
+      items: [{ id: 'e', ackAt: '2026-08-01' }],                                  // RD กำลังทำ
+    }],
+  });
+  assert.equal(row.step, 'รอฝ่ายตอบ');
+  assert.equal(row.basis, 'deadline');
+  assert.equal(row.overdue, true);
+  // สอบถามที่ผู้ขอพูดล่าสุด = ตาฝ่าย (ไม่แตะ)
+  const [iq] = build({
+    requests: [{
+      id: 'IQ2', docNo: 'RQ-IQ-2', kind: 'info', dept: 'RD', status: 'acknowledged',
+      committedDueDate: '2026-08-10', lastReplySide: 'requester', items: [],
+    }],
+  });
+  assert.equal(iq.step, 'รอฝ่ายตอบ');
+});
+
+test('ไม่มีวันให้บอกเลย ถอยไปวันรับเรื่อง — ห้ามมีหัวข้อ "ครบกำหนดวันนี้" คู่กับ "ไม่มีกำหนด"', () => {
+  const [row] = build({
+    requests: [{
+      id: 'IQ3', docNo: 'RQ-IQ-3', kind: 'info', dept: 'RD', status: 'acknowledged',
+      acknowledgedAt: '2026-08-07T03:00:00Z', lastReplySide: 'dept', lastReplyAt: null, items: [],
+    }],
+  });
+  assert.equal(row.due, '2026-08-07');
+  assert.notEqual(row.dueText, 'ไม่มีกำหนด');
+});

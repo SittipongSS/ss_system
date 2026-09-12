@@ -29,7 +29,7 @@ import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
   QUEUE_COUNT_META, bouncedDaysText, groupQueueRows, matchesQueueCount, queueCounts,
-  requestDueText, requestQueueStatus,
+  requestDueText, requestQueueStatus, requestSettled,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import {
@@ -39,8 +39,10 @@ import {
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
 import { requestQueueTrack } from "@/lib/requests/queueTrack";
 import { requestAssignee } from "@/lib/requests/assign";
-import { requestSideText, requestWaitLabel } from "@/lib/requests/replyTurn";
-import { requestClosure } from "@/lib/requests/closure";
+import { requestSideLabel } from "@/lib/requests/replyTurn";
+import {
+  closureWaitLabel, requestClosedOn, requestClosure, requestClosureLine, requestClosureStarted,
+} from "@/lib/requests/closure";
 import { RequestStatusBadge } from "@/components/requests/requestUi";
 import StatusBadge from "@/components/ui/StatusBadge";
 // รางขั้นตัวเดียวกับตารางใบสั่งขาย/ทะเบียนการชำระ — คำร้องเดินสี่ขั้น (queueTrack)
@@ -175,7 +177,9 @@ export default function RequestQueuePanel({
     [groupsAll],
   );
   const pager = usePagination(orderedRows, {
-    resetKey: `${scope}|${dept}|${countFilter}|${search}|${sortKey}|${sortDir}|${groupBy}|${JSON.stringify(filters)}`,
+    /* ⚠️ ชุดคอลัมน์อยู่ในคีย์ด้วย (ม-145) — สลับแท็บคิว ↔ ประวัติ ส่ง `columns` คนละชุด
+       แต่ `scope` เท่าเดิม ⇒ ไม่มีคีย์นี้ = เปิดประวัติมาค้างที่หน้า N ของคิว */
+    resetKey: `${scope}|${dept}|${Array.isArray(columns) ? columns.join(",") : columns}|${countFilter}|${search}|${sortKey}|${sortDir}|${groupBy}|${JSON.stringify(filters)}`,
   });
   const paged = showTools;
   const groups = useMemo(() => {
@@ -306,9 +310,17 @@ export default function RequestQueuePanel({
       case "next": {
         const queueStatus = requestQueueStatus(ask);
         const track = requestQueueTrack(ask);
+        const closureLine = requestClosureLine(ask);
         return (
           <>
             <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
+            {/* ⭐ **ปิดแล้วกี่ฝั่ง** (ม-145 · ผู้ใช้เลือกแบบ "บรรทัดใต้ป้ายสถานะ") — ขึ้นเฉพาะ
+                ใบที่ปิดไปฝั่งเดียว · ป้ายบอกว่ารอใคร บรรทัดนี้บอกว่าใครปิดไปแล้วเมื่อไร
+                ⚠️ ใบที่ปิดครบแล้วไม่ต้องมี — ป้าย "ปิดเรื่อง" พูดจบแล้ว และแท็บประวัติมี
+                คอลัมน์วันที่ปิดของสองฝั่งอยู่ (preset `history`) */}
+            {closureLine && !closureLine.complete && (
+              <div className={styles.subText}>{closureLine.text}</div>
+            )}
             {/* ⚠️ **ไม่มีชื่อผู้รับผิดชอบใต้ป้ายแล้ว** (มติผู้ใช้ 2026-08-20 — ทับมติ
                 2026-08-11 แบบ ก ที่ยกชื่อคนมาไว้ตรงนี้) · ชื่อบัญชีในระบบยาวจริง
                 ("ProjectCo.Jeab : Project Management, R&D") ⇒ ตกสองบรรทัดในช่องแคบ
@@ -490,20 +502,24 @@ export default function RequestQueuePanel({
             <>
               <div className={styles.smallCell}>{fmtDate(ask.closedAt || ask.answeredAt)}</div>
               <div className={styles.subText}>
-                {ask.answeredAt
-                  ? requestWaitLabel(ask, "requester", "ปิด")
-                  : requestWaitLabel(ask, "dept", "ตอบ")}
+                {/* คำเดียวกับป้ายสถานะ "รอ <ฝั่ง> ปิด" ทั้งสองฝั่ง (ม-145) */}
+                {closureWaitLabel(ask, ask.answeredAt ? "requester" : "dept")}
               </div>
             </>
           );
         }
+        /* ⚠️ บรรทัดบน = วันที่ใบจบจริง (ตราหลังสุด · `requestClosedOn`) — ตัวเดียวกับที่แท็บ
+           ประวัติใช้เรียง (ม-145) · 🐞 รอบแรกพิมพ์ `closedAt` ⇒ ใบที่ฝ่ายกดทีหลังขึ้นวันเก่า
+           แทรกกลางใบที่ปิดใหม่กว่า ใต้คำโปรย "ปิดล่าสุดอยู่บนสุด" */
         return (
           <>
-            <div className={styles.smallCell}>{fmtDate(ask.closedAt || ask.answeredAt)}</div>
+            <div className={styles.smallCell}>{fmtDate(requestClosedOn(ask))}</div>
+            {/* ทรงเดียวกับบรรทัด "ปิดแล้ว 1/2 · SA ✓ …" ในคิว (ม-145) — วันเต็มสองวันต่อกันยาวเกิน
+                คอลัมน์ ("FN ตอบ 10/09/2026 · SALES ปิด 10/09/2026" ชนขอบตาราง) */}
             <div className={styles.subText}>
               {[
-                ask.answeredAt ? `${requestSideText(ask, "dept", "ตอบ")} ${fmtDate(ask.answeredAt)}` : null,
-                ask.closedAt ? `${requestSideText(ask, "requester", "ปิด")} ${fmtDate(ask.closedAt)}` : null,
+                ask.answeredAt ? `${requestSideLabel(ask, "dept")} ✓ ${fmtDate(ask.answeredAt, { short: true })}` : null,
+                ask.closedAt ? `${requestSideLabel(ask, "requester")} ✓ ${fmtDate(ask.closedAt, { short: true })}` : null,
               ].filter(Boolean).join(" · ")}
             </div>
           </>
@@ -541,6 +557,10 @@ export default function RequestQueuePanel({
             </>
           );
         }
+        /* ⚠️ มีฝั่งปิดแล้ว = ไม่มีวันให้ทวงอีก (ม-145) — "ยังไม่ให้วัน" อ่านเป็นงานค้างของฝ่าย
+           และไม่ตรงกับตัวกรอง "ยังไม่ได้ให้วัน" ที่เลิกนับใบพวกนี้แล้ว ⇒ ขีด (ไม่มีกำหนดโดยนิยาม) */
+        // ใบที่จบแล้วก็เช่นกัน — ตัวตัดสินเดียวกับ `requestDueText` (การ์ดหน้าดีล/โครงการมีใบจบปนอยู่)
+        if (requestClosureStarted(ask) || requestSettled(ask)) return <span className={styles.muted}>{NA}</span>;
         return <span className={styles.muted}>ยังไม่ให้วัน</span>;
       /* ⭐ **สถานะ + รางสี่ขั้น + ตัวเลขรายบรรทัด อยู่ช่องเดียวกัน** (มติผู้ใช้ 2026-08-17) —
          ป้ายตอบว่า "ตอนนี้ค้างที่ใคร" · รางตอบว่า "ผ่านอะไรมาแล้วและเหลืออะไร" ·
@@ -637,6 +657,10 @@ export default function RequestQueuePanel({
               ไม่งั้นคนจะปิดหน้าไปทั้งที่งานยังอยู่ แค่ถูกกรองอยู่ */}
           {countFilter
             ? `ไม่มีคำร้องที่ "${QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}" — กดตัวเลขซ้ำเพื่อดูทั้งหมด`
+            /* ⚠️ ว่างเพราะคำค้น/ตัวกรอง ≠ ว่างเพราะไม่มีใบ — ข้อความของผู้เรียกพูดถึงชุดทั้งก้อน
+               ("ไม่มีใบที่ยังไม่จบ…") ซึ่งโกหกทันทีที่มีคำค้นค้างอยู่ (รีวิวจับได้ ม-145) */
+            : rows.length > 0 && (String(search || "").trim() || filterCount > 0)
+              ? "ไม่พบคำร้องที่ตรงกับคำค้นหรือตัวกรอง — ล้างคำค้น/ตัวกรองเพื่อดูทั้งหมด"
             : emptyText
               || (scope === "queue"
                 ? `ไม่มีคำร้องรอ ${dept || "ฝ่ายคุณ"} ตอบ`
@@ -665,7 +689,21 @@ export default function RequestQueuePanel({
               {!isCollapsed(g.key) && g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
                 const cardStatus = requestQueueStatus(ask);
+                // บรรทัดเดียวกับตาราง — การ์ดกับตารางต้องพูดตรงกัน (ม-145)
+                const cardClosure = requestClosureLine(ask);
                 const due = requestDueText(ask, { todayIso: today });
+                /* ⭐ ชุดคอลัมน์ที่มี "วันที่ปิดเรื่อง" (แท็บประวัติ) = การ์ดโชว์วันปิดแทนกำหนดส่ง
+                   🐞 รอบแรกการ์ดไม่อ่าน `cols` ⇒ ประวัติบนจอแคบเรียงตามวันปิดแต่ไม่มีการ์ดใบไหน
+                   บอกวันปิดเลย ลำดับจึงดูมั่ว (ม-145) */
+                const closedText = cols.includes("closed")
+                  ? (ask.status === "cancelled"
+                    ? (requestClosedOn(ask) ? `ยกเลิก ${fmtDate(requestClosedOn(ask), { short: true })}` : "ยกเลิก")
+                    : cardClosure?.text || null)
+                  : null;
+                const cardDue = closedText
+                  ? { text: closedText, overdue: false }
+                  : due ? { text: `กำหนด ${fmtDate(due.date)}${due.note ? ` · ${due.note}` : ""}`, overdue: due.overdue }
+                    : null;
                 // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
                 const bounced = bouncedDaysText(ask, { todayIso: today });
                 return (
@@ -681,6 +719,9 @@ export default function RequestQueuePanel({
                       <StatusBadge tone={cardStatus.tone} size="sm">{cardStatus.label}</StatusBadge>
                       {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
                     </span>
+                    {cardClosure && !cardClosure.complete && (
+                      <span className={styles.subText}>{cardClosure.text}</span>
+                    )}
                     <span className={styles.cardTitle}>
                       {ask.title || ask.customerName || "ราคากลาง"}
                     </span>
@@ -706,9 +747,9 @@ export default function RequestQueuePanel({
                       {bounced && (
                         <span className={`ui-badge ${styles.overdue}`}>ตีกลับ · {bounced.note}</span>
                       )}
-                      {!bounced && due && (
-                        <span className={`ui-badge ${due.overdue ? styles.overdue : ""}`.trim()}>
-                          กำหนด {fmtDate(due.date)}{due.note ? ` · ${due.note}` : ""}
+                      {!bounced && cardDue && (
+                        <span className={`ui-badge ${cardDue.overdue ? styles.overdue : ""}`.trim()}>
+                          {cardDue.text}
                         </span>
                       )}
                       {p.total > 0 && (

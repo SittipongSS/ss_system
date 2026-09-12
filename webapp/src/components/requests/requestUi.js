@@ -4,6 +4,7 @@
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestStatusView } from "@/lib/requests/statuses";
 import { liveDueDate } from "@/lib/requests/dueRound";
+import { requestClosureStarted } from "@/lib/requests/closure";
 
 /* ⚠️ **ส่ง `request` ทั้งใบ ไม่ใช่ `status` เปล่า ๆ** (มติผู้ใช้ 2026-08-19) — ป้าย
    "รอกำหนดส่ง" เป็นสถานะที่ derive จาก `status` + `committedDueDate` คู่กัน ⇒ ที่ไหน
@@ -25,7 +26,9 @@ export function requestDueTone(request, todayISO) {
   // ⚠️ วันของรอบก่อน = ไม่มีกำหนด = ไม่มีป้าย (ตรวจย้อนหลัง 2026-08-26)
   const due = liveDueDate(request);
   const open = request?.status === "pending" || request?.status === "acknowledged";
-  if (!due || !open || !todayISO) return null;
+  // มีฝั่งปิดแล้ว = ไม่มีวันให้ตามอีก (ม-145 · ตัวตัดสินเดียวกับคิว) — ผู้ขอปิดแล้วแต่ฝ่าย
+  // ยังไม่กดคือของที่ต้องกดปิด ไม่ใช่งานที่ "เลยกำหนด"
+  if (!due || !open || !todayISO || requestClosureStarted(request)) return null;
   if (due < todayISO) return { color: "var(--red)", label: "เลยกำหนด" };
   const t = new Date(`${todayISO}T00:00:00`);
   t.setDate(t.getDate() + 1);

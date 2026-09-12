@@ -70,7 +70,8 @@ import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { dueIsStale } from "@/lib/requests/dueRound";
 import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
-import { requestClosure, reopenRequestError } from "@/lib/requests/closure";
+import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
+import { requestSettled } from "@/lib/requests/queueBoard";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
@@ -366,9 +367,15 @@ export default function RequestDetailPage() {
      เปลือกไม่สลับให้รู้ตัวอีกแล้ว
      ⚠️ ต้องดูที่ **ฝ่ายของคนกด** ไม่ใช่ฝ่ายบนใบ — AE Supervisor เปิดใบของ RD ได้
      (break-glass) ถ้าส่งเขาไป `/rd/requests` จะโดน proxy เด้งกลับ `/home` เงียบ ๆ */
-  const backTab = req?._mine === false ? `queue-${req.dept}` : "mine";
+  /* ⭐ ใบที่จบแล้วกลับไปแท็บประวัติ (ม-145) — "ที่ฉันเปิด"/"รอฉันตอบ" ไม่มีใบที่จบแล้ว
+     อีก ⇒ กดปิดครบแล้วกด "กลับ" ต้องเจอใบนี้ ไม่ใช่รายการที่ใบเพิ่งหายไป */
+  const backTab = req && requestSettled(req)
+    ? "history"
+    : req?._mine === false ? `queue-${req.dept}` : "mine";
   const ownQueue = req?.dept === department ? deptQueueHref(department) : null;
-  const back = { href: ownQueue || `/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
+  // คิวของฝ่ายก็มีแท็บประวัติ (`DEPT_QUEUE_TAB_KEYS`) — ใบที่จบแล้วกลับไปที่นั่นเหมือนกัน
+  const ownQueueHref = ownQueue && backTab === "history" ? `${ownQueue}?tab=history` : ownQueue;
+  const back = { href: ownQueueHref || `/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
   if (loadError || !req) {
     return (
@@ -439,6 +446,8 @@ export default function RequestDetailPage() {
   /* ⭐ **ปิดสองฝั่ง** (มติผู้ใช้ 2026-08-20) — ตราของฝ่ายคือ `answeredAt` · ของผู้ขอคือ
      `closedAt` · ใบจบเมื่อครบทั้งคู่ (กติกาอยู่ที่ `lib/requests/closure.js`) */
   const closure = requestClosure(req);
+  // บรรทัด "ปิดแล้วกี่ฝั่ง" — ตัวเดียวกับที่ตารางคิววาดใต้ป้ายสถานะ (ม-145)
+  const closureLine = requestClosureLine(req);
   const closeBlocker = closeRequestError(req, req.items || []);
   const canClose = !closeBlocker && req._mine && !closure.requesterDone;
   /* ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
@@ -734,7 +743,9 @@ export default function RequestDetailPage() {
           ? "ราคาที่ตอบแล้วยังอยู่ในทะเบียนวัสดุตามเดิม — ปิดเรื่องแค่บอกว่างานนี้จบ"
           : "ปิดเรื่องแล้วยังอ่านย้อนหลังได้ตามเดิม — แค่บอกว่างานนี้จบ")
           + (deptPending
-            ? `\nนี่คือการปิดฝั่งคุณเท่านั้น — ใบยังไม่จบจนกว่า${requestSideLabel(req, "dept")}จะกด "ตอบแล้ว"`
+            /* ⚠️ ไม่อ้างชื่อปุ่ม "ตอบแล้ว" แล้ว (ม-145) — พอผู้ขอปิดก่อน ปุ่มของฝ่ายเปลี่ยน
+               คำเป็น "ปิดเรื่อง" (มติ 2026-08-28) ⇒ ชื่อปุ่มในประโยคนี้จะไม่ตรงกับที่ฝ่ายเห็น */
+            ? `\nนี่คือการปิดฝั่งคุณเท่านั้น — ใบยังไม่จบจนกว่า ${requestSideText(req, "dept", "จะกดปิดฝั่งของตัวเองด้วย")}`
             : "\nอีกฝั่งกดแล้ว — กดปุ่มนี้คือใบจบถาวร เปิดกลับไม่ได้"),
         confirmLabel: "ปิดเรื่อง",
       };
@@ -1713,7 +1724,14 @@ export default function RequestDetailPage() {
                  ไม่ใช่ "กำลังดำเนินการ" ซึ่งฟังเหมือนมีวันแล้ว */
               status={requestStatusView(req).label}
               statusColor={requestAwaitingDue(req) ? "var(--amber)" : STATUS_TONE[req.status]}
-              statusDescription={workflowSteps[workflowIndex]?.hint}
+              /* ⭐ **ปิดแล้วกี่ฝั่ง — ประโยคเดียวกับบรรทัดใต้ป้ายในตาราง** (ม-145) — ผู้ใช้เจอ
+                 "ตารางว่ายังไม่ปิด แต่เข้ามาในใบมีการกดแล้ว" เพราะสองจอเล่าคนละแบบ ·
+                 ใบที่มีตราอย่างน้อยหนึ่งฝั่งจึงบอก ปิดแล้วกี่ฝั่ง · ฝั่งไหนวันไหน · รอใคร
+                 ⚠️ ใบที่ปิดก่อนกฎสองฝั่ง (ตราไม่ครบแต่ปิดแล้ว) ยังใช้โน้ตของรางเดิม
+                 ("ปิดโดย … · วันที่") — ไม่มีสองฝั่งให้เล่า */
+              statusDescription={closureLine && !(closureLine.complete && closureLine.done < 2)
+                ? closureLine.full
+                : workflowSteps[workflowIndex]?.hint}
               workflowSteps={workflowSteps}
               primaryAction={requestActions.primaryAction}
               secondaryActions={requestActions.secondaryActions}

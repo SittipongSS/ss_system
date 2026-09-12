@@ -28,7 +28,7 @@ const DEPT = "FN";
 const TAB_BLURB = {
   todo: "งานที่รอ FN ทำต่อ — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ",
   waiting: "ออกเอกสารไปแล้ว รอผู้ขอรับ/ส่งลูกค้า — ไม่ใช่งานค้างของเรา แต่ต้องตามได้",
-  history: "เรื่องที่จบแล้วทั้งหมดของ FN",
+  history: "เรื่องที่ปิดครบสองฝั่งหรือยกเลิกแล้วของ FN — ปิดล่าสุดอยู่บนสุด",
 };
 
 export default function FinanceRequestsPage() {
@@ -43,7 +43,18 @@ export default function FinanceRequestsPage() {
   const tabKeys = DEPT_QUEUE_TAB_KEYS;
   const urlTab = searchParams.get("tab");
   const tab = tabKeys.includes(urlTab) ? urlTab : "todo";
-  const setTab = (next) => router.replace(`/finance/requests?tab=${next}`, { scroll: false });
+  /* ⭐ ประวัติเรียง "ปิดล่าสุดก่อน" (ม-145) — ความเร่งไม่มีความหมายกับใบที่จบแล้ว และดัน
+     ใบที่ยกเลิกก่อนมีใครรับเรื่องขึ้นบนสุด · ออกจากประวัติกลับไปแบบเรียงตั้งต้นของหน้า
+     ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้ */
+  const inHistory = tab === "history";
+  const { setSort } = board;
+  useEffect(() => { setSort(inHistory ? "closed" : "urgency"); }, [inHistory, setSort]);
+  /* ⚠️ เข้าประวัติแล้วล้างตัวกรองตัวเลข (ม-145) — แถบตัวเลขถูกซ่อนในประวัติ (ทุกช่อง
+     นับเฉพาะใบที่ยังเดินอยู่ = ศูนย์ทั้งแถบ) ⇒ ตัวกรองที่ค้างมาจะให้ตารางว่างเปล่า */
+  const setTab = (next) => {
+    if (next === "history") board.setCountFilter(null);
+    router.replace(`/finance/requests?tab=${next}`, { scroll: false });
+  };
 
   // ⚠️ **ไม่มีตัวสลับขอบเขต** — ขอบเขตกรองด้วย "ใครเป็นคนเปิด" ซึ่งไม่มีความหมาย
   // สำหรับคิวของฝ่าย · API คืนคิวของฝ่ายที่ผู้ใช้ตอบได้มาให้อยู่แล้ว ด่านจริงอยู่ที่นั่น
@@ -111,7 +122,8 @@ export default function FinanceRequestsPage() {
         />
       </div>
 
-      {!loading && !loadError && (
+      {/* ไม่มีแถบตัวเลขในประวัติ — ทุกช่องเป็นศูนย์ (ม-145 · ม-80 ข้อ 3) */}
+      {!loading && !loadError && tab !== "history" && (
         <QueueCountStrip
           counts={counts}
           filter activeKey={board.countFilter}
@@ -126,6 +138,9 @@ export default function FinanceRequestsPage() {
         /* หัวเรื่องอยู่บนหัวหน้าแล้ว — หัวการ์ดซ้ำอีกชั้นกิน 81px ฟรี
            และป้ายจำนวนก็ซ้ำกับ Pager ใต้ตาราง (ดู prop sectionHeader) */
         sectionHeader={false}
+        /* ประวัติโชว์ "วันที่ปิดเรื่อง" สองฝั่งแทนกำหนดส่ง (ม-145 · preset `history`) */
+        columns={tab === "history" ? "history" : "queue"}
+        emptyText={tab === "history" ? `ยังไม่มีเรื่องของ ${DEPT} ที่จบแล้ว` : null}
         loading={loading} loadError={loadError} reload={reload}
       />
       </div>
