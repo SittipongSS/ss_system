@@ -128,3 +128,54 @@ test('⭐ ใบที่มีแถว: แถวครบ = ได้ตร�
   // ใบที่ปิด/ยกเลิกแล้วไม่ถอยกลับ
   assert.deepEqual(requestRowsClosurePatch(doc({ status: 'closed' }), mixed, NOW), {});
 });
+
+/* ── ทางกลับของตราฝั่งฝ่ายในใบรายแถว (ม-144 · ยามกันถอยหลัง 2026-09-11) ─────────────
+   สามจุดที่เคยทำให้ `answeredAt` หายถาวร: (a) ฝ่าย/ผู้ขอกด "ยังไม่จบ" ทั้งที่แถวจบครบ (b) ลบแถวที่ค้างตัวสุดท้าย
+   (c) ใบเก่าที่ `answered` ก่อนกฎสองฝั่งโดยไม่มีตรา แล้วผู้ขอกดปิด ⇒ "รอ RD ตอบ" ไม่มีปุ่มให้ฝ่าย
+   ⭐ ทางแก้ของ ม-144 **ไม่ใช่คิดตราใหม่ตอนผู้ขอปิดหรือตอนกด "ยังไม่จบ"** — ผู้ขอปิดได้แค่ฝั่งตัวเอง (ไม่ประทับ
+   แทนฝ่าย · ไม่งั้นการถอนของฝ่ายถูกลบด้วยคลิกเดียวแล้วใบปิดถาวร) · ตราฝ่ายกลับมาด้วยมือฝ่าย ("ตอบแล้ว" เมื่อแถว
+   จบครบ) · ลบแถวคิดตราใหม่ด้วยตัวคิดตัวเดียวกับก้าวรายแถว
+   วัดของจริง 2026-09-11 (184 ใบ): สถานะ (c) 0 ใบ · ใบรายแถวที่แถวครบแต่ไม่มีตราฝ่าย 0 ใบ ⇒ ไม่ต้อง backfill */
+import { readFileSync } from 'node:fs';
+
+const route = (p) => readFileSync(new URL(`../../app/api/sa/requests/[id]/${p}`, import.meta.url), 'utf8');
+const actionBlock = (src, action) => {
+  const start = src.indexOf(`action === '${action}'`);
+  assert.ok(start > 0, `ไม่เจอ action ${action}`);
+  const next = src.indexOf("} else if (action === '", start + 10);
+  return src.slice(start, next > 0 ? next : undefined);
+};
+
+test('(b) ลบแถวที่ค้างตัวสุดท้าย ⇒ แถวที่เหลือจบครบ = ได้ตราฝ่ายคืน (ตัวคิดตัวเดียวกับก้าวรายแถว)', () => {
+  const doc = { kind: 'document', dept: 'RD', status: 'acknowledged' };
+  const remaining = [{ answerStatus: 'done' }, { answerStatus: 'declined' }];
+  assert.deepEqual(requestRowsClosurePatch(doc, remaining, NOW), { answeredAt: NOW, status: 'answered' });
+  // ผู้ขอปิดฝั่งตัวเองไว้แล้ว ⇒ ลบแถวค้างแล้วใบจบทันที
+  assert.deepEqual(
+    requestRowsClosurePatch({ ...doc, closedAt: '2026-08-19T00:00:00Z' }, remaining, NOW),
+    { answeredAt: NOW, status: 'closed' },
+  );
+  const src = readFileSync(new URL('../../app/api/sa/requests/[id]/items/[itemId]/route.js', import.meta.url), 'utf8');
+  assert.match(src, /requestRowsClosurePatch\(before, remaining, nowIso\)/);
+});
+
+test('(a)(c) ผู้ขอปิดไม่ประทับแทนฝ่าย · ฝ่ายประทับคืนเองได้เมื่อแถวจบครบ', () => {
+  const src = route('route.js');
+  // ปิด/ยังไม่จบ: ไม่คิดตราฝ่ายใหม่จากแถว (ถ้าวันหน้าอยากเปลี่ยน ต้องแก้มติ ม-144 ก่อน ไม่ใช่แก้เงียบ ๆ)
+  assert.doesNotMatch(actionBlock(src, 'close'), /requestRowsClosurePatch/);
+  assert.match(actionBlock(src, 'close'), /answeredAt: before\.answeredAt/);
+  assert.doesNotMatch(actionBlock(src, 'reopen'), /requestRowsClosurePatch/);
+  // ทางกลับ: action `answer` รับใบรายแถวเมื่อแถวจบครบ (ด่านเดียวกับปุ่ม "ตอบแล้ว" บนหน้าใบ)
+  assert.match(actionBlock(src, 'answer'), /rowBased && !\(answerRows\.length && requestProgress\(answerRows\)\.complete\)/);
+  const page = readFileSync(new URL('../../app/requests/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(page, /const canMarkAnswered = \(\(!hasItems && !requestUsesDeliveredRows\(req\)\) \|\| rowsAllDone\)/);
+
+  // ผลบนใบ: หลังผู้ขอปิดใบเก่าที่ไม่มีตราฝ่าย ⇒ ใบรอฝ่าย (ไม่ใช่จบ) และฝ่ายยังตอบได้
+  const legacyAfterClose = {
+    kind: 'document', dept: 'RD', requesterDept: 'SA', status: closureStatus({ status: 'answered', closedAt: NOW }),
+    closedAt: NOW, items: [{ answerStatus: 'done' }],
+  };
+  assert.equal(legacyAfterClose.status, 'acknowledged');
+  assert.equal(requestClosure(legacyAfterClose).waitingSide, 'dept');
+  assert.equal(requestNextStep(legacyAfterClose)?.owner, 'dept');
+});
