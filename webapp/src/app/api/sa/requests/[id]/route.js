@@ -1174,7 +1174,8 @@ export async function PATCH(request, { params }) {
       if (!canManageRequest(user, before)) {
         return Response.json({ error: 'ยกเลิกได้เฉพาะผู้เปิดเรื่อง' }, { status: 403 });
       }
-      const err = cancelRequestError(before);
+      // ส่งแถวไปด้วย — ใบที่ตอบแล้วยกเลิกได้เมื่อปิดไม่ได้เท่านั้น (ถามด่านปิดตัวเดียวกับปุ่ม · ม-146)
+      const err = cancelRequestError(before, before.items);
       if (err) return Response.json({ error: err }, { status: 409 });
       const reason = String(body.cancelReason ?? '').trim();
       if (!reason) return Response.json({ error: 'ต้องระบุเหตุผลที่ยกเลิก' }, { status: 400 });

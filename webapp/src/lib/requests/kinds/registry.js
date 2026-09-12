@@ -44,7 +44,7 @@ const VALID_LINE_SHAPES = ['product_dev', 'document', 'billing_doc'];
    ⚠️ `hasPdr` เพิ่งเข้าลิสต์ 2026-09-10 — มันอยู่บน `scent_dev` มาตั้งแต่ mig 0213
    โดย **ไม่เคยถูกตรวจชนิดเลย** ⇒ พิมพ์เป็น `hasPDR` เมื่อไรก็ผ่านด่านนี้เงียบ ๆ แล้ว
    ฟอร์ม PDR หายทั้งหัวข้อโดยไม่มี error ให้ใครเห็น (โรคเดียวกับที่คอมเมนต์ข้างล่างกัน) */
-const BOOLEAN_FLAGS = ['hasItems', 'deliversRows', 'cancelBeforeAckOnly', 'hasPdr'];
+const BOOLEAN_FLAGS = ['hasItems', 'deliversRows', 'cancelBeforeAckOnly', 'hasPdr', 'closeNeedsSoConfirm'];
 
 /* ⭐ **คีย์ระดับบนสุดที่ทะเบียนรู้จัก** (2026-09-10) — เดิมไม่มี whitelist เลย
    คอมเมนต์ข้างล่างในฟังก์ชันเขียนกับดักนี้ไว้เองแล้ว ("พิมพ์ชื่อธงผิดหนึ่งตัวจะผ่าน
@@ -53,7 +53,7 @@ const BOOLEAN_FLAGS = ['hasItems', 'deliversRows', 'cancelBeforeAckOnly', 'hasPd
 const KIND_KEYS = [
   'key', 'label', 'dept', 'scope', 'legacy', 'needs', 'optionalRefs',
   'hasItems', 'lineShape', 'lineKind', 'lineNoun', 'deliversRows', 'hasPdr',
-  'cancelBeforeAckOnly', 'stepKey', 'dealType', 'form', 'summary', 'hint',
+  'cancelBeforeAckOnly', 'closeNeedsSoConfirm', 'stepKey', 'dealType', 'form', 'summary', 'hint',
   'variants', 'defaultVariant', 'pdrScents',
 ];
 

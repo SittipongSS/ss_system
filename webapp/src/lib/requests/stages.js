@@ -3,7 +3,8 @@
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
 import {
-  requestCancelBeforeAckOnly, requestPdrRowsPickScent, requestUsesDeliveredRows, requestUsesItems, requestUsesPdr,
+  requestCancelBeforeAckOnly, requestCloseNeedsSoConfirm, requestPdrRowsPickScent, requestUsesDeliveredRows,
+  requestUsesItems, requestUsesPdr,
 } from '@/lib/master/requestTypes';
 import { pdrTargetsSubmitError } from '@/lib/requests/pdrTargets';
 import { npdUncoveredError, npdUncoveredPairs } from '@/lib/requests/npdPairs';
@@ -11,6 +12,7 @@ import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
+import { scentDesignLines } from '@/lib/requests/scentDesignOrders';
 import { closureStatus } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
 
@@ -315,19 +317,39 @@ export function closeRequestError(request, items = []) {
      เดียวกับที่การ์ดสรุปด้านขวาโชว์) ⇒ จอกับด่านพูดตรงกันเสมอ
      ⚠️ ใบที่ลูกค้าไม่เอาสักตัว **ปิดไม่ได้โดยตั้งใจ** — ทางออกคือยกเลิก (คำเดียวกับ
      ด่าน `pending`/0 แถว ข้างบน) ไม่งั้นใบที่ล้มทั้งใบจะถูกปิดแล้วนับเป็นงานที่สำเร็จ */
-  const reconcile = soReconcile({ lines: request.salesOrderLines, items: rows });
-  if (reconcile && (reconcile.state === 'pending' || reconcile.state === 'short')) {
-    return `ลูกค้าคอนเฟิร์ม ${reconcile.confirmed} จาก ${reconcile.ordered} ในใบสั่งขาย`
-      + ' — ส่งให้ครบก่อน หรือยกเลิกใบถ้าลูกค้าไม่เอาแล้ว';
+  /* 🔴 **เฉพาะหัวข้อที่ประกาศ `closeNeedsSoConfirm`** (ม-146) — ม-131 เพิ่มด่านนี้ให้พัฒนากลิ่น
+     (แถวเกิดตอนส่ง) แต่เขียนเงื่อนไขเป็น "ใบนี้มีบรรทัด SO ไหม" ⇒ ขอเอกสาร/เอกสารการเงินที่อ้าง
+     SO ไว้ (optionalRefs) โดนด้วย · แถวของสองหัวข้อนั้นไม่มีขั้น "ลูกค้าคอนเฟิร์ม" เลย ⇒ ยอด
+     คอนเฟิร์มเป็น 0 ตลอดกาล ⇒ ปิดไม่ได้ (RQ-DF-26090041 · RQ-DF-26090042 · DC-26080004) */
+  if (requestCloseNeedsSoConfirm(request.kind)) {
+    /* ⚠️ นับเฉพาะบรรทัดออกแบบกลิ่น (ตัวหารเดียวกับ PDR 1.12 · `scentCountForOrder`) — SO ใบหนึ่ง
+       ขายของอื่นปนได้ (ด่านหน้าประตูบังคับแค่ "มีบรรทัดออกแบบกลิ่นอย่างน้อยหนึ่ง") ⇒ รวมทุกบรรทัด
+       = ใบที่ลูกค้าคอนเฟิร์มครบทุกกลิ่นขึ้น "3 จาก 13" แล้วปิดไม่ได้ตลอดกาล (รีวิว ม-146) */
+    const reconcile = soReconcile({ lines: scentDesignLines(request.salesOrderLines || []), items: rows });
+    if (reconcile && (reconcile.state === 'pending' || reconcile.state === 'short')) {
+      return `ลูกค้าคอนเฟิร์ม ${reconcile.confirmed} จาก ${reconcile.ordered} ในใบสั่งขาย`
+        + ' — ส่งให้ครบก่อน หรือยกเลิกใบถ้าลูกค้าไม่เอาแล้ว';
+    }
   }
   return null;
 }
 
-export function cancelRequestError(request) {
+/**
+ * ⚠️ รับ `items` ด้วย (ม-146) — ใบที่ตอบแล้วยกเลิกได้ **เฉพาะตอนที่ปิดไม่ได้** ซึ่งต้องถาม
+ * `closeRequestError` ตัวเดียวกับปุ่มปิด (ผู้เรียกที่ไม่ส่งแถวมา = ถือว่าไม่มีแถว)
+ */
+export function cancelRequestError(request, items = request?.items || []) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'cancelled') return 'คำร้องนี้ถูกยกเลิกไปแล้ว';
   if (request.status === 'closed') return 'คำร้องที่ปิดแล้วยกเลิกไม่ได้';
-  if (request.status === 'answered') return 'คำร้องนี้ตอบแล้ว — ปิดเรื่องแทนการยกเลิก';
+  /* ⭐ **ตอบแล้ว = ปิดแทนยกเลิก — ยกเว้นตอนที่ปิดไม่ได้** (ม-146)
+     🐞 ทางตัน: ด่านปิด (เช่น "ลูกค้าคอนเฟิร์ม 0 จาก 1 ในใบสั่งขาย — … หรือยกเลิกใบถ้าลูกค้าไม่เอา
+     แล้ว") บอกให้ยกเลิก แต่ด่านนี้ห้ามยกเลิกใบที่ตอบแล้ว ⇒ ผู้ขอกดได้แค่ "ยังไม่จบ" วนไปมา
+     (SB-26080005 ค้าง 15 วัน) · กติกา: **ใบที่ยังไม่จบต้องมีทางออกอย่างน้อยหนึ่งทางเสมอ**
+     ⇒ ถามด่านปิดตัวเดียวกับปุ่ม · ปิดได้ = ให้ปิด (ประวัติบอกว่าจบด้วยของ) · ปิดไม่ได้ = ยกเลิกได้ */
+  if (request.status === 'answered' && !closeRequestError(request, items)) {
+    return 'คำร้องนี้ตอบแล้ว — ปิดเรื่องแทนการยกเลิก';
+  }
   /* ⭐ **บางหัวข้อยกเลิกได้ก่อนฝ่ายรับเรื่องเท่านั้น** (มติข้อ 24 ของใบประเมิน)
      งานที่ต้องส่งคนออกไปหน้างาน พอฝ่ายรับเรื่องแล้วแปลว่ามีคนลงแรงจริง — บางใบ
      ขับรถไปวัดมาแล้วด้วย ⇒ ยกเลิกทิ้งเฉย ๆ คือลบงานที่เกิดขึ้นแล้ว
