@@ -248,6 +248,7 @@ export async function PATCH(request, { params }) {
   let npdRowsPlan = null;
   let npdRowsAck = null;
   let npdRowsWarning = null;
+  let ackRowsWarning = null;
 
   try {
     if (action === 'submit') {
@@ -1319,7 +1320,11 @@ export async function PATCH(request, { params }) {
         ackByName: user?.name ?? null,
         updatedAt: nowIso,
       }).eq('requestId', id).is('ackAt', null);
-      if (ackError) console.error('[requests] ประทับวันรับเรื่องลงแถวไม่สำเร็จ:', ackError.message);
+      /* ⚠️ ล้ม = ทุกแถวค้าง "รอรับเรื่อง" ทั้งที่ใบรับแล้ว (คำสั่งเดียวทั้งใบ ล้มทั้งก้อน) ⇒ ต้องถึงจอ ไม่ใช่แค่ log */
+      if (ackError) {
+        console.error('[requests] ประทับวันรับเรื่องลงแถวไม่สำเร็จ:', ackError.message);
+        ackRowsWarning = 'รับเรื่องแล้ว แต่ประทับวันรับเรื่องลงรายการไม่สำเร็จ — กด "รับเรื่อง" ที่รายการที่ยังค้าง';
+      }
     }
 
     /* ── นัดของเจ้าหน้าที่: เกิด/ขยับตามวันบนใบ (แผน เฟส 2) ─────────────────────
@@ -1462,8 +1467,8 @@ export async function PATCH(request, { params }) {
     return Response.json({
       ...after,
       // ครึ่งหลังของงานล้ม — จอต้องทักเป็นคำเตือน ไม่ใช่ขึ้น "สำเร็จ" เฉย ๆ
-      ...(visitWarning || npdRowsWarning
-        ? { _warning: [visitWarning, npdRowsWarning].filter(Boolean).join(' · ') } : {}),
+      ...(visitWarning || npdRowsWarning || ackRowsWarning
+        ? { _warning: [visitWarning, npdRowsWarning, ackRowsWarning].filter(Boolean).join(' · ') } : {}),
       _mine: canManageRequest(user, after),
       _canEditPdr: canEditPdr(user, after),
       // ต้องคืนคู่กับ `_editPdrBlocker` เสมอ — จอตัดสินว่าจะโชว์ปุ่มแก้แบบกดไม่ได้

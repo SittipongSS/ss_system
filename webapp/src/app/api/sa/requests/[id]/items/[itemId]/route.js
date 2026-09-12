@@ -322,6 +322,12 @@ export async function PATCH(request, { params }) {
 
     return Response.json(await findRequest(supabase, id));
   } catch (e) {
+    // ดัชนีคู่ซ้ำ (mig 0356): รับเรื่องแถวที่คู่ หมวด × กลิ่น ซ้ำกับแถวที่รับไปแล้ว — ข้อความไทย ไม่ใช่ error ดิบของ DB
+    if (e?.code === '23505' && /product_pair_uk/.test(e.message || '')) {
+      return Response.json({
+        error: 'รายการนี้ซ้ำหมวด × กลิ่นกับรายการอื่นที่รับเรื่องแล้ว — ลบรายการซ้ำ หรือคุยกับผู้ขอในเธรด',
+      }, { status: 409 });
+    }
     return Response.json({ error: e.message }, { status: 500 });
   }
 }
@@ -360,14 +366,19 @@ export async function DELETE(request, { params }) {
   if (gate) return Response.json({ error: gate }, { status: 409 });
 
   try {
-    /* ⚠️ ไฟล์แนบของบรรทัดต้องไปก่อนแถว — polymorphic ไม่มี FK cascade ⇒ ลบแถวเฉย ๆ
+    /* ⚠️ ไฟล์แนบของบรรทัดต้องถูกกวาดด้วย — polymorphic ไม่มี FK cascade ⇒ ลบแถวเฉย ๆ
        แล้วทั้งแถวไฟล์แนบและไฟล์บน Drive ค้างเป็นของกำพร้า · วัดบน prod 2026-08-25:
        แถวกำพร้าชนิด `dept_request_item` 3 แถว มาจากเส้นนี้
        ⚠️ เส้นลบอีกสองทางของบรรทัดเดียวกัน (ลบทั้งใบ · ลบวัสดุที่ถูกอ้าง) เรียก
        `purgeAttachments` อยู่แล้ว — เส้นนี้เป็นทางที่หลุด */
-    await purgeAttachments('dept_request_item', itemId);
+    /* ⚠️ **ลบแถวก่อน แล้วค่อยกวาดไฟล์** (รีวิว mig 0356) — ลบแถวล้มได้จริง: แถวลูกรอบแก้ถูก SET NULL เป็นแถว
+       ต้นทางแล้วชนดัชนีคู่ซ้ำ (เพิ่งมีคนบันทึก "ลูกค้าขอแก้" ระหว่างกดลบ) · กวาดก่อน = แถวรอดแต่ไฟล์หายถาวร */
     const { error: rowError } = await supabase.from('dept_request_items').delete().eq('id', itemId);
+    if (rowError?.code === '23505') {
+      return Response.json({ error: 'รายการนี้เพิ่งมีรอบแก้ต่อจากมัน — ลบไม่ได้แล้ว โหลดหน้าใหม่' }, { status: 409 });
+    }
     if (rowError) throw rowError;
+    await purgeAttachments('dept_request_item', itemId);
 
     /* ⭐ **คิดตราปิดของใบใหม่หลังลบแถว** (รีวิว ม-144 · บั๊กเดิมทุกหัวข้อที่มีแถว) — ลบแถวที่ค้างตัวสุดท้าย
        (เช่นแถวรอบแก้) แล้วแถวที่เหลือจบครบหมด แต่ใบยังค้าง "รับเรื่องแล้ว" ไม่มีตราฝั่งฝ่าย ⇒ ปุ่ม "ตอบแล้ว"

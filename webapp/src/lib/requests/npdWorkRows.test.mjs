@@ -275,3 +275,16 @@ test('⭐ คิว + รางฝ่าย: ใบ NPD แถวครบแต
   assert.equal(requestNextStep({ ...npd({ ...base, targets: [T('01-009', 'SC-1')] }), items: settled }).label, 'รอปิดเรื่อง');
   assert.equal(requestNextStep({ ...npd({ ...base, targets: undefined }), items: settled }).label, 'รอปิดเรื่อง');
 });
+
+test('⭐ รับเรื่องไม่ได้ถ้าแถวพัฒนาสูตรคู่ หมวด × กลิ่น ซ้ำ (ดัชนี mig 0356 จะทำให้ประทับทั้งใบล้ม)', async () => {
+  const { acknowledgeRequestError } = await import('./stages.js');
+  const std = { kind: 'formula_dev', variant: 'standard', status: 'pending', dept: 'RD' };
+  const dupRows = [
+    row('DRI-1', '01-009', 'SC-1', { ackAt: null }),
+    row('DRI-2', '01-009', 'SC-1', { ackAt: null, label: 'สเปรย์ · S1' }),
+  ];
+  assert.match(acknowledgeRequestError({ ...std, items: dupRows }), /"สเปรย์ · S1" ซ้ำหมวด × กลิ่น/);
+  // แถวรอบแก้ใช้คู่เดิมได้โดยตั้งใจ
+  const rework = [row('DRI-1', '01-009', 'SC-1'), row('DRI-2', '01-009', 'SC-1', { derivedFromItemId: 'DRI-1' })];
+  assert.equal(acknowledgeRequestError({ ...std, items: rework }), null);
+});

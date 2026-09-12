@@ -131,6 +131,18 @@ export function acknowledgeRequestError(request) {
     const targetError = pdrTargetsSubmitError(request.targets);
     if (targetError) return `${targetError} — ให้ผู้ขอแก้แบบฟอร์ม PDR หรือตีกลับ`;
   }
+  /* ⭐ แถวพัฒนาสูตรคู่ หมวด × กลิ่น ซ้ำ (สองคนแก้บรรทัดพร้อมกันตอนรอรับเรื่อง — ด่านฟอร์มเห็นทีละฝั่ง) —
+     ดัชนี mig 0356 ไม่ให้แถวที่รับเรื่องแล้วซ้ำ ⇒ การประทับวันรับเรื่องลงแถวทั้งใบล้มทั้งก้อน แล้วทุกแถวค้าง
+     "รอรับเรื่อง" (DC-26080003) · ถามก่อนเขียนอะไร (รีวิว mig 0356) */
+  const seen = new Set();
+  for (const row of request.items || []) {
+    if (row?.lineKind !== 'product_dev' || row.derivedFromItemId) continue;
+    const key = `${row.categoryCode}::${row.scentId}`;
+    if (seen.has(key)) {
+      return `รายการ "${row.label || row.categoryCode}" ซ้ำหมวด × กลิ่นกับรายการอื่นในใบ — ให้ผู้ขอแก้รายการหรือตีกลับ`;
+    }
+    seen.add(key);
+  }
   return null;
 }
 
