@@ -7194,6 +7194,13 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .performance-tracking-table .fz-table tfoot td.fz-c1 {
   position: sticky;
   left: 0;
+  /* 🐞 **ต้องล้าง `bottom` ที่ตกค้าง** (2026-09-12) — กฎ `tfoot td.fz-foot` ข้างบนตั้ง
+     `bottom: 0` ไว้ · กฎเหนือขึ้นไปปิด `position` ของ `.fz-foot` เป็น static ก็จริง
+     แต่เซลล์นี้มีทั้งสองคลาส (`fz-c1 fz-foot`) แล้วบรรทัดนี้เปิด sticky กลับมาเพื่อ
+     ตรึงแนวนอน ⇒ `bottom: 0` กลับมามีผลด้วย ⇒ **ป้าย "รวมทั้งบริษัท" ลอยติดขอบล่าง
+     ของกล่อง ห่างจากตัวเลขของแถวตัวเองได้ถึง 155px** (วัดในกล่องทดลอง) ทั้งที่กฎ
+     ข้างบนเขียนไว้เองว่าตารางนี้ "ตรึงเฉพาะคอลัมน์แรกแนวนอน" */
+  bottom: auto;
   z-index: 5;
 }
 
