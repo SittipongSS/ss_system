@@ -24,7 +24,7 @@ export async function applyNpdWorkRows(supabase, {
 
   /* ⚠️ **อ่านแถวสดก่อนงอก** (รีวิว ม-144) — สองคนกดรับเรื่อง/บันทึกแบบฟอร์มพร้อมกัน ต่างคนต่างวางแผนจาก
      ภาพเดิม (ยังไม่มีแถว) แล้วงอกซ้ำทุกคู่ · แถวต้นทางของ NPD ลบที่แถวไม่ได้ ⇒ ซ้ำแล้วค้างถาวร
-     อ่านซ้ำหน้างานปิดช่องนั้นเกือบหมด (ไม่มี transaction ให้ปิดสนิท) */
+     อ่านซ้ำหน้างานปิดช่องนั้นเกือบหมด · ช่องที่เหลือ (อ่านทันกันพอดี) ปิดด้วยดัชนี mig 0356 + `insertNpdWorkRows` */
   let toInsert = plan.insert;
   if (toInsert.length) {
     const { data: fresh, error: freshError } = await supabase.from('dept_request_items')
@@ -59,9 +59,9 @@ export async function applyNpdWorkRows(supabase, {
       createdAt: nowIso,
       updatedAt: nowIso,
     }));
-    const { error } = await supabase.from('dept_request_items').insert(rows);
-    if (error) return { ...result, error: error.message };
-    result.inserted = rows;
+    const written = await insertNpdWorkRows(supabase, requestId, rows);
+    if (written.error) return { ...result, error: written.error };
+    result.inserted = written.inserted;
   }
 
   for (const u of plan.update) {
@@ -88,4 +88,38 @@ export async function applyNpdWorkRows(supabase, {
     result.kept = plan.remove.filter((r) => !goneIds.has(r.id));
   }
   return result;
+}
+
+const pairOf = (r) => `${r.categoryCode}::${r.scentId}`;
+// ชนดัชนีคู่ซ้ำ (23505) · deadlock ระหว่างผู้เขียนสองคนที่รอกันบนดัชนีเดียวกัน (40P01) — ทั้งคู่แปลว่า "อีกคนเขียนอยู่"
+const RACE_CODES = new Set(['23505', '40P01']);
+
+/**
+ * เขียนแถวงานชุดใหม่ — ชนดัชนีคู่ซ้ำ (mig 0356) = อีกคำขอเพิ่งงอกคู่เดียวกันไปก่อน ⇒ อ่านใหม่แล้วเติมเฉพาะที่ขาด
+ *
+ * ⭐ **ชนแล้วไม่ใช่ความผิดพลาดของผู้ใช้** — สองคนกดรับเรื่อง/บันทึกแบบฟอร์มพร้อมกัน ผลที่ต้องการ (ทุกคู่มีแถว)
+ *    เกิดขึ้นแล้วจากอีกฝั่ง · ตอบ error = คำเตือน "กดบันทึกอีกครั้งเพื่อซ่อม" ทั้งที่ไม่มีอะไรต้องซ่อม
+ * ⚠️ insert หลายแถวในคำสั่งเดียวเป็นก้อนเดียว (ชนแถวเดียว = ไม่ลงสักแถว) ⇒ ลองใหม่ได้โดยไม่ต้องไล่ว่าตัวไหนลงแล้ว
+ * ⚠️ **เรียงแถวตามคู่ก่อนเขียนทุกครั้ง** (รีวิว mig 0356) — สองคนเขียนคู่ชุดเดียวกันคนละลำดับ (ลำดับมาจากแบบฟอร์ม)
+ *    จะรอกันบนดัชนีจน Postgres ตัดสินเป็น deadlock · ลำดับเดียวกัน = คนหลังรอแล้วได้ 23505 ตามปกติ
+ * ⚠️ วนจนกว่าจะลงหรือไม่เหลืออะไรให้เขียน — ชนทุกครั้งแปลว่ามีคู่ใหม่โผล่อย่างน้อยหนึ่ง ⇒ จบภายใน rows.length+1 รอบ
+ *    (ลองแค่ครั้งเดียวไม่พอ: สามคนพร้อมกัน ครั้งที่สองก็ชนได้ ทั้งที่ทุกคู่มีแถวแล้ว)
+ * @returns `{ inserted, error }` — `inserted` = แถวที่คำขอนี้เขียนจริง (ไม่รวมของอีกคำขอ)
+ */
+export async function insertNpdWorkRows(supabase, requestId, rows) {
+  let rest = [...(rows || [])].sort((a, b) => pairOf(a).localeCompare(pairOf(b), 'en'));
+  for (let round = 0; rest.length; round += 1) {
+    const { error } = await supabase.from('dept_request_items').insert(rest);
+    if (!error) return { inserted: rest, error: null };
+    if (!RACE_CODES.has(error.code) || round >= (rows || []).length) return { inserted: [], error: error.message };
+
+    const { data: now, error: readError } = await supabase.from('dept_request_items')
+      .select('categoryCode, scentId, lineKind, sortOrder').eq('requestId', requestId);
+    if (readError) return { inserted: [], error: readError.message };
+    const have = new Set((now || []).filter((r) => r.lineKind === 'product_dev').map(pairOf));
+    // ลำดับต่อท้ายของจริงตอนนี้ — ของเดิมคิดจากภาพก่อนอีกคำขอเขียน (เลขชนกันได้ แม้จอไม่โชว์เลขนี้)
+    const last = Math.max(0, ...(now || []).map((r) => Number(r.sortOrder) || 0));
+    rest = rest.filter((r) => !have.has(pairOf(r))).map((r, i) => ({ ...r, sortOrder: last + i + 1 }));
+  }
+  return { inserted: [], error: null };
 }
