@@ -93,6 +93,8 @@ export default function FormulaDevBoard({
                       <RegistryCell
                         registry={r.registry}
                         fallback={r.name}
+                        // สิ่งที่ขอ (หมวด · กลิ่น) ของแถวที่ส่งสูตรแล้ว — ไม่พิมพ์เป็นบรรทัดที่สาม ชี้ค้างดูได้
+                        title={r.registry ? r.name : undefined}
                         extra={(
                           <>
                             {r.rework && <span className="ui-badge">รอบแก้</span>}
@@ -102,11 +104,14 @@ export default function FormulaDevBoard({
                             {r.outcomeLabel && <StatusBadge tone={r.outcomeTone} label={r.outcomeLabel} />}
                             {/* สิ่งที่ขอไว้ตอนเปิดใบ — สแนปช็อต ไม่ใช่ค่าทะเบียน
                                 ⚠️ ยังไม่มีสูตร = RD ยังไม่ส่ง บอกตรง ๆ ดีกว่าเว้นว่างให้เดา */}
-                            <div className={styles.note}>
-                              {/* ยังไม่ส่ง: รอบแก้บอกว่ากำลังแก้สูตรไหน (อ่านแล้วรู้ว่างานคืออะไร) · แถวแรกบอกว่ายังไม่ส่ง */}
-                              {r.registry ? r.name
-                                : r.reworkOf ? `แก้จาก ${r.reworkOf} · ยังไม่ส่งสูตร` : "ยังไม่มีสูตรออกมาจากแถวนี้"}
-                            </div>
+                            {/* ⭐ **ส่งสูตรแล้ว = สองบรรทัด** (รหัส · ชื่อสูตร จากทะเบียน · มติผู้ใช้ 2026-09-15) — บรรทัดที่สาม "หมวด · กลิ่น"
+                                พูดซ้ำกับชื่อสูตรเกือบทุกแถว (ชื่อสูตรมีชื่อกลิ่นอยู่แล้ว) และตัดบรรทัดกลางคำ · ย้ายไปเป็น tooltip ของก้อนชื่อ
+                                ⚠️ ยังไม่ส่ง = ยังไม่มีชื่อสูตร ⇒ บรรทัดนี้คือบรรทัดที่สองที่บอกสถานะงาน ต้องคงไว้ */}
+                            {!r.registry && (
+                              <div className={styles.note}>
+                                {r.reworkOf ? `แก้จาก ${r.reworkOf} · ยังไม่ส่งสูตร` : "ยังไม่มีสูตรออกมาจากแถวนี้"}
+                              </div>
+                            )}
                           </>
                         )}
                       />
