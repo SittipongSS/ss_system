@@ -23,7 +23,7 @@ export function registryHref(registry) {
   return `${HREF[registry.kind] || HREF.scent}/${registry.id}`;
 }
 
-export default function RegistryCell({ registry = null, fallback = "—", extra = null }) {
+export default function RegistryCell({ registry = null, fallback = "—", extra = null, title = undefined }) {
   if (!registry) {
     return (
       <div className={styles.name}>
@@ -35,7 +35,7 @@ export default function RegistryCell({ registry = null, fallback = "—", extra 
   return (
     <>
       {/* ลิงก์เดียวคร่อมทั้งรหัสและชื่อ — กดตรงไหนของก้อนก็เข้าหน้ารายละเอียดตัวนั้น */}
-      <Link className={styles.registryLink} href={registryHref(registry)}>
+      <Link className={styles.registryLink} href={registryHref(registry)} title={title}>
         <strong>{registry.code || registry.name || fallback}</strong>
         {registry.code && registry.name ? <span>{registry.name}</span> : null}
       </Link>
