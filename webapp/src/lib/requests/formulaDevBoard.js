@@ -17,24 +17,29 @@ import { hopLabel } from '@/lib/requests/hops';
    แค่ไหน · ประกอบที่นี่ (ตัวสร้างแถว) ไม่ใช่ใน JSX — กฎหลังบั๊กรางซ้ำ #1033 */
 import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
 import { reworkBriefOf } from '@/lib/requests/rework';
+import { productDevLabel } from '@/lib/requests/rowLabel';
 
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
 
 /**
  * ทั้งใบ → แถวของตารางสรุป
  *
- * ⚠️ `name` ใช้ `label` ของแถวซึ่งเป็น **snapshot ตอนเปิดใบ** ("เทียนหอม · SC-2611
- * Amber Woods") ไม่ใช่ชื่อจากทะเบียนสด ⇒ ทะเบียนเปลี่ยนชื่อทีหลังแล้วใบเก่ายังอ่าน
- * ออกว่าตอนนั้นขออะไร (แพตเทิร์นเดียวกับ briefBoard)
+ * ⚠️ `name` = "สิ่งที่ขอ": หมวดจาก `label` (snapshot ตอนเปิดใบ) + **กลิ่นสดจากทะเบียน** (`productDevLabel`) · ไม่มีกลิ่นสด
+ * ใช้ป้ายที่ตัดหาง "→ รหัส" แล้ว · ตัวป้ายในฐานยังเป็น snapshot เดิม (2026-09-15 · ตารางดูยาก)
  */
 export function formulaDevBoard(items = []) {
-  return (items || [])
+  const all = items || [];
+  return all
     .filter((i) => i?.lineKind === 'product_dev')
     .map((item) => {
       const stage = rowStage(item);
+      const parent = item.derivedFromItemId ? all.find((i) => i?.id === item.derivedFromItemId) || null : null;
+      const hasRework = all.some((i) => i?.derivedFromItemId === item.id);
       return {
         id: item.id,
-        name: item.label || '—',
+        /* ⭐ **สิ่งที่ขอ = หมวด · กลิ่นสดจากทะเบียน** (2026-09-15 · ผู้ใช้: ตารางดูยาก) — ป้ายในฐานแช่รหัสตอนเปิดใบ/ตอนส่ง
+           ("· - ชื่อกลิ่น → 6731108202601") ⇒ แถวเดียวโชว์สองรหัสของสูตรเดียว และรอบแก้ยกลูกศรของแถวต้นทางมา (`rowLabel.js`) */
+        name: productDevLabel(item.label, item.refScent),
         spec: item.spec || null,
         qty: item.qty ?? null,
         unit: item.unit || null,
@@ -51,11 +56,15 @@ export function formulaDevBoard(items = []) {
         // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
         rework: !!item.derivedFromItemId,
         // ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)
-        reworkBrief: reworkBriefOf(item, items),
+        reworkBrief: reworkBriefOf(item, all),
+        // รอบแก้แก้จากสูตรตัวไหน (ค่าสดของแถวต้นทาง) — แถวรอบแก้ที่ยังไม่ส่งบอกได้ว่ากำลังแก้อะไร แทนประโยค "ยังไม่มีสูตร" ลอย ๆ
+        reworkOf: parent?.refFormula ? (parent.refFormula.code || parent.refFormula.name || null) : null,
         outcome: item.outcome || null,
         outcomeLabel: item.outcome ? hopLabel('outcome', item.outcome) : null,
         outcomeTone: item.outcome ? OUTCOME_TONE[item.outcome] || 'neutral' : null,
-        outcomeNote: item.outcomeNote || null,
+        /* ⚠️ **คอมเมนต์ "ขอให้แก้" โชว์ที่แถวรอบแก้ที่เดียว** (เป็น "โจทย์รอบนี้") — เดิมพิมพ์ข้อความเดียวกันสองก้อนติดกัน
+           (ใต้แถวต้นทาง + ใต้แถวรอบแก้) · แถวต้นทางยังมีชิป "ลูกค้าขอให้แก้" · แถวที่ยังไม่มีรอบแก้ (ข้อมูลเก่า) ยังโชว์ที่ตัวเอง */
+        outcomeNote: item.outcome === 'revise' && hasRework ? null : item.outcomeNote || null,
         confirmedQty: item.confirmedQty ?? null,
         stage,
         track: rowTrackSteps(item),

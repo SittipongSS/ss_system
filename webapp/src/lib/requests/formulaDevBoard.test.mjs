@@ -66,3 +66,40 @@ test('แถวที่ผ่านขั้นราคา — ราคาโ
   const [bare] = formulaDevBoard([{ id: 'B', lineKind: 'product_dev', label: 'x' }]);
   assert.equal(bare.priced, null);
 });
+
+test('⭐ ตารางอ่านง่าย (2026-09-15): ป้ายสิ่งที่ขอจากกลิ่นสด · รอบแก้บอกว่าแก้จากสูตรไหน · คอมเมนต์ขอให้แก้ไม่พิมพ์ซ้ำ', () => {
+  const stale = 'ครีมทามือ · - CHAO PHRAYA THAI CONTEMPORARY 01 REV 3 → 6731108202601';
+  const scent = { id: 'SCT-1', code: 'PF319010103', name: 'CHAO PHRAYA THAI CONTEMPORARY 01 REV 3' };
+  const note = 'ลูกค้า Feedback อยากให้กลิ่นฟุ้งกว่านี้';
+  const [parent, rework] = formulaDevBoard([
+    row({
+      id: 'P', label: stale, refScent: scent, producedFormulaId: 'FML-1', ackAt: 'x', readyAt: 'x', pickedUpAt: 'x', sentAt: 'x',
+      outcome: 'revise', outcomeNote: note, refFormula: { id: 'FML-1', code: 'PF319010103-P3', name: 'HAND CREAM' },
+    }),
+    row({ id: 'K', label: stale, refScent: scent, derivedFromItemId: 'P', ackAt: 'x' }),
+  ]);
+  // ไม่มีรหัสเก่า/ลูกศรในป้าย
+  assert.equal(parent.name, 'ครีมทามือ · PF319010103 CHAO PHRAYA THAI CONTEMPORARY 01 REV 3');
+  assert.equal(rework.name, parent.name);
+  // รอบแก้รู้ว่าแก้จากสูตรไหน (ค่าสด)
+  assert.equal(rework.reworkOf, 'PF319010103-P3');
+  assert.equal(parent.reworkOf, null);
+  // คอมเมนต์โชว์ที่รอบแก้ (โจทย์) ที่เดียว
+  assert.equal(parent.outcomeNote, null);
+  assert.equal(rework.reworkBrief, note);
+  // แถวขอให้แก้ที่ยังไม่มีแถวรอบแก้ (ข้อมูลเก่า) ยังเห็นคอมเมนต์ที่ตัวเอง
+  const [lonely] = formulaDevBoard([row({ id: 'L', outcome: 'revise', outcomeNote: note })]);
+  assert.equal(lonely.outcomeNote, note);
+});
+
+test('รอบแก้ที่แถวต้นทางไม่มีสูตรในทะเบียน = ไม่อ้างสูตร · ลบแถวรอบแก้แล้วคอมเมนต์กลับมาที่แถวต้นทาง', () => {
+  const note = 'ขอหวานขึ้น';
+  const [, rework] = formulaDevBoard([
+    row({ id: 'P', outcome: 'revise', outcomeNote: note }),
+    row({ id: 'K', derivedFromItemId: 'P' }),
+  ]);
+  assert.equal(rework.reworkOf, null);
+  // แถวรอบแก้ถูกลบ = ไม่มีที่อื่นโชว์คอมเมนต์ ⇒ ต้องกลับมาโชว์ที่แถวต้นทาง
+  const [parentAlone] = formulaDevBoard([row({ id: 'P', outcome: 'revise', outcomeNote: note })]);
+  assert.equal(parentAlone.outcomeNote, note);
+});

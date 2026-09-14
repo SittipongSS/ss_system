@@ -42,8 +42,13 @@ import { canAnswerRequestsFor } from '@/lib/permissions';
 import { deleteRequestRowError, registryOwnedByRow } from '@/lib/requests/rowDelete';
 import { countRegistryRefs } from '@/lib/master/scentFormulaAdmin';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { requestedLabel } from '@/lib/requests/rowLabel';
 
 export const dynamic = 'force-dynamic';
+
+/* ป้ายของแถวที่ใช้เล่าในเธรด/audit — พัฒนาสูตรตัดหาง "→ รหัส" ที่ป้ายเก่าในฐานยังมี (2026-09-15) · รหัสนั้นเป็นรหัสตอนส่ง
+   ทะเบียนเปลี่ยนแล้วประวัติจะเล่ารหัสที่ไม่มีอยู่ · สูตรที่ได้จริงต่อท้ายแยก (`formulaText` ข้างล่าง) จากทะเบียนสด */
+const rowText = (r) => (r?.lineKind === 'product_dev' ? requestedLabel(r?.label) : r?.label);
 
 export async function PATCH(request, { params }) {
   const supabase = getSupabaseAdmin();
@@ -162,6 +167,7 @@ export async function PATCH(request, { params }) {
     let deliveryWarning = null;
     let archivedFormula = null;
     let createdFormula = null;
+    let deliveredFormula = null;
     let expectedFormulaAction = null;
     let guardFormulaAction = false;
     if (formulaDelivery) {
@@ -252,7 +258,7 @@ export async function PATCH(request, { params }) {
         await recordAudit({
           user, action: 'update', entityType: 'formula', entityId: existing.id,
           before: existing, after: { ...existing, status: 'archived' },
-          summary: `เลิกใช้สูตร ${existing.code || existing.name} — ส่งรอบแก้ของ ${row.label} (${before.docNo || id})`,
+          summary: `เลิกใช้สูตร ${existing.code || existing.name} — ส่งรอบแก้ของ ${rowText(row)} (${before.docNo || id})`,
           request,
         });
         try {
@@ -279,6 +285,7 @@ export async function PATCH(request, { params }) {
         formula = await create();
       }
       patch.producedFormulaId = formula.id;
+      deliveredFormula = formula;
       if (plan.kind !== 'bind') createdFormula = formula;
       // จำว่าการส่งนี้ทำอะไรกับทะเบียน (mig 0358) — ลบรายการทีหลังถอยได้เฉพาะ `revise` · เดาจากทะเบียนทีหลังไม่ได้
       patch.producedFormulaAction = formulaActionFor({ plan, row: rowNow, items: before.items || [] });
@@ -288,9 +295,8 @@ export async function PATCH(request, { params }) {
          ล้มแล้ว `clearIntent` ล้างเจตนาทิ้งไประหว่างนั้นได้ ⇒ ใส่เงื่อนไข = 409 ทั้งที่ทะเบียนเปลี่ยนแล้ว + บันทึกหาย */
       guardFormulaAction = plan.kind !== 'revise';
       expectedFormulaAction = rowNow.producedFormulaAction;
-      // ป้ายบนแถวเป็น snapshot ตอนขอ (หมวด · กลิ่น) — เติมรหัสสูตรที่ได้จริงต่อท้าย
-      // ให้อ่านออกจากในคำร้องว่าได้สูตรตัวไหน โดยไม่ต้องเปิดทะเบียน
-      patch.label = `${row.label} → ${formula.code || formula.name}`;
+      /* ⚠️ **ไม่ต่อ "→ รหัสสูตร" ท้ายป้ายแล้ว** (2026-09-15 · ผู้ใช้: ตารางดูยาก) — ป้ายคือ "สิ่งที่ขอ" · รหัสที่ต่อไว้คือรหัสตอนส่ง
+         ทะเบียนเปลี่ยนแล้วแถวโชว์สองรหัส และรอบแก้ยกป้ายไปทั้งดุ้นจนลูกศรซ้อน · สูตรที่ได้อ่านสดจากทะเบียน (`RegistryCell`) */
     }
     /* ส่งงาน = เขียนได้เฉพาะแถวที่ยังไม่ถูกส่ง — กดซ้ำ/สองแท็บ ต้องไม่ทับบันทึกของครั้งแรก (สูตร · การกระทำกับทะเบียน) แล้ว
        รายงานว่าสำเร็จพร้อมเธรด/audit ปลอม (รีวิว ม-147 รอบสี่) · ก้าวอื่นเขียนตามเดิม */
@@ -316,7 +322,7 @@ export async function PATCH(request, { params }) {
         if (archivedFormula) {
           await appendUpdate(supabase, {
             entityType: 'dept_request', entityId: id, kind: 'update',
-            body: `ส่งงาน — ${row.label} · สูตรเดิม ${archivedFormula.code || archivedFormula.name} เปลี่ยนเป็นเลิกใช้`,
+            body: `ส่งงาน — ${rowText(row)} · สูตรเดิม ${archivedFormula.code || archivedFormula.name} เปลี่ยนเป็นเลิกใช้`,
             user,
           }).catch(() => {});
         }
@@ -451,11 +457,24 @@ export async function PATCH(request, { params }) {
        `declineReason` บนแถว) — ก้าวนี้ล้างตราของก้าวส่งทิ้งอย่างเดียว ⇒ ถ้าไม่พ่วง
        เหตุผลไว้ในเธรด ผู้ขอจะเห็นแถวเด้งกลับเป็น "กำลังทำ" โดยไม่มีที่ไหนบอกว่าทำไม */
     const unreadyReason = hop === 'unready' ? String(body.note ?? '').trim() : '';
+    /* ⭐ **ประวัติต้องบอกว่าสูตรตัวไหน** — ป้ายเลิกต่อ "→ รหัส" แล้ว (2026-09-15) ⇒ ไม่ต่อตรงนี้ เธรดของแถวต้นทางกับแถวรอบแก้
+       อ่านเหมือนกันทุกตัวอักษร ไม่รู้ว่าลูกค้าคอนเฟิร์มรอบไหน · ส่งงานรอบนี้ใช้สูตรที่เพิ่งผูก · ก้าวอื่นอ่านรหัสสดจากทะเบียน */
+    let formulaText = '';
+    if (row.lineKind === 'product_dev') {
+      if (deliveredFormula) {
+        formulaText = deliveredFormula.code || deliveredFormula.name || '';
+      } else if (row.producedFormulaId) {
+        const { data: heldFormula } = await supabase.from('formulas')
+          .select('code, name').eq('id', row.producedFormulaId).maybeSingle();
+        formulaText = heldFormula?.code || heldFormula?.name || '';
+      }
+    }
+    const formulaSuffix = formulaText ? ` · สูตร ${formulaText}${row.derivedFromItemId ? ' (รอบแก้)' : ''}` : '';
     await appendUpdate(supabase, {
       entityType: 'dept_request',
       entityId: id,
       kind: hopUpdateKind(hop, body.outcome),
-      body: `${label} — ${row.label}${unreadyReason ? ` · ${unreadyReason}` : ''}`
+      body: `${label} — ${rowText(row)}${formulaSuffix}${unreadyReason ? ` · ${unreadyReason}` : ''}`
         // รอบแก้เก็บสูตรเดิม — ผลข้างเคียงที่ทะเบียนเห็น ต้องมีร่องรอยในใบด้วย
         + (archivedFormula ? ` · สูตรเดิม ${archivedFormula.code || archivedFormula.name} เปลี่ยนเป็นเลิกใช้` : ''),
       user,
@@ -464,7 +483,7 @@ export async function PATCH(request, { params }) {
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: row, after: { ...row, ...patch },
-      summary: `${label}: ${row.label} (${before.docNo || id})`, request,
+      summary: `${label}: ${rowText(row)}${formulaSuffix} (${before.docNo || id})`, request,
     });
 
     const saved = await findRequest(supabase, id);
@@ -614,7 +633,7 @@ export async function DELETE(request, { params }) {
         registryRemoved = produced.code || produced.name || produced.id;
         await recordAudit({
           user, action: 'delete', entityType: 'formula', entityId: produced.id, before: produced, request,
-          summary: `ลบสูตรรอบแก้ ${registryRemoved} — ลบรายการ ${row.label} (${before.docNo || id})`,
+          summary: `ลบสูตรรอบแก้ ${registryRemoved} — ลบรายการ ${rowText(row)} (${before.docNo || id})`,
         });
         const { data: holder, error: holderError } = await supabase.from('formulas')
           .select('id, code, name').eq('categoryCode', parent.categoryCode).eq('scentId', parent.scentId)
@@ -660,7 +679,7 @@ export async function DELETE(request, { params }) {
       entityType: 'dept_request',
       entityId: id,
       kind: 'update',
-      body: `ลบรายการ ${row.label || itemId}`
+      body: `ลบรายการ ${rowText(row) || itemId}`
         + (registryRemoved ? ` · ลบออกจากทะเบียนด้วย (${registryRemoved})` : '')
         + (registryKept ? ` · ${registryKept}` : '')
         + (restoredParent ? ` · คืนสูตรเดิม ${restoredParent.code || restoredParent.name} เป็นใช้งาน` : ''),

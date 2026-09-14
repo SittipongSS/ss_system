@@ -381,3 +381,10 @@ test('🔴 route: ส่งเอกสารต้องเช็คไฟล�
   const headSrc = readFileSync('src/app/api/sa/requests/[id]/route.js', 'utf8');
   assert.ok(headSrc.includes('ปิดเรื่องได้เฉพาะฝ่ายผู้ขอ'), 'route ปิดต้องเหลือผู้ขอ');
 });
+
+test('รอบแก้ยกป้ายที่ตัดหาง "→ รหัส" เฉพาะพัฒนาสูตร — ชื่อสายอื่นที่พิมพ์ลูกศรเองต้องไม่ขาด (2026-09-15)', () => {
+  const formula = followUpRowFrom({ id: 'P', lineKind: 'product_dev', label: 'เทียน · SC-1 Amber → PF-1 → PF-1' }, 2);
+  assert.equal(formula.label, 'เทียน · SC-1 Amber');
+  const scent = followUpRowFrom({ id: 'D', lineKind: 'scent_dev', label: 'Rose → Oud Accord' }, 2);
+  assert.equal(scent.label, 'Rose → Oud Accord');
+});
