@@ -3,12 +3,14 @@ import { TableScroll } from "@/components/ui/Table";
 
 import { Fragment, useMemo } from "react";
 import { Sun } from "lucide-react";
-import { rowHasValue, unallocatedRow, windowStat, yearSummary } from "@/lib/sales/performanceMath";
+import { periodKindOf, rowHasValue, unallocatedRow, windowStat, yearSummary } from "@/lib/sales/performanceMath";
 import { currentMonth } from "@/lib/datePeriods";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
-import { closedThroughLabel, money, pctFmt, periodLabel, ProgressBar } from "./shared";
+import { WON_AWAITING_SO_LABEL } from "@/lib/sales/dashboardMetrics";
+import { closedThroughLabel, money, pctFmt, periodLabel, ProgressBar, WonAwaitingSoAmount } from "./shared";
 import { NA } from "@/lib/format";
+import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
 
 // ☀️ บอร์ดประชุมเช้า — ทุกคน ทุกทีม ในตารางเดียว ตามยอดของงวดที่เลือก.
 // "ต้องปิด" = เป้างวด + ยอดทบยกมา (ปิดโหมดทบ = เป้าปกติ คอลัมน์ทบหาย).
@@ -34,12 +36,19 @@ import { NA } from "@/lib/format";
 // ไม่ใช่คอลัมน์ใหม่ (minWidth ด้านล่างวัดมือไว้) · กดแล้วเปิดรายดีล metric 'pendingApproval'
 // ของ **เดือนปัจจุบันเวลาไทยเสมอ** (ยอดนี้อยู่เดือนนั้นเดือนเดียว ไม่ว่างวดที่ดูจะกว้างแค่ไหน)
 // ⛔ ขาด/เกิน · % ปิดได้ · YoY · สถานะ ยังเป็น Actual ล้วน — แถบใน % ปิดได้ แค่วาดต่อท้ายให้เห็น
+//
+// 🏁 **Won รอยื่น SO** (มติผู้ใช้ 2026-09-14) — บรรทัดรองถัดจากรออนุมัติ · ดีลปิด Won แล้วแต่ยังไม่ยื่น SO
+// กดแล้วเปิดรายดีล metric 'wonAwaitingSo' ของ **งวดที่ดูอยู่** (เดือน/ทั้งปี ตามปุ่มตัวเลขอื่น)
+// ⚠️ ไม่บังคับเดือนปัจจุบันแบบรออนุมัติ — ยอดนี้อยู่ที่เดือนที่ปิด Won ของดีล (wonMonthOf)
+// แถบใน % ปิดได้ วาดเป็นส่วนส้มลายเฉียง ⇒ ช่องว่างถึงขีด = คาดขาด ที่นับทั้งรออนุมัติ + Won รอยื่น SO + FC คงเหลือ
 
-/* `now` มากับ {...common} แต่บอร์ดนี้ไม่ได้ใช้แล้ว — เคยใช้ตัวเดียวคือหา periodKind
-   ให้คอลัมน์สถานะ ซึ่งถอดออกไปแล้ว (มติผู้ใช้ 2026-08-03) จึงไม่รับไว้ในลายเซ็น
+/* `now` มากับ {...common} — ใช้หา periodKind อย่างเดียว: งวดที่จบแล้วแถบเล็กไม่พูด
+   "คาดจบงวด/คาดขาด" (กติกาเดียวกับแถบบนสุด · 2026-09-14) · คอลัมน์สถานะเดิมที่เคยใช้
+   periodKind ถอดไปแล้ว (มติผู้ใช้ 2026-08-03)
    งวด (`win`) ก็มาจากแถบคุมด้านบนแล้ว ไม่ได้คำนวณเองจาก `bp` อีก (2026-08-12) */
-export default function MorningBoard({ matrix, prevMatrix, year, closedCount, ytdCount, carry, win, onDrill, onDealDrill }) {
+export default function MorningBoard({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, win, onDrill, onDealDrill }) {
   const kind = win.kind;
+  const showProjection = periodKindOf({ year, startIdx: win.startIdx, endIdx: win.endIdx }, now) !== "past";
 
   const opts = { startIdx: win.startIdx, endIdx: win.endIdx, carryOn: carry, closedCount };
   const statOf = (row) => windowStat(row, opts);
@@ -52,11 +61,13 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
      คีย์กลุ่มมาจาก **สองทาง** รวมกัน: ทีมที่มีคน + ทีมที่มีแถวเป้าระดับทีม —
      ทีมที่ตั้งเป้าไว้แต่ยังไม่มีคน (คนย้ายออกหมด/ทีมเปิดใหม่) เดิมหายทั้งแถว
      เพราะวนจากรายคนอย่างเดียว · ส่วนคนที่ทีมไม่ตรงกับทีมไหนเลยได้กลุ่มของตัวเอง
-     ที่ไม่มีแถวหัวทีม (ตาข่ายกันคนหายที่ยกมาจากตารางสรุปเดิม) */
+     ที่ไม่มีแถวหัวทีม (ตาข่ายกันคนหายที่ยกมาจากตารางสรุปเดิม)
+     ⭐ p.team = ทีมที่ประทับบนยอด (มติ 2026-09-14) ไม่ใช่ทีมในบัญชี ⇒ คนหลายทีมโผล่ใต้ทุกทีมที่มียอด
+        แถวละทีม (key = p.id ไม่ซ้ำกันต่อ (คน, ทีม)) และแถวหัวทีม = ผลรวมแถวคนใต้มัน */
   const grouped = useMemo(() => {
     const g = new Map();
     for (const p of matrix.people) {
-      const key = p.team || "ไม่ระบุทีม";
+      const key = p.team || NO_TEAM_LABEL;
       if (!g.has(key)) g.set(key, []);
       g.get(key).push(p);
     }
@@ -73,6 +84,12 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
   // คำอธิบายเรื่องรออนุมัติโผล่เฉพาะงวดที่มีใบจริง (ยอดบริษัทครอบทุกแถวอยู่แล้ว)
   const companyStat = statOf(matrix.company);
   const anyPending = companyStat.pendingApproval > 0 || companyStat.pendingApprovalCount > 0;
+  /* Won รอยื่น SO ต้องไล่ทุกแถว ไม่ใช่ดูแค่บริษัท — เดือนที่บริษัทกรอก Actual มือ เส้นของบริษัท
+     ถูกล้างเป็น 0 (overlayHistory) ขณะที่แถวทีม/คนยังโชว์ส่วนนี้อยู่ ⇒ คำอธิบายต้องยังโผล่ */
+  const anyWonAwaiting = [matrix.company, ...matrix.teams, ...matrix.people].some((r) => {
+    const st = statOf(r);
+    return st.wonAwaitingSo > 0 || st.wonAwaitingSoCount > 0;
+  });
 
   // Actual ปีก่อนของแถวเดียวกัน — ฐานของ YoY (ไม่มีฐาน = คอลัมน์แสดง "–")
   const lastYearActualOf = (row, isTeam, isTotal, isRest) => {
@@ -86,16 +103,23 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
   const dealMonth = kind === "month" ? `${year}-${String(win.startIdx + 1).padStart(2, "0")}` : null;
   // ยอดรออนุมัติอยู่ที่เดือนปัจจุบันเวลาไทยเท่านั้น ⇒ เจาะที่เดือนนั้นเสมอ ไม่ใช่ทั้งปี/ไตรมาส
   const pendingMonth = currentMonth();
-  const openMetricDeals = (row, isTeam, metric, { month = dealMonth, dealYear = String(year) } = {}) =>
+  /* แถวคน = (ใคร, ทีมไหน) (มติผู้ใช้ 2026-09-14 "ทีมตามดีล") — ตัวตนส่งจากช่อง `row.ownerId`
+     (id ของแถวเป็นคีย์ผสม ห้ามแกะ/ห้ามส่งเป็น ownerId ไม่งั้นลิ้นชักว่างทั้งที่ช่องมียอด) ·
+     `teamScoped` ให้ลิ้นชักนับเฉพาะดีลของทีมแถวนั้น ⇒ คนที่มีดีลหลายทีม ยอดในลิ้นชัก = ช่องที่กด
+     แถว legacy ที่ไม่มี ownerId ยังจับด้วยชื่อ + ทีม · แถวทีม/บริษัทส่งเหมือนเดิม */
+  const openMetricDeals = (row, isTeam, metric, { month = dealMonth, dealYear = String(year) } = {}) => {
+    const isPerson = !isTeam && row.id !== "company";
     onDealDrill?.({
       month,
       year: dealYear,
-      ownerId: row.id !== "company" && !isTeam && row.id && !String(row.id).includes(":") ? row.id : null,
-      ownerName: row.id !== "company" && !isTeam ? row.name : null,
+      ownerId: isPerson ? row.ownerId || null : null,
+      ownerName: isPerson ? row.name : null,
       team: isTeam ? row.team : row.team || null,
+      teamScoped: isPerson,
       metric,
       label: row.id === "company" ? "รวมทั้งบริษัท" : isTeam ? `ทีม ${row.team}` : row.name,
     });
+  };
 
   const Row = ({ row, isTeam = false, isTotal = false, isRest = false }) => {
     const s = statOf(row);
@@ -133,6 +157,22 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         {pendingAmount}
       </button>
     );
+    // บรรทัดรองที่สองใต้ Actual: ดีล Won ที่ยังไม่ยื่น SO ของงวด (มติ 2026-09-14) — กติกาชื่อปุ่มเดียวกับบรรทัดบน
+    const hasWonAwaiting = s.wonAwaitingSo > 0 || s.wonAwaitingSoCount > 0;
+    const wonAwaitingAmount = hasWonAwaiting ? (
+      <WonAwaitingSoAmount amount={s.wonAwaitingSo} count={s.wonAwaitingSoCount} />
+    ) : null;
+    const wonAwaitingName = `${WON_AWAITING_SO_LABEL} ${money(s.wonAwaitingSo)}${s.wonAwaitingSoCount > 0 ? ` · ${s.wonAwaitingSoCount} ดีล` : ""}`;
+    const wonAwaitingLine = !hasWonAwaiting || isRest ? wonAwaitingAmount : (
+      <button
+        type="button"
+        className="perf-pending-drill"
+        onClick={() => openMetricDeals(row, isTeam, "wonAwaitingSo")}
+        aria-label={`ดูรายละเอียด ${label} · ${wonAwaitingName}`}
+      >
+        {wonAwaitingAmount}
+      </button>
+    );
     return (
       <tr
         className={`premium-row${isRest ? " perf-rest-row" : ""}`}
@@ -167,13 +207,13 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         {carry && <td className={cellClass("num mono")} style={{ fontWeight: "var(--fw-semibold)" }}>{money(s.mustClose)}</td>}
         <td className={cellClass("num")}>{metricButton(s.fcTotal, "fcTotal", "var(--blue)", "FC Total")}</td>
         <td className={cellClass("num")}>{metricButton(s.forecast, "remaining", "var(--amber)", "FC คงเหลือ")}</td>
-        <td className={cellClass("num")} style={{ fontWeight: "var(--fw-semibold)" }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}{pendingLine}</td>
+        <td className={cellClass("num")} style={{ fontWeight: "var(--fw-semibold)" }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}{pendingLine}{wonAwaitingLine}</td>
         <td className={cellClass("num mono")} style={{ color: s.diff >= 0 ? "var(--green)" : "var(--red)" }}>
           {s.diff >= 0 ? "+" : ""}{money(s.diff)}
         </td>
         <td className={cellClass()} style={{ minWidth: 150 }}>
           <div className="flex items-center gap-2">
-            <ProgressBar stat={s} />
+            <ProgressBar stat={s} showProjection={showProjection} />
             <span className="mono" style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: "var(--text-2)" }}>
               {pctFmt(s.pct)}
             </span>
@@ -216,8 +256,11 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         สรุป Target, FC Total, FC คงเหลือ และ Actual รายคน/รายทีม
         {carry ? ' · "ต้องปิด" = เป้า + ยอดทบยกมา' : " · โหมดเป้าปกติ (ไม่ทบยอด)"}
-        {" "}· แถบ: เขียว = Actual{anyPending ? ` · เขียวจางลายเฉียง = ${PENDING_APPROVAL_LABEL}` : ""} · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกตัวเลขเพื่อดูรายการดีล
+        {" "}· แถบ: เขียว = Actual{anyPending ? ` · เขียวจางลายเฉียง = ${PENDING_APPROVAL_LABEL}` : ""}{anyWonAwaiting ? ` · ส้มลายเฉียง = ${WON_AWAITING_SO_LABEL}` : ""} · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"}
+        {` · ช่องว่างจากปลายแถบถึงขีด = คาดขาด ซึ่งนับ Actual + ${PENDING_APPROVAL_LABEL} + ${WON_AWAITING_SO_LABEL} + FC คงเหลือ (มูลค่าดีลเต็ม ไม่ถ่วงโอกาสปิด) — ส่วน "ขาด / เกิน" และ "% ปิดได้" นับ Actual อย่างเดียว`}
+        {" "}· คลิกตัวเลขเพื่อดูรายการดีล
         {anyPending && ` · "${PENDING_APPROVAL_LABEL}" ใต้ Actual = ใบสั่งขายที่ยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับใน Actual, ขาด / เกิน และ % ปิดได้`}
+        {anyWonAwaiting && ` · "${WON_AWAITING_SO_LABEL}" ใต้ Actual = ดีลที่ปิด Won แล้วแต่ยังไม่ได้ยื่นใบสั่งขาย (มูลค่าดีลเต็ม นับที่เดือนที่ปิด Won) — ยังไม่นับใน Actual, ขาด / เกิน และ % ปิดได้`}
         {isYear && ` · "ขาด / เกิน" เทียบเป้าทั้ง 12 เดือน ส่วน "สถานะ" เทียบเป้าเฉพาะเดือนที่จบแล้ว (${through}) — เดือนที่กำลังวิ่งไม่นับ`}
         {showRest && ' · แถว "ยังไม่ได้แยกทีม" คือเป้า/ยอดที่กรอกไว้ระดับบริษัทแต่ยังไม่ได้ลงรายทีม — แถวทีมทุกแถวบวกกับแถวนี้จะได้แถวรวมท้ายตารางพอดี'}
       </p>

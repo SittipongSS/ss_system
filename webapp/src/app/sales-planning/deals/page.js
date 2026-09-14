@@ -59,7 +59,7 @@ import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
       (มติผู้ใช้ 2026-09-11 · mig 0353)
    🪤 ของเดิมอ่าน `wonValue` ดิบแล้ว `??` ถอยไป FC — ถอยไม่เคยเกิด (trigger เขียน 0 ไม่ใช่ null)
       และข้ามด่าน actualSource ที่ภาพรวมใช้ */
-import { compareDealDisplayValue, dealDisplayValue, sumDealDisplay } from "@/lib/sales/dealAmountDisplay";
+import { compareDealDisplayValue, dealDisplayValue, pendingPeriodMatcher, sumDealDisplay } from "@/lib/sales/dealAmountDisplay";
 import { pendingApprovalAmountOf, pendingApprovalCountOf } from "@/lib/sales/dashboardMetrics";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import styles from "./page.module.css";
@@ -98,6 +98,12 @@ export default function SalesPlanningPipelinePage() {
   const [month, setMonth] = useStickyState("month", thisMonth());
   const [allMonths, setAllMonths] = useStickyState("allMonths", true);
   const [deals, setDeals] = useState([]);
+  /* งวด + เวลาที่ใช้คัดยอด SO "รออนุมัติ" เข้ายอดหัวกลุ่ม/KPI (มติผู้ใช้ 2026-09-14)
+     ยอดรออนุมัติลงเดือนปัจจุบันเวลาไทยเสมอ ⇒ นับเฉพาะเมื่อเดือนนั้นอยู่ในงวดที่หน้าโชว์
+     (lib/sales/dealAmountDisplay → pendingPeriodMatcher) · เดือนสิงหาที่ปิดไปแล้วไม่มีวันเห็นยอดนี้
+     ⚠️ จับพร้อมกับชุดดีลในรอบโหลดเดียวกัน — งวดกับดีลบนจอต้องเป็นของรอบเดียวกันเสมอ และ
+        ห้ามอ่านนาฬิกาตอนเรนเดอร์ (ทรงเดียวกับ pendingAsOf ของ DealDrillDownModal) */
+  const [pendingPeriod, setPendingPeriod] = useState({ inPeriod: null, now: null });
   const [customers, setCustomers] = useState([]);
   /* ⭐ รหัสลูกค้า (AR) คู่ชื่อกิจการ (มติผู้ใช้ IS-26080003) — ตัวเชื่อมกับรหัสกลิ่น/MU
      ⚠️ อ่านสดจากทะเบียนเสมอ ไม่ใช่ค่าที่ดีลประทับไว้ — `customerName` บนดีลคือชื่อ ณ วันที่
@@ -228,6 +234,7 @@ export default function SalesPlanningPipelinePage() {
       // (เขียนบางตัวแล้วทิ้งตัวที่เหลือ = จอกลายเป็นลูกผสมของสองเดือน)
       if (!isLatest()) return;
       try { setDeals(dTxt ? JSON.parse(dTxt) : []); } catch(e) { setDeals([]); }
+      setPendingPeriod({ inPeriod: pendingPeriodMatcher({ month, allMonths, reviewOnly }), now: new Date() });
       setCustomers(custData);
       setProjects(projData);
     } catch (e) {
@@ -339,24 +346,28 @@ export default function SalesPlanningPipelinePage() {
         label = ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "ไม่ระบุผู้ดูแล");
       }
       const group = map.get(key) || {
-        key, label, sub, deals: [], total: 0, pendingApproval: 0, pendingApprovalCount: 0, missing: key === "__none",
+        key, label, sub, deals: [], total: 0, missing: key === "__none",
       };
       // ดีลใบแรกของกลุ่มอาจผูกก่อนออกรหัส — เอาค่าแรกที่มีจริง
       if (!group.sub && sub) group.sub = sub;
       group.deals.push(deal);
       group.total += dealDisplayValue(deal);
-      /* ยอดรออนุมัติของกลุ่มเป็นกองแยก — ไม่บวกเข้า total และไม่ใช้เรียงกลุ่ม
-         (มติผู้ใช้ 2026-09-11) · บวกจากตัวเดียวกับบรรทัดรองในแถว */
-      group.pendingApproval += pendingApprovalAmountOf(deal);
-      group.pendingApprovalCount += pendingApprovalCountOf(deal);
       map.set(key, group);
+    }
+    /* ยอดรออนุมัติของกลุ่มเป็นกองแยก — ไม่บวกเข้า total และไม่ใช้เรียงกลุ่ม (มติผู้ใช้ 2026-09-11)
+       ⭐ คัดด้วยงวดที่หน้าโชว์ (มติผู้ใช้ 2026-09-14) — ตัวรวมเดียวกับ KPI (sumDealDisplay) ⇒
+          กลุ่มในเดือนที่ปิดไปแล้วไม่ขึ้นยอดรออนุมัติของเดือนนี้ ทั้งที่แถวในกลุ่มยังมีบรรทัดรอง */
+    for (const group of map.values()) {
+      const { pendingApproval, pendingApprovalCount } = sumDealDisplay(group.deals, pendingPeriod);
+      group.pendingApproval = pendingApproval;
+      group.pendingApprovalCount = pendingApprovalCount;
     }
     return [...map.values()].sort((a, b) => {
       if (a.missing !== b.missing) return a.missing ? 1 : -1;
       if (sortKey === "name") return a.label.localeCompare(b.label, "th");
       return (b.total - a.total) || a.label.localeCompare(b.label, "th");
     });
-  }, [groupBy, filteredDeals, projects, customers, ownerNameOf, sortKey]);
+  }, [groupBy, filteredDeals, projects, customers, ownerNameOf, sortKey, pendingPeriod]);
 
   const allCollapsed = !!groupedDeals?.length && groupedDeals.every((g) => collapsedGroups.has(g.key));
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
@@ -759,7 +770,9 @@ export default function SalesPlanningPipelinePage() {
       <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won · Actual — ไม่รวมยอด SO รออนุมัติ)" : "มูลค่าคาดการณ์"}>
         {fmtMoney(dealDisplayValue(deal))}
         {/* บรรทัดรอง "รออนุมัติ" — เฉพาะดีล Won ที่มี SO ยื่นแล้วยังไม่อนุมัติ (ไม่มี = ไม่เรนเดอร์)
-            ⚠️ ไม่รวมกับตัวเลขบน — บนคือ Actual ล่างคือยอดที่ยังไม่นับ (มติผู้ใช้ 2026-09-11) */}
+            ⚠️ ไม่รวมกับตัวเลขบน — บนคือ Actual ล่างคือยอดที่ยังไม่นับ (มติผู้ใช้ 2026-09-11)
+            ⭐ บรรทัดนี้ **ไม่คัดงวด** โดยตั้งใจ — มันคือสถานะปัจจุบันของดีลใบนี้ (มีใบค้างอนุมัติอยู่จริง)
+               ส่วนยอดรวมหัวกลุ่ม/KPI เป็นยอด "ของงวด" จึงคัดด้วยเดือนปัจจุบัน (pendingPeriod) */}
         <PendingApprovalAmount amount={pendingApprovalAmountOf(deal)} count={pendingApprovalCountOf(deal)} />
       </td>
       <td className="num" onClick={(event) => event.stopPropagation()}>
@@ -853,8 +866,10 @@ export default function SalesPlanningPipelinePage() {
     .reduce((sum, d) => sum + Number(d.projectValue || 0), 0);
   const wonDeals = kpiDeals.filter((d) => isWonStage(d.stage));
   /* ยอด Won = Actual ตัวเดียวกับคอลัมน์มูลค่า · ยอดรออนุมัติบวกจากชุดเดียวกับตัวนับ Won
-     ข้าง ๆ (wonDeals ของ kpiDeals) ไม่ใช่จากตาราง — KPI กับตารางกรองคนละชั้นอยู่แล้ว */
-  const wonTotals = sumDealDisplay(wonDeals);
+     ข้าง ๆ (wonDeals ของ kpiDeals) ไม่ใช่จากตาราง — KPI กับตารางกรองคนละชั้นอยู่แล้ว
+     ⭐ ยอดรออนุมัตินับเฉพาะเมื่อเดือนปัจจุบัน (เวลาไทย) อยู่ในงวดที่เลือก (มติผู้ใช้ 2026-09-14)
+        🐞 เดิมเปิดเดือน ส.ค. แล้ว note ขึ้นยอดรออนุมัติของใบที่จะลง ก.ย. */
+  const wonTotals = sumDealDisplay(wonDeals, pendingPeriod);
   const wonValue = wonTotals.value;
   const wonHasPending = wonTotals.pendingApproval > 0 || wonTotals.pendingApprovalCount > 0;
   /* note ของการ์ด Won: มีใบรออนุมัติ ⇒ บอกคำว่า Actual กำกับตัวเลขแรกเสมอ (แม้เป็น ฿0.00)

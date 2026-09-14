@@ -7,6 +7,8 @@ import Select from "@/components/ui/Select";
 import PerformanceKpiCards from "./PerformanceKpiCards";
 import PerformanceCharts from "./PerformanceCharts";
 import CarryPanel from "./CarryPanel";
+import { resolvePersonDrill } from "@/lib/sales/performanceMath";
+import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
 
 // 🔍 เจาะรายละเอียด — เลือกมุมมอง (บริษัท/ทีม/คน) + ช่วงเวลา แล้วขับการ์ด KPI,
 // กราฟ และแผงทบยอดพร้อมกัน.
@@ -39,17 +41,25 @@ const BLANK = {
   actual: Array(12).fill(0),
   pendingApproval: Array(12).fill(0),
   pendingApprovalCount: Array(12).fill(0),
+  // Won รอยื่น SO (มติ 2026-09-14) — เส้นเดียวกับที่ blankRow ของ performanceMath มี
+  wonAwaitingSo: Array(12).fill(0),
+  wonAwaitingSoCount: Array(12).fill(0),
 };
 
-export default function DrillSection({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, scope, team, person, period, onChange }) {
+export default function DrillSection({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, scope, team, person, period, loading, onChange }) {
   // แถวข้อมูลของมุมมองที่เลือก + Actual ปีก่อนของมุมมองเดียวกัน (ถ้ามี)
   const active = useMemo(() => {
     if (scope === "person") {
-      const p = matrix.people.find((x) => x.id === person) || matrix.people[0] || null;
-      if (!p) return { label: "รายคน", row: BLANK, lastYear: null, personId: "" };
-      // ปีก่อนระดับรายคนมีเฉพาะยอดจากระบบ (ยอดกรอกเองรับแค่บริษัท/ทีม)
-      const prev = prevMatrix.people.find((x) => x.id === p.id);
-      return { label: `${p.name}${p.team ? ` (${p.team})` : ""}`, row: p, lastYear: prev?.actual || null, personId: p.id };
+      /* แถวคน = (ใคร, ทีมไหน) (มติ 2026-09-14 "ทีมตามดีล") — ?person= เป็นได้ทั้งคีย์แถวเต็มและ user id เปล่า
+         ตัวตัดสินอยู่ที่ resolvePersonDrill (เทสต์ได้) · id เปล่าของคนหลายทีมได้แถวของทีมที่เรียงก่อน
+         ป้ายจึงบอกทีมเสมอ ให้เห็นว่าเป็นยอดของทีมนั้น ไม่ใช่ยอดรวมทุกทีมของคนนั้น
+         ⚠️ เลือกไว้แต่หาไม่เจอ (เช่นสลับไปปีที่คนนั้นไม่มีแถว) = การ์ดว่าง ไม่ถอยไปโชว์คนแรกของรายชื่อ
+         🪤 ป้าย "ไม่พบ" รอโหลดเสร็จก่อน — เปิดลิงก์ "ดูผลงานเต็ม" ครั้งแรก (ยังไม่มี cache) matrix ว่างระหว่างโหลด
+            ถ้าไม่รอ ช่องเลือกจะบอก "ไม่พบพนักงานที่เลือก" ทั้งที่อีกครู่เดียวก็เจอ */
+      const { row: p, prev } = resolvePersonDrill(matrix, prevMatrix, person);
+      if (!p) return { label: "รายคน", row: BLANK, lastYear: null, personId: "", personMissing: Boolean(person) && !loading };
+      // ปีก่อน = แถว (คน, ทีม) เดียวกันของปีก่อน — รวมยอดรายคนที่กรอกย้อนหลังแล้ว (overlayHistory)
+      return { label: `${p.name} (${p.team || NO_TEAM_LABEL})`, row: p, lastYear: prev?.actual || null, personId: p.id };
     }
     if (scope === "team") {
       const t = matrix.teams.find((x) => x.team === team) || matrix.teams[0] || null;
@@ -58,7 +68,7 @@ export default function DrillSection({ matrix, prevMatrix, year, now, closedCoun
       return { label: `ทีม ${t.team}`, row: t, lastYear: prev?.actual || null, teamKey: t.team };
     }
     return { label: "รวมทั้งบริษัท", row: matrix.company, lastYear: prevMatrix.company?.actual || null };
-  }, [scope, team, person, matrix, prevMatrix]);
+  }, [scope, team, person, loading, matrix, prevMatrix]);
 
   const common = { row: active.row, lastYear: active.lastYear, label: active.label, year, now, closedCount, ytdCount, carry, period };
 
@@ -83,8 +93,16 @@ export default function DrillSection({ matrix, prevMatrix, year, now, closedCoun
           {/* พนักงานยัง**คง**เป็นดรอปดาวน์ — ชื่อยาวและมีหลายคน (กติกาเดียวกับช่อง AE
               ของฟอร์มดีล ที่ผู้ใช้เคยให้ถอยจาก chips กลับมาเป็นดรอปดาวน์) */}
           {scope === "person" && (
-            <Select className="premium-select" value={active.personId || ""} onChange={(e) => onChange({ person: e.target.value })} aria-label="เลือกพนักงาน" style={{ width: 170 }}>
-              {matrix.people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.team ? ` · ${p.team}` : ""}</option>)}
+            <Select
+              className="premium-select"
+              value={active.personId || ""}
+              placeholder={active.personMissing ? "ไม่พบพนักงานที่เลือก" : undefined}
+              onChange={(e) => onChange({ person: e.target.value })}
+              aria-label="เลือกพนักงาน"
+              style={{ width: 170 }}
+            >
+              {/* ค่า = คีย์แถว (คน, ทีม) · ป้ายมีทีมเสมอ — คนหลายทีมมีชื่อซ้ำได้ ต้องแยกออกด้วยตา */}
+              {matrix.people.map((p) => <option key={p.id} value={p.id}>{`${p.name} · ${p.team || NO_TEAM_LABEL}`}</option>)}
             </Select>
           )}
           <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: 6 }}>แกนกราฟ</span>

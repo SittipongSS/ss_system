@@ -9,6 +9,7 @@ import {
   isMonthEditable,
   monthsSum,
   resolveYearTotal,
+  systemHintCells,
 } from './historyEntry.js';
 
 const JULY_2026 = new Date('2026-07-26T10:00:00+07:00');
@@ -127,6 +128,119 @@ test('คนที่มีข้อมูลบันทึกไว้แต�
      — คีย์ต่างกัน จึงกรอกแยกกันได้และบันทึกไม่ทับกัน */
   const u2Rows = rows.filter((r) => r.ownerId === 'u2');
   assert.deepEqual(u2Rows.map((r) => [r.team, r.key]), [['KA', 'owner:KA:u2'], ['ODM', 'owner:ODM:u2']]);
+});
+
+/* ---------- ทีมตามแถว (มติผู้ใช้ 2026-09-14 "ทีมตามดีล") ----------
+   ทีมของยอดย้อนหลังคือ sales_history.team ที่ประทับไว้ ⇒ ทุกคู่ (คน, ทีม) ที่มีแถวบันทึก
+   ต้องมีแถวให้เห็นและแก้ได้ · 🪤 เดิมจำแค่ทีมของแถวแรกต่อคน */
+
+test('คนที่มีแถวค้างหลายทีมเดิม ได้แถวค้างครบทุกทีม — ไม่ใช่แค่ทีมของแถวแรก', () => {
+  const savedRows = [
+    // u9 ออกจากระบบแล้ว มียอดค้างสองทีม · แถวแรกไม่มีชื่อ
+    { period: '2025-01', team: 'ODM', ownerId: 'u9', ownerName: null, actualAmount: 100 },
+    { period: '2025-02', team: 'KA', ownerId: 'u9', ownerName: 'คนเก่า', actualAmount: 200 },
+    { period: '2025-03', team: 'ODM', ownerId: 'u9', ownerName: 'คนเก่า', actualAmount: 300 },
+    // u2 อยู่ ODM ตอนนี้ — แถวแรกเป็นทีมปัจจุบัน ⇒ ของเดิมทำแถวค้าง KA หายทั้งแถว
+    { period: '2025-04', team: 'ODM', ownerId: 'u2', ownerName: 'สมหญิง', actualAmount: 400 },
+    { period: '2025-05', team: 'KA', ownerId: 'u2', ownerName: 'สมหญิง', actualAmount: 500 },
+    // u1 อยู่ KA — มียอดค้างสองทีมเดิม (ODM, SV) + ยอดทีมปัจจุบัน
+    { period: '2025-06', team: 'ODM', ownerId: 'u1', ownerName: 'สมชาย', actualAmount: 600 },
+    { period: '2025-07', team: 'SV', ownerId: 'u1', ownerName: 'สมชาย', actualAmount: 700 },
+    { period: '2025-08', team: 'KA', ownerId: 'u1', ownerName: 'สมชาย', actualAmount: 800 },
+  ];
+  const rows = buildHistoryRows({ teams: ['KA', 'ODM', 'SV'], users: USERS, savedRows, ownerRoles: OWNER_ROLES });
+  assert.deepEqual(rows.map((r) => r.key), [
+    'company',
+    'team:KA', 'owner:KA:u1', 'owner:KA:u9', 'owner:KA:u2',
+    'team:ODM', 'owner:ODM:u2', 'owner:ODM:u9', 'owner:ODM:u1',
+    'team:SV', 'owner:SV:u1',
+  ]);
+  assert.equal(new Set(rows.map((r) => r.key)).size, rows.length, 'คีย์ซ้ำ = สองแถวแชร์ค่าก้อนเดียวแล้วบันทึกทับกัน');
+
+  // ทุกคู่ (ทีม, คน) ที่มีแถวบันทึก ต้องมีแถวบนจอ — ไม่งั้นยอดยังถูกทับบนแท็บผลงานแต่แก้ไม่ได้
+  for (const saved of savedRows) {
+    const key = historyRowKey({ team: saved.team, ownerId: saved.ownerId });
+    const row = rows.find((r) => r.key === key);
+    assert.ok(row, `ไม่มีแถวของ ${key}`);
+    assert.equal(row.team, saved.team, `${key} ต้องอยู่ใต้ทีมที่ประทับบนแถว ไม่ใช่ทีมปัจจุบันของคน`);
+  }
+
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+  assert.deepEqual(byKey['owner:KA:u9'].detached, { gone: true });
+  assert.deepEqual(byKey['owner:ODM:u9'].detached, { gone: true });
+  // ชื่อเป็นเรื่อง "ใคร" — คนที่ไม่มีบัญชีแล้วใช้ชื่อแรกที่มีจริง ไม่ถอยไปเป็น uuid ในทีมที่แถวแรกไม่มีชื่อ
+  assert.equal(byKey['owner:ODM:u9'].ownerName, 'คนเก่า');
+  assert.equal(byKey['owner:KA:u9'].ownerName, 'คนเก่า');
+  assert.deepEqual(byKey['owner:KA:u2'].detached, { movedTo: 'ODM' });
+  assert.deepEqual(byKey['owner:ODM:u1'].detached, { movedTo: 'KA' });
+  assert.deepEqual(byKey['owner:SV:u1'].detached, { movedTo: 'KA' });
+  // แถวของทีมที่คนนั้นยังสังกัด ไม่ใช่แถวค้าง
+  assert.equal(byKey['owner:KA:u1'].detached, undefined);
+  assert.equal(byKey['owner:ODM:u2'].detached, undefined);
+});
+
+test('แถวค้างหลายเดือนในทีมเดียวกัน = แถวเดียว · แถวคนที่ไม่มีทีมยังไม่ถูกวาดเหมือนเดิม', () => {
+  const savedRows = [
+    { period: '2025-01', team: 'KA', ownerId: 'u2', ownerName: 'สมหญิง', actualAmount: 1 },
+    { period: '2025-02', team: 'KA', ownerId: 'u2', ownerName: 'สมหญิง', actualAmount: 2 },
+    { period: '2025-03', team: null, ownerId: 'u9', ownerName: 'คนเก่า', actualAmount: 3 },
+  ];
+  const rows = buildHistoryRows({ teams: ['KA', 'ODM'], users: USERS, savedRows, ownerRoles: OWNER_ROLES });
+  assert.deepEqual(rows.filter((r) => r.detached).map((r) => r.key), ['owner:KA:u2']);
+});
+
+/* ---------- ตัวเลขใบ้จากยอดระบบ (payload แดชบอร์ด) ---------- */
+
+test('ตัวเลขใบ้: ถังไร้ทีมไม่ลงแถวบริษัท · แถวคนไม่มี ownerId ไม่ลงแถวทีม · คีย์เดียวกันบวกกัน', () => {
+  const months = [
+    {
+      month: '2025-03',
+      totals: { wonValue: 1000 },
+      byTeam: [{ team: 'KA', won: 700 }, { team: 'ODM', won: 250 }, { team: null, won: 50 }],
+      byOwner: [
+        { ownerId: 'u1', team: 'KA', won: 400 },
+        { ownerId: 'u1', team: 'KA', won: 100 }, // คนเดียวกันอีกแถวในทีมเดียวกัน — ต้องบวก ไม่ใช่แถวหลังชนะ
+        { ownerId: null, ownerName: 'ไม่ระบุ', team: 'KA', won: 200 }, // ห้ามไปทับแถว team:KA
+        { ownerId: 'u1', team: 'ODM', won: 250 }, // คนเดียวกันอีกทีม = อีกแถว
+        { ownerId: 'u5', team: null, won: 50 },
+        { ownerId: 'u2', team: 'KA', won: 0 },
+      ],
+    },
+    { month: '2025-04', totals: { wonValue: 30 }, byTeam: [{ team: 'KA', won: 30 }], byOwner: [{ ownerId: 'u1', team: 'KA', won: 30 }] },
+    { month: 'ไม่ใช่เดือน', totals: { wonValue: 999 } },
+  ];
+  assert.deepEqual(systemHintCells(months), {
+    company: { 2: 1000, 3: 30 }, // 🪤 ของเดิม: ถังไร้ทีมเขียนทับเป็น 50
+    'team:KA': { 2: 700, 3: 30 },
+    'team:ODM': { 2: 250 },
+    'owner:KA:u1': { 2: 500, 3: 30 },
+    'owner:ODM:u1': { 2: 250 },
+    'owner:-:u5': { 2: 50 }, // ไม่มีแถวบนจอให้วาง แต่ไม่ไปปนคีย์ของใคร
+  });
+  assert.deepEqual(systemHintCells(), {});
+  assert.deepEqual(systemHintCells(null), {});
+});
+
+test('ตัวเลขใบ้: payload ที่ทุกดีลมีทีมและทุกแถวคนมี ownerId ได้ผลเท่าของเดิมทุกช่อง', () => {
+  // สำเนากติกาเดิมของหน้า (เขียนทับ ไม่ข้ามอะไร) — ข้อมูลวันนี้เป็นรูปนี้ ตัวเลขใบ้ต้องไม่ขยับ
+  const legacy = (months) => {
+    const sys = {};
+    for (const month of months) {
+      const mi = Number(String(month.month).slice(5, 7)) - 1;
+      if (mi < 0 || mi > 11) continue;
+      const put = (key, amount) => { if (Number(amount) > 0) (sys[key] ||= {})[mi] = Number(amount); };
+      put('company', month.totals?.wonValue);
+      for (const t of month.byTeam || []) put(historyRowKey({ team: t.team }), t.won);
+      for (const o of month.byOwner || []) put(historyRowKey({ team: o.team, ownerId: o.ownerId }), o.won);
+    }
+    return sys;
+  };
+  const months = [
+    { month: '2026-01', totals: { wonValue: 900 }, byTeam: [{ team: 'KA', won: 600 }, { team: 'ODM', won: 300 }],
+      byOwner: [{ ownerId: 'u1', team: 'KA', won: 600 }, { ownerId: 'u2', team: 'ODM', won: 300 }] },
+    { month: '2026-02', totals: { wonValue: 0 }, byTeam: [{ team: 'KA', won: 0 }], byOwner: [{ ownerId: 'u1', team: 'KA', won: 0 }] },
+  ];
+  assert.deepEqual(systemHintCells(months), legacy(months));
 });
 
 /* ---------- แปลงเป็น items ของ POST ---------- */

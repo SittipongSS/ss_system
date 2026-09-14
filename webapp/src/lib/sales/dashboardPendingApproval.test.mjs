@@ -22,7 +22,8 @@ import {
   pendingApprovalFields,
   rollupPendingApproval,
 } from './pendingApprovalRollup.js';
-import { forecastAccuracyRollup, wonMonthOf } from './dashboardMetrics.js';
+import { forecastAccuracyRollup, wonAmountOf, wonMonthOf } from './dashboardMetrics.js';
+import { rollupWonAwaitingSo, wonAwaitingSoFields } from './wonAwaitingSoRollup.js';
 import { DASHBOARD_CACHE_PREFIX, dashboardCacheKey } from './dashboardStamp.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -160,6 +161,29 @@ test('ถังที่มีแต่ยอดรออนุมัติไ�
   // ถังเก่าไม่มีสองช่องนี้ = ไม่มียอดรออนุมัติ
   assert.equal(isEmptyDashboardBucket({ target: 0, won: 0 }), true);
   assert.equal(hasPendingApproval(null), false);
+});
+
+/* "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) = กองที่สามของยอดคาดการณ์ — ต้องไม่ซ้อนกับกองรออนุมัติ
+   ไม่งั้นยอดคาดการณ์ (actual + รออนุมัติ + รอยื่น + FC คงเหลือ) นับดีลเดียวสองรอบ */
+test('รออนุมัติกับ Won รอยื่น SO ไม่ซ้อนกัน — มีใบรออนุมัติ (รวมใบ 0 บาท) = ไม่ใช่รอยื่น', () => {
+  const zeroPending = pendingOnlyDeal({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } });
+  const draftOnly = pendingOnlyDeal({ metadata: { actualSource: 'sale_order', wonMonth: null } });
+  const approvedPlusPending = pendingOnlyDeal({
+    wonValue: 200000,
+    metadata: { actualSource: 'sale_order', wonMonth: '2026-09', soPendingAmount: 100000, soPendingCount: 1 },
+  });
+  const deals = [pendingOnlyDeal(), zeroPending, draftOnly, approvedPlusPending];
+  assert.deepEqual(rollupPendingApproval(deals, '2026-09', { now: SEP }), { pendingApproval: 208000, pendingApprovalCount: 3 });
+  assert.deepEqual(rollupWonAwaitingSo(deals), { wonAwaitingSo: 108000, wonAwaitingSoCount: 1 }, 'มีแค่ดีลร่างที่เป็นรอยื่น');
+  for (const d of deals) {
+    const inPending = rollupPendingApproval([d], '2026-09', { now: SEP }).pendingApprovalCount > 0;
+    const inAwaiting = rollupWonAwaitingSo([d]).wonAwaitingSoCount > 0;
+    assert.ok(!(inPending && inAwaiting), 'ดีลเดียวอยู่ทั้งรออนุมัติและรอยื่นไม่ได้');
+    if (inAwaiting) assert.equal(wonAmountOf(d), 0, 'รอยื่น = ยังไม่มี Actual');
+  }
+  // สองชุดช่องไม่ทับชื่อกัน — spread ลงถังเดียวกันแล้วไม่เขียนทับกัน
+  const overlap = Object.keys(pendingApprovalFields()).filter((k) => k in wonAwaitingSoFields());
+  assert.deepEqual(overlap, []);
 });
 
 test('ใบรออนุมัติยอด 0 บาท (ถูกกฎตั้งแต่ mig 0197) นับจำนวนใบ — ตรงกับรายงานเป้า/หน้า SO', () => {
