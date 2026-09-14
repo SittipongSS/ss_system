@@ -47,9 +47,12 @@
   gap: var(--space-1-5);
 }
 
-/* หนึ่งข้อ = เครื่องหมาย | (ข้อความ · เจ้าของ+ปุ่ม) — ห่อเฉพาะในกล่องขวา
+/* หนึ่งข้อ = เครื่องหมาย | (ชื่อข้อ + ชิปเจ้าของ / ตัวเลขที่ขาด / ปุ่มแจ้งช่าง) — ห่อเฉพาะในกล่องขวา
    🐞 เดิมข้อความยืดเต็มแถว ⇒ ชิป "ช่าง"/ปุ่มแจ้งช่างไปชิดขอบขวา ห่างข้อของมัน ~1,300px บนเดสก์ท็อป
-   🐞 รอบแรกที่แก้ให้ข้อความกว้างเท่าเนื้อ ⇒ บนมือถือชิปหล่นไปอยู่ใต้เครื่องหมาย ✕ ทุกข้อที่ติด */
+   🐞 รอบแรกที่แก้ให้ข้อความกว้างเท่าเนื้อ ⇒ บนมือถือชิปหล่นไปอยู่ใต้เครื่องหมาย ✕ ทุกข้อที่ติด
+   🐞 รอบสองชื่อข้อ+บรรทัด "ขาด …" เป็นก้อนเดียววางข้างชิป ⇒ ข้อที่ผ่านชิปต่อท้ายชื่อ แต่ข้อที่ติด
+      บรรทัด "ขาด …" ยาวดันก้อนเต็มแถว ชิปไปชิดขวาหรือหล่นบรรทัด (390: x≈162–190 ปนกับ x≈300)
+      ⇒ ชิปเข้าไปอยู่ในบรรทัดชื่อข้อ ตำแหน่งจึงตามชื่อข้อเสมอไม่ว่าบรรทัดล่างยาวแค่ไหน */
 .item {
   display: flex;
   align-items: flex-start;
@@ -60,10 +63,22 @@
   flex: 1 1 0;
   min-inline-size: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: flex-start;
+  gap: var(--space-0-5);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  color: var(--text-1);
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1) var(--space-2);
 }
+
+.action { margin-block-start: var(--space-1); }
 
 .mark {
   display: inline-flex;
@@ -79,30 +94,10 @@
 
 .item[data-ok] .mark { background: var(--green-soft); color: var(--green); }
 
-/* ยืดได้แต่ไม่เกินเนื้อ ⇒ เดสก์ท็อปชิปต่อท้ายข้อความ · มือถือฐานเล็กพอให้ชิปอยู่บรรทัดเดียวกัน
-   แล้วข้อความห่อในคอลัมน์ตัวเอง */
-.text {
-  flex: 1 1 10rem;
-  max-inline-size: max-content;
-  min-inline-size: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0-5);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
-  color: var(--text-1);
-}
-
 .sub { font-size: var(--fs-3); color: var(--text-3); }
 
-.who {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .owner {
+  flex: none;
   padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-full);
   background: var(--panel-2);

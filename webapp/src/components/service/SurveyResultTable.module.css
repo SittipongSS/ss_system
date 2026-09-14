@@ -1,6 +1,21 @@
 /* ตารางสรุปผลประเมินของหัวหน้า TS (เฟส 3 · จอ 07)
    ⚠️ `.req` ไม่มี selector จริงใน globals.css ⇒ ประกาศเอง */
 
+/* กล่องนอกของ TableShell เป็น container — ให้ `.rowMiss` รู้ความกว้างที่มองเห็นได้ (100cqi) */
+.shell { container-type: inline-size; }
+
+/* 🐞 มือถือกรอบซ้อนสองชั้น: การ์ดของ TableShell + กรอบของกล่องเลื่อนที่เว้นเข้ามาอีก 16px
+   ⇒ ช่องปัดข้างเหลือ 326 จาก 362px (258 จาก 292 ที่ 320) บนตารางเดียวของหน้าที่ต้องปัดข้าง
+   ตารางนี้ไม่มีหัวการ์ด ⇒ จอแคบเหลือกรอบนอกชั้นเดียว (หน้าตาเดียวกับตารางลอย `surface="auto"`)
+   ⚠️ `div[data-surface]` ไม่ใช่ `[data-surface]` เปล่า — ต้องหนักกว่า `.scroll[data-surface="embedded"]` (0,2,0) */
+@media (max-width: 680px) {
+  .shell > div[data-surface="embedded"] {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+}
+
 .sub {
   display: block;
   margin-top: var(--space-0-5);
@@ -97,11 +112,36 @@ button.spotChip { cursor: pointer; }
 .docs { font-variant-numeric: tabular-nums; color: var(--text-2); }
 .docs span[data-low] { color: var(--red); font-weight: var(--fw-bold); }
 
+/* ── บรรทัด "ยังขาดอะไร" — แถวย่อยเต็มกว้างใต้แถวของพื้นที่ ─────────────────
+   🐞 เดิมอยู่ท้ายคอลัมน์ "รูป" ซึ่งแคบที่สุด ⇒ ห่อ 5–6 บรรทัด แถวสูง ~150px ที่ 768
+   ⚠️ ต้องมี `.body` นำหน้า — กฎเซลล์ของ Table.module.css (`.scroll[data-family] td`) หนัก (0,2,1)
+      ⇒ เส้นคั่น/ความสูง 52px/เพดานกว้างของเซลล์จะทับแถวย่อยนี้ ถ้าไม่หนักกว่า */
+.body tr[data-miss] > td { border-bottom: 0; }
+
+/* 🐞 hover กลาง (`.scroll[data-family] tbody tr:hover td`) ทำงานทีละ <tr> ⇒ ชี้แถวพื้นที่
+   แล้วแถวย่อยไม่ติดสีตาม (และกลับกัน) สองแถวที่ต้องอ่านเป็นแถวเดียวแตกเป็นสองแถบ
+   ⇒ ชี้ข้างไหนก็ระบายทั้งคู่ · ค่าสีต้องตรงกับกฎกลางใน Table.module.css */
+.body tr[data-miss]:hover + tr[data-miss-row] > td,
+.body tr[data-miss]:has(+ tr[data-miss-row]:hover) > td {
+  background: color-mix(in srgb, var(--accent-soft) 25%, transparent);
+}
+
+.body tr[data-miss-row] > td {
+  height: auto;
+  max-width: none;
+  overflow: visible;
+  padding-block: 0 var(--space-2);
+}
+
+/* ความกว้างเพดาน = ส่วนที่ *มองเห็น* ของตาราง (100cqi ของ .shell) ไม่ใช่ความกว้างตาราง
+   ⇒ บนมือถือตาราง 680px ในช่อง ~360px ข้อความห่อจบในจอแรก ไม่ต้องปัดข้างไปอ่านท้ายประโยค */
 .rowMiss {
+  /* บล็อกอ้างอิงของ `.srOnly` — ไม่งั้น absolute ไปอิงนอกกล่องเลื่อนแล้วหลุดกรอบตัด */
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--space-1);
-  margin-top: var(--space-1);
+  max-inline-size: calc(100cqi - var(--space-6));
   font-size: var(--fs-3);
   line-height: var(--lh-thai);
   color: var(--amber);
@@ -110,3 +150,13 @@ button.spotChip { cursor: pointer; }
 
 /* 🐞 ข้อความยาวห่อหลายบรรทัด ⇒ ไอคอนเตือนโดนบีบเหลือกว้าง 3px เห็นเป็นขีด */
 .rowMiss > svg { flex: none; margin-block-start: var(--space-0-5); }
+
+/* ชื่อพื้นที่นำหน้าคำเตือน สำหรับ screen reader เท่านั้น (สูตรเดียวกับ Pager `.srOnly`) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

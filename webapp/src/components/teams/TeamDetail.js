@@ -188,11 +188,17 @@ export default function TeamDetail({ department, code }) {
                     เปิดใช้งานอีกครั้ง
                   </Button>
                 ) : (
-                  <>
-                    {/* เหตุผลเป็นข้อความจริงเหนือปุ่ม ไม่ใช่ปุ่มจาง ๆ ที่ไม่บอกอะไร */}
+                  /* เหตุผลเป็นข้อความจริงเหนือปุ่ม (ทิศเดียวกับ DocumentControlPanel) และ **ห่อเป็นกลุ่มเดียวกับปุ่มที่มันอธิบาย**
+                     🐞 ปล่อยเป็นพี่น้องระยะเท่ากันในกองปุ่ม ⇒ ประโยคลอยห่างปุ่มบนและล่างเท่ากัน
+                        อ่านเป็นคำอธิบายของปุ่ม "แก้ชื่อ" แทน "ปิดทีม" */
+                  <div className={styles.actGroup}>
                     {members.length > 0 && (
                       <p className={styles.why}>
                         ยังมีสมาชิก {fmtNumber(members.length)} คน — ย้ายออกให้หมดก่อนจึงจะปิดทีมได้
+                        {/* ทางไปหาสิ่งที่ประโยคสั่งให้ทำ — ย้ายคนออกอยู่ที่รายชื่อสมาชิก (เมนู "…" รายคน)
+                            ลิงก์หน้าตาเดียวทั้งระบบ = `.linklike` (UI_DESIGN_SYSTEM "ลิงก์และข้อความที่กดได้")
+                            ตัวคั่น "·" อยู่ในก้อนไม่ตัดบรรทัดเดียวกับลิงก์ — 🐞 เดิมคั่นค้างท้ายบรรทัดแรก ลิงก์ตกบรรทัดสอง */}
+                        {" "}<span className={styles.whyLink}>{"· "}<a href="#team-members" className="linklike">ดูรายชื่อสมาชิก</a></span>
                       </p>
                     )}
                     <Button tone="neutral" disabled={saving || members.length > 0}
@@ -212,12 +218,12 @@ export default function TeamDetail({ department, code }) {
                       }}>
                       ปิดทีม
                     </Button>
-                  </>
+                  </div>
                 )}
                 {/* ⭐ **ลบทีม = ของแอดมิน** (มติ 2026-08-30) · ปุ่มไม่ซ่อนเพื่อให้เหตุผล
                     ที่เซิร์ฟเวอร์ตีกลับ (ติดดีล/เป้า/สัญญาอะไรอยู่) ถูกอ่าน */}
                 {isAdmin && (
-                  <>
+                  <div className={styles.actGroup}>
                     {members.length > 0 && (
                       <p className={styles.why}>ทีมที่ยังมีคนอยู่ลบไม่ได้ — ย้ายคนออกก่อน</p>
                     )}
@@ -236,7 +242,7 @@ export default function TeamDetail({ department, code }) {
                       }}>
                       ลบทีม
                     </Button>
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -260,6 +266,8 @@ export default function TeamDetail({ department, code }) {
         </DetailCard>
 
         <DetailCard
+          /* ปลายทางของลิงก์ "ดูรายชื่อสมาชิก" ใต้เหตุผลที่ปิดทีมไม่ได้ (การ์ดมี scroll-margin ของตัวเองแล้ว) */
+          id="team-members"
           icon={UserRound}
           eyebrow="สมาชิก"
           title={`${fmtNumber(members.length)} คน`}

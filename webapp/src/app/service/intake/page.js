@@ -11,16 +11,17 @@
 //
 // ⚠️ ใบที่ตอบไม่ได้ว่าสายอะไรขึ้นแถบของมันเอง ระบบไม่เดาให้ — เดาเมื่อไร ใบสายสินค้า
 //   จะไหลเข้าคิวบริการ หรือใบบริการจะหายเงียบ ทั้งสองทางแย่พอกัน
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowDownToLine, Building2, CalendarPlus, LayoutGrid, MapPin } from "lucide-react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useResponsiveView } from "@/lib/useResponsiveView";
-import { usePagination } from "@/lib/usePagination";
+import { DEFAULT_PAGE_SIZE, usePagination } from "@/lib/usePagination";
 import Button from "@/components/ui/Button";
 import Pager from "@/components/ui/Pager";
 import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Tabs from "@/components/ui/Tabs";
 import Toast from "@/components/ui/Toast";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
@@ -36,6 +37,12 @@ import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
+const LOAD_ERROR_TITLE = "โหลดคิวงานเข้าใหม่ไม่สำเร็จ";
+
+/* 🐞 จอการ์ดใช้ขนาดหน้าเท่าตาราง (25) — การ์ดหนึ่งใบสูงกว่าแถวสามเท่า แถบแบ่งหน้าจึงไปอยู่
+   ลึก 5,000px บนมือถือ ⇒ มุมมองการ์ดเริ่มที่ 10 ใบ (ตัวเลือกเดิมของ Pager) */
+const CARD_PAGE_SIZE = 10;
+
 // ข้อความ/ป้ายของแถวคิว "รอตั้งไซต์/โซน" — ใช้ทั้งตารางและการ์ด ให้สองมุมมองพูดตรงกัน
 const fgText = (row) => (row.fgKinds
   ? `${fmtNumber(row.fgKinds)} ชนิด · ${fmtNumber(row.remainingQty)} หน่วย`
@@ -46,6 +53,33 @@ const approvedText = (row) => {
   const value = row.approvedAt || row.orderDate;
   return value ? fmtDate(value) : naText(null);
 };
+
+/* แถบแท็บล้นกล่อง (จอ 320: เนื้อ 351px ในกล่อง 292px) — ลูกศรขวาย้ายโฟกัสไปแท็บที่ถูกตัด
+   แต่แถบไม่เลื่อนตาม ⇒ แท็บที่โฟกัสอยู่ครึ่งตัวใต้ขอบจาง วงโฟกัสขาดที่ขอบขวา
+   ⇒ โฟกัสลงแท็บไหน เลื่อนแถบให้แท็บนั้นเข้ากล่องเต็มตัว (แท็บสุดท้าย = เลื่อนสุด ขอบจางหายเอง)
+   ⚠️ เลื่อนเฉพาะแกนนอนของแถบ — `scrollIntoView` ลากทั้งหน้าขึ้นลงตามไปด้วย
+   ⚠️ พฤติกรรมนี้ควรอยู่ใน components/ui/Tabs.js ให้ทุกแถบแท็บได้เท่ากัน — ย้ายเข้าไปเมื่อไร ลบตัวนี้ทิ้ง */
+function revealFocusedTab(event) {
+  const tab = event.target;
+  if (tab.getAttribute?.("role") !== "tab") return;
+  revealTab(tab);
+  /* 🪤 ลูกศรทั้งย้ายโฟกัสและ "เลือก" แท็บ (Tabs โหมด automatic) — วาดใหม่แล้วแถบกว้างขึ้นอีกเศษพิกเซล
+     วัดจริงที่ 320: ตอนโฟกัสเลื่อนได้สุดแค่ 58 หลังวาดสุดเป็น 59 ⇒ ค้างที่ 58 ขอบจาง 3.6px ทับท้ายแท็บ
+     ⇒ วัดซ้ำหลัง React commit · setTimeout ไม่ใช่ rAF เหตุผลเดียวกับ lib/ui/scrollToTopOf.js */
+  setTimeout(() => revealTab(tab), 0);
+}
+
+function revealTab(tab) {
+  const list = tab.parentElement;
+  if (!list || list.scrollWidth <= list.clientWidth) return;
+  // แท็บหัว/ท้าย = เลื่อนสุดทางไปเลย ไม่คิดจากระยะที่มีเศษ sub-pixel · ค่าเกินสุดแถบ เบราว์เซอร์ตัดให้เอง
+  if (!tab.nextElementSibling) { list.scrollLeft = list.scrollWidth; return; }
+  if (!tab.previousElementSibling) { list.scrollLeft = 0; return; }
+  const tabBox = tab.getBoundingClientRect();
+  const listBox = list.getBoundingClientRect();
+  if (tabBox.right > listBox.right) list.scrollLeft += Math.ceil(tabBox.right - listBox.right);
+  else if (tabBox.left < listBox.left) list.scrollLeft -= Math.ceil(listBox.left - tabBox.left);
+}
 
 function ContractBadge({ readiness }) {
   return (
@@ -80,20 +114,29 @@ export default function ServiceIntakePage() {
   const [toast, setToast] = useState(null);
 
   const startRun = useLatestRun();
+  // ของที่โหลดสำเร็จล่าสุด — ให้รอบเบื้องหลังรู้ว่ามีของเดิมยืนอยู่บนจอไหม (อ่านใน callback เท่านั้น)
+  const dataRef = useRef(null);
   const load = useCallback(async (opts) => {
     const isLatest = startRun();
     if (!opts?.background) setLoading(true);
-    setLoadError("");
+    /* 🐞 เคยล้าง loadError ตรงนี้ทุกรอบ รวมรอบเบื้องหลังตอนกลับมามองแท็บ ⇒ กล่องแจ้งโหลดพัง
+       หายระหว่างรอ แล้วรอบนั้นพังซ้ำก็ไม่ตั้งคืน ⇒ จอเหลือ "ไม่มีใบสั่งขายรอผูกโซน" = คิวว่างปลอม
+       ⇒ error ล้างได้ทางเดียวคือโหลดสำเร็จ */
     try {
       const res = await apiFetch("/api/service/intake");
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
-      if (!res.ok) throw new Error(body?.error || "โหลดคิวงานเข้าใหม่ไม่สำเร็จ");
+      if (!res.ok) throw new Error(body?.error || LOAD_ERROR_TITLE);
+      dataRef.current = body;
       setData(body);
+      setLoadError("");
     } catch (e) {
       /* ⚠️ ห้ามกลืน error เป็นคิวว่าง — "โหลดพัง" กับ "ไม่มีงานค้าง" หน้าตาเหมือนกัน
-         จนแยกไม่ออก แล้วฝ่าย TS จะเชื่อว่าไม่มีอะไรต้องทำ ซึ่งคือรูเดิมที่หน้านี้มาปิด */
-      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดคิวงานเข้าใหม่ไม่สำเร็จ");
+         จนแยกไม่ออก แล้วฝ่าย TS จะเชื่อว่าไม่มีอะไรต้องทำ ซึ่งคือรูเดิมที่หน้านี้มาปิด
+         รอบเบื้องหลังเงียบได้เฉพาะตอนมีของเดิมยืนอยู่บนจอ — ไม่มีของเดิม = ต้องบอกว่าพัง */
+      if (isLatest() && (!opts?.background || !dataRef.current)) {
+        setLoadError(e.message || LOAD_ERROR_TITLE);
+      }
     } finally {
       if (isLatest()) setLoading(false);
     }
@@ -187,14 +230,42 @@ export default function ServiceIntakePage() {
      ⇒ จอตั้ง/จอแคบเป็นการ์ด จอนอนเป็นตาราง (ทรงเดียวกับ /service/sites) สลับเองได้ที่หัวหน้า */
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
   const tabRows = useMemo(() => data?.[tab] || [], [data, tab]);
+  const viewPageSize = view === "cards" ? CARD_PAGE_SIZE : DEFAULT_PAGE_SIZE;
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(tabRows, { resetKey: tab });
+    usePagination(tabRows, { resetKey: tab, defaultSize: viewPageSize });
+  /* มุมมองตัดสินหลัง mount (ก่อน mount ถือเป็นจอนอน = ตาราง) ⇒ `defaultSize` ตอนเริ่มไม่พอ
+     ต้องตามมุมมองที่เปลี่ยน · แต่ถ้าคนเลือกจำนวนต่อหน้าเองแล้ว สลับมุมมองต้องไม่ทับค่าที่เลือก */
+  const pageSizePicked = useRef(false);
+  /* 🐞 เปลี่ยนขนาดหน้า = usePagination พากลับหน้า 1 ⇒ สลับมุมมองจากการ์ดหน้า 4 (ใบที่ 31–33)
+     ไปตารางแล้วตกหน้า 1 หลงที่ · จำ "แถวแรกที่เห็นอยู่" ไว้ แล้วไปหน้าที่มีแถวนั้นหลังรีเซ็ต
+     ⚠️ effect ตัวที่สองต้องประกาศ **หลัง** usePagination — effect รันตามลำดับประกาศ
+        setPage(1) ของ hook มาก่อน ค่าที่ตั้งตรงนี้จึงชนะ */
+  const keepFirstRow = useRef(null);
+  useEffect(() => {
+    if (pageSizePicked.current || pageSize === viewPageSize) return;
+    keepFirstRow.current = (page - 1) * pageSize;
+    setPageSize(viewPageSize);
+  }, [viewPageSize, page, pageSize, setPageSize]);
+  useEffect(() => {
+    if (keepFirstRow.current === null) return;
+    setPage(Math.floor(keepFirstRow.current / pageSize) + 1);
+    keepFirstRow.current = null;
+  }, [pageSize, setPage]);
+  const pickPageSize = useCallback((size) => {
+    pageSizePicked.current = true;
+    setPageSize(size);
+  }, [setPageSize]);
+  // โหลดพัง = ไม่รู้ตัวเลข ⇒ ไม่โชว์ตัวเลขเก่าหรือศูนย์บนแท็บ/ถังใบไม่ระบุสาย
+  const showCounts = Boolean(data) && !loadError;
 
   return (
     <Workspace
       icon={<ArrowDownToLine size={20} aria-hidden="true" />}
       title="งานเข้าใหม่"
       subtitle="ใบสั่งขายสายบริการที่อนุมัติแล้ว รอผูกกับไซต์/โซน แล้วตั้งรอบเข้าบริการ"
+      /* ตัวสลับมุมมองอยู่หัวหน้า ไม่ใช่ท้ายแถบเครื่องมือแบบ /service/sites · /service/assets
+         — หน้านี้ไม่มีแถบเครื่องมือ (ไม่มีค้นหา/ตัวกรอง) · ทรงเดียวกับคิวพี่น้อง /service/requests
+         ที่ไม่มีแถบเครื่องมือเหมือนกัน (ตรวจรอบสอง 2026-09-15: ยอมรับสองตำแหน่งนี้ตามชนิดหน้า) */
       headerRight={(
         <ViewSwitcher
           value={view} onChange={setView} ariaLabel="มุมมองคิวงานเข้าใหม่"
@@ -202,11 +273,9 @@ export default function ServiceIntakePage() {
         />
       )}
     >
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
-
       {/* แท็บกับคำอธิบายของแท็บเป็นก้อนเดียว — ห่อไว้ ไม่งั้นช่องไฟของ Workspace
           วางคำอธิบายลอยกลางระหว่างแท็บกับตาราง */}
-      <div className={styles.tabBlock}>
+      <div className={styles.tabBlock} onFocus={revealFocusedTab}>
         <Tabs
           value={tab}
           onChange={setTab}
@@ -215,15 +284,16 @@ export default function ServiceIntakePage() {
             key,
             /* 🐞 ยังโหลดไม่เสร็จ/โหลดพัง เคยขึ้น "0 · 0 · 0" = อ่านเป็นคิวว่าง
                ⇒ ไม่มีข้อมูล = ไม่มีตัวเลข */
-            label: data ? `${INTAKE_TAB_LABELS[key]} ${counts[key] ?? 0}` : INTAKE_TAB_LABELS[key],
+            label: showCounts ? `${INTAKE_TAB_LABELS[key]} ${counts[key] ?? 0}` : INTAKE_TAB_LABELS[key],
           }))}
         />
-        <p className={styles.hint}>{INTAKE_TAB_HINTS[tab]}</p>
+        {/* คำอธิบายพูดถึง "ของที่อยู่ในคิว" — โหลดพังแล้วยังขึ้นคำอธิบาย อ่านเหมือนคิวว่างปกติ */}
+        {!loadError && <p className={styles.hint}>{INTAKE_TAB_HINTS[tab]}</p>}
       </div>
 
       {/* ⭐ ถังที่ระบบตอบไม่ได้ — ขึ้นเหนือคิวเสมอ ไม่ว่าจะอยู่แท็บไหน
           ฝ่าย TS แก้เองไม่ได้ (สายธุรกิจเป็นของโครงการ) จึงบอกว่าต้องไปหาใคร */}
-      {counts.unknownLine > 0 && (
+      {showCounts && counts.unknownLine > 0 && (
         <section className={styles.unknown} aria-label="ใบที่ยังไม่ระบุสายธุรกิจ">
           <p className={styles.unknownHead}>
             <AlertTriangle size={14} aria-hidden="true" />
@@ -241,7 +311,16 @@ export default function ServiceIntakePage() {
         </section>
       )}
 
-      {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
+      {/* 🐞 โหลดพังเคยเป็นข้อความเล็กสีปกติเหนือแท็บ ไม่มีทรงข้อผิดพลาด ไม่มีทางไปต่อ
+          ⇒ ขึ้นกล่องแจ้งข้อผิดพลาดตรงที่คิวควรอยู่ + ปุ่มลองใหม่ (ทรงเดียวกับ /service/assets) */}
+      {loading ? <SkeletonRows rows={4} /> : loadError ? (
+        <StatusNotice tone="error" title={LOAD_ERROR_TITLE}
+          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+          {loadError === LOAD_ERROR_TITLE
+            ? "ยังไม่รู้ว่ามีงานค้างอยู่เท่าไร — ไม่ได้แปลว่าคิวว่าง"
+            : loadError}
+        </StatusNotice>
+      ) : (
         <>
           {tab === "bind" && (
             (data?.bind || []).length === 0 ? (
@@ -260,16 +339,16 @@ export default function ServiceIntakePage() {
                       {fgText(row)} · อนุมัติ <span className="mono">{approvedText(row)}</span>
                       {row.roundsSold ? ` · ขายไว้ ${fmtNumber(row.roundsSold)} รอบ` : null}
                     </p>
-                    <div className={styles.cardBadges}>
+                    <div className={styles.cardFoot}>
                       <ContractBadge readiness={row.readiness} />
                       <PaidBadge readiness={row.readiness} />
+                      {canEdit && (
+                        <Button tone="neutral" className={styles.cardAction} onClick={() => openWizard(row)}
+                          icon={<Building2 size={15} aria-hidden="true" />}>
+                          รับเข้าไซต์
+                        </Button>
+                      )}
                     </div>
-                    {canEdit && (
-                      <Button tone="neutral" className={styles.cardAction} onClick={() => openWizard(row)}
-                        icon={<Building2 size={15} aria-hidden="true" />}>
-                        รับเข้าไซต์
-                      </Button>
-                    )}
                   </li>
                 ))}
               </ul>
@@ -284,7 +363,7 @@ export default function ServiceIntakePage() {
                     <tr>
                       <th scope="col">ใบสั่งขาย · ลูกค้า</th>
                       <th scope="col" className="num">อนุมัติเมื่อ</th>
-                      <th scope="col">ของที่ต้องจัดสรร</th>
+                      <th scope="col"><span className={styles.qtyInset}>ของที่ต้องจัดสรร</span></th>
                       <th scope="col">สัญญา</th>
                       <th scope="col">จ่ายถึง</th>
                       <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
@@ -303,13 +382,15 @@ export default function ServiceIntakePage() {
                             บรรทัดเป็นรูปร่างของเอกสารขาย ไม่ใช่ขนาดของงาน — ใบจริงใบหนึ่ง
                             มี 10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย */}
                         <td className={styles.nowrap}>
-                          {fgText(row)}
-                          {/* ⭐ ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ (mig 0326) — TS ต้องเห็น
-                              ตั้งแต่ตอนรับงาน จะได้ตั้งความถี่ให้ได้จำนวนนัดตรงกับที่ขาย
-                              ⚠️ ไม่ขึ้นเลยเมื่อยังไม่กรอก — "ยังไม่ระบุ" ไม่ใช่ "ขายศูนย์รอบ" */}
-                          {row.roundsSold
-                            ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
-                            : null}
+                          <div className={styles.qtyInset}>
+                            {fgText(row)}
+                            {/* ⭐ ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ (mig 0326) — TS ต้องเห็น
+                                ตั้งแต่ตอนรับงาน จะได้ตั้งความถี่ให้ได้จำนวนนัดตรงกับที่ขาย
+                                ⚠️ ไม่ขึ้นเลยเมื่อยังไม่กรอก — "ยังไม่ระบุ" ไม่ใช่ "ขายศูนย์รอบ" */}
+                            {row.roundsSold
+                              ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
+                              : null}
+                          </div>
                         </td>
                         {/* ⭐ ชิปความพร้อม (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้
                             พอจัดสรรแล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอ
@@ -488,7 +569,7 @@ export default function ServiceIntakePage() {
               total={total}
               onPage={setPage}
               pageSize={pageSize}
-              onPageSize={setPageSize}
+              onPageSize={pickPageSize}
               itemLabel={tab === "visit" ? "รอบ" : "ใบ"}
             />
           )}

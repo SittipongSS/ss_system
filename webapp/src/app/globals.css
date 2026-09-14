@@ -2042,6 +2042,15 @@ a.topnav-here-sys:focus-visible {
     border-radius: 0 0 3px 3px;
     background: var(--accent);
   }
+  /* วงโฟกัสของแท็บ ท่าเดียวกับปุ่มจุดบอกหน้าด้านล่าง (2px accent-ink)
+     🐞 เดิมไม่มีกฎ ⇒ กด Tab ได้วงฟ้าบาง 1px ของเบราว์เซอร์ ต่างจากตัวควบคุมอื่นทั้งหน้า
+     ⚠️ offset ติดลบ = วงอยู่ในกล่องลิงก์ · แถบเลื่อนเมนูซ่อนส่วนเกินแนวตั้ง
+        offset บวกจะโดนตัดขอบบนและล่างทิ้งจนเหลือแค่ขีดข้าง */
+  .mbn-item:focus-visible {
+    outline: 2px solid var(--accent-ink);
+    outline-offset: -2px;
+    border-radius: var(--radius-md);
+  }
   .mbn-item.is-empty { pointer-events: none; }
   /* แถวจุดสูงคงที่เสมอ แม้ไม่มีจุด — ความสูงแถบต้องนิ่งเท่า --mobile-nav-h
      ที่ .page เอาไปเผื่อระยะไว้ ไม่งั้นเนื้อหาท้ายหน้าถูกทับในบางระบบ */
@@ -2707,6 +2716,9 @@ h1, h2, h3, h4, h5, h6 {
 .ui-badge.contract-manufacturing { color: var(--blue); }
 .ui-badge.contract-service { color: var(--teal); }
 .ui-badge-w-contract { --cell-badge-w: 118px; } /* ชนิดสัญญา — "สัญญาจ้างออกแบบกลิ่น" */
+/* คู่คอลัมน์ความพร้อมของงานเข้าใหม่ (/service/intake) — วัด 2026-09-15 จอ 1440 */
+.ui-badge-w-contract-no { --cell-badge-w: 120px; } /* เลขสัญญา — "CT-SR-26080001-0" 118px (Rev. สองหลัก "-12" 125px) · "ยังไม่ผูกสัญญา" 92px */
+.ui-badge-w-paid { --cell-badge-w: 118px; }     /* จ่ายถึง — "จ่ายถึง 15/09/2026" 118px · "ยังไม่มีงวดที่รับรอง" 111px */
 
 .ui-badge-w-doc { --cell-badge-w: 112px; }     /* สถานะใบเสนอราคา/ใบสั่งขาย — "ย้อนการอนุมัติ" */
 .ui-badge-w-lead { --cell-badge-w: 92px; }     /* สถานะลีด — "เปิดลูกค้าแล้ว" / "นัดประชุมแล้ว" 88px */

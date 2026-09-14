@@ -41,6 +41,8 @@ export default function ServiceZonePage({ params }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // 404 ≠ โหลดพัง — โซนที่ไม่มี (หรือไม่อยู่ในไซต์นี้) ต้องบอกคนละอย่างกับเน็ตสะดุด · ทรงเดียวกับหน้าเครื่อง
+  const [notFound, setNotFound] = useState(false);
 
   const startRun = useLatestRun();
   const load = useCallback(async (opts) => {
@@ -51,6 +53,8 @@ export default function ServiceZonePage({ params }) {
       const res = await apiFetch(`/api/service/sites/${id}/zones/${zoneId}/detail`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
+      // รอบเบื้องหลังที่ล้มต้องเงียบ — ไม่พลิกหน้าที่อ่านอยู่เป็น "ไม่พบ"
+      if (!opts?.background) setNotFound(res.status === 404);
       if (!res.ok) throw new Error(body?.error || "โหลดข้อมูลโซนไม่สำเร็จ");
       setData(body);
     } catch (e) {
@@ -105,29 +109,33 @@ export default function ServiceZonePage({ params }) {
   /* ⚠️ นำหน้าด้วยคำว่า "ไซต์" — ชื่อไซต์เป็นข้อความอิสระ ("ชั้น 2") อ่านปนกับชั้นของโซนได้ */
   const back = { href: `/service/sites/${id}`, label: data?.site?.name ? `ไซต์ ${data.site.name}` : "ไซต์" };
 
-  if (loading) {
-    return <Workspace icon={<Layers size={20} aria-hidden="true" />} title="โซนบริการ" back={back}><SkeletonRows rows={5} /></Workspace>;
-  }
-  /* 🐞 เดิม "โหลดพัง" กับ "ไม่พบ" เป็นข้อความบรรทัดเดียวเหมือนกัน ไม่มีทางไปต่อ · แยกให้เห็นว่าเป็นแบบไหน
-     และมีปุ่มลองใหม่เมื่อเป็นเน็ตสะดุด (ทรงเดียวกับหน้ารายละเอียดเครื่อง) */
-  if (loadError) {
-    return (
-      <Workspace icon={<Layers size={20} aria-hidden="true" />} title="โซนบริการ" back={back}>
-        <StatusNotice tone="error" title="โหลดข้อมูลโซนไม่สำเร็จ"
-          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
-          {loadError}
-        </StatusNotice>
-      </Workspace>
+  /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ — ทรงเดียวกันทั้งสี่หน้า
+     (เครื่อง · ไซต์ · โซน · ใบส่งงาน) · ลำดับ: ไม่พบ (404) มาก่อนโหลดพัง
+     🐞 เดิม `!res.ok` โยนทิ้งทุกกรณี ⇒ โซนที่ถูกลบขึ้น "โหลดข้อมูลโซนไม่สำเร็จ" + ปุ่มลองใหม่
+        อ่านเหมือนเน็ตสะดุดที่กดซ้ำแล้วจะหาย · สาขา "ไม่พบ" ไม่เคยถูกเรียกเลย */
+  /* ♿ hideHeader ถอด h1 ของ Workspace ออกด้วย — หน้าที่โหลดเสร็จได้ h1 จาก DetailOverview
+     แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
+  const shell = (body) => (
+    <Workspace hideHeader back={back}>
+      <h1 className="sr-only">โซนบริการ</h1>
+      {body}
+    </Workspace>
+  );
+  if (loading) return shell(<SkeletonRows rows={5} />);
+  if (notFound || (!loadError && !data?.zone)) {
+    return shell(
+      <EmptyState icon={Layers}>
+        ไม่พบโซนนี้
+        <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+      </EmptyState>,
     );
   }
-  if (!data?.zone) {
-    return (
-      <Workspace icon={<Layers size={20} aria-hidden="true" />} title="โซนบริการ" back={back}>
-        <EmptyState icon={Layers}>
-          ไม่พบโซนนี้
-          <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
-        </EmptyState>
-      </Workspace>
+  if (loadError) {
+    return shell(
+      <StatusNotice tone="error" title="โหลดข้อมูลโซนไม่สำเร็จ"
+        action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+        {loadError}
+      </StatusNotice>,
     );
   }
 

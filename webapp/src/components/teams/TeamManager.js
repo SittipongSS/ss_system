@@ -217,7 +217,9 @@ export default function TeamManager({ department, title, subtitle }) {
 
           <WorkspaceSection
             className={styles.countHeader}
-            icon={<Users size={18} aria-hidden="true" />}
+            /* ไอคอนหัว section = 17 ทั้งโมดูล (ขนาดเดียวกับหน้าภาพรวม /service และ DetailCard)
+               🐞 เดิม 18 ⇒ หัวข้อเริ่มคนละระยะกับหน้าพี่น้อง */
+            icon={<Users size={17} aria-hidden="true" />}
             title="ทะเบียนทีม"
             actions={<CountBadge count={rows.length} label="จำนวนทีมที่แสดง" />}
           >
@@ -226,7 +228,9 @@ export default function TeamManager({ department, title, subtitle }) {
               <div className="search-glass">
                 <Search size={16} color="var(--text-3)" aria-hidden="true" />
                 <input autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)}
-                  placeholder="ค้นชื่อทีม · รหัส · หัวหน้าทีม · ชื่อสมาชิก" aria-label="ค้นหาทีม" />
+                  /* ⚠️ ป้ายต้องจบในช่อง 214px ของจอ 320 (วัดได้ 192px) — 🐞 เดิม "หัวหน้าทีม · ชื่อสมาชิก"
+                     227px ⇒ ถูกตัดกลางคำเป็น "ชื่อสมาชิ" · ยังบอกครบสี่อย่างที่ค้นได้ */
+                  placeholder="ค้นชื่อทีม · รหัส · หัวหน้า · สมาชิก" aria-label="ค้นหาทีม" />
               </div>
               <Segmented ariaLabel="สถานะทีม" options={STATUS_FILTERS} value={status} onChange={setStatus} />
               {/* 🐞 `.spacer` ดันขวาได้แค่บนบรรทัดเดียวกัน — จอ 768 ตกบรรทัดแล้วปุ่มเรียงไปชิดซ้าย
@@ -271,7 +275,9 @@ export default function TeamManager({ department, title, subtitle }) {
                       <th>หัวหน้าทีม</th>
                       <th>สมาชิก</th>
                       <th>สถานะ</th>
-                      <th aria-label="การจัดการ" />
+                      {/* คอลัมน์เมนูกว้างเท่าปุ่ม — ทรงเดียวกับตารางสมาชิกของหน้าทีม
+                          🐞 เดิมไม่ตั้งกว้าง ⇒ ได้ 120px แล้วปุ่ม "…" ลอยห่างขอบขวา ~80px */}
+                      <th aria-label="การจัดการ" className={styles.menuCol} />
                     </tr>
                   </thead>
                   <tbody>
@@ -316,7 +322,7 @@ export default function TeamManager({ department, title, subtitle }) {
                               ? <StatusBadge tone="neutral" label="ปิดใช้งาน" />
                               : <StatusBadge tone="success" label="ใช้งานอยู่" />}
                           </td>
-                          <td className="text-center">
+                          <td className={`text-center ${styles.menuCol}`}>
                             {canManage && (
                               <RowActionMenu items={menuFor({ team, members })} busy={saving}
                                 label={`การจัดการของทีม ${team.name}`} />
@@ -337,7 +343,7 @@ export default function TeamManager({ department, title, subtitle }) {
           <WorkspaceSection
             className={styles.countHeader}
             id="unassigned"
-            icon={<UserRound size={18} aria-hidden="true" />}
+            icon={<UserRound size={17} aria-hidden="true" />}
             title="ยังไม่อยู่ทีมไหน"
             /* ⚠️ **คำอธิบายต้องตรงกับความหมายของทีมในฝ่ายนั้น** — ทีมขายผูกสิทธิ์
                (ไม่มีทีม = ไม่เห็นข้อมูล) ส่วนทีมปฏิบัติงานไม่แตะสิทธิ์เลย

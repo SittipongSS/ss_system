@@ -15,7 +15,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle, CalendarClock, CalendarDays, Droplets,
-  LayoutDashboard, MapPin, UserRound, Wrench,
+  LayoutDashboard, MapPin, Wrench,
 } from "lucide-react";
 import ActionQueue from "@/components/ui/ActionQueue";
 import Button from "@/components/ui/Button";
@@ -144,7 +144,9 @@ export default function ServiceOverviewPage() {
               ให้คนกลุ่มนี้เท่านั้น คนอื่นต้องยังเห็นปุ่มในหัวหน้า */
         <div className={canEdit ? `${styles.headerActions} ${styles.navMirrored}` : styles.headerActions}>
           {canEdit && (
-            <Button as={Link} href="/service/today" icon={<UserRound size={15} aria-hidden="true" />}>
+            /* ไอคอนตามเมนู "งานวันนี้" ใน AppLayout (Wrench) — หนึ่งปลายทางหนึ่งไอคอน
+               เดิม UserRound ขณะที่แท็บแถบล่างของปลายทางเดียวกันเป็นประแจ */
+            <Button as={Link} href="/service/today" icon={<Wrench size={15} aria-hidden="true" />}>
               งานวันนี้
             </Button>
           )}

@@ -27,10 +27,12 @@
 
 .sectionTitle.danger { color: var(--red); }
 
+/* เลขงานที่ยังไม่ปิด (เลขเดียวกับป้ายหัวจอ) + "· ปิดแล้ว N" เมื่อมี — ติดกันเป็นก้อน ไม่พับกลางวลี */
 .sectionCount {
   color: var(--text-3);
   font-size: var(--fs-label);
   font-weight: var(--fw-normal);
+  white-space: nowrap;
 }
 
 /* พื้นการ์ดชุดเดียวกับการ์ดอื่นของโมดูล · สูงเท่าเนื้อของตัวเอง (กริด align-items: start)
@@ -113,15 +115,25 @@
   line-height: var(--lh-thai);
 }
 
+/* overflow-wrap: anywhere — คำที่ไม่มีจุดตัดเลย (ละตินยาวติดกัน · URL ในหมายเหตุทางเข้า) พับในการ์ด ไม่ล้นจอ
+   🐞 ไทยพับได้เองเพราะ ICU หาจุดตัดเจอ แต่ละตินยาวติดกันเคยล้นขอบการ์ดออกนอกจอ (กล่องไม่ล้น เลยวัดไม่เจอ)
+   ไม่เปลี่ยนจุดตัดของคำไทย — ตัวนี้ทำงานเฉพาะเมื่อไม่มีจุดตัดอื่นในบรรทัด (ดู lib/thaiWrap.js) */
 .meta {
   margin: var(--space-1) 0 0;
   color: var(--text-3);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
 }
 
 /* ท่อนของช่วงที่เข้าได้ (วัน / เวลา) — ตัดบรรทัดได้แค่ระหว่างท่อน */
 .keep { white-space: nowrap; }
+
+/* คำสั้นในโซน / ชื่อลูกค้า (ไม่เกิน WORD_BOX_MAX ใน page.js) — ตัดบรรทัดได้แค่ที่ช่องว่าง ไม่ใช่กลางคำ · กว้างไม่เกินการ์ด */
+.word {
+  display: inline-block;
+  max-width: 100%;
+}
 
 .warn {
   display: flex;

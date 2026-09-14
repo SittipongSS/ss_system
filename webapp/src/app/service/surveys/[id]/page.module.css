@@ -24,17 +24,22 @@
   line-height: var(--lh-thai);
 }
 
-/* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — แถบบริบทเงียบ ๆ เหนือตารางผล
+/* คำบรรยาย + ตารางผล = ก้อนเดียว — gap ของเปลือก (18px) ห่างเกินไปสำหรับคำบรรยายของตาราง
+   ⚠️ `margin-block` ของลูกเปลือกถูก `.ui-workspace > *` ล้างทิ้ง ⇒ ระยะอยู่ที่ gap ของกล่องนี้ */
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — คำบรรยายเงียบ ๆ เหนือตารางผล
    ⚠️ ไม่ใช่ notice สีฟ้าแบบฝั่งฝ่ายขาย: บนจอนี้มันคือ *สรุปงานของตัวเอง* ไม่ใช่ข่าว
-   ⚠️ `margin-block` ถูก `.ui-workspace > *` ล้างทิ้ง ⇒ ระยะห่างมาจาก gap ของเปลือก
-      ส่วนช่องว่างใต้แถบสร้างด้วย padding ของกล่องเอง */
+   🐞 เดิมเป็นแถบมีกรอบ+พื้นของตัวเอง ⇒ ใบที่ส่งแล้วมีแถบสองทรงซ้อนกัน (StatusNotice "ส่งผลแล้ว"
+      ตามด้วยแถบนี้ห่าง 18px) ⇒ ตัดกรอบทิ้ง เหลือแถบทรงเดียวทั้งหน้า */
 .change {
   margin: 0;
-  padding: var(--space-2-5) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel-2);
   color: var(--text-2);
-  font-size: var(--fs-4);
+  font-size: var(--fs-5);
   line-height: var(--lh-thai);
 }

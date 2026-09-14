@@ -330,15 +330,18 @@ export default function SurveySheetPage({ params }) {
           {/* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้โดยไม่
               ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเองเปลี่ยน
               อะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่ขึ้นเฉพาะตอนมีการเปลี่ยน
-              (เห็น "ไม่มีตัด ไม่มีเพิ่ม" = ยืนยันว่าไม่ได้ลืมอะไร) */}
-          <p className={styles.change} role="status">{changeText}</p>
-          <SurveyResultTable
-            zones={zones}
-            filesByZone={data?.filesByZone || {}}
-            canDecide={canDecide && !sent}
-            busyZone={busyZone}
-            onDecide={decideZone}
-          />
+              (เห็น "ไม่มีตัด ไม่มีเพิ่ม" = ยืนยันว่าไม่ได้ลืมอะไร)
+              ⭐ เป็นคำบรรยายของตาราง อยู่ก้อนเดียวกับตาราง — ไม่ใช่แถบอีกทรงต่อจาก StatusNotice */}
+          <div className={styles.result}>
+            <p className={styles.change} role="status">{changeText}</p>
+            <SurveyResultTable
+              zones={zones}
+              filesByZone={data?.filesByZone || {}}
+              canDecide={canDecide && !sent}
+              busyZone={busyZone}
+              onDecide={decideZone}
+            />
+          </div>
           {/* ⭐ **ทางออกของปุ่มส่งผลที่กดไม่ได้** — ด่านสามข้อบนเป็นของช่าง หัวหน้าแก้เองไม่ได้
               ⇒ ต้องมีปุ่มแจ้งอยู่ข้าง ๆ ข้อที่ติด ไม่ใช่ปุ่มเทาเงียบที่ไม่บอกว่าใครแก้ */}
           <SurveyGateList

@@ -239,27 +239,29 @@ export default function ServiceAssetPage({ params }) {
   /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ (หัวมาจาก DetailOverview)
      🐞 เดิมวาดการ์ดหัว "อุปกรณ์" + ไอคอนประแจ (= ไอคอนโมดูล ไม่ใช่ของเครื่อง) แล้วตามด้วย
         ข้อความบรรทัดเดียวไม่มีสไตล์ · 404 กับเน็ตสะดุดหน้าตาเหมือนกันจนแยกไม่ออก */
-  if (loading) {
-    return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
-  }
+  /* ♿ hideHeader ถอด h1 ของ Workspace ออกด้วย — หน้าที่โหลดเสร็จได้ h1 จาก DetailOverview
+     แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
+  const shell = (body) => (
+    <Workspace hideHeader back={back}>
+      <h1 className="sr-only">อุปกรณ์</h1>
+      {body}
+    </Workspace>
+  );
+  if (loading) return shell(<SkeletonRows rows={5} />);
   if (notFound || (!loadError && !asset)) {
-    return (
-      <Workspace hideHeader back={back}>
-        <EmptyState icon={AirVent}>
-          ไม่พบเครื่องนี้ในทะเบียน
-          <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
-        </EmptyState>
-      </Workspace>
+    return shell(
+      <EmptyState icon={AirVent}>
+        ไม่พบเครื่องนี้ในทะเบียน
+        <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+      </EmptyState>,
     );
   }
   if (loadError) {
-    return (
-      <Workspace hideHeader back={back}>
-        <StatusNotice tone="error" title="โหลดข้อมูลเครื่องไม่สำเร็จ"
-          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
-          {loadError}
-        </StatusNotice>
-      </Workspace>
+    return shell(
+      <StatusNotice tone="error" title="โหลดข้อมูลเครื่องไม่สำเร็จ"
+        action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+        {loadError}
+      </StatusNotice>,
     );
   }
 

@@ -107,7 +107,7 @@ export default function SurveyZoneCard({ zone, files = [], canWrite = false, bus
               {canWrite && <em className={styles.req}>บังคับ</em>}
             </div>
             {parts.map((part, i) => (
-              <div key={part.id} className={styles.part}>
+              <div key={part.id} className={styles.part} data-read={canWrite ? undefined : "1"}>
                 <div className={styles.partNo}>{i + 1}</div>
                 <div className={styles.partBody}>
                   {canWrite ? (
@@ -213,7 +213,7 @@ export default function SurveyZoneCard({ zone, files = [], canWrite = false, bus
               <small>{spots.length} จุด · {docs.spot} รูป</small>
             </div>
             {spots.map((spot, i) => (
-              <div key={spot.id} className={styles.spot}>
+              <div key={spot.id} className={styles.spot} data-read={canWrite ? undefined : "1"}>
                 <div className={styles.partNo}>{i + 1}</div>
                 <div className={styles.partBody}>
                   {canWrite ? (

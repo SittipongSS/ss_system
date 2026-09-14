@@ -14,7 +14,7 @@
 //   แม้บนแท็บเล็ต · ลบ.ม. กับสูตรจึงยุบเป็นบรรทัดรองของเซลล์ที่มันอธิบาย
 // ⭐ **ดูอย่างเดียว = ตัวหนังสือ ไม่ใช่ปุ่มจาง** — จุดที่เลือกคือผลที่ฝ่ายขายอ่าน ต้องชัดที่สุด
 //   ในแถว และบอกด้วยไอคอน ไม่ใช่สีขอบอย่างเดียว (WCAG 1.4.1)
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { AlertTriangle, Check, Minus, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -47,7 +47,7 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
   return (
     /* ⚠️ minWidth = ผลรวมความกว้างจริงของห้าคอลัมน์ที่วัดบนจอ 1440 · cells="stacked" เพราะ
        ทุกเซลล์ซ้อนสองบรรทัด (กฎ 5) */
-    <TableShell minWidth={TABLE_MIN_WIDTH} cells="stacked">
+    <TableShell minWidth={TABLE_MIN_WIDTH} cells="stacked" className={styles.shell}>
       <table>
         <thead>
           <tr>
@@ -58,7 +58,7 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
             <th>รูป</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={styles.body}>
           {zones.map((zone) => {
             const cut = zone.status === "cut";
             const size = surveyZoneSize(zone.parts);
@@ -66,6 +66,7 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
             const files = filesByZone[zone.id] || [];
             const docs = surveyDocCounts(files);
             const miss = surveyResultMissing(zone, files);
+            const missText = cut ? "" : [...miss.field, ...miss.result].join(" · ");
             const spots = Array.isArray(zone.spots) ? zone.spots : [];
             const picked = spots.filter((s) => s?.selected === true).length;
             const delta = deltaText(Number(zone.packageQty), suggested);
@@ -79,7 +80,8 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
             };
 
             return (
-              <tr key={zone.id} className={cut ? styles.cut : undefined}>
+              <Fragment key={zone.id}>
+              <tr className={cut ? styles.cut : undefined} data-miss={missText ? "1" : undefined}>
                 <td>
                   <b>{zone.zoneName}</b>
                   <span className={styles.sub}>
@@ -196,17 +198,31 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
                     <td className={styles.docs}>
                       <span>{docs.wide}</span> / <span data-low={docs.plan === 0 ? "1" : undefined}>{docs.plan}</span> / <span>{docs.spot}</span>
                       <span className={styles.sub}>กว้าง / ผัง / จุด</span>
-                      {/* เหตุผลที่ยังส่งไม่ได้ต้องเป็นตัวหนังสือบนแถวที่ติด ไม่ใช่กองรวมข้างล่าง */}
-                      {[...miss.field, ...miss.result].length > 0 && (
-                        <span className={styles.rowMiss}>
-                          <AlertTriangle size={12} aria-hidden="true" />
-                          {[...miss.field, ...miss.result].join(" · ")}
-                        </span>
-                      )}
                     </td>
                   </>
                 )}
               </tr>
+              {/* เหตุผลที่ยังส่งไม่ได้ต้องเป็นตัวหนังสือบนแถวที่ติด ไม่ใช่กองรวมข้างล่าง
+                  ⭐ **แถวย่อยเต็มกว้างใต้แถวของมัน ไม่ใช่ท้ายคอลัมน์ "รูป"** — 🐞 เดิมอยู่ในคอลัมน์
+                  ที่แคบที่สุด (~113px ที่ 768) ⇒ ข้อความยาวที่สุดของแถวห่อ 5–6 บรรทัด แถวสูง ~150px
+                  และบนมือถืออยู่ขอบขวาสุดของตารางที่ต้องปัดข้างถึงจะเห็น */}
+              {/* ⚠️ แยกแถวแล้ว screen reader ไล่ทีละแถวจะได้ยินคำเตือนโดยไม่รู้ว่าของพื้นที่ไหน
+                  (WCAG 1.3.1) ⇒ เติมชื่อพื้นที่แบบซ่อนจากตา · ไม่ใช้ `headers` ชี้ไป td
+                  เพราะสเปกให้ชี้ได้แค่ th และ screen reader หลายตัวไม่อ่าน */}
+              {missText && (
+                <tr data-miss-row="1">
+                  <td colSpan={5}>
+                    <span className={styles.rowMiss}>
+                      <span className={styles.srOnly}>
+                        {`${String(zone.zoneName || "").trim() || "พื้นที่ไม่มีชื่อ"} ยังไม่ผ่าน: `}
+                      </span>
+                      <AlertTriangle size={12} aria-hidden="true" />
+                      {missText}
+                    </span>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
         </tbody>

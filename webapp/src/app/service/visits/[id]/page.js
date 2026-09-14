@@ -23,7 +23,7 @@ import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { buildVisitReport } from "@/lib/service/visitReport";
-import { isClosedVisit } from "@/lib/service/visitStatus";
+import { isClosedVisit, isDraftVisit, isOpenVisit } from "@/lib/service/visitStatus";
 import { SURVEY_VISIT_KIND } from "@/lib/service/surveyVisit";
 import { canDoFieldWork, canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -44,6 +44,8 @@ export default function VisitReportPage({ params }) {
   const [site, setSite] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // 404 ≠ โหลดพัง — ใบที่ไม่มีต้องบอกคนละอย่างกับเน็ตสะดุด (อันหลังกดลองใหม่ได้) · ทรงเดียวกับหน้าเครื่อง
+  const [notFound, setNotFound] = useState(false);
 
   const startRun = useLatestRun();
   const load = useCallback(async (opts) => {
@@ -54,6 +56,8 @@ export default function VisitReportPage({ params }) {
       const res = await apiFetch(`/api/service/visits/${id}`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
+      // รอบเบื้องหลังที่ล้มต้องเงียบ — ไม่พลิกใบที่อ่านอยู่เป็น "ไม่พบ"
+      if (!opts?.background) setNotFound(res.status === 404);
       if (!res.ok) throw new Error(body?.error || "โหลดใบส่งงานไม่สำเร็จ");
       setData(body);
       // ไซต์ยิงแยกเพราะ GET นัดคืนแค่ของที่อยู่ใต้ไซต์ ไม่ได้คืนตัวไซต์เอง
@@ -88,29 +92,33 @@ export default function VisitReportPage({ params }) {
       : { href: "/service/schedule", label: "จัดคิวเจ้าหน้าที่" };
   }, [role, team, teams, department]);
 
-  if (loading) {
-    return <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ใบส่งงาน" back={back}><SkeletonRows rows={5} /></Workspace>;
-  }
-  /* 🐞 เดิม "โหลดพัง" กับ "ไม่พบ" เป็นข้อความบรรทัดเดียวเหมือนกัน ไม่มีทางไปต่อ · แยกให้เห็นว่าเป็นแบบไหน
-     และมีปุ่มลองใหม่เมื่อเป็นเน็ตสะดุด (ทรงเดียวกับหน้ารายละเอียดเครื่อง) */
-  if (loadError) {
-    return (
-      <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ใบส่งงาน" back={back}>
-        <StatusNotice tone="error" title="โหลดใบส่งงานไม่สำเร็จ"
-          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
-          {loadError}
-        </StatusNotice>
-      </Workspace>
+  /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ — ทรงเดียวกันทั้งสี่หน้า
+     (เครื่อง · ไซต์ · โซน · ใบส่งงาน) · ลำดับ: ไม่พบ (404) มาก่อนโหลดพัง
+     🐞 เดิม `!res.ok` โยนทิ้งทุกกรณี ⇒ ใบที่ถูกลบขึ้น "โหลดใบส่งงานไม่สำเร็จ" + ปุ่มลองใหม่
+        อ่านเหมือนเน็ตสะดุดที่กดซ้ำแล้วจะหาย · สาขา "ไม่พบ" ไม่เคยถูกเรียกเลย */
+  /* ♿ hideHeader ถอด h1 ของ Workspace ออกด้วย — ใบที่โหลดเสร็จได้ h1 จาก DetailOverview
+     แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
+  const shell = (body) => (
+    <Workspace hideHeader back={back}>
+      <h1 className="sr-only">ใบส่งงาน</h1>
+      {body}
+    </Workspace>
+  );
+  if (loading) return shell(<SkeletonRows rows={5} />);
+  if (notFound || (!loadError && !report)) {
+    return shell(
+      <EmptyState icon={ClipboardList}>
+        ไม่พบใบส่งงานนี้
+        <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+      </EmptyState>,
     );
   }
-  if (!report) {
-    return (
-      <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ใบส่งงาน" back={back}>
-        <EmptyState icon={ClipboardList}>
-          ไม่พบใบส่งงานนี้
-          <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
-        </EmptyState>
-      </Workspace>
+  if (loadError) {
+    return shell(
+      <StatusNotice tone="error" title="โหลดใบส่งงานไม่สำเร็จ"
+        action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+        {loadError}
+      </StatusNotice>,
     );
   }
 
@@ -125,6 +133,17 @@ export default function VisitReportPage({ params }) {
   /* ⚠️ ตัดที่จอเท่านั้น — reportFlags ยังเป็นตัวตัดสินกระดิ่ง (shouldPushReport)
      🐞 เดิมนัดที่ "กำลังทำ" ขึ้นแถบเหลือง "ไม่มีลายเซ็น/ไม่มีรูป" อ่านเหมือนใบมีปัญหา */
   const flags = isClosedVisit(visit) ? report.flags : report.flags.filter((f) => !CLOSE_ONLY_FLAGS.has(f.kind));
+  /* แถบนี้เหลือเฉพาะของที่ไม่อยู่ใน "รายละเอียดงาน"
+     🐞 เดิมมีเขตวิ่งงาน + ช่วงที่เข้าได้ซ้ำกับการ์ดล่าง — มือถือกางช่องละแถว
+     จอแรกจึงเห็นแต่หัวใบ เนื้อใบไปเริ่มใต้แถบเมนูล่าง
+     🐞 นัดประเมินพื้นที่ (ไม่มีช่องอุปกรณ์) เหลือช่องเดียว "เวลาที่เข้าจริง" ยืดเต็มการ์ด
+        แล้วซ้ำแถว "เวลา" ที่อยู่ใต้ลงไปไม่กี่พิกเซล ⇒ เหลือช่องเดียวเมื่อไร ไม่ต้องมีแถบ */
+  const overviewFacts = [
+    { key: "time", icon: Clock, label: "เวลาที่เข้าจริง", value: headValue("เวลา") },
+    ...(hideAssets ? [] : [
+      { key: "assets", icon: Wrench, label: "อุปกรณ์ที่ทำ", value: `${report.lines.filter((l) => l.outcome !== "unable").length} / ${report.lines.length}` },
+    ]),
+  ];
 
   return (
     <Workspace hideHeader back={back}>
@@ -138,15 +157,7 @@ export default function VisitReportPage({ params }) {
             พิมพ์ / บันทึก PDF
           </Button>
         )}
-        /* แถบนี้เหลือเฉพาะของที่ไม่อยู่ใน "รายละเอียดงาน"
-           🐞 เดิมมีเขตวิ่งงาน + ช่วงที่เข้าได้ซ้ำกับการ์ดล่าง — มือถือกางช่องละแถว
-           จอแรกจึงเห็นแต่หัวใบ เนื้อใบไปเริ่มใต้แถบเมนูล่าง */
-        facts={[
-          { key: "time", icon: Clock, label: "เวลาที่เข้าจริง", value: headValue("เวลา") },
-          ...(hideAssets ? [] : [
-            { key: "assets", icon: Wrench, label: "อุปกรณ์ที่ทำ", value: `${report.lines.filter((l) => l.outcome !== "unable").length} / ${report.lines.length}` },
-          ]),
-        ]}
+        facts={overviewFacts.length > 1 ? overviewFacts : []}
       />
 
       {/* ⭐ แถบ "ต้องดู" — ชั้นเดียวกับที่ตัดสินว่าใบไหนถูกดันขึ้นกระดิ่ง
@@ -189,8 +200,10 @@ export default function VisitReportPage({ params }) {
           </>
         )}
       >
+        {/* 🐞 จอ 320 บรรทัดนี้ขาดกลางคำ "เจ้า|หน้าที่ไม่ได้พิมพ์" — ICU ตัดคำประสมไทยแท้ได้
+            และ thaiText ดูแลเฉพาะคำทับศัพท์ ⇒ ตรึงวลีท้ายไว้ด้วยกัน บรรทัดจะตัดที่ "— " แทน */}
         <DetailCard icon={ClipboardList} title="รายละเอียดงาน"
-          meta="ทุกบรรทัดในส่วนนี้ระบบดึงจากทะเบียน — เจ้าหน้าที่ไม่ได้พิมพ์">
+          meta={<>ทุกบรรทัดในส่วนนี้ระบบดึงจากทะเบียน — <span className={styles.keepTogether}>เจ้าหน้าที่ไม่ได้พิมพ์</span></>}>
           <dl className={styles.head}>
             {report.head.map((row) => (
               <div key={row.label}>
@@ -255,8 +268,17 @@ export default function VisitReportPage({ params }) {
           </DetailCard>
         )}
 
+        {/* 🐞 ประโยคหลังชี้ไปที่แถบ "สิ่งที่ต้องดู" ซึ่งนัดที่ยังไม่ปิดไม่มี (flag ไม่มีรูป/ลายเซ็น
+            ขึ้นเฉพาะใบที่ปิดแล้ว — CLOSE_ONLY_FLAGS ข้างบน) ⇒ ใบที่ยังทำอยู่บอกว่าแนบได้ตอนไหนแทน
+            (ช่องรูปหน้างาน/ลายเซ็นผู้รับงานอยู่ในชีตปิดงาน — CloseVisitSheet) */}
+        {/* 🐞 รอบก่อนแยกแค่ปิด/ไม่ปิด ⇒ ใบ "ยกเลิก"/"เลื่อนแล้ว" ขึ้น "แนบได้ตอนปิดงาน"
+            ทั้งที่ใบพวกนั้นไม่มีวันถูกปิด · ร่างยังเดินต่อไปถึงปิดงานได้ (ผ่านด่านแล้วเป็นนัดไว้) */}
         <DetailCard icon={Camera} title="หลักฐานหน้างาน"
-          meta="รูปและลายเซ็นไม่บังคับ — แต่ใบที่ขาดจะขึ้นในสิ่งที่ต้องดู">
+          meta={isClosedVisit(visit)
+            ? "รูปและลายเซ็นไม่บังคับ — แต่ใบที่ขาดจะขึ้นในสิ่งที่ต้องดู"
+            : isOpenVisit(visit) || isDraftVisit(visit)
+              ? "รูปและลายเซ็นไม่บังคับ — แนบได้ตอนปิดงาน"
+              : "รูปและลายเซ็นไม่บังคับ"}>
           <div className={styles.photos}>
             {report.attachments.map((att) => (
               <a key={att.url} href={att.url} target="_blank" rel="noreferrer noopener" className={styles.photo}>

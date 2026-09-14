@@ -50,6 +50,32 @@ function accessPieces(text) {
   ));
 }
 
+/* โซนเส้นทาง · ชื่อลูกค้า — ขึ้นบรรทัดใหม่ได้แค่ที่ช่องว่างที่คนพิมพ์ไว้ ไม่ใช่กลางคำ
+   🐞 เดิมต่อเป็นสตริงเดียว จอ 320 ตัดชื่อทับศัพท์กลางคำเป็น "แลบอรา" / "ทอรี่ จำกัด"
+      (ICU แบ่งพยางค์ · thaiText กันสตริงข้อมูลไม่ได้ · `word-break: keep-all` ของ Chrome ก็ยังตัดคำไทย)
+   ⚠️ ห่อ **รายคำ** ไม่ใช่ทั้งชื่อเป็นก้อนเดียว — ก้อนเดียวดันชื่อลงบรรทัดใหม่ทั้งชื่อ (การ์ดสูงขึ้น
+      หนึ่งบรรทัด) และชื่อที่ยาวกว่าการ์ดกลายเป็นสามบรรทัดมี "(มหาชน)" ค้างโดด ๆ
+   ⚠️ คำเป็น inline-block กว้างไม่เกินการ์ด ไม่ใช่ nowrap — คำเดียวที่ยาวกว่าการ์ดยังพับในตัวได้ ไม่ล้นจอ
+   ⚠️ **ห่อเฉพาะคำไม่เกิน WORD_BOX_MAX ตัวอักษร** — คำยาวกว่านั้นปล่อยเป็นข้อความธรรมดาให้ ICU ตัดตามพจนานุกรม
+      🐞 เคยห่อทุกคำ ⇒ คำยาวไม่มีช่องว่าง (มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าพระนครเหนือ 42 ตัว) เริ่มกลางบรรทัดไม่ได้
+         ตกลงบรรทัดใหม่ทั้งก้อน ทิ้งโซนค้างเดี่ยวบรรทัดแรก การ์ดสูงขึ้น 19px และคำที่ยาวกว่าการ์ดก็ยังพับในตัวอยู่ดี
+      วัดจากชื่อลูกค้าจริง 522 ราย ฟอนต์ .meta จอ 320 (บรรทัดกว้าง 258px):
+      · ≤ 24 ตัว กว้างไม่เกิน 131px (ครึ่งบรรทัด) และส่วนใหญ่เป็นคำทับศัพท์ที่ ICU แบ่งผิดพยางค์
+        ("เอ็น|เต|อร์|เท|น|เม้น|ท์" · "ยู|รี|แล็กซ์|แอนด์|เมดิ|คอล") ⇒ ห่อไว้คุ้ม เสียที่อย่างมากเท่าตัดคำปกติ
+      · ≥ 25 ตัว เป็นคำประสมไทยที่ ICU ตัดตรงคำจริง ("คณะ|กรรมการ|โครงการ|สวนดุสิต") ⇒ ไม่ต้องห่อ */
+const WORD_BOX_MAX = 24;
+
+function wherePieces(parts) {
+  return parts.map((part, idx) => (
+    <Fragment key={idx}>
+      {idx ? " · " : null}
+      {String(part).split(/(\s+)/).map((word, w) => (
+        /^\s*$/.test(word) || word.length > WORD_BOX_MAX ? word : <span key={w} className={styles.word}>{word}</span>
+      ))}
+    </Fragment>
+  ));
+}
+
 export default function TodayPage() {
   const role = useRole();
   const team = useTeam();
@@ -110,6 +136,18 @@ export default function TodayPage() {
   const todayIso = businessDate();
   const groups = useMemo(() => groupVisits(visits, todayIso), [visits, todayIso]);
   const counts = useMemo(() => openCount(groups), [groups]);
+
+  /* ⭐ ในแต่ละกลุ่ม งานที่ยังไม่ปิดขึ้นก่อน · ใบที่ปิดแล้วต่อท้าย (ลำดับเวลาเดิมในแต่ละฝั่ง)
+     🐞 เดิมเรียงตามเวลาล้วน ⇒ ใบที่ปิดไปตอนเช้า (การ์ดจาง) ยึดช่องแรกของ "วันนี้" ก่อนงานที่ต้องทำ
+     🐞 เลขหัวกลุ่มเคยนับรวมใบปิด ("วันนี้ 4") ขัดกับป้ายหัวจอที่นับเฉพาะงานที่ยังไม่ปิด ("วันนี้ 3")
+        ⇒ หัวกลุ่มใช้เลขเดียวกับป้าย (ตัวตัดสิน isClosedVisit ตัวเดียวกับ openCount) แล้วบอกใบปิดแยกเป็นคำ
+     เรียงตอนแสดงผลเท่านั้น — groupVisits ยังเป็นลำดับเวลาให้ตัวนับป้ายเมนูใช้เหมือนเดิม */
+  const sectionRows = useMemo(() => Object.fromEntries(SECTIONS.map(({ key }) => {
+    const rows = groups[key];
+    const open = rows.filter((visit) => !isClosedVisit(visit));
+    const closed = rows.filter((visit) => isClosedVisit(visit));
+    return [key, { rows: [...open, ...closed], open: open.length, closed: closed.length }];
+  })), [groups]);
 
   // ชื่อเจ้าหน้าที่ที่กำลังดูแทน — เอาจากนัดใบแรกที่มีชื่อ (API กรองด้วย assignee อยู่แล้ว)
   const viewedName = useMemo(() => {
@@ -194,7 +232,8 @@ export default function TodayPage() {
       title="งานวันนี้"
       subtitle={subtitle}
       /* ตัวเลขสรุปอยู่ขวาของหัวจอเป็นป้าย · ศูนย์ทั้งหมด = ไม่โชว์ (สถานะว่างบอกอยู่แล้ว)
-         🐞 เดิมเป็นแถบ toolbar ลอยชิดซ้ายตัวเล็กเท่าคำบรรยาย ซ้ำกับหัวกลุ่มที่อยู่ถัดลงไป */
+         🐞 เดิมเป็นแถบ toolbar ลอยชิดซ้ายตัวเล็กเท่าคำบรรยาย ซ้ำกับหัวกลุ่มที่อยู่ถัดลงไป
+         ⚠️ นับเฉพาะงานที่ยังไม่ปิด — เลขหัวกลุ่มข้างล่างต้องเป็นเลขเดียวกัน (ดู sectionRows) */
       headerRight={(counts.overdue + counts.today + counts.tomorrow) > 0 ? (
         <>
           {counts.overdue > 0 && <span className="ui-badge danger">ค้าง {counts.overdue}</span>}
@@ -216,14 +255,14 @@ export default function TodayPage() {
             </EmptyState>
           )
         ) : SECTIONS.map((section) => {
-          const rows = groups[section.key];
+          const { rows, open, closed } = sectionRows[section.key];
           if (!rows.length) return null;
           return (
             <section key={section.key} className={styles.section}>
               <h2 className={`${styles.sectionTitle} ${section.tone === "danger" ? styles.danger : ""}`}>
                 {section.tone === "danger" && <AlertTriangle size={15} aria-hidden="true" />}
                 {section.title}
-                <span className={styles.sectionCount}>{rows.length}</span>
+                <span className={styles.sectionCount}>{closed ? `${open} · ปิดแล้ว ${closed}` : open}</span>
               </h2>
 
               {rows.map((visit) => {
@@ -233,7 +272,7 @@ export default function TodayPage() {
                 const running = visit.status === "in_progress";
                 const late = overdueDays(visit, todayIso);
                 const access = accessWindowText(site);
-                const where = [site?.routeZone, site?.customerName].filter(Boolean).join(" · ");
+                const where = [site?.routeZone, site?.customerName].filter(Boolean);
                 const surveyLink = visit.kind === SURVEY_VISIT_KIND && visit.requestId;
                 return (
                   <article key={visit.id} className={`${styles.card} ${done ? styles.cardDone : ""} ${running ? styles.cardLive : ""} ${late && !done && !running ? styles.cardLate : ""}`}>
@@ -249,8 +288,8 @@ export default function TodayPage() {
 
                     <p className={styles.siteName}>{site?.name || visit.siteId}</p>
                     <p className={styles.meta}>
-                      {where || (access ? null : naText(null))}
-                      {access && <>{where && " · "}{accessPieces(access)}</>}
+                      {where.length ? wherePieces(where) : (access ? null : naText(null))}
+                      {access && <>{where.length ? " · " : null}{accessPieces(access)}</>}
                     </p>
                     {site?.accessNote && <p className={styles.meta}>{site.accessNote}</p>}
 

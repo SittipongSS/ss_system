@@ -11,6 +11,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import thaiText from "@/components/ThaiText";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
@@ -34,6 +35,7 @@ import { gateContextForSite } from "@/lib/service/gateContext";
 import { isDraftVisit } from "@/lib/service/visitStatus";
 import {
   ALL_TEAMS,
+  NO_TEAM,
   filterRowsByTeam,
   teamByUser,
   teamFilterOptions,
@@ -294,6 +296,23 @@ export default function ServiceSchedulePage() {
      ⚠️ วัดจาก todayIso (วันทำการไทย) ตัวเดียวกับเม็ดวันนี้ ไม่ใช่นาฬิกาเครื่อง */
   const isThisWeek = days.some((d) => d.iso === todayIso);
   const weekText = isThisWeek ? "สัปดาห์นี้" : `ช่วง ${weekLabel} `;
+  /* 🐞 กรองทีมที่ไม่มีเจ้าหน้าที่หน้างานและไม่มีนัด (เช่น Audit) ⇒ กริดเคยบอก "ยังไม่มีเจ้าหน้าที่
+     หน้างานในทะเบียน" ขัดกับแถบภาระรายทีมข้างบนที่บอก "1 คน" · ตอนกรองต้องพูดถึงทีมนั้น
+     และบอกว่าทำไมคนในทีมไม่ขึ้นแถว (แถวล่วงหน้ามีเฉพาะเจ้าหน้าที่หน้างาน ดู `rows`) */
+  const teamFilterLabel = teamOptions.find((option) => option.value === teamFilter)?.label || "";
+  /* 🐞 ข้อความนี้เคยอยู่ในแถว colSpan ของตาราง 900px — เซลล์ sticky แต่กว้างเท่าตาราง ⇒ บรรทัดเดียว
+     492–580px ยาวเกินกล่องเลื่อนตั้งแต่จอ 768 ลงไป คำอธิบายขาดกลางคำโดยไม่มีอะไรบอก
+     (วัด 320: ข้อความถึง x=532 กล่องจบ 306) · ไม่มีแถวเลยจึงไม่วาดตาราง ใช้ EmptyState
+     แบบเดียวกับมุมมองรายการ ข้อความตัดบรรทัดตามความกว้างจอ
+     ⚠️ ใช้ตัวแปรชื่อ ไม่ใช่ `teamRows.length === 0 ? (<EmptyState` — ยามใน crewTeams.test
+     ห้ามรูปนั้นเพราะ *มุมมองรายการ* ต้องนับว่างจากนัด · กริดต่างกัน: ไม่มีแถว = ไม่มีตารางให้วาด */
+  const gridHasNoRows = teamRows.length === 0;
+  const emptyGridTitle = teamFilter === ALL_TEAMS
+    ? `ยังไม่มีเจ้าหน้าที่หน้างานในทะเบียน และ${weekText}ยังไม่มีนัดเข้าบริการ`
+    : `${teamFilter === NO_TEAM ? "คนที่ยังไม่อยู่ทีมไหน" : `ทีม ${teamFilterLabel}`} ${weekText}ยังไม่มีนัดเข้าบริการ`;
+  const emptyGridHint = teamFilter === ALL_TEAMS
+    ? null
+    : "ตารางขึ้นแถวล่วงหน้าเฉพาะเจ้าหน้าที่หน้างาน ตำแหน่งอื่นขึ้นเมื่อมีนัด";
 
   const shiftWeek = (weeks) => setWeekStart((prev) => {
     const next = new Date(prev);
@@ -361,8 +380,11 @@ export default function ServiceSchedulePage() {
       {!loading && !loadError && crewLoad.length > 0 && (
         <ul className={styles.teamLoad} aria-label="ภาระรายทีม">
           {crewLoad.map((team) => (
-            <li key={team.code} data-empty={team.visits === 0 ? "yes" : undefined}>
+            <li key={team.code}>
               <b>{team.name}</b>
+              {/* ทีมว่าง = มีคนแต่ยังไม่มีนัด — เขียนเป็นคำ ไม่ใช่จุดสี (จุดเขียวเคยชนสี "ประเมินพื้นที่"
+                  ในคำอธิบายสีชนิดงาน) · ทีมที่ไม่มีคนเลยรับงานไม่ได้ จึงไม่ติดป้ายว่าง */}
+              {team.visits === 0 && team.people > 0 && <span className={styles.teamFree}>ว่าง</span>}
               <span>{fmtNumber(team.visits)} นัด</span>
               <span>{team.people ? `${fmtNumber(team.people)} คน` : naText(null)}</span>
             </li>
@@ -426,7 +448,14 @@ export default function ServiceSchedulePage() {
         </section>
       )}
 
-      {loading ? <SkeletonRows rows={4} /> : loadError || view !== "week" ? null : (
+      {loading ? <SkeletonRows rows={4} /> : loadError || view !== "week" ? null : gridHasNoRows ? (
+        /* ไม่มีแถวเลย = ไม่มีทั้งเจ้าหน้าที่หน้างานและนัด — คนละเรื่องกับ "สัปดาห์นี้ว่าง"
+           ซึ่งเห็นได้จากแถวที่ว่างเปล่าอยู่แล้ว */
+        <EmptyState icon={CalendarDays}>
+          {thaiText(emptyGridTitle)}
+          {emptyGridHint && <small>{thaiText(emptyGridHint)}</small>}
+        </EmptyState>
+      ) : (
         /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css
            ไม่มีกฎของมันเลย และทั้งเว็บใช้ที่นี่ที่เดียว) ⇒ ได้กฎกลางของ [data-family]
            มาครึ่งเดียว: คอลัมน์ชื่อเจ้าหน้าที่ไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
@@ -436,7 +465,8 @@ export default function ServiceSchedulePage() {
           <table className={styles.board}>
             <thead>
               <tr>
-                <th scope="col" className={styles.techCol}>เจ้าหน้าที่</th>
+                {/* ข้อความต้องอยู่ใน span — ที่ th โดนกฎหัวตารางกลางกดเหลือ 9.5px ข้างหัววัน 11.5px */}
+                <th scope="col" className={styles.techCol}><span className={styles.headLabel}>เจ้าหน้าที่</span></th>
                 {days.map((day) => (
                   <th key={day.iso} scope="col" className={day.weekend ? styles.weekend : undefined}>
                     <span className={styles.dayName}>{DAY_LABELS[day.date.getDay()]}</span>
@@ -446,15 +476,7 @@ export default function ServiceSchedulePage() {
               </tr>
             </thead>
             <tbody>
-              {teamRows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className={styles.emptyRow}>
-                    {/* ไม่มีแถวเลย = ไม่มีทั้งเจ้าหน้าที่หน้างานและนัด — คนละเรื่องกับ
-                        "สัปดาห์นี้ว่าง" ซึ่งตอนนี้เห็นได้จากแถวที่ว่างเปล่าอยู่แล้ว */}
-                    {`ยังไม่มีเจ้าหน้าที่หน้างานในทะเบียน และ${weekText}ยังไม่มีนัดเข้าบริการ`}
-                  </td>
-                </tr>
-              ) : teamRows.map((row) => (
+              {teamRows.map((row) => (
                 <tr key={row.key}>
                   {/* ชื่อเจ้าหน้าที่กดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
                       มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าเจ้าหน้าที่ (มติ 2026-08-02 ข้อ 2)

@@ -80,6 +80,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // 404 ≠ โหลดพัง — ไซต์ที่ถูกลบต้องไม่อ่านเป็นเน็ตสะดุดที่กดลองใหม่แล้วจะหาย · ทรงเดียวกับหน้าเครื่อง
+  const [notFound, setNotFound] = useState(false);
   const [editingSite, setEditingSite] = useState(false);
   const [formAsset, setFormAsset] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [formZone, setFormZone] = useState(undefined);
@@ -98,6 +100,7 @@ export default function ServiceSiteDetailPage({ params }) {
         apiFetch(`/api/service/visits?siteId=${id}`),
       ]);
       const siteData = await siteRes.json().catch(() => null);
+      setNotFound(siteRes.status === 404);
       if (!siteRes.ok) throw new Error(siteData?.error || "โหลดข้อมูลไซต์ไม่สำเร็จ");
       setSite(siteData?.site || null);
       setZones(Array.isArray(siteData?.zones) ? siteData.zones : []);
@@ -328,29 +331,35 @@ export default function ServiceSiteDetailPage({ params }) {
     [visits, todayIso],
   );
 
-  if (loading) {
-    return <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}><SkeletonRows rows={5} /></Workspace>;
-  }
-  /* 🐞 เดิม "โหลดพัง" กับ "ไม่พบ" เป็นข้อความบรรทัดเดียวเหมือนกัน ไม่มีทางไปต่อ · แยกให้เห็นว่าเป็นแบบไหน
-     และมีปุ่มลองใหม่เมื่อเป็นเน็ตสะดุด (ทรงเดียวกับหน้ารายละเอียดเครื่อง) */
-  if (loadError) {
-    return (
-      <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}>
-        <StatusNotice tone="error" title="โหลดข้อมูลไซต์ไม่สำเร็จ"
-          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
-          {loadError}
-        </StatusNotice>
-      </Workspace>
+  /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ — ทรงเดียวกันทั้งสี่หน้า
+     (เครื่อง · ไซต์ · โซน · ใบส่งงาน) · ลำดับ: ไม่พบ (404) มาก่อนโหลดพัง
+     🐞 เดิม `!siteRes.ok` โยนทิ้งก่อน setSite ⇒ ไซต์ที่ถูกลบขึ้นการ์ดหัว "ไซต์บริการ" +
+        "โหลดข้อมูลไซต์ไม่สำเร็จ" + ปุ่มลองใหม่ อ่านเหมือนเน็ตสะดุด · สาขา "ไม่พบ" ไม่เคยถูกเรียก */
+  /* ♿ hideHeader ถอด h1 ของ Workspace ออกด้วย — หน้าที่โหลดเสร็จได้ h1 จาก DetailOverview
+     แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย (StatusNotice ใช้ <strong>) ⇒ คนใช้โปรแกรมอ่านจอกระโดดหาหัวเรื่องไม่เจอ
+     ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
+  const shellBack = { href: "/service/sites", label: "ทะเบียนไซต์" };
+  const shell = (body) => (
+    <Workspace hideHeader back={shellBack}>
+      <h1 className="sr-only">ไซต์บริการ</h1>
+      {body}
+    </Workspace>
+  );
+  if (loading) return shell(<SkeletonRows rows={5} />);
+  if (notFound || (!loadError && !site)) {
+    return shell(
+      <EmptyState icon={MapPin}>
+        ไม่พบไซต์บริการนี้
+        <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+      </EmptyState>,
     );
   }
-  if (!site) {
-    return (
-      <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}>
-        <EmptyState icon={MapPin}>
-          ไม่พบไซต์บริการนี้
-          <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
-        </EmptyState>
-      </Workspace>
+  if (loadError) {
+    return shell(
+      <StatusNotice tone="error" title="โหลดข้อมูลไซต์ไม่สำเร็จ"
+        action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+        {loadError}
+      </StatusNotice>,
     );
   }
 
@@ -510,38 +519,59 @@ export default function ServiceSiteDetailPage({ params }) {
              🐞 เดิมเป็น TableShell = กรอบซ้อนสามชั้น กินที่ 36px บนมือถือ และไม่มี minWidth
                 ⇒ ตารางบีบจนรหัสโซนตัดทีละท่อน ป้ายสถานะแตกสองบรรทัด ปุ่มลบหลุดขอบขวา
              📏 minWidth ต้อง ≤ กล่องที่แคบสุดตอนรางข้างยังอยู่ (612px ที่จอ 1051) ไม่ใช่แค่กล่องแท็บเล็ต
-                🐞 เคยตั้ง 680 ⇒ จอ 1051–1119 ประวัติเลื่อนข้างเงียบ ๆ ปุ่มลบของแอดมินหลุดขอบ */
+                🐞 เคยตั้ง 680 ⇒ จอ 1051–1119 ประวัติเลื่อนข้างเงียบ ๆ ปุ่มลบของแอดมินหลุดขอบ
+             📱 จอ ≤ 680 ตารางโซนไม่ใช้ minWidth นี้ — พับเหลือ โซน · ปุ่ม (ดู .foldTable ใน page.module.css)
+                🐞 560 ในกล่อง 326px ⇒ ป้ายสถานะกับปุ่มแก้/ลบอยู่พ้นขอบขวาทั้งชุด ไม่มีอะไรบอกว่าเลื่อนได้ */
           <TableScroll family="list" cells="stacked" minWidth={560}>
-            <table>
+            <table className={styles.foldTable}>
               <thead>
                 <tr>
                   <th>โซน</th>
                   {/* จุดติดตั้ง (mig 0354) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซน */}
-                  <th className={`num ${styles.numCol}`}>จุดติดตั้ง</th>
-                  <th className={`num ${styles.numCol}`}>อุปกรณ์</th>
-                  <th>สถานะ</th>
+                  <th className={`num ${styles.numCol} ${styles.wideCol}`}>จุดติดตั้ง</th>
+                  <th className={`num ${styles.numCol} ${styles.wideCol}`}>อุปกรณ์</th>
+                  <th className={styles.wideCol}>สถานะ</th>
                   {canEdit && <th aria-label="การทำงาน" />}
                 </tr>
               </thead>
               <tbody>
                 {zones.map((zone) => {
                   const zoneAssets = assets.filter((a) => a.zoneId === zone.id && a.status !== "removed");
+                  const spotCount = Array.isArray(zone.spots) ? zone.spots.length : 0;
                   // ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสแต่ในรูปย่อ (GF/04) บรรทัดล่างอ่านออกโดยไม่ต้องแกะรหัส
                   const zoneSub = [zone.code ? zone.name : null, zone.building, floorLabel(zone.floor), zone.note]
                     .filter(Boolean).join(" · ");
+                  const statusBadge = (
+                    <span className={`ui-badge ${zone.isActive === false ? "" : "success"}`.trim()}>{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
+                  );
                   return (
                     <tr key={zone.id} className={zone.isActive === false ? styles.inactive : undefined}>
                       <td>
                         {/* ⭐ รหัสบน · ชื่อล่าง — กดเข้าหน้าโซน (รอบขาย/ยอดใช้จริง/ประวัติของโซนนั้น
                             อยู่ในฐานข้อมูลมาตั้งแต่ mig 0297 แต่ไม่มีทางเข้ามาก่อนหน้านี้) */}
-                        <Link href={`/service/sites/${site.id}/zones/${zone.id}`} className={`table-row-link${zone.code ? " mono" : ""}`}>
-                          {zone.code || zone.name}
-                        </Link>
-                        {zoneSub ? <div className={styles.muted}>{zoneSub}</div> : null}
+                        {/* 📱 จอแคบ: ป้ายสถานะ + จำนวนจุด/เครื่องย้ายมาอยู่ในเซลล์นี้ (คอลัมน์ของมันซ่อน)
+                            .cellHead = บล็อกธรรมดา (ลิงก์ยัง inline เหมือนเดิม) · ระยะห่างอยู่ท้ายลิงก์
+                            ⇒ ป้ายที่ขึ้นบรรทัดใหม่ (จอ 320) ชิดซ้ายตรงกับรหัส ไม่เยื้อง */}
+                        <div className={styles.cellHead}>
+                          <Link href={`/service/sites/${site.id}/zones/${zone.id}`} className={`table-row-link${zone.code ? " mono" : ""}`}>
+                            {zone.code || zone.name}
+                          </Link>
+                          <span className={styles.narrowStatus}>{statusBadge}</span>
+                        </div>
+                        <div className={styles.muted}>
+                          {zoneSub}
+                          <span className={styles.narrowOnly}>
+                            {zoneSub ? " · " : ""}
+                            {/* ตัวเลขกับหน่วยห้ามแยกบรรทัด ("0 / เครื่อง" ที่จอ 320) */}
+                            <span className={styles.nowrap}>{fmtNumber(spotCount)} จุด</span>
+                            {" · "}
+                            <span className={styles.nowrap}>{fmtNumber(zoneAssets.length)} เครื่อง</span>
+                          </span>
+                        </div>
                       </td>
-                      <td className={`num ${styles.numCol}`}>{Array.isArray(zone.spots) ? zone.spots.length : 0}</td>
-                      <td className={`num ${styles.numCol}`}>{zoneAssets.length}</td>
-                      <td><span className={`ui-badge ${zone.isActive === false ? "" : "success"}`.trim()}>{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></td>
+                      <td className={`num ${styles.numCol} ${styles.wideCol}`}>{spotCount}</td>
+                      <td className={`num ${styles.numCol} ${styles.wideCol}`}>{zoneAssets.length}</td>
+                      <td className={styles.wideCol}>{statusBadge}</td>
                       {canEdit && (
                         <td>
                           <div className={styles.rowActions}>
@@ -729,29 +759,48 @@ export default function ServiceSiteDetailPage({ params }) {
         {upcoming.length === 0 ? (
           <EmptyState icon={CalendarClock} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
         ) : (
-          <TableScroll family="list" minWidth={600}>
-            <table>
+          /* 📱 จอ ≤ 680 (กล่อง < 600) พับเหลือ วันที่ · ปุ่มลบ — เวลา/งาน/ใบสั่งขาย/เจ้าหน้าที่/รหัส
+                ลงบรรทัดรองในเซลล์แรก (ดู .foldTable) · ข้อมูลครบเท่าเดิม แค่ย้ายที่
+             🐞 minWidth 600 ในกล่อง 326px (จอ 390) ⇒ ปุ่มลบนัดพ้นขอบขวาทุกจอตั้งแต่ 641 ลงไป
+                และไม่มีอะไรบอกว่าตารางเลื่อนได้ */
+          <TableScroll family="list" cells="stacked" minWidth={600}>
+            <table className={styles.foldTable}>
               <thead>
-                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th>
+                <tr><th>วันที่</th><th className={styles.wideCol}>เวลา</th><th className={styles.wideCol}>งาน</th>
                   {/* 🔴 **สองนัดวันเดียวกันที่ไซต์เดียวกันเป็นเรื่องปกติ** (มติผู้ใช้
                       2026-09-02: "2 SO ก็ต้อง 2 รอบ") — รอบเป็นข้อผูกพันของใบสั่งขาย
                       ⇒ ไซต์ที่ขายไว้สองใบเดินสองรอบ · ไม่มีคอลัมน์นี้ = สองแถวพิมพ์
                       เหมือนกันทุกช่อง แล้วคนอ่านนึกว่าระบบสร้างซ้ำ แล้วไปลบทิ้งใบหนึ่ง
                       ⇒ ใบนั้นนับรอบขาดตลอดสัญญา */}
-                  <th>ใบสั่งขาย</th><th>เจ้าหน้าที่</th><th>รหัส</th>
+                  <th className={styles.wideCol}>ใบสั่งขาย</th><th className={styles.wideCol}>เจ้าหน้าที่</th><th className={styles.wideCol}>รหัส</th>
                   {canEdit && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
-                {upcoming.map((visit) => (
+                {upcoming.map((visit) => {
+                  const kindLabel = VISIT_KIND_LABELS[visit.kind] || visit.kind;
+                  const order = orderOfVisit(visit);
+                  return (
                   <tr key={visit.id}>
-                    <td>{visit.scheduledDate}</td>
-                    <td>{visitTimeText(visit)}</td>
-                    <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
-                    <td className="mono">
-                      {orderOfVisit(visit) || <span className={styles.muted}>นอกรอบ</span>}
+                    {/* วันที่ · เวลา · รหัส ห้ามตัดกลาง — ตารางเลื่อนข้างแทนการบีบ (ดู .nowrap) */}
+                    <td>
+                      <span className={styles.nowrap}>{visit.scheduledDate}</span>
+                      {/* 📱 จอแคบ: คอลัมน์ที่ซ่อนมาอยู่บรรทัดนี้ ลำดับเดียวกับหัวตาราง */}
+                      <div className={`${styles.muted} ${styles.narrowLine}`}>
+                        {/* ป้ายสั้นห้ามตัดกลางคำ ("ยังไม่มอบ|หมาย" ที่จอ 320) — ชื่อคนยังตัดได้ */}
+                        <span className={styles.nowrap}>{visitTimeText(visit)}</span>
+                        {" · "}<span className={styles.nowrap}>{kindLabel}</span>
+                        {" · "}{order ? <span className={`mono ${styles.nowrap}`}>{order}</span> : <span className={styles.nowrap}>นอกรอบ</span>}
+                        {" · "}{visit.assigneeName || <span className={styles.nowrap}>ยังไม่มอบหมาย</span>}
+                        {visit.code ? <>{" · "}<span className={`mono ${styles.nowrap}`}>{visit.code}</span></> : null}
+                      </div>
                     </td>
-                    <td>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
-                    <td className="mono">{naText(visit.code)}</td>
+                    <td className={`${styles.nowrap} ${styles.wideCol}`}>{visitTimeText(visit)}</td>
+                    <td className={styles.wideCol}>{kindLabel}</td>
+                    <td className={`mono ${styles.wideCol}`}>
+                      {order || <span className={styles.muted}>นอกรอบ</span>}
+                    </td>
+                    <td className={styles.wideCol}>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
+                    <td className={`mono ${styles.nowrap} ${styles.wideCol}`}>{naText(visit.code)}</td>
                     {/* นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ — route รองรับมาตลอด
                         แต่ไม่เคยมีปุ่มไหนเรียก (ผู้ใช้แจ้ง 2026-09-02) */}
                     {canEdit && (
@@ -765,7 +814,8 @@ export default function ServiceSiteDetailPage({ params }) {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </TableScroll>
@@ -776,25 +826,51 @@ export default function ServiceSiteDetailPage({ params }) {
         {history.length === 0 ? (
           <EmptyState icon={History} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
         ) : (
-          <TableScroll family="list" minWidth={600}>
-            <table>
+          /* 📱 จอ ≤ 680 (กล่อง < 600) พับเหลือ นัด · ใบส่งงาน · ปุ่มลบ — ป้ายสถานะขึ้นข้างวันที่
+                เข้าจริง/งาน/เจ้าหน้าที่/สรุปงาน ลงบรรทัดรองในเซลล์แรก (ดู .foldTable)
+             🐞 minWidth 600 ในกล่อง 326px (จอ 390) ⇒ สถานะ · ใบส่งงาน · ปุ่มลบ อยู่พ้นขอบขวา
+                ไม่มีอะไรบอกว่าตารางเลื่อนได้ */
+          <TableScroll family="list" cells="stacked" minWidth={600}>
+            <table className={styles.foldTable}>
               <thead>
-                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>เจ้าหน้าที่</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" />
+                <tr><th>วันที่นัด</th><th className={styles.wideCol}>เข้าจริง</th><th className={styles.wideCol}>งาน</th><th className={styles.wideCol}>เจ้าหน้าที่</th><th className={styles.wideCol}>สถานะ</th><th className={styles.wideCol}>สรุปงาน</th><th aria-label="ใบส่งงาน" />
                   {isAdmin && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
-                {history.map((visit) => (
+                {history.map((visit) => {
+                  const kindLabel = VISIT_KIND_LABELS[visit.kind] || visit.kind;
+                  const statusBadge = <span className="ui-badge">{VISIT_STATUS_LABELS[visit.status] || visit.status}</span>;
+                  /* สรุปงานตัดที่ 3 บรรทัด ข้อความเต็มอยู่ใน title และในใบส่งงาน (ลิงก์ท้ายแถว)
+                     🐞 พอวันที่/ป้าย/ลิงก์ห้ามตัดคำ คอลัมน์นี้เหลือช่องเดียวที่ยอมบีบ ⇒ สรุป 90 ตัวอักษร
+                        กลายเป็นหอคอย 10 บรรทัด แถวสูง 204px ที่จอ 1052 */
+                  const summary = visit.summary
+                    ? <span className={styles.summaryClamp} title={visit.summary}>{visit.summary}</span>
+                    : null;
+                  return (
                   <tr key={visit.id} className={visit.status === "cancelled" ? styles.inactive : undefined}>
-                    <td>{visit.scheduledDate}</td>
+                    {/* วันที่ · ป้ายสถานะ · ลิงก์ใบส่งงาน ห้ามตัดกลาง — ตารางเลื่อนข้างแทนการบีบ (ดู .nowrap) */}
+                    <td>
+                      <div className={styles.cellHead}>
+                        <span className={styles.nowrap}>{visit.scheduledDate}</span>
+                        <span className={styles.narrowStatus}>{statusBadge}</span>
+                      </div>
+                      {/* 📱 จอแคบ: คอลัมน์ที่ซ่อนมาอยู่สองบรรทัดนี้ ลำดับเดียวกับหัวตาราง */}
+                      <div className={`${styles.muted} ${styles.narrowLine}`}>
+                        <span className={styles.nowrap}>{visit.actualDate ? `เข้าจริง ${visit.actualDate}` : "ยังไม่ปิดงาน"}</span>
+                        {" · "}<span className={styles.nowrap}>{kindLabel}</span>
+                        {visit.assigneeName ? <>{" · "}{visit.assigneeName}</> : null}
+                      </div>
+                      {summary && <div className={styles.narrowLine}>{summary}</div>}
+                    </td>
                     {/* ช่องว่างตรงนี้มีความหมาย: นัดที่เลยวันแล้วแต่ไม่มีวันเข้าจริง = ยังไม่มีใครปิดงาน */}
-                    <td>{visit.actualDate || <span className={styles.muted}>ยังไม่ปิดงาน</span>}</td>
-                    <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
-                    <td>{naText(visit.assigneeName)}</td>
-                    <td><span className="ui-badge">{VISIT_STATUS_LABELS[visit.status] || visit.status}</span></td>
-                    <td>{naText(visit.summary)}</td>
+                    <td className={`${styles.nowrap} ${styles.wideCol}`}>{visit.actualDate || <span className={styles.muted}>ยังไม่ปิดงาน</span>}</td>
+                    <td className={styles.wideCol}>{kindLabel}</td>
+                    <td className={styles.wideCol}>{naText(visit.assigneeName)}</td>
+                    <td className={`${styles.nowrap} ${styles.wideCol}`}>{statusBadge}</td>
+                    <td className={styles.wideCol}>{summary || naText(visit.summary)}</td>
                     {/* ประวัติต้องกดเข้าใบได้ — ไม่งั้นคอลัมน์ "สรุปงาน" ที่ตัดสั้น
                         คือทั้งหมดที่คนอ่านย้อนหลังได้ */}
-                    <td><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
+                    <td className={styles.nowrap}><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
                     {/* ⭐ **เฉพาะแอดมิน** — นัดที่ปิดงานแล้วคือประวัติการเข้าไซต์
                         กติกาปกติห้ามลบ · แอดมินข้ามได้ด้วย ?force=1 ตามมติ #1501
                         ("ขอสิทธิ์ทุกอย่างให้แอดมิน รวมลบด้วย") ซึ่งเส้นนัดตกหล่นมาตลอด
@@ -812,7 +888,8 @@ export default function ServiceSiteDetailPage({ params }) {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </TableScroll>

@@ -87,6 +87,16 @@
 /* ช่องยังว่าง = คำแนะนำตัดบรรทัดได้ ไม่งั้นจอ 320 เห็นคำแนะนำไม่ครบ */
 .paste:placeholder-shown { white-space: pre-wrap; }
 
+/* คำแนะนำเป็นประโยคไทย ไม่ใช่ตารางดิบ — ฟอนต์ ขนาด สี เท่าคำแนะนำของช่องอื่นทั้งโมดูล
+   (.premium-input = Sarabun 14px สี --text-3) · ข้อมูลที่วางแล้วยังเป็น mono 12px ของ variant="data"
+   🐞 ตัวแปร mono ของ variant="data" ไหลลงคำแนะนำด้วย: ไทยห่าง และจอ 320 ตัดกลางคำ
+   🐞 แก้ฟอนต์อย่างเดียวแล้วคำแนะนำยังเล็ก 12px และสีเป็นค่าเบราว์เซอร์ (ตัวอักษรจาง 50%) */
+.paste::placeholder {
+  font-family: var(--font-sans);
+  font-size: var(--fs-8);
+  color: var(--text-3);
+}
+
 /* ── ชีตในไฟล์ ── */
 .sheets {
   display: flex;
@@ -190,6 +200,78 @@
   color: var(--text-3);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
+}
+
+/* ── ผลรายแถวบนจอ ≤640: การ์ดแทนตาราง ──
+   🐞 ตาราง 860px ในกล่อง 330px (จอ 390) เห็นเหตุผลแค่ 172 จาก 212px — "…ในทะเบีย"
+   ขาดที่ขอบกล่อง ต้องปัดข้างทุกแถวถึงจะรู้ว่าแก้อะไรในชีต
+   การ์ดถือของครบเท่าแถวตาราง: เลขแถว · สถานะ · เหตุผลเต็มประโยค · ลูกค้า/ไซต์/โซน/เครื่อง */
+.rowCards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rowCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+.rowCardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.rowNo {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+}
+
+/* เหตุผลคือเนื้อหลักของการ์ด — ตัดบรรทัดได้ทุกที่ (ชื่อลูกค้ายาวในเครื่องหมายคำพูด) */
+.rowCardProblems {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ป้ายซ้าย · ค่าขวา — ค่าลอย ๆ ("—" หรือชื่อโซน) อ่านไม่ออกว่าคืออะไรถ้าไม่มีป้าย
+   กริด 4 ช่อง: ลูกค้า/ไซต์ ค่ายาว กินเต็มแถว (.rowCardWide) · โซน กับ เครื่อง อยู่แถวเดียวกัน
+   (จำนวนเครื่องเป็นตัวเลขสั้น ช่องท้ายจึงกว้างเท่าค่า ส่วนที่เหลือยกให้ชื่อโซน)
+   🐞 เดิมป้ายละแถว 4 แถว — การ์ดสูง 176–214px ต่อแถวข้อมูล ชีตจริง 379 ไซต์ = ปัดยาวกว่าตาราง 2–3 เท่า */
+.rowCardMeta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.rowCardWide { grid-column: 2 / -1; }
+
+.rowCardMeta dt { color: var(--text-3); }
+
+.rowCardMeta dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .errorList {

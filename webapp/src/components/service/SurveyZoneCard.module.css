@@ -102,6 +102,11 @@
   place-items: center;
 }
 
+/* ใบที่อ่านอย่างเดียว = แถวเป็นบรรทัดตัวหนังสือ (~21px) ไม่ใช่ช่องกรอก ⇒ วงเลขไม่ต้องเลื่อนลง
+   🐞 margin-top ข้างบนตั้งไว้ให้อยู่กลางช่อง Input ⇒ บนใบที่ส่งแล้ววงเลขต่ำกว่าชื่อ 4–5px */
+.part[data-read] .partNo,
+.spot[data-read] .partNo { margin-top: 0; }
+
 .partBody { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1-5); }
 
 /* สามช่องเรียงกัน — บนมือถือยังอยู่บรรทัดเดียวได้เพราะแต่ละช่องแคบ */
