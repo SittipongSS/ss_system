@@ -49,17 +49,18 @@ test('ข้อยกเว้นของดีล Won ไม่ลามไป
   assert.deepEqual(missingDealFieldKeys(draft, { alreadyWon: true }), ['endDate']);
 });
 
-test('ตอนสร้าง (ไม่ส่ง alreadyWon) ยังบังคับตารางรายหมวดเหมือนเดิม', () => {
-  // ดีลเก่าที่สร้างเป็น Won ไม่มีใบให้ดึง ยอดปิดต้องมาจากตารางที่คนกรอก
-  const draft = full({ stage: 'won', valueItems: [] });
-  assert.deepEqual(missingDealFieldKeys(draft), ['valueItems']);
-  assert.match(missingDealFieldsMessage(draft, { legacyWon: true }), /มูลค่าที่ปิด/);
+test('ตอนสร้างดีลปกติยังบังคับตารางรายหมวด · ดีลเก่าที่สร้างเป็น Won ไม่บังคับ (ไม่มีมูลค่า · มติ 2026-09-14)', () => {
+  assert.deepEqual(missingDealFieldKeys(full({ valueItems: [] })), ['valueItems']);
+  const legacyWon = full({ stage: 'won', valueItems: [] });
+  assert.deepEqual(missingDealFieldKeys(legacyWon, { legacyWon: true }), []);
+  assert.equal(missingDealFieldsMessage(legacyWon, { legacyWon: true }), null);
 });
 
-test('ป้ายของดีลเก่าที่ปิดแล้วเรียกชื่อตามฟอร์ม ไม่ใช่ชื่อของดีลเปิด', () => {
+test('ดีลเก่าที่สร้างเป็น Won: ป้ายวันเรียกตามฟอร์ม และไม่มีคำว่า "มูลค่าที่ปิด" อีก', () => {
   const draft = full({ valueItems: [], expectedCloseDate: '' });
-  assert.match(missingDealFieldsMessage(draft, { legacyWon: true }), /มูลค่าที่ปิด/);
-  assert.match(missingDealFieldsMessage(draft, { legacyWon: true }), /วันที่ปิด/);
+  const legacy = missingDealFieldsMessage(draft, { legacyWon: true });
+  assert.match(legacy, /วันที่ปิดในระบบเดิม/);
+  assert.doesNotMatch(legacy, /มูลค่า/);
   assert.match(missingDealFieldsMessage(draft), /มูลค่าคาดการณ์/);
   assert.match(missingDealFieldsMessage(draft), /วันที่คาดการณ์ปิด/);
 });

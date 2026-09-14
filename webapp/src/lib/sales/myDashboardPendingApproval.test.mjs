@@ -112,7 +112,7 @@ test('เดือนตัดที่นาฬิกาไทย — ตี 0:
 
 test('เดือนของยอดปิดได้มาจาก wonMonthOf ตัวกลาง (ลำดับ fallback เดิมทุกขั้น)', () => {
   const at = ({ metadata = {}, ...rest }) => ({
-    stage: 'won', wonValue: 10, ...rest, metadata: { actualSource: 'legacy', ...metadata },
+    stage: 'won', wonValue: 10, ...rest, metadata: { actualSource: 'sale_order', ...metadata },
   });
   const deals = [
     at({ metadata: { wonMonth: '2026-09' }, confirmedAt: '2026-07-01' }), // wonMonth ชนะ
@@ -120,7 +120,7 @@ test('เดือนของยอดปิดได้มาจาก wonMont
     at({ metadata: { poReceivedDate: '2026-09-20' }, forecastMonth: '2026-02' }), // poReceivedDate
     at({ forecastMonth: '2026-09' }), // forecastMonth
     at({ metadata: { wonMonth: '2026-08' } }), // เดือนอื่น
-    { stage: 'lost', wonValue: 999, metadata: { actualSource: 'legacy', wonMonth: '2026-09' } }, // ไม่ใช่ Won
+    { stage: 'lost', wonValue: 999, metadata: { actualSource: 'sale_order', wonMonth: '2026-09' } }, // ไม่ใช่ Won
   ];
   assert.equal(summarizeMyDeals(deals, opts()).wonValue, 40);
   assert.equal(summarizeMyDeals(deals, opts({ year: '2026' })).wonValue, 50);

@@ -86,6 +86,8 @@ test('hard delete is limited to unsigned drafts that never entered approval', ()
 test('deal Actual is accepted only from the approved SO cache', () => {
   assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: {} }), 0);
   assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: { actualSource: 'manual' } }), 0);
+  // มติผู้ใช้ 2026-09-14: ไม่มีที่มา 'legacy' อีก — Actual มาจาก SO อนุมัติเท่านั้น
+  assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: { actualSource: 'legacy' } }), 0);
   assert.equal(dealActualFromSalesOrders({ wonValue: 1380, metadata: { actualSource: 'sale_order' } }), 1380);
   assert.equal(dealActualFromSalesOrders({ wonValue: -5, metadata: { actualSource: 'sale_order' } }), 0);
 });
