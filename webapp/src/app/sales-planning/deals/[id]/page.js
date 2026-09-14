@@ -63,6 +63,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
+import { wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
 import { legacyClosedNoteOf } from "@/lib/sales/legacyDealSwitch";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
@@ -360,6 +361,16 @@ export default function DealOverviewPage() {
         ⇒ ห้ามบอกว่า "ไม่เข้า FC" ในกรณีนั้น เพราะยอดยังนับเป็น FC จริง */
   const legacyNote = legacyClosedNoteOf(deal);
   const soAmounts = splitSalesOrderAmounts(data?.salesOrders || []);
+  /* คำใต้การ์ด "มูลค่าปิดจริง (Won)" — สามกรณี (มติผู้ใช้ 2026-09-14): มี SO อนุมัติ = ต่างจาก Actual ·
+     มีใบรออนุมัติ = "ต่างเมื่ออนุมัติครบ" · ยังไม่มีใบที่ยื่น (Won รอยื่น SO) = ไม่มีตัวเลขต่าง
+     🐞 เดิม "ต่าง ฿(FC ทั้งก้อน)" ขึ้นทุกดีลที่ SO ยังเป็นร่าง/รออนุมัติ อ่านเป็นพลาดเป้าทั้งใบ */
+  const wonHint = wonDealForecastHint({
+    forecast: deal?.projectValue,
+    actual: dealActual,
+    actualCount: soAmounts.actualCount,
+    pendingApproval: soAmounts.pendingApproval,
+    pendingApprovalCount: soAmounts.pendingApprovalCount,
+  });
   /* ช่องยอดของ SO หนึ่งใบ — สามสถานะ (salesOrderAmountKind):
        actual           อนุมัติแล้ว = Actual ตามเดิม
        pending_approval ยอดจริงของใบ + ป้าย "รออนุมัติ" (เดิมขึ้น ฿0.00 จนดีลดูไม่มีมูลค่า)
@@ -956,20 +967,18 @@ export default function DealOverviewPage() {
           <>
           <section id="deal-kpi" className="kpi-grid" style={{ gridTemplateColumns: "none", gridAutoFlow: "column", gridAutoColumns: "minmax(180px, 1fr)", overflowX: "auto" }}>
             {alreadyWon ? (
-              /* ⭐ ค่าหลัก = Actual (SO อนุมัติแล้ว) · ส่วนต่างเทียบ FC คิดจาก Actual อย่างเดียว
-                 SO ที่ยื่นแล้วรออนุมัติขึ้นเป็นบรรทัดรองแยก — เดิมดีลแบบนี้ขึ้น ฿0.00 พร้อม
-                 "ต่าง = FC ทั้งก้อน" อ่านเป็นพลาดเป้าทั้งใบ (มติผู้ใช้ 2026-09-11)
+              /* ⭐ ค่าหลัก = Actual (SO อนุมัติแล้ว) · SO ที่ยื่นแล้วรออนุมัติขึ้นเป็นบรรทัดรองแยก
+                 (มติผู้ใช้ 2026-09-11) · คำส่วนต่างเลือกกรณีที่ wonDealForecastHint (มติ 2026-09-14)
+                 ⛔ รออนุมัติไม่ถูกบวกเข้า Actual — ลบออกจากส่วนต่างเฉพาะในคำว่า "เมื่ออนุมัติครบ"
                  🪤 ของเดิมอ่าน `wonValue ?? projectValue` — ถอยไม่เคยเกิด (trigger เขียน 0) */
               <Stat
                 label="มูลค่าปิดจริง (Won)"
                 value={money(dealActual)}
                 hint={(
                   <>
-                    {/* ดีลเก่าที่ล้างยอดแล้ว: "ตรงกับคาดการณ์" (0 = 0) ไม่ได้บอกอะไร — บรรทัดบันทึกข้างล่างพูดแทน */}
-                    {legacyNote && !legacyNote.stillInForecast ? null
-                      : (Number(deal.projectValue) || 0) !== dealActual
-                        ? `คาดการณ์ ${money(deal.projectValue)} · ต่าง ${money((Number(deal.projectValue) || 0) - dealActual)}`
-                        : "ตรงกับคาดการณ์"}
+                    {/* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A): คำส่วนต่างเทียบ 0 กับ 0 ไม่ได้บอกอะไร — บรรทัดบันทึกข้างล่างพูดแทน
+                        · ดีลที่ยังรอเจ้าของยืนยัน (stillInForecast) ยังโชว์คำของ wonDealForecastHint ตามปกติ */}
+                    {legacyNote && !legacyNote.stillInForecast ? null : wonHint.text}
                     {legacyNote ? (
                       <div>
                         {`ยอดปิดในระบบเดิม ${money(legacyNote.value)}${legacyNote.date ? ` · ปิด ${fmtDate(legacyNote.date)}` : ""}`}

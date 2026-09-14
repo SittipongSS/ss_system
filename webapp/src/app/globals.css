@@ -7255,7 +7255,8 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   font-style: italic;
 }
 .performance-tracking-table .fz-table tr.perf-rest-row .mono,
-.performance-tracking-table .fz-table tr.perf-rest-row .perf-pending-sub { font-style: normal; }
+.performance-tracking-table .fz-table tr.perf-rest-row .perf-pending-sub,
+.performance-tracking-table .fz-table tr.perf-rest-row .perf-won-sub { font-style: normal; }
 .perf-rest-label { font-weight: var(--fw-semibold); }
 .perf-rest-note {
   display: block;
@@ -7289,7 +7290,65 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .perf-seg-animated { transition: width var(--motion-slow); }
 .perf-swatch-pending { background-color: var(--chart-actual); }
 
-/* บรรทัดรออนุมัติใต้ตัวเลข Actual ของตารางติดตาม — กดแล้วเปิดรายดีลของเดือนปัจจุบัน
+/* ── "Won รอยื่น SO" บนแท็บผลงานขาย (มติผู้ใช้ 2026-09-14) ─────────────────────────
+   ดีลที่ปิด Won แล้วแต่ยังไม่ยื่นใบสั่งขาย — ส่วนของแถบระหว่างรออนุมัติกับ FC คงเหลือ
+   สีส้มเดียวกับ FC คงเหลือ (CHART_SERIES ล็อก 3 สี) แยกด้วยสิ่งที่ไม่ใช่ hue สองชั้น:
+   ลายเฉียงคนละทิศกับรออนุมัติ (45° กับ 135°) + ทึบเต็ม (FC คงเหลือเป็นส้มจาง)
+   ⚠️ สีไม่ใช่สัญญาณเดียว: ทุกจุดที่วาดมีคำว่า "Won รอยื่น SO" กำกับ (title / legend / aria-label)
+   ความกว้างมาจากตัวแปร --perf-won-w ที่รางตั้งให้ แพตเทิร์นเดียวกับ --perf-pending-w */
+.perf-seg-won,
+.perf-swatch-won {
+  background-color: var(--chart-forecast);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 2px,
+    color-mix(in srgb, var(--panel) 60%, transparent) 2px 4px
+  );
+}
+.perf-seg-won {
+  display: block;
+  flex: none;
+  height: 100%;
+  width: var(--perf-won-w, 0);
+}
+
+/* บรรทัด "Won รอยื่น SO ฿X · N ดีล" — หน้าตาคู่กับชิ้นกลางของรออนุมัติ (.so-pending-approval)
+   .perf-won-sub = บรรทัดรองใต้ Actual ของตารางติดตาม (เซลล์ตัวหนา ⇒ คืนน้ำหนักปกติ)
+   .perf-won-inline = ต่อท้ายบรรทัดตัวเลขของแถบความคืบหน้า (ขนาดตามบรรทัดนั้น) */
+.perf-won-sub,
+.perf-won-inline {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-normal);
+}
+.perf-won-sub {
+  display: block;
+  font-size: var(--fs-5);
+}
+.perf-won-inline { font-size: inherit; }
+/* คำกับตัวเลขห้ามแยกบรรทัด (บทเรียนเดียวกับ .so-pending-approval-main) */
+.perf-won-main { white-space: nowrap; }
+.perf-won-tag {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
+}
+.perf-won-count { color: var(--text-3); }
+
+/* "คาดจบงวด ฿X — คาดขาด ฿Y" ท้ายบรรทัดตัวเลขของแถบความคืบหน้า + บรรทัดฐานของยอดคาดใต้มัน
+   ⚠️ บรรทัดฐานห้ามถอด — ยอดคาดนับมูลค่าดีลเต็ม (ไม่ถ่วงโอกาสปิด) คนอ่านต้องรู้ว่ามันนับอะไร */
+.perf-projection {
+  color: var(--text-2);
+  font-weight: var(--fw-semibold);
+}
+.perf-projection-basis {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-text);
+}
+
+/* บรรทัดรองใต้ตัวเลข Actual ของตารางติดตาม — รออนุมัติ (กดแล้วเปิดรายดีลของเดือนปัจจุบัน)
+   และ Won รอยื่น SO (กดแล้วเปิดรายดีลของงวดที่ดูอยู่ · 2026-09-14) ใช้ปุ่ม .perf-pending-drill ตัวเดียวกัน
    เซลล์ Actual ตัวหนา ⇒ ตัวเลขของบรรทัดนี้คืนน้ำหนักปกติ (คำว่ารออนุมัติหนาเองจากชิ้นกลาง) */
 .perf-pending-sub { font-weight: var(--fw-normal); }
 .perf-pending-drill {

@@ -11,6 +11,7 @@
 
 import { teamRank } from '@/lib/salesPlanning';
 import { monthsForYear } from '@/lib/datePeriods';
+import { findPersonRow, personSliceKey } from '@/lib/sales/personSlice';
 
 /* ── แกนเวลาของ matrix ────────────────────────────────────────────────────
    ⭐ เดิมทุกแถวเป็นอาเรย์ 12 ช่องที่ **index = เดือนของปีเดียว** — รายงานจึงดูข้ามปี
@@ -30,6 +31,19 @@ const zeros = (n) => Array(n).fill(0);
    ⚠️ ชื่อ `pending` เปล่า ๆ ห้ามใช้ — ชนกับ `statusOf` key 'pending' (= รอปิดยอด) */
 const PENDING_KEYS = ['pendingApproval', 'pendingApprovalCount'];
 
+/* ── "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) ─────────────────────────────────────
+   แถวทุกระดับถืออีกสองเส้น: `wonAwaitingSo` (มูลค่าดีลเต็ม) · `wonAwaitingSoCount` (จำนวนดีล)
+   = ดีลที่ปิด Won แล้วแต่ยังไม่มี SO อนุมัติ/รออนุมัติ (นิยามอยู่ที่ lib/sales/dashboardMetrics)
+   🐞 รับใบเสนอราคา = ดีล Won ทันที ⇒ หลุดจาก FC คงเหลือ แต่ SO ยังเป็นร่าง ⇒ ไม่อยู่ใน
+      รออนุมัติ/Actual ⇒ "คาดขาด" พุ่งเต็มมูลค่าดีลจนกว่าจะกดยื่น SO · เส้นนี้อุดรูนั้น
+   ⭐ **เส้นแยกจาก `actual` เสมอ** เหมือนรออนุมัติ — เข้าได้แค่ `projected` กับบรรทัดแสดงผล
+   ⚠️ ต่างจากรออนุมัติ: server วางยอดนี้ที่ **เดือน Won ของดีล** (wonMonthOf) ไม่ใช่เดือนปัจจุบัน
+      ⇒ เดือนที่จบแล้วมีค่านี้ได้ · และเดือนที่ Actual กรอกมือ (sales_history) ยอดของดีลพวกนี้
+      อยู่ในตัวเลขที่กรอกแล้ว ⇒ `overlayHistory` ต้องล้างเส้นนี้ในช่องที่มันทับ Actual */
+const WON_AWAITING_KEYS = ['wonAwaitingSo', 'wonAwaitingSoCount'];
+/** เส้นแสดงผลที่ไม่ใช่ Actual ทั้งหมด — ตัวรวมใน buildMatrix/rowHasValue วนชุดเดียวกัน */
+const SIDE_KEYS = [...PENDING_KEYS, ...WON_AWAITING_KEYS];
+
 /** แถวว่างของแกนหนึ่ง ๆ — ที่เดียวที่ประกาศว่าแถวมีเส้นอะไรบ้าง
  *  (เดิมเขียนซ้ำใน buildMatrix กับ overlayHistory ⇒ เส้นใหม่หลุดเงียบจากที่หนึ่งได้) */
 const blankRow = (axis, size) => ({
@@ -40,6 +54,8 @@ const blankRow = (axis, size) => ({
   actual: zeros(size),
   pendingApproval: zeros(size),
   pendingApprovalCount: zeros(size),
+  wonAwaitingSo: zeros(size),
+  wonAwaitingSoCount: zeros(size),
 });
 
 /** ปีของงวดเดือน — ใช้ตัดรอบทบยอด (ทบไม่ข้ามปีปฏิทิน) */
@@ -62,7 +78,8 @@ export function monthsOfDashboards(dashboards) {
 // เพื่อคงพฤติกรรมเดิมของผู้เรียกที่ยังคิดเป็นรายปี) · เดือนที่ไม่มีข้อมูลได้ 0
 //
 // ยอดรออนุมัติอ่านจากช่อง `pendingApproval` / `pendingApprovalCount` ของ totals ·
-// byOwner · byTeam (มติ 2026-09-11) — payload เก่าที่ค้างใน apiCache ไม่มีสองช่องนี้
+// byOwner · byTeam (มติ 2026-09-11) และยอด Won รอยื่น SO จาก `wonAwaitingSo` /
+// `wonAwaitingSoCount` (มติ 2026-09-14) — payload เก่าที่ค้างใน apiCache ไม่มีช่องพวกนี้
 // ⇒ ได้ 0 ไม่ใช่ NaN
 export function buildMatrix(yearDashboards, { months } = {}) {
   const axis = (Array.isArray(months) && months.length)
@@ -72,7 +89,7 @@ export function buildMatrix(yearDashboards, { months } = {}) {
   const axisIndex = new Map(axis.map((key, i) => [key, i]));
   const blank = () => blankRow(axis, size);
   const addPending = (target, source, mi) => {
-    for (const key of PENDING_KEYS) target[key][mi] += Number(source?.[key] || 0);
+    for (const key of SIDE_KEYS) target[key][mi] += Number(source?.[key] || 0);
   };
 
   const company = blank();
@@ -90,10 +107,16 @@ export function buildMatrix(yearDashboards, { months } = {}) {
     addPending(company, totals, mi);
 
     for (const row of dashboard.byOwner || []) {
-      // คีย์เดียวกับ buildYearRows เดิมของหน้า /sa — ownerId ก่อน, ไม่มีก็ team+ชื่อ
-      const key = row.ownerId || `${row.team || 'none'}:${row.ownerName || 'ไม่ระบุ'}`;
+      /* แถวคน = (ใคร, ทีมไหน) — มติผู้ใช้ 2026-09-14 "ทีมตามดีล" (lib/sales/personSlice)
+         ทีมของแถว = ทีมที่ประทับบนดีล/เป้า ไม่ใช่ทีมในบัญชี ⇒ คนเดียวกันต่างทีม (หลายทีม/ย้ายกลางปี)
+         ได้แถวละทีม และแถวทีมเท่ากับผลรวมแถวคนใต้ทีมนั้น · (ownerId, ทีม) เดียวกันข้ามเดือนรวมเป็นแถวเดียว
+         ⚠️ คีย์สร้างจากช่องของแถวเองเท่านั้น (ownerId · team · ownerName) — payload เก่าที่ค้างใน
+            apiCache ไม่มีช่องใหม่ให้พึ่ง · ตัวตนคนอ่านจาก `ownerId` ห้ามแกะจาก `id` */
+      const ownerId = row.ownerId || null;
+      const team = row.team || null;
+      const key = personSliceKey({ team, ownerId, ownerName: row.ownerName });
       if (!people.has(key)) {
-        people.set(key, { id: key, name: row.ownerName || 'ไม่ระบุ', team: row.team || null, ...blank() });
+        people.set(key, { id: key, ownerId, name: row.ownerName || 'ไม่ระบุ', team, ...blank() });
       }
       const p = people.get(key);
       p.target[mi] += Number(row.target || 0);
@@ -145,7 +168,18 @@ export function buildMatrix(yearDashboards, { months } = {}) {
 
    ⛔ ยอดรออนุมัติ (`pendingApproval*`) **ไม่ถูกทับ/ไม่ roll up จากที่นี่เด็ดขาด**
    (มติ 2026-09-11) — แถวประวัติถือแค่ Actual ที่กรอกมือ ส่วนรออนุมัติเป็นสถานะสดของ
-   ใบสั่งขายเสมอ · แถวที่ overlay สร้างใหม่ได้เส้นรออนุมัติเป็นศูนย์ครบความยาวแกน */
+   ใบสั่งขายเสมอ · แถวที่ overlay สร้างใหม่ได้เส้นรออนุมัติเป็นศูนย์ครบความยาวแกน
+
+   ⭐ ยอด Won รอยื่น SO (`wonAwaitingSo*` · มติ 2026-09-14) **ตามช่องของ Actual ทุกช่อง**
+   เดือนที่ Actual กรอกมือ = ยอดขายจริงของเดือนนั้นครบแล้ว รวมดีลที่ยังไม่ออก SO ในระบบ
+   ⇒ นับดีลนั้นซ้ำใน "คาดจบงวด" = บวกสองรอบ (2026 ม.ค.–มิ.ย. กรอกไว้ระดับบริษัท)
+   · ช่องที่แถวประวัติทับ Actual ตรง ๆ (คน/ทีม/บริษัท) ⇒ เส้นนี้เป็น 0
+   · ช่องที่ Actual ถูก roll up (ข้อ 2 · 3) ⇒ เส้นนี้ roll up ด้วยสูตรเดียวกัน = ผลรวมของชั้นล่าง
+     ที่ล้างแล้ว — ทุกคน/ทุกทีมที่ประกอบช่องนั้นกรอกมือหมด ผลก็เป็น 0 · ถ้าบางคนยังเป็นยอด
+     จากดีล ดีลรอยื่นของคนนั้นยังอยู่ (Actual ของช่องนั้นก็ยังเป็นยอดจากดีลของเขาเหมือนกัน)
+   ⚠️ ห้ามล้างเป็น 0 ทั้งช่องที่ roll up — คนที่ไม่ได้กรอกมือจะหายจากยอดคาดของทีม
+      ขณะที่แถวของเขาเองยังโชว์อยู่ = แถวคนรวมกันไม่เท่าแถวทีม และ "คาดขาด" ของทีมเกินจริง
+   · ช่องที่ไม่มีแถวประวัติเลย ไม่แตะ */
 export function overlayHistory(matrix, rows) {
   const axis = matrix?.company?.months || [];
   const size = matrix?.company?.target?.length || axis.length || 12;
@@ -172,27 +206,55 @@ export function overlayHistory(matrix, rows) {
   const teamExplicit = new Map();  // teamKey → Set(index) ที่มีแถวของทีมเองกรอกไว้
   const companyExplicit = new Set();
 
+  /* Actual ของช่องนี้มาจากตัวเลขที่กรอกมือ ⇒ ยอด Won รอยื่น SO ของช่องนี้อยู่ในนั้นแล้ว
+     แถวที่ไม่มีเส้นนี้ (fixture/แถวเก่า) ข้ามไป ไม่สร้างเส้นให้ */
+  const clearWonAwaiting = (row, mi) => {
+    for (const key of WON_AWAITING_KEYS) if (Array.isArray(row?.[key])) row[key][mi] = 0;
+  };
+  /* roll up เส้น Won รอยื่น SO ด้วยสูตรเดียวกับ Actual ของช่องเดียวกัน (ดูคอมเมนต์หัวฟังก์ชัน) */
+  const rollUpWonAwaiting = (row, parts, mi) => {
+    for (const key of WON_AWAITING_KEYS) {
+      if (!Array.isArray(row?.[key])) continue;
+      row[key][mi] = parts.reduce((sum, p) => sum + Number(p?.[key]?.[mi] || 0), 0);
+    }
+  };
+
   for (const row of rows || []) {
     const mi = indexOf(row.period);
     if (mi < 0) continue;
     const amt = Number(row.actualAmount || 0);
 
     if (row.ownerId) {
-      let person = matrix.people.find((x) => x.id === row.ownerId);
+      /* จับคู่ด้วย (ทีมของแถวประวัติ, ownerId) — คีย์เดียวกับ buildMatrix = คีย์ upsert ของ sales_history
+         (มติ 2026-09-14 "ทีมตามดีล") · ยอดที่กรอกให้ทีม A ทับเฉพาะแถว (A, คนนั้น) ไม่แตะแถวทีมอื่นของเขา
+         🪤 ห้ามกลับไปจับด้วย ownerId เดี่ยว ๆ หรือ `x.id === row.ownerId` — id เป็นคีย์ผสมแล้ว ⇒ ไม่มีวันเจอ
+            แล้วดันแถวซ้ำเข้าไป ข้อ 2 บวกทั้งสองแถว = ยอดทีมนับซ้ำเงียบ ๆ */
+      const team = row.team || null;
+      const id = personSliceKey({ team, ownerId: row.ownerId });
+      let person = matrix.people.find((x) => x.id === id);
       if (!person) {
-        // คนที่ไม่มีดีลในปีนั้นเลย (เข้าใหม่/ลาออก) ยังต้องมีแถว ไม่งั้นยอดที่กรอกหาย
-        person = { id: row.ownerId, name: row.ownerName || row.ownerId, team: row.team || null, ...blank() };
+        // คนที่ไม่มีดีลในปีนั้นเลย (เข้าใหม่/ลาออก/ยอดของทีมเดิม) ยังต้องมีแถว ไม่งั้นยอดที่กรอกหาย
+        person = { id, ownerId: row.ownerId, name: row.ownerName || row.ownerId, team, ...blank() };
         matrix.people.push(person);
       }
       person.actual[mi] = amt;
-      const key = teamKeyOf(person.team);
+      clearWonAwaiting(person, mi);
+      // roll up ตามทีมของแถวประวัติ — ทีมที่ประทับบนยอด ไม่ใช่ทีมปัจจุบันของคน (ประวัติทีมไม่ย้ายตามคน)
+      const key = teamKeyOf(row.team);
       if (!personTouched.has(key)) personTouched.set(key, new Set());
       personTouched.get(key).add(mi);
       continue;
     }
 
-    if (!row.team) { matrix.company.actual[mi] = amt; companyExplicit.add(mi); continue; }
-    teamRowOf(row.team).actual[mi] = amt;
+    if (!row.team) {
+      matrix.company.actual[mi] = amt;
+      clearWonAwaiting(matrix.company, mi);
+      companyExplicit.add(mi);
+      continue;
+    }
+    const teamRow = teamRowOf(row.team);
+    teamRow.actual[mi] = amt;
+    clearWonAwaiting(teamRow, mi);
     const key = teamKeyOf(row.team);
     if (!teamExplicit.has(key)) teamExplicit.set(key, new Set());
     teamExplicit.get(key).add(mi);
@@ -203,11 +265,11 @@ export function overlayHistory(matrix, rows) {
   for (const [key, indexes] of personTouched) {
     const explicit = teamExplicit.get(key);
     const team = teamRowOf(key);
+    const members = matrix.people.filter((p) => teamKeyOf(p.team) === key);
     for (const mi of indexes) {
       if (explicit?.has(mi)) continue;
-      team.actual[mi] = matrix.people
-        .filter((p) => teamKeyOf(p.team) === key)
-        .reduce((sum, p) => sum + Number(p.actual[mi] || 0), 0);
+      team.actual[mi] = members.reduce((sum, p) => sum + Number(p.actual[mi] || 0), 0);
+      rollUpWonAwaiting(team, members, mi);
       teamMoved.add(mi);
     }
   }
@@ -217,9 +279,24 @@ export function overlayHistory(matrix, rows) {
   for (const mi of teamMoved) {
     if (companyExplicit.has(mi)) continue;
     matrix.company.actual[mi] = matrix.teams.reduce((sum, t) => sum + Number(t.actual[mi] || 0), 0);
+    rollUpWonAwaiting(matrix.company, matrix.teams, mi);
   }
 
   return matrix;
+}
+
+/* แถวคนที่ส่วน "เจาะรายละเอียด" ต้องแสดง + แถวเดียวกันของปีก่อน (ฐาน YoY)
+   · `param` = ค่า ?person= — คีย์แถวเต็ม (กดจากตาราง/heatmap) หรือ user id เปล่า (ลิงก์ "ดูผลงานเต็ม"
+     จากแดชบอร์ดของฉัน · ลิงก์ที่แชร์ก่อนมติ 2026-09-14) ⇒ ตัดสินด้วย findPersonRow ตัวเดียว
+   · ปีก่อนหาด้วยคีย์ของแถวที่ได้ (คน, ทีมเดียวกัน) — ไม่ใช่ param เดิม ไม่งั้นคนย้ายทีมได้ปีนี้ทีม KA
+     เทียบกับปีก่อนทีม ODM · ทีมใหม่ที่ปีก่อนไม่มีแถว = null (ไม่มีฐาน YoY ตรงไปตรงมา)
+   ⚠️ มี param แต่หาไม่เจอ = null — ห้ามถอยไปคนแรกของรายชื่อ (จอจะโชว์ผลงานของคนอื่นเงียบ ๆ)
+      คนแรกของรายชื่อใช้ได้เฉพาะตอนยังไม่ได้เลือกใครเลย */
+export function resolvePersonDrill(matrix, prevMatrix, param) {
+  const people = matrix?.people || [];
+  const row = param ? findPersonRow(people, param) : (people[0] || null);
+  const prev = row ? findPersonRow(prevMatrix?.people || [], row.id) : null;
+  return { row, prev };
 }
 
 /* แถว "ยังไม่ได้แยกทีม" = ยอดบริษัท − ผลรวมรายทีม ของแต่ละงวด
@@ -233,7 +310,11 @@ export function overlayHistory(matrix, rows) {
    ⇒ ดึงส่วนต่างออกมาเป็นแถวของตัวเอง แถวทีม + แถวนี้ = แถวรวมบริษัทเป๊ะทุกคอลัมน์
    ห้ามเอาไปบวกใส่ทีมไหนเป็นการเดา — ข้อมูลว่าเป็นของทีมไหนไม่มีอยู่จริง
    ⚠️ รายชื่อเส้นเขียนตรง ๆ — เส้นที่ลืมใส่จะได้ undefined แล้วการกระทบยอดพังเงียบ
-   (ยอดรออนุมัติเพิ่มเข้ามา 2026-09-11 · เทสต์วนครบทุกเส้นกันไว้แล้ว) */
+   (ยอดรออนุมัติเพิ่มเข้ามา 2026-09-11 · Won รอยื่น SO 2026-09-14 · เทสต์วนครบทุกเส้นกันไว้แล้ว)
+   ⚠️ Won รอยื่น SO ของแถวนี้ **ติดลบได้** และถูกต้อง: เดือนที่บริษัทกรอก Actual มือ เส้นของบริษัท
+   ถูกล้างเป็น 0 แต่แถวทีม (Actual จากดีล) ยังนับดีลรอยื่นของตัวเอง ⇒ ส่วนต่าง = −ผลรวมทีม
+   จอโชว์บรรทัดนี้เฉพาะยอด > 0 จึงไม่เห็นเลขติดลบ แต่ยอดคาดของแถวทีม + แถวนี้ = ของบริษัทเป๊ะ */
+const roundSatang = (v) => Math.round(v * 100) / 100;
 export function unallocatedRow(matrix) {
   const company = matrix?.company || {};
   const size = company.target?.length || 0;
@@ -249,15 +330,19 @@ export function unallocatedRow(matrix) {
     actual: minus('actual'),
     // ปัดเป็นสตางค์ — เศษทศนิยมจากการลบ (เช่น 0.1 + 0.2) ทำให้แถวนี้โผล่ "รออนุมัติ ฿0.00"
     // ลอย ๆ เพราะจอโชว์บรรทัดนี้เมื่อยอด > 0 · เส้นอื่นคงเดิม (rowHasValue มีค่าเผื่อ 1e-9 อยู่แล้ว)
-    pendingApproval: minus('pendingApproval').map((v) => Math.round(v * 100) / 100),
+    pendingApproval: minus('pendingApproval').map(roundSatang),
     pendingApprovalCount: minus('pendingApprovalCount'),
+    // เหตุผลเดียวกัน — บรรทัด "Won รอยื่น SO" ก็โผล่เมื่อยอด > 0
+    wonAwaitingSo: minus('wonAwaitingSo').map(roundSatang),
+    wonAwaitingSoCount: minus('wonAwaitingSoCount'),
   };
 }
 
 /** แถวนี้มีอะไรให้แสดงไหมในช่วง [startIdx..endIdx] (ทุกค่าเป็น 0 = ซ่อนแถวทิ้ง)
- *  นับยอดรออนุมัติด้วย — แถวที่มีแต่ใบรออนุมัติยังมีของให้ดู (ใบ 0 บาทนับจากจำนวนใบ) */
+ *  นับยอดรออนุมัติ + Won รอยื่น SO ด้วย — แถวที่มีแต่สองเส้นนี้ยังมีของให้ดู
+ *  (ใบรออนุมัติ 0 บาท / ดีลมูลค่าว่าง นับจากจำนวน) */
 export function rowHasValue(row, startIdx, endIdx) {
-  const keys = ['target', 'fcTotal', 'forecast', 'actual', ...PENDING_KEYS];
+  const keys = ['target', 'fcTotal', 'forecast', 'actual', ...SIDE_KEYS];
   for (let i = Math.max(0, startIdx); i <= endIdx; i += 1) {
     for (const key of keys) if (Math.abs(Number(row?.[key]?.[i] || 0)) > 1e-9) return true;
   }
@@ -341,10 +426,21 @@ export function closedCountOnAxis(months, now) {
 // สถิติของงวด [startIdx..endIdx] ของแถวหนึ่ง (คน/ทีม/บริษัท).
 //
 // ⭐ ยอดรออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) คืนเป็นช่องแยก `pendingApproval` /
-// `pendingApprovalCount` — `actual` · `diff` · `pct` · `carry` ยังเป็น Actual ล้วน
-// ข้อยกเว้นเดียวที่ตั้งใจ: `projected` (ยอดคาดจบงวด) = Actual + รออนุมัติ + FC คงเหลือ
-// เพราะใบที่ยื่นแล้วเกือบแน่นอน — ดีลของมันเป็น Won แล้วจึงหลุดจาก FC คงเหลือ ถ้าไม่นับ
-// "คาดขาด" เกินจริงเท่ายอดทั้งก้อน (ก.ย. 2026 ทีม KA เกินจริง 993,000)
+// `pendingApprovalCount` และยอด Won รอยื่น SO (มติ 2026-09-14) เป็น `wonAwaitingSo` /
+// `wonAwaitingSoCount` — `actual` · `diff` · `pct` · `carry` · `fcPct` ยังเป็น Actual/FC ล้วน
+//
+// ข้อยกเว้นเดียวที่ตั้งใจ: `projected` (ยอดคาดจบงวด)
+//   = Actual + รออนุมัติ + Won รอยื่น SO + FC คงเหลือ
+// ทุกช่วงชีวิตของดีลอยู่ในสูตรนี้ช่องเดียวเสมอ ยอดคาดจึงไม่วูบระหว่างทาง:
+//   เปิดอยู่ → FC คงเหลือ · Won ยังไม่ยื่น SO → Won รอยื่น SO · ยื่นแล้ว → รออนุมัติ · อนุมัติ → Actual
+// ถ้าขาดช่องใดช่องหนึ่ง "คาดขาด" เกินจริงเท่ามูลค่าทั้งก้อน (ก.ย. 2026 ทีม KA เกินจริง 993,000
+// จากรออนุมัติ · 14/09 ดีล Won ที่ยังไม่ยื่น SO อีก 42 ดีล 2,659,950)
+// ⚠️ ทุกช่องเป็นมูลค่าเต็ม — FC คงเหลือ (`forecast` / API `weightedForecast`) **ไม่ได้ถ่วง
+//    โอกาสปิด** แม้ชื่อช่องใน API จะเป็น weighted · จอต้องเขียนฐานนี้กำกับทุกครั้งที่โชว์ยอดคาด
+//
+// 👀 ผู้ใช้ `projected` ที่ **เรนเดอร์จริง** มีสองที่: บรรทัด "คาดจบงวด · คาดขาด" ของ
+// YearProgressBar กับช่องว่างถึงขีดต้องปิดของ ProgressBar (ตารางติดตาม) — `statusOf` ข้างล่าง
+// อ่านมันด้วยแต่ป้ายสถานะ **ไม่ได้ถูกวาดที่ไหนแล้ว** (ถอดคอลัมน์สถานะ 2026-08-03)
 export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount = 12 }) {
   const target = sumRange(row.target, startIdx, endIdx);
   const carry = carryOn ? carryIn(row.target, row.actual, startIdx, closedCount, row.months || null) : 0;
@@ -354,6 +450,8 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
   const actual = sumRange(row.actual, startIdx, endIdx);
   const pendingApproval = sumRange(row.pendingApproval || [], startIdx, endIdx);
   const pendingApprovalCount = sumRange(row.pendingApprovalCount || [], startIdx, endIdx);
+  const wonAwaitingSo = sumRange(row.wonAwaitingSo || [], startIdx, endIdx);
+  const wonAwaitingSoCount = sumRange(row.wonAwaitingSoCount || [], startIdx, endIdx);
   return {
     target,
     carry,
@@ -363,15 +461,37 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
     actual,
     pendingApproval,
     pendingApprovalCount,
-    projected: actual + pendingApproval + forecast,
+    wonAwaitingSo,
+    wonAwaitingSoCount,
+    projected: actual + pendingApproval + wonAwaitingSo + forecast,
     diff: actual - mustClose,
     pct: mustClose > 0 ? (actual / mustClose) * 100 : null,
     fcPct: mustClose > 0 ? (forecast / mustClose) * 100 : null,
   };
 }
 
+/* ยอดคาดจบงวดเทียบต้องปิด — ผลที่จอพูดออกมา ("คาดขาด ฿X" / "คาดถึงเป้า")
+   ที่เดียวให้ YearProgressBar กับ ProgressBar ของตารางติดตามใช้ร่วมกัน (ไม่งั้นสองจอพูดคนละเลข)
+   · `hasTarget` false = งวดไม่มีเป้า/ต้องปิด ⇒ ไม่มีอะไรให้ "ขาด" หรือ "ถึง" (จอบอกว่ายังไม่มีเป้า)
+   · `shortfall` ≥ 0 เสมอ · `reached` ใช้ค่าเผื่อ 1e-9 ชุดเดียวกับ statusOf */
+export function projectionGap(stat) {
+  const projected = Number(stat?.projected || 0);
+  const mustClose = Number(stat?.mustClose || 0);
+  const hasTarget = mustClose > 1e-9;
+  const reached = hasTarget && projected >= mustClose - 1e-9;
+  return {
+    projected,
+    mustClose,
+    hasTarget,
+    reached,
+    shortfall: hasTarget && !reached ? mustClose - projected : 0,
+  };
+}
+
 // สถานะ pill ของงวด — periodKind: 'past' (งวดจบแล้ว) | 'current' | 'future'.
 // tone แม็ปเป็นโทเคนสีฝั่ง UI: green / amber / red / muted.
+// ⚠️ **ไม่มีจอไหนวาดผลของฟังก์ชันนี้แล้ว** (StatusPill ถอดออก 2026-08-03 · ดู shared.js)
+// เก็บไว้พร้อมเทสต์เผื่อเอาป้ายกลับมา — อย่าอ้างมันเป็นเหตุผลว่า "จอแสดงสถานะนี้อยู่"
 export function statusOf(stat, { periodKind }) {
   // amount = ตัวเลขดิบแนบท้ายป้าย (ยอดที่ขาด) — UI ฟอร์แมตเงินเอง
   const short = stat.mustClose - stat.actual;
@@ -385,7 +505,7 @@ export function statusOf(stat, { periodKind }) {
     return { key: 'missed', label: '✗ ขาด', tone: 'red', amount: short };
   }
   if (periodKind === 'current') {
-    // projected ของ windowStat นับยอดรออนุมัติแล้ว (มติ 2026-09-11) — รูปผลลัพธ์ไม่เปลี่ยน
+    // projected ของ windowStat นับรออนุมัติ (2026-09-11) + Won รอยื่น SO (2026-09-14) แล้ว — รูปผลลัพธ์ไม่เปลี่ยน
     if (stat.projected >= stat.mustClose - 1e-9) {
       return { key: 'running_on_track', label: 'กำลังวิ่ง · คาดจบถึงเป้า', tone: 'green', amount: 0 };
     }

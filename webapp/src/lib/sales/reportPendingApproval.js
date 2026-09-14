@@ -1,5 +1,6 @@
 import { currentMonth } from '@/lib/datePeriods';
 import { isWonDeal } from '@/lib/sales/dashboardMetrics';
+import { NO_TEAM_ROW_KEY, reportPersonRowKey, reportTeamRowKey } from '@/lib/sales/reportRows';
 import { salesOrderAmountKind, salesOrderPendingApprovalAmount } from '@/lib/sales/salesOrderWorkflow';
 
 /* ── ยอด SO "รออนุมัติ" ของรายงานยอดขาย (/sa/targets/report) ─────────────────
@@ -17,9 +18,13 @@ import { salesOrderAmountKind, salesOrderPendingApprovalAmount } from '@/lib/sal
  *         ซึ่งอาจเป็นเดือนที่ปิดไปแล้ว — เดือนที่ยอดนี้ไม่มีวันไปลงจริง
  *    - ของใคร = **เจ้าของดีลปัจจุบัน** — sales_orders."ownerId" ว่างจนกว่าจะอนุมัติ (mig 0294)
  *      และใบที่ถูกย้อนอนุมัติแล้วยื่นใหม่อาจมี ownerId ค้างของรอบก่อน ⇒ ห้ามอ่านจากใบเด็ดขาด
- *      ทีม = ทีมในบัญชีปัจจุบันของเจ้าของ (กติกาเดียวกับใบอนุมัติแล้วใน route)
- *      ⇒ ถ้าอนุมัติวันนี้ ยอดจะลงแถวคน/ทีมเดียวกับที่โชว์รออนุมัติไว้พอดี
- *      ดีลที่ไม่มีเจ้าของ = เข้ายอดบริษัทอย่างเดียว (เหมือนใบอนุมัติแล้วที่ไม่มีเจ้าของ)
+ *    - ทีม = **ทีมตามดีล** (sales_deals.team · มติผู้ใช้ 2026-09-14) — ไม่ใช่ทีมในบัญชีเจ้าของ
+ *      ใบอนุมัติแล้วใน route ก็อ่านทีมจากดีลของใบ (lib/sales/reportRows) ⇒ ถ้าอนุมัติวันนี้
+ *      โดยเจ้าของ/ทีมบนดีลไม่เปลี่ยน ยอดจะลงแถว (ทีม, คน) เดียวกับที่โชว์รออนุมัติไว้พอดี
+ *      `person` ใช้เอาชื่อบนจออย่างเดียว
+ *    - ดีลไม่มีเจ้าของ = เข้ายอดบริษัทอย่างเดียว (เหมือนใบอนุมัติแล้วที่ไม่มีเจ้าของ) → `unassigned`
+ *    - ดีลมีเจ้าของแต่ไม่ระบุทีม = บรรทัด `noTeam` (คู่กับแถวทีม "ไม่ระบุทีม" ของ route)
+ *      ⇒ amount = Σ byOwner + unassigned = Σ byTeam + noTeam + unassigned เสมอ
  *
  * ⛔ คืนเป็นก้อนแยกเสมอ — ห้ามปนเข้า actual[] · orders[] · splitIdx · ทบยอด · % · ส่วนต่าง ·
  *    แถบเตือนยอดบริษัทไม่ตรงกับผลรวมรายคน (ยอดบริษัทรวมใบที่ดีลไม่มีเจ้าของ จึงไม่เท่ากันได้)
@@ -34,6 +39,7 @@ const emptyPendingApproval = () => ({
   count: 0,
   byOwner: [],
   byTeam: [],
+  noTeam: { key: NO_TEAM_ROW_KEY, team: null, amount: 0, count: 0 },
   unassigned: { amount: 0, count: 0 },
   orders: [],
 });
@@ -44,11 +50,12 @@ const compareText = (a, b) => String(a || '').localeCompare(String(b || ''), 'th
  * ยอดรออนุมัติของช่วงรายงาน
  *
  * @param orders แถว sales_orders (กรองสถานะซ้ำให้ — ส่งใบสถานะอื่นมาปนก็ไม่นับ)
- * @param deals  แถว sales_deals ของใบเหล่านั้น: id, stage, ownerId, ownerName
+ * @param deals  แถว sales_deals ของใบเหล่านั้น: id, stage, team, ownerId, ownerName
  * @param months แกนเดือนของรายงาน ['YYYY-MM', …]
- * @param person (userId) → { name, team } | null — บัญชีปัจจุบัน (loadUserDirectory)
+ * @param person (userId) → { name } | null — บัญชีปัจจุบัน (loadUserDirectory) ใช้แค่ชื่อ
  * @param now    นาฬิกาตอนอ่าน — เดือนของยอดมาจากตรงนี้ ไม่ใช่จากคอลัมน์ใดของใบ
- * @returns { month, amount, count, byOwner[], byTeam[], unassigned, orders[] }
+ * @returns { month, amount, count, byOwner[], byTeam[], noTeam, unassigned, orders[] }
+ *          byOwner = แถวละ (ทีมของดีล, เจ้าของ) · byTeam = เฉพาะทีมที่มีรหัส ·
  *          month = null เมื่อช่วงไม่มีเดือนปัจจุบัน (ทุกยอดเป็น 0 · ลิสต์ว่าง)
  */
 export function reportPendingApproval({
@@ -74,24 +81,22 @@ export function reportPendingApproval({
 
     const amount = salesOrderPendingApprovalAmount(order);
     const ownerId = deal.ownerId || null;
-    const account = ownerId ? person(ownerId) : null;
-    const ownerName = ownerId ? (account?.name || deal.ownerName || ownerId) : (deal.ownerName || null);
-    const team = ownerId ? (account?.team || null) : null;
+    const ownerName = ownerId ? (person(ownerId)?.name || deal.ownerName || ownerId) : (deal.ownerName || null);
+    const team = deal.team || null;
 
     out.amount += amount;
     out.count += 1;
 
     if (ownerId) {
-      if (!owners.has(ownerId)) owners.set(ownerId, { ownerId, ownerName, team, amount: 0, count: 0 });
-      const row = owners.get(ownerId);
+      const key = reportPersonRowKey({ team, ownerId });
+      if (!owners.has(key)) owners.set(key, { key, ownerId, ownerName, team, amount: 0, count: 0 });
+      const row = owners.get(key);
       row.amount += amount;
       row.count += 1;
-      if (team) {
-        if (!teams.has(team)) teams.set(team, { team, amount: 0, count: 0 });
-        const teamRow = teams.get(team);
-        teamRow.amount += amount;
-        teamRow.count += 1;
-      }
+      if (team && !teams.has(team)) teams.set(team, { key: reportTeamRowKey(team), team, amount: 0, count: 0 });
+      const teamRow = team ? teams.get(team) : out.noTeam;
+      teamRow.amount += amount;
+      teamRow.count += 1;
     } else {
       out.unassigned.amount += amount;
       out.unassigned.count += 1;
@@ -116,9 +121,9 @@ export function reportPendingApproval({
     });
   }
 
-  // มากไปน้อย แล้วตัดสินด้วยชื่อ — เรนเดอร์ซ้ำได้ลำดับเดิมเสมอ
+  // มากไปน้อย แล้วตัดสินด้วยชื่อ (คนเดียวหลายทีม: ตัดสินด้วยทีม) — เรนเดอร์ซ้ำได้ลำดับเดิมเสมอ
   out.byOwner = [...owners.values()]
-    .sort((a, b) => b.amount - a.amount || compareText(a.ownerName, b.ownerName));
+    .sort((a, b) => b.amount - a.amount || compareText(a.ownerName, b.ownerName) || compareText(a.team, b.team));
   out.byTeam = [...teams.values()]
     .sort((a, b) => b.amount - a.amount || compareText(a.team, b.team));
   // ใบที่รอนานสุดขึ้นก่อน — ใบที่ไม่มีวันยื่น (ข้อมูลเก่า) ไปท้าย
@@ -133,8 +138,17 @@ export function reportPendingApproval({
   return out;
 }
 
-/** กุญแจของแถวในตารางรายทีม/รายคน — ตัวเดียวกับที่ใช้จับยอดรออนุมัติเข้าแถว */
-export const pendingApprovalRowKey = (kind, row) => (kind === 'team' ? row?.team : row?.ownerId) || null;
+/**
+ * กุญแจของแถวในตารางรายทีม/รายคน — ตัวเดียวกับที่ใช้จับยอดรออนุมัติเข้าแถว
+ * 🪤 ต้องเท่ากับ `row.key` ที่ route สร้าง (lib/sales/reportRows) ทุกตัวอักษร:
+ *    รายคน = (ทีมของแถว, ownerId) · รายทีม = 'team:<code>' / 'team:-' (ไม่ระบุทีม)
+ *    คิดจากช่องของแถวเสมอ ไม่อ่าน row.key — กลุ่มรออนุมัติกับแถวของ route ต้องได้คีย์จากกติกาเดียวกัน
+ */
+export const pendingApprovalRowKey = (kind, row) => {
+  if (!row) return null;
+  if (kind === 'team') return reportTeamRowKey(row.team);
+  return row.ownerId ? reportPersonRowKey({ team: row.team, ownerId: row.ownerId }) : null;
+};
 
 /**
  * จับยอดรออนุมัติเข้าแถวของตารางรายทีม/รายคน
@@ -142,9 +156,14 @@ export const pendingApprovalRowKey = (kind, row) => (kind === 'team' ? row?.team
  * @returns byKey — กุญแจแถว → { amount, count } (อ่านด้วย pendingApprovalRowKey)
  *          extra — กลุ่มที่มีแต่ยอดรออนุมัติ ไม่มีแถวเป้า/ขายจริงในรายงาน ⇒ ต้องเติมแถวให้
  *                  ไม่งั้นยอดของคนนั้นหายจากตาราง และแถวรวมบวกไม่ตรงกับแถวที่เห็น
+ *          มุมรายทีมนับบรรทัด noTeam เป็นกลุ่มหนึ่งด้วย (คู่กับแถว "ไม่ระบุทีม") ⇒ ส่วนที่ไม่มีแถว
+ *          ทั้งสองมุมเหลือแค่ดีลไม่มีเจ้าของ
  */
 export function matchPendingApprovalRows(pendingApproval, rows, kind) {
-  const groups = (kind === 'team' ? pendingApproval?.byTeam : pendingApproval?.byOwner) || [];
+  const noTeam = Number(pendingApproval?.noTeam?.count || 0) > 0 ? [pendingApproval.noTeam] : [];
+  const groups = (kind === 'team'
+    ? [...(pendingApproval?.byTeam || []), ...noTeam]
+    : pendingApproval?.byOwner) || [];
   const byKey = new Map(groups.map((group) => [pendingApprovalRowKey(kind, group), group]));
   const listed = new Set((rows || []).map((row) => pendingApprovalRowKey(kind, row)));
   return {

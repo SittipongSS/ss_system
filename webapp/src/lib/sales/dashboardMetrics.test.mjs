@@ -67,3 +67,29 @@ test('owner matching: แถวที่ไม่มี ownerId ยังถอ�
   assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'KA' }), true);
   assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'ODM' }), false);
 });
+
+/* ⭐ มติผู้ใช้ 2026-09-14 "ทีมตามดีล" — แถวคนบนแดชบอร์ดแยกตามทีมที่ประทับบนดีล (คนเดียวมีได้หลายแถว)
+   ลิ้นชักของแถวคนส่ง `teamScoped: true` ⇒ ดีลต้องอยู่ทีมเดียวกับแถวก่อน · ธงเลือกเปิด ผู้เรียกเดิมไม่กระทบ */
+test('owner matching teamScoped: id ตรงแต่ดีลคนละทีม = ไม่ match · ทีมว่าง null/\'\' เป็นทีมเดียวกัน', () => {
+  const ka = { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'KA' };
+  assert.equal(dealMatchesOwner(ka, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'KA', teamScoped: true }), true);
+  assert.equal(dealMatchesOwner(ka, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'ODM', teamScoped: true }), false);
+  assert.equal(dealMatchesOwner(ka, { ownerId: 'u1', team: null, teamScoped: true }), false, 'แถวไร้ทีมไม่ได้ดีล KA');
+  // ไม่ส่งธง = กติกาเดิม (id ตรงไม่ดูทีม)
+  assert.equal(dealMatchesOwner(ka, { ownerId: 'u1', team: 'ODM' }), true);
+  assert.equal(dealMatchesOwner(ka, { ownerId: 'u1', team: 'ODM', teamScoped: false }), true);
+
+  // ดีลไร้ทีมของคน KA — ลงแถว (u1, ไม่ระบุทีม) เท่านั้น
+  const teamless = { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: null };
+  assert.equal(dealMatchesOwner(teamless, { ownerId: 'u1', team: null, teamScoped: true }), true);
+  assert.equal(dealMatchesOwner(teamless, { ownerId: 'u1', team: '', teamScoped: true }), true);
+  assert.equal(dealMatchesOwner(teamless, { ownerId: 'u1', team: 'KA', teamScoped: true }), false);
+  assert.equal(dealMatchesOwner({ ...teamless, team: '' }, { ownerId: 'u1', team: null, teamScoped: true }), true);
+  assert.equal(dealMatchesOwner({ ...teamless, team: undefined }, { ownerId: 'u1', teamScoped: true }), true);
+
+  // ทีมตรงแล้ว กติกาตัวตนเดิมยังตัดสินต่อ: id คนละคน = จบ · แถว legacy ไม่มี id ถอยไปชื่อ
+  assert.equal(dealMatchesOwner(ka, { ownerId: 'u2', ownerName: 'สมชาย ใจดี', team: 'KA', teamScoped: true }), false);
+  const legacy = { ownerId: null, ownerName: 'สมชาย ใจดี', team: 'KA' };
+  assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'KA', teamScoped: true }), true);
+  assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'ODM', teamScoped: true }), false);
+});
