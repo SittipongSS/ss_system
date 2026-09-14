@@ -29,6 +29,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { historyYearOptions } from "@/lib/sales/historyEntry";
 import { carryIn, closedCountOnAxis } from "@/lib/sales/performanceMath";
 import { matchPendingApprovalRows, pendingApprovalRowKey } from "@/lib/sales/reportPendingApproval";
+import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import { currentMonth, formatMonthLabel, monthRangeOfWholeYear } from "@/lib/datePeriods";
 import { fmtDate, fmtMoney, fmtPercent, NA } from "@/lib/format";
@@ -398,7 +399,7 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
   const empty = !rows.length || !idx.length;
   const label = kind === "team" ? "ทีม" : "ผู้รับผิดชอบ";
   const pick = (arr) => idx.reduce((s, i) => s + Number(arr[i] || 0), 0);
-  /* ยอดรออนุมัติของเดือนนี้ตามเจ้าของดีลปัจจุบัน — บรรทัดรองใต้ขายจริง ไม่ได้อยู่ในช่วง idx
+  /* ยอดรออนุมัติของเดือนนี้ตามเจ้าของดีลปัจจุบันและทีมของดีล — บรรทัดรองใต้ขายจริง ไม่ได้อยู่ในช่วง idx
      (idx = เดือนที่จบแล้วเท่านั้น) จึงไม่เข้าเรียงลำดับ ส่วนต่าง หรือ %
      คน/ทีมที่มีแต่ใบรออนุมัติ (ไม่มีเป้า/ขายจริงในช่วง) ต้องเติมแถวให้ ไม่งั้นยอดหายจากตาราง */
   const { byKey: pendingByKey, extra: pendingOnly } = matchPendingApprovalRows(pendingApproval, rows, kind);
@@ -406,12 +407,20 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
   const pendingTotal = pendingGroups.reduce((s, g) => s + g.amount, 0);
   const pendingCount = pendingGroups.reduce((s, g) => s + g.count, 0);
   const hasPending = Number(pendingApproval?.count || 0) > 0;
-  /* ใบรออนุมัติที่ไม่มีแถวในตารางนี้ — ดีลไม่มีเจ้าของ (ทั้งสองมุม) หรือเจ้าของไม่ได้อยู่ทีมไหน
-     (มุมรายทีม) เข้าเฉพาะยอดบริษัท ⇒ แถวรวมน้อยกว่าช่อง "รออนุมัติ" บนหัวรายงาน
+  /* ใบรออนุมัติที่ไม่มีแถวในตารางนี้ — ดีลไม่มีเจ้าของ เข้าเฉพาะยอดบริษัท (ทั้งสองมุม · ดีลที่มีเจ้าของ
+     แต่ไม่ระบุทีมลงแถว "ไม่ระบุทีม" แล้ว) ⇒ แถวรวมน้อยกว่าช่อง "รออนุมัติ" บนหัวรายงาน
      ต้องบอกส่วนที่ขาดไว้ ไม่งั้นกระทบยอดกับหัวรายงานในที่ประชุมไม่ได้ (เหตุผลเดียวกับแถวรวม) */
   const pendingOutsideCount = Math.max(0, Number(pendingApproval?.count || 0) - pendingCount);
   const pendingOutside = Math.max(0, Number(pendingApproval?.amount || 0) - pendingTotal);
-  const groupName = (row) => (kind === "team" ? salesTeamLabel(teamRegistry, row.team) : row.ownerName);
+  /* ⭐ ทีมตามดีล (มติผู้ใช้ 2026-09-14) — คนเดียวมีได้หลายแถว (ทีมละแถว) ⇒ คอลัมน์ทีมคือตัวแยก
+     คีย์ React ต้องเป็น row.key (ownerId ซ้ำได้) และ "รวม N คน" นับคนไม่ซ้ำ ไม่ใช่นับแถว
+     🪤 salesTeamLabel คืนค่าว่างให้ทีม null ⇒ แถว/คอลัมน์ทีมว่างต้องใส่ป้าย "ไม่ระบุทีม" เอง */
+  const teamName = (team) => (team ? salesTeamLabel(teamRegistry, team) : NO_TEAM_LABEL);
+  const groupName = (row) => (kind === "team" ? teamName(row.team) : row.ownerName);
+  const hasNoTeamRow = [...rows, ...pendingOnly].some((row) => !row.team);
+  const headCount = kind === "team"
+    ? rows.length + pendingOnly.length
+    : new Set([...rows, ...pendingOnly].map((row) => row.ownerId)).size;
   return (
     <>
       {empty ? (
@@ -453,9 +462,9 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
                 const diff = actual - target;
                 const pendingRow = pendingByKey.get(pendingApprovalRowKey(kind, row));
                 return (
-                  <tr key={row.ownerId || row.team}>
+                  <tr key={row.key}>
                     <td>{groupName(row)}</td>
-                    {kind === "person" && <td>{row.team ? salesTeamLabel(teamRegistry, row.team) : NA}</td>}
+                    {kind === "person" && <td>{teamName(row.team)}</td>}
                     <td className="num">{target ? money(target) : NA}</td>
                     <td className="num">
                       {actual ? money(actual) : NA}
@@ -471,7 +480,7 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
               {pendingOnly.map((group) => (
                 <tr key={`pending-approval:${pendingApprovalRowKey(kind, group)}`}>
                   <td>{groupName(group)}</td>
-                  {kind === "person" && <td>{group.team ? salesTeamLabel(teamRegistry, group.team) : NA}</td>}
+                  {kind === "person" && <td>{teamName(group.team)}</td>}
                   <td className="num">{NA}</td>
                   <td className="num">
                     {NA}
@@ -485,7 +494,7 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
             {/* แถวรวม — ต้องมี เพราะคนอ่านต้องกระทบยอดกับหัวรายงานได้ทันทีในที่ประชุม */}
             <tfoot>
               <tr>
-                <td>รวม {rows.length + pendingOnly.length} {kind === "team" ? "ทีม" : "คน"}</td>
+                <td>รวม {headCount} {kind === "team" ? "ทีม" : "คน"}</td>
                 {kind === "person" && <td>{NA}</td>}
                 <td className={`num ${styles.colMoneySm}`}>{money(rows.reduce((s, r) => s + pick(r.target), 0))}</td>
                 <td className={`num ${styles.colMoney}`}>
@@ -508,14 +517,15 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
           คิดเฉพาะ <b>{idx.length} เดือน</b>ที่จบแล้วและมีการแยกยอดราย{label}จริง
           {idx.length ? ` (${months[idx[0]] ? formatMonthLabel(months[idx[0]]) : ""} – ${months[idx.at(-1)] ? formatMonthLabel(months[idx.at(-1)]) : ""})` : ""}
           {" "}· ยอดรวมจาก<b>ใบสั่งขายที่อนุมัติแล้ว</b> และเดือนที่กรอกยอดย้อนหลังไว้
+          {" "}· แยกทีม<b>ตามทีมของดีล</b> ไม่ใช่ทีมปัจจุบันของคน (ย้ายทีมแล้วยอดเดิมอยู่ทีมเดิม)
+          {hasNoTeamRow && <>{" "}· <b>{NO_TEAM_LABEL}</b> = ดีลไม่ระบุทีม</>}
           {hasPending && (
             <>
               {" "}· <b>{PENDING_APPROVAL_LABEL}</b> = ใบที่ยื่นแล้วของเดือนนี้ ({formatMonthLabel(pendingApproval.month)})
-              {" "}ตามเจ้าของดีลปัจจุบัน ไม่นับในขายจริง ส่วนต่าง และ %
+              {" "}ตามเจ้าของดีลปัจจุบันและทีมของดีล ไม่นับในขายจริง ส่วนต่าง และ %
               {pendingOutsideCount > 0 && (
                 <>
-                  {" "}· อีก {pendingOutsideCount} ใบ ({money(pendingOutside)})
-                  {kind === "team" ? " ดีลไม่มีเจ้าของหรือเจ้าของไม่ได้อยู่ทีมไหน" : " ดีลไม่มีเจ้าของ"}
+                  {" "}· อีก {pendingOutsideCount} ใบ ({money(pendingOutside)}) ดีลไม่มีเจ้าของ
                   {" "}จึงนับเฉพาะในยอดบริษัท
                 </>
               )}
@@ -531,7 +541,8 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
    การ์ดแยกจาก "ใบสั่งขาย" ข้างล่างโดยตั้งใจ — ตารางนั้นคือใบที่ **นับแล้ว** (ยอดรวมที่ค้นเจอ ·
    ป้าย "ไม่คิดเงิน" · ขั้นบัญชี) ถ้าเอาใบรออนุมัติไปปน ยอดรวมจะบวมและขึ้น "รอตรวจ" ของบัญชี
    ให้ใบที่บัญชียังตรวจไม่ได้ ⇒ ที่นี่ไม่มีขั้นบัญชี และผู้รับผิดชอบคือเจ้าของดีลปัจจุบัน
-   (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ · mig 0294) · ใบน้อยและเป็นของค้างชั่วคราว จึงกางเลย */
+   (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ · mig 0294) ทีมคือทีมของดีล (มติผู้ใช้ 2026-09-14)
+   · ใบน้อยและเป็นของค้างชั่วคราว จึงกางเลย */
 function PendingApprovalCard({ pendingApproval }) {
   const teamRegistry = useSalesTeams();
   const orders = pendingApproval?.orders || [];
@@ -571,7 +582,7 @@ function PendingApprovalCard({ pendingApproval }) {
                   <td className="num">{o.quoteNumber || NA}</td>
                   <td>{o.customerName || NA}</td>
                   <td>{o.ownerName || NA}</td>
-                  <td>{o.team ? salesTeamLabel(teamRegistry, o.team) : NA}</td>
+                  <td>{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</td>
                   <td>{o.submittedAt ? fmtDate(o.submittedAt) : NA}</td>
                   <td className="num">{money(o.amount)}</td>
                 </tr>
@@ -608,9 +619,11 @@ function OrderSearchCard({ orders, people }) {
   const [sortDir, setSortDir] = useState(ORDER_SORT_DIR[ORDER_SORT_DEFAULT]);
   const [collapsed, setCollapsed] = useState(() => new Set());
 
-  const ownerOptions = useMemo(() => people
+  /* คนเดียวมีได้หลายแถว (ทีมละแถว · ทีมตามดีล) — ตัวเลือกต้องไม่ซ้ำ ไม่งั้นค่า/คีย์ใน FilterPopover ชนกัน
+     ตัวกรองนี้กรองด้วย ownerId ⇒ เลือกหนึ่งคน = ใบของคนนั้นทุกทีม (ตั้งใจ) */
+  const ownerOptions = useMemo(() => [...new Map(people
     .filter((p) => p.ownerId)
-    .map((p) => ({ value: p.ownerId, label: p.ownerName || p.ownerId })), [people]);
+    .map((p) => [p.ownerId, { value: p.ownerId, label: p.ownerName || p.ownerId }])).values()], [people]);
   const teamOptions = useMemo(() => [...new Set(orders.map((o) => o.team).filter(Boolean))]
     .map((team) => ({ value: team, label: salesTeamLabel(teamRegistry, team) })), [orders, teamRegistry]);
 

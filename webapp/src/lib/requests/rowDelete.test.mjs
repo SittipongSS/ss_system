@@ -27,3 +27,7 @@ test('ของในทะเบียนที่แถวเป็นคน�
   // กลิ่นที่แถว *ขอถึง* (`scentId`) ไม่ใช่ของที่แถวสร้าง — ห้ามลบตาม
   assert.equal(registryOwnedByRow({ scentId: 'SCT-9' }), null);
 });
+
+test('รอบแก้ที่ส่งสูตรแล้วไม่ถูกบล็อกที่ด่านล้วน — route อ่านทะเบียนแล้วถอยการส่งให้ (ม-147)', () => {
+  assert.equal(deleteRequestRowError(req(), { id: 'b', derivedFromItemId: 'a', producedFormulaId: 'FML-B' }), null);
+});

@@ -11,7 +11,9 @@ import { forecastAmount, monthKey } from "@/lib/salesPlanning";
 import {
   isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf, dealMatchesOwner,
   pendingApprovalAmountOf, pendingApprovalCountOf, pendingApprovalMonthOf,
+  WON_AWAITING_SO_LABEL, wonAwaitingSoAmountOf,
 } from "@/lib/sales/dashboardMetrics";
+import { wonAwaitingSoInPeriod } from "@/lib/sales/wonAwaitingSoRollup";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { fmtDateTime, NA } from "@/lib/format";
@@ -27,6 +29,13 @@ const periodMatcher = (filter) => (mk) => (filter.month ? mk === filter.month
    และเดือนของยอด = เดือนปัจจุบันเวลาไทยเสมอ ⇒ เดือนที่ปิดไปแล้ว/ปีก่อนได้รายการว่าง
    ยอดบนแถว = ยอดรออนุมัติ ไม่ใช่ Actual และไม่ใช่ FC */
 const PENDING_APPROVAL_METRIC = "pendingApproval";
+
+/* ⭐ metric "wonAwaitingSo" = ดีล "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14)
+   ดีลปิด Won แล้วแต่ยังไม่มี SO ที่อนุมัติหรือรออนุมัติ — ยอดคาดการณ์นับด้วยมูลค่าดีล
+   กติกาชุดเดียวกับ API แดชบอร์ด (lib/sales/wonAwaitingSoRollup): เดือน = wonMonthOf
+   (ถังเดียวกับที่ดีล Won นั้นอยู่) ⇒ ยอดบนแถว = มูลค่าดีล ไม่ใช่ Actual และไม่ใช่ยอดรออนุมัติ
+   เปิดด้วย filter รูปเดียวกับ metric อื่น: { metric: "wonAwaitingSo", month | year, ownerId, ownerName, team, teamScoped, label } */
+const WON_AWAITING_SO_METRIC = "wonAwaitingSo";
 
 // ป้ายแถวทีมของดีลที่ไม่มีทีม — ต้องตรงกับคีย์ที่ buildMatrix (lib/sales/performanceMath) ตั้งให้ถัง null
 const NO_TEAM_ROW = "ไม่ระบุทีม";
@@ -59,6 +68,9 @@ export default function DealDrillDownModal({ filter, onClose }) {
         const now = new Date();
 
         let filtered = (data || []).filter((d) => {
+          /* แถวคน = (ใคร, ทีมไหน) (มติผู้ใช้ 2026-09-14 "ทีมตามดีล") — ส่ง filter ทั้งก้อนเข้าตัวจับคู่กลาง
+             ⇒ `teamScoped` (ตารางติดตามส่ง true ให้แถวคน) ไปถึง dealMatchesOwner ด้วย: นับเฉพาะดีลที่ทีมตรงแถว
+             คนที่มีดีลหลายทีมจึงได้ลิ้นชักเท่าช่องที่กด · ผู้เรียกที่ไม่ส่ง teamScoped ได้กติกาเดิมทุกอย่าง */
           if (filter.ownerName || filter.ownerId) return dealMatchesOwner(d, filter);
           /* 🐞 แถวทีม "ไม่ระบุทีม" = ถัง null ของ API (ดีลที่ไม่มีทีม · teamKey = team || 'ไม่ระบุ')
              เดิมป้ายนี้หลุดไป `return true` ⇒ ลิ้นชักโชว์ดีลทุกทีมทั้งบริษัท ยอดรวมไม่ตรงช่องที่กด
@@ -70,6 +82,9 @@ export default function DealDrillDownModal({ filter, onClose }) {
 
         if (filter.metric === "won") {
           filtered = filtered.filter((d) => isWonDeal(d) && inPeriod(wonMonthOf(d)));
+        } else if (filter.metric === WON_AWAITING_SO_METRIC) {
+          // ตัวจับคู่ตัวเดียวกับที่เทสต์ล็อกไว้กับถังเดือนของ API (ดีลไม่มีเดือน = ไม่นับ แม้งวด "ทุกงวด")
+          filtered = filtered.filter((d) => wonAwaitingSoInPeriod(d, inPeriod));
         } else if (filter.metric === PENDING_APPROVAL_METRIC) {
           /* "มีใบรออนุมัติ" ตัดสินที่ตัวช่วยกลางตัวเดียวกับ API (ยอด > 0 หรือมีใบ — ใบ 0 บาทก็นับ)
              ⚠️ ไม่มีเดือน = ไม่มีใบ ต้องกันเอง: งวด "ทุกงวด" ตอบ inPeriod(null) = true */
@@ -160,6 +175,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
     fcTotal: "FC Total",
     remaining: "FC คงเหลือ",
     [PENDING_APPROVAL_METRIC]: PENDING_APPROVAL_LABEL,
+    [WON_AWAITING_SO_METRIC]: WON_AWAITING_SO_LABEL,
   }[filter.metric] || filter.metric;
 
   const metricDescription = {
@@ -169,18 +185,36 @@ export default function DealDrillDownModal({ filter, onClose }) {
     fcTotal: "ยอดคาดการณ์เดิม: ดีลเปิด + Won + แพ้ ใช้ตรวจความแม่นยำของ FC",
     remaining: "เฉพาะดีลที่ยังเปิดอยู่ ใช้ติดตามยอดที่ยังมีโอกาสปิด",
     [PENDING_APPROVAL_METRIC]: "ใบสั่งขายยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual · นับอยู่เดือนปัจจุบันจนกว่าจะอนุมัติ",
+    [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติหรือรออนุมัติ — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
   }[filter.metric] || "รายการดีลตามระดับโอกาสและช่วงเวลาที่เลือก";
 
   const isPendingMetric = filter.metric === PENDING_APPROVAL_METRIC;
+  const isWonAwaitingSoMetric = filter.metric === WON_AWAITING_SO_METRIC;
+  let summaryLabel = "มูลค่ารวม";
+  let amountHeader = "มูลค่า (บาท)";
+  if (isPendingMetric) {
+    summaryLabel = "ยอดรออนุมัติรวม";
+    amountHeader = "ยอดรออนุมัติ (บาท)";
+  } else if (isWonAwaitingSoMetric) {
+    summaryLabel = "มูลค่าดีลรวม";
+    amountHeader = "มูลค่าดีล (บาท)";
+  }
   const inPeriod = periodMatcher(filter);
   const amountOf = (deal) => {
     if (isPendingMetric) return pendingApprovalAmountOf(deal);
+    if (isWonAwaitingSoMetric) return wonAwaitingSoAmountOf(deal);
     return isWonDeal(deal) && filter.metric === "won" ? wonAmountOf(deal) : forecastAmount(deal);
   };
   // ⛔ ยอดรวมของรายการ "ยอด Won" = Actual ล้วน — บรรทัดรองรออนุมัติบนแถวไม่ถูกบวกเข้ามา
   const totalValue = deals.reduce((sum, deal) => sum + amountOf(deal), 0);
   const pendingOrderCount = isPendingMetric
     ? deals.reduce((sum, deal) => sum + pendingApprovalCountOf(deal), 0) : 0;
+  /* แถวในรายการ "ยอด Won" ที่เป็น "Won รอยื่น SO" — บรรทัดรองบอกว่าทำไม Actual ฿0.00 และยอด
+     คาดการณ์นับมันด้วยมูลค่าดีลเท่าไร (มติผู้ใช้ 2026-09-14) · ไม่ซ้อนกับบรรทัดรออนุมัติ (มีใบรออนุมัติ
+     = ไม่ใช่รอยื่น) · ⛔ ไม่ถูกบวกเข้ายอดรวมของรายการ (ยอดรวม "ยอด Won" = Actual ล้วน)
+     ⚠️ ผ่านตัวจับคู่งวดตัวเดียวกับ metric wonAwaitingSo — ดีล Won ที่ไม่มีเดือนเลยหลุดเข้ารายการ Won
+        ของงวด "ทุกงวด" ได้ (inPeriod(null) = true) แต่ API ไม่เคยนับมันในยอดคาดการณ์ ⇒ ห้ามโชว์ยอดให้ */
+  const showAwaitingSoSubLine = (deal) => filter.metric === "won" && wonAwaitingSoInPeriod(deal, inPeriod);
   /* แถวในรายการ "ยอด Won" ที่มีใบรออนุมัติ — โชว์บรรทัดรองใต้ยอด Actual ให้เห็นว่าทำไม ฿0.00
      เฉพาะเมื่อเดือนของยอดรออนุมัติ (= เดือนปัจจุบัน) อยู่ในงวดที่ดู · เดือนที่ปิดไปแล้วไม่โชว์
      เพราะอนุมัติวันนี้ Actual ลงเดือนนี้ ไม่ย้อนไปเดือนนั้น
@@ -226,7 +260,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
 
         <section className="fc-detail-summary" aria-label="สรุปรายละเอียด FC">
           <div>
-            <span className="fc-detail-summary-label">{isPendingMetric ? "ยอดรออนุมัติรวม" : "มูลค่ารวม"}</span>
+            <span className="fc-detail-summary-label">{summaryLabel}</span>
             {loading ? <Skeleton width={180} height={30} /> : <strong>{money(totalValue)}</strong>}
           </div>
           <div>
@@ -271,7 +305,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
                     <th>โครงการ / ลูกค้า</th>
                     <th>สถานะ</th>
                     <th className="fc-detail-chance">โอกาส</th>
-                    <th className="num">{isPendingMetric ? "ยอดรออนุมัติ (บาท)" : "มูลค่า (บาท)"}</th>
+                    <th className="num">{amountHeader}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -307,6 +341,15 @@ export default function DealDrillDownModal({ filter, onClose }) {
                             count={pendingApprovalCountOf(deal)}
                             className={styles.pendingSubLine}
                           />
+                        )}
+                        {/* "Won รอยื่น SO ฿มูลค่าดีล" — คำกำกับคือสัญญาณ ไม่ใช่สี · ไม่รวมกับ Actual ข้างบน */}
+                        {showAwaitingSoSubLine(deal) && (
+                          <span
+                            className={styles.awaitingSoSubLine}
+                            title="ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติหรือรออนุมัติ — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual"
+                          >
+                            {WON_AWAITING_SO_LABEL} {money(wonAwaitingSoAmountOf(deal))}
+                          </span>
                         )}
                       </td>
                     </tr>

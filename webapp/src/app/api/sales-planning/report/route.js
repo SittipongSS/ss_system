@@ -1,10 +1,11 @@
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesTarget } from '@/lib/salesPlanning';
-import { businessMonthKey, currentMonth, isMonthValue, monthsInRange, normalizeMonthRange } from '@/lib/datePeriods';
+import { currentMonth, isMonthValue, monthsInRange, normalizeMonthRange } from '@/lib/datePeriods';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { reportPendingApproval } from '@/lib/sales/reportPendingApproval';
+import { buildReportRows, reportOrderMonth as orderMonth, reportOrderTeam } from '@/lib/sales/reportRows';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,18 +21,16 @@ export const dynamic = 'force-dynamic';
  *
  * ⚠️ "ของใคร" อ่านจาก `sales_orders."ownerId"` ที่ **แช่ไว้ตอนอนุมัติ** (mig 0292)
  * ไม่ใช่เจ้าของดีลปัจจุบัน — ไม่งั้นย้ายดีลแล้วยอดของเดือนที่จ่ายคอมไปแล้วย้ายตาม
+ * ⭐ "ทีมไหน" = **ทีมตามดีล** (มติผู้ใช้ 2026-09-14): sales_deals.team ของดีลของใบ ·
+ * sales_targets.team ของเป้า · sales_history.team ของยอดกรอกมือ — ไม่อ่านทีมจากบัญชีเจ้าของ
+ * ⇒ คนย้ายทีม ยอดเก่าไม่ย้ายตาม · คนที่มียอดหลายทีมได้แถวละทีม · กติกาแถวอยู่ที่ lib/sales/reportRows
  *
  * ⭐ ใบ **รออนุมัติ** (มติผู้ใช้ 2026-09-11 · mig 0353) คืนเป็นช่อง `pendingApproval` แยก
  * ไม่ปนเข้า actual[] / orders[] · ลงเดือนปัจจุบันเวลาไทยเสมอ · ของเจ้าของดีล *ปัจจุบัน*
- * (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ) — กติกาทั้งหมดอยู่ที่ lib/sales/reportPendingApproval
+ * (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ) ทีมตามดีล — กติกาทั้งหมดอยู่ที่ lib/sales/reportPendingApproval
  */
 
 const money = (v) => Number(v || 0);
-
-/** งวดของยอด = เดือนที่หัวหน้าอนุมัติใบ ตามเวลาไทย (กติกาเดียวกับ mig 0279)
- *  ถอยไป orderDate เฉพาะแถวเก่าที่ไม่มี approvedAt */
-const orderMonth = (order) => businessMonthKey(order.approvedAt)
-  || (order.orderDate ? String(order.orderDate).slice(0, 7) : null);
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -44,7 +43,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (months.length > 60) return badRequest('ช่วงยาวเกิน 60 เดือน');
 
   const slot = new Map(months.map((m, i) => [m, i]));
-  const zeros = () => Array(months.length).fill(0);
 
   /* ── เป้า ────────────────────────────────────────────────────────────
      แถวเป้ามีสามระดับในตารางเดียว: บริษัท (team null) · ทีม (ownerId null) · รายคน
@@ -59,13 +57,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   /* ── ใบสั่งขายที่อนุมัติแล้ว ─────────────────────────────────────────
      กรองด้วย approvedAt กว้างไว้ก่อน (ขอบวันไทยกับ UTC ต่างกัน 7 ชม.) แล้วค่อยตัด
-     ให้ตรงงวดด้วย businessMonthKey ในโค้ด — กันใบที่อนุมัติหัวค่ำวันสิ้นเดือนหลุดงวด */
+     ให้ตรงงวดด้วย businessMonthKey ในโค้ด — กันใบที่อนุมัติหัวค่ำวันสิ้นเดือนหลุดงวด
+     ⭐ ทีมของยอด = `deal:sales_deals(team)` — embed ในคิวรีเดียวกัน (FK เดียว 0107 · service role
+        ไม่โดน RLS) ⚠️ ห้ามแยกไปถาม `.in('id', dealIds)` — ลิสต์โตตามจำนวนใบ ชนเพดาน URL 16 KB */
   const guardFrom = `${range.from}-01T00:00:00+07:00`;
   const [y, m] = range.to.split('-').map(Number);
   const guardUntil = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+07:00`;
   const { data: orders, error: orderError } = await fetchAllResult(() => supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata')
+    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, deal:sales_deals(team)')
     .eq('status', 'approved')
     .gte('approvedAt', guardFrom)
     .lt('approvedAt', guardUntil)
@@ -102,14 +102,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     : { data: [], error: null };
   if (pendingError) return fail(pendingError.message, 500);
 
-  /* เจ้าของดีล **ปัจจุบัน** — `sales_orders."ownerId"` ยังว่างจนกว่าจะอนุมัติ (แช่ตอนอนุมัติ ·
+  /* เจ้าของดีล **ปัจจุบัน** + ทีมของดีล — `sales_orders."ownerId"` ยังว่างจนกว่าจะอนุมัติ (แช่ตอนอนุมัติ ·
      mig 0294) ห้ามเดาจากใบ · stage ไว้กรอง "นับเฉพาะดีล Won" ให้ตรงกับแดชบอร์ด
      ลิสต์ id โตตามจำนวนใบที่ค้าง ⇒ ซอยด้วย fetchInChunks ตั้งแต่วันแรก */
   const { data: pendingDeals, error: pendingDealError } = await fetchInChunks(
     (pendingOrders || []).map((o) => o.dealId),
     (chunk) => fetchAllResult(() => supabase
       .from('sales_deals')
-      .select('id, stage, "ownerId", "ownerName"')
+      .select('id, stage, team, "ownerId", "ownerName"')
       .in('id', chunk)
       .order('id', { ascending: true })),
   );
@@ -126,85 +126,20 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .lte('period', range.to);
   if (historyError) return fail(historyError.message, 500);
 
-  // ชื่อ/ทีมจากบัญชีปัจจุบัน — ป้ายบนจอต้องเป็นชื่อวันนี้ ส่วนการ *จัดกลุ่ม* ยึด ownerId
+  // ชื่อจากบัญชีปัจจุบัน — ป้ายบนจอต้องเป็นชื่อวันนี้ · ⛔ ทีมในบัญชีห้ามใช้จัดยอด (ทีมตามดีล)
   const directory = await loadUserDirectory(supabase);
   const person = (id) => directory.get(id) || null;
 
-  const rows = new Map();   // key → { scope, ownerId, ownerName, team, target[], actual[], history[] }
-  const rowFor = (key, seed) => {
-    if (!rows.has(key)) rows.set(key, { ...seed, target: zeros(), actual: zeros(), history: zeros() });
-    return rows.get(key);
-  };
-  const companyRow = rowFor('company', { scope: 'company', ownerId: null, ownerName: null, team: null });
+  // บริษัท / ทีม / รายคน — กติกาทั้งหมดอยู่ที่ lib/sales/reportRows (เทสต์ได้)
+  const { company, teams, people } = buildReportRows({
+    months,
+    targets,
+    orders: inRange,
+    history,
+    person,
+  });
 
-  for (const t of targets || []) {
-    const i = slot.get(t.period);
-    if (i == null) continue;
-    const amount = money(t.targetAmount);
-    if (t.ownerId) {
-      const p = person(t.ownerId);
-      rowFor(`owner:${t.ownerId}`, {
-        scope: 'owner',
-        ownerId: t.ownerId,
-        ownerName: p?.name || t.ownerId,
-        team: p?.team || t.team || null,
-      }).target[i] += amount;
-    } else if (t.team) {
-      rowFor(`team:${t.team}`, { scope: 'team', ownerId: null, ownerName: null, team: t.team }).target[i] += amount;
-    } else {
-      companyRow.target[i] += amount;
-    }
-  }
-
-  for (const o of inRange) {
-    const i = slot.get(orderMonth(o));
-    const amount = money(o.actualAmount);
-    companyRow.actual[i] += amount;
-    if (!o.ownerId) continue; // ใบที่ยังไม่ถูกแช่เจ้าของ (ก่อน mig 0292) — เข้ายอดบริษัทอย่างเดียว
-    const p = person(o.ownerId);
-    const team = p?.team || null;
-    const row = rowFor(`owner:${o.ownerId}`, {
-      scope: 'owner', ownerId: o.ownerId, ownerName: p?.name || o.ownerName || o.ownerId, team,
-    });
-    row.actual[i] += amount;
-    if (team) rowFor(`team:${team}`, { scope: 'team', ownerId: null, ownerName: null, team }).actual[i] += amount;
-  }
-
-  /* ยอดกรอกมือ **ทับ** ยอดจากใบของเดือนนั้น ไม่ใช่บวกเพิ่ม — และทับทีละระดับ
-     (บริษัท/ทีม/คน เป็นเส้นแยกกัน ไม่ได้บวกกันขึ้นไป กติกาเดียวกับ overlayHistory) */
-  for (const h of history || []) {
-    const i = slot.get(h.period);
-    if (i == null) continue;
-    const amount = money(h.actualAmount);
-    const key = h.ownerId ? `owner:${h.ownerId}` : (h.team ? `team:${h.team}` : 'company');
-    const seed = h.ownerId
-      ? { scope: 'owner', ownerId: h.ownerId, ownerName: person(h.ownerId)?.name || h.ownerId, team: person(h.ownerId)?.team || h.team || null }
-      : (h.team ? { scope: 'team', ownerId: null, ownerName: null, team: h.team }
-        : { scope: 'company', ownerId: null, ownerName: null, team: null });
-    const row = rowFor(key, seed);
-    row.actual[i] = amount;
-    row.history[i] = 1;
-  }
-
-  /* 🐞 **ยอดของทีม = ผลรวมของคนในทีม** — ไม่ใช่เส้นอิสระเหมือนเป้า (UAT 2026-08-27)
-     เป้าตั้งแยกสามระดับจริง แต่ *ยอดขาย* ไม่เคยมีแถวระดับทีมเลยสักแถวใน sales_history
-     (ตรวจ prod: บริษัท 43 · ทีม 0 · คน 8) ⇒ ก.ค. 2026 ที่กรอกยอดรายคนไว้ครบ
-     กลับโชว์ "ทุกทีมทำได้ 0%" เพราะยอดรายคนไม่เคยไหลขึ้นแถวทีม
-     ⇒ เติมให้ทีมจากผลรวมสมาชิก **เว้นเดือนที่มีแถวทีมกรอกไว้เอง** (ค่าที่คนกรอกชนะ) */
-  const teamHistory = new Set((history || [])
-    .filter((h) => h.team && !h.ownerId && slot.has(h.period))
-    .map((h) => `${h.team}|${slot.get(h.period)}`));
-  for (const row of rows.values()) {
-    if (row.scope !== 'team') continue;
-    const members = [...rows.values()].filter((r) => r.scope === 'owner' && r.team === row.team);
-    months.forEach((_, i) => {
-      if (teamHistory.has(`${row.team}|${i}`)) return;
-      const fromMembers = members.reduce((sum, m) => sum + m.actual[i], 0);
-      if (fromMembers > row.actual[i]) row.actual[i] = fromMembers;
-    });
-  }
-
-  /* ยอดรออนุมัติ — ก้อนแยก ไม่เคยแตะ rows ข้างบน (actual[] / history[] / แถวทีมที่รวมจากสมาชิก)
+  /* ยอดรออนุมัติ — ก้อนแยก ไม่เคยแตะแถวข้างบน (actual[] / history[] / แถวทีมที่รวมจากสมาชิก)
      ⇒ ขายจริง ทบยอด % ส่วนต่าง และแถบเตือนยอดบริษัทไม่ตรงรายคน เท่าเดิมทุกตัวเลข */
   const pendingApproval = reportPendingApproval({
     orders: pendingOrders,
@@ -214,13 +149,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     now,
   });
 
-  const all = [...rows.values()];
   return ok({
     range,
     months,
-    company: all.find((r) => r.scope === 'company') || null,
-    teams: all.filter((r) => r.scope === 'team'),
-    people: all.filter((r) => r.scope === 'owner'),
+    company,
+    teams,
+    people,
     pendingApproval,
     orders: inRange.map((o) => ({
       id: o.id,
@@ -232,8 +166,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       customerName: o.customerName,
       ownerId: o.ownerId,
       ownerName: person(o.ownerId)?.name || o.ownerName || null,
-      // ทีมมาจากบัญชีปัจจุบันของเจ้าของยอด — ใช้กรอง/จัดกลุ่มในตารางใบ
-      team: person(o.ownerId)?.team || null,
+      // ทีมตามดีล — ตัวเดียวกับที่แถวทีม/รายคนใช้ ⇒ กรอง/จัดกลุ่มตามทีมในตารางใบกระทบกับสรุปได้
+      team: reportOrderTeam(o),
       month: orderMonth(o),
       approvedAt: o.approvedAt,
       lineCount: lineCount.get(o.id) || 0,

@@ -46,6 +46,29 @@ export const pendingApprovalMonthOf = (d, now = new Date()) => (
   pendingApprovalAmountOf(d) > 0 || pendingApprovalCountOf(d) > 0 ? currentMonth(now) : null
 );
 
+/* ── "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) ─────────────────────────────────────
+   ดีลที่ปิด Won แล้วแต่ **ยังไม่มี SO ที่อนุมัติ และไม่มี SO ที่รออนุมัติ** (ยังไม่ออก SO ·
+   มีแค่ร่าง · ถูกตีกลับ/ดึงกลับ · มีแต่ใบยกเลิก)
+   🐞 ตรวจซ้ำ 2026-09-14: รับใบเสนอราคา = ดีลเป็น Won ทันที (0284) ⇒ หลุดจาก FC คงเหลือ
+      แต่ SO เกิดเป็นร่าง (0285) ⇒ ไม่อยู่ในรออนุมัติ/Actual ⇒ "คาดขาด" พุ่งเต็มมูลค่าดีล
+      จนกว่าจะกดยื่น SO — ช่องนี้ปิดรูนั้น ให้ยอดคาดการณ์ไม่วูบทุกช่วงของดีล
+   ⭐ ยอด = projectValue (มูลค่าดีลเต็มก้อน — ฐานเดียวกับ FC คงเหลือ ซึ่งไม่ถ่วงโอกาสปิด)
+   ⭐ เดือน = wonMonthOf (ถังเดียวกับที่ FC Total ของดีล Won นี้อยู่แล้ว) — ไม่ใช้เดือนปัจจุบัน
+      แบบรออนุมัติ เพราะดีลค้างเก่า (Won แต่ไม่เคยออก SO) จะไปกองรวมในเดือนนี้เดือนเดียว
+   ⭐ "มี SO อนุมัติแล้ว" ดูจาก metadata.wonMonth ไม่ใช่ยอด Actual > 0 — ใบอนุมัติยอด 0 บาท
+      (ใบตัวอย่าง ถูกกฎตั้งแต่ mig 0197) มีจริง 28 ดีล · DB เขียน wonMonth เฉพาะเมื่อมีใบ
+      อนุมัติ (trigger 0279/0353 ถอดเป็น null ทุกครั้งที่ไม่มี)
+   ⛔ ห้ามบวกเข้า Actual / เป้า / % / ขาด-เกิน — ใช้ได้แค่ยอดคาดการณ์ (projected) กับบรรทัดแสดงผล */
+export const WON_AWAITING_SO_LABEL = 'Won รอยื่น SO';
+export const dealHasApprovedSalesOrder = (d) => Boolean(d?.metadata?.wonMonth) || wonAmountOf(d) > 0;
+export const isWonAwaitingSo = (d) => isWonDeal(d)
+  && !dealHasApprovedSalesOrder(d)
+  && pendingApprovalAmountOf(d) <= 0
+  && pendingApprovalCountOf(d) <= 0;
+export const wonAwaitingSoAmountOf = (d) => (isWonAwaitingSo(d) ? Math.max(0, Number(d?.projectValue) || 0) : 0);
+export const wonAwaitingSoCountOf = (d) => (isWonAwaitingSo(d) ? 1 : 0);
+export const wonAwaitingSoMonthOf = (d) => (isWonAwaitingSo(d) ? wonMonthOf(d) : null);
+
 // FC Total preserves every forecast made in the period (Open + Won + Lost)
 // so forecast misses remain auditable. FC remaining is the Open portion only.
 export function forecastAccuracyRollup(openDeals = [], wonDeals = [], lostDeals = []) {
@@ -84,11 +107,19 @@ export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
 
 export const normalizedOwnerName = (name) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
-// จับคู่ดีลกับแถว "รายบุคคล" บนภาพรวม — byOwner รวมคนด้วยบัญชีผู้ใช้ปัจจุบัน
+// จับคู่ดีลกับแถว "รายบุคคล" บนภาพรวม — byOwner รวม "ใคร" ด้วยบัญชีผู้ใช้ปัจจุบัน
 // (lib/sales/ownerIdentity) ชื่อบนแถวจึงเป็นชื่อ "ปัจจุบัน" ขณะที่ดีลเก่าเก็บชื่อ
-// snapshot เดิมไว้ → ต้องเทียบ id ก่อน (ครอบดีลก่อน/หลังเปลี่ยนชื่อ-ย้ายทีม)
+// snapshot เดิมไว้ → ต้องเทียบ id ก่อน (ครอบดีลก่อน/หลังเปลี่ยนชื่อ)
 // แล้วค่อยถอยไปชื่อ+ทีม สำหรับแถว legacy ที่ id เก่า stale จับบัญชีไม่ได้
-export const dealMatchesOwner = (deal, { ownerId, ownerName, team } = {}) => {
+//
+// ⭐ มติผู้ใช้ 2026-09-14 "ทีมตามดีล" — แถวคนบนแดชบอร์ดแยกตาม **ทีมที่ประทับบนดีล** (sales_deals.team)
+//    คนที่มีดีลหลายทีม/ย้ายทีม จึงมีหลายแถว (lib/sales/ownerBucketKey) · ลิ้นชักของแถวคนหนึ่งต้องส่ง
+//    `teamScoped: true` มาด้วย ⇒ ดีลต้องอยู่ทีมเดียวกับแถวก่อน (ทีมว่าง '' / null = ทีมเดียวกัน)
+//    ไม่งั้นลิ้นชักของแถว KA โชว์ดีล ODM ของคนเดียวกันด้วย ยอดในลิ้นชักเกินช่องบนตาราง
+// ⚠️ เป็นธงเลือกเปิด ไม่ใช่ค่าตั้งต้น — `team: null` แปลได้สองแบบ ("ไม่จำกัดทีม" กับ "ถังไร้ทีม")
+//    ผู้เรียกเดิมที่ไม่ส่งธง ทำงานเหมือนเดิมทุกกรณี (id ตรง = ตรง ไม่ดูทีม)
+export const dealMatchesOwner = (deal, { ownerId, ownerName, team, teamScoped = false } = {}) => {
+  if (teamScoped && (deal?.team || null) !== (team || null)) return false;
   if (ownerId && deal?.ownerId === ownerId) return true;
   /* ⭐ ทั้งสองฝั่งมี id แล้วไม่ตรง = จบ ไม่ต้องถอยไปเทียบชื่อ
      เดิมถอยเสมอ ทำให้ดีลของ "คนที่ชื่อพ้องกันในทีมเดียวกัน" ไหลไปนับให้ผิดคน และ
