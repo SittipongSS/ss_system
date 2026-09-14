@@ -262,7 +262,8 @@ export default function TodayPage() {
               <h2 className={`${styles.sectionTitle} ${section.tone === "danger" ? styles.danger : ""}`}>
                 {section.tone === "danger" && <AlertTriangle size={15} aria-hidden="true" />}
                 {section.title}
-                <span className={styles.sectionCount}>{closed ? `${open} · ปิดแล้ว ${closed}` : open}</span>
+                <span className={styles.sectionCount}>{/* ไม่ขึ้นต้นด้วยศูนย์ — กลุ่มที่ปิดครบทุกใบบอกแค่จำนวนที่ปิด */}
+                  {closed ? (open ? `${open} · ปิดแล้ว ${closed}` : `ปิดแล้ว ${closed}`) : open}</span>
               </h2>
 
               {rows.map((visit) => {

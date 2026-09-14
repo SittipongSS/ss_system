@@ -384,7 +384,7 @@ export default function ServiceSchedulePage() {
               <b>{team.name}</b>
               {/* ทีมว่าง = มีคนแต่ยังไม่มีนัด — เขียนเป็นคำ ไม่ใช่จุดสี (จุดเขียวเคยชนสี "ประเมินพื้นที่"
                   ในคำอธิบายสีชนิดงาน) · ทีมที่ไม่มีคนเลยรับงานไม่ได้ จึงไม่ติดป้ายว่าง */}
-              {team.visits === 0 && team.people > 0 && <span className={styles.teamFree}>ว่าง</span>}
+              {team.visits === 0 && team.people > 0 && <span className={styles.teamFree}>รับงานได้</span>}
               <span>{fmtNumber(team.visits)} นัด</span>
               <span>{team.people ? `${fmtNumber(team.people)} คน` : naText(null)}</span>
             </li>
@@ -610,7 +610,8 @@ export default function ServiceSchedulePage() {
 
       {/* ชิปนัดสื่อชนิดงานด้วยสีอย่างเดียว และรายละเอียดที่เหลืออยู่ใน `title=` ซึ่ง
           บนจอสัมผัสไม่มีอยู่จริง — คำอธิบายสีจึงเป็นทางเดียวที่อ่านสีออกโดยไม่ต้องเปิดทีละใบ */}
-      {!loading && !loadError && view === "week" && visits.length > 0 && (
+      {/* ไม่มีชิปบนจอ (ทีมที่เลือกไม่มีแถว/ไม่มีนัด) = ไม่มีอะไรให้คำอธิบายสี */}
+      {!loading && !loadError && view === "week" && !gridHasNoRows && visibleVisitCount > 0 && (
         <ul className={styles.legend} aria-label="คำอธิบายสีของชนิดงาน">
           {VISIT_KINDS.map((kind) => (
             <li key={kind} className={styles.legendItem}>

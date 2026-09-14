@@ -243,7 +243,7 @@ export default function ServiceAssetPage({ params }) {
      แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
   const shell = (body) => (
     <Workspace hideHeader back={back}>
-      <h1 className="sr-only">อุปกรณ์</h1>
+      <h1 className="sr-only">เครื่อง</h1>
       {body}
     </Workspace>
   );
