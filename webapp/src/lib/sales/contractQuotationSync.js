@@ -12,6 +12,8 @@ import { notifyUsers } from '@/lib/notifications';
 import {
   closureCancelReason, contractFollowsQuotationClosure, quotationClosure,
 } from '@/lib/sales/contractQuotationState';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 
 const CONTRACT_COLUMNS = 'id, "contractNo", status, "dealId", "quotationId", "ownerId", "ownerName", "createdBy", "customerName", kind';
 
@@ -73,9 +75,12 @@ export async function syncContractsAgainstQuotations(supabase, contracts = [], {
   const ids = [...new Set((contracts || []).map((row) => row.quotationId).filter(Boolean))];
   if (!ids.length) return { quotationById: new Map(), cancelledIds: new Set() };
 
-  const { data: quotations, error } = await supabase
+  /* ⚠️ ซอยลิสต์ + ไล่หน้า — ทะเบียนสัญญาเลิก `.limit(500)` แล้ว (2026-09-14) ⇒ ลิสต์ใบเสนอราคาของ
+     ทุกสัญญาโตตามทะเบียน · ชนเพดาน URL เมื่อไร error ถูกกลืน = ไม่มีใบไหนถูกเช็คปิดตามใบเสนอราคาเงียบ ๆ */
+  const { data: quotations, error } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
     .from('quotations').select('id, "quoteNumber", status, "approvalStatus", "approvedAt", "createdAt"')
-    .in('id', ids);
+    .in('id', chunk)
+    .order('id', { ascending: true })));
   if (error) return { quotationById: new Map(), cancelledIds: new Set() };
 
   const quotationById = new Map((quotations || []).map((row) => [row.id, row]));

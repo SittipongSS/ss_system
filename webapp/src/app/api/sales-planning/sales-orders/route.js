@@ -44,12 +44,13 @@ export const GET = withUser(async ({ user, supabase }) => {
   // คำร้อง ยิ่งดึงมามาก ยิ่งมีของให้หลุดออกทาง response โดยไม่ตั้งใจ
   const todayIso = businessDate();
   const orderIds = (orders || []).map((row) => row.id);
-  const { data: lines, error: lineError } = orderIds.length
-    ? await supabase.from('sales_order_lines')
-      .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds"')
-      .in('salesOrderId', orderIds)
-      .order('sortOrder', { ascending: true })
-    : { data: [], error: null };
+  const { data: lines, error: lineError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_lines')
+    .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds"')
+    .in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true })
+    .order('sortOrder', { ascending: true })
+    .order('id', { ascending: true })));
   if (lineError) return fail(lineError.message, 500);
   const linesByOrder = new Map();
   for (const line of lines || []) {
@@ -68,10 +69,10 @@ export const GET = withUser(async ({ user, supabase }) => {
   // ⚠️ อ่านด้วย service-role โดยตั้งใจ — ทะเบียนคำร้องมีขอบเขตของตัวเอง (ผู้ขอเห็น
   // เฉพาะของตัวเอง) ⇒ ถามผ่านทางนั้นจะได้ "ว่าง" ทั้งที่เพื่อนร่วมทีมเปิดไปแล้ว
   // · คืนออกไปแค่ id/docNo/status เท่าที่ลิสต์ต้องใช้
-  const { data: scentRequests, error: scentRequestError } = orderIds.length
-    ? await supabase.from('dept_requests').select('id, docNo, status, "salesOrderId"')
-      .in('salesOrderId', orderIds).eq('kind', 'scent_dev').neq('status', 'cancelled')
-    : { data: [], error: null };
+  const { data: scentRequests, error: scentRequestError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('dept_requests').select('id, docNo, status, "salesOrderId"')
+    .in('salesOrderId', chunk).eq('kind', 'scent_dev').neq('status', 'cancelled')
+    .order('id', { ascending: true })));
   if (scentRequestError) return fail(scentRequestError.message, 500);
   const scentRequestByOrder = new Map(
     (scentRequests || []).map((row) => [row.salesOrderId, row]),
@@ -97,12 +98,12 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* 🪤 คอลัมน์สายธุรกิจชื่อ `line` ทั้งที่ `sales_deals` และ `projects` — `businessLine`
          เป็นชื่อในโค้ด JS เท่านั้น ไม่มีคอลัมน์นั้นจริง · ไม่ดึงมา = ทุกใบตอบสาย null
          ⇒ ตัวกรองสายบริการว่างเปล่าทั้งที่ข้อมูลมีอยู่ */
-      ? supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId, line').in('id', dealIds)
+      ? fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId, line').in('id', chunk).order('id', { ascending: true })))
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length
       // paymentPlan มาด้วยเพื่อบอกจำนวนงวด **ตามแผน** ของใบที่ยังไม่เริ่มติดตาม
       // (ไม่งั้นคอลัมน์งวดจะว่างทั้งที่ใบเสนอราคาระบุไว้แล้วว่าแบ่งกี่งวด)
-      ? supabase.from('quotations').select('id, quoteNumber, status, paymentPlan').in('id', quoteIds)
+      ? fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase.from('quotations').select('id, quoteNumber, status, paymentPlan').in('id', chunk).order('id', { ascending: true })))
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (dealError || quoteError) return fail((dealError || quoteError).message, 500);
@@ -113,12 +114,14 @@ export const GET = withUser(async ({ user, supabase }) => {
      (`orderIds` ประกาศไว้ข้างบนแล้วตอนดึงบรรทัดของใบ) */
   const installmentsByOrder = new Map();
   if (orderIds.length) {
-    const { data: rows, error: installmentError } = await supabase
+    const { data: rows, error: installmentError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
       .from('sales_order_installments')
       /* `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" ในคอลัมน์งวดชำระ (mig 0348)
          ⚠️ เอาแค่คอลัมน์นี้ ไม่ลากไฟล์/ผู้บันทึกมาทั้งก้อน — ตารางต้องการแค่ "มีหรือยัง" */
       .select('salesOrderId, status, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo"')
-      .in('salesOrderId', orderIds);
+      .in('salesOrderId', chunk)
+      .order('salesOrderId', { ascending: true })
+      .order('id', { ascending: true })));
     // ตารางยังไม่ถูกสร้าง (ยังไม่รัน mig 0245) ต้องไม่ทำให้ทั้งหน้าพัง — คอลัมน์ว่างแทน
     if (installmentError) console.error('[sales-orders] โหลดงวดชำระไม่สำเร็จ:', installmentError.message);
     for (const row of rows || []) {
@@ -155,9 +158,8 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   // สัญญาที่ผูกกับใบ (mig 0324) — คอลัมน์ "สัญญา" ของมุมมองสายบริการ
   const contractIds = [...new Set(serviceOrders.map((row) => row.serviceContractId).filter(Boolean))];
-  const { data: contracts, error: contractError } = contractIds.length
-    ? await supabase.from('sales_contracts').select('id, "contractNo", status, kind').in('id', contractIds)
-    : { data: [], error: null };
+  const { data: contracts, error: contractError } = await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_contracts').select('id, "contractNo", status, kind').in('id', chunk).order('id', { ascending: true })));
   if (contractError) return fail(contractError.message, 500);
   const contractById = new Map((contracts || []).map((row) => [row.id, row]));
 
@@ -167,13 +169,13 @@ export const GET = withUser(async ({ user, supabase }) => {
      ⚠️ ทั้งสองคิวรีกรองด้วย in(...) ของใบบริการเท่านั้น ไม่ใช่กวาดทั้งตาราง */
   const roundsDoneByOrder = new Map();
   if (serviceOrderIds.length) {
-    const { data: plans, error: planError } = await supabase
-      .from('service_plans').select('id, "salesOrderId"').in('salesOrderId', serviceOrderIds);
+    const { data: plans, error: planError } = await fetchInChunks(serviceOrderIds, (chunk) => fetchAllResult(() => supabase
+      .from('service_plans').select('id, "salesOrderId"').in('salesOrderId', chunk).order('id', { ascending: true })));
     if (planError) return fail(planError.message, 500);
     const orderByPlan = new Map((plans || []).map((row) => [row.id, row.salesOrderId]));
     if (orderByPlan.size) {
-      const { data: visits, error: visitError } = await supabase
-        .from('service_visits').select('"planId"').eq('status', 'done').in('planId', [...orderByPlan.keys()]);
+      const { data: visits, error: visitError } = await fetchInChunks([...orderByPlan.keys()], (chunk) => fetchAllResult(() => supabase
+        .from('service_visits').select('"planId"').eq('status', 'done').in('planId', chunk).order('id', { ascending: true })));
       if (visitError) return fail(visitError.message, 500);
       for (const visit of visits || []) {
         const orderId = orderByPlan.get(visit.planId);

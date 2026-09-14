@@ -44,6 +44,11 @@ const ROOT = process.cwd();
 /* 2026-09-11 — dept_requests 14→13 · projects 8→7 · customers 8→7 · sales_deals 33→32 หลังตัวโหลดคิวคำร้อง
    (`loadRequests` · lib/materialPricesAdmin.js) ไล่หน้าหัวใบด้วย fetchAll และซอยลิสต์ id ด้วย fetchAllInChunks
    (URL ของแถวคำร้องแตะ 7,985/14,000 ไบต์ที่ 188 ใบ) */
+/* 2026-09-14 — เตรียมคีย์ใบสั่งขายย้อนหลัง (P0): ไล่หน้า/ซอยลิสต์ 44 จุดใน 12 ไฟล์ (บรรทัดใบสั่งขาย ·
+   งวดชำระ · รอบขายของโซน · โซน · สัญญา · ทะเบียนการชำระ · ร่างงานผลิตอัตโนมัติ) · รูดเพดาน
+   sales_deals 32→30 · quotations 9→7 · dept_requests 13→12 · sales_orders 12→10 · installments 3→1
+   และขึ้นทะเบียน 6 ตารางบริการ/ขายที่จะโตวันคีย์ · ⚠️ `.limit(N)` เกิน 1,000 ไม่ใช่ขอบเขตจริง
+   (PostgREST max_rows ตัดที่ 1,000 — วัดจริง) และ `.in()` ของ id 16–17 ตัวอักษรชนเพดาน URL ที่ ~780 ตัว */
 const CAPS = {
   /* 🔴 **ตัวเลขชุดนี้ตั้งใหม่ 2026-08-25 หลังแก้วิธีนับ** — ของเดิมนับการเขียน
      (`.insert(rows).select()`) และจุดที่ห่อ `fetchAll` ไว้บรรทัดก่อนหน้า เป็นความผิด
@@ -52,12 +57,12 @@ const CAPS = {
   project_tasks: 21,            // 4,653 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
   notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
   personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
-  sales_deals: 32,              // 353
+  sales_deals: 29,              // 353
   products: 24,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ
-  quotations: 9,                // 198
+  quotations: 6,                // 198
   customers: 7,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ
   projects: 7,                  // 155
-  dept_requests: 13,            // 74 · 188 (2026-09-11)
+  dept_requests: 12,            // 74 · 188 (2026-09-11)
   /* ⚠️ **ขึ้นทะเบียนตอนยังไม่เจ็บ** (2026-09-08 · mig 0350) — 30 แถววันนี้ แต่มันโต
      ตามธุรกรรม (ใบพัฒนากลิ่นละไม่เกิน 40 ก้อน · ไม่มีวันหยุดโต) และรอบนี้เป็น
      **ครั้งแรกที่มีจุดอ่านข้ามใบ** (ตารางงานผู้ปรุงกลิ่น) ⇒ ลงทะเบียนไว้เพื่อบังคับให้
@@ -69,7 +74,7 @@ const CAPS = {
      ⇒ **ตัวนั้นคือหนี้จริง** ที่เพดานนี้ตรึงไว้ให้ไม่โตต่อ (ต้องห่อ fetchAllInChunks
      วันที่ทะเบียนกลิ่นแตะพัน) */
   dept_request_scents: 4,       // 30
-  sales_orders: 12,             // 74
+  sales_orders: 10,             // 74
   sales_leads: 6,               // 181
   /* ⚠️ 0 แถววันนี้ แต่ชีต Stock-Machine.xlsx ที่รอนำเข้ามี **1,239 เครื่อง** ⇒ เกิน
      เพดาน 1,000 ตั้งแต่แถวแรกที่ลง · ขึ้นทะเบียนไว้ตั้งแต่ยังว่างเพื่อให้ทุกจุดอ่าน
@@ -81,7 +86,15 @@ const CAPS = {
   sahamit_forecast_lines: 10,
   sahamit_pos: 6,
   sales_deal_forecast_lines: 5,
-  sales_order_installments: 3,
+  /* 2026-09-14 — ขึ้นทะเบียนก่อนคีย์ใบสั่งขายย้อนหลัง (~220 ใบ · 379 บรรทัด · 379 รอบขายของโซน)
+     ตารางกลุ่มนี้จะโตทันทีวันคีย์ ⇒ ตรึงจุดอ่านไร้ขอบเขตที่เหลือไว้ จุดใหม่ต้องห่อ fetchAll/fetchAllInChunks */
+  sales_order_lines: 6,
+  service_zone_terms: 0,
+  sales_contracts: 6,
+  service_zones: 6,
+  service_plans: 1,
+  service_visits: 3,
+  sales_order_installments: 1,
   sahamit_fc_flags: 2,
   material_prices: 2,
   audit_logs: 0,

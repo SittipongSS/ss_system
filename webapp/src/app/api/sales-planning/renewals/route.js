@@ -12,6 +12,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { loadSites } from '@/lib/service/sitesRepo';
@@ -34,19 +35,19 @@ async function loadRenewalContext(supabase, user) {
   /* ⚠️ ไล่ทีละหน้า — จำนวนรอบขายโตตามงานที่ขายได้ · เพดาน 1,000 ตัดเงียบแล้ว
      ไซต์ที่หลุดจะ "ไม่ใกล้หมด" ทั้งที่หมดพรุ่งนี้ (check:rowcap คุมไว้) */
   const { data: orders, error: orderError } = orderIds.length
-    ? await fetchAllResult(() => supabase.from('sales_orders')
+    ? await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
       /* ⚠️ **`serviceContractId` คือทางไปหาวันหมด** (mig 0324) — ลืมคอลัมน์นี้เมื่อไร
          ทะเบียนกลับไปว่างเปล่าเงียบ ๆ เหมือนก่อนแก้ 06/09/2026 */
       .select('id, "orderNumber", status, "supersededById", "dealId", "customerId", "serviceContractId"')
-      .in('id', orderIds).order('id', { ascending: true }))
+      .in('id', chunk).order('id', { ascending: true })))
     : { data: [], error: null };
   if (orderError) throw new Error(orderError.message);
 
   const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
   const { data: deals, error: dealError } = dealIds.length
-    ? await fetchAllResult(() => supabase.from('sales_deals')
+    ? await fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('sales_deals')
       .select('id, title, team, "ownerId", "ownerName", line')
-      .in('id', dealIds).order('id', { ascending: true }))
+      .in('id', chunk).order('id', { ascending: true })))
     : { data: [], error: null };
   if (dealError) throw new Error(dealError.message);
 
@@ -73,9 +74,9 @@ async function loadRenewalContext(supabase, user) {
      ⚠️ ชุดคอลัมน์เดียวกับที่ `gateContext` ใช้ ⇒ สองที่อ่านของชุดเดียวกัน */
   const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
   const { data: contracts, error: contractError } = contractIds.length
-    ? await fetchAllResult(() => supabase.from('sales_contracts')
+    ? await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase.from('sales_contracts')
       .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate"')
-      .in('id', contractIds).order('id', { ascending: true }))
+      .in('id', chunk).order('id', { ascending: true })))
     : { data: [], error: null };
   if (contractError) throw new Error(contractError.message);
   const contractsById = new Map((contracts || []).map((c) => [c.id, c]));

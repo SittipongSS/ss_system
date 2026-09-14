@@ -17,6 +17,7 @@ function fakeSupabase(tables = {}) {
       in: () => builder,
       order: () => builder,
       limit: () => builder,
+      range: () => builder,
       then: (resolve) => resolve({ data: rows, error: null }),
     };
     return builder;

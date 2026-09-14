@@ -2,6 +2,8 @@
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { notFound } from '@/lib/http';
 import { requireProduction } from './productionLinesRepo';
+import { fetchAll } from '@/lib/supabaseFetchAll';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 
 export async function loadJobs(supabase, { status = null, salesOrderId = null, projectId = null, from = null, to = null } = {}) {
   let query = supabase.from('production_jobs').select('*');
@@ -58,20 +60,23 @@ export async function deliveriesForJobs(supabase, jobs = []) {
 
 // SO ที่อนุมัติแล้วและยังไม่มีงานร่าง — ใช้ตอน auto-draft
 export async function approvedOrdersWithLines(supabase, { salesOrderId = null } = {}) {
-  let query = supabase
-    .from('sales_orders')
-    .select('id, orderNumber, status, dealId, projectId, paymentDueDate')
-    .eq('status', 'approved');
-  if (salesOrderId) query = query.eq('id', salesOrderId);
-  const { data: orders, error } = await query;
-  if (error) throw error;
-  if (!orders?.length) return [];
+  const orders = await fetchAll(() => {
+    let query = supabase
+      .from('sales_orders')
+      .select('id, orderNumber, status, dealId, projectId, paymentDueDate')
+      .eq('status', 'approved')
+      .order('id', { ascending: true });
+    if (salesOrderId) query = query.eq('id', salesOrderId);
+    return query;
+  });
+  if (!orders.length) return [];
 
-  const { data: lines, error: lineError } = await supabase
+  const lines = await fetchAllInChunks(orders.map((o) => o.id), (chunk) => supabase
     .from('sales_order_lines')
     .select('id, salesOrderId, productId, fgCode, description, qty')
-    .in('salesOrderId', orders.map((o) => o.id));
-  if (lineError) throw lineError;
+    .in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true })
+    .order('id', { ascending: true }));
 
   const byOrder = new Map();
   for (const line of lines || []) {
@@ -85,8 +90,8 @@ export async function approvedOrdersWithLines(supabase, { salesOrderId = null } 
 export async function existingJobLineIds(supabase, salesOrderIds = []) {
   const ids = [...new Set((salesOrderIds || []).filter(Boolean))];
   if (!ids.length) return new Set();
-  const { data, error } = await supabase
-    .from('production_jobs').select('salesOrderLineId').in('salesOrderId', ids);
-  if (error) throw error;
+  const data = await fetchAllInChunks(ids, (chunk) => supabase
+    .from('production_jobs').select('salesOrderLineId').in('salesOrderId', chunk)
+    .order('id', { ascending: true }));
   return new Set((data || []).map((r) => r.salesOrderLineId).filter(Boolean));
 }
