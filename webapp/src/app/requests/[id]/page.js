@@ -275,8 +275,10 @@ export default function RequestDetailPage() {
      แล้วล็อกไว้ (ดู prop `locked` ของ FormulaForm) · ลูกค้ายกจากใบ ไม่ใช่จากกลิ่น
      เพื่อให้ตรงกับที่ server ตัดสิน (route ของแถว) */
   /* ⭐ **รอบแก้ = สูตรใหม่ที่ชี้กลับสูตรเดิม** (ม-147) — ถามแผนตัวเดียวกับ server (`formulaDeliveryPreview`) ·
-     แผนจะสร้าง/รอบแก้: "แก้มาจากสูตร" ยกจากสูตรที่รายการต้นทางส่งไว้แล้วล็อก (server ยกเองอยู่ดี) · ชื่อ/ชื่อที่
-     ลูกค้าเรียกตั้งต้นจากสูตรเดิมให้แก้ต่อ · รหัสต้องใหม่ จึงเว้นว่าง · แผนผูกของเดิม: ไม่เติม ไม่ล็อก (ไม่มีอะไรถูกใช้) */
+     แผนจะสร้าง/รอบแก้: "แก้มาจากสูตร" ยกจากสูตรที่รายการต้นทางส่งไว้แล้วล็อก (server ยกเองอยู่ดี) · แผนผูกของเดิม:
+     ไม่เติม ไม่ล็อก (ไม่มีอะไรถูกใช้)
+     ⚠️ **ไม่เติมชื่อ/ชื่อที่ลูกค้าเรียกจากสูตรเดิม** (มติผู้ใช้ 2026-09-15 "ชื่อสูตร ชื่อกลิ่น รอบแก้ ไม่ต้อง suggest") — รอบแก้
+     คือสูตรตัวใหม่ RD ตั้งชื่อเอง · ตรงกับฝั่งกลิ่นที่ไม่เคยเติมชื่อให้ (`reworkDeliveryRow`) */
   const formulaPreviewFor = useCallback((item) => formulaDeliveryPreview({
     row: item, items: req?.items || [], formulas: registry.formulas,
   }), [req?.items, registry.formulas]);
@@ -287,11 +289,7 @@ export default function RequestDetailPage() {
       customerId: req?.customerId || "",
       scentId: item?.scentId || "",
       categoryCode: item?.categoryCode || "",
-      ...(preview.lockLineage ? {
-        derivedFromFormulaId: preview.parentId,
-        name: preview.parent?.name || "",
-        customerTradeName: preview.parent?.customerTradeName || "",
-      } : {}),
+      ...(preview.lockLineage ? { derivedFromFormulaId: preview.parentId } : {}),
     };
   }, [req?.customerId, formulaPreviewFor]);
   // ช่องที่ฟอร์มส่งสูตรล็อก — รอบแก้ที่ server จะใช้ต้นทางจริงล็อกต้นทางด้วย
