@@ -81,8 +81,8 @@ test('แถวดีล Won อ่าน Actual ตัวเดียวกั�
   const raw = { stage: 'won', projectValue: 100, wonValue: 77, metadata: {} };
   assert.equal(projectDealValue(raw).value, 0);
   assert.equal(projectDealValue(raw).value, rollupDeals([raw]).actual);
-  // ดีลย้ายระบบ (legacy) ยังนับ
-  assert.equal(projectDealValue({ ...raw, metadata: { actualSource: 'legacy' } }).value, 77);
+  // ค่าที่มา 'legacy' ไม่นับ (มติผู้ใช้ 2026-09-14 — Actual มาจาก SO อนุมัติเท่านั้น)
+  assert.equal(projectDealValue({ ...raw, metadata: { actualSource: 'legacy' } }).value, 0);
   // stage เก่าก่อน mig 0082 ยังเป็น Won
   const old = projectDealValue(pendingWon({ stage: 'in_project' }));
   assert.equal(old.closed, true);

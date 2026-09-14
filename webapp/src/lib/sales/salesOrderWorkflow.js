@@ -206,13 +206,13 @@ export function dealPendingApprovalCount(deal) {
 }
 
 // sales_deals.wonValue is only a compatibility cache. Treat it as Actual only
-// when the database marked the value as derived from approved Sale Orders —
-// หรือเป็น 'legacy': ดีลเก่าจากระบบเดิมที่กรอก "มูลค่าที่ปิด" ตรงตอนย้ายระบบ
-// (มติผู้ใช้ 2026-08-08) · เมื่อมี SO จริงมาผูกภายหลัง trigger ฝั่ง DB (0107/0108)
-// จะทับ wonValue + actualSource เป็น 'sale_order' เอง — ยอดสดชนะยอดย้าย ไม่นับซ้ำ
+// when the database marked the value as derived from approved Sale Orders.
+// ⭐ มติผู้ใช้ 2026-09-14: Actual มาจากใบสั่งขายที่อนุมัติแล้ว **เท่านั้น** ไม่มีที่มาอื่น
+// 🐞 เดิมรับค่าที่มาอีกแบบด้วย (ดีลเก่าที่พิมพ์ยอดตอนสร้าง · มติ 2026-08-08) โดยเชื่อว่า trigger
+//    ปล่อยค่าที่พิมพ์ไว้ — แต่ 0110 (2026-07-16) เขียนทับ wonValue + actualSource ทุกครั้งตั้งแต่
+//    INSERT ⇒ ฐานไม่เคยมีแถวแบบนั้น (461/461 เป็น sale_order) กิ่งนั้นผ่านได้เพราะเทสต์ปั้นข้อมูลให้
 export function dealActualFromSalesOrders(deal) {
-  const source = deal?.metadata?.actualSource;
-  if (source !== 'sale_order' && source !== 'legacy') return 0;
+  if (deal?.metadata?.actualSource !== 'sale_order') return 0;
   return Math.max(0, Number(deal?.wonValue) || 0);
 }
 

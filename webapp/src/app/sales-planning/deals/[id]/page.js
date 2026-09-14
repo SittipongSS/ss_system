@@ -64,6 +64,7 @@ import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
 import { wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
+import { legacyClosedNoteOf } from "@/lib/sales/legacyDealSwitch";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -355,6 +356,10 @@ export default function DealOverviewPage() {
        mig 0353 รันก่อน · กติกาเดียวกับ cache บนดีลทุกตัวอักษร (splitSalesOrderAmounts)
      ⛔ ห้ามบวกรออนุมัติเข้า Actual หรือเอาไปคิด "ต่างจากคาดการณ์" */
   const dealActual = dealActualFromSalesOrders(deal);
+  /* บันทึกยอดปิดในระบบเดิม (mig 0359 · มติผู้ใช้ 2026-09-14) — อ่านอย่างเดียว ไม่ใช่ Actual
+     ⚠️ stillInForecast = ดีลที่ยังรอเจ้าของยืนยันว่ายังผลิตอยู่ (projectValue ยังไม่ถูกล้าง)
+        ⇒ ห้ามบอกว่า "ไม่เข้า FC" ในกรณีนั้น เพราะยอดยังนับเป็น FC จริง */
+  const legacyNote = legacyClosedNoteOf(deal);
   const soAmounts = splitSalesOrderAmounts(data?.salesOrders || []);
   /* คำใต้การ์ด "มูลค่าปิดจริง (Won)" — สามกรณี (มติผู้ใช้ 2026-09-14): มี SO อนุมัติ = ต่างจาก Actual ·
      มีใบรออนุมัติ = "ต่างเมื่ออนุมัติครบ" · ยังไม่มีใบที่ยื่น (Won รอยื่น SO) = ไม่มีตัวเลขต่าง
@@ -633,7 +638,6 @@ export default function DealOverviewPage() {
        ในโมดัลสร้าง ⇒ แก้ดีลเก่าแล้วบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้ตลอด
        สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
     const missingFields = missingDealFieldsMessage(dealForm, {
-      legacyWon: dealForm.legacy && dealForm.stage === "won",
       // ดีลที่ปิด Won แล้วไม่ต้องมีตารางรายหมวด — หมวด/ปริมาตร/จำนวนมาจากใบที่รับ
       // และจอล็อกตารางไว้อยู่แล้ว (มติผู้ใช้ 2026-09-08)
       alreadyWon,
@@ -972,7 +976,17 @@ export default function DealOverviewPage() {
                 value={money(dealActual)}
                 hint={(
                   <>
-                    {wonHint.text}
+                    {/* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A): คำส่วนต่างเทียบ 0 กับ 0 ไม่ได้บอกอะไร — บรรทัดบันทึกข้างล่างพูดแทน
+                        · ดีลที่ยังรอเจ้าของยืนยัน (stillInForecast) ยังโชว์คำของ wonDealForecastHint ตามปกติ */}
+                    {legacyNote && !legacyNote.stillInForecast ? null : wonHint.text}
+                    {legacyNote ? (
+                      <div>
+                        {`ยอดปิดในระบบเดิม ${money(legacyNote.value)}${legacyNote.date ? ` · ปิด ${fmtDate(legacyNote.date)}` : ""}`}
+                        {legacyNote.stillInForecast
+                          ? " · ไม่นับเป็นยอดขาย (Actual) · ยอดคาดการณ์ยังอยู่ใน FC รอเจ้าของยืนยันว่ายังผลิตอยู่"
+                          : " · ไม่นับเป็นยอดขาย (Actual) และไม่เข้า FC"}
+                      </div>
+                    ) : null}
                     <PendingApprovalAmount amount={soAmounts.pendingApproval} count={soAmounts.pendingApprovalCount} />
                   </>
                 )}

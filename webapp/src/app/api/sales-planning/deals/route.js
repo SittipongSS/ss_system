@@ -30,6 +30,8 @@ import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 import { missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
+import { legacyWonCreateError, stripServerOnlyDealMetadata } from '@/lib/sales/legacyDealSwitch';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +134,22 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const line = normalizeBusinessLine(body.line);
   if (!line) return badRequest('ต้องเลือกสายธุรกิจของดีล (สินค้า หรือ บริการ)');
 
+  let stage = normalizeStage(body.stage);
+  // in_project ถูกยุบเป็น won แล้ว (mig 0082 ตัดออกจาก CHECK) — กัน insert พัง 500
+  // ถ้า client ยังส่งค่าเก่ามา ให้ถือเป็น won.
+  if (stage === 'in_project') stage = 'won';
+  // ปิด Won ตอนสร้างดีลต้องผ่านใบเสนอราคา (M5)
+  // ⚠️ ยกเว้น **ดีลเก่าจากระบบเดิม** (สวิตช์ในฟอร์ม · มติผู้ใช้ 2026-08-08 เปิดถาวรทุกคน) — บันทึกงานที่
+  //    ปิดไปแล้วในระบบเก่าเพื่อติดตามต่อ · ⭐ มติผู้ใช้ 2026-09-14: ดีลแบบนี้ **ไม่มีมูลค่า** ไม่นับ Actual
+  //    ไม่เข้า FC (Actual มาจาก SO อนุมัติเท่านั้น) ⇒ ส่งยอด/แถวมูลค่ามา = ตีกลับ ไม่ทิ้งเงียบ ๆ
+  // ⚠️ ด่านนี้ต้องอยู่ **ก่อน** prepareDealValueItems — คำขอที่ส่งแถวมูลค่ามาต้องได้ข้อความของด่านนี้
+  //    ไม่ใช่ error รายแถวของตารางมูลค่าที่ดีลแบบนี้ไม่มีให้กรอก
+  if (stage === 'won' && !body.metadata?.legacy) {
+    return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา — ยกเว้นดีลเก่าจากระบบเดิม (เปิดสวิตช์ในฟอร์ม)');
+  }
+  const legacyError = legacyWonCreateError(body, { stage, today: businessDate() });
+  if (legacyError) return badRequest(legacyError);
+
   /* มูลค่าคาดการณ์แยกตามหมวดสินค้า (mig 0264 — มติผู้ใช้ 2026-08-17)
      ส่ง valueItems มาเมื่อไร = ยอดรวมและหมวดของดีลมาจากแถวเท่านั้น
      (ช่องยอดรวมบนฟอร์ม **ล็อก** — ยอมรับ body.projectValue ต่อไปจะเปิดทางให้เกิด
@@ -181,18 +199,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (leadSource.error) return badRequest(leadSource.error);
   const sourceLeadId = leadSource.leadId;
 
-  let stage = normalizeStage(body.stage);
-  // in_project ถูกยุบเป็น won แล้ว (mig 0082 ตัดออกจาก CHECK) — กัน insert พัง 500
-  // ถ้า client ยังส่งค่าเก่ามา ให้ถือเป็น won.
-  if (stage === 'in_project') stage = 'won';
-  // ปิด Won ตอนสร้างดีลต้องผ่านเงื่อนไขเดียวกับ win-flow: มัดจำ + มูลค่าปิดจริง>0 (M5)
-  // ⚠️ ยกเว้น **ดีลเก่าจากระบบเดิม** (มติผู้ใช้ 2026-08-08 — สวิตช์เปิดถาวรทุกคน):
-  // ช่วงย้ายระบบมีดีลที่ Won ไปแล้วในระบบเก่าและต้องมาติดตามงานต่อ — ติดธง
-  // `metadata.legacy` แล้วสร้างที่ Won ได้เลย · wonValue/confirmedAt คงเป็น null
-  // (ยอดจริงมาจากใบสั่งขายที่จะผูกภายหลัง ตามมติ Won = Actual เดิม — ไม่ปั้นตัวเลข)
-  if (stage === 'won' && !body.metadata?.legacy) {
-    return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา — ยกเว้นดีลเก่าจากระบบเดิม (เปิดสวิตช์ในฟอร์ม)');
-  }
   // รหัสดีลฐาน DL-YYMMXXXX (atomic ต่อเดือน — mig 0096). แสดง DL-YYMMXXXX-0 ที่ UI/เอกสาร.
   // ⚠️ ไม่ใส่ code ตรงนี้ — ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) ไม่งั้นทุก
   // ครั้งที่ insert ล้ม รหัสดีลจะหายไปหนึ่งเลขโดยไม่มีใครรู้
@@ -217,10 +223,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // mig 0337: ยอดที่คนกรอกอยู่ในช่องของมันเอง — projectValue เป็นแค่ "ยอดที่ใช้จริง"
     // ซึ่งดีลใหม่เริ่มที่ manual เสมอ (ยังไม่มีใบเสนอราคาให้เดินตาม)
     forecastManualValue: projectValue,
-    // ดีลเก่าที่สร้างเป็น Won (ผ่านธง legacy เท่านั้น — ด่านข้างบน): ฟอร์มส่งช่อง
-    // "มูลค่าที่ปิด" มาเป็นแถวมูลค่ารายหมวดชุดเดียวกัน → ยอดรวมเข้า wonValue เป็น
-    // ยอดจริงทันที (metadata.actualSource = 'legacy' ข้างล่างคือตัวปลดให้ dashboard อ่าน)
-    wonValue: stage === 'won' ? projectValue : null,
+    // ⚠️ ไม่เขียน wonValue — trigger enforce_sales_order_actual_on_deal (0110 · นิยามล่าสุด 0353)
+    //    คิดจาก SO อนุมัติทุกครั้งตั้งแต่ INSERT · ดีลเก่า Won มียอด 0 เสมอ (ด่าน legacyWonCreateError)
     // FC% มาจากกติกา ไม่ใช่จากฟอร์ม (มติผู้ใช้ 2026-08-05)
     // 🐞 ค่าตั้งต้นของฟอร์มคือ "50" มาตลอด ทั้งที่ขั้นตั้งต้นคือ 'lead' ⇒ ดีลใหม่ทุกใบ
     // เกิดมาที่ 50% ทั้งที่ยังไม่มีใบเสนอราคาสักใบ (ระดับ 50 = ออกใบเสนอราคาแล้ว)
@@ -231,8 +235,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // และไม่รับค่าจาก client); ไม่ระบุวันที่คาดปิด → ตกเป็นเดือนปัจจุบัน (default เดิมของฟอร์ม)
     forecastMonth: monthKey(body.expectedCloseDate) || monthKey(new Date().toISOString()),
     expectedCloseDate: body.expectedCloseDate || null,
-    // ดีลเก่า Won: ช่อง "วันที่ปิด" (ส่งมาในคีย์ expectedCloseDate) = วันที่ปิดจริง
-    // ในระบบเดิม → ลง confirmedAt ให้ wonMonthOf นับยอดเข้าเดือนนั้นย้อนหลังได้
+    // ดีลเก่า Won: ช่อง "วันที่ปิดในระบบเดิม" (คีย์ expectedCloseDate) → confirmedAt
+    // ⭐ เก็บไว้เพราะมีตัวอ่านจริง ไม่ใช่เพื่อยอด: wonMonthOf จัดดีล Won เข้าเดือน (wonMonth → confirmedAt
+    //    → … → forecastMonth) ⇒ ไม่มีวันนี้ ดีลงานเก่าไปนับเป็นดีล Won ของเดือนที่คีย์ (wonCount ราย
+    //    ประเภท/คน/ทีม · ลิ้นชัก "ปิดได้") · ยอดเป็น 0 เสมอ (มติผู้ใช้ 2026-09-14)
     confirmedAt: stage === 'won' ? (body.expectedCloseDate || null) : null,
     lostReason: stage === 'lost' ? (body.lostReason || null) : null,
     notes: body.notes || null,
@@ -259,14 +265,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     startDate: body.startDate || null,
     endDate: body.endDate || null,
     metadata: {
-      ...(body.metadata || {}),
+      // ⚠️ คีย์ของระบบถอดออกจากค่าที่ client ส่งมา (actualSource = trigger · legacyClosedValue/Date
+      //    = mig 0359) — SERVER_ONLY_DEAL_METADATA_KEYS ใน lib/sales/legacyDealSwitch
+      ...stripServerOnlyDealMetadata(body.metadata),
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
       brand: (body.brand ?? body.metadata?.brand ?? '') || '',
-      // ⚠️ ห้าม client กำหนด actualSource เอง (อยู่หลัง spread จึงทับค่าที่แอบส่งมาเสมอ)
-      // — เขียนได้ทางเดียวที่นี่: ดีลเก่าที่สร้างเป็น Won = 'legacy' (ยอด "มูลค่าที่ปิด"
-      // ใน wonValue นับเป็น Actual ได้ · dealActualFromSalesOrders อ่านสองแหล่งนี้เท่านั้น)
-      // สาย SO จริงเป็นของ trigger DB (0107/0108) ฝั่ง UPDATE — undefined = คีย์หายไปเอง
-      actualSource: stage === 'won' ? 'legacy' : undefined,
       // สะท้อนคอลัมน์เสมอ กันไม่ให้เกิดสองความจริงในแถวเดียว (ผู้อ่านใหม่ต้องใช้คอลัมน์)
       ...(sourceLeadId ? { leadId: sourceLeadId } : {}),
     },

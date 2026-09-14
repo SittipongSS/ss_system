@@ -35,6 +35,8 @@ import { apiFetch } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
+import { legacyWonCreateError } from "@/lib/sales/legacyDealSwitch";
+import { businessDate } from "@/lib/businessDate";
 
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
    "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
@@ -155,36 +157,43 @@ export default function DealCreateModal({
         /* ช่องบังคับ (มติผู้ใช้ 2026-08-08): ทุกช่องยกเว้น ลูกค้า/แบรนด์/โครงการ/
            หมวดสินค้า/รายละเอียด — ด่านฝั่งจอบอกก่อนเสียเที่ยว รวมทุกช่องที่ขาด
            ในข้อความเดียว ไม่ให้กดแล้วเจอทีละช่อง */
-        // ดีลเก่าที่สร้างเป็น Won: ช่องเดียวกันเปลี่ยนป้ายเป็นของจริง (มูลค่าที่ปิด/
-        // วันที่ปิด) — ข้อความ error ต้องเรียกชื่อเดียวกับที่ตาเห็นบนฟอร์ม
+        // ดีลเก่าที่สร้างเป็น Won = บันทึกงานจากระบบเดิม ไม่มีมูลค่า (มติผู้ใช้ 2026-09-14) —
+        // ไม่บังคับตารางมูลค่า · ป้ายวันที่เรียกตามจอ ("วันที่ปิดในระบบเดิม")
         const legacyWon = draft.legacy && draft.stage === "won";
         // สูตรเดียวกับฟอร์มแก้และ server (lib/sales/dealRequiredFields) — เดิมกติกา
         // อยู่ที่โมดัลนี้ที่เดียว ฟอร์มแก้จึงบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้
-        const valueLabel = legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์";
         const missing = missingDealFieldsMessage(draft, { legacyWon, title: draft.title });
         if (missing) throw new Error(missing);
         /* แถวที่กรอกไม่ครบ — บอกตั้งแต่ฝั่งจอว่าแถวไหน (server ตรวจซ้ำด้วยสูตรเดียวกัน
-           ที่ lib/sales/dealValueItems.js แต่เสียเที่ยวยิงก่อนไม่มีประโยชน์) */
-        const badRow = (draft.valueItems || []).findIndex(
+           ที่ lib/sales/dealValueItems.js แต่เสียเที่ยวยิงก่อนไม่มีประโยชน์)
+           ⚠️ ดีลเก่า Won ไม่ตรวจ — จอไม่มีตาราง และแถวที่ค้างในร่างไม่ถูกส่ง (ดู payload) */
+        const badRow = legacyWon ? -1 : (draft.valueItems || []).findIndex(
           (row) => !row.categoryCode || !(Number(row.qty) > 0),
         );
         if (badRow >= 0) {
-          throw new Error(`${valueLabel} แถวที่ ${badRow + 1}: ต้องเลือกหมวดสินค้าและใส่จำนวนมากกว่า 0${draft.title ? ` — "${draft.title}"` : ""}`);
+          throw new Error(`มูลค่าคาดการณ์ แถวที่ ${badRow + 1}: ต้องเลือกหมวดสินค้าและใส่จำนวนมากกว่า 0${draft.title ? ` — "${draft.title}"` : ""}`);
         }
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
         if (!state.dealId) {
           // `_key`/`lockedProjectId`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล —
-          // legacy ไปกับ metadata (ธงดีลเก่าจากระบบเดิม เปิดทางสร้างที่ Won ฝั่ง server)
+          // legacy ไปกับ metadata (ธงดีลเก่า — เปิดทางสร้างที่ Won ฝั่ง server · Won แบบนี้ไม่มีมูลค่า)
           const { _key, lockedProjectId, legacy, ...rest } = draft;
           const payload = {
             ...rest,
+            /* โหมดดีลเก่า Won จอไม่มีช่องมูลค่า ⇒ ส่ง "ไม่มีมูลค่า" ชัด ๆ แทนแถวที่ค้างในร่าง (เช่นกรอกไว้ตอนเลือก
+               ขั้นอื่น แล้วสลับเป็น Won) — ไม่ใช่ทิ้งค่าที่ผู้ใช้เห็น: จอโชว์ว่าไม่มีมูลค่า และแถวยังอยู่ในร่าง
+               สลับกลับขั้นอื่นก็กลับมา · server ตีกลับถ้ามียอดติดมา (lib/sales/legacyDealSwitch) */
+            ...(legacyWon ? { valueItems: [], projectValue: 0 } : {}),
             customerName: customers.find((c) => c.id === draft.customerId)?.name || draft.customerName || null,
           };
           const metadata = {
             ...(lead ? { leadId: lead.id, source: "lead", leadChannel: lead.channel } : {}),
             ...(legacy ? { legacy: true } : {}),
           };
+          // ด่านเดียวกับ server (lib/sales/legacyDealSwitch) — ฝั่งจอเหลือแค่วันที่ปิดในอนาคตที่ชนได้
+          const legacyError = legacyWonCreateError({ ...payload, metadata }, { stage: draft.stage, today: businessDate() });
+          if (legacyError) throw new Error(`${legacyError}${draft.title ? ` — "${draft.title}"` : ""}`);
           const res = await apiFetch("/api/sales-planning/deals", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

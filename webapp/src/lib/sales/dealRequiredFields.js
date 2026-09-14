@@ -13,12 +13,12 @@
  */
 
 /** ป้ายของแต่ละช่อง — ต้องเรียกชื่อ **เหมือนที่ตาเห็นบนฟอร์ม** ไม่งั้นคนอ่าน error
- *  แล้วหาช่องไม่เจอ · ดีลเก่าที่สร้างเป็น Won เปลี่ยนป้ายสองช่องตามฟอร์ม */
+ *  แล้วหาช่องไม่เจอ · ดีลเก่าที่สร้างเป็น Won เปลี่ยนป้ายช่องวันที่ตามฟอร์ม (โหมดนั้นไม่มีช่องมูลค่า) */
 export function dealFieldLabels({ legacyWon = false } = {}) {
   return {
     stage: 'สถานะ',
-    valueItems: `${legacyWon ? 'มูลค่าที่ปิด' : 'มูลค่าคาดการณ์'} (อย่างน้อย 1 หมวดสินค้า)`,
-    expectedCloseDate: legacyWon ? 'วันที่ปิด' : 'วันที่คาดการณ์ปิด',
+    valueItems: 'มูลค่าคาดการณ์ (อย่างน้อย 1 หมวดสินค้า)',
+    expectedCloseDate: legacyWon ? 'วันที่ปิดในระบบเดิม' : 'วันที่คาดการณ์ปิด',
     startDate: 'วันที่เริ่ม',
     endDate: 'วันที่สิ้นสุด (ลูกค้าต้องการรับ)',
   };
@@ -34,15 +34,17 @@ export function dealFieldLabels({ legacyWon = false } = {}) {
  *      จอไม่ให้กรอก ไม่มีทางออก · แก้หมายเหตุสักบรรทัดก็บันทึกไม่ได้
  *    ⭐ 52 ใน 57 ใบนั้นมีใบเสนอราคาที่ลูกค้ารับแล้ว (หมวด/ปริมาตร/จำนวนอยู่ในใบครบ
  *      และรายงาน FC อ่านจากใบตรง ๆ ตั้งแต่ #1678) ⇒ ตารางนี้ไม่มีหน้าที่กับดีล Won
- * ⚠️ **ตอน "สร้าง" ดีลเก่าที่ Won ยังบังคับเหมือนเดิม** — ผู้เรียกฝั่งสร้าง
- *    (`DealCreateModal`) ไม่ส่ง `alreadyWon` มา · ดีลเก่าไม่มีใบให้ดึง ยอดปิดจึงต้อง
- *    มาจากตารางที่คนกรอก
+ * ⭐ **ดีลเก่าที่สร้างเป็น Won (`legacyWon`) ก็ไม่บังคับ** (มติผู้ใช้ 2026-09-14) — เป็นบันทึกงานที่ปิดใน
+ *    ระบบเดิม ไม่มีมูลค่า ฟอร์มไม่มีตารางให้กรอก และ server ตีกลับถ้าส่งยอดมา · ด่านสั่งกรอกช่องที่
+ *    จอไม่มี = ทางตัน แบบเดียวกับ 57 ดีลข้างบน
+ *    🐞 เดิม (2026-09-08) ตอนสร้างดีลเก่าที่ Won ยังบังคับตาราง "มูลค่าที่ปิด" โดยเชื่อว่ายอดนั้นเป็น Actual
+ *       — trigger 0110 เขียนทับ wonValue จาก SO อนุมัติทุกครั้ง ยอดที่พิมพ์ไม่เคยนับ (ดู lib/sales/legacyDealSwitch)
  */
-export function missingDealFieldKeys(draft = {}, { alreadyWon = false } = {}) {
+export function missingDealFieldKeys(draft = {}, { alreadyWon = false, legacyWon = false } = {}) {
   const blank = (value) => !String(value ?? '').trim();
   return [
     ['stage', blank(draft.stage)],
-    ['valueItems', !alreadyWon && !(draft.valueItems || []).length],
+    ['valueItems', !alreadyWon && !legacyWon && !(draft.valueItems || []).length],
     ['expectedCloseDate', blank(draft.expectedCloseDate)],
     ['startDate', blank(draft.startDate)],
     ['endDate', blank(draft.endDate)],
@@ -51,7 +53,7 @@ export function missingDealFieldKeys(draft = {}, { alreadyWon = false } = {}) {
 
 /** ข้อความเดียวที่บอกทุกช่องที่ขาด — กดครั้งเดียวรู้ครบ ไม่ใช่เจอทีละช่อง */
 export function missingDealFieldsMessage(draft = {}, { legacyWon = false, alreadyWon = false, title = null } = {}) {
-  const keys = missingDealFieldKeys(draft, { alreadyWon });
+  const keys = missingDealFieldKeys(draft, { alreadyWon, legacyWon });
   if (!keys.length) return null;
   const labels = dealFieldLabels({ legacyWon });
   const named = keys.map((key) => labels[key] || key).join(' · ');

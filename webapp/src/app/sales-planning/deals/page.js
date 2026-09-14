@@ -447,7 +447,6 @@ export default function SalesPlanningPipelinePage() {
        ในโมดัลสร้าง ⇒ แก้ดีลเก่าแล้วบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้ตลอด
        สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
     const missingFields = missingDealFieldsMessage(dealForm, {
-      legacyWon: dealForm.legacy && dealForm.stage === "won",
       // เหมือนหน้ารายละเอียด — ดีลที่ปิดแล้วไม่บังคับตารางรายหมวด (มติผู้ใช้ 2026-09-08)
       alreadyWon: isWonStage(dealForm.stage),
       title: dealForm.title,

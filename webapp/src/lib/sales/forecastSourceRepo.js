@@ -76,9 +76,10 @@ export async function applyForecastSource(supabase, dealId, { cause } = {}) {
 }
 
 /* เขียนสถานะที่ resolver ตัดสินแล้วลงแถวดีล
- * ⚠️ แตะได้แค่ 5 คอลัมน์นี้ — ห้ามเผลอ merge metadata/stage/wonValue เข้ามา ไม่งั้น
- *    trigger 0110 (BEFORE UPDATE OF stage/"wonValue"/metadata) จะตีตรา actualSource
- *    ของดีลย้ายระบบใหม่เป็น 'sale_order' แล้ว wonValue ถูกล้างเป็น 0 ถาวร */
+ * ⚠️ แตะได้แค่ 5 คอลัมน์นี้ — ห้าม merge metadata/stage/wonValue เข้ามา: สามคอลัมน์นั้นปลุก trigger
+ *    enforce_sales_order_actual_on_deal (0110 → นิยามล่าสุด 0353) ซึ่งคิด wonValue/actualSource/soPending*
+ *    ใหม่จาก SO ทุกครั้ง ⇒ งานเปล่า และ metadata ที่ถือไว้อาจทับของที่เส้นอื่นเพิ่งเขียน
+ *    (ไม่มี Actual ที่กรอกเองให้ปกป้อง — มติผู้ใช้ 2026-09-14) */
 async function writeForecastSource(supabase, deal, next, { clearPin, pin, user } = {}) {
   const patch = {
     projectValue: next.value,

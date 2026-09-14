@@ -43,8 +43,8 @@ test('มูลค่าที่ขึ้นจอ: Won = Actual (ผ่าน�
   assert.equal(dealDisplayValue({ ...MIXED_WON, stage: 'in_project' }), 200000);
   // wonValue ที่ไม่ได้มาจาก SO อนุมัติ (ไม่มี actualSource) ไม่ใช่ Actual
   assert.equal(dealDisplayValue({ stage: 'won', wonValue: 90000, projectValue: 90000, metadata: {} }), 0);
-  // ดีลเก่าที่ย้ายระบบ (legacy) ยังนับตามเดิม
-  assert.equal(dealDisplayValue({ stage: 'won', wonValue: 70000, metadata: { actualSource: 'legacy' } }), 70000);
+  // actualSource 'legacy' ไม่ใช่ Actual (มติผู้ใช้ 2026-09-14 — Actual มาจาก SO อนุมัติเท่านั้น · ฐานไม่เคยมีแถวแบบนี้)
+  assert.equal(dealDisplayValue({ stage: 'won', wonValue: 70000, metadata: { actualSource: 'legacy' } }), 0);
   // ข้อมูลไม่ครบต้องไม่พัง
   assert.equal(dealDisplayValue({ stage: 'lead', projectValue: null }), 0);
   assert.equal(dealDisplayValue(null), 0);
@@ -157,7 +157,11 @@ test('หน้ารายละเอียดดีล: การ์ด Won =
   assert.match(page, /import \{ wonDealForecastHint \} from "@\/lib\/sales\/dealAmountDisplay"/);
   assert.match(page,
     /wonDealForecastHint\(\{\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*\}\)/);
-  assert.match(page, /\{wonHint\.text\}\s*<PendingApprovalAmount amount=\{soAmounts\.pendingApproval\}/,
+  /* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A) ซ่อนคำส่วนต่าง — บรรทัด "ยอดปิดในระบบเดิม" พูดแทน
+     (มติผู้ใช้ 2026-09-14 · lib/sales/legacyDealSwitch) ⇒ คำส่วนต่างยังมาจาก wonHint.text ตัวเดียว
+     และบรรทัดรออนุมัติยังตามท้ายการ์ดเสมอ */
+  assert.match(page,
+    /\{legacyNote && !legacyNote\.stillInForecast \? null : wonHint\.text\}[\s\S]{0,900}?<PendingApprovalAmount amount=\{soAmounts\.pendingApproval\}/,
     'คำส่วนต่างตามด้วยบรรทัดรออนุมัติ');
   assert.doesNotMatch(page, /- dealActual\)\}/, 'สูตร "ต่าง ฿(FC − Actual)" แบบเดิมต้องไม่กลับมาในหน้า');
 });

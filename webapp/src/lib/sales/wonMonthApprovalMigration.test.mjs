@@ -34,8 +34,8 @@ test('0279: trigger ปลุกเมื่อ approvedAt เปลี่ยน
 });
 
 test('0279: backfill วนเฉพาะดีลที่มี SO อนุมัติแล้ว — ห้ามวนทุกดีล', () => {
-  // วนทุกดีลแบบ 0110 จะทับ actualSource='legacy' (มติ 2026-08-08) เป็น 'sale_order'
-  // แล้วดีลที่ย้ายมาจากระบบเดิมจะถูกล้างยอดเป็น 0
+  // วนทุกดีลแบบ 0110 = ปลุก trigger ทุกแถวโดยไม่จำเป็น · (เดิมอ้างว่าจะล้างยอด actualSource='legacy'
+  // — ยอดแบบนั้นไม่เคยรอด trigger ตั้งแต่ 0110 · มติผู้ใช้ 2026-09-14)
   assert.match(sql, /SELECT DISTINCT "dealId"\s+FROM public\.sales_orders\s+WHERE status = 'approved'/);
   assert.doesNotMatch(sql, /FOR v_deal_id IN SELECT id FROM public\.sales_deals/);
 });
