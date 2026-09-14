@@ -3,6 +3,7 @@
 // POST : สร้างรอบ + gen นัดล่วงหน้าตาม horizon (ค่าตั้งต้น 90 วัน)
 import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { generateVisitsForPlan } from '@/lib/service/planGen';
@@ -28,8 +29,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        ⚠️ อ่านไม่ได้ = ปล่อยช่องว่าง ไม่ใช่ล้มทั้งคำขอ (ตารางรอบยังต้องขึ้น) */
     const orderIds = [...new Set(plans.map((p) => p.salesOrderId).filter(Boolean))];
     if (!orderIds.length) return ok(plans);
-    const { data: orders } = await fetchAllResult(() => supabase.from('sales_orders')
-      .select('id, "orderNumber"').in('id', orderIds).order('id', { ascending: true }));
+    const { data: orders } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
+      .select('id, "orderNumber"').in('id', chunk).order('id', { ascending: true })));
     const numberById = new Map((orders || []).map((o) => [o.id, o.orderNumber]));
     return ok(plans.map((plan) => ({
       ...plan,

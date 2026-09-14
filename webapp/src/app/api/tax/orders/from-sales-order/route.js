@@ -1,5 +1,6 @@
 import { genId } from "@/lib/id";
 import { fetchAllInChunks, fetchInChunks } from "@/lib/supabaseInChunks";
+import { fetchAllResult } from "@/lib/supabaseFetchAll";
 import { recordAudit } from "@/lib/audit";
 import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthorized } from "@/lib/http";
 import { can, caretakerTeamsOf } from "@/lib/permissions";
@@ -76,24 +77,29 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
 }
 
 async function listAvailableSalesOrders(supabase, user, customerId) {
-  let query = supabase
-    .from("sales_orders")
-    // ⚠️ ต้องมี status ในลิสต์คอลัมน์: resolveSoFiling ตัดสิน eligible ด้วย
-    // salesOrder.status === 'approved' — ไม่ดึงมา = undefined = ลิสต์ว่างเสมอ
-    // (บั๊กจริงที่ทำให้ปุ่ม "สร้างใบยื่นจาก Sale Order" ไม่เคยมีตัวเลือกให้เลือก)
-    .select("id, orderNumber, status, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt")
-    .eq("status", "approved")
-    .order("createdAt", { ascending: false })
-    .limit(200);
-  if (customerId) query = query.eq("customerId", customerId);
-
-  const { data: salesOrders, error } = await query;
+  /* 🐞 เดิม `.limit(200)` ก่อนกรอง "ยื่นแล้ว/นอกขอบเขต/ไม่เข้าเกณฑ์" — ใบอนุมัติใหม่ ๆ กิน 200 ช่อง
+     แล้วใบเก่าที่ยังรอยื่นหลุดจากตัวเลือกเงียบ ๆ ทั้งที่คิวรอยื่น (handoffQueueData) ยังนับอยู่
+     ⇒ คีย์ใบสั่งขายย้อนหลัง ~220 ใบ (เกิดเป็นอนุมัติแล้ว) = ใบจริงที่รอยื่นหายจากตัวเลือกทั้งหมด
+     ⇒ ไล่หน้าอ่านครบ แล้วค่อยกรอง */
+  const { data: salesOrders, error } = await fetchAllResult(() => {
+    let query = supabase
+      .from("sales_orders")
+      // ⚠️ ต้องมี status ในลิสต์คอลัมน์: resolveSoFiling ตัดสิน eligible ด้วย
+      // salesOrder.status === 'approved' — ไม่ดึงมา = undefined = ลิสต์ว่างเสมอ
+      // (บั๊กจริงที่ทำให้ปุ่ม "สร้างใบยื่นจาก Sale Order" ไม่เคยมีตัวเลือกให้เลือก)
+      .select("id, orderNumber, status, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt")
+      .eq("status", "approved")
+      .order("createdAt", { ascending: false })
+      .order("id", { ascending: true });
+    if (customerId) query = query.eq("customerId", customerId);
+    return query;
+  });
   if (error) throw error;
   const dealIds = [...new Set((salesOrders || []).map((row) => row.dealId).filter(Boolean))];
   const [{ data: deals, error: dealError }, filingResult] = await Promise.all([
-    dealIds.length
-      ? supabase.from("sales_deals").select("id, team, ownerId, ownerName").in("id", dealIds)
-      : Promise.resolve({ data: [], error: null }),
+    fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase
+      .from("sales_deals").select("id, team, ownerId, ownerName").in("id", chunk)
+      .order("id", { ascending: true }))),
     supabase.from("orders").select("salesOrderId").not("salesOrderId", "is", null),
   ]);
   if (dealError) throw dealError;
@@ -110,10 +116,12 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
     .map((salesOrder) => ({ ...salesOrder, deal: dealById.get(salesOrder.dealId) }));
   if (!available.length) return { schemaReady: true, salesOrders: [] };
 
-  const { data: lines, error: lineError } = await supabase
+  const { data: lines, error: lineError } = await fetchInChunks(available.map((salesOrder) => salesOrder.id), (chunk) => fetchAllResult(() => supabase
     .from("sales_order_lines")
     .select("id, salesOrderId, productId, fgCode, description, qty")
-    .in("salesOrderId", available.map((salesOrder) => salesOrder.id));
+    .in("salesOrderId", chunk)
+    .order("salesOrderId", { ascending: true })
+    .order("id", { ascending: true })));
   if (lineError) throw lineError;
   const productIds = [...new Set((lines || []).map((line) => line.productId).filter(Boolean))];
   const [{ data: products, error: productError }, { data: productTypes, error: typeError }, registrationResult] = await Promise.all([

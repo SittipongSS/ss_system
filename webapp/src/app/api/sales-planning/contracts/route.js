@@ -37,11 +37,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const dealId = params.get('dealId');
   const status = params.get('status');
 
-  let query = supabase.from('sales_contracts').select(LIST_SELECT)
-    .order('createdAt', { ascending: false })
-    .limit(500);
-  if (dealId) query = query.eq('dealId', dealId);
-  const { data, error } = await query;
+  const { data, error } = await fetchAllResult(() => {
+    let query = supabase.from('sales_contracts').select(LIST_SELECT)
+      .order('createdAt', { ascending: false })
+      .order('id', { ascending: true });
+    if (dealId) query = query.eq('dealId', dealId);
+    return query;
+  });
   if (error) return fail(error.message, 500);
 
   const visible = (data || []).filter((row) => row.deal && inSalesViewScope(user, row.deal));

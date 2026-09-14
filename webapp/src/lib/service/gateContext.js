@@ -8,6 +8,7 @@
 // ⚠️ **ไม่ส่งบริบท = ด่านตอบว่าติด ไม่ใช่ผ่าน** — จุดที่ลืมเรียกตัวนี้จะเห็นทุกนัด
 //   ติดหมด ซึ่งดังพอให้รู้ตัวทันที (ดีกว่าปล่อยผ่านเงียบ ๆ แล้วส่งคนไปที่ที่ยังไม่จ่าย)
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { loadTerms, loadZonesForSites } from './termsRepo';
 
 /** โหลดบริบทด่านของ "หลายไซต์" ทีเดียว — จอตารางมีนัดหลายไซต์ในหน้าเดียว
@@ -40,21 +41,21 @@ export async function loadVisitGateContext(supabase, siteIds = []) {
     /* ⚠️ **ไล่ทีละหน้า** — เพดาน 1,000 แถวของ PostgREST ตัดข้อมูลเงียบ ๆ และด่านที่
        ขาดใบไปหนึ่งใบจะตอบว่า "ติด" ทั้งที่จ่ายแล้ว (ด่าน check:rowcap ใน CI คุมไว้)
        ⚠️ ต้องมี `.order()` ที่นิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำและแถวหายพร้อมกัน */
-    const { data: orders } = await fetchAllResult(() => supabase.from('sales_orders')
+    const { data: orders } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
       .select('id, status, "supersededById", "serviceContractId"')
-      .in('id', inList).order('id', { ascending: true }));
+      .in('id', chunk).order('id', { ascending: true })));
     for (const o of orders || []) ordersById[o.id] = o;
 
-    const { data: rows } = await fetchAllResult(() => supabase.from('sales_order_installments')
+    const { data: rows } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_order_installments')
       .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo"')
-      .in('salesOrderId', inList)
-      .order('salesOrderId', { ascending: true }).order('id', { ascending: true }));
+      .in('salesOrderId', chunk)
+      .order('salesOrderId', { ascending: true }).order('id', { ascending: true })));
     for (const r of rows || []) (installmentsByOrderId[r.salesOrderId] ||= []).push(r);
 
     const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
     if (contractIds.length) {
-      const { data: contracts } = await supabase.from('sales_contracts')
-        .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate"').in('id', contractIds);
+      const { data: contracts } = await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase.from('sales_contracts')
+        .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate"').in('id', chunk).order('id', { ascending: true })));
       for (const c of contracts || []) contractsById[c.id] = c;
     }
   }

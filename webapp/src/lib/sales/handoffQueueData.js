@@ -74,10 +74,12 @@ async function loadAwaitingFiling(supabase, dealIds) {
   const candidates = salesOrdersAwaitingFiling({ salesOrders: approved, filings: filings || [] });
   if (!candidates.length) return [];
 
-  const { data: lines, error: lineError } = await supabase
+  const { data: lines, error: lineError } = await fetchInChunks(candidates.map((order) => order.id), (chunk) => fetchAllResult(() => supabase
     .from('sales_order_lines')
     .select('id, salesOrderId, productId, fgCode, description, qty')
-    .in('salesOrderId', candidates.map((order) => order.id));
+    .in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true })
+    .order('id', { ascending: true })));
   raise('โหลดรายการสินค้าในใบสั่งขายไม่สำเร็จ', lineError);
 
   const productIds = [...new Set((lines || []).map((line) => line.productId).filter(Boolean))];
