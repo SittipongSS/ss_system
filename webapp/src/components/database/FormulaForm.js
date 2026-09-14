@@ -206,12 +206,15 @@ export default function FormulaForm({
           แก้มาจากสูตร <span className={styles.hint}>(ไม่บังคับ)</span>
         </label>
         <SearchableSelect
-          id="formula-derived-from" value={value.derivedFromFormulaId} disabled={disabled}
+          id="formula-derived-from" value={value.derivedFromFormulaId}
+          disabled={disabled || isLocked("derivedFromFormulaId")}
           onChange={(v) => set({ derivedFromFormulaId: v })}
           options={[{ value: "", label: "— ไม่ได้แก้มาจากตัวไหน —" }, ...lineageOptions]}
           placeholder="ค้นด้วยรหัสหรือชื่อสูตร"
           emptyText="ยังไม่มีสูตรอื่นที่อ้างเป็นต้นทางได้"
         />
+        {/* รอบแก้ในคำร้อง: ต้นทางคือสูตรที่รายการก่อนหน้าส่งไว้ — ระบบรู้คำตอบ ไม่ให้เลือกเอง (ม-147) */}
+        {lockHint("derivedFromFormulaId")}
       </div>
 
       <div className="form-group col-span-2">
