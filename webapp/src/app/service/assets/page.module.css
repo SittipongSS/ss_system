@@ -4,6 +4,11 @@
       gap · margin-bottom · และกฎ `--ctl-h` ที่ตรึงตัวควบคุมบนแถบให้สูงเท่ากัน */
 
 .searchInput { width: 260px; max-width: 340px; }
+/* 🐞 จอโทรศัพท์ช่องค้นค้างที่ 260px — โมดูลโหลดหลัง globals จึงชนะกฎกลาง `.search-glass
+   { width: 100% }` ⇒ ปุ่มตัวกรองตกบรรทัดสองอยู่ตัวเดียว · ต้องปลด max-width ด้วย */
+@media (max-width: 680px) {
+  .searchInput { width: 100%; max-width: none; }
+}
 
 .assetLink {
   font-weight: var(--fw-semibold);

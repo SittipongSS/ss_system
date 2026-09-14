@@ -10,6 +10,7 @@
 //   ทั้งที่ตัวแยกอยู่ใน `surveyResultMissing` มาตั้งแต่วันแรก (แค่ไม่มีใครใช้)
 import { Check, Send, X } from "lucide-react";
 import Button from "@/components/ui/Button";
+import StatusBadge from "@/components/ui/StatusBadge";
 import styles from "./SurveyGateList.module.css";
 
 const GROUPS = [
@@ -25,9 +26,9 @@ export default function SurveyGateList({ gates = [], canSendBack = false, onSend
     <section className={styles.wrap} aria-label="ด่านก่อนส่งผลให้ฝ่ายขาย">
       <header className={styles.head}>
         <h3 className={styles.title}>ด่านก่อนกด &quot;ส่งผลให้ฝ่ายขาย&quot;</h3>
-        <span className={blocked ? styles.badgeBad : styles.badgeOk}>
+        <StatusBadge tone={blocked ? "danger" : "success"}>
           {blocked ? `ติด ${blocked} ข้อ` : `ผ่านครบ ${gates.length} ข้อ`}
-        </span>
+        </StatusBadge>
       </header>
 
       {GROUPS.map((group) => {
@@ -42,24 +43,27 @@ export default function SurveyGateList({ gates = [], canSendBack = false, onSend
                   <span className={styles.mark} aria-hidden="true">
                     {gate.ok ? <Check size={14} /> : <X size={14} />}
                   </span>
-                  <span className={styles.text}>
-                    <b>{gate.label}</b>
-                    {/* ⚠️ บอก **ชื่อพื้นที่ที่ขาด** ไม่ใช่แค่ "ยังไม่ครบ" — ใบหนึ่งมีได้สิบพื้นที่
-                        ข้อความที่ไม่บอกว่าพื้นที่ไหน แปลว่าต้องไล่เปิดทีละอันเอง */}
-                    <span className={styles.sub}>
-                      {gate.done} / {gate.total}
-                      {gate.ok ? "" : ` — ขาด ${gate.zones.join(" · ")}`}
+                  {/* ข้อความ + เจ้าของอยู่กล่องเดียวกัน ⇒ ห่อลงบรรทัดใหม่แล้วยังตรงแนวข้อความ ไม่ไปใต้เครื่องหมาย */}
+                  <span className={styles.body}>
+                    <span className={styles.text}>
+                      <b>{gate.label}</b>
+                      {/* ⚠️ บอก **ชื่อพื้นที่ที่ขาด** ไม่ใช่แค่ "ยังไม่ครบ" — ใบหนึ่งมีได้สิบพื้นที่
+                          ข้อความที่ไม่บอกว่าพื้นที่ไหน แปลว่าต้องไล่เปิดทีละอันเอง */}
+                      <span className={styles.sub}>
+                        {gate.done} / {gate.total}
+                        {gate.ok ? "" : ` — ขาด ${gate.zones.join(" · ")}`}
+                      </span>
                     </span>
-                  </span>
-                  <span className={styles.who}>
-                    <span className={styles.owner}>{group.who}</span>
-                    {/* ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · ข้อที่ผ่านแล้วไม่มีอะไรให้แจ้ง */}
-                    {group.owner === "crew" && !gate.ok && canSendBack && (
-                      <Button size="sm" variant="outline" icon={<Send size={13} aria-hidden="true" />}
-                        onClick={() => onSendBack?.(gate)}>
-                        แจ้งช่างให้กลับไป
-                      </Button>
-                    )}
+                    <span className={styles.who}>
+                      <span className={styles.owner}>{group.who}</span>
+                      {/* ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · ข้อที่ผ่านแล้วไม่มีอะไรให้แจ้ง */}
+                      {group.owner === "crew" && !gate.ok && canSendBack && (
+                        <Button size="sm" variant="outline" icon={<Send size={13} aria-hidden="true" />}
+                          onClick={() => onSendBack?.(gate)}>
+                          แจ้งช่างให้กลับไป
+                        </Button>
+                      )}
+                    </span>
                   </span>
                 </li>
               ))}

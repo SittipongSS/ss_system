@@ -34,20 +34,23 @@
 .flag svg { flex: none; margin-top: var(--space-0-5); color: var(--flag); }
 .flag b { color: var(--text); font-weight: var(--fw-semibold); }
 
-/* หัวใบ — คู่ป้าย/ค่า ที่ระบบดึงมาทั้งหมด */
+/* หัวใบ — คู่ป้าย/ค่า ที่ระบบดึงมาทั้งหมด
+   คอลัมน์นับจากความกว้างการ์ด ไม่ใช่จอ — แตกสองคอลัมน์เมื่อแต่ละช่องกว้างพอเท่านั้น
+   🐞 เดิมแตกสองคอลัมน์ตั้งแต่จอ 560px ⇒ ช่องค่าเหลือ ~200px ชื่อลูกค้าตัดกลางคำ "แลบอรา|ทอรี่"
+   (thaiText ช่วยไม่ได้ — ชื่อลูกค้าเป็นข้อมูล ไม่อยู่ในลิสต์คำทับศัพท์) */
 .head {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
   gap: var(--space-2) var(--space-4);
   margin: 0;
 }
 
-@media (min-width: 560px) { .head { grid-template-columns: 1fr 1fr; } }
-
+/* ค่าที่ยาวกว่าที่เหลือข้างป้าย พับลงไปใต้ป้ายทั้งก้อน แทนการตัดกลางคำ · ค่าสั้นยังอยู่ข้างป้าย */
 .head > div {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-2);
+  column-gap: var(--space-2);
   min-width: 0;
 }
 
@@ -59,6 +62,7 @@
 }
 
 .head dd {
+  flex: 1 1 auto;
   margin: 0;
   min-width: 0;
   font-weight: var(--fw-semibold);

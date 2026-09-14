@@ -1,30 +1,25 @@
 /* จอบันทึกหน้างานของใบประเมิน (เฟส 3 · จอ 06)
-   ⚠️ มือถือก่อน — การ์ดเรียงลงล่างอย่างเดียว ไม่มีคอลัมน์ที่ต้องเลื่อนแนวนอน */
+   ⚠️ มือถือก่อน — บนมือถือการ์ดเรียงลงล่าง ไม่มีคอลัมน์ที่ต้องเลื่อนแนวนอน
+      จับคู่สองคอลัมน์เฉพาะตอนที่การ์ด 34rem วางคู่กันได้จริง (auto-fit ⇒ พื้นที่เดียวยังเต็มแถว)
+   🐞 เดิมเรียงแถวเดียวทุกจอ ⇒ เดสก์ท็อปช่องตัวเลข 1–3 หลักกว้าง 436px ใบสองพื้นที่สูง 3,400px */
 
 .list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr));
+  align-items: start;
   gap: var(--space-4);
 }
 
-/* เหตุผลที่เขียนไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ช่องจางเงียบ ๆ ทั้งหน้า */
+/* ปุ่มท้ายลิสต์กินเต็มแถวเสมอ — ไม่ไปนั่งเป็นช่องที่สองข้างการ์ด */
+.listFoot { grid-column: 1 / -1; }
+
+/* เหตุที่ปุ่มในโมดัลยังกดไม่ได้ — ตัวหนังสือ ไม่ใช่ปุ่มจางเงียบ ๆ */
 .gate {
   margin: 0 0 var(--space-4);
   padding: var(--space-2-5) var(--space-3);
   border-radius: var(--radius);
   background: var(--amber-soft);
   color: var(--amber);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
-}
-
-/* ส่งไปแล้ว — บอกสถานะ ไม่ใช่ซ่อนปุ่มเงียบ ๆ */
-.sent {
-  margin: 0 0 var(--space-4);
-  padding: var(--space-2-5) var(--space-3);
-  border-radius: var(--radius);
-  background: var(--green-soft);
-  color: var(--green);
   font-size: var(--fs-4);
   line-height: var(--lh-thai);
 }

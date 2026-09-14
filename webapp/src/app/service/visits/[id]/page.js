@@ -13,21 +13,33 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import {
-  AlertTriangle, Camera, CheckCircle2, ClipboardList, Clock, MapPin, PenLine, Printer, Wrench,
+  AlertTriangle, Camera, ClipboardList, Clock, MapPin, MessageCircleQuestion, PenLine, Printer, Wrench,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { buildVisitReport } from "@/lib/service/visitReport";
-import { accessWindowText } from "@/lib/service/sites";
-import { fmtNumber, naText } from "@/lib/format";
+import { isClosedVisit } from "@/lib/service/visitStatus";
+import { SURVEY_VISIT_KIND } from "@/lib/service/surveyVisit";
+import { canDoFieldWork, canEditService } from "@/lib/permissions";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
+/* flag ที่มีความหมายเฉพาะใบที่ปิดแล้ว — ระหว่างทำยังไม่ถึงจังหวะเซ็น/ถ่ายรูปส่งงาน */
+const CLOSE_ONLY_FLAGS = new Set(["no_signature", "no_photo"]);
+
 export default function VisitReportPage({ params }) {
   const { id } = use(params);
+  const role = useRole();
+  const team = useTeam();
+  const teams = useTeams();
+  const department = useDepartment();
   const [data, setData] = useState(null);
   const [site, setSite] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -67,50 +79,81 @@ export default function VisitReportPage({ params }) {
     zoneGates: data.zoneGates,
   }) : null), [data, site]);
 
-  const back = { href: "/service/schedule", label: "จัดคิวเจ้าหน้าที่" };
+  /* ย้อนกลับไปเมนูที่คนดูมีจริง — เจ้าหน้าที่หน้างาน (ไม่มีเมนูจัดคิว) กลับ "งานวันนี้"
+     ซึ่งเป็นที่ที่เขากดปุ่ม "ใบส่งงาน" มา · คนอื่นกลับหน้าจัดคิวเหมือนเดิม */
+  const back = useMemo(() => {
+    const user = { role, team, teams, department };
+    return canDoFieldWork(user) && !canEditService(user)
+      ? { href: "/service/today", label: "งานวันนี้" }
+      : { href: "/service/schedule", label: "จัดคิวเจ้าหน้าที่" };
+  }, [role, team, teams, department]);
 
   if (loading) {
     return <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ใบส่งงาน" back={back}><SkeletonRows rows={5} /></Workspace>;
   }
-  if (loadError || !report) {
+  /* 🐞 เดิม "โหลดพัง" กับ "ไม่พบ" เป็นข้อความบรรทัดเดียวเหมือนกัน ไม่มีทางไปต่อ · แยกให้เห็นว่าเป็นแบบไหน
+     และมีปุ่มลองใหม่เมื่อเป็นเน็ตสะดุด (ทรงเดียวกับหน้ารายละเอียดเครื่อง) */
+  if (loadError) {
     return (
       <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ใบส่งงาน" back={back}>
-        <p className="form-error" role="alert">{loadError || "ไม่พบใบส่งงาน"}</p>
+        <StatusNotice tone="error" title="โหลดใบส่งงานไม่สำเร็จ"
+          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
+      </Workspace>
+    );
+  }
+  if (!report) {
+    return (
+      <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ใบส่งงาน" back={back}>
+        <EmptyState icon={ClipboardList}>
+          ไม่พบใบส่งงานนี้
+          <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+        </EmptyState>
       </Workspace>
     );
   }
 
   const visit = data.visit;
+  const headValue = (label) => report.head.find((h) => h.label === label)?.value;
+  // วันที่ต้องผ่าน fmtDate — ทั้งระบบใช้ DD/MM/YYYY (🐞 เดิมขึ้น ISO "2026-09-14" บนใบที่พิมพ์ส่ง)
+  const dateText = headValue("วันที่") ? fmtDate(headValue("วันที่")) : null;
+  /* นัดประเมินพื้นที่ไม่มีผลรายเครื่อง — งานจริงอยู่ที่ใบประเมิน ⇒ การ์ดอุปกรณ์ที่ว่าง
+     กับ "อุปกรณ์ที่ทำ 0 / 0" ไม่บอกอะไร (มีบรรทัดเมื่อไรก็กลับมาแสดงเอง) */
+  const isSurvey = visit.kind === SURVEY_VISIT_KIND;
+  const hideAssets = isSurvey && report.lines.length === 0;
+  /* ⚠️ ตัดที่จอเท่านั้น — reportFlags ยังเป็นตัวตัดสินกระดิ่ง (shouldPushReport)
+     🐞 เดิมนัดที่ "กำลังทำ" ขึ้นแถบเหลือง "ไม่มีลายเซ็น/ไม่มีรูป" อ่านเหมือนใบมีปัญหา */
+  const flags = isClosedVisit(visit) ? report.flags : report.flags.filter((f) => !CLOSE_ONLY_FLAGS.has(f.kind));
 
   return (
     <Workspace hideHeader back={back}>
       <DetailOverview
         eyebrow={`ใบส่งงาน · ${report.code}`}
         title={site?.name || visit.siteId}
-        description={[
-          report.head.find((h) => h.label === "วันที่")?.value,
-          report.head.find((h) => h.label === "งาน")?.value,
-          visit.assigneeName,
-        ].filter(Boolean).join(" · ")}
+        description={[dateText, headValue("งาน"), visit.assigneeName].filter(Boolean).join(" · ")}
         badges={<span className={`ui-badge ${visit.status === "done" ? "success" : visit.status === "unable" ? "danger" : "warning"}`}>{report.statusLabel}</span>}
         actions={(
           <Button tone="neutral" onClick={() => window.print()} icon={<Printer size={15} aria-hidden="true" />}>
             พิมพ์ / บันทึก PDF
           </Button>
         )}
+        /* แถบนี้เหลือเฉพาะของที่ไม่อยู่ใน "รายละเอียดงาน"
+           🐞 เดิมมีเขตวิ่งงาน + ช่วงที่เข้าได้ซ้ำกับการ์ดล่าง — มือถือกางช่องละแถว
+           จอแรกจึงเห็นแต่หัวใบ เนื้อใบไปเริ่มใต้แถบเมนูล่าง */
         facts={[
-          { key: "time", icon: Clock, label: "เวลาที่เข้าจริง", value: report.head.find((h) => h.label === "เวลา")?.value },
-          { key: "assets", icon: Wrench, label: "อุปกรณ์ที่ทำ", value: `${report.lines.filter((l) => l.outcome !== "unable").length} / ${report.lines.length}` },
-          { key: "zone", icon: MapPin, label: "เขตวิ่งงาน", value: site?.routeZone },
-          { key: "access", icon: Clock, label: "ช่วงที่เข้าได้", value: accessWindowText(site) },
+          { key: "time", icon: Clock, label: "เวลาที่เข้าจริง", value: headValue("เวลา") },
+          ...(hideAssets ? [] : [
+            { key: "assets", icon: Wrench, label: "อุปกรณ์ที่ทำ", value: `${report.lines.filter((l) => l.outcome !== "unable").length} / ${report.lines.length}` },
+          ]),
         ]}
       />
 
       {/* ⭐ แถบ "ต้องดู" — ชั้นเดียวกับที่ตัดสินว่าใบไหนถูกดันขึ้นกระดิ่ง
           ใบปกติจะไม่มีแถบนี้เลย · ถ้าดันทุกใบ หัวหน้าจะปิดแจ้งเตือนภายในสัปดาห์เดียว */}
-      {report.flags.length > 0 && (
+      {flags.length > 0 && (
         <section className={styles.flags} aria-label="สิ่งที่ต้องดู">
-          {report.flags.map((flag) => (
+          {flags.map((flag) => (
             /* ⚠️ โทนส่งผ่าน data-tone ไม่ใช่ style={{}} — ratchet ของ audit:ui นับ
                inline style เป็นชั้นเก่าและขึ้นไม่ได้ (แพตเทิร์นเดียวกับ .line[data-outcome]) */
             <p key={flag.kind} className={styles.flag} data-tone={flag.tone}>
@@ -124,21 +167,23 @@ export default function VisitReportPage({ params }) {
       <DetailPageLayout
         aside={(
           <>
+            {/* นัดประเมินพื้นที่ — ผลหน้างานจริงบันทึกที่ใบประเมิน (ใบคำร้อง) ต้องไปถึงได้จากใบนี้ */}
+            {isSurvey && visit.requestId && (
+              <ContextCard
+                href={`/service/surveys/${visit.requestId}`}
+                icon={MessageCircleQuestion} eyebrow="ประเมินพื้นที่" title="ผลบันทึกหน้างาน"
+                subtitle={visit.note || undefined}
+              />
+            )}
+            {/* เขตวิ่งงานอยู่ในแถว "ไซต์" ของรายละเอียดงานแล้ว · การ์ดหลักฐานเดิมซ้ำการ์ด
+                "หลักฐานหน้างาน" ส่วนเวลาที่แก้ย้อนหลังขึ้นในแถบต้องดูอยู่แล้ว */}
             <ContextCard
+              href={`/service/sites/${visit.siteId}`}
               icon={MapPin} eyebrow="ไซต์" title={site?.name || visit.siteId}
               subtitle={site?.customerName || undefined}
               facts={[
                 { label: "รหัสไซต์", value: site?.code },
-                { label: "เขตวิ่งงาน", value: site?.routeZone },
                 { label: "ผู้ติดต่อ", value: site?.contactName },
-              ]}
-            />
-            <ContextCard
-              icon={CheckCircle2} eyebrow="หลักฐาน" title="ที่แนบมากับใบนี้"
-              facts={[
-                { label: "รูปหน้างาน", value: report.attachments.length ? `${report.attachments.length} รูป` : null },
-                { label: "ลายเซ็นผู้รับงาน", value: report.signatureUrl ? "มี" : null },
-                { label: "เวลาที่ประทับ", value: visit.actualTimeEdited ? "แก้ย้อนหลังแล้ว" : "จากระบบ" },
               ]}
             />
           </>
@@ -150,40 +195,42 @@ export default function VisitReportPage({ params }) {
             {report.head.map((row) => (
               <div key={row.label}>
                 <dt>{row.label}</dt>
-                <dd>{naText(row.value)}</dd>
+                <dd>{naText(row.label === "วันที่" && row.value ? dateText : row.value)}</dd>
               </div>
             ))}
           </dl>
         </DetailCard>
 
-        <DetailCard icon={Wrench} title={`อุปกรณ์ ${report.lines.length} รายการ`}
-          meta="ผลรายเครื่องที่เจ้าหน้าที่ติ๊กตอนปิดงาน">
-          {report.lines.length === 0 ? (
-            <p className={styles.muted}>นัดนี้ไม่ได้ผูกกับอุปกรณ์รายตัว</p>
-          ) : report.lines.map((line) => (
-            <div key={line.assetId} className={styles.line} data-outcome={line.outcome}>
-              <div className={styles.lineHead}>
-                <b>{line.label}</b>
-                {/* ⭐ โซนที่ไม่ผ่านด่าน = "งดบริการ" (PR-C) — แถวยังอยู่บนใบเพราะ
-                    เจ้าหน้าที่ต้องรู้ว่ามีเครื่องอยู่ตรงนั้น แต่ต้องเห็นชัดว่าห้ามทำ
-                    ⚠️ ซ่อนแถวทิ้งไม่ได้ — จะอ่านเหมือนไซต์นี้ไม่มีเครื่องตัวนั้น */}
-                {line.suspended && <span className="ui-badge danger">งดบริการ</span>}
-                <span className={`ui-badge ${line.outcome === "done" ? "success" : line.outcome === "unable" ? "danger" : "violet"}`}>
-                  {line.outcomeLabel}
-                </span>
+        {!hideAssets && (
+          <DetailCard icon={Wrench} title={`อุปกรณ์ ${report.lines.length} รายการ`}
+            meta="ผลรายเครื่องที่เจ้าหน้าที่ติ๊กตอนปิดงาน">
+            {report.lines.length === 0 ? (
+              <p className={styles.muted}>นัดนี้ไม่ได้ผูกกับอุปกรณ์รายตัว</p>
+            ) : report.lines.map((line) => (
+              <div key={line.assetId} className={styles.line} data-outcome={line.outcome}>
+                <div className={styles.lineHead}>
+                  <b>{line.label}</b>
+                  {/* ⭐ โซนที่ไม่ผ่านด่าน = "งดบริการ" (PR-C) — แถวยังอยู่บนใบเพราะ
+                      เจ้าหน้าที่ต้องรู้ว่ามีเครื่องอยู่ตรงนั้น แต่ต้องเห็นชัดว่าห้ามทำ
+                      ⚠️ ซ่อนแถวทิ้งไม่ได้ — จะอ่านเหมือนไซต์นี้ไม่มีเครื่องตัวนั้น */}
+                  {line.suspended && <span className="ui-badge danger">งดบริการ</span>}
+                  <span className={`ui-badge ${line.outcome === "done" ? "success" : line.outcome === "unable" ? "danger" : "violet"}`}>
+                    {line.outcomeLabel}
+                  </span>
+                </div>
+                <p className={styles.lineMeta}>{naText([line.where, line.spec].filter(Boolean).join(" · "))}</p>
+                {line.suspendedReason && <p className={styles.lineNote}>{line.suspendedReason}</p>}
+                {line.replacedBy && <p className={styles.lineNote}>เปลี่ยนเป็น <b>{line.replacedBy}</b></p>}
+                {line.reason && <p className={styles.lineNote}>{line.reason}</p>}
+                {line.used.length > 0 && (
+                  <p className={styles.lineUsed}>
+                    ใช้ไป: {line.used.map((u) => `${u.label}${u.qty != null ? ` ${fmtNumber(u.qty)}${u.unit ? ` ${u.unit}` : ""}` : ""}`).join(" · ")}
+                  </p>
+                )}
               </div>
-              <p className={styles.lineMeta}>{naText([line.where, line.spec].filter(Boolean).join(" · "))}</p>
-              {line.suspendedReason && <p className={styles.lineNote}>{line.suspendedReason}</p>}
-              {line.replacedBy && <p className={styles.lineNote}>เปลี่ยนเป็น <b>{line.replacedBy}</b></p>}
-              {line.reason && <p className={styles.lineNote}>{line.reason}</p>}
-              {line.used.length > 0 && (
-                <p className={styles.lineUsed}>
-                  ใช้ไป: {line.used.map((u) => `${u.label}${u.qty != null ? ` ${fmtNumber(u.qty)}${u.unit ? ` ${u.unit}` : ""}` : ""}`).join(" · ")}
-                </p>
-              )}
-            </div>
-          ))}
-        </DetailCard>
+            ))}
+          </DetailCard>
+        )}
 
         {report.sharedItems.length > 0 && (
           <DetailCard icon={ClipboardList} title="ของที่ใช้กับทั้งไซต์"

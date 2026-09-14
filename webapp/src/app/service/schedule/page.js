@@ -83,6 +83,13 @@ export default function ServiceSchedulePage() {
   /* ⭐ มุมมอง (F-6) — กริดสัปดาห์อ่านภาพรวมได้ดี แต่ **บนมือถือกับตอนแจกงานรายวัน
      มันคือตารางที่ต้องเลื่อนสองแกน** · "รายการ" คือมุมมองเดียวที่ใช้ได้จริงบนจอแคบ */
   const [view, setView] = useState("week");
+  /* 🐞 เดิมเปิดกริดสัปดาห์ทุกขนาดจอ ⇒ มือถือเห็นวันเดียวครึ่งแถว · จอแคบเริ่มที่ "รายการ"
+     เลือกครั้งเดียวตอนเปิดหน้า (ปุ่มสลับยังพากลับกริดได้) · ⚠️ ห้ามย้ายไป initializer
+     ของ useState — server ไม่รู้ขนาดจอ ได้ hydration mismatch · กริดไม่กะพริบเพราะ
+     loading เริ่มเป็น true */
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 768px)").matches) setView("list");
+  }, []);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -283,6 +290,10 @@ export default function ServiceSchedulePage() {
 
   const weekLabel = `${days[0].date.getDate()} ${fmtMonthShort(days[0].date)} – ${days[6].date.getDate()} ${fmtMonthShort(days[6].date)} ${days[6].date.getFullYear()}`;
   const todayIso = businessDate();
+  /* 🐞 ข้อความว่างเคยเขียน "สัปดาห์นี้" ตายตัว — เลื่อนไปสัปดาห์หน้าแล้วยังบอกว่าสัปดาห์นี้
+     ⚠️ วัดจาก todayIso (วันทำการไทย) ตัวเดียวกับเม็ดวันนี้ ไม่ใช่นาฬิกาเครื่อง */
+  const isThisWeek = days.some((d) => d.iso === todayIso);
+  const weekText = isThisWeek ? "สัปดาห์นี้" : `ช่วง ${weekLabel} `;
 
   const shiftWeek = (weeks) => setWeekStart((prev) => {
     const next = new Date(prev);
@@ -311,7 +322,8 @@ export default function ServiceSchedulePage() {
           <strong className={styles.weekLabel}>{weekLabel}</strong>
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
           <Button tone="neutral" variant="quiet" size="sm" onClick={() => setWeekStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
-          <span className={styles.count}>{boardVisits.length} นัด</span>
+          {/* 🐞 เดิมนับ boardVisits ทั้งฝ่าย — เลือกทีมที่ว่างแล้วกริดว่างแต่ยังบอก "1 นัด" */}
+          <span className={styles.count}>{visibleVisitCount} นัด</span>
           {/* ⭐ ตัวกรองทีมเจ้าหน้าที่บริการ — โผล่เฉพาะเมื่อฝ่ายมีทีมจริง (มากกว่า "ทุกทีม" อย่างเดียว)
               ตัวกรองที่มีตัวเลือกเดียวคือของประดับ */}
           <Segmented
@@ -329,6 +341,7 @@ export default function ServiceSchedulePage() {
               onChange={setTeamFilter}
               options={teamOptions}
               ariaLabel="กรองตามทีมเจ้าหน้าที่บริการ"
+              className={styles.teamFilter}
             />
           )}
         </div>
@@ -427,7 +440,7 @@ export default function ServiceSchedulePage() {
                 {days.map((day) => (
                   <th key={day.iso} scope="col" className={day.weekend ? styles.weekend : undefined}>
                     <span className={styles.dayName}>{DAY_LABELS[day.date.getDay()]}</span>
-                    <span className={day.iso === todayIso ? styles.today : undefined}>{day.date.getDate()}</span>
+                    <span className={`${styles.dayNum} ${day.iso === todayIso ? styles.today : ""}`.trim()}>{day.date.getDate()}</span>
                   </th>
                 ))}
               </tr>
@@ -438,7 +451,7 @@ export default function ServiceSchedulePage() {
                   <td colSpan={8} className={styles.emptyRow}>
                     {/* ไม่มีแถวเลย = ไม่มีทั้งเจ้าหน้าที่หน้างานและนัด — คนละเรื่องกับ
                         "สัปดาห์นี้ว่าง" ซึ่งตอนนี้เห็นได้จากแถวที่ว่างเปล่าอยู่แล้ว */}
-                    ยังไม่มีเจ้าหน้าที่หน้างานในทะเบียน และสัปดาห์นี้ยังไม่มีนัดเข้าบริการ
+                    {`ยังไม่มีเจ้าหน้าที่หน้างานในทะเบียน และ${weekText}ยังไม่มีนัดเข้าบริการ`}
                   </td>
                 </tr>
               ) : teamRows.map((row) => (
@@ -521,7 +534,7 @@ export default function ServiceSchedulePage() {
           รวมทั้งตัวกรองทีมและการซ่อนร่าง */}
       {!loading && !loadError && view === "list" && (
         visibleVisitCount === 0 ? (
-          <EmptyState icon={CalendarDays}>สัปดาห์นี้ยังไม่มีนัดเข้าบริการ</EmptyState>
+          <EmptyState icon={CalendarDays}>{`${weekText}ยังไม่มีนัดเข้าบริการ`}</EmptyState>
         ) : (
           <ul className={styles.listView}>
             {days.map((day) => {
@@ -551,6 +564,10 @@ export default function ServiceSchedulePage() {
                                 {site?.routeZone ? ` · ${site.routeZone}` : ""}
                                 {load?.assets ? ` · ${load.assets} เครื่อง` : ""}
                               </span>
+                              {/* คำเตือนเคยอยู่ใน title= อย่างเดียว ซึ่งจอสัมผัสไม่มี — แถวรายการมีที่พอเขียนเต็ม */}
+                              {warnings.length > 0 && (
+                                <span className={styles.listWarn}>{warnings.map((w) => w.message).join(" · ")}</span>
+                              )}
                             </span>
                             <span className={styles.listWho}>
                               {naText(visit.assigneeName)}

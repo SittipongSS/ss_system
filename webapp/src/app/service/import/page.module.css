@@ -1,6 +1,8 @@
 /* ── นำเข้าข้อมูลเก่า (F-8) ─────────────────────────────────────────────── */
 
-/* พื้น/ขอบ/หัวข้อ มาจาก `WorkspaceSection` — ที่นี่คุมแค่การจัดวางข้างใน */
+/* พื้น/ขอบ/หัวข้อ มาจาก `WorkspaceSection` — ที่นี่คุมแค่การจัดวางข้างใน
+   ⚠️ ระยะระหว่างลูกมาจาก gap ตัวนี้ตัวเดียว — ลูกห้ามเติม margin บน/ล่างเอง
+   🐞 เดิมลูกห้าตัวบวก margin ทับ gap จนระยะในการ์ดใบเดียวกระโดด 12 · 24 · 36px */
 .card {
   display: flex;
   flex-direction: column;
@@ -28,7 +30,8 @@
   border-radius: var(--radius-md);
   background: var(--panel-2);
   color: var(--text-2);
-  font-size: var(--fs-label);
+  /* ขนาดเดียวกับป้ายปุ่มข้าง ๆ — ทางหลักของหน้า (ไฟล์ .xlsx) เคยตัวเล็กกว่าปุ่ม */
+  font-size: var(--fs-button);
   line-height: var(--lh-thai);
   cursor: pointer;
 }
@@ -43,8 +46,13 @@
   pointer-events: none;
 }
 
-.fileBox:focus-within {
-  outline: 2px solid var(--accent);
+/* วงโฟกัสใช้ --accent-ink เสมอ (Visual rules) — ช่องไฟล์โปร่งใสแต่กด Tab ถึง
+   กล่องนี้จึงเป็นวงโฟกัสเดียวที่ตาเห็น */
+.fileBox:focus-within,
+.sheetChip:focus-visible,
+.link:focus-visible,
+.linkBtn:focus-visible {
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 
@@ -57,6 +65,9 @@
 /* ⚠️ ช่องยาวทรงเดียวทั้งเว็บ: พื้น 3 บรรทัด โตตามที่พิมพ์ ลากขยายได้เสมอ */
 .paste {
   flex: 1 1 320px;
+  /* field-sizing: content + ไม่ตัดบรรทัด = ความกว้างขั้นต่ำเท่าบรรทัดยาวสุด
+     ไม่มีบรรทัดนี้ แถวยาวจะดันกล่องล้นจอมือถือ */
+  min-width: 0;
   min-height: calc(3 * 1.65em + var(--space-3));
   max-height: 40vh;
   padding: var(--space-2) var(--space-3);
@@ -64,10 +75,17 @@
   border-radius: var(--radius-md);
   background: var(--panel-2);
   color: var(--text-1);
-  font: inherit;
   line-height: var(--lh-thai);
+  /* ⭐ ตารางดิบห้ามตัดบรรทัด — แถวละบรรทัด คอลัมน์ถึงเรียงให้ตาไล่ได้ เลื่อนข้างแทน
+     🐞 เดิมมี `font: inherit` ทับฟอนต์ของ variant="data" และแถวยาวตกบรรทัดกลางช่อง */
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
   resize: vertical;
 }
+
+/* ช่องยังว่าง = คำแนะนำตัดบรรทัดได้ ไม่งั้นจอ 320 เห็นคำแนะนำไม่ครบ */
+.paste:placeholder-shown { white-space: pre-wrap; }
 
 /* ── ชีตในไฟล์ ── */
 .sheets {
@@ -75,7 +93,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-3);
 }
 
 .sheetLabel {
@@ -98,6 +115,8 @@
   cursor: pointer;
 }
 
+.sheetChip:hover:not(.sheetOn) { border-color: var(--border-strong); color: var(--text-1); }
+
 .sheetOn {
   border-color: var(--accent);
   background: var(--accent-soft, var(--panel));
@@ -114,7 +133,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
 }
 
 /* ── คอลัมน์ที่จับได้ ── */
@@ -147,50 +165,18 @@
 }
 
 .note {
-  margin: var(--space-3) 0 0;
+  margin: 0;
   color: var(--text-3);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
 
-/* ── สรุป ── */
-.summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin: 0 0 var(--space-3);
-  padding: 0;
-  list-style: none;
-  color: var(--text-2);
-  font-size: var(--fs-label);
-  line-height: var(--lh-thai);
-}
-
-.summary b { font-variant-numeric: tabular-nums; }
-.good { color: var(--green); }
-.bad { color: var(--red); }
-
-.divider {
-  width: 1px;
-  align-self: stretch;
-  background: var(--border);
-}
+/* ── แถบผลการตรวจ ── */
+/* ช่องแรกช่องเดียวมีหมายเหตุ "จาก N แถวในชีต" — ชิดบนทุกช่องให้ป้าย/ตัวเลขอยู่แนวเดียวกัน
+   🐞 ค่ากลางของ .ui-metric คือจัดกลางแนวตั้ง ช่องที่มีหมายเหตุเลยลอยสูงกว่าเพื่อน ~9px */
+.summaryStrip :global(.ui-metric) { align-items: flex-start; }
 
 /* ── ตารางรายแถว ── */
-.pill {
-  display: inline-block;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-full);
-  font-size: var(--fs-label);
-  line-height: var(--lh-thai);
-  white-space: nowrap;
-}
-
-.pill_ok { background: var(--green-soft); color: var(--green); }
-.pill_skip { background: var(--panel-2); color: var(--text-3); }
-.pill_error { background: var(--red-soft); color: var(--red); }
-
 .rowBad td { color: var(--text-2); }
 
 .new {
@@ -207,7 +193,7 @@
 }
 
 .errorList {
-  margin: 0 0 var(--space-3);
+  margin: 0;
   padding-inline-start: var(--space-4);
   color: var(--red);
   font-size: var(--fs-label);
@@ -221,6 +207,9 @@
   line-height: var(--lh-thai);
   text-decoration: none;
 }
+
+/* ลูกตรงของ .card ถูกยืดเต็มกว้าง — ลิงก์ต้องกว้างเท่าคำ ไม่ใช่เป้ากดยาวทั้งการ์ด */
+.link { align-self: flex-start; }
 
 .linkBtn {
   border: 0;

@@ -1,7 +1,22 @@
 /* ── คิวงานเข้าใหม่ (เฟส 4) ─────────────────────────────────────────────── */
 
+/* แท็บ + คำอธิบายของแท็บเป็นก้อนเดียว — ช่องไฟของ Workspace (18px) คั่นก้อนนี้กับตาราง
+   🐞 คำอธิบายเคยเป็นลูกตรงของ Workspace ⇒ margin ของมันถูกล้างทิ้ง แล้วลอยกลางระหว่าง
+   แท็บกับตารางพอดี (18px สองฝั่ง) อ่านไม่ออกว่าเป็นของแท็บ
+   ⚠️ ห่อแล้ว `.tabs-header` ได้ margin-bottom 18px ของ globals คืนมา ต้องล้างที่นี่ */
+.tabBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.tabBlock > :global(.tabs-header) {
+  margin-bottom: 0;
+}
+
 .hint {
-  margin: var(--space-2) 0 var(--space-3);
+  margin: 0;
   color: var(--text-3);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
@@ -45,19 +60,31 @@
   color: var(--text-2);
 }
 
-.numCol {
-  text-align: end;
-  font-variant-numeric: tabular-nums;
+/* ── ตาราง (จอนอน) ──────────────────────────────────────────────────────── */
+
+/* วันที่ · จำนวน ไม่มีเหตุให้ตัดบรรทัด — 🐞 เคยขึ้น "2026-09-/14" "26/หน่วย" ที่ 768px */
+.nowrap {
+  white-space: nowrap;
 }
 
-.rowLink {
-  color: var(--accent);
-  text-decoration: none;
-  line-height: var(--lh-thai);
+/* คอลัมน์ปุ่ม/ลิงก์ท้ายแถว หดเท่าของข้างใน แล้วชิดขอบขวาของตาราง
+   🐞 เดิมปุ่มลอยกลางคอลัมน์กว้าง 192px ไม่มีขอบให้กวาดตาลง
+   ⚠️ `text-align` ใส่ที่เซลล์ไม่ได้ — แพ้ `.scroll[data-family] td` (0,2,1) ⇒ ชิดด้วย flex ข้างใน */
+.actionCell {
+  width: 1%;
+  white-space: nowrap;
 }
 
-.rowLink:hover {
-  text-decoration: underline;
+.rowAction {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* บรรทัดล่างของหัวแถว (ชื่อลูกค้า · คำเตือนรอบไม่ผูกใบ) น้ำหนักปกติ
+   🐞 `tbody th` ของตารางกลางหนา semibold แล้วสืบทอดลง `.cell-sub` ⇒ ชื่อหนักกว่าตารางอื่น
+   ที่ชื่อใต้รหัสเป็นน้ำหนักปกติ (เช่น /service/sites) */
+.rowHeadSub {
+  font-weight: var(--fw-normal);
 }
 
 /* บรรทัดรองในเซลล์ "ของที่ต้องจัดสรร" — ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326)
@@ -67,4 +94,88 @@
   margin-top: var(--space-0-5);
   color: var(--text-3);
   font-size: var(--fs-6);
+}
+
+/* ── การ์ด (จอตั้ง/จอแคบ) ─────────────────────────────────────────────────
+   🐞 ตาราง 720px ในกล่อง 360px — ปุ่ม "รับเข้าไซต์" อยู่ที่ x=643 นอกจอทุกแถว
+   ⇒ หนึ่งแถว = หนึ่งการ์ด ของที่ต้องกดอยู่ท้ายการ์ดเสมอ */
+.cardList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .cardList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--panel-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+/* รหัสบน · ชื่อล่าง — ทรงเดียวกับตาราง */
+.cardHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.cardCode {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.cardTitle {
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.cardSub,
+.cardMeta {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.cardSub {
+  color: var(--text-3);
+}
+
+.cardBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+/* ปุ่ม/ลิงก์ท้ายการ์ดชิดล่างเสมอ — การ์ดสองคอลัมน์สูงไม่เท่ากันแล้วปุ่มยังอยู่แนวเดียว */
+.cardAction {
+  width: 100%;
+  justify-content: center;
+  margin-top: auto;
+}
+
+/* เป้าแตะสูงเท่าปุ่ม — ลิงก์ข้อความเปล่าสูงแค่บรรทัดเดียว */
+.cardLink {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ctl-h);
+  margin-top: auto;
 }

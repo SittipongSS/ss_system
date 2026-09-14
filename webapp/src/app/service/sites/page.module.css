@@ -5,15 +5,25 @@
    gap · margin-bottom · และกฎ `--ctl-h` ที่ตรึงตัวควบคุมทุกตัวบนแถบให้สูงเท่ากัน
    (เหตุผลเต็มอยู่ที่ service/schedule/page.module.css) */
 
-.searchInput { width: 240px; max-width: 320px; }
+/* ช่องค้นหายืดตามแถบ
+   🐞 เดิมตรึง 240px ทุกจอ — คำใบ้ถูกตัดกลางคำ และคลาสนี้โหลดทีหลังกฎมือถือ
+      `.search-glass { width: 100% }` จึงชนะ ⇒ ปุ่มสลับมุมมองตกไปอยู่แถวเดี่ยว */
+.searchInput { flex: 1 1 240px; width: auto; max-width: 360px; }
 
-.numCol { text-align: right; white-space: nowrap; }
+/* มือถือ: แถวแรก = ค้นหาเต็มแถว · แถวสอง = ตัวกรอง … สลับมุมมอง */
+@media (max-width: 680px) {
+  .searchInput { flex-basis: 100%; max-width: none; }
+}
+
+/* ⚠️ ชิดขวามาจากคลาสกลาง `num` ที่ใส่คู่กัน — `text-align` ในโมดูลแพ้กฎของตารางกลางเสมอ */
+.numCol { white-space: nowrap; }
 .muted { color: var(--text-3); }
 .inactive td { opacity: var(--op-muted); }
 
+/* ⚠️ ตัวอักษรใช้ --accent-ink ไม่ใช่ --accent — ธีมสว่าง --accent บนพื้นการ์ดได้ 3.29:1 (ต้อง 4.5:1) */
 .siteLink {
   font-weight: var(--fw-semibold);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* การ์ดมุมมองการ์ด — ทรงเดียวกับ DetailCard (border/radius/พื้น/เงาชุดเดียวกัน)
@@ -26,3 +36,7 @@
   box-shadow: var(--glass-shadow);
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
+
+.cardInactive { opacity: var(--op-muted); }
+.cardCode { font-size: var(--fs-label); color: var(--accent-ink); }
+.cardCustomer { font-size: var(--fs-5); color: var(--text-3); }

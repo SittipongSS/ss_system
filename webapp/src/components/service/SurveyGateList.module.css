@@ -14,6 +14,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
 }
 
@@ -23,18 +24,6 @@
   font-weight: var(--fw-semibold);
   color: var(--text-1);
 }
-
-.badgeOk,
-.badgeBad {
-  margin-inline-start: auto;
-  padding: var(--space-0-5) var(--space-2);
-  border-radius: var(--radius-full);
-  font-size: var(--fs-3);
-  font-weight: var(--fw-semibold);
-}
-
-.badgeOk { background: var(--green-soft); color: var(--green); }
-.badgeBad { background: var(--red-soft); color: var(--red); }
 
 .group {
   display: flex;
@@ -58,12 +47,22 @@
   gap: var(--space-1-5);
 }
 
-/* หนึ่งข้อ = เครื่องหมาย · ข้อความ · เจ้าของ+ปุ่ม — ห่อลงบรรทัดใหม่บนมือถือ */
+/* หนึ่งข้อ = เครื่องหมาย | (ข้อความ · เจ้าของ+ปุ่ม) — ห่อเฉพาะในกล่องขวา
+   🐞 เดิมข้อความยืดเต็มแถว ⇒ ชิป "ช่าง"/ปุ่มแจ้งช่างไปชิดขอบขวา ห่างข้อของมัน ~1,300px บนเดสก์ท็อป
+   🐞 รอบแรกที่แก้ให้ข้อความกว้างเท่าเนื้อ ⇒ บนมือถือชิปหล่นไปอยู่ใต้เครื่องหมาย ✕ ทุกข้อที่ติด */
 .item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.body {
+  flex: 1 1 0;
+  min-inline-size: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
 }
 
 .mark {
@@ -80,8 +79,11 @@
 
 .item[data-ok] .mark { background: var(--green-soft); color: var(--green); }
 
+/* ยืดได้แต่ไม่เกินเนื้อ ⇒ เดสก์ท็อปชิปต่อท้ายข้อความ · มือถือฐานเล็กพอให้ชิปอยู่บรรทัดเดียวกัน
+   แล้วข้อความห่อในคอลัมน์ตัวเอง */
 .text {
-  flex: 1 1 240px;
+  flex: 1 1 10rem;
+  max-inline-size: max-content;
   min-inline-size: 0;
   display: flex;
   flex-direction: column;
@@ -98,7 +100,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-inline-start: auto;
 }
 
 .owner {

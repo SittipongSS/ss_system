@@ -20,11 +20,11 @@ import LegacySiteModal from "@/components/service/LegacySiteModal";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Input from "@/components/ui/Input";
+import Segmented from "@/components/ui/Segmented";
 import SkeletonRows from "@/components/ui/Skeleton";
-import StatCards from "@/components/database/StatCards";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
@@ -152,8 +152,8 @@ export default function ServiceSitesPage() {
   }), [sites, showInactive, provinceFilter, customerFilter, zoneFilter, q]);
 
   const sort = useSortableTable(filtered, {
+    // ชื่อไซต์ไม่มีหัวเรียงแยกแล้ว (รวมเป็นคอลัมน์ รหัสบน·ชื่อล่าง) — หาชื่อใช้ช่องค้นหา
     code: (s) => s.code || "",
-    site: (s) => s.name || "",
     customer: (s) => s.customerName || "",
     routeZone: (s) => s.routeZone || "",
     assets: (s) => s.activeAssetCount ?? null,
@@ -204,7 +204,7 @@ export default function ServiceSitesPage() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ค้นหาชื่อไซต์ ลูกค้า จังหวัด เขตวิ่งงาน หรือรหัส"
+          placeholder="ค้นหาไซต์ ลูกค้า จังหวัด เขต หรือรหัส"
           aria-label="ค้นหาไซต์บริการ"
         />
       </div>
@@ -234,10 +234,18 @@ export default function ServiceSitesPage() {
         ]}
       />
       <div className="spacer" />
-      <div className="segmented">
-        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
-        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
-      </div>
+      {/* ตัวกลางถือ type=button · aria-pressed · ชื่อให้โปรแกรมอ่านจอ · ปุ่มลูกศร
+          🐞 เดิมเขียนปุ่มเอง: ชื่อมาจาก title อย่างเดียว และบอกมุมมองที่เลือกด้วยสีพื้นเท่านั้น */}
+      <Segmented
+        ariaLabel="มุมมอง"
+        showLabels={false}
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "table", label: "มุมมองตาราง", icon: Table2 },
+          { value: "cards", label: "มุมมองการ์ด", icon: LayoutGrid },
+        ]}
+      />
     </div>
   );
 
@@ -250,14 +258,14 @@ export default function ServiceSitesPage() {
       headerRight={headerRight}
       loading={loading}
       rail={(
-        <StatCards
-          items={[
-            { label: "ทั้งหมด", value: sites.length },
-            { label: "ใช้งาน", value: activeCount, tone: "success" },
-            { label: "ปิดใช้งาน", value: inactiveCount, tone: inactiveCount ? "warn" : undefined },
-            { label: "เครื่องที่ใช้งานอยู่", value: totalActiveAssets },
-          ]}
-        />
+        /* แถบตัวเลขกลาง (Page contract §2) — จอแคบยุบเหลือ 2 คอลัมน์เอง
+           🐞 StatCards ตรึง 4 คอลัมน์ด้วย inline style ⇒ จอ 390px ช่องละ 83px ป้ายตัดบรรทัด ตัวเลขไม่ตรงแนว */
+        <MetricStrip>
+          <Metric label="ทั้งหมด" value={sites.length} />
+          <Metric label="ใช้งาน" value={activeCount} tone="success" />
+          <Metric label="ปิดใช้งาน" value={inactiveCount} tone={inactiveCount ? "warning" : undefined} />
+          <Metric label="เครื่องที่ใช้งานอยู่" value={totalActiveAssets} />
+        </MetricStrip>
       )}
       toolbar={toolbar}
     >
@@ -285,19 +293,21 @@ export default function ServiceSitesPage() {
               <Link
                 key={site.id}
                 href={`/service/sites/${site.id}`}
-                className={`${styles.card} clickable-row p-4 flex-col gap-2`}
-                style={inactive ? { opacity: "var(--op-muted)" } : undefined}
+                className={[styles.card, inactive && styles.cardInactive, "clickable-row p-4 flex-col gap-2"].filter(Boolean).join(" ")}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-[11px] text-[var(--accent)] font-mono">{naText(site.code)}</div>
+                    <div className={`${styles.cardCode} font-mono`}>{naText(site.code)}</div>
                     <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{site.name}</div>
-                    <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{naText(site.customerName)}</div>
+                    <div className={`${styles.cardCustomer} mt-0.5 truncate`}>{naText(site.customerName)}</div>
                   </div>
-                  <span className="ui-badge">{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
+                  <span className={`ui-badge shrink-0 ${inactive ? "" : "success"}`.trim()}>{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[var(--text-2)] truncate">{naText(site.routeZone)}</span>
+                  {/* ⚠️ ต้องมีป้าย — ค่าลอย ๆ ("—" หรือชื่อเขต) อ่านไม่ออกว่าคืออะไร */}
+                  <span className="text-[var(--text-2)] truncate">
+                    {site.routeZone ? `เขต ${site.routeZone}` : <span className={styles.muted}>ยังไม่ระบุเขต</span>}
+                  </span>
                   <span className="font-mono text-[var(--text-2)]">
                     {site.activeAssetCount || 0}
                     {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""} เครื่อง
@@ -313,15 +323,16 @@ export default function ServiceSitesPage() {
       ) : (
         /* ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
            ตารางจะบีบคอลัมน์จนรหัสตัดบรรทัด แทนที่จะเลื่อนแนวนอน (Table.module.css) */
-        <TableShell minWidth={960}>
+        <TableShell minWidth={860}>
           <table>
             <thead>
               <tr>
-                <SortTh label="รหัส" sortKey="code" sort={sort} />
-                <SortTh label="ไซต์" sortKey="site" sort={sort} />
+                {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับตารางเครื่อง (service/assets) · ค้นหาครอบทั้งสองอยู่แล้ว
+                    🐞 เดิมแยกสองคอลัมน์: รหัสที่คนกวาดหาเป็นข้อความเฉย ๆ เป้ากดเหลือแค่ชื่อสั้น ๆ ("ชั้น 2" 23×18px) */}
+                <SortTh label="ไซต์" sortKey="code" sort={sort} />
                 <SortTh label="ลูกค้า" sortKey="customer" sort={sort} />
                 <SortTh label="เขตวิ่งงาน" sortKey="routeZone" sort={sort} />
-                <SortTh label="เครื่อง" sortKey="assets" sort={sort} className={styles.numCol} />
+                <SortTh label="เครื่อง" sortKey="assets" sort={sort} className={`num ${styles.numCol}`} />
                 <th>ช่วงเวลาที่เข้าได้</th>
                 <th>สถานะ</th>
               </tr>
@@ -331,20 +342,20 @@ export default function ServiceSitesPage() {
                 const window = accessWindowText(site);
                 return (
                   <tr key={site.id} className={site.isActive === false ? styles.inactive : undefined}>
-                    <td className="mono">{naText(site.code)}</td>
                     <td>
-                      <Link href={`/service/sites/${site.id}`} className={styles.siteLink}>{site.name}</Link>
+                      <Link href={`/service/sites/${site.id}`} className={`${styles.siteLink} mono`}>{site.code || site.name}</Link>
+                      {site.code && site.name ? <div className={styles.muted}>{site.name}</div> : null}
                     </td>
                     <td>{naText(site.customerName)}</td>
                     <td>{naText(site.routeZone)}</td>
-                    <td className={styles.numCol}>
+                    <td className={`num ${styles.numCol}`}>
                       {/* เครื่องที่ยังใช้งานคือตัวเลขที่เจ้าหน้าที่สนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
                       {site.activeAssetCount || 0}
                       {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""}
                     </td>
                     <td>{window || <span className={styles.muted}>ไม่จำกัด</span>}</td>
                     <td>
-                      <span className="ui-badge">{site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
+                      <span className={`ui-badge ${site.isActive === false ? "" : "success"}`.trim()}>{site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                     </td>
                   </tr>
                 );

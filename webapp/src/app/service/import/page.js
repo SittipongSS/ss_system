@@ -12,14 +12,15 @@
 //   รายงานให้เอาไปแก้ในชีตแล้วอัปโหลดซ้ำได้ (แถวที่เข้าไปแล้วรอบสองจะขึ้น "มีอยู่แล้ว")
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Columns3, Download, FileSpreadsheet, ListChecks, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
+import StatusBadge from "@/components/ui/StatusBadge";
 import Textarea from "@/components/ui/Textarea";
 import Toast from "@/components/ui/Toast";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { IMPORT_FIELDS } from "@/lib/service/importSheet";
 import { canImportServiceData } from "@/lib/permissions";
@@ -29,6 +30,10 @@ import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS_LABEL = { ok: "จะสร้าง", skip: "มีอยู่แล้ว", error: "นำเข้าไม่ได้" };
+const STATUS_TONE = { ok: "success", skip: "neutral", error: "danger" };
+/* หัวตารางที่ขาดไม่ได้ — อ่านจาก IMPORT_FIELDS ชุดเดียวกับตัวตรวจ ไม่พิมพ์ซ้ำเอง */
+const REQUIRED_LABELS = IMPORT_FIELDS.filter((field) => field.required).map((field) => field.label).join(" · ");
+const PROVINCE_LABEL = IMPORT_FIELDS.find((field) => field.key === "province")?.label || "จังหวัด";
 
 export default function ServiceImportPage() {
   const role = useRole();
@@ -191,7 +196,7 @@ export default function ServiceImportPage() {
       subtitle="อ่านชีตเดิมของทีมเข้าทะเบียนไซต์ · โซน · เครื่อง — ตรวจก่อนทุกครั้ง"
     >
       {/* ── 1. เลือกแหล่งข้อมูล ── */}
-      <WorkspaceSection title="เลือกข้อมูลที่จะนำเข้า" bodyClassName={styles.card}>
+      <WorkspaceSection icon={<FileSpreadsheet size={16} aria-hidden="true" />} title="เลือกข้อมูลที่จะนำเข้า" bodyClassName={styles.card}>
         <div className={styles.sourceRow}>
           <label className={styles.fileBox}>
             <input
@@ -223,6 +228,14 @@ export default function ServiceImportPage() {
             }}
           />
         </div>
+
+        {/* 🐞 จอแรกเคยไม่บอกเลยว่าชีตต้องมีหัวตารางอะไร — รู้ก็ต่อเมื่อกดตรวจแล้วตก */}
+        {!result && (
+          <p className={styles.note}>
+            <b>หัวตารางที่ต้องมี:</b> {REQUIRED_LABELS} (ไซต์ใหม่ต้องมี{PROVINCE_LABEL}ด้วย) —
+            คอลัมน์อื่นที่ระบบรู้จักจะขึ้นให้ดูหลังกดตรวจ
+          </p>
+        )}
 
         {/* ชีตในไฟล์ — ⭐ ข้อมูลจริงอยู่ในชีตที่ "ซ่อน" (Sheet3) จึงต้องโชว์ทุกชีต
             พร้อมป้ายว่าซ่อนอยู่ ไม่ใช่ให้เห็นแต่ชีตแรก */}
@@ -259,7 +272,7 @@ export default function ServiceImportPage() {
 
       {/* ── 2. คอลัมน์ที่จับได้ ── */}
       {result?.headerMatch && (
-        <WorkspaceSection title="คอลัมน์ที่ระบบอ่านได้" bodyClassName={styles.card}>
+        <WorkspaceSection icon={<Columns3 size={16} aria-hidden="true" />} title="คอลัมน์ที่ระบบอ่านได้" bodyClassName={styles.card}>
           <ul className={styles.chips}>
             {IMPORT_FIELDS
               .filter((field) => result.headerMatch.map[field.key] !== undefined)
@@ -288,17 +301,23 @@ export default function ServiceImportPage() {
 
       {/* ── 3. สรุป + รายแถว ── */}
       {summary && (
-        <WorkspaceSection title="ผลการตรวจ" bodyClassName={styles.card}>
-          <ul className={styles.summary}>
-            <li><b>{fmtNumber(summary.rows)}</b> แถวในชีต</li>
-            <li className={styles.good}><b>{fmtNumber(summary.ok)}</b> พร้อมนำเข้า</li>
-            <li><b>{fmtNumber(summary.skip)}</b> มีอยู่แล้ว</li>
-            <li className={summary.error ? styles.bad : ""}><b>{fmtNumber(summary.error)}</b> นำเข้าไม่ได้</li>
-            <li className={styles.divider} />
-            <li>จะสร้าง ไซต์ <b>{fmtNumber(summary.newSites)}</b></li>
-            <li>โซน <b>{fmtNumber(summary.newZones)}</b></li>
-            <li>เครื่อง <b>{fmtNumber(summary.newAssets)}</b></li>
-          </ul>
+        <WorkspaceSection icon={<ListChecks size={16} aria-hidden="true" />} title="ผลการตรวจ" bodyClassName={styles.card}>
+          {/* 🐞 เดิมเป็นตัวเล็กบรรทัดเดียว ตัวเลขที่ต้องดูก่อนกดนำเข้าจมหาย และบนมือถือ
+              เส้นคั่นค้างท้ายแถวแรก · ⚠️ ของที่จะสร้างแยกเป็นช่องเอง ไม่ยัดลงหมายเหตุ —
+              หมายเหตุของ Metric โดนตัด … บนจอแคบ เลขหลักร้อยของชีตจริงจะหายครึ่ง */}
+          <MetricStrip className={styles.summaryStrip} data-density="compact" aria-label="สรุปผลการตรวจ">
+            <Metric
+              label="พร้อมนำเข้า"
+              value={fmtNumber(summary.ok)}
+              note={`จาก ${fmtNumber(summary.rows)} แถวในชีต`}
+              tone={summary.ok ? "success" : undefined}
+            />
+            <Metric label="มีอยู่แล้ว" value={fmtNumber(summary.skip)} />
+            <Metric label="นำเข้าไม่ได้" value={fmtNumber(summary.error)} tone={summary.error ? "danger" : undefined} />
+            <Metric label="ไซต์ใหม่" value={fmtNumber(summary.newSites)} />
+            <Metric label="โซนใหม่" value={fmtNumber(summary.newZones)} />
+            <Metric label="เครื่องใหม่" value={fmtNumber(summary.newAssets)} />
+          </MetricStrip>
 
           {/* ⭐ แพ็ค/ปริมาณต่อเดือนอยู่ที่ "รอบขาย" ซึ่งต้องมีใบสั่งขาย — บอกตรง ๆ
               ว่าเห็นแล้วแต่เก็บไม่ได้ ดีกว่าเงียบแล้วให้คนคิดว่านำเข้าครบ */}
@@ -310,11 +329,14 @@ export default function ServiceImportPage() {
             </p>
           )}
 
+          {/* ห่อไว้ — ลูกตรงของ .card ถูกยืดเต็มกว้าง ปุ่ม sm เคยกลายเป็นแถบยาวทั้งการ์ด */}
           {report.length > 0 && (
-            <Button tone="neutral" size="sm" onClick={() => downloadReport(report)}
-              icon={<Download size={15} aria-hidden="true" />}>
-              ดาวน์โหลดรายงานที่ต้องแก้ ({fmtNumber(report.length)} แถว)
-            </Button>
+            <div className={styles.actions}>
+              <Button tone="neutral" size="sm" onClick={() => downloadReport(report)}
+                icon={<Download size={15} aria-hidden="true" />}>
+                ดาวน์โหลดรายงานที่ต้องแก้ ({fmtNumber(report.length)} แถว)
+              </Button>
+            </div>
           )}
 
           <TableScroll family="list" minWidth={860}>
@@ -323,18 +345,29 @@ export default function ServiceImportPage() {
                 <tr>
                   <th scope="col">แถว</th>
                   <th scope="col">สถานะ</th>
+                  {/* ⭐ เหตุผลต้องอยู่ติดสถานะ — เดิมเป็นคอลัมน์ท้ายของตาราง 860px
+                      มือถือเห็น "นำเข้าไม่ได้" แต่ไม่เห็นว่าเพราะอะไร */}
+                  <th scope="col">ปัญหา</th>
                   <th scope="col">ลูกค้า</th>
                   <th scope="col">ไซต์</th>
                   <th scope="col">โซน</th>
                   <th scope="col">เครื่อง</th>
-                  <th scope="col">ปัญหา</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.rowNumber} className={row.status === "error" ? styles.rowBad : ""}>
                     <td>{row.rowNumber}</td>
-                    <td><span className={`${styles.pill} ${styles[`pill_${row.status}`]}`}>{STATUS_LABEL[row.status]}</span></td>
+                    <td>
+                      <StatusBadge className="ui-badge-cell" tone={STATUS_TONE[row.status]} label={STATUS_LABEL[row.status]} />
+                    </td>
+                    <td className={styles.problems}>
+                      {[
+                        ...(row.blocking || []),
+                        ...(row.issues || []).map((issue) => `${issue.field}: ${issue.message}`),
+                        ...(row.skippedAssets || []).map((item) => `มีอยู่แล้ว ${item.already} — ข้าม ${item.wanted}`),
+                      ].join(" · ") || naText(null)}
+                    </td>
                     <td>{naText(row.customerName)}</td>
                     <td>
                       {naText(row.siteName)}
@@ -345,13 +378,6 @@ export default function ServiceImportPage() {
                       {row.zone?.action === "create" && <em className={styles.new}>ใหม่</em>}
                     </td>
                     <td>{row.assets?.length ? fmtNumber(row.assets.length) : naText(null)}</td>
-                    <td className={styles.problems}>
-                      {[
-                        ...(row.blocking || []),
-                        ...(row.issues || []).map((issue) => `${issue.field}: ${issue.message}`),
-                        ...(row.skippedAssets || []).map((item) => `มีอยู่แล้ว ${item.already} — ข้าม ${item.wanted}`),
-                      ].join(" · ") || naText(null)}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -363,11 +389,11 @@ export default function ServiceImportPage() {
       {/* ── 4. ผลหลังนำเข้า ── */}
       {done && (
         <WorkspaceSection icon={<CheckCircle2 size={16} aria-hidden="true" />} title="นำเข้าเรียบร้อย" bodyClassName={styles.card}>
-          <ul className={styles.summary}>
-            <li>ไซต์ <b>{fmtNumber(done.created.sites)}</b></li>
-            <li>โซน <b>{fmtNumber(done.created.zones)}</b></li>
-            <li>เครื่อง <b>{fmtNumber(done.created.assets)}</b></li>
-          </ul>
+          <MetricStrip data-density="compact" aria-label="สิ่งที่สร้างแล้ว">
+            <Metric label="ไซต์ใหม่" value={fmtNumber(done.created.sites)} />
+            <Metric label="โซนใหม่" value={fmtNumber(done.created.zones)} />
+            <Metric label="เครื่องใหม่" value={fmtNumber(done.created.assets)} />
+          </MetricStrip>
           {done.errors?.length > 0 && (
             <ul className={styles.errorList}>
               {done.errors.map((message) => <li key={message}>{message}</li>)}

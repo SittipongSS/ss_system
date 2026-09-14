@@ -6,17 +6,18 @@ import { useRouter } from "next/navigation";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { use } from "react";
-import { Boxes, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AirVent, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
-import { TableShell } from "@/components/ui/Table";
+import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
+import StatusNotice from "@/components/ui/StatusNotice";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceAssetModal from "@/components/service/ServiceAssetModal";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
@@ -330,10 +331,25 @@ export default function ServiceSiteDetailPage({ params }) {
   if (loading) {
     return <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}><SkeletonRows rows={5} /></Workspace>;
   }
-  if (loadError || !site) {
+  /* 🐞 เดิม "โหลดพัง" กับ "ไม่พบ" เป็นข้อความบรรทัดเดียวเหมือนกัน ไม่มีทางไปต่อ · แยกให้เห็นว่าเป็นแบบไหน
+     และมีปุ่มลองใหม่เมื่อเป็นเน็ตสะดุด (ทรงเดียวกับหน้ารายละเอียดเครื่อง) */
+  if (loadError) {
     return (
       <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}>
-        <p className="form-error" role="alert">{loadError || "ไม่พบไซต์บริการ"}</p>
+        <StatusNotice tone="error" title="โหลดข้อมูลไซต์ไม่สำเร็จ"
+          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
+      </Workspace>
+    );
+  }
+  if (!site) {
+    return (
+      <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}>
+        <EmptyState icon={MapPin}>
+          ไม่พบไซต์บริการนี้
+          <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+        </EmptyState>
       </Workspace>
     );
   }
@@ -405,12 +421,15 @@ export default function ServiceSiteDetailPage({ params }) {
      อีก เหมือนที่หน้าลูกค้า/สินค้าห้ามไว้ (ม-49/ม-57) */
   const siteAside = (
     <>
+      {/* สรุปเฉพาะของที่การ์ด "ข้อมูลไซต์" ไม่มี
+          🐞 เดิมซ้ำผู้ติดต่อ · เขตวิ่งงาน · ช่วงเวลา กับการ์ดข้าง ๆ ครบสามแถว — แท็บเล็ต/มือถือ
+             ยังดันการ์ด "จัดการไซต์" (ที่เดียวที่แก้/ลบไซต์ได้) ลงไปอีกก้อน */}
       <DocumentSummaryCard
         title="สรุปไซต์"
         rows={[
-          { id: "contact", label: "ผู้ติดต่อ", value: site.contactName ? `${site.contactName}${site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}` : "" },
-          { id: "routeZone", label: "เขตวิ่งงาน", value: site.routeZone },
-          { id: "access", label: "ช่วงเวลาที่เข้าได้", value: accessText || "ไม่จำกัด" },
+          { id: "lastRefill", label: "เข้าเติมล่าสุด", value: schedule.lastRefillDate },
+          { id: "nextVisit", label: "นัดครั้งหน้า", value: schedule.nextVisitDate || upcoming.map((v) => v.scheduledDate).sort()[0] },
+          ...(roundsSold != null ? [{ id: "roundsSold", label: "รอบที่ขายไว้", value: `${fmtNumber(roundsSold)} รอบ` }] : []),
         ]}
       />
 
@@ -439,7 +458,7 @@ export default function ServiceSiteDetailPage({ params }) {
         badges={<DetailStateBadge label={site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"} color={site.isActive === false ? "var(--text-3)" : "var(--green)"} />}
         facts={[
           { key: "zones", icon: Layers, label: "โซน", value: `${zones.length} โซน` },
-          { key: "assets", icon: Boxes, label: "อุปกรณ์", value: `${rollup.active} ใช้งาน${assets.length !== rollup.active ? ` / ${assets.length}` : ""}` },
+          { key: "assets", icon: AirVent, label: "อุปกรณ์", value: `${rollup.active} ใช้งาน${assets.length !== rollup.active ? ` / ${assets.length}` : ""}` },
           { key: "plans", icon: RefreshCw, label: "รอบบริการ", value: `${plans.length} รอบ` },
           { key: "upcoming", icon: CalendarClock, label: "นัดที่จะถึง", value: `${upcoming.length} นัด` },
         ]}
@@ -463,7 +482,7 @@ export default function ServiceSiteDetailPage({ params }) {
             <div>
               <dt>แผนที่</dt>
               {/* ลิงก์ออกนอกระบบ — เปิดแท็บใหม่ + rel กัน tabnabbing */}
-              <dd><a href={site.mapUrl} target="_blank" rel="noreferrer noopener">เปิดแผนที่</a></dd>
+              <dd><a className="linklike" href={site.mapUrl} target="_blank" rel="noreferrer noopener">เปิดแผนที่</a></dd>
             </div>
           )}
           {site.note && <div className={styles.wide}><dt>หมายเหตุ</dt><dd>{site.note}</dd></div>}
@@ -476,7 +495,8 @@ export default function ServiceSiteDetailPage({ params }) {
         title="โซนในไซต์"
         meta="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
         actions={canEdit ? (
-          <Button tone="primary" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
+          /* ปุ่มเพิ่มระดับการ์ด = สีกลาง — primary สงวนให้การยืนยัน (Page contract §8) */
+          <Button tone="neutral" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มโซน
           </Button>
         ) : null}
@@ -486,14 +506,19 @@ export default function ServiceSiteDetailPage({ params }) {
             {canEdit ? "ยังไม่มีโซนในไซต์นี้ — เช่น Lobby · Reception · ห้องน้ำชั้น 2" : "ยังไม่มีโซนในไซต์นี้"}
           </EmptyState>
         ) : (
-          <TableShell>
+          /* ⚠️ ในการ์ดใช้ TableScroll ตรง ๆ + minWidth (ทุกตารางในหน้านี้)
+             🐞 เดิมเป็น TableShell = กรอบซ้อนสามชั้น กินที่ 36px บนมือถือ และไม่มี minWidth
+                ⇒ ตารางบีบจนรหัสโซนตัดทีละท่อน ป้ายสถานะแตกสองบรรทัด ปุ่มลบหลุดขอบขวา
+             📏 minWidth ต้อง ≤ กล่องที่แคบสุดตอนรางข้างยังอยู่ (612px ที่จอ 1051) ไม่ใช่แค่กล่องแท็บเล็ต
+                🐞 เคยตั้ง 680 ⇒ จอ 1051–1119 ประวัติเลื่อนข้างเงียบ ๆ ปุ่มลบของแอดมินหลุดขอบ */
+          <TableScroll family="list" cells="stacked" minWidth={560}>
             <table>
               <thead>
                 <tr>
                   <th>โซน</th>
                   {/* จุดติดตั้ง (mig 0354) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซน */}
-                  <th className={styles.numCol}>จุดติดตั้ง</th>
-                  <th className={styles.numCol}>อุปกรณ์</th>
+                  <th className={`num ${styles.numCol}`}>จุดติดตั้ง</th>
+                  <th className={`num ${styles.numCol}`}>อุปกรณ์</th>
                   <th>สถานะ</th>
                   {canEdit && <th aria-label="การทำงาน" />}
                 </tr>
@@ -501,25 +526,22 @@ export default function ServiceSiteDetailPage({ params }) {
               <tbody>
                 {zones.map((zone) => {
                   const zoneAssets = assets.filter((a) => a.zoneId === zone.id && a.status !== "removed");
+                  // ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสแต่ในรูปย่อ (GF/04) บรรทัดล่างอ่านออกโดยไม่ต้องแกะรหัส
+                  const zoneSub = [zone.code ? zone.name : null, zone.building, floorLabel(zone.floor), zone.note]
+                    .filter(Boolean).join(" · ");
                   return (
                     <tr key={zone.id} className={zone.isActive === false ? styles.inactive : undefined}>
                       <td>
-                        {/* ⭐ ชื่อโซนกดเข้าหน้าโซน — รอบขาย/ยอดใช้จริง/ประวัติของโซนนั้น
-                            อยู่ในฐานข้อมูลมาตั้งแต่ mig 0297 แต่ไม่มีทางเข้ามาก่อนหน้านี้ */}
-                        <Link href={`/service/sites/${site.id}/zones/${zone.id}`} className={styles.zoneLink}>
-                          {zone.name}
+                        {/* ⭐ รหัสบน · ชื่อล่าง — กดเข้าหน้าโซน (รอบขาย/ยอดใช้จริง/ประวัติของโซนนั้น
+                            อยู่ในฐานข้อมูลมาตั้งแต่ mig 0297 แต่ไม่มีทางเข้ามาก่อนหน้านี้) */}
+                        <Link href={`/service/sites/${site.id}/zones/${zone.id}`} className={`table-row-link${zone.code ? " mono" : ""}`}>
+                          {zone.code || zone.name}
                         </Link>
-                        {zone.code ? <span className={styles.serial}> · {zone.code}</span> : null}
-                        {/* ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสอยู่แล้วแต่ในรูปย่อ (GF/04)
-                            บรรทัดนี้อ่านออกโดยไม่ต้องแกะรหัส */}
-                        <div className={styles.muted}>
-                          {[zone.building, floorLabel(zone.floor)].filter(Boolean).join(" · ")}
-                          {zone.note ? `${zone.building || zone.floor ? " · " : ""}${zone.note}` : ""}
-                        </div>
+                        {zoneSub ? <div className={styles.muted}>{zoneSub}</div> : null}
                       </td>
-                      <td className={styles.numCol}>{Array.isArray(zone.spots) ? zone.spots.length : 0}</td>
-                      <td className={styles.numCol}>{zoneAssets.length}</td>
-                      <td><span className="ui-badge">{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></td>
+                      <td className={`num ${styles.numCol}`}>{Array.isArray(zone.spots) ? zone.spots.length : 0}</td>
+                      <td className={`num ${styles.numCol}`}>{zoneAssets.length}</td>
+                      <td><span className={`ui-badge ${zone.isActive === false ? "" : "success"}`.trim()}>{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></td>
                       {canEdit && (
                         <td>
                           <div className={styles.rowActions}>
@@ -533,12 +555,13 @@ export default function ServiceSiteDetailPage({ params }) {
                 })}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
       <DetailCard
-        icon={Boxes}
+        /* ไอคอนเครื่อง = AirVent ตามเมนู "ทะเบียนเครื่อง" (Boxes สงวนให้วัสดุ) */
+        icon={AirVent}
         eyebrow="Assets"
         title="อุปกรณ์ในไซต์"
         /* ⚠️ ต้องครบทุกกอง ไม่งั้นตัวเลขไม่รวมกันเป็น total แล้วคนอ่านเห็นเป็นบั๊ก
@@ -551,7 +574,7 @@ export default function ServiceSiteDetailPage({ params }) {
           rollup.broken ? `ชำรุด ${rollup.broken}` : null,
         ].filter(Boolean).join(" · ")}
         actions={canEdit ? (
-          <Button tone="primary" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
+          <Button tone="neutral" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มอุปกรณ์
           </Button>
         ) : null}
@@ -565,11 +588,13 @@ export default function ServiceSiteDetailPage({ params }) {
           </p>
         )}
         {assets.length === 0 ? (
-          <EmptyState icon={MapPin} dashed={canEdit} onClick={canEdit ? () => setFormAsset(null) : undefined} plain>
+          <EmptyState icon={AirVent} dashed={canEdit} onClick={canEdit ? () => setFormAsset(null) : undefined} plain>
             {canEdit ? "ยังไม่มีอุปกรณ์ในไซต์นี้ — กดเพื่อเพิ่มรายการแรก" : "ยังไม่มีอุปกรณ์ในไซต์นี้"}
           </EmptyState>
         ) : (
-          <TableShell>
+          /* 640 ≈ เนื้อ 8 คอลัมน์ที่บีบสุดแล้วยังไม่ตัดกลางคำ (วัดได้ 638) · จอ ≥ 1200 หน้าตาเท่า 960
+             🐞 960 เดิมบังคับเลื่อนข้างทุกจอ 1051–1399 (โน้ตบุ๊ก 1280/1366) และแท็บเล็ต ปุ่มแก้/ลบหลุดขอบ */
+          <TableScroll family="list" cells="stacked" minWidth={640}>
             <table>
               <thead>
                 <tr>
@@ -577,7 +602,7 @@ export default function ServiceSiteDetailPage({ params }) {
                   <th>โซน</th>
                   <th>รุ่น / Serial</th>
                   <th>กลิ่นที่ใช้</th>
-                  <th className={styles.numCol}>ขวด / อัตราใช้</th>
+                  <th className={`num ${styles.numCol}`}>ขวด / อัตราใช้</th>
                   <th>คาดว่าหมด</th>
                   <th>สถานะ</th>
                   {canEdit && <th aria-label="การทำงาน" />}
@@ -597,7 +622,7 @@ export default function ServiceSiteDetailPage({ params }) {
                       <td>
                         {/* ชื่อเครื่องกดเข้าหน้าอุปกรณ์ — ค่าตั้งเครื่องกับประวัติรายตัว
                             (ติดตั้ง · ถูกเปลี่ยน · เอาไปแทนตัวอื่น) อยู่ที่นั่น */}
-                        <Link href={`/service/assets/${asset.id}`} className={styles.zoneLink}>
+                        <Link href={`/service/assets/${asset.id}`} className="table-row-link">
                           {asset.label}
                         </Link>
                         {kindText ? <div className={styles.muted}>{kindText}</div> : null}
@@ -609,7 +634,7 @@ export default function ServiceSiteDetailPage({ params }) {
                         {asset.serial ? <span className={styles.serial}> · {asset.serial}</span> : null}
                       </td>
                       <td>{naText(asset.productName)}</td>
-                      <td className={styles.numCol}>
+                      <td className={`num ${styles.numCol}`}>
                         {asset.bottleMl ? `${fmtNumber(asset.bottleMl)} ml` : NA}
                         {asset.mlPerDay ? ` / ${fmtNumber(asset.mlPerDay)} ต่อวัน` : ""}
                       </td>
@@ -633,7 +658,7 @@ export default function ServiceSiteDetailPage({ params }) {
                 })}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
@@ -643,7 +668,7 @@ export default function ServiceSiteDetailPage({ params }) {
         title="รอบบริการ"
         meta="ระบบสร้างนัดล่วงหน้า 90 วันตามรอบ แล้วต่อรอบให้เมื่อปิดงานจริง"
         actions={canEdit ? (
-          <Button tone="primary" onClick={() => setFormPlan(null)} icon={<Plus size={15} aria-hidden="true" />}>
+          <Button tone="neutral" onClick={() => setFormPlan(null)} icon={<Plus size={15} aria-hidden="true" />}>
             สร้างรอบ
           </Button>
         ) : null}
@@ -655,7 +680,7 @@ export default function ServiceSiteDetailPage({ params }) {
               : "ยังไม่มีรอบบริการ"}
           </EmptyState>
         ) : (
-          <TableShell>
+          <TableScroll family="list" minWidth={600}>
             <table>
               <thead>
                 <tr>
@@ -683,7 +708,7 @@ export default function ServiceSiteDetailPage({ params }) {
                     </td>
                     <td>{plan.startDate}{plan.endDate ? ` – ${plan.endDate}` : " – ไม่มีกำหนดสิ้นสุด"}</td>
                     <td>{plan.assigneeName || <span className={styles.muted}>ยังไม่กำหนด</span>}</td>
-                    <td><span className="ui-badge">{plan.isActive === false ? "ปิดรอบ" : "ใช้งาน"}</span></td>
+                    <td><span className={`ui-badge ${plan.isActive === false ? "" : "success"}`.trim()}>{plan.isActive === false ? "ปิดรอบ" : "ใช้งาน"}</span></td>
                     {canEdit && (
                       <td>
                         <div className={styles.rowActions}>
@@ -696,15 +721,15 @@ export default function ServiceSiteDetailPage({ params }) {
                 ))}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
       <DetailCard icon={CalendarClock} eyebrow="Upcoming visits" title="นัดที่จะถึง" meta={`${upcoming.length} นัด`}>
         {upcoming.length === 0 ? (
-          <EmptyState icon={MapPin} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
+          <EmptyState icon={CalendarClock} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
         ) : (
-          <TableShell>
+          <TableScroll family="list" minWidth={600}>
             <table>
               <thead>
                 <tr><th>วันที่</th><th>เวลา</th><th>งาน</th>
@@ -743,15 +768,15 @@ export default function ServiceSiteDetailPage({ params }) {
                 ))}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
       <DetailCard icon={History} eyebrow="Visit history" title="ประวัติการเข้า" meta="20 ครั้งล่าสุด">
         {history.length === 0 ? (
-          <EmptyState icon={MapPin} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
+          <EmptyState icon={History} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
         ) : (
-          <TableShell>
+          <TableScroll family="list" minWidth={600}>
             <table>
               <thead>
                 <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>เจ้าหน้าที่</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" />
@@ -790,7 +815,7 @@ export default function ServiceSiteDetailPage({ params }) {
                 ))}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
       </DetailPageLayout>

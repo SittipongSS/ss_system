@@ -27,26 +27,16 @@
 .title b { font-size: var(--fs-6); font-weight: var(--fw-semibold); color: var(--text-1); }
 .sub { font-size: var(--fs-3); color: var(--text-3); }
 
-.doneBadge,
-.todoBadge,
-.addedBadge,
-.cutBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+/* ป้ายใช้ StatusBadge ของระบบ — 🐞 เดิมสร้างเอง 22px ไม่มีขอบ หน้าเดียวมีป้ายสามทรง
+   กล่องนี้แค่กันป้ายโดนบีบจนคำตกบรรทัดตอนชื่อพื้นที่ยาว */
+.badges {
+  display: flex;
   flex: none;
-  height: 22px;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
-  font-size: var(--fs-3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
   white-space: nowrap;
 }
-
-.doneBadge { background: var(--green-soft); color: var(--green); }
-.todoBadge { background: var(--amber-soft); color: var(--amber); }
-.cutBadge { background: var(--panel-2); color: var(--text-3); }
-/* ป้ายที่มา (accent) — คนละแกนกับป้ายความคืบหน้า จึงใช้สีของตัวเอง ไม่ใช่เขียว/เหลือง */
-.addedBadge { background: var(--accent-soft); color: var(--accent-ink); }
 
 .block {
   display: flex;
@@ -66,6 +56,11 @@
 }
 
 .blockHead small { margin-inline-start: auto; font-weight: var(--fw-regular); color: var(--text-3); }
+
+/* 🐞 <small> ไม่มีขนาดของตัวเอง ⇒ เบราว์เซอร์ย่อ "smaller" จากพื้นที่เล็กอยู่แล้ว เหลือ 8.8–9.2px
+   ต่ำกว่าโทเคนเล็กสุด — หน่วย ตร.ม./ลบ.ม. คือสิ่งที่ให้ความหมายกับตัวเลข */
+.blockHead small,
+.sum small { font-size: var(--fs-3); }
 
 .req {
   font-style: normal;
@@ -114,7 +109,19 @@
 
 .dim { display: flex; flex-direction: column; gap: var(--space-0-5); min-width: 0; }
 .dim > span { font-size: var(--fs-3); color: var(--text-3); }
-.dim > small { font-size: var(--fs-2); color: var(--text-3); text-align: end; }
+
+/* ── ใบที่เขียนไม่ได้ — ค่าเป็นตัวหนังสือ ไม่ใช่ช่องจาง ─────────────────── */
+.readValue {
+  min-width: 0;
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.readText { font-size: var(--fs-6); color: var(--text-1); line-height: var(--lh-thai); }
 
 .iconBtn {
   flex: none;
