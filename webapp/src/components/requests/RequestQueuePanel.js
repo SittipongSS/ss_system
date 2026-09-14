@@ -634,14 +634,18 @@ export default function RequestQueuePanel({
                 onToggle={() => setCollapsed?.(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
               />
             )}
-            <div className="spacer" />
-            <SortMenu
-              value={sortKey}
-              defaultValue="urgency"
-              onChange={(key) => setSort?.(key)}
-              options={REQUEST_SORT_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
-            />
-            <SortDirButton dir={sortDir} onToggle={() => toggleSortDir?.()} />
+            {/* คู่เรียง+ทิศห่อไว้ด้วยกัน และตัวห่อดันขวาเอง
+                🐞 เดิมเป็น `.spacer` + ลูกแยกสองตัว ⇒ จอ 768 ลูกศรทิศตกบรรทัดไปซ้ายสุดคนเดียว
+                ห่างจากเมนูเรียงที่ขวาสุดของบรรทัดบน (`.spacer` ดันได้แค่บนบรรทัดเดียวกัน) */}
+            <div className={`ui-sort-control ${styles.sortGroup}`}>
+              <SortMenu
+                value={sortKey}
+                defaultValue="urgency"
+                onChange={(key) => setSort?.(key)}
+                options={REQUEST_SORT_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
+              />
+              <SortDirButton dir={sortDir} onToggle={() => toggleSortDir?.()} />
+            </div>
           </>
         )}
       </div>
@@ -652,7 +656,8 @@ export default function RequestQueuePanel({
       ) : loadError ? (
         <div className={`glass-panel ${styles.loadError}`}>{loadError}</div>
       ) : visibleRows.length === 0 ? (
-        <EmptyState icon={MessageCircleQuestion}>
+        /* `plain` — อยู่ในการ์ดหัวข้อที่มีพื้นของตัวเองแล้ว 🐞 เดิมเป็นกรอบซ้อนกรอบ */
+        <EmptyState icon={MessageCircleQuestion} plain>
           {/* ⚠️ ว่างเพราะ "ไม่มีงาน" กับว่างเพราะ "ตัวกรองตัดหมด" ต้องอ่านคนละแบบ —
               ไม่งั้นคนจะปิดหน้าไปทั้งที่งานยังอยู่ แค่ถูกกรองอยู่ */}
           {countFilter

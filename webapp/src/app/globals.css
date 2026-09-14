@@ -1204,12 +1204,19 @@ button, select, input, textarea {
 .app-body {
   display: flex;
   align-items: flex-start;
+  /* กินความสูงที่เหลือของ .app-container (min-height = จอ) — ดูเหตุผลที่ .main-content */
+  flex: 1 0 auto;
 }
 
 .main-content {
   flex: 1;
   min-width: 0;
-  min-height: calc(100vh / var(--ui-scale) - var(--topbar-h));
+  /* 🐞 เดิม `min-height: calc(100vh - --topbar-h)` หักแค่แถบระบบ ไม่หักแถวระบบ (--sysbar-h)
+     กับเส้นขอบล่าง 1px ⇒ หน้าที่เนื้อสั้นกว่าจอยังเลื่อนได้ 43px (จอกว้าง) / 1px (มือถือ)
+     (วัด 2026-09-15: /notifications · /tax/filings เอกสารสูง 943px บนจอ 900px)
+     ⇒ เลิกคิดความสูงจอซ้ำที่ลูก: .app-body ยืดเต็มที่เหลือ แล้วกล่องนี้ยืดตามแถว
+     ⚠️ align-self เฉพาะกล่องนี้ — .app-body ต้องคง flex-start ไว้ให้แถบข้าง sticky ได้ */
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   /* 🪤 ต้องเป็น `clip` ห้ามกลับไปเป็น `hidden` — `overflow-x: hidden` บังคับให้
@@ -1856,11 +1863,19 @@ a.topnav-here-sys:focus-visible {
 
 @media (max-width: 768px) {
   :root {
-    /* แถวปุ่ม 54px + แถวจุดบอกหน้า 12px · ค่านี้คือสิ่งที่ .page และ .overlay
-       ใช้เผื่อระยะล่าง แถบจึงต้องสูงเท่านี้เป๊ะเสมอ ไม่ว่าจะมีจุดหรือไม่ —
-       ระบบที่มีหน้าเดียวจะได้ 12px นั้นเป็นระยะหายใจเหนือ home indicator แทน */
-    --mobile-nav-h: 66px;
+    /* แถวปุ่ม 54px + แถวจุดบอกหน้า · ค่านี้คือสิ่งที่ .page และ .overlay
+       ใช้เผื่อระยะล่าง แถบจึงต้องสูงเท่านี้เป๊ะเสมอ ·
+       ระบบที่มีหน้าเดียว (ไม่มีจุด) แถวนี้สูง 12px เป็นระยะหายใจเหนือ home indicator */
+    --mobile-nav-dots-h: 12px;
+    --mobile-nav-h: calc(54px + var(--mobile-nav-dots-h));
   }
+  /* ⭐ มีหลายหน้า = มีจุดให้กด ⇒ แถวจุดสูง 24px ให้แต่ละจุดเป็นเป้ากด 24×24 (WCAG 2.5.8)
+     🐞 เดิมจุด 6×6 ห่างกัน 6px ในแถว 12px ชิดปุ่มเมนูพอดี ⇒ วงรัศมี 12px ของแต่ละจุด
+     ทับกันเองและทับปุ่มเมนูข้างบน (วัด 2026-09-15: /database · /service จอ 390/768)
+     ⚠️ สลับด้วย :has บน :root (ท่าเดียวกับ --detail-pin-h) ⇒ ระบบหน้าเดียวแถบไม่สูงขึ้น
+     ⚠️ ต้องเขียนทับที่ :root ตัวเดียวกัน — --mobile-nav-h คำนวณที่ :root จึงเห็นค่าใหม่
+        (เขียนทับที่ลูกไม่มีผลกับค่าที่ :root คิดไปแล้ว) */
+  :root:has(.mbn-dots > button) { --mobile-nav-dots-h: var(--space-6); }
 
   .topnav-system { height: var(--topbar-h); padding: 0 var(--space-2-5); gap: var(--space-2); }
   /* 🪤 ต้องปิดทั้งสองบรรทัด — บรรทัดที่สองคือกรณี "ลิ้นชักค้างเปิดอยู่แล้วจอหด"
@@ -1872,12 +1887,18 @@ a.topnav-here-sys:focus-visible {
   /* ไม่มีแถบข้างในชั้นนี้ ปุ่มคุมแถบจึงไม่มีอะไรให้คุม — เมนูอยู่ที่แถบล่าง */
   .topnav-system .sidenav-hamburger { display: none; }
   .topnav-brand-img { height: 26px; }
-  .topnav-sys { min-width: 0; }
+  /* 🐞 จอ 320px แถบบนกว้างเกินจอ (โลโก้ + ตัวสลับระบบ + กระดิ่ง + `…`) ⇒ ทั้งหน้ากว้างตาม
+     แถบล่างยืดตาม `…` ตกขอบ (WCAG 1.4.10 · วัด 2026-09-15: /service 331px · /database 321px)
+     ต้นเหตุ: `.topnav-sys` เป็น flex-shrink: 0 จากกฎฐาน = ตัวที่หดได้กลับไม่ยอมหด
+     ⇒ ให้กล่องหด (เพดานกว้างย้ายจากปุ่มมาไว้ที่กล่อง) แล้วตัดป้ายด้วย … ที่ span ข้างใน
+     ⚠️ ellipsis ไม่ทำงานบนข้อความเปล่าในปุ่ม flex · ไอคอนต้อง flex: none ไม่งั้นโดนบีบก่อนป้าย */
+  .topnav-sys { min-width: 0; flex-shrink: 1; max-width: min(62vw, 270px); }
   .topnav-sys-btn {
-    max-width: min(62vw, 270px);
+    max-width: 100%;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
+  .topnav-sys-btn > svg { flex: none; }
+  .topnav-sys-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* 🐞 เดิมซ่อน .topbar-actions ทั้งก้อน = **กระดิ่งแจ้งเตือนหายไปจากมือถือทั้งใบ**
      และแผ่นเมนูก็ไม่มีกระดิ่ง → ผู้ใช้มือถือไม่มีทางรู้เลยว่ามีแจ้งเตือน
      ตั้งค่า/บัญชี ซ่อนได้เพราะมีอยู่ในแผ่นเมนูแล้ว แต่กระดิ่งไม่มีที่อื่นเลย
@@ -2025,23 +2046,36 @@ a.topnav-here-sys:focus-visible {
   /* แถวจุดสูงคงที่เสมอ แม้ไม่มีจุด — ความสูงแถบต้องนิ่งเท่า --mobile-nav-h
      ที่ .page เอาไปเผื่อระยะไว้ ไม่งั้นเนื้อหาท้ายหน้าถูกทับในบางระบบ */
   .mbn-dots {
-    flex: 0 0 12px;
+    flex: 0 0 var(--mobile-nav-dots-h);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-1-5);
   }
+  /* ปุ่ม = เป้ากด 24×24 ติดกันไม่ทับกัน · จุดที่ตาเห็นวาดด้วย ::before ขนาดเดิม (6px / เม็ด 18px) */
   .mbn-dots button {
-    width: 6px;
-    height: 6px;
+    position: relative;
+    width: var(--space-6);
+    height: var(--space-6);
     padding: 0;
     border: 0;
     border-radius: var(--radius-full);
-    background: var(--border-strong);
+    background: none;
     cursor: pointer;
+  }
+  .mbn-dots button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--space-1-5);
+    height: var(--space-1-5);
+    border-radius: var(--radius-full);
+    background: var(--border-strong);
+    transform: translate(-50%, -50%);
     transition: width var(--motion-medium), background var(--motion-medium);
   }
-  .mbn-dots button[aria-selected="true"] { width: 18px; background: var(--accent); }
+  .mbn-dots button[aria-selected="true"]::before { width: 18px; background: var(--accent); }
+  .mbn-dots button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 
   .mobile-nav-sheet {
     position: fixed;
@@ -4351,6 +4385,10 @@ button.empty-state { width: 100%; font: inherit; }
 .toolbar .search-glass,
 .toolbar .btn { height: var(--ctl-h); }
 .toolbar .btn-icon { width: var(--ctl-h); height: var(--ctl-h); }
+/* 🐞 `.segmented` ตกหล่นจากชุดนี้ ⇒ ตัวสลับมุมมองสูง 34px ข้างช่องค้นหา/ปุ่ม 40px ขอบบน-ล่างไม่ตรงกัน
+   (sahamit เคยแก้เองด้วย inline style) · min-height ไม่ใช่ height — ปุ่มข้างในยังสูงตามเนื้อ
+   และ `align-items: center` ของ .segmented จัดกลางให้ */
+.toolbar .segmented { min-height: var(--ctl-h); }
 
 .ui-sort-control {
   display: inline-flex;
@@ -6346,6 +6384,9 @@ button.ui-workspace-back {
 }
 /* ระยะล่างเป็นของ gap ที่ .ui-workspace แล้ว (เดิม 16px ที่นี่ ตอนนี้ 18px เท่าก้อนอื่น) */
 .ui-workspace-toolbar { min-width: 0; }
+/* 🐞 `.toolbar` ที่หน้าส่งมาเป็น *หลาน* ของเปลือก ⇒ กฎล้าง `> *` ไม่ถึง margin-bottom 16px ของมัน
+   วัด 2026-09-15: toolbar → ก้อนถัดไป 34px แทน 18px (/database/customers · /service/sites) */
+.ui-workspace-toolbar > .toolbar { margin-bottom: 0; }
 
 .ui-section {
   min-width: 0;
@@ -6453,6 +6494,9 @@ button.ui-workspace-back {
 }
 .ui-section-title { display: flex; align-items: flex-start; gap: 9px; min-width: 0; color: var(--accent-ink); }
 .ui-section-title > div { min-width: 0; }
+/* 🐞 ไอคอนหดตามเมื่อคำอธิบายยาวจนตัดบรรทัด (flex-shrink ตั้งต้น 1) ⇒ ไอคอนแต่ละส่วนคนละขนาด
+   หัวเรื่องเริ่มคนละเส้นบนมือถือ (วัด 2026-09-15 จอ 320: /rd 13/0/9px · /service 13/17/11px) */
+.ui-section-title > svg { flex: none; }
 .ui-section-title h2 { margin: 0; color: var(--text); font-size: var(--fs-section-title); }
 .ui-section-title p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); }
 .ui-section-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
@@ -6645,6 +6689,10 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
      ต้องระบุ `[data-cols]` ให้ specificity เท่ากับกฎรายจำนวน ไม่งั้นที่ 900px พอดีจะแพ้ */
   .ui-metric-strip,
   .ui-metric-strip[data-cols] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 🐞 จำนวนช่องคี่ (3 · 5) ⇒ ช่องสุดท้ายอยู่เดี่ยว อีกครึ่งแถวโชว์ **พื้นสีเส้น** ของแถบ
+     (ร่องทาสีไว้ทั้งแถบ) เป็นก้อนเทาเหมือนช่องพัง (วัด 2026-09-15: /requests จอ 768 · /rd/requests จอ 390)
+     ⇒ ช่องสุดท้ายที่ตกลำดับคี่กินเต็มแถว · ไม่ใช่กฎซ่อมเส้น เส้นยังมาจาก gap เหมือนเดิม */
+  .ui-metric-strip > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   .premium-header { padding: 17px; }

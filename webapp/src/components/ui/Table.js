@@ -121,6 +121,8 @@ export function TableShell({
   footer,
   family = "list",
   minWidth,
+  // ส่งต่อให้ TableScroll — เซลล์ซ้อนสองบรรทัดต้องชิดบนทั้งแถว (ดูคอมเมนต์ที่ TableScroll)
+  cells = "default",
   className = "",
   children,
 }) {
@@ -136,7 +138,7 @@ export function TableShell({
         </header>
       ) : null}
       {toolbar ? <TableToolbar>{toolbar}</TableToolbar> : null}
-      <TableScroll family={family} surface="embedded" minWidth={minWidth}>{children}</TableScroll>
+      <TableScroll family={family} surface="embedded" minWidth={minWidth} cells={cells}>{children}</TableScroll>
       {footer ? <footer className={styles.footer}>{footer}</footer> : null}
     </section>
   );

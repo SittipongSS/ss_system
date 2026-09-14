@@ -26,8 +26,10 @@
   box-shadow: var(--shadow-md);
 }
 
+/* วงอยู่นอกปุ่ม (offset บวก) = วางบนพื้นหน้า ⇒ ต้อง --accent-ink
+   (--accent บนพื้นหน้าธีมสว่างได้ 2.75:1 ตก WCAG 1.4.11) */
 .row:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 
@@ -50,29 +52,27 @@
 .row[data-tone="warning"] { --queue-tone: var(--amber); }
 .row[data-tone="danger"] { --queue-tone: var(--red); }
 
+/* 🐞 ห้ามตัดชื่อ/เหตุผลด้วย … — คิวนี้มีไว้บอก "อะไร · ทำไมต้องจัดการ" แต่มือถือเหลือ
+   "14 ก.ย. ·…" กับ "เลยวันนัด…" (คอลัมน์ข้อความเหลือ 62px ข้างป้ายกับปุ่มที่ไม่ยอมหด)
+   ⇒ ปล่อยให้ขึ้นบรรทัดเอง · จอกว้างคอลัมน์กว้างพอ หน้าตาเท่าเดิม */
 .copy {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-0-5);
+  overflow-wrap: anywhere;
 }
 
 .copy strong {
-  overflow: hidden;
   color: var(--text);
   font-size: var(--fs-8);
   font-weight: var(--fw-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .copy small {
-  overflow: hidden;
   color: var(--text-3);
   font-size: var(--fs-6);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .badge {
@@ -103,5 +103,9 @@
     flex-wrap: wrap;
   }
 
+  /* ข้อความกินเต็มบรรทัดแรก (หักกล่องไอคอน + gap) ⇒ ป้ายกับปุ่มลงบรรทัดสอง เยื้องตรงข้อความ
+     🐞 เดิม `flex: 1` = basis 0 ⇒ wrap ไม่เคยเกิด ข้อความหดแทนจนเหลือ 62px */
+  .copy { flex-basis: calc(100% - var(--icon-box-md) - var(--space-3)); }
+  .badge { margin-left: calc(var(--icon-box-md) + var(--space-3)); }
   .cta { margin-left: auto; }
 }

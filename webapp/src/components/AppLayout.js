@@ -855,7 +855,8 @@ export default function AppLayout({ children }) {
               aria-expanded={sysMenuOpen}
             >
               <ActiveSystemIcon size={15} aria-hidden="true" />
-              {systemSubtitle}
+              {/* span = ที่ตัดป้ายด้วย … บนจอแคบ (ellipsis ไม่ทำงานกับข้อความเปล่าในปุ่ม flex) */}
+              <span className="topnav-sys-label">{systemSubtitle}</span>
               <ChevronDown size={14} strokeWidth={2.5} style={{ transform: sysMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform var(--motion-medium)' }} />
             </button>
             {sysMenuOpen && (

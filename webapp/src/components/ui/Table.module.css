@@ -234,6 +234,22 @@
   white-space: nowrap;
 }
 
+/* ⭐ หัวแถว (`<th scope="row">` ใน tbody) ของตารางลิสต์ = **เซลล์แรกของแถว** ไม่ใช่หัวคอลัมน์
+   🐞 กฎ th ข้างบนจับ th ทุกตัว ⇒ รหัส SO บน /service/intake เป็นตัว 9.5px หนา สีจาง บนพื้น
+   --panel-2 (เซลล์ข้างกัน 11px) อ่านเหมือนคอลัมน์ตรึงที่ไม่เคยตรึง (วัด 2026-09-15)
+   คงความหมายของ th ไว้ (screen reader อ่านเป็นหัวแถว) เปลี่ยนแค่หน้าตาให้เท่าเซลล์ข้อมูล
+   ⚠️ เฉพาะ `list` — `matrix` ตั้งใจให้คอลัมน์แรกเป็นแถบทึบที่ตรึงจริง (กฎ th:first-child ข้างล่าง) */
+.scroll[data-family="list"] :global(tbody th) {
+  height: auto;
+  padding-block: var(--space-2);
+  color: var(--text);
+  background: transparent;
+  font-size: var(--fs-table);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+  white-space: normal;
+}
+
 /* ⭐ หัวตารางปักไว้ตอนเลื่อน — ย้ายมาจาก `.premium-table th` (2026-09-06)
 
    🐞 เจ้าของงานทักว่า "ตารางในระบบฐานข้อมูลไม่เหมือนในระบบบริหารงานขาย" · หาสาเหตุ
@@ -273,6 +289,11 @@
 .scroll[data-cells="stacked"] :global(td) {
   vertical-align: top;
 }
+/* หัวแถวใน tbody ชิดบนตามแถวด้วย — แยกกฎไว้ ไม่รวมเป็นลิสต์เดียวกับ td
+   (ยาม cellTextCap ห้ามลิสต์ที่ขึ้นต้นด้วย stacked td เพราะเคยเป็นช่องถอดเพดานทั้งชุด) */
+.scroll[data-cells="stacked"] :global(tbody th) {
+  vertical-align: top;
+}
 
 /* เส้นปิดท้ายตาราง — **ตัดทิ้งเฉพาะตารางที่ตัวห่อมีกรอบของตัวเองอยู่แล้ว**
    (`surface="auto"`) ไม่งั้นเส้นของแถวสุดท้ายกับกรอบของกล่องซ้อนกันเป็นเส้นคู่
@@ -291,7 +312,8 @@
 }
 
 /* hover เป็นสีแบรนด์จาง ไม่ใช่พื้นเทา — แถวที่ชี้อยู่จึงอ่านออกว่าชี้อยู่จริง */
-.scroll[data-family] :global(tbody tr:hover td) {
+.scroll[data-family] :global(tbody tr:hover td),
+.scroll[data-family="list"] :global(tbody tr:hover th) {
   background: color-mix(in srgb, var(--accent-soft) 25%, transparent);
 }
 
@@ -397,7 +419,8 @@
   .toolbar > * { min-height: 40px; }
 
   /* จอแคบ: ปล่อยให้แถวสูงตามเนื้อหา (ข้อความตัดบรรทัดบ่อย) แต่ไม่ต่ำกว่า 52px */
-  .scroll[data-family="list"] :global(td) {
+  .scroll[data-family="list"] :global(td),
+  .scroll[data-family="list"] :global(tbody th) {
     height: auto;
     min-height: 52px;
     padding-block: 11px;

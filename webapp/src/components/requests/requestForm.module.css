@@ -162,6 +162,16 @@
 /* ช่องค้นหาในแถบเครื่องมือ — กว้างคงที่ ไม่ยืดกินทั้งแถว */
 .searchBox { width: 260px; max-width: 100%; }
 
+/* คู่เรียง+ทิศของแถบเครื่องมือคิว — ดันขวาบนบรรทัดไหนก็ได้ที่มันตกไปอยู่ */
+/* ห่างเท่า gap ของ .toolbar เดิม (10px) ให้ตรงกับหน้ารายการอื่น — ui-sort-control ให้แค่ 6px */
+.sortGroup { margin-inline-start: auto; gap: var(--space-2-5); }
+
+/* 🐞 จอมือถือช่องค้นหากว้างตายตัว 260px ในแถว 332px ⇒ ขอบขวาวิ่น — ให้กินเต็มแถวของตัวเอง */
+@media (max-width: 640px) {
+  .searchBox,
+  .searchBox:focus-within { flex: 1 1 100%; width: 100%; }
+}
+
 .queueCard:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

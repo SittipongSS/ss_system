@@ -23,7 +23,9 @@ const TONE_ICON = {
 
 export default function ActionQueue({ items = [], empty = "ไม่มีงานค้างที่ต้องทำตอนนี้ 🎉" }) {
   if (!items.length) {
-    return <EmptyState icon={CheckCircle2}>{empty}</EmptyState>;
+    /* `plain` — คิวนี้วางอยู่ในการ์ด/section เสมอ (ภาพรวมบริการ · ฐานข้อมูล · ผลิต)
+       🐞 เดิมวาดกล่องมีกรอบซ้อนในการ์ดอีกชั้น */
+    return <EmptyState icon={CheckCircle2} plain>{empty}</EmptyState>;
   }
   return (
     <div className={styles.queue}>

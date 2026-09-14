@@ -31,11 +31,36 @@
   line-height: var(--lh-thai);
 }
 
-/* ── การ์ด (จอตั้ง) — ลำดับข้อมูลเดียวกับคอลัมน์แรกของตาราง ─────────── */
-.cards {
+/* แถบเครื่องมือทะเบียน: คู่เรียง+ทิศ — ดันขวาบนบรรทัดไหนก็ได้ที่มันตกไป
+   🐞 `.toolbar > .spacer` ดันขวาได้แค่บนบรรทัดเดียวกัน ⇒ จอ 768 ปุ่มเรียงตกไปชิดซ้าย */
+.sortPair {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2-5);
+  margin-inline-start: auto;
+}
+
+/* ข่าวดีบรรทัดเดียว ("ทุกคนอยู่ทีมครบแล้ว") ไม่ต้องสูงเท่ารายการว่างหลักของหน้า */
+.emptyCompact:global(.empty-state) { padding-block: var(--space-4); }
+
+/* คอลัมน์เมนูท้ายแถว — กว้างเท่าปุ่ม ปุ่ม "…" จึงชิดขอบขวาของตาราง
+   🐞 ไม่ตั้งกว้าง ⇒ เบราว์เซอร์แบ่งให้ ~20% แล้วปุ่มลอยกลางแถว */
+.menuCol {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* ── การ์ด (จอตั้ง) — ลำดับข้อมูลเดียวกับคอลัมน์แรกของตาราง ───────────
+   🐞 เดิมคอลัมน์เดียวทุกจอ ⇒ แท็บเล็ตการ์ดกว้าง 698px แต่เนื้อหาจบที่ ~250px
+   ⇒ สองคอลัมน์ เหลือคอลัมน์เดียวที่ ≤640 (ทรงเดียวกับทะเบียนไซต์บริการ) */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
 }
 
 .card {
@@ -95,10 +120,12 @@
 
 .people li:last-child { border-bottom: 0; }
 
+/* `flex-wrap` — 🐞 จอ 320 ชื่อยาว + ป้าย "หัวหน้าทีม" ไม่ยอมตัด ⇒ ตารางสมาชิกเลื่อนข้าง */
 .personName {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
   font-weight: var(--fw-semibold);
 }
 
@@ -179,6 +206,14 @@
   gap: var(--space-2);
 }
 
+/* เส้นคั่นมีไว้แยกจากข้อความสถานะในแผงจัดการเท่านั้น
+   🐞 การ์ด "ข้อมูลทีม" ใช้ .facts เป็นลูกแรก ⇒ ระยะ 24px + เส้นลอยใต้หัวการ์ดก่อนมีเนื้อหา */
+.facts:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .facts > div {
   display: flex;
   align-items: baseline;
@@ -199,6 +234,20 @@
   text-align: end;
 }
 
+/* ค่ายาว (หมายเหตุ ≤500 ตัวอักษร) — ป้ายบน เนื้อความล่าง ชิดซ้าย น้ำหนักปกติ
+   🐞 ทรงคู่ป้าย/ค่าชิดขวา ทำให้หมายเหตุบนมือถือเป็นย่อหน้าชิดขวา 6 บรรทัด ขอบซ้ายวิ่น */
+.facts > .factLong {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+
+.facts > .factLong dd {
+  text-align: start;
+  font-weight: var(--fw-normal);
+  white-space: pre-line;
+}
+
 .acts {
   display: flex;
   flex-direction: column;
@@ -208,7 +257,13 @@
   border-top: 1px solid var(--border);
 }
 
-.acts > button { width: 100%; }
+/* 🐞 `.btn` กลางไม่มี justify-content ⇒ ปุ่มหลักป้ายอยู่กลาง แต่ปุ่มปกติ/ปุ่มอันตรายที่กว้าง
+   เท่ากันป้ายชิดซ้าย · จัดกลางทุกปุ่มแบบเดียวกับ `.action` ของ DocumentControlPanel */
+.acts > button {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
 
 /* เหตุผลที่ปุ่มถัดไปกดไม่ได้ — สีเตือนที่อ่านออกจริง (`--amber` 4.43:1) */
 .why {
@@ -290,3 +345,13 @@
 
 /* ปุ่มท้ายแถวรายชื่อคน — ดันไปชิดขวาให้อยู่แนวเดียวกันทุกแถว */
 .rowAction { margin-inline-start: auto; }
+
+/* หัว section ที่มีแค่ป้ายตัวเลข — มือถือไม่ต้องซ้อนลงบรรทัดใหม่
+   🐞 กฎกลาง ≤640 ซ้อนหัวทุกใบเป็นแนวตั้ง ⇒ เลขจำนวนทีม/คนไปห้อยอยู่บรรทัดเดี่ยวใต้ชื่อ
+   (ปุ่ม/ช่องกรอกยังซ้อนตามกฎกลาง — ใบนี้มีแค่ป้าย จึงอยู่บรรทัดเดียวกับชื่อได้) */
+@media (max-width: 640px) {
+  .countHeader :global(.ui-section-header) {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
