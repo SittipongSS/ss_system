@@ -95,11 +95,18 @@ export function historyRowKey({ team = null, ownerId = null } = {}) {
 export function buildHistoryRows({ teams = [], users = [], savedRows = [], ownerRoles = [] } = {}) {
   const rows = [{ key: 'company', scope: 'company', team: null, ownerId: null, ownerName: null }];
 
-  // ownerId → ทีมที่ "แถวที่บันทึกไว้" ผูกอยู่ (ไม่ใช่ทีมปัจจุบันของคนนั้น)
+  /* ownerId → { ชื่อ ณ ตอนบันทึก, ทุกทีมที่ "แถวที่บันทึกไว้" ผูกอยู่ } (ไม่ใช่ทีมปัจจุบันของคนนั้น)
+     ⭐ ทีมตามแถว (มติผู้ใช้ 2026-09-14) — ทีมของยอดคือ `sales_history.team` ที่ประทับไว้
+     🪤 เดิมจำแค่ทีมของแถวแรกต่อคน ⇒ คนที่มีแถวค้างสองทีมเดิม เห็นแถวค้างทีมเดียว อีกทีมยัง
+        ถูกเอาไปทับบนแท็บผลงานแต่มองไม่เห็นและแก้ไม่ได้ · และถ้าแถวแรกบังเอิญเป็นทีมปัจจุบัน
+        แถวค้างของทีมเก่าหายทั้งหมด ⇒ ต้องจำ **ทุกคู่ (คน, ทีม)** */
   const savedOwners = new Map();
   for (const row of savedRows) {
-    if (!row?.ownerId || savedOwners.has(row.ownerId)) continue;
-    savedOwners.set(row.ownerId, { team: row.team || null, ownerName: row.ownerName || null });
+    if (!row?.ownerId) continue;
+    const info = savedOwners.get(row.ownerId) || { ownerName: null, teams: new Set() };
+    savedOwners.set(row.ownerId, info);
+    info.ownerName ||= row.ownerName || null;
+    info.teams.add(row.team || null);
   }
 
   for (const team of teams) {
@@ -116,7 +123,7 @@ export function buildHistoryRows({ teams = [], users = [], savedRows = [], owner
     /* แถวค้างของทีม *นี้* — คนที่ยอดเก่าผูกทีมนี้ไว้แต่ตอนนี้ไม่ได้อยู่ทีมนี้แล้ว
        (ย้ายไปทีมอื่น = โผล่สองที่โดยตั้งใจ ทีมละยอดของมันเอง · ออกจากระบบ = โผล่ที่เดียว) */
     for (const [ownerId, info] of savedOwners) {
-      if (members.has(ownerId) || info.team !== team) continue;
+      if (members.has(ownerId) || !info.teams.has(team)) continue;
       const still = users.find((user) => user.id === ownerId);
       rows.push({
         key: historyRowKey({ team, ownerId }),
@@ -134,6 +141,44 @@ export function buildHistoryRows({ teams = [], users = [], savedRows = [], owner
   }
 
   return rows;
+}
+
+/**
+ * ตัวเลขใบ้ "ระบบ X" ใต้ช่องกรอก จาก `months` ของ GET /api/sales-planning/dashboard
+ * → `{ [historyRowKey]: { [monthIdx]: ยอด Won } }`
+ *
+ * ⭐ ทีมตามดีล (มติผู้ใช้ 2026-09-14) — `byTeam`/`byOwner` ของแดชบอร์ดประทับทีมจากดีล/เป้า
+ *    ไม่ใช่ทีมในบัญชีเจ้าของ ⇒ คีย์ (ทีม, คน) ตรงกับแถวที่หน้านี้วาดและคีย์ upsert ของ API
+ * 🪤 ถังดีลไม่ระบุทีม (`team: null`) ห้ามลง — `historyRowKey({ team: null })` = 'company'
+ *    ⇒ เดิมยอดของดีลไร้ทีมเขียนทับตัวเลขใบ้ของแถวทั้งบริษัท · ช่องของแถวบริษัทคือยอดที่ปุ่ม
+ *    "เติมยอดจากระบบ" เขียนลง sales_history ⇒ ยอดดีลไร้ทีมถูกบันทึกเป็นยอดจริงทั้งบริษัทถาวร
+ * 🪤 แถวคนที่ไม่มี ownerId (ดีลไม่มีเจ้าของ) ห้ามลง — คีย์จะกลายเป็นแถวทีม ('team:X') หรือ
+ *    แถวบริษัท ⇒ เดิมยอดดีลไม่มีเจ้าของเขียนทับตัวเลขใบ้ของทั้งทีม
+ * ⭐ **บวกเพิ่ม ไม่เขียนทับ** — คนเดียวกันมาได้หลายแถวที่ลงคีย์ (ทีม, คน) เดียวกัน
+ *    (เช่น id เก่า/ชื่อเดิมที่ตัวหาเจ้าของรวมเป็นคนเดียว) ต้องรวมกัน ไม่ใช่แถวหลังชนะ
+ */
+export function systemHintCells(months = []) {
+  const sys = {};
+  for (const month of months || []) {
+    const mi = Number(String(month?.month).slice(5, 7)) - 1;
+    if (!(mi >= 0 && mi < MONTHS_IN_YEAR)) continue;
+    const put = (key, amount) => {
+      const n = Number(amount);
+      if (!(n > 0)) return;
+      const cells = (sys[key] ||= {});
+      cells[mi] = (cells[mi] || 0) + n;
+    };
+    put('company', month.totals?.wonValue);
+    for (const teamRow of month.byTeam || []) {
+      if (!teamRow?.team) continue;
+      put(historyRowKey({ team: teamRow.team }), teamRow.won);
+    }
+    for (const ownerRow of month.byOwner || []) {
+      if (!ownerRow?.ownerId) continue;
+      put(historyRowKey({ team: ownerRow.team, ownerId: ownerRow.ownerId }), ownerRow.won);
+    }
+  }
+  return sys;
 }
 
 /**

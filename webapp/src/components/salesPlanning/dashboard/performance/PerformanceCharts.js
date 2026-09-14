@@ -11,12 +11,15 @@ import ChartCard from "@/components/ui/ChartCard";
 import { CHART_COMPARISON_OPACITY, CHART_SERIES } from "@/lib/chartTheme";
 
 // กราฟของแท็บผลงานขาย — SVG เขียนเอง (แอปไม่มี chart library, แพตเทิร์นเดียวกับ
-// DashboardCharts เดิม): เทียบ Target/Forecast/Actual + เส้นประ Actual ปีก่อน,
+// DashboardCharts เดิม): เทียบ Target/FC คงเหลือ/Actual + เส้นประ Actual ปีก่อน,
 // การเติบโต YoY รายเดือน, และยอดสะสม.
 
+/* ⭐ แท่ง `forecast` = `row.forecast` = เลขตัวเดียวกับคอลัมน์ "FC คงเหลือ" ของตารางติดตาม
+   (มูลค่าเต็มของดีลที่ยังเปิด ไม่ได้ถ่วงโอกาสปิด) ⇒ ป้ายต้องเป็นคำเดียวกัน (มติผู้ใช้ 2026-09-14)
+   เดิมป้าย "Forecast" ทำให้อ่านเป็นคนละตัวเลขกับ FC คงเหลือ */
 const SERIES = [
   { key: "target", label: "Target", color: CHART_SERIES.plan },
-  { key: "forecast", label: "Forecast", color: CHART_SERIES.forecast },
+  { key: "forecast", label: "FC คงเหลือ", color: CHART_SERIES.forecast },
   { key: "actual", label: "Actual", color: CHART_SERIES.actual },
 ];
 
@@ -85,7 +88,7 @@ function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
 
   return (
     <div style={{ width: "100%", overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`กราฟเทียบ Target Forecast Actual${hasPending ? ` (${PENDING.label}ซ้อนบนแท่ง Actual)` : ""}`} style={{ display: "block", minWidth: Math.max(420, groups * 46) }} onMouseLeave={onLeave}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`กราฟเทียบ Target FC คงเหลือ Actual${hasPending ? ` (${PENDING.label}ซ้อนบนแท่ง Actual)` : ""}`} style={{ display: "block", minWidth: Math.max(420, groups * 46) }} onMouseLeave={onLeave}>
         {hasPending && (
           <defs>
             <pattern id={hatchId} patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
@@ -279,7 +282,7 @@ export default function PerformanceCharts({ row, lastYear, label, year, closedCo
     <div ref={wrapRef} className="flex flex-col gap-4" style={{ position: "relative" }}>
       <Panel
         icon={<BarChart3 size={17} aria-hidden="true" />}
-        title={`Target vs Forecast vs Actual — ${label}`}
+        title={`Target vs FC คงเหลือ vs Actual — ${label}`}
         desc={mainHasPending ? `${PENDING.label} = ใบสั่งขายที่ยื่นแล้ว ซ้อนบนแท่ง Actual ให้เห็น — ยังไม่นับเป็น Actual` : undefined}
         legend={(
           <SeriesLegend

@@ -14,8 +14,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { forecastAccuracyRollup, isRealLostDeal, wonMonthOf } from './dashboardMetrics.js';
+import { forecastAccuracyRollup, isRealLostDeal, isWonDeal, wonAmountOf, wonMonthOf } from './dashboardMetrics.js';
 import { attributionTeam } from '../permissions.js';
+import { isEmptyDashboardBucket, pendingApprovalFields } from './pendingApprovalRollup.js';
+import { addWonAwaitingSo, rollupWonAwaitingSo, wonAwaitingSoFields } from './wonAwaitingSoRollup.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const route = readFileSync(join(ROOT, 'src/app/api/sales-planning/dashboard/route.js'), 'utf8');
@@ -96,4 +98,103 @@ test('ลำดับการเลือกเดือนของยอด W
   assert.equal(wonMonthOf({ metadata: { wonMonth: '2026-03' }, confirmedAt: '2026-05-01', forecastMonth: '2026-01' }), '2026-03');
   assert.equal(wonMonthOf({ confirmedAt: '2026-05-01T00:00:00Z', forecastMonth: '2026-01' }), '2026-05');
   assert.equal(wonMonthOf({ forecastMonth: '2026-01' }), '2026-01', 'ไม่มีข้อมูลอื่น = ใช้เดือน FC');
+});
+
+/* ── "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) ต้องกระทบกันสองระดับเหมือนทุกช่อง ─────────
+   route บวกยอดนี้ในกิ่ง Won ของลูปหมวด/คน/ทีม ลงถัง `b` ตัวเดียวกับ wonCount และคิดยอดบริษัท
+   จาก wonDeals ชุดเดียวกัน ⇒ Σ byTeam = Σ byOwner = Σ byType = totals · ถังไร้ทีมต้องอยู่ครบ
+   (เทสต์นี้จำลองลูปของ route ด้วยตัวช่วยจริง — route.js เรียกตรงไม่ได้ ยามซอร์สอยู่ท้ายเทสต์) */
+test('Won รอยื่น SO: ยอดบริษัท = ผลรวมรายทีม/รายคน/รายหมวด · ถังไร้ทีมไม่ถูกตัด · ถังเดียวกับ Won', () => {
+  const MONTH = '2026-09';
+  const deal = (over) => ({
+    stage: 'won', projectValue: 100000, wonValue: 0, confirmedAt: '2026-09-03T03:00:00Z', forecastMonth: '2026-09',
+    metadata: { actualSource: 'sale_order', wonMonth: null }, ...over,
+  });
+  const visible = [
+    deal({ ownerId: 'u1', team: 'KA', dealType: 'NPD' }),
+    deal({ ownerId: 'u2', team: 'ODM', dealType: 'SCENT', projectValue: 40000 }),
+    // แอดมิน/AE Sup เปิดดีลเอง = ไร้ทีม ⇒ ถัง "ไม่ระบุ"
+    deal({ ownerId: 'admin', team: null, dealType: 'OTHER', projectValue: 5000 }),
+    // มี SO อนุมัติแล้ว → Actual ไม่ใช่รอยื่น
+    deal({ ownerId: 'u1', team: 'KA', dealType: 'NPD', wonValue: 80000, metadata: { actualSource: 'sale_order', wonMonth: MONTH, wonValueExVat: 80000 } }),
+    // มีแต่ใบรออนุมัติ → กองรออนุมัติ ไม่ใช่รอยื่น
+    deal({ ownerId: 'u3', team: 'SV', dealType: 'NPD', metadata: { actualSource: 'sale_order', soPendingAmount: 60000, soPendingCount: 1 } }),
+    // Won เดือนอื่น / ดีลยังเปิด → ไม่อยู่ในถังเดือนนี้
+    deal({ ownerId: 'u2', team: 'ODM', dealType: 'SCENT', confirmedAt: '2026-08-10T03:00:00Z' }),
+    deal({ ownerId: 'u1', team: 'KA', dealType: 'NPD', stage: 'quotation' }),
+  ];
+  const wonDeals = visible.filter((d) => isWonDeal(d) && wonMonthOf(d) === MONTH);
+  const maps = { owner: {}, team: {}, type: {} };
+  const bucketOf = (map, key) => (map[key] ||= {
+    target: 0, won: 0, weighted: 0, lost: 0, openCount: 0, wonCount: 0, ...pendingApprovalFields(), ...wonAwaitingSoFields(),
+  });
+  bucketOf(maps.team, 'RT').target = 300000; // ถังที่เกิดจากเป้าอย่างเดียว
+  for (const d of wonDeals) {
+    for (const b of [bucketOf(maps.owner, d.ownerId), bucketOf(maps.team, d.team || 'ไม่ระบุ'), bucketOf(maps.type, d.dealType)]) {
+      b.won += wonAmountOf(d); b.wonCount += 1;
+      addWonAwaitingSo(b, d);
+    }
+  }
+  const totals = rollupWonAwaitingSo(wonDeals);
+  assert.deepEqual(totals, { wonAwaitingSo: 145000, wonAwaitingSoCount: 3 });
+  for (const [name, map] of Object.entries(maps)) {
+    const rows = Object.values(map).filter((b) => !isEmptyDashboardBucket(b));
+    assert.equal(rows.reduce((s, b) => s + b.wonAwaitingSo, 0), totals.wonAwaitingSo, `${name}: ยอดต้องกระทบกับบริษัท`);
+    assert.equal(rows.reduce((s, b) => s + b.wonAwaitingSoCount, 0), totals.wonAwaitingSoCount, `${name}: จำนวนดีลต้องกระทบกับบริษัท`);
+    for (const b of rows) assert.ok(b.wonCount >= b.wonAwaitingSoCount, `${name}: ยอดรอยื่นต้องลงถังที่ Won ของดีลนั้นลง`);
+  }
+  assert.equal(maps.team['ไม่ระบุ'].wonAwaitingSo, 5000, 'ถังไร้ทีมต้องมียอด ไม่หายจากผลรวมรายทีม');
+  assert.equal(maps.team.RT.wonAwaitingSo, 0);
+  assert.equal(maps.team.RT.wonAwaitingSoCount, 0);
+  assert.equal(maps.team.KA.wonAwaitingSo, 100000);
+  assert.equal(maps.team.KA.won, 80000, 'Actual ของทีมยังเป็นยอด SO อนุมัติล้วน');
+  assert.equal(maps.team.SV.wonAwaitingSo, 0, 'ดีลที่มีใบรออนุมัติไม่ใช่รอยื่น');
+  assert.equal(maps.team.ODM.wonAwaitingSo, 40000, 'Won เดือนอื่นไม่ปนเดือนนี้');
+  assert.equal(maps.type.OTHER.wonAwaitingSo, 5000);
+
+  // ยามซอร์ส: ลูปทีมของ route ใช้ดีลชุดเดียวกับ Won และยอดบริษัทมาจาก wonDeals
+  const teamLoop = route.slice(route.indexOf('const b = teamBucket(d.team);'), route.indexOf('const b = teamBucket(d.team);') + 400);
+  assert.match(teamLoop, /if \(isWon\(d\)\) \{[^}]*addWonAwaitingSo\(b, d\);/);
+  assert.match(route, /const wonAwaitingSoTotals = rollupWonAwaitingSo\(wonDeals\);/);
+});
+
+/* ── "ทีมตามดีล" (มติผู้ใช้ 2026-09-14): ถังคนแยกตามทีมที่ประทับบนดีล ⇒ Σ ถังคนต่อทีม = ถังทีม ────
+   🐞 เดิมถังคน key ด้วยบัญชีล้วนและใช้ทีมของบัญชี ⇒ คนที่มีดีลสองทีมรวมเป็นแถวเดียวใต้ทีมบัญชี
+      แถวทีมหนึ่งจึงไม่เท่าผลรวมคนใต้ทีมนั้น (อีกทีมขาด อีกทีมเกิน) · คนย้ายทีมลากยอดเก่าไปทีมใหม่
+   เทสต์เต็ม (จำลองลูปของ route ทุกช่อง + กติกาเก่า = ใหม่บนข้อมูลทีมเดียว) อยู่ที่ teamByDeal.test.mjs */
+test('ทีมตามดีล: ดีลของคนเดียวสองทีม — Σ ถังคน (ownerBucketKey) ต่อทีม = ถังทีม · ไม่อ่านทีมบัญชี', async () => {
+  const { ownerBucketKey } = await import('./ownerBucketKey.js');
+  const MONTH = '2026-09';
+  const acc = { id: 'u1', name: 'สมชาย ใจดี', team: 'KA' }; // บัญชีอยู่ KA
+  const deal = (over) => ({
+    stage: 'won', projectValue: 100000, wonValue: 70000, confirmedAt: '2026-09-03T03:00:00Z', forecastMonth: MONTH,
+    metadata: { actualSource: 'sale_order', wonMonth: MONTH }, ownerId: 'u1', ...over,
+  });
+  const wonDeals = [
+    deal({ team: 'KA' }),
+    deal({ team: 'ODM', wonValue: 30000 }),
+    deal({ team: 'ODM', wonValue: 0, metadata: { wonMonth: null } }), // รอยื่น SO
+    deal({ team: null, wonValue: 0, metadata: { wonMonth: null }, projectValue: 5000 }),
+  ];
+  const owner = {};
+  const team = {};
+  const bucketOf = (map, key, seed) => (map[key] ||= { ...seed, won: 0, wonCount: 0, ...pendingApprovalFields(), ...wonAwaitingSoFields() });
+  for (const d of wonDeals) {
+    const o = bucketOf(owner, ownerBucketKey({ acc, id: d.ownerId, name: null, team: d.team }), { team: d.team || null });
+    const t = bucketOf(team, d.team || 'ไม่ระบุ', { team: d.team || null });
+    for (const b of [o, t]) { b.won += wonAmountOf(d); b.wonCount += 1; addWonAwaitingSo(b, d); }
+  }
+  assert.equal(Object.keys(owner).length, 3, 'u1 ได้แถว KA · ODM · ไร้ทีม');
+  for (const t of Object.values(team)) {
+    const people = Object.values(owner).filter((o) => o.team === t.team);
+    for (const f of ['won', 'wonCount', 'wonAwaitingSo', 'wonAwaitingSoCount']) {
+      assert.equal(people.reduce((s, o) => s + o[f], 0), t[f], `ทีม ${t.team} ช่อง ${f}`);
+    }
+  }
+  assert.equal(owner['u|u1|ODM'].won, 30000, 'ยอด ODM ไม่ไหลไปทีมบัญชี (KA)');
+  assert.equal(owner['u|u1|'].wonAwaitingSo, 5000);
+
+  const src = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(src, /const key = ownerBucketKey\(\{ acc, id, name, team \}\);/);
+  assert.doesNotMatch(src, /\bacc\??\.teams?\b/, 'ถังคนห้ามใช้ทีมของบัญชี');
 });

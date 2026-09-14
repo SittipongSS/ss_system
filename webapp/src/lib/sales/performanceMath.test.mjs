@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 import {
   buildMatrix,
@@ -25,7 +28,12 @@ import {
   prevPeriod,
   nextPeriod,
   periodKindOf,
+  projectionGap,
+  resolvePersonDrill,
 } from './performanceMath';
+import { NO_TEAM_LABEL, findPersonRow, personSliceKey } from './personSlice.js';
+import { teamRank } from '@/lib/salesPlanning';
+import { monthsForYear } from '@/lib/datePeriods';
 
 const row = (target, actual, forecast = Array(12).fill(0), fcTotal = forecast) => ({ target, actual, forecast, fcTotal });
 const fill = (v) => Array(12).fill(v);
@@ -490,7 +498,7 @@ test('overlayHistory: แถวที่กรอกตรง ๆ ชนะก�
   ]);
   assert.equal(m.teams.find((t) => t.team === 'KA').actual[1], 70, 'แถวทีมชนะผลรวมรายคน');
   assert.equal(m.company.actual[1], 500, 'แถวบริษัทชนะผลรวมทีม');
-  assert.equal(m.people.find((p) => p.id === 'u1').actual[1], 45);
+  assert.equal(findPersonRow(m.people, 'u1').actual[1], 45);
 });
 
 test('overlayHistory: เดือนที่ไม่มีแถวประวัติเลย ยังใช้ยอดจากดีลตามเดิม', () => {
@@ -506,7 +514,7 @@ test('overlayHistory: คนที่ไม่มีดีลในปีนั�
   const m = overlayHistory(buildMatrix(yearMonths('2026')), [
     { period: '2026-01', team: 'SV', ownerId: 'u9', ownerName: 'ซี', actualAmount: 25 },
   ]);
-  const person = m.people.find((p) => p.id === 'u9');
+  const person = findPersonRow(m.people, 'u9');
   assert.equal(person.actual[0], 25, 'ยอดที่กรอกให้คนที่ยังไม่มีดีลต้องไม่หาย');
   assert.equal(person.actual.length, 12);
   assert.equal(m.teams.find((t) => t.team === 'SV').actual[0], 25, 'และดันขึ้นทีมที่เพิ่งเกิดด้วย');
@@ -521,7 +529,7 @@ test('unallocatedRow: แถวทีมทุกแถว + ส่วนที�
     { period: '2026-02', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 45 },
   ]);
   const rest = unallocatedRow(m);
-  for (const key of ['target', 'fcTotal', 'forecast', 'actual', 'pendingApproval', 'pendingApprovalCount']) {
+  for (const key of ['target', 'fcTotal', 'forecast', 'actual', 'pendingApproval', 'pendingApprovalCount', 'wonAwaitingSo', 'wonAwaitingSoCount']) {
     for (let i = 0; i < 12; i += 1) {
       const teams = m.teams.reduce((sum, t) => sum + Number(t[key][i] || 0), 0);
       assert.equal(teams + rest[key][i], m.company[key][i], `${key} เดือน ${i + 1} ต้องกระทบกันได้`);
@@ -590,9 +598,9 @@ test('รออนุมัติ: buildMatrix เติมเส้นแยก
   const ka = m.teams.find((t) => t.team === 'KA');
   assert.equal(ka.pendingApproval[i], 993);
   assert.equal(ka.pendingApprovalCount[i], 8);
-  assert.equal(m.people.find((p) => p.id === 'u1').pendingApproval[i], 693);
-  assert.equal(m.people.find((p) => p.id === 'u1').pendingApprovalCount[i], 5);
-  assert.equal(m.people.find((p) => p.id === 'u2').pendingApproval[i], 300);
+  assert.equal(findPersonRow(m.people, 'u1').pendingApproval[i], 693);
+  assert.equal(findPersonRow(m.people, 'u1').pendingApprovalCount[i], 5);
+  assert.equal(findPersonRow(m.people, 'u2').pendingApproval[i], 300);
   assert.equal(m.company.pendingApproval[i - 1], 0, 'เดือนที่จบแล้วไม่มีวันเห็นยอดนี้');
 });
 
@@ -646,9 +654,9 @@ test('⛔ overlayHistory ทับ Actual ได้ แต่ไม่แตะ�
   assert.deepEqual(m.company.pendingApproval, before.company);
   assert.deepEqual(m.company.pendingApprovalCount, before.companyCount);
   assert.deepEqual(m.teams.filter((t) => t.team === 'KA').map((t) => t.pendingApproval), before.teams);
-  assert.deepEqual(m.people.filter((p) => p.id !== 'u9').map((p) => p.pendingApproval), before.people);
+  assert.deepEqual(m.people.filter((p) => p.ownerId !== 'u9').map((p) => p.pendingApproval), before.people);
   // แถวที่ overlay สร้างขึ้นใหม่ได้เส้นรออนุมัติศูนย์ครบแกน (ไม่ใช่ undefined)
-  const newcomer = m.people.find((p) => p.id === 'u9');
+  const newcomer = findPersonRow(m.people, 'u9');
   assert.deepEqual(newcomer.pendingApproval, fill(0));
   assert.deepEqual(newcomer.pendingApprovalCount, fill(0));
   const sv = m.teams.find((t) => t.team === 'SV');
@@ -703,7 +711,7 @@ test('รออนุมัติ: windowStat รวมในงวดเป็�
   assert.equal(aug.pendingApprovalCount, 0);
   // รายทีม/รายคนใช้สูตรเดียวกัน
   assert.equal(windowStat(m.teams[0], { startIdx: i, endIdx: i, carryOn: false, closedCount: i }).pendingApproval, 993);
-  assert.equal(windowStat(m.people.find((p) => p.id === 'u2'), { startIdx: i, endIdx: i, carryOn: false, closedCount: i }).pendingApprovalCount, 3);
+  assert.equal(windowStat(findPersonRow(m.people, 'u2'), { startIdx: i, endIdx: i, carryOn: false, closedCount: i }).pendingApprovalCount, 3);
 });
 
 test('⛔ รออนุมัติไม่หักยอดทบ — ทบยกมาคิดจาก Actual ล้วนแม้เดือนนั้นมีใบรออนุมัติ', () => {
@@ -752,4 +760,688 @@ test('unallocatedRow ปัดยอดรออนุมัติเป็น�
   const team = (v) => ({ ...company, pendingApproval: Object.assign(zeros(), { 8: v }) });
   const rest = unallocatedRow({ company, teams: [team(0.1), team(0.2)] });
   assert.equal(rest.pendingApproval[8] > 0, false);
+});
+
+
+/* ---------- ยอด Won รอยื่น SO (มติผู้ใช้ 2026-09-14) ---------- */
+
+/* รูปของจริง 14/09/2026: ดีล Won 42 ดีลที่ยังไม่มี SO อนุมัติ/รออนุมัติ กระจายตามเดือนที่ปิด Won
+   server วางยอดที่ **เดือน Won ของดีล** (ไม่ใช่เดือนปัจจุบันแบบรออนุมัติ) ⇒ เดือนที่จบแล้วมีได้
+   มี.ค. = เดือนที่จบแล้ว · ก.ย. = เดือนที่วิ่ง · ย่อหลักให้อ่านเทสต์ง่าย */
+const MAR = 2;
+const SEP = 8;
+const WON_KEYS = ['wonAwaitingSo', 'wonAwaitingSoCount'];
+const wonDashboards = () => [
+  {
+    month: '2026-03',
+    totals: { targetAmount: 100, fullForecast: 0, weightedForecast: 0, wonValue: 40, wonAwaitingSo: 550, wonAwaitingSoCount: 3 },
+    byOwner: [
+      { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 60, won: 40, weighted: 0, fcTotal: 0, wonAwaitingSo: 300, wonAwaitingSoCount: 1 },
+      { ownerId: 'u3', ownerName: 'ซี', team: 'KA', target: 0, won: 0, weighted: 0, fcTotal: 0, wonAwaitingSo: 50, wonAwaitingSoCount: 1 },
+      { ownerId: 'u2', ownerName: 'บี', team: 'SV', target: 40, won: 0, weighted: 0, fcTotal: 0, wonAwaitingSo: 200, wonAwaitingSoCount: 1 },
+    ],
+    byTeam: [
+      { team: 'KA', target: 60, won: 40, weighted: 0, fcTotal: 0, wonAwaitingSo: 350, wonAwaitingSoCount: 2 },
+      { team: 'SV', target: 40, won: 0, weighted: 0, fcTotal: 0, wonAwaitingSo: 200, wonAwaitingSoCount: 1 },
+    ],
+  },
+  {
+    month: '2026-09',
+    totals: { targetAmount: 1000, fullForecast: 400, weightedForecast: 250, wonValue: 100, pendingApproval: 150, pendingApprovalCount: 1, wonAwaitingSo: 120, wonAwaitingSoCount: 1 },
+    byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 1000, won: 100, weighted: 250, fcTotal: 400, pendingApproval: 150, pendingApprovalCount: 1, wonAwaitingSo: 120, wonAwaitingSoCount: 1 }],
+    byTeam: [{ team: 'KA', target: 1000, won: 100, weighted: 250, fcTotal: 400, pendingApproval: 150, pendingApprovalCount: 1, wonAwaitingSo: 120, wonAwaitingSoCount: 1 }],
+  },
+];
+const withoutWonAwaiting = (dashboards) => dashboards.map((d) => {
+  const strip = ({ wonAwaitingSo, wonAwaitingSoCount, ...rest }) => rest;
+  return { ...d, totals: strip(d.totals), byOwner: d.byOwner.map(strip), byTeam: d.byTeam.map(strip) };
+});
+const personOf = (m, id) => findPersonRow(m.people, id);
+const teamOf = (m, key) => m.teams.find((t) => t.team === key);
+const oneMonth = (idx) => ({ startIdx: idx, endIdx: idx, carryOn: false, closedCount: SEP });
+
+test('Won รอยื่น SO: buildMatrix เติมเส้นแยก 12 ช่องทุกระดับ ตามเดือนที่ server วาง — เดือนที่จบแล้วมีได้', () => {
+  const m = buildMatrix(wonDashboards());
+  for (const r of [m.company, ...m.teams, ...m.people]) {
+    assert.equal(r.wonAwaitingSo.length, 12);
+    assert.equal(r.wonAwaitingSoCount.length, 12);
+  }
+  assert.equal(m.company.wonAwaitingSo[MAR], 550);
+  assert.equal(m.company.wonAwaitingSoCount[MAR], 3);
+  assert.equal(m.company.wonAwaitingSo[SEP], 120);
+  assert.equal(teamOf(m, 'KA').wonAwaitingSo[MAR], 350);
+  assert.equal(teamOf(m, 'KA').wonAwaitingSoCount[MAR], 2);
+  assert.equal(teamOf(m, 'SV').wonAwaitingSo[MAR], 200);
+  assert.equal(personOf(m, 'u1').wonAwaitingSo[MAR], 300);
+  assert.equal(personOf(m, 'u1').wonAwaitingSo[SEP], 120);
+  assert.equal(personOf(m, 'u3').wonAwaitingSoCount[MAR], 1);
+  assert.equal(m.company.wonAwaitingSo[MAR + 1], 0, 'เดือนที่ไม่มีข้อมูล = 0');
+});
+
+test('⛔ Won รอยื่น SO ไม่ไหลเข้า Actual/Target/FC/รออนุมัติ — เส้นเดิมเท่ากับตอนไม่มีช่องนี้เป๊ะ', () => {
+  const a = buildMatrix(wonDashboards());
+  const b = buildMatrix(withoutWonAwaiting(wonDashboards()));
+  for (const key of ['target', 'fcTotal', 'forecast', 'actual', 'pendingApproval', 'pendingApprovalCount']) {
+    assert.deepEqual(a.company[key], b.company[key], `company.${key}`);
+    assert.deepEqual(a.teams.map((t) => t[key]), b.teams.map((t) => t[key]), `teams.${key}`);
+    assert.deepEqual(a.people.map((p) => p[key]), b.people.map((p) => p[key]), `people.${key}`);
+  }
+});
+
+test('Won รอยื่น SO: payload เก่าที่ไม่มีช่องนี้ (ค้างใน apiCache) ได้ 0 ครบแกน · แถวที่ไม่มีเส้นนี้ได้ 0 ใน windowStat', () => {
+  const m = buildMatrix(withoutWonAwaiting(wonDashboards()));
+  for (const r of [m.company, ...m.teams, ...m.people]) {
+    for (const key of WON_KEYS) assert.deepEqual(r[key], fill(0), key);
+  }
+  const cross = buildMatrix([dash('2026-01', { target: 1, won: 1 })], { months: ['2025-12', '2026-01'] });
+  assert.deepEqual(cross.company.wonAwaitingSo, [0, 0]);
+  assert.deepEqual(cross.teams[0].wonAwaitingSoCount, [0, 0]);
+  assert.deepEqual(cross.people[0].wonAwaitingSo, [0, 0]);
+  const s = windowStat(row(fill(10), fill(5), fill(1)), { startIdx: 0, endIdx: 11, carryOn: false, closedCount: 12 });
+  assert.equal(s.wonAwaitingSo, 0);
+  assert.equal(s.wonAwaitingSoCount, 0);
+  assert.equal(s.projected, 72, 'ไม่มีสองเส้นเสริม = Actual + FC คงเหลือ เหมือนเดิม');
+});
+
+test('Won รอยื่น SO: windowStat รวมเป็นช่องแยก · projected = Actual + รออนุมัติ + Won รอยื่น SO + FC คงเหลือ · ที่เหลือ Actual ล้วน', () => {
+  const m = buildMatrix(wonDashboards());
+  const sep = windowStat(m.company, oneMonth(SEP));
+  assert.equal(sep.wonAwaitingSo, 120);
+  assert.equal(sep.wonAwaitingSoCount, 1);
+  assert.equal(sep.projected, 100 + 150 + 120 + 250);
+  assert.equal(sep.actual, 100, 'Actual ไม่รวม Won รอยื่น SO');
+  assert.equal(sep.diff, -900, 'ขาด / เกิน เทียบ Actual ล้วน');
+  assert.equal(sep.pct, 10, '% ปิดได้ เทียบ Actual ล้วน');
+  assert.equal(sep.fcPct, 25, 'FC% ยังเป็น FC คงเหลือล้วน');
+  // งวดใหญ่รวมทุกเดือนที่มี (มี.ค. 550 + ก.ย. 120)
+  const year = windowStat(m.company, { startIdx: 0, endIdx: 11, carryOn: false, closedCount: SEP });
+  assert.equal(year.wonAwaitingSo, 670);
+  assert.equal(year.wonAwaitingSoCount, 4);
+  // ทบยกมาคิดจาก Actual ล้วน — มี.ค. เป้า 100 ได้ 40 ⇒ ทบ 60 แม้เดือนนั้นมีดีลรอยื่น 550
+  const opts = { startIdx: SEP, endIdx: SEP, carryOn: true, closedCount: SEP };
+  const withLine = windowStat(m.company, opts);
+  const withoutLine = windowStat(buildMatrix(withoutWonAwaiting(wonDashboards())).company, opts);
+  assert.equal(withLine.carry, 60);
+  for (const key of ['target', 'carry', 'mustClose', 'fcTotal', 'forecast', 'actual', 'pendingApproval', 'diff', 'pct', 'fcPct']) {
+    assert.equal(withLine[key], withoutLine[key], `${key} ต้องไม่ขยับ`);
+  }
+  assert.equal(withLine.projected - withoutLine.projected, 120, 'ต่างกันแค่ยอดคาด');
+  // รายทีม/รายคนสูตรเดียวกัน
+  assert.equal(windowStat(teamOf(m, 'KA'), oneMonth(MAR)).wonAwaitingSo, 350);
+  assert.equal(windowStat(personOf(m, 'u2'), oneMonth(MAR)).wonAwaitingSoCount, 1);
+});
+
+test('Won รอยื่น SO: yearSummary ไม่ขยับเลย (Actual ล้วน)', () => {
+  const opts = { closedCount: SEP, ytdCount: SEP + 1 };
+  assert.deepEqual(
+    yearSummary(buildMatrix(wonDashboards()).company, opts),
+    yearSummary(buildMatrix(withoutWonAwaiting(wonDashboards())).company, opts),
+  );
+});
+
+test('🐞 รับใบเสนอราคาแล้ว (Won) แต่ SO ยังเป็นร่าง — ยอดคาดไม่วูบ ทุกช่วงของดีลอยู่ในสูตรช่องเดียว', () => {
+  // ดีลมูลค่า 80 ในเดือนที่วิ่ง · เป้า 100 · Actual จากดีลอื่น 20
+  const stage = (patch) => {
+    const r = {
+      target: fill(0), fcTotal: fill(0), forecast: fill(0), actual: fill(0),
+      pendingApproval: fill(0), pendingApprovalCount: fill(0), wonAwaitingSo: fill(0), wonAwaitingSoCount: fill(0),
+    };
+    r.target[SEP] = 100;
+    r.actual[SEP] = 20;
+    patch(r);
+    return windowStat(r, oneMonth(SEP));
+  };
+  const lifecycle = {
+    เปิดอยู่: stage((r) => { r.forecast[SEP] = 80; }),
+    Wonรอยื่นSO: stage((r) => { r.wonAwaitingSo[SEP] = 80; r.wonAwaitingSoCount[SEP] = 1; }),
+    รออนุมัติ: stage((r) => { r.pendingApproval[SEP] = 80; r.pendingApprovalCount[SEP] = 1; }),
+    อนุมัติแล้ว: stage((r) => { r.actual[SEP] = 100; }),
+  };
+  for (const [name, s] of Object.entries(lifecycle)) {
+    assert.equal(s.projected, 100, name);
+    assert.deepEqual(projectionGap(s), { projected: 100, mustClose: 100, hasTarget: true, reached: true, shortfall: 0 }, name);
+    assert.equal(statusOf(s, { periodKind: 'current' }).key, 'running_on_track', name);
+  }
+  // ไม่มีเส้นนี้ = อาการที่ผู้ใช้เจอ: ช่วง Won → ยื่น SO "คาดขาด" พุ่งเต็มมูลค่าดีล
+  const hole = stage(() => {});
+  assert.equal(projectionGap(hole).shortfall, 80);
+  assert.deepEqual(statusOf(hole, { periodKind: 'current' }), { key: 'running_behind', label: 'กำลังวิ่ง · คาดขาด', tone: 'amber', amount: 80 });
+});
+
+test('projectionGap: คาดขาด / คาดถึงเป้า / ไม่มีเป้าให้เทียบ', () => {
+  assert.deepEqual(projectionGap({ projected: 70, mustClose: 100 }), { projected: 70, mustClose: 100, hasTarget: true, reached: false, shortfall: 30 });
+  assert.deepEqual(projectionGap({ projected: 130, mustClose: 100 }), { projected: 130, mustClose: 100, hasTarget: true, reached: true, shortfall: 0 });
+  assert.equal(projectionGap({ projected: 100, mustClose: 100 + 1e-12 }).reached, true, 'ค่าเผื่อเดียวกับ statusOf');
+  assert.deepEqual(projectionGap({ projected: 50, mustClose: 0 }), { projected: 50, mustClose: 0, hasTarget: false, reached: false, shortfall: 0 });
+  assert.deepEqual(projectionGap(null), { projected: 0, mustClose: 0, hasTarget: false, reached: false, shortfall: 0 });
+});
+
+test('⭐ overlayHistory: เดือนที่บริษัทกรอก Actual มือ ⇒ Won รอยื่น SO ของบริษัทเป็น 0 (ยอดอยู่ในตัวเลขที่กรอกแล้ว)', () => {
+  // ล้อของจริง: 2026 ม.ค.–มิ.ย. กรอกไว้ระดับบริษัทอย่างเดียว
+  const m = overlayHistory(buildMatrix(wonDashboards()), [
+    { period: '2026-03', team: null, ownerId: null, actualAmount: 900 },
+  ]);
+  assert.equal(m.company.actual[MAR], 900);
+  assert.equal(m.company.wonAwaitingSo[MAR], 0, 'นับซ้ำในยอดคาด = บวกสองรอบ');
+  assert.equal(m.company.wonAwaitingSoCount[MAR], 0);
+  assert.equal(m.company.wonAwaitingSo[SEP], 120, 'เดือนที่ไม่มีแถวประวัติไม่แตะ');
+  // แถวทีม/คน Actual ยังเป็นยอดจากดีล (ไม่ถูกทับ) ⇒ ดีลรอยื่นของตัวเองยังอยู่
+  assert.equal(teamOf(m, 'KA').wonAwaitingSo[MAR], 350);
+  assert.equal(teamOf(m, 'SV').wonAwaitingSo[MAR], 200);
+  assert.equal(personOf(m, 'u1').wonAwaitingSo[MAR], 300);
+  const company = windowStat(m.company, oneMonth(MAR));
+  assert.equal(company.projected, 900, 'ยอดคาดของเดือนที่กรอกมือ = ตัวเลขที่กรอกเท่านั้น');
+  // แถวทีม + "ยังไม่ได้แยกทีม" = บริษัท ทุกเส้น (ส่วนต่างของเส้นนี้ติดลบได้ ตามคอมเมนต์ unallocatedRow)
+  const rest = unallocatedRow(m);
+  for (const key of WON_KEYS) {
+    for (let i = 0; i < 12; i += 1) {
+      const teams = m.teams.reduce((sum, t) => sum + t[key][i], 0);
+      assert.equal(teams + rest[key][i], m.company[key][i], `${key} เดือน ${i + 1} ต้องกระทบกันได้`);
+    }
+  }
+  assert.equal(rest.wonAwaitingSo[MAR], -550);
+  const teamsProjected = m.teams.reduce((sum, t) => sum + windowStat(t, oneMonth(MAR)).projected, 0);
+  assert.equal(teamsProjected + windowStat(rest, oneMonth(MAR)).projected, company.projected, 'ยอดคาดแถวทีม + แถวที่ยังไม่แยก = บริษัท');
+});
+
+test('⭐ overlayHistory: แถวรายคนล้างเฉพาะช่องของคนนั้น · ทีม/บริษัทที่ roll up ใช้ผลรวมชั้นล่าง (คนที่ไม่ได้กรอกยังอยู่)', () => {
+  const m = overlayHistory(buildMatrix(wonDashboards()), [
+    { period: '2026-03', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 70 },
+  ]);
+  assert.equal(personOf(m, 'u1').wonAwaitingSo[MAR], 0);
+  assert.equal(personOf(m, 'u1').wonAwaitingSoCount[MAR], 0);
+  assert.equal(personOf(m, 'u1').wonAwaitingSo[SEP], 120, 'เดือนอื่นของคนเดียวกันไม่แตะ');
+  assert.equal(personOf(m, 'u3').wonAwaitingSo[MAR], 50, 'คนที่ไม่ได้กรอกไม่ถูกแตะ');
+  const ka = teamOf(m, 'KA');
+  assert.equal(ka.actual[MAR], 70, 'Actual ทีม roll up จากคน (70 + 0)');
+  assert.equal(ka.wonAwaitingSo[MAR], 50, 'ล้างทั้งช่องเป็น 0 = ดีลรอยื่นของ u3 หายจากยอดคาดของทีม');
+  assert.equal(ka.wonAwaitingSoCount[MAR], 1);
+  assert.equal(m.company.wonAwaitingSo[MAR], 50 + 200, 'บริษัท roll up จากทีม');
+  assert.equal(m.company.wonAwaitingSoCount[MAR], 2);
+  // แถวคนในทีมรวมกัน = แถวทีม ทั้งยอดและจำนวน
+  const members = m.people.filter((p) => p.team === 'KA');
+  for (const key of WON_KEYS) {
+    assert.equal(members.reduce((sum, p) => sum + p[key][MAR], 0), ka[key][MAR], key);
+  }
+});
+
+test('overlayHistory: แถวทีม/บริษัทที่กรอกตรง ๆ ล้างช่องของตัวเอง · กรอกมือครบทุกคน ⇒ roll up ได้ 0 · แถวที่สร้างใหม่ได้ศูนย์ครบแกน', () => {
+  const explicit = overlayHistory(buildMatrix(wonDashboards()), [
+    { period: '2026-03', team: 'SV', ownerId: null, actualAmount: 30 },
+  ]);
+  assert.equal(teamOf(explicit, 'SV').wonAwaitingSo[MAR], 0);
+  assert.equal(teamOf(explicit, 'SV').wonAwaitingSoCount[MAR], 0);
+  assert.equal(teamOf(explicit, 'KA').wonAwaitingSo[MAR], 350, 'ทีมที่ไม่ได้กรอกไม่แตะ');
+  assert.equal(explicit.company.wonAwaitingSo[MAR], 350, 'บริษัท roll up จากทีม (350 + 0)');
+  assert.equal(personOf(explicit, 'u2').wonAwaitingSo[MAR], 200, 'แถวคนยังเป็นยอดจากดีล — Actual ของเขาไม่ได้ถูกทับ');
+
+  const everyone = overlayHistory(buildMatrix(wonDashboards()), [
+    { period: '2026-03', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 70 },
+    { period: '2026-03', team: 'KA', ownerId: 'u3', ownerName: 'ซี', actualAmount: 10 },
+    { period: '2026-03', team: 'SV', ownerId: 'u2', ownerName: 'บี', actualAmount: 5 },
+  ]);
+  assert.equal(everyone.company.actual[MAR], 85);
+  for (const r of [everyone.company, ...everyone.teams, ...everyone.people]) {
+    assert.equal(r.wonAwaitingSo[MAR], 0);
+    assert.equal(r.wonAwaitingSoCount[MAR], 0);
+  }
+
+  const winner = overlayHistory(buildMatrix(wonDashboards()), [
+    { period: '2026-03', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 70 },
+    { period: '2026-03', team: 'KA', ownerId: null, actualAmount: 90 },
+    { period: '2026-03', team: null, ownerId: null, actualAmount: 500 },
+    { period: '2026-03', team: 'ODM', ownerId: 'u9', ownerName: 'ดี', actualAmount: 25 },
+  ]);
+  assert.equal(teamOf(winner, 'KA').wonAwaitingSo[MAR], 0, 'แถวทีมที่กรอกเองชนะ roll up');
+  assert.equal(winner.company.wonAwaitingSo[MAR], 0, 'แถวบริษัทที่กรอกเองชนะ roll up');
+  assert.deepEqual(personOf(winner, 'u9').wonAwaitingSo, fill(0));
+  assert.deepEqual(personOf(winner, 'u9').wonAwaitingSoCount, fill(0));
+  assert.deepEqual(teamOf(winner, 'ODM').wonAwaitingSo, fill(0));
+  assert.deepEqual(teamOf(winner, 'ODM').wonAwaitingSoCount, fill(0));
+  assert.equal(winner.company.pendingApproval[SEP], 150, 'รออนุมัติยังไม่ถูกแตะ (สถานะสดของใบ)');
+});
+
+test('Won รอยื่น SO: unallocatedRow ปัดเป็นสตางค์ · rowHasValue เห็นแถวที่มีแต่เส้นนี้ (ยอดหรือจำนวน)', () => {
+  const zeros = () => Array(12).fill(0);
+  const blankOf = () => ({
+    target: zeros(), fcTotal: zeros(), forecast: zeros(), actual: zeros(),
+    pendingApproval: zeros(), pendingApprovalCount: zeros(), wonAwaitingSo: zeros(), wonAwaitingSoCount: zeros(),
+  });
+  const company = blankOf();
+  company.wonAwaitingSo[SEP] = 0.3;
+  const team = (v) => Object.assign(blankOf(), { wonAwaitingSo: Object.assign(zeros(), { [SEP]: v }) });
+  const rest = unallocatedRow({ company, teams: [team(0.1), team(0.2)] });
+  assert.equal(rest.wonAwaitingSo[SEP] > 0, false, 'เศษทศนิยมไม่โผล่เป็น "Won รอยื่น SO ฿0.00"');
+  assert.equal(rowHasValue(rest, 0, 11), false);
+
+  const amountOnly = blankOf();
+  amountOnly.wonAwaitingSo[MAR] = 80;
+  assert.equal(rowHasValue(amountOnly, MAR, MAR), true);
+  assert.equal(rowHasValue(amountOnly, SEP, SEP), false, 'เฉพาะช่วงที่ถาม');
+  const countOnly = blankOf();
+  countOnly.wonAwaitingSoCount[SEP] = 1; // ดีลมูลค่าว่าง ยังเป็นหนึ่งดีล
+  assert.equal(rowHasValue(countOnly, SEP, SEP), true);
+  // แยกครบทุกทีม ⇒ แถวที่ยังไม่แยกเป็นศูนย์ทุกเส้น ซ่อนได้
+  assert.equal(rowHasValue(unallocatedRow(buildMatrix(wonDashboards())), 0, 11), false);
+});
+
+
+/* ---------- แถวคน = (ใคร, ทีมไหน) — มติผู้ใช้ 2026-09-14 "ทีมตามดีล" ----------
+   ทุกตัวเลขรายคนอยู่ที่ทีมที่ประทับบนแถวต้นทาง (ดีล/เป้า/ประวัติ) ไม่ใช่ทีมในบัญชี
+   ⇒ คนที่มียอดหลายทีมได้แถวละทีม แถวทีม = ผลรวมแถวคนใต้มัน · คนย้ายทีม ประวัติทีมเดิมไม่ขยับ */
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
+const DEAL_SERIES = ['fcTotal', 'forecast', 'actual', 'pendingApproval', 'pendingApprovalCount', 'wonAwaitingSo', 'wonAwaitingSoCount'];
+const ALL_SERIES = ['target', ...DEAL_SERIES];
+const JAN = 0;
+const AUG = 7;
+
+/* ก้อนเดือนหนึ่งของ API — totals = ผลรวม byTeam (ไม่มีเป้า/ยอดระดับบริษัทล้วนในชุดทดสอบนี้) */
+const monthOf = (month, byOwner, byTeam) => {
+  const sum = (key) => byTeam.reduce((s, t) => s + Number(t[key] || 0), 0);
+  return {
+    month,
+    totals: {
+      targetAmount: sum('target'),
+      fullForecast: sum('fcTotal'),
+      weightedForecast: sum('weighted'),
+      wonValue: sum('won'),
+      pendingApproval: sum('pendingApproval'),
+      pendingApprovalCount: sum('pendingApprovalCount'),
+      wonAwaitingSo: sum('wonAwaitingSo'),
+      wonAwaitingSoCount: sum('wonAwaitingSoCount'),
+    },
+    byOwner,
+    byTeam,
+  };
+};
+
+/* payload หลังมติ: u1 มีดีลทั้ง KA และ ODM ใน ม.ค. · มี.ค. KA อย่างเดียว · ส.ค. ย้ายไป ODM แล้ว
+   u2 มีดีลไร้ทีมหนึ่งใบ · แถว legacy ไม่มี ownerId (ชื่อเก่าที่จับบัญชีไม่ได้) */
+const multiTeamDashboards = () => [
+  monthOf('2026-01', [
+    { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 100, won: 40, weighted: 10, fcTotal: 60, pendingApproval: 5, pendingApprovalCount: 1, wonAwaitingSo: 7, wonAwaitingSoCount: 1 },
+    { ownerId: 'u1', ownerName: 'เอ', team: 'ODM', target: 30, won: 25, weighted: 5, fcTotal: 30, wonAwaitingSo: 4, wonAwaitingSoCount: 1 },
+    { ownerId: 'u2', ownerName: 'บี', team: 'KA', target: 50, won: 10, weighted: 0, fcTotal: 10 },
+    { ownerId: 'u2', ownerName: 'บี', team: null, target: 0, won: 3, weighted: 0, fcTotal: 3 },
+    { ownerId: null, ownerName: 'คนเก่า', team: 'KA', target: 0, won: 2, weighted: 0, fcTotal: 2 },
+  ], [
+    { team: 'KA', target: 150, won: 52, weighted: 10, fcTotal: 72, pendingApproval: 5, pendingApprovalCount: 1, wonAwaitingSo: 7, wonAwaitingSoCount: 1 },
+    { team: 'ODM', target: 30, won: 25, weighted: 5, fcTotal: 30, wonAwaitingSo: 4, wonAwaitingSoCount: 1 },
+    { team: null, target: 0, won: 3, weighted: 0, fcTotal: 3 },
+  ]),
+  monthOf('2026-03', [
+    { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 80, won: 20, weighted: 4, fcTotal: 30 },
+    { ownerId: null, ownerName: 'คนเก่า', team: 'KA', target: 0, won: 1, weighted: 0, fcTotal: 1 },
+  ], [
+    { team: 'KA', target: 80, won: 21, weighted: 4, fcTotal: 31 },
+  ]),
+  monthOf('2026-08', [
+    { ownerId: 'u1', ownerName: 'เอ', team: 'ODM', target: 90, won: 60, weighted: 12, fcTotal: 70 },
+  ], [
+    { team: 'ODM', target: 90, won: 60, weighted: 12, fcTotal: 70 },
+  ]),
+];
+const sliceOf = (m, team, ownerId) => m.people.find((p) => p.id === personSliceKey({ team, ownerId }));
+
+/* แถวทีม = ผลรวมแถวคนใต้ทีมนั้น ทุกเส้นที่ถาม ทุกเดือน (จัดกลุ่มด้วยคีย์เดียวกับ MorningBoard) */
+const assertTeamsEqualPeople = (m, keys) => {
+  for (const t of m.teams) {
+    const members = m.people.filter((p) => (p.team || NO_TEAM_LABEL) === t.team);
+    for (const key of keys) {
+      for (let i = 0; i < t[key].length; i += 1) {
+        const sum = members.reduce((s, p) => s + Number(p[key][i] || 0), 0);
+        assert.equal(sum, t[key][i], `ทีม ${t.team} ${key} เดือน ${i + 1}`);
+      }
+    }
+  }
+};
+
+test('แถวคน: คนเดียวกันต่างทีม = คนละแถว · (คน, ทีม) เดียวกันข้ามเดือนรวมแถวเดียว · ownerId/team เก็บแยกจาก id', () => {
+  const m = buildMatrix(multiTeamDashboards());
+  assert.deepEqual(m.people.map((p) => p.id).sort(), [
+    'name:KA:คนเก่า', 'owner:-:u2', 'owner:KA:u1', 'owner:KA:u2', 'owner:ODM:u1',
+  ].sort());
+  assert.equal(new Set(m.people.map((p) => p.id)).size, m.people.length, 'id ไม่ซ้ำ = React key ไม่ชน');
+
+  const ka = sliceOf(m, 'KA', 'u1');
+  assert.equal(ka.ownerId, 'u1');
+  assert.equal(ka.team, 'KA');
+  assert.equal(ka.actual[JAN], 40, 'ม.ค. เฉพาะดีลทีม KA — ไม่รวมดีล ODM ของคนเดียวกัน');
+  assert.equal(ka.actual[MAR], 20, 'มี.ค. ทีมเดิม = แถวเดิม');
+  assert.equal(ka.actual[AUG], 0, 'ส.ค. ย้ายไป ODM แล้ว ยอดไม่ไหลกลับเข้าแถวทีมเดิม');
+  assert.equal(ka.target[JAN], 100);
+  assert.equal(ka.pendingApproval[JAN], 5);
+  assert.equal(ka.wonAwaitingSo[JAN], 7);
+
+  const odm = sliceOf(m, 'ODM', 'u1');
+  assert.equal(odm.ownerId, 'u1');
+  assert.equal(odm.team, 'ODM');
+  assert.equal(odm.actual[JAN], 25);
+  assert.equal(odm.actual[AUG], 60, 'ม.ค. กับ ส.ค. ทีมเดียวกัน = แถวเดียว');
+  assert.equal(odm.wonAwaitingSo[JAN], 4);
+
+  const noTeam = sliceOf(m, null, 'u2');
+  assert.equal(noTeam.team, null);
+  assert.equal(noTeam.ownerId, 'u2');
+  assert.equal(noTeam.actual[JAN], 3);
+  assert.equal(sliceOf(m, 'KA', 'u2').actual[JAN], 10);
+
+  const legacy = m.people.find((p) => p.id === 'name:KA:คนเก่า');
+  assert.equal(legacy.ownerId, null, 'แถว legacy ไม่มีตัวตน — ผู้ใช้อ่าน ownerId จากช่อง ห้ามแกะจาก id');
+  assert.equal(legacy.actual[JAN] + legacy.actual[MAR], 3);
+
+  const ranks = m.people.map((p) => teamRank(p.team));
+  assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), 'ยังเรียงตามลำดับทีม');
+  assertTeamsEqualPeople(m, ALL_SERIES);
+});
+
+test('overlayHistory: แถวประวัติรายคนจับคู่ด้วย (ทีมของแถวประวัติ, ownerId) · ไม่ดันแถวซ้ำ · roll up ตามทีมของแถวประวัติ', () => {
+  const m = overlayHistory(buildMatrix(multiTeamDashboards()), [
+    { period: '2026-01', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 70 },
+    // ยอดทีมเดิมของคนที่ย้ายไป ODM แล้ว — ต้องลงแถว KA ของเขา ไม่ใช่แถวทีมปัจจุบัน
+    { period: '2026-08', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 50 },
+  ]);
+  assert.equal(m.people.length, 5, 'แถว (KA, u1) มีอยู่แล้ว — ห้ามดันแถวซ้ำ (ข้อ 2 จะบวกซ้ำเงียบ ๆ)');
+  const ka = sliceOf(m, 'KA', 'u1');
+  const odm = sliceOf(m, 'ODM', 'u1');
+  assert.equal(ka.actual[JAN], 70);
+  assert.equal(ka.wonAwaitingSo[JAN], 0, 'ช่องที่กรอกมือล้าง Won รอยื่น SO ของแถวนั้น');
+  assert.equal(odm.actual[JAN], 25, 'ยอดที่กรอกให้ KA ไม่ทับยอด ODM ของคนเดียวกัน');
+  assert.equal(odm.wonAwaitingSo[JAN], 4);
+  assert.equal(ka.actual[AUG], 50);
+  assert.equal(odm.actual[AUG], 60, 'ประวัติทีมเดิมไม่ย้ายตามคน');
+
+  assert.equal(teamOf(m, 'KA').actual[JAN], 70 + 10 + 2, 'KA roll up = ผลรวมแถวคนใต้ KA');
+  assert.equal(teamOf(m, 'KA').actual[AUG], 50, 'roll up เข้าทีมของแถวประวัติ ไม่ใช่ทีมล่าสุดของคน');
+  assert.equal(teamOf(m, 'ODM').actual[JAN], 25, 'ODM ไม่ถูก roll up');
+  assert.equal(teamOf(m, 'ODM').actual[AUG], 60);
+  assert.equal(m.company.actual[JAN], 82 + 25 + 3, 'บริษัท = ผลรวมทีม — ไม่นับซ้ำ');
+  assert.equal(m.company.actual[AUG], 50 + 60);
+  assertTeamsEqualPeople(m, ALL_SERIES);
+});
+
+test('overlayHistory: ทีมที่คนนั้นยังไม่มีแถว ⇒ สร้างแถว (คน, ทีมของแถวประวัติ) ครั้งเดียว · กรอกหลายเดือนก็ไม่ซ้ำ', () => {
+  const m = overlayHistory(buildMatrix(multiTeamDashboards()), [
+    { period: '2026-01', team: 'SV', ownerId: 'u1', ownerName: 'เอ (ชื่อตอนบันทึก)', actualAmount: 15 },
+    { period: '2026-02', team: 'SV', ownerId: 'u1', ownerName: 'เอ (ชื่อตอนบันทึก)', actualAmount: 9 },
+  ]);
+  assert.equal(m.people.length, 6);
+  const sv = m.people.filter((p) => p.ownerId === 'u1' && p.team === 'SV');
+  assert.equal(sv.length, 1, 'สองเดือนของ (SV, u1) ต้องลงแถวเดียว');
+  assert.equal(sv[0].id, 'owner:SV:u1');
+  assert.equal(sv[0].actual[JAN], 15);
+  assert.equal(sv[0].actual[1], 9);
+  assert.deepEqual(sv[0].pendingApproval, fill(0));
+  assert.deepEqual(sv[0].wonAwaitingSo, fill(0));
+  assert.equal(sliceOf(m, 'KA', 'u1').actual[JAN], 40, 'แถวทีมอื่นของคนเดียวกันไม่แตะ');
+  assert.equal(sliceOf(m, 'ODM', 'u1').actual[JAN], 25);
+  assert.equal(teamOf(m, 'SV').actual[JAN], 15);
+  assert.equal(teamOf(m, 'KA').actual[JAN], 52, 'KA ไม่ถูก roll up');
+  assert.equal(m.company.actual[JAN], 52 + 25 + 3 + 15);
+  assert.equal(findPersonRow(m.people, 'u1').team, 'KA', 'id เปล่ายังได้แถวของทีมที่เรียงก่อน');
+  assertTeamsEqualPeople(m, ALL_SERIES);
+});
+
+test('resolvePersonDrill: คีย์เต็ม · id เปล่า · หาไม่เจอ = ว่าง (ไม่ถอยไปคนแรก) · ปีก่อนหาด้วยแถว (คน, ทีม) เดียวกัน', () => {
+  const m = buildMatrix(multiTeamDashboards());
+  const prev = buildMatrix([monthOf('2025-05', [
+    { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 10, won: 9, weighted: 0, fcTotal: 9 },
+    { ownerId: 'u3', ownerName: 'ซี', team: 'SV', target: 10, won: 4, weighted: 0, fcTotal: 4 },
+  ], [
+    { team: 'KA', target: 10, won: 9, weighted: 0, fcTotal: 9 },
+    { team: 'SV', target: 10, won: 4, weighted: 0, fcTotal: 4 },
+  ])]);
+
+  const bare = resolvePersonDrill(m, prev, 'u1');
+  assert.equal(bare.row.id, findPersonRow(m.people, 'u1').id);
+  assert.equal(bare.row.id, 'owner:KA:u1', 'ลิงก์ "ดูผลงานเต็ม" (user id เปล่า) ได้แถวของทีมที่เรียงก่อน');
+  assert.equal(bare.prev.id, 'owner:KA:u1');
+  assert.equal(bare.prev.actual[4], 9);
+
+  const odm = resolvePersonDrill(m, prev, 'owner:ODM:u1');
+  assert.equal(odm.row.id, 'owner:ODM:u1');
+  assert.equal(odm.prev, null, 'ปีก่อนไม่มีแถว ODM ของคนนี้ = ไม่มีฐาน YoY — ห้ามเอาแถว KA มาเทียบ');
+
+  const ghost = resolvePersonDrill(m, prev, 'u3');
+  assert.equal(ghost.row, null, 'คนที่ไม่มีแถวในปีที่ดู = ว่าง ห้ามถอยไปคนแรกของรายชื่อ');
+  assert.equal(ghost.prev, null);
+  assert.equal(resolvePersonDrill(m, prev, 'owner:SV:u1').row, null);
+
+  assert.equal(resolvePersonDrill(m, prev, '').row, m.people[0], 'ยังไม่ได้เลือกใคร = คนแรกของรายชื่อ (พฤติกรรมเดิม)');
+  assert.deepEqual(resolvePersonDrill(buildMatrix([]), null, 'u1'), { row: null, prev: null });
+  assert.deepEqual(resolvePersonDrill(buildMatrix([]), null, ''), { row: null, prev: null });
+});
+
+test('จอผลงาน: ตัวตนคนอ่านจากช่อง ownerId (ไม่แกะ id) · ลิ้นชักรายคนจำกัดทีม · heatmap บอกทีมทุกแถว · หาคนไม่เจอไม่ถอยไปคนแรก', () => {
+  const read = (path) => readFileSync(join(ROOT, path), 'utf8');
+  const board = read('src/components/salesPlanning/dashboard/performance/MorningBoard.js');
+  assert.doesNotMatch(board, /includes\(":"\)/, 'id เป็นคีย์ผสมแล้ว — ห้ามเดาแถว legacy จาก ":" ใน id');
+  assert.match(board, /ownerId: isPerson \? row\.ownerId \|\| null : null,/);
+  assert.match(board, /teamScoped: isPerson,/);
+  assert.match(board, /<Row key=\{p\.id\} row=\{p\} \/>/);
+  const drill = read('src/components/salesPlanning/dashboard/performance/DrillSection.js');
+  assert.match(drill, /resolvePersonDrill\(matrix, prevMatrix, person\)/);
+  assert.doesNotMatch(drill, /\|\| matrix\.people\[0\]/);
+  // ระหว่างโหลดครั้งแรก matrix ว่าง — ห้ามขึ้นป้าย "ไม่พบพนักงานที่เลือก" ก่อนข้อมูลมา
+  assert.match(drill, /personMissing: Boolean\(person\) && !loading/);
+  assert.match(drill, /\[scope, team, person, loading, matrix, prevMatrix\]/);
+  const heat = read('src/components/salesPlanning/dashboard/performance/YearHeatmap.js');
+  assert.match(heat, /\{p\.team \|\| NO_TEAM_LABEL\}/);
+  assert.doesNotMatch(heat, /\{p\.team && </);
+});
+
+
+/* ---------- วันนี้ (ข้อมูลจริง 14/09/2026: ไม่มีคนหลายทีม ไม่มียอดที่ทีมต่างจากบัญชี) ตัวเลขต้องเท่าเดิมทุกช่อง ----------
+   🧊 สำเนาตรรกะก่อนมติ 2026-09-14 — คีย์คน = ownerId ล้วน · overlay จับคนด้วย ownerId ·
+   roll up ตามทีมของแถวคนที่จับได้ · ห้ามแก้สำเนานี้ให้ตามโค้ดใหม่ มันคือไม้บรรทัด */
+const LEGACY_SIDE = ['pendingApproval', 'pendingApprovalCount', 'wonAwaitingSo', 'wonAwaitingSoCount'];
+const LEGACY_WON = ['wonAwaitingSo', 'wonAwaitingSoCount'];
+const legacyBlank = (axis, size) => ({
+  months: axis,
+  target: Array(size).fill(0),
+  fcTotal: Array(size).fill(0),
+  forecast: Array(size).fill(0),
+  actual: Array(size).fill(0),
+  pendingApproval: Array(size).fill(0),
+  pendingApprovalCount: Array(size).fill(0),
+  wonAwaitingSo: Array(size).fill(0),
+  wonAwaitingSoCount: Array(size).fill(0),
+});
+
+function legacyBuildMatrix(dashboards) {
+  const axis = monthsForYear(String(monthsOfDashboards(dashboards)[0] || '').slice(0, 4) || '');
+  const size = axis.length || 12;
+  const at = new Map(axis.map((key, i) => [key, i]));
+  const company = legacyBlank(axis, size);
+  const people = new Map();
+  const teams = new Map();
+  for (const d of dashboards || []) {
+    const mi = at.get(String(d.month || ''));
+    if (mi == null) continue;
+    const totals = d.totals || {};
+    company.target[mi] += Number(totals.targetAmount || 0);
+    company.fcTotal[mi] += Number(totals.fullForecast || 0);
+    company.forecast[mi] += Number(totals.weightedForecast || 0);
+    company.actual[mi] += Number(totals.wonValue || 0);
+    for (const k of LEGACY_SIDE) company[k][mi] += Number(totals[k] || 0);
+    for (const r of d.byOwner || []) {
+      const key = r.ownerId || `${r.team || 'none'}:${r.ownerName || 'ไม่ระบุ'}`;
+      if (!people.has(key)) people.set(key, { id: key, name: r.ownerName || 'ไม่ระบุ', team: r.team || null, ...legacyBlank(axis, size) });
+      const p = people.get(key);
+      p.target[mi] += Number(r.target || 0);
+      p.fcTotal[mi] += Number(r.fcTotal || 0);
+      p.forecast[mi] += Number(r.weighted || 0);
+      p.actual[mi] += Number(r.won || 0);
+      for (const k of LEGACY_SIDE) p[k][mi] += Number(r[k] || 0);
+    }
+    for (const r of d.byTeam || []) {
+      const key = r.team || 'ไม่ระบุทีม';
+      if (!teams.has(key)) teams.set(key, { team: key, ...legacyBlank(axis, size) });
+      const t = teams.get(key);
+      t.target[mi] += Number(r.target || 0);
+      t.fcTotal[mi] += Number(r.fcTotal || 0);
+      t.forecast[mi] += Number(r.weighted || 0);
+      t.actual[mi] += Number(r.won || 0);
+      for (const k of LEGACY_SIDE) t[k][mi] += Number(r[k] || 0);
+    }
+  }
+  return {
+    people: [...people.values()].sort((a, b) => teamRank(a.team) - teamRank(b.team) || a.name.localeCompare(b.name, 'th')),
+    teams: [...teams.values()].sort((a, b) => teamRank(a.team) - teamRank(b.team)),
+    company,
+    months: axis,
+  };
+}
+
+function legacyOverlayHistory(matrix, rows) {
+  const axis = matrix.company.months || [];
+  const size = matrix.company.target.length || axis.length || 12;
+  const indexOf = (period) => {
+    const key = String(period || '').slice(0, 7);
+    const onAxis = axis.indexOf(key);
+    if (onAxis >= 0) return onAxis;
+    if (axis.length) return -1;
+    const mi = Number(key.slice(5, 7)) - 1;
+    return mi >= 0 && mi < size ? mi : -1;
+  };
+  const teamKeyOf = (team) => team || 'ไม่ระบุทีม';
+  const teamRowOf = (team) => {
+    const key = teamKeyOf(team);
+    let t = matrix.teams.find((x) => x.team === key);
+    if (!t) { t = { team: key, ...legacyBlank(axis, size) }; matrix.teams.push(t); }
+    return t;
+  };
+  const clear = (r, mi) => { for (const k of LEGACY_WON) if (Array.isArray(r?.[k])) r[k][mi] = 0; };
+  const rollUp = (r, parts, mi) => {
+    for (const k of LEGACY_WON) if (Array.isArray(r?.[k])) r[k][mi] = parts.reduce((s, p) => s + Number(p?.[k]?.[mi] || 0), 0);
+  };
+  const personTouched = new Map();
+  const teamExplicit = new Map();
+  const companyExplicit = new Set();
+  for (const r of rows || []) {
+    const mi = indexOf(r.period);
+    if (mi < 0) continue;
+    const amt = Number(r.actualAmount || 0);
+    if (r.ownerId) {
+      let person = matrix.people.find((x) => x.id === r.ownerId);
+      if (!person) {
+        person = { id: r.ownerId, name: r.ownerName || r.ownerId, team: r.team || null, ...legacyBlank(axis, size) };
+        matrix.people.push(person);
+      }
+      person.actual[mi] = amt;
+      clear(person, mi);
+      const key = teamKeyOf(person.team);
+      if (!personTouched.has(key)) personTouched.set(key, new Set());
+      personTouched.get(key).add(mi);
+      continue;
+    }
+    if (!r.team) {
+      matrix.company.actual[mi] = amt;
+      clear(matrix.company, mi);
+      companyExplicit.add(mi);
+      continue;
+    }
+    const teamRow = teamRowOf(r.team);
+    teamRow.actual[mi] = amt;
+    clear(teamRow, mi);
+    const key = teamKeyOf(r.team);
+    if (!teamExplicit.has(key)) teamExplicit.set(key, new Set());
+    teamExplicit.get(key).add(mi);
+  }
+  const teamMoved = new Set();
+  for (const [key, indexes] of personTouched) {
+    const explicit = teamExplicit.get(key);
+    const team = teamRowOf(key);
+    const members = matrix.people.filter((p) => teamKeyOf(p.team) === key);
+    for (const mi of indexes) {
+      if (explicit?.has(mi)) continue;
+      team.actual[mi] = members.reduce((s, p) => s + Number(p.actual[mi] || 0), 0);
+      rollUp(team, members, mi);
+      teamMoved.add(mi);
+    }
+  }
+  for (const indexes of teamExplicit.values()) for (const mi of indexes) teamMoved.add(mi);
+  for (const mi of teamMoved) {
+    if (companyExplicit.has(mi)) continue;
+    matrix.company.actual[mi] = matrix.teams.reduce((s, t) => s + Number(t.actual[mi] || 0), 0);
+    rollUp(matrix.company, matrix.teams, mi);
+  }
+  return matrix;
+}
+
+/* ทุกคนมีทีมเดียวตลอดปี (ทีมบนยอด = ทีมในบัญชี) + แถว legacy ไม่มี ownerId + คนไม่มีทีม + แถวประวัติทุกชนิด */
+const singleTeamExtras = () => [
+  monthOf('2026-02', [
+    { ownerId: 'u5', ownerName: 'อี', team: null, target: 0, won: 8, weighted: 1, fcTotal: 9, wonAwaitingSo: 2, wonAwaitingSoCount: 1 },
+    { ownerId: null, ownerName: 'คนเก่า', team: 'SV', target: 0, won: 2, weighted: 0, fcTotal: 2 },
+    { ownerId: 'u2', ownerName: 'บี', team: 'SV', target: 20, won: 5, weighted: 0, fcTotal: 5, pendingApproval: 3, pendingApprovalCount: 1 },
+  ], [
+    { team: 'SV', target: 20, won: 7, weighted: 0, fcTotal: 7, pendingApproval: 3, pendingApprovalCount: 1 },
+    { team: null, target: 0, won: 8, weighted: 1, fcTotal: 9, wonAwaitingSo: 2, wonAwaitingSoCount: 1 },
+  ]),
+  monthOf('2026-06', [
+    { ownerId: 'u5', ownerName: 'อี', team: null, target: 10, won: 1, weighted: 0, fcTotal: 1 },
+    { ownerId: null, ownerName: 'คนเก่า', team: 'SV', target: 0, won: 4, weighted: 0, fcTotal: 4 },
+  ], [
+    { team: 'SV', target: 0, won: 4, weighted: 0, fcTotal: 4 },
+    { team: null, target: 10, won: 1, weighted: 0, fcTotal: 1 },
+  ]),
+];
+const todayCases = () => [
+  ['Won รอยื่น SO ไม่มีประวัติ', wonDashboards(), []],
+  ['Won รอยื่น SO + ประวัติรายคน', wonDashboards(), [{ period: '2026-03', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 70 }]],
+  ['Won รอยื่น SO + ประวัติรายทีม', wonDashboards(), [{ period: '2026-03', team: 'SV', ownerId: null, actualAmount: 30 }]],
+  ['Won รอยื่น SO + กรอกครบทุกคน', wonDashboards(), [
+    { period: '2026-03', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 70 },
+    { period: '2026-03', team: 'KA', ownerId: 'u3', ownerName: 'ซี', actualAmount: 10 },
+    { period: '2026-03', team: 'SV', ownerId: 'u2', ownerName: 'บี', actualAmount: 5 },
+  ]],
+  ['Won รอยื่น SO + แถวที่กรอกตรงชนะ + คนใหม่', wonDashboards(), [
+    { period: '2026-03', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 70 },
+    { period: '2026-03', team: 'KA', ownerId: null, actualAmount: 90 },
+    { period: '2026-03', team: null, ownerId: null, actualAmount: 500 },
+    { period: '2026-03', team: 'ODM', ownerId: 'u9', ownerName: 'ดี', actualAmount: 25 },
+  ]],
+  ['รออนุมัติ + ประวัติทุกระดับ', pendingDashboards(), [
+    { period: '2026-09', team: null, ownerId: null, actualAmount: 5000 },
+    { period: '2026-09', team: 'KA', ownerId: null, actualAmount: 4000 },
+    { period: '2026-09', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 3000 },
+    { period: '2026-09', team: 'SV', ownerId: 'u9', ownerName: 'ซี', actualAmount: 100 },
+  ]],
+  ['ปีจำลอง prod + รายคน', yearMonths('2026'), [
+    { period: '2026-02', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 45 },
+    { period: '2026-02', team: 'SV', ownerId: 'u2', ownerName: 'บี', actualAmount: 15 },
+  ]],
+  ['ปีจำลอง prod + บริษัทล้วน', yearMonths('2026'), [
+    { period: '2026-01', team: null, ownerId: null, actualAmount: 80 },
+    { period: '2026-02', team: null, ownerId: null, actualAmount: 60 },
+    { period: '2026-02', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 45 },
+    { period: '2026-01', team: 'SV', ownerId: 'u9', ownerName: 'ซี', actualAmount: 25 },
+  ]],
+  ['legacy + คนไม่มีทีม', singleTeamExtras(), [
+    { period: '2026-06', team: null, ownerId: 'u5', ownerName: 'อี', actualAmount: 4 },
+    { period: '2026-02', team: 'SV', ownerId: 'u2', ownerName: 'บี', actualAmount: 11 },
+  ]],
+];
+
+test('⭐ วันนี้ทุกคนมีทีมเดียว ⇒ matrix เท่าตรรกะเดิมทุกช่อง (ก่อน/หลัง overlay + แถวที่ยังไม่แยกทีม) — ต่างแค่ id กับช่อง ownerId', () => {
+  const strip = (m) => ({ ...m, people: m.people.map(({ id, ownerId, ...rest }) => rest) });
+  for (const [name, dashboards, rows] of todayCases()) {
+    const built = buildMatrix(dashboards);
+    const legacy = legacyBuildMatrix(dashboards);
+    assert.deepEqual(strip(built), strip(legacy), `${name}: buildMatrix`);
+    // id ใหม่ = คีย์ (ทีม, คน) · ownerId = id เดิมของแถวที่มีตัวตน (แถว legacy = null)
+    built.people.forEach((p, i) => {
+      const oldId = legacy.people[i].id;
+      const hadOwner = !oldId.includes(':');
+      assert.equal(p.ownerId, hadOwner ? oldId : null, `${name}: ownerId ของ ${oldId}`);
+      assert.equal(p.id, personSliceKey({ team: p.team, ownerId: p.ownerId, ownerName: p.name }), `${name}: id ของ ${oldId}`);
+    });
+
+    const overlaid = overlayHistory(buildMatrix(dashboards), rows);
+    const legacyOverlaid = legacyOverlayHistory(legacyBuildMatrix(dashboards), rows);
+    assert.deepEqual(strip(overlaid), strip(legacyOverlaid), `${name}: overlayHistory`);
+    assert.deepEqual(unallocatedRow(overlaid), unallocatedRow(legacyOverlaid), `${name}: unallocatedRow`);
+  }
 });

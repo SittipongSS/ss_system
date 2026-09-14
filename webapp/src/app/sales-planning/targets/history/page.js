@@ -16,7 +16,7 @@ import { MONTH_LABELS, TARGET_OWNER_ROLES } from "@/components/salesPlanning/ui"
 import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import {
   buildHistoryRows, historyRowKey, historySaveItems,
-  historyYearOptions, isMonthClosed, isMonthEditable, resolveYearTotal,
+  historyYearOptions, isMonthClosed, isMonthEditable, resolveYearTotal, systemHintCells,
 } from "@/lib/sales/historyEntry";
 import { fmtMoney, fmtMoneyCompact, naText } from "@/lib/format";
 import styles from "./page.module.css";
@@ -101,23 +101,12 @@ export default function SalesHistoryMonthlyPage() {
       if (!histRes.ok) throw new Error((await histRes.json().catch(() => ({}))).error || "โหลดประวัติไม่สำเร็จ");
       const { rows } = await histRes.json();
 
-      // ยอดที่ระบบรู้อยู่แล้ว แยกครบทั้งสามระดับ — บริษัทใช้ pre-fill · ทีม/คนใช้เป็น
-      // ตัวเลขใบ้ใต้ช่องเท่านั้น (ดูเหตุผลบนหัวไฟล์)
-      const sys = {};
-      if (dashRes.ok) {
-        for (const month of (await dashRes.json()).months || []) {
-          const mi = Number(String(month.month).slice(5, 7)) - 1;
-          if (mi < 0 || mi > 11) continue;
-          const put = (key, amount) => {
-            if (!(Number(amount) > 0)) return;
-            (sys[key] ||= {})[mi] = Number(amount);
-          };
-          put("company", month.totals?.wonValue);
-          for (const teamRow of month.byTeam || []) put(historyRowKey({ team: teamRow.team }), teamRow.won);
-          // ⚠️ ต้องส่งทีมเข้าไปด้วย — คีย์รายคนผูกกับทีม (คนย้ายทีมมีได้สองแถว)
-          for (const ownerRow of month.byOwner || []) put(historyRowKey({ team: ownerRow.team, ownerId: ownerRow.ownerId }), ownerRow.won);
-        }
-      }
+      // ยอดที่ระบบรู้อยู่แล้ว แยกครบทั้งสามระดับ — ทุกระดับเป็นตัวเลขใบ้ใต้ช่อง ไม่เติมให้เอง
+      // (ดูเหตุผลบนหัวไฟล์) · ⚠️ แต่ช่องของแถวบริษัทคือยอดที่ปุ่ม "เติมยอดจากระบบ" เขียนลง
+      // sales_history ⇒ คีย์ผิดตรงนี้ = ยอดผิดถูกบันทึกเป็นยอดจริงถาวร ไม่ใช่แค่ตัวเลขใบ้ผิด
+      // ⭐ ทีมตามดีล: คีย์ (ทีม, คน) มาจากทีมที่ประทับบนดีล ไม่ใช่ทีมในบัญชี
+      // ⚠️ กติกาข้ามถังไร้ทีม/แถวไม่มี ownerId และบวกเพิ่มแทนเขียนทับ อยู่ใน systemHintCells
+      const sys = dashRes.ok ? systemHintCells((await dashRes.json()).months) : {};
       // เปลี่ยนปีระหว่างรอ — ทั้งตารางต้องมาจากรอบเดียวกัน ไม่งั้นยอดระบบของปีหนึ่ง
       // ไปนั่งอยู่ใต้ช่องกรอกของอีกปี ซึ่งอ่านไม่ออกเลยว่าผิด
       if (!isLatest()) return;

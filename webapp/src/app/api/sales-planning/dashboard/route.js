@@ -4,9 +4,11 @@ import { bumpStamp, cachedJson } from '@/lib/serverCache';
 import { DASHBOARD_CACHE_PREFIX, dashboardCacheKey, loadDashboardStamp } from '@/lib/sales/dashboardStamp';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { currentMonth } from '@/lib/datePeriods';
-import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, normalizedOwnerName, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 import { isEmptyDashboardBucket, pendingApprovalFields, rollupPendingApproval } from '@/lib/sales/pendingApprovalRollup';
+import { addWonAwaitingSo, rollupWonAwaitingSo, wonAwaitingSoFields } from '@/lib/sales/wonAwaitingSoRollup';
 import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
+import { ownerBucketKey } from '@/lib/sales/ownerBucketKey';
 import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
@@ -72,8 +74,9 @@ async function loadAllDeals(supabase) {
   return deals || [];
 }
 
-// ตัวตน + ชื่อ/ทีมที่แสดง มาจากบัญชีผู้ใช้ปัจจุบัน ไม่ใช่ snapshot บนดีล/เป้า
+// "ใคร" (ตัวตน + ชื่อที่แสดง) มาจากบัญชีผู้ใช้ปัจจุบัน ไม่ใช่ snapshot บนดีล/เป้า
 // (ดูเหตุผลใน lib/sales/ownerIdentity) — โหลดหนึ่งครั้งต่อรอบ rebuild cache (5 นาที)
+// ⛔ "ทีมไหน" ไม่มาจากบัญชี — มาจากทีมที่ประทับบนดีล/เป้า (มติ 2026-09-14 · lib/sales/ownerBucketKey)
 async function loadOwnerResolver(supabase) {
   const directory = await loadUserDirectory(supabase);
   return buildOwnerResolver(directory.values());
@@ -161,10 +164,18 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
 
   // Per type: FC Total = Open + Won + Lost, Actual = Won actual,
   // FC remaining = Open only. Lost stays in FC Total so forecast misses remain visible.
-  const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0, ...pendingApprovalFields() }]));
+  /* ⭐ "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) ขี่กิ่ง Won ของทั้งสามลูป (หมวด/คน/ทีม) — ลงถัง `b`
+     ตัวเดียวกับที่ wonCount ลง ⇒ ถังของยอดนี้ = ถังของ Won โดยโครงสร้าง · เดือน = wonMonthOf
+     เหมือนดีล Won ที่ลูปรวมอยู่แล้ว (ต่างจากรออนุมัติที่ต้องเป็นรอบแยกเพราะเดือนคนละกติกา)
+     ⛔ ช่องแยก wonAwaitingSo/wonAwaitingSoCount เท่านั้น — ไม่แตะ won/actual/fcTotal/gap/pending
+     (กติกา + เหตุผลเต็มอยู่ที่ lib/sales/wonAwaitingSoRollup) */
+  const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0, ...pendingApprovalFields(), ...wonAwaitingSoFields() }]));
   for (const d of monthDeals) {
     const b = typeMap[dealTypeOf(d)];
-    if (isWon(d)) { b.actual += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
+    if (isWon(d)) {
+      b.actual += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1;
+      addWonAwaitingSo(b, d);
+    }
     else if (d.stage === 'lost') { b.fcTotal += forecastAmt(d); b.lostCount += 1; }
     else { b.fcRemaining += forecastAmt(d); b.fcTotal += forecastAmt(d); b.openCount += 1; }
   }
@@ -179,21 +190,23 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   // Team-level target rows (ownerId null) are aggregated in byTeam, not here.
   const ownerMap = {};
   const ownerBucket = (id, name, team) => {
-    // ตัวตนจริง = บัญชีผู้ใช้ปัจจุบัน (id ตรง หรือชื่อ snapshot ตรงบัญชีแบบไม่ชนกัน)
-    // → คนเดียวกันรวมถังเดียวเสมอ แม้ id เก่า/ใหม่ปน เปลี่ยนชื่อ หรือย้ายทีม และ
-    // ชื่อ/ทีมที่แสดง = ค่าปัจจุบันจากบัญชี. เดิม key ด้วยชื่อ+ทีม snapshot ล้วน —
-    // พอเปลี่ยนชื่อในบัญชี แถวเก่า/ใหม่แตกเป็นคนละถัง FC Total/คงเหลือกระจายจนดู
-    // "ของบางคนหาย" และชื่อบนหน้าไม่เคยตามบัญชี. จับไม่ได้ (เช่น คนลาออก id ก็
-    // stale) → ถอยไปถังชื่อ+ทีมเดิม — ประวัติยังโชว์ครบ ไม่หาย
+    /* ⭐ ถังคน = (ใคร, ทีมที่ประทับบนแถวต้นทาง) — มติผู้ใช้ 2026-09-14 "ทีมตามดีล"
+       ใคร    = บัญชีผู้ใช้ปัจจุบัน (id ตรง หรือชื่อ snapshot ตรงบัญชีแบบไม่ชนกัน) ⇒ id เก่า/ใหม่ปน
+                หรือเปลี่ยนชื่อ ยังรวมเป็นคนเดียว · ชื่อที่แสดง = ชื่อปัจจุบันจากบัญชี
+                (เดิม key ด้วยชื่อ snapshot ล้วน — เปลี่ยนชื่อแล้วแถวแตก ยอดดู "ของบางคนหาย")
+       ทีมไหน = `team` ที่ผู้เรียกส่งมา = deal.team (ดีล/รออนุมัติ/รอยื่น SO) หรือ t.team (เป้า)
+                ⛔ ไม่ใช่ทีมของบัญชี — เดิมใช้ acc.team ⇒ คนย้ายทีมลากยอดทีมเดิมไปทีมใหม่ และคนที่มี
+                ดีลสองทีมรวมเป็นแถวเดียว ⇒ แถวทีมไม่เท่าผลรวมคนใต้ทีม
+       ⇒ คนเดียวมีได้หลายถัง (ถังละทีม) · ถังทีม (ถัดลงไป) = Σ ถังคนของทีมเดียวกันเสมอ
+       จับบัญชีไม่ได้ (คนลาออก id stale) → ถังชื่อ+ทีม — ประวัติยังโชว์ครบ ไม่หาย
+       กติกาคีย์อยู่ที่ lib/sales/ownerBucketKey (เทสต์ได้) · ทีมมาจากคีย์แล้ว ถังเดิมจึงไม่ต้องเติมทีมทีหลัง */
     const acc = resolveOwner(id, name);
-    const cleanName = normalizedOwnerName(name);
-    const key = acc ? `u|${acc.id}` : (cleanName ? `${team || 'no-team'}|${cleanName}` : (id || 'unassigned'));
+    const key = ownerBucketKey({ acc, id, name, team });
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: acc?.id || id || null, ownerName: acc?.name || name || 'ไม่ระบุ', team: acc?.team || team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields() };
+      ownerMap[key] = { ownerId: acc?.id || id || null, ownerName: acc?.name || name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields() };
     } else {
       ownerMap[key].ownerId ||= id || null;
       ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;
-      ownerMap[key].team ||= team || null;
     }
     return ownerMap[key];
   };
@@ -203,7 +216,10 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   }
   for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = ownerBucket(d.ownerId, d.ownerName, d.team);
-    if (isWon(d)) { b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
+    if (isWon(d)) {
+      b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1;
+      addWonAwaitingSo(b, d);
+    }
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
@@ -214,7 +230,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields() };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields() };
     return teamMap[key];
   };
   // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
@@ -234,7 +250,10 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   }
   for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = teamBucket(d.team);
-    if (isWon(d)) { b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1; }
+    if (isWon(d)) {
+      b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1;
+      addWonAwaitingSo(b, d);
+    }
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
@@ -280,6 +299,9 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   // KPI เป้ารวม (ภาพรวมทั้งฝ่าย): ใช้เป้า SA รวมถ้าตั้งไว้ (ครอบทุกทีม) ไม่งั้นผลรวมรายทีม.
   const teamTargetSum = byTeam.reduce((sum, b) => sum + Number(b.target || 0), 0);
   const targetAmount = saWideTarget > 0 ? saWideTarget : teamTargetSum;
+  // ยอดรวมบริษัทของกองรอยื่น SO — จาก wonDeals ชุดเดียวกับที่ลูปถังข้างบนบวกลงถัง
+  // ⇒ Σ byTeam/byOwner/byType ของสองช่องนี้ = totals เสมอ (ถัง null ไม่ถูกตัด · ถังที่มียอดนี้มี wonCount ≥ 1)
+  const wonAwaitingSoTotals = rollupWonAwaitingSo(wonDeals);
 
   return {
     month,
@@ -300,6 +322,9 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
       // ยอด SO รออนุมัติ — ช่องแยกจาก wonValue เสมอ (ดูรอบรวมยอดด้านบน)
       pendingApproval: pendingApprovalTotals.pendingApproval,
       pendingApprovalCount: pendingApprovalTotals.pendingApprovalCount,
+      // ดีล "Won รอยื่น SO" (มูลค่าดีล · จำนวนดีล) — ช่องแยก ใช้ได้แค่ยอดคาดการณ์ ไม่ใช่ Actual/เป้า/ขาด-เกิน
+      wonAwaitingSo: wonAwaitingSoTotals.wonAwaitingSo,
+      wonAwaitingSoCount: wonAwaitingSoTotals.wonAwaitingSoCount,
     },
     byStage: Object.values(byStage),
     byForecast,
