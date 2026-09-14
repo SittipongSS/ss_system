@@ -307,11 +307,12 @@ export const GET = withUser(async ({ user, supabase }) => {
       const orderIds = financeRows.map((row) => row.id);
       // ⚠️ ไล่ทีละหน้า — ใบหนึ่งมีได้หลายงวด ⇒ คิวหลักร้อยใบก็แตะเพดาน 1,000 ของ
       // PostgREST ได้ · ตัดกลางทางเมื่อไร ใบท้าย ๆ จะกลายเป็น "ยังเก็บไม่ครบ" เงียบ ๆ
-      const { data: installments } = await fetchAllResult(() => supabase
+      // ⚠️ ซอยลิสต์ด้วย — ไล่หน้าอย่างเดียวส่งลิสต์ id ก้อนเดิมทุกหน้า ⇒ ใบรอบัญชีหลายร้อยใบชนเพดาน URL
+      const { data: installments } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
         .from('sales_order_installments')
         .select('"salesOrderId", status')
-        .in('salesOrderId', orderIds)
-        .order('id', { ascending: true }));
+        .in('salesOrderId', chunk)
+        .order('id', { ascending: true })));
       const byOrder = new Map();
       for (const row of installments || []) {
         const list = byOrder.get(row.salesOrderId) || [];

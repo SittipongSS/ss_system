@@ -57,9 +57,9 @@ const CAPS = {
   project_tasks: 21,            // 4,653 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
   notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
   personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
-  sales_deals: 30,              // 353
+  sales_deals: 29,              // 353
   products: 24,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ
-  quotations: 7,                // 198
+  quotations: 6,                // 198
   customers: 7,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ
   projects: 7,                  // 155
   dept_requests: 12,            // 74 · 188 (2026-09-11)
@@ -88,7 +88,7 @@ const CAPS = {
   sales_deal_forecast_lines: 5,
   /* 2026-09-14 — ขึ้นทะเบียนก่อนคีย์ใบสั่งขายย้อนหลัง (~220 ใบ · 379 บรรทัด · 379 รอบขายของโซน)
      ตารางกลุ่มนี้จะโตทันทีวันคีย์ ⇒ ตรึงจุดอ่านไร้ขอบเขตที่เหลือไว้ จุดใหม่ต้องห่อ fetchAll/fetchAllInChunks */
-  sales_order_lines: 7,
+  sales_order_lines: 6,
   service_zone_terms: 0,
   sales_contracts: 6,
   service_zones: 6,

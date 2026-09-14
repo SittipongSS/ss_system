@@ -23,12 +23,19 @@ const FILES = [
   'src/app/api/service/plans/route.js',
   'src/app/api/sales-planning/report/route.js',
   'src/lib/sales/handoffQueueData.js',
+  // รอบ review ของ P0 (2026-09-14)
+  'src/app/api/nav/counts/route.js',
+  'src/app/api/sales-planning/contracts/route.js',
+  'src/app/api/tax/orders/from-sales-order/route.js',
+  'src/lib/sales/contractQuotationSync.js',
 ];
 
 /* ข้อยกเว้นต้องมีเหตุผลด้านข้อมูล — ลิสต์ที่ไม่โตตามงานย้อนหลัง */
 const ALLOWED = new Set([
   // ใบเสนอราคา Won ในขอบเขตดีล/โครงการ/AE คนเดียว · ใบย้อนหลังไม่มี quotationId (มติข้อ 3)
   'src/lib/sales/handoffQueueData.js → quotations.map((quote) => quote.id)',
+  // คำสั่ง **เขียน** (ปิดร่างสัญญา) ของใบเสนอราคาใบเดียว — ลิสต์คือร่างที่ตามใบนั้น หลักหน่วย ไม่ใช่ตัวอ่านทะเบียน
+  'src/lib/sales/contractQuotationSync.js → followers.map((row) => row.id)',
 ]);
 
 const strip = (source) => source
@@ -77,7 +84,10 @@ test('ทุก .in() ในคำสั่งอ่านตารางสา�
       if (!TABLES.test(line)) return;
       const statement = statementFrom(lines, i);
       for (const arg of inArgs(statement)) {
-        if (arg === 'chunk' || arg.startsWith('[') || /^[A-Z_]+$/.test(arg) || /^['"]/.test(arg)) continue;
+        /* ข้ามได้เฉพาะ: ก้อนที่ซอยแล้ว · ค่าคงที่ · สตริงเดี่ยว · **array ของสตริงล้วน** เช่น ['pending_approval', 'rejected']
+           ⚠️ เดิมข้ามทุก `[...]` ⇒ `[...orderByPlan.keys()]` แบบไม่ซอยก็ผ่านยามไปเงียบ ๆ */
+        const literalArray = /^\[\s*(['"][^'"]*['"]\s*,?\s*)*\]$/.test(arg);
+        if (arg === 'chunk' || literalArray || /^[A-Z_]+$/.test(arg) || /^['"]/.test(arg)) continue;
         const key = `${file} → ${arg}`;
         if (!ALLOWED.has(key)) offenders.push(`${file}:${i + 1} → .in(…, ${arg})`);
       }
@@ -96,6 +106,7 @@ test('ตัวโหลดทั้งทะเบียนที่เคย�
     ['src/lib/pm/productionJobsRepo.js', /fetchAll\(\(\) => \{\s*\n\s*let query = supabase\s*\n\s*\.from\('sales_orders'\)/, 'autoDraft: ใบอนุมัติทั้งทะเบียน'],
     ['src/app/api/sales-planning/contracts/route.js', /fetchAllResult\(\(\) => \{\s*\n\s*let query = supabase\.from\('sales_contracts'\)/, 'ทะเบียนสัญญา (เดิม .limit(500))'],
     ['src/app/api/nav/counts/route.js', /fetchInChunks\(orderIds, \(chunk\) => fetchAllResult\(\(\) => supabase\.from\('sales_order_lines'\)/, 'ป้ายคิวผูกโซน'],
+    ['src/app/api/tax/orders/from-sales-order/route.js', /fetchAllResult\(\(\) => \{\s*\n\s*let query = supabase\s*\n\s*\.from\("sales_orders"\)/, 'ตัวเลือกยื่นภาษีจากใบสั่งขาย (เดิม .limit(200) ก่อนกรอง)'],
   ];
   const missing = must
     .filter(([file, pattern]) => !pattern.test(strip(fs.readFileSync(path.join(WEBAPP, file), 'utf8'))))
