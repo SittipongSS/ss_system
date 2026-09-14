@@ -29,14 +29,17 @@ async function loadLedger(supabase, todayIso) {
      แต่ยอดยังเดินตามแผนของ QT ⇒ ปล่อยเข้าทะเบียนเมื่อไร บัญชีเปิดมาเจอ **คิวเงินที่
      ยังไม่มีอยู่จริง** และยอดรวมทั้งหน้าผิดทันที
      ⚠️ กรองที่ query ไม่ใช่หลังโหลด — ทะเบียนนี้โตตามจำนวนงวดทั้งระบบ */
-  const { data: installments, error } = await supabase
-    .from('sales_order_installments').select('*').not('frozenAt', 'is', null);
+  const { data: installments, error } = await fetchAllResult(() => supabase
+    .from('sales_order_installments').select('*').not('frozenAt', 'is', null)
+    .order('salesOrderId', { ascending: true })
+    .order('seq', { ascending: true })
+    .order('id', { ascending: true }));
   if (error) throw error;
   const rows = installments || [];
   if (!rows.length) return [];
 
   const orderIds = [...new Set(rows.map((r) => r.salesOrderId).filter(Boolean))];
-  const { data: orders, error: orderError } = await supabase
+  const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
     /* 🐞 เคยใส่ team/ownerName ไว้ด้วย แล้ว PostgREST ตอบ 500 ทั้งหน้า:
        `column sales_orders.team does not exist` — ทีมกับผู้ดูแลอยู่ที่ **ดีล** ไม่ใช่ที่ใบ
@@ -49,7 +52,8 @@ async function loadLedger(supabase, todayIso) {
        บ่อยกว่าเลข SO เสียอีก ("PO ใบนี้เก็บเงินถึงไหนแล้ว") · หน้ารายการ SO ของ
        ฝ่ายขายค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017 แต่ทะเบียนนี้ยังไม่มีให้ค้น */
     .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount"')
-    .in('id', orderIds);
+    .in('id', chunk)
+    .order('id', { ascending: true })));
   if (orderError) throw orderError;
   const orderById = new Map((orders || []).map((o) => [o.id, o]));
 
@@ -58,9 +62,9 @@ async function loadLedger(supabase, todayIso) {
   const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
   const dealById = new Map();
   if (dealIds.length) {
-    const { data: deals, error: dealError } = await supabase
+    const { data: deals, error: dealError } = await fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase
       // `line` = สายธุรกิจ (สำเนาที่ดีลถือ) — ครึ่งหนึ่งของเกณฑ์ "ใบมีรอบบริการ"
-      .from('sales_deals').select('id, "ownerId", "ownerName", team, line').in('id', dealIds);
+      .from('sales_deals').select('id, "ownerId", "ownerName", team, line').in('id', chunk).order('id', { ascending: true })));
     if (dealError) throw dealError;
     (deals || []).forEach((d) => dealById.set(d.id, d));
   }
@@ -86,8 +90,8 @@ async function loadLedger(supabase, todayIso) {
   /* ⚠️ ก้อนนี้ใหญ่แน่ — ใบจริงมีได้ถึง 10 บรรทัดต่อใบ คูณทุกใบที่มีงวดตรึงแล้วทั้งระบบ
      ⇒ เกิน 1,000 แถวเป็นเรื่องปกติ ต้องมี `.order()` ที่นิ่ง ไม่งั้นบรรทัดหมวด 02-001
      ของบางใบจะหายไปในหน้าที่สอง แล้วใบนั้นกลายเป็น "ไม่ใช่ใบบริการ" แบบสุ่มทุกครั้งที่รีเฟรช */
-  const { data: orderLines, error: lineError } = await fetchAllResult(() => supabase
-    .from('sales_order_lines').select('id, "salesOrderId", "fgCode"').in('salesOrderId', orderIds).order('id'));
+  const { data: orderLines, error: lineError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_lines').select('id, "salesOrderId", "fgCode"').in('salesOrderId', chunk).order('id')));
   if (lineError) throw lineError;
   const linesByOrder = new Map();
   for (const line of orderLines || []) {
@@ -103,8 +107,8 @@ async function loadLedger(supabase, todayIso) {
   const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
   const quoteById = new Map();
   if (quoteIds.length) {
-    const { data: quotes, error: quoteError } = await supabase
-      .from('quotations').select('id, "quoteNumber"').in('id', quoteIds);
+    const { data: quotes, error: quoteError } = await fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
+      .from('quotations').select('id, "quoteNumber"').in('id', chunk).order('id', { ascending: true })));
     if (quoteError) throw quoteError;
     (quotes || []).forEach((q) => quoteById.set(q.id, q));
   }

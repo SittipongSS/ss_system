@@ -77,9 +77,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // จำนวนบรรทัดต่อใบ — บอกว่ากดเข้าไปดูในใบแล้วจะเจอกี่รายการ (รายการจริงอยู่ในใบ)
   const ids = inRange.map((o) => o.id);
-  const { data: lines, error: lineError } = ids.length
-    ? await supabase.from('sales_order_lines').select('"salesOrderId"').in('salesOrderId', ids)
-    : { data: [], error: null };
+  const { data: lines, error: lineError } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_lines').select('"salesOrderId"').in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true }).order('id', { ascending: true })));
   if (lineError) return fail(lineError.message, 500);
   const lineCount = new Map();
   for (const line of lines || []) {
