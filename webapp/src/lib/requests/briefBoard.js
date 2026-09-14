@@ -48,7 +48,10 @@ function directionRow(item, all = []) {
     outcome: item.outcome || null,
     outcomeLabel: item.outcome ? hopLabel('outcome', item.outcome) : null,
     outcomeTone: item.outcome ? OUTCOME_TONE[item.outcome] || 'neutral' : null,
-    outcomeNote: item.outcomeNote || null,
+    /* ⚠️ คอมเมนต์ "ขอให้แก้" โชว์ที่แถวรอบแก้ที่เดียว (เป็น "โจทย์รอบนี้") — ไม่พิมพ์ข้อความเดียวกันสองก้อนติดกัน
+       (2026-09-15 · ผู้ใช้: ตารางดูยาก · ทรงเดียวกับพัฒนาสูตร) · แถวที่ยังไม่มีรอบแก้ยังโชว์ที่ตัวเอง */
+    outcomeNote: item.outcome === 'revise' && (all || []).some((i) => i?.derivedFromItemId === item.id)
+      ? null : item.outcomeNote || null,
     confirmedQty: item.confirmedQty ?? null,
     stage,
     // ⚠️ ตารางใช้ตัดสินว่าจะโชว์กำหนดส่งไหม — แถวที่จบแล้วไม่ผูกกับกำหนดนี้อีก
