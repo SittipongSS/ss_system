@@ -1,0 +1,13 @@
+{
+  "unit": "U1",
+  "reason": "U1 ทะเบียนฐานข้อมูล (ลูกค้า · สินค้า · สูตร · กลิ่น · วัสดุ · พื้นที่บริการ) — รอย้ายเข้า ListPanel ตามมติผู้ใช้ 2026-09-15",
+  "files": [
+    "src/app/database/customers/page.js",
+    "src/app/database/formulas/page.js",
+    "src/app/database/page.js",
+    "src/app/database/products/page.js",
+    "src/app/database/scents/page.js",
+    "src/components/materials/MaterialRegistryPanel.js",
+    "src/components/service/CustomerZonesPanel.js"
+  ]
+}

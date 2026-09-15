@@ -6552,6 +6552,15 @@ button.ui-workspace-back {
   padding: 0;
 }
 
+/* ── แผงรายการ ListPanel (มติผู้ใช้ 2026-09-15) ──
+   overflow: clip ไม่ใช่ hidden — hidden ทำให้การ์ดเป็น scroll container ของ sticky ข้างใน (หัววัน /notifications)
+   clip ยังตัดพื้นหัวตามมุมมน · จำกัดเฉพาะแผงรายการ ไม่แตะ .ui-section ของอีก 32 ไฟล์ (ท่าเดียวกับ .main-content) */
+.ui-section.ui-list-panel { overflow: clip; }
+.ui-list-panel-header > .ui-section-title { flex: 1 1 auto; }
+.ui-list-panel-count { flex: none; white-space: nowrap; }
+.ui-list-panel-toolbar { min-width: 0; }
+.ui-list-panel-skeleton { display: flex; flex-direction: column; gap: var(--space-3); padding-block: var(--space-2); }
+
 /* จำนวนคอลัมน์มาจาก `data-cols` ที่ `MetricStrip` นับใบให้เอง (ดูคอมเมนต์ที่นั่น)
    ค่าตั้งต้น 4 ไว้เผื่อมีใครใส่คลาสนี้ตรง ๆ โดยไม่ผ่านคอมโพเนนต์
 
@@ -6711,6 +6720,10 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .premium-header h1 { align-items: flex-start; font-size: var(--fs-12); }
   .ui-section-header { align-items: stretch; flex-direction: column; }
   .ui-section-actions { justify-content: flex-start; }
+  /* ป้ายจำนวนอยู่แถวเดียวกับชื่อ (ภาพ /sa/quotations มือถือ: "295 ใบ" ห้อยแถวเดี่ยว) · ปุ่มใน actions ลงแถวสอง · (0,2,0) ชนะ .ui-section-header */
+  .ui-list-panel > .ui-list-panel-header { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+  .ui-list-panel-header > .ui-section-title { flex: 1 1 0; }
+  .ui-list-panel-header > .ui-section-actions { order: 3; flex-basis: 100%; }
   .ui-section-body { padding: var(--space-3-5); }
   .ui-metric { padding: var(--space-3); }
   .ui-metric strong { font-size: var(--fs-10); }
@@ -8042,6 +8055,10 @@ td > * > .text-action {
     right: 0;
     bottom: 0;
   }
+  /* แผงรายการบนกระดาษ: หัว + ตารางเท่านั้น — ช่องค้นหา/ตัวกรอง/แบ่งหน้าไม่มีความหมาย
+     และ clip ต้องปล่อย ไม่งั้นแถวที่ล้นหน้ากระดาษถูกตัดทิ้ง */
+  .ui-section.ui-list-panel { overflow: visible; box-shadow: none; }
+  .ui-list-panel-toolbar, .ui-list-panel [data-pager] { display: none; }
 }
 /* Interactive Cards */
 .interactive-card {

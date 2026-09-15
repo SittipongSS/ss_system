@@ -1,0 +1,10 @@
+{
+  "unit": "U7",
+  "reason": "U7 ไทม์ไลน์และรายการในหน้ารายละเอียดโครงการ/ดีล — รอย้ายเข้า ListPanel ตามมติผู้ใช้ 2026-09-15",
+  "files": [
+    "src/app/sa/projects/[id]/page.js",
+    "src/app/sales-planning/deals/[id]/page.js",
+    "src/components/pm/ProjectDealsHub.js",
+    "src/components/salesPlanning/DealTimelineTable.js"
+  ]
+}

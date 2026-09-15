@@ -54,3 +54,17 @@ test("แถบก้าวถัดไปยังปักหมุดด้�
   assert.match(css, /position:\s*sticky;/);
   assert.doesNotMatch(css, /position:\s*fixed;/);
 });
+
+/* ── แผงรายการ ListPanel ใช้ clip ไม่ใช่ hidden (มติผู้ใช้ 2026-09-15) ─────────────
+   `.ui-section` ตัวแม่ยังเป็น `overflow: hidden` (ตัดพื้นหัวตามมุมมน) ซึ่งทำให้การ์ด
+   เป็น scroll container ของ sticky ข้างใน · แผงรายการมีหัววันแบบ sticky อยู่ข้างใน
+   (/notifications) ⇒ ต้อง `clip` — ตัดพื้นหัวตามมุมมนได้เหมือนกัน แต่ไม่สร้าง scroll
+   container · ถ้าวันไหนมีคนเปลี่ยนกลับเป็น hidden หัววันจะหลุดจอเงียบ ๆ อีก */
+test("⭐ .ui-section.ui-list-panel ตัดด้วย clip ห้าม hidden/auto/scroll", () => {
+  const start = GLOBALS.indexOf("\n.ui-section.ui-list-panel {");
+  assert.ok(start > -1, "หา .ui-section.ui-list-panel ใน globals.css ไม่เจอ");
+  const block = GLOBALS.slice(start, GLOBALS.indexOf("}", start)).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(block, /overflow:\s*clip/, "แผงรายการต้องใช้ overflow: clip");
+  assert.doesNotMatch(block, /overflow(-x|-y)?:\s*(hidden|auto|scroll)/,
+    "hidden/auto/scroll ทำให้แผงรายการเป็น scroll container แล้ว sticky ข้างใน (หัววัน) ตาย");
+});

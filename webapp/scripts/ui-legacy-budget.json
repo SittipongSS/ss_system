@@ -3,8 +3,8 @@
   "modules": {
     "sales": {
       "legacyTable": 31,
-      "legacySurface": 73,
-      "inlineStyle": 871,
+      "legacySurface": 72,
+      "inlineStyle": 869,
       "rawButtonClass": 156,
       "rawInputClass": 49
     },

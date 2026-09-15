@@ -9,6 +9,7 @@
 - Design tokens และ shared classes: `src/app/globals.css`
 - Buttons: `src/components/ui/Button.js` (ปุ่มทั่วไป) และ `src/components/ui/ActionButtons.js` (ปุ่มตามความหมายของ workflow)
 - Page composition: `src/components/ui/Workspace.js`
+- Lists: `ListPanel` in `src/components/ui/Workspace.js` · gate `scripts/listPanelShape.mjs` via `listPanelShape.test.mjs`
 - Detail composition: `src/components/ui/DetailOverview.js`
 - Tables: `src/components/ui/Table.js`
 - Dashboards and charts: `src/components/ui/ChartCard.js` and `src/lib/chartTheme.js`
@@ -85,8 +86,10 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 
 ## Page contract
 
-1. เริ่มหน้าด้วย `Workspace` และส่ง `icon`, `title`, `subtitle`, `headerRight`, `toolbar` หรือ `rail` ผ่าน props
-2. ใช้ `WorkspaceSection`, `MetricStrip` และ `Metric` เมื่อต้องสร้าง section หรือ KPI strip แบบเดียวกับระบบบริหารงานขาย
+1. เริ่มหน้าด้วย `Workspace` และส่ง `icon` `title` `subtitle` `headerRight` `back` หรือ `rail` — **ไม่มี `toolbar` แล้ว** (มติผู้ใช้ 2026-09-15): เครื่องมือของรายการเป็นของ `ListPanel`
+   (prop ยังค้างในโค้ดจนงาน U0-Z ถอดทิ้ง — ใช้เมื่อไรตกด่าน LP1 ทันที)
+   - **1b.** รายการทุกชุดอยู่ใน `ListPanel` ใบเดียว — ดู §รายการ — `ListPanel`
+2. ใช้ `WorkspaceSection`, `MetricStrip` และ `Metric` เมื่อต้องสร้าง section หรือ KPI strip แบบเดียวกับระบบบริหารงานขาย · `WorkspaceSection` = ส่วนที่ไม่ใช่รายการ
    - `MetricStrip` **นับจำนวนช่องเอง** แล้วส่งออกเป็น `data-cols` — ใส่กี่ใบก็ได้ (รองรับ 1–6) ไม่ต้องแตะ CSS กลาง
      เกิน 6 ตกมาที่ 4 คอลัมน์ให้เห็นว่าผิด · แถบ KPI ที่ยาวกว่านั้นควรตัดตัวเลขทิ้งหรือย้ายลงตาราง
    - เส้นคั่นระหว่างช่องเป็น `gap: var(--rule)` บนพื้นสีเส้น **ไม่ใช่ `border-right` รายใบ** — เส้นจึงวางถูกเอง
@@ -94,7 +97,9 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
    - ≤900px บีบเหลือ 2 คอลัมน์เสมอ · **หมายเหตุยาวได้จำกัด** — `.ui-metric em` เป็น nowrap + ellipsis
      ยิ่งช่องเยอะยิ่งสั้นลง เขียนแบบ `ทัน 35/41 · ค้างตอนนี้ 23` พอ ยาวกว่านั้นโดนตัดกลางคัน
 3. ใช้ `KpiCard`, `Tabs`, `Select`, `SearchableSelect`, `FilterPopover`, `EmptyState`, `SkeletonRows`, `Toast` และ `FormActions` จาก `components/ui`
+   — ในรายการใช้ `EmptyState plain` และ prop `loading` ของ `ListPanel` (ไม่ใช่ `SkeletonRows` แทนทั้งแผง)
 4. ครอบตารางทุกชนิดด้วย `TableScroll` และระบุ `family="editable"` หรือ `family="matrix"` เมื่อไม่ใช่ list table
+   · ห้าม `TableShell` (ถอดแล้ว — import ใหม่ตกด่าน LP7 · ตัวไฟล์ลบในงาน U8) · ตารางรายละเอียดอยู่ใน `DetailCard`
 5. ครอบ Recharts ทุกตัวด้วย `ChartCanvas`; ใช้ `ChartCard`, `ChartTooltip`, `ChartEmptyState` และ `chartTheme` สำหรับโครงและสี
    - 🪤 **`<Pie>` ต้องใส่ `isAnimationActive={false}` เสมอ** — Recharts 3.9.2 เรนเดอร์ Pie ที่เปิดอนิเมชัน
      (ค่าเริ่มต้น) ออกมาเป็น sector เปล่าไม่มี `path` = **วงกลมหายทั้งวง และไม่มี error อะไรฟ้อง**
@@ -183,6 +188,178 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 / `.ui-section` แล้วถอดพื้น+เงาและเว้นขอบให้เอง ⇒ หน้าใหม่ไม่ต้องจำอะไรเพิ่ม
 ⚠️ ในเนื้อการ์ดที่มีระยะขอบของตัวเองแล้ว (`.ui-section-body`) กฎนี้เว้นระยะซ้ำไม่ได้ — reset เป็น 0
 
+## รายการ — `ListPanel` (มติผู้ใช้ 2026-09-15)
+
+สถานะ: **กำลังดำเนินการ** — primitive · ด่าน · หน้าต้นแบบ · `/sa/quotations` เสร็จแล้ว (U0-A) ·
+หน้าที่เหลืออยู่ในทะเบียนย้ายรายหน่วย `scripts/listPanelPending/<UNIT>.json`
+
+**รายการทุกชุดคือแผงเดียว** — ของที่เป็นระเบียนหลายแถว (ตาราง · การ์ด · ฟีด) วาดเป็น `ListPanel`
+ใบเดียว: หัว (ไอคอน · ชื่อ · คำอธิบาย | ป้ายจำนวนขวาสุด) → แถบเครื่องมือ → เนื้อ → Pager
+- ส่วนที่ไม่ใช่รายการ (ฟอร์ม · สรุป · กราฟ) ยังเป็น `WorkspaceSection`
+- ตารางระเบียนที่เกี่ยวข้องในหน้ารายละเอียดใช้ `DetailCard`
+- ของระดับหน้า (แท็บสลับชุดข้อมูล · แถวขอบเขต · MetricStrip · ApprovalQueue · ปุ่มสร้าง) อยู่เหนือแผง
+
+### โครงของแผง
+
+```
+section.ui-section.ui-list-panel[aria-labelledby]
+  > header.ui-section-header.ui-list-panel-header
+      > div.ui-section-title (ไอคอน · div > h2#id + p คำอธิบาย)
+      + div.ui-section-actions?              ← ปุ่มของแผง ซ้ายของป้าย
+      + span.ui-badge.ui-list-panel-count    ← ขวาสุด · role="status" เมื่อมี toolbar
+  > div.ui-section-body.ui-list-panel-body[aria-busy]
+      > div.toolbar.ui-list-panel-toolbar?   ← ListPanel ห่อให้เอง
+      + StatusNotice error? · EmptyState plain | TableScroll | การ์ด | ฟีด · nav[data-pager]
+```
+
+หัวแผงวาดด้วย `SectionTitle` ตัวเดียวกับ `WorkspaceSection` (markup สองสำเนาเพี้ยนหากันเสมอ) ·
+กฎ `.ui-section*` · ระยะตารางในการ์ด · reset ของ Pager · `scroll-margin-top` · `closestScrollSection()`
+ใช้ต่อทั้งหมด **ไม่มีโค้ดใหม่**
+
+### ต้นแบบ
+
+```jsx
+// ทะเบียนตาราง — /sa/quotations
+<SaWorkspace … headerRight={createButton}>
+  {pageNotices}{metricStrip}{approvalQueue}
+  <ListPanel
+    icon={<FileText size={17} aria-hidden="true" />}
+    title="ทะเบียนใบเสนอราคา"
+    subtitle="ค้นหา กรอง และเปิดเอกสารเพื่อดำเนินการต่อ"
+    count={`${filtered.length} ใบ`}
+    toolbar={<>
+      <div className="search-glass"><Search size={16} aria-hidden="true" /><input autoComplete="off" aria-label="ค้นหาใบเสนอราคา" … /></div>
+      {waitingOnMeOnly && <Button size="sm" …>กรอง: รอฉันลงมือ ×</Button>}
+      <FilterPopover …/><GroupMenu …/>{!!buckets?.length && <CollapseAllButton …/>}
+      <div className="spacer" /><SortMenu …/><SortDirButton …/>
+    </>}
+  >
+    {error && <StatusNotice tone="error" action={retry}>{error}</StatusNotice>}
+    <TableScroll aria-busy={loading} surface="auto">…</TableScroll>
+    {filtered.length > 0 && !buckets && <Pager …/>}
+  </ListPanel>
+</SaWorkspace>
+
+// สลับตาราง/การ์ด — /database/customers
+<Workspace … headerRight={addButton} rail={<>{statCards}<ApprovalQueue …/></>}>
+  <ListPanel
+    icon={<Building2 size={17} aria-hidden="true" />}
+    title="ทะเบียนลูกค้า"
+    subtitle="ค้นหาชื่อ รหัส AR เลขผู้เสียภาษี สาขา หรือแบรนด์"
+    count={loading ? null : `${sort.sorted.length} รายการ`}
+    loading={loading}
+    toolbar={<>{searchGlass}<FilterPopover …/><div className="spacer" />{tableCardsSegmented}</>}
+  >
+    {!pageRows.length
+      ? <EmptyState plain icon={Building2}>…</EmptyState>
+      : view === "cards" ? <div className={…}>{/* การ์ดเดิม */}</div> : <TableScroll surface="auto">…</TableScroll>}
+    {pageRows.length > 0 && <Pager …/>}
+  </ListPanel>
+  {modals}
+</Workspace>
+```
+
+ดูของจริงที่กดได้ที่ `/settings/design-preview` กลุ่ม "แสดงข้อมูล" (ปุ่ม "จำลองโหลดใหม่")
+
+### วางอะไรไว้ที่ไหน
+
+| เหนือแผง (ลูกของ `Workspace` · `rail` · `headerRight`) | ใน `toolbar` |
+|---|---|
+| `Tabs` เส้นใต้ที่สลับ **ชุดข้อมูล** (support admin · service/assets · service/intake · contracts · commercial-presets) | ช่องค้นหา `.search-glass` (`autoComplete="off"` + `aria-label` · ไม่ตั้งความกว้างเอง) |
+| แถวขอบเขต ของฉัน/ทีม/ทั้งหมด · Segmented ฝ่าย · `MyTeamsFilter` (`.scope-row`) | `FilterPopover` · ชิปล้างตัวกรองที่ใช้อยู่ |
+| `MetricStrip` · `QueueCountStrip` · StatCards · `ApprovalQueue` | `GroupMenu` · `CollapseAllButton` |
+| `StatusNotice` · `AlertBanner` · `StartHereCard` ระดับหน้า | `<div className="spacer" />` |
+| `FilterPopover`/Select ช่วงเวลาที่คุม **หลายบล็อก** → `headerRight` | `SortMenu` + `SortDirButton` หรือ `SortControl` |
+| ปุ่มสร้าง/ส่งออก → `headerRight` (เปลือกตั้งค่า: ปุ่มสร้างอยู่ใน `actions` ของแผงได้ · มติ 2026-08-21) | Segmented/ชิปของรายการนี้เท่านั้น · `ViewSwitcher` หรือ Segmented ตาราง/การ์ด |
+| | ช่วงวันที่ · เลื่อนสัปดาห์/เดือน ที่ขยับเฉพาะแถวในแผงนี้ |
+
+- **ห้ามห่อ `.toolbar` ซ้ำ** — ส่งตัวควบคุมเป็น fragment · ListPanel ห่อ `.toolbar` ให้เอง
+- เนื้อเรียงตามนี้: ① โหลดรายการไม่สำเร็จ = `<StatusNotice tone="error" action={ลองใหม่}>` (กล่อง glass-panel สีแดงถูกถอด)
+  ② `EmptyState plain` หรือ `TableScroll` (surface ค่าตั้งต้น) หรือกริดการ์ด หรือฟีด ③ `Pager` (ซ่อนตอนจัดกลุ่ม)
+- **รายการละหนึ่งแผง ไม่ซ้อนแผง** · หน้าเปลือกตั้งค่าที่มี 2 แผงขึ้นไปคง wrapper `flex flex-col gap-4`
+- โมดัลกับ `Toast` อยู่นอก children ของแผง
+- การ์ดของมุมมองการ์ด **ยังเป็นการ์ดเดิมในเนื้อแผง** (มติ D6 · ไม่แบนในงานนี้)
+- `TableScroll` ในแผงใช้ surface ค่าตั้งต้น (auto) · `surface="embedded"` เดิมหน้าตาเท่ากันใน `.ui-section-body`
+  เปลี่ยนเฉพาะบรรทัดที่แตะอยู่แล้ว และเฉพาะที่ไม่มีเทสต์ตรึงไว้
+
+### ป้ายจำนวน (`count`)
+
+- นับ **ระเบียนที่มองเห็นหลังค้นหาและกรองทุกตัว รวมทุกหน้า** = ยอดของ `Pager` · ไม่นับกลุ่ม (rd/perfumers นับกลิ่น ไม่ใช่กอง)
+- ข้อความพร้อมหน่วย (`295 ใบ`) · กำลังเลือกแถว = `เลือก x/y ใบ`
+- `N จาก M` ได้เมื่อกรองอยู่และหน้านั้นไม่มียอดรวมใน MetricStrip (มติ D5) · ชิปประเภทเปิดอยู่ = `N จาก M` (มติ D4)
+- ก่อนมีข้อมูลส่ง `null` ⇒ ขีด `—` · **ห้ามละ prop** (dev แจ้ง `console.error` · ด่าน LP5)
+- เลขเดียวกันห้ามโผล่ซ้ำใน `headerRight` ของหน้า หรือในคำอธิบาย (ด่าน LP9)
+
+### โหลด (`loading`)
+
+- ส่ง `loading` **เฉพาะตอนไม่มีแถวให้โชว์** — โหลดครั้งแรก หรือค้นหาฝั่ง server ที่ล้างแถว
+- `loading` แทนที่ **เฉพาะเนื้อ** ด้วย skeleton แบน ๆ — หัวกับแถบเครื่องมือยังอยู่ ⇒ ช่องค้นหาไม่หลุดโฟกัสระหว่างโหลดใหม่
+- โหลดซ้ำที่ยังมีแถวอยู่ใช้ `aria-busy` บน `TableScroll` แทน
+- ห้าม `Workspace loading` คู่กับแผงที่มี `toolbar` ในไฟล์เดียวกัน (ด่าน LP6) — ถอดทั้งหน้ารวมช่องค้นหาที่พิมพ์อยู่
+
+### มือถือ ≤640px
+
+ป้ายจำนวน **อยู่แถวเดียวกับชื่อแผง** (ภาพ /sa/quotations มือถือเดิม: "295 ใบ" ห้อยเป็นแถวเดี่ยว) · ปุ่มใน `actions`
+ตัดลงแถวที่สอง (`order: 3; flex-basis: 100%`) · กฎอยู่ในบล็อก 640 เดิมของ `globals.css` ความจำเพาะ (0,2,0) ชนะ
+`.ui-section-header { flex-direction: column }`
+
+### ทำไม `overflow: clip`
+
+`.ui-section` ตัวแม่เป็น `overflow: hidden` เพื่อตัดพื้นหัวตามมุมมน แต่ hidden ทำให้การ์ดเป็น scroll container
+⇒ `position: sticky` ของลูก (หัววันของ /notifications) ไปยึดกับการ์ดที่ไม่เคยเลื่อน · `clip` ตัดมุมได้เหมือนกัน
+แต่ไม่สร้าง scroll container · จำกัดเฉพาะ `.ui-section.ui-list-panel` ไม่แตะ `.ui-section` ของไฟล์อื่น
+(ท่าเดียวกับ `.main-content`) · ล็อกไว้ที่ `stickyScrollport.test.mjs` · ตอนพิมพ์ปล่อยเป็น `visible` และซ่อนแถบเครื่องมือกับ Pager
+· เมนูลอย (`FilterPopover` · `MenuSelect`) ใช้ portal จึงไม่โดนตัด
+
+### มติที่ถูกแทน
+
+- **2026-09-07 หัวการ์ดคิวคำร้อง** (`sectionHeader={false}`) → คิวได้หัว `ListPanel` กลับมา (มติ D1 = ใช่ · งาน U6)
+- **2026-09-15 `ViewSwitcher` ของ /service/intake ใน `headerRight`** → ย้ายเข้า `toolbar` ของแผง (งาน U3)
+- **`TableShell`** → `ListPanel` + `TableScroll` (รายการ) · `DetailCard` + `TableScroll` (รายละเอียด) · ตัวไฟล์ลบในงาน U8
+- **`Workspace toolbar`** → `ListPanel toolbar` · แท็บที่สลับชุดข้อมูลวางเป็นลูกคนแรกของ `Workspace` · prop ถอดในงาน U0-Z
+
+### ด่าน `LIST_PANEL_SHAPE` — `scripts/listPanelShape.mjs` (hard-zero · test-hosted)
+
+บ้านของด่านคือ `src/components/ui/listPanelShape.test.mjs` (ท่าเดียวกับ `previewCoverage`) · ไม่มีเพดาน ·
+พาร์สด้วย `@babel/parser` (ประกาศใน devDependencies) · พาร์สไม่ผ่าน = ความผิด ไม่ใช่ศูนย์เงียบ ·
+รันรายไฟล์: `node scripts/listPanelShape.mjs <ไฟล์…>` (การตามผู้เรียกยังอ่านทั้งต้นไม้)
+บทบาทผูกกับ **แหล่ง import จริง** (ชื่อเล่นไม่หลุด) · คอมโพเนนต์ถูกตัดสินตาม **ผู้เรียกทุกราย** (ลึก ≤ 4 ชั้น ·
+รวม re-export) · ความผิดบันทึกที่ไฟล์ของ element ⇒ คอมโพเนนต์ต้องย้ายในหน่วยเดียวกับผู้เรียกทั้งหมด
+
+| กฎ | ตกเมื่อ |
+|---|---|
+| LP1 `WORKSPACE_TOOLBAR` | ส่ง `toolbar` ให้ `Workspace` (React ทิ้ง prop ที่ไม่รู้จักเงียบ ๆ) |
+| LP2 `PAGER_OUTSIDE_LIST_PANEL` | `Pager` (รวม Pager ใน `DataList` ผ่านผู้เรียก) ไม่อยู่ในเนื้อ `ListPanel` หรือโมดัล |
+| LP3 `LIST_CONTROL_OUTSIDE_TOOLBAR` | ตัวควบคุมรายการ · `.search-glass` · `.toolbar` ไม่อยู่ใน `ListPanel toolbar` หรือโมดัล (`.toolbar` ใน toolbar ของแผงก็ผิด) |
+| LP4 `FLOATING_LIST_TABLE` | `TableScroll` family list / `DataList` ลอยใน `Workspace` ของ static route · family ที่ไม่ใช่ค่าคงที่ |
+| LP5 `LIST_PANEL_SHAPE` | แผงขาด icon/title/count หรือ spread · `EmptyState` ไม่ plain · Skeleton ในแผง · แผงซ้อนแผง |
+| LP6 `LOADING_UNMOUNTS_TOOLBAR` | `Workspace loading` + แผงมี toolbar · สลับ Skeleton กับแผงที่มี toolbar ทางไหนก็ตาม: `?:` · `&&` · if/else · `if (…) return <Skeleton/>` ก่อน return แผง · `{x && <Skeleton/>}{!x && <แผง>}` (ตาม const/let/คอมโพเนนต์ฝั่งแผง) — ยกเว้นเงื่อนไขที่อ่านแค่ผล `accessState()` (ด่านสิทธิ์ครั้งแรก) |
+| LP7 `RETIRED_API` | import `TableShell`/`TableToolbar`/default ของ `ui/Table` · `sectionHeader` บน `RequestQueuePanel` |
+| LP8 `RAW_PANEL_MARKUP` | เขียนคลาส `ui-section*`/`ui-list-panel*` เองนอก `components/ui` |
+| LP9 `COUNT_IN_PAGE_HEADER` | ป้ายจำนวน (`ui-badge` · `pill` · `status-pill` · `CountBadge`) ใน `headerRight` ของไฟล์ที่มีแผง |
+| LP-PREVIEW | หน้าต้นแบบอยู่นอก LP2/LP3/LP9 แต่ต้องสาธิตแผงที่มี count + toolbar + TableScroll + Pager และ `<code>ListPanel</code>` |
+| LP10 `ADOPTER_LOCK` | (เพิ่มในงาน U0-Z) ไฟล์ที่ย้ายแล้วต้องยังวาด `ListPanel` |
+
+ข้อเท็จจริงที่ยอม (ตรวจใหม่ทุกรอบ ไม่มีลิสต์ไฟล์): **F1** `.toolbar` ที่มี `TableScroll family="editable"` เป็นพี่น้อง
+ใต้ element แม่ตัวเดียวกัน (ตารางย่อยในฟอร์ม · ไม่มองทะลุคอมโพเนนต์ · `.toolbar` ในช่อง attribute ไม่ได้สิทธิ์) ·
+**F2** `.toolbar` ลูกคนเดียวของ `WorkspaceSection` (การ์ดตัวกรองของแดชบอร์ด · คลี่ fragment ก่อนนับ) ·
+**F3** `FilterPopover` ใน `headerRight` ของไฟล์ที่ไม่มีแผงและไม่มี Pager (ตัวกรองทั้งหน้า) ·
+**F4** `ViewSwitcher` ใน `actions` ของแผง
+
+**ทะเบียนย้าย** `scripts/listPanelPending/<UNIT>.json` = `{ unit, reason, files }` — ไฟล์ในทะเบียนรวมกันต้อง
+**เท่ากับชุดไฟล์ที่ผิดเป๊ะ** · ไฟล์เดียวอยู่สองทะเบียนไม่ได้ · ทะเบียนว่าง = ลบไฟล์ · ทุกไฟล์ ⊆ `LIST_PANEL_BASELINE`
+ที่แช่แข็งไว้ (ทะเบียนหดได้อย่างเดียว) · ชื่อทะเบียนต้องเป็นหน่วยในแผน (U1…U8 · UP) · ทะเบียนที่พักตามมติ
+(UP · สหมิตรพัก 2026-09-08) ต้องมีเหตุผลที่อ้างวันที่ และไฟล์สหมิตรต้องอยู่ใน `UP.json` เท่านั้น
+แต่ละหน่วยแก้ **เฉพาะทะเบียนของตัวเอง** · ข้อยกเว้น `LIST_PANEL_EXEMPT` (ในเทสต์) รับเฉพาะมติเจ้าของที่ปฏิเสธ
+(D1 · D4) พร้อม witness + เหตุผล ≥ 60 ตัวอักษร — witness จับคู่กับ `panelTitle` ที่ด่านรายงานบนทุกความผิด
+(`{ panelTitle }` = ชื่อแผงที่สังกัด · `{ headlessSection: true }` = ความผิดที่ไม่มีแผง) ยกเว้นเฉพาะจุดที่ตรง
+และต้องตรงอย่างน้อยหนึ่งจุด ไม่งั้นตกเป็นข้อยกเว้นค้าง
+
+🕳️ **จุดบอดที่รู้ตัว** — คอมโพเนนต์ที่ส่งเป็นค่า/ทะเบียน map/dynamic import (UNRESOLVED) · `cloneElement` ·
+ชื่อที่ถูกบัง · className ที่ประกอบตอนรัน · `children` ของคอมโพเนนต์ถือว่าวางตรงที่ element วาง ·
+Segmented เป็นขอบเขตหน้าหรือรายการ (กติการีวิว) · ทะเบียนที่ไม่มีตัวควบคุมและไม่มี Pager ใน `WorkspaceSection`/การ์ด
+มีกรอบ และตารางลอยในหน้ารายละเอียด — ปิดด้วยงานย้ายตามขอบเขต · LP10 หลังปิดงาน · และรีวิว
+
 ## เปลือกตั้งค่า — `/settings` · `/users` · `/audit` (มติผู้ใช้ 2026-08-20)
 
 ทั้งสามรากนี้เป็น **บริบทเดียวกัน** (`SETTINGS_PATHS`) และใช้เปลือกร่วม `SettingsShell`
@@ -193,7 +370,7 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 2. **ห้ามใส่ปุ่ม "กลับหน้าตั้งค่า"** — แถบข้างค้างอยู่ทุกหน้าแล้ว ปุ่มถอยกลับคือทางเดินซ้ำที่กินพื้นที่หัวหน้า
    (`AccessDenied` ยังมี `back` ได้ เพราะคนที่ไม่มีสิทธิ์ไม่ได้เห็นแถบข้างของหน้านั้น)
 3. **หัวหน้ามาจาก `Workspace` เท่านั้น** — ห้าม `hideHeader` แล้ววาด `.premium-header` เอง
-   ปุ่ม/ป้ายของหน้าไปที่ `headerRight` · หัวข้อย่อยในหน้าใช้ `WorkspaceSection` ทุกใบ
+   ปุ่ม/ป้ายของหน้าไปที่ `headerRight` · หัวข้อย่อยในหน้าใช้ `WorkspaceSection` ทุกใบ (รายการใช้ `ListPanel`)
 4. **ตัวสลับสิ่งที่กำลังดูใช้ `Tabs` ตัวเดียว** (เส้นใต้) — ไม่ใช่ปุ่มการ์ด/ชิป/กริดที่เขียนสไตล์เอง
    ส่วน `.segmented` ยังเป็นตัวกรอง/สลับโหมด *ภายในหน้า* ตามกติกาเดิม
 5. แถบตัวเลขสรุปใช้ `MetricStrip` + `Metric` — ไม่ใช่ `.kpi-grid` ที่ตัดคอลัมน์ตายตัว
@@ -534,7 +711,7 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 | `BREAKPOINT_CAP` | 13 | 5 ค่าที่ยังไม่ยุบ: **800 · 820 · 1050 · 1100 · 1120** — ช่วงที่เปลี่ยนชนความกว้างอุปกรณ์จริง (iPad Air แนวตั้ง ฯลฯ) |
 | `TW_NAMED_OPACITY_CAP` | 10 | ความจางที่เขียนเป็นชื่อขั้นของ Tailwind (`opacity-70` ×7 · `opacity-50` ×2 · `opacity-80` ×1) · 🪤 **ผิว `className` ของสเกลอื่นเป็น hard-zero หมด แต่ตัวนี้เป็นเพดาน** เพราะยกเข้าโทเคนแล้ว**หน้าตาเปลี่ยนจริง**: `opacity-70` คาย `opacity: 70%` (วัดด้วย `compile()`) ส่วนบันไดของระบบมีสองขั้นคือ 0.45/0.55 ⇒ ต้องมีคนเปิดหน้าดูก่อนตัดสินว่าจะขึ้นหรือลง · รูปที่ถูกคือ `opacity-[var(--op-disabled)]` |
 | `RAW_SPACING_JSX_CAP` | 751 | ระยะห่างในผิว `style={{…}}` — **สเกลที่ใหญ่ที่สุดของระบบและเป็นผิวสุดท้ายที่ไม่มีด่าน** · ตัวเลขเปล่าคือ px (react-dom ไม่มีพร็อพกลุ่มนี้ในลิสต์ unitlessNumbers) ⇒ `padding: 12` เป็นเลขดิบเต็มตัว · ข้าม `%`/`calc()`/นิพจน์ เพราะไม่มีปลายทางเป็นโทเคน · 🔒 กันด้วย `rel.endsWith(".js")` เพราะชื่อพร็อพสะกดเหมือน CSS ทุกตัว และ lookbehind ไม่กัน `-` (คำว่า `width` ใน `min-width:` ก็ติด) · 📉 **757 → 754 (2026-09-06)** แถวย้อนกลับของหน้าสินค้ากับ shipment-prep เลิกเขียน inline style เอง · 📉 **754 → 751 (2026-09-07)** โมดัลสร้างใบยื่นชำระยกสไตล์ทั้งชุดไปไว้ใน CSS module |
-| `RAW_SIZE_JSX_CAP` | 322 | ขนาดในผิว `style={{…}}` · **ไม่ใช่หนี้รอแปลงเป็นโทเคน** — สเกลนี้ไม่มีบันไดตัวเลข มีแต่ชื่อตามบทบาท ⇒ เป็น **สายสะดุด**: ขนาดของ control ตัดสินที่ primitive แล้ว (`--ctl-h`) เขียนซ้ำที่ปลายทางคือทับของที่ตัดสินไปแล้ว |
+| `RAW_SIZE_JSX_CAP` | 321 | ขนาดในผิว `style={{…}}` · **ไม่ใช่หนี้รอแปลงเป็นโทเคน** — สเกลนี้ไม่มีบันไดตัวเลข มีแต่ชื่อตามบทบาท ⇒ เป็น **สายสะดุด**: ขนาดของ control ตัดสินที่ primitive แล้ว (`--ctl-h`) เขียนซ้ำที่ปลายทางคือทับของที่ตัดสินไปแล้ว |
 | `RAW_TAILWIND_SPACING_CAP` | 26 | ระยะห่างดิบใน `className` — **23 จาก 32 (72%) ตรงขั้น `--space-*` เป๊ะ** ยกได้โดยพิกเซลไม่ขยับ · เหลือ `mb-[22px]` ×9 (ฟอร์มลูกค้า/สินค้า) ที่ 22px ไม่มีขั้นรองรับ ต้องมีคนเปิดหน้าดู · 📉 **32 → 29 (2026-09-06)** `mt-[18px]` สามจุดหายไปพร้อมกล่องครอบที่มีไว้เว้นระยะอย่างเดียว — `.ui-workspace` ออก `gap` ให้เองแล้ว · 📉 **29 → 26 (2026-09-11)** แถวสวิตช์ของแบบฟอร์ม PDR (`gap-[14px]` ×3) ยุบเป็น `SwitchRow` ตัวเดียวใน `PdrForm.js` |
 | `RAW_TAILWIND_SIZE_CAP` | 13 | **สเกลนี้ไม่เคยมี cap มาก่อนเลยทั้งสามผิว** · ไม่ใช่หนี้รอแปลงเป็นโทเคน — เป็น **สายสะดุด**: ขนาดของ control ถูกตัดสินที่ primitive แล้ว (`--ctl-h`) เขียนที่ปลายทาง = ทับของที่ตัดสินแล้ว · 2 ใน 13 เป็น *ข้อความอธิบายกฎ* บนหน้า design-preview (ห้ามแก้เพื่อลดเลข) |
 | `RAW_RADIUS_JSX_CAP` | 72 | ความมนมุมดิบใน `style={{…}}` 28 ไฟล์ — **38 จาก 72 ยกเข้าโทเคนได้โดยไม่ขยับพิกเซล** (8px → `--radius` ×23 · 10px → `--radius-md` ×14 · 999px → `--radius-full`) อีก 35 อยู่ระหว่างขั้น |
@@ -546,6 +723,7 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 | `ROW_MIRROR` | **0** (hard-zero · ไม่มีเพดานให้ไต่) | ทุกที่เรียก `<DetailRow href={X}>` ต้องมี `<Link href={X}>` **ข้อความนิพจน์เดียวกันเป๊ะ** อยู่ในเซลล์ (ปกติเซลล์แรก) · ไม่ใช่ด่านแยกต่างหาก แต่เป็น **เงื่อนไข** ที่ทำให้ `<tr onClick>` ของ `DetailRow` ถูกหักออกจากด่านคีย์บอร์ดได้ — ผ่อนเมื่อไหร่ `<tr onClick>` นั้นกลับมาเป็นความผิด 1 จุด และด่านคีย์บอร์ดเป็น hard-zero ⇒ CI แดงสองด่านพร้อมกัน · 🪤 เทียบ **ปลายทางที่ตรงกัน** ไม่ใช่ "มีอะไรโฟกัสได้ก็พอ": แถวที่มีแค่ปุ่ม "ลบ" หรือลิงก์ดินสอ `?edit=1` ยัง **ตก** เพราะ *การเปิดรายละเอียด* ยังเข้าไม่ถึงด้วยคีย์บอร์ด · ⚠️ **ตรวจไม่ได้ 5 ข้อ** (ลิงก์ที่เรนเดอร์มีเงื่อนไข · ลิงก์ที่ยกไปคอมโพเนนต์ลูก · `href` คนละข้อความแต่ปลายทางเดียวกัน · ลิงก์ที่ซ่อน/`aria-hidden` · วงโฟกัสและลำดับโฟกัส 2.4.7/2.4.3) — เขียนไว้ครบเหนือ `const ROW_PRIMITIVE` ใน `audit-ui.mjs` · ยืนยันด้วยมือ 2026-09-02 ว่าทั้ง 8 จุดเป็นลิงก์ที่เรนเดอร์ **ไม่มีเงื่อนไข** · 🔗 มีฝาแฝดฝั่งการ์ดชื่อ `CARD_MIRROR` แถวถัดไป — **ตัวจับเป็นฟังก์ชันเดียวกัน** (`mirrorMisses(rel, lined, tag)`) ไม่ใช่ก๊อปที่สอง |
 | `CARD_MIRROR` | **0** (hard-zero · ไม่มีเพดานให้ไต่) | ฝาแฝดฝั่งการ์ดของ `ROW_MIRROR` (2026-09-02) — ทุกที่เรียก `<ClickableCard href={X}>` ต้องมี `<Link href={X}>` **ข้อความนิพจน์เดียวกันเป๊ะ** อยู่ในการ์ด (ปกติที่หัวการ์ด) · เป็น **เงื่อนไข** ที่ทำให้ `<div onClick>` ของ `ClickableCard` ถูกหักออกจากด่านคีย์บอร์ดได้ — ผ่อนเมื่อไหร่ `<div onClick>` นั้นกลับมาเป็นความผิด 1 จุด และด่านคีย์บอร์ดเป็น hard-zero ⇒ CI แดงสองด่านพร้อมกัน · 🪤 การ์ดที่มีแค่ปุ่ม "ลบ" หรือลิงก์ดินสอ `?edit=1` ยัง **ตก** (เทียบ *ปลายทาง* ไม่ใช่ "มีอะไรโฟกัสได้ก็พอ") · 🪤 `<ClickableCard …/>` แบบ self-closing (ส่งเนื้อผ่าน props) **ตกเสมอ** เพราะหาแท็กปิดไม่เจอ → body ว่าง ⇒ ท่าที่ซ่อนลิงก์ไว้ใน props ถูกปิดโดยอัตโนมัติ ไม่ต้องเขียนกฎเพิ่ม · ⚠️ **ตรวจไม่ได้ชุดเดียวกับ `ROW_MIRROR` ทั้ง 5 ข้อ** บวกอีก 1 ข้อเฉพาะการ์ด: `card(row)` ที่ผู้เรียกส่งเป็น render prop (ตัวสแกนอ่าน JSX ทีละไฟล์ จึงมองไม่เห็น) — รูนั้นปิดด้วย `src/components/excise/dataListCardCallers.test.mjs` ที่ **คำนวณรายชื่อผู้เรียกเอง** ไม่ใช่ทะเบียนที่พิมพ์มือ · 📌 ที่เรียกวันนี้ **5 จุดใน 4 ไฟล์** (ทะเบียนลูกค้า · ทะเบียนสินค้า · `pm/tasks` ซึ่งเรียกสองที่คือ `miniCard` กับ `taskRow` · `settings/design-preview` ตัวอย่างสาธิตที่วางคู่กับตาราง `DetailRow`) — ทุกใบมีปุ่มของตัวเองอยู่ข้างในจึงห่อทั้งใบไม่ได้ · ⚠️ **ที่เรียกต้องไม่เขียน `<div onClick>` ของตัวเองขึ้นมาใหม่** — `cardShortcutExempt` ยกเว้นให้ `<div onClick>` **ในตัว primitive จุดเดียว** ไม่ได้ยกให้ไฟล์ผู้เรียก |
 | `PREVIEW_COVERAGE` | **0** (hard-zero · ไม่มีเพดานให้ไต่) | ทุกไฟล์ใน `src/components/ui/` ต้องถูก **เรนเดอร์จริง** บน `/settings/design-preview` (ข้อ A) **และ** มี **ชื่อเป็นตัวหนังสือ** บนหน้านั้น (ข้อ B) — ดูหัวข้อ "primitive ใหม่ต้องขึ้นหน้าต้นแบบ" ข้างบน · อยู่ที่ `src/components/ui/previewCoverage.test.mjs` ไม่ใช่ `audit-ui.mjs` เพราะ audit-ui เป็นระบบเพดาน ส่วนด่านนี้ต้องไม่มีเพดานให้ไต่ · 🪤 ข้อ A ตัด **สตริง** ทิ้งก่อนสแกน — `subtitle="…มาจาก <Input> ตัวเดียว…"` จึงไม่ทำให้โมดูล `Input` ผ่าน · 🪤 ยกเว้นได้ผ่าน `PREVIEW_EXEMPT` รายตัวเท่านั้น และรายการที่ผ่านด่านแล้วจะถูกบังคับให้ลบ |
+| LIST_PANEL_SHAPE | **0** (hard-zero · test-hosted) | LP1–LP10 · element facts F1–F4 · per-unit ledgers ⊆ frozen baseline |
 | `RAW_TAILWIND_TYPE_CAP` | 148 | ขนาดดิบใน `className` (11px ×89 · 10px ×41 · 12px ×10 · 13px ×7 · 22px ×1) — **107 จุดยกเข้าโทเคนได้โดยขนาดไม่ขยับ** แต่ **10px ×41 ไม่มีขั้นตรง** (--fs-1 9.5px / --fs-2 10.5px) ต้องเปิดหน้าดูก่อนตัดสินว่าขึ้นหรือลง · ยกแล้วต้องเขียน `text-[length:var(--fs-3)]` — ลืม `length:` = Tailwind ตีเป็นสี ขนาดหายเงียบ ๆ (มี hard-zero จับไว้) |
 | `TW_NAMED_LEADING_CAP` | 6 | ความสูงบรรทัดที่เขียนเป็นชื่อขั้นของ Tailwind — **3 ใน 6 เป็นข้อความไทยล้วน** ที่ `leading-tight` (1.25) / `leading-snug` (1.375) / `leading-relaxed` (1.625) ต่ำกว่า `--lh-thai` (1.65) ⇒ สระบน/วรรณยุกต์ขาด · ยกแล้วต้องเปิดหน้าดูจริง ไม่ใช่งานเก็บกวาด |
 | `TW_NAMED_TRACKING_CAP` | 4 | ระยะห่างตัวอักษรที่เขียนเป็นชื่อขั้นของ Tailwind — `tracking-wider` = 0.05em ส่วนป้าย uppercase ของระบบใช้ `--ls-label` (0.08em) ⇒ ยกแล้วความกว้างป้ายเปลี่ยน |
@@ -692,6 +870,8 @@ Tailwind เอง (`--spacing: 0.25rem` ของธีมตั้งต้น
   เหมือนทำงาน — ต้องวัด `getBoundingClientRect()` **ตอนเลื่อนจริง** ถึงจะเห็นว่าหลุดจอ
   ⇒ ใช้ `overflow-x: clip` แทน (ตัดแนวนอนเหมือนกัน แต่ไม่สร้าง scroll container)
   · `.main-content` โดนข้อนี้เต็ม ๆ · ล็อกไว้ที่ `stickyScrollport.test.mjs`
+- 🪤 **`.ui-section` ยัง `overflow: hidden` · แผงรายการเป็น `clip`** — sticky ในการ์ดอื่นยังตาย
+  (`stickyScrollport.test.mjs` ล็อกเฉพาะ `.ui-section.ui-list-panel`) · ต้องการ sticky ในเนื้อ = ใช้ `ListPanel`
 
 ## วิธีวัดว่า "หน้าตาไม่ขยับ" จริงไหม
 
@@ -716,6 +896,9 @@ Tailwind เอง (`--spacing: 0.25rem` ของธีมตั้งต้น
 - CSS module ห้ามใช้ `:global(.premium-*)`, `:global(.glass-panel)`, `:global(.fz-table)`
   ปัญหา "กรอบซ้อนกรอบ/พื้นผิดชั้น" ต้องแก้ด้วย prop ของ primitive เอง ไม่ใช่ให้ stylesheet
   ของ primitive ไปรู้จักชื่อคลาสของชั้นเก่า
+- งานย้ายรายการเข้า `ListPanel` (2026-09-15): **ทุกหน่วย** สร้าง `ui-legacy-budget.json` ใหม่ด้วย
+  `npm run audit:ui -- --update-budget` หลัง rebase (ห้ามแก้มือ) · ทะเบียนย้ายของด่านทรงรายการเป็น
+  **ไฟล์แยก** `scripts/listPanelPending/<UNIT>.json` ไม่ปนกับไฟล์งบ
 
 ที่มา (2026-07-26): audit เดิมตรวจแค่ว่าหน้าเรียก primitive กลางหรือยัง จึงผ่าน 100%
 ทั้งที่ 57 จาก 63 ไฟล์ที่ใช้ `TableScroll` ยังห่อ `<table className="premium-table">` อยู่ข้างใน

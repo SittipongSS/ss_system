@@ -1,0 +1,8 @@
+{
+  "unit": "U5b",
+  "reason": "U5b แจ้งเตือน · ใบสั่งขายของ RD — รอย้ายเข้า ListPanel ตามมติผู้ใช้ 2026-09-15",
+  "files": [
+    "src/app/notifications/page.js",
+    "src/app/rd/sales-orders/page.js"
+  ]
+}

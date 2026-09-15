@@ -1,0 +1,11 @@
+{
+  "unit": "U5a",
+  "reason": "U5a เปลือกตั้งค่าและทีม (ผู้ใช้ · บันทึกระบบ · แม่แบบต้นทุน · วันหยุด · ทะเบียนทีม) — รอย้ายเข้า ListPanel ตามมติผู้ใช้ 2026-09-15",
+  "files": [
+    "src/app/audit/page.js",
+    "src/app/settings/cost-templates/page.js",
+    "src/app/settings/holidays/page.js",
+    "src/app/users/page.js",
+    "src/components/teams/TeamManager.js"
+  ]
+}

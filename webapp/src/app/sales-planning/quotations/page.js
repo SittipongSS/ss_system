@@ -9,7 +9,7 @@ import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, Flag, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
-import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -86,6 +86,8 @@ export default function QuotationsPage() {
   const role = useRole();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  // โหลดรายการพลาด (ลองใหม่ได้ ในเนื้อแผง) ≠ ลบพลาด (ลองโหลดใหม่ไม่ได้ช่วยอะไร แจ้งเหนือแผง)
+  const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useStickyState("query", "");
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
@@ -117,13 +119,13 @@ export default function QuotationsPage() {
   // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setLoadError("");
     try {
       const res = await apiFetch("/api/sales-planning/quotations");
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดใบเสนอราคาไม่สำเร็จ");
       setRows(await res.json());
     } catch (e) {
-      setError(e.message || "โหลดใบเสนอราคาไม่สำเร็จ");
+      setLoadError(e.message || "โหลดใบเสนอราคาไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
@@ -332,8 +334,11 @@ export default function QuotationsPage() {
       )}
     >
       <div className="flex flex-col gap-4">
+        {/* ลบใบไม่สำเร็จ = ข้อความระดับหน้าเหนือแผง (ปิดได้) · ไม่มีปุ่มลองใหม่ — กดลบซ้ำจากแถวเองถ้าต้องการ */}
         {error && (
-          <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
+          <StatusNotice tone="error" onDismiss={() => setError("")}>
+            {error}
+          </StatusNotice>
         )}
 
         {/* รอยต่อ Won → ใบสั่งขาย: ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เดิมไม่มีอะไร
@@ -380,9 +385,17 @@ export default function QuotationsPage() {
           )}
         />
 
-        <SaSection icon={<FileText size={17} />} title="ทะเบียนใบเสนอราคา" subtitle="ค้นหา กรอง และเปิดเอกสารเพื่อดำเนินการต่อ" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
-          <div className="toolbar">
-            <div className="search-glass" style={{ width: 300 }}>
+        {/* ⭐ แผงรายการต้นแบบของทั้งระบบ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ)
+            ป้ายจำนวน = ใบที่เหลือหลังค้นหา/กรองทุกหน้า (เท่ายอดของ Pager) · เครื่องมือส่งเป็น
+            fragment เข้า `toolbar` — ListPanel ห่อ `.toolbar` ให้เอง ห้ามห่อซ้ำ */}
+        <ListPanel
+          icon={<FileText size={17} aria-hidden="true" />}
+          title="ทะเบียนใบเสนอราคา"
+          subtitle="ค้นหา กรอง และเปิดเอกสารเพื่อดำเนินการต่อ"
+          count={`${filtered.length} ใบ`}
+          toolbar={(
+          <>
+            <div className="search-glass">
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข QT / เอกสารอ้างอิง / ลูกค้า / ดีล" aria-label="ค้นหาใบเสนอราคา" />
             </div>
@@ -435,7 +448,16 @@ export default function QuotationsPage() {
               options={SORT_OPTIONS}
             />
             <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
-          </div>
+          </>
+          )}
+        >
+            {/* โหลดรายการไม่สำเร็จ = ข้อความในเนื้อแผง พร้อมทางลองใหม่ (ไม่ใช่กล่อง glass-panel ลอยเหนือหน้า)
+                ⚠️ เฉพาะ loadError — ลบพลาดแจ้งเหนือแผงแยก เพราะปุ่ม "ลองใหม่" โหลดรายการ ไม่ได้ลบซ้ำ */}
+            {loadError && (
+              <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}>
+                {loadError}
+              </StatusNotice>
+            )}
 
             <TableScroll aria-busy={loading} surface="auto"><table className="w-full text-sm">
               <thead>
@@ -489,7 +511,7 @@ export default function QuotationsPage() {
               onPageSize={setPageSize}
             />
           )}
-        </SaSection>
+        </ListPanel>
       </div>
 
     </SaWorkspace>

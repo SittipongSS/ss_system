@@ -1,0 +1,13 @@
+{
+  "unit": "U3",
+  "reason": "U3 โมดูลบริการ (ไซต์ · เครื่อง · รุ่นเครื่อง · รับงาน · ตารางนัด · ภาพรวม · ผลประเมิน) — รอย้ายเข้า ListPanel ตามมติผู้ใช้ 2026-09-15",
+  "files": [
+    "src/app/service/assets/page.js",
+    "src/app/service/intake/page.js",
+    "src/app/service/page.js",
+    "src/app/service/schedule/page.js",
+    "src/app/service/sites/page.js",
+    "src/components/service/AssetModelsPanel.js",
+    "src/components/service/SurveyResultTable.js"
+  ]
+}
