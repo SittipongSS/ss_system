@@ -26,7 +26,10 @@ import {
   salesOrderActual,
   salesOrderRevisionChainDeleteBlock,
   salesOrderActionNeedsEditScope,
+  salesOrderAmountKind,
+  splitSalesOrderAmounts,
 } from './salesOrderWorkflow.js';
+import { financeStepOwnerError } from './salesOrderFinanceApproval.js';
 
 test('Actual is counted only after SO approval', () => {
   for (const status of ['draft', 'pending_approval', 'rejected', 'revised', 'cancelled']) {
@@ -330,4 +333,39 @@ test('ด่านฝั่ง API บอกชื่อเจ้าของด
   assert.match(route, /ส่งต่อให้ \$\{ownerName\} กดยื่น/, 'ข้อความ 403 ต้องมีชื่อคน');
   assert.match(route, /const ownerName = String\(before\.deal\?\.ownerName \|\| ''\)\.trim\(\)/,
     'อ่านชื่อจากดีลที่ route โหลดมาแล้ว ไม่ยิงถามใหม่');
+});
+
+/* ── ใบสั่งขายย้อนหลัง (mig 0360) — ตัวตัดสินกลางตัดออกจากทุกกองยอด + ปิดทางย้อน/Rev./ภาษาเอกสาร ── */
+const HISTORICAL_APPROVED = { status: 'approved', origin: 'historical', actualAmount: 1000, quotationId: null };
+
+test('ใบย้อนหลังอนุมัติแล้ว: ไม่ใช่ Actual ในทุกตัวรวม (kind excluded · Actual 0 · split 0)', () => {
+  assert.equal(salesOrderAmountKind(HISTORICAL_APPROVED), 'excluded');
+  assert.equal(salesOrderActual(HISTORICAL_APPROVED), 0);
+  assert.deepEqual(
+    splitSalesOrderAmounts([HISTORICAL_APPROVED, { status: 'approved', actualAmount: 250 }]),
+    { actual: 250, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0 },
+  );
+  // ใบ pipeline ไม่ขยับ — 'legacy'/ว่าง ก็ไม่ใช่ใบย้อนหลัง
+  for (const origin of [undefined, 'pipeline', 'legacy']) {
+    assert.equal(salesOrderAmountKind({ status: 'approved', origin, actualAmount: 1000 }), 'actual', String(origin));
+    assert.equal(salesOrderActual({ status: 'approved', origin, actualAmount: 1000 }), 1000, String(origin));
+  }
+});
+
+test('ใบย้อนหลัง: ย้อนอนุมัติ/ออก Rev./เปลี่ยนภาษาเอกสารไม่ได้ · ลบแบบปกติได้ทั้งอนุมัติ/ยกเลิก (ทาง undo)', () => {
+  assert.equal(canRevokeSalesOrderApproval(HISTORICAL_APPROVED, { reviewer: true }), false);
+  assert.equal(canIssueSalesOrderRevision({ ...HISTORICAL_APPROVED, status: 'approval_revoked' }, { reviewer: true }), false);
+  assert.equal(canSwitchSalesOrderDocLanguage(HISTORICAL_APPROVED), false);
+  assert.equal(canHardDeleteSalesOrder(HISTORICAL_APPROVED), true);
+  assert.equal(canHardDeleteSalesOrder({ ...HISTORICAL_APPROVED, status: 'cancelled' }), true);
+  // ใบ pipeline ที่อนุมัติแล้วยังเป็นกติกาเดิมทุกข้อ
+  const pipeline = { status: 'approved', origin: 'pipeline', actualAmount: 1000, quotationId: 'QT-1' };
+  assert.equal(canRevokeSalesOrderApproval(pipeline, { reviewer: true }), true);
+  assert.equal(canIssueSalesOrderRevision({ ...pipeline, status: 'approval_revoked' }, { reviewer: true }), true);
+  assert.equal(canSwitchSalesOrderDocLanguage(pipeline), true);
+  assert.equal(canHardDeleteSalesOrder(pipeline), false);
+});
+
+test('ใบย้อนหลังไม่เข้าขั้นบัญชีปิดใบ — financeStatus ว่าง ⇒ ด่านตอบ "ยังไม่เข้าคิว" (finance_approve ไปไม่ถึง)', () => {
+  assert.equal(financeStepOwnerError(HISTORICAL_APPROVED, { role: 'admin' }), 'ใบนี้ยังไม่เข้าคิวปิดใบของบัญชี');
 });

@@ -19,6 +19,7 @@ import {
 } from '@/lib/sales/dashboardMetrics';
 import { isMonthValue, yearOfMonth } from '@/lib/datePeriods';
 import { fmtMoney } from '@/lib/format';
+import { ORIGIN_HISTORICAL, isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
 export function dealDisplayValue(deal) {
   if (isWonDeal(deal)) return wonAmountOf(deal);
@@ -102,9 +103,13 @@ export const WON_HINT_KINDS = Object.freeze({
   WHEN_APPROVED: 'when_approved',
   AWAITING_SO: 'awaiting_so',
   LEGACY_NO_SO: 'legacy_no_so',
+  HISTORICAL: ORIGIN_HISTORICAL,
 });
 
 export const LEGACY_WON_HINT_TEXT = 'ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้';
+/* ดีลของใบสั่งขายย้อนหลัง (mig 0360) — Won มูลค่า 0 ที่ถือใบย้อนหลังของลูกค้า × AE คู่หนึ่ง · ไม่มีคาดการณ์ให้เทียบ
+   ⚠️ ห้ามมีคำว่า "ดีลเก่า" (ข้อ 19: คำนั้นเป็นของสวิตช์ในฟอร์มดีล) */
+export const HISTORICAL_DEAL_HINT_TEXT = 'ดีลของใบสั่งขายย้อนหลัง · ไม่นับยอดขายและ FC';
 
 const toSatang = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -116,6 +121,8 @@ export function wonDealForecastHint({
   pendingApproval,
   pendingApprovalCount,
 } = {}) {
+  // ดีลของใบสั่งขายย้อนหลังมาก่อนทุกกรณี — ยอดใบของมันไม่เคยเป็น Actual/รออนุมัติ ⇒ คำอื่นทุกคำผิดหมด
+  if (isHistoricalDeal(deal)) return { kind: WON_HINT_KINDS.HISTORICAL, gap: null, text: HISTORICAL_DEAL_HINT_TEXT };
   const forecastValue = Number(forecast) || 0;
   const actualValue = Math.max(0, Number(actual) || 0);
   const pendingValue = Math.max(0, Number(pendingApproval) || 0);

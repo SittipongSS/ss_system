@@ -107,6 +107,7 @@ import {
   financeActionError, financeStatusOf, financeStepOwnerError, financeWorkflowStep,
   salesOrderWorkflowIndex,
 } from "@/lib/sales/salesOrderFinanceApproval";
+import { HISTORICAL_STATUS_NOTE, historicalRefsOf, isHistoricalOrder } from "@/lib/sales/historicalOrders";
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
@@ -538,7 +539,8 @@ export default function SalesOrderDetailPage() {
   // เหตุกลุ่มลูกค้า + SO อนุมัติแล้ว → เสนอ "ย้อน Won" (ถอยดีลออกจาก Won).
   const [cancelForm, setCancelForm] = useState(null); // null = ปิด; { code, note, reverseTo, lostReason } = เปิด
   const openCancel = () => setCancelForm({ code: "", note: "", reverseTo: "", lostReason: "" });
-  const showReversal = !!cancelForm && order?.status === "approved" && isCustomerCancelReason(cancelForm.code);
+  // ใบสั่งขายย้อนหลัง (mig 0360) ยกเลิกได้อย่างเดียว — ไม่เสนอย้อน Won (API ปฏิเสธซ้ำ)
+  const showReversal = !!cancelForm && order?.status === "approved" && !isHistoricalOrder(order) && isCustomerCancelReason(cancelForm.code);
   async function doCancel() {
     if (!cancelForm?.code) { setError("กรุณาเลือกเหตุผลที่ยกเลิก"); return; }
     if (cancelForm.code === "other" && !cancelForm.note.trim()) { setError('เลือก "อื่น ๆ" ต้องระบุหมายเหตุ'); return; }
@@ -816,7 +818,10 @@ export default function SalesOrderDetailPage() {
   // สองขั้น (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
   const canRevoke = canRevokeSalesOrderApproval(order, { reviewer });
   const canRevise = canIssueSalesOrderRevision(order, { reviewer });
-  const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
+  /* ใบสั่งขายย้อนหลัง (mig 0360) อนุมัติแล้วแต่ไม่นับ Actual — คำอธิบายสถานะต้องไม่พูดว่า "ยอดถูกนับเป็น Actual แล้ว" */
+  const status = isHistoricalOrder(order) && order.status === "approved"
+    ? { ...STATUS.approved, description: HISTORICAL_STATUS_NOTE }
+    : STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3
     : ["pending_approval", "approval_revoked"].includes(order.status) ? 1 : 0;
   const workflow = [
@@ -825,7 +830,8 @@ export default function SalesOrderDetailPage() {
     { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
     {
       label: "นับ Actual",
-      hint: approved ? fmtMoney(order.actualAmount)
+      // เดินตามกองของยอด ไม่ใช่สถานะเปล่า ๆ — ใบย้อนหลังอนุมัติแล้วแต่ "ยังไม่นับ" (mig 0360)
+      hint: amountKind === "actual" ? fmtMoney(order.actualAmount)
         : amountKind === "pending_approval" ? `${PENDING_APPROVAL_LABEL} ${fmtMoney(order.actualAmount)}`
           : "ยังไม่นับ",
     },
@@ -848,7 +854,8 @@ export default function SalesOrderDetailPage() {
      ใบเก่ายังไม่ได้บันทึกทับ ไฟล์ยังอยู่ที่ใบเสนอราคา ⇒ confirm-file อ่าน
      `order.confirmAttachments` ที่ว่างแล้วตอบ "ไม่พบไฟล์แนบ" · แผงงวดชำระเลือกถูกอยู่แล้ว
      (SalesOrderPaymentPanel) แต่หน้านี้เขียนไว้อีกชุด — ยกมาเป็นตัวเดียว */
-  const confirmFileHref = (index) => (confirmationOnFile?.source === "order"
+  // ⚠️ ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคา — ห้ามถอยไป /quotations/null/file
+  const confirmFileHref = (index) => (confirmationOnFile?.source === "order" || !order.quotationId
     ? `/api/sales-planning/sales-orders/${order.id}/confirm-file?i=${index}`
     : `/api/sales-planning/quotations/${order.quotationId}/file?i=${index}`);
   const confirmationGate = ["draft", "rejected"].includes(order.status)
@@ -948,7 +955,8 @@ export default function SalesOrderDetailPage() {
     },
     // label ชัดเจนว่าเป็นการกู้ SO ที่ "ยกเลิก" แล้ว — เดิมใช้ default "คืนเป็นฉบับร่าง"
     // ซึ่งความหมายชนกับ "ดึงกลับ" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
-    { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
+    // ใบสั่งขายย้อนหลังคืนเป็นร่างไม่ได้ (mig 0360 · API ปฏิเสธซ้ำ)
+    { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin" && !isHistoricalOrder(order), onClick: () => requestAction("restore") },
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
     /* ── ขั้นบัญชีตรวจใบ (mig 0250) ────────────────────────────────────────
        ⚠️ **ไม่ใช่ปุ่มหลัก** — ปุ่มหลักของใบยังเป็นสายอนุมัติเอกสาร บัญชีเป็นคนละแกน
@@ -1064,7 +1072,12 @@ export default function SalesOrderDetailPage() {
           {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
               snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
           <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "สถานะ", value: naText(STAGE_LABELS[order.deal?.stage] || order.deal?.stage) }]} />
-          <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={naText(order.quotation?.quoteNumber)} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
+          {/* ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคา — การ์ดนี้บอกเลขเอกสารเดิมที่คีย์ไว้แทน (ลิงก์ไป /quotations/null ไม่ได้) */}
+          {order.quotationId ? (
+            <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={naText(order.quotation?.quoteNumber)} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
+          ) : (
+            <ContextCard icon={FileText} eyebrow="เลขเอกสารเดิม" title={historicalRefsOf(order).join(" · ")} subtitle={HISTORICAL_STATUS_NOTE} facts={[{ label: "ใบเสนอราคาเดิม", value: order.historicalQuoteRef }, { label: "Express", value: order.historicalExpressRef }, { label: "ใบกำกับ", value: order.historicalInvoiceRef }]} />
+          )}
         </ContextGrid>
 
         <SalesOrderWorkTrack track={workTrack} />
@@ -1095,7 +1108,7 @@ export default function SalesOrderDetailPage() {
                 {
                   id: "actual",
                   label: "Actual ก่อน VAT",
-                  value: approved ? fmtMoney(order.actualAmount)
+                  value: amountKind === "actual" ? fmtMoney(order.actualAmount)
                     : amountKind === "pending_approval"
                       ? (
                         <>
@@ -1166,7 +1179,8 @@ export default function SalesOrderDetailPage() {
           />
 
           {activeTab === "overview" && <>
-          <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
+          {/* ใบสั่งขายย้อนหลัง (mig 0360) คีย์บรรทัดจากเอกสารเดิม — ไม่มี QT ต้นทางให้เปิด */}
+          <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={order.quotationId ? `${sortedLines.length} รายการ · snapshot จาก QT Won` : `${sortedLines.length} รายการ · คีย์จากเอกสารเดิม`} actions={order.quotationId ? <Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link> : undefined}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}
               showServiceRounds

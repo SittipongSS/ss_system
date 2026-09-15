@@ -41,21 +41,31 @@ export async function loadVisitGateContext(supabase, siteIds = []) {
     /* ⚠️ **ไล่ทีละหน้า** — เพดาน 1,000 แถวของ PostgREST ตัดข้อมูลเงียบ ๆ และด่านที่
        ขาดใบไปหนึ่งใบจะตอบว่า "ติด" ทั้งที่จ่ายแล้ว (ด่าน check:rowcap ใน CI คุมไว้)
        ⚠️ ต้องมี `.order()` ที่นิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำและแถวหายพร้อมกัน */
-    const { data: orders } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
-      .select('id, status, "supersededById", "serviceContractId"')
+    /* 🔴 **ห้ามกลืน error** (แผน P1 §3-K · 2026-09-15) — ของเดิมเขียน `const { data: orders } = …` แล้วทิ้ง
+       error ⇒ query พังครั้งเดียว = ordersById ว่าง = ทุกโซนตอบ "รอบขายไม่มีผล" = นัดทั้งไซต์จอดเป็นร่าง
+       พร้อมเหตุผิดฝ่าย (ส่ง SA ไปไล่ใบสั่งขายที่ไม่มีอะไรผิด) · ตอนนี้โยนให้ catch ของผู้เรียกตอบ 500 ที่อ่านออก
+       (ผู้เรียกทั้ง 6 จุดอยู่ใน try/catch ของ route แล้ว — visits · visits/[id] · plans×2 ผ่าน planGen ·
+       renewals ผ่าน renewalRetrieveVisit · sales-orders/[id]/service)
+       ⭐ `origin` + `paymentGateExemptAt` (mig 0360) — ด่านข้อ② ยกเว้นใบย้อนหลังที่ AE Sup/แอดมินกดยกเว้น
+          (`historicalGateExempt` ใน visitGate) · 🔴 คอลัมน์ของ 0360: ด่านนี้ตอบ 500 จนกว่าจะรัน migration */
+    const { data: orders, error: orderError } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
+      .select('id, status, "supersededById", "serviceContractId", origin, "paymentGateExemptAt"')
       .in('id', chunk).order('id', { ascending: true })));
+    if (orderError) throw orderError;
     for (const o of orders || []) ordersById[o.id] = o;
 
-    const { data: rows } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_order_installments')
+    const { data: rows, error: installmentError } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_order_installments')
       .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo"')
       .in('salesOrderId', chunk)
       .order('salesOrderId', { ascending: true }).order('id', { ascending: true })));
+    if (installmentError) throw installmentError;
     for (const r of rows || []) (installmentsByOrderId[r.salesOrderId] ||= []).push(r);
 
     const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
     if (contractIds.length) {
-      const { data: contracts } = await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase.from('sales_contracts')
+      const { data: contracts, error: contractError } = await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase.from('sales_contracts')
         .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate"').in('id', chunk).order('id', { ascending: true })));
+      if (contractError) throw contractError;
       for (const c of contracts || []) contractsById[c.id] = c;
     }
   }

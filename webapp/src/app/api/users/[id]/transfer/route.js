@@ -6,8 +6,35 @@ import { genId } from '@/lib/id';
 import { businessDate } from '@/lib/businessDate';
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
 import { planTargetTransfer, nextMonthKey } from '@/lib/usersTransfer';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { historicalRowsOnly } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
+
+/* ── ดีลของใบสั่งขายย้อนหลังที่คนต้นทางยังถือ (คำตอบข้อ 4 · mig 0360) ──────────────────
+   ⭐ ปุ่มนี้ **ไม่ย้าย** ดีลภาชนะ — ดีล Won อยู่นอกเงื่อนไข "ดีลเปิด" อยู่แล้ว และการย้ายต้องดูทีละใบว่า
+     คนรับมีดีลภาชนะของลูกค้ารายเดียวกันหรือยัง (UNIQUE ลูกค้า × AE · P1 ไม่รวมดีล)
+   ⇒ พรีวิว (GET) และผลลัพธ์ (POST) บอกจำนวนที่ยังค้าง · AE Supervisor/Admin ย้ายเจ้าของทีละใบ
+     ผ่าน PATCH /api/sales-planning/deals/:id `{ ownerId }` */
+function historicalDealsOwnedBy(supabase, ownerId) {
+  return fetchAllResult(() => historicalRowsOnly(supabase.from('sales_deals').select('id, code, title, "customerName"')
+    .eq('ownerId', ownerId)).order('id', { ascending: true }));
+}
+const dealBrief = ({ id, code, title, customerName }) => ({ id, code: code || null, title: title || null, customerName: customerName || null });
+
+// GET /api/users/[id]/transfer — พรีวิวก่อนโอน: ดีลของใบสั่งขายย้อนหลังที่ต้องย้ายเจ้าของทีละใบ
+export async function GET(request, { params }) {
+  const actor = await getCurrentUser();
+  if (!can(actor?.role, 'users:manage')) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+  const { id: fromId } = await params;
+  const { data, error } = await historicalDealsOwnedBy(getSupabaseAdmin(), fromId);
+  if (error) {
+    return Response.json({ error: `นับดีลของใบสั่งขายย้อนหลังไม่สำเร็จ: ${error.message}` }, { status: 500 });
+  }
+  return Response.json({ historicalDeals: data.length, historicalDealList: data.map(dealBrief) });
+}
 
 // POST /api/users/[id]/transfer — โอนงานพนักงาน (offboarding) ในคลิกเดียว
 // body: { toUserId, transferDeals=true, transferTargets=true, fromPeriod='YYYY-MM' }
@@ -127,6 +154,12 @@ export async function POST(request, { params }) {
     result.targetAmount = (fromRows || []).reduce((s, r) => s + Number(r.targetAmount || 0), 0);
   }
 
+  // ── ดีลของใบสั่งขายย้อนหลัง: ไม่ย้าย · นับให้เห็นว่ายังค้างกี่ใบ (อ่านพลาด = บอก ไม่ล้มการโอนที่ลงไปแล้ว) ──
+  const { data: heldHistorical, error: historicalError } = await historicalDealsOwnedBy(supabase, fromId);
+  result.historicalDeals = historicalError ? null : heldHistorical.length;
+  result.historicalDealList = historicalError ? [] : heldHistorical.map(dealBrief);
+  if (historicalError) result.historicalDealsError = `นับดีลของใบสั่งขายย้อนหลังไม่สำเร็จ: ${historicalError.message}`;
+
   await recordAudit({
     user: actor,
     action: 'update',
@@ -138,8 +171,10 @@ export async function POST(request, { params }) {
       targetMonths: result.targetMonths,
       targetAmount: result.targetAmount,
       fromPeriod,
+      historicalDealsToReassign: result.historicalDealList,
     },
-    summary: `โอนงานจาก ${fromName} → ${toName}: ดีลเปิด ${result.deals} ใบ, เป้า ${result.targetMonths} เดือน (ตั้งแต่ ${fromPeriod})`,
+    summary: `โอนงานจาก ${fromName} → ${toName}: ดีลเปิด ${result.deals} ใบ, เป้า ${result.targetMonths} เดือน (ตั้งแต่ ${fromPeriod})`
+      + (result.historicalDeals ? ` · ดีลของใบสั่งขายย้อนหลังยังเป็นของ ${fromName} ${result.historicalDeals} ใบ (ย้ายทีละใบ)` : ''),
     request,
   });
 

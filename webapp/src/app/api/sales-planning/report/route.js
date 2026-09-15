@@ -6,6 +6,7 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { reportPendingApproval } from '@/lib/sales/reportPendingApproval';
 import { buildReportRows, reportOrderMonth as orderMonth, reportOrderTeam } from '@/lib/sales/reportRows';
+import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,9 +64,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const guardFrom = `${range.from}-01T00:00:00+07:00`;
   const [y, m] = range.to.split('-').map(Number);
   const guardUntil = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+07:00`;
-  const { data: orders, error: orderError } = await fetchAllResult(() => supabase
+  /* ⛔ ใบสั่งขายย้อนหลัง (mig 0360) อนุมัติ ณ เวลาคีย์แต่ไม่ใช่ยอดขาย — ไม่กรอง = งานเก่าทั้งกองโผล่เป็นยอดของเดือนที่คีย์ */
+  const { data: orders, error: orderError } = await fetchAllResult(() => pipelineRowsOnly(supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, deal:sales_deals(team)')
+    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, deal:sales_deals(team)'))
     .eq('status', 'approved')
     .gte('approvedAt', guardFrom)
     .lt('approvedAt', guardUntil)
@@ -94,9 +96,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         (เพดาน URL 16 KB) และจำนวนบรรทัดของใบรออนุมัติไม่มีจอไหนใช้ */
   const now = new Date();
   const { data: pendingOrders, error: pendingError } = slot.has(currentMonth(now))
-    ? await fetchAllResult(() => supabase
+    ? await fetchAllResult(() => pipelineRowsOnly(supabase
       .from('sales_orders')
-      .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", status, "submittedAt", "vatAmount", "totalAmount", "actualAmount", metadata')
+      .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", status, "submittedAt", "vatAmount", "totalAmount", "actualAmount", metadata'))
       .eq('status', 'pending_approval')
       .order('id', { ascending: true }))
     : { data: [], error: null };

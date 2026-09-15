@@ -1064,3 +1064,18 @@ test('🪤 การ์ดไฟล์ของใบ external ต้องไ�
   );
   assert.match(page, /docTypes=\{external[\s\S]{0,160}?filter\(\(t\) => t\.key !== SIGNED_CONTRACT_DOC_TYPE\)/);
 });
+
+/* ⭐ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคาโดยธรรมชาติ — ข้ามด่านใบเสนอราคา แต่ด่านชนิด/สายยังเดิน */
+test('ดีลภาชนะของใบย้อนหลัง: ออกสัญญาบริการได้โดยไม่มีใบเสนอราคา · ชนิดอื่นยังตีกลับ · ดีลปกติยังต้องมีใบ', () => {
+  const container = { origin: 'historical', dealType: 'RE-ORDER', line: 'SERVICE' };
+  const service = contractEligibility({ kind: 'service', deal: container, quotations: [] });
+  assert.equal(service.ok, true);
+  assert.deepEqual(service.kinds, ['service']);
+  assert.deepEqual(service.quotations, []);
+  const manufacturing = contractEligibility({ kind: 'manufacturing', deal: container, quotations: [] });
+  assert.equal(manufacturing.ok, false);
+  assert.match(manufacturing.reason, /ออกได้เฉพาะ/);
+  const pipeline = contractEligibility({ kind: 'service', deal: { ...container, origin: 'pipeline' }, quotations: [] });
+  assert.equal(pipeline.ok, false);
+  assert.match(pipeline.reason, /ออกสัญญาได้หลังใบเสนอราคา/);
+});

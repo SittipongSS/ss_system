@@ -57,8 +57,10 @@ export async function GET(request, { params }) {
   // 🐞 เดิมเขียนรายการโฟลเดอร์ไว้เองในบรรทัดนี้ (`won` อย่างเดียว) แล้ว #1391 เพิ่ม
   //    `order-confirmation` โดยไม่มีใครกลับมาแก้ที่นี่ ⇒ งวดที่ยืมไฟล์ยืนยันคำสั่งซื้อมา
   //    ตอบ "ไม่พบไฟล์แนบ" ทุกใบ · ตอนนี้ถามจากทะเบียนเดียวกับที่ใช้ตอนเขียนไฟล์
+  // ⚠️ ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคา — id ว่างทำให้ตัวตรวจ path ถอยเป็นตัวจับทุกใบ (privateEvidence)
+  //    ⇒ ถามโฟลเดอร์ใบเสนอราคาเฉพาะใบที่มีจริง
   const allowed = isSalesOrderEvidencePath(att.storagePath, order.id)
-    || isQuotationEvidencePath(att.storagePath, order.quotationId);
+    || (order.quotationId ? isQuotationEvidencePath(att.storagePath, order.quotationId) : false);
   if (att.storageBucket !== privateBucket || !allowed) {
     return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
   }

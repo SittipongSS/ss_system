@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import {
   ymKey,
+  entityCodeArgs,
   entityCounterKey,
   entityRunningWidth,
   entityCodeDisplay,
@@ -121,4 +122,16 @@ test('รหัสที่ออกจริงยังมีเดือน�
   assert.equal(calls[0].p_prefix, 'PJ-2609');   // เดือนอยู่ในรหัส
   assert.equal(calls[0].p_month, '26');         // แต่ถังนับเป็นปี
   assert.equal(calls[0].p_width, 5);
+});
+
+// ⭐ อาร์กิวเมนต์ออกรหัสชุดเดียว — RPC ใบสั่งขายย้อนหลัง (0360) ออกรหัสดีลภาชนะในทรานแซกชันของมันเองด้วยค่าชุดนี้
+test('entityCodeArgs: ถังปี/prefix YYMM/กว้าง 5 สำหรับ DL · รายเดือน/กว้าง 4 สำหรับ PB · ตรงกับที่ insertRowsWithEntityCode ส่ง', async () => {
+  const when = new Date('2026-09-01T03:00:00+07:00');
+  assert.deepEqual(entityCodeArgs('DL', when), { month: '26', prefix: 'DL-2609', width: 5 });
+  assert.deepEqual(entityCodeArgs('PB', when), { month: '2609', prefix: 'PB-2609', width: 4 });
+  const calls = [];
+  const fake = { rpc: async (name, args) => { calls.push(args); return { data: [], error: null }; } };
+  await insertRowsWithEntityCode(fake, 'DL', [{ id: 'DEAL-1' }], when);
+  const { month, prefix, width } = entityCodeArgs('DL', when);
+  assert.deepEqual([calls[0].p_month, calls[0].p_prefix, calls[0].p_width], [month, prefix, width]);
 });

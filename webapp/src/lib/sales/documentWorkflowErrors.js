@@ -24,6 +24,54 @@ const WORKFLOW_ERRORS = Object.freeze({
     409,
   ],
   sales_order_revision_lines_required: ['ใบสั่งขายต้องมีอย่างน้อย 1 รายการก่อนออก Rev.', 409],
+  sales_order_yearly_sequence_exhausted: ['เลขใบสั่งขายของปีนี้เต็มแล้ว — แจ้งผู้ดูแลระบบ', 409],
+
+  /* ── ใบสั่งขายย้อนหลัง (mig 0360) ─────────────────────────────────────────────
+     รหัสจาก RPC create_historical_sales_order / append_historical_installments + ชื่อ CHECK/trigger ของไฟล์นั้น
+     ⚠️ **ห้ามมีคีย์ไหนเป็นสตริงย่อยของอีกคีย์** — ตัวแปลหาด้วย `includes` ตามลำดับ (เทสต์ตรึงไว้)
+     ⚠️ `sales_deals_historical_container_uk` **จงใจไม่อยู่ในตารางนี้** — ข้อความ "มีดีลของ AE คนนั้นอยู่แล้ว"
+        เป็นของการย้ายเจ้าของดีลเท่านั้น (historicalDealWriteMessage) · ตัวคีย์ใบแปลเป็น container_deal_race */
+  historical_so_actor_forbidden: ['คีย์ใบสั่งขายย้อนหลังได้เฉพาะ AE Supervisor หรือ Admin', 403],
+  historical_so_intake_key_required: ['ข้อมูลการคีย์ไม่ครบ — ปิดโมดัลแล้วเริ่มใหม่', 400],
+  historical_so_intake_hash_invalid: ['ข้อมูลการคีย์ไม่ครบ — ปิดโมดัลแล้วเริ่มใหม่', 400],
+  historical_so_header_invalid: ['ข้อมูลการคีย์ไม่ครบ — ปิดโมดัลแล้วเริ่มใหม่', 400],
+  historical_so_intake_key_conflict: [
+    'คำขอนี้ถูกบันทึกไปแล้วด้วยข้อมูลอีกชุด (หรือใบถูกยกเลิกแล้ว) — เปิดใบที่สร้างไว้แทนการส่งซ้ำ',
+    409,
+  ],
+  historical_so_customer_required: ['ต้องเลือกลูกค้า', 400],
+  historical_so_owner_required: ['ต้องเลือก AE ผู้รับผิดชอบ — ใบย้อนหลังต้องมี AE ที่ยังถือดีลได้เสมอ', 400],
+  historical_so_team_required: ['AE ที่เลือกยังไม่มีทีม — ตั้งทีมก่อนจึงสร้างดีลของใบย้อนหลังได้', 400],
+  historical_so_order_date_invalid: ['วันที่ใบต้องอยู่ระหว่าง 01/01/2000 ถึงวันนี้', 400],
+  historical_so_money_invalid: ['ยอดเงินของใบต้องเป็นตัวเลขไม่ติดลบ', 400],
+  historical_so_money_mismatch: ['ยอดเงินของใบไม่สมดุล — โหลดพรีวิวใหม่แล้วบันทึกอีกครั้ง', 400],
+  historical_so_lines_required: ['ต้องมีอย่างน้อย 1 จุดติดตั้ง', 400],
+  historical_so_line_invalid: ['ข้อมูลจุดติดตั้งไม่ถูกต้อง (ชื่อจุด 1–200 ตัวอักษร · จำนวนมากกว่า 0 · ไม่ระบุโซน)', 400],
+  historical_so_installment_invalid: [
+    'ข้อมูลงวดไม่ถูกต้อง (ชื่องวด 1–120 ตัวอักษร · ยอดไม่ติดลบ · วันที่ปี ค.ศ. 2000–2100 · วันเริ่มครอบไม่เกินวันสิ้นสุด)',
+    400,
+  ],
+  historical_so_installment_status_invalid: ['งวดที่คีย์ต้องเป็น "รอบัญชียืนยัน" เท่านั้น', 400],
+  historical_so_installment_over_total: ['ยอดงวดรวมเกินยอดใบ', 400],
+  historical_so_zero_value_needs_exemption: ['ใบยอด 0 บาทต้องยกเว้นด่านเงิน', 400],
+  historical_so_zero_value_note_required: ['ใบยอด 0 บาทต้องมีหมายเหตุบอกเหตุผล', 400],
+  historical_so_exempt_reason_invalid: ['กรุณาระบุเหตุผลที่ยกเว้นด่านเงิน 10–500 ตัวอักษร', 400],
+  historical_so_customer_not_found: ['ไม่พบลูกค้า', 404],
+  historical_so_customer_inactive: ['ลูกค้ารายนี้ยังไม่อนุมัติหรือถูกพักใช้ — ออกใบไม่ได้', 409],
+  historical_so_deal_invalid: ['ดีลของใบย้อนหลังของลูกค้าและ AE นี้ไม่อยู่ในสภาพที่ผูกใบได้ — แจ้งผู้ดูแลระบบ', 409],
+  historical_so_installment_append_state_invalid: ['คีย์งวดเพิ่มได้เฉพาะใบสั่งขายย้อนหลังที่ยังไม่ยกเลิก', 409],
+  historical_so_container_deal_race: ['มีการย้ายเจ้าของดีลของลูกค้านี้พร้อมกัน กดบันทึกอีกครั้ง', 409],
+  historical_so_deal_payload_required: ['ข้อมูลการสร้างดีลของใบย้อนหลังไม่ครบ — แจ้งผู้ดูแลระบบ', 500],
+  historical_so_deal_origin_dropped: ['ฐานข้อมูลยังไม่พร้อม (0360) — แจ้งผู้ดูแลระบบ', 503],
+  sales_orders_origin_shape: ['ใบสั่งขายย้อนหลังย้อนอนุมัติ/ออก Rev./คืนเป็นร่างไม่ได้', 409],
+  sales_orders_historical_refs_len: ['เลขเอกสารเดิมยาวเกิน 200 ตัวอักษร', 400],
+  sales_orders_historical_intake_hash_format: ['ข้อมูลการคีย์ไม่ครบ — ปิดโมดัลแล้วเริ่มใหม่', 400],
+  sales_orders_payment_gate_exempt_sane: ['การยกเว้นด่านเงินต้องมีผู้ยกเว้น เวลา และเหตุผล 10–500 ตัวอักษร', 400],
+  sales_order_lines_installation_point_len: ['ชื่อสาขา/จุดติดตั้งต้องมี 1–200 ตัวอักษร', 400],
+  sales_deals_historical_shape: ['ดีลของใบย้อนหลังเปลี่ยนสถานะ/สาย/ประเภท/ลูกค้า/ทีม/โครงการไม่ได้', 409],
+  sales_order_installments_covers_range: ['วันที่ของงวดไม่ถูกต้อง (ปี ค.ศ. 2000–2100 · วันเริ่มครอบต้องไม่เกินวันสิ้นสุด)', 400],
+  sales_order_installments_dates_sane: ['วันที่ของงวดไม่ถูกต้อง (ปี ค.ศ. 2000–2100 · วันเริ่มครอบต้องไม่เกินวันสิ้นสุด)', 400],
+  origin_immutable: ['เปลี่ยนที่มาของเอกสารไม่ได้', 409],
 });
 
 const UNKNOWN_MESSAGE = 'ดำเนินการกับเอกสารไม่สำเร็จ กรุณาลองใหม่ หากยังไม่ได้แจ้งผู้ดูแลระบบ';
@@ -39,4 +87,31 @@ export function documentWorkflowError(error, { context = 'document workflow' } =
   }
   const [message, status] = WORKFLOW_ERRORS[key];
   return { message, status, code: key };
+}
+
+/* ข้อความไทยของรหัสที่รู้จัก — ใช้ตอนผู้เรียกรู้รหัสเองแล้ว (ไม่ต้องผ่านข้อความดิบจากฐาน) */
+export function workflowErrorMessage(code) {
+  return WORKFLOW_ERRORS[code]?.[0] || UNKNOWN_MESSAGE;
+}
+
+/* รหัสที่ `workflowErrorMessage`/`documentWorkflowError` รู้จัก — เทสต์ใช้ตรวจว่าไม่มีคีย์ซ้อนกัน */
+export const WORKFLOW_ERROR_CODES = Object.freeze(Object.keys(WORKFLOW_ERRORS));
+
+/* ── เขียนดีลภาชนะของใบสั่งขายย้อนหลังไม่ผ่านฐาน (PATCH ดีล · mig 0360) ─────────────────
+   คืน `[message, status]` หรือ null (ผู้เรียกคงพฤติกรรมเดิม)
+   ⭐ `sales_deals_historical_container_uk` = ย้ายเจ้าของไปหา AE ที่มีดีลภาชนะของลูกค้ารายเดียวกันอยู่แล้ว
+     (ด่านก่อนเขียนในเราต์จับได้ก่อนเกือบทุกครั้ง · ตัวนี้คือกรณีแข่งกันพอดี) — ข้อความนี้ **ห้าม** ใช้ตอนคีย์ใบ */
+const HISTORICAL_DEAL_WRITE_ERRORS = Object.freeze({
+  sales_deals_historical_container_uk: [
+    'ลูกค้านี้มีดีลของใบสั่งขายย้อนหลังของ AE คนนั้นอยู่แล้ว — ย้ายเจ้าของมารวมกันไม่ได้ (ระบบยังไม่รวมดีล)',
+    409,
+  ],
+  sales_deals_historical_shape: WORKFLOW_ERRORS.sales_deals_historical_shape,
+  origin_immutable: WORKFLOW_ERRORS.origin_immutable,
+});
+
+export function historicalDealWriteMessage(error) {
+  const raw = `${error?.message || error || ''} ${error?.details || ''}`;
+  const key = Object.keys(HISTORICAL_DEAL_WRITE_ERRORS).find((candidate) => raw.includes(candidate));
+  return key ? [...HISTORICAL_DEAL_WRITE_ERRORS[key]] : null;
 }

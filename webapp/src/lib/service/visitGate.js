@@ -20,6 +20,7 @@ import { termIsActive } from './terms';
 import { coversDate, hasOverdueUnconfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { contractInForce } from '@/lib/sales/contracts';
 import { contractSpanAt } from '@/lib/sales/serviceContractLink';
+import { historicalGateExempt } from '@/lib/sales/historicalOrders';
 
 /* สถานะของแต่ละข้อ
    · ok      — ผ่าน
@@ -134,6 +135,11 @@ export function evaluateVisitGate(visit, {
        ⚠️ งวดเลยกำหนดที่ยังไม่รับรอง = ติดด้วย แม้วันนัดจะอยู่ในช่วงที่จ่ายแล้ว
           (ค้างชำระอยู่ = ยังไม่ควรส่งคนไปเพิ่ม) */
     const paid = covered.filter((t) => {
+      /* ⭐ **ใบสั่งขายย้อนหลังที่ยกเว้นด่านเงินรายใบ** (มติข้อ 13 · mig 0360) — AE Sup/แอดมินกดยกเว้นพร้อมเหตุผล
+         (งวดที่เก็บนอกระบบไปแล้วไม่ถูกคีย์ — คำตอบข้อ 2) ⇒ ผ่านข้อ② โดยไม่ดูงวด
+         ⚠️ ยกเว้น **ข้อนี้ข้อเดียว** — ข้อ① สัญญาตัดไปแล้วข้างบน ไม่มีทางยกเว้น
+         ⚠️ `historicalGateExempt` ถาม origin ด้วยเสมอ ⇒ ใบ pipeline ที่มีร่องรอยยกเว้นปลอมยังติดตามเดิม */
+      if (historicalGateExempt(pick(ordersById, t.salesOrderId))) return true;
       const rows = pick(installmentsByOrderId, t.salesOrderId) || [];
       return coversDate(rows, visitDate) && !hasOverdueUnconfirmed(rows, visitDate);
     });
@@ -143,7 +149,13 @@ export function evaluateVisitGate(visit, {
         reason: moneyStopReason(covered, installmentsByOrderId, visitDate),
       };
     }
-    return { zoneId: zone.id, zoneName: zone.name || null, state: 'ok', owner: null, reason: null };
+    /* ⚠️ ผ่านเพราะยกเว้นล้วน ๆ ต้องบอก — ด่านที่แกล้งผ่านคือด่านที่โกหกว่าตรวจแล้ว (กติกาหัวไฟล์)
+       ติดธงเฉพาะตอนเป็นจริง เพื่อไม่ขยับรูปผลของโซนปกติ */
+    const paymentExempt = paid.every((t) => historicalGateExempt(pick(ordersById, t.salesOrderId)));
+    return {
+      zoneId: zone.id, zoneName: zone.name || null, state: 'ok', owner: null, reason: null,
+      ...(paymentExempt ? { paymentExempt: true } : {}),
+    };
   });
 
   const blockedZones = zoneGates.filter((z) => z.state === 'blocked');
@@ -178,12 +190,15 @@ export function evaluateVisitGate(visit, {
         : (blockedZones.length ? `งดบริการ ${blockedZones.length} โซน` : null),
   });
 
+  const exemptZones = okZones.filter((z) => z.paymentExempt).length;
   items.push({
     key: 'payment', state: moneyStop ? 'blocked' : 'ok', owner: 'SA → FN',
     label: 'ไม่มีงวดเลยกำหนดที่บัญชียังไม่รับรอง',
     detail: exempt
       ? 'งานสำรวจ/ถอนเครื่องไม่ต้องผ่านด่านเงิน (มติผู้ใช้ 2026-08-31)'
-      : (moneyStop ? moneyStop.reason : null),
+      : moneyStop
+        ? moneyStop.reason
+        : (exemptZones ? `ยกเว้นด่านเงิน ${exemptZones} โซน — ใบสั่งขายย้อนหลังที่ยกเว้นรายใบ ไม่ได้ตรวจงวดชำระ` : null),
   });
 
   // ผลรายโซนติดไปกับด่านเสมอ — ใบส่งงาน/ปิดงานอ่านจากตรงนี้ ไม่คิดเงื่อนไขเอง

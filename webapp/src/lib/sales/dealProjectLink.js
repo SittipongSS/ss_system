@@ -19,6 +19,7 @@ import {
 } from '@/lib/sales/dealProjectMove';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
 import { loadWorkflowTemplateForDeal, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { HISTORICAL_DEAL_NO_PROJECT_MESSAGE, isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
 /* ปล่อยขั้นตอนที่รับเลี้ยงไปแล้วกลับเป็นไทม์ไลน์ลอยของดีล — คืนข้อความต่อท้าย error
    ('' = ปล่อยครบ)
@@ -51,6 +52,8 @@ export async function linkDealToProject(supabase, {
   deal, projectId, move = false, startDate: startDateInput = null, user, req = null,
 }) {
   if (!deal) return { error: 'ไม่พบดีล', status: 404 };
+  // ดีลของใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 7) ไม่ผูกโครงการ — ครอบทั้ง link-project และโมดัลปิด Won
+  if (isHistoricalDeal(deal)) return { error: HISTORICAL_DEAL_NO_PROJECT_MESSAGE, status: 409 };
   if (deal.stage === 'lost') return { error: 'ดีล Lost แล้ว ผูกโครงการไม่ได้', status: 400 };
   if (!projectId) return { error: 'ต้องระบุโครงการ (projectId)', status: 400 };
 

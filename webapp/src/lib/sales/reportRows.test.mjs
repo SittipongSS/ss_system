@@ -346,7 +346,8 @@ const read = (rel) => readFileSync(join(process.cwd(), 'src', rel), 'utf8');
 
 test('route: ทีมของใบมาจาก embed ดีลในคิวรีเดียวกัน · แถวมาจาก buildReportRows · ไม่อ่านทีมจากบัญชี', () => {
   const route = read('app/api/sales-planning/report/route.js');
-  assert.match(route, /fetchAllResult\(\(\) => supabase\s*\.from\('sales_orders'\)\s*\.select\('[^']*deal:sales_deals\(team\)'\)\s*\.eq\('status', 'approved'\)/);
+  // ใบสั่งขายย้อนหลัง (mig 0360) กรองในคิวรีเดียวกัน — pipelineRowsOnly ครอบ select (ยามรวมอยู่ที่ historicalMoneyGuards)
+  assert.match(route, /fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\s*\.from\('sales_orders'\)\s*\.select\('[^']*deal:sales_deals\(team\)'\)\)\s*\.eq\('status', 'approved'\)/);
   assert.match(route, /buildReportRows\(\{/);
   assert.match(route, /team: reportOrderTeam\(o\),/);
   for (const [name, source] of [['route', route], ['reportRows', read('lib/sales/reportRows.js')]]) {

@@ -11,6 +11,7 @@ import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
 import { ownerBucketKey } from '@/lib/sales/ownerBucketKey';
 import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
 import { loadUserDirectory } from '@/lib/usersRepo';
+import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,8 +69,10 @@ async function loadAllDeals(supabase) {
   /* ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวตัดเงียบ ๆ ไม่มี error ⇒ KPI ทั้งแผงคิดจากดีล
      ไม่ครบโดยไม่มีใครดูออก เพราะมันเป็นตัวเลขสรุป (บทเรียนเดียวกับ project_tasks 16/08)
      เรียงด้วย `id` พอ — ตัวรวมยอดไม่สนลำดับ ขอแค่ลำดับนิ่งระหว่างไล่หน้า */
-  const { data: deals, error } = await fetchAllResult(() => supabase
-    .from('sales_deals').select(DEAL_COLUMNS).order('id', { ascending: true }));
+  /* ⛔ ดีลของใบสั่งขายย้อนหลัง (mig 0360) = Won มูลค่า 0 ที่ไม่ใช่ยอดขาย — ตัดที่ query ทีเดียวทั้งแผง
+     (Won · FC · ความแม่น · Won รอยื่น SO · รออนุมัติ) ไม่ต้องไล่กรองทีละตัวรวม */
+  const { data: deals, error } = await fetchAllResult(() => pipelineRowsOnly(supabase
+    .from('sales_deals').select(DEAL_COLUMNS)).order('id', { ascending: true }));
   if (error) throw new Error(error.message);
   return deals || [];
 }

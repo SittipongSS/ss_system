@@ -44,6 +44,11 @@ import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { isDealFormSave, missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
 import { clientDealMetadataOnPatch } from '@/lib/sales/legacyDealSwitch';
+import { naText } from '@/lib/format';
+import { historicalDealWriteMessage } from '@/lib/sales/documentWorkflowErrors';
+import {
+  canKeyHistoricalSalesOrder, historicalDealPatchError, historicalOwnerTakenMessage, historicalRowsOnly, isHistoricalDeal,
+} from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +106,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const transitioningToWon = nextStage === 'won' && !alreadyWon;
   if (transitioningToWon) return badRequest('ปิด Won ผ่านใบเสนอราคาเท่านั้น');
   if (alreadyWon && nextStage !== before.stage) return badRequest('ดีล Won แล้ว ไม่สามารถเปลี่ยนสถานะจากฟอร์มดีลได้');
+  /* ดีลของใบสั่งขายย้อนหลัง (mig 0360) — ช่องที่ CHECK sales_deals_historical_shape ตรึงไว้ (ลูกค้า · สาย · ประเภท ·
+     ทีมว่าง) ตีกลับเป็นไทยก่อนถึงฐาน · ย้ายเจ้าของ/เปลี่ยนเป็นทีมที่มีจริงผ่านได้ (ด่านย้ายเจ้าของอยู่ข้างล่าง) */
+  const historicalPatchError = historicalDealPatchError(before, body);
+  if (historicalPatchError) return conflict(historicalPatchError);
 
   /* ⭐ **ลูกค้าของดีลมีด่านแล้ว** (มติผู้ใช้ 2026-08-24 รอบสอง) — ของเดิมปล่อย
      `customerId` จาก body เข้าคอลัมน์ตรง ๆ ไม่ตรวจอะไรเลย ⇒ เดินอ้อมด่านของ
@@ -167,12 +176,39 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      🐞 ของเดิม ownerId/ownerName ไหลจาก body ตรงเข้า patch: ปลอมชื่อได้ และยกดีลให้
      คนที่แตะดีลของตัวเองไม่ได้ก็ได้ (ด่าน inSalesEditScope ข้างล่างตรวจแค่ว่า **ผู้แก้**
      ยังเห็นแถวหลังแก้อยู่ไหม ไม่ได้ตรวจว่าผู้รับเป็นใคร) */
+  let ownerTeam = null;
   if ('ownerId' in body) {
     const checked = await validateDealOwner(supabase, body.ownerId, user, body.team);
     if (!checked.ok) return badRequest(checked.error);
     patch.ownerId = checked.ownerId;
     patch.ownerName = checked.ownerName;
-    if (checked.team) patch.team = checked.team;
+    ownerTeam = checked.team || null;
+    if (ownerTeam) patch.team = ownerTeam;
+  }
+  /* ── ย้ายเจ้าของดีลของใบสั่งขายย้อนหลังทีละใบ (คำตอบข้อ 4 · mig 0360) ─────────────────
+     ⭐ ปุ่มโอนงานพนักงานไม่ย้ายดีลภาชนะ (ดีล Won อยู่นอกเงื่อนไขโอน) ⇒ ทางย้ายคือ PATCH `{ ownerId }` ทีละใบ
+       · AE ปลายทางผ่าน validateDealOwner ข้างบนแล้ว (AE/Senior AE ที่ยังใช้งานอยู่ · ทีมตามเจ้าของ)
+     ⚠️ เฉพาะ AE Supervisor/Admin — ดีลภาชนะถือใบย้อนหลังทุกใบของคู่ (ลูกค้า × AE)
+     ⚠️ AE ปลายทางมีดีลภาชนะของลูกค้ารายนี้อยู่แล้ว = 409 (P1 ไม่รวมดีล) · UNIQUE ของ 0360 คือด่านสุดท้าย
+       (แข่งกันพอดี ⇒ historicalDealWriteMessage ตอนเขียนข้างล่าง) */
+  const historicalOwnerMove = isHistoricalDeal(before) && 'ownerId' in patch
+    && String(patch.ownerId || '') !== String(before.ownerId || '');
+  if (historicalOwnerMove) {
+    if (!canKeyHistoricalSalesOrder(user)) {
+      return forbidden('ย้ายเจ้าของดีลของใบสั่งขายย้อนหลังได้เฉพาะ AE Supervisor หรือ Admin');
+    }
+    /* ทีมตามดีล = ทีมของ AE ปลายทาง (คำตอบข้อ 1) — ด่านเดียวกับตอนคีย์ (historicalOrderPlan · RPC
+       historical_so_team_required) · 🐞 ไม่ตรวจ = AE ที่ยังไม่มีทีมรับดีลไปโดย team ค้างเป็นทีมคนเดิม
+       (0360 CHECK ผ่านเพราะ team ไม่ว่าง) · ทับ team ทุกครั้ง — body.team ที่ค้างมาต้องไม่คงทีมเก่าไว้ */
+    if (!ownerTeam) {
+      return badRequest('AE คนนี้ยังไม่มีทีม — ตั้งทีมที่หน้าจัดทีมก่อน จึงย้ายดีลของใบย้อนหลังให้ได้ (ทีมตามดีล)');
+    }
+    patch.team = ownerTeam;
+    const { data: taken, error: takenError } = await historicalRowsOnly(supabase.from('sales_deals')
+      .select('id, code').eq('customerId', before.customerId).eq('ownerId', patch.ownerId))
+      .neq('id', id).limit(1);
+    if (takenError) return fail(takenError.message, 500);
+    if (taken?.length) return conflict(historicalOwnerTakenMessage(patch.ownerName, taken[0].code));
   }
   // metadata: merge ทับของเดิมเสมอ — ห้าม replace ทั้งก้อน เพราะกุญแจระบบที่ flow อื่น
   // เขียนไว้ (acceptedQuotationId/wonDocType/wonMonth จาก accept_quotation RPC,
@@ -193,7 +229,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         (เปลี่ยนขั้น · ผูก/ปลดโครงการ) ที่ส่งมาไม่กี่ช่อง · ถ้าตรวจ body ตรง ๆ ปุ่มพวกนั้น
         จะถูกบล็อกบนดีลเก่าที่ยังไม่มีวัน ทั้งที่ไม่ได้แตะวันเลย
      ⚠️ `isDealFormSave` แยกสองเส้นด้วย `title` ซึ่งฟอร์มส่งมาทุกครั้ง ส่วน action ไม่เคยส่ง */
-  if (isDealFormSave(body)) {
+  // ดีลของใบสั่งขายย้อนหลังไม่มีวันเริ่ม/สิ้นสุด (ไม่ได้เดินในท่อ) — บันทึกจากฟอร์มต้องไม่ถูกบังคับกรอกวัน
+  if (isDealFormSave(body) && !isHistoricalDeal(before)) {
     const missingDates = missingDealDatesAfterWrite(before, body);
     if (missingDates.length) {
       return badRequest(`กรุณากรอก ${missingDates.map((key) => DEAL_DATE_LABEL[key]).join(' · ')}`);
@@ -323,8 +360,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     .eq('stage', before.stage)
     .select(selectDeal)
     .maybeSingle();
-  if (error) return fail(error.message, 500);
+  if (error) {
+    // CHECK/UNIQUE/trigger ของดีลภาชนะ (mig 0360) แปลเป็นไทย · ที่เหลือคง 500 ตามเดิม
+    const mapped = historicalDealWriteMessage(error);
+    return mapped ? fail(mapped[0], mapped[1]) : fail(error.message, 500);
+  }
   if (!data) return conflict('ดีลถูกแก้ไขพร้อมกัน (สถานะเปลี่ยนระหว่างบันทึก) — รีเฟรชหน้าแล้วลองใหม่');
+
+  /* ใบย้อนหลังของดีลภาชนะเดินตามเจ้าของดีล (คำตอบข้อ 4) — เจ้าของที่ trigger 0294 แช่ไว้มีไว้ตรึง "เจ้าของยอด"
+     แต่ใบย้อนหลังไม่นับเป็นยอดขายเลย ⇒ ค้างชื่อคนเดิม = กระดิ่งใบกำกับ/ทะเบียนการชำระชี้คนที่ไม่ได้ดูแลแล้ว
+     ⚠️ ห้ามตอบ 500 ถ้าพลาด — แถวดีลย้ายไปแล้ว · log + คำเตือนกลับไปกับดีล */
+  let historicalOwnerWarning = null;
+  let restampedOrders = [];
+  if (historicalOwnerMove) {
+    const { data: moved, error: moveError } = await historicalRowsOnly(supabase.from('sales_orders')
+      .update({ ownerId: data.ownerId, ownerName: data.ownerName, updatedAt: patch.updatedAt })
+      .eq('dealId', id)).select('id, "orderNumber"');
+    if (moveError) {
+      console.error(`[deal-patch ${id}] ย้ายเจ้าของใบสั่งขายย้อนหลังตามดีลไม่สำเร็จ:`, moveError.message);
+      historicalOwnerWarning = `ย้ายเจ้าของดีลแล้ว แต่ชื่อเจ้าของบนใบสั่งขายย้อนหลังยังเป็นคนเดิม: ${moveError.message}`;
+    } else {
+      restampedOrders = moved || [];
+    }
+  }
 
   /* แถวมูลค่ารายหมวด — เขียนทับทั้งชุดหลังแถวดีลผ่าน optimistic lock แล้ว
      ⚠️ ล้มตรงนี้ = ยอดรวมในแถวดีลเป็นของใหม่แต่แถวยังเป็นของเก่า ⇒ ต้องตอบ error
@@ -497,7 +555,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: data.id,
     before,
     after: data,
-    summary: `แก้ไข sales deal ${dealAuditLabel(data)}`,
+    summary: historicalOwnerMove
+      ? `ย้ายเจ้าของดีลของใบสั่งขายย้อนหลัง ${dealAuditLabel(data)}: ${naText(before.ownerName)} → ${naText(data.ownerName)}`
+        + ` · ใบย้อนหลังย้ายตาม ${restampedOrders.length} ใบ`
+        + (restampedOrders.length ? ` (${restampedOrders.map((o) => o.orderNumber).join(', ')})` : '')
+      : `แก้ไข sales deal ${dealAuditLabel(data)}`,
     request: req,
   });
 
@@ -514,6 +576,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     ...data,
     ...(stageHistoryWarning ? { stageHistoryWarning } : {}),
     ...(timelineWarning ? { timelineWarning } : {}),
+    // คีย์ `warning` = คีย์ที่จออ่านอยู่แล้ว (RESPONSE_WARNING_KEYS) — ตั้งชื่อใหม่ = ไม่มีจอไหนเห็น
+    ...(historicalOwnerWarning ? { warning: historicalOwnerWarning } : {}),
   });
 });
 
@@ -540,12 +604,28 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   let project = null;
   if (before.projectId) project = await loadProject(supabase, before.projectId);
 
+  /* ⛔ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ที่ยังถือใบ — FK dealId ของใบสั่งขายเป็น ON DELETE CASCADE (0107)
+     ⇒ ลบดีล = ใบย้อนหลังทุกใบของลูกค้า × AE คู่นี้หายเงียบ ๆ · ด่านนี้ครอบทั้งทางปกติ ทางบังคับ และพรีวิว
+     ⚠️ นับไม่ขึ้นต้องหยุด ไม่ใช่ถือว่า 0 */
+  let historicalOrdersBlock = null;
+  if (isHistoricalDeal(before)) {
+    const { count: orderCount, error: orderCountError } = await supabase
+      .from('sales_orders').select('id', { count: 'exact', head: true }).eq('dealId', id);
+    if (orderCountError) return fail(orderCountError.message, 500);
+    if ((orderCount || 0) > 0) {
+      historicalOrdersBlock = `ดีลนี้ถือใบสั่งขายย้อนหลัง ${orderCount} ใบ — ให้ผู้ดูแลระบบลบที่ใบก่อน แล้วจึงลบดีลได้`;
+    }
+  }
+
   // พรีวิวสำหรับปุ่ม force ในหน้าเว็บ — ไม่ลบอะไร, เฉพาะ admin.
   if (dryRun) {
     if (!canForceDelete(user)) return forbidden();
+    // บังคับลบก็ข้ามไม่ได้ ⇒ พรีวิวต้องบอก blocked ไม่ใช่ชวนกดยืนยันที่ยังไงก็ล้ม
+    if (historicalOrdersBlock) return ok({ dryRun: true, cascade: [], notes: [historicalOrdersBlock], blocked: true });
     const preview = await dealForcePreview(supabase, before, { project });
     return ok({ dryRun: true, ...preview });
   }
+  if (historicalOrdersBlock) return conflict(historicalOrdersBlock);
 
   // กันลบสิ่งที่นับเป็นยอด/มีหลักฐานทางบัญชีแล้ว (M8): โครงการที่ปิด Won,
   // หรือมาจาก PO สหมิตร (settle เข้ายอดแล้ว) — ให้ยกเลิกด้วยวิธีอื่นแทนการลบ.

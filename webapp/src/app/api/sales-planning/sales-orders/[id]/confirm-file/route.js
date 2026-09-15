@@ -42,8 +42,9 @@ export async function GET(request, { params }) {
        พอโหมดแก้ยกไฟล์เหล่านั้นตามเข้าใบ (ดู sales-orders/[id]/page.js) ref ที่บันทึก
        จึงเป็น path ของ `won/` ไม่ใช่ `order-confirmation/` · ถามทะเบียนเดียวกับ
        payment-file แทนการเขียนชื่อโฟลเดอร์เองอีกชุด ซึ่งเป็นต้นเหตุของ #1404 พอดี */
+    // ⚠️ ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคา — id ว่างทำให้ตัวตรวจ path ถอยเป็นตัวจับทุกใบ ⇒ ต้องมี id จริงก่อน
     if (att.storageBucket !== privateBucket
-      || !isQuotationEvidencePath(att.storagePath, order.quotationId)) {
+      || !(order.quotationId && isQuotationEvidencePath(att.storagePath, order.quotationId))) {
       return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
     }
     const { data, error } = await supabase.storage.from(privateBucket).download(att.storagePath);

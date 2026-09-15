@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   forecastAccuracyRollup, isWonDeal, isOpenDeal, wonAmountOf, wonMonthOf, dealMatchesOwner,
+  isKpiDeal, isWonAwaitingSo, wonAwaitingSoAmountOf, wonAwaitingSoCountOf,
 } from './dashboardMetrics.js';
 
 test('won/open classification matches the dashboard aggregator rules', () => {
@@ -92,4 +93,18 @@ test('owner matching teamScoped: id ตรงแต่ดีลคนละท�
   const legacy = { ownerId: null, ownerName: 'สมชาย ใจดี', team: 'KA' };
   assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'KA', teamScoped: true }), true);
   assert.equal(dealMatchesOwner(legacy, { ownerId: 'u1', ownerName: 'สมชาย ใจดี', team: 'ODM', teamScoped: true }), false);
+});
+
+test('ดีลของใบสั่งขายย้อนหลัง (mig 0360): ไม่ใช่ KPI · ไม่อยู่กอง Won รอยื่น SO แม้เป็น Won ที่ไม่มีใบอนุมัติ', () => {
+  const container = { stage: 'won', origin: 'historical', projectValue: 9000, wonValue: 5000, metadata: {} };
+  assert.equal(isKpiDeal(container), false);
+  assert.equal(isWonAwaitingSo(container), false);
+  assert.equal(wonAwaitingSoCountOf(container), 0);
+  assert.equal(wonAwaitingSoAmountOf(container), 0);
+  assert.equal(isWonAwaitingSo({ ...container, metadata: { wonMonth: '2026-09' } }), false);
+  // ดีล pipeline หน้าตาเดียวกันยังเข้ากองตามเดิม
+  const pipeline = { ...container, origin: 'pipeline' };
+  assert.equal(isKpiDeal(pipeline), true);
+  assert.equal(isWonAwaitingSo(pipeline), true);
+  assert.equal(wonAwaitingSoAmountOf(pipeline), 9000);
 });

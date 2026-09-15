@@ -10,6 +10,7 @@ import { customerTaxSiblingIdMap } from '@/lib/master/customerTaxSiblings';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales/handoffQueue';
+import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 const LIST_CAP = 100;
 
@@ -59,6 +60,9 @@ async function loadAwaitingFiling(supabase, dealIds) {
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('id', { ascending: true });
+    /* ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ออกบิล/ยื่นภาษีนอกระบบไปแล้ว — ไม่ใช่งานค้างยื่น
+       (คิวนี้ป้อนแดชบอร์ดของฉัน · หน้าภาพรวมดีล · ด่านปิดโครงการ ซึ่งสองที่หลังกลืน error เงียบ) */
+    query = pipelineRowsOnly(query);
     if (dealIds) query = query.in('dealId', dealIds);
     return query;
   });

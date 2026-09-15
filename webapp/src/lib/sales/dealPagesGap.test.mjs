@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtMoney } from '../format.js';
 import {
+  HISTORICAL_DEAL_HINT_TEXT,
   LEGACY_WON_HINT_TEXT,
   WON_HINT_KINDS,
   pendingPeriodMatcher,
@@ -226,4 +227,16 @@ test('คำดีลเก่าตัดสินด้วยตัวบ่�
   // ตัวเลขจริงชนะธงเสมอ — มีแถวอนุมัติ/รออนุมัติ = กรณีปกติ
   assert.equal(wonDealForecastHint({ deal: LEGACY_WON_AT_CREATE, forecast: 5000, actual: 0, actualCount: 1 }).kind, WON_HINT_KINDS.ACTUAL);
   assert.equal(wonDealForecastHint({ deal: LEGACY_WON_AT_CREATE, forecast: 5000, pendingApprovalCount: 1 }).kind, WON_HINT_KINDS.WHEN_APPROVED);
+});
+
+test('ดีลของใบสั่งขายย้อนหลัง (mig 0360): คำของตัวเองเสมอ · ดีลเก่าที่สร้างเป็น Won ยังได้คำเดิม', () => {
+  const container = { stage: 'won', origin: 'historical', projectValue: 0, metadata: { actualSource: 'sale_order' } };
+  for (const input of [NO_SO, { actual: 1000, actualCount: 1 }, { pendingApproval: 500, pendingApprovalCount: 1 }]) {
+    const hint = wonDealForecastHint({ deal: container, forecast: 0, ...input });
+    assert.equal(hint.kind, WON_HINT_KINDS.HISTORICAL);
+    assert.equal(hint.text, HISTORICAL_DEAL_HINT_TEXT);
+    assert.equal(hint.gap, null);
+  }
+  assert.doesNotMatch(HISTORICAL_DEAL_HINT_TEXT, /ดีลเก่า/, 'ข้อ 19: คำว่า "ดีลเก่า" เป็นของสวิตช์ในฟอร์มดีล');
+  assert.equal(wonDealForecastHint({ deal: LEGACY_WON_AT_CREATE, forecast: 120000, ...NO_SO }).kind, WON_HINT_KINDS.LEGACY_NO_SO);
 });

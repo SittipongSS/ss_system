@@ -1,5 +1,7 @@
 // กติกาสถานะ/สิทธิ์ของใบสั่งขาย — ใช้ร่วมกันทั้งหน้าเว็บและ route (pure, ไม่แตะ DB)
 import { isSuperuser } from '@/lib/permissions';
+// ใบสั่งขายย้อนหลัง (mig 0360) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 export const SALES_ORDER_STATUS_LABELS = {
   draft: 'ฉบับร่าง',
@@ -67,18 +69,24 @@ export function canEditSalesOrderContent(
 
 // สองขั้นแยกกัน (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
 // เหตุผลกรอกครั้งเดียวที่ขั้นแรก เพราะเป็นเจตนาเดียวที่ถูกแบ่งเป็นสองคลิก
+// ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ย้อนอนุมัติ/ออก Rev. ไม่ได้ — ไม่มีใบเสนอราคาให้ออกฉบับใหม่
+//    (CHECK sales_orders_origin_shape ตรึงที่ฐานอีกชั้น) · คีย์ผิด = แอดมินลบใบแล้วคีย์ใหม่
 export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
-  return Boolean(order) && reviewer && order.status === 'approved';
+  return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order);
 }
 
 export function canIssueSalesOrderRevision(order, { reviewer = false } = {}) {
-  return Boolean(order) && reviewer && order.status === 'approval_revoked';
+  return Boolean(order) && reviewer && order.status === 'approval_revoked' && !isHistoricalOrder(order);
 }
 
 // Hard delete is only cleanup for a draft that has never entered the signed
 // workflow. Historical evidence remains authoritative even after the active
 // pointer is cleared by cancellation or restore-to-draft.
+// ⭐ ใบสั่งขายย้อนหลัง (mig 0360) = ข้อยกเว้นเดียว: ลบแบบปกติได้ทั้งตอนอนุมัติ/ยกเลิก เพราะเป็น **ทาง undo
+//    ของคนคีย์** (ไม่มีหลักฐานลายเซ็น/ฉบับตรึง · ไม่นับ Actual) — route ตรวจของปลายน้ำก่อนลบเสมอ
+//    (historicalDeleteBlock: รอบขายของโซน · รอบบริการ · งวดที่บัญชีคอนเฟิร์ม · เลขใบกำกับ)
 export function canHardDeleteSalesOrder(order) {
+  if (isHistoricalOrder(order)) return ['approved', 'cancelled'].includes(order?.status);
   return order?.status === 'draft'
     && !order?.signatureEvidenceId
     && !order?.hasSignatureEvidence;
@@ -145,7 +153,10 @@ export function isValidReversalTarget(target) {
   return WON_REVERSAL_TARGETS.includes(target);
 }
 
+// ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ไม่ใช่ Actual แม้อนุมัติแล้ว — ยอดจริงอยู่ในใบ แต่ตัวคำนวณตัดทิ้ง
+//    (ตรงกับ sync_sales_order_actual ที่กรอง origin = 'pipeline')
 export function salesOrderActual(order) {
+  if (isHistoricalOrder(order)) return 0;
   return order?.status === 'approved' ? Math.max(0, Number(order.actualAmount) || 0) : 0;
 }
 
@@ -170,7 +181,9 @@ export function salesOrderPendingApprovalAmount(order) {
 //   'actual'           อนุมัติแล้ว นับเป็น Actual
 //   'pending_approval' ยื่นแล้วรออนุมัติ โชว์ยอดแยก ยังไม่นับ
 //   'excluded'         ร่าง/ตีกลับ/ย้อนอนุมัติ/ออก Rev. แล้ว/ยกเลิก — ไม่นับทั้งสองกอง
+//                      + **ใบสั่งขายย้อนหลังทุกสถานะ** (mig 0360 · ไม่นับ Actual / FC / เป้า)
 export function salesOrderAmountKind(order) {
+  if (isHistoricalOrder(order)) return 'excluded';
   if (order?.status === 'approved') return 'actual';
   if (order?.status === 'pending_approval') return 'pending_approval';
   return 'excluded';
@@ -254,7 +267,9 @@ const SWITCHABLE_SO_STATUSES = new Set(['draft', 'rejected', 'approved', 'approv
 export function canSwitchSalesOrderDocLanguage(order) {
   return Boolean(order)
     && SWITCHABLE_SO_STATUSES.has(order.status)
-    && !order.supersededById;
+    && !order.supersededById
+    // ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคา/ฉบับตรึงให้ออกเอกสารใหม่ — P1 ปิดทางออกเอกสารไว้ที่ด่านนี้
+    && !isHistoricalOrder(order);
 }
 
 export function salesOrderActionNeedsEditScope(action) {
