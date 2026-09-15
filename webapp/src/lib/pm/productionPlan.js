@@ -8,6 +8,7 @@
 // กับ dueRisk คือหัวใจ ที่เหลือเป็นเครื่องมือประกอบ
 import { isBusinessDay, toLocalISODate } from './dateHelpers';
 import { capacityOn } from './productionLines';
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 export const JOB_STATUSES = ['draft', 'planned', 'in_progress', 'done', 'cancelled'];
 export const JOB_STATUS_LABELS = {
@@ -369,7 +370,8 @@ export function salesOrderPlanSummary(jobs = [], lines = [], opts = {}) {
 // ⚠️ กันซ้ำด้วย salesOrderLineId ที่มีงานอยู่แล้ว — ฟังก์ชันนี้ถูกเรียกซ้ำได้ทุกครั้ง
 //    ที่เปิดคิว ถ้าไม่กัน คิวจะบวมด้วยงานเดียวกันสิบใบภายในสัปดาห์เดียว
 export function draftJobsForSalesOrder(order, lines = [], { existingLineIds = [] } = {}) {
-  if (!order || order.status !== 'approved') return [];
+  // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ไม่สร้างงานผลิต — ชั้นสองต่อจากตัวกรองของ approvedOrdersWithLines
+  if (!order || order.status !== 'approved' || isHistoricalOrder(order)) return [];
   const taken = new Set(existingLineIds);
   const rows = [];
   for (const line of lines) {

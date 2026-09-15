@@ -28,6 +28,7 @@ import StepTrack from "@/components/ui/StepTrack";
 import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
+import { historicalRefsOf } from "@/lib/sales/historicalOrders";
 
 // ป้ายสถานะชุดกลาง — เดิมเป็นสำเนาในไฟล์ที่ขาด revised / approval_revoked จนแถวพวกนั้นโชว์ค่าดิบ
 const STATUS = SALES_ORDER_STATUS_LABELS;
@@ -299,7 +300,8 @@ export default function SalesOrdersPage() {
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
       // ⚠️ รหัส AR ขึ้นเป็นชิปบนทุกแถวแล้ว (ดูเซลล์ลูกค้าข้างล่าง) จึงต้องค้นเจอด้วย
       //    — กติกาเดียวกับทะเบียนใบเสนอราคาที่ใส่ไว้ตั้งแต่แรก
-      return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc]
+      // ⭐ เลขเอกสารเดิมของใบสั่งขายย้อนหลัง (mig 0360) อยู่ในชุดค้นด้วย — ลูกค้า/บัญชีถามด้วยเลขใบกำกับ/Express เดิม
+      return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
   }, [query, rows, statusFilter, paymentFilter, invoiceFilter, waitingOnMeOnly, lineView]);
@@ -542,7 +544,7 @@ export default function SalesOrdersPage() {
               value={lineView}
               onChange={setLineView}
             />
-            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / AR / ดีล / เอกสารอ้างอิง" /></div>
+            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / AR / ดีล / เอกสารอ้างอิง / เลขเดิม" /></div>
             <FilterPopover
               count={filterCount}
               onClear={() => {

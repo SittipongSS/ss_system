@@ -60,7 +60,7 @@ import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
    🪤 ของเดิมอ่าน `wonValue` ดิบแล้ว `??` ถอยไป FC — ถอยไม่เคยเกิด (trigger เขียน 0 ไม่ใช่ null)
       และข้ามด่าน actualSource ที่ภาพรวมใช้ */
 import { compareDealDisplayValue, dealDisplayValue, pendingPeriodMatcher, sumDealDisplay } from "@/lib/sales/dealAmountDisplay";
-import { pendingApprovalAmountOf, pendingApprovalCountOf } from "@/lib/sales/dashboardMetrics";
+import { isKpiDeal, pendingApprovalAmountOf, pendingApprovalCountOf } from "@/lib/sales/dashboardMetrics";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import styles from "./page.module.css";
 
@@ -858,7 +858,8 @@ export default function SalesPlanningPipelinePage() {
 
   // Calculate KPIs
   // ⭐ ขอบเขตเดียวกับที่ตารางใช้ (inScopeDeal) — เดิม KPI กับตารางแยกกันคนละตัวกรอง
-  const kpiDeals = deals.filter(inScopeDeal);
+  // ⛔ ดีลของใบสั่งขายย้อนหลัง (mig 0360) อยู่ในตารางได้ แต่ไม่นับ "ดีลทั้งหมด" · Won · ท่อ (Won มูลค่า 0 ที่ไม่ใช่ยอดขาย)
+  const kpiDeals = deals.filter(inScopeDeal).filter(isKpiDeal);
   const totalDeals = kpiDeals.length;
   const pipelineValue = kpiDeals
     .filter((d) => !["won", "lost", "in_project"].includes(d.stage))

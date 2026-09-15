@@ -5,6 +5,7 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import { canEditSalesTarget, canViewSalesPlanning, isWonStage, normalizeTargetPeriod, resolveTargetRowScope, toMoney, yearKey } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 import { wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { isHistoricalDeal, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,8 @@ function aggregateWonDeals(deals) {
   const isWon = (d) => isWonStage(d.stage);
   const years = {};
   for (const d of deals || []) {
-    if (!isWon(d)) continue;
+    // ⛔ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่ใช่ยอดขาย — ยอดที่นี่ถูกคัดลงประวัติถาวรผ่าน "เติมยอดจากระบบ"
+    if (!isWon(d) || isHistoricalDeal(d)) continue;
     const mk = wonMonth(d);
     if (!mk) continue;
     const yr = mk.slice(0, 4);
@@ -84,8 +86,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   // ⚠️ ไล่ทีละหน้า — `aggregateWonDeals` รวมยอดจากดีลทุกใบ โดนตัดที่ 1,000 เมื่อไร
   // ยอด Actual ต่ำกว่าจริงเงียบ ๆ แล้วไปโผล่เป็นตัวเลขใบ้ใต้ช่องกรอกของทั้งตาราง
-  const { data: deals, error: dealsErr } = await fetchAllResult(() => supabase
-    .from('sales_deals').select('*').order('id', { ascending: true }));
+  // ⛔ ตัดดีลของใบสั่งขายย้อนหลังตั้งแต่ query ด้วย (mig 0360) — ตัวรวมข้างบนกันอีกชั้น
+  const { data: deals, error: dealsErr } = await fetchAllResult(() => pipelineRowsOnly(supabase
+    .from('sales_deals').select('*')).order('id', { ascending: true }));
   if (dealsErr) return fail(dealsErr.message, 500);
 
   return ok({ rows: rows || [], systemActuals: aggregateWonDeals(deals) });

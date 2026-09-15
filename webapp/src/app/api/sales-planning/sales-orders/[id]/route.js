@@ -60,8 +60,15 @@ import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { loadScoped } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
+import {
+  canKeyHistoricalSalesOrder, exemptReasonError, historicalDeleteBlock, historicalRowsOnly, isHistoricalOrder,
+} from '@/lib/sales/historicalOrders';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
+
+/* ใบสั่งขายย้อนหลัง (mig 0360) — CHECK sales_orders_origin_shape ห้ามย้อนอนุมัติ/ออก Rev. อยู่แล้ว ตอบไทยก่อนถึงฐาน */
+const HISTORICAL_NO_REVISION = 'ใบสั่งขายย้อนหลังย้อนการอนุมัติ/ออก Rev. ไม่ได้ — คีย์ผิดให้ผู้ดูแลระบบลบใบแล้วคีย์ใหม่';
 
 export const dynamic = 'force-dynamic';
 
@@ -381,6 +388,74 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return ok(data);
   }
 
+  /* ── ยกเว้นด่านเงินของนัดบริการ รายใบ (ใบสั่งขายย้อนหลัง · มติข้อ 13 · mig 0360) ─────────
+     ⭐ ใบที่เก็บเงินนอกระบบไปแล้ว (คำตอบข้อ 2: งวดที่เก็บแล้วไม่คีย์) — ด่าน ② ของ visitGate ปล่อยผ่าน
+       เฉพาะใบย้อนหลังที่มีร่องรอยนี้ · ด่าน ① (สัญญา) ไม่เคยถูกยกเว้น
+     ⚠️ ร่องรอย ใคร/เมื่อไร/ทำไม ครบทุกช่องหรือว่างทุกช่อง (CHECK sales_orders_payment_gate_exempt_sane)
+     ⚠️ ใบยอด 0 บาทต้องยกเว้นเสมอ (ข้อ 11) ⇒ ถอดไม่ได้ */
+  if (action === 'set_payment_gate_exemption') {
+    if (!canKeyHistoricalSalesOrder(user)) return forbidden('ยกเว้นด่านเงินได้เฉพาะ AE Supervisor หรือ Admin');
+    if (!isHistoricalOrder(before)) {
+      return fail('ยกเว้นด่านเงินได้เฉพาะใบสั่งขายย้อนหลัง — ใบปกติเก็บเงินตามงวดของใบเสนอราคา', 409);
+    }
+    if (before.status !== 'approved') return fail('ใบสั่งขายย้อนหลังที่ยกเลิกแล้วแก้การยกเว้นด่านเงินไม่ได้', 409);
+    /* 🐞 ห้ามตีความค่าที่ไม่ใช่ boolean เป็น "ถอด" — body ที่ลืม exempt (แก้แค่เหตุผล) / "true" / 1
+       จะล้างร่องรอยทั้งสี่ช่องแล้วตอบ 200 ⇒ visitGate ข้อ② ปิดนัดของทั้งใบเงียบ ๆ */
+    if (typeof body.exempt !== 'boolean') {
+      return badRequest('ต้องระบุว่าจะยกเว้นด่านเงินหรือไม่ (exempt: true/false)');
+    }
+    const exempt = body.exempt;
+    if (!exempt && paymentNotRequired(before.totalAmount)) return fail('ใบยอด 0 บาทต้องยกเว้นด่านเงินเสมอ', 409);
+    const reason = exempt ? String(body.reason || '').trim() : '';
+    if (exempt) {
+      const reasonError = exemptReasonError(reason);
+      if (reasonError) return badRequest(reasonError);
+    }
+    const wasExempt = Boolean(before.paymentGateExemptAt);
+    if (exempt === wasExempt && (!exempt || (before.paymentGateExemptReason || '') === reason)) return ok(before);
+
+    const stamp = new Date().toISOString();
+    const patch = exempt
+      ? {
+        paymentGateExemptAt: stamp,
+        paymentGateExemptById: user.id,
+        paymentGateExemptByName: user.name || user.email || null,
+        paymentGateExemptReason: reason,
+        updatedAt: stamp,
+      }
+      : {
+        paymentGateExemptAt: null,
+        paymentGateExemptById: null,
+        paymentGateExemptByName: null,
+        paymentGateExemptReason: null,
+        updatedAt: stamp,
+      };
+    // กรองสถานะซ้ำตอนเขียน — ใบถูกยกเลิกระหว่างที่จอเปิดค้าง ต้องไม่ได้ร่องรอยยกเว้นไปด้วย
+    const { data, error } = await historicalRowsOnly(supabase.from('sales_orders').update(patch).eq('id', id))
+      .eq('status', 'approved').select().maybeSingle();
+    if (error) {
+      const mapped = documentWorkflowError(error, { context: `sales order payment gate exemption ${id}` });
+      return fail(mapped.message, mapped.status);
+    }
+    if (!data) return fail('สถานะใบสั่งขายเปลี่ยนระหว่างบันทึก — โหลดใหม่แล้วลองอีกครั้ง', 409);
+
+    const exemptionTrail = (row) => ({
+      paymentGateExemptAt: row?.paymentGateExemptAt ?? null,
+      paymentGateExemptById: row?.paymentGateExemptById ?? null,
+      paymentGateExemptByName: row?.paymentGateExemptByName ?? null,
+      paymentGateExemptReason: row?.paymentGateExemptReason ?? null,
+    });
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id,
+      before: exemptionTrail(before), after: exemptionTrail(data),
+      summary: exempt
+        ? `ยกเว้นด่านเงินของใบสั่งขายย้อนหลัง ${before.orderNumber}: ${reason}`
+        : `ยกเลิกการยกเว้นด่านเงินของใบสั่งขายย้อนหลัง ${before.orderNumber}`,
+      request: req,
+    });
+    return ok(data);
+  }
+
   /* ── กรอกจำนวนรอบบริการรายบรรทัด (mig 0326 · มติผู้ใช้ 2026-08-31 รอบสอง) ──
      ⭐ **ช่องเดียวบนบรรทัดใบสั่งขายที่แก้ได้** — ที่เหลือเป็น snapshot จากใบเสนอราคา
        เหตุผลอยู่ที่ `lib/sales/serviceRoundsEntry.js` (ไม่กระทบยอดเงิน/เอกสารที่ออกแล้ว)
@@ -430,7 +505,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const language = body.language === 'en' ? 'en' : (body.language === 'th' ? 'th' : null);
     if (!language) return badRequest('ภาษาเอกสารต้องเป็น "th" หรือ "en" เท่านั้น');
     if (!canSwitchSalesOrderDocLanguage(before)) {
-      return fail('ใบสั่งขายนี้เปลี่ยนภาษาเอกสารไม่ได้ในสถานะปัจจุบัน', 409);
+      return fail(isHistoricalOrder(before)
+        ? 'ใบสั่งขายย้อนหลังยังออกเอกสารจากระบบไม่ได้ — ใช้เอกสารเดิมที่ออกนอกระบบ'
+        : 'ใบสั่งขายนี้เปลี่ยนภาษาเอกสารไม่ได้ในสถานะปัจจุบัน', 409);
     }
     if (before.docLanguage === language) return ok(before);
     const { data, error } = await supabase.from('sales_orders')
@@ -506,6 +583,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ขั้นที่ 1 (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ · Actual หลุดที่ขั้นนี้
   if (action === 'revoke') {
+    // ใบย้อนหลังต้องได้เหตุจริงก่อนด่านสิทธิ์ — ไม่งั้น AE Sup เจอ "ได้เฉพาะ AE Supervisor" ซึ่งผิดความจริง
+    if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
       return forbidden('ย้อนการอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
@@ -545,6 +624,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ขั้นที่ 2: ออก Rev. จากใบที่ย้อนการอนุมัติแล้ว — เหตุผลใช้ค่าที่กรอกไว้ขั้นแรก
   if (action === 'revise') {
+    if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
     // ฉบับ Rev. = SO ใบใหม่ (เลขใหม่ ใบเดิม superseded) → อยู่ในขอบเขตด่าน B3
     const closedProject = projectWriteBlockedError(before.project)
       ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. ใบสั่งขายไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
@@ -858,6 +938,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ดีลออกจาก Won ด้วย — atomic ผ่าน RPC (ยกเลิก SO + ใบเสนอราคา accept → cancelled +
     // ถอยดีล). ทำได้เฉพาะ SO ที่อนุมัติแล้ว (ตัวที่นับ Actual + ดีล Won).
     const reverseTo = String(body.reverseTo || '').trim();
+    /* ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ยกเลิกได้อย่างเดียว — ดีลของมันถือใบย้อนหลังทุกใบของลูกค้า × AE คู่นี้
+       ย้อน Won = พาใบอื่นที่ยังเดินอยู่หลุดไปด้วย (และ RPC ย้อนต้องมีใบเสนอราคาที่ใบนี้ไม่มี)
+       ยกเลิกเฉย ๆ ดีลยัง Won · รอบขายของโซนหยุดตามสถานะใบแม่ */
+    if (reverseTo && isHistoricalOrder(before)) {
+      return badRequest('ใบสั่งขายย้อนหลังยกเลิกได้อย่างเดียว — ย้อน Won ไม่ได้ (ดีลของใบย้อนหลังถือใบทุกใบของลูกค้าและ AE นี้)');
+    }
     if (reverseTo) {
       if (!isValidReversalTarget(reverseTo)) return badRequest('ปลายทางการย้อน Won ไม่ถูกต้อง');
       if (before.status !== 'approved') return badRequest('ย้อน Won ได้เฉพาะ SO ที่อนุมัติแล้ว');
@@ -987,6 +1073,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'restore') {
     if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่คืนสถานะใบสั่งขายได้');
+    // ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีฉบับร่าง — CHECK sales_orders_origin_shape ห้ามอยู่แล้ว ตอบไทยก่อนถึงฐาน
+    if (isHistoricalOrder(before)) return fail('ใบสั่งขายย้อนหลังคืนเป็นร่างไม่ได้ — คีย์ผิดให้ลบใบแล้วคีย์ใหม่', 409);
     if (before.status !== 'cancelled') return badRequest('ใบสั่งขายนี้ไม่ได้อยู่ในสถานะยกเลิก');
     // คืนเป็น draft สะอาด: ล้างทั้งฟิลด์ยกเลิก/อนุมัติ และ submitted*/rejected* ที่ค้าง
     // (เดิมเหลือ rejectionReason → หน้ารายละเอียดโชว์ป้าย "ตีกลับ" บน draft ใหม่)
@@ -1035,6 +1123,36 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ซึ่งใบยื่นก็บล็อกเหมือนกัน = ผู้ใช้วนกลับที่เดิม)
   const filings = await exciseFilingsOfSalesOrder(supabase, id);
   if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบสั่งขาย'), 409);
+  /* ── ใบสั่งขายย้อนหลัง (mig 0360): ลบแบบปกติ = ทาง undo ของคนคีย์ ─────────────────────────────
+     ⭐ ได้เฉพาะตอนยังไม่มีอะไรปลายน้ำผูก (historicalDeleteBlock) — ติดเมื่อไรใช้บังคับลบหลังอ่านพรีวิว
+     ⚠️ รอบขายของโซนเป็น ON DELETE CASCADE (0297) · service_plans.salesOrderId ไม่มี FK (0188)
+       ⇒ โหลดทั้งสองก้อนเก็บลง audit ก่อนลบ แล้วปลดรอบบริการที่ชี้ใบนี้หลังลบ (ไม่งั้นชี้ใบที่ไม่มีแล้ว)
+     ⚠️ อ่านไม่ขึ้น ≠ ไม่มี — หยุดก่อนลบ
+     🐞 งวดต้องอ่านใหม่ตรงนี้ ห้ามเชื่อ `before.installments` — loadOrder กลืน error ของงวดเป็น [] (.catch)
+       ⇒ อ่านงวดสะดุดครั้งเดียว = ด่านเห็น "ไม่มีงวดคอนเฟิร์ม/ใบกำกับ" แล้วลบแบบปกติผ่าน ·
+       งวดเป็น ON DELETE CASCADE (0245) ⇒ งวดที่บัญชีคอนเฟิร์มแล้วหายเงียบพร้อมสลิป */
+  const historical = isHistoricalOrder(before);
+  let zoneTerms = [];
+  let servicePlans = [];
+  let installmentRows = [];
+  if (historical) {
+    const [termsResult, plansResult, installmentsResult] = await Promise.all([
+      fetchAllResult(() => supabase.from('service_zone_terms').select('*').eq('salesOrderId', id).order('id', { ascending: true })),
+      fetchAllResult(() => supabase.from('service_plans').select('*').eq('salesOrderId', id).order('id', { ascending: true })),
+      fetchAllResult(() => supabase.from('sales_order_installments').select('*').eq('salesOrderId', id).order('id', { ascending: true })),
+    ]);
+    const loadError = termsResult.error || plansResult.error || installmentsResult.error;
+    if (loadError) return fail(`ตรวจงานบริการ/งวดชำระที่ผูกใบนี้ไม่สำเร็จ: ${loadError.message} — ยังไม่ได้ลบใบ`, 500);
+    zoneTerms = termsResult.data || [];
+    servicePlans = plansResult.data || [];
+    installmentRows = installmentsResult.data || [];
+    if (!force) {
+      const block = historicalDeleteBlock({
+        order: { ...before, installments: installmentRows }, terms: zoneTerms, plans: servicePlans,
+      });
+      if (block) return fail(block, 409);
+    }
+  }
   if (!force && !canHardDeleteSalesOrder(before)) {
     return fail(
       before.hasSignatureEvidence || before.signatureEvidenceId
@@ -1064,12 +1182,34 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
        และอาจออกใบสั่งขายใหม่ที่มีไฟล์ของตัวเองอยู่ในโฟลเดอร์เดียวกัน */
   await purgePrivateEvidence(supabase, 'sales_orders', id);
   await removeEvidenceRefs(supabase, Array.isArray(before.confirmAttachments) ? before.confirmAttachments : []);
+  /* รอบบริการที่ชี้ใบย้อนหลังใบนี้ (ไม่มี FK) — ปลดหลังลบสำเร็จ · กรองด้วย salesOrderId ไม่ใช่ลิสต์ที่โหลดไว้
+     ⇒ รอบที่เพิ่งผูกระหว่างตรวจกับลบก็ถูกปลดด้วย · พลาดไม่ล้มการลบที่สำเร็จแล้ว (บอกใน audit + คำตอบ) */
+  let detachedPlanIds = [];
+  let detachWarning = null;
+  if (historical) {
+    const { data: detached, error: detachError } = await supabase.from('service_plans')
+      .update({ salesOrderId: null, updatedAt: new Date().toISOString() })
+      .eq('salesOrderId', id)
+      .select('id');
+    if (detachError) {
+      console.error(`[sales order delete ${id}] ปลดรอบบริการจากใบย้อนหลังที่ลบไม่สำเร็จ:`, detachError.message);
+      detachWarning = `ลบใบแล้ว แต่ปลดรอบบริการที่ชี้ใบนี้ไม่สำเร็จ: ${detachError.message}`;
+    } else {
+      detachedPlanIds = (detached || []).map((row) => row.id);
+    }
+  }
   await recordAudit({
-    user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null,
-    summary: force
-      ? `delete ${before.orderNumber} (บังคับลบพร้อมหลักฐาน/ฉบับตรึง — สิทธิ์ผู้ดูแลระบบ)`
-      : `delete ${before.orderNumber}`,
+    user, action: 'delete', entityType: 'sales_order', entityId: id,
+    // ใบย้อนหลัง: เก็บรอบขายของโซน/รอบบริการ/งวดดิบที่ผูกไว้ก่อนลบ — CASCADE พารอบขายและงวดหายไปกับใบ
+    before: historical ? { ...before, installments: installmentRows, zoneTerms, servicePlans } : before,
+    after: historical && (detachedPlanIds.length || detachWarning)
+      ? { servicePlansDetached: detachedPlanIds, ...(detachWarning ? { warning: detachWarning } : {}) }
+      : null,
+    summary: `${historical ? 'ลบใบย้อนหลัง' : 'delete'} ${before.orderNumber}`
+      + (force ? ' (บังคับลบพร้อมหลักฐาน/ฉบับตรึง — สิทธิ์ผู้ดูแลระบบ)' : '')
+      + (historical && zoneTerms.length ? ` · รอบขายของโซนหายตาม ${zoneTerms.length} รอบ` : '')
+      + (detachedPlanIds.length ? ` · ปลดรอบบริการ ${detachedPlanIds.length} รอบ` : ''),
     request: req,
   });
-  return ok({ deleted: true, forced: force });
+  return ok({ deleted: true, forced: force, ...(detachWarning ? { warning: detachWarning } : {}) });
 });

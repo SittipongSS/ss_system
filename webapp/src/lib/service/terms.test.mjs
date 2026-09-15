@@ -233,3 +233,39 @@ test('โซนที่ยังไม่ได้เลือกถูกข�
   const group = fgSummary([{ id: 'L1', fgCode: 'FG-1', qty: 5 }])[0];
   assert.deepEqual(spreadAllocation(group, [{ zoneId: '', qty: 2 }]), []);
 });
+
+/* ── จุดติดตั้งของใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 8 + 17) ──────────────────────────
+   หนึ่งบรรทัดของใบย้อนหลัง = หนึ่งจุดติดตั้งตามชีต · FG เดียวกันอยู่คนละสาขาได้ ⇒ TS ต้องเห็นแยกจุด
+   ⚠️ ใบปกติไม่มีจุดติดตั้ง — การยุบตาม FG ของมติ 2026-08-29 ต้องไม่ขยับ */
+test('⭐ FG เดียวกันคนละจุดติดตั้ง = คนละกลุ่ม และแต่ละกลุ่มพกจุดของตัวเอง', () => {
+  const rows = fgSummary([
+    { id: 'L1', fgCode: 'FG-1', qty: 2, unit: 'แพ็คเกจ', installationPoint: 'Empire Tower · ล็อบบี้ ชั้น G' },
+    { id: 'L2', fgCode: 'FG-1', qty: 1, unit: 'แพ็คเกจ', installationPoint: ' สาขาสีลม ' },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((g) => g.installationPoint), ['Empire Tower · ล็อบบี้ ชั้น G', 'สาขาสีลม']);
+  assert.deepEqual(rows.map((g) => g.lines.map((l) => l.id)), [['L1'], ['L2']]);
+  assert.notEqual(rows[0].key, rows[1].key);
+});
+
+test('ไม่มีจุดติดตั้ง (ใบปกติ) = จัดกลุ่มเหมือนเดิมเป๊ะ — คีย์เดิม ยุบตาม FG', () => {
+  const rows = fgSummary([
+    { id: 'L1', fgCode: 'FG-1', qty: 10, unit: 'แพ็คเกจ' },
+    { id: 'L2', fgCode: 'FG-1', qty: 3, unit: 'แพ็คเกจ', installationPoint: '   ' },
+    { id: 'L3', fgCode: null, description: 'ออกแบบกลิ่น', qty: 1, unit: 'งาน', installationPoint: null },
+  ]);
+  assert.deepEqual(rows.map((g) => g.key), ['FG-1', 'desc:ออกแบบกลิ่น']);
+  assert.equal(rows[0].qty, 13);
+  assert.equal(rows[0].lines.length, 2);
+  assert.deepEqual(rows.map((g) => g.installationPoint), [null, null]);
+});
+
+test('กลุ่มของจุดเดียวบรรทัดเดียว — spreadAllocation ผูกบรรทัดนั้นตรง ๆ ไม่ข้ามไปกินจุดอื่น', () => {
+  const groups = fgSummary([
+    { id: 'L1', fgCode: 'FG-1', qty: 2, installationPoint: 'จุด A' },
+    { id: 'L2', fgCode: 'FG-1', qty: 2, installationPoint: 'จุด B' },
+  ]);
+  const pointB = groups.find((g) => g.installationPoint === 'จุด B');
+  const out = spreadAllocation(pointB, [{ zoneId: 'Z9' }]);
+  assert.deepEqual(out.map((r) => [r.salesOrderLineId, r.zoneId, r.packageQty]), [['L2', 'Z9', 2]]);
+});

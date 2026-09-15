@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dealActualFromSalesOrders } from './salesOrderWorkflow.js';
 import { wonMonthOf } from './dashboardMetrics.js';
+import { isHistoricalDeal } from './historicalOrders.js';
 import { isWonStage } from '../salesPlanning.js';
 import { splitByProportion } from '../salesForecast.js';
 
@@ -25,8 +26,8 @@ const aggregateWonDeals = (() => {
   const end = ROUTE.indexOf('\n}\n', start);
   assert.ok(start >= 0 && end > start, 'หา aggregateWonDeals ในซอร์ส route ไม่เจอ');
   const body = ROUTE.slice(start, end + 2);
-  return new Function('dealActualFromSalesOrders', 'wonMonthOf', 'isWonStage', `${body}\nreturn aggregateWonDeals;`)(
-    dealActualFromSalesOrders, wonMonthOf, isWonStage,
+  return new Function('dealActualFromSalesOrders', 'wonMonthOf', 'isWonStage', 'isHistoricalDeal', `${body}\nreturn aggregateWonDeals;`)(
+    dealActualFromSalesOrders, wonMonthOf, isWonStage, isHistoricalDeal,
   );
 })();
 
@@ -120,4 +121,19 @@ test('หน้ายอดขายย้อนหลัง: ตัวเลข
   assert.match(HISTORY_PAGE, /const sys = dashRes\.ok \? systemHintCells\(\(await dashRes\.json\(\)\)\.months\) : \{\};/);
   assert.doesNotMatch(HISTORY_PAGE, /\(sys\[key\] \|\|= \{\}\)\[mi\] = /, 'สำเนาตัวเติมแบบเขียนทับกลับมาในหน้าแล้ว');
   assert.doesNotMatch(HISTORY_PAGE, /for \(const teamRow of month\.byTeam/, 'ลูปถังทีมกลับมาในหน้าแล้ว (ถังไร้ทีมจะทับแถวบริษัท)');
+});
+
+/* ดีลของใบสั่งขายย้อนหลัง (mig 0360) — ยอดประวัติถูกคัดลง sales_history ถาวรผ่าน "เติมยอดจากระบบ"
+   ⇒ ต่อให้ cache บนดีลมียอด/เดือน Won (ข้อมูลเพี้ยนหรือ trigger เก่า) ก็ต้องไม่เข้า */
+test('ดีลของใบสั่งขายย้อนหลังไม่เข้ายอดประวัติ — แม้ cache บนดีลมียอดและเดือน Won', () => {
+  const deals = [
+    won({ ownerId: 'u1', team: 'KA', wonValue: 100 }),
+    won({ ownerId: 'u1', team: 'KA', wonValue: 5000, origin: 'historical' }),
+  ];
+  const years = aggregateWonDeals(deals);
+  assert.equal(years['2025'].total, 100);
+  assert.equal(years['2025'].byOwner.u1, 100);
+  assert.equal(years['2025'].byTeam.KA, 100);
+  assert.equal(years['2025'].byTeamOwner.KA.u1, 100);
+  assert.deepEqual(aggregateWonDeals([deals[1]]), {});
 });

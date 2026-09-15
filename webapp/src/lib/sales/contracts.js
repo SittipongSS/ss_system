@@ -11,6 +11,7 @@
 //    บทเรียนจากโมดูลบัญชี: ด่านที่แยกสองชุดจะเพี้ยนหากันแล้วได้ปุ่มที่กดแล้ว 403 เงียบ ๆ
 
 import { dealTypeOf } from '@/lib/salesPlanning';
+import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
 export const CONTRACT_KINDS = Object.freeze(['scent_design', 'manufacturing', 'service']);
 
@@ -224,7 +225,10 @@ export function approvedQuotationsForContract(quotations = []) {
 export function contractEligibility({ kind, deal, project = null, quotations = [] } = {}) {
   if (!deal) return { ok: false, reason: 'ไม่พบดีลของสัญญานี้' };
   const approved = approvedQuotationsForContract(quotations);
-  if (!approved.length) {
+  /* ⭐ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคาโดยธรรมชาติ (ขายนอกระบบ) ⇒ ข้ามด่านนี้
+     · ด่านชนิด/สายข้างล่างยังเดินเหมือนเดิม (RE-ORDER + SERVICE ⇒ ออกได้แค่ `service`)
+     · "ต้องเป็นเอกสารแทนสัญญา" บังคับที่ POST /contracts (รู้ `source` ที่นั่น) */
+  if (!approved.length && !isHistoricalDeal(deal)) {
     return { ok: false, reason: 'ออกสัญญาได้หลังใบเสนอราคาของดีลนี้ผ่านการอนุมัติแล้ว' };
   }
   const allowed = contractKindsForDeal(deal, project);

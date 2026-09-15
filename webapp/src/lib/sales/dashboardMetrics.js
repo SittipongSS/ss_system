@@ -10,6 +10,12 @@ import {
 } from '@/lib/sales/salesOrderWorkflow';
 // ตัวอ่านธงสวิตช์ดีลเก่าตัวเดียวกับด่านสร้างดีล — legacyDealSwitch เป็นสูตรล้วน ไม่ import อะไร (ไม่มีวงวน)
 import { hasLegacySwitchFlag } from '@/lib/sales/legacyDealSwitch';
+// ดีลของใบสั่งขายย้อนหลัง (mig 0360) — historicalOrders เป็นสูตรล้วน ไม่ import อะไร (ไม่มีวงวน)
+import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
+
+/* ดีลที่นับเข้า KPI ได้ — ดีลของใบสั่งขายย้อนหลังเป็น Won มูลค่า 0 ที่ไม่ใช่ยอดขาย (ตัวจริงอยู่ที่ historicalOrders)
+   ส่งต่อจากที่นี่ให้จอ/ตัวรวมที่อ่านกติกา KPI จากไฟล์นี้อยู่แล้ว ไม่ต้อง import สองบ้าน */
+export { isKpiDeal } from '@/lib/sales/historicalOrders';
 
 // Won นับรวม in_project (ดีลเก่าที่ปิดแล้วแปลงเป็นโครงการ) — กติกาอยู่ที่ isWonStage
 // ตัวกลาง สองตัวนี้เป็นแค่รูปที่รับ "ทั้งดีล" ให้เรียกง่ายในตัวกรอง
@@ -100,8 +106,12 @@ export const isLegacyWonAtCreate = (d) => isWonDeal(d)
   && !d?.metadata?.acceptedQuotationId
   && d?.metadata?.wonSource !== 'quotation';
 
+/* ⭐ ไม่นับดีลของใบสั่งขายย้อนหลังด้วย (mig 0360) — Won มูลค่า 0 ที่ไม่มีวันยื่น SO ในสายปกติ (ใบย้อนหลังเกิดเป็น
+   อนุมัติแล้วแต่ไม่นับ Actual ⇒ wonMonth ว่างตลอด) · ไม่ตัด = ทุกดีลแบบนี้ค้าง "Won รอยื่น SO" ถาวร
+   ⚠️ ต่อท้าย **หลัง** !isLegacyWonAtCreate — legacyDealSwitch.test ตรึงสองบรรทัดแรกไว้ */
 export const isWonAwaitingSo = (d) => isWonDeal(d)
   && !isLegacyWonAtCreate(d)
+  && !isHistoricalDeal(d)
   && !dealHasApprovedSalesOrder(d)
   && pendingApprovalAmountOf(d) <= 0
   && pendingApprovalCountOf(d) <= 0;

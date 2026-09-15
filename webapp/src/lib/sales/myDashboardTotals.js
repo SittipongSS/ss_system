@@ -9,6 +9,7 @@
 import { forecastAmount } from '@/lib/salesPlanning';
 import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
 import {
+  isKpiDeal,
   isOpenDeal,
   isWonDeal,
   pendingApprovalAmountOf,
@@ -38,7 +39,8 @@ export function monthInPeriod(monthValue, { month, year = null } = {}) {
  */
 export function summarizeMyDeals(deals = [], { month, year = null, target = 0, now = new Date() } = {}) {
   const period = { month, year };
-  const list = deals || [];
+  // ⛔ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่ใช่ยอดขาย/ท่อ — ตัดตั้งแต่ต้นทาง ตัวเลขข้างล่างทุกตัวจึงไม่เห็นมัน
+  const list = (deals || []).filter(isKpiDeal);
 
   // ยอดปิดได้ของงวดที่เลือก — เดือน Won จาก wonMonthOf ตัวกลาง (ตัวเดียวกับหน้าผลงานขาย)
   const wonDeals = list.filter((d) => isWonDeal(d) && monthInPeriod(wonMonthOf(d), period));

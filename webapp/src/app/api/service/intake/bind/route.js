@@ -21,10 +21,13 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { requireService } from '@/lib/service/sitesRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
 import { allocatedByLine, normalizeTermInput, remainingOfLine, termSnapshotFromLine } from '@/lib/service/terms';
-import { orderReceivable } from '@/lib/service/intake';
+import { bindTargetError, orderReceivable } from '@/lib/service/intake';
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +46,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   try {
     const { data: order, error: orderError } = await supabase
-      .from('sales_orders').select('id, "orderNumber", status, supersededById, customerId, customerName')
+      .from('sales_orders').select('id, "orderNumber", status, supersededById, customerId, customerName, origin')
       .eq('id', salesOrderId).maybeSingle();
     if (orderError) return fail(orderError.message, 500);
     if (!order) return notFound('ไม่พบใบสั่งขาย');
@@ -55,17 +58,29 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
     const { data: lines, error: lineError } = await supabase
       .from('sales_order_lines')
-      .select('id, salesOrderId, productId, fgCode, description, qty, unit')
+      /* "installationPoint" (mig 0360) — จุดติดตั้งตามชีตของใบย้อนหลัง ลง audit คู่กับโซนที่ TS เลือกจริง */
+      .select('id, salesOrderId, productId, fgCode, description, qty, unit, "installationPoint"')
       .eq('salesOrderId', salesOrderId);
     if (lineError) return fail(lineError.message, 500);
     const linesById = new Map((lines || []).map((l) => [l.id, l]));
 
     const zoneIds = [...new Set(rows.map((r) => String(r.zoneId ?? '').trim()).filter(Boolean))];
     const { data: zones, error: zoneError } = zoneIds.length
-      ? await supabase.from('service_zones').select('id, name, siteId').in('id', zoneIds)
+      ? await supabase.from('service_zones').select('id, name, siteId, "isActive"').in('id', zoneIds)
       : { data: [], error: null };
     if (zoneError) return fail(zoneError.message, 500);
     const zonesById = new Map((zones || []).map((z) => [z.id, z]));
+
+    /* ⭐ ไซต์ของโซนที่จะผูก (แผน P1 §3-K) — ตรวจเจ้าของ/ชนิด/สถานะด้วย `bindTargetError` ก่อนเขียนทั้งชุด
+       ⚠️ ของเดิมเชื่อ zoneId ที่จอส่งมาอย่างเดียว ⇒ ยิงตรงผูกไซต์ของลูกค้าคนอื่น/คลังเครื่องได้ · ใบย้อนหลังที่ TS
+          ต้องหาไซต์เองจากชื่อจุดในชีต (ตรงงานจริง 25%) คือจุดที่พลาดแบบนี้ง่ายที่สุด
+       ⚠️ ซอยก้อน + ไล่หน้าตามกติกาตัวอ่านทะเบียนโมดูลบริการ แม้ลิสต์มาจากคำขอเดียว */
+    const siteIds = [...new Set((zones || []).map((z) => z.siteId).filter(Boolean))];
+    const { data: sites, error: siteError } = await fetchInChunks(siteIds, (chunk) => fetchAllResult(() => supabase
+      .from('service_sites').select('id, name, "customerId", kind, "isActive"')
+      .in('id', chunk).order('id', { ascending: true })));
+    if (siteError) return fail(siteError.message, 500);
+    const sitesById = new Map((sites || []).map((s) => [s.id, s]));
 
     /* ของที่จัดสรรไปแล้ว (รอบก่อน ๆ) — ต้องนับรวมด้วย ไม่งั้นจัดสรรเกินได้ด้วยการ
        แบ่งกดหลายครั้ง · อ่านจาก DB เสมอ ไม่เชื่อค่าที่จอส่งมา */
@@ -83,6 +98,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       const zoneId = String(row.zoneId ?? '').trim();
       const zone = zonesById.get(zoneId);
       if (!zone) return badRequest('มีโซนที่ไม่พบในทะเบียน — สร้างโซนก่อนแล้วค่อยผูก');
+      /* ⭐ ปลายทางต้องเป็นไซต์ลูกค้าของใบนี้ที่ยังเปิดใช้งาน — ตัวตัดสินเดียวกับที่ wizard ถามก่อนกดบันทึก */
+      const targetError = bindTargetError({
+        order, zone, site: sitesById.get(zone.siteId) || null, lineLabel: label(line, lineId),
+      });
+      if (targetError) return badRequest(targetError);
 
       /* โซนเดิมของบรรทัดเดิมซ้ำในคำขอเดียว = ต้องรวมเป็นแถวเดียวแล้วบวกจำนวน
          (unique index ที่ DB เป็นด่านสุดท้าย ข้อความ 23505 ดิบไม่บอกว่าแถวไหน) */
@@ -113,9 +133,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       /* snapshot มาจาก **แถวจริงใน DB** ไม่ใช่จาก body — เชื่อค่าที่จอส่งมาเมื่อไร
          ก็ผูกยอดที่ไม่ตรงกับใบได้ทันที (แพตเทิร์นเดียวกับ closeFromAssets) */
       const snapshot = termSnapshotFromLine(line);
+      /* ⚠️ **ตัดวันเริ่ม/สิ้นสุดของ term ที่ body ส่งมาทิ้ง** (แผน P1 §3-K) — คิวนี้ไม่มีช่องให้กรอก (wizard ไม่ส่ง)
+         แต่ `termInWindow` ยังอ่านสองคอลัมน์นี้อยู่ ⇒ ยิงตรงมาพร้อม endDate ย้อนหลัง = รอบขายของโซน "หมดอายุ"
+         ตั้งแต่วันที่ผูก แล้วด่านเข้าไซต์ติดเงียบ ๆ ด้วยเหตุผิดฝ่าย · ช่วงบริการจริงอ่านจากสัญญาที่ผูกกับใบ */
+      const safeRow = { ...row };
+      delete safeRow.startDate;
+      delete safeRow.endDate;
       const { value, error } = normalizeTermInput({
         ...snapshot,
-        ...row,
+        ...safeRow,
         salesOrderId,
         salesOrderLineId: lineId,
         /* ⭐ จำนวนที่ **จัดสรรลงโซนนี้** (mig 0312) — ไม่ใช่จำนวนทั้งบรรทัดอีกแล้ว
@@ -146,10 +172,23 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       return fail(insertError.message, 500);
     }
 
+    /* ⭐ audit รายแถว (แผน P1 §3-K) — ของเดิมเก็บแค่ `count` ⇒ ย้อนดูไม่ได้ว่าบรรทัดไหนลงโซนไหนกี่หน่วย
+       · ใบย้อนหลังพก "จุดติดตั้งตามชีต" คู่กับโซนที่ TS เลือกจริง = ร่องรอยเดียวของการตัดสินชีตที่ตรงงานจริง 25% */
     await recordAudit({
       user, action: 'create', entityType: 'service_zone_term', entityId: salesOrderId,
-      after: { salesOrderId, count: payload.length },
-      summary: `จัดสรรของจากใบสั่งขาย ${order.orderNumber || salesOrderId} ลงโซนบริการ ${payload.length} รายการ`,
+      after: {
+        salesOrderId,
+        historical: isHistoricalOrder(order),
+        count: payload.length,
+        terms: (inserted || []).map((t) => ({
+          id: t.id,
+          salesOrderLineId: t.salesOrderLineId,
+          zoneId: t.zoneId,
+          packageQty: t.packageQty,
+          installationPoint: linesById.get(t.salesOrderLineId)?.installationPoint ?? null,
+        })),
+      },
+      summary: `จัดสรรของจากใบสั่งขาย${isHistoricalOrder(order) ? 'ย้อนหลัง' : ''} ${order.orderNumber || salesOrderId} ลงโซนบริการ ${payload.length} รายการ`,
       request: req,
     });
 

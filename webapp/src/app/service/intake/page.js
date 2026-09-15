@@ -23,9 +23,11 @@ import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
+import StatusBadge from "@/components/ui/StatusBadge";
 import IntakeWizard from "@/components/service/IntakeWizard";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS } from "@/lib/service/intake";
+import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
@@ -214,7 +216,17 @@ export default function ServiceIntakePage() {
                   <tbody>
                     {(data?.bind || []).map((row) => (
                       <tr key={row.orderId}>
-                        <th scope="row">{row.code}</th>
+                        <th scope="row">
+                          {row.code}
+                          {/* ⭐ ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 17) — TS ต้องรู้ว่าจุดติดตั้งมาจากชีตของฝ่ายขาย
+                              (ตรงงานจริงแค่ 25%) ไม่ใช่จากใบประเมินพื้นที่ · เลขเอกสารเดิมไว้ถามฝ่ายขายต่อ */}
+                          {isHistoricalOrder(row) && (
+                            <span className="cell-sub">
+                              <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
+                              {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
+                            </span>
+                          )}
+                        </th>
                         <td>{naText(row.customerName)}</td>
                         <td>{naText((row.approvedAt || row.orderDate || "").slice(0, 10))}</td>
                         {/* ⭐ นับ **FG + จำนวน** ไม่ใช่จำนวนบรรทัด (มติผู้ใช้ 2026-08-29)
@@ -230,6 +242,10 @@ export default function ServiceIntakePage() {
                           {row.roundsSold
                             ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
                             : null}
+                          {/* ⭐ จุดติดตั้งตามชีตของใบย้อนหลัง — เบาะแสว่าต้องไปหาไซต์ไหน (FG เดียวกันคนละจุดแยกกลุ่มแล้ว) */}
+                          {isHistoricalOrder(row) && row.installationPoints?.length
+                            ? <span className={styles.rowNote}>จุดติดตั้งตามใบ {row.installationPoints.join(" · ")}</span>
+                            : null}
                         </td>
                         {/* ⭐ ชิปความพร้อม (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้
                             พอจัดสรรแล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอ
@@ -241,11 +257,17 @@ export default function ServiceIntakePage() {
                             {row.readiness?.hasContract ? row.readiness.contractNo : "ยังไม่ผูกสัญญา"}
                           </span>
                           {" "}
-                          <span className={`ui-badge ${row.readiness?.coveredToday ? "success" : "warning"}`}>
-                            {row.readiness?.paidThrough
-                              ? `จ่ายถึง ${fmtDate(row.readiness.paidThrough)}`
-                              : "ยังไม่มีงวดที่รับรอง"}
-                          </span>
+                          {/* ⭐ ใบย้อนหลังที่ยกเว้นด่านเงินรายใบ — ตัวตัดสินเดียวกับ visitGate ข้อ②
+                              (ป้าย "ยังไม่มีงวดที่รับรอง" จะส่ง TS ไปทวงเงินที่ไม่ต้องเก็บ) */}
+                          {row.readiness?.paymentGateExempt ? (
+                            <StatusBadge tone="info" label="ยกเว้นด่านเงิน" />
+                          ) : (
+                            <span className={`ui-badge ${row.readiness?.coveredToday ? "success" : "warning"}`}>
+                              {row.readiness?.paidThrough
+                                ? `จ่ายถึง ${fmtDate(row.readiness.paidThrough)}`
+                                : "ยังไม่มีงวดที่รับรอง"}
+                            </span>
+                          )}
                         </td>
                         <td>
                           {canEdit && (

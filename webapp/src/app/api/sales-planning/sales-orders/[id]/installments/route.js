@@ -1,6 +1,8 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import {
+  canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
+} from '@/lib/salesPlanning';
 import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import {
   PRIVATE_EVIDENCE_BUCKET, privateEvidencePrefix,
@@ -17,6 +19,12 @@ import {
 import {
   ensureInstallments, loadInstallment, loadInstallments, updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
+import { businessDate } from '@/lib/businessDate';
+import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
+import {
+  HISTORICAL_SCHEMA_MISSING_MESSAGE, canKeyHistoricalSalesOrder, historicalSchemaMissing, isHistoricalOrder,
+} from '@/lib/sales/historicalOrders';
+import { validateHistoricalInstallments } from '@/lib/sales/historicalOrderPlan';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,6 +114,55 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   try {
     const { order, error } = await loadOrderForUser(supabase, user, id);
     if (error) return error;
+
+    /* ── คีย์งวดเพิ่มของใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 13 "คีย์เท่าที่รู้") ─────────────
+       ⭐ ใบย้อนหลังไม่มีแผนชำระจากใบเสนอราคาให้ยกมา — งวดเข้าทาง RPC เดียว ซึ่งล็อกหัวใบแล้วเทียบผลรวม
+         กับงวดเดิมทุกสถานะ (FOR UPDATE ⇒ สองแท็บกดพร้อมกันเกินยอดใบไม่ได้) · งวดเกิดเป็น 'pending'
+         + หยุดยอดทันที = เข้าทะเบียนบัญชี แจ้งชำระได้ บัญชียืนยันเอง
+       ⚠️ คีย์เฉพาะยอดที่ยังต้องเก็บ (คำตอบข้อ 2) — ตรวจรูปแบบที่นี่ให้ได้ข้อความรายงวด ฐานตรวจซ้ำ */
+    const body = await req.json().catch(() => ({}));
+    if (body?.action === 'append') {
+      if (!canKeyHistoricalSalesOrder(user) || !canEditSalesPlanning(user) || !inSalesEditScope(user, order.deal)) {
+        return forbidden('คีย์งวดเพิ่มของใบสั่งขายย้อนหลังได้เฉพาะ AE Supervisor หรือ Admin ที่ดูแลใบนี้');
+      }
+      if (!isHistoricalOrder(order)) {
+        return badRequest('คีย์งวดเพิ่มใช้ได้เฉพาะใบสั่งขายย้อนหลัง — ใบปกติงวดมาจากแผนชำระของใบเสนอราคา');
+      }
+      if (!Array.isArray(body.rows) || !body.rows.length) return badRequest('ต้องมีอย่างน้อย 1 งวด');
+      const checked = validateHistoricalInstallments(body.rows, { total: null, todayIso: businessDate() });
+      if (checked.errors.length) {
+        return Response.json({ error: checked.errors[0].message, errors: checked.errors }, { status: 400 });
+      }
+      const { data: result, error: rpcError } = await supabase.rpc('append_historical_installments', {
+        p_order_id: order.id,
+        p_actor_id: user.id,
+        p_actor_name: user.name || user.email || null,
+        p_actor_role: user.role || null,
+        p_rows: checked.installments,
+      });
+      if (rpcError) {
+        if (historicalSchemaMissing(rpcError)) return fail(HISTORICAL_SCHEMA_MISSING_MESSAGE, 503);
+        const mapped = documentWorkflowError(rpcError, { context: `historical installments append ${order.id}` });
+        return fail(mapped.message, mapped.status);
+      }
+      const appended = result?.installments || [];
+      await recordAudit({
+        user,
+        action: 'create',
+        entityType: 'sales_order_installments',
+        entityId: order.id,
+        after: appended,
+        summary: `คีย์งวดเพิ่มของใบสั่งขายย้อนหลัง ${order.orderNumber} — ${appended.length} งวด`,
+        request: req,
+      });
+      // งวดของใบย้อนหลังหยุดยอดตั้งแต่เกิด ⇒ ไม่ต้องทับยอดตามแผน (withLiveAmounts) ตอนตอบ
+      return ok({ installments: await loadInstallments(supabase, order.id), appended, warnings: checked.warnings }, 201);
+    }
+    // ⚠️ ของเดิมตกไปที่ "ใบเสนอราคาต้นทางไม่มีแผนการชำระให้ยกมา" ซึ่งพาไปหาใบเสนอราคาที่ไม่มีอยู่จริง
+    if (isHistoricalOrder(order)) {
+      return badRequest('ใบย้อนหลังเพิ่มงวดด้วยการคีย์งวด (append) — ไม่มีแผนจากใบเสนอราคาให้ยกมา');
+    }
+
     /* ⭐ **ด่าน "ต้องอนุมัติก่อน" ถูกถอดแล้ว** (B-4 · มติผู้ใช้ 2026-08-15) —
        เหตุผลเดิม ("ยอดยังเปลี่ยนได้") ย้ายไปอยู่ที่ `freezeInstallments` ซึ่งเขียนยอด
        ทับครั้งสุดท้ายตอนอนุมัติ · แถวที่สร้างตอนนี้ยังไม่ freeze ⇒ ยังแจ้งชำระไม่ได้

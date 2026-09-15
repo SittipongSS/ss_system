@@ -10,6 +10,7 @@
 import { contractInForce, contractKindLabel, contractStatusLabel } from '@/lib/sales/contracts';
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate } from '@/lib/format';
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 /* สัญญาที่เอามาผูกกับใบนี้ได้ — เงื่อนไขสองข้อเท่านั้น
    ⭐ **ต้องเป็นสัญญาของดีลเดียวกัน** — สัญญาผูกกับดีล (mig 0278 `dealId` NOT NULL)
@@ -76,6 +77,19 @@ export function serviceContractLinkError(order, contract, { canEdit = false } = 
   }
   if (!contractLinkable(contract)) {
     return 'สัญญาฉบับนี้ยังไม่มีผล — ต้องลงนามและผ่านการรับรองก่อนจึงผูกกับใบได้';
+  }
+  /* ⭐ **ใบสั่งขายย้อนหลัง: ช่วงสัญญาต้องครอบวันที่ใบ** (mig 0360 · วันที่ใบ = วันเริ่มสัญญาจริง ข้อ 5)
+     ดีลภาชนะหนึ่งใบถือใบย้อนหลังทุกงวดสัญญาของคู่ (ลูกค้า × AE) ⇒ สัญญาของดีลเดียวกันมีหลายช่วง
+     ถ้าไม่ตรวจ สัญญาฉบับไหนที่เซ็นแล้วก็ปลดด่าน ① ของนัดบริการได้ทั้งที่ไม่ได้ครอบงานรอบนี้
+     ⚠️ ใบปกติไม่ตรวจช่วง (ผูกล่วงหน้าได้ — ดู contractSpanAt) */
+  if (isHistoricalOrder(order)) {
+    const day = String(order.orderDate || '');
+    const from = String(contract.effectiveDate || '');
+    const to = String(contract.expiryDate || '');
+    if (!day || !from || !to || day < from || day > to) {
+      const show = (value) => (value ? fmtDate(value) : '—');
+      return `สัญญาฉบับนี้ไม่ครอบวันเริ่มของใบย้อนหลัง (${show(day)}) — ช่วงสัญญา ${show(from)}–${show(to)}`;
+    }
   }
   return null;
 }

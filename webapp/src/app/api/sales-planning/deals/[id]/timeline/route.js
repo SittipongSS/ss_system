@@ -6,6 +6,7 @@ import { genId } from '@/lib/id';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
+import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   const denied = guard(user, deal);
   if (denied) return denied;
+  /* ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่มีไทม์ไลน์ — ต้องตอบก่อนเขียน project_tasks (route นี้ insert งานก่อน UPDATE
+     ดีล ⇒ ปล่อยไปชน CHECK ของดีลตอนเปลี่ยนประเภท = งานลอยค้างโดยดีลไม่ขยับ) */
+  if (isHistoricalDeal(deal)) return conflict('ดีลของใบสั่งขายย้อนหลังไม่มีไทม์ไลน์');
   if (deal.stage === 'lost') return badRequest('ดีล Lost แล้ว สร้างไทม์ไลน์ไม่ได้');
   if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว — จัดการไทม์ไลน์ที่หน้าโครงการ');
 

@@ -26,13 +26,18 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   try {
     /* ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวของ Supabase ตัดเงียบ ๆ แล้วคิวจะ "ครบ"
-       ทั้งที่ขาด (check:rowcap คุมจุดนี้ไว้) · เรียงพ่วง id ให้ลำดับนิ่ง */
+       ทั้งที่ขาด (check:rowcap คุมจุดนี้ไว้) · เรียงพ่วง id ให้ลำดับนิ่ง
+       🐞 **UAT 2026-09-01: `serviceContractId` เคยตกจาก select ตัวนี้** — `contractIds`
+       ข้างล่างอ่านจากคอลัมน์นี้ ⇒ ไม่ดึงมา = ลิสต์ว่างเสมอ = ชิปบนคิวขึ้น
+       "ยังไม่ผูกสัญญา" ทุกใบตลอดกาล แม้ฝ่ายขายจะผูกไปแล้ว (ไม่มี error ให้เห็น)
+       ⭐ ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 17 — TS ผูกโซนให้ใบย้อนหลังในคิวนี้): `origin` + เลขเอกสารเดิม
+       ขึ้นป้าย "ย้อนหลัง" และเรียงต่อท้ายใบปกติ · `paymentGateExemptAt` ทำชิป "ยกเว้นด่านเงิน" ให้ตรงกับ visitGate
+       🔴 คอลัมน์ของ 0360 — `check:columns` แดงและ route นี้ตอบ 500 จนกว่าจะรัน migration (merge หลังรันเท่านั้น)
+       🪤 **คอมเมนต์อยู่เหนือคำสั่ง ไม่แทรกระหว่าง `.from()` กับ `.select()`** — `check:columns` มองหา select
+          ไม่เกิน 200 ตัวอักษรหลัง `.from()` · คอมเมนต์ที่เคยคั่นตรงนั้น (261 ตัวอักษร) ทำให้ select นี้หลุดจากด่านมาตลอด */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      /* 🐞 **UAT 2026-09-01: `serviceContractId` เคยตกจาก select ตัวนี้** — `contractIds`
-         ข้างล่างอ่านจากคอลัมน์นี้ ⇒ ไม่ดึงมา = ลิสต์ว่างเสมอ = ชิปบนคิวขึ้น
-         "ยังไม่ผูกสัญญา" ทุกใบตลอดกาล แม้ฝ่ายขายจะผูกไปแล้ว (ไม่มี error ให้เห็น) */
-      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId"')
+      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "paymentGateExemptAt"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('approvedAt', { ascending: false })
@@ -46,12 +51,13 @@ export const GET = withUser(async ({ user, supabase }) => {
     const [lines, terms, projects, deals, zones, sites, plans, visits] = await Promise.all([
       /* ⚠️ ซอยลิสต์ข้างนอก ไล่หน้าข้างใน — `fetchAllResult` แก้เพดานแถว ไม่ได้แก้
          URL ยาว (มันส่งตัวกรองก้อนเดิมไปทุกหน้า) · ซอยตาม `salesOrderId` ⇒ บรรทัด
-         ของใบเดียวกันอยู่ก้อนเดียวเสมอ ลำดับ sortOrder ภายในใบจึงไม่เสีย */
+         ของใบเดียวกันอยู่ก้อนเดียวเสมอ ลำดับ sortOrder ภายในใบจึงไม่เสีย
+         ⚠️ ไม่ดึงราคา/ส่วนลด — ฝ่ายบริการไม่ต้องใช้ และยิ่งดึงมามาก ยิ่งมีของหลุดออกทาง response โดยไม่ตั้งใจ
+         "serviceRounds" = ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326) — TS ใช้ตอนวางรอบ
+         "installationPoint" = จุดติดตั้งตามชีตของใบย้อนหลัง (mig 0360) — fgSummary แยกกลุ่มตามจุด
+         🪤 คอมเมนต์อยู่เหนือคำสั่ง — แทรกระหว่าง `.from()` กับ `.select()` แล้ว check:columns มองไม่เห็น select นี้ */
       fetchAllInChunks(orderIds, (chunk) => supabase.from('sales_order_lines')
-          // ⚠️ ไม่ดึงราคา/ส่วนลด — ฝ่ายบริการไม่ต้องใช้ และยิ่งดึงมามาก
-          //    ยิ่งมีของหลุดออกทาง response โดยไม่ตั้งใจ
-          // "serviceRounds" = ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326) — TS ใช้ตอนวางรอบ
-          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds"')
+          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds", "installationPoint"')
           .in('salesOrderId', chunk)
           .order('salesOrderId', { ascending: true })
           .order('sortOrder', { ascending: true })

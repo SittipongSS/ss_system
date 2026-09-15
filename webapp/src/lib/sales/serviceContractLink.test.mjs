@@ -191,3 +191,23 @@ test('contractSpanAt: ก่อน / ระหว่าง / หลัง / ไ�
   assert.equal(contractSpanAt(c(TODAY, null), TODAY), 'in');
   assert.equal(contractSpanAt(c(null, TODAY), TODAY), 'in');
 });
+
+/* ⭐ ใบสั่งขายย้อนหลัง (mig 0360): ดีลภาชนะถือสัญญาหลายช่วง ⇒ ช่วงสัญญาต้องครอบวันที่ใบ (= วันเริ่มสัญญาจริง)
+   ไม่งั้นสัญญาฉบับไหนที่เซ็นแล้วก็ปลดด่าน ① ของนัดบริการได้ทั้งที่ไม่ได้ครอบงานรอบนี้ */
+test('⭐ ใบย้อนหลัง: สัญญาต้องครอบวันที่ใบ · ขาดวันหมดอายุ = ผูกไม่ได้ · ใบปกติไม่ตรวจช่วง', () => {
+  const historical = order({ origin: 'historical', orderDate: '2024-06-01' });
+  const covering = signed({ effectiveDate: '2024-06-01', expiryDate: '2025-05-31' });
+  assert.equal(serviceContractLinkError(historical, covering, ok), null);
+  assert.equal(serviceContractLinkError(historical, signed({ effectiveDate: '2024-01-01', expiryDate: '2024-06-01' }), ok), null);
+  const later = serviceContractLinkError(historical, signed({ effectiveDate: '2025-06-01', expiryDate: '2026-05-31' }), ok);
+  assert.match(later, /ไม่ครอบวันเริ่มของใบย้อนหลัง/);
+  assert.match(later, /01\/06\/2024/);
+  assert.match(serviceContractLinkError(historical, signed({ effectiveDate: '2024-01-01', expiryDate: null }), ok), /ไม่ครอบ/);
+  assert.match(serviceContractLinkError(historical, signed({ effectiveDate: null, expiryDate: '2025-01-01' }), ok), /ไม่ครอบ/);
+  // สัญญายังไม่มีผล/ข้ามดีล ยังตีกลับด้วยเหตุเดิมก่อนถึงด่านช่วง
+  assert.match(serviceContractLinkError(historical, signed({ status: 'draft' }), ok), /ยังไม่มีผล/);
+  // ถอดสัญญาออกจากใบย้อนหลังได้เสมอ
+  assert.equal(serviceContractLinkError(historical, null, ok), null);
+  // ใบปกติ: สัญญาที่ช่วงไม่ครอบวันที่ใบยังผูกล่วงหน้าได้เหมือนเดิม
+  assert.equal(serviceContractLinkError(order({ orderDate: '2024-06-01' }), signed(), ok), null);
+});
