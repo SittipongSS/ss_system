@@ -45,8 +45,6 @@ export default function DealValueLines({
      เมื่อไร */
   legacyValue = null,
   label = "มูลค่าคาดการณ์",
-  // คำอธิบายเพิ่มของผู้เรียก (เช่น ดีลเก่าที่สร้างเป็น Won: ยอดนี้เป็น Actual ทันที)
-  hint = null,
 }) {
   const rows = items || [];
   const total = dealValueTotal(rows);
@@ -256,7 +254,6 @@ export default function DealValueLines({
           ? "ยอดรวมเดิมของดีลนี้ — เพิ่มแถวเมื่อไร ยอดจะคิดจากแถวแทนทันที"
           : "คิดจาก จำนวน × ราคา/หน่วย ของทุกแถว — พิมพ์ทับไม่ได้ · หมวดของแถวแรกคือหมวดของดีล (ใช้กรองขั้นตอนไทม์ไลน์)"}
       </small>
-      {hint ? <small>{hint}</small> : null}
     </div>
   );
 }

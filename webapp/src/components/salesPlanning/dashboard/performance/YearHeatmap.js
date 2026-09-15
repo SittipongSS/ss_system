@@ -5,6 +5,7 @@ import { CalendarRange } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { money } from "./shared";
 import { NA } from "@/lib/format";
+import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
 
 // ภาพรวมทั้งปี — ± เทียบเป้ารายเดือน ทุกคนพร้อมกัน (heatmap).
 // เขียว = เกินเป้าเดือนนั้น · แดง = ขาด · เดือนที่ยังไม่จบ/ไม่มีเป้า = จาง.
@@ -68,7 +69,9 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
                 <button type="button" className="text-action" onClick={() => onDrill({ scope: "person", person: p.id })} title="คลิกเพื่อเจาะรายคน">
                   <strong>{p.name}</strong>
                 </button>
-                {p.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}>{p.team}</span>}
+                {/* ป้ายทีมโผล่ทุกแถว (ไม่มีทีม = "ไม่ระบุทีม") — แถวคือ (คน, ทีม) ตามมติ 2026-09-14
+                    คนหลายทีมจึงมีชื่อซ้ำได้ ตารางนี้ไม่มีหัวกลุ่มทีม ป้ายนี้คือสิ่งเดียวที่แยกสองแถวออก */}
+                <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}>{p.team || NO_TEAM_LABEL}</span>
               </td>
               {MONTH_LABELS.map((_, i) => {
                 const c = monthDiffCell(p, i, closedCount);

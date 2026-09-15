@@ -10,13 +10,15 @@ import {
 } from './reportPendingApproval.js';
 
 /* ยอด SO "รออนุมัติ" ของรายงานยอดขาย — มติผู้ใช้ 2026-09-11 · mig 0353
-   ล็อกสี่เรื่อง: ลงเดือนปัจจุบัน (เวลาไทย) อย่างเดียว · ช่วงที่ไม่มีเดือนนี้ = ไม่มียอด ·
-   ของเจ้าของดีลปัจจุบัน (ไม่ใช่ ownerId บนใบ) · ไม่แตะขายจริงเลย */
+   ล็อกห้าเรื่อง: ลงเดือนปัจจุบัน (เวลาไทย) อย่างเดียว · ช่วงที่ไม่มีเดือนนี้ = ไม่มียอด ·
+   ของเจ้าของดีลปัจจุบัน (ไม่ใช่ ownerId บนใบ) · ทีมตามดีล (มติ 2026-09-14 ไม่ใช่ทีมในบัญชี) ·
+   ไม่แตะขายจริงเลย */
 
 // 11 ก.ย. 2026 บ่ายโมงเวลาไทย
 const NOW = new Date('2026-09-11T06:00:00Z');
 const YEAR_2026 = monthsInRange('2026-01', '2026-12');
 
+// ทีมในบัญชีตั้งใจให้ต่างจากทีมบนดีลได้ — ตัวคิดต้องไม่อ่านช่อง team ของบัญชีเลย
 const directory = new Map([
   ['u1', { name: 'สมชาย', team: 'KA' }],
   ['u2', { name: 'สมหญิง', team: 'SV' }],
@@ -24,7 +26,7 @@ const directory = new Map([
 ]);
 const person = (id) => directory.get(id) || null;
 
-const deal = (over) => ({ id: 'D1', stage: 'won', ownerId: 'u1', ownerName: 'ชื่อบนดีล', ...over });
+const deal = (over) => ({ id: 'D1', stage: 'won', team: 'KA', ownerId: 'u1', ownerName: 'ชื่อบนดีล', ...over });
 const so = (over) => ({
   id: 'SO1', orderNumber: 'SO-26090001-0', quotationId: 'Q1', dealId: 'D1',
   customerId: 'AR-1', customerName: 'ลูกค้า ก', status: 'pending_approval',
@@ -60,6 +62,7 @@ test('ช่วงที่ไม่มีเดือนปัจจุบั�
     assert.equal(out.count, 0);
     assert.deepEqual(out.byOwner, []);
     assert.deepEqual(out.byTeam, []);
+    assert.equal(out.noTeam.count, 0);
     assert.deepEqual(out.orders, []);
   }
 });
@@ -79,18 +82,46 @@ test('ของใคร = เจ้าของดีลปัจจุบั�
       so({ id: 'B', ownerId: 'u2', ownerName: 'คนเก่า', actualAmount: 50000 }),
     ],
   });
-  assert.deepEqual(out.byOwner.map((r) => [r.ownerId, r.ownerName, r.team, r.amount, r.count]), [
-    ['u1', 'สมชาย', 'KA', 150000, 2],
+  assert.deepEqual(out.byOwner.map((r) => [r.key, r.ownerId, r.ownerName, r.team, r.amount, r.count]), [
+    ['owner:KA:u1', 'u1', 'สมชาย', 'KA', 150000, 2],
   ]);
-  assert.deepEqual(out.byTeam, [{ team: 'KA', amount: 150000, count: 2 }]);
+  assert.deepEqual(out.byTeam, [{ key: 'team:KA', team: 'KA', amount: 150000, count: 2 }]);
   assert.ok(out.orders.every((o) => o.ownerId === 'u1' && o.team === 'KA'));
 });
 
-test('ทีมมาจากบัญชีปัจจุบันของเจ้าของ · บัญชีหาย = ชื่อจากดีล ไม่มีทีม', () => {
+test('ทีมตามดีล — บัญชีอยู่ทีมอื่นก็ลงทีมบนดีล · ย้ายทีมในบัญชีแล้วผลไม่ขยับ', () => {
+  // u2 บัญชีอยู่ SV แต่ดีลประทับ KA
+  const input = { deals: [deal({ ownerId: 'u2', team: 'KA' })] };
+  const out = build(input);
+  assert.deepEqual(out.byOwner.map((r) => [r.key, r.team, r.amount]), [['owner:KA:u2', 'KA', 100000]]);
+  assert.deepEqual(out.byTeam.map((r) => r.team), ['KA']);
+  assert.equal(out.orders[0].team, 'KA');
+
+  // คนย้ายทีม (บัญชี u2 ไป ODM) — ทุกตัวเลข ทุกคีย์ เท่าเดิม
+  const moved = new Map([...directory, ['u2', { name: 'สมหญิง', team: 'ODM' }]]);
+  assert.deepEqual(build({ ...input, person: (id) => moved.get(id) || null }), out);
+});
+
+test('บัญชีหาย = ชื่อจากดีล · ทีมยังเป็นทีมบนดีล', () => {
   const out = build({ deals: [deal({ ownerId: 'ghost', ownerName: 'คนลาออก' })] });
-  assert.deepEqual(out.byOwner, [{ ownerId: 'ghost', ownerName: 'คนลาออก', team: null, amount: 100000, count: 1 }]);
-  assert.deepEqual(out.byTeam, []);
+  assert.deepEqual(out.byOwner, [{ key: 'owner:KA:ghost', ownerId: 'ghost', ownerName: 'คนลาออก', team: 'KA', amount: 100000, count: 1 }]);
+  assert.deepEqual(out.byTeam, [{ key: 'team:KA', team: 'KA', amount: 100000, count: 1 }]);
   assert.equal(out.amount, 100000);
+});
+
+test('คนเดียวสองทีม = สองแถวรายคน (ทีมละแถว) และแต่ละทีมเท่ากับผลรวมคนในทีม', () => {
+  const out = build({
+    orders: [so({ id: 'A' }), so({ id: 'B', dealId: 'D2', actualAmount: 30000 })],
+    deals: [deal(), deal({ id: 'D2', team: 'SV' })],
+  });
+  assert.deepEqual(out.byOwner.map((r) => [r.key, r.team, r.amount]), [
+    ['owner:KA:u1', 'KA', 100000],
+    ['owner:SV:u1', 'SV', 30000],
+  ]);
+  for (const teamRow of out.byTeam) {
+    const members = out.byOwner.filter((r) => r.team === teamRow.team);
+    assert.equal(teamRow.amount, members.reduce((s, r) => s + r.amount, 0));
+  }
 });
 
 test('ดีลไม่มีเจ้าของ = เข้ายอดบริษัทอย่างเดียว (เหมือนใบอนุมัติแล้วที่ไม่มีเจ้าของ)', () => {
@@ -102,9 +133,11 @@ test('ดีลไม่มีเจ้าของ = เข้ายอดบ�
   assert.equal(out.count, 2);
   assert.deepEqual(out.unassigned, { amount: 40000, count: 1 });
   assert.equal(out.byOwner.reduce((s, r) => s + r.amount, 0) + out.unassigned.amount, out.amount);
+  // ดีลไม่มีเจ้าของไม่เข้ามุมรายทีม แม้ดีลจะมีทีม
+  assert.deepEqual(out.byTeam, [{ key: 'team:KA', team: 'KA', amount: 100000, count: 1 }]);
 });
 
-test('กระทบยอดได้: บริษัท = Σ รายคน + ไม่มีเจ้าของ = Σ รายทีม + เจ้าของไม่มีทีม + ไม่มีเจ้าของ', () => {
+test('กระทบยอดได้: บริษัท = Σ รายคน + ไม่มีเจ้าของ = Σ รายทีม + ไม่ระบุทีม + ไม่มีเจ้าของ', () => {
   const out = build({
     orders: [
       so({ id: 'A' }),
@@ -113,19 +146,19 @@ test('กระทบยอดได้: บริษัท = Σ รายคน
     ],
     deals: [
       deal(),
-      deal({ id: 'D2', ownerId: 'ghost', ownerName: 'คนลาออก' }),
+      // เจ้าของมี (แม้บัญชีอยู่ KA) แต่ดีลไม่ระบุทีม ⇒ บรรทัด noTeam ไม่ใช่ KA
+      deal({ id: 'D2', ownerId: 'u3', team: null }),
       deal({ id: 'D3', ownerId: null, ownerName: null }),
     ],
   });
   const total = (rows, key) => rows.reduce((s, r) => s + r[key], 0);
   assert.equal(total(out.byOwner, 'amount') + out.unassigned.amount, out.amount);
   assert.equal(total(out.byOwner, 'count') + out.unassigned.count, out.count);
-  /* มุมรายทีม: ส่วนที่ไม่มีแถว = ใบดีลไม่มีเจ้าของ + ใบของเจ้าของที่ไม่อยู่ทีมไหน
-     หน้ารายงานบอกส่วนนี้ใต้ตารางจากผลต่าง (หัวรายงาน − Σ แถว) — ต้องเท่ากันพอดี */
-  const teamless = out.byOwner.filter((r) => !r.team);
-  assert.equal(out.amount - total(out.byTeam, 'amount'), out.unassigned.amount + total(teamless, 'amount'));
-  assert.equal(out.count - total(out.byTeam, 'count'), out.unassigned.count + total(teamless, 'count'));
-  assert.equal(out.count - total(out.byTeam, 'count'), 2);
+  assert.deepEqual(out.noTeam, { key: 'team:-', team: null, amount: 30000, count: 1 });
+  assert.deepEqual(out.byOwner.find((r) => r.ownerId === 'u3'), { key: 'owner:-:u3', ownerId: 'u3', ownerName: 'สมศรี', team: null, amount: 30000, count: 1 });
+  assert.equal(total(out.byTeam, 'amount') + out.noTeam.amount + out.unassigned.amount, out.amount);
+  assert.equal(total(out.byTeam, 'count') + out.noTeam.count + out.unassigned.count, out.count);
+  assert.ok(out.byTeam.every((r) => r.team), 'byTeam มีเฉพาะทีมที่มีรหัส');
 });
 
 test('นับเฉพาะ pending_approval · ยอด = actualAmount ก่อน VAT ไม่ใช่ totalAmount', () => {
@@ -192,20 +225,40 @@ test('เรียงนิ่ง: คนยอดมากก่อน · ใ�
 test('จับยอดเข้าแถวรายคน/รายทีม และคืนกลุ่มที่ไม่มีแถวให้เติม', () => {
   const pendingApproval = build({
     orders: [so({ id: 'A' }), so({ id: 'B', dealId: 'D2', actualAmount: 5 }), so({ id: 'C', dealId: 'D3', actualAmount: 7 })],
-    deals: [deal(), deal({ id: 'D2', ownerId: 'u2' }), deal({ id: 'D3', ownerId: 'u3' })],
+    deals: [deal(), deal({ id: 'D2', ownerId: 'u2', team: 'SV' }), deal({ id: 'D3', ownerId: 'u3' })],
   });
   const people = [{ ownerId: 'u1', team: 'KA' }, { ownerId: 'u9', team: 'KA' }];
   const byPerson = matchPendingApprovalRows(pendingApproval, people, 'person');
   assert.equal(byPerson.byKey.get(pendingApprovalRowKey('person', people[0])).amount, 100000);
   assert.equal(byPerson.byKey.get(pendingApprovalRowKey('person', people[1])), undefined);
   assert.deepEqual(byPerson.extra.map((r) => r.ownerId).sort(), ['u2', 'u3']);
+  // คนเดียวกันต่างทีม = คนละแถว — แถว (SV, u1) ไม่ดูดยอดของ (KA, u1)
+  assert.equal(matchPendingApprovalRows(pendingApproval, [{ ownerId: 'u1', team: 'SV' }], 'person').extra.some((r) => r.ownerId === 'u1'), true);
 
   const byTeam = matchPendingApprovalRows(pendingApproval, [{ team: 'KA' }], 'team');
-  assert.equal(byTeam.byKey.get('KA').amount, 100007);
+  assert.equal(byTeam.byKey.get(pendingApprovalRowKey('team', { team: 'KA' })).amount, 100007);
   assert.deepEqual(byTeam.extra.map((r) => r.team), ['SV']);
 
   // ช่วงที่ไม่มีเดือนนี้ / ยังไม่โหลด = ไม่มีอะไรให้จับ
   assert.deepEqual(matchPendingApprovalRows(null, people, 'person').extra, []);
+});
+
+test('บรรทัด "ไม่ระบุทีม" จับเข้าแถวทีม team null ของรายงาน · ไม่มีแถวก็คืนเป็นกลุ่มให้เติม', () => {
+  const pendingApproval = build({
+    orders: [so({ id: 'A' }), so({ id: 'B', dealId: 'D2', actualAmount: 9 })],
+    deals: [deal(), deal({ id: 'D2', ownerId: 'u2', team: null })],
+  });
+  assert.equal(pendingApprovalRowKey('team', { team: null }), 'team:-');
+  assert.equal(pendingApprovalRowKey('person', { team: null, ownerId: 'u2' }), 'owner:-:u2');
+
+  const withRow = matchPendingApprovalRows(pendingApproval, [{ team: 'KA' }, { team: null }], 'team');
+  assert.equal(withRow.byKey.get('team:-').amount, 9);
+  assert.deepEqual(withRow.extra, []);
+
+  const withoutRow = matchPendingApprovalRows(pendingApproval, [{ team: 'KA' }], 'team');
+  assert.deepEqual(withoutRow.extra.map((r) => [r.team, r.amount]), [[null, 9]]);
+  // ไม่มีดีลไม่ระบุทีม = ไม่มีกลุ่มว่างโผล่มาเป็นแถวเกิน
+  assert.deepEqual(matchPendingApprovalRows(build(), [{ team: 'KA' }], 'team').extra, []);
 });
 
 /* ── ด่านโค้ด: route กับหน้ารายงานต้องไม่ปนยอดรออนุมัติเข้าขายจริง ────────── */
@@ -220,6 +273,14 @@ test('route: อ่านใบรออนุมัติแยกก้อน 
   assert.match(source, /const ids = inRange\.map\(\(o\) => o\.id\);/);
   // เจ้าของมาจากดีลปัจจุบัน ต้องซอยลิสต์ id (PostgREST 16 KB)
   assert.match(source, /fetchInChunks\(/);
+  // ทีมตามดีล — ดีลของใบรออนุมัติต้องอ่านช่อง team มาด้วย
+  assert.match(source, /\.from\('sales_deals'\)\s*\.select\('[^']*\bteam\b[^']*'\)/);
+});
+
+test('ตัวคิดยอดรออนุมัติไม่อ่านทีมจากบัญชี (ทีมตามดีล)', () => {
+  const source = read('lib/sales/reportPendingApproval.js');
+  assert.doesNotMatch(source, /person\([^)]*\)\??\.team|account\??\.team/);
+  assert.match(source, /const team = deal\.team \|\| null;/);
 });
 
 test('หน้า: ขายจริง ทบยอด % ส่วนต่าง ยังคิดจาก actual ล้วน', () => {

@@ -10,3 +10,18 @@
   font-weight: var(--fw-normal);
   line-height: var(--lh-thai);
 }
+
+/* บรรทัดรอง "Won รอยื่น SO ฿X" ใต้ยอด Actual ในรายการ "ยอด Won" (มติผู้ใช้ 2026-09-14)
+   ให้เห็นว่าทำไมดีล Won แถวนี้ Actual ฿0.00 และยอดคาดการณ์นับมันด้วยมูลค่าดีลเท่าไร
+   คำว่า "Won รอยื่น SO" คือสัญญาณหลัก (สีไม่ใช่สัญญาณเดียว) · สีข้อความรอง น้ำหนักปกติ
+   ไม่ใช้เขียวของ Actual ไม่งั้นอ่านเป็นยอดหลักอีกตัวที่ยืนคู่กับ Actual
+   nowrap: คำกับตัวเลขห้ามแยกบรรทัดในเซลล์ตัวเลขแคบ (บทเรียนเดียวกับ .so-pending-approval-main) */
+.awaitingSoSubLine {
+  display: block;
+  white-space: nowrap;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+}

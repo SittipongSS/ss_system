@@ -43,8 +43,8 @@ test('มูลค่าที่ขึ้นจอ: Won = Actual (ผ่าน�
   assert.equal(dealDisplayValue({ ...MIXED_WON, stage: 'in_project' }), 200000);
   // wonValue ที่ไม่ได้มาจาก SO อนุมัติ (ไม่มี actualSource) ไม่ใช่ Actual
   assert.equal(dealDisplayValue({ stage: 'won', wonValue: 90000, projectValue: 90000, metadata: {} }), 0);
-  // ดีลเก่าที่ย้ายระบบ (legacy) ยังนับตามเดิม
-  assert.equal(dealDisplayValue({ stage: 'won', wonValue: 70000, metadata: { actualSource: 'legacy' } }), 70000);
+  // actualSource 'legacy' ไม่ใช่ Actual (มติผู้ใช้ 2026-09-14 — Actual มาจาก SO อนุมัติเท่านั้น · ฐานไม่เคยมีแถวแบบนี้)
+  assert.equal(dealDisplayValue({ stage: 'won', wonValue: 70000, metadata: { actualSource: 'legacy' } }), 0);
   // ข้อมูลไม่ครบต้องไม่พัง
   assert.equal(dealDisplayValue({ stage: 'lead', projectValue: null }), 0);
   assert.equal(dealDisplayValue(null), 0);
@@ -96,7 +96,23 @@ test('หน้ารายการดีล: มูลค่า · การ�
   assert.match(page, /fmtMoney\(dealDisplayValue\(deal\)\)/, 'คอลัมน์มูลค่า');
   assert.match(page, /sortKey === "amount"\) return compareDealDisplayValue\(a, b\) \* mul/, 'การเรียงต้องใช้ตัวเดียวกับคอลัมน์');
   assert.match(page, /group\.total \+= dealDisplayValue\(deal\)/, 'ยอดหัวกลุ่มบวกจากตัวเลขเดียวกับในแถว');
-  assert.match(page, /sumDealDisplay\(wonDeals\)/, 'KPI Won ใช้ชุดเดียวกับตัวนับ Won');
+  assert.match(page, /sumDealDisplay\(wonDeals, pendingPeriod\)/, 'KPI Won ใช้ชุดเดียวกับตัวนับ Won + คัดงวดของยอดรออนุมัติ');
+});
+
+/* มติผู้ใช้ 2026-09-14 (fix 2): ยอดรออนุมัติของหัวกลุ่ม/KPI คัดด้วยงวดที่หน้าโชว์ — บรรทัดรองในแถวไม่คัด
+   (เทสต์ตัวกติกาอยู่ที่ dealPagesGap.test.mjs · ที่นี่ล็อกว่าหน้าจอต่อสายครบ) */
+test('หน้ารายการดีล: ยอดรออนุมัติของหัวกลุ่ม/KPI คัดงวด · งวดกับเวลาจับในรอบโหลดเดียวกับชุดดีล', () => {
+  const page = stripComments(read(DEALS_PAGE));
+  assert.match(page, /import \{[^}]*\bpendingPeriodMatcher\b[^}]*\} from "@\/lib\/sales\/dealAmountDisplay"/);
+  assert.match(page, /setPendingPeriod\(\{ inPeriod: pendingPeriodMatcher\(\{ month, allMonths, reviewOnly \}\), now: new Date\(\) \}\)/,
+    'งวด+เวลาต้องจับตอนโหลด (ไม่อ่านนาฬิกาตอนเรนเดอร์ · ไม่ใช้งวดใหม่กับดีลของรอบเก่า)');
+  // จุด set อยู่หลังด่านทิ้งคำตอบรอบเก่า — ไม่งั้นงวดของรอบเก่าทับรอบใหม่
+  const guard = page.indexOf('if (!isLatest()) return;');
+  const setAt = page.indexOf('setPendingPeriod({');
+  assert.ok(guard > 0 && setAt > guard, 'setPendingPeriod ต้องอยู่หลัง isLatest()');
+  assert.match(page, /sumDealDisplay\(group\.deals, pendingPeriod\)/, 'หัวกลุ่มใช้ตัวรวมเดียวกับ KPI');
+  assert.doesNotMatch(page, /group\.pendingApproval \+= pendingApprovalAmountOf/, 'ห้ามกลับไปบวกรออนุมัติทุกใบโดยไม่คัดงวด');
+  assert.match(page, /\[groupBy, filteredDeals, projects, customers, ownerNameOf, sortKey, pendingPeriod\]/);
 });
 
 test('หน้ารายการดีล: ยอดรออนุมัติเป็นชิ้นแยก (PendingApprovalAmount) ไม่บวกเข้ายอดรวม', () => {
@@ -135,9 +151,20 @@ test('หน้ารายละเอียดดีล: การ์ด Won =
     'ยอดรออนุมัติต้องรวมจากแถว SO สด — ไม่พึ่ง cache ของ mig 0353');
   assert.match(page, /value=\{money\(dealActual\)\}/);
   assert.match(page, /<PendingApprovalAmount amount=\{soAmounts\.pendingApproval\} count=\{soAmounts\.pendingApprovalCount\} \/>/);
-  // ส่วนต่างเทียบ FC คิดจาก Actual ล้วน
-  assert.match(page, /\(Number\(deal\.projectValue\) \|\| 0\) - dealActual/);
   assert.doesNotMatch(page, /dealActual\s*\+\s*soAmounts/, 'ห้ามบวกรออนุมัติเข้า Actual');
+  /* ส่วนต่างเทียบ FC — มติผู้ใช้ 2026-09-14 (fix 1): สามกรณีตัดสินที่ wonDealForecastHint ตัวเดียว
+     (เทสต์ตัวกติกาอยู่ที่ dealPagesGap.test.mjs) · ป้อนจากแถว SO สด + Actual ของดีล
+     · ส่ง `deal` ด้วย — คำของดีลเก่าที่สร้างเป็น Won ตัดสินด้วยตัวบ่งชี้กลางในตัวเลือกคำ (มติผู้ใช้ 2026-09-15) */
+  assert.match(page, /import \{ wonDealForecastHint \} from "@\/lib\/sales\/dealAmountDisplay"/);
+  assert.match(page,
+    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*\}\)/);
+  /* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A) ซ่อนคำส่วนต่าง — บรรทัด "ยอดปิดในระบบเดิม" พูดแทน
+     (มติผู้ใช้ 2026-09-14 · lib/sales/legacyDealSwitch) ⇒ คำส่วนต่างยังมาจาก wonHint.text ตัวเดียว
+     และบรรทัดรออนุมัติยังตามท้ายการ์ดเสมอ */
+  assert.match(page,
+    /\{legacyNote && !legacyNote\.stillInForecast \? null : wonHint\.text\}[\s\S]{0,900}?<PendingApprovalAmount amount=\{soAmounts\.pendingApproval\}/,
+    'คำส่วนต่างตามด้วยบรรทัดรออนุมัติ');
+  assert.doesNotMatch(page, /- dealActual\)\}/, 'สูตร "ต่าง ฿(FC − Actual)" แบบเดิมต้องไม่กลับมาในหน้า');
 });
 
 test('หน้ารายละเอียดดีล: ตาราง SO ใช้ป้ายสถานะกลาง + ยอดสามสถานะ', () => {

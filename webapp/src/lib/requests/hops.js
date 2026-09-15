@@ -11,6 +11,7 @@
 // ⚠️ ด่านที่นี่ **ต้องครอบให้ครบก่อนแตะ DB** — constraint ของ 0202 บังคับหลายข้อ
 // (คอนเฟิร์มต้องมีจำนวน · ตอบแล้วต้องมีวันที่ · ไม่เอาต้องมีเหตุผล) ถ้าปล่อยให้ไป
 // ตายที่ DB ผู้ใช้จะได้ error ดิบภาษาอังกฤษที่อ่านไม่รู้เรื่อง
+import { requestedLabel } from '@/lib/requests/rowLabel';
 import { ROW_STAGES, ROW_STAGE_LABELS, rowStage } from '@/lib/requests/rowStage';
 import { isDocLineKind } from '@/lib/requests/docTypes';
 
@@ -300,7 +301,9 @@ export function followUpRowFrom(row, sortOrder) {
     // สิ่งที่ขอ — ยกมาทั้งชุด
     kind: row.kind ?? null,
     materialId: row.materialId ?? null,
-    label: row.label,
+    /* ป้ายสิ่งที่ขอ — ตัดหาง "→ รหัส" ของรอบก่อน (ป้ายเก่าที่ค้างในฐาน) ไม่งั้นรอบแก้ที่ยังไม่ส่งอะไรอ่านเป็นว่าส่งแล้ว
+       ⚠️ เฉพาะพัฒนาสูตร — หางลูกศรเคยต่อที่สายนี้สายเดียว · ชื่อกลิ่น/เอกสารพิมพ์ "→" เองได้ ตัดทิ้งแล้วชื่อขาดถาวร */
+    label: row.lineKind === 'product_dev' ? requestedLabel(row.label) : row.label,
     spec: row.spec ?? null,
     componentId: row.componentId ?? null,
     categoryCode: row.categoryCode ?? null,

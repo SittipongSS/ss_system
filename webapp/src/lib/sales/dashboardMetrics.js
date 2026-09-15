@@ -8,6 +8,8 @@ import {
   dealPendingApprovalAmount,
   dealPendingApprovalCount,
 } from '@/lib/sales/salesOrderWorkflow';
+// ตัวอ่านธงสวิตช์ดีลเก่าตัวเดียวกับด่านสร้างดีล — legacyDealSwitch เป็นสูตรล้วน ไม่ import อะไร (ไม่มีวงวน)
+import { hasLegacySwitchFlag } from '@/lib/sales/legacyDealSwitch';
 
 // Won นับรวม in_project (ดีลเก่าที่ปิดแล้วแปลงเป็นโครงการ) — กติกาอยู่ที่ isWonStage
 // ตัวกลาง สองตัวนี้เป็นแค่รูปที่รับ "ทั้งดีล" ให้เรียกง่ายในตัวกรอง
@@ -45,6 +47,67 @@ export const pendingApprovalCountOf = (d) => (isWonDeal(d) ? dealPendingApproval
 export const pendingApprovalMonthOf = (d, now = new Date()) => (
   pendingApprovalAmountOf(d) > 0 || pendingApprovalCountOf(d) > 0 ? currentMonth(now) : null
 );
+
+/* ── "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) ─────────────────────────────────────
+   ดีลที่ปิด Won แล้วแต่ **ยังไม่มี SO ที่อนุมัติ และไม่มี SO ที่รออนุมัติ** (ยังไม่ออก SO ·
+   มีแค่ร่าง · ถูกตีกลับ/ดึงกลับ · มีแต่ใบยกเลิก)
+   🐞 ตรวจซ้ำ 2026-09-14: รับใบเสนอราคา = ดีลเป็น Won ทันที (0284) ⇒ หลุดจาก FC คงเหลือ
+      แต่ SO เกิดเป็นร่าง (0285) ⇒ ไม่อยู่ในรออนุมัติ/Actual ⇒ "คาดขาด" พุ่งเต็มมูลค่าดีล
+      จนกว่าจะกดยื่น SO — ช่องนี้ปิดรูนั้น ให้ยอดคาดการณ์ไม่วูบทุกช่วงของดีล
+   ⭐ ยอด = projectValue (มูลค่าดีลเต็มก้อน — ฐานเดียวกับ FC คงเหลือ ซึ่งไม่ถ่วงโอกาสปิด)
+   ⭐ เดือน = wonMonthOf (ถังเดียวกับที่ FC Total ของดีล Won นี้อยู่แล้ว) — ไม่ใช้เดือนปัจจุบัน
+      แบบรออนุมัติ เพราะดีลค้างเก่า (Won แต่ไม่เคยออก SO) จะไปกองรวมในเดือนนี้เดือนเดียว
+   ⭐ "มี SO อนุมัติแล้ว" ดูจาก metadata.wonMonth ไม่ใช่ยอด Actual > 0 — ใบอนุมัติยอด 0 บาท
+      (ใบตัวอย่าง ถูกกฎตั้งแต่ mig 0197) มีจริง 28 ดีล · DB เขียน wonMonth เฉพาะเมื่อมีใบ
+      อนุมัติ (trigger 0279/0353 ถอดเป็น null ทุกครั้งที่ไม่มี)
+   ⭐ **ไม่นับดีลเก่าที่สร้างเป็น Won** (isLegacyWonAtCreate ข้างล่าง · มติผู้ใช้ 2026-09-15) — ตัดทั้งยอดและ
+      จำนวน ทุกจอที่อ่านตัวช่วยชุดนี้ · ดีลแบบนี้ยื่น SO ไม่ได้เลย (ออกใบเสนอราคาให้ดีล Won ไม่ได้ · SO ต้องมี
+      ใบเสนอราคาที่รับแล้ว · PATCH เปลี่ยนขั้นของดีล Won ไม่ได้) คำว่า "รอยื่น SO" จึงผิดทุกใบ และยอดของมัน
+      ไม่มีวันเป็น Actual ⇒ นับเข้าคาดจบงวดทำให้คาดขาดดูดีเกินจริง
+      🐞 ตรวจ prod 2026-09-15: กองนี้ 42 ดีล 2,348,450 เป็นดีลแบบนี้ 35 ดีล 1,645,350 (+24 บรรทัด ฿0)
+         เหลือดีลจริง 7 ดีล 703,100
+      ⚠️ ตัดเฉพาะกองนี้ — Actual · FC Total · FC คงเหลือ · ยอด Won ในลิ้นชัก · FC Excel · wonCount ·
+         projectRollup ไม่เปลี่ยน (บล็อก B ของ mig 0359 ยังอยู่ใน FC จนเจ้าของยืนยัน)
+   ⛔ ห้ามบวกเข้า Actual / เป้า / % / ขาด-เกิน — ใช้ได้แค่ยอดคาดการณ์ (projected) กับบรรทัดแสดงผล */
+export const WON_AWAITING_SO_LABEL = 'Won รอยื่น SO';
+export const dealHasApprovedSalesOrder = (d) => Boolean(d?.metadata?.wonMonth) || wonAmountOf(d) > 0;
+
+/* ดีลเก่าจากระบบเดิมที่ **สร้างเป็น Won ตั้งแต่แรก** (สวิตช์ในฟอร์มสร้าง · มติผู้ใช้ 2026-09-15)
+   ⭐ ตัวบ่งชี้เดียวของทั้งระบบ — คำนวณจากแถว ไม่มีธงเก็บในฐาน (ไม่มี migration · ไม่ต้อง backfill)
+      ห้ามเขียนเงื่อนไขชุดนี้ซ้ำที่อื่น ให้ import ตัวนี้ (เทสต์ legacyDealSwitch.test.mjs สแกนหาของซ้ำ)
+   ตรวจ prod 2026-09-15: จับได้ 35/35 · จับผิด 0 จาก 166 ดีลที่ Won ผ่านใบเสนอราคา
+   ทำไมต้องมีทีละข้อ:
+   · isWonDeal — กติกา Won กลาง (รวม in_project)
+   · metadata.legacy === true — ธงสวิตช์ที่ POST เก็บไว้ในแถว · ขาดข้อนี้ "Won แต่ไม่มีใบเสนอราคา" ไม่ได้แปลว่า
+     ดีลสวิตช์เสมอ (ก.ค. 2026 เคยมีดีล Won ที่ wonSource 'manual' 10 ใบ · 'sahamit-po' 1 ใบ โดยไม่มี
+     acceptedQuotationId — วันนี้ไม่เหลือแล้ว แต่ทางแบบนั้นเคยมีจริง)
+     อ่านผ่าน hasLegacySwitchFlag (lib/sales/legacyDealSwitch) ตัวเดียวกับด่าน POST ⇒ ด่านกับตัวบ่งชี้ตัดสินตรงกัน
+     (เคยต่างกัน: ด่าน truthy · ตัวบ่งชี้ === true ⇒ legacy: 1 สร้าง Won ได้แต่หลุดตัวบ่งชี้)
+     ⚠️ ห้ามเพิ่ม 'legacy' ลง SERVER_ONLY_DEAL_METADATA_KEYS (lib/sales/legacyDealSwitch) — ด่าน POST อ่านธง
+        ก่อนถอดก็จริง แต่แถวที่บันทึกจะไม่มีธง ⇒ ดีลสวิตช์ใหม่ทุกใบหลุดตัวบ่งชี้นี้
+   · !metadata.acceptedQuotationId — ใน SQL มีทางเดียวที่พาดีลเป็น Won คือ accept_quotation_atomic (ล่าสุด
+     0284) ซึ่งเขียนคีย์นี้ + wonSource 'quotation' เสมอ ⇒ ดีลสวิตช์ที่สร้างขั้นก่อนแล้วปิดผ่านใบเสนอราคา
+     (7 ใบ เช่น DL-26080394) ไม่เข้าข่าย และยังเดินกติกา Won รอยื่น SO ตามปกติ · ทางถอยทุกทางที่ถอด
+     คีย์นี้ (0116/0138/0168/0170) ย้ายดีลออกจาก Won ไปพร้อมกัน ดีล Won จึงไม่เสียคีย์ทั้งที่ยังเป็น Won
+   · wonSource !== 'quotation' — กันเคสพังครึ่งทาง: บังคับลบใบเสนอราคาแล้ว JS ถอด acceptedQuotationId สำเร็จ
+     (forceDelete.cleanupQuotationOrphans) แต่ RPC ถอยดีลล้มเหลว ⇒ ดีลยังเป็น Won ที่มาจากใบเสนอราคาจริง
+   ⚠️ คำขอที่แต่งเองหลบตัวบ่งชี้ไม่ได้ — ทั้งสามข้อของ metadata ล็อกไว้ที่ route ดีล (lib/sales/legacyDealSwitch):
+      · wonSource / acceptedQuotationId — client เขียนไม่ได้ทั้ง POST/PATCH (SERVER_ONLY_DEAL_METADATA_KEYS)
+      · legacy — POST เก็บเฉพาะ true จริง (clientDealMetadataOnCreate) · PATCH ไม่รับเลย คงค่าเดิม
+        (clientDealMetadataOnPatch) ไม่งั้น PATCH {legacy:false} พาดีลกลับเข้ากองนี้ */
+export const isLegacyWonAtCreate = (d) => isWonDeal(d)
+  && hasLegacySwitchFlag(d?.metadata)
+  && !d?.metadata?.acceptedQuotationId
+  && d?.metadata?.wonSource !== 'quotation';
+
+export const isWonAwaitingSo = (d) => isWonDeal(d)
+  && !isLegacyWonAtCreate(d)
+  && !dealHasApprovedSalesOrder(d)
+  && pendingApprovalAmountOf(d) <= 0
+  && pendingApprovalCountOf(d) <= 0;
+export const wonAwaitingSoAmountOf = (d) => (isWonAwaitingSo(d) ? Math.max(0, Number(d?.projectValue) || 0) : 0);
+export const wonAwaitingSoCountOf = (d) => (isWonAwaitingSo(d) ? 1 : 0);
+export const wonAwaitingSoMonthOf = (d) => (isWonAwaitingSo(d) ? wonMonthOf(d) : null);
 
 // FC Total preserves every forecast made in the period (Open + Won + Lost)
 // so forecast misses remain auditable. FC remaining is the Open portion only.
@@ -84,11 +147,19 @@ export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
 
 export const normalizedOwnerName = (name) => String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
-// จับคู่ดีลกับแถว "รายบุคคล" บนภาพรวม — byOwner รวมคนด้วยบัญชีผู้ใช้ปัจจุบัน
+// จับคู่ดีลกับแถว "รายบุคคล" บนภาพรวม — byOwner รวม "ใคร" ด้วยบัญชีผู้ใช้ปัจจุบัน
 // (lib/sales/ownerIdentity) ชื่อบนแถวจึงเป็นชื่อ "ปัจจุบัน" ขณะที่ดีลเก่าเก็บชื่อ
-// snapshot เดิมไว้ → ต้องเทียบ id ก่อน (ครอบดีลก่อน/หลังเปลี่ยนชื่อ-ย้ายทีม)
+// snapshot เดิมไว้ → ต้องเทียบ id ก่อน (ครอบดีลก่อน/หลังเปลี่ยนชื่อ)
 // แล้วค่อยถอยไปชื่อ+ทีม สำหรับแถว legacy ที่ id เก่า stale จับบัญชีไม่ได้
-export const dealMatchesOwner = (deal, { ownerId, ownerName, team } = {}) => {
+//
+// ⭐ มติผู้ใช้ 2026-09-14 "ทีมตามดีล" — แถวคนบนแดชบอร์ดแยกตาม **ทีมที่ประทับบนดีล** (sales_deals.team)
+//    คนที่มีดีลหลายทีม/ย้ายทีม จึงมีหลายแถว (lib/sales/ownerBucketKey) · ลิ้นชักของแถวคนหนึ่งต้องส่ง
+//    `teamScoped: true` มาด้วย ⇒ ดีลต้องอยู่ทีมเดียวกับแถวก่อน (ทีมว่าง '' / null = ทีมเดียวกัน)
+//    ไม่งั้นลิ้นชักของแถว KA โชว์ดีล ODM ของคนเดียวกันด้วย ยอดในลิ้นชักเกินช่องบนตาราง
+// ⚠️ เป็นธงเลือกเปิด ไม่ใช่ค่าตั้งต้น — `team: null` แปลได้สองแบบ ("ไม่จำกัดทีม" กับ "ถังไร้ทีม")
+//    ผู้เรียกเดิมที่ไม่ส่งธง ทำงานเหมือนเดิมทุกกรณี (id ตรง = ตรง ไม่ดูทีม)
+export const dealMatchesOwner = (deal, { ownerId, ownerName, team, teamScoped = false } = {}) => {
+  if (teamScoped && (deal?.team || null) !== (team || null)) return false;
   if (ownerId && deal?.ownerId === ownerId) return true;
   /* ⭐ ทั้งสองฝั่งมี id แล้วไม่ตรง = จบ ไม่ต้องถอยไปเทียบชื่อ
      เดิมถอยเสมอ ทำให้ดีลของ "คนที่ชื่อพ้องกันในทีมเดียวกัน" ไหลไปนับให้ผิดคน และ

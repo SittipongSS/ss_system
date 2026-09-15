@@ -62,10 +62,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     return forbidden();
   }
 
-  const [{ data: tasks }, { data: links }] = await Promise.all([
+  /* ⚠️ supabase ไม่ throw — error มากับค่าที่คืน · ทิ้งไปแล้ว data เป็น null ซึ่งหน้าตาเหมือน
+     "ไม่มีงาน / ไม่มีสินค้า / ไม่มีดีล" ทุกประการ ⇒ ทุกการอ่านใน GET นี้ต้องเช็ค error แล้วตอบ 500
+     (เดิมอ่านดีลไม่ขึ้น = การ์ด FC Total / Actual / รออนุมัติ บนหน้าโครงการเป็น 0 เงียบ ๆ) */
+  const [{ data: tasks, error: tasksError }, { data: links, error: linksError }] = await Promise.all([
     supabase.from('project_tasks').select('*').eq('projectId', project.id).order('stepOrder', { ascending: true }),
     supabase.from('project_products').select('*, product:products(*)').eq('projectId', project.id),
   ]);
+  if (tasksError) return fail(tasksError.message, 500);
+  if (linksError) return fail(linksError.message, 500);
 
   // redact ต้นทุน/มาร์จิ้นของ FG ตามสิทธิ์ผู้เรียก (เหมือน /api/products) — pm:view มี
   // ทั้ง rd/staff/viewer ที่ห้ามเห็น costPrice/มาร์จิ้น; ไม่ redact = รั่วผ่าน fetch ตรง.
@@ -77,7 +82,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // ดีลที่ผูกโครงการนี้ — เฟส B: หลายดีลต่อโครงการ (SCENT→NPD→RE-ORDER…) อ่านเป็น list.
   // ดีลก่อตั้ง = ตัวแรกสุด (createdAt เก่าสุด) — คง dealId/dealStage ชี้ดีลก่อตั้งไว้
   // 1 เฟส เพื่อ backward compat กับ UI ที่ยังไม่ย้ายไปใช้ deals[] (ตัดในเฟสถัดไป).
-  const { data: linkedDeals } = await supabase
+  const { data: linkedDeals, error: linkedDealsError } = await supabase
     .from('sales_deals')
     // ⚠️ `ownerId` ต้องมีเสมอ — ด่านของเธรดดีล (scope 'own' ของ AE) เทียบช่องนี้
     // ขาดไปเมื่อไร AE จะไม่เห็นความเคลื่อนไหวของดีลตัวเองบนหน้าโครงการ
@@ -89,6 +94,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .select('id, title, stage, dealType, "projectId", "customerId", "customerName", projectValue, wonValue, forecastMonth, formulaName, ownerId, ownerName, team, probability, expectedCloseDate, metadata, createdAt')
     .eq('projectId', project.id)
     .order('createdAt', { ascending: true });
+  if (linkedDealsError) return fail(linkedDealsError.message, 500);
   const deals = sortDealsByOrder(linkedDeals || [], project.metadata?.dealOrder || []);
   const foundingDeal = deals[0] || null;
   const dealsRollup = rollupDeals(deals);
@@ -100,7 +106,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   personalTasksQuery = dealIds.length
     ? personalTasksQuery.or(`projectId.eq.${project.id},dealId.in.(${dealIds.join(',')})`)
     : personalTasksQuery.eq('projectId', project.id);
-  const { data: personalTasks } = await personalTasksQuery.order('createdAt', { ascending: false });
+  const { data: personalTasks, error: personalTasksError } = await personalTasksQuery.order('createdAt', { ascending: false });
+  if (personalTasksError) return fail(personalTasksError.message, 500);
 
   // ศูนย์รวมโครงการ: โครงการ = จิ๊กซอว์ครอบดีล — ดึงของ "ใต้ดีล" (ใบเสนอราคา /
   // ความเคลื่อนไหว / ประวัติสถานะ) ของทุกดีลมารวมระดับโครงการ (อ่านอย่างเดียว —
@@ -133,7 +140,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     dealFeedIds = feedDealIds;
     const emptyRows = Promise.resolve({ data: [] });
 
-    const [{ data: quotes }, { data: orderRows }, { data: acts }, { data: hist },
+    const [{ data: quotes, error: quotesError }, { data: orderRows, error: orderRowsError },
+      { data: acts, error: actsError }, { data: hist, error: histError },
       { data: inquiryRows, error: inquiryError }] = await Promise.all([
       supabase.from('quotations')
         .select('id, dealId, quoteNumber, status, approvalStatus, totalAmount, revisionNo, quoteDate, createdAt')
@@ -156,6 +164,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       // `const { data }` ทิ้ง error ไป (ดู lib rule: supabase masked query errors)
       supabase.from('dept_requests').select('*').or(`projectId.eq.${project.id},dealId.in.(${dealIds.join(',')})`).order('createdAt', { ascending: false }),
     ]);
+    // ใบเสนอราคา / SO / เธรด / ประวัติสถานะ อ่านไม่ขึ้น ≠ ไม่มี — การ์ดรออนุมัติของ SO อ่านจากชุดนี้
+    if (quotesError) return fail(quotesError.message, 500);
+    if (orderRowsError) return fail(orderRowsError.message, 500);
+    if (actsError) return fail(actsError.message, 500);
+    if (histError) return fail(histError.message, 500);
     quotations = latestQuotationRevisions(quotes || []);
     salesOrders = orderRows || [];
     dealActivities = (acts || []).map((a) => ({
@@ -221,13 +234,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     maxRev = maxRow?.revNo ?? null;
   }
   if (project.currentRev != null) {
-    const { data: rev } = await supabase
+    const { data: rev, error: revError } = await supabase
       .from('project_doc_revisions')
       .select('createdAt')
       .eq('projectId', project.id)
       .eq('kind', 'rev')
       .eq('revNo', project.currentRev)
       .maybeSingle();
+    if (revError) return fail(revError.message, 500);
     revisedAt = rev?.createdAt ?? null;
   }
   return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canDelete, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealFeedIds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });

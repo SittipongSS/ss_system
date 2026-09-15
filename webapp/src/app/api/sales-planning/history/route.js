@@ -8,8 +8,13 @@ import { wonMonthOf } from '@/lib/sales/dashboardMetrics';
 
 export const dynamic = 'force-dynamic';
 
-// Sum won deals into a { [year]: { total, byTeam, byOwner, byMonth } } shape so
+// Sum won deals into a { [year]: { total, byTeam, byOwner, byTeamOwner, byMonth } } shape so
 // the wizard can pre-fill historical actuals for years the system already knows.
+//
+// ⭐ ทีมตามดีล (มติผู้ใช้ 2026-09-14) — ยอดของทีมมาจาก `sales_deals.team` ที่ประทับบนดีล
+// ไม่ใช่ทีมในบัญชีเจ้าของ · `byTeamOwner[team][ownerId]` = ยอดของคนนั้น *ในทีมนั้น*
+// (ตัวช่วยวางเป้าใช้ถ่วงสัดส่วนคนในทีม — คนย้ายทีม/อยู่หลายทีมต้องไม่ลากยอดทีมอื่นมาด้วย)
+// · `byOwner` ยังเป็นยอดข้ามทุกทีมตามเดิม · ดีลไม่ระบุทีมไม่ลง byTeam/byTeamOwner (เหมือนเดิม)
 //
 // ⛔ **Actual ล้วน — ห้ามมียอด SO "รออนุมัติ" ปน** (มติผู้ใช้ 2026-09-11 · mig 0353)
 // ตัวช่วยวางเป้าเอา systemActuals ไปเติมช่อง "ขายจริง" แล้ว POST ลง `sales_history`
@@ -28,10 +33,14 @@ function aggregateWonDeals(deals) {
     const yr = mk.slice(0, 4);
     const mi = Number(mk.slice(5, 7)) - 1;
     const amt = wonAmt(d);
-    const y = (years[yr] ||= { total: 0, byTeam: {}, byOwner: {}, byMonth: Array(12).fill(0) });
+    const y = (years[yr] ||= { total: 0, byTeam: {}, byOwner: {}, byTeamOwner: {}, byMonth: Array(12).fill(0) });
     y.total += amt;
     if (d.team) y.byTeam[d.team] = (y.byTeam[d.team] || 0) + amt;
     if (d.ownerId) y.byOwner[d.ownerId] = (y.byOwner[d.ownerId] || 0) + amt;
+    if (d.team && d.ownerId) {
+      const inTeam = (y.byTeamOwner[d.team] ||= {});
+      inTeam[d.ownerId] = (inTeam[d.ownerId] || 0) + amt;
+    }
     if (mi >= 0 && mi < 12) y.byMonth[mi] += amt;
   }
   return years;

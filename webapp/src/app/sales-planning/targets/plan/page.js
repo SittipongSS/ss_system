@@ -85,7 +85,7 @@ export default function SalesTargetPlanPage() {
   // most recent history year (drives the team split ratio in step 3).
   const [companyHist, setCompanyHist] = useState({}); // { [year]: { target, actual } }
   const [teamHist, setTeamHist] = useState({}); // { [team]: actual } — latest year
-  const [systemActuals, setSystemActuals] = useState({}); // { [year]: {total, byTeam, byOwner, byMonth} }
+  const [systemActuals, setSystemActuals] = useState({}); // { [year]: {total, byTeam, byOwner, byTeamOwner, byMonth} }
 
   // Step 2 — chosen final target for the plan year.
   const [finalTarget, setFinalTarget] = useState(0);
@@ -219,13 +219,16 @@ export default function SalesTargetPlanPage() {
     return map;
   }, [users, activeCodes]);
 
+  /* ⭐ ทีมตามดีล (มติผู้ใช้ 2026-09-14) — น้ำหนักของคนในทีม t = ยอด Won ของคนนั้น
+     **บนดีลที่ประทับทีม t** (`byTeamOwner`) ไม่ใช่ยอดรวมข้ามทีม (`byOwner`)
+     ⇒ คนที่อยู่หลายทีม/เพิ่งย้ายทีม ไม่ลากยอดของทีมอื่นมาถ่วงสัดส่วนในทีมนี้ · ไม่มีคีย์ = 0 */
   const seedPersonTargets = useCallback(() => {
     const next = {};
     for (const t of activeCodes) {
       const members = teamMembers[t] || [];
       const weights = members.map((m) => ({
         key: m.id,
-        weight: Number(systemActuals?.[latestHistYear]?.byOwner?.[m.id] || 0),
+        weight: Number(systemActuals?.[latestHistYear]?.byTeamOwner?.[t]?.[m.id] || 0),
       }));
       const parts = splitByProportion(Number(teamTargets[t] || 0), weights);
       for (const { key, amount } of parts) next[key] = amount;

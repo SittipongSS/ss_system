@@ -172,9 +172,12 @@ than one relationship was found"* ⇒ ทะเบียนใบเสนอร
 1. 🔴 **mig 0337 ต้องรันก่อน deploy เสมอ** — `POST/PATCH /deals` เขียน `forecastManualValue`
    ทุกครั้ง ถ้าคอลัมน์ยังไม่มี PostgREST ปฏิเสธทั้งคำสั่ง ⇒ **สร้าง/แก้ดีลไม่ได้ทั้งระบบ**
 2. **trigger ห้ามแตะ `metadata` / `stage` / `wonValue`** — `sales_deals_enforce_so_actual_trg`
-   (0110) เป็น BEFORE UPDATE OF สามคอลัมน์นั้น มีตัวทำงานแบบไม่มีเงื่อนไข ⇒ แตะเมื่อไร
-   ดีลย้ายระบบ (`actualSource='legacy'`) ถูกตีตราใหม่เป็น `'sale_order'` แล้ว `wonValue`
-   ถูกล้างเป็น 0 ถาวร · เทสต์ `forecastSource.test.mjs` อ่านไฟล์ .sql ล็อกไว้แล้ว
+   (0110 · นิยามล่าสุด 0353) เป็น BEFORE INSERT OR UPDATE OF สามคอลัมน์นั้น คิด `wonValue`/
+   `actualSource`/`soPending*` ใหม่จาก SO อนุมัติทุกครั้ง ⇒ แตะเมื่อไรคือปลุก trigger เปล่า ๆ และ
+   metadata ที่ถือไว้อาจทับของเส้นอื่น · ⚠️ ข้อความเดิมอ้างว่าจะล้างยอด "ดีลย้ายระบบ
+   (`actualSource='legacy'`)" — **ยอดแบบนั้นไม่เคยมีจริง** trigger ทับตั้งแต่ INSERT
+   (มติผู้ใช้ 2026-09-14 → [legacy-deal-switch.md](legacy-deal-switch.md)) · เทสต์
+   `forecastSource.test.mjs` อ่านไฟล์ .sql ล็อกไว้แล้ว
 3. **ยอดบนจอ ≠ ยอดบนกระดาษ** — FC ใช้ยอด **ก่อน VAT** ให้เข้าคู่กับ `wonValue`/Actual
    ⇒ เอกสารพิมพ์ 1,070,000 แต่ FC ขึ้น 1,000,000 · ทุกจุดที่โชว์ต้องติดป้าย "ก่อน VAT"
 4. **ใบที่ `vatRate = 0` คือ "ราคารวม VAT แล้ว"** (`createQuotationDraft.js`) ⇒

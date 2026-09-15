@@ -295,16 +295,20 @@ export default function DealFormFields({
      ⚠️ ขั้น won/lost โผล่เฉพาะเมื่อ caller ส่งมาใน `stages` (เช่น ใบที่ปิดแล้ว
      ต้องเห็นค่าตัวเอง — editableStages) — ฟอร์มไม่แอบเติมเอง */
   const stageSub = (stage) => {
+    // ดีลเก่าที่สร้างเป็น Won ไม่มียอด (มติผู้ใช้ 2026-09-14) — ป้าย "Actual" ใต้ขั้นจะสัญญาผิดตั้งแต่ก่อนกด
+    if (stage === "won" && legacyOn) return "ไม่มียอด";
     if (stage === "won" || stage === "in_project") return "Actual";
     if (stage === "lost") return "0%";
     return `${DEFAULT_PROBABILITY_BY_STAGE[stage] ?? DEFAULT_PROBABILITY_BY_STAGE.lead}%`;
   };
   const isEndStage = (stage) => stage === "won" || stage === "in_project" || stage === "lost";
   /* สวิตช์ "ดีลเก่าจากระบบเดิม" (มติผู้ใช้ 2026-08-08 — เปิดถาวรทุกคน): เปิดแล้ว
-     แถบขั้นงอก Won เพิ่ม (Lost อยู่ใน CREATABLE_STAGES อยู่แล้ว) — ใส่ดีลย้ายระบบ
-     ได้ตรงสถานะจริง · ปิดสวิตช์ทั้งที่เลือก Won ค้าง = ล้างสถานะให้เลือกใหม่
-     โผล่เฉพาะตอนสร้าง (auto) — ฟอร์มแก้เปลี่ยนสถานะผ่าน transition อยู่แล้ว */
+     แถบขั้นงอก Won เพิ่ม (Lost อยู่ใน CREATABLE_STAGES อยู่แล้ว) — บันทึกงานที่ปิดไปแล้ว
+     ในระบบเดิม (ไม่มีมูลค่า — มติผู้ใช้ 2026-09-14) · ปิดสวิตช์ทั้งที่เลือก Won ค้าง = ล้างสถานะให้เลือกใหม่
+     โผล่เฉพาะตอนสร้าง (auto) — ฟอร์มแก้เปลี่ยนสถานะผ่าน transition อยู่แล้ว
+     ⚠️ legacyWon ต้องประกาศตรงนี้ ก่อน stageField — JSX ข้างล่างสร้างทันที ไม่ใช่ตอน render */
   const legacyOn = probabilityMode === "auto" && !alreadyWon && !!form.legacy;
+  const legacyWon = legacyOn && form.stage === "won";
   const stepStages = legacyOn
     ? [...stages.filter((stage) => stage !== "lost"), "won", ...(stages.includes("lost") ? ["lost"] : [])]
     : stages;
@@ -350,7 +354,7 @@ export default function DealFormFields({
       ) : probabilityMode === "auto" ? (
         <small>
           {legacyOn
-            ? "ดีลเก่าเลือกขั้นปลายได้ตอนสร้าง — Won เก่าคิดเป็นยอดจริง (Actual) เมื่อผูกใบสั่งขาย ไม่เข้า FC"
+            ? "ดีลเก่าเลือกขั้นปลาย (Won/Lost) ได้ตอนสร้าง · ขั้นอื่นเดินตามขั้นตอนปกติ"
             : "NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80% อัตโนมัติ"}
         </small>
       ) : null}
@@ -371,11 +375,17 @@ export default function DealFormFields({
     </div>
   );
 
-  /* ดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-08-08 รอบสี่): ไม่ถาม "คาดการณ์" —
-     ช่องเดียวกันเปลี่ยนความหมายเป็นของจริงจากระบบเดิม: มูลค่าที่ปิด (→ wonValue
-     = ยอด Won ทันที) และวันที่ปิด (→ confirmedAt = เดือนที่ยอดตกย้อนหลัง)
-     คีย์ในฟอร์มคงเดิม (valueItems/expectedCloseDate) — server เป็นคน map */
-  const legacyWon = legacyOn && form.stage === "won";
+  /* ดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-09-14 — แทนมติ 2026-08-08 รอบสี่): ไม่มีมูลค่า ⇒ ไม่มีตาราง
+     มูลค่า และไม่บังคับ · ช่องวันที่เปลี่ยนความหมายเป็น "วันที่ปิดในระบบเดิม" (→ confirmedAt: จัดดีลเข้า
+     เดือนที่ปิด ไม่มียอด) · 🐞 เดิมป้ายสัญญาว่ายอดที่พิมพ์เข้าเป็นยอด Won ทันที แต่ trigger 0110
+     เขียนทับ wonValue ทุกครั้ง ยอดที่พิมพ์ไม่เคยนับ และค้างเป็น FC แทน */
+  const legacyValueNote = (
+    <div className="deal-field" key="value">
+      <span className="deal-field-label">มูลค่า</span>
+      <div className="deal-derived">ไม่มีมูลค่า — บันทึกงานที่ปิดไปแล้วในระบบเดิม</div>
+      <small>ไม่นับเป็นยอดขาย (Actual) และไม่เข้า FC · ยอดขายจริงมาจากใบสั่งขายที่อนุมัติแล้วเท่านั้น — ขายรอบใหม่ให้เปิดดีลปกติแล้วออกใบเสนอราคา</small>
+    </div>
+  );
   /* มูลค่าคาดการณ์ = ตารางรายหมวด (มติผู้ใช้ 2026-08-17 — mig 0264) แทนช่องเงิน
      ช่องเดียว + ช่องหมวดสินค้าช่องเดียวที่เคยอยู่เหนือสถานะ:
        · หมวดสินค้าเลือกได้หลายรายการ แต่ละรายการมีจำนวน/ราคาต่อหน่วย/หมายเหตุ
@@ -389,17 +399,14 @@ export default function DealFormFields({
       categories={categories}
       disabled={alreadyWon}
       legacyValue={form.projectValue}
-      label={legacyWon ? "มูลค่าที่ปิด (แยกตามหมวดสินค้า)" : "มูลค่าคาดการณ์ (แยกตามหมวดสินค้า)"}
-      hint={legacyWon
-        ? "ยอดปิดจริงจากระบบเดิม — เข้าเป็นยอด Won (Actual) ทันที · ถ้ามีใบสั่งขายมาผูกภายหลัง ยอดจากใบจริงจะแทนที่"
-        : null}
+      label="มูลค่าคาดการณ์ (แยกตามหมวดสินค้า)"
     />
   );
 
   const closeDateField = (
     <label className="deal-field" key="closeDate">
       <span className="deal-field-label">
-        {legacyWon ? "วันที่ปิด" : "วันที่คาดการณ์ปิด"} <span className="required-mark">*</span>
+        {legacyWon ? "วันที่ปิดในระบบเดิม" : "วันที่คาดการณ์ปิด"} <span className="required-mark">*</span>
         {alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}
       </span>
       <DateInput value={form.expectedCloseDate || ""} disabled={alreadyWon} onChange={set("expectedCloseDate")} />
@@ -420,7 +427,7 @@ export default function DealFormFields({
       )}
       <small>
         {legacyWon
-          ? `วันที่ปิดจริงในระบบเดิม (ย้อนหลังได้) — ยอด Won เข้าเดือน ${monthKey(form.expectedCloseDate) || "ของวันที่นี้"}`
+          ? `เก็บไว้อ้างอิง — ดีลนี้อยู่ในรายการดีลที่ปิดได้${monthKey(form.expectedCloseDate) ? `ของเดือน ${monthKey(form.expectedCloseDate)}` : "ของเดือนตามวันที่นี้"} (นับจำนวนดีล ไม่มียอด) · วันในอนาคตไม่ได้`
           : form.expectedCloseDate
             ? `เดือน FC: ${naText(monthKey(form.expectedCloseDate))} (จากวันที่คาดปิด)`
             : "เดือน FC มาจากวันที่คาดปิด — ช่องนี้บังคับกรอก"}
@@ -443,10 +450,14 @@ export default function DealFormFields({
     <label className="deal-field" key="end">
       <span className="deal-field-label">วันที่สิ้นสุด (ลูกค้าต้องการรับ) <span className="required-mark">*</span></span>
       <DateInput value={form.endDate || ""} onChange={set("endDate")} />
+      {/* ดีลเก่า Won ยอด 0 ⇒ รายงานวางแผนผลิตข้ามดีลนี้ (forecast-report: projectValue 0 = continue)
+          ห้ามเขียนว่ารายงานนับยอด — ขัดกับบันทึก "ไม่เข้า FC" สองแถวข้างบน (มติ 2026-09-14) */}
       <small>
-        {form.endDate
-          ? `วันที่ลูกค้าต้องการรับของ — รายงานวางแผนผลิตนับยอดดีลนี้ที่เดือน ${naText(monthKey(form.endDate))}`
-          : "วันที่ลูกค้าต้องการรับของ — รายงานวางแผนผลิตใช้เดือนของวันนี้"}
+        {legacyWon
+          ? "วันที่ลูกค้ารับของในระบบเดิม — เก็บไว้อ้างอิง · ดีลนี้ไม่มียอดในรายงานวางแผนผลิต"
+          : form.endDate
+            ? `วันที่ลูกค้าต้องการรับของ — รายงานวางแผนผลิตนับยอดดีลนี้ที่เดือน ${naText(monthKey(form.endDate))}`
+            : "วันที่ลูกค้าต้องการรับของ — รายงานวางแผนผลิตใช้เดือนของวันนี้"}
       </small>
     </label>
   );
@@ -474,8 +485,9 @@ export default function DealFormFields({
 
       {/* หมวดสินค้ายุบเข้าตารางมูลค่าคาดการณ์แล้ว (มติผู้ใช้ 2026-08-17) — ช่องหมวด
           เดี่ยวที่เคยอยู่เหนือสถานะถูกถอดออก: ดีลขายได้หลายหมวดพร้อมกัน และหมวดที่
-          ไม่มีจำนวน/ราคาไม่ได้บอกอะไรกับใครเลย · ตารางกินเต็มแถวเองผ่าน .block */}
-      {valueField}
+          ไม่มีจำนวน/ราคาไม่ได้บอกอะไรกับใครเลย · ตารางกินเต็มแถวเองผ่าน .block
+          ดีลเก่าที่สร้างเป็น Won ไม่มีตาราง — ช่องเส้นประบอกว่าไม่มีมูลค่า (มติผู้ใช้ 2026-09-14) */}
+      {legacyWon ? pairRows([legacyValueNote]) : valueField}
       {pairRows([closeDateField])}
       {pairRows([startField, endField])}
       {pairRows([notesField])}

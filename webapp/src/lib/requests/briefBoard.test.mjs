@@ -160,3 +160,17 @@ test('ยอดรวมทั้งใบยังตรงกับตาร�
   assert.equal(totals.untouched, 1);
   assert.equal(totals.confirmed, 1);
 });
+
+test('⭐ คอมเมนต์ "ขอให้แก้" โชว์ที่แถวรอบแก้ที่เดียว ไม่พิมพ์ซ้ำใต้แถวต้นทาง (2026-09-15)', async () => {
+  const { briefBoard: build } = await import('./briefBoard.js');
+  const note = 'ลูกค้าอยากให้หอมหวานขึ้น';
+  const groups = build([{ id: 'B1', name: 'บรีฟ 1' }], [
+    { id: 'D1', lineKind: 'scent_dev', briefId: 'B1', label: 'SC-1 Amber', outcome: 'revise', outcomeNote: note, readyAt: 'x', pickedUpAt: 'x', sentAt: 'x' },
+    { id: 'D2', lineKind: 'scent_dev', briefId: 'B1', label: 'SC-1 Amber', derivedFromItemId: 'D1' },
+  ]);
+  const dirs = groups.flatMap((g) => g.directions);
+  const parent = dirs.find((d) => d.id === 'D1');
+  const rework = dirs.find((d) => d.id === 'D2');
+  assert.equal(parent.outcomeNote, null);
+  assert.equal(rework.reworkBrief, note);
+});

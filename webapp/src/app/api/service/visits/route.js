@@ -9,7 +9,7 @@ import { normalizeVisitInput } from '@/lib/service/rounds';
 import { initialVisitStatus } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
-import { fetchAll } from '@/lib/supabaseFetchAll';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { findPlan, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
 import { siteWorkload } from '@/lib/service/visitLoad';
 import { termIsActive } from '@/lib/service/terms';
@@ -41,27 +41,23 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const [assets, zones] = siteIds.length ? await Promise.all([
       // 🔴 ห่อ fetchAll (mig 0332) — เครื่องทั้งระบบเกินเพดาน 1,000 แถว และช่วงวันที่
       //    กว้าง ๆ ก็แตะไซต์ได้เกือบทั้งหมด ⇒ ภาระคิวช่างจะต่ำกว่าจริงโดยไม่มี error
-      fetchAll(() => supabase.from('service_assets').select('id, siteId, status, qty')
-        .in('siteId', siteIds).order('id', { ascending: true })),
-      supabase.from('service_zones').select('id, siteId').in('siteId', siteIds)
-        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+      fetchAllInChunks(siteIds, (chunk) => supabase.from('service_assets').select('id, siteId, status, qty')
+        .in('siteId', chunk).order('id', { ascending: true })),
+      fetchAllInChunks(siteIds, (chunk) => supabase.from('service_zones').select('id, siteId')
+        .in('siteId', chunk).order('id', { ascending: true })),
     ]) : [[], []];
 
     const zoneIds = zones.map((z) => z.id);
-    const terms = zoneIds.length
-      ? await supabase.from('service_zone_terms').select('id, zoneId, packageQty, salesOrderId')
-        .in('zoneId', zoneIds)
-        .then(({ data, error }) => { if (error) throw error; return data || []; })
-      : [];
+    const terms = await fetchAllInChunks(zoneIds, (chunk) => supabase
+      .from('service_zone_terms').select('id, zoneId, packageQty, salesOrderId')
+      .in('zoneId', chunk).order('id', { ascending: true }));
 
     /* ⚠️ "รอบไหนยังมีผล" ตัดสินที่ terms.js ที่เดียว — ที่นี่แค่หยิบใบสั่งขายแม่มาให้
        (ไม่มีใบ = ตัวตัดสินตอบ false ตามที่ออกแบบ ไม่ใช่เดาว่าใช่) */
     const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
-    const orders = orderIds.length
-      ? await supabase.from('sales_orders').select('id, status, supersededById')
-        .in('id', orderIds).limit(1000)
-        .then(({ data, error }) => { if (error) throw error; return data || []; })
-      : [];
+    const orders = await fetchAllInChunks(orderIds, (chunk) => supabase
+      .from('sales_orders').select('id, status, supersededById')
+      .in('id', chunk).order('id', { ascending: true }));
     const ordersById = new Map(orders.map((o) => [o.id, o]));
     const activeTermIds = terms
       .filter((term) => termIsActive(term, ordersById.get(term.salesOrderId)))

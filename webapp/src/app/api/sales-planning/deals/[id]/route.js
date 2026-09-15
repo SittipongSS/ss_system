@@ -43,6 +43,7 @@ import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
 import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { isDealFormSave, missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
+import { clientDealMetadataOnPatch } from '@/lib/sales/legacyDealSwitch';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,8 +179,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // sahamitPoId/poLineIds/sahamitMergedIntoDealId จาก settle สหมิตร) จะหลุดหายเงียบ ๆ
   // — trigger 0110 กู้คืนแค่ actualSource/wonMonth/wonValueExVat. ค่าไม่ใช่ object
   // (null/'') ไม่รับ: endpoint นี้ไม่มีเส้นทางล้าง metadata ทั้งก้อน
+  // · คีย์ของระบบ (actualSource · legacyClosedValue/Date ของ mig 0359 · wonSource/acceptedQuotationId
+  //   ของ RPC รับใบเสนอราคา) client แก้ไม่ได้ — ถอดจาก **ค่าที่ส่งมา** ก่อน merge ค่าเดิมใน before จึงอยู่ต่อ
+  //   (ถอดจากผลรวม = ลบบันทึก 0359 และตัดดีลออกจากใบเสนอราคาที่รับทุกครั้งที่ PATCH)
+  // · ธง legacy เป็นของตอนสร้างเท่านั้น — PATCH ไม่รับค่าจาก client เลย ค่าใน before อยู่ต่อเสมอ
+  //   🐞 ไม่ถอด = ส่ง {metadata:{legacy:false}} มาเองบนดีลเก่าที่สร้างเป็น Won ผ่านทุกด่านข้างบน ⇒ ตัวบ่งชี้
+  //   isLegacyWonAtCreate หลุด ดีลกลับเข้ากอง "Won รอยื่น SO" · ถอดเฉพาะเส้นนี้ (POST ต้องเก็บธง)
   if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {
-    patch.metadata = { ...(before.metadata || {}), ...body.metadata };
+    patch.metadata = { ...(before.metadata || {}), ...clientDealMetadataOnPatch(body.metadata) };
   }
   /* ⭐ บันทึกจากฟอร์มดีล ต้องมีวันเริ่ม + วันสิ้นสุดเสมอ (มติผู้ใช้ 2026-09-02)
      ⚠️ ตรวจจาก **ดีลหลังบันทึก** ไม่ใช่จาก body — PATCH เส้นนี้มีผู้เรียกแบบ action

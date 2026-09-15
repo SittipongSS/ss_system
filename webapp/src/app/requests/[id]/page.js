@@ -79,6 +79,11 @@ import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { deliveryRowLabel, normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
+import { formulaDeliveryPreview } from "@/lib/requests/formulaRework";
+import { requestedLabel } from "@/lib/requests/rowLabel";
+
+// ป้ายรายการในหัวโมดัล/ข้อความ — พัฒนาสูตรตัดหาง "→ รหัส" ของป้ายเก่าในฐาน (2026-09-15 · รหัสตอนส่ง ไม่ใช่รหัสปัจจุบัน)
+const itemText = (item) => (item?.lineKind === "product_dev" ? requestedLabel(item?.label) : item?.label);
 import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
@@ -100,6 +105,7 @@ import { resolveDocumentForm } from "@/lib/documentStandards";
 import Textarea from "@/components/ui/Textarea";
 import { requestDueCell } from "@/lib/requests/dueCell";
 import { apiFetch } from "@/lib/apiFetch";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { holdsRequestSlot } from "@/lib/service/visitStatus";
 
 const STATUS_TONE = {
@@ -272,12 +278,38 @@ export default function RequestDetailPage() {
   /* ค่าตั้งต้นของฟอร์มส่งงาน — ลูกค้า/กลิ่น/หมวด เป็นของที่ **แถวรู้อยู่แล้ว** ⇒ เติมให้
      แล้วล็อกไว้ (ดู prop `locked` ของ FormulaForm) · ลูกค้ายกจากใบ ไม่ใช่จากกลิ่น
      เพื่อให้ตรงกับที่ server ตัดสิน (route ของแถว) */
-  const formulaDraftFor = useCallback((item) => ({
-    ...emptyFormulaForm(),
-    customerId: req?.customerId || "",
-    scentId: item?.scentId || "",
-    categoryCode: item?.categoryCode || "",
-  }), [req?.customerId]);
+  /* ⭐ **รอบแก้ = สูตรใหม่ที่ชี้กลับสูตรเดิม** (ม-147) — ถามแผนตัวเดียวกับ server (`formulaDeliveryPreview`) ·
+     แผนจะสร้าง/รอบแก้: "แก้มาจากสูตร" ยกจากสูตรที่รายการต้นทางส่งไว้แล้วล็อก (server ยกเองอยู่ดี) · แผนผูกของเดิม:
+     ไม่เติม ไม่ล็อก (ไม่มีอะไรถูกใช้)
+     ⚠️ **ไม่เติมชื่อ/ชื่อที่ลูกค้าเรียกจากสูตรเดิม** (มติผู้ใช้ 2026-09-15 "ชื่อสูตร ชื่อกลิ่น รอบแก้ ไม่ต้อง suggest") — รอบแก้
+     คือสูตรตัวใหม่ RD ตั้งชื่อเอง · ตรงกับฝั่งกลิ่นที่ไม่เคยเติมชื่อให้ (`reworkDeliveryRow`) */
+  const formulaPreviewFor = useCallback((item) => formulaDeliveryPreview({
+    row: item, items: req?.items || [], formulas: registry.formulas,
+  }), [req?.items, registry.formulas]);
+  const formulaDraftFor = useCallback((item) => {
+    const preview = formulaPreviewFor(item);
+    return {
+      ...emptyFormulaForm(),
+      customerId: req?.customerId || "",
+      scentId: item?.scentId || "",
+      categoryCode: item?.categoryCode || "",
+      ...(preview.lockLineage ? { derivedFromFormulaId: preview.parentId } : {}),
+    };
+  }, [req?.customerId, formulaPreviewFor]);
+  // ช่องที่ฟอร์มส่งสูตรล็อก — รอบแก้ที่ server จะใช้ต้นทางจริงล็อกต้นทางด้วย
+  const formulaLockedFor = (item) => (formulaPreviewFor(item).lockLineage
+    ? ["customerId", "scentId", "categoryCode", "derivedFromFormulaId"]
+    : ["customerId", "scentId", "categoryCode"]);
+  // ประโยคบอกผลก่อนกด (เก็บสูตรเดิม · ผูกของเดิม · ติดร่าง) — ต้องรู้ก่อนกด ไม่ใช่ไปเจอในทะเบียน
+  const formulaReworkNote = (item) => formulaPreviewFor(item).note;
+  /* ดึงทะเบียนสูตรใหม่หลังส่งสูตร — ทะเบียนบนจอโหลดครั้งเดียวตอนเปิดหน้า ⇒ รอบแก้ที่เกิดทีหลังในหน้าเดียวกันหา
+     สูตรต้นทางไม่เจอ (ไม่เติมชื่อ · ช่องต้นทางที่ล็อกขึ้นว่าง · ประโยคไม่มีรหัส) (รีวิว ม-147) */
+  const refreshFormulas = useCallback(() => {
+    apiFetch("/api/master/formulas", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (Array.isArray(d)) setRegistry((prev) => ({ ...prev, formulas: d })); })
+      .catch(() => {});
+  }, []);
   /* `background: true` = ดึงใหม่โดยไม่พาหน้าไปอยู่สถานะ "กำลังโหลด" — ใช้ตอนที่จอ
      มีของอยู่แล้วและเราแค่อยากให้มันตรงกับของจริง (ดู `call` ข้างล่าง)
      ⚠️ เช็ค `?.background` ไม่ใช่ arg ตรง ๆ เพราะ `load` ถูกส่งเป็น callback ให้
@@ -351,7 +383,8 @@ export default function RequestDetailPage() {
       /* ⚠️ **งานที่สำเร็จครึ่งเดียวต้องไม่ขึ้นว่า "สำเร็จ"** — บางก้าวเขียนสองที่
          (ใบ + นัดของเจ้าหน้าที่) แล้วไม่มีทรานแซกชันครอบ · server ส่ง `_warning` มาบอก
          ⇒ ทักด้วยน้ำเสียงเตือน ไม่ใช่เขียว */
-      if (d?._warning) setToast({ kind: "error", msg: d._warning });
+      // ค้างนานกว่าทักทั่วไป — ข้อความพวกนี้บอกทางแก้ที่ต้องอ่านให้จบ (`RESPONSE_WARNING_TOAST`)
+      if (d?._warning) setToast({ kind: "error", msg: d._warning, duration: RESPONSE_WARNING_TOAST.duration });
       // okMsg = null ⇒ เงียบไว้ (ขั้นกลางของงานที่ยิงหลายครั้ง — ทักครั้งเดียวตอนจบ)
       else if (okMsg) setToast({ kind: "success", msg: okMsg });
       await load();
@@ -552,7 +585,10 @@ export default function RequestDetailPage() {
         // ก้าวถอยจบแล้วยังมีงานเหลือ — ไม่บอกว่าต้องกลับมากดส่งเอง คนจะนึกว่าจบ
         ? 'ดึงกลับแล้ว · รายการกลับไปขั้น "กำลังทำ" — แก้ไฟล์แล้วกด "ส่งงาน" อีกครั้ง'
         : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
-    if (ok) setHopDraft(null);
+    if (ok) {
+      setHopDraft(null);
+      if (hop === "ready" && item.lineKind === "product_dev") refreshFormulas();
+    }
   };
 
   // ── รวบส่งของหลายแถว (พัฒนาสูตร) ────────────────────────────────────────
@@ -564,13 +600,15 @@ export default function RequestDetailPage() {
     for (let i = 0; i < bulkReady.rows.length; i += 1) {
       const row = bulkReady.rows[i];
       const bad = normalizeFormulaDelivery(row).error;
-      if (bad) return `${row.item.label}: ${bad}`;
+      if (bad) return `${itemText(row.item)}: ${bad}`;
     }
     return hopValuesError("ready", { at: bulkReady.at });
   })();
   const submitBulkReady = async () => {
     setSaving(true);
     const failed = [];
+    // คำเตือนของแถวที่ส่งสำเร็จ (ผูกสูตรเดิม = ฟอร์มไม่ได้ใช้) — ต้องถึงตาคน ไม่ใช่ขึ้นเขียวว่า "สูตรเข้าทะเบียนแล้ว" (รีวิว ม-147)
+    const warnings = [];
     let sent = 0;
     try {
       for (const row of bulkReady.rows) {
@@ -587,13 +625,25 @@ export default function RequestDetailPage() {
           const d = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(d.error || "ส่งไม่สำเร็จ");
           sent += 1;
+          const warning = responseWarningText(d);
+          if (warning) warnings.push(`${itemText(row.item)}: ${warning}`);
         } catch (e) { failed.push({ ...row, error: e.message }); }
       }
     } finally { setSaving(false); }
     await load();
+    if (sent) refreshFormulas();
     if (failed.length) {
       setBulkReady({ ...bulkReady, rows: failed });
-      setToast({ kind: "error", msg: `ส่งแล้ว ${sent} รายการ · ติด ${failed.length} รายการ — แก้แล้วกดส่งซ้ำได้` });
+      setToast({
+        kind: "error",
+        msg: [`ส่งแล้ว ${sent} รายการ · ติด ${failed.length} รายการ — แก้แล้วกดส่งซ้ำได้`, ...warnings].join(" · "),
+        ...(warnings.length ? { duration: RESPONSE_WARNING_TOAST.duration } : {}),
+      });
+    } else if (warnings.length) {
+      setBulkReady(null);
+      setToast({
+        kind: "error", msg: `ส่งงาน ${sent} รายการแล้ว · ${warnings.join(" · ")}`, duration: RESPONSE_WARNING_TOAST.duration,
+      });
     } else {
       setBulkReady(null);
       setToast({ kind: "success", msg: `ส่งงาน ${sent} รายการ — สูตรเข้าทะเบียนแล้ว` });
@@ -2298,10 +2348,11 @@ export default function RequestDetailPage() {
             {/* ไม่มีช่องวันส่ง (ม-92) — ระบบประทับวันที่กดให้ทุกแถว */}
             {bulkReady.rows.map((row, i) => (
               <div key={row.item.id} className={styles.bulkRow}>
-                <div className="toolbar-label">{row.item.label}</div>
+                <div className="toolbar-label">{itemText(row.item)}</div>
                 {row.error && <p className={styles.error}>{row.error}</p>}
                 {/* ฟอร์มเดียวกับทะเบียนสูตร — ลูกค้า/กลิ่น/หมวดของแถวนี้เทาไว้ให้อ่านได้
                     ว่าสูตรที่กำลังจะเกิดผูกกับอะไร */}
+                {formulaReworkNote(row.item) && <p className={styles.fieldHint}>{formulaReworkNote(row.item)}</p>}
                 <FormulaForm
                   mode="create" canSetCode codeRequired
                   value={row.formula} disabled={saving}
@@ -2309,7 +2360,7 @@ export default function RequestDetailPage() {
                   scents={registry.scents}
                   formulas={registry.formulas}
                   categories={productTypes}
-                  locked={["customerId", "scentId", "categoryCode"]}
+                  locked={formulaLockedFor(row.item)}
                   onChange={(value) => setBulkReady({
                     ...bulkReady,
                     rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formula: value } : r)),
@@ -2350,7 +2401,7 @@ export default function RequestDetailPage() {
         /* ฟอร์มสูตรเป็นฟอร์มเต็มสองคอลัมน์ (ตัวเดียวกับทะเบียน) — กว้างเท่าโมดัลก้าวอื่น
            ไม่พอ · ก้าวอื่นยังแคบเหมือนเดิม เพราะมันมีช่องเดียวสองช่อง */
         size={hopDraft?.hop === "ready" && hopDraft?.item.lineKind === "product_dev" ? "md" : "sm"}
-        title={hopDraft ? `${hopLabelFor(hopDraft.item, hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
+        title={hopDraft ? `${hopLabelFor(hopDraft.item, hopDraft.hop, hopDraft.outcome)} — ${itemText(hopDraft.item)}` : ""}
       >
         {hopDraft && (
           <>
@@ -2456,10 +2507,17 @@ export default function RequestDetailPage() {
 
             {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (
               <>
-                <p className={styles.fieldHint}>
-                  บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
-                  · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({hopDraft.item.label}) จึงเทาไว้
-                </p>
+                {/* ⚠️ ประโยค "สูตรเข้าทะเบียนทันที" จริงเฉพาะแผนสร้าง/รอบแก้ — แผนผูกของเดิม/ติดร่าง ประโยคบอกผลข้างล่างพูดแทน
+                    (สองประโยคขัดกันบนจอเดียว = คนเชื่อตัวใหญ่ · รีวิว ม-147) */}
+                {["create", "revise"].includes(formulaPreviewFor(hopDraft.item).plan.kind) && (
+                  <p className={styles.fieldHint}>
+                    บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
+                    · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({itemText(hopDraft.item)}) จึงเทาไว้
+                  </p>
+                )}
+                {formulaReworkNote(hopDraft.item) && (
+                  <p className={styles.fieldHint}>{formulaReworkNote(hopDraft.item)}</p>
+                )}
                 <FormulaForm
                   mode="create" canSetCode codeRequired
                   value={hopDraft.formula} disabled={saving}
@@ -2467,7 +2525,7 @@ export default function RequestDetailPage() {
                   scents={registry.scents}
                   formulas={registry.formulas}
                   categories={productTypes}
-                  locked={["customerId", "scentId", "categoryCode"]}
+                  locked={formulaLockedFor(hopDraft.item)}
                   onChange={(value) => setHopDraft({ ...hopDraft, formula: value })}
                 />
                 {/* ไฟล์ประกอบ (ม-91) — สามสายกดส่งแล้วจบในโมดัลเดียวเหมือนกัน ·
@@ -2646,7 +2704,7 @@ export default function RequestDetailPage() {
           ⚠️ ราคาเดียว ไม่มีชั้นจำนวน (มติผู้ใช้): หัวน้ำหอมคิดต่อกิโลเดียว ไม่ลดตามจำนวน */}
       <Modal
         open={!!pricing} onClose={() => setPricing(null)} size="sm" dismissible={!saving}
-        title={pricing ? `ใส่ราคา — ${pricing.item.label}` : ""}
+        title={pricing ? `ใส่ราคา — ${itemText(pricing.item)}` : ""}
       >
         {pricing && (
           <>

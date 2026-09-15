@@ -22,6 +22,7 @@
 // ทั้งที่เลขนั้นนับ **นัดที่มอบหมายให้ตัวเขาเอง**
 import { withUser, ok, unauthorized } from '@/lib/http';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import {
   can, canApproveMasterData, canConfirmPayment, canDoFieldWork, canEditService, canUser,
   canViewRequests,
@@ -306,11 +307,12 @@ export const GET = withUser(async ({ user, supabase }) => {
       const orderIds = financeRows.map((row) => row.id);
       // ⚠️ ไล่ทีละหน้า — ใบหนึ่งมีได้หลายงวด ⇒ คิวหลักร้อยใบก็แตะเพดาน 1,000 ของ
       // PostgREST ได้ · ตัดกลางทางเมื่อไร ใบท้าย ๆ จะกลายเป็น "ยังเก็บไม่ครบ" เงียบ ๆ
-      const { data: installments } = await fetchAllResult(() => supabase
+      // ⚠️ ซอยลิสต์ด้วย — ไล่หน้าอย่างเดียวส่งลิสต์ id ก้อนเดิมทุกหน้า ⇒ ใบรอบัญชีหลายร้อยใบชนเพดาน URL
+      const { data: installments } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
         .from('sales_order_installments')
         .select('"salesOrderId", status')
-        .in('salesOrderId', orderIds)
-        .order('id', { ascending: true }));
+        .in('salesOrderId', chunk)
+        .order('id', { ascending: true })));
       const byOrder = new Map();
       for (const row of installments || []) {
         const list = byOrder.get(row.salesOrderId) || [];
@@ -424,18 +426,18 @@ export const GET = withUser(async ({ user, supabase }) => {
       const projectIds = [...new Set((orders || []).map((o) => o.projectId).filter(Boolean))];
       const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
       const [lines, terms, projects, deals] = await Promise.all([
-        fetchAllResult(() => supabase.from('sales_order_lines')
+        fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_order_lines')
           .select('id, salesOrderId, quotationLineId, qty, "serviceRounds"')
-          .in('salesOrderId', orderIds).order('id', { ascending: true }))
+          .in('salesOrderId', chunk).order('id', { ascending: true })))
           .then((r) => r.data || []),
         loadTerms(supabase),
         projectIds.length
-          ? fetchAllResult(() => supabase.from('projects').select('id, line')
-            .in('id', projectIds).order('id', { ascending: true })).then((r) => r.data || [])
+          ? fetchInChunks(projectIds, (chunk) => fetchAllResult(() => supabase.from('projects').select('id, line')
+            .in('id', chunk).order('id', { ascending: true }))).then((r) => r.data || [])
           : [],
         dealIds.length
-          ? fetchAllResult(() => supabase.from('sales_deals').select('id, line')
-            .in('id', dealIds).order('id', { ascending: true })).then((r) => r.data || [])
+          ? fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('sales_deals').select('id, line')
+            .in('id', chunk).order('id', { ascending: true }))).then((r) => r.data || [])
           : [],
       ]);
       const bind = bindQueue({
