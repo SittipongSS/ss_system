@@ -2,10 +2,12 @@
 //
 // fix 2  ยอดรออนุมัติบนหัวกลุ่ม/KPI ต้องคัดด้วยงวดที่หน้าโชว์ (เดือนของมัน = เดือนปัจจุบันเวลาไทย)
 // fix 1  คำใต้การ์ด "มูลค่าปิดจริง (Won)" ห้ามขึ้น "ต่าง ฿(FC ทั้งก้อน)" ตอนที่ SO ยังไม่อนุมัติ
+// 09-15  ดีลเก่าที่สร้างเป็น Won ได้คำเฉพาะ ไม่ใช่ "ยังไม่มีใบสั่งขายที่ยื่น" (ยื่น SO ไม่ได้เลย)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtMoney } from '../format.js';
 import {
+  LEGACY_WON_HINT_TEXT,
   WON_HINT_KINDS,
   pendingPeriodMatcher,
   sumDealDisplay,
@@ -130,13 +132,17 @@ test('มี SO อนุมัติ ยอดเท่าคาดการณ
   assert.equal(float.text, 'ตรงกับคาดการณ์เมื่ออนุมัติครบ');
 });
 
-test('ใบอนุมัติยอด 0 บาท / ดีลย้ายระบบ (legacy ไม่มีแถว SO) = มี SO อนุมัติ', () => {
+test('ใบอนุมัติยอด 0 บาท = มี SO อนุมัติ · Actual ของดีล > 0 ก็นับว่ามี แม้แถว SO ไม่มากับหน้า', () => {
   const zeroApproved = wonDealForecastHint({ forecast: 5000, actual: 0, actualCount: 1 });
   assert.equal(zeroApproved.kind, WON_HINT_KINDS.ACTUAL);
   assert.equal(zeroApproved.text, `คาดการณ์ ${fmtMoney(5000)} · ต่าง ${fmtMoney(5000)}`);
-  const legacy = wonDealForecastHint({ forecast: 70000, actual: 70000, actualCount: 0 });
-  assert.equal(legacy.kind, WON_HINT_KINDS.ACTUAL);
-  assert.equal(legacy.text, 'ตรงกับคาดการณ์');
+  /* 🪤 เคสนี้เคยชื่อ "ดีลย้ายระบบ (legacy ไม่มีแถว SO)" — #1716 ถอด Actual แบบ legacy ไปแล้ว (Actual มาจาก
+     SO อนุมัติเท่านั้น · lib/sales/legacyDealSwitch) ดีลเก่าจึงไม่มี Actual โดยไม่มีแถว SO อีก และดีลเก่าที่
+     สร้างเป็น Won ได้คำของตัวเอง (เทสต์ท้ายไฟล์) · เหลือความหมายเดียว: ยอด Actual ของดีล (cache ที่ผ่านด่าน
+     actualSource) ชนะจำนวนแถวที่หน้าได้มา */
+  const cachedActual = wonDealForecastHint({ forecast: 70000, actual: 70000, actualCount: 0 });
+  assert.equal(cachedActual.kind, WON_HINT_KINDS.ACTUAL);
+  assert.equal(cachedActual.text, 'ตรงกับคาดการณ์');
 });
 
 test('มีใบรออนุมัติ: "ต่างเมื่ออนุมัติครบ ฿(V−A−P)" — ไม่ใช่ FC ทั้งก้อน', () => {
@@ -178,4 +184,46 @@ test('ไม่มี SO อนุมัติและไม่มีใบร�
   // ข้อมูลไม่ครบต้องไม่พัง
   assert.equal(wonDealForecastHint().kind, WON_HINT_KINDS.AWAITING_SO);
   assert.equal(wonDealForecastHint({ forecast: null }).text, `คาดการณ์ ${fmtMoney(0)} · ยังไม่มีใบสั่งขายที่ยื่น`);
+});
+
+/* ── ดีลเก่าจากระบบเดิมที่สร้างเป็น Won (มติผู้ใช้ 2026-09-15) ─────────────────────────────
+   รูปจริงบน prod: metadata.legacy = true · ไม่มี acceptedQuotationId / wonSource · ไม่มีใบเสนอราคาและ SO */
+const LEGACY_WON_AT_CREATE = {
+  stage: 'won', projectValue: 0, wonValue: 0, confirmedAt: '2026-06-10T00:00:00Z',
+  metadata: { legacy: true, actualSource: 'sale_order', wonMonth: null },
+};
+const NO_SO = { actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0 };
+
+test('ดีลเก่าที่สร้างเป็น Won: คำเฉพาะดีลเก่าแทน "ยังไม่มีใบสั่งขายที่ยื่น" — ดีลพิมพ์ 0 ได้บรรทัดเดียวที่อ่านรู้เรื่อง', () => {
+  // ดีลพิมพ์ 0 ตอนสร้าง (20 ใบบน prod · ไม่มีบันทึกยอดปิด ⇒ หน้าดีลไม่มีบรรทัดบันทึก)
+  const typedZero = wonDealForecastHint({ deal: LEGACY_WON_AT_CREATE, forecast: 0, ...NO_SO });
+  assert.equal(typedZero.kind, WON_HINT_KINDS.LEGACY_NO_SO);
+  assert.equal(typedZero.gap, null);
+  assert.equal(typedZero.text, 'ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้');
+  assert.equal(typedZero.text, LEGACY_WON_HINT_TEXT);
+  assert.doesNotMatch(typedZero.text, /ยังไม่มีใบสั่งขายที่ยื่น|คาดการณ์|ต่าง|0\.00/);
+  // บล็อก B (ยอด FC ยังอยู่ รอเจ้าของยืนยัน) — คำเดียวกัน · ยอดปิดในระบบเดิม/FC เป็นหน้าที่ของบรรทัดบันทึก
+  const blockB = {
+    ...LEGACY_WON_AT_CREATE,
+    projectValue: 600000,
+    metadata: { ...LEGACY_WON_AT_CREATE.metadata, legacyClosedValue: 600000, legacyClosedDate: '2026-07-15' },
+  };
+  const hintB = wonDealForecastHint({ deal: blockB, forecast: blockB.projectValue, ...NO_SO });
+  assert.equal(hintB.kind, WON_HINT_KINDS.LEGACY_NO_SO);
+  assert.equal(hintB.text, LEGACY_WON_HINT_TEXT);
+  assert.equal(hintB.gap, null);
+});
+
+test('คำดีลเก่าตัดสินด้วยตัวบ่งชี้กลาง — ดีลสวิตช์ที่ปิดผ่านใบเสนอราคา / พังครึ่งทาง / ดีลปกติ ยังเป็น Won รอยื่น SO', () => {
+  const viaQuote = { ...LEGACY_WON_AT_CREATE, metadata: { ...LEGACY_WON_AT_CREATE.metadata, acceptedQuotationId: 'QT-1', wonSource: 'quotation' } };
+  const halfReverted = { ...LEGACY_WON_AT_CREATE, metadata: { ...LEGACY_WON_AT_CREATE.metadata, wonSource: 'quotation' } };
+  const normal = { ...LEGACY_WON_AT_CREATE, metadata: { actualSource: 'sale_order', wonMonth: null, acceptedQuotationId: 'QT-2', wonSource: 'quotation' } };
+  for (const deal of [viaQuote, halfReverted, normal, undefined]) {
+    const hint = wonDealForecastHint({ deal, forecast: 120000, ...NO_SO });
+    assert.equal(hint.kind, WON_HINT_KINDS.AWAITING_SO, JSON.stringify(deal?.metadata));
+    assert.equal(hint.text, `คาดการณ์ ${fmtMoney(120000)} · ยังไม่มีใบสั่งขายที่ยื่น`);
+  }
+  // ตัวเลขจริงชนะธงเสมอ — มีแถวอนุมัติ/รออนุมัติ = กรณีปกติ
+  assert.equal(wonDealForecastHint({ deal: LEGACY_WON_AT_CREATE, forecast: 5000, actual: 0, actualCount: 1 }).kind, WON_HINT_KINDS.ACTUAL);
+  assert.equal(wonDealForecastHint({ deal: LEGACY_WON_AT_CREATE, forecast: 5000, pendingApprovalCount: 1 }).kind, WON_HINT_KINDS.WHEN_APPROVED);
 });

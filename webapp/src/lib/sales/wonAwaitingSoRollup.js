@@ -6,6 +6,8 @@
 // ⇒ GET /api/sales-planning/dashboard ส่งกองที่สามเป็น **ช่องแยก** `wonAwaitingSo` (บาท = มูลค่าดีล)
 //    + `wonAwaitingSoCount` (จำนวนดีล) ใน totals · byOwner[] · byTeam[] · byType[] ของทุกเดือน
 //
+// ⭐ ไม่นับดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-09-15) — ตัดที่ isWonAwaitingSo ผ่าน isLegacyWonAtCreate
+//    ไฟล์นี้ไม่ต้องรู้ และห้ามกรองซ้ำที่นี่ (ของจริง 15/09: 42 ดีล 2,348,450 → 7 ดีล 703,100)
 // นิยาม/ยอด/เดือน อยู่ที่ตัวช่วยกลางใน lib/sales/dashboardMetrics (isWonAwaitingSo ฯลฯ) — ไฟล์นี้
 // มีแค่ "ถัง" กับ "ตัวจับคู่งวดของลิ้นชัก" · ตัวรวมไม่อยู่ใน route เพราะ route.js ของ Next export ได้
 // แค่ HTTP handler เทสต์จึงเรียกของใน route ตรง ๆ ไม่ได้ (แพตเทิร์นเดียวกับ pendingApprovalRollup)
