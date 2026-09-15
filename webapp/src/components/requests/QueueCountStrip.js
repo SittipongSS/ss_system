@@ -13,12 +13,13 @@
 // ⭐ **ไอคอน + โน้ตตามต้นแบบหน้างานของฉัน** (มติผู้ใช้ 2026-08-08) — `Metric` ของ
 // กลางรองรับทั้งคู่อยู่แล้ว · โน้ตบอกว่า *กดแล้วเกิดอะไร* ซึ่งต่างกันตามหน้า จึงรับ
 // มาจากผู้เรียก ไม่ตั้งเอง · ตอนกดค้างอยู่เปลี่ยนเป็น "กำลังใช้ตัวกรองนี้"
-import { AlarmClock, Clock, Hourglass, Inbox, Undo2 } from "lucide-react";
+import { AlarmClock, CalendarX, Clock, Hourglass, Inbox, Undo2 } from "lucide-react";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
 import { queueCountMeta } from "@/lib/requests/queueBoard";
 
 // ⚠️ ไอคอนเป็นเรื่องของ **จอ** ไม่ใช่ของทะเบียน — ทะเบียนกลาง (`QUEUE_COUNT_META`)
 // ถูกอ่านจากฝั่ง server ด้วย ยัด component ลงไปที่นั่นแล้วมันจะพังตอน import
+// ⚠️ ทุก key ของทะเบียนต้องมีไอคอน — ช่องที่ไม่มีกรอบไอคอน ป้ายจะเยื้องซ้ายกว่าช่องข้าง ๆ
 const ICONS = {
   unacked: Inbox,
   overdue: AlarmClock,
@@ -26,6 +27,8 @@ const ICONS = {
   waitingRequester: Hourglass,
   // ตีกลับ — งานที่เด้งกลับมาที่ผู้ขอ (2026-08-11)
   bounced: Undo2,
+  // ยังไม่ได้ให้วัน (มุมมองฝ่าย) — 🐞 เดิมไม่มีไอคอน ป้ายช่องนี้เยื้องจากสี่ช่องบน ~43px
+  undated: CalendarX,
 };
 
 export default function QueueCountStrip({

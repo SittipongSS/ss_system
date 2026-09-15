@@ -10,10 +10,13 @@
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Clock, Layers, MapPin, Package, Wrench } from "lucide-react";
+import { AirVent, AlertTriangle, Clock, Layers, MapPin, Package, Wrench } from "lucide-react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Workspace from "@/components/ui/Workspace";
 import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -42,6 +45,8 @@ export default function ServiceAssetPage({ params }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // 404 ≠ โหลดพัง — ไม่มีเครื่องนี้ต้องบอกคนละอย่างกับเน็ตสะดุด (อันหลังกดลองใหม่ได้)
+  const [notFound, setNotFound] = useState(false);
   const [moveKind, setMoveKind] = useState(null);   // null = ปิด · 'transfer' ฯลฯ = เปิด
   const router = useRouter();
   const [removing, setRemoving] = useState(false);
@@ -70,10 +75,12 @@ export default function ServiceAssetPage({ params }) {
       const res = await apiFetch(`/api/service/assets/${id}/detail`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
-      if (!res.ok) throw new Error(body?.error || "โหลดข้อมูลอุปกรณ์ไม่สำเร็จ");
+      // รอบเบื้องหลังที่ล้มต้องเงียบ — ไม่พลิกหน้าที่อ่านอยู่เป็น "ไม่พบ"
+      if (!opts?.background) setNotFound(res.status === 404);
+      if (!res.ok) throw new Error(body?.error || "โหลดข้อมูลเครื่องไม่สำเร็จ");
       setData(body);
     } catch (e) {
-      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดข้อมูลอุปกรณ์ไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดข้อมูลเครื่องไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
@@ -229,14 +236,32 @@ export default function ServiceAssetPage({ params }) {
     ? { href: `/service/sites/${data.site.id}`, label: naText(data.site.name) }
     : { href: '/service/assets', label: 'ทะเบียนเครื่อง' };
 
-  if (loading) {
-    return <Workspace icon={<Wrench size={20} aria-hidden="true" />} title="อุปกรณ์" back={back}><SkeletonRows rows={5} /></Workspace>;
+  /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ (หัวมาจาก DetailOverview)
+     🐞 เดิมวาดการ์ดหัว "อุปกรณ์" + ไอคอนประแจ (= ไอคอนโมดูล ไม่ใช่ของเครื่อง) แล้วตามด้วย
+        ข้อความบรรทัดเดียวไม่มีสไตล์ · 404 กับเน็ตสะดุดหน้าตาเหมือนกันจนแยกไม่ออก */
+  /* ♿ hideHeader ถอด h1 ของ Workspace ออกด้วย — หน้าที่โหลดเสร็จได้ h1 จาก DetailOverview
+     แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
+  const shell = (body) => (
+    <Workspace hideHeader back={back}>
+      <h1 className="sr-only">เครื่อง</h1>
+      {body}
+    </Workspace>
+  );
+  if (loading) return shell(<SkeletonRows rows={5} />);
+  if (notFound || (!loadError && !asset)) {
+    return shell(
+      <EmptyState icon={AirVent}>
+        ไม่พบเครื่องนี้ในทะเบียน
+        <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+      </EmptyState>,
+    );
   }
-  if (loadError || !asset) {
-    return (
-      <Workspace icon={<Wrench size={20} aria-hidden="true" />} title="อุปกรณ์" back={back}>
-        <p className="form-error" role="alert">{loadError || "ไม่พบอุปกรณ์"}</p>
-      </Workspace>
+  if (loadError) {
+    return shell(
+      <StatusNotice tone="error" title="โหลดข้อมูลเครื่องไม่สำเร็จ"
+        action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+        {loadError}
+      </StatusNotice>,
     );
   }
 

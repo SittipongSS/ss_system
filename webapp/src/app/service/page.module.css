@@ -8,6 +8,37 @@
   flex-wrap: wrap;
 }
 
+/* ≤768 แถบล่างมือถือมี "งานวันนี้" กับ "จัดคิวเจ้าหน้าที่" บนจอพร้อมกันอยู่แล้ว ⇒ ปุ่มหัวหน้าซ้ำ
+   และกินจอแรกไป ~54px · ซ่อนทั้งกล่องของเปลือก ไม่งั้น gap ของหัวหน้ายังค้าง
+   (page.js ใส่คลาสนี้เฉพาะคนที่เห็นทั้งสองแท็บ) */
+@media (max-width: 768px) {
+  :global(.ui-workspace-header-actions):has(> .navMirrored) { display: none; }
+}
+
+/* การ์ดตัวเลขเป็นกริดของหน้านี้เอง ไม่ใช่ `.kpi-grid` กลาง
+   🐞 กลางยุบเหลือคอลัมน์เดียวที่ ≤560 ⇒ มือถือได้การ์ดสูง ~620px จน "ต้องจัดการก่อน"
+   ตกใต้แถบล่าง · หน้านี้คงไว้ 2 คอลัมน์ (วัดแล้ว 320px ป้าย/คำใบ้ไม่ถูกตัด)
+   ระยะล่างไม่ต้องใส่ — `.ui-workspace > *` ศูนย์ margin ให้แล้ว */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+@media (max-width: 1200px) {
+  .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 🐞 จอ ~320–360 ป้าย "เครื่องที่ต้องเข้าเติม" ขึ้นสองบรรทัดแต่ "นัดสัปดาห์นี้" บรรทัดเดียว
+   ⇒ ตัวเลขสองใบในแถวเดียวกันเยื้องกัน 6.6px (วัด 2026-09-15: ค่า y 431.1 กับ 437.7)
+   การ์ดแต่ละใบเป็นกริดของตัวเอง ป้ายสูงเท่าไรก็ดันตัวเลขของใบนั้นลงเอง
+   ⇒ จอแคบกันที่หัวการ์ดไว้สองบรรทัดทุกใบ (ป้ายตัดที่สองบรรทัดอยู่แล้ว สูงกว่านี้ไม่ได้)
+   ⚠️ ไม่ใช้ subgrid — ลองแล้ว gap ของแม่ (--gap) กับของการ์ด (7px) ต่างกันจน
+      ระยะตัวเลข→คำใบ้ในการ์ดหดลง ~8px และคำใบ้บรรทัดเดียวไปเกาะบรรทัดล่าง */
+@media (max-width: 480px) {
+  .kpiGrid :global(.ui-kpi-heading) { min-height: 2lh; }
+}
+
 .sub {
   display: block;
   color: var(--text-3);
@@ -33,18 +64,3 @@
 }
 
 .visitList { line-height: var(--lh-thai); }
-
-/* ชื่อไซต์กดเข้าหน้ารายละเอียดได้ — ใช้ปุ่มเปล่าเพราะอยู่ใน <th> ของตาราง
-   (ratchet ห้ามเขียนคลาส btn เอง · นี่คือลิงก์ในเนื้อความ ไม่ใช่ปุ่มสั่งการ) */
-.siteLink {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  line-height: var(--lh-thai);
-  text-align: start;
-  cursor: pointer;
-}
-
-.siteLink:hover { text-decoration: underline; }

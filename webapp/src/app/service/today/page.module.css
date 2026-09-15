@@ -2,43 +2,48 @@
    ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet
    ⚠️ ออกแบบจากจอแคบขึ้นไป (mobile-first) — เจ้าหน้าที่เปิดหน้านี้บนมือถือหน้างานเสมอ */
 
-.counts {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-3);
-  font-size: var(--fs-label);
-  line-height: var(--lh-thai);
-  margin-inline-start: auto;
+/* กลุ่มนัด — กริดไม่มี breakpoint: มือถือ 1 คอลัมน์ · แท็บเล็ต 2 · เดสก์ท็อป 3
+   🐞 เดิมการ์ดยืดเต็มจอ (1384px) ทั้งที่ข้อความกับปุ่มใช้แค่ ~400px ทางซ้าย */
+.section {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-3);
+  align-items: start;
+  margin-bottom: var(--space-5);
 }
 
-.overdueCount { color: var(--red); }
-
-.section { margin-bottom: var(--space-5); }
-
+/* หัวกลุ่มคือชั้นบนสุดของหน้า — ต้องใหญ่กว่าวันที่ในการ์ด ไม่ใช่เท่าคำบรรยาย */
 .sectionTitle {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 0 var(--space-2);
-  font-size: var(--fs-label);
+  margin: 0;
+  font-size: var(--fs-9);
   font-weight: var(--fw-bold);
   line-height: var(--lh-thai);
-  color: var(--text-2);
+  color: var(--text);
 }
 
 .sectionTitle.danger { color: var(--red); }
 
+/* เลขงานที่ยังไม่ปิด (เลขเดียวกับป้ายหัวจอ) + "· ปิดแล้ว N" เมื่อมี — ติดกันเป็นก้อน ไม่พับกลางวลี */
 .sectionCount {
   color: var(--text-3);
+  font-size: var(--fs-label);
   font-weight: var(--fw-normal);
+  white-space: nowrap;
 }
 
+/* พื้นการ์ดชุดเดียวกับการ์ดอื่นของโมดูล · สูงเท่าเนื้อของตัวเอง (กริด align-items: start)
+   🐞 เคยยืดเท่าการ์ดข้างแถวแล้วดันปุ่มลงก้น — การ์ดสั้นมีช่องว่าง 60–130px คั่นระหว่างงานกับปุ่มของมัน */
 .card {
+  min-width: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  margin-bottom: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--glass-shadow);
+  padding: var(--space-3) var(--panel-inset);
 }
 
 /* ปิดแล้วยังเห็นได้ แต่ไม่แย่งสายตาไปจากงานที่ยังต้องทำ */
@@ -110,11 +115,24 @@
   line-height: var(--lh-thai);
 }
 
+/* overflow-wrap: anywhere — คำที่ไม่มีจุดตัดเลย (ละตินยาวติดกัน · URL ในหมายเหตุทางเข้า) พับในการ์ด ไม่ล้นจอ
+   🐞 ไทยพับได้เองเพราะ ICU หาจุดตัดเจอ แต่ละตินยาวติดกันเคยล้นขอบการ์ดออกนอกจอ (กล่องไม่ล้น เลยวัดไม่เจอ)
+   ไม่เปลี่ยนจุดตัดของคำไทย — ตัวนี้ทำงานเฉพาะเมื่อไม่มีจุดตัดอื่นในบรรทัด (ดู lib/thaiWrap.js) */
 .meta {
   margin: var(--space-1) 0 0;
   color: var(--text-3);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ท่อนของช่วงที่เข้าได้ (วัน / เวลา) — ตัดบรรทัดได้แค่ระหว่างท่อน */
+.keep { white-space: nowrap; }
+
+/* คำสั้นในโซน / ชื่อลูกค้า (ไม่เกิน WORD_BOX_MAX ใน page.js) — ตัดบรรทัดได้แค่ที่ช่องว่าง ไม่ใช่กลางคำ · กว้างไม่เกินการ์ด */
+.word {
+  display: inline-block;
+  max-width: 100%;
 }
 
 .warn {
@@ -132,6 +150,13 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+/* นำทาง/โทร — พับลงบรรทัดใหม่เป็นคู่ ไม่ให้ปุ่มงานถูกดันลงไปอยู่บรรทัดเดียวโดด ๆ */
+.aux {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 /* มติ 2026-08-02 ข้อ 3: ปุ่มบนหน้าเจ้าหน้าที่ต้องสูงระดับจอสัมผัส (--ctl-h-touch = 44px)

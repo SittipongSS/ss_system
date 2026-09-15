@@ -112,6 +112,22 @@ export async function zoneCountsBySite(supabase, siteIds = []) {
   return counts;
 }
 
+/* รหัสลูกค้า (AR) ของหลายไซต์ในคำสั่งเดียว — คอลัมน์ลูกค้าในทะเบียนไซต์ใช้ทรงเดียวกับ
+   ตารางใบเสนอราคา (รหัสบน · ชื่อล่าง · มติผู้ใช้ 2026-09-15 "ใช้ตารางใบเสนอราคาเป็นต้นแบบ")
+   ⚠️ อ่านสดจากทะเบียนลูกค้า ไม่ใช่สำเนาบนไซต์ — `customerName` บนไซต์คือ snapshot ตอนสร้าง
+      ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน (เหตุผลเดียวกับ api/sales-planning/quotations)
+   ⚠️ ซอยลิสต์ — id ลูกค้ายาว 40 ตัวอักษร ⇒ `.in()` ก้อนเดียวเกิน 16 KB ที่ ~330 ราย */
+export async function customerArCodesById(supabase, customerIds = []) {
+  const codes = new Map();
+  const ids = customerIds.filter(Boolean);
+  if (!ids.length) return codes;
+  const data = await fetchAllInChunks(ids, (chunk) => supabase
+    .from('customers').select('id, "arCode"').in('id', chunk)
+    .order('id', { ascending: true }));
+  for (const row of data || []) codes.set(row.id, String(row.arCode || '').trim() || null);
+  return codes;
+}
+
 export async function findZone(supabase, siteId, zoneId) {
   const { data, error } = await supabase
     .from('service_zones').select('*')

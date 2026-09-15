@@ -9,12 +9,13 @@
 // ⚠️ ข้อ 3 คือของที่ระบบเก่าไม่มี — ไซต์ที่น้ำหอมจะหมดแต่ยังไม่มีนัด คือลูกค้าที่
 //    กำลังจะโทรมาบ่น · ต้องอยู่หน้าแรก ไม่ใช่ซ่อนอยู่ในแท็บของหน้าไซต์
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle, CalendarClock, CalendarDays, Droplets,
-  LayoutDashboard, MapPin, UserRound, Wrench,
+  LayoutDashboard, MapPin, Wrench,
 } from "lucide-react";
 import ActionQueue from "@/components/ui/ActionQueue";
 import Button from "@/components/ui/Button";
@@ -138,13 +139,18 @@ export default function ServiceOverviewPage() {
       title="ภาพรวมธุรกิจบริการ"
       subtitle="นัดที่ค้าง · วันนี้ใครไปไหน · ไซต์ที่น้ำหอมกำลังจะหมด"
       headerRight={(
-        <div className={styles.headerActions}>
+        /* ปุ่มสองตัวนี้แค่พาไปหน้าอื่น ⇒ ลิงก์จริง + Button เปล่า (ไม่ใช่ primary ที่แปลว่ายืนยัน)
+           ⚠️ navMirrored เฉพาะคนแก้งานบริการได้ — แถบล่างมือถือมีแท็บ "จัดคิวเจ้าหน้าที่"
+              ให้คนกลุ่มนี้เท่านั้น คนอื่นต้องยังเห็นปุ่มในหัวหน้า */
+        <div className={canEdit ? `${styles.headerActions} ${styles.navMirrored}` : styles.headerActions}>
           {canEdit && (
-            <Button tone="neutral" variant="quiet" onClick={() => router.push("/service/today")} icon={<UserRound size={15} aria-hidden="true" />}>
+            /* ไอคอนตามเมนู "งานวันนี้" ใน AppLayout (Wrench) — หนึ่งปลายทางหนึ่งไอคอน
+               เดิม UserRound ขณะที่แท็บแถบล่างของปลายทางเดียวกันเป็นประแจ */
+            <Button as={Link} href="/service/today" icon={<Wrench size={15} aria-hidden="true" />}>
               งานวันนี้
             </Button>
           )}
-          <Button tone="primary" onClick={() => router.push("/service/schedule")} icon={<CalendarDays size={15} aria-hidden="true" />}>
+          <Button as={Link} href="/service/schedule" icon={<CalendarDays size={15} aria-hidden="true" />}>
             จัดคิวเจ้าหน้าที่
           </Button>
         </div>
@@ -154,7 +160,7 @@ export default function ServiceOverviewPage() {
 
       {loading ? <SkeletonRows rows={6} /> : loadError ? null : (
         <>
-          <div className="kpi-grid">
+          <div className={styles.kpiGrid}>
             <KpiCard
               label="นัดค้าง"
               value={counts.overdue}
@@ -209,7 +215,7 @@ export default function ServiceOverviewPage() {
             subtitle={fmtDate(todayIso)}
           >
             {today.length === 0 ? (
-              <EmptyState icon={CalendarClock}>ไม่มีนัดเข้าบริการวันนี้</EmptyState>
+              <EmptyState plain icon={CalendarClock}>ไม่มีนัดเข้าบริการวันนี้</EmptyState>
             ) : (
               <TableShell>
                 <table>
@@ -255,13 +261,13 @@ export default function ServiceOverviewPage() {
               ? `แสดง ${WATCHLIST_LIMIT} จาก ${watchlist.length} ไซต์ — ที่เหลืออยู่ในทะเบียนไซต์`
               : "ประเมินจากขนาดขวดและอัตราใช้ต่อวัน — ไซต์ที่มีนัดครอบแล้วไม่อยู่ในรายการนี้"}
             actions={(
-              <Button tone="neutral" variant="quiet" size="sm" onClick={() => router.push("/service/sites")} icon={<MapPin size={15} aria-hidden="true" />}>
+              <Button as={Link} href="/service/sites" size="sm" icon={<MapPin size={15} aria-hidden="true" />}>
                 ทะเบียนไซต์
               </Button>
             )}
           >
             {watchlist.length === 0 ? (
-              <EmptyState icon={Droplets}>ทุกไซต์มีนัดครอบก่อนน้ำหอมหมดแล้ว 🎉</EmptyState>
+              <EmptyState plain icon={Droplets}>ทุกไซต์มีนัดครอบก่อนน้ำหอมหมดแล้ว 🎉</EmptyState>
             ) : (
               <TableShell>
                 <table>
@@ -270,17 +276,20 @@ export default function ServiceOverviewPage() {
                       <th scope="col">ไซต์</th>
                       <th scope="col">ลูกค้า</th>
                       <th scope="col" className="num">เครื่องที่ต้องเติม</th>
-                      <th scope="col">คาดว่าหมด</th>
-                      <th scope="col">นัดครั้งหน้า</th>
+                      <th scope="col" className="num">คาดว่าหมด</th>
+                      <th scope="col" className="num">นัดครั้งหน้า</th>
                     </tr>
                   </thead>
                   <tbody>
                     {watchlist.slice(0, WATCHLIST_LIMIT).map((site) => (
                       <tr key={site.id}>
                         <th scope="row">
-                          <button type="button" className={styles.siteLink} onClick={() => router.push(`/service/sites/${site.id}`)}>
+                          {/* 🐞 เดิมเป็น <button> สี --accent: ไม่มี href (เปิดแท็บใหม่ไม่ได้) ·
+                              ไม่มีวงโฟกัส · ธีมสว่างคอนทราสต์ 3.3:1 ตก AA
+                              คอลัมน์ระบุตัวตน ⇒ .table-row-link ไม่ใช่ .linklike (ท่าเดียวกับโซน/เครื่องใน sites/[id]) */}
+                          <Link href={`/service/sites/${site.id}`} prefetch={false} className="table-row-link">
                             {site.name}
-                          </button>
+                          </Link>
                           <span className={styles.sub}>{site.code}{site.routeZone ? ` · ${site.routeZone}` : ""}</span>
                         </th>
                         <td>{naText(site.customerName)}</td>
@@ -288,10 +297,11 @@ export default function ServiceOverviewPage() {
                           {site.refill?.needsAttention || 0}
                           {site.refill?.overdue > 0 && <span className={styles.over}>หมดแล้ว {site.refill.overdue}</span>}
                         </td>
-                        <td>{fmtDate(site.refill?.earliestDue)}</td>
+                        {/* วันที่เทียบกันข้ามแถว (ไซต์ไหนหมดก่อน) ⇒ .num ให้หลักตรงกัน */}
+                        <td className="num">{fmtDate(site.refill?.earliestDue)}</td>
                         {/* ไซต์ในรายการนี้คือไซต์ที่ยังไม่มีนัดครอบ — ช่องนี้จึงมักว่าง
                             และช่องว่างคือสัญญาณว่าต้องนัด ไม่ใช่ข้อมูลขาด */}
-                        <td>{site.nextVisitDate ? fmtDate(site.nextVisitDate) : <span className={styles.unassigned}>ยังไม่มีนัด</span>}</td>
+                        <td className="num">{site.nextVisitDate ? fmtDate(site.nextVisitDate) : <span className={styles.unassigned}>ยังไม่มีนัด</span>}</td>
                       </tr>
                     ))}
                   </tbody>

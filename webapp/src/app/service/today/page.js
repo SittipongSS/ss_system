@@ -10,8 +10,9 @@
 //
 // ⚠️ ไม่มีปุ่มสลับ "ทั้งทีม" บนหน้านี้ (มติ 2026-08-02 ข้อ 2) — มุมมองทั้งฝ่ายอยู่ที่
 // หน้าจัดคิวเจ้าหน้าที่ · เคสไปแทนกันเข้าหน้านี้ด้วยลิงก์ ?user=<id> จากหน้าจัดคิวแทน
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import thaiText from "@/components/ThaiText";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CheckCircle2, ClipboardList, FileText, MapPin, Phone, Play, Ruler, Wrench } from "lucide-react";
@@ -39,6 +40,41 @@ const SECTIONS = [
   { key: "tomorrow", title: "พรุ่งนี้", tone: "plain" },
   { key: "later", title: "ถัดไป", tone: "plain" },
 ];
+
+/* ช่วงที่เข้าได้ = "วัน · เวลา" — ห่อทีละท่อน ให้ตัดบรรทัดได้แค่ที่ " · "
+   🐞 เดิมต่อเป็นสตริงเดียว มือถือตัดเหลือ "09:00–" ท้ายบรรทัด แล้ว "12:00" ตกไปบรรทัดใหม่
+   🐞 คำนำ "เข้าได้" ต้องอยู่ในท่อนแรกด้วย — เคยอยู่นอกท่อน จอ 768 ตัดกลางคำเป็น "เข้า" / "ได้ จ. อ. …" */
+function accessPieces(text) {
+  return text.split(" · ").map((part, idx) => (
+    <Fragment key={idx}>{idx ? " · " : null}<span className={styles.keep}>{idx ? part : `เข้าได้ ${part}`}</span></Fragment>
+  ));
+}
+
+/* โซนเส้นทาง · ชื่อลูกค้า — ขึ้นบรรทัดใหม่ได้แค่ที่ช่องว่างที่คนพิมพ์ไว้ ไม่ใช่กลางคำ
+   🐞 เดิมต่อเป็นสตริงเดียว จอ 320 ตัดชื่อทับศัพท์กลางคำเป็น "แลบอรา" / "ทอรี่ จำกัด"
+      (ICU แบ่งพยางค์ · thaiText กันสตริงข้อมูลไม่ได้ · `word-break: keep-all` ของ Chrome ก็ยังตัดคำไทย)
+   ⚠️ ห่อ **รายคำ** ไม่ใช่ทั้งชื่อเป็นก้อนเดียว — ก้อนเดียวดันชื่อลงบรรทัดใหม่ทั้งชื่อ (การ์ดสูงขึ้น
+      หนึ่งบรรทัด) และชื่อที่ยาวกว่าการ์ดกลายเป็นสามบรรทัดมี "(มหาชน)" ค้างโดด ๆ
+   ⚠️ คำเป็น inline-block กว้างไม่เกินการ์ด ไม่ใช่ nowrap — คำเดียวที่ยาวกว่าการ์ดยังพับในตัวได้ ไม่ล้นจอ
+   ⚠️ **ห่อเฉพาะคำไม่เกิน WORD_BOX_MAX ตัวอักษร** — คำยาวกว่านั้นปล่อยเป็นข้อความธรรมดาให้ ICU ตัดตามพจนานุกรม
+      🐞 เคยห่อทุกคำ ⇒ คำยาวไม่มีช่องว่าง (มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าพระนครเหนือ 42 ตัว) เริ่มกลางบรรทัดไม่ได้
+         ตกลงบรรทัดใหม่ทั้งก้อน ทิ้งโซนค้างเดี่ยวบรรทัดแรก การ์ดสูงขึ้น 19px และคำที่ยาวกว่าการ์ดก็ยังพับในตัวอยู่ดี
+      วัดจากชื่อลูกค้าจริง 522 ราย ฟอนต์ .meta จอ 320 (บรรทัดกว้าง 258px):
+      · ≤ 24 ตัว กว้างไม่เกิน 131px (ครึ่งบรรทัด) และส่วนใหญ่เป็นคำทับศัพท์ที่ ICU แบ่งผิดพยางค์
+        ("เอ็น|เต|อร์|เท|น|เม้น|ท์" · "ยู|รี|แล็กซ์|แอนด์|เมดิ|คอล") ⇒ ห่อไว้คุ้ม เสียที่อย่างมากเท่าตัดคำปกติ
+      · ≥ 25 ตัว เป็นคำประสมไทยที่ ICU ตัดตรงคำจริง ("คณะ|กรรมการ|โครงการ|สวนดุสิต") ⇒ ไม่ต้องห่อ */
+const WORD_BOX_MAX = 24;
+
+function wherePieces(parts) {
+  return parts.map((part, idx) => (
+    <Fragment key={idx}>
+      {idx ? " · " : null}
+      {String(part).split(/(\s+)/).map((word, w) => (
+        /^\s*$/.test(word) || word.length > WORD_BOX_MAX ? word : <span key={w} className={styles.word}>{word}</span>
+      ))}
+    </Fragment>
+  ));
+}
 
 export default function TodayPage() {
   const role = useRole();
@@ -100,6 +136,18 @@ export default function TodayPage() {
   const todayIso = businessDate();
   const groups = useMemo(() => groupVisits(visits, todayIso), [visits, todayIso]);
   const counts = useMemo(() => openCount(groups), [groups]);
+
+  /* ⭐ ในแต่ละกลุ่ม งานที่ยังไม่ปิดขึ้นก่อน · ใบที่ปิดแล้วต่อท้าย (ลำดับเวลาเดิมในแต่ละฝั่ง)
+     🐞 เดิมเรียงตามเวลาล้วน ⇒ ใบที่ปิดไปตอนเช้า (การ์ดจาง) ยึดช่องแรกของ "วันนี้" ก่อนงานที่ต้องทำ
+     🐞 เลขหัวกลุ่มเคยนับรวมใบปิด ("วันนี้ 4") ขัดกับป้ายหัวจอที่นับเฉพาะงานที่ยังไม่ปิด ("วันนี้ 3")
+        ⇒ หัวกลุ่มใช้เลขเดียวกับป้าย (ตัวตัดสิน isClosedVisit ตัวเดียวกับ openCount) แล้วบอกใบปิดแยกเป็นคำ
+     เรียงตอนแสดงผลเท่านั้น — groupVisits ยังเป็นลำดับเวลาให้ตัวนับป้ายเมนูใช้เหมือนเดิม */
+  const sectionRows = useMemo(() => Object.fromEntries(SECTIONS.map(({ key }) => {
+    const rows = groups[key];
+    const open = rows.filter((visit) => !isClosedVisit(visit));
+    const closed = rows.filter((visit) => isClosedVisit(visit));
+    return [key, { rows: [...open, ...closed], open: open.length, closed: closed.length }];
+  })), [groups]);
 
   // ชื่อเจ้าหน้าที่ที่กำลังดูแทน — เอาจากนัดใบแรกที่มีชื่อ (API กรองด้วย assignee อยู่แล้ว)
   const viewedName = useMemo(() => {
@@ -183,29 +231,39 @@ export default function TodayPage() {
       icon={<Wrench size={20} aria-hidden="true" />}
       title="งานวันนี้"
       subtitle={subtitle}
-      toolbar={(
-        <span className={styles.counts}>
-          {counts.overdue > 0 && <strong className={styles.overdueCount}>ค้าง {counts.overdue}</strong>}
-          วันนี้ {counts.today} · พรุ่งนี้ {counts.tomorrow}
-        </span>
-      )}
+      /* ตัวเลขสรุปอยู่ขวาของหัวจอเป็นป้าย · ศูนย์ทั้งหมด = ไม่โชว์ (สถานะว่างบอกอยู่แล้ว)
+         🐞 เดิมเป็นแถบ toolbar ลอยชิดซ้ายตัวเล็กเท่าคำบรรยาย ซ้ำกับหัวกลุ่มที่อยู่ถัดลงไป
+         ⚠️ นับเฉพาะงานที่ยังไม่ปิด — เลขหัวกลุ่มข้างล่างต้องเป็นเลขเดียวกัน (ดู sectionRows) */
+      headerRight={(counts.overdue + counts.today + counts.tomorrow) > 0 ? (
+        <>
+          {counts.overdue > 0 && <span className="ui-badge danger">ค้าง {counts.overdue}</span>}
+          <span className="ui-badge">วันนี้ {counts.today}</span>
+          <span className="ui-badge">พรุ่งนี้ {counts.tomorrow}</span>
+        </>
+      ) : null}
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
       {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
         SECTIONS.every((section) => groups[section.key].length === 0) ? (
-          <EmptyState icon={CheckCircle2}>
-            {viewingOther ? `${viewedName} ไม่มีนัดค้างและไม่มีนัดในช่วงนี้` : "ไม่มีนัดค้างและไม่มีนัดในช่วงนี้"}
-          </EmptyState>
+          viewingOther ? (
+            <EmptyState icon={CheckCircle2}>{`${viewedName} ไม่มีนัดค้างและไม่มีนัดในช่วงนี้`}</EmptyState>
+          ) : (
+            <EmptyState icon={CheckCircle2}>
+              {thaiText("ไม่มีนัดค้างและไม่มีนัดในช่วงนี้")}
+              <small>นัดที่ผู้จัดคิวมอบหมายให้คุณจะขึ้นที่นี่</small>
+            </EmptyState>
+          )
         ) : SECTIONS.map((section) => {
-          const rows = groups[section.key];
+          const { rows, open, closed } = sectionRows[section.key];
           if (!rows.length) return null;
           return (
             <section key={section.key} className={styles.section}>
               <h2 className={`${styles.sectionTitle} ${section.tone === "danger" ? styles.danger : ""}`}>
                 {section.tone === "danger" && <AlertTriangle size={15} aria-hidden="true" />}
                 {section.title}
-                <span className={styles.sectionCount}>{rows.length}</span>
+                <span className={styles.sectionCount}>{/* ไม่ขึ้นต้นด้วยศูนย์ — กลุ่มที่ปิดครบทุกใบบอกแค่จำนวนที่ปิด */}
+                  {closed ? (open ? `${open} · ปิดแล้ว ${closed}` : `ปิดแล้ว ${closed}`) : open}</span>
               </h2>
 
               {rows.map((visit) => {
@@ -214,6 +272,9 @@ export default function TodayPage() {
                 const done = isClosedVisit(visit);
                 const running = visit.status === "in_progress";
                 const late = overdueDays(visit, todayIso);
+                const access = accessWindowText(site);
+                const where = [site?.routeZone, site?.customerName].filter(Boolean);
+                const surveyLink = visit.kind === SURVEY_VISIT_KIND && visit.requestId;
                 return (
                   <article key={visit.id} className={`${styles.card} ${done ? styles.cardDone : ""} ${running ? styles.cardLive : ""} ${late && !done && !running ? styles.cardLate : ""}`}>
                     <div className={styles.cardHead}>
@@ -228,8 +289,8 @@ export default function TodayPage() {
 
                     <p className={styles.siteName}>{site?.name || visit.siteId}</p>
                     <p className={styles.meta}>
-                      {naText([site?.routeZone, site?.customerName, accessWindowText(site) && `เข้าได้ ${accessWindowText(site)}`]
-                        .filter(Boolean).join(" · "))}
+                      {where.length ? wherePieces(where) : (access ? null : naText(null))}
+                      {access && <>{where.length ? " · " : null}{accessPieces(access)}</>}
                     </p>
                     {site?.accessNote && <p className={styles.meta}>{site.accessNote}</p>}
 
@@ -257,26 +318,25 @@ export default function TodayPage() {
                     ))}
 
                     <div className={styles.actions}>
-                      {site?.mapUrl && (
-                        <Button as="a" href={site.mapUrl} target="_blank" rel="noreferrer noopener"
-                          tone="neutral" variant="quiet" size="sm" icon={<MapPin size={14} aria-hidden="true" />}>
-                          นำทาง
-                        </Button>
-                      )}
-                      {site?.contactPhone && (
-                        <Button as="a" href={`tel:${site.contactPhone}`}
-                          tone="neutral" variant="quiet" size="sm" icon={<Phone size={14} aria-hidden="true" />}>
-                          โทร
-                        </Button>
-                      )}
                       {/* ⭐ สองปุ่มคนละจังหวะ: ยังไม่เริ่ม = "เริ่มงาน" (ประทับเวลาเริ่มที่ server)
                           · กำลังทำอยู่ = "ปิดงาน" · ปิดแล้ว = "แก้ผลการเข้า"
-                          ไม่มีปุ่มไหนให้พิมพ์เวลาเอง — นั่นคือทั้งเหตุผลของการมีปุ่มเริ่มงาน */}
+                          ไม่มีปุ่มไหนให้พิมพ์เวลาเอง — นั่นคือทั้งเหตุผลของการมีปุ่มเริ่มงาน
+                          ⚠️ ลำดับตามจังหวะงาน เริ่มงาน → บันทึกหน้างาน → ปิดงาน · ปุ่ม primary ใบละปุ่ม
+                          🐞 เดิมนัดประเมินมี primary สองปุ่มเท่ากัน และ "ปิดงาน" มาก่อน "บันทึกหน้างาน" */}
                       {canEdit && !done && !running && (
                         <Button tone="primary" size="sm" disabled={starting === visit.id}
                           icon={<Play size={14} aria-hidden="true" />}
                           onClick={() => startVisit(visit)}>
                           {starting === visit.id ? "กำลังเริ่ม…" : "เริ่มงาน"}
+                        </Button>
+                      )}
+                      {/* ⭐ **นัดประเมินพื้นที่ไม่ปิดงานด้วยฟอร์มเดียวกับนัดบริการ** — ของที่ต้อง
+                          กรอกคือขนาด·รูป·จุดติดตั้ง ซึ่งเป็นตารางลูกของใบคำร้อง ไม่ใช่ผลรายเครื่อง
+                          ⇒ ปุ่มพาไปจอของตัวเอง · โผล่เฉพาะนัดที่ผูกใบคำร้องจริง */}
+                      {surveyLink && (
+                        <Button as="a" href={`/service/surveys/${visit.requestId}`} tone="neutral" size="sm"
+                          icon={<Ruler size={14} aria-hidden="true" />}>
+                          บันทึกหน้างาน
                         </Button>
                       )}
                       {canEdit && (running || done) && (
@@ -291,14 +351,22 @@ export default function TodayPage() {
                           ใบส่งงาน
                         </Button>
                       )}
-                      {/* ⭐ **นัดประเมินพื้นที่ไม่ปิดงานด้วยฟอร์มเดียวกับนัดบริการ** — ของที่ต้อง
-                          กรอกคือขนาด·รูป·จุดติดตั้ง ซึ่งเป็นตารางลูกของใบคำร้อง ไม่ใช่ผลรายเครื่อง
-                          ⇒ ปุ่มพาไปจอของตัวเอง · โผล่เฉพาะนัดที่ผูกใบคำร้องจริง */}
-                      {visit.kind === SURVEY_VISIT_KIND && visit.requestId && (
-                        <Button as="a" href={`/service/surveys/${visit.requestId}`} tone="primary" size="sm"
-                          icon={<Ruler size={14} aria-hidden="true" />}>
-                          บันทึกหน้างาน
-                        </Button>
+                      {/* ปุ่มเสริมอยู่ท้ายและพับลงบรรทัดใหม่เป็นคู่ — จอแคบปุ่มงานขึ้นต้นแถวเสมอ */}
+                      {(site?.mapUrl || site?.contactPhone) && (
+                        <span className={styles.aux}>
+                          {site?.mapUrl && (
+                            <Button as="a" href={site.mapUrl} target="_blank" rel="noreferrer noopener"
+                              tone="neutral" variant="quiet" size="sm" icon={<MapPin size={14} aria-hidden="true" />}>
+                              นำทาง
+                            </Button>
+                          )}
+                          {site?.contactPhone && (
+                            <Button as="a" href={`tel:${site.contactPhone}`}
+                              tone="neutral" variant="quiet" size="sm" icon={<Phone size={14} aria-hidden="true" />}>
+                              โทร
+                            </Button>
+                          )}
+                        </span>
                       )}
                     </div>
                   </article>

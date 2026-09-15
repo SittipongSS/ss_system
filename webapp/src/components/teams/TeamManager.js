@@ -66,6 +66,9 @@ const emptyDraft = (department) => {
 export default function TeamManager({ department, title, subtitle }) {
   const reg = useTeamRegistry(department);
   const { teams, canManage, membersOf, leadOf, unassigned, loading, loadError, saving, call } = reg;
+  /* ฝ่ายที่มีทีมแบบเดียว (TS = ทีมปฏิบัติงานล้วน) ไม่ต้องบอกประเภทซ้ำทุกแถว — คำโปรยหน้าบอกแล้ว
+     🐞 คอลัมน์ "ประเภท" กินทั้งคอลัมน์เพื่อพิมพ์ "ทีมปฏิบัติงาน" ซ้ำทุกแถว (ค้นด้วยคำนี้ยังเจอ) */
+  const multiKind = allowedKindsFor(department).length > 1;
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("active");
@@ -200,7 +203,10 @@ export default function TeamManager({ department, title, subtitle }) {
             <Metric icon={<UserRound size={16} aria-hidden="true" />} label="คนในฝ่าย"
               value={fmtNumber(peopleCount)}
               note={`อยู่ทีมแล้ว ${fmtNumber(peopleCount - unassigned.length)}`} />
-            <Metric as="button" type="button" tone="warning" icon={<UserRound size={16} aria-hidden="true" />}
+            <Metric as="button" type="button"
+              /* สีเตือนเฉพาะเมื่อมีคนค้าง — 🐞 เลข 0 สีเหลืองขัดกับถังข้างล่างที่บอกว่าครบแล้ว */
+              tone={unassigned.length ? "warning" : undefined}
+              icon={<UserRound size={16} aria-hidden="true" />}
               label="ยังไม่อยู่ทีมไหน" value={fmtNumber(unassigned.length)} note="กดเพื่อไปที่รายชื่อ"
               onClick={() => document.getElementById("unassigned")?.scrollIntoView({ behavior: "smooth", block: "start" })} />
             <Metric as="button" type="button" tone={noLeadCount ? "warning" : undefined}
@@ -210,21 +216,29 @@ export default function TeamManager({ department, title, subtitle }) {
           </MetricStrip>
 
           <WorkspaceSection
-            icon={<Users size={18} aria-hidden="true" />}
+            className={styles.countHeader}
+            /* ไอคอนหัว section = 17 ทั้งโมดูล (ขนาดเดียวกับหน้าภาพรวม /service และ DetailCard)
+               🐞 เดิม 18 ⇒ หัวข้อเริ่มคนละระยะกับหน้าพี่น้อง */
+            icon={<Users size={17} aria-hidden="true" />}
             title="ทะเบียนทีม"
             actions={<CountBadge count={rows.length} label="จำนวนทีมที่แสดง" />}
           >
-            {/* ลำดับแถบเครื่องมือเป็นข้อตกลงของเว็บ: ค้นหา · ตัวกรอง · spacer · เรียง */}
+            {/* ลำดับแถบเครื่องมือเป็นข้อตกลงของเว็บ: ค้นหา · ตัวกรอง · (ดันขวา) เรียง */}
             <div className="toolbar">
               <div className="search-glass">
                 <Search size={16} color="var(--text-3)" aria-hidden="true" />
                 <input autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)}
-                  placeholder="ค้นชื่อทีม · รหัส · หัวหน้าทีม · ชื่อสมาชิก" aria-label="ค้นหาทีม" />
+                  /* ⚠️ ป้ายต้องจบในช่อง 214px ของจอ 320 (วัดได้ 192px) — 🐞 เดิม "หัวหน้าทีม · ชื่อสมาชิก"
+                     227px ⇒ ถูกตัดกลางคำเป็น "ชื่อสมาชิ" · ยังบอกครบสี่อย่างที่ค้นได้ */
+                  placeholder="ค้นชื่อทีม · รหัส · หัวหน้า · สมาชิก" aria-label="ค้นหาทีม" />
               </div>
               <Segmented ariaLabel="สถานะทีม" options={STATUS_FILTERS} value={status} onChange={setStatus} />
-              <div className="spacer" />
-              <SortMenu value={sortKey} onChange={setSortKey} options={SORTS} defaultValue="order" />
-              <SortDirButton dir={dir} onToggle={() => setDir((d) => (d === "asc" ? "desc" : "asc"))} />
+              {/* 🐞 `.spacer` ดันขวาได้แค่บนบรรทัดเดียวกัน — จอ 768 ตกบรรทัดแล้วปุ่มเรียงไปชิดซ้าย
+                  ⇒ ห่อคู่เรียง+ทิศไว้ด้วยกัน ให้ตัวห่อดันขวาเองบนบรรทัดไหนก็ได้ */}
+              <div className={styles.sortPair}>
+                <SortMenu value={sortKey} onChange={setSortKey} options={SORTS} defaultValue="order" />
+                <SortDirButton dir={dir} onToggle={() => setDir((d) => (d === "asc" ? "desc" : "asc"))} />
+              </div>
             </div>
 
             {rows.length === 0 ? (
@@ -240,7 +254,7 @@ export default function TeamManager({ department, title, subtitle }) {
                     data-inactive={team.isActive === false ? "yes" : undefined}>
                     <span className={styles.cardTop}>
                       <b className={styles.code}>{team.code}</b>
-                      <Tag tone={team.kind === "sales" ? "violet" : "teal"}>{TEAM_KIND_LABELS[team.kind]}</Tag>
+                      {multiKind && <Tag tone={team.kind === "sales" ? "violet" : "teal"}>{TEAM_KIND_LABELS[team.kind]}</Tag>}
                       {team.isActive === false && <StatusBadge tone="neutral" label="ปิดใช้งาน" />}
                     </span>
                     <b className={styles.cardName}>{team.name}</b>
@@ -252,16 +266,18 @@ export default function TeamManager({ department, title, subtitle }) {
                 ))}
               </div>
             ) : (
-              <TableScroll family="list" surface="embedded" cells="stacked" minWidth={780}>
+              <TableScroll family="list" surface="embedded" cells="stacked" minWidth={multiKind ? 780 : 680}>
                 <table>
                   <thead>
                     <tr>
                       <th>ทีม</th>
-                      <th>ประเภท</th>
+                      {multiKind && <th>ประเภท</th>}
                       <th>หัวหน้าทีม</th>
                       <th>สมาชิก</th>
                       <th>สถานะ</th>
-                      <th aria-label="การจัดการ" />
+                      {/* คอลัมน์เมนูกว้างเท่าปุ่ม — ทรงเดียวกับตารางสมาชิกของหน้าทีม
+                          🐞 เดิมไม่ตั้งกว้าง ⇒ ได้ 120px แล้วปุ่ม "…" ลอยห่างขอบขวา ~80px */}
+                      <th aria-label="การจัดการ" className={styles.menuCol} />
                     </tr>
                   </thead>
                   <tbody>
@@ -274,11 +290,13 @@ export default function TeamManager({ department, title, subtitle }) {
                             <Link href={href} className={styles.code}>{team.code}</Link>
                             <span className={styles.sub}>{team.name}</span>
                           </td>
-                          <td>
-                            <Tag tone={team.kind === "sales" ? "violet" : "teal"}>
-                              {TEAM_KIND_LABELS[team.kind]}
-                            </Tag>
-                          </td>
+                          {multiKind && (
+                            <td>
+                              <Tag tone={team.kind === "sales" ? "violet" : "teal"}>
+                                {TEAM_KIND_LABELS[team.kind]}
+                              </Tag>
+                            </td>
+                          )}
                           <td>
                             {lead?.name
                               ? (
@@ -304,7 +322,7 @@ export default function TeamManager({ department, title, subtitle }) {
                               ? <StatusBadge tone="neutral" label="ปิดใช้งาน" />
                               : <StatusBadge tone="success" label="ใช้งานอยู่" />}
                           </td>
-                          <td className="text-center">
+                          <td className={`text-center ${styles.menuCol}`}>
                             {canManage && (
                               <RowActionMenu items={menuFor({ team, members })} busy={saving}
                                 label={`การจัดการของทีม ${team.name}`} />
@@ -323,8 +341,9 @@ export default function TeamManager({ department, title, subtitle }) {
               ⚠️ ตั้งแต่ /users ถอดช่องทีมออก (2026-09-06) **ที่นี่คือทางเดียว**
                  ที่บัญชีขายเปิดใหม่จะถูกจัดเข้าทีม */}
           <WorkspaceSection
+            className={styles.countHeader}
             id="unassigned"
-            icon={<UserRound size={18} aria-hidden="true" />}
+            icon={<UserRound size={17} aria-hidden="true" />}
             title="ยังไม่อยู่ทีมไหน"
             /* ⚠️ **คำอธิบายต้องตรงกับความหมายของทีมในฝ่ายนั้น** — ทีมขายผูกสิทธิ์
                (ไม่มีทีม = ไม่เห็นข้อมูล) ส่วนทีมปฏิบัติงานไม่แตะสิทธิ์เลย
@@ -337,7 +356,7 @@ export default function TeamManager({ department, title, subtitle }) {
             actions={<CountBadge count={unassigned.length} tone={unassigned.length ? "warning" : "neutral"} label="จำนวนคนที่ยังไม่อยู่ทีมไหน" />}
           >
             {unassigned.length === 0 ? (
-              <EmptyState icon={UserRound} plain>ทุกคนในฝ่ายอยู่ทีมครบแล้ว</EmptyState>
+              <EmptyState icon={UserRound} plain className={styles.emptyCompact}>ทุกคนในฝ่ายอยู่ทีมครบแล้ว</EmptyState>
             ) : (
               <ul className={styles.people}>
                 {unassigned.map((person) => {

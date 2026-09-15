@@ -10,19 +10,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, Navigation, Plus, Search, Table2, Wrench } from "lucide-react";
+import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, Navigation, Plus, Search, Wrench } from "lucide-react";
 import AssetModelsPanel from "@/components/service/AssetModelsPanel";
 import MachineAddModal from "@/components/service/MachineAddModal";
 import Tabs from "@/components/ui/Tabs";
 import Button from "@/components/ui/Button";
+import ClickableCard from "@/components/ui/ClickableCard";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Input from "@/components/ui/Input";
 import SkeletonRows from "@/components/ui/Skeleton";
-import StatCards from "@/components/database/StatCards";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
+import ViewSwitcher from "@/components/ui/ViewSwitcher";
+import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService } from "@/lib/permissions";
 import Pager from "@/components/ui/Pager";
@@ -308,10 +310,12 @@ export default function ServiceAssetsPage() {
         ]}
       />
       <div className="spacer" />
-      <div className="segmented">
-        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
-        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
-      </div>
+      {/* 🐞 เดิมเขียนปุ่มเองไม่มี aria-pressed/aria-label — โปรแกรมอ่านจอบอกไม่ได้ว่าอยู่มุมมองไหน */}
+      <ViewSwitcher
+        value={view} onChange={setView}
+        modes={["table", { value: "cards", icon: LayoutGrid, label: "การ์ด" }]}
+        ariaLabel="มุมมองทะเบียนเครื่อง"
+      />
     </div>
   );
 
@@ -320,9 +324,13 @@ export default function ServiceAssetsPage() {
       icon={<AirVent size={20} aria-hidden="true" />}
       title="ทะเบียนเครื่อง"
       /* คำบรรยายต้องพูดถึงของที่อยู่ตรงหน้า — แท็บรุ่นแล้วยังเขียนเรื่องเครื่องคือคำโกหกเบา ๆ */
+      /* ⚠️ ทั้งสองแท็บต้องไม่เกินหนึ่งบรรทัดที่จอ 320 — ตกบรรทัดแท็บเดียว = แถบแท็บเลื่อนลง
+         22px ตอนสลับ (🐞 "รุ่นและสีของแต่ละรุ่น — …" เคยเป็นสองบรรทัด) */
       subtitle={tab === "models"
-        ? "รุ่นและสีของแต่ละรุ่น — ต้นทางของตัวเลือกตอนเพิ่มเครื่อง"
-        : "เครื่องทุกตัวของฝ่ายบริการ — ที่หน้างานลูกค้าและที่ยังไม่ได้ติดตั้ง"}
+        ? "รุ่นและสี — ต้นทางของตัวเลือกตอนเพิ่มเครื่อง"
+        /* 🐞 มีคำว่า "ของฝ่ายบริการ" แล้วยาวเกินจอ 390 ไป 4px ⇒ "ติด|ตั้ง" ขาดกลางคำ
+           (ชื่อโมดูลบอกอยู่แล้วว่าเป็นของฝ่ายไหน) */
+        : "เครื่องทุกตัว — ที่หน้างานลูกค้าและที่ยังไม่ได้ติดตั้ง"}
       /* ปุ่มก้าวถัดไปเป็นของ **แท็บที่เปิดอยู่** — ท่าเดียวกับหน้าสัญญา */
       headerRight={(
         <>
@@ -341,19 +349,10 @@ export default function ServiceAssetsPage() {
           )}
         </>
       )}
-      loading={tab === "machines" && loading}
-      rail={tab === "machines" && (
-        <StatCards
-          items={[
-            { label: "ทั้งหมด", value: stats.total },
-            { label: "ที่ไซต์ลูกค้า", value: stats.onSite, tone: "success" },
-            { label: "ว่าง", value: stats.inStock },
-            { label: "สภาพชำรุด", value: stats.broken, tone: stats.broken ? "danger" : undefined },
-          ]}
-        />
-      )}
-      toolbar={tab === "machines" ? toolbar : null}
     >
+      {/* ⭐ แท็บอยู่บนสุดของเนื้อหา ตัวเลข/แถบค้นของแท็บเครื่องอยู่ใต้แท็บ (ท่าเดียวกับหน้าสัญญา)
+          🐞 เดิมส่งผ่าน rail/toolbar/loading ของ Workspace ⇒ แท็บถูกวาดใต้แถบค้น
+             สลับแท็บแล้วแถบแท็บกระโดด 176px ใต้เมาส์ และหายไปทั้งแถบระหว่างโหลด */}
       <Tabs
         value={tab}
         onChange={(next) => {
@@ -377,13 +376,37 @@ export default function ServiceAssetsPage() {
       )}
 
       {tab === "machines" && <>
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
+      {/* 🐞 StatCards ตรึง 4 คอลัมน์ทุกจอ ⇒ มือถือการ์ดกว้าง 83px ป้ายตกบรรทัดจนตัวเลขเหลื่อมกัน
+          · MetricStrip เหลือ 2 คอลัมน์เองที่ ≤900px · โหลดพังไม่โชว์ "ทั้งหมด 0" ข้างข้อความ error
+          · ระหว่างโหลดเป็นขีด ไม่ใช่ 0 ที่อ่านเหมือนไม่มีเครื่อง */}
+      {!loadError && (
+        <MetricStrip>
+          <Metric label="ทั้งหมด" value={loading ? null : stats.total} />
+          <Metric label="ที่ไซต์ลูกค้า" value={loading ? null : stats.onSite} tone={stats.onSite ? "success" : undefined} />
+          <Metric label="ว่าง" value={loading ? null : stats.inStock} />
+          <Metric label="สภาพชำรุด" value={loading ? null : stats.broken} tone={stats.broken ? "danger" : undefined} />
+        </MetricStrip>
+      )}
+
+      {/* ทะเบียนว่างจริง = ค้น/กรอง/สลับมุมมองไม่มีอะไรให้ทำ ⇒ ซ่อน
+          ⚠️ ระหว่างโหลดต้องค้างไว้ ไม่งั้นแถบเด้งขึ้นมาดันตารางลงทุกครั้งที่เปิดหน้า */}
+      {(loading || loadError || assets.length > 0) && toolbar}
+
+      {loadError && (
+        <StatusNotice tone="error" title="โหลดทะเบียนเครื่องไม่สำเร็จ"
+          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
+      )}
 
       {loading || loadError ? (
         loading ? <SkeletonRows rows={6} /> : null
       ) : assets.length === 0 ? (
+        /* ไม่มีสิทธิ์แก้ = ไม่เห็นปุ่มเพิ่มเครื่อง ⇒ อย่าบอกให้กด */
         <EmptyState icon={AirVent}>
-          ยังไม่มีเครื่องในระบบ — กด “เพิ่มเครื่อง” เพื่อขึ้นทะเบียนเครื่องที่บริษัทได้รับมา
+          {canEdit
+            ? "ยังไม่มีเครื่องในทะเบียน — กด “เพิ่มเครื่อง” เพื่อขึ้นทะเบียนเครื่องที่บริษัทได้รับมา"
+            : "ยังไม่มีเครื่องในทะเบียน"}
         </EmptyState>
       ) : sort.sorted.length === 0 ? (
         /* ⚠️ ค้นไม่เจอ ≠ ไม่มีเครื่อง — ตารางว่างโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
@@ -393,12 +416,16 @@ export default function ServiceAssetsPage() {
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((asset) => (
-            <Link key={asset.id} href={`/service/assets/${asset.id}`} className={`${styles.card} clickable-row p-4 flex-col gap-2`}>
+            /* 🐞 เดิมห่อทั้งใบด้วย <Link> แต่ locationCell() มีลิงก์ไปไซต์อยู่ข้างใน = <a> ซ้อน <a>
+               (HTML ผิด · React ฟ้อง hydration ทุกจอที่มุมมองการ์ดเป็นค่าตั้งต้น)
+               ⇒ ท่า C: ทางเข้าจริงคือ <Link> ที่หัวการ์ด · <ClickableCard> เป็นทางลัดของเมาส์
+               ลิงก์ไปไซต์อยู่ครบเหมือนเดิม (ดูหัวไฟล์ ui/ClickableCard.js) */
+            <ClickableCard key={asset.id} href={`/service/assets/${asset.id}`} className={`${styles.card} clickable-row p-4 flex-col gap-2`}>
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <Link href={`/service/assets/${asset.id}`} className="min-w-0 linklike linklike-block">
                   <div className={styles.cardCode}>{naText(asset.code || asset.serial || asset.label)}</div>
                   <div className={styles.sub}>{naText(asset.model)} · {ASSET_KIND_LABELS[asset.kind] || asset.kind}</div>
-                </div>
+                </Link>
                 {statusCell(asset)}
               </div>
               <div className={styles.cardLoc}>{locationCell(asset)}</div>
@@ -406,7 +433,7 @@ export default function ServiceAssetsPage() {
                 <span>{asset.receivedAt ? `รับเข้า ${fmtDate(asset.receivedAt)}` : "ไม่ระบุวันรับเข้า"}</span>
                 <span>{naText(asset.colour)}</span>
               </div>
-            </Link>
+            </ClickableCard>
           ))}
         </div>
       ) : (

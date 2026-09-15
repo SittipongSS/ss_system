@@ -13,16 +13,35 @@
   text-align: center;
 }
 
+/* 🐞 จอแคบ: ป้ายสัปดาห์ไม่ยืด ⇒ ลูกศรขวาค้างกลางแถว เหลือที่ว่างท้ายแถว และ
+   "สัปดาห์นี้" หล่นไปแถวถัดไปแยกจากลูกศร · ยืดป้ายให้เต็มแถว = ‹ › ชิดขอบแบบตัวเปลี่ยนหน้า */
+@media (max-width: 640px) {
+  .weekLabel { flex: 1 1 auto; }
+}
+
 .count {
   color: var(--text-3);
   font-size: var(--fs-label);
   margin-inline-start: auto;
 }
 
+/* ตัวกรองทีมบนจอแคบ — ปุ่มไม่หดจน "ทุกทีม" ขาดสองบรรทัด
+   🐞 รอบก่อนให้เลื่อนในกล่องตัวเอง ⇒ ที่ 320px "supervisor" โผล่แค่ "sup" ชิดขอบขวา
+   ไม่มีอะไรบอกว่าเลื่อนได้ · ขึ้นบรรทัดใหม่แทน = เห็นครบทุกทีม
+   (ที่ว่างพอก็ยังเป็นแถวเดียวเหมือนเดิม — ขึ้นบรรทัดเฉพาะตอนกล่องโดน max-width บีบ) */
+.teamFilter {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.teamFilter > button { flex-shrink: 0; }
+
+/* 🐞 `table-layout: auto` แบ่งที่ว่างตามความยาวเนื้อใน ⇒ วันที่มีชิปกินคอลัมน์ไป
+   432px วันอื่นเหลือ 120px · fixed = เจ็ดวันกว้างเท่ากัน (คอลัมน์ชื่อตรึง 150px) */
 .board {
   width: 100%;
   min-width: 900px;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .board th,
@@ -32,9 +51,9 @@
   padding: var(--space-1);
 }
 
+/* ⚠️ ขนาดตัว/การจัดแนวของหัวตารางมาจากกฎกลาง `.scroll[data-family] th` (0,2,1)
+   ซึ่งชนะกฎนี้ — ตั้งตรงนี้ไม่มีผล (ของเดิมเขียน center/--fs-label ไว้เป็น CSS ตาย) */
 .board thead th {
-  text-align: center;
-  font-size: var(--fs-label);
   line-height: var(--lh-thai);
   padding-block: var(--space-2);
 }
@@ -45,16 +64,24 @@
   font-size: var(--fs-label);
 }
 
+/* เลขวันที่และป้าย "เจ้าหน้าที่" ต้องตั้งขนาดที่ตัว span เอง — ที่ th โดนกฎกลางกดเหลือ 9.5px
+   🐞 รอบก่อนแก้แค่หัววัน ⇒ "เจ้าหน้าที่" เหลือตัวเล็กตัวเดียวในแถวหัวตาราง */
+.dayNum,
+.headLabel { font-size: var(--fs-label); }
+
 /* 🐞 เดิมเป็น `color: var(--accent-ink)` บนพื้น `--accent` — ธีมมืดตั้งสองตัวนี้
    เป็น **สีเดียวกันเป๊ะ** (#d38a61) เลขวันที่ของวันนี้จึงหายสนิท และธีมสว่างได้
    คอนทราสต์ 1.9:1 ซึ่งอ่านแทบไม่ออก · โทเคนคู่ของ `--accent` คือ `--accent-fg`
-   (ตัวเดียวกับที่ `.btn-accent` ใช้) ซึ่งพลิกตามธีมให้เอง */
+   (ตัวเดียวกับที่ `.btn-accent` ใช้) ซึ่งพลิกตามธีมให้เอง
+   🐞 ไม่มี padding/จัดกลาง ⇒ เลข "15" ชิดขอบซ้ายของเม็ด */
 .today {
   display: inline-block;
   min-width: 22px;
+  padding-inline: var(--space-1);
   border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--accent-fg);
+  text-align: center;
 }
 
 .techCol {
@@ -65,9 +92,21 @@
   line-height: var(--lh-thai);
 }
 
+/* 🐞 ชื่อเจ้าหน้าที่คือแกนหลักของกริด แต่โดนกฎหัวตารางกลางกดเหลือ 9.5px สีรอง
+   และห้ามตัดบรรทัด — ตัวเล็กที่สุดในหน้า · (0,2,2) ชนะกฎกลาง (0,2,1) */
+.board tbody th.techCol {
+  font-size: var(--fs-label);
+  color: var(--text);
+  white-space: normal;
+}
+
 /* ชื่อเจ้าหน้าที่ = ลิงก์ไปหน้า "งานวันนี้" ของคนนั้น (?user=) — สีตามตัวอักษรปกติ
-   ขีดเส้นใต้ตอน hover พอ ไม่ให้ตารางทั้งคอลัมน์กลายเป็นสีลิงก์ */
+   ขีดเส้นใต้ตอน hover พอ ไม่ให้ตารางทั้งคอลัมน์กลายเป็นสีลิงก์
+   🐞 เดิมกดได้แค่ตัวหนังสือสูง 15px — ขยายเป้าให้สูงเท่าเป้าแตะ */
 .techLink {
+  display: flex;
+  align-items: center;
+  min-height: var(--ctl-h-touch);
   color: inherit;
   text-decoration: none;
 }
@@ -92,24 +131,44 @@
   color: var(--amber);
 }
 
+/* ชิปสองบรรทัด: เวลา · +N · ⚠ บรรทัดบน / ชื่อไซต์บรรทัดล่าง
+   🐞 พอคอลัมน์เท่ากัน (~107px ในตาราง 900px) ชิปบรรทัดเดียวบีบชื่อไซต์เหลือ 1px
+   สีชนิดงานมาจาก `--kind*` ของคลาส kind_* ข้างล่าง · แถบทึบซ้ายคือตัวที่อ่านสีออกจริง
+   🐞 ช่องแคบ (td โดน padding กลาง 13px ⇒ ในชิปเหลือ 61px) บรรทัดบนต้องใช้ 67px ⇒ ⚠ หล่นไป
+   อยู่บรรทัดของตัวเอง ชิปสามบรรทัด · ช่องไฟแนวนอน 2px + ขอบขวา 4px = เหลือ 65 พอดี 63
+   (ขอบซ้ายคง 8px ให้พ้นแถบสี 4px) */
 .visitChip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-1) var(--space-0-5);
   width: 100%;
-  padding: var(--space-1) var(--space-2);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2) var(--space-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--accent-soft);
+  background: var(--kind-soft, var(--accent-soft));
+  box-shadow: inset var(--space-1) 0 0 var(--kind, var(--accent-ink));
   text-align: start;
   cursor: pointer;
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
 
-.visitTime { font-weight: var(--fw-bold); white-space: nowrap; }
+.visitChip:hover { border-color: var(--text-3); }
+
+.visitChip > svg { flex: none; }
+
+/* ⚠️ ไม่ห้ามตัดบรรทัด — คอลัมน์เท่ากันแล้ว ช่องแคบสุด ~61px ส่วน "09:00–12:00" กว้าง 76px
+   nowrap = ล้นทะลุชิปไปทับช่องข้าง ๆ · ปล่อยให้ขึ้นบรรทัดหลังขีดแทน */
+.visitTime {
+  margin-inline-end: auto;
+  font-weight: var(--fw-bold);
+}
 
 .visitSite {
+  order: 1;
+  flex-basis: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -119,12 +178,14 @@
 .visitMuted { opacity: var(--op-muted); text-decoration: line-through; }
 
 /* คำอธิบายสีชนิดงาน — ของเดิมสีทั้ง 6 ไม่มีคำอธิบายอยู่ที่ไหนเลย และรายละเอียด
-   ของนัดอยู่ใน `title=` ซึ่งบนจอสัมผัสไม่มีอยู่จริง */
+   ของนัดอยู่ใน `title=` ซึ่งบนจอสัมผัสไม่มีอยู่จริง
+   🐞 เดิมเยื้องเข้า 16px จากขอบตาราง — ชิดขอบเดียวกับตารางแล้ว */
 .legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  padding-block: var(--space-3);
+  padding-inline: 0;
   border-top: 1px solid var(--border);
   color: var(--text-3);
   font-size: var(--fs-3);
@@ -137,41 +198,44 @@
   gap: var(--space-1-5);
 }
 
+/* 🐞 เดิมใช้พื้นจาง 12–18% แบบเดียวกับชิป ⇒ จุดสีทั้งเจ็ดได้ ~1.2:1 แยกกันไม่ออก
+   ใช้สีทึบของชนิดงาน (ตัวเดียวกับแถบซ้ายของชิป) */
 .legendSwatch {
   width: 10px;
   height: 10px;
   border-radius: var(--radius-full);
+  background: var(--kind);
   flex: none;
 }
 
-.emptyRow {
-  text-align: center;
-  color: var(--text-3);
-  padding: var(--space-6);
-  line-height: var(--lh-thai);
-}
+/* ⚠️ กริดที่ไม่มีแถวเลยไม่วาดตาราง (ใช้ EmptyState ใน page.js) — ข้อความในแถว colSpan
+   กว้างเท่าตาราง 900px ไม่ใช่เท่ากล่องเลื่อน จึงขาดทางขวาทุกจอที่แคบกว่าตาราง */
 
 /* สีชิปตามชนิดงาน — เจ้าหน้าที่กวาดตาแล้วรู้ว่าวันนี้เป็นงานแบบไหนโดยไม่ต้องอ่าน
    ⚠️ สีเป็น *ตัวช่วย* ไม่ใช่ตัวบอกความหมายเดี่ยว ๆ — ชนิดงานเขียนอยู่ใน title
-   ของชิปด้วยเสมอ (คนตาบอดสีและ screen reader ต้องได้ข้อมูลเท่ากัน) */
-.kind_install { background: var(--violet-soft); }
-.kind_refill { background: var(--accent-soft); }
-.kind_maintenance { background: var(--blue-soft); }
-.kind_repair { background: var(--red-soft); }
-.kind_inspect { background: var(--teal-soft); }
-.kind_remove { background: var(--amber-soft); }
+   ของชิปด้วยเสมอ (คนตาบอดสีและ screen reader ต้องได้ข้อมูลเท่ากัน)
+   คลาสตั้งแค่ตัวแปรคู่ (`--kind` ทึบ · `--kind-soft` จาง) ให้ชิปกับจุดสีหยิบไปใช้
+   ⚠️ เติมน้ำหอมใช้ `--accent-ink` ไม่ใช่ `--accent` — ธีมสว่างได้ 2.75:1 บน --bg ตก 3:1 */
+.kind_install { --kind: var(--violet); --kind-soft: var(--violet-soft); }
+.kind_refill { --kind: var(--accent-ink); --kind-soft: var(--accent-soft); }
+.kind_maintenance { --kind: var(--blue); --kind-soft: var(--blue-soft); }
+.kind_repair { --kind: var(--red); --kind-soft: var(--red-soft); }
+.kind_inspect { --kind: var(--teal); --kind-soft: var(--teal-soft); }
+.kind_remove { --kind: var(--amber); --kind-soft: var(--amber-soft); }
 /* 🐞 ชนิดที่เพิ่มทีหลังแล้วลืมให้สี = ชิปโปร่งใสบนกริด และแถวคำอธิบายสีมีป้ายแต่ไม่มีสี
    (เจอตอนรีเช็ค 30/08 — `survey` เพิ่งเข้า VISIT_KINDS ตอนเฟส 2) */
-.kind_survey { background: var(--green-soft); }
+.kind_survey { --kind: var(--green); --kind-soft: var(--green-soft); }
 
 /* ── คิวรอจัด (ร่างที่ยังไม่ผ่านด่าน) ──────────────────────────────────────
-   อยู่เหนือกริด **นอกตาราง** — ร่างที่วางปนกับนัดจริงคือร่างที่เจ้าหน้าที่ออกไปทำ */
+   อยู่เหนือกริด **นอกตาราง** — ร่างที่วางปนกับนัดจริงคือร่างที่เจ้าหน้าที่ออกไปทำ
+   🐞 เดิมอ้าง `--surface`/`--surface-2` ซึ่งไม่มีประกาศที่ไหน ⇒ พื้นโปร่งทั้งกล่อง
+   (การ์ด = --panel · ของที่ซ้อนข้างใน = --panel-2 ตาม Visual rules) */
 .queue {
   margin-bottom: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  background: var(--panel);
 }
 
 .queueTitle {
@@ -208,7 +272,7 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--panel-2);
   color: inherit;
   font: inherit;
   text-align: start;
@@ -219,6 +283,15 @@
 
 .queueRow:hover { border-color: var(--text-3); }
 
+/* 🐞 ตัวกดของหน้านี้ไม่มีวงโฟกัสเลย ⇒ ได้วงฟ้าบาง ๆ ของเบราว์เซอร์ */
+.techLink:focus-visible,
+.visitChip:focus-visible,
+.queueRow:focus-visible,
+.listRow:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: var(--space-0-5);
+}
+
 .queueReason {
   grid-column: 1 / -1;
   font-size: var(--fs-label);
@@ -228,32 +301,36 @@
 .queueList > li[data-ready="yes"] .queueReason { color: var(--green); }
 
 /* ── ภาระรายทีมเจ้าหน้าที่บริการ (mig 0310 · T-4) ────────────────────────────────────
-   ทีมว่างต้องอ่านออกทันที — มันคือทีมที่รับงานเพิ่มได้ */
+   ทีมว่างต้องอ่านออกทันที — มันคือทีมที่รับงานเพิ่มได้
+   🐞 เดิมเป็นเม็ดมีกรอบใต้ตัวกรองทีมพอดี ⇒ อ่านเป็นตัวกรองชุดที่สองที่กดไม่ได้
+   และกรอบเขียวของทีมว่างอ่านเป็น "เลือกอยู่" · ทรงเม็ดสงวนให้ตัวกรอง — ที่นี่เป็นตัวเลขล้วน */
 .teamLoad {
   list-style: none;
   margin: 0 0 var(--space-3);
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-5);
 }
 
 .teamLoad > li {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--surface-2);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
 
 .teamLoad > li > span { color: var(--text-3); font-variant-numeric: tabular-nums; }
 
-/* ทีมที่ยังไม่มีนัดในสัปดาห์นี้ — เน้นเบา ๆ ว่าว่างอยู่ ไม่ใช่จางจนมองไม่เห็น */
-.teamLoad > li[data-empty="yes"] { border-color: var(--green); }
+/* ทีมที่มีคนแต่ยังไม่มีนัดในช่วงนี้ — คำว่า "ว่าง" หลังชื่อทีม
+   🐞 รอบก่อนเป็นจุดเขียวไม่มีคำอธิบาย และเป็นสีเดียวกับ "ประเมินพื้นที่" ในคำอธิบายสีชนิดงาน
+   บนจอเดียวกัน ⇒ อ่านได้ว่า "ทีมนี้มีงานประเมินพื้นที่" · คำตรงตัวไม่ต้องพึ่งคำอธิบายสี
+   (0,2,1) ชนะสีเทาของ `.teamLoad > li > span` (0,1,2) */
+.teamLoad > li > .teamFree {
+  color: var(--green);
+  font-weight: var(--fw-semibold);
+}
 
 /* ── F-6: ภาระในช่อง · คิวแยกกลุ่ม · แถบประกาศ ────────────────────────── */
 
@@ -288,12 +365,12 @@
   line-height: var(--lh-thai);
 }
 
-/* จำนวนเจ้าหน้าที่ที่ไปด้วยบนชิปนัด — "+2" อ่านเร็วกว่ารายชื่อในช่องที่กว้าง 100px */
+/* จำนวนเจ้าหน้าที่ที่ไปด้วยบนชิปนัด — "+2" อ่านเร็วกว่ารายชื่อในช่องที่กว้าง 100px
+   (ชิดขวาได้จาก margin อัตโนมัติของ .visitTime) */
 .visitCrew {
-  margin-inline-start: auto;
   padding-inline: var(--space-1);
   border-radius: var(--radius-full);
-  background: var(--surface);
+  background: var(--panel-2);
   color: var(--text-3);
   font-size: var(--fs-1);
   font-variant-numeric: tabular-nums;
@@ -325,7 +402,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.listDay[data-today="yes"] { color: var(--accent); }
+/* ⚠️ `--accent-ink` ไม่ใช่ `--accent` — ธีมสว่าง --accent ได้ 2.75:1 บน --bg (ข้อความ 15px ต้อง 4.5:1) */
+.listDay[data-today="yes"] { color: var(--accent-ink); }
 
 .listRows {
   list-style: none;
@@ -346,7 +424,7 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--panel);
   color: inherit;
   font: inherit;
   text-align: start;
@@ -372,4 +450,18 @@
 
 .listSite > span { color: var(--text-3); font-size: var(--fs-label); }
 
+/* คำเตือนของนัดต้องอ่านได้บนจอสัมผัส — `title=` ไม่มีอยู่จริงที่นั่น */
+.listSite > .listWarn { color: var(--amber); }
+
 .listWho { color: var(--text-2); white-space: nowrap; }
+
+.listRow > svg { flex: none; }
+
+/* 🐞 มือถือ: เวลา 92px + ชื่อคน nowrap ยังอยู่บรรทัดเดียวกันได้ ⇒ ชื่อไซต์ (เนื้อหลักของแถว)
+   เหลือ 38px จน "ประเมินพื้นที่" ขาดกลางคำ · บรรทัดบน = เวลา · คน · ⚠ /
+   บรรทัดล่าง = ไซต์เต็มแถว เริ่มที่ x เดียวกันทุกแถว (grid ต่อปุ่มจะเริ่มคนละ x ตามความยาวเวลา) */
+@media (max-width: 640px) {
+  .listSite { order: 1; flex-basis: 100%; }
+  .listTime { min-width: 0; }
+  .listWho { margin-inline-start: auto; white-space: normal; }
+}

@@ -65,6 +65,7 @@ export function Spinner() {
 }
 
 export function WorkspaceSection({
+  id,
   icon,
   title,
   subtitle,
@@ -74,7 +75,9 @@ export function WorkspaceSection({
   className = "",
 }) {
   return (
-    <section className={`ui-section ${className}`.trim()}>
+    // `id` = จุดให้ลิงก์ในหน้าเดียวกันกระโดดมาหา (เช่น #unassigned ของหน้าจัดทีม)
+    // 🐞 เดิมไม่รับ ⇒ ผู้เรียกส่งมาแล้วหายเงียบ ลิงก์ในหน้าไม่พาไปไหน
+    <section id={id} className={`ui-section ${className}`.trim()}>
       {(icon || title || actions) && (
         <header className="ui-section-header">
           <div className="ui-section-title">

@@ -86,6 +86,9 @@ export default function AttachmentsPanel({
   // ⚠️ ไม่ใช่แค่ซ่อนปุ่ม — ถอด zoneProps ด้วย ไม่งั้นลากไฟล์มาวางแล้วอัปขึ้นจริง
   // ทั้งที่ไม่มีปุ่มให้กด (ทางลับที่ไม่มีใครตั้งใจเปิด)
   fileUploads = true,
+  // โหมด inline: ตัวนับ "N ไฟล์" บนแถวหัว — ปิดได้เมื่อหัวข้อของผู้เรียกบอกจำนวนอยู่แล้ว
+  // 🐞 จอผลวัดพื้นที่: หัวข้อ "1 รูป" แล้วมีแถวที่มีแค่ "1 ไฟล์" ซ้ำอยู่ข้างล่างทุกบล็อก
+  showCount = true,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -627,6 +630,8 @@ export default function AttachmentsPanel({
             ปุ่มลอยชิดขวา และที่ว่างกลางแถวไม่มีอะไรเลย · ผู้ใช้ส่งภาพมาว่าโล่งทั้งสองจุด
             ⇒ คำใบ้ชิดซ้าย ปุ่มชิดขวา บรรทัดเดียว — ที่ว่างกลางแถวมีของอยู่แล้ว
             ⚠️ `flex-wrap` กันจอแคบ: คำใบ้ยาว 40 ตัวอักษร บีบกับปุ่มแล้วตัดคำมั่ว */}
+        {/* แถวหัวมีของให้โชว์เฉพาะเมื่อแนบได้ หรือผู้เรียกยังให้นับไฟล์ — ไม่งั้นเป็นแถวเปล่า 32px */}
+        {((canEdit && fileUploads) || showCount) && (
         <div className="flex min-h-8 flex-wrap items-center justify-end gap-x-3 gap-y-1">
           {/* ⚠️ คำสั้น "ลากมาวาง · Ctrl+V" ไม่ใช่ประโยคเต็ม — กล่องนี้ไปโผล่ในรางขวา
               ที่กว้างแค่ 292px ด้วย · ประโยคเต็ม 40 ตัวอักษรบวกปุ่มแล้วตกบรรทัด
@@ -656,10 +661,11 @@ export default function AttachmentsPanel({
               <span>{busy ? "กำลังแนบ..." : "แนบไฟล์"}</span>
             </button>
           )}
-          {!loading && shown.length > 0 && (
+          {showCount && !loading && shown.length > 0 && (
             <span className="text-[11px] text-[var(--text-3)]">{shown.length} ไฟล์</span>
           )}
         </div>
+        )}
 
         {googleDocActions}
 

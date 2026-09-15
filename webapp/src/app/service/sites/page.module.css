@@ -5,15 +5,36 @@
    gap · margin-bottom · และกฎ `--ctl-h` ที่ตรึงตัวควบคุมทุกตัวบนแถบให้สูงเท่ากัน
    (เหตุผลเต็มอยู่ที่ service/schedule/page.module.css) */
 
-.searchInput { width: 240px; max-width: 320px; }
+/* ช่องค้นหายืดตามแถบ
+   🐞 เดิมตรึง 240px ทุกจอ — คำใบ้ถูกตัดกลางคำ และคลาสนี้โหลดทีหลังกฎมือถือ
+      `.search-glass { width: 100% }` จึงชนะ ⇒ ปุ่มสลับมุมมองตกไปอยู่แถวเดี่ยว */
+.searchInput { flex: 1 1 240px; width: auto; max-width: 360px; }
 
-.numCol { text-align: right; white-space: nowrap; }
+/* ก้อนเรียง+ทิศทางชิดขวา — แทน `.spacer` ซึ่งเป็น flex item ที่กิน gap เพิ่มอีกช่อง */
+.sortGroup { margin-left: auto; }
+
+/* จอแคบ: แถวแรก = ค้นหา + สลับมุมมอง · แถวสอง = ตัวกรอง … เรียง ↑↓
+   🐞 ปุ่มเรียงย้ายขึ้นแถบนี้ (2026-09-15) ⇒ แถบยาวขึ้น ~210px ⇒ ตัวสลับมุมมองตกไปแถวของตัวเองคนเดียว
+      (จอ 390 = แถวสาม · จอ 681–702 = แถวสอง) ⇒ ขยายทรงสองแถวขึ้นไปถึง 768 (แถวเดียวต้องการ ~650px)
+   ⚠️ ความกว้างตั้งต้นของช่องค้นหา = เต็มแถว หักที่ให้ตัวสลับมุมมองพอดี (สองปุ่ม + ช่องไฟ < 3×ctl-h)
+      ⇒ ตัวสลับมุมมองขึ้นแถวแรกได้ แต่ปุ่มตัวกรองขึ้นไม่ได้ — ทุกความกว้าง ไม่ใช่เปอร์เซ็นต์ที่จูนเฉพาะจอ
+      `min-width: 0` ให้ช่องค้นหาหดได้จริง ไม่ค้างที่ความกว้างขั้นต่ำของเนื้อ */
+@media (max-width: 768px) {
+  .searchInput { flex: 1 1 calc(100% - var(--ctl-h) * 3); min-width: 0; max-width: none; order: -2; }
+  .viewToggle { order: -1; }
+}
+
+/* ⚠️ ชิดขวามาจากคลาสกลาง `num` ที่ใส่คู่กัน — `text-align` ในโมดูลแพ้กฎของตารางกลางเสมอ */
+.numCol { white-space: nowrap; }
 .muted { color: var(--text-3); }
 .inactive td { opacity: var(--op-muted); }
 
-.siteLink {
-  font-weight: var(--fw-semibold);
-  color: var(--accent);
+/* บรรทัดล่างของเซลล์ไซต์ (ชื่อไซต์ใต้รหัส) — ขนาดเดียวกับบรรทัดรองในตารางใบเสนอราคา
+   ลิงก์รหัสใช้คลาสกลาง `.linklike` + `<strong className="mono">` ไม่ประกาศสีเอง */
+.subLine {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-5);
 }
 
 /* การ์ดมุมมองการ์ด — ทรงเดียวกับ DetailCard (border/radius/พื้น/เงาชุดเดียวกัน)
@@ -26,3 +47,7 @@
   box-shadow: var(--glass-shadow);
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
+
+.cardInactive { opacity: var(--op-muted); }
+.cardCode { font-size: var(--fs-label); color: var(--accent-ink); }
+.cardCustomer { font-size: var(--fs-5); color: var(--text-3); }
