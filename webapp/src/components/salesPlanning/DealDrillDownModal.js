@@ -11,7 +11,7 @@ import { forecastAmount, monthKey } from "@/lib/salesPlanning";
 import {
   isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf, dealMatchesOwner,
   pendingApprovalAmountOf, pendingApprovalCountOf, pendingApprovalMonthOf,
-  WON_AWAITING_SO_LABEL, wonAwaitingSoAmountOf,
+  WON_AWAITING_SO_LABEL, wonAwaitingSoAmountOf, isKpiDeal,
 } from "@/lib/sales/dashboardMetrics";
 import { wonAwaitingSoInPeriod } from "@/lib/sales/wonAwaitingSoRollup";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
@@ -67,7 +67,9 @@ export default function DealDrillDownModal({ filter, onClose }) {
         const inPeriod = periodMatcher(filter);
         const now = new Date();
 
-        let filtered = (data || []).filter((d) => {
+        /* ⛔ ตัวกรองฐานก่อนคน/ทีม — ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่อยู่ในตัวเลขของแดชบอร์ด (API ตัดที่ query)
+           ⇒ ลิ้นชักต้องตัดเหมือนกันทุกกิ่ง (Won · FC · Won รอยื่น SO · นับสถานะ) ไม่งั้นรายการไม่ตรงช่องที่กด */
+        let filtered = (data || []).filter(isKpiDeal).filter((d) => {
           /* แถวคน = (ใคร, ทีมไหน) (มติผู้ใช้ 2026-09-14 "ทีมตามดีล") — ส่ง filter ทั้งก้อนเข้าตัวจับคู่กลาง
              ⇒ `teamScoped` (ตารางติดตามส่ง true ให้แถวคน) ไปถึง dealMatchesOwner ด้วย: นับเฉพาะดีลที่ทีมตรงแถว
              คนที่มีดีลหลายทีมจึงได้ลิ้นชักเท่าช่องที่กด · ผู้เรียกที่ไม่ส่ง teamScoped ได้กติกาเดิมทุกอย่าง */

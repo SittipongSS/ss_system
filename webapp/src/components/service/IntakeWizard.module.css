@@ -103,6 +103,25 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* จุดติดตั้งตามชีตของใบสั่งขายย้อนหลัง (mig 0360) — บอก "ไปหาที่ไหน" เหนือรหัส FG
+   เป็นเบาะแสจากฝ่ายขาย ไม่ใช่โซนจริง ⇒ ตัวรองสีจาง ไม่แย่งที่ของรหัสกับจำนวน */
+.point {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+/* ลิงก์ไปปุ่ม "เพิ่มไซต์ย้อนหลัง" ที่หน้าทะเบียนไซต์ — ลิงก์ในประโยค ไม่ใช่ปุ่ม */
+.siteLink {
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+}
+
 .lineFields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

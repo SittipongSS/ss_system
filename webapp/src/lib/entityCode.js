@@ -58,14 +58,26 @@ export const entityRunningWidth = (scope) => (
 //
 // รับหลายแถวเสมอ: ที่ gen ทีละชุด (ใบผลิตอัตโนมัติ · นัดบริการตามรอบ) ต้องได้พฤติกรรม
 // เดิมคือล้มใบไหนก็ล้มทั้งชุด ไม่ค้างครึ่งทาง · คืน { data, error } ดิบตามเดิม
+/** `{ month, prefix, width }` ของการออกรหัส scope หนึ่ง ณ เวลาหนึ่ง — **ชุดเดียว** ที่ทุกทางใช้
+ *  ⚠️ สองค่าแรก **คนละเรื่องกันโดยตั้งใจ**: `month` = คีย์ถังนับ (รอบตัด) ·
+ *  `prefix` = สิ่งที่โผล่ในรหัสจริง ซึ่งมี YYMM เสมอไม่ว่ารอบตัดจะเป็นอะไร
+ *  ⭐ RPC ที่ออกรหัสเองในทรานแซกชันของมัน (ดีลภาชนะของใบสั่งขายย้อนหลัง · mig 0360) รับค่าจากตัวนี้
+ *    ⇒ รหัส DL ของสองทางไม่มีวันเพี้ยนกัน */
+export function entityCodeArgs(scope, now = new Date()) {
+  return {
+    month: entityCounterKey(scope, now),
+    prefix: `${scope}-${ymKey(now)}`,
+    width: entityRunningWidth(scope),
+  };
+}
+
 export function insertRowsWithEntityCode(supabase, scope, rows, now = new Date()) {
-  // ⚠️ สองค่านี้ **คนละเรื่องกันโดยตั้งใจ**: `p_month` = คีย์ถังนับ (รอบตัด) ·
-  // `p_prefix` = สิ่งที่โผล่ในรหัสจริง ซึ่งมี YYMM เสมอไม่ว่ารอบตัดจะเป็นอะไร
+  const { month, prefix, width } = entityCodeArgs(scope, now);
   return supabase.rpc('create_entity_rows_with_code', {
     p_scope: scope,
-    p_month: entityCounterKey(scope, now),
-    p_prefix: `${scope}-${ymKey(now)}`,
-    p_width: entityRunningWidth(scope),
+    p_month: month,
+    p_prefix: prefix,
+    p_width: width,
     p_rows: rows,
   });
 }

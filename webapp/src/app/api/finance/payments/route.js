@@ -39,19 +39,22 @@ async function loadLedger(supabase, todayIso) {
   if (!rows.length) return [];
 
   const orderIds = [...new Set(rows.map((r) => r.salesOrderId).filter(Boolean))];
+  /* 🐞 เคยใส่ team/ownerName ไว้ด้วย แล้ว PostgREST ตอบ 500 ทั้งหน้า:
+     `column sales_orders.team does not exist` — ทีมกับผู้ดูแลอยู่ที่ **ดีล** ไม่ใช่ที่ใบ
+     ⇒ ดึง `dealId` มาแล้วไป join `sales_deals` เอาชื่อ AE (จัดกลุ่มตามผู้ดูแล) */
+  /* `status` + `financeStatus` = สองขั้นแรกของรางสามขั้น (ดู salesOrderListTrack)
+     ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
+  /* `projectId` เพิ่มมาเพื่อถามสายธุรกิจ — โครงการเป็นเจ้าของค่าสายจริง ดีลเป็นสำเนา
+     (ดู `orderBusinessLineOf` · มติ 2026-08-30 ตัวกรอง "สายบริการ" ของฝ่ายบัญชี) */
+  /* `referenceDoc` = เอกสารอ้างอิงของใบ (PO ลูกค้า) — บัญชีถูกถามด้วยเลข PO
+     บ่อยกว่าเลข SO เสียอีก ("PO ใบนี้เก็บเงินถึงไหนแล้ว") · หน้ารายการ SO ของ
+     ฝ่ายขายค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017 แต่ทะเบียนนี้ยังไม่มีให้ค้น */
+  /* 🪤 คอมเมนต์ทั้งหมดอยู่เหนือคำสั่ง ไม่แทรกระหว่าง `.from()` กับ `.select()` (2026-09-15) — `check:columns`
+     มองหา select ไม่เกิน 200 ตัวอักษรหลัง `.from()` · คอมเมนต์ที่เคยคั่นตรงนั้น (~830 ตัวอักษร) ทำให้ select นี้
+     (รวม `origin` + เลขเอกสารเดิมของ mig 0360) หลุดจากด่านมาตลอด */
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
-    /* 🐞 เคยใส่ team/ownerName ไว้ด้วย แล้ว PostgREST ตอบ 500 ทั้งหน้า:
-       `column sales_orders.team does not exist` — ทีมกับผู้ดูแลอยู่ที่ **ดีล** ไม่ใช่ที่ใบ
-       ⇒ ดึง `dealId` มาแล้วไป join `sales_deals` เอาชื่อ AE (จัดกลุ่มตามผู้ดูแล) */
-    /* `status` + `financeStatus` = สองขั้นแรกของรางสามขั้น (ดู salesOrderListTrack)
-       ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
-    /* `projectId` เพิ่มมาเพื่อถามสายธุรกิจ — โครงการเป็นเจ้าของค่าสายจริง ดีลเป็นสำเนา
-       (ดู `orderBusinessLineOf` · มติ 2026-08-30 ตัวกรอง "สายบริการ" ของฝ่ายบัญชี) */
-    /* `referenceDoc` = เอกสารอ้างอิงของใบ (PO ลูกค้า) — บัญชีถูกถามด้วยเลข PO
-       บ่อยกว่าเลข SO เสียอีก ("PO ใบนี้เก็บเงินถึงไหนแล้ว") · หน้ารายการ SO ของ
-       ฝ่ายขายค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017 แต่ทะเบียนนี้ยังไม่มีให้ค้น */
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;

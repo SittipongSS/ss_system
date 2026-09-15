@@ -4,6 +4,7 @@ import { notFound } from '@/lib/http';
 import { requireProduction } from './productionLinesRepo';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
+import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 export async function loadJobs(supabase, { status = null, salesOrderId = null, projectId = null, from = null, to = null } = {}) {
   let query = supabase.from('production_jobs').select('*');
@@ -63,9 +64,12 @@ export async function approvedOrdersWithLines(supabase, { salesOrderId = null } 
   const orders = await fetchAll(() => {
     let query = supabase
       .from('sales_orders')
-      .select('id, orderNumber, status, dealId, projectId, paymentDueDate')
+      .select('id, orderNumber, status, dealId, projectId, paymentDueDate, origin')
       .eq('status', 'approved')
       .order('id', { ascending: true });
+    /* ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ไม่ใช่คำสั่งผลิต — งานบริการต่อเนื่องที่เดินนอกระบบมาแล้ว
+       ตัดที่ query · `origin` ใน select ให้ draftJobsForSalesOrder กันอีกชั้น */
+    query = pipelineRowsOnly(query);
     if (salesOrderId) query = query.eq('id', salesOrderId);
     return query;
   });

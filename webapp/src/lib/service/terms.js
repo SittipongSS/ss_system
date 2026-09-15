@@ -102,18 +102,25 @@ export function lineNeedsAllocation(line, allocatedMap = new Map()) {
 }
 
 /* สรุป "ของที่ต้องจัดสรร" ของใบหนึ่ง — รวมตาม **FG** ไม่ใช่ตามบรรทัด
-   คืน [{ key, fgCode, description, unit, qty, remaining, lines: [...] }]
+   คืน [{ key, fgCode, description, unit, installationPoint, qty, remaining, lines: [...] }]
    ⚠️ จัดกลุ่มด้วย fgCode ก่อน ถ้าไม่มีจึงใช้คำบรรยาย — บรรทัดที่ไม่มีรหัสมีจริง
-      (บริการ/ค่าออกแบบ) และต้องไม่ถูกยุบรวมกับของคนละอย่างที่บังเอิญไม่มีรหัสเหมือนกัน */
+      (บริการ/ค่าออกแบบ) และต้องไม่ถูกยุบรวมกับของคนละอย่างที่บังเอิญไม่มีรหัสเหมือนกัน
+   ⭐ **จุดติดตั้งแยกกลุ่ม** (ใบสั่งขายย้อนหลัง · mig 0360 · มติข้อ 8 + 17) — ใบย้อนหลังหนึ่งบรรทัด = หนึ่ง
+      จุดติดตั้งตามชีต (`sales_order_lines.installationPoint`) และ FG เดียวกันอยู่คนละสาขาได้ ⇒ ยุบรวมเมื่อไร
+      TS เห็น "FG-1 · 6 หน่วย" ก้อนเดียว แล้วไม่รู้ว่าต้องไปหาไซต์ไหนบ้าง
+      ⚠️ บรรทัดที่ไม่มีจุดติดตั้ง (ใบปกติทั้งหมด) คีย์เดิมเป๊ะ — การยุบตาม FG ของมติ 2026-08-29 ไม่ขยับ
+      ⚠️ กลุ่มของจุดเดียวมักมีบรรทัดเดียว ⇒ `spreadAllocation` ผูกบรรทัดนั้นตรง ๆ ไม่ข้ามไปกินจุดอื่น */
 export function fgSummary(lines = [], allocatedMap = new Map()) {
   const groups = new Map();
   for (const line of lines) {
-    const key = line.fgCode || `desc:${line.description || line.id}`;
+    const point = String(line.installationPoint ?? '').trim();
+    const key = (line.fgCode || `desc:${line.description || line.id}`) + (point ? `|pt:${point}` : '');
     const row = groups.get(key) || {
       key,
       fgCode: line.fgCode || null,
       description: line.description || null,
       unit: line.unit || null,
+      installationPoint: point || null,
       qty: 0,
       remaining: 0,
       lines: [],

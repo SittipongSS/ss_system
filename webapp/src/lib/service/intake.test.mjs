@@ -4,8 +4,9 @@
 // ใบสั่งขายมาถึงฝ่าย TS · และรูที่สอง 25 จุดที่ยังวิ่งอยู่ทั้งที่รอบจบไปแล้ว
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bindQueue, intakeCounts, orderBusinessLine, orderReadiness, orderReceivable, planQueue, visitQueue } from './intake.js';
+import { bindQueue, bindTargetError, intakeCounts, orderBusinessLine, orderReadiness, orderReceivable, planQueue, visitQueue } from './intake.js';
 import { isLiveVisit } from './visitStatus.js';
+import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
 
 const projects = new Map([
   ['PJ-S', { id: 'PJ-S', line: 'SERVICE' }],
@@ -279,4 +280,75 @@ test('งานซ่อมนอกรอบ (planId ว่าง) ไม่ค
     visits: [{ siteId: 'S1', planId: null, status: 'scheduled', scheduledDate: '2026-09-05' }],
   });
   assert.equal(q.length, 1, 'นัดที่ไม่ได้เกิดจากรอบ ไม่นับเป็นรอบตามข้อผูกพัน');
+});
+
+/* ── ใบสั่งขายย้อนหลังในคิว (mig 0360 · มติข้อ 17: TS ผูกโซนให้ใบย้อนหลังในคิวนี้) ─────────────────
+   ใบย้อนหลังไม่มีโครงการ (มติข้อ 7) และดีลภาชนะเป็นสายบริการเสมอ (CHECK) · approvedAt = เวลาที่คีย์ */
+const hso = (over = {}) => so({
+  id: 'SOH', orderNumber: 'SO-26090191-0', origin: ORIGIN_HISTORICAL, projectId: null, dealId: 'DL-S', customerId: 'C1',
+  historicalQuoteRef: 'Q#250313-0004-D', historicalInvoiceRef: 'IV6801041', ...over,
+});
+const hLines = [
+  { id: 'HL1', salesOrderId: 'SOH', qty: 2, unit: 'แพ็คเกจ', fgCode: 'FG-1', installationPoint: 'Empire Tower · ล็อบบี้' },
+  { id: 'HL2', salesOrderId: 'SOH', qty: 1, unit: 'แพ็คเกจ', fgCode: 'FG-1', installationPoint: 'สาขาสีลม' },
+];
+
+test('⭐ ใบย้อนหลัง (ไม่มีโครงการ · ดีลสายบริการ) ขึ้นคิวพร้อม origin · เลขเดิม · จุดติดตั้ง', () => {
+  const q = bindQueue({ orders: [hso()], lines: hLines, terms: [], ...ctx });
+  assert.equal(q.rows.length, 1);
+  const [row] = q.rows;
+  assert.equal(row.origin, ORIGIN_HISTORICAL);
+  assert.deepEqual(row.historicalRefs, ['Q#250313-0004-D', 'IV6801041']);
+  assert.deepEqual(row.installationPoints, ['Empire Tower · ล็อบบี้', 'สาขาสีลม']);
+  assert.equal(row.fgKinds, 2, 'FG เดียวกันคนละจุด = คนละกลุ่ม');
+});
+
+test('ใบย้อนหลังที่ดีลตอบสายไม่ได้ ไปถังของมันเอง ไม่หายเงียบ', () => {
+  const q = bindQueue({ orders: [hso({ dealId: 'DL-0' })], lines: hLines, terms: [], ...ctx });
+  assert.equal(q.rows.length, 0);
+  assert.equal(q.unknownLine.length, 1);
+  assert.equal(q.unknownLine[0].origin, ORIGIN_HISTORICAL);
+});
+
+test('ใบที่ไม่ส่ง origin มา (ตัวนับบนเมนูเลือกคอลัมน์ผอม) = pipeline ไม่มีเลขเดิม/จุดติดตั้ง', () => {
+  const q = bindQueue({ orders: [so({ projectId: 'PJ-S' })], lines, terms: [], ...ctx });
+  assert.equal(q.rows[0].origin, ORIGIN_PIPELINE);
+  assert.deepEqual(q.rows[0].historicalRefs, []);
+  assert.deepEqual(q.rows[0].installationPoints, []);
+});
+
+test('⭐ ใบปกติขึ้นก่อนใบย้อนหลังเสมอ แม้ใบย้อนหลังอนุมัติ (คีย์) ทีหลัง · ในกองเดียวกันยังเรียงใหม่สุดก่อน', () => {
+  const q = bindQueue({
+    orders: [
+      hso({ id: 'SOH2', approvedAt: '2026-09-14T08:00:00Z' }),
+      so({ id: 'SO1', projectId: 'PJ-S', approvedAt: '2026-08-20T03:00:00Z' }),
+      hso({ approvedAt: '2026-09-15T08:00:00Z' }),
+    ],
+    lines: [...lines, ...hLines, { id: 'HL3', salesOrderId: 'SOH2', qty: 1, fgCode: 'FG-9' }],
+    terms: [],
+    ...ctx,
+  });
+  assert.deepEqual(q.rows.map((r) => r.orderId), ['SO1', 'SOH', 'SOH2']);
+});
+
+test('ชิปความพร้อม: "ยกเว้นด่านเงิน" เฉพาะใบย้อนหลังที่มีร่องรอยยกเว้น — ตัวตัดสินเดียวกับ visitGate', () => {
+  const at = '2026-09-15T03:00:00.000Z';
+  assert.equal(orderReadiness(hso({ paymentGateExemptAt: at }), {}).paymentGateExempt, true);
+  assert.equal(orderReadiness(hso(), {}).paymentGateExempt, false);
+  assert.equal(orderReadiness(so({ paymentGateExemptAt: at }), {}).paymentGateExempt, false, 'ใบ pipeline ร่องรอยปลอมไม่นับ');
+});
+
+test('🔴 ด่านปลายทางของการผูก: ไซต์ลูกค้าคนอื่น · ไม่ใช่ไซต์ลูกค้า · ไซต์/โซนปิดใช้งาน = ตีกลับพร้อมชื่อของ', () => {
+  const order = { id: 'SOH', customerId: 'C1' };
+  const zone = { id: 'Z1', name: 'ล็อบบี้', siteId: 'S1', isActive: true };
+  const site = { id: 'S1', name: 'Empire Tower', customerId: 'C1', kind: 'customer', isActive: true };
+  const lineLabel = 'FG-1';
+  assert.equal(bindTargetError({ order, zone, site, lineLabel }), null);
+  assert.match(bindTargetError({ order, zone, site: { ...site, customerId: 'C2' }, lineLabel }), /^FG-1: .*ลูกค้ารายอื่น/);
+  assert.match(bindTargetError({ order, zone, site: { ...site, kind: 'warehouse' }, lineLabel }), /ไม่ใช่ไซต์ลูกค้า/);
+  assert.match(bindTargetError({ order, zone, site: { ...site, isActive: false }, lineLabel }), /ไซต์ Empire Tower ถูกปิดใช้งาน/);
+  assert.match(bindTargetError({ order, zone: { ...zone, isActive: false }, site, lineLabel }), /โซน ล็อบบี้ ถูกปิดใช้งาน/);
+  assert.match(bindTargetError({ order, zone, site: null, lineLabel }), /ไม่พบไซต์ของโซน ล็อบบี้/);
+  assert.match(bindTargetError({ order, zone: null, site, lineLabel }), /ไม่พบโซน/);
+  assert.match(bindTargetError({ order: { id: 'X' }, zone, site }), /ลูกค้ารายอื่น/, 'ใบไม่มีลูกค้า = ไม่เดาว่าตรง');
 });

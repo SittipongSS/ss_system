@@ -11,6 +11,7 @@ import { resolveSoFiling } from "@/lib/excise/soFiling";
 import { customerTaxSiblingIdMap, customerTaxSiblingIds } from "@/lib/master/customerTaxSiblings";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { NA } from "@/lib/format";
+import { isHistoricalOrder, pipelineRowsOnly } from "@/lib/sales/historicalOrders";
 
 // ค่าที่ลงคอลัมน์ต้องเป็น null เมื่อไม่มีข้อมูล — ขีดกับสตริงว่างเป็นเรื่องของการแสดงผล
 // (dealTypeOf คืน "-" เมื่อดีลไม่มีประเภท)
@@ -91,6 +92,8 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
       .eq("status", "approved")
       .order("createdAt", { ascending: false })
       .order("id", { ascending: true });
+    // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ออกบิลนอกระบบไปแล้ว — ไม่ใช่ตัวเลือกยื่นภาษี
+    query = pipelineRowsOnly(query);
     if (customerId) query = query.eq("customerId", customerId);
     return query;
   });
@@ -232,6 +235,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     salesOrder = await loadSalesOrderContext(supabase, salesOrderId);
     if (!salesOrder) return notFound("ไม่พบ ใบสั่งขาย");
     if (!salesOrder.deal || !inSalesViewScope(user, salesOrder.deal)) return forbidden();
+    /* ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีงานยื่นภาษีในระบบ — ตอบ "ไม่เข้าเกณฑ์" ก่อนคำนวณสินค้า
+       ไม่งั้นเส้นเดินงานของใบชวนกด "สร้างใบยื่น" ให้งานที่ออกบิลนอกระบบไปแล้ว */
+    if (isHistoricalOrder(salesOrder)) {
+      return ok({
+        filing: null, schemaReady: true, eligible: false, historical: true, lines: [], warnings: [],
+        source: { orderNumber: salesOrder.orderNumber || null, orderDate: salesOrder.orderDate || null, quotationId: null, quoteNumber: null },
+      });
+    }
     const existing = await findExistingFiling(supabase, salesOrderId);
     if (!existing.schemaReady) {
       return ok({ filing: null, eligible: false, schemaReady: false, warnings: [] });
@@ -269,6 +280,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     salesOrder = await loadSalesOrderContext(supabase, salesOrderId);
     if (!salesOrder) return notFound("ไม่พบ ใบสั่งขาย");
     if (!salesOrder.deal || !inSalesEditScope(user, salesOrder.deal)) return forbidden();
+    if (isHistoricalOrder(salesOrder)) return badRequest("ใบสั่งขายย้อนหลังไม่ใช้สร้างใบยื่นชำระภาษี (ออกบิลนอกระบบไปแล้ว)");
     if (salesOrder.status !== "approved") return badRequest("สร้างการยื่นชำระได้เมื่อใบสั่งขายอนุมัติแล้วเท่านั้น");
 
     const existing = await findExistingFiling(supabase, salesOrderId);

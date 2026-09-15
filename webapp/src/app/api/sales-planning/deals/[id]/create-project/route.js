@@ -15,6 +15,7 @@ import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
 import { normalizeBusinessLine, businessLineLabel } from '@/lib/master/businessLines';
 import { appendUpdate } from '@/lib/master/updates';
 import { mirrorCounts, moveDealMirrors } from '@/lib/sales/dealProjectMove';
+import { HISTORICAL_DEAL_NO_PROJECT_MESSAGE, isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างโครงการจากดีลที่ Lost แล้ว');
   if (deal.projectId) return conflict('ดีลนี้ผูกโครงการแล้ว');
+  // ดีลของใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 7) ไม่มีโครงการ — CHECK ห้าม projectId แต่แถวโครงการจะเกิดไปก่อนแล้ว
+  if (isHistoricalDeal(deal)) return conflict(HISTORICAL_DEAL_NO_PROJECT_MESSAGE);
 
   const body = await req.json().catch(() => ({}));
   // ⚠️ ด่านสายธุรกิจต้องอยู่ **หลัง** บรรทัดนี้ — เดิมอยู่เหนือ `const body` ทำให้ชน TDZ

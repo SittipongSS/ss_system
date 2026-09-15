@@ -91,6 +91,12 @@ const REVISION_RESETS = new Set([
      ⇒ ก๊อปมาตั้งแต่ร่างจะได้เจ้าของของ **รอบก่อน** ติดมากับใบที่ยังไม่นับเป็นยอด
        แล้ว trigger ก็ไม่ได้ทับให้ (มันเซ็ตตอนสถานะเปลี่ยนเป็น approved) */
   'ownerId', 'ownerName',
+  /* ใบสั่งขายย้อนหลัง (mig 0360) — **ใบ Rev. เป็นสาย pipeline เสมอ** ได้ origin จาก DEFAULT
+     และช่องย้อนหลังต้องว่าง: CHECK `sales_orders_origin_shape` ห้าม pipeline มีเลขเดิม/
+     ลายนิ้วมือ/ยกเว้นด่านเงิน ⇒ ก๊อปมา = INSERT ตายที่ CHECK · ใบย้อนหลังออก Rev. ไม่ได้อยู่แล้ว */
+  'origin',
+  'historicalQuoteRef', 'historicalExpressRef', 'historicalInvoiceRef', 'historicalIntakeHash',
+  'paymentGateExemptAt', 'paymentGateExemptById', 'paymentGateExemptByName', 'paymentGateExemptReason',
 ]);
 
 test('🪤 Rev. ของใบสั่งขายต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
@@ -168,6 +174,12 @@ const DRAFT_OWNED = new Set([
   'ownerId', 'ownerName',
   // ใบใหม่ยังไม่ผูกสัญญาบริการโดยนิยาม
   'serviceContractId',
+  /* ใบสั่งขายย้อนหลัง (mig 0360) — ใบจากใบเสนอราคาเป็นสาย pipeline เสมอ (origin จาก DEFAULT)
+     ช่องย้อนหลังต้องว่างตาม CHECK `sales_orders_origin_shape` · ตัวเขียนของใบย้อนหลังคือ
+     RPC แยก create_historical_sales_order ไม่ใช่เส้นนี้ */
+  'origin',
+  'historicalQuoteRef', 'historicalExpressRef', 'historicalInvoiceRef', 'historicalIntakeHash',
+  'paymentGateExemptAt', 'paymentGateExemptById', 'paymentGateExemptByName', 'paymentGateExemptReason',
 ]);
 
 /* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง

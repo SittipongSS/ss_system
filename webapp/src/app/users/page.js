@@ -267,7 +267,19 @@ export default function UserManagement() {
     if (!transferForm.toUserId) { notifyToast.error("กรุณาเลือกผู้รับโอน"); return; }
     const to = users.find((x) => x.id === transferForm.toUserId);
     const toLabel = to ? `${to.firstName || ""} ${to.lastName || ""}`.trim() || to.email : "";
-    if (!(await confirmAction(`โอนงานของ ${transferUser.email} → ${toLabel}?\n(ดีลที่ปิด Won แล้วจะไม่ถูกย้าย — ประวัติคงเดิม)`))) return;
+    /* ดีลของใบสั่งขายย้อนหลังไม่ย้ายตาม (คำตอบข้อ 4 · mig 0360) — บอกจำนวนก่อนกดยืนยัน */
+    let historicalNote = "";
+    try {
+      const previewRes = await apiFetch(`/api/users/${transferUser.id}/transfer`);
+      const preview = await previewRes.json();
+      if (!previewRes.ok) historicalNote = "\n(นับดีลของใบสั่งขายย้อนหลังไม่สำเร็จ)";
+      else if (preview.historicalDeals > 0) {
+        historicalNote = `\nดีลของใบสั่งขายย้อนหลัง ${preview.historicalDeals} ใบจะยังเป็นของคนเดิม — ต้องย้ายเจ้าของทีละใบ`;
+      }
+    } catch {
+      historicalNote = "\n(นับดีลของใบสั่งขายย้อนหลังไม่สำเร็จ)";
+    }
+    if (!(await confirmAction(`โอนงานของ ${transferUser.email} → ${toLabel}?\n(ดีลที่ปิด Won แล้วจะไม่ถูกย้าย — ประวัติคงเดิม)${historicalNote}`))) return;
     setSubmitting(true);
     try {
       const res = await apiFetch(`/api/users/${transferUser.id}/transfer`, {
@@ -507,6 +519,9 @@ export default function UserManagement() {
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
               <li>ดีลเปิดที่ย้ายผู้ดูแล: <b>{transferResult.deals}</b> ใบ (FC ย้ายตามทันที)</li>
               <li>เป้าที่โยก: <b>{transferResult.targetMonths}</b> เดือน รวม <b>{fmtNumber(transferResult.targetAmount || 0)}</b> บาท (ตั้งแต่ {transferResult.fromPeriod})</li>
+              {transferResult.historicalDeals > 0 && (
+                <li>ดีลของใบสั่งขายย้อนหลังที่ยังเป็นของคนเดิม: <b>{transferResult.historicalDeals}</b> ใบ — ไม่ย้ายอัตโนมัติ ต้องให้ AE Supervisor/Admin ย้ายเจ้าของทีละใบ</li>
+              )}
               <li>ดีลที่ปิด Won/Lost แล้ว และเป้าเดือนที่ผ่านมา: ไม่ถูกแตะ (ประวัติคงเดิม)</li>
             </ul>
             <div className="form-action-bar">

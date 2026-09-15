@@ -16,6 +16,7 @@ import { isBusinessLine } from '@/lib/master/businessLines';
 import { allocatedByLine, fgSummary, lineNeedsAllocation, termIsActive } from './terms';
 import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
 import { coversDate, paidThrough } from '@/lib/sales/paymentCoverage';
+import { ORIGIN_PIPELINE, historicalGateExempt, historicalRefsOf, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 export const INTAKE_TABS = ['bind', 'plan', 'visit'];
 
@@ -47,6 +48,35 @@ export function orderBusinessLine(order, { projectsById = new Map(), dealsById =
    เพราะยอด/ของยังขยับได้ แล้ว snapshot ที่ก๊อปไปจะกลายเป็นของปลอมทันที */
 export const orderReceivable = (order) => order?.status === 'approved' && !order?.supersededById;
 
+/* ── ปลายทางของการผูก: ไซต์ต้องเป็นของลูกค้าในใบ · เป็นไซต์ลูกค้า · โซน/ไซต์ยังเปิดใช้งาน ────────
+   ⭐ เข้มขึ้นพร้อมใบสั่งขายย้อนหลัง (แผน P1 §3-K · มติข้อ 17) — บรรทัดของใบย้อนหลังมาจากชีตที่ตรงงานจริง
+      แค่ 25% ⇒ TS หาไซต์/โซนเองแล้วผูก · ของเดิม server เชื่อ zoneId ที่จอส่งมาอย่างเดียว ⇒ ยิงตรงก็ผูกไซต์
+      ของลูกค้าคนอื่น / คลังเครื่อง / โซนที่ปิดแล้วได้ (wizard กรองแค่ไซต์ตามลูกค้า และยังให้เลือกโซนที่ปิดใช้งาน)
+   ⚠️ ใช้กับทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง · wizard เรียกตัวเดียวกันก่อนกดบันทึก (ปุ่มกับด่านพูดเรื่องเดียวกัน)
+   ⚠️ โซนไม่มี customerId ของตัวเอง — ตรวจผ่านไซต์ของโซนเสมอ
+   ⚠️ ชนิดไซต์ตาม SITE_KINDS ของ sites.js (mig 0332) — คลังเครื่องเป็นไซต์จริงของบริษัท ไม่ใช่ที่ให้บริการ
+   คืนข้อความไทยที่ขึ้นต้นด้วยชื่อของในบรรทัด (lineLabel) หรือ null */
+export function bindTargetError({ order, zone, site, lineLabel = '' } = {}) {
+  const prefix = lineLabel ? `${lineLabel}: ` : '';
+  if (!zone) return `${prefix}ไม่พบโซนในทะเบียน — สร้างโซนก่อนแล้วค่อยผูก`;
+  const zoneName = zone.name || zone.id;
+  if (!site) return `${prefix}ไม่พบไซต์ของโซน ${zoneName} ในทะเบียน — โหลดหน้าใหม่แล้วลองอีกครั้ง`;
+  const siteName = site.name || site.id;
+  if (!order?.customerId || String(site.customerId ?? '') !== String(order.customerId)) {
+    return `${prefix}โซน ${zoneName} อยู่ในไซต์ของลูกค้ารายอื่น — ผูกได้เฉพาะไซต์ของลูกค้าในใบสั่งขายนี้`;
+  }
+  if (site.kind !== 'customer') {
+    return `${prefix}ไซต์ ${siteName} ไม่ใช่ไซต์ลูกค้า — ผูกงานบริการได้เฉพาะไซต์ลูกค้า`;
+  }
+  if (site.isActive === false) {
+    return `${prefix}ไซต์ ${siteName} ถูกปิดใช้งาน — เปิดใช้งานไซต์ก่อน หรือเลือกไซต์อื่น`;
+  }
+  if (zone.isActive === false) {
+    return `${prefix}โซน ${zoneName} ถูกปิดใช้งาน — เปิดใช้งานโซนที่หน้าไซต์ก่อน หรือเลือกโซนอื่น`;
+  }
+  return null;
+}
+
 /* ── ถังที่ 1: ของที่ขายแล้วแต่ยังไม่ได้จัดสรรลงโซน ────────────────────────
    หน่วยของคิวคือ **ใบ** (คนทำงานเปิดทีละใบ)
 
@@ -72,6 +102,9 @@ export function orderReadiness(order, { contractsById = new Map(), installmentsB
     hasContract: !!(contract && contract.status === 'signed'),
     paidThrough: paidThrough(rows),
     coveredToday: coversDate(rows, todayIso),
+    /* ⭐ ใบย้อนหลังที่ยกเว้นด่านเงินรายใบ (มติข้อ 13) — ชิปต้องพูดเรื่องเดียวกับ visitGate ข้อ②
+       ไม่งั้นป้าย "ยังไม่มีงวดที่รับรอง" ส่ง TS ไปทวงเงินที่ไม่ต้องเก็บ (ตัวตัดสินตัวเดียวกัน) */
+    paymentGateExempt: historicalGateExempt(order),
   };
 }
 
@@ -107,6 +140,12 @@ export function bindQueue({
       approvedAt: order.approvedAt || null,
       orderDate: order.orderDate || null,
       line,
+      /* ⭐ ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 17) — ป้าย "ย้อนหลัง" + เลขเอกสารเดิม + จุดติดตั้งตามชีต
+         ให้ TS รู้ว่าต้องไปหาไซต์ไหน (ชีตตรงงานจริงแค่ 25% — ชื่อจุดเป็นเบาะแส ไม่ใช่คำตอบ)
+         ⚠️ ไม่ส่ง origin มา (ตัวนับบนเมนูเลือกคอลัมน์ผอม) = pipeline — ตัวนับอ่านแค่จำนวนแถว */
+      origin: order.origin || ORIGIN_PIPELINE,
+      historicalRefs: historicalRefsOf(order),
+      installationPoints: [...new Set(fg.map((g) => g.installationPoint).filter(Boolean))],
       /* ⚠️ เก็บ `pendingLines` ไว้เพื่อความเข้ากันได้ของผู้เรียกเดิม แต่ **จอไม่ควรโชว์** —
          ตัวเลขที่บอกขนาดงานจริงคือ fgKinds/remainingQty */
       pendingLines: pending.length,
@@ -132,7 +171,11 @@ export function bindQueue({
   }
 
   const byNewest = (a, b) => String(b.approvedAt || b.orderDate || '').localeCompare(String(a.approvedAt || a.orderDate || ''));
-  return { rows: rows.sort(byNewest), unknownLine: unknownLine.sort(byNewest) };
+  /* ⭐ **ใบสั่งขายย้อนหลังต่อท้ายใบปกติเสมอ** (แผน P1 §3-K) — `approvedAt` ของใบย้อนหลัง = เวลาที่คีย์
+     ⇒ เรียงตามใหม่สุดล้วน ๆ ~220 ใบที่คีย์ช่วงเฟส 3 จะดันงานขายใหม่ของสัปดาห์นี้ลงไปใต้กอง
+     ⚠️ ยังอยู่ในคิวและนับบนป้ายครบ (มติข้อ 17) — แค่ไม่ให้กลบงานใหม่ */
+  const byQueue = (a, b) => (Number(isHistoricalOrder(a)) - Number(isHistoricalOrder(b))) || byNewest(a, b);
+  return { rows: rows.sort(byQueue), unknownLine: unknownLine.sort(byQueue) };
 }
 
 /* ── ถังที่ 2: โซนที่ขายแล้วแต่ไซต์ยังไม่มีรอบ ──────────────────────────

@@ -16,6 +16,7 @@ import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoicePending } from '@/lib/sales/taxInvoice';
+import { ORIGIN_PIPELINE, historicalRefsOf } from '@/lib/sales/historicalOrders';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -46,7 +47,12 @@ export function ledgerRow({
     orderId: order.id,
     orderNumber: order.orderNumber || '',
     quotationId: order.quotationId || quotation?.id || null,
-    quoteNumber: quotation?.quoteNumber || '',
+    /* ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคาในระบบ — ช่อง "อ้างอิง QT" ถอยไปเลขใบเสนอราคาเดิมที่คีย์ไว้ */
+    quoteNumber: quotation?.quoteNumber || order.historicalQuoteRef || '',
+    /* ที่มาของใบ + เลขเอกสารเดิมทุกระบบ (ใบเสนอราคาเดิม · Express · ใบกำกับ) — บัญชีถูกถามด้วยเลขพวกนี้
+       ("IV6801041 เก็บถึงไหนแล้ว") ⇒ ต้องค้นเจอ · ⚠️ ledgerRow เป็น whitelist ลืมเติมที่นี่ = หายเงียบ */
+    origin: order.origin || ORIGIN_PIPELINE,
+    historicalRefs: historicalRefsOf(order).join(' '),
     /* ⭐ เอกสารอ้างอิงของใบ (PO ลูกค้า) — บัญชีถูกถามด้วยเลขนี้เป็นหลัก ("PO ใบนี้
        เก็บถึงไหนแล้ว") · ตารางรายการ SO ค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017
        แล้ว ทะเบียนนี้เพิ่งมี ⇒ ฝ่ายบัญชีเคยเป็นฝ่ายเดียวที่ค้นด้วยเลข PO ไม่ได้ */
@@ -314,7 +320,7 @@ export function filterLedger(rows = [], {
       /* ⚠️ `taxInvoiceNo` อยู่ในชุดค้นด้วย — กฎ "ตาเห็นบนแถว = ต้องค้นเจอ" และคำถาม
          จริงของบัญชีคือ "ใบกำกับเลขนี้เป็นของงวดไหน" (เหมือนที่ถามด้วยเลข PO) */
       const hay = [r.orderNumber, r.quoteNumber, r.referenceDoc, r.customerName, r.customerCode,
-        r.label, r.taxInvoiceNo]
+        r.label, r.taxInvoiceNo, r.historicalRefs]
         .join(' ').toLowerCase();
       if (!hay.includes(needle)) return false;
     }

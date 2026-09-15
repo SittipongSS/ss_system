@@ -20,6 +20,7 @@ import { contractFieldDefaults, hasContractTemplate, MISSING_TEMPLATE_NOTE } fro
 import { quotationClosure } from '@/lib/sales/contractQuotationState';
 import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
 import { syncContractsAgainstQuotations } from '@/lib/sales/contractQuotationSync';
+import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +105,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { row: deal, response } = await loadScoped(supabase, 'sales_deals', body.dealId, user, 'edit');
   if (response) return response;
 
+  /* ⭐ ดีลของใบสั่งขายย้อนหลัง (mig 0360) — สัญญาของงานที่ขายนอกระบบคือ PO/อีเมล/สัญญาเก่าที่ลูกค้าเซ็นมาแล้ว
+     ⇒ รับเฉพาะสาย external ชนิดบริการ · ไม่มีใบเสนอราคาให้อ้าง (quotationId ว่าง)
+     ⚠️ ช่วงมีผลต้องครอบวันที่ใบ — ตรวจตอนผูกกับใบ (serviceContractLinkError) ไม่ใช่ตอนสร้าง */
+  const historical = isHistoricalDeal(deal);
+  if (historical && (!external || body.kind !== 'service')) {
+    return fail('ดีลของใบสั่งขายย้อนหลังออกได้เฉพาะเอกสารแทนสัญญา ชนิดบริการ', 409);
+  }
+
   // โครงการ (สายธุรกิจ) + ใบเสนอราคาของดีล = วัตถุดิบของด่าน
   const [{ data: project }, { data: quotations, error: quoteError }] = await Promise.all([
     deal.projectId
@@ -123,12 +132,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // ใบเสนอราคาที่อ้าง: ที่ผู้ใช้เลือก ถ้าไม่เลือกใช้ใบอนุมัติล่าสุด
   const approved = eligibility.quotations;
-  const quotation = body.quotationId
-    ? approved.find((q) => q.id === body.quotationId)
-    : approved.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
-  if (!quotation) return fail('ใบเสนอราคาที่เลือกยังไม่ผ่านการอนุมัติ', 409);
+  const quotation = historical
+    ? null
+    : (body.quotationId
+      ? approved.find((q) => q.id === body.quotationId)
+      : approved.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]);
+  if (!historical && !quotation) return fail('ใบเสนอราคาที่เลือกยังไม่ผ่านการอนุมัติ', 409);
 
-  const customerId = quotation.customerId || deal.customerId || null;
+  const customerId = quotation?.customerId || deal.customerId || null;
   const { data: customer } = customerId
     ? await supabase.from('customers')
       .select('id, name, "nameEn", "taxId", address, addresses, "shippingAddress", "branchCode"')
@@ -141,7 +152,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
      ลำดับ: ที่อยู่ที่ **ใบเสนอราคาใบนั้นออกบิล** → ที่อยู่ออกบิลหลักของลูกค้า → กระจกเดิม */
   const billing = pickDocumentAddresses(customer || {}).snapshot.billingAddress;
   const contractCustomer = customer
-    ? { ...customer, address: quotation.billingAddress || billing || customer.address || '' }
+    ? { ...customer, address: quotation?.billingAddress || billing || customer.address || '' }
     : null;
 
   const row = {
@@ -154,10 +165,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     externalDocKind: external ? body.externalDocKind : null,
     externalRef: external ? (String(body.externalRef || '').trim().slice(0, 200) || null) : null,
     dealId: deal.id,
-    quotationId: quotation.id,
+    quotationId: quotation?.id || null,
     customerId,
     // ชื่อลูกค้าบนสัญญา = สำเนา ณ วันที่ทำ ไม่ซิงก์ตามทะเบียนภายหลัง
-    customerName: customerSnapshotName(customer) || quotation.customerName || deal.customerName || null,
+    customerName: customerSnapshotName(customer) || quotation?.customerName || deal.customerName || null,
     contractDate: body.contractDate || businessDate(),
     /* 🔴 **ใบ external ไม่กิน `fields` ของแม่แบบ** — ช่องพวกนี้คือ *ช่องเติมของเอกสารที่
        ระบบเจน* ไม่ใช่ข้อมูลของสัญญา · ของเดิมเรียกโดยไม่ดู `source` ⇒ ใบ external ชนิด
@@ -178,8 +189,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       dealTitle: deal.title || null,
       dealCode: deal.code || null,
       projectCode: project?.code || null,
-      quoteNumber: quotation.quoteNumber || null,
-      quoteTotal: quotation.totalAmount ?? null,
+      quoteNumber: quotation?.quoteNumber ?? null,
+      quoteTotal: quotation?.totalAmount ?? null,
     },
     createdBy: user.id || null,
     createdByName: user.name || null,

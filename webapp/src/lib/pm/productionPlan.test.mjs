@@ -275,3 +275,9 @@ test('⭐ "รอวางคิว" = งานร่างเท่านั�
   assert.equal(isJobWaitingToSchedule({ status: 'done' }), false);
   assert.equal(isJobWaitingToSchedule(null), false);
 });
+
+test('ใบสั่งขายย้อนหลัง (mig 0360) ไม่สร้างงานผลิต — แม้อนุมัติแล้วและมีบรรทัดสินค้า', () => {
+  const lines = [{ id: 'L1', productId: 'PRD1', qty: 2 }];
+  assert.deepEqual(draftJobsForSalesOrder(order({ origin: 'historical', projectId: null }), lines), []);
+  assert.equal(draftJobsForSalesOrder(order({ origin: 'pipeline' }), lines).length, 1);
+});

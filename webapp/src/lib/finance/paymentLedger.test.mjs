@@ -711,3 +711,26 @@ test('ก้อนของใบบอกว่าออกใบกำกั�
   assert.equal(group.invoiced, 1);
   assert.equal(group.invoicePending, 1);
 });
+
+/* ── ใบสั่งขายย้อนหลัง (mig 0360) — ไม่มีใบเสนอราคาในระบบ แต่บัญชีค้นด้วยเลขเอกสารเดิม ─────────── */
+test('ใบย้อนหลัง: แถวพก origin + เลขเดิม · ค้นด้วยเลขใบกำกับเดิมเจอ · "อ้างอิง QT" ถอยไปเลขใบเสนอราคาเดิม', () => {
+  const row = ledgerRow({
+    installment: { id: 'SOI-H1', seq: 1, label: 'งวด 3/3', amount: 30160, status: 'pending', evidence: [] },
+    order: {
+      id: 'SOR-H1', orderNumber: 'SO-26090191-0', quotationId: null, origin: 'historical',
+      historicalQuoteRef: 'Q#250313-0004-D', historicalExpressRef: null, historicalInvoiceRef: 'IV6801041',
+    },
+    quotation: null,
+    customer: { name: 'บริษัท ทดสอบ จำกัด', arCode: 'AR-0002' },
+    todayIso: TODAY,
+  });
+  assert.equal(row.origin, 'historical');
+  assert.equal(row.quotationId, null);
+  assert.equal(row.quoteNumber, 'Q#250313-0004-D');
+  assert.equal(row.historicalRefs, 'Q#250313-0004-D IV6801041');
+  assert.deepEqual(filterLedger([row, make()], { q: 'iv6801041' }).map((r) => r.id), ['SOI-H1']);
+  // ใบ pipeline: origin ตั้งต้น pipeline · ไม่มีเลขเดิม · เลข QT จริงชนะเสมอ
+  assert.equal(make().origin, 'pipeline');
+  assert.equal(make().historicalRefs, '');
+  assert.equal(make({}, { historicalQuoteRef: 'Q#OLD' }).quoteNumber, 'QT-26080042-0');
+});

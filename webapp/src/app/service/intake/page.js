@@ -27,9 +27,11 @@ import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
+import StatusBadge from "@/components/ui/StatusBadge";
 import IntakeWizard from "@/components/service/IntakeWizard";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS } from "@/lib/service/intake";
+import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
@@ -89,6 +91,9 @@ function ContractBadge({ readiness }) {
 }
 
 function PaidBadge({ readiness }) {
+  /* ⭐ ใบย้อนหลังที่ยกเว้นด่านเงินรายใบ (mig 0360) — ตัวตัดสินเดียวกับ visitGate ข้อ②
+     (ป้าย "ยังไม่มีงวดที่รับรอง" จะส่ง TS ไปทวงเงินที่ไม่ต้องเก็บ) */
+  if (readiness?.paymentGateExempt) return <StatusBadge tone="info" label="ยกเว้นด่านเงิน" />;
   return (
     <span className={`ui-badge ${readiness?.coveredToday ? "success" : "warning"}`}>
       {readiness?.paidThrough ? `จ่ายถึง ${fmtDate(readiness.paidThrough)}` : "ยังไม่มีงวดที่รับรอง"}
@@ -346,9 +351,19 @@ export default function ServiceIntakePage() {
                         <span className={`mono ${styles.cardCode}`}>{row.code}</span>
                         <strong className={styles.cardTitle}>{naText(row.customerName)}</strong>
                       </div>
+                      {/* ใบย้อนหลัง — ป้าย + เลขเดิม + จุดติดตั้งตามใบ ชุดเดียวกับมุมมองตาราง (mig 0360 · มติข้อ 17) */}
+                      {isHistoricalOrder(row) && (
+                        <p className={styles.cardSub}>
+                          <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
+                          {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
+                        </p>
+                      )}
                       <p className={styles.cardMeta}>
                         {fgText(row)} · อนุมัติ <span className="mono">{approvedText(row)}</span>
                         {row.roundsSold ? ` · ขายไว้ ${fmtNumber(row.roundsSold)} รอบ` : null}
+                        {isHistoricalOrder(row) && row.installationPoints?.length
+                          ? ` · จุดติดตั้งตามใบ ${row.installationPoints.join(" · ")}`
+                          : null}
                       </p>
                       <div className={styles.cardFoot}>
                         <ContractBadge readiness={row.readiness} />
@@ -389,6 +404,14 @@ export default function ServiceIntakePage() {
                           <th scope="row">
                             <span className="mono">{row.code}</span>
                             <span className={`cell-sub ${styles.rowHeadSub}`}>{naText(row.customerName)}</span>
+                            {/* ⭐ ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 17) — TS ต้องรู้ว่าจุดติดตั้งมาจากชีตของฝ่ายขาย
+                                (ตรงงานจริงแค่ 25%) ไม่ใช่จากใบประเมินพื้นที่ · เลขเอกสารเดิมไว้ถามฝ่ายขายต่อ */}
+                            {isHistoricalOrder(row) && (
+                              <span className="cell-sub">
+                                <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
+                                {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
+                              </span>
+                            )}
                           </th>
                           <td className={`num ${styles.nowrap}`}>{approvedText(row)}</td>
                           {/* ⭐ นับ **FG + จำนวน** ไม่ใช่จำนวนบรรทัด (มติผู้ใช้ 2026-08-29)
@@ -402,6 +425,10 @@ export default function ServiceIntakePage() {
                                   ⚠️ ไม่ขึ้นเลยเมื่อยังไม่กรอก — "ยังไม่ระบุ" ไม่ใช่ "ขายศูนย์รอบ" */}
                               {row.roundsSold
                                 ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
+                                : null}
+                              {/* ⭐ จุดติดตั้งตามชีตของใบย้อนหลัง — เบาะแสว่าต้องไปหาไซต์ไหน (FG เดียวกันคนละจุดแยกกลุ่มแล้ว) */}
+                              {isHistoricalOrder(row) && row.installationPoints?.length
+                                ? <span className={styles.rowNote}>จุดติดตั้งตามใบ {row.installationPoints.join(" · ")}</span>
                                 : null}
                             </div>
                           </td>

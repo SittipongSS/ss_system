@@ -11,6 +11,7 @@
 // ⚠️ ที่นี่ **เลือกไซต์ได้อย่างเดียว ไม่แก้ทะเบียนลูกค้า** — ที่อยู่ทางภาษีกับที่อยู่
 //   หน้างานเป็นคนละความจริง (มติ 2026-08-28) · อยากเพิ่มที่อยู่ต้องไปทะเบียนลูกค้า
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { ArrowRight, Building2, MapPin, Plus } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -18,9 +19,12 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceZoneModal from "@/components/service/ServiceZoneModal";
 import { STANDARD_ML_HINT_TEXT, fgSummary, spreadAllocation, suggestStandardMl } from "@/lib/service/terms";
+import { bindTargetError } from "@/lib/service/intake";
+import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./IntakeWizard.module.css";
 
@@ -71,6 +75,8 @@ export default function IntakeWizard({
     () => (order?.fg?.length ? order.fg : fgSummary(order?.lines || [])),
     [order],
   );
+  /* ⭐ ใบสั่งขายย้อนหลัง (mig 0360) — ทางเกิดไซต์ของมันคือ "เพิ่มไซต์ย้อนหลัง" ไม่ใช่ใบคำร้องประเมินพื้นที่ */
+  const historical = isHistoricalOrder(order);
 
   const setAlloc = (id, patch) =>
     setAllocs((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
@@ -103,6 +109,18 @@ export default function IntakeWizard({
     if (!placed.length) { setError("ยังไม่ได้จัดสรรของลงโซนไหนเลย"); return; }
     if (overAllocated.length) {
       setError(`จัดสรรเกินจำนวนที่ขาย: ${overAllocated.map((g) => g.fgCode || g.description).join(" · ")}`);
+      return;
+    }
+    /* ⭐ ด่านปลายทางตัวเดียวกับ server (`bindTargetError`) — ดรอปดาวน์ยังโชว์โซนที่ปิดใช้งาน (พร้อมป้าย)
+       ⇒ บอกเหตุตอนกด ไม่ใช่ปล่อยให้ server ตีกลับทีหลัง · โซนที่เพิ่งสร้างและยังไม่เข้า state ให้ server ตรวจ */
+    const targetErrors = placed.map((a) => {
+      const zone = zones.find((z) => z.id === a.zoneId);
+      if (!zone) return null;
+      const group = groups.find((g) => g.key === a.groupKey);
+      return bindTargetError({ order, zone, site, lineLabel: group?.fgCode || group?.description || "" });
+    }).filter(Boolean);
+    if (targetErrors.length) {
+      setError([...new Set(targetErrors)].join(" · "));
       return;
     }
     setSaving(true);
@@ -155,6 +173,14 @@ export default function IntakeWizard({
               ลูกค้า <strong>{naText(order.customerName)}</strong> · ใบนี้มีของรอจัดสรร{" "}
               <strong>{fmtNumber(groups.length)} ชนิด · {fmtNumber(groups.reduce((n, g) => n + g.remaining, 0))} หน่วย</strong>
             </p>
+            {/* ⭐ ใบย้อนหลัง: จุดติดตั้งมาจากชีตของฝ่ายขาย (ตรงงานจริงแค่ 25%) — บอกก่อนเลือกไซต์ ไม่ใช่ให้เชื่อชื่อจุด */}
+            {historical && (
+              <p className={styles.lead}>
+                <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />{" "}
+                ใบสั่งขายย้อนหลัง{order.historicalRefs?.length ? ` · เลขเดิม ${order.historicalRefs.join(" · ")}` : ""}
+                {" "}— จุดติดตั้งของแต่ละรายการมาจากชีตของฝ่ายขาย ตรวจกับหน้างานก่อนเลือกไซต์และโซน
+              </p>
+            )}
             {/* ⭐ **ไทล์ ไม่ใช่ดรอปดาวน์** — ลูกค้าหนึ่งรายมีไซต์ไม่กี่แห่ง และคนเลือก
                 ต้องเห็นว่าแต่ละไซต์มีโซน/อุปกรณ์อยู่แล้วเท่าไร ถึงจะรู้ว่าควรผูกกับ
                 ไซต์เดิมหรือตั้งใหม่ (กติกาของระบบ: ตัวเลือกน้อย = ไทล์ที่เห็นข้อมูล ·
@@ -185,10 +211,22 @@ export default function IntakeWizard({
                 {/* ⚠️ ปุ่ม "ตั้งไซต์ใหม่" ถูกถอดไปแล้ว (มติ 2026-08-30) — ข้อความต้อง
                     บอกทางที่มีอยู่จริง ไม่ใช่ชี้ไปที่ปุ่มที่ไม่มี */}
                 {customerSites.length === 0 ? (
-                  <p className={styles.lead}>
-                    ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — ไซต์เกิดจากใบคำร้อง “ประเมินพื้นที่”
-                    ที่ฝ่ายขายเปิดให้ลูกค้ารายนี้ แจ้งฝ่ายขายเปิดใบก่อน แล้วกลับมาผูกใบสั่งขายนี้
-                  </p>
+                  historical ? (
+                    /* ⭐ ใบย้อนหลังชี้ไป "เพิ่มไซต์ย้อนหลัง" (มติผู้ใช้ 2026-09-11) — ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ
+                       ไม่มีใบประเมินให้เกิด ⇒ บอกทางคำร้องคือส่งคนไปทางตัน · ลิงก์อย่างเดียว ไม่ฝังโมดัล
+                       (โมดัลอยู่หลังสิทธิ์ของหน้าทะเบียนไซต์ — ยาม siteOrigin.test) */
+                    <p className={styles.lead}>
+                      ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — ใบนี้เป็นใบสั่งขายย้อนหลัง ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ
+                      ไม่มีใบประเมินพื้นที่ ให้{" "}
+                      <Link href="/service/sites" className={styles.siteLink}>เพิ่มไซต์ย้อนหลัง</Link>
+                      {" "}ที่หน้าทะเบียนไซต์ก่อน แล้วกลับมาผูกใบนี้
+                    </p>
+                  ) : (
+                    <p className={styles.lead}>
+                      ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — ไซต์เกิดจากใบคำร้อง “ประเมินพื้นที่”
+                      ที่ฝ่ายขายเปิดให้ลูกค้ารายนี้ แจ้งฝ่ายขายเปิดใบก่อน แล้วกลับมาผูกใบสั่งขายนี้
+                    </p>
+                  )
                 ) : (
                   <OptionTiles
                     value={siteId}
@@ -216,10 +254,18 @@ export default function IntakeWizard({
               เห็นเฉพาะไซต์ของลูกค้ารายนี้ · ที่อยู่ของไซต์ก๊อปมาจากทะเบียนลูกค้าเป็นค่าตั้งต้น
               แล้วแก้ได้เอง — ไม่ผูกให้เปลี่ยนตามกัน
             </small>
-            <small className={styles.lead}>
-              ไม่มีไซต์ที่ต้องการ? ไซต์ใหม่เกิดจากใบคำร้อง <b>ประเมินพื้นที่</b> ที่ฝ่ายขายเปิดให้ลูกค้ารายนี้
-              — แจ้งฝ่ายขายเปิดใบก่อน แล้วกลับมาผูกใบสั่งขายนี้เข้ากับไซต์ที่ได้
-            </small>
+            {historical ? (
+              <small className={styles.lead}>
+                ไม่มีไซต์ที่ต้องการ? ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ เพิ่มได้ที่{" "}
+                <Link href="/service/sites" className={styles.siteLink}>เพิ่มไซต์ย้อนหลัง</Link>
+                {" "}(หน้าทะเบียนไซต์) — เลือกลูกค้ารายนี้ แล้วกลับมาผูกใบนี้เข้ากับไซต์ที่ได้
+              </small>
+            ) : (
+              <small className={styles.lead}>
+                ไม่มีไซต์ที่ต้องการ? ไซต์ใหม่เกิดจากใบคำร้อง <b>ประเมินพื้นที่</b> ที่ฝ่ายขายเปิดให้ลูกค้ารายนี้
+                — แจ้งฝ่ายขายเปิดใบก่อน แล้วกลับมาผูกใบสั่งขายนี้เข้ากับไซต์ที่ได้
+              </small>
+            )}
           </div>
         )}
 
@@ -239,6 +285,12 @@ export default function IntakeWizard({
                 const suggestion = suggestStandardMl(group.remaining, group.unit);
                 return (
                   <li key={group.key} className={styles.line}>
+                    {/* ⭐ จุดติดตั้งตามชีตของใบย้อนหลัง (fgSummary แยกกลุ่มตามจุดแล้ว) — บอก "ไปหาที่ไหน" เหนือรหัส FG */}
+                    {group.installationPoint && (
+                      <p className={styles.point}>
+                        <MapPin size={13} aria-hidden="true" /> จุดติดตั้งตามใบ: <b>{group.installationPoint}</b>
+                      </p>
+                    )}
                     <div className={styles.lineHead}>
                       <b>{naText(group.fgCode)}</b>
                       <span>{naText(group.description)}</span>
