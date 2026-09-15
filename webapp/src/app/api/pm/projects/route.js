@@ -3,6 +3,8 @@ import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
 import { rollupDeals } from '@/lib/sales/projectRollup';
 import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/projectClose';
 import { teamInClause } from '@/lib/teamScope';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,25 +36,38 @@ export const GET = withUser(async ({ user, supabase }) => {
   const { data, error } = await query;
   if (error) return fail(error.message, 500);
 
-  // Attach a lightweight task summary so the list UI can render progress bars,
-  // overdue counts and the current step (ss-cj Board/Portfolio look) without a
-  // round-trip per project. We only pull the columns those views need.
+  // Attach a lightweight task summary so the list UI can render the done/total
+  // progress without a round-trip per project. Only `status` is read on the list.
   const ids = (data || []).map((p) => p.id);
   if (ids.length) {
-    const [{ data: tasks }, { data: deals }] = await Promise.all([
-      supabase
+    /* 🐞 เดิมทิ้ง error ของสองการอ่านนี้ (`const [{ data: tasks }, { data: deals }]`) ⇒ อ่านดีล
+       ไม่ขึ้นแล้ว **ทุกโครงการขึ้น FC Total / Actual / FC คงเหลือ / รออนุมัติ เป็น 0 เงียบ ๆ**
+       ซึ่งหน้าตาเหมือน "ยังไม่มีดีล" ทุกประการ — อ่านไม่ขึ้นต้องเป็น 500 ไม่ใช่ตัวเลขศูนย์
+       ⚠️ `ids` = ทุกโครงการที่มองเห็น ⇒ `.in('projectId', ids)` ตรง ๆ โตจนเกินเพดาน URL 16 KB
+       ของ PostgREST ได้ (lib/supabaseInChunks) และ project_tasks เกิน 1,000 แถวไปนานแล้ว (ถูกตัดเงียบ)
+       ⇒ ซอยลิสต์เป็นก้อน (fetchInChunks) แล้วไล่หน้าในก้อน (fetchAllResult)
+       ⭐ ลำดับดีลต่อโครงการยังถูกโดยไม่ต้องเรียงใหม่ — ดีลของโครงการเดียวอยู่ก้อนเดียวกันเสมอ
+          (ซอยตาม projectId) และในก้อนเรียงตาม createdAt แล้วตัดสินเสมอด้วย id */
+    const [{ data: tasks, error: tasksError }, { data: deals, error: dealsError }] = await Promise.all([
+      /* งานใช้แค่นับความคืบหน้า "เสร็จ/ทั้งหมด" บน /sa/projects (อ่าน `status` ช่องเดียว) —
+         จอเลือกโครงการอีก ~14 จุดที่เรียกเส้นนี้ไม่อ่านงานเลย ⇒ ดึงเฉพาะช่องที่ใช้ (id ไว้ตัดสิน
+         ลำดับตอนไล่หน้า) · อ่านครบทุกแถวแล้ว ส่งชื่อ/วันที่/ลำดับขั้นไปด้วยเท่ากับส่งหลายพันแถวทิ้ง */
+      fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
         .from('project_tasks')
-        .select('id, projectId, name, status, finishDate, stepOrder')
-        .in('projectId', ids)
-        .order('stepOrder', { ascending: true }),
+        .select('id, projectId, status')
+        .in('projectId', chunk)
+        .order('id', { ascending: true }))),
       // เฟส B: ดีลของแต่ละโครงการ (หลายดีลต่อโครงการ) — หน้ารวมโครงการใช้คิด KPI
       // FC Total / Actual / FC คงเหลือ ต่อแถว ผ่าน rollup กลาง
-      supabase
+      fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
         .from('sales_deals')
         .select('id, projectId, title, stage, dealType, projectValue, wonValue, forecastMonth, metadata, createdAt')
-        .in('projectId', ids)
-        .order('createdAt', { ascending: true }),
+        .in('projectId', chunk)
+        .order('createdAt', { ascending: true })
+        .order('id', { ascending: true }))),
     ]);
+    if (tasksError) return fail(tasksError.message, 500);
+    if (dealsError) return fail(dealsError.message, 500);
     const byProject = {};
     for (const t of tasks || []) (byProject[t.projectId] ??= []).push(t);
     const dealsByProject = {};
