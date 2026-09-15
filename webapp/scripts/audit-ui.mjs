@@ -127,8 +127,8 @@ function blankLineComments(source) {
    **ตัวแรกที่อยู่นอกวงเล็บและนอกสตริง** เท่านั้น
    ✅ ยืนยันด้วยการเทียบกับ AST ของ @babel/parser 7.29.7 ทั้ง 661 ไฟล์ (babel พาร์สผ่าน
    ครบทุกไฟล์) แล้วจับคู่ด้วย (ชื่อแท็ก, เลขบรรทัด): **จุดที่มี `onClick` บน host element
-   ตรงกันเป๊ะ 638/638 ไม่ขาดไม่เกิน** ⇒ ไม่ต้องผูก audit เข้ากับ dependency ที่
-   package.json ไม่ได้ประกาศ (babel เป็นแค่ของที่ next ลากมา ถอนเมื่อไหร่ก็ได้)
+   ตรงกันเป๊ะ 638/638 ไม่ขาดไม่เกิน** ⇒ ตัวแยกแท็กนี้ไม่ต้องพึ่ง AST (📅 2026-09-15: @babel/parser
+   ประกาศใน devDependencies แล้ว ปักรุ่น 7.29.7 ในงาน ListPanel · ด่านนี้ยังใช้ตัวแยกแท็กตัวเดิม)
 
    🪤 **จุดบอดสองอันที่รู้ตัว — วัดแล้วทั้งคู่ ไม่ได้เดา**
    1) ตัวนี้ไม่แยก "สตริงของ JS" ออกจากโค้ด ⇒ `"<input …>"` ที่เขียนอยู่ในข้อความอธิบาย
@@ -436,8 +436,8 @@ const nativeFeedbackDebt = {
    แล้วพบว่า sink ทำให้ป้ายลอยสูง 4.2px ⇒ คืนค่า `3px` เท่ากันสองด้านตามเดิม
    ⇒ เลขดิบสองจุดนั้นกลับมาพร้อมกัน · ห้ามใช้ช่องนี้เป็นข้ออ้างเพิ่มเลขดิบใหม่ 
    📉 155 → 154 (2026-09-06) — `22px` ดิบที่ .overviewHeading ยกเข้า --panel-inset ตอนยุบขอบในของหัวการ์ดให้เหลือเส้นเดียว
-   📉 154 → 153 (2026-09-15) — ช่องค้นหาของหมวดสินค้าเลิกประกาศ `padding: 0 11px` เอง (ย้ายเข้า ListPanel toolbar · ใช้ .search-glass กลาง) */
-const RAW_SPACING_CAP = 153;
+   📉 154 → 153 (2026-09-15) — ช่องค้นหาของหมวดสินค้าเลิกประกาศ `padding: 0 11px` เอง (ย้ายเข้า ListPanel toolbar · ใช้ .search-glass กลาง) · 📉 153 → 152 (2026-09-15) — ถอด TableShell: `.heading p { margin: 3px 0 0 }` ใน Table.module.css ลบไปพร้อมกัน */
+const RAW_SPACING_CAP = 152;
 
 /* ── ระยะห่างที่เขียนเป็นเลขดิบใน `className` (2026-09-02) ────────────────────
    ฝาแฝดฝั่ง Tailwind ของ RAW_SPACING_CAP ข้างบน — ชื่อจงใจล้อ RAW_TAILWIND_TYPE_CAP
@@ -672,7 +672,7 @@ const RAW_SHADOW_CAP = 7;
    (การ *ปิด* เงาไม่ต้องมีชื่อ)
 
    ⚠️ **ค่าที่มี var() อยู่ข้างในถูกข้าม ทั้งที่เรขาคณิตเป็นเลขดิบ** — 2 จุดของ
-   DealTimelineTable.js:510,512 (`0 6px 20px -8px color-mix(… var(--accent) 45% …)`)
+   DealTimelineTable.js:540,542 (`0 6px 20px -8px color-mix(… var(--accent) 45% …)`)
    นี่คือกติกาเดียวกับฝั่ง CSS เป๊ะ ๆ ซึ่งก็ปล่อย globals.css แบบเดียวกัน (`0 24px 64px
    rgba(15,15,20,.18), var(--shadow-md)`) ⇒ ถ้าจะอุดรูนี้ **ต้องอุดพร้อมกันสองผิว**
    ห้ามเข้มกับ JSX ผิวเดียว ไม่งั้นสองผิวนิยามคำว่า "ดิบ" ไม่ตรงกันอีกรอบ */
@@ -765,8 +765,8 @@ const RAW_SPACING_JSX_CAP = 704;
    แต่เป็น **สายสะดุด**: ขนาดของ control ถูกตัดสินที่ primitive แล้ว เขียนซ้ำที่ปลายทาง
    คือทับของที่ตัดสินไปแล้ว · ที่เหลือส่วนใหญ่เป็นขนาดของภาพ/ไอคอน/แผงที่ยังไม่มีชื่อ
    📉 322 → 321 (2026-09-15) — ช่องค้นหาของ /sa/quotations เลิกตรึง `width: 300` เอง (ย้ายเข้า ListPanel toolbar · `.search-glass` คุมความกว้างเอง)
-   📉 321 → 310 (2026-09-15) — ช่องค้นหาของหน้ารายการอื่นเลิกตรึงความกว้างเองแบบเดียวกัน (ลูกค้า · สินค้า · ดีล · ลีด · ใบสั่งขาย · โครงการ · FilterBar ภาษี · งานบริหาร · บันทึกการใช้งาน) */
-const RAW_SIZE_JSX_CAP = 310;
+   📉 321 → 310 (2026-09-15) — ช่องค้นหาของหน้ารายการอื่นเลิกตรึงความกว้างเองแบบเดียวกัน (ลูกค้า · สินค้า · ดีล · ลีด · ใบสั่งขาย · โครงการ · FilterBar ภาษี · งานบริหาร · บันทึกการใช้งาน) · 📉 310 → 309 (2026-09-15) — ช่องค้นหาของ /pm/tasks เลิกตรึง `width: "260px"` เอง (ย้ายเข้า ListPanel toolbar) */
+const RAW_SIZE_JSX_CAP = 309;
 
 /* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)
@@ -784,7 +784,7 @@ const RAW_SIZE_JSX_CAP = 310;
      `letter-spacing: normal` ทับให้ควบคุมฟอร์มทุกตัว สายสืบทอดจึงขาดตรง `<button>`
      ⇒ ต้องเขียนคืน · ด่านนับ `inherit` ด้วยเพราะกติกาคือ "ไม่ใช่ var() และไม่ใช่ 0"
      🚫 **ยกเข้าโทเคนไม่ได้และห้ามพยายาม** — ไม่มีค่าให้ตั้งชื่อ ค่าจริงมาจากหัวตาราง
-        ที่ปุ่มอยู่ข้างใน ซึ่งต่างกันสองตระกูล (.premium-table = 0 · TableShell = 0.025em)
+        ที่ปุ่มอยู่ข้างใน ซึ่งต่างกันสองตระกูล (.premium-table = 0 · TableScroll = --ls-table-head)
 
    📅 2026-09-02: `:global(th)` ของ Table.module.css (.025em) **ออกจากลิสต์นี้แล้ว** —
    ยกเข้าโทเคน `--ls-table-head` ตอนทำ SortTh เพราะ `.th-sort` ต้องสืบทอดค่านั้นลงปุ่ม
@@ -794,7 +794,7 @@ const RAW_LETTER_SPACING_CAP = 4;
 /* ── ระยะห่างตัวอักษรค่าดิบใน **style object** (2026-09-02) ──────────────────
    ⚠️ ด่านเดิมเขียน `letter-spacing:` แบบ kebab-case ⇒ `letterSpacing:` ไม่เคยถูกนับ
    วัด 2026-09-02: มี **1 จุดเดียวทั้งระบบ**
-     src/components/salesPlanning/DealTimelineTable.js:451 → `letterSpacing: -1`
+     src/components/salesPlanning/DealTimelineTable.js:481 → `letterSpacing: -1`
    (ตัวเลขความคืบหน้า mono/tabular ที่ fontSize var(--fs-17) fontWeight var(--fw-bold))
 
    🪤 **จุดนี้ไม่ใช่ "ค่าดิบธรรมดา" แต่เป็นความผิดชนิดที่ระบบตั้งใจห้าม** —
@@ -872,10 +872,10 @@ const RAW_TAILWIND_TYPE_CAP = 148;
    เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
-     src/app/pm/tasks/page.js:1111                     isToday ? 700 : 500
+     src/app/pm/tasks/page.js:1114                     isToday ? 700 : 500
      src/app/sales-planning/deals/[id]/page.js:156     s.state === "current" ? 800 : 650
-     src/app/settings/signature-coverage/page.js:215   … ? 700 : 400
-     src/app/settings/signature-coverage/page.js:218   … ? 700 : 400
+     src/app/settings/signature-coverage/page.js:210   … ? 700 : 400
+     src/app/settings/signature-coverage/page.js:213   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
      src/components/ui/FilterPopover.js:137            isActive ? 600 : 500
      src/components/ui/FilterPopover.js:196            checked ? 600 : 400
@@ -1633,9 +1633,9 @@ for (const file of uiFiles) {
   if (/\btype\s*=\s*["'](?:monotone|basis|natural)["']/.test(source)) {
     smoothedLineViolations.push(rel);
   }
-  // TableShell ห่อ TableScroll ให้ในตัว (toolbar → ตาราง → ท้ายตาราง ในพาเนลเดียว)
-  // จึงนับว่าอยู่ในสัญญาเดียวกัน
-  if (source.includes("<table") && !source.includes("<TableScroll") && !source.includes("<TableShell")) {
+  // `<table>` ต้องอยู่ใน TableScroll เท่านั้น — TableShell ถูกถอดแล้ว (มติผู้ใช้ 2026-09-15 ·
+  // รายการ = ListPanel + TableScroll · ตารางในหน้ารายละเอียด = DetailCard + TableScroll)
+  if (source.includes("<table") && !source.includes("<TableScroll")) {
     tableContractViolations.push(rel);
   }
   /* `family="matrix"` ไม่ใช่แค่ชื่อ — มันตรึงคอลัมน์แรก (sticky + พื้นทึบ + ผสมสี hover)
@@ -1649,7 +1649,7 @@ for (const file of uiFiles) {
      Codex เคยเสนอให้ 4 ไฟล์ของสหมิตร (CellDetailModal · GrowthView · PoVsFcView ·
      RoundComparison) เปลี่ยนเป็น `list` เพราะไม่ได้ต้องการคอลัมน์ตรึง แต่การสลับ
      เปลี่ยนหน้าตาจริง (แถว 48→52px · พื้นคอลัมน์แรก) ต้องมีคนเปิดหน้าดูก่อนตัดสิน */
-  const matrixHits = [...source.matchAll(/<Table(?:Scroll|Shell)\b[^>]*\bfamily=["']matrix["']/g)];
+  const matrixHits = [...source.matchAll(/<TableScroll\b[^>]*\bfamily=["']matrix["']/g)];
   if (matrixHits.length && !MATRIX_FAMILY_ALLOWLIST.has(rel)) {
     matrixFamilyViolations.push(`${rel} (${matrixHits.length} จุด)`);
   }

@@ -17,7 +17,6 @@ export default function Workspace({
   back,
   backActions,
   rail,
-  toolbar,
   loading,
   hideHeader = false,
   className = "",
@@ -49,7 +48,6 @@ export default function Workspace({
       )}
 
       {rail && <div className="ui-workspace-rail">{rail}</div>}
-      {toolbar && <div className="ui-workspace-toolbar">{toolbar}</div>}
       {loading ? <SkeletonRows rows={6} /> : children}
     </section>
   );

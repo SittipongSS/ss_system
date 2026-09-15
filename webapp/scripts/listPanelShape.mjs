@@ -10,6 +10,8 @@
 
    ใช้: `node scripts/listPanelShape.mjs [ไฟล์…]` — พิมพ์ `file:line rule message` ของไฟล์ที่ระบุ
    (ไม่ระบุ = ทั้งต้นไม้) และออกด้วยรหัส 1 ถ้ามีสักจุด · การตามหาผู้เรียกยังอ่านทั้งต้นไม้เสมอ
+   `node scripts/listPanelShape.mjs --adopters` — พิมพ์ JSON ของทุกไฟล์ที่วาด ListPanel (ในไฟล์หรือผ่านคอมโพเนนต์
+   ที่ import) = ที่มาของ LIST_PANEL_ADOPTERS ในเทสต์ (แช่แข็งตอนงาน U0-Z 2026-09-15)
 
    ── อ่านอย่างไร ───────────────────────────────────────────────────────────────
    พาร์สด้วย @babel/parser (ประกาศใน devDependencies) · พาร์สไม่ผ่าน = PARSE violation ไม่ใช่ศูนย์เงียบ
@@ -65,6 +67,13 @@
        ของไฟล์ที่มี ListPanel
    LP-PREVIEW  หน้าต้นแบบอยู่นอก LP2/LP3/LP9 (เป็นแคตตาล็อก primitive) แต่ต้องมี ListPanel ที่มี
        count+toolbar และมี TableScroll+Pager ในเนื้อ พร้อม `<code>ListPanel</code>`
+   LP10 ADOPTER_LOCK              LIST_PANEL_ADOPTERS (รายการแช่แข็งในเทสต์ · U0-Z 2026-09-15) = คู่ [ไฟล์, n]
+       n = จำนวน element ListPanel ที่เขียน **ในไฟล์เอง** ตอนแช่แข็ง · ตกเมื่อ ไฟล์หายไป · ListPanel ในไฟล์ < n
+       (แผงในคอมโพเนนต์ที่ import ไม่นับแทน — contracts ถอยทะเบียนสัญญาแต่ยังวาด RenewalsPanel ต้องตก) ·
+       หรือ n = 0 แล้วไม่วาด ListPanel ผ่านคอมโพเนนต์ที่ import เลย (ลึก ≤ 4 · กันวน · ไม่ลงไป components/ui)
+       ⇒ ไฟล์ที่ย้ายแล้วถอยกลับเงียบ ๆ ไม่ได้ · เพิ่มแผงไม่ต้องแก้ · ลบหน้า/ย้ายแผงเข้าคอมโพเนนต์/ยุบรายการตามมติ
+       = แก้รายการในคอมมิตเดียวกัน · ตรวจเมื่อส่ง `adopters` ให้ scanListPanelShape
+       (เทสต์ส่งเสมอ · CLI รายไฟล์ไม่รู้รายการ ⇒ LP10 ตกที่ npm test)
 
    ── จุดบอดที่รู้ตัว ──────────────────────────────────────────────────────────────
    - คอมโพเนนต์ที่ส่งเป็นค่า / ทะเบียน map (`{ brief: BriefBoard }`) / dynamic import ⇒ UNRESOLVED
@@ -74,7 +83,7 @@
    - ทุกความผิดมี `panelTitle` (ชื่อแผงที่สังกัด หรือ null) ให้ witness ของ LIST_PANEL_EXEMPT จับคู่
    - Segmented เป็นขอบเขตของหน้าหรือของรายการ — static analysis ไม่รู้ (กติการีวิว)
    - ทะเบียนที่ไม่มีตัวควบคุมและไม่มี Pager ใน WorkspaceSection/การ์ดมีกรอบ และตารางลอยบนหน้า
-     รายละเอียด (`[id]`) — ปิดด้วยงานย้ายตามขอบเขต · LP10 หลังปิดงาน · และรีวิว */
+     รายละเอียด (`[id]`) — ปิดด้วยงานย้ายตามขอบเขต · LP10 นับแผงในไฟล์ของไฟล์ที่ย้ายแล้ว · ไฟล์ใหม่พึ่งรีวิว */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -1125,7 +1134,35 @@ function createProject(root, sources) {
     }
   }
 
-  return { info, scanSet, universe, checkFile };
+  /* ── LP10 ADOPTER_LOCK: ไฟล์วาด ListPanel ในไฟล์ หรือผ่านคอมโพเนนต์ที่ import มา ──
+     ตาม element ที่ผูกกับคอมโพเนนต์นอกไฟล์ (รวม re-export · RQP) ลึก ≤ 4 · กันวนด้วยเส้นทางปัจจุบัน
+     (ไม่ใช่ชุด "เคยเยี่ยม" — ไฟล์เดียวกันที่ถูกตัดความลึกทางหนึ่งยังต้องตามได้จากทางที่สั้นกว่า)
+     ไม่ดำดิ่งเข้า components/ui — primitive เป็นผู้ *นิยาม* แผง ไม่ใช่ผู้ย้ายเข้าแผง */
+  function rendersListPanel(rel, depth = 0, trail = new Set()) {
+    const rec = info(rel);
+    if (!rec?.elements || trail.has(rel)) return false;
+    if (rec.elements.some((el) => roleEl(rec, el) === "LIST_PANEL")) return true;
+    if (depth >= MAX_DEPTH) return false;
+    trail.add(rel);
+    try {
+      for (const el of rec.elements) {
+        const b = binding(rec, el);
+        if (b.host || !b.def || b.def.rec === rec || b.def.rec.rel.startsWith("src/components/ui/")) continue;
+        if (rendersListPanel(b.def.rec.rel, depth + 1, trail)) return true;
+      }
+      return false;
+    } finally {
+      trail.delete(rel);
+    }
+  }
+
+  /* จำนวน element ListPanel ที่เขียนในไฟล์นี้เอง (ผูกบทบาทตามแหล่ง import · ชื่อเล่นไม่หลุด) — ไม่นับที่มาจากคอมโพเนนต์ที่ import */
+  function inFileListPanels(rel) {
+    const rec = info(rel);
+    return rec?.elements ? rec.elements.filter((el) => roleEl(rec, el) === "LIST_PANEL").length : 0;
+  }
+
+  return { info, scanSet, universe, checkFile, rendersListPanel, inFileListPanels };
 }
 
 function normalizeRel(root, file) {
@@ -1135,8 +1172,10 @@ function normalizeRel(root, file) {
 }
 
 /* `sources` = ต้นไม้ในหน่วยความจำ { "src/app/x/page.js": code, "src/app/globals.css": css } สำหรับ fixture
-   (ไม่ส่ง = อ่านจากดิสก์ใต้ root) · `files` = กรองผลเฉพาะไฟล์เหล่านี้ (การตามผู้เรียกยังอ่านทั้งต้นไม้) */
-export function scanListPanelShape({ root = WEBAPP, files, sources } = {}) {
+   (ไม่ส่ง = อ่านจากดิสก์ใต้ root) · `files` = กรองผลเฉพาะไฟล์เหล่านี้ (การตามผู้เรียกยังอ่านทั้งต้นไม้)
+   `adopters` = LIST_PANEL_ADOPTERS ของ LP10 = `[[ไฟล์, จำนวน ListPanel ในไฟล์ตอนแช่แข็ง], …]`
+   — ไม่ส่ง = ไม่ตรวจ LP10 (เทสต์ต้นไม้จริงส่งเสมอ · fixture ส่งเอง) */
+export function scanListPanelShape({ root = WEBAPP, files, sources, adopters = [] } = {}) {
   const project = createProject(root, sources);
   const wanted = files ? new Set(files.map((f) => (sources ? f : normalizeRel(root, f)))) : null;
   const violations = [];
@@ -1151,6 +1190,31 @@ export function scanListPanelShape({ root = WEBAPP, files, sources } = {}) {
     }
     project.checkFile(rec, violations);
   }
+  const inScan = new Set(project.scanSet);
+  for (const [rel, frozenInFile] of adopters) {
+    if (wanted && !wanted.has(rel)) continue;
+    const rec = inScan.has(rel) ? project.info(rel) : null;
+    if (rec?.parseError) continue; // PARSE รายงานแล้ว
+    const inFile = rec ? project.inFileListPanels(rel) : 0;
+    if (!rec) {
+      violations.push({
+        file: rel, line: 1, rule: "LP10", via: "", panelTitle: null,
+        message: "ADOPTER_LOCK: ไฟล์ใน LIST_PANEL_ADOPTERS ไม่อยู่แล้ว (หรือหลุดจากชุดที่ตรวจ) — ลบหน้า = ลบรายการในเทสต์ในคอมมิตเดียวกัน",
+      });
+    } else if (inFile < frozenInFile) {
+      // แผงของไฟล์เองถอยกลับ — คอมโพเนนต์ที่ import มามีแผง (RenewalsPanel ของ contracts) ไม่นับแทน
+      violations.push({
+        file: rel, line: 1, rule: "LP10", via: "", panelTitle: null,
+        message: `ADOPTER_LOCK: ListPanel ที่เขียนในไฟล์นี้เหลือ ${inFile} จาก ${frozenInFile} ที่แช่แข็งไว้ — รายการของไฟล์นี้ถอยกลับเป็นแผงอื่น`
+          + " (แผงในคอมโพเนนต์ที่ import ไม่นับแทน) · คืนแผงรายการ · ย้ายแผงเข้าคอมโพเนนต์หรือยุบรายการตามมติ = แก้ตัวเลขในเทสต์ในคอมมิตเดียวกัน",
+      });
+    } else if (!project.rendersListPanel(rel)) {
+      violations.push({
+        file: rel, line: 1, rule: "LP10", via: "", panelTitle: null,
+        message: "ADOPTER_LOCK: ไฟล์นี้ย้ายเข้า ListPanel แล้ว (LIST_PANEL_ADOPTERS) แต่ไม่วาด ListPanel ทั้งในไฟล์และผ่านคอมโพเนนต์ที่ import — คืนแผงรายการ · ยุบรายการตามมติ = ลบรายการในเทสต์ในคอมมิตเดียวกัน",
+      });
+    }
+  }
   const seen = new Set();
   const unique = violations.filter((v) => {
     const key = `${v.file}:${v.line}:${v.rule}:${v.message}`;
@@ -1160,6 +1224,16 @@ export function scanListPanelShape({ root = WEBAPP, files, sources } = {}) {
   });
   unique.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.rule.localeCompare(b.rule));
   return { violations: unique, parseFailures, scanned: wanted ? project.scanSet.filter((rel) => wanted.has(rel)) : project.scanSet };
+}
+
+/* ทุกไฟล์ในชุดที่ตรวจที่วาด ListPanel (ในไฟล์หรือผ่านคอมโพเนนต์ที่ import) = ที่มาของ LIST_PANEL_ADOPTERS
+   คืน `[[ไฟล์, จำนวน ListPanel ที่เขียนในไฟล์เอง], …]` เรียงตามไฟล์ · 0 = วาดผ่านคอมโพเนนต์ที่ import อย่างเดียว
+   ใช้ตัวตัดสินเดียวกับ LP10 ⇒ รายการที่สร้างวันไหนผ่าน LP10 วันนั้นเสมอ · ไฟล์ที่พาร์สไม่ผ่านไม่นับ */
+export function listPanelAdopters({ root = WEBAPP, sources } = {}) {
+  const project = createProject(root, sources);
+  return project.scanSet
+    .filter((rel) => !project.info(rel)?.parseError && project.rendersListPanel(rel))
+    .map((rel) => [rel, project.inFileListPanels(rel)]);
 }
 
 /* ── ทะเบียนย้าย scripts/listPanelPending/<UNIT>.json = { unit, reason, files } ─────────── */
@@ -1222,6 +1296,12 @@ export function checkLedgers({ violations, ledgers, baseline, parked = {}, units
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const args = process.argv.slice(2);
+  if (args.includes("--adopters")) {
+    // หนึ่งไฟล์ต่อบรรทัด = วางลง LIST_PANEL_ADOPTERS ในเทสต์ได้ตรง ๆ
+    const pairs = listPanelAdopters({ root: WEBAPP });
+    console.log(`[\n${pairs.map((pair) => `  ${JSON.stringify(pair).replace(",", ", ")},`).join("\n")}\n]`);
+    process.exit(0);
+  }
   const { violations, scanned } = scanListPanelShape({ root: WEBAPP, files: args.length ? args : undefined });
   if (args.length && scanned.length < args.length) {
     console.log(`⚠️ ${args.length - scanned.length} พาธไม่อยู่ในชุดที่ตรวจ (src/app · src/components ยกเว้น components/ui)`);

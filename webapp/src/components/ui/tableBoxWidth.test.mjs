@@ -145,7 +145,7 @@ test("รางกริดในไฟล์ที่มีตาราง ต�
   const offenders = [];
   for (const file of jsFiles(path.join(WEBAPP, "src", "app")).concat(jsFiles(path.join(WEBAPP, "src", "components")))) {
     const source = fs.readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, (b) => b.replace(/[^\n]/g, " "));
-    if (!source.includes("<TableScroll") && !source.includes("<TableShell")) continue;
+    if (!source.includes("<TableScroll")) continue;
     source.split(/\r?\n/).forEach((line, index) => {
       const hit = line.match(/gridTemplateColumns:\s*"([^"]+)"/);
       if (!hit) return;

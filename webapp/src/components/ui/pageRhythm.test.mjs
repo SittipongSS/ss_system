@@ -53,10 +53,12 @@ test("แถวย้อนกลับยังแคบกว่าจัง�
     "ต้องหักส่วนต่างออกจาก gap ให้เหลือ 14px — เขียนเป็นสองโทเคนลบกัน ไม่ใช่ -4px ดิบ");
 });
 
-/* ลูกสองตัวนี้ประกาศ *หลัง* กฎล้าง และใช้เฉพาะในเปลือกนี้ ⇒ ถ้าพก margin เองจะชนะกลับ
-   วัดจริงตอนยังไม่ถอด: rail → toolbar = 36px · toolbar → tabs = 34px */
-test("rail กับ toolbar ต้องไม่พก margin แนวตั้งของตัวเอง", () => {
-  for (const selector of [".ui-workspace-rail", ".ui-workspace-toolbar"]) {
+/* ลูกตัวนี้ประกาศ *หลัง* กฎล้าง และใช้เฉพาะในเปลือกนี้ ⇒ ถ้าพก margin เองจะชนะกลับ
+   วัดจริงตอนยังไม่ถอด: rail → toolbar = 36px · toolbar → tabs = 34px
+   🔄 `.ui-workspace-toolbar` ถอดแล้ว (งาน U0-Z · มติผู้ใช้ 2026-09-15) — Workspace ไม่มี prop `toolbar`
+   เครื่องมือของรายการอยู่ใน ListPanel toolbar · ส่ง `toolbar` ให้ Workspace = ตกด่าน LP1 */
+test("rail ต้องไม่พก margin แนวตั้งของตัวเอง", () => {
+  for (const selector of [".ui-workspace-rail"]) {
     const body = ruleBody(CSS, selector) || "";
     assert.ok(!/margin(-top|-bottom|-block)?:\s*(?!0)/.test(body),
       `${selector} พก margin แนวตั้งกลับมาแล้ว — มันประกาศหลังกฎล้าง จึงชนะกลับ`);

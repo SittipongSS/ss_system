@@ -1,8 +1,0 @@
-{
-  "unit": "U8",
-  "reason": "U8 ถอด TableShell + หน้าที่ผูกกับเลขบรรทัดใน audit-ui.mjs (pm/tasks · signature-coverage) — รอย้ายเข้า ListPanel ตามมติผู้ใช้ 2026-09-15",
-  "files": [
-    "src/app/pm/tasks/page.js",
-    "src/app/settings/signature-coverage/page.js"
-  ]
-}

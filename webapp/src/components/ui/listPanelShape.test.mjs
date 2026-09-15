@@ -1,15 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PREVIEW_FILE, checkLedgers, readLedgers, scanListPanelShape } from "../../../scripts/listPanelShape.mjs";
+import { PREVIEW_FILE, checkLedgers, listPanelAdopters, readLedgers, scanListPanelShape } from "../../../scripts/listPanelShape.mjs";
 
 /* ── ด่านทรงรายการ LIST_PANEL_SHAPE (มติผู้ใช้ 2026-09-15: รายการทุกชุด = ListPanel ใบเดียว) ──
-   ตัวตรวจอยู่ที่ scripts/listPanelShape.mjs (อ่านหัวไฟล์นั้นก่อน: บทบาท · coverage · กฎ LP1–LP9 ·
+   ตัวตรวจอยู่ที่ scripts/listPanelShape.mjs (อ่านหัวไฟล์นั้นก่อน: บทบาท · coverage · กฎ LP1–LP10 ·
    ข้อเท็จจริง F1–F4 · จุดบอด) · บ้านของด่านอยู่ที่นี่ ไม่ใช่ audit-ui.mjs เพราะต้องเป็น
    **hard-zero** — ไม่มีเพดานให้ไต่ (ท่าเดียวกับ previewCoverage)
 
    หน้าที่ยังไม่ย้ายอยู่ใน **ทะเบียนย้ายรายหน่วย** scripts/listPanelPending/<UNIT>.json
    ทะเบียนต้องเท่ากับชุดไฟล์ที่ผิดเป๊ะ และ ⊆ LIST_PANEL_BASELINE ที่แช่แข็งไว้ ⇒ หดได้อย่างเดียว
-   หน่วยไหนย้ายเสร็จ ถอนไฟล์ออกจากทะเบียนของตัวเอง ทะเบียนว่าง = ลบไฟล์ทิ้ง */
+   หน่วยไหนย้ายเสร็จ ถอนไฟล์ออกจากทะเบียนของตัวเอง ทะเบียนว่าง = ลบไฟล์ทิ้ง
+   📅 U0-Z (2026-09-15): ทุกหน่วยย้ายครบ · เหลือทะเบียน UP (สหมิตรพัก 2026-09-08 · มติ D2 = ไม่)
+   ไฟล์ที่ย้ายแล้วถูกล็อกด้วย LIST_PANEL_ADOPTERS (LP10) */
 
 const WEBAPP = process.cwd();
 
@@ -20,76 +22,97 @@ const WEBAPP = process.cwd();
 const LIST_PANEL_EXEMPT = [];
 
 /* ── ชุดไฟล์ตั้งต้นที่แช่แข็ง (U0-A · 2026-09-15) — ทะเบียนย้ายต้องเป็นสับเซตของชุดนี้เสมอ ──
-   ⚠️ ห้ามเติม — ไฟล์ใหม่ที่ผิดทรงต้องแก้ให้ถูกตั้งแต่แรก ไม่ใช่ลงทะเบียนย้าย · U0-Z หดชุดนี้ */
+   ⚠️ ห้ามเติม — ไฟล์ใหม่ที่ผิดทรงต้องแก้ให้ถูกตั้งแต่แรก ไม่ใช่ลงทะเบียนย้าย
+   📉 U0-Z (2026-09-15): 61 → 5 ไฟล์ — หน่วย U1…U8 ย้ายครบและลบทะเบียนแล้ว เหลือเฉพาะไฟล์ของทะเบียนที่พัก UP */
 const LIST_PANEL_BASELINE = Object.freeze([
-  "src/app/audit/page.js",
-  "src/app/database/customers/page.js",
-  "src/app/database/formulas/page.js",
-  "src/app/database/page.js",
-  "src/app/database/products/page.js",
-  "src/app/database/scents/page.js",
-  "src/app/finance/payments/page.js",
-  "src/app/finance/requests/page.js",
-  "src/app/notifications/page.js",
-  "src/app/pm/tasks/page.js",
-  "src/app/production/board/page.js",
-  "src/app/production/jobs/page.js",
-  "src/app/production/lines/page.js",
-  "src/app/production/page.js",
-  "src/app/rd/page.js",
-  "src/app/rd/requests/page.js",
-  "src/app/rd/sales-orders/page.js",
-  "src/app/requests/page.js",
-  "src/app/sa/costing/page.js",
-  "src/app/sa/forecast-review/page.js",
-  "src/app/sa/projects/[id]/page.js",
-  "src/app/sa/projects/page.js",
   "src/app/sahamit/forecast/page.js",
   "src/app/sahamit/material/page.js",
   "src/app/sahamit/po/page.js",
   "src/app/sahamit/reconcile/page.js",
   "src/app/sahamit/review/page.js",
-  "src/app/sales-planning/contracts/page.js",
-  "src/app/sales-planning/deals/[id]/page.js",
-  "src/app/sales-planning/deals/page.js",
-  "src/app/sales-planning/leads/page.js",
-  "src/app/sales-planning/sales-orders/page.js",
-  "src/app/sales-planning/targets/report/page.js",
-  "src/app/service/assets/page.js",
-  "src/app/service/intake/page.js",
-  "src/app/service/page.js",
-  "src/app/service/requests/page.js",
-  "src/app/service/schedule/page.js",
-  "src/app/service/sites/page.js",
-  "src/app/settings/cost-templates/page.js",
-  "src/app/settings/holidays/page.js",
-  "src/app/settings/signature-coverage/page.js",
-  "src/app/support/page.js",
-  "src/app/tax/filings/page.js",
-  "src/app/tax/registrations/[id]/page.js",
-  "src/app/tax/registrations/page.js",
-  "src/app/users/page.js",
-  "src/components/excise/DataList.js",
-  "src/components/excise/FilterBar.js",
-  "src/components/materials/MaterialRegistryPanel.js",
-  "src/components/pm/ProjectDealsHub.js",
-  "src/components/requests/RequestQueuePanel.js",
-  "src/components/salesPlanning/ContractAddendaCard.js",
-  "src/components/salesPlanning/DealContractsCard.js",
-  "src/components/salesPlanning/DealTimelineTable.js",
-  "src/components/salesPlanning/RenewalsPanel.js",
-  "src/components/salesPlanning/dashboard/MyDashboardTab.js",
-  "src/components/service/AssetModelsPanel.js",
-  "src/components/service/CustomerZonesPanel.js",
-  "src/components/service/SurveyResultTable.js",
-  "src/components/teams/TeamManager.js",
 ]);
 
 /* ทะเบียนที่พักตามมติ — เหตุผลต้องอ้างวันที่ของมติ (สหมิตรพักทั้งเส้น 2026-09-08 · D2 = ไม่)
    `files` ตรึงไฟล์สหมิตรไว้ในทะเบียน UP — ย้ายไปทะเบียนอื่นหรือเปลี่ยนชื่อ UP.json ไม่หลุดเงื่อนไขวันที่ */
 const PARKED = Object.freeze({ UP: { date: "2026-09-08", files: /^src\/(?:app|components)\/sahamit\// } });
-/* ชื่อทะเบียนที่มีได้ = หน่วยในแผนงานเท่านั้น (U0 ไม่มีทะเบียน) */
-const UNITS = Object.freeze(["U1", "U2a", "U2b", "U3", "U4", "U5a", "U5b", "U6", "U7", "U8", "UP"]);
+/* ชื่อทะเบียนที่มีได้ = หน่วยในแผนงานเท่านั้น (U0 ไม่มีทะเบียน)
+   U0-Z (2026-09-15): เหลือ UP ชื่อเดียว — U1…U8 ปิดงานแล้ว ตั้งทะเบียนชื่อนั้นกลับมา = ย้ายถอยหลัง */
+const UNITS = Object.freeze(["UP"]);
+
+/* ── ไฟล์ที่ย้ายเข้า ListPanel แล้ว — แช่แข็งตอนงาน U0-Z (2026-09-15) · ด่าน LP10 ADOPTER_LOCK ──
+   = ทุกไฟล์ที่วาด ListPanel ในไฟล์หรือผ่านคอมโพเนนต์ที่ import ในวันนั้น (`node scripts/listPanelShape.mjs --adopters`)
+   คู่ [ไฟล์, n] · n = จำนวน ListPanel ที่เขียน **ในไฟล์เอง** วันนั้น (0 = วาดผ่านคอมโพเนนต์ที่ import อย่างเดียว)
+   ListPanel ในไฟล์ต้อง ≥ n — แผงของคอมโพเนนต์ที่ import ไม่นับแทน ⇒ contracts ถอยทะเบียนสัญญาเป็น WorkspaceSection
+   แต่ยังวาด RenewalsPanel ก็ตก · หน้าที่มีสองรายการถอยไปหนึ่งก็ตก · n = 0 ต้องยังวาดแผงผ่านคอมโพเนนต์
+   ⚠️ แก้รายการได้เฉพาะตอนลบหน้า · ย้ายแผงเข้าคอมโพเนนต์ · มติยุบรายการ ในคอมมิตเดียวกัน · เพิ่มแผง/ไฟล์ใหม่ไม่ต้องเติม */
+const LIST_PANEL_ADOPTERS = Object.freeze([
+  ["src/app/audit/page.js", 1],
+  ["src/app/database/customers/page.js", 1],
+  ["src/app/database/formulas/page.js", 2],
+  ["src/app/database/materials/page.js", 0],
+  ["src/app/database/product-categories/page.js", 1],
+  ["src/app/database/products/page.js", 1],
+  ["src/app/database/scents/page.js", 1],
+  ["src/app/finance/page.js", 1],
+  ["src/app/finance/payments/page.js", 1],
+  ["src/app/finance/requests/page.js", 0],
+  ["src/app/mgmt/meetings/page.js", 1],
+  ["src/app/mgmt/tasks/page.js", 1],
+  ["src/app/mgmt/trash/page.js", 1],
+  ["src/app/notifications/page.js", 1],
+  ["src/app/pm/tasks/page.js", 1],
+  ["src/app/production/board/page.js", 1],
+  ["src/app/production/jobs/page.js", 1],
+  ["src/app/production/lines/page.js", 1],
+  ["src/app/production/page.js", 1],
+  ["src/app/rd/page.js", 0],
+  ["src/app/rd/perfumers/page.js", 1],
+  ["src/app/rd/requests/page.js", 0],
+  ["src/app/rd/sales-orders/page.js", 1],
+  ["src/app/requests/page.js", 0],
+  ["src/app/sa/calendar/page.js", 1],
+  ["src/app/sa/costing/page.js", 1],
+  ["src/app/sa/dashboard/page.js", 0],
+  ["src/app/sa/forecast-review/page.js", 1],
+  ["src/app/sa/projects/[id]/page.js", 2],
+  ["src/app/sa/projects/page.js", 1],
+  ["src/app/sa/teams/page.js", 0],
+  ["src/app/sales-planning/contracts/page.js", 1],
+  ["src/app/sales-planning/deals/[id]/page.js", 0],
+  ["src/app/sales-planning/deals/page.js", 1],
+  ["src/app/sales-planning/leads/page.js", 1],
+  ["src/app/sales-planning/quotations/page.js", 1],
+  ["src/app/sales-planning/sales-orders/page.js", 1],
+  ["src/app/sales-planning/targets/report/page.js", 1],
+  ["src/app/service/assets/page.js", 1],
+  ["src/app/service/intake/page.js", 1],
+  ["src/app/service/page.js", 2],
+  ["src/app/service/requests/page.js", 0],
+  ["src/app/service/schedule/page.js", 2],
+  ["src/app/service/sites/page.js", 1],
+  ["src/app/service/teams/page.js", 0],
+  ["src/app/settings/commercial-presets/page.js", 1],
+  ["src/app/settings/cost-templates/page.js", 1],
+  ["src/app/settings/design-preview/page.js", 1],
+  ["src/app/settings/holidays/page.js", 1],
+  ["src/app/settings/signature-coverage/page.js", 1],
+  ["src/app/support/page.js", 1],
+  ["src/app/tax/filings/page.js", 1],
+  ["src/app/tax/page.js", 0],
+  ["src/app/tax/registrations/page.js", 1],
+  ["src/app/users/page.js", 1],
+  ["src/components/excise/WorkQueue.js", 1],
+  ["src/components/materials/MaterialRegistryPanel.js", 1],
+  ["src/components/pm/DeliveriesPanel.js", 1],
+  ["src/components/pm/ProjectDealsHub.js", 1],
+  ["src/components/requests/OwnerWorkloadPanel.js", 1],
+  ["src/components/requests/RequestQueuePanel.js", 1],
+  ["src/components/salesPlanning/DealTimelineTable.js", 1],
+  ["src/components/salesPlanning/RenewalsPanel.js", 1],
+  ["src/components/salesPlanning/dashboard/MyDashboardTab.js", 2],
+  ["src/components/service/AssetModelsPanel.js", 1],
+  ["src/components/teams/TeamManager.js", 2],
+].map((pair) => Object.freeze(pair)));
 
 /* witness ต้องตรงกับแผงของความผิดจริง (`panelTitle` จากด่าน) — ไม่ใช่แค่ไฟล์ + กฎ
    ไม่งั้นข้อยกเว้นเดียวยกเว้นทุกความผิดของกฎนั้นทั้งไฟล์ รวมของที่งอกใหม่ในแผงอื่น */
@@ -117,7 +140,7 @@ const applyExemptions = (violations, entries) =>
 
 // ── ต้นไม้จริง ─────────────────────────────────────────────────────────────────
 
-const REAL = scanListPanelShape({ root: WEBAPP });
+const REAL = scanListPanelShape({ root: WEBAPP, adopters: LIST_PANEL_ADOPTERS });
 const REMAINING = applyExemptions(REAL.violations, LIST_PANEL_EXEMPT);
 const fmt = (v) => `${v.file}:${v.line} ${v.rule} ${v.message}${v.via ? ` · via ${v.via}` : ""}`;
 
@@ -146,6 +169,21 @@ test("LIST_PANEL_BASELINE แช่แข็ง — ไม่ซ้ำ เรี
   assert.equal(new Set(LIST_PANEL_BASELINE).size, LIST_PANEL_BASELINE.length, "มีไฟล์ซ้ำใน baseline");
   assert.deepEqual([...LIST_PANEL_BASELINE].sort(), [...LIST_PANEL_BASELINE], "baseline ต้องเรียงตามตัวอักษร");
   assert.ok(Object.isFrozen(LIST_PANEL_BASELINE));
+});
+
+test("LIST_PANEL_ADOPTERS แช่แข็ง — คู่ [ไฟล์, จำนวนแผงในไฟล์] ไม่ซ้ำ เรียงแล้ว", () => {
+  const files = LIST_PANEL_ADOPTERS.map(([file]) => file);
+  assert.equal(new Set(files).size, files.length, "มีไฟล์ซ้ำใน adopters");
+  assert.deepEqual([...files].sort(), files, "adopters ต้องเรียงตามตัวอักษร");
+  assert.deepEqual(LIST_PANEL_ADOPTERS.filter((pair) => pair.length !== 2 || typeof pair[0] !== "string"
+    || !Number.isInteger(pair[1]) || pair[1] < 0), [], "ทุกรายการต้องเป็น [ไฟล์, จำนวน ListPanel ในไฟล์ ≥ 0]");
+  assert.ok(Object.isFrozen(LIST_PANEL_ADOPTERS) && LIST_PANEL_ADOPTERS.every((pair) => Object.isFrozen(pair)));
+});
+
+test("⭐ LP10 ADOPTER_LOCK: ไฟล์ที่ย้ายแล้วยังอยู่และยังวาด ListPanel", () => {
+  assert.deepEqual(REAL.violations.filter((v) => v.rule === "LP10").map(fmt), [],
+    "ไฟล์ใน LIST_PANEL_ADOPTERS หาย · ListPanel ในไฟล์น้อยกว่าที่แช่แข็ง · หรือเลิกวาด ListPanel — คืนแผงรายการ"
+    + " · ถ้าลบหน้า/ย้ายแผงเข้าคอมโพเนนต์/มติยุบรายการ ให้แก้รายการในคอมมิตเดียวกัน");
 });
 
 test("LIST_PANEL_EXEMPT มีรูปแบบถูกและไม่ค้าง", () => {
@@ -613,6 +651,70 @@ test("LP9: ป้ายจำนวนใน headerRight ของหน้า�
   assert.deepEqual(rules(r, "src/app/badge/page.js"), ["LP9"]);
   assert.deepEqual(rules(r, "src/app/count/page.js"), ["LP9"]);
   assert.deepEqual(rules(r, "src/app/dash/page.js"), []);
+});
+
+test("LP10 ADOPTER_LOCK: แผงในไฟล์ · ผ่านคอมโพเนนต์ที่ import (รวม re-export) ผ่าน · เลิกวาด · ไฟล์หาย · คอมโพเนนต์ไม่มีแผง ยิงโดน", () => {
+  const tree = {
+    "src/components/requests/Queue.js": `import { ListPanel } from "@/components/ui/Workspace";
+export default function Queue() { return <ListPanel icon={<i />} title="คิว" count="2 เรื่อง"><div /></ListPanel>; }
+`,
+    "src/components/requests/QueueWorkspace.js": `export { default } from "./Queue";\n`,
+    "src/components/x/Summary.js": `import { WorkspaceSection } from "@/components/ui/Workspace";
+export default function Summary() { return <WorkspaceSection title="สรุป"><div /></WorkspaceSection>; }
+`,
+    "src/app/inline/page.js": page(`<Workspace>${LP()}<TableScroll /></ListPanel></Workspace>`),
+    "src/app/via/page.js": page(`<Workspace><Queue /></Workspace>`, `import Queue from "@/components/requests/QueueWorkspace";`),
+    "src/app/reverted/page.js": page(`<Workspace><WorkspaceSection title="ทะเบียน"><div /></WorkspaceSection></Workspace>`),
+    "src/app/summary/page.js": page(`<Workspace><Summary /></Workspace>`, `import Summary from "@/components/x/Summary";`),
+  };
+  const adopters = [["src/app/gone/page.js", 1], ["src/app/inline/page.js", 1], ["src/app/reverted/page.js", 1],
+    ["src/app/summary/page.js", 0], ["src/app/via/page.js", 0], ["src/components/requests/Queue.js", 1]];
+  const r = scanListPanelShape({ sources: { "src/app/globals.css": GLOBALS_CSS, ...tree }, adopters });
+  const lp10 = r.violations.filter((v) => v.rule === "LP10");
+  assert.deepEqual(lp10.map((v) => v.file), ["src/app/gone/page.js", "src/app/reverted/page.js", "src/app/summary/page.js"]);
+  assert.match(lp10[0].message, /ไม่อยู่แล้ว/);
+  assert.match(lp10[1].message, /เหลือ 0 จาก 1/);
+  assert.match(lp10[2].message, /ไม่วาด ListPanel/);
+  // ไม่ส่ง adopters = ไม่ตรวจ LP10 · ตัวสร้างรายการใช้ตัวตัดสินเดียวกับ LP10 (re-export ล้วนไม่ใช่ผู้วาด) และนับแผงในไฟล์ให้
+  assert.deepEqual(scan(tree).violations.filter((v) => v.rule === "LP10"), []);
+  assert.deepEqual(listPanelAdopters({ sources: tree }),
+    [["src/app/inline/page.js", 1], ["src/app/via/page.js", 0], ["src/components/requests/Queue.js", 1]]);
+});
+
+test("LP10 ADOPTER_LOCK: แผงในไฟล์ถอยกลับ ยิงโดนแม้ยังวาดคอมโพเนนต์ที่มีแผง · สองรายการถอยหนึ่ง · ย้ายแผงเข้าคอมโพเนนต์ต้องแก้ตัวเลข", () => {
+  const renewals = `import { ListPanel } from "@/components/ui/Workspace";
+export default function Renewals() { return <ListPanel icon={<i />} title="ต่ออายุ" count="3 ฉบับ"><div /></ListPanel>; }
+`;
+  const withRenewals = `import Renewals from "@/components/sales/Renewals";`;
+  const tree = {
+    "src/components/sales/Renewals.js": renewals,
+    // หน้า contracts: ทะเบียนในไฟล์ + RenewalsPanel ที่ import
+    "src/app/both/page.js": page(`<Workspace>${LP()}<TableScroll /></ListPanel><Renewals /></Workspace>`, withRenewals),
+    // ทะเบียนถอยเป็น WorkspaceSection ไร้ตัวควบคุมไร้ Pager (LP1–LP9 เงียบหมด) แต่ยังวาด Renewals
+    "src/app/both-reverted/page.js": page(`<Workspace><WorkspaceSection title="ทะเบียน"><TableScroll /></WorkspaceSection><Renewals /></Workspace>`, withRenewals),
+    // ชื่อเล่นไม่หลุด: WorkspaceSection as ListPanel ไม่ใช่แผง
+    "src/app/alias-reverted/page.js": `"use client";
+import Workspace, { WorkspaceSection as ListPanel } from "@/components/ui/Workspace";
+${withRenewals}
+export default function Page() { return <Workspace><ListPanel title="ทะเบียน"><div /></ListPanel><Renewals /></Workspace>; }
+`,
+    "src/app/two/page.js": page(`<Workspace>${LP()}<TableScroll /></ListPanel><ListPanel icon={<i />} title="รอจัด" count="2 ใบ"><div /></ListPanel></Workspace>`),
+    "src/app/two-reverted/page.js": page(`<Workspace>${LP()}<TableScroll /></ListPanel><WorkspaceSection title="รอจัด"><div /></WorkspaceSection></Workspace>`),
+    // แผงย้ายเข้าคอมโพเนนต์ = ของจริงยังเป็นแผง แต่ตัวเลขในรายการต้องแก้ในคอมมิตเดียวกัน
+    "src/app/moved/page.js": page(`<Workspace><Renewals /></Workspace>`, withRenewals),
+    // เพิ่มแผงเกินที่แช่แข็งไว้ไม่ต้องแก้
+    "src/app/grown/page.js": page(`<Workspace>${LP()}<TableScroll /></ListPanel><ListPanel icon={<i />} title="ใหม่" count="1 ใบ"><div /></ListPanel></Workspace>`),
+  };
+  const adopters = [["src/app/alias-reverted/page.js", 1], ["src/app/both-reverted/page.js", 1], ["src/app/both/page.js", 1],
+    ["src/app/grown/page.js", 1], ["src/app/moved/page.js", 1], ["src/app/two-reverted/page.js", 2], ["src/app/two/page.js", 2]];
+  const r = scanListPanelShape({ sources: { "src/app/globals.css": GLOBALS_CSS, ...tree }, adopters });
+  const lp10 = r.violations.filter((v) => v.rule === "LP10");
+  assert.deepEqual(lp10.map((v) => v.file),
+    ["src/app/alias-reverted/page.js", "src/app/both-reverted/page.js", "src/app/moved/page.js", "src/app/two-reverted/page.js"]);
+  assert.deepEqual(r.violations.filter((v) => v.file === "src/app/both-reverted/page.js").map((v) => v.rule), ["LP10"],
+    "ทะเบียนไร้ตัวควบคุมไร้ Pager ที่ถอยกลับ = จุดบอดของ LP1–LP9 · LP10 ต้องเป็นตัวจับ");
+  assert.match(lp10[1].message, /เหลือ 0 จาก 1/);
+  assert.match(lp10[3].message, /เหลือ 1 จาก 2/);
 });
 
 test("LP-PREVIEW: หน้าต้นแบบต้องสาธิต ListPanel (count · toolbar · TableScroll · Pager · <code>ListPanel</code>)", () => {

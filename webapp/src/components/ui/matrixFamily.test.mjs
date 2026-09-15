@@ -30,7 +30,7 @@ function filesUsingMatrix() {
       if (statSync(full).isDirectory()) { walk(full); continue; }
       if (!/\.(js|jsx)$/.test(full) || /\.test\./.test(full)) continue;
       const text = readFileSync(full, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-      const hits = [...text.matchAll(/<Table(?:Scroll|Shell)\b[^>]*\bfamily=["']matrix["']/g)];
+      const hits = [...text.matchAll(/<TableScroll\b[^>]*\bfamily=["']matrix["']/g)];
       if (hits.length) out.push({ rel: path.relative(root, full).replaceAll("\\", "/"), count: hits.length });
     }
   };

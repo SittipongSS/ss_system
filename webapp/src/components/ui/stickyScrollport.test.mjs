@@ -68,3 +68,28 @@ test("⭐ .ui-section.ui-list-panel ตัดด้วย clip ห้าม hidd
   assert.doesNotMatch(block, /overflow(-x|-y)?:\s*(hidden|auto|scroll)/,
     "hidden/auto/scroll ทำให้แผงรายการเป็น scroll container แล้ว sticky ข้างใน (หัววัน) ตาย");
 });
+
+/* ── คู่ของ clip: แถวชิปในแถบเครื่องมือของแผงต้องเลื่อนเองบนมือถือ (2026-09-16) ─────────
+   clip ตัดของที่ล้นแผงทิ้งโดยไม่มีทางเลื่อน · วัดจริง /tax/filings จอ 390: ชิปสถานะ 8 อัน 423px ในแถบ 332px
+   "ส่งเอกสารแล้ว" ขาดครึ่ง "ตีกลับ" กดไม่ได้ · /tax/registrations ปุ่มถูกบีบจนป้ายตัดกลางคำ ("ตี/กลับ")
+   ⇒ ใน @media (max-width: 640px) แถว .segmented ที่เป็นลูกตรงของแถบต้องเลื่อนแนวนอนในตัวเอง และป้ายห้ามตัดบรรทัด
+   อ่านด้วย postcss (ไม่ใช่ regex) — กฎต้องอยู่ในบล็อก 640 จริง ไม่ใช่แค่มีข้อความนี้ที่ไหนสักแห่ง */
+test("⭐ ≤640: .segmented ในแถบเครื่องมือของแผงเลื่อนแนวนอนในตัวเอง · ป้ายชิปไม่ตัดบรรทัด", async () => {
+  const { default: postcss } = await import("postcss");
+  const decls = (selector) => {
+    const out = {};
+    postcss.parse(GLOBALS).walkRules((rule) => {
+      const media = rule.parent?.type === "atrule" && rule.parent.name === "media" ? rule.parent.params.replace(/\s+/g, " ") : null;
+      if (media !== "(max-width: 640px)") return;
+      if (!rule.selectors.map((s) => s.replace(/\s+/g, " ").trim()).includes(selector)) return;
+      rule.walkDecls((d) => { out[d.prop] = d.value; });
+    });
+    return out;
+  };
+  const row = decls(".ui-list-panel-toolbar > .segmented");
+  assert.equal(row["overflow-x"], "auto", "แถวชิปต้อง overflow-x: auto — ไม่งั้น clip ของแผงตัดชิปท้ายทิ้งกดไม่ได้");
+  assert.equal(row["max-width"], "100%", "แถวชิปต้อง max-width: 100% ของแถบ ไม่งั้นกว้างตามเนื้อแล้วไม่มีอะไรให้เลื่อน");
+  const chip = decls(".ui-list-panel-toolbar > .segmented > button");
+  assert.equal(chip["white-space"], "nowrap", "ป้ายชิปห้ามตัดบรรทัด (\"ตี/กลับ\")");
+  assert.equal(chip.flex, "none", "ชิปห้ามหด — หดแล้วป้ายถูกบีบตัดกลางคำแทนที่แถวจะเลื่อน");
+});
