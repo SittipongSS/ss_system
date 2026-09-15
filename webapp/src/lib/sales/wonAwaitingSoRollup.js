@@ -47,7 +47,7 @@ export function rollupWonAwaitingSo(wonDeals) {
   return totals;
 }
 
-/** ดีลนี้อยู่ในกองรอยื่น SO (ยอด > 0 หรือนับเป็นหนึ่งดีล — ดีลมูลค่าว่างก็ยังนับ) */
+/** ดีลนี้อยู่ในกองรอยื่น SO (ยอด > 0 หรือนับเป็นหนึ่งดีล — มติ 2026-09-16 ไม่นับดีลมูลค่า 0/ว่างแล้ว ⇒ สองเงื่อนไขนี้ไปด้วยกันเสมอ) */
 export const hasWonAwaitingSo = (deal) => wonAwaitingSoAmountOf(deal) > 0 || wonAwaitingSoCountOf(deal) > 0;
 
 /**

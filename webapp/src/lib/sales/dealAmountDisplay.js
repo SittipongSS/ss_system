@@ -83,6 +83,10 @@ export function sumDealDisplay(deals = [], { inPeriod = null, now } = {}) {
                                                         / "ตรงกับคาดการณ์เมื่ออนุมัติครบ"
      'awaiting_so'    ไม่มีทั้งสองอย่าง (Won รอยื่น SO) → "คาดการณ์ ฿V · ยังไม่มีใบสั่งขายที่ยื่น"
                                                         ไม่มีตัวเลขต่าง — ยังไม่มีอะไรให้เทียบ
+                      หรือ มีแถวอนุมัติแต่ Actual 0 + คาดการณ์ > 0 (มติผู้ใช้ 2026-09-16)
+                                                      → "คาดการณ์ ฿V · ใบสั่งขายที่อนุมัติยังเป็น 0 บาท"
+                                                        ⚠️ ไม่มีแถว SO + คาดการณ์ ≤ 0 ยังได้ชนิดนี้ (คำจริงตามเอกสาร)
+                                                        แต่กอง Won รอยื่น SO ไม่นับดีลมูลค่า 0 ⇒ ห้ามใช้ kind นับกอง
      'legacy_no_so'   ไม่มีทั้งสองอย่าง + ดีลเก่าที่สร้างเป็น Won (isLegacyWonAtCreate · มติผู้ใช้ 2026-09-15)
                                                       → "ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้"
                                                         🐞 เดิมได้ 'awaiting_so' = บอกว่า "ยังไม่มี" ทั้งที่ดีลแบบนี้
@@ -146,6 +150,16 @@ export function wonDealForecastHint({
       kind: WON_HINT_KINDS.WHEN_APPROVED,
       gap,
       text: gap === 0 ? 'ตรงกับคาดการณ์เมื่ออนุมัติครบ' : `${forecastText} · ต่างเมื่ออนุมัติครบ ${fmtMoney(gap)}`,
+    };
+  }
+  /* มี SO อนุมัติแล้วแต่ยอด 0 บาท (ใบ DEMO · ค่าออกแบบกลิ่นก่อนบรีฟ) บนดีลที่ FC > 0 — มติผู้ใช้ 2026-09-16
+     แท็บผลงานขายนับดีลแบบนี้เป็น "Won รอยื่น SO" (isWonAwaitingSo) ⇒ หน้าดีลต้องพูดตรงกัน ไม่ใช่ "ต่าง ฿(FC เต็ม)"
+     ⚠️ ดีลเก่าที่สร้างเป็น Won ไม่เข้าทางนี้ — กองนั้นตัดดีลเก่าทิ้ง (isLegacyWonAtCreate) */
+  if (actualValue <= 0 && forecastValue > 0 && !isLegacyWonAtCreate(deal)) {
+    return {
+      kind: WON_HINT_KINDS.AWAITING_SO,
+      gap: null,
+      text: `${forecastText} · ใบสั่งขายที่อนุมัติยังเป็น 0 บาท`,
     };
   }
   const gap = toSatang(forecastValue - actualValue) || 0;
