@@ -201,3 +201,69 @@ test(`ลบที่ทิ้งผล + สหมิตร: เพดานส
   assert.equal(rest.length, BARE_WRITE_BUDGET,
     `ลดลงเหลือ ${rest.length} แล้ว — แก้ BARE_WRITE_BUDGET ให้ตรง ไม่งั้นช่องว่างถูกเติมกลับเงียบ ๆ`);
 });
+
+/* ── หน้ารวม/รายละเอียดโครงการ — อ่านไม่ขึ้นแล้วตัวเลขเป็นศูนย์ (2026-09-15) ────────
+   ⑪ `api/pm/projects` เคย `const [{ data: tasks }, { data: deals }]` ⇒ อ่านดีลไม่ขึ้น
+      ทุกโครงการบน /sa/projects ขึ้น FC Total / Actual / FC คงเหลือ / รออนุมัติ เป็น 0
+      ⇒ หน้าตาเหมือน "ยังไม่มีดีล" ทุกประการ · หน้ารายละเอียดโครงการ (ProjectDealsHub)
+      เป็นทรงเดียวกันทั้งดีล SO ใบเสนอราคา เธรด งาน สินค้า
+   ⚠️ ด่านนี้ล็อกทั้ง handler GET ของสองไฟล์ — การอ่านใหม่ที่ลืมรับ error ตกทันที */
+const getHandlerOf = (source) => {
+  const start = source.indexOf("export const GET = withUser(");
+  assert.ok(start >= 0, "หา handler GET ไม่เจอ");
+  const next = source.indexOf("\nexport const ", start + 10);
+  // `read` ลอกแค่คอมเมนต์ก้อน — คอมเมนต์บรรทัดที่เล่าบั๊กเก่า (`const { data }` ทิ้ง error) ต้องลอกด้วย
+  return source.slice(start, next === -1 ? undefined : next).replace(/(^|\s)\/\/.*$/gm, "$1");
+};
+
+/* ตัวตรวจ: ทุก `{ data… }` ต้องรับ error ของ **ตัวเอง** และมี `if (…ชื่อนั้น…) return fail/throw`
+   **หลังจุดอ่านนั้น** — เช็คที่อยู่ก่อนหน้า (ของอีกการอ่าน) ไม่นับ
+   ⚠️ ชื่อ error ห้ามซ้ำใน handler — `const { data: a, error }` สองจุด เช็คตัวเดียวก็ผ่านทั้งคู่ได้ */
+const uncheckedReads = (get) => {
+  const reads = [...get.matchAll(/\{\s*data(?::\s*(\w+))?\s*(?:,\s*error(?::\s*(\w+))?\s*)?\}/g)];
+  const problems = [];
+  const errNames = reads.filter((m) => /error/.test(m[0])).map((m) => m[2] || "error");
+  for (const [i, n] of errNames.entries()) if (errNames.indexOf(n) !== i) problems.push(`${n} (ชื่อ error ซ้ำ)`);
+  for (const m of reads) {
+    const [whole, alias, errAlias] = m;
+    const name = alias || "data";
+    if (!/error/.test(whole)) { problems.push(`${name} (ไม่รับ error)`); continue; }
+    const errName = errAlias || "error";
+    const after = get.slice(m.index + whole.length);
+    const check = new RegExp(`if\\s*\\([^)]*\\b${errName}\\b[^)]*\\)\\s*\\{?\\s*(?:return fail|throw)`);
+    if (!check.test(after)) problems.push(`${name} (รับ ${errName} แต่ไม่เช็คหลังจุดอ่าน)`);
+  }
+  return problems;
+};
+
+test("ตัวตรวจการอ่านใน GET — จับได้ทั้งลืมรับ error · เช็คไว้ก่อนจุดอ่าน · ชื่อซ้ำ และไม่ตกโค้ดที่ถูก", () => {
+  const ok = [
+    "const { data: a, error: aError } = await q;\nif (aError) return fail(aError.message, 500);",
+    "const [{ data: t, error: tError }, { data: l, error: lError }] = await Promise.all([x, y]);\nif (tError || lError) return fail((tError || lError).message, 500);",
+    "const { data: a, error: aError } = await q;\nif (aError) {\n  return fail(aError.message, 500);\n}",
+    "const { data, error: reqError } = await q;\nif (reqError) throw reqError;",
+  ];
+  for (const snippet of ok) assert.deepEqual(uncheckedReads(snippet), [], snippet);
+  assert.deepEqual(uncheckedReads("const { data: a } = await q;"), ["a (ไม่รับ error)"]);
+  assert.deepEqual(uncheckedReads("if (bError) return fail(bError.message, 500);\nconst { data: b, error: bError } = await q;"),
+    ["b (รับ bError แต่ไม่เช็คหลังจุดอ่าน)"]);
+  assert.ok(uncheckedReads("const { data: a, error } = await q;\nif (error) return fail(error.message, 500);\nconst { data: b, error } = await r;")
+    .includes("error (ชื่อ error ซ้ำ)"));
+});
+
+for (const file of ["src/app/api/pm/projects/route.js", "src/app/api/pm/projects/[id]/route.js"]) {
+  test(`${file} — ทุกการอ่านใน GET ต้องรับ error และเช็คก่อนใช้`, () => {
+    const problems = uncheckedReads(getHandlerOf(read(file)));
+    assert.deepEqual(problems, [], `อ่านแล้วอาจกลายเป็น "ไม่มี" เงียบ ๆ: ${problems.join(", ")}`);
+  });
+}
+
+test("หน้ารวมโครงการ — งาน/ดีลของทุกโครงการอ่านเป็นก้อน ไม่ใช่ .in() ทั้งลิสต์", () => {
+  const get = getHandlerOf(read("src/app/api/pm/projects/route.js"));
+  /* ids = ทุกโครงการที่มองเห็น ⇒ .in() ทั้งลิสต์ยาวเกิน 16 KB ได้ และ project_tasks เกิน 1,000 แถว */
+  assert.doesNotMatch(get, /\.in\('projectId', ids\)/);
+  for (const table of ["project_tasks", "sales_deals"]) {
+    assert.match(get, new RegExp(`fetchInChunks\\(ids, \\(chunk\\) => fetchAllResult\\(\\(\\) => supabase\\s*\\.from\\('${table}'\\)[\\s\\S]*?\\.in\\('projectId', chunk\\)`),
+      `${table} ต้องซอยก้อน + ไล่หน้า`);
+  }
+});
