@@ -9,6 +9,9 @@ import { readFileSync, readdirSync } from 'node:fs';
 // เทสต์นี้อ่าน **นิยามล่าสุดในโฟลเดอร์ migrations** ไม่ตรึงชื่อไฟล์ — วันหน้าใครคัดนิยาม
 // ไปแก้ในไฟล์ใหม่ (หรือคัดจาก 0107/0108/0110 ที่ยังใช้ orderDate) เทสต์แดงทันที
 // (wonMonthApprovalMigration.test.mjs อ่านแค่ 0279 จึงเฝ้านิยามที่ถูกแทนไปแล้ว)
+//
+// mig 0360 (ใบสั่งขายย้อนหลัง): นิยามล่าสุดย้ายไป 0360 และนับเฉพาะ origin = 'pipeline'
+// ⇒ ใครคัดนิยามจาก 0353 ไปแก้ในไฟล์ใหม่ = ใบย้อนหลังกลับเข้า Actual/ยอดรออนุมัติ เทสต์แดงทันที
 
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
 const sqlFiles = () => readdirSync(MIGRATIONS).filter((name) => name.endsWith('.sql')).sort();
@@ -46,6 +49,12 @@ for (const name of ['sync_sales_order_actual', 'enforce_sales_order_actual_on_de
     assert.match(body, /"wonValue"\s*(=|:=)\s*v_actual;?/, file);
     assert.match(body, /'wonValueExVat', v_actual/, file);
     assert.doesNotMatch(body, /v_actual\s*\+\s*v_pending|v_pending\s*\+\s*v_actual/, file);
+  });
+
+  test(`${name}: นิยามล่าสุดนับเฉพาะใบสาย pipeline — ใบย้อนหลังไม่เข้า Actual/ยอดรออนุมัติ (0360)`, () => {
+    const { file, body } = latestDefinitionOf(name);
+    assert.match(body, /(so\.)?status = 'approved' AND (so\.)?origin = 'pipeline'/, file);
+    assert.match(body, /(so\.)?status = 'pending_approval' AND (so\.)?origin = 'pipeline'/, file);
   });
 }
 
