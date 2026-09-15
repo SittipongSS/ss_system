@@ -16,8 +16,10 @@ import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
@@ -176,131 +178,151 @@ export default function SalesCalendarPage() {
       icon={<CalendarDays size={22} />}
       title="ปฏิทินนัด"
       subtitle="นัดประชุมทั้งหมดที่บันทึกจากคิวลีด พร้อมวันหยุด — ขอบเขตเท่ากับที่เห็นในคิวลีด"
-      loading={loading}
-      headerRight={(
-        <Segmented
-          ariaLabel="มุมมองปฏิทิน"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "month", label: "เดือน", icon: CalendarRange },
-            { value: "list", label: "รายการ", icon: List },
-          ]}
-        />
-      )}
     >
-      {error && <p className={styles.error} role="alert">{error}</p>}
-
-      <div className={styles.bar}>
-        <Button variant="quiet" aria-label="เดือนก่อนหน้า" onClick={() => goMonth(-1)}>
-          <ChevronLeft size={16} aria-hidden="true" />
-        </Button>
-        <span className={styles.barTitle}>{MONTHS_TH[cursor.m]} {cursor.y}</span>
-        <Button variant="quiet" aria-label="เดือนถัดไป" onClick={() => goMonth(1)}>
-          <ChevronRight size={16} aria-hidden="true" />
-        </Button>
-        <Button onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })}>วันนี้</Button>
-        <div className={styles.barRight}>
-          {scopes.length > 1 && (
+      {/* ⭐ ปฏิทินทั้งก้อนคือแผงรายการเดียว (มติผู้ใช้ 2026-09-15) — เลื่อนเดือน · ขอบเขต · มุมมอง
+          ขยับเฉพาะนัดในแผงนี้ ⇒ อยู่ใน toolbar ของแผง · ป้าย "N นัด" ย้ายจากแถบมาเป็น count
+          ⚠️ `loading` แทนที่เฉพาะเนื้อ — กดลูกศรเดือนรัว ๆ แถบเลื่อนเดือนต้องไม่หายระหว่างโหลด
+             (เดิม Workspace loading ถอดทั้งหน้ารวมปุ่มที่เพิ่งกด) */}
+      <ListPanel
+        icon={<CalendarDays size={17} aria-hidden="true" />}
+        title="รายการนัดประชุม"
+        subtitle="เลื่อนเดือน เลือกขอบเขต แล้วกดนัดเพื่อเปิดลีด"
+        count={loading ? null : `${visible.length} นัด`}
+        loading={loading}
+        toolbar={(
+          <>
+            <Button variant="quiet" aria-label="เดือนก่อนหน้า" onClick={() => goMonth(-1)}>
+              <ChevronLeft size={16} aria-hidden="true" />
+            </Button>
+            <span className={styles.barTitle}>{MONTHS_TH[cursor.m]} {cursor.y}</span>
+            <Button variant="quiet" aria-label="เดือนถัดไป" onClick={() => goMonth(1)}>
+              <ChevronRight size={16} aria-hidden="true" />
+            </Button>
+            <Button onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })}>วันนี้</Button>
+            <div className="spacer" />
+            {scopes.length > 1 && (
+              <Segmented
+                ariaLabel="ขอบเขตของปฏิทิน"
+                value={activeScope}
+                onChange={setScope}
+                options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+              />
+            )}
+            {activeScope === "team" && (
+              <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
+            )}
             <Segmented
-              ariaLabel="ขอบเขตของปฏิทิน"
-              value={activeScope}
-              onChange={setScope}
-              options={scopes.map((key) => ({ value: key, label: SCOPE_LABELS[key] }))}
+              ariaLabel="มุมมองปฏิทิน"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "month", label: "เดือน", icon: CalendarRange },
+                { value: "list", label: "รายการ", icon: List },
+              ]}
             />
-          )}
-          {activeScope === "team" && (
-            <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
-          )}
-          <span className="ui-badge">{visible.length} นัด</span>
-        </div>
-      </div>
+          </>
+        )}
+      >
+        {error && (
+          <StatusNotice
+            tone="error"
+            className="mb-4"
+            action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}
+          >
+            {error}
+          </StatusNotice>
+        )}
 
-      {view === "month" ? (
-        <MonthGrid
-          year={cursor.y}
-          month={cursor.m}
-          todayISO={todayKey}
-          holidayOf={(iso) => holidayByDay.get(iso)}
-        >
-          {({ iso }) => {
-            const items = byDay.get(iso) || [];
-            if (!items.length) return null;
-            return (
-              <>
-                {items.slice(0, MAX_PER_CELL).map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className={`${styles.event} ${new Date(entry.at).getTime() < nowMs ? styles.eventPast : ""}`.trim()}
-                    title={describe(entry)}
-                    onClick={() => openLead(entry.leadId)}
-                  >
-                    <span className={styles.eventTime}>{hhmm(entry.at)}</span>
-                    {" "}{MODE_ICON[entry.meetingMode] || ""} {entry.contactName}
-                  </button>
-                ))}
-                {items.length > MAX_PER_CELL && (
-                  <span className={styles.more}>+ อีก {items.length - MAX_PER_CELL} นัด</span>
-                )}
-              </>
-            );
-          }}
-        </MonthGrid>
-      ) : (
-        <div className={styles.list}>
-          {[...byDay.keys()].sort().map((key) => {
-            const items = byDay.get(key);
-            const at = new Date(`${key}T00:00:00`);
-            const holiday = holidayByDay.get(key);
-            return (
-              <div key={key} className={styles.listDay}>
-                <div className={`${styles.listDate} ${holiday ? styles.listDateHoliday : ""}`.trim()}>
-                  {at.getDate()} {MONTHS_TH[at.getMonth()]}
-                  <span className={styles.listDateSub}>
-                    {WEEKDAYS_TH[at.getDay()]}{holiday ? ` · ${holiday}` : ""}
-                  </span>
-                </div>
-                <div className={styles.listItems}>
-                  {items.map((entry) => (
+        {view === "month" ? (
+          <MonthGrid
+            year={cursor.y}
+            month={cursor.m}
+            todayISO={todayKey}
+            holidayOf={(iso) => holidayByDay.get(iso)}
+          >
+            {({ iso }) => {
+              const items = byDay.get(iso) || [];
+              if (!items.length) return null;
+              return (
+                <>
+                  {items.slice(0, MAX_PER_CELL).map((entry) => (
                     <button
                       key={entry.id}
                       type="button"
-                      className={`${styles.card} ${new Date(entry.at).getTime() < nowMs ? styles.cardPast : ""}`.trim()}
+                      className={`${styles.event} ${new Date(entry.at).getTime() < nowMs ? styles.eventPast : ""}`.trim()}
+                      title={describe(entry)}
                       onClick={() => openLead(entry.leadId)}
                     >
-                      <span className={styles.cardTop}>
-                        <span className={styles.cardTime}>{hhmm(entry.at)}</span>
-                        <span className="ui-badge">
-                          {MODE_ICON[entry.meetingMode] || ""} {MEETING_MODE_LABELS[entry.meetingMode] || "ไม่ระบุรูปแบบ"}
-                        </span>
-                      </span>
-                      <span className={styles.cardName}>
-                        {entry.contactName}{entry.company ? ` · ${entry.company}` : ""}
-                      </span>
-                      <span className={styles.cardMeta}>
-                        <span>{entry.assigneeName || "ยังไม่มอบหมาย"}</span>
-                        <span>{entry.team ? teamLabelNow(entry.team) : naText(null)}</span>
-                        <span>{LEAD_STATUS_LABELS[entry.status] || entry.status}</span>
-                      </span>
+                      <span className={styles.eventTime}>{hhmm(entry.at)}</span>
+                      {" "}{MODE_ICON[entry.meetingMode] || ""} {entry.contactName}
                     </button>
                   ))}
+                  {items.length > MAX_PER_CELL && (
+                    <span className={styles.more}>+ อีก {items.length - MAX_PER_CELL} นัด</span>
+                  )}
+                </>
+              );
+            }}
+          </MonthGrid>
+        ) : (
+          <div className={styles.list}>
+            {[...byDay.keys()].sort().map((key) => {
+              const items = byDay.get(key);
+              const at = new Date(`${key}T00:00:00`);
+              const holiday = holidayByDay.get(key);
+              return (
+                <div key={key} className={styles.listDay}>
+                  <div className={`${styles.listDate} ${holiday ? styles.listDateHoliday : ""}`.trim()}>
+                    {at.getDate()} {MONTHS_TH[at.getMonth()]}
+                    <span className={styles.listDateSub}>
+                      {WEEKDAYS_TH[at.getDay()]}{holiday ? ` · ${holiday}` : ""}
+                    </span>
+                  </div>
+                  <div className={styles.listItems}>
+                    {items.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        className={`${styles.card} ${new Date(entry.at).getTime() < nowMs ? styles.cardPast : ""}`.trim()}
+                        onClick={() => openLead(entry.leadId)}
+                      >
+                        <span className={styles.cardTop}>
+                          <span className={styles.cardTime}>{hhmm(entry.at)}</span>
+                          <span className="ui-badge">
+                            {MODE_ICON[entry.meetingMode] || ""} {MEETING_MODE_LABELS[entry.meetingMode] || "ไม่ระบุรูปแบบ"}
+                          </span>
+                        </span>
+                        <span className={styles.cardName}>
+                          {entry.contactName}{entry.company ? ` · ${entry.company}` : ""}
+                        </span>
+                        <span className={styles.cardMeta}>
+                          <span>{entry.assigneeName || "ยังไม่มอบหมาย"}</span>
+                          <span>{entry.team ? teamLabelNow(entry.team) : naText(null)}</span>
+                          <span>{LEAD_STATUS_LABELS[entry.status] || entry.status}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-          {!byDay.size && !loading && (
-            <p className="empty">เดือนนี้ยังไม่มีนัด — นัดที่บันทึกจากหน้าลีดจะขึ้นที่นี่อัตโนมัติ</p>
-          )}
-        </div>
-      )}
+              );
+            })}
+            {/* โหลดอยู่ = แผงโชว์โครงกระดูกแทนเนื้อทั้งก้อนแล้ว · โหลดพลาด = StatusNotice บอกแล้ว
+                ⇒ เหลือกรณีเดียวที่ "ไม่มีนัด" เป็นความจริง */}
+            {!byDay.size && !error && (
+              <EmptyState plain icon={CalendarDays}>
+                เดือนนี้ยังไม่มีนัด — นัดที่บันทึกจากหน้าลีดจะขึ้นที่นี่อัตโนมัติ
+              </EmptyState>
+            )}
+          </div>
+        )}
 
-      <div className={styles.legend}>
-        <span><span className={`${styles.swatch} ${styles.swatchMeeting}`} /> นัดที่ยังไม่ถึง</span>
-        <span><span className={`${styles.swatch} ${styles.swatchPast}`} /> นัดที่ผ่านมาแล้ว</span>
-        <span><span className={`${styles.swatch} ${styles.swatchHoliday}`} /> วันหยุด</span>
-        <span>🚗 ออกไปหาลูกค้า · 🏢 ลูกค้าเข้ามา · 💻 Online</span>
-      </div>
+        <div className={styles.legend}>
+          <span><span className={`${styles.swatch} ${styles.swatchMeeting}`} /> นัดที่ยังไม่ถึง</span>
+          <span><span className={`${styles.swatch} ${styles.swatchPast}`} /> นัดที่ผ่านมาแล้ว</span>
+          <span><span className={`${styles.swatch} ${styles.swatchHoliday}`} /> วันหยุด</span>
+          <span>🚗 ออกไปหาลูกค้า · 🏢 ลูกค้าเข้ามา · 💻 Online</span>
+        </div>
+      </ListPanel>
     </Workspace>
   );
 }

@@ -2,14 +2,8 @@
    ⚠️ ไม่มีการตั้งขนาดตัวอักษรในตารางอีกแล้ว: ทุกเซลล์ใช้ --fs-table ของตารางกลาง
    (เหมือนหน้าทะเบียนกลิ่น) */
 
-/* .ui-section ไม่มี margin — การ์ด "รอจัดระเบียบ" ต้องเว้นระยะเอง */
-.banner { margin-bottom: var(--space-3); }
-
-.intro {
-  margin: 0 0 var(--space-2-5);
-  color: var(--text-3);
-  font-size: var(--fs-6);
-}
+/* 🗑️ .banner/.intro ถูกลบ (2026-09-15) — การ์ด "รอจัดระเบียบ" เป็น ListPanel แล้ว: ระยะห่างเป็นของ
+   gap ของ .ui-workspace และคำอธิบายเป็น subtitle ของแผง */
 
 .name { font-weight: var(--fw-semibold); }
 .muted { color: var(--text-3); }

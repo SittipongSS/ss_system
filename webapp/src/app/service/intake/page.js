@@ -20,12 +20,11 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { DEFAULT_PAGE_SIZE, usePagination } from "@/lib/usePagination";
 import Button from "@/components/ui/Button";
 import Pager from "@/components/ui/Pager";
-import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Tabs from "@/components/ui/Tabs";
 import Toast from "@/components/ui/Toast";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import IntakeWizard from "@/components/service/IntakeWizard";
@@ -263,18 +262,9 @@ export default function ServiceIntakePage() {
       icon={<ArrowDownToLine size={20} aria-hidden="true" />}
       title="งานเข้าใหม่"
       subtitle="ใบสั่งขายสายบริการที่อนุมัติแล้ว รอผูกกับไซต์/โซน แล้วตั้งรอบเข้าบริการ"
-      /* ตัวสลับมุมมองอยู่หัวหน้า ไม่ใช่ท้ายแถบเครื่องมือแบบ /service/sites · /service/assets
-         — หน้านี้ไม่มีแถบเครื่องมือ (ไม่มีค้นหา/ตัวกรอง) · ทรงเดียวกับคิวพี่น้อง /service/requests
-         ที่ไม่มีแถบเครื่องมือเหมือนกัน (ตรวจรอบสอง 2026-09-15: ยอมรับสองตำแหน่งนี้ตามชนิดหน้า) */
-      headerRight={(
-        <ViewSwitcher
-          value={view} onChange={setView} ariaLabel="มุมมองคิวงานเข้าใหม่"
-          modes={["table", { value: "cards", icon: LayoutGrid, label: "การ์ด" }]}
-        />
-      )}
     >
-      {/* แท็บกับคำอธิบายของแท็บเป็นก้อนเดียว — ห่อไว้ ไม่งั้นช่องไฟของ Workspace
-          วางคำอธิบายลอยกลางระหว่างแท็บกับตาราง */}
+      {/* แถบแท็บห่อกล่องของตัวเอง — ถือขอบจางตอนแท็บล้น และเลื่อนแท็บที่โฟกัสเข้ากล่อง
+          🔄 คำอธิบายของแท็บเคยอยู่ใต้แท็บในกล่องนี้ ⇒ ย้ายไปเป็นคำอธิบายของแผงรายการ (มติผู้ใช้ 2026-09-15) */}
       <div className={styles.tabBlock} onFocus={revealFocusedTab}>
         <Tabs
           value={tab}
@@ -287,8 +277,6 @@ export default function ServiceIntakePage() {
             label: showCounts ? `${INTAKE_TAB_LABELS[key]} ${counts[key] ?? 0}` : INTAKE_TAB_LABELS[key],
           }))}
         />
-        {/* คำอธิบายพูดถึง "ของที่อยู่ในคิว" — โหลดพังแล้วยังขึ้นคำอธิบาย อ่านเหมือนคิวว่างปกติ */}
-        {!loadError && <p className={styles.hint}>{INTAKE_TAB_HINTS[tab]}</p>}
       </div>
 
       {/* ⭐ ถังที่ระบบตอบไม่ได้ — ขึ้นเหนือคิวเสมอ ไม่ว่าจะอยู่แท็บไหน
@@ -311,270 +299,296 @@ export default function ServiceIntakePage() {
         </section>
       )}
 
-      {/* 🐞 โหลดพังเคยเป็นข้อความเล็กสีปกติเหนือแท็บ ไม่มีทรงข้อผิดพลาด ไม่มีทางไปต่อ
-          ⇒ ขึ้นกล่องแจ้งข้อผิดพลาดตรงที่คิวควรอยู่ + ปุ่มลองใหม่ (ทรงเดียวกับ /service/assets) */}
-      {loading ? <SkeletonRows rows={4} /> : loadError ? (
-        <StatusNotice tone="error" title={LOAD_ERROR_TITLE}
-          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
-          {loadError === LOAD_ERROR_TITLE
-            ? "ยังไม่รู้ว่ามีงานค้างอยู่เท่าไร — ไม่ได้แปลว่าคิวว่าง"
-            : loadError}
-        </StatusNotice>
-      ) : (
-        <>
-          {tab === "bind" && (
-            (data?.bind || []).length === 0 ? (
-              <EmptyState icon={ArrowDownToLine}>
-                ไม่มีใบสั่งขายรอผูกโซน — ใบสายบริการที่อนุมัติใหม่จะมาโผล่ที่นี่เอง
-              </EmptyState>
-            ) : view === "cards" ? (
-              <ul className={styles.cardList} aria-label="ใบสั่งขายที่รอตั้งไซต์/โซน">
-                {pageRows.map((row) => (
-                  <li key={row.orderId} className={styles.card}>
-                    <div className={styles.cardHead}>
-                      <span className={`mono ${styles.cardCode}`}>{row.code}</span>
-                      <strong className={styles.cardTitle}>{naText(row.customerName)}</strong>
-                    </div>
-                    <p className={styles.cardMeta}>
-                      {fgText(row)} · อนุมัติ <span className="mono">{approvedText(row)}</span>
-                      {row.roundsSold ? ` · ขายไว้ ${fmtNumber(row.roundsSold)} รอบ` : null}
-                    </p>
-                    <div className={styles.cardFoot}>
-                      <ContractBadge readiness={row.readiness} />
-                      <PaidBadge readiness={row.readiness} />
-                      {canEdit && (
-                        <Button tone="neutral" className={styles.cardAction} onClick={() => openWizard(row)}
-                          icon={<Building2 size={15} aria-hidden="true" />}>
-                          รับเข้าไซต์
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              /* ⚠️ วันที่ · จำนวน · ป้าย · ปุ่ม เป็น nowrap ถือความกว้างเองแล้ว เหลือช่องชื่อลูกค้า
-                 ช่องเดียวที่ตัดบรรทัด ⇒ `minWidth` มีไว้แค่กันช่องนั้นแคบเกิน ไม่ใช่ความกว้างของเนื้อ
-                 🐞 เคยตั้ง 900 ⇒ จอนอน 821–935px กล่องแคบกว่าเนื้อ ปุ่ม "รับเข้าไซต์" โดนตัดขอบ
-                 (กล่องแคบสุดของจอนอน 783px ที่จอ 821 · 760 เผื่อ scrollbar 15px ของ Windows) */
-              <TableScroll family="list" minWidth={760} cells="stacked">
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">ใบสั่งขาย · ลูกค้า</th>
-                      <th scope="col" className="num">อนุมัติเมื่อ</th>
-                      <th scope="col"><span className={styles.qtyInset}>ของที่ต้องจัดสรร</span></th>
-                      <th scope="col">สัญญา</th>
-                      <th scope="col">จ่ายถึง</th>
-                      <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageRows.map((row) => (
-                      <tr key={row.orderId}>
-                        {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ */}
-                        <th scope="row">
-                          <span className="mono">{row.code}</span>
-                          <span className={`cell-sub ${styles.rowHeadSub}`}>{naText(row.customerName)}</span>
-                        </th>
-                        <td className={`num ${styles.nowrap}`}>{approvedText(row)}</td>
-                        {/* ⭐ นับ **FG + จำนวน** ไม่ใช่จำนวนบรรทัด (มติผู้ใช้ 2026-08-29)
-                            บรรทัดเป็นรูปร่างของเอกสารขาย ไม่ใช่ขนาดของงาน — ใบจริงใบหนึ่ง
-                            มี 10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย */}
-                        <td className={styles.nowrap}>
-                          <div className={styles.qtyInset}>
-                            {fgText(row)}
-                            {/* ⭐ ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ (mig 0326) — TS ต้องเห็น
-                                ตั้งแต่ตอนรับงาน จะได้ตั้งความถี่ให้ได้จำนวนนัดตรงกับที่ขาย
-                                ⚠️ ไม่ขึ้นเลยเมื่อยังไม่กรอก — "ยังไม่ระบุ" ไม่ใช่ "ขายศูนย์รอบ" */}
-                            {row.roundsSold
-                              ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
-                              : null}
-                          </div>
-                        </td>
-                        {/* ⭐ ชิปความพร้อม (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้
-                            พอจัดสรรแล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอ
-                            ด่านตอนจัดคิวทีหลัง ซึ่งเป็นตอนที่เสียเวลาไปแล้ว
-                            ⚠️ นี่คือ *ป้ายบอกสถานะ* ไม่ใช่ด่าน — ใบที่ยังไม่พร้อมก็ยัง
-                               รับเข้าไซต์/จัดสรรลงโซนได้ (คนละขั้นกัน)
-                            แยกเป็นสองคอลัมน์ ป้ายจะได้เรียงเป็นแนว ไม่ซ้อนกันตอนจอแคบ */}
-                        <td className="ui-badge-cell ui-badge-w-contract-no"><ContractBadge readiness={row.readiness} /></td>
-                        <td className="ui-badge-cell ui-badge-w-paid"><PaidBadge readiness={row.readiness} /></td>
-                        <td className={styles.actionCell}>
-                          {canEdit && (
-                            <div className={styles.rowAction}>
-                              <Button tone="neutral" size="sm" onClick={() => openWizard(row)}
-                                icon={<Building2 size={15} aria-hidden="true" />}>
-                                รับเข้าไซต์
-                              </Button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableScroll>
-            )
-          )}
-
-          {tab === "plan" && (
-            (data?.plan || []).length === 0 ? (
-              <EmptyState icon={CalendarPlus}>
-                ทุกไซต์ที่ขายแล้วมีรอบครบ — โซนที่ผูกใบสั่งขายแล้วแต่ยังไม่มีรอบจะมาอยู่ที่นี่
-              </EmptyState>
-            ) : view === "cards" ? (
-              <ul className={styles.cardList} aria-label="ไซต์ที่รอตั้งรอบ">
-                {pageRows.map((row) => (
-                  <li key={row.key || row.siteId} className={styles.card}>
-                    <div className={styles.cardHead}>
-                      <strong className={styles.cardTitle}>{naText(row.site?.name)}</strong>
-                      <span className={styles.cardSub}>{naText(row.site?.customerName)}</span>
-                    </div>
-                    {row.unboundPlans > 0 && (
-                      <p className={styles.cardMeta}>
-                        มีรอบที่ยังไม่ผูกใบ {fmtNumber(row.unboundPlans)} รอบ — ผูกใบให้รอบเดิมก่อนสร้างใหม่
-                      </p>
-                    )}
-                    <p className={styles.cardMeta}>
-                      <span className="mono">{naText(row.orderNumber)}</span>
-                      {" · "}ขายไว้ {row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}
-                    </p>
-                    <p className={styles.cardMeta}>โซน: {row.zones.map((z) => z.name).join(" · ")}</p>
-                    <Link href={`/service/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
-                      ตั้งรอบที่หน้าไซต์
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              /* 🔴 **หนึ่งแถว = (ไซต์, ใบสั่งขาย)** ไม่ใช่หนึ่งไซต์ — ไซต์เดียวโผล่ได้
-                  หลายแถวเมื่อมีหลายใบ (ขายเพิ่ม/ออก Rev.) ⇒ ต้องมีคอลัมน์ใบ ไม่งั้น
-                  สองแถวพิมพ์ข้อความเหมือนกันเป๊ะ · และคีย์ต้องเป็น `row.key`
-                  (เดิมเป็น `row.siteId` ซึ่งซ้ำทันทีที่มีสองใบ) */
-              <TableScroll family="list" minWidth={860} cells="stacked">
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">ไซต์</th>
-                      <th scope="col">ลูกค้า</th>
-                      <th scope="col">ใบสั่งขาย</th>
-                      <th scope="col">โซนที่ขายแล้ว</th>
-                      <th scope="col">ขายไว้</th>
-                      <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageRows.map((row) => (
-                      <tr key={row.key || row.siteId}>
-                        <th scope="row">
-                          {naText(row.site?.name)}
-                          {/* ⚠️ คำเตือนพิมพ์ทุกแถวที่เข้าเงื่อนไข ไม่ใช่แถวแรกแถวเดียว —
-                              รอบที่ยังไม่ผูกใบเดินอยู่จริงที่ไซต์นี้ กดสร้างทับ = นัดซ้อน */}
-                          {row.unboundPlans > 0 && (
-                            <span className={`cell-sub ${styles.rowHeadSub}`}>
-                              มีรอบที่ยังไม่ผูกใบ {fmtNumber(row.unboundPlans)} รอบ — ผูกใบให้รอบเดิมก่อนสร้างใหม่
-                            </span>
-                          )}
-                        </th>
-                        <td>{naText(row.site?.customerName)}</td>
-                        <td className="mono">{naText(row.orderNumber)}</td>
-                        <td>{row.zones.map((z) => z.name).join(" · ")}</td>
-                        <td>{row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}</td>
-                        <td className={styles.actionCell}>
-                          <div className={styles.rowAction}>
-                            <Link href={`/service/sites/${row.siteId}`} className="linklike">
-                              ตั้งรอบที่หน้าไซต์
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableScroll>
-            )
-          )}
-
-          {tab === "visit" && (
-            (data?.visit || []).length === 0 ? (
-              <EmptyState icon={MapPin}>
-                ทุกรอบมีนัดข้างหน้าแล้ว — รอบที่เดินอยู่แต่ไม่มีนัดล่วงหน้าเลยจะมาอยู่ที่นี่
-              </EmptyState>
-            ) : view === "cards" ? (
-              <ul className={styles.cardList} aria-label="รอบที่ยังไม่มีนัด">
-                {pageRows.map((row) => (
-                  <li key={row.planId} className={styles.card}>
-                    <div className={styles.cardHead}>
-                      <strong className={styles.cardTitle}>{naText(row.site?.name)}</strong>
-                      <span className={styles.cardSub}>
-                        {VISIT_KIND_LABELS[row.kind] || row.kind} · ทุก {fmtNumber(row.everyDays)} วัน
-                      </span>
-                    </div>
-                    <p className={styles.cardMeta}>
-                      <span className="mono">{naText(row.salesOrderNumber)}</span>
-                      {" · "}เจ้าหน้าที่ประจำ {naText(row.assigneeName)}
-                    </p>
-                    <Link href={`/service/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
-                      เติมนัดที่หน้าไซต์
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <TableScroll family="list" minWidth={900}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">ไซต์</th>
-                      {/* ⚠️ ไซต์เดียวมีได้หลายรอบ (คนละใบ/คนละชนิดงาน) ⇒ "ทุก N วัน"
-                          อย่างเดียวแยกแถวไม่ออก · ค่าพวกนี้ `visitQueue` คืนมาอยู่แล้ว
-                          แต่จอไม่เคยวาด */}
-                      <th scope="col">ชนิดงาน</th>
-                      <th scope="col">รอบ</th>
-                      <th scope="col">ใบสั่งขาย</th>
-                      <th scope="col">เจ้าหน้าที่ประจำ</th>
-                      <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageRows.map((row) => (
-                      <tr key={row.planId}>
-                        <th scope="row">{naText(row.site?.name)}</th>
-                        <td>{VISIT_KIND_LABELS[row.kind] || row.kind}</td>
-                        <td>ทุก {fmtNumber(row.everyDays)} วัน</td>
-                        <td className="mono">{naText(row.salesOrderNumber)}</td>
-                        <td>{naText(row.assigneeName)}</td>
-                        <td className={styles.actionCell}>
-                          <div className={styles.rowAction}>
-                            <Link href={`/service/sites/${row.siteId}`} className="linklike">
-                              เติมนัดที่หน้าไซต์
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableScroll>
-            )
-          )}
-
-          {/* คิวยาวขึ้นทุกครั้งที่มีใบอนุมัติใหม่ — แบ่งหน้าแทนการปักหัวตาราง
-              (ของเหนือตารางสูง ปักแล้วได้สกรอลล์สองชั้น ดู `pinned` ใน Table.js) */}
-          {tabRows.length > 0 && (
-            <Pager
-              page={page}
-              pageCount={pageCount}
-              total={total}
-              onPage={setPage}
-              pageSize={pageSize}
-              onPageSize={pickPageSize}
-              itemLabel={tab === "visit" ? "รอบ" : "ใบ"}
+      {/* ⭐ รายการ = ListPanel ใบเดียว ชื่อ · คำอธิบาย · จำนวน เดินตามแท็บ (มติผู้ใช้ 2026-09-15)
+          · ป้ายจำนวน = แถวของแท็บนั้นทั้งหมด = ยอดของ Pager · ยังไม่รู้ (โหลด/พัง) = ขีด ไม่ใช่ 0
+          · `loading` แทนที่เฉพาะเนื้อ — แท็บกับตัวสลับมุมมองยืนอยู่ระหว่างโหลด */}
+      <ListPanel
+        icon={<ArrowDownToLine size={17} aria-hidden="true" />}
+        title={`รายการ${INTAKE_TAB_LABELS[tab]}`}
+        /* คำอธิบายพูดถึง "ของที่อยู่ในคิว" — โหลดพังแล้วยังขึ้นคำอธิบาย อ่านเหมือนคิวว่างปกติ */
+        subtitle={loadError ? null : INTAKE_TAB_HINTS[tab]}
+        count={showCounts ? `${tabRows.length} ${tab === "visit" ? "รอบ" : "ใบ"}` : null}
+        loading={loading}
+        toolbar={(
+          <>
+            {/* 🔄 ตัวสลับมุมมองย้ายจากหัวหน้าเข้าแถบเครื่องมือของแผง ท้ายแถบเหมือน /service/sites ·
+                /service/assets (มติผู้ใช้ 2026-09-15 · ListPanel) — แทนผลตรวจรอบสองวันเดียวกัน
+                ที่ยอมให้อยู่หัวหน้าเพราะหน้านี้ยังไม่มีแถบเครื่องมือ */}
+            <div className="spacer" />
+            <ViewSwitcher
+              value={view} onChange={setView} ariaLabel="มุมมองคิวงานเข้าใหม่"
+              modes={["table", { value: "cards", icon: LayoutGrid, label: "การ์ด" }]}
             />
-          )}
-        </>
-      )}
+          </>
+        )}
+      >
+        {/* 🐞 โหลดพังเคยเป็นข้อความเล็กสีปกติเหนือแท็บ ไม่มีทรงข้อผิดพลาด ไม่มีทางไปต่อ
+            ⇒ ขึ้นกล่องแจ้งข้อผิดพลาดตรงที่คิวควรอยู่ + ปุ่มลองใหม่ (ทรงเดียวกับ /service/assets) */}
+        {loadError ? (
+          <StatusNotice tone="error" title={LOAD_ERROR_TITLE}
+            action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+            {loadError === LOAD_ERROR_TITLE
+              ? "ยังไม่รู้ว่ามีงานค้างอยู่เท่าไร — ไม่ได้แปลว่าคิวว่าง"
+              : loadError}
+          </StatusNotice>
+        ) : (
+          <>
+            {tab === "bind" && (
+              (data?.bind || []).length === 0 ? (
+                <EmptyState plain icon={ArrowDownToLine}>
+                  ไม่มีใบสั่งขายรอผูกโซน — ใบสายบริการที่อนุมัติใหม่จะมาโผล่ที่นี่เอง
+                </EmptyState>
+              ) : view === "cards" ? (
+                <ul className={styles.cardList} aria-label="ใบสั่งขายที่รอตั้งไซต์/โซน">
+                  {pageRows.map((row) => (
+                    <li key={row.orderId} className={styles.card}>
+                      <div className={styles.cardHead}>
+                        <span className={`mono ${styles.cardCode}`}>{row.code}</span>
+                        <strong className={styles.cardTitle}>{naText(row.customerName)}</strong>
+                      </div>
+                      <p className={styles.cardMeta}>
+                        {fgText(row)} · อนุมัติ <span className="mono">{approvedText(row)}</span>
+                        {row.roundsSold ? ` · ขายไว้ ${fmtNumber(row.roundsSold)} รอบ` : null}
+                      </p>
+                      <div className={styles.cardFoot}>
+                        <ContractBadge readiness={row.readiness} />
+                        <PaidBadge readiness={row.readiness} />
+                        {canEdit && (
+                          <Button tone="neutral" className={styles.cardAction} onClick={() => openWizard(row)}
+                            icon={<Building2 size={15} aria-hidden="true" />}>
+                            รับเข้าไซต์
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                /* ⚠️ วันที่ · จำนวน · ป้าย · ปุ่ม เป็น nowrap ถือความกว้างเองแล้ว เหลือช่องชื่อลูกค้า
+                   ช่องเดียวที่ตัดบรรทัด ⇒ `minWidth` มีไว้แค่กันช่องนั้นแคบเกิน ไม่ใช่ความกว้างของเนื้อ
+                   🐞 เคยตั้ง 900 ⇒ จอนอน 821–935px กล่องแคบกว่าเนื้อ ปุ่ม "รับเข้าไซต์" โดนตัดขอบ
+                   (กล่องแคบสุดของจอนอน 783px ที่จอ 821 · 760 เผื่อ scrollbar 15px ของ Windows)
+                   🔄 ย้ายเข้า ListPanel (มติผู้ใช้ 2026-09-15) กล่องแคบลงอีก 34px (ระยะขอบเนื้อแผง 16×2 + เส้นกรอบ)
+                   ⇒ วัดใหม่ที่จอ 821 เหลือ 749px · 760 เดิมเลื่อนแนวนอน 11px ⇒ 730 เผื่อ scrollbar 15px เท่าเดิม */
+                <TableScroll family="list" minWidth={730} cells="stacked">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">ใบสั่งขาย · ลูกค้า</th>
+                        <th scope="col" className="num">อนุมัติเมื่อ</th>
+                        <th scope="col"><span className={styles.qtyInset}>ของที่ต้องจัดสรร</span></th>
+                        <th scope="col">สัญญา</th>
+                        <th scope="col">จ่ายถึง</th>
+                        <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageRows.map((row) => (
+                        <tr key={row.orderId}>
+                          {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ */}
+                          <th scope="row">
+                            <span className="mono">{row.code}</span>
+                            <span className={`cell-sub ${styles.rowHeadSub}`}>{naText(row.customerName)}</span>
+                          </th>
+                          <td className={`num ${styles.nowrap}`}>{approvedText(row)}</td>
+                          {/* ⭐ นับ **FG + จำนวน** ไม่ใช่จำนวนบรรทัด (มติผู้ใช้ 2026-08-29)
+                              บรรทัดเป็นรูปร่างของเอกสารขาย ไม่ใช่ขนาดของงาน — ใบจริงใบหนึ่ง
+                              มี 10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย */}
+                          <td className={styles.nowrap}>
+                            <div className={styles.qtyInset}>
+                              {fgText(row)}
+                              {/* ⭐ ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ (mig 0326) — TS ต้องเห็น
+                                  ตั้งแต่ตอนรับงาน จะได้ตั้งความถี่ให้ได้จำนวนนัดตรงกับที่ขาย
+                                  ⚠️ ไม่ขึ้นเลยเมื่อยังไม่กรอก — "ยังไม่ระบุ" ไม่ใช่ "ขายศูนย์รอบ" */}
+                              {row.roundsSold
+                                ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
+                                : null}
+                            </div>
+                          </td>
+                          {/* ⭐ ชิปความพร้อม (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้
+                              พอจัดสรรแล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอ
+                              ด่านตอนจัดคิวทีหลัง ซึ่งเป็นตอนที่เสียเวลาไปแล้ว
+                              ⚠️ นี่คือ *ป้ายบอกสถานะ* ไม่ใช่ด่าน — ใบที่ยังไม่พร้อมก็ยัง
+                                 รับเข้าไซต์/จัดสรรลงโซนได้ (คนละขั้นกัน)
+                              แยกเป็นสองคอลัมน์ ป้ายจะได้เรียงเป็นแนว ไม่ซ้อนกันตอนจอแคบ */}
+                          <td className="ui-badge-cell ui-badge-w-contract-no"><ContractBadge readiness={row.readiness} /></td>
+                          <td className="ui-badge-cell ui-badge-w-paid"><PaidBadge readiness={row.readiness} /></td>
+                          <td className={styles.actionCell}>
+                            {canEdit && (
+                              <div className={styles.rowAction}>
+                                <Button tone="neutral" size="sm" onClick={() => openWizard(row)}
+                                  icon={<Building2 size={15} aria-hidden="true" />}>
+                                  รับเข้าไซต์
+                                </Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              )
+            )}
+
+            {tab === "plan" && (
+              (data?.plan || []).length === 0 ? (
+                <EmptyState plain icon={CalendarPlus}>
+                  ทุกไซต์ที่ขายแล้วมีรอบครบ — โซนที่ผูกใบสั่งขายแล้วแต่ยังไม่มีรอบจะมาอยู่ที่นี่
+                </EmptyState>
+              ) : view === "cards" ? (
+                <ul className={styles.cardList} aria-label="ไซต์ที่รอตั้งรอบ">
+                  {pageRows.map((row) => (
+                    <li key={row.key || row.siteId} className={styles.card}>
+                      <div className={styles.cardHead}>
+                        <strong className={styles.cardTitle}>{naText(row.site?.name)}</strong>
+                        <span className={styles.cardSub}>{naText(row.site?.customerName)}</span>
+                      </div>
+                      {row.unboundPlans > 0 && (
+                        <p className={styles.cardMeta}>
+                          มีรอบที่ยังไม่ผูกใบ {fmtNumber(row.unboundPlans)} รอบ — ผูกใบให้รอบเดิมก่อนสร้างใหม่
+                        </p>
+                      )}
+                      <p className={styles.cardMeta}>
+                        <span className="mono">{naText(row.orderNumber)}</span>
+                        {" · "}ขายไว้ {row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}
+                      </p>
+                      <p className={styles.cardMeta}>โซน: {row.zones.map((z) => z.name).join(" · ")}</p>
+                      <Link href={`/service/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
+                        ตั้งรอบที่หน้าไซต์
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                /* 🔴 **หนึ่งแถว = (ไซต์, ใบสั่งขาย)** ไม่ใช่หนึ่งไซต์ — ไซต์เดียวโผล่ได้
+                    หลายแถวเมื่อมีหลายใบ (ขายเพิ่ม/ออก Rev.) ⇒ ต้องมีคอลัมน์ใบ ไม่งั้น
+                    สองแถวพิมพ์ข้อความเหมือนกันเป๊ะ · และคีย์ต้องเป็น `row.key`
+                    (เดิมเป็น `row.siteId` ซึ่งซ้ำทันทีที่มีสองใบ) */
+                <TableScroll family="list" minWidth={860} cells="stacked">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">ไซต์</th>
+                        <th scope="col">ลูกค้า</th>
+                        <th scope="col">ใบสั่งขาย</th>
+                        <th scope="col">โซนที่ขายแล้ว</th>
+                        <th scope="col">ขายไว้</th>
+                        <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageRows.map((row) => (
+                        <tr key={row.key || row.siteId}>
+                          <th scope="row">
+                            {naText(row.site?.name)}
+                            {/* ⚠️ คำเตือนพิมพ์ทุกแถวที่เข้าเงื่อนไข ไม่ใช่แถวแรกแถวเดียว —
+                                รอบที่ยังไม่ผูกใบเดินอยู่จริงที่ไซต์นี้ กดสร้างทับ = นัดซ้อน */}
+                            {row.unboundPlans > 0 && (
+                              <span className={`cell-sub ${styles.rowHeadSub}`}>
+                                มีรอบที่ยังไม่ผูกใบ {fmtNumber(row.unboundPlans)} รอบ — ผูกใบให้รอบเดิมก่อนสร้างใหม่
+                              </span>
+                            )}
+                          </th>
+                          <td>{naText(row.site?.customerName)}</td>
+                          <td className="mono">{naText(row.orderNumber)}</td>
+                          <td>{row.zones.map((z) => z.name).join(" · ")}</td>
+                          <td>{row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}</td>
+                          <td className={styles.actionCell}>
+                            <div className={styles.rowAction}>
+                              <Link href={`/service/sites/${row.siteId}`} className="linklike">
+                                ตั้งรอบที่หน้าไซต์
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              )
+            )}
+
+            {tab === "visit" && (
+              (data?.visit || []).length === 0 ? (
+                <EmptyState plain icon={MapPin}>
+                  ทุกรอบมีนัดข้างหน้าแล้ว — รอบที่เดินอยู่แต่ไม่มีนัดล่วงหน้าเลยจะมาอยู่ที่นี่
+                </EmptyState>
+              ) : view === "cards" ? (
+                <ul className={styles.cardList} aria-label="รอบที่ยังไม่มีนัด">
+                  {pageRows.map((row) => (
+                    <li key={row.planId} className={styles.card}>
+                      <div className={styles.cardHead}>
+                        <strong className={styles.cardTitle}>{naText(row.site?.name)}</strong>
+                        <span className={styles.cardSub}>
+                          {VISIT_KIND_LABELS[row.kind] || row.kind} · ทุก {fmtNumber(row.everyDays)} วัน
+                        </span>
+                      </div>
+                      <p className={styles.cardMeta}>
+                        <span className="mono">{naText(row.salesOrderNumber)}</span>
+                        {" · "}เจ้าหน้าที่ประจำ {naText(row.assigneeName)}
+                      </p>
+                      <Link href={`/service/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
+                        เติมนัดที่หน้าไซต์
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <TableScroll family="list" minWidth={900}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">ไซต์</th>
+                        {/* ⚠️ ไซต์เดียวมีได้หลายรอบ (คนละใบ/คนละชนิดงาน) ⇒ "ทุก N วัน"
+                            อย่างเดียวแยกแถวไม่ออก · ค่าพวกนี้ `visitQueue` คืนมาอยู่แล้ว
+                            แต่จอไม่เคยวาด */}
+                        <th scope="col">ชนิดงาน</th>
+                        <th scope="col">รอบ</th>
+                        <th scope="col">ใบสั่งขาย</th>
+                        <th scope="col">เจ้าหน้าที่ประจำ</th>
+                        <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageRows.map((row) => (
+                        <tr key={row.planId}>
+                          <th scope="row">{naText(row.site?.name)}</th>
+                          <td>{VISIT_KIND_LABELS[row.kind] || row.kind}</td>
+                          <td>ทุก {fmtNumber(row.everyDays)} วัน</td>
+                          <td className="mono">{naText(row.salesOrderNumber)}</td>
+                          <td>{naText(row.assigneeName)}</td>
+                          <td className={styles.actionCell}>
+                            <div className={styles.rowAction}>
+                              <Link href={`/service/sites/${row.siteId}`} className="linklike">
+                                เติมนัดที่หน้าไซต์
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              )
+            )}
+
+            {/* คิวยาวขึ้นทุกครั้งที่มีใบอนุมัติใหม่ — แบ่งหน้าแทนการปักหัวตาราง
+                (ของเหนือตารางสูง ปักแล้วได้สกรอลล์สองชั้น ดู `pinned` ใน Table.js) */}
+            {tabRows.length > 0 && (
+              <Pager
+                page={page}
+                pageCount={pageCount}
+                total={total}
+                onPage={setPage}
+                pageSize={pageSize}
+                onPageSize={pickPageSize}
+                itemLabel={tab === "visit" ? "รอบ" : "ใบ"}
+              />
+            )}
+          </>
+        )}
+      </ListPanel>
 
       <IntakeWizard
         open={!!wizardOrder}

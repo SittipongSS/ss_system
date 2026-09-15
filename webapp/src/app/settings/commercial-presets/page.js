@@ -4,8 +4,10 @@ import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Edit3, Eye, FilePlus2, WalletCards } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
@@ -135,6 +137,9 @@ export default function CommercialPresetsPage() {
   useEffect(() => { if (canManage) load(); }, [canManage, load]);
 
   const visible = useMemo(() => presets.filter((preset) => preset.kind === kind), [presets, kind]);
+  // skeleton เฉพาะตอนยังไม่มีแถว (UI_DESIGN_SYSTEM.md §รายการ · โหลด) — load() รันซ้ำหลังบันทึก/สร้างร่าง/เผยแพร่
+  // ขณะที่ตารางยังอยู่ ⇒ โหลดซ้ำคงแถวไว้แล้วบอกด้วย aria-busy แทน (เดิมตาราง/ป้ายจำนวนกระพริบเป็น skeleton/ขีด)
+  const firstLoad = loading && presets.length === 0;
   const countOf = useCallback((value) => presets.filter((preset) => preset.kind === value).length, [presets]);
   const drawerPreset = useMemo(() => presets.find((item) => item.id === drawer?.presetId) || drawer?.preset || null, [drawer, presets]);
   const drawerRow = drawer?.rowId ? drawerPreset?.versions?.find((item) => item.id === drawer.rowId) || drawer?.row : drawer?.row;
@@ -256,27 +261,32 @@ export default function CommercialPresetsPage() {
         }))}
       />
 
-      {loading ? <SkeletonRows rows={8} /> : error ? (
-        <section className={`glass-panel ${styles.error}`} role="alert"><AlertTriangle size={26} /><p>{error}</p><button type="button" className="btn" onClick={load}>ลองอีกครั้ง</button></section>
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — เดิม glass-panel ที่เขียนหัว
+          เอง และหายทั้งใบตอนโหลด/ว่าง/พัง (ปุ่มสร้างย้ายไปอยู่ในกล่องว่างแทน) ⇒ หัวแผง ป้ายจำนวน
+          และปุ่มสร้างอยู่ที่เดิมทุกสถานะ · ปุ่มสร้างเป็นของเนื้อหาในแผง (เปลือกตั้งค่า มติ 2026-08-21)
+          แท็บสลับคลังอยู่เหนือแผงเพราะสลับ **ชุดข้อมูล** */}
+      <ListPanel
+        icon={<WalletCards size={17} aria-hidden="true" />}
+        title={kindLabel}
+        subtitle={KIND_HINTS[kind]}
+        count={firstLoad || error ? null : `${visible.length} ชุด`}
+        loading={firstLoad}
+        skeletonRows={8}
+        actions={(
+          <button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy || firstLoad}><FilePlus2 size={16} /> สร้าง{kindLabel}</button>
+        )}
+      >
+      {error ? (
+        <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}>
+          {error}
+        </StatusNotice>
       ) : visible.length === 0 ? (
-        <EmptyState icon={WalletCards}>
+        <EmptyState plain icon={WalletCards}>
           ยังไม่มี{kindLabel} — {KIND_HINTS[kind]}
-          <div style={{ marginTop: 10 }}>
-            <button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง{kindLabel}</button>
-          </div>
         </EmptyState>
       ) : (
-        // ปุ่มสร้าง = ปุ่มเพิ่มของรายการในการ์ด — อยู่ขวาสุดของ card header ตามกติกา Page Header
-        <section className={`glass-panel ${styles.listPanel}`} aria-labelledby="preset-list-title">
-          <header className={styles.panelHeader}>
-            <div><h2 id="preset-list-title">{kindLabel}</h2><p>{KIND_HINTS[kind]}</p></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span className="ui-badge">{visible.length} ชุด</span>
-              <button type="button" className="btn btn-accent" onClick={openCreate} disabled={busy}><FilePlus2 size={16} /> สร้าง{kindLabel}</button>
-            </div>
-          </header>
-
-          <TableScroll className={`${styles.tableWrap}`}>
+        <>
+          <TableScroll className={`${styles.tableWrap}`} aria-busy={loading}>
             <table className="premium-table">
               <thead><tr><th>ชื่อชุด</th><th>เวอร์ชัน</th><th>สรุป</th><th>อัปเดต</th><th aria-label="การทำงาน" /></tr></thead>
               <tbody>
@@ -309,7 +319,7 @@ export default function CommercialPresetsPage() {
             </table>
           </TableScroll>
 
-          <div className={styles.cards}>
+          <div className={styles.cards} aria-busy={loading}>
             {visible.map((preset) => {
               const current = preset.draft || preset.published || preset.versions?.[0];
               return (
@@ -328,8 +338,9 @@ export default function CommercialPresetsPage() {
               );
             })}
           </div>
-        </section>
+        </>
       )}
+      </ListPanel>
 
       <RecordDrawer
         open={!!drawer}

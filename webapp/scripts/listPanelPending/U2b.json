@@ -1,9 +1,0 @@
-{
-  "unit": "U2b",
-  "reason": "U2b ตรวจที่มา FC · รายงานเป้า · แดชบอร์ดของฉัน — รอย้ายเข้า ListPanel ตามมติผู้ใช้ 2026-09-15",
-  "files": [
-    "src/app/sa/forecast-review/page.js",
-    "src/app/sales-planning/targets/report/page.js",
-    "src/components/salesPlanning/dashboard/MyDashboardTab.js"
-  ]
-}

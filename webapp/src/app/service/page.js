@@ -22,8 +22,8 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
-import { TableShell } from "@/components/ui/Table";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import { TableScroll } from "@/components/ui/Table";
+import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspace";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { VISIT_KIND_LABELS, visitTimeText } from "@/lib/service/rounds";
 import {
@@ -209,15 +209,18 @@ export default function ServiceOverviewPage() {
             <ActionQueue items={queueItems} empty="ไม่มีนัดที่ติดปัญหาตอนนี้ 🎉" />
           </WorkspaceSection>
 
-          <WorkspaceSection
+          {/* ⭐ รายการ = ListPanel (มติผู้ใช้ 2026-09-15) · แถวคือเจ้าหน้าที่ แต่ป้ายนับ **นัด** ของวันนี้
+              (ตัวเลขที่หัวหน้าทีมถาม) · กรอบชั้นเดียว TableScroll — เดิม TableShell = การ์ดซ้อนการ์ด */}
+          <ListPanel
             icon={<Wrench size={17} aria-hidden="true" />}
             title="วันนี้ใครไปไหน"
             subtitle={fmtDate(todayIso)}
+            count={`${today.reduce((sum, row) => sum + row.count, 0)} นัด`}
           >
             {today.length === 0 ? (
               <EmptyState plain icon={CalendarClock}>ไม่มีนัดเข้าบริการวันนี้</EmptyState>
             ) : (
-              <TableShell>
+              <TableScroll>
                 <table>
                   <thead>
                     <tr>
@@ -250,16 +253,20 @@ export default function ServiceOverviewPage() {
                     ))}
                   </tbody>
                 </table>
-              </TableShell>
+              </TableScroll>
             )}
-          </WorkspaceSection>
+          </ListPanel>
 
-          <WorkspaceSection
+          <ListPanel
             icon={<Droplets size={17} aria-hidden="true" />}
             title="ไซต์ที่น้ำหอมกำลังจะหมด"
+            /* "แสดง N จาก M" ย้ายจากคำอธิบายขึ้นป้ายจำนวน — เลขอยู่ที่เดียว (ด่าน LP9) */
             subtitle={watchlist.length > WATCHLIST_LIMIT
-              ? `แสดง ${WATCHLIST_LIMIT} จาก ${watchlist.length} ไซต์ — ที่เหลืออยู่ในทะเบียนไซต์`
+              ? "ประเมินจากขนาดขวดและอัตราใช้ต่อวัน — ที่เหลืออยู่ในทะเบียนไซต์"
               : "ประเมินจากขนาดขวดและอัตราใช้ต่อวัน — ไซต์ที่มีนัดครอบแล้วไม่อยู่ในรายการนี้"}
+            count={watchlist.length > WATCHLIST_LIMIT
+              ? `${WATCHLIST_LIMIT} จาก ${watchlist.length} ไซต์`
+              : `${watchlist.length} ไซต์`}
             actions={(
               <Button as={Link} href="/service/sites" size="sm" icon={<MapPin size={15} aria-hidden="true" />}>
                 ทะเบียนไซต์
@@ -269,7 +276,7 @@ export default function ServiceOverviewPage() {
             {watchlist.length === 0 ? (
               <EmptyState plain icon={Droplets}>ทุกไซต์มีนัดครอบก่อนน้ำหอมหมดแล้ว 🎉</EmptyState>
             ) : (
-              <TableShell>
+              <TableScroll>
                 <table>
                   <thead>
                     <tr>
@@ -306,9 +313,9 @@ export default function ServiceOverviewPage() {
                     ))}
                   </tbody>
                 </table>
-              </TableShell>
+              </TableScroll>
             )}
-          </WorkspaceSection>
+          </ListPanel>
         </>
       )}
     </Workspace>

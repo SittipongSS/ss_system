@@ -22,7 +22,7 @@
 .alertNote { font-size: var(--fs-6); color: var(--text-2); }
 
 /* ── หัวข้อกลุ่ม ────────────────────────────────────────────────────────── */
-.sectionHead, .queueHead {
+.sectionHead {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -31,7 +31,6 @@
   font-size: var(--fs-10);
 }
 .sectionHead { margin-bottom: var(--space-4); }
-.queueHead { margin-bottom: var(--space-3); }
 .sectionLink {
   display: flex;
   align-items: center;

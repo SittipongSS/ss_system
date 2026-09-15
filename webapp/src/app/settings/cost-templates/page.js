@@ -16,9 +16,11 @@ import AccessDenied from "@/components/ui/AccessDenied";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Select from "@/components/ui/Select";
 import EmptyState from "@/components/ui/EmptyState";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
 import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { fmtDateTime, NA } from "@/lib/format";
@@ -288,6 +290,9 @@ export default function CostTemplatesPage() {
     () => templates.filter((t) => (showHidden ? true : !t.isHidden)),
     [templates, showHidden],
   );
+  // skeleton เฉพาะตอนยังไม่มีแถว (UI_DESIGN_SYSTEM.md §รายการ · โหลด) — load() รันซ้ำหลังบันทึก/ซ่อน
+  // ขณะที่การ์ดยังอยู่ ⇒ โหลดซ้ำคงการ์ดไว้แล้วบอกด้วย aria-busy แทน (เดิมการ์ด/ป้ายจำนวนกระพริบเป็น skeleton/ขีด)
+  const firstLoad = loading && templates.length === 0;
 
   const openCreate = () => {
     setForm({ categoryCode: "", categoryLabel: "", note: "", lines: [emptyLine("RM_F"), emptyLine("PM")] });
@@ -385,29 +390,40 @@ export default function CostTemplatesPage() {
       subtitle="โครงบรรทัดต้นทุนที่ใบขอราคาจะกางออกมาให้อัตโนมัติเมื่อเลือกประเภทสินค้า — กำหนดว่าต้องมีรายการอะไรและขอราคาจากฝ่ายไหน (ยังไม่ใส่ราคาที่นี่)"
     >
 
-      <div className="toolbar">
-        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: "var(--text-2)" }}>
-          <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
-          แสดงแม่แบบที่ซ่อนแล้ว
-        </label>
-        <span className="spacer" />
-        <button type="button" className="btn btn-accent" onClick={openCreate}>
-          <Plus size={16} /> สร้างแม่แบบ
-        </button>
-      </div>
-
-      {loading ? (
-        <SkeletonRows rows={4} />
-      ) : loadError ? (
-        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError}</div>
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — เดิม `.toolbar` ลอยเหนือ
+          การ์ดแม่แบบ ไม่มีหัว ไม่มีจำนวน · ปุ่มสร้างเป็นของเนื้อหาในแผง (เปลือกตั้งค่า มติ 2026-08-21)
+          การ์ดแม่แบบยังเป็นการ์ดเดิมในเนื้อแผง (มติ D6) */}
+      <ListPanel
+        icon={<Layers size={17} aria-hidden="true" />}
+        title="ทะเบียนแม่แบบต้นทุน"
+        subtitle="แม่แบบละหนึ่งประเภทสินค้า — แก้ไขหรือซ่อนได้ ลบไม่ได้"
+        count={firstLoad || loadError ? null : `${visible.length} แม่แบบ`}
+        loading={firstLoad}
+        skeletonRows={4}
+        actions={(
+          <button type="button" className="btn btn-accent" onClick={openCreate}>
+            <Plus size={16} /> สร้างแม่แบบ
+          </button>
+        )}
+        toolbar={(
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: "var(--text-2)" }}>
+            <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
+            แสดงแม่แบบที่ซ่อนแล้ว
+          </label>
+        )}
+      >
+      {loadError ? (
+        <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Layers} action={{ label: "สร้างแม่แบบแรก", onClick: openCreate }}>
+        <EmptyState plain icon={Layers} action={{ label: "สร้างแม่แบบแรก", onClick: openCreate }}>
           ยังไม่มีแม่แบบต้นทุน — สร้างแม่แบบให้ประเภทสินค้าที่ใช้บ่อยก่อน
           แล้วใบขอราคาจะกางบรรทัดให้เองทันทีที่เลือกประเภทนั้น
         </EmptyState>
       ) : (
         // ระยะห่างของรายการการ์ดใช้จังหวะเดียวกับหน้าตั้งค่าอื่น (16px) — เดิมเป็น 12 ดิบ ๆ
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4" aria-busy={loading}>
           {visible.map((t) => {
             const summary = summarizeCostTemplate(t.lines || []);
             return (
@@ -455,6 +471,7 @@ export default function CostTemplatesPage() {
           })}
         </div>
       )}
+      </ListPanel>
 
       <Modal
         open={!!editing}

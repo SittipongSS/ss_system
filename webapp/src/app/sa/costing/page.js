@@ -13,9 +13,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Calculator, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
-import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
+import Button from "@/components/ui/Button";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
@@ -148,75 +149,85 @@ export default function CostingListPage() {
   const filterCount = statusFilter.length + teamFilter.length;
 
   return (
-    <Workspace hideHeader>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><Calculator size={22} /></span>{" "}
-            ใบขอราคาผลิต
-          </h1>
-          <p>
-            รวมราคาวัตถุดิบจาก RD และบรรจุภัณฑ์จาก PC ตามแม่แบบของประเภทสินค้า
-            แล้วส่งผู้บริหารอนุมัติราคาผลิตรายสินค้า
-          </p>
-        </div>
-      </div>
-
-      <div className="toolbar">
-        {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
-        <div className="search-glass">
-          <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input autoComplete="off"
-            type="text"
-            placeholder="ค้นหาเลขที่ ลูกค้า หรือชื่อสินค้า"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="ค้นหาใบขอราคา"
-          />
-        </div>
-        <FilterPopover
-          count={filterCount}
-          onClear={() => { setStatusFilter([]); setTeamFilter([]); }}
-          groups={[
-            {
-              key: "status",
-              label: "สถานะ",
-              options: COSTING_STATUSES.map((s) => ({ value: s, label: COSTING_STATUS_LABELS[s] })),
-              selected: statusFilter,
-              onChange: setStatusFilter,
-            },
-            {
-              key: "team",
-              label: "ทีม",
-              options: activeSalesTeams(teamRegistry).map((t) => ({ value: t.code, label: t.name })),
-              selected: teamFilter,
-              onChange: setTeamFilter,
-            },
-          ]}
-        />
-        <span className="spacer" />
-        <button type="button" className="btn" onClick={load} disabled={loading}>
-          <RefreshCw size={14} /> รีเฟรช
-        </button>
-        {canCreate && (
-          <button type="button" className="btn btn-accent" onClick={openCreate}>
-            <Plus size={16} /> เปิดใบขอราคา
-          </button>
+    <Workspace
+      icon={<Calculator size={22} />}
+      title="ใบขอราคาผลิต"
+      subtitle="รวมราคาวัตถุดิบจาก RD และบรรจุภัณฑ์จาก PC ตามแม่แบบของประเภทสินค้า แล้วส่งผู้บริหารอนุมัติราคาผลิตรายสินค้า"
+      headerRight={canCreate && (
+        <Button tone="accent" onClick={openCreate}>
+          <Plus size={15} aria-hidden="true" /> เปิดใบขอราคา
+        </Button>
+      )}
+    >
+      {/* ⭐ หัวหน้าเป็นหัวกลางของ Workspace (เดิม hideHeader + premium-header เขียนเอง) และรายการเป็น
+          ListPanel ใบเดียว (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ)
+          ⚠️ `loading` ของแผงส่งเฉพาะตอนยังไม่มีแถว — เดิมกดรีเฟรชแล้วตารางทั้งก้อนกลายเป็น skeleton
+          ตอนนี้แถวเดิมอยู่ต่อพร้อม aria-busy · หัวแผงกับช่องค้นหาไม่ถูกถอดระหว่างโหลด (ด่าน LP6) */}
+      <ListPanel
+        icon={<Calculator size={17} aria-hidden="true" />}
+        title="ทะเบียนใบขอราคาผลิต"
+        subtitle="ค้นหา กรอง และเปิดใบเพื่อติดตามราคาจาก RD/PC และการอนุมัติ"
+        count={loading && !rows.length ? null : `${visible.length} ใบ`}
+        loading={loading && !rows.length}
+        toolbar={(
+          <>
+            {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
+            <div className="search-glass">
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input autoComplete="off"
+                type="text"
+                placeholder="ค้นหาเลขที่ ลูกค้า หรือชื่อสินค้า"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="ค้นหาใบขอราคา"
+              />
+            </div>
+            <FilterPopover
+              count={filterCount}
+              onClear={() => { setStatusFilter([]); setTeamFilter([]); }}
+              groups={[
+                {
+                  key: "status",
+                  label: "สถานะ",
+                  options: COSTING_STATUSES.map((s) => ({ value: s, label: COSTING_STATUS_LABELS[s] })),
+                  selected: statusFilter,
+                  onChange: setStatusFilter,
+                },
+                {
+                  key: "team",
+                  label: "ทีม",
+                  options: activeSalesTeams(teamRegistry).map((t) => ({ value: t.code, label: t.name })),
+                  selected: teamFilter,
+                  onChange: setTeamFilter,
+                },
+              ]}
+            />
+            <div className="spacer" />
+            {/* รีเฟรชขยับเฉพาะแถวในแผงนี้ ⇒ อยู่ท้ายแถบเครื่องมือ ไม่ใช่หัวหน้า (ปุ่มสร้างอยู่หัวหน้า) */}
+            <Button onClick={load} disabled={loading} icon={<RefreshCw size={15} aria-hidden="true" />}>
+              รีเฟรช
+            </Button>
+          </>
         )}
-      </div>
+      >
+        {/* โหลดรายการไม่สำเร็จ = ข้อความในเนื้อแผงพร้อมทางลองใหม่ (เดิมกล่อง glass-panel แดงแทนทั้งตาราง)
+            ⚠️ load() ไม่ล้างแถวตอนพลาด ⇒ แถวรอบก่อนยังโชว์ใต้ข้อความได้ */}
+        {loadError && (
+          <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}>
+            {loadError}
+          </StatusNotice>
+        )}
 
-      {loading ? (
-        <SkeletonRows rows={5} />
-      ) : loadError ? (
-        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError}</div>
-      ) : visible.length === 0 ? (
-        <EmptyState icon={Calculator}>
-          {rows.length === 0
-            ? "ยังไม่มีใบขอราคาผลิต — เปิดใบแรกจากปุ่มด้านบน"
-            : "ไม่มีใบที่ตรงกับตัวกรอง"}
-        </EmptyState>
-      ) : (
-        <TableScroll>
+        {visible.length === 0 ? (
+          !loadError && (
+            <EmptyState plain icon={Calculator}>
+              {rows.length === 0
+                ? "ยังไม่มีใบขอราคาผลิต — เปิดใบแรกจากปุ่มด้านบน"
+                : "ไม่มีใบที่ตรงกับตัวกรอง"}
+            </EmptyState>
+          )
+        ) : (
+        <TableScroll aria-busy={loading}>
           <table className="premium-table">
             <thead>
               <tr>
@@ -294,7 +305,8 @@ export default function CostingListPage() {
             </tbody>
           </table>
         </TableScroll>
-      )}
+        )}
+      </ListPanel>
 
       <Modal
         open={!!form}

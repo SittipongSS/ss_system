@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlarmClock, CircleDollarSign, ClipboardCheck, Wallet } from "lucide-react";
-import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -117,10 +117,13 @@ export default function FinanceOverviewPage() {
           </MetricStrip>
         )}
 
-        <WorkspaceSection
-          icon={<ClipboardCheck size={17} />}
+        {/* ทะเบียนใบบนหน้าภาพรวม = แผงรายการไม่มีแถบเครื่องมือ (มติผู้ใช้ 2026-09-15) · ลิงก์ไปทะเบียนเต็ม
+            อยู่ใน actions ซ้ายของป้าย · ป้ายเป็นขีดระหว่างโหลด/โหลดพลาด — "0 ใบ" ตอนนั้นเป็นเลขที่โกหก */}
+        <ListPanel
+          icon={<ClipboardCheck size={17} aria-hidden="true" />}
           title="ใบที่รอบัญชีปิด"
           subtitle="เก็บครบทุกงวดแล้ว — ตรวจข้อมูลลูกค้า เงื่อนไขชำระ ยอดและ VAT ครั้งสุดท้ายแล้วปิดใบ · ยอด Actual ไม่เปลี่ยนจากขั้นนี้"
+          count={loading || error ? null : `${awaitingReview.length} ใบ`}
           actions={<Link href="/finance/payments" className="linklike">เปิดทะเบียนการชำระ</Link>}
         >
           <TableScroll surface="embedded" cells="stacked" aria-busy={loading}>
@@ -151,7 +154,7 @@ export default function FinanceOverviewPage() {
                 </tbody>
               </table>
           </TableScroll>
-        </WorkspaceSection>
+        </ListPanel>
       </div>
     </Workspace>
   );

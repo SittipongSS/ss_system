@@ -1,18 +1,26 @@
 /* ตารางสรุปผลประเมินของหัวหน้า TS (เฟส 3 · จอ 07)
    ⚠️ `.req` ไม่มี selector จริงใน globals.css ⇒ ประกาศเอง */
 
-/* กล่องนอกของ TableShell เป็น container — ให้ `.rowMiss` รู้ความกว้างที่มองเห็นได้ (100cqi) */
+/* กล่องเลื่อนของตาราง (TableScroll ที่ถือคลาสนี้) เป็น container — ให้ `.rowMiss` รู้ความกว้าง
+   ที่ *มองเห็นได้* (100cqi) ไม่ใช่ความกว้างตาราง
+   🔄 เดิมอยู่ที่กล่องนอกของ TableShell ⇒ ย้ายมาที่กล่องเลื่อนเอง (TableShell ถูกถอด · มติผู้ใช้ 2026-09-15)
+      กล่องเลื่อนคือส่วนที่ตัดตารางกว้างอยู่แล้ว ความกว้างที่มองเห็นจึงเป็นตัวเดียวกัน */
 .shell { container-type: inline-size; }
 
-/* 🐞 มือถือกรอบซ้อนสองชั้น: การ์ดของ TableShell + กรอบของกล่องเลื่อนที่เว้นเข้ามาอีก 16px
+/* 🐞 มือถือกรอบซ้อนสองชั้น: การ์ด (DetailCard) + กรอบของกล่องเลื่อนที่เว้นเข้ามาอีก 16px
    ⇒ ช่องปัดข้างเหลือ 326 จาก 362px (258 จาก 292 ที่ 320) บนตารางเดียวของหน้าที่ต้องปัดข้าง
-   ตารางนี้ไม่มีหัวการ์ด ⇒ จอแคบเหลือกรอบนอกชั้นเดียว (หน้าตาเดียวกับตารางลอย `surface="auto"`)
-   ⚠️ `div[data-surface]` ไม่ใช่ `[data-surface]` เปล่า — ต้องหนักกว่า `.scroll[data-surface="embedded"]` (0,2,0) */
+   ⇒ จอแคบกล่องเลื่อนกินเต็มกว้างการ์ด (ถอยออกเท่าระยะขอบของเนื้อการ์ด) เหลือกรอบนอกชั้นเดียว
+   ⚠️ `width: auto` คู่กับมาร์จินเสมอ — `.scroll` ตั้ง `width: 100%` ไว้ บวกมาร์จินแล้ว over-constrained
+      (เหตุผลเดียวกับ `.scroll[data-surface="embedded"]` ใน Table.module.css)
+   ⚠️ `[data-surface][data-family]` = (0,3,0) — ต้องหนักกว่า `.scroll[data-surface="auto"]` (0,2,0)
+      ลำดับโหลดของ CSS module สองไฟล์เดาไม่ได้ ห้ามพึ่งว่าไฟล์นี้มาทีหลัง */
 @media (max-width: 680px) {
-  .shell > div[data-surface="embedded"] {
-    margin: 0;
+  .shell[data-surface][data-family] {
+    width: auto;
+    margin-inline: calc(-1 * var(--panel-inset));
     border: 0;
     border-radius: 0;
+    box-shadow: none;
   }
 }
 

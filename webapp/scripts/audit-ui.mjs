@@ -435,8 +435,9 @@ const nativeFeedbackDebt = {
    `Badge.module.css .base`) จาก `3px` เป็นโทเคนเพื่อบวก sink ล่าง · วัดด้วยป้ายจริง
    แล้วพบว่า sink ทำให้ป้ายลอยสูง 4.2px ⇒ คืนค่า `3px` เท่ากันสองด้านตามเดิม
    ⇒ เลขดิบสองจุดนั้นกลับมาพร้อมกัน · ห้ามใช้ช่องนี้เป็นข้ออ้างเพิ่มเลขดิบใหม่ 
-   📉 155 → 154 (2026-09-06) — `22px` ดิบที่ .overviewHeading ยกเข้า --panel-inset ตอนยุบขอบในของหัวการ์ดให้เหลือเส้นเดียว */
-const RAW_SPACING_CAP = 154;
+   📉 155 → 154 (2026-09-06) — `22px` ดิบที่ .overviewHeading ยกเข้า --panel-inset ตอนยุบขอบในของหัวการ์ดให้เหลือเส้นเดียว
+   📉 154 → 153 (2026-09-15) — ช่องค้นหาของหมวดสินค้าเลิกประกาศ `padding: 0 11px` เอง (ย้ายเข้า ListPanel toolbar · ใช้ .search-glass กลาง) */
+const RAW_SPACING_CAP = 153;
 
 /* ── ระยะห่างที่เขียนเป็นเลขดิบใน `className` (2026-09-02) ────────────────────
    ฝาแฝดฝั่ง Tailwind ของ RAW_SPACING_CAP ข้างบน — ชื่อจงใจล้อ RAW_TAILWIND_TYPE_CAP
@@ -754,16 +755,18 @@ const RAW_OPACITY_JSX_CAP = 24;
      · นับ px/rem/em และตัวเลขเปล่า · ข้าม 0 ทุกรูป
    ⇒ แถบ Gantt/กราฟที่กว้างตามข้อมูลจึงไม่เข้าเพดาน ซึ่งถูกแล้ว — ของพวกนั้นไม่มี
    ปลายทางเป็นโทเคน 
-   📉 757 → 754 (2026-09-06) — แถวย้อนกลับของหน้าสินค้ากับ shipment-prep เลิกเขียน inline style เอง ย้ายไปใช้ .ui-workspace-back-row ของกลาง */
-const RAW_SPACING_JSX_CAP = 751;
+   📉 757 → 754 (2026-09-06) — แถวย้อนกลับของหน้าสินค้ากับ shipment-prep เลิกเขียน inline style เอง ย้ายไปใช้ .ui-workspace-back-row ของกลาง
+   📉 751 → 704 (2026-09-15) — ย้ายหน้ารายการเข้า ListPanel รอบแรก: กล่องกรอง/ข้อความผิดพลาด/โครงร่างที่เคยจัดระยะด้วย style เองหายไปพร้อมกัน (ฐานข้อมูล · ขาย · งานบริหาร · ตั้งค่า) */
+const RAW_SPACING_JSX_CAP = 704;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
    ตามบทบาท (`--ctl-h` · `--topbar-h` · `--sidenav-w-*`) ⇒ เพดานนี้ไม่ใช่ "หนี้รอแปลง"
    แต่เป็น **สายสะดุด**: ขนาดของ control ถูกตัดสินที่ primitive แล้ว เขียนซ้ำที่ปลายทาง
    คือทับของที่ตัดสินไปแล้ว · ที่เหลือส่วนใหญ่เป็นขนาดของภาพ/ไอคอน/แผงที่ยังไม่มีชื่อ
-   📉 322 → 321 (2026-09-15) — ช่องค้นหาของ /sa/quotations เลิกตรึง `width: 300` เอง (ย้ายเข้า ListPanel toolbar · `.search-glass` คุมความกว้างเอง) */
-const RAW_SIZE_JSX_CAP = 321;
+   📉 322 → 321 (2026-09-15) — ช่องค้นหาของ /sa/quotations เลิกตรึง `width: 300` เอง (ย้ายเข้า ListPanel toolbar · `.search-glass` คุมความกว้างเอง)
+   📉 321 → 310 (2026-09-15) — ช่องค้นหาของหน้ารายการอื่นเลิกตรึงความกว้างเองแบบเดียวกัน (ลูกค้า · สินค้า · ดีล · ลีด · ใบสั่งขาย · โครงการ · FilterBar ภาษี · งานบริหาร · บันทึกการใช้งาน) */
+const RAW_SIZE_JSX_CAP = 310;
 
 /* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)
@@ -875,7 +878,7 @@ const RAW_TAILWIND_TYPE_CAP = 148;
      src/app/settings/signature-coverage/page.js:218   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
      src/components/ui/FilterPopover.js:137            isActive ? 600 : 500
-     src/components/ui/FilterPopover.js:187            checked ? 600 : 400
+     src/components/ui/FilterPopover.js:196            checked ? 600 : 400
      src/components/ui/MultiSelectFilter.js:79         checked ? 600 : 400
    (เลขบรรทัดข้างบนคือของ **ไฟล์จริง** — ด่านใหม่ใช้ blankBlockComments() จึงไม่เพี้ยน
    เหมือนผลตรวจเก่าที่ตัดคอมเมนต์ทิ้งแล้วบรรทัดเลื่อน)

@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Download, Filter, Users, UserRound } from "lucide-react";
-import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import SortControl from "@/components/ui/SortControl";
@@ -657,9 +657,16 @@ export default function LeadsPage() {
 
         {/* ⚠️ subtitle ต้องบอกให้ชัดว่าตารางนี้ไม่ได้ผูกกับตัวเลือกเดือนด้านบน — ไม่งั้น
             "ลีดเข้า 128 · เดือน 2026-08" กับ "743 ลีด" บนจอเดียวกันจะอ่านเป็นความขัดแย้ง */}
-        <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล — แสดงทุกเดือน ไม่ผูกกับตัวเลือกเดือนด้านบน" actions={<span className="ui-badge">{filtered.length} ลีด · ทุกเดือน</span>}>
-          <div className="toolbar" style={{ flexWrap: "wrap" }}>
-            <div className="search-glass" style={{ width: 260 }}>
+        {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — ป้ายคง "ทุกเดือน" ไว้ด้วยเหตุผลเดียวกับ subtitle ข้างบน
+            · `.toolbar` ของแผงตัดบรรทัดเองอยู่แล้ว ⇒ ไม่ต้องใส่ flexWrap เอง */}
+        <ListPanel
+          icon={<Inbox size={17} aria-hidden="true" />}
+          title="คิวลีด"
+          subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล — แสดงทุกเดือน ไม่ผูกกับตัวเลือกเดือนด้านบน"
+          count={`${filtered.length} ลีด · ทุกเดือน`}
+          toolbar={(
+          <>
+            <div className="search-glass">
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
             </div>
@@ -702,8 +709,9 @@ export default function LeadsPage() {
               onDirectionChange={setSortDir}
               selectStyle={{ width: 120 }}
             />
-          </div>
-
+          </>
+          )}
+        >
             <TableScroll aria-busy={loading} surface="auto"><table className="w-full text-sm">
               <thead>
                 <tr>
@@ -825,7 +833,7 @@ export default function LeadsPage() {
               onPageSize={setPageSize}
             />
           )}
-        </SaSection>
+        </ListPanel>
       </div>
 
       {/* ฟอร์มรับ/แก้ลีด — ชุดช่องกรอกเป็น component เดียวกับฟอร์มแก้บนหน้ารายละเอียด

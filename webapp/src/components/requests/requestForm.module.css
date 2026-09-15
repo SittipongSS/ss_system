@@ -82,7 +82,6 @@
 }
 .muted { color: var(--text-3); }
 .smallCell { font-size: var(--fs-5); }
-.loadError { padding: var(--space-6); color: var(--red); }
 
 /* ความกว้างคอลัมน์ของตารางคิว — ยกออกจาก inline style ตามด่าน audit:ui
    ⭐ เหลือ 4 คอลัมน์ (เดิม 8) หลังยุบของที่คนอ่านเป็นก้อนเดียวกันเข้าเซลล์เดียว

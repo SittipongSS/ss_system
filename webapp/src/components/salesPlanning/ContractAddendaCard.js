@@ -4,12 +4,16 @@
 // ⭐ บันทึกเป็นเอกสารลูกของสัญญา ⇒ ทางสร้างอยู่ในหน้าสัญญาแม่เท่านั้น (มติผู้ใช้)
 // ⚠️ ปุ่มขึ้นเฉพาะสัญญาที่ **ลงนามแล้ว** — ใบที่ยังไม่เซ็นแก้ด้วยการออก Rev. ซึ่งถูกกว่า
 //    และตรงความหมายกว่า · เหตุผลที่กดไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ปุ่มจางเฉย ๆ
+// ⭐ การ์ดเป็น `DetailCard` ทรงเดียวกับการ์ดพี่น้องบนหน้าสัญญา (มติผู้ใช้ 2026-09-15 — ถอด TableShell)
+//    ตารางระเบียนที่เกี่ยวข้องในหน้ารายละเอียด = DetailCard + TableScroll ไม่ใช่กรอบซ้อนกรอบ
+//    · บันทึกเพิ่มเติม = เอกสารแนบท้ายที่ระบุสูตรกลิ่นจากคำร้องพัฒนากลิ่นในดีลเดียวกัน ถือเป็นส่วนหนึ่งของสัญญา
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FileStack, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { TableEmpty, TableShell } from "@/components/ui/Table";
+import { DetailCard } from "@/components/ui/DetailPage";
+import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import { fmtDate, naText } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import { addendumStatusLabel } from "@/lib/sales/contractAddenda";
@@ -71,9 +75,10 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
   };
 
   return (
-    <TableShell
+    <DetailCard
+      icon={FileStack}
       title="บันทึกเพิ่มเติมสัญญา"
-      description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นจากคำร้องพัฒนากลิ่นในดีลเดียวกัน — ถือเป็นส่วนหนึ่งของสัญญา"
+      meta={`${rows.length} ฉบับ`}
       actions={canEdit && signed ? (
         <Button size="sm" tone="accent" onClick={() => { setCreating(true); loadSource(); }}>
           <Plus size={13} aria-hidden="true" /> ทำบันทึกเพิ่มเติม
@@ -81,13 +86,13 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
       ) : null}
     >
       {canEdit && !signed && (
-        <StatusNotice tone="info" title="ทำบันทึกเพิ่มเติมได้เมื่อสัญญาลงนามแล้ว">
+        <StatusNotice tone="info" className="mb-4" title="ทำบันทึกเพิ่มเติมได้เมื่อสัญญาลงนามแล้ว">
           สัญญาที่ยังไม่ลงนามให้แก้ด้วยการออกฉบับแก้ไข (Rev.) แทน
         </StatusNotice>
       )}
 
       {creating && (
-        <div className="form-grid">
+        <div className="form-grid mb-4">
           <div className="span-2">
             {source?.next ? (
               /* บอกให้ครบว่าจะเอาอะไรมาใส่ใบ — เลขคำร้อง · ใบสั่งขายต้นทาง · จำนวนสูตร
@@ -112,33 +117,37 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
         </div>
       )}
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr><th>เลขที่</th><th>ครั้งที่</th><th>อ้างอิงคำร้อง</th><th>วันที่</th><th>สถานะ</th></tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className="premium-row">
-              <td className="mono">
-                <Link prefetch={false} href={`/sa/contracts/addenda/${row.id}`} className="linklike">
-                  {row.docNo || "ฉบับร่าง"}
-                </Link>
-              </td>
-              <td>{row.addendumNo}</td>
-              <td className="mono">{naText(row.requestDocNo)}</td>
-              <td className="mono">{fmtDate(row.addendumDate)}</td>
-              <td>{addendumStatusLabel(row.status)}</td>
-            </tr>
-          ))}
-          {!rows.length && (
-            <TableEmpty
-              colSpan={5}
-              title="ยังไม่มีบันทึกเพิ่มเติม"
-              description={signed ? "กด “ทำบันทึกเพิ่มเติม” — ระบบดึงสูตรจากคำร้องพัฒนากลิ่นในดีลนี้ให้เอง" : undefined}
-            />
-          )}
-        </tbody>
-      </table>
-    </TableShell>
+      {/* surface="embedded" ตัวเดียวกับที่ TableShell เคยส่ง ⇒ กฎ `.cardBody [data-surface="embedded"]`
+          ตัดระยะซ้ำให้กรอบตารางเริ่มแนวเดียวกับหัวการ์ด */}
+      <TableScroll surface="embedded">
+        <table className="w-full text-sm">
+          <thead>
+            <tr><th>เลขที่</th><th>ครั้งที่</th><th>อ้างอิงคำร้อง</th><th>วันที่</th><th>สถานะ</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="premium-row">
+                <td className="mono">
+                  <Link prefetch={false} href={`/sa/contracts/addenda/${row.id}`} className="linklike">
+                    {row.docNo || "ฉบับร่าง"}
+                  </Link>
+                </td>
+                <td>{row.addendumNo}</td>
+                <td className="mono">{naText(row.requestDocNo)}</td>
+                <td className="mono">{fmtDate(row.addendumDate)}</td>
+                <td>{addendumStatusLabel(row.status)}</td>
+              </tr>
+            ))}
+            {!rows.length && (
+              <TableEmpty
+                colSpan={5}
+                title="ยังไม่มีบันทึกเพิ่มเติม"
+                description={signed ? "กด “ทำบันทึกเพิ่มเติม” — ระบบดึงสูตรจากคำร้องพัฒนากลิ่นในดีลนี้ให้เอง" : undefined}
+              />
+            )}
+          </tbody>
+        </table>
+      </TableScroll>
+    </DetailCard>
   );
 }

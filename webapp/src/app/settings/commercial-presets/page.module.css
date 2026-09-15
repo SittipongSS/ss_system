@@ -4,31 +4,25 @@
 .notice svg { flex: 0 0 auto; margin-top: 1px; color: var(--amber); }
 .notice p { margin: 0; font-size: var(--fs-6); line-height: var(--lh-text); }
 .notice strong { color: var(--text); }
-.listPanel { padding: 0; overflow: hidden; }
-.panelHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--panel-inset); border-bottom: 1px solid var(--border); }
-.panelHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-10); }
-.panelHeader p { margin: var(--space-1) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
-.tableWrap { border: 0; border-radius: 0; }
 .tableWrap td > strong, .tableWrap td > small { display: block; }
 .tableWrap td > small { margin-top: var(--space-1); color: var(--text-3); font-size: var(--fs-2); }
 .versionCell { display: grid; gap: var(--space-1-5); }
 .versionCell > span { display: flex; align-items: center; gap: var(--space-1-5); white-space: nowrap; }
-.badge { display: inline-flex; align-items: center; width: max-content; padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-full); font-size: var(--fs-2); font-weight: var(--fw-bold); }
+/* nowrap + flex: none — หัวการ์ดมือถือเป็น flex ที่บีบลูกลงถึง min-content ⇒ 🐞 "เผยแพร่แล้ว" เคยแตกสองบรรทัด */
+.badge { display: inline-flex; flex: none; align-items: center; width: max-content; padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-full); font-size: var(--fs-2); font-weight: var(--fw-bold); white-space: nowrap; }
 .published { color: var(--green); background: var(--green-soft); }
 .draft { color: var(--amber); background: var(--amber-soft); }
 .archived { color: var(--text-2); background: var(--panel-3); }
 .rowActions { display: flex; justify-content: flex-end; gap: var(--space-1-5); white-space: nowrap; }
 .cards { display: none; }
-.card { padding: var(--space-3-5); border-bottom: 1px solid var(--border); background: var(--panel); }
+/* การ์ดมือถือชิดขอบเนื้อแผง (ListPanel มีระยะในของตัวเองแล้ว) — ไม่มีระยะข้าง/พื้นของตัวเองซ้อนอีกชั้น */
+.card { padding-block: var(--space-3-5); border-bottom: 1px solid var(--border); }
 .card:last-child { border-bottom: 0; }
 .card header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2-5); }
 .card header strong, .card header small { display: block; }
 .card header small { margin-top: var(--space-1); color: var(--text-3); font-size: var(--fs-3); }
 .card p { margin: var(--space-2-5) 0; color: var(--text-2); font-size: var(--fs-6); }
 .cardActions { display: flex; justify-content: flex-end; gap: var(--space-2); }
-.error { display: grid; justify-items: center; gap: var(--space-2-5); padding: var(--space-9) var(--space-5); text-align: center; }
-.error svg { color: var(--red); }
-.error p { margin: 0; color: var(--text-2); }
 .form { display: grid; gap: var(--space-4); }
 .formSection { display: grid; gap: var(--space-2-5); padding-bottom: var(--space-4); border-bottom: 1px solid var(--border); }
 .formSection:last-child { padding-bottom: 0; border-bottom: 0; }
@@ -68,8 +62,6 @@
 @media (max-width: 768px) {
   .tableWrap { display: none; }
   .cards { display: block; }
-  /* เว้นขอบเท่ากับ .card ข้างล่าง (14px) — ไม่งั้นหัวข้อกับแถวรายการไม่อยู่แนวเดียวกัน */
-  .panelHeader { padding: var(--space-3-5); }
 }
 
 @media (max-width: 560px) {

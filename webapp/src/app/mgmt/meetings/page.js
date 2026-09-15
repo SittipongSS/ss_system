@@ -10,8 +10,8 @@ import MeetingFormModal from "@/components/mgmt/MeetingFormModal";
 import MeetingDrawer from "@/components/mgmt/MeetingDrawer";
 import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
-import SkeletonRows from "@/components/ui/Skeleton";
-import Workspace from "@/components/ui/Workspace";
+import EmptyState from "@/components/ui/EmptyState";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { apiFetch } from "@/lib/apiFetch";
 
 const nowYear = new Date().getFullYear();
@@ -79,38 +79,47 @@ export default function MgmtMeetingsPage() {
       icon={<Users size={22} />}
       title="การประชุม"
       subtitle="บันทึกการประชุม · สรุป · ติดตามผล · แนบไฟล์/เอกสาร Google"
-      headerRight={(
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
+      headerRight={canEdit ? (
+        <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มการประชุม</button>
+      ) : null}
+    >
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — ตัวเลือกปีคุมแค่รายการนี้ จึงย้ายจากหัวหน้าเข้าแถบเครื่องมือของแผง
+          (ปุ่มเพิ่มการประชุมยังอยู่หัวหน้า) · การ์ดยังเป็นการ์ดเดิมในเนื้อแผง (มติ D6)
+          ⚠️ loading แทนที่เฉพาะเนื้อ — ตัวเลือกปีไม่หลุดโฟกัสระหว่างโหลดปีใหม่ */}
+      <ListPanel
+        icon={<Users size={17} aria-hidden="true" />}
+        title="ทะเบียนการประชุม"
+        subtitle="กดการ์ดเพื่อเปิดสรุป ติดตามผล และไฟล์แนบ"
+        count={loading ? null : `${meetings.length} ครั้ง`}
+        loading={loading}
+        toolbar={(
+          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="ปีของการประชุม">
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
           </Select>
-          {canEdit && <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มการประชุม</button>}
-        </div>
-      )}
-    >
-      {loading ? (
-        <SkeletonRows rows={6} />
-      ) : meetings.length === 0 ? (
-        <div className="glass-panel" style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีการประชุมในปีนี้</div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-          {meetings.map((m) => (
-            <button key={m.id} onClick={() => setSelected(m)} className="glass-panel" style={{ textAlign: "left", padding: 16, cursor: "pointer", display: "flex", flexDirection: "column", gap: 8, color: "inherit" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-5)", color: "var(--text-2)", flexWrap: "wrap" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={13} /> {fmt(m.meetingDate)}</span>
-                {m.timeText && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock3 size={13} /> {m.timeText}</span>}
-              </div>
-              <div style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>{m.title}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-5)" }}>
-                {m.deptCode && <span className="pill">{m.deptCode}</span>}
-                {m.assigneeName && <span style={{ color: "var(--text-3)" }}>{m.assigneeName}</span>}
-                <span className={`pill ${m.followUp === "follow" ? "ok" : ""}`}>{MEETING_FOLLOWUP_LABELS[m.followUp] || m.followUp}</span>
-              </div>
-              {m.summary && <div style={{ fontSize: "var(--fs-6)", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{m.summary}</div>}
-            </button>
-          ))}
-        </div>
-      )}
+        )}
+      >
+        {meetings.length === 0 ? (
+          <EmptyState plain icon={Users}>{`ยังไม่มีการประชุมในปี ${year}`}</EmptyState>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+            {meetings.map((m) => (
+              <button key={m.id} onClick={() => setSelected(m)} className="glass-panel" style={{ textAlign: "left", padding: 16, cursor: "pointer", display: "flex", flexDirection: "column", gap: 8, color: "inherit" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-5)", color: "var(--text-2)", flexWrap: "wrap" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={13} /> {fmt(m.meetingDate)}</span>
+                  {m.timeText && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock3 size={13} /> {m.timeText}</span>}
+                </div>
+                <div style={{ fontSize: "var(--fs-9)", fontWeight: "var(--fw-semibold)" }}>{m.title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-5)" }}>
+                  {m.deptCode && <span className="pill">{m.deptCode}</span>}
+                  {m.assigneeName && <span style={{ color: "var(--text-3)" }}>{m.assigneeName}</span>}
+                  <span className={`pill ${m.followUp === "follow" ? "ok" : ""}`}>{MEETING_FOLLOWUP_LABELS[m.followUp] || m.followUp}</span>
+                </div>
+                {m.summary && <div style={{ fontSize: "var(--fs-6)", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{m.summary}</div>}
+              </button>
+            ))}
+          </div>
+        )}
+      </ListPanel>
 
       <MeetingFormModal open={formOpen} onClose={() => setFormOpen(false)} onSaved={upsert} meeting={formMeeting} departments={departments} users={users} />
       <MeetingDrawer

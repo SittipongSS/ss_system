@@ -1,18 +1,11 @@
 /* คิวงานผลิต (mig 0189)
    ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
+/* ตัวเลขแยกสถานะท้ายแถบเครื่องมือของแผงรายการ (spacer ของ .toolbar ดันไปขวาให้แล้ว) */
 .counts {
   color: var(--text-3);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
-  margin-inline-start: auto;
 }
 
 .numCol { text-align: right; white-space: nowrap; }

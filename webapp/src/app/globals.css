@@ -5230,29 +5230,6 @@ button.empty-state { width: 100%; font: inherit; }
   font-size: var(--fs-7);
   font-weight: var(--fw-medium);
 }
-.project-detail-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-left: auto;
-  text-align: right;
-}
-.project-detail-action-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.timeline-header-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2-5);
-  flex-wrap: wrap;
-}
 .project-timeline-card-actions {
   display: flex;
   align-items: center;
@@ -5262,7 +5239,6 @@ button.empty-state { width: 100%; font: inherit; }
   flex-wrap: wrap;
 }
 @media (max-width: 900px) {
-  .project-detail-actions,
   .project-timeline-card-actions { width: 100%; }
 }
 
@@ -6891,12 +6867,6 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   line-height: var(--lh-thai);
 }
 .timeline-task-name > svg { margin-top: var(--space-0-5); }
-/* ของเข้า PM/RM — วางต่อท้ายไทม์ไลน์ในกล่องเดียวกัน (mig 0176) */
-.timeline-deliveries {
-  margin-top: var(--space-5);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border);
-}
 /* หมุดคำร้องบนแถวขั้นตอน — ตัวห่อลิงก์ล้วน หน้าตาเป็นของ <StatusBadge> ข้างใน
    (ตัดสไตล์ลิงก์ทิ้งเพื่อไม่ให้ขีดเส้นใต้ทับป้าย) */
 .timeline-step-pin {

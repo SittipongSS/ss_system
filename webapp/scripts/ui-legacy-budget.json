@@ -3,9 +3,9 @@
   "modules": {
     "sales": {
       "legacyTable": 31,
-      "legacySurface": 72,
-      "inlineStyle": 869,
-      "rawButtonClass": 156,
+      "legacySurface": 60,
+      "inlineStyle": 817,
+      "rawButtonClass": 152,
       "rawInputClass": 49
     },
     "sahamit": {
@@ -17,31 +17,31 @@
     },
     "database": {
       "legacyTable": 7,
-      "legacySurface": 20,
-      "inlineStyle": 49,
+      "legacySurface": 19,
+      "inlineStyle": 46,
       "rawButtonClass": 38,
       "rawInputClass": 23
     },
     "tax": {
       "legacyTable": 1,
-      "legacySurface": 12,
-      "inlineStyle": 107,
+      "legacySurface": 11,
+      "inlineStyle": 106,
       "rawButtonClass": 22,
       "rawInputClass": 9
     },
     "mgmt": {
       "legacyTable": 1,
-      "legacySurface": 12,
-      "inlineStyle": 163,
-      "rawButtonClass": 23,
-      "rawInputClass": 22
+      "legacySurface": 8,
+      "inlineStyle": 144,
+      "rawButtonClass": 22,
+      "rawInputClass": 16
     },
     "settings": {
       "legacyTable": 8,
-      "legacySurface": 29,
-      "inlineStyle": 72,
-      "rawButtonClass": 90,
-      "rawInputClass": 36
+      "legacySurface": 23,
+      "inlineStyle": 65,
+      "rawButtonClass": 87,
+      "rawInputClass": 33
     },
     "shared": {
       "legacyTable": 2,

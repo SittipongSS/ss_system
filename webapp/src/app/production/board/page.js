@@ -11,9 +11,9 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
-import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import ProductionJobModal from "@/components/pm/ProductionJobModal";
 import Toast from "@/components/ui/Toast";
 import { isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -135,23 +135,38 @@ export default function ProductionBoardPage() {
       icon={<CalendarRange size={20} aria-hidden="true" />}
       title="บอร์ดตารางผลิต"
       subtitle="ไลน์ × วัน · เห็นทันทีว่าวันไหนจองเกินกำลัง และงานไหนวางก่อนของมาถึง"
-      toolbar={(
-        <div className={styles.toolbar}>
-          <Button tone="neutral" variant="quiet" iconOnly aria-label="ย้อน 1 สัปดาห์" onClick={() => shiftWeeks(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
-          <strong className={styles.rangeLabel}>{rangeLabel}</strong>
-          <Button tone="neutral" variant="quiet" iconOnly aria-label="ถัดไป 1 สัปดาห์" onClick={() => shiftWeeks(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
-          <Button tone="neutral" variant="quiet" size="sm" onClick={() => setStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
-          <span className={styles.counts}>
-            {overloaded > 0 && <strong className={styles.overCount}>เกินกำลัง {overloaded} ช่อง</strong>}
-            {jobs.length} งานบนบอร์ด
-          </span>
-        </div>
-      )}
     >
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
-
-      {loading ? <SkeletonRows rows={5} /> : loadError ? null : lines.length === 0 ? (
-        <EmptyState icon={CalendarRange}>
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — เลื่อนสัปดาห์ขยับเฉพาะแถวในแผงนี้ จึงอยู่ใน `toolbar`
+          ป้ายจำนวน = งานบนบอร์ดของช่วงที่เปิดอยู่ · ช่องเกินกำลังยังอยู่ท้ายแถบเครื่องมือ
+          (ตัวเลขที่ต้องเห็นก่อนเลื่อนดูทั้งบอร์ด)
+          ⚠️ `loading` ของแผงแทนที่เฉพาะเนื้อ ⇒ ปุ่มเลื่อนสัปดาห์ไม่หลุดโฟกัสระหว่างโหลดช่วงใหม่ */}
+      <ListPanel
+        icon={<CalendarRange size={17} aria-hidden="true" />}
+        title="บอร์ดไลน์ × วัน"
+        subtitle="กดชิปงานเพื่อแก้แผน · ช่องแดง = จองเกินกำลัง · กรอบเหลือง = วางก่อนของมาถึง"
+        count={loading || loadError ? null : `${jobs.length} งาน`}
+        loading={loading}
+        toolbar={(
+          <>
+            <Button tone="neutral" variant="quiet" iconOnly aria-label="ย้อน 1 สัปดาห์" onClick={() => shiftWeeks(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
+            <strong className={styles.rangeLabel}>{rangeLabel}</strong>
+            <Button tone="neutral" variant="quiet" iconOnly aria-label="ถัดไป 1 สัปดาห์" onClick={() => shiftWeeks(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
+            <Button tone="neutral" variant="quiet" size="sm" onClick={() => setStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
+            <div className="spacer" />
+            {overloaded > 0 && <strong className={styles.overCount}>เกินกำลัง {overloaded} ช่อง</strong>}
+          </>
+        )}
+      >
+      {loadError ? (
+        <StatusNotice
+          tone="error"
+          className="mb-4"
+          action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}
+        >
+          {loadError}
+        </StatusNotice>
+      ) : lines.length === 0 ? (
+        <EmptyState plain icon={CalendarRange}>
           ยังไม่มีไลน์ผลิต — ตั้งค่าไลน์ก่อนที่เมนู &quot;ไลน์ผลิต&quot; แล้วบอร์ดจะมีแถวให้วางงาน
         </EmptyState>
       ) : (
@@ -246,6 +261,7 @@ export default function ProductionBoardPage() {
           </table>
         </TableScroll>
       )}
+      </ListPanel>
 
       <ProductionJobModal
         open={formJob !== undefined}

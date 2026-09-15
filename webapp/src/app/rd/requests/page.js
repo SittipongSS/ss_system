@@ -114,14 +114,8 @@ export default function RdRequestsPage() {
          "R&D" ส่วนภาพรวมเขียนไทย และข้อความว่างพูด "ฝ่าย RD" ⇒ ฝ่ายเดียวสามชื่อ */
       title="คิวคำร้องฝ่ายวิจัยและพัฒนา"
       subtitle={TAB_BLURB[tab]}
-      /* ⭐ ตัวสลับมุมมองอยู่ในหัวการ์ดตามต้นแบบหน้างานของฉัน
-         ⚠️ **ไม่มีปุ่ม "เปิดคำร้อง"** — คิวของฝ่ายเป็นที่ *ตอบ* ไม่ใช่ที่เปิด (ม-29) */
-      headerRight={(
-        <ViewSwitcher
-          value={board.view} onChange={board.setView}
-          modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
-        />
-      )}
+      /* ⚠️ **ไม่มีปุ่ม "เปิดคำร้อง"** — คิวของฝ่ายเป็นที่ *ตอบ* ไม่ใช่ที่เปิด (ม-29)
+         ⭐ ตัวสลับมุมมองอยู่ในแถบเครื่องมือของแผงคิว (`toolbarEnd` · มติผู้ใช้ 2026-09-15) */
     >
       <div className="flex flex-col gap-4">
 
@@ -156,9 +150,15 @@ export default function RdRequestsPage() {
 
       <RequestQueuePanel
         scope="queue" dept={DEPT} rows={rows} board={board}
-        /* หัวเรื่องอยู่บนหัวหน้าแล้ว — หัวการ์ดซ้ำอีกชั้นกิน 81px ฟรี
-           และป้ายจำนวนก็ซ้ำกับ Pager ใต้ตาราง (ดู prop sectionHeader) */
-        sectionHeader={false}
+        /* หัวแผงรายการกลับมา (มติผู้ใช้ 2026-09-15 · D1 — แทนมติถอดหัวการ์ด 2026-09-07) */
+        icon={<FlaskConical size={17} aria-hidden="true" />}
+        sectionTitle="รายการคำร้องถึงฝ่ายวิจัยและพัฒนา"
+        toolbarEnd={(
+          <ViewSwitcher
+            value={board.view} onChange={board.setView}
+            modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
+          />
+        )}
         /* ประวัติโชว์ "วันที่ปิดเรื่อง" สองฝั่งแทนกำหนดส่ง (ม-145 · preset `history`) */
         columns={tab === "history" ? "history" : "queue"}
         emptyText={tab === "history" ? `ยังไม่มีเรื่องของ ${DEPT} ที่จบแล้ว` : null}

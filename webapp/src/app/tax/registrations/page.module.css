@@ -36,3 +36,12 @@
   color: var(--text-3);
   white-space: nowrap;
 }
+
+/* ก้อนช่วงวันที่ในแถบเครื่องมือของแผงรายการ — ตัดบรรทัดไปด้วยกันทั้ง "จาก" และ "ถึง" */
+.rangeGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}

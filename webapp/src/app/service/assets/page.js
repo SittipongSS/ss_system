@@ -19,12 +19,11 @@ import ClickableCard from "@/components/ui/ClickableCard";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Input from "@/components/ui/Input";
-import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { TableShell } from "@/components/ui/Table";
+import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
-import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService } from "@/lib/permissions";
 import Pager from "@/components/ui/Pager";
@@ -63,7 +62,6 @@ export default function ServiceAssetsPage() {
   const urlTab = params.get("tab") === "models" ? "models" : "machines";
   const [tab, setTab] = useState(urlTab);
   useEffect(() => { setTab(urlTab); }, [urlTab]);
-  const [modelCount, setModelCount] = useState(null);
   // สัญญาณกดปุ่ม "เพิ่มรุ่น" บนหัวหน้า — ตัวนับ ไม่ใช่ boolean (กดซ้ำต้องเปิดใหม่ได้)
   const [addModelTick, setAddModelTick] = useState(0);
 
@@ -266,11 +264,13 @@ export default function ServiceAssetsPage() {
     </span>
   );
 
+  /* เครื่องมือของรายการ = fragment เข้า `ListPanel toolbar` — แผงห่อ `.toolbar` ให้เอง ห้ามห่อซ้ำ (มติผู้ใช้ 2026-09-15) */
   const toolbar = (
-    <div className="toolbar">
+    <>
       <div className={`search-glass ${styles.searchInput}`.trim()}>
         <Search size={15} aria-hidden="true" />
         <Input
+          autoComplete="off"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="ค้นหารหัสเครื่อง รุ่น ไซต์ หรือลูกค้า"
@@ -316,7 +316,7 @@ export default function ServiceAssetsPage() {
         modes={["table", { value: "cards", icon: LayoutGrid, label: "การ์ด" }]}
         ariaLabel="มุมมองทะเบียนเครื่อง"
       />
-    </div>
+    </>
   );
 
   return (
@@ -334,9 +334,8 @@ export default function ServiceAssetsPage() {
       /* ปุ่มก้าวถัดไปเป็นของ **แท็บที่เปิดอยู่** — ท่าเดียวกับหน้าสัญญา */
       headerRight={(
         <>
-          <span className="ui-badge">
-            {tab === "models" ? `${modelCount ?? 0} รุ่น` : `${assets.length} เครื่อง`}
-          </span>
+          {/* ป้ายจำนวนย้ายไปหัวแผงรายการของแท็บนั้น (มติผู้ใช้ 2026-09-15 · ListPanel) —
+              เลขเดียวกันห้ามซ้ำบนหัวหน้า */}
           {/* ⭐ จุดเกิดของเครื่อง — ไม่มีสิทธิ์แก้ = ไม่โชว์ปุ่ม (ไม่ใช่โชว์แล้วกดไม่ได้)
               🔄 เดิมเขียนว่า "รับเครื่องเข้าคลัง" ซึ่งผู้ใช้ทักว่าเข้าใจผิด — การขึ้นทะเบียน
                  คือการบอกว่าบริษัทได้เครื่องมา ไม่ใช่การย้ายของเข้าสถานที่ */}
@@ -363,7 +362,7 @@ export default function ServiceAssetsPage() {
         ariaLabel="มุมมองของทะเบียนเครื่อง"
         tabs={[
           { key: "machines", label: "เครื่อง" },
-          /* ⚠️ **ไม่ใส่เลขบนแท็บ** — ป้ายนับอยู่บนหัวหน้าและสลับตามแท็บอยู่แล้ว
+          /* ⚠️ **ไม่ใส่เลขบนแท็บ** — ป้ายนับอยู่บนหัวแผงรายการของแท็บนั้นอยู่แล้ว
              ⇒ ใส่ที่นี่ด้วยจะเห็นเลขเดียวกันสองที่ห่างกันสองนิ้ว
              (ต่างจากแท็บ "ต่อสัญญา 3" ที่เลขคือ **งานค้าง** ซึ่งต้องรู้ก่อนกดเข้าไป —
               จำนวนรุ่นไม่ใช่งานค้าง มันคือขนาดของทะเบียน) */
@@ -372,7 +371,7 @@ export default function ServiceAssetsPage() {
       />
 
       {tab === "models" && (
-        <AssetModelsPanel canEdit={canEdit} addSignal={addModelTick} onCount={setModelCount} />
+        <AssetModelsPanel canEdit={canEdit} addSignal={addModelTick} />
       )}
 
       {tab === "machines" && <>
@@ -388,105 +387,122 @@ export default function ServiceAssetsPage() {
         </MetricStrip>
       )}
 
-      {/* ทะเบียนว่างจริง = ค้น/กรอง/สลับมุมมองไม่มีอะไรให้ทำ ⇒ ซ่อน
-          ⚠️ ระหว่างโหลดต้องค้างไว้ ไม่งั้นแถบเด้งขึ้นมาดันตารางลงทุกครั้งที่เปิดหน้า */}
-      {(loading || loadError || assets.length > 0) && toolbar}
-
-      {loadError && (
-        <StatusNotice tone="error" title="โหลดทะเบียนเครื่องไม่สำเร็จ"
-          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
-          {loadError}
-        </StatusNotice>
-      )}
-
-      {loading || loadError ? (
-        loading ? <SkeletonRows rows={6} /> : null
-      ) : assets.length === 0 ? (
-        /* ไม่มีสิทธิ์แก้ = ไม่เห็นปุ่มเพิ่มเครื่อง ⇒ อย่าบอกให้กด */
-        <EmptyState icon={AirVent}>
-          {canEdit
-            ? "ยังไม่มีเครื่องในทะเบียน — กด “เพิ่มเครื่อง” เพื่อขึ้นทะเบียนเครื่องที่บริษัทได้รับมา"
-            : "ยังไม่มีเครื่องในทะเบียน"}
-        </EmptyState>
-      ) : sort.sorted.length === 0 ? (
-        /* ⚠️ ค้นไม่เจอ ≠ ไม่มีเครื่อง — ตารางว่างโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
-        <EmptyState icon={Search}>
-          {q ? `ไม่มีเครื่องที่ตรงกับ “${search.trim()}”` : "ไม่มีเครื่องที่ตรงกับตัวกรองที่เลือก"} — ลองเปลี่ยนคำค้นหรือล้างตัวกรอง
-        </EmptyState>
-      ) : view === "cards" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {pageRows.map((asset) => (
-            /* 🐞 เดิมห่อทั้งใบด้วย <Link> แต่ locationCell() มีลิงก์ไปไซต์อยู่ข้างใน = <a> ซ้อน <a>
-               (HTML ผิด · React ฟ้อง hydration ทุกจอที่มุมมองการ์ดเป็นค่าตั้งต้น)
-               ⇒ ท่า C: ทางเข้าจริงคือ <Link> ที่หัวการ์ด · <ClickableCard> เป็นทางลัดของเมาส์
-               ลิงก์ไปไซต์อยู่ครบเหมือนเดิม (ดูหัวไฟล์ ui/ClickableCard.js) */
-            <ClickableCard key={asset.id} href={`/service/assets/${asset.id}`} className={`${styles.card} clickable-row p-4 flex-col gap-2`}>
-              <div className="flex items-start justify-between gap-2">
-                <Link href={`/service/assets/${asset.id}`} className="min-w-0 linklike linklike-block">
-                  <div className={styles.cardCode}>{naText(asset.code || asset.serial || asset.label)}</div>
-                  <div className={styles.sub}>{naText(asset.model)} · {ASSET_KIND_LABELS[asset.kind] || asset.kind}</div>
-                </Link>
-                {statusCell(asset)}
-              </div>
-              <div className={styles.cardLoc}>{locationCell(asset)}</div>
-              <div className={styles.cardFoot}>
-                <span>{asset.receivedAt ? `รับเข้า ${fmtDate(asset.receivedAt)}` : "ไม่ระบุวันรับเข้า"}</span>
-                <span>{naText(asset.colour)}</span>
-              </div>
-            </ClickableCard>
-          ))}
-        </div>
-      ) : (
-        /* ⚠️ `minWidth` — รหัสไซต์รูปใหม่ยาว 19 ตัว บวกคอลัมน์เครื่องอีกชุด
-           ไม่ส่งค่านี้ตารางจะบีบจนรหัสตัดบรรทัดแทนที่จะเลื่อนแนวนอน */
-        <TableShell minWidth={1080}>
-          <table>
-            <thead>
-              <tr>
-                <SortTh label="รหัสเครื่อง" sortKey="serial" sort={sort} />
-                <SortTh label="รุ่น" sortKey="model" sort={sort} />
-                {/* ⭐ สี กับ วันที่รับเข้า มีคอลัมน์ในฐานมาตั้งแต่ mig 0332
-                    แต่ทะเบียนไม่เคยเอามาแสดง — เพิ่มสองคอลัมน์นี้ไม่ต้องมี migration */}
-                <SortTh label="สี" sortKey="colour" sort={sort} />
-                <SortTh label="ชนิด" sortKey="kind" sort={sort} />
-                <SortTh label="รับเข้าเมื่อ" sortKey="receivedAt" sort={sort} />
-                <SortTh label="สถานะ / สภาพ" sortKey="status" sort={sort} />
-                <SortTh label="อยู่ที่" sortKey="site" sort={sort} />
-                <th>โซน / จุดติดตั้ง</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.map((asset) => (
-                <tr key={asset.id}>
-                  <td>
-                    {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ */}
-                    {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ
-                        ⚠️ ตัวตนของเครื่องคือ `code` ที่ระบบออกให้ · ใบเก่าที่ยังไม่มี
-                           รหัสรูปใหม่ตกไปที่ serial แล้ว label ตามลำดับ */}
-                    <Link href={`/service/assets/${asset.id}`} className={`${styles.assetLink} mono`}>
-                      {naText(asset.code || asset.serial || asset.label)}
-                    </Link>
-                    {/* ⚠️ **ซ่อนบรรทัดล่างเมื่อมันซ้ำกับคอลัมน์อื่น** — เครื่องที่เพิ่งขึ้น
-                        ทะเบียนตั้ง `label` = ชื่อรุ่น ซึ่งคอลัมน์ "รุ่น" บอกอยู่แล้ว
-                        ⇒ บรรทัดนี้จะมีความหมายก็ต่อเมื่อ TS ตั้งชื่อตำแหน่งให้ตอนติดตั้ง
-                        ("เครื่องล็อบบี้ ซ้าย") ซึ่งเป็นข้อมูลที่ไม่มีที่อื่นบอก */}
-                    {asset.label && asset.label !== (asset.code || asset.serial) && asset.label !== asset.model
-                      ? <span className={styles.sub}>{asset.label}</span> : null}
-                  </td>
-                  <td>{naText(asset.model)}</td>
-                  <td>{naText(asset.colour)}</td>
-                  <td>{ASSET_KIND_LABELS[asset.kind] || naText(asset.kind)}</td>
-                  <td>{asset.receivedAt ? fmtDate(asset.receivedAt) : naText(null)}</td>
-                  <td>{statusCell(asset)}</td>
-                  <td>{locationCell(asset)}</td>
-                  <td>{naText(asset.spot)}</td>
+      {/* ⭐ รายการ = ListPanel ใบเดียว (มติผู้ใช้ 2026-09-15) — แท็บกับตัวเลขสรุปอยู่เหนือแผง
+          · ป้ายนับเครื่องที่มองเห็นหลังค้นหา/กรอง = ยอดของ Pager · ยังไม่รู้ (โหลด/พัง) = ขีด ไม่ใช่ 0
+          · `loading` แทนที่เฉพาะเนื้อ — แถบค้นหายืนอยู่ระหว่างโหลด */}
+      <ListPanel
+        icon={<AirVent size={17} aria-hidden="true" />}
+        title="รายการเครื่อง"
+        subtitle="ค้นหารหัสเครื่อง แล้วกรองตามที่อยู่ รุ่น สถานะ สภาพ หรือลูกค้า"
+        count={loading || loadError ? null : `${sort.sorted.length} เครื่อง`}
+        loading={loading}
+        /* ทะเบียนว่างจริง = ค้น/กรอง/สลับมุมมองไม่มีอะไรให้ทำ ⇒ ไม่มีแถบ
+           ⚠️ ระหว่างโหลดต้องค้างไว้ ไม่งั้นแถบเด้งขึ้นมาดันตารางลงทุกครั้งที่เปิดหน้า */
+        toolbar={loading || loadError || assets.length > 0 ? toolbar : null}
+      >
+        {loadError ? (
+          <StatusNotice tone="error" title="โหลดทะเบียนเครื่องไม่สำเร็จ"
+            action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}>
+            {loadError}
+          </StatusNotice>
+        ) : assets.length === 0 ? (
+          /* ไม่มีสิทธิ์แก้ = ไม่เห็นปุ่มเพิ่มเครื่อง ⇒ อย่าบอกให้กด */
+          <EmptyState plain icon={AirVent}>
+            {canEdit
+              ? "ยังไม่มีเครื่องในทะเบียน — กด “เพิ่มเครื่อง” เพื่อขึ้นทะเบียนเครื่องที่บริษัทได้รับมา"
+              : "ยังไม่มีเครื่องในทะเบียน"}
+          </EmptyState>
+        ) : sort.sorted.length === 0 ? (
+          /* ⚠️ ค้นไม่เจอ ≠ ไม่มีเครื่อง — ตารางว่างโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
+          <EmptyState plain icon={Search}>
+            {q ? `ไม่มีเครื่องที่ตรงกับ “${search.trim()}”` : "ไม่มีเครื่องที่ตรงกับตัวกรองที่เลือก"} — ลองเปลี่ยนคำค้นหรือล้างตัวกรอง
+          </EmptyState>
+        ) : view === "cards" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {pageRows.map((asset) => (
+              /* 🐞 เดิมห่อทั้งใบด้วย <Link> แต่ locationCell() มีลิงก์ไปไซต์อยู่ข้างใน = <a> ซ้อน <a>
+                 (HTML ผิด · React ฟ้อง hydration ทุกจอที่มุมมองการ์ดเป็นค่าตั้งต้น)
+                 ⇒ ท่า C: ทางเข้าจริงคือ <Link> ที่หัวการ์ด · <ClickableCard> เป็นทางลัดของเมาส์
+                 ลิงก์ไปไซต์อยู่ครบเหมือนเดิม (ดูหัวไฟล์ ui/ClickableCard.js) */
+              <ClickableCard key={asset.id} href={`/service/assets/${asset.id}`} className={`${styles.card} clickable-row p-4 flex-col gap-2`}>
+                <div className="flex items-start justify-between gap-2">
+                  <Link href={`/service/assets/${asset.id}`} className="min-w-0 linklike linklike-block">
+                    <div className={styles.cardCode}>{naText(asset.code || asset.serial || asset.label)}</div>
+                    <div className={styles.sub}>{naText(asset.model)} · {ASSET_KIND_LABELS[asset.kind] || asset.kind}</div>
+                  </Link>
+                  {statusCell(asset)}
+                </div>
+                <div className={styles.cardLoc}>{locationCell(asset)}</div>
+                <div className={styles.cardFoot}>
+                  <span>{asset.receivedAt ? `รับเข้า ${fmtDate(asset.receivedAt)}` : "ไม่ระบุวันรับเข้า"}</span>
+                  <span>{naText(asset.colour)}</span>
+                </div>
+              </ClickableCard>
+            ))}
+          </div>
+        ) : (
+          /* ⚠️ `minWidth` — รหัสไซต์รูปใหม่ยาว 19 ตัว บวกคอลัมน์เครื่องอีกชุด
+             ไม่ส่งค่านี้ตารางจะบีบจนรหัสตัดบรรทัดแทนที่จะเลื่อนแนวนอน
+             กรอบชั้นเดียว TableScroll ในเนื้อแผง — เดิม TableShell = การ์ด + กรอบตารางซ้อนข้างใน */
+          <TableScroll minWidth={1080}>
+            <table>
+              <thead>
+                <tr>
+                  <SortTh label="รหัสเครื่อง" sortKey="serial" sort={sort} />
+                  <SortTh label="รุ่น" sortKey="model" sort={sort} />
+                  {/* ⭐ สี กับ วันที่รับเข้า มีคอลัมน์ในฐานมาตั้งแต่ mig 0332
+                      แต่ทะเบียนไม่เคยเอามาแสดง — เพิ่มสองคอลัมน์นี้ไม่ต้องมี migration */}
+                  <SortTh label="สี" sortKey="colour" sort={sort} />
+                  <SortTh label="ชนิด" sortKey="kind" sort={sort} />
+                  <SortTh label="รับเข้าเมื่อ" sortKey="receivedAt" sort={sort} />
+                  <SortTh label="สถานะ / สภาพ" sortKey="status" sort={sort} />
+                  <SortTh label="อยู่ที่" sortKey="site" sort={sort} />
+                  <th>โซน / จุดติดตั้ง</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableShell>
-      )}
+              </thead>
+              <tbody>
+                {pageRows.map((asset) => (
+                  <tr key={asset.id}>
+                    <td>
+                      {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ */}
+                      {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ
+                          ⚠️ ตัวตนของเครื่องคือ `code` ที่ระบบออกให้ · ใบเก่าที่ยังไม่มี
+                             รหัสรูปใหม่ตกไปที่ serial แล้ว label ตามลำดับ */}
+                      <Link href={`/service/assets/${asset.id}`} className={`${styles.assetLink} mono`}>
+                        {naText(asset.code || asset.serial || asset.label)}
+                      </Link>
+                      {/* ⚠️ **ซ่อนบรรทัดล่างเมื่อมันซ้ำกับคอลัมน์อื่น** — เครื่องที่เพิ่งขึ้น
+                          ทะเบียนตั้ง `label` = ชื่อรุ่น ซึ่งคอลัมน์ "รุ่น" บอกอยู่แล้ว
+                          ⇒ บรรทัดนี้จะมีความหมายก็ต่อเมื่อ TS ตั้งชื่อตำแหน่งให้ตอนติดตั้ง
+                          ("เครื่องล็อบบี้ ซ้าย") ซึ่งเป็นข้อมูลที่ไม่มีที่อื่นบอก */}
+                      {asset.label && asset.label !== (asset.code || asset.serial) && asset.label !== asset.model
+                        ? <span className={styles.sub}>{asset.label}</span> : null}
+                    </td>
+                    <td>{naText(asset.model)}</td>
+                    <td>{naText(asset.colour)}</td>
+                    <td>{ASSET_KIND_LABELS[asset.kind] || naText(asset.kind)}</td>
+                    <td>{asset.receivedAt ? fmtDate(asset.receivedAt) : naText(null)}</td>
+                    <td>{statusCell(asset)}</td>
+                    <td>{locationCell(asset)}</td>
+                    <td>{naText(asset.spot)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
 
+        {!loadError && sort.sorted.length > 0 && (
+          <Pager
+            page={page}
+            pageCount={pageCount}
+            total={total}
+            onPage={setPage}
+            pageSize={pageSize}
+            onPageSize={setPageSize}
+          />
+        )}
+      </ListPanel>
       </>}
 
       <MachineAddModal
@@ -501,17 +517,6 @@ export default function ServiceAssetsPage() {
         onSubmit={runAdd}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
-
-      {tab === "machines" && sort.sorted.length > 0 && (
-        <Pager
-          page={page}
-          pageCount={pageCount}
-          total={total}
-          onPage={setPage}
-          pageSize={pageSize}
-          onPageSize={setPageSize}
-        />
-      )}
     </Workspace>
   );
 }

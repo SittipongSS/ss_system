@@ -11,7 +11,7 @@ import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmo
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Handshake, Layers, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, ChartGantt, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Handshake, Layers, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -348,6 +348,14 @@ export default function DealOverviewPage() {
   const ownerName = livePersonName(directory, deal?.ownerId, deal?.ownerName);
   const dealDocumentProject = dealTimelineDocument(deal, data || {});
   const canEdit = !!data?.canEdit;
+  /* ปุ่มหัวแผงไทม์ไลน์ของหน้าดีล (มติผู้ใช้ 2026-09-15) — ใช้ร่วมกันสามกิ่งของแท็บไทม์ไลน์ข้างล่าง
+     (มีโครงการ · ไทม์ไลน์ของดีลเอง · ยังไม่สร้าง) ⇒ ประกาศครั้งเดียว ไม่ก๊อปปุ่มสามสำเนา */
+  const timelinePrintButton = (
+    <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
+      <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
+    </button>
+  );
+  const timelineViewSwitcher = <ViewSwitcher value={timelineView} onChange={setTimelineView} modes={["list", "table", "document"]} />;
   const role = useRole();
   const alreadyWon = isWonStage(deal?.stage);
   /* ยอด Actual กับยอด SO "รออนุมัติ" ของดีล — สองตัวเลขแยกกันเสมอ (มติผู้ใช้ 2026-09-11 · mig 0353)
@@ -1201,135 +1209,137 @@ export default function DealOverviewPage() {
               <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>เปิดไทม์ไลน์</span>
             </div>
           )}
-          {tab === "timeline" && (
-          <section id="deal-pm" className="glass-panel" style={{ padding: 16 }}>
-            <div className="timeline-header-row mb-3">
-              <PackageCheck size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ไทม์ไลน์</h2>
-              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
-                  <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
-                </button>
-                {data.project && <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}
-                {(data.projectTasks || []).length > 0 && <ViewSwitcher value={timelineView} onChange={setTimelineView} modes={["list", "table", "document"]} />}
-              </div>
-            </div>
-            {data.project ? (
-              <>
-              {/* ผูกผิดโครงการเกิดขึ้นจริง — ทางแก้เดิมคือลบดีลทิ้งแล้วสร้างใหม่ ซึ่งพา
-                  ไทม์ไลน์/ใบเสนอราคา/คำร้องหายไปทั้งชุด (มติผู้ใช้ 2026-08-06) */}
-              {canEdit && deal?.stage !== "lost" && (
-                <div className="flex justify-end mb-2">
-                  <Button variant="quiet" size="sm" onClick={openLinkProject} disabled={!!actionBusy}
-                    icon={<PackageCheck size={14} aria-hidden="true" />}
-                    title="ย้ายดีลนี้ไปโครงการอื่นของลูกค้ารายเดียวกัน — ไทม์ไลน์และของที่ผูกดีลย้ายตามไปทั้งชุด">
-                    ย้ายไปโครงการอื่น
-                  </Button>
-                </div>
-              )}
-              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <Stat label="โครงการ" value={data.project.code || data.project.id} hint={naText(data.project.status)} />
-                <Stat label="ความคืบหน้า (segment นี้)" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : NA} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : NA} />
-                <Stat label="ประเภท" value={naText(data.project.type)} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
-                <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={naText((data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", "))} />
-                {SALES_FEATURES.shipment && (
-                  <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : NA} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
+          {/* แท็บไทม์ไลน์ (มติผู้ใช้ 2026-09-15: รายการทุกชุด = แผงเดียว) — กล่อง section#deal-pm เดิมถูกถอด:
+              ตัวไทม์ไลน์คือ ListPanel ของ TimelineWorkspace เอง (id="deal-pm" · ปุ่มพิมพ์/สลับมุมมองเป็น
+              panelActions) · ข้อมูลโครงการที่ผูกอยู่เป็น DetailCard แยกเหนือแผง ไม่ซ้อนอยู่ในแผงรายการ */}
+          {tab === "timeline" && (data.project ? (
+            <>
+              <DetailCard
+                icon={FolderKanban}
+                title="โครงการที่ดีลนี้อยู่"
+                meta={`${data.project.code ? `${data.project.code} · ` : ""}${naText(data.project.name)}`}
+                actions={(
+                  <>
+                    {/* ยังไม่มีขั้นตอน = ไม่มีแผงไทม์ไลน์ให้วางปุ่มพิมพ์ ⇒ ปุ่มมาอยู่บนการ์ดนี้แทน
+                        (หัว section#deal-pm เดิมโชว์ปุ่มพิมพ์ทุกกรณี · พิมพ์ได้แม้ tasks ว่าง) */}
+                    {!(data.projectTasks || []).length && timelinePrintButton}
+                    {/* ผูกผิดโครงการเกิดขึ้นจริง — ทางแก้เดิมคือลบดีลทิ้งแล้วสร้างใหม่ ซึ่งพา
+                        ไทม์ไลน์/ใบเสนอราคา/คำร้องหายไปทั้งชุด (มติผู้ใช้ 2026-08-06) */}
+                    {canEdit && deal?.stage !== "lost" && (
+                      <Button variant="quiet" size="sm" onClick={openLinkProject} disabled={!!actionBusy}
+                        icon={<PackageCheck size={14} aria-hidden="true" />}
+                        title="ย้ายดีลนี้ไปโครงการอื่นของลูกค้ารายเดียวกัน — ไทม์ไลน์และของที่ผูกดีลย้ายตามไปทั้งชุด">
+                        ย้ายไปโครงการอื่น
+                      </Button>
+                    )}
+                    <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>
+                  </>
                 )}
-              </div>
+              >
+                <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                  <Stat label="โครงการ" value={data.project.code || data.project.id} hint={naText(data.project.status)} />
+                  <Stat label="ความคืบหน้า (segment นี้)" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : NA} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : NA} />
+                  <Stat label="ประเภท" value={naText(data.project.type)} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
+                  <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={naText((data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", "))} />
+                  {SALES_FEATURES.shipment && (
+                    <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : NA} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
+                  )}
+                </div>
+                {/* เฟส B: ดีลอื่นในโครงการเดียวกัน (SCENT→NPD→RE-ORDER…) — ลิงก์ข้าม */}
+                {(data.siblingDeals || []).length > 0 && (
+                  <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                    <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", marginBottom: 6 }}>ดีลอื่นในโครงการนี้</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {data.siblingDeals.map((sib) => (
+                        <Link key={sib.id} href={`/sa/deals/${sib.id}`} className="btn ghost sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          {dealTypeBadge(dealTypeOf(sib))}
+                          <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sib.title}</span>
+                          {stageBadge(sib.stage)}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </DetailCard>
               {/* DL2: ตารางขั้นตอน segment ของดีลนี้ (รวมงานกลางที่ไม่ผูกดีล) —
                   แก้สถานะจากหน้าดีลได้เลย ไม่ต้องเข้าโครงการ (PATCH ตัวเดียวกับฝั่ง PM) */}
               {(data.projectTasks || []).length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <TimelineWorkspace
-                    tasks={data.projectTasks}
-                    requests={data.inquiries || []}
-                    canEdit={canEdit}
-                    dealId={deal.id}
-                    projectId={data.project?.id || null}
-                    documentProject={dealDocumentProject}
-                    view={timelineView}
-                    onViewChange={setTimelineView}
-                    showHeading={false}
-                    showViewSwitcher={false}
-                    timelineContext={{
-                      name: deal.title,
-                      customerName: deal.customerName,
-                      startDate: deal.startDate || data.project?.startDate,
-                      brand: deal.brand,
-                      status: data.project?.status || deal.stage,
-                      statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
-                    }}
-                    onChanged={load}
-                    onError={setError}
-                  />
-                </div>
-              )}
-              {/* เฟส B: ดีลอื่นในโครงการเดียวกัน (SCENT→NPD→RE-ORDER…) — ลิงก์ข้าม */}
-              {(data.siblingDeals || []).length > 0 && (
-                <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                  <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", marginBottom: 6 }}>ดีลอื่นในโครงการนี้</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {data.siblingDeals.map((sib) => (
-                      <Link key={sib.id} href={`/sa/deals/${sib.id}`} className="btn ghost sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        {dealTypeBadge(dealTypeOf(sib))}
-                        <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sib.title}</span>
-                        {stageBadge(sib.stage)}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
-              </>
-            ) : (data.projectTasks || []).length ? (
-              <>
-                {/* DL1: ไทม์ไลน์ของดีลเอง (ยังไม่ผูกโครงการ) — task ลอย projectId ว่าง
-                    ผูกโครงการเมื่อไหร่ ชุดนี้ถูก "รับเลี้ยง" เข้าโครงการทั้งชุด ไม่ gen ใหม่ */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                  <span className="ui-badge" style={{ color: "var(--accent)" }}>ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)</span>
-                  <span style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>
-                    {taskSummary.done}/{taskSummary.total} ขั้นตอน{deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : ""}
-                  </span>
-                  <div className="spacer" />
-                  {canEdit && (
-                    <button type="button" className="btn-icon danger" title="ลบไทม์ไลน์ (ไว้สร้างใหม่)" aria-label="ลบไทม์ไลน์"
-                      disabled={!!actionBusy} onClick={dropOwnTimeline}>
-                      <Trash2 size={14} aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
                 <TimelineWorkspace
                   tasks={data.projectTasks}
+                  requests={data.inquiries || []}
                   canEdit={canEdit}
                   dealId={deal.id}
                   projectId={data.project?.id || null}
                   documentProject={dealDocumentProject}
                   view={timelineView}
                   onViewChange={setTimelineView}
-                  showHeading={false}
                   showViewSwitcher={false}
                   timelineContext={{
                     name: deal.title,
                     customerName: deal.customerName,
-                    startDate: deal.startDate,
+                    startDate: deal.startDate || data.project?.startDate,
                     brand: deal.brand,
-                    status: deal.stage,
+                    status: data.project?.status || deal.stage,
                     statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
                   }}
                   onChanged={load}
                   onError={setError}
+                  panelId="deal-pm"
+                  panelActions={<>{timelinePrintButton}{timelineViewSwitcher}</>}
                 />
-                {canEdit && deal?.stage !== "lost" && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                    <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">
-                      <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
-                    </button>
-                    <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ — ไทม์ไลน์ชุดนี้ย้ายตามไป" : "ต้องผูกลูกค้าก่อน"}>
-                      <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
-                    </button>
-                  </div>
+              )}
+            </>
+          ) : (data.projectTasks || []).length ? (
+            <>
+              {/* DL1: ไทม์ไลน์ของดีลเอง (ยังไม่ผูกโครงการ) — task ลอย projectId ว่าง
+                  ผูกโครงการเมื่อไหร่ ชุดนี้ถูก "รับเลี้ยง" เข้าโครงการทั้งชุด ไม่ gen ใหม่ */}
+              <TimelineWorkspace
+                tasks={data.projectTasks}
+                canEdit={canEdit}
+                dealId={deal.id}
+                projectId={data.project?.id || null}
+                documentProject={dealDocumentProject}
+                view={timelineView}
+                onViewChange={setTimelineView}
+                showViewSwitcher={false}
+                timelineContext={{
+                  name: deal.title,
+                  customerName: deal.customerName,
+                  startDate: deal.startDate,
+                  brand: deal.brand,
+                  status: deal.stage,
+                  statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
+                }}
+                onChanged={load}
+                onError={setError}
+                panelId="deal-pm"
+                panelSubtitle={`ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : ""}`}
+                panelActions={(
+                  <>
+                    {timelinePrintButton}
+                    {canEdit && (
+                      <button type="button" className="btn-icon danger" title="ลบไทม์ไลน์ (ไว้สร้างใหม่)" aria-label="ลบไทม์ไลน์"
+                        disabled={!!actionBusy} onClick={dropOwnTimeline}>
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
+                    )}
+                    {timelineViewSwitcher}
+                  </>
                 )}
-              </>
-            ) : (
+              />
+              {canEdit && deal?.stage !== "lost" && (
+                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">
+                    <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
+                  </button>
+                  <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ — ไทม์ไลน์ชุดนี้ย้ายตามไป" : "ต้องผูกลูกค้าก่อน"}>
+                    <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <DetailCard id="deal-pm" icon={ChartGantt} title="ไทม์ไลน์" actions={timelinePrintButton}>
               <Empty>
                 <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
                 {canEdit && deal?.stage !== "lost" && (
@@ -1356,9 +1366,8 @@ export default function DealOverviewPage() {
                   </div>
                 )}
               </Empty>
-            )}
-          </section>
-          )}
+            </DetailCard>
+          ))}
 
           {(tab === "quotations" || tab === "overview") && (SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>

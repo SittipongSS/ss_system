@@ -16,7 +16,7 @@ import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
 import { CODE_MODE_AUTO, DEFAULT_CODE_MODE } from "@/lib/master/masterCodes";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/ui/ApprovalQueue";
@@ -266,22 +266,20 @@ export default function CustomerDirectory() {
      หน้าใหม่ทั้งใบ ช้ากว่าการเดินด้วยลิงก์ และเป็นทางเข้าที่คีย์บอร์ดไปไม่ถึง */
   const detailHref = (c) => `/database/customers/${c.id}`;
 
-  const headerRight = (
-    <>
-      <span className="ui-badge">{customers.length} รายการ</span>
-      {canEdit && (
-        <button onClick={openForm} className="btn btn-accent flex items-center gap-1.5">
-          <Plus size={16} /> เพิ่มลูกค้า
-        </button>
-      )}
-    </>
-  );
+  /* ป้ายจำนวนย้ายไปอยู่หัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9) — เลขรวมทั้งทะเบียน
+     ยังอยู่ที่ StatCards "ทั้งหมด" ใน rail */
+  const headerRight = canEdit ? (
+    <button onClick={openForm} className="btn btn-accent flex items-center gap-1.5">
+      <Plus size={16} /> เพิ่มลูกค้า
+    </button>
+  ) : null;
 
+  /* เครื่องมือของรายการส่งเป็น fragment เข้า `ListPanel toolbar` — แผงห่อ `.toolbar` ให้เอง */
   const toolbar = (
-    <div className="toolbar">
-      <div className="search-glass" style={{ width: "240px" }}>
-        <Search size={18} color="var(--text-3)" />
-        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า / AR / เลขผู้เสียภาษี / สาขา / แบรนด์..." />
+    <>
+      <div className="search-glass">
+        <Search size={18} color="var(--text-3)" aria-hidden="true" />
+        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า / AR / เลขผู้เสียภาษี / สาขา / แบรนด์..." aria-label="ค้นหาลูกค้า" />
       </div>
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
@@ -316,7 +314,7 @@ export default function CustomerDirectory() {
         <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
         <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
       </div>
-    </div>
+    </>
   );
 
   return (
@@ -325,7 +323,6 @@ export default function CustomerDirectory() {
       title="ข้อมูลลูกค้า"
       subtitle="ฐานข้อมูลลูกค้าและแบรนด์กลาง (AR Code & Brands)"
       headerRight={headerRight}
-      loading={loading}
       rail={
         <>
           <StatCards
@@ -345,10 +342,20 @@ export default function CustomerDirectory() {
           />
         </>
       }
-      toolbar={toolbar}
     >
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — `loading` แทนที่
+          เฉพาะเนื้อ ⇒ หัว rail และช่องค้นหายังอยู่ระหว่างโหลด (เดิม Workspace loading ถอดทั้งหน้า)
+          ป้ายจำนวน = ลูกค้าที่เหลือหลังค้นหา/กรองทุกหน้า (เท่ายอดของ Pager) */}
+      <ListPanel
+        icon={<Building2 size={17} aria-hidden="true" />}
+        title="ทะเบียนลูกค้า"
+        subtitle="ค้นหาชื่อ รหัส AR เลขผู้เสียภาษี สาขา หรือแบรนด์"
+        count={loading ? null : `${sort.sorted.length} รายการ`}
+        loading={loading}
+        toolbar={toolbar}
+      >
       {sort.sorted.length === 0 ? (
-        <EmptyState icon={Building2}>
+        <EmptyState plain icon={Building2}>
           {q || statusFilter.length || teamFilter.length ? "ไม่พบลูกค้าที่ค้นหา" : "ยังไม่มีข้อมูลลูกค้าในระบบ"}
         </EmptyState>
       ) : view === "cards" ? (
@@ -483,6 +490,7 @@ export default function CustomerDirectory() {
           onPageSize={setPageSize}
         />
       )}
+      </ListPanel>
 
       {/* Add customer modal */}
       <Modal

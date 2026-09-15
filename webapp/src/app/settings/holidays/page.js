@@ -1,15 +1,16 @@
 "use client";
-import { TableScroll } from "@/components/ui/Table";
+import { TableScroll, TableGroupRow } from "@/components/ui/Table";
 // ปฏิทินวันหยุด — ข้อมูลปฏิบัติการ แก้ตรงบนตารางเดิม (Decision 0012 ฉบับแก้ไขครั้งที่ 2:
 // ไม่ใช้ชั้นร่าง/เผยแพร่) — เพิ่มผ่าน Modal ทางเดียว ส่วนการลบยืนยันผ่าน ConfirmDialog (no-auto-save)
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { Fragment, useState, useEffect, useMemo, useCallback } from "react";
 import { AlertTriangle, CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange, CalendarPlus } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import Modal from "@/components/Modal";
-import SkeletonRows from "@/components/ui/Skeleton";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Segmented from "@/components/ui/Segmented";
 import EmptyState from "@/components/ui/EmptyState";
 import Toast from "@/components/ui/Toast";
 import Button from "@/components/ui/Button";
@@ -49,6 +50,8 @@ export default function HolidaysPage() {
   const [tab, setTab] = useState("calendar"); // calendar | list
   // ปีที่แท็บรายการกำลังโชว์: null = ยังไม่เลือกเอง (ใช้ปีตั้งต้น) · "all" = ทุกปี
   const [listYear, setListYear] = useState(null);
+  // ปีที่พับไว้ในตาราง (หัวกลุ่มรายปี) — ป้ายจำนวนยังนับวันทั้งหมด ไม่ใช่แถวที่กางอยู่
+  const [collapsedYears, setCollapsedYears] = useState(() => new Set());
   // ฟอร์มเพิ่ม: null = ปิด; { date, name, lockDate } = เปิด Modal
   const [addForm, setAddForm] = useState(null);
   // การลบผ่าน dialog ยืนยัน: { date, name }
@@ -186,20 +189,25 @@ export default function HolidaysPage() {
 
   const openAdd = () => setAddForm({ date: "", name: "", lockDate: false });
 
+  const toggleYear = (year) => setCollapsedYears((current) => {
+    const next = new Set(current);
+    if (next.has(year)) next.delete(year); else next.add(year);
+    return next;
+  });
+
+  /* ป้ายจำนวน = วันหยุดที่มองเห็นในมุมมองนั้น (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ)
+     ปฏิทิน = วันหยุดของเดือนที่เปิดอยู่ · รายการ = วันหยุดของปีที่เลือก (ทุกปี = ทั้งหมด) */
+  const listHolidayCount = visibleYears.reduce((n, [, items]) => n + items.length, 0);
+  const shownCount = tab === "calendar" ? monthHolidayCount : listHolidayCount;
+  const importYearGuess = tab === "calendar"
+    ? cursor.y
+    : Number(!activeYear || activeYear === "all" ? now.getFullYear() : activeYear);
+
   return (
     <Workspace
       icon={<CalendarDays size={22} />}
       title="วันหยุด (ปฏิทินทำการ)"
       subtitle={'วันหยุดบริษัท/นักขัตฤกษ์ที่ระบบใช้นับ "วันทำการ" ของไทม์ไลน์โครงการ'}
-      headerRight={(
-        <div className={styles.headerRight}>
-          <div className="segmented">
-            <button type="button" onClick={() => setTab("calendar")} className={tab === "calendar" ? "active" : ""}><CalendarRange size={14} /> ปฏิทิน</button>
-            <button type="button" onClick={() => setTab("list")} className={tab === "list" ? "active" : ""}><List size={14} /> รายการ</button>
-          </div>
-          <div className="pill ok">ทั้งหมด {holidays.length} วัน</div>
-        </div>
-      )}
     >
 
       <div className="info-note">
@@ -223,119 +231,155 @@ export default function HolidaysPage() {
         </div>
       ))}
 
-      {loading ? (
-        <SkeletonRows rows={8} />
-      ) : loadError ? (
-        <section className={`glass-panel ${styles.errorPanel}`} role="alert">
-          <AlertTriangle size={26} />
-          <p>{loadError}</p>
-          <button type="button" className="btn" onClick={load}>ลองอีกครั้ง</button>
-        </section>
-      ) : tab === "calendar" ? (
-        <div className={`glass-panel ${styles.calendarPanel}`}>
-          <div className={styles.monthNav}>
-            <button type="button" onClick={() => goMonth(-1)} className="btn-icon" aria-label="เดือนก่อนหน้า" title="เดือนก่อนหน้า"><ChevronLeft size={16} /></button>
-            <div className={styles.monthTitle}>
-              <strong>{MONTHS_TH[cursor.m]} {cursor.y}</strong>
-              <small>{monthHolidayCount} วันหยุดในเดือนนี้</small>
+      {/* ⭐ แผงรายการเดียวทั้งสองมุมมอง (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ)
+          เดิมตัวสลับมุมมอง + ป้าย "ทั้งหมด N วัน" อยู่หัวหน้า · ปฏิทินเป็น glass-panel ลอย ·
+          รายการเป็นการ์ดรายปีหลายใบ + `.toolbar` ลอย ⇒ ตอนนี้หัวแผง (ป้ายจำนวน · ปุ่มเพิ่ม/นำเข้า)
+          กับแถบเครื่องมือ (สลับมุมมอง · เลื่อนเดือน หรือเลือกปี) อยู่ที่เดิมทุกมุมมอง
+          ตารางรายการเป็นตารางเดียวแบ่งกลุ่มรายปีด้วย TableGroupRow (ทรงเดียวกับโหมดจัดกลุ่มของทะเบียนอื่น)
+          ปุ่มเพิ่ม/นำเข้าเป็นของเนื้อหาในแผง (เปลือกตั้งค่า มติ 2026-08-21) */}
+      <ListPanel
+        icon={<CalendarDays size={17} aria-hidden="true" />}
+        title="รายการวันหยุด"
+        subtitle={tab === "calendar" ? "วันหยุดของเดือนที่เปิดอยู่บนปฏิทิน" : "เรียงตามวันที่ แบ่งกลุ่มรายปี"}
+        count={loading || loadError ? null : `${shownCount} วัน`}
+        loading={loading}
+        skeletonRows={8}
+        actions={canManage ? (
+          <>
+            <Button icon={<CalendarPlus size={16} />} onClick={() => setImportYear(importYearGuess)}>
+              นำเข้าจาก Google
+            </Button>
+            <button type="button" className="btn btn-accent" onClick={openAdd}><Plus size={16} /> เพิ่มวันหยุด</button>
+          </>
+        ) : null}
+        toolbar={(
+          <>
+            <Segmented
+              ariaLabel="มุมมองวันหยุด"
+              options={[
+                { value: "calendar", label: "ปฏิทิน", icon: CalendarRange },
+                { value: "list", label: "รายการ", icon: List },
+              ]}
+              value={tab}
+              onChange={setTab}
+            />
+            {tab === "calendar" ? (
+              /* เลื่อนเดือนขยับเฉพาะปฏิทินในแผงนี้ ⇒ อยู่แถบเครื่องมือ
+                 ชื่อเดือน + ปุ่มสามตัวเป็น **กลุ่มเดียว** ที่ตัดบรรทัดทั้งก้อน — 🐞 จอ 390 เคยวางเป็นลูกของ
+                 .toolbar ทีละตัว ⇒ ปุ่ม "ก่อนหน้า" ค้างท้ายแถวแรก ส่วน "วันนี้/ถัดไป" ตกไปแถวสอง
+                 ชื่อเดือนดันปุ่มชิดขวาของกลุ่ม ⇒ ชื่อเดือนยาวไม่เท่ากันก็ไม่ดันปุ่มให้เลื่อนหนีเมาส์ตอนกดซ้ำ */
+              <div className={styles.monthNav}>
+                <strong className={styles.monthLabel}>{MONTHS_TH[cursor.m]} {cursor.y}</strong>
+                <button type="button" onClick={() => goMonth(-1)} className="btn-icon" aria-label="เดือนก่อนหน้า" title="เดือนก่อนหน้า"><ChevronLeft size={16} /></button>
+                <button type="button" onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })} className="btn sm">วันนี้</button>
+                <button type="button" onClick={() => goMonth(1)} className="btn-icon" aria-label="เดือนถัดไป" title="เดือนถัดไป"><ChevronRight size={16} /></button>
+              </div>
+            ) : byYear.length > 0 ? (
+              <>
+                {/* เลือกปีที่โชว์ (ตั้งต้นปีปัจจุบัน) — ใช้ dropdown ไม่ใช่ปุ่มเรียง เพราะจำนวนปีโตขึ้นทุกปี
+                    ตัวเลือกที่กว้างขึ้นเรื่อย ๆ จะเบียดแถวเครื่องมือแตกในอีกไม่กี่ปี */}
+                {/* "ปี" อยู่ในข้อความตัวเลือก ไม่ใช่ป้ายแยก — 🐞 จอ 390 ป้ายแยกค้างท้ายแถวแรก ส่วนดรอปดาวน์ตกไปแถวสอง
+                    ข้อความ "N ปีในระบบ" ถูกถอดด้วยเหตุเดียวกัน (ห้อยแถวเดี่ยว) — ตัวเลือกในดรอปดาวน์บอกครบทุกปีแล้ว */}
+                <Select value={activeYear || ""} onChange={(event) => setListYear(event.target.value)} aria-label="เลือกปีที่แสดง" className={styles.yearPicker}>
+                  {byYear.map(([year, items]) => (
+                    <option key={year} value={year}>ปี {year} ({items.length} วัน)</option>
+                  ))}
+                  {byYear.length > 1 && <option value="all">ทุกปี ({holidays.length} วัน)</option>}
+                </Select>
+              </>
+            ) : null}
+          </>
+        )}
+      >
+        {loadError ? (
+          /* เดิมกลืน error แล้วโชว์ "ยังไม่มีวันหยุด" — ปฏิทินว่างเพราะโหลดพังกับยังไม่ได้ตั้งหน้าตาเหมือนกัน */
+          <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}>
+            {loadError}
+          </StatusNotice>
+        ) : tab === "calendar" ? (
+          <>
+            <MonthGrid
+              year={cursor.y}
+              month={cursor.m}
+              todayISO={todayISO}
+              holidayOf={(iso) => holidayMap.get(iso) ?? (holidayMap.has(iso) ? "วันหยุด" : undefined)}
+              onDayClick={onDayClick}
+              /* เสาร์–อาทิตย์หยุดอยู่แล้ว ไม่ต้องเพิ่ม/ลบ — disabled ไม่กินตำแหน่ง tab */
+              dayDisabled={({ isWeekend }) => !canManage || isWeekend}
+              dayLabel={({ iso, isWeekend, isHoliday, holidayName, isToday }) => {
+                const state = isHoliday ? `วันหยุด: ${holidayName || "ไม่ระบุชื่อ"}` : isWeekend ? "วันหยุดสุดสัปดาห์" : "วันทำการ";
+                const action = !canManage || isWeekend ? "" : isHoliday ? " · กดเพื่อลบวันหยุด" : " · กดเพื่อเพิ่มวันหยุด";
+                return `${fmtLong(iso)}${isToday ? " (วันนี้)" : ""} · ${state}${action}`;
+              }}
+            >
+              {({ isWeekend, isHoliday }) => (
+                isWeekend && !isHoliday ? <small className={styles.weekendNote}>หยุด</small> : null
+              )}
+            </MonthGrid>
+
+            <div className={styles.legend}>
+              <span><i className={styles.legendHoliday} /> วันหยุดนักขัตฤกษ์/บริษัท</span>
+              <span><i className={styles.legendWeekend} /> เสาร์-อาทิตย์ (หยุดประจำ)</span>
+              <span><i className={styles.legendToday} /> วันนี้</span>
             </div>
-            <div>
-              <button type="button" onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })} className="btn sm">วันนี้</button>
-              <button type="button" onClick={() => goMonth(1)} className="btn-icon" aria-label="เดือนถัดไป" title="เดือนถัดไป"><ChevronRight size={16} /></button>
-            </div>
-          </div>
+          </>
+        ) : holidays.length === 0 ? (
+          <EmptyState plain icon={CalendarDays} dashed={canManage} onClick={canManage ? openAdd : undefined}>
+            {canManage ? "ยังไม่มีวันหยุดในระบบ — กดเพื่อเพิ่มวันแรก" : "ยังไม่มีวันหยุดในระบบ"}
+          </EmptyState>
+        ) : (
+          <>
+            <TableScroll className={`${styles.tableWrap}`}>
+              <table className="premium-table">
+                <thead>
+                  <tr><th>วันที่</th><th>วัน</th><th>ชื่อวันหยุด</th>{canManage && <th aria-label="การทำงาน" />}</tr>
+                </thead>
+                <tbody>
+                  {visibleYears.map(([year, items]) => {
+                    const yearCollapsed = collapsedYears.has(year);
+                    return (
+                      <Fragment key={year}>
+                        <TableGroupRow
+                          colSpan={canManage ? 4 : 3}
+                          label={`ปี ${year}`}
+                          badge={`${items.length} วัน`}
+                          collapsed={yearCollapsed}
+                          onToggle={() => toggleYear(year)}
+                          actions={Number(year) === now.getFullYear() ? <span className={`ui-badge ${styles.currentYear}`}>ปีนี้</span> : null}
+                        />
+                        {!yearCollapsed && items.map((holiday) => {
+                          const dt = dateParts(holiday.date);
+                          return (
+                            <tr key={holiday.date} className={holiday.date < todayISO ? styles.past : undefined}>
+                              <td className={styles.dateCell}>{holiday.date}</td>
+                              <td>{dt ? WEEKDAYS_TH[dt.getDay()] : NA}</td>
+                              <td>{naText(holiday.name)}</td>
+                              {canManage && (
+                                <td>
+                                  <div className={styles.rowActions}>
+                                    <button type="button" className="btn-icon danger" onClick={() => setPendingDelete({ date: holiday.date, name: holiday.name })} aria-label={`ลบวันหยุด ${fmtLong(holiday.date)}`} title="ลบ"><Trash2 size={15} /></button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableScroll>
 
-          <MonthGrid
-            year={cursor.y}
-            month={cursor.m}
-            todayISO={todayISO}
-            holidayOf={(iso) => holidayMap.get(iso) ?? (holidayMap.has(iso) ? "วันหยุด" : undefined)}
-            onDayClick={onDayClick}
-            /* เสาร์–อาทิตย์หยุดอยู่แล้ว ไม่ต้องเพิ่ม/ลบ — disabled ไม่กินตำแหน่ง tab */
-            dayDisabled={({ isWeekend }) => !canManage || isWeekend}
-            dayLabel={({ iso, isWeekend, isHoliday, holidayName, isToday }) => {
-              const state = isHoliday ? `วันหยุด: ${holidayName || "ไม่ระบุชื่อ"}` : isWeekend ? "วันหยุดสุดสัปดาห์" : "วันทำการ";
-              const action = !canManage || isWeekend ? "" : isHoliday ? " · กดเพื่อลบวันหยุด" : " · กดเพื่อเพิ่มวันหยุด";
-              return `${fmtLong(iso)}${isToday ? " (วันนี้)" : ""} · ${state}${action}`;
-            }}
-          >
-            {({ isWeekend, isHoliday }) => (
-              isWeekend && !isHoliday ? <small className={styles.weekendNote}>หยุด</small> : null
-            )}
-          </MonthGrid>
-
-          <div className={styles.legend}>
-            <span><i className={styles.legendHoliday} /> วันหยุดนักขัตฤกษ์/บริษัท</span>
-            <span><i className={styles.legendWeekend} /> เสาร์-อาทิตย์ (หยุดประจำ)</span>
-            <span><i className={styles.legendToday} /> วันนี้</span>
-          </div>
-        </div>
-      ) : holidays.length === 0 ? (
-        <EmptyState icon={CalendarDays} dashed={canManage} onClick={canManage ? openAdd : undefined}>
-          {canManage ? "ยังไม่มีวันหยุดในระบบ — กดเพื่อเพิ่มวันแรก" : "ยังไม่มีวันหยุดในระบบ"}
-        </EmptyState>
-      ) : (
-        <>
-          {/* เลือกปีที่โชว์ (ตั้งต้นปีปัจจุบัน) · ปุ่มเพิ่มขวาสุดตามกติกา Page Header
-              ใช้ dropdown ไม่ใช่ปุ่มเรียง เพราะจำนวนปีโตขึ้นทุกปี — ตัวเลือกที่กว้างขึ้น
-              เรื่อย ๆ จะเบียดแถวเครื่องมือแตกในอีกไม่กี่ปี */}
-          <div className="toolbar">
-            <span className="toolbar-label">ปี</span>
-            <Select value={activeYear || ""} onChange={(event) => setListYear(event.target.value)} aria-label="เลือกปีที่แสดง" className={styles.yearPicker}>
-              {byYear.map(([year, items]) => (
-                <option key={year} value={year}>{year} ({items.length} วัน)</option>
-              ))}
-              {byYear.length > 1 && <option value="all">ทุกปี ({holidays.length} วัน)</option>}
-            </Select>
-            <span className={styles.listSummary}>{byYear.length} ปีในระบบ</span>
-            <span className="spacer" />
-            {canManage && (
-              <Button icon={<CalendarPlus size={16} />} onClick={() => setImportYear(Number(activeYear === "all" ? now.getFullYear() : activeYear))}>
-                นำเข้าจาก Google
-              </Button>
-            )}
-            {canManage && (
-              <button type="button" className="btn btn-accent" onClick={openAdd}><Plus size={16} /> เพิ่มวันหยุด</button>
-            )}
-          </div>
-
-          <div className={styles.yearList}>
-            {visibleYears.map(([year, items]) => (
-              <section key={year} className={`glass-panel ${styles.yearPanel}`} aria-labelledby={`holiday-year-${year}`}>
-                <header className={styles.yearHeader}>
-                  <h2 id={`holiday-year-${year}`}>ปี {year}</h2>
-                  <span className="ui-badge">{items.length} วัน</span>
-                  {Number(year) === now.getFullYear() && <span className={`ui-badge ${styles.currentYear}`}>ปีนี้</span>}
-                </header>
-
-                <TableScroll className={`${styles.tableWrap}`}>
-                  <table className="premium-table">
-                    <thead>
-                      <tr><th>วันที่</th><th>วัน</th><th>ชื่อวันหยุด</th>{canManage && <th aria-label="การทำงาน" />}</tr>
-                    </thead>
-                    <tbody>
-                      {items.map((holiday) => {
-                        const dt = dateParts(holiday.date);
-                        return (
-                          <tr key={holiday.date} className={holiday.date < todayISO ? styles.past : undefined}>
-                            <td className={styles.dateCell}>{holiday.date}</td>
-                            <td>{dt ? WEEKDAYS_TH[dt.getDay()] : NA}</td>
-                            <td>{naText(holiday.name)}</td>
-                            {canManage && (
-                              <td>
-                                <div className={styles.rowActions}>
-                                  <button type="button" className="btn-icon danger" onClick={() => setPendingDelete({ date: holiday.date, name: holiday.name })} aria-label={`ลบวันหยุด ${fmtLong(holiday.date)}`} title="ลบ"><Trash2 size={15} /></button>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableScroll>
-
-                <div className={styles.cards}>
+            {/* จอตั้ง ≤768 = การ์ดรายวัน แบ่งกลุ่มรายปีด้วยหัวกลุ่มบรรทัดเดียว (ไม่ใช่การ์ดซ้อนการ์ด) */}
+            <div className={styles.cards}>
+              {visibleYears.map(([year, items]) => (
+                <div key={year} className={styles.cardGroup} role="group" aria-label={`วันหยุดปี ${year}`}>
+                  <div className={styles.cardGroupHead}>
+                    <strong>ปี {year}</strong>
+                    <span className="ui-badge">{items.length} วัน</span>
+                    {Number(year) === now.getFullYear() && <span className={`ui-badge ${styles.currentYear}`}>ปีนี้</span>}
+                  </div>
                   {items.map((holiday) => (
                     <div key={holiday.date} className={`${styles.card} ${holiday.date < todayISO ? styles.cardPast : ""}`.trim()}>
                       <div>
@@ -348,11 +392,11 @@ export default function HolidaysPage() {
                     </div>
                   ))}
                 </div>
-              </section>
-            ))}
-          </div>
-        </>
-      )}
+              ))}
+            </div>
+          </>
+        )}
+      </ListPanel>
 
       {/* ทางเพิ่มวันหยุดทางเดียวของหน้า — คลิกวันบนปฏิทินก็มาโผล่ที่นี่ (ฟอร์มชุดเดียว) */}
       <Modal open={!!addForm} onClose={() => !busy && setAddForm(null)} title="เพิ่มวันหยุด" size="sm" dismissible={!busy}>
@@ -384,7 +428,7 @@ export default function HolidaysPage() {
         </form>
       </Modal>
 
-      {/* นำเข้าจากปฏิทิน Google — ทางเข้าสองจุด (แบนเนอร์เตือน / toolbar) ใช้โมดัลตัวเดียว */}
+      {/* นำเข้าจากปฏิทิน Google — ทางเข้าสองจุด (แบนเนอร์เตือน / หัวแผง) ใช้โมดัลตัวเดียว */}
       <HolidayImportModal
         open={importYear !== null}
         initialYear={importYear}

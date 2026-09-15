@@ -15,6 +15,9 @@ import { naText } from "@/lib/format";
 //   • portrait  → card grid (caller-supplied `card(row)`; falls back to columns)
 //                มี rowHref+card ⇒ การ์ดทั้งใบเป็น <Link> (ดูบล็อก `linkedCard` ข้างล่าง)
 //   • client-side pagination (pageSize) so big datasets don't bloat the DOM
+//   • **ไม่มีกรอบของตัวเอง** (มติผู้ใช้ 2026-09-15) — ผู้เรียกวางไว้ใน children ของ `ListPanel`
+//     ⇒ สถานะว่างเป็น `EmptyState plain` · Pager อยู่ท้ายก้อนนี้และถูกแผงของผู้เรียกครอบ
+//     (ด่าน LP2/LP5 ตัดสินผ่านผู้เรียกทุกราย — ผู้เรียกรายใหม่ต้องครอบด้วย ListPanel ด้วย)
 //
 // columns: [{ key, label, align?, render?(row), sortValue?(row), thStyle?, tdStyle?, link? }]
 //   render  — cell content (defaults to row[key])
@@ -64,7 +67,7 @@ export default function DataList({
     });
 
   if (!rows.length) {
-    return <EmptyState icon={emptyIcon}>{empty}</EmptyState>;
+    return <EmptyState plain icon={emptyIcon}>{empty}</EmptyState>;
   }
 
   const key = (r, i) => (rowKey ? rowKey(r, i) : i);

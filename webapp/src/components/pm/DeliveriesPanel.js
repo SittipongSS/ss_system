@@ -12,6 +12,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { PackageCheck, Plus, RefreshCw, Send, Trash2, Wand2 } from "lucide-react";
 import { TableScroll } from "@/components/ui/Table";
+import { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
@@ -115,158 +116,168 @@ export default function DeliveriesPanel({
   };
 
   return (
-    <section>
-      <div className={styles.head}>
-        <PackageCheck size={17} aria-hidden="true" />
-        <h2 className={styles.title}>ของเข้า (PM / RM)</h2>
-        <div className={styles.summary}>
-          <StatusBadge
-            size="sm"
-            tone={sum.complete ? "success" : sum.late ? "danger" : "info"}
-            label={`มาแล้ว ${sum.arrived}/${sum.total}`}
-          />
-          {sum.late > 0 && <StatusBadge size="sm" tone="danger" label={`เลยกำหนด ${sum.late}`} />}
-          {sum.lastDue && (
-            <StatusBadge size="sm" tone="neutral" label={`ครบเมื่อ ${fmtDate(sum.lastDue)}`} />
-          )}
-        </div>
-        <div className={styles.spacer} />
-        {canEdit && (
+    <>
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — ป้ายสรุป มาแล้ว/เลยกำหนด/ครบเมื่อ เป็นคำอธิบายของแผง
+          ส่วนป้ายจำนวนคือแถวของเข้าทั้งหมด · ปุ่มทั้งชุดเป็นของแผงนี้ (actions)
+          ⚠️ subtitle วาดใน <p> ⇒ ตัวห่อป้ายต้องเป็น span ไม่ใช่ div */}
+      <ListPanel
+        icon={<PackageCheck size={17} aria-hidden="true" />}
+        title="ของเข้า (PM / RM)"
+        subtitle={(
+          <span className={styles.summary}>
+            <StatusBadge
+              size="sm"
+              tone={sum.complete ? "success" : sum.late ? "danger" : "info"}
+              /* ไม่มีตัวหาร — จำนวนแถวทั้งหมดอยู่บนป้ายจำนวนของแผงแล้ว เลขเดียวกันห้ามโผล่ซ้ำในคำอธิบาย */
+              label={`มาแล้ว ${sum.arrived}`}
+            />
+            {sum.late > 0 && <StatusBadge size="sm" tone="danger" label={`เลยกำหนด ${sum.late}`} />}
+            {sum.lastDue && (
+              <StatusBadge size="sm" tone="neutral" label={`ครบเมื่อ ${fmtDate(sum.lastDue)}`} />
+            )}
+          </span>
+        )}
+        count={`${deliveries.length} รายการ`}
+        actions={(
           <>
-            {/* ขอให้ PC อัปเดต — โผล่เฉพาะตอนมีของค้างที่ยังไม่ได้ขอ ไม่งั้นกดแล้ว
-                ได้ error เปล่า ๆ (server กันขอซ้ำอยู่แล้ว แต่ปุ่มไม่ควรหลอกให้กด) */}
-            {chaseable > 0 && (
-              <Button
-                size="sm" onClick={requestUpdate} disabled={!!busy}
-                icon={<Send size={14} aria-hidden="true" />}
-                title={`เปิดคำร้องถึงฝ่ายจัดซื้อให้อัปเดตกำหนด ${chaseable} รายการ`}
-              >
-                ขอให้ PC อัปเดตกำหนด ({chaseable})
-              </Button>
+            {canEdit && (
+              <>
+                {/* ขอให้ PC อัปเดต — โผล่เฉพาะตอนมีของค้างที่ยังไม่ได้ขอ ไม่งั้นกดแล้ว
+                    ได้ error เปล่า ๆ (server กันขอซ้ำอยู่แล้ว แต่ปุ่มไม่ควรหลอกให้กด) */}
+                {chaseable > 0 && (
+                  <Button
+                    size="sm" onClick={requestUpdate} disabled={!!busy}
+                    icon={<Send size={14} aria-hidden="true" />}
+                    title={`เปิดคำร้องถึงฝ่ายจัดซื้อให้อัปเดตกำหนด ${chaseable} รายการ`}
+                  >
+                    ขอให้ PC อัปเดตกำหนด ({chaseable})
+                  </Button>
+                )}
+                <Button
+                  size="sm" onClick={generate} disabled={!!busy}
+                  icon={<Wand2 size={14} aria-hidden="true" />}
+                >
+                  กางจากใบขอราคาผลิต
+                </Button>
+                <Button
+                  size="sm" tone="accent" onClick={() => setAddOpen(true)} disabled={!!busy}
+                  icon={<Plus size={14} aria-hidden="true" />}
+                >
+                  เพิ่มรายการ
+                </Button>
+              </>
             )}
             <Button
-              size="sm" onClick={generate} disabled={!!busy}
-              icon={<Wand2 size={14} aria-hidden="true" />}
-            >
-              กางจากใบขอราคาผลิต
-            </Button>
-            <Button
-              size="sm" tone="accent" onClick={() => setAddOpen(true)} disabled={!!busy}
-              icon={<Plus size={14} aria-hidden="true" />}
-            >
-              เพิ่มรายการ
-            </Button>
+              size="sm" variant="quiet" onClick={() => onChanged?.()} disabled={!!busy}
+              icon={<RefreshCw size={14} aria-hidden="true" />}
+              aria-label="รีเฟรช"
+            />
           </>
         )}
-        <Button
-          size="sm" variant="quiet" onClick={() => onChanged?.()} disabled={!!busy}
-          icon={<RefreshCw size={14} aria-hidden="true" />}
-          aria-label="รีเฟรช"
-        />
-      </div>
-
-      {!deliveries.length ? (
-        <EmptyState icon={PackageCheck}>
-          ยังไม่มีรายการของเข้า
-          {canEdit ? ' — กด "กางจากใบขอราคาผลิต" เพื่อดึงบรรทัดวัสดุของใบที่อนุมัติแล้วมาทั้งชุด' : ""}
-        </EmptyState>
-      ) : (
-        <TableScroll>
-          <table>
-            <thead>
-              <tr>
-                <th>วัสดุ</th>
-                <th>ชนิด</th>
-                <th className={styles.numCol}>จำนวน</th>
-                <th>PR / PO</th>
-                <th className={styles.soCol}>ใบสั่งขาย</th>
-                <th className={styles.dateCol}>กำหนดถึง</th>
-                <th className={styles.dateCol}>มาถึงจริง</th>
-                {canEdit && <th className={styles.actionsCol} />}
-              </tr>
-            </thead>
-            <tbody>
-              {deliveries.map((row) => {
-                const late = !row.arrivedAt && row.dueDate && String(row.dueDate) < today;
-                return (
-                  <tr key={row.id} className={late ? styles.late : undefined}>
-                    <td>
-                      {row.label}
-                      {/* บอกรอบของแถว — พาเนลนี้รวมทุกรอบของโครงการไว้ด้วยกัน */}
-                      {deals.length > 1 && dealLabel(row.dealId) && (
-                        <span className={styles.round}>{dealLabel(row.dealId)}</span>
-                      )}
-                      {/* ขอให้ PC อัปเดตไปแล้ว — ลิงก์ไปคำร้องเพื่อคุยต่อในเธรดที่นั่น
-                          (แถวนี้จะไม่ถูกขอซ้ำจนกว่าจะเคลียร์) */}
-                      {row.requestId && !row.arrivedAt && (
-                        <Link className={styles.asked} href={`/requests/${row.requestId}`}>
-                          ขออัปเดตแล้ว
-                        </Link>
-                      )}
-                      {row.note && <div className={styles.hint}>{row.note}</div>}
-                    </td>
-                    <td>{MATERIAL_KIND_LABELS[row.kind] || row.kind}</td>
-                    <td className={`mono ${styles.numCol}`}>
-                      {/* จำนวนว่าง = ยังไม่รู้ยอด **ห้ามแสดงเป็น 0** */}
-                      {row.qty == null
-                        ? <span className={styles.muted}>{NA}</span>
-                        : `${fmtNumber(row.qty)} ${row.unit || ""}`}
-                    </td>
-                    <td className="mono">{row.poRef || <span className={styles.muted}>{NA}</span>}</td>
-                    {/* ผูก SO = บอกว่าของชุดนี้สั่งมาเพื่อผลิตใบไหน · ว่างได้ เพราะของ
-                        long-lead สั่งก่อนออก SO ได้จริง */}
-                    <td>
-                      {canEdit && salesOrders.length ? (
-                        <Select
-                          compact value={row.salesOrderId || ""} disabled={!!busy}
-                          /* ⚠️ Select รับ `aria-label` ไม่ใช่ `ariaLabel` (ต่างจาก DateInput)
-                             ใส่ผิดแล้วมันหลุดไปเป็น DOM attribute ที่ไม่มีอยู่จริง */
-                          aria-label={`ใบสั่งขายของ ${row.label}`}
-                          options={soOptions}
-                          onChange={(e) => patchRow(row, { salesOrderId: e.target.value || null })}
-                        />
-                      ) : (
-                        <span className="mono">
-                          {soLabel(row.salesOrderId) || <span className={styles.muted}>{NA}</span>}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      {canEdit ? (
-                        <DateInput
-                          compact value={row.dueDate || ""} disabled={!!busy}
-                          ariaLabel={`กำหนดถึง ${row.label}`}
-                          onChange={(v) => patchRow(row, { dueDate: v || null })}
-                        />
-                      ) : (row.dueDate ? fmtDate(row.dueDate) : <span className={styles.muted}>{NA}</span>)}
-                    </td>
-                    <td>
-                      {canEdit ? (
-                        <DateInput
-                          compact value={row.arrivedAt || ""} disabled={!!busy}
-                          ariaLabel={`มาถึงจริง ${row.label}`}
-                          onChange={(v) => patchRow(row, { arrivedAt: v || null })}
-                        />
-                      ) : (row.arrivedAt ? fmtDate(row.arrivedAt) : <span className={styles.muted}>ยังไม่มา</span>)}
-                    </td>
-                    {canEdit && (
+      >
+        {!deliveries.length ? (
+          <EmptyState plain icon={PackageCheck}>
+            ยังไม่มีรายการของเข้า
+            {canEdit ? ' — กด "กางจากใบขอราคาผลิต" เพื่อดึงบรรทัดวัสดุของใบที่อนุมัติแล้วมาทั้งชุด' : ""}
+          </EmptyState>
+        ) : (
+          <TableScroll>
+            <table>
+              <thead>
+                <tr>
+                  <th>วัสดุ</th>
+                  <th>ชนิด</th>
+                  <th className={styles.numCol}>จำนวน</th>
+                  <th>PR / PO</th>
+                  <th className={styles.soCol}>ใบสั่งขาย</th>
+                  <th className={styles.dateCol}>กำหนดถึง</th>
+                  <th className={styles.dateCol}>มาถึงจริง</th>
+                  {canEdit && <th className={styles.actionsCol} />}
+                </tr>
+              </thead>
+              <tbody>
+                {deliveries.map((row) => {
+                  const late = !row.arrivedAt && row.dueDate && String(row.dueDate) < today;
+                  return (
+                    <tr key={row.id} className={late ? styles.late : undefined}>
                       <td>
-                        <div className={styles.rowActions}>
-                          <Button
-                            iconOnly tone="danger" variant="ghost" onClick={() => removeRow(row)}
-                            disabled={!!busy} aria-label={`ลบ ${row.label}`}
-                            icon={<Trash2 size={14} aria-hidden="true" />}
-                          />
-                        </div>
+                        {row.label}
+                        {/* บอกรอบของแถว — พาเนลนี้รวมทุกรอบของโครงการไว้ด้วยกัน */}
+                        {deals.length > 1 && dealLabel(row.dealId) && (
+                          <span className={styles.round}>{dealLabel(row.dealId)}</span>
+                        )}
+                        {/* ขอให้ PC อัปเดตไปแล้ว — ลิงก์ไปคำร้องเพื่อคุยต่อในเธรดที่นั่น
+                            (แถวนี้จะไม่ถูกขอซ้ำจนกว่าจะเคลียร์) */}
+                        {row.requestId && !row.arrivedAt && (
+                          <Link className={styles.asked} href={`/requests/${row.requestId}`}>
+                            ขออัปเดตแล้ว
+                          </Link>
+                        )}
+                        {row.note && <div className={styles.hint}>{row.note}</div>}
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableScroll>
-      )}
+                      <td>{MATERIAL_KIND_LABELS[row.kind] || row.kind}</td>
+                      <td className={`mono ${styles.numCol}`}>
+                        {/* จำนวนว่าง = ยังไม่รู้ยอด **ห้ามแสดงเป็น 0** */}
+                        {row.qty == null
+                          ? <span className={styles.muted}>{NA}</span>
+                          : `${fmtNumber(row.qty)} ${row.unit || ""}`}
+                      </td>
+                      <td className="mono">{row.poRef || <span className={styles.muted}>{NA}</span>}</td>
+                      {/* ผูก SO = บอกว่าของชุดนี้สั่งมาเพื่อผลิตใบไหน · ว่างได้ เพราะของ
+                          long-lead สั่งก่อนออก SO ได้จริง */}
+                      <td>
+                        {canEdit && salesOrders.length ? (
+                          <Select
+                            compact value={row.salesOrderId || ""} disabled={!!busy}
+                            /* ⚠️ Select รับ `aria-label` ไม่ใช่ `ariaLabel` (ต่างจาก DateInput)
+                               ใส่ผิดแล้วมันหลุดไปเป็น DOM attribute ที่ไม่มีอยู่จริง */
+                            aria-label={`ใบสั่งขายของ ${row.label}`}
+                            options={soOptions}
+                            onChange={(e) => patchRow(row, { salesOrderId: e.target.value || null })}
+                          />
+                        ) : (
+                          <span className="mono">
+                            {soLabel(row.salesOrderId) || <span className={styles.muted}>{NA}</span>}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {canEdit ? (
+                          <DateInput
+                            compact value={row.dueDate || ""} disabled={!!busy}
+                            ariaLabel={`กำหนดถึง ${row.label}`}
+                            onChange={(v) => patchRow(row, { dueDate: v || null })}
+                          />
+                        ) : (row.dueDate ? fmtDate(row.dueDate) : <span className={styles.muted}>{NA}</span>)}
+                      </td>
+                      <td>
+                        {canEdit ? (
+                          <DateInput
+                            compact value={row.arrivedAt || ""} disabled={!!busy}
+                            ariaLabel={`มาถึงจริง ${row.label}`}
+                            onChange={(v) => patchRow(row, { arrivedAt: v || null })}
+                          />
+                        ) : (row.arrivedAt ? fmtDate(row.arrivedAt) : <span className={styles.muted}>ยังไม่มา</span>)}
+                      </td>
+                      {canEdit && (
+                        <td>
+                          <div className={styles.rowActions}>
+                            <Button
+                              iconOnly tone="danger" variant="ghost" onClick={() => removeRow(row)}
+                              disabled={!!busy} aria-label={`ลบ ${row.label}`}
+                              icon={<Trash2 size={14} aria-hidden="true" />}
+                            />
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
+      </ListPanel>
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} size="md" title="เพิ่มรายการของเข้า">
         <div className={styles.formGrid}>
@@ -340,6 +351,6 @@ export default function DeliveriesPanel({
           </Button>
         </div>
       </Modal>
-    </section>
+    </>
   );
 }

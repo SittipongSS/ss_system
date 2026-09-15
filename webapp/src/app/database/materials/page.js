@@ -13,9 +13,11 @@
 // allowlist ใน proxy.js ผูกกับ prefix นั้น และ path ของ API ผู้ใช้ไม่เห็นอยู่ดี
 // (บทเรียน /api/company-profile: ย้าย prefix แล้วลืมลงทะเบียน = non-admin 403 เงียบ)
 import { useCallback, useEffect, useState } from "react";
-import { Boxes } from "lucide-react";
+import { Boxes, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import Button from "@/components/ui/Button";
 import MaterialRegistryPanel from "@/components/materials/MaterialRegistryPanel";
+import { emptyMaterialForm } from "@/components/materials/MaterialForm";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -29,6 +31,9 @@ export default function MaterialsPage() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // ฟอร์มเพิ่ม/แก้วัสดุ ({ mode, material?, value } | null) — ยกขึ้นมาไว้ที่หน้า เพราะปุ่มสร้าง
+  // อยู่ headerRight (ของระดับหน้า · ทรงเดียวกับทะเบียนสูตร/กลิ่น) ส่วน Modal กับปุ่มแก้ของแถวอยู่ในพาเนล
+  const [form, setForm] = useState(null);
 
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
@@ -53,10 +58,20 @@ export default function MaterialsPage() {
       icon={<Boxes size={22} />}
       title="ทะเบียนวัสดุ"
       subtitle={REGISTRY_BLURB}
+      headerRight={(
+        <Button
+          tone="accent"
+          icon={<Plus size={15} aria-hidden="true" />}
+          onClick={() => setForm({ mode: "create", value: emptyMaterialForm() })}
+        >
+          เพิ่มวัสดุ
+        </Button>
+      )}
     >
       <MaterialRegistryPanel
         materials={materials} customers={customers}
         loading={loading} loadError={loadError} reload={reload}
+        form={form} setForm={setForm}
       />
     </Workspace>
   );

@@ -7,17 +7,22 @@
 //   ⚠️ กติกา UI ของระบบ: สลับ "คนละชุดข้อมูล" = Tabs · กรองในชุดเดิม = segmented
 //
 // ⭐ **ที่นี่คือที่ "สร้าง" · โมดัลเพิ่มเครื่องคือที่ "ใช้"** (มติผู้ใช้ 2026-09-03)
+//
+// ⭐ **รายการ = ListPanel ใบเดียว** (มติผู้ใช้ 2026-09-15) — หัวแผงถือชื่อ · จำนวนรุ่น
+//   🔄 เดิมเป็น TableShell เปล่า แล้วส่งจำนวนกลับขึ้นไปให้ป้ายบนหัวหน้า (`onCount`)
+//      ⇒ จำนวนย้ายมาอยู่บนหัวแผงของตัวเอง ไม่ต้องยก state ข้ามคอมโพเนนต์อีก
+//   ⚠️ ไอคอนแผงไม่ใช่ Boxes — Boxes เป็นของทะเบียนวัสดุ (หนึ่ง entity หนึ่งไอคอน)
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, Pencil, Power, Trash2 } from "lucide-react";
+import { Pencil, Power, Shapes, Trash2 } from "lucide-react";
 import AssetModelModal from "@/components/service/AssetModelModal";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import RowActionMenu from "@/components/ui/RowActionMenu";
-import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { TableShell } from "@/components/ui/Table";
+import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
+import { ListPanel } from "@/components/ui/Workspace";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { assetModelError } from "@/lib/service/assetModels";
@@ -31,7 +36,7 @@ import styles from "./AssetModelsPanel.module.css";
  *     แท็บที่เปิดอยู่ (ท่าเดียวกับหน้าสัญญา) ⇒ ส่งสัญญาณลงมาแทนการยก state ขึ้นไป
  *     ทั้งก้อน · ใช้ตัวนับไม่ใช่ boolean เพราะกดซ้ำหลังปิดโมดัลต้องเปิดใหม่ได้
  */
-export default function AssetModelsPanel({ canEdit = false, addSignal = 0, onCount }) {
+export default function AssetModelsPanel({ canEdit = false, addSignal = 0 }) {
   const [models, setModels] = useState([]);
   const [usage, setUsage] = useState({});
   const [loading, setLoading] = useState(true);
@@ -117,105 +122,109 @@ export default function AssetModelsPanel({ canEdit = false, addSignal = 0, onCou
       : String(ASSET_KIND_LABELS[a.kind] || a.kind).localeCompare(String(ASSET_KIND_LABELS[b.kind] || b.kind), "th")
   )), [models]);
 
-  // แจ้งจำนวนกลับให้หัวแท็บ — เลขบนแท็บต้องรู้ก่อนกดเข้าไป
-  useEffect(() => { onCount?.(models.length); }, [models.length, onCount]);
-
   // ⚠️ ข้าม tick แรก (0) ไม่งั้นโมดัลเด้งขึ้นเองตอนเปิดแท็บ
   useEffect(() => { if (addSignal > 0 && canEdit) setEditing({}); }, [addSignal, canEdit]);
 
   return (
     <>
-      {/* 🐞 เดิมเป็น `<p class="form-error">` ซึ่งไม่มีสไตล์ที่ไหนเลย ⇒ error อ่านเหมือนข้อความธรรมดา */}
-      {loadError && (
-        <StatusNotice tone="error" title="โหลดทะเบียนรุ่นไม่สำเร็จ"
-          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
-          {loadError}
-        </StatusNotice>
-      )}
-
-      {loading || loadError ? (
-        loading ? <SkeletonRows rows={5} /> : null
-      ) : rows.length === 0 ? (
-        /* คนที่ไม่มีสิทธิ์แก้ไม่เห็นปุ่มเพิ่มรุ่น — อย่าบอกให้ไปทำสิ่งที่ทำไม่ได้ */
-        <EmptyState icon={Boxes}>
-          {canEdit ? "ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นก่อน แล้วจึงขึ้นทะเบียนเครื่องได้" : "ยังไม่มีรุ่นในทะเบียน"}
-        </EmptyState>
-      ) : (
-        /* ⚠️ ตารางนี้กว้างจริง ~550px — `minWidth` ที่ใหญ่กว่านั้นทำให้มันเลื่อนแนวนอน
-           เปล่า ๆ และ **เมนู "…" ท้ายแถวโดนตัดหายนอกขอบ** (เจอตอนตรวจ 2026-09-06) */
-        <TableShell minWidth={560}>
-          <table>
-            <thead>
-              <tr>
-                <th>รุ่น</th>
-                <th>รหัส 4 ตัว</th>
-                <th>ชนิด</th>
-                <th>สีที่มี</th>
-                <th className="num">ใช้อยู่</th>
-                <th>สถานะ</th>
-                {canEdit && <th aria-label="การกระทำ" />}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((model) => {
-                const used = usage[model.id] || 0;
-                return (
-                  <tr key={model.id} className={model.isActive === false ? styles.off : undefined}>
-                    <td>{model.name}</td>
-                    <td className="mono">{model.modelCode}</td>
-                    <td>{ASSET_KIND_LABELS[model.kind] || model.kind}</td>
-                    <td>{model.colours?.length ? model.colours.join(" · ") : naText(null)}</td>
-                    {/* ⚠️ **0 คือคำตอบ ไม่ใช่ค่าว่าง** — ขีดแปลว่า "ไม่มีข้อมูล" ซึ่งคนละเรื่อง
-                        กับ "ยังไม่มีเครื่องใช้รุ่นนี้" และเป็นตัวเลขที่ตัดสินว่าลบรุ่นได้ไหม */}
-                    <td className="num">{used}</td>
-                    <td>
-                      <span className="ui-badge">{model.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
-                    </td>
-                    {canEdit && (
-                      <td className={styles.actions}>
-                        {/* ⭐ ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…" (มติผู้ใช้ 2026-08-01) —
-                            เรียงสามปุ่มกินความกว้างจนคอลัมน์อื่นถูกบีบและปุ่มลบหลุดขอบจอ */}
-                        <Button size="sm" onClick={() => setEditing(model)} icon={<Pencil size={14} aria-hidden="true" />}>
-                          แก้ไข
-                        </Button>
-                        <RowActionMenu
-                          label={`การจัดการรุ่น ${model.name}`}
-                          items={[
-                            {
-                              id: "toggle",
-                              label: model.isActive === false ? "เปิดใช้งาน" : "ปิดใช้งาน",
-                              icon: Power,
-                              onClick: () => toggleActive(model),
-                            },
-                            {
-                              /* ⭐ **โชว์เสมอ แล้วบอกเหตุ** — กติกา GatedAction ของระบบ
-                                 🐞 ของเดิมซ่อนปุ่มเมื่อ `used > 0` ⇒ คนที่หาปุ่มลบไม่เจอ
-                                    และไม่มีอะไรบอกว่าทำไม
-                                 ⚠️ รุ่นที่ใช้อยู่ลบไม่ได้จริง — เครื่องที่ออกรหัสไปแล้ว
-                                    ถือรหัส 4 ตัวของรุ่นนี้ไว้ในรหัสตัวเอง */
-                              id: "delete",
-                              label: "ลบรุ่นนี้",
-                              icon: Trash2,
-                              tone: "danger",
-                              separatorBefore: true,
-                              disabled: used > 0,
-                              disabledReason: used > 0
-                                ? `มีเครื่องใช้รุ่นนี้ ${used} ตัว — ปิดใช้งานแทน`
-                                : undefined,
-                              onClick: () => setRemoving(model),
-                            },
-                          ]}
-                        />
+      {/* `loading` แทนที่เฉพาะเนื้อแผง — หัวแผงยืนอยู่ระหว่างโหลด · โหลดพัง = ขีด ไม่ใช่ "0 รุ่น" */}
+      <ListPanel
+        icon={<Shapes size={17} aria-hidden="true" />}
+        title="ทะเบียนรุ่นเครื่อง"
+        subtitle="รหัส 4 ตัว ชนิด สีที่มี และจำนวนเครื่องที่ใช้รุ่นนั้นอยู่"
+        count={loading || loadError ? null : `${rows.length} รุ่น`}
+        loading={loading}
+      >
+        {/* 🐞 เดิมเป็น `<p class="form-error">` ซึ่งไม่มีสไตล์ที่ไหนเลย ⇒ error อ่านเหมือนข้อความธรรมดา */}
+        {loadError ? (
+          <StatusNotice tone="error" title="โหลดทะเบียนรุ่นไม่สำเร็จ"
+            action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+            {loadError}
+          </StatusNotice>
+        ) : rows.length === 0 ? (
+          /* คนที่ไม่มีสิทธิ์แก้ไม่เห็นปุ่มเพิ่มรุ่น — อย่าบอกให้ไปทำสิ่งที่ทำไม่ได้ */
+          <EmptyState plain icon={Shapes}>
+            {canEdit ? "ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นก่อน แล้วจึงขึ้นทะเบียนเครื่องได้" : "ยังไม่มีรุ่นในทะเบียน"}
+          </EmptyState>
+        ) : (
+          /* ⚠️ ตารางนี้กว้างจริง ~550px — `minWidth` ที่ใหญ่กว่านั้นทำให้มันเลื่อนแนวนอน
+             เปล่า ๆ และ **เมนู "…" ท้ายแถวโดนตัดหายนอกขอบ** (เจอตอนตรวจ 2026-09-06)
+             กรอบชั้นเดียว `TableScroll` ในเนื้อแผง — เดิม TableShell = การ์ด + กรอบตารางซ้อนข้างใน */
+          <TableScroll minWidth={560}>
+            <table>
+              <thead>
+                <tr>
+                  <th>รุ่น</th>
+                  <th>รหัส 4 ตัว</th>
+                  <th>ชนิด</th>
+                  <th>สีที่มี</th>
+                  <th className="num">ใช้อยู่</th>
+                  <th>สถานะ</th>
+                  {canEdit && <th aria-label="การกระทำ" />}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((model) => {
+                  const used = usage[model.id] || 0;
+                  return (
+                    <tr key={model.id} className={model.isActive === false ? styles.off : undefined}>
+                      <td>{model.name}</td>
+                      <td className="mono">{model.modelCode}</td>
+                      <td>{ASSET_KIND_LABELS[model.kind] || model.kind}</td>
+                      <td>{model.colours?.length ? model.colours.join(" · ") : naText(null)}</td>
+                      {/* ⚠️ **0 คือคำตอบ ไม่ใช่ค่าว่าง** — ขีดแปลว่า "ไม่มีข้อมูล" ซึ่งคนละเรื่อง
+                          กับ "ยังไม่มีเครื่องใช้รุ่นนี้" และเป็นตัวเลขที่ตัดสินว่าลบรุ่นได้ไหม */}
+                      <td className="num">{used}</td>
+                      <td>
+                        <span className="ui-badge">{model.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableShell>
-      )}
+                      {canEdit && (
+                        <td className={styles.actions}>
+                          {/* ⭐ ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…" (มติผู้ใช้ 2026-08-01) —
+                              เรียงสามปุ่มกินความกว้างจนคอลัมน์อื่นถูกบีบและปุ่มลบหลุดขอบจอ */}
+                          <Button size="sm" onClick={() => setEditing(model)} icon={<Pencil size={14} aria-hidden="true" />}>
+                            แก้ไข
+                          </Button>
+                          <RowActionMenu
+                            label={`การจัดการรุ่น ${model.name}`}
+                            items={[
+                              {
+                                id: "toggle",
+                                label: model.isActive === false ? "เปิดใช้งาน" : "ปิดใช้งาน",
+                                icon: Power,
+                                onClick: () => toggleActive(model),
+                              },
+                              {
+                                /* ⭐ **โชว์เสมอ แล้วบอกเหตุ** — กติกา GatedAction ของระบบ
+                                   🐞 ของเดิมซ่อนปุ่มเมื่อ `used > 0` ⇒ คนที่หาปุ่มลบไม่เจอ
+                                      และไม่มีอะไรบอกว่าทำไม
+                                   ⚠️ รุ่นที่ใช้อยู่ลบไม่ได้จริง — เครื่องที่ออกรหัสไปแล้ว
+                                      ถือรหัส 4 ตัวของรุ่นนี้ไว้ในรหัสตัวเอง */
+                                id: "delete",
+                                label: "ลบรุ่นนี้",
+                                icon: Trash2,
+                                tone: "danger",
+                                separatorBefore: true,
+                                disabled: used > 0,
+                                disabledReason: used > 0
+                                  ? `มีเครื่องใช้รุ่นนี้ ${used} ตัว — ปิดใช้งานแทน`
+                                  : undefined,
+                                onClick: () => setRemoving(model),
+                              },
+                            ]}
+                          />
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
+      </ListPanel>
 
+      {/* โมดัลกับ Toast อยู่นอกเนื้อแผง (กติกา ListPanel) */}
       <AssetModelModal
         open={!!editing}
         model={editing?.id ? editing : null}

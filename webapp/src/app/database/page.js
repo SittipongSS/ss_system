@@ -151,28 +151,29 @@ export default function DatabaseOverview() {
     return q;
   }, [products, customers, canApprove, role, myTeams, router]);
 
-  const toolbar = (
-    <div className="toolbar">
-      <FilterPopover
+  /* ตัวกรองนี้คุม **ทั้งหน้า** (KPI · กราฟ · คิวรออนุมัติ) ไม่ใช่รายการใดรายการหนึ่ง
+     ⇒ อยู่ที่ headerRight ของ Workspace ไม่ห่อ `.toolbar` (มติผู้ใช้ 2026-09-15 · ข้อเท็จจริง F3
+     ของด่าน LIST_PANEL_SHAPE) · แผงเปิดผ่าน portal จึงไม่ล้นขอบขวา */
+  const filter = (
+    <FilterPopover
         count={timeframe.length + teamFilter.length}
-        onClear={() => { setTimeframe([]); setTeamFilter([]); }}
-        groups={[
-          {
-            key: "timeframe", label: "ช่วงเวลา", icon: CalendarRange,
-            options: [
-              { value: "1y", label: "ปีนี้" },
-              { value: "30d", label: "30 วันล่าสุด" },
-            ],
-            selected: timeframe, onChange: setTimeframe,
-          },
-          ...(allTeams.length ? [{
-            key: "team", label: "ทีมดูแล", icon: Users,
-            options: allTeams.map((t) => ({ value: t, label: t })),
-            selected: teamFilter, onChange: setTeamFilter,
-          }] : []),
-        ]}
-      />
-    </div>
+      onClear={() => { setTimeframe([]); setTeamFilter([]); }}
+      groups={[
+        {
+          key: "timeframe", label: "ช่วงเวลา", icon: CalendarRange,
+          options: [
+            { value: "1y", label: "ปีนี้" },
+            { value: "30d", label: "30 วันล่าสุด" },
+          ],
+          selected: timeframe, onChange: setTimeframe,
+        },
+        ...(allTeams.length ? [{
+          key: "team", label: "ทีมดูแล", icon: Users,
+          options: allTeams.map((t) => ({ value: t, label: t })),
+          selected: teamFilter, onChange: setTeamFilter,
+        }] : []),
+      ]}
+    />
   );
 
   return (
@@ -181,7 +182,7 @@ export default function DatabaseOverview() {
       title="ภาพรวมระบบฐานข้อมูล"
       subtitle="สรุปข้อมูลสินค้า ลูกค้า และรายการรออนุมัติ"
       loading={l1 || l2}
-      toolbar={toolbar}
+      headerRight={filter}
     >
       <div className="flex flex-col gap-6" style={{ paddingBottom: 40 }}>
 

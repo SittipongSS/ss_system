@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck, Plus } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
+import Button from "@/components/ui/Button";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
@@ -56,7 +58,7 @@ export default function RegistrationsPage() {
   const router = useRouter();
   const canEdit = useCan("products:edit");   // SA: create / edit / resubmit / delete
 
-  const { data: regs, loading, reload } = useApiList("/api/excise-registrations?view=queue");
+  const { data: regs, loading, error: loadError, reload } = useApiList("/api/excise-registrations?view=queue");
 
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกา **ไทย** — ห้ามอ่านนาฬิกาตอนเรนเดอร์
      (ค่าจะขยับระหว่างเรนเดอร์ และเครื่องที่ตั้งโซนเวลาอื่นจะได้คนละวัน) */
@@ -345,11 +347,15 @@ export default function RegistrationsPage() {
     ? customerNameIn(customers.find((c) => c.id === customerIds[0]))
     : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
 
+  /* ⭐ ป้ายจำนวนย้ายจากหัวหน้าเข้าหัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9)
+     นับ **รายการที่เหลือหลังกรอง** = ยอดของ Pager · กำลังเลือกแถว = "เลือก x/y รายการ"
+     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด */
+  const noData = (loading || loadError) && !regs.length;
+  const count = noData ? null
+    : selected.size ? `เลือก ${selected.size}/${rows.length} รายการ` : `${rows.length} รายการ`;
+
   const headerRight = (
     <>
-      <span className="ui-badge">
-        {selected.size ? `เลือก ${selected.size}/${rows.length} รายการ` : `${regs.length} รายการ`}
-      </span>
       <ReportExportActions
         type="registration"
         params={exportParams}
@@ -371,8 +377,16 @@ export default function RegistrationsPage() {
       title="การขึ้นทะเบียนสรรพสามิต"
       subtitle="ยื่น ตรวจสอบ และอนุมัติการขึ้นทะเบียนภาษีสรรพสามิต (สินค้า + ลูกค้า)"
       headerRight={headerRight}
-      loading={loading}
-      toolbar={
+    >
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
+          แทนที่เฉพาะเนื้อ ⇒ ช่องค้นหา/ชิปยังอยู่ระหว่างโหลด ไม่หลุดโฟกัส */}
+      <ListPanel
+        icon={<ClipboardCheck size={17} aria-hidden="true" />}
+        title="รายการขึ้นทะเบียนสรรพสามิต"
+        subtitle="ค้นหา กรอง และเปิดทะเบียนเพื่อตรวจหรือยื่นต่อ · เรียงจากค้างนานสุด"
+        count={count}
+        loading={loading && !regs.length}
+        toolbar={(
         <FilterBar
           filters={filterOptions}
           activeFilter={filter}
@@ -380,6 +394,7 @@ export default function RegistrationsPage() {
           search={search}
           onSearch={setSearch}
           searchPlaceholder="ค้นหา FG / ลูกค้า / เลขผู้เสียภาษี / ผู้ยื่น / เลขอนุมัติ..."
+          searchLabel="ค้นหาการขึ้นทะเบียน"
         >
           <FilterPopover
             count={customerIds.length}
@@ -394,15 +409,30 @@ export default function RegistrationsPage() {
               onChange: setCustomerIds,
             }]}
           />
-          <label className={styles.rangeLabel}>
-            จาก <DateInput value={from} onChange={setFrom} />
-          </label>
-          <label className={styles.rangeLabel}>
-            ถึง <DateInput value={to} onChange={setTo} />
-          </label>
+          {/* จาก–ถึง เป็นก้อนเดียว — แถบเครื่องมือในแผงแคบกว่าเดิม ถ้าตัดบรรทัดต้องลงไปทั้งคู่
+              ไม่ใช่ "จาก" ค้างแถวบนแล้ว "ถึง" ห้อยแถวล่าง */}
+          <span className={styles.rangeGroup}>
+            <label className={styles.rangeLabel}>
+              จาก <DateInput value={from} onChange={setFrom} />
+            </label>
+            <label className={styles.rangeLabel}>
+              ถึง <DateInput value={to} onChange={setTo} />
+            </label>
+          </span>
         </FilterBar>
-      }
-    >
+        )}
+      >
+      {loadError && (
+        <StatusNotice
+          tone="error"
+          className="mb-4"
+          action={<Button size="sm" variant="ghost" onClick={() => reload()}>ลองใหม่</Button>}
+        >
+          {loadError}
+        </StatusNotice>
+      )}
+      {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด ไม่ใช่ "ยังไม่มีการขึ้นทะเบียน" */}
+      {!(loadError && !regs.length) && (
       <DataList
         columns={columns}
         rows={rows}
@@ -414,6 +444,8 @@ export default function RegistrationsPage() {
         empty={search || filter !== "all" ? "ไม่พบรายการ" : "ยังไม่มีการขึ้นทะเบียน"}
         emptyIcon={ClipboardCheck}
       />
+      )}
+      </ListPanel>
 
       {/* registrations = ชุดเต็ม (ไม่ใช่ rows ที่ผ่านตัวกรองจอ) — โมดัลใช้เช็คว่า
           FG ไหนขึ้นทะเบียนกับลูกค้าที่เลือกไปแล้ว จะได้ไม่ให้เลือกไปชน 409 */}

@@ -3,8 +3,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
-import SkeletonRows from "@/components/ui/Skeleton";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -299,18 +298,19 @@ export default function UserManagement() {
       icon={<Users size={22} />}
       title="จัดการผู้ใช้งาน"
       subtitle="เพิ่ม / แก้ไขตำแหน่ง ฝ่าย และสิทธิ์ของผู้ใช้ในระบบ — จัดทีมที่หน้าจัดทีม"
-      headerRight={<div className="pill ok">ทั้งหมด {users.length} คน</div>}
     >
 
-      {loading ? (
-        <SkeletonRows rows={7} />
-      ) : (
-        /* หัวการ์ดมาจาก WorkspaceSection กลาง (มติผู้ใช้ 2026-08-21) — เดิมเป็น
-           .glass-panel + หัวที่เขียนเองพร้อม inline style ⇒ ระยะขอบไม่ตรงกับการ์ด
-           หน้าอื่น · ปุ่มเพิ่ม = action ของเนื้อหาในการ์ด จึงไปช่อง `actions` */
-        <WorkspaceSection
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — จำนวนคนอยู่ป้ายขวาสุด
+          ของหัวแผงที่เดียว (เดิมซ้ำสามที่: ป้ายหัวหน้า · คำอธิบาย · Pager) · ปุ่มเพิ่ม = action
+          ของเนื้อหาในแผง จึงอยู่ช่อง `actions` (มติผู้ใช้ 2026-08-21) · โหลดครั้งแรกใช้ `loading`
+          ของแผง หัวแผงไม่หายระหว่างโหลด */}
+        <ListPanel
+          icon={<Users size={17} aria-hidden="true" />}
           title="รายชื่อผู้ใช้"
-          subtitle={`ทั้งหมด ${users.length} คน · เรียงและแบ่งหน้าได้ที่ตารางด้านล่าง`}
+          subtitle="เรียงตามคอลัมน์ แก้ไข โอนงาน หรือปิดบัญชีได้จากท้ายแถว"
+          count={loading ? null : `${users.length} คน`}
+          loading={loading}
+          skeletonRows={7}
           actions={canManage && (
             <button
               onClick={() => {
@@ -453,8 +453,7 @@ export default function UserManagement() {
               onPageSize={setPageSize}
             />
           )}
-        </WorkspaceSection>
-      )}
+        </ListPanel>
 
       {/* Create user modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="เพิ่มผู้ใช้ใหม่" size="md">

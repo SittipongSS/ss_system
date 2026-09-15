@@ -19,11 +19,14 @@
   .weekLabel { flex: 1 1 auto; }
 }
 
-.count {
-  color: var(--text-3);
-  font-size: var(--fs-label);
-  margin-inline-start: auto;
-}
+/* ⭐ แถวขอบเขต สัปดาห์/ทีม (ListPanel 2026-09-15) เป็น `scope-row` ไม่ใช่ `.toolbar` —
+   ด่าน LP3 ห้าม `.toolbar` นอก ListPanel toolbar ⇒ แถวนี้ไม่ได้กฎ `--ctl-h` ของแถบกลางมาด้วย
+   🐞 ย้ายออกจาก `Workspace toolbar` แล้ว ‹ › หดเหลือ 28×28 · "สัปดาห์นี้" 30px · ตัวกรองทีม 38px
+      ข้างตัวสลับมุมมอง 40px ของแผงตาราง = กลับไปเป็นแถวที่ตัวควบคุมสูงไม่เท่ากัน (บั๊กที่หัวไฟล์นี้)
+   ⇒ ทวนกฎสามบรรทัดของ `.toolbar` (globals.css) เฉพาะแถวนี้ · ความสูงมาจากโทเคนเท่านั้น ห้ามเลขดิบ */
+.weekNav :global(.btn) { height: var(--ctl-h); }
+.weekNav :global(.btn-icon) { width: var(--ctl-h); height: var(--ctl-h); }
+.weekNav :global(.segmented) { min-height: var(--ctl-h); }
 
 /* ตัวกรองทีมบนจอแคบ — ปุ่มไม่หดจน "ทุกทีม" ขาดสองบรรทัด
    🐞 รอบก่อนให้เลื่อนในกล่องตัวเอง ⇒ ที่ 320px "supervisor" โผล่แค่ "sup" ชิดขอบขวา
@@ -228,31 +231,8 @@
 
 /* ── คิวรอจัด (ร่างที่ยังไม่ผ่านด่าน) ──────────────────────────────────────
    อยู่เหนือกริด **นอกตาราง** — ร่างที่วางปนกับนัดจริงคือร่างที่เจ้าหน้าที่ออกไปทำ
-   🐞 เดิมอ้าง `--surface`/`--surface-2` ซึ่งไม่มีประกาศที่ไหน ⇒ พื้นโปร่งทั้งกล่อง
-   (การ์ด = --panel · ของที่ซ้อนข้างใน = --panel-2 ตาม Visual rules) */
-.queue {
-  margin-bottom: var(--space-4);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
-}
-
-.queueTitle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-2);
-  font-size: var(--fs-section-title);
-  line-height: var(--lh-thai);
-}
-
-.queueTitle > span {
-  font-size: var(--fs-label);
-  font-weight: var(--fw-regular);
-  color: var(--text-3);
-}
+   🔄 กรอบ + หัว h2 ของกล่องเดิม (`.queue` · `.queueTitle`) ถูกแทนด้วย ListPanel (มติผู้ใช้ 2026-09-15)
+   ⚠️ ของที่ซ้อนในเนื้อแผง = --panel-2 ตาม Visual rules */
 
 .queueList {
   list-style: none;

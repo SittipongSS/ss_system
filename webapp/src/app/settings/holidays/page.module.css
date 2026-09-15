@@ -1,7 +1,5 @@
 /* ปฏิทินวันหยุด — ย้ายจาก inline style มาเป็น token ล้วน (dark mode ตามอัตโนมัติ) */
 
-.headerRight { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-
 /* แถบเตือนว่าปีนั้นยังไม่มีวันหยุดในระบบ — โทน amber เพราะเป็นเรื่องต้องลงมือ ไม่ใช่ error */
 .coverageWarning { display: flex; align-items: flex-start; gap: var(--space-2-5); margin-bottom: var(--space-4); padding: var(--space-3) var(--space-3-5); border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: var(--radius-lg); color: var(--text-2); background: var(--amber-soft); flex-wrap: wrap; }
 .coverageWarning svg { flex: 0 0 auto; margin-top: 1px; color: var(--amber); }
@@ -11,17 +9,12 @@
 .coverageWarning button svg { margin-top: 0; color: inherit; }
 .coverageWarning strong { color: var(--text); }
 
-.errorPanel { display: grid; justify-items: center; gap: var(--space-2-5); padding: var(--space-9) var(--space-5); text-align: center; }
-.errorPanel svg { color: var(--red); }
-.errorPanel p { margin: 0; color: var(--text-2); }
-
 /* ── ปฏิทิน ───────────────────────────────────────────────────────────── */
-.calendarPanel { padding: var(--space-4-5) var(--space-5); }
-.monthNav { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
-.monthNav > div:last-child { display: flex; gap: var(--space-1-5); }
-.monthTitle { text-align: center; }
-.monthTitle strong { display: block; font-size: var(--fs-10); font-weight: var(--fw-bold); }
-.monthTitle small { display: block; color: var(--text-3); font-size: var(--fs-3); }
+/* ชื่อเดือนในแถบเครื่องมือของแผง (มติผู้ใช้ 2026-09-15 · ปฏิทินอยู่ในเนื้อ ListPanel) */
+/* ชื่อเดือน + ก่อนหน้า/วันนี้/ถัดไป = ก้อนเดียว · กว้างไม่ต่ำกว่าเนื้อ ⇒ ตัดบรรทัดทั้งก้อน (จอ 390 ลงแถวสอง)
+   และยืดเต็มที่เหลือของแถว ⇒ ชื่อเดือนชิดซ้าย ปุ่มชิดขวา ทั้งจอกว้างและจอแคบ */
+.monthNav { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-1-5); min-width: max-content; }
+.monthLabel { margin-inline-end: auto; color: var(--text); font-size: var(--fs-8); font-weight: var(--fw-bold); white-space: nowrap; }
 
 /* โครงกริด/สถานะช่อง/เลขวัน ย้ายไป components/ui/MonthGrid แล้ว (pattern กลาง
    แบบ A · มติ 2026-08-08) — ช่องวันยังเป็น <button> จริงเหมือนเดิม โดยส่ง
@@ -41,15 +34,9 @@
 .legendToday { border: 2px solid var(--accent); }
 
 /* ── แท็บรายการ ───────────────────────────────────────────────────────── */
-.listSummary { color: var(--text-2); font-size: var(--fs-6); }
 /* กว้างคงที่ไม่ว่าจะสะสมกี่ปี — เหตุผลที่เลือก dropdown แทนปุ่มเรียงตั้งแต่แรก */
 .yearPicker { min-width: 150px; }
-.yearList { display: flex; flex-direction: column; gap: var(--space-4); }
-.yearPanel { padding: 0; overflow: hidden; }
-.yearHeader { display: flex; align-items: center; gap: var(--space-2-5); padding: var(--space-3-5) var(--space-4); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.yearHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
 .currentYear { color: var(--accent-ink); background: var(--accent-soft); }
-.tableWrap { border: 0; border-radius: 0; }
 .tableWrap td { vertical-align: middle; }
 .dateCell { white-space: nowrap; font-weight: var(--fw-semibold); }
 .rowActions { display: flex; justify-content: flex-end; }
@@ -57,7 +44,11 @@
 .past td { color: var(--text-3); }
 
 .cards { display: none; }
-.card { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2-5); padding: var(--space-3) var(--space-3-5); border-bottom: 1px solid var(--border); }
+/* กลุ่มรายปีบนจอตั้ง — หัวกลุ่มบรรทัดเดียวในเนื้อแผง (แทนการ์ดรายปีที่ซ้อนอยู่ในการ์ด) */
+.cardGroup + .cardGroup { margin-top: var(--space-4); }
+.cardGroupHead { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+.cardGroupHead strong { color: var(--text); font-size: var(--fs-8); font-weight: var(--fw-bold); }
+.card { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2-5); padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
 .card:last-child { border-bottom: 0; }
 .card > div { min-width: 0; }
 .card strong { display: block; font-size: var(--fs-7); }
@@ -77,8 +68,6 @@
 }
 
 @media (max-width: 560px) {
-  .calendarPanel { padding: var(--space-3-5); }
   .day { min-height: 62px; padding: var(--space-1-5) var(--space-1-5); }
-  .headerRight { width: 100%; }
   .addActions button { flex: 1; min-height: 40px; justify-content: center; }
 }

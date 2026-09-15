@@ -151,8 +151,17 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                 <div style={{ position: "sticky", top: 0, background: "var(--panel)", padding: "2px 2px 6px", zIndex: 1 }}>
                   <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                     <Search size={14} style={{ position: "absolute", left: 9, color: "var(--text-3)", pointerEvents: "none" }} />
+                    {/* 🐞 เดิม `autoFocus` — โฟกัสเกิดตอน portal เพิ่งต่อท้าย <body> และแผงยังไม่ได้
+                        position:fixed (รอบแรก panelStyle ว่าง) ⇒ เบราว์เซอร์เลื่อนหน้าลงไปท้ายเอกสาร
+                        แล้วแผงไปเกาะปุ่มที่หลุดจอ (เจอ 2026-09-15 ที่ตัวกรองดีลของไทม์ไลน์ >8 ตัวเลือก)
+                        ⇒ โฟกัสเองด้วย preventScroll ครั้งเดียวต่อช่องที่ mount */}
                     <input autoComplete="off"
-                      autoFocus
+                      ref={(node) => {
+                        if (node && !node.dataset.focused) {
+                          node.dataset.focused = "1";
+                          node.focus({ preventScroll: true });
+                        }
+                      }}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="ค้นหา..."

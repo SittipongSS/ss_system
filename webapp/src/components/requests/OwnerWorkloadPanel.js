@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { TableScroll } from "@/components/ui/Table";
 import { Users } from "lucide-react";
-import { WorkspaceSection } from "@/components/ui/Workspace";
+import { ListPanel } from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import { UNASSIGNED } from "@/lib/requests/deptOverview";
 import styles from "./requestForm.module.css";
@@ -26,15 +26,16 @@ export default function OwnerWorkloadPanel({
   title = "งานค้างรายคน",
   subtitle = "ผู้รับผิดชอบที่มอบหมายไว้ · ใบที่ยังไม่มอบหมายใช้คนที่กดรับเรื่องแทน — กดชื่อเพื่อเปิดคิวของคนนั้น",
 }) {
+  /* แผงรายการ (มติผู้ใช้ 2026-09-15) — ไม่มีแถบเครื่องมือ: รายชื่อคนสั้นพอที่ไม่ต้องค้นหา/กรอง */
   return (
-    <WorkspaceSection
-      icon={<Users size={17} />}
+    <ListPanel
+      icon={<Users size={17} aria-hidden="true" />}
       title={title}
       subtitle={subtitle}
-      actions={<span className="ui-badge">{rows.length} คน</span>}
+      count={`${rows.length} คน`}
     >
       {rows.length === 0 ? (
-        <EmptyState icon={Users}>ไม่มีงานค้างของฝ่ายตอนนี้</EmptyState>
+        <EmptyState plain icon={Users}>ไม่มีงานค้างของฝ่ายตอนนี้</EmptyState>
       ) : (
         /* ⚠️ **ไม่ใส่ `.premium-table`** — `TableScroll` มีสไตล์หัวตาราง/เส้นคั่น/
            padding ครบแล้ว (Table.module.css ยกค่ามาจากคลาสเก่าไว้ที่ `[data-family]`)
@@ -84,6 +85,6 @@ export default function OwnerWorkloadPanel({
           </table>
         </TableScroll>
       )}
-    </WorkspaceSection>
+    </ListPanel>
   );
 }

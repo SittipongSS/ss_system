@@ -13,9 +13,8 @@ import { useSearchParams } from "next/navigation";
 import {
   Archive, ArchiveRestore, Beaker, Check, Coins, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
 } from "lucide-react";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
-import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -414,18 +413,18 @@ export default function FormulasPage() {
         </Button>
       ) : null}
     >
-      {/* รอจัดระเบียบ — ของเก่าที่กรอกชื่อไว้ในช่องสูตรของสินค้า */}
+      {/* รอจัดระเบียบ — ของเก่าที่กรอกชื่อไว้ในช่องสูตรของสินค้า
+          แผงรายการของตัวเอง (มติผู้ใช้ 2026-09-15) · เลขย้ายจากท้ายชื่อมาเป็นป้ายจำนวน
+          คำอธิบายเดิมใต้หัวการ์ดกลายเป็น subtitle ของแผง
+          ⚠️ หน่วยของป้ายคือ "รายการ" ไม่ใช่ "สูตร" — หนึ่งแถว = หนึ่งสินค้า (key productId)
+             และ subtitle เองบอกว่าหลายรายการเป็นชื่อกลิ่น ไม่ใช่สูตร */}
       {unsorted.length > 0 && (
-        <WorkspaceSection
-          className={styles.banner}
-          icon={<Wand2 size={16} aria-hidden="true" />}
-          title={`รอจัดระเบียบ (${unsorted.length})`}
+        <ListPanel
+          icon={<Wand2 size={17} aria-hidden="true" />}
+          title="รอจัดระเบียบ"
+          subtitle={`สินค้าที่กรอก "ชื่อสูตร" ไว้ตั้งแต่ก่อนมีทะเบียน — หลายรายการเป็นชื่อกลิ่น ไม่ใช่ชื่อสูตร ระบบจึงไม่เดาให้${registrar ? " เลือกให้ทีละรายการว่าจะเข้าทะเบียนไหน" : " รอ RD จัดระเบียบ"}`}
+          count={`${unsorted.length} รายการ`}
         >
-          <p className={styles.intro}>
-            สินค้าที่กรอก &quot;ชื่อสูตร&quot; ไว้ตั้งแต่ก่อนมีทะเบียน — หลายรายการเป็น
-            <strong> ชื่อกลิ่น</strong> ไม่ใช่ชื่อสูตร ระบบจึงไม่เดาให้
-            {registrar ? " เลือกให้ทีละรายการว่าจะเข้าทะเบียนไหน" : " รอ RD จัดระเบียบ"}
-          </p>
           <TableScroll surface="embedded">
             <table>
               <thead>
@@ -458,10 +457,20 @@ export default function FormulasPage() {
               </tbody>
             </table>
           </TableScroll>
-        </WorkspaceSection>
+        </ListPanel>
       )}
 
-      <div className="toolbar">
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ)
+          ⚠️ `loading` เฉพาะตอนยังไม่มีแถว — reload หลังบันทึกเก็บตารางไว้แล้วบอกด้วย aria-busy
+             (เดิม SkeletonRows แทนทั้งตารางทุกครั้งที่กดรีเฟรช/บันทึก ตำแหน่งเลื่อนหาย) */}
+      <ListPanel
+        icon={<Beaker size={17} aria-hidden="true" />}
+        title="รายการสูตร"
+        subtitle="ค้นหา กรอง และเปิดสูตรเพื่อดูกลิ่น ลูกค้า และราคา FB"
+        count={(loading && !formulas.length) || loadError ? null : `${visible.length} สูตร`}
+        loading={loading && !formulas.length}
+        toolbar={(
+        <>
         {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (ดูคอมเมนต์เดียวกันที่หน้าทะเบียนกลิ่น) */}
         <div className="search-glass">
           <Search size={18} color="var(--text-3)" aria-hidden="true" />
@@ -502,21 +511,22 @@ export default function FormulasPage() {
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
           รีเฟรช
         </Button>
-      </div>
-
-      {loading ? (
-        <SkeletonRows rows={5} />
-      ) : loadError ? (
-        <StatusNotice tone="error">{loadError}</StatusNotice>
+        </>
+        )}
+      >
+      {loadError ? (
+        <StatusNotice tone="error" action={<Button size="sm" variant="ghost" onClick={reload}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Beaker}>
+        <EmptyState plain icon={Beaker}>
           {formulas.length === 0
             ? "ทะเบียนยังว่าง — กด \"เพิ่มสูตร\" เพื่อเริ่ม"
             : "ไม่มีสูตรที่ตรงกับตัวกรอง"}
         </EmptyState>
       ) : (
         <>
-          <TableScroll>
+          <TableScroll aria-busy={loading}>
             <table>
               <thead>
                 <tr>
@@ -650,6 +660,7 @@ export default function FormulasPage() {
           />
         </>
       )}
+      </ListPanel>
 
       {/* เพิ่ม / แก้ไข — ฟอร์มเดียวสองโหมด (กฎ AGENTS.md) */}
       {/* ปุ่มอยู่ใน prop `footer` = โซน .drawer-footer ของโครงโมดัล — เดิมใช้

@@ -20,7 +20,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, Clock3, FileInput, FileSignature, Flag, Plus, Search, ShieldCheck } from "lucide-react";
 import AccessDenied from "@/components/ui/AccessDenied";
 import StatusNotice from "@/components/ui/StatusNotice";
-import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -188,8 +188,6 @@ export default function ContractsPage() {
         )}
 
         {tab === "contracts" && <>
-        {error && <StatusNotice tone="error" title="โหลดทะเบียนสัญญาไม่สำเร็จ">{error}</StatusNotice>}
-
         <SaMetricStrip>
           <SaMetric icon={<FileSignature />} label="ทั้งหมด" value={summary.total} note="สัญญาในขอบเขตที่มองเห็น" />
           <SaMetric icon={<Clock3 />} label="รอลงนาม" value={summary.awaiting} note="ออกเลขแล้ว รอฉบับเซ็นกลับ" tone={summary.awaiting ? "warning" : "good"} />
@@ -215,14 +213,16 @@ export default function ContractsPage() {
           )}
         />
 
-        <SaSection
-          icon={<FileSignature size={17} />}
+        {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวน = ใบที่เหลือ
+            หลังค้นหา/กรองทุกหน้า (เท่ายอดของ Pager) · เครื่องมือส่งเป็น fragment เข้า `toolbar` */}
+        <ListPanel
+          icon={<FileSignature size={17} aria-hidden="true" />}
           title="ทะเบียนสัญญา"
           subtitle="ค้นหาและเปิดใบเพื่อพิมพ์ ลงนาม หรือติดตาม"
-          actions={<span className="ui-badge">{filtered.length} ใบ</span>}
-        >
-          <div className="toolbar">
-            <div className={`search-glass ${styles.search}`}>
+          count={`${filtered.length} ใบ`}
+          toolbar={(
+          <>
+            <div className="search-glass">
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลขที่สัญญา / เลขอ้างอิง / ลูกค้า / ดีล" aria-label="ค้นหาสัญญา" />
             </div>
@@ -251,7 +251,20 @@ export default function ContractsPage() {
                 },
               ]}
             />
-          </div>
+          </>
+          )}
+        >
+          {/* โหลดรายการไม่สำเร็จ = ข้อความในเนื้อแผงพร้อมทางลองใหม่ (ท่าเดียวกับทะเบียนใบเสนอราคา) */}
+          {error && (
+            <StatusNotice
+              tone="error"
+              className="mb-4"
+              title="โหลดทะเบียนสัญญาไม่สำเร็จ"
+              action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}
+            >
+              {error}
+            </StatusNotice>
+          )}
 
           <TableScroll surface="embedded" aria-busy={loading}><table className="w-full text-sm">
               <thead>
@@ -318,7 +331,7 @@ export default function ContractsPage() {
           {filtered.length > 0 && (
             <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
           )}
-        </SaSection>
+        </ListPanel>
         </>}
       </div>
 

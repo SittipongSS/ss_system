@@ -14,10 +14,11 @@ import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
 import { Bell, BellOff, Check } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Segmented from "@/components/ui/Segmented";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { notifyToast } from "@/lib/feedback";
 import { describeResponseError } from "@/lib/fetchError";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -165,85 +166,102 @@ export default function NotificationsPage() {
     <Workspace
       icon={<Bell size={22} />}
       title="แจ้งเตือน"
-      subtitle={`ทั้งหมด ${total} รายการ · ยังไม่อ่าน ${unread}`}
+      subtitle="แจ้งเตือนทุกรายการของคุณ — กดรายการเพื่อไปที่เรื่องนั้น"
       headerRight={unread > 0 ? (
         <Button variant="quiet" icon={<Check size={15} />} disabled={busy} onClick={readAll}>
           อ่านทั้งหมด
         </Button>
       ) : null}
-      toolbar={(
-        <Segmented
-          options={[
-            { value: "all", label: "ทั้งหมด", count: total },
-            { value: "unread", label: "ยังไม่อ่าน", count: unread },
-          ]}
-          value={scope}
-          onChange={setScope}
-          ariaLabel="กรองแจ้งเตือน"
-        />
-      )}
-      loading={loading}
     >
-      {error && <p className={styles.error} role="alert">{error}</p>}
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15) — ตัวสลับ ทั้งหมด/ยังไม่อ่าน คุมเฉพาะรายการนี้
+          จึงอยู่ในแถบเครื่องมือของแผง · "อ่านทั้งหมด" เป็นคำสั่งของทั้งกล่อง จึงยังอยู่หัวหน้า
+          ⚠️ ยอดรวมไม่อยู่ในคำอธิบายของหัวหน้าแล้ว — ป้ายจำนวนของแผงบอกแทน (เลขเดียวกันห้ามโผล่ซ้ำ)
+          ⚠️ หัววันยังเกาะบนตอนเลื่อนได้เพราะแผงรายการตัดมุมด้วย overflow clip ไม่ใช่ hidden
+          (hidden ทำให้การ์ดเป็นกล่องเลื่อนของ sticky ข้างใน · ดู globals.css) */}
+      <ListPanel
+        icon={<Bell size={17} aria-hidden="true" />}
+        title="รายการแจ้งเตือน"
+        subtitle="จัดกลุ่มตามวัน ใหม่สุดอยู่บน"
+        count={loading || error ? null : `${scope === "unread" ? unread : total} รายการ`}
+        loading={loading}
+        toolbar={(
+          <Segmented
+            options={[
+              { value: "all", label: "ทั้งหมด", count: total },
+              { value: "unread", label: "ยังไม่อ่าน", count: unread },
+            ]}
+            value={scope}
+            onChange={setScope}
+            ariaLabel="กรองแจ้งเตือน"
+          />
+        )}
+      >
+        {error && (
+          <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}>
+            {error}
+          </StatusNotice>
+        )}
 
-      {!error && !items.length && (
-        <EmptyState icon={BellOff}>
-          {scope === "unread" ? "อ่านครบแล้ว ไม่มีรายการค้าง" : "ยังไม่มีแจ้งเตือน"}
-        </EmptyState>
-      )}
+        {!error && !items.length && (
+          <EmptyState plain icon={BellOff}>
+            {scope === "unread" ? "อ่านครบแล้ว ไม่มีรายการค้าง" : "ยังไม่มีแจ้งเตือน"}
+          </EmptyState>
+        )}
 
-      {groups.map((group) => (
-        <section key={group.key} className={styles.group}>
-          <h2 className={styles.dayHead}>{dayLabel(group.key)}</h2>
-          <ul className={styles.list}>
-            {group.rows.map((row) => {
-              const body = (
-                <>
-                  <span className={styles.title}>{row.title}</span>
-                  {row.body && <span className={styles.body}>{row.body}</span>}
-                  {/* ⚠️ ไม่มีชิปชนิด entity ตรงนี้โดยเจตนา — หัวข้อที่เก็บไว้ในแถว
-                      ขึ้นต้นด้วยป้ายชนิดอยู่แล้ว ("อนุมัติ · **ดีล** KA_…") ใส่ชิปอีก
-                      = อ่านคำเดิมสองครั้งต่อแถว */}
-                  <span className={styles.meta}>
-                    {row.actorName ? `${row.actorName} · ` : ""}
-                    <time dateTime={row.createdAt} title={fmtDateTime(row.createdAt)}>{hhmm(row.createdAt)}</time>
-                  </span>
-                </>
-              );
-              return (
-                <li key={row.id} className={`${styles.item} ${row.readAt ? "" : styles.itemUnread}`.trim()}>
-                  {/* กดแถว = ไปที่ของจริง · การ mark read ของเธรดยังเกิดที่หน้าปลายทาง
-                      (มติ 15) ปุ่มถูกใจด้านขวาจึงมีไว้สำหรับแถวที่ปลายทางไม่มีเธรด */}
-                  {row.href
-                    ? <Link href={row.href} className={styles.link}>{body}</Link>
-                    : <div className={styles.link}>{body}</div>}
-                  {!row.readAt && (
-                    <Button
-                      variant="quiet"
-                      size="sm"
-                      iconOnly
-                      icon={<Check size={15} />}
-                      className={styles.readBtn}
-                      disabled={busyId === row.id}
-                      onClick={() => readOne(row.id)}
-                      aria-label="ทำเครื่องหมายว่าอ่านแล้ว"
-                      title="ทำเครื่องหมายว่าอ่านแล้ว"
-                    />
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+        {groups.map((group) => (
+          <section key={group.key} className={styles.group}>
+            {/* h3 — หัวข้อ h2 ของหน้านี้คือชื่อแผง "รายการแจ้งเตือน" */}
+            <h3 className={styles.dayHead}>{dayLabel(group.key)}</h3>
+            <ul className={styles.list}>
+              {group.rows.map((row) => {
+                const body = (
+                  <>
+                    <span className={styles.title}>{row.title}</span>
+                    {row.body && <span className={styles.body}>{row.body}</span>}
+                    {/* ⚠️ ไม่มีชิปชนิด entity ตรงนี้โดยเจตนา — หัวข้อที่เก็บไว้ในแถว
+                        ขึ้นต้นด้วยป้ายชนิดอยู่แล้ว ("อนุมัติ · **ดีล** KA_…") ใส่ชิปอีก
+                        = อ่านคำเดิมสองครั้งต่อแถว */}
+                    <span className={styles.meta}>
+                      {row.actorName ? `${row.actorName} · ` : ""}
+                      <time dateTime={row.createdAt} title={fmtDateTime(row.createdAt)}>{hhmm(row.createdAt)}</time>
+                    </span>
+                  </>
+                );
+                return (
+                  <li key={row.id} className={`${styles.item} ${row.readAt ? "" : styles.itemUnread}`.trim()}>
+                    {/* กดแถว = ไปที่ของจริง · การ mark read ของเธรดยังเกิดที่หน้าปลายทาง
+                        (มติ 15) ปุ่มถูกใจด้านขวาจึงมีไว้สำหรับแถวที่ปลายทางไม่มีเธรด */}
+                    {row.href
+                      ? <Link href={row.href} className={styles.link}>{body}</Link>
+                      : <div className={styles.link}>{body}</div>}
+                    {!row.readAt && (
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        icon={<Check size={15} />}
+                        className={styles.readBtn}
+                        disabled={busyId === row.id}
+                        onClick={() => readOne(row.id)}
+                        aria-label="ทำเครื่องหมายว่าอ่านแล้ว"
+                        title="ทำเครื่องหมายว่าอ่านแล้ว"
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
 
-      {cursor && (
-        <div className={styles.more}>
-          <Button disabled={loadingMore} onClick={loadMore}>
-            {loadingMore ? "กำลังโหลด…" : "โหลดเพิ่ม"}
-          </Button>
-        </div>
-      )}
+        {cursor && (
+          <div className={styles.more}>
+            <Button disabled={loadingMore} onClick={loadMore}>
+              {loadingMore ? "กำลังโหลด…" : "โหลดเพิ่ม"}
+            </Button>
+          </div>
+        )}
+      </ListPanel>
     </Workspace>
   );
 }

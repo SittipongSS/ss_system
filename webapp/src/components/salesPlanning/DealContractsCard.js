@@ -7,11 +7,15 @@
 //
 // ⚠️ ปุ่ม "ออกสัญญา" ขึ้นเสมอเมื่อแก้ดีลได้ — เหตุผลที่ออกไม่ได้จริงถูกบอกในโมดัล
 //    (จาก /options ซึ่งเรียกด่านตัวเดียวกับ API) · ซ่อนปุ่มเงียบ ๆ = คนถามว่าปุ่มอยู่ไหน
+// ⭐ การ์ดเป็น `DetailCard` (มติผู้ใช้ 2026-09-15 — ถอด TableShell) · ตารางระเบียนที่เกี่ยวข้อง
+//    ในหน้ารายละเอียด = DetailCard + TableScroll · สัญญาออกได้หลังใบเสนอราคาอนุมัติ
+//    แล้วพิมพ์ไปเซ็นและอัปโหลดฉบับลงนามกลับ (คำอธิบายเดิมของหัวการ์ด)
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FileSignature, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
-import { TableEmpty, TableShell } from "@/components/ui/Table";
+import { DetailCard } from "@/components/ui/DetailPage";
+import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
 import { CONTRACT_SOURCE_LABELS, isExternalContract } from "@/lib/sales/contracts";
@@ -38,50 +42,55 @@ export default function DealContractsCard({ dealId, canEdit = false, quotationId
 
   return (
     <>
-      <TableShell
+      <DetailCard
+        icon={FileSignature}
         title="สัญญา"
-        description="ออกได้หลังใบเสนอราคาอนุมัติ · พิมพ์ไปเซ็นแล้วอัปโหลดฉบับลงนามกลับ"
+        meta={`${rows.length} ฉบับ`}
         actions={canEdit ? (
           <Button size="sm" tone="accent" onClick={() => setOpen(true)}>
             <Plus size={13} aria-hidden="true" /> ออกสัญญา
           </Button>
         ) : null}
       >
-        <table className="w-full text-sm">
-          <thead>
-            <tr><th>เลขที่</th><th>ชนิด</th><th>วันที่</th><th>สถานะ</th></tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="premium-row">
-                <td className="mono">
-                  <Link prefetch={false} href={`/sa/contracts/${row.id}`} className="linklike">
-                    {row.contractNo || "ฉบับร่าง"}
-                  </Link>
-                </td>
-                <td>
-                  {contractKindBadge(row.kind)}
-                  {/* ⭐ ที่มาอยู่ใต้ชนิด ไม่ใช่คอลัมน์ของตัวเอง (ท่าเดียวกับทะเบียนสัญญา)
-                      — ใบที่ใช้ PO/อีเมลแทนสัญญา เดินคนละเส้นและมีเอกสารคนละแบบ
-                      ⇒ ไม่บอกที่มา = การ์ดนี้อ่านเหมือนทุกใบมีสัญญาจริงของเราเหมือนกันหมด */}
-                  {isExternalContract(row)
-                    ? <span className="cell-sub">{CONTRACT_SOURCE_LABELS.external}</span>
-                    : null}
-                </td>
-                <td className="mono">{fmtDate(row.contractDate)}</td>
-                <td>{contractStatusBadge(row.status)}</td>
-              </tr>
-            ))}
-            {!rows.length && (
-              <TableEmpty
-                colSpan={4}
-                title="ยังไม่มีสัญญาของดีลนี้"
-                description={canEdit ? "กด “ออกสัญญา” เพื่อสร้างร่างจากใบเสนอราคาที่อนุมัติแล้ว" : undefined}
-              />
-            )}
-          </tbody>
-        </table>
-      </TableShell>
+        {/* surface="embedded" ตัวเดียวกับที่ TableShell เคยส่ง ⇒ กฎ `.cardBody [data-surface="embedded"]`
+            ตัดระยะซ้ำให้กรอบตารางเริ่มแนวเดียวกับหัวการ์ด */}
+        <TableScroll surface="embedded">
+          <table className="w-full text-sm">
+            <thead>
+              <tr><th>เลขที่</th><th>ชนิด</th><th>วันที่</th><th>สถานะ</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="premium-row">
+                  <td className="mono">
+                    <Link prefetch={false} href={`/sa/contracts/${row.id}`} className="linklike">
+                      {row.contractNo || "ฉบับร่าง"}
+                    </Link>
+                  </td>
+                  <td>
+                    {contractKindBadge(row.kind)}
+                    {/* ⭐ ที่มาอยู่ใต้ชนิด ไม่ใช่คอลัมน์ของตัวเอง (ท่าเดียวกับทะเบียนสัญญา)
+                        — ใบที่ใช้ PO/อีเมลแทนสัญญา เดินคนละเส้นและมีเอกสารคนละแบบ
+                        ⇒ ไม่บอกที่มา = การ์ดนี้อ่านเหมือนทุกใบมีสัญญาจริงของเราเหมือนกันหมด */}
+                    {isExternalContract(row)
+                      ? <span className="cell-sub">{CONTRACT_SOURCE_LABELS.external}</span>
+                      : null}
+                  </td>
+                  <td className="mono">{fmtDate(row.contractDate)}</td>
+                  <td>{contractStatusBadge(row.status)}</td>
+                </tr>
+              ))}
+              {!rows.length && (
+                <TableEmpty
+                  colSpan={4}
+                  title="ยังไม่มีสัญญาของดีลนี้"
+                  description={canEdit ? "กด “ออกสัญญา” เพื่อสร้างร่างจากใบเสนอราคาที่อนุมัติแล้ว" : undefined}
+                />
+              )}
+            </tbody>
+          </table>
+        </TableScroll>
+      </DetailCard>
 
       <ContractCreateModal
         open={open}

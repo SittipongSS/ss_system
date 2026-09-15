@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, GanttChart, Handshake,
+  ArrowLeft, FolderKanban, GanttChart, Handshake,
   ListTodo, Clock, Calendar,
   Edit2, Trash2,
   Printer, User, FolderX, Paperclip,
@@ -22,7 +22,6 @@ import ReadableText from "@/components/ui/ReadableText";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import EmptyState from "@/components/ui/EmptyState";
-import SkeletonRows from "@/components/ui/Skeleton";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -48,13 +47,13 @@ import { DELIVERY_STEP_KEYS, deliveriesForDeal, deliveryStepBadge } from "@/lib/
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
-import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { detailTabFromSearch, PROJECT_DETAIL_TABS, PROJECT_TAB_ALIASES } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
 import TaskCreateButton from "@/components/pm/TaskCreateButton";
 import RequestCreateButton from "@/components/requests/RequestCreateButton";
 import { brandDisplayFromList } from "@/lib/master/brands";
-import { PageShell as SaPageShell, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import { ListPanel, PageShell as SaPageShell, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
@@ -466,8 +465,23 @@ export default function ProjectDetailPage() {
      by phase → sort) ถูกลบแล้ว — ทั้งสามป้อน table view รุ่นเก่าเท่านั้น
      TimelineWorkspace จัดกลุ่ม/เรียง/ให้สีเฟส ด้วยชุดของตัวเอง */
 
-  if (loading) return <SkeletonRows />;
-  if (!data) return <EmptyState icon={FolderX}>ไม่พบโครงการ</EmptyState>;
+  /* โหลดครั้งแรกเท่านั้น — load() ไม่เคยตั้ง loading กลับเป็น true (โหลดซ้ำหลังบันทึกต้องไม่ถอดหน้า
+     ไม่งั้นร่างที่แก้ค้างใน TimelineWorkspace หายทุกครั้ง) · ยังไม่มีข้อมูลให้วาดหัวหน้า
+     ⇒ วาดแผงโหลดของกลาง (ListPanel loading) แทน SkeletonRows เปล่า: หน้านี้มีแผงรายการที่มีแถบเครื่องมือ
+     (แท็บงาน) และด่าน LIST_PANEL_SHAPE LP6 ห้ามสลับ Skeleton กับแผงแบบนั้น (มติผู้ใช้ 2026-09-15) */
+  if (!data) {
+    return loading ? (
+      <SaPageShell>
+        <ListPanel
+          icon={<FolderKanban size={17} aria-hidden="true" />}
+          title="รายละเอียดโครงการ"
+          subtitle="กำลังโหลดดีล ไทม์ไลน์ และงานของโครงการ"
+          count={null}
+          loading
+        />
+      </SaPageShell>
+    ) : <EmptyState icon={FolderX}>ไม่พบโครงการ</EmptyState>;
+  }
 
   const p = data;
   // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
@@ -507,6 +521,27 @@ export default function ProjectDetailPage() {
       label: `งานกลางโครงการ (${allTasks.filter((task) => !task.dealId).length} ขั้นตอน · ${projectPersonalTasks.filter((task) => !task.dealId).length} งาน)`,
     }] : []),
   ];
+  /* ตัวกรองดีลตัวเดียวของทั้งแท็บไทม์ไลน์และแท็บงาน — เป็น FilterPopover (เมนู portal + fixed)
+     🐞 เดิมเป็น MultiSelectFilter ที่เมนู position:absolute อยู่ในกล่อง · พอย้ายเข้าแถบเครื่องมือของ
+     ListPanel (`overflow: clip`) แล้วเลือกดีลที่มี 0 งาน แผงเตี้ยลง ⇒ เมนูโดนขอบล่างแผงตัดทิ้ง
+     เห็นตัวเลือกแค่ 4 จาก 13 · ห้ามแก้ด้วย min-height ของแผง */
+  const dealFilterControl = (
+    <FilterPopover
+      label="ดีลที่แสดง"
+      count={dealFilters.length}
+      onClear={() => setDealFilters([])}
+      groups={[{
+        key: "deal", label: "ดีล", icon: Handshake,
+        /* ⚠️ ปิดช่องค้นหาโดยเจตนา — เกิน 8 ตัวเลือก FilterPopover เปิดช่องค้นหา autoFocus เอง แต่ช่องได้โฟกัส
+           ก่อนเมนูถูกตรึง position:fixed ⇒ เอกสารเลื่อนลงท้ายหน้า (ไทม์ไลน์ 216 ขั้น: 84 → 15193px)
+           แล้วเมนูไปเกาะปุ่มที่หลุดจอ · MultiSelectFilter เดิมก็ไม่มีช่องค้นหา */
+        searchable: false,
+        options: dealFilterOptions,
+        selected: dealFilters,
+        onChange: setDealFilters,
+      }]}
+    />
+  );
   // 🐞 ของเดิมเทียบ `dealFilters.includes(task.dealId)` ตรง ๆ — พอตัวกรองรวมเป็นตัวเดียว
   //    การเลือก "งานกลางโครงการ" จะไม่ตรงกับงานที่ dealId ว่างเลย แล้วตารางว่างเงียบ
   const shownPersonalTasks = dealFilters.length
@@ -730,18 +765,29 @@ export default function ProjectDetailPage() {
         <SalesDetailTabs value={tab} onChange={switchTab} label="ส่วนของโครงการ" tabs={projectTabs} />
       </div>
 
-      {/* เครื่องมือเอกสารขั้นสูง แสดงเมื่อเปิดส่วนไทม์ไลน์ */}
-      <div className="glass-panel" style={{ padding: 16, margin: "16px 0 24px", display: showTimeline ? "block" : "none" }}>
-        <div>
-          <div className="timeline-header-row">
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <GanttChart size={17} aria-hidden="true" />
-              <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ไทม์ไลน์</h2>
-            </div>
-            {/* 🐞 เคยมีสาขา `!showTimeline ?` ที่นี่เป็นปุ่ม "เปิดไทม์ไลน์" — ตายมาตลอด
-                เพราะกล่องครอบทั้งกล่องเป็น display:none เมื่อไม่ได้อยู่แท็บไทม์ไลน์ */}
-            <div className="project-detail-actions">
-              <div className="project-detail-action-row">
+      {/* แท็บไทม์ไลน์ = แผง "ไทม์ไลน์" (TimelineWorkspace วาดหัวแผงเองแล้ว · มติผู้ใช้ 2026-09-15) ตามด้วยแผง
+          "ของเข้า (PM / RM)" — สองแผงเรียงกัน ไม่ซ้อนกัน (กล่อง glass-panel + แถวหัวทำมือเดิมถูกถอด)
+          ⚠️ **ซ่อนด้วย display ไม่ใช่ถอดออก** — TimelineWorkspace ถือร่างที่แก้ค้าง (drafts) ไว้เอง
+          ถอดตอนสลับแท็บ = งานที่ยังไม่บันทึกหายเงียบ */}
+      <div style={{ display: showTimeline ? "flex" : "none", flexDirection: "column", gap: 16, margin: "16px 0 24px" }}>
+        <TimelineWorkspace
+          tasks={tasks}
+          requests={p.inquiries || []}
+          stepBadgeFor={deliveryStepBadgeFor}
+          canEdit={canEdit}
+          canAdd={canAddTimelineTask}
+          canReorder={canReorderTimeline}
+          dealId={singleSelectedDeal(dealFilters)}
+          projectId={p.id}
+          view={view}
+          onViewChange={setView}
+          showViewSwitcher={false}
+          /* โครงการพัก/ยกเลิก/เสร็จ = จางเฉพาะเนื้อแผง · ปุ่ม Rev/พิมพ์/ประวัติบนหัวแผงยังกดได้ */
+          locked={isLocked}
+          /* 🐞 เคยมีสาขา `!showTimeline ?` ที่หัวกล่องเป็นปุ่ม "เปิดไทม์ไลน์" — ตายมาตลอด
+             เพราะกล่องครอบทั้งกล่องเป็น display:none เมื่อไม่ได้อยู่แท็บไทม์ไลน์ */
+          panelActions={(
+            <>
               <span
                 className="ui-badge"
                 title={p.currentRev == null
@@ -787,76 +833,48 @@ export default function ProjectDetailPage() {
               >
                 <Printer size={14} /> พิมพ์เอกสาร
               </button>
-              </div>
-              <div className="project-detail-action-row"><ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} /></div>
-            </div>
-          </div>
-        </div>
-
-        {/* โชว์ตั้งแต่มีดีลเดียว (มติผู้ใช้ 2026-07-18: "ปุ่มเลือกดีลหาย") — มีดีลเดียวก็ยัง
-            มีตัวเลือก "งานกลางโครงการ" ให้สลับดูได้ */}
-        {(p.deals || []).length > 0 && (
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-bold)" }}>ไทม์ไลน์ที่แสดง</div>
-              <div style={{ fontSize: "var(--fs-4)", color: "var(--text-3)", marginTop: 2 }}>เลือกได้หลายดีล · ไม่เลือก = แสดงทั้งหมด</div>
-            </div>
-            <div style={{ marginLeft: "auto" }}>
-              <MultiSelectFilter label="ดีลที่แสดง" selected={dealFilters} onChange={setDealFilters} options={dealFilterOptions} />
-            </div>
-            {dealFilters.length > 0 && <span className="ui-badge" style={{ color: "var(--accent)", whiteSpace: "nowrap" }}>กำลังแสดง {tasks.length} ขั้นตอน</span>}
-            {dealFilters.length > 1 && <span style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
-          </div>
-        )}
-
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", opacity: isLocked ? 0.6 : 1, filter: isLocked ? "grayscale(50%)" : "none", transition: "all var(--motion-slow)", pointerEvents: isLocked ? "none" : "auto" }}>
-          <TimelineWorkspace
-            tasks={tasks}
-            requests={p.inquiries || []}
-            stepBadgeFor={deliveryStepBadgeFor}
-            canEdit={canEdit}
-            canAdd={canAddTimelineTask}
-            canReorder={canReorderTimeline}
-            dealId={singleSelectedDeal(dealFilters)}
-            projectId={p.id}
-            view={view}
-            onViewChange={setView}
-            showHeading={false}
-            showViewSwitcher={false}
-            documentProject={{ ...p, tasks }}
-            canEditProjectFields={canEdit}
-            onDirtyChange={setTimelineDirty}
-            onUpdateProject={updateProject}
-            timelineContext={{
-              name: p.name,
-              customerName: p.customerName,
-              startDate: p.startDate,
-              brand: p.metadata?.brand,
-              status: getComputedStatus(p),
-              statusLabel: getComputedStatus(p),
-              statusColor: statusDotColor(getComputedStatus(p)),
-            }}
-            onChanged={load}
-            onError={(message) => setToast({ kind: "error", msg: message })}
-          />
-        </div>
+              <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />
+            </>
+          )}
+          /* โชว์ตั้งแต่มีดีลเดียว (มติผู้ใช้ 2026-07-18: "ปุ่มเลือกดีลหาย") — มีดีลเดียวก็ยัง
+             มีตัวเลือก "งานกลางโครงการ" ให้สลับดูได้ · ป้าย "กำลังแสดง N ขั้นตอน" เดิมถอดแล้ว
+             เพราะป้ายจำนวนของแผงบอกเลขเดียวกัน */
+          toolbarStart={(p.deals || []).length > 0 ? (
+            <>
+              {dealFilterControl}
+              {dealFilters.length > 1 && <span className="toolbar-label">เลือกเหลือ 1 ดีลก่อนเพิ่มขั้นตอนใหม่</span>}
+            </>
+          ) : null}
+          documentProject={{ ...p, tasks }}
+          canEditProjectFields={canEdit}
+          onDirtyChange={setTimelineDirty}
+          onUpdateProject={updateProject}
+          timelineContext={{
+            name: p.name,
+            customerName: p.customerName,
+            startDate: p.startDate,
+            brand: p.metadata?.brand,
+            status: getComputedStatus(p),
+            statusLabel: getComputedStatus(p),
+            statusColor: statusDotColor(getComputedStatus(p)),
+          }}
+          onChanged={load}
+          onError={(message) => setToast({ kind: "error", msg: message })}
+        />
 
         {/* ของเข้า PM/RM (mig 0176) — อยู่ใต้ไทม์ไลน์โดยตั้งใจ ไม่แยกแท็บ:
             มันคือ "ข้างในของ milestone สั่งซื้อสารและบรรจุภัณฑ์" ที่เคยเป็นกล่องเปล่า
             45 วัน · ป้ายสรุปบนขั้นนั้นกับตารางนี้อ่านจากชุดข้อมูลเดียวกัน */}
-        <div className="timeline-deliveries">
-          <DeliveriesPanel
-            projectId={p.id}
-            deliveries={p.deliveries || []}
-            salesOrders={p.deliverySalesOrders || []}
-            deals={p.deals || []}
-            canEdit={!!p.canEditDeliveries}
-            onChanged={async (msg) => { await load(); if (msg) setToast({ kind: "success", msg }); }}
-            onError={(message) => setToast({ kind: "error", msg: message })}
-          />
-        </div>
-
-        </div>
+        <DeliveriesPanel
+          projectId={p.id}
+          deliveries={p.deliveries || []}
+          salesOrders={p.deliverySalesOrders || []}
+          deals={p.deals || []}
+          canEdit={!!p.canEditDeliveries}
+          onChanged={async (msg) => { await load(); if (msg) setToast({ kind: "success", msg }); }}
+          onError={(message) => setToast({ kind: "error", msg: message })}
+        />
+      </div>
 
       {/* ภาพรวม = สรุปเท่านั้น: KPI เงิน + ตารางดีล (ProjectDealsHub) + การ์ดไทม์ไลน์
           ของแท็บอื่นไม่มาต่อท้ายอีกแล้ว — ดูเหตุผลที่ประกาศ state `tab` ด้านบน */}
@@ -928,48 +946,48 @@ export default function ProjectDetailPage() {
       )}
 
       {tab === "tasks" && (
-        <section className="glass-panel" style={{ padding: "16px 20px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-            <ListTodo size={18} />
-            <div>
-              <h2 style={{ margin: 0, fontSize: "var(--fs-10)" }}>งานของโครงการ</h2>
-              <div style={{ marginTop: 2, fontSize: "var(--fs-5)", color: "var(--text-3)" }}>ดึงงานจาก /sa/tasks ตามดีลที่ผูกกับโครงการ</div>
-            </div>
-            <span className="ui-badge" style={{ color: "var(--text-2)" }}>{completedPersonalTasks}/{shownPersonalTasks.length} เสร็จ</span>
-            <div style={{ marginLeft: "auto" }}>
-              {dealFilterOptions.length > 1 && <MultiSelectFilter label="ดีลที่แสดง" selected={dealFilters} onChange={setDealFilters} options={dealFilterOptions} />}
-            </div>
-            {/* ⭐ สร้างงานจากหน้าโครงการ (มติผู้ใช้ 2026-08-22) — เลือกดีลในโมดัล
-                ⚠️ ตัวเลือกดีลถูกจำกัดเป็น **ดีลของโครงการนี้** โดยส่ง `p.deals` เข้าไป
-                ไม่ใช่ทำตัวเลือกชุดที่สองบนหน้านี้ (ฟอร์มเป็นเจ้าของช่องดีลอยู่แล้ว) */}
-            <TaskCreateButton projectDeals={p.deals || []} canEdit={canEdit} onSaved={load} />
-            {/* 🐞 ของเดิมเป็น `dealFilters.length === 1 ? dealFilters[0]` ตรง ๆ ⇒ เลือก
-                "งานเดิมของโครงการ" ตัวเดียวแล้วกด จะยิง `?dealId=__central__` (ค่าหมุด
-                ของตัวกรอง ไม่ใช่ id ดีล) ออกไป · `singleSelectedDeal` ตัดหมุดตัวนั้นทิ้ง
-                อยู่แล้วและถูกใช้กับไทม์ไลน์ข้างบน — จุดนี้เป็นที่เดียวที่ข้ามมันไป */}
-            <Link className="btn ghost sm" href={singleSelectedDeal(dealFilters) ? `/sa/tasks?dealId=${singleSelectedDeal(dealFilters)}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>
-          </div>
+        /* แผงรายการ (มติผู้ใช้ 2026-09-15) — หัวแถวทำมือเดิม (ไอคอน · h2 · ป้าย "x/y เสร็จ") เป็นหัวแผงกลาง
+           ป้ายจำนวน = งานที่เห็นหลังเลือกดีล + ที่เสร็จแล้ว · แถบเครื่องมือมีเมื่อมีดีลให้เลือกหรือสร้างงานได้ */
+        <ListPanel
+          icon={<ListTodo size={17} aria-hidden="true" />}
+          title="งานของโครงการ"
+          subtitle="ดึงงานจาก /sa/tasks ตามดีลที่ผูกกับโครงการ"
+          count={`${shownPersonalTasks.length} งาน · เสร็จ ${completedPersonalTasks}`}
+          /* 🐞 ของเดิมเป็น `dealFilters.length === 1 ? dealFilters[0]` ตรง ๆ ⇒ เลือก
+              "งานเดิมของโครงการ" ตัวเดียวแล้วกด จะยิง `?dealId=__central__` (ค่าหมุด
+              ของตัวกรอง ไม่ใช่ id ดีล) ออกไป · `singleSelectedDeal` ตัดหมุดตัวนั้นทิ้ง
+              อยู่แล้วและถูกใช้กับไทม์ไลน์ข้างบน — จุดนี้เป็นที่เดียวที่ข้ามมันไป */
+          actions={<Link className="btn ghost sm" href={singleSelectedDeal(dealFilters) ? `/sa/tasks?dealId=${singleSelectedDeal(dealFilters)}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>}
+          toolbar={dealFilterOptions.length > 1 || canEdit ? (
+            <>
+              {dealFilterOptions.length > 1 && dealFilterControl}
+              <div className="spacer" />
+              {/* ⭐ สร้างงานจากหน้าโครงการ (มติผู้ใช้ 2026-08-22) — เลือกดีลในโมดัล
+                  ⚠️ ตัวเลือกดีลถูกจำกัดเป็น **ดีลของโครงการนี้** โดยส่ง `p.deals` เข้าไป
+                  ไม่ใช่ทำตัวเลือกชุดที่สองบนหน้านี้ (ฟอร์มเป็นเจ้าของช่องดีลอยู่แล้ว) */}
+              <TaskCreateButton projectDeals={p.deals || []} canEdit={canEdit} onSaved={load} />
+            </>
+          ) : null}
+        >
           {shownPersonalTasks.length ? (
             /* ตารางกลางล้วน — คลาสเก่า `.premium-table` บังคับ nowrap ทุกเซลล์ ชื่องาน
                กับหมายเหตุยาว ๆ จึงดันตารางกว้างเกินการ์ดแล้วคอลัมน์ท้ายถูกตัด */
-            <div>
-              <TableScroll surface="embedded"><table>
-                <thead><tr><th>งาน</th><th>ดีล</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr></thead>
-                <tbody>{shownPersonalTasks.map((task) => {
-                  const deal = (p.deals || []).find((item) => item.id === task.dealId);
-                  const assignee = users.find((user) => user.id === (task.assigneeId || task.ownerId));
-                  return <tr key={task.id} className="premium-row">
-                    <td style={{ fontWeight: "var(--fw-bold)" }}>{task.title}{task.note && <ReadableText text={task.note} lines={2} style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-normal)", marginTop: 2 }} />}</td>
-                    <td>{deal ? <Link className="linklike" href={`/sales-planning/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
-                    <td><span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span></td>
-                    <td>{assignee?.name || task.assigneeName || naText(task.ownerName)}</td>
-                    <td>{naText(task.dueDate)}</td>
-                  </tr>;
-                })}</tbody>
-              </table></TableScroll>
-            </div>
-          ) : <EmptyState icon={ListTodo}>ยังไม่มีงานจากดีลที่เลือก</EmptyState>}
-        </section>
+            <TableScroll surface="embedded"><table>
+              <thead><tr><th>งาน</th><th>ดีล</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr></thead>
+              <tbody>{shownPersonalTasks.map((task) => {
+                const deal = (p.deals || []).find((item) => item.id === task.dealId);
+                const assignee = users.find((user) => user.id === (task.assigneeId || task.ownerId));
+                return <tr key={task.id} className="premium-row">
+                  <td style={{ fontWeight: "var(--fw-bold)" }}>{task.title}{task.note && <ReadableText text={task.note} lines={2} style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-normal)", marginTop: 2 }} />}</td>
+                  <td>{deal ? <Link className="linklike" href={`/sales-planning/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
+                  <td><span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span></td>
+                  <td>{assignee?.name || task.assigneeName || naText(task.ownerName)}</td>
+                  <td>{naText(task.dueDate)}</td>
+                </tr>;
+              })}</tbody>
+            </table></TableScroll>
+          ) : <EmptyState plain icon={ListTodo}>ยังไม่มีงานจากดีลที่เลือก</EmptyState>}
+        </ListPanel>
       )}
 
       {/* คำร้องข้ามฝ่ายอยู่ท้ายแท็บ "งาน" ไม่ใช่แท็บของตัวเอง (มติผู้ใช้ 2026-08-05) —

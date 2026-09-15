@@ -16,8 +16,9 @@ import useStickyState from "@/lib/ui/useStickyState";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, Layers, Plus, Flag, GitBranch, UserRound } from "lucide-react";
-import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
+import StatusNotice from "@/components/ui/StatusNotice";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
@@ -315,12 +316,6 @@ export default function ProjectsIndexPage() {
       }
     >
       <div className="flex flex-col gap-5">
-        {error && (
-          <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
-            {error}
-          </div>
-        )}
-
         <SaMetricStrip>
           <SaMetric icon={<BarChart3 />} label="FC Total" value={money(totals.fcTotal)} note="แผนทั้งหมดของโครงการที่แสดง" />
           {/* ยอด SO รออนุมัติวางเป็นบรรทัดที่สองของ note — ตัวเลข Actual ยังเป็นใบอนุมัติล้วน
@@ -351,9 +346,16 @@ export default function ProjectsIndexPage() {
                  ให้เอาตัวนับกลับมา อย่าปล่อยให้ NULL หายเงียบเหมือน `projects.type` */}
         </SaMetricStrip>
 
-        <SaSection icon={<FolderKanban size={17} />} title="ทะเบียนโครงการ" subtitle="ค้นหา กรอง และเปิดดูข้อมูลโครงการทั้งหมด" actions={<span className="ui-badge">{filtered.length} โครงการ</span>}>
-          <div className="toolbar">
-            <div className="search-glass" style={{ width: 300 }}>
+        {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวน = โครงการหลัง
+            ค้นหา/กรองทุกหน้า (เท่ายอดของ Pager) · เครื่องมือส่งเป็น fragment เข้า `toolbar` */}
+        <ListPanel
+          icon={<FolderKanban size={17} aria-hidden="true" />}
+          title="ทะเบียนโครงการ"
+          subtitle="ค้นหา กรอง และเปิดดูข้อมูลโครงการทั้งหมด"
+          count={`${filtered.length} โครงการ`}
+          toolbar={(
+          <>
+            <div className="search-glass">
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / สูตร / ดีล" aria-label="ค้นหาโครงการ" />
             </div>
@@ -418,7 +420,16 @@ export default function ProjectsIndexPage() {
               options={SORT_OPTIONS}
             />
             <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
-          </div>
+          </>
+          )}
+        >
+          {/* โหลดรายการไม่สำเร็จ = ข้อความในเนื้อแผงพร้อมทางลองใหม่ (เดิมกล่อง glass-panel แดงลอยเหนือหน้า)
+              ⚠️ `error` ของหน้านี้มาจาก load() ทางเดียว */}
+          {error && (
+            <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}>
+              {error}
+            </StatusNotice>
+          )}
 
           <TableScroll surface="embedded" className="premium-glass-table table-responsive" aria-busy={loading}><table className="w-full text-sm">
             <thead>
@@ -473,7 +484,7 @@ export default function ProjectsIndexPage() {
               onPageSize={setPageSize}
             />
           )}
-        </SaSection>
+        </ListPanel>
         </div>
       {/* เหลือแค่ "สร้าง" — แก้ไขโครงการที่มีอยู่ทำที่หน้ารายละเอียด (การ์ด Control) */}
       <SalesProjectCreateModal

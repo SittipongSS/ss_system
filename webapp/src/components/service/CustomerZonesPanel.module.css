@@ -28,7 +28,8 @@
   line-height: var(--lh-thai);
 }
 
-/* ข้อความสถานะของทั้งบล็อก (กำลังโหลด / ยังไม่มีของ) */
+/* ข้อความสถานะของทั้งบล็อก (กำลังโหลด / ยังไม่มีของ) — ใช้ **นอกการ์ด** เท่านั้น
+   ⚠️ ในเนื้อ DetailCard ใช้ EmptyState plain (เนื้อการ์ดมีระยะขอบของตัวเองแล้ว) */
 .state {
   padding: var(--space-6) var(--panel-inset);
   color: var(--text-3);
@@ -36,50 +37,20 @@
   line-height: var(--lh-thai);
 }
 
-/* ── หนึ่งสถานที่ = หนึ่งบล็อก ─────────────────────────────────────────── */
-.site {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-  overflow: hidden;
-}
-
-.siteHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--panel-inset);
-  border-bottom: 1px solid var(--border);
-}
-
-.siteHead h3 {
-  font-size: var(--fs-2);
-  font-weight: var(--fw-semibold);
-  color: var(--text-1);
-  line-height: var(--lh-thai);
-}
-
-.siteHead p {
+/* ── หนึ่งสถานที่ = หนึ่ง DetailCard (มติผู้ใช้ 2026-09-15 · ถอด TableShell) ─────────────
+   กรอบ หัวการ์ด และระยะขอบในเป็นของ DetailCard ทั้งหมด — ที่นี่เหลือแค่บรรทัดสรุปปฏิบัติการ
+   ที่ต่อท้ายบรรทัด meta (ขึ้นบรรทัดของตัวเอง ไม่ต่อหางที่อยู่ที่ยาวอยู่แล้ว) */
+.metaLine {
+  display: block;
   margin-top: var(--space-0-5);
-  font-size: var(--fs-3);
-  color: var(--text-3);
-  line-height: var(--lh-thai);
-}
-
-.siteTags {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  flex-shrink: 0;
 }
 
 /* ── ประวัติการประเมิน ────────────────────────────────────────────────── */
+/* ไม่มี padding ของตัวเอง — เนื้อ DetailCard เว้นขอบให้แล้ว */
 .timeline {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-3) var(--panel-inset);
 }
 
 .timeline > li {

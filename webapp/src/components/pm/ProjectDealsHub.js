@@ -1,5 +1,8 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { ListPanel } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
+import EmptyState from "@/components/ui/EmptyState";
 
 // ศูนย์รวมดีลในโครงการ — โครงการ = จิ๊กซอว์ครอบดีล: ดีลมีอะไร โครงการ merge หมด
 // การ์ดต่อดีล (ใบเสนอราคา + ความคืบหน้า segment ไทม์ไลน์ อยู่ "ใต้ดีล") +
@@ -599,12 +602,14 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
     ? deals.filter((deal) => [deal.title, deal.formulaName, deal.dealType, deal.ownerName]
       .some((field) => (field || "").toLowerCase().includes(q)))
     : deals;
+  // ชนิดของดีลที่โครงการนี้ผ่านมาแล้ว — เดิมเป็น hint ใต้ KPI ที่ถอดไป · ตอนนี้เป็นคำอธิบายของแผง
+  const typeBadges = (r?.byType || []).filter((item) => (item.openCount + item.wonCount + item.lostCount) > 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
       {/* KPI รวมระดับโครงการ — สูตรเดียวกับ projectRollup (FC Total / Actual / FC คงเหลือ)
           ⚠️ เงินล้วน: ตัวนับ "ดีลในโครงการ" ถูกถอดออก (มติผู้ใช้ 2026-08-05) เพราะบอก
-          เรื่องเดียวกับหัวตารางด้านล่าง "ดีลในโครงการ (N)" ที่อยู่ห่างกันไม่ถึงหนึ่งจอ
+          เรื่องเดียวกับป้ายจำนวนของแผง "ดีลในโครงการ" ด้านล่าง ที่อยู่ห่างกันไม่ถึงหนึ่งจอ
           ⭐ ยอด SO รออนุมัติของดีล Won เป็นบรรทัดรองใต้ Actual — ไม่รวมเข้าตัวเลข Actual
           (มติผู้ใช้ 2026-09-11 · mig 0353) · ไม่มีใบรออนุมัติ = ไม่วางบรรทัดรองเลย */}
       {r && (
@@ -621,45 +626,51 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
         </div>
       )}
 
-      {/* ตารางดีล — เทียบข้ามใบได้ในจอเดียว กดขยายดูรายละเอียดทีละใบ */}
-      <div className="glass-panel" style={{ padding: "16px 20px" }}>
-        <div className={styles.tableHead}>
-          {/* ไอคอนดีลตัวเดียวกับเมนูหลัก — ดู src/lib/entityIcon.test.mjs (เดิมอยู่บนการ์ด
-              "ดีลในโครงการ" ของหน้าโครงการ ที่ถูกยุบมาเป็นตารางนี้) */}
-          <Handshake size={17} aria-hidden="true" />
-          <h3>ดีลในโครงการ ({deals.length})</h3>
-          {/* ชนิดของดีลที่โครงการนี้ผ่านมาแล้ว — เดิมเป็น hint ใต้ KPI ที่ถอดไป */}
-          {(r?.byType || [])
-            .filter((item) => (item.openCount + item.wonCount + item.lostCount) > 0)
-            .map((item) => (
+      {/* จัดลำดับไม่สำเร็จ = การกระทำพลาด ไม่ใช่โหลดรายการพลาด ⇒ แจ้งเหนือแผงแบบปิดได้ (UI_DESIGN_SYSTEM §รายการ) */}
+      {reorderError && (
+        <StatusNotice tone="error" onDismiss={() => setReorderError("")}>{reorderError}</StatusNotice>
+      )}
+
+      {/* ตารางดีล — เทียบข้ามใบได้ในจอเดียว กดขยายดูรายละเอียดทีละใบ
+          แผงรายการ (มติผู้ใช้ 2026-09-15): ชนิดดีล + งานกลาง = คำอธิบายของแผง · ปุ่มผูก/เพิ่มดีล = actions
+          · ช่องค้นหาโผล่เมื่อเกิน 6 ใบ = toolbar · ⚠️ subtitle วาดใน <p> ⇒ ตัวห่อป้ายต้องเป็น span */}
+      <ListPanel
+        /* ไอคอนดีลตัวเดียวกับเมนูหลัก — ดู src/lib/entityIcon.test.mjs (เดิมอยู่บนการ์ด
+           "ดีลในโครงการ" ของหน้าโครงการ ที่ถูกยุบมาเป็นตารางนี้) */
+        icon={<Handshake size={17} aria-hidden="true" />}
+        title="ดีลในโครงการ"
+        subtitle={typeBadges.length || central ? (
+          <span className={styles.subtitleBadges}>
+            {typeBadges.map((item) => (
               <span key={item.type} className={`ui-badge ${styles.mutedBadge}`}>
                 {DEAL_TYPE_LABELS[item.type] || item.type} {item.openCount + item.wonCount + item.lostCount}
               </span>
             ))}
-          {central && (
-            <span className={`ui-badge ${styles.mutedBadge}`} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
-              งานกลาง {central.done}/{central.total}
-            </span>
-          )}
-          <div className="spacer" />
-          {showSearch && (
-            <div className={`search-glass ${styles.search}`}>
-              <Search size={15} color="var(--text-3)" aria-hidden="true" />
-              <input autoComplete="off" value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
-            </div>
-          )}
-          {/* สองทางเข้าคนละความหมาย: "เพิ่มดีล" = สร้างใบใหม่ในโครงการนี้ (งานที่ทำบ่อยกว่า
-              จึงเป็นปุ่มหลัก) · "ผูกดีล" = ดึงใบที่มีอยู่แล้วเข้ามา/ย้ายข้ามโครงการ */}
-          {canEdit && (
-            <>
-              <Button size="sm" onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</Button>
-              <Button tone="primary" size="sm" icon={<Plus size={13} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>
-                เพิ่มดีล
-              </Button>
-            </>
-          )}
-        </div>
-        {reorderError && <div className={styles.errorNote}>{reorderError}</div>}
+            {central && (
+              <span className={`ui-badge ${styles.mutedBadge}`} title="ขั้นตอนในไทม์ไลน์ที่ไม่ผูกดีล (งานกลาง/ข้อมูลเดิม)">
+                งานกลาง {central.done}/{central.total}
+              </span>
+            )}
+          </span>
+        ) : null}
+        count={q ? `${shownDeals.length} จาก ${deals.length} ดีล` : `${deals.length} ดีล`}
+        /* สองทางเข้าคนละความหมาย: "เพิ่มดีล" = สร้างใบใหม่ในโครงการนี้ (งานที่ทำบ่อยกว่า
+           จึงเป็นปุ่มหลัก) · "ผูกดีล" = ดึงใบที่มีอยู่แล้วเข้ามา/ย้ายข้ามโครงการ */
+        actions={canEdit ? (
+          <>
+            <Button size="sm" onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</Button>
+            <Button tone="primary" size="sm" icon={<Plus size={13} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>
+              เพิ่มดีล
+            </Button>
+          </>
+        ) : null}
+        toolbar={showSearch ? (
+          <div className="search-glass">
+            <Search size={15} color="var(--text-3)" aria-hidden="true" />
+            <input autoComplete="off" value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
+          </div>
+        ) : null}
+      >
         {deals.length ? (
           <>
             {/* ตารางกลางล้วน ๆ — ไม่มี `.premium-glass-table` / `.premium-table` ครอบ
@@ -709,19 +720,11 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
             <div className={styles.footNote}>ใบเสนอราคา/ไทม์ไลน์ แก้ไขที่หน้าดีลแต่ละใบ</div>
           </>
         ) : (
-          <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--text-3)" }}>
-            <PackageCheck size={28} aria-hidden="true" style={{ margin: "0 auto 8px" }} />
-            <div style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>ยังไม่มีดีลในโครงการ</div>
-            <div style={{ marginTop: 4, fontSize: "var(--fs-7)" }}>สร้างดีลใบใหม่ หรือผูกดีลของลูกค้ารายนี้ที่มีอยู่แล้ว เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว</div>
-            {canEdit && (
-              <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                <Button tone="primary" icon={<Plus size={14} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>เพิ่มดีล</Button>
-                <Button onClick={() => setLinkOpen(true)}>ผูกดีลที่มีอยู่</Button>
-              </div>
-            )}
-          </div>
+          <EmptyState plain icon={Handshake}>
+            ยังไม่มีดีลในโครงการ — สร้างดีลใบใหม่ หรือผูกดีลของลูกค้ารายนี้ที่มีอยู่แล้ว เพื่อรวมไทม์ไลน์ ใบเสนอราคา งาน และความเคลื่อนไหว
+          </EmptyState>
         )}
-      </div>
+      </ListPanel>
 
       {/* ⚠️ mount ตอนเปิดเท่านั้น — ค่าตั้งต้นของร่างอ่านครั้งเดียวตอน mount (ดูคำเตือนใน
           DealCreateModal) · โครงการล็อกไว้ที่ใบนี้: ดีลที่สร้างจากหน้านี้ต้องกลับเข้าโครงการนี้ */}

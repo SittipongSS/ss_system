@@ -19,7 +19,7 @@ import Link from "next/link";
 import useStickyState from "@/lib/ui/useStickyState";
 import { CalendarClock, CircleAlert, PhoneCall, RefreshCw, Search } from "lucide-react";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import Pager from "@/components/ui/Pager";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
@@ -30,7 +30,6 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtName, naText, NA } from "@/lib/format";
 import { usePagination } from "@/lib/usePagination";
 import { apiJson } from "@/lib/apiFetch";
-import styles from "./RenewalsPanel.module.css";
 
 export const EMPTY_RENEWAL_COUNTS = { expired: 0, dueIn30: 0, dueSoon: 0, following: 0 };
 
@@ -109,8 +108,6 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
 
   return (
     <>
-      {error && <StatusNotice tone="error" title="โหลดทะเบียนต่อสัญญาไม่สำเร็จ">{error}</StatusNotice>}
-
       <SaMetricStrip>
         <SaMetric icon={<CircleAlert />} label="หมดแล้ว" value={counts.expired}
           note="ยังไม่มีใครปิดเรื่อง" tone={counts.expired ? "danger" : "good"} />
@@ -120,19 +117,32 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
         <SaMetric icon={<PhoneCall />} label="กำลังติดตาม" value={counts.following} note="มีคนรับเรื่องแล้ว" tone="good" />
       </SaMetricStrip>
 
-      <SaSection
-        icon={<RefreshCw size={17} />}
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — ป้ายนับไซต์หลังค้นหา (เท่ายอดของ Pager)
+          ⚠️ ช่องค้นหาใช้ความกว้างกลางของ `.search-glass` — เดิมตั้ง 330px เองใน module */}
+      <ListPanel
+        icon={<RefreshCw size={17} aria-hidden="true" />}
         title="ไซต์ที่ต้องตาม"
         subtitle="รอบบริการใกล้หมดหรือหมดแล้ว — เรียงตามวันหมดเสมอ หมดแล้วขึ้นก่อน"
-        actions={<span className="ui-badge">{filtered.length} ไซต์</span>}
-      >
-        <div className="toolbar">
-          <div className={`search-glass ${styles.search}`}>
-            <Search size={16} color="var(--text-3)" />
+        count={`${filtered.length} ไซต์`}
+        toolbar={(
+          <div className="search-glass">
+            <Search size={16} color="var(--text-3)" aria-hidden="true" />
             <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="ค้นหาไซต์ / ลูกค้า / เลข SO / ดีล / AE" />
+              placeholder="ค้นหาไซต์ / ลูกค้า / เลข SO / ดีล / AE" aria-label="ค้นหาไซต์ที่ต้องตามต่อสัญญา" />
           </div>
-        </div>
+        )}
+      >
+        {/* โหลดไม่สำเร็จ = ข้อความในเนื้อแผงพร้อมทางลองใหม่ (ข้อมูลโหลดที่หน้าแม่ ⇒ ลองใหม่ผ่าน reload) */}
+        {error && (
+          <StatusNotice
+            tone="error"
+            className="mb-4"
+            title="โหลดทะเบียนต่อสัญญาไม่สำเร็จ"
+            action={reload ? <Button size="sm" variant="ghost" onClick={reload}>ลองใหม่</Button> : undefined}
+          >
+            {error}
+          </StatusNotice>
+        )}
 
         <TableScroll surface="embedded" cells="stacked" minWidth={880} aria-busy={loading}>
           <table className="w-full text-sm">
@@ -207,7 +217,7 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
           <Pager page={page} pageCount={pageCount} total={total} onPage={setPage}
             pageSize={pageSize} onPageSize={setPageSize} />
         )}
-      </SaSection>
+      </ListPanel>
 
       <RenewalFollowupModal
         open={!!followRow}

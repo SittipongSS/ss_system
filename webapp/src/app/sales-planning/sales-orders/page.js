@@ -6,7 +6,7 @@ import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, Search, UserRound, Wallet } from "lucide-react";
-import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -478,8 +478,6 @@ export default function SalesOrdersPage() {
   return (
     <SaWorkspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย" subtitle="สร้างจาก QT Won ตรวจสอบเอกสาร และนับ Actual หลัง AE Supervisor อนุมัติเท่านั้น">
       <div className="flex flex-col gap-4">
-        {error && <div className="glass-panel" role="alert" style={{ padding: 14, color: "var(--red)", borderColor: "var(--red)" }}>{error}</div>}
-
         {awaitingFiling > 0 && (
           <StatusNotice
             tone="warning"
@@ -533,16 +531,22 @@ export default function SalesOrdersPage() {
           )}
         />
 
-        <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
-          {/* แถบควบคุมทรงเดียวกับทุกตารางในระบบ: ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}
-          <div className="toolbar">
+        {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวน = ใบหลังค้นหา/กรอง
+            ทุกหน้า (เท่ายอดของ Pager) · แถบควบคุมทรงเดียวกับทุกตาราง: สายธุรกิจ · ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}
+        <ListPanel
+          icon={<ClipboardList size={17} aria-hidden="true" />}
+          title="รายการใบสั่งขาย"
+          subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว"
+          count={`${filtered.length} ใบ`}
+          toolbar={(
+          <>
             <Segmented
               ariaLabel="มุมมองตามสายธุรกิจ"
               options={LINE_VIEWS}
               value={lineView}
               onChange={setLineView}
             />
-            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / AR / ดีล / เอกสารอ้างอิง" /></div>
+            <div className="search-glass"><Search size={16} color="var(--text-3)" aria-hidden="true" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / AR / ดีล / เอกสารอ้างอิง" aria-label="ค้นหาใบสั่งขาย" /></div>
             <FilterPopover
               count={filterCount}
               onClear={() => {
@@ -594,7 +598,16 @@ export default function SalesOrdersPage() {
               options={SORT_OPTIONS}
             />
             <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
-          </div>
+          </>
+          )}
+        >
+          {/* โหลดรายการไม่สำเร็จ = ข้อความในเนื้อแผงพร้อมทางลองใหม่ (เดิมกล่อง glass-panel แดงลอยเหนือหน้า)
+              ⚠️ `error` ของหน้านี้มาจาก load() ทางเดียว — ลองใหม่จึงเรียก load ตรง ๆ ได้ */}
+          {error && (
+            <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}>
+              {error}
+            </StatusNotice>
+          )}
           {/* ── ตารางรายการ: รื้อใหม่แบบ ข (มติผู้ใช้ 2026-08-13) ──────────────
               9 → 5 คอลัมน์ · **ตัดคอลัมน์ที่ไม่มีข้อมูลจริงทิ้ง**:
                 · "เอกสารอ้างอิง" เป็น `-` แทบทุกแถว ⇒ ย้ายไปเป็นบรรทัดรองใต้เลข SO
@@ -688,7 +701,7 @@ export default function SalesOrdersPage() {
               onPageSize={setPageSize}
             />
           )}
-        </SaSection>
+        </ListPanel>
       </div>
     </SaWorkspace>
   );

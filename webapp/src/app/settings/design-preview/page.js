@@ -155,8 +155,8 @@ const BADGE_TONES = STATUS_TONES;
    ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
-  { cls: "ui-badge", count: 198 },
-  { cls: "status-pill", count: 44 },
+  { cls: "ui-badge", count: 175 },
+  { cls: "status-pill", count: 43 },
   { cls: "chip", count: 23 },
 ];
 

@@ -6,8 +6,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { ChartColumn, ClipboardList, Info, Search, TriangleAlert } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspace";
 import Segmented from "@/components/ui/Segmented";
+import SkeletonRows from "@/components/ui/Skeleton";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -177,7 +178,6 @@ export default function SalesReportPage() {
       title="รายงานยอดขาย"
       subtitle="เป้าเทียบยอดขายจริงตามช่วงที่เลือก · เจาะลงถึงใบสั่งขายที่อนุมัติแล้ว · ใบรออนุมัติแยกไว้ ไม่นับเป็นยอดขาย"
       back={{ href: "/sa/targets", label: "กลับหน้าวางเป้า" }}
-      loading={loading}
       headerRight={
         <MonthRangePicker
           from={range.from}
@@ -191,126 +191,132 @@ export default function SalesReportPage() {
       <div className="flex flex-col gap-4">
         {error && <StatusNotice tone="error">{error}</StatusNotice>}
 
-        {/* ช่องที่ 5 "รออนุมัติ" มีเฉพาะช่วงที่คร่อมเดือนนี้และมีใบค้าง — แถบต้องบอกจำนวนช่องเอง
-            (ไม่ส่ง = 4 คอลัมน์ ช่องที่ 5 ตกบรรทัด) */}
-        <section className="ui-metric-strip" data-cols={hasPendingApproval ? "5" : undefined}>
-          <span className="ui-metric">
-            <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-            <span>
-              <small>เป้าของงวดที่จบแล้ว</small>
-              <strong>{money(cmp.target)}</strong>
-              <em>{targetIdx.length ? `ตั้งเป้าไว้ ${targetIdx.length} เดือน` : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em>
-            </span>
-          </span>
-          <span className="ui-metric">
-            <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-            <span><small>ขายจริง</small><strong>{money(companyStat.actual)}</strong>
-              <em>{closedCount} เดือนที่จบแล้ว · ไม่รวม VAT ท้ายใบ</em></span>
-          </span>
-          <span className="ui-metric">
-            <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-            <span><small>% ทำได้</small><strong>{pct(cmp.actual, cmp.target)}</strong>
-              <em>{cmp.target > 0
-                ? `เทียบเฉพาะ ${targetIdx.length} เดือนที่ตั้งเป้า${cmp.actual >= cmp.target ? " · ถึงเป้า" : " · ต่ำกว่าเป้า"}`
-                : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em></span>
-          </span>
-          <span className="ui-metric">
-            <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-            <span><small>ส่วนต่าง</small>
-              {/* ไม่มีเป้า = เทียบไม่ได้ ต้องขึ้นขีดเหมือน % — ของเดิมโชว์ (ยอดจริง − 0)
-                  ซึ่งอ่านเป็น "เกินเป้า 135 ล้าน" ในช่วงปี 2023–2024 ที่ยังไม่เคยตั้งเป้า */}
-              <strong>
-                {cmp.target > 0
-                  ? <span className={tone(cmp.actual - cmp.target)}>{money(cmp.actual - cmp.target)}</span>
-                  : NA}
-              </strong>
-              <em>{cmp.target > 0 ? `เทียบเป้าของ ${targetIdx.length} เดือนนั้น` : "ไม่มีเป้าให้เทียบ"}</em></span>
-          </span>
-          {/* ยอดรออนุมัติ — ช่องของตัวเอง ไม่ใช่บรรทัดรองของ "ขายจริง" เพราะช่องนั้นนับเฉพาะเดือนที่จบแล้ว
-              ส่วนยอดนี้อยู่เดือนปัจจุบันเสมอ · คำว่า "รออนุมัติ" สีสถานะเดียวกับ PendingApprovalAmount
-              ตัวเลขสีข้อความปกติ (ไม่ใช่เขียวของขายจริง) */}
-          {hasPendingApproval && (
+        {/* ⚠️ ระหว่างโหลดซ่อนแถบตัวเลขกับแถบเตือน — ยังไม่มีข้อมูลจะขึ้น 0 / "ยังไม่ได้ตั้งเป้า" หลอกตา
+            และตอนเปลี่ยนช่วงจะเป็นตัวเลขของช่วงเก่าใต้ตัวเลือกช่วงใหม่ · เดิม Workspace loading ถอดทั้งหน้า
+            ตอนนี้ย้าย loading ลงการ์ดทีละใบ (มติผู้ใช้ 2026-09-15) ⇒ แผงค้นหาใบไม่ถูกถอด เงื่อนไขที่ค้นไว้ไม่หาย */}
+        {!loading && (<>
+          {/* ช่องที่ 5 "รออนุมัติ" มีเฉพาะช่วงที่คร่อมเดือนนี้และมีใบค้าง — แถบต้องบอกจำนวนช่องเอง
+              (ไม่ส่ง = 4 คอลัมน์ ช่องที่ 5 ตกบรรทัด) */}
+          <section className="ui-metric-strip" data-cols={hasPendingApproval ? "5" : undefined}>
             <span className="ui-metric">
-              <span className="ui-metric-icon"><ClipboardList size={16} /></span>
+              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
               <span>
-                <small>
-                  <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span>
-                  {" "}· {formatMonthLabel(pendingApproval.month)}
-                </small>
-                <strong>{money(pendingApproval.amount)}</strong>
-                <em>{pendingApproval.count} ใบ · ยังไม่นับเป็นขายจริง</em>
+                <small>เป้าของงวดที่จบแล้ว</small>
+                <strong>{money(cmp.target)}</strong>
+                <em>{targetIdx.length ? `ตั้งเป้าไว้ ${targetIdx.length} เดือน` : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em>
               </span>
             </span>
-          )}
-        </section>
+            <span className="ui-metric">
+              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
+              <span><small>ขายจริง</small><strong>{money(companyStat.actual)}</strong>
+                <em>{closedCount} เดือนที่จบแล้ว · ไม่รวม VAT ท้ายใบ</em></span>
+            </span>
+            <span className="ui-metric">
+              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
+              <span><small>% ทำได้</small><strong>{pct(cmp.actual, cmp.target)}</strong>
+                <em>{cmp.target > 0
+                  ? `เทียบเฉพาะ ${targetIdx.length} เดือนที่ตั้งเป้า${cmp.actual >= cmp.target ? " · ถึงเป้า" : " · ต่ำกว่าเป้า"}`
+                  : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em></span>
+            </span>
+            <span className="ui-metric">
+              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
+              <span><small>ส่วนต่าง</small>
+                {/* ไม่มีเป้า = เทียบไม่ได้ ต้องขึ้นขีดเหมือน % — ของเดิมโชว์ (ยอดจริง − 0)
+                    ซึ่งอ่านเป็น "เกินเป้า 135 ล้าน" ในช่วงปี 2023–2024 ที่ยังไม่เคยตั้งเป้า */}
+                <strong>
+                  {cmp.target > 0
+                    ? <span className={tone(cmp.actual - cmp.target)}>{money(cmp.actual - cmp.target)}</span>
+                    : NA}
+                </strong>
+                <em>{cmp.target > 0 ? `เทียบเป้าของ ${targetIdx.length} เดือนนั้น` : "ไม่มีเป้าให้เทียบ"}</em></span>
+            </span>
+            {/* ยอดรออนุมัติ — ช่องของตัวเอง ไม่ใช่บรรทัดรองของ "ขายจริง" เพราะช่องนั้นนับเฉพาะเดือนที่จบแล้ว
+                ส่วนยอดนี้อยู่เดือนปัจจุบันเสมอ · คำว่า "รออนุมัติ" สีสถานะเดียวกับ PendingApprovalAmount
+                ตัวเลขสีข้อความปกติ (ไม่ใช่เขียวของขายจริง) */}
+            {hasPendingApproval && (
+              <span className="ui-metric">
+                <span className="ui-metric-icon"><ClipboardList size={16} /></span>
+                <span>
+                  <small>
+                    <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span>
+                    {" "}· {formatMonthLabel(pendingApproval.month)}
+                  </small>
+                  <strong>{money(pendingApproval.amount)}</strong>
+                  <em>{pendingApproval.count} ใบ · ยังไม่นับเป็นขายจริง</em>
+                </span>
+              </span>
+            )}
+          </section>
 
-        {/* กระทบยอดสามระดับ — ระบบเก็บบริษัท/ทีม/รายคนเป็นสามเส้นแยกกัน ไม่ได้บวกขึ้นไป
-            กรอกรายคนไม่ตรงกับยอดบริษัทจึงไม่มีอะไรเตือน ต้องบอกตรงนี้ก่อนเอาไปคิดคอมมิชชั่น */}
-        {closedCount > 0 && !splitIdx.length && (
-          <div className="alert-banner">
-            <span className="alert-banner-icon"><Info size={17} /></span>
-            <span className="alert-banner-text">
-              ช่วงนี้ยังไม่มีเดือนที่<b>แยกยอดรายคน</b> — ดูได้เฉพาะยอดรวมของทั้งบริษัท ·
-              {" "}ฝ่ายขายแบ่งทีมเมื่อ ก.ค. 2026 และย้ายเข้าระบบเมื่อ ส.ค. 2026
-              {" "}(ยอดรายคนก่อนหน้านั้นต้องกรอกที่หน้า “ยอดขายย้อนหลัง” ถ้าต้องการ)
-            </span>
-          </div>
-        )}
-        {splitIdx.length > 0 && Math.abs(companySplitActual - peopleActualTotal) > 1 && (
-          <div className="alert-banner" data-tone="danger">
-            <span className="alert-banner-icon"><TriangleAlert size={17} /></span>
-            <span className="alert-banner-text">
-              เฉพาะ {splitIdx.length} เดือนที่แยกยอดรายคน: ยอดบริษัท <b>{money(companySplitActual)}</b>
-              {" "}ไม่ตรงกับผลรวมรายคน <b>{money(peopleActualTotal)}</b>
-              {" "}(ต่าง {money(Math.abs(companySplitActual - peopleActualTotal))}) —
-              {" "}ระบบเก็บบริษัท/ทีม/รายคนเป็นสามเส้นแยกกัน กรอกไม่ตรงกันจะไม่มีอะไรเตือน
-              {" "}ต้องแก้ให้ตรงก่อนเอาไปคิดคอมมิชชั่น
-            </span>
-          </div>
-        )}
+          {/* กระทบยอดสามระดับ — ระบบเก็บบริษัท/ทีม/รายคนเป็นสามเส้นแยกกัน ไม่ได้บวกขึ้นไป
+              กรอกรายคนไม่ตรงกับยอดบริษัทจึงไม่มีอะไรเตือน ต้องบอกตรงนี้ก่อนเอาไปคิดคอมมิชชั่น */}
+          {closedCount > 0 && !splitIdx.length && (
+            <div className="alert-banner">
+              <span className="alert-banner-icon"><Info size={17} /></span>
+              <span className="alert-banner-text">
+                ช่วงนี้ยังไม่มีเดือนที่<b>แยกยอดรายคน</b> — ดูได้เฉพาะยอดรวมของทั้งบริษัท ·
+                {" "}ฝ่ายขายแบ่งทีมเมื่อ ก.ค. 2026 และย้ายเข้าระบบเมื่อ ส.ค. 2026
+                {" "}(ยอดรายคนก่อนหน้านั้นต้องกรอกที่หน้า “ยอดขายย้อนหลัง” ถ้าต้องการ)
+              </span>
+            </div>
+          )}
+          {splitIdx.length > 0 && Math.abs(companySplitActual - peopleActualTotal) > 1 && (
+            <div className="alert-banner" data-tone="danger">
+              <span className="alert-banner-icon"><TriangleAlert size={17} /></span>
+              <span className="alert-banner-text">
+                เฉพาะ {splitIdx.length} เดือนที่แยกยอดรายคน: ยอดบริษัท <b>{money(companySplitActual)}</b>
+                {" "}ไม่ตรงกับผลรวมรายคน <b>{money(peopleActualTotal)}</b>
+                {" "}(ต่าง {money(Math.abs(companySplitActual - peopleActualTotal))}) —
+                {" "}ระบบเก็บบริษัท/ทีม/รายคนเป็นสามเส้นแยกกัน กรอกไม่ตรงกันจะไม่มีอะไรเตือน
+                {" "}ต้องแก้ให้ตรงก่อนเอาไปคิดคอมมิชชั่น
+              </span>
+            </div>
+          )}
+        </>)}
 
         {/* ⭐ ตัวสลับมุมมองอยู่ใน **หัวการ์ดสรุป** ไม่ใช่ toolbar ของหน้า (รื้อ 2026-08-27)
             ของเดิมมันลอยอยู่กลางหน้าในตำแหน่งที่หน้าอื่นวาง "ตัวกรอง" แต่คุมแค่ตารางบน
             คนกดแล้วไม่รู้ว่ามีผลกับอะไร — ตัวคุมต้องอยู่ติดกับของที่มันคุม */}
         <SummaryCard
+          loading={loading}
           scope={scope} onScope={setScope}
           data={data} months={months} closedCount={closedCount} splitIdx={splitIdx}
           pendingApproval={pendingApproval}
         />
 
-        {hasPendingApproval && <PendingApprovalCard pendingApproval={pendingApproval} />}
+        {/* ⚠️ ซ่อนทั้งใบระหว่างโหลด เหมือนแถบตัวเลขข้างบน — `hasPendingApproval`/`pendingApproval` มาจาก `data`
+            ของช่วงเก่าที่ยังค้างอยู่จนผลใหม่มา ถ้าคงการ์ดไว้ หัวการ์ดจะโชว์จำนวนใบ/ยอดของช่วงเก่าเหนือโครงกระดูก
+            และช่วงใหม่ที่ไม่มีใบค้างการ์ดจะโผล่แล้วหายไปเอง */}
+        {!loading && hasPendingApproval && <PendingApprovalCard pendingApproval={pendingApproval} />}
 
-        <OrderSearchCard orders={data?.orders || []} people={data?.people || []} />
+        <OrderSearchCard orders={data?.orders || []} people={data?.people || []} loading={loading} />
       </div>
     </Workspace>
   );
 }
 
 /* ── การ์ดสรุป — หัวการ์ดถือตัวสลับมุมมอง เนื้อในเปลี่ยนตามที่เลือก ────────── */
-function SummaryCard({ scope, onScope, data, months, closedCount, splitIdx, pendingApproval }) {
+function SummaryCard({ loading, scope, onScope, data, months, closedCount, splitIdx, pendingApproval }) {
+  /* การ์ดสรุป = ไม่ใช่รายการ ⇒ WorkspaceSection (เดิมเขียน markup .ui-section เอง · ด่าน LP8)
+     ⚠️ ตารางต้องอยู่ใน `.ui-section-body` — WorkspaceSection ใส่ชั้นนี้ให้เอง · เปลือกการ์ดใส่ระยะขอบ
+        ให้ตัวเลื่อนตารางที่เป็น *ลูกตรง* ของ `.ui-section` โดยคิดว่าไม่มีชั้นนี้ พอไม่มี body ตารางจะกว้าง
+        เกินการ์ด 32px แล้วโดน `overflow: hidden` ตัดคอลัมน์ขวาสุดทิ้งโดยเลื่อนตามไปดูไม่ได้
+     ⚠️ ระหว่างโหลดหัวการ์ดกับตัวสลับมุมมองยังอยู่ — แทนที่เฉพาะเนื้อ (ของเดิม Workspace loading ถอดทั้งหน้า) */
   return (
-    <section className="ui-section">
-      <div className="ui-section-header">
-        <div className="ui-section-title">
-          <ChartColumn size={17} aria-hidden="true" />
-          <div>
-            <h2>สรุปยอด</h2>
-            <p>{months.length} เดือนในช่วง · จบแล้ว {closedCount} เดือน</p>
-          </div>
-        </div>
-        <div className="ui-section-actions">
-          <Segmented ariaLabel="มุมมองสรุป" options={SCOPES} value={scope} onChange={onScope} />
-        </div>
-      </div>
-      {/* ⚠️ ต้องอยู่ใน `.ui-section-body` — เปลือกการ์ดใส่ระยะขอบให้ตัวเลื่อนตารางที่เป็น
-          *ลูกตรง* ของ `.ui-section` โดยคิดว่าไม่มีชั้นนี้ พอไม่มี body ตารางจะกว้างเกินการ์ด
-          32px แล้วโดน `overflow: hidden` ตัดคอลัมน์ขวาสุดทิ้งโดยเลื่อนตามไปดูไม่ได้ */}
-      <div className="ui-section-body">
-        {scope === "month" && <MonthTable data={data} closedCount={closedCount} pendingApproval={pendingApproval} />}
-        {scope === "team" && <GroupTable rows={data?.teams || []} idx={splitIdx} months={months} kind="team" pendingApproval={pendingApproval} />}
-        {scope === "person" && <GroupTable rows={data?.people || []} idx={splitIdx} months={months} kind="person" pendingApproval={pendingApproval} />}
-      </div>
-    </section>
+    <WorkspaceSection
+      icon={<ChartColumn size={17} aria-hidden="true" />}
+      title="สรุปยอด"
+      subtitle={loading ? null : `${months.length} เดือนในช่วง · จบแล้ว ${closedCount} เดือน`}
+      actions={<Segmented ariaLabel="มุมมองสรุป" options={SCOPES} value={scope} onChange={onScope} />}
+    >
+      {loading ? <SkeletonRows rows={6} /> : (
+        <>
+          {scope === "month" && <MonthTable data={data} closedCount={closedCount} pendingApproval={pendingApproval} />}
+          {scope === "team" && <GroupTable rows={data?.teams || []} idx={splitIdx} months={months} kind="team" pendingApproval={pendingApproval} />}
+          {scope === "person" && <GroupTable rows={data?.people || []} idx={splitIdx} months={months} kind="person" pendingApproval={pendingApproval} />}
+        </>
+      )}
+    </WorkspaceSection>
   );
 }
 
@@ -546,58 +552,50 @@ function GroupTable({ rows, idx, months, kind, pendingApproval }) {
 function PendingApprovalCard({ pendingApproval }) {
   const teamRegistry = useSalesTeams();
   const orders = pendingApproval?.orders || [];
+  /* การ์ดกางใบรออนุมัติทั้งหมด (ไม่มีตัวค้น/ตัวกรอง/Pager) ⇒ WorkspaceSection ตามแผนขอบเขต
+     (เดิมเขียน markup .ui-section เอง · ด่าน LP8) · คำอธิบายเก็บจำนวนใบไว้ได้ — กติกา "ห้ามเลขซ้ำใน
+     คำอธิบาย" เป็นของป้ายจำนวนของ ListPanel */
   return (
-    <section className="ui-section">
-      <div className="ui-section-header">
-        <div className="ui-section-title">
-          <ClipboardList size={17} aria-hidden="true" />
-          <div>
-            <h2>ใบสั่งขาย{PENDING_APPROVAL_LABEL}</h2>
-            <p>
-              {pendingApproval.count} ใบ · ยอดก่อน VAT {money(pendingApproval.amount)} ·
-              {" "}โชว์ไว้ที่เดือนนี้ ({formatMonthLabel(pendingApproval.month)}) ยังไม่นับเป็นขายจริง —
-              {" "}อนุมัติแล้วยอดลงเดือนที่อนุมัติ
-            </p>
-          </div>
-        </div>
-      </div>
-      <div className="ui-section-body">
-        <TableScroll surface="embedded" family="list">
-          <table>
-            <thead>
-              <tr>
-                <th className={styles.colDoc}>ใบสั่งขาย</th>
-                <th className={`num ${styles.colMoney}`}>ใบเสนอราคา</th>
-                <th className={styles.colName}>ลูกค้า</th>
-                <th className={styles.colDoc}>ผู้รับผิดชอบ</th>
-                <th className={styles.colTeam}>ทีม</th>
-                <th className={styles.colPeriod}>ยื่นเมื่อ</th>
-                <th className={`num ${styles.colMoney}`}>ยอดก่อน VAT</th>
+    <WorkspaceSection
+      icon={<ClipboardList size={17} aria-hidden="true" />}
+      title={`ใบสั่งขาย${PENDING_APPROVAL_LABEL}`}
+      subtitle={`${pendingApproval.count} ใบ · ยอดก่อน VAT ${money(pendingApproval.amount)} · โชว์ไว้ที่เดือนนี้ (${formatMonthLabel(pendingApproval.month)}) ยังไม่นับเป็นขายจริง — อนุมัติแล้วยอดลงเดือนที่อนุมัติ`}
+    >
+      <TableScroll surface="embedded" family="list">
+        <table>
+          <thead>
+            <tr>
+              <th className={styles.colDoc}>ใบสั่งขาย</th>
+              <th className={`num ${styles.colMoney}`}>ใบเสนอราคา</th>
+              <th className={styles.colName}>ลูกค้า</th>
+              <th className={styles.colDoc}>ผู้รับผิดชอบ</th>
+              <th className={styles.colTeam}>ทีม</th>
+              <th className={styles.colPeriod}>ยื่นเมื่อ</th>
+              <th className={`num ${styles.colMoney}`}>ยอดก่อน VAT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o) => (
+              <tr key={o.id}>
+                <td><a href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</a></td>
+                <td className="num">{o.quoteNumber || NA}</td>
+                <td>{o.customerName || NA}</td>
+                <td>{o.ownerName || NA}</td>
+                <td>{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</td>
+                <td>{o.submittedAt ? fmtDate(o.submittedAt) : NA}</td>
+                <td className="num">{money(o.amount)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id}>
-                  <td><a href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</a></td>
-                  <td className="num">{o.quoteNumber || NA}</td>
-                  <td>{o.customerName || NA}</td>
-                  <td>{o.ownerName || NA}</td>
-                  <td>{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</td>
-                  <td>{o.submittedAt ? fmtDate(o.submittedAt) : NA}</td>
-                  <td className="num">{money(o.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={6}>รวม {pendingApproval.count} ใบ</td>
-                <td className="num">{money(pendingApproval.amount)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </TableScroll>
-      </div>
-    </section>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={6}>รวม {pendingApproval.count} ใบ</td>
+              <td className="num">{money(pendingApproval.amount)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </TableScroll>
+    </WorkspaceSection>
   );
 }
 
@@ -610,7 +608,7 @@ function PendingApprovalCard({ pendingApproval }) {
 
    ⚠️ ใบทั้งช่วงถูกส่งมากับ response อยู่แล้ว การกดค้นหาจึงเป็นการ *กรองในหน้า*
    ไม่ยิงเซิร์ฟเวอร์ใหม่ — เร็วทันที และตัวเลขตรงกับสรุปด้านบนเสมอเพราะมาจากก้อนเดียวกัน */
-function OrderSearchCard({ orders, people }) {
+function OrderSearchCard({ orders, people, loading }) {
   const teamRegistry = useSalesTeams();
   const [draft, setDraft] = useState({ q: "", owners: [], teams: [], finance: [] });
   const [applied, setApplied] = useState(null);   // null = ยังไม่เคยกดค้นหา
@@ -639,21 +637,19 @@ function OrderSearchCard({ orders, people }) {
   const shownTotal = groups.reduce((sum, g) => sum + g.total, 0);
   const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.key));
 
+  /* ⭐ รายการใบ = ListPanel (มติผู้ใช้ 2026-09-15) — เดิมเขียน markup .ui-section เอง + แถบ .toolbarRow ของตัวเอง
+     ป้ายจำนวน: ยังไม่กดค้นหา = ใบทั้งช่วง (`N ใบในช่วง`) · กดแล้ว = ใบที่ค้นเจอ (`N ใบ`) — เลขนี้ถอดออกจาก
+     คำอธิบายและบรรทัดผลค้นหาแล้ว (เลขเดียวกันห้ามโผล่สองที่) · ระหว่างโหลดส่ง null ⇒ ขีด */
   return (
-    <section className="ui-section">
-      <div className="ui-section-header">
-        <div className="ui-section-title">
-          <ClipboardList size={17} aria-hidden="true" />
-          <div>
-            <h2>ใบสั่งขาย</h2>
-            <p>มีในช่วงนี้ {orders.length} ใบ · เฉพาะใบที่อนุมัติแล้ว งวดคิดจากวันที่อนุมัติตามเวลาไทย</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="ui-section-body">
-        {/* ลำดับบน toolbar ตามกติกากลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */}
-        <div className={styles.toolbarRow}>
+    <ListPanel
+      icon={<ClipboardList size={17} aria-hidden="true" />}
+      title="รายการใบสั่งขาย"
+      subtitle="เฉพาะใบที่อนุมัติแล้ว งวดคิดจากวันที่อนุมัติตามเวลาไทย"
+      count={loading ? null : applied ? `${shown} ใบ` : `${orders.length} ใบในช่วง`}
+      loading={loading}
+      toolbar={(
+        /* ลำดับบน toolbar ตามกติกากลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */
+        <>
           <div className="search-glass">
             <Search size={16} color="var(--text-3)" />
             <input
@@ -709,113 +705,114 @@ function OrderSearchCard({ orders, people }) {
               <SortDirButton dir={sortDir} onToggle={() => setSortDir(sortDir === "asc" ? "desc" : "asc")} />
             </>
           )}
-        </div>
+        </>
+      )}
+    >
+      {!applied ? (
+        <EmptyState dashed plain icon={Search} className={styles.emptyBox}>
+          <strong>ใส่เงื่อนไขแล้วกด “ค้นหา”</strong>
+          <span>
+            ช่วงนี้มีใบสั่งขายที่อนุมัติแล้ว {orders.length} ใบ — กดค้นหาโดยไม่ใส่อะไรเลยก็ได้ จะขึ้นทั้งหมด
+          </span>
+        </EmptyState>
+      ) : !shown ? (
+        <EmptyState dashed plain icon={Search} className={styles.emptyBox}>
+          <strong>ไม่พบใบที่ตรงกับเงื่อนไข</strong>
+          <span>ลองลดตัวกรอง หรือค้นด้วยเลขที่ใบ/ชื่อลูกค้าแทน</span>
+        </EmptyState>
+      ) : (
+        <>
+          {/* จำนวนใบที่ค้นเจออยู่บนป้ายจำนวนของแผงแล้ว — บรรทัดนี้เหลือแค่ยอดเงิน */}
+          <div className={styles.resultNote}>
+            ยอดที่นับรวม <b>{money(shownTotal)}</b>
+          </div>
+          <TableScroll surface="embedded" family="list">
+            <table>
+              <thead>
+                <tr>
+                  <th className={styles.colPeriod}>งวด</th>
+                  <th className={styles.colDoc}>ใบสั่งขาย</th>
+                  <th className={`num ${styles.colMoney}`}>ใบเสนอราคา</th>
+                  <th className={styles.colName}>ลูกค้า</th>
+                  <th className={styles.colDoc}>ผู้รับผิดชอบ</th>
+                  <th className={`num ${styles.colCount}`}>บรรทัด</th>
+                  <th className={`num ${styles.colMoney}`}>ยอดที่นับ</th>
+                  <th className={`num ${styles.colMoneySm}`}>VAT</th>
+                  <th className={`num ${styles.colMoney}`}>ยอดหน้าใบ</th>
+                  <th className={`num ${styles.colMoneySm}`}>ขั้นบัญชี</th>
+                </tr>
+              </thead>
+              {groups.map((group) => {
+                const isCollapsed = collapsed.has(group.key);
+                return (
+                  <tbody key={group.key}>
+                    {group.label && (
+                      <tr className="group-row">
+                        <td colSpan={10}>
+                          {/* พับ/กางกลุ่มในหน้าเดิม = disclosure ไม่ใช่ navigation
+                              ⇒ `.text-action` (เส้นประ) + `.text-action-block`
+                              ให้ทั้งแถวเป็นเป้าเดียว ไม่ใช่ปุ่มลอยกลางแถว
+                              🐞 `aria-expanded` เดิมไม่มีเลย — โปรแกรมอ่านหน้าจอ
+                              จึงไม่รู้ว่ากลุ่มพับอยู่หรือกางอยู่ (WCAG §4.1.2) */}
+                          <button
+                            type="button"
+                            className="text-action text-action-block"
+                            aria-expanded={!isCollapsed}
+                            onClick={() => setCollapsed((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(group.key)) next.delete(group.key); else next.add(group.key);
+                              return next;
+                            })}
+                          >
+                            {isCollapsed ? "▸" : "▾"} {group.label} · {group.count} ใบ · {money(group.total)}
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                    {!isCollapsed && group.orders.map((o) => (
+                      <tr key={o.id}>
+                        <td>{formatMonthLabel(o.month)}</td>
+                        <td>
+                          <a href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</a>
+                          {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
+                          {o.free && <span className="ui-badge warning">ไม่คิดเงิน</span>}
+                        </td>
+                        <td className="num">{o.quoteNumber || NA}</td>
+                        <td>{o.customerName || NA}</td>
+                        <td>{o.ownerName || NA}</td>
+                        <td className="num">{o.lineCount}</td>
+                        <td className="num">{money(o.amount)}</td>
+                        <td className="num">{o.vatAmount ? money(o.vatAmount) : NA}</td>
+                        <td className="num">{money(o.totalAmount)}</td>
+                        <td className="num">
+                          {financeStateOf(o) === "approved"
+                            ? <span className="ui-badge success">ตรวจแล้ว</span>
+                            : <span className="ui-badge">รอตรวจ</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                );
+              })}
+              <tfoot>
+                <tr>
+                  <td colSpan={6}>รวมที่ค้นเจอ {shown} ใบ</td>
+                  <td className="num">{money(shownTotal)}</td>
+                  <td className="num">{money(groups.flatMap((g) => g.orders).reduce((s, o) => s + o.vatAmount, 0))}</td>
+                  <td className="num">{money(groups.flatMap((g) => g.orders).reduce((s, o) => s + o.totalAmount, 0))}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </TableScroll>
+        </>
+      )}
 
-        {!applied ? (
-          <EmptyState dashed plain icon={Search} className={styles.emptyBox}>
-            <strong>ใส่เงื่อนไขแล้วกด “ค้นหา”</strong>
-            <span>
-              ช่วงนี้มีใบสั่งขายที่อนุมัติแล้ว {orders.length} ใบ — กดค้นหาโดยไม่ใส่อะไรเลยก็ได้ จะขึ้นทั้งหมด
-            </span>
-          </EmptyState>
-        ) : !shown ? (
-          <EmptyState dashed plain icon={Search} className={styles.emptyBox}>
-            <strong>ไม่พบใบที่ตรงกับเงื่อนไข</strong>
-            <span>ลองลดตัวกรอง หรือค้นด้วยเลขที่ใบ/ชื่อลูกค้าแทน</span>
-          </EmptyState>
-        ) : (
-          <>
-            <div className={styles.resultNote}>
-              พบ <b>{shown}</b> ใบ จาก {orders.length} ใบในช่วง · ยอดที่นับรวม <b>{money(shownTotal)}</b>
-            </div>
-            <TableScroll surface="embedded" family="list">
-              <table>
-                <thead>
-                  <tr>
-                    <th className={styles.colPeriod}>งวด</th>
-                    <th className={styles.colDoc}>ใบสั่งขาย</th>
-                    <th className={`num ${styles.colMoney}`}>ใบเสนอราคา</th>
-                    <th className={styles.colName}>ลูกค้า</th>
-                    <th className={styles.colDoc}>ผู้รับผิดชอบ</th>
-                    <th className={`num ${styles.colCount}`}>บรรทัด</th>
-                    <th className={`num ${styles.colMoney}`}>ยอดที่นับ</th>
-                    <th className={`num ${styles.colMoneySm}`}>VAT</th>
-                    <th className={`num ${styles.colMoney}`}>ยอดหน้าใบ</th>
-                    <th className={`num ${styles.colMoneySm}`}>ขั้นบัญชี</th>
-                  </tr>
-                </thead>
-                {groups.map((group) => {
-                  const isCollapsed = collapsed.has(group.key);
-                  return (
-                    <tbody key={group.key}>
-                      {group.label && (
-                        <tr className="group-row">
-                          <td colSpan={10}>
-                            {/* พับ/กางกลุ่มในหน้าเดิม = disclosure ไม่ใช่ navigation
-                                ⇒ `.text-action` (เส้นประ) + `.text-action-block`
-                                ให้ทั้งแถวเป็นเป้าเดียว ไม่ใช่ปุ่มลอยกลางแถว
-                                🐞 `aria-expanded` เดิมไม่มีเลย — โปรแกรมอ่านหน้าจอ
-                                จึงไม่รู้ว่ากลุ่มพับอยู่หรือกางอยู่ (WCAG §4.1.2) */}
-                            <button
-                              type="button"
-                              className="text-action text-action-block"
-                              aria-expanded={!isCollapsed}
-                              onClick={() => setCollapsed((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(group.key)) next.delete(group.key); else next.add(group.key);
-                                return next;
-                              })}
-                            >
-                              {isCollapsed ? "▸" : "▾"} {group.label} · {group.count} ใบ · {money(group.total)}
-                            </button>
-                          </td>
-                        </tr>
-                      )}
-                      {!isCollapsed && group.orders.map((o) => (
-                        <tr key={o.id}>
-                          <td>{formatMonthLabel(o.month)}</td>
-                          <td>
-                            <a href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</a>
-                            {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
-                            {o.free && <span className="ui-badge warning">ไม่คิดเงิน</span>}
-                          </td>
-                          <td className="num">{o.quoteNumber || NA}</td>
-                          <td>{o.customerName || NA}</td>
-                          <td>{o.ownerName || NA}</td>
-                          <td className="num">{o.lineCount}</td>
-                          <td className="num">{money(o.amount)}</td>
-                          <td className="num">{o.vatAmount ? money(o.vatAmount) : NA}</td>
-                          <td className="num">{money(o.totalAmount)}</td>
-                          <td className="num">
-                            {financeStateOf(o) === "approved"
-                              ? <span className="ui-badge success">ตรวจแล้ว</span>
-                              : <span className="ui-badge">รอตรวจ</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  );
-                })}
-                <tfoot>
-                  <tr>
-                    <td colSpan={6}>รวมที่ค้นเจอ {shown} ใบ</td>
-                    <td className="num">{money(shownTotal)}</td>
-                    <td className="num">{money(groups.flatMap((g) => g.orders).reduce((s, o) => s + o.vatAmount, 0))}</td>
-                    <td className="num">{money(groups.flatMap((g) => g.orders).reduce((s, o) => s + o.totalAmount, 0))}</td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
-            </TableScroll>
-          </>
-        )}
-
-        <div className={styles.footNote}>
-          <Info size={13} aria-hidden="true" />{" "}
-          <b>ยอดที่นับ</b> = ยอดที่เข้ารายงาน (ยอดหน้าใบ − VAT ที่บวกท้ายใบ) ·
-          {" "}รายการสินค้าและจำนวนอยู่ในใบ กดเลขที่ใบเพื่อเปิดดู
-        </div>
+      <div className={styles.footNote}>
+        <Info size={13} aria-hidden="true" />{" "}
+        <b>ยอดที่นับ</b> = ยอดที่เข้ารายงาน (ยอดหน้าใบ − VAT ที่บวกท้ายใบ) ·
+        {" "}รายการสินค้าและจำนวนอยู่ในใบ กดเลขที่ใบเพื่อเปิดดู
       </div>
-    </section>
+    </ListPanel>
   );
 }
