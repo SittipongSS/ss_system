@@ -1,4 +1,4 @@
-// "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) — ดีล Won ที่ยังไม่มี SO อนุมัติและไม่มี SO รออนุมัติ
+// "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14 · ปรับ 2026-09-16) — ดีล Won ที่ยังไม่มี Actual และไม่มี SO รออนุมัติ · มูลค่าดีล 0 ไม่นับ
 // ใช้ปิดรูของยอดคาดการณ์ช่วงรับใบเสนอราคา → ยื่น SO · ล็อกนิยามตัวช่วยกลางไว้ที่นี่
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,13 +48,23 @@ test('มี SO รออนุมัติ = ไม่ใช่รอยื่�
   assert.equal(isWonAwaitingSo(won({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } })), false);
 });
 
-test('มี SO อนุมัติแล้ว = ไม่ใช่รอยื่น — รวมใบอนุมัติยอด 0 บาท (ดูจาก wonMonth)', () => {
-  const zeroApproved = won({ metadata: { actualSource: 'sale_order', wonMonth: '2026-08', wonValueExVat: 0 } });
-  assert.equal(dealHasApprovedSalesOrder(zeroApproved), true);
-  assert.equal(isWonAwaitingSo(zeroApproved), false);
+test('มี SO อนุมัติที่มียอดแล้ว = ไม่ใช่รอยื่น', () => {
   const approved = won({ wonValue: 90000, metadata: { actualSource: 'sale_order', wonMonth: '2026-09', wonValueExVat: 90000 } });
   assert.equal(isWonAwaitingSo(approved), false);
   assert.equal(wonAwaitingSoAmountOf(approved), 0);
+});
+
+/* มติผู้ใช้ 2026-09-16: SO อนุมัติ 0 บาท (ใบ DEMO · ค่าออกแบบกลิ่นก่อนบรีฟ) บนดีลที่ FC > 0 = ออเดอร์จริงยังจะมา
+   ⇒ ยังนับ "Won รอยื่น SO" ด้วยมูลค่าดีล · ของจริง 16/09: 8 ดีล 1,468,366 (เช่น DL-26080348 634,500) */
+test('SO อนุมัติ 0 บาทบนดีล FC > 0 = ยังรอยื่น SO ที่มียอด · เดือนตาม wonMonth (เดือนที่อนุมัติ)', () => {
+  const zeroApproved = won({ metadata: { actualSource: 'sale_order', wonMonth: '2026-08', wonValueExVat: 0 } });
+  assert.equal(dealHasApprovedSalesOrder(zeroApproved), true);
+  assert.equal(isWonAwaitingSo(zeroApproved), true);
+  assert.equal(wonAwaitingSoAmountOf(zeroApproved), 120000);
+  assert.equal(wonAwaitingSoCountOf(zeroApproved), 1);
+  assert.equal(wonAwaitingSoMonthOf(zeroApproved), '2026-08');
+  // ยอด Actual ยังเป็น 0 — ไม่ปนกัน
+  assert.equal(wonAmountOf(zeroApproved), 0);
 });
 
 test('ดีลที่ยังเปิด / แพ้ ไม่ใช่รอยื่น SO', () => {
@@ -64,13 +74,17 @@ test('ดีลที่ยังเปิด / แพ้ ไม่ใช่ร�
   assert.equal(isWonAwaitingSo(won({ stage: 'in_project' })), true);
 });
 
-test('มูลค่าติดลบ/ว่าง = 0 แต่ยังนับเป็นหนึ่งดีล', () => {
-  assert.equal(wonAwaitingSoAmountOf(won({ projectValue: null })), 0);
-  assert.equal(wonAwaitingSoAmountOf(won({ projectValue: -5 })), 0);
-  assert.equal(wonAwaitingSoCountOf(won({ projectValue: null })), 1);
-  // ดีลปกติ ฿0 (มีจริง 3 ดีลบน prod) ยังนับ 1 ดีล — การตัดดีลเก่าไม่ได้ตัดด้วยมูลค่า
-  assert.equal(wonAwaitingSoCountOf(won({ projectValue: 0 })), 1);
-  assert.equal(isWonAwaitingSo(won({ projectValue: 0 })), true);
+/* มติผู้ใช้ 2026-09-16: มูลค่าดีล 0/ว่าง/ติดลบ ไม่นับทั้งยอดและจำนวน — บวกคาดการณ์ 0 อยู่แล้ว ได้แค่บรรทัด "฿0.00 · 1 ดีล"
+   (ของจริง 16/09: 3 ดีลมูลค่า 0 ที่มี SO 0 บาทร่าง/ยกเลิก — DL-26080214 · DL-26080303 · DL-260900469) */
+test('มูลค่าดีล 0 / ว่าง / ติดลบ ไม่อยู่ในกอง Won รอยื่น SO ทั้งยอดและจำนวน', () => {
+  for (const projectValue of [0, null, undefined, -5, '0']) {
+    const d = won({ projectValue });
+    assert.equal(isWonAwaitingSo(d), false, String(projectValue));
+    assert.equal(wonAwaitingSoAmountOf(d), 0);
+    assert.equal(wonAwaitingSoCountOf(d), 0);
+    assert.equal(wonAwaitingSoMonthOf(d), null);
+  }
+  assert.equal(wonAwaitingSoCountOf(won({ projectValue: '1' })), 1);
 });
 
 /* ── ดีลเก่าจากระบบเดิมที่สร้างเป็น Won (มติผู้ใช้ 2026-09-15) ────────────────────────────

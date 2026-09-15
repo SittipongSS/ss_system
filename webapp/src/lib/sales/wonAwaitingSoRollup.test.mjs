@@ -1,6 +1,6 @@
 // ── "Won รอยื่น SO" บน API แดชบอร์ด + ลิ้นชักรายดีล (มติผู้ใช้ 2026-09-14) ──────────
 //
-// ดีล Won ที่ยังไม่มี SO อนุมัติและไม่มี SO รออนุมัติ ⇒ ยอดคาดการณ์นับด้วยมูลค่าดีล (กองที่สาม)
+// ดีล Won ที่ยังไม่มี Actual และไม่มี SO รออนุมัติ ⇒ ยอดคาดการณ์นับด้วยมูลค่าดีล (กองที่สาม)
 // GET /api/sales-planning/dashboard ส่ง `wonAwaitingSo` + `wonAwaitingSoCount` ใน totals /
 // byOwner[] / byTeam[] / byType[] · ลิ้นชัก metric 'wonAwaitingSo' ต้องได้ดีลชุดเดียวกัน
 //
@@ -93,22 +93,24 @@ test('ดีลที่ไม่ใช่รอยื่น SO ได้ +0 · 
 });
 
 // ── ยอดรวม ──────────────────────────────────────────────────────────────────────
-test('ยอดรวม: รอยื่นเท่านั้น — รออนุมัติ (รวมใบ 0 บาท) / อนุมัติแล้ว (รวมใบ 0 บาท) / เปิด / แพ้ ไม่นับ', () => {
+/* มติผู้ใช้ 2026-09-16: ใบอนุมัติ 0 บาทบนดีล FC > 0 ยังรอยื่น SO ที่มียอด · มูลค่าดีล 0/ว่าง ไม่นับทั้งยอดและจำนวน */
+test('ยอดรวม: รอยื่นเท่านั้น — รวมดีลที่มีแค่ใบอนุมัติ 0 บาท · รออนุมัติ (รวมใบ 0 บาท) / อนุมัติมียอด / มูลค่า 0 / เปิด / แพ้ ไม่นับ', () => {
   const deals = [
     awaiting(),
     awaiting({ stage: 'in_project', projectValue: 30000 }),
-    awaiting({ projectValue: null }), // มูลค่าว่าง = ฿0 แต่ยังเป็นหนึ่งดีล
+    awaiting({ projectValue: null }), // มูลค่าว่าง = ไม่นับทั้งยอดและจำนวน
+    awaiting({ projectValue: 0 }),
     pendingOnly(),
     pendingOnly({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } }),
     approved(),
-    approved({ wonValue: 0, metadata: { actualSource: 'sale_order', wonMonth: '2026-09', wonValueExVat: 0 } }),
+    approved({ wonValue: 0, metadata: { actualSource: 'sale_order', wonMonth: '2026-09', wonValueExVat: 0 } }), // ใบ 0 บาท = ยังรอ
     awaiting({ stage: 'quotation' }),
     awaiting({ stage: 'lost' }),
   ];
-  assert.deepEqual(rollupWonAwaitingSo(deals), { wonAwaitingSo: 150000, wonAwaitingSoCount: 3 });
+  assert.deepEqual(rollupWonAwaitingSo(deals), { wonAwaitingSo: 270000, wonAwaitingSoCount: 3 });
   assert.deepEqual(rollupWonAwaitingSo([]), wonAwaitingSoFields());
   assert.deepEqual(rollupWonAwaitingSo(null), wonAwaitingSoFields());
-  assert.equal(hasWonAwaitingSo(awaiting({ projectValue: null })), true);
+  assert.equal(hasWonAwaitingSo(awaiting({ projectValue: null })), false);
   assert.equal(hasWonAwaitingSo(pendingOnly()), false);
 });
 
@@ -258,7 +260,7 @@ test('modal: metric wonAwaitingSo กรองด้วยตัวจับค�
   const chain = modal.slice(modal.indexOf('if (filter.metric === "won")'), modal.indexOf('setDeals(filtered);'));
   assert.ok(chain.indexOf('WON_AWAITING_SO_METRIC') < chain.lastIndexOf('filtered = [];'));
   assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: WON_AWAITING_SO_LABEL,/);
-  assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติหรือรออนุมัติ — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",/);
+  assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: "ดีลปิด Won แล้ว แต่ยังไม่มียอดจากใบสั่งขายที่อนุมัติ \(ยังไม่ออก · ร่าง · มีแค่ใบ 0 บาท\) และไม่มีใบรออนุมัติ — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",/);
   assert.match(modal, /amountHeader = "มูลค่าดีล \(บาท\)";/);
   assert.match(modal, /<th className="num">\{amountHeader\}<\/th>/);
   assert.match(modal, /if \(isWonAwaitingSoMetric\) return wonAwaitingSoAmountOf\(deal\);/);
