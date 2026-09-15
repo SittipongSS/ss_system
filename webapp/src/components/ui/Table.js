@@ -3,10 +3,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import styles from "./Table.module.css";
 
-export function TableToolbar({ children, className = "", ...props }) {
-  return <div className={`${styles.toolbar} ${className}`.trim()} {...props}>{children}</div>;
-}
-
 /* surface = "auto"     → ตัวมันเองเป็นพื้นข้อมูล (พื้นการ์ด + ขอบ + มุมมน + เงา)
    surface = "embedded" → อยู่ในการ์ดอยู่แล้ว ไม่ต้องมีกรอบซ้อน
 
@@ -112,36 +108,3 @@ export function TableGroupRow({
     </tr>
   );
 }
-
-export function TableShell({
-  title,
-  description,
-  actions,
-  toolbar,
-  footer,
-  family = "list",
-  minWidth,
-  // ส่งต่อให้ TableScroll — เซลล์ซ้อนสองบรรทัดต้องชิดบนทั้งแถว (ดูคอมเมนต์ที่ TableScroll)
-  cells = "default",
-  className = "",
-  children,
-}) {
-  return (
-    <section className={`${styles.shell} ${className}`.trim()} data-table-family={family}>
-      {(title || description || actions) ? (
-        <header className={styles.header}>
-          <div className={styles.heading}>
-            {title ? <h2>{title}</h2> : null}
-            {description ? <p>{description}</p> : null}
-          </div>
-          {actions ? <div className={styles.actions}>{actions}</div> : null}
-        </header>
-      ) : null}
-      {toolbar ? <TableToolbar>{toolbar}</TableToolbar> : null}
-      <TableScroll family={family} surface="embedded" minWidth={minWidth} cells={cells}>{children}</TableScroll>
-      {footer ? <footer className={styles.footer}>{footer}</footer> : null}
-    </section>
-  );
-}
-
-export default TableShell;

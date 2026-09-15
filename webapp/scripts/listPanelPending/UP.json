@@ -1,0 +1,11 @@
+{
+  "unit": "UP",
+  "reason": "UP หน้าสหมิตรพักไว้ตามมติรื้อทั้งเส้น 2026-09-08 (docs/sahamit-rework-scope.md) — มติ D2 = ไม่ (2026-09-15) ห้ามแตะ UI จนกว่าจะยกเลิกการพักงานสหมิตร",
+  "files": [
+    "src/app/sahamit/forecast/page.js",
+    "src/app/sahamit/material/page.js",
+    "src/app/sahamit/po/page.js",
+    "src/app/sahamit/reconcile/page.js",
+    "src/app/sahamit/review/page.js"
+  ]
+}

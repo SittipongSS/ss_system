@@ -11,17 +11,19 @@ import { TableScroll } from "@/components/ui/Table";
 //  "คำร้อง" แล้ว ตัวทะเบียนจึงย้ายไปอยู่กับข้อมูลหลักตัวอื่นใต้ "ฐานข้อมูล")
 import { useMemo, useState } from "react";
 import {
-  Boxes, RefreshCw, History, Pencil, Plus, Check, Archive,
+  Boxes, RefreshCw, History, Pencil, Check, Archive,
   ArchiveRestore, Search, Trash2, Coins,
 } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
-import SkeletonRows from "@/components/ui/Skeleton";
+import { ListPanel } from "@/components/ui/Workspace";
+import Button from "@/components/ui/Button";
+import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
-import MaterialForm, { emptyMaterialForm, materialToForm } from "@/components/materials/MaterialForm";
+import MaterialForm, { materialToForm } from "@/components/materials/MaterialForm";
 import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -52,8 +54,12 @@ const STATE_TONE = {
 // ⭐ ทะเบียนนี้เหลือ **บรรจุภัณฑ์ (PM) อย่างเดียว** (มติผู้ใช้ 2026-08-10 —
 // เตรียมต่อโมดูลจัดซื้อ) · ราคา RM (F/FB) จัดการที่หน้ารายละเอียดกลิ่น/สูตร
 // หน้าแม่กรองแถว PM มาให้แล้ว จึงไม่มีตัวกรอง/คอลัมน์ชนิดอีก
+// `form` / `setForm` ({ mode, material?, value } | null) เป็นของหน้าแม่ — ปุ่ม "เพิ่มวัสดุ"
+// อยู่ headerRight ของ Workspace (ปุ่มสร้างเป็นของระดับหน้า · UI_DESIGN_SYSTEM.md §รายการ)
+// จึงต้องเปิดฟอร์มเดียวกับปุ่ม "แก้ข้อมูล" ของแถวในพาเนลนี้ได้
 export default function MaterialRegistryPanel({
   materials = [], customers = [], loading = false, loadError = "", reload,
+  form, setForm,
 }) {
   const role = useRole();
   const department = useDepartment();
@@ -66,7 +72,6 @@ export default function MaterialRegistryPanel({
   const [search, setSearch] = useState("");
 
   const [history, setHistory] = useState(null);
-  const [form, setForm] = useState(null);          // { mode, material?, value }
   const [pricing, setPricing] = useState(null);    // material ที่กำลังออกราคา
   const [tiers, setTiers] = useState([emptyTierRow()]);
   const [validUntil, setValidUntil] = useState("");
@@ -230,18 +235,28 @@ export default function MaterialRegistryPanel({
 
   return (
     <>
+      {/* แถบแจ้งร่างอยู่ **เหนือ** แผงรายการ (ของระดับหน้า) — ทรงเดียวกับทะเบียนกลิ่น
+          เดิมเป็น glass-panel + inline style ที่หน้าเขียนเอง */}
       {draftCount > 0 && (
-        <div className="glass-panel" style={{ padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="ui-badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>{draftCount}</span>
-          <span style={{ fontSize: "var(--fs-7)" }}>
-            มีวัสดุที่ฝ่ายขายเสนอเข้ามารอฝ่ายคุณรับเข้าทะเบียน
-          </span>
-          <span className="spacer" />
-          <button type="button" className="btn sm" onClick={() => setStatusFilter("draft")}>ดูเฉพาะร่าง</button>
-        </div>
+        <StatusNotice
+          tone="info"
+          action={<Button size="sm" onClick={() => setStatusFilter("draft")}>ดูเฉพาะร่าง</Button>}
+        >
+          มีวัสดุที่ฝ่ายขายเสนอเข้ามา {draftCount} รายการ รอฝ่ายคุณรับเข้าทะเบียน
+        </StatusNotice>
       )}
 
-      <div className="toolbar">
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ)
+          ปุ่ม "เพิ่มวัสดุ" อยู่ headerRight ของหน้าแม่ (ปุ่มสร้างเป็นของระดับหน้า ไม่ใช่ actions ของแผง)
+          ⚠️ `loading` เฉพาะตอนยังไม่มีแถว — reload หลังบันทึกเก็บตารางไว้แล้วบอกด้วย aria-busy */}
+      <ListPanel
+        icon={<Boxes size={17} aria-hidden="true" />}
+        title="รายการวัสดุ"
+        subtitle="ค้นหาและกรองบรรจุภัณฑ์ — เปิดประวัติราคา ออกราคารุ่นใหม่ หรือแก้ข้อมูลจากแต่ละแถว"
+        count={(loading && !materials.length) || loadError ? null : `${visible.length} รายการ`}
+        loading={loading && !materials.length}
+        toolbar={(
+        <>
         {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
         <div className="search-glass">
           <Search size={18} color="var(--text-3)" aria-hidden="true" />
@@ -265,27 +280,22 @@ export default function MaterialRegistryPanel({
         <button type="button" className="btn" onClick={reload} disabled={loading}>
           <RefreshCw size={14} /> รีเฟรช
         </button>
-        {/* ปุ่มเพิ่มขวาสุดของแถวหัวการ์ด ตาม page-header standard */}
-        <button
-          type="button" className="btn btn-accent"
-          onClick={() => setForm({ mode: "create", value: emptyMaterialForm() })}
-        >
-          <Plus size={14} /> เพิ่มวัสดุ
-        </button>
-      </div>
-
-      {loading ? (
-        <SkeletonRows rows={5} />
-      ) : loadError ? (
-        <div className="glass-panel" style={{ padding: 24, color: "var(--red)" }}>{loadError}</div>
+        </>
+        )}
+      >
+      {/* โหลดไม่สำเร็จ = ข้อความในเนื้อแผงพร้อมทางลองใหม่ (เดิมกล่อง glass-panel สีแดงลอย) */}
+      {loadError ? (
+        <StatusNotice tone="error" action={<Button size="sm" variant="ghost" onClick={reload}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Boxes}>
+        <EmptyState plain icon={Boxes}>
           {materials.length === 0
             ? "ทะเบียนบรรจุภัณฑ์ยังว่าง — กด \"เพิ่มวัสดุ\" เพื่อเริ่ม (ราคา F/FB อยู่ที่ทะเบียนกลิ่น/สูตร)"
             : "ไม่มีวัสดุที่ตรงกับตัวกรอง"}
         </EmptyState>
       ) : (
-        <TableScroll>
+        <TableScroll aria-busy={loading}>
           <table className="premium-table">
             <thead>
               <tr>
@@ -393,6 +403,7 @@ export default function MaterialRegistryPanel({
           </table>
         </TableScroll>
       )}
+      </ListPanel>
 
       {/* เพิ่ม/แก้วัสดุ — ฟอร์มเดียวกัน (กฎ AGENTS.md) */}
       <Modal

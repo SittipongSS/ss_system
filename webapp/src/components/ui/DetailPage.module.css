@@ -138,8 +138,9 @@
    `.ui-section-body [data-surface][data-family]` ใน globals)
    🐞 เดิมกรอบตารางเริ่มลึกกว่าหัวการ์ด 16px และมือถือเสียความกว้างการ์ดไป 64px
    (วัด 2026-09-15: /sa/teams/KA · /service/teams/[code] หัวการ์ด x=45 กรอบตาราง x=61)
-   ⚠️ เว้นตารางที่เป็นลูกของ TableShell (`[data-table-family]`) — กรอบของ shell ต้องการระยะนั้น */
-.cardBody [data-surface="embedded"][data-family]:not([data-table-family] > *) {
+   🔄 ข้อยกเว้นลูกของ TableShell (`:not([data-table-family] > *)`) ถอดแล้ว — TableShell ถูกลบ
+      (มติผู้ใช้ 2026-09-15 · ListPanel) ไม่มีกรอบ shell ให้เว้นระยะอีก ⇒ ตารางฝังทุกตัวชิดเนื้อการ์ด */
+.cardBody [data-surface="embedded"][data-family] {
   margin: 0;
 }
 .contextCard {

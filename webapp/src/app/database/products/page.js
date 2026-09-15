@@ -13,7 +13,7 @@ import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ProductForm, { EMPTY_PRODUCT } from "@/components/database/ProductForm";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/ui/ApprovalQueue";
@@ -378,9 +378,10 @@ export default function ProductRegistry() {
     return `/api/products/export${qs ? `?${qs}` : ""}`;
   }, [q, statusFilter, regFilter, showInactive, missingPrice]);
 
+  /* ป้ายจำนวนย้ายไปอยู่หัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9) — เลขรวมทั้งทะเบียน
+     ยังอยู่ที่ StatCards "ทั้งหมด" ใน rail · ปุ่มส่งออก/เพิ่มเป็นของระดับหน้า อยู่ที่นี่ต่อ */
   const headerRight = (
     <>
-      <span className="ui-badge">{products.length} รายการ</span>
       {/* ใช้ Button primitive (as=Link) — ที่เดียวที่ได้รับอนุญาตให้เขียนคลาส btn */}
       <Button
         as={Link}
@@ -400,11 +401,12 @@ export default function ProductRegistry() {
     </>
   );
 
+  /* เครื่องมือของรายการส่งเป็น fragment เข้า `ListPanel toolbar` — แผงห่อ `.toolbar` ให้เอง */
   const toolbar = (
-    <div className="toolbar">
-      <div className="search-glass" style={{ width: "240px" }}>
-        <Search size={18} color="var(--text-3)" />
-        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์..." />
+    <>
+      <div className="search-glass">
+        <Search size={18} color="var(--text-3)" aria-hidden="true" />
+        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์..." aria-label="ค้นหาสินค้า" />
       </div>
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
@@ -453,7 +455,7 @@ export default function ProductRegistry() {
         <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
         <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
       </div>
-    </div>
+    </>
   );
 
   return (
@@ -462,7 +464,6 @@ export default function ProductRegistry() {
       title="ข้อมูลสินค้า"
       subtitle="ฐานข้อมูลสินค้ากลาง (Master Data) — รหัส FG สเปค และต้นทุน/ภาษีต่อหน่วย"
       headerRight={headerRight}
-      loading={loading}
       rail={
         <>
           <StatCards
@@ -484,10 +485,19 @@ export default function ProductRegistry() {
           />
         </>
       }
-      toolbar={toolbar}
     >
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15) — ทรงเดียวกับทะเบียนลูกค้า · `loading` แทนที่เฉพาะเนื้อ
+          ป้ายจำนวน = สินค้าที่เหลือหลังค้นหา/กรองทุกหน้า (เท่ายอดของ Pager) */}
+      <ListPanel
+        icon={<Package size={17} aria-hidden="true" />}
+        title="ทะเบียนสินค้า"
+        subtitle="ค้นหารายละเอียดสินค้า รหัส FG หรือแบรนด์"
+        count={loading ? null : `${sort.sorted.length} รายการ`}
+        loading={loading}
+        toolbar={toolbar}
+      >
       {sort.sorted.length === 0 ? (
-        <EmptyState icon={Package}>
+        <EmptyState plain icon={Package}>
           {q || statusFilter.length || regFilter.length ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
         </EmptyState>
       ) : view === "cards" ? (
@@ -659,6 +669,7 @@ export default function ProductRegistry() {
           onPageSize={setPageSize}
         />
       )}
+      </ListPanel>
 
       {/* Add product modal — FG always belongs to a customer (selected below). */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="เพิ่มสินค้าใหม่ (New Product)" size="lg">

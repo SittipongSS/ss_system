@@ -1,8 +1,9 @@
 "use client";
-import Select from "@/components/ui/Select";
+import FilterPopover from "@/components/ui/FilterPopover";
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
+import Segmented from "@/components/ui/Segmented";
 import { useEffect, useMemo, useState } from "react";
 import { History, Search, Eye } from "lucide-react";
 import AccessDenied from "@/components/ui/AccessDenied";
@@ -113,111 +114,116 @@ export default function AuditLogPage() {
       icon={<History size={22} />}
       title="บันทึกการใช้งาน"
       subtitle="ประวัติการสร้าง / แก้ไข / ลบ ข้อมูลในระบบ (ใครทำอะไรเมื่อไหร่)"
-      headerRight={<div className="status-pill info">{total} รายการ</div>}
     >
 
-      {/* ⚠️ ระยะห่างระหว่างก้อนมาจากตัวห่อ flex gap-4 — `.ui-section` ไม่มี margin
-          ของตัวเอง (กติกาเดียวกับหน้า RD / โครงการ / ตั้งค่า) */}
-      <div className="flex flex-col gap-4">
-      {/* ตัวกรอง — หัวการ์ดมาจาก WorkspaceSection กลาง (มติผู้ใช้ 2026-08-21)
-          เดิมเป็น .glass-panel + inline style ที่มีระยะขอบเป็นของตัวเอง */}
-      <WorkspaceSection title="ตัวกรอง" subtitle="ช่วงเวลา ประเภทข้อมูล การกระทำ และผู้ทำ">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="segmented">
-            {MONTH_OPTS.map((o) => (
-              <button
-                key={o.v}
-                className={months === o.v ? "active" : ""}
-                onClick={() => setMonths(o.v)}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+      {/* ⭐ แผงรายการเดียว (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — เดิมการ์ด "ตัวกรอง"
+          แยกอีกใบ แล้ว `loading ? <SkeletonRows/> : การ์ดรายการ` ถอดทั้งการ์ดทุกครั้งที่พิมพ์ค้นหา
+          ⇒ ตัวกรองย้ายเข้า `toolbar` ของแผง · หัวแผงกับแถบเครื่องมือไม่ถูกถอดตอนโหลดใหม่
+          ⚠️ `loading` เฉพาะตอนยังไม่มีแถว — โหลดซ้ำที่มีแถวอยู่แล้วใช้ aria-busy ของตาราง
+             (ช่องค้นหาไม่หลุดโฟกัสระหว่าง debounce 300ms) */}
+      <ListPanel
+        icon={<History size={17} aria-hidden="true" />}
+        title="รายการบันทึก"
+        subtitle="กรองตามช่วงเวลา ประเภทข้อมูล การกระทำ และผู้ทำ แล้วเปิดดูค่าก่อน/หลัง"
+        count={loading && rows.length === 0 ? null : `${total} รายการ`}
+        loading={loading && rows.length === 0}
+        skeletonRows={7}
+        toolbar={(
+          <>
+            <div className="search-glass">
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหา รายละเอียด / รหัสข้อมูล" aria-label="ค้นหาบันทึกการใช้งาน" />
+            </div>
 
-          <Select className="premium-select" value={entityType} onChange={(e) => setEntityType(e.target.value)} style={{ width: "auto" }}>
-            <option value="">ทุกประเภทข้อมูล</option>
-            {Object.entries(ENTITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </Select>
+            {/* ประเภทข้อมูล · การกระทำ · ผู้ทำ รวมใน FilterPopover เดียว (มาตรฐานตัวกรองทั้งระบบ มติ 2026-07-18)
+                🐞 เดิมเป็น Select สามตัวเรียงต่อกัน ⇒ จอ 1024 "ทุกคน" ห้อยแถวเดี่ยว (ขาด 10px) ·
+                ทุกหมวดเลือกได้ค่าเดียว (`single`) เท่ากับ Select เดิม — ว่าง = ทั้งหมด */}
+            <FilterPopover
+              count={(entityType ? 1 : 0) + (action ? 1 : 0) + (actor ? 1 : 0)}
+              onClear={() => { setEntityType(""); setAction(""); setActor(""); }}
+              groups={[
+                {
+                  key: "entityType", label: "ประเภทข้อมูล", single: true,
+                  options: Object.entries(ENTITY_LABELS).map(([value, label]) => ({ value, label })),
+                  selected: entityType ? [entityType] : [],
+                  onChange: (next) => setEntityType(next[0] || ""),
+                },
+                {
+                  key: "action", label: "การกระทำ", single: true,
+                  options: Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label })),
+                  selected: action ? [action] : [],
+                  onChange: (next) => setAction(next[0] || ""),
+                },
+                {
+                  key: "actor", label: "ผู้ทำ", single: true,
+                  options: actorOpts.map(([value, label]) => ({ value, label })),
+                  selected: actor ? [actor] : [],
+                  onChange: (next) => setActor(next[0] || ""),
+                },
+              ]}
+            />
 
-          <Select className="premium-select" value={action} onChange={(e) => setAction(e.target.value)} style={{ width: "auto" }}>
-            <option value="">ทุกการกระทำ</option>
-            {Object.entries(ACTION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </Select>
-
-          <Select className="premium-select" value={actor} onChange={(e) => setActor(e.target.value)} style={{ width: "auto" }}>
-            <option value="">ทุกคน</option>
-            {actorOpts.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </Select>
-
-          <div className="search-bar" style={{ flex: 1, minWidth: 180 }}>
-            <Search size={16} className="icon-l" strokeWidth={2} />
-            <input type="text" placeholder="ค้นหา รายละเอียด / รหัสข้อมูล..." value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-        </div>
-      </WorkspaceSection>
-
-      {loading ? (
-        <SkeletonRows rows={7} />
-      ) : (
-        <WorkspaceSection
-          title="รายการบันทึก"
-          subtitle={`${total} รายการตามเงื่อนไขที่กรองอยู่`}
-        >
-          <TableScroll surface="embedded" family="list">
-            <table className="premium-table">
-              <thead>
+            <Segmented
+              ariaLabel="ช่วงเวลา"
+              options={MONTH_OPTS.map((o) => ({ value: o.v, label: o.label }))}
+              value={months}
+              onChange={setMonths}
+            />
+          </>
+        )}
+      >
+        <TableScroll surface="embedded" family="list" aria-busy={loading}>
+          <table className="premium-table">
+            <thead>
+              <tr>
+                <SortTh label="เวลา" sortKey="createdAt" sort={sort} />
+                <SortTh label="ผู้ทำ" sortKey="actorName" sort={sort} />
+                <SortTh label="การกระทำ" sortKey="action" sort={sort} />
+                <SortTh label="ประเภท" sortKey="entityType" sort={sort} />
+                <th>รายละเอียด</th>
+                <th className="text-center">ดู</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.length === 0 ? (
                 <tr>
-                  <SortTh label="เวลา" sortKey="createdAt" sort={sort} />
-                  <SortTh label="ผู้ทำ" sortKey="actorName" sort={sort} />
-                  <SortTh label="การกระทำ" sortKey="action" sort={sort} />
-                  <SortTh label="ประเภท" sortKey="entityType" sort={sort} />
-                  <th>รายละเอียด</th>
-                  <th className="text-center">ดู</th>
+                  <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">ไม่พบบันทึกตามเงื่อนไข</td>
                 </tr>
-              </thead>
-              <tbody>
-                {pageRows.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="text-center py-10 text-[var(--text-3)]">ไม่พบบันทึกตามเงื่อนไข</td>
+              ) : (
+                pageRows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="text-[var(--text-3)] text-xs whitespace-nowrap">{fmtDateTime(r.createdAt)}</td>
+                    <td className="text-[var(--text-2)] text-sm">
+                      <div className="font-medium text-[var(--text)]">{naText(r.actorName)}</div>
+                      <div className="text-[var(--text-3)] text-xs">
+                        {(ROLE_LABELS[r.actorRole] || r.actorRole || "")}{r.actorTeam ? ` · ${teamLabelNow(r.actorTeam)}` : ""}
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`status-pill ${ACTION_CLASS[r.action] || ""}`} style={{ height: "auto", padding: "2px 9px", fontSize: "var(--fs-3)", fontWeight: "var(--fw-semibold)" }}>
+                        {ACTION_LABELS[r.action] || r.action}
+                      </span>
+                    </td>
+                    <td className="text-[var(--text-2)]">
+                      {ENTITY_LABELS[r.entityType] || r.entityType}
+                      <span className="text-[var(--text-3)] font-mono text-xs ml-1">{r.entityId}</span>
+                    </td>
+                    <td className="text-[var(--text-2)] text-sm">{naText(r.summary)}</td>
+                    <td className="text-center">
+                      <button onClick={() => setDetail(r)} className="text-[var(--accent)] hover:opacity-70" title="ดู before/after">
+                        <Eye size={16} />
+                      </button>
+                    </td>
                   </tr>
-                ) : (
-                  pageRows.map((r) => (
-                    <tr key={r.id}>
-                      <td className="text-[var(--text-3)] text-xs whitespace-nowrap">{fmtDateTime(r.createdAt)}</td>
-                      <td className="text-[var(--text-2)] text-sm">
-                        <div className="font-medium text-[var(--text)]">{naText(r.actorName)}</div>
-                        <div className="text-[var(--text-3)] text-xs">
-                          {(ROLE_LABELS[r.actorRole] || r.actorRole || "")}{r.actorTeam ? ` · ${teamLabelNow(r.actorTeam)}` : ""}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`status-pill ${ACTION_CLASS[r.action] || ""}`} style={{ height: "auto", padding: "2px 9px", fontSize: "var(--fs-3)", fontWeight: "var(--fw-semibold)" }}>
-                          {ACTION_LABELS[r.action] || r.action}
-                        </span>
-                      </td>
-                      <td className="text-[var(--text-2)]">
-                        {ENTITY_LABELS[r.entityType] || r.entityType}
-                        <span className="text-[var(--text-3)] font-mono text-xs ml-1">{r.entityId}</span>
-                      </td>
-                      <td className="text-[var(--text-2)] text-sm">{naText(r.summary)}</td>
-                      <td className="text-center">
-                        <button onClick={() => setDetail(r)} className="text-[var(--accent)] hover:opacity-70" title="ดู before/after">
-                          <Eye size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </TableScroll>
-          {pageRows.length > 0 && (
-            <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
-          )}
-        </WorkspaceSection>
-      )}
-      </div>
+                ))
+              )}
+            </tbody>
+          </table>
+        </TableScroll>
+        {pageRows.length > 0 && (
+          <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
+        )}
+      </ListPanel>
 
       <AuditDetailModal log={detail} onClose={() => setDetail(null)} />
     </Workspace>

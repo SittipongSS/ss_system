@@ -11,8 +11,8 @@ import TaskFormModal from "@/components/mgmt/TaskFormModal";
 import TaskDrawer from "@/components/mgmt/TaskDrawer";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
-import SkeletonRows from "@/components/ui/Skeleton";
-import Workspace from "@/components/ui/Workspace";
+import EmptyState from "@/components/ui/EmptyState";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { naText, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
@@ -20,6 +20,7 @@ import { apiFetch } from "@/lib/apiFetch";
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
 const STATUS_CLASS = { done: "ok", in_progress: "", todo: "", cancelled: "danger" };
+const EMPTY_FILTERS = { q: "", deptCode: "", status: "", priority: "" };
 const fmt = (d) => {
   if (!d) return "—";
   const dt = new Date(d + "T00:00:00");
@@ -37,7 +38,7 @@ export default function MgmtTasksPage() {
   const [departments, setDepartments] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ q: "", deptCode: "", status: "", priority: "" });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   /* ⭐ `?count=mgmtTasks` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-116) · ป้ายนับงานที่ยังไม่จบและ
      มอบหมายให้ฉัน ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่งานทั้งปีของทุกฝ่าย
      ⚠️ ธง `_waitingOnMe` มาจาก server ด้วย helper ตัวเดียวกับที่ป้ายใช้นับ — หน้านี้ไม่รู้
@@ -90,6 +91,8 @@ export default function MgmtTasksPage() {
       (t.assigneeName || "").toLowerCase().includes(q) ||
       (t.deptCode || "").toLowerCase().includes(q));
   }, [tasks, filters.q, waitingOnMeOnly]);
+  // มีตัวกรองอยู่ = "ไม่พบ" ไม่ใช่ "ยังไม่มีงาน" — สองคำนี้พาคนอ่านไปคนละทาง
+  const filtering = !!(filters.q.trim() || filters.deptCode || filters.status || filters.priority || waitingOnMeOnly);
 
   const upsertRow = (row) => setTasks((prev) => {
     const i = prev.findIndex((t) => t.id === row.id);
@@ -108,57 +111,57 @@ export default function MgmtTasksPage() {
       icon={<ListTodo size={22} />}
       title="รายการงาน"
       subtitle="ติดตามงานบริหาร แยกตามแผนก · คลิกแถวเพื่อดูรายละเอียด/แนบไฟล์"
-      headerRight={(
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
-            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
-          </Select>
-          {canEdit && <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มงาน</button>}
-        </div>
-      )}
+      headerRight={canEdit ? (
+        <button className="btn btn-accent flex items-center gap-1.5" onClick={openCreate}><Plus size={16} /> เพิ่มงาน</button>
+      ) : null}
     >
-      {/* filters */}
-      <div className="glass-panel" style={{ padding: "12px 14px", marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 180 }}>
-          <label>ค้นหา</label>
-          <div style={{ position: "relative" }}>
-            <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "var(--text-3)" }} />
-            <input className="premium-input w-full" style={{ paddingLeft: 30 }} value={filters.q} placeholder="ชื่องาน, แผนก, ผู้รับผิดชอบ" onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))} />
-          </div>
-        </div>
-        <div className="form-group" style={{ margin: 0 }}>
-          <label>แผนก</label>
-          <Select className="premium-input" value={filters.deptCode} onChange={(e) => setFilters((f) => ({ ...f, deptCode: e.target.value }))}>
-            <option value="">ทั้งหมด</option>
-            {departments.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
-          </Select>
-        </div>
-        <div className="form-group" style={{ margin: 0 }}>
-          <label>สถานะ</label>
-          <Select className="premium-input" value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
-            <option value="">ทั้งหมด</option>
-            {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}
-          </Select>
-        </div>
-        <div className="form-group" style={{ margin: 0 }}>
-          <label>ลำดับ</label>
-          <Select className="premium-input" value={filters.priority} onChange={(e) => setFilters((f) => ({ ...f, priority: e.target.value }))}>
-            <option value="">ทั้งหมด</option>
-            {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABELS[p]}</option>)}
-          </Select>
-        </div>
-        {waitingOnMeOnly && (
-          /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
-          <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — กล่องตัวกรองเดิมกลายเป็นแถบเครื่องมือของแผง ·
+          ตัวเลือกปีย้ายจากหัวหน้าเข้าแถบด้วย เพราะคุมแค่รายการนี้ (หน้านี้มีรายการเดียว)
+          ⚠️ ตัวเลือกในแถบไม่มีป้ายเหนือช่องแล้ว ⇒ ตัวเลือกแรกบอกชื่อตัวกรองเอง ("ทุกแผนก")
+             และทุกช่องมี aria-label
+          ⚠️ loading แทนที่เฉพาะเนื้อ — ช่องค้นหา/ตัวเลือกไม่หลุดโฟกัสระหว่างโหลดตามตัวกรองใหม่ */}
+      <ListPanel
+        icon={<ListTodo size={17} aria-hidden="true" />}
+        title={`รายการงานปี ${year}`}
+        subtitle="กดชื่องานเพื่อดูรายละเอียด แนบไฟล์ หรือแก้ไข"
+        count={loading ? null : `${rows.length} งาน`}
+        loading={loading}
+        skeletonRows={7}
+        toolbar={(
+          <>
+            {/* ช่องค้นหาต้องขึ้นก่อน — จอ ≤680px ช่องค้นหากว้างเต็มแถว ถ้าปีนำหน้า ปีจะค้างอยู่แถวเดียวโดด ๆ */}
+            <div className="search-glass">
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input autoComplete="off" value={filters.q} placeholder="ชื่องาน, แผนก, ผู้รับผิดชอบ" aria-label="ค้นหางาน" onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))} />
+            </div>
+            <Select value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="ปีของรายการงาน">
+              {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+            <Select value={filters.deptCode} onChange={(e) => setFilters((f) => ({ ...f, deptCode: e.target.value }))} aria-label="กรองตามแผนก">
+              <option value="">ทุกแผนก</option>
+              {departments.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
+            </Select>
+            <Select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} aria-label="กรองตามสถานะ">
+              <option value="">ทุกสถานะ</option>
+              {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}
+            </Select>
+            <Select value={filters.priority} onChange={(e) => setFilters((f) => ({ ...f, priority: e.target.value }))} aria-label="กรองตามลำดับความสำคัญ">
+              <option value="">ทุกลำดับ</option>
+              {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABELS[p]}</option>)}
+            </Select>
+            {waitingOnMeOnly && (
+              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
+              <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
+            )}
+            <div className="spacer" />
+            <Button icon={<RotateCcw size={14} />} onClick={() => setFilters(EMPTY_FILTERS)}>ล้าง</Button>
+          </>
         )}
-        <button className="btn" onClick={() => setFilters({ q: "", deptCode: "", status: "", priority: "" })}><RotateCcw size={14} /> ล้าง</button>
-      </div>
-
-      <div className="glass-panel" style={{ padding: 0, overflow: "hidden" }}>
-        {loading ? (
-          <SkeletonRows rows={7} />
-        ) : rows.length === 0 ? (
-          <div style={{ padding: 50, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีงานในปีนี้</div>
+      >
+        {rows.length === 0 ? (
+          <EmptyState plain icon={ListTodo}>
+            {filtering ? "ไม่พบงานที่ตรงกับตัวกรอง" : `ยังไม่มีงานในปี ${year}`}
+          </EmptyState>
         ) : (
           <TableScroll surface="embedded" family="list">
           <table className="premium-table">
@@ -198,7 +201,7 @@ export default function MgmtTasksPage() {
           </table>
           </TableScroll>
         )}
-      </div>
+      </ListPanel>
 
       <TaskFormModal
         open={formOpen}

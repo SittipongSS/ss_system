@@ -20,9 +20,11 @@ test("detail overview lives in the shared UI layer", () => {
 });
 
 test("table foundation declares list, editable, and matrix contracts", () => {
-  for (const component of ["TableShell", "TableToolbar", "TableScroll", "TableEmpty"]) {
+  for (const component of ["TableScroll", "TableEmpty"]) {
     assert.match(TABLE, new RegExp(`export function ${component}`));
   }
+  // TableShell/TableToolbar ถูกถอด (มติผู้ใช้ 2026-09-15) — รายการใช้ ListPanel + TableScroll · รายละเอียดใช้ DetailCard
+  assert.doesNotMatch(TABLE, /export function Table(Shell|Toolbar)/);
   assert.match(TABLE_CSS, /data-family="list"/);
   assert.match(TABLE_CSS, /data-family="editable"/);
   assert.match(TABLE_CSS, /data-family="matrix"/);

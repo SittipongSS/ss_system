@@ -11,10 +11,10 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
-import SkeletonRows from "@/components/ui/Skeleton";
-import { TableShell } from "@/components/ui/Table";
+import StatusNotice from "@/components/ui/StatusNotice";
+import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspace";
 import ProductionLineModal from "@/components/pm/ProductionLineModal";
 import { LINE_KIND_LABELS, capacityOn } from "@/lib/pm/productionLines";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -164,20 +164,34 @@ export default function ProductionLinesPage() {
         </Button>
       ) : null}
     >
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
-
-      {loading || loadError ? (
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — ไม่มีตัวควบคุมรายการ จึงไม่มี toolbar
+          `loading` เฉพาะตอนยังไม่มีแถว (บันทึกแล้วโหลดใหม่ ตารางเดิมค้างไว้พร้อม aria-busy) */}
+      <ListPanel
+        icon={<Factory size={17} aria-hidden="true" />}
+        title="ทะเบียนไลน์ผลิต"
+        subtitle="กำลังมาตรฐานต่อวันทำการ · กด “จัดการ” เพื่อตั้งวันที่กำลังไม่ปกติ"
+        count={(loading && !lines.length) || loadError ? null : `${lines.length} ไลน์`}
+        loading={loading && !lines.length}
+      >
+      {loadError ? (
         // โหลดพัง = โชว์เฉพาะข้อความผิดพลาด · ห้ามวาดหัวตารางเปล่าค้างไว้
         // เพราะตารางว่างอ่านได้ว่า "ยังไม่มีไลน์" ซึ่งคนละเรื่องกับ "โหลดไม่ได้"
-        loading ? <SkeletonRows rows={4} /> : null
+        <StatusNotice
+          tone="error"
+          className="mb-4"
+          action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}
+        >
+          {loadError}
+        </StatusNotice>
       ) : lines.length === 0 ? (
-        <EmptyState icon={Factory} dashed={canEdit} onClick={canEdit ? () => setFormLine(null) : undefined}>
+        /* `plain` = ไม่ซ้อนกรอบ glass ในเนื้อแผง · ขอบประ (`dashed`) ของการ์ด "เพิ่ม" ยังอยู่ */
+        <EmptyState plain icon={Factory} dashed={canEdit} onClick={canEdit ? () => setFormLine(null) : undefined}>
           {canEdit
             ? "ยังไม่มีไลน์ผลิตในระบบ — กดเพื่อเพิ่มไลน์แรก"
             : "ยังไม่มีไลน์ผลิตในระบบ"}
         </EmptyState>
       ) : (
-        <TableShell>
+        <TableScroll aria-busy={loading || undefined}>
           <table>
             <thead>
               <tr>
@@ -224,8 +238,9 @@ export default function ProductionLinesPage() {
               ))}
             </tbody>
           </table>
-        </TableShell>
+        </TableScroll>
       )}
+      </ListPanel>
 
       {/* ── แผงกำลังผลิตรายวันของไลน์ที่กางอยู่ ───────────────────────────── */}
       {expandedLine && (
@@ -257,7 +272,8 @@ export default function ProductionLinesPage() {
           {capacityDays.length === 0 ? (
             <p className={styles.hint}>ยังไม่มีวันที่กำลังไม่ปกติ — ทุกวันทำการใช้กำลังมาตรฐานของไลน์</p>
           ) : (
-            <TableShell>
+            /* ฟอร์ม + ตาราง ไม่ใช่รายการ ⇒ คง WorkspaceSection · ตารางวางตรงในเนื้อการ์ด */
+            <TableScroll>
               <table>
                 <thead>
                   <tr><th>วันที่</th><th className={styles.numCol}>กำลัง</th><th>เหตุผล</th>{canEdit && <th aria-label="การทำงาน" />}</tr>
@@ -283,7 +299,7 @@ export default function ProductionLinesPage() {
                   ))}
                 </tbody>
               </table>
-            </TableShell>
+            </TableScroll>
           )}
 
           {/* ตัวอย่างผลลัพธ์จริงของวันนี้ — ให้เห็นทันทีว่ากติกาข้างบนรวมกันแล้วได้เท่าไร */}

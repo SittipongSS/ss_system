@@ -5230,29 +5230,6 @@ button.empty-state { width: 100%; font: inherit; }
   font-size: var(--fs-7);
   font-weight: var(--fw-medium);
 }
-.project-detail-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-left: auto;
-  text-align: right;
-}
-.project-detail-action-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.timeline-header-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2-5);
-  flex-wrap: wrap;
-}
 .project-timeline-card-actions {
   display: flex;
   align-items: center;
@@ -5262,7 +5239,6 @@ button.empty-state { width: 100%; font: inherit; }
   flex-wrap: wrap;
 }
 @media (max-width: 900px) {
-  .project-detail-actions,
   .project-timeline-card-actions { width: 100%; }
 }
 
@@ -6394,11 +6370,6 @@ button.ui-workspace-back {
   gap: var(--space-4);
   /* ระยะล่างเป็นของ gap ที่ .ui-workspace แล้ว — คลาสนี้ใช้เฉพาะในเปลือกนั้น */
 }
-/* ระยะล่างเป็นของ gap ที่ .ui-workspace แล้ว (เดิม 16px ที่นี่ ตอนนี้ 18px เท่าก้อนอื่น) */
-.ui-workspace-toolbar { min-width: 0; }
-/* 🐞 `.toolbar` ที่หน้าส่งมาเป็น *หลาน* ของเปลือก ⇒ กฎล้าง `> *` ไม่ถึง margin-bottom 16px ของมัน
-   วัด 2026-09-15: toolbar → ก้อนถัดไป 34px แทน 18px (/database/customers · /service/sites) */
-.ui-workspace-toolbar > .toolbar { margin-bottom: 0; }
 
 .ui-section {
   min-width: 0;
@@ -6551,6 +6522,15 @@ button.ui-workspace-back {
 .ui-section-body [data-pager] {
   padding: 0;
 }
+
+/* ── แผงรายการ ListPanel (มติผู้ใช้ 2026-09-15) ──
+   overflow: clip ไม่ใช่ hidden — hidden ทำให้การ์ดเป็น scroll container ของ sticky ข้างใน (หัววัน /notifications)
+   clip ยังตัดพื้นหัวตามมุมมน · จำกัดเฉพาะแผงรายการ ไม่แตะ .ui-section ของอีก 32 ไฟล์ (ท่าเดียวกับ .main-content) */
+.ui-section.ui-list-panel { overflow: clip; }
+.ui-list-panel-header > .ui-section-title { flex: 1 1 auto; }
+.ui-list-panel-count { flex: none; white-space: nowrap; }
+.ui-list-panel-toolbar { min-width: 0; }
+.ui-list-panel-skeleton { display: flex; flex-direction: column; gap: var(--space-3); padding-block: var(--space-2); }
 
 /* จำนวนคอลัมน์มาจาก `data-cols` ที่ `MetricStrip` นับใบให้เอง (ดูคอมเมนต์ที่นั่น)
    ค่าตั้งต้น 4 ไว้เผื่อมีใครใส่คลาสนี้ตรง ๆ โดยไม่ผ่านคอมโพเนนต์
@@ -6711,6 +6691,16 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .premium-header h1 { align-items: flex-start; font-size: var(--fs-12); }
   .ui-section-header { align-items: stretch; flex-direction: column; }
   .ui-section-actions { justify-content: flex-start; }
+  /* ป้ายจำนวนอยู่แถวเดียวกับชื่อ (ภาพ /sa/quotations มือถือ: "295 ใบ" ห้อยแถวเดี่ยว) · ปุ่มใน actions ลงแถวสอง · (0,2,0) ชนะ .ui-section-header */
+  .ui-list-panel > .ui-list-panel-header { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+  .ui-list-panel-header > .ui-section-title { flex: 1 1 0; }
+  .ui-list-panel-header > .ui-section-actions { order: 3; flex-basis: 100%; }
+  /* 🐞 แผงตัดด้วย clip ⇒ แถวชิปที่กว้างกว่าแผงถูกตัดทิ้งเงียบ ๆ ไม่มีทางเลื่อน (วัด 2026-09-16 /tax/filings จอ 390:
+     ชิป 8 อัน 423px ในแถบ 332px — "ส่งเอกสารแล้ว" ขาดครึ่ง "ตีกลับ" กดไม่ได้) และปุ่มที่ถูกบีบตัดป้ายกลางคำ
+     ("ตี/กลับ" บน /tax/registrations) ⇒ แถวชิปเลื่อนแนวนอนในตัวเอง (ท่าเดียวกับ .tabs-header) ป้ายไม่ตัดบรรทัด
+     · padding 3px ของ .segmented พอดีวงโฟกัส (2px + offset 1px) ไม่โดนตัด · ล็อกที่ stickyScrollport.test.mjs */
+  .ui-list-panel-toolbar > .segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .ui-list-panel-toolbar > .segmented > button { flex: none; white-space: nowrap; }
   .ui-section-body { padding: var(--space-3-5); }
   .ui-metric { padding: var(--space-3); }
   .ui-metric strong { font-size: var(--fs-10); }
@@ -6878,12 +6868,6 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   line-height: var(--lh-thai);
 }
 .timeline-task-name > svg { margin-top: var(--space-0-5); }
-/* ของเข้า PM/RM — วางต่อท้ายไทม์ไลน์ในกล่องเดียวกัน (mig 0176) */
-.timeline-deliveries {
-  margin-top: var(--space-5);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border);
-}
 /* หมุดคำร้องบนแถวขั้นตอน — ตัวห่อลิงก์ล้วน หน้าตาเป็นของ <StatusBadge> ข้างใน
    (ตัดสไตล์ลิงก์ทิ้งเพื่อไม่ให้ขีดเส้นใต้ทับป้าย) */
 .timeline-step-pin {
@@ -8042,6 +8026,10 @@ td > * > .text-action {
     right: 0;
     bottom: 0;
   }
+  /* แผงรายการบนกระดาษ: หัว + ตารางเท่านั้น — ช่องค้นหา/ตัวกรอง/แบ่งหน้าไม่มีความหมาย
+     และ clip ต้องปล่อย ไม่งั้นแถวที่ล้นหน้ากระดาษถูกตัดทิ้ง */
+  .ui-section.ui-list-panel { overflow: visible; box-shadow: none; }
+  .ui-list-panel-toolbar, .ui-list-panel [data-pager] { display: none; }
 }
 /* Interactive Cards */
 .interactive-card {

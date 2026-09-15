@@ -25,11 +25,11 @@ import ChartCard, { ChartCanvas, ChartLegend, ChartTooltip } from "@/components/
 import {
   CHART_AXIS_TICK, CHART_COLORS, CHART_GRID_PROPS, CHART_LINE_TYPE, CHART_STROKE_WIDTH,
 } from "@/lib/chartTheme";
-import Workspace, { WorkspaceSection, MetricStrip, Metric } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, WorkspaceSection, MetricStrip, Metric } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import { ActionBar, ActionButton } from "@/components/ui/ActionButtons";
 import GatedAction from "@/components/ui/GatedAction";
-import { TableScroll, TableShell, TableEmpty } from "@/components/ui/Table";
+import { TableScroll, TableEmpty } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Tag from "@/components/ui/Tag";
 import CountBadge from "@/components/ui/CountBadge";
@@ -155,8 +155,8 @@ const BADGE_TONES = STATUS_TONES;
    ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
-  { cls: "ui-badge", count: 198 },
-  { cls: "status-pill", count: 44 },
+  { cls: "ui-badge", count: 174 },
+  { cls: "status-pill", count: 43 },
   { cls: "chip", count: 23 },
 ];
 
@@ -735,20 +735,45 @@ export default function DesignPreviewPage() {
     notifyToast.info(`ตัวอย่าง: ${status === "approved" ? "อนุมัติ" : "ไม่อนุมัติ"} ${record.code}`);
   };
 
+  /* ── แผงรายการ ListPanel (มติผู้ใช้ 2026-09-15) ────────────────────────────────
+     state ชุดนี้วางติดกับตัวอย่างของมันเพื่อให้อ่านจบในที่เดียว (ไม่มีด่านไหนอ้างเลขบรรทัดของหน้านี้ —
+     audit-ui.mjs อ้างข้อความในหัว StatusNotice แทนเลขบรรทัด)
+     ข้อมูลเป็นค่าคงที่ล้วน (ROWS × 4) — ป้ายจำนวนนับหลังค้นหา/กรอง = ยอดของ Pager */
+  const [demoListQuery, setDemoListQuery] = useState("");
+  const [demoListStatus, setDemoListStatus] = useState([]);
+  const [demoListSort, setDemoListSort] = useState("code");
+  const [demoListDir, setDemoListDir] = useState("desc");
+  const [demoListView, setDemoListView] = useState("table");
+  const [demoListLoading, setDemoListLoading] = useState(false);
+  const demoListSource = [0, 1, 2, 3].flatMap((round) => ROWS.map((row, index) => ({
+    ...row,
+    code: `QT-260701${String(round * ROWS.length + index + 1).padStart(2, "0")}`,
+  })));
+  const demoListQ = demoListQuery.trim().toLowerCase();
+  const demoRows = demoListSource
+    .filter((row) => !demoListStatus.length || demoListStatus.includes(row.status))
+    .filter((row) => !demoListQ || `${row.code} ${row.customer}`.toLowerCase().includes(demoListQ))
+    .sort((a, b) => (demoListSort === "amount" ? a.amount - b.amount : a.code.localeCompare(b.code))
+      * (demoListDir === "desc" ? -1 : 1));
+  const DEMO_LIST_PAGE_SIZE = 5;
+  const demoListPageCount = Math.max(1, Math.ceil(demoRows.length / DEMO_LIST_PAGE_SIZE));
+  const demoListPage = Math.min(page, demoListPageCount);
+  const demoListPageRows = demoRows.slice((demoListPage - 1) * DEMO_LIST_PAGE_SIZE, demoListPage * DEMO_LIST_PAGE_SIZE);
+
   return (
     <Workspace
       icon={<Palette size={22} />}
       title="ต้นแบบดีไซน์ระบบ"
       subtitle="primitive กลางของระบบ แยกเป็น 5 กลุ่มตามหน้าที่ — หน้าใหม่ให้หยิบจากที่นี่ ไม่ต้องก๊อปคลาสจากหน้าอื่น"
-      toolbar={(
-        <Tabs
-          ariaLabel="กลุ่มของต้นแบบ"
-          value={group}
-          onChange={setGroup}
-          tabs={GROUPS.map((entry) => ({ key: entry.key, label: entry.label }))}
-        />
-      )}
     >
+      {/* แท็บกลุ่มเป็นลูกคนแรกของ Workspace — `Workspace toolbar` ถูกถอดแล้ว (มติผู้ใช้ 2026-09-15)
+          ระยะห่างมาจาก gap ของเปลือก (`.ui-workspace.ui-workspace > *` ล้าง margin ให้) */}
+      <Tabs
+        ariaLabel="กลุ่มของต้นแบบ"
+        value={group}
+        onChange={setGroup}
+        tabs={GROUPS.map((entry) => ({ key: entry.key, label: entry.label }))}
+      />
       <div className={styles.stack}>
         <StatusNotice
           tone="info"
@@ -2187,32 +2212,115 @@ export default function DesignPreviewPage() {
           </div>
         </Section>
 
-        <Section group="data" active={group} title="ตาราง" subtitle="TableShell รวม toolbar → ตาราง → ท้ายตาราง (Pager) ไว้ในพาเนลเดียว">
-          <TableShell
-            toolbar={<Button size="sm" icon={<Search size={14} />}>ค้นหา</Button>}
-            footer={<Pager page={page} pageCount={4} total={64} pageSize={20} onPage={setPage} />}
-          >
-            <table>
-              <thead>
-                <tr>
-                  <th>เลขที่</th>
-                  <th>ลูกค้า</th>
-                  <th className={styles.numeric}>มูลค่า</th>
-                  <th>สถานะ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ROWS.map((row) => (
-                  <tr key={row.code}>
-                    <td className={styles.mono}>{row.code}</td>
-                    <td>{row.customer}</td>
-                    <td className={styles.numeric}>{money(row.amount)}</td>
-                    <td><StatusBadge tone={row.tone} label={row.status} dot /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableShell>
+        <Section group="data" active={group} title="รายการ — ListPanel" subtitle="หัว (ไอคอน · ชื่อ · คำอธิบาย | ป้ายจำนวน) → แถบเครื่องมือ → ตาราง/การ์ด → Pager ในพาเนลเดียว · ของใหม่ทุกรายการใช้ ListPanel">
+          <div className={styles.row}>
+            <Button size="sm" onClick={() => setDemoListLoading((on) => !on)}>
+              {demoListLoading ? "หยุดจำลองโหลด" : "จำลองโหลดใหม่"}
+            </Button>
+            <span className={styles.caption}>
+              กดแล้วลองพิมพ์ในช่องค้นหาระหว่างที่แผงกำลังโหลด — เคอร์เซอร์ต้องไม่หลุด เพราะ
+              {" "}<code>loading</code> แทนที่เฉพาะเนื้อ หัวกับแถบเครื่องมือยังอยู่ที่เดิม
+            </span>
+          </div>
+          <div className={styles.stack}>
+            <span className={styles.caption}>ListPanel — แผงรายการของหน้าทะเบียน (แสดงในกรอบจำลอง)</span>
+            <div className={styles.pageFrame}>
+              <ListPanel
+                icon={<FileText size={17} aria-hidden="true" />}
+                title="ทะเบียนตัวอย่าง"
+                subtitle="ค้นหา กรอง และเปิดเอกสาร"
+                count={`${demoRows.length} ใบ`}
+                loading={demoListLoading}
+                toolbar={(
+                  <>
+                    <div className="search-glass">
+                      <Search size={16} aria-hidden="true" />
+                      <input
+                        autoComplete="off"
+                        aria-label="ค้นหาเอกสารตัวอย่าง"
+                        placeholder="ค้นหาเลขที่ / ลูกค้า"
+                        value={demoListQuery}
+                        onChange={(event) => { setDemoListQuery(event.target.value); setPage(1); }}
+                      />
+                    </div>
+                    <FilterPopover
+                      count={demoListStatus.length}
+                      onClear={() => { setDemoListStatus([]); setPage(1); }}
+                      groups={[{
+                        key: "status",
+                        label: "สถานะ",
+                        options: ROWS.map((row) => ({ value: row.status, label: row.status })),
+                        selected: demoListStatus,
+                        onChange: (next) => { setDemoListStatus(next); setPage(1); },
+                      }]}
+                    />
+                    <div className="spacer" />
+                    <SortMenu
+                      title="เรียงเอกสารตัวอย่าง"
+                      value={demoListSort}
+                      defaultValue="code"
+                      onChange={(value) => { setDemoListSort(value); setDemoListDir(value === "amount" ? "desc" : "asc"); }}
+                      options={[{ value: "code", label: "เลขที่" }, { value: "amount", label: "มูลค่า" }]}
+                    />
+                    <SortDirButton dir={demoListDir} onToggle={() => setDemoListDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
+                    <Segmented
+                      ariaLabel="มุมมองของรายการตัวอย่าง"
+                      value={demoListView}
+                      onChange={setDemoListView}
+                      options={[{ value: "table", label: "ตาราง" }, { value: "cards", label: "การ์ด" }]}
+                    />
+                  </>
+                )}
+              >
+                {!demoRows.length ? (
+                  <EmptyState plain icon={Inbox}>ไม่พบเอกสารที่ค้นหา — ลองล้างตัวกรอง</EmptyState>
+                ) : demoListView === "cards" ? (
+                  <div className={styles.listDemoCards}>
+                    {demoListPageRows.map((row) => (
+                      <div key={row.code} className={styles.listDemoCard}>
+                        <strong className={styles.mono}>{row.code}</strong>
+                        <span>{row.customer}</span>
+                        <span className={styles.numeric}>{money(row.amount)}</span>
+                        <StatusBadge tone={row.tone} label={row.status} dot />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <TableScroll>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>เลขที่</th>
+                          <th>ลูกค้า</th>
+                          <th className={styles.numeric}>มูลค่า</th>
+                          <th>สถานะ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {demoListPageRows.map((row) => (
+                          <tr key={row.code}>
+                            <td className={styles.mono}>{row.code}</td>
+                            <td>{row.customer}</td>
+                            <td className={styles.numeric}>{money(row.amount)}</td>
+                            <td><StatusBadge tone={row.tone} label={row.status} dot /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableScroll>
+                )}
+                {demoRows.length > 0 && (
+                  <Pager page={demoListPage} pageCount={demoListPageCount} total={demoRows.length} onPage={setPage} />
+                )}
+              </ListPanel>
+            </div>
+            <span className={styles.caption}>
+              <code>ListPanel</code> รับ <code>icon</code> <code>title</code> <code>subtitle</code>
+              {" "}<code>count</code> (ข้อความพร้อมหน่วย · นับหลังค้นหา/กรองทุกหน้า = ยอดของ Pager · ก่อนมีข้อมูลส่ง null ได้ขีด)
+              {" "}<code>toolbar</code> (ส่งตัวควบคุมเป็น fragment — แผงห่อ .toolbar ให้เอง)
+              {" "}<code>loading</code> (เฉพาะตอนไม่มีแถวให้โชว์) · ห้าม Workspace toolbar · ห้าม TableShell
+            </span>
+          </div>
           <p className={styles.note}>
             ตัวเลขและจำนวนเงินชิดขวาเสมอ · หัวตารางใช้ <code>--panel-2</code> ·
             ตารางที่ไม่ใช่รายการให้ระบุ <code>family=&quot;editable&quot;</code> หรือ <code>family=&quot;matrix&quot;</code>
@@ -2220,8 +2328,8 @@ export default function DesignPreviewPage() {
 
           <p className={styles.note}>
             ตารางเดี่ยวที่ไม่มีการ์ดครอบ ใช้ <code>TableScroll</code> เปล่า ๆ ได้เลย —
-            มันเป็นพื้นข้อมูลให้ในตัว (<code>surface=&quot;auto&quot;</code>) ถ้าอยู่ในการ์ดอยู่แล้วให้ส่ง
-            {" "}<code>surface=&quot;embedded&quot;</code> ไม่งั้นจะได้กรอบซ้อนกรอบ
+            มันเป็นพื้นข้อมูลให้ในตัว (<code>surface=&quot;auto&quot;</code>) · ในแผงรายการหรือการ์ด
+            ก็ใช้ค่าตั้งต้นได้เหมือนกัน กฎกลางถอดพื้น/เงาและระยะขอบให้เอง
           </p>
           <TableScroll>
             <table>
@@ -2482,7 +2590,7 @@ export default function DesignPreviewPage() {
                 ยังไม่มีใบเสนอราคาในช่วงที่เลือก
               </EmptyState>
             )}
-            <TableShell>
+            <TableScroll>
               <table>
                 <thead>
                   <tr><th>เลขที่</th><th>ลูกค้า</th><th>สถานะ</th></tr>
@@ -2491,7 +2599,7 @@ export default function DesignPreviewPage() {
                   <TableEmpty colSpan={3} title="ไม่พบรายการที่ค้นหา" description="ลองล้างตัวกรองแล้วค้นใหม่" />
                 </tbody>
               </table>
-            </TableShell>
+            </TableScroll>
 
             {/* ── คำอธิบายลอยเมื่อชี้ (Tooltip) ──────────────────────────────────
                 ปิดท้ายส่วน "การตอบสนอง" เพราะมันคือระบบพูดกลับหาผู้ใช้เหมือนกัน
@@ -2612,7 +2720,7 @@ export default function DesignPreviewPage() {
                 ]}
               />
               <div className={styles.stack}>
-                <TableShell>
+                <TableScroll>
                   <table>
                     <thead>
                       <tr><th>รายการ</th><th>สถานะ</th><th className="text-right">จัดการ</th></tr>
@@ -2671,7 +2779,7 @@ export default function DesignPreviewPage() {
                       </tr>
                     </tbody>
                   </table>
-                </TableShell>
+                </TableScroll>
                 <div className={styles.row}>
                   <span className={styles.caption}>
                     แถวล่างใช้ <code>RowActionMenu</code> ตรง ๆ — <code>items</code> ครบทุกฟีเจอร์:

@@ -1,11 +1,11 @@
 "use client";
 
 import thaiText from "@/components/ThaiText";
-import { Children } from "react";
+import { Children, useId } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import SkeletonRows from "@/components/ui/Skeleton";
-import { naText } from "@/lib/format";
+import SkeletonRows, { Skeleton } from "@/components/ui/Skeleton";
+import { NA, naText } from "@/lib/format";
 
 // Canonical shell for every application module. Sales management established
 // the visual hierarchy; keeping it here prevents module-specific drift.
@@ -17,7 +17,6 @@ export default function Workspace({
   back,
   backActions,
   rail,
-  toolbar,
   loading,
   hideHeader = false,
   className = "",
@@ -49,7 +48,6 @@ export default function Workspace({
       )}
 
       {rail && <div className="ui-workspace-rail">{rail}</div>}
-      {toolbar && <div className="ui-workspace-toolbar">{toolbar}</div>}
       {loading ? <SkeletonRows rows={6} /> : children}
     </section>
   );
@@ -80,17 +78,75 @@ export function WorkspaceSection({
     <section id={id} className={`ui-section ${className}`.trim()}>
       {(icon || title || actions) && (
         <header className="ui-section-header">
-          <div className="ui-section-title">
-            {icon}
-            <div>
-              <h2>{title}</h2>
-              {subtitle && <p>{thaiText(subtitle)}</p>}
-            </div>
-          </div>
+          <SectionTitle icon={icon} title={title} subtitle={subtitle} />
           {actions && <div className="ui-section-actions">{actions}</div>}
         </header>
       )}
       <div className={`ui-section-body ${bodyClassName}`.trim()}>{children}</div>
+    </section>
+  );
+}
+
+/* หัวการ์ดชุดเดียวของ WorkspaceSection และ ListPanel — markup สองสำเนาจะเพี้ยนหากันเสมอ
+   (AGENTS.md) · `titleId` มีเฉพาะ ListPanel (ผูก aria-labelledby) ⇒ WorkspaceSection
+   ได้ DOM เดิมเป๊ะ ไม่มี id บน h2 */
+function SectionTitle({ icon, title, subtitle, titleId }) {
+  return (
+    <div className="ui-section-title">
+      {icon}
+      <div>
+        <h2 id={titleId}>{title}</h2>
+        {subtitle && <p>{typeof subtitle === "string" ? thaiText(subtitle) : subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ── แผงรายการ — รายการทุกชุดอยู่ในแผงเดียว (มติผู้ใช้ 2026-09-15) ──────────────
+   หัว (ไอคอน · ชื่อ · คำอธิบาย | ป้ายจำนวนขวาสุด) → แถบเครื่องมือ → เนื้อ → Pager
+   กติกาเต็มอยู่ที่ UI_DESIGN_SYSTEM.md §รายการ — ListPanel · ด่าน scripts/listPanelShape.mjs
+
+   ⚠️ `count` เป็นของบังคับ (ข้อความพร้อมหน่วย) — ระหว่างโหลดส่ง `null` ได้ขีด "—"
+   ⚠️ `loading` แทนที่ **เฉพาะเนื้อ** — หัวกับแถบเครื่องมือยังอยู่ ช่องค้นหาไม่หลุดโฟกัส
+      ระหว่างโหลดใหม่ (ต่างจาก `Workspace loading` ที่ถอดทั้งหน้า)
+   ⚠️ ป้ายจำนวนเป็น `role="status"` เฉพาะแผงที่มีแถบเครื่องมือ — ตัวเลขเปลี่ยนตามที่พิมพ์
+      ค้นหา จึงต้องประกาศ · แผงที่ไม่มีเครื่องมือ ตัวเลขไม่ขยับเอง ไม่ต้องพูด */
+export function ListPanel({
+  id,
+  icon,
+  title,
+  subtitle,
+  count,
+  actions = null,
+  toolbar = null,
+  loading = false,
+  skeletonRows = 6,
+  className = "",
+  bodyClassName = "",
+  children,
+}) {
+  const titleId = useId();
+  if (process.env.NODE_ENV !== "production" && count === undefined) {
+    console.error("ListPanel: ต้องส่ง count (ข้อความพร้อมหน่วย) — ระหว่างโหลดส่ง null");
+  }
+  const shown = count === null || count === undefined || count === "" ? NA : count;
+  return (
+    <section id={id} className={`ui-section ui-list-panel ${className}`.trim()} aria-labelledby={titleId}>
+      <header className="ui-section-header ui-list-panel-header">
+        <SectionTitle icon={icon} title={title} subtitle={subtitle} titleId={titleId} />
+        {actions ? <div className="ui-section-actions">{actions}</div> : null}
+        <span className="ui-badge ui-list-panel-count" role={toolbar ? "status" : undefined}>{shown}</span>
+      </header>
+      <div className={`ui-section-body ui-list-panel-body ${bodyClassName}`.trim()} aria-busy={loading || undefined}>
+        {toolbar ? <div className="toolbar ui-list-panel-toolbar">{toolbar}</div> : null}
+        {loading ? (
+          <div className="ui-list-panel-skeleton" aria-hidden="true">
+            {Array.from({ length: skeletonRows }, (_, i) => (
+              <Skeleton key={i} width={i % 3 === 2 ? "55%" : i % 2 ? "80%" : "100%"} />
+            ))}
+          </div>
+        ) : children}
+      </div>
     </section>
   );
 }

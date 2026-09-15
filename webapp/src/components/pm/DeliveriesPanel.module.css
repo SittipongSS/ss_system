@@ -2,22 +2,7 @@
    ⚠️ โมดูล "บริหารงานขาย" ชน ratchet ทั้ง inlineStyle และ rawButtonClass อยู่แล้ว
    → พาเนลนี้ห้ามมี style={{…}} และห้ามเขียนคลาส btn เอง ใช้ <Button> กลางเท่านั้น */
 
-.head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2-5);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-3);
-}
-
-.title {
-  font-size: var(--fs-section-title);
-  font-weight: var(--fw-bold);
-  margin: 0;
-}
-
-.spacer { flex: 1; }
-
+/* ป้ายสรุปในคำอธิบายของ ListPanel (อยู่ใน <p> ⇒ ตัวห่อเป็น span) */
 .summary {
   display: flex;
   gap: var(--space-2);

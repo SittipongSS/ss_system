@@ -13,7 +13,7 @@ import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
-import { TableShell } from "@/components/ui/Table";
+import { TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
@@ -403,7 +403,7 @@ export default function RegistrationDetailPage() {
           <DetailCard icon={ReceiptText} eyebrow="USAGE" title="ใบยื่นชำระภาษีที่อ้างทะเบียนนี้"
             meta={s.filings?.length ? `${s.filings.length} ใบ` : "ยังไม่มีใบยื่นอ้างถึง — ลบทะเบียนได้ถ้ายังเป็นฉบับร่าง"}>
             {s.filings?.length ? (
-              <TableShell>
+              <TableScroll>
                 <table>
                   <thead>
                     <tr>
@@ -439,7 +439,7 @@ export default function RegistrationDetailPage() {
                     ))}
                   </tbody>
                 </table>
-              </TableShell>
+              </TableScroll>
             ) : null}
           </DetailCard>
 

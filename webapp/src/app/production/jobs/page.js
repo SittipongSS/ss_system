@@ -10,10 +10,10 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, Hammer, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
-import SkeletonRows from "@/components/ui/Skeleton";
-import { TableShell } from "@/components/ui/Table";
+import StatusNotice from "@/components/ui/StatusNotice";
+import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import ProductionJobModal from "@/components/pm/ProductionJobModal";
 import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -107,6 +107,8 @@ export default function ProductionJobsPage() {
     planned: jobs.filter((j) => j.status === "planned").length,
     running: jobs.filter((j) => j.status === "in_progress").length,
   }), [jobs]);
+  // ป้ายจำนวนกับตัวเลขแยกสถานะเชื่อได้เมื่อไหร่ — โหลดครั้งแรกหรือโหลดพัง = ขีด ไม่ใช่ "ร่าง 0"
+  const listReady = !(loading && !jobs.length) && !loadError;
 
   return (
     <Workspace
@@ -118,30 +120,52 @@ export default function ProductionJobsPage() {
           สร้างงานผลิต
         </Button>
       ) : null}
-      toolbar={(
-        <div className={styles.toolbar}>
-          <div className="segmented" role="group" aria-label="ขอบเขตคิว">
-            <button type="button" onClick={() => setShowDone(false)} aria-pressed={!showDone}>ที่ยังไม่จบ</button>
-            <button type="button" onClick={() => setShowDone(true)} aria-pressed={showDone}>ทั้งหมด</button>
-          </div>
-          <span className={styles.counts}>
+    >
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — ป้ายจำนวน = งานที่เห็นหลังกรอง
+          ⚠️ คำอธิบายของแผงห้ามเป็นตัวเลข (ข้อความเดียวกับป้ายจะโผล่ซ้ำ: กรอง "รอวางคิว" แล้ว
+          "ร่าง N" = ป้าย "N งาน" ทุกครั้ง) ⇒ ตัวเลขแยกสถานะอยู่ท้ายแถบเครื่องมือหลัง spacer
+          (แพตเทิร์นเดียวกับ "เกินกำลัง" ของ /production/board) และซ่อนตอนป้ายยังเป็นขีด
+          · `loading` เฉพาะตอนยังไม่มีแถว (สลับขอบเขตแล้วแถวเดิมค้างไว้พร้อม aria-busy)
+          โหลดพัง = ข้อความผิดพลาดในเนื้อแผงเท่านั้น ห้ามวาดคิวว่าง ("โหลดพัง" ≠ "ไม่มีงาน") */}
+      <ListPanel
+        icon={<Hammer size={17} aria-hidden="true" />}
+        title="รายการงานผลิต"
+        subtitle="กดรหัสงานเพื่อเปิดงานผลิต · ดูคอลัมน์ “ของครบ?” ก่อนวางไลน์"
+        count={listReady ? `${visibleJobs.length} งาน` : null}
+        loading={loading && !jobs.length}
+        toolbar={(
+          <>
+            <div className="segmented" role="group" aria-label="ขอบเขตคิว">
+              <button type="button" onClick={() => setShowDone(false)} aria-pressed={!showDone}>ที่ยังไม่จบ</button>
+              <button type="button" onClick={() => setShowDone(true)} aria-pressed={showDone}>ทั้งหมด</button>
+            </div>
             {draftOnly && (
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
               <Button size="sm" onClick={() => setDraftOnly(false)}>กรอง: รอวางคิว ×</Button>
             )}
-            ร่าง {counts.draft} · วางคิวแล้ว {counts.planned} · กำลังผลิต {counts.running}
-          </span>
-        </div>
-      )}
-    >
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
-
-      {loading ? <SkeletonRows rows={5} /> : loadError ? null : visibleJobs.length === 0 ? (
-        <EmptyState icon={Hammer}>
+            <div className="spacer" />
+            {listReady && (
+              <span className={styles.counts}>
+                ร่าง {counts.draft} · วางคิวแล้ว {counts.planned} · กำลังผลิต {counts.running}
+              </span>
+            )}
+          </>
+        )}
+      >
+      {loadError ? (
+        <StatusNotice
+          tone="error"
+          className="mb-4"
+          action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}
+        >
+          {loadError}
+        </StatusNotice>
+      ) : visibleJobs.length === 0 ? (
+        <EmptyState plain icon={Hammer}>
           ยังไม่มีงานผลิตในคิว — งานร่างจะถูกสร้างให้เองเมื่อมีใบสั่งขายที่อนุมัติแล้ว
         </EmptyState>
       ) : (
-        <TableShell>
+        <TableScroll aria-busy={loading || undefined}>
           <table>
             <thead>
               <tr>
@@ -199,8 +223,9 @@ export default function ProductionJobsPage() {
               })}
             </tbody>
           </table>
-        </TableShell>
+        </TableScroll>
       )}
+      </ListPanel>
 
       <ProductionJobModal
         open={formJob !== undefined}

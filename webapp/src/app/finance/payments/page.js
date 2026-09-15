@@ -27,7 +27,7 @@ import {
   AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, Receipt, Search,
   Wallet, Wrench,
 } from "lucide-react";
-import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
@@ -526,23 +526,26 @@ export default function FinancePaymentsPage() {
           </WorkspaceSection>
         )}
 
-        <WorkspaceSection
-          icon={<Wallet size={17} />}
+        {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวนข้อความเดิมทุกตัวอักษร
+            (ใบ · งวด · "จาก N" ตอนกรอง) · คิวสองก้อนข้างบนยังเป็น WorkspaceSection เพราะเป็นงานให้ทำ ไม่ใช่ทะเบียน */}
+        <ListPanel
+          icon={<Wallet size={17} aria-hidden="true" />}
           title="งวดชำระทั้งหมด"
           subtitle="หนึ่งใบหนึ่งแถว รวมทุกงวดของใบนั้นไว้ด้วยกัน — ตั้งต้นเรียงใบที่ต้องตามก่อน · รายงวดดูที่ใบหรือในไฟล์ Excel"
-          actions={<span className="ui-badge">{groups.length} ใบ · {rows.length} งวด{filtering && data.totalRows ? ` จาก ${data.totalRows}` : ""}</span>}
-        >
+          count={`${groups.length} ใบ · ${rows.length} งวด${filtering && data.totalRows ? ` จาก ${data.totalRows}` : ""}`}
+          toolbar={(
+          <>
           {/* ── แถบควบคุม: ค้นหา · ตัวกรอง · ช่วงวัน · จัดกลุ่ม | เรียง ────────────
               ⭐ ทรงเดียวกับตารางไปป์ไลน์ดีล (มติผู้ใช้ 2026-08-08) — ปุ่มตัวกรองยุบ
               ทุกหมวดไว้ในปุ่มเดียว · จัดกลุ่ม/เรียงเป็นปุ่มทรงเดียวกัน ชื่ออยู่ในปุ่ม
               ⚠️ ช่วงวันอยู่นอกปุ่มตัวกรอง เพราะเป็นช่วงค่าต่อเนื่อง ไม่ใช่ชุดตัวเลือก */}
-          <div className="toolbar">
             <div className="search-glass">
-              <Search size={16} color="var(--text-3)" />
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off"
                 defaultValue={q}
                 onChange={(e) => setFilter("q", e.target.value)}
                 placeholder="ค้นหาเลข SO / QT / เอกสารอ้างอิง / ลูกค้า / ชื่องวด / เลขใบกำกับ"
+                aria-label="ค้นหางวดชำระ"
               />
             </div>
             <FilterPopover
@@ -633,8 +636,9 @@ export default function FinancePaymentsPage() {
               options={LEDGER_SORT_OPTIONS}
             />
             <SortDirButton dir={sortDir} onToggle={() => setParam("dir", sortDir === "asc" ? "desc" : "asc")} />
-          </div>
-
+          </>
+          )}
+        >
           <TableScroll surface="embedded" cells="stacked" minWidth={1320} aria-busy={loading}>
               <table className="w-full text-sm">
                 <thead>
@@ -701,7 +705,7 @@ export default function FinancePaymentsPage() {
           {rows.length > 0 && !buckets && (
             <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
           )}
-        </WorkspaceSection>
+        </ListPanel>
 
         <InstallmentConfirmDialog
           open={!!confirmFor}

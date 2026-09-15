@@ -1,5 +1,7 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import { ListPanel } from "@/components/ui/Workspace";
+import EmptyState from "@/components/ui/EmptyState";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import SortControl from "@/components/ui/SortControl";
@@ -10,7 +12,7 @@ import SortControl from "@/components/ui/SortControl";
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, MessageCircleQuestion, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Calendar, ChartGantt, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, MessageCircleQuestion, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -123,8 +125,16 @@ export default function TimelineWorkspace({
   onUpdateProject,
   view: controlledView,
   onViewChange,
-  showHeading = true,
   showViewSwitcher = true,
+  /* แผงรายการ (มติผู้ใช้ 2026-09-15) — หัวแผงเป็นของไฟล์นี้ หน้าแม่ส่งของระดับแผงเข้ามา:
+     panelId = จุดยึดในหน้า (#deal-pm) · panelActions = ปุ่มของหน้าแม่ (Rev · พิมพ์ · ViewSwitcher)
+     · toolbarStart = ตัวกรองของหน้าแม่ที่ต้องอยู่หัวแถบเครื่องมือ (ดีลที่แสดงของหน้าโครงการ) */
+  panelId,
+  panelSubtitle = "ติดตามขั้นตอน ผู้รับผิดชอบ และวันตามแผนเทียบวันจริง",
+  panelActions = null,
+  toolbarStart = null,
+  // โครงการที่ปิด/พักอยู่ — จางเฉพาะเนื้อแผง หัวแผงยังกดพิมพ์/ดูประวัติเวอร์ชันได้
+  locked = false,
   onChanged,
   onError,
   /* จำนวนขั้นตอนที่แก้ค้างยังไม่บันทึก — หน้าแม่ต้องรู้เพื่อกัน "ออก Rev ทับงานที่ยังไม่บันทึก"
@@ -407,287 +417,297 @@ export default function TimelineWorkspace({
     />
   );
 
+  /* ── แผงรายการเดียวของทั้งสามมุมมอง (มติผู้ใช้ 2026-09-15: รายการทุกชุด = แผงเดียว) ─────────
+     หัวแผง = ไอคอนมุมมอง Gantt (ไอคอนมุมมองไม่ยืมไอคอน entity) · "ไทม์ไลน์" · ป้ายจำนวนขั้นตอน
+     ปุ่มของหน้าแม่ (Rev · พิมพ์ · ViewSwitcher) มาทาง `panelActions` · ตัวกรอง/เรียงอยู่ในแถบเครื่องมือ
+     (แทนแถวหัว "ตารางขั้นตอนงาน (N / M)" กับ "ความคืบหน้า (Progress List)" ที่ลอยอยู่ของเดิม)
+     ⚠️ ป้ายจำนวน = ขั้นที่เห็นหลังกรองสถานะ/ฝ่าย · มุมมองเอกสารไม่กรอง ⇒ นับทั้งหมด
+     ⚠️ แถบบันทึก `.timeline-save-bar` (position: fixed) และโมดัลวางนอกแผงโดยเจตนา */
+  const shownCount = view === "document" ? tasks.length : tableGroups.reduce((sum, group) => sum + group.tasks.length, 0);
+  const countText = view !== "document" && filterCount ? `${shownCount} / ${tasks.length} ขั้นตอน` : `${tasks.length} ขั้นตอน`;
+  const panelActionNodes = panelActions || showViewSwitcher ? (
+    <>
+      {panelActions}
+      {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
+    </>
+  ) : null;
+  const toolbar = view === "document" ? toolbarStart : (
+    <>
+      {toolbarStart}
+      {filterControl}
+      <div className="spacer" />
+      {view === "table" ? (
+        <SortControl
+          value={tableSort}
+          onChange={(event) => setTableSort(event.target.value)}
+          options={[{ value: "step", label: "ลำดับขั้นตอน" }, { value: "due", label: "วันเสร็จ" }, { value: "status", label: "สถานะ" }, { value: "name", label: "ชื่อขั้นตอน" }]}
+          title="เรียงลำดับไทม์ไลน์"
+        />
+      ) : canAdd && <button type="button" className="btn btn-primary sm" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
+    </>
+  );
+
   return (
     <>
-      {(showHeading || showViewSwitcher) && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-          {showHeading && (
-            <div>
-              <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-bold)" }}>{suppliedDocumentProject ? "ไทม์ไลน์โครงการ" : "ไทม์ไลน์ดีล"}</div>
-              <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", marginTop: 2 }}>{done}/{tasks.length} ขั้นตอนเสร็จแล้ว</div>
+      <ListPanel
+        id={panelId}
+        icon={<ChartGantt size={17} aria-hidden="true" />}
+        title="ไทม์ไลน์"
+        subtitle={panelSubtitle}
+        count={countText}
+        actions={panelActionNodes}
+        toolbar={toolbar}
+      >
+        {/* โครงการที่ปิด/พักอยู่ = จางเฉพาะเนื้อแผง (เดิมหน้าโครงการครอบกล่องจางไว้ใต้แถวหัวของตัวเอง
+            — ย้ายเข้ามาเพราะหัวแผงเป็นของไฟล์นี้แล้ว ปุ่มพิมพ์/ประวัติเวอร์ชันของหน้าแม่ต้องกดได้เสมอ) */}
+        <div style={locked ? { opacity: 0.6, filter: "grayscale(50%)", pointerEvents: "none" } : undefined}>
+          {view === "document" && (
+            <ProjectDocumentView
+              project={documentProject}
+              canEdit={canEdit}
+              canEditProjectFields={canEditProjectFields}
+              onUpdateProject={onUpdateProject}
+              onUpdateTask={patchById}
+              statusLabel={timelineContext?.statusLabel || documentProject.status}
+              statusColor={timelineContext?.statusColor}
+            />
+          )}
+
+          {view === "list" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                    <span className="mono tabular-nums" style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: "var(--lh-flat)", color: "var(--accent)", letterSpacing: -1 }}>{fmtNumber(progressPct, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span style={{ fontSize: "var(--fs-11)" }}>%</span></span>
+                    <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <span className="ui-badge" style={{ color: "var(--text-3)" }}><CircleDashed size={12} /> รอดำเนินการ {tasks.length - done - inProgress}</span>
+                    <span className="ui-badge" style={{ color: "var(--accent)" }}><Clock size={12} /> กำลังทำ {inProgress}</span>
+                    <span className="ui-badge" style={{ color: "var(--green)" }}><CheckCircle2 size={12} /> เสร็จสิ้น {done}</span>
+                    {overdue > 0 && <span className="ui-badge" style={{ color: "var(--red)" }}><AlertTriangle size={12} /> เลยกำหนด {overdue}</span>}
+                  </div>
+                </div>
+                <div className="progress" style={{ height: 8, marginBottom: milestones.length ? 16 : 0 }}><span className={done === tasks.length && tasks.length ? "done" : undefined} style={{ width: `${progressPct}%` }} /></div>
+                {milestones.length > 0 && (
+                  <div style={{ paddingTop: 16, borderTop: "1px dashed var(--border)", overflowX: "auto", paddingBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: "max-content" }}>
+                      {milestones.map((milestone, index) => {
+                        const complete = milestone.status === "Completed";
+                        const active = milestone.status === "In Progress";
+                        const color = complete ? "var(--green)" : active ? "var(--accent)" : "var(--border-strong)";
+                        return <FragmentGroup key={milestone.id}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, opacity: complete || active ? 1 : 0.62 }}>
+                            <div style={{ width: 24, height: 24, borderRadius: "50%", background: complete || active ? color : "var(--bg)", border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {complete ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : active ? <Clock size={13} color="var(--accent-fg)" /> : <span style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{numberOf.get(milestone.id)}</span>}
+                            </div>
+                            <span style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)" }}>{milestone.name}</span>
+                          </div>
+                          {index < milestones.length - 1 && <div style={{ width: 30, height: 2, background: complete ? "var(--green)" : "var(--border)" }} />}
+                        </FragmentGroup>;
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!tasks.length && <EmptyState plain icon={ChartGantt}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</EmptyState>}
+              {groups.map((group, groupIndex) => {
+                const phaseTasks = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
+                if (!phaseTasks.length) return null;
+                const phaseKey = `${group.phase}|${groupIndex}`;
+                const collapsed = collapsedPhases.has(phaseKey);
+                const phaseDone = phaseTasks.filter((task) => task.status === "Completed").length;
+                const phasePct = phaseTasks.length ? Math.round((phaseDone / phaseTasks.length) * 100) : 0;
+                const phaseActive = phaseTasks.some((task) => task.status === "In Progress");
+                const phaseColor = PHASE_COLORS[groupIndex % PHASE_COLORS.length];
+                return (
+                  <section key={phaseKey}>
+                    <button type="button" onClick={() => togglePhase(phaseKey)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", marginBottom: collapsed ? 0 : 8, background: `color-mix(in srgb, ${phaseColor} 7%, var(--panel))`, border: "none", borderLeft: `3px solid ${phaseColor}`, borderRadius: 10, cursor: "pointer", textAlign: "left" }}>
+                      {collapsed ? <ChevronRight size={14} color={phaseColor} /> : <ChevronDown size={14} color={phaseColor} />}
+                      <span style={{ flex: 1, fontSize: "var(--fs-7)", fontWeight: "var(--fw-bold)" }}>{groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
+                      <span style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: phaseDone === phaseTasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{phaseTasks.length}</span>
+                      {phaseDone === phaseTasks.length ? <CheckCircle2 size={13} color="var(--green)" /> : <div style={{ width: 52, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${phasePct}%`, background: phaseActive ? "var(--accent)" : phaseColor }} /></div>}
+                    </button>
+                    {!collapsed && <div style={{ paddingLeft: 12 }}>
+                      {phaseTasks.map((task, taskIndex) => {
+                        const complete = task.status === "Completed";
+                        const active = task.status === "In Progress";
+                        const role = ROLE_META[task.role] || { color: "var(--text-2)", bg: "var(--panel-2)" };
+                        return (
+                          <div key={task.id} style={{ display: "flex", alignItems: "stretch", opacity: busyId === task.id ? 0.5 : 1 }}>
+                            <div style={{ width: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}</div>
+                            <div className="pm-task-card" style={{ position: "relative", flex: 1, marginBottom: 8, background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, var(--panel))" : complete ? "color-mix(in srgb, var(--green) 5%, var(--panel))" : active ? "var(--panel-2)" : "var(--panel)", border: `1px solid ${complete ? "color-mix(in srgb, var(--green) 30%, transparent)" : active ? "var(--accent)" : task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"}`, boxShadow: active ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                              {taskIndex < phaseTasks.length - 1 && <div className="pm-task-connector" style={{ background: complete ? "var(--green)" : "var(--border)" }} />}
+                              <button type="button" onClick={() => canEdit && task.status !== "Pending" && patch(task, { status: complete ? "In Progress" : "Completed" })} disabled={!canEdit || task.status === "Pending" || !!busyId} style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: complete ? "var(--green)" : active ? "var(--accent)" : "var(--bg)", border: `2px solid ${complete ? "var(--green)" : active ? "var(--accent)" : "var(--border)"}`, color: "var(--accent-fg)", padding: 0, cursor: canEdit && task.status !== "Pending" ? "pointer" : "default", boxShadow: active ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
+                                {complete ? <Check size={16} strokeWidth={3} /> : active ? <Clock size={15} /> : <span style={{ fontSize: "var(--fs-2)", color: "var(--text-3)", fontWeight: "var(--fw-bold)" }}>{numberOf.get(task.id)}</span>}
+                              </button>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                                  <h4 style={{ margin: 0, fontSize: "var(--fs-9)", color: complete ? "var(--green)" : "var(--text)", fontWeight: "var(--fw-semibold)" }}>{numberOf.get(task.id)}. {task.name}</h4>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                                    <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey, task.dealId)} />
+                                    <StepBadge badge={stepBadgeFor?.(task)} />
+                                    <span className="timeline-role-text" style={{ color: role.color }}>{naText(task.role)}</span>
+                                    {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
+                                    {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 16, fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 8, flexWrap: "wrap" }}>
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock size={14} /> {task.durationDays || 1} วันทำการ</span>
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={14} /> {fmtDate(task.startDate)} - {fmtDate(task.finishDate)}</span>
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }} title={task.assignee || undefined}><User size={14} /> {task.assignee ? compactPersonName(task.assignee) : "ยังไม่ระบุผู้รับผิดชอบ"}</span>
+                                </div>
+                                {task.note && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: "var(--radius)" }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong><ReadableText text={task.note} lines={3} /></div>}
+                              </div>
+                              {active && canEdit && <button type="button" className="btn btn-primary sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
+                            </div>
+                            {canReorder && <div style={{ width: 28, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}><button type="button" className="btn-icon" onClick={() => move(task, -1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ขึ้น`}><ArrowUp size={14} aria-hidden="true" /></button><button type="button" className="btn-icon" onClick={() => move(task, 1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ลง`}><ArrowDown size={14} aria-hidden="true" /></button></div>}
+                          </div>
+                        );
+                      })}
+                    </div>}
+                  </section>
+                );
+              })}
             </div>
           )}
-          {showViewSwitcher && <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "document"]} />}
-        </div>
-      )}
 
-      {view === "document" && (
-        <div className="glass-panel" style={{ padding: 16 }}>
-          <ProjectDocumentView
-            project={documentProject}
-            canEdit={canEdit}
-            canEditProjectFields={canEditProjectFields}
-            onUpdateProject={onUpdateProject}
-            onUpdateTask={patchById}
-            statusLabel={timelineContext?.statusLabel || documentProject.status}
-            statusColor={timelineContext?.statusColor}
-          />
-        </div>
-      )}
-
-      {view === "list" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)" }}>ความคืบหน้า (Progress List)</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {filterControl}
-              {canAdd && <button type="button" className="btn btn-primary sm" onClick={() => openAdd(null)} disabled={!!busyId}><Plus size={14} /> เพิ่มขั้นตอน</button>}
-            </div>
-          </div>
-
-          <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <span className="mono tabular-nums" style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: "var(--lh-flat)", color: "var(--accent)", letterSpacing: -1 }}>{fmtNumber(progressPct, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span style={{ fontSize: "var(--fs-11)" }}>%</span></span>
-                <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <span className="ui-badge" style={{ color: "var(--text-3)" }}><CircleDashed size={12} /> รอดำเนินการ {tasks.length - done - inProgress}</span>
-                <span className="ui-badge" style={{ color: "var(--accent)" }}><Clock size={12} /> กำลังทำ {inProgress}</span>
-                <span className="ui-badge" style={{ color: "var(--green)" }}><CheckCircle2 size={12} /> เสร็จสิ้น {done}</span>
-                {overdue > 0 && <span className="ui-badge" style={{ color: "var(--red)" }}><AlertTriangle size={12} /> เลยกำหนด {overdue}</span>}
-              </div>
-            </div>
-            <div className="progress" style={{ height: 8, marginBottom: milestones.length ? 16 : 0 }}><span className={done === tasks.length && tasks.length ? "done" : undefined} style={{ width: `${progressPct}%` }} /></div>
-            {milestones.length > 0 && (
-              <div style={{ paddingTop: 16, borderTop: "1px dashed var(--border)", overflowX: "auto", paddingBottom: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: "max-content" }}>
-                  {milestones.map((milestone, index) => {
-                    const complete = milestone.status === "Completed";
-                    const active = milestone.status === "In Progress";
-                    const color = complete ? "var(--green)" : active ? "var(--accent)" : "var(--border-strong)";
-                    return <FragmentGroup key={milestone.id}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, opacity: complete || active ? 1 : 0.62 }}>
-                        <div style={{ width: 24, height: 24, borderRadius: "50%", background: complete || active ? color : "var(--bg)", border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          {complete ? <Check size={14} strokeWidth={3} color="var(--accent-fg)" /> : active ? <Clock size={13} color="var(--accent-fg)" /> : <span style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{numberOf.get(milestone.id)}</span>}
-                        </div>
-                        <span style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)" }}>{milestone.name}</span>
-                      </div>
-                      {index < milestones.length - 1 && <div style={{ width: 30, height: 2, background: complete ? "var(--green)" : "var(--border)" }} />}
-                    </FragmentGroup>;
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {!tasks.length && <div className="glass-panel" style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</div>}
-          {groups.map((group, groupIndex) => {
-            const phaseTasks = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
-            if (!phaseTasks.length) return null;
-            const phaseKey = `${group.phase}|${groupIndex}`;
-            const collapsed = collapsedPhases.has(phaseKey);
-            const phaseDone = phaseTasks.filter((task) => task.status === "Completed").length;
-            const phasePct = phaseTasks.length ? Math.round((phaseDone / phaseTasks.length) * 100) : 0;
-            const phaseActive = phaseTasks.some((task) => task.status === "In Progress");
-            const phaseColor = PHASE_COLORS[groupIndex % PHASE_COLORS.length];
-            return (
-              <section key={phaseKey}>
-                <button type="button" onClick={() => togglePhase(phaseKey)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", marginBottom: collapsed ? 0 : 8, background: `color-mix(in srgb, ${phaseColor} 7%, var(--panel))`, border: "none", borderLeft: `3px solid ${phaseColor}`, borderRadius: 10, cursor: "pointer", textAlign: "left" }}>
-                  {collapsed ? <ChevronRight size={14} color={phaseColor} /> : <ChevronDown size={14} color={phaseColor} />}
-                  <span style={{ flex: 1, fontSize: "var(--fs-7)", fontWeight: "var(--fw-bold)" }}>{groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
-                  <span style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: phaseDone === phaseTasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{phaseTasks.length}</span>
-                  {phaseDone === phaseTasks.length ? <CheckCircle2 size={13} color="var(--green)" /> : <div style={{ width: 52, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${phasePct}%`, background: phaseActive ? "var(--accent)" : phaseColor }} /></div>}
-                </button>
-                {!collapsed && <div style={{ paddingLeft: 12 }}>
-                  {phaseTasks.map((task, taskIndex) => {
-                    const complete = task.status === "Completed";
-                    const active = task.status === "In Progress";
-                    const role = ROLE_META[task.role] || { color: "var(--text-2)", bg: "var(--panel-2)" };
-                    return (
-                      <div key={task.id} style={{ display: "flex", alignItems: "stretch", opacity: busyId === task.id ? 0.5 : 1 }}>
-                        <div style={{ width: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{task.isMilestone && <Flag size={14} color="var(--amber)" strokeWidth={2.5} />}</div>
-                        <div className="pm-task-card" style={{ position: "relative", flex: 1, marginBottom: 8, background: task.isMilestone ? "color-mix(in srgb, var(--amber) 8%, var(--panel))" : complete ? "color-mix(in srgb, var(--green) 5%, var(--panel))" : active ? "var(--panel-2)" : "var(--panel)", border: `1px solid ${complete ? "color-mix(in srgb, var(--green) 30%, transparent)" : active ? "var(--accent)" : task.isMilestone ? "color-mix(in srgb, var(--amber) 35%, transparent)" : "var(--border)"}`, boxShadow: active ? "0 6px 20px -8px color-mix(in srgb, var(--accent) 45%, transparent)" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
-                          {taskIndex < phaseTasks.length - 1 && <div className="pm-task-connector" style={{ background: complete ? "var(--green)" : "var(--border)" }} />}
-                          <button type="button" onClick={() => canEdit && task.status !== "Pending" && patch(task, { status: complete ? "In Progress" : "Completed" })} disabled={!canEdit || task.status === "Pending" || !!busyId} style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: complete ? "var(--green)" : active ? "var(--accent)" : "var(--bg)", border: `2px solid ${complete ? "var(--green)" : active ? "var(--accent)" : "var(--border)"}`, color: "var(--accent-fg)", padding: 0, cursor: canEdit && task.status !== "Pending" ? "pointer" : "default", boxShadow: active ? "0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
-                            {complete ? <Check size={16} strokeWidth={3} /> : active ? <Clock size={15} /> : <span style={{ fontSize: "var(--fs-2)", color: "var(--text-3)", fontWeight: "var(--fw-bold)" }}>{numberOf.get(task.id)}</span>}
-                          </button>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-                              <h4 style={{ margin: 0, fontSize: "var(--fs-9)", color: complete ? "var(--green)" : "var(--text)", fontWeight: "var(--fw-semibold)" }}>{numberOf.get(task.id)}. {task.name}</h4>
-                              <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                                <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey, task.dealId)} />
-                                <StepBadge badge={stepBadgeFor?.(task)} />
-                                <span className="timeline-role-text" style={{ color: role.color }}>{naText(task.role)}</span>
-                                {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
-                                {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 16, fontSize: "var(--fs-5)", color: "var(--text-3)", marginTop: 8, flexWrap: "wrap" }}>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Clock size={14} /> {task.durationDays || 1} วันทำการ</span>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={14} /> {fmtDate(task.startDate)} - {fmtDate(task.finishDate)}</span>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }} title={task.assignee || undefined}><User size={14} /> {task.assignee ? compactPersonName(task.assignee) : "ยังไม่ระบุผู้รับผิดชอบ"}</span>
-                            </div>
-                            {task.note && <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: 8, background: "var(--panel-2)", padding: "6px 8px", borderRadius: "var(--radius)" }}><strong style={{ color: "var(--text-3)" }}>หมายเหตุ:</strong><ReadableText text={task.note} lines={3} /></div>}
-                          </div>
-                          {active && canEdit && <button type="button" className="btn btn-primary sm" onClick={() => patch(task, { status: "Completed" })}>✔ ทำเสร็จแล้ว</button>}
-                        </div>
-                        {canReorder && <div style={{ width: 28, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}><button type="button" className="btn-icon" onClick={() => move(task, -1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ขึ้น`}><ArrowUp size={14} aria-hidden="true" /></button><button type="button" className="btn-icon" onClick={() => move(task, 1)} disabled={!!busyId} aria-label={`เลื่อน ${task.name} ลง`}><ArrowDown size={14} aria-hidden="true" /></button></div>}
-                      </div>
-                    );
-                  })}
-                </div>}
-              </section>
-            );
-          })}
-        </div>
-      )}
-
-      {view === "table" && (
-      <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-        <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-bold)" }}>ตารางขั้นตอนงาน <span style={{ color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>({tableGroups.reduce((sum, group) => sum + group.tasks.length, 0)}{filterCount ? ` / ${tasks.length}` : ""} ขั้นตอน)</span></div>
-        <div className="toolbar">
-          {filterControl}
-          <SortControl
-            value={tableSort}
-            onChange={(event) => setTableSort(event.target.value)}
-            options={[{ value: "step", label: "ลำดับขั้นตอน" }, { value: "due", label: "วันเสร็จ" }, { value: "status", label: "สถานะ" }, { value: "name", label: "ชื่อขั้นตอน" }]}
-            title="เรียงลำดับไทม์ไลน์"
-          />
-        </div>
-      </div>
-      <TableScroll><table className="premium-table timeline-task-table">
-        <colgroup>
-          <col style={{ width: 32 }} /><col style={{ width: 52 }} /><col className="timeline-col-task" />
-          <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 156 }} />
-          <col style={{ width: 124 }} /><col style={{ width: 124 }} /><col style={{ width: 58 }} />
-          <col style={{ width: 120 }} />{canEdit && <col style={{ width: 120 }} />}
-        </colgroup>
-        <thead>
-          <tr>
-            <th className="timeline-move-head" aria-label="เลื่อนลำดับ"></th><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
-            {/* วันที่คนเทียบข้ามแถว ("ขั้นไหนจบก่อน") ต้องชิดขวาเหมือนตัวเลข —
-                UI_DESIGN_SYSTEM §ป้ายในตาราง กฎ 3 · หัวตารางชิดตามเนื้อข้างล่าง (กฎ 4) */}
-            <th>สถานะ</th><th className="num">เริ่ม</th><th className="num">เสร็จ</th><th className="num">วัน</th><th>ขึ้นกับ</th>
-            {canEdit && <th>จัดการ</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {tableGroups.map((g, gi) => (
-            <FragmentGroup key={`${g.phase}|${gi}`}>
-              <tr className="timeline-phase-row">
-                <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
-                    {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
-                    <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-3)" }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
-                  </div>
-                </td>
+          {view === "table" && (
+          <>
+          <TableScroll><table className="premium-table timeline-task-table">
+            <colgroup>
+              <col style={{ width: 32 }} /><col style={{ width: 52 }} /><col className="timeline-col-task" />
+              <col style={{ width: 68 }} /><col style={{ width: 150 }} /><col style={{ width: 156 }} />
+              <col style={{ width: 124 }} /><col style={{ width: 124 }} /><col style={{ width: 58 }} />
+              <col style={{ width: 120 }} />{canEdit && <col style={{ width: 120 }} />}
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="timeline-move-head" aria-label="เลื่อนลำดับ"></th><th>#</th><th>ขั้นตอน</th><th>แผนก</th><th>ผู้รับผิดชอบ</th>
+                {/* วันที่คนเทียบข้ามแถว ("ขั้นไหนจบก่อน") ต้องชิดขวาเหมือนตัวเลข —
+                    UI_DESIGN_SYSTEM §ป้ายในตาราง กฎ 3 · หัวตารางชิดตามเนื้อข้างล่าง (กฎ 4) */}
+                <th>สถานะ</th><th className="num">เริ่ม</th><th className="num">เสร็จ</th><th className="num">วัน</th><th>ขึ้นกับ</th>
+                {canEdit && <th>จัดการ</th>}
               </tr>
-              {g.tasks.map((t) => (
-                <tr key={t.id} className="premium-row" style={{ opacity: busyId === t.id ? 0.5 : 1 }}>
-                  <td className="timeline-move-cell">
-                    {canReorder && tableSort === "step" && (
-                      <span style={{ display: "inline-flex", flexDirection: "column" }}>
-                        <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนขึ้น" onClick={() => move(t, -1)} disabled={!!busyId}><ArrowUp size={12} aria-hidden="true" /></button>
-                        <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนลง" onClick={() => move(t, 1)} disabled={!!busyId}><ArrowDown size={12} aria-hidden="true" /></button>
-                      </span>
-                    )}
-                  </td>
-                  <td className="mono timeline-order-cell">{numberOf.get(t.id)}</td>
-                  <td style={{ fontWeight: "var(--fw-semibold)" }} title={t.note ? `${t.name}\n${t.note}` : t.name}>
-                    <span className="timeline-task-name">
-                      {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", flexShrink: 0 }} />}
-                      <span>{t.name}</span>
-                    </span>
-                    {/* หมุดวางนอก .timeline-task-name เพราะกฎ `> span` ของคลาสนั้น
-                        บังคับ overflow-wrap:anywhere ให้ลูกทุกตัว ป้ายจะแตกกลางคำ */}
-                    <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey, t.dealId)} />
-                    <StepBadge badge={stepBadgeFor?.(t)} />
-                  </td>
-                  <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{naText(t.role)}</span></td>
-                  <td>
-                    {canEdit ? (
-                      <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: "var(--fs-5)" }}
-                        aria-label={`ผู้รับผิดชอบ ${t.name}`}
-                        onChange={(e) => {
-                          const u = assigneeOptions.find((x) => x.id === e.target.value);
-                          patch(t, { assigneeId: e.target.value || null, assignee: u?.name || null });
-                        }}>
-                        <option value="">{t.assignee ? compactPersonName(t.assignee) : "— ไม่ระบุ —"}</option>
-                        {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}</option>)}
-                      </Select>
-                    ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : NA}</span>}
-                  </td>
-                  <td>
-                    {canEdit ? (
-                      <StatusSelect value={t.status || "Pending"} disabled={!!busyId} aria-label={`สถานะ ${t.name}`} onChange={(status) => patch(t, { status })} />
-                    ) : (
-                      <span className="ui-badge" style={{ color: STATUS_META[t.status]?.color || "var(--text-3)" }}>
-                        {STATUS_META[t.status]?.label || naText(t.status)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="num" style={{ whiteSpace: "nowrap" }}>
-                    {canEdit ? (
-                      <DateInput compact value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} ariaLabel={`วันเริ่ม ${t.name}`} style={{ width: 116 }} />
-                    ) : fmtDate(t.startDate)}
-                    <ActualLine plan={t.startDate} actual={t.actualStartDate} />
-                  </td>
-                  <td className="num" style={{ whiteSpace: "nowrap" }}>
-                    {canEdit ? (
-                      /* ล้างช่องนี้ไม่ได้ — วันจบวิ่งตามวันเริ่ม+จำนวนวันเสมอ (ท่าเดียวกับ
-                         ช่องวันจบในมุมมองเอกสาร) · อยากให้จบเร็ว/ช้าลงให้แก้จำนวนวัน */
-                      <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => { if (v && v !== t.finishDate) patch(t, { finishDate: v }); }} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
-                    ) : fmtDate(t.finishDate)}
-                    <ActualLine plan={t.finishDate} actual={t.actualFinishDate} />
-                  </td>
-                  <td className="num">
-                    {canEdit ? (
-                      /* 🐞 key: ช่องนี้ uncontrolled (พิมพ์ได้อิสระ commit ตอน blur) แต่แถวไม่
-                         remount ⇒ ค่าที่ "คนอื่น" คำนวณให้ (แก้วันเริ่ม/วันจบ หรือ recalc
-                         หลังบันทึก) จะไม่เข้า DOM เลย เลขวันจึงค้างเป็นซากค่าเก่า
-                         ผูก key กับค่าปัจจุบันให้ React สร้าง input ใหม่เมื่อค่าเปลี่ยนจากทางอื่น
-                         (ท่าเดียวกับช่องจำนวนวันในมุมมองเอกสาร — ProjectDocumentView) */
-                      <input type="number" min="1" className="premium-input mono"
-                        key={`dur-${t.id}-${t.durationDays ?? 1}`}
-                        defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}
-                        aria-label={`จำนวนวัน ${t.name}`} disabled={!!busyId}
-                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                        onBlur={(e) => {
-                          const v = Math.max(1, Number(e.target.value) || 1);
-                          if (v !== (t.durationDays ?? 1)) patch(t, { durationDays: v });
-                        }} />
-                    ) : (naText(t.durationDays))}
-                  </td>
-                  <td>
-                    {(t.predecessors || []).length
-                      ? t.predecessors.map((p) => <span key={p} className="ui-badge" style={{ color: "var(--amber)", marginRight: 3 }}>{numberOf.get(p) || "?"}</span>)
-                      : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{NA}</span>}
-                  </td>
-                  {canEdit && (
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      <button type="button" className="btn-icon" title="แทรกขั้นตอนถัดจากนี้" aria-label={`แทรกหลัง ${t.name}`} onClick={() => openAdd(t.id)} disabled={!!busyId}><Plus size={14} aria-hidden="true" /></button>
-                      <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${t.name}`} onClick={() => openEdit(t)} disabled={!!busyId}><Pencil size={14} aria-hidden="true" /></button>
-                      <button type="button" className="btn-icon danger" title="ลบ" aria-label={`ลบ ${t.name}`} onClick={() => removeTask(t)} disabled={!!busyId}><Trash2 size={14} aria-hidden="true" /></button>
+            </thead>
+            <tbody>
+              {tableGroups.map((g, gi) => (
+                <FragmentGroup key={`${g.phase}|${gi}`}>
+                  <tr className="timeline-phase-row">
+                    <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
+                        <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
+                        {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
+                        <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-3)" }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
+                      </div>
                     </td>
-                  )}
-                </tr>
+                  </tr>
+                  {g.tasks.map((t) => (
+                    <tr key={t.id} className="premium-row" style={{ opacity: busyId === t.id ? 0.5 : 1 }}>
+                      <td className="timeline-move-cell">
+                        {canReorder && tableSort === "step" && (
+                          <span style={{ display: "inline-flex", flexDirection: "column" }}>
+                            <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนขึ้น" onClick={() => move(t, -1)} disabled={!!busyId}><ArrowUp size={12} aria-hidden="true" /></button>
+                            <button type="button" className="btn-icon" style={{ height: 14, padding: 0 }} aria-label="เลื่อนลง" onClick={() => move(t, 1)} disabled={!!busyId}><ArrowDown size={12} aria-hidden="true" /></button>
+                          </span>
+                        )}
+                      </td>
+                      <td className="mono timeline-order-cell">{numberOf.get(t.id)}</td>
+                      <td style={{ fontWeight: "var(--fw-semibold)" }} title={t.note ? `${t.name}\n${t.note}` : t.name}>
+                        <span className="timeline-task-name">
+                          {t.isMilestone && <Flag size={12} aria-hidden="true" style={{ color: "var(--amber)", flexShrink: 0 }} />}
+                          <span>{t.name}</span>
+                        </span>
+                        {/* หมุดวางนอก .timeline-task-name เพราะกฎ `> span` ของคลาสนั้น
+                            บังคับ overflow-wrap:anywhere ให้ลูกทุกตัว ป้ายจะแตกกลางคำ */}
+                        <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey, t.dealId)} />
+                        <StepBadge badge={stepBadgeFor?.(t)} />
+                      </td>
+                      <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{naText(t.role)}</span></td>
+                      <td>
+                        {canEdit ? (
+                          <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: "var(--fs-5)" }}
+                            aria-label={`ผู้รับผิดชอบ ${t.name}`}
+                            onChange={(e) => {
+                              const u = assigneeOptions.find((x) => x.id === e.target.value);
+                              patch(t, { assigneeId: e.target.value || null, assignee: u?.name || null });
+                            }}>
+                            <option value="">{t.assignee ? compactPersonName(t.assignee) : "— ไม่ระบุ —"}</option>
+                            {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}</option>)}
+                          </Select>
+                        ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : NA}</span>}
+                      </td>
+                      <td>
+                        {canEdit ? (
+                          <StatusSelect value={t.status || "Pending"} disabled={!!busyId} aria-label={`สถานะ ${t.name}`} onChange={(status) => patch(t, { status })} />
+                        ) : (
+                          <span className="ui-badge" style={{ color: STATUS_META[t.status]?.color || "var(--text-3)" }}>
+                            {STATUS_META[t.status]?.label || naText(t.status)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="num" style={{ whiteSpace: "nowrap" }}>
+                        {canEdit ? (
+                          <DateInput compact value={t.startDate || ""} onChange={(v) => patch(t, { startDate: v || null })} ariaLabel={`วันเริ่ม ${t.name}`} style={{ width: 116 }} />
+                        ) : fmtDate(t.startDate)}
+                        <ActualLine plan={t.startDate} actual={t.actualStartDate} />
+                      </td>
+                      <td className="num" style={{ whiteSpace: "nowrap" }}>
+                        {canEdit ? (
+                          /* ล้างช่องนี้ไม่ได้ — วันจบวิ่งตามวันเริ่ม+จำนวนวันเสมอ (ท่าเดียวกับ
+                             ช่องวันจบในมุมมองเอกสาร) · อยากให้จบเร็ว/ช้าลงให้แก้จำนวนวัน */
+                          <DateInput compact value={t.finishDate || ""} min={t.startDate || undefined} disabled={!t.startDate || !!busyId} onChange={(v) => { if (v && v !== t.finishDate) patch(t, { finishDate: v }); }} ariaLabel={`วันจบ ${t.name}`} style={{ width: 116 }} />
+                        ) : fmtDate(t.finishDate)}
+                        <ActualLine plan={t.finishDate} actual={t.actualFinishDate} />
+                      </td>
+                      <td className="num">
+                        {canEdit ? (
+                          /* 🐞 key: ช่องนี้ uncontrolled (พิมพ์ได้อิสระ commit ตอน blur) แต่แถวไม่
+                             remount ⇒ ค่าที่ "คนอื่น" คำนวณให้ (แก้วันเริ่ม/วันจบ หรือ recalc
+                             หลังบันทึก) จะไม่เข้า DOM เลย เลขวันจึงค้างเป็นซากค่าเก่า
+                             ผูก key กับค่าปัจจุบันให้ React สร้าง input ใหม่เมื่อค่าเปลี่ยนจากทางอื่น
+                             (ท่าเดียวกับช่องจำนวนวันในมุมมองเอกสาร — ProjectDocumentView) */
+                          <input type="number" min="1" className="premium-input mono"
+                            key={`dur-${t.id}-${t.durationDays ?? 1}`}
+                            defaultValue={t.durationDays ?? 1} style={{ width: 58, textAlign: "right" }}
+                            aria-label={`จำนวนวัน ${t.name}`} disabled={!!busyId}
+                            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                            onBlur={(e) => {
+                              const v = Math.max(1, Number(e.target.value) || 1);
+                              if (v !== (t.durationDays ?? 1)) patch(t, { durationDays: v });
+                            }} />
+                        ) : (naText(t.durationDays))}
+                      </td>
+                      <td>
+                        {(t.predecessors || []).length
+                          ? t.predecessors.map((p) => <span key={p} className="ui-badge" style={{ color: "var(--amber)", marginRight: 3 }}>{numberOf.get(p) || "?"}</span>)
+                          : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{NA}</span>}
+                      </td>
+                      {canEdit && (
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button type="button" className="btn-icon" title="แทรกขั้นตอนถัดจากนี้" aria-label={`แทรกหลัง ${t.name}`} onClick={() => openAdd(t.id)} disabled={!!busyId}><Plus size={14} aria-hidden="true" /></button>
+                          <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${t.name}`} onClick={() => openEdit(t)} disabled={!!busyId}><Pencil size={14} aria-hidden="true" /></button>
+                          <button type="button" className="btn-icon danger" title="ลบ" aria-label={`ลบ ${t.name}`} onClick={() => removeTask(t)} disabled={!!busyId}><Trash2 size={14} aria-hidden="true" /></button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </FragmentGroup>
               ))}
-            </FragmentGroup>
-          ))}
-        </tbody>
-      </table></TableScroll>
-      {canAdd && (
-        <div style={{ marginTop: 10 }}>
-          <button type="button" className="btn ghost" onClick={() => openAdd(null)} disabled={!!busyId}>
-            <Plus size={14} aria-hidden="true" /> เพิ่มขั้นตอน
-          </button>
+            </tbody>
+          </table></TableScroll>
+          {canAdd && (
+            <div style={{ marginTop: 10 }}>
+              <button type="button" className="btn ghost" onClick={() => openAdd(null)} disabled={!!busyId}>
+                <Plus size={14} aria-hidden="true" /> เพิ่มขั้นตอน
+              </button>
+            </div>
+          )}
+          </>
+          )}
         </div>
-      )}
-      </>
-      )}
+      </ListPanel>
 
       {dirtyCount > 0 && (
         <div className="timeline-save-bar form-action-bar is-page" role="status">

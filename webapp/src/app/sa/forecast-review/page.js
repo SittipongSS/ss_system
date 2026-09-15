@@ -13,11 +13,10 @@
  *   หลายฉบับ   ใบอนุมัติหลายเลขที่ → ระบบไม่เดา เลือกเองว่าใบไหนคือ FC
  */
 
-import thaiText from "@/components/ThaiText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -57,6 +56,9 @@ export default function ForecastReviewPage() {
   const [kind, setKind] = useState("mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  /* โหลดรายการไม่สำเร็จ แยกจาก `error` (กดรับยอด/คงยอดพลาด) — ของแรกอยู่ในเนื้อแผงพร้อมปุ่ม
+     "ลองใหม่" ที่โหลดรายการ · ของหลังอยู่เหนือแผงแบบปิดได้ (ลองใหม่ของมันคือกดซ้ำ ไม่ใช่โหลด) */
+  const [loadError, setLoadError] = useState("");
   const [info, setInfo] = useState("");
   const [busyId, setBusyId] = useState("");
 
@@ -67,9 +69,9 @@ export default function ForecastReviewPage() {
       setRows(data?.rows || []);
       setMissingDates(data?.missingDates || []);
       setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, multiple: 0, missingDates: 0 });
-      setError("");
-    } catch (loadError) {
-      setError(loadError.message || "โหลดคิวไม่สำเร็จ");
+      setLoadError("");
+    } catch (failure) {
+      setLoadError(failure.message || "โหลดคิวไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
@@ -139,179 +141,201 @@ export default function ForecastReviewPage() {
 
   if (!canView) return <AccessDenied />;
 
+  /* ⚠️ โครงกระดูกเฉพาะตอน **ยังไม่มีแถวให้โชว์** — หลังกดรับยอด/คงยอด load() วิ่งซ้ำ
+     ขณะที่แถวเดิมยังอยู่ ⇒ ใช้ aria-busy บนตารางแทน ตารางไม่กระพริบหายทุกครั้งที่กด */
+  const initialLoading = loading && !rows.length && !missingDates.length;
+
   return (
     <Workspace
       icon={<ClipboardCheck size={22} />}
       title="ตรวจที่มาของ FC"
       subtitle="ดีลที่มีใบเสนอราคาอนุมัติแล้ว แต่ยอด FC ยังไม่ได้เดินตามใบ — กดรับทีละดีล"
-      loading={loading}
-      toolbar={(
-        <div className={styles.tabs} role="tablist">
-          {KINDS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={kind === item.key}
-                className={styles.tab}
-                data-active={kind === item.key ? "true" : undefined}
-                onClick={() => setKind(item.key)}
-              >
-                <Icon size={15} aria-hidden="true" />
-                {item.label}
-                <span className={styles.count}>{counts[item.key] ?? 0}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
     >
-      {error ? <StatusNotice tone="danger" onDismiss={() => setError("")}>{error}</StatusNotice> : null}
+      {/* แท็บกอง = สลับ **ชุดข้อมูล** ⇒ ของระดับหน้า อยู่เหนือแผง ไม่ใช่ใน toolbar ของแผง
+          (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ — ListPanel) */}
+      <div className={styles.tabs} role="tablist">
+        {KINDS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={kind === item.key}
+              className={styles.tab}
+              data-active={kind === item.key ? "true" : undefined}
+              onClick={() => setKind(item.key)}
+            >
+              <Icon size={15} aria-hidden="true" />
+              {item.label}
+              <span className={styles.count}>{counts[item.key] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 🐞 เดิม tone="danger" — StatusNotice ไม่มีโทนนี้ ⇒ ตกไปเป็นสีฟ้า info ทั้งที่เป็นความผิดพลาด */}
+      {error ? <StatusNotice tone="error" onDismiss={() => setError("")}>{error}</StatusNotice> : null}
       {info ? <StatusNotice tone="success" onDismiss={() => setInfo("")}>{info}</StatusNotice> : null}
 
-      <p className={styles.lead}>{thaiText(active.lead)}</p>
+      {/* คำอธิบายของกองที่เลือก = คำอธิบายของแผง (เดิมเป็นย่อหน้า .lead ลอยเหนือตาราง) */}
+      <ListPanel
+        icon={<ClipboardCheck size={17} aria-hidden="true" />}
+        title="รายการดีลรอตรวจที่มาของ FC"
+        subtitle={active.lead}
+        count={initialLoading ? null : `${shown.length} ดีล`}
+        loading={initialLoading}
+      >
+        {loadError ? (
+          <StatusNotice
+            tone="error"
+            className="mb-4"
+            action={<Button size="sm" variant="ghost" onClick={load}>ลองใหม่</Button>}
+          >
+            {loadError}
+          </StatusNotice>
+        ) : null}
 
-      {!loading && !shown.length ? (
-        <EmptyState icon={CheckCircle2}>{active.empty}</EmptyState>
-      ) : null}
+        {!loadError && !shown.length ? (
+          <EmptyState plain icon={CheckCircle2}>{active.empty}</EmptyState>
+        ) : null}
 
-      {/* กองวันที่ขาด = ตารางคนละทรง (ไม่มีใบให้เลือก มีแต่ปุ่มไปกรอก) ⇒ แยกตาราง
-          ไม่ยัดเป็นคอลัมน์ว่างในตารางเดิม ซึ่งจะอ่านเหมือนข้อมูลหาย */}
-      {kind === "missingDates" && shown.length ? (
-        <TableScroll family="list" cells="stacked" minWidth={780}>
-          <table>
-            <thead>
-              <tr>
-                <th>ดีล</th>
-                <th>ผู้รับผิดชอบ</th>
-                <th className="num">FC</th>
-                <th>ช่องที่ขาด</th>
-                <th aria-label="การทำงาน" />
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
-                    <small className={styles.sub}>{naText(row.title)}</small>
-                    <small className={styles.sub}>{naText(row.customerName)}</small>
-                  </td>
-                  <td>
-                    {naText(row.ownerName)}
-                    <small className={styles.sub}>{naText(row.team)}</small>
-                  </td>
-                  <td className="num">
-                    {fmtMoney(row.currentValue)}
-                    <small className={styles.sub}>{naText(row.stage)}</small>
-                  </td>
-                  <td>
-                    <div className={styles.choices}>
-                      {row.gaps.includes("startDate") ? <span className={styles.multi}>วันที่เริ่ม</span> : null}
-                      {row.gaps.includes("endDate") ? <span className={styles.multi}>วันที่สิ้นสุด (ลูกค้ารับ)</span> : null}
-                    </div>
-                    <small className={styles.sub}>วันปิดการขาย {naText(row.expectedCloseDate)}</small>
-                  </td>
-                  <td>
-                    <div className={styles.actions}>
-                      <Button as={Link} href={`/sa/deals/${row.id}`} variant="ghost" size="sm">
-                        เปิดดีลไปกรอก <ArrowRight size={13} aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </td>
+        {/* กองวันที่ขาด = ตารางคนละทรง (ไม่มีใบให้เลือก มีแต่ปุ่มไปกรอก) ⇒ แยกตาราง
+            ไม่ยัดเป็นคอลัมน์ว่างในตารางเดิม ซึ่งจะอ่านเหมือนข้อมูลหาย */}
+        {kind === "missingDates" && shown.length ? (
+          <TableScroll family="list" cells="stacked" minWidth={780} aria-busy={loading}>
+            <table>
+              <thead>
+                <tr>
+                  <th>ดีล</th>
+                  <th>ผู้รับผิดชอบ</th>
+                  <th className="num">FC</th>
+                  <th>ช่องที่ขาด</th>
+                  <th aria-label="การทำงาน" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableScroll>
-      ) : null}
+              </thead>
+              <tbody>
+                {shown.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
+                      <small className={styles.sub}>{naText(row.title)}</small>
+                      <small className={styles.sub}>{naText(row.customerName)}</small>
+                    </td>
+                    <td>
+                      {naText(row.ownerName)}
+                      <small className={styles.sub}>{naText(row.team)}</small>
+                    </td>
+                    <td className="num">
+                      {fmtMoney(row.currentValue)}
+                      <small className={styles.sub}>{naText(row.stage)}</small>
+                    </td>
+                    <td>
+                      <div className={styles.choices}>
+                        {row.gaps.includes("startDate") ? <span className={styles.multi}>วันที่เริ่ม</span> : null}
+                        {row.gaps.includes("endDate") ? <span className={styles.multi}>วันที่สิ้นสุด (ลูกค้ารับ)</span> : null}
+                      </div>
+                      <small className={styles.sub}>วันปิดการขาย {naText(row.expectedCloseDate)}</small>
+                    </td>
+                    <td>
+                      <div className={styles.actions}>
+                        <Button as={Link} href={`/sa/deals/${row.id}`} variant="ghost" size="sm">
+                          เปิดดีลไปกรอก <ArrowRight size={13} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        ) : null}
 
-      {kind !== "missingDates" && shown.length ? (
-        <TableScroll family="list" cells="stacked" minWidth={880}>
-          <table>
-            <thead>
-              <tr>
-                <th>ดีล</th>
-                <th>ผู้รับผิดชอบ</th>
-                <th className="num">FC ตอนนี้</th>
-                <th>ยอดตามใบ</th>
-                <th aria-label="การทำงาน" />
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
-                    <small className={styles.sub}>{naText(row.title)}</small>
-                    <small className={styles.sub}>{naText(row.customerName)}</small>
-                    {row.multiple ? (
-                      <small className={styles.multi}>
-                        <Layers size={11} aria-hidden="true" /> มี {row.candidates.length} ใบ — ระบบใช้ใบยอดต่ำสุด
-                      </small>
-                    ) : null}
-                  </td>
-                  <td>
-                    {naText(row.ownerName)}
-                    <small className={styles.sub}>{naText(row.team)}</small>
-                  </td>
-                  <td className="num">
-                    {fmtMoney(row.currentValue)}
-                    <small className={styles.sub}>{row.source === "quotation" ? "ตามใบ" : "กรอกเอง"}</small>
-                  </td>
-                  <td>
-                    <div className={styles.choices}>
-                      {row.candidates.map((quotation) => {
-                        const delta = quotation.value - row.currentValue;
-                        return (
-                          <button
-                            key={quotation.id}
-                            type="button"
-                            className={styles.choice}
-                            disabled={!row.canEdit || busyId === row.id}
-                            onClick={() => choose(row, quotation)}
-                          >
-                            <span className="mono">{quotation.quoteNumber}</span>
-                            <strong>{fmtMoney(quotation.value)}</strong>
-                            {Math.abs(delta) < 0.005
-                              ? <small data-dir="same">ยอดเท่าเดิม</small>
-                              : (
-                                <small data-dir={delta >= 0 ? "up" : "down"}>
-                                  {delta >= 0 ? "+" : "−"}{fmtMoney(Math.abs(delta))}
-                                </small>
-                              )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </td>
-                  {/* ⚠️ display:flex ต้องอยู่บน div ใน td ไม่ใช่บน td เอง — กฎระยะห่าง
-                      ของตารางอยู่ที่ `.scroll[data-family] td` ถ้าเปลี่ยน display ของ td
-                      เอง แถวจะหลุดจากกติกาการจัดชิดบน/ระยะในของตารางกลางทั้งชุด */}
-                  <td>
-                    <div className={styles.actions}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={!row.canEdit || busyId === row.id}
-                        onClick={() => keepManual(row)}
-                        title={row.canEdit ? "" : "ดีลนี้ไม่ได้อยู่ในขอบเขตที่คุณแก้ได้"}
-                      >
-                        <Pencil size={13} aria-hidden="true" /> คงยอดเดิม
-                      </Button>
-                      <Button as={Link} href={`/sa/deals/${row.id}`} variant="ghost" size="sm">
-                        เปิดดีล <ArrowRight size={13} aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </td>
+        {kind !== "missingDates" && shown.length ? (
+          <TableScroll family="list" cells="stacked" minWidth={880} aria-busy={loading}>
+            <table>
+              <thead>
+                <tr>
+                  <th>ดีล</th>
+                  <th>ผู้รับผิดชอบ</th>
+                  <th className="num">FC ตอนนี้</th>
+                  <th>ยอดตามใบ</th>
+                  <th aria-label="การทำงาน" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableScroll>
-      ) : null}
+              </thead>
+              <tbody>
+                {shown.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
+                      <small className={styles.sub}>{naText(row.title)}</small>
+                      <small className={styles.sub}>{naText(row.customerName)}</small>
+                      {row.multiple ? (
+                        <small className={styles.multi}>
+                          <Layers size={11} aria-hidden="true" /> มี {row.candidates.length} ใบ — ระบบใช้ใบยอดต่ำสุด
+                        </small>
+                      ) : null}
+                    </td>
+                    <td>
+                      {naText(row.ownerName)}
+                      <small className={styles.sub}>{naText(row.team)}</small>
+                    </td>
+                    <td className="num">
+                      {fmtMoney(row.currentValue)}
+                      <small className={styles.sub}>{row.source === "quotation" ? "ตามใบ" : "กรอกเอง"}</small>
+                    </td>
+                    <td>
+                      <div className={styles.choices}>
+                        {row.candidates.map((quotation) => {
+                          const delta = quotation.value - row.currentValue;
+                          return (
+                            <button
+                              key={quotation.id}
+                              type="button"
+                              className={styles.choice}
+                              disabled={!row.canEdit || busyId === row.id}
+                              onClick={() => choose(row, quotation)}
+                            >
+                              <span className="mono">{quotation.quoteNumber}</span>
+                              <strong>{fmtMoney(quotation.value)}</strong>
+                              {Math.abs(delta) < 0.005
+                                ? <small data-dir="same">ยอดเท่าเดิม</small>
+                                : (
+                                  <small data-dir={delta >= 0 ? "up" : "down"}>
+                                    {delta >= 0 ? "+" : "−"}{fmtMoney(Math.abs(delta))}
+                                  </small>
+                                )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    {/* ⚠️ display:flex ต้องอยู่บน div ใน td ไม่ใช่บน td เอง — กฎระยะห่าง
+                        ของตารางอยู่ที่ `.scroll[data-family] td` ถ้าเปลี่ยน display ของ td
+                        เอง แถวจะหลุดจากกติกาการจัดชิดบน/ระยะในของตารางกลางทั้งชุด */}
+                    <td>
+                      <div className={styles.actions}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={!row.canEdit || busyId === row.id}
+                          onClick={() => keepManual(row)}
+                          title={row.canEdit ? "" : "ดีลนี้ไม่ได้อยู่ในขอบเขตที่คุณแก้ได้"}
+                        >
+                          <Pencil size={13} aria-hidden="true" /> คงยอดเดิม
+                        </Button>
+                        <Button as={Link} href={`/sa/deals/${row.id}`} variant="ghost" size="sm">
+                          เปิดดีล <ArrowRight size={13} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        ) : null}
+      </ListPanel>
     </Workspace>
   );
 }

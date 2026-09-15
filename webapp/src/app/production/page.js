@@ -17,8 +17,8 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
-import { TableShell } from "@/components/ui/Table";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import { TableScroll } from "@/components/ui/Table";
+import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspace";
 import { isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { overridesByDate } from "@/lib/pm/productionLines";
 import { JOB_STATUS_LABELS } from "@/lib/pm/productionPlan";
@@ -215,7 +215,8 @@ export default function ProductionOverviewPage() {
             <ActionQueue items={queueItems} empty="ไม่มีงานผลิตที่ติดปัญหาตอนนี้ 🎉" />
           </WorkspaceSection>
 
-          <WorkspaceSection
+          {/* รายการไลน์ของวันนี้ = แผงรายการ (มติผู้ใช้ 2026-09-15) · ไม่มีตัวควบคุม จึงไม่มี toolbar */}
+          <ListPanel
             icon={<Factory size={17} aria-hidden="true" />}
             title="วันนี้ไลน์ไหนเดินอะไร"
             /* ⚠️ วันหยุด/เสาร์-อาทิตย์ ทุกไลน์จะขึ้น "ว่าง" ซึ่งอ่านแล้วเหมือนโรงงาน
@@ -223,13 +224,14 @@ export default function ProductionOverviewPage() {
             subtitle={isBusinessDay(new Date(`${todayIso}T00:00:00`))
               ? fmtDate(todayIso)
               : `${fmtDate(todayIso)} · วันหยุด — ไลน์ไม่เดิน ไม่ใช่ว่างงาน`}
+            count={`${today.length} ไลน์`}
           >
             {today.length === 0 ? (
-              <EmptyState icon={Factory}>
+              <EmptyState plain icon={Factory}>
                 ยังไม่มีไลน์ผลิตที่เปิดใช้ — ตั้งค่าไลน์ก่อนที่เมนู &quot;ไลน์ผลิต&quot;
               </EmptyState>
             ) : (
-              <TableShell>
+              <TableScroll>
                 <table>
                   <thead>
                     <tr>
@@ -266,9 +268,9 @@ export default function ProductionOverviewPage() {
                     ))}
                   </tbody>
                 </table>
-              </TableShell>
+              </TableScroll>
             )}
-          </WorkspaceSection>
+          </ListPanel>
         </>
       )}
     </Workspace>

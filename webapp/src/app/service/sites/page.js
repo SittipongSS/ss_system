@@ -21,12 +21,12 @@ import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Input from "@/components/ui/Input";
 import Segmented from "@/components/ui/Segmented";
-import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import DetailRow from "@/components/ui/DetailRow";
 import { TableScroll } from "@/components/ui/Table";
 import { SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import Toast from "@/components/ui/Toast";
-import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
@@ -109,8 +109,10 @@ export default function ServiceSitesPage() {
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   /* `silent` = ดึงใหม่เงียบ ๆ ไม่สลับเป็นโครงร่าง — ใช้หลังบันทึกจากโมดัล
-     🐞 Workspace วาด `loading ? โครงร่าง : children` ⇒ load() ธรรมดาหลังบันทึกไซต์ย้อนหลัง
-        ถอดโมดัลออกจากจอกลางคัน (state หาย) ⇒ จอผลที่มีรหัสจริง / "ส่งส่วนที่เหลืออีกครั้ง" ไม่เคยขึ้น */
+     🐞 เดิม Workspace วาด `loading ? โครงร่าง : children` ⇒ load() ธรรมดาหลังบันทึกไซต์ย้อนหลัง
+        ถอดโมดัลออกจากจอกลางคัน (state หาย) ⇒ จอผลที่มีรหัสจริง / "ส่งส่วนที่เหลืออีกครั้ง" ไม่เคยขึ้น
+     ⚠️ วันนี้โครงร่างอยู่ในเนื้อ ListPanel เท่านั้น (โมดัลอยู่นอก Workspace) แต่ยังดึงเงียบหลังบันทึก —
+        ตารางที่มีแถวอยู่แล้วไม่ควรกะพริบเป็นโครงร่าง (กติกา `loading` ของ ListPanel) */
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setLoadError("");
@@ -196,7 +198,7 @@ export default function ServiceSitesPage() {
 
   const headerRight = (
     <>
-      <span className="ui-badge">{sites.length} รายการ</span>
+      {/* ป้ายจำนวนย้ายไปหัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ListPanel) — เลขเดียวกันห้ามซ้ำบนหัวหน้า */}
       {/* 🔴 **ไม่มีปุ่ม "เพิ่มไซต์" ที่ทะเบียนอีกแล้ว** (มติผู้ใช้ 2026-08-30:
           "สร้างที่คำร้องเท่านั้น ห้ามสร้างผ่านทะเบียนไซต์")
           ⭐ เหตุผลเชิงระบบ: ไซต์ต้องมี **ต้นเรื่อง** เสมอ — เกิดจากใบประเมินพื้นที่ที่
@@ -221,8 +223,10 @@ export default function ServiceSitesPage() {
     </>
   );
 
+  /* เครื่องมือของรายการ = fragment เข้า `ListPanel toolbar` — แผงห่อ `.toolbar` ให้เอง ห้ามห่อซ้ำ
+     (มติผู้ใช้ 2026-09-15 · เดิมส่งเข้า `Workspace toolbar` ที่ถูกถอด) */
   const toolbar = (
-    <div className="toolbar">
+    <>
       {/* กล่องครอบ `.search-glass` ถือขอบ/พื้น/ไอคอน — ใส่ icon+input แยกกันดิบ ๆ
          (ไม่มีกล่องครอบ) ไอคอนจะลอยแยกจากกล่องข้อความ (แพตเทิร์นเดียวกับหน้าสินค้า/
          ลูกค้า ดูโน้ตที่ Input.js: เคยพังกลับด้าน — ใส่คลาสกล่องครอบไว้ที่ <input>
@@ -230,10 +234,14 @@ export default function ServiceSitesPage() {
       <div className={`search-glass ${styles.searchInput}`.trim()}>
         <Search size={15} aria-hidden="true" />
         <Input
+          autoComplete="off"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ค้นหาไซต์ ลูกค้า จังหวัด เขต หรือรหัส"
-          aria-label="ค้นหาไซต์บริการ"
+          /* 🐞 ย้ายเข้า ListPanel แล้วช่องแคบลง ~30px (ระยะขอบเนื้อแผง) — คำใบ้เต็ม 213px ขาดเป็น
+             "…เขต หรือ" ที่จอ 390 (ช่องเหลือ 185px) ⇒ ตัด "จังหวัด" ออกจากคำใบ้ (170px)
+             แต่ยังค้นจังหวัดได้ (haystack ด้านบน) · ชื่อเต็มอยู่ใน aria-label เรียงคำเดียวกัน */
+          placeholder="ค้นหาไซต์ ลูกค้า เขต หรือรหัส"
+          aria-label="ค้นหาไซต์ ลูกค้า จังหวัด เขต หรือรหัส"
         />
       </div>
       <FilterPopover
@@ -286,7 +294,7 @@ export default function ServiceSitesPage() {
           { value: "cards", label: "มุมมองการ์ด", icon: LayoutGrid },
         ]}
       />
-    </div>
+    </>
   );
 
   return (
@@ -296,7 +304,6 @@ export default function ServiceSitesPage() {
       title="ไซต์บริการ"
       subtitle="จุดติดตั้งระบบกระจายกลิ่นของลูกค้า และเครื่องที่อยู่หน้างาน"
       headerRight={headerRight}
-      loading={loading}
       rail={(
         /* แถบตัวเลขกลาง (Page contract §2) — จอแคบยุบเหลือ 2 คอลัมน์เอง
            🐞 StatCards ตรึง 4 คอลัมน์ด้วย inline style ⇒ จอ 390px ช่องละ 83px ป้ายตัดบรรทัด ตัวเลขไม่ตรงแนว */
@@ -307,132 +314,145 @@ export default function ServiceSitesPage() {
           <Metric label="เครื่องที่ใช้งานอยู่" value={totalActiveAssets} />
         </MetricStrip>
       )}
-      toolbar={toolbar}
     >
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
-
-      {loading || loadError ? (
-        loading ? <SkeletonRows rows={5} /> : null
-      ) : sites.length === 0 ? (
-        <EmptyState icon={MapPin}>
-          ยังไม่มีไซต์บริการในระบบ — ไซต์เกิดจากใบคำร้อง &ldquo;ประเมินพื้นที่&rdquo; ที่ฝ่ายขายเปิดให้ลูกค้า
-          {/* บอกทางของ "ของเก่า" เฉพาะคนที่กดปุ่มได้ — คนอื่นไม่เห็นปุ่ม ข้อความนี้จะชี้ไปที่ของที่ไม่มี */}
-          {canEdit && <> · ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ เพิ่มได้ที่ปุ่ม &ldquo;เพิ่มไซต์ย้อนหลัง&rdquo;</>}
-        </EmptyState>
-      ) : sorted.length === 0 ? (
-        /* ⚠️ ค้นไม่เจอ ≠ ไม่มีไซต์ — ตารางว่างเปล่าโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
-        <EmptyState icon={Search}>
-          {q ? `ไม่มีไซต์ที่ตรงกับ “${search.trim()}”` : "ไม่มีไซต์ที่ตรงกับตัวกรองที่เลือก"} — ลองเปลี่ยนคำค้นหรือล้างตัวกรอง
-        </EmptyState>
-      ) : view === "cards" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {pageRows.map((site) => {
-            const window = accessWindowText(site);
-            const inactive = site.isActive === false;
-            return (
-              <Link
-                key={site.id}
-                href={`/service/sites/${site.id}`}
-                className={[styles.card, inactive && styles.cardInactive, "clickable-row p-4 flex-col gap-2"].filter(Boolean).join(" ")}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className={`${styles.cardCode} font-mono`}>{naText(site.code)}</div>
-                    <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{site.name}</div>
-                    <div className={`${styles.cardCustomer} mt-0.5 truncate`}>{naText(site.customerName)}</div>
+      {/* ⭐ ทะเบียน = ListPanel ใบเดียว (มติผู้ใช้ 2026-09-15 · ต้นแบบ /sa/quotations)
+          · ป้ายนับไซต์ที่มองเห็นหลังค้นหา/กรอง = ยอดของ Pager · ยังไม่รู้ (โหลด/พัง) = ขีด ไม่ใช่ 0
+          · `loading` แทนที่เฉพาะเนื้อ — ช่องค้นหาไม่หลุดโฟกัสระหว่างโหลด (เดิม `Workspace loading` ถอดทั้งหน้า) */}
+      <ListPanel
+        icon={<MapPin size={17} aria-hidden="true" />}
+        title="ทะเบียนไซต์"
+        subtitle="เปิดไซต์เพื่อดูโซน จุดติดตั้ง และเครื่องที่หน้างาน"
+        count={loading || loadError ? null : `${sorted.length} ไซต์`}
+        loading={loading}
+        toolbar={toolbar}
+      >
+        {/* ⚠️ ห้ามกลืน error เป็น "ยังไม่มีไซต์" — โหลดพังกับยังไม่มีข้อมูลหน้าตาเหมือนกัน ⇒ ข้อความในเนื้อแผง + ทางลองใหม่ */}
+        {loadError ? (
+          <StatusNotice tone="error" action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}>
+            {loadError}
+          </StatusNotice>
+        ) : sites.length === 0 ? (
+          <EmptyState plain icon={MapPin}>
+            ยังไม่มีไซต์บริการในระบบ — ไซต์เกิดจากใบคำร้อง &ldquo;ประเมินพื้นที่&rdquo; ที่ฝ่ายขายเปิดให้ลูกค้า
+            {/* บอกทางของ "ของเก่า" เฉพาะคนที่กดปุ่มได้ — คนอื่นไม่เห็นปุ่ม ข้อความนี้จะชี้ไปที่ของที่ไม่มี */}
+            {canEdit && <> · ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ เพิ่มได้ที่ปุ่ม &ldquo;เพิ่มไซต์ย้อนหลัง&rdquo;</>}
+          </EmptyState>
+        ) : sorted.length === 0 ? (
+          /* ⚠️ ค้นไม่เจอ ≠ ไม่มีไซต์ — ตารางว่างเปล่าโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
+          <EmptyState plain icon={Search}>
+            {q ? `ไม่มีไซต์ที่ตรงกับ “${search.trim()}”` : "ไม่มีไซต์ที่ตรงกับตัวกรองที่เลือก"} — ลองเปลี่ยนคำค้นหรือล้างตัวกรอง
+          </EmptyState>
+        ) : view === "cards" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {pageRows.map((site) => {
+              const window = accessWindowText(site);
+              const inactive = site.isActive === false;
+              return (
+                <Link
+                  key={site.id}
+                  href={`/service/sites/${site.id}`}
+                  className={[styles.card, inactive && styles.cardInactive, "clickable-row p-4 flex-col gap-2"].filter(Boolean).join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className={`${styles.cardCode} font-mono`}>{naText(site.code)}</div>
+                      <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{site.name}</div>
+                      <div className={`${styles.cardCustomer} mt-0.5 truncate`}>{naText(site.customerName)}</div>
+                    </div>
+                    <span className={`ui-badge shrink-0 ${inactive ? "" : "success"}`.trim()}>{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                   </div>
-                  <span className={`ui-badge shrink-0 ${inactive ? "" : "success"}`.trim()}>{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  {/* ⚠️ ต้องมีป้าย — ค่าลอย ๆ ("—" หรือชื่อเขต) อ่านไม่ออกว่าคืออะไร */}
-                  <span className="text-[var(--text-2)] truncate">
-                    {site.routeZone ? `เขต ${site.routeZone}` : <span className={styles.muted}>ยังไม่ระบุเขต</span>}
-                  </span>
-                  <span className="font-mono text-[var(--text-2)]">
-                    {site.activeAssetCount || 0}
-                    {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""} เครื่อง
-                  </span>
-                </div>
-                <div className="text-xs text-[var(--text-3)]">
-                  {window || "ช่วงเวลาที่เข้าได้ไม่จำกัด"}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      ) : (
-        /* ⭐ ทรงเดียวกับตารางใบเสนอราคา (มติผู้ใช้ 2026-09-15 "ตารางไซต์ไม่สวย ใช้ใบเสนอราคาเป็นต้นแบบ")
-           · กรอบชั้นเดียว `TableScroll surface="auto"` — เดิม TableShell = การ์ด + กรอบตารางซ้อนข้างใน
-           · ทั้งแถวกดได้ (DetailRow) · ลิงก์ในเซลล์แรกคือทางเข้าของคีย์บอร์ด (href ตรงกันทุกตัวอักษร)
-           · รหัสลูกค้า (AR) อยู่เหนือชื่อกิจการ · ป้ายสถานะกว้างเท่ากันทั้งคอลัมน์
-           ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
-           ตารางจะบีบคอลัมน์จนรหัสตัดบรรทัด แทนที่จะเลื่อนแนวนอน (Table.module.css) */
-        <TableScroll aria-busy={loading} surface="auto" minWidth={860}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                {/* รหัสบน · ชื่อล่าง · ค้นหาครอบทั้งสองอยู่แล้ว
-                    🐞 เดิมแยกสองคอลัมน์: รหัสที่คนกวาดหาเป็นข้อความเฉย ๆ เป้ากดเหลือแค่ชื่อสั้น ๆ ("ชั้น 2" 23×18px) */}
-                <th>ไซต์</th>
-                <th>ลูกค้า</th>
-                <th>เขตวิ่งงาน</th>
-                <th className="num">เครื่อง</th>
-                <th>ช่วงเวลาที่เข้าได้</th>
-                <th>สถานะ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.map((site) => {
-                const window = accessWindowText(site);
-                const inactive = site.isActive === false;
-                return (
-                  <DetailRow
-                    key={site.id}
-                    href={`/service/sites/${site.id}`}
-                    className={inactive ? `premium-row ${styles.inactive}` : "premium-row"}
-                  >
-                    <td>
-                      {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
-                      <Link prefetch={false} href={`/service/sites/${site.id}`} className="linklike"><strong className="mono">{site.code || site.name}</strong></Link>
-                      {site.code && site.name ? <span className={styles.subLine}>{site.name}</span> : null}
-                    </td>
-                    <td>
-                      {site.customerArCode ? <span className="ar-code ar-code-block">{site.customerArCode}</span> : null}
-                      {naText(site.customerName)}
-                    </td>
-                    <td>{naText(site.routeZone)}</td>
-                    <td className={`num mono ${styles.numCol}`}>
-                      {/* เครื่องที่ยังใช้งานคือตัวเลขที่เจ้าหน้าที่สนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
+                  <div className="flex items-center justify-between text-xs">
+                    {/* ⚠️ ต้องมีป้าย — ค่าลอย ๆ ("—" หรือชื่อเขต) อ่านไม่ออกว่าคืออะไร */}
+                    <span className="text-[var(--text-2)] truncate">
+                      {site.routeZone ? `เขต ${site.routeZone}` : <span className={styles.muted}>ยังไม่ระบุเขต</span>}
+                    </span>
+                    <span className="font-mono text-[var(--text-2)]">
                       {site.activeAssetCount || 0}
-                      {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""}
-                    </td>
-                    <td>{window || <span className={styles.muted}>ไม่จำกัด</span>}</td>
-                    <td>
-                      <span className={`ui-badge ui-badge-cell ${inactive ? "" : "success"}`.trim()}>{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
-                    </td>
-                  </DetailRow>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableScroll>
-      )}
+                      {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""} เครื่อง
+                    </span>
+                  </div>
+                  <div className="text-xs text-[var(--text-3)]">
+                    {window || "ช่วงเวลาที่เข้าได้ไม่จำกัด"}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          /* ⭐ ทรงเดียวกับตารางใบเสนอราคา (มติผู้ใช้ 2026-09-15 "ตารางไซต์ไม่สวย ใช้ใบเสนอราคาเป็นต้นแบบ")
+             · กรอบชั้นเดียว `TableScroll surface="auto"` — เดิม TableShell = การ์ด + กรอบตารางซ้อนข้างใน
+             · ทั้งแถวกดได้ (DetailRow) · ลิงก์ในเซลล์แรกคือทางเข้าของคีย์บอร์ด (href ตรงกันทุกตัวอักษร)
+             · รหัสลูกค้า (AR) อยู่เหนือชื่อกิจการ · ป้ายสถานะกว้างเท่ากันทั้งคอลัมน์
+             ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
+             ตารางจะบีบคอลัมน์จนรหัสตัดบรรทัด แทนที่จะเลื่อนแนวนอน (Table.module.css) */
+          <TableScroll aria-busy={loading} surface="auto" minWidth={860}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  {/* รหัสบน · ชื่อล่าง · ค้นหาครอบทั้งสองอยู่แล้ว
+                      🐞 เดิมแยกสองคอลัมน์: รหัสที่คนกวาดหาเป็นข้อความเฉย ๆ เป้ากดเหลือแค่ชื่อสั้น ๆ ("ชั้น 2" 23×18px) */}
+                  <th>ไซต์</th>
+                  <th>ลูกค้า</th>
+                  <th>เขตวิ่งงาน</th>
+                  <th className="num">เครื่อง</th>
+                  <th>ช่วงเวลาที่เข้าได้</th>
+                  <th>สถานะ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((site) => {
+                  const window = accessWindowText(site);
+                  const inactive = site.isActive === false;
+                  return (
+                    <DetailRow
+                      key={site.id}
+                      href={`/service/sites/${site.id}`}
+                      className={inactive ? `premium-row ${styles.inactive}` : "premium-row"}
+                    >
+                      <td>
+                        {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
+                        <Link prefetch={false} href={`/service/sites/${site.id}`} className="linklike"><strong className="mono">{site.code || site.name}</strong></Link>
+                        {site.code && site.name ? <span className={styles.subLine}>{site.name}</span> : null}
+                      </td>
+                      <td>
+                        {site.customerArCode ? <span className="ar-code ar-code-block">{site.customerArCode}</span> : null}
+                        {naText(site.customerName)}
+                      </td>
+                      <td>{naText(site.routeZone)}</td>
+                      <td className={`num mono ${styles.numCol}`}>
+                        {/* เครื่องที่ยังใช้งานคือตัวเลขที่เจ้าหน้าที่สนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
+                        {site.activeAssetCount || 0}
+                        {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""}
+                      </td>
+                      <td>{window || <span className={styles.muted}>ไม่จำกัด</span>}</td>
+                      <td>
+                        <span className={`ui-badge ui-badge-cell ${inactive ? "" : "success"}`.trim()}>{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
+                      </td>
+                    </DetailRow>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
 
-      {sorted.length > 0 && (
-        <Pager
-          page={page}
-          pageCount={pageCount}
-          total={total}
-          onPage={setPage}
-          pageSize={pageSize}
-          onPageSize={setPageSize}
-        />
-      )}
+        {!loadError && sorted.length > 0 && (
+          <Pager
+            page={page}
+            pageCount={pageCount}
+            total={total}
+            onPage={setPage}
+            pageSize={pageSize}
+            onPageSize={setPageSize}
+          />
+        )}
+      </ListPanel>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
-    {/* ⚠️ อยู่ **นอก** Workspace โดยตั้งใจ — Workspace สลับ children เป็นโครงร่างตอน loading
-        โมดัลที่อยู่ข้างในจะถูกถอดทิ้งพร้อม state ทุกครั้งที่หน้าโหลดใหม่ (เหตุผลเต็มที่ load ข้างบน) */}
+    {/* ⚠️ อยู่ **นอก** Workspace โดยตั้งใจ — เดิม Workspace สลับ children เป็นโครงร่างตอน loading
+        โมดัลที่อยู่ข้างในถูกถอดทิ้งพร้อม state ทุกครั้งที่หน้าโหลดใหม่ (เหตุผลเต็มที่ load ข้างบน)
+        · วันนี้โครงร่างอยู่ในเนื้อ ListPanel แต่โมดัลก็ยังห้ามอยู่ในเนื้อแผง (กติกา ListPanel) · ยาม legacySite.test */}
     {canEdit && (
       <LegacySiteModal
         open={legacyOpen}

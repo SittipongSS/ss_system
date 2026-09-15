@@ -370,25 +370,19 @@ export default function RequestsPage() {
         : tab === "todo" ? TAB_BLURB.todo
           : tab === "history" ? TAB_BLURB.history
             : mineBlurb(dealParam)}
-      /* ⭐ **ตัวสลับมุมมอง + ปุ่มหลักอยู่ในหัวการ์ด** ตามต้นแบบหน้างานของฉัน
-         (มติผู้ใช้ 2026-08-08) — ของเดิมปุ่ม "เปิดคำร้อง" ลอยอยู่กลางหน้าใต้แท็บ
-         และตัวสลับมุมมองลอยเดี่ยวใต้แถบตัวเลข ⇒ ของสองชิ้นที่เป็น "เครื่องมือของ
-         ทั้งหน้า" กระจายอยู่สามระดับความสูง
+      /* ⭐ **ปุ่มหลักอยู่ในหัวหน้า** ตามต้นแบบหน้างานของฉัน (มติผู้ใช้ 2026-08-08) — ของเดิม
+         ปุ่ม "เปิดคำร้อง" ลอยอยู่กลางหน้าใต้แท็บ
+         ⭐ **ตัวสลับมุมมองย้ายลงแถบเครื่องมือของแผงคิว** (`toolbarEnd` · มติผู้ใช้ 2026-09-15
+         "รายการทุกชุด = แผงเดียว") — มันคุมแค่ตารางคำร้อง ไม่ใช่ทั้งหน้า
          ⚠️ **เปลือกเดียว** — ฟอร์มอยู่ที่ /requests/new ทั้งก้อน (ห้ามครอบ
          RequestForm ไว้สองที่ · โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้) */
       headerRight={(
-        <div className="flex gap-3 items-center flex-wrap">
-          <ViewSwitcher
-            value={board.view} onChange={board.setView}
-            modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
-          />
-          <Button
-            tone="accent" icon={<Plus size={16} />}
-            onClick={() => router.push(`/requests/new${newRequestQuery}`)}
-          >
-            เปิดคำร้อง
-          </Button>
-        </div>
+        <Button
+          tone="accent" icon={<Plus size={16} />}
+          onClick={() => router.push(`/requests/new${newRequestQuery}`)}
+        >
+          เปิดคำร้อง
+        </Button>
       )}
     >
       <div className="flex flex-col gap-4">
@@ -517,9 +511,15 @@ export default function RequestsPage() {
 
       <RequestQueuePanel
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
-        /* หัวเรื่องอยู่บนหัวหน้าแล้ว — หัวการ์ดซ้ำอีกชั้นกิน 81px ฟรี
-           และป้ายจำนวนก็ซ้ำกับ Pager ใต้ตาราง (ดู prop sectionHeader) */
-        sectionHeader={false}
+        /* หัวแผงรายการกลับมา (มติผู้ใช้ 2026-09-15 · D1 — แทนมติถอดหัวการ์ด 2026-09-07) */
+        icon={<MessageCircleQuestion size={17} aria-hidden="true" />}
+        sectionTitle="รายการคำร้อง"
+        toolbarEnd={(
+          <ViewSwitcher
+            value={board.view} onChange={board.setView}
+            modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
+          />
+        )}
         rows={rows} board={board}
         /* ประวัติโชว์ "วันที่ปิดเรื่อง" สองฝั่งแทนกำหนดส่ง (ม-145 · preset `history`) */
         columns={tab === "history" ? "history" : "queue"}

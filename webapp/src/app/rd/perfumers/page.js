@@ -16,9 +16,11 @@
 // (กลิ่นส่งไปแล้ว) **เห็นปุ่มแล้วบอกเหตุตอนกด** — กติกา UI ของระบบ
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SprayCan, UserPlus } from "lucide-react";
-import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
+import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import StatusNotice from "@/components/ui/StatusNotice";
 import StatusBadge from "@/components/ui/StatusBadge";
 import GatedAction from "@/components/ui/GatedAction";
 import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
@@ -131,13 +133,8 @@ export default function RdPerfumersPage() {
       icon={<SprayCan size={22} />}
       title="ตารางงานผู้ปรุงกลิ่น"
       subtitle="กลิ่นที่ยังเดินอยู่ทั้งฝ่าย เรียงตามคนที่รับผิดชอบ — กองที่ยังไม่แจกอยู่บนสุด"
-      loading={loading}
     >
       <div className="flex flex-col gap-4">
-        {loadError ? (
-          <EmptyState icon={SprayCan}>{loadError}</EmptyState>
-        ) : null}
-
         {/* ⚠️ 0 ก็เป็นข้อมูล — "ยังไม่แจก 0" คือคำตอบที่หัวหน้าเปิดหน้ามาเพื่อจะรู้
             ซ่อนตอนว่างทำให้แยกไม่ออกจาก "ยังโหลดไม่เสร็จ" */}
         {!loading && !loadError ? (
@@ -157,14 +154,25 @@ export default function RdPerfumersPage() {
           </MetricStrip>
         ) : null}
 
-        <WorkspaceSection
-          icon={<SprayCan size={17} />}
+        {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — ป้ายนับ **กลิ่น** (ยอดเดียวกับจำนวนแถวในตาราง) ไม่ใช่กอง:
+            กองคือการจัดกลุ่ม ยอดของแต่ละกองอยู่บนหัวกองแล้ว
+            ⚠️ โหลดครั้งแรกเป็น skeleton ในเนื้อแผง (หัวหน้าไม่หายทั้งหน้าอีกแล้ว)
+            ⚠️ โหลดไม่สำเร็จ = ข้อความพร้อมปุ่มลองใหม่ในเนื้อแผง ไม่ใช่ "ว่าง" — ถ้ารอบเบื้องหลังได้แถวมาทีหลัง
+               ตารางยังขึ้นใต้ข้อความได้ ไม่ซ่อนของจริงไว้หลังข้อความเก่า */}
+        <ListPanel
+          icon={<SprayCan size={17} aria-hidden="true" />}
           title="กลิ่นรายคน"
           subtitle="หนึ่งแถวคือหนึ่งกลิ่น — ชื่อผู้ปรุงที่แจกไว้จะถูกบันทึกลงทะเบียนกลิ่นตอนส่งงาน"
-          actions={<span className="ui-badge">{groups.length} กอง</span>}
+          count={loading || loadError ? null : `${totals.scents} กลิ่น`}
+          loading={loading}
         >
-          {!loading && !groups.length ? (
-            <EmptyState icon={SprayCan}>ยังไม่มีกลิ่นที่เดินอยู่ในฝ่ายตอนนี้</EmptyState>
+          {loadError ? (
+            <StatusNotice tone="error" className="mb-4" action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}>
+              {loadError}
+            </StatusNotice>
+          ) : null}
+          {!groups.length ? (
+            loadError ? null : <EmptyState plain icon={SprayCan}>ยังไม่มีกลิ่นที่เดินอยู่ในฝ่ายตอนนี้</EmptyState>
           ) : (
             <TableScroll>
               <table className="w-full">
@@ -193,7 +201,7 @@ export default function RdPerfumersPage() {
               </table>
             </TableScroll>
           )}
-        </WorkspaceSection>
+        </ListPanel>
       </div>
 
       <BriefPerfumerModal

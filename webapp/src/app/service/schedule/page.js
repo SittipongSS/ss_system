@@ -8,13 +8,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Hourglass, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import thaiText from "@/components/ThaiText";
-import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import ServiceVisitModal from "@/components/service/ServiceVisitModal";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -335,38 +335,28 @@ export default function ServiceSchedulePage() {
           งานนอกรอบ
         </Button>
       ) : null}
-      toolbar={(
-        <div className="toolbar">
-          <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ก่อนหน้า" onClick={() => shiftWeek(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
-          <strong className={styles.weekLabel}>{weekLabel}</strong>
-          <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
-          <Button tone="neutral" variant="quiet" size="sm" onClick={() => setWeekStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
-          {/* 🐞 เดิมนับ boardVisits ทั้งฝ่าย — เลือกทีมที่ว่างแล้วกริดว่างแต่ยังบอก "1 นัด" */}
-          <span className={styles.count}>{visibleVisitCount} นัด</span>
-          {/* ⭐ ตัวกรองทีมเจ้าหน้าที่บริการ — โผล่เฉพาะเมื่อฝ่ายมีทีมจริง (มากกว่า "ทุกทีม" อย่างเดียว)
-              ตัวกรองที่มีตัวเลือกเดียวคือของประดับ */}
-          <Segmented
-            value={view}
-            onChange={setView}
-            ariaLabel="มุมมองตาราง"
-            options={[
-              { value: "week", label: "สัปดาห์" },
-              { value: "list", label: "รายการ" },
-            ]}
-          />
-          {teamOptions.length > 1 && (
-            <Segmented
-              value={teamFilter}
-              onChange={setTeamFilter}
-              options={teamOptions}
-              ariaLabel="กรองตามทีมเจ้าหน้าที่บริการ"
-              className={styles.teamFilter}
-            />
-          )}
-        </div>
-      )}
     >
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
+      {/* ⭐ แถวขอบเขตของหน้า (มติผู้ใช้ 2026-09-15 · ListPanel) — สัปดาห์กับทีมคุม **ทุกบล็อก**
+          (ภาระรายทีม · คิวรอจัด · ตาราง) จึงอยู่เหนือแผง ไม่ใช่ในแถบเครื่องมือของตาราง
+          🔄 เดิมอยู่ใน `Workspace toolbar` รวมกับตัวนับนัดและตัวสลับมุมมอง ⇒ สองอย่างหลังย้ายไปหัว/แถบของแผงตาราง
+          ⚠️ `styles.weekNav` ถือความสูง `--ctl-h` ที่เคยได้จาก `.toolbar` — ถอดแล้วลูกศรหดเหลือ 28px (ดู CSS) */}
+      <div className={`scope-row ${styles.weekNav}`}>
+        <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ก่อนหน้า" onClick={() => shiftWeek(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
+        <strong className={styles.weekLabel}>{weekLabel}</strong>
+        <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
+        <Button tone="neutral" variant="quiet" size="sm" onClick={() => setWeekStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
+        {/* ⭐ ตัวกรองทีมเจ้าหน้าที่บริการ — โผล่เฉพาะเมื่อฝ่ายมีทีมจริง (มากกว่า "ทุกทีม" อย่างเดียว)
+            ตัวกรองที่มีตัวเลือกเดียวคือของประดับ */}
+        {teamOptions.length > 1 && (
+          <Segmented
+            value={teamFilter}
+            onChange={setTeamFilter}
+            options={teamOptions}
+            ariaLabel="กรองตามทีมเจ้าหน้าที่บริการ"
+            className={styles.teamFilter}
+          />
+        )}
+      </div>
 
       {/* ⭐ กติกาที่ตัดสินไปแล้วต้องอ่านได้จากบนจอ ไม่ใช่อยู่แต่ในคอมเมนต์โค้ด
           (มติผู้ใช้ 2026-08-28: TS ไม่ใช่ต้นทางของงาน) */}
@@ -396,11 +386,13 @@ export default function ServiceSchedulePage() {
           ถ้าวางปนกับนัดจริง เจ้าหน้าที่จะอ่านว่าเป็นงานของตัวเองแล้วออกไปทำ ทั้งที่ยังไม่ผ่านด่าน
           แยกสองกลุ่ม (ผ่านแล้ว / ติดอะไรอยู่) เพราะสองกลุ่มนี้ต้องการคนละการกระทำ */}
       {!loading && !loadError && drafts.length > 0 && (
-        <section className={styles.queue} aria-label="คิวรอจัด">
-          <h2 className={styles.queueTitle}>
-            คิวรอจัด {drafts.length} ใบ
-            <span>ร่างยังไม่ขึ้นตาราง ไม่นับภาระของเจ้าหน้าที่ และไม่โผล่ในงานวันนี้</span>
-          </h2>
+        /* แผงรายการของตัวเอง ไม่มีแถบเครื่องมือ (มติผู้ใช้ 2026-09-15) — เดิมกล่องมีกรอบ + h2 เขียนเอง */
+        <ListPanel
+          icon={<Hourglass size={17} aria-hidden="true" />}
+          title="คิวรอจัด"
+          subtitle="ร่างยังไม่ขึ้นตาราง ไม่นับภาระของเจ้าหน้าที่ และไม่โผล่ในงานวันนี้"
+          count={`${drafts.length} ใบ`}
+        >
           {/* ⭐ แยกสองกลุ่ม (F-6) — "ผ่านด่านแล้ว" กับ "ติดด่าน" ต้องการคนละการกระทำ:
               กลุ่มแรกแค่กดปล่อย · กลุ่มหลังต้องไปแก้อะไรบางอย่างก่อน
               ⚠️ กองรวมกันเมื่อไร คนจัดคิวจะไล่กดทีละใบเพื่อหาว่าอันไหนกดได้ */}
@@ -445,182 +437,216 @@ export default function ServiceSchedulePage() {
               </div>
             );
           })}
-        </section>
+        </ListPanel>
       )}
 
-      {loading ? <SkeletonRows rows={4} /> : loadError || view !== "week" ? null : gridHasNoRows ? (
-        /* ไม่มีแถวเลย = ไม่มีทั้งเจ้าหน้าที่หน้างานและนัด — คนละเรื่องกับ "สัปดาห์นี้ว่าง"
-           ซึ่งเห็นได้จากแถวที่ว่างเปล่าอยู่แล้ว */
-        <EmptyState icon={CalendarDays}>
-          {thaiText(emptyGridTitle)}
-          {emptyGridHint && <small>{thaiText(emptyGridHint)}</small>}
-        </EmptyState>
-      ) : (
-        /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css
-           ไม่มีกฎของมันเลย และทั้งเว็บใช้ที่นี่ที่เดียว) ⇒ ได้กฎกลางของ [data-family]
-           มาครึ่งเดียว: คอลัมน์ชื่อเจ้าหน้าที่ไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
-           ถูกกฎกลาง (0,2,1) ทับ · หัววัน/ชื่อเจ้าหน้าที่เหลือ 9.5px จนเลขวันที่เป็นตัวเล็กสุด
-           ในหน้า · ตัวที่ตรึงคอลัมน์แรกคือ matrix · ชิดบนทั้งแถวคือ cells stacked */
-        <TableScroll family="matrix" cells="stacked" minWidth={900}>
-          <table className={styles.board}>
-            <thead>
-              <tr>
-                {/* ข้อความต้องอยู่ใน span — ที่ th โดนกฎหัวตารางกลางกดเหลือ 9.5px ข้างหัววัน 11.5px */}
-                <th scope="col" className={styles.techCol}><span className={styles.headLabel}>เจ้าหน้าที่</span></th>
-                {days.map((day) => (
-                  <th key={day.iso} scope="col" className={day.weekend ? styles.weekend : undefined}>
-                    <span className={styles.dayName}>{DAY_LABELS[day.date.getDay()]}</span>
-                    <span className={`${styles.dayNum} ${day.iso === todayIso ? styles.today : ""}`.trim()}>{day.date.getDate()}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {teamRows.map((row) => (
-                <tr key={row.key}>
-                  {/* ชื่อเจ้าหน้าที่กดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
-                      มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าเจ้าหน้าที่ (มติ 2026-08-02 ข้อ 2)
-                      แถว "ยังไม่มอบหมาย" ไม่มีเจ้าของ จึงไม่มีลิงก์ */}
-                  <th scope="row" className={styles.techCol}>
-                    {row.key === UNASSIGNED ? row.name : (
-                      <Link href={`/service/today?user=${encodeURIComponent(row.key)}`} className={styles.techLink}>
-                        {row.name}
-                      </Link>
-                    )}
-                  </th>
-                  {days.map((day) => {
-                    const cellVisits = sortByTime(row.visits.filter((v) => v.scheduledDate === day.iso));
-                    const loadKey = `${row.key}|${day.iso}`;
-                    const load = loads.get(loadKey);
-                    return (
-                      <td key={day.iso} className={day.weekend ? styles.weekend : undefined}>
-                        <div className={styles.cell}>
-                          {(overloaded(load) || crossRouteZone.has(loadKey)) && (
-                            <p className={styles.cellWarn}>
-                              <AlertTriangle size={12} aria-hidden="true" />
-                              {overloaded(load) ? workloadText(load) : null}
-                              {overloaded(load) && crossRouteZone.has(loadKey) ? " · " : null}
-                              {crossRouteZone.has(loadKey) ? "ข้ามเขต" : null}
-                            </p>
-                          )}
-                          {/* วันที่ยังไม่เกินภาระก็ต้องอ่านออกว่าหนักแค่ไหน — ไม่ใช่
-                              เห็นตัวเลขเฉพาะตอนที่สายไปแล้ว */}
-                          {!overloaded(load) && load?.assets > 0 && (
-                            <p className={styles.cellLoad}>{workloadText(load)}</p>
-                          )}
-                          {cellVisits.map((visit) => {
-                            const site = sitesById.get(visit.siteId);
-                            const warnings = visitWarnings(visit, { site, overlapIds });
-                            return (
-                              <button
-                                key={visit.id}
-                                type="button"
-                                className={`${styles.visitChip} ${styles[`kind_${visit.kind}`] || ""} ${visit.status === "cancelled" || visit.status === "rescheduled" ? styles.visitMuted : ""}`}
-                                onClick={() => setFormVisit(visit)}
-                                title={[
-                                  site?.name,
-                                  site?.routeZone,
-                                  VISIT_KIND_LABELS[visit.kind],
-                                  VISIT_STATUS_LABELS[visit.status],
-                                  ...warnings.map((w) => `⚠ ${w.message}`),
-                                ].filter(Boolean).join(" · ")}
-                              >
-                                <span className={styles.visitTime}>{visitTimeText(visit)}</span>
-                                <span className={styles.visitSite}>{site?.name || visit.siteId}</span>
-                                {/* งานที่ไปกันหลายคน — คนจัดคิวต้องเห็นว่านัดนี้กินเจ้าหน้าที่ไปกี่คน
-                                    ก่อนจะแจกงานอื่นให้คนที่ถูกดึงไปช่วยแล้ว */}
-                                {visit.assistantIds?.length > 0 && (
-                                  <span className={styles.visitCrew}>+{visit.assistantIds.length}</span>
-                                )}
-                                {warnings.length > 0 && <AlertTriangle size={11} aria-hidden="true" />}
-                              </button>
-                            );
-                          })}
-                          {/* 🔴 เดิมมีปุ่ม "+" อยู่ **ทุกช่องว่าง** ของกริด ซึ่งอ่านได้ว่า
-                              จิ้มตรงไหนก็สร้างงานได้ตามใจ — ขัดกติกา "TS ไม่ใช่ต้นทางของงาน"
-                              (มติผู้ใช้ 2026-08-28) · ถอดออกแล้ว การวางงานลงช่องจะมาจาก
-                              คิวรอจัดเท่านั้น ซึ่งแสดงเฉพาะร่างที่ผ่านด่านแล้ว */}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableScroll>
-      )}
+      {/* ⭐ ตาราง/รายการนัด = ListPanel (มติผู้ใช้ 2026-09-15) — ป้ายนับนัดที่มองเห็นหลังกรองทีม
+          · ตัวสลับ สัปดาห์/รายการ ขยับเฉพาะแผงนี้ ⇒ อยู่ในแถบเครื่องมือของแผง
+          · `loading` แทนที่เฉพาะเนื้อ — หัวแผงกับตัวสลับยืนอยู่ระหว่างเลื่อนสัปดาห์ */}
+      <ListPanel
+        icon={<CalendarDays size={17} aria-hidden="true" />}
+        title="ตารางนัดเข้าบริการ"
+        subtitle={view === "week"
+          ? "เจ้าหน้าที่ × วัน — กดนัดเพื่อเปิดดูหรือแก้"
+          : "เรียงตามวันแล้วตามเวลา — กดนัดเพื่อเปิดดูหรือแก้"}
+        /* 🐞 เดิมนับ boardVisits ทั้งฝ่าย — เลือกทีมที่ว่างแล้วกริดว่างแต่ยังบอก "1 นัด" */
+        count={loading || loadError ? null : `${visibleVisitCount} นัด`}
+        loading={loading}
+        toolbar={(
+          <>
+            <div className="spacer" />
+            <Segmented
+              value={view}
+              onChange={setView}
+              ariaLabel="มุมมองตาราง"
+              options={[
+                { value: "week", label: "สัปดาห์" },
+                { value: "list", label: "รายการ" },
+              ]}
+            />
+          </>
+        )}
+      >
+        {loadError && (
+          <StatusNotice tone="error" action={<Button size="sm" variant="ghost" onClick={() => load()}>ลองใหม่</Button>}>
+            {loadError}
+          </StatusNotice>
+        )}
 
-      {/* ⭐ มุมมองรายการ (F-6) — เรียงตามวันแล้วตามเวลา · ใช้ได้จริงบนจอแคบซึ่งกริด
-          สัปดาห์ทำไม่ได้ (ต้องเลื่อนสองแกน) · ข้อมูลชุดเดียวกับกริดทุกอย่าง
-          รวมทั้งตัวกรองทีมและการซ่อนร่าง */}
-      {!loading && !loadError && view === "list" && (
-        visibleVisitCount === 0 ? (
-          <EmptyState icon={CalendarDays}>{`${weekText}ยังไม่มีนัดเข้าบริการ`}</EmptyState>
+        {loadError || view !== "week" ? null : gridHasNoRows ? (
+          /* ไม่มีแถวเลย = ไม่มีทั้งเจ้าหน้าที่หน้างานและนัด — คนละเรื่องกับ "สัปดาห์นี้ว่าง"
+             ซึ่งเห็นได้จากแถวที่ว่างเปล่าอยู่แล้ว */
+          <EmptyState plain icon={CalendarDays}>
+            {thaiText(emptyGridTitle)}
+            {emptyGridHint && <small>{thaiText(emptyGridHint)}</small>}
+          </EmptyState>
         ) : (
-          <ul className={styles.listView}>
-            {days.map((day) => {
-              const dayVisits = sortByTime(
-                teamRows.flatMap((row) => row.visits.filter((v) => v.scheduledDate === day.iso)),
-              );
-              if (!dayVisits.length) return null;
-              return (
-                <li key={day.iso}>
-                  <h3 className={styles.listDay} data-today={day.iso === todayIso ? "yes" : undefined}>
-                    {DAY_LABELS[day.date.getDay()]} {day.date.getDate()} {fmtMonthShort(day.iso)}
-                    <span>{dayVisits.length} นัด</span>
-                  </h3>
-                  <ul className={styles.listRows}>
-                    {dayVisits.map((visit) => {
-                      const site = sitesById.get(visit.siteId);
-                      const warnings = visitWarnings(visit, { site, overlapIds });
-                      const load = workload[visit.siteId];
+          /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css
+             ไม่มีกฎของมันเลย และทั้งเว็บใช้ที่นี่ที่เดียว) ⇒ ได้กฎกลางของ [data-family]
+             มาครึ่งเดียว: คอลัมน์ชื่อเจ้าหน้าที่ไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
+             ถูกกฎกลาง (0,2,1) ทับ · หัววัน/ชื่อเจ้าหน้าที่เหลือ 9.5px จนเลขวันที่เป็นตัวเล็กสุด
+             ในหน้า · ตัวที่ตรึงคอลัมน์แรกคือ matrix · ชิดบนทั้งแถวคือ cells stacked */
+          <TableScroll family="matrix" cells="stacked" minWidth={900}>
+            <table className={styles.board}>
+              <thead>
+                <tr>
+                  {/* ข้อความต้องอยู่ใน span — ที่ th โดนกฎหัวตารางกลางกดเหลือ 9.5px ข้างหัววัน 11.5px */}
+                  <th scope="col" className={styles.techCol}><span className={styles.headLabel}>เจ้าหน้าที่</span></th>
+                  {days.map((day) => (
+                    <th key={day.iso} scope="col" className={day.weekend ? styles.weekend : undefined}>
+                      <span className={styles.dayName}>{DAY_LABELS[day.date.getDay()]}</span>
+                      <span className={`${styles.dayNum} ${day.iso === todayIso ? styles.today : ""}`.trim()}>{day.date.getDate()}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {teamRows.map((row) => (
+                  <tr key={row.key}>
+                    {/* ชื่อเจ้าหน้าที่กดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
+                        มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าเจ้าหน้าที่ (มติ 2026-08-02 ข้อ 2)
+                        แถว "ยังไม่มอบหมาย" ไม่มีเจ้าของ จึงไม่มีลิงก์ */}
+                    <th scope="row" className={styles.techCol}>
+                      {row.key === UNASSIGNED ? row.name : (
+                        <Link href={`/service/today?user=${encodeURIComponent(row.key)}`} className={styles.techLink}>
+                          {row.name}
+                        </Link>
+                      )}
+                    </th>
+                    {days.map((day) => {
+                      const cellVisits = sortByTime(row.visits.filter((v) => v.scheduledDate === day.iso));
+                      const loadKey = `${row.key}|${day.iso}`;
+                      const load = loads.get(loadKey);
                       return (
-                        <li key={visit.id}>
-                          <button type="button" className={styles.listRow} onClick={() => setFormVisit(visit)}>
-                            <span className={styles.listTime}>{visitTimeText(visit) || "ทั้งวัน"}</span>
-                            <span className={styles.listSite}>
-                              <b>{site?.name || visit.siteId}</b>
-                              <span>
-                                {VISIT_KIND_LABELS[visit.kind]}
-                                {site?.routeZone ? ` · ${site.routeZone}` : ""}
-                                {load?.assets ? ` · ${load.assets} เครื่อง` : ""}
-                              </span>
-                              {/* คำเตือนเคยอยู่ใน title= อย่างเดียว ซึ่งจอสัมผัสไม่มี — แถวรายการมีที่พอเขียนเต็ม */}
-                              {warnings.length > 0 && (
-                                <span className={styles.listWarn}>{warnings.map((w) => w.message).join(" · ")}</span>
-                              )}
-                            </span>
-                            <span className={styles.listWho}>
-                              {naText(visit.assigneeName)}
-                              {visit.assistantIds?.length > 0 ? ` +${visit.assistantIds.length}` : ""}
-                            </span>
-                            {warnings.length > 0 && <AlertTriangle size={13} aria-hidden="true" />}
-                          </button>
-                        </li>
+                        <td key={day.iso} className={day.weekend ? styles.weekend : undefined}>
+                          <div className={styles.cell}>
+                            {(overloaded(load) || crossRouteZone.has(loadKey)) && (
+                              <p className={styles.cellWarn}>
+                                <AlertTriangle size={12} aria-hidden="true" />
+                                {overloaded(load) ? workloadText(load) : null}
+                                {overloaded(load) && crossRouteZone.has(loadKey) ? " · " : null}
+                                {crossRouteZone.has(loadKey) ? "ข้ามเขต" : null}
+                              </p>
+                            )}
+                            {/* วันที่ยังไม่เกินภาระก็ต้องอ่านออกว่าหนักแค่ไหน — ไม่ใช่
+                                เห็นตัวเลขเฉพาะตอนที่สายไปแล้ว */}
+                            {!overloaded(load) && load?.assets > 0 && (
+                              <p className={styles.cellLoad}>{workloadText(load)}</p>
+                            )}
+                            {cellVisits.map((visit) => {
+                              const site = sitesById.get(visit.siteId);
+                              const warnings = visitWarnings(visit, { site, overlapIds });
+                              return (
+                                <button
+                                  key={visit.id}
+                                  type="button"
+                                  className={`${styles.visitChip} ${styles[`kind_${visit.kind}`] || ""} ${visit.status === "cancelled" || visit.status === "rescheduled" ? styles.visitMuted : ""}`}
+                                  onClick={() => setFormVisit(visit)}
+                                  title={[
+                                    site?.name,
+                                    site?.routeZone,
+                                    VISIT_KIND_LABELS[visit.kind],
+                                    VISIT_STATUS_LABELS[visit.status],
+                                    ...warnings.map((w) => `⚠ ${w.message}`),
+                                  ].filter(Boolean).join(" · ")}
+                                >
+                                  <span className={styles.visitTime}>{visitTimeText(visit)}</span>
+                                  <span className={styles.visitSite}>{site?.name || visit.siteId}</span>
+                                  {/* งานที่ไปกันหลายคน — คนจัดคิวต้องเห็นว่านัดนี้กินเจ้าหน้าที่ไปกี่คน
+                                      ก่อนจะแจกงานอื่นให้คนที่ถูกดึงไปช่วยแล้ว */}
+                                  {visit.assistantIds?.length > 0 && (
+                                    <span className={styles.visitCrew}>+{visit.assistantIds.length}</span>
+                                  )}
+                                  {warnings.length > 0 && <AlertTriangle size={11} aria-hidden="true" />}
+                                </button>
+                              );
+                            })}
+                            {/* 🔴 เดิมมีปุ่ม "+" อยู่ **ทุกช่องว่าง** ของกริด ซึ่งอ่านได้ว่า
+                                จิ้มตรงไหนก็สร้างงานได้ตามใจ — ขัดกติกา "TS ไม่ใช่ต้นทางของงาน"
+                                (มติผู้ใช้ 2026-08-28) · ถอดออกแล้ว การวางงานลงช่องจะมาจาก
+                                คิวรอจัดเท่านั้น ซึ่งแสดงเฉพาะร่างที่ผ่านด่านแล้ว */}
+                          </div>
+                        </td>
                       );
                     })}
-                  </ul>
-                </li>
-              );
-            })}
-          </ul>
-        )
-      )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
 
-      {/* ชิปนัดสื่อชนิดงานด้วยสีอย่างเดียว และรายละเอียดที่เหลืออยู่ใน `title=` ซึ่ง
-          บนจอสัมผัสไม่มีอยู่จริง — คำอธิบายสีจึงเป็นทางเดียวที่อ่านสีออกโดยไม่ต้องเปิดทีละใบ */}
-      {/* ไม่มีชิปบนจอ (ทีมที่เลือกไม่มีแถว/ไม่มีนัด) = ไม่มีอะไรให้คำอธิบายสี */}
-      {!loading && !loadError && view === "week" && !gridHasNoRows && visibleVisitCount > 0 && (
-        <ul className={styles.legend} aria-label="คำอธิบายสีของชนิดงาน">
-          {VISIT_KINDS.map((kind) => (
-            <li key={kind} className={styles.legendItem}>
-              <span className={`${styles.legendSwatch} ${styles[`kind_${kind}`] || ""}`} aria-hidden="true" />
-              {VISIT_KIND_LABELS[kind] || kind}
-            </li>
-          ))}
-        </ul>
-      )}
+        {/* ⭐ มุมมองรายการ (F-6) — เรียงตามวันแล้วตามเวลา · ใช้ได้จริงบนจอแคบซึ่งกริด
+            สัปดาห์ทำไม่ได้ (ต้องเลื่อนสองแกน) · ข้อมูลชุดเดียวกับกริดทุกอย่าง
+            รวมทั้งตัวกรองทีมและการซ่อนร่าง */}
+        {!loadError && view === "list" && (
+          visibleVisitCount === 0 ? (
+            <EmptyState plain icon={CalendarDays}>{`${weekText}ยังไม่มีนัดเข้าบริการ`}</EmptyState>
+          ) : (
+            <ul className={styles.listView}>
+              {days.map((day) => {
+                const dayVisits = sortByTime(
+                  teamRows.flatMap((row) => row.visits.filter((v) => v.scheduledDate === day.iso)),
+                );
+                if (!dayVisits.length) return null;
+                return (
+                  <li key={day.iso}>
+                    <h3 className={styles.listDay} data-today={day.iso === todayIso ? "yes" : undefined}>
+                      {DAY_LABELS[day.date.getDay()]} {day.date.getDate()} {fmtMonthShort(day.iso)}
+                      <span>{dayVisits.length} นัด</span>
+                    </h3>
+                    <ul className={styles.listRows}>
+                      {dayVisits.map((visit) => {
+                        const site = sitesById.get(visit.siteId);
+                        const warnings = visitWarnings(visit, { site, overlapIds });
+                        const load = workload[visit.siteId];
+                        return (
+                          <li key={visit.id}>
+                            <button type="button" className={styles.listRow} onClick={() => setFormVisit(visit)}>
+                              <span className={styles.listTime}>{visitTimeText(visit) || "ทั้งวัน"}</span>
+                              <span className={styles.listSite}>
+                                <b>{site?.name || visit.siteId}</b>
+                                <span>
+                                  {VISIT_KIND_LABELS[visit.kind]}
+                                  {site?.routeZone ? ` · ${site.routeZone}` : ""}
+                                  {load?.assets ? ` · ${load.assets} เครื่อง` : ""}
+                                </span>
+                                {/* คำเตือนเคยอยู่ใน title= อย่างเดียว ซึ่งจอสัมผัสไม่มี — แถวรายการมีที่พอเขียนเต็ม */}
+                                {warnings.length > 0 && (
+                                  <span className={styles.listWarn}>{warnings.map((w) => w.message).join(" · ")}</span>
+                                )}
+                              </span>
+                              <span className={styles.listWho}>
+                                {naText(visit.assigneeName)}
+                                {visit.assistantIds?.length > 0 ? ` +${visit.assistantIds.length}` : ""}
+                              </span>
+                              {warnings.length > 0 && <AlertTriangle size={13} aria-hidden="true" />}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        )}
+
+        {/* ชิปนัดสื่อชนิดงานด้วยสีอย่างเดียว และรายละเอียดที่เหลืออยู่ใน `title=` ซึ่ง
+            บนจอสัมผัสไม่มีอยู่จริง — คำอธิบายสีจึงเป็นทางเดียวที่อ่านสีออกโดยไม่ต้องเปิดทีละใบ */}
+        {/* ไม่มีชิปบนจอ (ทีมที่เลือกไม่มีแถว/ไม่มีนัด) = ไม่มีอะไรให้คำอธิบายสี */}
+        {!loadError && view === "week" && !gridHasNoRows && visibleVisitCount > 0 && (
+          <ul className={styles.legend} aria-label="คำอธิบายสีของชนิดงาน">
+            {VISIT_KINDS.map((kind) => (
+              <li key={kind} className={styles.legendItem}>
+                <span className={`${styles.legendSwatch} ${styles[`kind_${kind}`] || ""}`} aria-hidden="true" />
+                {VISIT_KIND_LABELS[kind] || kind}
+              </li>
+            ))}
+          </ul>
+        )}
+      </ListPanel>
 
       <ServiceVisitModal
         open={formVisit !== undefined}

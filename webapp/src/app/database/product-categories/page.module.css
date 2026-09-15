@@ -22,13 +22,8 @@
 .summary span { color: var(--text-3); font-size: var(--fs-6); font-weight: var(--fw-semibold); }
 .summary strong { color: var(--text); font-size: var(--fs-14); line-height: var(--lh-flat); font-variant-numeric: tabular-nums; }
 
-.panel { overflow: hidden; }
-.toolbar { display: flex; align-items: center; gap: var(--space-2-5); padding: var(--space-3); border-bottom: 1px solid var(--border); }
-.search { min-width: 260px; flex: 1; min-height: var(--ctl-h); display: flex; align-items: center; gap: var(--space-2); padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); color: var(--text-3); }
-.search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
-.search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); }
-.resultCount { color: var(--text-3); font-size: var(--fs-5); white-space: nowrap; }
-.empty { min-height: 220px; display: grid; place-items: center; color: var(--text-3); }
+/* 🗑️ .panel · .toolbar · .search · .resultCount · .empty ถูกลบ (2026-09-15) — รายการเป็น ListPanel แล้ว:
+   กรอบ/แถบเครื่องมือ/ช่องค้นหา .search-glass/ป้ายจำนวน/EmptyState plain เป็นของกลางทั้งหมด */
 
 .groupRow td { padding: 9px var(--space-3-5) !important; background: var(--panel-2); border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border); }
 .groupRow td strong { display: inline-flex; min-width: 34px; margin-right: var(--space-2); color: var(--accent-ink); font-family: var(--font-mono); }
@@ -69,12 +64,9 @@
 
 @media (max-width: 800px) {
   .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .toolbar { align-items: stretch; flex-wrap: wrap; }
-  .search { min-width: 100%; }
-  .toolbar select { flex: 1; min-height: 40px; }
-  .resultCount { align-self: center; }
   .desktopTable { display: none; }
-  .mobileList { display: flex; flex-direction: column; gap: var(--space-3-5); padding: var(--space-3); }
+  /* ไม่มี padding ของตัวเอง — เนื้อ ListPanel เว้นขอบให้แล้ว (เดิม glass-panel ไม่มีขอบใน) */
+  .mobileList { display: flex; flex-direction: column; gap: var(--space-3-5); }
   .mobileGroup { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
   .mobileGroup > header { display: flex; align-items: baseline; gap: var(--space-2); padding: var(--space-2-5) var(--space-3); background: var(--panel-2); border-bottom: 1px solid var(--border); }
   .mobileGroup > header strong { color: var(--accent-ink); font-family: var(--font-mono); }

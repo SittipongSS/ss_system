@@ -19,10 +19,10 @@ import {
 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
-import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
-import { WorkspaceSection } from "@/components/ui/Workspace";
+import { ListPanel } from "@/components/ui/Workspace";
 import { matchesQueueSearch, useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { fmtDate, fmtTime, NA } from "@/lib/format";
 import styles from "./requestForm.module.css";
@@ -69,11 +69,15 @@ export default function RequestQueuePanel({
   // ⚠️ ข้อความตอนว่างต้องพูดถึง **ชุดแถวที่ผู้เรียกส่งมา** — ภาพรวมฝ่ายส่งเฉพาะใบที่
   // ใกล้ถึงกำหนด 7 วัน ⇒ "ไม่มีคำร้องรอฝ่าย … ตอบ" ที่เป็นค่าตั้งต้นจะโกหก
   emptyText = null,
-  // ⭐ ห่อด้วยการ์ดที่มีหัวข้อ + จำนวน ตามต้นแบบ · ส่ง null เมื่อผู้เรียกห่อเองอยู่แล้ว
-  // (ภาพรวมฝ่ายวางพาเนลนี้ไว้ในหัวข้อ "ใกล้ถึงกำหนด…" ⇒ ซ้อนการ์ดสองชั้นไม่ได้)
+  /* ⭐ **วาด `ListPanel` ของตัวเองเสมอ** (มติผู้ใช้ 2026-09-15 · D1 = ใช่) — หัว (ไอคอน · ชื่อ ·
+     คำอธิบาย | ป้ายจำนวน) → แถบเครื่องมือ → ตาราง/การ์ด → Pager ในแผงเดียว
+     ⚠️ โหมด `sectionTitle={null}` (ไม่ห่อ ให้ผู้เรียกห่อเอง) ถูกถอดแล้ว — ห่อซ้ำ = แผงซ้อนแผง (ด่าน LP5)
+     · ภาพรวมฝ่าย (/rd) ส่งชื่อ "คิวถัดไป" มาให้พาเนลวาดหัวเอง */
   sectionTitle = "รายการคำร้อง",
   sectionSubtitle = "ค้นหา กรอง จัดกลุ่ม และติดตามทุกใบ",
   unit = "เรื่อง",
+  // ไอคอนหัวแผง — ตั้งต้นเป็นไอคอนของ "คำร้อง" (entityIcon) · คิวรายฝ่ายส่งไอคอนของฝ่ายมาเอง
+  icon = null,
   /* ⚠️ **ปิดเครื่องมือเมื่อพาเนลไม่ใช่รายการทั้งก้อน** — หน้าภาพรวมฝ่ายวางพาเนลนี้ไว้
      ในการ์ด "คิวถัดไป" ซึ่งส่งมาแค่ไม่กี่ใบที่คัดมาแล้ว · ให้กรอง/จัดกลุ่มซ้อนบนชุดที่
      คัดมาแล้วอีกชั้นคือการเชิญให้คนเข้าใจผิดว่านี่คือคิวทั้งหมด
@@ -82,23 +86,16 @@ export default function RequestQueuePanel({
   tools = "full",
   /* ชุดคอลัมน์ — ชื่อชุดในทะเบียน ("queue" · "linked") หรือระบุเป็นอาร์เรย์เอง */
   columns = "queue",
-  /* ปุ่มเพิ่มบนหัวการ์ด (ต่อจากป้ายจำนวน) — การ์ดบนหน้าดีลมีทางลัดเปิดคำร้องของตัวเอง */
+  /* ปุ่มของแผง (`ListPanel actions` · ซ้ายของป้ายจำนวน) — การ์ดบนหน้าดีลมีทางลัดเปิดคำร้องของตัวเอง ·
+     ภาพรวมฝ่ายวางตัวสลับมุมมอง + "เปิดคิวทั้งหมด" ไว้ที่นี่ (ข้อเท็จจริง F4 ของด่านทรงรายการ) */
   headerActions = null,
-  /* ⭐ `sectionHeader={false}` = ยังห่อการ์ด แต่ไม่วาดแถบหัวการ์ด (2026-09-07)
-
-     🐞 หน้าคิวเต็มหน้าทั้งสี่หน้าวาดหัวเรื่องซ้ำสองชั้น: หัวหน้าบอกว่า
-     "คำร้องข้ามฝ่าย" / "คิวคำร้องฝ่าย…" แล้วหัวการ์ดใต้ลงมาบอกว่า "รายการคำร้อง"
-     ด้วยไอคอนตัวเดียวกัน (MessageCircleQuestion) · ป้าย "N ใบ" บนหัวการ์ดก็ซ้ำกับ
-     Pager ใต้ตารางที่เขียน "ทั้งหมด N ใบ" อยู่แล้ว ⇒ แถบนี้ไม่ได้บอกอะไรใหม่เลย
-
-     กินความสูง 81px ซึ่งเป็นเงินก้อนใหญ่: วัดที่ /requests (1440×900) ของเหนือ
-     ตารางรวม 544px = 60% ของจอ ⇒ เปิดหน้ามาเห็นตารางไม่ถึงครึ่ง
-
-     ⚠️ **ไม่ใช่ค่าตั้งต้น** — การ์ดที่ฝังในหน้าดีล/โครงการ/ภาพรวมฝ่าย
-     (`tools="none"` / `false`) ไม่มี Pager และหัวการ์ดคือสิ่งเดียวที่บอกว่า
-     ก้อนนี้คืออะไร ถอดเมื่อไรกลายเป็นตารางลอย ๆ ไม่มีชื่อทันที
-     ⚠️ อย่าสับสนกับ `sectionTitle={null}` ซึ่งแปลว่า **ไม่ห่อการ์ดเลย** */
-  sectionHeader = true,
+  /* ⭐ ของท้ายแถบเครื่องมือจากหน้าแม่ — คิวเต็มหน้าส่ง `ViewSwitcher` มาที่นี่ (มติผู้ใช้ 2026-09-15)
+     🪤 ประวัติ: 2026-09-07 ถอดหัวการ์ดของคิวเต็มหน้า (`sectionHeader={false}`) เพราะหัวหน้ากับ
+     หัวการ์ดพูดซ้ำกันและกิน 81px · 2026-09-15 ผู้ใช้ตัดสินใหม่ "รายการทุกชุด = แผงเดียว" (D1 = ใช่)
+     ⇒ หัวแผงกลับมาและ `sectionHeader` ถูกถอด (ด่าน LP7) · ตัวสลับมุมมองย้ายจาก `headerRight`
+     ของหน้าลงมาอยู่แถบเดียวกับตัวกรองที่มันทำงานด้วย
+     ⚠️ วาดเฉพาะตอนมีแถบเครื่องมือ (`tools` ไม่ใช่ "none") — การ์ดฝังที่ไม่มีแถบใช้ `headerActions` */
+  toolbarEnd = null,
 }) {
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
@@ -588,17 +585,17 @@ export default function RequestQueuePanel({
   //   3 PATCH ส่ง → ออกเลขที่ + ลงเธรดคำร้อง/เธรดดีล + ยิงแจ้งเตือนคนที่ถูก @
   // ⚠️ ล้มกลางทางแล้ว **ไม่ rollback ร่างทิ้ง** — ของที่พิมพ์มายังอยู่ พาไปหน้า
   // รายละเอียดให้กดส่งเองได้ ดีกว่าลบแล้วให้พิมพ์ใหม่ทั้งใบ
-  const body = (
-    <>
-      {/* ── แถบเครื่องมือ — ค้นหา + ตัวกรองที่ใช้อยู่ (ต้นแบบหน้างานของฉัน) ──
-          ⭐ **ค้นหาเป็นของใหม่** (มติผู้ใช้ 2026-08-08) — คิวไม่เคยมีช่องค้นหาเลย
-          ทั้งที่พอมีเรื่องเกิน 20 ใบ การหา "ใบของลูกค้า A" ต้องกวาดตาเอง
-          ⚠️ ค้นจากสิ่งที่ตาเห็นในตารางเท่านั้น (`matchesQueueSearch`) */}
-      {showToolbar && (
-      <div className="toolbar">
+  /* ── แถบเครื่องมือ — ค้นหา + ตัวกรองที่ใช้อยู่ (ต้นแบบหน้างานของฉัน) ──
+     ⭐ **ค้นหาเป็นของใหม่** (มติผู้ใช้ 2026-08-08) — คิวไม่เคยมีช่องค้นหาเลย
+     ทั้งที่พอมีเรื่องเกิน 20 ใบ การหา "ใบของลูกค้า A" ต้องกวาดตาเอง
+     ⚠️ ค้นจากสิ่งที่ตาเห็นในตารางเท่านั้น (`matchesQueueSearch`)
+     ⭐ **ส่งเป็น fragment เข้า `toolbar` ของ ListPanel** (มติผู้ใช้ 2026-09-15) — แผงห่อ `.toolbar`
+     ให้เอง ห้ามห่อซ้ำ · หัวกับแถบยังอยู่ระหว่างโหลดใหม่ ⇒ ช่องค้นหาไม่หลุดโฟกัส */
+  const toolbar = !showToolbar ? null : (
+      <>
         <div className={`search-glass ${styles.searchBox}`}>
-          <Search size={18} color="var(--text-3)" />
-          <input autoComplete="off"
+          <Search size={18} color="var(--text-3)" aria-hidden="true" />
+          <input autoComplete="off" aria-label="ค้นหาคำร้อง"
             type="text" value={search} placeholder="ค้นหาเลขที่ / เรื่อง / ลูกค้า / ดีล…"
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -648,13 +645,28 @@ export default function RequestQueuePanel({
             </div>
           </>
         )}
-      </div>
-      )}
+        {/* ของท้ายแถบจากหน้าแม่ (`toolbarEnd`) — อยู่หลังตัวดันขวาเสมอ: ชุดเต็มมีคู่เรียงที่ดันขวาเอง
+            (margin-inline-start: auto) · ระดับค้นหาอย่างเดียวไม่มีคู่เรียง ⇒ วาง `.spacer` เอง */}
+        {toolbarEnd && (
+          <>
+            {!showTools && <div className="spacer" />}
+            {toolbarEnd}
+          </>
+        )}
+      </>
+  );
 
-      {loading ? (
-        <SkeletonRows rows={4} />
-      ) : loadError ? (
-        <div className={`glass-panel ${styles.loadError}`}>{loadError}</div>
+  const body = (
+    <>
+      {loadError ? (
+        /* โหลดรายการไม่สำเร็จ = ข้อความในเนื้อแผงพร้อมทางลองใหม่ (ต้นแบบ /sa/quotations · มติผู้ใช้
+           2026-09-15) — แทนกล่อง glass-panel สีแดงเดิมที่ไม่มีทางไปต่อ */
+        <StatusNotice
+          tone="error"
+          action={reload ? <Button size="sm" variant="ghost" onClick={() => reload()}>ลองใหม่</Button> : null}
+        >
+          {loadError}
+        </StatusNotice>
       ) : visibleRows.length === 0 ? (
         /* `plain` — อยู่ในการ์ดหัวข้อที่มีพื้นของตัวเองแล้ว 🐞 เดิมเป็นกรอบซ้อนกรอบ */
         <EmptyState icon={MessageCircleQuestion} plain>
@@ -768,7 +780,8 @@ export default function RequestQueuePanel({
           ))}
         </div>
       ) : (
-        <TableScroll cells="stacked">
+        /* โหลดใหม่ที่ยังมีแถวค้างอยู่ = ตารางไม่หาย แค่บอกว่ากำลังโหลด (แผงถอดเนื้อเฉพาะตอนยังไม่มีแถว) */
+        <TableScroll cells="stacked" aria-busy={loading || undefined}>
           {/* ⭐ **คอลัมน์มาจากทะเบียน ไม่ใช่เขียนตายในตาราง** (มติผู้ใช้ 2026-08-11 ·
               แบบ ข) — ของเดิมมีตารางคำร้องสองสำเนา: คิว 4 คอลัมน์กับการ์ดบนหน้า
               ดีล/โครงการ 6 คอลัมน์ · ใบเดียวกันจึงอ่านได้คนละเรื่องสองหน้า และใบ
@@ -844,8 +857,9 @@ export default function RequestQueuePanel({
 
       {/* ตัวแบ่งหน้า — เฉพาะคิวเต็มหน้า (การ์ดที่ฝังในหน้าดีล/โครงการ มีไม่กี่ใบ)
           ⚠️ `total` เป็นจำนวนหลังกรองทั้งหมด ไม่ใช่จำนวนในหน้านี้ — ตรงกับป้ายบนหัว
-          การ์ดที่นับ visibleRows เหมือนกัน ไม่งั้นสองเลขบนจอเดียวจะขัดกันเอง */}
-      {paged && pager.total > 0 ? (
+          แผงที่นับ visibleRows เหมือนกัน ไม่งั้นสองเลขบนจอเดียวจะขัดกันเอง
+          ⚠️ ซ่อนตอนโหลดไม่สำเร็จ — "ทั้งหมด N เรื่อง" ใต้ข้อความผิดพลาดอ่านขัดกันเอง */}
+      {paged && pager.total > 0 && !loadError ? (
         <Pager
           page={pager.page}
           pageCount={pager.pageCount}
@@ -859,27 +873,23 @@ export default function RequestQueuePanel({
     </>
   );
 
-  // ⭐ ห่อด้วยการ์ดหัวข้อ + ป้ายจำนวน ตามต้นแบบหน้างานของฉัน (มติผู้ใช้ 2026-08-08)
-  // ⚠️ ป้ายนับ **แถวที่เห็นจริงหลังกรอง** ไม่ใช่จำนวนที่โหลดมา — ไม่งั้นกรองแล้ว
-  // ตัวเลขบนหัวการ์ดจะขัดกับจำนวนแถวข้างล่างทันที
-  if (!sectionTitle) return body;
-  /* ไม่มีหัวการ์ด = ส่ง icon/title/actions เป็นว่างทั้งชุด `WorkspaceSection`
-     ข้ามบล็อก <header> ให้เอง (กฎ `(icon || title || actions)` ของมัน)
-     ⚠️ ห้ามส่ง actions มาทั้งที่ปิดหัว — แถบจะกลับมาโผล่เป็นแถวเปล่ามีแต่ปุ่ม */
-  if (!sectionHeader) return <WorkspaceSection>{body}</WorkspaceSection>;
+  // ⭐ แผงรายการแผงเดียว — หัว + ป้ายจำนวน + แถบเครื่องมือ + เนื้อ (มติผู้ใช้ 2026-09-15)
+  // ⚠️ ป้ายนับ **แถวที่เห็นจริงหลังกรอง รวมทุกหน้า** (= ยอดของ Pager) ไม่ใช่จำนวนที่โหลดมา —
+  //    ไม่งั้นกรองแล้วตัวเลขบนหัวแผงจะขัดกับจำนวนแถวข้างล่างทันที · ก่อนมีข้อมูลส่ง null ได้ขีด
+  // ⚠️ `loading` เข้าแผงเฉพาะตอนยังไม่มีแถวให้โชว์ — โหลดใหม่ที่มีแถวค้างใช้ aria-busy บนตาราง
+  //    (สลับขอบเขตแล้วตารางไม่หายวูบ) · หัวกับแถบเครื่องมือไม่ถูกถอดระหว่างโหลดทั้งสองแบบ
+  const waitingFirstRows = loading && !rows.length;
   return (
-    <WorkspaceSection
-      icon={<MessageCircleQuestion size={17} />}
+    <ListPanel
+      icon={icon || <MessageCircleQuestion size={17} aria-hidden="true" />}
       title={sectionTitle}
       subtitle={sectionSubtitle}
-      actions={(
-        <>
-          <span className="ui-badge">{visibleRows.length} {unit}</span>
-          {headerActions}
-        </>
-      )}
+      count={waitingFirstRows ? null : `${visibleRows.length} ${unit}`}
+      actions={headerActions}
+      toolbar={toolbar}
+      loading={waitingFirstRows}
     >
       {body}
-    </WorkspaceSection>
+    </ListPanel>
   );
 }

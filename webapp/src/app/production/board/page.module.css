@@ -1,30 +1,18 @@
 /* บอร์ดตารางผลิต: ไลน์ × วัน (P-3)
    ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
 .rangeLabel {
   line-height: var(--lh-thai);
   min-width: 200px;
   text-align: center;
 }
 
-.counts {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-3);
+/* ช่องเกินกำลัง ท้ายแถบเครื่องมือของแผง — ป้ายเล็กสีแดง ไม่ใช่หัวข้อ */
+.overCount {
+  color: var(--red);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
-  margin-inline-start: auto;
 }
-
-.overCount { color: var(--red); }
 
 .board {
   width: 100%;

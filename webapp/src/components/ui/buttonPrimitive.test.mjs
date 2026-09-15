@@ -107,7 +107,7 @@ test("audit:ui จับ btn+danger ได้ทุกลำดับคลา�
 test("หน้าต้นแบบครอบคลุม primitive ที่ต้องตัดสินใจ", () => {
   assert.match(PREVIEW, /variant="quiet"/);
   assert.match(PREVIEW, /variant="ghost"/);
-  assert.match(PREVIEW, /<TableShell/);
+  assert.match(PREVIEW, /<ListPanel[\s\S]{0,400}count=/);
   assert.match(PREVIEW, /StatusNotice/);
   assert.match(PREVIEW, /EmptyState/);
   // ห้ามผูกกับข้อมูลจริง — หน้านี้ต้องเปิดได้แม้ระบบหลังบ้านล่ม

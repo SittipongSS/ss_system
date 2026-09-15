@@ -22,11 +22,10 @@ import { businessDate } from "@/lib/businessDate";
 import Button from "@/components/ui/Button";
 import Segmented from "@/components/ui/Segmented";
 import EmptyState from "@/components/ui/EmptyState";
-import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
-import { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import {
   MY_QUEUE_KINDS, buildMyQueue, groupMyQueue, myQueueCounts,
 } from "@/lib/salesPlanning/myQueue";
@@ -203,21 +202,24 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           *อะไรเพิ่งเกิด* ซึ่งอ่านคู่กับคิวได้ ไม่ต้องเลื่อนลงไปหาที่ท้ายหน้า
           ⚠️ ยุบเป็นคอลัมน์เดียวที่ ≤1000px — ตารางคิวสามคอลัมน์ในครึ่งจอแคบอ่านไม่ออก */}
       <div className={styles.split}>
-      <WorkspaceSection
+      {/* ⚠️ **ตัวกรองของสองแผงต้องเป็นคอนโทรลเดียวกันและอยู่ระดับเดียวกัน** — เดิมคิวใช้
+          ปุ่มเรียงกันในตัวการ์ด ส่วนฟีดใช้ชิปข้อความบนหัวส่วน ⇒ ของที่ทำงานเหมือนกัน
+          สองอันบนจอเดียวหน้าตาคนละแบบ · ทั้งคู่เป็น `Segmented` (กติกา: สลับหน้า→Tabs,
+          กรองในหน้า→segmented) ใน `toolbar` ของ ListPanel เหมือนกัน (มติผู้ใช้ 2026-09-15)
+          ⚠️ ตัวเลขในชิปมาจากคิวก้อนเดียวกับตาราง ไม่ใช่นับใหม่
+          ⭐ **ป้ายจำนวนบนหัวแผงกลับมาแล้ว (มติ D4 2026-09-15)** — เดิมถอดเพราะมันนับ "หลังกรอง"
+          ส่วนชิปนับ "ก่อนกรอง" แล้วสองเลขที่ไม่เท่ากันวางชิดกัน · ทางออกของ D4: ไม่ได้เลือกชนิด =
+          `N รายการ` (เท่าชิป "ทั้งหมด") · เลือกชิปชนิดอยู่ = `N จาก M` บอกตรง ๆ ว่าเห็นส่วนไหนของทั้งหมด */}
+      <ListPanel
         className={styles.pane}
         bodyClassName={styles.paneBody}
-        icon={<ListTodo size={17} />}
+        icon={<ListTodo size={17} aria-hidden="true" />}
         title="คิวของฉัน"
         subtitle="ทุกอย่างที่รอคุณอยู่ — คำร้อง · ลีด · งาน · เอกสาร"
-      >
-        {/* ⚠️ **ตัวกรองของสองแผงต้องเป็นคอนโทรลเดียวกันและอยู่ระดับเดียวกัน** — เดิมคิวใช้
-            ปุ่มเรียงกันในตัวการ์ด ส่วนฟีดใช้ชิปข้อความบนหัวส่วน ⇒ ของที่ทำงานเหมือนกัน
-            สองอันบนจอเดียวหน้าตาคนละแบบ · ทั้งคู่เป็น `Segmented` (กติกา: สลับหน้า→Tabs,
-            กรองในหน้า→segmented) วางในแถบเครื่องมือของ body เหมือนกัน
-            ⚠️ ตัวเลขในชิปมาจากคิวก้อนเดียวกับตาราง ไม่ใช่นับใหม่ */}
-        {/* ⚠️ **ไม่มีป้ายจำนวนบนหัวแผงแล้ว** — มันนับ "หลังกรอง" ส่วนชิปนับ "ก่อนกรอง"
-            ⇒ สองเลขที่ไม่เท่ากันวางชิดกันบนหัวเดียว · ชิปที่เลือกอยู่บอกจำนวนของตัวเองแล้ว */}
-        <div className="toolbar">
+        count={loading ? null : kind ? `${shown.length} จาก ${counts.total}` : `${counts.total} รายการ`}
+        loading={loading}
+        skeletonRows={4}
+        toolbar={(
           <Segmented
             ariaLabel="กรองคิวตามชนิดงาน"
             value={kind || "all"}
@@ -230,10 +232,10 @@ export default function MyDashboardTab({ month, allMonths = false }) {
               })),
             ]}
           />
-        </div>
-
-        {loading ? <SkeletonRows rows={4} /> : shown.length === 0 ? (
-          <EmptyState icon={CheckCircle2}>
+        )}
+      >
+        {shown.length === 0 ? (
+          <EmptyState plain icon={CheckCircle2}>
             {kind ? "ไม่มีของค้างในชนิดนี้ — กดชิปซ้ำเพื่อดูทั้งหมด" : "ไม่มีของค้างของคุณตอนนี้"}
           </EmptyState>
         ) : (
@@ -300,16 +302,19 @@ export default function MyDashboardTab({ month, allMonths = false }) {
             </table>
           </TableScroll>
         )}
-      </WorkspaceSection>
+      </ListPanel>
 
-      <WorkspaceSection
+      <ListPanel
         className={styles.pane}
         bodyClassName={styles.paneBody}
-        icon={<Activity size={17} />}
+        icon={<Activity size={17} aria-hidden="true" />}
         title="รายการอัปเดตล่าสุด"
         subtitle="กิจกรรมจากดีลและงานที่คุณรับผิดชอบ"
-      >
-        <div className="toolbar">
+        /* ป้ายนับ "ทั้งชุดตามตัวกรอง" ไม่ใช่ชิ้นที่กางแล้ว (มติ D5 · spec §2 นับข้ามทุกหน้า)
+           ⇒ เท่ากับเลขบนชิปที่เลือก และไม่โตตามปุ่ม "ดูเพิ่มเติม" — เดิม `shownFeed.length` ขึ้น 8 ข้างชิป 32 */
+        count={loading ? null : `${feed.length} รายการ`}
+        loading={loading}
+        toolbar={(
           <Segmented
             ariaLabel="กรองรายการอัปเดต"
             value={filter}
@@ -321,17 +326,19 @@ export default function MyDashboardTab({ month, allMonths = false }) {
               { value: "urgent", label: "ด่วน", count: feedCounts.urgent, disabled: !feedCounts.urgent },
             ]}
           />
-        </div>
+        )}
+      >
         {/* ⚠️ **กดดูเพิ่มแล้วการ์ดต้องไม่สูงขึ้น** — ของที่โหลดมาเพิ่มไปต่อท้ายในกล่องที่
             เลื่อนเอง ไม่ใช่ยืดการ์ดจนดันคิวฝั่งซ้ายเสียแนว · ปุ่มอยู่นอกกล่องเลื่อน
-            จะได้ไม่ต้องไถลงไปหามัน */}
+            จะได้ไม่ต้องไถลงไปหามัน
+            ⚠️ ข้อความ "กำลังโหลดกิจกรรม..." ถอดแล้ว — ระหว่างโหลดแผงโชว์โครงกระดูกแทนเนื้อเอง */}
         <div className={styles.paneScroll}>
           <div className={styles.feed}>
             {shownFeed.map((item) => (item.feedType === "task"
               ? <TaskPost key={`task-${item.id}`} item={item} />
               : <DealPost key={`deal-${item.id}`} item={item} />))}
             {!feed.length && (
-              <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>
+              <div className={styles.empty}>ยังไม่มีกิจกรรมตามตัวกรองนี้</div>
             )}
           </div>
         </div>
@@ -342,7 +349,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
             </Button>
           </div>
         )}
-      </WorkspaceSection>
+      </ListPanel>
       </div>
     </div>
   );

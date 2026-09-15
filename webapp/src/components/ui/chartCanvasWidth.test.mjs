@@ -49,7 +49,5 @@ test("TableScroll เป็นพื้นข้อมูลเองเมื�
   const TABLE_CSS = src("./Table.module.css");
   assert.match(TABLE, /surface = "auto"/);
   assert.match(TABLE, /data-surface=\{surface\}/);
-  // TableShell มีการ์ดของตัวเองแล้ว ข้างในต้องไม่มีกรอบซ้อน
-  assert.match(TABLE, /<TableScroll family=\{family\} surface="embedded"/);
   assert.match(TABLE_CSS, /\[data-surface="auto"\][\s\S]{0,200}background: var\(--panel\)/);
 });

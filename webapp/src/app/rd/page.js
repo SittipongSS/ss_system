@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlarmClock, FlaskConical } from "lucide-react";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import { businessDate } from "@/lib/businessDate";
@@ -198,34 +198,31 @@ export default function RdOverviewPage() {
           (ผู้ใช้ทักเอง) · ใช้ `RequestQueuePanel` ตัวเดียวกันแล้วมันตามกันเองตลอดไป
           ⚠️ ปิดแถบตัวเลขในพาเนล — หน้านี้มีแถบของตัวเองข้างบนที่นับ **ทั้งฝ่าย**
           ส่วนของพาเนลจะนับเฉพาะแถวใกล้ถึงกำหนด ⇒ สองแถบป้ายเหมือนกันแต่คนละตัวเลข
-          ⚠️ ปิดปุ่มเปิดคำร้อง — คิวของฝ่ายเป็นที่ **ตอบ** ไม่ใช่ที่เปิด */}
-      <WorkspaceSection
-        title="คิวถัดไป"
-        subtitle="เรียงลำดับเดียวกับที่การ์ดข้างบนใช้เลือก — ห้าใบถัดไปหลังใบที่ชี้ไว้"
-        /* ⚠️ ตัวสลับมุมมองอยู่คู่กับตารางที่มันคุม — หน้านี้มีตารางเดียวและอยู่ในหัวข้อนี้
-           ต่างจากหน้าคิวที่ตารางเป็นเนื้อของทั้งหน้า ตัวสลับจึงขึ้นไปอยู่หัวการ์ดได้ */
-        actions={(
-          <div className="flex gap-3 items-center flex-wrap">
+          ⚠️ ปิดปุ่มเปิดคำร้อง — คิวของฝ่ายเป็นที่ **ตอบ** ไม่ใช่ที่เปิด
+          ⭐ **พาเนลวาดแผง "คิวถัดไป" เอง** (มติผู้ใช้ 2026-09-15 · รายการทุกชุด = แผงเดียว) — ของเดิม
+          ห่อ `WorkspaceSection` ไว้ข้างนอกแล้วส่ง `sectionTitle={null}` ให้พาเนลไม่ห่อซ้ำ · โหมดนั้นถูกถอดแล้ว */}
+      <RequestQueuePanel
+        scope="queue" dept={DEPT} rows={nextUp} board={board}
+        /* ⚠️ ไม่มีแถบกรอง/จัดกลุ่ม — พาเนลนี้ได้แค่ใบที่คัดมาแล้ว (คิวถัดไป)
+           กรองซ้อนบนของที่คัดมาแล้วจะอ่านเหมือนนี่คือคิวทั้งหมด */
+        tools={false}
+        icon={<FlaskConical size={17} aria-hidden="true" />}
+        sectionTitle="คิวถัดไป"
+        sectionSubtitle="เรียงลำดับเดียวกับที่การ์ดข้างบนใช้เลือก — ห้าใบถัดไปหลังใบที่ชี้ไว้"
+        /* ⚠️ ตัวสลับมุมมองอยู่คู่กับตารางที่มันคุม — หน้านี้มีตารางเดียวและอยู่ในแผงนี้
+           ⇒ อยู่ในปุ่มของแผง (`headerActions` → ListPanel actions · ข้อเท็จจริง F4 ของด่าน) */
+        headerActions={(
+          <>
             <ViewSwitcher
               value={board.view} onChange={board.setView}
               modes={["table", "list"]} ariaLabel="มุมมองคิวถัดไป"
             />
             <Button onClick={() => router.push("/rd/requests")}>เปิดคิวทั้งหมด</Button>
-          </div>
+          </>
         )}
-      >
-        {/* ⚠️ `sectionTitle={null}` — พาเนลอยู่ในการ์ด "ใกล้ถึงกำหนด…" อยู่แล้ว
-            ห่อซ้ำอีกชั้นจะได้การ์ดซ้อนการ์ด */}
-        <RequestQueuePanel
-          scope="queue" dept={DEPT} rows={nextUp} board={board}
-          /* ⚠️ ไม่มีแถบกรอง/จัดกลุ่ม — พาเนลนี้ได้แค่ใบที่คัดมาแล้ว (คิวถัดไป)
-             กรองซ้อนบนของที่คัดมาแล้วจะอ่านเหมือนนี่คือคิวทั้งหมด */
-          tools={false}
-          sectionTitle={null}
-          emptyText="ไม่มีใบอื่นรอ RD อยู่แล้ว — เหลือแค่ใบที่การ์ดข้างบนชี้ไว้"
-          loading={loading} loadError={loadError} reload={reload}
-        />
-      </WorkspaceSection>
+        emptyText="ไม่มีใบอื่นรอ RD อยู่แล้ว — เหลือแค่ใบที่การ์ดข้างบนชี้ไว้"
+        loading={loading} loadError={loadError} reload={reload}
+      />
 
       {/* ⭐ **"งานอยู่ที่ใคร"** (แบบ ก) — อยู่ **ใต้คิวถัดไป** เพราะคนที่เปิดหน้ามา
           ทำงานถามว่า "เริ่มที่ใบไหน" ก่อน · ตารางคนเป็นคำถามของหัวหน้า ซึ่งยอมให้

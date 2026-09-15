@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
 import { ReceiptText, Plus } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
+import Button from "@/components/ui/Button";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -27,7 +29,7 @@ export default function FilingsPage() {
   const router = useRouter();
   const canAct = useCan("sales:act");       // SA: create / receive / edit
 
-  const { data: orders, loading, reload } = useApiList("/api/orders");
+  const { data: orders, loading, error: loadError, reload } = useApiList("/api/orders");
 
   /* เลนของผู้ใช้ (SA / RA) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
      AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
@@ -151,11 +153,15 @@ export default function FilingsPage() {
     ? customerNameIn(customers.find((c) => c.id === customerIds[0]))
     : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
 
+  /* ⭐ ป้ายจำนวนย้ายจากหัวหน้าเข้าหัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9)
+     นับ **ใบที่เหลือหลังกรอง** = ยอดของ Pager · กำลังเลือกแถว = "เลือก x/y ใบ"
+     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด — ไม่ใช่ "0 ใบ" ที่อ่านว่าไม่มีงาน */
+  const noData = (loading || loadError) && !orders.length;
+  const count = noData ? null
+    : selected.size ? `เลือก ${selected.size}/${rows.length} ใบ` : `${rows.length} ใบ`;
+
   const headerRight = (
     <>
-      <span className="ui-badge">
-        {selected.size ? `เลือก ${selected.size}/${rows.length} รายการ` : `${orders.length} รายการ`}
-      </span>
       <ReportExportActions
         type="filing"
         params={exportParams}
@@ -177,8 +183,16 @@ export default function FilingsPage() {
       title="การยื่นชำระภาษีสรรพสามิต"
       subtitle="สร้างใบยื่น รับเงิน และยื่นชำระภาษีต่อกรมสรรพสามิต พร้อมบันทึกใบเสร็จ"
       headerRight={headerRight}
-      loading={loading}
-      toolbar={
+    >
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
+          แทนที่เฉพาะเนื้อ ⇒ ช่องค้นหา/ชิปยังอยู่ระหว่างโหลด ไม่หลุดโฟกัส */}
+      <ListPanel
+        icon={<ReceiptText size={17} aria-hidden="true" />}
+        title="รายการใบยื่นชำระภาษี"
+        subtitle="ค้นหา กรอง และเปิดใบยื่นเพื่อดำเนินการต่อ"
+        count={count}
+        loading={loading && !orders.length}
+        toolbar={(
         <FilterBar
           filters={filterOptions}
           activeFilter={filter}
@@ -186,6 +200,7 @@ export default function FilingsPage() {
           search={search}
           onSearch={setSearch}
           searchPlaceholder="ค้นหา Ref / PO / ลูกค้า / ใบเสร็จ..."
+          searchLabel="ค้นหาใบยื่นชำระภาษี"
         >
           <FilterPopover
             count={customerIds.length}
@@ -200,15 +215,31 @@ export default function FilingsPage() {
               onChange: setCustomerIds,
             }]}
           />
-          <label className={styles.rangeLabel}>
-            จาก <DateInput value={from} onChange={setFrom} />
-          </label>
-          <label className={styles.rangeLabel}>
-            ถึง <DateInput value={to} onChange={setTo} />
-          </label>
+          {/* จาก–ถึง เป็นก้อนเดียว — แถบเครื่องมือในแผงแคบกว่าเดิม ถ้าตัดบรรทัดต้องลงไปทั้งคู่
+              ไม่ใช่ "จาก" ค้างแถวบนแล้ว "ถึง" ห้อยแถวล่าง */}
+          <span className={styles.rangeGroup}>
+            <label className={styles.rangeLabel}>
+              จาก <DateInput value={from} onChange={setFrom} />
+            </label>
+            <label className={styles.rangeLabel}>
+              ถึง <DateInput value={to} onChange={setTo} />
+            </label>
+          </span>
         </FilterBar>
-      }
-    >
+        )}
+      >
+      {loadError && (
+        <StatusNotice
+          tone="error"
+          className="mb-4"
+          action={<Button size="sm" variant="ghost" onClick={() => reload()}>ลองใหม่</Button>}
+        >
+          {loadError}
+        </StatusNotice>
+      )}
+      {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด — สถานะว่าง "ยังไม่มีใบยื่น"
+          ใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง ซึ่งคนละเรื่องกับโหลดไม่ได้ */}
+      {!(loadError && !orders.length) && (
       <DataList
         columns={columns}
         rows={rows}
@@ -224,6 +255,8 @@ export default function FilingsPage() {
           : "ไม่พบรายการตามตัวกรองที่เลือก"}
         emptyIcon={ReceiptText}
       />
+      )}
+      </ListPanel>
 
       <SalesOrderFilingModal
         open={formOpen}

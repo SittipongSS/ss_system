@@ -12,7 +12,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Download, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
-import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canSeeDealKpi, defaultScope, hasTeam, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue";
@@ -954,9 +954,16 @@ export default function SalesPlanningPipelinePage() {
             />
           )}
 
-          <SaSection icon={<Handshake size={17} />} title="ไปป์ไลน์ดีล" subtitle="ค้นหา กรอง และติดตามทุกดีลในกระบวนการขาย" actions={<span className="ui-badge">{filteredDeals.length} ดีล</span>}>
-          <div className="toolbar">
-            <div className="search-glass" style={{ width: 280 }}>
+          {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวน = ดีลหลังค้นหา/กรอง
+              ทุกหน้า (เท่ายอดของ Pager) · เครื่องมือส่งเป็น fragment เข้า `toolbar` ห้ามห่อ .toolbar ซ้ำ */}
+          <ListPanel
+            icon={<Handshake size={17} aria-hidden="true" />}
+            title="ไปป์ไลน์ดีล"
+            subtitle="ค้นหา กรอง และติดตามทุกดีลในกระบวนการขาย"
+            count={`${filteredDeals.length} ดีล`}
+            toolbar={(
+          <>
+            <div className="search-glass">
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหารหัส / ดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
@@ -1032,8 +1039,9 @@ export default function SalesPlanningPipelinePage() {
               aria-label={sortDir === "asc" ? "เรียงจากน้อยไปมาก" : "เรียงจากมากไปน้อย"}
               icon={sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
             />
-          </div>
-
+          </>
+            )}
+          >
             <TableScroll aria-busy={loading} surface="auto"><table className="w-full text-sm">
               <thead>
                 <tr>
@@ -1098,7 +1106,7 @@ export default function SalesPlanningPipelinePage() {
               onPageSize={setPageSize}
             />
           )}
-        </SaSection>
+        </ListPanel>
       </div>
 
       {/* สร้างดีล = โมดัลกลางตัวเดียวกับฝั่งลีด (มติผู้ใช้ 2026-08-05) — ได้แท็บแทนการ์ด

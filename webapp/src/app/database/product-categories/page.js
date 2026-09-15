@@ -8,10 +8,10 @@ import { Download, Edit3, Plus, Power, PowerOff, Search, Tags, Trash2, Upload } 
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { Skeleton } from "@/components/ui/Skeleton";
+import EmptyState from "@/components/ui/EmptyState";
 import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { useRole } from "@/lib/roleContext";
 import { canManageProductCategories } from "@/lib/permissions";
@@ -269,29 +269,35 @@ export default function ProductCategoriesPage() {
         <div><span>พักใช้งาน</span><strong>{summary.inactive || 0}</strong></div>
       </section>
 
-      <section className={`glass-panel ${styles.panel}`}>
-        <div className={styles.toolbar}>
-          <label className={styles.search}>
-            <Search size={16} aria-hidden="true" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหารหัส ชื่อไทย ชื่ออังกฤษ หรือหมายเหตุ" aria-label="ค้นหาหมวดสินค้า" />
-          </label>
-          <Select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="กรองสถานะ">
-            <option value="active">กำลังใช้งาน</option>
-            <option value="all">ทุกสถานะ</option>
-            <option value="inactive">พักใช้งาน</option>
-          </Select>
-          <span className={styles.resultCount}>{groupedRows.reduce((sum, group) => sum + group.rows.length, 0)} รายการ</span>
-        </div>
-
-        {loading ? (
-          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} width={i % 2 ? "75%" : "100%"} />)}
-          </div>
-        ) : groupedRows.length === 0 ? (
-          <div className={styles.empty}>ไม่พบหมวดสินค้าตามเงื่อนไข</div>
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — เดิมเป็น glass-panel กับ
+          แถบค้นหา/ตัวนับที่หน้าเขียนเอง · ตัวนับย้ายเป็นป้ายจำนวน = หมวดรองที่เหลือหลังค้นหา/กรอง
+          (นับแถว ไม่นับกองหมวดหลัก) · ⚠️ `loading` เฉพาะตอนยังไม่มีแถว — โหลดใหม่หลังบันทึก
+          เก็บตารางไว้แล้วบอกด้วย aria-busy */}
+      <ListPanel
+        icon={<Tags size={17} aria-hidden="true" />}
+        title="รายการหมวดสินค้า"
+        subtitle="หมวดรองจัดกลุ่มตามหมวดหลัก — แก้ไข พักใช้ หรือลบได้จากแต่ละแถว"
+        count={loading && !items.length ? null : `${groupedRows.reduce((n, g) => n + g.rows.length, 0)} รายการ`}
+        loading={loading && !items.length}
+        toolbar={(
+          <>
+            <div className="search-glass">
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหารหัส ชื่อไทย ชื่ออังกฤษ หรือหมายเหตุ" aria-label="ค้นหาหมวดสินค้า" />
+            </div>
+            <Select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="กรองสถานะ">
+              <option value="active">กำลังใช้งาน</option>
+              <option value="all">ทุกสถานะ</option>
+              <option value="inactive">พักใช้งาน</option>
+            </Select>
+          </>
+        )}
+      >
+        {groupedRows.length === 0 ? (
+          <EmptyState plain icon={Tags}>ไม่พบหมวดสินค้าตามเงื่อนไข</EmptyState>
         ) : (
           <>
-            <TableScroll className={styles.desktopTable} family="list">
+            <TableScroll className={styles.desktopTable} family="list" aria-busy={loading}>
               <table className="premium-table">
                 <thead>
                   <tr>
@@ -349,7 +355,7 @@ export default function ProductCategoriesPage() {
             </div>
           </>
         )}
-      </section>
+      </ListPanel>
 
       <RecordDrawer
         open={!!drawer}

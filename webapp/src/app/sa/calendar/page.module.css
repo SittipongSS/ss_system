@@ -5,38 +5,13 @@
    (RAW_SPACING_CAP · RAW_RADIUS_CAP · RAW_OPACITY_CAP ใน scripts/audit-ui.mjs)
    ขนาดของกล่อง (min-height/max-width/grid-template-columns) ไม่ได้อยู่ในเพดานพวกนั้น */
 
-.bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-}
+/* ชื่อเดือนในแถบเครื่องมือของแผง — แถบเอง (.bar/.barRight) ถอดแล้ว: ListPanel ห่อ .toolbar ให้
+   และ error ของการโหลดเป็น StatusNotice ในเนื้อแผง (มติผู้ใช้ 2026-09-15) */
 .barTitle {
   font-size: var(--fs-9);
   font-weight: var(--fw-bold);
   min-width: 11ch;
   text-align: center;
-}
-.barRight {
-  margin-inline-start: auto;
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-/* แถบแจ้ง error — ประกาศเองที่นี่เพราะ `.form-error` ที่หลายหน้าเขียนกันอยู่
-   **ไม่มี selector อยู่จริงใน globals.css** (ข้อความออกมาเป็นตัวอักษรสีปกติ)
-   ไม่ยืมคลาสที่ตายแล้วมาใช้ต่อ และไม่ใช้ .glass-panel ซึ่งเพดานเต็มแล้ว */
-.error {
-  border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
-  background: color-mix(in srgb, var(--red) 10%, transparent);
-  color: var(--red);
-  border-radius: var(--radius);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-4);
-  font-size: var(--fs-5);
 }
 
 /* ── ตารางเดือน ───────────────────────────────────────────────────────── */

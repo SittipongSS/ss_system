@@ -21,14 +21,13 @@ import StatusSelect from "@/components/pm/StatusSelect";
 import Segmented from "@/components/ui/Segmented";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import EmptyState from "@/components/ui/EmptyState";
-import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { isSuperuser, isRdRole, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, defaultScope, pmTaskScopes, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -899,12 +898,7 @@ export default function TasksPage() {
       icon={<ListTodo size={22} />}
       title="งาน (Tasks)"
       subtitle={`มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้${me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}`}
-      headerRight={
-        <div className="flex gap-3 items-center flex-wrap">
-          <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "calendar", "matrix"]} />
-          {(canEdit || isRdRole(role)) && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
-        </div>
-      }
+      headerRight={(canEdit || isRdRole(role)) && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
     >
       <div className="flex flex-col gap-4">
 
@@ -991,12 +985,22 @@ export default function TasksPage() {
         })}
       </SaMetricStrip>
 
-      {/* ── แถบเครื่องมือ ── */}
-      <SaSection icon={<ListTodo size={17} />} title="รายการงาน" subtitle="ค้นหา กรอง และสลับมุมมองเพื่อติดตามงาน" actions={<span className="ui-badge">{visible.length} งาน</span>}>
-      <div className="toolbar">
-        <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
-          <Search size={18} color="var(--text-3)" />
-          <input autoComplete="off" type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      {/* ── รายการงาน = ListPanel ใบเดียว (มติผู้ใช้ 2026-09-15) ──
+          ป้ายจำนวน = งานที่ผ่านค้นหา/กรองทุกตัว = ยอดของ Pager · ยังโหลดไม่เสร็จ = ขีด ไม่ใช่ 0
+          · ตัวสลับมุมมองอยู่ใน actions ของแผง (F4) ไม่ใช่ท้าย toolbar — แถบนี้กว้างจนช่องค้นหาที่ยืดตอนโฟกัสดันแถวตกบรรทัดที่ 1024px
+          · `loading` แทนที่เฉพาะเนื้อ ⇒ ช่องค้นหากับตัวสลับยืนอยู่ระหว่างโหลดใหม่ ไม่หลุดโฟกัส */}
+      <ListPanel
+        icon={<ListTodo size={17} aria-hidden="true" />}
+        title="รายการงาน"
+        subtitle="ค้นหา กรอง และสลับมุมมองเพื่อติดตามงาน"
+        count={loading ? null : `${visible.length} งาน`}
+        loading={loading}
+        actions={<ViewSwitcher value={view} onChange={setView} modes={["list", "table", "calendar", "matrix"]} />}
+        toolbar={(
+      <>
+        <div className="search-glass">
+          <Search size={18} color="var(--text-3)" aria-hidden="true" />
+          <input autoComplete="off" type="text" aria-label="ค้นหางาน" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         {statusFilter !== "all" && (
           <button onClick={() => setStatusFilter("all")} className="btn sm">
@@ -1055,11 +1059,10 @@ export default function TasksPage() {
           options={SORT_OPTIONS.map((option) => ({ value: option.key, label: option.label }))}
         />
         <SortDirButton dir={sortDir} onToggle={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} />
-        </div>
-
-      {loading ? (
-        <SkeletonRows />
-      ) : view === "matrix" ? (
+      </>
+        )}
+      >
+      {view === "matrix" ? (
         /* ── Eisenhower matrix (สำคัญ × ด่วน) ── */
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px", alignItems: "start" }}>
           {MATRIX_QUADS.map((quad) => {
@@ -1134,7 +1137,7 @@ export default function TasksPage() {
           )}
         </div>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Plus} dashed onClick={canEdit ? openAdd : undefined}>
+        <EmptyState plain icon={Plus} dashed onClick={canEdit ? openAdd : undefined}>
           {statusFilter !== "all" || q || assigneeFilter.length || categoryFilter.length
             ? "ไม่มีงานตรงกับตัวกรองนี้"
             : canEdit
@@ -1228,7 +1231,7 @@ export default function TasksPage() {
           })}
         </div>
       )}
-      {!loading && !["matrix", "calendar"].includes(view) && visible.length > 0 && (
+      {!loading && !["matrix", "calendar"].includes(view) && visible.length > 0 && !buckets && (
         <Pager
           page={page}
           pageCount={pageCount}
@@ -1238,7 +1241,7 @@ export default function TasksPage() {
           onPageSize={setPageSize}
         />
       )}
-      </SaSection>
+      </ListPanel>
 
       {/* task modal */}
       <TaskFormModal

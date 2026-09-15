@@ -113,7 +113,7 @@ function bindingsByModule(source) {
 }
 
 /* ⚠️ ผ่าน/ตกต้องวัด "ระดับโมดูล" ไม่ใช่ "ระดับชื่อ export" — ไม่งั้น Table (หน้าใช้
-   TableShell/TableScroll/TableEmpty) · DetailPage (ContextCard/DetailCard/DetailPageLayout)
+   TableScroll/TableEmpty/TableGroupRow) · DetailPage (ContextCard/DetailCard/DetailPageLayout)
    · ActionButtons (ActionBar/ActionButton) · Skeleton (SkeletonRows) จะตกทั้งที่อยู่บนหน้าจริง */
 function rendersModule(names) {
   return names.some((name) => (

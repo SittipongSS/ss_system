@@ -20,10 +20,12 @@
 //   ปุ่มออกแล้ว ⇒ ปุ่มที่กดแล้วไม่มีอะไรเกิดขึ้นแย่กว่าไม่มีปุ่ม · ตัวเลข "ประเมินแล้ว
 //   ยังไม่ขาย" ยังอยู่ครบ เพราะนั่นคือของที่ชูจริง (กรณี ④ ของเมทริกซ์เจ็ดกรณี)
 import Link from "next/link";
-import { CheckCircle2, Layers, MapPin, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Layers, MapPin, MessageCircleQuestion, TriangleAlert } from "lucide-react";
 import RegistryBadge from "@/components/ui/StatusBadge";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
-import { TableShell } from "@/components/ui/Table";
+import { DetailCard } from "@/components/ui/DetailPage";
+import EmptyState from "@/components/ui/EmptyState";
+import { TableScroll } from "@/components/ui/Table";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/requests/statuses";
 import { siteRefillBadge } from "@/lib/service/refill";
 import { floorLabel } from "@/lib/service/zoneCode";
@@ -100,46 +102,53 @@ export default function CustomerZonesPanel({
       {sites.map((site) => {
         const ops = opsById.get(site.id);
         const refill = ops ? siteRefillBadge(ops.refill) : null;
+        /* ⭐ หนึ่งสถานที่ = หนึ่ง DetailCard + TableScroll ตรง ๆ (มติผู้ใช้ 2026-09-15 · ถอด TableShell)
+           ท่าเดียวกับตารางในหน้า /service/sites/[id] · จำนวนพื้นที่ย้ายจากป้ายมาเป็นบรรทัด meta
+           ⚠️ ที่อยู่/เขตวิ่งงาน และสรุปปฏิบัติการยังอยู่ครบในบรรทัด meta — ห้ามหายตอนย้ายทรง */
+        const placeLine = [`${site.zoneCount} พื้นที่`, site.code, site.address, site.routeZone ? `เขตวิ่งงาน ${site.routeZone}` : null]
+          .filter(Boolean).join(" · ");
         return (
-          <section key={site.id} className={styles.site}>
-            <header className={styles.siteHead}>
-              <div>
-                <h3>
-                  {/* 🔴 ลิงก์เฉพาะคนที่เปิดได้จริง — `/service/sites/[id]` อ่านด้วย
-                      `canViewService` ⇒ AE กดแล้วเจอ "โหลดข้อมูลไซต์ไม่สำเร็จ"
-                      ลิงก์ที่พาไปหน้าที่กดไม่เข้า แย่กว่าไม่มีลิงก์ */}
-                  {canOpenSite
-                    ? <Link href={`/service/sites/${site.id}`} className="linklike">{naText(site.name)}</Link>
-                    : naText(site.name)}
-                </h3>
-                <p>
-                  {[site.code, site.address, site.routeZone ? `เขตวิ่งงาน ${site.routeZone}` : null]
-                    .filter(Boolean).join(" · ") || naText(null)}
-                </p>
+          <DetailCard
+            key={site.id}
+            icon={MapPin}
+            title={
+              /* 🔴 ลิงก์เฉพาะคนที่เปิดได้จริง — `/service/sites/[id]` อ่านด้วย
+                 `canViewService` ⇒ AE กดแล้วเจอ "โหลดข้อมูลไซต์ไม่สำเร็จ"
+                 ลิงก์ที่พาไปหน้าที่กดไม่เข้า แย่กว่าไม่มีลิงก์ */
+              canOpenSite
+                ? <Link href={`/service/sites/${site.id}`} className="linklike">{naText(site.name)}</Link>
+                : naText(site.name)
+            }
+            meta={(
+              <>
+                {placeLine}
                 {/* สรุปฝั่งปฏิบัติการ — ของที่แท็บ "ไซต์บริการ" เดิมเคยตอบ */}
                 {ops && (
-                  <p>
+                  <span className={styles.metaLine}>
                     {[
                       `เครื่อง ${ops.activeAssetCount ?? 0} ตัว`,
                       ops.nextVisitDate ? `เข้าครั้งหน้า ${fmtDate(ops.nextVisitDate)}` : "ยังไม่มีนัดครั้งหน้า",
                     ].join(" · ")}
-                  </p>
+                  </span>
                 )}
-              </div>
-              <span className={styles.siteTags}>
+              </>
+            )}
+            actions={site.isActive === false || refill ? (
+              <>
                 {site.isActive === false && <RegistryBadge tone="neutral" label="ปิดใช้งาน" />}
                 {/* น้ำหอมใกล้หมด — ของที่แท็บ "ไซต์บริการ" เดิมเคยเตือน ต้องไม่หายไป
                     ตอนยุบสองแท็บเข้าด้วยกัน (นั่นคือของที่ TS ใช้จริงทุกวัน) */}
                 {refill && <RegistryBadge tone={refill.tone} label={refill.label} />}
-                <RegistryBadge tone="info" label={`${site.zoneCount} พื้นที่`} />
-              </span>
-            </header>
-
+              </>
+            ) : null}
+          >
             {site.zoneCount === 0 ? (
-              /* สาขาที่ยังไม่มีพื้นที่ต้องอยู่ในลิสต์ — ตัดออกแล้วจอจะอ่านว่าลูกค้าไม่มีสาขานี้ */
-              <p className={styles.state}>ยังไม่มีพื้นที่ในสถานที่นี้ — เปิดใบประเมินเพื่อให้ฝ่ายบริการเข้าไปวัด</p>
+              /* สาขาที่ยังไม่มีพื้นที่ต้องอยู่ในลิสต์ — ตัดออกแล้วจอจะอ่านว่าลูกค้าไม่มีสาขานี้
+                 EmptyState plain ในเนื้อการ์ด (ท่าเดียวกับ /service/sites/[id]) — ห้ามใช้ .state
+                 ซึ่งมีระยะขอบของตัวเอง เพราะเนื้อ DetailCard เว้นขอบให้แล้ว = ขอบซ้อนสองชั้น */
+              <EmptyState plain icon={Layers}>ยังไม่มีพื้นที่ในสถานที่นี้ — เปิดใบประเมินเพื่อให้ฝ่ายบริการเข้าไปวัด</EmptyState>
             ) : (
-              <TableShell minWidth={880}>
+              <TableScroll minWidth={880}>
                 <table>
                   <thead>
                     <tr>
@@ -229,20 +238,20 @@ export default function CustomerZonesPanel({
                     })}
                   </tbody>
                 </table>
-              </TableShell>
+              </TableScroll>
             )}
-          </section>
+          </DetailCard>
         );
       })}
 
       {history.length > 0 && (
-        <section className={styles.site}>
-          <header className={styles.siteHead}>
-            <div>
-              <h3>ประวัติการประเมิน</h3>
-              <p>พื้นที่เดียววัดได้หลายรอบ ผลเก่าไม่ถูกทับ · หนึ่งใบครอบหนึ่งสถานที่</p>
-            </div>
-          </header>
+        /* แถวในการ์ดนี้คือ **ใบคำร้อง** (ลิงก์ /requests/[id]) ⇒ ไอคอนของคำร้อง
+           ⚠️ ไม่ใช่ ClipboardList — ตัวนั้นเป็นของใบสั่งขาย (มติไอคอน entityIcon.test) */
+        <DetailCard
+          icon={MessageCircleQuestion}
+          title="ประวัติการประเมิน"
+          meta="พื้นที่เดียววัดได้หลายรอบ ผลเก่าไม่ถูกทับ · หนึ่งใบครอบหนึ่งสถานที่"
+        >
           <ol className={styles.timeline}>
             {history.map((row) => (
               <li key={row.id}>
@@ -269,7 +278,7 @@ export default function CustomerZonesPanel({
               </li>
             ))}
           </ol>
-        </section>
+        </DetailCard>
       )}
     </div>
   );

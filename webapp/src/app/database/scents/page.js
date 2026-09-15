@@ -17,12 +17,11 @@ import { useSearchParams } from "next/navigation";
 import {
   Check, Coins, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore,
 } from "lucide-react";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import { useResponsiveView } from "@/lib/useResponsiveView";
-import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -427,7 +426,16 @@ export default function ScentsPage() {
         </StatusNotice>
       )}
 
-      <div className="toolbar">
+      {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — แถบแจ้งร่างอยู่เหนือแผง
+          ⚠️ `loading` เฉพาะตอนยังไม่มีแถว — reload หลังบันทึกเก็บตาราง/การ์ดไว้แล้วบอกด้วย aria-busy */}
+      <ListPanel
+        icon={<FlaskConical size={17} aria-hidden="true" />}
+        title="รายการกลิ่น"
+        subtitle="ค้นหา กรอง และเปิดกลิ่นเพื่อดูลูกค้า วันที่ส่ง และราคา F"
+        count={(loading && !scents.length) || loadError ? null : `${visible.length} กลิ่น`}
+        loading={loading && !scents.length}
+        toolbar={(
+        <>
         {/* .search-glass เป็น "กล่องครอบ" (flex + gap ไว้วางไอคอน) ไม่ใช่คลาสของ input —
             ใส่ที่ input ตรง ๆ จะได้ช่องที่ไม่มีแว่นขยาย เหมือนหน้าลูกค้า/สินค้าที่ทำถูก */}
         <div className="search-glass">
@@ -473,14 +481,15 @@ export default function ScentsPage() {
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
           รีเฟรช
         </Button>
-      </div>
-
-      {loading ? (
-        <SkeletonRows rows={5} />
-      ) : loadError ? (
-        <StatusNotice tone="error">{loadError}</StatusNotice>
+        </>
+        )}
+      >
+      {loadError ? (
+        <StatusNotice tone="error" action={<Button size="sm" variant="ghost" onClick={reload}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
       ) : visible.length === 0 ? (
-        <EmptyState icon={FlaskConical}>
+        <EmptyState plain icon={FlaskConical}>
           {scents.length === 0
             ? "ทะเบียนยังว่าง — กด \"เพิ่มกลิ่น\" เพื่อเริ่ม"
             : "ไม่มีกลิ่นที่ตรงกับตัวกรอง"}
@@ -561,7 +570,7 @@ export default function ScentsPage() {
               })}
             </div>
           ) : (
-          <TableScroll cells="stacked">
+          <TableScroll cells="stacked" aria-busy={loading}>
             <table>
               <thead>
                 <tr>
@@ -716,6 +725,7 @@ export default function ScentsPage() {
           />
         </>
       )}
+      </ListPanel>
 
       {/* เพิ่ม / แก้ไข — ฟอร์มเดียวสองโหมด (กฎ AGENTS.md) */}
       {/* ปุ่มอยู่ใน prop `footer` = โซน .drawer-footer ของโครงโมดัล (ชิดขวา + gap

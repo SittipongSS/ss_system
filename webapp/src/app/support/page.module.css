@@ -3,12 +3,6 @@
    900 · 1000 · 1200) — ห้ามคิดค่าใหม่ · ต่ำกว่านั้นตารางกลายเป็นการ์ด เพราะคิวนี้
    เปิดจากมือถือบ่อย และตารางที่เลื่อนแนวนอนอ่านสถานะไม่ทัน */
 
-.error {
-  margin: 0 0 var(--space-4);
-  color: var(--red);
-  font-size: var(--fs-7);
-}
-
 .colStatus { width: 168px; }
 .colCode { width: 122px; }
 .colImpact { width: 132px; }

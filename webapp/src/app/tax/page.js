@@ -237,13 +237,8 @@ export default function TaxDashboard() {
           )}
         </section>
 
-        {/* Action queue */}
-        <section>
-          <div className={styles.queueHead}>
-            งานของฉันตอนนี้ {queue.length > 0 && <span className="ui-badge danger">{queue.length}</span>}
-          </div>
-          <WorkQueue items={queue} />
-        </section>
+        {/* Action queue — WorkQueue วาดแผงรายการ (หัว · ป้ายจำนวน) ของตัวเอง (มติผู้ใช้ 2026-09-15) */}
+        <WorkQueue items={queue} />
       </div>
     </Workspace>
   );

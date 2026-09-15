@@ -20,13 +20,11 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
 import RowActionMenu from "@/components/ui/RowActionMenu";
-import SkeletonRows from "@/components/ui/Skeleton";
-import CountBadge from "@/components/ui/CountBadge";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Segmented from "@/components/ui/Segmented";
 import Tag from "@/components/ui/Tag";
-import Workspace, { MetricStrip, Metric, WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, MetricStrip, Metric } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { SortMenu, SortDirButton } from "@/components/ui/ViewMenus";
 import DetailRow from "@/components/ui/DetailRow";
@@ -190,12 +188,13 @@ export default function TeamManager({ department, title, subtitle }) {
         </Button>
       ) : null}
     >
-      {loadError && <StatusNotice tone="error" role="alert">{loadError}</StatusNotice>}
-
-      {loading ? <SkeletonRows rows={5} /> : loadError ? null : (
-        <>
-          {/* ⭐ แถบตัวเลข = สิ่งที่หัวหน้าต้องจัดการก่อน · สองใบขวากดแล้วกรองได้จริง
-              (ตัวเลขที่กดไม่ได้ทำให้คนถามว่า "แล้วคนที่ยังไม่มีทีมอยู่ไหน") */}
+      {/* ⭐ แผงรายการสองใบ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — เดิม
+          `loading ? <SkeletonRows/> : …` ถอดทั้งหน้ารวมช่องค้นหา ⇒ หัวแผง/แถบเครื่องมืออยู่ตลอด
+          แผงแทนที่เฉพาะเนื้อด้วย skeleton · โหลดพังแจ้งในเนื้อแผงทะเบียนพร้อมทางลองใหม่
+          ⚠️ แถบตัวเลขรอข้อมูลก่อน — เลข 0 ระหว่างโหลดอ่านเป็น "ไม่มีคนค้าง" */}
+      {!loading && !loadError && (
+          /* ⭐ แถบตัวเลข = สิ่งที่หัวหน้าต้องจัดการก่อน · สองใบขวากดแล้วกรองได้จริง
+              (ตัวเลขที่กดไม่ได้ทำให้คนถามว่า "แล้วคนที่ยังไม่มีทีมอยู่ไหน") */
           <MetricStrip>
             <Metric icon={<Users size={16} aria-hidden="true" />} label="ทีมที่ใช้งาน"
               value={fmtNumber(activeCount)}
@@ -214,17 +213,21 @@ export default function TeamManager({ department, title, subtitle }) {
               value={fmtNumber(noLeadCount)} note="กดเพื่อกรอง" active={needLead}
               onClick={() => setNeedLead((v) => !v)} />
           </MetricStrip>
+      )}
 
-          <WorkspaceSection
-            className={styles.countHeader}
+          <ListPanel
             /* ไอคอนหัว section = 17 ทั้งโมดูล (ขนาดเดียวกับหน้าภาพรวม /service และ DetailCard)
                🐞 เดิม 18 ⇒ หัวข้อเริ่มคนละระยะกับหน้าพี่น้อง */
             icon={<Users size={17} aria-hidden="true" />}
             title="ทะเบียนทีม"
-            actions={<CountBadge count={rows.length} label="จำนวนทีมที่แสดง" />}
-          >
-            {/* ลำดับแถบเครื่องมือเป็นข้อตกลงของเว็บ: ค้นหา · ตัวกรอง · (ดันขวา) เรียง */}
-            <div className="toolbar">
+            subtitle="เปิดหน้าทีมเพื่อจัดสมาชิกและหัวหน้าทีม"
+            /* ป้ายจำนวน = ทีมที่เหลือหลังค้นหา/กรอง (เดิม CountBadge ใน actions) */
+            count={loading || loadError ? null : `${fmtNumber(rows.length)} ทีม`}
+            loading={loading}
+            skeletonRows={5}
+            /* ลำดับแถบเครื่องมือเป็นข้อตกลงของเว็บ: ค้นหา · ตัวกรอง · (ดันขวา) เรียง */
+            toolbar={(
+            <>
               <div className="search-glass">
                 <Search size={16} color="var(--text-3)" aria-hidden="true" />
                 <input autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)}
@@ -239,10 +242,16 @@ export default function TeamManager({ department, title, subtitle }) {
                 <SortMenu value={sortKey} onChange={setSortKey} options={SORTS} defaultValue="order" />
                 <SortDirButton dir={dir} onToggle={() => setDir((d) => (d === "asc" ? "desc" : "asc"))} />
               </div>
-            </div>
-
-            {rows.length === 0 ? (
-              <EmptyState icon={Users}>
+            </>
+            )}
+          >
+            {loadError ? (
+              <StatusNotice tone="error" className="mb-4"
+                action={<Button size="sm" variant="ghost" onClick={() => reg.reload()}>ลองใหม่</Button>}>
+                {loadError}
+              </StatusNotice>
+            ) : rows.length === 0 ? (
+              <EmptyState plain icon={Users}>
                 {teams.length === 0
                   ? (canManage ? "ฝ่ายนี้ยังไม่มีทีม — สร้างทีมแรกได้ที่ปุ่มมุมขวาบน" : "ฝ่ายนี้ยังไม่มีทีม")
                   : "ไม่มีทีมที่ตรงกับที่กรองไว้ — ลองล้างคำค้นหรือสลับสถานะ"}
@@ -335,16 +344,20 @@ export default function TeamManager({ department, title, subtitle }) {
                 </table>
               </TableScroll>
             )}
-          </WorkspaceSection>
+          </ListPanel>
 
           {/* ⭐ ถังนี้ต้องมีเสมอแม้ว่าง — ถังที่หายไปคือคนที่หายไปจากสายตา
               ⚠️ ตั้งแต่ /users ถอดช่องทีมออก (2026-09-06) **ที่นี่คือทางเดียว**
-                 ที่บัญชีขายเปิดใหม่จะถูกจัดเข้าทีม */}
-          <WorkspaceSection
-            className={styles.countHeader}
+                 ที่บัญชีขายเปิดใหม่จะถูกจัดเข้าทีม
+              ⚠️ โหลดพังไม่วาดถังนี้ — ถังว่างจะบอก "ทุกคนอยู่ทีมครบแล้ว" ทั้งที่ยังไม่รู้ */}
+          {!loadError && (
+          <ListPanel
             id="unassigned"
             icon={<UserRound size={17} aria-hidden="true" />}
             title="ยังไม่อยู่ทีมไหน"
+            count={loading ? null : `${fmtNumber(unassigned.length)} คน`}
+            loading={loading}
+            skeletonRows={3}
             /* ⚠️ **คำอธิบายต้องตรงกับความหมายของทีมในฝ่ายนั้น** — ทีมขายผูกสิทธิ์
                (ไม่มีทีม = ไม่เห็นข้อมูล) ส่วนทีมปฏิบัติงานไม่แตะสิทธิ์เลย
                🐞 ของเดิมเขียนข้อความของทีมขายไว้ตายตัว ⇒ บนจอฝ่ายบริการมันขัดกับ
@@ -353,7 +366,6 @@ export default function TeamManager({ department, title, subtitle }) {
             subtitle={department === SALES_TEAM_DEPARTMENT
               ? "คนของฝ่ายนี้ที่ยังไม่ถูกจัดเข้าทีม — คนที่ไม่มีทีมจะไม่เห็นข้อมูลของทีมไหนเลย"
               : "คนของฝ่ายนี้ที่ยังไม่ถูกจัดเข้าทีม — จัดคนเข้าทีมได้ที่หน้าทีม ปุ่ม “จัดสมาชิก”"}
-            actions={<CountBadge count={unassigned.length} tone={unassigned.length ? "warning" : "neutral"} label="จำนวนคนที่ยังไม่อยู่ทีมไหน" />}
           >
             {unassigned.length === 0 ? (
               <EmptyState icon={UserRound} plain className={styles.emptyCompact}>ทุกคนในฝ่ายอยู่ทีมครบแล้ว</EmptyState>
@@ -387,9 +399,8 @@ export default function TeamManager({ department, title, subtitle }) {
                 })}
               </ul>
             )}
-          </WorkspaceSection>
-        </>
-      )}
+          </ListPanel>
+          )}
 
       {/* ── สร้างทีม — ฟอร์มตัวเดียวกับตอนแก้ (TeamFormFields) ───────────── */}
       <Modal open={!!draft} onClose={() => setDraft(null)} title="สร้างทีม"

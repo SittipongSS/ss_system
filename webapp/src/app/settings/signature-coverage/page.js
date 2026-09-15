@@ -11,12 +11,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Signature, AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { ROLE_LABELS } from "@/lib/permissions";
-import { canViewSignatureCoverage, isGoLiveReady } from "@/lib/admin/signatureCoverage";
+import { canViewSignatureCoverage } from "@/lib/admin/signatureCoverage";
 import { accessState } from "@/lib/accessGate";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import AccessDenied from "@/components/ui/AccessDenied";
 import SkeletonRows from "@/components/ui/Skeleton";
-import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import { naText } from "@/lib/format";
@@ -110,8 +110,6 @@ export default function SignatureCoveragePage() {
     );
   }
 
-  const ready = isGoLiveReady(summary);
-
   return (
     /* หัวหน้ามาจาก Workspace ตัวเดียวทั้งเปลือกตั้งค่า (มติผู้ใช้ 2026-08-20) —
        เดิมทุกหน้าเขียน .premium-header เองพร้อม inline style คนละชุด ⇒ หัวเรื่อง
@@ -121,14 +119,6 @@ export default function SignatureCoveragePage() {
       icon={<Signature size={22} />}
       title="ความพร้อมลายเซ็น"
       subtitle="ใครยังเซ็นอนุมัติใบเสนอราคา / ใบสั่งขายไม่ได้ เพราะยังไม่มีลายเซ็นอิเล็กทรอนิกส์ในบัญชี"
-      /* required = 0 ไม่ใช่ "พร้อม" (isGoLiveReady คืน false โดยเจตนา — ไม่มีใครใน cohort
-         เลยแปลว่าข้อมูลผิดปกติ) แต่ก็ไม่ใช่ "ยังขาด 0 คน" ที่อ่านแล้วขัดกัน */
-      headerRight={!loading && !error && (
-        <div className={`status-pill ${ready ? "success" : "warning"}`}>
-          {ready ? "พร้อมเปิดใช้งาน"
-            : (summary.required > 0 ? `ยังขาด ${summary.required - summary.requiredReady} คน` : "ยังไม่มีข้อมูล")}
-        </div>
-      )}
     >
       {/* ⚠️ ระยะห่างระหว่างก้อนมาจากตัวห่อ `flex flex-col gap-4` — `.ui-metric-strip`
           และกล่องอื่นไม่มี margin ของตัวเอง (กติกาเดียวกับหน้า RD / โครงการ) */}
@@ -152,80 +142,86 @@ export default function SignatureCoveragePage() {
         แต่ละคนต้องเพิ่มเองที่หน้า <Link href="/account" className="linklike"><strong>บัญชีของฉัน</strong></Link> หน้านี้ใช้ติดตามว่าเหลือใครบ้างเท่านั้น
       </StatusNotice>
 
-      <div className="toolbar">
-        <div className="segmented">
-          {FILTERS.map((f) => (
-            <button key={f.v} className={filter === f.v ? "active" : ""} onClick={() => setFilter(f.v)}>
-              {f.label}
+      {/* ⭐ รายชื่อ = ListPanel ใบเดียว (มติผู้ใช้ 2026-09-15) — ตัวกรองกับปุ่มโหลดใหม่อยู่ในแถบเครื่องมือของแผง
+          · ป้ายจำนวน = คนที่ผ่านตัวกรอง (เดิมเป็นข้อความท้ายแถบ + ป้ายสถานะบนหัวหน้า ซึ่งถอดแล้ว —
+            ความพร้อมรวมอ่านจากแถบตัวเลขข้างบน "ต้องมีลายเซ็น" เทียบ "พร้อมแล้ว")
+          · ยังโหลดไม่เสร็จ / โหลดพัง = ขีด ไม่ใช่ 0 · `loading` แทนที่เฉพาะเนื้อ แถบเครื่องมือยืนอยู่ */}
+      <ListPanel
+        icon={<Signature size={17} aria-hidden="true" />}
+        title="รายชื่อผู้ใช้ที่ต้องมีลายเซ็น"
+        subtitle="กรองตามสถานะลายเซ็น แล้วเรียงตามคอลัมน์"
+        count={loading || error ? null : `${sort.sorted.length} คน`}
+        loading={loading}
+        toolbar={(
+          <>
+            <div className="segmented">
+              {FILTERS.map((f) => (
+                <button key={f.v} className={filter === f.v ? "active" : ""} onClick={() => setFilter(f.v)}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="spacer" />
+            <button type="button" className="btn ghost sm" onClick={() => load()} disabled={loading}>
+              <RefreshCw size={14} aria-hidden="true" /> โหลดใหม่
             </button>
-          ))}
-        </div>
-        <div className="spacer" />
-        <span className="toolbar-label">{sort.sorted.length} คน</span>
-        <button type="button" className="btn ghost sm" onClick={() => load()} disabled={loading}>
-          <RefreshCw size={14} aria-hidden="true" /> โหลดใหม่
-        </button>
-      </div>
-
-      {loading && <SkeletonRows rows={6} />}
-
-      {!loading && error && (
-        <StatusNotice
-          tone="error"
-          action={<button type="button" className="btn ghost sm" onClick={() => load()}>ลองอีกครั้ง</button>}
-        >
-          {error}
-        </StatusNotice>
-      )}
-
-      {!loading && !error && !sort.sorted.length && (
-        <EmptyState icon={CheckCircle2}>
-          {filter === "all" ? "ไม่พบผู้ใช้ที่ต้องมีลายเซ็น" : "ไม่มีใครค้างในเงื่อนไขนี้ — เรียบร้อยทุกคน"}
-        </EmptyState>
-      )}
-
-      {!loading && !error && !!sort.sorted.length && (
-        <TableScroll>
-          <table className="premium-table">
-            <thead>
-              <tr>
-                <SortTh sort={sort} sortKey="name">ชื่อ</SortTh>
-                <SortTh sort={sort} sortKey="role">บทบาท</SortTh>
-                <SortTh sort={sort} sortKey="team">ทีม</SortTh>
-                <SortTh sort={sort} sortKey="openDeals" style={{ textAlign: "right" }}>ดีลที่ถืออยู่</SortTh>
-                <SortTh sort={sort} sortKey="pendingQuotations" style={{ textAlign: "right" }}>ใบรออนุมัติ</SortTh>
-                {/* เส้นผู้ยื่น: เอกสารที่ตัวเองสร้างและยังค้างต้องยื่น — การกดยื่นบันทึกหลักฐาน
-                    ลายเซ็นเช่นกัน คนไม่มีลายเซ็นจะยื่นไม่ได้ */}
-                <SortTh sort={sort} sortKey="submittableDocs" style={{ textAlign: "right" }}>เอกสารรอยื่น</SortTh>
-                <SortTh sort={sort} sortKey="hasSignature">สถานะ</SortTh>
-              </tr>
-            </thead>
-            <tbody>
-              {sort.sorted.map((row) => {
-                const pill = SEVERITY_PILL[row.severity] || SEVERITY_PILL.optional;
-                return (
-                  <tr key={row.id}>
-                    <td>
-                      <div style={{ fontWeight: "var(--fw-semibold)" }}>{row.name}</div>
-                      {row.email && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.email}</div>}
-                    </td>
-                    <td>{ROLE_LABELS[row.role] || row.role}</td>
-                    <td>{row.team ? teamLabelNow(row.team) : naText(null)}</td>
-                    <td style={{ textAlign: "right" }}>{naText(row.openDeals)}</td>
-                    <td style={{ textAlign: "right", fontWeight: row.pendingQuotations && !row.hasSignature ? 700 : 400, color: row.pendingQuotations && !row.hasSignature ? "var(--red)" : undefined }}>
-                      {naText(row.pendingQuotations)}
-                    </td>
-                    <td style={{ textAlign: "right", fontWeight: row.submittableDocs && !row.hasSignature ? 700 : 400, color: row.submittableDocs && !row.hasSignature ? "var(--red)" : undefined }}>
-                      {naText(row.submittableDocs)}
-                    </td>
-                    <td><span className={`status-pill ${pill.cls}`}>{pill.label}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableScroll>
-      )}
+          </>
+        )}
+      >
+        {error ? (
+          <StatusNotice
+            tone="error"
+            action={<button type="button" className="btn ghost sm" onClick={() => load()}>ลองอีกครั้ง</button>}
+          >
+            {error}
+          </StatusNotice>
+        ) : !sort.sorted.length ? (
+          <EmptyState plain icon={CheckCircle2}>
+            {filter === "all" ? "ไม่พบผู้ใช้ที่ต้องมีลายเซ็น" : "ไม่มีใครค้างในเงื่อนไขนี้ — เรียบร้อยทุกคน"}
+          </EmptyState>
+        ) : (
+          <TableScroll>
+            <table className="premium-table">
+              <thead>
+                <tr>
+                  <SortTh sort={sort} sortKey="name">ชื่อ</SortTh>
+                  <SortTh sort={sort} sortKey="role">บทบาท</SortTh>
+                  <SortTh sort={sort} sortKey="team">ทีม</SortTh>
+                  <SortTh sort={sort} sortKey="openDeals" style={{ textAlign: "right" }}>ดีลที่ถืออยู่</SortTh>
+                  <SortTh sort={sort} sortKey="pendingQuotations" style={{ textAlign: "right" }}>ใบรออนุมัติ</SortTh>
+                  {/* เส้นผู้ยื่น: เอกสารที่ตัวเองสร้างและยังค้างต้องยื่น — การกดยื่นบันทึกหลักฐาน
+                      ลายเซ็นเช่นกัน คนไม่มีลายเซ็นจะยื่นไม่ได้ */}
+                  <SortTh sort={sort} sortKey="submittableDocs" style={{ textAlign: "right" }}>เอกสารรอยื่น</SortTh>
+                  <SortTh sort={sort} sortKey="hasSignature">สถานะ</SortTh>
+                </tr>
+              </thead>
+              <tbody>
+                {sort.sorted.map((row) => {
+                  const pill = SEVERITY_PILL[row.severity] || SEVERITY_PILL.optional;
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <div style={{ fontWeight: "var(--fw-semibold)" }}>{row.name}</div>
+                        {row.email && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.email}</div>}
+                      </td>
+                      <td>{ROLE_LABELS[row.role] || row.role}</td>
+                      <td>{row.team ? teamLabelNow(row.team) : naText(null)}</td>
+                      <td style={{ textAlign: "right" }}>{naText(row.openDeals)}</td>
+                      <td style={{ textAlign: "right", fontWeight: row.pendingQuotations && !row.hasSignature ? 700 : 400, color: row.pendingQuotations && !row.hasSignature ? "var(--red)" : undefined }}>
+                        {naText(row.pendingQuotations)}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: row.submittableDocs && !row.hasSignature ? 700 : 400, color: row.submittableDocs && !row.hasSignature ? "var(--red)" : undefined }}>
+                        {naText(row.submittableDocs)}
+                      </td>
+                      <td><span className={`status-pill ${pill.cls}`}>{pill.label}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
+      </ListPanel>
       </div>
     </Workspace>
   );
