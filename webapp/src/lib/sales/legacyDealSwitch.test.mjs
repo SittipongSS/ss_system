@@ -9,6 +9,8 @@
 //   ① ด่านกลาง (lib/sales/legacyDealSwitch) — ตีกลับยอด/แถวมูลค่า/วันอนาคต · ถอดคีย์ของระบบ · อ่านบันทึก
 //   ② route สร้าง/แก้ดีลเรียกด่านกลาง ไม่ประทับ Actual เอง
 //   ③ คำบนฟอร์มเลิกสัญญา Actual
+//   ④ ตัวบ่งชี้ดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-09-15) — แต่งคีย์หลบไม่ได้ · ธง legacy แก้ทีหลังไม่ได้ ·
+//      มีที่เดียว ไม่มีของซ้ำ
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -19,11 +21,16 @@ import {
   LEGACY_WON_FUTURE_DATE_ERROR,
   LEGACY_WON_VALUE_ERROR,
   SERVER_ONLY_DEAL_METADATA_KEYS,
+  clientDealMetadataOnCreate,
+  clientDealMetadataOnPatch,
+  hasLegacySwitchFlag,
+  isLegacyWonCreate,
   legacyClosedNoteOf,
   legacyWonCreateError,
   stripServerOnlyDealMetadata,
 } from './legacyDealSwitch.js';
 import { dealActualFromSalesOrders } from './salesOrderWorkflow.js';
+import { isLegacyWonAtCreate, isWonAwaitingSo, wonAwaitingSoAmountOf, wonAwaitingSoCountOf } from './dashboardMetrics.js';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
@@ -86,12 +93,108 @@ test('วันที่ปิดในระบบเดิมเลยวั�
 });
 
 test('ถอดคีย์ของระบบจาก metadata ที่ client ส่งมา — ไม่แตะค่าอื่นและไม่แก้ object ต้นทาง', () => {
-  assert.deepEqual(SERVER_ONLY_DEAL_METADATA_KEYS, ['actualSource', 'legacyClosedValue', 'legacyClosedDate']);
+  assert.deepEqual(SERVER_ONLY_DEAL_METADATA_KEYS,
+    ['actualSource', 'legacyClosedValue', 'legacyClosedDate', 'wonSource', 'acceptedQuotationId']);
   assert.deepEqual(LEGACY_CLOSED_NOTE_KEYS, ['legacyClosedValue', 'legacyClosedDate']);
-  const input = { legacy: true, brand: 'X', actualSource: 'legacy', legacyClosedValue: 1, legacyClosedDate: '2026-01-01' };
+  // ⚠️ ธง legacy ต้องไม่อยู่ในรายการ — ด่าน POST อ่านมัน และแถวที่บันทึกต้องเก็บไว้ให้ isLegacyWonAtCreate
+  assert.ok(!SERVER_ONLY_DEAL_METADATA_KEYS.includes('legacy'), 'ห้ามถอดธง legacy');
+  const input = {
+    legacy: true, brand: 'X', actualSource: 'legacy', legacyClosedValue: 1, legacyClosedDate: '2026-01-01',
+    wonSource: 'quotation', acceptedQuotationId: 'QT-FAKE',
+  };
   assert.deepEqual(stripServerOnlyDealMetadata(input), { legacy: true, brand: 'X' });
   assert.equal(input.legacyClosedValue, 1, 'ห้ามแก้ object ของผู้เรียก');
+  assert.equal(input.acceptedQuotationId, 'QT-FAKE', 'ห้ามแก้ object ของผู้เรียก');
   for (const bad of [null, undefined, [], 'x', 5]) assert.deepEqual(stripServerOnlyDealMetadata(bad), {});
+});
+
+/* ── ④ ตัวบ่งชี้ดีลเก่าที่สร้างเป็น Won ───────────────────────────────────────── */
+
+test('คำขอที่แต่ง wonSource / acceptedQuotationId มาเองหลบตัวบ่งชี้ดีลเก่าไม่ได้ — POST และ PATCH (มติผู้ใช้ 2026-09-15)', () => {
+  // POST: metadata ที่บันทึก = ค่าที่ถอดแล้ว + คีย์ที่ route เติมเอง + คีย์ที่ trigger เขียน (รูปเดียวกับ deals/route.js)
+  const forged = { legacy: true, wonSource: 'quotation', acceptedQuotationId: 'QT-FAKE' };
+  const created = {
+    stage: 'won', projectValue: 0, confirmedAt: '2026-05-15',
+    metadata: { ...clientDealMetadataOnCreate(forged), projectType: 'NPD', brand: '', actualSource: 'sale_order', wonMonth: null },
+  };
+  assert.equal(created.metadata.legacy, true, 'ธง legacy ต้องรอดการถอด');
+  assert.equal(isLegacyWonAtCreate(created), true);
+  assert.equal(isWonAwaitingSo(created), false, 'ดีลเก่าที่สร้างเป็น Won ต้องไม่กลับเข้ากอง Won รอยื่น SO');
+  // PATCH: ถอดจากค่าที่ส่งมาก่อน merge — แต่งคีย์ใส่ดีลเก่าไม่ได้ (รูปเดียวกับ deals/[id]/route.js)
+  const patchedLegacy = { ...created, metadata: { ...created.metadata, ...clientDealMetadataOnPatch({ wonSource: 'quotation', acceptedQuotationId: 'QT-FAKE' }) } };
+  assert.equal(isLegacyWonAtCreate(patchedLegacy), true);
+  // …และค่าที่ RPC รับใบเสนอราคาเขียนไว้อยู่ต่อ ไม่ว่า client จะส่งอะไรมาทับ (สำเนาเก่าบนจอ · ค่าว่าง)
+  const accepted = { stage: 'won', metadata: { legacy: true, acceptedQuotationId: 'QT-1', wonSource: 'quotation', wonMonth: null } };
+  const patchedAccepted = {
+    ...accepted,
+    metadata: { ...accepted.metadata, ...clientDealMetadataOnPatch({ acceptedQuotationId: null, wonSource: 'manual', brand: 'Y' }) },
+  };
+  assert.equal(patchedAccepted.metadata.acceptedQuotationId, 'QT-1');
+  assert.equal(patchedAccepted.metadata.wonSource, 'quotation');
+  assert.equal(patchedAccepted.metadata.brand, 'Y');
+  assert.equal(isLegacyWonAtCreate(patchedAccepted), false);
+  assert.equal(isWonAwaitingSo(patchedAccepted), true);
+});
+
+test('ธง legacy แก้ทีหลังไม่ได้: PATCH ไม่รับค่าจาก client · POST รับเฉพาะ true จริง (ตรวจรอบสอง 2026-09-15)', () => {
+  // บล็อก B DL-26080340 (283,350 · 2025-11) — รูปแถวจริงบน prod: Won · legacy true · ไม่มี acceptedQuotationId/wonSource
+  const blockB = {
+    stage: 'won', projectValue: 283350, confirmedAt: '2025-11-20',
+    metadata: { legacy: true, projectType: 'NPD', brand: '', actualSource: 'sale_order', legacyClosedValue: 283350 },
+  };
+  assert.equal(isLegacyWonAtCreate(blockB), true);
+  // PATCH {metadata:{legacy:false}} (รูปเดียวกับ deals/[id]/route.js) — ธงเดิมอยู่ต่อ กองยังเป็น 0/0
+  for (const sent of [{ legacy: false }, { legacy: null }, { legacy: 'false' }, { legacy: false, brand: 'Z' }]) {
+    const patched = { ...blockB, metadata: { ...blockB.metadata, ...clientDealMetadataOnPatch(sent) } };
+    assert.equal(patched.metadata.legacy, true, `PATCH ${JSON.stringify(sent)} ต้องไม่แก้ธง legacy`);
+    assert.equal(isLegacyWonAtCreate(patched), true, JSON.stringify(sent));
+    assert.equal(wonAwaitingSoAmountOf(patched), 0, JSON.stringify(sent));
+    assert.equal(wonAwaitingSoCountOf(patched), 0, JSON.stringify(sent));
+  }
+  // คีย์อื่นยัง merge ได้ตามเดิม
+  assert.deepEqual(clientDealMetadataOnPatch({ legacy: false, brand: 'Z', wonSource: 'x' }), { brand: 'Z' });
+  // กลับด้าน: ใส่ธงให้ดีลที่ไม่ใช่ดีลเก่าผ่าน PATCH ไม่ได้เช่นกัน
+  const normalWon = { stage: 'won', projectValue: 50000, metadata: { brand: '' } };
+  const flagged = { ...normalWon, metadata: { ...normalWon.metadata, ...clientDealMetadataOnPatch({ legacy: true }) } };
+  assert.equal('legacy' in flagged.metadata, false);
+  assert.equal(wonAwaitingSoCountOf(flagged), 1);
+  for (const bad of [null, undefined, [], 'x']) assert.deepEqual(clientDealMetadataOnPatch(bad), {});
+
+  // POST: ด่านกับตัวบ่งชี้อ่านธงตัวเดียวกัน — ค่า truthy ที่ไม่ใช่ true ไม่ใช่ดีลเก่า ⇒ route ตีกลับ "ต้องปิด Won ผ่านใบเสนอราคา"
+  for (const flag of [1, 'true', 'yes', {}]) {
+    const body = { metadata: { legacy: flag }, projectValue: 0, expectedCloseDate: '2026-05-15' };
+    assert.equal(hasLegacySwitchFlag(body.metadata), false, JSON.stringify(flag));
+    assert.equal(isLegacyWonCreate(body, 'won'), false, `legacy ${JSON.stringify(flag)} ต้องไม่ผ่านด่านสร้างที่ Won`);
+    assert.equal(legacyWonCreateError(body, { stage: 'won', today: TODAY }), null, 'ด่านมูลค่าไม่ใช่ตัวตีกลับ — ด่านสถานะใน route ต่างหาก');
+    assert.equal('legacy' in clientDealMetadataOnCreate(body.metadata), false, 'แถวที่บันทึกต้องไม่มีธงรูปแปลก');
+  }
+  assert.equal(isLegacyWonCreate({ metadata: { legacy: true } }, 'won'), true);
+  assert.deepEqual(clientDealMetadataOnCreate({ legacy: true, brand: 'X', acceptedQuotationId: 'QT-FAKE' }), { legacy: true, brand: 'X' });
+  assert.deepEqual(clientDealMetadataOnCreate({ legacy: false, leadId: 'L1' }), { leadId: 'L1' });
+  for (const bad of [null, undefined, [], 'x']) assert.deepEqual(clientDealMetadataOnCreate(bad), {});
+});
+
+test('ตัวบ่งชี้ดีลเก่าที่สร้างเป็น Won มีที่เดียว (isLegacyWonAtCreate) — ห้ามเขียนเงื่อนไขซ้ำในโค้ดแอป', () => {
+  const HOME = 'src/lib/sales/dashboardMetrics.js';
+  // ตัวอ่านธงสวิตช์อยู่ที่เดียว (hasLegacySwitchFlag) — ด่านสร้างกับตัวบ่งชี้ต้องอ่านผ่านตัวนี้ทั้งคู่
+  const FLAG_HOME = 'src/lib/sales/legacyDealSwitch.js';
+  const files = [...sourceFiles('src/components'), ...sourceFiles('src/app'), ...sourceFiles('src/lib')];
+  assert.ok(files.includes(HOME) && files.includes(FLAG_HOME));
+  for (const rel of files) {
+    const src = stripComments(read(rel));
+    if (rel !== HOME) assert.doesNotMatch(src, /wonSource\s*!==?\s*['"`]quotation['"`]/, rel);
+    if (rel === FLAG_HOME) continue;
+    // ทั้งแบบเข้มและแบบ truthy (แบบ truthy คือบั๊กที่ด่าน POST กับตัวบ่งชี้ตัดสินไม่ตรงกัน)
+    assert.doesNotMatch(src, /metadata\??\.legacy\s*[!=]==?\s*true/, rel);
+    assert.doesNotMatch(src, /Boolean\([^)]*metadata\??\.legacy\s*\)/, rel);
+    assert.doesNotMatch(src, /!\s*[\w.?]*metadata\??\.legacy\b/, rel);
+  }
+  assert.match(read(FLAG_HOME), /export const hasLegacySwitchFlag = \(metadata\) => metadata\?\.legacy === true;/);
+  assert.match(stripComments(read(FLAG_HOME)), /export const isLegacyWonCreate = \(body = \{\}, stage\) => stage === 'won' && hasLegacySwitchFlag\(body\?\.metadata\);/);
+  assert.match(read(HOME), /export const isLegacyWonAtCreate = \(d\) => isWonDeal\(d\)\s*&& hasLegacySwitchFlag\(d\?\.metadata\)/);
+  assert.match(stripComments(read(HOME)), /export const isWonAwaitingSo = \(d\) => isWonDeal\(d\)\s*&& !isLegacyWonAtCreate\(d\)/);
+  // หน้าดีลใช้ตัวเดียวกันผ่านตัวเลือกคำใต้การ์ด
+  assert.match(stripComments(read('src/lib/sales/dealAmountDisplay.js')), /if \(isLegacyWonAtCreate\(deal\)\) \{/);
 });
 
 test('บันทึกยอดปิดในระบบเดิมบนหน้าดีล — อ่านอย่างเดียว · บอกว่ายอดยังอยู่ใน FC หรือไม่', () => {
@@ -132,13 +235,17 @@ test('POST สร้างดีล: ไม่ประทับ Actual เอ�
     'ด่านดีลเก่าต้องมาก่อน prepareDealValueItems — ไม่งั้นคำขอที่ส่งแถวมาได้ error รายแถวแทนข้อความของด่าน');
   assert.match(src, /confirmedAt: stage === 'won' \? \(body\.expectedCloseDate \|\| null\) : null/,
     'วันที่ปิดในระบบเดิมมีตัวอ่าน (wonMonthOf) — อย่าลบเพราะคิดว่าเป็นเรื่องยอด');
-  assert.match(src, /\.\.\.stripServerOnlyDealMetadata\(body\.metadata\)/);
+  assert.match(src, /\.\.\.clientDealMetadataOnCreate\(body\.metadata\)/);
+  assert.doesNotMatch(src, /\.\.\.stripServerOnlyDealMetadata\(body\.metadata\)/, 'POST ต้องเก็บธง legacy แบบ true จริงเท่านั้น');
   assert.doesNotMatch(src, /\.\.\.\(body\.metadata \|\| \{\}\)/);
+  // ด่านสถานะใช้ตัวอ่านธงตัวเดียวกับตัวบ่งชี้ — ไม่ใช่ truthy
+  assert.match(src, /if \(stage === 'won' && !isLegacyWonCreate\(body, stage\)\) \{/);
 });
 
-test('PATCH ดีล: ถอดคีย์ของระบบจากค่าที่ส่งมาก่อน merge — บันทึกของ mig 0359 อยู่รอด', () => {
+test('PATCH ดีล: ถอดคีย์ของระบบ + ธง legacy จากค่าที่ส่งมาก่อน merge — บันทึกของ mig 0359 และธงเดิมอยู่รอด', () => {
   const src = stripComments(read(PATCH_ROUTE));
-  assert.match(src, /\{ \.\.\.\(before\.metadata \|\| \{\}\), \.\.\.stripServerOnlyDealMetadata\(body\.metadata\) \}/);
+  assert.match(src, /\{ \.\.\.\(before\.metadata \|\| \{\}\), \.\.\.clientDealMetadataOnPatch\(body\.metadata\) \}/);
+  assert.doesNotMatch(src, /stripServerOnlyDealMetadata/, 'PATCH ต้องไม่รับธง legacy จาก client');
   assert.doesNotMatch(src, /\.\.\.body\.metadata\s*\}/);
 });
 
@@ -214,4 +321,6 @@ test('หน้าดีลโชว์บันทึกยอดปิดใ�
   assert.ok(page.includes('ยอดปิดในระบบเดิม'));
   assert.ok(page.includes('ไม่นับเป็นยอดขาย (Actual) และไม่เข้า FC'));
   assert.match(page, /legacyNote\.stillInForecast/);
+  // คำใต้การ์ดของดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-09-15) — หน้าส่งดีลให้ตัวเลือกคำ ไม่ตัดสินเอง
+  assert.match(stripComments(page), /wonDealForecastHint\(\{\s*deal,/);
 });

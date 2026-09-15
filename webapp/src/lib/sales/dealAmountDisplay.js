@@ -10,6 +10,7 @@
 //    (ไม่ใช่ null) ให้ทุกดีลตั้งแต่ INSERT ⇒ `??` ไม่เคยถอยไป FC และดีลเปิดที่ไม่กรองด้วยขั้น
 //    Won จะขึ้น ฿0.00 (การ์ดดีลบนหน้าลีดเป็นแบบนั้นมาตลอด)
 import {
+  isLegacyWonAtCreate,
   isWonDeal,
   pendingApprovalAmountOf,
   pendingApprovalCountOf,
@@ -81,6 +82,15 @@ export function sumDealDisplay(deals = [], { inPeriod = null, now } = {}) {
                                                         / "ตรงกับคาดการณ์เมื่ออนุมัติครบ"
      'awaiting_so'    ไม่มีทั้งสองอย่าง (Won รอยื่น SO) → "คาดการณ์ ฿V · ยังไม่มีใบสั่งขายที่ยื่น"
                                                         ไม่มีตัวเลขต่าง — ยังไม่มีอะไรให้เทียบ
+     'legacy_no_so'   ไม่มีทั้งสองอย่าง + ดีลเก่าที่สร้างเป็น Won (isLegacyWonAtCreate · มติผู้ใช้ 2026-09-15)
+                                                      → "ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้"
+                                                        🐞 เดิมได้ 'awaiting_so' = บอกว่า "ยังไม่มี" ทั้งที่ดีลแบบนี้
+                                                        ยื่น SO ไม่ได้เลย และดีลพิมพ์ 0 (ไม่มีบันทึกยอดปิด) ขึ้น
+                                                        "คาดการณ์ ฿0.00" ไม่มีคำอธิบาย · ไม่มีตัวเลขต่าง ไม่มียอด
+                                                        คาดการณ์ — บรรทัดบันทึก legacyClosedNoteOf บนหน้าดีลพูดเรื่อง
+                                                        ยอดปิดในระบบเดิม/FC แทน (บล็อก B)
+   ⭐ `deal` ใช้จำแนกดีลเก่าเท่านั้น — ตัวเลขทุกตัวยังมาจากอินพุตเดิม · ตัวเลขจริงชนะธงเสมอ: มีแถวอนุมัติ/
+      รออนุมัติเมื่อไร ได้กรณีปกติ
    ⭐ "มี SO อนุมัติ" = มีแถวอนุมัติ **หรือ** Actual > 0 — ใบอนุมัติยอด 0 บาทถูกกฎ (mig 0197)
       · Actual มาจาก SO อนุมัติเท่านั้น (มติผู้ใช้ 2026-09-14 — ไม่มีดีลที่มี Actual โดยไม่มีแถว SO
         ดู lib/sales/legacyDealSwitch)
@@ -91,11 +101,15 @@ export const WON_HINT_KINDS = Object.freeze({
   ACTUAL: 'actual',
   WHEN_APPROVED: 'when_approved',
   AWAITING_SO: 'awaiting_so',
+  LEGACY_NO_SO: 'legacy_no_so',
 });
+
+export const LEGACY_WON_HINT_TEXT = 'ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้';
 
 const toSatang = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 export function wonDealForecastHint({
+  deal,
   forecast,
   actual,
   actualCount,
@@ -110,6 +124,9 @@ export function wonDealForecastHint({
   const forecastText = `คาดการณ์ ${fmtMoney(forecastValue)}`;
 
   if (!hasApproved && !hasPending) {
+    if (isLegacyWonAtCreate(deal)) {
+      return { kind: WON_HINT_KINDS.LEGACY_NO_SO, gap: null, text: LEGACY_WON_HINT_TEXT };
+    }
     return {
       kind: WON_HINT_KINDS.AWAITING_SO,
       gap: null,

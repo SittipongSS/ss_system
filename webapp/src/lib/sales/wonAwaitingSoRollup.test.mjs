@@ -9,6 +9,7 @@
 //   2. ยอดรวม = ผลรวมของ wonDeals ชุดเดียวกับลูป Won (รออนุมัติ/อนุมัติแล้ว/เปิด/แพ้ ไม่นับ)
 //   3. ตัวกรองลิ้นชัก = ถังเดือนของ API (ดีลไม่มีเดือนไม่นับ แม้งวด "ทุกงวด")
 //   4. ยามซอร์สของ route (ขี่กิ่ง Won ทั้งสามลูป · ไม่แตะ Actual/FC/รออนุมัติ) และของลิ้นชัก
+//   5. ดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-09-15) ได้ 0 / 0 ทั้งถัง ยอดรวม และลิ้นชัก
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -109,6 +110,44 @@ test('ยอดรวม: รอยื่นเท่านั้น — รอ�
   assert.deepEqual(rollupWonAwaitingSo(null), wonAwaitingSoFields());
   assert.equal(hasWonAwaitingSo(awaiting({ projectValue: null })), true);
   assert.equal(hasWonAwaitingSo(pendingOnly()), false);
+});
+
+// ── ดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-09-15) ────────────────────────────────────
+// รูปจริงบน prod: สวิตช์ "ดีลเก่าจากระบบเดิม" + ขั้น Won ตอนสร้าง — ไม่มีใบเสนอราคา/SO และยื่น SO ไม่ได้
+const legacyWonAtCreate = (over = {}) => awaiting({
+  metadata: { legacy: true, actualSource: 'sale_order', wonMonth: null, wonValueExVat: 0 },
+  ...over,
+});
+
+test('ดีลเก่าที่สร้างเป็น Won: ถัง / ยอดรวม / ลิ้นชัก ได้ 0 / 0 — บล็อก B ที่ยอด FC ยังอยู่ก็ไม่นับ', () => {
+  const legacyDeals = [
+    legacyWonAtCreate({
+      projectValue: 600000,
+      metadata: { legacy: true, actualSource: 'sale_order', wonMonth: null, legacyClosedValue: 600000, legacyClosedDate: '2026-09-02' },
+    }),
+    legacyWonAtCreate({ projectValue: 0 }),
+    legacyWonAtCreate({ stage: 'in_project', projectValue: 42000 }),
+  ];
+  assert.deepEqual(rollupWonAwaitingSo(legacyDeals), wonAwaitingSoFields());
+  for (const d of legacyDeals) {
+    assert.equal(hasWonAwaitingSo(d), false);
+    assert.equal(wonAwaitingSoInPeriod(d, allPeriods), false);
+    const b = wonAwaitingSoFields();
+    addWonAwaitingSo(b, d);
+    assert.deepEqual(b, wonAwaitingSoFields());
+  }
+  // ปนกับดีลจริงในเดือนเดียวกัน: เหลือดีลที่ยื่น SO ได้ · ดีลสวิตช์ที่ปิดผ่านใบเสนอราคายังนับ
+  const viaQuote = legacyWonAtCreate({
+    projectValue: 70000,
+    metadata: { legacy: true, actualSource: 'sale_order', wonMonth: null, acceptedQuotationId: 'QT-1', wonSource: 'quotation' },
+  });
+  const mixed = [...legacyDeals, awaiting(), viaQuote];
+  assert.deepEqual(rollupWonAwaitingSo(mixed), { wonAwaitingSo: 190000, wonAwaitingSoCount: 2 });
+  // ลิ้นชักกับถังเดือนของ API ยังได้ดีลชุดเดียวกัน
+  const api = rollupWonAwaitingSo(mixed.filter((d) => isWonDeal(d) && wonMonthOf(d) === '2026-09'));
+  const drill = mixed.filter((d) => wonAwaitingSoInPeriod(d, byMonth('2026-09')));
+  assert.equal(drill.length, 2);
+  assert.deepEqual(rollupWonAwaitingSo(drill), api);
 });
 
 // ── ลิ้นชัก = ถังเดือนของ API ─────────────────────────────────────────────────────
