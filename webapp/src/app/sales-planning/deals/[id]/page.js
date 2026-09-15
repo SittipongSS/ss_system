@@ -361,10 +361,13 @@ export default function DealOverviewPage() {
         ⇒ ห้ามบอกว่า "ไม่เข้า FC" ในกรณีนั้น เพราะยอดยังนับเป็น FC จริง */
   const legacyNote = legacyClosedNoteOf(deal);
   const soAmounts = splitSalesOrderAmounts(data?.salesOrders || []);
-  /* คำใต้การ์ด "มูลค่าปิดจริง (Won)" — สามกรณี (มติผู้ใช้ 2026-09-14): มี SO อนุมัติ = ต่างจาก Actual ·
-     มีใบรออนุมัติ = "ต่างเมื่ออนุมัติครบ" · ยังไม่มีใบที่ยื่น (Won รอยื่น SO) = ไม่มีตัวเลขต่าง
+  /* คำใต้การ์ด "มูลค่าปิดจริง (Won)" — สี่กรณี (มติผู้ใช้ 2026-09-14): มี SO อนุมัติ = ต่างจาก Actual ·
+     มีใบรออนุมัติ = "ต่างเมื่ออนุมัติครบ" · ยังไม่มีใบที่ยื่น (Won รอยื่น SO) = ไม่มีตัวเลขต่าง ·
+     ดีลเก่าที่สร้างเป็น Won = "ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้" (มติผู้ใช้ 2026-09-15) — ส่ง `deal`
+     ให้ตัวเลือกคำจำแนกด้วยตัวบ่งชี้กลางตัวเดียวกับแดชบอร์ด (isLegacyWonAtCreate) ห้ามตัดสินเองในหน้านี้
      🐞 เดิม "ต่าง ฿(FC ทั้งก้อน)" ขึ้นทุกดีลที่ SO ยังเป็นร่าง/รออนุมัติ อ่านเป็นพลาดเป้าทั้งใบ */
   const wonHint = wonDealForecastHint({
+    deal,
     forecast: deal?.projectValue,
     actual: dealActual,
     actualCount: soAmounts.actualCount,
@@ -977,7 +980,8 @@ export default function DealOverviewPage() {
                 hint={(
                   <>
                     {/* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A): คำส่วนต่างเทียบ 0 กับ 0 ไม่ได้บอกอะไร — บรรทัดบันทึกข้างล่างพูดแทน
-                        · ดีลที่ยังรอเจ้าของยืนยัน (stillInForecast) ยังโชว์คำของ wonDealForecastHint ตามปกติ */}
+                        · ดีลที่ยังรอเจ้าของยืนยัน (stillInForecast · บล็อก B) โชว์คำของ wonDealForecastHint + บรรทัดบันทึก
+                        · ดีลเก่าที่พิมพ์ 0 ตอนสร้าง (ไม่มีบันทึก) เหลือบรรทัดเดียว = คำชนิด legacy_no_so (มติผู้ใช้ 2026-09-15) */}
                     {legacyNote && !legacyNote.stillInForecast ? null : wonHint.text}
                     {legacyNote ? (
                       <div>

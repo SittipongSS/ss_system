@@ -8,6 +8,8 @@ import {
   dealPendingApprovalAmount,
   dealPendingApprovalCount,
 } from '@/lib/sales/salesOrderWorkflow';
+// ตัวอ่านธงสวิตช์ดีลเก่าตัวเดียวกับด่านสร้างดีล — legacyDealSwitch เป็นสูตรล้วน ไม่ import อะไร (ไม่มีวงวน)
+import { hasLegacySwitchFlag } from '@/lib/sales/legacyDealSwitch';
 
 // Won นับรวม in_project (ดีลเก่าที่ปิดแล้วแปลงเป็นโครงการ) — กติกาอยู่ที่ isWonStage
 // ตัวกลาง สองตัวนี้เป็นแค่รูปที่รับ "ทั้งดีล" ให้เรียกง่ายในตัวกรอง
@@ -58,10 +60,48 @@ export const pendingApprovalMonthOf = (d, now = new Date()) => (
    ⭐ "มี SO อนุมัติแล้ว" ดูจาก metadata.wonMonth ไม่ใช่ยอด Actual > 0 — ใบอนุมัติยอด 0 บาท
       (ใบตัวอย่าง ถูกกฎตั้งแต่ mig 0197) มีจริง 28 ดีล · DB เขียน wonMonth เฉพาะเมื่อมีใบ
       อนุมัติ (trigger 0279/0353 ถอดเป็น null ทุกครั้งที่ไม่มี)
+   ⭐ **ไม่นับดีลเก่าที่สร้างเป็น Won** (isLegacyWonAtCreate ข้างล่าง · มติผู้ใช้ 2026-09-15) — ตัดทั้งยอดและ
+      จำนวน ทุกจอที่อ่านตัวช่วยชุดนี้ · ดีลแบบนี้ยื่น SO ไม่ได้เลย (ออกใบเสนอราคาให้ดีล Won ไม่ได้ · SO ต้องมี
+      ใบเสนอราคาที่รับแล้ว · PATCH เปลี่ยนขั้นของดีล Won ไม่ได้) คำว่า "รอยื่น SO" จึงผิดทุกใบ และยอดของมัน
+      ไม่มีวันเป็น Actual ⇒ นับเข้าคาดจบงวดทำให้คาดขาดดูดีเกินจริง
+      🐞 ตรวจ prod 2026-09-15: กองนี้ 42 ดีล 2,348,450 เป็นดีลแบบนี้ 35 ดีล 1,645,350 (+24 บรรทัด ฿0)
+         เหลือดีลจริง 7 ดีล 703,100
+      ⚠️ ตัดเฉพาะกองนี้ — Actual · FC Total · FC คงเหลือ · ยอด Won ในลิ้นชัก · FC Excel · wonCount ·
+         projectRollup ไม่เปลี่ยน (บล็อก B ของ mig 0359 ยังอยู่ใน FC จนเจ้าของยืนยัน)
    ⛔ ห้ามบวกเข้า Actual / เป้า / % / ขาด-เกิน — ใช้ได้แค่ยอดคาดการณ์ (projected) กับบรรทัดแสดงผล */
 export const WON_AWAITING_SO_LABEL = 'Won รอยื่น SO';
 export const dealHasApprovedSalesOrder = (d) => Boolean(d?.metadata?.wonMonth) || wonAmountOf(d) > 0;
+
+/* ดีลเก่าจากระบบเดิมที่ **สร้างเป็น Won ตั้งแต่แรก** (สวิตช์ในฟอร์มสร้าง · มติผู้ใช้ 2026-09-15)
+   ⭐ ตัวบ่งชี้เดียวของทั้งระบบ — คำนวณจากแถว ไม่มีธงเก็บในฐาน (ไม่มี migration · ไม่ต้อง backfill)
+      ห้ามเขียนเงื่อนไขชุดนี้ซ้ำที่อื่น ให้ import ตัวนี้ (เทสต์ legacyDealSwitch.test.mjs สแกนหาของซ้ำ)
+   ตรวจ prod 2026-09-15: จับได้ 35/35 · จับผิด 0 จาก 166 ดีลที่ Won ผ่านใบเสนอราคา
+   ทำไมต้องมีทีละข้อ:
+   · isWonDeal — กติกา Won กลาง (รวม in_project)
+   · metadata.legacy === true — ธงสวิตช์ที่ POST เก็บไว้ในแถว · ขาดข้อนี้ "Won แต่ไม่มีใบเสนอราคา" ไม่ได้แปลว่า
+     ดีลสวิตช์เสมอ (ก.ค. 2026 เคยมีดีล Won ที่ wonSource 'manual' 10 ใบ · 'sahamit-po' 1 ใบ โดยไม่มี
+     acceptedQuotationId — วันนี้ไม่เหลือแล้ว แต่ทางแบบนั้นเคยมีจริง)
+     อ่านผ่าน hasLegacySwitchFlag (lib/sales/legacyDealSwitch) ตัวเดียวกับด่าน POST ⇒ ด่านกับตัวบ่งชี้ตัดสินตรงกัน
+     (เคยต่างกัน: ด่าน truthy · ตัวบ่งชี้ === true ⇒ legacy: 1 สร้าง Won ได้แต่หลุดตัวบ่งชี้)
+     ⚠️ ห้ามเพิ่ม 'legacy' ลง SERVER_ONLY_DEAL_METADATA_KEYS (lib/sales/legacyDealSwitch) — ด่าน POST อ่านธง
+        ก่อนถอดก็จริง แต่แถวที่บันทึกจะไม่มีธง ⇒ ดีลสวิตช์ใหม่ทุกใบหลุดตัวบ่งชี้นี้
+   · !metadata.acceptedQuotationId — ใน SQL มีทางเดียวที่พาดีลเป็น Won คือ accept_quotation_atomic (ล่าสุด
+     0284) ซึ่งเขียนคีย์นี้ + wonSource 'quotation' เสมอ ⇒ ดีลสวิตช์ที่สร้างขั้นก่อนแล้วปิดผ่านใบเสนอราคา
+     (7 ใบ เช่น DL-26080394) ไม่เข้าข่าย และยังเดินกติกา Won รอยื่น SO ตามปกติ · ทางถอยทุกทางที่ถอด
+     คีย์นี้ (0116/0138/0168/0170) ย้ายดีลออกจาก Won ไปพร้อมกัน ดีล Won จึงไม่เสียคีย์ทั้งที่ยังเป็น Won
+   · wonSource !== 'quotation' — กันเคสพังครึ่งทาง: บังคับลบใบเสนอราคาแล้ว JS ถอด acceptedQuotationId สำเร็จ
+     (forceDelete.cleanupQuotationOrphans) แต่ RPC ถอยดีลล้มเหลว ⇒ ดีลยังเป็น Won ที่มาจากใบเสนอราคาจริง
+   ⚠️ คำขอที่แต่งเองหลบตัวบ่งชี้ไม่ได้ — ทั้งสามข้อของ metadata ล็อกไว้ที่ route ดีล (lib/sales/legacyDealSwitch):
+      · wonSource / acceptedQuotationId — client เขียนไม่ได้ทั้ง POST/PATCH (SERVER_ONLY_DEAL_METADATA_KEYS)
+      · legacy — POST เก็บเฉพาะ true จริง (clientDealMetadataOnCreate) · PATCH ไม่รับเลย คงค่าเดิม
+        (clientDealMetadataOnPatch) ไม่งั้น PATCH {legacy:false} พาดีลกลับเข้ากองนี้ */
+export const isLegacyWonAtCreate = (d) => isWonDeal(d)
+  && hasLegacySwitchFlag(d?.metadata)
+  && !d?.metadata?.acceptedQuotationId
+  && d?.metadata?.wonSource !== 'quotation';
+
 export const isWonAwaitingSo = (d) => isWonDeal(d)
+  && !isLegacyWonAtCreate(d)
   && !dealHasApprovedSalesOrder(d)
   && pendingApprovalAmountOf(d) <= 0
   && pendingApprovalCountOf(d) <= 0;

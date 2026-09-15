@@ -30,7 +30,7 @@ import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 import { missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
-import { legacyWonCreateError, stripServerOnlyDealMetadata } from '@/lib/sales/legacyDealSwitch';
+import { clientDealMetadataOnCreate, isLegacyWonCreate, legacyWonCreateError } from '@/lib/sales/legacyDealSwitch';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -144,7 +144,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   //    ไม่เข้า FC (Actual มาจาก SO อนุมัติเท่านั้น) ⇒ ส่งยอด/แถวมูลค่ามา = ตีกลับ ไม่ทิ้งเงียบ ๆ
   // ⚠️ ด่านนี้ต้องอยู่ **ก่อน** prepareDealValueItems — คำขอที่ส่งแถวมูลค่ามาต้องได้ข้อความของด่านนี้
   //    ไม่ใช่ error รายแถวของตารางมูลค่าที่ดีลแบบนี้ไม่มีให้กรอก
-  if (stage === 'won' && !body.metadata?.legacy) {
+  // ⚠️ ธงต้องเป็น true จริง (isLegacyWonCreate → hasLegacySwitchFlag ตัวเดียวกับตัวบ่งชี้ isLegacyWonAtCreate)
+  //    🐞 เดิมเช็ก truthy ⇒ legacy: 1 / 'true' ผ่านด่านได้ แต่ตัวบ่งชี้ไม่นับเป็นดีลเก่า ⇒ ค้างในกอง Won รอยื่น SO
+  if (stage === 'won' && !isLegacyWonCreate(body, stage)) {
     return badRequest('สร้างดีลเป็น Won โดยตรงไม่ได้ ต้องปิด Won ผ่านใบเสนอราคา — ยกเว้นดีลเก่าจากระบบเดิม (เปิดสวิตช์ในฟอร์ม)');
   }
   const legacyError = legacyWonCreateError(body, { stage, today: businessDate() });
@@ -266,8 +268,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     endDate: body.endDate || null,
     metadata: {
       // ⚠️ คีย์ของระบบถอดออกจากค่าที่ client ส่งมา (actualSource = trigger · legacyClosedValue/Date
-      //    = mig 0359) — SERVER_ONLY_DEAL_METADATA_KEYS ใน lib/sales/legacyDealSwitch
-      ...stripServerOnlyDealMetadata(body.metadata),
+      //    = mig 0359 · wonSource/acceptedQuotationId = RPC รับใบเสนอราคา — แต่งมาเองหลบตัวบ่งชี้ดีลเก่า
+      //    ที่สร้างเป็น Won ได้) — SERVER_ONLY_DEAL_METADATA_KEYS ใน lib/sales/legacyDealSwitch
+      //    ธง legacy ไม่ถูกถอด (ด่านข้างบนกับตัวบ่งชี้อ่านมัน) แต่เก็บเฉพาะ true จริง — ค่าอื่นไม่เก็บ
+      ...clientDealMetadataOnCreate(body.metadata),
       projectType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
       brand: (body.brand ?? body.metadata?.brand ?? '') || '',
       // สะท้อนคอลัมน์เสมอ กันไม่ให้เกิดสองความจริงในแถวเดียว (ผู้อ่านใหม่ต้องใช้คอลัมน์)

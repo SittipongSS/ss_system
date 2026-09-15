@@ -1,6 +1,6 @@
 # สวิตช์ "ดีลเก่าจากระบบเดิม" — ไม่มียอด ไม่นับ Actual ไม่เข้า FC
 
-> สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-14 · โค้ดครบในแบรนช์ `claude/legacy-deal-no-actual` · mig 0359 รันบนฐานจริงแล้ว 2026-09-15 (บันทึก 15 ใบ · ล้างบล็อก A 4 ใบ · ตรวจ V1–V7 ผ่าน) · บล็อก B รอเจ้าของยืนยันว่ายังผลิตอยู่หรือไม่
+> สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-15 · รอบแรก merge แล้ว (#1716 · `02409a85`) · mig 0359 รันบนฐานจริงแล้ว 2026-09-15 (บันทึก 15 ใบ · ล้างบล็อก A 4 ใบ · ตรวจ V1–V7 ผ่าน) · บล็อก B รอเจ้าของยืนยันว่ายังผลิตอยู่หรือไม่ · รอบสอง (มติ 2026-09-15: ไม่นับใน Won รอยื่น SO · คำใต้การ์ด · ถอด `wonSource`/`acceptedQuotationId` · ธง `legacy` แก้ทีหลังไม่ได้) โค้ดครบในแบรนช์ `claude/won-awaiting-legacy`
 
 อ่านคู่กับ: [deal-forecast-source.md](deal-forecast-source.md) (กับดักข้อ 2) ·
 [form-design-rules.md](form-design-rules.md) (ป้ายช่องตามโหมด) ·
@@ -28,6 +28,27 @@
 6. mig 0359 = DML ล้วน · รายชื่อ id ชัดเจน · ด่านรายแถว · รันซ้ำได้ · audit before ก่อนแก้ ·
    ไม่วนทุกดีล · ผู้ใช้รันเองบน SQL Editor
 
+### มติผู้ใช้ 2026-09-15 ("เอาที่แนะนำ") — กอง "Won รอยื่น SO"
+
+7. **ดีลเก่าที่สร้างเป็น Won ไม่นับใน "Won รอยื่น SO" ทั้งยอดและจำนวน ทุกจอ** — ดีลแบบนี้ยื่น SO ไม่ได้ (§2)
+   · ตัวบ่งชี้ `isLegacyWonAtCreate` (`lib/sales/dashboardMetrics.js`) คำนวณจากแถว ไม่มี migration:
+     Won · `metadata.legacy === true` · ไม่มี `acceptedQuotationId` · `wonSource !== 'quotation'`
+     (ฐานจริง 15/09 จับได้ 35/35 · จับผิด 0 จาก 166 ดีลที่ Won ผ่านใบเสนอราคา)
+   · กองลดจาก 42 ดีล 2,348,450 เหลือ 7 ดีล 703,100
+   · บล็อก B ยังอยู่ใน FC Total / FC Excel / บันทึกหน้าดีล ตามข้อ 2 — ตัดเฉพาะยอดคาดการณ์ "คาดจบงวด"
+     ซึ่งเทียบเป้าที่คิดจาก Actual ในระบบนี้ (ยอดของดีลกลุ่มนี้ไม่มีวันเป็น Actual)
+8. คำใต้การ์ด "มูลค่าปิดจริง (Won)" ของดีลแบบนี้ = **"ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้"**
+   แทน "คาดการณ์ ฿X · ยังไม่มีใบสั่งขายที่ยื่น" · บรรทัดบันทึกของข้อ 2 คงเดิม
+9. client เขียน `wonSource` / `acceptedQuotationId` ผ่าน POST/PATCH ไม่ได้ (ต่อจากข้อ 5) — คำขอที่แต่งมาเอง
+   หลบตัวบ่งชี้ไม่ได้ · ⚠️ **ห้ามถอด `legacy` ใน `SERVER_ONLY_DEAL_METADATA_KEYS`** (ด่าน POST อ่านมัน และแถวต้องเก็บไว้ให้ตัวบ่งชี้)
+   · ธง `legacy` แก้ทีหลังไม่ได้ (ตรวจรอบสอง 15/09): PATCH ไม่รับค่าจาก client เลย คงค่าเดิม (`clientDealMetadataOnPatch`)
+     — เดิม `{metadata:{legacy:false}}` บนดีลเก่าที่สร้างเป็น Won ผ่านทุกด่าน ดีลกลับเข้ากอง (เช่น DL-26080340 283,350)
+   · POST รับธงเฉพาะ `true` จริง และเก็บเป็น `true` (`clientDealMetadataOnCreate`) — ด่านสร้างกับตัวบ่งชี้อ่านผ่าน
+     `hasLegacySwitchFlag` ตัวเดียวกัน (เดิมด่านเช็ก truthy ⇒ `legacy: 1` / `'true'` สร้าง Won ได้แต่หลุดตัวบ่งชี้ =
+     บรรทัด "+1 ดีล ฿0" ถาวร) · โมดัลสร้างส่ง `true` อยู่แล้ว · prod 49/49 เป็น `true`
+10. แถวทีม/รายคนเดือน ม.ค.–มิ.ย. ที่ `overlayHistory` ไม่ล้าง = ข้อจำกัดเดิม บันทึกไว้ ไม่แก้
+    ([so-pending-approval-amount.md](so-pending-approval-amount.md)) · DL-26080133 แก้ข้อมูลตาม §6 ไม่มีโค้ด
+
 ## 2. ของเดิมที่ผิด — ทำไมยอดที่พิมพ์ไม่เคยนับ
 
 | วันที่ | เหตุการณ์ |
@@ -42,14 +63,19 @@
 ส่วนต่าง FC ติดลบเต็มก้อน และโผล่ในรายงาน FC Excel ของฝ่ายวางแผนผลิต · และดีลที่สร้างเป็น Won
 **ออกใบเสนอราคา/SO ไม่ได้เลย** (quotations POST ปฏิเสธดีล Won) — Actual ของดีลพวกนี้จึงเป็น 0 ถาวร
 
+ผลค้างที่พบ 2026-09-15: กอง **Won รอยื่น SO** (#1717) นับดีลที่สร้างเป็น Won ครบ 35 ดีล —
+1,645,350 (= บล็อก B ทั้งก้อน) + บรรทัด ฿0 อีก 24 ดีล (บล็อก A 4 · พิมพ์ 0 ตอนสร้าง 20) จากกองทั้งหมด
+42 ดีล 2,348,450 ⇒ คาดจบงวดของ KA/ODM สูงเกินจริง และแถว "ยังไม่ได้แยกทีม" ติดลบ · แก้ด้วยมติข้อ 7
+
 ## 3. ช่อง "วันที่ปิดในระบบเดิม" คงไว้เพราะอะไร
 
 ยอดเป็น 0 ก็จริง แต่ `confirmedAt` ยังมีตัวอ่าน:
 
 - `wonMonthOf` (`lib/sales/dashboardMetrics.js`) จัดดีล Won เข้าเดือน: `metadata.wonMonth` → **`confirmedAt`**
   → `poReceivedDate` → `forecastMonth` · ดีลกลุ่มนี้ไม่มี SO ⇒ `wonMonth` ว่าง ⇒ `confirmedAt` ตัดสิน
-- เดือนนั้นใช้กับ `wonCount` รายประเภท/คน/ทีม (`api/sales-planning/dashboard`) · ลิ้นชัก "ปิดได้"
-  (`DealDrillDownModal`) · `myDashboardTotals` · `targets/history`
+- เดือนนั้นใช้กับ `wonCount` รายประเภท/คน/ทีม (`api/sales-planning/dashboard` — ส่งใน payload แต่ไม่มีจอไหนแสดง) ·
+  ลิ้นชัก "ปิดได้" (`DealDrillDownModal`) · `myDashboardTotals` · `targets/history`
+- `wonAwaitingSoMonthOf` ใช้เดือนเดียวกัน แต่ดีลกลุ่มนี้ไม่เข้ากอง Won รอยื่น SO แล้ว (มติข้อ 7) จึงไม่มีผลกับกองนั้น
 - ไม่มีวันนี้ ⇒ `confirmedAt` ว่าง ⇒ ดีลงานเก่าที่คีย์วันนี้ไปนับเป็นดีล Won ของเดือนที่คีย์ ไม่ใช่เดือนที่ปิดจริง
 
 ⚠️ **เพิ่มเกินมติ** (ตัดออกได้): ด่านเดียวกันทั้งจอและ server ตีกลับวันที่ปิดที่เลยวันนี้ (เวลาไทย) —
@@ -69,9 +95,18 @@
 | `components/salesPlanning/DealValueLines.js` | ถอด prop `hint` (ผู้เรียกเดียวคือคำสัญญา Actual) |
 | `app/sales-planning/deals/[id]/page.js` | บรรทัด "ยอดปิดในระบบเดิม ฿X" ใต้ "มูลค่าปิดจริง (Won)" — ดีลที่ยังรอยืนยันบอกว่ายอดยังอยู่ใน FC |
 | `lib/sales/forecastSourceRepo.js` · เทสต์ | แก้คอมเมนต์/เทสต์ที่อ้าง Actual แบบ `'legacy'` |
+| `lib/sales/dashboardMetrics.js` (รอบสอง) | `isLegacyWonAtCreate` ตัวบ่งชี้เดียวของทั้งระบบ · `isWonAwaitingSo` ตัดดีลที่เข้าข่าย (ถัง API · ลิ้นชัก · แท็บผลงานขาย รับผลเอง) |
+| `lib/sales/dealAmountDisplay.js` (รอบสอง) | `wonDealForecastHint` รับ `deal` · ชนิด `legacy_no_so` = "ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้" (`LEGACY_WON_HINT_TEXT`) — ตัวเลขจริง (แถวอนุมัติ/รออนุมัติ) ชนะธงเสมอ |
+| `lib/sales/legacyDealSwitch.js` (รอบสอง) | `SERVER_ONLY_DEAL_METADATA_KEYS` เพิ่ม `wonSource` · `acceptedQuotationId` (ไม่มี `legacy`) · `hasLegacySwitchFlag` ตัวอ่านธงเดียว (true จริงเท่านั้น · `isLegacyWonCreate` และ `isLegacyWonAtCreate` ใช้ร่วม) · `clientDealMetadataOnCreate` (POST เก็บธงเฉพาะ true) · `clientDealMetadataOnPatch` (PATCH ไม่รับธง) |
+| `api/sales-planning/deals/route.js` · `deals/[id]/route.js` (รอบสอง) | POST ด่านสถานะใช้ `isLegacyWonCreate` แทนเช็ก truthy · metadata ผ่าน `clientDealMetadataOnCreate` · PATCH merge ผ่าน `clientDealMetadataOnPatch` |
+| `app/sales-planning/deals/[id]/page.js` (รอบสอง) | ส่ง `deal` เข้า `wonDealForecastHint` · ไม่ตัดสินดีลเก่าเอง |
 
-เทสต์ยาม: `lib/sales/legacyDealSwitch.test.mjs` (ด่าน · ถอดคีย์ · คำบนฟอร์ม · route) ·
-`lib/sales/legacyDealNoteMigration.test.mjs` (รูปทรงของ 0359)
+เทสต์ยาม: `lib/sales/legacyDealSwitch.test.mjs` (ด่าน · ถอดคีย์ · คำบนฟอร์ม · route · แต่งคีย์หลบตัวบ่งชี้ไม่ได้ ·
+PATCH `{legacy:false}` ไม่ขยับธง กองยัง 0/0 · POST `legacy: 1`/`'true'` ไม่ผ่านด่าน · สแกนหาเงื่อนไขตัวบ่งชี้ซ้ำนอก
+`dashboardMetrics.js` และตัวอ่านธงซ้ำนอก `legacyDealSwitch.js` ทั้งแบบเข้มและ truthy) · `lib/sales/legacyDealNoteMigration.test.mjs` (รูปทรงของ 0359) ·
+`lib/sales/wonAwaitingSo.test.mjs` · `lib/sales/wonAwaitingSoRollup.test.mjs` (ตัด 0/0 · ดีลสวิตช์ผ่านใบเสนอราคายังนับ ·
+`wonSource='quotation'` ไม่มี `acceptedQuotationId` ยังนับ · ดีลปกติ ฿0 ยังนับ 1) · `lib/sales/dealPagesGap.test.mjs` ·
+`lib/sales/dealsPendingApproval.test.mjs` (คำใต้การ์ด)
 
 ## 5. mig 0359 — วิธีรัน
 
@@ -103,6 +138,9 @@
 
 ⚠️ 9 จาก 11 วันเป็นวันสิ้นเดือนแบบกรอกกันไว้ (10-30/31 · 12-31) — `endDate` เป็นสัญญาณเดียวที่มี
 
+ภายใต้มติข้อ 7 ยอดบล็อก B ไม่อยู่ในคาดจบงวด/คาดขาดแล้ว ⇒ ล้างหรือไม่ล้าง กระทบเฉพาะ FC Total ·
+ส่วนต่าง FC ของยอด Won · รายงาน FC Excel
+
 **ดีล ส.ค.–ก.ย. 5 ใบ** (มติข้อ 3): DL-26080143 17,500 (บล็อก A) · DL-26080384 60,000 (A) ·
 DL-26080385 30,000 (A) · DL-260900491 12,000 (B) · DL-260900501 30,000 (B)
 — สามใบของบล็อก A ถูกล้าง FC ในไฟล์นี้ (Actual ไม่ขยับ) ถ้าผู้ใช้อยากรอก่อน ย้ายแถวไปบล็อก B ก่อนรัน
@@ -114,4 +152,7 @@ DL-26080236 (บล็อก B) · DL-26080383 (ยอด 0) · DL-260900433 (�
 
 - **ไม่แก้ trigger** และไม่แก้ migration เก่า — คอมเมนต์ใน 0279/0353 ที่อ้างว่า trigger ปล่อยยอดที่กรอกเองยังอยู่
 - **ไม่ย้ายยอดเป็น "ยอดขายระบบเดิม" แยกบนภาพรวม** (ทางเลือก ค ในบรีฟ) — ต่อยอดได้ภายหลังเพราะยอดยังเก็บในบันทึก
+  · รอบสอง (มติข้อ 7) ก็ไม่ได้เพิ่มกองแยก — ดีลกลุ่มนี้แค่ไม่ถูกนับใน Won รอยื่น SO
+- **ไม่เก็บธง "สร้างเป็น Won" ในแถว** (เช่น `wonSource='legacy_switch'` + backfill) — ตัวบ่งชี้คำนวณจากแถวแม่นแล้ว
+  และธงที่เก็บไว้จะรอด merge ของ 0284 ⇒ ถ้าดีลได้ Won ผ่านใบเสนอราคาภายหลัง ธงจะซ่อนเงินจริง
 - บันทึกโชว์เฉพาะหน้ารายละเอียดดีล — ไม่ขึ้นบนรายการดีล/การ์ดดีลบนหน้าลีด

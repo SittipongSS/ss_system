@@ -153,10 +153,11 @@ test('หน้ารายละเอียดดีล: การ์ด Won =
   assert.match(page, /<PendingApprovalAmount amount=\{soAmounts\.pendingApproval\} count=\{soAmounts\.pendingApprovalCount\} \/>/);
   assert.doesNotMatch(page, /dealActual\s*\+\s*soAmounts/, 'ห้ามบวกรออนุมัติเข้า Actual');
   /* ส่วนต่างเทียบ FC — มติผู้ใช้ 2026-09-14 (fix 1): สามกรณีตัดสินที่ wonDealForecastHint ตัวเดียว
-     (เทสต์ตัวกติกาอยู่ที่ dealPagesGap.test.mjs) · ป้อนจากแถว SO สด + Actual ของดีล */
+     (เทสต์ตัวกติกาอยู่ที่ dealPagesGap.test.mjs) · ป้อนจากแถว SO สด + Actual ของดีล
+     · ส่ง `deal` ด้วย — คำของดีลเก่าที่สร้างเป็น Won ตัดสินด้วยตัวบ่งชี้กลางในตัวเลือกคำ (มติผู้ใช้ 2026-09-15) */
   assert.match(page, /import \{ wonDealForecastHint \} from "@\/lib\/sales\/dealAmountDisplay"/);
   assert.match(page,
-    /wonDealForecastHint\(\{\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*\}\)/);
+    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*\}\)/);
   /* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A) ซ่อนคำส่วนต่าง — บรรทัด "ยอดปิดในระบบเดิม" พูดแทน
      (มติผู้ใช้ 2026-09-14 · lib/sales/legacyDealSwitch) ⇒ คำส่วนต่างยังมาจาก wonHint.text ตัวเดียว
      และบรรทัดรออนุมัติยังตามท้ายการ์ดเสมอ */
