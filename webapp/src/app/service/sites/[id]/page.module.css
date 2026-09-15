@@ -29,8 +29,57 @@
 
 .wide { grid-column: 1 / -1; }
 
-.numCol { text-align: right; white-space: nowrap; }
+/* ⚠️ ชิดขวามาจากคลาสกลาง `num` ที่ใส่คู่กัน — `text-align` ในโมดูลแพ้กฎของตารางกลางเสมอ */
+.numCol { white-space: nowrap; }
 .muted { color: var(--text-3); }
+
+/* วันที่ · เวลา · รหัส · ป้ายสถานะ · ลิงก์ใบส่งงาน — ของที่ตัดกลางแล้วอ่านไม่ออก
+   🐞 minWidth 600 ต่ำกว่าแถวบรรทัดเดียว ⇒ ตารางบีบก่อนเลื่อน: "2026-09-/14" · ป้าย "กำลัง/ทำ"
+      · ลิงก์ "ใบส่ง/งาน" กว้าง 23px (จอ 1052 และมือถือ) · ช่องข้อความอื่นยังขึ้นบรรทัดได้ตามปกติ */
+.nowrap { white-space: nowrap; }
+
+/* สรุปงานในประวัติการเข้า — ตัดที่ 3 บรรทัด ข้อความเต็มอยู่ใน title + ในใบส่งงาน
+   🐞 วันที่/ป้าย/ลิงก์ห้ามตัดคำ ⇒ คอลัมน์นี้เหลือช่องเดียวที่ยอมบีบ สรุปยาวกลายเป็นหอคอย
+      (สรุป 90 ตัวอักษรที่จอ 1052 = 10 บรรทัด แถวสูง 204px)
+   ⚠️ line-height ต้องเป็น --lh-thai — กล่องที่ตัดข้อความสูงไม่พอสระบน/ล่างขาด (lineHeightScale.test) */
+.summaryClamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  line-height: var(--lh-thai);
+}
+
+/* ── ตารางพับบนจอแคบ (โซน · นัดที่จะถึง · ประวัติการเข้า) ─────────────────────
+   จอ ≤ 680 = กล่องตารางแคบกว่า 600px (minWidth ของตารางนัด) · เกณฑ์เดียวกับที่ตารางกลาง
+   ปล่อยแถวสูงตามเนื้อ (Table.module.css) · คอลัมน์รองซ่อน ค่าเดียวกันลงบรรทัดรองในเซลล์แรก
+   🐞 minWidth 560/600 ในกล่อง 326px (จอ 390) ⇒ ป้ายสถานะ · ลิงก์ใบส่งงาน · ปุ่มแก้/ลบ
+      อยู่พ้นขอบขวาทั้งชุด และไม่มีอะไรบอกว่าเลื่อนได้ — คอลัมน์ที่เห็นอ่านเหมือนทั้งตาราง
+   ⚠️ ข้อมูลครบเท่าเดิม แค่ย้ายที่ · คอลัมน์ที่ซ่อนมีค่าเดียวกันอยู่ในเซลล์แรก */
+.narrowOnly,
+.narrowLine,
+.narrowStatus { display: none; }
+
+@media (max-width: 680px) {
+  /* ตั้งตัวแปรบน <table> เอง — ค่าที่ตั้งเองชนะค่าที่สืบทอดมาจาก style ของ TableScroll
+     โดยไม่ต้องสู้ specificity กับ `.scroll table` ของตารางกลาง */
+  .foldTable { --table-min-width: auto; }
+  .wideCol { display: none; }
+  .narrowOnly { display: inline; }
+  /* ชื่อคน/ข้อความยาวไม่มีจุดตัดต้องไม่ดันตารางกว้างเกินกล่อง — ชิ้น nowrap (เวลา/รหัส) ไม่โดน */
+  .narrowLine {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+  /* ระยะห่างอยู่ **ท้ายชิ้นแรก** ไม่ใช่หน้าป้าย ⇒ ป้ายที่ขึ้นบรรทัดใหม่ (จอ 320) ชิดซ้ายตรงกับรหัส/วันที่
+     🐞 ลอง flex-wrap แล้ว — ลิงก์กลายเป็น flex item ⇒ min-height 32px ของ .table-row-link
+        เริ่มมีผล แถวสูงขึ้น 13–25px มีช่องว่างใต้รหัส · ให้ชิ้นแรกเป็น inline เหมือนจอกว้าง */
+  .cellHead > :first-child { margin-inline-end: var(--space-2); }
+  .narrowStatus {
+    display: inline-flex;
+    vertical-align: middle;
+  }
+}
 
 /* แถบทวงจัดอุปกรณ์เข้าโซน (backfill — ของเก่าเกิดก่อนมีโซน mig 0298) */
 .backfillNote {
@@ -56,12 +105,3 @@
    (คนตาบอดสีต้องได้ข้อมูลเท่ากัน) */
 .overdue { color: var(--red); font-weight: var(--fw-semibold); }
 .soon { color: var(--amber); font-weight: var(--fw-semibold); }
-
-/* ชื่อโซนเป็นทางเข้าหน้าโซน (รอบขาย · ยอดใช้จริง · ประวัติของโซนนั้น) */
-.zoneLink {
-  color: inherit;
-  text-decoration: none;
-  border-bottom: 1px solid var(--border);
-}
-
-.zoneLink:hover { border-bottom-color: var(--accent); color: var(--accent); }

@@ -20,16 +20,18 @@ import LegacySiteModal from "@/components/service/LegacySiteModal";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Input from "@/components/ui/Input";
+import Segmented from "@/components/ui/Segmented";
 import SkeletonRows from "@/components/ui/Skeleton";
-import StatCards from "@/components/database/StatCards";
-import { TableShell } from "@/components/ui/Table";
+import DetailRow from "@/components/ui/DetailRow";
+import { TableScroll } from "@/components/ui/Table";
+import { SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
-import { useSortableTable, SortTh } from "@/lib/useSortableTable";
+import { compareSortValues } from "@/lib/useSortableTable";
 import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService, canImportServiceData } from "@/lib/permissions";
@@ -40,6 +42,30 @@ import { apiFetch } from "@/lib/apiFetch";
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
    ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
 const EMPTY = [];
+
+/* ── เรียงลำดับ: ย้ายจากหัวตารางมาอยู่บนแถบเครื่องมือ (มติผู้ใช้ 2026-09-15 · ต้นแบบ = ใบเสนอราคา)
+   ⭐ ได้สองอย่างที่หัวตารางให้ไม่ได้: มุมมองการ์ด (จอแนวตั้ง) เรียงได้ด้วย และเรียงตาม
+      **ชื่อไซต์** ได้อีกครั้ง (หายไปตอนรวมรหัส+ชื่อเป็นคอลัมน์เดียว)
+   `dir` = ทิศตั้งต้นเมื่อเลือกหัวข้อนั้น — จำนวนเครื่องมากไปน้อยคือสิ่งที่คนมองหา
+   ⚠️ ป้ายสั้นโดยตั้งใจ — ปุ่มโชว์ป้ายที่เลือกอยู่ในชิป · วัดที่จอ 360px ก้อนเรียงต้องกว้าง ≤ 212px
+      ถึงอยู่แถวเดียวกับปุ่มตัวกรองได้ ("เขตวิ่งงาน" 216 · "จำนวนเครื่อง" 229 ⇒ ตกไปแถวสาม)
+      "เขต" = คำเดียวกับบนการ์ด · "เครื่อง" = คำเดียวกับหัวคอลัมน์ */
+const SORT_OPTIONS = [
+  { value: "code", label: "รหัสไซต์", dir: "asc" },
+  { value: "name", label: "ชื่อไซต์", dir: "asc" },
+  { value: "customer", label: "ลูกค้า", dir: "asc" },
+  { value: "routeZone", label: "เขต", dir: "asc" },
+  { value: "assets", label: "เครื่อง", dir: "desc" },
+];
+const SORT_DEFAULT = "code";
+const SORT_VALUE = {
+  code: (s) => s.code || "",
+  name: (s) => s.name || "",
+  customer: (s) => s.customerName || "",
+  routeZone: (s) => s.routeZone || "",
+  assets: (s) => s.activeAssetCount ?? null,
+};
+const sortDirOf = (key) => SORT_OPTIONS.find((option) => option.value === key)?.dir || "asc";
 
 export default function ServiceSitesPage() {
   const router = useRouter();
@@ -144,24 +170,26 @@ export default function ServiceSitesPage() {
     if (zoneFilter.length && !zoneFilter.includes(site.routeZone)) return false;
     if (q) {
       // จังหวัดเข้าชุดค้นด้วย (mig 0315) — เป็นตัวตนถาวรของไซต์ คนถามหา "ไซต์ที่เชียงใหม่"
-      const hit = [site.name, site.customerName, site.routeZone, site.code, site.province]
+      // รหัสลูกค้า (AR) โชว์บนแถวแล้ว ⇒ ต้องค้นเจอด้วย (ตาเห็นบนแถว = ค้นเจอ)
+      const hit = [site.name, site.customerName, site.customerArCode, site.routeZone, site.code, site.province]
         .filter(Boolean).some((field) => String(field).toLocaleLowerCase("th").includes(q));
       if (!hit) return false;
     }
     return true;
   }), [sites, showInactive, provinceFilter, customerFilter, zoneFilter, q]);
 
-  const sort = useSortableTable(filtered, {
-    code: (s) => s.code || "",
-    site: (s) => s.name || "",
-    customer: (s) => s.customerName || "",
-    routeZone: (s) => s.routeZone || "",
-    assets: (s) => s.activeAssetCount ?? null,
-  }, { key: "code", dir: "asc" });
+  const [storedSortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
+  const [sortDir, setSortDir] = useStickyState("sortDir", sortDirOf(SORT_DEFAULT));
+  // ค่าที่จำไว้จากหัวข้อที่ถูกถอดไปแล้ว ⇒ กลับไปค่าตั้งต้น ไม่ใช่เรียงด้วยตัวดึงค่าที่ไม่มีอยู่
+  const sortKey = SORT_VALUE[storedSortKey] ? storedSortKey : SORT_DEFAULT;
+  const sorted = useMemo(() => {
+    const get = SORT_VALUE[sortKey];
+    return [...filtered].sort((a, b) => compareSortValues(get(a), get(b), sortDir));
+  }, [filtered, sortKey, sortDir]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sort.sorted, {
-      resetKey: `${q}|${provinceFilter.join(",")}|${customerFilter.join(",")}|${zoneFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+    usePagination(sorted, {
+      resetKey: `${q}|${provinceFilter.join(",")}|${customerFilter.join(",")}|${zoneFilter.join(",")}|${showInactive}|${sortKey}|${sortDir}`,
     });
 
   const filterCount = provinceFilter.length + customerFilter.length + zoneFilter.length + (showInactive ? 1 : 0);
@@ -204,7 +232,7 @@ export default function ServiceSitesPage() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ค้นหาชื่อไซต์ ลูกค้า จังหวัด เขตวิ่งงาน หรือรหัส"
+          placeholder="ค้นหาไซต์ ลูกค้า จังหวัด เขต หรือรหัส"
           aria-label="ค้นหาไซต์บริการ"
         />
       </div>
@@ -233,11 +261,31 @@ export default function ServiceSitesPage() {
           }] : []),
         ]}
       />
-      <div className="spacer" />
-      <div className="segmented">
-        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} title="ตาราง"><Table2 size={15} /></button>
-        <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} title="การ์ด"><LayoutGrid size={15} /></button>
+      {/* เรียง + ทิศทาง = ก้อนเดียว ตัดบรรทัดไปด้วยกัน (ไม่ใช่ `.spacer` + สองปุ่มลอย)
+          🐞 จอ 360px ปุ่มลูกศรเคยหลุดไปแถวสามคนเดียว ห่างจากเมนูที่มันกลับทิศให้ */}
+      <div className={`ui-sort-control ${styles.sortGroup}`}>
+        <SortMenu
+          title="เรียงลำดับไซต์"
+          value={sortKey}
+          defaultValue={SORT_DEFAULT}
+          onChange={(value) => { setSortKey(value); setSortDir(sortDirOf(value)); }}
+          options={SORT_OPTIONS}
+        />
+        <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
       </div>
+      {/* ตัวกลางถือ type=button · aria-pressed · ชื่อให้โปรแกรมอ่านจอ · ปุ่มลูกศร
+          🐞 เดิมเขียนปุ่มเอง: ชื่อมาจาก title อย่างเดียว และบอกมุมมองที่เลือกด้วยสีพื้นเท่านั้น */}
+      <Segmented
+        ariaLabel="มุมมอง"
+        className={styles.viewToggle}
+        showLabels={false}
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "table", label: "มุมมองตาราง", icon: Table2 },
+          { value: "cards", label: "มุมมองการ์ด", icon: LayoutGrid },
+        ]}
+      />
     </div>
   );
 
@@ -250,14 +298,14 @@ export default function ServiceSitesPage() {
       headerRight={headerRight}
       loading={loading}
       rail={(
-        <StatCards
-          items={[
-            { label: "ทั้งหมด", value: sites.length },
-            { label: "ใช้งาน", value: activeCount, tone: "success" },
-            { label: "ปิดใช้งาน", value: inactiveCount, tone: inactiveCount ? "warn" : undefined },
-            { label: "เครื่องที่ใช้งานอยู่", value: totalActiveAssets },
-          ]}
-        />
+        /* แถบตัวเลขกลาง (Page contract §2) — จอแคบยุบเหลือ 2 คอลัมน์เอง
+           🐞 StatCards ตรึง 4 คอลัมน์ด้วย inline style ⇒ จอ 390px ช่องละ 83px ป้ายตัดบรรทัด ตัวเลขไม่ตรงแนว */
+        <MetricStrip>
+          <Metric label="ทั้งหมด" value={sites.length} />
+          <Metric label="ใช้งาน" value={activeCount} tone="success" />
+          <Metric label="ปิดใช้งาน" value={inactiveCount} tone={inactiveCount ? "warning" : undefined} />
+          <Metric label="เครื่องที่ใช้งานอยู่" value={totalActiveAssets} />
+        </MetricStrip>
       )}
       toolbar={toolbar}
     >
@@ -271,7 +319,7 @@ export default function ServiceSitesPage() {
           {/* บอกทางของ "ของเก่า" เฉพาะคนที่กดปุ่มได้ — คนอื่นไม่เห็นปุ่ม ข้อความนี้จะชี้ไปที่ของที่ไม่มี */}
           {canEdit && <> · ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ เพิ่มได้ที่ปุ่ม &ldquo;เพิ่มไซต์ย้อนหลัง&rdquo;</>}
         </EmptyState>
-      ) : sort.sorted.length === 0 ? (
+      ) : sorted.length === 0 ? (
         /* ⚠️ ค้นไม่เจอ ≠ ไม่มีไซต์ — ตารางว่างเปล่าโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
         <EmptyState icon={Search}>
           {q ? `ไม่มีไซต์ที่ตรงกับ “${search.trim()}”` : "ไม่มีไซต์ที่ตรงกับตัวกรองที่เลือก"} — ลองเปลี่ยนคำค้นหรือล้างตัวกรอง
@@ -285,19 +333,21 @@ export default function ServiceSitesPage() {
               <Link
                 key={site.id}
                 href={`/service/sites/${site.id}`}
-                className={`${styles.card} clickable-row p-4 flex-col gap-2`}
-                style={inactive ? { opacity: "var(--op-muted)" } : undefined}
+                className={[styles.card, inactive && styles.cardInactive, "clickable-row p-4 flex-col gap-2"].filter(Boolean).join(" ")}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-[11px] text-[var(--accent)] font-mono">{naText(site.code)}</div>
+                    <div className={`${styles.cardCode} font-mono`}>{naText(site.code)}</div>
                     <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{site.name}</div>
-                    <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{naText(site.customerName)}</div>
+                    <div className={`${styles.cardCustomer} mt-0.5 truncate`}>{naText(site.customerName)}</div>
                   </div>
-                  <span className="ui-badge">{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
+                  <span className={`ui-badge shrink-0 ${inactive ? "" : "success"}`.trim()}>{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[var(--text-2)] truncate">{naText(site.routeZone)}</span>
+                  {/* ⚠️ ต้องมีป้าย — ค่าลอย ๆ ("—" หรือชื่อเขต) อ่านไม่ออกว่าคืออะไร */}
+                  <span className="text-[var(--text-2)] truncate">
+                    {site.routeZone ? `เขต ${site.routeZone}` : <span className={styles.muted}>ยังไม่ระบุเขต</span>}
+                  </span>
                   <span className="font-mono text-[var(--text-2)]">
                     {site.activeAssetCount || 0}
                     {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""} เครื่อง
@@ -311,17 +361,22 @@ export default function ServiceSitesPage() {
           })}
         </div>
       ) : (
-        /* ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
+        /* ⭐ ทรงเดียวกับตารางใบเสนอราคา (มติผู้ใช้ 2026-09-15 "ตารางไซต์ไม่สวย ใช้ใบเสนอราคาเป็นต้นแบบ")
+           · กรอบชั้นเดียว `TableScroll surface="auto"` — เดิม TableShell = การ์ด + กรอบตารางซ้อนข้างใน
+           · ทั้งแถวกดได้ (DetailRow) · ลิงก์ในเซลล์แรกคือทางเข้าของคีย์บอร์ด (href ตรงกันทุกตัวอักษร)
+           · รหัสลูกค้า (AR) อยู่เหนือชื่อกิจการ · ป้ายสถานะกว้างเท่ากันทั้งคอลัมน์
+           ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
            ตารางจะบีบคอลัมน์จนรหัสตัดบรรทัด แทนที่จะเลื่อนแนวนอน (Table.module.css) */
-        <TableShell minWidth={960}>
-          <table>
+        <TableScroll aria-busy={loading} surface="auto" minWidth={860}>
+          <table className="w-full text-sm">
             <thead>
               <tr>
-                <SortTh label="รหัส" sortKey="code" sort={sort} />
-                <SortTh label="ไซต์" sortKey="site" sort={sort} />
-                <SortTh label="ลูกค้า" sortKey="customer" sort={sort} />
-                <SortTh label="เขตวิ่งงาน" sortKey="routeZone" sort={sort} />
-                <SortTh label="เครื่อง" sortKey="assets" sort={sort} className={styles.numCol} />
+                {/* รหัสบน · ชื่อล่าง · ค้นหาครอบทั้งสองอยู่แล้ว
+                    🐞 เดิมแยกสองคอลัมน์: รหัสที่คนกวาดหาเป็นข้อความเฉย ๆ เป้ากดเหลือแค่ชื่อสั้น ๆ ("ชั้น 2" 23×18px) */}
+                <th>ไซต์</th>
+                <th>ลูกค้า</th>
+                <th>เขตวิ่งงาน</th>
+                <th className="num">เครื่อง</th>
                 <th>ช่วงเวลาที่เข้าได้</th>
                 <th>สถานะ</th>
               </tr>
@@ -329,32 +384,41 @@ export default function ServiceSitesPage() {
             <tbody>
               {pageRows.map((site) => {
                 const window = accessWindowText(site);
+                const inactive = site.isActive === false;
                 return (
-                  <tr key={site.id} className={site.isActive === false ? styles.inactive : undefined}>
-                    <td className="mono">{naText(site.code)}</td>
+                  <DetailRow
+                    key={site.id}
+                    href={`/service/sites/${site.id}`}
+                    className={inactive ? `premium-row ${styles.inactive}` : "premium-row"}
+                  >
                     <td>
-                      <Link href={`/service/sites/${site.id}`} className={styles.siteLink}>{site.name}</Link>
+                      {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
+                      <Link prefetch={false} href={`/service/sites/${site.id}`} className="linklike"><strong className="mono">{site.code || site.name}</strong></Link>
+                      {site.code && site.name ? <span className={styles.subLine}>{site.name}</span> : null}
                     </td>
-                    <td>{naText(site.customerName)}</td>
+                    <td>
+                      {site.customerArCode ? <span className="ar-code ar-code-block">{site.customerArCode}</span> : null}
+                      {naText(site.customerName)}
+                    </td>
                     <td>{naText(site.routeZone)}</td>
-                    <td className={styles.numCol}>
+                    <td className={`num mono ${styles.numCol}`}>
                       {/* เครื่องที่ยังใช้งานคือตัวเลขที่เจ้าหน้าที่สนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
                       {site.activeAssetCount || 0}
                       {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""}
                     </td>
                     <td>{window || <span className={styles.muted}>ไม่จำกัด</span>}</td>
                     <td>
-                      <span className="ui-badge">{site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
+                      <span className={`ui-badge ui-badge-cell ${inactive ? "" : "success"}`.trim()}>{inactive ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                     </td>
-                  </tr>
+                  </DetailRow>
                 );
               })}
             </tbody>
           </table>
-        </TableShell>
+        </TableScroll>
       )}
 
-      {sort.sorted.length > 0 && (
+      {sorted.length > 0 && (
         <Pager
           page={page}
           pageCount={pageCount}

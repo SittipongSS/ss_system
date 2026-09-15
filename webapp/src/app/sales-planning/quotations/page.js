@@ -345,7 +345,7 @@ export default function QuotationsPage() {
             action={(
               /* ตัวสลับตัวกรอง — ไม่ได้พาไปไหน จึงไม่ใช่ลิงก์ · สล็อต `action` ของ
                  StatusNotice ออกแบบมารับ `.btn` โดยตรง (`.action :global(.btn)`
-                 แจก width:100% + --ctl-h-touch บนจอแคบ) และเพื่อนบ้านทุกจุด
+                 แจก --ctl-h-touch บนจอแคบ · ปุ่มกว้างตามป้าย ไม่ยืดเต็มแถวแล้ว) และเพื่อนบ้านทุกจุด
                  ในสล็อตนี้เป็น <Button size="sm"> อยู่แล้ว */
               <Button size="sm" variant="ghost" onClick={() => setPendingSoOnly((on) => !on)}>
                 {pendingSoOnly ? "แสดงทุกใบ" : "ดูเฉพาะใบที่ค้าง"}

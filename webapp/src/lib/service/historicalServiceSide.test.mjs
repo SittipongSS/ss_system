@@ -87,5 +87,8 @@ test('wizard: ใบย้อนหลังชี้ไป "เพิ่มไ�
 test('หน้างานเข้าใหม่: ป้าย "ย้อนหลัง" ตัดสินด้วย isHistoricalOrder · ชิปยกเว้นด่านเงินอ่านจาก readiness', () => {
   const src = code('app/service/intake/page.js');
   assert.match(src, /isHistoricalOrder\(row\) && \(\s*<span className="cell-sub">\s*<StatusBadge tone="info" size="sm" label="ย้อนหลัง" \/>/);
-  assert.match(src, /row\.readiness\?\.paymentGateExempt \?/);
+  // ชิปอยู่ใน PaidBadge (#1720 แยกคอมโพเนนต์ให้ตาราง + การ์ดใช้ร่วม) — ตัวอ่านเดียวคือ readiness.paymentGateExempt
+  assert.match(src, /function PaidBadge\(\{ readiness \}\) \{[\s\S]{0,400}readiness\?\.paymentGateExempt[\s\S]{0,80}label="ยกเว้นด่านเงิน"/);
+  assert.equal((src.match(/<PaidBadge readiness=\{row\.readiness\} \/>/g) || []).length >= 2, true, 'ตารางและการ์ดใช้ PaidBadge ตัวเดียวกัน');
+  assert.equal((src.match(/label="ย้อนหลัง"/g) || []).length, 2, 'ป้ายย้อนหลังขึ้นทั้งตารางและการ์ด');
 });

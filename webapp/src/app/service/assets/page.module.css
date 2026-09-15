@@ -3,7 +3,14 @@
    ⚠️ ห้ามประกาศ `.toolbar` ของตัวเองที่นี่ — ใช้คลาสกลางใน globals.css ที่ถือ
       gap · margin-bottom · และกฎ `--ctl-h` ที่ตรึงตัวควบคุมบนแถบให้สูงเท่ากัน */
 
-.searchInput { width: 260px; max-width: 340px; }
+/* 🐞 เดิม 260px — คำใบ้ "ค้นหารหัสเครื่อง รุ่น ไซต์ หรือลูกค้า" กว้าง 199px แต่ช่องเหลือที่ให้
+   ตัวอักษรแค่ 189px ⇒ "ลูกค้" ตัวท้ายหาย (วัด 2026-09-15 จอ 700–1440) · 300px เหลือที่ 229px */
+.searchInput { width: 300px; max-width: 340px; }
+/* 🐞 จอโทรศัพท์ช่องค้นค้างที่ 260px — โมดูลโหลดหลัง globals จึงชนะกฎกลาง `.search-glass
+   { width: 100% }` ⇒ ปุ่มตัวกรองตกบรรทัดสองอยู่ตัวเดียว · ต้องปลด max-width ด้วย */
+@media (max-width: 680px) {
+  .searchInput { width: 100%; max-width: none; }
+}
 
 .assetLink {
   font-weight: var(--fw-semibold);

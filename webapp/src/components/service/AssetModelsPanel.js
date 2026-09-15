@@ -15,6 +15,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
@@ -124,13 +125,20 @@ export default function AssetModelsPanel({ canEdit = false, addSignal = 0, onCou
 
   return (
     <>
-      {loadError && <p className="form-error" role="alert">{loadError}</p>}
+      {/* 🐞 เดิมเป็น `<p class="form-error">` ซึ่งไม่มีสไตล์ที่ไหนเลย ⇒ error อ่านเหมือนข้อความธรรมดา */}
+      {loadError && (
+        <StatusNotice tone="error" title="โหลดทะเบียนรุ่นไม่สำเร็จ"
+          action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+          {loadError}
+        </StatusNotice>
+      )}
 
       {loading || loadError ? (
         loading ? <SkeletonRows rows={5} /> : null
       ) : rows.length === 0 ? (
+        /* คนที่ไม่มีสิทธิ์แก้ไม่เห็นปุ่มเพิ่มรุ่น — อย่าบอกให้ไปทำสิ่งที่ทำไม่ได้ */
         <EmptyState icon={Boxes}>
-          ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นก่อน แล้วจึงขึ้นทะเบียนเครื่องได้
+          {canEdit ? "ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นก่อน แล้วจึงขึ้นทะเบียนเครื่องได้" : "ยังไม่มีรุ่นในทะเบียน"}
         </EmptyState>
       ) : (
         /* ⚠️ ตารางนี้กว้างจริง ~550px — `minWidth` ที่ใหญ่กว่านั้นทำให้มันเลื่อนแนวนอน
@@ -143,7 +151,7 @@ export default function AssetModelsPanel({ canEdit = false, addSignal = 0, onCou
                 <th>รหัส 4 ตัว</th>
                 <th>ชนิด</th>
                 <th>สีที่มี</th>
-                <th className="a-right">ใช้อยู่</th>
+                <th className="num">ใช้อยู่</th>
                 <th>สถานะ</th>
                 {canEdit && <th aria-label="การกระทำ" />}
               </tr>
@@ -159,7 +167,7 @@ export default function AssetModelsPanel({ canEdit = false, addSignal = 0, onCou
                     <td>{model.colours?.length ? model.colours.join(" · ") : naText(null)}</td>
                     {/* ⚠️ **0 คือคำตอบ ไม่ใช่ค่าว่าง** — ขีดแปลว่า "ไม่มีข้อมูล" ซึ่งคนละเรื่อง
                         กับ "ยังไม่มีเครื่องใช้รุ่นนี้" และเป็นตัวเลขที่ตัดสินว่าลบรุ่นได้ไหม */}
-                    <td className="a-right">{used}</td>
+                    <td className="num">{used}</td>
                     <td>
                       <span className="ui-badge">{model.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                     </td>

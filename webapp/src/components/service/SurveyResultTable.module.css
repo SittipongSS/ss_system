@@ -1,6 +1,21 @@
 /* ตารางสรุปผลประเมินของหัวหน้า TS (เฟส 3 · จอ 07)
    ⚠️ `.req` ไม่มี selector จริงใน globals.css ⇒ ประกาศเอง */
 
+/* กล่องนอกของ TableShell เป็น container — ให้ `.rowMiss` รู้ความกว้างที่มองเห็นได้ (100cqi) */
+.shell { container-type: inline-size; }
+
+/* 🐞 มือถือกรอบซ้อนสองชั้น: การ์ดของ TableShell + กรอบของกล่องเลื่อนที่เว้นเข้ามาอีก 16px
+   ⇒ ช่องปัดข้างเหลือ 326 จาก 362px (258 จาก 292 ที่ 320) บนตารางเดียวของหน้าที่ต้องปัดข้าง
+   ตารางนี้ไม่มีหัวการ์ด ⇒ จอแคบเหลือกรอบนอกชั้นเดียว (หน้าตาเดียวกับตารางลอย `surface="auto"`)
+   ⚠️ `div[data-surface]` ไม่ใช่ `[data-surface]` เปล่า — ต้องหนักกว่า `.scroll[data-surface="embedded"]` (0,2,0) */
+@media (max-width: 680px) {
+  .shell > div[data-surface="embedded"] {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+}
+
 .sub {
   display: block;
   margin-top: var(--space-0-5);
@@ -14,14 +29,19 @@
 .cutCell { color: var(--text-2); line-height: var(--lh-thai); }
 
 .dims { font-variant-numeric: tabular-nums; }
-.dims > span { display: block; }
+/* 🐞 ตอนเคาะ คอลัมน์นี้โดนบีบเหลือ ~72px ⇒ "10 × 5 × 4" กับ "200 ลบ.ม." หักกลางเลข แยกเลขจากหน่วย */
+.dims > span { display: block; white-space: nowrap; }
 
 .warnText { color: var(--amber); font-size: var(--fs-3); }
 
 /* ── จุดติดตั้ง ────────────────────────────────────────────────────────── */
 .spots { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 
+/* ชิปเดียวกันทั้งปุ่ม (หัวหน้าเคาะ) และตัวหนังสือ (ดูอย่างเดียว) — จุดที่เลือกมีไอคอนติ๊กเสมอ */
 .spotChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   height: 24px;
   padding: 0 var(--space-2);
   border: 1px solid var(--border);
@@ -29,11 +49,12 @@
   background: var(--panel);
   color: var(--text-2);
   font-size: var(--fs-3);
-  cursor: pointer;
   white-space: nowrap;
 }
 
-.spotChip[data-on] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+button.spotChip { cursor: pointer; }
+.spotChip[data-on] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-weight: var(--fw-semibold); }
+/* จางเฉพาะตอนกำลังบันทึก — ดูอย่างเดียวไม่ใช่ปุ่มแล้ว */
 .spotChip:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
 .spotChip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
@@ -56,12 +77,26 @@
 .stepper button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .stepper b { min-width: 20px; text-align: center; font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
 
-/* ⚠️ ป้ายนี้ **ไม่ใช่คำเตือน** — สูตรเป็นข้อเสนอ ไม่ใช่คำสั่ง */
-.delta { display: block; margin-top: var(--space-0-5); font-size: var(--fs-3); }
+.qty { font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
+
+/* ⚠️ ป้ายนี้ **ไม่ใช่คำเตือน** — สูตรเป็นข้อเสนอ ไม่ใช่คำสั่ง · ต่อท้ายบรรทัด "สูตร N" */
+.delta { font-size: var(--fs-3); }
 .delta[data-tone="ok"] { color: var(--green); }
 .delta[data-tone="warn"] { color: var(--amber); }
 
-.noteBox { display: flex; flex-direction: column; gap: var(--space-0-5); margin-top: var(--space-1-5); }
+/* เหตุผลที่ทับสูตร (ดูอย่างเดียว) — ข้อมูลที่ SA ต้องอ่าน จึงเข้มกว่าบรรทัดรอง */
+.note {
+  display: block;
+  margin-top: var(--space-1);
+  max-width: 32ch;
+  font-size: var(--fs-3);
+  color: var(--text-2);
+  line-height: var(--lh-thai);
+  white-space: normal;
+}
+
+/* 🐞 ช่องเหตุผลเคยเหลือ ~117px ⇒ placeholder "ทำไมถึงต่างจากสูตร" ขาดท้าย */
+.noteBox { display: flex; flex-direction: column; gap: var(--space-0-5); margin-top: var(--space-1-5); min-inline-size: 10rem; }
 
 .req {
   font-size: var(--fs-2);
@@ -77,13 +112,51 @@
 .docs { font-variant-numeric: tabular-nums; color: var(--text-2); }
 .docs span[data-low] { color: var(--red); font-weight: var(--fw-bold); }
 
+/* ── บรรทัด "ยังขาดอะไร" — แถวย่อยเต็มกว้างใต้แถวของพื้นที่ ─────────────────
+   🐞 เดิมอยู่ท้ายคอลัมน์ "รูป" ซึ่งแคบที่สุด ⇒ ห่อ 5–6 บรรทัด แถวสูง ~150px ที่ 768
+   ⚠️ ต้องมี `.body` นำหน้า — กฎเซลล์ของ Table.module.css (`.scroll[data-family] td`) หนัก (0,2,1)
+      ⇒ เส้นคั่น/ความสูง 52px/เพดานกว้างของเซลล์จะทับแถวย่อยนี้ ถ้าไม่หนักกว่า */
+.body tr[data-miss] > td { border-bottom: 0; }
+
+/* 🐞 hover กลาง (`.scroll[data-family] tbody tr:hover td`) ทำงานทีละ <tr> ⇒ ชี้แถวพื้นที่
+   แล้วแถวย่อยไม่ติดสีตาม (และกลับกัน) สองแถวที่ต้องอ่านเป็นแถวเดียวแตกเป็นสองแถบ
+   ⇒ ชี้ข้างไหนก็ระบายทั้งคู่ · ค่าสีต้องตรงกับกฎกลางใน Table.module.css */
+.body tr[data-miss]:hover + tr[data-miss-row] > td,
+.body tr[data-miss]:has(+ tr[data-miss-row]:hover) > td {
+  background: color-mix(in srgb, var(--accent-soft) 25%, transparent);
+}
+
+.body tr[data-miss-row] > td {
+  height: auto;
+  max-width: none;
+  overflow: visible;
+  padding-block: 0 var(--space-2);
+}
+
+/* ความกว้างเพดาน = ส่วนที่ *มองเห็น* ของตาราง (100cqi ของ .shell) ไม่ใช่ความกว้างตาราง
+   ⇒ บนมือถือตาราง 680px ในช่อง ~360px ข้อความห่อจบในจอแรก ไม่ต้องปัดข้างไปอ่านท้ายประโยค */
 .rowMiss {
+  /* บล็อกอ้างอิงของ `.srOnly` — ไม่งั้น absolute ไปอิงนอกกล่องเลื่อนแล้วหลุดกรอบตัด */
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--space-1);
-  margin-top: var(--space-1);
+  max-inline-size: calc(100cqi - var(--space-6));
   font-size: var(--fs-3);
   line-height: var(--lh-thai);
   color: var(--amber);
   white-space: normal;
+}
+
+/* 🐞 ข้อความยาวห่อหลายบรรทัด ⇒ ไอคอนเตือนโดนบีบเหลือกว้าง 3px เห็นเป็นขีด */
+.rowMiss > svg { flex: none; margin-block-start: var(--space-0-5); }
+
+/* ชื่อพื้นที่นำหน้าคำเตือน สำหรับ screen reader เท่านั้น (สูตรเดียวกับ Pager `.srOnly`) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

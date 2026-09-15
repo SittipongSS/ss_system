@@ -20,6 +20,7 @@ import SurveyZoneCard from "@/components/service/SurveyZoneCard";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Input from "@/components/ui/Input";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Tabs from "@/components/ui/Tabs";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
@@ -300,20 +301,24 @@ export default function SurveySheetPage({ params }) {
       {/* ส่งไปแล้วยังเปิดดูได้ แต่ต้องบอกว่าส่งไปแล้ว ไม่ใช่โชว์ปุ่มที่กดซ้ำได้เงียบ ๆ
           ⚠️ ต้องบอก **ทางออก** ด้วย ไม่ใช่แค่ "แก้ไม่ได้" — server ล็อกจริงตั้งแต่ #1624
           (`surveyEditLockError`) ⇒ คนที่ตัวเลขเปลี่ยนต้องรู้ว่าต้องไปกดอะไรต่อ */}
+      {/* 🐞 เดิมบอกทุกคนว่าต้องไปกด "ยังไม่จบ" ที่ใบคำร้อง — ทั้งที่หัวหน้ามีปุ่ม
+          "ดึงผลกลับมาแก้" อยู่บนจอนี้เอง ⇒ ทางออกต้องเป็นทางที่คนดูคนนั้นกดได้จริง */}
       {sent && (
-        <p className={styles.sent} role="status">
-          ส่งผลให้ฝ่ายขายแล้ว — รอฝ่ายขายกดปิดเรื่อง · ถ้าตัวเลขเปลี่ยน ให้กด &quot;ยังไม่จบ&quot; ที่ใบคำร้องก่อนจึงจะแก้ได้
-        </p>
+        <StatusNotice tone="success" title="ส่งผลให้ฝ่ายขายแล้ว">
+          {canDecide
+            ? `รอฝ่ายขายกดปิดเรื่อง · ถ้าตัวเลขเปลี่ยน กด "ดึงผลกลับมาแก้" ${tab === "result" ? "ที่หัวจอ" : "ที่แท็บสรุปส่งผล"}`
+            : "รอฝ่ายขายกดปิดเรื่อง · ถ้าตัวเลขเปลี่ยน ให้กด \"ยังไม่จบ\" ที่ใบคำร้องก่อนจึงจะแก้ได้"}
+        </StatusNotice>
       )}
 
       {/* ไม่มีสิทธิ์เขียน = ยังดูได้ แต่ต้องบอกเหตุ ไม่ใช่ให้ช่องทั้งหน้าจางเงียบ ๆ */}
       {data && !data.canWrite && tab === "field" && (
-        <p className={styles.gate} role="status">{data.writeBlockedReason}</p>
+        <StatusNotice tone="warning">{data.writeBlockedReason}</StatusNotice>
       )}
       {tab === "result" && !canDecide && (
-        <p className={styles.gate} role="status">
+        <StatusNotice tone="warning">
           ดูได้อย่างเดียว — เคาะแพ็คเกจและส่งผลได้เฉพาะหัวหน้าฝ่ายบริการ
-        </p>
+        </StatusNotice>
       )}
 
       {zones.length === 0 ? (
@@ -325,15 +330,18 @@ export default function SurveySheetPage({ params }) {
           {/* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้โดยไม่
               ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเองเปลี่ยน
               อะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่ขึ้นเฉพาะตอนมีการเปลี่ยน
-              (เห็น "ไม่มีตัด ไม่มีเพิ่ม" = ยืนยันว่าไม่ได้ลืมอะไร) */}
-          <p className={styles.change} role="status">{changeText}</p>
-          <SurveyResultTable
-            zones={zones}
-            filesByZone={data?.filesByZone || {}}
-            canDecide={canDecide && !sent}
-            busyZone={busyZone}
-            onDecide={decideZone}
-          />
+              (เห็น "ไม่มีตัด ไม่มีเพิ่ม" = ยืนยันว่าไม่ได้ลืมอะไร)
+              ⭐ เป็นคำบรรยายของตาราง อยู่ก้อนเดียวกับตาราง — ไม่ใช่แถบอีกทรงต่อจาก StatusNotice */}
+          <div className={styles.result}>
+            <p className={styles.change} role="status">{changeText}</p>
+            <SurveyResultTable
+              zones={zones}
+              filesByZone={data?.filesByZone || {}}
+              canDecide={canDecide && !sent}
+              busyZone={busyZone}
+              onDecide={decideZone}
+            />
+          </div>
           {/* ⭐ **ทางออกของปุ่มส่งผลที่กดไม่ได้** — ด่านสามข้อบนเป็นของช่าง หัวหน้าแก้เองไม่ได้
               ⇒ ต้องมีปุ่มแจ้งอยู่ข้าง ๆ ข้อที่ติด ไม่ใช่ปุ่มเทาเงียบที่ไม่บอกว่าใครแก้ */}
           <SurveyGateList
@@ -358,10 +366,12 @@ export default function SurveySheetPage({ params }) {
           {/* ⭐ **ปุ่มอยู่ท้ายลิสต์ ไม่ใช่บนหัวจอ** (ม็อกจอ 06) — ช่างจะรู้ว่ามีพื้นที่เกินมา
               ก็ต่อเมื่อไล่วัดของที่มีในใบจนหมดแล้ว ⇒ ปุ่มควรรออยู่ตรงที่เขาไล่มาถึงพอดี */}
           {!addGate && (
-            <Button variant="outline" icon={<MapPinPlus size={15} aria-hidden="true" />}
-              onClick={() => setAdding(true)}>
-              เพิ่มพื้นที่ที่เจอหน้างาน
-            </Button>
+            <div className={styles.listFoot}>
+              <Button variant="outline" icon={<MapPinPlus size={15} aria-hidden="true" />}
+                onClick={() => setAdding(true)}>
+                เพิ่มพื้นที่ที่เจอหน้างาน
+              </Button>
+            </div>
           )}
         </div>
       )}

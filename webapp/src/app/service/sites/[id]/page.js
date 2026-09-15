@@ -6,17 +6,18 @@ import { useRouter } from "next/navigation";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { use } from "react";
-import { Boxes, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AirVent, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
-import { TableShell } from "@/components/ui/Table";
+import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
+import StatusNotice from "@/components/ui/StatusNotice";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceAssetModal from "@/components/service/ServiceAssetModal";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
@@ -79,6 +80,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // 404 ≠ โหลดพัง — ไซต์ที่ถูกลบต้องไม่อ่านเป็นเน็ตสะดุดที่กดลองใหม่แล้วจะหาย · ทรงเดียวกับหน้าเครื่อง
+  const [notFound, setNotFound] = useState(false);
   const [editingSite, setEditingSite] = useState(false);
   const [formAsset, setFormAsset] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [formZone, setFormZone] = useState(undefined);
@@ -97,6 +100,7 @@ export default function ServiceSiteDetailPage({ params }) {
         apiFetch(`/api/service/visits?siteId=${id}`),
       ]);
       const siteData = await siteRes.json().catch(() => null);
+      setNotFound(siteRes.status === 404);
       if (!siteRes.ok) throw new Error(siteData?.error || "โหลดข้อมูลไซต์ไม่สำเร็จ");
       setSite(siteData?.site || null);
       setZones(Array.isArray(siteData?.zones) ? siteData.zones : []);
@@ -327,14 +331,35 @@ export default function ServiceSiteDetailPage({ params }) {
     [visits, todayIso],
   );
 
-  if (loading) {
-    return <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}><SkeletonRows rows={5} /></Workspace>;
+  /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ — ทรงเดียวกันทั้งสี่หน้า
+     (เครื่อง · ไซต์ · โซน · ใบส่งงาน) · ลำดับ: ไม่พบ (404) มาก่อนโหลดพัง
+     🐞 เดิม `!siteRes.ok` โยนทิ้งก่อน setSite ⇒ ไซต์ที่ถูกลบขึ้นการ์ดหัว "ไซต์บริการ" +
+        "โหลดข้อมูลไซต์ไม่สำเร็จ" + ปุ่มลองใหม่ อ่านเหมือนเน็ตสะดุด · สาขา "ไม่พบ" ไม่เคยถูกเรียก */
+  /* ♿ hideHeader ถอด h1 ของ Workspace ออกด้วย — หน้าที่โหลดเสร็จได้ h1 จาก DetailOverview
+     แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย (StatusNotice ใช้ <strong>) ⇒ คนใช้โปรแกรมอ่านจอกระโดดหาหัวเรื่องไม่เจอ
+     ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
+  const shellBack = { href: "/service/sites", label: "ทะเบียนไซต์" };
+  const shell = (body) => (
+    <Workspace hideHeader back={shellBack}>
+      <h1 className="sr-only">ไซต์บริการ</h1>
+      {body}
+    </Workspace>
+  );
+  if (loading) return shell(<SkeletonRows rows={5} />);
+  if (notFound || (!loadError && !site)) {
+    return shell(
+      <EmptyState icon={MapPin}>
+        ไม่พบไซต์บริการนี้
+        <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+      </EmptyState>,
+    );
   }
-  if (loadError || !site) {
-    return (
-      <Workspace icon={<MapPin size={20} aria-hidden="true" />} title="ไซต์บริการ" back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}>
-        <p className="form-error" role="alert">{loadError || "ไม่พบไซต์บริการ"}</p>
-      </Workspace>
+  if (loadError) {
+    return shell(
+      <StatusNotice tone="error" title="โหลดข้อมูลไซต์ไม่สำเร็จ"
+        action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+        {loadError}
+      </StatusNotice>,
     );
   }
 
@@ -405,12 +430,15 @@ export default function ServiceSiteDetailPage({ params }) {
      อีก เหมือนที่หน้าลูกค้า/สินค้าห้ามไว้ (ม-49/ม-57) */
   const siteAside = (
     <>
+      {/* สรุปเฉพาะของที่การ์ด "ข้อมูลไซต์" ไม่มี
+          🐞 เดิมซ้ำผู้ติดต่อ · เขตวิ่งงาน · ช่วงเวลา กับการ์ดข้าง ๆ ครบสามแถว — แท็บเล็ต/มือถือ
+             ยังดันการ์ด "จัดการไซต์" (ที่เดียวที่แก้/ลบไซต์ได้) ลงไปอีกก้อน */}
       <DocumentSummaryCard
         title="สรุปไซต์"
         rows={[
-          { id: "contact", label: "ผู้ติดต่อ", value: site.contactName ? `${site.contactName}${site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}` : "" },
-          { id: "routeZone", label: "เขตวิ่งงาน", value: site.routeZone },
-          { id: "access", label: "ช่วงเวลาที่เข้าได้", value: accessText || "ไม่จำกัด" },
+          { id: "lastRefill", label: "เข้าเติมล่าสุด", value: schedule.lastRefillDate },
+          { id: "nextVisit", label: "นัดครั้งหน้า", value: schedule.nextVisitDate || upcoming.map((v) => v.scheduledDate).sort()[0] },
+          ...(roundsSold != null ? [{ id: "roundsSold", label: "รอบที่ขายไว้", value: `${fmtNumber(roundsSold)} รอบ` }] : []),
         ]}
       />
 
@@ -439,7 +467,7 @@ export default function ServiceSiteDetailPage({ params }) {
         badges={<DetailStateBadge label={site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"} color={site.isActive === false ? "var(--text-3)" : "var(--green)"} />}
         facts={[
           { key: "zones", icon: Layers, label: "โซน", value: `${zones.length} โซน` },
-          { key: "assets", icon: Boxes, label: "อุปกรณ์", value: `${rollup.active} ใช้งาน${assets.length !== rollup.active ? ` / ${assets.length}` : ""}` },
+          { key: "assets", icon: AirVent, label: "อุปกรณ์", value: `${rollup.active} ใช้งาน${assets.length !== rollup.active ? ` / ${assets.length}` : ""}` },
           { key: "plans", icon: RefreshCw, label: "รอบบริการ", value: `${plans.length} รอบ` },
           { key: "upcoming", icon: CalendarClock, label: "นัดที่จะถึง", value: `${upcoming.length} นัด` },
         ]}
@@ -463,7 +491,7 @@ export default function ServiceSiteDetailPage({ params }) {
             <div>
               <dt>แผนที่</dt>
               {/* ลิงก์ออกนอกระบบ — เปิดแท็บใหม่ + rel กัน tabnabbing */}
-              <dd><a href={site.mapUrl} target="_blank" rel="noreferrer noopener">เปิดแผนที่</a></dd>
+              <dd><a className="linklike" href={site.mapUrl} target="_blank" rel="noreferrer noopener">เปิดแผนที่</a></dd>
             </div>
           )}
           {site.note && <div className={styles.wide}><dt>หมายเหตุ</dt><dd>{site.note}</dd></div>}
@@ -476,7 +504,8 @@ export default function ServiceSiteDetailPage({ params }) {
         title="โซนในไซต์"
         meta="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
         actions={canEdit ? (
-          <Button tone="primary" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
+          /* ปุ่มเพิ่มระดับการ์ด = สีกลาง — primary สงวนให้การยืนยัน (Page contract §8) */
+          <Button tone="neutral" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มโซน
           </Button>
         ) : null}
@@ -486,40 +515,63 @@ export default function ServiceSiteDetailPage({ params }) {
             {canEdit ? "ยังไม่มีโซนในไซต์นี้ — เช่น Lobby · Reception · ห้องน้ำชั้น 2" : "ยังไม่มีโซนในไซต์นี้"}
           </EmptyState>
         ) : (
-          <TableShell>
-            <table>
+          /* ⚠️ ในการ์ดใช้ TableScroll ตรง ๆ + minWidth (ทุกตารางในหน้านี้)
+             🐞 เดิมเป็น TableShell = กรอบซ้อนสามชั้น กินที่ 36px บนมือถือ และไม่มี minWidth
+                ⇒ ตารางบีบจนรหัสโซนตัดทีละท่อน ป้ายสถานะแตกสองบรรทัด ปุ่มลบหลุดขอบขวา
+             📏 minWidth ต้อง ≤ กล่องที่แคบสุดตอนรางข้างยังอยู่ (612px ที่จอ 1051) ไม่ใช่แค่กล่องแท็บเล็ต
+                🐞 เคยตั้ง 680 ⇒ จอ 1051–1119 ประวัติเลื่อนข้างเงียบ ๆ ปุ่มลบของแอดมินหลุดขอบ
+             📱 จอ ≤ 680 ตารางโซนไม่ใช้ minWidth นี้ — พับเหลือ โซน · ปุ่ม (ดู .foldTable ใน page.module.css)
+                🐞 560 ในกล่อง 326px ⇒ ป้ายสถานะกับปุ่มแก้/ลบอยู่พ้นขอบขวาทั้งชุด ไม่มีอะไรบอกว่าเลื่อนได้ */
+          <TableScroll family="list" cells="stacked" minWidth={560}>
+            <table className={styles.foldTable}>
               <thead>
                 <tr>
                   <th>โซน</th>
                   {/* จุดติดตั้ง (mig 0354) — ตำแหน่งวางเครื่องข้างในโซน · แก้ที่ปุ่มแก้ไขโซน */}
-                  <th className={styles.numCol}>จุดติดตั้ง</th>
-                  <th className={styles.numCol}>อุปกรณ์</th>
-                  <th>สถานะ</th>
+                  <th className={`num ${styles.numCol} ${styles.wideCol}`}>จุดติดตั้ง</th>
+                  <th className={`num ${styles.numCol} ${styles.wideCol}`}>อุปกรณ์</th>
+                  <th className={styles.wideCol}>สถานะ</th>
                   {canEdit && <th aria-label="การทำงาน" />}
                 </tr>
               </thead>
               <tbody>
                 {zones.map((zone) => {
                   const zoneAssets = assets.filter((a) => a.zoneId === zone.id && a.status !== "removed");
+                  const spotCount = Array.isArray(zone.spots) ? zone.spots.length : 0;
+                  // ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสแต่ในรูปย่อ (GF/04) บรรทัดล่างอ่านออกโดยไม่ต้องแกะรหัส
+                  const zoneSub = [zone.code ? zone.name : null, zone.building, floorLabel(zone.floor), zone.note]
+                    .filter(Boolean).join(" · ");
+                  const statusBadge = (
+                    <span className={`ui-badge ${zone.isActive === false ? "" : "success"}`.trim()}>{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
+                  );
                   return (
                     <tr key={zone.id} className={zone.isActive === false ? styles.inactive : undefined}>
                       <td>
-                        {/* ⭐ ชื่อโซนกดเข้าหน้าโซน — รอบขาย/ยอดใช้จริง/ประวัติของโซนนั้น
-                            อยู่ในฐานข้อมูลมาตั้งแต่ mig 0297 แต่ไม่มีทางเข้ามาก่อนหน้านี้ */}
-                        <Link href={`/service/sites/${site.id}/zones/${zone.id}`} className={styles.zoneLink}>
-                          {zone.name}
-                        </Link>
-                        {zone.code ? <span className={styles.serial}> · {zone.code}</span> : null}
-                        {/* ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสอยู่แล้วแต่ในรูปย่อ (GF/04)
-                            บรรทัดนี้อ่านออกโดยไม่ต้องแกะรหัส */}
+                        {/* ⭐ รหัสบน · ชื่อล่าง — กดเข้าหน้าโซน (รอบขาย/ยอดใช้จริง/ประวัติของโซนนั้น
+                            อยู่ในฐานข้อมูลมาตั้งแต่ mig 0297 แต่ไม่มีทางเข้ามาก่อนหน้านี้) */}
+                        {/* 📱 จอแคบ: ป้ายสถานะ + จำนวนจุด/เครื่องย้ายมาอยู่ในเซลล์นี้ (คอลัมน์ของมันซ่อน)
+                            .cellHead = บล็อกธรรมดา (ลิงก์ยัง inline เหมือนเดิม) · ระยะห่างอยู่ท้ายลิงก์
+                            ⇒ ป้ายที่ขึ้นบรรทัดใหม่ (จอ 320) ชิดซ้ายตรงกับรหัส ไม่เยื้อง */}
+                        <div className={styles.cellHead}>
+                          <Link href={`/service/sites/${site.id}/zones/${zone.id}`} className={`table-row-link${zone.code ? " mono" : ""}`}>
+                            {zone.code || zone.name}
+                          </Link>
+                          <span className={styles.narrowStatus}>{statusBadge}</span>
+                        </div>
                         <div className={styles.muted}>
-                          {[zone.building, floorLabel(zone.floor)].filter(Boolean).join(" · ")}
-                          {zone.note ? `${zone.building || zone.floor ? " · " : ""}${zone.note}` : ""}
+                          {zoneSub}
+                          <span className={styles.narrowOnly}>
+                            {zoneSub ? " · " : ""}
+                            {/* ตัวเลขกับหน่วยห้ามแยกบรรทัด ("0 / เครื่อง" ที่จอ 320) */}
+                            <span className={styles.nowrap}>{fmtNumber(spotCount)} จุด</span>
+                            {" · "}
+                            <span className={styles.nowrap}>{fmtNumber(zoneAssets.length)} เครื่อง</span>
+                          </span>
                         </div>
                       </td>
-                      <td className={styles.numCol}>{Array.isArray(zone.spots) ? zone.spots.length : 0}</td>
-                      <td className={styles.numCol}>{zoneAssets.length}</td>
-                      <td><span className="ui-badge">{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></td>
+                      <td className={`num ${styles.numCol} ${styles.wideCol}`}>{spotCount}</td>
+                      <td className={`num ${styles.numCol} ${styles.wideCol}`}>{zoneAssets.length}</td>
+                      <td className={styles.wideCol}>{statusBadge}</td>
                       {canEdit && (
                         <td>
                           <div className={styles.rowActions}>
@@ -533,12 +585,13 @@ export default function ServiceSiteDetailPage({ params }) {
                 })}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
       <DetailCard
-        icon={Boxes}
+        /* ไอคอนเครื่อง = AirVent ตามเมนู "ทะเบียนเครื่อง" (Boxes สงวนให้วัสดุ) */
+        icon={AirVent}
         eyebrow="Assets"
         title="อุปกรณ์ในไซต์"
         /* ⚠️ ต้องครบทุกกอง ไม่งั้นตัวเลขไม่รวมกันเป็น total แล้วคนอ่านเห็นเป็นบั๊ก
@@ -551,7 +604,7 @@ export default function ServiceSiteDetailPage({ params }) {
           rollup.broken ? `ชำรุด ${rollup.broken}` : null,
         ].filter(Boolean).join(" · ")}
         actions={canEdit ? (
-          <Button tone="primary" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
+          <Button tone="neutral" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มอุปกรณ์
           </Button>
         ) : null}
@@ -565,11 +618,13 @@ export default function ServiceSiteDetailPage({ params }) {
           </p>
         )}
         {assets.length === 0 ? (
-          <EmptyState icon={MapPin} dashed={canEdit} onClick={canEdit ? () => setFormAsset(null) : undefined} plain>
+          <EmptyState icon={AirVent} dashed={canEdit} onClick={canEdit ? () => setFormAsset(null) : undefined} plain>
             {canEdit ? "ยังไม่มีอุปกรณ์ในไซต์นี้ — กดเพื่อเพิ่มรายการแรก" : "ยังไม่มีอุปกรณ์ในไซต์นี้"}
           </EmptyState>
         ) : (
-          <TableShell>
+          /* 640 ≈ เนื้อ 8 คอลัมน์ที่บีบสุดแล้วยังไม่ตัดกลางคำ (วัดได้ 638) · จอ ≥ 1200 หน้าตาเท่า 960
+             🐞 960 เดิมบังคับเลื่อนข้างทุกจอ 1051–1399 (โน้ตบุ๊ก 1280/1366) และแท็บเล็ต ปุ่มแก้/ลบหลุดขอบ */
+          <TableScroll family="list" cells="stacked" minWidth={640}>
             <table>
               <thead>
                 <tr>
@@ -577,7 +632,7 @@ export default function ServiceSiteDetailPage({ params }) {
                   <th>โซน</th>
                   <th>รุ่น / Serial</th>
                   <th>กลิ่นที่ใช้</th>
-                  <th className={styles.numCol}>ขวด / อัตราใช้</th>
+                  <th className={`num ${styles.numCol}`}>ขวด / อัตราใช้</th>
                   <th>คาดว่าหมด</th>
                   <th>สถานะ</th>
                   {canEdit && <th aria-label="การทำงาน" />}
@@ -597,7 +652,7 @@ export default function ServiceSiteDetailPage({ params }) {
                       <td>
                         {/* ชื่อเครื่องกดเข้าหน้าอุปกรณ์ — ค่าตั้งเครื่องกับประวัติรายตัว
                             (ติดตั้ง · ถูกเปลี่ยน · เอาไปแทนตัวอื่น) อยู่ที่นั่น */}
-                        <Link href={`/service/assets/${asset.id}`} className={styles.zoneLink}>
+                        <Link href={`/service/assets/${asset.id}`} className="table-row-link">
                           {asset.label}
                         </Link>
                         {kindText ? <div className={styles.muted}>{kindText}</div> : null}
@@ -609,7 +664,7 @@ export default function ServiceSiteDetailPage({ params }) {
                         {asset.serial ? <span className={styles.serial}> · {asset.serial}</span> : null}
                       </td>
                       <td>{naText(asset.productName)}</td>
-                      <td className={styles.numCol}>
+                      <td className={`num ${styles.numCol}`}>
                         {asset.bottleMl ? `${fmtNumber(asset.bottleMl)} ml` : NA}
                         {asset.mlPerDay ? ` / ${fmtNumber(asset.mlPerDay)} ต่อวัน` : ""}
                       </td>
@@ -633,7 +688,7 @@ export default function ServiceSiteDetailPage({ params }) {
                 })}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
@@ -643,7 +698,7 @@ export default function ServiceSiteDetailPage({ params }) {
         title="รอบบริการ"
         meta="ระบบสร้างนัดล่วงหน้า 90 วันตามรอบ แล้วต่อรอบให้เมื่อปิดงานจริง"
         actions={canEdit ? (
-          <Button tone="primary" onClick={() => setFormPlan(null)} icon={<Plus size={15} aria-hidden="true" />}>
+          <Button tone="neutral" onClick={() => setFormPlan(null)} icon={<Plus size={15} aria-hidden="true" />}>
             สร้างรอบ
           </Button>
         ) : null}
@@ -655,7 +710,7 @@ export default function ServiceSiteDetailPage({ params }) {
               : "ยังไม่มีรอบบริการ"}
           </EmptyState>
         ) : (
-          <TableShell>
+          <TableScroll family="list" minWidth={600}>
             <table>
               <thead>
                 <tr>
@@ -683,7 +738,7 @@ export default function ServiceSiteDetailPage({ params }) {
                     </td>
                     <td>{plan.startDate}{plan.endDate ? ` – ${plan.endDate}` : " – ไม่มีกำหนดสิ้นสุด"}</td>
                     <td>{plan.assigneeName || <span className={styles.muted}>ยังไม่กำหนด</span>}</td>
-                    <td><span className="ui-badge">{plan.isActive === false ? "ปิดรอบ" : "ใช้งาน"}</span></td>
+                    <td><span className={`ui-badge ${plan.isActive === false ? "" : "success"}`.trim()}>{plan.isActive === false ? "ปิดรอบ" : "ใช้งาน"}</span></td>
                     {canEdit && (
                       <td>
                         <div className={styles.rowActions}>
@@ -696,37 +751,56 @@ export default function ServiceSiteDetailPage({ params }) {
                 ))}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
       <DetailCard icon={CalendarClock} eyebrow="Upcoming visits" title="นัดที่จะถึง" meta={`${upcoming.length} นัด`}>
         {upcoming.length === 0 ? (
-          <EmptyState icon={MapPin} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
+          <EmptyState icon={CalendarClock} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
         ) : (
-          <TableShell>
-            <table>
+          /* 📱 จอ ≤ 680 (กล่อง < 600) พับเหลือ วันที่ · ปุ่มลบ — เวลา/งาน/ใบสั่งขาย/เจ้าหน้าที่/รหัส
+                ลงบรรทัดรองในเซลล์แรก (ดู .foldTable) · ข้อมูลครบเท่าเดิม แค่ย้ายที่
+             🐞 minWidth 600 ในกล่อง 326px (จอ 390) ⇒ ปุ่มลบนัดพ้นขอบขวาทุกจอตั้งแต่ 641 ลงไป
+                และไม่มีอะไรบอกว่าตารางเลื่อนได้ */
+          <TableScroll family="list" cells="stacked" minWidth={600}>
+            <table className={styles.foldTable}>
               <thead>
-                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th>
+                <tr><th>วันที่</th><th className={styles.wideCol}>เวลา</th><th className={styles.wideCol}>งาน</th>
                   {/* 🔴 **สองนัดวันเดียวกันที่ไซต์เดียวกันเป็นเรื่องปกติ** (มติผู้ใช้
                       2026-09-02: "2 SO ก็ต้อง 2 รอบ") — รอบเป็นข้อผูกพันของใบสั่งขาย
                       ⇒ ไซต์ที่ขายไว้สองใบเดินสองรอบ · ไม่มีคอลัมน์นี้ = สองแถวพิมพ์
                       เหมือนกันทุกช่อง แล้วคนอ่านนึกว่าระบบสร้างซ้ำ แล้วไปลบทิ้งใบหนึ่ง
                       ⇒ ใบนั้นนับรอบขาดตลอดสัญญา */}
-                  <th>ใบสั่งขาย</th><th>เจ้าหน้าที่</th><th>รหัส</th>
+                  <th className={styles.wideCol}>ใบสั่งขาย</th><th className={styles.wideCol}>เจ้าหน้าที่</th><th className={styles.wideCol}>รหัส</th>
                   {canEdit && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
-                {upcoming.map((visit) => (
+                {upcoming.map((visit) => {
+                  const kindLabel = VISIT_KIND_LABELS[visit.kind] || visit.kind;
+                  const order = orderOfVisit(visit);
+                  return (
                   <tr key={visit.id}>
-                    <td>{visit.scheduledDate}</td>
-                    <td>{visitTimeText(visit)}</td>
-                    <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
-                    <td className="mono">
-                      {orderOfVisit(visit) || <span className={styles.muted}>นอกรอบ</span>}
+                    {/* วันที่ · เวลา · รหัส ห้ามตัดกลาง — ตารางเลื่อนข้างแทนการบีบ (ดู .nowrap) */}
+                    <td>
+                      <span className={styles.nowrap}>{visit.scheduledDate}</span>
+                      {/* 📱 จอแคบ: คอลัมน์ที่ซ่อนมาอยู่บรรทัดนี้ ลำดับเดียวกับหัวตาราง */}
+                      <div className={`${styles.muted} ${styles.narrowLine}`}>
+                        {/* ป้ายสั้นห้ามตัดกลางคำ ("ยังไม่มอบ|หมาย" ที่จอ 320) — ชื่อคนยังตัดได้ */}
+                        <span className={styles.nowrap}>{visitTimeText(visit)}</span>
+                        {" · "}<span className={styles.nowrap}>{kindLabel}</span>
+                        {" · "}{order ? <span className={`mono ${styles.nowrap}`}>{order}</span> : <span className={styles.nowrap}>นอกรอบ</span>}
+                        {" · "}{visit.assigneeName || <span className={styles.nowrap}>ยังไม่มอบหมาย</span>}
+                        {visit.code ? <>{" · "}<span className={`mono ${styles.nowrap}`}>{visit.code}</span></> : null}
+                      </div>
                     </td>
-                    <td>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
-                    <td className="mono">{naText(visit.code)}</td>
+                    <td className={`${styles.nowrap} ${styles.wideCol}`}>{visitTimeText(visit)}</td>
+                    <td className={styles.wideCol}>{kindLabel}</td>
+                    <td className={`mono ${styles.wideCol}`}>
+                      {order || <span className={styles.muted}>นอกรอบ</span>}
+                    </td>
+                    <td className={styles.wideCol}>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
+                    <td className={`mono ${styles.nowrap} ${styles.wideCol}`}>{naText(visit.code)}</td>
                     {/* นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ — route รองรับมาตลอด
                         แต่ไม่เคยมีปุ่มไหนเรียก (ผู้ใช้แจ้ง 2026-09-02) */}
                     {canEdit && (
@@ -740,36 +814,63 @@ export default function ServiceSiteDetailPage({ params }) {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
 
       <DetailCard icon={History} eyebrow="Visit history" title="ประวัติการเข้า" meta="20 ครั้งล่าสุด">
         {history.length === 0 ? (
-          <EmptyState icon={MapPin} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
+          <EmptyState icon={History} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
         ) : (
-          <TableShell>
-            <table>
+          /* 📱 จอ ≤ 680 (กล่อง < 600) พับเหลือ นัด · ใบส่งงาน · ปุ่มลบ — ป้ายสถานะขึ้นข้างวันที่
+                เข้าจริง/งาน/เจ้าหน้าที่/สรุปงาน ลงบรรทัดรองในเซลล์แรก (ดู .foldTable)
+             🐞 minWidth 600 ในกล่อง 326px (จอ 390) ⇒ สถานะ · ใบส่งงาน · ปุ่มลบ อยู่พ้นขอบขวา
+                ไม่มีอะไรบอกว่าตารางเลื่อนได้ */
+          <TableScroll family="list" cells="stacked" minWidth={600}>
+            <table className={styles.foldTable}>
               <thead>
-                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>เจ้าหน้าที่</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" />
+                <tr><th>วันที่นัด</th><th className={styles.wideCol}>เข้าจริง</th><th className={styles.wideCol}>งาน</th><th className={styles.wideCol}>เจ้าหน้าที่</th><th className={styles.wideCol}>สถานะ</th><th className={styles.wideCol}>สรุปงาน</th><th aria-label="ใบส่งงาน" />
                   {isAdmin && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
-                {history.map((visit) => (
+                {history.map((visit) => {
+                  const kindLabel = VISIT_KIND_LABELS[visit.kind] || visit.kind;
+                  const statusBadge = <span className="ui-badge">{VISIT_STATUS_LABELS[visit.status] || visit.status}</span>;
+                  /* สรุปงานตัดที่ 3 บรรทัด ข้อความเต็มอยู่ใน title และในใบส่งงาน (ลิงก์ท้ายแถว)
+                     🐞 พอวันที่/ป้าย/ลิงก์ห้ามตัดคำ คอลัมน์นี้เหลือช่องเดียวที่ยอมบีบ ⇒ สรุป 90 ตัวอักษร
+                        กลายเป็นหอคอย 10 บรรทัด แถวสูง 204px ที่จอ 1052 */
+                  const summary = visit.summary
+                    ? <span className={styles.summaryClamp} title={visit.summary}>{visit.summary}</span>
+                    : null;
+                  return (
                   <tr key={visit.id} className={visit.status === "cancelled" ? styles.inactive : undefined}>
-                    <td>{visit.scheduledDate}</td>
+                    {/* วันที่ · ป้ายสถานะ · ลิงก์ใบส่งงาน ห้ามตัดกลาง — ตารางเลื่อนข้างแทนการบีบ (ดู .nowrap) */}
+                    <td>
+                      <div className={styles.cellHead}>
+                        <span className={styles.nowrap}>{visit.scheduledDate}</span>
+                        <span className={styles.narrowStatus}>{statusBadge}</span>
+                      </div>
+                      {/* 📱 จอแคบ: คอลัมน์ที่ซ่อนมาอยู่สองบรรทัดนี้ ลำดับเดียวกับหัวตาราง */}
+                      <div className={`${styles.muted} ${styles.narrowLine}`}>
+                        <span className={styles.nowrap}>{visit.actualDate ? `เข้าจริง ${visit.actualDate}` : "ยังไม่ปิดงาน"}</span>
+                        {" · "}<span className={styles.nowrap}>{kindLabel}</span>
+                        {visit.assigneeName ? <>{" · "}{visit.assigneeName}</> : null}
+                      </div>
+                      {summary && <div className={styles.narrowLine}>{summary}</div>}
+                    </td>
                     {/* ช่องว่างตรงนี้มีความหมาย: นัดที่เลยวันแล้วแต่ไม่มีวันเข้าจริง = ยังไม่มีใครปิดงาน */}
-                    <td>{visit.actualDate || <span className={styles.muted}>ยังไม่ปิดงาน</span>}</td>
-                    <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
-                    <td>{naText(visit.assigneeName)}</td>
-                    <td><span className="ui-badge">{VISIT_STATUS_LABELS[visit.status] || visit.status}</span></td>
-                    <td>{naText(visit.summary)}</td>
+                    <td className={`${styles.nowrap} ${styles.wideCol}`}>{visit.actualDate || <span className={styles.muted}>ยังไม่ปิดงาน</span>}</td>
+                    <td className={styles.wideCol}>{kindLabel}</td>
+                    <td className={styles.wideCol}>{naText(visit.assigneeName)}</td>
+                    <td className={`${styles.nowrap} ${styles.wideCol}`}>{statusBadge}</td>
+                    <td className={styles.wideCol}>{summary || naText(visit.summary)}</td>
                     {/* ประวัติต้องกดเข้าใบได้ — ไม่งั้นคอลัมน์ "สรุปงาน" ที่ตัดสั้น
                         คือทั้งหมดที่คนอ่านย้อนหลังได้ */}
-                    <td><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
+                    <td className={styles.nowrap}><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
                     {/* ⭐ **เฉพาะแอดมิน** — นัดที่ปิดงานแล้วคือประวัติการเข้าไซต์
                         กติกาปกติห้ามลบ · แอดมินข้ามได้ด้วย ?force=1 ตามมติ #1501
                         ("ขอสิทธิ์ทุกอย่างให้แอดมิน รวมลบด้วย") ซึ่งเส้นนัดตกหล่นมาตลอด
@@ -787,10 +888,11 @@ export default function ServiceSiteDetailPage({ params }) {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
-          </TableShell>
+          </TableScroll>
         )}
       </DetailCard>
       </DetailPageLayout>

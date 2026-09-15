@@ -7,16 +7,34 @@
 //
 // 📌 ล้มมติเดิม 2026-07-18 ("แถบล่างไม่เลื่อน ปุ่มพอดีจอ 4+เพิ่มเติม") — มตินั้น
 // ตั้งอยู่บนกติกา 4+เพิ่มเติม ซึ่งผู้ใช้ตัดทิ้งแล้ว จึงยืนต่อไม่ได้
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { paginateMobileNav, pageIndexOfActive } from '@/lib/mobileNavPages';
+import { paginateMobileNav, pageIndexOfActive, MOBILE_NAV_SLOTS } from '@/lib/mobileNavPages';
 import { navCountFor, navHrefFor } from '@/lib/nav/useNavCounts';
+
+// ⭐ แท็บเล็ตได้หน้าละ 8 ช่อง
+// 🐞 เดิมตรึง 5 ช่องทุกความกว้าง ⇒ จอ 768 เหลือ 4 ปุ่มกองกลางแถบ (ปุ่มกว้างสุด 96px)
+//    ข้างละ ~190px ว่าง ทั้งที่เมนูที่เหลือถูกซ่อนไว้หน้าสอง
+// ⚠️ 641px ไม่ใช่ 561px — 8 ช่องที่ 561px เหลือช่องละ 70px แคบกว่าช่อง 75px ที่รายชื่อ
+//    shortName วัดไว้ (navMenuNames.test.mjs) · ตั้งแต่ 641px ได้ ≥80px
+// ⚠️ อ่านผ่าน useSyncExternalStore (ฝั่งเซิร์ฟเวอร์ = false) — อ่าน matchMedia ตอนเรนเดอร์
+//    ตรง ๆ ทำให้ HTML จากเซิร์ฟเวอร์ไม่ตรงกับตอน hydrate
+const WIDE_NAV_QUERY = '(min-width: 641px)';
+const WIDE_NAV_SLOTS = 8;
+const subscribeWideNav = (onChange) => {
+  const query = window.matchMedia(WIDE_NAV_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+};
+const readWideNav = () => window.matchMedia(WIDE_NAV_QUERY).matches;
+const readWideNavOnServer = () => false;
 
 export default function MobileBottomNav({ items, pathname, label, counts }) {
   const pagerRef = useRef(null);
   const [visiblePage, setVisiblePage] = useState(0);
+  const wide = useSyncExternalStore(subscribeWideNav, readWideNav, readWideNavOnServer);
 
-  const pages = paginateMobileNav(items);
+  const pages = paginateMobileNav(items, wide ? WIDE_NAV_SLOTS : MOBILE_NAV_SLOTS);
   const activePage = pageIndexOfActive(pages, (item) => item.match(pathname));
   const multi = pages.length > 1;
 

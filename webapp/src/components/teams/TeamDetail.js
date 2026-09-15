@@ -6,7 +6,8 @@
 //   เหตุผลที่ปิด) และไม่มี URL ให้ชี้เวลาคุยกัน
 //
 // ทรงเดียวกับหน้าสินค้า/ลูกค้า: เนื้อหาซ้าย **แผงจัดการ** ขวา — แผงขวาเป็นที่เดียว
-// ที่มีปุ่มระดับ "ทั้งทีม" และ **ปุ่มที่กดไม่ได้ยังโชว์อยู่พร้อมเหตุผลเป็นข้อความจริง**
+// ที่มีปุ่มระดับ "ทั้งทีม" (ยกเว้น "จัดสมาชิก" ที่อยู่หัวการ์ดสมาชิก ติดกับรายชื่อที่มันแก้
+// และยังเห็นเมื่อแผงตกไปท้ายหน้าที่ ≤1050 — อย่าวาดซ้ำในแผง) และ **ปุ่มที่กดไม่ได้ยังโชว์อยู่พร้อมเหตุผลเป็นข้อความจริง**
 // (ปุ่มจาง ๆ เฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง — docs/form-design-rules.md)
 import { useMemo, useState } from "react";
 import { Check, Hash, Search, Shield, UserRound, Users } from "lucide-react";
@@ -16,7 +17,6 @@ import EmptyState from "@/components/ui/EmptyState";
 import Modal from "@/components/Modal";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import SkeletonRows from "@/components/ui/Skeleton";
-import CountBadge from "@/components/ui/CountBadge";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { notifyToast } from "@/components/ui/Toast";
@@ -26,7 +26,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useRole } from "@/lib/roleContext";
 import {
-  TEAM_KIND_LABELS, normalizeTeamCode, otherTeamCodes, teamsBasePath,
+  TEAM_KIND_LABELS, allowedKindsFor, normalizeTeamCode, otherTeamCodes, teamsBasePath,
 } from "@/lib/master/teams";
 import { ROLE_LABELS, TEAMS } from "@/lib/permissions";
 import { fmtNumber, naText } from "@/lib/format";
@@ -51,6 +51,8 @@ export default function TeamDetail({ department, code }) {
   const lead = team ? leadOf(team) : null;
   const base = teamsBasePath(department);
   const closed = team?.isActive === false;
+  // ฝ่ายที่มีทีมแบบเดียวไม่ต้องบอกประเภท — คำโปรยหัวหน้าบอกแล้ว ("ทีมปฏิบัติงาน — …")
+  const multiKind = allowedKindsFor(department).length > 1;
 
   const salesTeams = useMemo(
     () => teams.filter((t) => t.kind === "sales" && t.isActive !== false),
@@ -140,11 +142,11 @@ export default function TeamDetail({ department, code }) {
       back={base ? { href: base, label: "ทะเบียนทีม" } : undefined}
       headerRight={(
         <span className={styles.headBadges}>
-          <Tag tone={team.kind === "sales" ? "violet" : "teal"}>{TEAM_KIND_LABELS[team.kind]}</Tag>
+          {multiKind && <Tag tone={team.kind === "sales" ? "violet" : "teal"}>{TEAM_KIND_LABELS[team.kind]}</Tag>}
           {closed
             ? <StatusBadge tone="neutral" label="ปิดใช้งาน" />
             : <StatusBadge tone="success" label="ใช้งานอยู่" />}
-          <CountBadge count={members.length} label="จำนวนสมาชิก" />
+          {/* 🗑️ ป้ายเลขสมาชิกเปล่า ๆ ถอดแล้ว — ไม่มีป้ายกำกับให้ตาเห็น และ "N คน" อยู่บนการ์ดสมาชิก/แผงจัดการแล้ว */}
         </span>
       )}
     >
@@ -162,7 +164,7 @@ export default function TeamDetail({ department, code }) {
             </p>
             <dl className={styles.facts}>
               <div><dt>ฝ่าย</dt><dd>{team.department}</dd></div>
-              <div><dt>ประเภท</dt><dd>{TEAM_KIND_LABELS[team.kind]}</dd></div>
+              {multiKind && <div><dt>ประเภท</dt><dd>{TEAM_KIND_LABELS[team.kind]}</dd></div>}
               <div><dt>หัวหน้าทีม</dt><dd>{naText(lead?.name)}</dd></div>
               <div><dt>สมาชิก</dt><dd>{fmtNumber(members.length)} คน</dd></div>
               <div><dt>สร้างโดย</dt><dd>{naText(team.createdByName)}</dd></div>
@@ -175,11 +177,8 @@ export default function TeamDetail({ department, code }) {
                 <Button tone="primary" onClick={() => setEdit({ ...team })}>
                   {codeLocked ? "แก้ชื่อ / หัวหน้าทีม / หมายเหตุ" : "แก้รหัส / ชื่อ / หัวหน้าทีม / หมายเหตุ"}
                 </Button>
-                {team.kind === "crew" && !closed && (
-                  <Button tone="neutral" onClick={() => { setCrewIds(members.map((m) => m.id)); setCrewOpen(true); }}>
-                    จัดสมาชิก
-                  </Button>
-                )}
+                {/* "จัดสมาชิก" อยู่หัวการ์ดสมาชิกที่เดียว — ติดกับรายชื่อที่มันแก้ และยังเห็นบนจอแคบ
+                    ที่แผงนี้ตกไปท้ายหน้า · 🐞 เดิมวาดสองที่ข้างกันบนเดสก์ท็อป */}
                 {closed ? (
                   <Button tone="neutral" disabled={saving}
                     onClick={() => call(`/api/teams/${encodeURIComponent(team.code)}`, {
@@ -189,11 +188,17 @@ export default function TeamDetail({ department, code }) {
                     เปิดใช้งานอีกครั้ง
                   </Button>
                 ) : (
-                  <>
-                    {/* เหตุผลเป็นข้อความจริงเหนือปุ่ม ไม่ใช่ปุ่มจาง ๆ ที่ไม่บอกอะไร */}
+                  /* เหตุผลเป็นข้อความจริงเหนือปุ่ม (ทิศเดียวกับ DocumentControlPanel) และ **ห่อเป็นกลุ่มเดียวกับปุ่มที่มันอธิบาย**
+                     🐞 ปล่อยเป็นพี่น้องระยะเท่ากันในกองปุ่ม ⇒ ประโยคลอยห่างปุ่มบนและล่างเท่ากัน
+                        อ่านเป็นคำอธิบายของปุ่ม "แก้ชื่อ" แทน "ปิดทีม" */
+                  <div className={styles.actGroup}>
                     {members.length > 0 && (
                       <p className={styles.why}>
                         ยังมีสมาชิก {fmtNumber(members.length)} คน — ย้ายออกให้หมดก่อนจึงจะปิดทีมได้
+                        {/* ทางไปหาสิ่งที่ประโยคสั่งให้ทำ — ย้ายคนออกอยู่ที่รายชื่อสมาชิก (เมนู "…" รายคน)
+                            ลิงก์หน้าตาเดียวทั้งระบบ = `.linklike` (UI_DESIGN_SYSTEM "ลิงก์และข้อความที่กดได้")
+                            ตัวคั่น "·" อยู่ในก้อนไม่ตัดบรรทัดเดียวกับลิงก์ — 🐞 เดิมคั่นค้างท้ายบรรทัดแรก ลิงก์ตกบรรทัดสอง */}
+                        {" "}<span className={styles.whyLink}>{"· "}<a href="#team-members" className="linklike">ดูรายชื่อสมาชิก</a></span>
                       </p>
                     )}
                     <Button tone="neutral" disabled={saving || members.length > 0}
@@ -213,12 +218,12 @@ export default function TeamDetail({ department, code }) {
                       }}>
                       ปิดทีม
                     </Button>
-                  </>
+                  </div>
                 )}
                 {/* ⭐ **ลบทีม = ของแอดมิน** (มติ 2026-08-30) · ปุ่มไม่ซ่อนเพื่อให้เหตุผล
                     ที่เซิร์ฟเวอร์ตีกลับ (ติดดีล/เป้า/สัญญาอะไรอยู่) ถูกอ่าน */}
                 {isAdmin && (
-                  <>
+                  <div className={styles.actGroup}>
                     {members.length > 0 && (
                       <p className={styles.why}>ทีมที่ยังมีคนอยู่ลบไม่ได้ — ย้ายคนออกก่อน</p>
                     )}
@@ -237,7 +242,7 @@ export default function TeamDetail({ department, code }) {
                       }}>
                       ลบทีม
                     </Button>
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -251,7 +256,7 @@ export default function TeamDetail({ department, code }) {
               {/* ⚠️ รหัสถูกก๊อปเป็นข้อความลง 20 คอลัมน์ใน 19 ตาราง — เปลี่ยนไม่ได้ตลอดกาล */}
               <dd className={styles.code}>{team.code}</dd>
             </div>
-            <div><dt>หมายเหตุ</dt><dd>{naText(team.note)}</dd></div>
+            <div className={styles.factLong}><dt>หมายเหตุ</dt><dd>{naText(team.note)}</dd></div>
           </dl>
           {lead?.stale && (
             <StatusNotice tone="warning">
@@ -261,6 +266,8 @@ export default function TeamDetail({ department, code }) {
         </DetailCard>
 
         <DetailCard
+          /* ปลายทางของลิงก์ "ดูรายชื่อสมาชิก" ใต้เหตุผลที่ปิดทีมไม่ได้ (การ์ดมี scroll-margin ของตัวเองแล้ว) */
+          id="team-members"
           icon={UserRound}
           eyebrow="สมาชิก"
           title={`${fmtNumber(members.length)} คน`}
@@ -277,14 +284,16 @@ export default function TeamDetail({ department, code }) {
                 : "ยังไม่มีคนในทีมนี้ — จัดคนเข้าทีมได้จากรายชื่อ “ยังไม่อยู่ทีมไหน” ที่หน้าทะเบียน"}
             </EmptyState>
           ) : (
-            <TableScroll family="list" surface="embedded" cells="stacked" minWidth={560}>
+            <TableScroll family="list" surface="embedded" cells="stacked"
+              /* ทีมปฏิบัติงานมีคอลัมน์ข้อมูลเดียว — 🐞 บังคับ 560 ทุกทีม มือถือจึงเลื่อนข้างและเมนู "…" หลุดจอ */
+              minWidth={team.kind === "sales" ? 560 : undefined}>
               <table>
                 <thead>
                   <tr>
                     <th>คน</th>
                     {team.kind === "sales" && <th>ทีมหลัก</th>}
                     {team.kind === "sales" && <th>อยู่ทีมอื่นด้วย</th>}
-                    <th aria-label="การจัดการ" />
+                    <th aria-label="การจัดการ" className={styles.menuCol} />
                   </tr>
                 </thead>
                 <tbody>
@@ -311,7 +320,7 @@ export default function TeamDetail({ department, code }) {
                         {team.kind === "sales" && (
                           <td>{others.length ? others.join(" · ") : naText(null)}</td>
                         )}
-                        <td className="text-center">
+                        <td className={`text-center ${styles.menuCol}`}>
                           {canManage && (
                             <RowActionMenu
                               busy={saving}

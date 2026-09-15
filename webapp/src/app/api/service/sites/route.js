@@ -12,7 +12,9 @@ import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
 import { checkSiteReferences } from '@/lib/service/siteReferences';
-import { assetCountsBySite, findCustomer, loadSites, requireService, zoneCountsBySite } from '@/lib/service/sitesRepo';
+import {
+  assetCountsBySite, customerArCodesById, findCustomer, loadSites, requireService, zoneCountsBySite,
+} from '@/lib/service/sitesRepo';
 import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
 
@@ -37,10 +39,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       kind: kindParam === 'all' ? null : (kindParam || 'customer'),
     });
     const siteIds = sites.map((s) => s.id);
-    // นับเครื่อง+โซนรวดเดียว ไม่ยิงรายไซต์ (ไซต์ 200 แห่ง = 200 คำขอ)
-    const [counts, zoneCounts] = await Promise.all([
+    // นับเครื่อง+โซน+รหัสลูกค้ารวดเดียว ไม่ยิงรายไซต์ (ไซต์ 200 แห่ง = 200 คำขอ)
+    const [counts, zoneCounts, arByCustomer] = await Promise.all([
       assetCountsBySite(supabase, siteIds),
       zoneCountsBySite(supabase, siteIds),
+      customerArCodesById(supabase, sites.map((s) => s.customerId)),
     ]);
 
     if (url.searchParams.get('withSchedule') !== '1') {
@@ -49,6 +52,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         assetCount: counts.get(site.id)?.total || 0,
         activeAssetCount: counts.get(site.id)?.active || 0,
         zoneCount: zoneCounts.get(site.id) || 0,
+        customerArCode: arByCustomer.get(site.customerId) ?? null,
       })));
     }
 
@@ -65,6 +69,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         assetCount: counts.get(site.id)?.total || 0,
         activeAssetCount: counts.get(site.id)?.active || 0,
         zoneCount: zoneCounts.get(site.id) || 0,
+        customerArCode: arByCustomer.get(site.customerId) ?? null,
         lastRefillDate: ctx.lastRefillDate,
         nextVisitDate: ctx.nextVisitDate,
         refill: siteRefillSummary(assets.get(site.id) || [], {

@@ -1,14 +1,8 @@
 /* ── หน้าโซน ────────────────────────────────────────────────────────────── */
 
-.muted {
-  margin: 0;
-  color: var(--text-3);
-  font-size: var(--fs-label);
-  line-height: var(--lh-thai);
-}
-
+/* ⚠️ ชิดขวามาจากคลาสกลาง `num` ที่ใส่คู่กัน — `text-align` ในโมดูลแพ้กฎของตารางกลางเสมอ
+   คลาสนี้เหลือไว้เป็นที่แขวนสีของ `[data-diff]` ข้างล่าง */
 .num {
-  text-align: end;
   font-variant-numeric: tabular-nums;
 }
 

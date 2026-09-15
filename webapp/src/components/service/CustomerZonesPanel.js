@@ -145,8 +145,8 @@ export default function CustomerZonesPanel({
                     <tr>
                       <th>พื้นที่</th>
                       <th>ขนาด</th>
-                      <th className="a-right">จุดติดตั้ง</th>
-                      <th className="a-right">แพ็คเกจ</th>
+                      <th className="num">จุดติดตั้ง</th>
+                      <th className="num">แพ็คเกจ</th>
                       <th>สถานะ</th>
                       <th>ประเมินล่าสุด</th>
                     </tr>
@@ -165,7 +165,7 @@ export default function CustomerZonesPanel({
                             </small>
                           </td>
                           <td><SizeCell zone={zone} /></td>
-                          <td className="a-right">
+                          <td className="num">
                             {/* ⚠️ ห้ามผูกจำนวนจุดกับจำนวนแพ็คเกจ และห้ามเตือนว่าไม่เท่ากัน —
                                 หนึ่งแพ็คเกจกระจายหลายจุดได้ หลายแพ็คเกจลงจุดเดียวได้ */}
                             {zone.spotsTotal ? (
@@ -182,7 +182,7 @@ export default function CustomerZonesPanel({
                               </>
                             ) : <span className={styles.muted}>{naText(null)}</span>}
                           </td>
-                          <td className="a-right">
+                          <td className="num">
                             {/* ⚠️ สองเลขคนละความหมาย ห้ามยุบรวม (mig 0314 เขียนกำกับ) —
                                 บนคือที่ TS ประเมิน ล่างคือที่ลูกค้าซื้อจริง */}
                             <b>{naText(zone.assessedPackages)}</b>
