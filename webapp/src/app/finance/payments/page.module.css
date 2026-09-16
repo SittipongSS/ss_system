@@ -114,7 +114,7 @@
   height: 3px;
   margin-top: var(--space-1);
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-full);
   background: var(--border);
   overflow: hidden;
 }

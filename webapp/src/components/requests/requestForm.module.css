@@ -454,7 +454,7 @@
   min-width: 1.5rem;
   height: 1.5rem;
   padding: 0 var(--space-1-5);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-3);
@@ -637,7 +637,9 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  /* 🐞 เคยเป็น `--surface-2` ที่ไม่เคยมีใครประกาศ ⇒ พื้นโปร่งทั้งสองธีมแบบเงียบ ๆ
+     บล็อกนี้นั่งบน --panel ของการ์ดฟอร์ม ⇒ ขั้นถัดไปคือ --panel-2 เท่ากับ .pdr/.briefCard/.ctxBar */
+  background: var(--panel-2);
 }
 
 /* ลำดับในใบ ไม่ใช่รหัส — รหัส ZN อยู่ในบรรทัดรายละเอียดข้างใต้ชื่อ */
@@ -673,7 +675,7 @@
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  background: var(--panel-2);
 }
 
 /* ช่องชื่อกินพื้นที่ที่เหลือ · ช่องหมายเหตุยาวรองลงมา — ปุ่มไม่ตกบรรทัดเองบนจอกว้าง */
@@ -697,7 +699,7 @@
   gap: var(--space-0-5);
   padding: var(--space-2-5);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: var(--panel);
   color: var(--text-1);
   text-align: start;

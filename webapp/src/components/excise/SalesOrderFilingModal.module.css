@@ -68,9 +68,12 @@
   text-align: left;
 }
 
+/* 🐞 เคยเป็น `1px solid var(--line)` ที่ไม่เคยมีใครประกาศ — shorthand ที่มี var() พัง
+   จะตกไปที่ค่าตั้งต้นทั้งก้อน (`border-style: none`) ⇒ **เส้นคั่นไม่ถูกวาดเลย**
+   ไม่ใช่แค่สีเพี้ยน · ชื่อสีเส้นของระบบคือ --border (--rule คือ *ความหนา* 1px) */
 .lineTable td {
   padding: var(--space-1) 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border);
   vertical-align: top;
 }
 
