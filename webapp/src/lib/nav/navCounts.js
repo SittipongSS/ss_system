@@ -61,3 +61,38 @@ export const LEAD_TODO_STATUS = 'assigned';
 export function pruneZeroCounts(counts = {}) {
   return Object.fromEntries(Object.entries(counts).filter(([, n]) => Number(n) > 0));
 }
+
+/* ── สถานะรายคีย์: "นับไม่สำเร็จ" ต้องไม่อ่านเหมือน "ไม่มีงาน" ──────────────
+ *
+ * 🐞 ที่มา: `attempt()` ใน route กลืน error แล้วข้ามคีย์นั้นไป · `pruneZeroCounts`
+ *   ก็ตัดศูนย์ทิ้งด้วย ⇒ ปลายทางเห็น "พัง" = "ศูนย์" = "ไม่มีสิทธิ์" เหมือนกันหมด
+ *   หน้าไหนจะกล้าพูดว่า "ไม่มีงานค้าง" ต้องแยกสามอย่างนี้ออกจากกันก่อน (ADR 0016)
+ *
+ * ⭐ **เพิ่มคีย์ ไม่เปลี่ยนรูปเดิม** — ตัวเลขยังอยู่ชั้นบนสุดตามเดิม แท็บที่เปิดค้าง
+ *   ไว้ก่อน deploy อ่าน `counts[key]` ได้เหมือนเดิมทุกอย่าง (`navCountFor`
+ *   หยิบตามชื่อคีย์ · `navCountForSystem` บวกตาม href ⇒ ทั้งคู่มองไม่เห็นคีย์ `_*`) */
+export const COUNT_STATUS_KEYS = { attempted: '_attempted', failed: '_failed' };
+
+export function withCountStatus(counts = {}, attempted = [], failed = []) {
+  return {
+    ...pruneZeroCounts(counts),
+    [COUNT_STATUS_KEYS.attempted]: [...attempted],
+    [COUNT_STATUS_KEYS.failed]: [...failed],
+  };
+}
+
+/** อ่าน payload ฝั่งจอ — คีย์ `_*` ต้องไม่ปนไปอยู่กับตัวเลข
+ *  API รุ่นเก่า (ไม่มี `_attempted`) ⇒ `attempted = null` = "ไม่รู้ว่าคีย์ไหนถูกนับบ้าง"
+ *  ซึ่งต่างจากชุดว่าง (= นับแล้วไม่มีคีย์ไหนเข้าเงื่อนไขของคนนี้เลย) */
+export function readCountStatus(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  const counts = Object.fromEntries(
+    Object.entries(source).filter(([key]) => !key.startsWith('_')),
+  );
+  const attemptedRaw = source[COUNT_STATUS_KEYS.attempted];
+  return {
+    counts,
+    attempted: Array.isArray(attemptedRaw) ? new Set(attemptedRaw) : null,
+    failed: new Set(Array.isArray(source[COUNT_STATUS_KEYS.failed]) ? source[COUNT_STATUS_KEYS.failed] : []),
+  };
+}

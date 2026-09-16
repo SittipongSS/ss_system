@@ -90,7 +90,8 @@ export default function AppLayout({ children }) {
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
   // ป้ายจำนวน "รอคุณทำ" บนเมนู — คีย์ที่ผู้ใช้ไม่มีสิทธิ์เห็นไม่ถูกส่งมาเลย
-  const navCounts = useNavCounts(pathname);
+  const navCountsState = useNavCounts(pathname);
+  const navCounts = navCountsState.counts;
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   /* ระบบที่กางเมนูย่อยค้างอยู่ในดรอปดาวน์ (มติผู้ใช้ 2026-08-23) — ทีละระบบเท่านั้น

@@ -65,7 +65,8 @@ export default function HomeHubPage() {
   const [mustChangePwd, setMustChangePwd] = useState(false);
   /* หน้านี้อยู่นอก `AppLayout` (ไม่มีแถบเมนู) จึงต้องเรียกฮุกเอง — ส่ง "/home" คงที่
      เพราะไม่มีการเปลี่ยนหน้าภายในหน้านี้ ตัวฮุกยังดึงตอน mount และทุก 2 นาทีตามเดิม */
-  const navCounts = useNavCounts("/home");
+  // PR4 ของ ADR 0016 จะลบบรรทัดนี้ทั้งบรรทัด — หน้าแรกจะอ่านจากเปลือกแทน
+  const navCounts = useNavCounts("/home").counts;
 
   const loadSession = useCallback(async () => {
     setLoading(true);

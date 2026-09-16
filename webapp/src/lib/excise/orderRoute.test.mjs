@@ -9,6 +9,8 @@ const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 // (ซึ่งต้องพูดถึงนิพจน์เก่า) จะทำให้เทสต์แดงเอง
 const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 const listRoute = read('../../app/api/orders/route.js');
+// ตัวกรองขอบเขตของลิสต์ภาษีอยู่ที่เดียว — ลิสต์ (orders · excise-registrations) และป้ายบนเมนูใช้ร่วมกัน
+const listScope = read('./listScope.js');
 const listCode = codeOnly(listRoute);
 const customersRoute = read('../../app/api/customers/route.js');
 const fromSalesOrderRoute = read('../../app/api/tax/orders/from-sales-order/route.js');
@@ -19,15 +21,19 @@ const fromSalesOrderRoute = read('../../app/api/tax/orders/from-sales-order/rout
 //  2. คนที่ scope 'team' แต่ไม่มีทีม จะได้ `team=eq.null` ซึ่ง PostgREST แปลเป็น `= NULL`
 //     → 0 แถว (มีแต่ `is.null` ที่ทำงาน) = ลิสต์ว่างเปล่าโดยไม่มี error เตือน
 test('ลิสต์ใบยื่น: ทีมตัวเอง + แถวไม่มีทีม (ของกลาง) — ห้ามใช้ eq(team, null)', () => {
+  /* 📌 ADR 0016 (PR0): นิพจน์ย้ายไปอยู่ที่ `lib/excise/listScope.js` ตัวเดียว เพราะ
+     **ป้ายตัวเลขบนเมนูต้องกรองด้วยกฎเดียวกับลิสต์** ไม่งั้นคนที่ scope 'team' ได้ป้าย
+     เท่ายอดทั้งบริษัทแล้วกดเข้าไปเจอแค่ของทีมตัวเอง · กฎตัวจริงถูกล็อกที่ listScope.test.mjs */
+  assert.match(listRoute, /applyExciseListScope\(query, user\)/, 'ลิสต์ต้องกรองผ่านตัวกลาง');
   assert.match(
-    listRoute,
+    listScope,
     /if \(viewScopeUser\(user\) === 'team' && userTeams\(user\)\.length\) \{/,
     'คนที่ scope team แต่ไม่มีทีม scope ไม่ได้ → ต้องไม่กรองเลย',
   );
   // คนหนึ่งคนอยู่ได้หลายทีม (2026-08-11) ⇒ ขอบเขตเป็น in ไม่ใช่ eq — แต่แถวไร้ทีม
   // ยังต้องพ่วงมาเหมือนเดิม (นั่นคือหัวใจของบั๊กเดิม)
   assert.match(
-    listRoute,
+    listScope,
     /query\.or\(`\$\{teamInClause\(user\)\},team\.is\.null`\)/,
     'ต้องรวมแถว team = null ด้วย และ null ต้องเทียบด้วย is.null',
   );
@@ -54,7 +60,7 @@ test('กฎ team scope ของใบยื่นตรงกับต้น�
 // ถอยไปใช้ทีมที่ดูแลลูกค้าเจ้าของใบ · ลูกค้าหลายทีม = เดาไม่ได้ ปล่อย null (ของกลาง)
 // ดีกว่าตรึงผิดทีมแล้วทีมจริงมองไม่เห็นใบของตัวเอง
 test('POST ตรึงทีมจากลูกค้าเมื่อคนสร้างไม่มีทีม และไม่เดาเมื่อลูกค้าหลายทีม', () => {
-  assert.match(listRoute, /import \{ caretakerTeamsOf, viewScopeUser, userTeams \} from '@\/lib\/permissions'/);
+  assert.match(listRoute, /import \{ caretakerTeamsOf \} from '@\/lib\/permissions'/);
   assert.match(listRoute, /const caretakerTeams = caretakerTeamsOf\(customer\)/);
   assert.match(
     listRoute,

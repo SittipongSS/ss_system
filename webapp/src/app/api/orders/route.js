@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { caretakerTeamsOf, viewScopeUser, userTeams } from '@/lib/permissions';
-import { teamInClause } from '@/lib/teamScope';
+import { caretakerTeamsOf } from '@/lib/permissions';
+import { applyExciseListScope } from '@/lib/excise/listScope';
 import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
 import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 import { recordAudit } from '@/lib/audit';
@@ -37,9 +37,8 @@ export async function GET(request) {
   // สร้าง เพราะ POST ตรึง team = user.team · (2) คนที่ scope 'team' แต่ไม่มีทีมจะได้
   // `team=eq.null` ซึ่ง PostgREST แปลเป็น `= NULL` = ไม่มีอะไรตรงเลย → 0 แถว (ต้อง is.null)
   // → scope ไม่ได้ ก็แสดงทั้งหมด
-  if (viewScopeUser(user) === 'team' && userTeams(user).length) {
-    query = query.or(`${teamInClause(user)},team.is.null`);
-  }
+  // ⚠️ ตัวกรองเดียวกับที่ป้ายตัวเลขบนเมนูใช้ (lib/excise/listScope) — สองที่ต้องตอบจำนวนเดียวกัน
+  query = applyExciseListScope(query, user);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });

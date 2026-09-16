@@ -251,7 +251,11 @@ test("ตัวตรวจการอ่านใน GET — จับได�
     .includes("error (ชื่อ error ซ้ำ)"));
 });
 
-for (const file of ["src/app/api/pm/projects/route.js", "src/app/api/pm/projects/[id]/route.js"]) {
+/* ⭐ `api/nav/counts` เข้ากองเดียวกัน (ADR 0016 · PR0) — ตัวนับที่กลืน error
+   ไม่ได้ "เงียบ" เฉย ๆ มันตอบ **0** ซึ่งอ่านว่า "ไม่มีงานค้าง" แล้วหน้าแรกจะพูดตามนั้น
+   (ADR 0016 ห้ามหน้าแรกแสดงตัวนับที่พังเป็น 0) */
+for (const file of ["src/app/api/pm/projects/route.js", "src/app/api/pm/projects/[id]/route.js",
+  "src/app/api/nav/counts/route.js"]) {
   test(`${file} — ทุกการอ่านใน GET ต้องรับ error และเช็คก่อนใช้`, () => {
     const problems = uncheckedReads(getHandlerOf(read(file)));
     assert.deepEqual(problems, [], `อ่านแล้วอาจกลายเป็น "ไม่มี" เงียบ ๆ: ${problems.join(", ")}`);
@@ -266,4 +270,51 @@ test("หน้ารวมโครงการ — งาน/ดีลขอ�
     assert.match(get, new RegExp(`fetchInChunks\\(ids, \\(chunk\\) => fetchAllResult\\(\\(\\) => supabase\\s*\\.from\\('${table}'\\)[\\s\\S]*?\\.in\\('projectId', chunk\\)`),
       `${table} ต้องซอยก้อน + ไล่หน้า`);
   }
+});
+
+/* ── ตัวนับบนเมนู: "พัง" ต้องไม่กลายเป็น "ศูนย์" (ADR 0016 · PR0) ────────────
+   uncheckedReads ข้างบนจับเฉพาะรูป `{ data }` — ตัวนับส่วนใหญ่ของไฟล์นี้เป็น
+   head-count ที่รับแค่ `{ count }` และมีสองจุดที่ทิ้ง error ด้วย `.then((r) => r.data)`
+   ซึ่งไม่มีรูป `{ data }` ให้จับเลย จึงต้องล็อกเพิ่มที่นี่ */
+const countsGet = getHandlerOf(read("src/app/api/nav/counts/route.js"));
+
+test("ตัวนับบนเมนู — ทุก head-count ต้องรับ error ของตัวเอง", () => {
+  const heads = [...countsGet.matchAll(/\{\s*count(?:,\s*error(?::\s*(\w+))?)?\s*\}/g)];
+  assert.ok(heads.length >= 8, `หา head-count ไม่เจอ (${heads.length}) — ตัวตรวจนี้ตายแล้วหรือรูปแบบเปลี่ยน`);
+  const bare = heads.filter((m) => !/error/.test(m[0]));
+  assert.deepEqual(bare.map((m) => m[0]), [], "รับแค่ { count } = query พังแล้วป้ายขึ้น 0 เงียบ ๆ");
+  for (const m of heads) {
+    const errName = m[1] || "error";
+    const after = countsGet.slice(m.index + m[0].length);
+    assert.match(after, new RegExp(`if \\(${errName}\\)\\s*throw ${errName}`),
+      `${errName} รับมาแล้วแต่ไม่โยนต่อ — attempt() จะไม่มีวันรู้ว่าคีย์นี้พัง`);
+  }
+});
+
+test("ตัวนับบนเมนู — ห้ามทิ้ง error ด้วย .then((r) => r.data)", () => {
+  // 🐞 งานเข้าใหม่ (serviceIntake) เคยอ่านสี่ก้อนแบบนี้ ⇒ ก้อนที่พังกลายเป็นชุดว่าง
+  // แล้ว bindQueue ตอบว่า "ไม่มีใบค้าง" ทั้งที่ยังไม่รู้ด้วยซ้ำว่ามีหรือไม่มี
+  assert.doesNotMatch(countsGet, /\.then\(\(r\) => r\.data/);
+});
+
+test("ตัวนับบนเมนู — คีย์ที่นับไม่สำเร็จต้องถูกส่งออกไปให้จอรู้", () => {
+  assert.match(countsGet, /failed\.push\(key\)/, "catch ต้องจดคีย์ที่พัง");
+  assert.match(countsGet, /attempted\.push\(key\)/, "ต้องจดทุกคีย์ที่เริ่มนับ (ศูนย์ถูกตัดทิ้งทีหลัง)");
+  assert.match(countsGet, /withCountStatus\(counts, attempted, failed\)/);
+});
+
+test("ตัวนับที่มาจากดีลทั้งกอง — ซอยก้อน + ไล่หน้า ไม่ใช่ .in() ทั้งลิสต์", () => {
+  /* dealIds โตตามใบเสนอราคาที่อนุมัติแล้ว + ดีลที่ผูก FC กับใบ ⇒ ชนเพดาน URL ได้เอง
+     และผลลัพธ์ของดีลหนึ่งใบมีได้หลายฉบับ ⇒ เกิน 1,000 แถวได้ด้วย */
+  assert.doesNotMatch(countsGet, /\.in\('id', dealIds\)/);
+  assert.doesNotMatch(countsGet, /\.in\('dealId', dealIds\)/);
+  for (const column of ["id", "dealId"]) {
+    assert.match(countsGet, new RegExp(`fetchInChunks\\(dealIds, \\(chunk\\) => fetchAllResult\\([\\s\\S]*?\\.in\\('${column}', chunk\\)`));
+  }
+});
+
+test("ป้ายภาษี — นับด้วยตัวกรองขอบเขตตัวเดียวกับลิสต์", () => {
+  /* 🐞 senior_ae / ac / ae มี scope 'team' ⇒ ลิสต์เห็นเฉพาะทีมตัวเอง + แถวไร้ทีม
+     แต่ป้ายเคยนับทั้งตาราง ⇒ กดเข้าไปเจอน้อยกว่าที่ป้ายบอก */
+  assert.match(countsGet, /applyExciseListScope\(\s*supabase\.from\(table\)/);
 });
