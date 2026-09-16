@@ -212,7 +212,7 @@ test('⭐ ฝ่ายที่มีบ้านของตัวเองไ�
 // ระบบเพิ่งบอกว่ายังไม่เปิด ซึ่งอ่านแล้วขัดกันเอง และ build/eslint จับไม่ได้เลย
 // (เกิดกับ /finance มาก่อน แก้ทันตอนทำ · /rd ตามมาอีกใบ 2026-08-15)
 test('⭐ ไม่มีระบบไหน landing ลงหน้าที่เมนูของมันเทาไว้', () => {
-  const nav = readFileSync(new URL('../components/AppLayout.js', import.meta.url), 'utf8')
+  const nav = readFileSync(new URL('./menuRegistry.js', import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
   // เก็บ href ของทุกเมนูที่ตั้ง disabled: true ไว้ในบรรทัดเดียวกัน

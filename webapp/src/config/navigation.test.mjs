@@ -1,8 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { ADOPTED_SHARED_PATHS, adoptsPathname, sharedItemBelongsInGroup, isBareShellPathname, isSettingsPathname, sortSystems, systemForPathname } from './navigation.js';
 
 test('systemForPathname keeps public and legacy sales routes in one system', () => {
@@ -190,31 +187,24 @@ test('บ้านของตัวเองยังชนะเสมอ — 
    build/eslint จับไม่ได้เลยเพราะหน้าเรนเดอร์ปกติ ผิดแค่เปลือกที่ครอบมัน
    (อ่านซอร์สตรง ๆ เพราะ AppLayout เป็น client component ที่ import มารันไม่ได้ —
     ท่าเดียวกับ components/navMenuNames.test.mjs) */
-test('⭐ ทุกเส้นทางที่ถูกรับไป ต้องมีเมนูคู่กันในกลุ่มของฝ่ายนั้น', () => {
-  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'components', 'AppLayout.js'), 'utf8');
-  const shared = source.slice(source.indexOf('const SHARED_DOC_ITEMS = {'));
-  const hrefByKey = new Map();
-  for (const [, key, href] of shared.slice(0, shared.indexOf('\n};')).matchAll(/^\s{2}(\w+): \{ href: '([^']+)'/gm)) {
-    hrefByKey.set(key, href);
-  }
-  assert.ok(hrefByKey.size >= 4, 'ต้องอ่านนิยาม SHARED_DOC_ITEMS ออก');
+test('⭐ ทุกเส้นทางที่ถูกรับไป ต้องมีเมนูคู่กันในกลุ่มของฝ่ายนั้น', async () => {
+  /* 📌 ADR 0016 (PR1): ทะเบียนเมนูย้ายไป `config/menuRegistry.js` แล้ว ⇒ อ่านข้อมูลตรง ๆ
+     แทนการเฉือนซอร์สด้วยการย่อหน้า · ของเดิมหาท้ายกลุ่มด้วย `indexOf('\n    },')`
+     ซึ่งได้ −1 ทันทีที่การย่อหน้าเปลี่ยน แล้ว slice ยาวถึงท้ายไฟล์ = เทสต์ผ่านทั้งที่ควรตก */
+  const { MENU_GROUPS } = await import('./menuRegistry.js');
 
   for (const [system, prefixes] of Object.entries(ADOPTED_SHARED_PATHS)) {
-    const start = source.indexOf(`system: '${system}',`);
-    assert.ok(start > 0, `ไม่พบกลุ่มเมนูของระบบ ${system}`);
-    const group = source.slice(start, source.indexOf('\n    },', start));
-    /* เมนูหนึ่งตัว "ครอบ" เส้นทางได้สองท่า — เป็นรายการเอกสารร่วมตรง ๆ
-       (`SHARED_DOC_ITEMS.x`) หรือเป็นเมนูของฝ่ายเองที่ `match` กินเส้นนั้นด้วย
-       (เช่น "คิวคำร้อง" ของ RD/FN ซึ่งกินใบ `/requests/[id]` — มติ 2026-08-22
-       ที่ว่าสองฝ่ายนี้ไม่เปิดคำร้องเอง จึงไม่มีเมนูคิวรวมในโมดูล) */
-    const covered = new Set([
-      ...[...group.matchAll(/SHARED_DOC_ITEMS\.(\w+)/g)].map((m) => hrefByKey.get(m[1])),
-      ...[...group.matchAll(/startsWith\('([^']+)'\)/g)].map((m) => m[1]),
-    ]);
+    const group = MENU_GROUPS.find((g) => g.system === system);
+    assert.ok(group, `ไม่พบกลุ่มเมนูของระบบ ${system}`);
     for (const prefix of prefixes) {
       // เส้นทางเก่า `/sales-planning/*` เป็นแค่ลิงก์ค้าง ไม่ต้องมีเมนูของตัวเอง
       if (prefix.startsWith('/sales-planning')) continue;
-      assert.ok(covered.has(prefix), `ระบบ ${system} รับ ${prefix} มาแล้วแต่ไม่มีเมนูคู่กัน`);
+      /* เมนูหนึ่งตัว "ครอบ" เส้นทางได้สองท่า — เป็นรายการเอกสารร่วมตรง ๆ
+         (`SHARED_DOC_ITEMS.x` ซึ่ง href ตรงกับเส้นนั้น) หรือเป็นเมนูของฝ่ายเองที่
+         `match` กินเส้นนั้นด้วย (เช่น "คิวคำร้อง" ของ RD/FN ซึ่งกินใบ `/requests/[id]`
+         — มติ 2026-08-22 ที่ว่าสองฝ่ายนี้ไม่เปิดคำร้องเอง จึงไม่มีเมนูคิวรวมในโมดูล) */
+      const covered = group.items.some((item) => item.href === prefix || item.match?.(prefix));
+      assert.ok(covered, `ระบบ ${system} รับ ${prefix} มาแล้วแต่ไม่มีเมนูคู่กัน`);
     }
   }
 });
@@ -222,14 +212,14 @@ test('⭐ ทุกเส้นทางที่ถูกรับไป ต้
 /* ⚠️ RD/FN **ไม่มีเมนูคิวรวม "คำร้อง" ในโมดูลตัวเอง** (มติผู้ใช้ 2026-08-22:
    *"บัญชี กับ RD ไม่มีที่ต้องเปิดเอง มีแต่ SA ที่ต้องเปิดมาหา"*) ⇒ แท็บ "ที่ฉันเปิด"
    ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ใบที่เปิดจากคิวฝ่ายจึงต้องไฮไลต์ที่ "คิวคำร้อง" */
-test('⭐ ใบคำร้องของ RD/FN ไฮไลต์ที่คิวของฝ่าย ไม่ใช่เมนูคิวรวม', () => {
-  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'components', 'AppLayout.js'), 'utf8');
+test('⭐ ใบคำร้องของ RD/FN ไฮไลต์ที่คิวของฝ่าย ไม่ใช่เมนูคิวรวม', async () => {
+  const { MENU_GROUPS, SHARED_DOC_ITEMS } = await import('./menuRegistry.js');
   for (const [system, own] of [['rd', '/rd/requests'], ['finance', '/finance/requests']]) {
-    const start = source.indexOf(`system: '${system}',`);
-    const group = source.slice(start, source.indexOf('\n    },', start));
-    assert.match(group, new RegExp(`href: '${own}'[^\n]*startsWith\\('/requests'\\)`),
-      `เมนูคิวของ ${system} ต้อง match ใบ /requests/[id] ด้วย`);
-    assert.ok(!group.includes('SHARED_DOC_ITEMS.requests'),
+    const group = MENU_GROUPS.find((g) => g.system === system);
+    assert.ok(group, `ไม่พบกลุ่มเมนูของระบบ ${system}`);
+    const queue = group.items.find((item) => item.href === own);
+    assert.ok(queue?.match?.('/requests/DR-1'), `เมนูคิวของ ${system} ต้อง match ใบ /requests/[id] ด้วย`);
+    assert.ok(!group.items.includes(SHARED_DOC_ITEMS.requests),
       `${system} ต้องไม่มีเมนูคิวรวม — ฝ่ายนี้ไม่เปิดคำร้องเอง`);
   }
 });

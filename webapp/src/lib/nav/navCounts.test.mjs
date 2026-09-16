@@ -116,7 +116,7 @@ test('⭐ ทุก countHref บนเมนู ต้องเป็นขอ�
   const { NAV_COUNT_KEYS } = await import('./useNavCounts.js');
 
   const src = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'components', 'AppLayout.js'),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'config', 'menuRegistry.js'),
     'utf8',
   );
   /* `countHref` คือลิงก์ที่ใช้ **เฉพาะตอนมีป้าย** ⇒ รายการที่มีมันแต่ไม่มีคีย์
@@ -135,7 +135,7 @@ test('🔴 ด่านของตัวนับต้องไม่แคบ
   const { fileURLToPath } = await import('node:url');
   const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
   const route = readFileSync(join(SRC, 'app', 'api', 'nav', 'counts', 'route.js'), 'utf8');
-  const layout = readFileSync(join(SRC, 'components', 'AppLayout.js'), 'utf8');
+  const layout = readFileSync(join(SRC, 'config', 'menuRegistry.js'), 'utf8');
 
   /* 🐞 เมนู "งานวันนี้" กั้นด้วย `canDoFieldWork` แต่ตัวนับเคยกั้นด้วย `canEditService`
      ⇒ เจ้าหน้าที่หน้างานเห็นเมนูที่ไม่มีวันขึ้นป้าย ทั้งที่เลขนั้นคือนัดของตัวเขาเอง */
