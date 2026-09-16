@@ -121,6 +121,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const patch = {
     updatedAt: new Date().toISOString(),
   };
+  /* 🐞 ตรวจ 2026-09-16: ล้างวันที่คาดปิดได้เงียบ ๆ ⇒ ดีลเปิดหลุดจาก FC ทุกเดือน (เดือน FC มาจากช่องนี้ช่องเดียว)
+     และดีล Won ก็เสียวันอ้างอิงของตัวเอง · ทั้งฟอร์มสร้างและฟอร์มแก้บังคับช่องนี้อยู่แล้ว ⇒ ปฏิเสธการล้างค่าทุกกรณี */
+  if ('expectedCloseDate' in body && !monthKey(body.expectedCloseDate)) {
+    return badRequest('ต้องระบุวันที่คาดปิด — เดือน FC ของดีลมาจากช่องนี้');
+  }
   for (const key of ['expectedCloseDate', 'lostReason', 'notes', 'team']) {
     if (key in body) patch[key] = body[key] === '' ? null : body[key];
   }
@@ -283,8 +288,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ฟอร์มไม่มีช่องเดือนแล้ว ไม่รับค่า forecastMonth จาก client). ขยับได้เฉพาะก่อนปิด
   // Won — หลัง Won ล็อก (เดือนถูกตรึงตอนปิดเพื่อวัดความแม่นยำ FC vs AT; buildWinPatch
   // เป็นคนตั้งตอนนั้นเอง).
+  // เดือน FC ตามวันที่คาดปิด (ด่านกันค่าว่างอยู่ข้างบนสุดของ patch แล้ว) — หลัง Won ล็อก ไม่ขยับตาม
   if ('expectedCloseDate' in body && !alreadyWon) {
-    patch.forecastMonth = monthKey(body.expectedCloseDate) || null;
+    patch.forecastMonth = monthKey(body.expectedCloseDate);
   }
   if (nextStage !== 'won' && 'stage' in body) patch.confirmedAt = null;
   if (nextStage !== 'lost' && 'stage' in body) patch.lostReason = null;

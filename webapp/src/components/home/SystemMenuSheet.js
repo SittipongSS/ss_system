@@ -8,7 +8,7 @@
 //    NavCountsContext) — หน้านี้ **ห้ามยิงคำขอเอง** และห้ามนิยามตัวเลขใหม่
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CircleCheck, LayoutGrid, LayoutDashboard } from 'lucide-react';
+import { CircleCheck, LayoutGrid, LayoutDashboard, TriangleAlert } from 'lucide-react';
 import { menuGroupsForUser } from '@/config/menuRegistry';
 import { useNavCountsState, navCountFor, navHrefFor } from '@/lib/nav/useNavCounts';
 import { countScopeFor } from '@/lib/nav/countScope';
@@ -164,8 +164,21 @@ function Panel({ block, place, state, user }) {
 /** ชิปสารบัญบนมือถือ — แตะแล้วเลื่อนไปที่แผง โดย **ไม่เพิ่มประวัติเบราว์เซอร์**
  *  (ปุ่มย้อนกลับครั้งเดียวต้องออกจากหน้าแรกได้) */
 function IndexChip({ block, state, user }) {
-  const total = panelTotal(block, state, user);
   const Icon = block.icon || LayoutDashboard;
+  /* ระบบที่ยังไม่เปิดใช้อยู่ในสารบัญตามลำดับด้วย (ADR 0016 ข้อ 8) — แต่เป็นชิปจางที่กดไม่ได้
+     เพราะไม่มีแผงให้ไป · ถ้าหายไปเลย ลำดับในสารบัญจะไม่ตรงกับลำดับแผงในหน้า */
+  if (block.disabled) {
+    return (
+      <li>
+        <span className={`${styles.chip} ${styles.chipOff}`} aria-disabled="true">
+          <Icon size={16} className="ico" aria-hidden="true" />
+          <span className={styles.chipName}>{block.label}</span>
+          <span className="sr-only"> — {SYSTEM_DISABLED_NOTE}</span>
+        </span>
+      </li>
+    );
+  }
+  const total = panelTotal(block, state, user);
   let badge = null;
   let aria = `ไปที่แผง${block.label}`;
   if (total.loading) {
@@ -213,6 +226,18 @@ function Legend({ blocks, state, user }) {
       <p className={styles.legend} role="status">
         <span className={styles.legendLead}>ตัวเลขงานค้าง</span>
         <span className={styles.legendItem}><span className={`skeleton ${styles.sk}`} aria-hidden="true" />กำลังนับ</span>
+      </p>
+    );
+  }
+  /* 🔴 เลขที่เห็นเป็นของรอบก่อน (รอบล่าสุดนับไม่สำเร็จ) ⇒ **ห้ามพูดว่าไม่มีงานค้าง**
+     เพราะงานที่เข้ามาหลังรอบสำเร็จล่าสุดจะเงียบสนิท · ธงนี้มาจาก useNavCounts ซึ่งคงเลขเดิม
+     ไว้ตอนพังโดยตั้งใจ (ป้ายที่หายวูบทุกครั้งที่เน็ตสะดุดคือป้ายที่คนเลิกเชื่อ) */
+  if (legend.stale) {
+    return (
+      <p className={styles.legend} role="status">
+        <span className={`${styles.legendItem} ${styles.warn}`} title="รอบล่าสุดนับไม่สำเร็จ ตัวเลขที่เห็นเป็นของรอบก่อน">
+          <TriangleAlert size={15} aria-hidden="true" />ตัวเลขเป็นของรอบก่อน — นับรอบล่าสุดไม่สำเร็จ
+        </span>
       </p>
     );
   }
@@ -283,7 +308,7 @@ export default function SystemMenuSheet({ user }) {
             {openBlocks.length >= INDEX_MIN_SYSTEMS && (
               <nav className={styles.indexNav} aria-label="ไปยังแผงของแต่ละระบบ">
                 <ul className={styles.index} role="list">
-                  {openBlocks.map((block) => (
+                  {blocks.map((block) => (
                     <IndexChip key={block.system} block={block} state={state} user={user} />
                   ))}
                 </ul>

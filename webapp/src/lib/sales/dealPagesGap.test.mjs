@@ -163,10 +163,12 @@ test('มีใบรออนุมัติ: "ต่างเมื่ออ�
   assert.equal(mixed.gap, 0);
   assert.equal(mixed.text, 'ตรงกับคาดการณ์เมื่ออนุมัติครบ');
 
-  // ใบรออนุมัติ 0 บาทยังนับว่า "มีใบรออนุมัติ" (จำนวนใบ)
+  /* ใบที่ยื่นแล้วยอด 0 บาท = ยังไม่มีเงินอยู่ที่ไหนเลย (ปรับ 2026-09-16) — พูดตรงกับกอง "Won รอยื่น SO"
+     ที่นับดีลแบบนี้ ไม่ใช่ "ต่างเมื่ออนุมัติครบ ฿(FC เต็ม)" ซึ่งอ่านเหมือนมีใบยอดเต็มรออนุมัติอยู่ */
   const zeroPending = wonDealForecastHint({ forecast: 5000, actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 1 });
-  assert.equal(zeroPending.kind, WON_HINT_KINDS.WHEN_APPROVED);
-  assert.equal(zeroPending.text, `คาดการณ์ ${fmtMoney(5000)} · ต่างเมื่ออนุมัติครบ ${fmtMoney(5000)}`);
+  assert.equal(zeroPending.kind, WON_HINT_KINDS.AWAITING_SO);
+  assert.equal(zeroPending.gap, null);
+  assert.equal(zeroPending.text, `คาดการณ์ ${fmtMoney(5000)} · ใบสั่งขายที่ยื่นยังเป็น 0 บาท`);
 });
 
 test('ส่วนต่างติดลบ (ปิดเกินคาดการณ์) โชว์ตามจริงทั้งสองกรณี', () => {
@@ -258,7 +260,7 @@ test('ดีลมูลค่า > 0: คำชนิด awaiting_so ⇔ isWonA
     ['ใบอนุมัติ 0 บาท', { ...base, metadata: { actualSource: 'sale_order', wonMonth: '2026-08', wonValueExVat: 0 } }, 1],
     ['อนุมัติมียอด', { ...base, wonValue: 90000, metadata: { actualSource: 'sale_order', wonMonth: '2026-09', wonValueExVat: 90000 } }, 1],
     ['รออนุมัติ', { ...base, metadata: { actualSource: 'sale_order', soPendingAmount: 150000, soPendingCount: 1 } }, 0],
-    ['ใบรออนุมัติ 0 บาท', { ...base, metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } }, 0],
+    ['ใบรออนุมัติ 0 บาท', { ...base, metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } }, 0], // ยังรอยื่น
     ['ใบอนุมัติ 0 บาท + ใบรออนุมัติ', { ...base, metadata: { actualSource: 'sale_order', wonMonth: '2026-08', soPendingAmount: 60000, soPendingCount: 1 } }, 1],
     ['ดีลเก่าที่สร้างเป็น Won', { ...base, metadata: { legacy: true, actualSource: 'sale_order', wonMonth: null } }, 0],
     ['ดีลของใบสั่งขายย้อนหลัง', { ...base, origin: 'historical', metadata: { actualSource: 'sale_order' } }, 1],
@@ -276,5 +278,5 @@ test('ดีลมูลค่า > 0: คำชนิด awaiting_so ⇔ isWonA
     assert.equal(hint.kind === WON_HINT_KINDS.AWAITING_SO, isWonAwaitingSo(deal), name);
     if (isWonAwaitingSo(deal)) awaitingCases += 1;
   }
-  assert.equal(awaitingCases, 2, 'ไม่มี SO + ใบอนุมัติ 0 บาท — กันเทสต์ผ่านเพราะทุกเคสเป็น false');
+  assert.equal(awaitingCases, 3, 'ไม่มี SO + ใบอนุมัติ 0 บาท + ใบยื่น 0 บาท — กันเทสต์ผ่านเพราะทุกเคสเป็น false');
 });
