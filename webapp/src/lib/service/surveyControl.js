@@ -231,7 +231,8 @@ function overdueBy(dueDate, today) {
  * @param visit          นัดของใบ (ใช้บอกว่าแจ้งช่างได้ไหม)
  * @param recall         ผลของ `surveyRecallRecord` — `null` = ไม่เคยดึงกลับ
  * @param unknown        `{ site?, zoneCodes?, customer?, recall?, visit? }` ชิ้นที่อ่านไม่สำเร็จ
- * @param viewer         `{ canWrite, canDecide }` — มาจาก server ทั้งคู่
+ * @param viewer         `{ canWrite, canDecide, canOpenRequest, writeBlockedReason }` — มาจาก server ทุกตัว
+ *                       (`canOpenRequest` = เปิดหน้าคำร้องได้ไหม · `writeBlockedReason` = เหตุที่เขียนไม่ได้)
  * @param dirtyZoneIds   พื้นที่ที่มีค่าพิมพ์ค้างยังไม่บันทึก (จอส่งมา · PR4)
  * @param pendingDecisionZoneIds พื้นที่ที่เคาะแล้วยังไม่กดบันทึก (จอส่งมา · PR5)
  * @param tab            แท็บที่เปิดอยู่ (`field` | `result`) — ใช้เลือกปุ่มพาไป
@@ -255,6 +256,9 @@ export function surveyControlView({
   const active = activeZones(rows);
   const canWriteRaw = viewer?.canWrite === true;
   const canDecide = viewer?.canDecide === true;
+  /* ⚠️ **fail-closed** — ไม่ส่งมา = ไม่โชว์ลิงก์ · ลิงก์ที่หายไปคนเดาออกว่าไม่มีสิทธิ์
+     ส่วนลิงก์ที่กดแล้วเจอ 403 อ่านเหมือนระบบพัง (กติกา ui-visibility) */
+  const canOpenRequest = viewer?.canOpenRequest === true;
 
   const cancelled = !!request?.cancelledAt;
   const sent = !!request?.answeredAt;
@@ -499,9 +503,16 @@ export function surveyControlView({
     });
   }
   if (readOnly && !cancelled) {
+    /* ⭐ **เหตุผลของ server มาก่อนประโยคกลาง ๆ** — `visitWriteAccess` รู้เหตุรายคน
+       ("นัดนี้ไม่ใช่งานของคุณ — แก้ได้เฉพาะงานที่ถูกมอบหมายให้คุณ") ส่วนประโยคสำรอง
+       บอกได้แค่ว่าใครแก้ได้บ้าง · ของที่ server พิมพ์ไว้แล้วต้องไม่ถูกทิ้ง
+       ⚠️ ใบที่ถูกล็อก (ส่งแล้ว/ปิดแล้ว) เหตุอยู่ที่ `lockReason` ไม่ใช่ที่นี่ */
+    const serverReason = String(viewer?.writeBlockedReason ?? '').trim();
     notices.push({
       key: 'read-only', tone: 'neutral',
-      text: 'ดูได้อย่างเดียว — บันทึกผลได้เฉพาะช่างในนัดและหัวหน้าบริการ',
+      text: serverReason && !locked
+        ? serverReason
+        : 'ดูได้อย่างเดียว — บันทึกผลได้เฉพาะช่างในนัดและหัวหน้าบริการ',
     });
   } else if (!canDecide && canWriteRaw && sent) {
     /* 🐞 คำแนะนำเดิมบอกช่างให้ไปกด "ยังไม่จบ" ที่ใบคำร้อง — ซึ่ง role `ts` เปิดไม่ได้ (403)
@@ -570,6 +581,8 @@ export function surveyControlView({
     },
     flags: {
       sent, cancelled, locked, readOnly,
+      /* เปิดหน้าคำร้องได้ไหม — ตอบโดย server (ผูกกับ role ไม่ใช่กับสถานะใบ) */
+      canOpenRequest,
       /* 🔴 ชื่อธงต้องบอกว่าเป็นการปิดแบบไหน — `settled` = จบครบ (ส่งแล้ว + ฝ่ายขายปิด)
          `closedWithoutAnswer` = ปิดทิ้งโดยไม่เคยส่งผล · เดิมมีธงเดียวชื่อ `closed`
          ซึ่งอ่านเหมือนอย่างแรกแต่หมายถึงอย่างหลัง */

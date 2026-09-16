@@ -15,7 +15,7 @@ import Link from "next/link";
 import {
   Palette,
   Pencil, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
-  CalendarClock, ChevronDown, FileText, LayoutGrid, Settings, UserRound,
+  CalendarClock, ChevronDown, FileText, LayoutGrid, ListChecks, Settings, UserRound,
   TriangleAlert, ShieldAlert, CircleHelp,
 } from "lucide-react";
 import {
@@ -155,7 +155,7 @@ const BADGE_TONES = STATUS_TONES;
    ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
-  { cls: "ui-badge", count: 174 },
+  { cls: "ui-badge", count: 173 },
   { cls: "status-pill", count: 43 },
   { cls: "chip", count: 23 },
 ];
@@ -2836,6 +2836,12 @@ export default function DesignPreviewPage() {
               ทุกหน้ารายละเอียดของระบบ (ใบเสนอราคา · SO · ใบขอราคาผลิต · ดีล · โครงการ) ใช้ชุดนี้
               ชุดเดียว — หน้าใหม่ประกอบจาก primitive พวกนี้ ไม่ต้องวางโครงเอง
             </StatusNotice>
+            {/* 🐞 โทนที่ StatusNotice ไม่รู้จักไม่พังให้เห็น — มันกลายเป็นฟ้าเงียบ ๆ
+                ⇒ กล่องแจ้งรับครบทุกโทนของระบบแล้ว · `neutral` = ข้อเท็จจริงที่ไม่ใช่
+                ข่าวดี/ข่าวร้าย ("ดูได้อย่างเดียว" · "เหตุผลที่ยกเลิก") สีเทาเท่าจุดสถานะ */}
+            <StatusNotice tone="neutral" title="ดูได้อย่างเดียว">
+              โทน neutral — ไม่ใช่คำเตือนและไม่ใช่ข่าวดี แค่บอกว่าตอนนี้แก้อะไรไม่ได้
+            </StatusNotice>
 
             <DetailOverview
               eyebrow="ใบเสนอราคา"
@@ -2847,22 +2853,50 @@ export default function DesignPreviewPage() {
                 { label: "มูลค่ารวม", value: `${money(486200)} บาท` },
                 { label: "ผู้จัดทำ", value: "สิทธิพงษ์ ศรีสุข" },
                 { label: "วันที่ออก", value: "29/07/2569" },
-                { label: "ยืนราคาถึง", value: "28/08/2569" },
+                /* ⭐ `narrow: "hide"` — ช่องที่หลบให้จอโทรศัพท์ (≤480px) · ใช้กับของที่
+                   อ่านที่อื่นได้เท่านั้น ไม่ใช่ข้อเท็จจริงที่มีอยู่ที่เดียว (ย่อหน้าต่างเพื่อดู) */
+                { label: "ยืนราคาถึง", value: "28/08/2569", narrow: "hide" },
+                /* ⭐ `subWrap` — บรรทัดรองที่ **ห่อได้สองบรรทัด** แทนตัดบรรทัดเดียวด้วย …
+                   ใช้กับของยาวที่ตัดหางทิ้งไม่ได้ (ที่อยู่ไซต์) ไม่ใช่กับรหัสสั้น ๆ */
+                {
+                  label: "ที่อยู่ส่งของ",
+                  value: "คลังบางนา",
+                  sub: "2/4 ซอยเพชรเกษม 35/1 ถนนเพชรเกษม แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160",
+                  subWrap: true,
+                },
               ]}
             />
 
             <DetailPageLayout
               aside={(
                 <ContextualRightRail>
+                  {/* ⭐ สามช่องที่เพิ่มมาเพื่อการ์ด "จัดการผลประเมิน" (2026-09-16) —
+                      ทั้งสามเป็นของ **เพิ่ม ไม่แก้ของเดิม**: ไม่ส่งมา = หน้าตาเดิมทุก px
+                      · `icon`      — การ์ดที่ไม่ใช่เอกสารอนุมัติใช้ไอคอนของตัวเองได้
+                      · `statusSub` — บรรทัดรองที่อ่านคู่กับพาดหัวสถานะเสมอ (อยู่ใน
+                        บล็อกสถานะ ⇒ จอแคบเลื่อนขึ้นไปพร้อมกัน) คนละช่องกับ
+                        `statusDescription` ซึ่งเป็น meta ของหัวการ์ด
+                      · `step.number` — เลขขั้นจริงของราง สำหรับการ์ดที่โชว์ขั้นเดียว
+                      · `headerNarrow="hide"` — หัวการ์ดหลบให้จอแคบ (≤1050px ซึ่งเป็น
+                        จังหวะที่รางเลิกปักหมุดแล้วไหลขึ้นไปอยู่บนสุดของหน้า) ·
+                        ย่อหน้าต่างให้แคบกว่า 1050px แล้วแถบ "DOCUMENT CONTROL /
+                        จัดการเอกสาร" ของการ์ดนี้จะหายไป เหลือพาดหัวสถานะเป็นบรรทัดแรก
+                      · `tabletSplit` — ที่ 681–1050px วางสถานะซ้าย ปุ่มขวา (ที่ความกว้าง
+                        นั้นการ์ดกินเต็มแถวแล้ว คอลัมน์เดียวจึงดันเนื้อหน้าตกจอ) ·
+                        ย่อหน้าต่างมาราว 900px แล้วจะเห็นปุ่มย้ายไปอยู่ครึ่งขวา */}
                   <DocumentControlCard
+                    icon={ListChecks}
+                    headerNarrow="hide"
+                    tabletSplit
                     status="รออนุมัติ"
                     statusColor={toneColor("warning")}
+                    statusSub="ยื่นโดย สิทธิพงษ์ · 29/07/2569 17:20"
                     statusDescription="ยื่นเมื่อ 29/07/2569 · รอผู้จัดการอนุมัติ"
                     workflowSteps={[
                       { id: "draft", label: "ร่าง", state: "done" },
                       { id: "submit", label: "ยื่นอนุมัติ", state: "done", hint: "29/07/2569" },
-                      { id: "approve", label: "อนุมัติ", state: "current" },
-                      { id: "send", label: "ส่งลูกค้า", state: "pending" },
+                      { id: "approve", label: "อนุมัติ", state: "current", number: 3 },
+                      { id: "send", label: "ส่งลูกค้า", state: "pending", number: 4 },
                     ]}
                     primaryAction={{ id: "approve", label: "อนุมัติ", tone: "primary" }}
                     secondaryActions={[{ id: "reject", label: "ตีกลับ" }]}

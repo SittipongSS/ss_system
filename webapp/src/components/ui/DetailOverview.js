@@ -95,7 +95,16 @@ export default function DetailOverview({
           {facts.map((fact, index) => {
             const Icon = fact.icon;
             return (
-              <div key={fact.key || `${fact.label}-${index}`} data-tone={fact.tone || undefined}>
+              /* ⭐ `fact.narrow="hide"` — ช่องที่ **หลบให้จอโทรศัพท์** (≤480px)
+                 ไม่ใช่ทุกหน้าจะมีช่องแบบนี้ ไม่ส่งมา = แสดงทุกขนาดจอเหมือนเดิม
+                 ⚠️ ใช้กับของที่ "อ่านที่อื่นก็ได้" เท่านั้น — บนใบประเมินพื้นที่คือ
+                 กำหนดส่ง ซึ่งการ์ดควบคุมพูดซ้ำอยู่แล้วในบรรทัดขั้นตอน · ห้ามเอาไปซ่อน
+                 ข้อเท็จจริงที่มีอยู่ที่เดียว (นั่นคือการทำให้จอเล็กรู้น้อยกว่าจอใหญ่) */
+              <div
+                key={fact.key || `${fact.label}-${index}`}
+                data-tone={fact.tone || undefined}
+                data-narrow={fact.narrow || undefined}
+              >
                 {Icon ? <Icon size={17} aria-hidden="true" /> : null}
                 <span>
                   <small>{fact.label}</small>
@@ -105,9 +114,16 @@ export default function DetailOverview({
                   {/* บรรทัดรอง — ของที่อ่านคู่กับค่าหลักเสมอ (รหัสลูกค้าใต้ชื่อลูกค้า ·
                       เบอร์ใต้ชื่อผู้ติดต่อ) · ไม่ใช่ที่เก็บของที่ไม่มีช่องว่าง
                       กริดขึ้นแถวสองได้แล้ว ช่องใหม่จึงไม่ต้องเบียดมาอยู่ตรงนี้ */}
+                  {/* ⭐ `fact.subWrap` — บรรทัดรองที่ **ห่อได้สองบรรทัด** แทนการตัดด้วย …
+                      🐞 ค่าตั้งต้นคือบรรทัดเดียว + ellipsis ซึ่งถูกสำหรับ "รหัสใต้ชื่อ"
+                         แต่ **กลืนที่อยู่ทั้งหาง**: วัดจริง 2026-09-16 บนใบประเมินพื้นที่
+                         ที่อยู่ไซต์ยาว 425px ในช่อง 402/263/302px (1440/1024/390)
+                         ⇒ เขต·จังหวัด·รหัสไปรษณีย์หายทุกจอ เหลือทางเดียวคือเอาเมาส์ไปชี้
+                         ซึ่งช่างที่ถือมือถืออยู่หน้างานทำไม่ได้
+                      ⚠️ สองบรรทัดไม่ใช่ไม่จำกัด — ยังมีเพดานให้หัวใบสูงคาดเดาได้ */}
                   {fact.sub ? (
                     <small
-                      className={styles.factSub}
+                      className={`${styles.factSub} ${fact.subWrap ? styles.factSubWrap : ""}`.trim()}
                       title={typeof fact.sub === "string" ? fact.sub : undefined}
                     >
                       {fact.sub}

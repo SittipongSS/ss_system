@@ -11,6 +11,9 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel);
+  /* ลิงก์ "เปิด <พื้นที่>" บนการ์ดควบคุมเลื่อนมาจอดที่การ์ดนี้ — ต้องไม่จอดใต้แถบเมนู
+     ที่ปักอยู่ด้านบน (โทเคนตัวเดียวกับ `.card` ของ DetailPage และ `.ui-section`) */
+  scroll-margin-top: var(--scroll-anchor-top);
 }
 
 /* พื้นที่ที่ตัดออกยังต้องอ่านได้ — จางลง ไม่ใช่หายไป (คนต้องเห็นว่าตัดอะไรไปบ้าง) */

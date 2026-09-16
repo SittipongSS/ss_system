@@ -172,6 +172,21 @@
   white-space: nowrap;
 }
 
+/* ช่องที่ผู้เรียกบอกว่า "บรรทัดรองนี้ห่อได้" (`fact.subWrap`) — เหตุผลรายหน้าอยู่ที่
+   ผู้เรียก · เพดานสองบรรทัดกันหัวใบสูงไม่เท่ากันระหว่างใบที่ที่อยู่สั้นกับยาว
+   ⚠️ ต้องเขียน `.quickFacts .factSubWrap` ให้ชนะ `.quickFacts .factSub` ข้างบน
+   (ความจำเพาะเท่ากัน ⇒ ตัวที่มาทีหลังชนะ — จึงต้องอยู่ *ใต้* บล็อกนั้นเสมอ) */
+.quickFacts .factSubWrap {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
 /* แถบท้ายหัวใบ — บางหน้าใส่ข้อความบรรทัดเดียว บางหน้าใส่ **กล่องมีขอบ**
    (รางขั้นตอนของคำร้อง = `WorkflowRail orientation="row"`)
    ⚠️ เดิมบน-ล่าง 14px ซึ่งน้อยกว่าซ้าย-ขวา 20px และน้อยกว่า padding ของหัวใบ
@@ -219,4 +234,7 @@
 
 @media (max-width: 480px) {
   .quickFacts > div { flex-basis: 100%; }
+  /* ช่องที่ผู้เรียกบอกว่า "หลบให้จอโทรศัพท์" — ที่ความกว้างนี้ทุกช่องกินเต็มแถว
+     ⇒ ช่องที่สามดันเนื้อหน้าลงไปเกือบหนึ่งจอ · เหตุผลรายหน้าอยู่ที่ `fact.narrow` */
+  .quickFacts > div[data-narrow="hide"] { display: none; }
 }

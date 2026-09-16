@@ -36,7 +36,9 @@ const emptySpot = () => ({ id: `new-${Math.random().toString(36).slice(2, 9)}`, 
    ห่างจากตัวเลขของมันเกือบ 400px บนเดสก์ท็อป (ท่าเดียวกับหัวตาราง "ขนาด (ม.)") */
 const DIMS = [["widthM", "กว้าง (ม.)"], ["lengthM", "ยาว (ม.)"], ["heightM", "สูง (ม.)"]];
 
-export default function SurveyZoneCard({ zone, files = [], canWrite = false, busy = false, onSave, onDelete }) {
+/* `id` = จุดจอดของลิงก์ "เปิด <พื้นที่>" บนการ์ดควบคุม — คนที่กดปุ่มนั้นต้องมาโผล่ที่
+   หัวการ์ดพอดี ไม่ใช่กลางการ์ด (ระยะหลบแถบเมนูอยู่ที่ `scroll-margin-top` ของ `.card`) */
+export default function SurveyZoneCard({ id, zone, files = [], canWrite = false, busy = false, onSave, onDelete }) {
   const [parts, setParts] = useState(() => (Array.isArray(zone.parts) && zone.parts.length ? zone.parts : [emptyPart()]));
   const [spots, setSpots] = useState(() => (Array.isArray(zone.spots) ? zone.spots : []));
   const [note, setNote] = useState(zone.note || "");
@@ -69,7 +71,7 @@ export default function SurveyZoneCard({ zone, files = [], canWrite = false, bus
   };
 
   return (
-    <section className={styles.card} data-cut={isCut ? "1" : undefined}>
+    <section id={id} className={styles.card} data-cut={isCut ? "1" : undefined}>
       <header className={styles.head}>
         <div className={styles.title}>
           <b>{zone.zoneName}</b>

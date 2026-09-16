@@ -40,7 +40,11 @@ function deltaText(qty, suggested) {
   return { tone: "warn", text: diff > 0 ? `สูงกว่าสูตร ${diff}` : `ต่ำกว่าสูตร ${-diff}` };
 }
 
-export default function SurveyResultTable({ zones = [], filesByZone = {}, canDecide = false, busyZone, onDecide }) {
+/* ⭐ `caption` — บรรทัด "ขอไป N พื้นที่ · …" ที่เดิมเป็น <p> ลอยอยู่ *ข้าง* การ์ด
+   (เขียนไว้ก่อนตารางย้ายเข้าการ์ดเมื่อ 2026-09-15) ⇒ คำบรรยายแยกจากตารางที่มันอธิบาย
+   ⚠️ ข้อความมาจาก `surveyChangeText` ตัวเดิม ตารางไม่ได้นับเอง — จอ TS · จอ SA ·
+   กระดิ่ง ต้องเล่าตัวเลขชุดเดียวกัน */
+export default function SurveyResultTable({ zones = [], filesByZone = {}, canDecide = false, busyZone, onDecide, caption = null }) {
   const [drafts, setDrafts] = useState({});
   const draftOf = (zone) => drafts[zone.id] ?? { packageNote: zone.packageNote || "" };
   const setDraft = (id, patch) => setDrafts((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } }));
@@ -61,7 +65,7 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
        ต้องไปทำที่ primitive (พื้นผิวที่ไม่มีขอบ + มาร์จินติดลบเท่า --panel-inset) ไม่ใช่ prop นี้
        ⚠️ บนจอ ≤680 กฎ `.shell` ข้างล่างถอดขอบ/เงา/มุมทิ้งอยู่แล้วทั้ง auto และ embedded
        ⇒ ที่แคบสุดต่างกันแค่พื้น --panel ที่หายไป */
-    <DetailCard icon={ClipboardList} title="สรุปผลประเมินรายพื้นที่" meta={`${fmtNumber(zones.length)} พื้นที่`}>
+    <DetailCard icon={ClipboardList} title="สรุปผลประเมินรายพื้นที่" meta={caption || `${fmtNumber(zones.length)} พื้นที่`}>
       <TableScroll surface="embedded" minWidth={TABLE_MIN_WIDTH} cells="stacked" className={styles.shell}>
         <table>
           <thead>

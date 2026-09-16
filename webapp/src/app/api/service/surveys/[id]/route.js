@@ -8,7 +8,7 @@
 //   ต้องอ่านไม่ได้ ถึงจะถือ `service:view` ก็ตาม (id หลุดทางลิงก์แจ้งเตือนได้)
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
-import { canOpenSurveySheet, surveyReadError } from '@/lib/service/surveyAccess';
+import { canOpenRequestPage, canOpenSurveySheet, surveyReadError } from '@/lib/service/surveyAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { loadSurveySheetContext, loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
@@ -83,6 +83,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       canDecide: canSendSurveyResult(user),
       // เหตุผลที่เขียนไม่ได้ — จอต้องบอกเหตุ ไม่ใช่ซ่อนปุ่มเงียบ ๆ
       writeBlockedReason: access.ok ? null : (access.error || 'ไม่มีสิทธิ์บันทึกผลของใบนี้'),
+      /* ⭐ **เปิดหน้าคำร้องได้ไหม** — จอเอาไปตัดสินว่าจะโชว์ลิงก์ "คำร้อง RQ-…" หรือไม่
+         🐞 จอเคยเดาเองว่า "เขียนได้แต่เคาะไม่ได้ = ช่าง" ⇒ **ช่างที่ไม่ได้อยู่ในนัด**
+            (เปิดใบของเพื่อนอ่านได้ตามกติกาของโมดูล) หลุดเป็น "คนดู" แล้วได้ลิงก์ที่
+            ตอบ 403 ใส่เขา · สิทธิ์ผูกกับ role ซึ่งจอไม่รู้ ⇒ server ตอบให้ที่นี่
+         ⚠️ **ไม่ใช่ด่านอ่านของใบประเมิน** — ด่านนั้นคือ `surveyReadError` ข้างบน */
+      canOpenRequest: canOpenRequestPage(user),
     });
   } catch (e) {
     return fail(e.message, 500);

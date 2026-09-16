@@ -164,16 +164,23 @@ test('🪤 kind "send_back" ต้องมีป้ายในทะเบี�
   assert.ok(SERVICE_BELL_KINDS.includes('survey_send_back'));
 });
 
-test('🔑 จอสรุปต้องกางเช็คลิสต์แยกตามเจ้าของ และวางปุ่มไว้ข้างข้อของช่าง', () => {
-  const list = code('../../components/service/SurveyGateList.js');
-  assert.match(list, /ช่างเท่านั้นที่แก้ได้/);
-  assert.match(list, /หัวหน้าแก้ได้เอง/);
-  assert.match(list, /group\.owner === "crew" && !gate\.ok && canSendBack/,
-    'ปุ่มขึ้นเฉพาะข้อของช่างที่ยังติด — ไม่ใช่ทุกข้อ');
-  assert.match(list, /แจ้งช่างให้กลับไป/);
+/* 🔄 **ย้ายบ้าน 2026-09-16 (PR3 ของการรื้อจอประเมิน)** — เช็คลิสต์เดิม
+   (`components/service/SurveyGateList.js`) ถูก**ย้ายเข้าการ์ดควบคุม** `SurveyControlCard`
+   และเปลี่ยนรูปตามแบบที่อนุมัติ: ด่านที่ติดรวมเป็น **กลุ่มต่อพื้นที่** (ช่างต้องเก็บ /
+   หัวหน้าต้องทำ) ส่วนรายการครบหกข้ออยู่หลังปุ่มคลี่ · ปุ่ม "แจ้งช่างให้กลับไป" จึงมี
+   **ครั้งเดียวต่อใบ** ไม่ใช่ปุ่มต่อข้ออีกแล้ว (ปุ่มหกปุ่มที่ส่งข้อความชุดเดียวกัน)
+   ⇒ ยามข้อนี้ยังตรึงเรื่องเดิม คือ "ของช่างกับของหัวหน้าต้องแยกกันให้เห็น และปุ่มแจ้ง
+   ต้องขึ้นเฉพาะตอนที่ยังมีของช่างค้าง" แค่ย้ายไปตรึงที่ไฟล์ที่วาดจริงตอนนี้ */
+test('🔑 การ์ดควบคุมต้องแยกของช่างกับของหัวหน้า และมีปุ่มแจ้งช่างเมื่อยังมีของช่างค้าง', () => {
+  const card = code('../../components/service/SurveyControlCard.js');
+  assert.match(card, /row\.crewText/, 'กลุ่มต่อพื้นที่ต้องบอก "ช่างต้องเก็บ: …"');
+  assert.match(card, /row\.headText/, 'และบอก "หัวหน้าต้องทำ: …" แยกบรรทัดกัน');
+  assert.match(card, /zoneGaps\.crewPending \?/,
+    'ปุ่มขึ้นเฉพาะตอนที่ยังมีของฝั่งช่างค้าง — ตัวตัดสินเดียวกับที่ซ่อนปุ่มให้คนไม่มีสิทธิ์');
+  assert.match(card, /แจ้งช่างให้กลับไป/);
 
   const page = code('../../app/service/surveys/[id]/page.js');
-  assert.match(page, /<SurveyGateList/);
+  assert.match(page, /<SurveyControlCard/, 'ด่านก่อนส่งอยู่ในการ์ดควบคุม ไม่ลอยอยู่ในหน้า');
   assert.match(page, /surveySendBackError\(/, 'ปุ่มในโมดัลต้องปิดด้วยด่านตัวเดียวกับ server');
   assert.match(page, /method: "POST", json: \{ note: sendBackNote\.trim\(\) \}/);
 });
