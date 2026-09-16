@@ -28,6 +28,7 @@ import { loadTerms } from '@/lib/service/termsRepo';
 import { allocatedByLine, normalizeTermInput, remainingOfLine, termSnapshotFromLine } from '@/lib/service/terms';
 import { bindTargetError, orderReceivable } from '@/lib/service/intake';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { lineSiteNotFound } from '@/lib/sales/siteNotFound';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,8 +59,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
     const { data: lines, error: lineError } = await supabase
       .from('sales_order_lines')
-      /* "installationPoint" (mig 0360) — จุดติดตั้งตามชีตของใบย้อนหลัง ลง audit คู่กับโซนที่ TS เลือกจริง */
-      .select('id, salesOrderId, productId, fgCode, description, qty, unit, "installationPoint"')
+      /* "installationPoint" (mig 0360) — จุดติดตั้งตามชีตของใบย้อนหลัง ลง audit คู่กับโซนที่ TS เลือกจริง
+         "siteNotFoundAt" (mig 0362) — จุดที่ถูกแจ้งว่าไม่พบหน้างาน ผูกโซนไม่ได้ (trigger เป็นด่านสุดท้าย
+         ข้อความ raise ดิบไม่บอกว่าบรรทัดไหน ⇒ ตรวจที่นี่ก่อนเพื่อให้ผู้ใช้อ่านรู้เรื่อง) */
+      .select('id, salesOrderId, productId, fgCode, description, qty, unit, "installationPoint", "siteNotFoundAt"')
       .eq('salesOrderId', salesOrderId);
     if (lineError) return fail(lineError.message, 500);
     const linesById = new Map((lines || []).map((l) => [l.id, l]));
@@ -95,6 +98,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       const lineId = String(row.salesOrderLineId ?? '').trim();
       const line = linesById.get(lineId);
       if (!line) return badRequest('มีบรรทัดที่ไม่ได้อยู่ในใบสั่งขายใบนี้');
+      /* ⭐ จุดที่แจ้งว่า "ไม่พบหน้างาน" ไว้ ผูกโซนไม่ได้จนกว่าจะถอนการแจ้ง หรือฝ่ายขายแก้ชื่อส่งกลับ
+         (มติข้อ 23 · mig 0362) — กันจอที่ค้างอยู่ก่อนมีคนอื่นกดแจ้ง ยิงคำขอเดิมกลับมาทับ */
+      if (lineSiteNotFound(line)) {
+        return conflict(`${label(line, lineId)} ถูกแจ้งว่าไม่พบจุดนี้หน้างานไว้ — ถอนการแจ้งก่อน หรือรอฝ่ายขายตัดสิน`);
+      }
       const zoneId = String(row.zoneId ?? '').trim();
       const zone = zonesById.get(zoneId);
       if (!zone) return badRequest('มีโซนที่ไม่พบในทะเบียน — สร้างโซนก่อนแล้วค่อยผูก');

@@ -61,8 +61,12 @@ import { loadScoped } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
-  canKeyHistoricalSalesOrder, exemptReasonError, historicalDeleteBlock, historicalRowsOnly, isHistoricalOrder,
+  canKeyHistoricalSalesOrder, exemptReasonError, historicalDeleteBlock, historicalRowsOnly,
+  installationPointError, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
+import {
+  lineAwaitingSiteDecision, lineSiteClosed, siteClosePatch, siteFlagClearPatch, siteFlagTrail, siteNoteError,
+} from '@/lib/sales/siteNotFound';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
@@ -499,6 +503,75 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     });
     // จอโหลดใบใหม่ทั้งก้อนหลังบันทึก (บรรทัดอยู่ในนั้น) — ตอบแถวใบพอ
     return ok(before);
+  }
+  /* ── ตัดสินจุดที่ TS แจ้งว่าไม่พบหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ──
+     ⭐ **ฝ่ายขายตัดสิน TS ไม่ตัดสิน** — TS เขียนได้แค่ธง (`siteNotFound*` ผ่าน
+       /api/service/intake/site-not-found) ส่วนสองคำสั่งนี้เขียนคนละชุดคอลัมน์
+     สองทางตรงตามมติ ไม่มีทางไหนถูกเลือกไว้ก่อน:
+       ① `rename_installation_point` — แก้ชื่อจุดแล้วล้างธง ⇒ บรรทัดกลับเข้าคิว TS เอง
+       ② `close_installation_point`  — ปิดจุด ไม่ต้องผูก **เก็บยอด** (ข้อ 23.1)
+     ⚠️ ① คือ **ข้อยกเว้นเดียว** ของกติกา "บรรทัดใบสั่งขายเป็นภาพนิ่ง" — แคบที่สุดเท่าที่ทำได้:
+       ใบย้อนหลังเท่านั้น · เฉพาะบรรทัดที่ TS แจ้งไว้และยังไม่ถูกปิด · แก้ได้ช่องเดียวคือชื่อจุด
+       (ไม่แตะจำนวน/ราคา/ยอดใบ/งวด — สิ่งที่เปลี่ยนคือ "ไปหาที่ไหน" ไม่ใช่ "ขายอะไรไป")
+     ⛔ **ถอดบรรทัดออกจากใบ + คิดเงินหัวใบใหม่ ยังไม่ทำ** (ข2) — ม็อกวาดปุ่มที่สามไว้
+       แต่รอบนี้อยู่นอกขอบเขต · อย่าเติมปุ่มนั้นโดยไม่มีตัวคิดเงินหัวใบมารองรับ */
+  if (action === 'rename_installation_point' || action === 'close_installation_point') {
+    const renaming = action === 'rename_installation_point';
+    if (!canKeyHistoricalSalesOrder(user)) {
+      return forbidden('ตัดสินจุดที่ TS ไม่พบได้เฉพาะ AE Supervisor หรือ Admin');
+    }
+    if (!isHistoricalOrder(before)) return fail('คำสั่งนี้ใช้ได้เฉพาะใบสั่งขายย้อนหลัง', 409);
+    if (before.status !== 'approved') return fail('ใบสั่งขายย้อนหลังที่ยกเลิกแล้วตัดสินจุดไม่ได้', 409);
+
+    const lineId = String(body.lineId ?? '').trim();
+    if (!lineId) return badRequest('ต้องระบุจุดติดตั้งที่จะตัดสิน');
+    const line = (before.lines || []).find((l) => l.id === lineId);
+    if (!line) return badRequest('มีจุดติดตั้งที่ไม่ได้อยู่ในใบสั่งขายใบนี้');
+    /* ⚠️ ตัดสินได้เฉพาะจุดที่ TS แจ้งไว้ — ฝ่ายขายปิดจุดของตัวเองเงียบ ๆ ไม่ได้
+       (CHECK `sales_order_lines_site_closed_sane` เป็นด่านสุดท้าย ที่นี่ให้ข้อความไทย) */
+    if (!lineAwaitingSiteDecision(line)) {
+      return fail(lineSiteClosed(line)
+        ? 'จุดนี้ถูกตัดสินไปแล้ว — โหลดหน้าใหม่เพื่อดูสถานะล่าสุด'
+        : 'จุดนี้ยังไม่ถูกแจ้งว่าไม่พบหน้างาน — ไม่มีอะไรให้ตัดสิน', 409);
+    }
+
+    const stamp = new Date().toISOString();
+    let patch;
+    let summary;
+    if (renaming) {
+      const point = String(body.installationPoint ?? '').trim();
+      const pointError = installationPointError(point);
+      if (pointError) return badRequest(pointError);
+      if (point === String(line.installationPoint ?? '').trim()) {
+        return badRequest('ชื่อจุดยังเหมือนเดิม — แก้ชื่อก่อนส่งกลับ ไม่งั้น TS จะหาไม่เจอซ้ำรอบเดิม');
+      }
+      patch = { ...siteFlagClearPatch(), installationPoint: point };
+      summary = `แก้ชื่อจุดติดตั้งของ ${before.orderNumber} เป็น "${point}" แล้วส่งกลับ TS (เดิม "${line.installationPoint ?? ''}")`;
+    } else {
+      const note = String(body.note ?? '');
+      const noteError = siteNoteError(null, note);
+      if (noteError) return badRequest(noteError);
+      patch = siteClosePatch({ note, user: { id: user.id, name: user.name || user.email || null }, at: stamp });
+      summary = `ปิดจุดติดตั้ง "${line.installationPoint ?? ''}" ของ ${before.orderNumber} — ไม่ต้องผูกโซน เก็บยอดไว้ในใบ`;
+    }
+
+    /* ตัวกรองบอกสถานะที่คาดไว้ด้วย — TS ถอนการแจ้งพอดีตอนฝ่ายขายกด ต้องได้ 0 แถว ไม่ใช่เขียนทับ */
+    const { data, error } = await supabase.from('sales_order_lines').update(patch)
+      .eq('id', lineId).eq('salesOrderId', id)
+      .not('siteNotFoundAt', 'is', null).is('siteClosedAt', null)
+      .select().maybeSingle();
+    if (error) {
+      const mapped = documentWorkflowError(error, { context: `sales order line site decision ${lineId}` });
+      return fail(mapped.message, mapped.status);
+    }
+    if (!data) return fail('สถานะของจุดนี้เปลี่ยนระหว่างบันทึก — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409);
+
+    const decisionTrail = (row) => ({ ...siteFlagTrail(row), installationPoint: row?.installationPoint ?? null });
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order_line', entityId: lineId,
+      before: decisionTrail(line), after: decisionTrail(data), summary, request: req,
+    });
+    return ok(data);
   }
 
   if (action === 'set-doc-language') {

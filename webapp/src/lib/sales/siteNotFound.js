@@ -30,8 +30,9 @@ export const SITE_FLAG_COLUMNS = Object.freeze([
   'siteNotFoundAt', 'siteNotFoundById', 'siteNotFoundByName', 'siteNotFoundReason', 'siteNotFoundNote',
   'siteClosedAt', 'siteClosedById', 'siteClosedByName', 'siteClosedNote',
 ]);
-/* ท่อนที่เอาไปต่อท้าย .select() ได้ตรง ๆ — คอลัมน์ camelCase ต้องมีอัญประกาศเสมอใน PostgREST */
-export const SITE_FLAG_SELECT = SITE_FLAG_COLUMNS.map((c) => `"${c}"`).join(', ');
+/* 🪤 อย่าประกอบท่อน select จากลิสต์นี้แล้วยัดใส่ template string — `check:columns` อ่าน
+   **สตริงตัวอักษร** ใน `.select(...)` เท่านั้น ⇒ `${...}` กลายเป็นชื่อคอลัมน์ปลอมและด่านแดงทันที
+   · สะกดครบทั้ง 9 ตัวในแต่ละ select แล้วให้ `historicalServiceSide.test.mjs` ตรึงว่าครบ */
 
 export const SITE_NOT_FOUND_LABEL = 'TS ไม่พบจุด';
 export const SITE_CLOSED_LABEL = 'ปิดจุดแล้ว';

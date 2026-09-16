@@ -55,9 +55,11 @@ export const GET = withUser(async ({ user, supabase }) => {
          ⚠️ ไม่ดึงราคา/ส่วนลด — ฝ่ายบริการไม่ต้องใช้ และยิ่งดึงมามาก ยิ่งมีของหลุดออกทาง response โดยไม่ตั้งใจ
          "serviceRounds" = ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326) — TS ใช้ตอนวางรอบ
          "installationPoint" = จุดติดตั้งตามชีตของใบย้อนหลัง (mig 0360) — fgSummary แยกกลุ่มตามจุด
+         ธงจุด 9 ช่อง (mig 0362) = จุดที่ TS แจ้งว่าไม่พบหน้างาน + ผลตัดสินของฝ่ายขาย — `lineNeedsAllocation`
+         ตัดจุดที่ติดธงออกจากคิว และวิซาร์ดเอารายการนี้ไปทำแผง "ถอนการแจ้ง" ⇒ ต้องครบทั้ง 9 ช่อง
          🪤 คอมเมนต์อยู่เหนือคำสั่ง — แทรกระหว่าง `.from()` กับ `.select()` แล้ว check:columns มองไม่เห็น select นี้ */
       fetchAllInChunks(orderIds, (chunk) => supabase.from('sales_order_lines')
-          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds", "installationPoint"')
+          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds", "installationPoint", "siteNotFoundAt", "siteNotFoundById", "siteNotFoundByName", "siteNotFoundReason", "siteNotFoundNote", "siteClosedAt", "siteClosedById", "siteClosedByName", "siteClosedNote"')
           .in('salesOrderId', chunk)
           .order('salesOrderId', { ascending: true })
           .order('sortOrder', { ascending: true })

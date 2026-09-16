@@ -14,6 +14,7 @@
 //   ยังอยู่ตลอดไป แต่ startDate/endDate ของ term บอกว่ารอบนั้นครอบเดือนไหนบ้าง
 //   สองคำถามนี้แยกกันตอบ (`termOrderActive` กับ `termInWindow`)
 import { businessDate } from '@/lib/businessDate';
+import { lineSiteNotFound } from '@/lib/sales/siteNotFound';
 
 /* ── ชั้นที่ 1: ใบสั่งขายแม่ยังมีผลไหม ─────────────────────────────────── */
 export function termOrderActive(order) {
@@ -96,8 +97,18 @@ export function remainingOfLine(line = {}, allocated = 0) {
   return Math.max(0, qty - entry.qty);
 }
 
-/* บรรทัดนี้ยังต้องจัดสรรอยู่ไหม */
+/* บรรทัดนี้ยังต้องจัดสรรอยู่ไหม
+
+   ⭐ **จุดที่ TS แจ้งว่าไม่พบหน้างานหลุดจากคิวทันที** (มติ 16/09/2026 ข้อ 23 · mig 0362) —
+      ด่านนี้คือ **จุดคอขวดเดียว** ที่ `bindQueue` ใช้ ⇒ แท็บ "รอตั้งไซต์/โซน" · ป้ายตัวเลขบนเมนู
+      และรายการกลุ่มในวิซาร์ด อ่านผลเดียวกันเสมอ แยกทางกันไม่ได้เชิงโครงสร้าง
+   ⚠️ ครอบทั้งจุดที่ "รอฝ่ายขายตัดสิน" และจุดที่ฝ่ายขาย "ปิดแล้ว" — ทั้งสองสถานะไม่ต้องให้ TS ผูกโซน
+      · ฝ่ายขายแก้ชื่อจุดแล้วส่งกลับ = ล้างธง ⇒ บรรทัดกลับเข้าคิวเองโดยไม่ต้องมีทางคืนแยก
+   ⚠️ ผู้เรียกที่ select บรรทัดมาแบบไม่มีคอลัมน์ `siteNotFoundAt` จะเห็นทุกจุดเป็น "ยังไม่ถูกแจ้ง" —
+      ป้ายเมนูกับแท็บจะไม่ตรงกัน ⇒ ทุกตัวอ่านบรรทัดของคิวต้องพก SITE_FLAG_SELECT อย่างน้อย
+      (`historicalServiceSide.test.mjs` ตรึง select ของทั้งสองเส้นไว้) */
 export function lineNeedsAllocation(line, allocatedMap = new Map()) {
+  if (lineSiteNotFound(line)) return false;
   return remainingOfLine(line, allocatedMap.get(line?.id)) > 0;
 }
 

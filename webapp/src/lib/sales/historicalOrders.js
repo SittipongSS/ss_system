@@ -74,6 +74,16 @@ export function exemptReasonError(reason) {
   return null;
 }
 
+/** ชื่อจุดติดตั้ง — คืนข้อความไทยเมื่อผิด หรือ null
+    ⚠️ เท่ากับ CHECK `sales_order_lines_installation_point_len` ของ 0360 (1–200 หลัง btrim)
+    ใช้ทั้งตอนคีย์ใบ และตอนฝ่ายขายแก้ชื่อจุดแล้วส่งกลับ TS (มติข้อ 23 · mig 0362) */
+export function installationPointError(point) {
+  const n = charLength(String(point ?? '').trim());
+  if (n < 1) return 'ต้องระบุชื่อจุดติดตั้ง';
+  if (n > INSTALLATION_POINT_MAX) return `ชื่อจุดติดตั้งยาวเกิน ${INSTALLATION_POINT_MAX} ตัวอักษร`;
+  return null;
+}
+
 /* error จากฐานที่แปลว่า "ยังไม่ได้รัน 0360" — คอลัมน์ไม่มี (42703 · PGRST204) หรือ RPC ไม่มี (PGRST202) */
 export function historicalSchemaMissing(error) {
   if (!error) return false;

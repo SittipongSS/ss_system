@@ -236,3 +236,49 @@ test('⭐ ทุกชื่อที่ขั้นต่าง ๆ import จ�
   assert.deepEqual(missing, [],
     'ชื่อที่ไม่มีจริง = โมดูลพังตอน instantiate ⇒ ขั้นนั้นไม่ขึ้นเลย และไม่มีเทสต์ไหนเห็น');
 });
+
+/* ── ชิป/ตัวกรอง "TS ไม่พบจุด" + การ์ดตัดสินบนหน้าใบ (มติข้อ 23 · mig 0362) ──────── */
+const DETAIL = 'app/sales-planning/sales-orders/[id]/page.js';
+
+test('0362: ตัวกรอง "จุดติดตั้ง" ร้อยครบสี่จุด และชิปบนแถวนับจากบรรทัด', () => {
+  const page = code(REGISTER);
+  assert.ok(page.includes('SITE_DECISION_FILTERS'), 'ต้องมีทะเบียนตัวเลือกของกลุ่มนี้');
+  assert.ok(page.includes('awaitingSiteDecisionCount(row.lines'), 'นับจากบรรทัด ไม่ใช่หัวใบ');
+  // ①กรองแถว ②filterCount ③onClear ④resetKey ของ Pager — ขาดข้อไหนชิปกับแถวจะไม่ตรงกัน
+  assert.ok(page.includes('siteFilter.some((key) => SITE_DECISION_FILTERS[key]?.match(row))'));
+  assert.ok(page.includes('+ siteFilter.length'));
+  assert.ok(page.includes('setSiteFilter([]);'));
+  assert.ok(page.includes('${siteFilter.join()}'));
+  assert.ok(page.includes('key: "siteDecision"'), 'ต้องเป็นกลุ่มของตัวเองใน FilterPopover');
+  assert.ok(page.includes('siteDecisionCount(row) > 0'), 'ชิปบนแถวขึ้นเมื่อมีจุดค้าง');
+});
+
+test('0362: การ์ดตัดสินบนหน้าใบ — สองทาง ไม่มีทางที่สาม · ไม่แตะเงิน · ด่านสิทธิ์เดียวกับ route', () => {
+  const page = code(DETAIL);
+  assert.ok(page.includes('canKeyHistoricalSalesOrder({ role })'), 'ด่านเดียวกับ route');
+  assert.ok(page.includes('<SiteDecisionCard'), 'การ์ดต้องถูกเรนเดอร์บนหน้าใบ');
+  /* 🪤 การตัดสินต้องโยน error กลับให้โมดัลโชว์ — แถบของหน้าอยู่ใต้โมดัล กดแล้วจอเงียบ */
+  assert.ok(page.includes('async function decideSitePoint('), 'ต้องมีตัวเรียกของตัวเอง');
+  assert.ok(page.includes('throw new Error(data.error'), 'error ต้องถึงโมดัล');
+  const call = page.slice(page.indexOf('async function decideSitePoint('), page.indexOf('async function save()'));
+  assert.ok(!call.includes('retry: true'), '🪤 ส่งซ้ำ = 409 "ตัดสินไปแล้ว" ทั้งที่ครั้งแรกสำเร็จ');
+
+  const card = code('components/salesPlanning/SiteDecisionCard.js');
+  assert.ok(card.includes('rename_installation_point') && card.includes('close_installation_point'));
+  // ⛔ ข2 ยังไม่ทำ — ม็อกวาดปุ่ม "ถอดออกจากใบ" ไว้ ห้ามโผล่จนกว่าจะมีตัวคิดเงินหัวใบ
+  assert.ok(!card.includes('ถอดออกจากใบ'), '🔴 ปุ่มถอดบรรทัดเป็นงานรอบหน้า (ข2)');
+  assert.ok(!card.includes('remove_line'));
+  // ปุ่มต้องหายไปเมื่อตัดสินแล้ว (กติกา: ไม่มีอะไรให้กด = ไม่โชว์ปุ่มตาย)
+  assert.ok(card.includes('lineAwaitingSiteDecision(line) ?'), 'ปุ่มขึ้นเฉพาะจุดที่ยังรอตัดสิน');
+  // โมดัลบอกผลลัพธ์ก่อนกด รวมว่าเงินไม่ขยับ
+  assert.ok(card.includes('ยอดบรรทัด') && card.includes('งวดชำระไม่เปลี่ยน'));
+});
+
+test('0362: ทะเบียนใบสั่งขายส่งธงมาให้จอด้วย (ไม่งั้นชิปเป็นศูนย์ตลอดกาล)', () => {
+  const api = code('app/api/sales-planning/sales-orders/route.js');
+  const hit = api.match(/from\('sales_order_lines'\)\s*\.select\('([^']*)'/);
+  assert.ok(hit, 'หา select ของบรรทัดไม่เจอ');
+  for (const col of ['"siteNotFoundAt"', '"siteClosedAt"']) {
+    assert.ok(hit[1].includes(col), `select ของทะเบียนต้องมี ${col}`);
+  }
+});

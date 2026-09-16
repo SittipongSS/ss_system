@@ -471,8 +471,10 @@ export const GET = withUser(async ({ user, supabase }) => {
         return result?.data || [];
       };
       const [lines, terms, projects, deals] = await Promise.all([
+        /* ⚠️ `"siteNotFoundAt"` (mig 0362) **ต้องมี** ถึงจะผอมแค่ไหนก็ตัดไม่ได้ — จุดที่ TS แจ้งว่า
+           ไม่พบหน้างานหลุดจากแท็บทันที ถ้าตัวนับไม่เห็นธง ป้ายจะยังนับใบนั้นอยู่ทั้งที่กดเข้าไปแล้วว่าง */
         fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_order_lines')
-          .select('id, salesOrderId, quotationLineId, qty, "serviceRounds"')
+          .select('id, salesOrderId, quotationLineId, qty, "serviceRounds", "siteNotFoundAt"')
           .in('salesOrderId', chunk).order('id', { ascending: true })))
           .then(mustData),
         loadTerms(supabase),

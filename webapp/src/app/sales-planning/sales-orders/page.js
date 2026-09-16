@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, Search, UserRound, Wallet } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, MapPinOff, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -17,7 +17,7 @@ import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole, useShellSystem } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import {
@@ -31,6 +31,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import {
   ORIGIN_HISTORICAL, ORIGIN_PIPELINE, canKeyHistoricalSalesOrder, historicalRefsOf, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
+import { SITE_NOT_FOUND_LABEL, awaitingSiteDecisionCount } from "@/lib/sales/siteNotFound";
 import StatusBadge from "@/components/ui/StatusBadge";
 import HistoricalSalesOrderModal from "@/components/salesPlanning/HistoricalSalesOrderModal";
 
@@ -224,6 +225,15 @@ const ORIGIN_FILTERS = {
   [ORIGIN_HISTORICAL]: { label: "ใบย้อนหลัง", match: (row) => isHistoricalOrder(row) },
 };
 
+/* ── จุดที่ TS ไม่พบหน้างาน (mig 0362 · มติ 16/09/2026 ข้อ 23) ─────────────
+   ⭐ **ของค้างที่ฝ่ายขายต้องตัดสิน** — TS แจ้งมาแล้วรออยู่ที่หน้าใบ · เป็นกลุ่มตัวกรองของ
+   ตัวเองด้วยเหตุผลเดียวกับ "ที่มาของใบ": มันตัดขวางสถานะเอกสาร (ใบย้อนหลังอนุมัติแล้วทุกใบ)
+   ⚠️ นับจาก **บรรทัด** ไม่ใช่หัวใบ — จุดที่ฝ่ายขายปิดไปแล้วไม่นับ (เรื่องจบแล้ว) */
+const siteDecisionCount = (row) => awaitingSiteDecisionCount(row.lines || []);
+const SITE_DECISION_FILTERS = {
+  awaiting: { label: SITE_NOT_FOUND_LABEL, match: (row) => siteDecisionCount(row) > 0 },
+};
+
 /* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
    ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้ */
 function compareOrders(a, b, key, dir) {
@@ -267,6 +277,7 @@ export default function SalesOrdersPage() {
   const [invoiceFilter, setInvoiceFilter] = useStickyState("invoiceFilter", EMPTY);
   // ⚠️ ค่าตั้งต้นต้องเป็น `EMPTY` ตัวเดิม — `[]` เขียนสดทำให้ useMemo คิดใหม่ทุกเรนเดอร์
   const [originFilter, setOriginFilter] = useStickyState("originFilter", EMPTY);
+  const [siteFilter, setSiteFilter] = useStickyState("siteDecisionFilter", EMPTY);
   /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
@@ -318,6 +329,7 @@ export default function SalesOrdersPage() {
       if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
       if (invoiceFilter.length && !invoiceFilter.some((key) => INVOICE_FILTERS[key]?.match(row))) return false;
       if (originFilter.length && !originFilter.some((key) => ORIGIN_FILTERS[key]?.match(row))) return false;
+      if (siteFilter.length && !siteFilter.some((key) => SITE_DECISION_FILTERS[key]?.match(row))) return false;
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
       // ⚠️ รหัส AR ขึ้นเป็นชิปบนทุกแถวแล้ว (ดูเซลล์ลูกค้าข้างล่าง) จึงต้องค้นเจอด้วย
@@ -328,7 +340,7 @@ export default function SalesOrdersPage() {
       return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.deal?.ownerName, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
-  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, lineView]);
+  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, siteFilter, waitingOnMeOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
      "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
@@ -377,10 +389,10 @@ export default function SalesOrdersPage() {
   const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
   const filterCount = statusFilter.length + paymentFilter.length + invoiceFilter.length + originFilter.length
-    + (waitingOnMeOnly ? 1 : 0);
+    + siteFilter.length + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${siteFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
@@ -444,6 +456,14 @@ export default function SalesOrdersPage() {
                         {!historical && row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
                       </span>
                     </span>
+                    {/* ⭐ ของค้างที่ฝ่ายขายต้องตัดสิน (มติข้อ 23 · mig 0362) — TS แจ้งว่าหาจุดไม่เจอ
+                        แล้วรออยู่ที่หน้าใบ · ทะเบียนเป็นที่เดียวที่เห็นได้โดยไม่ต้องเปิดทีละใบ */}
+                    {siteDecisionCount(row) > 0 ? (
+                      <span className="cell-sub">
+                        <StatusBadge tone="warning" size="sm"
+                          label={`${SITE_NOT_FOUND_LABEL} ${fmtNumber(siteDecisionCount(row))} จุด`} />
+                      </span>
+                    ) : null}
                     {track.cancelled ? (
                       <span className="cell-sub">{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</span>
                     ) : (
@@ -601,7 +621,8 @@ export default function SalesOrdersPage() {
             <FilterPopover
               count={filterCount}
               onClear={() => {
-                setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]); setWaitingOnMeOnly(false);
+                setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
+                setSiteFilter([]); setWaitingOnMeOnly(false);
               }}
               groups={[
                 {
@@ -632,8 +653,21 @@ export default function SalesOrdersPage() {
                   options: Object.entries(ORIGIN_FILTERS).map(([value, { label }]) => ({ value, label })),
                   selected: originFilter, onChange: setOriginFilter,
                 },
+                /* ⭐ กลุ่มที่หก — ของค้างที่ฝ่ายขายต้องตัดสิน (มติข้อ 23 · mig 0362)
+                   ตัวเลือกเดียวโดยตั้งใจ: คำถามคือ "ใบไหนมีเรื่องค้าง" ไม่ใช่การแบ่งประเภท
+                   (ทรงเดียวกับกลุ่ม "ของฉัน" ที่มีตัวเลือกเดียวอยู่ก่อนแล้ว) */
+                {
+                  key: "siteDecision", label: "จุดติดตั้ง", icon: MapPinOff,
+                  options: Object.entries(SITE_DECISION_FILTERS).map(([value, { label }]) => ({ value, label })),
+                  selected: siteFilter, onChange: setSiteFilter,
+                },
               ]}
             />
+            {siteFilter.length > 0 && (
+              <Button size="sm" onClick={() => setSiteFilter([])}>
+                กรอง: {SITE_NOT_FOUND_LABEL} ×
+              </Button>
+            )}
             {/* ชิปล้างตัวกรองที่ใช้อยู่ — ทรงเดียวกับทะเบียนสัญญา/งาน/งานผลิต */}
             {originFilter.length > 0 && (
               <Button size="sm" onClick={() => setOriginFilter([])}>

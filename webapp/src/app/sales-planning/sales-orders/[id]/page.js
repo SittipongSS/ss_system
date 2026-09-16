@@ -107,7 +107,10 @@ import {
   financeActionError, financeStatusOf, financeStepOwnerError, financeWorkflowStep,
   salesOrderWorkflowIndex,
 } from "@/lib/sales/salesOrderFinanceApproval";
-import { HISTORICAL_STATUS_NOTE, historicalRefsOf, isHistoricalOrder } from "@/lib/sales/historicalOrders";
+import {
+  HISTORICAL_STATUS_NOTE, canKeyHistoricalSalesOrder, historicalRefsOf, isHistoricalOrder,
+} from "@/lib/sales/historicalOrders";
+import SiteDecisionCard from "@/components/salesPlanning/SiteDecisionCard";
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
@@ -156,6 +159,8 @@ export default function SalesOrderDetailPage() {
   const canOpenRequest = useCan("costing:edit");
   const role = useRole();
   const reviewer = ["admin", "ae_supervisor"].includes(role);
+  /* ⚠️ ด่านเดียวกับที่ route ใช้ — ตัดสินจุดที่ TS ไม่พบได้เฉพาะ AE Sup/แอดมิน (มติข้อ 15/23) */
+  const canKeyHistorical = canKeyHistoricalSalesOrder({ role });
   const [order, setOrder] = useState(null);
   const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน
   /* แก้ได้เหลือสองช่อง (มติผู้ใช้ 2026-08-18) — วันที่ SO ล็อกเป็นวันที่สร้าง
@@ -326,6 +331,29 @@ export default function SalesOrderDetailPage() {
     });
     if (action === "save") setSaveState("saved");
     return data || true;
+  }
+
+  /* ⭐ ตัดสินจุดที่ TS ไม่พบหน้างาน (มติข้อ 23 · mig 0362) — ไม่ผ่าน `requestAction`
+     เพราะตัวนั้นเก็บข้อความผิดพลาดไว้ใน **แถบของหน้า** ซึ่งอยู่*ใต้*โมดัลที่เปิดค้าง
+     ⇒ กดแล้วจอเงียบสนิท (บทเรียนเดิมของ ReasonDialog 2026-08-19) · ที่นี่โยนกลับให้
+     โมดัลโชว์เอง แล้วโหลดใบใหม่เฉพาะตอนสำเร็จ
+     ⚠️ ไม่ขอ `retry: true` — ส่งซ้ำได้ 409 "จุดนี้ถูกตัดสินไปแล้ว" ทั้งที่ครั้งแรกสำเร็จ */
+  async function decideSitePoint({ action, ...payload }) {
+    const res = await apiFetch(`/api/sales-planning/sales-orders/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "บันทึกไม่สำเร็จ");
+    await load();
+    setToast({
+      kind: "success",
+      msg: action === "rename_installation_point"
+        ? "แก้ชื่อจุดแล้ว — กลับเข้าคิวงานเข้าใหม่ของ TS · ยอดใบและงวดไม่เปลี่ยน"
+        : "ปิดจุดนี้แล้ว — ไม่ต้องผูกโซน · ยอดใบและงวดไม่เปลี่ยน",
+    });
+    return data;
   }
 
   async function save() {
@@ -1180,6 +1208,12 @@ export default function SalesOrderDetailPage() {
 
           {activeTab === "overview" && <>
           {/* ใบสั่งขายย้อนหลัง (mig 0360) คีย์บรรทัดจากเอกสารเดิม — ไม่มี QT ต้นทางให้เปิด */}
+          {/* ⭐ ของค้างมาก่อนรายการ — TS ส่งจุดกลับมาแล้วเรื่องหยุดอยู่ที่ฝ่ายขาย (มติข้อ 23 · mig 0362)
+              ⚠️ การ์ดหายเองเมื่อไม่มีจุดติดธง (component คืน null) ⇒ ใบปกติไม่เห็นอะไรเพิ่ม */}
+          {canKeyHistorical && isHistoricalOrder(order) ? (
+            <SiteDecisionCard lines={sortedLines} onDecide={decideSitePoint} />
+          ) : null}
+
           <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={order.quotationId ? `${sortedLines.length} รายการ · snapshot จาก QT Won` : `${sortedLines.length} รายการ · คีย์จากเอกสารเดิม`} actions={order.quotationId ? <Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link> : undefined}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}

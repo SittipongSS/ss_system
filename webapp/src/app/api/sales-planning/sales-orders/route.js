@@ -46,7 +46,10 @@ export const GET = withUser(async ({ user, supabase }) => {
   const orderIds = (orders || []).map((row) => row.id);
   const { data: lines, error: lineError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_lines')
-    .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds"')
+    /* ⭐ ธงของ 0362 สองช่อง — ชิป/ตัวกรอง "TS ไม่พบจุด" บนทะเบียนนับจากบรรทัด ไม่ใช่จากหัวใบ
+       ⚠️ ไม่ดึงครบ 9 ช่องที่นี่โดยตั้งใจ: ทะเบียนตอบแค่ "มีเรื่องค้างกี่จุด" ส่วนเหตุผล/ผู้แจ้ง
+          อ่านที่หน้าใบซึ่ง select ทั้งบรรทัดอยู่แล้ว (`lines:sales_order_lines(*)`) */
+    .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds", "siteNotFoundAt", "siteClosedAt"')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('sortOrder', { ascending: true })

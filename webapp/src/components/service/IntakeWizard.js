@@ -22,9 +22,11 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceZoneModal from "@/components/service/ServiceZoneModal";
+import SiteNotFoundPanel from "@/components/service/SiteNotFoundPanel";
 import { STANDARD_ML_HINT_TEXT, fgSummary, spreadAllocation, suggestStandardMl } from "@/lib/service/terms";
 import { bindTargetError } from "@/lib/service/intake";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
+import { siteNotFoundOf } from "@/lib/sales/siteNotFound";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./IntakeWizard.module.css";
 
@@ -32,10 +34,13 @@ const NEW_ZONE = "__new__";
 
 export default function IntakeWizard({
   open, order, sites = [], zonesBySite = new Map(),
-  onClose, onDone, onReloadRegistry,
+  onClose, onDone, onReloadRegistry, onSiteNotFound,
 }) {
   const [step, setStep] = useState(1);
   const [siteId, setSiteId] = useState("");
+  /* แผง "ไม่พบจุดนี้หน้างาน" ที่เปิดอยู่: null · "order" (ขั้น 1 ทั้งใบ) · groupKey (ขั้น 2 รายกลุ่ม) */
+  const [notFoundFor, setNotFoundFor] = useState(null);
+  const [withdrawing, setWithdrawing] = useState("");
   /* ⭐ จัดสรร **ระดับ FG** ไม่ใช่ระดับบรรทัด (มติผู้ใช้ 2026-08-29)
      [{ id, groupKey, zoneId, qty, standardMlPerMonth }] — หนึ่งแถว = ของกลุ่มนี้ไปโซนนี้กี่หน่วย */
   const [allocs, setAllocs] = useState([]);
@@ -50,7 +55,10 @@ export default function IntakeWizard({
     setSiteId("");
     setError("");
     setAllocs([]);
-  }, [open, order]);
+    setNotFoundFor(null);
+    /* 🪤 ผูกกับ **รหัสใบ** ไม่ใช่ตัวอ็อบเจกต์ — หลังแจ้ง/ถอนการแจ้ง หน้าคิวโหลดใหม่แล้วส่งแถวก้อนใหม่
+       ของใบเดิมเข้ามา · ถ้าผูกกับตัวอ็อบเจกต์ วิซาร์ดจะเด้งกลับขั้น 1 แล้วลบสิ่งที่ TS จัดสรรค้างไว้ทิ้ง */
+  }, [open, order?.orderId]);
 
   /* ไซต์ของลูกค้ารายนี้เท่านั้น — ไซต์ของลูกค้าอื่นโผล่มาในดรอปดาวน์เมื่อไร
      คนจะผูกผิดบ้านโดยไม่มีอะไรทัก (โซนไม่มี customerId ให้ตรวจย้อน) */
@@ -102,8 +110,38 @@ export default function IntakeWizard({
     return mine.reduce((sum, a) => sum + (Number(a.qty) || 0), 0) > g.remaining;
   });
 
-  const placed = allocs.filter((a) => a.zoneId && a.zoneId !== NEW_ZONE);
+  /* ⚠️ ตัดแถวจัดสรรที่กลุ่มของมันหายไปแล้วทิ้ง — จุดที่เพิ่งถูกแจ้งว่า "ไม่พบหน้างาน" หลุดจาก `groups`
+     ทันที แต่สิ่งที่ TS กรอกค้างไว้ยังอยู่ใน state ⇒ ถ้านับต่อ ปุ่มบันทึกจะเปิดทั้งที่ไม่มีอะไรจะผูก */
+  const groupKeys = useMemo(() => new Set(groups.map((g) => g.key)), [groups]);
+  const placed = allocs.filter((a) => a.zoneId && a.zoneId !== NEW_ZONE && groupKeys.has(a.groupKey));
   const ready = placed.length > 0 && !overAllocated.length;
+
+  /* จุดที่ติดธงอยู่ของใบนี้ — คิวส่งมาให้แล้ว (`order.siteNotFoundLines`) */
+  const flagged = order?.siteNotFoundLines || [];
+  /* จุดของขั้น 1 = ทุกกลุ่มที่ยังรอผูก (ไม่ต้องเลือกไซต์ก่อน) */
+  const notFoundPoints = useMemo(() => groups.map((g) => ({
+    key: g.key,
+    label: g.installationPoint || g.fgCode || g.description || g.key,
+    detail: [g.fgCode && g.installationPoint ? g.fgCode : null, `${fmtNumber(g.remaining)}${g.unit ? ` ${g.unit}` : ""}`]
+      .filter(Boolean).join(" · "),
+    lineIds: g.lines.map((l) => l.id),
+  })), [groups]);
+
+  const sendNotFound = async ({ lineIds, reason, note }) => {
+    await onSiteNotFound({ salesOrderId: order.orderId, action: "flag", lineIds, reason, note });
+    setNotFoundFor(null);
+  };
+  const withdrawNotFound = async (line) => {
+    setWithdrawing(line.id);
+    setError("");
+    try {
+      await onSiteNotFound({ salesOrderId: order.orderId, action: "withdraw", lineIds: [line.id] });
+    } catch (e) {
+      setError(e.message || "ถอนการแจ้งไม่สำเร็จ");
+    } finally {
+      setWithdrawing("");
+    }
+  };
 
   const submit = async () => {
     if (!placed.length) { setError("ยังไม่ได้จัดสรรของลงโซนไหนเลย"); return; }
@@ -138,7 +176,10 @@ export default function IntakeWizard({
             standardMlPerMonth: String(a.standardMlPerMonth ?? "").trim() || null,
           })),
       ));
-      await onDone({ salesOrderId: order.id, allocations });
+      /* 🐞 เคยส่ง `order.id` ซึ่งไม่มีอยู่จริง — แถวคิวจาก `bindQueue` ใช้ชื่อ `orderId`
+         ⇒ body ที่ยิงไปไม่มี salesOrderId แล้ว route ตอบ 400 "ต้องระบุใบสั่งขาย" ทุกครั้ง
+         (ตรงกับที่ service_zone_terms ยังว่างเปล่าบนฐานจริง — ไม่เคยมีใครผูกโซนสำเร็จเลย) */
+      await onDone({ salesOrderId: order.orderId, allocations });
       onClose();
     } catch (e) {
       setError(e.message || "บันทึกไม่สำเร็จ");
@@ -180,6 +221,58 @@ export default function IntakeWizard({
                 ใบสั่งขายย้อนหลัง{order.historicalRefs?.length ? ` · เลขเดิม ${order.historicalRefs.join(" · ")}` : ""}
                 {" "}— จุดติดตั้งของแต่ละรายการมาจากชีตของฝ่ายขาย ตรวจกับหน้างานก่อนเลือกไซต์และโซน
               </p>
+            )}
+            {/* ⭐ ทางแจ้ง "ไม่พบจุด" ต้องอยู่**ที่ขั้นนี้ด้วย** (มติข้อ 23) — ปุ่ม "จัดสรรลงโซน" ปิดจน
+                กว่าจะเลือกไซต์ ⇒ ลูกค้าที่สาขาปิดจนไม่มีไซต์เลย จะไปไม่ถึงขั้น 2 และไม่มีทางบอกใครได้
+                ⚠️ ใบย้อนหลังเท่านั้น — ใบปกติมีโซนที่ฝ่ายขายเลือกไว้แล้ว ไม่มีชื่อจุดจากชีตให้ "หาไม่เจอ" */}
+            {historical && onSiteNotFound && (
+              notFoundFor === "order" ? (
+                <SiteNotFoundPanel
+                  allowPick
+                  points={notFoundPoints}
+                  onSubmit={sendNotFound}
+                  onCancel={() => setNotFoundFor(null)}
+                />
+              ) : (
+                <div className={styles.inlineAction}>
+                  <Button tone="neutral" variant="quiet" size="sm" onClick={() => setNotFoundFor("order")}>
+                    ไม่พบจุดของใบนี้หน้างาน
+                  </Button>
+                  <small className={styles.lead}>เลือกจุดที่ไม่พบ ทีละจุดหรือทุกจุด โดยไม่ต้องเลือกไซต์ก่อน</small>
+                </div>
+              )
+            )}
+            {/* จุดที่แจ้งไว้แล้ว — ถอนได้จนกว่าฝ่ายขายจะตัดสิน (ปิดแล้ว = จบ ไม่มีปุ่มถอน) */}
+            {flagged.length > 0 && (
+              <div className={styles.field}>
+                <span>จุดที่แจ้งว่าไม่พบหน้างานแล้ว ({fmtNumber(flagged.length)})</span>
+                <ul className={styles.flaggedList}>
+                  {flagged.map((line) => {
+                    const info = siteNotFoundOf(line);
+                    return (
+                      <li key={line.id} className={styles.flaggedItem}>
+                        <div>
+                          <b>{naText(line.installationPoint)}</b>
+                          <small>
+                            {naText(info?.reasonLabel)}
+                            {info?.note ? ` — ${info.note}` : ""}
+                            {info?.byName ? ` · ${info.byName}` : ""}
+                          </small>
+                        </div>
+                        {info?.closed ? (
+                          <StatusBadge tone="neutral" size="sm" label="ฝ่ายขายปิดจุดนี้แล้ว" />
+                        ) : (
+                          <Button tone="neutral" variant="quiet" size="sm"
+                            disabled={withdrawing === line.id}
+                            onClick={() => withdrawNotFound(line)}>
+                            {withdrawing === line.id ? "กำลังถอน…" : "ถอนการแจ้ง"}
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
             {/* ⭐ **ไทล์ ไม่ใช่ดรอปดาวน์** — ลูกค้าหนึ่งรายมีไซต์ไม่กี่แห่ง และคนเลือก
                 ต้องเห็นว่าแต่ละไซต์มีโซน/อุปกรณ์อยู่แล้วเท่าไร ถึงจะรู้ว่าควรผูกกับ
@@ -289,7 +382,22 @@ export default function IntakeWizard({
                     {group.installationPoint && (
                       <p className={styles.point}>
                         <MapPin size={13} aria-hidden="true" /> จุดติดตั้งตามใบ: <b>{group.installationPoint}</b>
+                        {/* ⭐ ปุ่มเงียบรายกลุ่ม — กรณี "เจอบางจุด": ผูกจุดที่เจอในคำขอเดียว
+                            ส่วนจุดที่ไม่เจอส่งกลับฝ่ายขายแยกทาง (มติข้อ 23) */}
+                        {historical && onSiteNotFound && notFoundFor !== group.key && (
+                          <Button tone="neutral" variant="quiet" size="sm"
+                            onClick={() => setNotFoundFor(group.key)}>
+                            ไม่พบจุดนี้หน้างาน
+                          </Button>
+                        )}
                       </p>
+                    )}
+                    {notFoundFor === group.key && (
+                      <SiteNotFoundPanel
+                        points={notFoundPoints.filter((p) => p.key === group.key)}
+                        onSubmit={sendNotFound}
+                        onCancel={() => setNotFoundFor(null)}
+                      />
                     )}
                     <div className={styles.lineHead}>
                       <b>{naText(group.fgCode)}</b>

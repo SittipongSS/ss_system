@@ -32,6 +32,7 @@ import IntakeWizard from "@/components/service/IntakeWizard";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS } from "@/lib/service/intake";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
+import { siteDecisionChipLabel } from "@/lib/sales/siteNotFound";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
@@ -228,7 +229,37 @@ export default function ServiceIntakePage() {
     await load({ background: true });
   };
 
+  /* ⭐ TS แจ้ง/ถอนการแจ้ง "ไม่พบจุดนี้หน้างาน" (มติข้อ 23 · mig 0362)
+     ⚠️ ห้าม `retry: true` — ส่งซ้ำตอนต่อไม่ติดจะได้ 409 "ถูกแจ้งไว้แล้ว" แล้วจอบอกว่าล้มเหลว
+        ทั้งที่ธงลงไปเรียบร้อย (กติกา apiFetch: เมธอดเขียนข้อมูลต้องขอ retry เอง)
+     ⚠️ โหลดคิวใหม่แล้ว **อัปเดตใบที่เปิดวิซาร์ดค้างไว้ด้วย** — ไม่งั้นแผงยังโชว์จุดที่เพิ่งแจ้งไป */
+  const siteNotFound = async (payload) => {
+    const res = await apiFetch("/api/service/intake/site-not-found", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
+    const count = body?.lines?.length || 0;
+    setToast({
+      kind: "success",
+      msg: payload.action === "withdraw"
+        ? `ถอนการแจ้งแล้ว ${count} จุด — กลับเข้าคิวให้ผูกโซนต่อได้`
+        : `ส่งกลับฝ่ายขายแล้ว ${count} จุด — ยอดเงินและงวดในใบไม่เปลี่ยน`,
+    });
+    await load({ background: true });
+  };
+
   const counts = data?.counts || { bind: 0, plan: 0, visit: 0, unknownLine: 0 };
+
+  /* ⚠️ วิซาร์ดต้องอ่านแถวของรอบโหลดล่าสุดเสมอ — `wizardOrder` เป็นภาพนิ่งตอนกดเปิด
+     พอ TS แจ้ง "ไม่พบจุดนี้" แล้วคิวโหลดใหม่ ภาพนิ่งจะยังมีจุดนั้นอยู่ ⇒ แจ้งซ้ำได้จนได้ 409
+     ⚠️ ใบที่หลุดจากคิวไปแล้ว (แจ้งครบทุกจุด) ไม่มีแถวใหม่ให้หา — ใช้ภาพนิ่งเดิมไว้ก่อน
+        แล้วให้ TS ปิดวิซาร์ดเอง ดีกว่าจอว่างเปล่ากลางคัน */
+  const liveWizardOrder = useMemo(() => {
+    if (!wizardOrder) return null;
+    const rows = [...(data?.bind || []), ...(data?.unknownLine || [])];
+    return rows.find((r) => r.orderId === wizardOrder.orderId) || wizardOrder;
+  }, [wizardOrder, data]);
 
   /* 🐞 จอตั้งเคยได้ตาราง 720px ในกล่อง 360px — ปุ่ม "รับเข้าไซต์" อยู่นอกจอทุกแถว
      ⇒ จอตั้ง/จอแคบเป็นการ์ด จอนอนเป็นตาราง (ทรงเดียวกับ /service/sites) สลับเองได้ที่หัวหน้า */
@@ -356,6 +387,11 @@ export default function ServiceIntakePage() {
                         <p className={styles.cardSub}>
                           <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
                           {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
+                          {/* ⭐ จุดที่ TS แจ้งว่าไม่พบและยังรอฝ่ายขายตัดสิน (มติข้อ 23 · mig 0362) —
+                              จุดพวกนี้หลุดจาก "ของที่ต้องจัดสรร" ไปแล้ว ชิปจึงเป็นที่เดียวที่บอกว่ายังมีเรื่องค้าง */}
+                          {row.awaitingSiteDecision > 0 && (
+                            <> <StatusBadge tone="warning" size="sm" label={siteDecisionChipLabel(row.awaitingSiteDecision)} /></>
+                          )}
                         </p>
                       )}
                       <p className={styles.cardMeta}>
@@ -410,6 +446,9 @@ export default function ServiceIntakePage() {
                               <span className="cell-sub">
                                 <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
                                 {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
+                                {row.awaitingSiteDecision > 0 && (
+                                  <> <StatusBadge tone="warning" size="sm" label={siteDecisionChipLabel(row.awaitingSiteDecision)} /></>
+                                )}
                               </span>
                             )}
                           </th>
@@ -619,12 +658,13 @@ export default function ServiceIntakePage() {
 
       <IntakeWizard
         open={!!wizardOrder}
-        order={wizardOrder}
+        order={liveWizardOrder}
         sites={sites}
         zonesBySite={zonesBySite}
         onClose={() => setWizardOrder(null)}
         onDone={bindOrder}
         onReloadRegistry={registryActions}
+        onSiteNotFound={siteNotFound}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
