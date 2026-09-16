@@ -53,7 +53,13 @@ const SUPABASE_CONFIGURED =
    ⭐ คงแถบบนกรมท่ากับโลโก้ไว้เสมอ เพื่อไม่ให้หัวกระพริบหายตอนเปลี่ยนหน้า
    ⚠️ กล่อง error ต้องมีทางออกสองทาง — "ลองใหม่" กับ "กลับไปหน้าเข้าสู่ระบบ"
       ไม่งั้นคนที่เน็ตสะดุดจะติดอยู่กับจอที่กดอะไรไม่ได้เลย */
-function ShellState({ kind, onRetry, onLogin }) {
+function ShellState({ kind, busy, onRetry, onLogin }) {
+  const errorRef = useRef(null);
+  /* โฟกัสต้องไม่หายตอนสลับสถานะ — คนใช้คีย์บอร์ดที่กด "ลองใหม่" แล้วปุ่มหายไปจะตกไปที่
+     <body> ต้องไล่ Tab จากต้นเอกสารใหม่ · พาโฟกัสมาที่กล่องแทนเมื่อกล่อง error โผล่ */
+  useEffect(() => {
+    if (kind === 'error') errorRef.current?.focus({ preventScroll: true });
+  }, [kind]);
   return (
     <div className="app-container">
       <header className="topnav">
@@ -65,18 +71,25 @@ function ShellState({ kind, onRetry, onLogin }) {
       </header>
       <div className="app-body">
         <main className="main-content">
-          <div className="page">
+          {/* ⭐ live region ตัวเดียวอยู่ตลอดทั้งสองสถานะ — ถ้าประกาศไว้ในสาขาที่ถูก unmount
+              โปรแกรมอ่านจอจะไม่ได้ยินอะไรเลยตอนสลับจาก "กำลังโหลด" เป็น "เปิดไม่ได้" */}
+          <div className="page" role="status" aria-live="polite">
             {kind === 'error' ? (
-              <EmptyState icon={LifeBuoy}>
-                <strong>เปิดหน้าไม่ได้ตอนนี้</strong>
-                <span>อ่านข้อมูลผู้ใช้ไม่สำเร็จ อาจเป็นเพราะสัญญาณเน็ตหลุดชั่วครู่ ลองใหม่อีกครั้งได้เลย</span>
-                <span className="shell-state-actions">
-                  <Button tone="primary" size="sm" onClick={onRetry}>ลองใหม่</Button>
-                  <Button tone="ghost" size="sm" onClick={onLogin}>กลับไปหน้าเข้าสู่ระบบ</Button>
-                </span>
-              </EmptyState>
+              <div ref={errorRef} tabIndex={-1} className="shell-state-error">
+                <EmptyState icon={LifeBuoy}>
+                  <strong>เปิดหน้าไม่ได้ตอนนี้</strong>
+                  <span>อ่านข้อมูลผู้ใช้ไม่สำเร็จ อาจเป็นเพราะสัญญาณเน็ตหลุดชั่วครู่ ลองใหม่อีกครั้งได้เลย</span>
+                  <span className="shell-state-actions">
+                    {/* กดแล้วปุ่มยังอยู่ (แค่ดับชั่วคราว) ⇒ โฟกัสไม่หายกลางคัน */}
+                    <Button tone="primary" size="sm" onClick={onRetry} disabled={busy}>
+                      {busy ? 'กำลังลองใหม่…' : 'ลองใหม่'}
+                    </Button>
+                    <Button tone="ghost" size="sm" onClick={onLogin} disabled={busy}>กลับไปหน้าเข้าสู่ระบบ</Button>
+                  </span>
+                </EmptyState>
+              </div>
             ) : (
-              <div className="shell-state-loading" role="status" aria-live="polite">
+              <div className="shell-state-loading">
                 <span className="sr-only">กำลังเปิดหน้า</span>
                 <Skeleton height={28} width="40%" />
                 <Skeleton height={18} width="70%" />
@@ -148,6 +161,8 @@ export default function AppLayout({ children }) {
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
   // อ่านตัวตนไม่สำเร็จแบบชั่วคราว (เน็ต/เซิร์ฟเวอร์) — ต่างจาก "ไม่มีสิทธิ์" ที่ต้องเด้งออก
   const [authError, setAuthError] = useState(false);
+  // กำลังลองใหม่อยู่ — คงจอ error ไว้ (พร้อมปุ่มที่ดับ) แทนที่จะสลับไปจอโหลดแล้วโฟกัสหาย
+  const [authRetrying, setAuthRetrying] = useState(false);
 
   useEffect(() => {
     // Load theme (independent of auth)
@@ -160,8 +175,8 @@ export default function AppLayout({ children }) {
      🐞 ของเดิมเป็น `.then(({ data: { user } }) => { if (!user) router.replace('/') })`
         ไม่ดู `error` ไม่มี `.catch` ⇒ เน็ตสะดุดหนึ่งครั้ง = เด้งออกหน้าล็อกอินทั้งที่
         session ยังดีอยู่ · ตัวตัดสินอยู่ที่ `lib/authOutcome.js` (เทสต์ครบทุกสาขา) */
-  const loadUser = useCallback(async () => {
-    setAuthError(null);
+  const loadUser = useCallback(async ({ retry = false } = {}) => {
+    if (retry) setAuthRetrying(true);
     // Auth: read the signed-in user from Supabase. If Supabase isn't configured
     // yet (local dev before setup), fall back to a permissive local session.
     if (!SUPABASE_CONFIGURED) {
@@ -178,6 +193,7 @@ export default function AppLayout({ children }) {
       setTeams(bypass.teams);
       setUserName('Local D.');
       setUserInitials('LD');
+      setAuthRetrying(false);
       return;
     }
     const supabase = createClient();
@@ -189,7 +205,9 @@ export default function AppLayout({ children }) {
       result = { thrown };
     }
     const outcome = authOutcome(result);
+    setAuthRetrying(false);
     if (outcome === 'retry') { setAuthError(true); return; }
+    setAuthError(false);
     if (outcome === 'login') { router.replace('/'); return; }
     {
       const user = result.user;
@@ -373,7 +391,8 @@ export default function AppLayout({ children }) {
     return (
       <ShellState
         kind="error"
-        onRetry={loadUser}
+        busy={authRetrying}
+        onRetry={() => loadUser({ retry: true })}
         onLogin={async () => {
           // ล้างเฉพาะเครื่องนี้ — session ฝั่ง server อาจยังดีอยู่ ไม่ต้องไปไล่ปิดให้
           try { await createClient().auth.signOut({ scope: 'local' }); } catch {}
