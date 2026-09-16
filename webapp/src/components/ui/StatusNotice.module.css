@@ -1,15 +1,28 @@
+/* ⭐ **โทนของกล่องแจ้งต้องเห็นได้ทั้งสองธีม** (มติเจ้าของงาน 2026-09-16)
+
+   🐞 สูตรเดิมคือ `color-mix(var(--notice-soft) 26%, var(--panel))` ซึ่งผสม **ของโปร่ง
+   ลงบนของโปร่ง**: `--*-soft` ธีมมืดเป็น rgba(...,.18) และ `--panel` เป็น rgba(...,.96)
+   ⇒ ผลลัพธ์โปร่งตามไปด้วย (วัดจริงที่จอประเมินพื้นที่: ธีมมืดได้ alpha .758 composite
+   ≈ #1a2436 ซึ่งแทบเท่าการ์ด #1b2237 · ธีมสว่างได้ ≈ #f7faf8 = อ่านเป็นการ์ดขาว)
+   ผลคือกล่อง "ส่งผลให้ฝ่ายขายแล้ว" ไม่เขียว มีแต่วงไอคอนที่ยังมีสี และพื้นหลัง
+   ของหน้า (gradient ส้ม/อำพัน) ทะลุขึ้นมามากกว่าการ์ดข้างกัน
+
+   ⇒ ผสมโทน **ตัวเต็ม** (`--notice-tone`) ลงบน `--panel-solid` ซึ่งทึบ 100% ทั้งสองธีม
+   และให้ขอบเป็นสีโทนแทนสีกลาง ⇒ กล่องทึบเท่าการ์ด และบอกโทนได้ด้วยพื้น+ขอบ+ไอคอน
+   ไม่ใช่ด้วยไอคอนอย่างเดียว (WCAG 1.4.1 — สีไม่ใช่ช่องทางเดียว แต่ก็ต้องเห็นจริง)
+   📌 9% / 34% คือคู่ที่ม็อกใช้ทั้งเด็ค (mockups/survey-page/final.css `.cc-notice`)
+   ตัวอักษรยังเป็น --text / --text-2 บนพื้นที่สว่าง ~93% ⇒ คอนทราสต์ผ่าน AA เหมือนเดิม */
 .notice {
   --notice-tone: var(--blue);
-  --notice-soft: var(--blue-soft);
   display: flex;
   min-width: 0;
   align-items: center;
   gap: var(--space-2-5);
   padding: var(--space-3) var(--space-3-5);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--notice-tone) 34%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--notice-soft) 26%, var(--panel));
+  background: color-mix(in srgb, var(--notice-tone) 9%, var(--panel-solid));
   font-size: var(--fs-7);
 }
 
@@ -48,22 +61,18 @@
 
 .info {
   --notice-tone: var(--blue);
-  --notice-soft: var(--blue-soft);
 }
 
 .success {
   --notice-tone: var(--green);
-  --notice-soft: var(--green-soft);
 }
 
 .warning {
   --notice-tone: var(--amber);
-  --notice-soft: var(--amber-soft);
 }
 
 .error {
   --notice-tone: var(--red);
-  --notice-soft: var(--red-soft);
 }
 
 .dismiss {

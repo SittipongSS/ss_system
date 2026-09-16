@@ -49,9 +49,20 @@ export default function SurveyResultTable({ zones = [], filesByZone = {}, canDec
     /* ⭐ ตารางในหน้ารายละเอียด = DetailCard + TableScroll (มติผู้ใช้ 2026-09-15 · ทรงเดียวกับ service/sites/[id])
        🔄 เดิม TableShell เปล่า ไม่มีหัว — ตารางลอยไม่มีชื่อ ไม่รู้ว่ามีกี่พื้นที่จนกว่าจะนับเอง
        ⚠️ minWidth = ผลรวมความกว้างจริงของห้าคอลัมน์ที่วัดบนจอ 1440 · cells="stacked" เพราะ
-       ทุกเซลล์ซ้อนสองบรรทัด (กฎ 5) · `styles.shell` อยู่ที่กล่องเลื่อนเอง (container ของ `.rowMiss`) */
+       ทุกเซลล์ซ้อนสองบรรทัด (กฎ 5) · `styles.shell` อยู่ที่กล่องเลื่อนเอง (container ของ `.rowMiss`)
+       🐞 **ต้องส่ง `surface="embedded"`** — ค่าตั้งต้นคือ `auto` = พื้นผิวของตารางที่ยืนเดี่ยว
+       บนหน้าเปล่า: ขอบ + มุมมน + **พื้น --panel + เงา --shadow-sm** · อยู่ในการ์ดแล้วสองพจน์
+       หลังคือพื้นการ์ดซ้อนพื้นการ์ดกับเงาข้างใน ส่วน `embedded` คือรูปที่ระบบตั้งใจให้ตาราง
+       ในการ์ดเป็น (48 จุด — เหตุผลอยู่ที่กฎ surface ใน Table.module.css)
+       ⚠️ **ที่เปลี่ยนจริงคือพื้นกับเงา ไม่ใช่ขนาดกล่อง** (วัดเทียบภาพก่อน/หลัง 2026-09-16):
+       ระยะ 16px จากขอบการ์ดมาจาก `.cardBody` (padding --panel-inset) และกฎ `.cardBody
+       [data-surface="embedded"]` ล้างมาร์จินของ embedded ทิ้ง ⇒ auto กับ embedded กินกล่อง
+       เท่ากันเป๊ะ และ **เส้นขอบ 1px ยังอยู่ทั้งสองแบบ** · อยากให้ตารางชิดขอบการ์ดแบบในม็อก
+       ต้องไปทำที่ primitive (พื้นผิวที่ไม่มีขอบ + มาร์จินติดลบเท่า --panel-inset) ไม่ใช่ prop นี้
+       ⚠️ บนจอ ≤680 กฎ `.shell` ข้างล่างถอดขอบ/เงา/มุมทิ้งอยู่แล้วทั้ง auto และ embedded
+       ⇒ ที่แคบสุดต่างกันแค่พื้น --panel ที่หายไป */
     <DetailCard icon={ClipboardList} title="สรุปผลประเมินรายพื้นที่" meta={`${fmtNumber(zones.length)} พื้นที่`}>
-      <TableScroll minWidth={TABLE_MIN_WIDTH} cells="stacked" className={styles.shell}>
+      <TableScroll surface="embedded" minWidth={TABLE_MIN_WIDTH} cells="stacked" className={styles.shell}>
         <table>
           <thead>
             <tr>
