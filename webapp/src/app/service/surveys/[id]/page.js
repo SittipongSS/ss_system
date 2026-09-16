@@ -107,6 +107,10 @@ export default function SurveySheetPage({ params }) {
   const [dirtyZones, setDirtyZones] = useState({});
   /* พื้นที่ที่ "กำลังทำอยู่" — ใช้ตัดสินว่า Ctrl+V ลอย ๆ ตกที่พื้นที่ไหน */
   const [activeZone, setActiveZone] = useState(null);
+  /* พื้นที่ที่หัวหน้าเคาะไว้แต่ยังไม่กดบันทึก (แท็บสรุปส่งผลรายงานขึ้นมา · PR5)
+     ⚠️ คนละแกนกับ `dirtyZones` ซึ่งเป็นค่าที่ **ช่าง** พิมพ์ค้างบนแท็บหน้างาน —
+        ด่านของปุ่มส่งผลถามทั้งสองตัว และขึ้นข้อความคนละอัน */
+  const [pendingDecisionZoneIds, setPendingDecisionZoneIds] = useState([]);
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -142,19 +146,35 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
-  /* การตัดสินใจของหัวหน้า — คนละเมธอดกับของช่าง (PUT vs PATCH) เพราะคนละชุดช่อง */
-  const decideZone = async (zoneId, payload) => {
-    setBusyZone(zoneId);
-    try {
-      await apiJson(`/api/service/surveys/${id}/zones/${zoneId}`, {
-        method: "PUT", json: payload, fallbackError: "บันทึกไม่สำเร็จ",
-      });
-      await load({ background: true });
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message });
-    } finally {
-      setBusyZone(null);
+  /* การตัดสินใจของหัวหน้า — คนละเมธอดกับของช่าง (PUT vs PATCH) เพราะคนละชุดช่อง
+     ⭐ **ลงทีละพื้นที่ แต่กดครั้งเดียว** (PR5) — แท็บสรุปถือร่างไว้จนหัวหน้ากด
+        "บันทึกการเคาะ" แล้วส่งมาทั้งชุด · API ยังเป็นเส้นรายพื้นที่เหมือนเดิม
+     🔴 **ล้มที่ใบไหนให้หยุดตรงนั้น** — ไล่ยิงต่อทั้งที่รู้แล้วว่าพัง (สิทธิ์หมด · ใบถูก
+        ล็อกระหว่างทาง) คือการเก็บ error ชุดเดียวกันมาให้อ่านห้ารอบ · คืนรายชื่อที่ลงจริง
+        ให้ตารางล้างร่างเฉพาะตัวนั้น ของที่ยังไม่ลงต้องอยู่ในช่องต่อไป */
+  const saveDecisions = async (items = []) => {
+    const savedIds = [];
+    let failure = null;
+    for (const { zoneId, payload } of items) {
+      setBusyZone(zoneId);
+      try {
+        await apiJson(`/api/service/surveys/${id}/zones/${zoneId}`, {
+          method: "PUT", json: payload, fallbackError: "บันทึกไม่สำเร็จ",
+        });
+        savedIds.push(String(zoneId));
+      } catch (e) {
+        failure = { zoneId: String(zoneId), message: e.message };
+        break;
+      }
     }
+    setBusyZone(null);
+    await load({ background: true });
+    if (failure) {
+      setToast({ kind: "error", msg: failure.message });
+    } else {
+      setToast({ kind: "success", msg: `บันทึกการเคาะแล้ว ${savedIds.length} พื้นที่` });
+    }
+    return { savedIds, failure };
   };
 
   const send = async () => {
@@ -257,6 +277,11 @@ export default function SurveySheetPage({ params }) {
     });
   }, []);
   const dirtyZoneIds = useMemo(() => Object.keys(dirtyZones), [dirtyZones]);
+  /* ⚠️ เทียบก่อนเซ็ต — ตารางยิงลิสต์ใหม่ทุกครั้งที่เรนเดอร์ ถ้าเซ็ตดื้อ ๆ จะได้ลูป
+     setState → render → effect → setState ที่ไม่มีวันจบ */
+  const handlePendingDecisions = useCallback((ids) => {
+    setPendingDecisionZoneIds((prev) => (prev.join("|") === ids.join("|") ? prev : ids));
+  }, []);
   const totals = surveyTotals(zones);
   /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
      เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน
@@ -284,9 +309,10 @@ export default function SurveySheetPage({ params }) {
       writeBlockedReason: data?.writeBlockedReason || null,
     },
     dirtyZoneIds,
+    pendingDecisionZoneIds,
     tab,
     today: businessDate(),
-  }), [data, zones, filesByZone, dirtyZoneIds, tab]);
+  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab]);
 
   const canDecide = data?.canDecide === true;
   /* 🔑 ด่านตัวเดียวกับ server — ปุ่มในโมดัลปิดตามนี้ และเหตุขึ้นเป็นตัวหนังสือ
@@ -547,7 +573,8 @@ export default function SurveySheetPage({ params }) {
             filesByZone={filesByZone}
             canDecide={canDecide && !view.flags.locked}
             busyZone={busyZone}
-            onDecide={decideZone}
+            onSaveDecisions={saveDecisions}
+            onPendingChange={handlePendingDecisions}
             /* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้
                โดยไม่ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเอง
                เปลี่ยนอะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่เฉพาะตอนมีการเปลี่ยน */

@@ -24,6 +24,40 @@
   }
 }
 
+/* ── แถบ "ยังไม่บันทึก n พื้นที่" บนหัวการ์ด (PR5) ─────────────────────────
+   ⚠️ อยู่ใน `actions` ของ DetailCard ⇒ เปลือกการ์ดเป็นคนจัดตำแหน่ง · ที่นี่คุมแค่
+      การเรียงของสามชิ้นในแถบ และให้มันห่อลงบรรทัดใหม่ได้เมื่อหัวการ์ดแคบ */
+.saveBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* เหตุที่ยังกดบันทึกไม่ได้ — ตัวหนังสือในเนื้อการ์ด ไม่ใช่ในแถบ (ข้อความยาวกว่าที่แถวปุ่มรับไหว) */
+.saveBlocked {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0 0 var(--space-3);
+  color: var(--red);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+.saveBlocked > svg { flex: none; margin-block-start: var(--space-0-5); }
+
+/* ป้ายบนแถวที่มีการเคาะค้าง — แถบข้างบนบอกจำนวน ป้ายนี้บอกว่า *แถวไหน* */
+.rowDirty {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  color: var(--blue);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+}
+
 .sub {
   display: block;
   margin-top: var(--space-0-5);
@@ -118,6 +152,7 @@ button.spotChip { cursor: pointer; }
 
 /* ── รูป ──────────────────────────────────────────────────────────────── */
 .docs { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.docsVal { display: block; }
 .docs span[data-low] { color: var(--red); font-weight: var(--fw-bold); }
 
 /* ── บรรทัด "ยังขาดอะไร" — แถวย่อยเต็มกว้างใต้แถวของพื้นที่ ─────────────────
@@ -167,4 +202,83 @@ button.spotChip { cursor: pointer; }
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* แถวที่มีการเคาะค้าง — ขีดซ้ายบาง ๆ ให้กวาดตาเจอในตารางยาว (สีอย่างเดียวไม่พอ WCAG 1.4.1
+   จึงมีป้าย "ยังไม่บันทึก" ในเซลล์แรกคู่กันเสมอ) */
+.body tr[data-dirty] > td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
+
+/* บรรทัดที่บอกว่า *บันทึกไม่ได้* เป็นคนละเรื่องกับ "ยังวัดไม่ครบ" — อันแรกขวางปุ่มบันทึก
+   อันหลังขวางปุ่มส่งผล ⇒ คนละสี และขึ้นพร้อมกันได้ */
+.rowMiss[data-block] { color: var(--red); }
+
+/* ── ≤680px: ตารางเลิกเป็นตาราง กลายเป็นแถวป้าย/ค่า (PR5) ─────────────────
+   🐞 ของเดิมตาราง 680px ในช่อง ~360px ⇒ **ต้องปัดข้างถึงจะเห็นคอลัมน์ที่ต้องเคาะ**
+     ซึ่งเป็นสองคอลัมน์เดียวที่หัวหน้ามาที่จอนี้เพื่อทำ · ปัดข้างในหน้าที่เลื่อนลงอยู่แล้ว
+     คือท่าที่นิ้วโป้งทำพลาดตลอด
+   ⭐ ป้ายมาจาก `data-label` ของเซลล์ ⇒ หัวตารางหายไปได้โดยไม่มีใครเดาว่าเลขไหนคืออะไร
+   ⚠️ `display: block` บน <table> ไม่ได้ถอดบทบาทของตารางออกจาก accessibility tree ของ
+      เบราว์เซอร์สมัยใหม่เสมอไป — แต่ที่นี่ **ไม่ใส่ `role` ทับ** เพราะหัวยังอยู่ในโค้ด
+      และด่าน audit:ui นับ `role` บนแท็กตารางเป็นหนี้ (WCAG 1.3.1) */
+@media (max-width: 680px) {
+  .shell[data-surface][data-family] :global(table) {
+    min-width: 0;
+    display: block;
+  }
+
+  .shell[data-surface][data-family] :global(thead) { display: none; }
+  .shell[data-surface][data-family] :global(tbody) { display: block; }
+
+  .body tr {
+    display: block;
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .body tr[data-miss] { border-bottom: 0; padding-bottom: var(--space-1); }
+  .body tr[data-miss-row] { padding-top: 0; }
+
+  /* เซลล์ = ป้ายซ้าย ค่าขวา · ค่าที่ยาว (ชิปจุด · ช่องเหตุผล) ตกลงมาทั้งบรรทัดเอง
+     ⚠️ **5.5rem ไม่ใช่ 7.5rem** — ป้ายยาวสุดคือ "แพ็คเกจ/เดือน" ซึ่งห่อสองบรรทัดได้
+        โดยไม่เสียความหมาย ส่วนคอลัมน์ค่ามีของที่ห่อแล้วอ่านยากจริง (ชื่อพื้นที่ · เหตุผล
+        ที่ตัดออก · "กว้าง / ผัง / จุด") ⇒ ที่ 390px ป้าย 120px กินค่าไปหนึ่งในสาม */
+  .body td {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-2);
+    height: auto;
+    max-width: none;
+    overflow: visible;
+    padding: var(--space-1) 0;
+    border: 0;
+    white-space: normal;
+  }
+
+  /* ⭐ **ชื่อพื้นที่คือหัวของแถว ไม่ใช่ช่องหนึ่งของมัน** — กินเต็มกว้าง ไม่มีป้าย
+     (ป้าย "พื้นที่" ซ้ำกับสิ่งที่ตัวหนังสือตัวหนาบอกอยู่แล้ว และเบียดชื่อให้ห่อ) */
+  .body tr > td:first-child { display: block; padding-bottom: var(--space-2); }
+  .body tr > td:first-child::before { content: none; }
+
+  .body td::before {
+    content: attr(data-label);
+    color: var(--text-3);
+    font-size: var(--fs-3);
+    line-height: var(--lh-thai);
+  }
+
+  /* 🔑 **ค่าทุกชิ้นอยู่คอลัมน์ขวา ไม่ใช่ไหลสลับซ้าย/ขวา** — เซลล์ที่มีลูกหลายชิ้น
+     (ขนาดหลายส่วน · ชิปจุด + บรรทัด "เลือก 1/3" · ช่องเหตุผล) จะถูกกริดวางสลับ
+     คอลัมน์เอง ⇒ "3 × 3 × 4" ไปนั่งใต้ป้าย แล้วอ่านเหมือนเป็นป้ายของบรรทัดถัดไป */
+  .body td > * { grid-column: 2; }
+
+  /* แถวย่อย "ยังขาดอะไร" ไม่มีป้าย — มันอธิบายทั้งแถว ไม่ใช่ช่องใดช่องหนึ่ง */
+  .body tr[data-miss-row] > td { display: block; padding: 0 0 var(--space-2); }
+  .body tr[data-miss-row] > td::before { content: none; }
+
+  /* ขีดซ้ายของแถวที่ค้างย้ายมาที่ทั้งแถว — เซลล์แรกไม่ได้กินเต็มกว้างแล้ว */
+  .body tr[data-dirty] > td:first-child { box-shadow: none; }
+  .body tr[data-dirty] { box-shadow: inset 2px 0 0 var(--blue); padding-inline-start: var(--space-2-5); }
+
+  .rowMiss { max-inline-size: none; }
 }
