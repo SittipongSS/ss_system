@@ -504,6 +504,9 @@ export default function AppLayout({ children }) {
     <div className={`app-container${navOpen ? ' sidenav-open' : ''}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}${flags.homeHub ? ' home-context' : ''}`}>
       {/* ── แถบระบบ: ตรึงบนสุดทุกความกว้าง (แถบเมนูของระบบย้ายไปอยู่นอก header) ── */}
       <header className="topnav">
+        {/* หน้าแรกไม่มีเมนูบนหัวให้ข้าม แต่มีแผงเมนูยาวทั้งหน้า ⇒ ลิงก์ข้ามไปเนื้อหา
+            เป็นชิ้นแรกของหัว (โผล่เมื่อโฟกัสด้วยคีย์บอร์ด) */}
+        {flags.homeHub && <a className="topnav-skip" href="#home-main">ข้ามไปที่เมนูทุกระบบ</a>}
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
           {/* ⭐ **ตัวคุมเมนูของระบบมีตัวเดียว อยู่บนหัว** (มติผู้ใช้ 2026-08-25) —
@@ -525,7 +528,12 @@ export default function AppLayout({ children }) {
               <X className="sidenav-burger-close" size={20} aria-hidden="true" />
             </button>
           )}
-          <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
+          <Link
+            href="/home"
+            className="topnav-brand"
+            title={flags.homeHub ? 'หน้าแรก' : 'หน้าแรก (สลับระบบ)'}
+            aria-current={flags.homeHub ? 'page' : undefined}
+          >
             {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
             <BrandMark height={34} className="topnav-brand-img" />
           </Link>
@@ -575,7 +583,7 @@ export default function AppLayout({ children }) {
                 {accessibleGroups.map((g) => {
                   const SystemIcon = g.icon || LayoutDashboard;
                   // ระบบที่ยังไม่เปิด — อยู่ในรายการต่อไปแต่กดไม่ได้ · <span> ไม่ใช่ <Link>
-                  // ที่ปิดด้วย CSS ด้วยเหตุผลเดียวกับการ์ดหน้าแรก (ดู home/page.js)
+                  // ที่ปิดด้วย CSS ด้วยเหตุผลเดียวกับแผงระบบบนหน้าแรก (ดู components/home/SystemMenuSheet.js)
                   if (g.disabled) {
                     return (
                       <span key={g.system} role="menuitem" aria-disabled="true" className="topnav-sys-item is-disabled">
@@ -728,7 +736,7 @@ export default function AppLayout({ children }) {
                     {/* ⚠️ **ไม่มีไอคอนบนแถวนี้** — วัดจริง 2026-08-25: ไอคอน 10 ตัวกิน
                         รวม ~210px ทำให้แถวตกสองบรรทัดที่จอ 1280 (หัวสูง 126px) · ชื่อระบบ
                         เป็นคำที่คนอ่านอยู่แล้ว ส่วนไอคอนยังอยู่ครบในดรอปดาวน์ ตัวสลับระบบ
-                        และการ์ดหน้าแรก */}
+                        และแผงระบบบนหน้าแรก */}
                     {g.label}
                     {systemCount ? <span className="topnav-count">{systemCount > 99 ? '99+' : systemCount}</span> : null}
                     <ChevronDown size={13} strokeWidth={2.5} aria-hidden="true" className="topnav-sysbar-caret" />
@@ -839,11 +847,11 @@ export default function AppLayout({ children }) {
       )}
 
       {mobileMoreOpen && (
-        <div className="mobile-nav-sheet" role="dialog" aria-modal="true" aria-label={`เมนู${systemSubtitle}`}>
+        <div className="mobile-nav-sheet" role="dialog" aria-modal="true" aria-label={flags.homeHub ? 'บัญชีและการตั้งค่า' : `เมนู${systemSubtitle}`}>
           <div className="mobile-nav-sheet-header">
             <div>
               <strong>{systemSubtitle}</strong>
-              <span>บัญชีและเครื่องมือ</span>
+              <span>{flags.homeHub ? 'บัญชีและการตั้งค่า' : 'บัญชีและเครื่องมือ'}</span>
             </div>
             <button type="button" className="btn-icon" onClick={() => setMobileMoreOpen(false)} aria-label="ปิดเมนู"><X size={20} /></button>
           </div>
@@ -854,15 +862,19 @@ export default function AppLayout({ children }) {
               ⚠️ แผ่นนี้เหลือหน้าที่เดียว = บัญชี/เครื่องมือ ซึ่งบนมือถือไม่มีทางเข้าอื่น
               (26/08: "วางเป้า" ย้ายเข้ารายการเมนูของระบบแล้ว จึงอยู่บนแถบล่างเหมือนตัวอื่น
                ไม่ต้องมีการ์ดซ้ำในแผ่นนี้อีก) */}
+          {/* บนหน้าแรกหมวดนี้มีการ์ดเดียวคือ "หน้าหลัก" ซึ่งชี้หน้าที่ยืนอยู่ ⇒ ไม่ต้องวาด */}
+          {!flags.homeHub && (
           <section className="mobile-nav-section">
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
             </div>
           </section>
+          )}
 
           <section className="mobile-nav-section mobile-account-actions">
-            <h2>บัญชีและการตั้งค่า</h2>
+            {/* หัวแผ่นบอกแล้วว่า "บัญชีและการตั้งค่า" — หมวดเดียวไม่ต้องมีหัวข้อซ้ำ */}
+            {!flags.homeHub && <h2>บัญชีและการตั้งค่า</h2>}
             <Link href="/account" onClick={() => setMobileMoreOpen(false)}><UserRound size={18} /><span>บัญชีของฉัน</span></Link>
             {/* ตั้งค่าย้ายมาอยู่กลุ่มนี้พร้อมกับเมนูผู้ใช้ (มติผู้ใช้ 2026-08-25) —
                 เดิมเป็นการ์ดในกลุ่ม "เครื่องมือ" ข้างบน · สองที่นี้ต้องตรงกันเสมอ */}

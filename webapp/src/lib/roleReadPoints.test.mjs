@@ -28,7 +28,9 @@ const READ_POINTS = [
   'lib/sales/dealOwner.js',
   'lib/sales/leadAssignee.js',
   'components/AppLayout.js',
-  'app/home/page.js',
+  /* 📌 `app/home/page.js` ถูกถอดออกโดยตั้งใจ (ADR 0016 · 16 กันยายน 2026) — หน้าแรก
+     ย้ายเข้าเปลือกแล้ว จึงเลิกอ่าน `app_metadata` เอง รับ role จาก context ของเปลือก
+     ซึ่งผ่าน normalizeRole มาแล้วที่ `components/AppLayout.js` ข้างบน */
   'app/api/users/route.js',
   'app/api/users/[id]/transfer/route.js',
   'app/api/pm/assignable-users/route.js',

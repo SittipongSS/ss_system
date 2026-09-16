@@ -1,7 +1,7 @@
 # Decision 0016 — หน้าแรกเป็นเมนูทุกระบบในเปลือกแอป
 
 วันที่: 15 กันยายน 2026 (มติหัวเว็บ 16 กันยายน 2026)
-สถานะ: กำลังดำเนินการ — มติผู้ใช้ยืนยันแล้ว · แทนที่บางข้อของ [Decision 0005](./0005-home-remains-navigation-hub.md) และ [Phase 4C](../phase-04c-home-navigation-hub.md)
+สถานะ: รอตรวจ — โค้ดขึ้น main ครบแล้ว รอ UAT ด้วยบัญชีจริง (PR5) · แทนที่บางข้อของ [Decision 0005](./0005-home-remains-navigation-hub.md) และ [Phase 4C](../phase-04c-home-navigation-hub.md)
 
 > เลขบรรทัดที่อ้างถึงทั้งหมดอ่านจาก `main` ที่ `77833eea` (16 กันยายน 2026)
 
