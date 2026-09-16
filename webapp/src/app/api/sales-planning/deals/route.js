@@ -1,5 +1,6 @@
 import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
 import { autoProbability } from '@/lib/sales/dealProbability';
@@ -91,13 +92,19 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ดึง task ของทุกดีลที่เห็นในคำขอเดียวแล้วสรุปฝั่ง server — task ที่ถูกรับเลี้ยง
      เข้าโครงการแล้วยังถือ dealId เดิม (DL1) จึงตามด้วย dealId ได้ทั้งสองกรณี
      เลือกเฉพาะคอลัมน์ที่ใช้สรุป: ทั้งลิสต์คือหลักพันแถว อย่า select '*' */
+  /* ⚠️ สามกับดักของการอ่านตารางที่โตเรื่อย ๆ ต้องครบพร้อมกัน (บทเรียนเดียวกับ #1721 ที่ api/pm/projects):
+       · ซอยลิสต์ id ข้างนอก (fetchInChunks) — URL ของ .in() ยาวเกิน 16 KB แล้ว PostgREST ตอบ error
+       · ไล่หน้าข้างใน (fetchAllResult) — เพดาน 1,000 แถวตัดเงียบ ไม่มี error (project_tasks 4,653 แถว)
+       · เช็ก error — supabase ไม่ throw ⇒ เดิมคอลัมน์ "ขั้นตอน" ว่างทั้งลิสต์โดยไม่มีใครรู้ */
   const stepMap = new Map();
   if (visible.length) {
-    const { data: taskRows } = await supabase
+    const { data: taskRows, error: taskError } = await fetchInChunks(visible.map((d) => d.id), (chunk) => fetchAllResult(() => supabase
       .from('project_tasks')
       .select('dealId, name, status, stepOrder')
-      .in('dealId', visible.map((d) => d.id))
-      .order('stepOrder', { ascending: true });
+      .in('dealId', chunk)
+      .order('stepOrder', { ascending: true })
+      .order('id', { ascending: true })));
+    if (taskError) return fail(taskError.message, 500);
     for (const task of taskRows || []) {
       if (!stepMap.has(task.dealId)) stepMap.set(task.dealId, []);
       stepMap.get(task.dealId).push(task);

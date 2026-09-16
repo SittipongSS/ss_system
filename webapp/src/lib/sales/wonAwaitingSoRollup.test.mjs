@@ -101,13 +101,13 @@ test('ยอดรวม: รอยื่นเท่านั้น — รว�
     awaiting({ projectValue: null }), // มูลค่าว่าง = ไม่นับทั้งยอดและจำนวน
     awaiting({ projectValue: 0 }),
     pendingOnly(),
-    pendingOnly({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } }),
+    pendingOnly({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } }), // ใบยื่นแล้วยอด 0 = ยังรอ
     approved(),
     approved({ wonValue: 0, metadata: { actualSource: 'sale_order', wonMonth: '2026-09', wonValueExVat: 0 } }), // ใบ 0 บาท = ยังรอ
     awaiting({ stage: 'quotation' }),
     awaiting({ stage: 'lost' }),
   ];
-  assert.deepEqual(rollupWonAwaitingSo(deals), { wonAwaitingSo: 270000, wonAwaitingSoCount: 3 });
+  assert.deepEqual(rollupWonAwaitingSo(deals), { wonAwaitingSo: 390000, wonAwaitingSoCount: 4 });
   assert.deepEqual(rollupWonAwaitingSo([]), wonAwaitingSoFields());
   assert.deepEqual(rollupWonAwaitingSo(null), wonAwaitingSoFields());
   assert.equal(hasWonAwaitingSo(awaiting({ projectValue: null })), false);
@@ -260,7 +260,7 @@ test('modal: metric wonAwaitingSo กรองด้วยตัวจับค�
   const chain = modal.slice(modal.indexOf('if (filter.metric === "won")'), modal.indexOf('setDeals(filtered);'));
   assert.ok(chain.indexOf('WON_AWAITING_SO_METRIC') < chain.lastIndexOf('filtered = [];'));
   assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: WON_AWAITING_SO_LABEL,/);
-  assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: "ดีลปิด Won แล้ว แต่ยังไม่มียอดจากใบสั่งขายที่อนุมัติ \(ยังไม่ออก · ร่าง · มีแค่ใบ 0 บาท\) และไม่มีใบรออนุมัติ — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",/);
+  assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: "ดีลปิด Won แล้ว แต่ยังไม่มีเงินจากใบสั่งขายเลย \(ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบยอด 0 บาท ทั้งที่อนุมัติแล้วและที่ยื่นรออนุมัติ\) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",/);
   assert.match(modal, /amountHeader = "มูลค่าดีล \(บาท\)";/);
   assert.match(modal, /<th className="num">\{amountHeader\}<\/th>/);
   assert.match(modal, /if \(isWonAwaitingSoMetric\) return wonAwaitingSoAmountOf\(deal\);/);
