@@ -735,10 +735,10 @@ test('🐞 ป้าย "นัดยังไม่ปิด" ขึ้นเ�
 
 test('🐞 หัวใบจอประเมินพื้นที่เรียบ — ไม่มีแสงส้มที่มุม', () => {
   /* มติ: ถอดแสงหัวการ์ดบนจอนี้ · ของเดิมเลิกใช้ `.premium-header` แล้วจริง แต่ย้ายไป
-     `DetailOverview` ซึ่งทา radial ของตัวเอง ⇒ แสงถูกสืบทอดมา ไม่ได้ถูกถอด */
+     `DetailOverview` ซึ่งทา radial ของตัวเอง ⇒ แสงถูกสืบทอดมา ไม่ได้ถูกถอด
+     🔄 รอบถอดทั้งระบบ: ไม่มีคลาส `.flat` ให้ขอแล้ว เพราะ `.overviewCard` เรียบเป็นค่าตั้งต้น
+        ⇒ จอนี้ต้อง **ไม่** ขอ prop ที่ไม่มีอยู่ และด่านจริงย้ายไปอยู่ที่
+        `pageHeaderFlat.test.mjs` ซึ่งคุมหัวทุกตัวของระบบ ไม่ใช่จอเดียว */
   const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../../components/ui/DetailOverview.module.css', import.meta.url), 'utf8');
-  assert.match(page, /^\s+flat$/m, 'จอนี้ต้องขอหัวการ์ดแบบเรียบ');
-  assert.match(css, /\.flat \{\n\s+background: var\(--panel\);/,
-    'คลาสเรียบต้องเขียน background ทั้งช็อต ไม่ใช่ทับแค่ background-image');
+  assert.doesNotMatch(page, /^\s+flat$/m, 'ไม่มี prop flat แล้ว — หัวใบเรียบเป็นค่าตั้งต้น');
 });
