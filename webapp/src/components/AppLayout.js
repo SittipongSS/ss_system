@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -16,12 +16,16 @@ import AccountMenu from '@/components/AccountMenu';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
-import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
-import { isBareShellPathname, isSettingsPathname, systemForPathname } from '@/config/navigation';
+import useNavCounts, { NavCountsContext, navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
+import { isSettingsPathname, shellFlagsFor, systemForPathname } from '@/config/navigation';
 import { menuGroupsForUser } from '@/config/menuRegistry';
 import { settingsMenuItems } from '@/config/settingsNav';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { TooltipHost } from '@/components/ui/Tooltip';
+import EmptyState from '@/components/ui/EmptyState';
+import Button from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { authOutcome } from '@/lib/authOutcome';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 import { DetailPinBar, DetailPinProvider } from "@/lib/ui/detailPin";
 
@@ -45,6 +49,47 @@ const SUPABASE_CONFIGURED =
 // เฟส T (Sales Revamp §5.1): navigation ทั้งระบบเป็น top bar 2 ชั้นตรึงบนสุด —
 // ชั้นระบบ (โลโก้ navy + ตัวสลับระบบ + user actions) และชั้นเมนูของระบบปัจจุบัน
 // (แนวนอน, จอแคบเลื่อนข้างได้). แทน sidebar เดิมทั้งหมด — เนื้อหาได้เต็มความกว้างจอ.
+/* เปลือกตอนยังไม่มีเมนูให้วาด — โหลดอยู่ หรืออ่านตัวตนไม่สำเร็จชั่วคราว
+   ⭐ คงแถบบนกรมท่ากับโลโก้ไว้เสมอ เพื่อไม่ให้หัวกระพริบหายตอนเปลี่ยนหน้า
+   ⚠️ กล่อง error ต้องมีทางออกสองทาง — "ลองใหม่" กับ "กลับไปหน้าเข้าสู่ระบบ"
+      ไม่งั้นคนที่เน็ตสะดุดจะติดอยู่กับจอที่กดอะไรไม่ได้เลย */
+function ShellState({ kind, onRetry, onLogin }) {
+  return (
+    <div className="app-container">
+      <header className="topnav">
+        <div className="topnav-system">
+          <span className="topnav-brand">
+            <BrandMark height={34} className="topnav-brand-img" />
+          </span>
+        </div>
+      </header>
+      <div className="app-body">
+        <main className="main-content">
+          <div className="page">
+            {kind === 'error' ? (
+              <EmptyState icon={LifeBuoy}>
+                <strong>เปิดหน้าไม่ได้ตอนนี้</strong>
+                <span>อ่านข้อมูลผู้ใช้ไม่สำเร็จ อาจเป็นเพราะสัญญาณเน็ตหลุดชั่วครู่ ลองใหม่อีกครั้งได้เลย</span>
+                <span className="shell-state-actions">
+                  <Button tone="primary" size="sm" onClick={onRetry}>ลองใหม่</Button>
+                  <Button tone="ghost" size="sm" onClick={onLogin}>กลับไปหน้าเข้าสู่ระบบ</Button>
+                </span>
+              </EmptyState>
+            ) : (
+              <div className="shell-state-loading" role="status" aria-live="polite">
+                <span className="sr-only">กำลังเปิดหน้า</span>
+                <Skeleton height={28} width="40%" />
+                <Skeleton height={18} width="70%" />
+                <Skeleton height={18} width="55%" />
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
 export default function AppLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -101,13 +146,22 @@ export default function AppLayout({ children }) {
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
+  // อ่านตัวตนไม่สำเร็จแบบชั่วคราว (เน็ต/เซิร์ฟเวอร์) — ต่างจาก "ไม่มีสิทธิ์" ที่ต้องเด้งออก
+  const [authError, setAuthError] = useState(false);
 
   useEffect(() => {
     // Load theme (independent of auth)
     if (document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark') {
       setIsDark(true);
     }
+  }, []);
 
+  /* อ่านตัวตนของคนที่ล็อกอิน — แยกออกมาเป็นฟังก์ชันเพื่อให้ปุ่ม "ลองใหม่" เรียกซ้ำได้
+     🐞 ของเดิมเป็น `.then(({ data: { user } }) => { if (!user) router.replace('/') })`
+        ไม่ดู `error` ไม่มี `.catch` ⇒ เน็ตสะดุดหนึ่งครั้ง = เด้งออกหน้าล็อกอินทั้งที่
+        session ยังดีอยู่ · ตัวตัดสินอยู่ที่ `lib/authOutcome.js` (เทสต์ครบทุกสาขา) */
+  const loadUser = useCallback(async () => {
+    setAuthError(null);
     // Auth: read the signed-in user from Supabase. If Supabase isn't configured
     // yet (local dev before setup), fall back to a permissive local session.
     if (!SUPABASE_CONFIGURED) {
@@ -127,11 +181,18 @@ export default function AppLayout({ children }) {
       return;
     }
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace('/');
-        return;
-      }
+    let result;
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      result = { user: data?.user ?? null, error };
+    } catch (thrown) {
+      result = { thrown };
+    }
+    const outcome = authOutcome(result);
+    if (outcome === 'retry') { setAuthError(true); return; }
+    if (outcome === 'login') { router.replace('/'); return; }
+    {
+      const user = result.user;
       // ชื่อแสดงผล = มาตรฐาน "ชื่อ + นามสกุลย่อ" (§2.1) จาก helper กลาง.
       const meta = user.user_metadata || {};
       const dName = fmtName({ ...meta, email: user.email });
@@ -166,8 +227,10 @@ export default function AppLayout({ children }) {
       // ที่เอาไปเทียบ/บันทึกเป็นชื่อเต็มไม่ได้ — ของจริงบน prod มีโครงการ 11 ใบที่
       // `aeOwner` ถูกเขียนเป็นชื่อย่อจากช่องนี้จน `aeOwnerId` ว่างทั้งหมด
       try { localStorage.setItem('userId', user.id); } catch {}
-    });
+    }
   }, [router]);
+
+  useEffect(() => { loadUser(); }, [loadUser]);
 
   useEffect(() => {
     const onProfileUpdated = (event) => {
@@ -303,8 +366,28 @@ export default function AppLayout({ children }) {
     router.replace('/');
   };
 
-  if (!role) return null;
+  /* 🐞 เดิมเป็น `if (!role) return null` ⇒ ระหว่างอ่าน session จอ **ว่างเปล่า** ไม่มี
+     แม้แต่หัวเว็บ · และถ้าอ่านไม่สำเร็จเพราะเน็ต จอก็ว่างค้างอยู่อย่างนั้น
+     (หน้าแรกเดิมมีสองสถานะนี้ของตัวเอง — ย้ายมาอยู่ที่เปลือกชุดเดียวตาม ADR 0016) */
+  if (authError) {
+    return (
+      <ShellState
+        kind="error"
+        onRetry={loadUser}
+        onLogin={async () => {
+          // ล้างเฉพาะเครื่องนี้ — session ฝั่ง server อาจยังดีอยู่ ไม่ต้องไปไล่ปิดให้
+          try { await createClient().auth.signOut({ scope: 'local' }); } catch {}
+          router.replace('/');
+        }}
+      />
+    );
+  }
+  if (!role) return <ShellState kind="loading" />;
 
+
+  /* หน้าไหนมีเปลือกแบบไหน — ตอบที่เดียวใน `config/navigation` (ADR 0016)
+     `/home` ไม่มีเมนูของระบบ ไม่มีตัวสลับระบบ ไม่มีแถวระบบ และไม่มีตัวเลขบนหัว */
+  const flags = shellFlagsFor(pathname);
 
   // department จำเป็นสำหรับเมนูที่ cap อย่างเดียวกว้างเกิน แล้วต้องแคบด้วยฝ่าย
   // (เช่น ใบขอราคาผลิต — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
@@ -312,7 +395,9 @@ export default function AppLayout({ children }) {
   // หน้าบัญชีของฉันพูดชื่อตัวเอง ไม่ยืมชื่อระบบที่เพิ่งเดินออกมา (มติผู้ใช้ 2026-08-14)
   // — เปลือกเดียวกับหน้าตั้งค่า: หัวบอกว่าอยู่ไหน แถบเมนูของระบบหายไปทั้งแถบ
   const isAccountContext = pathname === '/account';
-  const systemSubtitle = isAccountContext
+  const systemSubtitle = flags.homeHub
+    ? 'หน้าแรก'
+    : isAccountContext
     ? 'บัญชีของฉัน'
     : activeSystem === 'settings'
       ? 'การตั้งค่าระบบ'
@@ -327,7 +412,7 @@ export default function AppLayout({ children }) {
   const isSettingsContext = isSettingsPathname(pathname);
   // เปลือกไร้แถบเมนู (เหลือบัญชีของฉันหน้าเดียว) — ล้างเมนูทิ้งที่จุดเดียวตรงนี้
   // แล้วทั้งแถบข้าง แถบล่างมือถือ และแผ่นเมนู "เพิ่มเติม" ว่างตามกันหมด
-  const isBareShell = isBareShellPathname(pathname);
+  const isBareShell = flags.hideSystemMenu;
   /* ⭐ ตั้งค่าใช้แถบเดียวกับทุกระบบ (มติผู้ใช้ 2026-08-22) — รายการมาจากแผนที่
      `config/settingsNav` ไฟล์เดียวกับที่หน้าภาพรวมอ่าน ไม่ใช่รายการชุดที่สอง
      ⚠️ ต้องแยกสาขาตรงนี้เพราะ `allGroups` ไม่มีระบบ `settings` — เมนูตั้งค่าคุมด้วย
@@ -416,7 +501,7 @@ export default function AppLayout({ children }) {
   };
 
   return (
-    <div className={`app-container${navOpen ? ' sidenav-open' : ''}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
+    <div className={`app-container${navOpen ? ' sidenav-open' : ''}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}${flags.homeHub ? ' home-context' : ''}`}>
       {/* ── แถบระบบ: ตรึงบนสุดทุกความกว้าง (แถบเมนูของระบบย้ายไปอยู่นอก header) ── */}
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
@@ -465,6 +550,10 @@ export default function AppLayout({ children }) {
             </div>
           )}
 
+          {/* ตัวสลับระบบ (≤1200) — หน้าแรกไม่วาดเลย เพราะแผงในหน้ากางเมนูทุกระบบอยู่แล้ว
+              ⚠️ ต้องไม่วาด ไม่ใช่ซ่อนด้วย CSS — ซ่อนแล้วปุ่มยังอยู่ในลำดับ Tab และ
+              โปรแกรมอ่านจอยังอ่านตัวเลขบนเมนูย่อย ซึ่ง ADR 0016 ห้ามบนหน้าแรก */}
+          {!flags.hideSystemSwitcher && (
           <div className="topnav-sys" ref={sysMenuRef}>
             <button
               type="button"
@@ -571,6 +660,7 @@ export default function AppLayout({ children }) {
               </div>
             )}
           </div>
+          )}
 
           <button type="button" className="mobile-top-more" onClick={() => setMobileMoreOpen(true)} aria-label="เมนูเพิ่มเติม" aria-expanded={mobileMoreOpen}>
             <MoreHorizontal size={21} aria-hidden="true" />
@@ -603,7 +693,7 @@ export default function AppLayout({ children }) {
             ⚠️ CSS ซ่อนทั้งแถบเมื่อจอ ≤1200 แล้วกลับไปใช้แฮมเบอร์เกอร์+ลิ้นชัก
             ⚠️ แถวแรกของดรอปดาวน์คือทางไปหน้าแรกของระบบ — ไม่มีแล้วจะไปหน้านั้น
             ไม่ได้เลย เพราะปุ่มบนแถบไม่พาไปไหน (ยกเว้นระบบที่เมนูมีหน้านั้นอยู่แล้ว) */}
-        {barGroups.length > 0 && (
+        {!flags.hideSystemSwitcher && barGroups.length > 0 && (
           <nav className="topnav-systems" ref={sysBarRef} aria-label="ระบบทั้งหมด">
             {barGroups.map((g) => {
               const SystemIcon = g.icon || LayoutDashboard;
@@ -722,6 +812,9 @@ export default function AppLayout({ children }) {
             {/* ที่แขวนแถบระบุตัวใบ — ต้องเป็น **ลูกตัวแรกของ .page** เหตุผลเต็มอยู่ที่
                 DetailPinBar ใน lib/ui/detailPin.js · สูง 0 จึงไม่ดันเนื้อหาลงเลย */}
             <DetailPinBar />
+            {/* ⭐ ตัวเลขชุดเดียวต่อหน้า — เปลือกดึงแล้วแจกต่อ หน้าไหนก็ห้ามยิงรอบที่สอง
+                ของตัวเอง (หน้าแรกของ ADR 0016 อ่านจากตรงนี้ · ป้ายบนเมนูใช้ก้อนเดียวกัน) */}
+            <NavCountsContext.Provider value={navCountsState}>
             <RoleContext.Provider value={role}>
               <ExtraCapsContext.Provider value={extraCaps}>
                 <TeamContext.Provider value={team}>
@@ -733,6 +826,7 @@ export default function AppLayout({ children }) {
                 </TeamContext.Provider>
               </ExtraCapsContext.Provider>
             </RoleContext.Provider>
+            </NavCountsContext.Provider>
           </div>
           </DetailPinProvider>
         </main>
