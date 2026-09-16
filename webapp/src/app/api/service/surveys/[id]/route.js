@@ -10,7 +10,7 @@ import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
 import { canOpenSurveySheet, surveyReadError } from '@/lib/service/surveyAccess';
 import { listAttachments } from '@/lib/master/attachments';
-import { loadSurveyZones } from '@/lib/service/surveyRepo';
+import { loadSurveySheetContext, loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 
@@ -34,17 +34,33 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
     const zones = await loadSurveyZones(supabase, id);
 
-    /* ไฟล์ของแต่ละพื้นที่ — ด่านนับรูปต้องการของจริง ไม่ใช่ตัวเลขที่จอเดา
-       ⚠️ ยิงรายพื้นที่ **ขนานกัน** — ใบหนึ่งมีสิบพื้นที่ ยิงเรียงกันคือรอสิบรอบ
-       ⚠️ ใบที่ยังไม่มีพื้นที่เลย = `[]` ไม่ใช่ error (ร่างที่เพิ่งเปิด) */
-    const files = await Promise.all(
-      zones.map((z) => listAttachments('service_survey_zone', z.id, supabase)),
-    );
+    /* ── ทุกอย่างที่เหลือของใบ ยิงพร้อมกันรอบเดียว ────────────────────────────
+       ① ไฟล์ของแต่ละพื้นที่ — ด่านนับรูปต้องการของจริง ไม่ใช่ตัวเลขที่จอเดา
+          ⚠️ ยิงรายพื้นที่ **ขนานกัน** — ใบหนึ่งมีสิบพื้นที่ ยิงเรียงกันคือรอสิบรอบ
+          ⚠️ ใบที่ยังไม่มีพื้นที่เลย = `[]` ไม่ใช่ error (ร่างที่เพิ่งเปิด)
+       ② นัดของใบ — ที่เดียวที่บอกว่า "ใครไป" ⇒ ด่านเขียนของช่างอ่านจากตัวนี้
+       ③ ของประกอบใบที่การ์ดควบคุมและหัวใบต้องใช้ (PR2):
+          ไซต์ (รหัส/ชื่อ/ที่อยู่/ผู้ติดต่อ) · รหัส ZN ของแต่ละพื้นที่ · รหัส AR ของลูกค้า ·
+          แถว "ดึงผลกลับ" ล่าสุด
+          🔴 **ชิ้นไหนอ่านไม่สำเร็จ ตอบ `unknown.<ชิ้น>` ไม่ใช่ปล่อยว่างเงียบ** — ใบที่อ่าน
+             ไซต์ไม่สำเร็จกับใบที่ไม่มีไซต์ต้องหน้าตาไม่เหมือนกันบนจอ (`ไม่ทราบ` vs ขีด)
+          ⚠️ ไม่ตีกลับทั้งเส้นเมื่อชิ้นประกอบล้ม — ผลวัดซึ่งเป็นเนื้อหลักของจออ่านได้แล้ว
+             ตีกลับ 500 = ช่างที่ยืนอยู่หน้างานเปิดใบไม่ได้เพราะที่อยู่ไซต์อ่านไม่ออก
+          ⚠️ ตัวโหลดเติม `zoneCode` ลงแถว `zones` ให้ในที่ (อ่านสดจากทะเบียน ไม่ประทับลงแถว)
+
+       ⭐ **ไม่มีก้อนไหนรอผลของอีกก้อน ⇒ ยิงขนานกัน** — จอนี้ถูกโหลดใหม่ทุกครั้ง
+          ที่บันทึก/ส่ง/ดึงกลับ และทุกครั้งที่สลับกลับมาที่แท็บ (`useRevalidateOnFocus`)
+          ⇒ รอบเดินทางที่เพิ่มมาหนึ่งรอบ คือรอบที่ช่างรอทุกครั้งที่กดบันทึกหน้างาน
+       ⚠️ `findSurveyVisit` ยัง throw ได้เหมือนเดิม ⇒ ทั้งเส้นยังเป็น 500 เท่าเดิม
+          (ตั้งใจ: มันเป็นด่านตัดสิน `canWrite` — เดาแทนไม่ได้ ต้อง fail-closed) */
+    const [files, visit, context] = await Promise.all([
+      Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase))),
+      findSurveyVisit(supabase, id),
+      loadSurveySheetContext(supabase, request, zones),
+    ]);
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
 
-    /* นัดของใบ — เป็นที่เดียวที่บอกว่า "ใครไป" ⇒ ด่านเขียนของช่างอ่านจากตัวนี้
-       ⚠️ ส่ง `canWrite` มาจาก server ไม่ให้จอคำนวณเอง (จอไม่รู้ user id ของตัวเอง) */
-    const visit = await findSurveyVisit(supabase, id);
+    // ⚠️ ส่ง `canWrite` มาจาก server ไม่ให้จอคำนวณเอง (จอไม่รู้ user id ของตัวเอง)
     const canEditAll = canEditService(user);
     const access = (canEditAll || canDoFieldWork(user))
       ? visitWriteAccess({ user, visit, canEditAll })
@@ -54,7 +70,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       request,
       zones,
       filesByZone,
+      /* นัดของใบ — `select('*')` อยู่แล้ว ⇒ รหัส SV · วัน/เวลา · ชื่อช่าง · สถานะนัด
+         มาครบตั้งแต่เดิม (จอใช้ทั้งบอกว่าใครไป และเป็นด่านว่าใครเขียนได้) */
       visit,
+      site: context.site,
+      customer: context.customer,
+      recall: context.recall,
+      unknown: context.unknown,
       canWrite: access.ok === true,
       /* ⭐ **คนละสิทธิ์กับ `canWrite`** — เคาะแพ็คเกจ/จุด และกดส่งผล เป็นการตัดสินใจ
          เชิงพาณิชย์ของหัวหน้าฝ่าย ไม่ใช่การรายงานหน้างานของช่าง (แผน §5.4) */
