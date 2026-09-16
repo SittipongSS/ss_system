@@ -59,17 +59,18 @@ test('มี SO อนุมัติที่มียอดแล้ว = ไ�
   assert.equal(wonAwaitingSoAmountOf(approved), 0);
 });
 
-/* มติผู้ใช้ 2026-09-16: SO อนุมัติ 0 บาท (ใบ DEMO · ค่าออกแบบกลิ่นก่อนบรีฟ) บนดีลที่ FC > 0 = ออเดอร์จริงยังจะมา
-   ⇒ ยังนับ "Won รอยื่น SO" ด้วยมูลค่าดีล · ของจริง 16/09: 8 ดีล 1,468,366 (เช่น DL-26080348 634,500) */
-test('SO อนุมัติ 0 บาทบนดีล FC > 0 = ยังรอยื่น SO ที่มียอด · เดือนตาม wonMonth (เดือนที่อนุมัติ)', () => {
+/* มติผู้ใช้ 2026-09-16 (รอบบ่าย): **ใบสั่งขายที่อนุมัติแล้วแม้ยอด 0 บาท = จบ** — ส่วนลด 100% เกิดได้จริง
+   ⇒ ดีลนั้นไม่มีเงินจะเข้าอีก การค้างไว้ในกองคือการโชว์เงินที่ไม่มีวันมา
+   (รอบเช้าเคยลองนับไว้ในกอง แล้วผู้ใช้ทักว่าดีลพวกนี้ยื่น SO ไปแล้วจริง ๆ) */
+test('SO อนุมัติ 0 บาท = จบ ไม่อยู่ในกองรอยื่น SO', () => {
   const zeroApproved = won({ metadata: { actualSource: 'sale_order', wonMonth: '2026-08', wonValueExVat: 0 } });
   assert.equal(dealHasApprovedSalesOrder(zeroApproved), true);
-  assert.equal(isWonAwaitingSo(zeroApproved), true);
-  assert.equal(wonAwaitingSoAmountOf(zeroApproved), 120000);
-  assert.equal(wonAwaitingSoCountOf(zeroApproved), 1);
-  assert.equal(wonAwaitingSoMonthOf(zeroApproved), '2026-08');
-  // ยอด Actual ยังเป็น 0 — ไม่ปนกัน
-  assert.equal(wonAmountOf(zeroApproved), 0);
+  assert.equal(isWonAwaitingSo(zeroApproved), false);
+  assert.equal(wonAwaitingSoAmountOf(zeroApproved), 0);
+  assert.equal(wonAwaitingSoCountOf(zeroApproved), 0);
+  assert.equal(wonAwaitingSoMonthOf(zeroApproved), null);
+  // ยังไม่มีใบอนุมัติเลย = ยังรอ (ตัวเทียบของกรณีข้างบน)
+  assert.equal(isWonAwaitingSo(won({ metadata: { actualSource: 'sale_order', wonMonth: null } })), true);
 });
 
 test('ดีลที่ยังเปิด / แพ้ ไม่ใช่รอยื่น SO', () => {

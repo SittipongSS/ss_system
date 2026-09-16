@@ -3,6 +3,7 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
 import { canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
+import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +77,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `ถอยดีล ${dealAuditLabel(before.deal)} ออกจาก Won — ย้อนการรับใบเสนอราคา ${before.quoteNumber}`,
     request: req,
   });
+
+  /* ⭐ ยอดของดีลหลังย้อนรับใบ (มติผู้ใช้ 2026-09-16 · mig 0361) — ตอนรับใบ RPC ตั้งยอดดีล = ใบที่รับ และชี้ใบนั้น
+     แต่ unaccept_quotation_atomic ไม่คืนสี่ช่องนั้น ⇒ ดีลที่กลับมาเปิดให้ตัวเลือกใบของดีลเปิดตัดสินใหม่
+     · ไม่สำเร็จ = เตือนใน log ไม่ล้มคำขอ — การย้อนรับใบเสร็จไปแล้ว */
+  const forecast = await applyForecastSource(supabase, before.deal.id, { cause: 'unaccept' });
+  if (forecast?.warning) console.warn('[unaccept] คิดยอดดีลใหม่ไม่สำเร็จ', before.deal.id, forecast.warning);
 
   const { data: after } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   return ok({ quotation: after || result?.quotation || null, deal: result?.deal || null });

@@ -38,7 +38,7 @@ const periodMatcher = (filter) => (mk) => (Array.isArray(filter.months) && filte
 const PENDING_APPROVAL_METRIC = "pendingApproval";
 
 /* ⭐ metric "wonAwaitingSo" = ดีล "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14)
-   ดีลปิด Won แล้วแต่ยังไม่มีเงินจากใบสั่งขายเลย (Actual 0 และยอดใบรออนุมัติ 0) — ยอดคาดการณ์นับด้วยมูลค่าดีล
+   ดีลปิด Won แล้วแต่ยังไม่มีใบสั่งขายที่อนุมัติ และไม่มียอดใบรออนุมัติ (ใบอนุมัติแม้ 0 บาท = จบ · มติ 2026-09-16) — ยอดคาดการณ์นับด้วยมูลค่าดีล
    กติกาชุดเดียวกับ API แดชบอร์ด (lib/sales/wonAwaitingSoRollup): เดือน = wonMonthOf
    (ถังเดียวกับที่ดีล Won นั้นอยู่) ⇒ ยอดบนแถว = มูลค่าดีล ไม่ใช่ Actual และไม่ใช่ยอดรออนุมัติ
    เปิดด้วย filter รูปเดียวกับ metric อื่น: { metric: "wonAwaitingSo", month | year, ownerId, ownerName, team, teamScoped, label } */
@@ -195,7 +195,7 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
     fcTotal: "ยอดคาดการณ์เดิม: ดีลเปิด + Won + แพ้ ใช้ตรวจความแม่นยำของ FC",
     remaining: "เฉพาะดีลที่ยังเปิดอยู่ ใช้ติดตามยอดที่ยังมีโอกาสปิด",
     [PENDING_APPROVAL_METRIC]: "ใบสั่งขายยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual · นับอยู่เดือนปัจจุบันจนกว่าจะอนุมัติ",
-    [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มีเงินจากใบสั่งขายเลย (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบยอด 0 บาท ทั้งที่อนุมัติแล้วและที่ยื่นรออนุมัติ) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
+    [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นแล้วยอด 0 บาท) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
   }[filter.metric] || "รายการดีลตามระดับโอกาสและช่วงเวลาที่เลือก";
 
   const isPendingMetric = filter.metric === PENDING_APPROVAL_METRIC;
@@ -368,7 +368,7 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
                         {showAwaitingSoSubLine(deal) && (
                           <span
                             className={styles.awaitingSoSubLine}
-                            title="ดีลปิด Won แล้ว แต่ยังไม่มีเงินจากใบสั่งขายเลย (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบยอด 0 บาท ทั้งที่อนุมัติแล้วและที่ยื่นรออนุมัติ) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual"
+                            title="ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นแล้วยอด 0 บาท) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual"
                           >
                             {WON_AWAITING_SO_LABEL} {money(wonAwaitingSoAmountOf(deal))}
                           </span>
