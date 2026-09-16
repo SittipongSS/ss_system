@@ -33,6 +33,11 @@ yarn-error.log*
 # throwaway local debug scripts (may touch the service-role key — never commit)
 /temp.js
 /scratch.js
+# ผลลัพธ์ของสคริปต์ที่ดึงข้อมูลจริงออกมา (ยอด FC รายดีล · แถว audit_logs) — ห้าม commit
+# 🔴 นี่เป็นชั้นกันพลาด ไม่ใช่ที่เก็บ: ไฟล์สำรองที่ถูกต้องเขียนนอกรีโป (~/ss-team/archive/…)
+#    เหมือน scripts/merge-duplicate-customers.mjs และ backfill-deal-fc-from-accepted-quote.mjs
+/backfill-*.json
+/audit-archive-*.json
 
 # env files (can opt-in for committing if needed)
 .env*
