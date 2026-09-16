@@ -276,7 +276,7 @@ function AuditDetailModal({ log, onClose }) {
             <div className="text-xs font-semibold text-[var(--text-2)] mb-1">
               {log.action === "delete" ? "ข้อมูลก่อนถูกลบ" : "ข้อมูลที่บันทึก"}
             </div>
-            <pre className="text-xs bg-[var(--surface-2,rgba(0,0,0,0.04))] rounded p-3 overflow-auto max-h-80 break-all whitespace-pre-wrap">
+            <pre className="text-xs bg-[var(--panel-2)] rounded p-3 overflow-auto max-h-80 break-all whitespace-pre-wrap">
               {JSON.stringify(log.action === "delete" ? before : after, null, 2)}
             </pre>
           </div>

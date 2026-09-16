@@ -125,7 +125,7 @@
   margin: var(--space-1) 0 0;
   color: var(--text-2);
   font-size: var(--fs-5);
-  line-height: var(--lh-normal);
+  line-height: var(--lh-text);
 }
 
 /* ── สองคอลัมน์ ── */
@@ -175,7 +175,7 @@
 .pinned p {
   margin: var(--space-1) 0 0;
   font-size: var(--fs-7);
-  line-height: var(--lh-normal);
+  line-height: var(--lh-text);
   white-space: pre-wrap;
 }
 

@@ -44,6 +44,13 @@
 .optionOn { background: var(--accent-soft); color: var(--accent); }
 .optionOn:hover { background: var(--accent-soft); }
 
+/* 🐞 เคยเป็น `--radius-sm` ที่ไม่เคยมีใครประกาศ ⇒ เบราว์เซอร์ทิ้งบรรทัดนั้น กล่องติ๊กเลี่ยมมาตลอด
+   🪤 ห้าม "แก้" ด้วยการประกาศ --radius-sm เพิ่ม — Tailwind v4 อ่าน namespace --radius-*
+   เองแล้วเปลี่ยนความหมายของ `rounded-sm` ทั้งระบบ (ดู RAW_RADIUS_CAP ใน audit-ui.mjs
+   และ radiusScale.test.mjs ที่ล็อกชุดชื่อไว้)
+   ⭐ ที่นี่จึง **ไม่ใส่มุมเลย** ไม่ใช่ถอยไป --radius: กล่อง 16px + มุม 8px = ครึ่งด้าน = วงกลม
+   ⇒ ช่องติ๊กหลายตัวเลือกจะอ่านเป็นปุ่มตัวเลือกเดียว (radio) · ไม่ใส่มุม = เหลี่ยมเท่าที่ขึ้นจริงวันนี้
+   และศูนย์ไม่ต้องมีชื่อโทเคน (audit-ui.mjs ยกเว้น 0/ไม่ประกาศ) */
 .tick {
   display: inline-flex;
   align-items: center;
@@ -52,7 +59,6 @@
   width: 16px;
   height: 16px;
   border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
 }
 .tickOn { border: none; background: var(--accent); color: var(--accent-fg); }
 

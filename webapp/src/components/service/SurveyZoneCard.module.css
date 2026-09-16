@@ -55,7 +55,7 @@
   color: var(--text-1);
 }
 
-.blockHead small { margin-inline-start: auto; font-weight: var(--fw-regular); color: var(--text-3); }
+.blockHead small { margin-inline-start: auto; font-weight: var(--fw-normal); color: var(--text-3); }
 
 /* 🐞 <small> ไม่มีขนาดของตัวเอง ⇒ เบราว์เซอร์ย่อ "smaller" จากพื้นที่เล็กอยู่แล้ว เหลือ 8.8–9.2px
    ต่ำกว่าโทเคนเล็กสุด — หน่วย ตร.ม./ลบ.ม. คือสิ่งที่ให้ความหมายกับตัวเลข */
@@ -68,7 +68,7 @@
   font-weight: var(--fw-bold);
   color: var(--red);
   background: var(--red-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 0 var(--space-1);
 }
 
@@ -77,7 +77,7 @@
   font-size: var(--fs-2);
   color: var(--text-3);
   background: var(--panel-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 0 var(--space-1);
 }
 

@@ -4350,7 +4350,7 @@ button.empty-state { width: 100%; font: inherit; }
 .pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 /* เหตุผลที่ปุ่มกดไม่ได้ ต้องอยู่ตรงจุดที่เพิ่งกด ไม่ใช่ปล่อยให้ปุ่มจางเฉย ๆ */
 /* ใช้ได้ทั้งบรรทัดเหตุผลใต้ปุ่ม และคำขยายในป้ายช่อง ("(ไม่บังคับ · เช่น …)") */
-.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-regular); }
+.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-normal); }
 .pending-files-add {
   display: inline-flex;
   align-items: center;
@@ -5811,9 +5811,9 @@ button.empty-state { width: 100%; font: inherit; }
 
 
 .prod-summary-card.active {
-  border-color: var(--card-accent);
-  background: color-mix(in srgb, var(--card-accent) 6%, var(--panel));
-  box-shadow: 0 2px 12px color-mix(in srgb, var(--card-accent) 15%, transparent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .prod-table-wrap {
@@ -5864,10 +5864,16 @@ button.empty-state { width: 100%; font: inherit; }
   font-weight: var(--fw-semibold);
 }
 
+/* 🐞 เคยเป็น `rgba(var(--pulse-r, 0), …)` — ทั้งสามชื่อไม่เคยมีใครประกาศ ตัวสำรอง 0
+   บังไว้ ⇒ วงพัลส์เป็นสีดำ ไม่ใช่สีของหมุด · ยกมาใช้ --accent ตรง ๆ จะได้ไม่ต้องมี
+   ช่องทางรับค่า RGB แยกชิ้นที่ไม่มีใครป้อน (ยังไม่มีใครเรียก keyframes นี้)
+   🪤 ปลายทางเขียน `color-mix(… 0%, transparent)` ไม่ใช่คำว่า `transparent` เฉย ๆ —
+   ตัวนับเงาเลขดิบของ audit:ui ข้าม box-shadow ที่มี var() อยู่ข้างใน เขียนสั้นกว่านี้
+   แล้วสองบรรทัดนี้กลายเป็น "เงาที่เขียนเอง" ดันเพดาน RAW_SHADOW_CAP ขึ้นทันที */
 @keyframes marker-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  70% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 
 /* Responsive */
@@ -7823,27 +7829,34 @@ td > * > .text-action {
   transition: all var(--motion-standard) cubic-bezier(0.25, 0.46, 0.45, 0.94);
   cursor: default;
 }
+/* 🐞 เคยเป็น `--primary-color` ที่ไม่เคยมีใครประกาศ ⇒ border-color ตกไปที่ค่าตั้งต้น
+   `currentColor` = สีตัวอักษรของการ์ด ไม่ใช่สีแบรนด์ · ชื่อจริงของสีแบรนด์คือ --accent
+   (การ์ด KPI ไม่ได้รับผลกระทบ — `.ui-kpi-card.interactive-card:hover` เฉพาะเจาะจงกว่า
+   และใช้ --kpi-accent ที่ KpiCard.js ส่งมารายใบอยู่แล้ว) */
 .interactive-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: color-mix(in srgb, var(--primary-color) 30%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
 /* Interactive Grid Hover */
 .interactive-grid tbody tr.premium-row:hover td {
-  background: color-mix(in srgb, var(--primary-color) 4%, transparent) !important;
+  background: color-mix(in srgb, var(--accent) 4%, transparent) !important;
 }
 .interactive-grid tbody tr.premium-row:hover td.fz-c1,
 .interactive-grid tbody tr.premium-row:hover td.fz-c2,
 .interactive-grid tbody tr.premium-row:hover td.fz-cr {
-  background: color-mix(in srgb, var(--primary-color) 8%, var(--bg)) !important;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg)) !important;
 }
 
 /* Custom Tooltip for Charts */
 .chart-tooltip {
   position: absolute;
   pointer-events: none;
-  background: var(--surface-2);
+  /* 🐞 เคยเป็น `--surface-2` ที่ไม่เคยมีใครประกาศ ⇒ พื้นโปร่งทั้งสองธีม เลขในทูลทิป
+     ทับเส้นกราฟข้างหลัง · นี่คือ "แผงลอยทับเนื้อหาอื่น" ⇒ ใช้ --panel-float ที่ทึบ 100%
+     ไม่ใช่ --panel ซึ่งเป็นสีเดียวกับการ์ดที่มันลอยอยู่ข้างบน (แล้วขอบจะหายไปกับพื้น) */
+  background: var(--panel-float);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-2-5) var(--space-3-5);

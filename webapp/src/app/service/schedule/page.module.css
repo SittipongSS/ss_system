@@ -378,7 +378,7 @@
 .listDay > span {
   color: var(--text-3);
   font-size: var(--fs-label);
-  font-weight: var(--fw-regular);
+  font-weight: var(--fw-normal);
   font-variant-numeric: tabular-nums;
 }
 
