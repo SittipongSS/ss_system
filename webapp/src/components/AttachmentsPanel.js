@@ -74,7 +74,13 @@ export default function AttachmentsPanel({
   title = "เอกสารแนบ",
   note,
   docTypes, // override การ์ดที่แสดง (เช่น เอกสารลูกค้าตามประเภท) — default = ตาม entityType
-  onItemsChange, // (items) => void — แจ้งรายการเอกสารปัจจุบัน (ใช้บังคับแนบก่อนยื่น)
+  /* (items, { loaded }) => void — แจ้งรายการเอกสารปัจจุบัน (ใช้บังคับแนบก่อนยื่น)
+     ⚠️ **`loaded` ไม่ใช่ของฟุ่มเฟือย** — ก้อนแรกที่ยิงออกไปคือ `[]` ตั้งแต่ก่อนโหลดเสร็จ
+     และเวลาโหลดไม่สำเร็จก็ได้ `[]` เหมือนกัน · ผู้เรียกที่เอาจำนวนไปแสดงบนจอต้องแยก
+     "ยังไม่รู้" ออกจาก "ไม่มีไฟล์" ให้ได้ ไม่งั้นจะเดาเองแล้วเดาผิดคนละแบบ
+     (ของจริง: การ์ดพื้นที่เคยใช้กติกา "ก้อนว่างก้อนแรกไม่นับ" แล้วพื้นที่ที่ไฟล์ถูกลบ
+      หมดจากที่อื่นค้างเลขรูปเก่าไว้ตลอด) */
+  onItemsChange,
   cardColumns = 2, // การ์ดเอกสารจำเป็น: จำนวนคอลัมน์สูงสุด (1 = แถวละใบ เห็นชื่อเต็ม)
   inlineUpload = false, // แสดง action แนบไฟล์และรายการไฟล์แบบไม่มีการ์ด
   // เปิดปุ่มสร้าง/ผูก Google Doc·Sheet (เอกสารมีชีวิต) — เฉพาะ entity ที่มีโฟลเดอร์
@@ -89,6 +95,12 @@ export default function AttachmentsPanel({
   // โหมด inline: ตัวนับ "N ไฟล์" บนแถวหัว — ปิดได้เมื่อหัวข้อของผู้เรียกบอกจำนวนอยู่แล้ว
   // 🐞 จอผลวัดพื้นที่: หัวข้อ "1 รูป" แล้วมีแถวที่มีแค่ "1 ไฟล์" ซ้ำอยู่ข้างล่างทุกบล็อก
   showCount = true,
+  // ใครได้ Ctrl+V ตอน **ไม่มีอะไรโฟกัสอยู่** — 0 = ได้ก่อน · 1 = ถอยให้กล่องอื่น
+  // 🔑 หน้าที่มีกล่องรับไฟล์หลายกล่องพร้อมกัน (จอประเมิน: หนึ่งกล่องต่อหัวข้อรูป
+  //    คูณจำนวนพื้นที่ที่กางอยู่) ต้องบอกได้ว่ากล่องไหนคือ "ที่ผู้ใช้กำลังทำอยู่"
+  //    ไม่งั้นตัวเลือกปริยายคือ **กล่องแรกใน DOM** = รูปไปโผล่ผิดพื้นที่จริง ๆ
+  //    (แผงนี้อัปขึ้น server ทันที ของที่ไปผิดที่คือของที่ต้องตามลบ)
+  intakeWeight = 0,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -96,6 +108,9 @@ export default function AttachmentsPanel({
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  /* รายการนี้ "อ่านมาได้จริงแล้ว" หรือยัง — ต่างจาก `loading` ตรงที่โหลดไม่สำเร็จก็จบ
+     การโหลดเหมือนกัน แต่ยังไม่รู้ว่ามีไฟล์กี่ใบ (ดูหัวข้อ `onItemsChange`) */
+  const [loaded, setLoaded] = useState(false);
   const [uploadingType, setUploadingType] = useState(null); // docType ที่กำลังอัป (card mode)
 
   // ── detailed (order) form state ──
@@ -130,7 +145,7 @@ export default function AttachmentsPanel({
       // 🐞 เดิมเป็น `if (res.ok) setItems(...)` เฉย ๆ ⇒ 403/500 กลายเป็นการ์ดเปล่า
       // ทุกใบ แยกไม่ออกจาก "ระเบียนนี้ยังไม่ได้แนบอะไร" · คนใช้เข้าใจว่าไฟล์หาย
       // ทั้งที่จริงคือรายการโหลดไม่ได้
-      if (res.ok) setItems(await res.json());
+      if (res.ok) { setItems(await res.json()); setLoaded(true); }
       else notifyToast.error(await describeResponseError(res, "โหลดรายการเอกสารแนบไม่สำเร็จ"));
     } catch (err) {
       console.error(err);
@@ -145,8 +160,8 @@ export default function AttachmentsPanel({
 
   // แจ้งรายการเอกสารปัจจุบันกลับไปให้ parent (เช่น เพื่อบังคับแนบก่อนยื่น).
   useEffect(() => {
-    onItemsChange?.(items);
-  }, [items, onItemsChange]);
+    onItemsChange?.(items, { loaded });
+  }, [items, loaded, onItemsChange]);
 
   // ── เอกสารมีชีวิต (Google Doc/Sheet) ────────────────────────────────────
   // ⚠️ ไม่มีขั้นอัปไฟล์ — server เป็นคนคุยกับ Drive แล้วบันทึกแถวให้ในคำขอเดียว
@@ -252,6 +267,7 @@ export default function AttachmentsPanel({
     disabled: !canEdit,
     onFiles: acceptFiles,
     onOversize: (message) => notifyToast.error(message),
+    weight: intakeWeight,
   });
 
   // ── detailed mode: บันทึกพร้อมรายละเอียด ──
@@ -472,10 +488,13 @@ export default function AttachmentsPanel({
          กว้าง 292px) ช่องเดียวนั้นยืดเป็น 1fr ⇒ **รูปแนบใบเดียวได้สี่เหลี่ยม
          292×292** กินความสูงการ์ดทั้งใบ (ผู้ใช้ส่งภาพมา 2026-08-15) · ยิ่งจอกว้าง
          ยิ่งบานเพราะ aspect-ratio 1/1 ผูกความสูงกับความกว้าง
-         ⇒ `minmax(0, 148px)` = ช่องโตได้ไม่เกิน 148px แต่ยังหดลงได้บนจอแคบมาก */
+         ⇒ `minmax(0, 148px)` = ช่องโตได้ไม่เกิน 148px แต่ยังหดลงได้บนจอแคบมาก
+         ⭐ **ผู้เรียกปรับขนาดได้ผ่านตัวแปร CSS** (`--attach-thumb-w` / `--attach-thumb-ratio`)
+         — ไม่ใช่ prop เพราะขนาดที่ต้องการต่างกันตามขนาดจอ (จอประเมินพื้นที่ใช้ 76×58
+         และ 64×52 บนมือถือ) ซึ่งเป็นเรื่องที่ตอบได้ใน media query เท่านั้น */
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(0, 148px))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(0, var(--attach-thumb-w, 148px)))",
         gap: 8,
       }}
     >
@@ -486,7 +505,7 @@ export default function AttachmentsPanel({
             onClick={() => setPreview(it)}
             title={it.fileName || "ดูรูปขนาดเต็ม"}
             style={{
-              display: "block", width: "100%", aspectRatio: "1 / 1", padding: 0,
+              display: "block", width: "100%", aspectRatio: "var(--attach-thumb-ratio, 1 / 1)", padding: 0,
               border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
               background: "var(--panel-2)", cursor: "pointer",
             }}

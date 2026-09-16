@@ -17,15 +17,23 @@
 // ⚠️ **ด่านเขียนเป็นด่านรายใบ ไม่ใช่ cap ล้วน** — เจ้าหน้าที่หน้างานถือ `service:work`
 //   ซึ่งเปิดเฉพาะงานที่ตัวเองถูกมอบหมาย ⇒ server เป็นคนตอบว่าเขียนได้ไหม (`canWrite`)
 //   จอไม่คำนวณเอง เพราะจอไม่รู้ user id ของตัวเอง
+//
+// ⭐ **พื้นที่พับได้** (PR4 · แบบที่อนุมัติ 2026-09-16) — ค่าเปิด/ปิดตั้งต้นมาจาก
+//   `view.foldDefaults` ซึ่ง **คิดใหม่จากข้อมูลทุกครั้งที่โหลด** ไม่จำข้ามครั้งและ
+//   ไม่ขึ้นกับขนาดจอ · สิ่งที่หน้าเก็บไว้คือ *สิ่งที่ผู้ใช้กดในรอบนี้* เท่านั้น
+//   ⚠️ **ห้ามพับเองหลังบันทึกสำเร็จ** — ค่าตั้งต้นของพื้นที่ที่เพิ่งวัดครบจะพลิกเป็น
+//   "พับ" ทันทีที่โหลดกลับมา ⇒ ถ้าไม่ปักธงว่าคนนี้เปิดไว้ การ์ดจะหุบใส่หน้าคนที่เพิ่ง
+//   กดบันทึก ซึ่งเป็นพฤติกรรมที่แบบที่อนุมัติสั่งห้ามไว้ตรง ๆ (กติกาข้อ 3)
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarClock, Flag, MapPin, MapPinPlus, Search } from "lucide-react";
+import { CalendarClock, ChevronsDownUp, ChevronsUpDown, Flag, MapPin, MapPinPlus, Search } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import SurveyControlCard from "@/components/service/SurveyControlCard";
 import SurveyResultTable from "@/components/service/SurveyResultTable";
 import SurveyZoneCard from "@/components/service/SurveyZoneCard";
+import { collapsibleBodyId, collapsibleHeadId } from "@/components/ui/CollapsibleCard";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
@@ -89,6 +97,16 @@ export default function SurveySheetPage({ params }) {
   const [sendingBack, setSendingBack] = useState(false);
   const [sendBackNote, setSendBackNote] = useState("");
   const [sendBackBusy, setSendBackBusy] = useState(false);
+  /* ── พื้นที่พับได้ ──────────────────────────────────────────────────────
+     `openZones` = **สิ่งที่ผู้ใช้กดในรอบนี้เท่านั้น** (ไม่ใช่สถานะเต็ม) · ค่าที่ไม่มีใน
+     ก้อนนี้อ่านจาก `view.foldDefaults` ซึ่งคิดใหม่จากข้อมูลทุกครั้งที่โหลด
+     ⇒ พื้นที่ที่เพิ่งเพิ่มหน้างานได้ค่าตั้งต้นของมันเองทันที โดยไม่ต้องมีขั้นตอน seed */
+  const [openZones, setOpenZones] = useState({});
+  /* พื้นที่ที่มีค่าพิมพ์ค้าง — การ์ดรายงานขึ้นมา แล้วส่งต่อให้ตัวตัดสินบล็อกปุ่มส่งผล
+     (ด่านที่ PR2 ต่อสายไว้แล้วแต่ยังไม่มีใครยิงธงให้) */
+  const [dirtyZones, setDirtyZones] = useState({});
+  /* พื้นที่ที่ "กำลังทำอยู่" — ใช้ตัดสินว่า Ctrl+V ลอย ๆ ตกที่พื้นที่ไหน */
+  const [activeZone, setActiveZone] = useState(null);
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -227,6 +245,18 @@ export default function SurveySheetPage({ params }) {
 
   const zones = useMemo(() => data?.zones || [], [data]);
   const filesByZone = useMemo(() => data?.filesByZone || {}, [data]);
+  /* 🔑 ธง dirty เป็น **ของที่ server มองไม่เห็น** — ค่ายังอยู่บนจอ ยังไม่เคยถูกส่งไป
+     ⇒ ต้องเดินทางจากการ์ดขึ้นมาที่นี่ แล้วลงไปที่ตัวตัดสิน ไม่ใช่ให้แต่ละที่เดาเอง */
+  const handleDirtyZone = useCallback((zoneId, isDirty) => {
+    setDirtyZones((prev) => {
+      if (!!prev[zoneId] === isDirty) return prev;
+      const next = { ...prev };
+      if (isDirty) next[zoneId] = true;
+      else delete next[zoneId];
+      return next;
+    });
+  }, []);
+  const dirtyZoneIds = useMemo(() => Object.keys(dirtyZones), [dirtyZones]);
   const totals = surveyTotals(zones);
   /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
      เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน
@@ -253,9 +283,10 @@ export default function SurveySheetPage({ params }) {
       canOpenRequest: data?.canOpenRequest === true,
       writeBlockedReason: data?.writeBlockedReason || null,
     },
+    dirtyZoneIds,
     tab,
     today: businessDate(),
-  }), [data, zones, filesByZone, tab]);
+  }), [data, zones, filesByZone, dirtyZoneIds, tab]);
 
   const canDecide = data?.canDecide === true;
   /* 🔑 ด่านตัวเดียวกับ server — ปุ่มในโมดัลปิดตามนี้ และเหตุขึ้นเป็นตัวหนังสือ
@@ -298,15 +329,84 @@ export default function SurveySheetPage({ params }) {
       { scroll: false });
   }, [id, router]);
 
-  /* ลิงก์ "เปิด <พื้นที่>" — กลับไปแท็บหน้างานก่อนเสมอ แล้วค่อยเลื่อนไปหาการ์ดของมัน
+  // ── เปิด/พับพื้นที่ ─────────────────────────────────────────────────────
+  const foldDefaults = view.foldDefaults;
+  const isZoneOpen = useCallback(
+    (zoneId) => openZones[zoneId] ?? foldDefaults[zoneId] ?? false,
+    [openZones, foldDefaults],
+  );
+  const setZoneOpen = useCallback((zoneId, next) => {
+    setOpenZones((prev) => ({ ...prev, [zoneId]: next }));
+  }, []);
+  /* ⭐ **เปิดพร้อมกันได้หลายพื้นที่** — ไม่ใช่ accordion ที่เปิดได้ทีละอัน (ช่างวัดห้อง
+     ที่ต่อกันแล้วเทียบตัวเลขข้ามพื้นที่) ⇒ ปุ่มเดียวของทั้งลิสต์คือ "ขยาย/ย่อทุกพื้นที่"
+     และชื่อปุ่มบอกว่า **กดแล้วจะเกิดอะไร** ไม่ใช่บอกสถานะปัจจุบัน */
+  const allZonesOpen = zones.length > 0 && zones.every((z) => isZoneOpen(z.id));
+  const toggleAllZones = useCallback(() => {
+    const next = !allZonesOpen;
+    setOpenZones(Object.fromEntries(zones.map((z) => [z.id, next])));
+  }, [allZonesOpen, zones]);
+
+  /* เลื่อนไปที่การ์ด (และย้ายโฟกัสไปที่ *หัว* ของมันเมื่อสั่ง) — หัวคือปุ่มพับ ⇒ คนที่
+     ใช้คีย์บอร์ดกด Enter ต่อได้ทันที และคนที่ใช้โปรแกรมอ่านหน้าจอได้ยินชื่อพื้นที่ใหม่
+     ⚠️ `requestAnimationFrame` เพราะการ์ดอาจเพิ่งถูกกางในเฟรมเดียวกัน */
+  const scrollToZone = useCallback((zoneId, { focus = false } = {}) => {
+    requestAnimationFrame(() => {
+      const anchor = zoneAnchor(zoneId);
+      document.getElementById(anchor)?.scrollIntoView({ block: "start" });
+      if (focus) document.getElementById(collapsibleHeadId(anchor))?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  /* ลิงก์ "เปิด <พื้นที่>" — กลับไปแท็บหน้างานก่อนเสมอ แล้วค่อยกางการ์ดของมัน
      ⚠️ ต้องรอให้แท็บสลับเสร็จก่อน ไม่งั้นเลื่อนไปหา element ที่ยังไม่ถูกวาด */
   const openZone = useCallback((zoneId) => {
     if (tab !== "field") goTab("field");
-    requestAnimationFrame(() => {
-      const el = document.getElementById(zoneAnchor(zoneId));
-      if (el) el.scrollIntoView({ block: "start" });
+    setZoneOpen(zoneId, true);
+    setActiveZone(zoneId);
+    scrollToZone(zoneId);
+  }, [tab, goTab, setZoneOpen, scrollToZone]);
+
+  /* ⭐ **"ถัดไป: … (ยังไม่ครบ)" แทนการพับเองหลังบันทึก** (กติกาข้อ 3 ของแบบที่อนุมัติ)
+     — พับพื้นที่ปัจจุบัน **เฉพาะเมื่อไม่มีค่าค้างและไม่มี error** แล้วเปิดพื้นที่ถัดไป
+     พร้อมย้ายโฟกัสไปที่หัวของมัน */
+  const goNextZone = useCallback((nextId, { from, keepOpen } = {}) => {
+    setOpenZones((prev) => {
+      const next = { ...prev, [nextId]: true };
+      if (from && from !== nextId && !keepOpen) next[from] = false;
+      return next;
     });
-  }, [tab, goTab]);
+    setActiveZone(nextId);
+    scrollToZone(nextId, { focus: true });
+  }, [scrollToZone]);
+
+  /* บันทึกสำเร็จ = **เปิดค้างไว้** · ตัดออกสำเร็จ = พับ (ไม่เหลืออะไรให้ทำต่อ) แล้วส่ง
+     โฟกัสกลับไปที่หัว ไม่ให้โฟกัสหล่นหายไปกับปุ่มที่เพิ่งถูกถอดออกจากจอ */
+  const handleZoneSaved = useCallback((zoneId, { cut } = {}) => {
+    setZoneOpen(zoneId, !cut);
+    if (cut) scrollToZone(zoneId, { focus: true });
+  }, [setZoneOpen, scrollToZone]);
+  const handleZoneSaveFailed = useCallback((zoneId) => setZoneOpen(zoneId, true), [setZoneOpen]);
+
+  /* พื้นที่ถัดไปที่ **ฝั่งช่างยังขาดของ** — ถามตัวตัดสินตัวเดียวกับที่การ์ดควบคุมใช้
+     (`zoneGaps.rows` เรียงตามลำดับในใบอยู่แล้ว) ไม่ใช่ไล่เงื่อนไขเองอีกชุด
+     🐞 เดิม `find(r => r.crew.length && r.zoneId !== zoneId)` = **ใบแรกของลิสต์เสมอ**
+        ไม่ใช่ใบถัดจากที่ยืนอยู่ ⇒ ใบ 5 พื้นที่ที่ขาดที่ 1 กับ 5: ยืนที่ 5 กด "ถัดไป"
+        แล้วเด้งกลับขึ้นหัวใบพร้อมพับใบที่เพิ่งทำเสร็จ · เหลือสองพื้นที่เมื่อไรก็สลับ
+        ไปมา 1↔5 ไม่จบ (ระเบียนทดสอบมี 2 พื้นที่จึงไม่เห็นอาการ)
+     ⇒ หา **ตัวแรกที่อยู่หลังตำแหน่งปัจจุบัน** ก่อน แล้วค่อยวนกลับต้นลิสต์ · ตอนวนกลับ
+       ติดธง `back` ไปให้การ์ดเปลี่ยนคำเป็น "กลับไปที่ …" เพราะมันไม่ใช่ "ถัดไป" แล้ว */
+  const nextGapZone = useCallback((zoneId) => {
+    const gaps = view.zoneGaps.rows.filter((r) => r.crew.length > 0 && r.zoneId !== zoneId);
+    if (gaps.length === 0) return null;
+    /* ⚠️ ลำดับต้องวัดจาก **ลิสต์ที่ตาเห็น** ไม่ใช่จากลิสต์ของด่าน — พื้นที่ที่วัดครบแล้ว
+       ไม่มีชื่ออยู่ใน `zoneGaps.rows` เลย ⇒ ยืนอยู่บนใบที่ครบแล้วจะหาตำแหน่งตัวเองไม่เจอ */
+    const order = new Map(zones.map((z, i) => [z.id, i]));
+    const here = order.has(zoneId) ? order.get(zoneId) : -1;
+    const ahead = gaps.find((r) => (order.get(r.zoneId) ?? Infinity) > here);
+    const row = ahead || gaps[0];
+    return { id: row.zoneId, name: row.zoneName, back: !ahead };
+  }, [view.zoneGaps.rows, zones]);
 
   if (loading) {
     return <Workspace hideHeader back={back}><SkeletonRows rows={4} /></Workspace>;
@@ -455,14 +555,47 @@ export default function SurveySheetPage({ params }) {
           />
         ) : (
           <div className={styles.list}>
-            {zones.map((zone) => (
+            {/* แถวเหนือลิสต์: ใบนี้มีกี่พื้นที่ · วัดไปแล้วกี่พื้นที่ · ปุ่มขยาย/ย่อทั้งหมด
+                ⚠️ `aria-controls` ชี้ไปที่เนื้อของทุกการ์ด — ปุ่มที่คุมของหลายชิ้นต้องบอก
+                ว่าคุมชิ้นไหนบ้าง ไม่งั้นโปรแกรมอ่านหน้าจอได้ยินแค่ "ปุ่ม" ลอย ๆ */}
+            <div className={styles.listBar}>
+              <p>
+                <b>{zones.length}</b> พื้นที่ · วัดแล้ว <b>{view.progress.done}</b>
+                {view.progress.cut ? <> · ตัดออก <b>{view.progress.cut}</b></> : null}
+              </p>
+              <button
+                type="button"
+                className="text-action"
+                onClick={toggleAllZones}
+                aria-controls={zones.map((z) => collapsibleBodyId(zoneAnchor(z.id))).join(" ")}
+              >
+                {allZonesOpen
+                  ? <ChevronsDownUp size={14} aria-hidden="true" />
+                  : <ChevronsUpDown size={14} aria-hidden="true" />}
+                {allZonesOpen ? "ย่อทุกพื้นที่" : "ขยายทุกพื้นที่"}
+              </button>
+            </div>
+            {zones.map((zone, i) => (
               <SurveyZoneCard
                 key={zone.id}
                 id={zoneAnchor(zone.id)}
                 zone={zone}
+                index={i + 1}
                 files={filesByZone[zone.id] || []}
                 canWrite={view.flags.canWrite}
                 busy={busyZone === zone.id}
+                open={isZoneOpen(zone.id)}
+                onToggle={(next) => {
+                  setZoneOpen(zone.id, next);
+                  if (next) setActiveZone(zone.id);
+                }}
+                active={activeZone === zone.id}
+                onActivate={setActiveZone}
+                onDirtyChange={handleDirtyZone}
+                onSaved={handleZoneSaved}
+                onSaveFailed={handleZoneSaveFailed}
+                nextZone={nextGapZone(zone.id)}
+                onGoNext={goNextZone}
                 onSave={(payload) => saveZone(zone.id, payload)}
                 onDelete={() => setRemoving(zone)}
               />

@@ -132,6 +132,38 @@ export function surveyZoneFacts(zone = {}, files = []) {
   };
 }
 
+/* ตัวเลขที่พิมพ์คนละรูปแต่เป็นค่าเดียวกัน — "8.00" กับ 8 ต้องเท่ากัน
+   (server ปรับรูปให้ตอนบันทึก ⇒ เทียบเป็นสตริงดิบจะได้ "ต่าง" ทุกครั้งหลังบันทึก) */
+const sigNumber = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const n = Number(text);
+  return Number.isFinite(n) ? String(n) : text;
+};
+
+/**
+ * 🔑 **ลายเซ็นของค่าที่กรอกในพื้นที่หนึ่ง** — ใช้ตอบคำถามเดียว: "ที่อยู่บนจอ ตรงกับที่
+ * ลงฐานแล้วไหม" ⇒ จอเอาไปยกธง "ยังไม่บันทึก" และส่ง `dirtyZoneIds` ให้การ์ดควบคุม
+ * บล็อกปุ่มส่งผล (ด่านที่ server มองไม่เห็น เพราะค่ายังไม่เคยถูกส่งไป)
+ *
+ * ⚠️ **แถวว่างล้วนไม่นับ** — การ์ดเปิดมาพร้อมช่องเปล่าหนึ่งแถวเสมอเมื่อยังไม่เคยวัด
+ *   ถ้านับ พื้นที่ที่ไม่มีใครแตะจะขึ้น "ยังไม่บันทึก" ทั้งใบตั้งแต่เปิดหน้า
+ * ⚠️ **ไม่รวม `id` ของแถว** — id ของแถวที่เพิ่มบนจอเป็นค่าสุ่ม และ id ที่กลับมาจาก
+ *   server เป็นคนละตัว · เทียบ id = ทุกพื้นที่ "ค้าง" ตลอดกาลหลังบันทึกสำเร็จ
+ */
+export function surveyZoneDraftSignature({ parts = [], spots = [], note = '' } = {}) {
+  const partRows = (Array.isArray(parts) ? parts : [])
+    .map((p) => [
+      String(p?.label ?? '').trim(),
+      sigNumber(p?.widthM), sigNumber(p?.lengthM), sigNumber(p?.heightM),
+    ])
+    .filter((row) => row.some(Boolean));
+  const spotRows = (Array.isArray(spots) ? spots : [])
+    .map((s) => [String(s?.label ?? '').trim(), String(s?.note ?? '').trim()])
+    .filter((row) => row.some(Boolean));
+  return JSON.stringify([partRows, spotRows, String(note ?? '').trim()]);
+}
+
 /**
  * 🔑 **ค่าเปิด/ปิดตั้งต้นของพื้นที่ — คำนวณจากข้อมูลทุกครั้งที่โหลด ไม่จำข้ามครั้ง**
  *

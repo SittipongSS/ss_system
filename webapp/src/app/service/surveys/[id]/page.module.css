@@ -5,15 +5,39 @@
    ⚠️ ตั้งแต่ PR3 ลิสต์นี้อยู่ใน **คอลัมน์เนื้อ** ของ `DetailPageLayout` (ไม่เต็มหน้าแล้ว)
       ⇒ ที่ ≥1051px คอลัมน์กว้างราว 1,020px ยังได้สองการ์ดต่อแถวเหมือนเดิม */
 
+/* ⭐ **ตั้งแต่ PR4 การ์ดพับได้ ⇒ ลิสต์เป็นคอลัมน์เดียวเสมอ** — หัวที่พับสูงราว 60px
+   ใบสามพื้นที่จึงอ่านจบในหน้าจอเดียว · สองคอลัมน์แบบเดิมมีไว้แก้ปัญหา "การ์ดกางค้าง
+   ทุกใบจนหน้ายาว 3,400px" ซึ่งการพับแก้ตรงจุดกว่า และเนื้อของการ์ดเองแบ่งสองคอลัมน์
+   (ขนาด+จุด | รูป+บันทึก) อยู่แล้วเมื่อจอกว้างพอ */
 .list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr));
-  align-items: start;
-  gap: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
 }
 
-/* ปุ่มท้ายลิสต์กินเต็มแถวเสมอ — ไม่ไปนั่งเป็นช่องที่สองข้างการ์ด */
-.listFoot { grid-column: 1 / -1; }
+/* แถวเหนือลิสต์ — จำนวนพื้นที่ทางซ้าย ปุ่มขยาย/ย่อทั้งหมดทางขวา */
+.listBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.listBar p { margin: 0; color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-thai); }
+.listBar p b { color: var(--text-1); font-variant-numeric: tabular-nums; }
+/* ปุ่มขยาย/ย่อทั้งหมด — `.text-action` ไม่ได้ประกาศ display ของตัวเอง ⇒ ไอคอนกับคำจะ
+   ตกคนละบรรทัดทันทีที่บรรทัดซ้ายยาวจนบีบปุ่ม (เจอจริงตอนถ่ายจอ 1440) */
+.listBar button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-5);
+}
+
+/* ปุ่มท้ายลิสต์ — อยู่ตรงที่ช่างไล่วัดมาถึงพอดี ไม่ใช่บนหัวจอ */
+.listFoot { margin-top: var(--space-1); }
 
 /* เหตุที่ปุ่มในโมดัลยังกดไม่ได้ — ตัวหนังสือ ไม่ใช่ปุ่มจางเงียบ ๆ */
 .gate {

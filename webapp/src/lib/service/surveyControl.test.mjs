@@ -7,6 +7,7 @@
 //    "ไม่มีข้อมูล" เงียบ ๆ ถ้าไม่มีใครดักไว้)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 // 📍 `surveyRecallRecord` อยู่ใน `survey.js` (ฝั่งกฎ) เพราะ **server อ่านมันด้วย** —
 //    `surveyRepo` แกะแถวเดียวกันตอนตอบ GET ⇒ ชั้นต้องไหลทางเดียว จอ → กฎ ไม่ใช่ repo → จอ
 import { surveyRecallRecord } from './survey.js';
@@ -16,6 +17,7 @@ import {
   surveyFoldDefaults,
   surveyNameList,
   surveyTotalsText,
+  surveyZoneDraftSignature,
   surveyZoneFacts,
 } from './surveyControl.js';
 
@@ -611,4 +613,81 @@ test('เรียกแบบไม่มีอะไรเลย ต้อง�
   assert.equal(v.send.show, false);
   assert.match(v.lockReason, /ไม่พบใบคำร้อง/);
   assert.equal(v.step.total, 6);
+});
+
+// ── PR4 · พื้นที่พับได้ ────────────────────────────────────────────────────
+
+test('ลายเซ็นค่าที่กรอก: "8.00" กับ 8 คือค่าเดียวกัน (ไม่งั้นบันทึกแล้วยังค้าง "ยังไม่บันทึก")', () => {
+  const typed = surveyZoneDraftSignature({
+    parts: [{ id: 'new-abc', label: ' ปีกเหนือ ', widthM: '8.00', lengthM: '5', heightM: '3.0' }],
+    spots: [{ id: 'new-xyz', label: 'มุมโซฟา', note: '' }],
+    note: 'ฝ้าสูง',
+  });
+  const stored = surveyZoneDraftSignature({
+    parts: [{ id: 'row-1', label: 'ปีกเหนือ', widthM: 8, lengthM: 5, heightM: 3 }],
+    spots: [{ id: 'row-2', label: 'มุมโซฟา', note: null }],
+    note: 'ฝ้าสูง',
+  });
+  assert.equal(typed, stored, 'server ปรับรูปเลขให้ตอนบันทึก — เทียบดิบ ๆ จะต่างทุกครั้ง');
+});
+
+test('ลายเซ็น: แถวว่างล้วนไม่นับ แต่แถวที่พิมพ์ไปแล้วช่องเดียวนับ', () => {
+  const blank = surveyZoneDraftSignature({ parts: [{ label: '', widthM: '', lengthM: '', heightM: '' }] });
+  assert.equal(blank, surveyZoneDraftSignature({ parts: [] }),
+    'การ์ดเปิดมาพร้อมช่องเปล่าหนึ่งแถวเสมอ — ถ้านับ ทุกพื้นที่จะขึ้น "ยังไม่บันทึก" ตั้งแต่เปิดหน้า');
+  assert.notEqual(surveyZoneDraftSignature({ parts: [{ label: '', widthM: '4', lengthM: '', heightM: '' }] }), blank);
+  assert.notEqual(surveyZoneDraftSignature({ spots: [{ label: 'เสา 3', note: '' }] }),
+    surveyZoneDraftSignature({ spots: [] }));
+  assert.notEqual(surveyZoneDraftSignature({ note: 'x' }), surveyZoneDraftSignature({}));
+});
+
+test('ลายเซ็นไม่ระเบิดกับค่าที่ไม่ใช่ลิสต์ (ใบเก่า/ค่าที่อ่านมาเพี้ยน)', () => {
+  assert.equal(surveyZoneDraftSignature(), surveyZoneDraftSignature({ parts: null, spots: undefined, note: null }));
+});
+
+test('จอส่ง dirtyZoneIds ที่ยกธงจากการ์ดจริง ๆ — ด่านของ PR2 ถึงจะมีคนยิงให้', () => {
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(page, /dirtyZoneIds,/, 'ต้องส่งเข้า surveyControlView');
+  assert.match(page, /onDirtyChange=\{handleDirtyZone\}/, 'การ์ดเป็นคนบอกว่าตัวเองมีค่าค้าง');
+  assert.match(page, /open=\{isZoneOpen\(zone\.id\)\}/);
+  assert.match(page, /view\.foldDefaults/, 'ค่าเปิด/ปิดตั้งต้นมาจากตัวตัดสิน ไม่ใช่กฎชุดที่สองบนจอ');
+  assert.match(page, /ย่อทุกพื้นที่/);
+  assert.match(page, /ขยายทุกพื้นที่/);
+  assert.doesNotMatch(page, /localStorage/, 'ค่าพับห้ามจำข้ามครั้ง (กติกาของแบบที่อนุมัติ)');
+});
+
+test('การ์ดพื้นที่: ป้ายค้าง/ป้ายพัง · บังคับเปิดเมื่อบันทึกไม่สำเร็จ · ลิงก์ไปพื้นที่ถัดไป', () => {
+  const card = readFileSync(new URL('../../components/service/SurveyZoneCard.js', import.meta.url), 'utf8');
+  assert.match(card, /ยังไม่บันทึก/);
+  assert.match(card, /บันทึกไม่สำเร็จ/);
+  assert.match(card, /role="alert"/, 'error ต้องประกาศตัวเอง ไม่ใช่ตัวหนังสือเงียบ ๆ');
+  assert.match(card, /onSaveFailed\?\.\(zone\.id\)/, 'บันทึกไม่ผ่าน = บังคับเปิดพื้นที่นั้น');
+  /* คำบนลิงก์เปลี่ยนตามทิศ — ดูเทสต์ "ลิงก์ถัดไปต้องเดินไปข้างหน้า" ข้างล่าง
+     (เดิมพินไว้เป็น `ถัดไป: {nextZone.name}` ตายตัว ซึ่งเป็นคำที่ผิดตอนวนกลับต้นลิสต์) */
+  assert.match(card, /\{nextZone\.back \? "กลับไปที่" : "ถัดไป:"\} \{nextZone\.name\} \(ยังไม่ครบ\)/);
+  assert.match(card, /keepOpen: dirty \|\| !!error/,
+    'พับพื้นที่ปัจจุบันได้เฉพาะตอนไม่มีค่าค้างและไม่มี error');
+  assert.match(card, /surveyZoneFacts\(zone, shownFiles\)/,
+    'ตัวเลขบนหัวมาจากตัวตัดสินกลาง + ไฟล์สดของแผงแนบ (ตัวนับรูปต้องขยับทันที)');
+});
+
+test('การ์ดรับแถวที่โหลดใหม่กลับเข้ามา — ค่าค้างปลอมล็อกปุ่มส่งผลไม่ได้', () => {
+  const card = readFileSync(new URL('../../components/service/SurveyZoneCard.js', import.meta.url), 'utf8');
+  /* 🐞 จอนี้โหลดซ้ำเองเมื่อสลับกลับมาที่แท็บ และนัดหนึ่งใบมีช่างได้หลายคน ⇒ ช่างอีกคน
+     บันทึกพื้นที่เดียวกันเมื่อไร การ์ดที่ไม่เคยอ่าน prop กลับเข้ามาจะโชว์ค่าเก่า ·
+     ขึ้นป้าย "ยังไม่บันทึก" ทั้งที่ไม่มีใครพิมพ์ · แล้วธงนั้นวิ่งไป `dirtyZoneIds`
+     ล็อกปุ่มส่งผลถาวรโดยโทษผู้ใช้ (พิสูจน์สดแล้ว: ฐานเป็น 12 · ช่องยังเป็น 4) */
+  assert.match(card, /savedSigRef/, 'ต้องจำลายเซ็นของแถวที่รับมาล่าสุดไว้เทียบ');
+  assert.match(card, /adoptRow\(zoneRef\.current\)/, 'ไม่มีของค้าง = รับแถวใหม่มาเลย');
+  assert.match(card, /ถูกแก้จากที่อื่น/, 'มีของค้างจริง = บอกว่าแถวถูกแก้ ไม่ใช่เงียบแล้วให้ทับ');
+  assert.match(card, /ใช้ค่าล่าสุดจากฐาน/, 'ต้องมีทางออกที่ไม่ใช่การกดบันทึกทับ');
+});
+
+test('ลิงก์ "ถัดไป" ต้องเดินไปข้างหน้าในลิสต์ ไม่ใช่เด้งกลับใบแรกเสมอ', () => {
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  /* 🐞 เดิม `rows.find(r => r.crew.length && r.zoneId !== zoneId)` = ใบแรกของลิสต์เสมอ
+     ⇒ ใบ 5 พื้นที่ที่ขาดที่ 1 กับ 5 จะสลับ 1↔5 ไม่จบ และพับใบที่เพิ่งทำเสร็จทิ้ง */
+  assert.match(page, /const order = new Map\(zones\.map/, 'ลำดับวัดจากลิสต์ที่ตาเห็น');
+  assert.match(page, /order\.get\(r\.zoneId\) \?\? Infinity\) > here/, 'เลือกตัวที่อยู่หลังตำแหน่งปัจจุบัน');
+  assert.match(page, /back: !ahead/, 'วนกลับต้นลิสต์เมื่อไร ต้องบอกการ์ดให้เปลี่ยนคำ');
 });
