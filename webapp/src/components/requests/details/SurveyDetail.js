@@ -12,18 +12,30 @@
 // ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ยังอยู่ในตาราง แต่ไม่เข้ายอดรวม — หายไป
 // เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วเจ้าหน้าที่ตัดทิ้งเพราะอะไร
 import Link from "next/link";
+import { ClipboardList } from "lucide-react";
+import { DetailCard } from "@/components/ui/DetailPage";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
-import { fmtDate, fmtNumber, naText } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtNumber, naText } from "@/lib/format";
 import { surveyChangeCounts, surveyChangeText, surveyTotals, surveyZoneSummary } from "@/lib/service/survey";
 import styles from "./details.module.css";
 
 const STATUS_LABEL = { ok: "", cut: "ตัดออก", added: "เจ้าหน้าที่เพิ่มหน้างาน" };
 
-// ตัวเลขที่ยังไม่ได้วัดต้องเป็น **ขีด** ไม่ใช่ 0 — 0 อ่านว่า "วัดแล้วได้ศูนย์"
-const num = (value) => (value
-  ? fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  : null);
+/* ตัวเลขที่ยังไม่ได้วัดต้องเป็น **ขีด** ไม่ใช่ 0 — 0 อ่านว่า "วัดแล้วได้ศูนย์"
+   ⭐ จำนวนเต็มไม่ต้องลาก `.00` มาด้วย — ขนาดพื้นที่ที่วัดได้ลงตัวคือเลขที่อ่านออก
+   ในพริบตา ("8" ไม่ใช่ "8.00") ส่วนเลขที่มีเศษยังโชว์สองตำแหน่งเหมือนเดิม เพราะ
+   ทศนิยมของมันคือข้อมูลจริงที่ห้ามหาย
+   ⚠️ **รู้ตัวว่าคอลัมน์ผสมแล้วจุดทศนิยมไม่ตรงแถว** ("7.50" กับ "50" ในคอลัมน์เดียวกัน) —
+   ยอมตามมติที่เลือก "เลขลงตัวต้องอ่านเป็น 8" · จะให้ตรงทั้งคอลัมน์ต้องตัดสินความละเอียด
+   **รายคอลัมน์** (ถ้าคอลัมน์ไหนมีเศษ ทั้งคอลัมน์สองตำแหน่ง) ซึ่งแปลว่าเลขลงตัวกลับไป
+   เป็น 8.00 ทันทีที่แถวข้าง ๆ มีเศษ — เป็นมติของเจ้าของงาน ไม่ใช่ของไฟล์นี้ */
+const num = (value) => {
+  if (!value) return null;
+  return Number.isInteger(Number(value))
+    ? fmtNumber(value, { maximumFractionDigits: 0 })
+    : fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 const VISIT_STATE = {
   draft: { label: 'ยังไม่ขึ้นตาราง', tone: 'warning' },
@@ -48,9 +60,43 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
        ผู้ขอเป็นคนพิมพ์รายการนี้เองกับมือ ⇒ บอกเขาว่า "ได้ครบตามที่ขอ" คือเสียง
        รบกวนบนใบที่ยังไม่มีใครไปวัดด้วยซ้ำ · สิ่งที่เขาไม่รู้คือ *สิ่งที่เปลี่ยน* */
   const change = surveyChangeCounts(zones);
+  /* 🔑 **ชื่อการ์ดต้องเดินตามของที่อยู่ในการ์ดจริง ๆ ไม่ใช่ค่าคงที่** — ใบประเมินเกิดมา
+     โดยยังไม่มีผล (รอคิว/รอเข้าพื้นที่ คือช่วงชีวิตส่วนใหญ่ของใบ) หัวที่ตรึงว่า
+     "ผลประเมินพื้นที่" จึงประกาศผลที่ยังไม่มีใครวัด แล้วผลักให้เมตาใต้หัวเป็นฝ่าย
+     ปฏิเสธหัวตัวเอง = สองบรรทัดชิดกันพูดคนละเรื่อง (มาร์กอัปเดิมไม่มีหัวเลย จึงไม่เคยโกหก)
+     ⇒ **หัวเดินตามเนื้อ** (`measured` คือตัวเดียวกับที่ตัดสินว่ามีคอลัมน์ผลวัดไหม
+       — ใบที่ TS ส่งผลแล้วนับว่ามีผลเสมอ) ส่วน **เมตาเดินตามขั้นของใบ**:
+       วัดแล้ว/ส่งแล้ว → "ผลประเมินพื้นที่" + ใครส่งเมื่อไร
+       วัดแล้วยังไม่ส่ง → "ผลประเมินพื้นที่" + "ยังไม่ส่งผล"
+       ยังไม่มีอะไรเลย → "พื้นที่ที่ต้องประเมิน" (ถ้อยคำเดิมของบล็อกนี้ ซึ่งเคยเป็น
+       aria-label ของ <section>) + "ยังไม่ส่งผล" */
+  const answered = Boolean(request.answeredAt || request.answeredByName);
+  const hasResult = measured || answered;
+  const sentMeta = answered
+    ? [
+      request.answeredByName ? `ส่งผลโดย ${request.answeredByName}` : "ส่งผลแล้ว",
+      request.answeredAt ? fmtDateTime(request.answeredAt) : null,
+    ].filter(Boolean).join(" · ")
+    : "ยังไม่ส่งผล";
 
+  /* ⭐ **ครอบด้วย DetailCard ของระบบ** (มติเจ้าของงาน 2026-09-16) — เดิมบล็อกนี้วางลง
+     คอลัมน์หลักตรง ๆ ตารางจึงไม่มีพื้นของตัวเอง: แถวโชว์สีพื้นหน้า (วัด #efe9dd สว่าง /
+     #121726 มืด) กลายเป็น "หลุม" ระหว่างการ์ดใบอื่น และกรอบตารางเยื้องเข้ามา 16px
+     ทั้งสองข้างเพราะกฎยกเลิกมาร์จินของ embedded ใช้ได้เฉพาะในเนื้อการ์ด
+     ⚠️ ลิงก์เข้าจอ TS เป็น `actions` ของหัวการ์ด และยังคุมด้วยด่านเดิม —
+     ไม่มีสิทธิ์ = ไม่โชว์ (ไม่ใช่โชว์แล้วกดไปเจอ 403) */
   return (
-    <section className={styles.surveyWrap} aria-label="สถานที่และพื้นที่ที่ต้องประเมิน">
+    <DetailCard
+      icon={ClipboardList}
+      title={hasResult ? "ผลประเมินพื้นที่" : "พื้นที่ที่ต้องประเมิน"}
+      meta={sentMeta}
+      actions={canWorkSurvey ? (
+        <p className={styles.surveyOpen}>
+          <Link className="linklike" href={`/service/surveys/${request.id}`}>เปิดใบประเมิน →</Link>
+        </p>
+      ) : null}
+    >
+    <div className={styles.surveyWrap}>
       {site && (
         <p className={styles.surveySite}>
           {/* รหัส · ชื่อ ตามกติกาหน้ารายละเอียดของทั้งระบบ */}
@@ -90,14 +136,8 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
         </p>
       )}
 
-      {/* ⭐ **ทางเข้าจอทำงานของ TS** — ตารางนี้เป็นของ *ผู้อ่าน* (ฝ่ายขายเป็นหลัก)
-          ส่วนการกรอกผลอยู่คนละจอ เพราะเป็นคนละงานคนละสิทธิ์
-          ⚠️ ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม (ไม่ใช่โชว์แล้วกดไปเจอ 403) */}
-      {canWorkSurvey && (
-        <p className={styles.surveyOpen}>
-          <Link href={`/service/surveys/${request.id}`}>เปิดจอบันทึกผล / สรุปส่งผล →</Link>
-        </p>
-      )}
+      {/* ⭐ **ทางเข้าจอทำงานของ TS ย้ายขึ้นไปเป็น action ของหัวการ์ด** — ตารางนี้เป็นของ
+          *ผู้อ่าน* (ฝ่ายขายเป็นหลัก) ส่วนการกรอกผลอยู่คนละจอ เพราะเป็นคนละงานคนละสิทธิ์ */}
 
       {(change.cut > 0 || change.added > 0) && (
         <StatusNotice tone="info" title={surveyChangeText(change, { actor: "TS" })}>
@@ -160,14 +200,22 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
           </tbody>
           {measured && (
             <tfoot>
+              {/* ⭐ **แถวรวมคือเซลล์ข้อมูล ไม่ใช่หัวคอลัมน์** — ป้ายเคยเป็น `<th>` จึงโดนกฎ
+                  หัวคอลัมน์ทั้งชุด (พื้น --panel-2 · 9.5px หนา · สูง 42px · จัดกึ่งกลาง
+                  แนวตั้ง) ⇒ เห็นเป็นบล็อกสีอ่อนกินความกว้าง 40% ของแถวรวม และป้ายต่ำกว่า
+                  ตัวเลขข้างกัน 9px (วัดจริง 2026-09-16)
+                  ⚠️ แถวยังอ่านออกครบหลังเปลี่ยนเป็น td: ทุกตัวเลขในแถวถูกเรียกด้วย
+                  **หัวคอลัมน์ใน thead** อยู่แล้ว (WCAG 1.3.1) ส่วนเซลล์แรกคือเนื้อความ
+                  "รวม n พื้นที่" ไม่ใช่หัวของแถว — ห้ามใส่ `scope` บน td (ไม่ใช่ HTML
+                  ที่ถูกต้อง screen reader ไม่อ่านให้) */}
               <tr>
-                <th>
+                <td>
                   รวม {totals.zones} พื้นที่
                   {/* ⚠️ ต้องบอกทั้งสองทาง — เดิมมีแต่ "ตัดออก" ⇒ ใบที่ TS เพิ่มพื้นที่ให้
                       จะอ่านเหมือนตัวเลขบวมขึ้นเองโดยไม่มีคำอธิบาย */}
                   {totals.cutZones ? <span className="cell-sub">ตัดออก {totals.cutZones}</span> : null}
                   {totals.addedZones ? <span className="cell-sub">เพิ่มหน้างาน {totals.addedZones}</span> : null}
-                </th>
+                </td>
                 <td className="num">{naText(num(totals.areaSqm))}</td>
                 <td className="num">{naText(num(totals.volumeCbm))}</td>
                 <td className="num">
@@ -184,6 +232,7 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
           )}
         </table>
       </TableScroll>
-    </section>
+    </div>
+    </DetailCard>
   );
 }

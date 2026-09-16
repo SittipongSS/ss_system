@@ -5,6 +5,11 @@
 //
 // 🔴 **ห้ามให้ปุ่มบนจอตัดสินเองแยกจาก server** — เงื่อนไขที่ปุ่มรู้แต่ server ไม่รู้
 // คือปุ่มที่จางเงียบโดยไม่บอกเหตุ (กติกาเดิมของ lib/requests/stages.js)
+//
+// 📍 **กฎอยู่ที่นี่ · การประกอบหน้าจออยู่ที่ `surveyControl.js`** — ตัวที่บอกว่าการ์ดควบคุม
+// วาดอะไร (สถานะ/โทน/เหตุผลที่กดส่งไม่ได้/ค่าเปิด-ปิดพื้นที่) แยกไปไฟล์ข้าง ๆ และ
+// **ถามตัวในไฟล์นี้ทั้งหมด** ⇒ กฎใหม่ของใบประเมินเขียนที่นี่เสมอ ไม่ใช่ที่นั่น
+// (เขียนที่นั่นเมื่อไร จะได้กฎที่ server มองไม่เห็น ซึ่งคือบั๊กที่ไฟล์นี้เกิดมาเพื่อกัน)
 
 /* ── สูตร: 2,400 ลบ.ม. = 1 แพ็คเกจ (มติผู้ใช้ 2026-08-29) ───────────────
    ⚠️ ใช้ **ปริมาตร** ไม่ใช่พื้นที่ — เพดาน 6.5 ม. กับ 2.8 ม. ที่พื้นที่เท่ากัน
@@ -245,10 +250,16 @@ export function surveyDocCounts(files = []) {
  *   เคยเรียงมาแต่เดิม — สลับเมื่อไร ข้อความบนจอสลับตาม
  * ⚠️ `missing(row, files)` คืน **ข้อความไทยหรือ `null`** — ห้ามคืน boolean เปล่า
  *   เพราะข้อความบอกได้ละเอียดกว่า ("ครบไม่ครบสามช่องกี่ส่วน")
+ *
+ * ⭐ `short` = ชื่อข้อแบบคำเดียว ("ขนาด" · "ภาพกว้าง") — ของที่ต้องเอาไปต่อกันเป็น
+ *   บรรทัดเดียวในที่แคบ (หัวพื้นที่ที่พับอยู่ · กลุ่มด่านต่อพื้นที่ในการ์ดควบคุม)
+ *   ⚠️ **อยู่ในทะเบียนข้อ ไม่ใช่ที่จอ** — ด้วยเหตุผลเดียวกับ `owner`: จอสองจอที่
+ *     ย่อชื่อข้อเองจะย่อไม่เหมือนกัน แล้วผู้ใช้จะอ่านเหมือนเป็นคนละข้อ
  */
 export const SURVEY_GATES = [
   {
     key: 'size',
+    short: 'ขนาด',
     owner: 'crew',
     label: 'ขนาด ก × ย × ส ครบทุกพื้นที่',
     missing: (row) => {
@@ -261,30 +272,35 @@ export const SURVEY_GATES = [
   },
   {
     key: 'wide',
+    short: 'ภาพกว้าง',
     owner: 'crew',
     label: 'ภาพกว้างครบทุกพื้นที่',
     missing: (row, files) => (surveyDocCounts(files).wide === 0 ? 'ยังไม่มีภาพกว้าง' : null),
   },
   {
     key: 'spots',
+    short: 'จุดติดตั้ง',
     owner: 'crew',
     label: 'จุดที่ติดตั้งได้ อย่างน้อย 1 จุดต่อพื้นที่',
     missing: (row) => (spotCounts(row.spots).total === 0 ? 'ยังไม่ได้ระบุจุดที่ติดตั้งได้' : null),
   },
   {
     key: 'plan',
+    short: 'ภาพผัง',
     owner: 'head',
     label: 'ภาพผังที่มาร์กจุดแล้ว',
     missing: (row, files) => (surveyDocCounts(files).plan === 0 ? 'ยังไม่มีภาพผังที่มาร์กจุดแล้ว' : null),
   },
   {
     key: 'picked',
+    short: 'เลือกจุด',
     owner: 'head',
     label: 'เลือกจุดที่จะติดตั้งแล้ว',
     missing: (row) => (spotCounts(row.spots).selected === 0 ? 'ยังไม่ได้เลือกจุดที่จะติดตั้ง' : null),
   },
   {
     key: 'package',
+    short: 'แพ็คเกจ',
     owner: 'head',
     label: 'เคาะจำนวนแพ็คเกจแล้ว',
     missing: (row) => {
@@ -333,7 +349,7 @@ export function surveyResultMissing(row = {}, files = []) {
  * ⚠️ นับจาก **พื้นที่ที่ยังอยู่ในใบ** เท่านั้น — แถวที่ถูกตัดออกไม่ต้องผ่านด่านไหนเลย
  *   (บังคับให้วัดของที่ตัดทิ้ง คือบังคับงานที่ไม่มีใครได้ใช้)
  *
- * @returns `[{ key, owner, label, ok, done, total, zones: [ชื่อพื้นที่ที่ยังขาด] }]`
+ * @returns `[{ key, owner, label, short, ok, done, total, zones: [ชื่อพื้นที่ที่ยังขาด] }]`
  */
 export function surveyGateChecklist(rows = [], filesByZone = {}) {
   const active = (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
@@ -348,6 +364,7 @@ export function surveyGateChecklist(rows = [], filesByZone = {}) {
       key: gate.key,
       owner: gate.owner,
       label: gate.label,
+      short: gate.short,
       ok: zones.length === 0,
       done: active.length - zones.length,
       total: active.length,
@@ -500,6 +517,36 @@ export function surveyRecallError(request, { reason = '', canRecall = false } = 
     return 'ต้องบอกเหตุผลอย่างน้อย 10 ตัวอักษร — ฝ่ายขายจะเห็นข้อความนี้';
   }
   return null;
+}
+
+/* ── แถว "ดึงผลกลับมาแก้" ที่ตรึงไว้ในเธรด (`entity_updates` kind='recall') ──
+ *
+ * 📍 **อยู่ที่นี่เพราะ *server* อ่านมันด้วย** — `surveyRepo` แกะแถวนี้ตอนตอบ GET ⇒ ถ้า
+ *   ตัวแกะไปอยู่ในไฟล์ประกอบหน้าจอ (`surveyControl.js`) เส้น API สี่เส้นจะลาก
+ *   โมดูลฝั่งจอเข้ามาทั้งสาย · ชั้นต้องไหลทางเดียว: จอ → กฎ (ไฟล์นี้) → จบ
+ *
+ * 🐞 **เหตุผลไม่มีคอลัมน์ของตัวเอง** — route ดึงกลับเขียนมันลง `body` รวมกับตัวเลขเดิม
+ *   ("TS ดึงผลประเมินกลับมาแก้ — {เหตุผล} · ตัวเลขที่ส่งไปแล้ว …") ⇒ ต้องแกะกลับที่นี่
+ *   ที่เดียว ไม่ใช่ให้แต่ละจอแกะเอง · แกะไม่ออก = คืน `body` ทั้งก้อน **ไม่ใช่ null**
+ *   (ประโยคยาวไปยังอ่านรู้เรื่อง · ช่องว่างแปลว่า "ไม่เคยดึงกลับ" ซึ่งผิดความจริง)
+ * ⚠️ `meta.totals` คือตัวเลขที่ฝ่ายขายถือไปแล้ว — ของชิ้นเดียวที่บอกได้ว่า "ผลเดิม" คืออะไร
+ */
+export function surveyRecallRecord(row) {
+  if (!row) return null;
+  const body = String(row.body ?? '').trim();
+  const cut = body.match(/—\s*([\s\S]*?)(?:\s*·\s*ตัวเลขที่ส่งไปแล้ว[\s\S]*)?$/);
+  const reason = String(cut?.[1] ?? body).trim() || null;
+  const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta) ? row.meta : {};
+  const totals = meta.totals && typeof meta.totals === 'object' ? meta.totals : null;
+  return {
+    id: row.id || null,
+    reason,
+    body: body || null,
+    byId: row.authorId != null ? String(row.authorId) : null,
+    byName: row.authorName || null,
+    at: row.createdAt || null,
+    totals,
+  };
 }
 
 /* ส่วนต่างของตัวเลขที่ส่งไปแล้ว vs ที่กำลังจะส่งใหม่ — คืน `[]` เมื่อไม่มีอะไรเปลี่ยน

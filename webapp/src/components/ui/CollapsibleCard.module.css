@@ -1,0 +1,176 @@
+/* การ์ดที่พับเก็บได้ — หัวเป็นปุ่มทั้งแถว (ดูสัญญาสี่ข้อใน CollapsibleCard.js)
+   ⚠️ มือถือก่อน: ที่ ≤680px ลูกศรย้ายไปขวาสุด เพราะนิ้วโป้งอยู่ขอบขวา และชื่อกล่อง
+      ต้องเริ่มที่ขอบซ้ายเท่ากับทุกการ์ดของหน้า */
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  overflow: hidden;
+  /* ลิงก์ที่เลื่อนมาจอดที่กล่องนี้ต้องไม่จอดใต้แถบเมนูที่ปักอยู่ด้านบน */
+  scroll-margin-top: var(--scroll-anchor-top);
+}
+
+.card[data-open] { border-color: var(--border-strong); }
+.card[data-alert] { border-color: var(--red); }
+
+.heading { margin: 0; font: inherit; }
+
+.head {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "chev lead ident badges";
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--panel-inset);
+  border: 0;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.head:hover { background: var(--panel-2); }
+.head:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+.chev {
+  grid-area: chev;
+  display: inline-flex;
+  color: var(--text-3);
+  transition: transform var(--motion-medium) var(--ease-standard);
+}
+
+.card[data-open] .chev { transform: rotate(90deg); }
+
+/* วงหน้าชื่อ — สีเดินตาม tone ของกล่อง (เลขลำดับ หรือไอคอนสถานะ) */
+.lead {
+  grid-area: lead;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+}
+
+.card[data-tone="success"] .lead { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.card[data-tone="warning"] .lead { border-color: var(--amber); color: var(--amber); }
+.card[data-tone="info"] .lead { border-color: var(--blue); color: var(--blue); }
+.card[data-tone="danger"] .lead,
+.card[data-alert] .lead { border-color: var(--red); background: transparent; color: var(--red); }
+
+/* ชื่อกับบรรทัดสรุปอยู่บรรทัดเดียวกันเมื่อที่พอ — ไม่พอก็ให้สรุป **ตกลงไปทั้งบรรทัด**
+   🐞 เดิมเป็นกริดสองคอลัมน์ `max-content 1fr` ⇒ ชื่อยาวกินคอลัมน์แรกได้ไม่จำกัด แล้ว
+      คอลัมน์สรุปเหลือ 0–9px · บรรทัด "ขาด: …" แตกเป็นคำละบรรทัดล้นออกนอกกล่องไปทับป้าย
+      และหัวสูงจาก 67 เป็น **202px** (วัดจริงที่การ์ดกว้าง 643–694px ซึ่งเกิดทั้งที่จอ
+      700px และที่จอ 1100px ที่มีรางขวาบีบอยู่ · ชื่อพื้นที่พิมพ์เองได้ถึง 150 ตัวอักษร)
+   🔑 **ตัวที่บีบคือความกว้างที่เหลือ ไม่ใช่ขนาดจอ** ⇒ สั่งด้วยการห่อของ flex
+      (`flex-basis` ของสรุป = ความกว้างต่ำสุดที่ยังอ่านรู้เรื่อง) ไม่ใช่จุดตัดจอ —
+      จุดตัดจอมองไม่เห็นรางขวา และมองไม่เห็นความยาวของชื่อ */
+.ident {
+  grid-area: ident;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-5);
+  row-gap: var(--space-0-5);
+}
+
+.name { flex: 0 1 auto; min-width: 0; }
+.eyebrow {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  display: block;
+  color: var(--text-1);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.title small {
+  margin-inline-start: var(--space-1-5);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-normal);
+}
+
+/* 160px = ความกว้างที่บรรทัดสรุปยังห่อเป็นสองบรรทัดอ่านได้ · แคบกว่านี้เมื่อไร
+   ให้ตกลงมาเป็นบรรทัดของตัวเองเต็มความกว้างแทน (ท่าเดียวกับที่ ≤680px ทำอยู่แล้ว) */
+.summary {
+  flex: 1 1 160px;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0-5) var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* ตัวเลขในบรรทัดสรุปเข้มกว่าคำรอบ ๆ — คนกวาดสายตาหาตัวเลข ไม่ได้อ่านเป็นประโยค */
+.summary b {
+  color: var(--text-1);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.badges {
+  grid-area: badges;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+}
+
+.body {
+  display: block;
+  padding: 0 var(--panel-inset) var(--panel-inset);
+  border-top: 1px solid var(--border);
+}
+
+/* 🔑 คลาสของเรามี `display` ของตัวเอง ⇒ ต้องประกาศทับเอง ไม่งั้นแอตทริบิวต์ `hidden`
+   ของเบราว์เซอร์ (display:none ชั้น UA) แพ้ แล้ว "พับ" กลายเป็นไม่เกิดอะไรขึ้นเลย */
+.body[hidden] { display: none; }
+
+@media (max-width: 680px) {
+  .head {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "lead ident badges chev";
+    gap: var(--space-2-5);
+    padding: var(--space-2-5) var(--space-3);
+  }
+
+  /* ลูกศรชี้ลงตอนพับ ชี้ขึ้นตอนกาง — ที่ขอบขวาการหมุน 90° อ่านเป็น "กดแล้วเปิดลงมา" */
+  .chev { transform: rotate(90deg); }
+  .card[data-open] .chev { transform: rotate(-90deg); }
+
+  /* จอแคบ: สรุปตกลงมาเองอยู่แล้วจากการห่อของ flex — ที่นี่เหลือแค่ปรับระยะ */
+  .summary { gap: 0 var(--space-2-5); }
+  .title { font-size: var(--fs-8); }
+  /* 🔑 **ป้ายซ้อนเป็นคอลัมน์ที่จอแคบ — จงใจ ไม่ใช่ของค้าง** (วัดที่ 390px บนข้อมูลจริง
+     แล้วโคลนป้ายเพิ่มเพื่อไล่ทุกจำนวน · หน่วยเป็นความสูงของหัวที่พับ)
+       ป้าย  คอลัมน์  แถวห่อในช่องเดิม  ป้ายลงบรรทัดของตัวเอง
+         1     83px        246px              121px
+         2     83px        246px              121px
+         3    111px        246px              121px
+         5    174px        246px              152px
+     ⚠️ "แถวที่ห่อได้" ในช่องกริดเดิม**พังที่สุด**: รางป้ายเป็น `auto` = max-content
+        ซึ่งชนะ `minmax(0, 1fr)` ของคอลัมน์ชื่อเสมอ ⇒ ชื่อถูกบีบเหลือ 0px แล้วรหัส
+        พื้นที่แตกเป็นตัวอักษรละบรรทัด (หัวสูง 246px คงที่ไม่ว่าจะมีกี่ป้าย)
+     ⭐ จำนวนป้ายที่เจอจริงคือ 1–2 ใบ (สภาพพื้นที่ + "ยังไม่บันทึก" ตอนกำลังพิมพ์)
+        ซึ่งคอลัมน์ซ่อนเข้าไปในความสูงเดิมได้ฟรี · 3 ใบขึ้นไปเป็นกรณีที่มี error
+        หรือชนกับคนอื่น ซึ่งยอมให้หัวสูงขึ้นได้ เพราะเป็นจังหวะที่ต้องหยุดอ่าน */
+  .badges { flex-direction: column; align-items: flex-end; gap: var(--space-1); }
+  .body { padding: 0 var(--space-3) var(--space-3); }
+}

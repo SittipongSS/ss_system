@@ -6,34 +6,62 @@
 // ⭐ **สรุปส่งผล** (จอ 07) — หัวหน้า TS ตัดสินสองอย่างบนโต๊ะ: จะติดตั้งจุดไหน
 //   และแต่ละพื้นที่ใช้กี่แพ็คเกจ แล้วกดส่งให้ฝ่ายขาย
 //
+// ⭐ **เปลือกเป็นทรงหน้ารายละเอียดของบ้าน** (PR3 ของการรื้อจอประเมิน · แบบที่อนุมัติ
+//   2026-09-16) — `Workspace hideHeader` + `DetailOverview` (รหัส · ชื่อ + ไซต์/นัด/
+//   กำหนดส่ง) + `DetailPageLayout` ที่มีรางขวา · **ปุ่มระดับใบทั้งชุดอยู่ในการ์ด
+//   "จัดการผลประเมิน" บนรางที่เดียว** (`SurveyControlCard`) — ย้ายมาจากหัวจอ ไม่ใช่ก๊อป
+//   ⚠️ ป้ายความคืบหน้าบนหัวจอ · แถบ "ส่งผลให้ฝ่ายขายแล้ว" · ปุ่มส่ง/ดึงกลับที่
+//   `headerRight` **ถูกย้ายเข้าการ์ดทั้งหมด** — วางกลับมาที่นี่อีกเมื่อไร จะได้ของ
+//   ชิ้นเดียวกันสองที่ที่เพี้ยนหากันเสมอ (บทเรียนรางขวารุ่นแรกของหน้าคำร้อง)
+//
 // ⚠️ **ด่านเขียนเป็นด่านรายใบ ไม่ใช่ cap ล้วน** — เจ้าหน้าที่หน้างานถือ `service:work`
 //   ซึ่งเปิดเฉพาะงานที่ตัวเองถูกมอบหมาย ⇒ server เป็นคนตอบว่าเขียนได้ไหม (`canWrite`)
 //   จอไม่คำนวณเอง เพราะจอไม่รู้ user id ของตัวเอง
-import { use, useCallback, useEffect, useState } from "react";
+//
+// ⭐ **พื้นที่พับได้** (PR4 · แบบที่อนุมัติ 2026-09-16) — ค่าเปิด/ปิดตั้งต้นมาจาก
+//   `view.foldDefaults` ซึ่ง **คิดใหม่จากข้อมูลทุกครั้งที่โหลด** ไม่จำข้ามครั้งและ
+//   ไม่ขึ้นกับขนาดจอ · สิ่งที่หน้าเก็บไว้คือ *สิ่งที่ผู้ใช้กดในรอบนี้* เท่านั้น
+//   ⚠️ **ห้ามพับเองหลังบันทึกสำเร็จ** — ค่าตั้งต้นของพื้นที่ที่เพิ่งวัดครบจะพลิกเป็น
+//   "พับ" ทันทีที่โหลดกลับมา ⇒ ถ้าไม่ปักธงว่าคนนี้เปิดไว้ การ์ดจะหุบใส่หน้าคนที่เพิ่ง
+//   กดบันทึก ซึ่งเป็นพฤติกรรมที่แบบที่อนุมัติสั่งห้ามไว้ตรง ๆ (กติกาข้อ 3)
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList, MapPinPlus, Search, Send, Undo2 } from "lucide-react";
+import { CalendarClock, ChevronsDownUp, ChevronsUpDown, Flag, MapPin, MapPinPlus, Search } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
-import SurveyGateList from "@/components/service/SurveyGateList";
+import SurveyControlCard from "@/components/service/SurveyControlCard";
 import SurveyResultTable from "@/components/service/SurveyResultTable";
 import SurveyZoneCard from "@/components/service/SurveyZoneCard";
-import Button from "@/components/ui/Button";
+import { collapsibleBodyId, collapsibleHeadId } from "@/components/ui/CollapsibleCard";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
+import { DetailPageLayout } from "@/components/ui/DetailPage";
+import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import StatusNotice from "@/components/ui/StatusNotice";
 import Tabs from "@/components/ui/Tabs";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import {
-  surveyAddZoneError, surveyChangeCounts, surveyChangeText, surveyGateChecklist,
-  surveyFieldProgress, surveySendBackError, surveySendError, surveyTotals,
+  surveyAddZoneError, surveyChangeCounts, surveyChangeText,
+  surveySendBackError, surveyTotals,
 } from "@/lib/service/survey";
+import { surveyControlView } from "@/lib/service/surveyControl";
+import { surveyPendingDecisions } from "@/lib/service/surveyDecision";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
+import { isClosedVisit } from "@/lib/service/visitStatus";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import { apiJson } from "@/lib/apiFetch";
+import { businessDate } from "@/lib/businessDate";
+import { fmtDate, naText } from "@/lib/format";
+import { toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
+
+/* จุดจอดของลิงก์ "เปิด <พื้นที่>" ในการ์ดควบคุม — id ตัวเดียวกันทั้งจอ
+   ⚠️ ระยะหลบแถบเมนูอยู่ที่ `scroll-margin-top` ของการ์ดพื้นที่ (SurveyZoneCard) */
+const zoneAnchor = (zoneId) => `survey-zone-${zoneId}`;
 
 export default function SurveySheetPage({ params }) {
   const { id } = use(params);
@@ -65,10 +93,29 @@ export default function SurveySheetPage({ params }) {
   const [removing, setRemoving] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);
   /* หัวหน้าแจ้งช่างให้กลับไปเก็บงาน (แผน §5.4) — เหตุผลบังคับ เพราะช่างจะเห็นข้อความนี้
-     ในกระดิ่งแล้วต้องรู้ว่าต้องไปทำอะไร โดยไม่ต้องโทรถามกลับ */
-  const [sendingBack, setSendingBack] = useState(null);
+     ในกระดิ่งแล้วต้องรู้ว่าต้องไปทำอะไร โดยไม่ต้องโทรถามกลับ
+     ⚠️ ปุ่มอยู่ในการ์ดควบคุม **ครั้งเดียวต่อใบ** — ไม่ใช่ปุ่มต่อข้อเหมือนเช็คลิสต์เดิม */
+  const [sendingBack, setSendingBack] = useState(false);
   const [sendBackNote, setSendBackNote] = useState("");
   const [sendBackBusy, setSendBackBusy] = useState(false);
+  /* ── พื้นที่พับได้ ──────────────────────────────────────────────────────
+     `openZones` = **สิ่งที่ผู้ใช้กดในรอบนี้เท่านั้น** (ไม่ใช่สถานะเต็ม) · ค่าที่ไม่มีใน
+     ก้อนนี้อ่านจาก `view.foldDefaults` ซึ่งคิดใหม่จากข้อมูลทุกครั้งที่โหลด
+     ⇒ พื้นที่ที่เพิ่งเพิ่มหน้างานได้ค่าตั้งต้นของมันเองทันที โดยไม่ต้องมีขั้นตอน seed */
+  const [openZones, setOpenZones] = useState({});
+  /* พื้นที่ที่มีค่าพิมพ์ค้าง — การ์ดรายงานขึ้นมา แล้วส่งต่อให้ตัวตัดสินบล็อกปุ่มส่งผล
+     (ด่านที่ PR2 ต่อสายไว้แล้วแต่ยังไม่มีใครยิงธงให้) */
+  const [dirtyZones, setDirtyZones] = useState({});
+  /* พื้นที่ที่ "กำลังทำอยู่" — ใช้ตัดสินว่า Ctrl+V ลอย ๆ ตกที่พื้นที่ไหน */
+  const [activeZone, setActiveZone] = useState(null);
+  /* ร่างที่หัวหน้าเคาะไว้แต่ยังไม่กดบันทึก (แท็บสรุปส่งผล · PR5)
+     ⭐ **ร่างอยู่ที่หน้า ไม่ได้อยู่ในตาราง** — 🐞 เดิมเก็บไว้ใน `SurveyResultTable`
+       ซึ่งหน้านี้ unmount ทิ้งทุกครั้งที่สลับไปแท็บ "หน้างาน" ⇒ ของที่หัวหน้าเคาะไว้
+       หายเงียบโดยไม่มีคำเตือน แล้วธง "ยังไม่บันทึก" ที่ยิงไว้ก่อนหน้าก็ค้างอยู่
+       ⇒ ปุ่มส่งถูกบล็อกด้วยเหตุผลที่ไม่จริงแล้ว พร้อมปุ่มที่พากลับไปยังแท็บที่ว่างเปล่า
+     ⚠️ คนละแกนกับ `dirtyZones` ซึ่งเป็นค่าที่ **ช่าง** พิมพ์ค้างบนแท็บหน้างาน —
+        ด่านของปุ่มส่งผลถามทั้งสองตัว และขึ้นข้อความคนละอัน */
+  const [decisionDrafts, setDecisionDrafts] = useState({});
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -104,19 +151,35 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
-  /* การตัดสินใจของหัวหน้า — คนละเมธอดกับของช่าง (PUT vs PATCH) เพราะคนละชุดช่อง */
-  const decideZone = async (zoneId, payload) => {
-    setBusyZone(zoneId);
-    try {
-      await apiJson(`/api/service/surveys/${id}/zones/${zoneId}`, {
-        method: "PUT", json: payload, fallbackError: "บันทึกไม่สำเร็จ",
-      });
-      await load({ background: true });
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message });
-    } finally {
-      setBusyZone(null);
+  /* การตัดสินใจของหัวหน้า — คนละเมธอดกับของช่าง (PUT vs PATCH) เพราะคนละชุดช่อง
+     ⭐ **ลงทีละพื้นที่ แต่กดครั้งเดียว** (PR5) — แท็บสรุปถือร่างไว้จนหัวหน้ากด
+        "บันทึกการเคาะ" แล้วส่งมาทั้งชุด · API ยังเป็นเส้นรายพื้นที่เหมือนเดิม
+     🔴 **ล้มที่ใบไหนให้หยุดตรงนั้น** — ไล่ยิงต่อทั้งที่รู้แล้วว่าพัง (สิทธิ์หมด · ใบถูก
+        ล็อกระหว่างทาง) คือการเก็บ error ชุดเดียวกันมาให้อ่านห้ารอบ · คืนรายชื่อที่ลงจริง
+        ให้ตารางล้างร่างเฉพาะตัวนั้น ของที่ยังไม่ลงต้องอยู่ในช่องต่อไป */
+  const saveDecisions = async (items = []) => {
+    const savedIds = [];
+    let failure = null;
+    for (const { zoneId, payload } of items) {
+      setBusyZone(zoneId);
+      try {
+        await apiJson(`/api/service/surveys/${id}/zones/${zoneId}`, {
+          method: "PUT", json: payload, fallbackError: "บันทึกไม่สำเร็จ",
+        });
+        savedIds.push(String(zoneId));
+      } catch (e) {
+        failure = { zoneId: String(zoneId), message: e.message };
+        break;
+      }
     }
+    setBusyZone(null);
+    await load({ background: true });
+    if (failure) {
+      setToast({ kind: "error", msg: failure.message });
+    } else {
+      setToast({ kind: "success", msg: `บันทึกการเคาะแล้ว ${savedIds.length} พื้นที่` });
+    }
+    return { savedIds, failure };
   };
 
   const send = async () => {
@@ -194,7 +257,7 @@ export default function SurveySheetPage({ params }) {
       const res = await apiJson(`/api/service/surveys/${id}/send-back`, {
         method: "POST", json: { note: sendBackNote.trim() }, fallbackError: "แจ้งช่างไม่สำเร็จ",
       });
-      setSendingBack(null);
+      setSendingBack(false);
       setSendBackNote("");
       setToast({ kind: "success", msg: `แจ้งช่างแล้ว ${res?.notified || 0} คน` });
       await load({ background: true });
@@ -205,176 +268,393 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
-  const zones = data?.zones || [];
-  const progress = surveyFieldProgress(zones, data?.filesByZone || {});
+  const zones = useMemo(() => data?.zones || [], [data]);
+  const filesByZone = useMemo(() => data?.filesByZone || {}, [data]);
+  /* 🔑 ธง dirty เป็น **ของที่ server มองไม่เห็น** — ค่ายังอยู่บนจอ ยังไม่เคยถูกส่งไป
+     ⇒ ต้องเดินทางจากการ์ดขึ้นมาที่นี่ แล้วลงไปที่ตัวตัดสิน ไม่ใช่ให้แต่ละที่เดาเอง */
+  const handleDirtyZone = useCallback((zoneId, isDirty) => {
+    setDirtyZones((prev) => {
+      if (!!prev[zoneId] === isDirty) return prev;
+      const next = { ...prev };
+      if (isDirty) next[zoneId] = true;
+      else delete next[zoneId];
+      return next;
+    });
+  }, []);
+  const dirtyZoneIds = useMemo(() => Object.keys(dirtyZones), [dirtyZones]);
+  /* 🔑 **ของค้างเป็นค่าที่คำนวณได้ ไม่ใช่ธงที่ต้องมีใครยิงมา** — ตัวตัดสินตัวเดียวกับ
+     ที่ตารางใช้วาดแถบ "ยังไม่บันทึก" และที่ route `PUT` ใช้เป็นด่าน
+     ⇒ ไม่มี effect ไม่มี state คู่ขนาน ⇒ ไม่มีสภาพ "ธงค้างหลังตาราง unmount" ให้เกิด */
+  const pendingDecisionZoneIds = useMemo(
+    () => surveyPendingDecisions(zones, decisionDrafts).ids,
+    [zones, decisionDrafts],
+  );
   const totals = surveyTotals(zones);
   /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
-     เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน */
+     เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน
+     ⭐ **เป็นคำบรรยายของตาราง** ⇒ ไปอยู่ใต้ชื่อการ์ด "สรุปผลประเมินรายพื้นที่"
+        (เดิมเป็น <p> ลอยบนพื้นหน้า แยกจากตารางที่มันอธิบาย) */
   const changeText = surveyChangeText(surveyChangeCounts(zones), { withNames: true });
-  /* เช็คลิสต์ด่านหกข้อแยกตามเจ้าของ — ตัวเดียวกับที่ `surveySendError` ใช้ตัดสิน */
-  const gates = surveyGateChecklist(zones, data?.filesByZone || {});
+
+  /* 🔑 **ทุกอย่างที่การ์ดควบคุมวาด มาจากตัวตัดสินตัวเดียว** (PR2) — สถานะ · โทน ·
+     เหตุผลที่กดส่งไม่ได้ · ด่านต่อพื้นที่ · ขั้นของใบ · กล่องแจ้ง
+     ⚠️ "วันนี้" มาจากนาฬิกาไทยของผู้เรียก ไม่ใช่ `new Date()` ในตัวตัดสิน (กติกา thai-time) */
+  const view = useMemo(() => surveyControlView({
+    request: data?.request || null,
+    zones,
+    filesByZone,
+    visit: data?.visit || null,
+    recall: data?.recall || null,
+    unknown: data?.unknown || {},
+    viewer: {
+      canWrite: data?.canWrite === true,
+      canDecide: data?.canDecide === true,
+      /* สองตัวนี้มาจาก server ล้วน — จอไม่รู้ role ของตัวเอง ⇒ เดาไม่ได้ทั้งคู่
+         (`canOpenRequest` = เปิดหน้าคำร้องได้ไหม · `writeBlockedReason` = เหตุที่เขียนไม่ได้
+          ซึ่ง `visitWriteAccess` พิมพ์มาแล้วรายคน "นัดนี้ไม่ใช่งานของคุณ …") */
+      canOpenRequest: data?.canOpenRequest === true,
+      writeBlockedReason: data?.writeBlockedReason || null,
+    },
+    dirtyZoneIds,
+    pendingDecisionZoneIds,
+    tab,
+    today: businessDate(),
+  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab]);
+
   const canDecide = data?.canDecide === true;
-  /* 🔑 ด่านตัวเดียวกับที่ server ใช้ — ปุ่มปิดตามนี้ และเหตุผลขึ้นเป็นตัวหนังสือ */
   /* 🔑 ด่านตัวเดียวกับ server — ปุ่มในโมดัลปิดตามนี้ และเหตุขึ้นเป็นตัวหนังสือ
-     ⚠️ รายชื่อช่างมาจาก **นัด** ไม่ใช่จากใบ — จอไม่รู้เอง ต้องอ่านจากที่ server ส่งมา */
-  const crewIds = [data?.visit?.assigneeId, ...(data?.visit?.assistantIds || [])]
-    .filter(Boolean).map(String);
+     ⚠️ รายชื่อช่างมาจาก **นัด** ไม่ใช่จากใบ — ตัวตัดสินอ่านให้แล้ว (`zoneGaps.crewIds`) */
   const sendBackGate = surveySendBackError(data?.request, {
     canSend: canDecide,
     note: sendBackNote,
-    gaps: gates.filter((g) => g.owner === "crew" && !g.ok),
-    crewIds,
+    gaps: view.gates.filter((g) => g.owner === "crew" && !g.ok),
+    crewIds: view.zoneGaps.crewIds,
   });
-  const sendGate = surveySendError(zones, data?.filesByZone || {}, { canSend: canDecide });
-  const sent = !!data?.request?.answeredAt;
-  /* 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · เหตุที่เขียนไม่ได้บอกไว้ข้างบนแล้ว */
+  /* 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · เหตุที่เขียนไม่ได้อยู่ในการ์ด */
   const addGate = surveyAddZoneError(data?.request, { canWrite: data?.canWrite === true });
   /* ตรวจด้วยตัวเดียวกับ server — ชั้นผิดต้องรู้ตั้งแต่ตอนพิมพ์ ไม่ใช่ตอนกดแล้วเด้งกลับ */
   const draftFloor = normalizeFloor(draft.floor);
   const draftClash = draft.name.trim() ? surveyRowNameClash(draft.name, zones) : null;
   const draftReady = !!draft.name.trim() && !draftClash && !draftFloor.error;
-  const back = { href: "/service/today", label: "งานวันนี้" };
+
+  /* ⭐ **ลิงก์ย้อนกลับเดินตามคนดู** — เดิมพาทุกคนไป "งานวันนี้" ซึ่งเป็นหน้าของช่าง
+     คนเดียว · หัวหน้ามาจากคิวคำร้อง ส่วนฝ่ายขายมาจากใบคำร้องของตัวเอง ⇒ ปุ่มย้อนกลับ
+     ที่พาไปหน้าที่เขาไม่ได้มาจาก คือปุ่มที่ทำให้ต้องกดย้อนอีกสองครั้ง
+     🔴 **ระหว่างยังไม่รู้ว่าใครเปิด ต้องกลับไปที่เดิม** — `data` เป็น null ตอนโหลดและ
+        ตอนโหลดไม่สำเร็จ (สองสถานะที่วาดปุ่มนี้ด้วย) ⇒ สาขาสุดท้ายเคยกลืนทุกคนไปที่
+        `/requests/<id>` พร้อมป้ายเปล่า "คำร้อง" ทั้งที่ช่างเปิดหน้านั้นไม่ได้ (403)
+        · ของที่ยังไม่รู้ = ใช้ทางเดิมของจอนี้ ไม่ใช่เดาทางใหม่
+     ⚠️ ลิงก์ไปใบคำร้องต้องถาม `canOpenRequest` ของ server — ตัวเดียวกับที่การ์ดใช้ */
+  const backToRequest = data?.canOpenRequest === true && !!data?.request;
+  const back = canDecide
+    ? { href: "/service/requests", label: "คิวคำร้อง" }
+    /* คนที่ยัง **กรอกได้** คือคนที่ออกหน้างาน ⇒ กลับไปคิวงานของวันนี้เสมอ แม้เขาจะ
+       เปิดหน้าคำร้องได้ด้วย (ช่างอาวุโส) — เขามาจากที่นั่น ไม่ได้มาจากใบคำร้อง */
+    : data?.canWrite === true
+      ? { href: "/service/today", label: "งานวันนี้" }
+      : backToRequest
+        ? { href: `/requests/${id}`, label: `คำร้อง ${data?.request?.docNo || ""}`.trim() }
+        : { href: "/service/today", label: "งานวันนี้" };
+
+  const goTab = useCallback((next) => {
+    setTab(next);
+    router.replace(next === "result" ? `/service/surveys/${id}?tab=result` : `/service/surveys/${id}`,
+      { scroll: false });
+  }, [id, router]);
+
+  // ── เปิด/พับพื้นที่ ─────────────────────────────────────────────────────
+  const foldDefaults = view.foldDefaults;
+  const isZoneOpen = useCallback(
+    (zoneId) => openZones[zoneId] ?? foldDefaults[zoneId] ?? false,
+    [openZones, foldDefaults],
+  );
+  const setZoneOpen = useCallback((zoneId, next) => {
+    setOpenZones((prev) => ({ ...prev, [zoneId]: next }));
+  }, []);
+  /* ⭐ **เปิดพร้อมกันได้หลายพื้นที่** — ไม่ใช่ accordion ที่เปิดได้ทีละอัน (ช่างวัดห้อง
+     ที่ต่อกันแล้วเทียบตัวเลขข้ามพื้นที่) ⇒ ปุ่มเดียวของทั้งลิสต์คือ "ขยาย/ย่อทุกพื้นที่"
+     และชื่อปุ่มบอกว่า **กดแล้วจะเกิดอะไร** ไม่ใช่บอกสถานะปัจจุบัน */
+  const allZonesOpen = zones.length > 0 && zones.every((z) => isZoneOpen(z.id));
+  const toggleAllZones = useCallback(() => {
+    const next = !allZonesOpen;
+    setOpenZones(Object.fromEntries(zones.map((z) => [z.id, next])));
+  }, [allZonesOpen, zones]);
+
+  /* เลื่อนไปที่การ์ด (และย้ายโฟกัสไปที่ *หัว* ของมันเมื่อสั่ง) — หัวคือปุ่มพับ ⇒ คนที่
+     ใช้คีย์บอร์ดกด Enter ต่อได้ทันที และคนที่ใช้โปรแกรมอ่านหน้าจอได้ยินชื่อพื้นที่ใหม่
+     ⚠️ `requestAnimationFrame` เพราะการ์ดอาจเพิ่งถูกกางในเฟรมเดียวกัน */
+  const scrollToZone = useCallback((zoneId, { focus = false } = {}) => {
+    requestAnimationFrame(() => {
+      const anchor = zoneAnchor(zoneId);
+      document.getElementById(anchor)?.scrollIntoView({ block: "start" });
+      if (focus) document.getElementById(collapsibleHeadId(anchor))?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  /* ลิงก์ "เปิด <พื้นที่>" — กลับไปแท็บหน้างานก่อนเสมอ แล้วค่อยกางการ์ดของมัน
+     ⚠️ ต้องรอให้แท็บสลับเสร็จก่อน ไม่งั้นเลื่อนไปหา element ที่ยังไม่ถูกวาด */
+  const openZone = useCallback((zoneId) => {
+    if (tab !== "field") goTab("field");
+    setZoneOpen(zoneId, true);
+    setActiveZone(zoneId);
+    scrollToZone(zoneId);
+  }, [tab, goTab, setZoneOpen, scrollToZone]);
+
+  /* ⭐ **"ถัดไป: … (ยังไม่ครบ)" แทนการพับเองหลังบันทึก** (กติกาข้อ 3 ของแบบที่อนุมัติ)
+     — พับพื้นที่ปัจจุบัน **เฉพาะเมื่อไม่มีค่าค้างและไม่มี error** แล้วเปิดพื้นที่ถัดไป
+     พร้อมย้ายโฟกัสไปที่หัวของมัน */
+  const goNextZone = useCallback((nextId, { from, keepOpen } = {}) => {
+    setOpenZones((prev) => {
+      const next = { ...prev, [nextId]: true };
+      if (from && from !== nextId && !keepOpen) next[from] = false;
+      return next;
+    });
+    setActiveZone(nextId);
+    scrollToZone(nextId, { focus: true });
+  }, [scrollToZone]);
+
+  /* บันทึกสำเร็จ = **เปิดค้างไว้** · ตัดออกสำเร็จ = พับ (ไม่เหลืออะไรให้ทำต่อ) แล้วส่ง
+     โฟกัสกลับไปที่หัว ไม่ให้โฟกัสหล่นหายไปกับปุ่มที่เพิ่งถูกถอดออกจากจอ */
+  const handleZoneSaved = useCallback((zoneId, { cut } = {}) => {
+    setZoneOpen(zoneId, !cut);
+    if (cut) scrollToZone(zoneId, { focus: true });
+  }, [setZoneOpen, scrollToZone]);
+  const handleZoneSaveFailed = useCallback((zoneId) => setZoneOpen(zoneId, true), [setZoneOpen]);
+
+  /* พื้นที่ถัดไปที่ **ฝั่งช่างยังขาดของ** — ถามตัวตัดสินตัวเดียวกับที่การ์ดควบคุมใช้
+     (`zoneGaps.rows` เรียงตามลำดับในใบอยู่แล้ว) ไม่ใช่ไล่เงื่อนไขเองอีกชุด
+     🐞 เดิม `find(r => r.crew.length && r.zoneId !== zoneId)` = **ใบแรกของลิสต์เสมอ**
+        ไม่ใช่ใบถัดจากที่ยืนอยู่ ⇒ ใบ 5 พื้นที่ที่ขาดที่ 1 กับ 5: ยืนที่ 5 กด "ถัดไป"
+        แล้วเด้งกลับขึ้นหัวใบพร้อมพับใบที่เพิ่งทำเสร็จ · เหลือสองพื้นที่เมื่อไรก็สลับ
+        ไปมา 1↔5 ไม่จบ (ระเบียนทดสอบมี 2 พื้นที่จึงไม่เห็นอาการ)
+     ⇒ หา **ตัวแรกที่อยู่หลังตำแหน่งปัจจุบัน** ก่อน แล้วค่อยวนกลับต้นลิสต์ · ตอนวนกลับ
+       ติดธง `back` ไปให้การ์ดเปลี่ยนคำเป็น "กลับไปที่ …" เพราะมันไม่ใช่ "ถัดไป" แล้ว */
+  const nextGapZone = useCallback((zoneId) => {
+    const gaps = view.zoneGaps.rows.filter((r) => r.crew.length > 0 && r.zoneId !== zoneId);
+    if (gaps.length === 0) return null;
+    /* ⚠️ ลำดับต้องวัดจาก **ลิสต์ที่ตาเห็น** ไม่ใช่จากลิสต์ของด่าน — พื้นที่ที่วัดครบแล้ว
+       ไม่มีชื่ออยู่ใน `zoneGaps.rows` เลย ⇒ ยืนอยู่บนใบที่ครบแล้วจะหาตำแหน่งตัวเองไม่เจอ */
+    const order = new Map(zones.map((z, i) => [z.id, i]));
+    const here = order.has(zoneId) ? order.get(zoneId) : -1;
+    const ahead = gaps.find((r) => (order.get(r.zoneId) ?? Infinity) > here);
+    const row = ahead || gaps[0];
+    return { id: row.zoneId, name: row.zoneName, back: !ahead };
+  }, [view.zoneGaps.rows, zones]);
 
   if (loading) {
-    return (
-      <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ประเมินพื้นที่" back={back}>
-        <SkeletonRows rows={4} />
-      </Workspace>
-    );
+    return <Workspace hideHeader back={back}><SkeletonRows rows={4} /></Workspace>;
   }
 
   if (loadError) {
     return (
-      <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ประเมินพื้นที่" back={back}>
+      <Workspace hideHeader back={back}>
         <p className="form-error" role="alert">{loadError}</p>
       </Workspace>
     );
   }
 
+  const req = data?.request || {};
+  const site = data?.site || null;
+  const visit = data?.visit || null;
+  /* ⭐ ป้ายนัดบนหัวใบ (มติเจ้าของ 2026-09-16: **กดส่งผลไม่ได้ปิดนัด**) — ใบที่ส่งผล
+     ไปแล้วแต่นัดยังไม่ถูกปิด ต้องบอกไว้บนหัว ไม่งั้นนัดค้างอยู่ในคิวโดยไม่มีใครเห็น
+     🐞 เดิมเงื่อนไขไม่เคยถาม `sent` เลย — นัดที่เพิ่งตั้งไว้บนใบที่ยังไม่มีใครแตะ
+       ก็ขึ้นคำเตือนสีอำพัน "นัดยังไม่ปิด" ทันทีที่เปิดจอ ⇒ สีเตือนที่ขึ้นตลอดเวลา
+       คือสีที่คนเลิกอ่าน · ป้ายนี้มีความหมายก็ต่อเมื่อ **ส่งผลไปแล้ว** เท่านั้น */
+  const visitBadge = visit && !isClosedVisit(visit)
+    ? (view.flags.sent
+      ? { label: "นัดยังไม่ปิด", tone: "warning" }
+      : visit.status === "in_progress"
+        ? { label: "กำลังเข้าพื้นที่", tone: "info" }
+        : null)
+    : null;
+
+  const dueSub = view.flags.cancelled ? "คำร้องถูกยกเลิก"
+    : req.answeredAt ? `ส่งผลแล้ว ${fmtDate(req.answeredAt)}`
+      : view.due.overdueDays ? `เลยกำหนด ${view.due.overdueDays} วัน`
+        : null;
+
+  const controlCard = (
+    <SurveyControlCard
+      view={view}
+      busy={sendBusy || recallBusy || sendBackBusy}
+      onSend={() => setSending(true)}
+      onRecall={() => setRecalling(true)}
+      onSendBack={() => { setSendingBack(true); setSendBackNote(""); }}
+      onOpenZone={openZone}
+      onGoTab={goTab}
+      requestDocNo={req.docNo}
+      requestHref={`/requests/${id}`}
+      visitCode={visit?.code || null}
+      visitHref={visit?.id ? `/service/visits/${visit.id}` : null}
+    />
+  );
+
   return (
-    <Workspace
-      icon={<ClipboardList size={20} aria-hidden="true" />}
-      title="ประเมินพื้นที่"
-      subtitle={[data?.request?.docNo, data?.request?.title].filter(Boolean).join(" · ")}
-      back={back}
-      headerRight={(
-        <>
-          {/* ⭐ ความคืบหน้าอยู่บนหัวจอ — ช่างต้องรู้ตลอดว่าเหลือกี่พื้นที่ โดยไม่ต้องเลื่อนดู */}
-          <span className="ui-badge">
-            {tab === "result"
-              ? `${totals.zones} พื้นที่ · ${totals.packageQty} แพ็คเกจ`
-              : `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`}
+    <Workspace hideHeader back={back}>
+      {/* ⭐ หัวใบ "รหัส · ชื่อ" ตามกติกา entity display ของทั้งระบบ — ใต้หัวเป็น
+          ข้อเท็จจริงที่ช่างต้องใช้ตอนยืนอยู่หน้างาน: ไซต์ · นัด · กำหนดส่ง
+          ⚠️ **ไม่มีป้ายสถานะของใบและไม่มีปุ่มระดับใบบนหัว** — ทั้งสองอย่างอยู่การ์ด
+          จัดการที่เดียว · ป้ายที่นี่เป็นเรื่องของ **นัด** ซึ่งไม่มีที่อยู่อื่น */}
+      <DetailOverview
+        /* มติเจ้าของ 2026-09-16: จอนี้เลิกใช้แสงส้มที่มุมหัวใบ — พื้นหน้าจอนี้ไล่สีอยู่แล้ว */
+        flat
+        eyebrow="ใบประเมินพื้นที่ · ส่งถึง TS"
+        title={[req.docNo, req.title].filter(Boolean).join(" · ")}
+        description={data?.customer?.name ? (
+          <span>
+            {"ให้ "}
+            {data.customer.arCode ? <span className={styles.arCode}>{data.customer.arCode}</span> : null}
+            <b>{data.customer.name}</b>
           </span>
-          {/* ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · ติดด่าน = โชว์แล้วบอกเหตุตอนกด (GatedAction) */}
-          {tab === "result" && canDecide && !sent && (
-            <Button tone="primary" icon={<Send size={15} aria-hidden="true" />}
-              onClick={() => setSending(true)}>
-              ส่งผลให้ฝ่ายขาย
-            </Button>
-          )}
-          {/* ⭐ **ดึงผลกลับมาแก้** (§5E ④) — ทางเดียวที่แก้ตัวเลขหลังส่งไปแล้ว
-              ไม่มีสิทธิ์ = ไม่โชว์ · เห็นแล้วกดได้เลย (ด่านเหตุผลอยู่ในโมดัล) */}
-          {tab === "result" && canDecide && sent && (
-            <Button tone="danger" variant="outline" icon={<Undo2 size={15} aria-hidden="true" />}
-              onClick={() => setRecalling(true)}>
-              ดึงผลกลับมาแก้
-            </Button>
-          )}
-        </>
-      )}
-    >
-      {/* ⚠️ กติกา UI ของระบบ: สลับ "มุมมองคนละชุดข้อมูล" = Tabs · กรองในชุดเดิม = segmented */}
-      <Tabs
-        value={tab}
-        onChange={(next) => {
-          setTab(next);
-          router.replace(next === "result" ? `/service/surveys/${id}?tab=result` : `/service/surveys/${id}`,
-            { scroll: false });
-        }}
-        ariaLabel="มุมมองของใบประเมิน"
-        tabs={[
-          { key: "field", label: "หน้างาน" },
-          { key: "result", label: "สรุปส่งผล" },
+        ) : null}
+        /* ผู้ติดต่อของไซต์อยู่แถวนี้ — เบอร์ที่กดโทรได้คือของชิ้นเดียวที่ช่างต้องใช้
+           ทันทีเมื่อไปถึงหน้าตึกแล้วหาทางเข้าไม่เจอ (ช่องข้อเท็จจริงตัดข้อความบรรทัดเดียว) */
+        meta={site?.contactName || site?.contactPhone ? (
+          <span className={styles.contact}>
+            {`ผู้ติดต่อ ${naText(site?.contactName)}`}
+            {site?.contactPhone ? <a className="linklike" href={`tel:${site.contactPhone}`}>{site.contactPhone}</a> : null}
+          </span>
+        ) : null}
+        badges={visitBadge
+          ? <DetailStateBadge label={visitBadge.label} color={toneColor(visitBadge.tone)} />
+          : null}
+        facts={[
+          {
+            key: "site",
+            label: "ไซต์",
+            icon: MapPin,
+            value: site?.id
+              ? <Link className="linklike" href={`/service/sites/${site.id}`}>{naText(site.code)}</Link>
+              : naText(site?.code),
+            sub: [site?.name, site?.address].filter(Boolean).join(" · ") || null,
+            /* ⭐ ที่อยู่ **ห่อได้สองบรรทัด** — บรรทัดรองปกติตัดบรรทัดเดียวด้วย … ซึ่ง
+               กลืนเขต/จังหวัด/รหัสไปรษณีย์ทุกจอ (วัดจริง: ข้อความ 425px ในช่อง
+               402/263/302px) · ช่างที่ถือมือถืออยู่หน้างานเอาเมาส์ไปชี้ดูทูลทิปไม่ได้ */
+            subWrap: true,
+          },
+          {
+            key: "visit",
+            label: "นัดสำรวจ",
+            icon: CalendarClock,
+            value: visit
+              ? [visit.code, visit.scheduledDate ? fmtDate(visit.scheduledDate) : null, visit.startTime]
+                .filter(Boolean).join(" · ")
+              : null,
+            sub: visit?.assigneeName || null,
+          },
+          {
+            key: "due",
+            label: "TS กำหนดส่ง",
+            icon: Flag,
+            value: view.due.date ? fmtDate(view.due.date) : null,
+            sub: dueSub,
+            tone: view.due.overdueDays ? "late" : (req.answeredAt ? "ok" : undefined),
+            /* ⭐ มือถือเหลือ **ไซต์ + นัด** (แบบที่อนุมัติ) — ช่างที่ยืนอยู่หน้างานถามว่า
+               "ที่ไหน กับใคร" ไม่ใช่ "กำหนดส่งวันไหน" · และกำหนดส่งยังอ่านได้ในการ์ด
+               ควบคุม (บรรทัดขั้นตอน) ⇒ ไม่ใช่ข้อเท็จจริงที่หายไปจากจอเล็ก */
+            narrow: "hide",
+          },
         ]}
       />
 
-      {/* ส่งไปแล้วยังเปิดดูได้ แต่ต้องบอกว่าส่งไปแล้ว ไม่ใช่โชว์ปุ่มที่กดซ้ำได้เงียบ ๆ
-          ⚠️ ต้องบอก **ทางออก** ด้วย ไม่ใช่แค่ "แก้ไม่ได้" — server ล็อกจริงตั้งแต่ #1624
-          (`surveyEditLockError`) ⇒ คนที่ตัวเลขเปลี่ยนต้องรู้ว่าต้องไปกดอะไรต่อ */}
-      {/* 🐞 เดิมบอกทุกคนว่าต้องไปกด "ยังไม่จบ" ที่ใบคำร้อง — ทั้งที่หัวหน้ามีปุ่ม
-          "ดึงผลกลับมาแก้" อยู่บนจอนี้เอง ⇒ ทางออกต้องเป็นทางที่คนดูคนนั้นกดได้จริง */}
-      {sent && (
-        <StatusNotice tone="success" title="ส่งผลให้ฝ่ายขายแล้ว">
-          {canDecide
-            ? `รอฝ่ายขายกดปิดเรื่อง · ถ้าตัวเลขเปลี่ยน กด "ดึงผลกลับมาแก้" ${tab === "result" ? "ที่หัวจอ" : "ที่แท็บสรุปส่งผล"}`
-            : "รอฝ่ายขายกดปิดเรื่อง · ถ้าตัวเลขเปลี่ยน ให้กด \"ยังไม่จบ\" ที่ใบคำร้องก่อนจึงจะแก้ได้"}
-        </StatusNotice>
-      )}
+      <DetailPageLayout
+        asideLabel="จัดการผลประเมิน"
+        /* ⭐ **ลำดับบนจอแคบเดินตามคนดู** (แบบที่อนุมัติ) — ช่างที่ยังกรอกได้ถามว่า
+           "พื้นที่ไหนต้องวัด" ⇒ เนื้อมาก่อน · คนอื่นถามว่า "ใบนี้อยู่สถานะไหน และกด
+           อะไรต่อ" ⇒ การ์ดมาก่อน · ตัวตัดสินคำนวณมาให้แล้ว ไม่ต้องเดาที่นี่ */
+        controlFirst={view.flags.controlFirst}
+        aside={controlCard}
+      >
+        {/* ⚠️ กติกา UI ของระบบ: สลับ "มุมมองคนละชุดข้อมูล" = Tabs · กรองในชุดเดิม = segmented */}
+        <Tabs
+          value={tab}
+          onChange={goTab}
+          ariaLabel="มุมมองของใบประเมิน"
+          tabs={[
+            { key: "field", label: "หน้างาน" },
+            { key: "result", label: "สรุปส่งผล" },
+          ]}
+        />
 
-      {/* ไม่มีสิทธิ์เขียน = ยังดูได้ แต่ต้องบอกเหตุ ไม่ใช่ให้ช่องทั้งหน้าจางเงียบ ๆ */}
-      {data && !data.canWrite && tab === "field" && (
-        <StatusNotice tone="warning">{data.writeBlockedReason}</StatusNotice>
-      )}
-      {tab === "result" && !canDecide && (
-        <StatusNotice tone="warning">
-          ดูได้อย่างเดียว — เคาะแพ็คเกจและส่งผลได้เฉพาะหัวหน้าฝ่ายบริการ
-        </StatusNotice>
-      )}
-
-      {zones.length === 0 ? (
-        <EmptyState icon={Search}>
-          ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน — ฝ่ายขายเป็นคนระบุพื้นที่ตอนเปิดใบ
-        </EmptyState>
-      ) : tab === "result" ? (
-        <>
-          {/* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้โดยไม่
-              ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเองเปลี่ยน
-              อะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่ขึ้นเฉพาะตอนมีการเปลี่ยน
-              (เห็น "ไม่มีตัด ไม่มีเพิ่ม" = ยืนยันว่าไม่ได้ลืมอะไร)
-              ⭐ เป็นคำบรรยายของตาราง อยู่ก้อนเดียวกับตาราง — ไม่ใช่แถบอีกทรงต่อจาก StatusNotice */}
-          <div className={styles.result}>
-            <p className={styles.change} role="status">{changeText}</p>
-            <SurveyResultTable
-              zones={zones}
-              filesByZone={data?.filesByZone || {}}
-              canDecide={canDecide && !sent}
-              busyZone={busyZone}
-              onDecide={decideZone}
-            />
-          </div>
-          {/* ⭐ **ทางออกของปุ่มส่งผลที่กดไม่ได้** — ด่านสามข้อบนเป็นของช่าง หัวหน้าแก้เองไม่ได้
-              ⇒ ต้องมีปุ่มแจ้งอยู่ข้าง ๆ ข้อที่ติด ไม่ใช่ปุ่มเทาเงียบที่ไม่บอกว่าใครแก้ */}
-          <SurveyGateList
-            gates={gates}
-            canSendBack={canDecide && !sent}
-            onSendBack={(gate) => { setSendingBack(gate); setSendBackNote(""); }}
+        {zones.length === 0 ? (
+          <EmptyState icon={Search}>
+            ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน — ฝ่ายขายเป็นคนระบุพื้นที่ตอนเปิดใบ
+          </EmptyState>
+        ) : tab === "result" ? (
+          <SurveyResultTable
+            zones={zones}
+            filesByZone={filesByZone}
+            canDecide={canDecide && !view.flags.locked}
+            busyZone={busyZone}
+            onSaveDecisions={saveDecisions}
+            drafts={decisionDrafts}
+            onDraftsChange={setDecisionDrafts}
+            /* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้
+               โดยไม่ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเอง
+               เปลี่ยนอะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่เฉพาะตอนมีการเปลี่ยน */
+            caption={view.flags.sent ? `${changeText} · ส่งแล้ว แก้ไม่ได้ — ดึงกลับก่อน` : changeText}
           />
-        </>
-      ) : (
-        <div className={styles.list}>
-          {zones.map((zone) => (
-            <SurveyZoneCard
-              key={zone.id}
-              zone={zone}
-              files={data?.filesByZone?.[zone.id] || []}
-              canWrite={data?.canWrite === true && !sent}
-              busy={busyZone === zone.id}
-              onSave={(payload) => saveZone(zone.id, payload)}
-              onDelete={() => setRemoving(zone)}
-            />
-          ))}
-          {/* ⭐ **ปุ่มอยู่ท้ายลิสต์ ไม่ใช่บนหัวจอ** (ม็อกจอ 06) — ช่างจะรู้ว่ามีพื้นที่เกินมา
-              ก็ต่อเมื่อไล่วัดของที่มีในใบจนหมดแล้ว ⇒ ปุ่มควรรออยู่ตรงที่เขาไล่มาถึงพอดี */}
-          {!addGate && (
-            <div className={styles.listFoot}>
-              <Button variant="outline" icon={<MapPinPlus size={15} aria-hidden="true" />}
-                onClick={() => setAdding(true)}>
-                เพิ่มพื้นที่ที่เจอหน้างาน
-              </Button>
+        ) : (
+          <div className={styles.list}>
+            {/* แถวเหนือลิสต์: ใบนี้มีกี่พื้นที่ · วัดไปแล้วกี่พื้นที่ · ปุ่มขยาย/ย่อทั้งหมด
+                ⚠️ `aria-controls` ชี้ไปที่เนื้อของทุกการ์ด — ปุ่มที่คุมของหลายชิ้นต้องบอก
+                ว่าคุมชิ้นไหนบ้าง ไม่งั้นโปรแกรมอ่านหน้าจอได้ยินแค่ "ปุ่ม" ลอย ๆ */}
+            <div className={styles.listBar}>
+              <p>
+                <b>{zones.length}</b> พื้นที่ · วัดแล้ว <b>{view.progress.done}</b>
+                {view.progress.cut ? <> · ตัดออก <b>{view.progress.cut}</b></> : null}
+              </p>
+              <button
+                type="button"
+                className="text-action"
+                onClick={toggleAllZones}
+                aria-controls={zones.map((z) => collapsibleBodyId(zoneAnchor(z.id))).join(" ")}
+              >
+                {allZonesOpen
+                  ? <ChevronsDownUp size={14} aria-hidden="true" />
+                  : <ChevronsUpDown size={14} aria-hidden="true" />}
+                {allZonesOpen ? "ย่อทุกพื้นที่" : "ขยายทุกพื้นที่"}
+              </button>
             </div>
-          )}
-        </div>
-      )}
+            {zones.map((zone, i) => (
+              <SurveyZoneCard
+                key={zone.id}
+                id={zoneAnchor(zone.id)}
+                zone={zone}
+                index={i + 1}
+                files={filesByZone[zone.id] || []}
+                canWrite={view.flags.canWrite}
+                busy={busyZone === zone.id}
+                open={isZoneOpen(zone.id)}
+                onToggle={(next) => {
+                  setZoneOpen(zone.id, next);
+                  if (next) setActiveZone(zone.id);
+                }}
+                active={activeZone === zone.id}
+                onActivate={setActiveZone}
+                onDirtyChange={handleDirtyZone}
+                onSaved={handleZoneSaved}
+                onSaveFailed={handleZoneSaveFailed}
+                nextZone={nextGapZone(zone.id)}
+                onGoNext={goNextZone}
+                onSave={(payload) => saveZone(zone.id, payload)}
+                onDelete={() => setRemoving(zone)}
+              />
+            ))}
+            {/* ⭐ **ปุ่มอยู่ท้ายลิสต์ ไม่ใช่บนหัวจอ** (ม็อกจอ 06) — ช่างจะรู้ว่ามีพื้นที่เกินมา
+                ก็ต่อเมื่อไล่วัดของที่มีในใบจนหมดแล้ว ⇒ ปุ่มควรรออยู่ตรงที่เขาไล่มาถึงพอดี */}
+            {!addGate && (
+              <div className={styles.listFoot}>
+                <Button variant="outline" icon={<MapPinPlus size={15} aria-hidden="true" />}
+                  onClick={() => setAdding(true)}>
+                  เพิ่มพื้นที่ที่เจอหน้างาน
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </DetailPageLayout>
 
       {/* ── เพิ่มพื้นที่ที่เจอหน้างาน ─────────────────────────────────────
           ⚠️ **ไม่มีช่องเหตุผล** — แผน §9 เขียนไว้ตรง ๆ ว่า "ตัดต้องมีเหตุผลบังคับ ·
@@ -436,28 +716,33 @@ export default function SurveySheetPage({ params }) {
       <ConfirmDialog
         open={sending}
         title="ส่งผลประเมินให้ฝ่ายขาย"
-        message={sendGate || `ส่งผล ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`}
-        detail={sendGate ? undefined
-          : "ฝ่ายขายจะเห็นผลทันที และเอาไปตั้งราคาได้ · ใบจะปิดเมื่อฝ่ายขายกดรับผล"}
+        /* 🔑 เหตุผลเต็มของด่าน server — ไม่ใช่บรรทัดย่อของราง (บรรทัดย่อมีไว้ให้ราง
+           กว้าง 330px อ่านได้ ไม่ได้มีไว้แทนเหตุผล) */
+        message={view.send.reason?.detail || view.send.reason?.text
+          || `ส่งผล ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`}
+        detail={view.send.allowed
+          ? "ฝ่ายขายจะเห็นผลทันที และเอาไปตั้งราคาได้ · ใบจะปิดเมื่อฝ่ายขายกดรับผล"
+          : undefined}
         confirmLabel="ส่งผล"
         busy={sendBusy}
-        onConfirm={sendGate ? undefined : send}
+        onConfirm={view.send.allowed ? send : undefined}
         onClose={() => !sendBusy && setSending(false)}
       />
       {/* ⭐ **โมดัลต้องบอกว่าใครจะได้รับ ไม่ใช่แค่ถามว่าจะส่งไหม** — กระดิ่งของใบคำร้อง
           ไปหาผู้ขอ (SA) เท่านั้น · ตัวที่ไปถึงช่างคือกระดิ่งอีกใบที่ยิงจากนัด
           ⚠️ ไม่มีช่างที่ถูกมอบหมาย = server ตีกลับพร้อมเหตุ (ด่านตัวเดียวกับที่นี่) */}
       <ConfirmDialog
-        open={!!sendingBack}
+        open={sendingBack}
         title="แจ้งช่างให้กลับไปเก็บงาน"
-        message={sendBackGate || `ข้อที่ติด: ${sendingBack?.label || ""}`
-          + (sendingBack?.zones?.length ? ` — ขาด ${sendingBack.zones.join(" · ")}` : "")}
+        message={sendBackGate
+          || `ข้อที่ติด: ${view.zoneGaps.rows.filter((r) => r.crew.length)
+            .map((r) => `${r.zoneName} (${r.crew.join(" · ")})`).join(" · ")}`}
         detail={sendBackGate ? undefined
           : "ช่างที่ถูกมอบหมายงานใบนี้จะได้กระดิ่งพร้อมข้อความนี้ · ใบยังอยู่ขั้นเดิม ไม่ต้องลงคิวใหม่"}
         confirmLabel="แจ้งช่าง"
         busy={sendBackBusy}
         onConfirm={!sendBackGate ? sendBack : undefined}
-        onClose={() => !sendBackBusy && setSendingBack(null)}
+        onClose={() => !sendBackBusy && setSendingBack(false)}
       >
         <Input
           value={sendBackNote}
