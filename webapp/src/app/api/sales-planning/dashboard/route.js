@@ -233,7 +233,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields() };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, targetPersonSum: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields() };
     return teamMap[key];
   };
   // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
@@ -250,6 +250,11 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   }
   for (const [key, parts] of Object.entries(teamTargetParts)) {
     teamMap[key].target = parts.level > 0 ? parts.level : parts.person;
+    /* ⭐ เป้าระดับทีมชนะเป้ารายคน (กันบวกซ้ำ) แต่ต้องส่งผลรวมรายคนไปด้วย (มติผู้ใช้ 2026-09-16)
+       🐞 ไม่งั้นแถวทีมไม่เท่าผลรวมแถวคนใต้มันโดยไม่มีคำอธิบายบนจอ — ของจริง ต.ค. 2026: SV ทีม 2,340,000
+          แต่เป้ารายคนรวม 2,990,000 · ODM 2,700,000 vs 3,400,000 (ส่วนต่างหายเงียบทุกเดือน)
+       ⛔ ช่องนี้ใช้ "บอก" อย่างเดียว ห้ามเอาไปบวกใน target / gap / % ที่ไหน */
+    teamMap[key].targetPersonSum = parts.person;
   }
   for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = teamBucket(d.team);

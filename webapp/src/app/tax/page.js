@@ -135,7 +135,10 @@ export default function TaxDashboard() {
       loading={l1 || l2}
       headerRight={
         <div className="flex items-center gap-3">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border)] rounded-md flex items-center p-1 shadow-sm">
+          {/* 🐞 เคยเป็น `--bg-panel` ที่ไม่เคยมีใครประกาศ ⇒ พื้นโปร่ง เหลือแต่เส้นขอบ
+              แถบนี้อยู่ใน headerRight ของ Workspace ซึ่ง .premium-header เป็น --panel อยู่แล้ว
+              ⇒ ต้องขึ้นอีกขั้นเป็น --panel-2 ไม่ใช่ --panel ซึ่งจะกลืนไปกับหัวการ์ด */}
+          <div className="bg-[var(--panel-2)] border border-[var(--border)] rounded-md flex items-center p-1 shadow-sm">
             <Calendar size={14} className="mx-2 text-[var(--text-3)]" />
             <Select
               value={timeRange}

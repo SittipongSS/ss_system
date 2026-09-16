@@ -622,14 +622,29 @@
   /* เฟส T: navigation = top bar 2 ชั้นตรึงบนสุด (แทน sidebar) — ความสูงรวมใช้เป็น
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* แถบระบบ (โลโก้/สลับระบบ/ผู้ใช้) — ตรึงบนสุด */
-  /* พื้นกรมท่าของแถวบน — **นิยามเดียว** เพราะแถบต้อนรับของหน้าแรก (ADR 0016) ต่อจาก
-     แถวบนแบบไม่มีรอยต่อ · วงเรืองคิดเป็น px จาก --topbar-h ไม่ใช่ % ของกล่องตัวเอง
-     ⇒ กล่องที่สูงไม่เท่ากันได้วงขนาดเดียวกัน ตำแหน่งเดียวกัน จึงมองไม่เห็นรอยต่อ
+  /* พื้นกรมท่า — **วงเรืองวงเดียวกันในพิกัดของจอ** ใช้ทั้งแถวบน (52px) และแถบต้อนรับ
+     ของหน้าแรก (ADR 0016) ที่ต่อลงมาจากแถวบน · รัศมีคิดเป็น px ไม่ใช่ % ของกล่องตัวเอง
+     ⇒ กล่องที่สูงไม่เท่ากันได้วงขนาดเดียวกัน
+     🪤 **ศูนย์กลางต้องคนละค่า** เพราะวัดจากขอบบนของกล่องตัวเอง: แถวบนเริ่มที่ y=0 ส่วนแถบ
+        เริ่มที่ y=52 ⇒ ศูนย์เดียวกันในพิกัดจอ (−41.6px) = −0.8×topbar สำหรับแถวบน และ
+        −1.8×topbar สำหรับแถบ · ใช้ค่าเดียวกันทั้งคู่เมื่อไร รอยต่อจะเห็นเป็นขั้นสี และแถวบน
+        ของ **ทุกหน้า** จะเปลี่ยนไปจากเดิม (เกิดขึ้นจริงรอบ 16/09 — วงเลื่อนขึ้น 52px)
+     🪤 แตกเป็นตัวแปรย่อยแล้วเขียนทับที่ลูกไม่ได้ — var() ใน custom property ถูกแทนค่า
+        ตั้งแต่ตอนประกาศบน :root (กับดักเดียวกับ --scroll-anchor-top ข้างล่าง)
      ⚠️ `#000` ยกมาจากสูตรเดิมของ .topnav-system ทั้งดุ้น (ค่าเดียวที่ไม่ใช่โทเคน) */
+  --navy-glow-r: calc(0.48 * hypot(72vw, 1.8 * var(--topbar-h)));
+  --navy-glow-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  --navy-sheet: linear-gradient(110deg, color-mix(in srgb, var(--navy) 94%, #000), var(--navy));
+  /* แถวบน: ศูนย์กลางที่ −0.8×topbar = ตำแหน่งเดิมก่อน ADR 0016 เป๊ะ (เดิมเขียน `at 28% -80%`) */
+  --navy-bar-bg:
+    radial-gradient(circle var(--navy-glow-r) at 28% calc(-0.8 * var(--topbar-h)),
+      var(--navy-glow-color), transparent),
+    var(--navy-sheet);
+  /* แถบต้อนรับของหน้าแรก: เลื่อนศูนย์ลงอีกหนึ่งความสูงแถวบน ⇒ วงต่อเนื่องข้ามรอยต่อ */
   --navy-band-bg:
-    radial-gradient(circle calc(0.48 * hypot(72vw, 1.8 * var(--topbar-h))) at 28% calc(-1.8 * var(--topbar-h)),
-      color-mix(in srgb, var(--accent) 42%, transparent), transparent),
-    linear-gradient(110deg, color-mix(in srgb, var(--navy) 94%, #000), var(--navy));
+    radial-gradient(circle var(--navy-glow-r) at 28% calc(-1.8 * var(--topbar-h)),
+      var(--navy-glow-color), transparent),
+    var(--navy-sheet);
   /* เมนูของระบบเป็น **ลิ้นชักที่ลอยทับ** ไม่มีแถบประจำที่แล้ว (มติผู้ใช้ 2026-08-25)
        >768px    แฮมเบอร์เกอร์บนหัวเปิดลิ้นชักกว้างเท่านี้
        ≤768      ไม่มีลิ้นชัก ใช้แถบล่างมือถือ (MobileBottomNav)
@@ -1294,6 +1309,8 @@ button, select, input, textarea {
   gap: var(--space-3);
   max-width: 32rem;
 }
+.shell-state-error:focus { outline: none; }
+.shell-state-error:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: var(--space-2); border-radius: var(--radius-lg); }
 .shell-state-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1340,7 +1357,7 @@ button, select, input, textarea {
 .topnav-system {
   height: var(--topbar-h);
   background-color: var(--navy);
-  background-image: var(--navy-band-bg);
+  background-image: var(--navy-bar-bg);
   color: #fff;
   display: flex;
   align-items: center;
@@ -3093,7 +3110,9 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(255, 255, 255, 0.12);
 }
 .account-menu-trigger:focus-visible {
-  outline: 2px solid var(--accent-ink);
+  /* 🔴 ปุ่มนี้อยู่บนพื้นกรมท่าเสมอ — `--accent-ink` บน `--navy` ต่างกัน 1.9:1 (ตก §1.4.11)
+     ชิ้นอื่นบนแถบเดียวกัน (กระดิ่ง · โลโก้ · ลิงก์ข้าม) ใช้ `--navy-fg` อยู่แล้ว */
+  outline: 2px solid var(--navy-fg);
   outline-offset: 2px;
 }
 .account-menu-trigger .user-avatar {
@@ -4350,7 +4369,7 @@ button.empty-state { width: 100%; font: inherit; }
 .pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 /* เหตุผลที่ปุ่มกดไม่ได้ ต้องอยู่ตรงจุดที่เพิ่งกด ไม่ใช่ปล่อยให้ปุ่มจางเฉย ๆ */
 /* ใช้ได้ทั้งบรรทัดเหตุผลใต้ปุ่ม และคำขยายในป้ายช่อง ("(ไม่บังคับ · เช่น …)") */
-.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-regular); }
+.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-normal); }
 .pending-files-add {
   display: inline-flex;
   align-items: center;
@@ -5811,9 +5830,9 @@ button.empty-state { width: 100%; font: inherit; }
 
 
 .prod-summary-card.active {
-  border-color: var(--card-accent);
-  background: color-mix(in srgb, var(--card-accent) 6%, var(--panel));
-  box-shadow: 0 2px 12px color-mix(in srgb, var(--card-accent) 15%, transparent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .prod-table-wrap {
@@ -5864,10 +5883,16 @@ button.empty-state { width: 100%; font: inherit; }
   font-weight: var(--fw-semibold);
 }
 
+/* 🐞 เคยเป็น `rgba(var(--pulse-r, 0), …)` — ทั้งสามชื่อไม่เคยมีใครประกาศ ตัวสำรอง 0
+   บังไว้ ⇒ วงพัลส์เป็นสีดำ ไม่ใช่สีของหมุด · ยกมาใช้ --accent ตรง ๆ จะได้ไม่ต้องมี
+   ช่องทางรับค่า RGB แยกชิ้นที่ไม่มีใครป้อน (ยังไม่มีใครเรียก keyframes นี้)
+   🪤 ปลายทางเขียน `color-mix(… 0%, transparent)` ไม่ใช่คำว่า `transparent` เฉย ๆ —
+   ตัวนับเงาเลขดิบของ audit:ui ข้าม box-shadow ที่มี var() อยู่ข้างใน เขียนสั้นกว่านี้
+   แล้วสองบรรทัดนี้กลายเป็น "เงาที่เขียนเอง" ดันเพดาน RAW_SHADOW_CAP ขึ้นทันที */
 @keyframes marker-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--pulse-r, 0), var(--pulse-g, 0), var(--pulse-b, 0), 0); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  70% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 
 /* Responsive */
@@ -7088,6 +7113,16 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .performance-tracking-table .fz-table tr.perf-rest-row .perf-pending-sub,
 .performance-tracking-table .fz-table tr.perf-rest-row .perf-won-sub { font-style: normal; }
 .perf-rest-label { font-weight: var(--fw-semibold); }
+/* แถบเตือนของแท็บผลงานขายเมื่อ "โหลดได้ไม่ครบ" (ตรวจ 2026-09-16) — คนละชั้นกับ error เต็มจอ:
+   ตัวเลขที่เห็นยังใช้ได้บางส่วน แต่เดือนที่ยอดมาจากการกรอกมืออาจขึ้นเป็น ฿0 ⇒ ต้องบอก ไม่ใช่เงียบ */
+.perf-partial-warning {
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+
 .perf-rest-note {
   display: block;
   color: var(--text-3);
@@ -7823,27 +7858,34 @@ td > * > .text-action {
   transition: all var(--motion-standard) cubic-bezier(0.25, 0.46, 0.45, 0.94);
   cursor: default;
 }
+/* 🐞 เคยเป็น `--primary-color` ที่ไม่เคยมีใครประกาศ ⇒ border-color ตกไปที่ค่าตั้งต้น
+   `currentColor` = สีตัวอักษรของการ์ด ไม่ใช่สีแบรนด์ · ชื่อจริงของสีแบรนด์คือ --accent
+   (การ์ด KPI ไม่ได้รับผลกระทบ — `.ui-kpi-card.interactive-card:hover` เฉพาะเจาะจงกว่า
+   และใช้ --kpi-accent ที่ KpiCard.js ส่งมารายใบอยู่แล้ว) */
 .interactive-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: color-mix(in srgb, var(--primary-color) 30%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
 /* Interactive Grid Hover */
 .interactive-grid tbody tr.premium-row:hover td {
-  background: color-mix(in srgb, var(--primary-color) 4%, transparent) !important;
+  background: color-mix(in srgb, var(--accent) 4%, transparent) !important;
 }
 .interactive-grid tbody tr.premium-row:hover td.fz-c1,
 .interactive-grid tbody tr.premium-row:hover td.fz-c2,
 .interactive-grid tbody tr.premium-row:hover td.fz-cr {
-  background: color-mix(in srgb, var(--primary-color) 8%, var(--bg)) !important;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg)) !important;
 }
 
 /* Custom Tooltip for Charts */
 .chart-tooltip {
   position: absolute;
   pointer-events: none;
-  background: var(--surface-2);
+  /* 🐞 เคยเป็น `--surface-2` ที่ไม่เคยมีใครประกาศ ⇒ พื้นโปร่งทั้งสองธีม เลขในทูลทิป
+     ทับเส้นกราฟข้างหลัง · นี่คือ "แผงลอยทับเนื้อหาอื่น" ⇒ ใช้ --panel-float ที่ทึบ 100%
+     ไม่ใช่ --panel ซึ่งเป็นสีเดียวกับการ์ดที่มันลอยอยู่ข้างบน (แล้วขอบจะหายไปกับพื้น) */
+  background: var(--panel-float);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-2-5) var(--space-3-5);

@@ -53,7 +53,7 @@
   height: 24px;
   padding: 0 var(--space-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: var(--panel);
   color: var(--text-2);
   font-size: var(--fs-3);
@@ -75,7 +75,7 @@ button.spotChip { cursor: pointer; }
   display: grid;
   place-items: center;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: var(--panel);
   color: var(--text-2);
   cursor: pointer;
@@ -111,7 +111,7 @@ button.spotChip { cursor: pointer; }
   font-weight: var(--fw-bold);
   color: var(--red);
   background: var(--red-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 0 var(--space-1);
   align-self: flex-start;
 }

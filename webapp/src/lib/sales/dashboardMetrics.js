@@ -2,7 +2,7 @@
 // และ drill-down modal ฝั่ง client ต้องใช้ชุดเดียวกัน ไม่งั้นตัวเลขบนการ์ด KPI
 // กับรายการดีลที่กดเข้าไปดูไม่ตรงกัน (ผลตรวจระบบขาย 2026-07-16)
 import { isOpenStage, isWonStage, monthKey } from '@/lib/salesPlanning';
-import { currentMonth } from '@/lib/datePeriods';
+import { businessDayKey, currentMonth } from '@/lib/datePeriods';
 import {
   dealActualFromSalesOrders,
   dealPendingApprovalAmount,
@@ -45,7 +45,7 @@ export const pendingApprovalCountOf = (d) => (isWonDeal(d) ? dealPendingApproval
 // เดือนของยอดรออนุมัติ = **เดือนปัจจุบัน (เวลาไทย) เสมอ** (มติผู้ใช้ 2026-09-11)
 // อนุมัติย้อนหลังไม่ได้ ถ้าอนุมัติวันนี้ Actual ก็ลงเดือนนี้ (wonMonth = เดือนของ approvedAt)
 // ⇒ ใบที่ค้างข้ามเดือนเลื่อนมาอยู่เดือนใหม่เอง · เดือนที่ปิดไปแล้ว/ปีก่อนไม่มีวันเห็นยอดนี้
-// ⚠️ ห้ามใช้ wonMonthOf (ดีลรออนุมัติไม่มี wonMonth → ตกไปเดือน confirmedAt แบบ UTC)
+// ⚠️ ห้ามใช้ wonMonthOf (ดีลรออนุมัติไม่มี wonMonth → ตกไปเดือนที่ปิด Won ตาม confirmedAt ไม่ใช่เดือนปัจจุบัน)
 // ⚠️ ห้ามใช้ businessMonthKey ของ lib/businessDate (คืน 'YYMM' สำหรับเลขเอกสาร)
 // ⭐ "มีใบรออนุมัติ" = ยอด > 0 **หรือมีใบ** — ใบยอด 0 บาทถูกกฎตั้งแต่ mig 0197 และ trigger
 //    ของ mig 0353 เขียนคีย์ทั้งคู่เมื่อ count > 0 · ถ้าดูแค่ยอด ใบพวกนี้หลุดจากแดชบอร์ด/ลิ้นชัก/
@@ -117,13 +117,16 @@ export const isLegacyWonAtCreate = (d) => isWonDeal(d)
       ⇒ เปลี่ยนจาก !dealHasApprovedSalesOrder (ดู wonMonth) เป็น wonAmountOf <= 0
    ② **มูลค่าดีล 0 บาทไม่นับ** ทั้งยอดและจำนวน — บวกคาดการณ์ 0 อยู่แล้ว ได้แค่บรรทัด "฿0.00 · 1 ดีล" รกจอ
       (ของจริง 16/09: 3 ดีลมูลค่า 0 ที่มี SO 0 บาทร่าง/ยกเลิก)
+   ③ **ตัดกองด้วยยอด ไม่ใช่จำนวนใบ** (ตรวจ 2026-09-16) — เดิมมี `pendingApprovalCountOf(d) <= 0` พ่วงอยู่
+      🐞 ใบที่ยื่นแล้วยอด 0 บาท (ถูกกฎตั้งแต่ mig 0197) จึงเตะดีลออกจากกองนี้ ขณะที่กองรออนุมัติได้ 0 บาท
+         ⇒ มูลค่าดีลทั้งก้อนหายจากคาดจบงวด และคาดขาดบวมเท่ามูลค่านั้น โดยไม่มีช่องไหนบนจอแสดงมันเลย
+      ⇒ เหลือเงื่อนไขยอดอย่างเดียว: มีเงินอยู่ที่กองไหน กองนั้นเอาไป · ไม่มีเงินที่ไหน = ยังรอยื่น SO ที่มียอด
    ⚠️ สามบรรทัดแรกห้ามสลับ — legacyDealSwitch.test / historicalMoneyGuards.test ตรึงลำดับไว้ */
 export const isWonAwaitingSo = (d) => isWonDeal(d)
   && !isLegacyWonAtCreate(d)
   && !isHistoricalDeal(d)
   && wonAmountOf(d) <= 0
   && pendingApprovalAmountOf(d) <= 0
-  && pendingApprovalCountOf(d) <= 0
   && (Number(d?.projectValue) || 0) > 0;
 export const wonAwaitingSoAmountOf = (d) => (isWonAwaitingSo(d) ? Math.max(0, Number(d?.projectValue) || 0) : 0);
 export const wonAwaitingSoCountOf = (d) => (isWonAwaitingSo(d) ? 1 : 0);
@@ -161,7 +164,10 @@ export function forecastAccuracyRollup(openDeals = [], wonDeals = [], lostDeals 
 // วันที่บนหัวใบ — Actual เกิดตอนอนุมัติ เดือนที่ลงยอดจึงต้องเป็นเดือนที่อนุมัติ
 // ค่านี้ DB เขียนให้เอง (trigger sync_sales_order_actual) ฝั่ง JS แค่อ่าน
 export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
-  || monthKey(d?.confirmedAt)
+  /* ⚠️ `confirmedAt` เป็น timestamptz — ต้องแปลงเป็นวันของ **เวลาไทย** ก่อนตัดเดือน (ตรวจ 2026-09-16)
+     🐞 เดิมตัดจากสตริง UTC ตรง ๆ ⇒ ดีลที่ปิดช่วง 00:00–06:59 เวลาไทย ตกไปเดือนก่อน ขณะที่ `wonMonth`
+        ที่ DB เขียนคิดด้วย Asia/Bangkok (mig 0279) ⇒ ดีลเดียวกันย้ายเดือนตอนใบสั่งขายถูกอนุมัติ/ดึงกลับ */
+  || monthKey(businessDayKey(d?.confirmedAt))
   || monthKey(d?.metadata?.poReceivedDate)
   || monthKey(d?.forecastMonth);
 

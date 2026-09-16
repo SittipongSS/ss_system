@@ -64,7 +64,7 @@
   font-weight: var(--fw-bold);
   color: var(--red);
   background: var(--red-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 0 var(--space-1);
   margin-inline-start: var(--space-1);
 }

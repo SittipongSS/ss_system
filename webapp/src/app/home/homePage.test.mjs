@@ -65,3 +65,38 @@ test('สารบัญมือถือไม่เขียนประว�
   assert.match(SHEET, /scrollIntoView\(/);
   assert.ok(!SHEET.includes('pushState'));
 });
+
+/* ── ผลตรวจหลังขึ้น production 16/09 — ข้อที่แก้แล้ว ห้ามไหลกลับ ───────────── */
+
+test('⭐ เลขค้างจากรอบก่อน (stale) ห้ามอ่านว่า "ไม่มีงานค้าง"', () => {
+  /* 🐞 ธง stale ถูกคำนวณไว้แต่ไม่มีใครวาด ⇒ ตัวนับล่มตอนสาย หน้าแรกยังขึ้นเครื่องหมายถูก
+     สีเขียว "ไม่มีตัวเลขงานค้าง" ค้างทั้งเช้า ทั้งที่งานเข้ามาแล้ว */
+  const stale = SHEET.indexOf('legend.stale');
+  const allZero = SHEET.indexOf('legend.allZero');
+  assert.ok(stale > 0, 'ต้องอ่านธง stale');
+  assert.ok(stale < allZero, 'สาขา stale ต้องมาก่อน allZero ไม่งั้นข้อความเขียวชนะ');
+});
+
+test('สารบัญมือถือมีระบบที่ยังไม่เปิดใช้ด้วย (ADR 0016 ข้อ 8)', () => {
+  // ลำดับในสารบัญต้องตรงกับลำดับแผงในหน้า — ตัดระบบที่ปิดออกแล้วลำดับเพี้ยน
+  assert.match(SHEET, /\{blocks\.map\(\(block\) => \(\s*<IndexChip/);
+  assert.match(SHEET, /if \(block\.disabled\)[\s\S]{0,400}chipOff/);
+});
+
+test('ตัวนับสัญญาอ่านไฟล์แนบแบบ strict — พังแล้วต้องขึ้นขีด ไม่ใช่ลดจำนวนเงียบ', async () => {
+  const { readFileSync } = await import('node:fs');
+  const route = readFileSync(new URL('../api/nav/counts/route.js', import.meta.url), 'utf8');
+  assert.match(route, /externalDocReadyIds\(supabase, latest, user, \{ strict: true \}\)/);
+  const helper = readFileSync(new URL('../../lib/sales/contractExternalDocs.js', import.meta.url), 'utf8');
+  assert.match(helper, /if \(strict\) throw error/);
+});
+
+test('⭐ วงเรืองของแถวบนกับแถบต้อนรับต้องคนละศูนย์กลาง — ไม่งั้นรอยต่อเป็นขั้นสี', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
+  /* แถวบนเริ่มที่ y=0 · แถบเริ่มที่ y=52 ⇒ ศูนย์เดียวกันในพิกัดจอต้องต่างกันหนึ่ง --topbar-h
+     🐞 16/09 ใช้ค่าของแถบกับแถวบนด้วย ⇒ วงเลื่อนขึ้น 52px ทั้งระบบ และรอยต่อไม่เนียน */
+  assert.match(css, /--navy-bar-bg:[\s\S]{0,200}at 28% calc\(-0\.8 \* var\(--topbar-h\)\)/);
+  assert.match(css, /--navy-band-bg:[\s\S]{0,200}at 28% calc\(-1\.8 \* var\(--topbar-h\)\)/);
+  assert.match(css, /\.topnav-system \{[\s\S]{0,200}background-image: var\(--navy-bar-bg\)/);
+});

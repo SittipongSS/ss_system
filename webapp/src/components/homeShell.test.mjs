@@ -74,3 +74,20 @@ test('ตัวเลขชุดเดียวต่อหน้า — เป
 test('หน้าแรกได้คลาสของตัวเองไว้ให้ CSS จับ', () => {
   assert.match(SHELL, /flags\.homeHub \? ' home-context' : ''/);
 });
+
+/* ── ผลตรวจหลังขึ้น production 16/09 ─────────────────────────────────────── */
+
+test('จอ "อ่านตัวตนไม่สำเร็จ": ประกาศให้โปรแกรมอ่านจอรู้ และโฟกัสไม่หายตอนกดลองใหม่', () => {
+  /* 🐞 เดิม role="status" อยู่ในสาขา loading ที่ถูก unmount ⇒ ตอนสลับเป็น error ไม่มีเสียงเลย
+     และ setAuthError(null) บรรทัดแรกของ loadUser ทำให้ปุ่มที่กดหายไปกลางคัน โฟกัสตกไป <body> */
+  assert.match(codeOnly, /<div className="page" role="status" aria-live="polite">/);
+  assert.match(codeOnly, /errorRef\.current\?\.focus\(/);
+  assert.match(codeOnly, /disabled=\{busy\}/);
+  assert.doesNotMatch(codeOnly, /setAuthError\(null\)/);
+});
+
+test('วงโฟกัสบนพื้นกรมท่าใช้สีของพื้นนั้น ไม่ใช่สีเน้นของพื้นอ่อน', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(css, /\.account-menu-trigger:focus-visible \{[\s\S]{0,200}outline: 2px solid var\(--navy-fg\)/);
+});
