@@ -1,0 +1,342 @@
+/* การ์ด "จัดการผลประเมิน" — ส่วนที่การ์ดกลาง (DocumentControlPanel) ไม่มีให้
+   ⚠️ ทุกก้อนที่นี่คือ *เนื้อเฉพาะของใบประเมิน* (แถบวัด · ด่านต่อพื้นที่ · ปุ่มคลี่ของจอแคบ)
+      พื้นการ์ด · หัวการ์ด · จุดสถานะ · แถวปุ่ม มาจากการ์ดกลางทั้งหมด ห้ามวาดซ้ำที่นี่ */
+
+/* บรรทัดรองของพาดหัวสถานะ — "ส่งโดย … · เมื่อ … · รอฝ่ายขายปิดเรื่อง" */
+.statusSub {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ── ② แถบวัด ────────────────────────────────────────────────────────────
+   อำพันตอนยังไม่ครบ · เขียวตอนครบ · "ตัดออก n" ต่อท้ายเมื่อมีพื้นที่ที่ถูกตัด
+   ⚠️ ตัวเลขทั้งหมดมาจาก `view.progress` ไม่ได้นับที่นี่ */
+.meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2-5);
+}
+
+/* ขีดละหนึ่งพื้นที่ — `flex: 1` ⇒ ใบสามพื้นที่กับใบยี่สิบพื้นที่กินความกว้างเท่ากัน
+   ⚠️ ไม่ใช้ `width: %` เพราะจำนวนขีดมาจากข้อมูล ⇒ ต้องเป็น inline style ซึ่ง ratchet
+   ของโมดูลบริการห้ามเพิ่ม (ทรงเดียวกับ `.tab-overall-seg` ของฟอร์มคำร้อง) */
+.bar {
+  display: flex;
+  flex: 1 1 auto;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.bar > i {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+
+.bar > i[data-ok] {
+  background: var(--amber);
+  box-shadow: none;
+}
+
+/* วัดครบทุกพื้นที่ = เขียวทั้งแถบ (บอกด้วยสีที่เปลี่ยนทั้งชุด ไม่ใช่ขีดสุดท้าย) */
+.meterDone .bar > i[data-ok] {
+  background: var(--green);
+}
+
+.meter small {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+/* ── ③ กล่องแจ้ง: บรรทัดหลักฐานใต้เหตุผล (คนกด · เวลา · ผลเดิม) ─────────── */
+.noticeMeta {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+/* ── ④ เหตุผลที่กดส่งไม่ได้ — อยู่ในกล่องอำพันของการ์ดกลาง (.blockedReason) ──
+   ที่นี่จัดแค่ไอคอนแม่กุญแจให้อยู่ต้นบรรทัดและไม่ยุบตอนข้อความห่อหลายบรรทัด */
+.reason {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.reason > svg {
+  flex: none;
+  margin-top: var(--space-1);
+}
+
+/* ปุ่มพาไปอยู่ **ในบรรทัดเดียวกับเหตุผล** — เว้นช่องไฟหนึ่งขั้นแทนการเว้นวรรคข้อความ */
+.reasonJump {
+  margin-inline-start: var(--space-2);
+}
+
+/* คำอธิบายใต้ปุ่มดึงกลับ */
+.hint {
+  margin: 0 0 var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ── ⑤⑥⑦ ส่วนรองสามก้อน ─────────────────────────────────────────────── */
+.sec + .sec {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3-5);
+  border-top: 1px solid var(--border);
+}
+
+.secTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2-5);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.secLinks {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-2-5) 0 0;
+  font-size: var(--fs-4);
+}
+
+/* ลิงก์เดียวในแถว = ชิดขวา (ปุ่ม "ดูด่านทั้ง 6 ข้อ" อยู่ตำแหน่งเดิมเสมอ ไม่ว่าจะมี
+   ปุ่ม "แจ้งช่างให้กลับไป" อยู่ข้าง ๆ หรือไม่) */
+.secLinks > :only-child {
+  margin-inline-start: auto;
+}
+
+/* ด่านที่ติด รวมเป็นกลุ่มต่อพื้นที่ */
+.gapList,
+.gateList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 🐞 **`[hidden]` แพ้ `display: flex`** — รีเซ็ตของเบราว์เซอร์เป็น `display: block`
+   ความจำเพาะเท่ากับคลาส ⇒ รายการด่านที่ควรถูกซ่อนจะกางอยู่ตลอด (กับดักเดียวกับที่
+   ม็อกเจอตอนคัดลอก base.css ไป) · ประกาศชัด ๆ ที่นี่ ไม่ต้องไปพึ่งรีเซ็ตส่วนกลาง */
+.gapList[hidden],
+.gateList[hidden] {
+  display: none;
+}
+
+.gapRow,
+.gateRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.gapRow > div {
+  min-width: 0;
+}
+
+.gapRow small,
+.gateRow small {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+.gapName {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-2);
+}
+
+.gapName small {
+  color: var(--text-3);
+}
+
+.gapActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-1-5);
+}
+
+.more {
+  margin: var(--space-1-5) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* เครื่องหมายหน้าแถว — ผ่าน = เขียว · ติด = อำพัน (บอกด้วยไอคอน ไม่ใช่สีอย่างเดียว) */
+.mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.gateRow[data-ok] .mark {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* แถวด่าน: บรรทัดแรก = ชื่อข้อ + n/m · บรรทัดสอง = ชื่อพื้นที่ที่ยังขาด (ห่อได้) */
+.gateBody {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.gateLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.gateRow b {
+  min-width: 0;
+  color: var(--text-2);
+  font-weight: var(--fw-normal);
+}
+
+.gateRow small {
+  flex: none;
+}
+
+/* ชื่อพื้นที่ที่ขาด — ห่อได้เต็มบรรทัด (ตัดทิ้งคือกลับไปเป็น "ยังไม่ครบ" เฉย ๆ) */
+.gateBody > small {
+  overflow-wrap: anywhere;
+}
+
+/* เอกสารที่เกี่ยวข้อง */
+.refs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.refs > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.refs dt {
+  color: var(--text-3);
+}
+
+.refs dd {
+  margin: 0;
+}
+
+/* ── ปุ่มคลี่ของจอแคบ ────────────────────────────────────────────────────
+   🔴 **จอกว้างกางอยู่แล้ว** — ที่ ≥1051px รางขวาปักหมุดและมีที่พอ (วัดแล้ว 533–714px
+   จากที่มี 776px ที่ 1440×900) ⇒ ปุ่มนี้ไม่มีความหมาย ซ่อนทิ้ง
+   ที่ ≤1050px รางเลิกปักหมุดแล้วไหลลงต่อท้ายเนื้อ ⇒ ส่วนรองสามก้อนดันปุ่มที่คนกำลัง
+   จะกดลงไปก้นหน้า (บทเรียนเดียวกับ `.controlBody` ของการ์ดกลาง)
+   ⚠️ 1050px ต้องตรงกับ `DetailPage.module.css` และ `DocumentControlPanel.module.css` */
+.disclosure {
+  display: none;
+}
+
+@media (max-width: 1050px) {
+  .disclosure {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--fs-4);
+    line-height: var(--lh-thai);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  /* เส้นประ = "เกิดอะไรขึ้นตรงนี้" (กติกาเดียวกับ .text-action) */
+  .disclosureLabel {
+    text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+    text-underline-offset: 3px;
+  }
+
+  .disclosure:hover {
+    color: var(--text);
+  }
+
+  .disclosure:focus-visible {
+    outline: 2px solid var(--accent-ink);
+    outline-offset: 2px;
+    border-radius: var(--radius);
+  }
+
+  /* ลูกศรที่มองเห็นจริง ไม่ใช่ขีดจาง ๆ (ข้อที่กรรมการติในรอบม็อก) */
+  .chev {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-full);
+    background: var(--panel-2);
+    color: var(--text-2);
+    transition: transform var(--motion-medium);
+  }
+
+  .disclosure[aria-expanded="true"] .chev {
+    transform: rotate(180deg);
+  }
+
+  .extra[data-compact-hidden] {
+    display: none;
+  }
+
+  .extra {
+    margin-top: var(--space-3);
+  }
+
+  /* คำอธิบายใต้ปุ่มดึงกลับ — จอแคบตัดทิ้ง · โมดัลยืนยันบอกเรื่องเดียวกันซ้ำอยู่แล้ว
+     ตอนกด และที่ ≤1050 การ์ดนี้อยู่เหนือทั้งหน้า ⇒ ทุกบรรทัดที่นี่ดันแท็บและพื้นที่
+     แรกตกจอ (วัดจริง 2026-09-16 ที่ 1024×768) */
+  .hint {
+    display: none;
+  }
+}

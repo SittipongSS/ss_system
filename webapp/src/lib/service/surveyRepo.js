@@ -9,8 +9,11 @@
 // (ถ้าย้าย ร่างที่ถูกทิ้งจะกินรหัส ZN และทิ้งโซนกำพร้าไว้ในทะเบียนของลูกค้า)
 import { genId } from '@/lib/id';
 import { fetchAll } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { insertRowWithComposedCode } from '@/lib/entityCode';
 import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, zoneCodePrefix } from '@/lib/service/zoneCode';
+import { CUSTOMER_NAME_SELECT, customerNameIn } from '@/lib/master/customerName';
+import { surveyRecallRecord } from '@/lib/service/survey';
 import { zoneNameKey } from '@/lib/service/surveyRequest';
 
 /* ไซต์ที่ใบอ้าง ต้องมีจริง **และเป็นของลูกค้ารายเดียวกับดีล**
@@ -201,4 +204,86 @@ export async function loadZoneSurveyLocks(supabase, zoneIds = []) {
     .order('id', { ascending: true }));
 
   return { rows, requestsById: new Map(requests.map((r) => [r.id, r])) };
+}
+
+/* ══ บริบทของใบที่การ์ดควบคุมและหัวใบต้องใช้ (PR2 ของการรื้อจอประเมิน) ═══════
+ *
+ * ⭐ **โหลดที่ server ที่เดียว ไม่ใช่ให้จอยิงตามอีกสี่รอบ** — จอ TS เปิดจากมือถือหน้างาน
+ *   ทุกรอบที่เพิ่มคือวินาทีที่ช่างยืนรอ · และของทั้งสี่ชิ้นเป็น "ของประกอบใบ" ที่หน้าคำร้อง
+ *   ฝั่งขายโหลดอยู่แล้ว (`findRequest` ใน lib/materialPricesAdmin.js) ⇒ ท่าเดียวกัน
+ *
+ * 🔴 **อ่านพลาดต้องกลายเป็น "ไม่ทราบ" ไม่ใช่ "ไม่มี"** (กติกา supabase-never-throws) —
+ *   `supabase-js` ไม่ throw · คืน `{ data: null, error }` ⇒ เขียน `data || null` ตรง ๆ
+ *   เมื่อไร ใบที่อ่านไซต์ไม่สำเร็จจะหน้าตาเหมือนใบที่ไม่มีไซต์เป๊ะ ⇒ ปัก `unknown.<ชิ้น>`
+ *   แล้วให้จอเขียน "ไม่ทราบ" · **ไม่ตีกลับทั้งเส้น** เพราะผลวัดซึ่งเป็นเนื้อหลักอ่านได้แล้ว
+ *
+ * ⚠️ ทุกชิ้นเป็นของ "ประกอบ" — ล้มชิ้นไหนก็ไม่ล้มใบ ⇒ ยิงขนานกันได้ และต้องไม่ throw
+ */
+export async function loadSurveySheetContext(supabase, request, zones = []) {
+  const unknown = {};
+  const rows = Array.isArray(zones) ? zones : [];
+  const note = (piece, error) => {
+    unknown[piece] = true;
+    console.error('[survey] อ่าน', piece, 'ไม่สำเร็จ', request?.id, error?.message || error);
+  };
+
+  const siteId = request?.siteId || null;
+  const customerId = request?.customerId || null;
+  /* รหัส ZN อ่านสดจากทะเบียน ไม่ประทับลงแถว — พื้นที่ถูกเปลี่ยนรหัสแล้วใบเก่าต้องพาไปถูกที่
+     ⚠️ ห่อ `fetchInChunks` เพราะลิสต์ **โตตามข้อมูล** (ใบเดียวขอได้ถึง 60 พื้นที่ และ
+        พื้นที่ที่ช่างเพิ่มหน้างานไม่มีเพดาน) — `.in()` ที่ยาวเกิน ~16 KB ตายเป็น
+        `TypeError: fetch failed` โดยไม่มีอะไรบอก (ดู lib/supabaseInChunks.js) */
+  const zoneIds = [...new Set(rows.map((r) => r.zoneId).filter(Boolean))];
+
+  const [siteRes, zoneRes, customerRes, recallRes] = await Promise.all([
+    siteId
+      ? supabase.from('service_sites')
+        .select('id, code, name, address, "contactName", "contactPhone"')
+        .eq('id', siteId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    zoneIds.length
+      ? fetchInChunks(zoneIds, (chunk) => supabase
+        .from('service_zones').select('id, code').in('id', chunk))
+      : Promise.resolve({ data: [], error: null }),
+    customerId
+      /* 🔴 **ห้าม select แค่ `name`** — ลูกค้าที่มีแต่ชื่ออังกฤษจะคืน `name: null` แล้วจอ
+         วาดขีด ทั้งที่ชื่อมีอยู่จริง และเพราะไม่ได้หยิบ `nameEn` มา ปลายทางกู้คืนเองไม่ได้
+         (บทเรียน AR-630 · กติกาที่ `lib/master/customerName.js` เขียนไว้เอง) */
+      ? supabase.from('customers').select(`${CUSTOMER_NAME_SELECT}, "arCode"`)
+        .eq('id', customerId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    /* แถว "ดึงผลกลับมาแก้" ล่าสุด — ตรึงอยู่ในเธรดของใบ (`entity_updates` kind='recall')
+       ⚠️ เอา **แถวล่าสุดแถวเดียว** — ใบหนึ่งถูกดึงกลับได้หลายรอบ และของที่จอต้องบอกคือ
+          รอบล่าสุดเท่านั้น (รอบก่อน ๆ อ่านได้ในเธรดของใบคำร้อง) */
+    request?.id
+      ? supabase.from('entity_updates')
+        .select('id, body, meta, "authorId", "authorName", "createdAt"')
+        .eq('entityType', 'dept_request').eq('entityId', String(request.id)).eq('kind', 'recall')
+        .order('createdAt', { ascending: false }).limit(1)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (siteRes.error) note('site', siteRes.error);
+  if (zoneRes.error) note('zoneCodes', zoneRes.error);
+  if (customerRes.error) note('customer', customerRes.error);
+  if (recallRes.error) note('recall', recallRes.error);
+
+  const codeById = new Map((zoneRes.data || []).map((z) => [z.id, z.code]));
+  for (const row of rows) {
+    if (!row.zoneId) { row.zoneCode = null; continue; }
+    // อ่านทะเบียนไม่สำเร็จ ≠ พื้นที่นี้ไม่มีรหัส — จอต้องเขียน "ไม่ทราบ" เฉพาะกรณีแรก
+    row.zoneCode = unknown.zoneCodes ? null : (codeById.get(row.zoneId) || null);
+    if (unknown.zoneCodes) row.zoneCodeUnknown = true;
+  }
+
+  const customer = customerRes.data || null;
+  return {
+    site: siteRes.error ? null : (siteRes.data || null),
+    customer: customerRes.error ? null : (customer && {
+      // ไทยก่อน ไม่มีค่อยตกไปอังกฤษ — ตัวเดียวกับที่ทุกจุดสำเนาชื่อลูกค้าใช้ ห้ามอ่าน `.name` ตรง ๆ
+      id: customer.id, name: customerNameIn(customer, 'th') || null, arCode: customer.arCode || null,
+    }),
+    recall: recallRes.error ? null : surveyRecallRecord((recallRes.data || [])[0] || null),
+    unknown,
+  };
 }

@@ -15,7 +15,7 @@ import Link from "next/link";
 import {
   Palette,
   Pencil, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
-  CalendarClock, ChevronDown, FileText, LayoutGrid, Settings, UserRound,
+  CalendarClock, ChevronDown, CircleAlert, FileText, LayoutGrid, ListChecks, Settings, UserRound,
   TriangleAlert, ShieldAlert, CircleHelp,
 } from "lucide-react";
 import {
@@ -102,6 +102,7 @@ import {
 import {
   DocumentControlCard, DocumentReadinessList,
 } from "@/components/ui/DocumentControlPanel";
+import CollapsibleCard from "@/components/ui/CollapsibleCard";
 import VersionControlCard from "@/components/ui/VersionControlCard";
 import ActionQueue from "@/components/ui/ActionQueue";
 import AccessDenied from "@/components/ui/AccessDenied";
@@ -155,7 +156,7 @@ const BADGE_TONES = STATUS_TONES;
    ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
-  { cls: "ui-badge", count: 174 },
+  { cls: "ui-badge", count: 173 },
   { cls: "status-pill", count: 43 },
   { cls: "chip", count: 21 },   // 📉 23 → 20 (2026-09-16) หน้าแรกเดิมถูกลบตาม ADR 0016 · 📈 20 → 21 ชิประบบที่ยังไม่เปิดใช้บนสารบัญหน้าแรก
 ];
@@ -620,6 +621,11 @@ export default function DesignPreviewPage() {
   const [demoTwoPane, setDemoTwoPane] = useState("");
   const [demoDirty, setDemoDirty] = useState(false);
   const [demoSaving, setDemoSaving] = useState(false);
+  /* ── CollapsibleCard — เปิด/ปิดเป็นของผู้เรียก (ตัวมันไม่จำเอง) ────────────
+     เก็บเป็น map เพราะกติกาของมันคือ "เปิดพร้อมกันได้หลายอัน" ไม่ใช่ accordion
+     และช่องพิมพ์ข้างล่างมีไว้ให้กดพับแล้วกางกลับมาดูว่า **ค่าที่พิมพ์ยังอยู่** */
+  const [demoFold, setDemoFold] = useState({ a: true, b: false, c: false });
+  const [demoFoldText, setDemoFoldText] = useState("");
   /* ── CodeStrip · PersonLoadSelect · GatedAction · AlertBanner ──────────────
      สามตัวหลังไม่มี "ค่า" ให้เก็บ มีแต่ *เหตุการณ์* ⇒ เก็บบรรทัดสะท้อน callback
      แบบเดียวกับ `recordLog` ข้างล่าง แทนการต่อ API ให้ดูผลจริง */
@@ -2827,6 +2833,95 @@ export default function DesignPreviewPage() {
           </div>
         </Section>
 
+        {/* ⭐ ของกลางที่เพิ่มใน PR4 ของจอประเมินพื้นที่ — ก่อนหน้านี้บ้านนี้ไม่มีตัวพับ
+            ของกลางเลย ทุกหน้าที่อยากพับจึงเขียนเอง แล้วได้กติกาคนละชุด */}
+        <Section group="shell" active={group}
+          title="กล่องที่พับเก็บได้"
+          subtitle="CollapsibleCard — หัวเป็นปุ่มทั้งแถว (h3 > button) · ลูกศรอยู่ในปุ่ม · ปุ่มอื่นทั้งหมดอยู่ในเนื้อ · เนื้อซ่อนด้วย hidden ไม่ถูกถอดทิ้ง"
+        >
+          <div className={styles.stack}>
+            <StatusNotice tone="info" title="พับแล้วต้องยังตอบคำถามของกล่องได้">
+              หัวมีช่อง <code>summary</code> ที่<strong>โผล่เฉพาะตอนพับ</strong> และช่อง{" "}
+              <code>badges</code> ที่อยู่ทั้งสองสถานะ — กล่องที่พับแล้วอ่านไม่ออกว่าข้างในมีอะไร
+              {" "}คือกล่องที่ทุกคนต้องกางทุกใบ (เท่ากับไม่ได้พับ) · เนื้อซ่อนด้วยแอตทริบิวต์{" "}
+              <code>hidden</code> <strong>ไม่ใช่การถอดออกจาก DOM</strong> ⇒ ค่าที่พิมพ์ค้าง
+              {" "}และไฟล์ที่กำลังอัปโหลดอยู่ในกล่องไม่หายตอนพับ (ลองพิมพ์ในช่องข้างล่าง แล้วกดพับ-กางดู)
+            </StatusNotice>
+
+            <div className={styles.row}>
+              <Button size="sm" variant="outline"
+                onClick={() => setDemoFold({ a: true, b: true, c: true })}>
+                ขยายทุกกล่อง
+              </Button>
+              <Button size="sm" variant="outline"
+                onClick={() => setDemoFold({ a: false, b: false, c: false })}>
+                ย่อทุกกล่อง
+              </Button>
+              <span className={styles.caption}>
+                เปิดพร้อมกันได้หลายกล่อง — ตัวนี้ไม่ใช่ accordion
+              </span>
+            </div>
+
+            <div className={styles.stack}>
+              <CollapsibleCard
+                id="preview-fold-a"
+                open={demoFold.a}
+                onToggle={(next) => setDemoFold((prev) => ({ ...prev, a: next }))}
+                tone="warning"
+                lead={1}
+                eyebrow="ZN-1019-02-10024"
+                title={<>Studio 03{" "}<small>ชั้น 02</small></>}
+                summary={<span>ขาด: ขนาด · ภาพกว้าง</span>}
+                badges={<StatusBadge tone="warning">ยังไม่ครบ</StatusBadge>}
+              >
+                <div className={styles.field}>
+                  <span className={styles.caption}>พิมพ์อะไรก็ได้ แล้วกดพับที่หัว — กางกลับมาค่ายังอยู่</span>
+                  <Input
+                    value={demoFoldText}
+                    onChange={(e) => setDemoFoldText(e.target.value)}
+                    placeholder="ค่าที่ยังไม่ได้บันทึก"
+                    autoComplete="off"
+                  />
+                </div>
+              </CollapsibleCard>
+
+              <CollapsibleCard
+                id="preview-fold-b"
+                open={demoFold.b}
+                onToggle={(next) => setDemoFold((prev) => ({ ...prev, b: next }))}
+                tone="success"
+                lead={<Check size={16} aria-hidden="true" />}
+                eyebrow="ZN-1019-02-10022"
+                title={<>Studio 01{" "}<small>ชั้น 02</small></>}
+                summary={<><span>8 ตร.ม. · 24 ลบ.ม.</span><span>จุด 3</span><span>รูป 3</span></>}
+                badges={<StatusBadge tone="success" icon={Check}>วัดแล้ว</StatusBadge>}
+              >
+                <p className={styles.caption}>
+                  กล่องที่งานจบแล้ว — บรรทัดสรุปบนหัวตอบว่า &ldquo;ได้เท่าไร&rdquo; โดยไม่ต้องกาง
+                </p>
+              </CollapsibleCard>
+
+              <CollapsibleCard
+                id="preview-fold-c"
+                open={demoFold.c}
+                onToggle={(next) => setDemoFold((prev) => ({ ...prev, c: next }))}
+                alert
+                lead={<CircleAlert size={16} aria-hidden="true" />}
+                eyebrow="ZN-1019-02-10023"
+                title={<>Studio 02{" "}<small>ชั้น 02</small></>}
+                summary={<span>บันทึกครั้งล่าสุดไม่ผ่าน</span>}
+                badges={<StatusBadge tone="danger" icon={CircleAlert}>บันทึกไม่สำเร็จ</StatusBadge>}
+              >
+                <p className={styles.caption}>
+                  <code>alert</code> = กล่องที่มีเรื่องต้องแก้ (ขอบแดง) — หน้าที่ใช้งานจริงต้อง
+                  {" "}<strong>บังคับเปิด</strong>กล่องนี้ด้วย เพราะ error ที่อยู่ในกล่องที่พับอยู่
+                  {" "}คือ error ที่ไม่มีใครเห็น
+                </p>
+              </CollapsibleCard>
+            </div>
+          </div>
+        </Section>
+
         <Section group="shell" active={group}
           title="โครงหน้ารายละเอียด"
           subtitle="DetailOverview หัวเรื่อง · DetailPageLayout เนื้อหาซ้าย + รางขวา · DocumentControlCard จุดจัดการเอกสาร · VersionControlCard ร่าง/เผยแพร่"
@@ -2835,6 +2930,12 @@ export default function DesignPreviewPage() {
             <StatusNotice tone="info">
               ทุกหน้ารายละเอียดของระบบ (ใบเสนอราคา · SO · ใบขอราคาผลิต · ดีล · โครงการ) ใช้ชุดนี้
               ชุดเดียว — หน้าใหม่ประกอบจาก primitive พวกนี้ ไม่ต้องวางโครงเอง
+            </StatusNotice>
+            {/* 🐞 โทนที่ StatusNotice ไม่รู้จักไม่พังให้เห็น — มันกลายเป็นฟ้าเงียบ ๆ
+                ⇒ กล่องแจ้งรับครบทุกโทนของระบบแล้ว · `neutral` = ข้อเท็จจริงที่ไม่ใช่
+                ข่าวดี/ข่าวร้าย ("ดูได้อย่างเดียว" · "เหตุผลที่ยกเลิก") สีเทาเท่าจุดสถานะ */}
+            <StatusNotice tone="neutral" title="ดูได้อย่างเดียว">
+              โทน neutral — ไม่ใช่คำเตือนและไม่ใช่ข่าวดี แค่บอกว่าตอนนี้แก้อะไรไม่ได้
             </StatusNotice>
 
             <DetailOverview
@@ -2847,22 +2948,50 @@ export default function DesignPreviewPage() {
                 { label: "มูลค่ารวม", value: `${money(486200)} บาท` },
                 { label: "ผู้จัดทำ", value: "สิทธิพงษ์ ศรีสุข" },
                 { label: "วันที่ออก", value: "29/07/2569" },
-                { label: "ยืนราคาถึง", value: "28/08/2569" },
+                /* ⭐ `narrow: "hide"` — ช่องที่หลบให้จอโทรศัพท์ (≤480px) · ใช้กับของที่
+                   อ่านที่อื่นได้เท่านั้น ไม่ใช่ข้อเท็จจริงที่มีอยู่ที่เดียว (ย่อหน้าต่างเพื่อดู) */
+                { label: "ยืนราคาถึง", value: "28/08/2569", narrow: "hide" },
+                /* ⭐ `subWrap` — บรรทัดรองที่ **ห่อได้สองบรรทัด** แทนตัดบรรทัดเดียวด้วย …
+                   ใช้กับของยาวที่ตัดหางทิ้งไม่ได้ (ที่อยู่ไซต์) ไม่ใช่กับรหัสสั้น ๆ */
+                {
+                  label: "ที่อยู่ส่งของ",
+                  value: "คลังบางนา",
+                  sub: "2/4 ซอยเพชรเกษม 35/1 ถนนเพชรเกษม แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160",
+                  subWrap: true,
+                },
               ]}
             />
 
             <DetailPageLayout
               aside={(
                 <ContextualRightRail>
+                  {/* ⭐ สามช่องที่เพิ่มมาเพื่อการ์ด "จัดการผลประเมิน" (2026-09-16) —
+                      ทั้งสามเป็นของ **เพิ่ม ไม่แก้ของเดิม**: ไม่ส่งมา = หน้าตาเดิมทุก px
+                      · `icon`      — การ์ดที่ไม่ใช่เอกสารอนุมัติใช้ไอคอนของตัวเองได้
+                      · `statusSub` — บรรทัดรองที่อ่านคู่กับพาดหัวสถานะเสมอ (อยู่ใน
+                        บล็อกสถานะ ⇒ จอแคบเลื่อนขึ้นไปพร้อมกัน) คนละช่องกับ
+                        `statusDescription` ซึ่งเป็น meta ของหัวการ์ด
+                      · `step.number` — เลขขั้นจริงของราง สำหรับการ์ดที่โชว์ขั้นเดียว
+                      · `headerNarrow="hide"` — หัวการ์ดหลบให้จอแคบ (≤1050px ซึ่งเป็น
+                        จังหวะที่รางเลิกปักหมุดแล้วไหลขึ้นไปอยู่บนสุดของหน้า) ·
+                        ย่อหน้าต่างให้แคบกว่า 1050px แล้วแถบ "DOCUMENT CONTROL /
+                        จัดการเอกสาร" ของการ์ดนี้จะหายไป เหลือพาดหัวสถานะเป็นบรรทัดแรก
+                      · `tabletSplit` — ที่ 681–1050px วางสถานะซ้าย ปุ่มขวา (ที่ความกว้าง
+                        นั้นการ์ดกินเต็มแถวแล้ว คอลัมน์เดียวจึงดันเนื้อหน้าตกจอ) ·
+                        ย่อหน้าต่างมาราว 900px แล้วจะเห็นปุ่มย้ายไปอยู่ครึ่งขวา */}
                   <DocumentControlCard
+                    icon={ListChecks}
+                    headerNarrow="hide"
+                    tabletSplit
                     status="รออนุมัติ"
                     statusColor={toneColor("warning")}
+                    statusSub="ยื่นโดย สิทธิพงษ์ · 29/07/2569 17:20"
                     statusDescription="ยื่นเมื่อ 29/07/2569 · รอผู้จัดการอนุมัติ"
                     workflowSteps={[
                       { id: "draft", label: "ร่าง", state: "done" },
                       { id: "submit", label: "ยื่นอนุมัติ", state: "done", hint: "29/07/2569" },
-                      { id: "approve", label: "อนุมัติ", state: "current" },
-                      { id: "send", label: "ส่งลูกค้า", state: "pending" },
+                      { id: "approve", label: "อนุมัติ", state: "current", number: 3 },
+                      { id: "send", label: "ส่งลูกค้า", state: "pending", number: 4 },
                     ]}
                     primaryAction={{ id: "approve", label: "อนุมัติ", tone: "primary" }}
                     secondaryActions={[{ id: "reject", label: "ตีกลับ" }]}

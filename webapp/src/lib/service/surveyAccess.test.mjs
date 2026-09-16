@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { canOpenSurveySheet, surveyReadError } from './surveyAccess.js';
+import { canOpenRequestPage, canOpenSurveySheet, surveyReadError } from './surveyAccess.js';
 
 const survey = { id: 'REQ-1', dept: 'TS', requestedById: 'sa-1' };
 const tech = { id: 'u-tech', role: 'ts', department: 'TS' };
@@ -42,4 +42,23 @@ test('🔴 route ของใบประเมินต้องใช้ด่
   assert.match(route, /canOpenSurveySheet\(/, 'ต้องตัดคนนอกโมดูลก่อนแตะฐาน');
   assert.doesNotMatch(route, /canViewRequests\(/,
     'ด่านคิวคำร้องล้วนปิดประตูใส่ช่างหน้างาน — ต้องผ่าน surveyAccess เท่านั้น');
+});
+
+/* 🐞 **ลิงก์ "คำร้อง RQ-…" บนการ์ดควบคุมเคยเดาเอาเองจากสิทธิ์เขียน** (PR3 รอบแรก:
+   `!readOnly && !canDecide` = "ช่าง") ⇒ **ช่างที่ไม่ได้ถูกมอบหมายในนัดนั้น** ซึ่งเทสต์
+   ข้างบนยืนยันว่าต้องเปิดใบของเพื่อนอ่านได้ ได้ `canWrite = false` ⇒ ถูกจัดเป็น "คนดู"
+   แล้วได้ลิงก์ไปหน้าที่ตอบ 403 ใส่เขา (กติกา ui-visibility: ไม่มีสิทธิ์ = ไม่โชว์)
+   ⇒ ด่านของ **หน้าปลายทาง** ต้องถูกถามตรง ๆ ที่ server แล้วส่งคำตอบไปกับ payload */
+test('🔴 ลิงก์ไปหน้าคำร้องต้องถามด่านของหน้าปลายทาง ไม่ใช่เดาจากสิทธิ์เขียน', () => {
+  assert.equal(canOpenRequestPage(tech), false, 'ช่างเปิดหน้าคำร้องไม่ได้ (403) ⇒ ต้องไม่โชว์ลิงก์');
+  assert.equal(canOpenRequestPage(sa), true, 'เจ้าของใบฝั่งฝ่ายขายเปิดได้');
+  assert.equal(canOpenRequestPage(head), true, 'หัวหน้าฝ่ายบริการตอบคิวคำร้องของฝ่ายตัวเองได้');
+  assert.equal(canOpenRequestPage(null), false, 'ไม่รู้ว่าใคร = ไม่โชว์');
+
+  const route = readFileSync(new URL('../../app/api/service/surveys/[id]/route.js', import.meta.url), 'utf8');
+  assert.match(route, /canOpenRequest: canOpenRequestPage\(user\)/,
+    'payload ต้องส่งคำตอบไปให้จอ — จอไม่รู้ role ของตัวเอง จึงอนุมานเองไม่ได้');
+  const card = readFileSync(new URL('../../components/service/SurveyControlCard.js', import.meta.url), 'utf8');
+  assert.match(card, /showRequestLink = !!requestHref && flags\.canOpenRequest/,
+    'การ์ดต้องใช้ธงจาก server ไม่ใช่ประกอบเงื่อนไขจาก canWrite/canDecide เอง');
 });

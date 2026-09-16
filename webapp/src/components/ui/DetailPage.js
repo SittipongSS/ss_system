@@ -39,8 +39,17 @@ export function ContextGrid({ children, className = "" }) {
    เลื่อนหาเองทุกครั้งที่เปิดใบ (มติผู้ใช้ 2026-08-13 "ทำให้ลงมือได้เร็วขึ้น")
    ⚠️ `scroll-margin-top` อยู่ที่ `.card` ใน DetailPage.module.css — ไม่งั้นหัวการ์ด
    จะไปอยู่ใต้แถบเมนูที่ปักอยู่ด้านบน */
-export function DetailCard({ id, icon: Icon, eyebrow, title, meta, actions, children, className = "" }) {
-  return <section id={id} className={`${styles.card} ${className}`.trim()}>
+/* ⭐ `headerNarrow="hide"` — **หัวการ์ดหลบให้จอแคบ** (≤1050px คือจังหวะที่รางขวาเลิก
+   ปักหมุดแล้วไหลลงมาอยู่ในสายเดียวกับเนื้อหา) · ไม่ส่งมา = หัวการ์ดอยู่ครบทุกขนาดจอ
+   เหมือนเดิมทุกใบ
+   ทำไมต้องมี: การ์ดจัดการที่ไหลลงมาอยู่ **บนสุดของหน้า** มีพาดหัวสถานะของตัวเองอยู่แล้ว
+   (จุดสี + ประโยคว่าใบอยู่ขั้นไหน) ⇒ แถบ "SURVEY CONTROL / จัดการผลประเมิน" อีกชั้น
+   กินไป 77px ของจอสูง 768px โดยไม่เพิ่มข้อเท็จจริงสักข้อ · วัดจริง 2026-09-16 ที่
+   1024×768: แถบแท็บและพื้นที่แรกตกจอทั้งคู่ (แท็บอยู่ที่ y=763)
+   ⚠️ **ใช้ได้เฉพาะการ์ดที่อยู่ในราง `ContextualRightRail` ซึ่งมี `aria-label` ของตัวเอง**
+   — ชื่อของก้อนจึงยังอยู่ในผังของโปรแกรมอ่านหน้าจอ ไม่ได้หายไปพร้อมภาพ */
+export function DetailCard({ id, icon: Icon, eyebrow, title, meta, actions, children, headerNarrow, className = "" }) {
+  return <section id={id} className={`${styles.card} ${headerNarrow === "hide" ? styles.headerNarrowHide : ""} ${className}`.trim().replace(/\s+/g, " ")}>
     {(title || eyebrow || actions) ? <header className={styles.cardHeader}>
       <div className={styles.heading}>{Icon ? <Icon size={17} aria-hidden="true" /> : null}<div>{eyebrow ? <small>{eyebrow}</small> : null}{title ? <h2>{title}</h2> : null}{meta ? <p>{meta}</p> : null}</div></div>
       {actions ? <div className={styles.actions}>{actions}</div> : null}

@@ -43,3 +43,28 @@ test("ทุก tone ใน tone.js มี selector อยู่จริงใ�
     assert.ok(css.includes(`[data-tone="${tone}"]`), `tone.js มี ${tone} แต่ Badge.module.css ไม่มี selector`);
   }
 });
+
+/* 🐞 **โทนที่ StatusNotice ไม่รู้จักไม่พังให้เห็น — มันกลายเป็นฟ้าเงียบ ๆ**
+   (`styles[tone] || styles.info`) · ตัวตัดสินของใบประเมินสั่ง `neutral` มาสามกล่อง
+   ("เหตุผลที่ยกเลิก" · "ดูได้อย่างเดียว" · "ส่งผลแล้ว แก้ไม่ได้") แล้วทั้งสามขึ้นเป็น
+   กล่องฟ้าพร้อมไอคอน ℹ อยู่หลายเดือนโดยไม่มีตัวตรวจไหนเห็น เพราะ fallback ถูกตามโค้ด
+   ⇒ กล่องแจ้งต้องรับ **ทุกโทนของระบบ** เท่าที่ `STATUS_TONES` ประกาศไว้ (+ ชื่อพ้อง) */
+test("StatusNotice รู้จักทุกโทนของระบบ — ไม่มีตัวไหนตกกลับเป็น info เงียบ ๆ", () => {
+  const js = fs.readFileSync(path.join(process.cwd(), "src/components/ui/StatusNotice.js"), "utf8");
+  const css = fs.readFileSync(path.join(process.cwd(), "src/components/ui/StatusNotice.module.css"), "utf8");
+  const tones = js.match(/const TONES = \{([\s\S]*?)\n\};/);
+  const alias = js.match(/const TONE_ALIAS = \{([^}]*)\}/);
+  assert.ok(tones, "ต้องมี TONES ประกาศไว้ใน StatusNotice.js");
+  const known = new Set([...tones[1].matchAll(/^\s*([a-z]+):/gm)].map((m) => m[1]));
+  const aliased = new Map([...(alias?.[1] || "").matchAll(/([a-z]+):\s*"([a-z]+)"/g)].map((m) => [m[1], m[2]]));
+  for (const tone of STATUS_TONES) {
+    const key = aliased.get(tone) || tone;
+    assert.ok(known.has(key), `StatusNotice ไม่รู้จักโทน "${tone}" — มันจะกลายเป็น info เงียบ ๆ`);
+    assert.ok(css.includes(`.${key} {`), `StatusNotice.module.css ไม่มีคลาส .${key} ให้โทน "${tone}"`);
+  }
+  // ชื่อพ้องของ tone.js (error ↔ danger) ต้องเข้าถึงคลาสได้ทั้งสองคำ
+  for (const alias2 of Object.keys(TONE_ALIASES)) {
+    const key = aliased.get(alias2) || alias2;
+    assert.ok(known.has(key), `StatusNotice ไม่รู้จักชื่อพ้อง "${alias2}"`);
+  }
+});
