@@ -22,7 +22,7 @@
 //   แม้บนแท็บเล็ต · ลบ.ม. กับสูตรจึงยุบเป็นบรรทัดรองของเซลล์ที่มันอธิบาย
 // ⭐ **ดูอย่างเดียว = ตัวหนังสือ ไม่ใช่ปุ่มจาง** — จุดที่เลือกคือผลที่ฝ่ายขายอ่าน ต้องชัดที่สุด
 //   ในแถว และบอกด้วยไอคอน ไม่ใช่สีขอบอย่างเดียว (WCAG 1.4.1)
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { AlertTriangle, Check, ClipboardList, Minus, Pencil, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -57,27 +57,22 @@ function deltaText(qty, suggested) {
    กระดิ่ง ต้องเล่าตัวเลขชุดเดียวกัน */
 export default function SurveyResultTable({
   zones = [], filesByZone = {}, canDecide = false, busyZone, onSaveDecisions,
-  onPendingChange, caption = null,
+  drafts = {}, onDraftsChange, caption = null,
 }) {
   /* ร่างของหัวหน้า — key = id ของพื้นที่ · ค่าที่ไม่มีในนี้แปลว่า "ยังไม่ถูกแตะ"
      ⚠️ ห้ามเติมค่าตั้งต้นลงไปตอนเปิดจอ — ของที่เติมไว้ล่วงหน้าแยกไม่ออกจากของที่คนพิมพ์
-        แล้ว "ยังไม่บันทึก" จะขึ้นทั้งใบตั้งแต่ยังไม่มีใครแตะอะไร */
-  const [drafts, setDrafts] = useState({});
+        แล้ว "ยังไม่บันทึก" จะขึ้นทั้งใบตั้งแต่ยังไม่มีใครแตะอะไร
+     ⭐ **ร่างเป็นของหน้า ไม่ใช่ของตาราง** — ตารางนี้ถูก unmount ทุกครั้งที่สลับไปแท็บ
+       "หน้างาน" · ถ้าร่างอยู่ใน state ของตาราง ของที่หัวหน้าเคาะไว้จะหายไปพร้อมกัน
+       โดยไม่มีคำเตือน (🐞 เจอตอนตรวจก่อน merge 2026-09-16) */
+  const setDrafts = onDraftsChange;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const patchDraft = useCallback((id, patch) => {
-    setDrafts((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } }));
-  }, []);
+    setDrafts?.((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } }));
+  }, [setDrafts]);
 
   const pending = useMemo(() => surveyPendingDecisions(zones, drafts), [zones, drafts]);
-
-  /* 🔑 **ปุ่มส่งผลต้องรู้ว่ามีการเคาะค้างอยู่** — ตัวตัดสินของการ์ดควบคุมรับ
-     `pendingDecisionZoneIds` มาตั้งแต่ PR2 แต่ยังไม่มีใครยิงธงให้ · ที่นี่คือคนยิง
-     ⚠️ ส่งเป็นสตริงที่ join แล้วใน deps — อาร์เรย์ใหม่ทุกเรนเดอร์ทำให้ effect วนไม่จบ */
-  const pendingKey = pending.ids.join("|");
-  useEffect(() => {
-    onPendingChange?.(pendingKey ? pendingKey.split("|") : []);
-  }, [pendingKey, onPendingChange]);
 
   const saveAll = async () => {
     setSaveError("");
@@ -92,7 +87,7 @@ export default function SurveyResultTable({
       const result = await onSaveDecisions?.(items);
       const savedIds = result?.savedIds || [];
       if (savedIds.length) {
-        setDrafts((d) => {
+        setDrafts?.((d) => {
           const next = { ...d };
           for (const id of savedIds) delete next[id];
           return next;
@@ -105,7 +100,7 @@ export default function SurveyResultTable({
   };
 
   /* "ยกเลิก" = คืนร่างทั้งใบเป็นค่าที่อยู่ในฐาน — ไม่ยิงอะไรทั้งนั้น */
-  const discardAll = () => { setDrafts({}); setSaveError(""); };
+  const discardAll = () => { setDrafts?.({}); setSaveError(""); };
 
   /* แถบบนหัวการ์ด — ขึ้นเมื่อมีของค้างเท่านั้น (ปุ่มที่กดแล้วไม่เกิดอะไรคือปุ่มที่ไม่ควรมี)
      ⚠️ อยู่ใน `actions` ของ DetailCard ⇒ อยู่บรรทัดเดียวกับชื่อการ์ดบนจอกว้าง

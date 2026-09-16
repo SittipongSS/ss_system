@@ -199,8 +199,13 @@ export function surveyFoldDefaults(zones = [], filesByZone = {}, viewer = {}) {
   for (const row of rows) {
     if (!row?.id) continue;
     if (isCut(row)) { open[row.id] = false; continue; }
+    /* ⚖️ **คนดูมาก่อนจำนวนพื้นที่** (มติเจ้าของ 2026-09-16) — มติตั้งต้นมีสองข้อที่ชนกันเอง
+       ("ใบพื้นที่เดียวให้กาง" กับ "ใบที่ส่งแล้ว/คนอ่านอย่างเดียวให้พับ") · เจ้าของเคาะให้
+       ข้อหลังชนะ ⇒ ใบพื้นที่เดียวที่ส่งไปแล้วหรือคนอ่านอย่างเดียวเปิดมาก็พับ
+       เหตุผล: การ์ดที่กางอยู่คือคำเชิญให้กรอก คนที่กรอกไม่ได้ไม่ควรได้รับคำเชิญนั้น */
+    if (!editable) { open[row.id] = false; continue; }
     if (active.length === 1) { open[row.id] = true; continue; }
-    open[row.id] = editable && surveyFieldMissing(row, filesByZone?.[row.id] || []).length > 0;
+    open[row.id] = surveyFieldMissing(row, filesByZone?.[row.id] || []).length > 0;
   }
   return open;
 }

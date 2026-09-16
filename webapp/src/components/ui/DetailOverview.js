@@ -21,6 +21,10 @@ export default function DetailOverview({
   badges,
   actions,
   facts = [],
+  /* ⭐ **หัวการ์ดแบบเรียบ ไม่มีแสงส้มที่มุม** — จอที่มีพื้นหลังไล่สีของตัวเองอยู่แล้ว
+     เอาแสงนี้มาซ้อนอีกชั้นจะได้มุมขวาบนที่ขุ่นกว่าที่อื่นโดยไม่มีความหมายอะไร
+     (มติเจ้าของ 2026-09-16 · จอประเมินพื้นที่ · การถอดทั้งระบบเป็น PR แยก) */
+  flat = false,
   children,
   className = "",
 }) {
@@ -75,7 +79,10 @@ export default function DetailOverview({
   }, [setRecord, eyebrow, title, description]);
 
   return (
-    <section ref={cardRef} className={`ui-detail-overview ${styles.overviewCard} ${className}`.trim()}>
+    <section
+      ref={cardRef}
+      className={`ui-detail-overview ${styles.overviewCard} ${flat ? styles.flat : ""} ${className}`.trim()}
+    >
       <div className={styles.overviewHeading}>
         <div className={styles.titleBlock}>
           {eyebrow ? <span className={styles.eyebrow}>{eyebrow}</span> : null}

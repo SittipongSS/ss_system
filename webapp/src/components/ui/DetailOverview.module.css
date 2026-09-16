@@ -8,6 +8,14 @@
   box-shadow: var(--glass-shadow);
 }
 
+/* ⭐ หัวการ์ดเรียบ — พื้นเดียว ไม่มี radial ที่มุมขวาบน (มติเจ้าของ 2026-09-16)
+   ⚠️ ต้องเขียน `background` ทั้งช็อต ไม่ใช่ `background-image: none` อย่างเดียว —
+      ย่อ/ขยายของ shorthand ข้างบนเป็นคนละคุณสมบัติกัน คนอ่านสไตล์ชีตทีหลัง
+      จะหาไม่เจอว่าพื้นมาจากไหน */
+.flat {
+  background: var(--panel);
+}
+
 .overviewHeading {
   display: flex;
   align-items: flex-start;

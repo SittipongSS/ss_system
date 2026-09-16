@@ -49,6 +49,7 @@ import {
   surveySendBackError, surveyTotals,
 } from "@/lib/service/survey";
 import { surveyControlView } from "@/lib/service/surveyControl";
+import { surveyPendingDecisions } from "@/lib/service/surveyDecision";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
 import { isClosedVisit } from "@/lib/service/visitStatus";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
@@ -107,10 +108,14 @@ export default function SurveySheetPage({ params }) {
   const [dirtyZones, setDirtyZones] = useState({});
   /* พื้นที่ที่ "กำลังทำอยู่" — ใช้ตัดสินว่า Ctrl+V ลอย ๆ ตกที่พื้นที่ไหน */
   const [activeZone, setActiveZone] = useState(null);
-  /* พื้นที่ที่หัวหน้าเคาะไว้แต่ยังไม่กดบันทึก (แท็บสรุปส่งผลรายงานขึ้นมา · PR5)
+  /* ร่างที่หัวหน้าเคาะไว้แต่ยังไม่กดบันทึก (แท็บสรุปส่งผล · PR5)
+     ⭐ **ร่างอยู่ที่หน้า ไม่ได้อยู่ในตาราง** — 🐞 เดิมเก็บไว้ใน `SurveyResultTable`
+       ซึ่งหน้านี้ unmount ทิ้งทุกครั้งที่สลับไปแท็บ "หน้างาน" ⇒ ของที่หัวหน้าเคาะไว้
+       หายเงียบโดยไม่มีคำเตือน แล้วธง "ยังไม่บันทึก" ที่ยิงไว้ก่อนหน้าก็ค้างอยู่
+       ⇒ ปุ่มส่งถูกบล็อกด้วยเหตุผลที่ไม่จริงแล้ว พร้อมปุ่มที่พากลับไปยังแท็บที่ว่างเปล่า
      ⚠️ คนละแกนกับ `dirtyZones` ซึ่งเป็นค่าที่ **ช่าง** พิมพ์ค้างบนแท็บหน้างาน —
         ด่านของปุ่มส่งผลถามทั้งสองตัว และขึ้นข้อความคนละอัน */
-  const [pendingDecisionZoneIds, setPendingDecisionZoneIds] = useState([]);
+  const [decisionDrafts, setDecisionDrafts] = useState({});
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -277,11 +282,13 @@ export default function SurveySheetPage({ params }) {
     });
   }, []);
   const dirtyZoneIds = useMemo(() => Object.keys(dirtyZones), [dirtyZones]);
-  /* ⚠️ เทียบก่อนเซ็ต — ตารางยิงลิสต์ใหม่ทุกครั้งที่เรนเดอร์ ถ้าเซ็ตดื้อ ๆ จะได้ลูป
-     setState → render → effect → setState ที่ไม่มีวันจบ */
-  const handlePendingDecisions = useCallback((ids) => {
-    setPendingDecisionZoneIds((prev) => (prev.join("|") === ids.join("|") ? prev : ids));
-  }, []);
+  /* 🔑 **ของค้างเป็นค่าที่คำนวณได้ ไม่ใช่ธงที่ต้องมีใครยิงมา** — ตัวตัดสินตัวเดียวกับ
+     ที่ตารางใช้วาดแถบ "ยังไม่บันทึก" และที่ route `PUT` ใช้เป็นด่าน
+     ⇒ ไม่มี effect ไม่มี state คู่ขนาน ⇒ ไม่มีสภาพ "ธงค้างหลังตาราง unmount" ให้เกิด */
+  const pendingDecisionZoneIds = useMemo(
+    () => surveyPendingDecisions(zones, decisionDrafts).ids,
+    [zones, decisionDrafts],
+  );
   const totals = surveyTotals(zones);
   /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
      เพราะนี่คือบรรทัดที่เขาใช้ตรวจตัวเองก่อนกดส่ง ไม่ใช่บรรทัดรายงาน
@@ -450,11 +457,16 @@ export default function SurveySheetPage({ params }) {
   const site = data?.site || null;
   const visit = data?.visit || null;
   /* ⭐ ป้ายนัดบนหัวใบ (มติเจ้าของ 2026-09-16: **กดส่งผลไม่ได้ปิดนัด**) — ใบที่ส่งผล
-     ไปแล้วแต่นัดยังไม่ถูกปิด ต้องบอกไว้บนหัว ไม่งั้นนัดค้างอยู่ในคิวโดยไม่มีใครเห็น */
+     ไปแล้วแต่นัดยังไม่ถูกปิด ต้องบอกไว้บนหัว ไม่งั้นนัดค้างอยู่ในคิวโดยไม่มีใครเห็น
+     🐞 เดิมเงื่อนไขไม่เคยถาม `sent` เลย — นัดที่เพิ่งตั้งไว้บนใบที่ยังไม่มีใครแตะ
+       ก็ขึ้นคำเตือนสีอำพัน "นัดยังไม่ปิด" ทันทีที่เปิดจอ ⇒ สีเตือนที่ขึ้นตลอดเวลา
+       คือสีที่คนเลิกอ่าน · ป้ายนี้มีความหมายก็ต่อเมื่อ **ส่งผลไปแล้ว** เท่านั้น */
   const visitBadge = visit && !isClosedVisit(visit)
-    ? (visit.status === "in_progress"
-      ? { label: "กำลังเข้าพื้นที่", tone: "info" }
-      : { label: "นัดยังไม่ปิด", tone: "warning" })
+    ? (view.flags.sent
+      ? { label: "นัดยังไม่ปิด", tone: "warning" }
+      : visit.status === "in_progress"
+        ? { label: "กำลังเข้าพื้นที่", tone: "info" }
+        : null)
     : null;
 
   const dueSub = view.flags.cancelled ? "คำร้องถูกยกเลิก"
@@ -485,6 +497,8 @@ export default function SurveySheetPage({ params }) {
           ⚠️ **ไม่มีป้ายสถานะของใบและไม่มีปุ่มระดับใบบนหัว** — ทั้งสองอย่างอยู่การ์ด
           จัดการที่เดียว · ป้ายที่นี่เป็นเรื่องของ **นัด** ซึ่งไม่มีที่อยู่อื่น */}
       <DetailOverview
+        /* มติเจ้าของ 2026-09-16: จอนี้เลิกใช้แสงส้มที่มุมหัวใบ — พื้นหน้าจอนี้ไล่สีอยู่แล้ว */
+        flat
         eyebrow="ใบประเมินพื้นที่ · ส่งถึง TS"
         title={[req.docNo, req.title].filter(Boolean).join(" · ")}
         description={data?.customer?.name ? (
@@ -574,7 +588,8 @@ export default function SurveySheetPage({ params }) {
             canDecide={canDecide && !view.flags.locked}
             busyZone={busyZone}
             onSaveDecisions={saveDecisions}
-            onPendingChange={handlePendingDecisions}
+            drafts={decisionDrafts}
+            onDraftsChange={setDecisionDrafts}
             /* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้
                โดยไม่ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเอง
                เปลี่ยนอะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่เฉพาะตอนมีการเปลี่ยน */

@@ -174,11 +174,19 @@ test('🐞 canWrite ของ server ไม่รู้จักการล็�
   );
 });
 
-test('ใบที่มีพื้นที่เดียว = เปิดเสมอ แม้คนดูแก้ไม่ได้ · พื้นที่ที่ตัดออกยังพับ', () => {
+test('ใบที่มีพื้นที่เดียว = เปิดเสมอ **เฉพาะคนที่แก้ได้** · พื้นที่ที่ตัดออกยังพับ', () => {
+  /* ⚖️ มติเจ้าของ 2026-09-16: สองข้อในมติตั้งต้นชนกันเอง ("พื้นที่เดียวให้กาง" กับ
+     "ส่งแล้ว/อ่านอย่างเดียวให้พับ") · ให้พับตามคนอ่านชนะ */
   const one = [readyZone('z1', 'Studio 01')];
-  assert.deepEqual(surveyFoldDefaults(one, { z1: readyFiles }, VIEWER), { z1: true });
+  assert.deepEqual(surveyFoldDefaults(one, { z1: readyFiles }, HEAD), { z1: true });
+  assert.deepEqual(surveyFoldDefaults(one, { z1: readyFiles }, VIEWER), { z1: false },
+    'คนอ่านอย่างเดียว = พับ แม้ใบมีพื้นที่เดียว');
+  assert.deepEqual(
+    surveyFoldDefaults(one, { z1: readyFiles }, { canWrite: true, request: request({ answeredAt: 'x' }) }),
+    { z1: false }, 'ใบพื้นที่เดียวที่ส่งไปแล้ว = พับ');
   const oneActivePlusCut = [readyZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02', { status: 'cut' })];
-  assert.deepEqual(surveyFoldDefaults(oneActivePlusCut, {}, VIEWER), { z1: true, z2: false });
+  assert.deepEqual(surveyFoldDefaults(oneActivePlusCut, {}, HEAD), { z1: true, z2: false });
+  assert.deepEqual(surveyFoldDefaults(oneActivePlusCut, {}, VIEWER), { z1: false, z2: false });
 });
 
 test('ใบที่ไม่มีพื้นที่เลย = แผนที่ว่าง (ไม่พังตอนเป็น useState initializer)', () => {
@@ -690,4 +698,47 @@ test('ลิงก์ "ถัดไป" ต้องเดินไปข้า�
   assert.match(page, /const order = new Map\(zones\.map/, 'ลำดับวัดจากลิสต์ที่ตาเห็น');
   assert.match(page, /order\.get\(r\.zoneId\) \?\? Infinity\) > here/, 'เลือกตัวที่อยู่หลังตำแหน่งปัจจุบัน');
   assert.match(page, /back: !ahead/, 'วนกลับต้นลิสต์เมื่อไร ต้องบอกการ์ดให้เปลี่ยนคำ');
+});
+
+/* ══ สามข้อที่เจอตอนตรวจก่อน merge 2026-09-16 ═══════════════════════════ */
+
+test('🐞 ร่างของหัวหน้าต้องอยู่ที่หน้า — สลับแท็บแล้วของที่เคาะไว้ห้ามหาย', () => {
+  /* เดิม `drafts` เป็น useState ของ SurveyResultTable ซึ่งหน้านี้ unmount ทิ้งทุกครั้ง
+     ที่สลับไปแท็บ "หน้างาน" ⇒ ของที่หัวหน้าเคาะหายเงียบ · แถม effect ที่ยิงธง
+     `pendingDecisionZoneIds` ไม่มี cleanup ⇒ ปุ่มส่งค้างบล็อกด้วยเหตุผลที่ไม่จริงแล้ว */
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  const table = readFileSync(new URL('../../components/service/SurveyResultTable.js', import.meta.url), 'utf8');
+  assert.match(page, /const \[decisionDrafts, setDecisionDrafts\] = useState\(\{\}\)/,
+    'ร่างเป็นของหน้า ไม่ใช่ของตารางที่ถูก unmount');
+  assert.match(page, /drafts=\{decisionDrafts\}/);
+  assert.match(page, /onDraftsChange=\{setDecisionDrafts\}/);
+  assert.match(page, /surveyPendingDecisions\(zones, decisionDrafts\)\.ids/,
+    'ของค้างเป็นค่าที่คำนวณได้ ไม่ใช่ธงที่ต้องรอตารางยิงมา');
+  assert.doesNotMatch(table, /useState\(\{\}\)/, 'ตารางต้องไม่ถือร่างเป็น state ของตัวเอง');
+  assert.doesNotMatch(table, /onPendingChange/, 'ไม่มีธงให้ค้างอีกแล้ว');
+  assert.doesNotMatch(page, /pendingDecisionZoneIds\] = useState/,
+    'state คู่ขนานคือที่มาของธงค้าง');
+});
+
+test('🐞 ป้าย "นัดยังไม่ปิด" ขึ้นเฉพาะใบที่ส่งผลไปแล้ว', () => {
+  /* มติ: กดส่งผลไม่ได้ปิดนัด ⇒ ป้ายอำพันเตือนเรื่องนัดที่ค้าง · เดิมเงื่อนไขไม่เคยถาม
+     `sent` เลย ⇒ นัดที่เพิ่งตั้งบนใบที่ยังไม่มีใครแตะก็ขึ้นคำเตือนทันทีที่เปิดจอ */
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  const badge = page.slice(page.indexOf('const visitBadge'), page.indexOf('const dueSub'));
+  assert.match(badge, /view\.flags\.sent/, 'ป้ายต้องถามว่าส่งผลไปหรือยัง');
+  assert.ok(
+    badge.indexOf('view.flags.sent') < badge.indexOf('นัดยังไม่ปิด'),
+    'ด่าน sent ต้องมาก่อนป้ายอำพัน ไม่ใช่ตกไปอยู่กิ่ง else',
+  );
+  assert.match(badge, /กำลังเข้าพื้นที่/);
+});
+
+test('🐞 หัวใบจอประเมินพื้นที่เรียบ — ไม่มีแสงส้มที่มุม', () => {
+  /* มติ: ถอดแสงหัวการ์ดบนจอนี้ · ของเดิมเลิกใช้ `.premium-header` แล้วจริง แต่ย้ายไป
+     `DetailOverview` ซึ่งทา radial ของตัวเอง ⇒ แสงถูกสืบทอดมา ไม่ได้ถูกถอด */
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../../components/ui/DetailOverview.module.css', import.meta.url), 'utf8');
+  assert.match(page, /^\s+flat$/m, 'จอนี้ต้องขอหัวการ์ดแบบเรียบ');
+  assert.match(css, /\.flat \{\n\s+background: var\(--panel\);/,
+    'คลาสเรียบต้องเขียน background ทั้งช็อต ไม่ใช่ทับแค่ background-image');
 });
