@@ -19,7 +19,7 @@ import Input from "@/components/ui/Input";
 import Modal from "@/components/Modal";
 import Textarea from "@/components/ui/Textarea";
 import StatusBadge from "@/components/ui/StatusBadge";
-import DetailCard from "@/components/ui/DetailCard";
+import { DetailCard } from "@/components/ui/DetailPage";
 import { TableScroll } from "@/components/ui/Table";
 import { installationPointError } from "@/lib/sales/historicalOrders";
 import {
