@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, Search, UserRound, Wallet } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -16,7 +16,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import { useCan, useShellSystem } from "@/lib/roleContext";
+import { useCan, useRole, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
@@ -28,7 +28,11 @@ import StepTrack from "@/components/ui/StepTrack";
 import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
-import { historicalRefsOf } from "@/lib/sales/historicalOrders";
+import {
+  ORIGIN_HISTORICAL, ORIGIN_PIPELINE, canKeyHistoricalSalesOrder, historicalRefsOf, isHistoricalOrder,
+} from "@/lib/sales/historicalOrders";
+import StatusBadge from "@/components/ui/StatusBadge";
+import HistoricalSalesOrderModal from "@/components/salesPlanning/HistoricalSalesOrderModal";
 
 // ป้ายสถานะชุดกลาง — เดิมเป็นสำเนาในไฟล์ที่ขาด revised / approval_revoked จนแถวพวกนั้นโชว์ค่าดิบ
 const STATUS = SALES_ORDER_STATUS_LABELS;
@@ -208,6 +212,18 @@ const INVOICE_FILTERS = {
   },
 };
 
+/* ── ที่มาของใบ (mig 0360 · มติผู้ใช้ 16/09/2026) ─────────────────────────
+   ⭐ **กลุ่มของตัวเอง ไม่ใช่ตัวเลือกของ "สถานะเอกสาร"** — ใบย้อนหลังเกิดเป็น "อนุมัติแล้ว"
+   ทุกใบ ⇒ ยัดรวมกันเมื่อไร "อนุมัติแล้ว + ใบย้อนหลัง" จะกลายเป็น "อย่างใดอย่างหนึ่ง"
+   ซึ่งตรงข้ามกับที่คนกดคาดหวัง (เหตุผลเดียวกับที่ใบกำกับภาษีแยกกลุ่มออกมา)
+   ⚠️ ค่าของตัวเลือกใช้ค่าคงที่จาก `lib/sales/historicalOrders` — literal 'historical'
+   มีบ้านเดียว (ยาม historicalMoneyGuards) และตัวตัดสินคือ `isHistoricalOrder` ตัวเดียว
+   กับที่รายงานเงินใช้กรองออก ⇒ สิ่งที่เห็นบนจอตรงกับที่ระบบคิด */
+const ORIGIN_FILTERS = {
+  [ORIGIN_PIPELINE]: { label: "ใบจากใบเสนอราคา", match: (row) => !isHistoricalOrder(row) },
+  [ORIGIN_HISTORICAL]: { label: "ใบย้อนหลัง", match: (row) => isHistoricalOrder(row) },
+};
+
 /* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
    ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้ */
 function compareOrders(a, b, key, dir) {
@@ -236,6 +252,9 @@ const EMPTY = [];
 
 export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
+  /* ⚠️ เทียบ role ตรง ๆ ไม่ใช่ isSuperuser (มติข้อ 15) — ตัวเดียวกับ literal ใน RPC ของ 0360 */
+  const canKeyHistorical = canKeyHistoricalSalesOrder({ role: useRole() });
+  const [keyingOpen, setKeyingOpen] = useState(false);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -246,6 +265,8 @@ export default function SalesOrdersPage() {
   const [lineView, setLineView] = useStickyState("lineView", "all");
   const [paymentFilter, setPaymentFilter] = useStickyState("paymentFilter", EMPTY);
   const [invoiceFilter, setInvoiceFilter] = useStickyState("invoiceFilter", EMPTY);
+  // ⚠️ ค่าตั้งต้นต้องเป็น `EMPTY` ตัวเดิม — `[]` เขียนสดทำให้ useMemo คิดใหม่ทุกเรนเดอร์
+  const [originFilter, setOriginFilter] = useStickyState("originFilter", EMPTY);
   /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
@@ -296,15 +317,18 @@ export default function SalesOrdersPage() {
       // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
       if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
       if (invoiceFilter.length && !invoiceFilter.some((key) => INVOICE_FILTERS[key]?.match(row))) return false;
+      if (originFilter.length && !originFilter.some((key) => ORIGIN_FILTERS[key]?.match(row))) return false;
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
       // ⚠️ รหัส AR ขึ้นเป็นชิปบนทุกแถวแล้ว (ดูเซลล์ลูกค้าข้างล่าง) จึงต้องค้นเจอด้วย
       //    — กติกาเดียวกับทะเบียนใบเสนอราคาที่ใส่ไว้ตั้งแต่แรก
       // ⭐ เลขเอกสารเดิมของใบสั่งขายย้อนหลัง (mig 0360) อยู่ในชุดค้นด้วย — ลูกค้า/บัญชีถามด้วยเลขใบกำกับ/Express เดิม
-      return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
+      // ⭐ ชื่อ AE ของดีลอยู่ในชุดค้นด้วย — แถวใบย้อนหลังโชว์ "AE {ชื่อ}" แทนชื่อดีล
+      //    (ตาเห็นบนแถว = ต้องค้นเจอ · กฎ search haystack)
+      return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.deal?.ownerName, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
-  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, waitingOnMeOnly, lineView]);
+  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
      "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
@@ -352,11 +376,11 @@ export default function SalesOrdersPage() {
 
   const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
-  const filterCount = statusFilter.length + paymentFilter.length + invoiceFilter.length
+  const filterCount = statusFilter.length + paymentFilter.length + invoiceFilter.length + originFilter.length
     + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
@@ -401,6 +425,11 @@ export default function SalesOrdersPage() {
   const orderRow = (row) => {
     const track = salesOrderListTrack(row);
     const amountKind = salesOrderAmountKind(row);
+    /* ⭐ ใบย้อนหลัง (mig 0360) — บรรทัดรองของเลขที่ใบเป็น **ชิป + เลขเอกสารเดิม** แทนเลข QT
+       (ซึ่งเป็นขีดเสมอ เพราะใบย้อนหลังไม่มีใบเสนอราคา) · โทน info ตัวเดียวกับคิวงานเข้าใหม่
+       ของ TS — หนึ่งป้ายหนึ่งโทนทุกจอ */
+    const historical = isHistoricalOrder(row);
+    const oldRefs = historical ? historicalRefsOf(row).join(" · ") : "";
     return (
                 <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
                   <td>
@@ -408,10 +437,11 @@ export default function SalesOrdersPage() {
                     {/* อ้างอิง QT อยู่บรรทัดรอง — เป็น "ที่มาของใบ" ไม่ใช่ตัวใบเอง
                         เอกสารฝั่งลูกค้า (PO/สัญญา) ต่อท้ายเมื่อมี · ยาวได้ 200 ตัวอักษร
                         จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
-                    <span className="cell-sub" title={row.referenceDoc || undefined}>
+                    <span className="cell-sub" title={(historical ? oldRefs : row.referenceDoc) || undefined}>
+                      {historical ? <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /> : null}
                       <span className="cell-ellipsis">
-                        {naText(row.quotation?.quoteNumber)}
-                        {row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
+                        {historical ? (oldRefs || NA) : naText(row.quotation?.quoteNumber)}
+                        {!historical && row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
                       </span>
                     </span>
                     {track.cancelled ? (
@@ -428,7 +458,12 @@ export default function SalesOrdersPage() {
                     {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
                     {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
                     {naText(row.customerName)}
-                    <span className="cell-sub">{naText(row.deal?.title)}</span>
+                    {/* ⭐ ใบย้อนหลัง: "AE {ชื่อ}" แทนชื่อดีล — ชื่อดีล "งานบริการย้อนหลัง · {ลูกค้า}"
+                        พูดซ้ำชื่อลูกค้าบรรทัดบน และลูกค้ารายเดียวมีดีลภาชนะได้สองใบที่ต่างกัน
+                        แค่ AE (มติข้อ 22 · 16/09) */}
+                    <span className="cell-sub">
+                      {historical ? `AE ${naText(row.deal?.ownerName)}` : naText(row.deal?.title)}
+                    </span>
                   </td>
                   {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
                       ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง
@@ -478,7 +513,21 @@ export default function SalesOrdersPage() {
   if (!canView) return <SaWorkspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย"><div className="glass-panel" style={{ padding: 16 }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div></SaWorkspace>;
 
   return (
-    <SaWorkspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย" subtitle="สร้างจาก QT Won ตรวจสอบเอกสาร และนับ Actual หลัง AE Supervisor อนุมัติเท่านั้น">
+    <>
+    <SaWorkspace
+      icon={<ClipboardList size={22} />}
+      title="ใบสั่งขาย"
+      subtitle="สร้างจาก QT Won ตรวจสอบเอกสาร และนับ Actual หลัง AE Supervisor อนุมัติเท่านั้น"
+      /* ⭐ ทางเข้าเดียวของการคีย์ใบย้อนหลัง — **สีกลาง ไม่ใช่สีแบรนด์** (งานย้ายข้อมูลเก่า
+         ไม่ใช่ที่ที่งานใหม่เกิด · ทรงเดียวกับ "เพิ่มไซต์ย้อนหลัง") · ไม่มีสิทธิ์ = ไม่เห็นปุ่ม
+         ⚠️ ทะเบียนนี้ไม่มีปุ่มสร้างใบ (SO เกิดจาก QT Won) ⇒ ปุ่มนี้อยู่เดี่ยวในหัวหน้า */
+      headerRight={canKeyHistorical ? (
+        <Button tone="neutral" onClick={() => setKeyingOpen(true)}
+          icon={<History size={15} aria-hidden="true" />}>
+          SO ย้อนหลัง
+        </Button>
+      ) : undefined}
+    >
       <div className="flex flex-col gap-4">
         {awaitingFiling > 0 && (
           <StatusNotice
@@ -552,7 +601,7 @@ export default function SalesOrdersPage() {
             <FilterPopover
               count={filterCount}
               onClear={() => {
-                setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setWaitingOnMeOnly(false);
+                setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]); setWaitingOnMeOnly(false);
               }}
               groups={[
                 {
@@ -576,8 +625,21 @@ export default function SalesOrdersPage() {
                   selected: waitingOnMeOnly ? ["waiting"] : [],
                   onChange: (values) => setWaitingOnMeOnly(values.length > 0),
                 },
+                /* "ที่มาของใบ" เป็นกลุ่มสุดท้ายตามม็อก — สี่กลุ่มเดิมเรียงตามสายงานของใบ
+                   ตัวใหม่ต่อท้าย ไม่แทรกกลาง (ตำแหน่งในแถบข้างคือสิ่งที่คนจำ) */
+                {
+                  key: "origin", label: "ที่มาของใบ", icon: History,
+                  options: Object.entries(ORIGIN_FILTERS).map(([value, { label }]) => ({ value, label })),
+                  selected: originFilter, onChange: setOriginFilter,
+                },
               ]}
             />
+            {/* ชิปล้างตัวกรองที่ใช้อยู่ — ทรงเดียวกับทะเบียนสัญญา/งาน/งานผลิต */}
+            {originFilter.length > 0 && (
+              <Button size="sm" onClick={() => setOriginFilter([])}>
+                กรอง: {originFilter.map((key) => ORIGIN_FILTERS[key]?.label).filter(Boolean).join(" · ")} ×
+              </Button>
+            )}
             <GroupMenu
               title="จัดกลุ่มใบสั่งขาย"
               value={groupBy}
@@ -706,6 +768,16 @@ export default function SalesOrdersPage() {
         </ListPanel>
       </div>
     </SaWorkspace>
+    {/* ⚠️ โมดัลอยู่ **นอก** Workspace และนอก children ของแผง (UI_DESIGN_SYSTEM §รายการ) —
+        Workspace เคยสลับ children เป็น skeleton ตอนโหลดใหม่ ซึ่งถอดโมดัลทิ้งทั้งฟอร์ม */}
+    {canKeyHistorical && (
+      <HistoricalSalesOrderModal
+        open={keyingOpen}
+        onClose={() => setKeyingOpen(false)}
+        onSaved={load}
+      />
+    )}
+    </>
   );
 }
 
