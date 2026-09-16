@@ -110,3 +110,39 @@ test('literal "historical" และตัวกรอง .eq("origin") มี�
     assert.doesNotMatch(code, /\.(n?eq)\(\s*['"]origin['"]/, rel);
   }
 });
+
+/* ── ตัดสินจุดที่ TS ไม่พบหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ──────────── */
+test('PATCH ใบสั่งขาย: ตัดสินจุดที่ TS ไม่พบ — สิทธิ์ · ใบย้อนหลังที่อนุมัติ · ตัดสินซ้ำไม่ได้ · audit', () => {
+  const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
+  const block = slice(route, "if (action === 'rename_installation_point'", "if (action === 'set-doc-language')");
+  for (const needle of [
+    'canKeyHistoricalSalesOrder(user)', 'isHistoricalOrder(before)', "before.status !== 'approved'",
+    'lineAwaitingSiteDecision(line)', 'installationPointError(point)', 'siteNoteError(', 'recordAudit(',
+  ]) {
+    assert.ok(block.includes(needle), `ขาด ${needle}`);
+  }
+  /* 🪤 ตัวกรองตอนเขียนต้องบอกสถานะที่คาดไว้ด้วย — TS ถอนการแจ้งพอดีตอนฝ่ายขายกด
+     ต้องได้ 0 แถวแล้วตอบ 409 ไม่ใช่เขียนตราปิดทับบรรทัดที่ไม่มีธงแล้ว */
+  assert.ok(block.includes(".not('siteNotFoundAt', 'is', null)"));
+  assert.ok(block.includes(".is('siteClosedAt', null)"));
+  assert.ok(block.includes(".eq('salesOrderId', id)"), 'บรรทัดต้องเป็นของใบนี้');
+
+  /* ⭐ แก้ชื่อจุด = **ข้อยกเว้นเดียว** ของ "บรรทัด SO เป็นภาพนิ่ง" — ต้องไม่ลามไปช่องอื่น
+     ⛔ และต้องไม่มีทางถอดบรรทัด/คิดเงินหัวใบใหม่ (ข2 ยังไม่ทำ) */
+  for (const forbidden of ['qty:', 'unitPrice:', 'lineTotal:', 'totalAmount', '.delete()']) {
+    assert.ok(!block.includes(forbidden), `🔴 การตัดสินจุดห้ามแตะ ${forbidden}`);
+  }
+  assert.ok(block.includes('siteFlagClearPatch()'), 'แก้ชื่อต้องล้างธงทั้งชุด');
+  assert.ok(block.includes('siteClosePatch('), 'ปิดจุดต้องใช้ตัวประกอบก้อนเดียวกับเทสต์หน่วย');
+});
+
+test('ทาง TS เขียนได้เฉพาะธง · ทางฝ่ายขายเขียนได้เฉพาะตราปิด/ชื่อจุด (คนละชุดคอลัมน์)', () => {
+  /* TS **อ่าน** ตราปิดได้ (ต้องรู้ว่าถอนการแจ้งไม่ได้แล้ว) แต่ **เขียนไม่ได้**
+     · ล้างธงตอนถอน (`siteFlagClearPatch`) ล้างตราปิดไปด้วย ซึ่งเป็นการล้าง ไม่ใช่การประทับ */
+  const ts = stripComments(read('app/api/service/intake/site-not-found/route.js'));
+  assert.ok(!ts.includes('siteClosePatch('), '🔴 ทางของ TS ห้ามประทับตราปิดจุด');
+  assert.ok(!ts.includes('installationPoint:'), '🔴 TS ห้ามแก้ชื่อจุดบนเอกสารของฝ่ายขาย');
+  const sales = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
+  const block = slice(sales, "if (action === 'rename_installation_point'", "if (action === 'set-doc-language')");
+  assert.ok(!block.includes('siteNotFoundPatch('), '🔴 ฝ่ายขายห้ามตั้งธงแทน TS');
+});

@@ -352,3 +352,69 @@ test('🔴 ด่านปลายทางของการผูก: ไซ�
   assert.match(bindTargetError({ order, zone: null, site, lineLabel }), /ไม่พบโซน/);
   assert.match(bindTargetError({ order: { id: 'X' }, zone, site }), /ลูกค้ารายอื่น/, 'ใบไม่มีลูกค้า = ไม่เดาว่าตรง');
 });
+
+/* ── จุดที่ TS หาไม่เจอหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ────────────────
+   ⭐ `lineNeedsAllocation` คือจุดคอขวดเดียวของทั้งแท็บและป้ายเมนู ⇒ เทสต์ชุดนี้พิสูจน์ว่า
+      "หลุดจากคิว" กับ "หลุดจากป้าย" เป็นผลของการตัดสินครั้งเดียวกัน ไม่ใช่สองที่ที่บังเอิญตรงกัน */
+const FLAG = {
+  siteNotFoundAt: '2026-09-18T03:00:00.000Z',
+  siteNotFoundById: 'U-TS',
+  siteNotFoundByName: 'สมชาย',
+  siteNotFoundReason: 'name_mismatch',
+};
+
+test('⭐ 0362: จุดที่แจ้งว่าไม่พบหลุดจากคิวทันที · จุดอื่นของใบเดียวกันผูกต่อได้', () => {
+  const q = bindQueue({
+    orders: [hso()],
+    lines: [{ ...hLines[0] }, { ...hLines[1], ...FLAG }],
+    terms: [],
+    ...ctx,
+  });
+  assert.equal(q.rows.length, 1, 'ใบยังอยู่ในคิวเพราะยังมีจุดอื่นค้าง');
+  const [row] = q.rows;
+  assert.deepEqual(row.installationPoints, ['Empire Tower · ล็อบบี้']);
+  assert.equal(row.fgKinds, 1);
+  assert.equal(row.remainingQty, 2, 'จำนวนของจุดที่แจ้งไปแล้วต้องไม่ถูกนับ');
+  assert.equal(row.awaitingSiteDecision, 1);
+  assert.deepEqual(row.siteNotFoundLines.map((l) => l.id), ['HL2']);
+});
+
+test('⭐ 0362: แจ้งครบทุกจุด = ใบหลุดจากแท็บและป้ายพร้อมกัน (ตัวนับอ่าน rows ชุดเดียวกัน)', () => {
+  const q = bindQueue({
+    orders: [hso()],
+    lines: hLines.map((l) => ({ ...l, ...FLAG })),
+    terms: [],
+    ...ctx,
+  });
+  assert.equal(q.rows.length, 0);
+  assert.equal(q.unknownLine.length, 0);
+  assert.equal(intakeCounts({ bind: q }).bind, 0);
+});
+
+test('0362: จุดที่ฝ่ายขายปิดแล้วไม่กลับเข้าคิว และไม่นับเป็น "รอฝ่ายขายตัดสิน"', () => {
+  const closed = { ...FLAG, siteClosedAt: '2026-09-19T03:00:00.000Z', siteClosedById: 'U-AE' };
+  const q = bindQueue({
+    orders: [hso()],
+    lines: [{ ...hLines[0] }, { ...hLines[1], ...closed }],
+    terms: [],
+    ...ctx,
+  });
+  assert.equal(q.rows[0].fgKinds, 1);
+  assert.equal(q.rows[0].awaitingSiteDecision, 0, 'ตัดสินแล้วไม่ต้องรออะไรอีก');
+  assert.equal(q.rows[0].siteNotFoundLines.length, 1, 'แต่ยังโชว์ให้เห็นว่าจุดนี้จบแล้ว');
+});
+
+test('0362: ฝ่ายขายแก้ชื่อจุดแล้วส่งกลับ (ล้างธง) = บรรทัดกลับเข้าคิวเอง ไม่ต้องมีทางคืนแยก', () => {
+  const back = { ...hLines[1], installationPoint: 'Empire Tower · ชั้น 5' };
+  const q = bindQueue({ orders: [hso()], lines: [hLines[0], back], terms: [], ...ctx });
+  assert.equal(q.rows[0].fgKinds, 2);
+  assert.equal(q.rows[0].awaitingSiteDecision, 0);
+  assert.deepEqual(q.rows[0].installationPoints, ['Empire Tower · ล็อบบี้', 'Empire Tower · ชั้น 5']);
+});
+
+test('🔒 0362: ใบ pipeline ไม่ขยับ — บรรทัดที่ไม่มีคอลัมน์ธงยังเข้าคิวเหมือนเดิม', () => {
+  const q = bindQueue({ orders: [so({ projectId: 'PJ-S' })], lines, terms: [], ...ctx });
+  assert.ok(q.rows[0].pendingLines > 0);
+  assert.equal(q.rows[0].awaitingSiteDecision, 0);
+  assert.deepEqual(q.rows[0].siteNotFoundLines, []);
+});

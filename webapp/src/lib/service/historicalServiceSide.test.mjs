@@ -92,3 +92,69 @@ test('หน้างานเข้าใหม่: ป้าย "ย้อน�
   assert.equal((src.match(/<PaidBadge readiness=\{row\.readiness\} \/>/g) || []).length >= 2, true, 'ตารางและการ์ดใช้ PaidBadge ตัวเดียวกัน');
   assert.equal((src.match(/label="ย้อนหลัง"/g) || []).length, 2, 'ป้ายย้อนหลังขึ้นทั้งตารางและการ์ด');
 });
+
+/* ── จุดที่ TS หาไม่เจอหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ────────────────
+   🔴 ทุกตัวอ่านที่ตัดสินว่า "บรรทัดนี้ยังต้องผูกไหม" ต้องเห็นธง — ตัวไหนไม่เห็น ตัวนั้นจะนับ
+      จุดที่แจ้งไปแล้วต่อ ⇒ ป้ายบนเมนูกับแท็บบอกคนละเลข ซึ่งเป็นอาการที่คนไม่ไว้ใจทั้งหน้า */
+const SITE_FLAG_ALL = [
+  '"siteNotFoundAt"', '"siteNotFoundById"', '"siteNotFoundByName"', '"siteNotFoundReason"',
+  '"siteNotFoundNote"', '"siteClosedAt"', '"siteClosedById"', '"siteClosedByName"', '"siteClosedNote"',
+];
+
+test('0362: ทุกตัวอ่านบรรทัดของคิวเห็นธง "ไม่พบจุดนี้หน้างาน"', () => {
+  const intake = selectOf(code('app/api/service/intake/route.js'), 'sales_order_lines');
+  for (const col of SITE_FLAG_ALL) assert.ok(intake.includes(col), `select ของคิวต้องมี ${col}`);
+
+  // ป้ายบนเมนูเลือกคอลัมน์ผอมโดยตั้งใจ — แต่ธงตัดออกไม่ได้ ไม่งั้นป้ายนับใบที่แท็บไม่โชว์แล้ว
+  const nav = selectOf(code('app/api/nav/counts/route.js'), 'sales_order_lines');
+  assert.ok(nav.includes('"siteNotFoundAt"'), 'ตัวนับบนเมนูต้องเห็นธง');
+
+  // ผูกโซน: ตรวจธงก่อน แล้วค่อยไปถึงบรรทัดที่เขียน (trigger ของ 0362 เป็นด่านสุดท้าย ไม่ใช่ด่านแรก)
+  const bind = code('app/api/service/intake/bind/route.js');
+  assert.ok(selectOf(bind, 'sales_order_lines').includes('"siteNotFoundAt"'));
+  const guard = bind.indexOf('lineSiteNotFound(line)');
+  const insert = bind.indexOf(".from('service_zone_terms').insert(");
+  assert.ok(guard > 0 && insert > guard, 'ต้องตรวจธงก่อน insert');
+});
+
+test('0362: ทางแจ้ง/ถอนของ TS — ด่านครบและ audit ทุกครั้ง', () => {
+  const route = code('app/api/service/intake/site-not-found/route.js');
+  for (const needle of [
+    "requireService({ user, edit: true })",   // ฝ่าย TS เท่านั้น
+    'orderReceivable(order)',                 // ใบต้องอนุมัติและไม่ถูก Rev. ทับ
+    'isHistoricalOrder(order)',               // ใบย้อนหลังเท่านั้น
+    'siteNotFoundInputError(',                // เหตุผล 4 ตัว + หมายเหตุของ "อื่น ๆ"
+    'allocatedByLine(',                       // ผูกโซนไปแล้วแจ้งไม่ได้
+    'lineSiteClosed(line)',                   // ตัดสินแล้วถอนไม่ได้
+    'recordAudit(',
+  ]) {
+    assert.ok(route.includes(needle), `ทางแจ้งต้องมี ${needle}`);
+  }
+  /* ⚠️ ตัวกรองตอนเขียนต้องบอกสถานะที่คาดไว้ด้วย — สองคนกดพร้อมกันแล้วคนหลังต้องได้ 0 แถว
+     ไม่ใช่ทับธงของคนแรกเงียบ ๆ */
+  assert.ok(route.includes(".is('siteNotFoundAt', null)"), 'แจ้งต้องเขียนทับได้เฉพาะแถวที่ยังไม่ติดธง');
+  assert.ok(route.includes(".is('siteClosedAt', null)"), 'ถอนต้องเขียนได้เฉพาะแถวที่ยังไม่ถูกตัดสิน');
+});
+
+test('0362: จอคิวส่งการแจ้งด้วย apiFetch และไม่ขอ retry', () => {
+  const page = code('app/service/intake/page.js');
+  const from = page.indexOf('/api/service/intake/site-not-found');
+  assert.ok(from > 0, 'หน้าคิวต้องยิงไปที่ route ของธง');
+  const call = page.slice(from - 200, from + 400);
+  assert.ok(call.includes('apiFetch('), 'ต้องผ่าน apiFetch');
+  assert.ok(!call.includes('retry: true'), '🪤 ส่งซ้ำ = 409 "ถูกแจ้งไว้แล้ว" ทั้งที่ธงลงไปแล้ว');
+
+  /* วิซาร์ดต้องอ่านแถวของรอบโหลดล่าสุด ไม่ใช่ภาพนิ่งตอนกดเปิด */
+  assert.ok(page.includes('liveWizardOrder'), 'วิซาร์ดต้องรับแถวสด');
+
+  const wizard = code('components/service/IntakeWizard.js');
+  assert.ok(wizard.includes('salesOrderId: order.orderId'), '🐞 แถวคิวใช้ชื่อ orderId ไม่ใช่ id');
+  assert.ok(!wizard.includes('salesOrderId: order.id'), 'ห้ามกลับไปใช้ order.id ที่ไม่มีอยู่จริง');
+  // แผงแจ้งต้องอยู่ทั้งขั้น 1 (ทั้งใบ) และขั้น 2 (รายกลุ่ม) — ขั้น 1 คือทางเดียวของลูกค้าที่ไม่มีไซต์เลย
+  assert.ok(wizard.includes('setNotFoundFor("order")'), 'ขั้น 1 ต้องมีทางแจ้งทั้งใบ');
+  assert.ok(wizard.includes('setNotFoundFor(group.key)'), 'ขั้น 2 ต้องมีทางแจ้งรายกลุ่ม');
+
+  const panel = code('components/service/SiteNotFoundPanel.js');
+  assert.ok(panel.includes('SITE_NOT_FOUND_REASONS'), 'ไทล์เหตุผลต้องมาจากทะเบียนเดียว');
+  assert.ok(panel.includes('siteNotFoundInputError('), 'จอต้องใช้ตัวตรวจตัวเดียวกับ route');
+});

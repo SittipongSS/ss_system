@@ -17,6 +17,7 @@ import { allocatedByLine, fgSummary, lineNeedsAllocation, termIsActive } from '.
 import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
 import { coversDate, paidThrough } from '@/lib/sales/paymentCoverage';
 import { ORIGIN_PIPELINE, historicalGateExempt, historicalRefsOf, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { awaitingSiteDecisionCount, lineSiteNotFound } from '@/lib/sales/siteNotFound';
 
 export const INTAKE_TABS = ['bind', 'plan', 'visit'];
 
@@ -125,7 +126,11 @@ export function bindQueue({
   const unknownLine = [];
   for (const order of orders) {
     if (!orderReceivable(order)) continue;
-    const pending = (linesByOrder.get(order.id) || []).filter((l) => lineNeedsAllocation(l, allocated));
+    const orderLines = linesByOrder.get(order.id) || [];
+    const pending = orderLines.filter((l) => lineNeedsAllocation(l, allocated));
+    /* ⭐ ใบที่ไม่เหลืออะไรให้ผูกหลุดจากแท็บและป้ายทันที — รวมกรณี "ทุกจุดถูกแจ้งว่าไม่พบ"
+       (`lineNeedsAllocation` ตัดจุดที่ติดธงให้แล้ว · มติข้อ 23) ⇒ ชิป "รอฝ่ายขายตัดสิน"
+       จึงเห็นได้เฉพาะใบที่ยังมีจุดอื่นค้างอยู่ ซึ่งตรงกับม็อก */
     if (!pending.length) continue;
     const fg = fgSummary(pending, allocated);
 
@@ -153,6 +158,13 @@ export function bindQueue({
       remainingQty: fg.reduce((sum, g) => sum + g.remaining, 0),
       fg,
       lines: pending,
+      /* ⭐ จุดที่ TS แจ้งว่าไม่พบและยังรอฝ่ายขายตัดสิน (มติข้อ 23 · mig 0362) — นับจาก
+         **ทุกบรรทัดของใบ** ไม่ใช่เฉพาะ pending เพราะจุดที่ติดธงถูกตัดออกจาก pending ไปแล้ว
+         ⚠️ จุดที่ฝ่ายขายปิดแล้วไม่นับ — เรื่องจบแล้ว ไม่มีอะไรให้ TS รอ */
+      awaitingSiteDecision: awaitingSiteDecisionCount(orderLines),
+      /* จุดที่ติดธงอยู่ (รอตัดสิน + ปิดแล้ว) — วิซาร์ดเอาไปทำแผง "ถอนการแจ้ง" และบอกว่าจุดไหนจบแล้ว
+         ⚠️ ไม่อยู่ใน `lines`/`fg` โดยตั้งใจ: สองตัวนั้นคือ "ของที่ยังต้องผูก" ซึ่งจุดพวกนี้ไม่ใช่แล้ว */
+      siteNotFoundLines: orderLines.filter(lineSiteNotFound),
       /* ⭐ ขายไว้กี่รอบ (mig 0326) — TS ต้องเห็นข้อผูกพันตั้งแต่ตอนรับงาน ไม่ใช่ไปรู้
          ตอนวางรอบแล้วพบว่าความถี่ที่ตั้งไว้ให้จำนวนนัดไม่ตรงกับที่ขาย
          ⚠️ นับจาก **ทุกบรรทัดของใบ** ไม่ใช่เฉพาะบรรทัดที่ยังไม่จัดสรร — ข้อผูกพัน
