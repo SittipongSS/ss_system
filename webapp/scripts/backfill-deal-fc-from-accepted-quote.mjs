@@ -12,8 +12,11 @@
  */
 import { writeFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
-// สูตรยอดก่อน VAT ตัวกลางตัวเดียวกับทุกจุดที่แอปเขียน FC (ปัดสตางค์) — ห้ามเขียนสูตรซ้ำในสคริปต์
-import { quotationWonAmount } from '../src/lib/sales/quotationWonAmount.js';
+/* ⭐ "ดีลไหนถูกแก้ · แก้เป็นเท่าไหร่ · เขียนช่องไหน" อยู่ใน lib ที่มีเทสต์ครอบ (dealValueBackfill.test.mjs)
+   สคริปต์นี้เหลือหน้าที่ **อ่านฐาน → โชว์ → เขียน** เท่านั้น — ห้ามเขียนสูตรยอดหรือกติกาคัดดีลซ้ำที่นี่ */
+import {
+  BACKFILL_FIELDS, dealValueBackfillPatch, planDealValueBackfill, quoteIndexOf,
+} from '../src/lib/sales/dealValueBackfill.js';
 
 const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -39,20 +42,10 @@ const all = async (table, cols) => {
 
 const deals = await all('sales_deals', 'id, code, stage, "projectValue", "forecastSource", "forecastQuotationId", "forecastManualValue", metadata, origin');
 const quotes = await all('quotations', 'id, "quoteNumber", "totalAmount", "vatAmount", status');
-const byId = new Map(quotes.map((q) => [q.id, q]));
-const exVat = (q) => quotationWonAmount(q);
 
-const targets = [];
-for (const d of deals) {
-  if (d.origin && d.origin !== 'pipeline') continue;          // ดีลของใบสั่งขายย้อนหลังไม่มี FC
-  const accId = d.metadata?.acceptedQuotationId;
-  if (!accId) continue;
-  const q = byId.get(accId);
-  if (!q) { console.log(`⚠️  ${d.code || d.id}: acceptedQuotationId ${accId} ไม่มีในทะเบียนใบเสนอราคา — ข้าม`); continue; }
-  const next = exVat(q);
-  const now = Number(d.projectValue) || 0;
-  if (Math.abs(next - now) <= 0.005) continue;
-  targets.push({ deal: d, quote: q, next, now });
+const { targets, missingQuotes } = planDealValueBackfill(deals, quoteIndexOf(quotes));
+for (const m of missingQuotes) {
+  console.log(`⚠️  ${m.deal.code || m.deal.id}: acceptedQuotationId ${m.acceptedId} ไม่มีในทะเบียนใบเสนอราคา — ข้าม`);
 }
 
 console.log(`ดีลทั้งหมด ${deals.length} · ต้องแก้ ${targets.length} ใบ`);
@@ -72,8 +65,7 @@ if (!apply) {
 /* ⭐ กู้คืนได้เสมอ: เก็บค่าเดิมสี่ช่องลงไฟล์ก่อนเขียน + บันทึก audit_logs รายใบ (before/after)
    🐞 รีวิว 16/09: เวอร์ชันแรกเขียนทับโดยไม่มีบันทึก และ `forecastManualValue ?? projectValue` ไม่เคยถอย
       เพราะคอลัมน์ NOT NULL DEFAULT 0 ⇒ ยอดเดิมกู้คืนไม่ได้ */
-const FIELDS = ['projectValue', 'forecastSource', 'forecastQuotationId', 'forecastManualValue'];
-const pick = (row) => Object.fromEntries(FIELDS.map((k) => [k, row[k] ?? null]));
+const pick = (row) => Object.fromEntries(BACKFILL_FIELDS.map((k) => [k, row[k] ?? null]));
 const backupPath = `backfill-deal-fc-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
 writeFileSync(backupPath, JSON.stringify(targets.map((t) => ({ id: t.deal.id, code: t.deal.code, before: pick(t.deal) })), null, 2));
 console.log(`\nสำรองค่าเดิมไว้ที่ ${backupPath}`);
@@ -81,14 +73,7 @@ console.log(`\nสำรองค่าเดิมไว้ที่ ${backupPa
 let ok = 0;
 const failed = [];
 for (const t of targets) {
-  const patch = {
-    projectValue: t.next,
-    forecastSource: 'quotation',
-    forecastQuotationId: t.quote.id,
-    // ดีลที่เดินตามเลขกรอก ⇒ ยอดดีลตอนนี้คือเลขกรอก เก็บไว้ช่องของมัน (กติกาเดียวกับ mig 0361)
-    forecastManualValue: t.deal.forecastSource === 'manual' ? t.now : (Number(t.deal.forecastManualValue) || 0),
-    updatedAt: new Date().toISOString(),
-  };
+  const patch = { ...dealValueBackfillPatch(t), updatedAt: new Date().toISOString() };
   const { error } = await supabase.from('sales_deals').update(patch).eq('id', t.deal.id);
   if (error) { failed.push(t.deal.code || t.deal.id); console.error(`  ❌ ${t.deal.code || t.deal.id}: ${error.message}`); continue; }
   const { error: auditError } = await supabase.from('audit_logs').insert({
@@ -99,7 +84,7 @@ for (const t of targets) {
     entityType: 'sales_deal',
     entityId: String(t.deal.id),
     summary: `ยอดดีล ${t.deal.code || t.deal.id} ตามใบที่ลูกค้ารับ ${t.quote.quoteNumber}: ${money(t.now)} → ${money(t.next)} (มติผู้ใช้ 2026-09-16)`,
-    changedKeys: FIELDS,
+    changedKeys: BACKFILL_FIELDS,
     before: pick(t.deal),
     after: pick({ ...t.deal, ...patch }),
     createdAt: new Date().toISOString(),

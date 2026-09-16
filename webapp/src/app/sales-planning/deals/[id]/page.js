@@ -1062,9 +1062,16 @@ export default function DealOverviewPage() {
                  ขัดกับแถวของตัวเองทันทีที่ยอดดีลเปลี่ยนตามใบ */
               meta={`${deal.valueItems.length} หมวด · รวม ${money(valueItemsTotal)}`}
             >
+              {/* ⚠️ คำต้องตรงกับที่มาจริงของยอด — ดีล **เปิด** ที่ FC เดินตามใบที่อนุมัติภายใน ยังไม่มีใบที่
+                  ลูกค้ารับ ⇒ เขียน "ใบที่ลูกค้ารับ" จะโกหกบนจอ · ไม่รู้ที่มาก็บอกแค่ยอด ไม่เดา */}
               {valueItemsDiffer && (
                 <p className="cell-sub">
-                  ยอดดีลตอนนี้ {money(deal.projectValue)} ตามใบเสนอราคาที่ลูกค้ารับ — ตารางนี้คือที่กรอกไว้ก่อนรับใบ
+                  ยอดดีลตอนนี้ {money(deal.projectValue)}
+                  {acceptedQuote
+                    ? ` ตามใบเสนอราคาที่ลูกค้ารับ${acceptedQuote.quoteNumber ? ` (${acceptedQuote.quoteNumber})` : ""} — ตารางนี้คือที่กรอกไว้ก่อนรับใบ`
+                    : data.forecastSource?.source === "quotation"
+                      ? ` ตามใบเสนอราคาที่ FC เดินตาม${data.forecastSource.quotation?.quoteNumber ? ` (${data.forecastSource.quotation.quoteNumber})` : ""} — ตารางนี้คือที่กรอกไว้เอง`
+                      : " — ตารางนี้รวมได้ไม่เท่ากัน"}
                 </p>
               )}
               {/* ตารางชั้นใหม่: TableScroll วาดพื้นเอง ไม่มี premium-glass-table/premium-table
