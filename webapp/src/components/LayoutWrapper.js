@@ -12,14 +12,13 @@ export default function LayoutWrapper({ children }) {
     return <>{children}</>;
   }
 
-  // The system-hub home page renders bare (no AppLayout chrome); every other
-  // page gets the persistent AppLayout. Both are authenticated, so the idle
-  // auto-logout watcher runs on top of either.
-  const body = pathname === '/home' ? <>{children}</> : <AppLayout>{children}</AppLayout>;
+  /* ทุกหน้าที่ล็อกอินแล้วอยู่ในเปลือกเดียวกันหมด รวม `/home` (ADR 0016 — เดิมหน้าแรก
+     วาดเองนอกเปลือกตาม Phase 4C แล้วทำงานซ้ำกับเปลือกทั้ง session · devBypass ·
+     โมดัลรหัสผ่าน · ตัวดึงตัวเลข จนสองชุดเริ่มเพี้ยนกัน) */
   return (
     <>
       <IdleLogout />
-      {body}
+      <AppLayout>{children}</AppLayout>
     </>
   );
 }

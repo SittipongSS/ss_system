@@ -437,7 +437,7 @@ const nativeFeedbackDebt = {
    ⇒ เลขดิบสองจุดนั้นกลับมาพร้อมกัน · ห้ามใช้ช่องนี้เป็นข้ออ้างเพิ่มเลขดิบใหม่ 
    📉 155 → 154 (2026-09-06) — `22px` ดิบที่ .overviewHeading ยกเข้า --panel-inset ตอนยุบขอบในของหัวการ์ดให้เหลือเส้นเดียว
    📉 154 → 153 (2026-09-15) — ช่องค้นหาของหมวดสินค้าเลิกประกาศ `padding: 0 11px` เอง (ย้ายเข้า ListPanel toolbar · ใช้ .search-glass กลาง) · 📉 153 → 152 (2026-09-15) — ถอด TableShell: `.heading p { margin: 3px 0 0 }` ใน Table.module.css ลบไปพร้อมกัน */
-const RAW_SPACING_CAP = 152;
+const RAW_SPACING_CAP = 144;
 
 /* ── ระยะห่างที่เขียนเป็นเลขดิบใน `className` (2026-09-02) ────────────────────
    ฝาแฝดฝั่ง Tailwind ของ RAW_SPACING_CAP ข้างบน — ชื่อจงใจล้อ RAW_TAILWIND_TYPE_CAP
@@ -580,7 +580,7 @@ const BREAKPOINT_CAP = 13;
    (`tabular-nums` + `white-space: nowrap`) ไม่มีสระไทยและไม่มีบรรทัดที่สองให้ชน
    ส่วน `.ui-metric strong` (เดิม 1.25) ย้ายขึ้น --lh-thai แล้วเพราะค่าเป็นไทยได้จริง
    ที่เหลือในเพดานเป็นค่า ≥1.65 ที่อยู่ระหว่างขั้น กับ lineHeight ใน JSX */
-const RAW_LINE_HEIGHT_CAP = 9;
+const RAW_LINE_HEIGHT_CAP = 8;
 
 /* ความมนมุมที่ยังเป็นเลขดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
@@ -2439,7 +2439,7 @@ const { over: budgetOver, under: budgetUnder } = compareBudget(legacyCounts, bud
    ⚠️ ถ้าเขียนหน้าแยกฝ่ายละไฟล์แทน มันจะเพี้ยนหากันภายในสองเดือน ซึ่งเป็นสิ่งที่
    AGENTS.md สั่งห้ามไว้ตรง ๆ
    `TeamDetail` = หน้าทีมรายตัว (`/sa/teams/[code]` · `/service/teams/[code]`) เกณฑ์เดียวกัน */
-const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|RegistryDetailShell|TeamManager|TeamDetail|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
+const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|RegistryDetailShell|TeamManager|TeamDetail|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|SystemMenuSheet|login-/;
 const redirectPagePattern = /from\s+["']next\/navigation["'][\s\S]*\bredirect\s*\(/;
 const visualPageFiles = pageFiles.filter((file) => !redirectPagePattern.test(fs.readFileSync(file, "utf8")));
 const shellPages = visualPageFiles.filter((file) => shellPattern.test(fs.readFileSync(file, "utf8")));

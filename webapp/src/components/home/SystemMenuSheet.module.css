@@ -1,0 +1,355 @@
+/* ── หน้าแรก = แผงเมนูของทุกระบบ (ADR 0016 · ม็อก r3-columns + r4-band) ─────
+   ⭐ ความสูงทุกอย่างเป็นพหุคูณของ "หนึ่งแถว" (--row = --ctl-h 40px · ≤640 = 44px)
+      แผง = ขอบบน/ล่าง + หัว 1 แถว + เมนู n แถว + ช่องห่าง = (n + 2) แถวพอดี
+      ⇒ แถวของทุกคอลัมน์ตรงแนวกัน และไม่ขยับแม้แต่พิกเซลเดียวตอนตัวเลขมา/หาย
+   ⭐ จัดวางด้วย CSS grid ล้วน ตำแหน่งมาจากข้อมูล ⇒ Safari/Chrome ได้ผลเดียวกัน
+      ไม่มี JS วัดความกว้าง */
+
+.home {
+  --row: var(--ctl-h);
+  --pad: var(--space-2);
+  --gap: var(--space-6);
+  /* ≈ คอลัมน์ของ admin ที่ 1440 — กว้างกว่านี้ตัวเลขหลุดห่างจากชื่อเมนู */
+  --col-max: 21rem;
+  /* ทึบ เพราะหัวแผงบนมือถือเกาะทับแถวตอนไถ */
+  --panel-bg: var(--panel-float);
+  /* แผงลอยขึ้นมาทับขอบล่างของแถบต้อนรับเท่านี้ */
+  --lift: var(--space-6);
+  container: home / inline-size;
+  isolation: isolate;
+  min-width: 0;
+}
+
+/* กรอบ = ความกว้างของคอลัมน์ที่ใช้จริง (อย่างน้อย 2) ⇒ คำอธิบายป้ายชิดขอบขวาของ
+   แผ่นคอลัมน์ ไม่ลอยไปขอบจอ · จำนวนคอลัมน์มาจากข้อมูล (--used-2/3/4 บน style) */
+.frame {
+  --used: var(--used-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  max-width: calc(var(--used) * var(--col-max) + (var(--used) - 1) * var(--gap));
+}
+
+/* ── แถบต้อนรับกรมท่า: ต่อจากแถวบนของหัวโดยไม่มีรอยต่อ แล้วแผงลอยขึ้นมาทับขอบล่าง
+      ⭐ อยู่ **ในหน้า** ไม่ใช่ในหัว ⇒ ไถแล้วเลื่อนหายไปกับหน้า เหลือแถวบน 52px */
+.band {
+  position: relative;
+  padding-top: var(--space-4);
+  padding-bottom: calc(var(--lift) + var(--space-4));
+  color: var(--navy-fg);
+}
+/* พื้นกรมท่าเต็มความกว้างจอ · z-index -1 ในบริบทซ้อนของ .home ⇒ อยู่ใต้แผงเสมอ
+   .main-content ตัดแนวนอนด้วย overflow-x: clip อยู่แล้ว ⇒ ไม่มีแถบเลื่อนแนวนอน */
+.band::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0 calc(50% - 50vw);
+  background-color: var(--navy);
+  background-image: var(--navy-band-bg);
+}
+.band .title h1 { color: var(--navy-fg); }
+.band .meta { color: color-mix(in srgb, var(--navy-fg) 76%, transparent); }
+.band .legend { color: color-mix(in srgb, var(--navy-fg) 82%, transparent); }
+.band .legendLead,
+.band .legendItem.warn { color: var(--navy-fg); }
+.band .legendItem.ok svg { color: var(--navy-fg); }
+.band .pill.mine { background: var(--navy-fg); color: var(--navy); }
+.band .pill.shared { background: transparent; box-shadow: inset 0 0 0 1px var(--navy-fg); color: var(--navy-fg); }
+.band .pill.unknown { border-color: color-mix(in srgb, var(--navy-fg) 80%, transparent); color: var(--navy-fg); }
+.band .sk { background: color-mix(in srgb, var(--navy-fg) 26%, transparent); }
+
+/* ตัวจับตำแหน่งท้ายแถบ (ใช้กับ IntersectionObserver)
+   ⚠️ สูง 1px ไม่ใช่ 0 — เป้าที่ไม่มีพื้นที่เลย IntersectionObserver ไม่รายงานการเปลี่ยน
+      สถานะให้ · ดึงกลับด้วย margin ลบ ⇒ ไม่ดันเลย์เอาต์แม้แต่พิกเซลเดียว */
+.sentinel { display: block; height: 1px; margin-bottom: -1px; }
+
+/* ส่วนที่ลอยขึ้นมาทับขอบล่างของแถบ */
+.body { margin-top: calc(-1 * var(--lift)); }
+
+/* ── แถวชื่อหน้า: ชื่อ + วันที่ · ขวา = คำอธิบายรูปป้าย ── */
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+  min-height: var(--ctl-h);
+  min-width: 0;
+}
+.title { flex: none; display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; white-space: nowrap; }
+.title h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  letter-spacing: var(--ls-heading);
+}
+.title h1:focus { outline: none; }
+.title h1:focus-visible { outline: 2px solid var(--navy-fg); outline-offset: var(--space-1); border-radius: var(--radius); }
+.meta { margin: 0; color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-thai); }
+
+/* คำอธิบายป้าย: สูงตายตัวทุกสถานะ (กำลังนับ = ว่างแต่จองที่) · ป้ายตัวอย่างใส่ "N"
+   ไม่ใช่เลขจริง ⇒ อ่านไม่ออกเป็นยอด · นำด้วยคำ "ตัวเลขงานค้าง" ⇒ อ่านเป็นคำอธิบาย */
+.legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-3-5);
+  height: var(--space-5);
+  margin: 0 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  cursor: default;
+  user-select: none;
+}
+.legendLead { font-weight: var(--fw-semibold); white-space: nowrap; }
+.legendItem { display: inline-flex; align-items: center; gap: var(--space-1-5); white-space: nowrap; }
+.legendItem svg { display: block; flex: none; }
+.legendItem.warn { color: var(--text); font-weight: var(--fw-semibold); }
+.legendItem.ok svg { color: var(--green); }
+.legend .pill { pointer-events: none; }
+/* ป้ายตัวอย่างกว้างเท่าป้ายเลขสองหลัก — วงกลมทึบคู่วงโปร่งอ่านเป็นปุ่มเลือก */
+.legend .pill.mine,
+.legend .pill.shared { min-width: var(--space-8); }
+
+/* ── แผ่นคอลัมน์ ── */
+.sheet {
+  --n: var(--n-2);
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, var(--col-max)));
+  grid-auto-rows: var(--row);
+  column-gap: var(--gap);
+  min-width: 0;
+}
+.cell {
+  grid-column: var(--x2);
+  grid-row: var(--y2) / span var(--h2);
+  --o: var(--o2);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-bottom: calc(var(--row) - 2 * var(--pad));
+}
+/* 3 × 15rem + ช่องห่าง = 48rem · 4 × 15rem + ช่องห่าง = 64.5rem
+   (15rem ≈ ลิ้นชักจริง 240px — ต่ำกว่านี้ชื่อเมนูเริ่มตัดคำ) */
+@container home (min-width: 48rem) {
+  .frame { --used: var(--used-3); }
+  .sheet { --n: var(--n-3); }
+  .cell { grid-column: var(--x3); grid-row: var(--y3) / span var(--h3); --o: var(--o3); }
+}
+@container home (min-width: 64.5rem) {
+  .frame { --used: var(--used-4); }
+  .sheet { --n: var(--n-4); }
+  .cell { grid-column: var(--x4); grid-row: var(--y4) / span var(--h4); --o: var(--o4); }
+}
+
+.block {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: calc(var(--pad) - 1px) var(--pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  box-shadow: var(--glass-shadow);
+  /* ปลายทางของสารบัญบนมือถือ — จอดใต้แถบบน ไม่ใช่มุดใต้มัน */
+  scroll-margin-top: var(--scroll-anchor-top);
+}
+.block:focus { outline: none; }
+.block:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* หัวแผง = ไอคอนระบบ + ชื่อระบบ · ไม่ใช่ลิงก์ (หน้าแรกของระบบคือแถวเมนูข้างล่างแล้ว) */
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  height: var(--row);
+  padding-inline: var(--space-2-5);
+  min-width: 0;
+}
+.headIcon { flex: none; display: block; color: var(--navy-ink); }
+.head h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ── แถวเมนู = .topnav-item ของลิ้นชักจริง · สูงตายตัวหนึ่งแถว ── */
+.rows { flex: none; display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 0; list-style: none; position: relative; z-index: 0; }
+/* ช่องว่างที่ยืด อยู่ก่อนกลุ่มเมนูอรรถประโยชน์ (เหมือน .topnav-menu-spacer ของลิ้นชัก) */
+.spacer { flex: 1 1 auto; min-height: 0; }
+.row {
+  height: var(--row);
+  min-height: 0;
+  line-height: var(--lh-thai);
+}
+.row :global(.ico) { display: block; }
+.row.hasCount { color: var(--text); }
+.row.hasCount :global(.ico) { color: var(--text-2); }
+/* ช่องตัวเลข: จองความกว้างเฉพาะแถวที่คนดูได้รับตัวเลข (คงที่ต่อคนดู)
+   ⇒ ตัวเลขมาแล้วชื่อเมนูไม่ถูกตัดใหม่ */
+.slot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow: visible;
+}
+.row.lane .slot { min-width: var(--space-8); }
+/* เมนูอรรถประโยชน์เริ่มหลังเส้นบาง — เส้นวาดทับ ไม่กินความสูง */
+.rows.util::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: var(--space-2-5);
+  right: var(--space-2-5);
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── ระบบที่ยังไม่เปิดใช้: บรรทัดเดียว สูงเท่าหัวแผง ไม่มีพื้น/เงา ──
+   --o มาจากการจัดวาง: 0 = ขึ้นต้นคอลัมน์ · 1 = อยู่กลาง · 2 = ปิดท้ายคอลัมน์ */
+.cell.off { padding-top: calc(var(--pad) * var(--o, 1)); }
+.offLine {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  height: var(--row);
+  padding-inline: calc(var(--pad) + var(--space-2-5));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  min-width: 0;
+}
+.offLine > * { opacity: var(--op-disabled); }
+.offLine .headIcon { color: var(--text-2); }
+.offLine h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+}
+
+/* ── ป้ายตัวเลข: ขนาดเดียวทุกสถานะ · เลขเต็มหลัก (ไม่ตัด 99+) ──
+   ของฉัน = ป้ายทึบ ตัวเลขสีพื้น · ทั้งฝ่าย/ทั้งบริษัท = ป้ายโปร่งมีขอบ
+   นับไม่สำเร็จ = ขีดในขอบประ (ไม่ใช่ 0) · ไม่มีสีเน้น */
+.pill {
+  flex: none;
+  min-width: var(--space-6);
+  height: var(--space-5);
+  padding: 0 var(--space-1-5);
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+.pill.mine { background: var(--text-3); color: var(--panel-float); }
+.pill.shared { background: transparent; box-shadow: inset 0 0 0 1px var(--text-3); color: var(--text); }
+.pill.unknown { background: transparent; border: 1px dashed var(--text-3); color: var(--text-2); }
+.sk { flex: none; display: inline-block; width: var(--space-6); height: var(--space-5); border-radius: var(--radius-lg); }
+
+/* ── สารบัญระบบ (มือถือ · บัญชีที่มีหลายระบบ) ── */
+.indexNav { display: none; }
+.index { margin: 0; padding: 0; list-style: none; }
+.chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--ctl-h-touch);
+  min-width: 0;
+  padding-inline: var(--space-2-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  box-shadow: var(--glass-shadow);
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+  text-decoration: none;
+}
+a.chip:hover { border-color: var(--border-strong); }
+a.chip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+.chip :global(.ico) { flex: none; display: block; color: var(--navy-ink); }
+.chipName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ยอดของชิปแยกตามขอบเขตเหมือนแถวเมนู — ไม่เอายอดต่างขอบเขตมารวมเป็นป้ายเดียว */
+.chipPills { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); }
+.chip.chipOff { opacity: var(--op-disabled); }
+
+/* ไม่มีระบบเลย — ทึบ เพราะขอบบนของการ์ดลอยทับแถบกรมท่า */
+.none { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-float); }
+
+/* ธีมมืด: แผงเข้มกว่ากรมท่าของแถบ ⇒ ขอบชัดขึ้นหนึ่งขั้น อ่านเป็นการ์ดมีขอบ
+   ไม่ใช่ช่องบุ๋ม (แถบเปลี่ยนสีไม่ได้ เพราะต้องต่อจากแถวบนไม่มีรอย) */
+:global([data-theme='dark']) .block,
+:global([data-theme='dark']) .chip,
+:global([data-theme='dark']) .none { border-color: var(--border-strong); }
+
+/* ≤768 = ชั้นมือถือของเปลือก: เป้ากด 44px · สารบัญระบบ · หัวแผงเกาะใต้แถบบนตอนไถ */
+@media (max-width: 768px) {
+  .home { --row: var(--ctl-h-touch); --lift: calc(var(--ctl-h-touch) / 2); }
+  .band { padding-top: var(--space-2); padding-bottom: calc(var(--lift) + var(--space-3)); }
+  .top { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: var(--space-1); }
+  .legend { margin-left: 0; height: auto; min-height: var(--space-5); flex-wrap: wrap; row-gap: var(--space-1); white-space: normal; }
+
+  .indexNav { display: block; }
+  /* ชิปกว้างอย่างน้อย 12rem ⇒ ไอคอน + ชื่อ + สองป้ายพอดีชิป */
+  .index { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--space-2); }
+
+  .head {
+    position: sticky;
+    top: var(--topbar-h);
+    z-index: 2;
+    /* เส้นใต้หัววาดในกล่องหัว ยาวเท่าเส้นคั่นเมนูอรรถประโยชน์ · พื้นทึบทับแถวที่ไถลอด */
+    background: linear-gradient(var(--border), var(--border)) center bottom / calc(100% - 2 * var(--space-2-5)) 1px no-repeat, var(--panel-bg);
+  }
+  /* แถบทึบไล่จางใต้เส้น: แถวที่ไถลอดหัวค่อย ๆ หายเข้าไป ไม่ถูกตัดครึ่งตัวอักษรตรงเส้น */
+  .head::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: calc(0px - var(--pad));
+    right: calc(0px - var(--pad));
+    height: var(--space-2);
+    background: linear-gradient(var(--panel-bg), transparent);
+    pointer-events: none;
+  }
+}
+
+/* ≤640: คอลัมน์เดียว */
+@media (max-width: 640px) {
+  .frame { max-width: none; }
+  .legend { column-gap: var(--space-3); }
+  .sheet { display: flex; flex-direction: column; align-items: stretch; }
+  .cell { padding-bottom: var(--space-3); }
+  .cell.off { padding-top: 0; }
+}
+
+/* ≤480 (โทรศัพท์ 360–430): สารบัญสองคอลัมน์ตายตัว · ชิปไม่มีไอคอน เพื่อให้ชื่อ +
+   สองป้ายพอดีชิปกว้าง 162px ที่ 360 — ชื่อระบบคือตัวระบุ ไอคอนอยู่ที่หัวแผงแล้ว */
+@media (max-width: 480px) {
+  .index { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chip { padding-inline: var(--space-2) var(--space-1-5); gap: var(--space-1-5); }
+  .chip > :global(.ico) { display: none; }
+}

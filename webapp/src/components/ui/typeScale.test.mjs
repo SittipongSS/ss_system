@@ -60,6 +60,19 @@ test("ไม่ประกาศชื่อตามหน้าที่ท�
    จึงมี 6 จุดหลุดมาตลอด — `clamp(20px, 2vw, 27px)` 3 จุด (หนึ่งในนั้นคือ DetailOverview
    = หัวเรื่องของทุกหน้ารายละเอียด) กับ `0.8125rem` 1 จุด และ globals.css ถูกยกเว้นทั้งไฟล์
    สองจุดในนั้นชี้ไปที่ 34/36px ซึ่งสูงกว่าขั้นบนสุดเดิม = ชั้นพิมพ์ไม่ได้ครอบจริง */
+/* ไฟล์ซอร์สทั้งหมดที่อ้างโทเคนได้ — CSS + JS (inline style ของคอมโพเนนต์) */
+function allSourceFiles() {
+  const files = [];
+  (function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(css|js|jsx|mjs)$/.test(entry.name) && !entry.name.includes(".test.")) files.push(full);
+    }
+  })(root);
+  return files;
+}
+
 function allCssFiles() {
   const files = [];
   (function walk(dir) {
@@ -89,9 +102,13 @@ test("ไม่มี font-size ไหนเขียนหน่วยควา
 });
 
 test("ไม่ประกาศขั้นทิ้งไว้โดยไม่มีใครใช้", () => {
-  const allCss = allCssFiles().map((f) => fs.readFileSync(f, "utf8")).join("\n");
+  /* 📌 นับ **ทุกไฟล์ในซอร์ส** ไม่ใช่เฉพาะ CSS (แก้ 2026-09-16 ตอนลบหน้าแรกเดิมตาม
+     ADR 0016): --fs-17 เคยถูกอ้างจาก globals.css ด้วย พอบล็อกนั้นถูกลบก็เหลือผู้ใช้
+     รายเดียวที่เขียนผ่าน inline style (DealTimelineTable) ซึ่งเทสต์เดิมมองไม่เห็น
+     เจตนาของด่านคือ "ไม่มีขั้นที่ไม่มีใครใช้" — ใช้จาก JS ก็คือมีคนใช้ */
+  const allSource = allSourceFiles().map((f) => fs.readFileSync(f, "utf8")).join("\n");
   for (const step of steps) {
-    const uses = allCss.split(`var(${step.name})`).length - 1;
+    const uses = allSource.split(`var(${step.name})`).length - 1;
     assert.ok(uses > 0,
       `${step.name} ไม่มีใครใช้ — ขั้นที่เติมเผื่อไว้ทำให้เข้าใจผิดว่าชั้นนี้ครอบทั้งระบบแล้ว`);
   }

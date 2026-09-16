@@ -622,6 +622,14 @@
   /* เฟส T: navigation = top bar 2 ชั้นตรึงบนสุด (แทน sidebar) — ความสูงรวมใช้เป็น
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* แถบระบบ (โลโก้/สลับระบบ/ผู้ใช้) — ตรึงบนสุด */
+  /* พื้นกรมท่าของแถวบน — **นิยามเดียว** เพราะแถบต้อนรับของหน้าแรก (ADR 0016) ต่อจาก
+     แถวบนแบบไม่มีรอยต่อ · วงเรืองคิดเป็น px จาก --topbar-h ไม่ใช่ % ของกล่องตัวเอง
+     ⇒ กล่องที่สูงไม่เท่ากันได้วงขนาดเดียวกัน ตำแหน่งเดียวกัน จึงมองไม่เห็นรอยต่อ
+     ⚠️ `#000` ยกมาจากสูตรเดิมของ .topnav-system ทั้งดุ้น (ค่าเดียวที่ไม่ใช่โทเคน) */
+  --navy-band-bg:
+    radial-gradient(circle calc(0.48 * hypot(72vw, 1.8 * var(--topbar-h))) at 28% calc(-1.8 * var(--topbar-h)),
+      color-mix(in srgb, var(--accent) 42%, transparent), transparent),
+    linear-gradient(110deg, color-mix(in srgb, var(--navy) 94%, #000), var(--navy));
   /* เมนูของระบบเป็น **ลิ้นชักที่ลอยทับ** ไม่มีแถบประจำที่แล้ว (มติผู้ใช้ 2026-08-25)
        >768px    แฮมเบอร์เกอร์บนหัวเปิดลิ้นชักกว้างเท่านี้
        ≤768      ไม่มีลิ้นชัก ใช้แถบล่างมือถือ (MobileBottomNav)
@@ -1243,6 +1251,41 @@ button, select, input, textarea {
 /* หน้าแรก (ADR 0016) ไม่มีแถบเมนูล่างบนมือถือ — ทั้งหน้าคือเมนูอยู่แล้ว
    ⇒ ไม่ต้องเผื่อระยะให้แถบที่ไม่มีอยู่จริง (ท้ายหน้าจะมีที่ว่างลอย ๆ 66px) */
 .app-container.home-context .page { --mobile-nav-h: 0px; }
+/* หน้าแรกไม่มีแถวระบบทุกชั้นจอ ⇒ จุดยึดการเลื่อนและกล่องที่หักความสูงแถบไม่ต้องเผื่อ 42px */
+.app-container.home-context { --sysbar-h: 0px; }
+/* แถบต้อนรับของหน้าแรกต่อจากแถวบนโดยไม่มีรอยต่อ ⇒ ตอนอยู่บนสุดต้องไม่มีเส้น/เงาใต้หัว
+   พ้นแถบแล้วเงาเดิมกลับมา (ตัวสลับสถานะอยู่ในหน้า — ดู SystemMenuSheet) */
+.app-container.home-context .topnav { border-bottom: 0; box-shadow: none; }
+.app-container.home-context[data-home-scrolled] .topnav { box-shadow: var(--glass-shadow), var(--shadow-sm); }
+.app-container.home-context .main-content > .page { padding-top: 0; }
+/* เส้นคั่นหลังโลโก้มีไว้คั่นป้าย "ระบบ › เมนู" ซึ่งหน้าแรกไม่มี — ซ่อนเส้น **คงระยะเดิม**
+   (โลโก้ต้องอยู่ตำแหน่งเดียวกับทุกหน้า) */
+.app-container.home-context .topnav-brand { border-right-color: transparent; }
+/* เมนูบัญชีลอยทับแถบกรมท่า ⇒ ต้องทึบ (--panel โปร่ง 6% จะให้กรมท่าทะลุขึ้นมา) */
+.app-container.home-context .account-menu-popover { background: var(--panel-float); }
+
+/* ลิงก์ข้ามไปเนื้อหา — ชิ้นแรกของหัว โผล่เมื่อโฟกัสด้วยคีย์บอร์ดเท่านั้น */
+.topnav-skip {
+  position: absolute;
+  left: var(--space-3);
+  top: var(--space-2);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  /* เป้ากดขนาดจอสัมผัส — ลิงก์นี้เป็นทางเดียวที่คีย์บอร์ด/สวิตช์ใช้ข้ามแผงเมนูทั้งหน้า */
+  min-height: var(--ctl-h-touch);
+  border-radius: var(--radius);
+  background: var(--panel-float);
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-decoration: none;
+  transform: translateY(calc(-100% - var(--space-4)));
+  transition: transform var(--motion-fast);
+}
+.topnav-skip:focus-visible { transform: translateY(0); outline: 2px solid var(--navy-fg); outline-offset: 2px; }
 
 /* สถานะของเปลือกตอนยังไม่มีเมนูให้วาด (กำลังอ่าน session / อ่านไม่สำเร็จ) */
 .shell-state-loading {
@@ -1296,9 +1339,8 @@ button, select, input, textarea {
 
 .topnav-system {
   height: var(--topbar-h);
-  background:
-    radial-gradient(circle at 28% -80%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 48%),
-    linear-gradient(110deg, color-mix(in srgb, var(--navy) 94%, #000), var(--navy));
+  background-color: var(--navy);
+  background-image: var(--navy-band-bg);
   color: #fff;
   display: flex;
   align-items: center;
@@ -2347,281 +2389,6 @@ h1, h2, h3, h4, h5, h6 {
 .login-submit { width: 100%; height: 38px; justify-content: center; margin-top: var(--space-1-5); }
 @media (max-width: 480px) {
   .login-card { padding: var(--space-6) var(--space-5); }
-}
-
-/* Home navigation hub — global launchpad, not an analytics dashboard. */
-.home-hub {
-  min-height: calc(100vh / var(--ui-scale));
-  padding: clamp(var(--space-4-5), 3vw, 36px);
-  background:
-    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 34%),
-    var(--bg);
-}
-.home-hub-shell {
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-.home-hub-topbar {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4-5);
-}
-.home-hub-brand-link {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius);
-}
-.home-hub-brand-link:focus-visible,
-.home-system-card:focus-visible,
-.home-hub-footer a:focus-visible {
-  outline: 2px solid var(--accent-ink);
-  outline-offset: 3px;
-}
-.home-hub-brand { display: block; }
-.home-hub-shortcuts {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
-.home-hub-hero {
-  padding: clamp(22px, 4vw, 38px);
-  display: grid;
-  gap: var(--space-7);
-  align-items: stretch;
-  overflow: hidden;
-  background:
-    linear-gradient(130deg, color-mix(in srgb, var(--navy) 8%, var(--panel)), var(--panel));
-}
-.home-hub-hero.has-continue {
-  grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
-}
-.home-hub-greeting {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  min-width: 0;
-}
-.home-hub-eyebrow,
-.home-continue-label {
-  color: var(--accent-ink);
-  font-size: var(--fs-5);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--ls-label);
-}
-.home-hub-greeting h1 {
-  margin: 7px 0 var(--space-2);
-  color: var(--text);
-  font-size: clamp(var(--fs-14), 3vw, var(--fs-17));
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-thai);
-  letter-spacing: var(--ls-heading);
-}
-.home-hub-greeting > p {
-  max-width: 640px;
-  color: var(--text-2);
-  font-size: var(--fs-8);
-  line-height: 1.65;
-}
-.home-user-context {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-top: var(--space-4-5);
-}
-.home-user-context .chip {
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1-5);
-}
-.home-continue-card {
-  padding: var(--space-4-5);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-3-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--panel-2) 88%, transparent);
-}
-.home-continue-title {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-.home-continue-title > div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.home-continue-title strong { color: var(--text); font-size: var(--fs-10); }
-.home-continue-title div > span { color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-text); }
-.home-continue-card .btn { margin-top: auto; }
-.home-systems { display: flex; flex-direction: column; gap: var(--space-3-5); }
-.home-section-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-.home-section-heading h2 { color: var(--text); font-size: var(--fs-11); font-weight: var(--fw-bold); }
-.home-section-heading p { margin-top: 3px; color: var(--text-3); font-size: var(--fs-6); }
-.home-system-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-4);
-}
-.home-system-grid.count-1 {
-  width: min(430px, 100%);
-  grid-template-columns: minmax(0, 1fr);
-  margin-inline: auto;
-}
-.home-system-grid.count-2,
-.home-system-grid.count-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.home-system-card {
-  min-height: 210px;
-  padding: 22px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-3-5);
-  color: inherit;
-  text-decoration: none;
-  transition: transform var(--motion-medium) ease, box-shadow var(--motion-medium) ease, border-color var(--motion-medium) ease, background var(--motion-medium) ease;
-}
-.home-system-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
-  box-shadow: var(--shadow-md);
-}
-/* การ์ดระบบที่ยังไม่เปิดใช้ — ใช้ --op-muted ไม่ใช่ --op-disabled เพราะการ์ดนี้มี
-   คำอธิบายเป็นย่อหน้าที่ยังต้องอ่านออก (0.45 ทำให้ตัวอักษร --text-2 ตกเกณฑ์คอนทราสต์)
-   ส่วนเมนูบนแถบเป็น "ตัวควบคุม" คำเดียว จึงใช้ --op-disabled ตามเพื่อนบ้านทั้งระบบ */
-.home-system-card.is-disabled {
-  opacity: var(--op-muted);
-  cursor: not-allowed;
-}
-/* การ์ดนี้เป็น <div> แล้ว แต่ .home-system-card:hover ยังจับได้อยู่ — ต้องปิดเอง
-   ไม่งั้นการ์ดที่กดไม่ได้ยังเด้งขึ้นตอนเอาเมาส์ไปวาง = คำเชิญให้กด */
-.home-system-card.is-disabled:hover {
-  transform: none;
-  border-color: var(--border);
-  background: var(--panel); /* ค่าเดียวกับ .glass-panel — คืนพื้นเดิม ไม่ใช่ล้างทิ้ง */
-  box-shadow: var(--glass-shadow);
-}
-.home-system-card.is-disabled .home-system-icon { background: var(--text-3); }
-.home-system-card.is-disabled .home-system-enter { color: var(--text-3); font-weight: var(--fw-semibold); }
-/* หัวการ์ด — ไอคอนซ้าย ป้าย "รอคุณ N" ขวา (2026-08-12)
-   ⚠️ `width: 100%` ห้ามถอด: การ์ดเป็น flex column ที่ `align-items: flex-start`
-   ⇒ แถวนี้จะหดเท่าไอคอนแล้วป้ายไปแปะติดไอคอนแทนที่จะไปสุดขอบขวา */
-.home-system-head {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-/* ⚠️ โทนกลางตามค่าตั้งต้นของ .chip โดยตั้งใจ — เหตุผลเดียวกับ .topnav-count:
-   การ์ดมีไอคอน/ชื่อ/ปุ่ม "เข้าใช้งาน" เป็นสัญญาณอยู่แล้ว ป้ายสีจัดจะแข่งกับมัน
-   nowrap: "รอคุณ 99+" ห้ามตัดบรรทัดตอนการ์ดแคบ ไม่งั้นหัวการ์ดสูงขึ้นใบเดียว */
-.home-system-count { white-space: nowrap; }
-.home-system-icon {
-  width: 48px;
-  height: 48px;
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 48px;
-  border-radius: var(--radius-lg);
-  background: var(--navy);
-  color: var(--navy-fg);
-  box-shadow: var(--shadow-sm);
-}
-.home-system-copy {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1-5);
-}
-.home-system-copy strong { color: var(--text); font-size: var(--fs-10); font-weight: var(--fw-bold); }
-.home-system-copy > span { color: var(--text-2); font-size: var(--fs-7); line-height: var(--lh-relaxed); }
-.home-system-enter {
-  margin-top: auto;
-  align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--accent-ink);
-  font-size: var(--fs-7);
-  font-weight: var(--fw-bold);
-}
-.home-hub-footer {
-  min-height: 48px;
-  padding-top: var(--space-1);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3-5);
-  border-top: 1px solid var(--border);
-  color: var(--text-3);
-  font-size: var(--fs-5);
-}
-.home-hub-footer a {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--accent-ink);
-  font-weight: var(--fw-semibold);
-  text-decoration: none;
-}
-.home-hub-error { max-width: 720px; padding-top: clamp(30px, 10vh, 100px); }
-.home-hub-error .empty-state strong,
-.home-hub-error .empty-state span,
-.home-systems .empty-state strong,
-.home-systems .empty-state span { display: block; }
-.home-hub-error .empty-state span,
-.home-systems .empty-state span { margin-top: var(--space-1); color: var(--text-3); }
-
-@media (max-width: 900px) {
-  .home-hub-hero.has-continue { grid-template-columns: minmax(0, 1fr); }
-  .home-system-grid,
-  .home-system-grid.count-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 640px) {
-  .home-hub { padding: var(--space-3-5); }
-  .home-hub-shell { gap: var(--space-4-5); }
-  .home-hub-topbar { align-items: flex-start; flex-direction: column; }
-  .home-hub-shortcuts {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  /* วัดจริง 2026-07-30 บนจอ 375px: ปุ่ม "บันทึก" ในแถบท้ายฟอร์มได้ 44px ตามเกณฑ์
-     จอสัมผัส แต่ปุ่มลัดหน้าแรกค้างที่ 40px — **หน้าแรกซึ่งเป็น launchpad กลับมีเป้า
-     เล็กกว่าปุ่มในฟอร์ม** ตรงข้ามกับเจตนา (เดิมเดาไว้ว่า 40px คือ "ตั้งใจให้กดง่าย")
-     จอแคบจึงต้องได้ --ctl-h-touch เหมือนปุ่มอื่นทั้งระบบ */
-  .home-hub-shortcuts .btn,
-  .home-continue-card .btn { min-height: var(--ctl-h-touch); }
-  .home-hub-shortcuts .btn { justify-content: flex-start; min-width: 0; }
-  .home-hub-hero { padding: var(--space-5); gap: var(--space-5); }
-  .home-system-grid,
-  .home-system-grid.count-2,
-  .home-system-grid.count-4 { grid-template-columns: minmax(0, 1fr); }
-  .home-system-card { min-height: 184px; padding: var(--space-4-5); }
-  .home-hub-footer { align-items: flex-start; flex-direction: column; padding: var(--space-3-5) 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .home-system-card { transition: none; }
-  .home-system-card:hover { transform: none; }
 }
 
 /* Stat & Metrics Display - Grid layout for responsiveness */
@@ -7615,7 +7382,8 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
       (การ์ดมี `--radius-lg` จาก `.glass-panel` อยู่แล้ว) · เขียน `border-radius: inherit`
       ตรงนี้จะไป *เปลี่ยนความมนของการ์ดตอนโฟกัส* เพราะกฎนี้เกาะบน element ตัวเดียวกัน
    🔴 สีวงเป็น `--accent-ink` ไม่ใช่ `--accent` (2.75:1 ตก §1.4.11) — เหตุผลเต็มอยู่
-      เหนือ `.linklike:focus-visible` · ทรงเดียวกับ `.home-system-card:focus-visible` */
+      เหนือ `.linklike:focus-visible` · ทรงเดียวกับวงโฟกัสของแผงระบบบนหน้าแรก
+      (`SystemMenuSheet.module.css` — การ์ดหน้าแรกเดิมถูกลบไปพร้อม ADR 0016) */
 .card-link {
   color: inherit;
   text-decoration: none;

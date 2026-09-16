@@ -157,7 +157,7 @@ const BADGE_TONES = STATUS_TONES;
 const BADGE_FAMILIES = [
   { cls: "ui-badge", count: 174 },
   { cls: "status-pill", count: 43 },
-  { cls: "chip", count: 23 },
+  { cls: "chip", count: 20 },   // 📉 23 → 20 (2026-09-16) หน้าแรกเดิมถูกลบตาม ADR 0016
 ];
 
 const ROWS = [

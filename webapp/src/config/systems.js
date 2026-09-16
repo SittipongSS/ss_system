@@ -183,9 +183,6 @@ export function systemLandingForUser(systemOrKey, user) {
   return system ? system.landing(user) : null;
 }
 
-export function recentSystemForUser(user, storedKey) {
-  const system = getSystemByKey(storedKey);
-  // ระบบที่ปิดอยู่ต้องไม่ขึ้นการ์ด "ทำงานต่อ" — คนที่ใช้ระบบนั้นเป็นระบบสุดท้ายก่อนปิด
-  // จะเปิดหน้าแรกมาเจอปุ่มใหญ่ที่กดไปแล้วขัดกับการ์ดจาง ๆ ข้างล่างที่บอกว่ายังไม่เปิด
-  return system?.isVisible(user) && !system.disabled ? system : null;
-}
+/* 📌 `recentSystemForUser` ถูกลบ (ADR 0016 · 16 กันยายน 2026) — ผู้เรียกเดียวคือการ์ด
+   "ทำงานต่อ" บนหน้าแรกเดิม ซึ่งมตินี้ตัดทิ้ง · คีย์ `ss:last-system` ยังอยู่ ให้เปลือกใช้
+   ถอยกลับเมื่อยืนอยู่บนหน้าที่ไม่เป็นของระบบไหน (ดู RECENT_SYSTEM_STORAGE_KEY) */
