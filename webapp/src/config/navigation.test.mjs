@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ADOPTED_SHARED_PATHS, adoptsPathname, sharedItemBelongsInGroup, isBareShellPathname, isSettingsPathname, sortSystems, systemForPathname } from './navigation.js';
+import { ADOPTED_SHARED_PATHS, adoptsPathname, sharedItemBelongsInGroup, isBareShellPathname, isSettingsPathname, shellFlagsFor, sortSystems, systemForPathname } from './navigation.js';
 
 test('systemForPathname keeps public and legacy sales routes in one system', () => {
   assert.equal(systemForPathname('/sa/quotations/1'), 'salesplan');
@@ -257,5 +257,25 @@ test('⭐ เมนูเอกสารร่วมขึ้นได้กล�
       assert.equal(sharedItemBelongsInGroup(href, system, user), expected, `${href} · ${user.role} · ${system}`);
     }
     assert.ok(Object.values(want).filter(Boolean).length <= 1, `${href} · ${user.role} ต้องไม่ขึ้นเกินหนึ่งกลุ่ม`);
+  }
+});
+
+/* ── เปลือกของหน้าแรก (ADR 0016) ─────────────────────────────────────────── */
+test('⭐ /home ไม่ใช่ของระบบไหน — ไม่งั้นเขียน ss:last-system ทับระบบที่เพิ่งออกมา', () => {
+  assert.equal(systemForPathname('/home'), null);
+  assert.equal(systemForPathname('/home', { role: 'finance', department: 'FN' }), null);
+});
+
+test('shellFlagsFor: หน้าแรกไม่มีเมนูของระบบ ไม่มีตัวสลับระบบ และไม่มีตัวเลขบนหัว', () => {
+  const home = shellFlagsFor('/home');
+  assert.deepEqual(home, { bareShell: false, homeHub: true, hideSystemMenu: true, hideSystemSwitcher: true });
+
+  // บัญชีของฉัน: ไม่มีเมนูของระบบ **แต่ยังมีตัวสลับระบบ** — ต้องมีทางกลับเข้าระบบ
+  const account = shellFlagsFor('/account');
+  assert.deepEqual(account, { bareShell: true, homeHub: false, hideSystemMenu: true, hideSystemSwitcher: false });
+
+  for (const p of ['/sa/deals', '/settings', '/notifications', '/support']) {
+    assert.deepEqual(shellFlagsFor(p),
+      { bareShell: false, homeHub: false, hideSystemMenu: false, hideSystemSwitcher: false }, p);
   }
 });

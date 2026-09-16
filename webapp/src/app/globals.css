@@ -1240,6 +1240,25 @@ button, select, input, textarea {
   margin: 0 auto;
 }
 
+/* หน้าแรก (ADR 0016) ไม่มีแถบเมนูล่างบนมือถือ — ทั้งหน้าคือเมนูอยู่แล้ว
+   ⇒ ไม่ต้องเผื่อระยะให้แถบที่ไม่มีอยู่จริง (ท้ายหน้าจะมีที่ว่างลอย ๆ 66px) */
+.app-container.home-context .page { --mobile-nav-h: 0px; }
+
+/* สถานะของเปลือกตอนยังไม่มีเมนูให้วาด (กำลังอ่าน session / อ่านไม่สำเร็จ) */
+.shell-state-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 32rem;
+}
+.shell-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+  margin-top: var(--space-2);
+}
+
 /* 🪤 สองบล็อกข้างล่างเขียนทับ padding ของ .page ทั้งชุด — ระยะเผื่อแถบเมนูล่างจึงต้อง
    ใส่ซ้ำที่นั่นด้วย ไม่งั้นค่าที่ตั้งไว้ในกฎฐานหายเกลี้ยง แล้วเนื้อหาท้ายหน้าถูกแถบทับ
    (เจอตอนวัดจริง 2026-08-02: กฎฐานให้ 130px แต่ที่เรนเดอร์จริงเหลือ 40px) */
