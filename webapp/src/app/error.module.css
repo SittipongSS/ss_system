@@ -27,7 +27,7 @@
   margin: 0 0 var(--space-5);
   color: var(--text-2);
   font-size: var(--fs-7);
-  line-height: var(--lh-normal);
+  line-height: var(--lh-text);
 }
 
 .actions {

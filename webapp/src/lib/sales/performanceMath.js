@@ -33,7 +33,7 @@ const PENDING_KEYS = ['pendingApproval', 'pendingApprovalCount'];
 
 /* ── "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) ─────────────────────────────────────
    แถวทุกระดับถืออีกสองเส้น: `wonAwaitingSo` (มูลค่าดีลเต็ม) · `wonAwaitingSoCount` (จำนวนดีล)
-   = ดีลที่ปิด Won แล้วแต่ยังไม่มี SO อนุมัติ/รออนุมัติ (นิยามอยู่ที่ lib/sales/dashboardMetrics)
+   = ดีลที่ปิด Won แล้วแต่ยังไม่มี Actual และไม่มี SO รออนุมัติ (รวมดีลที่มีแค่ใบอนุมัติ 0 บาท · นิยามอยู่ที่ lib/sales/dashboardMetrics)
    🐞 รับใบเสนอราคา = ดีล Won ทันที ⇒ หลุดจาก FC คงเหลือ แต่ SO ยังเป็นร่าง ⇒ ไม่อยู่ใน
       รออนุมัติ/Actual ⇒ "คาดขาด" พุ่งเต็มมูลค่าดีลจนกว่าจะกดยื่น SO · เส้นนี้อุดรูนั้น
    ⭐ **เส้นแยกจาก `actual` เสมอ** เหมือนรออนุมัติ — เข้าได้แค่ `projected` กับบรรทัดแสดงผล
@@ -49,6 +49,8 @@ const SIDE_KEYS = [...PENDING_KEYS, ...WON_AWAITING_KEYS];
 const blankRow = (axis, size) => ({
   months: axis,
   target: zeros(size),
+  // ผลรวมเป้ารายคนของทีม — ใช้เตือนบนจอเมื่อไม่เท่าเป้าระดับทีม (มติผู้ใช้ 2026-09-16) ไม่เข้าเลขไหนทั้งสิ้น
+  targetPersonSum: zeros(size),
   fcTotal: zeros(size),
   forecast: zeros(size),
   actual: zeros(size),
@@ -133,6 +135,7 @@ export function buildMatrix(yearDashboards, { months } = {}) {
       }
       const t = teams.get(key);
       t.target[mi] += Number(row.target || 0);
+      t.targetPersonSum[mi] += Number(row.targetPersonSum || 0);
       t.fcTotal[mi] += Number(row.fcTotal || 0);
       t.forecast[mi] += Number(row.weighted || 0);
       t.actual[mi] += Number(row.won || 0);
@@ -443,6 +446,7 @@ export function closedCountOnAxis(months, now) {
 // อ่านมันด้วยแต่ป้ายสถานะ **ไม่ได้ถูกวาดที่ไหนแล้ว** (ถอดคอลัมน์สถานะ 2026-08-03)
 export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount = 12 }) {
   const target = sumRange(row.target, startIdx, endIdx);
+  const targetPersonSum = sumRange(row.targetPersonSum || [], startIdx, endIdx);
   const carry = carryOn ? carryIn(row.target, row.actual, startIdx, closedCount, row.months || null) : 0;
   const mustClose = target + carry;
   const fcTotal = sumRange(row.fcTotal || [], startIdx, endIdx);
@@ -454,6 +458,7 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
   const wonAwaitingSoCount = sumRange(row.wonAwaitingSoCount || [], startIdx, endIdx);
   return {
     target,
+    targetPersonSum,
     carry,
     mustClose,
     fcTotal,

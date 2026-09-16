@@ -120,11 +120,13 @@ test('คำขอที่แต่ง wonSource / acceptedQuotationId มา�
   assert.equal(created.metadata.legacy, true, 'ธง legacy ต้องรอดการถอด');
   assert.equal(isLegacyWonAtCreate(created), true);
   assert.equal(isWonAwaitingSo(created), false, 'ดีลเก่าที่สร้างเป็น Won ต้องไม่กลับเข้ากอง Won รอยื่น SO');
+  // มูลค่าดีล 0 หลุดกองอยู่แล้ว (มติ 2026-09-16) — ยืนยันว่าตัดด้วยธงดีลเก่า ไม่ใช่เพราะมูลค่า 0
+  assert.equal(isWonAwaitingSo({ ...created, projectValue: 283350 }), false, 'ดีลเก่ามูลค่าจริงก็ต้องไม่เข้ากอง');
   // PATCH: ถอดจากค่าที่ส่งมาก่อน merge — แต่งคีย์ใส่ดีลเก่าไม่ได้ (รูปเดียวกับ deals/[id]/route.js)
   const patchedLegacy = { ...created, metadata: { ...created.metadata, ...clientDealMetadataOnPatch({ wonSource: 'quotation', acceptedQuotationId: 'QT-FAKE' }) } };
   assert.equal(isLegacyWonAtCreate(patchedLegacy), true);
   // …และค่าที่ RPC รับใบเสนอราคาเขียนไว้อยู่ต่อ ไม่ว่า client จะส่งอะไรมาทับ (สำเนาเก่าบนจอ · ค่าว่าง)
-  const accepted = { stage: 'won', metadata: { legacy: true, acceptedQuotationId: 'QT-1', wonSource: 'quotation', wonMonth: null } };
+  const accepted = { stage: 'won', projectValue: 50000, metadata: { legacy: true, acceptedQuotationId: 'QT-1', wonSource: 'quotation', wonMonth: null } };
   const patchedAccepted = {
     ...accepted,
     metadata: { ...accepted.metadata, ...clientDealMetadataOnPatch({ acceptedQuotationId: null, wonSource: 'manual', brand: 'Y' }) },

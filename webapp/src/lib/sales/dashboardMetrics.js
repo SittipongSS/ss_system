@@ -2,7 +2,7 @@
 // และ drill-down modal ฝั่ง client ต้องใช้ชุดเดียวกัน ไม่งั้นตัวเลขบนการ์ด KPI
 // กับรายการดีลที่กดเข้าไปดูไม่ตรงกัน (ผลตรวจระบบขาย 2026-07-16)
 import { isOpenStage, isWonStage, monthKey } from '@/lib/salesPlanning';
-import { currentMonth } from '@/lib/datePeriods';
+import { businessDayKey, currentMonth } from '@/lib/datePeriods';
 import {
   dealActualFromSalesOrders,
   dealPendingApprovalAmount,
@@ -45,7 +45,7 @@ export const pendingApprovalCountOf = (d) => (isWonDeal(d) ? dealPendingApproval
 // เดือนของยอดรออนุมัติ = **เดือนปัจจุบัน (เวลาไทย) เสมอ** (มติผู้ใช้ 2026-09-11)
 // อนุมัติย้อนหลังไม่ได้ ถ้าอนุมัติวันนี้ Actual ก็ลงเดือนนี้ (wonMonth = เดือนของ approvedAt)
 // ⇒ ใบที่ค้างข้ามเดือนเลื่อนมาอยู่เดือนใหม่เอง · เดือนที่ปิดไปแล้ว/ปีก่อนไม่มีวันเห็นยอดนี้
-// ⚠️ ห้ามใช้ wonMonthOf (ดีลรออนุมัติไม่มี wonMonth → ตกไปเดือน confirmedAt แบบ UTC)
+// ⚠️ ห้ามใช้ wonMonthOf (ดีลรออนุมัติไม่มี wonMonth → ตกไปเดือนที่ปิด Won ตาม confirmedAt ไม่ใช่เดือนปัจจุบัน)
 // ⚠️ ห้ามใช้ businessMonthKey ของ lib/businessDate (คืน 'YYMM' สำหรับเลขเอกสาร)
 // ⭐ "มีใบรออนุมัติ" = ยอด > 0 **หรือมีใบ** — ใบยอด 0 บาทถูกกฎตั้งแต่ mig 0197 และ trigger
 //    ของ mig 0353 เขียนคีย์ทั้งคู่เมื่อ count > 0 · ถ้าดูแค่ยอด ใบพวกนี้หลุดจากแดชบอร์ด/ลิ้นชัก/
@@ -55,17 +55,17 @@ export const pendingApprovalMonthOf = (d, now = new Date()) => (
 );
 
 /* ── "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) ─────────────────────────────────────
-   ดีลที่ปิด Won แล้วแต่ **ยังไม่มี SO ที่อนุมัติ และไม่มี SO ที่รออนุมัติ** (ยังไม่ออก SO ·
-   มีแค่ร่าง · ถูกตีกลับ/ดึงกลับ · มีแต่ใบยกเลิก)
+   ดีลที่ปิด Won แล้วแต่ **ยังไม่มี Actual และไม่มี SO ที่รออนุมัติ** (ยังไม่ออก SO ·
+   มีแค่ร่าง · ถูกตีกลับ/ดึงกลับ · มีแต่ใบยกเลิก · มีแค่ใบอนุมัติ 0 บาท — มติ 2026-09-16) · มูลค่าดีล 0 ไม่นับ
    🐞 ตรวจซ้ำ 2026-09-14: รับใบเสนอราคา = ดีลเป็น Won ทันที (0284) ⇒ หลุดจาก FC คงเหลือ
       แต่ SO เกิดเป็นร่าง (0285) ⇒ ไม่อยู่ในรออนุมัติ/Actual ⇒ "คาดขาด" พุ่งเต็มมูลค่าดีล
       จนกว่าจะกดยื่น SO — ช่องนี้ปิดรูนั้น ให้ยอดคาดการณ์ไม่วูบทุกช่วงของดีล
    ⭐ ยอด = projectValue (มูลค่าดีลเต็มก้อน — ฐานเดียวกับ FC คงเหลือ ซึ่งไม่ถ่วงโอกาสปิด)
    ⭐ เดือน = wonMonthOf (ถังเดียวกับที่ FC Total ของดีล Won นี้อยู่แล้ว) — ไม่ใช้เดือนปัจจุบัน
       แบบรออนุมัติ เพราะดีลค้างเก่า (Won แต่ไม่เคยออก SO) จะไปกองรวมในเดือนนี้เดือนเดียว
-   ⭐ "มี SO อนุมัติแล้ว" ดูจาก metadata.wonMonth ไม่ใช่ยอด Actual > 0 — ใบอนุมัติยอด 0 บาท
-      (ใบตัวอย่าง ถูกกฎตั้งแต่ mig 0197) มีจริง 28 ดีล · DB เขียน wonMonth เฉพาะเมื่อมีใบ
-      อนุมัติ (trigger 0279/0353 ถอดเป็น null ทุกครั้งที่ไม่มี)
+   ⭐ ออกจากกองเมื่อ **มี Actual > 0** ไม่ใช่เมื่อมีใบอนุมัติ — ใบอนุมัติยอด 0 บาท (ใบ DEMO ·
+      ค่าออกแบบกลิ่นก่อนบรีฟ · ถูกกฎตั้งแต่ mig 0197) ยังรอออเดอร์ที่มียอด (มติผู้ใช้ 2026-09-16 ดูข้างล่าง)
+      · dealHasApprovedSalesOrder (ดู wonMonth) ยังส่งออกไว้ แต่ไม่ใช่ตัวตัดสินกองนี้แล้ว
    ⭐ **ไม่นับดีลเก่าที่สร้างเป็น Won** (isLegacyWonAtCreate ข้างล่าง · มติผู้ใช้ 2026-09-15) — ตัดทั้งยอดและ
       จำนวน ทุกจอที่อ่านตัวช่วยชุดนี้ · ดีลแบบนี้ยื่น SO ไม่ได้เลย (ออกใบเสนอราคาให้ดีล Won ไม่ได้ · SO ต้องมี
       ใบเสนอราคาที่รับแล้ว · PATCH เปลี่ยนขั้นของดีล Won ไม่ได้) คำว่า "รอยื่น SO" จึงผิดทุกใบ และยอดของมัน
@@ -109,12 +109,25 @@ export const isLegacyWonAtCreate = (d) => isWonDeal(d)
 /* ⭐ ไม่นับดีลของใบสั่งขายย้อนหลังด้วย (mig 0360) — Won มูลค่า 0 ที่ไม่มีวันยื่น SO ในสายปกติ (ใบย้อนหลังเกิดเป็น
    อนุมัติแล้วแต่ไม่นับ Actual ⇒ wonMonth ว่างตลอด) · ไม่ตัด = ทุกดีลแบบนี้ค้าง "Won รอยื่น SO" ถาวร
    ⚠️ ต่อท้าย **หลัง** !isLegacyWonAtCreate — legacyDealSwitch.test ตรึงสองบรรทัดแรกไว้ */
+/* ⭐ มติผู้ใช้ 2026-09-16 ("SO 0 บาท มีบางดีลออกแล้ว" → ทำเลย) — สองข้อ:
+   ① **ยังไม่มี Actual = ยังรอ SO ที่มียอด** แม้มี SO อนุมัติ 0 บาทแล้ว — ใบ 0 บาทบนดีลที่ FC > 0 คือเอกสารขั้นแรก
+      (ใบ DEMO · ค่าออกแบบกลิ่นก่อนบรีฟ · ใบแทนใบจริงที่ยกเลิก) ออเดอร์จริงยังจะมา
+      🐞 ตรวจ prod 2026-09-16: 8 ดีล FC รวม 1,468,366 มีแค่ SO อนุมัติ 0 บาท (ใบเสนอราคารับแล้ว 0 บาททุกใบ ·
+         FC กรอกมือ) ⇒ เดิมถือว่า "มี SO อนุมัติแล้ว" หลุดทั้งกองนี้และคาดจบงวด ยอดคาดการณ์ต่ำเกินจริง
+      ⇒ เปลี่ยนจาก !dealHasApprovedSalesOrder (ดู wonMonth) เป็น wonAmountOf <= 0
+   ② **มูลค่าดีล 0 บาทไม่นับ** ทั้งยอดและจำนวน — บวกคาดการณ์ 0 อยู่แล้ว ได้แค่บรรทัด "฿0.00 · 1 ดีล" รกจอ
+      (ของจริง 16/09: 3 ดีลมูลค่า 0 ที่มี SO 0 บาทร่าง/ยกเลิก)
+   ③ **ตัดกองด้วยยอด ไม่ใช่จำนวนใบ** (ตรวจ 2026-09-16) — เดิมมี `pendingApprovalCountOf(d) <= 0` พ่วงอยู่
+      🐞 ใบที่ยื่นแล้วยอด 0 บาท (ถูกกฎตั้งแต่ mig 0197) จึงเตะดีลออกจากกองนี้ ขณะที่กองรออนุมัติได้ 0 บาท
+         ⇒ มูลค่าดีลทั้งก้อนหายจากคาดจบงวด และคาดขาดบวมเท่ามูลค่านั้น โดยไม่มีช่องไหนบนจอแสดงมันเลย
+      ⇒ เหลือเงื่อนไขยอดอย่างเดียว: มีเงินอยู่ที่กองไหน กองนั้นเอาไป · ไม่มีเงินที่ไหน = ยังรอยื่น SO ที่มียอด
+   ⚠️ สามบรรทัดแรกห้ามสลับ — legacyDealSwitch.test / historicalMoneyGuards.test ตรึงลำดับไว้ */
 export const isWonAwaitingSo = (d) => isWonDeal(d)
   && !isLegacyWonAtCreate(d)
   && !isHistoricalDeal(d)
-  && !dealHasApprovedSalesOrder(d)
+  && wonAmountOf(d) <= 0
   && pendingApprovalAmountOf(d) <= 0
-  && pendingApprovalCountOf(d) <= 0;
+  && (Number(d?.projectValue) || 0) > 0;
 export const wonAwaitingSoAmountOf = (d) => (isWonAwaitingSo(d) ? Math.max(0, Number(d?.projectValue) || 0) : 0);
 export const wonAwaitingSoCountOf = (d) => (isWonAwaitingSo(d) ? 1 : 0);
 export const wonAwaitingSoMonthOf = (d) => (isWonAwaitingSo(d) ? wonMonthOf(d) : null);
@@ -151,7 +164,10 @@ export function forecastAccuracyRollup(openDeals = [], wonDeals = [], lostDeals 
 // วันที่บนหัวใบ — Actual เกิดตอนอนุมัติ เดือนที่ลงยอดจึงต้องเป็นเดือนที่อนุมัติ
 // ค่านี้ DB เขียนให้เอง (trigger sync_sales_order_actual) ฝั่ง JS แค่อ่าน
 export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
-  || monthKey(d?.confirmedAt)
+  /* ⚠️ `confirmedAt` เป็น timestamptz — ต้องแปลงเป็นวันของ **เวลาไทย** ก่อนตัดเดือน (ตรวจ 2026-09-16)
+     🐞 เดิมตัดจากสตริง UTC ตรง ๆ ⇒ ดีลที่ปิดช่วง 00:00–06:59 เวลาไทย ตกไปเดือนก่อน ขณะที่ `wonMonth`
+        ที่ DB เขียนคิดด้วย Asia/Bangkok (mig 0279) ⇒ ดีลเดียวกันย้ายเดือนตอนใบสั่งขายถูกอนุมัติ/ดึงกลับ */
+  || monthKey(businessDayKey(d?.confirmedAt))
   || monthKey(d?.metadata?.poReceivedDate)
   || monthKey(d?.forecastMonth);
 

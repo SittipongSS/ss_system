@@ -54,11 +54,12 @@ import { isMyOpenTask } from '@/lib/mgmt/constants';
 import { businessDate } from '@/lib/businessDate';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { deptOf, ownedStages } from '@/lib/excise/workflow';
+import { applyExciseListScope } from '@/lib/excise/listScope';
 import { isSystemAdmin } from '@/lib/issues/access';
 import { canEditProduction } from '@/lib/permissions';
 import {
   DEPT_QUEUE_COUNT_KEYS, LEAD_TODO_STATUS, deptRequestsTodoCount, myTasksTodoCount,
-  pruneZeroCounts, requestsTodoCount,
+  requestsTodoCount, withCountStatus,
 } from '@/lib/nav/navCounts';
 
 export const dynamic = 'force-dynamic';
@@ -72,9 +73,14 @@ async function myOpenTasks(supabase, userId) {
      รายคน แต่คนที่ทำงานมานานพอจะแตะเพดานได้เอง แล้วป้ายบนเมนูจะนับไม่ครบเงียบ ๆ */
   const page = (column) => fetchAllResult(() => supabase
     .from('personal_tasks').select(columns).eq(column, userId).order('id', { ascending: true }));
-  const [{ data: byOwner }, { data: byAssignee }, { data: byProxy }] = await Promise.all([
+  /* 🔴 ต้องโยน error ขึ้นไปให้ `attempt()` เห็น — `fetchAllResult` คืน { data: null, error }
+     เมื่อพัง · ทิ้ง error ที่นี่ = ป้าย "งานของฉัน" นับขาดหรือหายเงียบ ๆ
+     ⚠️ ฟังก์ชันนี้อยู่นอก handler GET ⇒ ด่าน uncheckedReads มองไม่เห็น ต้องเช็คเอง */
+  const [{ data: byOwner, error: ownerError }, { data: byAssignee, error: assigneeError },
+    { data: byProxy, error: proxyError }] = await Promise.all([
     page('ownerId'), page('assigneeId'), page('proxyBy'),
   ]);
+  if (ownerError || assigneeError || proxyError) throw ownerError || assigneeError || proxyError;
   const seen = new Set();
   return [...(byOwner || []), ...(byAssignee || []), ...(byProxy || [])]
     .filter((task) => (seen.has(task.id) ? false : seen.add(task.id)));
@@ -85,9 +91,17 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   const jobs = [];
   const counts = {};
+  /* คีย์ที่ "มีตัวนับสำหรับคนนี้" กับคีย์ที่ "นับแล้วไม่สำเร็จ" — ปลายทางต้องแยกสามอย่าง
+     ออกจากกัน: นับแล้ว (รวมศูนย์) · นับไม่สำเร็จ · ไม่มีตัวนับสำหรับคนนี้ (ADR 0016)
+     ⚠️ เก็บ **ทุกคีย์ที่เริ่มนับ** ไม่ใช่เฉพาะที่สำเร็จ — คีย์ที่นับได้ 0 ถูก
+     `pruneZeroCounts` ตัดทิ้ง ถ้าไม่มีลิสต์นี้ปลายทางจะแยกศูนย์กับไม่มีสิทธิ์ไม่ออก */
+  const attempted = [];
+  const failed = [];
   const attempt = async (key, run) => {
+    attempted.push(key);
     try { counts[key] = await run(); } catch (e) {
-      // ตัวนับพังต้องไม่ทำให้เมนูทั้งแถบพัง — เงียบไว้ แล้วเมนูนั้นไม่มีป้าย
+      // ตัวนับพังต้องไม่ทำให้เมนูทั้งแถบพัง — เมนูนั้นได้ป้าย "นับไม่สำเร็จ" ไม่ใช่ 0
+      failed.push(key);
       console.error(`[nav/counts] ${key} failed`, e.message);
     }
   };
@@ -132,10 +146,11 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   if (canViewLeads(user)) {
     jobs.push(attempt('leads', async () => {
-      const { count } = await applyLeadScope(
+      const { count, error: leadError } = await applyLeadScope(
         supabase.from('sales_leads').select('id', { count: 'exact', head: true }),
         user,
       ).eq('status', LEAD_TODO_STATUS);
+      if (leadError) throw leadError;
       return count || 0;
     }));
   }
@@ -156,12 +171,12 @@ export const GET = withUser(async ({ user, supabase }) => {
          โดย `attempt()` ข้างบนไม่เห็นอะไรเลย ไม่มีแม้แต่บรรทัด log
          โยนแล้ว attempt จะ log + ปล่อยให้เมนูนั้น **ไม่มีป้าย** ซึ่งอ่านออกว่าผิดปกติ
          ต่างจากเลข 0 ที่อ่านเหมือน "ไม่มีงานค้าง" (ดู [[nav-count-badges]]) */
-      const { data, error } = await supabase
+      const { data, error: quoteError } = await supabase
         .from('quotations')
         .select('id, status, approvalStatus, createdBy, rejectionReason, deal:sales_deals(ownerId, stage)')
         .in('status', QUOTATION_ACTIONABLE_STATUSES)
         .limit(5000);
-      if (error) throw error;
+      if (quoteError) throw quoteError;
       return (data || []).filter((row) => isQuotationWaitingOnMe(row, {
         userId: user.id,
         dealOwnerId: row.deal?.ownerId ?? null,
@@ -184,42 +199,51 @@ export const GET = withUser(async ({ user, supabase }) => {
           มีสิทธิ์เหลือแล้ว — นั่นคือเคส 'pointer_gone' ที่หน้าแสดงแต่เดิมป้ายมองไม่เห็น
        ⚠️ ป้ายนี้ยิงทุก 2 นาททุกคน จึงแคบด้วย dealIds เสมอ ไม่ดึงทั้งตาราง */
     jobs.push(attempt('forecastReview', async () => {
-      const [{ data: seedQuotes }, { data: followingDeals }] = await Promise.all([
-        supabase.from('quotations').select('"dealId"')
+      /* ⚠️ ไล่ทีละหน้า ไม่ใช่ `.limit(5000)` — PostgREST ตัดที่ 1,000 แถวเสมอ (เพดานของโปรเจกต์)
+         สองก้อนนี้โตตามจำนวนใบเสนอราคาที่อนุมัติแล้วและดีลที่ผูก FC กับใบ ⇒ วันหนึ่งถึงเพดานแน่
+         และตอนถึงมันจะ **นับขาดเงียบ ๆ** ไม่มี error ให้จับ */
+      const [{ data: seedQuotes, error: seedError }, { data: followingDeals, error: followingError }] = await Promise.all([
+        fetchAllResult(() => supabase.from('quotations').select('"dealId"')
           .in('status', FORECAST_ELIGIBLE_STATUSES)
           .in('approvalStatus', FORECAST_ELIGIBLE_APPROVALS)
-          .limit(5000),
-        supabase.from('sales_deals').select('id')
+          .order('id', { ascending: true })),
+        fetchAllResult(() => supabase.from('sales_deals').select('id')
           .eq('forecastSource', 'quotation')
-          .limit(5000),
+          .order('id', { ascending: true })),
       ]);
+      if (seedError || followingError) throw seedError || followingError;
       const dealIds = [...new Set([
         ...(seedQuotes || []).map((row) => row.dealId),
         ...(followingDeals || []).map((row) => row.id),
       ].filter(Boolean))];
       /* ⚠️ ไม่มีดีลที่ต้องดูที่มา ก็ยังต้องนับกองวันที่ขาดต่อ — early return ตรงนี้เมื่อไร
          ป้ายจะหายทั้งที่หน้ายังมีของ (เคสนี้เกิดจริงตอนรวมสองสายเข้าด้วยกัน) */
-      const [{ data: deals }, { data: quotations }] = dealIds.length
+      /* ⚠️ ซอยลิสต์ + ไล่หน้า — `dealIds` โตตามใบเสนอราคา + ดีล · ส่งทั้งก้อนใน `.in()`
+         ชนเพดาน URL (~780 id) แล้วทั้งคำขอพังคาที่ ส่วนผลลัพธ์ของดีลหนึ่งใบมีได้หลายฉบับ
+         ⇒ ก้อนคืนมาเกิน 1,000 แถวได้ด้วย (ท่าเดียวกับ api/pm/projects) */
+      const [{ data: deals, error: dealError }, { data: quotations, error: quotationError }] = dealIds.length
         ? await Promise.all([
-        supabase.from('sales_deals')
+        fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('sales_deals')
           .select('id, stage, "ownerId", "ownerName", team, "projectValue", "forecastManualValue", "forecastSource", "forecastQuotationId", "forecastPinnedAt"')
-          .in('id', dealIds).limit(5000),
-        supabase.from('quotations')
+          .in('id', chunk).order('id', { ascending: true }))),
+        fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('quotations')
           .select('id, "dealId", "quoteNumber", "baseNumber", "revisionNo", status, "approvalStatus", "totalAmount", "vatAmount", "createdAt"')
-          .in('dealId', dealIds).limit(5000),
+          .in('dealId', chunk).order('id', { ascending: true }))),
         ])
-        : [{ data: [] }, { data: [] }];
+        : [{ data: [], error: null }, { data: [], error: null }];
+      if (dealError || quotationError) throw dealError || quotationError;
 
       /* กองที่สองของหน้าเดียวกัน: ดีลที่ยังไม่มีวันเริ่ม/วันรับของ — ป้ายต้องนับด้วย
          ไม่งั้นกดเข้าไปเจอเลขไม่ตรงกับที่เมนูบอก (กฎหัวไฟล์ navCounts)
          ⭐ "วันที่สิ้นสุด" = วันที่ลูกค้ารับของ ซึ่งรายงาน FC วางแผนผลิตใช้เป็นแกนเดือน
          ⚠️ คนละ query กับกองใบเสนอราคาข้างบน เพราะกองนี้ไม่เกี่ยวกับใบเลย และดีลที่
             ไม่มีใบก็ต้องถูกนับ ⇒ รวม dealIds ไม่ได้ */
-      const { data: undated } = await supabase
+      const { data: undated, error: undatedError } = await fetchAllResult(() => supabase
         .from('sales_deals')
         .select('id, stage, "ownerId", "ownerName", team, "startDate", "endDate", "projectValue"')
         .or('startDate.is.null,endDate.is.null')
-        .limit(5000);
+        .order('id', { ascending: true }));
+      if (undatedError) throw undatedError;
       const needsDates = (undated || []).filter((deal) => {
         if (isWonStage(deal.stage) || deal.stage === 'lost') return false;
         if (!Number(deal.projectValue)) return false;
@@ -250,7 +274,7 @@ export const GET = withUser(async ({ user, supabase }) => {
        ป้ายพาไปพอดี แล้วมันก็หายไปเอง */
     jobs.push(attempt('contracts', async () => {
       // เหตุผลเดียวกับตัวนับใบเสนอราคาข้างบน — ทิ้ง error = ป้ายขึ้น 0 เงียบ
-      const { data, error } = await supabase
+      const { data, error: contractError } = await supabase
         .from('sales_contracts')
         /* ⚠️ ไม่ต้องกรอง scope ตามดีลเหมือน route ของทะเบียน — สองเลนนี้แคบตัวเอง
            อยู่แล้ว: เลนเจ้าของเทียบ `ownerId`/`createdBy` เป็นรายใบ ส่วนเลนผู้รับรอง
@@ -260,11 +284,13 @@ export const GET = withUser(async ({ user, supabase }) => {
         .select('id, status, source, "ownerId", "createdBy", "contractNo", "baseNumber", "revisionNo", "createdAt"')
         .in('status', ['draft', 'awaiting_signature', 'awaiting_approval'])
         .limit(5000);
+      if (contractError) throw contractError;
       const latest = latestContractRevisions(data || []);
       /* ⚠️ ตัวนับนี้ยิงทุก 2 นาทีทุกคน ⇒ คิวรีเพิ่มต้องไม่เกิดเลยในกรณีปกติ
          `externalDocReadyIds` คืนชุดว่างโดยไม่แตะฐาน ถ้าคนดูไม่ใช่ผู้อนุมัติ
          หรือไม่มีใบ external ร่างอยู่ในชุดนี้ */
-      const docReady = await externalDocReadyIds(supabase, latest, user);
+      // strict: อ่านไฟล์แนบไม่สำเร็จ = ป้ายต้องขึ้นขีด ไม่ใช่ลดจำนวนเงียบ ๆ (ADR 0016)
+      const docReady = await externalDocReadyIds(supabase, latest, user, { strict: true });
       return latest.filter((row) => isContractWaitingOnMe(row, {
         userId: user.id, user, externalDocReady: docReady.has(row.id),
       })).length;
@@ -296,9 +322,11 @@ export const GET = withUser(async ({ user, supabase }) => {
         ? supabase.from('sales_orders').select('id, status, "totalAmount", "financeStatus"')
           .eq('status', 'approved').eq('financeStatus', 'pending').limit(5000)
         : Promise.resolve({ data: [] });
-      const [{ data: approvalRows }, { data: financeRows }] = await Promise.all([
+      const [{ data: approvalRows, error: approvalError }, { data: financeRows, error: financeError }] = await Promise.all([
         approvalLane, financeLane,
       ]);
+      // ทิ้ง error ที่นี่ = เลนนั้นกลายเป็น [] ⇒ ป้ายนับขาดเงียบ (เลนบัญชีเคยเป็นทั้งเลน)
+      if (approvalError || financeError) throw approvalError || financeError;
 
       const waiting = (approvalRows || [])
         .filter((row) => isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer })).length;
@@ -308,11 +336,14 @@ export const GET = withUser(async ({ user, supabase }) => {
       // ⚠️ ไล่ทีละหน้า — ใบหนึ่งมีได้หลายงวด ⇒ คิวหลักร้อยใบก็แตะเพดาน 1,000 ของ
       // PostgREST ได้ · ตัดกลางทางเมื่อไร ใบท้าย ๆ จะกลายเป็น "ยังเก็บไม่ครบ" เงียบ ๆ
       // ⚠️ ซอยลิสต์ด้วย — ไล่หน้าอย่างเดียวส่งลิสต์ id ก้อนเดิมทุกหน้า ⇒ ใบรอบัญชีหลายร้อยใบชนเพดาน URL
-      const { data: installments } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+      const { data: installments, error: installmentError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
         .from('sales_order_installments')
         .select('"salesOrderId", status')
         .in('salesOrderId', chunk)
         .order('id', { ascending: true })));
+      /* 🔴 งวดอ่านไม่ขึ้น = `awaitsFinanceReview` ตอบ false ทุกใบ = คิวบัญชีว่างเงียบ ๆ
+         ซึ่งเป็นกับดักที่เอกสารของ helper ตัวนี้เตือนไว้ตรง ๆ */
+      if (installmentError) throw installmentError;
       const byOrder = new Map();
       for (const row of installments || []) {
         const list = byOrder.get(row.salesOrderId) || [];
@@ -328,12 +359,12 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (canApproveProjectClose(user)) {
     jobs.push(attempt('projectCloses', async () => {
       // เหตุผลเดียวกับตัวนับใบเสนอราคาข้างบน — ทิ้ง error = ป้ายขึ้น 0 เงียบ
-      const { data, error } = await supabase
+      const { data, error: closeError } = await supabase
         .from('projects')
         .select('id, "closeStatus", "closeRequestedBy"')
         .eq('closeStatus', 'pending_close')
         .limit(5000);
-      if (error) throw error;
+      if (closeError) throw closeError;
       return (data || []).filter((row) => isProjectCloseWaitingOnMe(row, user)).length;
     }));
   }
@@ -342,16 +373,18 @@ export const GET = withUser(async ({ user, supabase }) => {
   // (คนเสนอเห็นสถานะบนแถวของตัวเองอยู่แล้ว ป้ายบนเมนูจะกลายเป็นการทวงตัวเอง)
   if (isScentRegistrar(user)) {
     jobs.push(attempt('scents', async () => {
-      const { count } = await supabase
+      const { count, error: scentError } = await supabase
         .from('scents').select('id', { count: 'exact', head: true }).eq('status', 'draft');
+      if (scentError) throw scentError;
       return count || 0;
     }));
   }
 
   if (isFormulaRegistrar(user)) {
     jobs.push(attempt('formulas', async () => {
-      const { count } = await supabase
+      const { count, error: formulaError } = await supabase
         .from('formulas').select('id', { count: 'exact', head: true }).eq('status', 'draft');
+      if (formulaError) throw formulaError;
       return count || 0;
     }));
   }
@@ -363,9 +396,10 @@ export const GET = withUser(async ({ user, supabase }) => {
      ⇒ เทียบ `= 'pending'` ตรง ๆ ถูกแล้ว NULL ไม่เข้าคิว */
   if (canApproveMasterData(user.role)) {
     const pendingApproval = (table) => async () => {
-      const { count } = await supabase
+      const { count, error: masterError } = await supabase
         .from(table).select('id', { count: 'exact', head: true })
         .eq('approvalStatus', 'pending');
+      if (masterError) throw masterError;
       return count || 0;
     };
     jobs.push(attempt('customers', pendingApproval('customers')));
@@ -418,29 +452,37 @@ export const GET = withUser(async ({ user, supabase }) => {
      อ่านแค่จำนวนแถว จึงไม่ต้องเลือก `origin` (bindQueue ถือว่าไม่ส่งมา = pipeline · นับตรงกับแท็บ "รอตั้งไซต์/โซน") */
   if (canEditService(user)) {
     jobs.push(attempt('serviceIntake', async () => {
-      const { data: orders } = await fetchAllResult(() => supabase
+      const { data: orders, error: orderError } = await fetchAllResult(() => supabase
         .from('sales_orders')
         .select('id, status, supersededById, projectId, dealId, orderNumber, approvedAt, orderDate')
         .eq('status', 'approved')
         .is('supersededById', null)
         .order('id', { ascending: true }));
+      if (orderError) throw orderError;
       const orderIds = (orders || []).map((row) => row.id);
       if (!orderIds.length) return 0;
       const projectIds = [...new Set((orders || []).map((o) => o.projectId).filter(Boolean))];
       const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
+      /* 🔴 `.then((r) => r.data || [])` คือการทิ้ง error ทิ้งแบบที่ตาไม่เห็น — บรรทัดที่อ่าน
+         ไม่ขึ้นกลายเป็นชุดว่าง แล้ว `bindQueue` ตอบว่า "ไม่มีใบค้าง" ทั้งที่ยังไม่รู้ด้วยซ้ำ
+         ⇒ ทุกก้อนผ่าน `mustData` ซึ่งโยน error ขึ้นไปให้ `attempt()` เห็น */
+      const mustData = (result) => {
+        if (result?.error) throw result.error;
+        return result?.data || [];
+      };
       const [lines, terms, projects, deals] = await Promise.all([
         fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_order_lines')
           .select('id, salesOrderId, quotationLineId, qty, "serviceRounds"')
           .in('salesOrderId', chunk).order('id', { ascending: true })))
-          .then((r) => r.data || []),
+          .then(mustData),
         loadTerms(supabase),
         projectIds.length
           ? fetchInChunks(projectIds, (chunk) => fetchAllResult(() => supabase.from('projects').select('id, line')
-            .in('id', chunk).order('id', { ascending: true }))).then((r) => r.data || [])
+            .in('id', chunk).order('id', { ascending: true }))).then(mustData)
           : [],
         dealIds.length
           ? fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('sales_deals').select('id, line')
-            .in('id', chunk).order('id', { ascending: true }))).then((r) => r.data || [])
+            .in('id', chunk).order('id', { ascending: true }))).then(mustData)
           : [],
       ]);
       const bind = bindQueue({
@@ -459,9 +501,10 @@ export const GET = withUser(async ({ user, supabase }) => {
      (`confirmed` = จบแล้ว · `rejected` = กลับไปอยู่มือฝ่ายขาย ไม่ใช่งานของบัญชี) */
   if (canConfirmPayment(user)) {
     jobs.push(attempt('payments', async () => {
-      const { count } = await supabase
+      const { count, error: paymentError } = await supabase
         .from('sales_order_installments').select('id', { count: 'exact', head: true })
         .eq('status', 'reported');
+      if (paymentError) throw paymentError;
       return count || 0;
     }));
   }
@@ -485,8 +528,13 @@ export const GET = withUser(async ({ user, supabase }) => {
   const taxCount = async (table, trackKey) => {
     const stages = ownedStages(trackKey, taxDept);
     if (!stages.length) return 0;
-    const { count } = await supabase
-      .from(table).select('id', { count: 'exact', head: true }).in('status', stages);
+    /* ⚠️ ต้องกรองขอบเขตทีมเหมือนลิสต์ (applyExciseListScope) — ไม่งั้น senior_ae / ac / ae
+       ซึ่ง scope เป็น 'team' ได้ป้ายเท่ายอดทั้งบริษัท แล้วกดเข้าไปเจอแค่ของทีมตัวเอง */
+    const { count, error: taxError } = await applyExciseListScope(
+      supabase.from(table).select('id', { count: 'exact', head: true }).in('status', stages),
+      user,
+    );
+    if (taxError) throw taxError;
     return count || 0;
   };
 
@@ -502,21 +550,25 @@ export const GET = withUser(async ({ user, supabase }) => {
     const query = supabase.from('system_issues').select('id', { count: 'exact', head: true });
     // แอดมิน = เรื่องที่ยังไม่มีใครรับ (ตรงกับแท็บตั้งต้นของหน้า /support)
     // คนแจ้ง = เรื่องของตัวเองที่แก้แล้วรอยืนยัน — ฝ่ายปล่อยมือแล้ว ผู้แจ้งมักไม่รู้ตัว
-    const { count } = isSystemAdmin(user)
+    const { count, error: issueError } = isSystemAdmin(user)
       ? await query.eq('status', 'pending')
       : await query.eq('status', 'resolved').eq('reportedById', String(user.id));
+    if (issueError) throw issueError;
     return count || 0;
   }));
 
   // คิวงานผลิต — งานร่างที่ยังไม่ถูกวางคิว (ระบบกวาดมาจาก SO ที่อนุมัติแล้วให้เอง)
   if (canEditProduction(user)) {
     jobs.push(attempt('productionJobs', async () => {
-      const { count } = await supabase
+      const { count, error: jobError } = await supabase
         .from('production_jobs').select('id', { count: 'exact', head: true }).eq('status', 'draft');
+      if (jobError) throw jobError;
       return count || 0;
     }));
   }
 
   await Promise.all(jobs);
-  return ok(pruneZeroCounts(counts));
+  /* ⭐ ส่งสถานะรายคีย์ไปด้วย (`_attempted` / `_failed`) — ตัวเลขยังอยู่ชั้นบนสุดตามเดิม
+     แท็บที่เปิดค้างไว้ก่อน deploy จึงอ่านได้เหมือนเดิมทุกอย่าง (ดู lib/nav/navCounts.js) */
+  return ok(withCountStatus(counts, attempted, failed));
 });

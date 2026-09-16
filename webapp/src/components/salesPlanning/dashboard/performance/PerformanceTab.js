@@ -32,10 +32,14 @@ async function fetchYear(year) {
   return months;
 }
 
+/* 🐞 ตรวจ 2026-09-16: เดิมคืน { rows: [] } ทั้งกรณี "ไม่มีประวัติ" และกรณี **โหลดไม่สำเร็จ**
+   ⇒ API ล่มครั้งเดียว เดือนที่ Actual มาจากยอดกรอกมืออย่างเดียว (ม.ค.–ก.ค. 2026 = 78.5 ล้าน)
+      กลายเป็น ฿0 บนจอ ทั้งที่ขายจริง และไม่มีอะไรบอกว่าตัวเลขไม่ครบ
+   ⇒ แยกสองกรณีออกจากกัน: ว่างจริง = failed:false (เงียบตามเดิม) · ล้ม = failed:true (ขึ้นแถบเตือน) */
 function fetchHistory(year) {
   return apiFetch(`/api/sales-planning/history?monthsOf=${encodeURIComponent(year)}`)
-    .then((r) => (r.ok ? r.json() : { rows: [] }))
-    .catch(() => ({ rows: [] })); // ไม่มีประวัติ = กราฟใช้ยอดระบบล้วน ไม่ใช่ error
+    .then((r) => (r.ok ? r.json().then((d) => ({ rows: d.rows || [], failed: false })) : { rows: [], failed: true }))
+    .catch(() => ({ rows: [], failed: true }));
 }
 
 export default function PerformanceTab({ year }) {
@@ -61,6 +65,8 @@ export default function PerformanceTab({ year }) {
   const [currentHistoryRows, setCurrentHistoryRows] = useState([]);
   const [loading, setLoading] = useState(!yearMonths);
   const [error, setError] = useState("");
+  // โหลดบางส่วนไม่สำเร็จ = ตัวเลขบนจอไม่ครบ แต่ยังดูส่วนที่เหลือได้ ⇒ เตือน ไม่ใช่ error เต็มจอ
+  const [partialWarning, setPartialWarning] = useState("");
 
   const load = useCallback(async () => {
     const cached = apiCache.get(`/api/sales-planning/dashboard?year=${year}`);
@@ -71,10 +77,13 @@ export default function PerformanceTab({ year }) {
       setLoading(true);
     }
     setError("");
+    setPartialWarning("");
     try {
+      let prevYearFailed = false;
       const [cur, prev, hist, curHist] = await Promise.all([
         fetchYear(year),
-        fetchYear(prevYear).catch(() => []), // ปีก่อนไม่มีข้อมูล = กราฟ YoY ว่าง ไม่ใช่ error
+        // ปีก่อนไม่มีข้อมูล = กราฟ YoY ว่าง ไม่ใช่ error — แต่ถ้า "โหลดไม่สำเร็จ" ต้องบอก ไม่ใช่โชว์ YoY ว่าง
+        fetchYear(prevYear).catch(() => { prevYearFailed = true; return []; }),
         fetchHistory(prevYear),
         // ปีปัจจุบันก็มียอดที่กรอกย้อนหลังได้ (เดือนต้นปีที่ยังไม่ได้ใช้ระบบ) — ไม่โหลด
         // มาทับ เส้น Actual ของเดือนเหล่านั้นจะเป็น 0 ทั้งที่ขายจริง
@@ -84,6 +93,14 @@ export default function PerformanceTab({ year }) {
       setPrevMonths(prev);
       setHistoryRows(hist.rows || []);
       setCurrentHistoryRows(curHist.rows || []);
+      const failed = [
+        curHist.failed && `ยอดที่กรอกมือของปี ${year}`,
+        hist.failed && `ยอดที่กรอกมือของปี ${prevYear}`,
+        prevYearFailed && `ภาพรวมปี ${prevYear} (ฐาน YoY)`,
+      ].filter(Boolean);
+      setPartialWarning(failed.length
+        ? `โหลดไม่สำเร็จ: ${failed.join(" · ")} — ตัวเลขบนจอยังไม่ครบ (เดือนที่ยอดมาจากการกรอกมืออาจขึ้นเป็น ฿0) กดโหลดใหม่อีกครั้ง`
+        : "");
     } catch (e) {
       setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -160,6 +177,12 @@ export default function PerformanceTab({ year }) {
       {error && (
         <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>
           {error}
+        </div>
+      )}
+
+      {!error && partialWarning && (
+        <div className="perf-partial-warning" role="status">
+          {partialWarning}
         </div>
       )}
 

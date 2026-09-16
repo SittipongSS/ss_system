@@ -51,7 +51,7 @@
   width: 100%;
   padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: var(--panel-2);
   color: var(--text-2);
   font: inherit;

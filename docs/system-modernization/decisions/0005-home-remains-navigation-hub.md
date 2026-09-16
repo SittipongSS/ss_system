@@ -1,7 +1,7 @@
 # Decision 0005 — Home Remains a Navigation Hub
 
 วันที่: 19 กรกฎาคม 2026
-สถานะ: ยืนยันเพื่อวางแผน Phase 4C
+สถานะ: เสร็จสมบูรณ์ · ข้อ "แสดงชื่อ บทบาท ทีม … Continue action" · "เก็บระบบล่าสุด" · เหตุผลข้อ Continue ถูกแทนที่โดย [Decision 0016](./0016-home-is-all-system-menus.md) (15 กันยายน 2026)
 
 ## บริบท
 

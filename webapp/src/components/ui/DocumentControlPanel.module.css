@@ -364,7 +364,7 @@
   background: color-mix(in srgb, var(--amber) 10%, transparent);
   color: var(--text-2);
   font-size: var(--fs-4);
-  line-height: var(--lh-normal);
+  line-height: var(--lh-text);
 }
 
 /* 🐞 **ป้ายยาวเคยล้นออกนอกปุ่ม** (IS-26080021 · ผู้ใช้ส่งภาพมา) — `min-height` ตายตัว

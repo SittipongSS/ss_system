@@ -26,7 +26,7 @@
   font-weight: var(--fw-semibold);
 }
 
-.headMeta { color: var(--text-3); font-weight: var(--fw-regular); }
+.headMeta { color: var(--text-3); font-weight: var(--fw-normal); }
 
 .panes { display: flex; min-height: 0; }
 

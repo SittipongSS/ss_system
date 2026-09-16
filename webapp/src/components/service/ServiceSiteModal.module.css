@@ -155,7 +155,9 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  /* 🐞 เคยเป็น `--surface-2` ที่ไม่เคยมีใครประกาศ ⇒ พื้นโปร่งทั้งสองธีมแบบเงียบ ๆ
+     บล็อกในโมดัลนั่งบน --panel ⇒ ขั้นถัดไปคือ --panel-2 (ชุดเดียวกับโมดัลพี่น้องในโฟลเดอร์นี้) */
+  background: var(--panel-2);
 }
 
 .gate > li[data-state="blocked"] {
@@ -238,7 +240,7 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  background: var(--panel-2);
 }
 
 .stale > span {

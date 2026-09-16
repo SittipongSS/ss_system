@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  recentSystemForUser,
   SYSTEM_CATALOG,
   SYSTEM_ORDER,
   systemLandingForUser,
@@ -148,26 +147,20 @@ test('ฐานข้อมูล lands on the product list when the user has no
   }
 });
 
-test('recent system is accepted only while the current user can access it', () => {
-  const secretary = { role: 'secretary', team: null, extraCaps: [] };
+/* 📌 เทสต์ของ `recentSystemForUser` ถูกลบพร้อมฟังก์ชัน (ADR 0016) — การ์ด "ทำงานต่อ"
+   ไม่มีแล้ว · ข้อที่ยังต้องจริงต่อไปคือ **สิทธิ์รายผู้ใช้เปิดระบบให้ได้** จึงย้ายมาไว้ที่นี่ */
+test('สิทธิ์รายผู้ใช้เปิดระบบเพิ่มให้ได้ — SA ที่ได้ mgmt:view มาช่วยเลขา', () => {
   const grantedSales = { role: 'ae', team: 'ODM', extraCaps: ['mgmt:view'] };
-
-  assert.equal(recentSystemForUser(secretary, 'salesplan'), null);
-  assert.equal(recentSystemForUser(secretary, 'master')?.key, 'master');
-  assert.equal(recentSystemForUser(grantedSales, 'master')?.key, 'master');
-  assert.equal(recentSystemForUser(grantedSales, 'unknown'), null);
-
-  // สิทธิ์ราย **ผู้ใช้** ยังเปิดการ์ดระบบให้ได้ — เดิมเคสนี้ทดสอบผ่าน `mgmt` แต่
-  // `mgmt` ถูกปิดชั่วคราว (ดูเทสต์ถัดไป) จึงใช้เป็นตัวอย่างของ "ระบบล่าสุด" ไม่ได้แล้ว
   assert.ok(keysFor(grantedSales).includes('mgmt'));
+  assert.ok(!keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }).includes('mgmt'));
 });
 
 // ── ระบบที่ยังไม่เปิดใช้ (มติผู้ใช้ 2026-08-09) ──────────────────────────
 //
-// กฎคือ **จางแต่ยังอยู่** — ถ้าวันไหนมีคนไปกรองมันทิ้งใน `systemsForUser` การ์ดจะหาย
+// กฎคือ **จางแต่ยังอยู่** — ถ้าวันไหนมีคนไปกรองมันทิ้งใน `systemsForUser` แผงจะหาย
 // แล้วผู้ใช้จะนึกว่าสิทธิ์ตัวเองโดนถอด · และถ้ามีคนถอด `disabled` ออกโดยไม่ตั้งใจ
 // เทสต์นี้ดับเพื่อบังคับให้เป็นการตัดสินใจ ไม่ใช่ผลข้างเคียง
-test('⭐ ระบบที่ยังไม่เปิดใช้ยังโชว์การ์ด แต่ห้ามถูกหยิบเป็น "ทำงานต่อ"', () => {
+test('⭐ ระบบที่ยังไม่เปิดใช้ยังอยู่ในรายการของทุกคนที่เข้าได้', () => {
   const admin = { role: 'admin', team: null, extraCaps: [] };
   const disabledKeys = SYSTEM_CATALOG.filter((system) => system.disabled).map((system) => system.key);
 
@@ -176,8 +169,7 @@ test('⭐ ระบบที่ยังไม่เปิดใช้ยัง�
   assert.deepEqual(disabledKeys, ['production', 'mgmt']);
 
   for (const key of disabledKeys) {
-    assert.ok(keysFor(admin).includes(key), `${key} ต้องยังอยู่ในลิสต์การ์ด`);
-    assert.equal(recentSystemForUser(admin, key), null, `${key} ต้องไม่ขึ้นการ์ดทำงานต่อ`);
+    assert.ok(keysFor(admin).includes(key), `${key} ต้องยังอยู่ในลิสต์ระบบ`);
   }
 });
 
@@ -212,7 +204,7 @@ test('⭐ ฝ่ายที่มีบ้านของตัวเองไ�
 // ระบบเพิ่งบอกว่ายังไม่เปิด ซึ่งอ่านแล้วขัดกันเอง และ build/eslint จับไม่ได้เลย
 // (เกิดกับ /finance มาก่อน แก้ทันตอนทำ · /rd ตามมาอีกใบ 2026-08-15)
 test('⭐ ไม่มีระบบไหน landing ลงหน้าที่เมนูของมันเทาไว้', () => {
-  const nav = readFileSync(new URL('../components/AppLayout.js', import.meta.url), 'utf8')
+  const nav = readFileSync(new URL('./menuRegistry.js', import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
   // เก็บ href ของทุกเมนูที่ตั้ง disabled: true ไว้ในบรรทัดเดียวกัน

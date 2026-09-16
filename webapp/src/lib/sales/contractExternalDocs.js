@@ -22,9 +22,11 @@ import { canApproveExternalContract, isExternalContract } from '@/lib/sales/cont
 /**
  * id ของใบ external ที่เป็นร่างและ **แนบเอกสารแทนสัญญาไว้แล้ว**
  *
+ * @param {{ strict?: boolean }} [options] `strict: true` ⇒ อ่านไม่สำเร็จให้ **โยน** error
+ *   (ใช้กับตัวนับป้าย — ADR 0016: ป้ายที่ลดลงเงียบ ๆ แย่กว่าป้ายที่ขึ้นขีดว่านับไม่สำเร็จ)
  * @returns {Promise<Set<string>>} ว่างเสมอเมื่อไม่มีใบที่ต้องถาม หรือผู้ใช้ไม่ใช่ผู้อนุมัติ
  */
-export async function externalDocReadyIds(supabase, rows = [], user = null) {
+export async function externalDocReadyIds(supabase, rows = [], user = null, { strict = false } = {}) {
   if (!canApproveExternalContract(user)) return new Set();
   const ids = (rows || [])
     .filter((row) => isExternalContract(row) && row?.status === 'draft' && row?.id)
@@ -36,7 +38,10 @@ export async function externalDocReadyIds(supabase, rows = [], user = null) {
         (ใบ external ที่เป็นร่างพร้อมกันมีหลักหน่วย) แต่ `attachments` เป็นตารางที่โตได้
         และ PostgREST ตัดที่ 1000 แถวเงียบ ๆ ⇒ ไม่มีเหตุให้ยกเว้น
      ⚠️ ลำดับต้องจบด้วยคีย์ที่ไม่ซ้ำ (`id`) ไม่งั้นหน้าซ้อนกันตอนไล่หน้า
-     ⚠️ ไม่บล็อกถ้าอ่านไม่ได้ — ป้ายตัวเลขที่ขาดไปดีกว่าเมนูที่พังทั้งแถบ */
+     ⚠️ ทะเบียน (`/api/sales-planning/contracts`) ไม่บล็อกถ้าอ่านไม่ได้ — หน้าที่ยังเปิดได้
+        ดีกว่าหน้าที่ 500 ทั้งหน้า · แต่ **ตัวนับป้ายส่ง `strict: true`** เพราะชุดว่างที่นี่
+        แปลว่า "ทุกใบยังไม่แนบเอกสาร" ⇒ ใบของ AE Sup ถูกโยนกลับเข้าเลนเจ้าของใบ
+        ป้ายจึงลดลงเงียบ ๆ โดยที่ `attempt()` ไม่รู้ว่ามีอะไรพัง (ADR 0016) */
   const { data, error } = await fetchAllResult(() => supabase
     .from('attachments')
     .select('"entityId"')
@@ -44,6 +49,9 @@ export async function externalDocReadyIds(supabase, rows = [], user = null) {
     .eq('docType', EXTERNAL_DOC_TYPE)
     .in('entityId', ids)
     .order('id', { ascending: true }));
-  if (error) return new Set();
+  if (error) {
+    if (strict) throw error;
+    return new Set();
+  }
   return new Set((data || []).map((row) => row.entityId));
 }

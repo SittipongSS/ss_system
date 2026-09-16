@@ -2,7 +2,8 @@ import { createBrowserClient } from '@supabase/ssr';
 import { devBypassUser } from '@/lib/devBypass';
 
 /* ตั้งค่า Supabase ฝั่งเบราว์เซอร์ครบหรือยัง — สะกดเหมือน `app/page.js` และ
-   `app/home/page.js` (ทั้งสองที่อ่านค่าเดียวกันเพื่อสลับไปทาง devBypass)
+   `components/AppLayout.js` (ทั้งสองที่อ่านค่าเดียวกันเพื่อสลับไปทาง devBypass ·
+   หน้าแรกเลิกอ่านเองแล้วตั้งแต่ ADR 0016 — มันอยู่ในเปลือก)
    ⚠️ ต้องอ่าน `process.env.<ชื่อเต็ม>` ตรง ๆ เท่านั้น — Next แทนค่าให้ตอน build
    เฉพาะการอ้างแบบนี้ · ส่ง `process.env` ทั้งก้อนไปที่อื่นแล้วจะได้ค่าว่างในเบราว์เซอร์ */
 export const SUPABASE_BROWSER_CONFIGURED = !!process.env.NEXT_PUBLIC_SUPABASE_URL

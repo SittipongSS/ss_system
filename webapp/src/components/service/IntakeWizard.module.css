@@ -79,7 +79,9 @@
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  /* 🐞 เคยเป็น `--surface-2` ที่ไม่เคยมีใครประกาศ ⇒ พื้นโปร่งทั้งสองธีมแบบเงียบ ๆ
+     บล็อกในโมดัลนั่งบน --panel ⇒ ขั้นถัดไปคือ --panel-2 (ชุดเดียวกับโมดัลพี่น้องในโฟลเดอร์นี้) */
+  background: var(--panel-2);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -143,7 +145,7 @@
 /* ป้ายนับไซต์เดิมข้างชื่อช่อง — บอกว่ามีของให้เลือกอยู่แล้วกี่แห่ง */
 .countHint {
   color: var(--text-3);
-  font-weight: var(--fw-regular);
+  font-weight: var(--fw-normal);
 }
 
 /* ── จัดสรรระดับ FG (มติผู้ใช้ 2026-08-29) ─────────────────────────────── */

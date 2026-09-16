@@ -116,7 +116,7 @@ test('⭐ ทุก countHref บนเมนู ต้องเป็นขอ�
   const { NAV_COUNT_KEYS } = await import('./useNavCounts.js');
 
   const src = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'components', 'AppLayout.js'),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'config', 'menuRegistry.js'),
     'utf8',
   );
   /* `countHref` คือลิงก์ที่ใช้ **เฉพาะตอนมีป้าย** ⇒ รายการที่มีมันแต่ไม่มีคีย์
@@ -135,10 +135,68 @@ test('🔴 ด่านของตัวนับต้องไม่แคบ
   const { fileURLToPath } = await import('node:url');
   const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
   const route = readFileSync(join(SRC, 'app', 'api', 'nav', 'counts', 'route.js'), 'utf8');
-  const layout = readFileSync(join(SRC, 'components', 'AppLayout.js'), 'utf8');
+  const layout = readFileSync(join(SRC, 'config', 'menuRegistry.js'), 'utf8');
 
   /* 🐞 เมนู "งานวันนี้" กั้นด้วย `canDoFieldWork` แต่ตัวนับเคยกั้นด้วย `canEditService`
      ⇒ เจ้าหน้าที่หน้างานเห็นเมนูที่ไม่มีวันขึ้นป้าย ทั้งที่เลขนั้นคือนัดของตัวเขาเอง */
   assert.match(layout, /href: '\/service\/today'[^\n]*visible: canDoFieldWork/);
   assert.match(route, /if \(canDoFieldWork\(user\)\) \{\n\s*jobs\.push\(attempt\('visits'/);
+});
+
+/* ── สถานะรายคีย์ (ADR 0016 · PR0) ─────────────────────────────────────────
+   🐞 ก่อนหน้านี้ปลายทางแยกไม่ออกว่า "นับไม่สำเร็จ" กับ "ศูนย์" กับ "ไม่มีสิทธิ์"
+      ต่างกันอย่างไร — ทั้งสามอย่างมาถึงจอเป็น "ไม่มีคีย์นั้น" เหมือนกันหมด
+      หน้าไหนจะกล้าพูดว่า "ไม่มีงานค้าง" ต้องแยกสามอย่างนี้ได้ก่อน */
+test('withCountStatus: ตัดศูนย์เหมือนเดิม แต่บอกว่าคีย์ไหนถูกนับและคีย์ไหนพัง', async () => {
+  const { withCountStatus } = await import('./navCounts.js');
+  const payload = withCountStatus({ requests: 3, leads: 0 }, ['requests', 'leads', 'scents'], ['scents']);
+  assert.equal(payload.requests, 3);
+  assert.equal('leads' in payload, false, 'ศูนย์ยังต้องถูกตัดทิ้ง — ป้าย 0 ไม่มีใครอ่าน');
+  assert.equal('scents' in payload, false, 'คีย์ที่พังต้องไม่มีตัวเลขติดมาด้วย');
+  assert.deepEqual(payload._attempted, ['requests', 'leads', 'scents']);
+  assert.deepEqual(payload._failed, ['scents']);
+});
+
+test('readCountStatus: คีย์ _* ต้องไม่ปนไปอยู่กับตัวเลข', async () => {
+  const { readCountStatus, withCountStatus } = await import('./navCounts.js');
+  const state = readCountStatus(withCountStatus({ requests: 3, leads: 0 }, ['requests', 'leads'], ['leads']));
+  assert.deepEqual(state.counts, { requests: 3 });
+  assert.deepEqual([...state.attempted], ['requests', 'leads']);
+  assert.deepEqual([...state.failed], ['leads']);
+});
+
+test('payload รุ่นเก่า (ไม่มี _attempted) ⇒ attempted = null = "ไม่รู้ว่าคีย์ไหนถูกนับ"', async () => {
+  const { readCountStatus } = await import('./navCounts.js');
+  // ⚠️ ต่างจากชุดว่าง ซึ่งแปลว่า "นับแล้ว ไม่มีคีย์ไหนเข้าเงื่อนไขของคนนี้เลย"
+  const old = readCountStatus({ requests: 3 });
+  assert.equal(old.attempted, null);
+  assert.deepEqual(old.counts, { requests: 3 });
+  assert.equal(old.failed.size, 0);
+  assert.equal(readCountStatus(null).attempted, null);
+  assert.deepEqual(readCountStatus(undefined).counts, {});
+});
+
+test('⭐ แท็บที่เปิดค้างก่อน deploy ต้องอ่าน payload ใหม่ได้เท่าเดิม', async () => {
+  const { withCountStatus } = await import('./navCounts.js');
+  const { navCountFor, navCountForSystem } = await import('./useNavCounts.js');
+  const before = { leads: 21, requests: 2 };
+  const after = withCountStatus(before, ['leads', 'requests'], []);
+  // โค้ดรุ่นเก่าหยิบตามชื่อคีย์ / บวกตาม href ⇒ ทั้งคู่ต้องมองไม่เห็นคีย์ `_*`
+  assert.equal(navCountFor(after, '/sa/leads'), navCountFor(before, '/sa/leads'));
+  assert.equal(navCountForSystem(after, 'salesplan'), navCountForSystem(before, 'salesplan'));
+});
+
+/* ── hook ฝั่งจอ (ด่านซอร์ส) ────────────────────────────────────────────────
+   ทดสอบ hook จริงต้องมี React harness ซึ่งโปรเจกต์นี้ไม่มี — ล็อกสัญญาที่ซอร์สแทน
+   เพราะสามข้อนี้คือสิ่งที่หน้าแรก (ADR 0016) พึ่งพาโดยตรง */
+test('useNavCounts คืนสถานะ ไม่ใช่ตัวเลขเปล่า ๆ · พังแล้วคงเลขเดิม', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./useNavCounts.js', import.meta.url), 'utf8');
+  assert.match(src, /status: "ready"/, 'ต้องบอกได้ว่าคำตอบแรกมาถึงแล้ว');
+  assert.match(src, /\.\.\.EMPTY_STATE, status: "error"/, 'ยังไม่เคยสำเร็จแล้วพัง = error ไม่ใช่ศูนย์');
+  assert.match(src, /\{ \.\.\.prev, stale: true \}/, 'เคยสำเร็จแล้วพัง = คงเลขเดิม + ธง stale');
+  assert.match(src, /readCountStatus\(data\)/, 'ต้องแยกคีย์ _* ออกจากตัวเลขด้วยตัวอ่านกลาง');
+  // เปลือกดึงชุดเดียวแล้วแจกต่อ — หน้าแรกห้ามยิงรอบที่สองของตัวเอง (PR3 วาง Provider)
+  assert.match(src, /export const NavCountsContext/);
+  assert.match(src, /export function useNavCountsState/);
 });

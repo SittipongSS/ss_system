@@ -1,17 +1,20 @@
 # Phase 4C — Home and Navigation Hub Modernization
 
-สถานะ: เสร็จสมบูรณ์
+สถานะ: เสร็จสมบูรณ์ · **หลายข้อถูกแทนที่โดย [Decision 0016](./decisions/0016-home-is-all-system-menus.md)** (15 กันยายน 2026 · สถานะงานใหม่ `รอตรวจ`)
+
+> ⚠️ เอกสารฉบับนี้เป็นบันทึกของเฟสที่ปิดไปแล้ว **ข้อความเดิมไม่ถูกลบ** · ข้อที่ 0016 แทนที่ติดป้าย "แทนที่โดย 0016" ไว้ในบรรทัดนั้น ๆ
+> สรุป: `/home` ย้ายเข้า `AppLayout` · ไม่มี System Card · ไม่มี Continue action · หน้าแรกกางเมนูของทุกระบบพร้อมตัวเลขงานค้างรายเมนู · หัวเว็บบน `/home` เหลือแถวบนแถวเดียวต่อด้วยแถบต้อนรับในหน้า
 
 เป้าหมาย: ปรับ `/home` ให้เป็นศูนย์เข้าสู่ระบบงานที่สม่ำเสมอกับ Navigation หลัก ใช้งานง่ายตามบทบาทและทีม โดยไม่สร้าง Dashboard รวมที่ซ้ำหรือโหลดข้อมูลจากทุกระบบ
 
 ## บริบทปัจจุบัน
 
-- `/home` เป็นหน้า hub แบบ bare layout และไม่ครอบด้วย `AppLayout`
+- `/home` เป็นหน้า hub แบบ bare layout และไม่ครอบด้วย `AppLayout` **(แทนที่โดย 0016 — `/home` อยู่ใน `AppLayout`)**
 - System card, icon, copy, permission visibility และ landing route มีข้อมูลซ้ำกับ `AppLayout`
 - หน้ามี inline style จำนวนมาก ทำให้ดูแล responsive, theme และ state ได้ยาก
 - ระหว่างโหลด role หน้า return `null` จึงไม่มี Loading/Error feedback
 - หน้าแสดงชื่อผู้ใช้และระบบที่เข้าได้ แต่ยังไม่แสดงบริบทบทบาท/ทีมและไม่มี Continue action
-- Account/Security, user management และ logout ต้องดูแลแยก เพราะหน้าไม่ใช้ AppLayout chrome
+- Account/Security, user management และ logout ต้องดูแลแยก เพราะหน้าไม่ใช้ AppLayout chrome **(แทนที่โดย 0016 — ใช้เมนูผู้ใช้และแผ่น "…" ของเปลือก)**
 
 ## ขอบเขต
 
@@ -36,8 +39,11 @@
 5. Account/Settings/User directory shortcuts ตามสิทธิ์
 6. Logout และ forced password change flow
 
+**แทนที่โดย 0016** — ลำดับหน้าใหม่: ชื่อหน้า + วันที่ + คำอธิบายป้าย → (มือถือ) สารบัญระบบ → แผงเมนูของทุกระบบตามลำดับ `SYSTEM_CATALOG`
+
 หน้า `/home` เป็น navigation hub ไม่ใช่ analytics dashboard จึงไม่ดึง KPI, chart,
 ยอดขาย, งานค้าง หรือ notification feed จากทุกระบบ
+**(0016 แทนที่เฉพาะคำว่า "งานค้าง" และเฉพาะรูปตัวเลขรายเมนูจาก `/api/nav/counts` ซึ่งเป็นชุดเดียวกับป้ายบนเมนูที่มีอยู่แล้ว · KPI, chart, ยอดขาย และ notification feed ยังห้ามตามเดิม)**
 
 ## System Catalog
 
@@ -62,6 +68,8 @@ Catalog เป็น metadata กลางสำหรับการนำท�
 
 ## Continue action
 
+**แทนที่โดย 0016 — ทั้งหัวข้อตกไป** หน้าแรกไม่มี Continue action และไม่มีเครื่องหมายระบบล่าสุด (คีย์ `ss:last-system` ยังอยู่ให้เปลือกใช้ถอยกลับบนหน้าที่ไม่เป็นของระบบไหน)
+
 - จำ system key ล่าสุด ไม่จำ URL ภายในที่อาจมีข้อมูลเฉพาะรายการ
 - ตรวจสิทธิ์ใหม่ทุกครั้งก่อนแสดงและก่อนนำทาง
 - ถ้าไม่มีค่าหรือเข้าไม่ได้ ให้ซ่อน Continue action โดยไม่เกิด Empty gap
@@ -72,15 +80,15 @@ Catalog เป็น metadata กลางสำหรับการนำท�
 
 - ใช้ IBM Plex Sans Thai และ token/class ใน `webapp/src/app/globals.css`; ไม่ติดตั้ง Material library
 - ใช้ hierarchy ผ่าน `--bg`, `--panel`, `--panel-2`, typography และ spacing ไม่ใช้สีตกแต่งเกินจำเป็น
-- มี high-emphasis action ไม่เกินหนึ่งรายการในแต่ละ context; Continue เป็น primary เมื่อมี
-- System Card เป็น navigation card ไม่ใช่ KPI card และทั้ง card ต้องมี accessible name
+- มี high-emphasis action ไม่เกินหนึ่งรายการในแต่ละ context; Continue เป็น primary เมื่อมี **(แทนที่โดย 0016 — หน้าแรกไม่มีปุ่มสีเน้นเลย)**
+- System Card เป็น navigation card ไม่ใช่ KPI card และทั้ง card ต้องมี accessible name **(แทนที่โดย 0016 — ไม่มี System Card แล้ว ใช้แผงเมนูต่อระบบ)**
 - Card icon ต้องตรงกับ system switcher และไม่ใช้ raw color ที่ทำให้ Dark mode แตก
-- Grid ต้องสมดุลสำหรับจำนวนการ์ด 1–6 ใบ, ไม่มี orphan layout ที่ดูผิดจังหวะ และไม่มี horizontal overflow
+- Grid ต้องสมดุลสำหรับจำนวนการ์ด 1–6 ใบ, ไม่มี orphan layout ที่ดูผิดจังหวะ และไม่มี horizontal overflow **(แทนที่โดย 0016 — จัดแผงด้วย CSS grid ที่ตำแหน่งคำนวณจากจำนวนแถวเมนู)**
 - Mobile touch target อย่างน้อย 40px และไม่พึ่ง hover
 - มี `:focus-visible`, ลำดับ Tab ตามภาพ, Enter/Space ทำงาน และไม่มี nested interactive controls ใน Card
 - Loading ใช้ Skeleton ไม่ใช้หน้าว่าง; Error มี Retry; ไม่มีระบบที่เข้าได้แสดง Empty state พร้อมคำอธิบาย
 - เคารพ reduced motion และไม่ใช้ animation ที่ขัดขวางการนำทาง
-- Forced password change ต้องยังบังคับได้บน hub และคืน focus อย่างถูกต้อง
+- Forced password change ต้องยังบังคับได้บน hub และคืน focus อย่างถูกต้อง **(แทนที่โดย 0016 — โมดัลย้ายไปอยู่ที่เปลือก `AppLayout` ชุดเดียวทั้งแอป)**
 
 ## Permission และ security
 

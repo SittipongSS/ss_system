@@ -8,8 +8,9 @@
 // ข้อสุดท้ายจำเป็นเพราะคนตอบคำร้องเสร็จแล้วกดออกจากหน้า ป้ายต้องลดทันที
 // ไม่ใช่ค้างอีกสองนาที (ป้ายที่ค้างคือป้ายที่คนเลิกเชื่อ)
 // ⚠️ มีคอกกั้น MIN_GAP_MS — หน้าที่เด้ง redirect ต่อกันสองสามทีจะได้ไม่ยิงรัว
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/apiFetch";
+import { readCountStatus } from "@/lib/nav/navCounts";
 
 const POLL_MS = 120_000;
 const MIN_GAP_MS = 10_000;
@@ -52,12 +53,14 @@ export const NAV_COUNT_KEYS = {
   "/finance/payments": "payments",
 };
 
-/* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **การ์ด
-   หน้าแรก** กับ **เมนูสลับระบบ** สองที่ที่คนตัดสินใจว่า "จะเข้าไปทำอะไรก่อน"
+/* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **แถวระบบ**
+   กับ **เมนูสลับระบบ** บนหัว สองที่ที่คนตัดสินใจว่า "จะเข้าไปทำอะไรก่อน"
+   ⚠️ **หน้าแรกไม่ใช้ตัวนี้** (ADR 0016) — แผงของแต่ละระบบบวกจากแถวที่วาดจริง
+   เพราะยอดตรงนี้นับเอกสารร่วมไว้ใต้ `salesplan` เสมอ ⇒ ไม่เท่ากับป้ายในแผงของ FN/RD/TS
    ⭐ เดิมสองที่นั้นไม่มีตัวเลขเลย ⇒ คนที่ทำงานหลายระบบต้องเข้าไปดูทีละระบบเพื่อรู้ว่า
    มีของค้างไหม · เมนูในระบบมีป้ายอยู่แล้ว แต่กว่าจะเห็นก็ต้องเข้าไปอยู่ในระบบนั้นก่อน
    ⚠️ ประกาศติดกับ `NAV_COUNT_KEYS` โดยตั้งใจ — เพิ่มเมนูใหม่ที่มีป้ายแล้วลืมมาใส่
-   ที่นี่ = ป้ายขึ้นบนเมนูแต่การ์ดหน้าแรกยังโล่ง แล้วคนสรุปว่าระบบนั้นว่าง
+   ที่นี่ = ป้ายขึ้นบนเมนูแต่ยอดรวมของระบบยังโล่ง แล้วคนสรุปว่าระบบนั้นว่าง
    (เทสต์ล็อกไว้ว่า **ทุก href ใน NAV_COUNT_KEYS ต้องอยู่ในระบบใดระบบหนึ่งเสมอ**) */
 export const SYSTEM_COUNT_HREFS = {
   salesplan: [
@@ -80,22 +83,33 @@ export const SYSTEM_COUNT_HREFS = {
   production: ["/production/jobs"],
 };
 
+/* สถานะของตัวเลขทั้งก้อน — ป้ายบนหัวเว็บใช้แค่ `counts` เหมือนเดิม ส่วนหน้าแรก (ADR 0016)
+   ต้องแยก "ยังไม่รู้" (loading) · "นับไม่สำเร็จ" (failed / status 'error') · "ศูนย์" ออกจากกัน
+   `stale` = เคยได้ตัวเลขแล้ว แต่รอบล่าสุดพัง ⇒ เลขที่เห็นอยู่เป็นของรอบก่อน */
+const EMPTY_STATE = { counts: {}, attempted: null, failed: new Set(), status: "loading", stale: false };
+
 export default function useNavCounts(pathname) {
-  const [counts, setCounts] = useState({});
+  const [state, setState] = useState(EMPTY_STATE);
   const lastAt = useRef(0);
 
   const load = useCallback(async (force = false) => {
     const now = Date.now();
     if (!force && now - lastAt.current < MIN_GAP_MS) return;
     lastAt.current = now;
+    /* ⚠️ พังแล้ว **คงเลขเดิมไว้** ถ้าเคยสำเร็จ (พฤติกรรมเดิมของหัวเว็บ) แล้วติดธง stale
+       — ป้ายที่หายวูบทุกครั้งที่เน็ตสะดุดคือป้ายที่คนเลิกเชื่อ */
+    const failure = () => setState((prev) => (prev.status === "ready" || prev.stale
+      ? { ...prev, stale: true }
+      : { ...EMPTY_STATE, status: "error" }));
     try {
       const res = await apiFetch("/api/nav/counts", { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) { failure(); return; }
       const data = await res.json().catch(() => null);
       // ⚠️ แทนที่ทั้งก้อน ไม่ merge — คีย์ที่หายไปแปลว่า "ไม่เหลืออะไรให้ทำแล้ว"
       // การ merge จะทำให้ป้ายเก่าค้างอยู่ตลอดกาล
-      setCounts(data && typeof data === "object" ? data : {});
-    } catch { /* ป้ายพังต้องไม่ทำ header พัง */ }
+      const { counts, attempted, failed } = readCountStatus(data);
+      setState({ counts, attempted, failed, status: "ready", stale: false });
+    } catch { failure(); /* ป้ายพังต้องไม่ทำ header พัง */ }
   }, []);
 
   useEffect(() => { load(true); }, [load]);
@@ -117,7 +131,15 @@ export default function useNavCounts(pathname) {
     };
   }, [load]);
 
-  return counts;
+  return useMemo(() => ({ ...state, reload: () => load(true) }), [state, load]);
+}
+
+/* ⭐ ตัวเลขชุดเดียวต่อหน้า — เปลือกดึงแล้วแจกต่อ ห้ามให้หน้าไหนยิงรอบที่สองของตัวเอง
+   (ยังไม่มี Provider จนกว่าจะถึง PR3 ของ ADR 0016 · ค่าตั้งต้นคือสถานะกำลังโหลด) */
+export const NavCountsContext = createContext(EMPTY_STATE);
+
+export function useNavCountsState() {
+  return useContext(NavCountsContext);
 }
 
 /** จำนวนของเมนูหนึ่งตัว — ไม่มี/ศูนย์ = null (ผู้เรียกไม่ต้องเรนเดอร์ป้าย) */

@@ -1426,7 +1426,15 @@ const todayCases = () => [
 ];
 
 test('⭐ วันนี้ทุกคนมีทีมเดียว ⇒ matrix เท่าตรรกะเดิมทุกช่อง (ก่อน/หลัง overlay + แถวที่ยังไม่แยกทีม) — ต่างแค่ id กับช่อง ownerId', () => {
-  const strip = (m) => ({ ...m, people: m.people.map(({ id, ownerId, ...rest }) => rest) });
+  /* `targetPersonSum` = เส้นเตือนอย่างเดียว (มติผู้ใช้ 2026-09-16: เป้าทีมชนะเป้ารายคน แต่ต้องบอกบนจอ)
+     ไม่มีในตรรกะเดิมและไม่เข้ายอดไหนเลย ⇒ ตัดออกก่อนเทียบ ไม่งั้น parity ตกทั้งที่ยอดเท่าเดิมทุกช่อง */
+  const dropWarn = ({ targetPersonSum, ...row }) => row;
+  const strip = (m) => ({
+    ...m,
+    company: dropWarn(m.company),
+    teams: m.teams.map(dropWarn),
+    people: m.people.map(({ id, ownerId, ...rest }) => dropWarn(rest)),
+  });
   for (const [name, dashboards, rows] of todayCases()) {
     const built = buildMatrix(dashboards);
     const legacy = legacyBuildMatrix(dashboards);

@@ -153,7 +153,7 @@ test('🔴 หน้า "งานวันนี้" ต้องเปิด�
 test('🔴 เมนู "จัดทีม" ของบริหารงานขาย ต้องไม่โผล่ให้หัวหน้าฝ่ายอื่น', () => {
   /* 🐞 เมนูกั้นด้วย cap `team:manage` ล้วน ⇒ พอหัวหน้าฝ่าย TS ได้ cap นี้ เมนูก็โผล่
      แล้วกดเข้าไปเจอ "ดูทีมของฝ่ายอื่นไม่ได้" ทุกครั้ง */
-  const src = readFileSync(new URL('../../components/AppLayout.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../../config/menuRegistry.js', import.meta.url), 'utf8');
   assert.match(src, /href: '\/sa\/teams'[\s\S]{0,140}visible: \(u\) => canManageTeams\(u, 'SA'\)/);
 });
 

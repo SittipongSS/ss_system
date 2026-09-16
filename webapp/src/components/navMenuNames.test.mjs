@@ -15,7 +15,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { canUser } from '@/lib/permissions';
 
-const SOURCE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'AppLayout.js'), 'utf8');
+// ทะเบียนเมนูย้ายออกจาก AppLayout ไปอยู่ config/menuRegistry (ADR 0016 · PR1)
+const SOURCE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'config', 'menuRegistry.js'), 'utf8');
+// เปลือกยังเป็นคนวาดแถว "ไปที่<ระบบ>" ⇒ ข้อที่ตรวจโค้ดวาดต้องอ่านไฟล์นี้
+const SHELL = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'AppLayout.js'), 'utf8');
 
 // ดึงชื่อเมนูของ href ที่ระบุ จากบรรทัดนิยามเมนูในซอร์ส
 function menuNameFor(href) {
@@ -228,11 +231,11 @@ test('⭐ เอกสารที่ฝ่ายบัญชีต้องเ�
    แต่เมนูภาพรวมมี href `/sa/dashboard` (match ครอบ `/sa` ไว้แล้ว) ⇒ เทียบ href
    ตรง ๆ จึงไม่เจอ · ต้องถามด้วย `match` ซึ่งเป็นตัวที่รู้ว่า path ไหนเป็นของเมนูใด */
 test('แถว "ไปที่<ระบบ>" ตัดสินด้วย match ไม่ใช่เทียบ href', () => {
-  assert.match(SOURCE, /const hasHomeItem = g\.items\.some\(\(item\) => item\.match\(g\.home\)\)/,
+  assert.match(SHELL, /const hasHomeItem = g\.items\.some\(\(item\) => item\.match\(g\.home\)\)/,
     'เทียบ href ตรง ๆ = ได้แถวซ้ำกับเมนูแรกของระบบที่ landing ไม่ตรง href เป๊ะ');
   /* เงื่อนไขนี้ห้ามหายไปเฉย ๆ — ระบบที่ landing ไม่อยู่ในเมนูตัวเองจะไม่มีทางเข้า
      เพราะปุ่มบนแถบระบบไม่พาไปไหน (กดแล้วกางเมนูอย่างเดียว) */
-  assert.match(SOURCE, /\{!hasHomeItem && \(/, 'ยังต้องมีทางเข้าหน้าแรกของระบบที่เมนูไม่ครอบ');
+  assert.match(SHELL, /\{!hasHomeItem && \(/, 'ยังต้องมีทางเข้าหน้าแรกของระบบที่เมนูไม่ครอบ');
   /* landing ของบริหารงานขายคือ `/sa` และเมนู "ภาพรวม" ต้องยัง match มันอยู่
      ถ้าวันหนึ่ง match ตัวนี้ถูกตัดให้แคบลง แถวซ้ำจะกลับมาเงียบ ๆ */
   const overview = SOURCE.split(/\r?\n/).find((row) => row.includes("href: '/sa/dashboard'"));

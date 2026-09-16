@@ -1,15 +1,14 @@
 "use client";
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, AirVent, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu, SprayCan } from 'lucide-react';
+import { Home, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, KeyRound, LayoutDashboard, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { devBypassUser } from '@/lib/devBypass';
-import { canUser, canManageTeams, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canDoFieldWork,
-  canEditService, canViewService, canAnswerRequestsFor, canAnswerServiceRequests, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS } from '@/lib/permissions';
+import { departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -17,11 +16,16 @@ import AccountMenu from '@/components/AccountMenu';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
-import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
-import { isBareShellPathname, isSettingsPathname, sharedItemBelongsInGroup, systemForPathname } from '@/config/navigation';
+import useNavCounts, { NavCountsContext, navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
+import { isSettingsPathname, shellFlagsFor, systemForPathname } from '@/config/navigation';
+import { menuGroupsForUser } from '@/config/menuRegistry';
 import { settingsMenuItems } from '@/config/settingsNav';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { TooltipHost } from '@/components/ui/Tooltip';
+import EmptyState from '@/components/ui/EmptyState';
+import Button from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { authOutcome } from '@/lib/authOutcome';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 import { DetailPinBar, DetailPinProvider } from "@/lib/ui/detailPin";
 
@@ -41,36 +45,64 @@ const SUPABASE_CONFIGURED =
 // ฟรีทุก login. ตอนนี้แต่ละหน้า fetch เองตอนเปิดครั้งแรกแล้วแคชแบบ SWR ตามเดิม —
 // ช้าลงเฉพาะคลิกแรกของหน้านั้น ๆ ไม่ใช่ทุกการเข้าระบบ)
 
-/* ── เมนูเอกสารร่วม — ประกาศครั้งเดียว ใช้ได้หลายกลุ่ม ────────────────────
-   (มติผู้ใช้ 2026-08-22 · คู่กับ `ADOPTED_SHARED_PATHS` ใน config/navigation.js)
-
-   ⭐ เอกสารพวกนี้อยู่ `/sa` ตามกฎสามชั้นชั้น 2 **แต่ฝ่ายที่ไม่ใช่ฝ่ายขายก็ทำงานกับมัน
-   ทุกวัน** ⇒ ต้องขึ้นเมนูในบ้านของฝ่ายนั้นด้วย ไม่ใช่บังคับให้เขาเดินออกไปยืนใน
-   เปลือก "บริหารงานขาย" ทุกครั้ง (กฎข้อ 8: ปลายทางต้องเป็นหน้าที่อยู่ในเมนูของเขา)
-
-   ⚠️ **ห้ามก๊อปนิยามไปแปะซ้ำในแต่ละกลุ่ม** — `countHref`/`match` ของสองก้อนจะเพี้ยน
-   หากันภายในไม่กี่เดือน (บทเรียนเดียวกับ ม-34 ที่ห้ามโคลนคิวคำร้อง) · `shared: true`
-   คือธงที่ตัวกรองใน `accessibleGroups` ใช้ตัดสินว่ารายการนี้ควรขึ้นกลุ่มไหนของ "คนคนนี้"
-   — ขึ้นได้กลุ่มเดียวเสมอ ไม่ใช่สองกลุ่มพร้อมกัน */
-const SHARED_DOC_ITEMS = {
-  // เฟส D: ใบเสนอราคา FM-SA-01 (มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
-  quotations: { href: '/sa/quotations', name: 'ใบเสนอราคา', countHref: '/sa/quotations?count=quotations', icon: FileText, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
-  salesOrders: { href: '/sa/sales-orders', name: 'ใบสั่งขาย', countHref: '/sa/sales-orders?count=salesOrders', icon: ClipboardList, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
-  contracts: { href: '/sa/contracts', name: 'สัญญา', countHref: '/sa/contracts?waiting=1', icon: FileSignature, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/contracts') || p.startsWith('/sales-planning/contracts') },
-  // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/พัฒนากลิ่น/พัฒนาสูตร/ขอเอกสาร/ติดตามของเข้า
-  // อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก
-  // ⭐ **ด่านของเมนูนี้ไม่ใช่ `canViewCosting` อีกแล้ว** (R-1 · ม-42) — คำร้องยืมด่าน
-  // ของระบบขอราคาผลิตมาใช้ตั้งแต่ตอนที่มันยังเป็น "ระบบขอราคาวัสดุ" ⇒ ฝ่ายที่รับ
-  // คำร้องได้แต่ไม่มีสิทธิ์เห็นต้นทุน (บัญชี) เปิดเมนูไม่ได้เลย
-  // ⚠️ `canViewRequests` กว้างกว่าโดยตั้งใจ — การกันข้อมูลอยู่ที่ **แถว**
-  // (lib/requests/access.js) ไม่ใช่ที่เมนู
-  // ⚠️ ไม่มี cap ชื่อ `requests:view` — ด่านคือ **สองสาขาของ `canViewRequests`**
-  requests: { href: '/requests', name: 'คำร้อง', icon: MessageCircleQuestion, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, shared: true, match: (p) => p.startsWith('/requests') },
-};
 
 // เฟส T (Sales Revamp §5.1): navigation ทั้งระบบเป็น top bar 2 ชั้นตรึงบนสุด —
 // ชั้นระบบ (โลโก้ navy + ตัวสลับระบบ + user actions) และชั้นเมนูของระบบปัจจุบัน
 // (แนวนอน, จอแคบเลื่อนข้างได้). แทน sidebar เดิมทั้งหมด — เนื้อหาได้เต็มความกว้างจอ.
+/* เปลือกตอนยังไม่มีเมนูให้วาด — โหลดอยู่ หรืออ่านตัวตนไม่สำเร็จชั่วคราว
+   ⭐ คงแถบบนกรมท่ากับโลโก้ไว้เสมอ เพื่อไม่ให้หัวกระพริบหายตอนเปลี่ยนหน้า
+   ⚠️ กล่อง error ต้องมีทางออกสองทาง — "ลองใหม่" กับ "กลับไปหน้าเข้าสู่ระบบ"
+      ไม่งั้นคนที่เน็ตสะดุดจะติดอยู่กับจอที่กดอะไรไม่ได้เลย */
+function ShellState({ kind, busy, onRetry, onLogin }) {
+  const errorRef = useRef(null);
+  /* โฟกัสต้องไม่หายตอนสลับสถานะ — คนใช้คีย์บอร์ดที่กด "ลองใหม่" แล้วปุ่มหายไปจะตกไปที่
+     <body> ต้องไล่ Tab จากต้นเอกสารใหม่ · พาโฟกัสมาที่กล่องแทนเมื่อกล่อง error โผล่ */
+  useEffect(() => {
+    if (kind === 'error') errorRef.current?.focus({ preventScroll: true });
+  }, [kind]);
+  return (
+    <div className="app-container">
+      <header className="topnav">
+        <div className="topnav-system">
+          <span className="topnav-brand">
+            <BrandMark height={34} className="topnav-brand-img" />
+          </span>
+        </div>
+      </header>
+      <div className="app-body">
+        <main className="main-content">
+          {/* ⭐ live region ตัวเดียวอยู่ตลอดทั้งสองสถานะ — ถ้าประกาศไว้ในสาขาที่ถูก unmount
+              โปรแกรมอ่านจอจะไม่ได้ยินอะไรเลยตอนสลับจาก "กำลังโหลด" เป็น "เปิดไม่ได้" */}
+          <div className="page" role="status" aria-live="polite">
+            {kind === 'error' ? (
+              <div ref={errorRef} tabIndex={-1} className="shell-state-error">
+                <EmptyState icon={LifeBuoy}>
+                  <strong>เปิดหน้าไม่ได้ตอนนี้</strong>
+                  <span>อ่านข้อมูลผู้ใช้ไม่สำเร็จ อาจเป็นเพราะสัญญาณเน็ตหลุดชั่วครู่ ลองใหม่อีกครั้งได้เลย</span>
+                  <span className="shell-state-actions">
+                    {/* กดแล้วปุ่มยังอยู่ (แค่ดับชั่วคราว) ⇒ โฟกัสไม่หายกลางคัน */}
+                    <Button tone="primary" size="sm" onClick={onRetry} disabled={busy}>
+                      {busy ? 'กำลังลองใหม่…' : 'ลองใหม่'}
+                    </Button>
+                    <Button tone="ghost" size="sm" onClick={onLogin} disabled={busy}>กลับไปหน้าเข้าสู่ระบบ</Button>
+                  </span>
+                </EmptyState>
+              </div>
+            ) : (
+              <div className="shell-state-loading">
+                <span className="sr-only">กำลังเปิดหน้า</span>
+                <Skeleton height={28} width="40%" />
+                <Skeleton height={18} width="70%" />
+                <Skeleton height={18} width="55%" />
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
 export default function AppLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -90,7 +122,8 @@ export default function AppLayout({ children }) {
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
   // ป้ายจำนวน "รอคุณทำ" บนเมนู — คีย์ที่ผู้ใช้ไม่มีสิทธิ์เห็นไม่ถูกส่งมาเลย
-  const navCounts = useNavCounts(pathname);
+  const navCountsState = useNavCounts(pathname);
+  const navCounts = navCountsState.counts;
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   /* ระบบที่กางเมนูย่อยค้างอยู่ในดรอปดาวน์ (มติผู้ใช้ 2026-08-23) — ทีละระบบเท่านั้น
@@ -126,13 +159,24 @@ export default function AppLayout({ children }) {
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
+  // อ่านตัวตนไม่สำเร็จแบบชั่วคราว (เน็ต/เซิร์ฟเวอร์) — ต่างจาก "ไม่มีสิทธิ์" ที่ต้องเด้งออก
+  const [authError, setAuthError] = useState(false);
+  // กำลังลองใหม่อยู่ — คงจอ error ไว้ (พร้อมปุ่มที่ดับ) แทนที่จะสลับไปจอโหลดแล้วโฟกัสหาย
+  const [authRetrying, setAuthRetrying] = useState(false);
 
   useEffect(() => {
     // Load theme (independent of auth)
     if (document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark') {
       setIsDark(true);
     }
+  }, []);
 
+  /* อ่านตัวตนของคนที่ล็อกอิน — แยกออกมาเป็นฟังก์ชันเพื่อให้ปุ่ม "ลองใหม่" เรียกซ้ำได้
+     🐞 ของเดิมเป็น `.then(({ data: { user } }) => { if (!user) router.replace('/') })`
+        ไม่ดู `error` ไม่มี `.catch` ⇒ เน็ตสะดุดหนึ่งครั้ง = เด้งออกหน้าล็อกอินทั้งที่
+        session ยังดีอยู่ · ตัวตัดสินอยู่ที่ `lib/authOutcome.js` (เทสต์ครบทุกสาขา) */
+  const loadUser = useCallback(async ({ retry = false } = {}) => {
+    if (retry) setAuthRetrying(true);
     // Auth: read the signed-in user from Supabase. If Supabase isn't configured
     // yet (local dev before setup), fall back to a permissive local session.
     if (!SUPABASE_CONFIGURED) {
@@ -149,14 +193,24 @@ export default function AppLayout({ children }) {
       setTeams(bypass.teams);
       setUserName('Local D.');
       setUserInitials('LD');
+      setAuthRetrying(false);
       return;
     }
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace('/');
-        return;
-      }
+    let result;
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      result = { user: data?.user ?? null, error };
+    } catch (thrown) {
+      result = { thrown };
+    }
+    const outcome = authOutcome(result);
+    setAuthRetrying(false);
+    if (outcome === 'retry') { setAuthError(true); return; }
+    setAuthError(false);
+    if (outcome === 'login') { router.replace('/'); return; }
+    {
+      const user = result.user;
       // ชื่อแสดงผล = มาตรฐาน "ชื่อ + นามสกุลย่อ" (§2.1) จาก helper กลาง.
       const meta = user.user_metadata || {};
       const dName = fmtName({ ...meta, email: user.email });
@@ -191,8 +245,10 @@ export default function AppLayout({ children }) {
       // ที่เอาไปเทียบ/บันทึกเป็นชื่อเต็มไม่ได้ — ของจริงบน prod มีโครงการ 11 ใบที่
       // `aeOwner` ถูกเขียนเป็นชื่อย่อจากช่องนี้จน `aeOwnerId` ว่างทั้งหมด
       try { localStorage.setItem('userId', user.id); } catch {}
-    });
+    }
   }, [router]);
+
+  useEffect(() => { loadUser(); }, [loadUser]);
 
   useEffect(() => {
     const onProfileUpdated = (event) => {
@@ -328,337 +384,29 @@ export default function AppLayout({ children }) {
     router.replace('/');
   };
 
-  if (!role) return null;
+  /* 🐞 เดิมเป็น `if (!role) return null` ⇒ ระหว่างอ่าน session จอ **ว่างเปล่า** ไม่มี
+     แม้แต่หัวเว็บ · และถ้าอ่านไม่สำเร็จเพราะเน็ต จอก็ว่างค้างอยู่อย่างนั้น
+     (หน้าแรกเดิมมีสองสถานะนี้ของตัวเอง — ย้ายมาอยู่ที่เปลือกชุดเดียวตาม ADR 0016) */
+  if (authError) {
+    return (
+      <ShellState
+        kind="error"
+        busy={authRetrying}
+        onRetry={() => loadUser({ retry: true })}
+        onLogin={async () => {
+          // ล้างเฉพาะเครื่องนี้ — session ฝั่ง server อาจยังดีอยู่ ไม่ต้องไปไล่ปิดให้
+          try { await createClient().auth.signOut({ scope: 'local' }); } catch {}
+          router.replace('/');
+        }}
+      />
+    );
+  }
+  if (!role) return <ShellState kind="loading" />;
 
-  // Each group belongs to a "system" (the cards on /home). The menu row shows
-  // only the current system's items; the system dropdown switches systems.
-  const allGroups = [
-    {
-      system: 'master',
-      items: [
-        { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
-        { href: '/database/customers', name: 'ข้อมูลลูกค้า', countHref: '/database/customers?count=customers', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
-        { href: '/database/products', name: 'ข้อมูลสินค้า', countHref: '/database/products?count=products', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
-        // ทะเบียนกลิ่น + สูตร (mig 0171) — ข้อมูลหลักของ RD ที่คำร้องขอราคา F/FB
-        // อ้างถึง · อยู่ใต้ "ฐานข้อมูล" เพราะเป็น master data ไม่ใช่เอกสารงาน
-        { href: '/database/scents', name: 'ทะเบียนกลิ่น', countHref: '/database/scents?count=scents', icon: FlaskConical, cap: 'products:view', match: (p) => p.startsWith('/database/scents') },
-        { href: '/database/formulas', name: 'ทะเบียนสูตร', countHref: '/database/formulas?count=formulas', icon: Beaker, cap: 'products:view', match: (p) => p.startsWith('/database/formulas') },
-        // ทะเบียนวัสดุ — ย้ายมาจาก /sa/materials เพราะเหตุผลที่เคยอยู่ใต้ "ขาย" คือ
-        // แท็บคิวเคสขอราคา ซึ่งย้ายออกไปเป็นเมนู "คำร้อง" แล้ว (mig 0173) เหลือ
-        // งานเดียวคือข้อมูลหลักราคาวัสดุ = ทรงเดียวกับกลิ่น/สูตร/สินค้า
-        // ⚠️ cap ต้องคง costing:view + canViewCosting ไว้ ห้ามกลืนเป็น products:view
-        //    ตามเพื่อนบ้านในกลุ่มนี้ — products:view อยู่ใน DEFAULT_CAPS (แทบทุกคนถือ)
-        //    ส่วนแถวในทะเบียนนี้คือ **ราคาต้นทุน** ถ้าเปิดกว้างคือต้นทุนรั่วทั้งบริษัท
-        // `disabled: true` = จางและกดไม่ได้ **ไม่ใช่ถอดออก** (มติผู้ใช้ 2026-08-12) —
-        // ทะเบียนนี้เหลือบรรจุภัณฑ์ (PM) รอโมดูลจัดซื้อ (docs/rm-price-registry-split.md)
-        // และยังว่างอยู่ · ราคา F/FB ย้ายไปทะเบียนกลิ่น/สูตรแล้ว จึงพักเมนูไว้ก่อน
-        // เปิดใช้อีกครั้งตอนโมดูลจัดซื้อมา — แค่ลบ flag นี้
-        { href: '/database/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, disabled: true, match: (p) => p.startsWith('/database/materials') },
-        { href: '/database/product-categories', name: 'หมวดสินค้า', icon: Tags, cap: 'products:view', managerOnly: true, match: (p) => p.startsWith('/database/product-categories') },
-      ],
-    },
-    {
-      system: 'tax',
-      items: [
-        { href: '/tax', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
-        { href: '/tax/registrations', name: 'การขึ้นทะเบียน', countHref: '/tax/registrations?status=mine', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
-        // shortName ไม่ต้องมี — ระบบภาษีมี 4 เมนู ช่องบนแถบล่างจึงกว้าง 93.8px
-        // ซึ่งพอดีป้ายนี้ (73.3px) · วัดในแอปจริง 2026-08-02
-        { href: '/tax/filings', name: 'การยื่นชำระภาษี', countHref: '/tax/filings?status=mine', icon: ReceiptText, cap: 'history:view', match: (p) => p.startsWith('/tax/filings') },
-      ],
-    },
-    {
-      system: 'salesplan',
-      items: [
-        { href: '/sa/dashboard', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
-        // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
-        { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
-        // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
-        // project ฝั่ง execution ตามมาตรฐาน IA (SALES_REVAMP_PLAN §5)
-        { href: '/sa/deals', name: 'ดีล', icon: Handshake, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
-        // เฟส B: หน้ารวมโครงการ (ภาชนะรวมดีล + KPI rollup) — เดิม /sa/projects เด้งไปหน้าดีล
-        { href: '/sa/projects', name: 'โครงการ', countHref: '/sa/projects?count=projectCloses', icon: FolderKanban, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/projects' || p.startsWith('/sa/projects/') || p.startsWith('/pm/projects') },
-        /* เอกสารร่วมสามชนิด — นิยามอยู่ที่ `SHARED_DOC_ITEMS` เพราะฝ่าย FN มีเมนู
-           ชุดนี้ในบ้านตัวเองด้วย (มติผู้ใช้ 2026-08-22) · ขึ้นได้กลุ่มเดียวต่อคน */
-        SHARED_DOC_ITEMS.quotations,
-        SHARED_DOC_ITEMS.salesOrders,
-        SHARED_DOC_ITEMS.contracts,
-        // (เมนู "สอบถาม RD" ถูกถอดใน mig 0174 — งานย้ายไปเมนู "คำร้อง" ข้างล่าง
-        //  ซึ่งรับได้ทุกชนิดรวมสอบถาม/ขอเอกสาร ไม่ใช่แค่ถาม RD อย่างเดียว)
-        // ใบขอราคาผลิต (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
-        // cap costing:view กว้างเกินจริง (role staff ถือทั้ง PD/WH/QC ด้วย) จึงต้อง
-        // แคบด้วยฝ่ายผ่าน canViewCosting ไม่งั้นฝ่ายที่ไม่เกี่ยวเห็นเมนูต้นทุน
-        // `disabled: true` = จางและกดไม่ได้ **ไม่ใช่ถอดออก** (มติผู้ใช้ 2026-08-09) —
-        // ถอดเมื่อไร ฝ่ายขายจะไปเปิดใบผิดชนิดแทน แล้วเราไม่รู้ว่ามีคนรออยู่กี่ใบ
-        // ⚠️ เปลือก UI เท่านั้น — /sa/costing ยังเข้าได้ถ้าพิมพ์ URL ตรง ๆ
-        { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, disabled: true, match: (p) => p.startsWith('/sa/costing') },
-        // คำร้องข้ามฝ่าย (mig 0173) — เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่ใต้ขาย
-        // ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว · นิยาม + เหตุผลของด่านอยู่ที่
-        // `SHARED_DOC_ITEMS` (ฝ่าย RD/FN มีเมนูตัวนี้ในบ้านตัวเอง)
-        SHARED_DOC_ITEMS.requests,
-        // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
-        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
-        /* ── เครื่องมือ (utility) — ต้องอยู่ **ท้ายรายการและเรียงแบบนี้** ─────────────
-           ⭐ มติผู้ใช้ 2026-08-26: ปฏิทินนัดมาก่อนวางเป้า และ **ลำดับต้องเหมือนกันทั้ง
-           แถวบน · ลิ้นชัก · แถบล่างมือถือ**
 
-           🪤 ลำดับจะตรงกันได้ก็ต่อเมื่อ utility อยู่ท้ายอาเรย์เท่านั้น — ลิ้นชักเรนเดอร์
-           `flowItems` แล้วค่อย `utilityItems` (คั่นด้วย spacer) ส่วนแถวบนกับแถบล่าง
-           ไล่อาเรย์ดิบเรียงเดียว · ถ้า utility ไปแทรกกลางอาเรย์ สองฝั่งจะเรียงไม่ตรงกัน
-           ทันที (ของเดิมปฏิทินนัดอยู่อันดับ 3 แถวบนจึงขึ้นคนละที่กับลิ้นชัก)
-
-           ปฏิทินนัด — อ่านจาก lead_events (kind='meeting') ที่บันทึกจากคิวลีด
-           cap เดียวกับเมนู "ลีด" เพราะเป็นข้อมูลชุดเดียวกันคนละมุมมอง
-           ⚠️ ไม่ใช่ปฏิทินของ /mgmt (คนละตาราง คนละ cap — AE เปิดตัวนั้นไม่ได้)
-
-           🐞 **"วางเป้า" เคยเป็น JSX ฝังมือ ไม่ได้อยู่ในรายการนี้** — พอแถวระบบบนหัว
-           (#1439) มาเป็นตัวเรนเดอร์ตัวที่สามที่ไล่จาก `items` เมนูนี้ก็ **หายไปจาก
-           แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08) */
-        { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
-        { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
-        /* ตรวจที่มาของ FC (mig 0337 · มติผู้ใช้ 2026-09-02) — ดีลที่มีใบเสนอราคา
-           อนุมัติแล้วแต่ FC ยังไม่เดินตามใบ · เป็น utility เพราะไม่ใช่งานรายวัน และ
-           ป้ายจะหดลงเรื่อย ๆ ตามที่ AE กดรับ เหลือเฉพาะดีลที่มีใบหลายฉบับจริง ๆ
-           ⚠️ utility ต้องอยู่ท้ายอาเรย์เสมอ และห้ามแทรกก่อน "ปฏิทินนัด → วางเป้า"
-              ซึ่งเป็นคู่ลำดับที่ผู้ใช้เคาะไว้ (26/08) */
-        { href: '/sa/forecast-review', name: 'ตรวจที่มา FC', countHref: '/sa/forecast-review', icon: ClipboardCheck, cap: 'salesplan:view', visible: worksInSalesPipeline, utility: true, match: (p) => p.startsWith('/sa/forecast-review') },
-        // จัดทีม (mig 0310 · มติผู้ใช้ 2026-08-28) — หัวหน้าฝ่ายขายกับผู้ช่วยที่ถูก
-        // grant จัดทีมเองได้ ไม่ต้องรอแอดมิน · เป็น utility เพราะไม่ใช่งานรายวัน
-        /* 🐞 **ต้องแคบด้วยฝ่ายด้วย ไม่ใช่ cap ล้วน** — ตั้งแต่หัวหน้าฝ่าย TS ได้
-           `team:manage` (มติ 2026-08-30) เมนูนี้โผล่ให้เขาเห็น แล้วกดเข้าไปเจอ
-           "ดูทีมของฝ่ายอื่นไม่ได้" ทุกครั้ง · เมนูที่กดแล้วเจอข้อความปฏิเสธเสมอ
-           ไม่ควรมีอยู่ — ทีมของฝ่าย TS อยู่ที่เมนู "จัดทีม" ของธุรกิจบริการ */
-        { href: '/sa/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', visible: (u) => canManageTeams(u, 'SA'), utility: true, match: (p) => p.startsWith('/sa/teams') },
-      ],
-    },
-    {
-      // วิจัยและพัฒนา — บ้านของฝ่าย RD (ม-29) · ระบบแยกจากบริหารงานขาย
-      //
-      // 🐞 **กลุ่มนี้หายไปตั้งแต่ P2 ที่สร้างระบบขึ้นมา** — `SYSTEM_CATALOG` มีการ์ด
-      // แต่ `allGroups` ไม่มี `rd` ⇒ `menuItems` ว่าง ⇒ ฝ่าย RD สลับเข้าบ้านตัวเอง
-      // แล้ว **ไปไหนต่อไม่ได้จากเมนูเลย**: เข้าคิวได้ทางเดียวคือกดตัวเลขบนภาพรวม
-      // และเข้าไปแล้วกลับหน้าภาพรวมไม่ได้ · build/เทสต์จับไม่ได้เพราะทั้งสองหน้า
-      // เรนเดอร์ปกติทุกอย่าง ผิดแค่เปลือกที่ครอบมัน (อาการเดียวกับ `/requests`
-      // ที่เคยหลุดไปอยู่ใต้เมนูระบบภาษี) · เทสต์ "ทุกระบบต้องมีกลุ่มเมนูของตัวเอง"
-      // ใน navMenuNames.test.mjs กันไม่ให้ระบบตัวถัดไปซ้ำรอย
-      //
-      // ⚠️ เคยต้องพ่วง `users:manage` เข้าไปใน caps เพราะ admin
-      // **ไม่ถือ `requests:answer`** (ตรวจ 2026-08-08) ใส่ cap เดียวแล้วเมนูถูกกรอง
-      // ทิ้งจนเหลือศูนย์ แล้ว `.filter((g) => g.items.length > 0)` ตัดทั้งกลุ่ม =
-      // แถบว่าง · **แก้ที่ต้นเหตุแล้ว 2026-08-28** — admin ถือทุก cap ในระบบ
-      // (adminHoldsEveryCap.test.mjs คุมไว้) จึงเหลือ cap เดียวตามความหมายจริง
-      // ตัวแคบจริงคือ `visible: canAccessRd` ซึ่งเป็นด่าน **ตัวเดียวกับที่การ์ด
-      // ระบบใช้** จึงเพี้ยนหากันไม่ได้
-      //
-      // ⚠️ ทะเบียนกลิ่น/สูตรไม่อยู่ในเมนูนี้ทั้งที่ RD เป็นคนเขียน — มันเป็นข้อมูล
-      // กลางที่อยู่ใต้ "ฐานข้อมูล" (ม-30) · ลิงก์ข้ามระบบจะสลับเปลือกทั้งแถบแล้ว
-      // ไฮไลต์ไม่ติด (match ไม่มีวันเป็นจริง) ⇒ ใช้ตัวสลับระบบตามทางปกติ
-      system: 'rd',
-      items: [
-        /* ⚠️ `disabled: true` = **จางและกดไม่ได้ ไม่ใช่ถอดออก** (แพตเทิร์นเดียวกับ
-           "ภาพรวม" ของบัญชีและการเงิน · "ทะเบียนวัสดุ" · "ขอราคาผลิต")
-           มติผู้ใช้ 2026-08-15 — เทาไว้ก่อนทั้งที่หน้ามีของจริง
-           ⚠️ ซ่อนทิ้งไม่ได้ — คนที่เคยเห็นจะนึกว่าสิทธิ์ตัวเองหาย (เหตุผลเดียวกับการ์ดระบบ)
-           ⚠️ **ต้องแก้ `landing` ของการ์ดระบบ `rd` พร้อมกันเสมอ** ไม่งั้นกดการ์ดแล้ว
-           เด้งเข้าหน้าที่เมนูบอกว่ากดไม่ได้ — systems.test.mjs กันไว้แล้ว */
-        { href: '/rd', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['requests:answer'], visible: canAccessRd, disabled: true, match: (p) => p === '/rd' },
-        // ชื่อต้องไม่ซ้ำกับ "คำร้อง" ของระบบบริหารงานขาย — คนละมุมของตารางเดียวกัน:
-        // ฝั่งขาย = ใบที่ฉันเปิด · ฝั่งนี้ = ใบที่ส่งมาถึงฝ่ายฉัน (กฎเดียวกับที่
-        // "งานของฉัน" กับ "นัดของฉัน" เคยชนกันแล้วคนเปิดผิดหน้าประจำ)
-        /* ⭐ `match` กินใบคำร้อง (`/requests/[id]`) ด้วย — **ไม่ใช่ของเกิน**
-           ใบเป็นจอเดียวกันทั้งสองฝั่ง (ม-31) และเปลือกของมันเดินตามคนดู (กฎข้อ 9)
-           ⇒ RD กดใบจากคิวแล้วยังยืนในบ้านตัวเอง เมนูต้องไฮไลต์ที่คิว ซึ่งเป็นที่เดียว
-           ที่เขาเข้าถึงใบนั้นได้จริง (กฎข้อ 8)
-           ⚠️ **ไม่มีเมนู "คำร้อง" (คิวรวม) ในโมดูลนี้** — มติผู้ใช้ 2026-08-22:
-           *"บัญชี กับ RD ไม่มีที่ต้องเปิดเอง มีแต่ SA ที่ต้องเปิดมาหา"* ⇒ แท็บ
-           "ที่ฉันเปิด" ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ประวัติงานของฝ่าย
-           อยู่ในแท็บ "ประวัติ" ของคิวนี้แล้ว */
-        { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') || p.startsWith('/requests') },
-        /* ⭐ **ตารางงานผู้ปรุงกลิ่น** (mig 0350 · มติผู้ใช้ 2026-09-08) — คิวข้างบนนับเป็น
-           **ใบ** ส่วนหน้านี้นับเป็น **กลิ่น** · ใบพัฒนากลิ่นหนึ่งใบมีได้ถึง 4 ก้อนแจกให้
-           คนละคนปรุง ⇒ คำถาม "กลิ่นก้อนนี้อยู่ในมือใคร" ตอบจากคิวไม่ได้เลย
-           ⚠️ **ด่านเป็นชุดเดียวกับเมนูอื่นของโมดูล** (`requests:answer` + `canAccessRd`)
-           โดยตั้งใจ — ผู้ปรุงต้องเห็นตารางของตัวเอง แม้จะแจกงานไม่ได้ · ด่านที่แคบกว่า
-           เมนูจะทำให้คนที่งานอยู่ในมือมองไม่เห็นงานตัวเอง
-           ⚠️ `shortName` เพราะชื่อเต็มล้นช่องแถบล่างของจอมือถือ (~71px ที่ 375px) */
-        { href: '/rd/perfumers', name: 'งานผู้ปรุงกลิ่น', shortName: 'ผู้ปรุง', icon: SprayCan, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/perfumers') },
-        /* ⭐ **ใบสั่งขายที่เกี่ยวข้อง** (มติผู้ใช้ 2026-08-29) — บรีฟกลิ่นเกิดจากใบสั่งขาย
-           ฝ่ายจึงต้องเห็นว่าออร์เดอร์นั้นสั่ง FG อะไร · มาคู่กับการปิดเมนู "บริหารงานขาย"
-           ของฝ่ายนี้ (แพตเทิร์นเดียวกับที่ฝ่าย FN ได้เอกสารของตัวเองไปไว้ในโมดูลตัวเอง)
-           ⚠️ **เอกสารไม่ได้ย้ายบ้าน** — กดแล้วไปที่ `/sa/sales-orders/[id]` ตามเดิม
-           (กฎสามชั้น ชั้น 2) · เปลือกเดินตามคนดู ⇒ RD ยังยืนอยู่ในโมดูลตัวเอง
-           ⚠️ `match` กินหน้าใบสั่งขายด้วย เพราะนั่นคือทางเดียวที่ฝ่ายเข้าถึงใบได้จริง
-           (กฎข้อ 8 — ไฮไลต์ที่เมนูที่พาเขาไป ไม่ใช่เมนูที่เขากดไม่ได้) */
-        { href: '/rd/sales-orders', name: 'ใบสั่งขายที่เกี่ยวข้อง', icon: FileText, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/sales-orders') || p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
-      ],
-    },
-    {
-      // บัญชีและการเงิน — บ้านของฝ่าย FN (มติผู้ใช้ 2026-08-13)
-      //
-      // ⚠️ ด่านเป็น `canAccessFinance` **ตัวเดียวกับที่การ์ดระบบใช้** — บทเรียนจาก
-      // โมดูล RD ที่เคยแยกสองที่แล้วได้การ์ดที่กดเข้าไปเจอแถบเมนูว่าง
-      //
-      // 🐞 **caps ต้องมีเสมอ ห้ามเว้น** — รอบแรกเขียนแต่ `visible` แล้วเมนูหายทั้งกลุ่ม:
-      // ตัวกรองอ่าน `item.caps || [item.cap]` ⇒ ได้ `[undefined]` ⇒ ไม่ผ่านสักข้อ ⇒
-      // `items.length === 0` ⇒ `.filter((g) => g.items.length > 0)` ตัดทั้งกลุ่มทิ้ง
-      // ได้เปลือกที่ขึ้นชื่อ "บัญชีและการเงิน" แต่แถบเมนูว่างเปล่า (อาการเดียวกับที่
-      // คอมเมนต์ของกลุ่ม RD ข้างบนเตือนไว้ · เจอซ้ำเพราะเขียนคนละสาเหตุ)
-      //
-      // ⚠️ ต้องมีสองตัว: `payments:confirm` ครอบทั้ง role `finance` และคน FN ที่ยังถือ
-      // `staff` (ยังไม่ย้าย role) ส่วน `users:manage` ให้ admin ซึ่งไม่ถือ payments:confirm
-      // ⚠️ cap กว้างกว่าฝ่ายจริง (staff ฝ่ายอื่นก็ถือ payments:confirm) — ตัวแคบคือ
-      // `visible: canAccessFinance` ซึ่งเป็น **ด่านเดียวกับที่การ์ดระบบใช้**
-      system: 'finance',
-      items: [
-        /* ⚠️ `disabled: true` = **จางและกดไม่ได้ ไม่ใช่ถอดออก** (แพตเทิร์นเดียวกับ
-           "ทะเบียนวัสดุ" และ "ขอราคาผลิต") — มติผู้ใช้ 2026-08-13:
-           *"หน้าภาพรวมเทาไว้ก่อนก็ได้ เดี๋ยวรอโมดูลเสร็จค่อยทำ เพราะมันคือภาพรวมของทั้งหมด"*
-           ⇒ ตอนนี้โมดูลมีของจริงอยู่หน้าเดียว ภาพรวมจึงเป็นภาพรวมของตัวเอง ซึ่งไม่มีค่า
-           ⚠️ ซ่อนทิ้งไม่ได้ — คนที่เคยเห็นจะนึกว่าสิทธิ์ตัวเองหาย (เหตุผลเดียวกับการ์ดระบบ) */
-        { href: '/finance', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, disabled: true, match: (p) => p === '/finance' },
-        // ชื่อ "ทะเบียนการชำระ" ไม่ใช่ "การชำระ" — ฝั่ง SO มีการ์ด "การชำระ" ของใบ
-        // อยู่แล้ว · ชื่อซ้ำกันคนละที่คือสิ่งที่ทำให้คนเปิดผิดหน้าประจำ (กฎเดียวกับ
-        // "คำร้อง" ของฝ่ายขาย vs "คิวคำร้อง" ของ RD)
-        { href: '/finance/payments', name: 'ทะเบียนการชำระ', countHref: '/finance/payments?status=reported', icon: Wallet, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/payments') },
-        /* คิวคำร้องที่ส่งถึงฝ่ายบัญชี (B-1 · ม-ก) — ชื่อ "คิวคำร้อง" ตรงกับของ RD
-           โดยตั้งใจ: เป็นของอย่างเดียวกันคนละฝ่าย · ต้องไม่ชนกับ "คำร้อง" ของฝ่ายขาย
-           ซึ่งเป็นคนละมุมของตารางเดียวกัน (ที่นั่นเปิดใบ ที่นี่ตอบใบ)
-           ⚠️ ไอคอนตัวเดียวกับ `/requests` และ `/rd/requests` — หนึ่ง entity หนึ่งไอคอน */
-        /* `match` กินใบคำร้องด้วย และ **ไม่มีเมนู "คำร้อง" (คิวรวม)** — เหตุผลเดียว
-           กับของ RD ข้างบน (มติผู้ใช้ 2026-08-22: บัญชีไม่เปิดคำร้องเอง) */
-        { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') || p.startsWith('/requests') },
-        /* ⭐ เอกสารขายที่ฝ่ายบัญชีทำงานด้วยจริง — **ย้ายมาจากกลุ่ม "บริหารงานขาย"**
-           (มติผู้ใช้ 2026-08-22) · กฎข้อ 7 (2026-08-13) ตัดสินไปแล้วว่าเมนูของ FN
-           คือใบเสนอราคา · ใบสั่งขาย · คำร้อง — แต่รายการเหล่านั้นถูกประกาศไว้ใน
-           *กลุ่มของฝ่ายขาย* ⇒ FN จะเห็นได้ก็ต่อเมื่อเดินออกไปยืนในเปลือกคนอื่น
-           ซึ่งคือสิ่งที่ผู้ใช้บอกว่า *"พอกดเข้าไป มันรูทเข้าไปที่บริหารงานขาย"*
-           ⚠️ **ไม่ใช่ก๊อป** — เป็นตัวเดียวกับที่กลุ่มขายใช้ (`SHARED_DOC_ITEMS`)
-           และตัวกรองใน `accessibleGroups` ให้ขึ้นได้กลุ่มเดียวต่อคนเสมอ
-           ⚠️ "สัญญา" ติดมาด้วยเพราะวันนี้ FN เห็นอยู่แล้ว (cap `salesplan:view`
-           ไม่มีด่านฝ่าย) — ย้ายบ้านต้องไม่ทำให้ใครเสียเมนูที่เคยมี */
-        SHARED_DOC_ITEMS.quotations,
-        SHARED_DOC_ITEMS.salesOrders,
-        SHARED_DOC_ITEMS.contracts,
-      ],
-    },
-    {
-      // วางแผนผลิต — ระบบแยก ไม่ใช่เมนูใต้ "บริหารงานขาย" (มติผู้ใช้ 2026-07-30)
-      system: 'production',
-      items: [
-        // ภาพรวมมาก่อนสุด (X-1) — เปิดระบบมาเห็นว่า "ต้องตัดสินใจอะไรก่อน" แล้วค่อย
-        // กดเข้าคิว/บอร์ด · แยกจากภาพรวมของธุรกิจบริการ เพราะคนละทีมปฏิบัติงาน
-        { href: '/production', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'production:view', visible: canViewProduction, match: (p) => p === '/production' },
-        // ไลน์ผลิต (mig 0184) = ชั้น "กำลัง" ของตารางผลิต · คนตั้งค่าคือฝ่าย PC/PD
-        // cap production:view กว้าง (ฝ่ายขายอ่านได้เพื่อตอบลูกค้า) แต่หน้า *ตั้งค่า*
-        // ควรขึ้นเมนูเฉพาะคนที่แก้ได้จริง ไม่งั้นทุกคนเห็นเมนูที่กดไปแล้วทำอะไรไม่ได้
-        // คิวมาก่อนไลน์ — PC เปิดระบบมาเพื่อดูว่าต้องผลิตอะไรก่อน ไม่ใช่มาตั้งค่าไลน์
-        { href: '/production/jobs', name: 'คิวงานผลิต', countHref: '/production/jobs?count=productionJobs', icon: Hammer, cap: 'production:view', visible: canEditProduction, match: (p) => p.startsWith('/production/jobs') },
-        // บอร์ดเปิดให้ **ทุกคนที่อ่านตารางผลิตได้** (P-3) — คลัง/QC/ฝ่ายขายเข้ามาดู
-        // ว่าโรงงานจะผลิตวันไหน โดยไม่ต้องเดินไปถาม · TS ไม่เห็น (คนละทีมปฏิบัติงาน)
-        { href: '/production/board', name: 'บอร์ดตารางผลิต', icon: CalendarRange, cap: 'production:view', visible: canViewProduction, match: (p) => p.startsWith('/production/board') },
-        { href: '/production/lines', name: 'ไลน์ผลิต', icon: Factory, cap: 'production:edit', visible: canEditProduction, match: (p) => p.startsWith('/production/lines') },
-      ],
-    },
-    {
-      // ธุรกิจบริการของฝ่าย TS — คนละโมดูลกับผลิต (มติผู้ใช้ 2026-07-30)
-      system: 'service',
-      items: [
-        // ภาพรวมมาก่อนสุด (X-1) — หัวหน้าทีมบริการเปิดมาเห็นนัดค้าง/วันนี้ใครไปไหน/
-        // ไซต์ที่น้ำหอมกำลังจะหมด · **คนละหน้ากับภาพรวมของวางแผนผลิต** ตามมติแยกทีม
-        { href: '/service', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'service:view', visible: canViewService, match: (p) => p === '/service' },
-        // งานวันนี้มาก่อนสุด — เจ้าหน้าที่เปิดระบบมาเพื่อดูงานตัวเองวันนี้ ไม่ใช่ตารางทั้งฝ่าย
-        // (F-1 2026-08-27: เดิมชื่อ "นัดของฉัน" ที่ /service/my-visits — เปลี่ยนชื่อ+route
-        // เพราะหน้านี้ไม่มีปุ่มสลับ "ทั้งทีม" แล้ว มุมมองข้ามคนย้ายไปหน้าจัดคิวเจ้าหน้าที่)
-        // ⚠️ ชื่อต้องไม่ซ้ำกับ "งานของฉัน" ของระบบบริหารงานขาย (/sa/tasks) — คนละเรื่อง
-        // กันคนละระบบ: ฝั่งขาย = งานติดตามส่วนบุคคล · ฝั่งนี้ = นัดเข้าไซต์ที่ต้องไปทำจริง
-        // ชื่อซ้ำข้ามระบบทำให้คนจำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
-        // ใครเห็นเมนูนี้ = **คนที่แก้งานบริการได้** (มติผู้ใช้ 2026-07-31) — ฝ่ายบริการ TS ·
-        // ทีมขาย SV · admin/หัวหน้าฝ่ายขาย · กว้างกว่า "คนที่รับงานได้" หนึ่งขั้นเพื่อให้
-        // หัวหน้าเปิดดูรูปหน้าจอของเจ้าหน้าที่ได้ โดยไม่เปิดให้ฝ่ายขายทีมอื่นที่ไม่เกี่ยวเลย
-        // 🐞 เดิมเปิดด้วย service:view = ฝ่ายขายทุกคนเห็นเมนูที่กดเข้าไปแล้วว่างเสมอ
-        /* ⚠️ เจ้าหน้าที่หน้างานต้องเห็นเมนูนี้ — เขาไม่ถือ `service:edit` (แก้ตารางไม่ได้)
-           แต่ "งานวันนี้" คือหน้าที่เขาใช้ทำงานทั้งวัน ⇒ ใช้ `canDoFieldWork` */
-        { href: '/service/today', name: 'งานวันนี้', icon: Wrench, cap: 'service:view', visible: canDoFieldWork, match: (p) => p.startsWith('/service/today') },
-        // จัดคิวเจ้าหน้าที่ = เครื่องมือวางแผนของ TS (F-1: เดิมชื่อ "ตารางเข้าบริการ") —
-        // แคบเป็น canEditService เพราะเป็นหน้าลงมือจัดคิว ไม่ใช่หน้าอ่าน · ฝ่ายขายที่
-        // อยากรู้ว่า "เจ้าหน้าที่เข้าเมื่อไหร่" ดูจากหน้าไซต์บริการซึ่งยังเปิดตามสิทธิ์อ่านเดิม
-        { href: '/service/schedule', name: 'จัดคิวเจ้าหน้าที่', icon: CalendarDays, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/schedule') },
-        // งานเข้าใหม่ = ทางที่ใบสั่งขายสายบริการเดินมาถึงฝ่าย TS (เฟส 4 · 2026-08-28)
-        // ⚠️ ไม่ใช่หน้า "สร้างงาน" — TS ไม่ใช่ต้นทางของงาน ทุกแถวมีต้นเรื่องเป็นใบที่
-        // อนุมัติแล้ว · แคบเป็น canEditService เพราะเป็นหน้าลงมือผูกไซต์/โซน
-        { href: '/service/intake', name: 'งานเข้าใหม่', icon: ArrowDownToLine, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/intake') },
-        /* คิวคำร้องประเมินพื้นที่จาก SA (mig 0314) — ทางที่ *งานของฝ่ายขาย* เดินมาถึง TS
-           ⚠️ `match` กินใบคำร้อง (`/requests/[id]`) ด้วย เหมือน `/rd/requests` และ
-              `/finance/requests` — เปิดใบแล้วเมนูต้องไม่ทิ้งคนไว้กลางอากาศ
-           ⚠️ ไอคอนตัวเดียวกับคำร้องทุกที่ในระบบ — หนึ่ง entity หนึ่งไอคอน
-           ⚠️ **visible เป็น canAnswerServiceRequests ไม่ใช่ canEditService** — คนที่เห็น
-              คิวนี้คือคนที่ *ตอบ* ใบได้ (ฝ่าย TS) · ทีมขาย SV ถือ service:edit ด้วยแต่
-              ไม่ใช่คนตอบคำร้องของฝ่าย TS ⇒ เห็นเมนูที่กดเข้าไปแล้วตอบอะไรไม่ได้เลย */
-        { href: '/service/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, cap: 'requests:answer', visible: canAnswerServiceRequests, match: (p) => p.startsWith('/service/requests') || p.startsWith('/requests') },
-        // ⚠️ ต้องมี visible: canViewService/canEditService ทุกรายการ — cap service:view
-        // ถือกว้างระดับ role (staff ทุกฝ่ายถือ) แล้วแคบด้วย **ฝ่าย TS** ที่ canViewService ·
-        // ถ้าเช็คแค่ cap ฝ่ายคลัง/QC จะเห็นเมนูของทีมเจ้าหน้าที่บริการ ซึ่งขัดมติแยกทีม (PD ≠ TS)
-        // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
-        // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
-        /* ⭐ เอกสารร่วมที่เปลือกบริการรับมา (มติผู้ใช้ 2026-08-31) — TS อ่านใบสั่งขาย
-           กับสัญญาได้ เพราะงานบริการทุกชิ้นอ้างสองอย่างนี้เป็นต้นเรื่อง (จัดสรรลงโซน ·
-           ด่านเข้าไซต์ · รอบที่ขายไว้)
-           ⚠️ **อ่านอย่างเดียว** — ฝ่าย TS ไม่มี `salesplan:edit` โดยเจตนา
-           ⚠️ ต้องคู่กับ `ADOPTED_SHARED_PATHS.service` เสมอ ไม่งั้นกดแล้วเปลือกสลับ
-              ไปงานขายซึ่งเป็นระบบที่ TS ไม่มีกลุ่มเมนูอีกแล้ว = แถบว่าง */
-        SHARED_DOC_ITEMS.salesOrders,
-        SHARED_DOC_ITEMS.contracts,
-        { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/sites') },
-        /* ⭐ ทะเบียนเครื่อง (เฟส B · mig 0332) — คู่กับไซต์บริการ วางติดกันเพราะคน
-           ที่เปิดหาไซต์กับคนที่เปิดหาเครื่องคือคนเดียวกัน และสองหน้านี้ลิงก์หากันตลอด
-           ⚠️ `match` ต้องครอบหน้าเครื่องรายตัวด้วย — URL ย้ายออกมาจากใต้ไซต์แล้ว
-              ถ้าไม่ครอบ เปิดหน้าเครื่องแล้วจะไม่มีเมนูไหนไฮไลต์เลย */
-        { href: '/service/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/assets') || p.startsWith('/service/models') },
-        // จัดทีมเจ้าหน้าที่บริการ (mig 0310 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
-        // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของเจ้าหน้าที่
-        /* ⚠️ แคบด้วย `canManageTeams(u,'TS')` เหมือนฝาแฝดที่ /sa/teams ไม่ใช่ `canEditService` —
-           ของเดิมเปิดให้ทุกคนที่แก้งานบริการได้ ⇒ `ts_planner` (ไม่มี `team:manage`) เห็นเมนู
-           ชื่อ "จัดทีม" แล้วเข้าไปเจอรายชื่อเปล่า ๆ ที่กดอะไรไม่ได้สักปุ่มและไม่มีอะไรบอกเหตุ
-           — ผิดกฎ "ไม่มีสิทธิ์ = ไม่โชว์" ของระบบ */
-        { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', visible: (u) => canManageTeams(u, 'TS'), utility: true, match: (p) => p.startsWith('/service/teams') },
-      ],
-    },
-    {
-      system: 'mgmt',
-      items: [
-        { href: '/mgmt', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'mgmt:view', match: (p) => p === '/mgmt' },
-        { href: '/mgmt/tasks', name: 'รายการงาน', countHref: '/mgmt/tasks?count=mgmtTasks', icon: ListTodo, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/tasks') },
-        { href: '/mgmt/meetings', name: 'การประชุม', icon: Users, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/meetings') },
-        { href: '/mgmt/rocks', name: 'Rock & Improve', shortName: 'Rocks', icon: Target, cap: 'mgmt:view', match: (p) => p.startsWith('/mgmt/rocks') },
-        { href: '/mgmt/trash', name: 'ถังขยะ', icon: Trash2, cap: 'mgmt:edit', match: (p) => p.startsWith('/mgmt/trash') },
-      ],
-    },
-    {
-      system: 'sahamit',
-      items: [
-        { href: '/sahamit', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'sahamit:view', match: (p) => p === '/sahamit' },
-        { href: '/sahamit/forecast', name: 'Forecast', icon: LineChart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/forecast') },
-        { href: '/sahamit/po', name: 'Purchase Orders', shortName: 'PO', icon: ShoppingCart, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/po') },
-        { href: '/sahamit/reconcile', name: 'กระทบยอด', icon: ClipboardCheck, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/reconcile') },
-        // "ของเข้า (สหมิตร)" — เดิมชื่อ "วัสดุ / Lead time" ซึ่งชนกับสองเมนูใหม่:
-        // "ทะเบียนวัสดุ" (ฐานข้อมูล — ข้อมูลหลักราคาวัสดุ) และพาเนล "ของเข้า" ของ
-        // โครงการ (mig 0176) · หน้านี้ทำงานเดียวกับพาเนลนั้นแต่เป็นของสายสหมิตร
-        // ซึ่งติดตามราย PO line (pmDueDate/rmDueDate/arrivedAt — คนละตารางกัน)
-        // shortName ตัด "(สหมิตร)" ทิ้ง — อยู่ในระบบสหมิตรอยู่แล้ว วงเล็บนั้นมีไว้กัน
-        // สับสนกับ "ทะเบียนวัสดุ"/พาเนลของเข้าของโครงการ ซึ่งไม่ได้อยู่บนแถบนี้
-        { href: '/sahamit/material', name: 'ของเข้า (สหมิตร)', shortName: 'ของเข้า', icon: Boxes, cap: 'sahamit:view', match: (p) => p.startsWith('/sahamit/material') },
-      ],
-    },
-    {
-      // แจ้งปัญหาระบบ (mig 0223) — เมนูเดียว · cap `issues:report` อยู่ใน
-      // UNIVERSAL_CAPS จึงผ่านให้ทุก role ที่ล็อกอิน (รวม viewer) โดยไม่ต้องไล่
-      // เติม cap ทีละ role
-      system: 'support',
-      items: [
-        { href: '/support', name: 'เรื่องแจ้งปัญหา', shortName: 'แจ้งปัญหา', icon: LifeBuoy, cap: 'issues:report', match: (p) => p.startsWith('/support') },
-      ],
-    },
-  ];
+  /* หน้าไหนมีเปลือกแบบไหน — ตอบที่เดียวใน `config/navigation` (ADR 0016)
+     `/home` ไม่มีเมนูของระบบ ไม่มีตัวสลับระบบ ไม่มีแถวระบบ และไม่มีตัวเลขบนหัว */
+  const flags = shellFlagsFor(pathname);
 
   // department จำเป็นสำหรับเมนูที่ cap อย่างเดียวกว้างเกิน แล้วต้องแคบด้วยฝ่าย
   // (เช่น ใบขอราคาผลิต — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
@@ -666,49 +414,24 @@ export default function AppLayout({ children }) {
   // หน้าบัญชีของฉันพูดชื่อตัวเอง ไม่ยืมชื่อระบบที่เพิ่งเดินออกมา (มติผู้ใช้ 2026-08-14)
   // — เปลือกเดียวกับหน้าตั้งค่า: หัวบอกว่าอยู่ไหน แถบเมนูของระบบหายไปทั้งแถบ
   const isAccountContext = pathname === '/account';
-  const systemSubtitle = isAccountContext
+  const systemSubtitle = flags.homeHub
+    ? 'หน้าแรก'
+    : isAccountContext
     ? 'บัญชีของฉัน'
     : activeSystem === 'settings'
       ? 'การตั้งค่าระบบ'
       : (activeSystemDefinition?.label || 'ภาษีสรรพสามิต');
 
   // ระบบที่ผู้ใช้เข้าถึงได้ (ใช้ทั้ง dropdown สลับระบบ และกรองเมนูแถวล่าง).
-  // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
-  // help the secretary — surfaces that system too.
-  const groupsBySystem = new Map(allGroups.map((group) => [group.system, group]));
-  const accessibleGroups = systemsForUser(userContext)
-    .map((system) => {
-      const group = groupsBySystem.get(system.key);
-      if (!group) return null;
-      return {
-        ...group,
-        label: system.label,
-        home: systemLandingForUser(system, userContext),
-        icon: system.icon,
-        disabled: system.disabled,
-        items: group.items.filter((item) => {
-          const caps = item.caps || [item.cap];
-          /* ⭐ เมนูเอกสารร่วมขึ้น **กลุ่มเดียวต่อคน** — บ้านของคนดูรับเส้นทางนั้นไปแล้ว
-             ก็ขึ้นที่บ้านเขา ไม่งั้นขึ้นที่ "บริหารงานขาย" ตามเดิม
-             ⚠️ ต้องตัดสองทาง: ตัดตัวซ้ำออกจากกลุ่มขาย **และ** ไม่ให้กลุ่มของฝ่าย
-             โผล่ให้คนที่ไม่ได้อยู่ฝ่ายนั้น (เช่น admin ซึ่งเห็นทุกกลุ่ม) ไม่งั้นคนเดียว
-             เห็นเมนูเดียวกันสองที่ แล้วกดอันหนึ่งเปลือกเปลี่ยนใต้เท้า */
-          if (item.shared && !sharedItemBelongsInGroup(item.href, group.system, userContext)) return false;
-          return caps.some((cap) => canUser(userContext, cap)) &&
-            (!item.managerOnly || canManageProductCategories(role)) &&
-            // ด่านเพิ่มสำหรับเมนูที่ cap กว้างกว่าผู้ใช้จริง (ดู costing:view)
-            (!item.visible || item.visible(userContext));
-        }),
-      };
-    })
-    .filter(Boolean)
-    .filter((g) => g.items.length > 0);
+  // ⭐ ทะเบียนเมนูอยู่ที่ `config/menuRegistry` ที่เดียว — หน้าแรก (ADR 0016) กางเมนู
+  //    ของทุกระบบพร้อมกัน จึงต้องอ่านทะเบียนก้อนเดียวกับเปลือก ไม่ใช่สำเนาที่สอง
+  const accessibleGroups = menuGroupsForUser(userContext);
 
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
   const isSettingsContext = isSettingsPathname(pathname);
   // เปลือกไร้แถบเมนู (เหลือบัญชีของฉันหน้าเดียว) — ล้างเมนูทิ้งที่จุดเดียวตรงนี้
   // แล้วทั้งแถบข้าง แถบล่างมือถือ และแผ่นเมนู "เพิ่มเติม" ว่างตามกันหมด
-  const isBareShell = isBareShellPathname(pathname);
+  const isBareShell = flags.hideSystemMenu;
   /* ⭐ ตั้งค่าใช้แถบเดียวกับทุกระบบ (มติผู้ใช้ 2026-08-22) — รายการมาจากแผนที่
      `config/settingsNav` ไฟล์เดียวกับที่หน้าภาพรวมอ่าน ไม่ใช่รายการชุดที่สอง
      ⚠️ ต้องแยกสาขาตรงนี้เพราะ `allGroups` ไม่มีระบบ `settings` — เมนูตั้งค่าคุมด้วย
@@ -797,9 +520,12 @@ export default function AppLayout({ children }) {
   };
 
   return (
-    <div className={`app-container${navOpen ? ' sidenav-open' : ''}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
+    <div className={`app-container${navOpen ? ' sidenav-open' : ''}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}${flags.homeHub ? ' home-context' : ''}`}>
       {/* ── แถบระบบ: ตรึงบนสุดทุกความกว้าง (แถบเมนูของระบบย้ายไปอยู่นอก header) ── */}
       <header className="topnav">
+        {/* หน้าแรกไม่มีเมนูบนหัวให้ข้าม แต่มีแผงเมนูยาวทั้งหน้า ⇒ ลิงก์ข้ามไปเนื้อหา
+            เป็นชิ้นแรกของหัว (โผล่เมื่อโฟกัสด้วยคีย์บอร์ด) */}
+        {flags.homeHub && <a className="topnav-skip" href="#home-main">ข้ามไปที่เมนูทุกระบบ</a>}
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
           {/* ⭐ **ตัวคุมเมนูของระบบมีตัวเดียว อยู่บนหัว** (มติผู้ใช้ 2026-08-25) —
@@ -821,7 +547,12 @@ export default function AppLayout({ children }) {
               <X className="sidenav-burger-close" size={20} aria-hidden="true" />
             </button>
           )}
-          <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
+          <Link
+            href="/home"
+            className="topnav-brand"
+            title={flags.homeHub ? 'หน้าแรก' : 'หน้าแรก (สลับระบบ)'}
+            aria-current={flags.homeHub ? 'page' : undefined}
+          >
             {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
             <BrandMark height={34} className="topnav-brand-img" />
           </Link>
@@ -846,6 +577,10 @@ export default function AppLayout({ children }) {
             </div>
           )}
 
+          {/* ตัวสลับระบบ (≤1200) — หน้าแรกไม่วาดเลย เพราะแผงในหน้ากางเมนูทุกระบบอยู่แล้ว
+              ⚠️ ต้องไม่วาด ไม่ใช่ซ่อนด้วย CSS — ซ่อนแล้วปุ่มยังอยู่ในลำดับ Tab และ
+              โปรแกรมอ่านจอยังอ่านตัวเลขบนเมนูย่อย ซึ่ง ADR 0016 ห้ามบนหน้าแรก */}
+          {!flags.hideSystemSwitcher && (
           <div className="topnav-sys" ref={sysMenuRef}>
             <button
               type="button"
@@ -867,7 +602,7 @@ export default function AppLayout({ children }) {
                 {accessibleGroups.map((g) => {
                   const SystemIcon = g.icon || LayoutDashboard;
                   // ระบบที่ยังไม่เปิด — อยู่ในรายการต่อไปแต่กดไม่ได้ · <span> ไม่ใช่ <Link>
-                  // ที่ปิดด้วย CSS ด้วยเหตุผลเดียวกับการ์ดหน้าแรก (ดู home/page.js)
+                  // ที่ปิดด้วย CSS ด้วยเหตุผลเดียวกับแผงระบบบนหน้าแรก (ดู components/home/SystemMenuSheet.js)
                   if (g.disabled) {
                     return (
                       <span key={g.system} role="menuitem" aria-disabled="true" className="topnav-sys-item is-disabled">
@@ -952,6 +687,7 @@ export default function AppLayout({ children }) {
               </div>
             )}
           </div>
+          )}
 
           <button type="button" className="mobile-top-more" onClick={() => setMobileMoreOpen(true)} aria-label="เมนูเพิ่มเติม" aria-expanded={mobileMoreOpen}>
             <MoreHorizontal size={21} aria-hidden="true" />
@@ -984,7 +720,7 @@ export default function AppLayout({ children }) {
             ⚠️ CSS ซ่อนทั้งแถบเมื่อจอ ≤1200 แล้วกลับไปใช้แฮมเบอร์เกอร์+ลิ้นชัก
             ⚠️ แถวแรกของดรอปดาวน์คือทางไปหน้าแรกของระบบ — ไม่มีแล้วจะไปหน้านั้น
             ไม่ได้เลย เพราะปุ่มบนแถบไม่พาไปไหน (ยกเว้นระบบที่เมนูมีหน้านั้นอยู่แล้ว) */}
-        {barGroups.length > 0 && (
+        {!flags.hideSystemSwitcher && barGroups.length > 0 && (
           <nav className="topnav-systems" ref={sysBarRef} aria-label="ระบบทั้งหมด">
             {barGroups.map((g) => {
               const SystemIcon = g.icon || LayoutDashboard;
@@ -1019,7 +755,7 @@ export default function AppLayout({ children }) {
                     {/* ⚠️ **ไม่มีไอคอนบนแถวนี้** — วัดจริง 2026-08-25: ไอคอน 10 ตัวกิน
                         รวม ~210px ทำให้แถวตกสองบรรทัดที่จอ 1280 (หัวสูง 126px) · ชื่อระบบ
                         เป็นคำที่คนอ่านอยู่แล้ว ส่วนไอคอนยังอยู่ครบในดรอปดาวน์ ตัวสลับระบบ
-                        และการ์ดหน้าแรก */}
+                        และแผงระบบบนหน้าแรก */}
                     {g.label}
                     {systemCount ? <span className="topnav-count">{systemCount > 99 ? '99+' : systemCount}</span> : null}
                     <ChevronDown size={13} strokeWidth={2.5} aria-hidden="true" className="topnav-sysbar-caret" />
@@ -1103,6 +839,9 @@ export default function AppLayout({ children }) {
             {/* ที่แขวนแถบระบุตัวใบ — ต้องเป็น **ลูกตัวแรกของ .page** เหตุผลเต็มอยู่ที่
                 DetailPinBar ใน lib/ui/detailPin.js · สูง 0 จึงไม่ดันเนื้อหาลงเลย */}
             <DetailPinBar />
+            {/* ⭐ ตัวเลขชุดเดียวต่อหน้า — เปลือกดึงแล้วแจกต่อ หน้าไหนก็ห้ามยิงรอบที่สอง
+                ของตัวเอง (หน้าแรกของ ADR 0016 อ่านจากตรงนี้ · ป้ายบนเมนูใช้ก้อนเดียวกัน) */}
+            <NavCountsContext.Provider value={navCountsState}>
             <RoleContext.Provider value={role}>
               <ExtraCapsContext.Provider value={extraCaps}>
                 <TeamContext.Provider value={team}>
@@ -1114,6 +853,7 @@ export default function AppLayout({ children }) {
                 </TeamContext.Provider>
               </ExtraCapsContext.Provider>
             </RoleContext.Provider>
+            </NavCountsContext.Provider>
           </div>
           </DetailPinProvider>
         </main>
@@ -1126,11 +866,11 @@ export default function AppLayout({ children }) {
       )}
 
       {mobileMoreOpen && (
-        <div className="mobile-nav-sheet" role="dialog" aria-modal="true" aria-label={`เมนู${systemSubtitle}`}>
+        <div className="mobile-nav-sheet" role="dialog" aria-modal="true" aria-label={flags.homeHub ? 'บัญชีและการตั้งค่า' : `เมนู${systemSubtitle}`}>
           <div className="mobile-nav-sheet-header">
             <div>
               <strong>{systemSubtitle}</strong>
-              <span>บัญชีและเครื่องมือ</span>
+              <span>{flags.homeHub ? 'บัญชีและการตั้งค่า' : 'บัญชีและเครื่องมือ'}</span>
             </div>
             <button type="button" className="btn-icon" onClick={() => setMobileMoreOpen(false)} aria-label="ปิดเมนู"><X size={20} /></button>
           </div>
@@ -1141,15 +881,19 @@ export default function AppLayout({ children }) {
               ⚠️ แผ่นนี้เหลือหน้าที่เดียว = บัญชี/เครื่องมือ ซึ่งบนมือถือไม่มีทางเข้าอื่น
               (26/08: "วางเป้า" ย้ายเข้ารายการเมนูของระบบแล้ว จึงอยู่บนแถบล่างเหมือนตัวอื่น
                ไม่ต้องมีการ์ดซ้ำในแผ่นนี้อีก) */}
+          {/* บนหน้าแรกหมวดนี้มีการ์ดเดียวคือ "หน้าหลัก" ซึ่งชี้หน้าที่ยืนอยู่ ⇒ ไม่ต้องวาด */}
+          {!flags.homeHub && (
           <section className="mobile-nav-section">
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
             </div>
           </section>
+          )}
 
           <section className="mobile-nav-section mobile-account-actions">
-            <h2>บัญชีและการตั้งค่า</h2>
+            {/* หัวแผ่นบอกแล้วว่า "บัญชีและการตั้งค่า" — หมวดเดียวไม่ต้องมีหัวข้อซ้ำ */}
+            {!flags.homeHub && <h2>บัญชีและการตั้งค่า</h2>}
             <Link href="/account" onClick={() => setMobileMoreOpen(false)}><UserRound size={18} /><span>บัญชีของฉัน</span></Link>
             {/* ตั้งค่าย้ายมาอยู่กลุ่มนี้พร้อมกับเมนูผู้ใช้ (มติผู้ใช้ 2026-08-25) —
                 เดิมเป็นการ์ดในกลุ่ม "เครื่องมือ" ข้างบน · สองที่นี้ต้องตรงกันเสมอ */}

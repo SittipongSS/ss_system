@@ -14,7 +14,9 @@
 
 .row + .row { border-top: 1px solid var(--border); }
 
-.row[data-open="yes"] { background: var(--surface-2); }
+/* แถวที่กางอยู่ต้องแยกจากแถวที่พับ — พื้นของแถวในลิสต์ที่นั่งบน --panel ของโมดัล
+   🐞 เคยเป็น `--surface-2` ที่ไม่เคยมีใครประกาศ ⇒ กางแล้วพื้นไม่เปลี่ยนเลยทั้งสองธีม */
+.row[data-open="yes"] { background: var(--panel-2); }
 
 .head {
   display: flex;
