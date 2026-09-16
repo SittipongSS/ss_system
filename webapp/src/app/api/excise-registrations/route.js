@@ -1,8 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { getCurrentUser } from '@/lib/authUser';
-import { attributionTeam, canDeleteRecord, redactProductMargin, userTeams, viewScopeUser } from '@/lib/permissions';
-import { teamInClause } from '@/lib/teamScope';
+import { attributionTeam, canDeleteRecord, redactProductMargin } from '@/lib/permissions';
+import { applyExciseListScope } from '@/lib/excise/listScope';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { customerSnapshotName } from '@/lib/master/customerName';
@@ -47,9 +47,8 @@ export async function GET(request) {
      คอมเมนต์ของ canViewRecord เล่าไว้ว่าทะเบียนที่ Admin สร้างค้าง "รออนุมัติ" 6 วัน
      โดยไม่มีใครในทีมเห็น (ด่านรายแถวถูกแก้ไปแล้ว ตัวกรองของลิสต์ยังค้างของเดิม)
      · คนที่ scope 'team' แต่ยังไม่มีทีม = ไม่ต้องกรอง (เหมือน /api/orders) */
-  if (viewScopeUser(user) === 'team' && userTeams(user).length) {
-    query = query.or(`${teamInClause(user)},team.is.null`);
-  }
+  // ⚠️ ตัวกรองเดียวกับที่ป้ายตัวเลขบนเมนูใช้ (lib/excise/listScope) — สองที่ต้องตอบจำนวนเดียวกัน
+  query = applyExciseListScope(query, user);
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
