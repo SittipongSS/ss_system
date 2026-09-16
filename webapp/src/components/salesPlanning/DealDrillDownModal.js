@@ -195,7 +195,7 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
     fcTotal: "ยอดคาดการณ์เดิม: ดีลเปิด + Won + แพ้ ใช้ตรวจความแม่นยำของ FC",
     remaining: "เฉพาะดีลที่ยังเปิดอยู่ ใช้ติดตามยอดที่ยังมีโอกาสปิด",
     [PENDING_APPROVAL_METRIC]: "ใบสั่งขายยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual · นับอยู่เดือนปัจจุบันจนกว่าจะอนุมัติ",
-    [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นแล้วยอด 0 บาท) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
+    [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นรออนุมัติยอด 0 บาท) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
   }[filter.metric] || "รายการดีลตามระดับโอกาสและช่วงเวลาที่เลือก";
 
   const isPendingMetric = filter.metric === PENDING_APPROVAL_METRIC;
@@ -368,7 +368,7 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
                         {showAwaitingSoSubLine(deal) && (
                           <span
                             className={styles.awaitingSoSubLine}
-                            title="ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นแล้วยอด 0 บาท) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual"
+                            title="ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นรออนุมัติยอด 0 บาท) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual"
                           >
                             {WON_AWAITING_SO_LABEL} {money(wonAwaitingSoAmountOf(deal))}
                           </span>

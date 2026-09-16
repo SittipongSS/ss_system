@@ -189,7 +189,7 @@ export function WonAwaitingSoAmount({ amount, count, inline = false }) {
   return (
     <span
       className={inline ? "perf-won-inline" : "perf-won-sub"}
-      title="ดีลปิด Won แล้ว แต่ยังไม่มียอดจากใบสั่งขาย (ยังไม่ออก SO · มีแค่ร่าง · ถูกตีกลับหรือยกเลิก · มีแต่ใบที่ยื่นแล้วยอด 0 บาท — ใบที่อนุมัติแล้วแม้ 0 บาทถือว่าจบ) — ยังไม่นับเป็น Actual นับแค่ในยอดคาดจบงวด ด้วยมูลค่าดีลเต็ม"
+      title="ดีลปิด Won แล้ว แต่ยังไม่มียอดจากใบสั่งขาย (ยังไม่ออก SO · มีแค่ร่าง · ถูกตีกลับหรือยกเลิก · มีแต่ใบที่ยื่นรออนุมัติยอด 0 บาท — ใบที่อนุมัติแล้วแม้ 0 บาทถือว่าจบ) — ยังไม่นับเป็น Actual นับแค่ในยอดคาดจบงวด ด้วยมูลค่าดีลเต็ม"
     >
       <span className="perf-won-main">
         <span className="perf-won-tag">{WON_AWAITING_SO_LABEL}</span>{" "}

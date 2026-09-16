@@ -261,7 +261,7 @@ test('modal: metric wonAwaitingSo กรองด้วยตัวจับค�
   const chain = modal.slice(modal.indexOf('if (filter.metric === "won")'), modal.indexOf('setDeals(filtered);'));
   assert.ok(chain.indexOf('WON_AWAITING_SO_METRIC') < chain.lastIndexOf('filtered = [];'));
   assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: WON_AWAITING_SO_LABEL,/);
-  assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ \(ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นแล้วยอด 0 บาท\) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",/);
+  assert.match(modal, /\[WON_AWAITING_SO_METRIC\]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ \(ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นรออนุมัติยอด 0 บาท\) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",/);
   assert.match(modal, /amountHeader = "มูลค่าดีล \(บาท\)";/);
   assert.match(modal, /<th className="num">\{amountHeader\}<\/th>/);
   assert.match(modal, /if \(isWonAwaitingSoMetric\) return wonAwaitingSoAmountOf\(deal\);/);
