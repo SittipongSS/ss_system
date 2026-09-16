@@ -3,14 +3,17 @@
  * ก่อน mig 0361 ตอนรับใบไม่มีใครเขียน `projectValue` ⇒ ดีล Won ถือเลขที่บังเอิญอยู่ตอนนั้น
  * (ส่วนใหญ่เป็นเลขที่ AE กรอกมือ) แล้วถูกแช่แข็ง · สคริปต์นี้ตั้งให้ตรงกับใบที่ลูกค้ารับย้อนหลัง
  *
- *   node scripts/backfill-deal-fc-from-accepted-quote.mjs           # ซ้อม (ไม่เขียน)
- *   node scripts/backfill-deal-fc-from-accepted-quote.mjs --apply   # เขียนจริง
+ *   node scripts/backfill-deal-fc-from-accepted-quote.mjs                    # ซ้อม (ไม่เขียน)
+ *   node scripts/backfill-deal-fc-from-accepted-quote.mjs --apply            # เขียนจริง
+ *   node scripts/backfill-deal-fc-from-accepted-quote.mjs --apply --out=…    # เลือกที่เก็บไฟล์สำรองเอง
  *
  * ⚠️ เขียนเฉพาะ projectValue / forecastSource / forecastQuotationId / forecastManualValue
  *    — ไม่แตะ stage · wonValue · metadata ⇒ ทริกเกอร์ Actual (0353/0360) ไม่ถูกปลุก และ Actual ไม่ขยับ
  * ⚠️ ดีลที่ไม่มีใบที่ลูกค้ารับ (metadata.acceptedQuotationId ว่าง) = ข้าม ไม่เดา
  */
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 /* ⭐ "ดีลไหนถูกแก้ · แก้เป็นเท่าไหร่ · เขียนช่องไหน" อยู่ใน lib ที่มีเทสต์ครอบ (dealValueBackfill.test.mjs)
    สคริปต์นี้เหลือหน้าที่ **อ่านฐาน → โชว์ → เขียน** เท่านั้น — ห้ามเขียนสูตรยอดหรือกติกาคัดดีลซ้ำที่นี่ */
@@ -25,6 +28,7 @@ if (!url || !key) {
   process.exit(1);
 }
 const apply = process.argv.includes('--apply');
+const outArg = process.argv.find((a) => a.startsWith('--out='))?.slice('--out='.length) || '';
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 const money = (n) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
@@ -66,7 +70,12 @@ if (!apply) {
    🐞 รีวิว 16/09: เวอร์ชันแรกเขียนทับโดยไม่มีบันทึก และ `forecastManualValue ?? projectValue` ไม่เคยถอย
       เพราะคอลัมน์ NOT NULL DEFAULT 0 ⇒ ยอดเดิมกู้คืนไม่ได้ */
 const pick = (row) => Object.fromEntries(BACKFILL_FIELDS.map((k) => [k, row[k] ?? null]));
-const backupPath = `backfill-deal-fc-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+/* 🔴 ไฟล์สำรอง = ยอด FC รายดีลของลูกค้าจริง · **เขียนนอกรีโปเสมอ** (แพตเทิร์นเดียวกับ
+   scripts/merge-duplicate-customers.mjs) — ของเดิมตกกลาง webapp/ แล้ว `git add -A` รอบถัดไปดูดติดไปได้
+   ⚠️ `.gitignore` กันไว้อีกชั้นแล้วก็จริง แต่ที่เก็บที่ถูกต้องคือนอกรีโป ไม่ใช่ "ในรีโปแต่ถูก ignore" */
+const backupPath = outArg
+  || path.join(homedir(), 'ss-team', 'archive', 'backfill', `backfill-deal-fc-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+mkdirSync(path.dirname(backupPath), { recursive: true });
 writeFileSync(backupPath, JSON.stringify(targets.map((t) => ({ id: t.deal.id, code: t.deal.code, before: pick(t.deal) })), null, 2));
 console.log(`\nสำรองค่าเดิมไว้ที่ ${backupPath}`);
 

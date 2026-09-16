@@ -99,6 +99,16 @@ test('สคริปต์: ซ้อมเป็นค่าตั้งต้
   const beforeApply = SCRIPT.slice(0, SCRIPT.indexOf('if (!apply)'));
   assert.doesNotMatch(beforeApply, /\.update\(|\.insert\(/, 'ยังไม่ผ่านด่าน --apply ห้ามมีคำสั่งเขียน');
   assert.match(SCRIPT, /writeFileSync\(backupPath/, 'ต้องสำรองค่าเดิมลงไฟล์ก่อนเขียน');
+  /* 🔴 ไฟล์สำรองมียอด FC รายดีลของลูกค้าจริง — ต้องตกนอกรีโป ไม่ใช่กลาง webapp/
+     (ของเดิมเป็นชื่อไฟล์เปล่า ⇒ ลงใน cwd ⇒ `git add -A` รอบถัดไปดูดติดไปได้) */
+  assert.match(SCRIPT, /path\.join\(homedir\(\), 'ss-team', 'archive', 'backfill'/, 'ที่เก็บตั้งต้นต้องอยู่นอกรีโป');
+  assert.match(SCRIPT, /mkdirSync\(path\.dirname\(backupPath\), \{ recursive: true \}\);/, 'ต้องสร้างโฟลเดอร์ให้ก่อนเขียน');
+  assert.match(SCRIPT, /--out=/, 'ต้องเลือกที่เก็บเองได้');
+  assert.doesNotMatch(
+    SCRIPT,
+    /const backupPath = `backfill-deal-fc-/,
+    'ห้ามกลับไปเขียนชื่อไฟล์เปล่าลง cwd',
+  );
   assert.match(SCRIPT, /from\('audit_logs'\)\.insert\(/);
   assert.match(SCRIPT, /entityType: 'sales_deal',/);
   assert.match(SCRIPT, /changedKeys: BACKFILL_FIELDS,/);
