@@ -165,7 +165,9 @@ test('ถังที่มีแต่ยอดรออนุมัติไ�
 
 /* "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14) = กองที่สามของยอดคาดการณ์ — ต้องไม่ซ้อนกับกองรออนุมัติ
    ไม่งั้นยอดคาดการณ์ (actual + รออนุมัติ + รอยื่น + FC คงเหลือ) นับดีลเดียวสองรอบ */
-test('รออนุมัติกับ Won รอยื่น SO ไม่ซ้อนกัน — มีใบรออนุมัติ (รวมใบ 0 บาท) = ไม่ใช่รอยื่น', () => {
+/* ⭐ ไม่ซ้อนกัน **ด้วยยอด** (ปรับ 2026-09-16) — ใบที่ยื่นแล้วยอด 0 บาทอยู่ได้ทั้งสองกอง เพราะกองรออนุมัติ
+   ได้ 0 บาทจากมัน ⇒ ไม่มีเงินถูกนับซ้ำ · เดิมตัดด้วยจำนวนใบ ทำให้มูลค่าดีลหายจากทุกกอง */
+test('รออนุมัติกับ Won รอยื่น SO ไม่นับเงินซ้ำกัน — ใบรออนุมัติที่มียอด = ไม่ใช่รอยื่น', () => {
   const zeroPending = pendingOnlyDeal({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } });
   const draftOnly = pendingOnlyDeal({ metadata: { actualSource: 'sale_order', wonMonth: null } });
   const approvedPlusPending = pendingOnlyDeal({
@@ -174,11 +176,11 @@ test('รออนุมัติกับ Won รอยื่น SO ไม่�
   });
   const deals = [pendingOnlyDeal(), zeroPending, draftOnly, approvedPlusPending];
   assert.deepEqual(rollupPendingApproval(deals, '2026-09', { now: SEP }), { pendingApproval: 208000, pendingApprovalCount: 3 });
-  assert.deepEqual(rollupWonAwaitingSo(deals), { wonAwaitingSo: 108000, wonAwaitingSoCount: 1 }, 'มีแค่ดีลร่างที่เป็นรอยื่น');
+  assert.deepEqual(rollupWonAwaitingSo(deals), { wonAwaitingSo: 216000, wonAwaitingSoCount: 2 }, 'ดีลร่าง + ดีลที่ใบยื่นยอด 0 บาท');
   for (const d of deals) {
-    const inPending = rollupPendingApproval([d], '2026-09', { now: SEP }).pendingApprovalCount > 0;
+    const pendingMoney = rollupPendingApproval([d], '2026-09', { now: SEP }).pendingApproval;
     const inAwaiting = rollupWonAwaitingSo([d]).wonAwaitingSoCount > 0;
-    assert.ok(!(inPending && inAwaiting), 'ดีลเดียวอยู่ทั้งรออนุมัติและรอยื่นไม่ได้');
+    assert.ok(!(pendingMoney > 0 && inAwaiting), 'เงินก้อนเดียวกันอยู่สองกองไม่ได้');
     if (inAwaiting) assert.equal(wonAmountOf(d), 0, 'รอยื่น = ยังไม่มี Actual');
   }
   // สองชุดช่องไม่ทับชื่อกัน — spread ลงถังเดียวกันแล้วไม่เขียนทับกัน

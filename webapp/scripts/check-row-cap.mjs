@@ -41,6 +41,8 @@ const ROOT = process.cwd();
  * 2026-08-27 — sales_deals 34→33 หลังถอดสาขา `project_tasks` ออกจาก `/api/pm/my-work`
  * (ไม่มีจอไหนอ่านผลนั้นแล้วตั้งแต่ cb3f37a0 — ดูหัวไฟล์ route นั้น) · ตัวอ่าน
  * `project_tasks` เองห่อ `fetchAllResult` อยู่แล้ว ด่านนี้จึงไม่เคยนับ เพดานไม่ขยับ */
+/* 2026-09-16 — project_tasks 20→19 หลังหน้ารายการดีล (`api/sales-planning/deals`) ห่อ fetchInChunks + fetchAllResult
+   และเช็ก error (เดิมคอลัมน์ "ขั้นตอน" หายเงียบเมื่อดีลเกินพันใบหรือ query พัง) */
 /* 2026-09-15 — project_tasks 21→20 · sales_deals 29→28 หลังหน้ารวมโครงการ (`api/pm/projects`)
    ซอยก้อน + ไล่หน้าการอ่านงาน/ดีลของทุกโครงการ (เดิม `.in('projectId', ids)` ทั้งลิสต์ + ทิ้ง error) */
 /* 2026-09-11 — dept_requests 14→13 · projects 8→7 · customers 8→7 · sales_deals 33→32 หลังตัวโหลดคิวคำร้อง
@@ -56,7 +58,7 @@ const CAPS = {
      (`.insert(rows).select()`) และจุดที่ห่อ `fetchAll` ไว้บรรทัดก่อนหน้า เป็นความผิด
      ⇒ ตัวเลขบวมเกินจริงจนหกตารางขึ้นไปเกินเพดานเองโดยที่ไม่มีใครเพิ่มจุดอ่านใหม่เลย
      เทียบก่อน/หลังแก้ตัวนับ: sales_deals 39→34 · project_tasks 29→21 · personal_tasks 15→10 */
-  project_tasks: 20,            // 4,653 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
+  project_tasks: 19,            // 4,653 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
   notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
   personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
   sales_deals: 28,              // 353
