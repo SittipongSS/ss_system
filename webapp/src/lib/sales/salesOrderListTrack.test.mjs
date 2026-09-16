@@ -144,3 +144,53 @@ test('ไม่รู้ยอด ≠ ยอด 0 — รางยังเด�
   });
   assert.equal(steps.find((s) => s.key === 'money').label, 'เก็บเงิน 1/2');
 });
+
+// ── ใบสั่งขายย้อนหลัง (mig 0360 · มติ 14–16/09/2026) ──────────────────────────
+/* 🐞 ใบย้อนหลังมี `financeStatus` ว่างเสมอโดยออกแบบ (ไม่เข้าคิวบัญชีปิดใบ) ⇒ ก่อนแก้
+   ขั้นที่ 3 ค้างเป็น todo "ยังไม่ส่งให้บัญชี" ตลอดกาล ซึ่งอ่านเหมือนบัญชีดองงานที่ไม่มีอยู่จริง */
+test('⭐ ใบย้อนหลังไม่เข้าคิวบัญชีปิดใบ — ขั้นที่ 3 = ข้าม ไม่ใช่ todo ค้างตลอดกาล', () => {
+  const order = { origin: 'historical', status: 'approved', totalAmount: 52800, financeStatus: null, payment: cell({ count: 2 }) };
+  const { steps } = salesOrderListTrack(order);
+  const finance = steps.find((s) => s.key === 'finance');
+  assert.equal(finance.state, 'skip');
+  assert.equal(finance.note, 'ไม่เข้าคิวบัญชี');
+  // ใบปกติที่อนุมัติก่อนมีขั้นบัญชียังเป็น todo พร้อมโน้ตเหมือนเดิม — ห้ามกลืนไปด้วยกัน
+  const pipeline = salesOrderListTrack({ status: 'approved', totalAmount: 52800, financeStatus: null, payment: cell() });
+  assert.equal(pipeline.steps[2].state, 'todo');
+  assert.equal(pipeline.steps[2].note, 'ยังไม่ส่งให้บัญชี');
+});
+
+test('ใบย้อนหลังที่ยังมีงวดค้าง — ขั้นเก็บเงินยังเดินตามปกติ', () => {
+  const { steps } = salesOrderListTrack({
+    origin: 'historical', status: 'approved', totalAmount: 52800, payment: cell({ count: 2 }),
+  });
+  assert.deepEqual(steps.map((s) => `${s.key}:${s.state}`), ['doc:done', 'money:now', 'finance:skip']);
+  assert.equal(steps[1].label, 'เก็บเงิน 0/2');
+});
+
+/* ⭐ ยกเว้นด่านเงิน + ไม่มีงวด = เงินเก็บนอกระบบไปแล้ว ไม่มีอะไรให้รอ (มติข้อ 13)
+   ⚠️ การยกเว้นปลดแค่ *ด่านนัดบริการ* — ใบที่ยกเว้นแต่ยังคีย์งวดไว้ ต้องเก็บงวดนั้นตามปกติ */
+test('⭐ ใบย้อนหลังที่ยกเว้นด่านเงินและไม่มีงวด — ขั้นเก็บเงิน = ข้าม และทั้งรางจบ', () => {
+  const exempt = {
+    origin: 'historical', status: 'approved', totalAmount: 144000,
+    paymentGateExemptAt: '2026-09-16T03:00:00.000Z', payment: null,
+  };
+  const { steps } = salesOrderListTrack(exempt);
+  assert.deepEqual(steps.map((s) => `${s.key}:${s.state}`), ['doc:done', 'money:skip', 'finance:skip']);
+  assert.equal(steps[1].label, 'ยกเว้นด่านเงิน');
+  assert.equal(steps[1].note, 'ไม่มีงวดที่ต้องเก็บ');
+  assert.equal(salesOrderTrackSummary(exempt).label, 'เสร็จสมบูรณ์');
+
+  // ยกเว้นแล้วแต่ยังมีงวดที่คีย์ไว้ = ยังต้องเก็บ
+  const withRows = { ...exempt, payment: cell({ count: 1 }) };
+  assert.equal(salesOrderListTrack(withRows).steps[1].state, 'now');
+});
+
+/* ร่องรอยการยกเว้นบนใบ pipeline เป็นไปไม่ได้ (CHECK ของ 0360 ห้ามไว้) — กันอีกชั้น
+   เผื่อข้อมูลปลอม/ฟิกซ์เจอร์เก่า ไม่งั้นใบปกติจะข้ามขั้นเก็บเงินไปเฉย ๆ */
+test('ใบ pipeline ที่มีร่องรอยยกเว้นติดมา ต้องไม่ข้ามขั้นเก็บเงิน', () => {
+  const { steps } = salesOrderListTrack({
+    status: 'approved', totalAmount: 1000, paymentGateExemptAt: '2026-09-16T03:00:00.000Z', payment: null,
+  });
+  assert.equal(steps[1].state, 'todo');
+});

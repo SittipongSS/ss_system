@@ -374,6 +374,9 @@ export default function DealOverviewPage() {
      ดีลเก่าที่สร้างเป็น Won = "ดีลเก่าจากระบบเดิม · ไม่มีใบสั่งขายในระบบนี้" (มติผู้ใช้ 2026-09-15) — ส่ง `deal`
      ให้ตัวเลือกคำจำแนกด้วยตัวบ่งชี้กลางตัวเดียวกับแดชบอร์ด (isLegacyWonAtCreate) ห้ามตัดสินเองในหน้านี้
      🐞 เดิม "ต่าง ฿(FC ทั้งก้อน)" ขึ้นทุกดีลที่ SO ยังเป็นร่าง/รออนุมัติ อ่านเป็นพลาดเป้าทั้งใบ */
+  const valueItemsTotal = (deal?.valueItems || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const valueItemsDiffer = (deal?.valueItems || []).length > 0
+    && Math.abs(valueItemsTotal - (Number(deal?.projectValue) || 0)) > 0.005;
   const wonHint = wonDealForecastHint({
     deal,
     forecast: deal?.projectValue,
@@ -1054,8 +1057,23 @@ export default function DealOverviewPage() {
             <DetailCard
               icon={Layers} eyebrow="Forecast breakdown"
               title="มูลค่าคาดการณ์แยกตามหมวดสินค้า"
-              meta={`${deal.valueItems.length} หมวด · รวม ${money(deal.projectValue)}`}
+              /* ⚠️ "รวม" = ผลบวกของแถวในตารางนี้ ไม่ใช่ยอดดีล — ดีลที่ลูกค้ารับใบแล้วยอดดีลเดินตามใบ (mig 0361
+                 · มติผู้ใช้ 2026-09-16) ตารางนี้จึงเป็นสิ่งที่กรอกไว้ก่อนรับใบ · เดิมเขียน projectValue ⇒ หัวการ์ด
+                 ขัดกับแถวของตัวเองทันทีที่ยอดดีลเปลี่ยนตามใบ */
+              meta={`${deal.valueItems.length} หมวด · รวม ${money(valueItemsTotal)}`}
             >
+              {/* ⚠️ คำต้องตรงกับที่มาจริงของยอด — ดีล **เปิด** ที่ FC เดินตามใบที่อนุมัติภายใน ยังไม่มีใบที่
+                  ลูกค้ารับ ⇒ เขียน "ใบที่ลูกค้ารับ" จะโกหกบนจอ · ไม่รู้ที่มาก็บอกแค่ยอด ไม่เดา */}
+              {valueItemsDiffer && (
+                <p className="cell-sub">
+                  ยอดดีลตอนนี้ {money(deal.projectValue)}
+                  {acceptedQuote
+                    ? ` ตามใบเสนอราคาที่ลูกค้ารับ${acceptedQuote.quoteNumber ? ` (${acceptedQuote.quoteNumber})` : ""} — ตารางนี้คือที่กรอกไว้ก่อนรับใบ`
+                    : data.forecastSource?.source === "quotation"
+                      ? ` ตามใบเสนอราคาที่ FC เดินตาม${data.forecastSource.quotation?.quoteNumber ? ` (${data.forecastSource.quotation.quoteNumber})` : ""} — ตารางนี้คือที่กรอกไว้เอง`
+                      : " — ตารางนี้รวมได้ไม่เท่ากัน"}
+                </p>
+              )}
               {/* ตารางชั้นใหม่: TableScroll วาดพื้นเอง ไม่มี premium-glass-table/premium-table
                   ครอบ (สองคลาสนั้นเป็นชั้นเก่าที่ audit:ui รูดเพดานลงอยู่) */}
               <TableScroll surface="embedded" cells="stacked">
