@@ -74,7 +74,7 @@ test('ระบบ support ประกาศครบทั้งสองท�
   assert.match(entry, /isVisible: \(\) => true/, 'ระบบนี้ต้องเห็นได้ทุกคน ไม่มีเงื่อนไข cap');
   assert.match(entry, /landing: \(\) => '\/support'/);
 
-  const layoutSrc = readFileSync(join(here, '../../components/AppLayout.js'), 'utf8');
+  const layoutSrc = readFileSync(join(here, '../../config/menuRegistry.js'), 'utf8');
   assert.match(layoutSrc, /system: 'support'/, 'AppLayout ต้องมีกลุ่มเมนูของระบบนี้');
   assert.match(layoutSrc, /cap: 'issues:report'/);
 });

@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 /** ไอคอนที่เมนูหลักประกาศไว้สำหรับ href นั้น = ตัวจริงที่ทั้งระบบต้องยึด */
 function navIcon(href) {
-  const nav = read('src/components/AppLayout.js');
+  const nav = read('src/config/menuRegistry.js');
   const line = nav.split('\n').find((l) => l.includes(`href: '${href}'`));
   assert.ok(line, `หาเมนู ${href} ใน AppLayout ไม่เจอ — เทสต์นี้จะกลายเป็นเทสต์เปล่า`);
   const icon = line.match(/icon:\s*(\w+)/)?.[1];
