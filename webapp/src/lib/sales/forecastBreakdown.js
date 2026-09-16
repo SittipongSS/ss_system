@@ -234,7 +234,10 @@ export function forecastBreakdownOfDeal(deal, context = {}) {
     fallbackQuotationLines = null, fallbackQuoteNumber = null,
   } = context;
   const total = num(deal?.projectValue);
-  const followsQuotation = deal?.forecastSource === 'quotation';
+  /* ⭐ ดีลที่ลูกค้ารับใบแล้ว = เดินตามบรรทัดของใบนั้นเสมอ (มติผู้ใช้ 2026-09-16 "นับจากใบที่ลูกค้ารับ")
+     🐞 รีวิว 16/09: เดิมตัดสินจาก forecastSource อย่างเดียว ⇒ ดีล Won ที่ยังเป็น manual (129 จาก 171)
+        ใช้ตารางรายหมวดที่ AE กรอกก่อนรับใบ ทั้งที่ route โหลดบรรทัดของใบที่รับมาให้แล้ว */
+  const followsQuotation = deal?.forecastSource === 'quotation' || Boolean(deal?.metadata?.acceptedQuotationId);
 
   const own = followsQuotation
     ? quotationLineRows(quotationLines, productById, productByFg)

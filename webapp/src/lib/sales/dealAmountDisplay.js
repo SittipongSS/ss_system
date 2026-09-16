@@ -83,8 +83,9 @@ export function sumDealDisplay(deals = [], { inPeriod = null, now } = {}) {
                                                         / "ตรงกับคาดการณ์เมื่ออนุมัติครบ"
      'awaiting_so'    ไม่มีทั้งสองอย่าง (Won รอยื่น SO) → "คาดการณ์ ฿V · ยังไม่มีใบสั่งขายที่ยื่น"
                                                         ไม่มีตัวเลขต่าง — ยังไม่มีอะไรให้เทียบ
-                      หรือ มีแถวอนุมัติ/ยื่นแล้วแต่ยอดใบเป็น 0 + คาดการณ์ > 0 (มติผู้ใช้ 2026-09-16)
-                                                      → "คาดการณ์ ฿V · ใบสั่งขายที่อนุมัติ (หรือที่ยื่น) ยังเป็น 0 บาท"
+                      หรือ มีแต่ใบที่ **ยื่นแล้ว** ยอด 0 บาท + คาดการณ์ > 0 (มติผู้ใช้ 2026-09-16)
+                                                      → "คาดการณ์ ฿V · ใบสั่งขายที่ยื่นยังเป็น 0 บาท"
+                                                        (ใบที่ **อนุมัติแล้ว** ยอด 0 บาท = ส่วนลด 100% → กรณี 'actual')
                                                         ⚠️ ไม่มีแถว SO + คาดการณ์ ≤ 0 ยังได้ชนิดนี้ (คำจริงตามเอกสาร)
                                                         แต่กอง Won รอยื่น SO ไม่นับดีลมูลค่า 0 ⇒ ห้ามใช้ kind นับกอง
      'legacy_no_so'   ไม่มีทั้งสองอย่าง + ดีลเก่าที่สร้างเป็น Won (isLegacyWonAtCreate · มติผู้ใช้ 2026-09-15)
@@ -131,7 +132,8 @@ export function wonDealForecastHint({
   const actualValue = Math.max(0, Number(actual) || 0);
   const pendingValue = Math.max(0, Number(pendingApproval) || 0);
   const hasPending = pendingValue > 0 || (Number(pendingApprovalCount) || 0) > 0;
-  const hasApproved = actualValue > 0 || (Number(actualCount) || 0) > 0;
+  const actualCountValue = Number(actualCount) || 0;
+  const hasApproved = actualValue > 0 || actualCountValue > 0;
   const forecastText = `คาดการณ์ ${fmtMoney(forecastValue)}`;
 
   if (!hasApproved && !hasPending) {
@@ -156,12 +158,22 @@ export function wonDealForecastHint({
   /* มี SO อนุมัติแล้วแต่ยอด 0 บาท (ใบ DEMO · ค่าออกแบบกลิ่นก่อนบรีฟ) บนดีลที่ FC > 0 — มติผู้ใช้ 2026-09-16
      แท็บผลงานขายนับดีลแบบนี้เป็น "Won รอยื่น SO" (isWonAwaitingSo) ⇒ หน้าดีลต้องพูดตรงกัน ไม่ใช่ "ต่าง ฿(FC เต็ม)"
      ⚠️ ดีลเก่าที่สร้างเป็น Won ไม่เข้าทางนี้ — กองนั้นตัดดีลเก่าทิ้ง (isLegacyWonAtCreate) */
+  /* ใบสั่งขายที่ **อนุมัติแล้ว** ยอด 0 บาท = ส่วนลด 100% ที่ถูกต้อง (มติผู้ใช้ 2026-09-16 รอบบ่าย)
+     ⇒ ดีลจบแล้ว ไม่อยู่ในกอง "Won รอยื่น SO" อีก · แต่ห้ามขึ้นแค่ "ต่าง ฿(FC เต็ม)" ซึ่งอ่านเหมือนพลาดเป้าทั้งใบ
+     (ยอดคาดการณ์ของดีลแบบนี้จะเท่ากับใบเองหลัง mig 0361 + backfill ⇒ ส่วนต่างเป็น 0 เอง) */
+  if (actualValue <= 0 && actualCountValue > 0 && forecastValue > 0) {
+    return {
+      kind: WON_HINT_KINDS.ACTUAL,
+      gap: toSatang(forecastValue) || 0,
+      text: `${forecastText} · ใบสั่งขายที่อนุมัติเป็น 0 บาท (ส่วนลด 100%)`,
+    };
+  }
+  /* ใบที่ **ยื่นแล้วแต่ยังไม่อนุมัติ** ยอด 0 บาท — ยังไม่มีเงินอยู่กองไหนเลย ⇒ ยังอยู่ในกองรอยื่น SO */
   if (actualValue <= 0 && forecastValue > 0 && !isLegacyWonAtCreate(deal)) {
     return {
       kind: WON_HINT_KINDS.AWAITING_SO,
       gap: null,
-      // ใบที่ยื่นแล้วยอด 0 บาท พูดคนละคำกับใบที่อนุมัติแล้วยอด 0 บาท — ทั้งคู่ยังอยู่ในกอง "Won รอยื่น SO"
-      text: `${forecastText} · ใบสั่งขายที่${hasPending ? 'ยื่น' : 'อนุมัติ'}ยังเป็น 0 บาท`,
+      text: `${forecastText} · ใบสั่งขายที่ยื่นยังเป็น 0 บาท`,
     };
   }
   const gap = toSatang(forecastValue - actualValue) || 0;
