@@ -6013,9 +6013,13 @@ button.empty-state { width: 100%; font: inherit; }
   padding: var(--space-5) 22px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%),
-    var(--panel);
+  /* ⭐ **หัวหน้าเรียบ พื้นเดียว** (มติเจ้าของ 2026-09-16 — รอบนี้ถอดทั้งระบบ)
+     🐞 ของเดิมทา radial ของ `--accent` 12% ที่มุมขวาบน ทับลงบนพื้นหน้าที่**มีไล่สี
+       ของตัวเองอยู่แล้วสี่มุม** (`body` บรรทัด ~838) ⇒ ได้มุมขวาบนที่ขุ่นกว่าที่อื่น
+       โดยไม่ได้หมายถึงอะไรเลย · แสงที่ไม่ได้บอกอะไรคือสิ่งรบกวน ไม่ใช่การตกแต่ง
+     ⚠️ เขียน `background` ทั้งช็อตเสมอ ห้ามทับด้วย `background-image: none` ทีหลัง —
+       shorthand กับ longhand เป็นคนละคุณสมบัติ คนอ่านสไตล์ชีตจะหาไม่เจอว่าพื้นมาจากไหน */
+  background: var(--panel);
   display: flex;
   justify-content: space-between;
   align-items: center;

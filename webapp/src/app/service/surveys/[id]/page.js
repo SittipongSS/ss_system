@@ -497,8 +497,6 @@ export default function SurveySheetPage({ params }) {
           ⚠️ **ไม่มีป้ายสถานะของใบและไม่มีปุ่มระดับใบบนหัว** — ทั้งสองอย่างอยู่การ์ด
           จัดการที่เดียว · ป้ายที่นี่เป็นเรื่องของ **นัด** ซึ่งไม่มีที่อยู่อื่น */}
       <DetailOverview
-        /* มติเจ้าของ 2026-09-16: จอนี้เลิกใช้แสงส้มที่มุมหัวใบ — พื้นหน้าจอนี้ไล่สีอยู่แล้ว */
-        flat
         eyebrow="ใบประเมินพื้นที่ · ส่งถึง TS"
         title={[req.docNo, req.title].filter(Boolean).join(" · ")}
         description={data?.customer?.name ? (

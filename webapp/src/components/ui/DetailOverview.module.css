@@ -2,18 +2,12 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%),
-    var(--panel);
-  box-shadow: var(--glass-shadow);
-}
-
-/* ⭐ หัวการ์ดเรียบ — พื้นเดียว ไม่มี radial ที่มุมขวาบน (มติเจ้าของ 2026-09-16)
-   ⚠️ ต้องเขียน `background` ทั้งช็อต ไม่ใช่ `background-image: none` อย่างเดียว —
-      ย่อ/ขยายของ shorthand ข้างบนเป็นคนละคุณสมบัติกัน คนอ่านสไตล์ชีตทีหลัง
-      จะหาไม่เจอว่าพื้นมาจากไหน */
-.flat {
+  /* ⭐ **หัวใบเรียบ พื้นเดียว ไม่มี radial ที่มุมขวาบน** (มติเจ้าของ 2026-09-16)
+     เดิมจอประเมินพื้นที่ขอเรียบด้วยคลาส `.flat` จอเดียว · รอบนี้ถอดทั้งระบบ
+     ⇒ ไม่มีคลาสให้ขอแล้ว เพราะไม่มีอะไรให้ถอดออกอีก (เหตุผลเต็มอยู่ที่
+     `.premium-header` ใน globals.css — หัวสองตัวนี้ทาแสงชุดเดียวกัน) */
   background: var(--panel);
+  box-shadow: var(--glass-shadow);
 }
 
 .overviewHeading {
