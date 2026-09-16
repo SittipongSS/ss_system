@@ -83,8 +83,8 @@ export function sumDealDisplay(deals = [], { inPeriod = null, now } = {}) {
                                                         / "ตรงกับคาดการณ์เมื่ออนุมัติครบ"
      'awaiting_so'    ไม่มีทั้งสองอย่าง (Won รอยื่น SO) → "คาดการณ์ ฿V · ยังไม่มีใบสั่งขายที่ยื่น"
                                                         ไม่มีตัวเลขต่าง — ยังไม่มีอะไรให้เทียบ
-                      หรือ มีแถวอนุมัติแต่ Actual 0 + คาดการณ์ > 0 (มติผู้ใช้ 2026-09-16)
-                                                      → "คาดการณ์ ฿V · ใบสั่งขายที่อนุมัติยังเป็น 0 บาท"
+                      หรือ มีแถวอนุมัติ/ยื่นแล้วแต่ยอดใบเป็น 0 + คาดการณ์ > 0 (มติผู้ใช้ 2026-09-16)
+                                                      → "คาดการณ์ ฿V · ใบสั่งขายที่อนุมัติ (หรือที่ยื่น) ยังเป็น 0 บาท"
                                                         ⚠️ ไม่มีแถว SO + คาดการณ์ ≤ 0 ยังได้ชนิดนี้ (คำจริงตามเอกสาร)
                                                         แต่กอง Won รอยื่น SO ไม่นับดีลมูลค่า 0 ⇒ ห้ามใช้ kind นับกอง
      'legacy_no_so'   ไม่มีทั้งสองอย่าง + ดีลเก่าที่สร้างเป็น Won (isLegacyWonAtCreate · มติผู้ใช้ 2026-09-15)
@@ -144,7 +144,8 @@ export function wonDealForecastHint({
       text: `${forecastText} · ยังไม่มีใบสั่งขายที่ยื่น`,
     };
   }
-  if (hasPending) {
+  // ดีลเก่าที่สร้างเป็น Won ไม่เข้ากอง "Won รอยื่น SO" ⇒ ใบยื่นยอด 0 บาทของมันยังพูดแบบเดิม (ตัวเลขจริงชนะธง)
+  if (pendingValue > 0 || (hasPending && isLegacyWonAtCreate(deal))) {
     const gap = toSatang(forecastValue - actualValue - pendingValue) || 0;
     return {
       kind: WON_HINT_KINDS.WHEN_APPROVED,
@@ -159,7 +160,8 @@ export function wonDealForecastHint({
     return {
       kind: WON_HINT_KINDS.AWAITING_SO,
       gap: null,
-      text: `${forecastText} · ใบสั่งขายที่อนุมัติยังเป็น 0 บาท`,
+      // ใบที่ยื่นแล้วยอด 0 บาท พูดคนละคำกับใบที่อนุมัติแล้วยอด 0 บาท — ทั้งคู่ยังอยู่ในกอง "Won รอยื่น SO"
+      text: `${forecastText} · ใบสั่งขายที่${hasPending ? 'ยื่น' : 'อนุมัติ'}ยังเป็น 0 บาท`,
     };
   }
   const gap = toSatang(forecastValue - actualValue) || 0;

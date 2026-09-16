@@ -99,18 +99,24 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
     return prevMatrix?.people.find((x) => x.id === row.id)?.actual || null;
   };
 
-  // เดือนที่ส่งให้ modal รายดีล: งวดเดือน = เดือนนั้น, งวดใหญ่กว่า = ทั้งปี (กรองปีแทน)
+  /* เดือนที่ส่งให้ modal รายดีล: งวดเดือน = เดือนนั้น · งวดที่กว้างกว่า = **รายชื่อเดือนของงวดนั้น**
+     🐞 เดิมงวดไตรมาสส่ง month = null แล้วลิ้นชักตกไปกิ่ง "ทั้งปี" ⇒ กด Q3 ได้รายการ 12 เดือน
+        ยอดในลิ้นชักไม่ตรงกับช่องที่กด (ตรวจ 2026-09-16) */
   const dealMonth = kind === "month" ? `${year}-${String(win.startIdx + 1).padStart(2, "0")}` : null;
+  const winMonths = (matrix.company?.months || []).slice(win.startIdx, win.endIdx + 1);
   // ยอดรออนุมัติอยู่ที่เดือนปัจจุบันเวลาไทยเท่านั้น ⇒ เจาะที่เดือนนั้นเสมอ ไม่ใช่ทั้งปี/ไตรมาส
   const pendingMonth = currentMonth();
   /* แถวคน = (ใคร, ทีมไหน) (มติผู้ใช้ 2026-09-14 "ทีมตามดีล") — ตัวตนส่งจากช่อง `row.ownerId`
      (id ของแถวเป็นคีย์ผสม ห้ามแกะ/ห้ามส่งเป็น ownerId ไม่งั้นลิ้นชักว่างทั้งที่ช่องมียอด) ·
      `teamScoped` ให้ลิ้นชักนับเฉพาะดีลของทีมแถวนั้น ⇒ คนที่มีดีลหลายทีม ยอดในลิ้นชัก = ช่องที่กด
      แถว legacy ที่ไม่มี ownerId ยังจับด้วยชื่อ + ทีม · แถวทีม/บริษัทส่งเหมือนเดิม */
-  const openMetricDeals = (row, isTeam, metric, { month = dealMonth, dealYear = String(year) } = {}) => {
+  const openMetricDeals = (row, isTeam, metric, { month = dealMonth, dealYear = String(year), months = winMonths } = {}) => {
     const isPerson = !isTeam && row.id !== "company";
     onDealDrill?.({
       month,
+      months,
+      // คำของงวดที่ตาเห็นบนแถบ (เดือน · Q3 2026 · ปี 2026) — ลิ้นชักเคยเดาเองจากปี ⇒ งวดไตรมาสขึ้นหัวว่า "ทั้งปี"
+      periodText: month === pendingMonth && months?.length === 1 ? month : periodLabel(win),
       year: dealYear,
       ownerId: isPerson ? row.ownerId || null : null,
       ownerName: isPerson ? row.name : null,
@@ -119,6 +125,17 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
       metric,
       label: row.id === "company" ? "รวมทั้งบริษัท" : isTeam ? `ทีม ${row.team}` : row.name,
     });
+  };
+
+  /* เป้าทีมกับผลรวมเป้ารายคนไม่ตรงกัน — ต้องเทียบ **รายเดือนในงวด** และ **ทั้งสองทาง**
+     🐞 เทียบจากยอดรวมทั้งงวดทางเดียว: เดือนที่ทีมตั้งสูงกว่าไปหักล้างเดือนที่ต่ำกว่า ⇒ คำเตือนเงียบทั้งที่แถวไม่ตรงกัน */
+  const targetMismatch = (row) => {
+    const person = row.targetPersonSum || [];
+    for (let i = win.startIdx; i <= win.endIdx; i += 1) {
+      const p = Number(person[i] || 0);
+      if (p > 0 && Math.abs(p - Number(row.target?.[i] || 0)) > 0.5) return true;
+    }
+    return false;
   };
 
   const Row = ({ row, isTeam = false, isTotal = false, isRest = false }) => {
@@ -151,7 +168,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
       <button
         type="button"
         className="perf-pending-drill"
-        onClick={() => openMetricDeals(row, isTeam, "pendingApproval", { month: pendingMonth, dealYear: pendingMonth.slice(0, 4) })}
+        onClick={() => openMetricDeals(row, isTeam, "pendingApproval", { month: pendingMonth, months: [pendingMonth], dealYear: pendingMonth.slice(0, 4) })}
         aria-label={`ดูรายละเอียด ${label} · ${pendingName}`}
       >
         {pendingAmount}
@@ -202,7 +219,16 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
             <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-normal)" }}>{row.team}</span>
           )}
         </td>
-        <td className={cellClass("num mono")}>{money(s.target)}</td>
+        <td className={cellClass("num mono")}>
+          {money(s.target)}
+          {/* เป้าระดับทีมชนะเป้ารายคนเสมอ (มติผู้ใช้ 2026-09-16 · api dashboard) — แต่ต้องบอกบนจอ
+              ไม่งั้นแถวทีมไม่เท่าผลรวมแถวคนใต้มันโดยไม่มีคำอธิบาย (ของจริง ต.ค.–ธ.ค. 2026 ต่างทีมละ ~7 แสน) */}
+          {isTeam && targetMismatch(row) && (
+            <span className="perf-rest-note" title={`เป้าที่ตั้งรายคนในทีมนี้รวมกันได้ ${money(s.targetPersonSum)} แต่แถวนี้ใช้เป้าระดับทีมที่ตั้งไว้ ${money(s.target)} — แก้ได้ที่หน้าวางเป้า`}>
+              รายคนรวม {money(s.targetPersonSum)}
+            </span>
+          )}
+        </td>
         {carry && <td className={cellClass("num mono")} style={{ color: s.carry > 0 ? "var(--red)" : "var(--text-3)" }}>{s.carry > 0 ? money(s.carry) : NA}</td>}
         {carry && <td className={cellClass("num mono")} style={{ fontWeight: "var(--fw-semibold)" }}>{money(s.mustClose)}</td>}
         <td className={cellClass("num")}>{metricButton(s.fcTotal, "fcTotal", "var(--blue)", "FC Total")}</td>

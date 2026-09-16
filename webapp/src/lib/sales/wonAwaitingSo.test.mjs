@@ -43,9 +43,14 @@ test('เดือน = wonMonthOf (ถังเดียวกับ FC Total �
   assert.equal(wonAwaitingSoMonthOf(won({ confirmedAt: null })), '2026-10');
 });
 
-test('มี SO รออนุมัติ = ไม่ใช่รอยื่น (ย้ายไปกองรออนุมัติ) — รวมใบ 0 บาทที่นับจากจำนวนใบ', () => {
+/* ตัดกองด้วย **ยอด** ไม่ใช่จำนวนใบ (ตรวจ 2026-09-16) — ใบที่ยื่นแล้วยอด 0 บาทเคยเตะดีลออกจากทั้งสองกอง
+   ⇒ มูลค่าดีลทั้งก้อนหายจากคาดจบงวด โดยไม่มีช่องไหนบนจอรับไว้ */
+test('มี SO รออนุมัติที่มียอด = ไม่ใช่รอยื่น (ย้ายไปกองรออนุมัติ) · ใบยื่นแล้วยอด 0 บาท = ยังรอยื่น', () => {
   assert.equal(isWonAwaitingSo(won({ metadata: { actualSource: 'sale_order', soPendingAmount: 120000, soPendingCount: 1 } })), false);
-  assert.equal(isWonAwaitingSo(won({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } })), false);
+  const zeroPending = won({ metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } });
+  assert.equal(isWonAwaitingSo(zeroPending), true);
+  assert.equal(wonAwaitingSoAmountOf(zeroPending), 120000);
+  assert.equal(pendingApprovalAmountOf(zeroPending), 0, 'กองรออนุมัติยังได้ 0 บาทเหมือนเดิม — ยอดไม่ถูกนับสองที่');
 });
 
 test('มี SO อนุมัติที่มียอดแล้ว = ไม่ใช่รอยื่น', () => {

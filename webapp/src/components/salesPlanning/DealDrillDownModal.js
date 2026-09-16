@@ -18,11 +18,18 @@ import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { fmtDateTime, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import { useRole } from "@/lib/roleContext";
+import { salesPlanningViewScope } from "@/lib/salesPlanning";
 import styles from "./DealDrillDownModal.module.css";
 
-// งวดของ drill: เดือนเดียว (filter.month) · ทั้งปี (filter.year) · ไม่ระบุ = ทุกงวด
-const periodMatcher = (filter) => (mk) => (filter.month ? mk === filter.month
-  : (filter.year ? String(mk || "").startsWith(`${filter.year}-`) : true));
+/* งวดของ drill: รายชื่อเดือนของงวด (filter.months — ไตรมาส/ช่วง) · เดือนเดียว (filter.month) ·
+   ทั้งปี (filter.year) · ไม่ระบุ = ทุกงวด
+   🐞 ตรวจ 2026-09-16: งวด "ไตรมาส" ส่ง month = null มา ⇒ ตกไปกิ่งปี ⇒ กดยอด Q3 แล้วได้รายการ
+      ทั้ง 12 เดือน (ยอดในลิ้นชัก ~4 เท่าของช่องที่กด) · ตัวส่งจึงส่งเดือนของงวดมาตรง ๆ */
+const periodMatcher = (filter) => (mk) => (Array.isArray(filter.months) && filter.months.length
+  ? filter.months.includes(mk)
+  : (filter.month ? mk === filter.month
+    : (filter.year ? String(mk || "").startsWith(`${filter.year}-`) : true)));
 
 /* ⭐ metric "pendingApproval" = ยอด SO รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353)
    กติกาชุดเดียวกับ API แดชบอร์ด (lib/sales/pendingApprovalRollup): ดีล Won ที่มีใบรออนุมัติ
@@ -31,7 +38,7 @@ const periodMatcher = (filter) => (mk) => (filter.month ? mk === filter.month
 const PENDING_APPROVAL_METRIC = "pendingApproval";
 
 /* ⭐ metric "wonAwaitingSo" = ดีล "Won รอยื่น SO" (มติผู้ใช้ 2026-09-14)
-   ดีลปิด Won แล้วแต่ยังไม่มี SO ที่อนุมัติหรือรออนุมัติ — ยอดคาดการณ์นับด้วยมูลค่าดีล
+   ดีลปิด Won แล้วแต่ยังไม่มีเงินจากใบสั่งขายเลย (Actual 0 และยอดใบรออนุมัติ 0) — ยอดคาดการณ์นับด้วยมูลค่าดีล
    กติกาชุดเดียวกับ API แดชบอร์ด (lib/sales/wonAwaitingSoRollup): เดือน = wonMonthOf
    (ถังเดียวกับที่ดีล Won นั้นอยู่) ⇒ ยอดบนแถว = มูลค่าดีล ไม่ใช่ Actual และไม่ใช่ยอดรออนุมัติ
    เปิดด้วย filter รูปเดียวกับ metric อื่น: { metric: "wonAwaitingSo", month | year, ownerId, ownerName, team, teamScoped, label } */
@@ -41,6 +48,7 @@ const WON_AWAITING_SO_METRIC = "wonAwaitingSo";
 const NO_TEAM_ROW = "ไม่ระบุทีม";
 
 export default function DealDrillDownModal({ filter, onClose }) {
+  const role = useRole();
   const [deals, setDeals] = useState([]);
   // เวลาที่ใช้ตัดสินเดือนของยอดรออนุมัติ — ตัวเดียวกับตอนกรอง ไม่ใช่ new Date() ตอนเรนเดอร์
   const [pendingAsOf, setPendingAsOf] = useState(null);
@@ -58,7 +66,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
       setLoading(true);
       setLoadError(false);
       try {
-        const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.origin), {
+const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.origin), {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error("โหลดข้อมูลผิดพลาด");
@@ -187,7 +195,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
     fcTotal: "ยอดคาดการณ์เดิม: ดีลเปิด + Won + แพ้ ใช้ตรวจความแม่นยำของ FC",
     remaining: "เฉพาะดีลที่ยังเปิดอยู่ ใช้ติดตามยอดที่ยังมีโอกาสปิด",
     [PENDING_APPROVAL_METRIC]: "ใบสั่งขายยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual · นับอยู่เดือนปัจจุบันจนกว่าจะอนุมัติ",
-    [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มียอดจากใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · มีแค่ใบ 0 บาท) และไม่มีใบรออนุมัติ — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
+    [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มีเงินจากใบสั่งขายเลย (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบยอด 0 บาท ทั้งที่อนุมัติแล้วและที่ยื่นรออนุมัติ) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
   }[filter.metric] || "รายการดีลตามระดับโอกาสและช่วงเวลาที่เลือก";
 
   const isPendingMetric = filter.metric === PENDING_APPROVAL_METRIC;
@@ -227,13 +235,22 @@ export default function DealDrillDownModal({ filter, onClose }) {
     const pendingMonth = pendingApprovalMonthOf(deal, pendingAsOf);
     return Boolean(pendingMonth) && inPeriod(pendingMonth);
   };
+  const viewScope = salesPlanningViewScope(role);
+  const scopeNote = viewScope === 'team'
+    ? "รายการนี้แสดงเฉพาะดีลของทีมคุณ — ตัวเลขบนแผงเป็นยอดทั้งบริษัท จึงมากกว่ายอดรวมด้านล่างได้"
+    : viewScope === 'own'
+      ? "รายการนี้แสดงเฉพาะดีลที่คุณเป็นเจ้าของ — ตัวเลขบนแผงเป็นยอดทั้งบริษัท จึงมากกว่ายอดรวมด้านล่างได้"
+      : null;
+
   const statusCounts = deals.reduce((counts, deal) => {
     if (isWonDeal(deal)) counts.won += 1;
     else if (deal.stage === "lost") counts.lost += 1;
     else if (isOpenDeal(deal)) counts.open += 1;
     return counts;
   }, { open: 0, won: 0, lost: 0 });
-  const periodLabel = filter.month || (filter.year ? `ทั้งปี ${filter.year}` : "ทั้งปี");
+  /* ป้ายงวด: คำที่แถบบนจอใช้อยู่ (filter.periodText) มาก่อนเสมอ — เดิมเดาจาก month/year เอง ⇒ งวดไตรมาส
+     ขึ้นหัวว่า "ทั้งปี" ทั้งที่รายการเป็นแค่ไตรมาสเดียว */
+  const periodLabel = filter.periodText || filter.month || (filter.year ? `ทั้งปี ${filter.year}` : "ทั้งปี");
   const ownerLabel = filter.label || filter.ownerId || filter.team || "รวมทุกทีม";
 
   return (
@@ -254,6 +271,9 @@ export default function DealDrillDownModal({ filter, onClose }) {
               <span className="ui-badge fc-detail-period">{periodLabel}</span>
             </div>
             <p>{ownerLabel}</p>
+            {/* 🐞 ตัวเลขบนแท็บผลงานขายเป็นยอดทั้งบริษัท แต่ API รายการดีลกรองตามสิทธิ์ (ae = ของตัวเอง · senior_ae/ac = ทีม)
+                ⇒ ยอดรวมในลิ้นชักน้อยกว่าช่องที่กดโดยไม่มีอะไรบอก · มติผู้ใช้: คงขอบเขตเดิม แต่ต้องเขียนบอกตรง ๆ */}
+            {scopeNote && <p className="cell-sub">{scopeNote}</p>}
           </div>
           <button ref={closeButtonRef} type="button" className="fc-detail-close" onClick={onClose} aria-label="ปิดรายละเอียด FC">
             <X size={18} aria-hidden="true" />
@@ -348,7 +368,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
                         {showAwaitingSoSubLine(deal) && (
                           <span
                             className={styles.awaitingSoSubLine}
-                            title="ดีลปิด Won แล้ว แต่ยังไม่มียอดจากใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · มีแค่ใบ 0 บาท) และไม่มีใบรออนุมัติ — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual"
+                            title="ดีลปิด Won แล้ว แต่ยังไม่มีเงินจากใบสั่งขายเลย (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบยอด 0 บาท ทั้งที่อนุมัติแล้วและที่ยื่นรออนุมัติ) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual"
                           >
                             {WON_AWAITING_SO_LABEL} {money(wonAwaitingSoAmountOf(deal))}
                           </span>

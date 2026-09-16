@@ -7107,6 +7107,16 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 .performance-tracking-table .fz-table tr.perf-rest-row .perf-pending-sub,
 .performance-tracking-table .fz-table tr.perf-rest-row .perf-won-sub { font-style: normal; }
 .perf-rest-label { font-weight: var(--fw-semibold); }
+/* แถบเตือนของแท็บผลงานขายเมื่อ "โหลดได้ไม่ครบ" (ตรวจ 2026-09-16) — คนละชั้นกับ error เต็มจอ:
+   ตัวเลขที่เห็นยังใช้ได้บางส่วน แต่เดือนที่ยอดมาจากการกรอกมืออาจขึ้นเป็น ฿0 ⇒ ต้องบอก ไม่ใช่เงียบ */
+.perf-partial-warning {
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+
 .perf-rest-note {
   display: block;
   color: var(--text-3);
