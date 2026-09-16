@@ -289,7 +289,8 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* ⚠️ ตัวนับนี้ยิงทุก 2 นาทีทุกคน ⇒ คิวรีเพิ่มต้องไม่เกิดเลยในกรณีปกติ
          `externalDocReadyIds` คืนชุดว่างโดยไม่แตะฐาน ถ้าคนดูไม่ใช่ผู้อนุมัติ
          หรือไม่มีใบ external ร่างอยู่ในชุดนี้ */
-      const docReady = await externalDocReadyIds(supabase, latest, user);
+      // strict: อ่านไฟล์แนบไม่สำเร็จ = ป้ายต้องขึ้นขีด ไม่ใช่ลดจำนวนเงียบ ๆ (ADR 0016)
+      const docReady = await externalDocReadyIds(supabase, latest, user, { strict: true });
       return latest.filter((row) => isContractWaitingOnMe(row, {
         userId: user.id, user, externalDocReady: docReady.has(row.id),
       })).length;

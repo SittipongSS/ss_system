@@ -238,14 +238,17 @@
   background: transparent;
   min-width: 0;
 }
-.offLine > * { opacity: var(--op-disabled); }
-.offLine .headIcon { color: var(--text-2); }
+/* 🔴 ห้ามใช้ `opacity` กับทั้งบรรทัด — บล็อกนี้เป็น **ข้อความล้วน** ไม่ใช่ตัวควบคุมที่กดไม่ได้
+   จึงไม่เข้าข้อยกเว้นสีของ §1.4.3 · คูณ 0.45 ทับสีเทาแล้วเหลือต่างสี 1.7–1.9:1 อ่านไม่ออก
+   ความรู้สึก "ยังไม่เปิดใช้" มาจากการไม่มีพื้น/ไม่มีเงา + คำว่า "ยังไม่เปิดใช้" อยู่แล้ว */
+.offLine .headIcon { color: var(--text-3); }
 .offLine h2 {
   margin: 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* --text-2 เต็มความทึบ = 6.2:1 บนพื้นหน้า (ผ่าน AA สำหรับข้อความปกติ) */
   color: var(--text-2);
   font-size: var(--fs-7);
   font-weight: var(--fw-medium);
@@ -295,7 +298,10 @@ a.chip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2p
 .chipName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ยอดของชิปแยกตามขอบเขตเหมือนแถวเมนู — ไม่เอายอดต่างขอบเขตมารวมเป็นป้ายเดียว */
 .chipPills { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); }
-.chip.chipOff { opacity: var(--op-disabled); }
+/* ชิปของระบบที่ยังไม่เปิดใช้ (ADR 0016 ข้อ 8) — อยู่ในสารบัญตามลำดับ แต่กดไม่ได้
+   ⚠️ ใช้สีจาง ไม่ใช่ `opacity` ด้วยเหตุผลเดียวกับ .offLine ข้างบน */
+.chip.chipOff { color: var(--text-2); border-style: dashed; box-shadow: none; cursor: default; }
+.chip.chipOff .chipName { color: var(--text-2); }
 
 /* ไม่มีระบบเลย — ทึบ เพราะขอบบนของการ์ดลอยทับแถบกรมท่า */
 .none { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-float); }
