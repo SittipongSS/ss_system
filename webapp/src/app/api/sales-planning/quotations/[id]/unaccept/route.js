@@ -3,6 +3,7 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
 import { canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
+import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +78,21 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
 
+  /* ⭐ ยอดของดีลหลังย้อนรับใบ (มติผู้ใช้ 2026-09-16 · mig 0361) — ตอนรับใบ RPC ตั้งยอดดีล = ใบที่รับ และชี้ใบนั้น
+     แต่ unaccept_quotation_atomic ไม่คืนสี่ช่องนั้น ⇒ ดีลที่กลับมาเปิดให้ตัวเลือกใบของดีลเปิดตัดสินใหม่
+     best-effort: การย้อนรับใบ commit ไปแล้ว ห้ามพังเพราะยอดเขียนไม่ผ่าน แต่ก็ห้ามเงียบ —
+     ส่ง `forecast` กลับไปแบบเดียวกับเส้นอนุมัติใบ (lib/sales/forecastSourceRepo: "ห้ามกลืน error เงียบ ๆ") */
+  let forecast = null;
+  try {
+    forecast = await applyForecastSource(supabase, before.deal.id, { cause: 'unaccept' });
+  } catch (forecastError) {
+    console.error('forecast source apply failed', before.deal.id, forecastError);
+    forecast = { changed: false, warning: forecastError.message };
+  }
+
   const { data: after } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
-  return ok({ quotation: after || result?.quotation || null, deal: result?.deal || null });
+  /* ⚠️ `deal` ที่ส่งกลับเป็น snapshot ของ RPC = **ก่อน** คิดยอดใหม่ · ยอดจริงหลังคิดใหม่อยู่ใน `forecast`
+     (`value` / `previousValue` / `changed`) — จอโหลดหน้าใหม่เองอยู่แล้ว จึงไม่อ่านแถวดีลซ้ำที่นี่
+     (การอ่านแถวเองบนตารางที่มีทะเบียนขอบเขตถูกด่าน systemRules กฎ 6 รูดเพดานอยู่) */
+  return ok({ quotation: after || result?.quotation || null, deal: result?.deal || null, forecast });
 });

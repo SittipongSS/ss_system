@@ -13,6 +13,7 @@ import { buildForecastReportBuffer, forecastReportFilename } from '@/lib/sales/f
 import { businessDate } from '@/lib/businessDate';
 import { loadTeamNames } from '@/lib/master/teamsRepo';
 import { teamNameOf } from '@/lib/master/teams';
+import { reportQuotationIdOf } from '@/lib/sales/reportQuotation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,9 +111,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      🪤 ลิสต์ id โตตามจำนวนดีล ⇒ `.in()` ก้อนเดียวชนเพดาน URL 16 KB ของ undici แล้ว
         โยน `TypeError: fetch failed` ทั้งที่ไม่มีอะไรผิด — ต้องซอยด้วย fetchInChunks */
   const usedQuoteIds = [...new Set([
-    ...deals.data
-      .filter((deal) => deal.forecastSource === 'quotation' && deal.forecastQuotationId)
-      .map((deal) => deal.forecastQuotationId),
+    // ใบที่ลูกค้ารับมาก่อนใบที่ FC ชี้ (lib/sales/reportQuotation) — ไม่งั้นวางแผนผลิตตามใบที่ลูกค้าไม่ได้ซื้อ
+    ...deals.data.map(reportQuotationIdOf).filter(Boolean),
     ...[...fallbackQuoteByDeal.values()].map((quotation) => quotation.id),
   ])];
   const lines = await fetchInChunks(usedQuoteIds, (chunk) => fetchAllResult(() => supabase
@@ -165,15 +165,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // กติกาเดือนอยู่ที่ lib (มีเทสต์) — ที่นี่แค่เรียกใช้
     const { month, basis: monthBasis } = forecastMonthOfDeal(deal, monthKey);
     if (year && String(month || '').slice(0, 4) !== year) continue;
-    if (!Number(deal.projectValue)) continue;
+    /* ดีลยอด 0 ข้ามได้เฉพาะเมื่อไม่มีใบที่เป็นตัวแทน — ใบที่ลูกค้ารับแต่ลด 100% (มติผู้ใช้ 2026-09-16)
+       ยังต้องผลิตของจริง ⇒ ต้องมีบรรทัดจำนวน/ปริมาตรในไฟล์ (ยอดเงินเป็น 0 ไม่กระทบยอดรวมไฟล์) */
+    if (!Number(deal.projectValue) && !reportQuotationIdOf(deal)) continue;
 
     const fallbackQuote = fallbackQuoteByDeal.get(deal.id) || null;
+    const reportQuoteId = reportQuotationIdOf(deal);
     const breakdown = forecastBreakdownOfDeal(deal, {
-      quotationLines: linesByQuote.get(deal.forecastQuotationId) || [],
+      quotationLines: linesByQuote.get(reportQuoteId) || [],
       valueItems: itemsByDeal.get(deal.id) || [],
       productById,
       productByFg,
-      quoteNumber: quoteNumberById.get(deal.forecastQuotationId) || null,
+      quoteNumber: quoteNumberById.get(reportQuoteId) || null,
       fallbackQuotationLines: fallbackQuote ? linesByQuote.get(fallbackQuote.id) || [] : null,
       fallbackQuoteNumber: fallbackQuote ? fallbackQuote.quoteNumber : null,
     });

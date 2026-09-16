@@ -134,12 +134,13 @@ test('มี SO อนุมัติ ยอดเท่าคาดการณ
   assert.equal(float.text, 'ตรงกับคาดการณ์เมื่ออนุมัติครบ');
 });
 
-test('ใบอนุมัติยอด 0 บาทบนดีล FC > 0 = ยังรอยื่น SO ที่มียอด (มติผู้ใช้ 2026-09-16) · Actual ของดีล > 0 ก็นับว่ามี แม้แถว SO ไม่มากับหน้า', () => {
-  // ตรงกับกอง "Won รอยื่น SO" ของแท็บผลงานขาย (isWonAwaitingSo) — ไม่ใช่ "ต่าง ฿(FC เต็ม)"
+test('ใบอนุมัติยอด 0 บาท = ส่วนลด 100% (มติผู้ใช้ 2026-09-16 บ่าย) · Actual ของดีล > 0 ก็นับว่ามี แม้แถว SO ไม่มากับหน้า', () => {
+  /* ดีลจบแล้ว (ไม่อยู่ในกองรอยื่น SO) แต่ห้ามขึ้นแค่ "ต่าง ฿(FC เต็ม)" ซึ่งอ่านเหมือนพลาดเป้าทั้งใบ
+     หลัง mig 0361 + backfill ยอดดีลจะเท่ากับใบเอง ⇒ ส่วนต่างกลายเป็น 0 เอง */
   const zeroApproved = wonDealForecastHint({ forecast: 5000, actual: 0, actualCount: 1 });
-  assert.equal(zeroApproved.kind, WON_HINT_KINDS.AWAITING_SO);
-  assert.equal(zeroApproved.gap, null);
-  assert.equal(zeroApproved.text, `คาดการณ์ ${fmtMoney(5000)} · ใบสั่งขายที่อนุมัติยังเป็น 0 บาท`);
+  assert.equal(zeroApproved.kind, WON_HINT_KINDS.ACTUAL);
+  assert.equal(zeroApproved.gap, 5000);
+  assert.equal(zeroApproved.text, `คาดการณ์ ${fmtMoney(5000)} · ใบสั่งขายที่อนุมัติเป็น 0 บาท (ส่วนลด 100%)`);
   // FC 0 + ใบ 0 บาท = ตรงกันจริง ไม่ใช่รอยื่น
   assert.equal(wonDealForecastHint({ forecast: 0, actual: 0, actualCount: 1 }).text, 'ตรงกับคาดการณ์');
   /* 🪤 เคสนี้เคยชื่อ "ดีลย้ายระบบ (legacy ไม่มีแถว SO)" — #1716 ถอด Actual แบบ legacy ไปแล้ว (Actual มาจาก
@@ -257,7 +258,7 @@ test('ดีลมูลค่า > 0: คำชนิด awaiting_so ⇔ isWonA
   const cases = [
     // [ชื่อ, ดีล (cache ที่แดชบอร์ดอ่าน), จำนวนแถวอนุมัติที่หน้าดีลโหลดได้]
     ['ไม่มี SO / มีแค่ร่าง', { ...base, metadata: { actualSource: 'sale_order', wonMonth: null } }, 0],
-    ['ใบอนุมัติ 0 บาท', { ...base, metadata: { actualSource: 'sale_order', wonMonth: '2026-08', wonValueExVat: 0 } }, 1],
+    ['ใบอนุมัติ 0 บาท (ส่วนลด 100% = จบ)', { ...base, metadata: { actualSource: 'sale_order', wonMonth: '2026-08', wonValueExVat: 0 } }, 1],
     ['อนุมัติมียอด', { ...base, wonValue: 90000, metadata: { actualSource: 'sale_order', wonMonth: '2026-09', wonValueExVat: 90000 } }, 1],
     ['รออนุมัติ', { ...base, metadata: { actualSource: 'sale_order', soPendingAmount: 150000, soPendingCount: 1 } }, 0],
     ['ใบรออนุมัติ 0 บาท', { ...base, metadata: { actualSource: 'sale_order', soPendingAmount: 0, soPendingCount: 1 } }, 0], // ยังรอยื่น
@@ -278,5 +279,5 @@ test('ดีลมูลค่า > 0: คำชนิด awaiting_so ⇔ isWonA
     assert.equal(hint.kind === WON_HINT_KINDS.AWAITING_SO, isWonAwaitingSo(deal), name);
     if (isWonAwaitingSo(deal)) awaitingCases += 1;
   }
-  assert.equal(awaitingCases, 3, 'ไม่มี SO + ใบอนุมัติ 0 บาท + ใบยื่น 0 บาท — กันเทสต์ผ่านเพราะทุกเคสเป็น false');
+  assert.equal(awaitingCases, 2, 'ไม่มี SO + ใบยื่น 0 บาท — กันเทสต์ผ่านเพราะทุกเคสเป็น false');
 });
