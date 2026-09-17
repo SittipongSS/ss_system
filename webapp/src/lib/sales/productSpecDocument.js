@@ -18,6 +18,7 @@ import {
   resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
 import { PRODUCT_SPEC_CERT_STATUS_LABELS, productSpecCertPendingLabel } from '@/lib/sales/productSpecChecklist';
+import { illustrationCaption, sortIllustrations } from '@/lib/sales/productSpecIllustrations';
 
 const SPEC_KEY = 'productSpec';
 
@@ -71,6 +72,10 @@ const COST = Object.freeze({
   certRow: 13.2,       // แถว cert มีสองบรรทัดสถานะเสมอ (วัดได้ 12.44)
   signatures: 40,      // ตารางลายเซ็น 4 ช่อง (29.37) + หัวข้อของตัวเอง
   contact: 20,         // ตารางผู้ประสานงาน (12.44) + หัวข้อของตัวเอง
+  /* แถวภาพ (สองภาพต่อแถว) — กรอบสูงคงที่ 70mm + คำบรรยายจองสองบรรทัด + ระยะแถว
+     ⚠️ **กรอบสูงคงที่โดยตั้งใจ** — ถ้าปล่อยให้สูงตามสัดส่วนรูปที่ลูกค้าส่งมา
+     ความสูงต่อแถวจะเดาไม่ได้ แล้วแผ่นล้นเงียบ ๆ ใต้ `overflow: hidden` */
+  figureRow: 86,
 });
 
 // ข้อความยาวตกบรรทัด — ช่องค่ากว้าง ~118mm ที่ 8.4pt ≈ 75 ตัวอักษรไทยต่อบรรทัด
@@ -132,6 +137,18 @@ function signatureBlock(revision, issue) {
       ${box('Account Executive Supervisor', revision?.approvedByName, issue?.approvedDateText)}
       ${box('Customer', '', '')}
     </div>`;
+}
+
+/* กล่องภาพหนึ่งใบ — กรอบสูงคงที่ · คำบรรยายใต้ภาพ · เลขลำดับนำหน้าเสมอ
+   ⚠️ ไม่มีคำบรรยาย = พิมพ์แค่เลขลำดับ ไม่ใช่ N/A — ใต้ภาพที่เห็นอยู่แล้วว่าเป็นรูปอะไร
+   คำว่า N/A อ่านเหมือนภาพนั้นผิด */
+function figureBlock(row, number) {
+  const caption = illustrationCaption(row);
+  return `
+    <figure class="fig">
+      <div class="figBox"><img src="/api/master/attachments/${esc(row.id)}/file" alt="${esc(caption || `ภาพประกอบที่ ${number}`)}" /></div>
+      <figcaption>${esc(`${number}. ${caption}`.trim().replace(/\.$/, '.'))}</figcaption>
+    </figure>`;
 }
 
 function contactBlock(contact) {
@@ -211,7 +228,8 @@ function renderPage(items) {
  * @param {object|null} input.standard แถว document_standard_versions ที่เผยแพร่
  */
 export function renderProductSpecDocument({
-  issue, revision, product, company = {}, contact = null, standard = null, toolbar = true,
+  issue, revision, product, company = {}, contact = null, standard = null,
+  illustrations = [], toolbar = true,
 }) {
   const form = resolveDocumentForm(standard, SPEC_KEY);
   const titleTh = resolveDocumentTitleTh(standard, SPEC_KEY);
@@ -305,6 +323,29 @@ export function renderProductSpecDocument({
     (index) => COST.certRow + wrapCost(certs[index]?.note, 40),
     COST.certHead);
 
+  /* ── ภาพประกอบ (แผ่นท้าย) ────────────────────────────────────────────────
+     ⚠️ **สองภาพต่อแถว และคิดต้นทุนเป็นแถว ไม่ใช่เป็นภาพ** — คิดเป็นภาพแล้วแถวที่มี
+     ภาพเดียวจะถูกคิดครึ่งเดียวทั้งที่กินที่เต็มแถว
+     ⚠️ ภาพดึงผ่าน `/api/master/attachments/[id]/file` ซึ่งเป็นทางเดียวที่ระบบเสิร์ฟ
+     ไฟล์แนบ · รูปที่โหลดไม่ขึ้นต้องเหลือกรอบพร้อมข้อความ ไม่ใช่ช่องว่างเปล่า */
+  const figures = sortIllustrations(illustrations);
+  if (figures.length) {
+    items.push({
+      type: 'heading', section: 'figures', heading: 'ภาพประกอบรายละเอียดสินค้า',
+      html: '<h3>ภาพประกอบรายละเอียดสินค้า</h3>', cost: COST.heading,
+    });
+    for (let index = 0; index < figures.length; index += 2) {
+      const pair = figures.slice(index, index + 2);
+      items.push({
+        type: 'atom',
+        section: 'figures',
+        heading: 'ภาพประกอบรายละเอียดสินค้า',
+        html: `<div class="figGrid">${pair.map((row, offset) => figureBlock(row, index + offset + 1)).join('')}</div>`,
+        cost: COST.figureRow,
+      });
+    }
+  }
+
   /* ⚠️ ผู้ประสานงานกับตารางลายเซ็นเป็น **ก้อนเดียว** — แยกกันเมื่อไรมีโอกาสที่ตาราง
      ลายเซ็นหลุดไปอยู่หน้าใหม่ตัวเดียว ซึ่งอ่านแล้วไม่รู้ว่าเซ็นรับรองอะไร */
   items.push({
@@ -366,6 +407,19 @@ export function renderProductSpecDocument({
       .specsheet .sig b { display: block; color: var(--doc-accent); font-size: 7.2pt; letter-spacing: .02em; }
       .specsheet .sigSpace { height: 9mm; border-bottom: 0.2mm dotted var(--doc-muted); margin: 2mm 0 1.4mm; }
       .specsheet .sig small { display: block; color: var(--doc-muted); }
+
+      /* แผ่นภาพประกอบ — กรอบสูงคงที่ ภาพย่อลงในกรอบโดยไม่บิดสัดส่วน */
+      .specsheet .figGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4mm 5mm; margin: 2mm 0 4mm; }
+      .specsheet .fig { margin: 0; }
+      .specsheet .figBox {
+        height: 70mm; border: 0.2mm solid var(--doc-line); border-radius: 1mm;
+        background: var(--doc-accent-soft); display: flex; align-items: center; justify-content: center;
+        overflow: hidden;
+      }
+      .specsheet .figBox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+      .specsheet .fig figcaption {
+        margin-top: 1.6mm; min-height: 2.6em; font-size: 8.4pt; line-height: 1.65; color: var(--doc-text);
+      }
     `,
   });
 }

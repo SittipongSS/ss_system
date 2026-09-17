@@ -158,3 +158,76 @@ test('escape ค่าที่มาจากผู้ใช้ — ชื่�
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
   assert.match(html, /&lt;script&gt;/);
 });
+
+/* ── ภาพประกอบ (แผ่นท้าย) ─────────────────────────────────────────── */
+
+const figure = (id, caption, over = {}) => ({
+  id, createdAt: '2026-09-17T00:00:00Z', metadata: { caption }, ...over,
+});
+
+test('ไม่มีภาพ = ไม่มีหัวข้อภาพประกอบเลย (ไม่ใช่หัวข้อว่าง)', () => {
+  const html = renderProductSpecDocument(baseInput());
+  assert.doesNotMatch(html, /ภาพประกอบรายละเอียดสินค้า/);
+  assert.doesNotMatch(html, /class="figGrid"/);
+});
+
+test('ภาพขึ้นสองภาพต่อแถว พร้อมเลขลำดับและคำบรรยาย', () => {
+  const html = renderProductSpecDocument(baseInput({
+    illustrations: [
+      figure('att-1', 'กล่องแบบใหม่ เปิดขึ้น', { metadata: { caption: 'กล่องแบบใหม่ เปิดขึ้น', sortOrder: 0 } }),
+      figure('att-2', 'ใส่การ์ด', { metadata: { caption: 'ใส่การ์ด', sortOrder: 1 } }),
+      figure('att-3', 'ปิดกล่อง', { metadata: { caption: 'ปิดกล่อง', sortOrder: 2 } }),
+    ],
+  }));
+  assert.match(html, /ภาพประกอบรายละเอียดสินค้า/);
+  // 3 ภาพ ⇒ สองแถว (2 + 1)
+  assert.equal((html.match(/class="figGrid"/g) || []).length, 2);
+  assert.match(html, /1\. กล่องแบบใหม่ เปิดขึ้น/);
+  assert.match(html, /3\. ปิดกล่อง/);
+});
+
+test('รูปดึงผ่านเส้นไฟล์แนบของระบบ — ไม่ใช่ URL ดิบจาก storage', () => {
+  const html = renderProductSpecDocument(baseInput({
+    illustrations: [figure('att-9', 'ภาพหนึ่ง')],
+  }));
+  assert.match(html, /src="\/api\/master\/attachments\/att-9\/file"/);
+});
+
+test('ภาพที่ไม่มีคำบรรยายยังมีเลขลำดับ และ alt ไม่ว่าง (ไม่ใช่ N/A)', () => {
+  const html = renderProductSpecDocument(baseInput({
+    illustrations: [figure('att-x', '')],
+  }));
+  assert.match(html, />1\.</);
+  assert.match(html, /alt="ภาพประกอบที่ 1"/);
+  assert.doesNotMatch(html, /alt="N\/A"/);
+});
+
+test('เรียงภาพด้วยตัวจัดลำดับตัวเดียวกับที่จอใช้', () => {
+  const html = renderProductSpecDocument(baseInput({
+    illustrations: [
+      figure('b', 'สอง', { metadata: { caption: 'สอง', sortOrder: 1 } }),
+      figure('a', 'หนึ่ง', { metadata: { caption: 'หนึ่ง', sortOrder: 0 } }),
+    ],
+  }));
+  assert.ok(html.indexOf('1. หนึ่ง') < html.indexOf('2. สอง'));
+});
+
+test('ภาพเยอะขึ้นหน้าใหม่ — ไม่ยัดแผ่นเดียว', () => {
+  const few = renderProductSpecDocument(baseInput({
+    illustrations: [figure('a', 'หนึ่ง'), figure('b', 'สอง')],
+  }));
+  const many = renderProductSpecDocument(baseInput({
+    illustrations: Array.from({ length: 14 }, (_, i) => figure(`att-${i}`, `ภาพที่ ${i + 1}`, {
+      metadata: { caption: `ภาพที่ ${i + 1}`, sortOrder: i },
+    })),
+  }));
+  assert.ok(sheetCount(many) > sheetCount(few));
+});
+
+test('escape คำบรรยายที่ผู้ใช้พิมพ์', () => {
+  const html = renderProductSpecDocument(baseInput({
+    illustrations: [figure('att-1', '<img onerror=alert(1)>')],
+  }));
+  assert.doesNotMatch(html, /<img onerror/);
+  assert.match(html, /&lt;img onerror/);
+});

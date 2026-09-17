@@ -14,6 +14,8 @@ import { fmtDate } from '@/lib/format';
 import { categoryOf } from '@/lib/master/categoryOf';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
 import { loadProductSpec } from '@/lib/sales/productSpecStore';
+import { listAttachments } from '@/lib/master/attachments';
+import { SPEC_ILLUSTRATION_DOC_TYPE } from '@/lib/master/attachmentTypes';
 import { renderProductSpecDocument } from '@/lib/sales/productSpecDocument';
 
 export const dynamic = 'force-dynamic';
@@ -70,6 +72,12 @@ export async function GET(request, { params }) {
   const [main, type] = String(category).split('-');
   const typeRow = (types || []).find((row) => row.mainCategoryCode === main && row.typeCode === type);
 
+  /* ภาพประกอบแนบกับ **ตัวสินค้า** (มติ 17/09 "ภาพประกอบอยู่กับสเปคสินค้า") ⇒ อ่าน
+     จากไฟล์แนบของสินค้าตรง ๆ · กระดาษที่พิมพ์สดจึงเป็นภาพชุดวันนี้เสมอ ส่วนฉบับที่
+     ออกไปแล้วอ่านเหมือนวันที่ส่งไปผ่าน snapshot ของ issued_documents (กลไกเดียวกับ QT/SO) */
+  const illustrations = (await listAttachments('product', id))
+    .filter((row) => row.docType === SPEC_ILLUSTRATION_DOC_TYPE);
+
   const html = renderProductSpecDocument({
     issue: issue
       ? {
@@ -96,6 +104,7 @@ export async function GET(request, { params }) {
       phone: null,
     },
     standard: standard || null,
+    illustrations,
   });
 
   return new Response(html, {

@@ -1,0 +1,16 @@
+.error { margin: 0 0 var(--space-3); color: var(--red); line-height: var(--lh-thai); }
+.captions { margin-top: var(--space-4); }
+.captionsHead {
+  margin-bottom: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.colNo { width: 40px; }
+.colFile { width: 220px; }
+.colOrder { width: 84px; }
+.file { font-size: var(--fs-4); }
+.captionCell { display: flex; gap: var(--space-2); align-items: center; }
+.orderCell { display: flex; gap: var(--space-1); }
+.note { margin: var(--space-2-5) 0 0; }

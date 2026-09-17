@@ -14,6 +14,7 @@ import {
   DocumentControlCard, DocumentReadinessList, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
 import ProductSpecForm from "@/components/database/ProductSpecForm";
+import ProductSpecIllustrations from "@/components/database/ProductSpecIllustrations";
 import { useRole } from "@/lib/roleContext";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { fmtDate, naText } from "@/lib/format";
@@ -257,9 +258,7 @@ export default function ProductSpecPage() {
             statusDescription={spec ? `ออกเอกสารมาแล้ว ${issues.length} ครั้ง` : "หนึ่งสินค้าหนึ่งใบตลอดอายุ"}
             workflowSteps={specWorkflowSteps(latest)}
             busy={Boolean(busy)}
-            notices={<p className={`form-note ${styles.railNote}`}>
-              ภาพประกอบและเอกสารที่พิมพ์ออกจะมาในรอบถัดไป
-            </p>}
+
             primaryAction={actions.primaryAction}
             secondaryActions={actions.secondaryActions}
             dangerActions={actions.dangerActions}
@@ -307,6 +306,11 @@ export default function ProductSpecPage() {
             </p>
           </DetailCard>
         )}
+
+        {/* ⭐ ภาพประกอบ (แผ่นท้ายของกระดาษ) — ไฟล์แนบกับ **ตัวสินค้า** ตามมติ 17/09
+            "ภาพประกอบอยู่กับสเปคสินค้า" ⇒ อัปครั้งเดียวใช้ได้ทุกฉบับ
+            ⚠️ วางใต้ฟอร์มเพราะเป็นของประกอบ ไม่ใช่สเปกที่ต้องกรอกให้ครบก่อน */}
+        {spec ? <ProductSpecIllustrations productId={id} canEdit={!readOnly} /> : null}
 
         {issues.length ? (
           <DetailCard
