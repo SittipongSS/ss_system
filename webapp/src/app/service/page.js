@@ -195,7 +195,7 @@ export default function ServiceOverviewPage() {
                 : refill.soon > 0
                   ? `ใกล้หมด ${refill.soon} เครื่อง · ${refill.sites} ไซต์`
                   : "ทุกไซต์มีนัดครอบแล้ว"}
-              onClick={() => router.push("/service/sites")}
+              onClick={() => router.push("/database/sites")}
             />
           </div>
 
@@ -268,7 +268,7 @@ export default function ServiceOverviewPage() {
               ? `${WATCHLIST_LIMIT} จาก ${watchlist.length} ไซต์`
               : `${watchlist.length} ไซต์`}
             actions={(
-              <Button as={Link} href="/service/sites" size="sm" icon={<MapPin size={15} aria-hidden="true" />}>
+              <Button as={Link} href="/database/sites" size="sm" icon={<MapPin size={15} aria-hidden="true" />}>
                 ทะเบียนไซต์
               </Button>
             )}
@@ -294,7 +294,7 @@ export default function ServiceOverviewPage() {
                           {/* 🐞 เดิมเป็น <button> สี --accent: ไม่มี href (เปิดแท็บใหม่ไม่ได้) ·
                               ไม่มีวงโฟกัส · ธีมสว่างคอนทราสต์ 3.3:1 ตก AA
                               คอลัมน์ระบุตัวตน ⇒ .table-row-link ไม่ใช่ .linklike (ท่าเดียวกับโซน/เครื่องใน sites/[id]) */}
-                          <Link href={`/service/sites/${site.id}`} prefetch={false} className="table-row-link">
+                          <Link href={`/database/sites/${site.id}`} prefetch={false} className="table-row-link">
                             {site.name}
                           </Link>
                           <span className={styles.sub}>{site.code}{site.routeZone ? ` · ${site.routeZone}` : ""}</span>

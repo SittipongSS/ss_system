@@ -80,7 +80,7 @@
 ### มีแล้วและใช้ได้ (mig 0187–0188)
 
 `service_sites` · `service_assets` · `service_plans` · `service_visits` · `service_visit_items`
-หน้า `/service` · `/service/schedule` · `/service/sites` · `/service/my-visits` · ปิดงาน + ลายเซ็นลูกค้า
+หน้า `/service` · `/service/schedule` · `/database/sites` · `/service/my-visits` · ปิดงาน + ลายเซ็นลูกค้า
 
 `service_visits.kind` = `install / refill / maintenance / repair / inspect / remove`
 ⇒ **ครบทั้ง 4 อย่างที่ผู้ใช้ระบุ** (เช็คพื้นที่=`inspect` · ติดตั้ง=`install` · เซอร์วิส=`refill`/`maintenance` · ซ่อม=`repair`) — ส่วนนี้ไม่ต้องแตะ

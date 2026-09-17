@@ -27,7 +27,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try {
     const access = requireService({ user, forRequestForm: true });
     if (access.response) return access.response;
-    /* 🔑 ปลายทางของลิงก์ต้องเป็นที่ที่คนกดเปิดได้จริง — `/service/sites/[id]` อ่านด้วย
+    /* 🔑 ปลายทางของลิงก์ต้องเป็นที่ที่คนกดเปิดได้จริง — `/database/sites/[id]` อ่านด้วย
        `canViewService` (TS/แอดมิน) ⇒ AE กดแล้วเจอ "โหลดข้อมูลไซต์ไม่สำเร็จ"
        ⚠️ server เป็นคนตอบ ไม่ให้จอเดา (จอไม่รู้ cap ของตัวเองครบ) */
     const canOpenSiteRegistry = canViewService(user);

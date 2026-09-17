@@ -73,7 +73,7 @@ test('ด่านเข้าไซต์: ยกเว้นเฉพาะข
 test('wizard: ใบย้อนหลังชี้ไป "เพิ่มไซต์ย้อนหลัง" ด้วยลิงก์ (ไม่ฝังโมดัล) · ถามด่านปลายทางตัวเดียวกับ server ก่อนส่ง', () => {
   const src = code('components/service/IntakeWizard.js');
   assert.match(src, /const historical = isHistoricalOrder\(order\);/);
-  const links = src.match(/<Link href="\/service\/sites" className=\{styles\.siteLink\}>เพิ่มไซต์ย้อนหลัง<\/Link>/g) || [];
+  const links = src.match(/<Link href="\/database\/sites" className=\{styles\.siteLink\}>เพิ่มไซต์ย้อนหลัง<\/Link>/g) || [];
   assert.equal(links.length, 2, 'สองจุดที่เคยชี้ทางใบคำร้องประเมินพื้นที่');
   assert.doesNotMatch(src, /LegacySiteModal/, 'โมดัลอยู่หลังสิทธิ์ของหน้าทะเบียนไซต์ (siteOrigin.test)');
   const ask = src.indexOf('bindTargetError(');

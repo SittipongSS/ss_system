@@ -3,7 +3,9 @@
 import { forbidden, notFound, unauthorized } from '@/lib/http';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
-import { canEditService, canPickServiceSite, canViewService } from '@/lib/permissions';
+import {
+  canEditService, canPickServiceSite, canViewService, canViewServiceRegistry,
+} from '@/lib/permissions';
 
 // ⚠️ ด่านจริงของโมดูลบริการอยู่ตรงนี้ — proxy เห็นแค่ role จึงปล่อย `staff` ทุกฝ่าย
 // ผ่านมาถึงนี่ (รวม PC/PD/WH/QC) · canEditService เป็นตัวที่เห็น department/team
@@ -14,11 +16,20 @@ import { canEditService, canPickServiceSite, canViewService } from '@/lib/permis
  *    ทำได้ ทั้งที่เข้าโมดูลไม่ได้แล้ว (มติ 2026-08-30 "ระบบธุรกิจบริการเข้าได้เฉพาะ TS")
  *    🐞 ไม่มีทางนี้ ฟอร์มใบประเมินพื้นที่จะกางรายการสถานที่ไม่ได้เลย — ว่างเปล่าโดยไม่มี
  *       ข้อความบอกว่าทำไม ทั้งที่ปุ่ม "สร้างสถานที่ใหม่" ยังอยู่ตรงนั้น
+ *
+ * ⭐ `registry` = "อ่าน **ทะเบียน** ไซต์/โซน/เครื่อง" ซึ่งย้ายบ้านไป `/database` แล้ว
+ *    (มติผู้ใช้ 2026-09-17 · กฎสามชั้นข้อ 3) ⇒ กว้างเท่าทะเบียนสินค้า/ลูกค้า
+ *    ⚠️ ใช้ได้เฉพาะเส้นที่อ่าน **ข้อมูลหลัก** เท่านั้น — คิวงานเข้าใหม่ · นัด · รอบบริการ
+ *       ยังเป็นงานของฝ่าย TS และต้องใช้ด่านเดิม (`canViewService`) ต่อไป
+ *    ⚠️ สามโหมดนี้ไล่จากแคบไปกว้าง: edit ⊂ view ⊂ registry — ส่ง edit มาพร้อม registry
+ *       ไม่มีความหมาย เพราะ edit ตัดสินก่อนเสมอ
  */
-export function requireService({ user, edit = false, forRequestForm = false }) {
+export function requireService({ user, edit = false, forRequestForm = false, registry = false }) {
   if (!user) return { response: unauthorized() };
   if (edit) {
     if (!canEditService(user)) return { response: forbidden('ไม่มีสิทธิ์แก้ข้อมูลธุรกิจบริการ') };
+  } else if (registry) {
+    if (!canViewServiceRegistry(user)) return { response: forbidden() };
   } else if (forRequestForm ? !canPickServiceSite(user) : !canViewService(user)) {
     return { response: forbidden() };
   }
@@ -49,8 +60,10 @@ export async function findSite(supabase, id) {
 }
 
 // โหลดไซต์ + กันกรณีไม่พบในที่เดียว (ทุก route ของเครื่องต้องผ่านตรงนี้)
-export async function requireSite({ user, supabase, id, edit = false, forRequestForm = false }) {
-  const access = requireService({ user, edit, forRequestForm });
+export async function requireSite({
+  user, supabase, id, edit = false, forRequestForm = false, registry = false,
+}) {
+  const access = requireService({ user, edit, forRequestForm, registry });
   if (access.response) return access;
   const site = await findSite(supabase, id);
   if (!site) return { response: notFound('ไม่พบไซต์บริการ') };
@@ -168,7 +181,7 @@ export async function findAsset(supabase, siteId, assetId) {
 }
 
 /* หาเครื่องด้วย id อย่างเดียว — ทะเบียนเครื่องรวม (เฟส B) เปิดหน้ารายละเอียดจาก
-   `/service/assets/[id]` ซึ่งไม่มี siteId ใน URL ให้ใช้
+   `/database/assets/[id]` ซึ่งไม่มี siteId ใน URL ให้ใช้
    ⚠️ **ไม่ใช่ตัวแทนของ `findAsset`** — เส้นที่ยังอยู่ใต้ไซต์ต้องกรอง siteId ต่อไป
    เพราะการที่ id เดาไม่ได้ ไม่ได้แปลว่าให้ข้ามการตรวจว่าเครื่องอยู่ไซต์ที่กำลังเปิด */
 export async function findAssetById(supabase, assetId) {

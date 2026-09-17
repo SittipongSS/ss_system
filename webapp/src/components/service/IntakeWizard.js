@@ -311,7 +311,7 @@ export default function IntakeWizard({
                     <p className={styles.lead}>
                       ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — ใบนี้เป็นใบสั่งขายย้อนหลัง ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ
                       ไม่มีใบประเมินพื้นที่ ให้{" "}
-                      <Link href="/service/sites" className={styles.siteLink}>เพิ่มไซต์ย้อนหลัง</Link>
+                      <Link href="/database/sites" className={styles.siteLink}>เพิ่มไซต์ย้อนหลัง</Link>
                       {" "}ที่หน้าทะเบียนไซต์ก่อน แล้วกลับมาผูกใบนี้
                     </p>
                   ) : (
@@ -350,7 +350,7 @@ export default function IntakeWizard({
             {historical ? (
               <small className={styles.lead}>
                 ไม่มีไซต์ที่ต้องการ? ไซต์ที่ติดตั้งอยู่ก่อนมีระบบ เพิ่มได้ที่{" "}
-                <Link href="/service/sites" className={styles.siteLink}>เพิ่มไซต์ย้อนหลัง</Link>
+                <Link href="/database/sites" className={styles.siteLink}>เพิ่มไซต์ย้อนหลัง</Link>
                 {" "}(หน้าทะเบียนไซต์) — เลือกลูกค้ารายนี้ แล้วกลับมาผูกใบนี้เข้ากับไซต์ที่ได้
               </small>
             ) : (

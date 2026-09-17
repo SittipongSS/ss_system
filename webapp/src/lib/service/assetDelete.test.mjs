@@ -44,7 +44,7 @@ test('🐞 ทั้งสองเส้นต้องเรียกด่า
 /* ⚠️ จอต้องใช้ตัวตัดสินตัวเดียวกับ API — ไม่งั้นได้ปุ่มที่กดแล้วเด้ง
    หรือปุ่มที่หายทั้งที่กดได้ (กติกา GatedAction ของระบบ) */
 test('จอเครื่องและจอทะเบียนรุ่นต้องถามด่านตัวเดียวกับ API', () => {
-  const assetPage = readFileSync(new URL('../../app/service/assets/[id]/page.js', import.meta.url), 'utf8');
+  const assetPage = readFileSync(new URL('../../app/database/assets/[id]/page.js', import.meta.url), 'utf8');
   assert.match(assetPage, /assetDeleteError\(/);
   assert.match(assetPage, /"\/api\/service\/assets\/\$\{id\}"|`\/api\/service\/assets\/\$\{id\}`/,
     'ต้องยิงเส้นทะเบียนรวม ไม่ใช่เส้นใต้ไซต์ (เครื่องอาจไม่มีไซต์)');
@@ -56,6 +56,6 @@ test('จอเครื่องและจอทะเบียนรุ่�
   assert.match(modelPanel, /assetModelError\(/);
 
   const legacy = readFileSync(new URL('../../app/service/models/page.js', import.meta.url), 'utf8');
-  assert.match(legacy, /redirect\('\/service\/assets\?tab=models'\)/,
+  assert.match(legacy, /redirect\('\/database\/assets\?tab=models'\)/,
     'ลิงก์เก่าต้องยังไปถึงแท็บใหม่ ไม่ใช่ 404');
 });

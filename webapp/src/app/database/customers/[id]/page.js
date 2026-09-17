@@ -148,7 +148,7 @@ export default function CustomerDetails() {
   // ไม่ใช่ของแถม · อ่านอย่างเดียว จัดการจริงที่ /database/scents · /database/formulas
   const [scents, setScents] = useState([]);
   const [formulas, setFormulas] = useState([]);
-  // ไซต์บริการของลูกค้ารายนี้ (S-4) — อ่านอย่างเดียว จัดการจริงที่ /service/sites
+  // ไซต์บริการของลูกค้ารายนี้ (S-4) — อ่านอย่างเดียว จัดการจริงที่ /database/sites
   // ⭐ ลูกค้าหนึ่งรายมีได้หลายจุดติดตั้ง ซึ่ง `customers.address` ช่องเดียวเก็บไม่ได้
   const [serviceSites, setServiceSites] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -157,7 +157,7 @@ const MODAL = read('components/service/LegacySiteModal.js');
 
 test('🔑 API ใช้สิทธิ์แก้งานบริการ (canEditService) — ตรงกับปุ่มบนจอ (มติข้อ B)', () => {
   assert.match(ROUTE, /requireService\(\{ user, edit: true \}\)/);
-  const page = read('app/service/sites/page.js');
+  const page = read('app/database/sites/page.js');
   assert.match(page, /\{canEdit && \(\s*<Button[^>]*onClick=\{\(\) => setLegacyOpen\(true\)\}/,
     'ปุ่มต้องอยู่หลัง canEdit — ไม่มีสิทธิ์ = ไม่เห็นปุ่ม (ด่านเขียน ⊆ ด่านอ่านของปุ่ม)');
 });
@@ -229,7 +229,7 @@ test('โหมดเติมต่อตัดโซนที่ไซต์�
 });
 
 test('🐞 บันทึกแล้วหน้าทะเบียนรีโหลดแบบเงียบ + โมดัลอยู่นอก Workspace — จอผลต้องไม่หาย', () => {
-  const page = read('app/service/sites/page.js');
+  const page = read('app/database/sites/page.js');
   assert.match(page, /onSaved=\{\(\) => \{ load\(\{ silent: true \}\); \}\}/);
   assert.ok(page.indexOf('</Workspace>') < page.indexOf('<LegacySiteModal'),
     'LegacySiteModal ต้องอยู่หลัง </Workspace> — Workspace สลับ children เป็นโครงร่างตอน loading');
@@ -254,7 +254,7 @@ test('🐞 ถอยออกจากโหมดเติมต่อ = คื
 });
 
 test('ลิงก์ที่ออกจากหน้าระหว่างมีร่างเปิดแท็บใหม่ — ร่างอยู่ได้แค่ตลอดอายุหน้านี้', () => {
-  for (const href of ['/service/sites/${siteDuplicate.id}', '/service/sites/${target.id}']) {
+  for (const href of ['/database/sites/${siteDuplicate.id}', '/database/sites/${target.id}']) {
     const at = MODAL.indexOf(`href={\`${href}\`}`);
     assert.ok(at > 0, href);
     assert.match(MODAL.slice(at, at + 80), /target="_blank"/, `${href} ต้อง target="_blank"`);

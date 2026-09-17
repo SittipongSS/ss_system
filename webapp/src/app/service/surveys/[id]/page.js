@@ -523,7 +523,7 @@ export default function SurveySheetPage({ params }) {
             label: "ไซต์",
             icon: MapPin,
             value: site?.id
-              ? <Link className="linklike" href={`/service/sites/${site.id}`}>{naText(site.code)}</Link>
+              ? <Link className="linklike" href={`/database/sites/${site.id}`}>{naText(site.code)}</Link>
               : naText(site?.code),
             sub: [site?.name, site?.address].filter(Boolean).join(" · ") || null,
             /* ⭐ ที่อยู่ **ห่อได้สองบรรทัด** — บรรทัดรองปกติตัดบรรทัดเดียวด้วย … ซึ่ง

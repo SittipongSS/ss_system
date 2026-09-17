@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 // GET → { models, usage } — จำนวนเครื่องต่อรุ่นมาด้วยเสมอ เพราะทุกจอที่แสดงทะเบียน
 // ต้องรู้ว่ารุ่นไหนลบไม่ได้ ⇒ แยกเป็นสองเส้นแล้วจอจะโชว์ปุ่มลบที่กดแล้วเด้ง
 export const GET = withUser(async ({ user, supabase }) => {
-  const access = requireService({ user });
+  const access = requireService({ user, registry: true });
   if (access.response) return access.response;
   try {
     const [models, usage] = await Promise.all([

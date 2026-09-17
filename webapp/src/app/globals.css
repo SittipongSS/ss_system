@@ -6102,7 +6102,7 @@ button.empty-state { width: 100%; font: inherit; }
 
 /* 🔴 ต้องเป็น `> *` ไม่ใช่การไล่ชื่อลูกทีละตัว — ไล่ชื่อคือกลไกเดิมที่พังมาแล้ว
    ลองไล่ชื่อดูรอบหนึ่ง (back-row · premium-header · rail · toolbar) แล้ววัดจริงบน
-   /service/assets ยังเจอ `tabs-header → glass-panel = 36px` เพราะ `.tabs-header`
+   /database/assets ยังเจอ `tabs-header → glass-panel = 36px` เพราะ `.tabs-header`
    พก margin ของตัวเองมาด้วยและไม่มีใครนึกถึง ⇒ ปิดที่ชั้นเดียวให้ครบทุกลูกไปเลย
    ⚠️ ล้าง margin **แนวตั้ง** เท่านั้น — แนวนอนเป็นเรื่องของการจัดตำแหน่ง (เช่น
    `margin: 0 auto`) ซึ่งไม่เกี่ยวกับจังหวะของหน้า

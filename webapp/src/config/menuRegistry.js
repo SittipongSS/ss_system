@@ -71,6 +71,17 @@ export const MENU_GROUPS = [
         // และยังว่างอยู่ · ราคา F/FB ย้ายไปทะเบียนกลิ่น/สูตรแล้ว จึงพักเมนูไว้ก่อน
         // เปิดใช้อีกครั้งตอนโมดูลจัดซื้อมา — แค่ลบ flag นี้
         { href: '/database/materials', name: 'ทะเบียนวัสดุ', icon: Boxes, cap: 'costing:view', visible: canViewCosting, disabled: true, match: (p) => p.startsWith('/database/materials') },
+        /* ⭐ ทะเบียนไซต์ + ทะเบียนเครื่อง — ย้ายมาจากเมนูฝ่ายบริการ (มติผู้ใช้ 2026-09-17)
+           กฎสามชั้นข้อ 3: ข้อมูลหลักที่ทุกฝ่ายใช้ร่วมอยู่ที่นี่ ไม่ว่าใครผลิต — ทรงเดียวกับ
+           ทะเบียนกลิ่น/สูตรที่ RD ผลิตแต่ทุกคนเปิดอ่านได้ · ฝ่ายขายต้องตอบลูกค้าได้ว่ามี
+           เครื่องกี่เครื่อง ตั้งอยู่ที่ไหน โดยไม่ต้องถาม TS
+           ⚠️ cap `products:view` = กว้างเท่าทะเบียนสินค้าโดยตั้งใจ (ตรงข้ามกับทะเบียนวัสดุ
+              ที่ต้องแคบเพราะมีราคาทุน — ทะเบียนนี้ไม่มีตัวเลขต้นทุน)
+           ⚠️ **แก้ยังเป็นของ TS** (`canEditService`) — เมนูนี้เปิดทางอ่านอย่างเดียว
+           ⚠️ `match` ต้องครอบเส้นทางเก่าใต้ `/service` ด้วย เพราะสองหน้านั้นเหลือเป็นตัวเด้ง
+              (คนที่บุ๊กมาร์กไว้จะได้ไม่เจอแถบเมนูที่ไม่ไฮไลต์อะไรเลยระหว่างเด้ง) */
+        { href: '/database/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'products:view', match: (p) => p.startsWith('/database/sites') || p.startsWith('/service/sites') },
+        { href: '/database/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'products:view', match: (p) => p.startsWith('/database/assets') || p.startsWith('/service/assets') || p.startsWith('/service/models') },
         { href: '/database/product-categories', name: 'หมวดสินค้า', icon: Tags, cap: 'products:view', managerOnly: true, match: (p) => p.startsWith('/database/product-categories') },
       ],
     },
@@ -325,12 +336,16 @@ export const MENU_GROUPS = [
               ไปงานขายซึ่งเป็นระบบที่ TS ไม่มีกลุ่มเมนูอีกแล้ว = แถบว่าง */
         SHARED_DOC_ITEMS.salesOrders,
         SHARED_DOC_ITEMS.contracts,
-        { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/sites') },
+        /* ⭐ ทะเบียนสองตัวนี้ **ย้ายบ้านไปฐานข้อมูลแล้ว** (มติผู้ใช้ 2026-09-17) — ที่นี่เหลือเป็น
+           ทางลัดของ TS ซึ่งใช้ทั้งสองหน้าเป็นเครื่องมือทำงานรายวัน ไม่ใช่ข้อมูลอ้างอิงนาน ๆ ครั้ง
+           ⚠️ **หน้าเดียวกัน URL เดียวกัน** ไม่ใช่สำเนา — ต้องคู่กับ `ADOPTED_SHARED_PATHS.service`
+              เสมอ ไม่งั้นกดแล้วเปลือกสลับไป "ฐานข้อมูล" ซึ่ง TS ไม่มีกลุ่มเมนู = แถบว่าง */
+        { href: '/database/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/database/sites') || p.startsWith('/service/sites') },
         /* ⭐ ทะเบียนเครื่อง (เฟส B · mig 0332) — คู่กับไซต์บริการ วางติดกันเพราะคน
            ที่เปิดหาไซต์กับคนที่เปิดหาเครื่องคือคนเดียวกัน และสองหน้านี้ลิงก์หากันตลอด
            ⚠️ `match` ต้องครอบหน้าเครื่องรายตัวด้วย — URL ย้ายออกมาจากใต้ไซต์แล้ว
               ถ้าไม่ครอบ เปิดหน้าเครื่องแล้วจะไม่มีเมนูไหนไฮไลต์เลย */
-        { href: '/service/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/assets') || p.startsWith('/service/models') },
+        { href: '/database/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/database/assets') || p.startsWith('/service/assets') || p.startsWith('/service/models') },
         // จัดทีมเจ้าหน้าที่บริการ (mig 0310 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
         // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของเจ้าหน้าที่
         /* ⚠️ แคบด้วย `canManageTeams(u,'TS')` เหมือนฝาแฝดที่ /sa/teams ไม่ใช่ `canEditService` —

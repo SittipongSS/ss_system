@@ -110,7 +110,7 @@ test('⭐ ปุ่ม "SO ย้อนหลัง" และโมดัล �
 });
 
 /* โมดัลต้องอยู่ **นอก** Workspace — Workspace เคยสลับ children เป็น skeleton ตอนโหลดใหม่
-   แล้วถอดโมดัลทิ้งทั้งฟอร์ม (บทเรียนเดียวกับ /service/sites) */
+   แล้วถอดโมดัลทิ้งทั้งฟอร์ม (บทเรียนเดียวกับ /database/sites) */
 test('โมดัลถูก mount นอก Workspace ไม่ใช่ใน children ของแผง', () => {
   const page = code(REGISTER);
   const afterWorkspace = slice(page, '</SaWorkspace>');

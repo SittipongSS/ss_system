@@ -15,7 +15,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
     // ฟอร์มใบประเมินพื้นที่อ่านพื้นที่เดิมของไซต์มาให้ติ๊ก — ฝ่ายขายจึงต้องอ่านได้
-    const access = await requireSite({ user, supabase, id, forRequestForm: true });
+    const access = await requireSite({ user, supabase, id, registry: true });
     if (access.response) return access.response;
     return ok(await loadZones(supabase, id));
   } catch (e) {

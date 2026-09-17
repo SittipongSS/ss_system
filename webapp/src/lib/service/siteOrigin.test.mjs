@@ -15,7 +15,7 @@ const read = (rel) => readFileSync(`src/${rel}`, 'utf8');
 /* จอที่ **ห้าม** มีทางสร้างไซต์ — ไล่ทั้งการเรียกฟอร์มและการยิง POST เอง
    (สองแบบนี้คือทางกลับมาที่เป็นไปได้จริงทั้งคู่) */
 const NO_CREATE = [
-  ['app/service/sites/page.js', 'ทะเบียนไซต์'],
+  ['app/database/sites/page.js', 'ทะเบียนไซต์'],
   ['app/service/intake/page.js', 'งานเข้าใหม่ (SO → ไซต์)'],
   ['components/service/IntakeWizard.js', 'วิซาร์ดรับใบสั่งขาย'],
 ];
@@ -55,7 +55,7 @@ test('การนำเข้าชีตเก่ายังสร้าง�
       ไม่ใช่ฟอร์มไซต์โหมดสร้าง + POST /api/service/sites ⇒ ยามข้อแรกข้างบนยังจับการ "เผลอ"
       เปิดทางสร้างไซต์ปกติที่ทะเบียนได้ครบเหมือนเดิม */
 test('ข้อยกเว้น "เพิ่มไซต์ย้อนหลัง" — ปุ่มแยก สิทธิ์แก้งานบริการ ยิงเส้นของตัวเอง', () => {
-  const page = read('app/service/sites/page.js');
+  const page = read('app/database/sites/page.js');
   assert.match(page, /<LegacySiteModal/);
   assert.match(page, /\{canEdit && \(\s*<LegacySiteModal/, 'โมดัลต้องอยู่หลังสิทธิ์ canEdit');
   const modal = read('components/service/LegacySiteModal.js');

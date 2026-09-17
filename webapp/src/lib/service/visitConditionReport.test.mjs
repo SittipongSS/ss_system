@@ -112,7 +112,7 @@ test('ประวัติเครื่องบอกทิศของส�
   assert.equal(row.label, 'แจ้งว่าชำรุด');
   assert.equal(row.by, 'ช่างต้า');
   assert.match(row.detail, /ปั๊มไม่พ่น/);
-  const page = code('../../app/service/assets/[id]/page.js');
+  const page = code('../../app/database/assets/[id]/page.js');
   assert.match(page, /row\.by && <span className=\{styles\.reason\}>โดย \{row\.by\}<\/span>/, 'ประกอบไว้แล้วต้องขึ้นจอด้วย');
 });
 

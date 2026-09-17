@@ -103,7 +103,7 @@ export default function CustomerZonesPanel({
         const ops = opsById.get(site.id);
         const refill = ops ? siteRefillBadge(ops.refill) : null;
         /* ⭐ หนึ่งสถานที่ = หนึ่ง DetailCard + TableScroll ตรง ๆ (มติผู้ใช้ 2026-09-15 · ถอด TableShell)
-           ท่าเดียวกับตารางในหน้า /service/sites/[id] · จำนวนพื้นที่ย้ายจากป้ายมาเป็นบรรทัด meta
+           ท่าเดียวกับตารางในหน้า /database/sites/[id] · จำนวนพื้นที่ย้ายจากป้ายมาเป็นบรรทัด meta
            ⚠️ ที่อยู่/เขตวิ่งงาน และสรุปปฏิบัติการยังอยู่ครบในบรรทัด meta — ห้ามหายตอนย้ายทรง */
         const placeLine = [`${site.zoneCount} พื้นที่`, site.code, site.address, site.routeZone ? `เขตวิ่งงาน ${site.routeZone}` : null]
           .filter(Boolean).join(" · ");
@@ -112,11 +112,11 @@ export default function CustomerZonesPanel({
             key={site.id}
             icon={MapPin}
             title={
-              /* 🔴 ลิงก์เฉพาะคนที่เปิดได้จริง — `/service/sites/[id]` อ่านด้วย
+              /* 🔴 ลิงก์เฉพาะคนที่เปิดได้จริง — `/database/sites/[id]` อ่านด้วย
                  `canViewService` ⇒ AE กดแล้วเจอ "โหลดข้อมูลไซต์ไม่สำเร็จ"
                  ลิงก์ที่พาไปหน้าที่กดไม่เข้า แย่กว่าไม่มีลิงก์ */
               canOpenSite
-                ? <Link href={`/service/sites/${site.id}`} className="linklike">{naText(site.name)}</Link>
+                ? <Link href={`/database/sites/${site.id}`} className="linklike">{naText(site.name)}</Link>
                 : naText(site.name)
             }
             meta={(
@@ -144,7 +144,7 @@ export default function CustomerZonesPanel({
           >
             {site.zoneCount === 0 ? (
               /* สาขาที่ยังไม่มีพื้นที่ต้องอยู่ในลิสต์ — ตัดออกแล้วจอจะอ่านว่าลูกค้าไม่มีสาขานี้
-                 EmptyState plain ในเนื้อการ์ด (ท่าเดียวกับ /service/sites/[id]) — ห้ามใช้ .state
+                 EmptyState plain ในเนื้อการ์ด (ท่าเดียวกับ /database/sites/[id]) — ห้ามใช้ .state
                  ซึ่งมีระยะขอบของตัวเอง เพราะเนื้อ DetailCard เว้นขอบให้แล้ว = ขอบซ้อนสองชั้น */
               <EmptyState plain icon={Layers}>ยังไม่มีพื้นที่ในสถานที่นี้ — เปิดใบประเมินเพื่อให้ฝ่ายบริการเข้าไปวัด</EmptyState>
             ) : (
