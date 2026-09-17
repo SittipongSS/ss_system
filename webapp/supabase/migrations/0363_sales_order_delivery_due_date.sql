@@ -370,6 +370,7 @@ REVOKE ALL ON FUNCTION public.revise_approved_sales_order_atomic(
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.revise_approved_sales_order_atomic(
   text, text, timestamptz, text, text, text, text
+) TO service_role;
 
 COMMIT;
 

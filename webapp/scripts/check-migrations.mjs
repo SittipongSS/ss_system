@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -64,7 +64,75 @@ for (const [version, expected] of LEGACY_DUPLICATES) {
   }
 }
 
-if (malformed.length || unexpectedDuplicates.length || changedLegacyDuplicates.length) {
+
+/* ── คำสั่งที่ถูกตัดกลางทาง (วงเล็บไม่ครบ) ────────────────────────────────────
+ *
+ * 🐞 **ที่มา 2026-09-17**: mig 0363 ถูกประกอบด้วยการ "ยกฟังก์ชันจากไฟล์ก่อนมาทั้งก้อน"
+ *   แล้วช่วงบรรทัดที่ตัดมาพลาดไปหนึ่งบรรทัด ⇒ `GRANT EXECUTE ON FUNCTION …(` ค้างไว้
+ *   ไม่มี `) TO service_role;` · ไฟล์ยัง `.sql` ปกติ ด่านเลขไฟล์เขียว เทสต์เขียว
+ *   **ไปพังตอนวางลง SQL Editor**: `syntax error at or near ";"` ชี้ที่บรรทัด COMMIT
+ *   ซึ่งอยู่ห่างจากต้นเหตุ 8 บรรทัด
+ *
+ * ⚠️ ไม่ใช่ parser ของ Postgres — ตรวจแค่ "วงเล็บครบต่อคำสั่ง" ซึ่งจับคลาสนี้ได้พอดี
+ *   โดยไม่ต้องมีฐานข้อมูล · ข้าม dollar-quoted block ($$…$$) กับคอมเมนต์ทั้งสองแบบ
+ */
+function sqlStatements(sql) {
+  const out = [];
+  let cur = '';
+  let i = 0;
+  let inLineComment = false;
+  let inBlockComment = 0;
+  let inString = false;
+  let dollarTag = null;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (inLineComment) {
+      if (ch === '\n') inLineComment = false;
+      i += 1;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === '*' && sql[i + 1] === '/') { inBlockComment -= 1; i += 2; continue; }
+      if (ch === '/' && sql[i + 1] === '*') { inBlockComment += 1; i += 2; continue; }
+      i += 1;
+      continue;
+    }
+    if (dollarTag) {
+      if (sql.startsWith(dollarTag, i)) { i += dollarTag.length; dollarTag = null; continue; }
+      i += 1;
+      continue;
+    }
+    if (inString) {
+      if (ch === "'") inString = false;
+      i += 1;
+      continue;
+    }
+    if (ch === '-' && sql[i + 1] === '-') { inLineComment = true; i += 2; continue; }
+    if (ch === '/' && sql[i + 1] === '*') { inBlockComment = 1; i += 2; continue; }
+    const tag = sql.slice(i).match(/^\$[A-Za-z_]*\$/);
+    if (tag) { dollarTag = tag[0]; i += dollarTag.length; continue; }
+    if (ch === "'") { inString = true; i += 1; continue; }
+    if (ch === ';') { out.push(cur.trim()); cur = ''; i += 1; continue; }
+    cur += ch;
+    i += 1;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+const truncated = [];
+for (const name of files) {
+  const sql = await readFile(path.join(migrationsDir, name), 'utf8');
+  for (const statement of sqlStatements(sql)) {
+    const open = (statement.match(/\(/g) || []).length;
+    const close = (statement.match(/\)/g) || []).length;
+    if (open !== close) {
+      truncated.push(`${name}: ${open} "(" vs ${close} ")" — ${statement.split('\n')[0].slice(0, 90)}`);
+    }
+  }
+}
+
+if (malformed.length || unexpectedDuplicates.length || changedLegacyDuplicates.length || truncated.length) {
   console.error('Migration integrity check failed.');
   if (malformed.length) console.error(`Malformed filenames:\n- ${malformed.join('\n- ')}`);
   if (unexpectedDuplicates.length) {
@@ -78,6 +146,10 @@ if (malformed.length || unexpectedDuplicates.length || changedLegacyDuplicates.l
     );
   }
   if (changedLegacyDuplicates.length) console.error(`Changed legacy duplicate groups:\n- ${changedLegacyDuplicates.join('\n- ')}`);
+  if (truncated.length) {
+    console.error(`คำสั่ง SQL ที่วงเล็บไม่ครบ (คำสั่งถูกตัดกลางทาง):\n- ${truncated.join('\n- ')}`);
+    console.error('ไฟล์แบบนี้พังตอนวางลง SQL Editor ไม่ใช่ตอน CI — error จะชี้ที่ COMMIT ซึ่งห่างจากต้นเหตุ');
+  }
   process.exit(1);
 }
 
