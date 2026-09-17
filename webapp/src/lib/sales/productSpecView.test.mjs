@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  revLabel, specControlActions, specFormBlocker, specReadiness,
+  revLabel, specControlActions, specFormBlocker, specLineAction, specReadiness,
   specStatusColor, specStatusHeadline, specWorkflowSteps,
 } from './productSpecView.js';
 
@@ -127,4 +127,30 @@ test('ตัวห้ามแก้ฟอร์มเป็นตัวเด�
   assert.equal(specFormBlocker(rev(), 'ac'), null);
   assert.match(specFormBlocker(rev({ status: 'approved' }), 'ac'), /ออกฉบับใหม่/);
   assert.match(specFormBlocker(null, 'ac'), /ยังไม่มีฉบับ/);
+});
+
+/* ── ปุ่มรายบรรทัดบนหน้าใบสั่งขาย ─────────────────────────────────── */
+
+test('บรรทัดนอกขอบเขตไม่มีปุ่ม — ไม่มีงานให้ทำเลย ไม่ใช่ปุ่มที่กดไม่ได้', () => {
+  assert.equal(specLineAction({ kind: 'out_of_scope', reason: 'หมวด 03' }, { canEdit: true }), null);
+  assert.equal(specLineAction(null, { canEdit: true }), null);
+});
+
+test('สามหน้าตามสถานะ: สร้างใบ · ออกเอกสารรอบนี้ · เปิดใบ', () => {
+  assert.equal(specLineAction({ kind: 'no_spec' }, { canEdit: true }).kind, 'create');
+  assert.equal(specLineAction({ kind: 'not_issued' }, { canEdit: true }).kind, 'issue');
+  assert.equal(specLineAction({ kind: 'issued' }, { canEdit: true }).kind, 'open');
+});
+
+test('ติดด่าน = ปุ่มยังอยู่แต่กดไม่ได้ พร้อมเหตุที่ API ส่งมา', () => {
+  const action = specLineAction({ kind: 'not_issued', reason: 'ใบสั่งขายยังไม่ผ่านการอนุมัติ' }, { canEdit: true });
+  assert.equal(action.disabled, true);
+  assert.match(action.reason, /ยังไม่ผ่านการอนุมัติ/);
+});
+
+test('คนที่ไม่มีสิทธิ์แก้ยังเห็นปุ่มพร้อมเหตุ — และเปิดใบที่ออกแล้วได้เสมอ', () => {
+  const blocked = specLineAction({ kind: 'no_spec' }, { canEdit: false });
+  assert.equal(blocked.disabled, true);
+  assert.match(blocked.reason, /AC หรือฝ่ายขาย/);
+  assert.equal(specLineAction({ kind: 'issued' }, { canEdit: false }).disabled, false);
 });

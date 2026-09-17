@@ -1,0 +1,16 @@
+/* ความกว้างคอลัมน์และผิวย่อยอยู่ที่นี่ ไม่ใช่ `style` บน element (ด่าน audit:ui) */
+.colForm { width: 118px; }
+.colDoc { width: 200px; }
+.colStatus { width: 170px; }
+.colAction { width: 190px; }
+.notice { margin-bottom: var(--space-3); }
+.lineName { font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.lineCode { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
+.actionCell { display: flex; flex-direction: column; gap: var(--space-1-5); align-items: flex-start; }
+.blockedReason {
+  margin: 0;
+  font-size: var(--fs-4);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+.footNote { margin: var(--space-2-5) 0 0; }

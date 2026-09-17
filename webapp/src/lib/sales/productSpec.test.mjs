@@ -271,3 +271,29 @@ test('ออก Rev. ใหม่ยกสถานะเอกสารมา�
   assert.equal(seed.length, 5);
   assert.equal(seed[4].label, 'ผลทดสอบความคงตัว');
 });
+
+/* ── ด่านของใบสั่งขายแยกจากด่าน "ยังไม่มีใบสเปค" ──────────────────── */
+
+test('🪤 ปุ่มสร้างใบต้องไม่ติดด้วยเหตุ "ยังไม่มีใบสเปค" — นั่นคือสิ่งที่ปุ่มมีไว้แก้', async () => {
+  const { productSpecOrderGate } = await import('./productSpecWorkflow.js');
+  const approvedOrder2 = { id: 'SO1', status: 'approved' };
+  // ใบอนุมัติแล้ว + เป็นฝ่ายขาย ⇒ ไม่มีเหตุติดปุ่มสร้าง แม้สินค้ายังไม่มีใบ
+  assert.equal(productSpecOrderGate({ role: 'ac', salesOrder: approvedOrder2 }), null);
+  const state = productSpecLineState({
+    line: { id: 'L1' }, spec: null, latestRevision: null, salesOrder: approvedOrder2, role: 'ac',
+  });
+  assert.equal(state.kind, 'no_spec');
+  assert.equal(state.reason, null);
+  // แต่ปุ่ม "ออกเอกสาร" ของบรรทัดที่มีใบแล้วยังใช้ด่านเต็มเหมือนเดิม
+  assert.match(
+    productSpecIssueBlock(null, null, { role: 'ac', salesOrder: approvedOrder2 }),
+    /ยังไม่มีใบสเปค/,
+  );
+});
+
+test('ด่านของใบสั่งขายยังติดตามเดิมเมื่อใบยังไม่อนุมัติหรือคนไม่มีสิทธิ์', async () => {
+  const { productSpecOrderGate } = await import('./productSpecWorkflow.js');
+  assert.match(productSpecOrderGate({ role: 'ac', salesOrder: { status: 'draft' } }), /ยังไม่ผ่านการอนุมัติ/);
+  assert.match(productSpecOrderGate({ role: 'rd', salesOrder: { status: 'approved' } }), /AC หรือฝ่ายขาย/);
+  assert.match(productSpecOrderGate({ role: 'ac' }), /ไม่พบใบสั่งขาย/);
+});

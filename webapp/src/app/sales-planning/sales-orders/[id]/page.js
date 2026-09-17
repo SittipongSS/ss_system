@@ -21,6 +21,7 @@ import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
 import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
+import SalesOrderFollowUpDocs from "@/components/salesPlanning/SalesOrderFollowUpDocs";
 import SalesOrderDeliveryDueField from "@/components/salesPlanning/SalesOrderDeliveryDueField";
 import { orderConfirmationOf, salesOrderConfirmationGate } from "@/lib/sales/orderConfirmationDocs";
 
@@ -1347,6 +1348,13 @@ export default function SalesOrderDetailPage() {
               <p className="form-note" role="status" style={{ marginTop: 12 }}>{confirmationGate}</p>
             )}
           </DetailCard>
+
+          {/* ⭐ เอกสารต่อเนื่อง (mig 0364) — ใบที่ออกต่อจากใบสั่งขายที่อนุมัติแล้ว
+              วางถัดจากการ์ดยืนยันคำสั่งซื้อเพราะใบพวกนั้นใช้ PO/วันที่จากการ์ดนี้
+              ⚠️ **หน้านี้เป็นด่านปลดล็อกกับทางเข้า ไม่ใช่บ้านของใบ** — ใบสเปคเป็นใบของ
+                 *สินค้า* หนึ่งสินค้าหนึ่งใบตลอดอายุ (มติผู้ใช้ 2026-09-17)
+              ⚠️ การ์ดคืน null เองเมื่อใบไม่มีบรรทัดหมวด 01/02 เลย (ใบที่ขายแต่ค่าออกแบบ) */}
+          <SalesOrderFollowUpDocs orderId={order.id} />
 
           {/* ⭐ การ์ดสัญญาบริการ (mig 0324) — ขึ้นเฉพาะใบที่มีรอบบริการ
               (ดีลสาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อย 1 รายการ ⇒ ทั้งใบ)

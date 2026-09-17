@@ -42,7 +42,7 @@ async function loadOrder(supabase, id, user, mode) {
 }
 
 /* บรรทัดที่อยู่ในขอบเขต + ใบของสินค้าแต่ละตัว — ตัวเดียวที่ทั้ง GET และ POST ใช้ */
-async function specsForOrder(supabase, order) {
+async function specsForOrder(supabase, order, user) {
   const lines = [...(order.lines || [])].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   const issuesRes = await supabase
     .from('product_spec_issues')
@@ -76,12 +76,15 @@ async function specsForOrder(supabase, order) {
       line,
       spec: spec.spec,
       revisions: spec.revisions,
+      /* ⚠️ ต้องส่ง `role` มาด้วย — ไม่ส่ง = ด่านสิทธิ์ตัดสินด้วย role ว่าง แล้วทุกบรรทัด
+         ตอบกลับไปว่า "ต้องเป็น AC หรือฝ่ายขาย" ทั้งที่คนเปิดเป็นฝ่ายขายอยู่แล้ว */
       state: productSpecLineState({
         line,
         spec: spec.spec,
         latestRevision: latestRevisionOf(spec.revisions),
         issue: issueByLine.get(line.id) || null,
         salesOrder: order,
+        role: user?.role,
       }),
     });
   }
@@ -97,7 +100,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (loaded.error) return fail(loaded.error, 500);
   if (loaded.blocked) return badRequest(loaded.blocked);
 
-  const result = await specsForOrder(supabase, loaded.order);
+  const result = await specsForOrder(supabase, loaded.order, user);
   if (result.error) return fail(`อ่านสถานะใบสเปคไม่สำเร็จ: ${result.error}`, 500);
   return ok({ orderStatus: loaded.order.status, rows: result.rows });
 });

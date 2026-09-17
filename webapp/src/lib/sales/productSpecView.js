@@ -168,3 +168,30 @@ export function specReadiness(revision) {
 export function specFormBlocker(revision, role) {
   return productSpecEditBlock(revision, { role });
 }
+
+/**
+ * ปุ่มของบรรทัดสินค้าบนหน้าใบสั่งขาย — สามหน้าตามสถานะที่ API ตัดสินมาแล้ว
+ *
+ * ⚠️ รับ `state` จาก `productSpecLineState` (API ส่งมาในผลลัพธ์) — จอห้ามคิดเอง
+ * ⚠️ `reason` ที่ติดมากับ state ทำให้ปุ่มกดไม่ได้ **แต่ยังอยู่** (ui-visibility-rule)
+ *    ยกเว้นบรรทัดนอกขอบเขต ซึ่งไม่มีปุ่มเพราะไม่มีงานให้ทำเลย
+ */
+export function specLineAction(state, { canEdit = false } = {}) {
+  if (!state || state.kind === 'out_of_scope') return null;
+  if (state.kind === 'issued') {
+    return { id: 'open', label: 'เปิดใบสเปค', kind: 'open', disabled: false, reason: null };
+  }
+  if (!canEdit) {
+    return {
+      id: 'blocked',
+      label: state.kind === 'no_spec' ? 'สร้างใบสเปค' : 'ออกเอกสารรอบนี้',
+      kind: state.kind === 'no_spec' ? 'create' : 'issue',
+      disabled: true,
+      reason: 'ต้องเป็น AC หรือฝ่ายขายจึงออกเอกสารได้',
+    };
+  }
+  if (state.kind === 'no_spec') {
+    return { id: 'create', label: 'สร้างใบสเปค', kind: 'create', disabled: Boolean(state.reason), reason: state.reason };
+  }
+  return { id: 'issue', label: 'ออกเอกสารรอบนี้', kind: 'issue', disabled: Boolean(state.reason), reason: state.reason };
+}
