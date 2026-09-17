@@ -22,8 +22,9 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { thaiWrapText, THAI_LOANWORDS } from '../src/lib/thaiWrap.js';
 
-/* 🔴 เพดาน — ขึ้นไม่ได้ ลงได้อย่างเดียว (วัด 2026-09-07: ก่อนแปลง 419 · หลังแปลง 23) */
-const CEILING = 23;
+/* 🔴 เพดาน — ขึ้นไม่ได้ ลงได้อย่างเดียว (วัด 2026-09-07: ก่อนแปลง 419 · หลังแปลง 23)
+   ลดเป็น 21 เมื่อ 2026-09-17 หลังเติม `สเปค`/`สเปก` ลงทะเบียนคำทับศัพท์ (ใบสเปค FM-SA-04) */
+const CEILING = 21;
 
 const THAI_WORD = /^[฀-๿]+$/;
 const HAS_THAI = /[฀-๿]/;
