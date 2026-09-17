@@ -7,6 +7,11 @@ import { categoryOf } from "@/lib/master/categoryOf";
    คีย์ชุดเดียวกัน · พิมพ์สตริงซ้ำสองที่เมื่อไร วันหนึ่งจะพิมพ์ต่างกันแล้วด่านเงียบ */
 import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT, SURVEY_DOC_WIDE } from "@/lib/service/survey";
 
+/* คีย์ของภาพประกอบใบสเปคสินค้า — ยกเป็นค่าคงที่เพราะทั้งจอ ตัวสร้างเอกสาร และ
+   `productDocTypes()` อ้างคีย์เดียวกัน · พิมพ์สตริงซ้ำเมื่อไรวันหนึ่งจะพิมพ์ต่างกัน
+   แล้วรูปจะไม่ขึ้นบนกระดาษโดยไม่มีอะไรฟ้อง */
+export const SPEC_ILLUSTRATION_DOC_TYPE = 'spec_illustration';
+
 // `required: true` = เอกสารจำเป็น (โชว์เป็นการ์ดที่ต้องมี + ติ๊กถูกเมื่ออัปแล้ว).
 // `other` เป็นการ์ดเอกสารเพิ่มเติม (ไม่บังคับ, แนบได้หลายไฟล์).
 
@@ -164,8 +169,12 @@ export const ARTWORK_MAIN_CATEGORIES = ["01"];
 export function productDocTypes(record) {
   const categoryCode = record?.categoryCode || categoryOf(record?.fgCode);
   const mainCode = String(categoryCode || "").slice(0, 2);
-  if (!mainCode || ARTWORK_MAIN_CATEGORIES.includes(mainCode)) return ATTACHMENT_TYPES.product;
-  return ATTACHMENT_TYPES.product.map((t) => (t.required ? { ...t, required: false } : t));
+  /* ⚠️ ภาพประกอบใบสเปคถูกกรองออกจากการ์ดของหน้าสินค้า — มันเป็นเนื้อของกระดาษ
+     FM-SA-04 ไม่ใช่เอกสารที่ทะเบียนสินค้าต้องมี · ปล่อยติดมาเมื่อไรจะได้การ์ดซ้ำ
+     สองที่และด่าน "ยังขาดเอกสาร" จะนับรูปประกอบเป็นเอกสารที่ขาด */
+  const list = ATTACHMENT_TYPES.product.filter((t) => t.key !== SPEC_ILLUSTRATION_DOC_TYPE);
+  if (!mainCode || ARTWORK_MAIN_CATEGORIES.includes(mainCode)) return list;
+  return list.map((t) => (t.required ? { ...t, required: false } : t));
 }
 
 // union ของทุกประเภทเอกสารลูกค้า (company ∪ individual) — derive อัตโนมัติจาก
@@ -249,6 +258,14 @@ export const ATTACHMENT_TYPES = {
   // จอแสดงและด่านอนุมัติต้องเรียก productDocTypes(record) เพราะบางหมวดไม่บังคับ Artwork
   product: [
     { key: "artwork", label: "Artwork สินค้า", required: true },
+    /* ⭐ ภาพประกอบของใบสเปคสินค้า FM-SA-04 (มติผู้ใช้ 2026-09-17: "ภาพประกอบอยู่กับ
+       สเปคสินค้า") — แนบกับ **ตัวสินค้า** ไม่ใช่กับฉบับสเปก ⇒ อัปครั้งเดียวใช้ได้ทุกฉบับ
+       และได้ด่านสิทธิ์/โฟลเดอร์ Drive ของสินค้ามาฟรีทั้งชุด (ไม่ต้องต่อ 5 จุดใหม่ ดู
+       หัวไฟล์ lib/sales/salesAttachmentAccess.js)
+       ⚠️ **อยู่ใน union นี้เพื่อให้ผ่านด่านตรวจ docType และมีป้ายชื่อ** แต่ `productDocTypes()`
+       กรองออก ⇒ ไม่โผล่เป็นการ์ดบนหน้าสินค้า และไม่เข้าด่าน "ยังขาดเอกสาร" ของทะเบียน
+       (รูปประกอบไม่ใช่เอกสารที่ทะเบียนสินค้าต้องมี — มันเป็นเนื้อของกระดาษ FM-SA-04) */
+    { key: "spec_illustration", label: "ภาพประกอบใบสเปคสินค้า", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   // เฟส B — เอกสารการชำระ ผูกกับออเดอร์ (รายรอบการชำระ) มาคนละสเตป/คนละฝ่าย:
