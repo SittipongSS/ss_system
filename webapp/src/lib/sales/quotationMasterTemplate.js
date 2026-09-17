@@ -124,6 +124,9 @@ const DOC_LABEL_PAIRS = Object.freeze({
   currency: ['บาท', 'THB'],
   // งวดชำระ + เงื่อนไข
   paymentSchedule: ['งวดชำระเงิน', 'PAYMENT SCHEDULE'],
+  // หัวข้อของก้อนที่ตัดข้ามหน้า — คนอ่านต้องรู้ว่าตาราง/หมายเหตุนี้ต่อจากหน้าก่อน
+  paymentScheduleContinued: ['งวดชำระเงิน (ต่อ)', 'PAYMENT SCHEDULE (cont.)'],
+  remarksContinued: ['หมายเหตุ (ต่อ)', 'REMARKS (cont.)'],
   // แถวเดียวที่ระบบสร้างเองเมื่อใบไม่ได้แบ่งงวด (paymentScheduleRows) — ป้าย ไม่ใช่
   // ข้อความที่คนกรอก จึงต้องแปล · ชื่องวดที่คนตั้งเองยังพิมพ์ตามที่พิมพ์ไว้
   fullPayment: ['ชำระเต็มจำนวน', 'Full payment'],
@@ -439,22 +442,41 @@ const V4_BANNER = 1; // ป้าย "รายการต่อ" 19px
 const V4_TOTALS = 7; // 133.5px
 const V4_TOTALS_WITH_DISCOUNT_ROWS = 10; // 191.4px
 const V4_SAFETY = 2; // กันประเมินความยาวข้อความพลาด — ห้ามล้นเพราะ overflow:hidden ตัดเงียบ
-const V4_SIGNATURES = 8; // 156.2px
+/* 🔎 วัดใหม่ 2026-09-17 (Chrome · line-height 1.65 · ทั้งใบเสนอราคาและใบสั่งขาย ทั้ง
+   ร่างและอนุมัติแล้ว): .signatures = 140.3px = 7.25 หน่วย ⇒ 7.5 (145px) · ค่าเดิม 8
+   จองเกินจริง 15px ซึ่งพอทำให้ใบ 6 งวดที่พอดีหน้าถูกผ่าออกไปอีกหน้าโดยไม่จำเป็น */
+const V4_SIGNATURES = 7.5; // 140.3px
 // 🐞 เดิมจองไว้ 8 หน่วย (155px) ทั้งที่แถวเงื่อนไข "ไม่รวมบรรทัดข้อความ" สูงแค่ 48.6px
 // (คอมเมนต์เดิมเขียนว่า "กล่องเงื่อนไข 3 กล่อง" แต่ของจริงเป็นสองกล่องเรียงข้างกัน
 // แล้วหมายเหตุเต็มแถวอีกหนึ่ง ซึ่งนับแยกอยู่แล้ว) ⇒ จองเกินไป 5.5 หน่วย = 106px
 // ผลคือกลุ่มท้ายเอกสาร "ไม่พอ" ทั้งที่พอ แล้วดันไปเปิดหน้าใหม่ให้เปล่า ๆ
-const V4_TERMS_BASE = 3; // 48.6px (ฐานกล่อง ไม่รวมบรรทัดข้อความ)
-const V4_INSTALLMENT_BASE = 3; // หัวข้อ+หัวตารางงวด
-const V4_INSTALLMENT_ROW = 2; // 25px/งวด
+const V4_TERMS_BASE = 2.6; // 48.6px (ฐานกล่อง ไม่รวมบรรทัดข้อความ)
+const V4_INSTALLMENT_BASE = 2.9; // 55.1px = หัวข้อ 19.1 + หัวตาราง 29.5 + ระยะห่าง
+/* 🐞 IS-26090xxx (2026-09-17): แถวงวดถูกจองไว้ 2 หน่วยตายตัว (38.7px) ทั้งที่แถวที่มี
+   บรรทัด "วางบิล …" (installments[].note — ใบสั่งขายรายงวดใส่ทุกแถว) วัดจริงได้ 45.3px
+   ⇒ ใบ 12 งวดขาดไป ~4 หน่วย · วัด Chrome ที่ line-height 1.65:
+     แถวบรรทัดเดียว 29.5px = 1.53 หน่วย ⇒ ปัดขึ้น 1.6
+     ทุกบรรทัดที่เพิ่ม (ป้ายงวดที่ตัดบรรทัด 17.1px / หมายเหตุงวด 15.8px) ⇒ ปัดขึ้น 0.9
+   จำนวนตัวอักษรต่อบรรทัดวัดจากคอลัมน์รายละเอียดจริง (กว้าง auto = ทั้งตารางลบ 18+34mm):
+   ป้าย 7.8pt ตัดบรรทัดหลัง ~80 ตัว · หมายเหตุ 7.2pt หลัง ~90 ตัว ⇒ จองเผื่อที่ 75/80 */
+const V4_INSTALLMENT_ROW = 1.6; // 29.5px แถวบรรทัดเดียว
+const V4_INSTALLMENT_EXTRA_LINE = 0.9; // 17.1px ต่อบรรทัดที่เพิ่มในแถวเดียวกัน
+const V4_INSTALLMENT_LABEL_CHARS = 75;
+const V4_INSTALLMENT_NOTE_CHARS = 80;
+const V4_REMARKS_CHARS = 112; // remarks กว้างไม่เกิน 168mm
 // 🐞 กล่องหมายเหตุถูกนับเป็น "จำนวนบรรทัด" เฉย ๆ ทั้งที่มันเป็นกล่องมีหัวข้อ+ขอบ+padding
 // วัดจริง 68.4px สำหรับหมายเหตุบรรทัดเดียว = ฐาน 49px + บรรทัด 19.4px ⇒ ขาดไป 2.5 หน่วย
-const V4_REMARKS_BASE = 3; // 49px + ระยะห่าง
+const V4_REMARKS_BASE = 2.6; // 46.9px + ระยะห่าง (วัดใหม่ 2026-09-17)
 const V4_SECTION_LEAD = 2; // หัวข้อ "รายละเอียดการชำระเงิน" บนหน้าท้ายเอกสาร 34px
 
 // ความจุของ "หน้าท้ายเอกสารทั้งหน้า" — เต็มหน้าลบหัวข้อกลุ่มและเผื่อประเมินพลาด
 // ⚠️ กลุ่มที่สูงเกินค่านี้ **ไม่มีหน้าไหนรับไหว** ต้องผ่า ไม่ใช่ยัดลงหน้าเดียวแล้วปล่อยล้น
-const V4_GROUP_PAGE_CAPACITY = V4_PAGE_UNITS - V4_SECTION_LEAD - V4_SAFETY;
+/* กลุ่มท้ายเอกสารคิดต้นทุน **รายบรรทัด** และปัดขึ้นทีละก้อน (ฐานตารางงวด/กล่องเงื่อนไข/
+   กล่องหมายเหตุ/ช่องลงชื่อ) ⇒ มีเบาะรองอยู่ในตัวทุกก้อนแล้ว จึงเผื่อรวมแค่ 1 หน่วย
+   ไม่ใช่ 2 เหมือนตารางรายการ (ที่ความยาวข้อความสินค้าเดาได้หยาบกว่ามาก)
+   เผื่อ 2 หน่วยทำให้ใบที่เหลือที่ว่างจริง ~36px ถูกตัดเป็นอีกหน้าทั้งที่พอ */
+const V4_GROUP_SAFETY = 1;
+const V4_GROUP_PAGE_CAPACITY = V4_PAGE_UNITS - V4_SECTION_LEAD - V4_GROUP_SAFETY;
 
 /* ใบที่มีส่วนลดรายบรรทัดจะมีทั้งคอลัมน์ส่วนลดในตารางและแถวส่วนลดในบล็อกมูลค่ารวม
    ⚠️ ตัดสินจาก **ทั้งใบ** ไม่ใช่รายหน้า — หัวตารางทุกหน้าต้องมีคอลัมน์ชุดเดียวกัน
@@ -492,16 +514,125 @@ const V4_CONTINUATION_CAPACITY = V4_PAGE_UNITS - V4_BANNER - V4_THEAD - V4_SAFET
 
 // ความสูงกลุ่มท้ายเอกสาร (งวดชำระ + เงื่อนไข + ลงชื่อ) — กล่องวิธีชำระกับเงื่อนไข
 // อยู่ข้างกันจึงคิดตามกล่องที่สูงกว่า หมายเหตุเต็มแถวคิดแยก
-function v4GroupUnits({ installments, paymentMethod, paymentTerms, remarks }) {
-  // ค่าต่อบรรทัดสอดคล้องกับสัดส่วนคอลัมน์ .85/1.15 และ remarks กว้างไม่เกิน 168mm
-  // ต้องนับ newline จากผู้ใช้เป็นบรรทัดจริง เพราะ CSS ใช้ white-space: pre-wrap.
+function v4InstallmentRowUnits(row = {}) {
+  const labelLines = estimatedTextLines(row.label, V4_INSTALLMENT_LABEL_CHARS);
+  const noteLines = row.note ? estimatedTextLines(row.note, V4_INSTALLMENT_NOTE_CHARS) : 0;
+  return V4_INSTALLMENT_ROW + V4_INSTALLMENT_EXTRA_LINE * ((labelLines - 1) + noteLines);
+}
+
+/* ต้นทุนของกลุ่มท้ายเอกสารแยกเป็นก้อน ๆ เพื่อให้แบ่งหน้าได้ (v4PaymentSlots)
+   · ตารางงวด = ฐาน (หัวข้อ+หัวตาราง ซ้ำทุกหน้าที่มีตาราง) + ต้นทุนรายแถว
+   · กล่องเงื่อนไข = วิธีชำระกับเงื่อนไขอยู่ข้างกัน จึงคิดตามกล่องที่สูงกว่า — แยกหน้าไม่ได้
+   · หมายเหตุ = ฐานกล่อง + ต้นทุนรายบรรทัด (ตัดข้ามหน้าได้ทีละบรรทัด)
+   ต้องนับ newline จากผู้ใช้เป็นบรรทัดจริง เพราะ CSS ใช้ white-space: pre-wrap */
+function v4GroupBlocks({ installments = [], paymentMethod, paymentTerms, remarks }) {
+  const rows = installments.map(v4InstallmentRowUnits);
   const methodLines = estimatedTextLines(paymentMethod, 45);
   const termsLines = estimatedTextLines(paymentTerms, 62);
-  const remarksLines = estimatedTextLines(remarks, 112);
-  return (installments.length ? V4_INSTALLMENT_BASE + V4_INSTALLMENT_ROW * installments.length : 0)
-    + V4_TERMS_BASE + Math.max(methodLines, termsLines)
-    + (remarks ? V4_REMARKS_BASE + remarksLines : 0)
-    + V4_SIGNATURES;
+  const remarksLines = remarks
+    ? String(remarks).split(/\r?\n/).map((line) => estimatedTextLines(line, V4_REMARKS_CHARS))
+    : [];
+  const sum = (values) => values.reduce((total, value) => total + value, 0);
+  return {
+    installments: {
+      base: V4_INSTALLMENT_BASE,
+      rows,
+      total: rows.length ? V4_INSTALLMENT_BASE + sum(rows) : 0,
+    },
+    terms: V4_TERMS_BASE + Math.max(methodLines, termsLines),
+    remarks: {
+      base: V4_REMARKS_BASE,
+      lines: remarksLines,
+      total: remarksLines.length ? V4_REMARKS_BASE + sum(remarksLines) : 0,
+    },
+    signatures: V4_SIGNATURES,
+  };
+}
+
+function v4GroupUnits(input) {
+  const blocks = v4GroupBlocks(input);
+  return blocks.installments.total + blocks.terms + blocks.remarks.total + blocks.signatures;
+}
+
+/* กลุ่มท้ายเอกสารที่ไม่พอในหน้าเดียว → กระจายลงหน้าท้ายเอกสารเท่าที่ต้องใช้
+   ลำดับก้อนคงที่ (ตารางงวด → กล่องเงื่อนไข → หมายเหตุ → ลงชื่อ) เหมือนที่วาดในหน้าเดียว
+   ตารางงวดและหมายเหตุตัดข้ามหน้าได้ กล่องเงื่อนไขกับช่องลงชื่อเป็นก้อนเดียวย้ายทั้งก้อน
+   ⚠️ ก้อนที่สูงเกินหนึ่งหน้าทั้งก้อน (กล่องเงื่อนไขที่พิมพ์มาหลายสิบบรรทัด) ยังล้นได้
+   แต่ล้นแค่ก้อนนั้น ไม่ลากทั้งกลุ่มไปล้นตาม */
+function v4PaymentSlots(blocks, capacity) {
+  const slots = [];
+  let slot = null;
+  let free = 0;
+  const hasContent = () => Boolean(slot.installmentRange || slot.showTerms || slot.remarksRange);
+  const openSlot = () => {
+    slot = {
+      installmentRange: null,
+      installmentsContinued: false,
+      showTerms: false,
+      remarksRange: null,
+      remarksContinued: false,
+      showSignatures: false,
+    };
+    free = capacity;
+    slots.push(slot);
+  };
+  // ตัดก้อนที่แบ่งได้ (ตารางงวด/หมายเหตุ) ลงหน้าปัจจุบันให้มากที่สุด แล้วคืนดัชนีที่ค้าง
+  const packRange = (items, base, from) => {
+    let cost = base;
+    let index = from;
+    while (index < items.length && cost + items[index] <= free) {
+      cost += items[index];
+      index += 1;
+    }
+    // แถว/บรรทัดเดียวยังไม่พอทั้งหน้า — ยัดไปหนึ่งหน่วยกันวนไม่จบ (ล้นเฉพาะหน่วยนั้น)
+    if (index === from) {
+      cost += items[index];
+      index += 1;
+    }
+    free -= cost;
+    return { end: index, cost };
+  };
+
+  openSlot();
+
+  const { rows, base: installmentBase } = blocks.installments;
+  let rowIndex = 0;
+  while (rowIndex < rows.length) {
+    if (hasContent() && free < installmentBase + rows[rowIndex]) openSlot();
+    const start = rowIndex;
+    rowIndex = packRange(rows, installmentBase, rowIndex).end;
+    slot.installmentRange = { start, end: rowIndex };
+    slot.installmentsContinued = start > 0;
+    if (rowIndex < rows.length) openSlot();
+  }
+
+  /* กล่องเงื่อนไข + หมายเหตุ + ช่องลงชื่อ = "หางเอกสาร" — ถ้าทั้งหางพอในหน้าเดียวแต่
+     ไม่พอในที่ที่เหลือ ให้ยกไปทั้งหางเลย ดีกว่าเอาเฉพาะกล่องเงื่อนไขไปเบียดท้ายหน้า
+     แล้วปล่อยหมายเหตุกับช่องลงชื่อไปอยู่หน้าถัดไปกับที่ว่างครึ่งหน้า */
+  const tailUnits = blocks.terms + blocks.remarks.total + blocks.signatures;
+  if (hasContent() && tailUnits <= capacity && tailUnits > free) openSlot();
+
+  if (blocks.terms) {
+    if (hasContent() && free < blocks.terms) openSlot();
+    slot.showTerms = true;
+    free -= blocks.terms;
+  }
+
+  const { lines: remarksLines, base: remarksBase } = blocks.remarks;
+  let lineIndex = 0;
+  while (lineIndex < remarksLines.length) {
+    if (hasContent() && free < remarksBase + remarksLines[lineIndex]) openSlot();
+    const start = lineIndex;
+    lineIndex = packRange(remarksLines, remarksBase, lineIndex).end;
+    slot.remarksRange = { start, end: lineIndex };
+    slot.remarksContinued = start > 0;
+    if (lineIndex < remarksLines.length) openSlot();
+  }
+
+  if (hasContent() && free < blocks.signatures) openSlot();
+  slot.showSignatures = true;
+
+  return slots;
 }
 
 // V4: เติมรายการให้เต็มหน้าก่อนค่อยตัดไปหน้าถัดไป (ไม่เกลี่ยให้สองหน้าเท่ากันแบบ V1–V3)
@@ -638,7 +769,8 @@ function buildGroupedPages({
   continuationCapacity,
   totalsReserve,
 }) {
-  const groupUnits = v4GroupUnits({ installments, paymentMethod, paymentTerms, remarks });
+  const blocks = v4GroupBlocks({ installments, paymentMethod, paymentTerms, remarks });
+  const groupUnits = blocks.installments.total + blocks.terms + blocks.remarks.total + blocks.signatures;
   const lastIndex = linePages.length - 1;
   const lastCapacity = lastIndex === 0 ? firstCapacity : continuationCapacity;
   const lastFree = lastCapacity - totalsReserve - v4PageCost(linePages[lastIndex]);
@@ -655,30 +787,35 @@ function buildGroupedPages({
   }));
 
   if (!groupFitsOnLastPage) {
-    // ผ่าเฉพาะตอนกลุ่มสูงเกินหนึ่งหน้าเต็ม — ที่เหลือยังอยู่หน้าเดียวตามมติเดิม
-    const splitAcceptance = groupUnits > V4_GROUP_PAGE_CAPACITY;
-    pages.push({
-      id: 'payment',
-      kind: 'payment',
-      lines: [],
-      showParty: false,
-      showTotals: false,
-      // กลุ่มไม่แตก — เงื่อนไขชำระและลงชื่ออยู่หน้าเดียวกันเสมอ ยกเว้นตอนล้นทั้งหน้า
-      showPayment: true,
-      showSignatures: !splitAcceptance,
-    });
-
-    if (splitAcceptance) {
+    /* 🐞 IS-26090xxx (2026-09-17 · ใบสั่งขาย 12 งวด): เดิมผ่าได้ท่าเดียว — ยกช่องลงชื่อ
+       ออกไปหน้าใหม่ แล้วยัดที่เหลือ (ตารางงวด+เงื่อนไข+หมายเหตุ) ลงหน้าเดียวเสมอ
+       ทั้งที่ตารางงวดล้วน ๆ กินเกินหน้าได้ตั้งแต่ ~19 งวด และ 12 งวดพร้อมหมายเหตุ
+       4 บรรทัดวัดจริงได้ 962px บนพื้นที่ 878px ⇒ หมายเหตุมุดใต้ท้ายกระดาษ
+       (วัดด้วย Chrome: ล้น 84px · ใบ 18 งวด ล้น 356px · 24 งวด ล้น 572px)
+       ตอนนี้กระจายลงหน้าท้ายเอกสารเท่าที่ต้องใช้ ตารางงวด/หมายเหตุตัดข้ามหน้าได้ */
+    const slots = v4PaymentSlots(blocks, V4_GROUP_PAGE_CAPACITY);
+    const paymentSlots = slots.filter((slot) => slot.installmentRange || slot.showTerms || slot.remarksRange);
+    slots.forEach((slot) => {
+      const hasPayment = Boolean(slot.installmentRange || slot.showTerms || slot.remarksRange);
+      const paymentIndex = paymentSlots.indexOf(slot);
       pages.push({
-        id: 'acceptance',
-        kind: 'acceptance',
+        // หน้าท้ายเอกสารที่ไม่มีเนื้อหาชำระเงินเลย = หน้าลงชื่อ (kind เดิม 'acceptance')
+        id: hasPayment
+          ? (paymentSlots.length > 1 ? `payment-${paymentIndex + 1}` : 'payment')
+          : 'acceptance',
+        kind: hasPayment ? 'payment' : 'acceptance',
         lines: [],
         showParty: false,
         showTotals: false,
-        showPayment: false,
-        showSignatures: true,
+        showPayment: hasPayment,
+        showSignatures: slot.showSignatures,
+        installmentRange: slot.installmentRange,
+        installmentsContinued: slot.installmentsContinued,
+        showTerms: slot.showTerms,
+        remarksRange: slot.remarksRange,
+        remarksContinued: slot.remarksContinued,
       });
-    }
+    });
   }
 
   return pages;

@@ -167,16 +167,21 @@ function dualHeading(L, key) {
   return `<h2>${esc(text)}${sub ? ` <span>${esc(sub)}</span>` : ''}</h2>`;
 }
 
-function installmentSection(model, L) {
-  const rows = model.installments.map((row, index) => `
+/* range = ช่วงแถวที่หน้านี้รับไป (ตารางงวดตัดข้ามหน้าได้ — v4PaymentSlots)
+   ไม่ส่ง = ทั้งตาราง (หน้าที่กลุ่มท้ายเอกสารอยู่ครบหน้าเดียว และการจัดหน้า V1–V3)
+   ลำดับงวดนับจาก range.start เสมอ ไม่ใช่ 1 ใหม่ทุกหน้า */
+function installmentSection(model, L, range = null, continued = false) {
+  const all = model.installments || [];
+  const offset = range ? range.start : 0;
+  const rows = (range ? all.slice(range.start, range.end) : all).map((row, index) => `
           <tr>
-            <td><strong>${index + 1}. ${esc(row.label || '')}</strong>${row.note ? `<span>${esc(row.note)}</span>` : ''}</td>
+            <td><strong>${offset + index + 1}. ${esc(row.label || '')}</strong>${row.note ? `<span>${esc(row.note)}</span>` : ''}</td>
             <td class="number">${fmtPercent(Number(row.percent || 0))}</td>
             <td class="number">${money(row.amount)}</td>
           </tr>`).join('');
   return `
       <section class="installmentSection">
-        ${dualHeading(L, 'paymentSchedule')}
+        ${dualHeading(L, continued ? 'paymentScheduleContinued' : 'paymentSchedule')}
         <table class="installmentTable">
           <thead>
             <tr><th>${esc(L.t('installmentDetail'))}</th><th class="number">%</th><th class="number">${esc(L.t('amount'))}</th></tr>
@@ -186,12 +191,23 @@ function installmentSection(model, L) {
       </section>`;
 }
 
-function termsSection(model, L) {
+/* กล่องเงื่อนไข + หมายเหตุ · หน้าที่รับกลุ่มท้ายเอกสารไปทั้งก้อนเรียกโดยไม่ส่ง options
+   (= วาดทั้งสามกล่องเหมือนเดิม) · หน้าที่แบ่งกันเรียกพร้อม showTerms/remarksRange
+   หมายเหตุตัดข้ามหน้าทีละบรรทัด จึงหั่นข้อความตามดัชนีบรรทัดเดียวกับที่ประเมินไว้ */
+function termsSection(model, L, options = null) {
+  const showTerms = !options || options.showTerms;
+  const range = options ? options.remarksRange : null;
+  const remarksText = options
+    ? (range ? String(model.remarks || '').split(/\r?\n/).slice(range.start, range.end).join('\n') : null)
+    : model.remarks;
+  const showRemarks = options ? Boolean(range) : true;
+  if (!showTerms && !showRemarks) return '';
   return `
       <section class="termsGrid">
+        ${showTerms ? `
         <div>${dualHeading(L, 'paymentMethod')}<p>${val(model.paymentMethod)}</p></div>
-        <div>${dualHeading(L, 'paymentTerms')}<p>${val(model.paymentTerms)}</p></div>
-        <div class="remarks">${dualHeading(L, 'remarks')}<p>${val(model.remarks)}</p></div>
+        <div>${dualHeading(L, 'paymentTerms')}<p>${val(model.paymentTerms)}</p></div>` : ''}
+        ${showRemarks ? `<div class="remarks">${dualHeading(L, options?.remarksContinued ? 'remarksContinued' : 'remarks')}<p>${val(remarksText)}</p></div>` : ''}
       </section>`;
 }
 
@@ -266,10 +282,23 @@ function renderPages(model, L) {
   return model.pages.map((page, pageIndex) => {
     const startIndex = lineOffset;
     lineOffset += page.lines.length;
+    /* หน้าที่แบ่งกลุ่มท้ายเอกสารกันหลายหน้าส่งช่วงมาด้วย (installmentRange/remarksRange
+       จาก v4PaymentSlots) · หน้าที่รับทั้งกลุ่ม (combined + การจัดหน้า V1–V3) ไม่ส่งอะไรมา
+       ⇒ วาดทั้งก้อนเหมือนเดิม */
+    const splitGroup = page.installmentRange !== undefined || page.remarksRange !== undefined;
+    const paymentDetails = page.showPayment
+      ? (splitGroup
+        ? `${page.installmentRange ? installmentSection(model, L, page.installmentRange, Boolean(page.installmentsContinued)) : ''}${termsSection(model, L, page)}`
+        : `${installmentSection(model, L)}${termsSection(model, L)}`)
+      : '';
+    /* กลุ่มท้ายเอกสารที่ได้หน้าของตัวเอง (payment/acceptance) เริ่มจากใต้หัวข้อ แล้วดัน
+       ช่องลงชื่อลงไปชิดขอบล่าง — ชิดล่างทั้งก้อนทำให้หน้าที่มีแค่หมายเหตุเหลือที่ว่าง
+       กลางหน้าเป็นแถบขาวใหญ่ · หน้า combined (อยู่ใต้ตารางรายการ) ยังชิดล่างเหมือนเดิม */
+    const flowClass = (page.kind === 'payment' || page.kind === 'acceptance') ? ' paymentFlow' : '';
     const paymentBlock = (page.showPayment || page.showSignatures)
       ? `
-      <div class="paymentContent">
-        ${page.showPayment ? `<div class="paymentDetails">${installmentSection(model, L)}${termsSection(model, L)}</div>` : ''}
+      <div class="paymentContent${flowClass}">
+        ${paymentDetails ? `<div class="paymentDetails">${paymentDetails}</div>` : ''}
         ${page.showSignatures ? signatures(model, L) : ''}
       </div>`
       : '';
