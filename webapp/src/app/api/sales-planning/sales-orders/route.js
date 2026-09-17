@@ -12,6 +12,7 @@ import { canConfirmPayment } from '@/lib/permissions';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
 import { ensureInstallments, loadInstallments, updateInstallment } from '@/lib/sales/salesOrderInstallmentsStore';
 import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
 import { orderBusinessLineOf, orderHasServiceRounds } from '@/lib/sales/serviceOrders';
@@ -252,7 +253,7 @@ export const GET = withUser(async ({ user, supabase }) => {
    รอไว้แล้วค่อยเติมข้อมูล · ไฟล์ที่แนบพักไว้ใต้ใบเสนอราคาต้นทางก่อน (ยังไม่มี orderId)
    แล้ว ref ตามเข้าใบตอนสร้างสำเร็จ
 
-   payload: { quotationId, referenceDoc?, notes?, confirmation?, installments?, firstPayment? }
+   payload: { quotationId, referenceDoc?, notes?, deliveryDueDate?, confirmation?, installments?, firstPayment? }
    ⚠️ **เอกสารยืนยันไม่บังคับตอนสร้าง** — AE ที่ยังรอ PO ต้องตั้งใบร่างไว้ก่อนได้
    ด่านจริงคือตอนยื่นอนุมัติ (`salesOrderConfirmationGate`) */
 export const POST = withUser(async ({ user, supabase, req }) => {
@@ -287,6 +288,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!confirmCheck.ok) return badRequest(confirmCheck.error);
   const confirmation = confirmCheck.confirmation;
 
+  // กำหนดส่งสินค้า (0363) — ไม่บังคับ · ว่าง = ยังไม่ตกลงวันส่ง
+  const deliveryDue = parseDeliveryDueDate(body.deliveryDueDate);
+  if (!deliveryDue.ok) return badRequest(deliveryDue.error);
+
   // เงินงวดแรกที่ลูกค้าจ่ายมาแล้ว (ไม่บังคับ) — ลงเป็น "งวดร่างที่บันทึกเงินไว้"
   // สถานะยังเป็น pending ตาม CHECK ของ 0259 แล้วขึ้นเป็นคำแจ้งตอนใบอนุมัติ
   const firstPaidOn = String(body.firstPayment?.paidOn || '').trim() || null;
@@ -309,6 +314,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     p_overrides: {
       referenceDoc: String(body.referenceDoc || '').trim() || null,
       notes: typeof body.notes === 'string' ? body.notes : null,
+      deliveryDueDate: deliveryDue.value,
       confirmDocType: confirmation?.docType || null,
       confirmDocNo: confirmation?.docNo || null,
       confirmDocDate: confirmation?.docDate || null,

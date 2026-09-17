@@ -22,6 +22,7 @@ import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/compon
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
 import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
+import SalesOrderDeliveryDueField from "@/components/salesPlanning/SalesOrderDeliveryDueField";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
@@ -64,6 +65,8 @@ function NewSalesOrderInner() {
   const [referenceDoc, setReferenceDoc] = useState("");
   const [referenceTouched, setReferenceTouched] = useState(false);
   const [notes, setNotes] = useState("");
+  // กำหนดส่งสินค้า (0363) — ไม่บังคับ · ว่าง = ยังไม่ตกลงวันส่ง
+  const [deliveryDueDate, setDeliveryDueDate] = useState("");
   const [confirmation, setConfirmation] = useState(EMPTY_CONFIRMATION);
   const [confirmFiles, setConfirmFiles] = useState([]);
   const [dues, setDues] = useState({});           // { [seq]: 'YYYY-MM-DD' }
@@ -164,6 +167,7 @@ function NewSalesOrderInner() {
           quotationId,
           referenceDoc: referenceDoc.trim() || null,
           notes,
+          deliveryDueDate,
           confirmation: confirmation.docType
             ? { ...confirmation, attachments: confirmAttachments }
             : null,
@@ -186,7 +190,7 @@ function NewSalesOrderInner() {
       setError(e.message || "สร้างใบสั่งขายไม่สำเร็จ");
       setCreating(false);
     }
-  }, [blockedReason, confirmFiles, firstFiles, uploadOne, quotationId, referenceDoc, notes, confirmation, plannedInstallments, dues, firstPaid, firstPaidOn, router]);
+  }, [blockedReason, confirmFiles, firstFiles, uploadOne, quotationId, referenceDoc, notes, deliveryDueDate, confirmation, plannedInstallments, dues, firstPaid, firstPaidOn, router]);
 
   if (!canEdit) return <AccessDenied title="สร้างใบสั่งขาย" message="ไม่มีสิทธิ์สร้างใบสั่งขาย" />;
 
@@ -377,6 +381,11 @@ function NewSalesOrderInner() {
                 />
                 <p className="form-note">เติมให้อัตโนมัติจากเลขที่เอกสารยืนยันด้านบน · แก้ทับได้</p>
               </label>
+              <SalesOrderDeliveryDueField
+                value={deliveryDueDate}
+                onChange={setDeliveryDueDate}
+                disabled={creating}
+              />
               <label>
                 <span>หมายเหตุบนเอกสาร</span>
                 <Textarea rows={3} value={notes} disabled={creating} onChange={(event) => setNotes(event.target.value)} />
