@@ -4,7 +4,7 @@ import { DOCUMENT_FORMS } from './documentBrand';
 
 // ⭐ `pdr` = แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (FM-RD-01) — ตัวแรกที่ไม่ใช่เอกสารฝั่งขาย
 // แต่ใช้เปลือกเดียวกันเพราะมันคือกระดาษที่ลูกค้า/ฝ่ายผลิตอ่านเหมือนกัน
-export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice', 'projectTimeline', 'pdr']);
+export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice', 'projectTimeline', 'pdr', 'productSpec']);
 
 export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   quotation: 'ใบเสนอราคา',
@@ -12,18 +12,20 @@ export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   exciseTaxNotice: 'ใบแจ้งชำระค่าภาษีสรรพสามิต',
   projectTimeline: 'ไทม์ไลน์โครงการ',
   pdr: 'แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (PDR)',
+  productSpec: 'เอกสารระบุรายละเอียดผลิตภัณฑ์',
 });
 
 // เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
 // (DOCUMENT_ACCENT_THEMES) รองรับมากกว่านี้ แต่ตัวเลือกที่ไม่มีเอกสารชนิดไหนใช้
 // ก็เป็นปุ่มที่กดแล้วไม่เกิดอะไร · เพิ่มคีย์ที่นี่ตอนมีเอกสารชนิดใหม่จริง
-export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber', 'navy']);
+export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber', 'navy', 'teal']);
 
 export const DOCUMENT_ACCENT_LABELS = Object.freeze({
   terracotta: 'Terracotta · ใบเสนอราคา',
   steel: 'Steel · ใบสั่งขาย',
   amber: 'Amber · ใบแจ้งชำระภาษี',
   navy: 'Navy · ไทม์ไลน์โครงการ',
+  teal: 'Teal · ใบสเปคสินค้า',
 });
 
 // สีตั้งต้นต่อชนิดเอกสาร ใช้ทั้งตอนยังไม่มีมาตรฐานเผยแพร่ และตอนมาตรฐานถือคีย์เก่า
@@ -33,6 +35,7 @@ const DEFAULT_ACCENT_BY_KEY = Object.freeze({
   salesOrder: 'steel',
   exciseTaxNotice: 'amber',
   projectTimeline: 'navy',
+  productSpec: 'teal',
 });
 
 export const DOCUMENT_STANDARD_LIMITS = Object.freeze({
@@ -248,6 +251,11 @@ export const DEFAULT_NUMBERING_PATTERNS = Object.freeze({
   // (SB-…) ที่ออกไปแล้วตอนกดส่ง · รูปแบบนี้มีไว้ให้ครบตามที่ทะเบียนมาตรฐานเอกสาร
   // บังคับเท่านั้น ไม่มีใครเรียกใช้ · ออกเลขซ้ำอีกชุดคือเลขที่สองที่ต้องคอยจับคู่กัน
   pdr: 'PDR-{YY}{MM}{RUNNING:4}-{REVISION}',
+  /* ⚠️ **ใบสเปคสินค้าไม่ออกเลขด้วยรูปแบบนี้** — เลขจริงคือ `FM-SA-04-DDMMYY-XXX`
+     ที่ออกจาก RPC `create_product_spec_issue` (mig 0364) ตัดรอบรายเดือนเหมือน PDR
+     รูปแบบนี้มีไว้ให้ครบตามที่ทะเบียนมาตรฐานเอกสารบังคับเท่านั้น ไม่มีใครเรียกใช้
+     (เหตุผลเดียวกับ `pdr` ข้างบน — ออกเลขอีกชุดคือเลขที่สองที่ต้องคอยจับคู่กัน) */
+  productSpec: 'FM-SA-04-{DD}{MM}{YY}-{RUNNING:3}',
 });
 
 const REVISION_TOKEN = '{REVISION}';
