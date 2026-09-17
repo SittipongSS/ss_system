@@ -25,6 +25,7 @@ import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, 
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import ProductSpecCard from "@/components/database/ProductSpecCard";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
@@ -687,6 +688,22 @@ export default function ProductDetails() {
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{formatVolume(product)}</span>
               </div>
               )}
+              {/* ⭐ สองช่องนี้เป็น **กระจกของใบสเปค FM-SA-04** (mig 0364) — เขียนตอนใบผ่าน
+                  การอนุมัติ ไม่ใช่ช่องกรอกที่นี่ · ของจริงอยู่ที่ฉบับที่อนุมัติล่าสุด
+                  ⚠️ อ่านอย่างเดียวโดยตั้งใจ: แก้ที่ทะเบียนได้เมื่อไร ทะเบียนกับใบที่ลูกค้า
+                     เซ็นจะเดินคนละทางโดยไม่มีอะไรฟ้อง — แก้ที่ใบแล้วค่านี้เดินตามเอง */}
+              {showPackaging && (
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">ลักษณะเนื้อสาร (Texture)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{naText(product.texture)}</span>
+              </div>
+              )}
+              {showPackaging && (
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">บรรจุภัณฑ์มาตรฐาน (Standard Packaging)</span>
+                <span className="font-semibold text-[var(--text)] text-sm">{naText(product.standardPackaging)}</span>
+              </div>
+              )}
               <div>
                 {/* หน่วยขาย = หน่วยที่พิมพ์บนใบเสนอราคา/ใบสั่งขาย (คนละอย่างกับปริมาตรบรรจุ)
                     เดิมตั้งได้ในฟอร์มแต่ไม่โชว์ที่ไหนเลย ต้องเปิดฟอร์มแก้ถึงจะรู้ว่าตั้งอะไรไว้ */}
@@ -807,6 +824,13 @@ export default function ProductDetails() {
             )}
           </DetailCard>
           )}
+
+          {/* ⭐ ใบสเปคสินค้า FM-SA-04 (mig 0364) — **บ้านของใบอยู่ที่นี่** (มติ 17/09)
+              วางถัดจากใบสั่งซื้อเพราะเรียงตาม SO เหมือนกัน · การ์ดคืน null เองเมื่อสินค้า
+              อยู่นอกขอบเขต (หมวด 03/04 ไม่ใช่ตัวสินค้า จึงไม่มีสเปกให้ตกลง)
+              ⚠️ ห้ามย้ายไปรวมกับ AttachmentsPanel "เอกสารของสินค้า" ข้างล่าง — นั่นคือไฟล์
+                 ที่คนอัปโหลดและมีด่านนับ "ยังขาดเอกสาร" ของตัวเอง */}
+          <ProductSpecCard productId={id} canEdit={canEditProducts} />
 
           {/* PM projects this product is part of — read-only, deep-link to /sa. */}
           {projects.length > 0 && (

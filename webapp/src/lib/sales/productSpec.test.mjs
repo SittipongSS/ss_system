@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  PRODUCT_SPEC_CHECKLIST, PRODUCT_SPEC_CHECKLIST_KEYS, productSpecChecklistSeed,
+  PRODUCT_SPEC_CERTIFICATIONS, PRODUCT_SPEC_CERT_STATUS_LABELS, PRODUCT_SPEC_CHECKLIST,
+  PRODUCT_SPEC_CHECKLIST_KEYS, productSpecCertPendingLabel, productSpecCertSeed,
+  productSpecChecklistSeed,
 } from './productSpecChecklist.js';
 import {
   productSpecScopeReason, productSpecUsedForCategory, productSpecUsedForFgCode,
@@ -238,4 +240,34 @@ test('อ่านเลขที่เอกสารกลับเป็น�
   assert.equal(parseProductSpecDocNo('FM-SA-07-150969-004'), null);
   assert.equal(parseProductSpecDocNo('FM-SA-04-150969-4'), null);
   assert.equal(parseProductSpecDocNo(''), null);
+});
+
+/* ── เอกสารที่ขอได้ ───────────────────────────────────────────────── */
+
+test('เอกสารที่ขอได้มีสี่แถวตามกระดาษ และสถานะมีสองค่า', () => {
+  assert.equal(PRODUCT_SPEC_CERTIFICATIONS.length, 4);
+  assert.deepEqual(Object.keys(PRODUCT_SPEC_CERT_STATUS_LABELS), ['ready', 'in_progress']);
+});
+
+test('แถว อย. ใช้คำของตัวเอง "อยู่ระหว่างยื่น" — ไม่ใช่สถานะที่สาม', () => {
+  assert.equal(productSpecCertPendingLabel('fda'), 'อยู่ระหว่างยื่น');
+  assert.equal(productSpecCertPendingLabel('coa'), 'อยู่ระหว่างจัดเตรียม');
+  assert.equal(productSpecCertPendingLabel('ไม่มีคีย์นี้'), 'อยู่ระหว่างจัดเตรียม');
+});
+
+test('ฉบับใหม่ได้สี่แถวที่ยังไม่ตอบ — สถานะว่าง ไม่ใช่ "อยู่ระหว่างจัดเตรียม"', () => {
+  const seed = productSpecCertSeed();
+  assert.equal(seed.length, 4);
+  assert.equal(seed[0].status, '');
+});
+
+test('ออก Rev. ใหม่ยกสถานะเอกสารมาด้วย รวมแถวที่พิมพ์ชื่อเอง', () => {
+  const seed = productSpecCertSeed([
+    { key: 'fda', status: 'ready', note: 'เลข 10-1-68' },
+    { key: null, label: 'ผลทดสอบความคงตัว', status: 'in_progress', note: '' },
+  ]);
+  assert.equal(seed.find((row) => row.key === 'fda').status, 'ready');
+  assert.equal(seed.find((row) => row.key === 'fda').note, 'เลข 10-1-68');
+  assert.equal(seed.length, 5);
+  assert.equal(seed[4].label, 'ผลทดสอบความคงตัว');
 });

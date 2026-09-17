@@ -1,0 +1,28 @@
+/* ช่องที่ระบบเติมให้ — เส้นประ อ่านอย่างเดียว (form-design-rules §2)
+   ⚠️ ทรงเดียวกับ `.readonlyFormField` ของหน้าใบสั่งขาย: ป้ายบน · ค่าล่าง */
+.derived {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+.derived > span {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.itemLabel {
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ความกว้างคอลัมน์ของตารางในฟอร์ม — อยู่ที่นี่ ไม่ใช่ `style` บน <th>
+   (ด่าน audit:ui นับเลขดิบใน style object · และความกว้างเป็นเรื่องของผัง ไม่ใช่ของข้อมูล) */
+.colNo { width: 44px; }
+.colItem { width: 200px; }
+.colBy { width: 168px; }
+.colNote { width: 200px; }
+.colRemove { width: 44px; }
+.colCertName { width: 240px; }
+.colCertStatus { width: 260px; }
+.note { margin: var(--space-2-5) 0 0; }
