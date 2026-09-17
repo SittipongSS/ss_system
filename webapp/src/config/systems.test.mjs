@@ -20,8 +20,10 @@ test('system catalog keeps the agreed global order and role visibility', () => {
   assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), SYSTEM_ORDER);
   /* 🔴 ฝ่ายขายไม่เห็นการ์ด "ธุรกิจบริการ" แล้ว (มติผู้ใช้ 2026-08-30: เข้าได้เฉพาะ TS)
      — ของที่เขายังต้องใช้คือเลือก/สร้างสถานที่จาก *ในใบคำร้อง* ซึ่งไม่ผ่านการ์ดนี้ */
-  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'production', 'tax', 'master', 'support']);
-  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'production', 'tax', 'sahamit', 'master', 'support']);
+  /* 🔴 ฝ่ายขายไม่เห็นการ์ด "วางแผนผลิต" แล้ว (มติผู้ใช้ 2026-09-16: เปิดให้เฉพาะ PD กับ admin)
+     — cap `production:view` ยังอยู่ใน SALES_OPS ตัวกั้นคือด่านฝ่ายใน `canViewProduction` */
+  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'tax', 'master', 'support']);
+  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'tax', 'sahamit', 'master', 'support']);
   // secretary/marketing ได้ products:view อ่านอย่างเดียว (มติ 2026-07-20) → เห็นการ์ด "ฐานข้อมูล" ด้วย
   assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt', 'support']);
   assert.deepEqual(keysFor({ role: 'ra', team: null, extraCaps: [] }), ['tax', 'master', 'support']);
@@ -31,7 +33,7 @@ test('system visibility covers every supported role and sales team', () => {
   const cases = [
     ['admin', null, SYSTEM_ORDER],
     ['secretary', null, ['master', 'mgmt', 'support']],
-    ['ae_supervisor', null, ['salesplan', 'production', 'tax', 'sahamit', 'master', 'support']],
+    ['ae_supervisor', null, ['salesplan', 'tax', 'sahamit', 'master', 'support']],
     ['marketing', null, ['salesplan', 'master', 'support']],
     ['ra', null, ['tax', 'master', 'support']],
     // ⭐ ฝ่าย R&D ได้บ้านของตัวเองแล้ว (ม-29) — การ์ดขึ้นจาก **ฝ่าย** ไม่ใช่ role
@@ -44,14 +46,15 @@ test('system visibility covers every supported role and sales team', () => {
     // PR-1 มีแต่หน้าตั้งค่าไลน์ซึ่งผู้สังเกตการณ์ทำอะไรไม่ได้ · เปิดตอน PR-3 (บอร์ด)
     /* 🔴 ผู้สังเกตการณ์ก็ไม่เห็น "ธุรกิจบริการ" แล้ว (มติ 2026-08-30 "เข้าได้เฉพาะ TS")
        — ถ้าวันหนึ่งผู้บริหารต้องดูงานบริการ ให้เปิดเป็นรายงาน ไม่ใช่เปิดโมดูลทั้งก้อน */
-    ['viewer', null, ['salesplan', 'production', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
+    ['viewer', null, ['salesplan', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
     /* ⭐ หนึ่งฝ่าย หนึ่ง role (2026-08-28) — เดิมทั้งห้าฝ่ายเป็น `staff` ตัวเดียว
        การ์ดจึงต้องขึ้นกับ **ฝ่าย** · ตอนนี้ role บอกฝ่ายอยู่แล้ว การ์ดจึงตรงกับ role */
-    ['pc', null, ['salesplan', 'production', 'master', 'support']],
+    /* 🔴 **มติผู้ใช้ 2026-09-16: วางแผนผลิตเปิดให้เฉพาะ PD กับ admin** — PC/WH/QC
+       ยังถือ `production:view` ที่ชั้น role แต่ด่านฝ่ายใน `canViewProduction` ตัดออก */
+    ['pc', null, ['salesplan', 'master', 'support']],
     ['pd', null, ['salesplan', 'production', 'master', 'support']],
-    // WH/QC อ่านบอร์ดผลิตเพื่อวางแผนงานตัวเอง (มติผู้ใช้ 2026-07-31) แต่แก้ไม่ได้
-    ['wh', null, ['salesplan', 'production', 'master', 'support']],
-    ['qc', null, ['salesplan', 'production', 'master', 'support']],
+    ['wh', null, ['salesplan', 'master', 'support']],
+    ['qc', null, ['salesplan', 'master', 'support']],
     /* ⭐ TS เป็นฝ่ายเดียวที่ไม่อยู่สายโรงงาน — ได้ธุรกิจบริการแทนวางแผนผลิต
        ⭐ **ไม่มีการ์ด "บริหารงานขาย" แล้ว (มติผู้ใช้ 2026-08-31)** — ฝ่ายที่มีบ้านของ
           ตัวเองไม่เห็นการ์ดนั้น เข้าเงื่อนไขเดียวกับ FN (22/08) และ RD (29/08)
@@ -66,15 +69,15 @@ test('system visibility covers every supported role and sales team', () => {
     // ไม่มี 'salesplan' — เอกสารของ FN ย้ายเข้าโมดูลตัวเองแล้ว (มติ 2026-08-22)
     ['finance', null, ['finance', 'master', 'support']],
     /* 🔴 ทีมขายทุกทีม รวมทีม SV ไม่เห็นการ์ดธุรกิจบริการแล้ว (มติ 2026-08-30) */
-    ['senior_ae', 'ODM', ['salesplan', 'production', 'tax', 'master', 'support']],
-    ['senior_ae', 'KA', ['salesplan', 'production', 'tax', 'sahamit', 'master', 'support']],
-    ['senior_ae', 'SV', ['salesplan', 'production', 'tax', 'master', 'support']],
-    ['ac', 'ODM', ['salesplan', 'production', 'tax', 'master', 'support']],
-    ['ac', 'KA', ['salesplan', 'production', 'tax', 'sahamit', 'master', 'support']],
-    ['ac', 'SV', ['salesplan', 'production', 'tax', 'master', 'support']],
-    ['ae', 'ODM', ['salesplan', 'production', 'tax', 'master', 'support']],
-    ['ae', 'KA', ['salesplan', 'production', 'tax', 'sahamit', 'master', 'support']],
-    ['ae', 'SV', ['salesplan', 'production', 'tax', 'master', 'support']],
+    ['senior_ae', 'ODM', ['salesplan', 'tax', 'master', 'support']],
+    ['senior_ae', 'KA', ['salesplan', 'tax', 'sahamit', 'master', 'support']],
+    ['senior_ae', 'SV', ['salesplan', 'tax', 'master', 'support']],
+    ['ac', 'ODM', ['salesplan', 'tax', 'master', 'support']],
+    ['ac', 'KA', ['salesplan', 'tax', 'sahamit', 'master', 'support']],
+    ['ac', 'SV', ['salesplan', 'tax', 'master', 'support']],
+    ['ae', 'ODM', ['salesplan', 'tax', 'master', 'support']],
+    ['ae', 'KA', ['salesplan', 'tax', 'sahamit', 'master', 'support']],
+    ['ae', 'SV', ['salesplan', 'tax', 'master', 'support']],
   ];
 
   for (const [role, team, expected] of cases) {
@@ -89,12 +92,12 @@ test('⭐ ฝ่ายโรงงานกับฝ่ายเจ้าหน�
      ⭐ ตอนนี้ cap แคบตั้งแต่ role แล้ว เทสต์นี้จึงล็อกว่า "ให้ cap ถูก role" แทน */
   const at = (role) => keysFor({ role, team: null, extraCaps: [] });
 
-  // ⭐ สายงานโรงงาน (PC/PD/WH/QC) เห็นระบบวางแผนผลิต — WH/QC อ่านบอร์ดเพื่อวางแผน
-  // งานตัวเอง (มติผู้ใช้ 2026-07-31) · **TS เป็นฝ่ายเดียวที่ถูกกันออก** เพราะคนละทีม
-  for (const role of ['pc', 'pd', 'wh', 'qc']) {
-    assert.ok(at(role).includes('production'), role);
+  // ⭐ วางแผนผลิตเหลือ PD ฝ่ายเดียว (มติผู้ใช้ 2026-09-16) — PC/WH/QC ถูกด่านฝ่ายตัด
+  // ส่วน TS ไม่มี cap ตั้งแต่ชั้น role (คนละทีมปฏิบัติงาน)
+  assert.ok(at('pd').includes('production'));
+  for (const role of ['pc', 'wh', 'qc', 'ts']) {
+    assert.ok(!at(role).includes('production'), role);
   }
-  assert.ok(!at('ts').includes('production'));
 
   // ฝ่ายเทคนิคบริการเห็นระบบธุรกิจบริการ · ฝ่ายโรงงานไม่เห็น
   assert.ok(at('ts').includes('service'));
@@ -110,7 +113,7 @@ test('specialized users land on the one workspace they can use', () => {
 
   assert.deepEqual(keysFor(marketing), ['salesplan', 'master', 'support']);
   assert.equal(systemLandingForUser('salesplan', marketing), '/sa/leads');
-  assert.deepEqual(keysFor(warehouse), ['salesplan', 'production', 'master', 'support']);
+  assert.deepEqual(keysFor(warehouse), ['salesplan', 'master', 'support']);
   assert.equal(systemLandingForUser('salesplan', warehouse), '/sa/tasks');
 
   // เจ้าหน้าที่ฝ่าย TS ลงที่ **ภาพรวมของธุรกิจบริการ** (X-1) — ไม่ใช่ปฏิทินรวมสองระบบ
@@ -166,7 +169,9 @@ test('⭐ ระบบที่ยังไม่เปิดใช้ยัง�
 
   // `service` ถูกปลดออกจากลิสต์นี้ 2026-08-27 (แผนระบบธุรกิจบริการ เฟส 1 — มติผู้ใช้):
   // ฝ่าย TS เริ่มใช้เมนู "งานวันนี้ / จัดคิวเจ้าหน้าที่" จริงแล้ว การ์ดจึงต้องกดได้
-  assert.deepEqual(disabledKeys, ['production', 'mgmt']);
+  // `production` ถูกปลดออกจากลิสต์นี้ 2026-09-16 (มติผู้ใช้ "เปิดให้เฉพาะ PD กับ Admin พอ"):
+  // โมดูลเปิดใช้จริงแล้ว ส่วนขอบเขตคนใช้ไปแคบที่ `canViewProduction` แทน
+  assert.deepEqual(disabledKeys, ['mgmt']);
 
   for (const key of disabledKeys) {
     assert.ok(keysFor(admin).includes(key), `${key} ต้องยังอยู่ในลิสต์ระบบ`);

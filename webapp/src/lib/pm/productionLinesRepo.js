@@ -3,8 +3,9 @@
 import { forbidden, unauthorized } from '@/lib/http';
 import { canEditProduction, canViewProduction } from '@/lib/permissions';
 
-// ⚠️ ด่านจริงของโมดูลผลิตอยู่ตรงนี้ — proxy เห็นแค่ role จึงปล่อย `staff` ทุกฝ่าย
-// ผ่านมาถึงนี่ (รวม WH/QC) · canEditProduction เป็นตัวที่เห็น department
+// ⚠️ ด่านจริงของโมดูลผลิตอยู่ตรงนี้ — proxy เห็นแค่ role จึงปล่อยทุกฝ่ายที่ถือ cap
+// ผ่านมาถึงนี่ (PC/WH/QC/ฝ่ายขาย) · สองฟังก์ชันนี้เป็นตัวที่เห็น department
+// ⭐ ตั้งแต่ 2026-09-16 ทั้งคู่แคบเหลือฝ่าย PD กับ admin (มติผู้ใช้)
 export function requireProduction({ user, edit = false }) {
   if (!user) return { response: unauthorized() };
   if (edit) {

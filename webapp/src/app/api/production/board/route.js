@@ -16,8 +16,8 @@ export const dynamic = 'force-dynamic';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const GET = withUser(async ({ user, supabase, req }) => {
-  // ⭐ อ่านอย่างเดียว — ฝ่ายขาย/คลัง/QC เปิดดูได้ตามมติแยกทีม (canViewProduction
-  // แคบ staff เหลือ PC/PD/WH/QC · TS ไม่เห็น)
+  // ⭐ อ่านอย่างเดียว — ด่านเดียวกับการ์ดระบบ/เมนู: `canViewProduction` = PD กับ admin
+  // (มติผู้ใช้ 2026-09-16 · เดิมกว้างถึงฝ่ายขาย/คลัง/QC)
   const access = requireProduction({ user });
   if (access.response) return access.response;
 

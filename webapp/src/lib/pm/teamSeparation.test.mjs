@@ -23,23 +23,32 @@ const ROLE_OF = { PC: 'pc', PD: 'pd', WH: 'wh', QC: 'qc', TS: 'ts' };
 const at = (department) => ({ role: ROLE_OF[department], department, extraCaps: [] });
 const keys = (user) => systemsForUser(user).map((s) => s.key);
 
-test('⭐ ฝ่ายผลิต/จัดซื้อ (PD/PC) เห็นแต่ระบบวางแผนผลิต — ไม่แตะธุรกิจบริการเลย', () => {
-  for (const dept of ['PD', 'PC']) {
-    assert.equal(canViewProduction(at(dept)), true, dept);
-    assert.equal(canEditProduction(at(dept)), true, dept);
-    assert.equal(canViewService(at(dept)), false, dept);
-    assert.equal(canEditService(at(dept)), false, dept);
-    assert.ok(keys(at(dept)).includes('production'), dept);
-    assert.ok(!keys(at(dept)).includes('service'), dept);
-  }
+test('⭐ ฝ่ายผลิต (PD) เห็นแต่ระบบวางแผนผลิต — ไม่แตะธุรกิจบริการเลย', () => {
+  /* ⚠️ **PC ไม่อยู่ในเทสต์นี้แล้ว** (มติผู้ใช้ 2026-09-16 "เปิดให้เฉพาะ PD กับ Admin") —
+     ดูเทสต์ถัดไปที่ล็อกไว้ว่าเขาถูกตัดออกจริง */
+  const dept = 'PD';
+  assert.equal(canViewProduction(at(dept)), true);
+  assert.equal(canEditProduction(at(dept)), true);
+  assert.equal(canViewService(at(dept)), false);
+  assert.equal(canEditService(at(dept)), false);
+  assert.ok(keys(at(dept)).includes('production'));
+  assert.ok(!keys(at(dept)).includes('service'));
 });
 
-test('⭐ TS เป็นฝ่ายเดียวในกลุ่มฝ่ายปฏิบัติการที่ถูกกันออกจากตารางผลิต — คนละทีมปฏิบัติงาน', () => {
-  // ⚠️ จุดที่พลาดง่าย: กันเฉพาะ TS ไม่ใช่กวาดทุกฝ่ายที่ไม่ได้วางแผน (WH/QC ต้องอ่านได้)
-  assert.equal(canViewProduction(at('TS')), false);
-  for (const dept of ['PC', 'PD', 'WH', 'QC']) {
-    assert.equal(canViewProduction(at(dept)), true, dept);
+test('🔴 โมดูลวางแผนผลิตเหลือ PD กับ admin — PC/WH/QC ไม่เห็นการ์ดแล้ว (มติ 2026-09-16)', () => {
+  for (const dept of ['PC', 'WH', 'QC']) {
+    assert.equal(canViewProduction(at(dept)), false, dept);
+    assert.equal(canEditProduction(at(dept)), false, dept);
+    assert.deepEqual(keys(at(dept)).filter((k) => k === 'production'), [], dept);
   }
+  assert.ok(keys({ role: 'admin', extraCaps: [] }).includes('production'));
+});
+
+test('⭐ TS ยังถูกกันออกจากตารางผลิต — คนละทีมปฏิบัติงาน (คนละเหตุผลกับ PC/WH/QC)', () => {
+  /* TS ไม่มี `production:view` ตั้งแต่ชั้น role ⇒ ถูกกันแม้วันไหนจะเปิดด่านฝ่ายคืน
+     ส่วน PC/WH/QC ถือ cap อยู่ แต่ถูกด่านฝ่ายกั้น (มติ 2026-09-16) */
+  assert.equal(canViewProduction(at('TS')), false);
+  assert.equal(canViewProduction(at('PD')), true);
 });
 
 test('⭐ ฝ่ายเทคนิคบริการ (TS) เห็นแต่ธุรกิจบริการ — ไม่เห็นตารางผลิตแม้แต่อ่าน', () => {
@@ -57,21 +66,20 @@ test('⭐ ฝ่ายเทคนิคบริการ (TS) เห็นแ�
   assert.ok(keys(at('TS')).includes('service'));
 });
 
-test('⭐ ฝ่ายคลัง/QC อยู่ในสายงานโรงงาน — **อ่าน**ตารางผลิตได้ แต่แก้ไม่ได้ และไม่แตะธุรกิจบริการ', () => {
-  // มติผู้ใช้ 2026-07-31: QC ตรวจของขาเข้าก่อนเข้าไลน์ · คลังรับของเข้าคลังแล้วจัดส่ง
-  // ทั้งคู่เป็นขั้นตอนในแม่แบบไทม์ไลน์เดียวกับ "ผลิตสินค้า" จึงต้องรู้ว่าโรงงานจะผลิตวันไหน
+test('⭐ ฝ่ายคลัง/QC ไม่แตะธุรกิจบริการ (ตารางผลิตก็ไม่เห็นแล้วตั้งแต่ 2026-09-16)', () => {
   for (const dept of ['WH', 'QC']) {
-    assert.equal(canViewProduction(at(dept)), true, dept);
-    assert.equal(canEditProduction(at(dept)), false, dept);   // อ่านอย่างเดียว ไม่แก้ตาราง
+    assert.equal(canEditProduction(at(dept)), false, dept);   // ไม่มี production:edit ตั้งแต่ชั้น role
     assert.equal(canViewService(at(dept)), false, dept);
     assert.deepEqual(keys(at(dept)).filter((k) => k === 'service'), [], dept);
   }
 });
 
-test('🔴 ฝ่ายขายอ่านตารางผลิตได้เพื่อตอบลูกค้า — แต่ธุรกิจบริการเข้าไม่ได้เลย', () => {
+test('🔴 ฝ่ายขายเข้าไม่ได้ทั้งตารางผลิตและธุรกิจบริการ', () => {
   const ka = { role: 'ae', team: 'KA', department: 'SA', extraCaps: [] };
   const sv = { role: 'ae', team: 'SV', department: 'SA', extraCaps: [] };
-  assert.equal(canViewProduction(ka), true);
+  /* 🔴 มติผู้ใช้ 2026-09-16: วางแผนผลิตเหลือ PD กับ admin — เดิมฝ่ายขายอ่านบอร์ดได้
+     เพื่อตอบลูกค้าว่าผลิตวันไหน · cap `production:view` ยังอยู่ ตัวกั้นคือด่านฝ่าย */
+  assert.equal(canViewProduction(ka), false);
   assert.equal(canEditProduction(ka), false);   // ขายไม่แก้ตารางโรงงาน
   /* 🔴 มติผู้ใช้ 2026-08-30: "ระบบธุรกิจบริการ เข้าใช้ได้เฉพาะ TS" — ต่างจากตารางผลิต
      ที่ฝ่ายขายยัง **อ่าน** ได้เพื่อตอบลูกค้าว่าผลิตวันไหน · งานบริการปิดทั้งอ่านและเขียน
@@ -83,7 +91,7 @@ test('🔴 ฝ่ายขายอ่านตารางผลิตได้
   assert.equal(canEditProduction(sv), false);
 });
 
-test('⭐ ไม่มีฝ่ายไหนแก้ได้ทั้งสองระบบ ยกเว้น admin/หัวหน้าฝ่ายขาย (break-glass)', () => {
+test('⭐ ไม่มีฝ่ายไหนแก้ได้ทั้งสองระบบ ยกเว้น admin (break-glass)', () => {
   for (const dept of ['PC', 'PD', 'TS', 'WH', 'QC']) {
     const both = canEditProduction(at(dept)) && canEditService(at(dept));
     assert.equal(both, false, `${dept} ไม่ควรแก้ได้ทั้งสองระบบ`);

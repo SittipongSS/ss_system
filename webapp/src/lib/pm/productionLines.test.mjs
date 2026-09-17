@@ -135,17 +135,33 @@ test('⭐ เจ้าหน้าที่ฝ่าย TS ต้องไม่
   }
 });
 
-test('⭐ PC/PD แก้ตารางผลิตได้ ทั้งที่ pmEditScope ของฝ่ายโรงงาน = none', () => {
-  assert.equal(canEditProduction(pc), true);
+test('⭐ PD แก้ตารางผลิตได้ ทั้งที่ pmEditScope ของฝ่ายโรงงาน = none', () => {
   assert.equal(canEditProduction(pd), true);
+});
+
+test('🔴 PC เข้าโมดูลวางแผนผลิตไม่ได้แล้ว (มติผู้ใช้ 2026-09-16 — เหลือ PD กับ admin)', () => {
+  // 🐞 จุดที่พลาดง่าย: ตัดแค่ฝั่ง "อ่าน" แล้วปล่อย production:edit ไว้ = ฝ่ายที่แก้ตาราง
+  //    ได้แต่เปิดหน้าไม่ได้ · ด่านทั้งสองตัวต้องแคบพร้อมกันเสมอ
+  assert.equal(canViewProduction(pc), false);
+  assert.equal(canEditProduction(pc), false);
+});
+
+test('⭐ admin ข้ามด่านฝ่ายได้ แต่หัวหน้าฝ่ายขายไม่ได้ (ไม่ใช่ isSuperuser)', () => {
+  assert.equal(canViewProduction({ role: 'admin' }), true);
+  assert.equal(canEditProduction({ role: 'admin' }), true);
+  assert.equal(canViewProduction({ role: 'ae_supervisor', team: 'KA' }), false);
+  assert.equal(canEditProduction({ role: 'ae_supervisor', team: 'KA' }), false);
 });
 
 test('⭐ ฝ่ายอื่น (WH) แก้ตารางผลิตไม่ได้ — ไม่มี production:edit ตั้งแต่ชั้น role', () => {
   assert.equal(canEditProduction(wh), false);
 });
 
-test('ฝ่ายขายอ่านตารางผลิตได้ แต่แก้ไม่ได้ (คนวางคิวคือโรงงาน)', () => {
-  assert.equal(canViewProduction(aeKa), true);
+test('🔴 ฝ่ายขายอ่านตารางผลิตไม่ได้แล้ว — cap ยังอยู่ แต่ด่านฝ่ายตัด (มติ 2026-09-16)', () => {
+  // cap `production:view` ยังอยู่ใน SALES_OPS ⇒ เทสต์นี้คือตัวพิสูจน์ว่าด่าน **ฝ่าย**
+  // ต่างหากที่กั้น · ถ้าวันไหนมีคนเขียน gate ด้วย canUser(...,'production:view') ล้วน
+  // ฝ่ายขายทั้งฝ่ายจะกลับเข้ามาเงียบ ๆ
+  assert.equal(canViewProduction(aeKa), false);
   assert.equal(canEditProduction(aeKa), false);
 });
 
