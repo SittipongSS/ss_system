@@ -35,12 +35,16 @@ test('⭐ ฝ่ายผลิต (PD) เห็นแต่ระบบวา�
   assert.ok(!keys(at(dept)).includes('service'));
 });
 
-test('🔴 โมดูลวางแผนผลิตเหลือ PD กับ admin — PC/WH/QC ไม่เห็นการ์ดแล้ว (มติ 2026-09-16)', () => {
-  for (const dept of ['PC', 'WH', 'QC']) {
+test('🔴 โมดูลวางแผนผลิตเหลือ PD/PC กับ admin — WH/QC ไม่เห็นการ์ดแล้ว (มติ 2026-09-16/17)', () => {
+  for (const dept of ['WH', 'QC']) {
     assert.equal(canViewProduction(at(dept)), false, dept);
     assert.equal(canEditProduction(at(dept)), false, dept);
     assert.deepEqual(keys(at(dept)).filter((k) => k === 'production'), [], dept);
   }
+  // PC กลับเข้ามาเฉพาะฝั่งอ่าน (มติ 2026-09-17) — วางคิวยังเป็นของ PD ฝ่ายเดียว
+  assert.equal(canViewProduction(at('PC')), true);
+  assert.equal(canEditProduction(at('PC')), false);
+  assert.ok(keys(at('PC')).includes('production'));
   assert.ok(keys({ role: 'admin', extraCaps: [] }).includes('production'));
 });
 

@@ -66,8 +66,8 @@ export const SYSTEM_CATALOG = [
     label: 'วางแผนผลิต',
     description: 'ไลน์ผลิต กำลังผลิตต่อวัน และคิวงานผลิตของโรงงาน',
     icon: Factory,
-    /* ⭐ **เหลือ PD กับ admin เท่านั้น (มติผู้ใช้ 2026-09-16)** — เดิม `canViewProduction`
-       กว้างถึง PC/WH/QC + ฝ่ายขาย/ผู้สังเกตการณ์ ("โรงงานจะผลิตวันไหน")
+    /* ⭐ **เหลือ PD + PC กับ admin (มติผู้ใช้ 2026-09-16 · เติม PC คืน 2026-09-17)** —
+       เดิม `canViewProduction` กว้างถึง WH/QC + ฝ่ายขาย/ผู้สังเกตการณ์ ด้วย
        ⚠️ ด่านจริงอยู่ที่ `canViewProduction` (lib/permissions.js) ไม่ใช่ที่ไฟล์นี้ —
           ไฟล์นี้แค่ถามตัวเดียวกันเพื่อให้การ์ดกับเมนูตรงกัน */
     isVisible: (user) => canViewProduction(user),
