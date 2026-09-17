@@ -265,13 +265,13 @@ export const MENU_GROUPS = [
         // ภาพรวมมาก่อนสุด (X-1) — เปิดระบบมาเห็นว่า "ต้องตัดสินใจอะไรก่อน" แล้วค่อย
         // กดเข้าคิว/บอร์ด · แยกจากภาพรวมของธุรกิจบริการ เพราะคนละทีมปฏิบัติงาน
         { href: '/production', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'production:view', visible: canViewProduction, match: (p) => p === '/production' },
-        // ไลน์ผลิต (mig 0184) = ชั้น "กำลัง" ของตารางผลิต · คนตั้งค่าคือฝ่าย PC/PD
-        // cap production:view กว้าง (ฝ่ายขายอ่านได้เพื่อตอบลูกค้า) แต่หน้า *ตั้งค่า*
-        // ควรขึ้นเมนูเฉพาะคนที่แก้ได้จริง ไม่งั้นทุกคนเห็นเมนูที่กดไปแล้วทำอะไรไม่ได้
-        // คิวมาก่อนไลน์ — PC เปิดระบบมาเพื่อดูว่าต้องผลิตอะไรก่อน ไม่ใช่มาตั้งค่าไลน์
+        // ไลน์ผลิต (mig 0184) = ชั้น "กำลัง" ของตารางผลิต · คนตั้งค่าคือฝ่าย PD
+        // ⭐ ตั้งแต่ 2026-09-16 ทั้งโมดูลเหลือ PD กับ admin ⇒ canViewProduction กับ
+        // canEditProduction ให้คนกลุ่มเดียวกันเกือบทั้งหมด · ยังแยกสองด่านไว้เหมือนเดิม
+        // เพราะวันไหนเปิดคืนให้คลัง/QC อ่านบอร์ด หน้า *ตั้งค่า* ต้องไม่โผล่ตามไปด้วย
+        // คิวมาก่อนไลน์ — PD เปิดระบบมาเพื่อดูว่าต้องผลิตอะไรก่อน ไม่ใช่มาตั้งค่าไลน์
         { href: '/production/jobs', name: 'คิวงานผลิต', countHref: '/production/jobs?count=productionJobs', icon: Hammer, cap: 'production:view', visible: canEditProduction, match: (p) => p.startsWith('/production/jobs') },
-        // บอร์ดเปิดให้ **ทุกคนที่อ่านตารางผลิตได้** (P-3) — คลัง/QC/ฝ่ายขายเข้ามาดู
-        // ว่าโรงงานจะผลิตวันไหน โดยไม่ต้องเดินไปถาม · TS ไม่เห็น (คนละทีมปฏิบัติงาน)
+        // บอร์ดเปิดให้ **ทุกคนที่อ่านตารางผลิตได้** = PD กับ admin (มติ 2026-09-16)
         { href: '/production/board', name: 'บอร์ดตารางผลิต', icon: CalendarRange, cap: 'production:view', visible: canViewProduction, match: (p) => p.startsWith('/production/board') },
         { href: '/production/lines', name: 'ไลน์ผลิต', icon: Factory, cap: 'production:edit', visible: canEditProduction, match: (p) => p.startsWith('/production/lines') },
       ],
