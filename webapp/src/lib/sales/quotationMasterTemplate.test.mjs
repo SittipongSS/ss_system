@@ -524,19 +524,83 @@ const quoteWithRemarks = (remarks) => ({
   },
 });
 
-test('หมายเหตุยาวจนกลุ่มท้ายเอกสารเกินหนึ่งหน้า = ผ่าหน้าลงชื่อออกไป ไม่ปล่อยล้น', () => {
+test('หมายเหตุยาวจนกลุ่มท้ายเอกสารเกินหนึ่งหน้า = ตัดหมายเหตุข้ามหน้า ไม่ปล่อยล้น', () => {
   const longRemarks = Array.from({ length: 40 }, (_, index) => `บรรทัดหมายเหตุที่ ${index + 1}`).join('\n');
   const pages = buildQuotationMasterModelFromQuote(quoteWithRemarks(longRemarks)).pages;
-  assert.deepEqual(pages.map((page) => page.kind), ['items', 'payment', 'acceptance']);
+  // หมายเหตุ 40 บรรทัดสูงเกินหนึ่งหน้า ⇒ ตัดเป็นสองช่วง หน้าหลังแบกช่องลงชื่อไปด้วย
+  assert.deepEqual(pages.map((page) => page.kind), ['items', 'payment', 'payment']);
 
-  const payment = pages.find((page) => page.kind === 'payment');
-  const acceptance = pages.find((page) => page.kind === 'acceptance');
-  assert.equal(payment.showPayment, true);
-  assert.equal(payment.showSignatures, false, 'หน้าที่ล้นแล้วต้องไม่แบกช่องลงชื่อไว้อีก');
-  assert.equal(acceptance.showSignatures, true);
-  assert.equal(acceptance.showPayment, false);
-  // ช่องลงชื่อต้องมีที่เดียวเสมอ ไม่ว่าจะผ่าหรือไม่
+  const paymentPages = pages.filter((page) => page.kind === 'payment');
+  assert.equal(paymentPages[0].showSignatures, false, 'หน้าที่ยังมีหมายเหตุต่อต้องไม่แบกช่องลงชื่อ');
+  assert.equal(paymentPages[1].showSignatures, true);
+  // ช่องลงชื่อต้องมีที่เดียวเสมอ ไม่ว่าจะผ่ากี่หน้า
   assert.equal(pages.filter((page) => page.showSignatures).length, 1);
+
+  // ทุกบรรทัดหมายเหตุต้องถูกพิมพ์ครบ ไม่ซ้ำ ไม่ขาด (ช่วงต่อกันพอดี)
+  const ranges = paymentPages.map((page) => page.remarksRange).filter(Boolean);
+  assert.equal(ranges[0].start, 0);
+  ranges.slice(1).forEach((range, index) => assert.equal(range.start, ranges[index].end));
+  assert.equal(ranges[ranges.length - 1].end, 40);
+  assert.equal(paymentPages[1].remarksContinued, true, 'หน้าต่อต้องขึ้นหัวข้อ "หมายเหตุ (ต่อ)"');
+});
+
+// ── ตารางงวดชำระยาวเกินหนึ่งหน้า (ใบสั่งขายรายงวด · 2026-09-17) ───────────────
+// 🐞 ผู้ใช้แจ้ง "เอกสาร QT / SO หน้าล้น" — ใบสั่งขาย 12 งวด (แถวละ 2 บรรทัดเพราะมี
+// "วางบิล …") + หมายเหตุ 4 บรรทัด วัดจริงด้วย Chrome ได้ 962px บนพื้นที่ 878px
+// ⇒ กล่องหมายเหตุมุดใต้ท้ายกระดาษ ทับบรรทัดชื่อบริษัท/รหัสแบบฟอร์ม
+const BANK_TERMS = 'ชำระเงินเพื่อยืนยันการผลิตได้ที่\n\nธนาคารกสิกรไทย\nชื่อบัญชี บจก. เซนท์ แอนด์ เซนส์ แลบอราทอรี่\nเลขที่บัญชี 034-296-2459';
+const installmentQuote = (count, { remarks = '- ผลิต 45-60 วัน', paymentTerms = BANK_TERMS } = {}) => ({
+  ...QUOTE_WITH_PROJECT,
+  paymentTerms,
+  notes: remarks,
+  paymentPlan: {
+    type: 'installment',
+    paymentMethod: 'โอนเข้าบัญชีบริษัท',
+    installments: Array.from({ length: count }, (_, index) => ({
+      no: index + 1,
+      label: `งวดที่ ${index + 1}`,
+      note: `วางบิล 24/${String((index % 12) + 1).padStart(2, '0')}/2027`,
+      percent: Number((100 / count).toFixed(2)),
+      amount: 20856,
+    })),
+  },
+});
+
+test('ใบสั่งขาย 12 งวด + เงื่อนไขธนาคาร + หมายเหตุ = กระจายหลายหน้า ไม่ยัดหน้าเดียวแล้วล้น', () => {
+  const pages = buildQuotationMasterModelFromQuote(installmentQuote(12, {
+    remarks: '1. ราคาที่เสนอยืนราคาภายใน 7 วัน\n2. ระยะเวลาการผลิต 30 - 45 วัน ตามคิวผลิตปัจจุบัน\n3. ราคานี้ไม่รวมค่าขนส่ง\n4. บริษัทขอสงวนสิทธิ์ทบทวนราคา',
+  })).pages;
+  const groupPages = pages.filter((page) => page.showPayment || page.showSignatures);
+  assert.ok(groupPages.length > 1, 'กลุ่มท้ายเอกสารที่ไม่พอหน้าเดียวต้องถูกกระจาย');
+  assert.equal(pages.filter((page) => page.showSignatures).length, 1);
+  const installmentPages = pages.filter((page) => page.installmentRange);
+  assert.equal(installmentPages[installmentPages.length - 1].installmentRange.end, 12, 'ต้องพิมพ์ครบ 12 งวด');
+  assert.equal(pages.filter((page) => page.remarksRange).length, 1, 'หมายเหตุสั้นต้องไม่ถูกหั่น');
+});
+
+test('ตารางงวดยาวเกินหน้า = ตัดแถวข้ามหน้า ครบทุกงวด ไม่ซ้ำ ไม่ขาด', () => {
+  for (const count of [18, 24, 30]) {
+    const pages = buildQuotationMasterModelFromQuote(installmentQuote(count)).pages;
+    const ranges = pages.map((page) => page.installmentRange).filter(Boolean);
+    assert.ok(ranges.length > 1, `${count} งวด: ต้องตัดตารางข้ามหน้า`);
+    assert.equal(ranges[0].start, 0);
+    ranges.slice(1).forEach((range, index) => assert.equal(range.start, ranges[index].end, `${count} งวด: ช่วงแถวต้องต่อกันพอดี`));
+    assert.equal(ranges[ranges.length - 1].end, count, `${count} งวด: ต้องพิมพ์ครบทุกงวด`);
+    assert.equal(ranges.slice(1).every((range, index) => pages.filter((page) => page.installmentRange === range)[0].installmentsContinued), true);
+    // กล่องเงื่อนไข หมายเหตุ และช่องลงชื่อยังมีที่เดียวเหมือนเดิม
+    assert.equal(pages.filter((page) => page.showTerms).length, 1, `${count} งวด`);
+    assert.equal(pages.filter((page) => page.remarksRange).length, 1, `${count} งวด`);
+    assert.equal(pages.filter((page) => page.showSignatures).length, 1, `${count} งวด`);
+  }
+});
+
+test('6 งวดพร้อมหมายเหตุยังจบในหน้าท้ายเอกสารหน้าเดียว — ห้ามผ่าเพราะจองเผื่อเกิน', () => {
+  const pages = buildQuotationMasterModelFromQuote(installmentQuote(6, {
+    remarks: '1. ราคาที่เสนอยืนราคาภายใน 7 วัน\n2. ระยะเวลาการผลิต 30 - 45 วัน\n3. ราคานี้ไม่รวมค่าขนส่ง\n4. บริษัทขอสงวนสิทธิ์ทบทวนราคา',
+  })).pages;
+  assert.equal(pages.filter((page) => page.showPayment).length, 1, 'กลุ่มท้ายเอกสารที่พอในหน้าเดียวต้องไม่ถูกผ่า');
+  const last = pages[pages.length - 1];
+  assert.equal(last.showSignatures, true);
 });
 
 test('หมายเหตุปกติยังอยู่หน้าเดียวเหมือนเดิม — ห้ามผ่าเพราะเผื่อไว้ก่อน', () => {

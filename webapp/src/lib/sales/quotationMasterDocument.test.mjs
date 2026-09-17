@@ -726,3 +726,58 @@ test('กล่องยืนยันอยู่นอกกระดาษ�
   assert.ok(!paper.includes('langConfirmBox'), 'ห้ามอยู่ใน .document ไม่งั้นติดไปกับกระดาษ');
   assert.match(html, /class="langConfirm no-print"/);
 });
+
+/* ── ตารางงวด/หมายเหตุที่ตัดข้ามหน้า (2026-09-17) ─────────────────────────────
+   ผู้ใช้แจ้ง "เอกสาร QT / SO หน้าล้น" — ใบสั่งขายรายงวดยาวเกินหน้าท้ายเอกสารหน้าเดียว
+   การแบ่งหน้าเกิดใน quotationMasterTemplate (v4PaymentSlots) ที่นี่ยืนยันว่ากระดาษ
+   **พิมพ์ตามช่วงที่แบ่งไว้จริง** — ลำดับงวดนับต่อ ไม่รีเซ็ตเป็น 1 ทุกหน้า และหัวข้อบอก (ต่อ) */
+const installmentPlanQuote = (count) => ({
+  ...baseQuote([lineOf('1')]),
+  paymentTerms: 'ชำระเงินเพื่อยืนยันการผลิตได้ที่\n\nธนาคารกสิกรไทย\nชื่อบัญชี บจก. เซนท์ แอนด์ เซนส์ แลบอราทอรี่\nเลขที่บัญชี 034-296-2459',
+  notes: '1. ราคาที่เสนอยืนราคาภายใน 7 วัน\n2. ระยะเวลาการผลิต 30 - 45 วัน',
+  paymentPlan: {
+    type: 'installment',
+    paymentMethod: 'โอนเข้าบัญชีบริษัท',
+    installments: Array.from({ length: count }, (_, index) => ({
+      label: `งวดที่ ${index + 1}`,
+      note: `วางบิล 24/${String((index % 12) + 1).padStart(2, '0')}/2027`,
+      percent: Number((100 / count).toFixed(2)),
+    })),
+  },
+});
+
+test('V4 doc: ตารางงวดที่ตัดข้ามหน้า — พิมพ์ครบทุกงวด ลำดับนับต่อ หัวข้อหน้าหลังบอก (ต่อ)', () => {
+  const html = printedMarkup(buildQuotationMasterHTML(installmentPlanQuote(24), {}));
+  // ทุกงวดต้องอยู่บนกระดาษ ครั้งเดียว
+  for (let no = 1; no <= 24; no += 1) {
+    const hits = html.split(`>${no}. งวดที่ ${no}<`).length - 1;
+    assert.equal(hits, 1, `งวดที่ ${no} ต้องพิมพ์ครั้งเดียว`);
+  }
+  // หัวตารางซ้ำทุกหน้าที่มีตาราง แต่หน้าที่ต่อจากหน้าก่อนต้องขึ้นหัวข้อ (ต่อ)
+  assert.equal(html.split('<h2>งวดชำระเงิน (ต่อ) ').length - 1, 1);
+  assert.equal(html.split('<h2>งวดชำระเงิน <').length - 1, 1, 'หัวข้อเต็มมีได้หน้าเดียว');
+});
+
+test('V4 doc: หมายเหตุยาวเกินหน้า — หั่นตามบรรทัด ไม่ซ้ำบรรทัด และหน้าหลังขึ้น "หมายเหตุ (ต่อ)"', () => {
+  const remarks = Array.from({ length: 40 }, (_, index) => `บรรทัดหมายเหตุที่ ${index + 1}`).join('\n');
+  const html = printedMarkup(buildQuotationMasterHTML({ ...installmentPlanQuote(2), notes: remarks }, {}));
+  for (let line = 1; line <= 40; line += 1) {
+    assert.equal(html.split(`บรรทัดหมายเหตุที่ ${line}\n`).length - 1 + html.split(`บรรทัดหมายเหตุที่ ${line}</p>`).length - 1, 1, `บรรทัดที่ ${line} ต้องพิมพ์ครั้งเดียว`);
+  }
+  assert.equal(html.split('<h2>หมายเหตุ (ต่อ) ').length - 1, 1);
+});
+
+test('V4 doc: กลุ่มท้ายเอกสารที่ได้หน้าของตัวเอง — พิมพ์ครบทั้งสามกล่อง เริ่มใต้หัวข้อ', () => {
+  const html = printedMarkup(buildQuotationMasterHTML(installmentPlanQuote(2), {}));
+  assert.ok(html.includes('วิธีชำระเงิน'), 'กล่องวิธีชำระเงิน');
+  assert.ok(html.includes('เงื่อนไขการชำระเงิน'), 'กล่องเงื่อนไข');
+  assert.ok(html.includes('<h2>งวดชำระเงิน <'), 'หัวข้อตารางงวดแบบไม่ต่อ');
+  // หน้าท้ายเอกสารของตัวเอง: เนื้อหาเริ่มใต้หัวข้อ ช่องลงชื่อถูกดันลงชิดขอบล่างด้วย CSS
+  assert.ok(html.includes('class="paymentContent paymentFlow"'));
+});
+
+test('V4 doc: กลุ่มที่อยู่ใต้ตารางรายการ (combined) ยังชิดขอบล่างเหมือนเดิม', () => {
+  const html = printedMarkup(buildQuotationMasterHTML(baseQuote([lineOf('1')]), {}));
+  assert.ok(html.includes('class="paymentContent"'), 'หน้า combined ไม่ใส่คลาสจัดหน้าใหม่');
+  assert.ok(!html.includes('paymentFlow'));
+});

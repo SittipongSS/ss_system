@@ -400,6 +400,10 @@ export function documentShellCss(orientation = 'portrait') {
      ⚠️ เบราว์เซอร์ที่ไม่รู้จัก safe จะทิ้งทั้งบรรทัดนี้ → ตกไปที่ flex-start = ล้นลงล่าง
      เหมือนกัน ไม่มีทางกลับไปทับหัวเอกสารได้อีก */
   .v4 .paymentContent { justify-content: safe flex-end; break-inside: avoid; }
+  /* หน้าท้ายเอกสารที่กลุ่มได้หน้าของตัวเอง: เนื้อหาเริ่มใต้หัวข้อ ช่องลงชื่อชิดขอบล่าง
+     (ชิดล่างทั้งก้อนทำให้หน้าที่แบกแค่หมายเหตุมีแถบขาวใหญ่คาอยู่กลางหน้า) */
+  .v4 .paymentContent.paymentFlow { justify-content: flex-start; }
+  .v4 .paymentContent.paymentFlow .signatures { margin-top: auto; }
   .v4 .signatures { margin-top: 3mm; }
 
   @page { size: ${paper.page}; margin: 0; }
