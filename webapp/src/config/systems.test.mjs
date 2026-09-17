@@ -49,9 +49,10 @@ test('system visibility covers every supported role and sales team', () => {
     ['viewer', null, ['salesplan', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
     /* ⭐ หนึ่งฝ่าย หนึ่ง role (2026-08-28) — เดิมทั้งห้าฝ่ายเป็น `staff` ตัวเดียว
        การ์ดจึงต้องขึ้นกับ **ฝ่าย** · ตอนนี้ role บอกฝ่ายอยู่แล้ว การ์ดจึงตรงกับ role */
-    /* 🔴 **มติผู้ใช้ 2026-09-16: วางแผนผลิตเปิดให้เฉพาะ PD กับ admin** — PC/WH/QC
-       ยังถือ `production:view` ที่ชั้น role แต่ด่านฝ่ายใน `canViewProduction` ตัดออก */
-    ['pc', null, ['salesplan', 'master', 'support']],
+    /* 🔴 **มติผู้ใช้ 2026-09-16: วางแผนผลิตเหลือ PD กับ admin · 17/09 เติม PC คืน
+       (อ่านอย่างเดียว)** — WH/QC ยังถือ `production:view` ที่ชั้น role แต่ด่านฝ่าย
+       ใน `canViewProduction` ตัดออก */
+    ['pc', null, ['salesplan', 'production', 'master', 'support']],
     ['pd', null, ['salesplan', 'production', 'master', 'support']],
     ['wh', null, ['salesplan', 'master', 'support']],
     ['qc', null, ['salesplan', 'master', 'support']],
@@ -92,10 +93,12 @@ test('⭐ ฝ่ายโรงงานกับฝ่ายเจ้าหน�
      ⭐ ตอนนี้ cap แคบตั้งแต่ role แล้ว เทสต์นี้จึงล็อกว่า "ให้ cap ถูก role" แทน */
   const at = (role) => keysFor({ role, team: null, extraCaps: [] });
 
-  // ⭐ วางแผนผลิตเหลือ PD ฝ่ายเดียว (มติผู้ใช้ 2026-09-16) — PC/WH/QC ถูกด่านฝ่ายตัด
+  // ⭐ วางแผนผลิตเหลือ PD (วางคิว) + PC (อ่าน) — WH/QC ถูกด่านฝ่ายตัด (มติ 2026-09-16/17)
   // ส่วน TS ไม่มี cap ตั้งแต่ชั้น role (คนละทีมปฏิบัติงาน)
-  assert.ok(at('pd').includes('production'));
-  for (const role of ['pc', 'wh', 'qc', 'ts']) {
+  for (const role of ['pd', 'pc']) {
+    assert.ok(at(role).includes('production'), role);
+  }
+  for (const role of ['wh', 'qc', 'ts']) {
     assert.ok(!at(role).includes('production'), role);
   }
 
