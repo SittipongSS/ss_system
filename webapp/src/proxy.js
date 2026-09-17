@@ -507,6 +507,12 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
     if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'ra:approve');
     return can(role, 'products:edit'); // create
   }
+  /* ใบสเปคสินค้า FM-SA-04 (mig 0364) — **เอกสารของฝ่ายขาย ไม่ใช่การแก้ทะเบียนสินค้า**
+     ⇒ ด่านคือ `salesplan:edit` ไม่ใช่ `products:edit` (กฎ module-ownership)
+     ⚠️ **ต้องมาก่อนกฎ `/api/products` ตัวรวมข้างล่าง** — กฎนั้นปล่อย PATCH ให้คนที่ถือ
+        `ra:approve` ด้วย ซึ่งจะทำให้ RA แก้/อนุมัติใบสเปคได้ทั้งที่ไม่ใช่งานของฝ่ายนั้น
+     (ด่านรายขั้น AC/AE/AE Sup อยู่ใน handler ซึ่ง proxy มองไม่เห็น) */
+  if (/^\/api\/products\/[^/]+\/spec(\/|$)/.test(path)) return can(role, 'salesplan:edit');
   if (path.startsWith('/api/products')) {
     if (method === 'DELETE') return can(role, 'products:delete');
     // PATCH covers both edit (sa) and approve (RA)

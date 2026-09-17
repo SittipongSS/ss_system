@@ -566,3 +566,46 @@ test('team:manage ต้องไม่ลามไปเส้นอื่น�
   // และ apiWriteAllowed ยังถามหา users:manage ตามเดิมสำหรับเส้นเหล่านั้น
   assert.equal(apiWriteAllowed('PATCH', '/api/users/u-1', 'ts_manager', []), false);
 });
+
+/* ── ใบสเปคสินค้า FM-SA-04 (mig 0364) ────────────────────────────────────────
+   🪤 เส้นนี้อยู่ใต้ `/api/products/...` ซึ่งกฎตัวรวมปล่อย PATCH ให้คนที่ถือ
+   `ra:approve` ด้วย (เพราะ RA อนุมัติทะเบียนสินค้า) ⇒ ถ้าไม่มีกฎเฉพาะมาก่อน
+   RA จะแก้/อนุมัติใบสเปคของฝ่ายขายได้ทั้งที่ไม่ใช่งานของฝ่ายนั้น */
+test('⭐ ใบสเปคสินค้าเป็นเส้นของฝ่ายขาย — AC/AE/AE Sup ผ่าน', () => {
+  for (const role of ['ac', 'ae', 'senior_ae', 'ae_supervisor', 'admin']) {
+    for (const method of ['POST', 'PATCH']) {
+      assert.equal(
+        apiWriteAllowed(method, '/api/products/PRD-1/spec', role, []),
+        true,
+        `${role} ต้อง ${method} ใบสเปคได้`,
+      );
+    }
+  }
+});
+
+test('⭐ RA แก้ใบสเปคไม่ได้ ทั้งที่ PATCH ทะเบียนสินค้าได้ — กฎเฉพาะต้องมาก่อนกฎตัวรวม', () => {
+  assert.equal(apiWriteAllowed('PATCH', '/api/products/PRD-1', 'ra', []), true);
+  assert.equal(apiWriteAllowed('PATCH', '/api/products/PRD-1/spec', 'ra', []), false);
+});
+
+test('ฝ่ายที่ไม่เกี่ยวกับงานขายแตะใบสเปคไม่ได้', () => {
+  for (const role of ['rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'viewer', 'marketing']) {
+    assert.equal(
+      apiWriteAllowed('PATCH', '/api/products/PRD-1/spec', role, []),
+      false,
+      `${role} ต้องแตะใบสเปคไม่ได้`,
+    );
+  }
+});
+
+test('กฎใบสเปคต้องแคบ — ไม่กินเส้นอื่นที่ชื่อคล้ายกัน', () => {
+  // ⚠️ เขียนเป็น includes('/spec') เมื่อไร เส้นพวกนี้จะหลุดตามไปด้วย
+  assert.equal(apiWriteAllowed('PATCH', '/api/products/PRD-1', 'ra', []), true);
+  assert.equal(apiWriteAllowed('PATCH', '/api/products/PRD-1/specification', 'ra', []), true);
+  assert.equal(apiWriteAllowed('POST', '/api/products/PRD-1/spec/items', 'ra', []), false);
+});
+
+test('ออกเอกสารใบสเปคตาม SO ยังเดินด่าน salesplan:edit ของ sales-planning ตามเดิม', () => {
+  assert.equal(apiWriteAllowed('POST', '/api/sales-planning/sales-orders/SO-1/spec-issues', 'ac', []), true);
+  assert.equal(apiWriteAllowed('POST', '/api/sales-planning/sales-orders/SO-1/spec-issues', 'rd', []), false);
+});
