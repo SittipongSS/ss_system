@@ -171,11 +171,11 @@ export const GET = withUser(async ({ user, supabase }) => {
          โดย `attempt()` ข้างบนไม่เห็นอะไรเลย ไม่มีแม้แต่บรรทัด log
          โยนแล้ว attempt จะ log + ปล่อยให้เมนูนั้น **ไม่มีป้าย** ซึ่งอ่านออกว่าผิดปกติ
          ต่างจากเลข 0 ที่อ่านเหมือน "ไม่มีงานค้าง" (ดู [[nav-count-badges]]) */
-      const { data, error: quoteError } = await supabase
+      const { data, error: quoteError } = await fetchAllResult(() => supabase
         .from('quotations')
         .select('id, status, approvalStatus, createdBy, rejectionReason, deal:sales_deals(ownerId, stage)')
         .in('status', QUOTATION_ACTIONABLE_STATUSES)
-        .limit(5000);
+        .order('id', { ascending: true }));
       if (quoteError) throw quoteError;
       return (data || []).filter((row) => isQuotationWaitingOnMe(row, {
         userId: user.id,
@@ -274,7 +274,7 @@ export const GET = withUser(async ({ user, supabase }) => {
        ป้ายพาไปพอดี แล้วมันก็หายไปเอง */
     jobs.push(attempt('contracts', async () => {
       // เหตุผลเดียวกับตัวนับใบเสนอราคาข้างบน — ทิ้ง error = ป้ายขึ้น 0 เงียบ
-      const { data, error: contractError } = await supabase
+      const { data, error: contractError } = await fetchAllResult(() => supabase
         .from('sales_contracts')
         /* ⚠️ ไม่ต้องกรอง scope ตามดีลเหมือน route ของทะเบียน — สองเลนนี้แคบตัวเอง
            อยู่แล้ว: เลนเจ้าของเทียบ `ownerId`/`createdBy` เป็นรายใบ ส่วนเลนผู้รับรอง
@@ -283,7 +283,7 @@ export const GET = withUser(async ({ user, supabase }) => {
            ไม่ใช่ของเจ้าของใบ · ขาดคอลัมน์นี้เมื่อไร ทุกใบตกเป็น generated แล้วเลนนั้นเงียบ */
         .select('id, status, source, "ownerId", "createdBy", "contractNo", "baseNumber", "revisionNo", "createdAt"')
         .in('status', ['draft', 'awaiting_signature', 'awaiting_approval'])
-        .limit(5000);
+        .order('id', { ascending: true }));
       if (contractError) throw contractError;
       const latest = latestContractRevisions(data || []);
       /* ⚠️ ตัวนับนี้ยิงทุก 2 นาทีทุกคน ⇒ คิวรีเพิ่มต้องไม่เกิดเลยในกรณีปกติ
@@ -311,16 +311,16 @@ export const GET = withUser(async ({ user, supabase }) => {
          เมื่อไรก็มีกติกาสองชุดทันที · ชุดข้อมูลเล็ก (ค้างจริงเท่านั้น) */
       const reviewer = isSalesOrderReviewer(user.role);
       const approvalLane = can(user.role, 'salesplan:view')
-        ? supabase.from('sales_orders').select('id, status, createdBy')
-          .in('status', ['pending_approval', 'rejected']).limit(5000)
+        ? fetchAllResult(() => supabase.from('sales_orders').select('id, status, createdBy')
+          .in('status', ['pending_approval', 'rejected']).order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
       /* เลนบัญชี — **แคบด้วย `financeStatus` ก่อนเสมอ** ไม่ใช่ดึงใบ approved ทั้งหมด
          (ใบที่อนุมัติแล้วคือทะเบียนทั้งกอง ส่วนคิวบัญชีคือหลักสิบ)
          ⚠️ `awaitsFinanceReview` ต้องได้งวดของใบไปด้วย ไม่งั้นตอบ false ทุกใบ
          = คิวว่างเงียบ ๆ (กับดักที่เอกสารของมันเตือนไว้ตรง ๆ) */
       const financeLane = canConfirmPayment(user)
-        ? supabase.from('sales_orders').select('id, status, "totalAmount", "financeStatus"')
-          .eq('status', 'approved').eq('financeStatus', 'pending').limit(5000)
+        ? fetchAllResult(() => supabase.from('sales_orders').select('id, status, "totalAmount", "financeStatus"')
+          .eq('status', 'approved').eq('financeStatus', 'pending').order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
       const [{ data: approvalRows, error: approvalError }, { data: financeRows, error: financeError }] = await Promise.all([
         approvalLane, financeLane,
@@ -359,11 +359,11 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (canApproveProjectClose(user)) {
     jobs.push(attempt('projectCloses', async () => {
       // เหตุผลเดียวกับตัวนับใบเสนอราคาข้างบน — ทิ้ง error = ป้ายขึ้น 0 เงียบ
-      const { data, error: closeError } = await supabase
+      const { data, error: closeError } = await fetchAllResult(() => supabase
         .from('projects')
         .select('id, "closeStatus", "closeRequestedBy"')
         .eq('closeStatus', 'pending_close')
-        .limit(5000);
+        .order('id', { ascending: true }));
       if (closeError) throw closeError;
       return (data || []).filter((row) => isProjectCloseWaitingOnMe(row, user)).length;
     }));

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   deptRequestsTodoCount, myTasksTodoCount, pruneZeroCounts, requestsTodoCount,
 } from './navCounts.js';
@@ -199,4 +200,22 @@ test('useNavCounts คืนสถานะ ไม่ใช่ตัวเลข
   // เปลือกดึงชุดเดียวแล้วแจกต่อ — หน้าแรกห้ามยิงรอบที่สองของตัวเอง (PR3 วาง Provider)
   assert.match(src, /export const NavCountsContext/);
   assert.match(src, /export function useNavCountsState/);
+});
+
+// ── ตัวนับต้องไม่อ่านแบบมีเพดานที่โกหก (PR5 · 2026-09-17) ──────────────────
+//
+// 🐞 `.limit(5000)` อ่านเหมือน "เผื่อไว้เยอะแล้ว" แต่โปรเจกต์นี้ตั้ง Supabase Max rows = 1000
+//   ⇒ PostgREST ตัดที่ 1,000 เสมอ **ไม่มี error** · ตัวเลข 5000 จึงไม่เคยมีผล และวันที่
+//   กองงานโตเกิน 1,000 ป้ายจะนับขาดเงียบ ๆ โดยไม่มีอะไรให้จับเลย
+//   (ตอนตรวจ 17/09 ทุกก้อน < 500 แถว ⇒ แก้ตอนยังไม่เจ็บ ไม่ใช่รอให้เจ็บ)
+// 🔑 ทางที่ถูกคือไล่ทีละหน้าด้วย `fetchAllResult` ซึ่งบังคับ `.order()` ที่นิ่งไปในตัว
+test('เส้น /api/nav/counts ไม่มี .limit(5000) เหลืออยู่ — ต้องไล่ทีละหน้าแทน', () => {
+  const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
+  const code = route
+    .replace(/\/\*[\s\S]*?\*\//g, '')   // คอมเมนต์บล็อก (ตัวที่อธิบายกับดักนี้อยู่ในนั้น)
+    .replace(/(^|[^:])\/\/.*$/gm, '$1'); // คอมเมนต์บรรทัดเดียว
+  assert.doesNotMatch(code, /\.limit\(\s*5000\s*\)/, 'ยังมี .limit(5000) ในโค้ดจริง');
+  /* กันท่าเลี่ยง: ตัวเลขเกินเพดานจริงของ PostgREST ในเส้นนี้แปลว่าเข้าใจผิดเรื่องเดิม */
+  const overCap = [...code.matchAll(/\.limit\(\s*(\d+)\s*\)/g)].map((m) => Number(m[1])).filter((n) => n > 1000);
+  assert.deepEqual(overCap, [], `.limit() ที่เกินเพดาน 1,000 แถว: ${overCap.join(', ')}`);
 });
