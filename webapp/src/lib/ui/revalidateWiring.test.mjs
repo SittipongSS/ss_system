@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
  * ⚠️ **ลิสต์นี้เพิ่มได้อย่างเดียว** — หน้าที่หลุดออกไปแปลว่ามีคนถอดสัญญาณทิ้ง
  */
 const WIRED = [
-  "app/service/assets/page.js",
+  "app/database/assets/page.js",
   "app/requests/page.js",
   // ตารางงานผู้ปรุงกลิ่น (mig 0350) — หัวหน้าเปิดค้างไว้ทั้งวันเพื่อดูว่าเหลืออะไรให้แจก
   "app/rd/perfumers/page.js",

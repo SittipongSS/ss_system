@@ -457,7 +457,7 @@ export default function ServiceImportPage() {
               </button>
             </p>
           )}
-          <Link className={styles.link} href="/service/sites">ไปที่ทะเบียนไซต์บริการ</Link>
+          <Link className={styles.link} href="/database/sites">ไปที่ทะเบียนไซต์บริการ</Link>
         </WorkspaceSection>
       )}
 

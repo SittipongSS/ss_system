@@ -25,7 +25,7 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase }) => {
   /* ด่านระดับโมดูล ไม่ใช่รายไซต์ — `requireSite` ใช้ไม่ได้เพราะเส้นนี้ไม่มีไซต์เดียว
      ให้ตรวจ · ฝ่ายขายอ่านไม่ได้ (ไม่ส่ง forRequestForm) เพราะทะเบียนเครื่องเป็นของ TS */
-  const access = requireService({ user });
+  const access = requireService({ user, registry: true });
   if (access.response) return access.response;
 
   try {

@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
-    const access = await requireSite({ user, supabase, id });
+    const access = await requireSite({ user, supabase, id, registry: true });
     if (access.response) return access.response;
     return ok(await loadAssets(supabase, id));
   } catch (e) {

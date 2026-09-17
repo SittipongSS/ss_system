@@ -262,7 +262,7 @@ export default function ServiceIntakePage() {
   }, [wizardOrder, data]);
 
   /* 🐞 จอตั้งเคยได้ตาราง 720px ในกล่อง 360px — ปุ่ม "รับเข้าไซต์" อยู่นอกจอทุกแถว
-     ⇒ จอตั้ง/จอแคบเป็นการ์ด จอนอนเป็นตาราง (ทรงเดียวกับ /service/sites) สลับเองได้ที่หัวหน้า */
+     ⇒ จอตั้ง/จอแคบเป็นการ์ด จอนอนเป็นตาราง (ทรงเดียวกับ /database/sites) สลับเองได้ที่หัวหน้า */
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
   const tabRows = useMemo(() => data?.[tab] || [], [data, tab]);
   const viewPageSize = view === "cards" ? CARD_PAGE_SIZE : DEFAULT_PAGE_SIZE;
@@ -347,8 +347,8 @@ export default function ServiceIntakePage() {
         loading={loading}
         toolbar={(
           <>
-            {/* 🔄 ตัวสลับมุมมองย้ายจากหัวหน้าเข้าแถบเครื่องมือของแผง ท้ายแถบเหมือน /service/sites ·
-                /service/assets (มติผู้ใช้ 2026-09-15 · ListPanel) — แทนผลตรวจรอบสองวันเดียวกัน
+            {/* 🔄 ตัวสลับมุมมองย้ายจากหัวหน้าเข้าแถบเครื่องมือของแผง ท้ายแถบเหมือน /database/sites ·
+                /database/assets (มติผู้ใช้ 2026-09-15 · ListPanel) — แทนผลตรวจรอบสองวันเดียวกัน
                 ที่ยอมให้อยู่หัวหน้าเพราะหน้านี้ยังไม่มีแถบเครื่องมือ */}
             <div className="spacer" />
             <ViewSwitcher
@@ -359,7 +359,7 @@ export default function ServiceIntakePage() {
         )}
       >
         {/* 🐞 โหลดพังเคยเป็นข้อความเล็กสีปกติเหนือแท็บ ไม่มีทรงข้อผิดพลาด ไม่มีทางไปต่อ
-            ⇒ ขึ้นกล่องแจ้งข้อผิดพลาดตรงที่คิวควรอยู่ + ปุ่มลองใหม่ (ทรงเดียวกับ /service/assets) */}
+            ⇒ ขึ้นกล่องแจ้งข้อผิดพลาดตรงที่คิวควรอยู่ + ปุ่มลองใหม่ (ทรงเดียวกับ /database/assets) */}
         {loadError ? (
           <StatusNotice tone="error" title={LOAD_ERROR_TITLE}
             action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
@@ -520,7 +520,7 @@ export default function ServiceIntakePage() {
                         {" · "}ขายไว้ {row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}
                       </p>
                       <p className={styles.cardMeta}>โซน: {row.zones.map((z) => z.name).join(" · ")}</p>
-                      <Link href={`/service/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
+                      <Link href={`/database/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
                         ตั้งรอบที่หน้าไซต์
                       </Link>
                     </li>
@@ -562,7 +562,7 @@ export default function ServiceIntakePage() {
                           <td>{row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}</td>
                           <td className={styles.actionCell}>
                             <div className={styles.rowAction}>
-                              <Link href={`/service/sites/${row.siteId}`} className="linklike">
+                              <Link href={`/database/sites/${row.siteId}`} className="linklike">
                                 ตั้งรอบที่หน้าไซต์
                               </Link>
                             </div>
@@ -594,7 +594,7 @@ export default function ServiceIntakePage() {
                         <span className="mono">{naText(row.salesOrderNumber)}</span>
                         {" · "}เจ้าหน้าที่ประจำ {naText(row.assigneeName)}
                       </p>
-                      <Link href={`/service/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
+                      <Link href={`/database/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
                         เติมนัดที่หน้าไซต์
                       </Link>
                     </li>
@@ -626,7 +626,7 @@ export default function ServiceIntakePage() {
                           <td>{naText(row.assigneeName)}</td>
                           <td className={styles.actionCell}>
                             <div className={styles.rowAction}>
-                              <Link href={`/service/sites/${row.siteId}`} className="linklike">
+                              <Link href={`/database/sites/${row.siteId}`} className="linklike">
                                 เติมนัดที่หน้าไซต์
                               </Link>
                             </div>

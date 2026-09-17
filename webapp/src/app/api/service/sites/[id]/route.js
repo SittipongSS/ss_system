@@ -73,7 +73,7 @@ async function siteRoundsSold(supabase, zones = []) {
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
-    const access = await requireSite({ user, supabase, id });
+    const access = await requireSite({ user, supabase, id, registry: true });
     if (access.response) return access.response;
     // schedule = เข้าเติมล่าสุด + นัดครั้งหน้า → ตารางเครื่องใช้ประเมินว่าน้ำหอม
     // จะหมดวันไหน และมีนัดครอบแล้วหรือยัง (S-4)

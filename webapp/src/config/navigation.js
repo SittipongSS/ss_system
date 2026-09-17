@@ -87,6 +87,10 @@ export const ADOPTED_SHARED_PATHS = {
     '/sa/sales-orders', '/sales-planning/sales-orders',
     '/sa/contracts', '/sales-planning/contracts',
     '/requests',
+    /* ⭐ ทะเบียนไซต์ + ทะเบียนเครื่อง ย้ายบ้านไปฐานข้อมูล (มติผู้ใช้ 2026-09-17) แต่ยังเป็น
+       เครื่องมือทำงานรายวันของ TS ⇒ เมนูบริการยังมีทางลัดชี้ URL ใหม่ และต้องรับเส้นทาง
+       ไว้ที่นี่ด้วย ไม่งั้นกดแล้วเปลือกสลับไป "ฐานข้อมูล" ซึ่ง TS ไม่มีกลุ่มเมนู = แถบว่าง */
+    '/database/sites', '/database/assets',
   ],
 
 };

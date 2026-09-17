@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   canCreateServiceSite, canDoFieldWork, canEditService, canPickServiceSite, canUser,
-  canViewService, canWorkOwnVisit,
+  canViewService, canViewServiceRegistry, canWorkOwnVisit,
 } from '../permissions.js';
 import {
   PLANNING_FIELD_ERROR, VISIT_PLANNING_FIELDS, planningFieldsIn, visitWriteAccess,
@@ -172,12 +172,21 @@ test('🔴 ฝ่ายขายยังเลือก/สร้างสถ�
 });
 
 test('🔴 ด่านอ่านของฟอร์มใบคำร้องต้องถูกต่อจริงที่ route ไม่ใช่มีแต่ฟังก์ชัน', () => {
+  /* ⭐ ทะเบียนไซต์ย้ายบ้านไป `/database` แล้ว (มติผู้ใช้ 2026-09-17) ⇒ สองเส้นนี้ใช้ด่าน
+     `registry: true` ซึ่ง **กว้างกว่า** `forRequestForm` (canViewServiceRegistry เรียก
+     canPickServiceSite เป็นสาขาแรก) · ฟอร์มใบประเมินพื้นที่จึงยังกางรายการไซต์/พื้นที่ได้
+     ⚠️ ตัวที่ต้องเฝ้าคือ "ต่อด่านไว้จริงไหม" ไม่ใช่ชื่อโหมด — ด่านที่หายไปทั้งบรรทัด
+        แปลว่าใครก็อ่านทะเบียนได้โดยไม่ผ่านอะไรเลย */
   const sites = readFileSync(new URL('../../app/api/service/sites/route.js', import.meta.url), 'utf8');
-  assert.match(sites, /requireService\(\{ user, forRequestForm: true \}\)/);
+  assert.match(sites, /requireService\(\{ user, registry: true \}\)/);
   const zones = readFileSync(
     new URL('../../app/api/service/sites/[id]/zones/route.js', import.meta.url), 'utf8',
   );
-  assert.match(zones, /forRequestForm: true/);
+  assert.match(zones, /registry: true/);
+  // ด่านที่กว้างกว่าต้องยังครอบคนของฟอร์มใบคำร้องอยู่ — ไม่งั้นย้ายบ้านแล้วฟอร์มพัง
+  const aeSv = { role: 'ae', department: 'SA', team: 'SV' };
+  assert.equal(canViewServiceRegistry(aeSv), true);
+  assert.equal(canViewServiceRegistry({ role: 'ts_planner', department: 'TS' }), true);
 });
 
 /* 🔴 **ทุกเส้นลบของโมดูลบริการต้องมีทางลัดผู้ดูแลระบบ** (ผู้ใช้แจ้ง 2026-09-02)
@@ -260,7 +269,7 @@ test('🔴 ลบรอบที่มีประวัติต้องเป
 /* 🪤 จอเคยสัญญากับผู้ใช้ไว้สามจุดว่า "ลบได้ นัดจะอยู่ต่อ" — แก้ด่านแล้วไม่แก้คำ
    = จอโกหก · และปุ่มต้องเดินเส้น force เดียวกับโซน/เครื่อง/ไซต์ ไม่ใช่ยิง DELETE ดิบ */
 test('หน้าไซต์: ปุ่มลบรอบเดินเส้นบังคับลบเดียวกับของอื่น และคำไม่โกหก', () => {
-  const page = readFileSync(new URL('../../app/service/sites/[id]/page.js', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../../app/database/sites/[id]/page.js', import.meta.url), 'utf8');
   assert.match(page, /deleteWithForce\(`\/api\/service\/plans\/\$\{pendingDelete\.row\.id\}`, \{ isAdmin \}\)/);
   assert.match(page, /detail: "รอบที่มีนัดปิดงานแล้วจะลบไม่ได้/, 'กล่องยืนยันต้องบอกด่านใหม่');
   assert.match(page, /เปิดใช้งาน/, 'ต้องชี้ตัวคุมที่มีอยู่จริงในกล่องยืนยัน');

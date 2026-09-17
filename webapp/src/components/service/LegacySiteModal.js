@@ -356,7 +356,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
   const duplicateActions = siteDuplicate ? (
     <div className={styles.inlineActions}>
       {/* แท็บใหม่ — ร่างอยู่ได้แค่ตลอดอายุหน้านี้ ออกจากหน้า = ร่างหาย */}
-      <Button size="sm" tone="neutral" as={Link} href={`/service/sites/${siteDuplicate.id}`} target="_blank"
+      <Button size="sm" tone="neutral" as={Link} href={`/database/sites/${siteDuplicate.id}`} target="_blank"
         icon={<ExternalLink size={14} aria-hidden="true" />}>
         เปิดไซต์เดิม
       </Button>
@@ -520,7 +520,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
         {resumeNote && target && (
           <StatusNotice tone="info" className={styles.resumeNote}
             action={(
-              <Button size="sm" tone="neutral" as={Link} href={`/service/sites/${target.id}`} target="_blank"
+              <Button size="sm" tone="neutral" as={Link} href={`/database/sites/${target.id}`} target="_blank"
                 icon={<ExternalLink size={14} aria-hidden="true" />}>
                 เปิดหน้าไซต์
               </Button>
@@ -760,7 +760,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
         {failed.length > 0 ? (
           <Button tone="primary" onClick={retryRemaining} disabled={busy}>ส่งส่วนที่เหลืออีกครั้ง</Button>
         ) : (
-          <Button tone="primary" as={Link} href={`/service/sites/${result.site.id}`}>
+          <Button tone="primary" as={Link} href={`/database/sites/${result.site.id}`}>
             เปิดหน้าไซต์ {result.site.code || result.site.name}
           </Button>
         )}
@@ -769,7 +769,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
       <>
         <Button tone="neutral" onClick={onClose}>ปิด</Button>
         <Button onClick={anotherSite}>เพิ่มไซต์ย้อนหลังอีกแห่ง</Button>
-        <Button tone="primary" as={Link} href={`/service/sites/${result.site.id}`}>
+        <Button tone="primary" as={Link} href={`/database/sites/${result.site.id}`}>
           เปิดหน้าไซต์ {result.site.code || result.site.name}
         </Button>
       </>

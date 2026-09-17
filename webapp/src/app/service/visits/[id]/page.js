@@ -189,7 +189,7 @@ export default function VisitReportPage({ params }) {
             {/* เขตวิ่งงานอยู่ในแถว "ไซต์" ของรายละเอียดงานแล้ว · การ์ดหลักฐานเดิมซ้ำการ์ด
                 "หลักฐานหน้างาน" ส่วนเวลาที่แก้ย้อนหลังขึ้นในแถบต้องดูอยู่แล้ว */}
             <ContextCard
-              href={`/service/sites/${visit.siteId}`}
+              href={`/database/sites/${visit.siteId}`}
               icon={MapPin} eyebrow="ไซต์" title={site?.name || visit.siteId}
               subtitle={site?.customerName || undefined}
               facts={[

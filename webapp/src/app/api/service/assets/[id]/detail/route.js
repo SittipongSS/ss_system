@@ -16,7 +16,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
     // ด่านระดับโมดูล — ไม่มีไซต์เดียวให้ตรวจ (เครื่องอาจอยู่ในคลัง)
-    const access = requireService({ user });
+    const access = requireService({ user, registry: true });
     if (access.response) return access.response;
 
     const asset = await findAssetById(supabase, id);

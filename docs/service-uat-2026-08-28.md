@@ -32,7 +32,7 @@
 ## 🔴 บั๊กที่เจอ — แก้แล้วทั้ง 4 ข้อ
 
 ### 1. หน้าโซนพังทั้งหน้า ตั้งแต่วันแรก
-เปิด `/service/sites/…/zones/…` ได้ **"หน้านี้ทำงานต่อไม่ได้"** ทุกครั้ง
+เปิด `/database/sites/…/zones/…` ได้ **"หน้านี้ทำงานต่อไม่ได้"** ทุกครั้ง
 
 `usageVsStandard` เรียก `businessMonthKey()` จาก `@/lib/datePeriods` ซึ่ง **ต้องส่ง timestamp** —
 ไม่ส่งได้ `null` แล้ว `null.split('-')` โยน TypeError

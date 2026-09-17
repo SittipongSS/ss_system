@@ -1,0 +1,463 @@
+"use client";
+// ── หน้าอุปกรณ์รายตัว ────────────────────────────────────────────────────
+//
+// ⭐ ค่าตั้งเครื่องจริงเคยอยู่ในรูปถ่ายหน้าจอที่เจ้าหน้าที่ส่งเข้า LINE ทุกเดือน — mig 0298
+//   เพิ่งมีที่เก็บ (`settings`) แต่ยังไม่มีจอไหนแสดงสักจอ
+//
+// ⭐ และเครื่องหนึ่งตัวมีประวัติของตัวเอง (ติดตั้ง · ถูกเปลี่ยน · เอาไปแทนตัวอื่น ·
+//   ถอดออก) ที่กระจายอยู่หลายตาราง — จอนี้เอามาเรียงให้อ่านเป็นเรื่องเดียว
+//   ⚠️ ไม่มีตาราง event ของอุปกรณ์ โดยเจตนา (ดูเหตุผลใน lib/service/assetHistory.js)
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AirVent, AlertTriangle, Clock, Layers, MapPin, Package, Wrench } from "lucide-react";
+import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
+import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Workspace from "@/components/ui/Workspace";
+import DetailOverview from "@/components/ui/DetailOverview";
+import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
+import AssetMoveModal from "@/components/service/AssetMoveModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Toast from "@/components/ui/Toast";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { canEditService } from "@/lib/permissions";
+import {
+  ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isWarehouseSite,
+} from "@/lib/service/sites";
+import { MOVE_LABELS, assetMoveOwnerError } from "@/lib/service/assetMoves";
+import { assetDeleteError } from "@/lib/service/assetDelete";
+import { assetTimeline, settingOutlier, settingText } from "@/lib/service/assetHistory";
+import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
+import { refillStatus } from "@/lib/service/refill";
+import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
+import { isClosedVisit } from "@/lib/service/visitStatus";
+import { fmtDate, fmtNumber, naText } from "@/lib/format";
+import styles from "./page.module.css";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
+
+export default function ServiceAssetPage({ params }) {
+  const { id } = use(params);   // = assetId · เฟส B ย้าย route ออกจากใต้ไซต์
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  // 404 ≠ โหลดพัง — ไม่มีเครื่องนี้ต้องบอกคนละอย่างกับเน็ตสะดุด (อันหลังกดลองใหม่ได้)
+  const [notFound, setNotFound] = useState(false);
+  const [moveKind, setMoveKind] = useState(null);   // null = ปิด · 'transfer' ฯลฯ = เปิด
+  const router = useRouter();
+  const [removing, setRemoving] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  // ตัวเลือกปลายทางโหลดตอนเปิดโมดัลเท่านั้น — ไซต์ทั้งระบบไม่ควรถูกดึงทุกครั้งที่เปิดหน้าเครื่อง
+  const [pickerSites, setPickerSites] = useState([]);
+  const [pickerZones, setPickerZones] = useState([]);
+
+  const role = useRole();
+  const team = useTeam();
+  const teams = useTeams();
+  const department = useDepartment();
+  const canEdit = useMemo(
+    () => canEditService({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
+
+  const startRun = useLatestRun();
+  const load = useCallback(async (opts) => {
+    const isLatest = startRun();
+    if (!opts?.background) setLoading(true);
+    setLoadError("");
+    try {
+      const res = await apiFetch(`/api/service/assets/${id}/detail`);
+      const body = await res.json().catch(() => null);
+      if (!isLatest()) return;
+      // รอบเบื้องหลังที่ล้มต้องเงียบ — ไม่พลิกหน้าที่อ่านอยู่เป็น "ไม่พบ"
+      if (!opts?.background) setNotFound(res.status === 404);
+      if (!res.ok) throw new Error(body?.error || "โหลดข้อมูลเครื่องไม่สำเร็จ");
+      setData(body);
+    } catch (e) {
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดข้อมูลเครื่องไม่สำเร็จ");
+    } finally {
+      if (isLatest()) setLoading(false);
+    }
+  }, [id, startRun]);
+  useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
+
+  const asset = data?.asset || null;
+  const assetsById = useMemo(
+    () => new Map((data?.zoneAssets || []).concat(asset ? [asset] : []).map((a) => [a.id, a])),
+    [data?.zoneAssets, asset],
+  );
+
+  /* นัดทุกใบที่ประวัติของเครื่องอ้างถึง — ไซต์ปัจจุบัน + ไซต์เก่า/ก่อนถูกถอน (`historyVisits`)
+     ⚠️ ใช้กับ **ประวัติ** เท่านั้น · วันเติมถัดไป (ข้างล่าง) ต้องดูเฉพาะนัดของไซต์ปัจจุบัน */
+  const timelineVisits = useMemo(
+    () => [...(data?.visits || []), ...(data?.historyVisits || [])],
+    [data?.visits, data?.historyVisits],
+  );
+
+  const timeline = useMemo(() => assetTimeline({
+    asset,
+    results: data?.results || [],
+    items: data?.items || [],
+    visits: timelineVisits,
+    moves: data?.moves || [],
+    assetsById,
+  }), [asset, data, assetsById, timelineVisits]);
+
+  const outlier = useMemo(() => settingOutlier(asset, data?.zoneAssets || []), [asset, data?.zoneAssets]);
+
+  /* วันที่คาดว่าน้ำหอมหมด — ตัวเดียวกับที่หน้าทะเบียนใช้ ห้ามคิดสูตรใหม่ที่นี่ */
+  const refill = useMemo(() => {
+    if (!asset) return null;
+    const lastClosed = (data?.visits || [])
+      .filter((v) => isClosedVisit(v) && v.actualDate)
+      .sort((a, b) => String(b.actualDate).localeCompare(String(a.actualDate)))[0];
+    const nextVisit = (data?.visits || [])
+      .filter((v) => !isClosedVisit(v) && v.scheduledDate)
+      .sort((a, b) => String(a.scheduledDate).localeCompare(String(b.scheduledDate)))[0];
+    return refillStatus(asset, {
+      lastSiteRefillDate: lastClosed?.actualDate || null,
+      nextVisitDate: nextVisit?.scheduledDate || null,
+    });
+  }, [asset, data?.visits]);
+
+  /* ⚠️ ปุ่มย้อนกลับต้องอ่านไซต์จาก **ข้อมูลที่โหลดมา** ไม่ใช่จาก route param อีกแล้ว
+     (URL ใหม่ไม่มี siteId) · ตอนยังโหลดไม่เสร็จยังไม่รู้ไซต์ ⇒ ถอยไปทะเบียนเครื่อง
+     ซึ่งเป็นที่ที่คนกดเข้ามาจริง ไม่ใช่ลิงก์เปล่าที่กดแล้วไม่ไปไหน */
+  /* โหลดตัวเลือกปลายทางตอนเปิดโมดัลเท่านั้น (lazy) — ไซต์ทั้งระบบ 200+ ใบ
+     ไม่ควรถูกดึงทุกครั้งที่มีคนเปิดหน้าเครื่องเฉย ๆ
+     ⚠️ ยังขอ `kind=all` อยู่เพื่ออ่านไซต์คลังเก่าที่อาจมีค้าง — แต่ตั้งแต่ mig 0344
+        คลังไม่ใช่ปลายทางของคำสั่งไหนแล้ว (โมดัลกรองออกเอง) ซึ่งค่าตั้งต้น
+        ของ API ตัดออก (คลังไม่ใช่แถวในทะเบียนไซต์) */
+  useEffect(() => {
+    if (!moveKind || pickerSites.length) return;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/service/sites?kind=all");
+        const rows = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(rows?.error || "โหลดรายการไซต์ไม่สำเร็จ");
+        setPickerSites(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        setToast({ kind: "error", msg: e.message });
+      }
+    })();
+  }, [moveKind, pickerSites.length]);
+
+  /* โซนของไซต์ปลายทาง — โหลด **รายไซต์ตอนเลือกปลายทางแล้ว** ไม่ใช่ทั้งระบบ
+     ⚠️ ไม่มีเส้น `/api/service/zones` ระดับบน (โซนอยู่ใต้ไซต์เสมอ) ⇒ ต้องยิง
+        `/api/service/sites/[id]` ซึ่งคืนโซนของไซต์นั้นมาด้วย
+     ⚠️ โซนไม่บังคับ — โหลดพลาดก็ปล่อยว่างไว้ ไม่ต้องขัดจังหวะคนที่กำลังกรอก */
+  const loadZonesOf = useCallback(async (siteId) => {
+    if (!siteId) { setPickerZones([]); return; }
+    try {
+      const res = await apiFetch(`/api/service/sites/${siteId}`);
+      const body = await res.json().catch(() => null);
+      setPickerZones(res.ok && Array.isArray(body?.zones) ? body.zones : []);
+    } catch {
+      setPickerZones([]);
+    }
+  }, []);
+
+  const runMove = async (payload) => {
+    setMoveBusy(true);
+    try {
+      const res = await apiFetch(`/api/service/assets/${id}/moves`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error || "บันทึกคำสั่งไม่สำเร็จ");
+      setMoveKind(null);
+      setToast({ kind: "success", msg: `${MOVE_LABELS[payload.kind]} เรียบร้อย` });
+      await load({ background: true });
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  /* ปุ่มที่โชว์ = คำสั่งที่ผ่านด่าน "เป็นเจ้าของคำสั่งนี้ไหม" เท่านั้น
+     ⚠️ ตัวตัดสินตัวเดียวกับที่ API ใช้ — ถ้าสองฝั่งไม่ตรงกัน จอจะโชว์ปุ่มที่กดแล้วเด้ง */
+  const moveAction = (kind, label) => (asset && !assetMoveOwnerError(asset, kind, { canEdit })
+    ? { id: kind, kind: "edit", label: label || MOVE_LABELS[kind], onClick: () => setMoveKind(kind) }
+    : null);
+
+  const controlActions = asset ? [
+    moveAction("install"),
+    moveAction("transfer"),
+    moveAction("return"),
+    moveAction("repair"),
+    moveAction("repair_done"),
+    moveAction("condition", asset.condition === "broken" ? "แจ้งว่าซ่อมแล้ว" : "แจ้งว่าชำรุด"),
+  ].filter(Boolean) : [];
+
+  /* ⭐ **ลบทิ้งจริง ๆ ต่างจากปลดระวาง** — ปลดระวางคือ "เลิกใช้แต่ยังอยู่ในทะเบียน"
+     (ประวัติยังอ่านได้) · ลบคือ "ไม่เคยมีเครื่องตัวนี้" ซึ่งถูกต้องเฉพาะกับของที่
+     ขึ้นทะเบียนผิด/ทดสอบ ⇒ ปุ่มอยู่คนละกลุ่ม และคำถามตอนยืนยันต่างกัน
+     🔴 **เลขรันไม่คืน** — ลบเครื่องแล้วรหัสที่ออกไปเป็นช่องว่างถาวร (mig 0241) */
+  const historyCount = (data?.results?.length || 0) + (data?.items?.length || 0);
+  const deleteGate = asset ? assetDeleteError(asset, { canEdit, used: historyCount }) : 'ไม่พบเครื่องนี้';
+
+  const dangerActions = asset ? [
+    !assetMoveOwnerError(asset, "retire", { canEdit })
+      ? { id: "retire", kind: "delete", label: MOVE_LABELS.retire, onClick: () => setMoveKind("retire") }
+      : null,
+    /* ไม่มีสิทธิ์ = ไม่โชว์ · ติดด่าน (มีประวัติ) = โชว์แล้วบอกเหตุตอนกด
+       — กติกา GatedAction ของระบบ */
+    canEdit
+      ? { id: "delete", kind: "delete", label: "ลบเครื่องนี้", onClick: () => setRemoving(true) }
+      : null,
+  ].filter(Boolean) : [];
+
+  const runDelete = async () => {
+    setRemoveBusy(true);
+    try {
+      await apiJson(`/api/service/assets/${id}`, {
+        method: "DELETE", fallbackError: "ลบเครื่องไม่สำเร็จ",
+      });
+      setRemoving(false);
+      // ลบแล้วหน้านี้ไม่มีของให้ดูอีก — กลับทะเบียน ไม่ใช่ค้างที่หน้าเปล่า
+      router.push("/database/assets");
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+      setRemoving(false);
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
+
+  const back = data?.site
+    ? { href: `/database/sites/${data.site.id}`, label: naText(data.site.name) }
+    : { href: '/database/assets', label: 'ทะเบียนเครื่อง' };
+
+  /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ (หัวมาจาก DetailOverview)
+     🐞 เดิมวาดการ์ดหัว "อุปกรณ์" + ไอคอนประแจ (= ไอคอนโมดูล ไม่ใช่ของเครื่อง) แล้วตามด้วย
+        ข้อความบรรทัดเดียวไม่มีสไตล์ · 404 กับเน็ตสะดุดหน้าตาเหมือนกันจนแยกไม่ออก */
+  /* ♿ hideHeader ถอด h1 ของ Workspace ออกด้วย — หน้าที่โหลดเสร็จได้ h1 จาก DetailOverview
+     แต่สามเปลือกนี้ไม่มีหัวเรื่องเลย ⇒ h1 ซ่อนตา (sr-only) ชื่อเดียวกับการ์ดหัวเดิม · หน้าตาไม่เปลี่ยน */
+  const shell = (body) => (
+    <Workspace hideHeader back={back}>
+      <h1 className="sr-only">เครื่อง</h1>
+      {body}
+    </Workspace>
+  );
+  if (loading) return shell(<SkeletonRows rows={5} />);
+  if (notFound || (!loadError && !asset)) {
+    return shell(
+      <EmptyState icon={AirVent}>
+        ไม่พบเครื่องนี้ในทะเบียน
+        <small>อาจถูกลบไปแล้ว หรือรหัสในลิงก์ไม่ถูกต้อง</small>
+      </EmptyState>,
+    );
+  }
+  if (loadError) {
+    return shell(
+      <StatusNotice tone="error" title="โหลดข้อมูลเครื่องไม่สำเร็จ"
+        action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+        {loadError}
+      </StatusNotice>,
+    );
+  }
+
+  const { site, zone } = data;
+
+  return (
+    <Workspace hideHeader back={back}>
+      <DetailOverview
+        /* ⭐ ตัวตนของเครื่องคือรหัสที่ระบบออกให้ (mig 0344) — `label` เป็นชื่อเรียก
+           ที่ TS ตั้งตอนติดตั้ง · ใบเก่าที่ยังไม่มีรหัสรูปใหม่ตกไปที่ serial แล้ว label */
+        eyebrow={ASSET_KIND_LABELS[asset.kind] || asset.kind}
+        title={asset.code || asset.serial || asset.label}
+        description={[site?.name, zone ? `โซน ${zone.name}` : null, asset.floor, asset.spot].filter(Boolean).join(" · ")}
+        badges={(
+          <>
+            {/* 🪤 เคยเขียนสตริงสดสามทาง (`removed` → "ถอดออกแล้ว" ที่เหลือ → "ใช้งาน")
+                ⇒ พอ mig 0332 เพิ่ม `in_stock` เครื่องในคลังขึ้นป้าย "ใช้งาน"
+                และ mig 0335 เปลี่ยนความหมาย `removed` เป็น "ปลดระวาง" ป้ายก็ยังพูดคำเก่า
+                ⇒ อ่านจากทะเบียนตัวเดียวเสมอ ห้ามเทียบสตริงเอง */}
+            <span className={`ui-badge ${asset.status === "active" ? "success"
+              : asset.status === "repair" ? "warning" : ""}`.trim()}>
+              {ASSET_STATUS_LABELS[asset.status] || asset.status}
+            </span>
+            {/* สภาพเป็นแกนที่สอง — ขึ้นเฉพาะตอนชำรุด (ปกติไม่ต้องประกาศ) */}
+            {asset.condition === "broken" && (
+              <span className="ui-badge danger">{ASSET_CONDITION_LABELS.broken}</span>
+            )}
+            {asset.settings?.grade && <span className="ui-badge violet">{asset.settings.grade}</span>}
+          </>
+        )}
+        facts={[
+          { key: "setting", icon: Clock, label: "ค่าตั้งเครื่อง", value: settingText(asset.settings) },
+          { key: "bottle", icon: Package, label: "ขนาดขวด", value: asset.bottleMl != null ? `${fmtNumber(asset.bottleMl)} ml` : null },
+          { key: "rate", icon: Package, label: "อัตราใช้", value: asset.mlPerDay != null ? `${fmtNumber(asset.mlPerDay)} ml/วัน` : null },
+          { key: "due", icon: Clock, label: "คาดว่าหมด", value: refill?.dueDate },
+        ]}
+      />
+
+      {/* ⭐ บอกว่า "ต่าง" ไม่ได้บอกว่า "ผิด" — ตั้งใจให้ต่างกันก็มี (เครื่องหน้าประตู
+          ต้องแรงกว่าเครื่องในห้อง) แต่ส่วนใหญ่คือไม่มีใครเห็นว่ามันต่าง */}
+      {outlier && (
+        <p className={styles.outlier}>
+          <AlertTriangle size={14} aria-hidden="true" />
+          <span>
+            <b>{outlier.text}</b> — เทียบกับอีก {fmtNumber(outlier.peers)} ตัวในโซนเดียวกัน
+            · ถ้าตั้งใจให้ต่างไม่ต้องแก้ ถ้าไม่ ให้ตั้งค่าใหม่รอบหน้า
+          </span>
+        </p>
+      )}
+
+      <DetailPageLayout
+        aside={(
+          <>
+            {/* ⭐ ปุ่มระดับเครื่องทั้งชุดอยู่ที่เดียว (ม-49/ม-57) — ห้ามวางแยกในแถวหัว
+                ⚠️ **ไม่มีสิทธิ์ = ไม่โชว์การ์ดทั้งใบ** · คำสั่งที่ไม่เข้ากับสถานะปัจจุบัน
+                   ก็ไม่โชว์ (assetMoveOwnerError) เพราะมันไม่ใช่ "ติดด่านชั่วคราว"
+                   แต่คือคำสั่งที่ไม่มีความหมายในสถานะนี้ · ส่วนด่านที่ผู้ใช้แก้ได้
+                   (เหตุผล/ปลายทาง) ไปบอกในโมดัลตอนกด */}
+            {canEdit && (
+              <DocumentControlCard
+                eyebrow="ASSET CONTROL"
+                title="จัดการเครื่อง"
+                status={ASSET_STATUS_LABELS[asset.status] || asset.status}
+                statusColor={asset.status === "active" ? "var(--green)"
+                  : asset.status === "in_stock" ? "var(--blue)"
+                    : asset.status === "repair" ? "var(--amber)" : "var(--text-3)"}
+                statusDescription={[
+                  /* ⚠️ สามสภาพ (mig 0344): ไม่มีไซต์เลย · อยู่คลัง · อยู่หน้างานลูกค้า
+                     ของเดิมมีสอง ⇒ เครื่องที่ยังไม่ติดตั้งได้บรรทัดว่างเปล่า */
+                  !site ? "ยังไม่ได้ติดตั้ง"
+                    : isWarehouseSite(site) ? "อยู่ในคลัง" : `ติดตั้งที่ ${site.name}`,
+                  asset.condition === "broken" ? `สภาพ${ASSET_CONDITION_LABELS.broken}` : null,
+                ].filter(Boolean).join(" · ")}
+                primaryAction={controlActions[0] || null}
+                secondaryActions={controlActions.slice(1)}
+                dangerActions={dangerActions}
+                busy={moveBusy}
+              />
+            )}
+            <ContextCard
+              icon={MapPin} eyebrow="ที่ติดตั้ง"
+              title={site ? naText(site.name) : "ยังไม่ได้ติดตั้ง"}
+              subtitle={site?.customerName || undefined}
+              facts={[
+                { label: "โซน", value: zone?.name },
+                { label: "ชั้น", value: asset.floor },
+                { label: "จุดติดตั้ง", value: asset.spot },
+                { label: "เขตวิ่งงาน", value: site?.routeZone },
+              ]}
+            />
+            <ContextCard
+              /* ⚠️ หัวการ์ดเป็น **ชื่อเรียก** ไม่ใช่รหัส (หัวหน้าบอกรหัสไปแล้ว) —
+                 เครื่องที่เพิ่งขึ้นทะเบียนตั้ง `label` = ชื่อรุ่น ซึ่งซ้ำกับช่อง "รุ่น"
+                 ⇒ ซ่อนหัวไปเลยเมื่อซ้ำ ให้เหลือแต่รายการที่บอกอะไรใหม่จริง ๆ */
+              icon={Wrench} eyebrow="ทะเบียน"
+              title={asset.label && asset.label !== asset.model ? asset.label : (asset.model || asset.label)}
+              facts={[
+                { label: "ชนิด", value: ASSET_KIND_LABELS[asset.kind] || asset.kind },
+                { label: "รุ่น", value: asset.model },
+                { label: "สี", value: asset.colour },
+                /* 🔄 เคยสลับป้ายเป็น "จำนวนจุด" ให้ชนิดแถวรวม — ถอดแล้ว
+                   (ทุกชนิดนับรายตัว) · Serial = เบอร์จากโรงงาน คนละช่องกับรหัสเครื่อง */
+                { label: "Serial (เบอร์จากโรงงาน)", value: asset.serial },
+                /* ⚠️ **วันที่ต้องผ่าน `fmtDate`** — ทั้งระบบใช้ DD/MM/YYYY
+                   🐞 สามช่องนี้ปล่อย ISO ดิบออกจอมาตลอด (`2026-09-06`) เจอตอน UAT 2026-09-06
+                   · วันรับเข้า = วันที่บริษัทได้เครื่องมา คนละเรื่องกับวันติดตั้ง (mig 0332) */
+                { label: "รับเข้าเมื่อ", value: asset.receivedAt ? fmtDate(asset.receivedAt) : null },
+                { label: "ติดตั้งเมื่อ", value: asset.installedAt ? fmtDate(asset.installedAt) : null },
+                { label: "ถอดออกเมื่อ", value: asset.removedAt ? fmtDate(asset.removedAt) : null },
+              ]}
+            />
+            {/* ⚠️ ContextCard รับ `href` ทั้งใบ ไม่มี footer — การ์ดทั้งใบเป็นลิงก์
+                ไปหน้าโซน (รอบขาย · ยอดใช้จริง · ประวัติของโซนนั้น) */}
+            {zone && (
+              <ContextCard
+                href={`/database/sites/${data.site?.id}/zones/${zone.id}`}
+                icon={Layers} eyebrow="โซน" title={zone.name}
+                subtitle="ดูรอบขายและยอดใช้จริงของโซนนี้"
+                facts={[{ label: "เครื่องในโซน", value: `${fmtNumber((data.zoneAssets || []).length)} ตัว` }]}
+              />
+            )}
+          </>
+        )}
+      >
+        <DetailCard icon={Clock} title={`ประวัติของเครื่องนี้ ${timeline.length} รายการ`}
+          meta="ประกอบจากผลรายเครื่องตอนปิดงาน + วันติดตั้ง/ถอดในทะเบียน">
+          {timeline.length === 0 ? (
+            <p className={styles.muted}>ยังไม่มีร่องรอยของเครื่องนี้ — จะมีตั้งแต่ครั้งแรกที่เจ้าหน้าที่ปิดงานโดยติ๊กเครื่องนี้</p>
+          ) : (
+            <ul className={styles.timeline}>
+              {timeline.map((row) => (
+                <li key={row.key} data-kind={row.kind}>
+                  <span className={styles.when}>{naText(row.date)}</span>
+                  <span className={styles.what}>
+                    <b>{row.label}</b>
+                    {row.replacedBy && <span> → {row.replacedBy}</span>}
+                    {row.detail && <span className={styles.reason}>{row.detail}</span>}
+                    {row.used && <span className={styles.reason}>ใช้ไป: {row.used}</span>}
+                    {/* ใครสั่ง/ใครแจ้ง — ประกอบไว้ตั้งแต่ mig 0335 แต่ไม่เคยขึ้นจอ · ช่างแจ้งชำรุด
+                        จากหน้างานได้แล้ว (ข้อ H) หัวหน้าต้องรู้ว่าถามใครต่อ */}
+                    {row.by && <span className={styles.reason}>โดย {row.by}</span>}
+                  </span>
+                  {row.visitId && (
+                    <Link href={`/service/visits/${row.visitId}`} className={styles.visitLink}>ใบส่งงาน</Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </DetailCard>
+
+        <DetailCard icon={Package} title="ค่าตั้งและการประเมินวันหมด"
+          meta="ค่าที่เคยอยู่แต่ในรูปถ่ายหน้าจอที่ส่งเข้าไลน์">
+          <dl className={styles.specs}>
+            <div><dt>ค่าตั้งเครื่อง</dt><dd>{naText(settingText(asset.settings))}</dd></div>
+            <div><dt>ช่วงเวลาทำงาน</dt><dd>{naText(asset.settings?.schedule)}</dd></div>
+            <div><dt>Grade</dt><dd>{naText(asset.settings?.grade)}</dd></div>
+            <div><dt>ขนาดขวด</dt><dd>{asset.bottleMl == null ? naText(null) : `${fmtNumber(asset.bottleMl)} ml`}</dd></div>
+            <div><dt>อัตราใช้ต่อวัน</dt><dd>{asset.mlPerDay == null ? naText(null) : `${fmtNumber(asset.mlPerDay)} ml`}</dd></div>
+            {/* ⚠️ "ยังประเมินไม่ได้" ต้องพูดตรง ๆ — ป้ายใกล้หมดที่มั่วจะถูกเมินทั้งกระดาน
+                ภายในสองสัปดาห์ แล้วป้ายจริงก็ถูกเมินไปด้วย */}
+            <div><dt>สถานะน้ำหอม</dt><dd>{naText(refill?.label)}</dd></div>
+            <div><dt>ล่าสุดเข้าเมื่อ</dt><dd>{naText(timeline.find((r) => r.visitId)?.date)}</dd></div>
+            <div><dt>ชนิดงานล่าสุด</dt><dd>{naText(VISIT_KIND_LABELS[timelineVisits.find((v) => v.id === timeline.find((r) => r.visitId)?.visitId)?.kind])}</dd></div>
+          </dl>
+          {asset.note && <p className={styles.note}>{asset.note}</p>}
+        </DetailCard>
+      </DetailPageLayout>
+
+      <AssetMoveModal
+        open={!!moveKind}
+        kind={moveKind}
+        asset={asset}
+        fromSite={site}
+        sites={pickerSites}
+        zones={pickerZones}
+        busy={moveBusy}
+        onClose={() => !moveBusy && setMoveKind(null)}
+        onToSite={loadZonesOf}
+        onSubmit={runMove}
+      />
+      <ConfirmDialog
+        open={removing}
+        title="ลบเครื่องนี้ออกจากทะเบียน"
+        message={deleteGate || `ลบ ${asset?.code || asset?.serial || asset?.label || ""} ออกจากทะเบียนถาวร`}
+        detail={deleteGate
+          ? undefined
+          : "รหัสเครื่องที่ออกไปแล้วจะไม่ถูกนำกลับมาใช้ซ้ำ — เลขนั้นกลายเป็นช่องว่างถาวร"}
+        confirmLabel="ลบ"
+        tone="danger"
+        busy={removeBusy}
+        hideCancel={false}
+        onConfirm={deleteGate ? undefined : runDelete}
+        onClose={() => !removeBusy && setRemoving(false)}
+      />
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </Workspace>
+  );
+}

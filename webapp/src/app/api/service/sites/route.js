@@ -26,7 +26,7 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase, req }) => {
   /* ⚠️ `forRequestForm` — ฝ่ายขายไม่ได้เข้าโมดูลแล้ว (มติ 2026-08-30) แต่ฟอร์มใบ
      ประเมินพื้นที่ต้องกางรายการไซต์ **ของลูกค้าที่เขาเลือก** ให้เลือก · อ่านอย่างเดียว */
-  const access = requireService({ user, forRequestForm: true });
+  const access = requireService({ user, registry: true });
   if (access.response) return access.response;
   const url = new URL(req.url);
   try {

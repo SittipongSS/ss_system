@@ -198,7 +198,7 @@ export default function SalesOrderServiceTab({ orderId }) {
                         วางรอบ
                       </Button>
                     )}
-                    <Button as={Link} prefetch={false} href={`/service/sites/${row.siteId}`} tone="neutral" size="sm">
+                    <Button as={Link} prefetch={false} href={`/database/sites/${row.siteId}`} tone="neutral" size="sm">
                       เปิดหน้าไซต์
                     </Button>
                   </td>
