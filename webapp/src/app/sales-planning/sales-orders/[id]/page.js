@@ -21,6 +21,7 @@ import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
 import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
+import SalesOrderDeliveryDueField from "@/components/salesPlanning/SalesOrderDeliveryDueField";
 import { orderConfirmationOf, salesOrderConfirmationGate } from "@/lib/sales/orderConfirmationDocs";
 
 /* ค่าตั้งต้นของฟอร์ม "ยืนยันคำสั่งซื้อ" — **อ่านสองบ้านเหมือนตอนแสดงผล**
@@ -165,7 +166,7 @@ export default function SalesOrderDetailPage() {
   const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน
   /* แก้ได้เหลือสองช่อง (มติผู้ใช้ 2026-08-18) — วันที่ SO ล็อกเป็นวันที่สร้าง
      และกำหนดชำระย้ายไปอยู่ที่งวดทั้งหมด */
-  const [form, setForm] = useState({ referenceDoc: "", notes: "" });
+  const [form, setForm] = useState({ referenceDoc: "", notes: "", deliveryDueDate: "" });
   /* เอกสารยืนยันคำสั่งซื้อ (mig 0285) — ใบเก่าหลักฐานอยู่ที่ใบเสนอราคา `orderConfirmationOf`
      อ่านสองบ้านให้แล้ว · ไฟล์ใหม่ที่เพิ่งเลือกยังไม่ได้อัป จึงถือเป็น File[] แยกไว้ */
   const [confirmation, setConfirmation] = useState({ docType: "", docNo: "", docDate: "", attachments: [] });
@@ -233,7 +234,7 @@ export default function SalesOrderDetailPage() {
       return false;
     }
     setOrder(data);
-    setForm({ referenceDoc: data.referenceDoc || "", notes: data.notes || "" });
+    setForm({ referenceDoc: data.referenceDoc || "", notes: data.notes || "", deliveryDueDate: data.deliveryDueDate || "" });
     setConfirmation(confirmationDraft(data));
     setConfirmFiles([]);
     setDirty(false);
@@ -489,7 +490,7 @@ export default function SalesOrderDetailPage() {
   }
 
   function leaveEditMode() {
-    setForm({ referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
+    setForm({ referenceDoc: order.referenceDoc || "", notes: order.notes || "", deliveryDueDate: order.deliveryDueDate || "" });
     setConfirmation(confirmationDraft(order));
     setConfirmFiles([]);
     setDirty(false);
@@ -1272,6 +1273,14 @@ export default function SalesOrderDetailPage() {
                   <span>วันที่ SO</span>
                   <div className="readable-field is-compact">{fmtDate(order.orderDate)}</div>
                 </label>
+                {/* ⭐ กำหนดส่งสินค้า (0363) — วางติดวันที่ SO เพราะคนอ่านเทียบสองค่านี้กันเอง
+                    ⚠️ **ช่องกรอกใช้ component เดียวกับหน้าสร้างใบ** (กฎ AGENTS.md) */}
+                <SalesOrderDeliveryDueField
+                  mode={editable ? "edit" : "read"}
+                  value={form.deliveryDueDate}
+                  onChange={(next) => updateField("deliveryDueDate", next)}
+                  readonlyClassName={styles.readonlyFormField}
+                />
                 {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0235) — PO/สัญญา/เลขในระบบ
                     จัดซื้อของเขา · **ไม่ใช่หมายเหตุ**: ช่องนี้ค้นได้และขึ้นเป็นคอลัมน์ในตาราง
                     ส่วนหมายเหตุเป็นข้อความอิสระที่พิมพ์ลงเอกสาร · ปนกันเมื่อไรก็ค้นเจอขยะ

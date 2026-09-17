@@ -30,6 +30,7 @@ import {
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
+import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import { freezeInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
 import { paymentLockReason, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
@@ -762,7 +763,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          กับวันที่บนใบเดินคนละทางได้)
        - กำหนดชำระย้ายไปอยู่ที่ **งวด** ทั้งหมด (action `schedule` รายงวด) ค่าระดับใบ
          มาจากหลักฐานตอนปิด Won และเป็นค่าอ้างอิงของฝ่ายผลิต ไม่ใช่ช่องให้แก้บนเอกสาร
-       แก้ได้เหลือ **หมายเหตุ + เอกสารอ้างอิง** เท่านั้น */
+       แก้ได้เหลือ **หมายเหตุ + เอกสารอ้างอิง + กำหนดส่งสินค้า** เท่านั้น
+       ⭐ `deliveryDueDate` (0363) แก้ได้ตอนใบยังเป็นร่าง — วันส่งมักตกลงหลังตั้งใบร่าง
+          ⚠️ ส่งคีย์มาเมื่อไร = ทับค่าเดิม (ส่ง '' = ล้างค่า) · ไม่ส่งมาเลย = ไม่แตะของเดิม
+          ⚠️ ใบที่อนุมัติแล้วแก้ที่นี่ไม่ได้ (ติดด่านสถานะบรรทัดบน) — เลื่อนวันส่งของใบที่
+             อนุมัติแล้วต้องออก Rev. ตามกติกาเดิมของเอกสาร */
     // ⚠️ เพดาน 200 = ด่านเดียวกับ CHECK ของ mig 0235 — ตัดที่นี่ก่อนถึง DB เพื่อไม่ให้
     // คนกรอกเจอ error ภาษาอังกฤษของ Postgres · ยาวกว่านี้แปลว่ากำลังใช้ช่องนี้เป็น
     // ช่องหมายเหตุ ซึ่งมี `notes` อยู่แล้วข้างล่าง
@@ -789,10 +794,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         confirmAttachments: check.confirmation?.attachments || [],
       };
     }
+    let deliveryPatch = {};
+    if ('deliveryDueDate' in body) {
+      const deliveryDue = parseDeliveryDueDate(body.deliveryDueDate);
+      if (!deliveryDue.ok) return badRequest(deliveryDue.error);
+      deliveryPatch = { deliveryDueDate: deliveryDue.value };
+    }
     const patch = {
       referenceDoc: referenceDoc || null,
       notes: String(body.notes || '').trim() || null,
       ...confirmPatch,
+      ...deliveryPatch,
       updatedAt: new Date().toISOString(),
     };
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
