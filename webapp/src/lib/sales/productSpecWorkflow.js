@@ -122,12 +122,24 @@ export function productSpecNewRevisionBlock(spec, latestRevision, { role } = {})
  *    ⇒ เปิดทางไว้เพราะลูกค้ามักขอดูสเปกก่อนที่ใบจะผ่านหัวหน้า
  * 🛑 ฉบับที่ถูกตีกลับ = ออกไม่ได้ ต้องแก้ให้จบก่อน (ฐานก็ตีกลับเหมือนกัน)
  */
-export function productSpecIssueBlock(spec, latestRevision, { role, salesOrder } = {}) {
+/**
+ * ด่านที่มาจาก **ใบสั่งขายกับสิทธิ์** อย่างเดียว — ไม่เกี่ยวว่าสินค้ามีใบสเปคหรือยัง
+ *
+ * ⚠️ แยกออกมาเพราะปุ่ม "สร้างใบสเปค" ติดได้เฉพาะสองเรื่องนี้ · เอาเหตุ "ยังไม่มีใบสเปค"
+ * ไปปิดปุ่มที่มีไว้สร้างใบ = ปุ่มที่กดไม่ได้ตลอดกาลด้วยเหตุผลที่ตัวมันเองแก้ให้อยู่แล้ว
+ */
+export function productSpecOrderGate({ role, salesOrder } = {}) {
   if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงออกเอกสารได้';
   if (!salesOrder) return 'ไม่พบใบสั่งขายต้นเรื่อง';
   if (salesOrder.status !== 'approved') {
     return 'ใบสั่งขายยังไม่ผ่านการอนุมัติของ AE Supervisor — ออกใบสเปคได้หลังอนุมัติ';
   }
+  return null;
+}
+
+export function productSpecIssueBlock(spec, latestRevision, { role, salesOrder } = {}) {
+  const orderBlock = productSpecOrderGate({ role, salesOrder });
+  if (orderBlock) return orderBlock;
   if (!spec || !latestRevision) return 'สินค้านี้ยังไม่มีใบสเปค — สร้างใบก่อนจึงออกเอกสารได้';
   if (latestRevision.status === 'rejected') {
     return 'ฉบับล่าสุดถูกตีกลับให้แก้ — แก้ให้จบก่อนจึงออกเอกสารได้';
@@ -161,11 +173,14 @@ export function productSpecLineState({
     };
   }
   const blocked = productSpecIssueBlock(spec, latestRevision, { role, salesOrder });
+  /* ปุ่มสร้างใบติดได้เฉพาะด่านของใบสั่งขาย/สิทธิ์ — ไม่ใช่เหตุ "ยังไม่มีใบสเปค"
+     ซึ่งเป็นสิ่งที่ปุ่มนั้นมีไว้แก้ */
+  const orderReason = productSpecOrderGate({ role, salesOrder });
   if (!spec || !latestRevision) {
     return {
       kind: 'no_spec',
       label: 'ยังไม่มีใบสเปค',
-      reason: blocked,
+      reason: orderReason,
       action: 'create',
       lineId: line?.id || null,
     };
