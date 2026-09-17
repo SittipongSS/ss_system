@@ -39,9 +39,9 @@ async function loadProduct(supabase, id, user) {
 }
 
 /* ── GET: ใบของสินค้าตัวนี้ ───────────────────────────────────────────── */
-export const GET = withUser(async ({ user, supabase, params }) => {
+export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
-  const { id } = await params;
+  const { id } = await ctx.params;
   const loaded = await loadProduct(supabase, id, user);
   if (loaded.error) return fail(loaded.error, 500);
   if (loaded.missing) return notFound('ไม่พบสินค้าชิ้นนี้');
@@ -56,9 +56,9 @@ export const GET = withUser(async ({ user, supabase, params }) => {
 });
 
 /* ── POST: สร้างใบ + ฉบับ Rev.01 ──────────────────────────────────────── */
-export const POST = withUser(async ({ user, supabase, req, params }) => {
+export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
-  const { id } = await params;
+  const { id } = await ctx.params;
   const loaded = await loadProduct(supabase, id, user);
   if (loaded.error) return fail(loaded.error, 500);
   if (loaded.missing) return notFound('ไม่พบสินค้าชิ้นนี้');
@@ -97,9 +97,9 @@ export const POST = withUser(async ({ user, supabase, req, params }) => {
 });
 
 /* ── PATCH: การกระทำต่อฉบับ ───────────────────────────────────────────── */
-export const PATCH = withUser(async ({ user, supabase, req, params }) => {
+export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
-  const { id } = await params;
+  const { id } = await ctx.params;
   const loaded = await loadProduct(supabase, id, user);
   if (loaded.error) return fail(loaded.error, 500);
   if (loaded.missing) return notFound('ไม่พบสินค้าชิ้นนี้');

@@ -77,3 +77,50 @@ export function productSpecChecklistSeed(previousItems = []) {
     }));
   return [...base, ...extras];
 }
+
+/* ── เอกสารที่ขอได้ (Certification & Documents) ───────────────────────────────
+ *
+ * ⭐ สี่แถวตามกระดาษ + แถว "อื่นๆ" ที่พิมพ์ชื่อเองได้
+ * สถานะมีสองค่าตามกระดาษเท่านั้น: **เรียบร้อย** / **อยู่ระหว่างจัดเตรียม**
+ * (แถว อย. บนกระดาษเขียนว่า "อยู่ระหว่างยื่น" — คำของแถวนั้นเอง ไม่ใช่สถานะที่สาม)
+ *
+ * ⚠️ เก็บเป็น jsonb ไม่ใช่คอลัมน์ต่อแถว เพราะเป็น **ลิสต์ที่ยาวได้** (แถวอื่นๆ 0..N)
+ * ⚠️ `status` ว่าง = ยังไม่ตอบ ไม่ใช่ "อยู่ระหว่างจัดเตรียม" — สองอันนี้ต่างกัน
+ *    (ยังไม่มีใครตอบ vs ตอบแล้วว่ากำลังทำ) และกระดาษก็ปล่อยว่างได้
+ */
+export const PRODUCT_SPEC_CERT_STATUSES = Object.freeze(['ready', 'in_progress']);
+
+export const PRODUCT_SPEC_CERT_STATUS_LABELS = Object.freeze({
+  ready: 'เรียบร้อย',
+  in_progress: 'อยู่ระหว่างจัดเตรียม',
+});
+
+export const PRODUCT_SPEC_CERTIFICATIONS = Object.freeze([
+  { key: 'fda', label: 'เอกสารจดแจ้ง อย.', pendingLabel: 'อยู่ระหว่างยื่น' },
+  { key: 'sds', label: 'SDS / MSDS' },
+  { key: 'coa', label: 'COA' },
+  { key: 'ifra', label: 'IFRA' },
+]);
+
+export const productSpecCertPendingLabel = (key) => PRODUCT_SPEC_CERTIFICATIONS
+  .find((row) => row.key === key)?.pendingLabel || PRODUCT_SPEC_CERT_STATUS_LABELS.in_progress;
+
+/** แถวตั้งต้นของเอกสารที่ขอได้ — ยกค่าจากฉบับก่อนเหมือน checklist */
+export function productSpecCertSeed(previous = []) {
+  const prevByKey = new Map(
+    (previous || []).filter((row) => row?.key).map((row) => [row.key, row]),
+  );
+  const base = PRODUCT_SPEC_CERTIFICATIONS.map((row) => {
+    const prev = prevByKey.get(row.key);
+    return {
+      key: row.key,
+      label: row.label,
+      status: prev?.status || '',
+      note: prev?.note || '',
+    };
+  });
+  const extras = (previous || [])
+    .filter((row) => row && !row.key)
+    .map((row) => ({ key: null, label: row.label || '', status: row.status || '', note: row.note || '' }));
+  return [...base, ...extras];
+}

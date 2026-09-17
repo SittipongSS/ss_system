@@ -89,9 +89,9 @@ async function specsForOrder(supabase, order) {
 }
 
 /* ── GET: บรรทัดไหนต้องทำอะไรต่อ ──────────────────────────────────────── */
-export const GET = withUser(async ({ user, supabase, params }) => {
+export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
-  const { id } = await params;
+  const { id } = await ctx.params;
   const loaded = await loadOrder(supabase, id, user, 'view');
   if (loaded.response) return loaded.response;
   if (loaded.error) return fail(loaded.error, 500);
@@ -103,10 +103,10 @@ export const GET = withUser(async ({ user, supabase, params }) => {
 });
 
 /* ── POST: ออกเอกสารรอบนี้ของบรรทัดหนึ่งบรรทัด ────────────────────────── */
-export const POST = withUser(async ({ user, supabase, req, params }) => {
+export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
-  const { id } = await params;
+  const { id } = await ctx.params;
   const loaded = await loadOrder(supabase, id, user, 'edit');
   if (loaded.response) return loaded.response;
   if (loaded.error) return fail(loaded.error, 500);
