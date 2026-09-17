@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ClipboardCheck, ExternalLink, History } from "lucide-react";
+import { ClipboardCheck, ExternalLink, History, Printer } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import Textarea from "@/components/ui/Textarea";
@@ -210,7 +210,10 @@ export default function ProductSpecPage() {
     onReject: () => { setRejectReason(""); setRejectOpen(true); },
     onWithdraw: askWithdraw,
     onNewRevision: askNewRevision,
-    onPrint: () => {},
+    /* ⚠️ เปิดหน้าต่างพิมพ์ด้วย `window.open` ตรง ๆ เหมือนเอกสารชนิดอื่น — เส้นนี้คืน
+       **HTML ทั้งหน้า** ไม่ใช่ JSON จึงไม่ผ่าน apiFetch (ข้อยกเว้นเดียวกับที่ AGENTS.md
+       เขียนไว้เรื่องเอกสารเดี่ยว) · ฉบับร่างพิมพ์ได้ แต่ยังไม่มีเลขที่เอกสาร */
+    onPrint: () => window.open(`/api/products/${id}/spec/document`, "_blank", "noopener"),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [spec, latest, role, dirty, product]);
 
@@ -322,6 +325,7 @@ export default function ProductSpecPage() {
                     <th className={styles.colStatus}>สถานะ</th>
                     <th className={`num ${styles.colQty}`}>จำนวน</th>
                     <th className={`num ${styles.colDue}`}>กำหนดส่ง</th>
+                    <th className={styles.colPrint} aria-label="พิมพ์" />
                   </tr>
                 </thead>
                 <tbody>
@@ -333,6 +337,14 @@ export default function ProductSpecPage() {
                       <td>{SPEC_ISSUE_STATUS_LABELS[issue.status] || issue.status}</td>
                       <td className="num">{naText(issue.qty)}</td>
                       <td className="num">{issue.deliveryDueDate ? fmtDate(issue.deliveryDueDate) : naText(null)}</td>
+                      <td>
+                        {/* กระดาษของ **ครั้งที่ออกนั้น** — อ้าง revision ของตัวมันเอง
+                            ใบเก่าจึงอ่านเหมือนวันที่ส่งไป ไม่เปลี่ยนตามสเปกที่แก้ทีหลัง */}
+                        <Button variant="ghost" size="sm" icon={<Printer size={13} />}
+                          onClick={() => window.open(`/api/products/${id}/spec/document?issue=${issue.id}`, "_blank", "noopener")}>
+                          พิมพ์
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

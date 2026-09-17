@@ -124,8 +124,6 @@ export function specControlActions({
       label: 'พิมพ์ / ดูตัวอย่าง',
       kind: 'ghost',
       onClick: onPrint,
-      disabled: true,
-      disabledReason: 'เอกสารที่พิมพ์ได้จะมาในรอบถัดไป — ตอนนี้ดูข้อมูลบนหน้านี้ได้',
     },
     {
       id: 'withdraw',

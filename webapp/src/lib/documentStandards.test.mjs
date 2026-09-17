@@ -148,10 +148,13 @@ test('accent: ใช้ค่าที่ตั้งไว้ ส่วนค�
   assert.equal(resolveDocumentAccentKey({ accentKey: 'terracotta' }, 'quotation'), 'terracotta');
   assert.equal(resolveDocumentAccentKey({ accentKey: 'amber' }, 'exciseTaxNotice'), 'amber');
   assert.equal(resolveDocumentAccentKey({ accentKey: 'navy' }, 'projectTimeline'), 'navy');
-  // teal/green ถูกถอดจากตัวเลือกแล้ว — มาตรฐานเก่าที่ยังถือค่าเหล่านี้ต้องไม่พา
-  // เอกสารไปสีที่ไม่มีใครตั้งใจ
-  assert.equal(resolveDocumentAccentKey({ accentKey: 'teal' }, 'salesOrder'), 'steel');
+  // ⭐ teal ถูกเปิดเป็นตัวเลือกจริงเมื่อ 2026-09-17 พร้อมใบสเปคสินค้า (mig 0364)
+  //    ⇒ มาตรฐานที่ถือค่านี้ต้องได้สีนั้นจริง ไม่ใช่ตกไปใช้สีของชนิดเอกสารเหมือนเมื่อก่อน
+  assert.equal(resolveDocumentAccentKey({ accentKey: 'teal' }, 'productSpec'), 'teal');
+  assert.equal(resolveDocumentAccentKey(null, 'productSpec'), 'teal');
+  // green ยังถูกถอดจากตัวเลือก — มาตรฐานเก่าที่ยังถือค่านี้ต้องไม่พาเอกสารไปสีที่ไม่มีใครตั้งใจ
   assert.equal(resolveDocumentAccentKey({ accentKey: 'green' }, 'quotation'), 'terracotta');
+  assert.equal(resolveDocumentAccentKey({ accentKey: 'ไม่มีสีนี้' }, 'salesOrder'), 'steel');
   assert.equal(resolveDocumentAccentKey(null, 'salesOrder'), 'steel');
   assert.equal(resolveDocumentAccentKey(null, 'quotation'), 'terracotta');
   assert.equal(resolveDocumentAccentKey(null, 'exciseTaxNotice'), 'amber');
