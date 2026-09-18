@@ -140,3 +140,38 @@ test("body ว่าง/ไม่ใช่ JSON = ได้ {} และยั�
     (e) => e instanceof ApiError && e.status === 504 && e.message === "ทำรายการไม่สำเร็จ (504)",
   );
 });
+
+/* ── 🐞 `json` ต้องกลายเป็น body จริง (พบบน production 2026-09-18) ──────────
+ *
+ * ของเดิมมีแต่ `apiJson` ที่แกะคีย์นี้ · `apiFetch` spread มันลง RequestInit ตรง ๆ
+ * ⇒ fetch ไม่ส่ง body และไม่ใส่ Content-Type · คำขอถึง server เป็นก้อนว่าง
+ * อาการที่ผู้ใช้เจอ: กดบันทึกใบสเปคสินค้าแล้วขึ้น "ไม่รู้จักการกระทำนี้" เพราะ
+ * `body.action` หายไปทั้งคีย์
+ */
+test("apiFetch: json กลายเป็น body + Content-Type และ method ตั้งต้นเป็น POST", async () => {
+  const calls = stubFetch([jsonResponse({ ok: true })]);
+  await apiFetch("/api/x", { json: { action: "save", a: 1 } });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.headers["Content-Type"], "application/json");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { action: "save", a: 1 });
+  // คีย์ `json` ต้องไม่หลุดไปถึง fetch — มันไม่ใช่ของ RequestInit
+  assert.equal("json" in calls[0].init, false);
+});
+
+test("apiFetch: method ที่ผู้เรียกส่งมาชนะค่าตั้งต้น และ header เดิมไม่ถูกทับ", async () => {
+  const calls = stubFetch([jsonResponse({})]);
+  await apiFetch("/api/x", { method: "PATCH", headers: { "X-Test": "1" }, json: { b: 2 } });
+  assert.equal(calls[0].init.method, "PATCH");
+  assert.equal(calls[0].init.headers["X-Test"], "1");
+  assert.equal(calls[0].init.headers["Content-Type"], "application/json");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { b: 2 });
+});
+
+test("apiJson ยังส่ง body เหมือนเดิม — ประกอบที่ apiFetch ที่เดียว ไม่ซ้ำสองที่", async () => {
+  const calls = stubFetch([jsonResponse({ done: true })]);
+  const data = await apiJson("/api/y", { method: "PATCH", json: { action: "submit" } });
+  assert.deepEqual(data, { done: true });
+  assert.equal(calls[0].init.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { action: "submit" });
+});
