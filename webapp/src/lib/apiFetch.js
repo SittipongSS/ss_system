@@ -54,14 +54,30 @@ const isReplayableBody = (body) =>
 
 /**
  * fetch + ลองใหม่ 1 ครั้งเมื่อ "ต่อไม่ติด" คืนค่าเป็น Response ตามเดิม
- * (ไม่แตะ body — คนเรียกอ่านเอง เหมือน fetch ปกติ)
+ * (ไม่แตะ body ของ **คำตอบ** — คนเรียกอ่านเอง เหมือน fetch ปกติ)
  *
  * @param {string} url
- * @param {RequestInit & { retry?: boolean, retryDelayMs?: number }} options
+ * @param {RequestInit & { retry?: boolean, retryDelayMs?: number, json?: any }} options
  *   retry — `true`/`false` บังคับเอง · ไม่ส่ง = ลองใหม่เฉพาะ GET/HEAD (ดูหัวไฟล์)
+ *   json  — ออบเจกต์ที่จะส่งเป็น body (ใส่ Content-Type + stringify ให้ · method ตั้งต้น POST)
+ *
+ * 🐞 **`json` ต้องรองรับที่นี่ ไม่ใช่แค่ใน `apiJson`** (พบบน production 2026-09-18) —
+ * ของเดิมมีแต่ `apiJson` ที่แกะคีย์นี้ ส่วน `apiFetch` spread มันลงไปใน `RequestInit`
+ * ตรง ๆ ⇒ `fetch` เห็นคีย์ที่ไม่รู้จักแล้ว **ไม่ส่ง body และไม่ใส่ Content-Type**
+ * คำขอจึงถึง server เป็นก้อนว่าง · ผลที่ผู้ใช้เจอ: กดบันทึกใบสเปคสินค้าแล้วขึ้น
+ * "ไม่รู้จักการกระทำนี้" เพราะ `body.action` หายไปทั้งคีย์ · ปุ่มออกเอกสารตาม SO
+ * กับปุ่มบันทึกคำบรรยายภาพก็เงียบแบบเดียวกัน และ **เส้นแหล่งที่มา FC ของดีล**
+ * (`forecast-review` · `DealForecastSourceCard`) ก็ส่งก้อนว่างมาตั้งแต่ต้น
+ * ⇒ แกะที่ primitive ตัวล่างสุดที่เดียว ทุกผู้เรียกทั้งของเก่าและของใหม่ถูกพร้อมกัน
  */
 export async function apiFetch(url, options = {}) {
-  const { retry, retryDelayMs = RETRY_DELAY_MS, ...init } = options;
+  const { retry, retryDelayMs = RETRY_DELAY_MS, json, ...rest } = options;
+  const init = { ...rest };
+  if (json !== undefined) {
+    init.method = rest.method || "POST";
+    init.headers = { "Content-Type": "application/json", ...(rest.headers || {}) };
+    init.body = JSON.stringify(json);
+  }
   const method = (init.method || "GET").toUpperCase();
   const safe = SAFE_METHODS.has(method);
   const mayRetry = (retry ?? safe) && isReplayableBody(init.body);
@@ -106,15 +122,12 @@ export async function apiFetch(url, options = {}) {
  * @returns {Promise<any>} body ที่ parse แล้ว ({} ถ้าไม่มี body)
  */
 export async function apiJson(url, options = {}) {
-  const { json, fallbackError, ...init } = options;
-  const opts = { ...init };
-  if (json !== undefined) {
-    opts.method = init.method || "POST";
-    opts.headers = { "Content-Type": "application/json", ...(init.headers || {}) };
-    opts.body = JSON.stringify(json);
-  }
+  // ⚠️ การประกอบ body จาก `json` ย้ายไปอยู่ที่ `apiFetch` แล้ว — ที่นี่ส่งต่อทั้งก้อน
+  //    ประกอบซ้ำสองที่เมื่อไรมันจะเพี้ยนหากันวันหนึ่ง (โรคเดียวกับที่ AGENTS.md เตือน
+  //    เรื่องฟอร์มสร้าง/ฟอร์มแก้)
+  const { fallbackError, ...init } = options;
 
-  const res = await apiFetch(url, opts);
+  const res = await apiFetch(url, init);
   // body ว่าง/ไม่ใช่ JSON ต้องไม่กลืน status — อ่านเป็น text ก่อนแล้วค่อย parse
   const text = await res.text().catch(() => "");
   let data = {};
