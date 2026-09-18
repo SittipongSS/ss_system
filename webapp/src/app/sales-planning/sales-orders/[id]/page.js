@@ -353,7 +353,9 @@ export default function SalesOrderDetailPage() {
       kind: "success",
       msg: action === "rename_installation_point"
         ? "แก้ชื่อจุดแล้ว — กลับเข้าคิวงานเข้าใหม่ของ TS · ยอดใบและงวดไม่เปลี่ยน"
-        : "ปิดจุดนี้แล้ว — ไม่ต้องผูกโซน · ยอดใบและงวดไม่เปลี่ยน",
+        : (action === "remove_installation_point"
+          ? "ถอดจุดออกจากใบแล้ว — ยอดหัวใบคิดใหม่ตามบรรทัดที่เหลือ"
+          : "ปิดจุดนี้แล้ว — ไม่ต้องผูกโซน · ยอดใบและงวดไม่เปลี่ยน"),
     });
     return data;
   }
@@ -1213,7 +1215,7 @@ export default function SalesOrderDetailPage() {
           {/* ⭐ ของค้างมาก่อนรายการ — TS ส่งจุดกลับมาแล้วเรื่องหยุดอยู่ที่ฝ่ายขาย (มติข้อ 23 · mig 0362)
               ⚠️ การ์ดหายเองเมื่อไม่มีจุดติดธง (component คืน null) ⇒ ใบปกติไม่เห็นอะไรเพิ่ม */}
           {canKeyHistorical && isHistoricalOrder(order) ? (
-            <SiteDecisionCard lines={sortedLines} onDecide={decideSitePoint} />
+            <SiteDecisionCard order={order} lines={sortedLines} installments={installments} onDecide={decideSitePoint} />
           ) : null}
 
           <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={order.quotationId ? `${sortedLines.length} รายการ · snapshot จาก QT Won` : `${sortedLines.length} รายการ · คีย์จากเอกสารเดิม`} actions={order.quotationId ? <Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link> : undefined}>

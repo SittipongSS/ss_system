@@ -114,7 +114,7 @@ test('literal "historical" และตัวกรอง .eq("origin") มี�
 /* ── ตัดสินจุดที่ TS ไม่พบหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ──────────── */
 test('PATCH ใบสั่งขาย: ตัดสินจุดที่ TS ไม่พบ — สิทธิ์ · ใบย้อนหลังที่อนุมัติ · ตัดสินซ้ำไม่ได้ · audit', () => {
   const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
-  const block = slice(route, "if (action === 'rename_installation_point'", "if (action === 'set-doc-language')");
+  const block = slice(route, "if (action === 'rename_installation_point'", "if (action === 'remove_installation_point')");
   for (const needle of [
     'canKeyHistoricalSalesOrder(user)', 'isHistoricalOrder(before)', "before.status !== 'approved'",
     'lineAwaitingSiteDecision(line)', 'installationPointError(point)', 'siteNoteError(', 'recordAudit(',
@@ -143,6 +143,27 @@ test('ทาง TS เขียนได้เฉพาะธง · ทางฝ
   assert.ok(!ts.includes('siteClosePatch('), '🔴 ทางของ TS ห้ามประทับตราปิดจุด');
   assert.ok(!ts.includes('installationPoint:'), '🔴 TS ห้ามแก้ชื่อจุดบนเอกสารของฝ่ายขาย');
   const sales = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
-  const block = slice(sales, "if (action === 'rename_installation_point'", "if (action === 'set-doc-language')");
+  const block = slice(sales, "if (action === 'rename_installation_point'", "if (action === 'remove_installation_point')");
   assert.ok(!block.includes('siteNotFoundPatch('), '🔴 ฝ่ายขายห้ามตั้งธงแทน TS');
+});
+
+
+/* ── ถอดจุดออกจากใบ (มติข้อ 23 ส่วน ข2 · RPC ของ mig 0366) ──────────────────── */
+test('PATCH ใบสั่งขาย: ถอดจุดออกจากใบ — สิทธิ์ · เหตุผลบังคับ · ผ่าน RPC ตัวเดียว · audit เก็บบรรทัดเต็ม', () => {
+  const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
+  const block = slice(route, "if (action === 'remove_installation_point')", "if (action === 'set-doc-language')");
+  for (const needle of [
+    'canKeyHistoricalSalesOrder(user)', 'removeReasonError(reason)',
+    "supabase.rpc('remove_historical_sales_order_line'", 'historicalSchemaMissing(error)',
+    'documentWorkflowError(error', 'recordAudit(',
+  ]) {
+    assert.ok(block.includes(needle), `ขาด ${needle}`);
+  }
+  /* 🔴 **ลบบรรทัด + คิดเงินหัวใบใหม่ ต้องอยู่ใน RPC ตัวเดียว** — route ห้ามลบเอง ห้ามเขียนยอดเอง
+     ครึ่งทางคือใบที่ยอดหัวไม่ตรงบรรทัด ซึ่งตัวเขียนของใบย้อนหลังถือเป็น money_mismatch */
+  assert.ok(!block.includes(".from('sales_order_lines')"), '🔴 route ห้ามแตะตารางบรรทัดเอง');
+  assert.ok(!/\.from\('sales_orders'\)\s*\.update\(/.test(block), '🔴 route ห้ามเขียนยอดหัวใบเอง');
+  /* audit ต้องเก็บบรรทัดเต็ม + ยอดเดิม — ระบบไม่มีถังขยะ กู้ได้จาก audit_logs.before เท่านั้น */
+  assert.ok(block.includes('before: {') && block.includes('line,'), 'audit ต้องเก็บบรรทัดเต็ม');
+  assert.ok(block.includes('totalAmount: before.totalAmount'), 'audit ต้องเก็บยอดหัวใบเดิม');
 });

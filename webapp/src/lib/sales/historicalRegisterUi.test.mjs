@@ -264,10 +264,16 @@ test('0362: การ์ดตัดสินบนหน้าใบ — สอ
   assert.ok(!call.includes('retry: true'), '🪤 ส่งซ้ำ = 409 "ตัดสินไปแล้ว" ทั้งที่ครั้งแรกสำเร็จ');
 
   const card = code('components/salesPlanning/SiteDecisionCard.js');
-  assert.ok(card.includes('rename_installation_point') && card.includes('close_installation_point'));
-  // ⛔ ข2 ยังไม่ทำ — ม็อกวาดปุ่ม "ถอดออกจากใบ" ไว้ ห้ามโผล่จนกว่าจะมีตัวคิดเงินหัวใบ
-  assert.ok(!card.includes('ถอดออกจากใบ'), '🔴 ปุ่มถอดบรรทัดเป็นงานรอบหน้า (ข2)');
-  assert.ok(!card.includes('remove_line'));
+  for (const act of ['rename_installation_point', 'close_installation_point', 'remove_installation_point']) {
+    assert.ok(card.includes(act), `การ์ดต้องมีทาง ${act}`);
+  }
+  /* 🔴 ทางที่สาม (ข2 · mig 0366) เป็นทางเดียวที่แตะเงิน ⇒ โมดัลต้องโชว์ยอดเดิม/ใหม่จาก
+     ตัวคิดตัวเดียวกับ RPC และปิดปุ่มเมื่อติดด่าน — ไม่ใช่ปล่อยให้ไปตายที่ฐาน */
+  assert.ok(card.includes('removalPreview('), 'โมดัลถอดต้องใช้ตัวคิดเงินตัวเดียวกับ RPC');
+  assert.ok(card.includes('removeReasonError('), 'เหตุผลบังคับ ใช้ตัวตรวจร่วมกับ route');
+  assert.ok(card.includes('disabled={saving || !!preview?.block}'), 'ติดด่าน = ปุ่มยืนยันกดไม่ได้');
+  assert.ok(card.includes('preview.subtotalBefore') && card.includes('preview.total'),
+    'ต้องโชว์ยอดเดิมคู่ยอดใหม่ ไม่ใช่โชว์แต่ยอดใหม่');
   // ปุ่มต้องหายไปเมื่อตัดสินแล้ว (กติกา: ไม่มีอะไรให้กด = ไม่โชว์ปุ่มตาย)
   assert.ok(card.includes('lineAwaitingSiteDecision(line) ?'), 'ปุ่มขึ้นเฉพาะจุดที่ยังรอตัดสิน');
   // โมดัลบอกผลลัพธ์ก่อนกด รวมว่าเงินไม่ขยับ
