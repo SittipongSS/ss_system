@@ -63,11 +63,12 @@ import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
   canKeyHistoricalSalesOrder, exemptReasonError, historicalDeleteBlock, historicalRowsOnly,
-  installationPointError, isHistoricalOrder,
+  historicalSchemaMissing, installationPointError, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 import {
   lineAwaitingSiteDecision, lineSiteClosed, siteClosePatch, siteFlagClearPatch, siteFlagTrail, siteNoteError,
 } from '@/lib/sales/siteNotFound';
+import { removeReasonError } from '@/lib/sales/siteLineRemoval';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
@@ -571,6 +572,68 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await recordAudit({
       user, action: 'update', entityType: 'sales_order_line', entityId: lineId,
       before: decisionTrail(line), after: decisionTrail(data), summary, request: req,
+    });
+    return ok(data);
+  }
+
+  /* ── ถอดจุดที่ TS ไม่พบออกจากใบ + คิดเงินหัวใบใหม่ (มติข้อ 23 ส่วน ข2 · mig 0366) ──
+     ⭐ **ทางที่สามของการ์ดตัดสิน** — แก้ชื่อส่งกลับ (กลับเข้าคิว) · ปิดจุด (เก็บยอด) · ถอดออก (ตัดยอด)
+     ⚠️ **ทั้งหมดอยู่ใน RPC ตัวเดียว** ไม่ใช่ลบบรรทัดแล้วค่อย UPDATE หัวใบ — ครึ่งทางคือใบที่ยอดหัว
+        ไม่ตรงบรรทัด ซึ่งตัวเขียนของใบย้อนหลังถือเป็น `historical_so_money_mismatch` มาตั้งแต่ต้น
+     ⚠️ ด่านทั้งแปดชั้นอยู่ในฐาน (0366 ข้อ ①–⑧) · ที่นี่มีแค่ด่านสิทธิ์ แล้วแปลรหัส error เป็นไทย
+        — จอถามด่านชุดเดียวกันผ่าน `removalBlock` เพื่อบอกเหตุ**ก่อน**กด ไม่ใช่แทนด่านจริง */
+  if (action === 'remove_installation_point') {
+    if (!canKeyHistoricalSalesOrder(user)) {
+      return forbidden('ถอดจุดออกจากใบได้เฉพาะ AE Supervisor หรือ Admin');
+    }
+    const lineId = String(body.lineId ?? '').trim();
+    if (!lineId) return badRequest('ต้องระบุจุดติดตั้งที่จะถอด');
+    const reason = String(body.reason ?? '').trim();
+    const reasonError = removeReasonError(reason);
+    if (reasonError) return badRequest(reasonError);
+    /* บรรทัดต้องเป็นของใบนี้จริง — ตอบ 404 ที่นี่ได้ข้อความตรงกว่าปล่อยให้ RPC raise */
+    const line = (before.lines || []).find((l) => l.id === lineId);
+    if (!line) return badRequest('มีจุดติดตั้งที่ไม่ได้อยู่ในใบสั่งขายใบนี้');
+
+    const { data, error } = await supabase.rpc('remove_historical_sales_order_line', {
+      p_order_id: id,
+      p_line_id: lineId,
+      p_actor_id: user.id,
+      p_actor_name: user.name || user.email || null,
+      p_reason: reason,
+    });
+    if (error) {
+      /* ยังไม่ได้รัน 0366 = ฟังก์ชันไม่มี ⇒ บอกให้ชัดแทน 500 ดิบ (แพตเทิร์นเดียวกับ 0360) */
+      if (historicalSchemaMissing(error)) {
+        return fail('ฐานข้อมูลยังไม่ได้รัน migration 0366 (ถอดจุดออกจากใบ) — แจ้งผู้ดูแลระบบ', 503);
+      }
+      const mapped = documentWorkflowError(error, { context: `sales order line remove ${lineId}` });
+      return fail(mapped.message, mapped.status);
+    }
+
+    /* audit เก็บ **บรรทัดเต็ม** ไม่ใช่แค่ id — ระบบไม่มีถังขยะ กู้ได้จาก audit_logs.before เท่านั้น
+       ⚠️ ยอดหัวใบเก่า/ใหม่ต้องอยู่ในร่องรอยด้วย ไม่งั้นตอบไม่ได้ว่าใบเคยเป็นเท่าไร */
+    await recordAudit({
+      user,
+      action: 'delete',
+      entityType: 'sales_order_line',
+      entityId: lineId,
+      before: {
+        line,
+        order: {
+          subtotal: before.subtotal, vatAmount: before.vatAmount,
+          totalAmount: before.totalAmount, actualAmount: before.actualAmount,
+        },
+      },
+      after: {
+        order: {
+          subtotal: data?.order?.subtotal ?? null, vatAmount: data?.order?.vatAmount ?? null,
+          totalAmount: data?.order?.totalAmount ?? null, actualAmount: data?.order?.actualAmount ?? null,
+        },
+        reason,
+      },
+      summary: `ถอดจุดติดตั้ง "${line.installationPoint ?? ''}" ออกจาก ${before.orderNumber} — ${reason}`,
+      request: req,
     });
     return ok(data);
   }

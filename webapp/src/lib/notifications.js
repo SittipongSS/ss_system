@@ -159,6 +159,9 @@ export const SALES_ORDER_BELL_KINDS = Object.freeze([
   'sales_order_tax_invoice',
   // บัญชีถอนใบกำกับคืน → คนเดียวกัน (อาจส่งไฟล์ให้ลูกค้าไปแล้ว)
   'sales_order_tax_invoice_cleared',
+  /* TS แจ้งว่าไม่พบจุดติดตั้งของใบย้อนหลัง → **ผู้คีย์ใบ** (AE Sup/แอดมิน) ซึ่งเป็นคนตัดสิน
+     (มติ 16/09/2026 ข้อ 23.2) · ก่อนมีตัวนี้ ฝ่ายขายรู้ต่อเมื่อบังเอิญเปิดทะเบียนแล้วเห็นชิป */
+  'sales_order_site_not_found',
 ]);
 
 export const NOTIFICATION_BOXES = {

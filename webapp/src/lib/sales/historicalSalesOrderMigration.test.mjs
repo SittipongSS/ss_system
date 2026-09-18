@@ -195,6 +195,8 @@ const SQL_STATE_CHECK_ONLY = new Map([
   ['revoke_sales_order_approval_atomic', 'ย้อนอนุมัติ — ใบย้อนหลังตายที่ CHECK sales_orders_origin_shape (0166)'],
   ['create_historical_sales_order', 'ตัวเขียนของใบย้อนหลังเอง (0360)'],
   ['append_historical_installments', 'ตรวจสถานะใบก่อนเพิ่มงวด ไม่รวมยอด (0360)'],
+  ['remove_historical_sales_order_line',
+    'ถอดจุดออกจากใบย้อนหลัง — แตะใบเดียวที่ส่งเข้ามา และ**ปฏิเสธ**ทุกใบที่ไม่ใช่ historical (0366)'],
 ]);
 
 test('🪤 ทุกฟังก์ชันในฐานที่อ่านใบสั่งขายอนุมัติแล้ว กรอง origin หรืออยู่ในรายการตรวจสถานะล้วน', () => {

@@ -60,6 +60,29 @@ const WORKFLOW_ERRORS = Object.freeze({
   historical_so_customer_inactive: ['ลูกค้ารายนี้ยังไม่อนุมัติหรือถูกพักใช้ — ออกใบไม่ได้', 409],
   historical_so_deal_invalid: ['ดีลของใบย้อนหลังของลูกค้าและ AE นี้ไม่อยู่ในสภาพที่ผูกใบได้ — แจ้งผู้ดูแลระบบ', 409],
   historical_so_installment_append_state_invalid: ['คีย์งวดเพิ่มได้เฉพาะใบสั่งขายย้อนหลังที่ยังไม่ยกเลิก', 409],
+  /* ถอดจุดออกจากใบย้อนหลัง (มติข้อ 23 ส่วน ข2 · RPC remove_historical_sales_order_line · 0366)
+     ⚠️ ไม่มีคีย์ไหนเป็นสตริงย่อยของคีย์อื่นในตารางนี้ — ตัวแปลหาด้วย `includes` ตามลำดับ */
+  historical_so_line_remove_reason_invalid: ['กรุณาระบุเหตุผลที่ถอดจุดนี้ออกจากใบ 10–500 ตัวอักษร', 400],
+  historical_so_line_remove_pipeline: ['ถอดจุดออกจากใบได้เฉพาะใบสั่งขายย้อนหลัง', 409],
+  historical_so_line_remove_status: ['ใบสั่งขายที่ยกเลิกแล้วถอดจุดไม่ได้', 409],
+  historical_so_line_remove_has_discount: [
+    'ใบนี้มีส่วนลดหัวใบ — ถอดจุดแล้วระบบไม่รู้ว่าส่วนลดเฉลี่ยลงบรรทัดยังไง ต้องแก้ใบด้วยมือ', 409,
+  ],
+  historical_so_line_remove_not_flagged: ['จุดนี้ยังไม่ถูกแจ้งว่าไม่พบหน้างาน — ถอดออกจากใบไม่ได้', 409],
+  historical_so_line_remove_decided: ['จุดนี้ถูกตัดสินไปแล้ว — โหลดหน้าใหม่เพื่อดูสถานะล่าสุด', 409],
+  historical_so_line_remove_allocated: [
+    'จุดนี้ถูกผูกโซนแล้ว — ถอดออกจะลบรอบขายของโซนทิ้งไปด้วย ให้ TS ถอนโซนก่อน', 409,
+  ],
+  historical_so_line_remove_last_line: [
+    'ใบนี้เหลือจุดเดียว — ถอดออกแล้วใบจะไม่มีรายการเลย ให้ยกเลิกทั้งใบแทน', 409,
+  ],
+  historical_so_line_remove_installments_over: ['งวดที่คีย์ไว้เกินยอดใบใหม่ — แก้งวดก่อนถอดจุดนี้', 409],
+  historical_so_line_remove_zero_needs_exemption: [
+    'ถอดแล้วใบเหลือยอด 0 แต่ใบนี้ยังไม่ได้ยกเว้นด่านเงิน — ยกเว้นก่อนแล้วค่อยถอด', 409,
+  ],
+  historical_so_line_not_found: ['ไม่พบจุดติดตั้งในใบสั่งขายใบนี้', 404],
+  historical_so_not_found: ['ไม่พบใบสั่งขาย', 404],
+  historical_so_actor_required: ['ข้อมูลผู้ใช้ไม่ครบ — ออกจากระบบแล้วเข้าใหม่', 400],
   historical_so_container_deal_race: ['มีการย้ายเจ้าของดีลของลูกค้านี้พร้อมกัน กดบันทึกอีกครั้ง', 409],
   historical_so_deal_payload_required: ['ข้อมูลการสร้างดีลของใบย้อนหลังไม่ครบ — แจ้งผู้ดูแลระบบ', 500],
   historical_so_deal_origin_dropped: ['ฐานข้อมูลยังไม่พร้อม (0360) — แจ้งผู้ดูแลระบบ', 503],

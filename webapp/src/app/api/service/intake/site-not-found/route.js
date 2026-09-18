@@ -20,6 +20,7 @@ import { loadTerms } from '@/lib/service/termsRepo';
 import { allocatedByLine } from '@/lib/service/terms';
 import { orderReceivable } from '@/lib/service/intake';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { notifySiteNotFound } from '@/lib/sales/siteNotFoundNotify';
 import {
   lineAwaitingSiteDecision, lineSiteClosed, lineSiteNotFound, siteFlagClearPatch, siteFlagTrail,
   siteNotFoundInputError, siteNotFoundPatch, siteNotFoundReasonLabel,
@@ -53,7 +54,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   try {
     const { data: order, error: orderError } = await supabase
-      .from('sales_orders').select('id, "orderNumber", status, supersededById, customerId, customerName, origin')
+      .from('sales_orders').select('id, "orderNumber", status, supersededById, customerId, customerName, origin, "createdBy"')
       .eq('id', salesOrderId).maybeSingle();
     if (orderError) return fail(orderError.message, 500);
     if (!order) return notFound('ไม่พบใบสั่งขาย');
@@ -129,6 +130,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
           ? `แจ้งไม่พบจุดติดตั้ง "${pointLabel(line, line.id)}" ของ ${order.orderNumber || order.id} — ${siteNotFoundReasonLabel(reason) || reason}`
           : `ถอนการแจ้งไม่พบจุดติดตั้ง "${pointLabel(line, line.id)}" ของ ${order.orderNumber || order.id}`,
         request: req,
+      });
+    }
+
+    /* ⭐ กระดิ่งถึงผู้คีย์ใบ (มติข้อ 23.2) — ยิง **ครั้งเดียวต่อการแจ้งหนึ่งรอบ** หลังเขียนครบทุกจุด
+       ⚠️ ถอนการแจ้งไม่ยิง — ไม่มีอะไรให้ฝ่ายขายทำต่อ · fire-and-forget ห้ามทำให้การแจ้งตอบ error */
+    if (action === 'flag') {
+      notifySiteNotFound(supabase, {
+        order, lines: updated, actor: { id: user.id, name: user.name || user.email || null }, at,
       });
     }
 
