@@ -215,7 +215,7 @@ export default function FormulaDetailPage() {
         title={`${hasPrice ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formula.name}`}
         endpoint={`/api/master/formulas/${formula.id}/price`}
         /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่องจากตัวเดียวกับ API */
-        slots={priceSlotsFor({ scentId: formula.scentId, formulaId: formula.id })}
+        slots={priceSlotsFor({ scentId: formula.scentId, formulaId: formula.id, categoryCode: formula.categoryCode })}
         onSaved={(msg) => {
           setPricing(false);
           setToast({ kind: "success", msg });

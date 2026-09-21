@@ -15,6 +15,7 @@ import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
 import { reworkBriefOf } from '@/lib/requests/rework';
 import { briefPerfumer } from '@/lib/requests/briefPerfumer';
 import { isDeliveredAsProduct } from '@/lib/requests/deliveredCategory';
+import { rowPriceLines } from '@/lib/requests/rowPrices';
 
 // ผลลัพธ์จากลูกค้า → ป้าย + โทน · ยังไม่ตอบ = ยังไม่ถึงตาลูกค้า ไม่ใช่ลูกค้าเงียบ
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
@@ -39,8 +40,8 @@ function directionRow(item, all = []) {
     registry: item.refScent ? { ...item.refScent, kind: 'scent' } : null,
     /* ⭐ **ส่งเป็นอะไร** (ม-148) — หัวน้ำหอม หรือสินค้าหมวดไหน + สูตรที่เกิดพร้อมกลิ่น (ค่าสดจากทะเบียน)
        ⚠️ null = แถวที่ส่งก่อน ม-148 (ไม่มีใครบันทึกไว้) ไม่ใช่ "หัวน้ำหอม" — ห้ามเดา */
-    // ⭐ ราคาที่ใส่จากแถวนี้ (F · B · FB เรียงแล้ว) — ว่าง = ยังไม่ถึงขั้นราคา
-    priced: item.pricedResults || [],
+    // ⭐ ราคาที่ใส่จากแถวนี้ (F · B · FB เรียงแล้ว) — ว่าง = ยังไม่ถึงขั้นราคา · ตัวจัดรูปเดียวกับหน้ารายการ
+    prices: rowPriceLines(item),
     // ⚠️ เฉพาะแถวที่ส่งแล้วจริง (มีกลิ่นผูก) — แถวรอบแก้ที่รออยู่ยกหมวดมาจากรอบก่อน (`followUpRowFrom`)
     //    ยังไม่มีใครส่งอะไร ⇒ ห้ามบอกว่า "ส่งเป็น…" (รีวิว ม-148)
     delivered: item.categoryCode && item.producedScentId ? {

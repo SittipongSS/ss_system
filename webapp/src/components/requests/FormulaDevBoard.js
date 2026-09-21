@@ -16,7 +16,9 @@
 // ใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ (กฎหลังบั๊กรางซ้ำ #1033)
 import { Fragment } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { CustomerSay, RowDueCell, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
+import {
+  CustomerSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
+} from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
@@ -48,13 +50,17 @@ export default function FormulaDevBoard({
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป
   if (!rows.length) return null;
   // ⚠️ ถามจาก **ค่าจริงในใบนี้** ไม่ใช่จากหัวข้อ — ใบที่ไม่กรอกจำนวนเลยไม่ควรมีคอลัมน์
-  const showQty = rows.some((r) => r.qty != null || r.priced?.price != null);
+  const showQty = rows.some((r) => r.qty != null);
+  /* ⭐ **ราคาเป็นคอลัมน์ของตัวเอง** (ผู้ใช้ 2026-09-22: "เมื่อส่งราคาแล้ว อยากให้โชว์ราคาด้วย") — เดิมเบียดอยู่ใต้
+     จำนวนเป็นบรรทัดจาง ๆ ซึ่งคนมองข้าม · โผล่เมื่อใบนี้มีแถวที่ใส่ราคาแล้วจริง (กติกาคอลัมน์เฉพาะหัวข้อ)
+     ⚠️ เซลล์กลาง `RowPriceCell` ตัวเดียวกับตารางพัฒนากลิ่น */
+  const showPrice = rows.some((r) => r.prices?.length);
 
   // ⭐ ปุ่มแก้อยู่ท้ายแถว รวมกับปุ่มลงมือ (มติผู้ใช้ 2026-08-18)
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
   const showActions = !!renderStep || canEdit || canDelete;
-  const cols = 3 + (showQty ? 1 : 0) + (showActions ? 1 : 0) + (due ? 1 : 0);
+  const cols = 3 + (showQty ? 1 : 0) + (showPrice ? 1 : 0) + (showActions ? 1 : 0) + (due ? 1 : 0);
   /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
      พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
   const showDue = dueCellTracker(due);
@@ -71,6 +77,7 @@ export default function FormulaDevBoard({
             <tr>
               <th className={styles.colName}>รายการ</th>
               {showQty && <th className={`${styles.colQty} num`}>จำนวน</th>}
+              {showPrice && <th className={`${styles.colPrice} num`}>ราคา (บาท/กก.)</th>}
               <th className={styles.colTrack}>ขั้น</th>
               {due && <th className={styles.colDue}>กำหนดส่ง</th>}
               <th className={`${styles.colIdle} num`}>ค้างมา</th>
@@ -119,21 +126,9 @@ export default function FormulaDevBoard({
                     {showQty && (
                     <td className="num">
                       {r.qty != null ? `${qty(r.qty)}${r.unit ? ` ${r.unit}` : ""}` : null}
-                      {/* ⭐ ราคาที่ตกลงแล้ว — เดิม RD ใส่ราคาเสร็จ แถวขึ้น "เสร็จ" แต่ในใบ
-                          ไม่มีตัวเลขให้เห็น ต้องไปเดาเอาในทะเบียนวัสดุ
-                          ⚠️ อยู่คอลัมน์เดียวกับจำนวนโดยตั้งใจ — ทั้งคู่เป็น "ตัวเลขของแถว"
-                          และราคามีแค่บางแถว คอลัมน์แยกจะว่างเป็นส่วนใหญ่ */}
-                      {r.priced?.price != null && (
-                        <div className={styles.note}>
-                          {/* ⭐ ม-148 — ทุกช่องที่ใส่ (F · B · FB) · rev เก่าที่มีช่องเดียวไม่มีป้ายช่อง */}
-                          {(r.pricedList.length > 1 ? r.pricedList : [r.priced])
-                            .map((p) => `${p.short && r.pricedList.length > 1 ? `${p.short} ` : ""}${money(p.price)}`)
-                            .join(" · ")} บาท/{r.priced.perUnit || "กก."}
-                          {r.priced.validUntil ? ` · ยืนราคาถึง ${fmtDate(r.priced.validUntil)}` : ""}
-                        </div>
-                      )}
                     </td>
                     )}
+                    {showPrice && <RowPriceCell prices={r.prices} />}
                     <RowStageCell row={r} />
                     {due && <RowDueCell row={r} due={due} show={showDue(r)} />}
                     <RowIdleCell row={r} today={today} />

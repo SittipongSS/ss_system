@@ -292,12 +292,15 @@ export async function loadRequests(supabase, {
   if (!asks.length) return [];
 
   // PostgREST เรียงต่อก้อน ไม่ได้เรียงทั้งชุด ⇒ เรียงซ้ำหลังรวม (ลำดับแถวในใบ = sortOrder)
-  const items = await fetchAllInChunks(
+  const rawItems = await fetchAllInChunks(
     asks.map((a) => a.id),
     (chunk) => supabase.from('dept_request_items').select('*').in('requestId', chunk)
       .order('sortOrder', { ascending: true }).order('id', { ascending: true }),
     { sort: byColumns('sortOrder', 'id') },
   );
+  /* ⭐ **ราคาที่ใส่แล้วติดมากับแถว** (ผู้ใช้ 2026-09-22: "ในหน้ารายการคำร้อง … ไม่ได้โชว์ราคาเลย") — ตัวเดียวกับ
+     หน้าใบเดียว (`attachRowPrice`) ⇒ คิวกับหน้ารายละเอียดพูดเลขเดียวกัน · ยิงเฉพาะแถวที่มีราคา (ส่วนน้อยมาก) */
+  const items = await attachRowPrice(supabase, rawItems);
 
   /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่คิวต้องใช้ตัดสิน "ตาใคร"** (ม-144 · รีวิวรอบ 5–6) — สินค้าที่ยังไม่มีแถวงาน
      (`npdUncoveredPairs`) คืองานของฝ่าย · ไม่ดึง ⇒ ป้ายขึ้นตาผู้ขอ ("รอปิดเรื่อง"/"รอ SA ทำต่อ") แล้วหลุดจากคิว
@@ -642,40 +645,34 @@ async function attachRowPrice(supabase, items) {
 
   /* ⭐ ม-148 — แถวสูตรใส่ได้ F · B · FB ในจังหวะเดียว · แถวชี้ rev ช่องหลักตัวเดียว (`answeredRevisionId`)
      ช่องอื่นหาจาก `sourceAskItemId` ที่ขั้นใส่ราคาประทับไว้ทุก rev ⇒ ไม่ต้องมีคอลัมน์ใหม่
-     ⚠️ ≤ แถวของใบเดียว ⇒ `.in()` ปลอดภัย · `.limit` = ขอบเขตชัด (check:rowcap) */
-  const { data: bySource, error: sourceError } = await supabase
-    .from('material_price_revisions')
-    .select('id, "materialId", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"')
-    .in('sourceAskItemId', priced.map((i) => i.id))
-    .limit(1000);
-  if (sourceError) throw sourceError;
-  const knownIds = new Set((bySource || []).map((r) => r.id));
+     ⚠️ ตัวนี้ถูกเรียกทั้งหน้าใบเดียวและ **คิวทั้งหน้า** (หลายร้อยใบ · ผู้ใช้ 2026-09-22 ขอให้หน้ารายการโชว์ราคา)
+     ⇒ ทุก `.in()` ซอยเป็นก้อน (fetchAllInChunks · กับดัก 16 KB) */
+  const REV_COLUMNS = 'id, "materialId", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"';
+  const bySource = await fetchAllInChunks(
+    priced.map((i) => i.id),
+    (chunk) => supabase.from('material_price_revisions').select(REV_COLUMNS)
+      .in('sourceAskItemId', chunk).order('id'),
+  );
+  const knownIds = new Set(bySource.map((r) => r.id));
   const missing = [...new Set(priced.map((i) => i.answeredRevisionId))].filter((rid) => !knownIds.has(rid));
-  let answered = [];
-  if (missing.length) {
-    // rev ที่เกิดก่อนมี `sourceAskItemId` (หรือไม่ได้ประทับ) — ตามจาก pointer ของแถวเหมือนเดิม
-    const { data, error } = await supabase
-      .from('material_price_revisions')
-      .select('id, "materialId", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"')
-      .in('id', missing);
-    if (error) throw error;
-    answered = data || [];
-  }
-  const revisions = [...(bySource || []), ...answered];
-  const revisionIds = revisions.map((r) => r.id);
+  // rev ที่เกิดก่อนมี `sourceAskItemId` (หรือไม่ได้ประทับ) — ตามจาก pointer ของแถวเหมือนเดิม
+  const answered = missing.length
+    ? await fetchAllInChunks(missing, (chunk) => supabase.from('material_price_revisions')
+      .select(REV_COLUMNS).in('id', chunk).order('id'))
+    : [];
+  const revisions = [...bySource, ...answered];
 
   // ราคาอยู่ที่ชั้น (0157) — F/B/FB ไม่มีชั้นจำนวน จึงมีชั้นเดียวเสมอ (per_kg)
-  const { data: tiers, error: tierError } = await supabase
-    .from('material_price_revision_tiers')
-    .select('"revisionId", qty, "pricePerKg", "pricePerUnit"')
-    .in('revisionId', revisionIds);
-  if (tierError) throw tierError;
-
-  const { data: materials, error: matError } = await supabase
-    .from('material_prices').select('id, kind, label')
-    .in('id', [...new Set(revisions.map((r) => r.materialId).filter(Boolean))]);
-  if (matError) throw matError;
-  const materialById = new Map((materials || []).map((m) => [m.id, m]));
+  const tiers = await fetchAllInChunks(
+    revisions.map((r) => r.id),
+    (chunk) => supabase.from('material_price_revision_tiers')
+      .select('"revisionId", qty, "pricePerKg", "pricePerUnit"').in('revisionId', chunk).order('revisionId'),
+  );
+  const materials = await fetchAllInChunks(
+    revisions.map((r) => r.materialId).filter(Boolean),
+    (chunk) => supabase.from('material_prices').select('id, kind, label').in('id', chunk).order('id'),
+  );
+  const materialById = new Map(materials.map((m) => [m.id, m]));
 
   const byRevision = new Map(revisions.map((rev) => {
     const material = materialById.get(rev.materialId) || null;

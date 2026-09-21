@@ -24,7 +24,8 @@ export function rowPriceSlots(row) {
   const scentId = formulaId
     ? (row?.producedScentId || row?.scentId || null)
     : (row?.producedScentId || null);
-  return priceSlotsFor({ scentId, formulaId });
+  // หมวดของแถว: พัฒนาสูตร = หมวดที่ขอ · พัฒนากลิ่นที่ส่งเป็นสินค้า = หมวดที่ส่ง (หัวน้ำหอมไม่มีสูตรอยู่แล้ว)
+  return priceSlotsFor({ scentId, formulaId, categoryCode: row?.categoryCode || null });
 }
 
 /** ช่องหลักของแถว (FB ของสูตร / F ของกลิ่น) — `{ kind, stampColumn, id, short, text, registry }` หรือ null */

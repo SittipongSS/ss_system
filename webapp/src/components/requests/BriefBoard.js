@@ -20,7 +20,9 @@
 import { Fragment, useState } from "react";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { CustomerSay, RowDueCell, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
+import {
+  CustomerSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
+} from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Link from "next/link";
@@ -32,8 +34,6 @@ import { fmtNumber } from "@/lib/format";
 import { dueCellTracker } from "@/lib/requests/dueCell";
 
 const qty = (n) => fmtNumber(n);
-// เงินเต็มสองตำแหน่ง — ชุดเดียวกับตารางพัฒนาสูตร (FormulaDevBoard)
-const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
 
 /**
  * ⚠️ รับ `groups` ที่ประกอบมาแล้ว **ไม่ประกอบเอง** — แถบตัวเลขบนหน้ารายละเอียดอ่าน
@@ -82,7 +82,10 @@ export default function BriefBoard({
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
   const showActions = !!renderStep || canEdit || canDelete;
-  const cols = (showActions ? 4 : 3) + (due ? 1 : 0);
+  /* ⭐ **คอลัมน์ราคา** (ผู้ใช้ 2026-09-22: "เมื่อส่งราคาแล้ว อยากให้โชว์ราคาด้วย") — โผล่เมื่อใบนี้มี direction ที่ใส่ราคาแล้ว
+     · เซลล์กลาง `RowPriceCell` ตัวเดียวกับตารางพัฒนาสูตร */
+  const showPrice = groups.some((g) => g.directions.some((d) => d.prices?.length));
+  const cols = (showActions ? 4 : 3) + (due ? 1 : 0) + (showPrice ? 1 : 0);
   /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
      พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
   const showDue = dueCellTracker(due);
@@ -103,6 +106,7 @@ export default function BriefBoard({
           <thead>
             <tr>
               <th className={styles.colName}>direction</th>
+              {showPrice && <th className={`${styles.colPrice} num`}>ราคา (บาท/กก.)</th>}
               <th className={styles.colTrack}>ขั้น</th>
               {due && <th className={styles.colDue}>กำหนดส่ง</th>}
               <th className={`${styles.colIdle} num`}>ค้างมา</th>
@@ -186,11 +190,7 @@ export default function BriefBoard({
                                       ) : "ส่งเป็นหัวน้ำหอม"}
                                     </div>
                                   )}
-                                  {d.priced.length > 0 && (
-                                    <div className={styles.note}>
-                                      ราคา {d.priced.map((p) => `${p.short || ""} ${money(p.price)}`.trim()).join(" · ")} บาท/กก.
-                                    </div>
-                                  )}
+
                                   {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์
                                       (มติผู้ใช้ 2026-08-25) — คอลัมน์ที่ว่าง 97% กินที่
                                       ของสิ่งที่มีค่าทุกแถว · ยังไม่ถึงตาลูกค้า = ไม่มีชิป
@@ -205,6 +205,7 @@ export default function BriefBoard({
                               )}
                             />
                           </td>
+                          {showPrice && <RowPriceCell prices={d.prices} />}
                           <RowStageCell row={d} />
                           {due && <RowDueCell row={d} due={due} show={showDue(d)} />}
                           <RowIdleCell row={d} today={today} />

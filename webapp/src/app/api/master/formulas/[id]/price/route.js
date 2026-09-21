@@ -15,7 +15,10 @@ export const dynamic = 'force-dynamic';
 export const POST = withUser(makeRegistryPriceHandler({
   kind: 'RM_FB',
   stampColumn: 'formulaId',
-  slotsOf: (formula) => priceSlotsFor({ scentId: formula.scentId, formulaId: formula.id }),
+  // สูตรหมวดหัวน้ำหอม (02-020) = F ช่องเดียว ลงกลิ่นของสูตร (ดู priceSlotsFor)
+  slotsOf: (formula) => priceSlotsFor({
+    scentId: formula.scentId, formulaId: formula.id, categoryCode: formula.categoryCode,
+  }),
   // ช่อง F → กลิ่นของสูตร · ด่านสถานะชุดเดียวกับปุ่มราคาบนหน้าทะเบียนกลิ่น
   findOther: async (supabase, slot) => {
     const scent = await findScent(supabase, slot.id);

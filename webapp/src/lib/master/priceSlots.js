@@ -14,6 +14,7 @@
 // ⚠️ ไฟล์นี้ไม่แตะ DB — ขั้นใส่ราคาในคำร้อง · ปุ่มราคาหน้าทะเบียน · โมดัลบนจอ ถามตัวเดียวกัน
 // ⚠️ ทุกช่องเป็นราคาเดียวต่อกิโล ไม่มีชั้นจำนวน (มติผู้ใช้ 2026-08-03)
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
+import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
 
 export const PRICE_SLOTS = Object.freeze({
   F: Object.freeze({
@@ -39,8 +40,15 @@ const MAIN_PRIORITY = ['FB', 'B', 'F'];
 /**
  * ช่องราคาที่เปิดให้ใส่ — คืน `[{ ...PRICE_SLOTS[k], id }]` (id = กลิ่น/สูตรที่ช่องนั้นลง)
  * · มีสูตร = F (ถ้าสูตรมีกลิ่น) + B + FB · ไม่มีสูตรแต่มีกลิ่น = F · ไม่มีอะไร = []
+ * · ⭐ **สูตรหมวดหัวน้ำหอม (02-020) = F ช่องเดียว** (มติผู้ใช้ 2026-09-22: *"กลิ่น(หัวน้ำหอม)ที่ใส่ได้แค่ F"* ·
+ *   ถามต่อว่า "พัฒนาสูตรควรปรับตามพัฒนากลิ่นด้วยมั้ย") — พัฒนาสูตรที่ขอหมวด 02-020 คือหัวน้ำหอมของกลิ่นนั้น
+ *   ไม่มีเบส ⇒ ราคาลงที่กลิ่นเหมือนพัฒนากลิ่นที่ส่งเป็นหัวน้ำหอม (ของจริง: RQ-FD-26090085 · RQ-FD-26090156)
+ *   ⚠️ สูตร 02-020 ที่ไม่มีกลิ่น (สูตรฐาน) ไม่มีที่ให้ลง F ⇒ ถอยไปใช้ช่องของสูตรตามปกติ ไม่ปิดทางใส่ราคา
  */
-export function priceSlotsFor({ scentId = null, formulaId = null } = {}) {
+export function priceSlotsFor({ scentId = null, formulaId = null, categoryCode = null } = {}) {
+  if (formulaId && scentId && categoryCode === PDR_FRAGRANCE_OIL_CODE) {
+    return [{ ...PRICE_SLOTS.F, id: scentId }];
+  }
   if (formulaId) {
     return [
       scentId ? { ...PRICE_SLOTS.F, id: scentId } : null,

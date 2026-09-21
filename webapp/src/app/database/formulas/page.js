@@ -796,7 +796,9 @@ export default function FormulasPage() {
         title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคาใหม่" : "ใส่ราคา"} — ${pricing.name}` : ""}
         endpoint={pricing ? `/api/master/formulas/${pricing.id}/price` : ""}
         /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) */
-        slots={pricing ? priceSlotsFor({ scentId: pricing.scentId, formulaId: pricing.id }) : null}
+        slots={pricing
+          ? priceSlotsFor({ scentId: pricing.scentId, formulaId: pricing.id, categoryCode: pricing.categoryCode })
+          : null}
         onSaved={(msg) => {
           setPricing(null);
           setToast({ kind: "success", msg });

@@ -58,3 +58,18 @@ test('ป้ายตามนิยามผู้ใช้: F หัวน้�
   assert.match(PRICE_SLOTS.B.text, /เบส \(B\)/);
   assert.match(PRICE_SLOTS.FB.text, /เบสที่ใส่กลิ่น/);
 });
+
+test('⭐ สูตรหมวดหัวน้ำหอม 02-020 (พัฒนาสูตร) = F ช่องเดียว ลงกลิ่น · ไม่มีกลิ่น = ช่องสูตรตามปกติ', () => {
+  assert.deepEqual(
+    priceSlotsFor({ scentId: 'S1', formulaId: 'F1', categoryCode: '02-020' }).map((s) => `${s.key}:${s.id}`),
+    ['F:S1'],
+  );
+  assert.deepEqual(
+    priceSlotsFor({ formulaId: 'F1', categoryCode: '02-020' }).map((s) => s.key),
+    ['B', 'FB'],
+  );
+  assert.deepEqual(
+    priceSlotsFor({ scentId: 'S1', formulaId: 'F1', categoryCode: '01-002' }).map((s) => s.key),
+    ['F', 'B', 'FB'],
+  );
+});
