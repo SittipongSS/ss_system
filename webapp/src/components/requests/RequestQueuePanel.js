@@ -575,7 +575,8 @@ export default function RequestQueuePanel({
       case "price": {
         const summary = requestPriceSummary(ask.items, { settled: requestSettled(ask) });
         if (!summary.priced) return <span className={styles.muted}>{NA}</span>;
-        const one = summary.lines.length === 1 && summary.total === 1;
+        // ใบหลายรายการบอกชื่อเสมอ (แม้จบแล้วเหลือราคาแถวเดียว) — กติกาเดียวกับการ์ด
+        const one = summary.rows <= 1;
         return (
           <>
             {summary.lines.slice(0, 3).map((line) => (
@@ -795,7 +796,7 @@ export default function RequestQueuePanel({
                       const [first] = summary.lines;
                       return (
                         <span className={styles.subText}>
-                          ราคา {summary.lines.length > 1 && first.label ? `${first.label} ` : ""}{priceLineText(first.prices)} บาท/กก.
+                          ราคา {summary.rows > 1 && first.label ? `${first.label} ` : ""}{priceLineText(first.prices)} บาท/กก.
                           {summary.lines.length > 1 ? ` · +${summary.lines.length - 1} รายการ` : ""}
                           {summary.priced < summary.total ? ` · ใส่ราคาแล้ว ${summary.priced}/${summary.total}` : ""}
                         </span>

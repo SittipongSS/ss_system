@@ -33,7 +33,7 @@ test('ราคาทั้งใบ (คิว): นับเฉพาะรา
   assert.equal(s.priced, 2);
   assert.equal(s.total, 3);
   assert.deepEqual(s.lines.map((l) => l.label), ['Eau de Optimist #1', 'Secret Valley #1']);
-  assert.deepEqual(requestPriceSummary([]), { lines: [], priced: 0, total: 0 });
+  assert.deepEqual(requestPriceSummary([]), { lines: [], priced: 0, total: 0, rows: 0 });
 });
 
 test('คอลัมน์ราคาในคิวโผล่เฉพาะเมื่อมีใบที่ใส่ราคาแล้ว · ไม่ส่งแถว = พฤติกรรมเดิม', () => {

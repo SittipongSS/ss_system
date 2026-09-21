@@ -2793,10 +2793,12 @@ export default function RequestDetailPage() {
         /* ⚠️ **โหลดใบใหม่ผ่าน GET เสมอ** — ห้ามตั้ง `req` จาก body ที่ route ราคาตอบ (รีวิว ม-148 รอบสาม): body นั้นเป็น
            `findRequest` เปล่า ไม่มีลิงก์ทะเบียน (`refScent`/`refFormula`) และธงของคนดู (`_mine` · `_canEditPdr` …) ที่ GET เติม
            ⇒ ตั้งแล้วรหัส/ลิงก์ในตารางหาย · ปุ่มปิดเรื่องของแอดมินหาย จนกด F5 */
-        onSaved={(msg) => {
+        onSaved={async (msg) => {
           setPricing(null);
           setToast({ kind: "success", msg });
-          load({ background: true });
+          // ⚠️ ล็อกปุ่มทั้งหน้าจนใบใหม่มาถึง (เหมือน `call()`) — ไม่งั้นปุ่ม "ใส่ราคา" ของแถวที่เพิ่งใส่ยังกดได้ แล้วได้ 409 งง ๆ
+          setSaving(true);
+          try { await load({ background: true }); } finally { setSaving(false); }
         }}
         onError={() => load({ background: true })}
       />

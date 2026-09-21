@@ -519,7 +519,8 @@ export async function rowPriceSlotsLive(supabase, row) {
   return priceSlotsFor({
     scentId: formula.scentId || null,
     formulaId: formula.id,
-    categoryCode: formula.categoryCode || row.categoryCode || null,
+    // หมวดของ **สูตร** อย่างเดียว — กติกาเดียวกับปุ่มราคาหน้าทะเบียนสูตรและ withFragranceOilPrice (รีวิวรอบสี่)
+    categoryCode: formula.categoryCode || null,
     scentUsable: scent ? isScentUsable(scent) : true,
   });
 }

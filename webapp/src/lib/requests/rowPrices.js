@@ -40,7 +40,8 @@ export function requestPriceSummary(items = [], { settled = false } = {}) {
     .filter((l) => l.prices.length);
   /* ⚠️ ใบที่จบแล้ว (ปิด/ยกเลิก) ไม่มีแถวไหนจะได้ราคาอีก — นับ "รอราคา" แล้วคิวประวัติขึ้น "ใส่ราคาแล้ว 1/3"
      ถาวรทั้งที่ไม่มีอะไรค้าง (รีวิว ม-148 รอบสาม) ⇒ ใบจบ: ทั้งหมด = ที่ใส่แล้ว */
-  return { lines, priced: lines.length, total: settled ? lines.length : deliverable.length };
+  // `rows` = รายการที่ส่งงานแล้วจริง (ก่อนปรับใบจบ) — ตัดสินว่าต้องบอกชื่อรายการไหม (ใบหลายรายการต้องบอกเสมอ)
+  return { lines, priced: lines.length, total: settled ? lines.length : deliverable.length, rows: deliverable.length };
 }
 
 /** ข้อความราคาหนึ่งรายการ — "F 2,800.00 · FB 950.00" (ตารางคิว + การ์ดมือถือใช้ตัวเดียว ไม่ให้จัดรูปคนละแบบ) */
