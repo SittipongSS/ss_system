@@ -8,7 +8,8 @@ import { TableScroll } from "@/components/ui/Table";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { naText } from "@/lib/format";
 import {
-  PRODUCT_SPEC_CERT_STATUS_LABELS, productSpecCertPendingLabel,
+  PRODUCT_SPEC_CERT_STATUS_LABELS, PRODUCT_SPEC_CHECKLIST, productSpecCertPendingLabel,
+  productSpecChecklistMissing, restoreChecklistItem,
 } from "@/lib/sales/productSpecChecklist";
 import styles from "./ProductSpecForm.module.css";
 
@@ -23,6 +24,15 @@ import styles from "./ProductSpecForm.module.css";
  * ⚠️ ไม่มีช่องไหนบังคับ — กระดาษ FM-SA-04 ปล่อยว่างได้ทุกช่อง และใบที่ยังรอข้อมูล
  * จากลูกค้าต้องบันทึกค้างไว้ได้ · ความพร้อมบอกด้วยรายการบนการ์ดจัดการ ไม่ใช่ด่านกดไม่ได้
  */
+/* ข้อความหัวการ์ด Checklist — บอกว่าครบ/ขาดจากแบบฟอร์มกี่แถว ไม่ใช่เดาจากเลข 17
+   (17 แถวลบได้แล้ว ⇒ "เกิน 17 = มีแถวที่เพิ่มเอง" ไม่จริงอีกต่อไป) */
+function checklistMeta(items) {
+  const keyed = items.filter((row) => row?.itemKey).length;
+  const extras = items.length - keyed;
+  const head = `${items.length} แถว — จากแบบฟอร์ม ${keyed}/${PRODUCT_SPEC_CHECKLIST.length}`;
+  return extras ? `${head} · เพิ่มเอง ${extras}` : head;
+}
+
 export default function ProductSpecForm({
   product,
   revision,
@@ -67,7 +77,12 @@ export default function ProductSpecForm({
   const addItem = () => onItems([...items, {
     itemKey: null, itemLabel: "", detail: "", preparedByS: false, preparedByCustomer: false, note: "",
   }]);
+  /* ⭐ **ลบได้ทุกแถวรวม 17 แถวของแบบฟอร์ม** (มติผู้ใช้ 2026-09-21) — สินค้าหลายตัว
+     ไม่มีก้านไม้ ไม่มีสายคาดกล่อง แถวที่ไม่เกี่ยวทำให้ทั้งใบอ่านยากและกระดาษยาวเกินจริง
+     ⇒ ลบได้ แต่ต้องคืนได้ด้วย (ชิป "คืนแถวจากแบบฟอร์ม" ใต้ตาราง) ไม่งั้นลบพลาด
+        ครั้งเดียวคือทางตัน: พิมพ์ชื่อเพิ่มใหม่ได้ แต่ได้แถวไม่มีคีย์ซึ่งไม่ใช่แถวเดิม */
   const removeItem = (index) => onItems(items.filter((_, i) => i !== index));
+  const missingItems = readOnly ? [] : productSpecChecklistMissing(items);
 
   const setCert = (index, patch) => onCerts(certs.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const addCert = () => onCerts([...certs, { key: null, label: "", status: "", note: "" }]);
@@ -114,7 +129,7 @@ export default function ProductSpecForm({
         icon={ListChecks}
         eyebrow="CHECKLIST PROJECT"
         title="Checklist บรรจุภัณฑ์"
-        meta={`${items.length} แถว — ${items.length > 17 ? "17 แถวตามแบบฟอร์ม + แถวที่เพิ่มเอง" : "ตามแบบฟอร์ม"}`}
+        meta={checklistMeta(items)}
         actions={readOnly ? null : (
           <Button size="sm" variant="ghost" onClick={addItem} icon={<Plus size={13} />}>เพิ่มแถว</Button>
         )}
@@ -166,10 +181,9 @@ export default function ProductSpecForm({
                   </td>
                   {readOnly ? null : (
                     <td>
-                      {row.itemKey ? null : (
-                        <Button iconOnly tone="danger" variant="ghost" size="sm" aria-label={`ลบแถวที่ ${index + 1}`}
-                          onClick={() => removeItem(index)} icon={<Trash2 size={14} />} />
-                      )}
+                      <Button iconOnly tone="danger" variant="ghost" size="sm"
+                        aria-label={`ลบแถว ${row.itemLabel || index + 1}`}
+                        onClick={() => removeItem(index)} icon={<Trash2 size={14} />} />
                     </td>
                   )}
                 </tr>
@@ -177,8 +191,20 @@ export default function ProductSpecForm({
             </tbody>
           </table>
         </TableScroll>
+        {missingItems.length ? (
+          <div className={styles.restore}>
+            <span className={styles.restoreLabel}>คืนแถวจากแบบฟอร์ม</span>
+            {missingItems.map((entry) => (
+              <Button key={entry.key} size="sm" variant="ghost" icon={<Plus size={12} />}
+                onClick={() => onItems(restoreChecklistItem(items, entry.key))}>
+                {entry.label}
+              </Button>
+            ))}
+          </div>
+        ) : null}
         <p className={`form-note ${styles.note}`}>
-          17 แถวแรกมาจากแบบฟอร์ม ลบไม่ได้ (เว้นว่างได้) — แถวที่เพิ่มเองลบได้
+          ลบได้ทุกแถว — แถวของแบบฟอร์มที่ลบทิ้งคืนได้จากปุ่มด้านบน และจะไม่กลับมาเอง
+          ตอนออก Rev. ใหม่ · เว้นว่างไว้ก็ได้ถ้ายังไม่รู้
         </p>
       </DetailCard>
 

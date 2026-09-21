@@ -30,10 +30,14 @@ const baseInput = (over = {}) => ({
     targetGroup: 'ผู้หญิงวัยเริ่มต้นทำงาน',
     createdByName: 'ชลิตา',
     approvedByName: 'พัชราภิชญ์',
-    items: productSpecChecklistSeed([
-      { itemKey: 'raw_material', itemLabel: 'วัตถุดิบ/สารประกอบ', detail: 'น้ำหอม', preparedByS: true },
-      { itemKey: 'card', itemLabel: 'การ์ด', detail: '', preparedByCustomer: true },
-    ]),
+    /* ใบเต็มตามแบบฟอร์ม (ไม่ส่ง previousItems = ครบทุกแถว) แล้วกรอกค่าลงสองแถว
+       ⚠️ ห้ามสร้างด้วย `productSpecChecklistSeed([สองแถว])` — ตั้งแต่มติ 21/09 ที่ 17 แถว
+          ลบได้ การส่ง previousItems คือ "ยกมาเท่าที่ฉบับก่อนมี" ⇒ จะได้ใบสองแถว */
+    items: productSpecChecklistSeed().map((row) => {
+      if (row.itemKey === 'raw_material') return { ...row, detail: 'น้ำหอม', preparedByS: true };
+      if (row.itemKey === 'card') return { ...row, preparedByCustomer: true };
+      return row;
+    }),
     certifications: productSpecCertSeed([{ key: 'fda', status: 'ready', note: 'เลข 10-1-68' }]),
   },
   product: {
@@ -93,6 +97,15 @@ test('checklist พิมพ์ครบทุกแถวและติ๊ก�
   assert.match(html, /สายคาดกล่อง/);          // แถวที่ 16 ของทะเบียน
   assert.ok((html.match(/☑/g) || []).length >= 3, 'ต้องมีช่องที่ติ๊กแล้ว');
   assert.ok((html.match(/☐/g) || []).length >= 20, 'แถวที่ยังไม่ติ๊กต้องพิมพ์ช่องว่างไว้ให้ติ๊กมือ');
+});
+
+test('ลบ checklist หมดใบ = ไม่มีหัวข้อ Checklist บนกระดาษ (ไม่ใช่หัวข้อกับตารางเปล่า)', () => {
+  const html = renderProductSpecDocument({
+    ...baseInput(),
+    revision: { ...baseInput().revision, items: [] },
+  });
+  assert.ok(!html.includes('Checklist Project'), 'หัวข้อยังขึ้นทั้งที่ไม่มีแถว');
+  assert.match(html, /Certification &amp; Documents/, 'หัวข้อถัดไปต้องยังอยู่');
 });
 
 test('ช่องที่ไม่ได้กรอกพิมพ์ N/A — ไม่ใช่เว้นว่างจนอ่านไม่ออกว่าถามแล้วหรือยัง', () => {
