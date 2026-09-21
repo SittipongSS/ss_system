@@ -120,6 +120,21 @@ test('เอกสารที่ขอได้พิมพ์ทั้งส�
   assert.match(html, /อยู่ระหว่างจัดเตรียม/);     // แถวอื่น
 });
 
+test('ช่อง AE บนลายเซ็น = ผู้ยื่นอนุมัติ · ฉบับเก่าเส้นสี่ขั้นยังอ่านชื่อผู้ตรวจของตัวเอง', () => {
+  const base = baseInput();
+  const now = renderProductSpecDocument({
+    ...base,
+    revision: { ...base.revision, submittedByName: 'ชลิตา', reviewedByName: null },
+  });
+  assert.match(now, /ชลิตา/);
+
+  const legacy = renderProductSpecDocument({
+    ...base,
+    revision: { ...base.revision, submittedByName: null, reviewedByName: 'ผู้ตรวจของเส้นเดิม' },
+  });
+  assert.match(legacy, /ผู้ตรวจของเส้นเดิม/);
+});
+
 test('ตารางลายเซ็นมีสี่ช่องและเว้นที่เซ็นมือไว้เสมอ', () => {
   const html = renderProductSpecDocument(baseInput());
   assert.match(html, /Account Coordinator/);

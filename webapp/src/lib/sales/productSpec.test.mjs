@@ -10,7 +10,8 @@ import {
 } from './productSpecScope.js';
 import {
   productSpecApproveBlock, productSpecEditBlock, productSpecIssueBlock,
-  productSpecLineState, productSpecNewRevisionBlock, productSpecReviewBlock,
+  productSpecDeleteBlock, productSpecDeleteScope,
+  productSpecLineState, productSpecNewRevisionBlock,
   productSpecSubmitBlock,
 } from './productSpecWorkflow.js';
 import { parseProductSpecDocNo, productSpecDocNoParts } from './productSpecDocNo.js';
@@ -136,8 +137,7 @@ test('เหตุผลที่ไม่มีใบเป็นข้อค�
 /* ── ด่านของฉบับ ──────────────────────────────────────────────────── */
 
 const draft = { id: 'R1', revNo: 1, status: 'draft' };
-const atAe = { id: 'R1', revNo: 1, status: 'pending_ae' };
-const atSup = { id: 'R1', revNo: 1, status: 'pending_ae_supervisor' };
+const pending = { id: 'R1', revNo: 1, status: 'pending' };
 const approved = { id: 'R1', revNo: 2, status: 'approved' };
 
 test('ฉบับที่อนุมัติแล้วแก้ไม่ได้ ต้องออกฉบับใหม่', () => {
@@ -145,36 +145,91 @@ test('ฉบับที่อนุมัติแล้วแก้ไม่�
   assert.equal(productSpecEditBlock(draft, { role: 'ac' }), null);
 });
 
-test('คนนอกฝ่ายขายแก้/ส่ง/อนุมัติไม่ได้', () => {
+test('คนนอกฝ่ายขายแก้/ยื่น/อนุมัติไม่ได้', () => {
   assert.match(productSpecEditBlock(draft, { role: 'rd' }), /AC หรือฝ่ายขาย/);
   assert.match(productSpecSubmitBlock(draft, { role: 'wh' }), /AC หรือฝ่ายขาย/);
-  assert.match(productSpecApproveBlock(atSup, { role: 'ae' }), /AE Supervisor/);
+  assert.match(productSpecApproveBlock(pending, { role: 'ae' }), /AE Supervisor/);
 });
 
-test('สามขั้นเดินตามลำดับ ข้ามขั้นไม่ได้', () => {
+test('สองขั้นเดินตามลำดับเหมือนใบเสนอราคา ข้ามขั้นไม่ได้ (มติ 21/09)', () => {
   assert.equal(productSpecSubmitBlock(draft, { role: 'ac' }), null);
-  assert.match(productSpecSubmitBlock(atAe, { role: 'ac' }), /ส่งซ้ำไม่ได้/);
-  assert.equal(productSpecReviewBlock(atAe, { role: 'ae' }), null);
-  assert.match(productSpecReviewBlock(draft, { role: 'ae' }), /ยังไม่ได้ส่งมา/);
-  assert.equal(productSpecApproveBlock(atSup, { role: 'ae_supervisor' }), null);
-  assert.match(productSpecApproveBlock(atAe, { role: 'ae_supervisor' }), /ยังไม่ผ่านขั้น AE/);
+  assert.match(productSpecSubmitBlock(pending, { role: 'ac' }), /ยื่นซ้ำไม่ได้/);
+  assert.equal(productSpecApproveBlock(pending, { role: 'ae_supervisor' }), null);
+  assert.match(productSpecApproveBlock(draft, { role: 'ae_supervisor' }), /ยังไม่ได้ยื่น/);
 });
 
-test('ใบที่ถูกตีกลับส่งใหม่ได้ — ไม่ใช่ทางตัน', () => {
+test('🪤 ฉบับที่ยื่นแล้วแก้ไม่ได้จนดึงกลับ — แต่ผู้อนุมัติแก้ได้เลย', () => {
+  assert.match(productSpecEditBlock(pending, { role: 'ac' }), /ดึงกลับ/);
+  assert.equal(productSpecEditBlock(pending, { role: 'ae_supervisor' }), null);
+});
+
+test('ใบที่ถูกตีกลับยื่นใหม่ได้ — ไม่ใช่ทางตัน', () => {
   assert.equal(productSpecSubmitBlock({ revNo: 1, status: 'rejected' }, { role: 'ac' }), null);
 });
 
 test('แอดมินผ่านทุกด่านของฉบับ', () => {
   assert.equal(productSpecEditBlock(draft, { role: 'admin' }), null);
-  assert.equal(productSpecReviewBlock(atAe, { role: 'admin' }), null);
-  assert.equal(productSpecApproveBlock(atSup, { role: 'admin' }), null);
+  assert.equal(productSpecApproveBlock(pending, { role: 'admin' }), null);
 });
 
 test('มีฉบับที่ยังไม่จบอยู่ = ออกฉบับใหม่ไม่ได้ และบอกว่าค้างที่ไหน', () => {
-  const blocked = productSpecNewRevisionBlock({ id: 'S1' }, atSup, { role: 'ac' });
+  const blocked = productSpecNewRevisionBlock({ id: 'S1' }, pending, { role: 'ac' });
   assert.match(blocked, /Rev\.01/);
-  assert.match(blocked, /รอ AE Sup/);
+  assert.match(blocked, /รออนุมัติ/);
   assert.equal(productSpecNewRevisionBlock({ id: 'S1' }, approved, { role: 'ac' }), null);
+});
+
+/* ── ลบ (มติ 21/09 "ลบได้เหมือนใบเสนอราคา") ────────────────────────── */
+
+const spec1 = { id: 'S1' };
+const issueOf = (revisionId, over = {}) => ({
+  id: 'PSD1', revisionId, docNo: 'FM-SA-04-210969-001', status: 'issued', ...over,
+});
+
+test('ขอบเขตการลบ: ฉบับเดียว = ลบทั้งใบ · หลายฉบับ = ลบเฉพาะฉบับล่าสุด', () => {
+  assert.equal(productSpecDeleteScope([draft]), 'spec');
+  assert.equal(productSpecDeleteScope([]), 'spec');
+  assert.equal(productSpecDeleteScope([draft, approved]), 'revision');
+});
+
+test('ฉบับร่าง/ที่ถูกตีกลับ คนที่แก้ได้ก็ลบได้', () => {
+  assert.equal(productSpecDeleteBlock({ spec: spec1, revision: draft, revisions: [draft], role: 'ac' }), null);
+  assert.equal(productSpecDeleteBlock({
+    spec: spec1, revision: { id: 'R1', revNo: 1, status: 'rejected' }, revisions: [draft], role: 'ae',
+  }), null);
+  assert.match(productSpecDeleteBlock({ spec: spec1, revision: draft, revisions: [draft], role: 'rd' }), /AC หรือฝ่ายขาย/);
+});
+
+test('ฉบับที่ยื่น/อนุมัติแล้ว ลบได้เฉพาะแอดมิน และบอกทางออกของคนอื่น', () => {
+  assert.match(productSpecDeleteBlock({ spec: spec1, revision: pending, revisions: [pending], role: 'ac' }), /ดึงกลับ/);
+  assert.match(productSpecDeleteBlock({ spec: spec1, revision: approved, revisions: [approved], role: 'ac' }), /แอดมิน/);
+  assert.equal(productSpecDeleteBlock({ spec: spec1, revision: approved, revisions: [approved], role: 'admin' }), null);
+});
+
+test('🔴 ออกกระดาษไปแล้วลบไม่ได้ แม้แอดมิน — เลขที่เอกสารอยู่นอกบริษัทแล้ว', () => {
+  const args = { spec: spec1, revision: draft, revisions: [draft], issues: [issueOf('R1')] };
+  assert.match(productSpecDeleteBlock({ ...args, role: 'admin' }), /FM-SA-04-210969-001/);
+  assert.match(productSpecDeleteBlock({ ...args, role: 'ac' }), /ยกเลิกเอกสารก่อน/);
+});
+
+test('เอกสารที่ยกเลิกแล้วไม่ขัดการลบ', () => {
+  assert.equal(productSpecDeleteBlock({
+    spec: spec1, revision: draft, revisions: [draft], issues: [issueOf('R1', { status: 'void' })], role: 'ac',
+  }), null);
+});
+
+test('🪤 ลบฉบับร่างใบที่สอง: กระดาษของฉบับก่อนไม่เกี่ยว (FK ผูกรายฉบับ)', () => {
+  const rev2 = { id: 'R2', revNo: 2, status: 'draft' };
+  const args = { spec: spec1, revision: rev2, revisions: [rev2, approved], role: 'ac' };
+  // กระดาษออกจากฉบับก่อน ⇒ ลบฉบับร่างใหม่ได้
+  assert.equal(productSpecDeleteBlock({ ...args, issues: [issueOf('R1')] }), null);
+  // กระดาษออกจากฉบับร่างนี้เอง ⇒ ลบไม่ได้
+  assert.match(productSpecDeleteBlock({ ...args, issues: [issueOf('R2')] }), /ยกเลิกเอกสารก่อน/);
+});
+
+test('ยังไม่มีใบ = ไม่มีอะไรให้ลบ', () => {
+  assert.match(productSpecDeleteBlock({ role: 'admin' }), /ยังไม่มีใบสเปค/);
+  assert.match(productSpecDeleteBlock({ spec: spec1, revisions: [], role: 'admin' }), /ยังไม่มีใบสเปค/);
 });
 
 /* ── ด่านการออกเอกสาร ─────────────────────────────────────────────── */

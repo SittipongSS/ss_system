@@ -8,17 +8,16 @@
 // มี `disabledReason` เป็นข้อความ · `visible: false` เหลือไว้เฉพาะ "ไม่ใช่งานของ role นี้เลย"
 import {
   SPEC_REVISION_STATUS_LABELS, SPEC_REVISION_STEPS,
-  canApproveProductSpec, canDraftProductSpec, canReviewProductSpec,
-  productSpecApproveBlock, productSpecEditBlock, productSpecNewRevisionBlock,
-  productSpecReviewBlock, productSpecSubmitBlock,
+  canApproveProductSpec, canDraftProductSpec,
+  productSpecApproveBlock, productSpecDeleteBlock, productSpecDeleteScope,
+  productSpecEditBlock, productSpecNewRevisionBlock, productSpecSubmitBlock,
 } from '@/lib/sales/productSpecWorkflow';
 
 export const revLabel = (revNo) => (revNo == null ? '—' : `Rev.${String(revNo).padStart(2, '0')}`);
 
 const STATUS_COLOR = Object.freeze({
   draft: 'var(--text-3)',
-  pending_ae: 'var(--amber)',
-  pending_ae_supervisor: 'var(--amber)',
+  pending: 'var(--amber)',
   approved: 'var(--green)',
   rejected: 'var(--red)',
   superseded: 'var(--text-3)',
@@ -26,16 +25,24 @@ const STATUS_COLOR = Object.freeze({
 
 export const specStatusColor = (status) => STATUS_COLOR[status] || 'var(--text-3)';
 
-/* รางสี่ขั้น — `rejected` ไม่เป็นจุดของตัวเอง มันคือสุขภาพของขั้นที่ยืนอยู่
-   (กติกาเดียวกับรางของคำร้อง/ใบสั่งขาย) */
+/* รางสามขั้น เท่ากับรางของใบเสนอราคา (มติ 21/09) — `rejected` ไม่เป็นจุดของตัวเอง
+   มันคือสุขภาพของขั้นที่ยืนอยู่ (กติกาเดียวกับรางของคำร้อง/ใบสั่งขาย)
+
+   ⚠️ ป้ายของแต่ละขั้นบอก **ชื่อคนที่ทำขั้นนั้น** เหมือนรางของใบเสนอราคา — รางนี้คือ
+   ที่เดียวที่บอกว่าใครทำอะไรกับใบนี้ (ใบไม่มีบล็อกผู้รับผิดชอบ) */
 export function specWorkflowSteps(revision) {
   const status = revision?.status || 'draft';
   const at = status === 'rejected' ? 0 : Math.max(SPEC_REVISION_STEPS.indexOf(status), 0);
   const labels = [
-    { id: 'draft', label: 'ร่าง', hint: 'AC กรอกสเปกและ checklist' },
-    { id: 'pending_ae', label: 'รอ AE ตรวจ', hint: status === 'rejected' ? 'แก้ตามเหตุผลที่ตีกลับแล้วส่งใหม่' : 'เจ้าของดีลตรวจเนื้อสเปก' },
-    { id: 'pending_ae_supervisor', label: 'รอ AE Sup อนุมัติ', hint: 'หัวหน้าฝ่ายขายรับรองสเปก' },
-    { id: 'approved', label: 'อนุมัติแล้ว', hint: 'พิมพ์เป็นฉบับจริงได้ · ออกเอกสารตาม SO ได้' },
+    { id: 'draft', label: 'เปิดร่าง', hint: revision?.createdByName || 'ผู้เปิดร่าง' },
+    {
+      id: 'pending',
+      label: 'ผู้จัดทำยื่นอนุมัติ',
+      hint: status === 'rejected'
+        ? 'แก้ตามเหตุผลที่ตีกลับแล้วยื่นใหม่'
+        : revision?.submittedByName || 'รอผู้จัดทำ',
+    },
+    { id: 'approved', label: 'AE Sup อนุมัติ', hint: revision?.approvedByName || 'รออนุมัติ' },
   ];
   return labels.map((step, index) => ({
     ...step,
@@ -50,8 +57,7 @@ export function specStatusHeadline(spec, revision) {
   }
   const label = SPEC_REVISION_STATUS_LABELS[revision.status] || revision.status;
   const who = {
-    pending_ae: revision.submittedByName ? `ส่งโดย ${revision.submittedByName}` : null,
-    pending_ae_supervisor: revision.reviewedByName ? `ตรวจโดย ${revision.reviewedByName}` : null,
+    pending: revision.submittedByName ? `ยื่นโดย ${revision.submittedByName}` : null,
     approved: revision.approvedByName ? `อนุมัติโดย ${revision.approvedByName}` : null,
     rejected: revision.rejectionReason || null,
   }[revision.status] || null;
@@ -69,8 +75,8 @@ export function specStatusHeadline(spec, revision) {
  * ⚠️ `save` ไม่อยู่ที่นี่ — มันเป็นปุ่มของฟอร์ม ไม่ใช่ก้าวของเอกสาร
  */
 export function specControlActions({
-  spec, revision, role, dirty = false, onCreate, onSubmit, onReview, onApprove, onReject,
-  onWithdraw, onNewRevision, onPrint,
+  spec, revision, revisions = [], issues = [], role, dirty = false,
+  onCreate, onSubmit, onApprove, onReject, onWithdraw, onNewRevision, onDelete, onPrint,
 }) {
   const mayDraft = canDraftProductSpec(role);
   if (!spec || !revision) {
@@ -88,19 +94,17 @@ export function specControlActions({
   }
 
   const submitBlock = productSpecSubmitBlock(revision, { role });
-  const reviewBlock = productSpecReviewBlock(revision, { role });
   const approveBlock = productSpecApproveBlock(revision, { role });
   const newRevBlock = productSpecNewRevisionBlock(spec, revision, { role });
+  const deleteBlock = productSpecDeleteBlock({ spec, revision, revisions, issues, role });
+  const wholeSpec = productSpecDeleteScope(revisions) === 'spec';
 
-  /* ⚠️ ปุ่มที่ "รอเรา" เป็นปุ่มหลักได้ทีละตัว — สามขั้นไม่มีทางรอคนเดียวพร้อมกัน
+  /* ⚠️ ปุ่มที่ "รอเรา" เป็นปุ่มหลักได้ทีละตัว — สองขั้นไม่มีทางรอคนเดียวพร้อมกัน
      ยกเว้นแอดมิน/หัวหน้าที่ผ่านได้ทุกด่าน ⇒ เรียงตามลำดับงานจริง ใครถึงก่อนได้ก่อน */
   const dirtyBlock = dirty ? 'ยังมีการแก้ที่ไม่ได้บันทึก — กดบันทึกก่อน' : null;
   const primary = (() => {
     if (!submitBlock) {
-      return { id: 'submit', label: 'ส่งให้ AE ตรวจ', kind: 'primary', onClick: onSubmit, disabled: Boolean(dirtyBlock), disabledReason: dirtyBlock };
-    }
-    if (!reviewBlock) {
-      return { id: 'review', label: 'ตรวจผ่าน · ส่งต่อ AE Sup', kind: 'primary', onClick: onReview };
+      return { id: 'submit', label: 'ยื่นอนุมัติ', kind: 'primary', onClick: onSubmit, disabled: Boolean(dirtyBlock), disabledReason: dirtyBlock };
     }
     if (!approveBlock) {
       return { id: 'approve', label: 'อนุมัติใบสเปค', kind: 'primary', onClick: onApprove };
@@ -114,7 +118,7 @@ export function specControlActions({
       label: revision.status === 'approved' ? 'ออกฉบับใหม่' : 'รอขั้นถัดไป',
       kind: 'primary',
       disabled: true,
-      disabledReason: newRevBlock || approveBlock || reviewBlock || submitBlock,
+      disabledReason: newRevBlock || approveBlock || submitBlock,
     };
   })();
 
@@ -129,7 +133,7 @@ export function specControlActions({
       id: 'withdraw',
       label: 'ดึงกลับมาแก้ไข',
       kind: 'ghost',
-      visible: ['pending_ae', 'pending_ae_supervisor'].includes(revision.status),
+      visible: revision.status === 'pending',
       onClick: onWithdraw,
     },
   ];
@@ -139,9 +143,19 @@ export function specControlActions({
       id: 'reject',
       label: 'ตีกลับให้แก้ไข',
       kind: 'warning',
-      visible: (canReviewProductSpec(role) || canApproveProductSpec(role))
-        && ['pending_ae', 'pending_ae_supervisor'].includes(revision.status),
+      visible: canApproveProductSpec(role) && revision.status === 'pending',
       onClick: onReject,
+    },
+    /* ⚠️ ปุ่มลบ **โชว์เสมอสำหรับคนที่แก้ใบได้** แล้วบอกเหตุตอนกดไม่ได้ (ui-visibility-rule)
+       · ป้ายบอกขอบเขตจริงของการลบ ไม่ใช่คำว่า "ลบ" ลอย ๆ เพราะสองความหมายต่างกันมาก */
+    {
+      id: 'delete',
+      label: wholeSpec ? 'ลบใบสเปคสินค้า' : `ลบฉบับร่าง (${revLabel(revision.revNo)})`,
+      kind: 'danger',
+      visible: mayDraft,
+      disabled: Boolean(deleteBlock),
+      disabledReason: deleteBlock,
+      onClick: onDelete,
     },
   ];
 

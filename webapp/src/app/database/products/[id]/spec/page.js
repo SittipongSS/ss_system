@@ -21,7 +21,9 @@ import { fmtDate, naText } from "@/lib/format";
 import { approvalPrompt } from "@/lib/approvalPrompt";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { SPEC_CONTENT_FIELDS } from "@/lib/sales/productSpecStore";
-import { SPEC_ISSUE_STATUS_LABELS, SPEC_REVISION_STATUS_LABELS } from "@/lib/sales/productSpecWorkflow";
+import {
+  SPEC_ISSUE_STATUS_LABELS, SPEC_REVISION_STATUS_LABELS, productSpecDeleteScope,
+} from "@/lib/sales/productSpecWorkflow";
 import styles from "./page.module.css";
 import {
   revLabel, specControlActions, specFormBlocker, specReadiness,
@@ -125,30 +127,16 @@ export default function ProductSpecPage() {
      ไม่ใช่ปุ่มที่กดแล้วเกิดขึ้นเลย · `approvalPrompt` บังคับให้บอกอย่างน้อยหนึ่งผล */
   const askSubmit = () => setConfirmState({
     ...approvalPrompt({
-      title: "ส่งใบสเปคให้ AE ตรวจ",
-      verb: "ส่ง",
+      title: "ยื่นใบสเปคขออนุมัติ",
+      verb: "ยื่น",
       subject: `${revLabel(latest?.revNo)} ของ ${productDisplayName(product)}`,
       effects: [
-        "ใบย้ายไปรออยู่ที่ AE เจ้าของดีล — คุณยังดึงกลับมาแก้ได้",
-        "ร่างที่บันทึกไว้คือสิ่งที่ AE จะเห็น",
+        "ใบย้ายไปรออนุมัติที่หัวหน้าฝ่ายขาย — คุณยังดึงกลับมาแก้ได้",
+        "ร่างที่บันทึกไว้คือสิ่งที่ผู้อนุมัติจะเห็น",
       ],
-      confirmLabel: "ส่งให้ AE ตรวจ",
+      confirmLabel: "ยื่นอนุมัติ",
     }),
     onConfirm: () => act("submit"),
-  });
-
-  const askReview = () => setConfirmState({
-    ...approvalPrompt({
-      title: "ตรวจผ่าน · ส่งต่อ AE Supervisor",
-      verb: "ยืนยัน",
-      subject: `${revLabel(latest?.revNo)} ของ ${productDisplayName(product)}`,
-      effects: [
-        "ชื่อคุณขึ้นเป็นผู้ตรวจบนเอกสาร",
-        "ใบย้ายไปรออนุมัติที่หัวหน้าฝ่ายขาย",
-      ],
-      confirmLabel: "ตรวจผ่าน",
-    }),
-    onConfirm: () => act("review"),
   });
 
   const askApprove = () => setConfirmState({
@@ -176,8 +164,8 @@ export default function ProductSpecPage() {
       verb: "ดึงกลับ",
       subject: `${revLabel(latest?.revNo)} ของ ${productDisplayName(product)}`,
       effects: [
-        "ใบกลับเป็นร่าง — คนที่รอตรวจ/รออนุมัติจะไม่เห็นในคิวอีก",
-        "รอยการส่งและการตรวจถูกล้าง ต้องส่งใหม่ทั้งเส้น",
+        "ใบกลับเป็นร่าง — ผู้อนุมัติจะไม่เห็นในคิวอีก",
+        "รอยการยื่นถูกล้าง ต้องยื่นใหม่",
       ],
       confirmLabel: "ดึงกลับมาแก้ไข",
     }),
@@ -192,31 +180,64 @@ export default function ProductSpecPage() {
       effects: [
         `เกิดฉบับร่าง ${revLabel((latest?.revNo || 0) + 1)} โดยยกค่าจากฉบับปัจจุบันมาทั้งหมด`,
         `${revLabel(latest?.revNo)} ยังเป็นสเปกที่ใช้อยู่จนกว่าฉบับใหม่จะผ่านการอนุมัติ`,
-        "ต้องเดินด่าน AC → AE → AE Sup ใหม่ทั้งสามขั้น",
+        "ต้องยื่นอนุมัติใหม่ (ร่าง → ยื่น → อนุมัติ)",
       ],
       confirmLabel: "ออกฉบับใหม่",
     }),
     onConfirm: () => act("new-revision"),
   });
 
+  /* ⚠️ **ลบแล้วกู้จากหน้าจอไม่ได้** — ไม่มีถังขยะในระบบ · กล่องยืนยันต้องพูดขอบเขตจริง
+     ของการลบ (ทั้งใบ vs เฉพาะฉบับร่าง) ให้ตรงกับที่ปุ่มเขียนไว้ ไม่ใช่คำว่า "ลบ" ลอย ๆ */
+  const askDelete = () => {
+    const wholeSpec = productSpecDeleteScope(revisions) === "spec";
+    setConfirmState({
+      title: wholeSpec ? "ลบใบสเปคสินค้า" : `ลบฉบับร่าง ${revLabel(latest?.revNo)}`,
+      description: `ต้องการลบ${wholeSpec ? "ใบสเปคของ" : `${revLabel(latest?.revNo)} ของ`} ${productDisplayName(product)} ใช่หรือไม่`,
+      detail: wholeSpec
+        ? "ฉบับทุกฉบับและ checklist ของใบนี้จะถูกลบ สินค้าจะกลับไปเป็น “ยังไม่มีใบสเปค” และกู้จากหน้าจอนี้ไม่ได้"
+        : `ลบเฉพาะฉบับร่างนี้ · ${revLabel(revisions[1]?.revNo)} ยังเป็นสเปกที่ใช้อยู่ และกู้ฉบับที่ลบจากหน้าจอนี้ไม่ได้`,
+      confirmLabel: wholeSpec ? "ลบใบสเปคสินค้า" : "ลบฉบับร่าง",
+      tone: "danger",
+      action: async () => {
+        setBusy("delete");
+        setError("");
+        try {
+          const res = await apiFetch(`/api/products/${id}/spec`, {
+            method: "DELETE", fallbackError: "ลบใบสเปคไม่สำเร็จ",
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(payload?.error || "ลบใบสเปคไม่สำเร็จ");
+          await load();
+        } catch (deleteError) {
+          setError(deleteError.message || "ลบใบสเปคไม่สำเร็จ");
+        } finally {
+          setBusy("");
+        }
+      },
+    });
+  };
+
   const actions = useMemo(() => specControlActions({
     spec,
     revision: latest,
+    revisions,
+    issues,
     role,
     dirty,
     onCreate: create,
     onSubmit: askSubmit,
-    onReview: askReview,
     onApprove: askApprove,
     onReject: () => { setRejectReason(""); setRejectOpen(true); },
     onWithdraw: askWithdraw,
     onNewRevision: askNewRevision,
+    onDelete: askDelete,
     /* ⚠️ เปิดหน้าต่างพิมพ์ด้วย `window.open` ตรง ๆ เหมือนเอกสารชนิดอื่น — เส้นนี้คืน
        **HTML ทั้งหน้า** ไม่ใช่ JSON จึงไม่ผ่าน apiFetch (ข้อยกเว้นเดียวกับที่ AGENTS.md
        เขียนไว้เรื่องเอกสารเดี่ยว) · ฉบับร่างพิมพ์ได้ แต่ยังไม่มีเลขที่เอกสาร */
     onPrint: () => window.open(`/api/products/${id}/spec/document`, "_blank", "noopener"),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [spec, latest, role, dirty, product]);
+  }), [spec, latest, revisions, issues, role, dirty, product]);
 
   const headline = specStatusHeadline(spec, latest);
   const back = { href: `/database/products/${id}`, label: "กลับไปหน้าสินค้า" };

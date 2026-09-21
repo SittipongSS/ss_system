@@ -14,8 +14,8 @@ import { genId } from '@/lib/id';
 import { canViewRecord } from '@/lib/permissions';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
 import {
-  productSpecApproveBlock, productSpecEditBlock, productSpecNewRevisionBlock,
-  productSpecReviewBlock, productSpecSubmitBlock,
+  productSpecApproveBlock, productSpecDeleteBlock, productSpecDeleteScope,
+  productSpecEditBlock, productSpecNewRevisionBlock, productSpecSubmitBlock,
 } from '@/lib/sales/productSpecWorkflow';
 import {
   SPEC_CONTENT_FIELDS, createSpecRevision, latestRevisionOf, loadProductSpec,
@@ -171,25 +171,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const blocked = productSpecSubmitBlock(latest, { role });
     if (blocked) return badRequest(blocked);
     const { error } = await supabase.from('product_spec_revisions').update({
-      status: 'pending_ae',
+      status: 'pending',
       submittedAt: now, submittedBy: user.id || null, submittedByName: user.name || null,
-      // ส่งใหม่หลังถูกตีกลับ = ล้างรอยตีกลับ ไม่ให้ค้างบนใบที่กำลังเดินต่อ
+      // ยื่นใหม่หลังถูกตีกลับ = ล้างรอยตีกลับ ไม่ให้ค้างบนใบที่กำลังเดินต่อ
       rejectedAt: null, rejectedBy: null, rejectedByName: null, rejectionReason: null,
       updatedAt: now,
     }).eq('id', latest.id).eq('status', latest.status);
-    if (error) return fail(`ส่งใบสเปคไม่สำเร็จ: ${error.message}`, 500);
-    return ok(await loadProductSpec(supabase, id));
-  }
-
-  if (action === 'review') {
-    const blocked = productSpecReviewBlock(latest, { role });
-    if (blocked) return badRequest(blocked);
-    const { error } = await supabase.from('product_spec_revisions').update({
-      status: 'pending_ae_supervisor',
-      reviewedAt: now, reviewedBy: user.id || null, reviewedByName: user.name || null,
-      updatedAt: now,
-    }).eq('id', latest.id).eq('status', latest.status);
-    if (error) return fail(`ส่งต่อหัวหน้าไม่สำเร็จ: ${error.message}`, 500);
+    if (error) return fail(`ยื่นใบสเปคไม่สำเร็จ: ${error.message}`, 500);
     return ok(await loadProductSpec(supabase, id));
   }
 
@@ -234,11 +222,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (action === 'reject') {
-    /* ตีกลับได้ทั้ง AE (ขั้นตรวจ) และ AE Sup (ขั้นอนุมัติ) — ติดทั้งสองด่านแปลว่า
-       ไม่ใช่ทั้งคู่ หรือฉบับไม่ได้อยู่ขั้นที่ตีกลับได้ ⇒ ตอบด้วยเหตุของขั้นแรก */
-    const reviewBlock = productSpecReviewBlock(latest, { role });
+    // ตีกลับ = ผู้อนุมัติส่งกลับให้ผู้จัดทำแก้ ⇒ ด่านเดียวกับปุ่มอนุมัติ (0369 ไม่มีขั้นตรวจแล้ว)
     const approveBlock = productSpecApproveBlock(latest, { role });
-    if (reviewBlock && approveBlock) return badRequest(reviewBlock);
+    if (approveBlock) return badRequest(approveBlock);
     const reason = String(body.reason || '').trim();
     if (reason.length < 10) return badRequest('ต้องเขียนเหตุผลที่ตีกลับอย่างน้อย 10 ตัวอักษร');
     if (reason.length > 500) return badRequest('เหตุผลที่ตีกลับยาวเกิน 500 ตัวอักษร');
@@ -253,8 +239,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'withdraw') {
     // ดึงกลับมาแก้ก่อนถูกอนุมัติ — คนละอันกับ "ตีกลับ" (นั่นคือหัวหน้าส่งกลับมา)
-    if (!latest || !['pending_ae', 'pending_ae_supervisor'].includes(latest.status)) {
-      return badRequest('ฉบับนี้ไม่ได้อยู่ระหว่างรอตรวจ/รออนุมัติ');
+    if (!latest || latest.status !== 'pending') {
+      return badRequest('ฉบับนี้ไม่ได้อยู่ระหว่างรออนุมัติ');
     }
     const mine = latest.submittedBy && latest.submittedBy === user.id;
     if (!mine && !['ae_supervisor', 'admin'].includes(role)) {
@@ -262,7 +248,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     const { error } = await supabase.from('product_spec_revisions').update({
       status: 'draft', submittedAt: null, submittedBy: null, submittedByName: null,
-      reviewedAt: null, reviewedBy: null, reviewedByName: null, updatedAt: now,
+      updatedAt: now,
     }).eq('id', latest.id).eq('status', latest.status);
     if (error) return fail(`ดึงกลับไม่สำเร็จ: ${error.message}`, 500);
     return ok(await loadProductSpec(supabase, id));
@@ -308,3 +294,64 @@ async function saveChecklist(supabase, revisionId, rows) {
   if (inserted.error) return { error: `บันทึก checklist ไม่สำเร็จ: ${inserted.error.message}` };
   return {};
 }
+
+/* ── DELETE: ลบใบ/ฉบับ (มติผู้ใช้ 2026-09-21 "ลบได้เหมือนใบเสนอราคา") ──────
+ *
+ * ⚠️ **ไม่มีถังขยะในระบบ** — ทางกู้ทางเดียวคือ `audit_logs.before` (memory:
+ * deleted-data-recovery) ⇒ ก้อน before ต้องมีของครบพอเขียนแถวกลับได้ ทั้งหัวฉบับ
+ * และ checklist ทุกแถว ไม่ใช่แค่ id
+ *
+ * ⚠️ ขอบเขตการลบตัดสินที่ `productSpecDeleteScope` ตัวเดียวกับที่จอใช้ตั้งป้ายปุ่ม —
+ * คิดซ้ำที่นี่เมื่อไร ปุ่มจะบอกอย่างแล้วเซิร์ฟเวอร์ทำอีกอย่าง
+ */
+export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
+  if (!user) return unauthorized();
+  const { id } = await ctx.params;
+  const loaded = await loadProduct(supabase, id, user);
+  if (loaded.error) return fail(loaded.error, 500);
+  if (loaded.missing) return notFound('ไม่พบสินค้าชิ้นนี้');
+
+  const before = await loadProductSpec(supabase, id);
+  if (before.error) return fail(before.error, 500);
+  if (!before.spec) return notFound('สินค้าชิ้นนี้ยังไม่มีใบสเปค');
+
+  const latest = latestRevisionOf(before.revisions);
+  const blocked = productSpecDeleteBlock({
+    spec: before.spec, revision: latest, revisions: before.revisions,
+    issues: before.issues, role: user.role,
+  });
+  if (blocked) return badRequest(blocked);
+
+  const scope = productSpecDeleteScope(before.revisions);
+  /* ลบทั้งใบ = ฉบับทุกฉบับกับ checklist หายตาม CASCADE ของ 0364
+     ลบเฉพาะฉบับ = ฉบับก่อนยังเป็นสเปกที่ใช้อยู่ · `currentRevNo` ไม่ต้องแตะเพราะมัน
+     ชี้ฉบับที่ **อนุมัติแล้ว** ล่าสุด ซึ่งไม่ใช่ฉบับร่างที่กำลังลบ */
+  const res = scope === 'spec'
+    ? await supabase.from('product_specs').delete().eq('id', before.spec.id)
+    : await supabase.from('product_spec_revisions').delete().eq('id', latest.id);
+  if (res.error) {
+    /* FK RESTRICT ของ `product_spec_issues` ตอบเป็นภาษาอังกฤษ — แปลให้คนอ่านรู้ว่า
+       ต้องไปทำอะไร (ด่านข้างบนกันไว้แล้ว นี่คือชั้นที่สองกันแข่งกันกดพร้อมกัน) */
+    const violation = /foreign key|restrict/i.test(res.error.message || '');
+    return fail(violation
+      ? 'ลบไม่ได้เพราะมีเอกสารที่ออกจากฉบับนี้อยู่ — ยกเลิกเอกสารก่อน'
+      : `ลบใบสเปคไม่สำเร็จ: ${res.error.message}`, violation ? 400 : 500);
+  }
+
+  await recordAudit({
+    user,
+    action: 'delete',
+    entityType: 'product_spec',
+    entityId: before.spec.id,
+    before: scope === 'spec'
+      ? { spec: before.spec, revisions: before.revisions, issues: before.issues }
+      : { spec: before.spec, revision: latest },
+    after: null,
+    summary: scope === 'spec'
+      ? `delete FM-SA-04 of ${loaded.product.fgCode}`
+      : `delete FM-SA-04 Rev.${latest.revNo} of ${loaded.product.fgCode}`,
+    request: req,
+  });
+
+  return ok({ deleted: scope, ...(await loadProductSpec(supabase, id)) });
+});
