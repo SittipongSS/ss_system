@@ -108,21 +108,30 @@ export async function assetCountsBySite(supabase, siteIds = []) {
   return counts;
 }
 
-/* จำนวนโซนของหลายไซต์ในคำสั่งเดียว — คู่กับ assetCountsBySite
+/* จำนวนโซน **และจุดติดตั้ง** ของหลายไซต์ในคำสั่งเดียว — คู่กับ assetCountsBySite
    🐞 ที่มา (UAT 2026-08-28): ไทล์เลือกไซต์ในวิซาร์ด "งานเข้าใหม่" โชว์ **"0 โซน" เสมอ**
    เพราะหน้าจอมีโซนเฉพาะของไซต์ที่ "เลือกไปแล้ว" (ensureZones โหลดทีละไซต์) แต่ตัวเลข
    นี้คือสิ่งที่คนใช้ **ตัดสินใจก่อนเลือก** ว่าจะผูกโซนเดิมหรือสร้างใหม่ ⇒ ต้องมาพร้อมรายการ
    ⚠️ นับ **ทุกโซน** ไม่กรอง isActive — โซนที่พักไว้ก็ยังผูกใหม่ได้ และเป็นเหตุผลที่ไม่ควร
-      สร้างโซนชื่อซ้ำ (unique index กันไว้ที่ mig 0297) */
-export async function zoneCountsBySite(supabase, siteIds = []) {
-  const counts = new Map();
-  if (!siteIds.length) return counts;
+      สร้างโซนชื่อซ้ำ (unique index กันไว้ที่ mig 0297)
+   ⭐ **จุดติดตั้งอยู่ใน `spots` ของโซน** (jsonb array · mig 0354) ไม่ใช่ตารางของตัวเอง ⇒ นับที่นี่
+      พร้อมกันเลย · ทะเบียนไซต์ต้องตอบ "ไซต์นี้มีกี่โซน กี่จุด" ได้โดยไม่ต้องกดเข้าไปดูทีละใบ
+   ⚠️ คืน `{ zones, spots }` ต่อไซต์ — ของเดิมคืนตัวเลขโซนเปล่า ๆ · ชื่อเปลี่ยนจาก
+      `zoneCountsBySite` เพื่อให้ผู้เรียกที่ยังอ่านแบบเก่าพังตอน build ไม่ใช่ตอนคนใช้เห็นเลข 0 */
+export async function zoneStatsBySite(supabase, siteIds = []) {
+  const stats = new Map();
+  if (!siteIds.length) return stats;
   /* นับอย่างเดียว ⇒ ลำดับไม่มีความหมาย · ต้องมี `.order()` ที่นิ่งให้ fetchAll ไล่หน้า */
   const data = await fetchAllInChunks(siteIds, (chunk) => supabase
-    .from('service_zones').select('siteId, id').in('siteId', chunk)
+    .from('service_zones').select('siteId, id, spots').in('siteId', chunk)
     .order('id', { ascending: true }));
-  for (const row of data || []) counts.set(row.siteId, (counts.get(row.siteId) || 0) + 1);
-  return counts;
+  for (const row of data || []) {
+    const entry = stats.get(row.siteId) || { zones: 0, spots: 0 };
+    entry.zones += 1;
+    entry.spots += Array.isArray(row.spots) ? row.spots.length : 0;
+    stats.set(row.siteId, entry);
+  }
+  return stats;
 }
 
 /* รหัสลูกค้า (AR) ของหลายไซต์ในคำสั่งเดียว — คอลัมน์ลูกค้าในทะเบียนไซต์ใช้ทรงเดียวกับ
@@ -213,7 +222,7 @@ export async function loadAllAssets(supabase) {
     .from('service_assets').select('*').order('id', { ascending: true }));
 
   const siteIds = [...new Set((assets || []).map((a) => a.siteId).filter(Boolean))];
-  if (!siteIds.length) return { assets: assets || [], sites: [] };
+  if (!siteIds.length) return { assets: assets || [], sites: [], zones: [] };
 
   /* ไซต์มีไม่กี่ร้อยใบและ `.in()` ก้อนเดียวพอ — แต่ห่อไว้ด้วยเพื่อไม่ให้เป็นหนี้
      ก้อนใหม่ตอนไซต์โตข้ามพัน (ทะเบียนไซต์ยังไม่อยู่ในเพดาน rowcap) */
@@ -222,7 +231,16 @@ export async function loadAllAssets(supabase) {
     .select('id, code, name, kind, customerId, customerName, routeZone, province')
     .in('id', chunk).order('id', { ascending: true }), { sort: (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) });
 
-  return { assets: assets || [], sites: sites || [] };
+  /* ⭐ โซนของเครื่องมาด้วยเสมอ — ทะเบียนเครื่องต้องตอบ "ตัวนี้อยู่โซนไหน" ไม่ใช่แค่ "ไซต์ไหน"
+     (ไซต์เดียวมีได้ถึง 9 โซน · ช่างที่ออกหน้างานต้องรู้ว่าเดินไปชั้นไหน)
+     ⚠️ ไล่จาก **โซนของไซต์เหล่านั้น** ไม่ใช่จาก zoneId ของเครื่อง — เครื่องที่ยังไม่ระบุโซน
+        (59 ตัว ณ 21/09) ต้องไม่ทำให้ลิสต์โซนขาด และตัวกรองโซนบนจอยังต้องกางครบทุกโซน */
+  const zones = await fetchAllInChunks(siteIds, (chunk) => supabase
+    .from('service_zones').select('id, code, name, siteId, building, floor')
+    .in('siteId', chunk).order('id', { ascending: true }),
+  { sort: (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) });
+
+  return { assets: assets || [], sites: sites || [], zones: zones || [] };
 }
 
 // ลูกค้าที่ไซต์ผูกอยู่ต้องมีจริง — ผูกไปยัง id มั่วแล้วไซต์จะกลายเป็นเด็กกำพร้า

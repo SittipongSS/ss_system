@@ -13,7 +13,7 @@ import { normalizeSiteInput } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
 import { checkSiteReferences } from '@/lib/service/siteReferences';
 import {
-  assetCountsBySite, customerArCodesById, findCustomer, loadSites, requireService, zoneCountsBySite,
+  assetCountsBySite, customerArCodesById, findCustomer, loadSites, requireService, zoneStatsBySite,
 } from '@/lib/service/sitesRepo';
 import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
@@ -40,9 +40,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     });
     const siteIds = sites.map((s) => s.id);
     // นับเครื่อง+โซน+รหัสลูกค้ารวดเดียว ไม่ยิงรายไซต์ (ไซต์ 200 แห่ง = 200 คำขอ)
-    const [counts, zoneCounts, arByCustomer] = await Promise.all([
+    const [counts, zoneStats, arByCustomer] = await Promise.all([
       assetCountsBySite(supabase, siteIds),
-      zoneCountsBySite(supabase, siteIds),
+      zoneStatsBySite(supabase, siteIds),
       customerArCodesById(supabase, sites.map((s) => s.customerId)),
     ]);
 
@@ -51,7 +51,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         ...site,
         assetCount: counts.get(site.id)?.total || 0,
         activeAssetCount: counts.get(site.id)?.active || 0,
-        zoneCount: zoneCounts.get(site.id) || 0,
+        zoneCount: zoneStats.get(site.id)?.zones || 0,
+        /* ⭐ จุดติดตั้ง = ผลรวม `spots` ของทุกโซนในไซต์ (mig 0354) — ทะเบียนต้องตอบ
+           "ไซต์นี้มีกี่จุด" ได้โดยไม่ต้องกดเข้าไปนับเอง */
+        pointCount: zoneStats.get(site.id)?.spots || 0,
         customerArCode: arByCustomer.get(site.customerId) ?? null,
       })));
     }
@@ -68,7 +71,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         ...site,
         assetCount: counts.get(site.id)?.total || 0,
         activeAssetCount: counts.get(site.id)?.active || 0,
-        zoneCount: zoneCounts.get(site.id) || 0,
+        zoneCount: zoneStats.get(site.id)?.zones || 0,
+        pointCount: zoneStats.get(site.id)?.spots || 0,
         customerArCode: arByCustomer.get(site.customerId) ?? null,
         lastRefillDate: ctx.lastRefillDate,
         nextVisitDate: ctx.nextVisitDate,
