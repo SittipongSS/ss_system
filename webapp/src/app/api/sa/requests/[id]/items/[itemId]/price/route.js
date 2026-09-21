@@ -19,6 +19,7 @@ import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/sta
 import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { canPriceRow } from '@/lib/requests/rowStage';
+import { rowPriceTarget } from '@/lib/requests/rowPriceTarget';
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
 import { findRequest, priceRegistryEntry } from '@/lib/materialPricesAdmin';
 import { findFormula, findScent } from '@/lib/master/scentFormulaAdmin';
@@ -77,16 +78,13 @@ export async function POST(request, { params }) {
   // ที่ผลิตขึ้นใหม่ — กลิ่นมีอยู่ก่อนแล้วบนแถว) ⇒ กดใส่ราคาแล้วได้ 400 ตลอดกาล
   // ⇒ ลูกค้าคอนเฟิร์มแล้วแถวค้างที่ `awaiting_price` **ถาวร ปิดใบไม่ได้**
   //
-  //   พัฒนากลิ่น → กลิ่นที่เพิ่งส่ง = หัวน้ำหอม `RM_F` ต่อกิโล
-  //   พัฒนาสูตร  → สูตรที่เพิ่งส่ง  = เนื้อสาร  `RM_FB` ต่อกิโล
+  //   แถวผูกกลิ่นอย่างเดียว → หัวน้ำหอม `RM_F` ต่อกิโล
+  //   แถวผูกสูตร (พัฒนาสูตร · พัฒนากลิ่นที่ส่งเป็นสินค้า ม-148) → เบสที่ใส่กลิ่น `RM_FB` ต่อกิโล
   //
+  // ⭐ ตัวตัดสินอยู่ที่ `rowPriceTarget` — โมดัลใส่ราคาถามตัวเดียวกันเพื่อบอกว่ากำลังใส่ F หรือ FB
   // ⚠️ **ไม่ใช่ราคาต่อชิ้นของผลิตภัณฑ์** — ราคาสินค้าสำเร็จรูปต้องรวมบรรจุภัณฑ์
   // และค่าผลิต ซึ่งเป็นงานของใบขอราคาผลิต ไม่ใช่ของ RD
-  const priced = row.producedFormulaId
-    ? { kind: 'RM_FB', stampColumn: 'formulaId', id: row.producedFormulaId }
-    : row.producedScentId
-      ? { kind: 'RM_F', stampColumn: 'scentId', id: row.producedScentId }
-      : null;
+  const priced = rowPriceTarget(row);
   if (!priced) {
     return Response.json({
       error: 'รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน — ใส่ราคาไม่ได้',
@@ -146,14 +144,14 @@ export async function POST(request, { params }) {
       entityType: 'dept_request',
       entityId: id,
       kind: 'quoted',
-      body: `ใส่ราคา ${source.code || source.name} — ${fmtNumber(price)} ฿/กก.`,
+      body: `ใส่ราคา ${priced.short} ${source.code || source.name} — ${fmtNumber(price)} ฿/กก.`,
       user,
     }).catch(() => {});
 
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: row, after: { ...row, answerStatus: 'done', answeredRevisionId: revision.id },
-      summary: `ใส่ราคา ${source.code || source.name} (${before.docNo || id})`,
+      summary: `ใส่ราคา ${priced.short} ${source.code || source.name} (${before.docNo || id})`,
       request,
     });
 

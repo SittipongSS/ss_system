@@ -56,3 +56,6 @@
 }
 
 .muted { color: var(--text-3); }
+
+/* ม-148 — คำเตือนหัวโมดัลราคา F (กลิ่นที่มีสูตร) เว้นจากช่องราคา */
+.priceNotice { margin-bottom: var(--space-3); }

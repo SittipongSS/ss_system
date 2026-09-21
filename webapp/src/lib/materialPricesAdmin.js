@@ -126,6 +126,42 @@ export async function ensureMaterial(supabase, input = {}) {
   return { material: { ...data, revisions: [] }, created: true };
 }
 
+// ── วัสดุของกลิ่น/สูตรตัวหนึ่ง — หาตัวเดิมก่อน ไม่เจอค่อยสร้าง ─────────────────
+//
+// 🐞 **ใส่ราคา FB ครั้งที่สองของสูตรเดียวกันพัง** (พบ 2026-09-22 ตอนทำ ม-148) — เดิมเรียก
+// `ensureMaterial` โดยไม่ส่ง `formulaId` แต่ตัวตนของวัสดุ **รวม formulaId** (mig 0181)
+// ⇒ ครั้งแรกสร้างวัสดุ (formulaId ว่าง) แล้วประทับ formulaId · ครั้งที่สองคีย์ที่หา
+// (formulaId ว่าง) ไม่ตรงตัวที่ประทับแล้ว ⇒ สร้างวัสดุตัวใหม่ แล้วประทับ formulaId ชน
+// `material_prices_identity_uk` (23505) · ทุกครั้งถัดไปเจอตัวกำพร้าแล้วพังแบบเดิม
+// ราคา F ไม่โดนเพราะ scentId ไม่อยู่ในตัวตน · บน prod ยังไม่มีใครเจอเพราะ FB มีตัวเดียว
+//
+// ⇒ ลำดับการหา:
+//   1) ตัวที่ **ประทับ pointer นี้แล้ว** = วัสดุของกลิ่น/สูตรนี้ (ไม่ขึ้นกับชื่อ — ทะเบียนแก้ชื่อได้)
+//   2) ตัวเก่าที่ **ยังไม่ประทับ** ชื่อ+ลูกค้าตรง (ราคาจากยุคคำร้องขอราคา) → รับมาประทับ
+//      (พฤติกรรมเดิมของราคาแรก — ประวัติราคาเก่าไม่หลุด)
+//   3) สร้างใหม่ผ่าน `ensureMaterial` — สูตรใส่ `formulaId` ตั้งแต่เกิดให้ตรงตัวตน
+async function registryEntryMaterial(supabase, { kind, stampColumn, source, user }) {
+  const candidates = await loadMaterials(supabase, {
+    status: null, kind, customerId: source.customerId ?? null,
+  });
+  const stamped = candidates.find((m) => m[stampColumn] === source.id);
+  if (stamped) return stamped;
+  const unstampedKey = materialIdentityKey({
+    kind, label: source.name, formulaId: null, customerId: source.customerId,
+  });
+  const legacy = candidates.find((m) => !m[stampColumn] && materialIdentityKey(m) === unstampedKey);
+  if (legacy) return legacy;
+  const { material } = await ensureMaterial(supabase, {
+    kind,
+    label: source.name,
+    customerId: source.customerId,
+    customerName: source.customerName,
+    formulaId: stampColumn === 'formulaId' ? source.id : null,
+    user,
+  });
+  return material;
+}
+
 // ── ใส่ราคา F/FB ให้กลิ่น/สูตรในทะเบียน ─────────────────────────────────
 //
 // ⭐ **ทางเข้าราคา RM มีกี่ทาง ก็ต้องผ่านก้อนนี้ก้อนเดียว** — ตอนนี้มีสองทาง:
@@ -149,13 +185,7 @@ export async function priceRegistryEntry(supabase, {
   askItemId = null,
   user = null,
 }) {
-  const { material } = await ensureMaterial(supabase, {
-    kind,
-    label: source.name,
-    customerId: source.customerId,
-    customerName: source.customerName,
-    user,
-  });
+  const material = await registryEntryMaterial(supabase, { kind, stampColumn, source, user });
 
   if (!material[stampColumn]) {
     const { error: stampError } = await supabase.from('material_prices')

@@ -14,6 +14,7 @@ import { hopLabel } from '@/lib/requests/hops';
 import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
 import { reworkBriefOf } from '@/lib/requests/rework';
 import { briefPerfumer } from '@/lib/requests/briefPerfumer';
+import { isDeliveredAsProduct } from '@/lib/requests/deliveredCategory';
 
 // ผลลัพธ์จากลูกค้า → ป้าย + โทน · ยังไม่ตอบ = ยังไม่ถึงตาลูกค้า ไม่ใช่ลูกค้าเงียบ
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
@@ -36,6 +37,13 @@ function directionRow(item, all = []) {
        (ข้อมูลก่อนมีลิงก์) และตอนเขียนประวัติว่าชื่อเปลี่ยนจากอะไร
        ⚠️ null = แถวนี้ไม่มีตัวตนในทะเบียน ไม่ใช่ "ทะเบียนชื่อว่าง" */
     registry: item.refScent ? { ...item.refScent, kind: 'scent' } : null,
+    /* ⭐ **ส่งเป็นอะไร** (ม-148) — หัวน้ำหอม หรือสินค้าหมวดไหน + สูตรที่เกิดพร้อมกลิ่น (ค่าสดจากทะเบียน)
+       ⚠️ null = แถวที่ส่งก่อน ม-148 (ไม่มีใครบันทึกไว้) ไม่ใช่ "หัวน้ำหอม" — ห้ามเดา */
+    delivered: item.categoryCode ? {
+      categoryCode: item.categoryCode,
+      product: isDeliveredAsProduct(item.categoryCode),
+      formula: item.refFormula ? { ...item.refFormula, kind: 'formula' } : null,
+    } : null,
     // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
     rework: !!item.derivedFromItemId,
     /* ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)

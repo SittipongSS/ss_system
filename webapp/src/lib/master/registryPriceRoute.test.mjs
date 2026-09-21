@@ -103,6 +103,60 @@ test('กลิ่นที่มีวัสดุผูกแล้ว: ต่
   assert.equal(supabase.calls.rpcs[0].args.p_material_id, 'MAT-1');
 });
 
+// ── 🐞 ราคา FB ครั้งที่สองของสูตรเดียวกัน (พบ 2026-09-22 · ม-148) ──────────────
+// เดิม `ensureMaterial` ถูกเรียกโดยไม่มี formulaId ทั้งที่ตัวตนวัสดุรวม formulaId (mig 0181)
+// ⇒ ครั้งที่สองหาตัวเดิมไม่เจอ → สร้างตัวกำพร้า → ประทับ formulaId ชน unique (23505)
+const FORMULA = {
+  id: 'FML-1', code: 'PF0020401-B', name: 'Secret Valley #1',
+  customerId: 'CUS-1', customerName: 'บริษัท อาเตโพเล่ จำกัด', status: 'active',
+};
+const materialInserts = (supabase) => supabase.calls.inserts.filter((i) => i.table === 'material_prices');
+
+test('🐞 สูตรใส่ราคา FB สองครั้ง: วัสดุตัวเดียว ครั้งที่สองต่อ rev บนตัวเดิม', async () => {
+  const supabase = fakeSupabase({ materials: [] });
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 900, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 1);
+  // เกิดพร้อม formulaId เลย — ตรงตัวตน ไม่ต้องประทับทีหลัง
+  assert.equal(materialInserts(supabase)[0].row.formulaId, 'FML-1');
+  assert.equal(supabase.calls.updates.filter((u) => u.patch.formulaId).length, 0);
+
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 950, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 1, 'ห้ามเกิดวัสดุตัวที่สอง');
+  assert.equal(supabase.calls.rpcs.length, 2);
+  assert.equal(supabase.calls.rpcs[1].args.p_material_id, materialInserts(supabase)[0].row.id);
+});
+
+test('วัสดุ FB ที่ประทับสูตรแล้วแต่ชื่อเก่า (สูตรถูกแก้ชื่อ): ยังต่อ rev บนตัวเดิม', async () => {
+  const existing = {
+    id: 'MAT-FB', kind: 'RM_FB', label: 'ชื่อเดิมก่อนแก้',
+    customerId: 'CUS-1', formulaId: 'FML-1', status: 'active', revisions: [],
+  };
+  const supabase = fakeSupabase({ materials: [existing] });
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 1000, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 0);
+  assert.equal(supabase.calls.rpcs[0].args.p_material_id, 'MAT-FB');
+});
+
+test('วัสดุ FB เก่าที่ยังไม่ประทับสูตร ชื่อ+ลูกค้าตรง: รับมาประทับ ไม่สร้างใหม่', async () => {
+  const legacy = {
+    id: 'MAT-OLD', kind: 'RM_FB', label: 'Secret Valley #1',
+    customerId: 'CUS-1', formulaId: null, status: 'active', revisions: [],
+  };
+  const supabase = fakeSupabase({ materials: [legacy] });
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 1000, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 0);
+  assert.equal(supabase.calls.updates.find((u) => u.patch.formulaId)?.patch.formulaId, 'FML-1');
+  assert.equal(supabase.calls.rpcs[0].args.p_material_id, 'MAT-OLD');
+});
+
 // ── ด่านของ handler (สิทธิ์ · สถานะ · ราคา) ─────────────────────────────
 const handler = makeRegistryPriceHandler({
   kind: 'RM_F',

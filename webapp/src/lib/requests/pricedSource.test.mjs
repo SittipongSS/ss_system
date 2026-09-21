@@ -1,22 +1,43 @@
-// ── ขั้นราคาเลือกชนิดวัสดุตามสายที่เดินมา (Q38 ก · 2026-08-07) ────────────
+// ── ขั้นราคาเลือกชนิดวัสดุตามสิ่งที่แถวผูก (Q38 ก · 2026-08-07 · ม-148 2026-09-22) ─────
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { rowPriceTarget } from './rowPriceTarget.js';
 
 const SRC = readFileSync('src/app/api/sa/requests/[id]/items/[itemId]/price/route.js', 'utf8');
 
-test('🐞 แถวพัฒนาสูตรต้องใส่ราคาได้ — ไม่ใช่ค้างที่ awaiting_price ถาวร', () => {
+test('🐞 แถวพัฒนาสูตรต้องใส่ราคาได้ — สูตร = FB ประทับ formulaId', () => {
   // เดิมบังคับ `producedScentId` อย่างเดียว ⇒ แถวที่ผูก `producedFormulaId`
   // (พัฒนาสูตร) ได้ 400 ตลอดกาล ⇒ ลูกค้าคอนเฟิร์มแล้วปิดใบไม่ได้
-  assert.ok(SRC.includes('row.producedFormulaId'), 'ต้องรู้จักแถวที่ผูกสูตร');
-  assert.ok(SRC.includes("kind: 'RM_FB'"), 'สูตร = เนื้อสาร FB');
-  assert.ok(SRC.includes("kind: 'RM_F'"), 'กลิ่น = หัวน้ำหอม F');
+  const t = rowPriceTarget({ lineKind: 'product_dev', producedFormulaId: 'FML-1' });
+  assert.equal(t.kind, 'RM_FB');
+  assert.equal(t.stampColumn, 'formulaId');
+  assert.equal(t.id, 'FML-1');
+  assert.equal(t.short, 'FB');
 });
 
-test('ประทับตัวตนกลับทะเบียนคนละคอลัมน์ตามชนิด', () => {
-  // ⚠️ `material_prices.formulaId` มีมาตั้งแต่ mig 0171 แต่ไม่เคยมีใครเขียนลงไป
-  assert.ok(SRC.includes("stampColumn: 'formulaId'"));
-  assert.ok(SRC.includes("stampColumn: 'scentId'"));
+test('แถวพัฒนากลิ่นที่ส่งเป็นหัวน้ำหอม = F ประทับ scentId', () => {
+  const t = rowPriceTarget({ lineKind: 'scent_dev', producedScentId: 'SCT-1' });
+  assert.equal(t.kind, 'RM_F');
+  assert.equal(t.stampColumn, 'scentId');
+  assert.equal(t.id, 'SCT-1');
+});
+
+test('⭐ ม-148 พัฒนากลิ่นที่ส่งเป็นสินค้า (มีทั้งกลิ่นและสูตร) = FB บนสูตร ไม่ใช่ F บนกลิ่น', () => {
+  // 🐞 SB-26080011: ส่งเป็น EDP แต่ราคาเข้าเป็น RM_F ของกลิ่น
+  const t = rowPriceTarget({ lineKind: 'scent_dev', producedScentId: 'SCT-1', producedFormulaId: 'FML-9' });
+  assert.equal(t.kind, 'RM_FB');
+  assert.equal(t.id, 'FML-9');
+});
+
+test('แถวที่ยังไม่ผูกทะเบียน = null (route ตอบ 400)', () => {
+  assert.equal(rowPriceTarget({ lineKind: 'scent_dev' }), null);
+  assert.equal(rowPriceTarget(null), null);
+});
+
+test('route ถามตัวตัดสินกลาง ไม่คิดชนิดราคาเอง', () => {
+  assert.ok(SRC.includes('rowPriceTarget(row)'));
+  assert.ok(!/kind: 'RM_F'/.test(SRC), 'ชนิดราคาต้องไม่ถูกเขียนซ้ำใน route');
 });
 
 test('🔴 ห้ามเหลือตัวแปร `scent` ที่ไม่มีอยู่แล้วในข้อความ audit/เธรด', () => {

@@ -23,7 +23,8 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { CustomerSay, RowDueCell, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
-import RegistryCell from "./RegistryCell";
+import Link from "next/link";
+import RegistryCell, { registryHref } from "./RegistryCell";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { Pencil, Trash2 } from "lucide-react";
 import styles from "./briefBoard.module.css";
@@ -165,6 +166,24 @@ export default function BriefBoard({
                               extra={(
                                 <>
                                   {d.rework && <span className="ui-badge">รอบแก้</span>}
+                                  {/* ⭐ ส่งเป็นอะไร (ม-148) — ราคาที่ตามมาเป็น F หรือ FB ขึ้นกับบรรทัดนี้ */}
+                                  {d.delivered && (
+                                    <div className={styles.note}>
+                                      {d.delivered.product ? (
+                                        <>
+                                          ส่งเป็นสินค้า {d.delivered.categoryCode}
+                                          {d.delivered.formula && (
+                                            <>
+                                              {" · สูตร "}
+                                              <Link href={registryHref(d.delivered.formula)}>
+                                                {d.delivered.formula.code || d.delivered.formula.name}
+                                              </Link>
+                                            </>
+                                          )}
+                                        </>
+                                      ) : "ส่งเป็นหัวน้ำหอม"}
+                                    </div>
+                                  )}
                                   {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์
                                       (มติผู้ใช้ 2026-08-25) — คอลัมน์ที่ว่าง 97% กินที่
                                       ของสิ่งที่มีค่าทุกแถว · ยังไม่ถึงตาลูกค้า = ไม่มีชิป

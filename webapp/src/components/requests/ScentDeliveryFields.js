@@ -10,8 +10,14 @@ import { notifyToast } from "@/components/ui/Toast";
 import PendingFiles from "@/components/ui/PendingFiles";
 import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
+import OptionTiles from "@/components/ui/OptionTiles";
+import FormZone from "@/components/ui/FormZone";
 import ScentForm, { emptyScentForm } from "@/components/database/ScentForm";
+import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { businessDate } from "@/lib/businessDate";
+import {
+  DELIVERED_FRAGRANCE_CODE, deliveredAsOf, deliveryProductCategories, isDeliveredAsProduct,
+} from "@/lib/requests/deliveredCategory";
 import styles from "./scentDelivery.module.css";
 
 // ⭐ **สองวัน ไม่ใช่วันเดียว** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224):
@@ -29,24 +35,41 @@ import styles from "./scentDelivery.module.css";
    (บรีฟที่ตอบ · รายละเอียด direction · ไฟล์ที่ค้างรออัปหลังแถวเกิด)
    ⚠️ `producedAt` ตั้งต้นเป็นวันนี้ ต่างจากทะเบียนที่เว้นว่าง — ที่นี่ RD เพิ่งผลิตเสร็จ
    ส่วนทะเบียนมีไว้ลงของเก่าที่ไม่มีใครจำวันได้ */
-export const emptyDeliveryRow = () => ({
+/* ⭐ **ส่งเป็นอะไร** (ม-148 · มติผู้ใช้ 2026-09-22) — `categoryCode` ของแถว: '02-020' = หัวน้ำหอม ·
+   หมวดอื่น = สินค้า (มีก้อน `formula` ชื่อช่องชุดเดียวกับ FormulaForm) · ว่าง = ยังไม่เลือก (ส่งไม่ได้)
+   `categoryCode` ตั้งต้นมาจาก PDR ข้อ 1.11 เมื่อใบขอไว้หมวดเดียว (`defaultDeliveredCategory` · ผู้เรียกคิดให้)
+   `_as` = ทางที่กดบนแผ่นเลือก — จำไว้ช่วงที่กด "สินค้า" แล้วยังไม่ได้เลือกหมวด (ของฟอร์มล้วน) */
+export const emptyDeliveryRow = ({ categoryCode = "" } = {}) => ({
   scent: { ...emptyScentForm(), producedAt: businessDate() },
-  spec: "", briefId: "", targetItemId: "", _files: [],
+  categoryCode,
+  // `_categoryCode` = หมวดสินค้าที่เลือกล่าสุด — สลับไปหัวน้ำหอมแล้วกลับมา ไม่ต้องเลือกหมวดใหม่
+  formula: { ...emptyFormulaForm(), _categoryCode: isDeliveredAsProduct(categoryCode) ? categoryCode : "" },
+  spec: "", briefId: "", targetItemId: "", _files: [], _as: "",
 });
 
 // ⭐ ช่องของ **รอบแก้** — แถวรออยู่แล้ว บรีฟกับกลิ่นต้นทางระบบรู้แล้ว ⇒ ไม่ถามซ้ำ
 // (ค่าสองตัวนั้นถูก server เขียนทับด้วยของจริงอยู่ดี ดู lib/requests/rework.js)
+// ⭐ ม-148: "ส่งเป็น" ยกจากรอบก่อนเป็นค่าตั้งต้น (เปลี่ยนได้) · สูตรต้นทางยกจากรอบก่อนแล้วล็อก
 export const reworkDeliveryRow = (slot) => {
-  const base = emptyDeliveryRow();
+  const base = emptyDeliveryRow({ categoryCode: slot.categoryCode || "" });
   return {
     ...base,
     scent: { ...base.scent, derivedFromScentId: slot.derivedFromScentId || "" },
+    formula: { ...base.formula, derivedFromFormulaId: slot.parentFormulaId || "" },
     targetItemId: slot.targetItemId,
     briefId: slot.briefId || "",
     _sourceLabel: slot.sourceLabel || "",
     _customerNote: slot.customerNote || "",
+    _parentFormulaId: slot.parentFormulaId || "",
   };
 };
+
+// id หลอกของ "กลิ่นในแท็บนี้" — ช่องกลิ่นของฟอร์มสูตรต้องโชว์ว่าผูกกับกลิ่นตัวไหนทั้งที่กลิ่นยังไม่เกิด
+// (กติกา lock ไม่ hide) · ไม่ออกไปถึง server: ก้อน `formula` ที่ส่งไปไม่มี scentId (server ใช้กลิ่นที่เพิ่งสร้าง)
+const PENDING_SCENT_ID = "__delivery_scent__";
+
+// ของที่ส่งเข้า FormulaForm ไม่ต้องติดกลับมาในก้อน `formula` — ลูกค้า/กลิ่น/หมวดเป็นของแถว
+const formulaOnly = ({ customerId: _c, scentId: _s, categoryCode: _k, ...rest }) => rest;
 
 const norm = (v) => String(v ?? "").trim().toLowerCase();
 
@@ -68,6 +91,8 @@ export function codeConflict(code, index, rows, registryCodes) {
 export default function ScentDeliveryFields({
   rows, onChange, scents = [], customers = [], customerId = null,
   disabled = false, briefs = [], active = 0,
+  // ม-148 — ทะเบียนหมวดสินค้า (ตัวเลือกหมวดเมื่อส่งเป็นสินค้า) · ทะเบียนสูตร (ตัวเลือก "แก้มาจากสูตร")
+  productTypes = [], formulas = [],
 }) {
   // ⭐ **บรีฟก้อนเดียว = ไม่ต้องถาม** (มติผู้ใช้) — ช่องที่มีตัวเลือกเดียวแต่ยังบังคับ
   // ให้กด คือขั้นตอนที่ไม่ได้ตัดสินใจอะไร · server เลือกให้เองอยู่แล้ว
@@ -96,6 +121,36 @@ export default function ScentDeliveryFields({
               </p>
             )}
 
+            {/* ⭐ **ส่งเป็นอะไร** (ม-148) — ถามก่อนทุกอย่าง เพราะตัดสินว่าจะมีสูตรเกิดด้วยไหม และราคาที่ใส่
+                ทีหลังเป็น F (กลิ่น) หรือ FB (สูตร) · แผ่นเลือกสองทาง ไม่ใช่ดรอปดาวน์ (ชุดเล็กตายตัว) */}
+            <div className={styles.deliveredAs}>
+            <FormZone title="ส่งเป็น" note="ตัดสินว่าราคาที่ใส่ทีหลังเป็น F หรือ FB" />
+            <OptionTiles
+              ariaLabel="ส่งเป็น"
+              disabled={disabled}
+              value={deliveredAsOf(row.categoryCode, { productPending: row._as === "product" })}
+              onChange={(as) => patch(i, as === "fragrance"
+                ? { categoryCode: DELIVERED_FRAGRANCE_CODE, _as: as }
+                : {
+                  // กลับมากด "สินค้า" = คืนหมวดสินค้าที่เคยเลือกไว้ในแท็บนี้ (ถ้ามี) ไม่ใช่ล้างทิ้ง
+                  categoryCode: row.formula?._categoryCode || "",
+                  _as: as,
+                })}
+              options={[
+                {
+                  value: "fragrance",
+                  label: "หัวน้ำหอม (Fragrance Oil)",
+                  description: "กลิ่นเข้าทะเบียน · ราคาที่ใส่ทีหลังเป็น F",
+                },
+                {
+                  value: "product",
+                  label: "สินค้า",
+                  description: "กลิ่น + สูตรหมวดที่เลือก · ราคาเป็น FB (เบสที่ใส่กลิ่น)",
+                },
+              ]}
+            />
+            </div>
+
             {/* ⭐ **ฟอร์มเดียวกับหน้าทะเบียนกลิ่น** — ลูกค้า (และกลิ่นต้นทางของรอบแก้)
                 เป็นของที่คำร้องรู้แล้ว จึงเทาไว้ให้อ่านได้ ไม่ซ่อน
                 ⚠️ วันส่งลูกค้ากับสถานะไม่ใช่คำถามของจังหวะนี้ (ม-92 · ม-66): ของเพิ่ง
@@ -115,6 +170,47 @@ export default function ScentDeliveryFields({
               historyNote="วันผลิตจริงของกลิ่น — วันส่งมอบระบบประทับให้ตอนกดส่ง"
               onChange={(scent) => patch(i, { scent })}
             />
+
+            {/* ⭐ **สูตรที่เกิดพร้อมกลิ่นนี้** (ม-148) — ฟอร์มเดียวกับทะเบียนสูตร (กติกา "ฟอร์มส่งงาน = ฟอร์ม
+                ทะเบียน") · ลูกค้ากับกลิ่นเทาไว้ให้เห็นว่าผูกกับอะไร · หมวดเลือกที่ช่องในฟอร์ม (เฉพาะกลุ่ม 01/02
+                ที่มีสูตร) · รอบแก้ที่รอบก่อนส่งสูตรไว้: "แก้มาจากสูตร" ล็อกที่สูตรนั้น */}
+            {deliveredAsOf(row.categoryCode, { productPending: row._as === "product" }) === "product" && (
+              <section className={styles.formulaBlock} aria-label="สูตรที่เกิดพร้อมกลิ่นนี้">
+                {/* หัวของกรอบ ไม่ใช่ FormZone — FormulaForm มีโซน "ตัวตนสูตร" ของมันเองต่อทันที
+                    (หัวโซนสองชั้นติดกันอ่านเป็นหัวซ้ำ · เจอตอนเปิดจอจริง) */}
+                <h3 className={styles.blockTitle}>สูตรที่เกิดพร้อมกลิ่นนี้</h3>
+                <p className={styles.blockNote}>
+                  หมวด × กลิ่นในแท็บนี้ · สถานะกำลังพัฒนาจนลูกค้าคอนเฟิร์ม · ราคาที่ใส่ทีหลังเป็น FB ของสูตรนี้
+                </p>
+                <FormulaForm
+                  mode="create" canSetCode codeRequired
+                  value={{
+                    ...row.formula,
+                    customerId: customerId || "",
+                    scentId: PENDING_SCENT_ID,
+                    categoryCode: row.categoryCode || "",
+                  }}
+                  scents={[{
+                    id: PENDING_SCENT_ID,
+                    name: String(row.scent?.name ?? "").trim() || "กลิ่นในแท็บนี้",
+                    code: String(row.scent?.code ?? "").trim() || null,
+                    customerId: customerId || "",
+                  }]}
+                  formulas={formulas}
+                  customers={customers}
+                  categories={deliveryProductCategories(productTypes, row.categoryCode)}
+                  disabled={disabled}
+                  locked={row._parentFormulaId
+                    ? ["customerId", "scentId", "derivedFromFormulaId"] : ["customerId", "scentId"]}
+                  lockedNote="ยกมาจากคำร้อง / กลิ่นในแท็บนี้ — แก้ที่นี่ไม่ได้"
+                  onChange={(next) => patch(i, {
+                    formula: { ...formulaOnly(next), _categoryCode: next.categoryCode || "" },
+                    categoryCode: next.categoryCode || "",
+                    _as: "product",
+                  })}
+                />
+              </section>
+            )}
 
             {/* ── ของ **แถวคำร้อง** ไม่ใช่ของตัวกลิ่น ─────────────────────── */}
             <div className="form-grid">

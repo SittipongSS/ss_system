@@ -379,6 +379,18 @@ export async function PATCH(request, { params }) {
       }).eq('id', row.producedScentId).eq('status', 'developing');
       if (scentError) console.error('[requests] เปลี่ยนสถานะกลิ่นเป็น active ไม่สำเร็จ:', scentError.message);
     }
+    /* ⭐ สูตรที่เกิดพร้อมกลิ่น (พัฒนากลิ่นที่ส่งเป็นสินค้า · ม-148) เดินคู่กลิ่น — เกิดมา developing
+       ลูกค้าคอนเฟิร์มแล้วใช้งานได้พร้อมกัน · ขั้นใส่ราคา FB ที่ตามมาก็ต้องการสูตรที่ใช้งานได้
+       ⚠️ เฉพาะแถวพัฒนากลิ่น — สูตรของพัฒนาสูตรเกิดมา active อยู่แล้ว และแถว "ผูกของเดิม" (bind) อาจผูก
+       สูตรที่คนอื่นตั้งใจพักไว้ ห้ามปลุกให้เอง */
+    if (hop === 'outcome' && body.outcome === 'confirmed'
+        && row.lineKind === 'scent_dev' && row.producedFormulaId) {
+      const { error: formulaError } = await supabase.from('formulas').update({
+        status: 'active',
+        updatedAt: nowIso,
+      }).eq('id', row.producedFormulaId).eq('status', 'developing');
+      if (formulaError) console.error('[requests] เปลี่ยนสถานะสูตรเป็น active ไม่สำเร็จ:', formulaError.message);
+    }
 
     // ── วันส่งลูกค้าไหลกลับขึ้นทะเบียนกลิ่น (ม-66 · mig 0224) ─────────────
     //
@@ -613,7 +625,7 @@ export async function DELETE(request, { params }) {
     // ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามเมื่อไม่มีใครอ้างต่อแล้ว
     let registryRemoved = null;
     let registryKept = null;
-    const owned = reviseUndo ? null : registryOwnedByRow(row);
+    const owned = reviseUndo ? [] : registryOwnedByRow(row);
     let restoredParent = null;
     let undoWarning = null;
     if (reviseUndo) {
@@ -654,24 +666,33 @@ export async function DELETE(request, { params }) {
         }
       }
     }
-    if (owned) {
-      const table = owned.kind === 'formula' ? 'formulas' : 'scents';
+    /* ⭐ แถวพัฒนากลิ่นที่ส่งเป็นสินค้า (ม-148) สร้างสองอย่าง — `registryOwnedByRow` เรียงสูตรก่อนกลิ่น
+       ⚠️ **หยุดที่ตัวแรกที่เก็บไว้** — สูตรลบไม่ได้แล้วยังลบกลิ่นต่อ = ฐานยอม (formulas.scentId SET NULL)
+       แล้วได้สูตรไร้กลิ่นค้างทะเบียน · กลิ่นที่ถูกเก็บเพราะสูตรยังอยู่ ต้องบอกเหตุนั้นตรง ๆ */
+    const removed = [];
+    const kept = [];
+    for (const [n, own] of owned.entries()) {
+      const table = own.kind === 'formula' ? 'formulas' : 'scents';
       const { data: entity } = await supabase
-        .from(table).select('id, code, name, status').eq('id', owned.id).maybeSingle();
-      const refs = await countRegistryRefs(supabase, owned.kind, owned.id);
+        .from(table).select('id, code, name, status').eq('id', own.id).maybeSingle();
+      const refs = await countRegistryRefs(supabase, own.kind, own.id);
       const deletable = entity && refs === 0 && ['draft', 'developing'].includes(entity.status);
       if (deletable) {
-        const { error: regError } = await supabase.from(table).delete().eq('id', owned.id);
+        const { error: regError } = await supabase.from(table).delete().eq('id', own.id);
         if (regError) throw regError;
-        await purgeUpdates(supabase, owned.kind, owned.id);
-        registryRemoved = entity.code || entity.name || owned.id;
+        await purgeUpdates(supabase, own.kind, own.id);
+        removed.push(entity.code || entity.name || own.id);
       } else if (entity) {
         // เหตุที่เก็บไว้ต้องตรงความจริง — ไม่มีใครอ้างแต่รับเข้าทะเบียนแล้ว ≠ "ถูกอ้างที่อื่น" (รีวิว ม-147)
         const reason = refs > 0 ? 'ถูกอ้างที่อื่นแล้ว'
           : entity.status === 'archived' ? 'เลิกใช้แล้ว' : 'ใช้งานอยู่ — เลิกใช้ที่หน้าทะเบียนถ้าไม่ต้องการ';
-        registryKept = `${entity.code || entity.name || owned.id} ยังอยู่ในทะเบียน (${reason})`;
+        kept.push(`${entity.code || entity.name || own.id} ยังอยู่ในทะเบียน (${reason})`);
+        if (owned.slice(n + 1).length) kept.push('กลิ่นของรายการนี้เก็บไว้ด้วย เพราะสูตรข้างต้นยังใช้กลิ่นนั้น');
+        break;
       }
     }
+    if (removed.length) registryRemoved = removed.join(' · ');
+    if (kept.length) registryKept = kept.join(' · ');
 
     /* ลงเธรดเสมอ — แถวที่หายไปจากตารางโดยไม่มีร่องรอยคือสิ่งที่ทำให้คนถามว่า
        "ของที่ส่งมาเมื่อวานหายไปไหน" · ชนิด `update` = เนื้อในของใบเปลี่ยน */

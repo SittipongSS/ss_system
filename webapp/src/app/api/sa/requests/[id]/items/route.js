@@ -1,16 +1,18 @@
 // ── RD ส่งของ = สร้างแถว + เข้าทะเบียนกลิ่นในจังหวะเดียว (P3b) ────────────
 //
-// POST { rows: [{ name, code, sentAt?, spec?, derivedFromScentId? }] }
+// POST { rows: [{ scent: {...}, categoryCode, formula?: {...}, briefId?, spec?, targetItemId? }] }
 //
 // ⭐ **หัวข้อ "พัฒนากลิ่น" ไม่มีตารางบรรทัดตอนเปิดใบ** — SA ไม่มีทางรู้ล่วงหน้าว่า
 // RD จะส่งกี่ direction ⇒ แถวเกิดตรงนี้ · 1 แถว = 1 direction = กลิ่น 1 ตัวในทะเบียน
+// ⭐ **ส่งเป็นสินค้า = กลิ่น + สูตร** (ม-148 · 2026-09-22) — direction ที่ RD เลือกส่งเป็นสินค้าหมวดอื่นที่ไม่ใช่
+// หัวน้ำหอม ได้สูตร "หมวดนั้น × กลิ่นนี้" สถานะกำลังพัฒนาเกิดพร้อมกัน ⇒ ขั้นใส่ราคาเป็น FB บนสูตร
 //
 // ⭐ **กรอกที่เดียว เข้าทะเบียนเลย** — RD ไม่ต้องเปิดหน้าทะเบียนอีกจอแล้วพิมพ์ซ้ำ
 // (ซึ่งเป็นวิธีที่ข้อมูลสองที่เริ่ม drift กัน)
 //
 // ⚠️ **ไม่มี transaction ข้ามตาราง** — PostgREST ไม่มีให้ · ลำดับจึงเป็น
-// "สร้างกลิ่นทีละตัว → สร้างแถวทั้งชุดทีเดียว" และถ้าแถวล้ม จะย้อนลบกลิ่นที่เพิ่ง
-// สร้างไป · กลิ่นค้างโดยไม่มีคำร้องอ้าง แย่กว่าคำร้องที่ไม่มีกลิ่น เพราะทะเบียนคือ
+// "สร้างกลิ่น(+สูตร)ทีละตัว → สร้างแถวทั้งชุดทีเดียว" และถ้าแถวล้ม จะย้อนลบของที่เพิ่ง
+// สร้างไป (สูตรก่อนกลิ่น) · ของค้างโดยไม่มีคำร้องอ้าง แย่กว่าคำร้องที่ไม่มีของ เพราะทะเบียนคือ
 // ของที่คนอื่นเลือกจากมันต่อ
 import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -21,7 +23,8 @@ import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { deliveryItemRow, normalizeDeliveryRows } from '@/lib/requests/delivery';
 import { findRequest } from '@/lib/materialPricesAdmin';
-import { createScent, loadScents } from '@/lib/master/scentFormulaAdmin';
+import { createFormula, createScent, loadScents } from '@/lib/master/scentFormulaAdmin';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { businessDate } from '@/lib/businessDate';
@@ -97,8 +100,25 @@ export async function POST(request, { params }) {
     .order('sortOrder', { ascending: true });
   if (briefLoadError) return Response.json({ error: briefLoadError.message }, { status: 500 });
 
+  /* ⭐ ม-148 — direction ที่ส่งเป็นสินค้าสร้างสูตรด้วย ⇒ ต้องมีรหัสสูตรทั้งทะเบียน (ชนรหัสเตือนก่อนสร้างอะไร
+     ไม่ใช่ไปชน `formulas_code_uk` หลังกลิ่นเกิดไปแล้ว) + ทะเบียนหมวด (ด่านหมวดที่ส่ง)
+     ⚠️ อ่านพัง = 500 ไม่ใช่ปล่อยผ่าน — ด่านหมวดที่ไม่มีทะเบียนให้เทียบยอมหมวดที่ถูกปิดใช้ไปแล้ว */
+  let formulaCodes = [];
+  let productTypes = [];
+  try {
+    formulaCodes = await fetchAll(() => supabase.from('formulas').select('id, code').order('id'));
+    const { data: types, error: typeError } = await supabase.from('product_types')
+      .select('mainCategoryCode, typeCode, isActive');
+    if (typeError) throw typeError;
+    productTypes = types || [];
+  } catch (e) {
+    return Response.json({ error: `อ่านทะเบียนสูตร/หมวดสินค้าไม่สำเร็จ: ${e.message}` }, { status: 500 });
+  }
+
   const { rows, error } = normalizeDeliveryRows(body.rows, {
     existingCodes: registry.map((s) => s.code).filter(Boolean),
+    existingFormulaCodes: formulaCodes.map((f) => f.code).filter(Boolean),
+    productTypes,
     today: businessDate(),
     briefs: briefRows || [],
     // ⭐ แถวรอบแก้ที่รออยู่ — ด่านตรวจว่า `targetItemId` ที่ส่งมาเติมได้จริง และ
@@ -167,6 +187,26 @@ export async function POST(request, { params }) {
       if (stampError) {
         throw new Error(`บันทึกวันผลิต/บรีฟลงกลิ่น ${row.code} ไม่สำเร็จ: ${stampError.message}`);
       }
+
+      /* ⭐ **ส่งเป็นสินค้า = สูตรเกิดพร้อมกลิ่น** (ม-148) — หมวดที่ RD เลือก × กลิ่นที่เพิ่งเกิด
+         · `developing` เดินคู่กลิ่น: ลูกค้าคอนเฟิร์มแล้วพลิกเป็นใช้งานพร้อมกัน (ก้าว outcome)
+         · ลูกค้าของสูตร = ลูกค้าของใบ (ตรงกับกลิ่นเสมอ — กลิ่นเพิ่งเกิดจากลูกค้ารายนี้)
+         ⚠️ เข้า `created` ก่อนเขียนต่อเหมือนกลิ่น ไม่งั้นย้อนลบไม่ถึง */
+      if (row.formula) {
+        const formula = await createFormula(supabase, {
+          name: row.formula.name,
+          code: row.formula.code,
+          formulaDate: row.formula.formulaDate,
+          customerTradeName: row.formula.customerTradeName,
+          note: row.formula.note,
+          derivedFromFormulaId: row.formula.derivedFromFormulaId,
+          categoryCode: row.categoryCode,
+          scentId: scent.id,
+          customerId: before.customerId,
+          dealId: before.dealId || null,
+        }, user, { accepted: true, developing: true });
+        created[created.length - 1].formula = formula;
+      }
     }
 
     // 2) แถวคำร้อง — **รอบแก้เติมลงแถวเดิม · ที่เหลือสร้างใหม่** (#1049)
@@ -178,11 +218,12 @@ export async function POST(request, { params }) {
     const ackAt = before.acknowledgedAt ? String(before.acknowledgedAt).slice(0, 10) : null;
     let fresh = 0;
     const inserts = [];
-    for (const { row, scent } of created) {
+    for (const { row, scent, formula } of created) {
       const values = deliveryItemRow(row, {
         requestId: id,
         sortOrder: row.targetItemId ? 0 : base + (fresh += 1),
         scentId: scent.id,
+        formulaId: formula?.id || null,
         ackAt,
         user,
       });
@@ -206,8 +247,17 @@ export async function POST(request, { params }) {
        `.catch`** (มีแค่ `then`) ⇒ TypeError ตั้งแต่ก่อนคำขอจะถูกยิง ⇒ **ย้อนไม่เคย
        เกิดสักครั้ง** กลิ่นค้างในทะเบียนทุกรอบที่พัง และ TypeError หลุดจาก catch นี้
        ไปเป็น 500 กลบข้อความจริงของ `e`
-       ทีละตัวโดยเจตนา — ตัวที่ถูกแถวรอบแก้ผูกไปแล้วลบไม่ลง ต้องไม่ลากตัวอื่นล้มตาม */
-    for (const { scent } of created) {
+       ทีละตัวโดยเจตนา — ตัวที่ถูกแถวรอบแก้ผูกไปแล้วลบไม่ลง ต้องไม่ลากตัวอื่นล้มตาม
+       ⚠️ **สูตรก่อนกลิ่น** (ม-148) — `formulas.scentId` เป็น SET NULL ⇒ ลบกลิ่นก่อนฐานยอมเงียบ ๆ แล้วได้สูตร
+       ไร้กลิ่นค้างทะเบียน · ลบสูตรไม่ลง = **เก็บกลิ่นไว้ด้วย** ด้วยเหตุผลเดียวกัน */
+    for (const { scent, formula } of created) {
+      if (formula) {
+        const { error: formulaUndoError } = await supabase.from('formulas').delete().eq('id', formula.id);
+        if (formulaUndoError) {
+          console.error('[request items] ย้อนลบสูตรไม่สำเร็จ', formula.id, formulaUndoError.message);
+          continue;
+        }
+      }
       const { error: undoError } = await supabase.from('scents').delete().eq('id', scent.id);
       if (undoError) console.error('[request items] ย้อนลบกลิ่นไม่สำเร็จ', scent.id, undoError.message);
     }
@@ -236,18 +286,20 @@ export async function POST(request, { params }) {
     }
   } catch (e) {
     console.error('[request items] ปรับสถานะใบตามแถวใหม่ไม่สำเร็จ', id, e.message);
-    statusWarning = 'ส่งกลิ่นเข้าทะเบียนแล้ว แต่ปรับสถานะใบไม่สำเร็จ — ถ้าใบยังขึ้น "ตอบแล้ว" '
+    statusWarning = 'ส่งงานเข้าทะเบียนแล้ว แต่ปรับสถานะใบไม่สำเร็จ — ถ้าใบยังขึ้น "ตอบแล้ว" '
       + `ให้กด "ยังไม่จบ" เพื่อเปิดใบกลับ ไม่งั้นรายการใหม่เดินต่อไม่ได้ (${e.message})`;
   }
 
   // 3) ร่องรอย — หนึ่งเหตุการณ์ต่อการส่งหนึ่งครั้ง ไม่ใช่ต่อแถว (คนอ่านเธรดสนใจ
   // ว่า "ส่งไปกี่ตัวเมื่อไร" ไม่ใช่ไล่อ่านทีละบรรทัดที่เกิดพร้อมกัน)
-  const names = created.map(({ row }) => `${row.code} ${row.name}`).join(' · ');
+  // ⭐ ม-148 — บอกว่าส่งเป็นอะไร: สินค้าต่อท้ายด้วยรหัสสูตรกับหมวด (ผู้ขอรู้ว่าราคาที่ตามมาเป็น FB)
+  const names = created.map(({ row, formula }) => `${row.code} ${row.name}`
+    + (formula ? ` (สูตร ${formula.code} · หมวด ${row.categoryCode})` : ' (หัวน้ำหอม)')).join(' · ');
   await appendUpdate(supabase, {
     entityType: 'dept_request',
     entityId: id,
     kind: 'ready',
-    body: `ส่งกลิ่น ${created.length} รายการ — ${names}`,
+    body: `ส่งงาน ${created.length} รายการ — ${names}`,
     user,
   }).catch(() => {});
 
@@ -265,7 +317,7 @@ export async function POST(request, { params }) {
   await recordAudit({
     user, action: 'update', entityType: 'dept_request', entityId: id,
     before, after,
-    summary: `ส่งกลิ่น ${created.length} รายการ (${before.docNo || id})`,
+    summary: `ส่งงาน ${created.length} รายการ (${before.docNo || id})`,
     request,
   });
 

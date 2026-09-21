@@ -17,6 +17,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateInput from "@/components/ui/DateInput";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { DEFAULT_PRICE_TTL_DAYS } from "@/lib/materialPrices";
 import styles from "./registryForm.module.css";
 import { apiFetch } from "@/lib/apiFetch";
@@ -28,6 +29,8 @@ export default function RegistryPriceModal({
   unitLabel = "฿/กก.",
   endpoint,         // POST { price, validUntil, note }
   onSaved,          // (msg) => void — ผู้เรียกรีโหลด + โชว์ toast
+  // ม-148 — คำเตือนก่อนใส่ราคา (เช่น กลิ่นที่ส่งเป็นสินค้า: ราคาเนื้อต้องไปใส่ที่สูตร) · null = ไม่มี
+  notice = null,
 }) {
   const [price, setPrice] = useState("");
   const [validUntil, setValidUntil] = useState("");
@@ -76,6 +79,8 @@ export default function RegistryPriceModal({
         </>
       )}
     >
+      {/* ⚠️ เตือน ไม่บล็อก — ราคา F ของกลิ่นที่มีสูตรยังมีได้จริง (ลูกค้าซื้อหัวน้ำหอมแยก · SDS) */}
+      {notice && <StatusNotice tone="warning" className={styles.priceNotice}>{notice}</StatusNotice>}
       <div className="form-group">
         <label htmlFor="registry-price">ราคา ({unitLabel})</label>
         <MoneyInput

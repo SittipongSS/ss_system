@@ -34,6 +34,7 @@ import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
 import ScentFormModal from "@/components/database/ScentFormModal";
@@ -114,6 +115,18 @@ export default function ScentsPage() {
   const [accept, setAccept] = useState(null);   // { scent, code, status }
   const [sending, setSending] = useState(null); // { scent, sentAt }
   const [pricing, setPricing] = useState(null); // กลิ่นที่กำลังใส่ราคา F
+  /* ⭐ ม-148 — คำเตือนในโมดัลราคา F (กลิ่นที่ส่งเป็นสินค้า / มีสูตรใช้อยู่ = ราคาเนื้อต้องใส่ที่สูตร)
+     ⚠️ ตารางใช้ `loadScents` ซึ่งไม่ลากสูตร/แถวคำร้องมา (เป็นตัวเลือกกลิ่นทั้งระบบ) ⇒ ถามหน้ารายละเอียด
+     ตอนกดปุ่มแทน · อ่านพัง = ไม่มีคำเตือน (ไม่บล็อกการใส่ราคา) · เทียบ id กันคำตอบของแถวก่อนหน้ามาทับ */
+  const [pricingNotice, setPricingNotice] = useState(null);
+  const openPricing = (s) => {
+    setPricing(s);
+    setPricingNotice(null);
+    apiFetch(`/api/master/scents/${s.id}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.id === s.id) setPricingNotice({ id: s.id, text: scentFPriceNotice(d) }); })
+      .catch(() => {});
+  };
   const [confirm, setConfirm] = useState(null); // { kind, scent }
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -233,7 +246,7 @@ export default function ScentsPage() {
       label: s.price?.unitPrice != null ? "ออกราคา F ใหม่" : "ใส่ราคา F",
       icon: Coins,
       visible: canPriceScent(s),
-      onClick: () => setPricing(s),
+      onClick: () => openPricing(s),
     },
     {
       id: "edit",
@@ -559,7 +572,7 @@ export default function ScentsPage() {
                         )}
                         {canPriceScent(s) && s.price?.unitPrice == null && (
                           <Button size="sm" icon={<Coins size={14} aria-hidden="true" />}
-                            onClick={() => setPricing(s)}>
+                            onClick={() => openPricing(s)}>
                             ใส่ราคา
                           </Button>
                         )}
@@ -680,7 +693,7 @@ export default function ScentsPage() {
                         {canPriceScent(s) && s.price?.unitPrice == null && (
                           <div className={styles.rowActions}>
                             <Button size="sm" icon={<Coins size={14} aria-hidden="true" />}
-                              onClick={() => setPricing(s)}>
+                              onClick={() => openPricing(s)}>
                               ใส่ราคา
                             </Button>
                           </div>
@@ -862,6 +875,7 @@ export default function ScentsPage() {
         onClose={() => setPricing(null)}
         title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${pricing.name}` : ""}
         endpoint={pricing ? `/api/master/scents/${pricing.id}/price` : ""}
+        notice={pricing && pricingNotice?.id === pricing.id ? pricingNotice.text : null}
         onSaved={(msg) => {
           setPricing(null);
           setToast({ kind: "success", msg });

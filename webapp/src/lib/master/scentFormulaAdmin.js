@@ -347,8 +347,13 @@ export async function assertDerivedFromFormula(supabase, { derivedFromFormulaId,
 // `fallbackCustomer` ใช้ได้เฉพาะตอน **ไม่มีกลิ่น** — ทางเดียวที่ยังส่งมาคือ
 // "จัดระเบียบ" ซึ่งย้ายสินค้าของลูกค้ารายหนึ่งมาเป็นสูตรฐาน · ฟอร์มทะเบียนไม่ส่ง
 // ค่านี้เลย และห้ามส่ง (นั่นคือรูที่ 0207 ปิดไป)
+/* `developing` (ม-148 · มติผู้ใช้ 2026-09-22) — สูตรที่เกิดพร้อมกลิ่นตอนส่งงาน **พัฒนากลิ่น**
+   เดินคู่กลิ่น: รับเข้าทะเบียนแล้ว (มีรหัส · มีเจ้าของ) แต่ยัง "กำลังพัฒนา" จนลูกค้าคอนเฟิร์ม
+   (ก้าว outcome ของแถวพลิกเป็น active พร้อมกลิ่น) · ⚠️ ต่างจากกติกาทั่วไปที่สูตรรับเข้าแล้ว
+   active ทันที (ดู ALLOWED_TRANSITIONS ใน formulas.js) — direction ที่ลูกค้าปฏิเสธจะไม่ทิ้งสูตร
+   "ใช้งาน" ค้างทะเบียน และยังลบตามแถวได้ตอนส่งผิด (ด่านลบรับเฉพาะ draft/developing) */
 export async function createFormula(supabase, input, user, {
-  accepted = false, fallbackCustomer = null,
+  accepted = false, fallbackCustomer = null, developing = false,
 } = {}) {
   const { value, error } = normalizeFormulaInput(input);
   if (error) throw new Error(error);
@@ -376,7 +381,7 @@ export async function createFormula(supabase, input, user, {
     // RD ที่สร้างเองเป็นเจ้าของสูตรโดยปริยาย (ตรงกับทะเบียนกลิ่น)
     ownerId: accepted ? user?.id ?? null : null,
     ownerName: accepted ? user?.name ?? null : null,
-    status: accepted ? 'active' : 'draft',
+    status: accepted ? (developing ? 'developing' : 'active') : 'draft',
     acceptedById: accepted ? user?.id ?? null : null,
     acceptedByName: accepted ? user?.name ?? null : null,
     acceptedAt: accepted ? nowIso : null,
@@ -542,7 +547,29 @@ export async function findScentDetail(supabase, id) {
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
     column: 'scentId', kind: 'RM_F',
   });
-  return withPrice;
+  return attachScentDelivery(supabase, withPrice);
+}
+
+/* ⭐ **กลิ่นนี้ส่งเป็นอะไร + สูตรที่ใช้กลิ่นนี้** (ม-148) — ปุ่ม "ใส่ราคา F" บนทะเบียนกลิ่นเป็นทางที่ราคา
+   ผิดชนิดเข้ามามากที่สุด (วัด prod 2026-09-22: 14 จาก 18 ราคา F มาจากปุ่มนี้ · 8 ตัวเป็น EDP) เพราะหน้า
+   กลิ่นไม่รู้เลยว่ามีสูตร ⇒ ติดสองอย่างให้หน้ารายละเอียด/โมดัลราคาเตือนได้ (`scentFPriceNotice`)
+   · `deliveredCategoryCode` = หมวดที่แถวคำร้องบันทึกตอนส่ง (null = ส่งก่อน ม-148 หรือเพิ่มตรงจากทะเบียน)
+   · `formulas` = สูตรที่ยังไม่เลิกใช้ของกลิ่นนี้ (ก้อนเล็ก — ไม่ส่งทั้งแถวทะเบียน)
+   ⚠️ เฉพาะหน้ารายละเอียด — `loadScents` เป็นตัวเลือกกลิ่นทั้งระบบ ไม่ลากสอง query นี้ไปทุกดรอปดาวน์ */
+async function attachScentDelivery(supabase, scent) {
+  const [{ data: rows, error: rowError }, { data: formulas, error: formulaError }] = await Promise.all([
+    supabase.from('dept_request_items').select('"categoryCode", "producedFormulaId"')
+      .eq('producedScentId', scent.id).not('categoryCode', 'is', null).limit(1),
+    supabase.from('formulas').select('id, code, name, "categoryCode", status')
+      .eq('scentId', scent.id).neq('status', 'archived').order('code'),
+  ]);
+  if (rowError) throw rowError;
+  if (formulaError) throw formulaError;
+  return {
+    ...scent,
+    deliveredCategoryCode: rows?.[0]?.categoryCode || null,
+    formulas: formulas || [],
+  };
 }
 
 export async function findFormulaDetail(supabase, id) {
