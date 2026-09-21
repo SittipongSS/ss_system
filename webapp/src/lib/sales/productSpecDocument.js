@@ -121,7 +121,10 @@ function certRows(rows = []) {
 }
 
 /* ⚠️ ลายเซ็นพิมพ์ **ชื่อที่ระบบรู้** แต่เว้นช่องเซ็นไว้เสมอ — กระดาษใบนี้ต้องเซ็นมือ
-   ⚠️ แถว Customer ไม่มีชื่อในระบบโดยตั้งใจ (ลูกค้าเซ็นนอกระบบแล้วอัปไฟล์กลับ) */
+   ⚠️ แถว Customer ไม่มีชื่อในระบบโดยตั้งใจ (ลูกค้าเซ็นนอกระบบแล้วอัปไฟล์กลับ)
+   ⚠️ ช่อง Account Executive = **ผู้ยื่นอนุมัติ** ตั้งแต่ 0369 ที่ยุบขั้น "AE ตรวจ" ออก ·
+      ถอยไปอ่าน `reviewedByName` ให้ฉบับเก่าที่เดินเส้นสี่ขั้นจริง (ชื่อคนตรวจของใบนั้น
+      ยังอยู่ในฐาน — กระดาษที่พิมพ์ซ้ำต้องอ่านเหมือนวันที่ส่งไป) */
 function signatureBlock(revision, issue) {
   const box = (role, name, date) => `
     <div class="sig">
@@ -133,7 +136,8 @@ function signatureBlock(revision, issue) {
   return `<h3>Final Review &amp; Approval</h3>
     <div class="sigs">
       ${box('Account Coordinator', revision?.createdByName, issue?.createdDateText)}
-      ${box('Account Executive', revision?.reviewedByName, issue?.reviewedDateText)}
+      ${box('Account Executive', revision?.submittedByName || revision?.reviewedByName,
+    issue?.submittedDateText || issue?.reviewedDateText)}
       ${box('Account Executive Supervisor', revision?.approvedByName, issue?.approvedDateText)}
       ${box('Customer', '', '')}
     </div>`;

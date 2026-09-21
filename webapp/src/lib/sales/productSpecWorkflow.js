@@ -1,10 +1,16 @@
 // ── ด่านของใบสเปคสินค้า FM-SA-04 — ตัวตัดสินล้วน (mig 0364) ──────────────────
 //
 // ⭐ **เส้นอนุมัติอยู่ที่ "ฉบับ" ไม่ใช่ "การออกเอกสาร"** (มติผู้ใช้ 2026-09-17)
-//   AC ร่าง → AE ตรวจ → AE Sup อนุมัติ = การอนุมัติ **เนื้อสเปก**
+//   เปิดร่าง → ยื่นอนุมัติ → AE Sup อนุมัติ = การอนุมัติ **เนื้อสเปก**
 //   ⇒ ออกเอกสารรอบใหม่ด้วยสเปกเดิม ไม่ต้องเดินด่านซ้ำ · ลายเซ็นบนกระดาษคือชุดที่
 //     อนุมัติ Rev. นั้นพร้อมวันที่เดิม เพราะลายเซ็นรับรอง *สเปก* ไม่ใช่รอบขาย
-//   ⇒ แก้ช่องสเปก = ฉบับใหม่ = เดินด่านใหม่ทั้งสามขั้น
+//   ⇒ แก้ช่องสเปก = ฉบับใหม่ = เดินด่านใหม่ทั้งเส้น
+//
+// ⭐ **ลำดับเดียวกับใบเสนอราคา** (มติผู้ใช้ 2026-09-21 · mig 0369) — ร่าง · บันทึก ·
+//   ยื่น · อนุมัติ และ **ลบได้** · ขั้น "AE ตรวจ" ของ 0364 ถูกยุบออก เหลือ `pending`
+//   ขั้นเดียวที่รออยู่ที่ AE Supervisor
+//   🪤 ของเดิมสี่ขั้นแล้วคนที่ตรวจกับคนที่อนุมัติเป็นคนเดียวกันในทางปฏิบัติ ⇒ ทุกใบ
+//     ต้องกดสองปุ่มติดกันโดยไม่มีใครอ่านอะไรเพิ่มระหว่างสองปุ่มนั้น
 //
 // ⚠️ ที่นี่ตอบแค่ "ใครทำอะไรได้ และติดอะไรอยู่" — ไม่แตะฐาน ไม่รู้จัก supabase
 // ⚠️ ทุกตัวคืน **เหตุผลเป็นข้อความ** ไม่ใช่ boolean เปล่า เพราะจอต้องบอกเหตุตอนกด
@@ -12,13 +18,12 @@
 import { isSuperuser } from '@/lib/permissions';
 
 export const SPEC_REVISION_STATUSES = Object.freeze([
-  'draft', 'pending_ae', 'pending_ae_supervisor', 'approved', 'rejected', 'superseded',
+  'draft', 'pending', 'approved', 'rejected', 'superseded',
 ]);
 
 export const SPEC_REVISION_STATUS_LABELS = Object.freeze({
-  draft: 'ร่าง',
-  pending_ae: 'รอ AE ตรวจ',
-  pending_ae_supervisor: 'รอ AE Sup อนุมัติ',
+  draft: 'ฉบับร่าง',
+  pending: 'รออนุมัติ',
   approved: 'อนุมัติแล้ว',
   rejected: 'ตีกลับให้แก้',
   superseded: 'ถูกแทนด้วยฉบับใหม่',
@@ -30,14 +35,12 @@ export const SPEC_ISSUE_STATUS_LABELS = Object.freeze({
   void: 'ยกเลิกแล้ว',
 });
 
-/* สี่ขั้นบนราง — `rejected` ไม่นับเป็นจุด มันคือ *สุขภาพ* ของขั้นที่ยืนอยู่
-   (กติกาเดียวกับรางของคำร้องและของใบสั่งขาย) */
-export const SPEC_REVISION_STEPS = Object.freeze([
-  'draft', 'pending_ae', 'pending_ae_supervisor', 'approved',
-]);
+/* สามขั้นบนราง เท่ากับรางของใบเสนอราคา — `rejected` ไม่นับเป็นจุด มันคือ *สุขภาพ*
+   ของขั้นที่ยืนอยู่ (กติกาเดียวกับรางของคำร้องและของใบสั่งขาย) */
+export const SPEC_REVISION_STEPS = Object.freeze(['draft', 'pending', 'approved']);
 
 export const isSpecRevisionOpen = (revision) => Boolean(revision)
-  && ['draft', 'pending_ae', 'pending_ae_supervisor'].includes(revision.status);
+  && ['draft', 'pending'].includes(revision.status);
 
 export const isSpecRevisionClosed = (revision) => Boolean(revision)
   && ['approved', 'rejected', 'superseded'].includes(revision.status);
@@ -47,11 +50,9 @@ const AE_ROLES = ['ae', 'senior_ae', 'ae_supervisor'];
 export const canDraftProductSpec = (role) => isSuperuser(role)
   || ['ac', ...AE_ROLES].includes(role);
 
-export const canReviewProductSpec = (role) => isSuperuser(role) || AE_ROLES.includes(role);
-
 export const canApproveProductSpec = (role) => isSuperuser(role) || role === 'ae_supervisor';
 
-/** แก้เนื้อฉบับได้ไหม — ได้เฉพาะฉบับที่ยังไม่ผ่านด่าน AE Sup */
+/** แก้เนื้อฉบับได้ไหม — ได้เฉพาะฉบับที่ยังไม่ยื่น (หรือผู้อนุมัติเอง) */
 export function productSpecEditBlock(revision, { role } = {}) {
   if (!revision) return 'ยังไม่มีฉบับให้แก้ — ต้องสร้างฉบับใหม่ก่อน';
   if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงแก้ใบสเปคได้';
@@ -59,30 +60,18 @@ export function productSpecEditBlock(revision, { role } = {}) {
     return 'ฉบับนี้อนุมัติแล้ว แก้ไม่ได้ — ต้องออกฉบับใหม่ (Rev. ถัดไป)';
   }
   if (revision.status === 'superseded') return 'ฉบับนี้ถูกแทนด้วยฉบับใหม่แล้ว';
-  if (revision.status === 'pending_ae_supervisor' && !canApproveProductSpec(role)) {
-    return 'ฉบับนี้อยู่ที่ AE Sup — ดึงกลับมาแก้ก่อนถึงจะแก้ได้';
+  if (revision.status === 'pending' && !canApproveProductSpec(role)) {
+    return 'ฉบับนี้ยื่นอนุมัติแล้ว — ดึงกลับมาแก้ก่อนถึงจะแก้ได้';
   }
   return null;
 }
 
-/** ส่งให้ AE ตรวจ */
+/** ยื่นอนุมัติ (ปุ่มเดียวเหมือนใบเสนอราคา — ไม่มีขั้นตรวจคั่นแล้ว) */
 export function productSpecSubmitBlock(revision, { role } = {}) {
-  if (!revision) return 'ยังไม่มีฉบับให้ส่ง';
-  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงส่งใบสเปคได้';
+  if (!revision) return 'ยังไม่มีฉบับให้ยื่น';
+  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงยื่นใบสเปคได้';
   if (!['draft', 'rejected'].includes(revision.status)) {
-    return `ฉบับนี้อยู่สถานะ "${SPEC_REVISION_STATUS_LABELS[revision.status] || revision.status}" ส่งซ้ำไม่ได้`;
-  }
-  return null;
-}
-
-/** AE กดตรวจผ่าน → ส่งต่อ AE Sup */
-export function productSpecReviewBlock(revision, { role } = {}) {
-  if (!revision) return 'ยังไม่มีฉบับให้ตรวจ';
-  if (!canReviewProductSpec(role)) return 'ต้องเป็น AE จึงตรวจใบสเปคได้';
-  if (revision.status !== 'pending_ae') {
-    return revision.status === 'pending_ae_supervisor'
-      ? 'ฉบับนี้ผ่าน AE แล้ว รออยู่ที่ AE Sup'
-      : 'ฉบับนี้ยังไม่ได้ส่งมาให้ตรวจ';
+    return `ฉบับนี้อยู่สถานะ "${SPEC_REVISION_STATUS_LABELS[revision.status] || revision.status}" ยื่นซ้ำไม่ได้`;
   }
   return null;
 }
@@ -91,12 +80,55 @@ export function productSpecReviewBlock(revision, { role } = {}) {
 export function productSpecApproveBlock(revision, { role } = {}) {
   if (!revision) return 'ยังไม่มีฉบับให้อนุมัติ';
   if (!canApproveProductSpec(role)) return 'ต้องเป็น AE Supervisor จึงอนุมัติใบสเปคได้';
-  if (revision.status !== 'pending_ae_supervisor') {
+  if (revision.status !== 'pending') {
     return revision.status === 'approved'
       ? 'ฉบับนี้อนุมัติไปแล้ว'
-      : 'ฉบับนี้ยังไม่ผ่านขั้น AE ตรวจ';
+      : 'ฉบับนี้ยังไม่ได้ยื่นอนุมัติ';
   }
   return null;
+}
+
+/**
+ * ลบได้ไหม — และลบแล้วหายไปแค่ไหน
+ *
+ * ⭐ กติกาเดียวกับใบเสนอราคา (มติ 21/09): ฉบับร่าง/ที่ถูกตีกลับ คนที่แก้ได้ก็ลบได้ ·
+ * แอดมินลบได้ทุกสถานะ
+ * 🔴 **แต่ใบที่ออกกระดาษไปแล้วลบไม่ได้ ไม่ว่าใคร** — `product_spec_issues` ถือเลขที่
+ * เอกสารที่ออกไปนอกบริษัทแล้ว (`FM-SA-04-DDMMYY-XXX` จากตัวนับที่ไม่เคยใช้เลขซ้ำ)
+ * ลบทิ้งคือทำให้เลขที่ยังอยู่บนกระดาษของลูกค้าไม่มีต้นทางในระบบ · ฐานก็กันด้วย
+ * FK `ON DELETE RESTRICT` (0364) — ที่นี่แค่บอกเหตุเป็นภาษาคนก่อนกด
+ */
+export function productSpecDeleteBlock({
+  spec, revision, revisions = [], issues = [], role,
+} = {}) {
+  if (!spec || !revision) return 'ยังไม่มีใบสเปคให้ลบ';
+  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงลบใบสเปคได้';
+  /* ฉบับเดียว = ลบใบทั้งใบ ⇒ กระดาษของทุกฉบับนับเป็นตัวขัด · หลายฉบับ = ลบเฉพาะฉบับนี้
+     ⇒ กระดาษของฉบับอื่นไม่เกี่ยว (FK ผูกรายฉบับ) */
+  const wholeSpec = productSpecDeleteScope(revisions) === 'spec';
+  const live = issues.filter((row) => row && row.status !== 'void'
+    && (wholeSpec || row.revisionId === revision.id));
+  if (live.length) {
+    return `ออกเอกสารไปแล้ว ${live.length} ฉบับ (${live[0].docNo}) — ยกเลิกเอกสารก่อนจึงลบได้`;
+  }
+  if (isSuperuser(role)) return null;
+  if (!['draft', 'rejected'].includes(revision.status)) {
+    return revision.status === 'pending'
+      ? 'ฉบับนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงลบได้'
+      : `ฉบับที่${SPEC_REVISION_STATUS_LABELS[revision.status] || revision.status}ลบได้เฉพาะแอดมิน`;
+  }
+  return null;
+}
+
+/**
+ * ลบแล้วหายไปแค่ไหน — 'spec' = ทั้งใบ (สินค้ากลับไปเป็น "ยังไม่มีใบสเปค") ·
+ * 'revision' = เฉพาะฉบับล่าสุด (ฉบับก่อนยังเป็นสเปกที่ใช้อยู่)
+ *
+ * ⚠️ จอต้องพูดให้ตรงข้อนี้ก่อนกด — "ลบ" สองความหมายที่ปุ่มเดียวกันคือที่มาของ
+ * การลบพลาดแบบกู้ไม่ได้ (ไม่มีถังขยะในระบบ)
+ */
+export function productSpecDeleteScope(revisions = []) {
+  return revisions.filter(Boolean).length > 1 ? 'revision' : 'spec';
 }
 
 /**

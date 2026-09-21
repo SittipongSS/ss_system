@@ -84,6 +84,7 @@ export async function GET(request, { params }) {
         createdDateText: dateText(issue.createdAt),
         deliveryDueDateText: dateText(issue.deliveryDueDate),
         approvedDateText: dateText(revision.approvedAt),
+        submittedDateText: dateText(revision.submittedAt),
         reviewedDateText: dateText(revision.reviewedAt),
       }
       /* ยังไม่เคยออกเอกสาร = พรีวิวฉบับร่าง · ไม่มีเลขที่เอกสารเพราะเลขเกิดตอนออกจริง

@@ -16,20 +16,30 @@ test('ป้าย Rev. เติมศูนย์สองหลัก แล�
 });
 
 test('สีสถานะมาจากโทเคน ไม่ใช่ค่าดิบ', () => {
-  for (const status of ['draft', 'pending_ae', 'approved', 'rejected', 'superseded']) {
+  for (const status of ['draft', 'pending', 'approved', 'rejected', 'superseded']) {
     assert.match(specStatusColor(status), /^var\(--[a-z0-9-]+\)$/, status);
   }
   assert.match(specStatusColor('อะไรไม่รู้'), /^var\(--/);
 });
 
-test('รางสี่ขั้นเดินตามสถานะ — ขั้นก่อนเป็น done ขั้นปัจจุบันเป็น current', () => {
-  const steps = specWorkflowSteps(rev({ status: 'pending_ae_supervisor' }));
-  assert.deepEqual(steps.map((s) => s.state), ['done', 'done', 'current', 'pending']);
+test('รางสามขั้นเท่ากับใบเสนอราคา — ขั้นก่อนเป็น done ขั้นปัจจุบันเป็น current', () => {
+  const steps = specWorkflowSteps(rev({ status: 'pending' }));
+  assert.deepEqual(steps.map((s) => s.id), ['draft', 'pending', 'approved']);
+  assert.deepEqual(steps.map((s) => s.state), ['done', 'current', 'pending']);
+});
+
+test('รางบอกชื่อคนที่ทำแต่ละขั้น — ใบไม่มีบล็อกผู้รับผิดชอบ รางคือที่เดียว', () => {
+  const steps = specWorkflowSteps(rev({
+    status: 'pending', createdByName: 'ชลิตา', submittedByName: 'ชลิตา',
+  }));
+  assert.equal(steps[0].hint, 'ชลิตา');
+  assert.equal(steps[1].hint, 'ชลิตา');
+  assert.equal(steps[2].hint, 'รออนุมัติ');
 });
 
 test('🪤 ตีกลับไม่งอกจุดใหม่ — ระบายขั้นแรกเป็น rejected ไม่ใช่เดินหน้าต่อ', () => {
   const steps = specWorkflowSteps(rev({ status: 'rejected' }));
-  assert.deepEqual(steps.map((s) => s.state), ['rejected', 'pending', 'pending', 'pending']);
+  assert.deepEqual(steps.map((s) => s.state), ['rejected', 'pending', 'pending']);
   assert.match(steps[1].hint, /แก้ตามเหตุผลที่ตีกลับ/);
 });
 
@@ -52,10 +62,13 @@ test('ยังไม่มีใบ = ปุ่มหลักคือสร�
   assert.equal(asRd.primaryAction.visible, false);
 });
 
-test('ปุ่มหลักเดินตามขั้น: AC ส่ง → AE ตรวจ → AE Sup อนุมัติ', () => {
-  assert.equal(specControlActions({ spec, revision: rev(), role: 'ac' }).primaryAction.id, 'submit');
-  assert.equal(specControlActions({ spec, revision: rev({ status: 'pending_ae' }), role: 'ae' }).primaryAction.id, 'review');
-  assert.equal(specControlActions({ spec, revision: rev({ status: 'pending_ae_supervisor' }), role: 'ae_supervisor' }).primaryAction.id, 'approve');
+test('ปุ่มหลักเดินตามขั้น: ยื่นอนุมัติ → อนุมัติ (ไม่มีขั้นตรวจคั่นแล้ว)', () => {
+  const submit = specControlActions({ spec, revision: rev(), role: 'ac' }).primaryAction;
+  assert.equal(submit.id, 'submit');
+  assert.equal(submit.label, 'ยื่นอนุมัติ');
+  assert.equal(specControlActions({ spec, revision: rev({ status: 'pending' }), role: 'ae_supervisor' }).primaryAction.id, 'approve');
+  // AE ที่ไม่ใช่หัวหน้าไม่มีก้าวให้ทำ — ปุ่มยังอยู่แต่บอกเหตุ
+  assert.equal(specControlActions({ spec, revision: rev({ status: 'pending' }), role: 'ae' }).primaryAction.disabled, true);
 });
 
 test('อนุมัติแล้ว = ปุ่มหลักคือออกฉบับใหม่ พร้อมเลข Rev. ถัดไปบนปุ่ม', () => {
@@ -65,8 +78,8 @@ test('อนุมัติแล้ว = ปุ่มหลักคืออ�
 });
 
 test('🪤 ไม่มีก้าวที่ทำได้ = ปุ่มยังอยู่แต่บอกเหตุ ไม่ใช่หายไป', () => {
-  // AC มองใบที่อยู่ที่หัวหน้า: ส่งซ้ำไม่ได้ · ตรวจไม่ได้ · อนุมัติไม่ได้ · ออกฉบับใหม่ไม่ได้
-  const actions = specControlActions({ spec, revision: rev({ status: 'pending_ae_supervisor' }), role: 'ac' });
+  // AC มองใบที่ยื่นไปแล้ว: ยื่นซ้ำไม่ได้ · อนุมัติไม่ได้ · ออกฉบับใหม่ไม่ได้
+  const actions = specControlActions({ spec, revision: rev({ status: 'pending' }), role: 'ac' });
   assert.equal(actions.primaryAction.disabled, true);
   assert.ok(actions.primaryAction.disabledReason, 'ต้องมีเหตุผลติดปุ่ม');
   assert.notEqual(actions.primaryAction.visible, false);
@@ -79,24 +92,56 @@ test('มีของที่ยังไม่บันทึก = ส่ง�
   assert.match(actions.primaryAction.disabledReason, /บันทึกก่อน/);
 });
 
-test('ปุ่มดึงกลับโผล่เฉพาะตอนใบอยู่ระหว่างรอ · ปุ่มตีกลับเฉพาะคนที่ตรวจ/อนุมัติได้', () => {
-  const atAe = specControlActions({ spec, revision: rev({ status: 'pending_ae' }), role: 'ae' });
-  assert.equal(atAe.secondaryActions.find((a) => a.id === 'withdraw').visible, true);
-  assert.equal(atAe.dangerActions.find((a) => a.id === 'reject').visible, true);
+test('ปุ่มดึงกลับโผล่เฉพาะตอนใบรออนุมัติ · ปุ่มตีกลับเฉพาะผู้อนุมัติ', () => {
+  const atSup = specControlActions({ spec, revision: rev({ status: 'pending' }), role: 'ae_supervisor' });
+  assert.equal(atSup.secondaryActions.find((a) => a.id === 'withdraw').visible, true);
+  assert.equal(atSup.dangerActions.find((a) => a.id === 'reject').visible, true);
 
   const onDraft = specControlActions({ spec, revision: rev(), role: 'ac' });
   assert.equal(onDraft.secondaryActions.find((a) => a.id === 'withdraw').visible, false);
   assert.equal(onDraft.dangerActions.find((a) => a.id === 'reject').visible, false);
 
-  const acAtAe = specControlActions({ spec, revision: rev({ status: 'pending_ae' }), role: 'ac' });
-  assert.equal(acAtAe.dangerActions.find((a) => a.id === 'reject').visible, false);
+  // AE ที่ไม่ใช่หัวหน้าไม่ใช่ผู้อนุมัติแล้ว ⇒ ไม่มีปุ่มตีกลับ
+  const aeAtPending = specControlActions({ spec, revision: rev({ status: 'pending' }), role: 'ae' });
+  assert.equal(aeAtPending.dangerActions.find((a) => a.id === 'reject').visible, false);
+});
+
+test('ปุ่มลบอยู่ในช่องอันตราย โชว์เสมอสำหรับฝ่ายขาย และป้ายบอกขอบเขตจริง', () => {
+  const single = specControlActions({ spec, revision: rev(), revisions: [rev()], role: 'ac' })
+    .dangerActions.find((a) => a.id === 'delete');
+  assert.equal(single.visible, true);
+  assert.equal(single.label, 'ลบใบสเปคสินค้า');
+  assert.equal(single.disabled, false);
+
+  const rev2 = rev({ id: 'R2', revNo: 2 });
+  const second = specControlActions({
+    spec, revision: rev2, revisions: [rev2, rev({ status: 'approved' })], role: 'ac',
+  }).dangerActions.find((a) => a.id === 'delete');
+  assert.equal(second.label, 'ลบฉบับร่าง (Rev.02)');
+});
+
+test('🪤 ลบไม่ได้ = ปุ่มยังอยู่แต่บอกเหตุ (ui-visibility-rule)', () => {
+  const issued = specControlActions({
+    spec,
+    revision: rev(),
+    revisions: [rev()],
+    issues: [{ id: 'PSD1', revisionId: 'R1', docNo: 'FM-SA-04-210969-001', status: 'issued' }],
+    role: 'ac',
+  }).dangerActions.find((a) => a.id === 'delete');
+  assert.equal(issued.visible, true);
+  assert.equal(issued.disabled, true);
+  assert.match(issued.disabledReason, /FM-SA-04-210969-001/);
+
+  const asRd = specControlActions({ spec, revision: rev(), revisions: [rev()], role: 'rd' })
+    .dangerActions.find((a) => a.id === 'delete');
+  assert.equal(asRd.visible, false, 'คนนอกฝ่ายขายไม่ต้องรู้ว่ามีปุ่มนี้');
 });
 
 test('ลำดับปุ่มคงที่ ไม่สลับตามสถานะ', () => {
   const ids = (status, role) => specControlActions({ spec, revision: rev({ status }), role })
     .secondaryActions.map((a) => a.id);
   assert.deepEqual(ids('draft', 'ac'), ['print', 'withdraw']);
-  assert.deepEqual(ids('pending_ae', 'ae'), ['print', 'withdraw']);
+  assert.deepEqual(ids('pending', 'ae_supervisor'), ['print', 'withdraw']);
   assert.deepEqual(ids('approved', 'ae_supervisor'), ['print', 'withdraw']);
 });
 

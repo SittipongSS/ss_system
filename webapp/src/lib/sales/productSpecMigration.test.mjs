@@ -11,9 +11,16 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { SPEC_CONTENT_FIELDS } from './productSpecStore.js';
 import { PRODUCT_SPEC_DOC_RUNNING_WIDTH } from './productSpecDocNo.js';
+import { SPEC_REVISION_STATUSES, SPEC_REVISION_STEPS } from './productSpecWorkflow.js';
 
 const sql = readFileSync(
   new URL('../../../supabase/migrations/0364_product_spec_sheet.sql', import.meta.url),
+  'utf8',
+);
+
+// 0369 ยุบขั้น "AE ตรวจ" ออก — สถานะที่ฐานยอมต้องเท่ากับที่โค้ดประกาศ
+const sql0369 = readFileSync(
+  new URL('../../../supabase/migrations/0369_product_spec_single_approval.sql', import.meta.url),
   'utf8',
 );
 
@@ -31,9 +38,33 @@ test('🔴 หนึ่งสินค้าหนึ่งใบ — ผูก�
   assert.match(sql, /"productId"\s+text NOT NULL UNIQUE REFERENCES public\.products\(id\)/);
 });
 
-test('ฉบับที่ยังไม่จบมีได้ทีละหนึ่งต่อสินค้า', () => {
+test('ฉบับที่ยังไม่จบมีได้ทีละหนึ่งต่อสินค้า — index ตามชื่อสถานะของ 0369', () => {
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS product_spec_revisions_open_uidx/);
-  assert.match(sql, /WHERE status IN \('draft', 'pending_ae', 'pending_ae_supervisor'\)/);
+  // 🪤 0369 เปลี่ยนชื่อสถานะ ⇒ ต้องสร้าง index ใหม่ ไม่ใช่ปล่อยของเดิมที่ WHERE
+  //    อ้างชื่อเก่า (ปล่อยไว้ = ด่าน "ฉบับค้างได้ทีละหนึ่ง" หายไปเงียบ ๆ)
+  assert.match(sql0369, /DROP INDEX IF EXISTS product_spec_revisions_open_uidx/);
+  assert.match(sql0369, /CREATE UNIQUE INDEX product_spec_revisions_open_uidx[\s\S]*?WHERE status IN \('draft', 'pending'\)/);
+});
+
+test('0369: สถานะที่ฐานยอม = ที่โค้ดประกาศ และรางเดินตามลำดับนั้น', () => {
+  const inCheck = sql0369.match(/CHECK \(status IN \(([^)]+)\)\)/);
+  assert.ok(inCheck, 'ต้องมี CHECK ชุดใหม่ในไฟล์');
+  const allowed = inCheck[1].split(',').map((part) => part.trim().replace(/'/g, ''));
+  assert.deepEqual([...allowed].sort(), [...SPEC_REVISION_STATUSES].sort());
+  for (const step of SPEC_REVISION_STEPS) assert.ok(allowed.includes(step), step);
+});
+
+test('🪤 0369 ย้ายแถวเดิมก่อนเปลี่ยน CHECK — ไม่ใช่หลัง (ไม่งั้น ALTER ล้มทั้งใบ)', () => {
+  const update = sql0369.indexOf("SET status = 'pending'");
+  const addCheck = sql0369.indexOf('ADD CONSTRAINT product_spec_revisions_status_check');
+  assert.ok(update > -1 && addCheck > -1);
+  assert.ok(update < addCheck, 'UPDATE ต้องมาก่อน ADD CONSTRAINT');
+  assert.match(sql0369, /WHERE status IN \('pending_ae', 'pending_ae_supervisor'\)/);
+});
+
+test('0369 ไม่ลบคอลัมน์ผู้ตรวจของเส้นเดิม — ชื่อคนที่ตรวจจริงคือประวัติ', () => {
+  assert.ok(!/DROP COLUMN[\s\S]*?reviewed/i.test(sql0369), 'ห้าม DROP COLUMN reviewed*');
+  assert.match(sql0369, /COMMENT ON COLUMN public\.product_spec_revisions\."reviewedAt"/);
 });
 
 test('ออกเอกสารซ้ำบนบรรทัด SO เดิมไม่ได้ แต่ใบที่ยกเลิกแล้วออกใหม่ได้', () => {
