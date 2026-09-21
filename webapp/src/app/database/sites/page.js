@@ -36,7 +36,7 @@ import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService, canImportServiceData } from "@/lib/permissions";
 import styles from "./page.module.css";
-import { naText } from "@/lib/format";
+import { fmtNumber, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
@@ -321,7 +321,7 @@ export default function ServiceSitesPage() {
       <ListPanel
         icon={<MapPin size={17} aria-hidden="true" />}
         title="ทะเบียนไซต์"
-        subtitle="เปิดไซต์เพื่อดูโซน จุดติดตั้ง และเครื่องที่หน้างาน"
+        subtitle="โซน · จุดติดตั้ง · เครื่องที่หน้างานของแต่ละไซต์ — เปิดไซต์เพื่อดูรายตัว"
         count={loading || loadError ? null : `${sorted.length} ไซต์`}
         loading={loading}
         toolbar={toolbar}
@@ -366,7 +366,11 @@ export default function ServiceSitesPage() {
                     <span className="text-[var(--text-2)] truncate">
                       {site.routeZone ? `เขต ${site.routeZone}` : <span className={styles.muted}>ยังไม่ระบุเขต</span>}
                     </span>
+                    {/* ⭐ โซน · จุด · เครื่อง = สามชั้นของไซต์ (มติผู้ใช้ 2026-09-21) — ของเดิมโชว์
+                        แต่จำนวนเครื่อง ทั้งที่คำโปรยบอกให้ "เปิดไซต์เพื่อดูโซน จุดติดตั้ง" ⇒ ต้องกดเข้าไปทุกใบ
+                        เพื่อรู้ว่าไซต์ไหนพร้อมผูกใบสั่งขายแล้วบ้าง */}
                     <span className="font-mono text-[var(--text-2)]">
+                      {fmtNumber(site.zoneCount || 0)} โซน · {fmtNumber(site.pointCount || 0)} จุด ·{" "}
                       {site.activeAssetCount || 0}
                       {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""} เครื่อง
                     </span>
@@ -394,6 +398,8 @@ export default function ServiceSitesPage() {
                   <th>ไซต์</th>
                   <th>ลูกค้า</th>
                   <th>เขตวิ่งงาน</th>
+                  <th className="num">โซน</th>
+                  <th className="num">จุด</th>
                   <th className="num">เครื่อง</th>
                   <th>ช่วงเวลาที่เข้าได้</th>
                   <th>สถานะ</th>
@@ -419,6 +425,10 @@ export default function ServiceSitesPage() {
                         {naText(site.customerName)}
                       </td>
                       <td>{naText(site.routeZone)}</td>
+                      {/* ⭐ โซน → จุด → เครื่อง เรียงจากหยาบไปละเอียด · ไซต์ที่ยังไม่มีโซนผูกใบสั่งขายไม่ได้
+                          ⇒ ตัวเลขนี้คือ "ไซต์นี้พร้อมรับงานหรือยัง" ที่อ่านได้จากลิสต์โดยไม่ต้องกดเข้าไป */}
+                      <td className={`num mono ${styles.numCol}`}>{fmtNumber(site.zoneCount || 0)}</td>
+                      <td className={`num mono ${styles.numCol}`}>{fmtNumber(site.pointCount || 0)}</td>
                       <td className={`num mono ${styles.numCol}`}>
                         {/* เครื่องที่ยังใช้งานคือตัวเลขที่เจ้าหน้าที่สนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
                         {site.activeAssetCount || 0}

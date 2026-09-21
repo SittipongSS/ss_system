@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, Navigation, Plus, Search, Wrench } from "lucide-react";
+import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, MapPinned, Navigation, Plus, Search, Wrench } from "lucide-react";
 import AssetModelsPanel from "@/components/service/AssetModelsPanel";
 import MachineAddModal from "@/components/service/MachineAddModal";
 import Tabs from "@/components/ui/Tabs";
@@ -44,6 +44,9 @@ import styles from "./page.module.css";
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
    ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
 const EMPTY = [];
+/* ค่าตัวกรอง "ยังไม่ระบุโซน" — ต้องเป็นสตริงคงที่ ไม่ใช่ null เพราะ FilterPopover ส่งค่ากลับ
+   เป็นสตริงเสมอ · ขึ้นต้นด้วย `__` กันชนกับ id ของโซนจริง (รูป `ZN-…`) */
+const NO_ZONE = "__nozone__";
 
 export default function ServiceAssetsPage() {
   const [assets, setAssets] = useState([]);
@@ -87,6 +90,9 @@ export default function ServiceAssetsPage() {
   const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
   const [conditionFilter, setConditionFilter] = useStickyState("conditionFilter", EMPTY);
   const [customerFilter, setCustomerFilter] = useStickyState("customerFilter", EMPTY);
+  /* ⭐ ตัวกรองโซน (มติผู้ใช้ 2026-09-21) — "เครื่องที่ยังไม่ระบุโซน" เป็นตัวเลือกของตัวเอง
+     เพราะมันคือกองที่ต้องตามเก็บ ไม่ใช่โซนหนึ่ง (59 ตัว ณ 21/09) */
+  const [zoneFilter, setZoneFilter] = useStickyState("zoneFilter", EMPTY);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — หน้านี้มีตัวกรอง 5 มิติ คนกดรัว ๆ ได้ ถ้าไม่กัน
@@ -191,6 +197,15 @@ export default function ServiceAssetsPage() {
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "th")).map(([value, label]) => ({ value, label }));
   }, [assets]);
 
+  const zoneOptions = useMemo(() => {
+    const map = new Map();
+    assets.forEach((a) => { if (a.zoneId && a.zoneName) map.set(a.zoneId, a.zoneName); });
+    const rows = [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], "th"))
+      .map(([value, label]) => ({ value, label }));
+    return [{ value: NO_ZONE, label: "ยังไม่ระบุโซน" }, ...rows];
+  }, [assets]);
+
   const q = search.trim().toLocaleLowerCase("th");
   const filtered = useMemo(() => assets.filter((a) => {
     /* "อยู่ที่ไหน" อ่านจาก `siteKind` ของไซต์ที่เครื่องอยู่ ไม่ใช่เดาจากลูกค้า —
@@ -204,16 +219,18 @@ export default function ServiceAssetsPage() {
     if (statusFilter.length && !statusFilter.includes(a.status)) return false;
     if (conditionFilter.length && !conditionFilter.includes(a.condition)) return false;
     if (customerFilter.length && !customerFilter.includes(a.customerId)) return false;
+    if (zoneFilter.length && !zoneFilter.includes(a.zoneId || NO_ZONE)) return false;
     if (q) {
       // ⭐ รหัสเครื่องเป็นตัวค้นหลัก — ช่องค้นของทะเบียนไซต์ไม่กิน serial เลย
       // ⭐ ตาเห็นบนแถว = ต้องค้นเจอ — `code` เป็นรหัสที่ระบบออกให้ (mig 0344)
       //    `serial` ยังอยู่เพราะเป็นเบอร์จากโรงงานที่คนจดมาจากตัวเครื่อง
-      const hit = [a.code, a.serial, a.label, a.model, a.colour, a.siteName, a.customerName, a.siteCode]
+      const hit = [a.code, a.serial, a.label, a.model, a.colour, a.siteName, a.customerName, a.siteCode,
+        a.zoneName, a.zoneCode, a.spot]
         .filter(Boolean).some((f) => String(f).toLocaleLowerCase("th").includes(q));
       if (!hit) return false;
     }
     return true;
-  }), [assets, locationFilter, modelFilter, statusFilter, conditionFilter, customerFilter, q]);
+  }), [assets, locationFilter, modelFilter, statusFilter, conditionFilter, customerFilter, zoneFilter, q]);
 
   const sort = useSortableTable(filtered, {
     serial: (a) => a.code || a.serial || a.label || "",
@@ -222,21 +239,22 @@ export default function ServiceAssetsPage() {
     model: (a) => a.model || "",
     kind: (a) => ASSET_KIND_LABELS[a.kind] || a.kind || "",
     site: (a) => a.siteName || "",
+    zone: (a) => a.zoneName || "",
     installedAt: (a) => a.installedAt || null,
     status: (a) => ASSET_STATUS_LABELS[a.status] || a.status || "",
   }, { key: "serial", dir: "asc" });
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
-      resetKey: `${q}|${locationFilter.join(",")}|${modelFilter.join(",")}|${statusFilter.join(",")}|${conditionFilter.join(",")}|${customerFilter.join(",")}|${sort.sortKey}|${sort.sortDir}`,
+      resetKey: `${q}|${locationFilter.join(",")}|${modelFilter.join(",")}|${statusFilter.join(",")}|${conditionFilter.join(",")}|${customerFilter.join(",")}|${zoneFilter.join(",")}|${sort.sortKey}|${sort.sortDir}`,
     });
 
   const filterCount = locationFilter.length + modelFilter.length + statusFilter.length
-    + conditionFilter.length + customerFilter.length;
+    + conditionFilter.length + customerFilter.length + zoneFilter.length;
 
   const clearAll = () => {
     setLocationFilter([]); setModelFilter([]); setStatusFilter([]);
-    setConditionFilter([]); setCustomerFilter([]);
+    setConditionFilter([]); setCustomerFilter([]); setZoneFilter([]);
   };
 
   /* ⚠️ **สามสภาพ ไม่ใช่สอง** (mig 0344) — เครื่องที่ยังไม่ได้ติดตั้ง **ไม่มีไซต์เลย**
@@ -273,7 +291,7 @@ export default function ServiceAssetsPage() {
           autoComplete="off"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ค้นหารหัสเครื่อง รุ่น ไซต์ หรือลูกค้า"
+          placeholder="ค้นหารหัสเครื่อง รุ่น ไซต์ โซน หรือลูกค้า"
           aria-label="ค้นหาเครื่อง"
         />
       </div>
@@ -306,6 +324,11 @@ export default function ServiceAssetsPage() {
           {
             key: "customer", label: "ลูกค้า", icon: Building2,
             options: customerOptions, selected: customerFilter, onChange: setCustomerFilter,
+          },
+          /* ⭐ โซนอยู่ท้ายสุด — แคบที่สุดในชุด (เลือกลูกค้าก่อนแล้วค่อยเจาะโซนคือลำดับที่คนใช้จริง) */
+          {
+            key: "zone", label: "โซน", icon: MapPinned,
+            options: zoneOptions, selected: zoneFilter, onChange: setZoneFilter,
           },
         ]}
       />
@@ -457,7 +480,7 @@ export default function ServiceAssetsPage() {
                   <SortTh label="รับเข้าเมื่อ" sortKey="receivedAt" sort={sort} />
                   <SortTh label="สถานะ / สภาพ" sortKey="status" sort={sort} />
                   <SortTh label="อยู่ที่" sortKey="site" sort={sort} />
-                  <th>โซน / จุดติดตั้ง</th>
+                  <SortTh label="โซน / จุดติดตั้ง" sortKey="zone" sort={sort} />
                 </tr>
               </thead>
               <tbody>
@@ -484,7 +507,18 @@ export default function ServiceAssetsPage() {
                     <td>{asset.receivedAt ? fmtDate(asset.receivedAt) : naText(null)}</td>
                     <td>{statusCell(asset)}</td>
                     <td>{locationCell(asset)}</td>
-                    <td>{naText(asset.spot)}</td>
+                    <td>
+                      {/* 🐞 ของเดิมวาดแค่ `spot` ซึ่งมีข้อมูล 16 จาก 316 ตัว ⇒ คอลัมน์ขึ้นขีดเกือบทั้งตาราง
+                          ทั้งที่ 257 ตัวมีโซนอยู่ · โซนคือสิ่งที่ช่างใช้เดินไปถูกที่ (ไซต์เดียวมีได้ถึง 9 โซน)
+                          ⇒ ชื่อโซนเป็นบรรทัดหลัก · จุดติดตั้งเป็นบรรทัดรองเมื่อมีคนตั้งชื่อไว้ */}
+                      {asset.zoneName
+                        ? <>
+                          {asset.zoneName}
+                          {asset.zoneFloor ? <span className={styles.sub}>{asset.zoneFloor}</span> : null}
+                        </>
+                        : <span className={styles.sub}>ยังไม่ระบุโซน</span>}
+                      {asset.spot ? <span className={styles.sub}>{asset.spot}</span> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

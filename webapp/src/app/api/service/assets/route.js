@@ -29,8 +29,9 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (access.response) return access.response;
 
   try {
-    const { assets, sites } = await loadAllAssets(supabase);
+    const { assets, sites, zones } = await loadAllAssets(supabase);
     const siteById = new Map(sites.map((s) => [s.id, s]));
+    const zoneById = new Map((zones || []).map((z) => [z.id, z]));
 
     /* แนบ **ตัวตนของไซต์** ไปกับเครื่องแต่ละตัว ไม่ใช่ให้จอไปไล่หาเอง —
        จอทะเบียนต้องกรอง/เรียง/จัดกลุ่มด้วยชื่อไซต์และลูกค้า ซึ่งเป็นข้อมูลคนละตาราง
@@ -40,8 +41,14 @@ export const GET = withUser(async ({ user, supabase }) => {
           `null` ทั้งแถวโดยตั้งใจ ไม่ใช่ข้อมูลหาย · จอต้องอ่านเป็น "ยังไม่มีที่อยู่" */
     const rows = assets.map((asset) => {
       const site = asset.siteId ? (siteById.get(asset.siteId) || null) : null;
+      /* ⭐ โซนของเครื่อง (mig 0297/0298) — ไซต์เดียวมีได้ถึง 9 โซน ⇒ "อยู่ไซต์ไหน" อย่างเดียว
+         ยังไม่พอให้ช่างเดินไปถูกที่ · `zoneId` ว่างได้โดยตั้งใจ (เครื่องที่ยังไม่ระบุโซน) ⇒ null */
+      const zone = asset.zoneId ? (zoneById.get(asset.zoneId) || null) : null;
       return {
         ...asset,
+        zoneCode: zone?.code || null,
+        zoneName: zone?.name || null,
+        zoneFloor: zone?.floor || null,
         siteCode: site?.code || null,
         siteName: site?.name || null,
         siteKind: site?.kind || null,
