@@ -23,8 +23,9 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
   Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
-  Eye, FileType, FileSpreadsheet, Link2, Lock,
+  Eye, FileType, FileSpreadsheet, Link2, Lock, Camera,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import GoogleDocViewer from "@/components/GoogleDocViewer";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { googleDocKindLabel, googleDocPreviewUrl, isGoogleDoc } from "@/lib/master/googleDocView";
@@ -40,6 +41,7 @@ import {
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_MB,
   UPLOAD_ACCEPT_ATTR,
+  ACCEPTED_IMAGE_MIME,
 } from "@/lib/master/attachmentTypes";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
@@ -49,6 +51,12 @@ import { apiFetch } from "@/lib/apiFetch";
 import styles from "./AttachmentsPanel.module.css";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
+/* โหมด `photoCapture` รับเฉพาะรูปในทะเบียนชนิดที่ระบบเปิดดูได้ — iOS แปลง HEIC ให้เองตามลิสต์นี้
+   ⚠️ ห้ามเขียนเป็นสตริง "image" + "/*" ติดกันในไฟล์ .js — ด่านอ่านซอร์สของ UI ล้างคอมเมนต์
+      แบบไม่รู้จักสตริง ⇒ "/*" ในสตริงกลืนโค้ดหลังจากนั้นทั้งก้อน (keyboardClickable.test.mjs
+      มีรายการของที่เคยโดนแล้ว: CloseVisitSheet) */
+const PHOTO_ACCEPT_ATTR = ACCEPTED_IMAGE_MIME.join(",");
+
 function tooLarge(file) {
   if (file && file.size > MAX_UPLOAD_BYTES) {
     notifyToast.error(`ไฟล์ใหญ่เกินกำหนด (สูงสุด ${MAX_UPLOAD_MB} MB)`);
@@ -107,6 +115,12 @@ export default function AttachmentsPanel({
      (มติผู้ใช้ 2026-09-21 · เหตุผลและกับดักอยู่ที่ `PhotoRows`)
      ⚠️ ลำดับแถวเป็นของผู้เรียก · id ที่ไม่มีรูปคู่กันถูกข้าม (ไฟล์เพิ่งถูกลบ) */
   photoRows,
+  /* โหมด inline: **ปุ่ม "ถ่ายรูป" ขนาดนิ้ว** แทนลิงก์ "แนบไฟล์" ตัวจิ๋ว (มติผู้ใช้ 2026-09-21)
+     — จอหน้างานของช่าง (มือถือ) · รับเฉพาะรูป เลือกได้หลายรูปต่อครั้ง
+     ⚠️ **ไม่ใส่ `capture`** — `capture` บังคับเปิดกล้องอย่างเดียว ช่างที่ถ่ายไว้ก่อนแล้วเลือก
+       จากคลังไม่ได้ · ไม่ใส่ = มือถือถามให้เลือกระหว่างกล้องกับคลังรูปเอง
+     ⚠️ คำใบ้ "ลากมาวาง · Ctrl+V" ซ่อนบนจอสัมผัส (ไม่มีทั้งเมาส์และคีย์บอร์ดให้ทำตาม) */
+  photoCapture = false,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -218,17 +232,24 @@ export default function AttachmentsPanel({
     cardFileRef.current?.click();
   };
   const handleCardFile = async (e) => {
-    const f = e.target.files?.[0];
+    /* หลายไฟล์ต่อครั้งมาได้เฉพาะโหมด `photoCapture` (input มี `multiple`) — ไฟล์ที่ใหญ่เกิน
+       ข้ามทีละไฟล์ ไม่ทิ้งทั้งชุด (ช่างเลือกมาห้ารูป ใหญ่รูปเดียว ต้องได้อีกสี่) */
+    const files = Array.from(e.target.files || []);
     const typeKey = pendingTypeRef.current;
-    if (!f || !typeKey) return;
-    if (tooLarge(f)) {
+    if (!files.length || !typeKey) return;
+    const ok = files.filter((f) => !tooLarge(f));
+    if (!ok.length) {
       pendingTypeRef.current = null;
       if (cardFileRef.current) cardFileRef.current.value = "";
       return;
     }
     setUploadingType(typeKey);
     try {
-      if (await upload(f, typeKey, {})) await fetchItems();
+      let landed = false;
+      for (const f of ok) {
+        if (await upload(f, typeKey, {})) landed = true;
+      }
+      if (landed) await fetchItems();
     } catch (err) {
       console.error(err);
       notifyToast.error("เกิดข้อผิดพลาดในการอัปโหลด");
@@ -689,11 +710,27 @@ export default function AttachmentsPanel({
               ที่กว้างแค่ 292px ด้วย · ประโยคเต็ม 40 ตัวอักษรบวกปุ่มแล้วตกบรรทัด
               ⇒ กล่องเดียวกันสูงไม่เท่ากันสองที่ในหน้าเดียว (ผู้ใช้ทักเอง) */}
           {canEdit && fileUploads && (
-            <p className="mr-auto text-[10px] text-[var(--text-3)]">
+            <p className={`mr-auto text-[10px] text-[var(--text-3)] ${photoCapture ? styles.pointerOnly : ""}`}>
               ลากมาวาง · Ctrl+V
             </p>
           )}
-          {canEdit && fileUploads && (
+          {canEdit && fileUploads && photoCapture && (
+            <Button
+              variant="outline"
+              className={styles.captureBtn}
+              onClick={() => pickForType(inlineType)}
+              disabled={busy}
+              icon={<Camera size={16} aria-hidden="true" />}
+            >
+              {busy ? "กำลังอัปโหลด…" : (
+                <>
+                  <span className={styles.touchOnly}>ถ่ายรูป</span>
+                  <span className={styles.pointerOnly}>แนบรูป</span>
+                </>
+              )}
+            </Button>
+          )}
+          {canEdit && fileUploads && !photoCapture && (
             <button
               type="button"
               onClick={() => pickForType(inlineType)}
@@ -741,7 +778,8 @@ export default function AttachmentsPanel({
           <input
             ref={cardFileRef}
             type="file"
-            accept={UPLOAD_ACCEPT_ATTR}
+            accept={photoCapture ? PHOTO_ACCEPT_ATTR : UPLOAD_ACCEPT_ATTR}
+            multiple={photoCapture || undefined}
             onChange={handleCardFile}
             className="hidden"
           />

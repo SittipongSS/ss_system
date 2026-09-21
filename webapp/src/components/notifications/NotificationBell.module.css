@@ -26,6 +26,19 @@
      ทะลุขึ้นมาอ่านทับกัน (กฎ floating surface ของ audit:ui) */
   background: var(--panel-float); box-shadow: var(--glass-shadow);
 }
+/* 🐞 **จอแคบ: กล่องล้นขอบซ้ายของจอ** (วัด 2026-09-22 ที่ 390px: left −28px) — กล่องเกาะขอบขวา
+   ของปุ่มกระดิ่ง แต่ปุ่มไม่ได้ชิดขวาสุด (มีปุ่มเมนู ⋯ อยู่ถัดไป) ⇒ กว้าง 360 ยื่นเลยขอบซ้าย
+   ตัดหัวเรื่องแจ้งเตือนทิ้งไปครึ่งคำ ("งแจ้งเตือน") · จอแคบให้กางเต็มความกว้างใต้แถบบนแทน
+   ⚠️ `fixed` ไม่ใช่ `absolute` — ขอบของปุ่มเปลี่ยนตามจำนวนปุ่มบนแถบ ผูกกับมันแล้วจะเพี้ยนอีก */
+@media (max-width: 680px) {
+  .panel {
+    position: fixed;
+    top: calc(var(--topbar-h) + env(safe-area-inset-top) + var(--space-2));
+    left: var(--space-2-5);
+    right: var(--space-2-5);
+    width: auto;
+  }
+}
 .head {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   padding: var(--space-3) var(--space-4);

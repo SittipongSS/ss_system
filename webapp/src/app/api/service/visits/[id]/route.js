@@ -11,7 +11,9 @@ import {
 } from '@/lib/service/visitStatus';
 import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
-import { surveyEditLockError } from '@/lib/service/survey';
+import { surveyEditLockError, surveyFieldProgress, surveyFieldSubmitError } from '@/lib/service/survey';
+import { loadSurveyFieldState } from '@/lib/service/surveyRepo';
+import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
@@ -149,6 +151,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (countError) return fail(countError.message, 500);
       const kindSwitch = retrievalKindSwitchError(before, value, { hasResults: (resultCount || 0) > 0 });
       if (kindSwitch) return badRequest(kindSwitch);
+    }
+
+    /* ── นัดประเมินพื้นที่: "ส่งงาน" = ของฝั่งช่างต้องครบ (มติผู้ใช้ 2026-09-21) ────
+       ⭐ ด่านตัดสินจาก **ปลายทางของคำสั่ง** (ใบกำลังจะเป็น `done`) ไม่ใช่จากปุ่มที่กด —
+          ทุกทางที่ปิดนัดประเมินว่าเข้าได้ต้องผ่านด่านเดียวกัน (จอประเมิน · ฟอร์มแก้นัด ·
+          ยิง API ตรง) · 🐞 เดิมปิดเป็น "เสร็จ" ได้ทั้งที่ยังไม่ได้วัดสักพื้นที่
+       ⚠️ `unable` (ไปแล้วเข้าไม่ได้) ไม่ถามด่านนี้ · ใบที่ล็อกแล้ว (ส่งผล/ยกเลิก/ปิด) ก็ไม่ถาม
+          — ช่างแก้ผลวัดไม่ได้แล้ว บล็อกไว้ = นัดค้างเปิดตลอดกาล
+       ⚠️ อ่านผลวัดจาก **ฐาน** ไม่ใช่จากจอ (จอที่โหลดค้างบอกผิดได้ทั้งสองทาง) */
+    let surveyField = null;
+    if (before.kind === SURVEY_VISIT_KIND && before.requestId
+      && value.status === 'done' && before.status !== 'done') {
+      surveyField = await loadSurveyFieldState(supabase, before.requestId);
+      if (surveyField.request && !surveyEditLockError(surveyField.request)) {
+        const blocked = surveyFieldSubmitError(surveyField.zones, surveyField.filesByZone);
+        if (blocked) return conflict(blocked);
+      }
     }
 
     /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
@@ -452,6 +471,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           data.unableReason, retrievedText, data.summary,
         ].filter(Boolean).join(' — '),
         user,
+      });
+    }
+    /* ⭐ ช่างส่งงานหน้างานแล้ว → กระดิ่งถึงหัวหน้าที่เคาะจุด/แพ็คเกจได้ (มติ 2026-09-21)
+       ⚠️ เฉพาะใบที่ยังไม่ล็อก — ใบที่ส่งผลไปแล้วไม่มีอะไรให้เคาะ */
+    if (surveyField?.request && data.status === 'done' && !surveyEditLockError(surveyField.request)) {
+      const cut = surveyField.zones.filter((z) => (z.status || 'ok') === 'cut').length;
+      notifySurveyFieldDone(supabase, {
+        request: surveyField.request,
+        visit: data,
+        actor: { id: user?.id || null, name: user?.name || null },
+        progress: surveyFieldProgress(surveyField.zones, surveyField.filesByZone),
+        cut,
       });
     }
     /* ⭐ ปล่อยเข้าคิว/ข้ามด่านต้องอยู่ในเธรด — "ทำไมนัดนี้ขึ้นตารางทั้งที่ยังไม่จ่าย"

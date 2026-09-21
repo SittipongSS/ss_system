@@ -8,6 +8,7 @@
 // "เกิดตอน SA **กดส่ง**" ไม่ใช่ตอนบันทึกร่าง ⇒ ห้ามย้ายการสร้างโซนไปไว้ตอนสร้างร่าง
 // (ถ้าย้าย ร่างที่ถูกทิ้งจะกินรหัส ZN และทิ้งโซนกำพร้าไว้ในทะเบียนของลูกค้า)
 import { genId } from '@/lib/id';
+import { listAttachments } from '@/lib/master/attachments';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { insertRowWithComposedCode } from '@/lib/entityCode';
@@ -55,6 +56,23 @@ export async function loadSurveyZones(supabase, requestId) {
     .order('sortOrder', { ascending: true }).order('id', { ascending: true });
   if (error) throw error;
   return data || [];
+}
+
+/* ── สภาพหน้างานของใบ ณ ตอนนี้ — ด่าน "ส่งงาน" ของช่าง (มติ 2026-09-21) ─────
+   ใบ + ผลวัดทุกแถว + ไฟล์รายพื้นที่ **จากฐาน** ไม่ใช่จากจอ — จอที่โหลดค้างไว้บอกได้ทั้ง
+   "ยังขาด" ทั้งที่อีกคนเพิ่งเติมครบ และ "ครบ" ทั้งที่อีกคนเพิ่งลบรูปทิ้ง
+   ⚠️ ไฟล์ยิงรายพื้นที่ขนานกัน (ท่าเดียวกับ GET ใบประเมิน) */
+export async function loadSurveyFieldState(supabase, requestId) {
+  const [{ data: request, error }, zones] = await Promise.all([
+    supabase.from('dept_requests')
+      .select('id, "docNo", title, status, "answeredAt", "closedAt", "cancelledAt"')
+      .eq('id', requestId).maybeSingle(),
+    loadSurveyZones(supabase, requestId),
+  ]);
+  if (error) throw error;
+  const files = await Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase)));
+  const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
+  return { request: request || null, zones, filesByZone };
 }
 
 /* ── ตอนสร้างร่าง: เขียนแถวของใบอย่างเดียว ─────────────────────────────

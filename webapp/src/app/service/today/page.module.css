@@ -163,3 +163,35 @@
    ไม่ใช่ค่าเดสก์ท็อป — เจ้าหน้าที่กดด้วยนิ้วโป้งกลางไซต์ ไม่ใช่เมาส์ · override เฉพาะ
    ในหน้านี้ ไม่แก้ <Button> กลาง เพราะหน้าเดสก์ท็อปอื่นไม่ได้ต้องการ */
 .actions :global(.btn) { min-height: var(--ctl-h-touch); }
+
+/* ── แถบ "กำลังทำอยู่" บนสุด (มติผู้ใช้ 2026-09-21) ─────────────────────────
+   ทางลัดไปงานที่ช่างยืนทำอยู่ — ไม่ใช่กลุ่มใหม่ (การ์ดยังอยู่ในกลุ่มเดิม) */
+.liveStrip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.liveRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  min-width: 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+}
+
+.liveCopy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  line-height: var(--lh-thai);
+}
+
+.liveCopy b { color: var(--text-1); font-weight: var(--fw-semibold); }
+.liveCopy small { color: var(--accent-ink); font-size: var(--fs-label); }
+.liveRow :global(.btn) { flex: none; min-height: var(--ctl-h-touch); }
