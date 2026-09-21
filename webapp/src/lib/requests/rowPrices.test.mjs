@@ -56,3 +56,22 @@ test('ตารางในใบ (พัฒนากลิ่น): แถวม
   ]);
   assert.deepEqual(group.directions[0].prices.map((p) => p.short), ['F', 'B', 'FB']);
 });
+
+test('รีวิวรอบสาม: ใบที่จบแล้วไม่ขึ้น "ใส่ราคาแล้ว x/y" · ข้อความราคาตัวเดียวของตาราง/การ์ด · ค้นชื่อรายการเจอ', async () => {
+  const items = [
+    { id: 'A', label: 'Rose EDP', producedScentId: 'S1', pricedResults: [rev('F', 2800), rev('FB', 950)] },
+    { id: 'B', label: 'ยังไม่ได้ราคา', producedScentId: 'S2' },
+  ];
+  assert.deepEqual([requestPriceSummary(items).priced, requestPriceSummary(items).total], [1, 2]);
+  assert.equal(requestPriceSummary(items, { settled: true }).total, 1);
+  const { priceLineText } = await import('./rowPrices.js');
+  assert.equal(priceLineText(rowPriceLines(items[0])), 'F 2,800.00 · FB 950.00');
+  const { matchesQueueSearch } = await import('./useQueueBoard.js');
+  assert.equal(matchesQueueSearch({ docNo: 'SB-1', items }, 'rose edp'), true);
+  // การ์ด (มือถือ) โชว์ราคาด้วย · หน้าใบโหลดผ่าน GET หลังบันทึกราคา (ไม่ตั้งจาก body ของ route ราคา)
+  const panel = readFileSync('src/components/requests/RequestQueuePanel.js', 'utf8');
+  assert.match(panel, /cols\.includes\("price"\) && \(\(\) => \{\s*const summary = requestPriceSummary/);
+  const page = readFileSync('src/app/requests/[id]/page.js', 'utf8');
+  const onSaved = page.slice(page.indexOf('onSaved={(msg'), page.indexOf('onError={() => load'));
+  assert.ok(!onSaved.includes('setReq('), 'ห้ามตั้ง req จาก body ของ route ราคา');
+});

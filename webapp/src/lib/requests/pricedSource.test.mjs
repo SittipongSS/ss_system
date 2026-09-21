@@ -36,7 +36,9 @@ test('แถวที่ยังไม่ผูกทะเบียน = null 
 });
 
 test('route ถามตัวตัดสินกลาง ไม่คิดชนิดราคาเอง', () => {
-  assert.ok(SRC.includes('rowPriceSlots(row)'));
+  // ตัวคิดช่องจากทะเบียนสด ตัวเดียวกับที่ GET ติดให้โมดัล (รีวิว ม-148 รอบสาม)
+  assert.ok(SRC.includes('rowPriceSlotsLive(supabase, row)'));
+  assert.match(readFileSync('src/app/api/sa/requests/[id]/route.js', 'utf8'), /item\.priceSlots = await rowPriceSlotsLive\(/);
   assert.ok(SRC.includes('normalizeSlotPrices('));
   assert.ok(!/kind: 'RM_F/.test(SRC), 'ชนิดราคาต้องไม่ถูกเขียนซ้ำใน route');
 });

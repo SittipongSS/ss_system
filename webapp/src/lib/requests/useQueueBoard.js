@@ -11,6 +11,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useResponsiveView } from '@/lib/useResponsiveView';
 import { requestSortDefaultDir } from '@/lib/requests/queueList';
+import { requestPriceSummary } from '@/lib/requests/rowPrices';
 
 /* `sortKey` = แบบเรียงตั้งต้นของหน้านั้น (ดูคำเตือนที่ `REQUEST_SORT_OPTIONS`)
    ⚠️ หน้าไหนส่งค่าอื่นมา **คำโปรยของหน้านั้นต้องพูดตรงกับลำดับที่เห็นจริง** */
@@ -87,5 +88,7 @@ export function matchesQueueSearch(request, term, { kindLabel = () => '' } = {})
     // ⇒ ส่งแค่ `kind` แล้วพิมพ์ "NPD" จะหาไม่เจอทั้งที่คำนั้นอยู่บนจอ
     kindLabel(request),
     request?.dept,
+    // ชื่อรายการในคอลัมน์ราคา (ม-148) — ตาเห็นบนแถว = ต้องค้นเจอ
+    ...requestPriceSummary(request?.items).lines.map((line) => line.label),
   ].filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
 }

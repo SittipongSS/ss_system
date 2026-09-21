@@ -67,7 +67,8 @@ import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
-import { createScent } from '@/lib/master/scentFormulaAdmin';
+import { createScent, rowPriceSlotsLive } from '@/lib/master/scentFormulaAdmin';
+import { canPriceRow } from '@/lib/requests/rowStage';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
@@ -159,6 +160,12 @@ export async function GET(request, { params }) {
     // ⚠️ เติม **เฉพาะหน้ารายละเอียด** ไม่ใช่ใน `findRequest` — คิวโหลดทีละหลายสิบใบ
     // การเพิ่ม query ให้ทุกใบเพื่อค่าที่คิวไม่ได้โชว์คือจ่ายฟรี
     row.items = await withRegistryLinks(getSupabaseAdmin(), row.items);
+    /* ⭐ ช่องราคาของแถวที่รอใส่ราคา — คิดจากทะเบียนสด ตัวเดียวกับ POST ขั้นราคา (`rowPriceSlotsLive` · รีวิว ม-148 รอบสาม)
+       ⚠️ เฉพาะแถวที่ใส่ราคาได้ตอนนี้ (ส่วนน้อย) · อ่านพัง = ไม่ติด (โมดัลถอยไปคิดจากแถว · API ตัดสินจริงอยู่ดี) */
+    for (const item of row.items || []) {
+      if (!canPriceRow(item)) continue;
+      item.priceSlots = await rowPriceSlotsLive(getSupabaseAdmin(), item).catch(() => undefined);
+    }
     // ด่านรายแถว — ให้ตรงกับที่ GET /api/sa/requests กรองไว้อยู่แล้ว ไม่งั้นรายการ
     // ซ่อนใบของคนอื่น แต่เปิดตรงด้วย id อ่านได้หมด (id หลุดทางลิงก์แจ้งเตือน/ /go/)
     if (!canReadRequestRow(user, row)) {

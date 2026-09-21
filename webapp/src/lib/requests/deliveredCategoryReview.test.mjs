@@ -65,7 +65,7 @@ test('ลบรายการในคำร้อง: ใช้ด่านเ
   assert.match(loop, /if \(readError\) throw readError;/);
   assert.match(loop, /if \(blocked\) \{[\s\S]*?break;/);
   // แถวถูกลบแล้ว ⇒ ห้ามโยนออกนอกลูป: ทุกขั้นอยู่ใน try และ catch = เก็บไว้ + หยุด
-  assert.match(loop, /\} catch \(e\) \{\s*keep\(n,[\s\S]*?break;/);
+  assert.match(loop, /\} catch \(e\) \{[\s\S]*?keep\(n, text\);[\s\S]*?registryWarning = [\s\S]*?break;/);
   // ของที่ลบตามแถวต้องมาจากแถวตอนลบจริง + มี audit ให้กู้คืน
   assert.match(src, /registryOwnedByRow\(\{ \.\.\.row, \.\.\.\(deletedRows\?\.\[0\] \|\| \{\}\) \}\)/);
   assert.match(loop, /recordAudit\(\{[\s\S]*?action: 'delete', entityType: own\.kind/);

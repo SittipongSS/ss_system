@@ -2786,16 +2786,17 @@ export default function RequestDetailPage() {
         onClose={() => setPricing(null)}
         title={pricing ? `ใส่ราคา — ${itemText(pricing.item)}` : ""}
         endpoint={pricing ? `/api/sa/requests/${id}/items/${pricing.item.id}/price` : ""}
-        slots={pricing ? rowPriceSlots(pricing.item) : null}
+        // ช่องที่ server คิดจากทะเบียนสดให้แล้ว (ตัวเดียวกับ POST) · ไม่มี = ถอยไปคิดจากแถว
+        slots={pricing ? (pricing.item.priceSlots || rowPriceSlots(pricing.item)) : null}
         hint={`ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง"}
-        /* ⚠️ เดิมขั้นนี้วิ่งผ่าน `call()` ที่ตีกลับแล้วโหลดใบใหม่ และใช้ใบที่ API ตอบกลับทันที (รีวิว ม-148 รอบสอง) —
-           route ราคาตอบใบทั้งใบ (`findRequest`) ⇒ ตั้งเลย ไม่มีช่วงที่ปุ่ม "ใส่ราคา" ยังค้างให้กดซ้ำ */
-        onSaved={(msg, data) => {
+        /* ⚠️ **โหลดใบใหม่ผ่าน GET เสมอ** — ห้ามตั้ง `req` จาก body ที่ route ราคาตอบ (รีวิว ม-148 รอบสาม): body นั้นเป็น
+           `findRequest` เปล่า ไม่มีลิงก์ทะเบียน (`refScent`/`refFormula`) และธงของคนดู (`_mine` · `_canEditPdr` …) ที่ GET เติม
+           ⇒ ตั้งแล้วรหัส/ลิงก์ในตารางหาย · ปุ่มปิดเรื่องของแอดมินหาย จนกด F5 */
+        onSaved={(msg) => {
           setPricing(null);
           setToast({ kind: "success", msg });
-          if (data?.id === req.id && Array.isArray(data.items)) setReq(data);
-          else load({ background: true });
+          load({ background: true });
         }}
         onError={() => load({ background: true })}
       />

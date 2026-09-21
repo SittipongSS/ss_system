@@ -606,7 +606,15 @@ export async function DELETE(request, { params }) {
         error: still ? 'รายการนี้เพิ่งมีการบันทึกผลลูกค้า — ลบไม่ได้แล้ว โหลดหน้าใหม่' : 'รายการนี้ถูกลบไปแล้ว — โหลดหน้าใหม่',
       }, { status: 409 });
     }
-    await purgeAttachments('dept_request_item', itemId);
+    /* ⚠️ แถวลบไปแล้ว ⇒ กวาดไฟล์พังต้องไม่โยน (รีวิว ม-148 รอบสาม) — โยน = 500 · ทะเบียนที่แถวสร้างไว้ไม่ถูกเก็บกวาด
+       · ไม่มีเธรด/audit · บอกผ่าน `_warning` แทน */
+    let attachWarning = null;
+    try {
+      await purgeAttachments('dept_request_item', itemId);
+    } catch (e) {
+      console.error('[requests] กวาดไฟล์แนบหลังลบแถวไม่สำเร็จ:', e?.message);
+      attachWarning = 'ลบรายการแล้ว แต่ลบไฟล์แนบของรายการไม่สำเร็จ';
+    }
 
     /* ⭐ **คิดตราปิดของใบใหม่หลังลบแถว** (รีวิว ม-144 · บั๊กเดิมทุกหัวข้อที่มีแถว) — ลบแถวที่ค้างตัวสุดท้าย
        (เช่นแถวรอบแก้) แล้วแถวที่เหลือจบครบหมด แต่ใบยังค้าง "รับเรื่องแล้ว" ไม่มีตราฝั่งฝ่าย ⇒ ปุ่ม "ตอบแล้ว"
@@ -675,6 +683,7 @@ export async function DELETE(request, { params }) {
        แล้วได้สูตรไร้กลิ่นค้างทะเบียน · กลิ่นที่ถูกเก็บเพราะสูตรยังอยู่ ต้องบอกเหตุนั้นตรง ๆ */
     const removed = [];
     const kept = [];
+    let registryWarning = null;
     /* ⭐ ด่านชุดเดียวกับปุ่มลบบนหน้าทะเบียน (`deleteFormulaError` / `deleteScentError`) — นับทั้ง pointer แบบ
        RESTRICT และแบบ SET NULL (สินค้า · สูตรที่แก้ต่อ · สูตรที่ใช้กลิ่น) · 🐞 รีวิว ม-148: สูตร "กำลังพัฒนา" ที่ SA
        ผูกเข้าสินค้าแล้ว เคยถูกลบตามแถวได้เงียบ ๆ (products.formulaId SET NULL)
@@ -717,7 +726,10 @@ export async function DELETE(request, { params }) {
           summary: `ลบ${own.kind === 'formula' ? 'สูตร' : 'กลิ่น'} ${label} — ลบรายการ ${rowText(row) || itemId} (${before.docNo || id})`,
         });
       } catch (e) {
-        keep(n, `ตรวจ/ลบ ${label} ไม่สำเร็จ — ยังอยู่ในทะเบียน (${e?.code === '23503' ? 'ถูกอ้างเพิ่มระหว่างลบ' : e?.message})`);
+        const text = `ตรวจ/ลบ ${label} ไม่สำเร็จ — ยังอยู่ในทะเบียน (${e?.code === '23503' ? 'ถูกอ้างเพิ่มระหว่างลบ' : e?.message})`;
+        keep(n, text);
+        // ⚠️ พังจริง (ไม่ใช่เก็บตามกติกา) ต้องขึ้นจอ — `registryKept` ไม่มีจอไหนแสดง (รีวิว ม-148 รอบสาม)
+        registryWarning = `ลบรายการแล้ว แต่${text} — ลบเองที่หน้าทะเบียน`;
         break;
       }
     }
@@ -743,7 +755,9 @@ export async function DELETE(request, { params }) {
     });
     return Response.json({
       ok: true, registryRemoved, registryKept,
-      ...(closureWarning || undoWarning ? { _warning: [undoWarning, closureWarning].filter(Boolean).join(' · ') } : {}),
+      ...(closureWarning || undoWarning || attachWarning || registryWarning
+        ? { _warning: [undoWarning, closureWarning, attachWarning, registryWarning].filter(Boolean).join(' · ') }
+        : {}),
     });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

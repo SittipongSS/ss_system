@@ -125,7 +125,9 @@ export function defaultDeliveredCategory(pdrProductKinds = [], productTypes = []
  * `scent` ต้องผ่าน `findScentDetail` มาแล้ว (มี `deliveredCategoryCode` · `formulas`)
  */
 export function scentFPriceNotice(scent) {
-  const formulas = (scent?.formulas || []).filter((f) => f && f.status !== 'archived');
+  // ⚠️ สูตรหัวน้ำหอม (02-020) ใส่ได้แค่ F ลงกลิ่นนี้อยู่แล้ว — ชี้ไปหน้าสูตรพวกนี้เพื่อหา B/FB คือทางตัน (รีวิว ม-148 รอบสาม)
+  const formulas = (scent?.formulas || [])
+    .filter((f) => f && f.status !== 'archived' && f.categoryCode !== DELIVERED_FRAGRANCE_CODE);
   const codes = formulas.map((f) => f.code || f.name).filter(Boolean);
   /* ⚠️ สูตรที่ยัง "กำลังพัฒนา" (เกิดจากส่งงานพัฒนากลิ่น · รอลูกค้าคอนเฟิร์ม) ใส่ราคาที่หน้าสูตรไม่ได้ (ปุ่มโผล่เฉพาะสูตร
      ใช้งาน) ⇒ ชี้ไปหน้าสูตรตอนนั้นคือทางตัน — บอกทางที่ใช้ได้จริง (รีวิว ม-148 รอบสอง) */

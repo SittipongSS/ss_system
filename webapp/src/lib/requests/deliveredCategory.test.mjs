@@ -183,6 +183,8 @@ test('คำเตือนปุ่มใส่ราคา F บนทะเ�
     /ขั้นใส่ราคาของคำร้อง/,
   );
   assert.equal(scentFPriceNotice({ deliveredCategoryCode: '02-020', formulas: [] }), null);
+  // สูตรหัวน้ำหอม (02-020) ใส่ได้แค่ F ลงกลิ่นนี้ — ไม่ชี้ไปหา B/FB ที่ไม่มี
+  assert.equal(scentFPriceNotice({ formulas: [{ code: 'PF-OIL', status: 'active', categoryCode: '02-020' }] }), null);
   assert.equal(scentFPriceNotice({ formulas: [{ code: 'OLD', status: 'archived' }] }), null);
   assert.equal(scentFPriceNotice(null), null);
 });

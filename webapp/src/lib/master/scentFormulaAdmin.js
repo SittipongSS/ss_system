@@ -15,6 +15,8 @@ import {
 import { formulaScentCustomerError, derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 import { customerSnapshotName, CUSTOMER_NAME_SELECT } from '@/lib/master/customerName';
 import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
+import { priceSlotsFor } from '@/lib/master/priceSlots';
+import { rowPriceSlots } from '@/lib/requests/rowPriceTarget';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -227,13 +229,17 @@ export async function loadFormulas(supabase, { status = null, customerId = null 
    ⇒ ช่องราคา FB ของมันว่างตลอดกาล · ตาราง/หน้ารายละเอียดต้องโชว์ราคาที่ใส่ได้จริง ไม่ใช่ "ยังไม่ผูกราคา" ถาวร
    · `priceSlot` บอกจอว่าราคาที่ติดมาคือช่องไหน (ป้ายคอลัมน์/การ์ด) */
 async function withFragranceOilPrice(supabase, rows) {
-  const oil = rows.filter((r) => r.categoryCode === PDR_FRAGRANCE_OIL_CODE && r.scentId);
+  /* ⚠️ เงื่อนไขเดียวกับ `priceSlotsFor` เป๊ะ (รีวิว ม-148 รอบสาม) — กลิ่นใช้ไม่ได้ = สูตรถอยไปช่อง B/FB ⇒ ราคาหลักยังเป็น FB
+     ของสูตร · ต้องมี `scentStatus` บนแถวก่อนเรียก (loadFormulas: attachFormulaUsage · หน้ารายละเอียด: โหลดกลิ่นก่อน) */
+  const isOil = (r) => r.categoryCode === PDR_FRAGRANCE_OIL_CODE && r.scentId
+    && (r.scentStatus ? isScentUsable({ status: r.scentStatus }) : true);
+  const oil = rows.filter(isOil);
   if (!oil.length) return rows.map((r) => ({ ...r, priceSlot: 'FB' }));
   const scentPrices = await attachRegistryPrice(
     supabase, [...new Set(oil.map((r) => r.scentId))].map((id) => ({ id })), { column: 'scentId', kind: 'RM_F' },
   );
   const byScent = new Map(scentPrices.map((s) => [s.id, s.price]));
-  return rows.map((r) => (r.categoryCode === PDR_FRAGRANCE_OIL_CODE && r.scentId
+  return rows.map((r) => (isOil(r)
     ? { ...r, price: byScent.get(r.scentId) || null, priceSlot: 'F' }
     : { ...r, priceSlot: 'FB' }));
 }
@@ -500,6 +506,24 @@ export async function loadPriceSlotSource(supabase, slot) {
   return { source: scent };
 }
 
+/* ── ช่องราคาของแถวคำร้อง — คิดจาก **ทะเบียนสด** ที่เดียว (รีวิว ม-148 รอบสาม) ─────────────────────────
+   ⭐ ขั้นใส่ราคา (POST) กับโมดัลบนจอ (GET ติดผลนี้ให้แถวที่รอราคา) ถามตัวนี้ตัวเดียว — เดิมโมดัลคิดจากสแนปช็อตของแถว
+   ส่วน API คิดจากสูตรสด ⇒ RD แก้กลิ่นของสูตร/กลิ่นเลิกใช้ แล้วโมดัลเปิดช่องที่ API ตีกลับ ทั้งชุดบันทึกไม่ได้
+   · แถวผูกสูตร: F ลงกลิ่นของ **สูตร** · หมวดของสูตร (02-020 = F อย่างเดียว) · กลิ่นใช้ไม่ได้ = ไม่มีช่อง F
+   · แถวกลิ่นอย่างเดียว / สูตรหาไม่เจอ: ถอยไปตัวคิดจากแถว (`rowPriceSlots`) */
+export async function rowPriceSlotsLive(supabase, row) {
+  if (!row?.producedFormulaId) return rowPriceSlots(row);
+  const formula = await findFormula(supabase, row.producedFormulaId);
+  if (!formula) return rowPriceSlots(row);
+  const scent = formula.scentId ? await findScent(supabase, formula.scentId) : null;
+  return priceSlotsFor({
+    scentId: formula.scentId || null,
+    formulaId: formula.id,
+    categoryCode: formula.categoryCode || row.categoryCode || null,
+    scentUsable: scent ? isScentUsable(scent) : true,
+  });
+}
+
 /* ของที่ชี้เข้ากลิ่น/สูตรด้วย FK แบบ SET NULL (ไม่อยู่ใน `countRegistryRefs`) — ด่านก่อนลบ (ม-148 · รีวิว 2026-09-22)
    · กลิ่น: สูตรที่ใช้กลิ่นนี้ (ทุกสถานะ) + สินค้า · สูตร: สินค้า + สูตรที่แก้ต่อจากมัน
    ⚠️ คืนเลข ไม่ตัดสินเอง — ข้อความอยู่ที่ `deleteScentError` / `deleteFormulaError` ตัวเดียวกับหน้าทะเบียน */
@@ -645,11 +669,12 @@ export async function findFormulaDetail(supabase, id) {
   const [withBase] = await attachRegistryPrice(supabase, [withPrice], {
     column: 'formulaId', kind: 'RM_B', as: 'basePrice',
   });
-  const [withOil] = await withFragranceOilPrice(supabase, [withBase]);
-  if (!withOil.scentId) return { ...withOil, scentPrice: null, scentStatus: null };
+  // กลิ่นก่อน — `withFragranceOilPrice` ต้องรู้สถานะกลิ่น (ตัดสินชุดเดียวกับ priceSlotsFor)
+  const scent = withBase.scentId ? await findScent(supabase, withBase.scentId) : null;
+  const [withOil] = await withFragranceOilPrice(supabase, [{ ...withBase, scentStatus: scent?.status || null }]);
+  if (!withOil.scentId) return { ...withOil, scentPrice: null };
   const [scentRow] = await attachRegistryPrice(supabase, [{ id: withOil.scentId }], {
     column: 'scentId', kind: 'RM_F',
   });
-  const scent = await findScent(supabase, withOil.scentId);
-  return { ...withOil, scentPrice: scentRow?.price || null, scentStatus: scent?.status || null };
+  return { ...withOil, scentPrice: scentRow?.price || null };
 }

@@ -37,7 +37,7 @@ import {
   requestFacetOptions, requestFilterCount, sortRequestRows,
 } from "@/lib/requests/queueList";
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
-import { requestPriceSummary } from "@/lib/requests/rowPrices";
+import { priceLineText, requestPriceSummary } from "@/lib/requests/rowPrices";
 import { requestQueueTrack } from "@/lib/requests/queueTrack";
 import { requestAssignee } from "@/lib/requests/assign";
 import { requestSideLabel } from "@/lib/requests/replyTurn";
@@ -573,16 +573,15 @@ export default function RequestQueuePanel({
          · ยังใส่ไม่ครบทุกรายการบอก "ใส่ราคาแล้ว x/y" ⇒ รู้ว่ายังมีรายการรอราคา
          ⚠️ ตัวจัดรูปเดียวกับตารางในใบ (`requestPriceSummary` → `rowPriceLines`) */
       case "price": {
-        const summary = requestPriceSummary(ask.items);
+        const summary = requestPriceSummary(ask.items, { settled: requestSettled(ask) });
         if (!summary.priced) return <span className={styles.muted}>{NA}</span>;
-        const money = (n) => fmtNumber(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const one = summary.lines.length === 1 && summary.total === 1;
         return (
           <>
             {summary.lines.slice(0, 3).map((line) => (
               <div key={line.id} className={styles.priceLine} title={line.label || undefined}>
                 {!one && line.label ? <span className={styles.priceLabel}>{line.label}</span> : null}
-                {line.prices.map((price) => `${price.short ? `${price.short} ` : ""}${money(price.price)}`).join(" · ")}
+                {priceLineText(line.prices)}
               </div>
             ))}
             {summary.lines.length > 3 && (
@@ -788,6 +787,20 @@ export default function RequestQueuePanel({
                         {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
                       </span>
                     )}
+                    {/* ⭐ ราคาที่ใส่แล้ว (รีวิว ม-148 รอบสาม) — มือถือ/จอตั้งเปิดเป็นการ์ดตั้งต้น · ไม่มีบรรทัดนี้ = คำขอ
+                        "หน้ารายการโชว์ราคา" ไม่เกิดบนมือถือเลย · ขึ้นตามเงื่อนไขเดียวกับคอลัมน์ (`cols.includes`) */}
+                    {cols.includes("price") && (() => {
+                      const summary = requestPriceSummary(ask.items, { settled: requestSettled(ask) });
+                      if (!summary.priced) return null;
+                      const [first] = summary.lines;
+                      return (
+                        <span className={styles.subText}>
+                          ราคา {summary.lines.length > 1 && first.label ? `${first.label} ` : ""}{priceLineText(first.prices)} บาท/กก.
+                          {summary.lines.length > 1 ? ` · +${summary.lines.length - 1} รายการ` : ""}
+                          {summary.priced < summary.total ? ` · ใส่ราคาแล้ว ${summary.priced}/${summary.total}` : ""}
+                        </span>
+                      );
+                    })()}
                     <span className={styles.cardMeta}>
                       {bounced && (
                         <span className={`ui-badge ${styles.overdue}`}>ตีกลับ · {bounced.note}</span>
