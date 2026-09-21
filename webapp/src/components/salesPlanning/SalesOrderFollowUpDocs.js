@@ -1,169 +1,208 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Files } from "lucide-react";
+import { ExternalLink, FilePlus2, Files, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import GatedAction from "@/components/ui/GatedAction";
+import ReasonDialog from "@/components/ui/ReasonDialog";
+import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { TableScroll } from "@/components/ui/Table";
-import { apiFetch, apiJson } from "@/lib/apiFetch";
-import { useCan } from "@/lib/roleContext";
-import { fmtDate, naText } from "@/lib/format";
-import { revLabel, specLineAction } from "@/lib/sales/productSpecView";
+import { apiJson } from "@/lib/apiFetch";
+import { notifyToast } from "@/lib/feedback";
+import { naText } from "@/lib/format";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import { docReasonError } from "@/lib/sales/productSpecDocWorkflow";
+import {
+  docReasonPrompt, followUpLineView, lineIssuePrompt, specDocumentHref,
+} from "@/lib/sales/productSpecDocView";
 import styles from "./SalesOrderFollowUpDocs.module.css";
 
 /**
- * การ์ด "เอกสารต่อเนื่อง" บนหน้าใบสั่งขาย (mig 0364)
+ * การ์ด "เอกสารต่อเนื่อง" บนหน้าใบสั่งขาย — FM-SA-04 หนึ่งใบต่อหนึ่งบรรทัด SO (mig 0370)
  *
- * ⭐ **หน้า SO เป็นด่านปลดล็อกกับทางเข้า ไม่ใช่บ้านของใบ** (มติผู้ใช้ 2026-09-17) —
- * ใบสเปคเป็นใบของสินค้า หนึ่งสินค้าหนึ่งใบตลอดอายุ · ที่นี่ตอบแค่ "บรรทัดไหนต้องทำอะไรต่อ"
+ * ⭐ **มติเจ้าของ 21/09/2569** (docs/fm-sa-04-document-model.md): AC ออกเอกสารได้หลังใบสั่งขาย
+ *    **อนุมัติแล้ว** · เส้นอนุมัติ AC ยื่น → AE เจ้าของดีล → AE Supervisor (ขั้นสุดท้าย) ที่หน้าเอกสาร
+ *    ⇒ การ์ดนี้ตอบแค่ "บรรทัดไหนต้องทำอะไรต่อ" แล้วพาไปหน้าเอกสาร
  *
- * ⚠️ **สถานะทุกบรรทัดมาจาก API** (`productSpecLineState`) ไม่ใช่คิดที่จอ — จอที่คิดเอง
- * จะยอมคนละอย่างกับที่ API ยอม (กับดักเดียวกับที่ form-design-rules §2 เตือน)
+ * ⚠️ **สถานะทุกบรรทัดมาจาก API** (`lineDocumentState` ที่คิดด้วยผู้ใช้จริง) — จอห้ามคิดเอง
+ * ⚠️ **บรรทัดที่ยังออกไม่ได้ก็ขึ้น** พร้อมปุ่มที่บอกเหตุตอนกด (ui-visibility-rule) · ไม่มีสิทธิ์ออก
+ *    = ไม่มีปุ่ม บอกแค่ว่าใครเป็นคนออก
  *
- * ⚠️ **บรรทัดที่ยังออกเอกสารไม่ได้ก็ขึ้น** พร้อมเหตุติดปุ่ม — ซ่อนเมื่อไร คนจะไปหา
- * ทางออกเอกสารที่อื่นแทนที่จะรู้ว่าติดอะไร (กฎ ui-visibility-rule)
+ * 🐞 **อนุมัติใบสั่งขายบนหน้าเดียวกันแล้วการ์ดค้างสถานะเดิมจน F5** — การ์ดโหลดครั้งเดียวตอน mount
+ *    ⇒ `orderStatus` เข้า deps ของตัวโหลด: หน้า SO ส่งสถานะใบมา สถานะขยับเมื่อไรการ์ดดึงใหม่เอง
+ *    + ดึงใหม่ตอนกลับมามองแท็บ (อีกคนออกเอกสาร/อนุมัติไประหว่างที่แท็บเปิดค้าง)
+ *
+ * @param orderStatus สถานะของใบสั่งขายที่หน้า SO ถืออยู่ — เปลี่ยนเมื่อไร การ์ดโหลดใหม่
+ * @param onChanged เรียกหลังออก/ยกเลิกเอกสารสำเร็จ (ให้หน้า SO ดึงของตัวเองถ้าต้องการ)
  */
-export default function SalesOrderFollowUpDocs({ orderId, onChanged }) {
-  /* ⚠️ **ไม่ใช่ `canEdit` ของใบสั่งขาย** — ใบที่อนุมัติแล้วแก้เนื้อไม่ได้ (ตามที่ควรเป็น)
-     แต่ *นั่นคือจังหวะเดียว* ที่ออกเอกสารต่อเนื่องได้ ⇒ ส่งด่านของใบมาที่นี่เท่ากับปิดปุ่ม
-     ไว้ตลอดกาล · ด่านของงานนี้คือ cap ของฝ่ายขาย ส่วนขอบเขตรายแถวบังคับที่ API */
-  const canEdit = useCan("salesplan:edit");
+export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged }) {
   const [rows, setRows] = useState([]);
-  const [error, setError] = useState("");
-  const [busyLine, setBusyLine] = useState("");
+  const [orphans, setOrphans] = useState([]);
+  const [problem, setProblem] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [issuing, setIssuing] = useState(null);
+  const [voiding, setVoiding] = useState(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidError, setVoidError] = useState("");
+  const [voidBusy, setVoidBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     try {
-      const next = await apiJson(`/api/sales-planning/sales-orders/${orderId}/spec-issues`, {
+      const next = await apiJson(`/api/sales-planning/sales-orders/${orderId}/spec-documents`, {
         fallbackError: "อ่านสถานะเอกสารต่อเนื่องไม่สำเร็จ",
       });
-      setRows(next?.rows || []);
-      setError("");
+      setRows(Array.isArray(next?.rows) ? next.rows : []);
+      setOrphans(Array.isArray(next?.orphans) ? next.orphans : []);
+      setProblem(null);
     } catch (loadError) {
-      /* ใบย้อนหลังตอบ 400 พร้อมเหตุ — เป็นคำตอบ ไม่ใช่ความผิดพลาด จึงโชว์เป็นข้อความ
-         ธรรมดา ไม่ใช่แถบแดง (ดู `loadOrder` ของเส้น spec-issues) */
-      setError(loadError.message || "อ่านสถานะเอกสารต่อเนื่องไม่สำเร็จ");
+      // รอบเบื้องหลัง (กลับมามองแท็บ) ที่ล้ม = เงียบ ไม่ทับของที่ผู้ใช้กำลังอ่าน
+      if (!opts?.background) {
+        setProblem({ message: loadError.message || "อ่านสถานะเอกสารต่อเนื่องไม่สำเร็จ", status: loadError.status || 0 });
+      }
     } finally {
       setLoaded(true);
     }
   }, [orderId]);
 
-  useEffect(() => { load(); }, [load]);
+  // ⚠️ `orderStatus` อยู่ใน deps โดยตั้งใจ — ดูหัวไฟล์ (สถานะใบสั่งขายขยับ = บรรทัดทุกบรรทัดเปลี่ยนคำตอบ)
+  useEffect(() => { load(); }, [load, orderStatus]);
+  useRevalidateOnFocus(load);
 
-  const issue = async (lineId) => {
-    setBusyLine(lineId);
-    setError("");
+  /* ออกเอกสาร — POST กินเลขจากตัวนับ ⇒ **ไม่ลองซ้ำเอง** (apiFetch ไม่ retry POST อยู่แล้ว)
+     ⚠️ ล้ม = โยนให้กล่องยืนยันโชว์ข้อความในกล่อง (แถบของการ์ดอยู่ใต้โมดัล) และดึงสถานะใหม่
+        เพราะคำตอบ 4xx แปลว่าจอไม่ตรงกับของจริง (เช่นอีกแท็บออกไปก่อนแล้ว) */
+  const issue = async () => {
+    const lineId = issuing?.line?.id;
     try {
-      const res = await apiFetch(`/api/sales-planning/sales-orders/${orderId}/spec-issues`, {
+      const result = await apiJson(`/api/sales-planning/sales-orders/${orderId}/spec-documents`, {
         method: "POST",
         json: { salesOrderLineId: lineId },
         fallbackError: "ออกเอกสารไม่สำเร็จ",
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload?.error || "ออกเอกสารไม่สำเร็จ");
-      await load();
+      setIssuing(null);
+      const docNo = result?.document?.docNo;
+      notifyToast.success(docNo ? `ออกเอกสาร ${docNo} แล้ว — ยื่นอนุมัติได้ที่หน้าเอกสาร` : "ออกเอกสารแล้ว");
+      await load({ background: true });
       onChanged?.();
     } catch (issueError) {
-      setError(issueError.message || "ออกเอกสารไม่สำเร็จ");
+      load({ background: true });
+      throw issueError;
+    }
+  };
+
+  const openVoid = (orphan) => {
+    setVoiding(orphan);
+    setVoidReason("");
+    setVoidError("");
+  };
+
+  const confirmVoid = async () => {
+    const invalid = docReasonError(voidReason, { label: "เหตุผลที่ยกเลิก" });
+    if (invalid) { setVoidError(invalid); return; }
+    setVoidBusy(true);
+    setVoidError("");
+    try {
+      await apiJson(`/api/sales-planning/spec-documents/${voiding.documentId}`, {
+        method: "PATCH",
+        json: { action: "void", reason: voidReason.trim() },
+        fallbackError: "ยกเลิกเอกสารไม่สำเร็จ",
+      });
+      setVoiding(null);
+      notifyToast.success(`ยกเลิก ${voiding.docNo || "เอกสาร"} แล้ว`);
+      await load({ background: true });
+      onChanged?.();
+    } catch (voidFailure) {
+      // ข้อความอยู่ในโมดัล ไม่ใช่แถบใต้โมดัล (บทเรียน ReasonDialog 2026-08-19)
+      setVoidError(voidFailure.message || "ยกเลิกเอกสารไม่สำเร็จ");
+      load({ background: true });
     } finally {
-      setBusyLine("");
+      setVoidBusy(false);
     }
   };
 
   if (!loaded) return null;
-  // ไม่มีบรรทัดในขอบเขตเลย (ใบที่ขายแต่ค่าออกแบบ/รายได้อื่น) = ไม่มีการ์ดนี้ทั้งใบ
-  const inScope = rows.filter((row) => row.state?.kind !== "out_of_scope");
-  if (!inScope.length && !error) return null;
+  const inScope = rows.filter((row) => row?.state?.kind !== "out_of_scope");
+  // ไม่มีบรรทัดในขอบเขตและไม่มีเอกสารค้าง (ใบที่ขายแต่ค่าออกแบบ/รายได้อื่น) = ไม่มีการ์ดนี้ทั้งใบ
+  if (!inScope.length && !orphans.length && !problem) return null;
+
+  const issuePrompt = issuing ? lineIssuePrompt({ line: issuing.line }) : null;
+  const voidPrompt = voiding
+    ? docReasonPrompt("void", { document: { docNo: voiding.docNo }, orphan: true })
+    : null;
 
   return (
     <DetailCard
       icon={Files}
       eyebrow="FOLLOW-UP DOCS"
       title="เอกสารต่อเนื่อง"
-      meta="ใบที่ออกต่อจากใบสั่งขายที่อนุมัติแล้ว — ใบสเปคเป็นใบของสินค้า ออกซ้ำได้ทุกรอบขาย"
+      meta="FM-SA-04 ใบสเปคสินค้า — หนึ่งใบต่อหนึ่งบรรทัด ออกได้หลังใบสั่งขายอนุมัติแล้ว"
     >
-      {error ? <div className={styles.notice}><StatusNotice tone="info">{error}</StatusNotice></div> : null}
+      {problem ? (
+        <div className={styles.notice}>
+          {/* 4xx = คำตอบของระบบ (เช่นใบย้อนหลังไม่ออกใบสเปค) ไม่ใช่ความผิดพลาด ⇒ กล่องข้อมูล ไม่ใช่แถบแดง */}
+          <StatusNotice tone={problem.status >= 400 && problem.status < 500 ? "info" : "error"}>{problem.message}</StatusNotice>
+        </div>
+      ) : null}
 
-      {inScope.length ? (
+      {rows.length ? (
         <TableScroll family="list" surface="embedded">
           <table>
             <thead>
               <tr>
-                <th className={styles.colForm}>แบบฟอร์ม</th>
-                <th>ผูกกับ</th>
-                <th className={styles.colDoc}>เลขที่เอกสารรอบนี้</th>
+                <th>สินค้า</th>
+                <th className={`num ${styles.colQty}`}>จำนวน</th>
+                <th className={styles.colDoc}>เอกสาร</th>
                 <th className={styles.colStatus}>สถานะ</th>
                 <th className={styles.colAction} aria-label="การกระทำ" />
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => {
-                const state = row.state || {};
-                const action = specLineAction(state, { canEdit });
+                const view = followUpLineView(row);
+                const line = row.line || {};
                 return (
-                  <tr key={row.line.id}>
-                    <td className="mono">FM-SA-04</td>
+                  <tr key={line.id} className={view.kind === "out_of_scope" ? styles.muted : undefined}>
                     <td>
-                      <div className={styles.lineName}>{naText(row.line.description)}</div>
-                      <div className={`mono ${styles.lineCode}`}>{naText(row.line.fgCode)}</div>
+                      <div className={`mono ${styles.lineCode}`}>{naText(line.fgCode)}</div>
+                      <div className={styles.lineName}>{naText(line.description)}</div>
+                    </td>
+                    <td className="num">
+                      {line.qty === null || line.qty === undefined ? naText(null) : `${line.qty}${line.unit ? ` ${line.unit}` : ""}`}
                     </td>
                     <td>
-                      {state.docNo ? (
+                      {view.docNo ? (
                         <>
-                          <div className="mono">{state.docNo}</div>
-                          <div className={styles.lineCode}>สเปก {state.revLabel}</div>
+                          <div className="mono">{view.docNo}</div>
+                          <div className={styles.sub}>{naText(view.revLabel)}</div>
                         </>
-                      ) : (
-                        <>
-                          <div className={styles.lineCode}>{naText(null)}</div>
-                          {state.revLabel ? <div className={styles.lineCode}>สเปก {state.revLabel} · มีอยู่แล้ว</div> : null}
-                        </>
-                      )}
+                      ) : naText(null)}
                     </td>
                     <td>
-                      <div>{naText(state.label)}</div>
-                      {state.reason && state.kind === "out_of_scope"
-                        ? <div className={styles.lineCode}>{state.reason}</div>
-                        : null}
+                      <StatusBadge size="sm" tone={view.tone} label={naText(view.statusLabel)} />
+                      {view.note ? <div className={styles.sub}>{view.note}</div> : null}
                     </td>
                     <td>
-                      {action ? (
-                        <div className={styles.actionCell}>
-                          {/* ⚠️ "เปิดใบ" กับ "สร้างใบสเปค" เป็นการ **เดินทาง** ไม่ใช่การเขียน
-                              ⇒ เป็นลิงก์จริง (เปิดแท็บใหม่/ก๊อป URL ได้) · มีแต่ "ออกเอกสารรอบนี้"
-                              ที่เป็นปุ่ม POST เพราะมันกินเลขจากตัวนับ */}
-                          {action.kind === "issue" ? (
-                            <Button
-                              tone="primary"
-                              variant="outline"
-                              size="sm"
-                              disabled={action.disabled || busyLine === row.line.id}
-                              title={action.reason || undefined}
-                              onClick={() => issue(row.line.id)}
-                            >
-                              {busyLine === row.line.id ? "กำลังออกเอกสาร…" : action.label}
-                            </Button>
-                          ) : action.disabled ? (
-                            <Button tone="primary" variant="outline" size="sm" disabled title={action.reason || undefined}>
-                              {action.label}
-                            </Button>
-                          ) : (
-                            /* ⚠️ ปุ่มในตารางเป็น **เส้นขอบ** ทุกใบ — terracotta แบบทึบสงวนไว้
-                               หน้าละหนึ่งปุ่ม (กติกาสีของดีไซน์ซิสเต็ม) และตารางนี้มีได้
-                               หลายแถว ⇒ ทึบทุกแถวคือหน้าที่มีปุ่ม "เริ่มของใหม่" สามปุ่ม */
-                            <Button as={Link} href={`/database/products/${row.line.productId}/spec`}
-                              tone={action.kind === "create" ? "accent" : "primary"}
-                              variant="outline"
-                              size="sm" icon={action.kind === "open" ? <ExternalLink size={13} /> : undefined}>
-                              {action.label}
-                            </Button>
-                          )}
-                          {action.disabled && action.reason
-                            ? <p className={styles.blockedReason} role="status">{action.reason}</p>
-                            : null}
-                        </div>
+                      {view.action?.kind === "issue" ? (
+                        /* ⚠️ ติดด่าน (เช่นใบสั่งขายถูกย้อนการอนุมัติ) = ปุ่มอยู่ แล้วบอกเหตุตอนกด
+                           · ปุ่มในตารางเป็นเส้นขอบทุกแถว — ทึบสงวนไว้หน้าละปุ่ม */
+                        <GatedAction
+                          blocker={view.action.blocker || ""}
+                          tone="primary"
+                          variant="outline"
+                          size="sm"
+                          icon={<FilePlus2 size={13} />}
+                          onClick={() => setIssuing(row)}
+                        >
+                          {view.action.label}
+                        </GatedAction>
+                      ) : view.action?.href ? (
+                        <Button as={Link} href={view.action.href} tone="primary" variant="outline" size="sm"
+                          icon={<ExternalLink size={13} />}>
+                          {view.action.label}
+                        </Button>
                       ) : null}
                     </td>
                   </tr>
@@ -174,11 +213,69 @@ export default function SalesOrderFollowUpDocs({ orderId, onChanged }) {
         </TableScroll>
       ) : null}
 
+      {/* ⭐ เอกสารที่บรรทัด SO ถูกถอด (salesOrderLineId = NULL) — ไม่มีสินค้าให้รับรองต่อแล้ว
+          ทางออกเดียวคือยกเลิกเอกสาร (มติ: "โผล่ในการ์ดหน้า SO เป็นแถวบรรทัดถูกถอด พร้อมปุ่มยกเลิก") */}
+      {orphans.length ? (
+        <div className={styles.orphans}>
+          <p className={styles.orphanTitle}>เอกสารที่บรรทัดถูกถอดจากใบสั่งขายแล้ว ({orphans.length})</p>
+          <ul className={styles.orphanList}>
+            {orphans.map((orphan) => (
+              <li key={orphan.documentId} className={styles.orphanRow}>
+                <div className={styles.orphanCopy}>
+                  <Link className="mono" href={specDocumentHref(orphan.documentId)}>{naText(orphan.docNo)}</Link>
+                  <span className={styles.sub}>{[orphan.revLabel, orphan.statusLabel].filter(Boolean).join(" · ") || naText(null)}</span>
+                </div>
+                {orphan.voidAction?.visible ? (
+                  <GatedAction
+                    blocker={orphan.voidAction.reason || ""}
+                    tone="danger"
+                    variant="outline"
+                    size="sm"
+                    icon={<XCircle size={13} />}
+                    onClick={() => openVoid(orphan)}
+                  >
+                    ยกเลิกเอกสาร
+                  </GatedAction>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <p className={`form-note ${styles.footNote}`}>
-        FM-SA-04 หนึ่งใบต่อหนึ่งสินค้า — Rev. ขยับเมื่อสเปกเปลี่ยน ส่วนเลขที่เอกสารออกใหม่
-        ทุกครั้งที่ออกตามใบสั่งขาย · ขึ้นเฉพาะบรรทัดหมวด 01 และ 02 ·
-        FM-SA-07 (รายงานติดตามคำสั่งซื้อ) จะมาในรอบถัดไป
+        AC ออกเอกสาร → ยื่นที่หน้าเอกสาร → AE เจ้าของดีลอนุมัติ → AE Supervisor อนุมัติขั้นสุดท้าย ·
+        ขึ้นเฉพาะบรรทัดหมวด 01 และ 02 · FM-SA-07 (รายงานติดตามคำสั่งซื้อ) จะมาในรอบถัดไป
       </p>
+
+      <ConfirmDialog
+        open={Boolean(issuing)}
+        title={issuePrompt?.title}
+        description={issuePrompt?.description}
+        detail={issuePrompt?.detail}
+        confirmLabel={issuePrompt?.confirmLabel}
+        onConfirm={issue}
+        onClose={() => setIssuing(null)}
+      />
+
+      <ReasonDialog
+        open={Boolean(voiding)}
+        title={voidPrompt?.title}
+        description={voidPrompt?.description}
+        detail={voidPrompt?.detail}
+        label={voidPrompt?.label}
+        placeholder={voidPrompt?.placeholder}
+        confirmLabel={voidPrompt?.confirmLabel}
+        tone={voidPrompt?.tone}
+        minLength={voidPrompt?.minLength}
+        maxLength={voidPrompt?.maxLength}
+        value={voidReason}
+        onChange={(value) => { setVoidReason(value); setVoidError(""); }}
+        submitError={voidError}
+        busy={voidBusy}
+        onConfirm={confirmVoid}
+        onClose={() => { if (!voidBusy) setVoiding(null); }}
+      />
     </DetailCard>
   );
 }

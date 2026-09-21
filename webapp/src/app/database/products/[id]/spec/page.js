@@ -1,13 +1,14 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ClipboardCheck, ExternalLink, History, Printer } from "lucide-react";
+import { ClipboardCheck, ExternalLink, Files, RefreshCw } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
-import Textarea from "@/components/ui/Textarea";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import StatusNotice from "@/components/ui/StatusNotice";
+import StatusBadge from "@/components/ui/StatusBadge";
+import EmptyState from "@/components/ui/EmptyState";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { TableScroll } from "@/components/ui/Table";
 import {
@@ -15,230 +16,172 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import ProductSpecForm from "@/components/database/ProductSpecForm";
 import ProductSpecIllustrations from "@/components/database/ProductSpecIllustrations";
-import { useRole } from "@/lib/roleContext";
-import { apiFetch, apiJson } from "@/lib/apiFetch";
+import { apiJson } from "@/lib/apiFetch";
+import { notifyToast } from "@/lib/feedback";
 import { fmtDate, naText } from "@/lib/format";
-import { approvalPrompt } from "@/lib/approvalPrompt";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import { SPEC_CONTENT_FIELDS } from "@/lib/sales/productSpecStore";
-import { SPEC_ISSUE_STATUS_LABELS, SPEC_REVISION_STATUS_LABELS } from "@/lib/sales/productSpecWorkflow";
-import styles from "./page.module.css";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import {
-  revLabel, specControlActions, specDeletePrompt, specFormBlocker, specReadiness,
-  specStatusColor, specStatusHeadline, specWorkflowSteps,
+  specControlActions, specControlDescription, specDeletePrompt, specDocumentRows, specDraftFrom,
+  specHeadline, specReadiness, specSaveBody,
 } from "@/lib/sales/productSpecView";
+import styles from "./page.module.css";
 
-const emptyForm = () => Object.fromEntries(SPEC_CONTENT_FIELDS.map((key) => [key, ""]));
-
+/**
+ * หน้าสเปคของสินค้า FM-SA-04 — ที่แก้สเปค (เนื้อหา · เอกสารที่ขอได้ · checklist · รูป) ที่เดียว
+ *
+ * ⭐ **มติเจ้าของ 21/09/2569** (docs/fm-sa-04-document-model.md): สเปคเป็นข้อมูลของสินค้า
+ *    ไม่มีเลขรัน ไม่มี Rev ไม่มีราง ไม่มียื่น/อนุมัติ — ฝ่ายขายแก้แล้วกด "บันทึก" ได้เลย
+ *    เลขที่ · Rev · การอนุมัติ อยู่ที่ **เอกสารที่ AC ออกจากบรรทัด SO** (`/sales-planning/spec-documents/[id]`)
+ *    ⇒ หน้านี้แค่บอกว่ามีเอกสารใบไหนออกจากสเปคนี้แล้วบ้าง
+ * ⚠️ แก้สเปคที่นี่ไม่แตะเอกสารที่ยื่น/อนุมัติแล้ว (เอกสารถือภาพนิ่งของตัวเอง)
+ *
+ * 🐞 **ของที่พิมพ์ค้างเคยหายเงียบ** — ⇒ `useUnsavedChanges` ดักทั้งปิดแท็บและกดลิงก์ในแอป
+ *    (รวมคำบรรยายภาพที่พิมพ์ค้าง) · และ **ห้ามโหลดใหม่ทับร่าง** ยกเว้นหลังบันทึก/ลบสำเร็จ
+ *    หรือผู้ใช้สั่งเองหลังรู้ว่าจะทิ้งของที่แก้
+ */
 export default function ProductSpecPage() {
   const { id } = useParams();
-  const role = useRole();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [warning, setWarning] = useState("");
   const [busy, setBusy] = useState("");
-  const [form, setForm] = useState(emptyForm());
-  const [items, setItems] = useState([]);
-  const [certs, setCerts] = useState([]);
+  const [draft, setDraft] = useState(() => specDraftFrom(null));
   const [dirty, setDirty] = useState(false);
-  const [confirmState, setConfirmState] = useState(null);
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
+  const [captionDirty, setCaptionDirty] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  useUnsavedChanges(dirty || captionDirty);
 
   const spec = data?.spec || null;
-  const revisions = data?.revisions || [];
-  const latest = revisions[0] || null;
-  const issues = data?.issues || [];
   const product = data?.product || null;
-  const readOnly = Boolean(specFormBlocker(latest, role));
+  const permissions = data?.permissions || { canEdit: false, delete: { visible: false, reason: null } };
+  const canEdit = Boolean(permissions.canEdit);
+  const scopeReason = data?.scopeReason || null;
 
-  /* ⚠️ โหลดใหม่ = ทิ้งร่างที่ยังไม่บันทึกทิ้งทั้งชุด ⇒ เรียกเฉพาะหลังบันทึก/หลังก้าว
-     ไม่ใช่ทุกครั้งที่ render (ของที่พิมพ์ค้างอยู่ต้องไม่หายใต้มือคนกรอก) */
+  /* คำตอบของ API (GET/POST/PATCH ได้รูปเดียวกัน) → จอ · ⚠️ ทับร่างทั้งชุด ⇒ เรียกเฉพาะตอนโหลด
+     ครั้งแรก · หลังบันทึก/ลบสำเร็จ · หรือผู้ใช้สั่งโหลดใหม่เอง */
+  const apply = useCallback((next) => {
+    setData(next);
+    setDraft(specDraftFrom(next?.spec || null));
+    setDirty(false);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const next = await apiJson(`/api/products/${id}/spec`, { fallbackError: "โหลดใบสเปคไม่สำเร็จ" });
-      setData(next);
-      const rev = next?.revisions?.[0] || null;
-      setForm(rev
-        ? Object.fromEntries(SPEC_CONTENT_FIELDS.map((key) => [key, rev[key] || ""]))
-        : emptyForm());
-      setItems(rev?.items || []);
-      setCerts(Array.isArray(rev?.certifications) ? rev.certifications : []);
-      setDirty(false);
-      setError("");
-    } catch (loadError) {
-      setError(loadError.message || "โหลดใบสเปคไม่สำเร็จ");
+      apply(await apiJson(`/api/products/${id}/spec`, { fallbackError: "โหลดสเปคสินค้าไม่สำเร็จ" }));
+      setLoadError("");
+      setConflict(false);
+    } catch (fetchError) {
+      setLoadError(fetchError.message || "โหลดสเปคสินค้าไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, apply]);
 
   useEffect(() => { load(); }, [load]);
 
-  const setField = (key, value) => { setForm((prev) => ({ ...prev, [key]: value })); setDirty(true); };
-  const updateItems = (next) => { setItems(next); setDirty(true); };
-  const updateCerts = (next) => { setCerts(next); setDirty(true); };
-
-  const act = async (action, extra = {}) => {
-    setBusy(action);
-    setError("");
+  /* ดึง "ตัวสเปค" กลับมาอย่างเดียว ไม่แตะร่าง — ใช้หลังบันทึกไม่สำเร็จ
+     🪤 บันทึกล้มกลางทาง (เนื้อสเปคเข้าแล้วแต่ checklist ล้ม) = `updatedAt` บนฐานขยับไปแล้ว ⇒ ถ้าไม่ดึง
+        ค่าใหม่มา กดบันทึกซ้ำจะชน "ถูกแก้โดยคนอื่น" ทั้งที่คนแก้คือเราเอง */
+  const refreshBaseline = useCallback(async () => {
     try {
-      const res = await apiFetch(`/api/products/${id}/spec`, {
-        method: "PATCH",
-        json: { action, ...extra },
-        fallbackError: "ดำเนินการไม่สำเร็จ",
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload?.error || "ดำเนินการไม่สำเร็จ");
-      await load();
-      return payload;
-    } catch (actionError) {
-      setError(actionError.message || "ดำเนินการไม่สำเร็จ");
-      throw actionError;
-    } finally {
-      setBusy("");
-    }
-  };
+      const next = await apiJson(`/api/products/${id}/spec`);
+      setData(next);
+    } catch { /* เงียบ — ข้อความที่ผู้ใช้ต้องอ่านคือ error ของการบันทึก */ }
+  }, [id]);
 
-  const save = () => act("save", { ...form, items, certifications: certs });
+  const mark = () => { setDirty(true); setWarning(""); };
+  const setField = (key, value) => { setDraft((prev) => ({ ...prev, form: { ...prev.form, [key]: value } })); mark(); };
+  const setItems = (items) => { setDraft((prev) => ({ ...prev, items })); mark(); };
+  const setCerts = (certs) => { setDraft((prev) => ({ ...prev, certs })); mark(); };
 
-  const create = async () => {
-    setBusy("create");
+  const write = async (kind) => {
+    setBusy(kind);
     setError("");
+    setWarning("");
+    setConflict(false);
     try {
-      const res = await apiFetch(`/api/products/${id}/spec`, {
-        method: "POST", json: {}, fallbackError: "สร้างใบสเปคไม่สำเร็จ",
+      const next = await apiJson(`/api/products/${id}/spec`, {
+        method: kind === "create" ? "POST" : "PATCH",
+        json: specSaveBody({ ...draft, expectedUpdatedAt: kind === "create" ? null : spec?.updatedAt }),
+        fallbackError: kind === "create" ? "สร้างสเปคไม่สำเร็จ" : "บันทึกสเปคไม่สำเร็จ",
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload?.error || "สร้างใบสเปคไม่สำเร็จ");
-      await load();
-    } catch (createError) {
-      setError(createError.message || "สร้างใบสเปคไม่สำเร็จ");
-    } finally {
-      setBusy("");
-    }
-  };
-
-  /* ⚠️ ทุกก้าวที่เป็นการรับรองต้องมีโมดัลบอกผลลัพธ์ (กฎ approval-confirm-modals) —
-     ไม่ใช่ปุ่มที่กดแล้วเกิดขึ้นเลย · `approvalPrompt` บังคับให้บอกอย่างน้อยหนึ่งผล */
-  const askSubmit = () => setConfirmState({
-    ...approvalPrompt({
-      title: "ยื่นใบสเปคขออนุมัติ",
-      verb: "ยื่น",
-      subject: `${revLabel(latest?.revNo)} ของ ${productDisplayName(product)}`,
-      effects: [
-        "ใบย้ายไปรออนุมัติที่หัวหน้าฝ่ายขาย — คุณยังดึงกลับมาแก้ได้",
-        "ร่างที่บันทึกไว้คือสิ่งที่ผู้อนุมัติจะเห็น",
-      ],
-      confirmLabel: "ยื่นอนุมัติ",
-    }),
-    onConfirm: () => act("submit"),
-  });
-
-  const askApprove = () => setConfirmState({
-    ...approvalPrompt({
-      title: "อนุมัติใบสเปคสินค้า",
-      subject: `${revLabel(latest?.revNo)} ของ ${productDisplayName(product)}`,
-      effects: [
-        `สเปกของสินค้าชิ้นนี้กลายเป็น ${revLabel(latest?.revNo)} ทุกที่ที่อ่านค่านี้`,
-        "ลักษณะเนื้อสารและบรรจุภัณฑ์มาตรฐานถูกเขียนลงทะเบียนสินค้า",
-        "ฉบับก่อนกลายเป็นอ่านอย่างเดียว (ยังเปิดย้อนได้)",
-        "เอกสารที่ออกไว้ตอนฉบับยังเป็นร่างกลายเป็นฉบับจริงพร้อมกัน",
-      ],
-      checklist: [
-        "checklist บรรจุภัณฑ์ตรงกับที่ตกลงกับลูกค้าแล้ว",
-        "ลักษณะเนื้อสารและบรรจุภัณฑ์มาตรฐานถูกต้อง (สองช่องนี้ลงทะเบียนสินค้า)",
-      ],
-      confirmLabel: "อนุมัติใบสเปค",
-    }),
-    onConfirm: () => act("approve"),
-  });
-
-  const askWithdraw = () => setConfirmState({
-    ...approvalPrompt({
-      title: "ดึงกลับมาแก้ไข",
-      verb: "ดึงกลับ",
-      subject: `${revLabel(latest?.revNo)} ของ ${productDisplayName(product)}`,
-      effects: [
-        "ใบกลับเป็นร่าง — ผู้อนุมัติจะไม่เห็นในคิวอีก",
-        "รอยการยื่นถูกล้าง ต้องยื่นใหม่",
-      ],
-      confirmLabel: "ดึงกลับมาแก้ไข",
-    }),
-    onConfirm: () => act("withdraw"),
-  });
-
-  const askNewRevision = () => setConfirmState({
-    ...approvalPrompt({
-      title: "ออกฉบับใหม่",
-      verb: "ออกฉบับใหม่",
-      subject: `${productDisplayName(product)} — ${revLabel((latest?.revNo || 0) + 1)}`,
-      effects: [
-        `เกิดฉบับร่าง ${revLabel((latest?.revNo || 0) + 1)} โดยยกค่าจากฉบับปัจจุบันมาทั้งหมด`,
-        `${revLabel(latest?.revNo)} ยังเป็นสเปกที่ใช้อยู่จนกว่าฉบับใหม่จะผ่านการอนุมัติ`,
-        "ต้องยื่นอนุมัติใหม่ (ร่าง → ยื่น → อนุมัติ)",
-      ],
-      confirmLabel: "ออกฉบับใหม่",
-    }),
-    onConfirm: () => act("new-revision"),
-  });
-
-  /* ⚠️ **ลบแล้วกู้จากหน้าจอไม่ได้** — ไม่มีถังขยะในระบบ · กล่องยืนยันต้องพูดขอบเขตจริง
-     ของการลบ (ทั้งใบ vs เฉพาะฉบับร่าง) ให้ตรงกับที่ปุ่มเขียนไว้ ไม่ใช่คำว่า "ลบ" ลอย ๆ */
-  const askDelete = () => setConfirmState({
-    ...specDeletePrompt({
-      productName: productDisplayName(product),
-      revisions,
-      revision: latest,
-    }),
-    onConfirm: async () => {
-      setBusy("delete");
-      setError("");
-      try {
-        const res = await apiFetch(`/api/products/${id}/spec`, {
-          method: "DELETE", fallbackError: "ลบใบสเปคไม่สำเร็จ",
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload?.error || "ลบใบสเปคไม่สำเร็จ");
-        await load();
-      } catch (deleteError) {
-        setError(deleteError.message || "ลบใบสเปคไม่สำเร็จ");
-      } finally {
-        setBusy("");
+      /* 🪤 บันทึกสำเร็จแต่ API อ่านกลับไม่ขึ้น ⇒ ได้แค่ `{ spec, warning }` (ไม่มี product/permissions)
+         ⇒ ห้ามทับ `data` ทั้งก้อน ไม่งั้นสิทธิ์หายแล้วฟอร์มกลายเป็นอ่านอย่างเดียว · ใช้ของเดิม + สเปคใหม่
+         แล้วดึงทั้งก้อนกลับเงียบ ๆ */
+      if (next?.permissions) apply(next);
+      else {
+        apply({ ...data, spec: next?.spec ?? data?.spec ?? null });
+        refreshBaseline();
       }
-    },
-  });
+      // ⚠️ บันทึกสำเร็จแต่ซิงก์ลงทะเบียนสินค้าไม่ผ่าน — ต้องบอก ไม่ใช่ขึ้นแค่ "บันทึกแล้ว"
+      if (next?.warning) setWarning(next.warning);
+      notifyToast.success(kind === "create" ? "สร้างสเปคแล้ว" : "บันทึกสเปคแล้ว");
+    } catch (writeError) {
+      // ร่างยังอยู่ครบ — ไม่โหลดทับ · 409 = มีคนบันทึกไปก่อน ให้ผู้ใช้เลือกเองว่าจะทิ้งของที่แก้ไหม
+      setError(writeError.message || "บันทึกสเปคไม่สำเร็จ");
+      if (writeError.status === 409) setConflict(true);
+      else refreshBaseline();
+    } finally {
+      setBusy("");
+    }
+  };
 
-  const actions = useMemo(() => specControlActions({
+  const reloadDiscarding = async () => {
+    if (dirty && !(await confirmAction({
+      title: "โหลดสเปคล่าสุด",
+      description: "ทิ้งสิ่งที่แก้ไว้บนจอนี้แล้วโหลดสเปคล่าสุดหรือไม่",
+      detail: "ของที่พิมพ์ค้างไว้จะหาย — ก๊อปเก็บไว้ก่อนถ้ายังต้องใช้",
+      confirmLabel: "ทิ้งแล้วโหลดใหม่",
+      danger: true,
+    }))) return;
+    setError("");
+    await load();
+  };
+
+  const remove = async () => {
+    setBusy("delete");
+    try {
+      const res = await apiJson(`/api/products/${id}/spec`, { method: "DELETE", fallbackError: "ลบสเปคไม่สำเร็จ" });
+      setDeleteOpen(false);
+      /* 🐞 ลบสำเร็จแต่โหลดกลับไม่ขึ้น เคยค้างสเปคที่ลบไปแล้วไว้บนจอพร้อมฟอร์มที่แก้ได้ ⇒ ถอดสเปคออกจาก
+         ข้อมูลบนจอทันที (ความจริงคือไม่มีแล้ว) ก่อนโหลดทั้งก้อนใหม่ — โหลดล้มก็ยังเห็นสภาพที่ถูกต้อง */
+      apply({ ...data, spec: null, documents: [] });
+      // ⚠️ ลบแล้วแต่ล้างกระจกบนทะเบียนสินค้าไม่ผ่าน — ต้องขึ้นบนจอ ไม่ใช่กลืนไปกับ toast
+      if (res?.warning) setWarning(res.warning);
+      notifyToast.success("ลบสเปคแล้ว");
+      await load();
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const headline = specHeadline({ spec, dirty });
+  const actions = specControlActions({
     spec,
-    revision: latest,
-    revisions,
-    issues,
-    role,
+    productId: id,
+    permissions,
+    scopeReason,
     dirty,
-    onCreate: create,
-    onSubmit: askSubmit,
-    onApprove: askApprove,
-    onReject: () => { setRejectReason(""); setRejectOpen(true); },
-    onWithdraw: askWithdraw,
-    onNewRevision: askNewRevision,
-    onDelete: askDelete,
-    /* ⚠️ เปิดหน้าต่างพิมพ์ด้วย `window.open` ตรง ๆ เหมือนเอกสารชนิดอื่น — เส้นนี้คืน
-       **HTML ทั้งหน้า** ไม่ใช่ JSON จึงไม่ผ่าน apiFetch (ข้อยกเว้นเดียวกับที่ AGENTS.md
-       เขียนไว้เรื่องเอกสารเดี่ยว) · ฉบับร่างพิมพ์ได้ แต่ยังไม่มีเลขที่เอกสาร */
-    onPrint: () => window.open(`/api/products/${id}/spec/document`, "_blank", "noopener"),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [spec, latest, revisions, issues, role, dirty, product]);
-
-  const headline = specStatusHeadline(spec, latest);
+    onCreate: () => write("create"),
+    onSave: () => write("save"),
+    onDelete: () => setDeleteOpen(true),
+  });
+  const documents = specDocumentRows(data?.documents);
+  // ฟอร์มขึ้นเมื่อมีสเปค หรือคนที่สร้างได้กำลังจะสร้าง (ฟอร์มเดียวกันทั้งสองทาง)
+  const showForm = Boolean(spec) || (canEdit && !scopeReason);
   const back = { href: `/database/products/${id}`, label: "กลับไปหน้าสินค้า" };
 
-  if (!loading && !product && error) {
+  if (!loading && !data && loadError) {
     return (
-      <Workspace icon={<ClipboardCheck size={22} />} title="ใบสเปคสินค้า" back={back}>
-        <StatusNotice tone="error">{error}</StatusNotice>
+      <Workspace icon={<ClipboardCheck size={22} />} title="สเปคสินค้า" back={back}>
+        <StatusNotice tone="error">{loadError}</StatusNotice>
       </Workspace>
     );
   }
@@ -246,204 +189,169 @@ export default function ProductSpecPage() {
   return (
     <Workspace
       icon={<ClipboardCheck size={22} />}
-      title={`ใบสเปคสินค้า · ${naText(product?.fgCode)}`}
+      title={`สเปคสินค้า · ${naText(product?.fgCode)}`}
       subtitle={product ? `${productDisplayName(product)} — FM-SA-04` : "FM-SA-04"}
       back={back}
       loading={loading && !data}
     >
-      {error ? <div className={styles.notice}><StatusNotice tone="error">{error}</StatusNotice></div> : null}
-      {data?.scopeReason ? (
-        <div className={styles.notice}><StatusNotice tone="info" title="สินค้าชิ้นนี้อยู่นอกขอบเขตของใบสเปค">{data.scopeReason}</StatusNotice></div>
+      {/* 🐞 โหลดใหม่ที่ล้มหลังมีข้อมูลบนจอแล้ว (กด "โหลดสเปคล่าสุด" · โหลดกลับหลังลบ) เคยเงียบ —
+          แถบ error ของการโหลดเดิมขึ้นเฉพาะตอนยังไม่มีข้อมูลเลย ⇒ ของเก่าค้างบนจอโดยไม่มีใครรู้ */}
+      {loadError && data ? (
+        <div className={styles.notice}>
+          <StatusNotice
+            tone="error"
+            title="โหลดสเปคล่าสุดไม่สำเร็จ — ข้อมูลบนจออาจไม่ใช่ของล่าสุด"
+            action={(
+              <Button size="sm" variant="outline" icon={<RefreshCw size={13} />} onClick={reloadDiscarding} disabled={loading}>
+                ลองโหลดอีกครั้ง
+              </Button>
+            )}
+          >
+            {loadError}
+          </StatusNotice>
+        </div>
+      ) : null}
+      {error ? (
+        <div className={styles.notice}>
+          <StatusNotice
+            tone="error"
+            action={conflict ? (
+              <Button size="sm" variant="outline" icon={<RefreshCw size={13} />} onClick={reloadDiscarding}>
+                โหลดสเปคล่าสุด
+              </Button>
+            ) : null}
+          >
+            {error}
+          </StatusNotice>
+        </div>
+      ) : null}
+      {warning ? (
+        <div className={styles.notice}>
+          <StatusNotice tone="warning" onDismiss={() => setWarning("")}>{warning}</StatusNotice>
+        </div>
+      ) : null}
+      {scopeReason ? (
+        <div className={styles.notice}>
+          <StatusNotice tone="info" title="สินค้าชิ้นนี้อยู่นอกขอบเขตของใบสเปค">{scopeReason}</StatusNotice>
+        </div>
       ) : null}
 
       <DetailPageLayout
         controlFirst
-        asideLabel="จัดการใบสเปคสินค้า"
+        asideLabel="จัดการสเปคสินค้า"
         aside={<>
           <DocumentControlCard
             icon={ClipboardCheck}
             eyebrow="SPEC CONTROL"
-            title="จัดการใบสเปค"
+            title="จัดการสเปค"
             headerNarrow="hide"
             tabletSplit
             status={headline.status}
             statusSub={headline.sub}
             statusColor={headline.color}
-            statusDescription={spec ? `ออกเอกสารมาแล้ว ${issues.length} ครั้ง` : "หนึ่งสินค้าหนึ่งใบตลอดอายุ"}
-            workflowSteps={specWorkflowSteps(latest)}
+            statusDescription={specControlDescription({ spec, documents: data?.documents })}
             busy={Boolean(busy)}
-
             primaryAction={actions.primaryAction}
             secondaryActions={actions.secondaryActions}
             dangerActions={actions.dangerActions}
-          >
-            {latest && !readOnly ? (
-              <Button tone="primary" onClick={save} disabled={!dirty || Boolean(busy)} className={styles.saveButton}>
-                {busy === "save" ? "กำลังบันทึก…" : dirty ? "บันทึก" : "บันทึกแล้ว"}
-              </Button>
-            ) : null}
-            {readOnly && latest ? (
-              <p className={`form-note ${styles.railNote}`}>{specFormBlocker(latest, role)}</p>
-            ) : null}
-          </DocumentControlCard>
+          />
 
-          {latest ? (
-            <DocumentSummaryCard
-              title="ความพร้อมของใบ"
-              status={SPEC_REVISION_STATUS_LABELS[latest.status]}
-              statusLabel="สถานะฉบับ"
-              statusColor={specStatusColor(latest.status)}
-            >
-              <DocumentReadinessList items={specReadiness({ ...latest, items })} />
+          {showForm ? (
+            <DocumentSummaryCard title="ความพร้อมของสเปค">
+              <DocumentReadinessList items={specReadiness({ form: draft.form, items: draft.items })} />
             </DocumentSummaryCard>
           ) : null}
         </>}
       >
-        {spec && latest ? (
+        {showForm ? (
           <ProductSpecForm
             product={product}
-            revision={latest}
-            form={form}
+            form={draft.form}
             onField={setField}
-            items={items}
-            onItems={updateItems}
-            certs={certs}
-            onCerts={updateCerts}
-            readOnly={readOnly}
+            items={draft.items}
+            onItems={setItems}
+            certs={draft.certs}
+            onCerts={setCerts}
+            readOnly={!canEdit}
           />
         ) : (
-          <DetailCard icon={ClipboardCheck} eyebrow="FM-SA-04" title="สินค้าชิ้นนี้ยังไม่มีใบสเปค">
+          <DetailCard icon={ClipboardCheck} eyebrow="FM-SA-04" title="สินค้าชิ้นนี้ยังไม่มีสเปค">
             <p className={styles.intro}>
-              ใบสเปคเป็นใบของสินค้า หนึ่งสินค้าหนึ่งใบตลอดอายุ — กดสร้างใบที่แผงจัดการ
-              แล้วกรอกสเปกกับ checklist บรรจุภัณฑ์ · เวลาขายรอบใหม่จะออกเอกสารจากใบนี้
-              ได้เลยโดยไม่ต้องกรอกซ้ำ
+              สเปคเป็นข้อมูลของสินค้า หนึ่งสินค้าหนึ่งสเปค — ฝ่ายขายเป็นผู้กรอก แล้ว AC ออกเอกสาร
+              FM-SA-04 จากบรรทัดใบสั่งขายที่อนุมัติแล้วได้ทุกใบโดยไม่ต้องกรอกซ้ำ
             </p>
           </DetailCard>
         )}
 
         {/* ⭐ ภาพประกอบ (แผ่นท้ายของกระดาษ) — ไฟล์แนบกับ **ตัวสินค้า** ตามมติ 17/09
-            "ภาพประกอบอยู่กับสเปคสินค้า" ⇒ อัปครั้งเดียวใช้ได้ทุกฉบับ
-            ⚠️ วางใต้ฟอร์มเพราะเป็นของประกอบ ไม่ใช่สเปกที่ต้องกรอกให้ครบก่อน */}
-        {spec ? <ProductSpecIllustrations productId={id} canEdit={!readOnly} /> : null}
+            ⚠️ ขึ้นเมื่อมีสเปคแล้ว — ภาพเป็นของประกอบสเปค ไม่ใช่ของที่ต้องมีก่อนสร้าง */}
+        {spec ? (
+          <ProductSpecIllustrations productId={id} canEdit={canEdit} onDirtyChange={setCaptionDirty} />
+        ) : null}
 
-        {issues.length ? (
+        {spec ? (
           <DetailCard
-            icon={History}
-            eyebrow="ISSUE HISTORY"
-            title={`ประวัติการออกเอกสาร (${issues.length})`}
-            meta="แถวคือครั้งที่ออกเอกสาร ไม่ใช่ใบคนละใบ — คอลัมน์สเปกบอก Rev. ณ ตอนออก"
+            icon={Files}
+            eyebrow="ISSUED DOCUMENTS"
+            title={`เอกสารที่ออกจากสเปคนี้ (${documents.length})`}
+            meta="เลขที่ · Rev · การอนุมัติ อยู่ที่เอกสาร — แก้สเปคที่นี่มีผลเฉพาะเอกสารที่ยังเป็นร่าง"
           >
-            <TableScroll family="list" surface="embedded">
-              <table>
-                <thead>
-                  <tr>
-                    <th className={styles.colDoc}>เลขที่เอกสาร</th>
-                    <th className={styles.colRev}>สเปก</th>
-                    <th className={styles.colOrder}>ออกตาม</th>
-                    <th className={styles.colStatus}>สถานะ</th>
-                    <th className={`num ${styles.colQty}`}>จำนวน</th>
-                    <th className={`num ${styles.colDue}`}>กำหนดส่ง</th>
-                    <th className={styles.colPrint} aria-label="พิมพ์" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {issues.map((issue) => (
-                    <tr key={issue.id}>
-                      <td className="mono">{issue.docNo}</td>
-                      <td>{revLabel(issue.revNo)}</td>
-                      <td className="mono">{naText(issue.orderNumber)}</td>
-                      <td>{SPEC_ISSUE_STATUS_LABELS[issue.status] || issue.status}</td>
-                      <td className="num">{naText(issue.qty)}</td>
-                      <td className="num">{issue.deliveryDueDate ? fmtDate(issue.deliveryDueDate) : naText(null)}</td>
-                      <td>
-                        {/* กระดาษของ **ครั้งที่ออกนั้น** — อ้าง revision ของตัวมันเอง
-                            ใบเก่าจึงอ่านเหมือนวันที่ส่งไป ไม่เปลี่ยนตามสเปกที่แก้ทีหลัง */}
-                        <Button variant="ghost" size="sm" icon={<Printer size={13} />}
-                          onClick={() => window.open(`/api/products/${id}/spec/document?issue=${issue.id}`, "_blank", "noopener")}>
-                          พิมพ์
-                        </Button>
-                      </td>
+            {documents.length ? (
+              <TableScroll family="list" surface="embedded">
+                <table>
+                  <thead>
+                    <tr>
+                      <th className={styles.colDoc}>เลขที่เอกสาร</th>
+                      <th className={styles.colRev}>Rev.</th>
+                      <th className={styles.colStatus}>สถานะ</th>
+                      <th className={styles.colOrder}>ใบสั่งขาย</th>
+                      <th className={`num ${styles.colDate}`}>วันที่ออก</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScroll>
+                  </thead>
+                  <tbody>
+                    {documents.map((row) => (
+                      <tr key={row.id}>
+                        <td className="mono"><Link href={row.href}>{naText(row.docNo)}</Link></td>
+                        <td>
+                          <div>{naText(row.revLabel)}</div>
+                          {row.inUseRevLabel ? <div className={styles.sub}>ใช้อยู่ {row.inUseRevLabel}</div> : null}
+                        </td>
+                        <td><StatusBadge size="sm" tone={row.tone} label={naText(row.statusLabel)} /></td>
+                        <td className="mono">
+                          {row.orderHref ? <Link href={row.orderHref}>{naText(row.orderNumber)}</Link> : naText(row.orderNumber)}
+                        </td>
+                        <td className="num">{row.createdAt ? fmtDate(row.createdAt) : naText(null)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            ) : (
+              <EmptyState plain>
+                <strong>ยังไม่เคยออกเอกสารจากสเปคนี้</strong>
+                <small>AC ออกเอกสารได้ที่หน้าใบสั่งขายหลังใบอนุมัติแล้ว — หนึ่งบรรทัดสินค้าหนึ่งใบ</small>
+              </EmptyState>
+            )}
           </DetailCard>
         ) : null}
 
-        {revisions.length > 1 ? (
-          <DetailCard icon={History} eyebrow="REVISION HISTORY" title={`ประวัติสเปก (${revisions.length} ฉบับ)`}>
-            <TableScroll family="list" surface="embedded">
-              <table>
-                <thead>
-                  <tr>
-                    <th className={styles.colRevNo}>ฉบับ</th>
-                    <th className={styles.colRevStatus}>สถานะ</th>
-                    <th className={styles.colApprover}>ผู้อนุมัติ</th>
-                    <th className={`num ${styles.colApprovedAt}`}>วันที่อนุมัติ</th>
-                    <th>เหตุผลที่ตีกลับ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {revisions.map((row) => (
-                    <tr key={row.id}>
-                      <td>{revLabel(row.revNo)}</td>
-                      <td>{SPEC_REVISION_STATUS_LABELS[row.status] || row.status}</td>
-                      <td>{naText(row.approvedByName)}</td>
-                      <td className="num">{row.approvedAt ? fmtDate(row.approvedAt) : naText(null)}</td>
-                      <td>{naText(row.rejectionReason)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScroll>
-          </DetailCard>
-        ) : null}
-
-        <DetailCard icon={ExternalLink} eyebrow="RELATED" title="ที่มาของข้อมูลบนใบ">
+        <DetailCard icon={ExternalLink} eyebrow="RELATED" title="ที่มาของข้อมูลบนกระดาษ">
           <ul className={styles.sourceList}>
             <li>ชื่อลูกค้า · แบรนด์ · รหัสสินค้า · ขนาดบรรจุ · กลิ่น ←{" "}
               <Link href={`/database/products/${id}`}>ทะเบียนสินค้า</Link></li>
-            <li>เลขที่ใบสั่งขาย · จำนวน · กำหนดส่ง ← ตรึงลงเอกสารตอนออกแต่ละครั้ง</li>
-            <li>สเปก · checklist · เอกสารที่ขอได้ ← กรอกที่ใบนี้</li>
+            <li>เลขที่ใบสั่งขาย · จำนวน · กำหนดส่ง · AE เจ้าของดีล ← บรรทัดใบสั่งขาย ถ่ายลงเอกสารตอนยื่น</li>
+            <li>สเปค · checklist · เอกสารที่ขอได้ · ภาพประกอบ ← กรอกที่หน้านี้ ถ่ายลงเอกสารตอนยื่น</li>
           </ul>
         </DetailCard>
       </DetailPageLayout>
 
-      {confirmState ? (
-        <ConfirmDialog
-          open
-          title={confirmState.title}
-          /* 🐞 `description` เคยไม่ถูกส่งต่อ ⇒ กล่องยืนยันของหน้านี้ไม่มีประโยคถาม
-             เลยทั้งที่ `approvalPrompt` เขียนมาให้ (พบตอนแก้ปุ่มลบ 21/09) */
-          description={confirmState.description}
-          message={confirmState.message}
-          detail={confirmState.detail}
-          confirmLabel={confirmState.confirmLabel}
-          danger={Boolean(confirmState.danger)}
-          busy={Boolean(busy)}
-          onConfirm={async () => { await confirmState.onConfirm(); setConfirmState(null); }}
-          onClose={() => setConfirmState(null)}
-        />
-      ) : null}
-
       <ConfirmDialog
-        open={rejectOpen}
-        title="ตีกลับให้แก้ไข"
-        message={`${revLabel(latest?.revNo)} ของ ${productDisplayName(product)}`}
-        detail="ใบกลับไปเป็นร่างให้ผู้จัดทำแก้ แล้วส่งเข้ามาใหม่ได้ — เหตุผลจะขึ้นบนใบให้คนแก้เห็น"
-        confirmLabel="ตีกลับ"
-        danger
-        busy={Boolean(busy)}
-        onConfirm={async () => { await act("reject", { reason: rejectReason.trim() }); setRejectOpen(false); }}
-        onClose={() => setRejectOpen(false)}
-      >
-        <label>
-          <span>เหตุผลที่ตีกลับ (อย่างน้อย 10 ตัวอักษร)</span>
-          <Textarea rows={3} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)}
-            placeholder="เช่น ขวดในรายการที่ 2 ยังไม่ตรงกับตัวอย่างที่ลูกค้าอนุมัติ" />
-        </label>
-      </ConfirmDialog>
+        open={deleteOpen}
+        {...specDeletePrompt({ productName: productDisplayName(product) })}
+        busy={busy === "delete"}
+        onConfirm={remove}
+        onClose={() => setDeleteOpen(false)}
+      />
     </Workspace>
   );
 }

@@ -1,113 +1,53 @@
-/* ── ฉบับที่ออกจริงของใบสเปคสินค้า FM-SA-04 — HTML ไม่ใช่ PDF (เหมือน QT/SO) ──
+/* ── ตัวอย่างกระดาษ FM-SA-04 จากหน้าสเปคของสินค้า — HTML ไม่ใช่ PDF (mig 0370) ─────────
  *
- * ⚠️ **ด่านเดียวกับหน้าสินค้า** — ใครอ่านสินค้าชิ้นนี้ได้ ก็พิมพ์เอกสารได้
- * ด่านที่สองที่ไม่ตรงกันคือรูที่คนอ่านของฝ่ายอื่นได้ผ่านทางพิมพ์ (บทเรียนเดียวกับ PDR)
+ * GET /api/products/[id]/spec/document
  *
- * ⚠️ **ตารางตั้งค่าล่มต้องไม่ทำให้พิมพ์ไม่ได้** — มาตรฐานที่เผยแพร่อ่านแบบ best effort
- * ล้มเมื่อไรส่ง null แล้วเอกสารตกไปใช้ค่าสำรอง `FM-SA-04 Rev.00` ใน documentBrand.js
+ * ⭐ มติเจ้าของ 21/09/2569: สเปคในฐานไม่มีเลขที่และไม่มี Rev · เลขที่/Rev/ด่านอนุมัติเป็นของ
+ *   **เอกสารที่ออกจากบรรทัด SO** ⇒ ที่นี่พิมพ์ได้แค่ **ตัวอย่าง** จากสเปคสด
+ *   (ลายน้ำ "ตัวอย่าง" · Document No. และ Reversion No. เป็นขีด · ไม่มีลายเซ็น ไม่มีเจ้าของดีล)
+ *   กระดาษของเอกสารจริงอยู่ที่ `/api/sales-planning/spec-documents/[id]/document`
+ *   🪤 `?issue=` ของโมเดลเดิม (0364) ไม่มีแล้ว — ส่งมาก็ได้ตัวอย่างเหมือนเดิม
+ *
+ * ⚠️ **ด่านเดียวกับหน้าสินค้า** — ใครเห็นสินค้าชิ้นนี้ได้ ก็พิมพ์ตัวอย่างได้ · สินค้านอกหมวด
+ *    01/02 ไม่มีใบสเปค (`productSpecScopeReason`)
+ * 🐞 เดิมอ่านบริษัทจากตาราง `company_profile` ที่ไม่มีอยู่จริง (error ถูกทิ้ง ⇒ ตกค่าสำรองเงียบ ๆ
+ *    ทุกครั้ง) · ตอนนี้ใช้ `getPublishedCompanyProfile` ตัวเดียวกับ QT/SO/สัญญา
+ * ⚠️ เปิดด้วย `window.open` ⇒ ล้มเมื่อไรต้องได้หน้าภาษาไทย ไม่ใช่ JSON/500 ดิบเต็มแท็บ
  */
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { getCurrentUser } from '@/lib/authUser';
+import { withUser } from '@/lib/http';
 import { canViewRecord } from '@/lib/permissions';
-import { resolveCompanyBlock } from '@/lib/companyProfile';
-import { fmtDate } from '@/lib/format';
-import { categoryOf } from '@/lib/master/categoryOf';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
-import { loadProductSpec } from '@/lib/sales/productSpecStore';
-import { listAttachments } from '@/lib/master/attachments';
-import { specIllustrationsOf } from '@/lib/sales/productSpecIllustrations';
-import { renderProductSpecDocument } from '@/lib/sales/productSpecDocument';
+import {
+  renderProductSpecSample, specPaperErrorResponse, specPaperResponse,
+} from '@/lib/sales/productSpecFreeze';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-const dateText = (value) => (value ? fmtDate(value) : '');
+export const GET = withUser(async ({ user, supabase, req, ctx }) => {
+  try {
+    if (!user) return specPaperErrorResponse(req, 'unauthorized', 401);
+    const { id } = await ctx.params;
 
-export async function GET(request, { params }) {
-  const { id } = await params;
-  const user = await getCurrentUser();
-  const supabase = getSupabaseAdmin();
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('id, fgCode, categoryCode, team, ownerId')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) return specPaperErrorResponse(req, `อ่านสินค้าไม่สำเร็จ: ${error.message}`, 500);
+    // ไม่พบ = 404 เหมือนสินค้าที่มองไม่เห็น (ไม่บอกว่ามีอยู่)
+    if (!product || !canViewRecord(user, 'products', product)) {
+      return specPaperErrorResponse(req, 'ไม่พบสินค้าชิ้นนี้', 404);
+    }
+    const scopeReason = productSpecScopeReason(product);
+    if (scopeReason) return specPaperErrorResponse(req, scopeReason, 400);
 
-  const { data: product, error } = await supabase
-    .from('products')
-    .select('id, fgCode, productDescription, brandName, customerName, categoryCode, volume, volumeUnit, scentId, formulaCode, formulaName, team, ownerId')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  // ไม่พบ = 404 เหมือนสินค้านอกทีม (ไม่บอกว่ามีอยู่)
-  if (!product || !canViewRecord(user, 'products', product)) {
-    return Response.json({ error: 'ไม่พบสินค้าชิ้นนี้' }, { status: 404 });
+    const paper = await renderProductSpecSample(supabase, { productId: id });
+    if (paper.error) return specPaperErrorResponse(req, paper.error, paper.status || 500);
+    return specPaperResponse(paper.html);
+  } catch (error) {
+    // 🪤 ตัวเรนเดอร์/ข้อมูลบริษัท throw ได้ — ต้องไม่หลุดเป็น 500 ดิบ
+    console.error('[products/spec/document] เปิดตัวอย่างไม่สำเร็จ', error);
+    return specPaperErrorResponse(req, `เปิดตัวอย่างใบสเปคไม่สำเร็จ: ${error?.message || 'ไม่ทราบสาเหตุ'}`, 500);
   }
-  const scopeReason = productSpecScopeReason(product);
-  if (scopeReason) return Response.json({ error: scopeReason }, { status: 400 });
-
-  const loaded = await loadProductSpec(supabase, id);
-  if (loaded.error) return Response.json({ error: loaded.error }, { status: 500 });
-  if (!loaded.spec) return Response.json({ error: 'สินค้าชิ้นนี้ยังไม่มีใบสเปค' }, { status: 404 });
-
-  /* ⭐ `?issue=<id>` = พิมพ์ **กระดาษใบที่ออกไปแล้ว** ใบนั้น · ไม่ส่งมา = พรีวิวฉบับล่าสุด
-     ⚠️ กระดาษที่ออกไปแล้วต้องอ่านเหมือนวันที่ส่งไป ⇒ อ้าง `revisionId` ของตัวมันเอง
-        ไม่ใช่ฉบับล่าสุดของสินค้า (ไม่งั้นใบเก่าเปลี่ยนเนื้อตามสเปกที่แก้ทีหลัง) */
-  const issueId = new URL(request.url).searchParams.get('issue');
-  const issue = issueId
-    ? (loaded.issues || []).find((row) => row.id === issueId) || null
-    : null;
-  if (issueId && !issue) return Response.json({ error: 'ไม่พบเอกสารฉบับที่ขอ' }, { status: 404 });
-
-  const revision = issue
-    ? (loaded.revisions || []).find((row) => row.id === issue.revisionId)
-    : (loaded.revisions || [])[0];
-  if (!revision) return Response.json({ error: 'ไม่พบฉบับสเปกของเอกสารนี้' }, { status: 404 });
-
-  const [{ data: profile }, { data: standard }, { data: types }, { data: scent }] = await Promise.all([
-    supabase.from('company_profile').select('*').limit(1).maybeSingle(),
-    supabase.from('document_standard_versions').select('*')
-      .eq('documentKey', 'productSpec').eq('status', 'published').maybeSingle(),
-    supabase.from('product_types').select('"mainCategoryCode", "typeCode", "nameTh", "nameEn"'),
-    product.scentId
-      ? supabase.from('scents').select('code, name').eq('id', product.scentId).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
-
-  const category = categoryOf(product.fgCode) || product.categoryCode || '';
-  const [main, type] = String(category).split('-');
-  const typeRow = (types || []).find((row) => row.mainCategoryCode === main && row.typeCode === type);
-
-  /* ภาพประกอบแนบกับ **ตัวสินค้า** (มติ 17/09 "ภาพประกอบอยู่กับสเปคสินค้า") ⇒ อ่าน
-     จากไฟล์แนบของสินค้าตรง ๆ · กระดาษที่พิมพ์สดจึงเป็นภาพชุดวันนี้เสมอ ส่วนฉบับที่
-     ออกไปแล้วอ่านเหมือนวันที่ส่งไปผ่าน snapshot ของ issued_documents (กลไกเดียวกับ QT/SO) */
-  const illustrations = specIllustrationsOf(await listAttachments('product', id));
-
-  const html = renderProductSpecDocument({
-    issue: issue
-      ? {
-        ...issue,
-        createdDateText: dateText(issue.createdAt),
-        deliveryDueDateText: dateText(issue.deliveryDueDate),
-        approvedDateText: dateText(revision.approvedAt),
-        submittedDateText: dateText(revision.submittedAt),
-        reviewedDateText: dateText(revision.reviewedAt),
-      }
-      /* ยังไม่เคยออกเอกสาร = พรีวิวฉบับร่าง · ไม่มีเลขที่เอกสารเพราะเลขเกิดตอนออกจริง
-         (เผาเลขให้พรีวิวคือเลขที่หายไปโดยไม่มีกระดาษ) */
-      : { docNo: '', revNo: revision.revNo, createdDateText: dateText(revision.createdAt) },
-    revision,
-    product: {
-      ...product,
-      categoryName: typeRow ? [typeRow.nameEn, typeRow.nameTh].filter(Boolean).join(' · ') : category,
-      scentText: [scent?.name || product.formulaName, scent?.code || product.formulaCode].filter(Boolean).join(' | '),
-      volumeText: [product.volume, product.volumeUnit].filter(Boolean).join(' '),
-    },
-    company: resolveCompanyBlock(profile || null),
-    contact: {
-      name: user?.name || null,
-      email: user?.email || null,
-      phone: null,
-    },
-    standard: standard || null,
-    illustrations,
-  });
-
-  return new Response(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-  });
-}
+});

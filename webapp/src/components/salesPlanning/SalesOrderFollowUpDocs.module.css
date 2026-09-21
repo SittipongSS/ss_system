@@ -1,16 +1,37 @@
 /* ความกว้างคอลัมน์และผิวย่อยอยู่ที่นี่ ไม่ใช่ `style` บน element (ด่าน audit:ui) */
-.colForm { width: 118px; }
+.colQty { width: 110px; }
 .colDoc { width: 200px; }
-.colStatus { width: 170px; }
-.colAction { width: 190px; }
+.colStatus { width: 200px; }
+.colAction { width: 170px; }
 .notice { margin-bottom: var(--space-3); }
-.lineName { font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+/* ตารางตามแบบแผนของระบบ: รหัสบน · ชื่อล่าง */
 .lineCode { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
-.actionCell { display: flex; flex-direction: column; gap: var(--space-1-5); align-items: flex-start; }
-.blockedReason {
-  margin: 0;
+.lineName { font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.sub {
+  margin-top: var(--space-0-5);
   font-size: var(--fs-4);
   color: var(--text-3);
   line-height: var(--lh-thai);
 }
+/* บรรทัดนอกขอบเขต (หมวด 03/04) — ยังขึ้นให้เห็นว่า "ไม่ต้องใช้" แต่จางลง ไม่แย่งสายตาบรรทัดที่มีงาน */
+.muted { color: var(--text-3); }
+
+/* เอกสารที่บรรทัดถูกถอด — ก้อนแยกใต้ตาราง เพราะไม่มีบรรทัดให้ผูกแล้ว */
+.orphans {
+  margin-top: var(--space-3-5);
+  padding: var(--space-3) var(--space-3-5);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--amber) 6%, var(--panel));
+}
+.orphanTitle {
+  margin: 0 0 var(--space-2);
+  color: var(--amber);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.orphanList { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.orphanRow { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; }
+.orphanCopy { display: flex; min-width: 0; flex-direction: column; }
 .footNote { margin: var(--space-2-5) 0 0; }

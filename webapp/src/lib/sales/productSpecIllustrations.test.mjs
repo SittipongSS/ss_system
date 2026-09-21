@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ILLUSTRATION_CAPTION_MAX, illustrationCaption, sortIllustrations, specIllustrationsOf } from './productSpecIllustrations.js';
+import {
+  ILLUSTRATION_CAPTION_MAX, illustrationCaption, snapshotIllustrationRows, sortIllustrations, specIllustrationsOf,
+} from './productSpecIllustrations.js';
 import { ATTACHMENT_TYPES, SPEC_ILLUSTRATION_DOC_TYPE, productDocTypes } from '@/lib/master/attachmentTypes';
 
 const row = (id, over = {}) => ({ id, createdAt: '2026-09-17T00:00:00Z', metadata: {}, ...over });
@@ -93,4 +95,23 @@ test('🪤 ไฟล์ที่เปิดเป็นรูปไม่ได
 test('จอกับเอกสารนับชุดเดียวกัน — ตัวคัดตัวเดียว ไม่มีของว่างทำให้ล้ม', () => {
   assert.deepEqual(specIllustrationsOf(), []);
   assert.deepEqual(specIllustrationsOf([null, undefined]), []);
+});
+
+/* ── ภาพในภาพนิ่งของเอกสาร (mig 0370) ─────────────────────────────────── */
+
+test('ภาพนิ่ง → รูปแถวไฟล์แนบ ให้ตัวเรียง/คำบรรยายตัวเดียวกับจอใช้ต่อได้', () => {
+  const rows = snapshotIllustrationRows([
+    { attachmentId: 'ATT-2', caption: 'ใส่การ์ด', sortOrder: 1, fileName: 'b.jpg' },
+    { attachmentId: 'ATT-1', caption: '  กล่องเปิด  ', sortOrder: 0, fileName: 'a.jpg' },
+  ]);
+  const sorted = sortIllustrations(rows);
+  assert.deepEqual(sorted.map((r) => r.id), ['ATT-1', 'ATT-2']);
+  assert.equal(illustrationCaption(sorted[0]), 'กล่องเปิด');
+  assert.equal(sorted[1].fileName, 'b.jpg');
+});
+
+test('🪤 ภาพนิ่งที่ไม่มี attachmentId ถูกทิ้ง — วางลง <img> ไม่ได้', () => {
+  assert.deepEqual(snapshotIllustrationRows([{ caption: 'ลอย' }, null, { attachmentId: 'A' }]).map((r) => r.id), ['A']);
+  assert.deepEqual(snapshotIllustrationRows(), []);
+  assert.deepEqual(snapshotIllustrationRows('ไม่ใช่ลิสต์'), []);
 });

@@ -12,6 +12,17 @@ import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT, SURVEY_DOC_WIDE } from "@/lib/service
    แล้วรูปจะไม่ขึ้นบนกระดาษโดยไม่มีอะไรฟ้อง */
 export const SPEC_ILLUSTRATION_DOC_TYPE = 'spec_illustration';
 
+/* ⭐ ไฟล์แนบที่ "ปลดระวาง" แล้ว (มติ 21/09/2569 · docs/fm-sa-04-document-model.md "รูปห้ามหาย")
+   ลบภาพประกอบที่ Rev ของเอกสาร FM-SA-04 ที่ยื่นหรืออนุมัติแล้วอ้างอยู่ (`illustrationIds`)
+   ⇒ DELETE ไม่ลบแถวและไม่ทิ้งไฟล์ แค่ประทับคีย์ชุดนี้ลง `metadata` · จอสเปคกับภาพนิ่ง
+   รอบใหม่ข้ามแถวที่ปลดระวางแล้ว ส่วนกระดาษ Rev เก่ายังเปิดรูปได้ตามตัวชี้เดิม
+   ⚠️ server เป็นคนเขียนคีย์ชุดนี้คนเดียว (DELETE ของ /api/attachments/[id]) — PATCH ตัดทิ้งจาก
+      คำขอ ไม่งั้นจอส่ง `retiredAt: null` มาแล้วรูปที่ถอดไปแล้วกลับเข้าภาพนิ่งรอบหน้า
+   ⚠️ ตัดสินด้วย `isRetiredAttachment` ตัวเดียว — พิมพ์ชื่อคีย์ซ้ำหลายที่เมื่อไร วันหนึ่งจะ
+      พิมพ์ต่างกันแล้วรูปที่ปลดระวางกลับมาโผล่บนกระดาษใบใหม่โดยไม่มีอะไรฟ้อง */
+export const RETIRED_METADATA_KEYS = Object.freeze(['retiredAt', 'retiredBy', 'retiredByName']);
+export const isRetiredAttachment = (item) => Boolean(item?.metadata?.retiredAt);
+
 // `required: true` = เอกสารจำเป็น (โชว์เป็นการ์ดที่ต้องมี + ติ๊กถูกเมื่ออัปแล้ว).
 // `other` เป็นการ์ดเอกสารเพิ่มเติม (ไม่บังคับ, แนบได้หลายไฟล์).
 

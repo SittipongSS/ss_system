@@ -22,8 +22,8 @@ function* walk(dir) {
 }
 
 import {
-  CONTRACT_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, SALES_ORDER_BELL_KINDS,
-  SERVICE_BELL_KINDS,
+  CONTRACT_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, PRODUCT_SPEC_DOC_BELL_KINDS,
+  SALES_ORDER_BELL_KINDS, SERVICE_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -264,7 +264,7 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   assert.deepEqual(calls.ors, [
     'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
     + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
-      ...SALES_ORDER_BELL_KINDS]
+      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS]
       .map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
@@ -275,7 +275,7 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
     ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
-      ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS]);
+      ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
@@ -416,6 +416,30 @@ test('⭐ ใบสั่งขายเข้ากระดิ่งด้ว�
   }
 });
 
+/* ── เอกสาร FM-SA-04 เข้ากระดิ่ง (mig 0370) ─────────────────────────────────
+   ⚠️ ดริฟต์ตัวเดียวกับสัญญา/ใบสั่งขาย: ยิง kind ใหม่จากเส้นอนุมัติแล้วลืมเติมลิสต์ ⇒ แถวถูกเขียน
+   ลงตารางแต่ไม่โผล่ในกระดิ่ง ผู้อนุมัติไม่รู้ว่ามีใบรอ · จับด้วยคำนำหน้าชื่อ kind ทั้ง src */
+test('⭐ เอกสาร FM-SA-04 เข้ากระดิ่งด้วย kind ไม่ใช่ทั้ง entity', () => {
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('product_spec_document'), false);
+  for (const kind of PRODUCT_SPEC_DOC_BELL_KINDS) {
+    assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกระดิ่ง`);
+  }
+});
+
+test('PRODUCT_SPEC_DOC_BELL_KINDS ครบทุก kind ที่ยิงจริง', () => {
+  const kinds = new Set();
+  for (const file of walk(new URL('..', import.meta.url))) {
+    const src = readFileSync(file, 'utf8');
+    for (const [, kind] of src.matchAll(/kind: '(product_spec_doc_[a-z_]+)'/g)) kinds.add(kind);
+    for (const [, kind] of src.matchAll(/_KIND = '(product_spec_doc_[a-z_]+)'/g)) kinds.add(kind);
+  }
+  assert.ok(kinds.size >= 4, 'หา kind ของแจ้งเตือนเอกสาร FM-SA-04 ไม่ครบ — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of kinds) {
+    assert.ok(PRODUCT_SPEC_DOC_BELL_KINDS.includes(kind),
+      `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน PRODUCT_SPEC_DOC_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+  }
+});
+
 test('กล่อง + กุญแจหน้าถัดไปอยู่ด้วยกันได้ — or สองก้อนถูก and กันที่ PostgREST', async () => {
   const { calls, supabase } = pageStub([]);
   await listNotificationPage(supabase, 'u-1', {
@@ -478,4 +502,12 @@ test('⭐ "อ่านทั้งหมด" ในกระดิ่งล้�
   const full = tailStub({ error: null });
   await markAllRead(full.supabase, 'u-1');
   assert.equal(full.calls.or, null);
+});
+
+/* ── เอกสารใบสเปคสินค้า FM-SA-04 (mig 0370) ─────────────────────────────────
+   ยื่น/อนุมัติ/ตีกลับยิงด้วย entityType `product_spec_document` (ไม่มีเธรด จึงไม่อยู่ใน
+   UPDATE_ENTITIES ที่เทสต์ข้างบนไล่) ⇒ ต้องตรวจตรง ๆ ว่ากดแล้วไปถึงหน้าเอกสาร ไม่ใช่แถวลอย ๆ */
+test('ใบสเปคสินค้า: แจ้งเตือนพาไปหน้าเอกสาร และมีป้ายชื่อของตัวเอง', () => {
+  assert.equal(notificationHref('product_spec_document', 'PSD-1'), '/sales-planning/spec-documents/PSD-1');
+  assert.equal(entityLabel('product_spec_document'), 'ใบสเปคสินค้า');
 });

@@ -421,6 +421,16 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/sales-planning/leads')) return can(role, 'salesplan:lead');
   // (ระบบสอบถาม /api/sales-planning/inquiries ถูกปลดระวางใน mig 0174 —
   //  งานย้ายไปคำร้องข้ามฝ่าย /api/sa/requests ซึ่งมีกฎของตัวเองด้านล่าง)
+  /* ⭐ เอกสาร FM-SA-04 (mig 0370) — ออกจากบรรทัด SO (`sales-orders/<id>/spec-documents`) และ
+     ยื่น/อนุมัติ/แก้ไข/ยกเลิก (`spec-documents/<id>`) · คนกดทุกขั้นเป็นฝ่ายขาย (AC · AE เจ้าของดีล ·
+     AE Supervisor · admin) ⇒ `salesplan:edit`
+     ⚠️ **ต้องมาก่อนช่องของฝ่ายบัญชีข้างล่าง** — วันไหนช่องนั้นถูกขยาย (เช่นเปิดทุกเส้นลูกของใบ)
+        ฝ่ายบัญชีจะกดอนุมัติใบสเปคได้ทั้งที่ไม่ใช่ลายเซ็นของฝ่ายนั้น · กฎเฉพาะมาก่อนกฎกว้างเสมอ
+     ⚠️ ด่านรายขั้น (AC / เจ้าของดีล / AE Sup) อยู่ใน handler (`documentActions`) ซึ่ง proxy มองไม่เห็น */
+  if (/^\/api\/sales-planning\/spec-documents(\/|$)/.test(path)
+    || /^\/api\/sales-planning\/sales-orders\/[^/]+\/spec-documents(\/|$)/.test(path)) {
+    return can(role, 'salesplan:edit');
+  }
   /* ⭐ **ขั้นของฝ่ายบัญชีบนใบสั่งขาย** (mig 0245 งวดชำระ · mig 0250 บัญชีตรวจใบ) —
      ต้องมาก่อนกฎ `/api/sales-planning` ด้านล่าง ด้วยเหตุผลเดียวกับที่ `/api/sa/costing`
      และ `/api/sa/requests` ต้องมีกฎของตัวเอง: **ฝ่ายบัญชีไม่มี `salesplan:edit`
@@ -507,11 +517,12 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
     if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'ra:approve');
     return can(role, 'products:edit'); // create
   }
-  /* ใบสเปคสินค้า FM-SA-04 (mig 0364) — **เอกสารของฝ่ายขาย ไม่ใช่การแก้ทะเบียนสินค้า**
+  /* สเปคสินค้า FM-SA-04 (mig 0364 → 0370) — **ข้อมูลของฝ่ายขาย ไม่ใช่การแก้ทะเบียนสินค้า**
      ⇒ ด่านคือ `salesplan:edit` ไม่ใช่ `products:edit` (กฎ module-ownership)
      ⚠️ **ต้องมาก่อนกฎ `/api/products` ตัวรวมข้างล่าง** — กฎนั้นปล่อย PATCH ให้คนที่ถือ
-        `ra:approve` ด้วย ซึ่งจะทำให้ RA แก้/อนุมัติใบสเปคได้ทั้งที่ไม่ใช่งานของฝ่ายนั้น
-     (ด่านรายขั้น AC/AE/AE Sup อยู่ใน handler ซึ่ง proxy มองไม่เห็น) */
+        `ra:approve` ด้วย ซึ่งจะทำให้ RA แก้/ลบสเปคได้ทั้งที่ไม่ใช่งานของฝ่ายนั้น
+     (0370: สเปคไม่มีด่านอนุมัติแล้ว — ใครแก้ได้ตัดสินที่ `canEditProductSpec` ใน handler ·
+      ด่านอนุมัติย้ายไปอยู่ที่เอกสาร `/api/sales-planning/spec-documents/<id>`) */
   if (/^\/api\/products\/[^/]+\/spec(\/|$)/.test(path)) return can(role, 'salesplan:edit');
   if (path.startsWith('/api/products')) {
     if (method === 'DELETE') return can(role, 'products:delete');

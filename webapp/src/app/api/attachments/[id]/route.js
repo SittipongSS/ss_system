@@ -3,7 +3,10 @@ import { stripDriveMetadata } from '@/lib/master/googleDocs';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewCosting } from '@/lib/permissions';
 import { getAttachment, releaseAttachmentFile } from '@/lib/master/attachments';
-import { ISSUED_DATE_FIELD } from '@/lib/master/attachmentTypes';
+import {
+  ISSUED_DATE_FIELD, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, isRetiredAttachment,
+} from '@/lib/master/attachmentTypes';
+import { isIllustrationReferenced } from '@/lib/sales/productSpecStore';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import {
@@ -94,7 +97,80 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
   return null;
 }
 
+// ── ภาพประกอบใบสเปค FM-SA-04 ที่เอกสารอ้างอยู่: ปลดระวางแทนการลบ ────────────────
+// (มติ 21/09/2569 · docs/fm-sa-04-document-model.md หัวข้อ "รูปห้ามหาย")
+//
+// เอกสารถือภาพนิ่งของตัวเองตั้งแต่ตอนยื่น และภาพนิ่งชี้รูปด้วย id (`illustrationIds`)
+// ⇒ ลบแถว + ทิ้งไฟล์บน Drive = กระดาษ Rev ที่ยื่นหรืออนุมัติไปแล้ว (บางใบลูกค้าเซ็นกลับมา
+//   แล้ว) เปิดรูปไม่ขึ้นตลอดกาล และกู้ไม่ได้เพราะตัวไฟล์หายไปด้วย
+// ⇒ รูปที่ Rev ไหนก็ตามที่ไม่ใช่ร่างอ้างอยู่ ต้องเก็บทั้งแถวและไฟล์ไว้ แค่ประทับ
+//   `metadata.retiredAt` ให้จอสเปคกับภาพนิ่งรอบใหม่ข้ามไป (ดู isRetiredAttachment)
+// ⚠️ ตรวจไม่สำเร็จต้องหยุดที่ 500 — ถ้าถือว่า "ไม่มีใครอ้าง" แล้วลบต่อ นั่นคือทางเดียว
+//    ที่รูปบนกระดาษหายจริง (supabase ไม่ throw ⇒ ต้องอ่าน error เอง)
+// คืน Response เมื่อจบที่นี่ (ปลดระวางแล้ว หรือ error) · คืน null = ไม่มีเอกสารใบไหนอ้าง ลบได้ตามปกติ
+const SPEC_ILLUSTRATION_RETIRED_MESSAGE = 'รูปนี้อยู่ในเอกสาร FM-SA-04 ที่ยื่นหรืออนุมัติแล้ว จึงเก็บไฟล์ไว้และซ่อนจากสเปค';
+
+// ตราปลดระวาง — ที่เดียวที่ประกอบก้อนนี้ (สองทางข้างล่างใช้ร่วม) · metadata เดิม (คำบรรยาย · ลำดับ ·
+// คีย์ของ Drive) ต้องคงอยู่ ประทับทับทั้งก้อนแล้วคำบรรยายหาย
+const retiredMetadataOf = (att, user) => ({
+  ...(att.metadata || {}),
+  retiredAt: new Date().toISOString(),
+  retiredBy: user?.id || null,
+  retiredByName: user?.name || user?.email || null,
+});
+
+async function retireReferencedIllustration(supabase, att, user) {
+  const ref = await isIllustrationReferenced(supabase, att.id);
+  if (ref.error) {
+    return Response.json({
+      error: `ตรวจไม่ได้ว่ารูปนี้อยู่ในเอกสาร FM-SA-04 ใบไหนหรือไม่ จึงยังไม่ลบ — ${ref.error}`,
+    }, { status: 500 });
+  }
+  if (!ref.referenced) return null;
+
+  // กดลบซ้ำที่รูปที่ปลดระวางไปแล้ว (เปิดจอค้างไว้สองแท็บ) — ไม่ประทับทับ คงผู้ปลดคนแรกไว้
+  if (!isRetiredAttachment(att)) {
+    const metadata = retiredMetadataOf(att, user);
+    const { data: retired, error: retireError } = await supabase
+      .from('attachments').update({ metadata }).eq('id', att.id).select('id').maybeSingle();
+    if (retireError) return Response.json({ error: retireError.message }, { status: 500 });
+    // แถวหายไประหว่างทาง (อีกแท็บลบไปก่อน) — ไม่ตอบว่าปลดระวางสำเร็จทั้งที่ไม่มีแถวให้ประทับ
+    if (!retired) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
+  }
+  return Response.json({ success: true, retired: true, message: SPEC_ILLUSTRATION_RETIRED_MESSAGE });
+}
+
+// ── รูปที่ "ยังไม่มีใครอ้าง" ก็ต้องกันการยื่นที่แทรกกลาง ────────────────────────────
+// 🔴 ยื่นเอกสารอ่านรายการรูปก่อน แล้วค่อยเขียน `illustrationIds` ลง Rev ทีหลัง ⇒ ถ้าคำขอยื่นกำลังวิ่ง
+//    ด่านข้างบนยังไม่เห็น Rev นั้น (ยังไม่ commit) แล้วเราลบแถว + ปล่อยไฟล์ไปเลย = กระดาษที่อนุมัติ
+//    ทีหลังชี้รูปที่หายไปแล้วตลอดกาล (ไฟล์ถูกปล่อย กู้ไม่ได้)
+// ⇒ ประทับปลดระวางก่อน (ภาพนิ่งรอบใหม่ข้ามรูปที่ปลดระวางแล้วทันที) → ตรวจการอ้างอิงซ้ำ →
+//   ไม่มีใครอ้างจริงค่อยลบ · ถ้ามีคำขอยื่นที่ commit ทันก่อนตรวจซ้ำ = เก็บรูปไว้แบบปลดระวาง
+//   · ฝั่งยื่นตรวจรูปซ้ำหลังเขียนเหมือนกัน (รูปหาย/ถูกปลดระวาง = ถอยการยื่น) ⇒ สองฝั่งถอยให้กันเสมอ
+//   ไม่มีลำดับไหนที่กระดาษชี้ไฟล์ที่ถูกปล่อยไปแล้ว
+// ⚠️ ตรวจซ้ำไม่สำเร็จ = เก็บไว้แบบปลดระวาง (ซ่อนจากสเปคแล้ว ไฟล์ยังอยู่) ไม่ใช่ลบต่อ
+// คืน Response เมื่อจบที่นี่ · คืน null = ไม่มีใครอ้างจริง ลบแถว + ปล่อยไฟล์ได้
+async function retireBeforeDelete(supabase, att, user) {
+  if (!isRetiredAttachment(att)) {
+    const { data: retired, error: retireError } = await supabase
+      .from('attachments').update({ metadata: retiredMetadataOf(att, user) }).eq('id', att.id).select('id').maybeSingle();
+    if (retireError) return Response.json({ error: retireError.message }, { status: 500 });
+    if (!retired) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
+  }
+  const again = await isIllustrationReferenced(supabase, att.id);
+  if (again.error) {
+    return Response.json({
+      error: `ซ่อนรูปจากสเปคแล้ว แต่ตรวจซ้ำไม่ได้ว่ามีเอกสาร FM-SA-04 เพิ่งยื่นพร้อมรูปนี้หรือไม่ จึงยังเก็บไฟล์ไว้ — ${again.error}`,
+    }, { status: 500 });
+  }
+  if (again.referenced) {
+    return Response.json({ success: true, retired: true, message: SPEC_ILLUSTRATION_RETIRED_MESSAGE });
+  }
+  return null;
+}
+
 // DELETE /api/attachments/[id] — ลบ row + best-effort ลบไฟล์ใน storage.
+// ยกเว้นภาพประกอบใบสเปคที่เอกสาร FM-SA-04 อ้างอยู่ = ปลดระวาง (ดู retireReferencedIllustration)
 export async function DELETE(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -105,6 +181,14 @@ export async function DELETE(request, { params }) {
 
   const denied = await guardAttachmentWrite(supabase, att, user, 'ลบเอกสาร');
   if (denied) return denied;
+
+  // ⚠️ ต้องมาก่อนคำสั่งลบแถวเสมอ — ลบไปแล้วไม่มีอะไรให้ปลดระวาง และไฟล์ถูกปล่อยทิ้งแล้ว
+  if (att.entityType === 'product' && att.docType === SPEC_ILLUSTRATION_DOC_TYPE) {
+    const handled = await retireReferencedIllustration(supabase, att, user);
+    if (handled) return handled;
+    const raced = await retireBeforeDelete(supabase, att, user);
+    if (raced) return raced;
+  }
 
   const { error } = await supabase.from('attachments').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -161,7 +245,12 @@ export async function PATCH(request, { params }) {
   // `kind`/`googleFileId` เข้าไปทีหลังได้ ⇒ ครั้งถัดไปที่มีคนเปิดรายการไฟล์แนบ ระบบจะ
   // ไปแชร์ไฟล์ Drive ตาม id ที่ยัดไว้ · ของเดิมบนแถว (`att.metadata`) ไม่ถูกแตะ
   // เพราะมันมาจาก Drive ตอนสร้าง ไม่ได้มาจากคำขอนี้
-  const merged = { ...(att.metadata || {}), ...stripDriveMetadata(metadata) };
+  //
+  // ⚠️ คีย์ปลดระวาง (`retiredAt`…) ก็ตัดด้วยเหตุผลเดียวกัน — DELETE เป็นคนเขียนคนเดียว
+  // ส่ง `retiredAt: null` มาแล้วรูปที่เอกสาร FM-SA-04 อ้างอยู่จะกลับเข้าภาพนิ่งรอบหน้า
+  const requested = stripDriveMetadata(metadata);
+  for (const key of RETIRED_METADATA_KEYS) delete requested[key];
+  const merged = { ...(att.metadata || {}), ...requested };
   const { data, error } = await supabase
     .from('attachments').update({ metadata: merged }).eq('id', id).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });

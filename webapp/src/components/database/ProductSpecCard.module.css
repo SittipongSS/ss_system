@@ -1,8 +1,9 @@
 /* ความกว้างคอลัมน์อยู่ที่นี่ ไม่ใช่ `style` บน <th> (ด่าน audit:ui) */
-.colDoc { width: 186px; }
-.colRev { width: 84px; }
-.colOrder { width: 160px; }
-.colStatus { width: 150px; }
-.colQty { width: 90px; }
-.colDue { width: 116px; }
-.error { margin: 0; color: var(--red); line-height: var(--lh-thai); }
+.colDoc { width: 196px; }
+.colRev { width: 96px; }
+.colStatus { width: 190px; }
+.colOrder { width: 170px; }
+.colDate { width: 116px; }
+.notice { margin-bottom: var(--space-3); }
+/* Rev ที่อนุมัติแล้วและยังใช้อยู่ ระหว่างที่ Rev ถัดไปกำลังเดินด่าน — ของรอง ตัวเล็กใต้ Rev ล่าสุด */
+.sub { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }

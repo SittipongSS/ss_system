@@ -144,3 +144,31 @@ test('findEntityReferences ใช้คอลัมน์ของ entity นั
 test('entity ที่ไม่รู้จัก → โยน error ไม่ใช่คืนว่าง (ว่าง = ลบผ่าน)', async () => {
   await assert.rejects(() => findEntityReferences({}, 'scent', 'X'), /ไม่รู้จัก entity/);
 });
+
+// ── ใบสเปคสินค้า FM-SA-04 — โมเดลเอกสารชุดใหม่ (mig 0370 · มติ 21/09/2569) ─────────
+test('ทะเบียนสินค้าครอบสเปคและเอกสาร FM-SA-04 · ไม่อ้างตารางที่ 0370 ถอดไปแล้ว', () => {
+  const names = referenceTableNames('product');
+  assert.ok(names.includes('product_specs'), 'สเปค (FK CASCADE) ต้องบล็อกการลบ ไม่ใช่หายตามสินค้าเงียบ ๆ');
+  assert.ok(names.includes('product_spec_documents'), 'เอกสารที่ออกเลขแล้วต้องบล็อกการลบ พร้อมบอกเลขที่');
+  /* 🪤 ตารางที่ถูกถอดค้างในทะเบียน = query ล้ม = ด่านลบสินค้าตอบ 500 ทุกตัว (check:refs เรียก "stale")
+     · ตารางลูกไม่ถือ productId (ชี้พ่อด้วย specId/documentId) ⇒ ใส่แล้ว query ล้มแบบเดียวกัน */
+  for (const t of ['product_spec_revisions', 'product_spec_revision_items', 'product_spec_issues',
+    'product_spec_items', 'product_spec_document_revisions']) {
+    assert.ok(!names.includes(t), `ทะเบียนต้องไม่มี ${t}`);
+  }
+  const doc = REFERENCE_REGISTRY.product.tables.find((t) => t.table === 'product_spec_documents');
+  assert.equal(doc.sample, 'docNo', 'ต้องโชว์เลขที่เอกสารให้ตามไปดูถูกใบ');
+  assert.match(doc.label, /FM-SA-04/);
+});
+
+test('สินค้าที่ออกเอกสาร FM-SA-04 แล้ว → บล็อกการลบ พร้อมเลขที่ของเอกสาร', async () => {
+  const { refs, error } = await findEntityReferences(fakeDb({
+    product_specs: [{ id: 'PS-1' }],
+    product_spec_documents: [{ docNo: 'FM-SA-04-220969-001' }, { docNo: 'FM-SA-04-230969-002' }],
+  }), 'product', 'PRD-1');
+  assert.equal(error, null);
+  assert.deepEqual(refs, [
+    '1 สเปคสินค้า (FM-SA-04)',
+    '2 เอกสารใบสเปคสินค้า (FM-SA-04) (FM-SA-04-220969-001, FM-SA-04-230969-002)',
+  ]);
+});

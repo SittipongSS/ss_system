@@ -51,3 +51,21 @@ export function sortIllustrations(items = []) {
 export function illustrationCaption(row) {
   return String(row?.metadata?.caption || '').trim().slice(0, ILLUSTRATION_CAPTION_MAX);
 }
+
+/**
+ * ภาพในภาพนิ่งของเอกสาร (`snapshot.illustrations` · mig 0370) → รูปแถวไฟล์แนบ
+ *
+ * ⭐ ภาพนิ่งเก็บ `{ attachmentId, caption, sortOrder, fileName }` ไม่ใช่แถว `attachments` ทั้งแถว
+ *    แปลงกลับเป็นรูปแถวเพื่อให้ `sortIllustrations` / `illustrationCaption` ตัวเดียวกับจอใช้ได้ต่อ
+ *    ⇒ กระดาษที่พิมพ์จากภาพนิ่งกับจอที่จัดลำดับยังเรียงด้วยกติกาเดียวกัน
+ * ⚠️ แถวที่ไม่มี `attachmentId` ถูกทิ้ง — วางลง `<img>` ไม่ได้ (ได้ช่องภาพแตกบนกระดาษ)
+ */
+export function snapshotIllustrationRows(illustrations = []) {
+  return (Array.isArray(illustrations) ? illustrations : [])
+    .filter((row) => row && row.attachmentId)
+    .map((row) => ({
+      id: String(row.attachmentId),
+      fileName: row.fileName || null,
+      metadata: { caption: row.caption ?? '', sortOrder: row.sortOrder ?? null },
+    }));
+}

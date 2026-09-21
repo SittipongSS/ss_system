@@ -1,0 +1,58 @@
+/* หน้าเอกสาร FM-SA-04 — ผังเดียวกับหน้ารายละเอียดใบสั่งขาย (หัวใบ → แถบแจ้ง → บริบท → เนื้อ+ราง)
+   ทุกอย่างอยู่ที่นี่ ไม่ใช่ `style` บน element (ด่าน audit:ui) */
+.page { display: flex; flex-direction: column; gap: var(--space-4-5); }
+
+/* ถูกตีกลับ — ทรงเดียวกับแถบตีกลับของใบสั่งขาย */
+.rejection {
+  display: flex;
+  gap: var(--space-2-5);
+  padding: var(--space-3-5) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--red) 7%, var(--panel));
+  color: var(--red);
+  line-height: var(--lh-thai);
+}
+
+.sub {
+  margin: var(--space-0-5) 0 0;
+  font-size: var(--fs-4);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+/* เนื้อเอกสาร: ป้ายบน · ค่าล่าง เป็นตะแกรง — อ่านเหมือนหัวกระดาษ ไม่ใช่ฟอร์ม */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+.facts:last-child { margin-bottom: 0; }
+.facts dt {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.facts dd {
+  margin: var(--space-0-5) 0 0;
+  color: var(--text);
+  line-height: var(--lh-thai);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.captionList { margin: 0; padding-left: var(--space-4-5); color: var(--text-2); line-height: var(--lh-thai); }
+
+/* ความกว้างคอลัมน์ */
+.colRev { width: 84px; }
+.colStatus { width: 200px; }
+.colStamp { width: 170px; }
+.colPrint { width: 96px; }
+.colNo { width: 56px; }
+.colItem { width: 200px; }
+.colBy { width: 140px; }
+.colNote { width: 200px; }
+.colCert { width: 240px; }
+.colCertStatus { width: 200px; }

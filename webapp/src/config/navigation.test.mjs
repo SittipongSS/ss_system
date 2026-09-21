@@ -160,6 +160,22 @@ test('⭐ RD รับใบคำร้อง + ใบสั่งขาย —
   assert.equal(systemForPathname('/sa/projects/1', RD), 'salesplan');
 });
 
+/* 🐞 หน้าเอกสาร FM-SA-04 (mig 0370) เปิดจากการ์ดบนหน้าใบสั่งขาย — ฝ่ายที่รับใบสั่งขายเข้าบ้านตัวเอง
+   (RD · FN · TS) ต้องรับหน้านี้ด้วย ไม่งั้นกด "เปิดเอกสาร" แล้วเปลือกสลับไปงานขายที่เขาไม่มีเมนู = แถบว่าง */
+test('⭐ หน้าเอกสาร FM-SA-04 ตามบ้านของใบสั่งขาย — ฝ่ายที่รับใบสั่งขายรับหน้านี้ด้วย', () => {
+  const TS = { role: 'service', department: 'TS', team: null, extraCaps: [] };
+  const path = '/sales-planning/spec-documents/PSD-1';
+  for (const system of Object.keys(ADOPTED_SHARED_PATHS)) {
+    if (!adoptsPathname(system, '/sa/sales-orders/1')) continue;
+    assert.ok(adoptsPathname(system, path), `${system} รับใบสั่งขายแล้วต้องรับหน้าเอกสาร FM-SA-04 ด้วย`);
+  }
+  assert.equal(systemForPathname(path, RD), 'rd');
+  assert.equal(systemForPathname(path, FN), 'finance');
+  assert.equal(systemForPathname(path, AE), 'salesplan');
+  assert.equal(systemForPathname(path, ADMIN), 'salesplan');
+  assert.equal(systemForPathname(path, TS), systemForPathname('/sa/sales-orders/1', TS));
+});
+
 test('⭐ ฝ่ายขาย · admin · และการเรียกแบบไม่ส่ง user = พฤติกรรมเดิมทุกประการ', () => {
   for (const p of ['/sa/sales-orders/1', '/requests/DR-1', '/sa/deals/1']) {
     assert.equal(systemForPathname(p), 'salesplan', p);

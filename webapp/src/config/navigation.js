@@ -65,12 +65,15 @@ export const ADOPTED_SHARED_PATHS = {
      ⚠️ **ต้องรับพร้อมกับที่ปิดเมนูงานขายของฝ่าย** — ไม่งั้นกดใบสั่งขายจากคิวของตัวเอง
      แล้วเปลือกสลับไป "บริหารงานขาย" ซึ่งเป็นระบบที่เขาไม่มีกลุ่มเมนูอีกแล้ว = แถบว่าง
      (อาการเดียวกับที่คอมเมนต์ของ `homeSystemForUser` เตือนไว้ · เจอจริงตอน UAT) */
-  rd: ['/requests', '/sa/sales-orders', '/sales-planning/sales-orders'],
+  /* ⭐ หน้าเอกสาร FM-SA-04 (`/sales-planning/spec-documents/[id]` · mig 0370) รับคู่กับใบสั่งขายเสมอ —
+     การ์ดบนหน้า SO โชว์ปุ่ม "เปิดเอกสาร" ให้ทุกคนที่เห็นใบ ⇒ ไม่รับ = กดจากใบสั่งขายในเปลือกตัวเอง
+     แล้วเปลือกสลับไป "บริหารงานขาย" ที่ฝ่ายนี้ไม่มีกลุ่มเมนู = แถบว่าง (บั๊กเดียวกับข้างล่าง) */
+  rd: ['/requests', '/sa/sales-orders', '/sales-planning/sales-orders', '/sales-planning/spec-documents'],
   // FN รับเอกสารสี่ชนิดที่มติ 2026-08-13 (กฎข้อ 7) ตัดสินไว้แล้วว่าเป็นเมนูของเขา
   // (เส้นทางเก่า `/sales-planning/*` ยังมีลิงก์ค้างอยู่ในระบบ จึงต้องรับคู่กันเสมอ)
   finance: [
     '/sa/quotations', '/sales-planning/quotations',
-    '/sa/sales-orders', '/sales-planning/sales-orders',
+    '/sa/sales-orders', '/sales-planning/sales-orders', '/sales-planning/spec-documents',
     '/sa/contracts', '/sales-planning/contracts',
     '/requests',
   ],
@@ -84,7 +87,7 @@ export const ADOPTED_SHARED_PATHS = {
      ⚠️ `/requests` รับไว้เพราะหน้ารายละเอียดคำร้องอยู่ที่นั่น (เมนูของ TS ชื่อ
         "คิวคำร้อง" ชี้ `/service/requests` แต่กดเข้าใบแล้วเด้งไป `/requests/<id>`) */
   service: [
-    '/sa/sales-orders', '/sales-planning/sales-orders',
+    '/sa/sales-orders', '/sales-planning/sales-orders', '/sales-planning/spec-documents',
     '/sa/contracts', '/sales-planning/contracts',
     '/requests',
     /* ⭐ ทะเบียนไซต์ + ทะเบียนเครื่อง ย้ายบ้านไปฐานข้อมูล (มติผู้ใช้ 2026-09-17) แต่ยังเป็น

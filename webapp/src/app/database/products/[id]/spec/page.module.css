@@ -1,4 +1,4 @@
-/* สไตล์ของหน้าใบสเปคสินค้า — ทุกอย่างอยู่ที่นี่ ไม่ใช่ `style` บน element
+/* สไตล์ของหน้าสเปคสินค้า — ทุกอย่างอยู่ที่นี่ ไม่ใช่ `style` บน element
    (ด่าน audit:ui นับเลขดิบในผิว style object เป็นเพดานแบบ ratchet) */
 .notice { margin-bottom: var(--space-3-5); }
 .intro {
@@ -12,18 +12,12 @@
   color: var(--text-2);
   line-height: var(--lh-thai);
 }
-.railNote { margin: 0; }
-.saveButton { width: 100%; }
 
-.colDoc { width: 186px; }
-.colRev { width: 84px; }
-.colOrder { width: 160px; }
-.colStatus { width: 150px; }
-.colQty { width: 90px; }
-.colDue { width: 116px; }
-.colRevNo { width: 90px; }
-.colRevStatus { width: 170px; }
-.colApprover { width: 170px; }
-.colApprovedAt { width: 120px; }
-
-.colPrint { width: 96px; }
+/* ตาราง "เอกสารที่ออกจากสเปคนี้" */
+.colDoc { width: 196px; }
+.colRev { width: 96px; }
+.colStatus { width: 190px; }
+.colOrder { width: 170px; }
+.colDate { width: 116px; }
+/* Rev ที่อนุมัติแล้วและยังใช้อยู่ ระหว่างที่ Rev ถัดไปกำลังเดินด่าน */
+.sub { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }

@@ -1,30 +1,41 @@
-/* ── ใบสเปคสินค้า FM-SA-04 — เส้นของ "ใบ" (mig 0364) ─────────────────────────
+/* ── สเปคสินค้า FM-SA-04 — ข้อมูลสเปคของสินค้า (mig 0370) ──────────────────────
  *
- * ⭐ **บ้านของใบคือสินค้า ไม่ใช่ใบสั่งขาย** (มติผู้ใช้ 2026-09-17) — หนึ่งสินค้า
- * หนึ่งใบตลอดอายุ · เนื้อสเปกอยู่ที่ "ฉบับ" (Rev.) ส่วนการออกกระดาษตาม SO อยู่ที่
- * เส้น `/api/sales-planning/sales-orders/[id]/spec-issues`
+ * ⭐ **มติเจ้าของ 21/09/2569** (docs/fm-sa-04-document-model.md): สเปคในฐานข้อมูลเป็น
+ *   ข้อมูลของสินค้า 1 แถวต่อสินค้า — **ไม่มีเลขรัน ไม่มี Rev ไม่มีด่านอนุมัติ** ·
+ *   ฝ่ายขายแก้ได้เลย · ทุกการแก้ลง audit log
+ *   เลขที่เอกสาร Rev และด่านอนุมัติอยู่ที่ "เอกสาร" ที่ AC ออกจากบรรทัด SO
+ *   ⇒ `/api/sales-planning/sales-orders/[id]/spec-documents` (ออก) ·
+ *     `/api/sales-planning/spec-documents/[id]` (ยื่น/อนุมัติ/แก้ไข/ยกเลิก)
  *
  * ⚠️ ด่านสิทธิ์ของ proxy สำหรับเส้นนี้เป็น `salesplan:edit` **ไม่ใช่ `products:edit`**
- * — ใบสเปคเป็นเอกสารของฝ่ายขาย ไม่ใช่การแก้ทะเบียนสินค้า (กฎ module-ownership) ·
- * ปล่อยให้ตกกฎ `/api/products` ตัวรวมเมื่อไร RA ที่ถือ `ra:approve` จะ PATCH ใบนี้ได้ด้วย
+ *   — สเปคเป็นข้อมูลของฝ่ายขาย ไม่ใช่การแก้ทะเบียนสินค้า (กฎ module-ownership) ·
+ *   ปล่อยให้ตกกฎ `/api/products` ตัวรวมเมื่อไร RA ที่ถือ `ra:approve` จะ PATCH ได้ด้วย
+ * ⚠️ ด่านทุกตัวถาม `productSpecWorkflow` ตัวเดียวกับที่จอใช้ — คิดเงื่อนไขซ้ำที่นี่เมื่อไร
+ *   ปุ่มบนจอกับ API จะยอมคนละอย่าง
+ * ⚠️ แก้สเปค **ไม่แตะเอกสารที่ยื่น/อนุมัติแล้ว** (เอกสารถือภาพนิ่งของตัวเอง) — ร่างที่ยัง
+ *   ไม่ยื่นแสดงสดจากสเปคจึงเห็นค่าใหม่เอง ไม่ต้องเขียนอะไรเพิ่มที่นี่
  */
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
-import { genId } from '@/lib/id';
 import { canViewRecord } from '@/lib/permissions';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
 import {
-  productSpecApproveBlock, productSpecDeleteBlock, productSpecDeleteScope,
-  productSpecEditBlock, productSpecNewRevisionBlock, productSpecSubmitBlock,
+  canEditProductSpec, productSpecDeleteBlock, productSpecPermissions,
 } from '@/lib/sales/productSpecWorkflow';
 import {
-  SPEC_CONTENT_FIELDS, createSpecRevision, latestRevisionOf, loadProductSpec,
-  syncProductSpecMirror,
+  createProductSpec, deleteProductSpec, loadProductPrintFields, loadProductSpec, loadSpecRecord, saveProductSpec,
 } from '@/lib/sales/productSpecStore';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_EXTRA_ITEMS = 20;
+const EDIT_FORBIDDEN = 'ต้องเป็น AC หรือฝ่ายขายจึงแก้สเปคสินค้าได้';
+
+/* ผลลัพธ์ที่ล้มของ store → คำตอบ · FK ชน (สินค้า/สเปคถูกลบระหว่างที่อีกแท็บกำลังบันทึก)
+   ตอบเป็นภาษาคนแทนข้อความอังกฤษของ Postgres — store แปลให้เฉพาะทางลบ ที่นี่เก็บทางสร้าง/บันทึก */
+function storeFailure(res, { missing }) {
+  if (!res.status && /foreign key|23503/i.test(res.error || '')) return fail(missing, 409);
+  return fail(res.error, res.status || 500);
+}
 
 async function loadProduct(supabase, id, user) {
   const { data, error } = await supabase
@@ -38,7 +49,46 @@ async function loadProduct(supabase, id, user) {
   return { product: data };
 }
 
-/* ── GET: ใบของสินค้าตัวนี้ ───────────────────────────────────────────── */
+/* แถวเอกสารในรายการของหน้าสเปค — เฉพาะช่องที่จอใช้ (ไม่ลากภาพนิ่ง/ตราประทับมาด้วย) */
+const documentSummary = (doc) => ({
+  id: doc.id,
+  docNo: doc.docNo,
+  status: doc.status,
+  currentRevNo: doc.currentRevNo ?? null,
+  latest: doc.latest ? { revNo: doc.latest.revNo, status: doc.latest.status } : null,
+  salesOrderId: doc.salesOrderId || null,
+  orderNumber: doc.orderNumber || null,
+  createdAt: doc.createdAt || null,
+});
+
+/**
+ * ก้อนที่ GET/POST/PATCH ตอบ — รูปเดียวกันทั้งสามทาง ให้จอวาดใหม่จากคำตอบได้เลย
+ *
+ * ⚠️ `product` ต้องมีช่องที่ประกอบแล้ว (`categoryName` · `scentText` · `volumeText`) ชุดเดียวกับที่
+ *    กระดาษพิมพ์ (`loadProductPrintFields`) — 🐞 เดิมส่งแค่แถวดิบของทะเบียน ⇒ การ์ดภาพรวมบนหน้าสเปค
+ *    ขึ้นขีดที่ "ประเภทผลิตภัณฑ์ · กลิ่น · ขนาดบรรจุ" ทั้งที่กระดาษตัวอย่างจากหน้าเดียวกันพิมพ์ค่าจริง
+ *    อ่านไม่ขึ้น = error ไม่ใช่ตัดช่องทิ้งเงียบ ๆ (จอกับกระดาษจะบอกคนละอย่างอีก)
+ * ⚠️ `team` · `ownerId` ของแถวเดิมต้องคงอยู่ — ขอบเขตของหน้าอ่านจากสองช่องนี้
+ * @returns {{ body: object } | { error: string }}
+ */
+async function specPayload(supabase, product, user) {
+  const loaded = await loadProductSpec(supabase, product.id);
+  if (loaded.error) return { error: loaded.error };
+  const printed = await loadProductPrintFields(supabase, product.id);
+  if (printed.error) return { error: printed.error };
+  const documents = loaded.documents || [];
+  return {
+    body: {
+      product: { ...product, ...printed.product, team: product.team, ownerId: product.ownerId },
+      scopeReason: productSpecScopeReason(product),
+      spec: loaded.spec,
+      documents: documents.map(documentSummary),
+      permissions: productSpecPermissions({ spec: loaded.spec, documents, role: user?.role }),
+    },
+  };
+}
+
+/* ── GET: สเปคของสินค้า + เอกสารที่ออกจากสเปคนี้ ─────────────────────────── */
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
@@ -46,18 +96,16 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (loaded.error) return fail(loaded.error, 500);
   if (loaded.missing) return notFound('ไม่พบสินค้าชิ้นนี้');
 
-  const result = await loadProductSpec(supabase, id);
-  if (result.error) return fail(`อ่านใบสเปคไม่สำเร็จ: ${result.error}`, 500);
-  return ok({
-    product: loaded.product,
-    scopeReason: productSpecScopeReason(loaded.product),
-    ...result,
-  });
+  const payload = await specPayload(supabase, loaded.product, user);
+  if (payload.error) return fail(`อ่านสเปคสินค้าไม่สำเร็จ: ${payload.error}`, 500);
+  return ok(payload.body);
 });
 
-/* ── POST: สร้างใบ + ฉบับ Rev.01 ──────────────────────────────────────── */
+/* ── POST: สร้างสเปค (ครั้งเดียวต่อสินค้า) ──────────────────────────────────
+   ⭐ ไม่ส่ง checklist/เอกสารที่ขอได้มา = store เติมแถวตั้งต้นของกระดาษให้ (17 + 4 แถว) */
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
+  if (!canEditProductSpec(user.role)) return forbidden(EDIT_FORBIDDEN);
   const { id } = await ctx.params;
   const loaded = await loadProduct(supabase, id, user);
   if (loaded.error) return fail(loaded.error, 500);
@@ -66,292 +114,117 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const scopeReason = productSpecScopeReason(loaded.product);
   if (scopeReason) return badRequest(scopeReason);
 
-  const existing = await loadProductSpec(supabase, id);
-  if (existing.error) return fail(existing.error, 500);
-  // 🔴 หนึ่งสินค้าหนึ่งใบ — ฐานมี unique index กันอยู่ แต่ตอบเป็นข้อความไทยตรงนี้ก่อน
-  if (existing.spec) return badRequest('สินค้าชิ้นนี้มีใบสเปคอยู่แล้ว');
-
-  const specId = genId('PSP');
-  const { error } = await supabase.from('product_specs').insert({
-    id: specId,
-    productId: id,
-    currentRevNo: 0,
-    createdBy: user.id || null,
-    createdByName: user.name || null,
-  });
-  if (error) return fail(`สร้างใบสเปคไม่สำเร็จ: ${error.message}`, 500);
-
   const body = await req.json().catch(() => ({}));
-  const created = await createSpecRevision(supabase, {
-    specId, revNo: 1, content: body?.content || {}, user,
+  const created = await createProductSpec(supabase, {
+    productId: id,
+    input: {
+      content: body?.content || {},
+      certifications: body?.certifications,
+      items: body?.items,
+    },
+    user,
   });
-  if (created.error) return fail(`สร้างฉบับแรกไม่สำเร็จ: ${created.error}`, 500);
+  if (created.error) return storeFailure(created, { missing: 'ไม่พบสินค้าชิ้นนี้ — อาจถูกลบไปแล้ว โหลดหน้าใหม่' });
 
+  // ⚠️ after = แถวเต็มพร้อม checklist — audit_logs คือทางกู้ทางเดียวของระบบ (ไม่มีถังขยะ)
   await recordAudit({
-    user, action: 'create', entityType: 'product_spec', entityId: specId,
-    before: null, after: { productId: id, revNo: 1 },
-    summary: `create FM-SA-04 for ${loaded.product.fgCode}`, request: req,
+    user, action: 'create', entityType: 'product_spec', entityId: created.spec.id,
+    before: null, after: created.spec,
+    summary: `create FM-SA-04 spec of ${loaded.product.fgCode || id}`, request: req,
   });
-  const result = await loadProductSpec(supabase, id);
-  return ok(result, 201);
+
+  const payload = await specPayload(supabase, loaded.product, user);
+  // สร้างสำเร็จแล้ว — อ่านกลับไม่ขึ้นต้องไม่กลายเป็น 500 (คนจะกดสร้างซ้ำแล้วชน UNIQUE)
+  if (payload.error) {
+    return ok({ spec: created.spec, warning: `บันทึกสเปคแล้ว แต่โหลดหน้าใหม่ไม่สำเร็จ: ${payload.error}` }, 201);
+  }
+  return ok(created.warning ? { ...payload.body, warning: created.warning } : payload.body, 201);
 });
 
-/* ── PATCH: การกระทำต่อฉบับ ───────────────────────────────────────────── */
+/* ── PATCH: บันทึกสเปค ────────────────────────────────────────────────────
+   ⚠️ `certifications` / `items` ที่ส่งมา = ทับทั้งชุด · ไม่ส่ง = ไม่แตะของเดิม
+   ⚠️ ส่ง `expectedUpdatedAt` มา = กันเขียนทับคนอื่น (ไม่ตรง ⇒ 409) */
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
+  if (!canEditProductSpec(user.role)) return forbidden(EDIT_FORBIDDEN);
   const { id } = await ctx.params;
   const loaded = await loadProduct(supabase, id, user);
   if (loaded.error) return fail(loaded.error, 500);
   if (loaded.missing) return notFound('ไม่พบสินค้าชิ้นนี้');
 
+  const before = await loadSpecRecord(supabase, id);
+  if (before.error) return fail(`อ่านสเปคสินค้าไม่สำเร็จ: ${before.error}`, 500);
+  if (!before.spec) return notFound('สินค้าชิ้นนี้ยังไม่มีสเปค');
+
   const body = await req.json().catch(() => ({}));
-  const action = String(body.action || '').trim();
-  const role = user.role;
+  const expected = typeof body?.expectedUpdatedAt === 'string' && body.expectedUpdatedAt.trim()
+    ? body.expectedUpdatedAt.trim()
+    : null;
+  const saved = await saveProductSpec(supabase, {
+    spec: before.spec,
+    input: {
+      content: body?.content || {},
+      certifications: body?.certifications,
+      items: body?.items,
+    },
+    user,
+    expectedUpdatedAt: expected,
+  });
+  if (saved.error) return storeFailure(saved, { missing: 'ไม่พบสเปคนี้ — อาจถูกลบไปแล้ว โหลดหน้าใหม่' });
 
-  const before = await loadProductSpec(supabase, id);
-  if (before.error) return fail(before.error, 500);
-  if (!before.spec) return badRequest('สินค้าชิ้นนี้ยังไม่มีใบสเปค');
-  const latest = latestRevisionOf(before.revisions);
-  const now = new Date().toISOString();
+  await recordAudit({
+    user, action: 'update', entityType: 'product_spec', entityId: before.spec.id,
+    before: before.spec, after: saved.spec,
+    summary: `edit FM-SA-04 spec of ${loaded.product.fgCode || id}`, request: req,
+  });
 
-  /* ⚠️ ทุก action ถามด่านจาก `productSpecWorkflow` ตัวเดียวกับที่จอใช้ —
-     คิดเงื่อนไขซ้ำที่นี่เมื่อไร จอกับ API จะยอมคนละอย่าง */
-  if (action === 'new-revision') {
-    const blocked = productSpecNewRevisionBlock(before.spec, latest, { role });
-    if (blocked) return badRequest(blocked);
-    const created = await createSpecRevision(supabase, {
-      specId: before.spec.id,
-      revNo: (latest?.revNo || 0) + 1,
-      previousItems: latest?.items || [],
-      content: SPEC_CONTENT_FIELDS.reduce((acc, field) => {
-        if (latest?.[field] !== undefined) acc[field] = latest[field];
-        return acc;
-      }, {}),
-      user,
-    });
-    if (created.error) return fail(`ออกฉบับใหม่ไม่สำเร็จ: ${created.error}`, 500);
-    await recordAudit({
-      user, action: 'update', entityType: 'product_spec', entityId: before.spec.id,
-      before: { revNo: latest?.revNo || 0 }, after: { revNo: created.revision.revNo },
-      summary: `open FM-SA-04 Rev.${created.revision.revNo}`, request: req,
-    });
-    return ok(await loadProductSpec(supabase, id), 201);
+  const payload = await specPayload(supabase, loaded.product, user);
+  if (payload.error) {
+    return ok({ spec: saved.spec, warning: `บันทึกสเปคแล้ว แต่โหลดหน้าใหม่ไม่สำเร็จ: ${payload.error}` });
   }
-
-  if (action === 'save') {
-    const blocked = productSpecEditBlock(latest, { role });
-    if (blocked) return badRequest(blocked);
-    const patch = { updatedAt: now };
-    for (const field of SPEC_CONTENT_FIELDS) {
-      if (field in body) {
-        const raw = body[field];
-        patch[field] = raw === null || String(raw).trim() === '' ? null : String(raw).trim();
-      }
-    }
-    if ('certifications' in body) {
-      if (!Array.isArray(body.certifications)) return badRequest('รูปแบบรายการเอกสารไม่ถูกต้อง');
-      patch.certifications = body.certifications;
-    }
-    if ('illustrations' in body) {
-      if (!Array.isArray(body.illustrations)) return badRequest('รูปแบบรายการภาพประกอบไม่ถูกต้อง');
-      patch.illustrations = body.illustrations;
-    }
-    const { error } = await supabase.from('product_spec_revisions')
-      .update(patch).eq('id', latest.id).eq('status', latest.status);
-    if (error) return fail(`บันทึกใบสเปคไม่สำเร็จ: ${error.message}`, 500);
-
-    if (Array.isArray(body.items)) {
-      const saved = await saveChecklist(supabase, latest.id, body.items);
-      if (saved.error) return badRequest(saved.error);
-    }
-    return ok(await loadProductSpec(supabase, id));
-  }
-
-  if (action === 'submit') {
-    const blocked = productSpecSubmitBlock(latest, { role });
-    if (blocked) return badRequest(blocked);
-    const { error } = await supabase.from('product_spec_revisions').update({
-      status: 'pending',
-      submittedAt: now, submittedBy: user.id || null, submittedByName: user.name || null,
-      // ยื่นใหม่หลังถูกตีกลับ = ล้างรอยตีกลับ ไม่ให้ค้างบนใบที่กำลังเดินต่อ
-      rejectedAt: null, rejectedBy: null, rejectedByName: null, rejectionReason: null,
-      updatedAt: now,
-    }).eq('id', latest.id).eq('status', latest.status);
-    if (error) return fail(`ยื่นใบสเปคไม่สำเร็จ: ${error.message}`, 500);
-    return ok(await loadProductSpec(supabase, id));
-  }
-
-  if (action === 'approve') {
-    const blocked = productSpecApproveBlock(latest, { role });
-    if (blocked) return badRequest(blocked);
-    const { error } = await supabase.from('product_spec_revisions').update({
-      status: 'approved',
-      approvedAt: now, approvedBy: user.id || null, approvedByName: user.name || null,
-      updatedAt: now,
-    }).eq('id', latest.id).eq('status', latest.status);
-    if (error) return fail(`อนุมัติใบสเปคไม่สำเร็จ: ${error.message}`, 500);
-
-    /* ฉบับก่อนกลายเป็น `superseded` — อ่านได้ แก้ไม่ได้ (ไม่ใช่ยกเลิก ซึ่งมีความหมาย
-       ทางธุรกิจคนละอย่าง · กติกาเดียวกับ Rev. ของสัญญา mig 0280) */
-    const supersede = await supabase.from('product_spec_revisions')
-      .update({ status: 'superseded', supersededAt: now, updatedAt: now })
-      .eq('specId', before.spec.id).eq('status', 'approved').neq('id', latest.id);
-    if (supersede.error) return fail(`ปิดฉบับก่อนไม่สำเร็จ: ${supersede.error.message}`, 500);
-
-    const bumped = await supabase.from('product_specs')
-      .update({ currentRevNo: latest.revNo, updatedAt: now }).eq('id', before.spec.id);
-    if (bumped.error) return fail(`อัปเดตเลขฉบับปัจจุบันไม่สำเร็จ: ${bumped.error.message}`, 500);
-
-    /* ใบที่ออกไว้ตอนฉบับยังเป็นร่าง (สถานะ `pending`) กลายเป็นฉบับจริงพร้อมกัน —
-       กระดาษพวกนั้นอ้าง revisionId นี้อยู่แล้ว ⇒ ปล่อยค้างไว้เท่ากับมีกระดาษที่
-       อนุมัติแล้วแต่ระบบยังเรียกว่า "รอฉบับอนุมัติ" */
-    const issued = await supabase.from('product_spec_issues').update({
-      status: 'issued', issuedAt: now, issuedBy: user.id || null, issuedByName: user.name || null,
-      updatedAt: now,
-    }).eq('revisionId', latest.id).eq('status', 'pending');
-    if (issued.error) return fail(`ปรับสถานะเอกสารที่ออกไว้ไม่สำเร็จ: ${issued.error.message}`, 500);
-
-    const mirror = await syncProductSpecMirror(supabase, { productId: id, revision: latest });
-    await recordAudit({
-      user, action: 'approve', entityType: 'product_spec', entityId: before.spec.id,
-      before: { currentRevNo: before.spec.currentRevNo }, after: { currentRevNo: latest.revNo },
-      summary: `approve FM-SA-04 Rev.${latest.revNo} of ${loaded.product.fgCode}`, request: req,
-    });
-    const after = await loadProductSpec(supabase, id);
-    return ok({ ...after, warning: mirror.warning || null });
-  }
-
-  if (action === 'reject') {
-    // ตีกลับ = ผู้อนุมัติส่งกลับให้ผู้จัดทำแก้ ⇒ ด่านเดียวกับปุ่มอนุมัติ (0369 ไม่มีขั้นตรวจแล้ว)
-    const approveBlock = productSpecApproveBlock(latest, { role });
-    if (approveBlock) return badRequest(approveBlock);
-    const reason = String(body.reason || '').trim();
-    if (reason.length < 10) return badRequest('ต้องเขียนเหตุผลที่ตีกลับอย่างน้อย 10 ตัวอักษร');
-    if (reason.length > 500) return badRequest('เหตุผลที่ตีกลับยาวเกิน 500 ตัวอักษร');
-    const { error } = await supabase.from('product_spec_revisions').update({
-      status: 'rejected',
-      rejectedAt: now, rejectedBy: user.id || null, rejectedByName: user.name || null,
-      rejectionReason: reason, updatedAt: now,
-    }).eq('id', latest.id).eq('status', latest.status);
-    if (error) return fail(`ตีกลับใบสเปคไม่สำเร็จ: ${error.message}`, 500);
-    return ok(await loadProductSpec(supabase, id));
-  }
-
-  if (action === 'withdraw') {
-    // ดึงกลับมาแก้ก่อนถูกอนุมัติ — คนละอันกับ "ตีกลับ" (นั่นคือหัวหน้าส่งกลับมา)
-    if (!latest || latest.status !== 'pending') {
-      return badRequest('ฉบับนี้ไม่ได้อยู่ระหว่างรออนุมัติ');
-    }
-    const mine = latest.submittedBy && latest.submittedBy === user.id;
-    if (!mine && !['ae_supervisor', 'admin'].includes(role)) {
-      return forbidden('ดึงกลับได้เฉพาะคนที่ส่ง หรือหัวหน้าฝ่ายขาย');
-    }
-    const { error } = await supabase.from('product_spec_revisions').update({
-      status: 'draft', submittedAt: null, submittedBy: null, submittedByName: null,
-      updatedAt: now,
-    }).eq('id', latest.id).eq('status', latest.status);
-    if (error) return fail(`ดึงกลับไม่สำเร็จ: ${error.message}`, 500);
-    return ok(await loadProductSpec(supabase, id));
-  }
-
-  return badRequest('ไม่รู้จักการกระทำนี้');
+  return ok(saved.warning ? { ...payload.body, warning: saved.warning } : payload.body);
 });
 
-/**
- * เขียน checklist ทั้งชุด — ส่งมาเมื่อไรคือ **ทับทั้งก้อน**
+/* ── DELETE: ลบสเปค (มติผู้ใช้ 2026-09-21 "ลบได้เหมือนใบเสนอราคา") ─────────────
  *
- * ⚠️ แถวที่หายไปจากที่ส่งมา = แถวที่ถูกลบ · ไม่ส่ง `items` มาเลย = ไม่แตะของเดิม
- *    (กติกาเดียวกับ `confirmAttachments` ของใบสั่งขาย mig 0285)
- */
-async function saveChecklist(supabase, revisionId, rows) {
-  const extras = rows.filter((row) => !row?.itemKey).length;
-  if (extras > MAX_EXTRA_ITEMS) return { error: `เพิ่มแถวเองได้ไม่เกิน ${MAX_EXTRA_ITEMS} แถว` };
-  const cleaned = [];
-  for (const [index, row] of rows.entries()) {
-    const label = String(row?.itemLabel || '').trim();
-    if (!label) return { error: `แถวที่ ${index + 1} ไม่มีชื่อรายการ` };
-    if (label.length > 200) return { error: `ชื่อรายการแถวที่ ${index + 1} ยาวเกิน 200 ตัวอักษร` };
-    const detail = String(row?.detail || '').trim();
-    const note = String(row?.note || '').trim();
-    if (detail.length > 500) return { error: `รายละเอียดแถวที่ ${index + 1} ยาวเกิน 500 ตัวอักษร` };
-    if (note.length > 500) return { error: `หมายเหตุแถวที่ ${index + 1} ยาวเกิน 500 ตัวอักษร` };
-    cleaned.push({
-      id: genId('PSI'),
-      revisionId,
-      sortOrder: index,
-      itemKey: row?.itemKey || null,
-      itemLabel: label,
-      detail: detail || null,
-      preparedByS: Boolean(row?.preparedByS),
-      preparedByCustomer: Boolean(row?.preparedByCustomer),
-      note: note || null,
-    });
-  }
-  const wiped = await supabase.from('product_spec_revision_items').delete().eq('revisionId', revisionId);
-  if (wiped.error) return { error: `ล้าง checklist เดิมไม่สำเร็จ: ${wiped.error.message}` };
-  if (!cleaned.length) return {};
-  const inserted = await supabase.from('product_spec_revision_items').insert(cleaned);
-  if (inserted.error) return { error: `บันทึก checklist ไม่สำเร็จ: ${inserted.error.message}` };
-  return {};
-}
-
-/* ── DELETE: ลบใบ/ฉบับ (มติผู้ใช้ 2026-09-21 "ลบได้เหมือนใบเสนอราคา") ──────
- *
+ * 🔴 มีแถวเอกสารแม้ใบเดียว (รวมใบที่ void) = ลบไม่ได้ ไม่ว่าใคร — เลขที่เอกสารอ้างสเปคนี้อยู่
+ *   และฐานกันซ้ำด้วย FK `ON DELETE RESTRICT` (store แปล error ของ FK เป็นภาษาคนแล้ว)
  * ⚠️ **ไม่มีถังขยะในระบบ** — ทางกู้ทางเดียวคือ `audit_logs.before` (memory:
- * deleted-data-recovery) ⇒ ก้อน before ต้องมีของครบพอเขียนแถวกลับได้ ทั้งหัวฉบับ
- * และ checklist ทุกแถว ไม่ใช่แค่ id
- *
- * ⚠️ ขอบเขตการลบตัดสินที่ `productSpecDeleteScope` ตัวเดียวกับที่จอใช้ตั้งป้ายปุ่ม —
- * คิดซ้ำที่นี่เมื่อไร ปุ่มจะบอกอย่างแล้วเซิร์ฟเวอร์ทำอีกอย่าง
+ *   deleted-data-recovery) ⇒ ก้อน before ต้องเป็นแถวเต็ม **พร้อม checklist ทุกแถว**
+ *   พอให้เขียนกลับได้ ไม่ใช่แค่ id
  */
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
+  if (!canEditProductSpec(user.role)) return forbidden(EDIT_FORBIDDEN);
   const { id } = await ctx.params;
   const loaded = await loadProduct(supabase, id, user);
   if (loaded.error) return fail(loaded.error, 500);
   if (loaded.missing) return notFound('ไม่พบสินค้าชิ้นนี้');
 
+  // ⚠️ อ่านเอกสารไม่ขึ้น = error ไม่ใช่ "ไม่มีเอกสาร" — ด่านที่นับจากผลลัพธ์ต้องไม่เปิดเอง
   const before = await loadProductSpec(supabase, id);
-  if (before.error) return fail(before.error, 500);
-  if (!before.spec) return notFound('สินค้าชิ้นนี้ยังไม่มีใบสเปค');
+  if (before.error) return fail(`อ่านสเปคสินค้าไม่สำเร็จ: ${before.error}`, 500);
+  if (!before.spec) return notFound('สินค้าชิ้นนี้ยังไม่มีสเปค');
 
-  const latest = latestRevisionOf(before.revisions);
-  const blocked = productSpecDeleteBlock({
-    spec: before.spec, revision: latest, revisions: before.revisions,
-    issues: before.issues, role: user.role,
-  });
+  const blocked = productSpecDeleteBlock({ spec: before.spec, documents: before.documents, role: user.role });
   if (blocked) return badRequest(blocked);
 
-  const scope = productSpecDeleteScope(before.revisions);
-  /* ลบทั้งใบ = ฉบับทุกฉบับกับ checklist หายตาม CASCADE ของ 0364
-     ลบเฉพาะฉบับ = ฉบับก่อนยังเป็นสเปกที่ใช้อยู่ · `currentRevNo` ไม่ต้องแตะเพราะมัน
-     ชี้ฉบับที่ **อนุมัติแล้ว** ล่าสุด ซึ่งไม่ใช่ฉบับร่างที่กำลังลบ */
-  const res = scope === 'spec'
-    ? await supabase.from('product_specs').delete().eq('id', before.spec.id)
-    : await supabase.from('product_spec_revisions').delete().eq('id', latest.id);
-  if (res.error) {
-    /* FK RESTRICT ของ `product_spec_issues` ตอบเป็นภาษาอังกฤษ — แปลให้คนอ่านรู้ว่า
-       ต้องไปทำอะไร (ด่านข้างบนกันไว้แล้ว นี่คือชั้นที่สองกันแข่งกันกดพร้อมกัน) */
-    const violation = /foreign key|restrict/i.test(res.error.message || '');
-    return fail(violation
-      ? 'ลบไม่ได้เพราะมีเอกสารที่ออกจากฉบับนี้อยู่ — ยกเลิกเอกสารก่อน'
-      : `ลบใบสเปคไม่สำเร็จ: ${res.error.message}`, violation ? 400 : 500);
-  }
+  // FK RESTRICT ของเอกสาร (อีกแท็บเพิ่งออกเอกสาร) = store แปลเป็นภาษาคนแล้ว (400)
+  const removed = await deleteProductSpec(supabase, { spec: before.spec });
+  if (removed.error) return storeFailure(removed, { missing: 'ลบสเปคไม่ได้ เพราะมีเอกสารที่ออกจากสเปคนี้แล้ว' });
 
   await recordAudit({
     user,
     action: 'delete',
     entityType: 'product_spec',
     entityId: before.spec.id,
-    before: scope === 'spec'
-      ? { spec: before.spec, revisions: before.revisions, issues: before.issues }
-      : { spec: before.spec, revision: latest },
-    after: null,
-    summary: scope === 'spec'
-      ? `delete FM-SA-04 of ${loaded.product.fgCode}`
-      : `delete FM-SA-04 Rev.${latest.revNo} of ${loaded.product.fgCode}`,
+    before: before.spec,
+    after: removed.warning ? { warning: removed.warning } : null,
+    summary: `delete FM-SA-04 spec of ${loaded.product.fgCode || id}`
+      + (removed.warning ? ` ⚠️ ${removed.warning}` : ''),
     request: req,
   });
 
-  return ok({ deleted: scope, ...(await loadProductSpec(supabase, id)) });
+  // ⚠️ ลบแล้วแต่ล้างกระจกบนทะเบียนสินค้าไม่ผ่าน — ต้องบอกจอ ไม่ใช่ขึ้นแค่ "ลบแล้ว"
+  return ok(removed.warning ? { deleted: true, warning: removed.warning } : { deleted: true });
 });
