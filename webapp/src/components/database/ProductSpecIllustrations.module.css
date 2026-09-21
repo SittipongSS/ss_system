@@ -1,16 +1,30 @@
 .error { margin: 0 0 var(--space-3); color: var(--red); line-height: var(--lh-thai); }
-.captions { margin-top: var(--space-4); }
-.captionsHead {
-  margin-bottom: var(--space-2);
+
+/* ฝั่งขวาของรูป: หัวแถว (ลำดับ · ชื่อไฟล์ · ปุ่มเลื่อน) แล้วช่องคำบรรยายใต้ลงมา */
+/* 🪤 `minmax(0, 1fr)` ไม่ใช่ค่าฟุ่มเฟือย — ลูกของ grid มี `min-width: auto` ตั้งต้น
+   ⇒ ชื่อไฟล์ nowrap กับช่องพิมพ์ดันคอลัมน์กว้างเกินรูปจนล้นออกนอกการ์ด (จอ 375px
+   วัดได้ 355 ในกล่อง 209) และปุ่มเลื่อนหลุดออกไปนอกจอ */
+.rowBody { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1-5); }
+.rowHead { display: flex; min-width: 0; gap: var(--space-2); align-items: center; }
+.rowNo {
   color: var(--text-2);
   font-size: var(--fs-label);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
+  white-space: nowrap;
 }
-.colNo { width: 40px; }
-.colFile { width: 220px; }
-.colOrder { width: 84px; }
-.file { font-size: var(--fs-4); }
-.captionCell { display: flex; gap: var(--space-2); align-items: center; }
-.orderCell { display: flex; gap: var(--space-1); }
-.note { margin: var(--space-2-5) 0 0; }
+/* ชื่อไฟล์เป็นของประกอบ ไม่ใช่ของที่ต้องอ่าน — ตัดท้ายเมื่อแคบ ไม่ดันปุ่มตกบรรทัด */
+.file {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orderCell { display: flex; gap: var(--space-1); margin-left: auto; }
+.captionCell { display: flex; min-width: 0; gap: var(--space-2); align-items: center; }
+/* ช่องพิมพ์ยืดเต็มที่เหลือ และหดได้จริง — ไม่งั้นความกว้างตั้งต้นของมันดันแถวล้น */
+.captionCell > :first-child { flex: 1 1 auto; min-width: 0; }
+.captionRead { margin: 0; color: var(--text-2); line-height: var(--lh-thai); }
+.note { margin: var(--space-3) 0 0; }

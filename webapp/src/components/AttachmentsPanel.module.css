@@ -1,0 +1,20 @@
+/* รายการรูปแบบรายแถว (prop `photoRows`) — รูปซ้าย ของที่ผู้เรียกเขียนกำกับรูปอยู่ขวา
+   ⚠️ ความกว้างรูปมาจาก `--attach-thumb-w` ตัวเดียวกับตะแกรง ⇒ ผู้เรียกที่ตั้งค่านี้ไว้
+   แล้วได้ขนาดเดิมทั้งสองทรง · `align-items: start` เพราะฝั่งขวาสูงได้หลายบรรทัด */
+.photoRows { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+.photoRow {
+  display: grid;
+  grid-template-columns: var(--attach-thumb-w, 148px) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+.photoRowThumb { min-width: 0; }
+.photoRowBody { min-width: 0; }
+
+/* จอแคบ: ยังเป็นสองคอลัมน์แต่รูปเล็กลง
+   🐞 เคยลองยุบเป็นคอลัมน์เดียว ⇒ ช่องรูปยืดเป็น 1fr แล้ว `aspect-ratio: 1/1` ผูก
+      ความสูงตามไป = **สี่เหลี่ยม 300×300 กลางการ์ด** (โรคเดียวกับที่ `PhotoGrid`
+      เจอมาแล้วตอนใช้ `minmax(148px, 1fr)`) · ของที่ต้องเล็กลงคือรูป ไม่ใช่จำนวนคอลัมน์ */
+@media (max-width: 480px) {
+  .photoRow { grid-template-columns: var(--attach-thumb-w, 96px) minmax(0, 1fr); gap: var(--space-2); }
+}
