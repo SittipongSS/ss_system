@@ -2,6 +2,7 @@
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { requestShapeError } from '@/lib/master/requestTypes';
 import {
   normalizeSurveyCommittedResult, normalizeSurveyRequest, normalizeSurveyRequestedResult,
   normalizeSurveySite, normalizeSurveyTime,
@@ -96,6 +97,25 @@ test('🔴 วันส่งผลบังคับทั้งสองฝั
   // ฝั่งฝ่าย TS พูดคนละคำกับฝั่งผู้ขอ — คนอ่านต้องรู้ว่าตกด่านของช่องไหน
   assert.match(normalizeSurveyCommittedResult('', '2026-09-08').error, /จะส่งผล/);
   assert.match(normalizeSurveyCommittedResult('2026-09-07', '2026-09-08').error, /วันนัดเข้าพื้นที่/);
+});
+
+/* ── รายละเอียดบังคับของหัวข้อนี้ (มติผู้ใช้ 2026-09-21) ───────────────────
+   🔴 ใบนี้ไม่มีตารางรายการและไม่มีแบบฟอร์ม PDR ⇒ ช่อง "รายละเอียดเพิ่มเติม" คือที่เดียว
+      ที่บริบทของงานอยู่ · ฝ่าย TS ต้องอ่านก่อนจัดคนและลำดับงาน
+   ⚠️ บังคับเฉพาะหัวข้อที่ทะเบียนสั่ง — หัวข้ออื่นยังเป็นช่องเสริมเหมือนเดิม */
+test('🔴 ประเมินพื้นที่ต้องกรอกรายละเอียด — หัวข้ออื่นยังไม่บังคับ', () => {
+  const base = {
+    title: 'ประเมินพื้นที่สาขา A', dealId: 'D-1', siteId: 'SVS-1',
+    zones: [{ name: 'โซนล็อบบี้', floor: 'G' }],
+    requestedDueDate: '2026-09-20',
+  };
+  assert.match(requestShapeError('site_survey', base), /รายละเอียดเพิ่มเติม/);
+  assert.equal(requestShapeError('site_survey', { ...base, body: 'ลูกค้าเปิดโซนใหม่ต้นเดือนหน้า' }), null);
+  // หัวข้อที่ไม่ได้ประกาศ `bodyRequired` ต้องไม่ถูกด่านนี้แตะ
+  assert.equal(
+    requestShapeError('info', { title: 'สอบถาม', dealId: 'D-1', requestedDueDate: '2026-09-20' }),
+    null,
+  );
 });
 
 // ── ทั้ง payload ────────────────────────────────────────────────────────

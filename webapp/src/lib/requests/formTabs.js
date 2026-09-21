@@ -102,6 +102,16 @@ export function requiredChecks(form = {}) {
     // ── แท็บ "เรื่องที่ขอ" ──────────────────────────────────────────────
     { tab: 'subject', label: 'ชื่อเรื่อง', applies: true, ok: filled(form.title) },
     {
+      /* ⭐ **รายละเอียดบังคับเฉพาะหัวข้อที่ทะเบียนสั่ง** (มติผู้ใช้ 2026-09-21) —
+         ประเมินพื้นที่ไม่มีตารางรายการและไม่มีแบบฟอร์ม PDR ⇒ ช่องนี้คือที่เดียวที่
+         บริบทของงานอยู่ · หัวข้ออื่นยังไม่บังคับเหมือนเดิม
+         ⚠️ หัวข้อที่ใช้ PDR ไม่มีช่องนี้บนจอ — แบบฟอร์มแทนที่ไปแล้ว ⇒ ต้องไม่ applies
+            ไม่งั้นเกจจะค้าง "ยังขาด" โดยไม่มีช่องให้กรอก */
+      tab: 'subject', label: requestKindMeta(kind)?.form?.bodyLabel || 'รายละเอียด',
+      applies: !!requestKindMeta(kind)?.form?.bodyRequired && !requestUsesPdr(form),
+      ok: filled(form.body),
+    },
+    {
       // ⚠️ **แถวเปล่าไม่นับ** — ใช้ตัวตรวจรายแถวตัวเดียวกับ server/ด่านส่ง
       // (`normalizeLinesFor`) ไม่ใช่นับความยาวอาเรย์ · กด "เพิ่มรายการ" เฉย ๆ
       // แล้วไม่เลือกอะไรต้องยังขึ้นว่าขาดอยู่
@@ -163,7 +173,9 @@ function optionalCounts(form, kind, optionalRefs) {
   add('work', optionalRefs.includes('product'), (form.productIds || []).length > 0);
 
   // หัวข้อที่ใช้ PDR ไม่มีช่อง "รายละเอียด" ธรรมดา — แบบฟอร์มแทนที่มันไปแล้ว
-  add('subject', !requestUsesPdr(form), filled(form.body));
+  /* ⚠️ **ช่องบังคับห้ามถูกนับเป็นช่องไม่บังคับด้วย** — หัวข้อที่ทะเบียนสั่งให้
+     "รายละเอียด" บังคับ ช่องนี้ขึ้นอยู่ในเกจ `required` แล้ว (ดู `requiredChecks`) */
+  add('subject', !requestUsesPdr(form) && !requestKindMeta(kind)?.form?.bodyRequired, filled(form.body));
   add('subject', requestNeedsRef(kind, 'scent'), filled(form.scentId));
   add('subject', requestNeedsRef(kind, 'formula'), filled(form.formulaId));
 

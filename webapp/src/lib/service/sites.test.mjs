@@ -17,6 +17,7 @@ import {
   refillDueDate,
   siteAddressCarry,
   siteAddressDrift,
+  siteCreateMissing,
   toHHMM,
 } from './sites.js';
 import { canBeServiceAssignee, canEditService, canViewService } from '../permissions.js';
@@ -27,6 +28,36 @@ const site = (over = {}) => ({ id: 'S1', name: 'สาขาเอ็มคว�
 test('ไซต์ต้องมีลูกค้าและชื่อ', () => {
   assert.equal(normalizeSiteInput({ name: 'สาขา A' }).error, 'ต้องเลือกลูกค้า');
   assert.equal(normalizeSiteInput({ customerId: 'C1' }).error, 'ต้องระบุชื่อไซต์');
+});
+
+/* ── ช่องที่บังคับ **เฉพาะไซต์ใหม่** (มติผู้ใช้ 2026-09-21) ────────────────
+   🔴 อยู่นอก `normalizeSiteInput` โดยตั้งใจ — ไซต์ยุคก่อน mig 0315 บนของจริงไม่มี
+      ข้อมูลพวกนี้ครบ · ใส่ลงตัวตรวจรูปร่างเมื่อไร **แก้ช่องอื่นของไซต์เก่าไม่ได้เลย** */
+const newSite = {
+  customerId: 'C1', name: 'สาขา A', provinceCode: '10',
+  address: '123 ถนนสุขุมวิท', mapUrl: 'https://maps.example/x',
+  contactName: 'คุณเอ', contactPhone: '081-000-0000',
+  accessFrom: '10:00', accessTo: '20:00',
+};
+
+test('🔴 ไซต์ใหม่ต้องครบ: จังหวัด · ที่อยู่ · หมุด · ผู้ติดต่อ · ช่วงเวลาเข้าได้', () => {
+  assert.equal(siteCreateMissing(newSite), null);
+  const without = (field) => {
+    const { [field]: _gone, ...rest } = newSite;
+    return siteCreateMissing(rest);
+  };
+  assert.match(without('provinceCode'), /จังหวัด/);
+  assert.match(without('address'), /ที่อยู่/);
+  assert.match(without('mapUrl'), /แผนที่/);
+  assert.match(without('contactName'), /ชื่อผู้ติดต่อ/);
+  assert.match(without('contactPhone'), /เบอร์ผู้ติดต่อ/);
+  // เวลาเข้าได้บังคับเป็นคู่ — มีข้างเดียวคือช่วงที่ไม่มีปลาย ด่านเข้าไซต์ใช้ไม่ได้
+  assert.match(without('accessFrom'), /ช่วงเวลาที่เข้าได้/);
+  assert.match(without('accessTo'), /ช่วงเวลาที่เข้าได้/);
+});
+
+test('🔴 ไซต์เก่าที่ข้อมูลไม่ครบต้องยังแก้ช่องอื่นได้ — ด่านนี้ไม่อยู่ในตัวตรวจรูปร่าง', () => {
+  assert.equal(normalizeSiteInput({ customerId: 'C1', name: 'สาขาเก่า' }).error, null);
 });
 
 test('เวลาเข้าไซต์ผิดรูปแบบถูกจับ', () => {
