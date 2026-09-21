@@ -44,38 +44,77 @@ export const productSpecChecklistLabel = (key) => LABEL_BY_KEY.get(key) || '';
 /**
  * แถวตั้งต้นของฉบับใหม่ — ก๊อปคำจากทะเบียนลงแถว (ไม่ผูกสด)
  *
- * `previousItems` = แถวของฉบับก่อน · ส่งมาเมื่อไร ค่าที่กรอกไว้จะถูกยกมาให้ทั้งหมด
- * รวมแถวที่ผู้ใช้เพิ่มเอง เพราะ "ออก Rev. ใหม่" คือแก้ต่อจากของเดิม ไม่ใช่เริ่มจากศูนย์
+ * · ไม่มี `previousItems` (ใบแรกของสินค้า) = ครบ 17 แถวตามแบบฟอร์ม
+ * · มี `previousItems` (ออก Rev. ใหม่) = **ยกมาเท่าที่ฉบับก่อนมีจริง** ทั้งค่าที่กรอกไว้
+ *   ลำดับที่จัดไว้ และแถวที่ผู้ใช้เพิ่มเอง เพราะ "ออก Rev. ใหม่" คือแก้ต่อจากของเดิม
+ *
+ * ⚠️ **แถวที่ถูกลบต้องไม่ฟื้น** (มติผู้ใช้ 2026-09-21 — 17 แถวของแบบฟอร์มลบได้แล้ว) ·
+ * ของเดิมงอกทะเบียนทั้งชุดทุกครั้งแล้วเติมค่าเก่าทับ ⇒ แถวที่ลบทิ้งไปจะกลับมาเองทุกครั้ง
+ * ที่ออก Rev. ใหม่ และคนกดก็ไม่รู้ว่าทำไม
+ *
+ * ⚠️ คำของแถวที่มีคีย์อ่านจากทะเบียนวันนี้ (แถวในฉบับที่ออกไปแล้วถือคำของตัวเองอยู่
+ * ในฐาน — ที่นี่คือการสร้างฉบับ **ใหม่** ซึ่งควรได้คำล่าสุด)
  */
 export function productSpecChecklistSeed(previousItems = []) {
-  const prevByKey = new Map(
-    previousItems.filter((row) => row?.itemKey).map((row) => [row.itemKey, row]),
-  );
-  const base = PRODUCT_SPEC_CHECKLIST.map((row, index) => {
-    const prev = prevByKey.get(row.key);
-    return {
+  const previous = (previousItems || []).filter(Boolean);
+  if (!previous.length) {
+    return PRODUCT_SPEC_CHECKLIST.map((row, index) => ({
       sortOrder: index,
       itemKey: row.key,
       itemLabel: row.label,
-      detail: prev?.detail ?? null,
-      preparedByS: prev?.preparedByS ?? false,
-      preparedByCustomer: prev?.preparedByCustomer ?? false,
-      note: prev?.note ?? null,
-    };
-  });
-  // แถวที่ผู้ใช้เพิ่มเองไม่มีคีย์ในทะเบียน — ต่อท้ายตามลำดับเดิมของมัน
-  const extras = previousItems
-    .filter((row) => row && !row.itemKey)
-    .map((row, index) => ({
-      sortOrder: base.length + index,
-      itemKey: null,
-      itemLabel: row.itemLabel,
-      detail: row.detail ?? null,
-      preparedByS: row.preparedByS ?? false,
-      preparedByCustomer: row.preparedByCustomer ?? false,
-      note: row.note ?? null,
+      detail: null,
+      preparedByS: false,
+      preparedByCustomer: false,
+      note: null,
     }));
-  return [...base, ...extras];
+  }
+  return previous.map((row, index) => ({
+    sortOrder: index,
+    itemKey: row.itemKey || null,
+    itemLabel: (row.itemKey ? productSpecChecklistLabel(row.itemKey) : '') || row.itemLabel || '',
+    detail: row.detail ?? null,
+    preparedByS: row.preparedByS ?? false,
+    preparedByCustomer: row.preparedByCustomer ?? false,
+    note: row.note ?? null,
+  }));
+}
+
+/**
+ * แถวของแบบฟอร์มที่ยังไม่อยู่ในใบ — ให้จอเสนอ "คืนแถว" ได้
+ *
+ * ⭐ ลบได้ต้องคู่กับคืนได้ ไม่งั้นลบพลาดครั้งเดียวคือทางตัน: เพิ่มใหม่เองได้แต่เป็นแถว
+ * ไม่มีคีย์ ซึ่งไม่ใช่แถวเดิมของแบบฟอร์มอีกแล้ว (เอกสาร/รายงานที่นับตามคีย์จะนับไม่เจอ)
+ */
+export function productSpecChecklistMissing(items = []) {
+  const have = new Set((items || []).filter(Boolean).map((row) => row.itemKey).filter(Boolean));
+  return PRODUCT_SPEC_CHECKLIST.filter((row) => !have.has(row.key));
+}
+
+/**
+ * คืนแถวของแบบฟอร์มกลับเข้าใบ — วางให้แถวที่มีคีย์ยังเรียงตามลำดับกระดาษ
+ *
+ * ⚠️ ไม่ใช่ต่อท้าย: กระดาษมีลำดับของตัวเอง (`PRODUCT_SPEC_CHECKLIST`) ⇒ คืน "ฝา" แล้ว
+ * มันต้องกลับไปอยู่หลัง "หัวสเปรย์" ไม่ใช่ไปต่อท้ายแถวที่ผู้ใช้เพิ่มเอง
+ */
+export function restoreChecklistItem(items = [], key) {
+  const entry = PRODUCT_SPEC_CHECKLIST.find((row) => row.key === key);
+  const rows = (items || []).filter(Boolean);
+  if (!entry || rows.some((row) => row.itemKey === key)) return rows;
+  const rank = PRODUCT_SPEC_CHECKLIST_KEYS.indexOf(key);
+  const fresh = {
+    itemKey: entry.key,
+    itemLabel: entry.label,
+    detail: '',
+    preparedByS: false,
+    preparedByCustomer: false,
+    note: '',
+  };
+  const at = rows.findIndex((row) => {
+    if (!row.itemKey) return true; // แถวที่เพิ่มเองอยู่ท้ายเสมอ
+    return PRODUCT_SPEC_CHECKLIST_KEYS.indexOf(row.itemKey) > rank;
+  });
+  if (at < 0) return [...rows, fresh];
+  return [...rows.slice(0, at), fresh, ...rows.slice(at)];
 }
 
 /* ── เอกสารที่ขอได้ (Certification & Documents) ───────────────────────────────

@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   PRODUCT_SPEC_CERTIFICATIONS, PRODUCT_SPEC_CERT_STATUS_LABELS, PRODUCT_SPEC_CHECKLIST,
   PRODUCT_SPEC_CHECKLIST_KEYS, productSpecCertPendingLabel, productSpecCertSeed,
-  productSpecChecklistSeed,
+  productSpecChecklistMissing, productSpecChecklistSeed, restoreChecklistItem,
 } from './productSpecChecklist.js';
 import {
   productSpecScopeReason, productSpecUsedForCategory, productSpecUsedForFgCode,
@@ -42,19 +42,74 @@ test('ออก Rev. ใหม่ = ยกค่าที่กรอกไว�
   const seed = productSpecChecklistSeed(previous);
   assert.equal(seed.find((row) => row.itemKey === 'raw_material').detail, 'น้ำหอม');
   assert.equal(seed.find((row) => row.itemKey === 'cap').note, 'ล็อตใหม่');
-  // แถวที่ไม่เคยกรอกยังว่าง
-  assert.equal(seed.find((row) => row.itemKey === 'card').detail, null);
+  assert.deepEqual(seed.map((row) => row.sortOrder), [0, 1]);
 });
 
-test('แถวที่ผู้ใช้เพิ่มเองถูกยกไปฉบับใหม่ด้วย ต่อท้ายทะเบียน', () => {
+test('🪤 แถวที่ถูกลบต้องไม่ฟื้นตอนออก Rev. ใหม่ (มติ 21/09 — 17 แถวลบได้)', () => {
+  // ฉบับก่อนเหลือ 2 แถวเพราะผู้ใช้ลบที่ไม่เกี่ยวกับสินค้านี้ทิ้ง
   const seed = productSpecChecklistSeed([
+    { itemKey: 'raw_material', itemLabel: 'วัตถุดิบ/สารประกอบ' },
+    { itemKey: 'cap', itemLabel: 'ฝา' },
+  ]);
+  assert.equal(seed.length, 2);
+  assert.equal(seed.some((row) => row.itemKey === 'card'), false, 'แถวที่ลบทิ้งกลับมาเอง');
+});
+
+test('ใบแรกของสินค้ายังได้ครบ 17 แถว — "ไม่มีฉบับก่อน" ไม่ใช่ "ลบหมด"', () => {
+  assert.equal(productSpecChecklistSeed().length, 17);
+  assert.equal(productSpecChecklistSeed([]).length, 17);
+  assert.equal(productSpecChecklistSeed(null).length, 17);
+});
+
+test('แถวที่ผู้ใช้เพิ่มเองถูกยกไปฉบับใหม่ด้วย คงลำดับเดิม', () => {
+  const seed = productSpecChecklistSeed([
+    { itemKey: 'cap', itemLabel: 'ฝา', detail: 'สีเงิน' },
     { itemKey: null, itemLabel: 'ถุงผ้าใส่ขวด', detail: 'สีครีม', preparedByS: false, preparedByCustomer: true, note: null },
   ]);
-  assert.equal(seed.length, 18);
-  assert.equal(seed[17].itemLabel, 'ถุงผ้าใส่ขวด');
-  assert.equal(seed[17].itemKey, null);
-  assert.equal(seed[17].preparedByCustomer, true);
-  assert.equal(seed[17].sortOrder, 17);
+  assert.equal(seed.length, 2);
+  assert.equal(seed[1].itemLabel, 'ถุงผ้าใส่ขวด');
+  assert.equal(seed[1].itemKey, null);
+  assert.equal(seed[1].preparedByCustomer, true);
+  assert.equal(seed[1].sortOrder, 1);
+});
+
+test('คำของแถวที่มีคีย์มาจากทะเบียนวันนี้ ไม่ใช่คำที่ฉบับก่อนถือไว้', () => {
+  const seed = productSpecChecklistSeed([{ itemKey: 'cap', itemLabel: 'คำเก่าที่เลิกใช้' }]);
+  assert.equal(seed[0].itemLabel, 'ฝา');
+});
+
+test('แถวของแบบฟอร์มที่ยังไม่อยู่ในใบ — ให้จอเสนอคืนได้', () => {
+  assert.equal(productSpecChecklistMissing([]).length, 17);
+  const missing = productSpecChecklistMissing([
+    { itemKey: 'raw_material' }, { itemKey: 'cap' }, { itemKey: null, itemLabel: 'ถุงผ้า' },
+  ]);
+  assert.equal(missing.length, 15);
+  assert.equal(missing.some((row) => row.key === 'cap'), false);
+  assert.equal(missing[0].key, 'inner_packaging');
+});
+
+test('คืนแถวแล้วต้องกลับไปอยู่ตำแหน่งตามกระดาษ ไม่ใช่ต่อท้าย', () => {
+  const items = [
+    { itemKey: 'raw_material', itemLabel: 'วัตถุดิบ/สารประกอบ' },
+    { itemKey: 'spray_head', itemLabel: 'หัวสเปรย์' },
+    { itemKey: null, itemLabel: 'ถุงผ้าใส่ขวด' },
+  ];
+  const next = restoreChecklistItem(items, 'cap');
+  assert.deepEqual(next.map((row) => row.itemLabel), [
+    'วัตถุดิบ/สารประกอบ', 'หัวสเปรย์', 'ฝา', 'ถุงผ้าใส่ขวด',
+  ]);
+  assert.equal(next[2].preparedByS, false);
+});
+
+test('คืนแถวที่มีอยู่แล้ว/คีย์ที่ไม่มีในทะเบียน = ไม่เปลี่ยนอะไร', () => {
+  const items = [{ itemKey: 'cap', itemLabel: 'ฝา', detail: 'สีเงิน' }];
+  assert.deepEqual(restoreChecklistItem(items, 'cap'), items);
+  assert.deepEqual(restoreChecklistItem(items, 'ไม่มีคีย์นี้'), items);
+});
+
+test('คืนแถวแรกสุดของกระดาษเข้าใบที่เหลือแถวท้าย ๆ — ต้องไปอยู่หน้าสุด', () => {
+  const next = restoreChecklistItem([{ itemKey: 'other', itemLabel: 'อื่นๆ' }], 'raw_material');
+  assert.deepEqual(next.map((row) => row.itemKey), ['raw_material', 'other']);
 });
 
 /* ── ขอบเขตหมวด ───────────────────────────────────────────────────── */
