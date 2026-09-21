@@ -28,7 +28,7 @@ const fail = (error, status) => Response.json({ error }, { status });
 export function makeRegistryPriceHandler({
   kind,          // ช่องเดียว (ทางเดิม): 'RM_F' | 'RM_FB' — ไม่ส่ง `slotsOf` มา = ช่องเดียวของตัวมันเอง
   stampColumn,   // 'scentId' | 'formulaId' (คู่กับ `kind`)
-  slotsOf = null, // (row) => [{ ...PRICE_SLOTS[k], id }] — ช่องที่ทะเบียนนี้เปิดให้ใส่
+  slotsOf = null, // (row, supabase) => [{ ...PRICE_SLOTS[k], id }] (async ได้) — ช่องที่ทะเบียนนี้เปิดให้ใส่
   findOther = null, // (supabase, slot) => { source, error } — แหล่งของช่องที่ไม่ใช่ตัวมันเอง
   entityType,    // 'scent' | 'formula'
   entityLabel,   // 'กลิ่น' | 'สูตร'
@@ -57,7 +57,14 @@ export function makeRegistryPriceHandler({
     if (statusError) return fail(statusError, 400);
 
     const body = await req.json().catch(() => ({}));
-    const { entries, error: priceError } = normalizeSlotPrices(slotsFor(row), body);
+    // `slotsOf` อาจเป็น async (สูตรต้องอ่านสถานะกลิ่นก่อนรู้ว่ามีช่อง F ไหม)
+    let slots;
+    try {
+      slots = await slotsFor(row, supabase);
+    } catch (e) {
+      return fail(e.message, 500);
+    }
+    const { entries, error: priceError } = normalizeSlotPrices(slots, body);
     if (priceError) return fail(priceError, 400);
 
     try {

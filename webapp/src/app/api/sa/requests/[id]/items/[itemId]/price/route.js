@@ -23,9 +23,9 @@ import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { rowPriceSlots } from '@/lib/requests/rowPriceTarget';
-import { mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
+import { mainPriceEntry, normalizeSlotPrices, priceSlotsFor } from '@/lib/master/priceSlots';
 import { findRequest, priceRegistrySlots } from '@/lib/materialPricesAdmin';
-import { findFormula, findScent } from '@/lib/master/scentFormulaAdmin';
+import { findFormula, loadPriceSlotSource } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { fmtNumber } from '@/lib/format';
@@ -87,7 +87,20 @@ export async function POST(request, { params }) {
   // ⭐ ช่องที่ใส่ได้มาจาก `rowPriceSlots` — โมดัลใส่ราคาถามตัวเดียวกัน (ป้าย F · B · FB ตรงกับที่ API รับ)
   // ⚠️ **ไม่ใช่ราคาต่อชิ้นของผลิตภัณฑ์** — ราคาสินค้าสำเร็จรูปต้องรวมบรรจุภัณฑ์
   // และค่าผลิต ซึ่งเป็นงานของใบขอราคาผลิต ไม่ใช่ของ RD
-  const slots = rowPriceSlots(row);
+  /* ⚠️ แถวที่ผูกสูตร: ช่อง F ลงกลิ่นของ **สูตร** (`formulas.scentId`) ไม่ใช่กลิ่นที่แถวอ้างตอนเปิดใบ — RD แก้กลิ่นของสูตร
+     ในทะเบียนได้ ⇒ ใช้ของแถวแล้วราคา F ไปลงกลิ่นเก่า ขณะที่หน้าสูตรอ่าน F จากกลิ่นใหม่ (รีวิว ม-148 รอบสอง)
+     · สถานะกลิ่นตรวจที่ `loadPriceSlotSource` ตัวเดียวกับปุ่มราคาหน้าทะเบียนสูตร */
+  let slots = rowPriceSlots(row);
+  if (row.producedFormulaId) {
+    const formula = await findFormula(supabase, row.producedFormulaId).catch(() => null);
+    if (formula) {
+      slots = priceSlotsFor({
+        scentId: formula.scentId || null,
+        formulaId: formula.id,
+        categoryCode: formula.categoryCode || row.categoryCode || null,
+      });
+    }
+  }
   const body = await request.json().catch(() => ({}));
   // ⚠️ F/B/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — ราคาต่อกิโลเดียวต่อช่อง ไม่ลดตามจำนวน
   const { entries, error: priceError } = normalizeSlotPrices(slots, body);
@@ -101,11 +114,7 @@ export async function POST(request, { params }) {
     // ⚠️ ทะเบียนต้นทาง **คนละตาราง** (F = กลิ่น · B/FB = สูตร) แต่หน้าตาที่ต้องใช้เหมือนกัน (ชื่อ + ลูกค้า)
     written = await priceRegistrySlots(supabase, {
       entries,
-      loadSource: async (slot) => ({
-        source: slot.stampColumn === 'formulaId'
-          ? await findFormula(supabase, slot.id)
-          : await findScent(supabase, slot.id),
-      }),
+      loadSource: (slot) => loadPriceSlotSource(supabase, slot),
       validUntil: body.validUntil || null,
       note: body.note || null,
       askItemId: row.id,

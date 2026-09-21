@@ -252,3 +252,18 @@ test('หน้าทะเบียนกลิ่นยังเป็นช�
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /ใส่ให้รายการนี้ไม่ได้/);
 });
+
+test('🐞 ชื่อชนกับวัสดุของกลิ่นอื่น (ชื่อเก่าหลังเปลี่ยนชื่อ): ห้ามต่อท้ายประวัติของกลิ่นอื่น — สร้างวัสดุป้ายใหม่', async () => {
+  // กลิ่น A เคยชื่อ "Rose" (วัสดุ F ป้าย "Rose" ผูก A) → เปลี่ยนชื่อ · กลิ่น B ใหม่ของลูกค้าเดิมใช้ชื่อ "Rose"
+  const ofA = {
+    id: 'MAT-A', kind: 'RM_F', label: 'Rose', customerId: 'CUS-1', scentId: 'SCT-A', status: 'active', revisions: [],
+  };
+  const supabase = fakeSupabase({ materials: [ofA] });
+  const scentB = { id: 'SCT-B', code: 'PF-B', name: 'Rose', customerId: 'CUS-1', customerName: 'x', status: 'active' };
+  await priceRegistryEntry(supabase, { kind: 'RM_F', stampColumn: 'scentId', source: scentB, price: 2500, user: null });
+  const made = materialInserts(supabase);
+  assert.equal(made.length, 1, 'ต้องสร้างวัสดุของ B เอง');
+  assert.equal(made[0].row.label, 'Rose (PF-B)');
+  assert.notEqual(supabase.calls.rpcs[0].args.p_material_id, 'MAT-A', 'ห้ามต่อ rev บนวัสดุของ A');
+  assert.equal(supabase.calls.updates.find((u) => u.patch.scentId)?.patch.scentId, 'SCT-B');
+});

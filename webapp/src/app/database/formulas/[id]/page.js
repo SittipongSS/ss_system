@@ -11,6 +11,7 @@ import RegistryDetailShell, { RegistryFactCard } from "@/components/database/Reg
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import { priceSlotsFor } from "@/lib/master/priceSlots";
+import { isScentUsable } from "@/lib/master/scents";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
 import { formulaToForm } from "@/components/database/FormulaForm";
 import Toast from "@/components/ui/Toast";
@@ -151,14 +152,17 @@ export default function FormulaDetailPage() {
         { label: "ลูกค้า", value: formula.customerName || "สูตรฐาน" },
         { label: "วันที่ของสูตร", value: formula.formulaDate ? fmtDate(formula.formulaDate) : NA },
         { label: "เพิ่มเข้าทะเบียน", value: fmtDate(formula.createdAt) },
-        /* ⭐ ม-148 — ราคาอีกสองช่องของสูตร (FB อยู่การ์ดราคาหลัก) · F เป็นของกลิ่น อ่านสดจากทะเบียนกลิ่น */
-        { label: "ราคา B — เบส (บาท/Kg)", value: <RegistryPrice price={formula.basePrice} /> },
-        ...(formula.scentId
-          ? [{ label: "ราคา F — หัวน้ำหอมของกลิ่น (บาท/Kg)", value: <RegistryPrice price={formula.scentPrice} /> }]
-          : []),
+        /* ⭐ ม-148 — ราคาอีกสองช่องของสูตร (ช่องหลักอยู่การ์ดราคา) · F เป็นของกลิ่น อ่านสดจากทะเบียนกลิ่น
+           ⚠️ สูตรหมวดหัวน้ำหอม (02-020) ใส่ได้แค่ F ⇒ การ์ดหลักคือ F แล้ว ไม่มีแถว B/F ซ้ำ */
+        ...(formula.priceSlot === "F" ? [] : [
+          { label: "ราคา B — เบส (บาท/Kg)", value: <RegistryPrice price={formula.basePrice} /> },
+          ...(formula.scentId
+            ? [{ label: "ราคา F — หัวน้ำหอมของกลิ่น (บาท/Kg)", value: <RegistryPrice price={formula.scentPrice} /> }]
+            : []),
+        ]),
       ]}
       price={formula.price}
-      priceLabel="ราคา FB — เบสที่ใส่กลิ่น (บาท/Kg)"
+      priceLabel={formula.priceSlot === "F" ? "ราคา F — หัวน้ำหอมของกลิ่น (บาท/Kg)" : "ราคา FB — เบสที่ใส่กลิ่น (บาท/Kg)"}
       primaryAction={{
         id: "edit",
         kind: "edit",
@@ -215,7 +219,11 @@ export default function FormulaDetailPage() {
         title={`${hasPrice ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formula.name}`}
         endpoint={`/api/master/formulas/${formula.id}/price`}
         /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่องจากตัวเดียวกับ API */
-        slots={priceSlotsFor({ scentId: formula.scentId, formulaId: formula.id, categoryCode: formula.categoryCode })}
+        slots={priceSlotsFor({
+          scentId: formula.scentId, formulaId: formula.id, categoryCode: formula.categoryCode,
+          // กลิ่นเลิกใช้/ร่าง = ไม่เปิดช่อง F (server ตัดสินตัวเดียวกัน)
+          scentUsable: formula.scentStatus ? isScentUsable({ status: formula.scentStatus }) : true,
+        })}
         onSaved={(msg) => {
           setPricing(false);
           setToast({ kind: "success", msg });

@@ -8,7 +8,8 @@ import {
   deleteFormulaError, formulaTransitionError, isFormulaRegistrar, normalizeFormulaInput,
 } from '@/lib/master/formulas';
 import {
-  countProductsUsingFormula, countRegistryRefs, editFormula, findFormula, findFormulaDetail, updateFormula,
+  countProductsUsingFormula, countRegistryDependents, countRegistryRefs, editFormula, findFormula, findFormulaDetail,
+  updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, formulaForcePreview, unlinkRegistryRefs, isDryRun, isForceRequest } from '@/lib/forceDelete';
 
@@ -184,6 +185,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     productCount,
     // pointer ที่เป็น RESTRICT หลัง mig 0232 — คำร้อง/บรรทัด/ทะเบียนราคา
     linkedCount: await countRegistryRefs(supabase, 'formula', id),
+    // สูตรที่แก้ต่อจากตัวนี้ (SET NULL) — ด่านชุดเดียวกับลบรายการในคำร้อง (รีวิว ม-148 รอบสอง)
+    childCount: (await countRegistryDependents(supabase, 'formula', id)).childCount,
   });
   if (error) return badRequest(error);
 

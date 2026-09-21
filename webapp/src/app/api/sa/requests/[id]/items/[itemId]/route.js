@@ -590,8 +590,11 @@ export async function DELETE(request, { params }) {
        ต้นทางแล้วชนดัชนีคู่ซ้ำ (เพิ่งมีคนบันทึก "ลูกค้าขอแก้" ระหว่างกดลบ) · กวาดก่อน = แถวรอดแต่ไฟล์หายถาวร */
     /* ⚠️ ลบแบบมีเงื่อนไข `outcome IS NULL` — ด่านข้างบนอ่านแถวก่อนหลายรอบ ผู้ขอบันทึกผลลูกค้าแทรกได้ ⇒ แถวที่ลูกค้า
        เพิ่งตอบต้องไม่หาย (และสูตรรอบแก้ต้องไม่ถูกถอยตาม) · ไม่โดนแถวไหน = ตีกลับ ไม่ใช่เดินต่อ (รีวิว ม-147 รอบสาม) */
+    /* ⚠️ คืนค่าที่ลบจริงกลับมา — ของในทะเบียนที่ตามลบต้องมาจาก **แถวตอนลบ** ไม่ใช่สแนปช็อตก่อนหน้า (รีวิว ม-148 รอบสอง):
+       RD ส่งงานลงแถวรอบแก้แทรกระหว่างกดลบ ⇒ แถวได้กลิ่น(+สูตร)ใหม่ที่สแนปช็อตไม่รู้จัก ⇒ ลบแถวแล้วของใหม่กำพร้า */
     const { data: deletedRows, error: rowError } = await supabase.from('dept_request_items')
-      .delete().eq('id', itemId).is('outcome', null).select('id');
+      .delete().eq('id', itemId).is('outcome', null)
+      .select('id, "producedScentId", "producedFormulaId", "producedFormulaAction"');
     if (rowError?.code === '23505') {
       return Response.json({ error: 'รายการนี้เพิ่งมีรอบแก้ต่อจากมัน — ลบไม่ได้แล้ว โหลดหน้าใหม่' }, { status: 409 });
     }
@@ -626,7 +629,7 @@ export async function DELETE(request, { params }) {
     // ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามเมื่อไม่มีใครอ้างต่อแล้ว
     let registryRemoved = null;
     let registryKept = null;
-    const owned = reviseUndo ? [] : registryOwnedByRow(row);
+    const owned = reviseUndo ? [] : registryOwnedByRow({ ...row, ...(deletedRows?.[0] || {}) });
     let restoredParent = null;
     let undoWarning = null;
     if (reviseUndo) {
@@ -680,33 +683,43 @@ export async function DELETE(request, { params }) {
       kept.push(text);
       if (owned.slice(n + 1).length) kept.push('กลิ่นของรายการนี้เก็บไว้ด้วย เพราะสูตรข้างต้นยังใช้กลิ่นนั้น');
     };
+    /* ⚠️ **แถวถูกลบไปแล้วจริง ⇒ ห้ามโยนต่อจากนี้** (รีวิว ม-148 รอบสอง) — โยน = 500 ทั้งที่แถวหายแล้ว ไม่มีเธรด/audit
+       และคนกดคิดว่าลบไม่สำเร็จ · พังตรงไหน = เก็บตัวนั้น (และกลิ่นที่ตามมา) ไว้ บอกเหตุผ่าน `registryKept` */
     for (const [n, own] of owned.entries()) {
       const table = own.kind === 'formula' ? 'formulas' : 'scents';
-      const { data: entity, error: readError } = await supabase
-        .from(table).select('id, code, name, status').eq('id', own.id).maybeSingle();
-      if (readError) {
-        keep(n, `ตรวจ ${own.id} ไม่ได้ — ยังอยู่ในทะเบียน (${readError.message})`);
+      let label = own.id;
+      try {
+        const { data: entity, error: readError } = await supabase
+          .from(table).select('*').eq('id', own.id).maybeSingle();
+        if (readError) throw readError;
+        if (!entity) continue; // ไม่มีแล้วจริง (มีคนลบไปก่อน) — ตัวถัดไปเดินต่อได้
+        label = entity.code || entity.name || own.id;
+        const refs = await countRegistryRefs(supabase, own.kind, own.id);
+        const dependents = await countRegistryDependents(supabase, own.kind, own.id);
+        const blocked = own.kind === 'formula'
+          ? deleteFormulaError(entity, { linkedCount: refs, ...dependents })
+          : deleteScentError(entity, { linkedCount: refs, ...dependents });
+        if (blocked) {
+          // เหตุที่เก็บไว้ต้องตรงความจริง — ไม่มีใครอ้างแต่รับเข้าทะเบียนแล้ว ≠ "ถูกอ้างที่อื่น" (รีวิว ม-147)
+          const reason = entity.status === 'archived' ? 'เลิกใช้แล้ว'
+            : ['draft', 'developing'].includes(entity.status) ? blocked
+              : 'ใช้งานอยู่ — เลิกใช้ที่หน้าทะเบียนถ้าไม่ต้องการ';
+          keep(n, `${label} ยังอยู่ในทะเบียน (${reason})`);
+          break;
+        }
+        const { error: regError } = await supabase.from(table).delete().eq('id', own.id);
+        if (regError) throw regError;
+        await purgeUpdates(supabase, own.kind, own.id);
+        removed.push(label);
+        // ⭐ กู้คืนได้จาก audit เท่านั้น (ไม่มีถังขยะ) — แถวทะเบียนเต็มก้อนลง `before` แบบเดียวกับปุ่มลบหน้าทะเบียน
+        await recordAudit({
+          user, action: 'delete', entityType: own.kind, entityId: own.id, before: entity, request,
+          summary: `ลบ${own.kind === 'formula' ? 'สูตร' : 'กลิ่น'} ${label} — ลบรายการ ${rowText(row) || itemId} (${before.docNo || id})`,
+        });
+      } catch (e) {
+        keep(n, `ตรวจ/ลบ ${label} ไม่สำเร็จ — ยังอยู่ในทะเบียน (${e?.code === '23503' ? 'ถูกอ้างเพิ่มระหว่างลบ' : e?.message})`);
         break;
       }
-      if (!entity) continue; // ไม่มีแล้วจริง (มีคนลบไปก่อน) — ตัวถัดไปเดินต่อได้
-      const label = entity.code || entity.name || own.id;
-      const refs = await countRegistryRefs(supabase, own.kind, own.id);
-      const dependents = await countRegistryDependents(supabase, own.kind, own.id);
-      const blocked = own.kind === 'formula'
-        ? deleteFormulaError(entity, { linkedCount: refs, ...dependents })
-        : deleteScentError(entity, { linkedCount: refs, ...dependents });
-      if (blocked) {
-        // เหตุที่เก็บไว้ต้องตรงความจริง — ไม่มีใครอ้างแต่รับเข้าทะเบียนแล้ว ≠ "ถูกอ้างที่อื่น" (รีวิว ม-147)
-        const reason = entity.status === 'archived' ? 'เลิกใช้แล้ว'
-          : ['draft', 'developing'].includes(entity.status) ? blocked
-            : 'ใช้งานอยู่ — เลิกใช้ที่หน้าทะเบียนถ้าไม่ต้องการ';
-        keep(n, `${label} ยังอยู่ในทะเบียน (${reason})`);
-        break;
-      }
-      const { error: regError } = await supabase.from(table).delete().eq('id', own.id);
-      if (regError) throw regError;
-      await purgeUpdates(supabase, own.kind, own.id);
-      removed.push(label);
     }
     if (removed.length) registryRemoved = removed.join(' · ');
     if (kept.length) registryKept = kept.join(' · ');

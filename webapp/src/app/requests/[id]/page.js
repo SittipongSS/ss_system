@@ -2789,11 +2789,15 @@ export default function RequestDetailPage() {
         slots={pricing ? rowPriceSlots(pricing.item) : null}
         hint={`ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง"}
-        onSaved={(msg) => {
+        /* ⚠️ เดิมขั้นนี้วิ่งผ่าน `call()` ที่ตีกลับแล้วโหลดใบใหม่ และใช้ใบที่ API ตอบกลับทันที (รีวิว ม-148 รอบสอง) —
+           route ราคาตอบใบทั้งใบ (`findRequest`) ⇒ ตั้งเลย ไม่มีช่วงที่ปุ่ม "ใส่ราคา" ยังค้างให้กดซ้ำ */
+        onSaved={(msg, data) => {
           setPricing(null);
           setToast({ kind: "success", msg });
-          load({ background: true });
+          if (data?.id === req.id && Array.isArray(data.items)) setReq(data);
+          else load({ background: true });
         }}
+        onError={() => load({ background: true })}
       />
 
       {/* ส่งงาน — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว

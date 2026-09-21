@@ -5,9 +5,9 @@
 //   (F เป็นของกลิ่น: สูตรทุกตัวที่ใช้กลิ่นเดียวกันเห็นราคา F ตัวเดียวกัน) · สูตรไม่มีกลิ่น = ไม่มีช่อง F
 import { withUser } from '@/lib/http';
 import { makeRegistryPriceHandler } from '@/lib/master/registryPriceRoute';
-import { findFormula, findScent } from '@/lib/master/scentFormulaAdmin';
+import { findFormula, findScent, loadPriceSlotSource } from '@/lib/master/scentFormulaAdmin';
 import { FORMULA_STATUS_LABELS, isFormulaUsable } from '@/lib/master/formulas';
-import { SCENT_STATUS_LABELS, isScentUsable } from '@/lib/master/scents';
+import { isScentUsable } from '@/lib/master/scents';
 import { priceSlotsFor } from '@/lib/master/priceSlots';
 
 export const dynamic = 'force-dynamic';
@@ -15,22 +15,19 @@ export const dynamic = 'force-dynamic';
 export const POST = withUser(makeRegistryPriceHandler({
   kind: 'RM_FB',
   stampColumn: 'formulaId',
-  // สูตรหมวดหัวน้ำหอม (02-020) = F ช่องเดียว ลงกลิ่นของสูตร (ดู priceSlotsFor)
-  slotsOf: (formula) => priceSlotsFor({
-    scentId: formula.scentId, formulaId: formula.id, categoryCode: formula.categoryCode,
-  }),
-  // ช่อง F → กลิ่นของสูตร · ด่านสถานะชุดเดียวกับปุ่มราคาบนหน้าทะเบียนกลิ่น
-  findOther: async (supabase, slot) => {
-    const scent = await findScent(supabase, slot.id);
-    if (!scent) return { source: null, error: 'ไม่พบกลิ่นของสูตรนี้ในทะเบียน — ใส่ราคา F ไม่ได้' };
-    if (!isScentUsable(scent)) {
-      return {
-        source: null,
-        error: `กลิ่นของสูตรนี้สถานะ "${SCENT_STATUS_LABELS[scent.status] || scent.status}" ยังใส่ราคา F ไม่ได้`,
-      };
-    }
-    return { source: scent };
+  // สูตรหมวดหัวน้ำหอม (02-020) = F ช่องเดียว ลงกลิ่นของสูตร (ดู priceSlotsFor) · กลิ่นใช้ไม่ได้ = ไม่มีช่อง F
+  // (ตัวเดียวกับที่หน้าทะเบียนสูตรใช้เปิดช่องในโมดัล — `scentStatus` ที่ loader ติดมา)
+  slotsOf: async (formula, supabase) => {
+    const scent = formula.scentId ? await findScent(supabase, formula.scentId) : null;
+    return priceSlotsFor({
+      scentId: formula.scentId,
+      formulaId: formula.id,
+      categoryCode: formula.categoryCode,
+      scentUsable: scent ? isScentUsable(scent) : true,
+    });
   },
+  // ช่อง F → กลิ่นของสูตร · ด่านเดียวกับขั้นใส่ราคาในคำร้อง (`loadPriceSlotSource`)
+  findOther: (supabase, slot) => loadPriceSlotSource(supabase, slot),
   entityType: 'formula',
   entityLabel: 'สูตร',
   find: findFormula,

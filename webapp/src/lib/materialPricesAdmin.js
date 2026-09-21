@@ -156,15 +156,28 @@ async function registryEntryMaterial(supabase, { kind, stampColumn, source, user
   const legacy = candidates.find((m) => m.kind === kind && !m[stampColumn]
     && materialIdentityKey(m) === unstampedKey);
   if (legacy) return legacy;
-  const { material } = await ensureMaterial(supabase, {
+  const make = (label) => ensureMaterial(supabase, {
     kind,
-    label: source.name,
+    label,
     customerId: source.customerId,
     customerName: source.customerName,
     formulaId: stampColumn === 'formulaId' ? source.id : null,
     user,
-  });
-  return material;
+  }).then(({ material }) => material);
+  const material = await make(source.name);
+  if (!material[stampColumn] || material[stampColumn] === source.id) return material;
+  /* 🐞 **ชื่อชนกับวัสดุของอีกตัว** (รีวิว ม-148 รอบสอง) — ตัวตนวัสดุ F ไม่มี scentId (แค่ ชนิด+ชื่อ+ลูกค้า) ⇒ กลิ่น A
+     เปลี่ยนชื่อ "Rose" → "Rose Garden" แล้วกลิ่น B ใหม่ของลูกค้าเดิมใช้ชื่อ "Rose" · ใส่ราคา F ให้ B แล้ว `ensureMaterial`
+     คืนวัสดุของ A ⇒ ราคาของ B ไปต่อท้ายประวัติ A เงียบ ๆ (ของ A เปลี่ยน · B ยังไม่มีราคา) · มีบน main มาก่อน
+     แต่แบรนช์นี้เพิ่มทางเข้า F (ช่อง F ของสูตร · แถวพัฒนาสูตร) ⇒ **ห้ามต่อท้ายวัสดุที่ผูกตัวอื่นเด็ดขาด**
+     · ดัชนีตัวตนห้ามมี "Rose" ตัวที่สองของลูกค้าเดิม ⇒ สร้างด้วยป้ายที่ไม่ชน (ชื่อ + รหัส) แทนการปฏิเสธ */
+  const own = await make(`${source.name} (${source.code || source.id})`);
+  if (own[stampColumn] && own[stampColumn] !== source.id) {
+    const failure = new Error(`มีวัสดุชื่อนี้ผูกกับ${stampColumn === 'formulaId' ? 'สูตร' : 'กลิ่น'}อื่นอยู่แล้ว — ใส่ราคาไม่ได้ ติดต่อผู้ดูแลระบบ`);
+    failure.status = 409;
+    throw failure;
+  }
+  return own;
 }
 
 // ── ใส่ราคาหลายช่องในจังหวะเดียว (F · B · FB — ม-148 · มติผู้ใช้ 2026-09-22) ──────────
@@ -300,7 +313,8 @@ export async function loadRequests(supabase, {
   );
   /* ⭐ **ราคาที่ใส่แล้วติดมากับแถว** (ผู้ใช้ 2026-09-22: "ในหน้ารายการคำร้อง … ไม่ได้โชว์ราคาเลย") — ตัวเดียวกับ
      หน้าใบเดียว (`attachRowPrice`) ⇒ คิวกับหน้ารายละเอียดพูดเลขเดียวกัน · ยิงเฉพาะแถวที่มีราคา (ส่วนน้อยมาก) */
-  const items = await attachRowPrice(supabase, rawItems);
+  // ⚠️ โหมด `lean` (ตัวนับบนเมนู · poll ถี่) ไม่ต้องใช้ราคา — ข้ามสามคำสั่งอ่านทะเบียนวัสดุ
+  const items = lean ? rawItems : await attachRowPrice(supabase, rawItems);
 
   /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่คิวต้องใช้ตัดสิน "ตาใคร"** (ม-144 · รีวิวรอบ 5–6) — สินค้าที่ยังไม่มีแถวงาน
      (`npdUncoveredPairs`) คืองานของฝ่าย · ไม่ดึง ⇒ ป้ายขึ้นตาผู้ขอ ("รอปิดเรื่อง"/"รอ SA ทำต่อ") แล้วหลุดจากคิว
@@ -556,7 +570,8 @@ export async function findRequest(supabase, id) {
     targets: targets || [],
   });
 
-  const items = await attachRowPrice(supabase, withBriefs.items || []);
+  // ราคาติดมาแล้วจาก `loadRequests` (ตัวเดียวกัน) — ไม่ยิงซ้ำ (รีวิว ม-148 รอบสอง)
+  const items = withBriefs.items || [];
   /* ⭐ แถวงานต้นทางของพัฒนาสูตร NPD ที่มีไฟล์แนบ (ม-144) — แบบฟอร์ม PDR ถอนแถวพวกนี้ไม่ได้ (ถอน = กวาดไฟล์)
      ⇒ จอต้องรู้ก่อนกดบันทึก ไม่งั้นหัวใบบันทึกไปแล้วค่อยโดนตีกลับที่ก้าวแบบฟอร์ม (บันทึกครึ่งเดียว)
      ⚠️ ถามเฉพาะใบที่มีแถวแบบนี้ · ≤ 20 แถว ⇒ `.in()` ปลอดภัย · `.limit` = ขอบเขตชัด (check:rowcap) */
@@ -647,7 +662,7 @@ async function attachRowPrice(supabase, items) {
      ช่องอื่นหาจาก `sourceAskItemId` ที่ขั้นใส่ราคาประทับไว้ทุก rev ⇒ ไม่ต้องมีคอลัมน์ใหม่
      ⚠️ ตัวนี้ถูกเรียกทั้งหน้าใบเดียวและ **คิวทั้งหน้า** (หลายร้อยใบ · ผู้ใช้ 2026-09-22 ขอให้หน้ารายการโชว์ราคา)
      ⇒ ทุก `.in()` ซอยเป็นก้อน (fetchAllInChunks · กับดัก 16 KB) */
-  const REV_COLUMNS = 'id, "materialId", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"';
+  const REV_COLUMNS = 'id, "materialId", "revisionNo", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"';
   const bySource = await fetchAllInChunks(
     priced.map((i) => i.id),
     (chunk) => supabase.from('material_price_revisions').select(REV_COLUMNS)
@@ -690,15 +705,27 @@ async function attachRowPrice(supabase, items) {
       quotedAt: rev.quotedAt || null,
       quotedByName: rev.quotedByName || null,
       sourceAskItemId: rev.sourceAskItemId || null,
+      revisionNo: rev.revisionNo ?? null,
+      quotedAtRaw: rev.quotedAt || '',
     }];
   }));
 
   return items.map((i) => {
     if (!i.answeredRevisionId) return { ...i, pricedResult: null, pricedResults: [] };
     const main = byRevision.get(i.answeredRevisionId) || null;
-    // ทุกช่องที่ใส่จากแถวนี้ — เรียง F · B · FB · ไม่มีช่องไหนเลย (rev เก่า) = ช่องหลักตัวเดียว
-    const all = [...byRevision.values()].filter((r) => r.sourceAskItemId === i.id);
-    const list = (all.length ? all : [main].filter(Boolean))
+    /* ทุกช่องที่ใส่จากแถวนี้ — **ชนิดละหนึ่ง** เรียง F · B · FB (รีวิว ม-148 รอบสอง)
+       ⚠️ ใส่หลายช่องแล้วคำขอสะดุดกลางทาง กดซ้ำ = rev ของช่องแรกเกิดสองตัว (ประทับ id แถวเดียวกัน) ⇒ ไม่คัด
+       จะโชว์ F สองบรรทัด · ช่องของ rev หลัก (`answeredRevisionId`) ยึดตัวนั้น · ช่องอื่นเอาตัวล่าสุด */
+    const latest = new Map();
+    for (const r of byRevision.values()) {
+      if (r.sourceAskItemId !== i.id || !r.kind) continue;
+      const cur = latest.get(r.kind);
+      const newer = !cur || r.quotedAtRaw > cur.quotedAtRaw
+        || (r.quotedAtRaw === cur.quotedAtRaw && (r.revisionNo ?? 0) > (cur.revisionNo ?? 0));
+      if (newer) latest.set(r.kind, r);
+    }
+    if (main?.kind) latest.set(main.kind, main);
+    const list = (latest.size ? [...latest.values()] : [main].filter(Boolean))
       .sort((a, b) => (PRICE_ORDER[a.kind] ?? 9) - (PRICE_ORDER[b.kind] ?? 9));
     return { ...i, pricedResult: main, pricedResults: list };
   });

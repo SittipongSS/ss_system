@@ -122,9 +122,9 @@ export default function ScentDeliveryFields({
             )}
 
             {/* ⭐ **ส่งเป็นอะไร** (ม-148) — ถามก่อนทุกอย่าง เพราะตัดสินว่าจะมีสูตรเกิดด้วยไหม และราคาที่ใส่
-                ทีหลังเป็น F (กลิ่น) หรือ FB (สูตร) · แผ่นเลือกสองทาง ไม่ใช่ดรอปดาวน์ (ชุดเล็กตายตัว) */}
+                ทีหลังได้แค่ F (กลิ่น) หรือได้ F · B · FB (สูตร) · แผ่นเลือกสองทาง ไม่ใช่ดรอปดาวน์ (ชุดเล็กตายตัว) */}
             <div className={styles.deliveredAs}>
-            <FormZone title="ส่งเป็น" note="ตัดสินว่าราคาที่ใส่ทีหลังเป็น F หรือ FB" />
+            <FormZone title="ส่งเป็น" note="ตัดสินว่าราคาที่ใส่ทีหลังได้แค่ F หรือได้ F · B · FB" />
             <OptionTiles
               ariaLabel="ส่งเป็น"
               disabled={disabled}
@@ -145,7 +145,7 @@ export default function ScentDeliveryFields({
                 {
                   value: "product",
                   label: "สินค้า",
-                  description: "กลิ่น + สูตรหมวดที่เลือก · ราคาเป็น FB (เบสที่ใส่กลิ่น)",
+                  description: "กลิ่น + สูตรหมวดที่เลือก · ราคาใส่ได้ F · B · FB",
                 },
               ]}
             />
@@ -180,7 +180,7 @@ export default function ScentDeliveryFields({
                     (หัวโซนสองชั้นติดกันอ่านเป็นหัวซ้ำ · เจอตอนเปิดจอจริง) */}
                 <h3 className={styles.blockTitle}>สูตรที่เกิดพร้อมกลิ่นนี้</h3>
                 <p className={styles.blockNote}>
-                  หมวด × กลิ่นในแท็บนี้ · สถานะกำลังพัฒนาจนลูกค้าคอนเฟิร์ม · ราคาที่ใส่ทีหลังเป็น FB ของสูตรนี้
+                  หมวด × กลิ่นในแท็บนี้ · สถานะกำลังพัฒนาจนลูกค้าคอนเฟิร์ม · ราคาที่ใส่ทีหลังได้ F (ลงกลิ่นนี้) · B · FB (ลงสูตรนี้)
                 </p>
                 <FormulaForm
                   mode="create" canSetCode codeRequired

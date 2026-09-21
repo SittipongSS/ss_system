@@ -28,6 +28,7 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import { priceSlotsFor } from "@/lib/master/priceSlots";
+import { isScentUsable } from "@/lib/master/scents";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
@@ -467,7 +468,7 @@ export default function FormulasPage() {
       <ListPanel
         icon={<Beaker size={17} aria-hidden="true" />}
         title="รายการสูตร"
-        subtitle="ค้นหา กรอง และเปิดสูตรเพื่อดูกลิ่น ลูกค้า และราคา FB"
+        subtitle="ค้นหา กรอง และเปิดสูตรเพื่อดูกลิ่น ลูกค้า และราคา (F · B · FB)"
         count={(loading && !formulas.length) || loadError ? null : `${visible.length} สูตร`}
         loading={loading && !formulas.length}
         toolbar={(
@@ -537,8 +538,8 @@ export default function FormulasPage() {
                   {/* วันที่ = .num (ชิดขวา + tabular) — `mono` ไม่จัดชิด เทียบข้ามแถว
                       ไม่ได้ (กฎ 3 UI_DESIGN_SYSTEM — โรคเดียวกับที่ทะเบียนกลิ่นแก้แล้ว) */}
                   <th className="num">วันที่</th><th className={styles.colCustomer}>ลูกค้า</th>
-                  {/* ราคา FB มาจากทะเบียนวัสดุ — คู่ขนานกับราคา F ของกลิ่น */}
-                  <th className={`${styles.colPrice} num`}>ราคา FB</th>
+                  {/* ราคาหลักของสูตรจากทะเบียนวัสดุ — FB · สูตรหมวดหัวน้ำหอม (02-020) = F ของกลิ่น (ม-148 · ป้ายรายแถว) */}
+                  <th className={`${styles.colPrice} num`}>ราคาหลัก</th>
                   <th>สถานะ</th><th className={styles.actionsCol}></th>
                 </tr>
               </thead>
@@ -620,6 +621,8 @@ export default function FormulasPage() {
                         ในคอลัมน์จัดการ (กติกาเดียวกับทะเบียนกลิ่น 2026-08-12) */}
                     <td className="num">
                       <RegistryPrice price={f.price} />
+                      {/* ป้ายช่องของราคาที่แสดง — FB ตามปกติ · F เมื่อเป็นสูตรหัวน้ำหอม (ราคาเป็นของกลิ่น) */}
+                      {f.price?.unitPrice != null && <small className={styles.priceSlot}> {f.priceSlot || "FB"}</small>}
                       {canPriceFormula(f) && f.price?.unitPrice == null && (
                         <div className={styles.rowActions}>
                           <Button size="sm" icon={<Coins size={14} aria-hidden="true" />}
@@ -797,7 +800,10 @@ export default function FormulasPage() {
         endpoint={pricing ? `/api/master/formulas/${pricing.id}/price` : ""}
         /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) */
         slots={pricing
-          ? priceSlotsFor({ scentId: pricing.scentId, formulaId: pricing.id, categoryCode: pricing.categoryCode })
+          ? priceSlotsFor({
+            scentId: pricing.scentId, formulaId: pricing.id, categoryCode: pricing.categoryCode,
+            scentUsable: pricing.scentStatus ? isScentUsable({ status: pricing.scentStatus }) : true,
+          })
           : null}
         onSaved={(msg) => {
           setPricing(null);

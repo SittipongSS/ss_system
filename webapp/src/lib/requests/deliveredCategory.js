@@ -127,7 +127,12 @@ export function defaultDeliveredCategory(pdrProductKinds = [], productTypes = []
 export function scentFPriceNotice(scent) {
   const formulas = (scent?.formulas || []).filter((f) => f && f.status !== 'archived');
   const codes = formulas.map((f) => f.code || f.name).filter(Boolean);
-  const tail = 'ราคาเนื้อสินค้า (FB · เบสที่ใส่กลิ่น) ใส่ที่หน้าสูตร — ช่องนี้คือราคาหัวน้ำหอมล้วน (F)';
+  /* ⚠️ สูตรที่ยัง "กำลังพัฒนา" (เกิดจากส่งงานพัฒนากลิ่น · รอลูกค้าคอนเฟิร์ม) ใส่ราคาที่หน้าสูตรไม่ได้ (ปุ่มโผล่เฉพาะสูตร
+     ใช้งาน) ⇒ ชี้ไปหน้าสูตรตอนนั้นคือทางตัน — บอกทางที่ใช้ได้จริง (รีวิว ม-148 รอบสอง) */
+  const allDeveloping = formulas.length > 0 && formulas.every((f) => f.status !== 'active');
+  const tail = allDeveloping
+    ? 'ราคาเนื้อสินค้า (B · FB) ใส่ที่ขั้นใส่ราคาของคำร้องหลังลูกค้าคอนเฟิร์ม — ช่องนี้คือราคาหัวน้ำหอมล้วน (F)'
+    : 'ราคาเนื้อสินค้า (B · FB) ใส่ที่หน้าสูตร — ช่องนี้คือราคาหัวน้ำหอมล้วน (F)';
   if (isDeliveredAsProduct(scent?.deliveredCategoryCode)) {
     return `กลิ่นนี้ RD ส่งให้ลูกค้าเป็นสินค้าหมวด ${scent.deliveredCategoryCode}`
       + `${codes.length ? ` (สูตร ${codes.join(', ')})` : ''} · ${tail}`;

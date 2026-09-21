@@ -36,7 +36,8 @@ export default function RegistryPriceModal({
   slots = null,
   // บรรทัดอธิบายใต้ช่องราคา (เช่น ราคาเฉพาะลูกค้ารายนี้) · null = ใช้ข้อความมาตรฐาน
   hint = null,
-  onSaved,          // (msg) => void — ผู้เรียกรีโหลด + โชว์ toast
+  onSaved,          // (msg, data) => void — ผู้เรียกรีโหลด + โชว์ toast · `data` = body ที่ API ตอบ
+  onError = null,   // (error) => void — ตีกลับแล้วผู้เรียกอยากโหลดข้อมูลใหม่ (สถานะเปลี่ยนระหว่างเปิดโมดัล)
   // ม-148 — คำเตือนก่อนใส่ราคา (เช่น กลิ่นที่ส่งเป็นสินค้า: ราคาเนื้อต้องไปใส่ที่สูตร) · null = ไม่มี
   notice = null,
 }) {
@@ -72,9 +73,10 @@ export default function RegistryPriceModal({
       const revs = Array.isArray(data?.revisions) && data.revisions.length > 1
         ? data.revisions.map((r) => `${r.key} rev ${r.revisionNo}`).join(" · ")
         : data?.revisionNo != null ? `rev ${data.revisionNo}` : "";
-      onSaved?.(revs ? `บันทึกราคาแล้ว (${revs})` : "บันทึกราคาแล้ว");
+      onSaved?.(revs ? `บันทึกราคาแล้ว (${revs})` : "บันทึกราคาแล้ว", data);
     } catch (e) {
       setError(e.message);
+      onError?.(e);
     }
     setSaving(false);
   };

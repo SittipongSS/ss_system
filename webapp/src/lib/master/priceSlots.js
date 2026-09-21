@@ -45,7 +45,10 @@ const MAIN_PRIORITY = ['FB', 'B', 'F'];
  *   ไม่มีเบส ⇒ ราคาลงที่กลิ่นเหมือนพัฒนากลิ่นที่ส่งเป็นหัวน้ำหอม (ของจริง: RQ-FD-26090085 · RQ-FD-26090156)
  *   ⚠️ สูตร 02-020 ที่ไม่มีกลิ่น (สูตรฐาน) ไม่มีที่ให้ลง F ⇒ ถอยไปใช้ช่องของสูตรตามปกติ ไม่ปิดทางใส่ราคา
  */
-export function priceSlotsFor({ scentId = null, formulaId = null, categoryCode = null } = {}) {
+/*   · `scentUsable: false` = กลิ่นของสูตรใส่ราคา F ไม่ได้ (ร่าง/เลิกใช้) ⇒ ไม่เปิดช่อง F — ไม่งั้นโมดัลเปิดช่องที่ server ตีกลับ
+ *     แล้วทั้งชุด (B/FB ที่ถูกต้อง) บันทึกไม่ได้ไปด้วย (รีวิว ม-148 รอบสอง) · ไม่รู้สถานะ (ไม่ส่งมา) = ถือว่าใช้ได้ */
+export function priceSlotsFor({ scentId: rawScentId = null, formulaId = null, categoryCode = null, scentUsable = true } = {}) {
+  const scentId = scentUsable === false ? null : rawScentId;
   if (formulaId && scentId && categoryCode === PDR_FRAGRANCE_OIL_CODE) {
     return [{ ...PRICE_SLOTS.F, id: scentId }];
   }

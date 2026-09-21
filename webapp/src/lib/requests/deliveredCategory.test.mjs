@@ -175,7 +175,12 @@ test('คำเตือนปุ่มใส่ราคา F บนทะเ�
   );
   assert.match(
     scentFPriceNotice({ deliveredCategoryCode: null, formulas: [{ code: 'PF-9', status: 'active' }] }),
-    /มีสูตรใช้อยู่ 1 ตัว/,
+    /มีสูตรใช้อยู่ 1 ตัว.*ใส่ที่หน้าสูตร/,
+  );
+  // สูตรยังกำลังพัฒนา — ปุ่มราคาหน้าสูตรยังไม่มี ⇒ ชี้ไปขั้นใส่ราคาของคำร้อง
+  assert.match(
+    scentFPriceNotice({ deliveredCategoryCode: '01-002', formulas: [{ code: 'PF-1', status: 'developing' }] }),
+    /ขั้นใส่ราคาของคำร้อง/,
   );
   assert.equal(scentFPriceNotice({ deliveredCategoryCode: '02-020', formulas: [] }), null);
   assert.equal(scentFPriceNotice({ formulas: [{ code: 'OLD', status: 'archived' }] }), null);

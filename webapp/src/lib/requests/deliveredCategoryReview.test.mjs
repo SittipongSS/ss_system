@@ -62,8 +62,15 @@ test('ลบรายการในคำร้อง: ใช้ด่านเ
   assert.match(loop, /countRegistryDependents\(supabase, own\.kind, own\.id\)/);
   assert.match(loop, /deleteFormulaError\(entity/);
   assert.match(loop, /deleteScentError\(entity/);
-  assert.match(loop, /if \(readError\) \{[\s\S]*?break;/);
+  assert.match(loop, /if \(readError\) throw readError;/);
   assert.match(loop, /if \(blocked\) \{[\s\S]*?break;/);
+  // แถวถูกลบแล้ว ⇒ ห้ามโยนออกนอกลูป: ทุกขั้นอยู่ใน try และ catch = เก็บไว้ + หยุด
+  assert.match(loop, /\} catch \(e\) \{\s*keep\(n,[\s\S]*?break;/);
+  // ของที่ลบตามแถวต้องมาจากแถวตอนลบจริง + มี audit ให้กู้คืน
+  assert.match(src, /registryOwnedByRow\(\{ \.\.\.row, \.\.\.\(deletedRows\?\.\[0\] \|\| \{\}\) \}\)/);
+  assert.match(loop, /recordAudit\(\{[\s\S]*?action: 'delete', entityType: own\.kind/);
+  // หน้าทะเบียนสูตรนับสูตรที่แก้ต่อด้วย
+  assert.match(read('src/app/api/master/formulas/[id]/route.js'), /countRegistryDependents\(supabase, 'formula', id\)/);
   // หน้าทะเบียนกลิ่นนับสูตร/สินค้าด้วย
   assert.match(read('src/app/api/master/scents/[id]/route.js'), /countRegistryDependents\(supabase, 'scent', id\)/);
 });
