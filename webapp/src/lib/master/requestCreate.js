@@ -152,6 +152,8 @@ export function requestPayload(form, extra = {}) {
       siteId: form.siteId || null,
       zones: form.zones || [],
       requestedDueTime: form.requestedDueTime || null,
+      // วันที่อยากได้ผล (mig 0368) — คนละวันกับ `requestedDueDate` ซึ่งคือวันที่อยากให้เข้า
+      requestedResultDate: form.requestedResultDate || null,
     } : {}),
     ...(requestUsesItems(form) ? { items: form.items || [] } : {}),
     ...extra,

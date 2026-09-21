@@ -581,6 +581,24 @@ test('วันเลยกำหนดมาจาก "วันนี้" ท�
   }).due.overdueDays, null, 'ส่งไปแล้วไม่ต้องเตือนว่าเลยกำหนด');
 });
 
+/* ⭐ **กำหนดของจอนี้คือวันส่งผล** (มติผู้ใช้ 2026-09-21 · mig 0368) — ทั้งจอเป็นเรื่อง
+   การส่งตัวเลขให้ฝ่ายขาย · วันนัดเข้าพื้นที่มีแถวของตัวเองอยู่แล้ว */
+test('🔴 กำหนดบนจอส่งผลนับจากวันส่งผล — ใบเก่าที่ไม่มีวันนั้นถอยไปใช้วันนัด', () => {
+  const zones = [emptyZone('z1', 'Studio 01')];
+  const withResult = {
+    request: request({ committedResultDate: '2026-09-18' }), zones, viewer: HEAD, today: '2026-09-16',
+  };
+  assert.equal(surveyControlView(withResult).due.date, '2026-09-18');
+  assert.equal(surveyControlView(withResult).due.overdueDays, null,
+    'วันนัดเลยมาแล้วแต่ยังไม่ถึงวันส่งผล = ยังไม่เลยกำหนด');
+  assert.equal(surveyControlView({ ...withResult, today: '2026-09-20' }).due.overdueDays, 2);
+
+  // ใบที่ลงคิวไว้ก่อน mig 0368 มีแต่วันนัด — ห้ามกลายเป็น "ไม่มีกำหนด"
+  const legacy = { request: request(), zones, viewer: HEAD, today: '2026-09-16' };
+  assert.equal(surveyControlView(legacy).due.date, '2026-09-14');
+  assert.equal(surveyControlView(legacy).due.overdueDays, 2);
+});
+
 // ══ 🔴 อ่านไม่สำเร็จ ≠ ไม่มีข้อมูล ═══════════════════════════════════════
 test('🔴 อ่านชิ้นประกอบไม่สำเร็จ ต้องขึ้นกล่องแจ้ง "ไม่ทราบ" ไม่ใช่เงียบ', () => {
   const zones = [readyZone('z1', 'Studio 01')];

@@ -96,6 +96,11 @@ export function RequestDueUrgentFields({
      ช่องกลางที่ทุกใบต้องมองข้าม */
   showTime = false,
   dueHint = 'เป็นความคาดหวัง — ฝ่ายปลายทางจะรับปากวันจริงตอนกด "แจ้งกำหนดส่ง"',
+  /* ⭐ **วันที่สอง: วันที่อยากได้ผล** (มติผู้ใช้ 2026-09-21 · mig 0368) — หัวข้อที่
+     ฝ่ายปลายทาง *ไปทำถึงที่* มีสองวันเสมอ: วันที่ไป กับวันที่ส่งของกลับมา
+     ⚠️ ป้ายมาจากทะเบียนหัวข้อ (`form.resultDueLabel`) · **ไม่มีป้าย = หัวข้อนี้ไม่มี
+        วันที่สอง** ⇒ ช่องไม่กาง (ห้ามเทียบชื่อหัวข้อที่นี่ — ratchet) */
+  resultDueLabel = null,
 }) {
   const set = (patch) => onChange?.({ ...value, ...patch });
 
@@ -126,6 +131,22 @@ export function RequestDueUrgentFields({
         )}
         <small className={styles.hint}>{dueHint}</small>
       </div>
+      {/* ⭐ **วันส่งผล — ช่องของตัวเอง ไม่ใช่ข้อความในรายละเอียด** (มติผู้ใช้ 2026-09-21)
+          ⚠️ **บังคับเท่ากับวันแรก** — ใบที่บอกแค่ว่าอยากให้ไปวันไหน ไม่ได้บอกว่า
+             ฝ่ายขายต้องใช้ตัวเลขวันไหน ซึ่งเป็นข้อมูลที่ฝ่ายปลายทางใช้จัดลำดับงาน
+          ⚠️ อยู่ **ติดกับวันแรก** โดยตั้งใจ — สองวันที่ต้องอ่านเทียบกันห้ามอยู่คนละมุมจอ */}
+      {resultDueLabel && (
+        <div className="form-group">
+          <label htmlFor={`${idPrefix}-result-due`}>{resultDueLabel} (บังคับ)</label>
+          <DateInput
+            id={`${idPrefix}-result-due`} value={value.requestedResultDate || ""} disabled={disabled}
+            onChange={(v) => set({ requestedResultDate: v })}
+          />
+          <small className={styles.hint}>
+            คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา
+          </small>
+        </div>
+      )}
       <div className="form-group">
         <span className={styles.fieldLabel}>ความเร่งด่วน</span>
         {/* ⭐ **สวิตช์ ไม่ใช่ checkbox** (มติผู้ใช้ 2026-08-09 · กติกาคอนโทรล v2

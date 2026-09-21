@@ -13,6 +13,7 @@ import { genId } from '@/lib/id';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { toHHMM } from '@/lib/service/sites';
 import { initialVisitStatus } from '@/lib/service/visitGate';
+import { normalizeSurveyCommittedResult } from '@/lib/service/surveyRequest';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 
 export const SURVEY_VISIT_KIND = 'survey';
@@ -32,6 +33,12 @@ export function surveyScheduleError(body = {}, request = {}) {
   if (!String(body.assigneeId ?? '').trim()) return 'ต้องเลือกเจ้าหน้าที่ผู้รับผิดชอบ';
   const time = String(body.committedDueTime ?? '').trim();
   if (time && !toHHMM(time)) return 'เวลานัดไม่ถูกต้อง';
+  /* ⭐ **วันส่งผลบังคับตั้งแต่ตอนลงคิว** (มติผู้ใช้ 2026-09-21 · mig 0368) — ฝ่ายขาย
+     ที่ต้องเสนอราคาถามคำถามเดียวคือ "ได้ตัวเลขวันไหน" · วันนัดเข้าพื้นที่ตอบคำถาม
+     นั้นไม่ได้ ⇒ รับปากวันไปแล้วแต่ยังไม่บอกวันส่งผล = ใบที่ตอบคำถามผิดข้อ
+     ⚠️ ตรวจที่นี่ ไม่ใช่ที่ route — จอกับ server ต้องอ่านกฎตัวเดียวกัน */
+  const result = normalizeSurveyCommittedResult(body.committedResultDate, body.committedDueDate);
+  if (result.error) return result.error;
   return null;
 }
 

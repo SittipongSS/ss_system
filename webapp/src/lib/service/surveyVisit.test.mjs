@@ -12,27 +12,44 @@ import { VISIT_KINDS, VISIT_KINDS_MANUAL, VISIT_KIND_LABELS, normalizeVisitInput
 const request = { id: 'DR-1', docNo: 'AS-26080002', siteId: 'SVS-1' };
 const site = { id: 'SVS-1', name: 'สาขาสีลม', accessDays: [], accessFrom: null, accessTo: null };
 
+// ลงคิวครบชุด = วันนัด + เจ้าหน้าที่ + **วันส่งผล** (mig 0368)
+const schedule = { committedDueDate: '2026-09-08', assigneeId: 'U1', committedResultDate: '2026-09-10' };
+
 test('🔴 ลงคิวต้องมีวันและเจ้าหน้าที่ — นัดที่ไม่มีเจ้าหน้าที่จะจอดเป็นร่างที่ไม่มีใครเห็น', () => {
   assert.match(surveyScheduleError({}, request), /วันนัด/);
   assert.match(surveyScheduleError({ committedDueDate: '2026-09-08' }, request), /เจ้าหน้าที่/);
+  assert.equal(surveyScheduleError(schedule, request), null);
+});
+
+/* ⭐ **วันส่งผลบังคับตั้งแต่ตอนลงคิว** (มติผู้ใช้ 2026-09-21 · mig 0368) — ฝ่ายขายรอ
+   คำตอบว่า "ได้ตัวเลขวันไหน" ซึ่งวันนัดเข้าพื้นที่ตอบไม่ได้
+   ⚠️ เท่ากับวันนัดได้ (ไปเช้า ส่งเย็น) · ก่อนวันนัดไม่ได้ */
+test('🔴 ลงคิวต้องบอกวันส่งผลด้วย — และส่งผลก่อนวันที่ไปวัดไม่ได้', () => {
+  const { committedResultDate, ...noResult } = schedule;
+  assert.match(surveyScheduleError(noResult, request), /วันที่จะส่งผล/);
+  assert.match(
+    surveyScheduleError({ ...schedule, committedResultDate: '2026-09-07' }, request),
+    /ไม่มาก่อนวันนัดเข้าพื้นที่/,
+  );
   assert.equal(
-    surveyScheduleError({ committedDueDate: '2026-09-08', assigneeId: 'U1' }, request),
+    surveyScheduleError({ ...schedule, committedResultDate: '2026-09-08' }, request),
     null,
+  );
+  assert.match(
+    surveyScheduleError({ ...schedule, committedResultDate: '8/9/2026' }, request),
+    /ไม่ถูกต้อง/,
   );
 });
 
 test('เวลาไม่บังคับ — "ไปทั้งวัน" เป็นคำตอบที่ถูกของงานจริง · รูปผิดถึงตีกลับ', () => {
-  const base = { committedDueDate: '2026-09-08', assigneeId: 'U1' };
+  const base = schedule;
   assert.equal(surveyScheduleError({ ...base, committedDueTime: '' }, request), null);
   assert.equal(surveyScheduleError({ ...base, committedDueTime: '13:30' }, request), null);
   assert.match(surveyScheduleError({ ...base, committedDueTime: '99:99' }, request), /เวลานัด/);
 });
 
 test('🔴 ใบที่ไม่มีสถานที่ ลงคิวไม่ได้ — นัดต้องรู้ว่าไปที่ไหน', () => {
-  assert.match(
-    surveyScheduleError({ committedDueDate: '2026-09-08', assigneeId: 'U1' }, { id: 'DR-1' }),
-    /ไม่มีสถานที่/,
-  );
+  assert.match(surveyScheduleError(schedule, { id: 'DR-1' }), /ไม่มีสถานที่/);
 });
 
 /* ตัวปลอมของ "สร้างนัด" — ต้องตอบได้ทั้งการ *ถามหานัดเปิดเดิม* (from/select/…)

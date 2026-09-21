@@ -131,6 +131,49 @@ export function normalizeSurveyTime(value) {
   return { value: hhmm, error: null };
 }
 
+/* ── วันส่งผล — คนละวันกับวันเข้าพื้นที่ (mig 0368) ──────────────────────
+   ⭐ **ที่มา (มติผู้ใช้ 2026-09-21)**: ใบหนึ่งใบมีสองเหตุการณ์ที่ไม่เคยเป็นวันเดียวกัน
+      — วันที่ช่างไปวัด กับวันที่ฝ่ายขายได้ตัวเลขไปเสนอราคา · ของเดิมมีวันเดียว
+      ⇒ ตัวเลขบนใบตอบไม่ได้ว่าอันไหนคืออันไหน
+   🔴 **คอลัมน์เดิมยังแปลว่า "วันเข้าพื้นที่" เหมือนเดิม** — `requestedDueDate`/
+      `committedDueDate` เป็นตัวที่ทั้งระบบใช้นับ "เลยกำหนด" และโชว์ในคิวรวม
+      ⇒ ของใหม่คือวันส่งผล ไม่ใช่การตีความคอลัมน์เดิมใหม่ (ใบเก่าอ่านได้เหมือนเดิม)
+   ⚠️ **ส่งผลก่อนไปวัดไม่ได้** — เท่ากันได้ (ไปเช้า ส่งเย็น เป็นเรื่องปกติ)
+      ตัวเทียบเป็นสตริง `YYYY-MM-DD` ซึ่งเรียงตามเวลาอยู่แล้ว ไม่ต้องแปลงเป็น Date
+      (แปลงเมื่อไรจะได้เขตเวลาของเครื่องเข้ามาเกี่ยว ซึ่งวันที่ล้วนไม่ควรมี) */
+function normalizeResultDate(value, { visitDate, labels }) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return { value: null, error: labels.missing };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { value: null, error: labels.bad };
+  const visit = String(visitDate ?? '').trim();
+  if (visit && raw < visit) return { value: null, error: labels.before };
+  return { value: raw, error: null };
+}
+
+/** ฝั่งผู้ขอ: วันที่ SA อยากได้ผล — **บังคับ** คู่กับวันที่อยากให้เข้าพื้นที่ */
+export function normalizeSurveyRequestedResult(value, visitDate) {
+  return normalizeResultDate(value, {
+    visitDate,
+    labels: {
+      missing: 'ต้องระบุวันที่ต้องการรับผลประเมิน',
+      bad: 'วันที่ต้องการรับผลประเมินไม่ถูกต้อง',
+      before: 'วันที่ต้องการรับผลประเมินต้องไม่มาก่อนวันที่ต้องการให้เข้าพื้นที่',
+    },
+  });
+}
+
+/** ฝั่งฝ่าย TS: วันที่รับปากว่าจะส่งผล — **บังคับ** ตอนลงคิว คู่กับวันนัดเข้าพื้นที่ */
+export function normalizeSurveyCommittedResult(value, visitDate) {
+  return normalizeResultDate(value, {
+    visitDate,
+    labels: {
+      missing: 'ต้องระบุวันที่จะส่งผลประเมิน',
+      bad: 'วันที่จะส่งผลประเมินไม่ถูกต้อง',
+      before: 'วันที่จะส่งผลประเมินต้องไม่มาก่อนวันนัดเข้าพื้นที่',
+    },
+  });
+}
+
 /* ── ตรวจทั้ง payload ในครั้งเดียว ─────────────────────────────────────── */
 export function normalizeSurveyRequest(body = {}) {
   const site = normalizeSurveySite(body);
@@ -139,5 +182,17 @@ export function normalizeSurveyRequest(body = {}) {
   if (zones.error) return { value: null, error: zones.error };
   const time = normalizeSurveyTime(body.requestedDueTime);
   if (time.error) return { value: null, error: time.error };
-  return { value: { ...site.value, zones: zones.value, requestedDueTime: time.value }, error: null };
+  /* ⚠️ เทียบกับ `requestedDueDate` ของ payload เดียวกัน ไม่ใช่ของที่อยู่ในฐาน —
+     ด่าน "ต้องมีวันที่ต้องการรับงาน" อยู่ที่ `requestShapeError` ซึ่งวิ่งก่อนหน้านี้ */
+  const result = normalizeSurveyRequestedResult(body.requestedResultDate, body.requestedDueDate);
+  if (result.error) return { value: null, error: result.error };
+  return {
+    value: {
+      ...site.value,
+      zones: zones.value,
+      requestedDueTime: time.value,
+      requestedResultDate: result.value,
+    },
+    error: null,
+  };
 }

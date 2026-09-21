@@ -1051,6 +1051,10 @@ export default function RequestDetailPage() {
             time: needsRequeue
               ? String(req.committedDueTime || "").slice(0, 5)
               : (isScheduling ? (req.requestedDueTime || "") : ""),
+            /* วันส่งผล (mig 0368) — ตั้งต้นด้วยของเดิมบนใบ แล้วถอยไปวันที่ผู้ขอต้องการ
+               ⚠️ ไม่ตั้งต้นเป็นวันนัด — สองวันนี้เท่ากันได้ก็จริง แต่ค่าเริ่มต้นที่เท่ากัน
+                  จะทำให้คนกดผ่านไปโดยไม่ได้คิด ซึ่งคือปัญหาที่ช่องนี้เกิดมาแก้ */
+            resultDate: req.committedResultDate || req.requestedResultDate || "",
             assigneeId: req.assigneeId || "",
             reason: "",
           }),
@@ -1266,6 +1270,8 @@ export default function RequestDetailPage() {
                  ⚠️ บล็อกนั้นเป็น **อ่านอย่างเดียว** ในโหมดแก้ (ดู RequestForm) —
                     ทางแก้ใบเขียนได้แค่หัวใบ ⇒ ค่าพวกนี้มีไว้ให้อ่าน ไม่ใช่ให้แก้ */
               requestedDueTime: req.requestedDueTime ? String(req.requestedDueTime).slice(0, 5) : "",
+              // วันที่ต้องการรับผล (mig 0368) — **แก้ได้** เหมือนวันที่ต้องการให้เข้าพื้นที่
+              requestedResultDate: req.requestedResultDate || "",
               siteId: req.siteId || "",
               zones: (req.surveyZones || []).map((z) => ({
                 zoneId: z.zoneId || null,
@@ -1343,7 +1349,12 @@ export default function RequestDetailPage() {
         label: "เลื่อนวันกำหนดส่ง",
         kind: "edit",
         icon: CalendarClock,
-        onClick: () => setReschedule({ date: req.committedDueDate || businessDate(), reason: "" }),
+        onClick: () => setReschedule({
+          date: req.committedDueDate || businessDate(),
+          // วันส่งผลเลื่อนพร้อมกันได้ (mig 0368) — ใบที่ไม่มีหัวข้อนี้ถือค่าว่างไว้เฉย ๆ
+          resultDate: req.committedResultDate || "",
+          reason: "",
+        }),
         // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
         // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
         // ⚠️ **ต้องมีวันเดิมก่อน** (มติผู้ใช้ 2026-08-19) — ใบที่ยังไม่เคยแจ้งวันใช้
@@ -2107,6 +2118,23 @@ export default function RequestDetailPage() {
                     emptyText="ยังไม่มีบัญชีที่รับงานเข้าไซต์ได้ — เปิดบัญชีฝ่าย TS หรือใส่ทีม SV ก่อน"
                   />
                 </div>
+                {/* ⭐ **วันส่งผล — คนละวันกับวันนัด** (มติผู้ใช้ 2026-09-21 · mig 0368)
+                    ⚠️ **บังคับ** — ฝ่ายขายที่รอเสนอราคาถามคำถามเดียวคือ "ได้ตัวเลขวันไหน"
+                       ซึ่งวันนัดเข้าพื้นที่ตอบไม่ได้ · ด่านจริงคือ `surveyScheduleError`
+                       ตัวเดียวกับ server */}
+                <div className="form-group">
+                  <label htmlFor="commit-result">
+                    {dueLabels.committedResultLabel || "วันที่จะส่งผล"}
+                  </label>
+                  <DateInput
+                    id="commit-result" value={commitDue.resultDate || ""} disabled={saving}
+                    onChange={(v) => setCommitDue({ ...commitDue, resultDate: v })}
+                  />
+                  <small className={styles.hint}>
+                    ต้องไม่มาก่อนวันนัดเข้าพื้นที่
+                    {req.requestedResultDate ? ` · ผู้ขอต้องการผลวันที่ ${fmtDate(req.requestedResultDate)}` : ""}
+                  </small>
+                </div>
               </>
             )}
 
@@ -2123,7 +2151,8 @@ export default function RequestDetailPage() {
               <Button variant="quiet" disabled={saving} onClick={() => setCommitDue(null)}>ยกเลิก</Button>
               <Button
                 tone="primary"
-                disabled={saving || !commitDue.date || (isScheduling && !commitDue.assigneeId)}
+                disabled={saving || !commitDue.date
+                  || (isScheduling && (!commitDue.assigneeId || !commitDue.resultDate))}
                 onClick={() => call("", {
                   method: "PATCH",
                   body: JSON.stringify({
@@ -2132,6 +2161,8 @@ export default function RequestDetailPage() {
                     reason: commitDue.reason,
                     ...(isScheduling ? {
                       committedDueTime: commitDue.time || null,
+                      // วันส่งผล (mig 0368) — ด่านฝั่ง server เป็นคนตรวจลำดับวัน
+                      committedResultDate: commitDue.resultDate || null,
                       assigneeId: commitDue.assigneeId,
                       assigneeName: technicians.find((t) => t.id === commitDue.assigneeId)?.name || null,
                     } : {}),
@@ -2155,12 +2186,14 @@ export default function RequestDetailPage() {
           ข้อความในโมดัลบอกทางออกไว้ ไม่ใช่ปล่อยให้หาเอง */}
       <Modal
         open={!!reschedule} onClose={() => setReschedule(null)} size="sm" dismissible={!saving}
-        title="เลื่อนวันกำหนดส่ง"
+        title={isScheduling ? "เลื่อนวันนัดเข้าพื้นที่" : "เลื่อนวันกำหนดส่ง"}
       >
         {reschedule && (
           <>
             <div className="form-group">
-              <label htmlFor="resch-due">วันกำหนดส่งใหม่</label>
+              <label htmlFor="resch-due">
+                {isScheduling ? "วันนัดเข้าพื้นที่ใหม่" : "วันกำหนดส่งใหม่"}
+              </label>
               <DateInput
                 id="resch-due" value={reschedule.date} disabled={saving}
                 onChange={(v) => setReschedule({ ...reschedule, date: v })}
@@ -2169,6 +2202,25 @@ export default function RequestDetailPage() {
                 เดิมรับปากไว้ {req.committedDueDate ? fmtDate(req.committedDueDate) : NA}
               </small>
             </div>
+            {/* ⭐ **เลื่อนวันเข้าพื้นที่แล้ววันส่งผลต้องขยับตามได้** (mig 0368) —
+                ไม่มีช่องนี้ = เลื่อนนัดไปหลังวันที่รับปากว่าจะส่งผลแล้วตกด่านของ server
+                โดยไม่มีที่ให้แก้ · ⚠️ ไม่บังคับ: เลื่อนนัดสองวันโดยที่ยังส่งผลทันวันเดิม
+                เป็นเรื่องปกติ ⇒ ปล่อยค่าเดิมไว้ได้ */}
+            {isScheduling && (
+              <div className="form-group">
+                <label htmlFor="resch-result">
+                  {dueLabels.committedResultLabel || "วันที่จะส่งผล"}
+                </label>
+                <DateInput
+                  id="resch-result" value={reschedule.resultDate || ""} disabled={saving}
+                  onChange={(v) => setReschedule({ ...reschedule, resultDate: v })}
+                />
+                <small className={styles.hint}>
+                  เดิมรับปากไว้ {req.committedResultDate ? fmtDate(req.committedResultDate) : NA}
+                  {" · "}ต้องไม่มาก่อนวันนัดใหม่
+                </small>
+              </div>
+            )}
             <div className="form-group">
               <label htmlFor="resch-why">เหตุผล (ไม่บังคับ)</label>
               <Textarea
@@ -2182,13 +2234,21 @@ export default function RequestDetailPage() {
               <Button variant="quiet" disabled={saving} onClick={() => setReschedule(null)}>ยกเลิก</Button>
               <Button
                 tone="primary"
-                disabled={saving || !reschedule.date || reschedule.date === req.committedDueDate}
+                /* ⚠️ วันเดิม + วันส่งผลเดิม = ไม่มีอะไรเปลี่ยน · แต่ "วันนัดเท่าเดิม
+                   แต่เลื่อนวันส่งผล" เป็นการเปลี่ยนที่มีจริง ⇒ ต้องกดได้ */
+                disabled={saving || !reschedule.date
+                  || (reschedule.date === req.committedDueDate
+                    && (reschedule.resultDate || "") === (req.committedResultDate || ""))}
                 onClick={() => call("", {
                   method: "PATCH",
                   body: JSON.stringify({
                     action: "reschedule",
                     committedDueDate: reschedule.date,
                     reason: reschedule.reason,
+                    // ส่งคีย์เฉพาะตอนที่ค่าเปลี่ยนจริง — ไม่ส่ง = ไม่แตะของเดิม (ด่านฝั่ง server)
+                    ...(isScheduling && (reschedule.resultDate || "") !== (req.committedResultDate || "")
+                      ? { committedResultDate: reschedule.resultDate || null }
+                      : {}),
                   }),
                 }, "เลื่อนวันแล้ว").then((ok) => { if (ok) setReschedule(null); })}
               >

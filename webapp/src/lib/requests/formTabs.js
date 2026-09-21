@@ -118,6 +118,14 @@ export function requiredChecks(form = {}) {
       applies: true, ok: filled(form.requestedDueDate),
     },
     {
+      /* ⭐ **วันที่สอง: วันส่งผล** (มติผู้ใช้ 2026-09-21 · mig 0368) — มีเฉพาะหัวข้อที่
+         ทะเบียนประกาศป้ายไว้ · บังคับเท่ากับวันแรก (ใบที่ไม่บอกว่าต้องใช้ตัวเลขวันไหน
+         ทำให้ฝ่ายปลายทางจัดลำดับงานไม่ได้) */
+      tab: 'due', label: requestKindMeta(kind)?.form?.resultDueLabel || 'วันที่ต้องการรับผล',
+      applies: !!requestKindMeta(kind)?.form?.resultDueLabel,
+      ok: filled(form.requestedResultDate),
+    },
+    {
       tab: 'due', label: 'เหตุผลที่เป็นงานด่วน',
       applies: !!form.urgent, ok: filled(form.urgentReason),
     },
