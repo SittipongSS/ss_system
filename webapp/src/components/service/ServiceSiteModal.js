@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import ServiceSiteFields, { useServiceSiteForm } from "./ServiceSiteFields";
-import { normalizeSiteInput } from "@/lib/service/sites";
+import { normalizeSiteInput, siteCreateMissing } from "@/lib/service/sites";
 
 /* `defaults` = ค่าตั้งต้นของโหมด **สร้าง** เท่านั้น (แพตเทิร์นเดียวกับ ServiceVisitModal)
    ใช้ตอนที่ผู้เรียกรู้คำตอบอยู่แล้ว เช่น wizard รับใบสั่งขายซึ่งรู้ว่าลูกค้าคือใคร —
@@ -34,12 +34,13 @@ export default function ServiceSiteModal({
   }, [open]);
 
   const submit = async () => {
-    /* ⚠️ **จังหวัดบังคับเฉพาะตอนสร้าง** — `normalizeSiteInput` จงใจไม่บังคับ (ไซต์ยุค
-       ก่อน mig 0315 ต้องยังแก้ช่องอื่นได้) ⇒ ด่านของ "ใบใหม่" อยู่ที่ route และที่นี่
+    /* ⚠️ **ช่องชุดนี้บังคับเฉพาะตอนสร้าง** — `normalizeSiteInput` จงใจไม่บังคับ (ไซต์ยุค
+       ก่อน mig 0315 ต้องยังแก้ช่องอื่นได้) ⇒ ด่านของ "ใบใหม่" อยู่ที่ `siteCreateMissing`
+       ซึ่ง route เรียกตัวเดียวกัน — ข้อความตรงกันคำต่อคำ
        ⭐ บอกตั้งแต่บนจอ ดีกว่าปล่อยให้กดบันทึกแล้วเจอ 400 จาก server */
-    if (!editing && !form.provinceCode) {
-      setError('ต้องเลือกจังหวัดของไซต์ — รหัสไซต์ประกอบจากภาคและจังหวัด');
-      return;
+    if (!editing) {
+      const missing = siteCreateMissing(form);
+      if (missing) { setError(missing); return; }
     }
     // validate ด้วยตัวเดียวกับฝั่ง server — ข้อความผิดพลาดตรงกันคำต่อคำ
     const { error: invalid } = normalizeSiteInput(form);

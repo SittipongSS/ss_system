@@ -9,7 +9,7 @@ import { canCreateServiceSite } from '@/lib/permissions';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { SITE_RUN_BUCKET, SITE_RUN_WIDTH, siteCodePrefix } from '@/lib/service/siteCode';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
-import { normalizeSiteInput } from '@/lib/service/sites';
+import { normalizeSiteInput, siteCreateMissing } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
 import { checkSiteReferences } from '@/lib/service/siteReferences';
 import {
@@ -103,6 +103,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const body = await req.json().catch(() => ({}));
   const { value, error } = normalizeSiteInput(body);
   if (error) return badRequest(error);
+  /* ⚠️ **ช่องที่บังคับเฉพาะไซต์ใหม่** (มติผู้ใช้ 2026-09-21) — ที่อยู่ · หมุด · ผู้ติดต่อ ·
+     ช่วงเวลาเข้าได้ · จังหวัด · `normalizeSiteInput` ไม่บังคับให้ เพราะไซต์เก่าบนของจริง
+     ไม่มีครบและต้องยังแก้ช่องอื่นได้ ⇒ ด่านอยู่ที่นี่ ตัวเดียวกับที่โมดัลถามก่อนกด */
+  const missing = siteCreateMissing(value);
+  if (missing) return badRequest(missing);
 
   try {
     // ลูกค้าต้องมีจริง + snapshot ชื่อจากทะเบียน ไม่ใช่จากที่ client ส่งมา

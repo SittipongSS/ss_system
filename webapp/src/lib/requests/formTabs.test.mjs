@@ -115,6 +115,8 @@ test('🪤 ประเมินพื้นที่: ไซต์กับพ�
   const survey = {
     dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1',
     title: 'ประเมินพื้นที่สาขา A', requestedDueDate: '2026-09-20',
+    // รายละเอียดบังคับของหัวข้อนี้ (มติผู้ใช้ 2026-09-21) — ดูเทสต์ของตัวเองข้างล่าง
+    body: 'ลูกค้าจะเปิดโซนใหม่ต้นเดือนหน้า · ติดต่อคุณเอ 081-000-0000',
   };
   const missing = missingRequiredByTab(survey);
   const site = missing.find((m) => m.label.includes('สถานที่'));
@@ -138,6 +140,15 @@ test('🪤 ประเมินพื้นที่: ไซต์กับพ�
   const full = { ...noResult, requestedResultDate: '2026-09-22' };
   assert.equal(missingRequiredByTab(full).length, 0);
   assert.equal(requestFormBlocker(full), null);
+
+  /* ⭐ **รายละเอียดเป็นช่องบังคับของหัวข้อนี้** (มติผู้ใช้ 2026-09-21) — ใบนี้ไม่มีตาราง
+     รายการและไม่มีแบบฟอร์ม PDR ⇒ ช่องนี้คือที่เดียวที่บริบทของงานอยู่ · ฝ่าย TS
+     ต้องอ่านก่อนจัดคน · หัวข้ออื่นยังไม่บังคับ (ดูเทสต์ถัดไป) */
+  const { body: _body, ...noBody } = full;
+  const bodyMissing = missingRequiredByTab(noBody).find((m) => m.label.includes('รายละเอียดเพิ่มเติม'));
+  assert.ok(bodyMissing, 'ไม่กรอกรายละเอียด = ต้องขึ้นว่าขาด');
+  assert.equal(bodyMissing.tab, 'subject');
+  assert.ok(requestFormBlocker(noBody), 'ด่านส่งต้องเห็นตรงกับเกจ');
 
   // แท็บ "งาน" ยังต้องมีของ (ดีล) — ไม่ใช่ย้ายจนแท็บว่าง
   const tabs = requestFormTabs(survey);

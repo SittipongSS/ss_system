@@ -66,7 +66,12 @@ export function RequestTitleBodyFields({ value = {}, onChange, disabled = false,
       </div>
       {!hasPdr && (
         <div className="form-group col-span-2">
-          <label htmlFor={`${idPrefix}-body`}>{copy.bodyLabel}</label>
+          {/* ⚠️ คำว่า "(บังคับ)" มาจากทะเบียนหัวข้อ ไม่ใช่เขียนตายตัว — หัวข้อที่ไม่ได้
+              ประกาศ `bodyRequired` ยังเป็นช่องเสริมเหมือนเดิม (ด่านจริงคือ
+              `requestShapeError` ตัวเดียวกับ server) */}
+          <label htmlFor={`${idPrefix}-body`}>
+            {copy.bodyLabel}{copy.bodyRequired ? " (บังคับ)" : ""}
+          </label>
           <Textarea
             id={`${idPrefix}-body`} rows={4} maxLength={4000}
             value={value.body || ""} disabled={disabled}
