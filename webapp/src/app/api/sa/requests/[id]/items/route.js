@@ -233,9 +233,15 @@ export async function POST(request, { params }) {
       }
       // เติมลงแถวที่รออยู่ — ตัวตนของแถว (id · ลำดับ · สายพันธุ์) ต้องไม่ถูกเขียนทับ
       const { requestId: _r, sortOrder: _s, lineKind: _k, ...fill } = values;
-      const { error: fillError } = await supabase.from('dept_request_items')
-        .update({ ...fill, updatedAt: nowIso }).eq('id', row.targetItemId);
+      /* ⚠️ เติมเฉพาะแถวที่ยังว่างจริง + นับว่าโดนแถว (รีวิว ม-148) — สองแท็บกดส่งรอบแก้เดียวกันพร้อมกัน หรือ
+         แถวถูกลบระหว่างทาง เดิมผ่านเงียบ ⇒ ตอบ 201 ทั้งที่กลิ่น(+สูตร)ชุดนี้ไม่มีแถวไหนผูก = ของกำพร้าในทะเบียน
+         · ไม่โดน = โยน ⇒ catch ข้างล่างย้อนลบของที่เพิ่งสร้าง */
+      const { data: filled, error: fillError } = await supabase.from('dept_request_items')
+        .update({ ...fill, updatedAt: nowIso }).eq('id', row.targetItemId)
+        .is('readyAt', null).is('producedScentId', null)
+        .select('id');
       if (fillError) throw fillError;
+      if (!filled?.length) throw new Error('รายการรอบแก้นี้เพิ่งถูกส่งหรือถูกลบไปแล้ว — โหลดหน้าใหม่');
     }
     if (inserts.length) {
       const { error: itemError } = await supabase.from('dept_request_items').insert(inserts);
@@ -250,11 +256,13 @@ export async function POST(request, { params }) {
        ทีละตัวโดยเจตนา — ตัวที่ถูกแถวรอบแก้ผูกไปแล้วลบไม่ลง ต้องไม่ลากตัวอื่นล้มตาม
        ⚠️ **สูตรก่อนกลิ่น** (ม-148) — `formulas.scentId` เป็น SET NULL ⇒ ลบกลิ่นก่อนฐานยอมเงียบ ๆ แล้วได้สูตร
        ไร้กลิ่นค้างทะเบียน · ลบสูตรไม่ลง = **เก็บกลิ่นไว้ด้วย** ด้วยเหตุผลเดียวกัน */
-    for (const { scent, formula } of created) {
-      if (formula) {
-        const { error: formulaUndoError } = await supabase.from('formulas').delete().eq('id', formula.id);
+    for (const { row, scent, formula } of created) {
+      /* ลบสูตร **ด้วยกลิ่น** ไม่ใช่ด้วย id ที่จำได้ — `createFormula` ที่ insert สำเร็จแต่คำตอบสะดุด (โยนหลังเขียน)
+         ไม่เคยเข้า `created` ⇒ ลบด้วย id จะไม่ถึง · กลิ่นเพิ่งเกิดจากคำขอนี้ ⇒ สูตรที่ชี้มันมีแต่ของคำขอนี้ */
+      if (formula || row.formula) {
+        const { error: formulaUndoError } = await supabase.from('formulas').delete().eq('scentId', scent.id);
         if (formulaUndoError) {
-          console.error('[request items] ย้อนลบสูตรไม่สำเร็จ', formula.id, formulaUndoError.message);
+          console.error('[request items] ย้อนลบสูตรไม่สำเร็จ', formula?.id || scent.id, formulaUndoError.message);
           continue;
         }
       }

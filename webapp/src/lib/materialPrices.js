@@ -135,6 +135,21 @@ export function materialIdentityKey({ kind, label, formulaId, customerId } = {})
   return [kind, normLabel(label), formulaId || '', customerId || ''].join('::');
 }
 
+/**
+ * วัสดุของกลิ่น/สูตรตัวหนึ่ง (ประทับ `stampColumn` = `id` และชนิดตรง) — ตัวเขียนราคา (`registryEntryMaterial`)
+ * กับตัวแสดงราคาบนทะเบียน (`attachRegistryPrice`) ต้องถามตัวนี้ตัวเดียว (รีวิว ม-148)
+ *
+ * ⚠️ ตามปกติมีตัวเดียว แต่ไม่มี unique บน pointer — ข้อมูลเก่ามีสองตัวได้ (ชื่อเปลี่ยนแล้วเกิดวัสดุใหม่) ·
+ * ถ้าสองทางเลือกคนละตัว ราคาที่เพิ่งใส่จะไม่ขึ้นบนจอ ⇒ เลือกตัวที่ชื่อตรงก่อน แล้วค่อยตัวที่ขยับล่าสุด
+ */
+export function pickStampedMaterial(materials = [], { stampColumn, id, kind, label } = {}) {
+  const mine = (materials || []).filter((m) => m && m.kind === kind && m[stampColumn] === id);
+  if (mine.length <= 1) return mine[0] || null;
+  const named = mine.filter((m) => normLabel(m.label) === normLabel(label));
+  const pool = named.length ? named : mine;
+  return [...pool].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];
+}
+
 export function findMaterialByIdentity(materials = [], identity = {}) {
   const key = materialIdentityKey(identity);
   return materials.find((m) => materialIdentityKey(m) === key) || null;

@@ -5,7 +5,9 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
 import { ADDENDUM_DOC_TITLE, addendumEligibility, addendumLinesFromFormulas } from '@/lib/sales/contractAddenda';
-import { addendumSourceReason, loadAddendumRequestCandidates, pickAddendumRequest } from '@/lib/sales/addendumRequests';
+import {
+  addendumFormulaIds, addendumSourceReason, loadAddendumRequestCandidates, pickAddendumRequest,
+} from '@/lib/sales/addendumRequests';
 import { ADDENDUM_TEMPLATE } from '@/lib/sales/contractTemplateAddendum';
 
 export const dynamic = 'force-dynamic';
@@ -63,13 +65,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // สูตรที่คำร้องนี้ผลิตออกมา — อ่านจากแถวคำร้อง (`producedFormulaId`) ไม่ใช่เดาจากชื่อ
   const { data: items, error: itemError } = await supabase
-    .from('dept_request_items').select('"producedFormulaId", "producedScentId", "sortOrder"')
+    .from('dept_request_items').select('"producedFormulaId", "producedScentId", "sortOrder", outcome')
     .eq('requestId', request.id).order('sortOrder', { ascending: true });
   if (itemError) return fail(itemError.message, 500);
 
-  const formulaIds = [...new Set((items || []).map((item) => item.producedFormulaId).filter(Boolean))];
+  // ⚠️ เฉพาะ direction ที่ลูกค้าคอนเฟิร์ม — ตัวเดียวกับตัวนับของตัวเลือก (`addendumFormulaIds`)
+  const formulaIds = addendumFormulaIds(items || []);
   if (!formulaIds.length) {
-    return fail('คำร้องนี้ยังไม่มีสูตรที่ขึ้นทะเบียนแล้ว — บันทึกเพิ่มเติมต้องมีรหัสสูตรให้อ้าง', 409);
+    return fail('คำร้องนี้ยังไม่มีสูตรของรายการที่ลูกค้าคอนเฟิร์ม — บันทึกเพิ่มเติมต้องมีรหัสสูตรให้อ้าง', 409);
   }
   const { data: formulas, error: formulaError } = await supabase
     .from('formulas').select('id, code, name, "formulaDate", "scentId"').in('id', formulaIds);

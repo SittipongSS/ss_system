@@ -2876,6 +2876,8 @@ export default function RequestDetailPage() {
                   }, `ส่งงาน ${delivery.length} รายการ · เข้าทะเบียนแล้ว`);
                   if (!done) return;
                   setDelivery(null);
+                  // ม-148 — ส่งเป็นสินค้าเกิดสูตรใหม่ ⇒ ทะเบียนสูตรบนจอต้องสด (ด่านรหัสสูตรซ้ำ · ตัวเลือก "แก้มาจากสูตร")
+                  if (delivery.some((r) => isDeliveredAsProduct(r.categoryCode))) refreshFormulas();
                   // ⭐ ไฟล์ประกอบ (ม-91) — แถวเพิ่งเกิดตอนส่ง จึงอัปได้ตอนนี้เท่านั้น
                   // จับคู่: แถวใหม่เรียง sortOrder ตามลำดับ direction ที่กรอก ·
                   // รอบแก้เติมแถวเดิม (targetItemId รู้อยู่แล้ว)

@@ -133,12 +133,17 @@ export function canSetScentCode(user, scent = null) {
    ของตัวเองที่ลบแถวไปพร้อมกัน — ดู `lib/requests/rowDelete.js`) */
 const DELETABLE_SCENT_STATUS = new Set(['draft', 'developing']);
 
-export function deleteScentError(scent, { linkedCount = 0 } = {}) {
+/* ⭐ `formulaCount` · `productCount` (ม-148 · รีวิว 2026-09-22) — `formulas.scentId` กับ `products.scentId`
+   เป็น SET NULL (ไม่อยู่ในตัวนับ RESTRICT) ⇒ ลบกลิ่นแล้วฐานยอมเงียบ ๆ ได้สูตร/สินค้าที่ไม่มีกลิ่นค้าง ·
+   พัฒนากลิ่นที่ส่งเป็นสินค้าทำให้กลิ่น "กำลังพัฒนา" มีสูตรผูกได้เป็นครั้งแรก จึงต้องนับด้วย */
+export function deleteScentError(scent, { linkedCount = 0, formulaCount = 0, productCount = 0 } = {}) {
   if (!scent) return 'ไม่พบกลิ่น';
   if (!DELETABLE_SCENT_STATUS.has(scent.status)) {
     return 'ลบได้เฉพาะร่างหรือกลิ่นที่ยังกำลังพัฒนา — กลิ่นที่ใช้งานแล้วให้เปลี่ยนเป็น "เลิกใช้" แทน';
   }
   if (linkedCount > 0) return `กลิ่นนี้ถูกอ้างอยู่ ${linkedCount} ที่ (คำร้อง/ทะเบียนราคา) ลบไม่ได้`;
+  if (formulaCount > 0) return `มีสูตร ${formulaCount} ตัวใช้กลิ่นนี้อยู่ — ลบสูตรก่อน`;
+  if (productCount > 0) return `มีสินค้า ${productCount} รายการอ้างกลิ่นนี้อยู่ ลบไม่ได้`;
   return null;
 }
 

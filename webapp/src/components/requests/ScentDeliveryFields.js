@@ -200,7 +200,9 @@ export default function ScentDeliveryFields({
                   customers={customers}
                   categories={deliveryProductCategories(productTypes, row.categoryCode)}
                   disabled={disabled}
-                  locked={row._parentFormulaId
+                  /* ⚠️ รอบแก้ล็อก "แก้มาจากสูตร" **ทุกแถว** — server ยกจากแถวต้นทางเสมอ (รอบก่อนส่งหัวน้ำหอม = ว่าง)
+                     ปล่อยให้เลือกเมื่อรอบก่อนไม่มีสูตร = จอรับค่าที่ server ทิ้งเงียบ (รีวิว ม-148) */
+                  locked={row.targetItemId
                     ? ["customerId", "scentId", "derivedFromFormulaId"] : ["customerId", "scentId"]}
                   lockedNote="ยกมาจากคำร้อง / กลิ่นในแท็บนี้ — แก้ที่นี่ไม่ได้"
                   onChange={(next) => patch(i, {

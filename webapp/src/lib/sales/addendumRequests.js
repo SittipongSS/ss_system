@@ -12,6 +12,18 @@
 // เลขใบสั่งขายยังอ่านมาโชว์อยู่ (จาก `dept_requests."salesOrderId"`) เพื่อให้คนกดเห็นที่มา
 import { sameCustomer } from '@/lib/sales/contractAddenda';
 
+/* ⭐ **สูตรที่เข้าบันทึกเพิ่มเติม = สูตรของ direction ที่ลูกค้าคอนเฟิร์ม** (รีวิว ม-148 · 2026-09-22)
+   ก่อน ม-148 แถวพัฒนากลิ่นไม่เคยมีสูตร ⇒ เส้นนี้ไม่เคยเจอของจริง · พอส่งเป็นสินค้าได้สูตรพร้อมกลิ่น
+   ทุก direction มีสูตร ⇒ ไม่กรอง = ตารางที่ผูกพันลูกค้ามีสูตรของตัวที่ลูกค้าปฏิเสธ และสูตรรอบแรกที่ถูก
+   รอบแก้แทนไปแล้ว (แถวต้นทางค้าง `outcome = 'revise'`)
+   ⚠️ ตัวนับของตัวเลือกกับ POST ถามตัวนี้ตัวเดียว — ไม่งั้นปุ่มบอกว่ามีสูตรแต่กดแล้ว 409
+   ⚠️ direction ที่ส่งเป็นหัวน้ำหอมไม่มีสูตร ⇒ ไม่อยู่ในตาราง (ยังไม่มีมติว่าจะลงเป็นรหัสกลิ่นไหม) */
+export function addendumFormulaIds(items = []) {
+  return [...new Set((items || [])
+    .filter((item) => item?.producedFormulaId && item.outcome === 'confirmed')
+    .map((item) => item.producedFormulaId))];
+}
+
 /* เลือกใบที่จะใช้ต่อไป — เก่าสุดก่อน เพื่อให้บันทึกครั้งที่ 1, 2, 3 … ไล่ตามลำดับที่
    คำร้องปิดเรื่องจริง (ไม่ใช่สลับไปมาแล้วอ่านย้อนหลังไม่รู้เรื่อง)
    ⚠️ ใบที่ไม่มีสูตรขึ้นทะเบียน = ไม่มีรหัสให้อ้างในตาราง ⇒ ข้ามไป ไม่ใช่เลือกแล้วพังตอนสร้าง */
@@ -40,13 +52,11 @@ export async function loadAddendumRequestCandidates(supabase, contract) {
   if (!ids.length) return { candidates: [], error: null };
 
   const { data: items, error: itemError } = await supabase
-    .from('dept_request_items').select('"requestId", "producedFormulaId"').in('requestId', ids);
+    .from('dept_request_items').select('"requestId", "producedFormulaId", outcome').in('requestId', ids);
   if (itemError) return { candidates: [], error: itemError.message };
-  const formulaCount = (items || []).reduce((map, item) => {
-    if (!item.producedFormulaId) return map;
-    map.set(item.requestId, (map.get(item.requestId) || 0) + 1);
-    return map;
-  }, new Map());
+  const formulaCount = new Map(ids.map((requestId) => [
+    requestId, addendumFormulaIds((items || []).filter((item) => item.requestId === requestId)).length,
+  ]));
 
   // เลขใบสั่งขายไว้โชว์ที่มาเฉย ๆ — ไม่ใช่เงื่อนไขคัดเลือก (ใบที่ไม่มีก็ยังใช้ได้)
   const orderIds = [...new Set(rows.map((request) => request.salesOrderId).filter(Boolean))];

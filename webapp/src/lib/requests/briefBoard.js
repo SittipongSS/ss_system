@@ -41,7 +41,9 @@ function directionRow(item, all = []) {
        ⚠️ null = แถวที่ส่งก่อน ม-148 (ไม่มีใครบันทึกไว้) ไม่ใช่ "หัวน้ำหอม" — ห้ามเดา */
     // ⭐ ราคาที่ใส่จากแถวนี้ (F · B · FB เรียงแล้ว) — ว่าง = ยังไม่ถึงขั้นราคา
     priced: item.pricedResults || [],
-    delivered: item.categoryCode ? {
+    // ⚠️ เฉพาะแถวที่ส่งแล้วจริง (มีกลิ่นผูก) — แถวรอบแก้ที่รออยู่ยกหมวดมาจากรอบก่อน (`followUpRowFrom`)
+    //    ยังไม่มีใครส่งอะไร ⇒ ห้ามบอกว่า "ส่งเป็น…" (รีวิว ม-148)
+    delivered: item.categoryCode && item.producedScentId ? {
       categoryCode: item.categoryCode,
       product: isDeliveredAsProduct(item.categoryCode),
       formula: item.refFormula ? { ...item.refFormula, kind: 'formula' } : null,

@@ -14,6 +14,7 @@ import { businessDate } from '@/lib/businessDate';
 import { briefLinkError } from '@/lib/requests/scentBriefs';
 import { reworkSlotFrom, reworkTargetError } from '@/lib/requests/rework';
 import { deliveredCategoryError, isDeliveredAsProduct } from '@/lib/requests/deliveredCategory';
+import { formulaDateError } from '@/lib/master/formulas';
 
 export const MAX_DELIVERY_ROWS = 20;
 
@@ -271,9 +272,9 @@ export function normalizeFormulaDelivery(input = {}) {
   if (code.length > 100) return { value: null, error: 'รหัสสูตรยาวเกิน 100 ตัวอักษร' };
 
   const formulaDate = String(src.formulaDate ?? '').trim() || null;
-  if (formulaDate && !ISO_DATE.test(formulaDate)) {
-    return { value: null, error: 'วันที่ของสูตรไม่ถูกต้อง' };
-  }
+  // ⭐ กติกาเดียวกับ `createFormula` (รูปแบบ + ช่วงปี) — ไม่งั้นผ่านด่านแล้วไปตายหลังกลิ่นเกิด
+  const dateError = formulaDateError(formulaDate);
+  if (dateError) return { value: null, error: dateError };
 
   const customerTradeName = String(src.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
   if (customerTradeName.length > 200) {

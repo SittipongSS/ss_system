@@ -7,7 +7,7 @@ import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
-  materialIdentityKey, normalizeMaterialInput, unitBasisForMaterialKind,
+  materialIdentityKey, normalizeMaterialInput, pickStampedMaterial, unitBasisForMaterialKind,
 } from '@/lib/materialPrices';
 import { normalizePmType } from '@/lib/master/materialTypes';
 import { brandDisplayFromList } from '@/lib/master/brands';
@@ -145,7 +145,10 @@ async function registryEntryMaterial(supabase, { kind, stampColumn, source, user
     status: null, kind, customerId: source.customerId ?? null,
   });
   // ⚠️ เทียบชนิดซ้ำแม้ query กรองแล้ว — B กับ FB ของสูตรเดียวกันประทับ formulaId ตัวเดียวกัน
-  const stamped = candidates.find((m) => m.kind === kind && m[stampColumn] === source.id);
+  // ⭐ ตัวเลือกเดียวกับที่หน้าทะเบียนใช้แสดงราคา (`pickStampedMaterial`) — ใส่แล้วต้องเห็นตัวที่ใส่
+  const stamped = pickStampedMaterial(candidates, {
+    stampColumn, id: source.id, kind, label: source.name,
+  });
   if (stamped) return stamped;
   const unstampedKey = materialIdentityKey({
     kind, label: source.name, formulaId: null, customerId: source.customerId,

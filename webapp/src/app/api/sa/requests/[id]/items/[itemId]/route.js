@@ -29,7 +29,7 @@ import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
 import { reworkHopError } from '@/lib/requests/rework';
-import { findFormulaByIdentity } from '@/lib/master/formulas';
+import { deleteFormulaError, findFormulaByIdentity } from '@/lib/master/formulas';
 import {
   countProductsUsingFormula, createFormula, findScent, loadFormulas, updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
@@ -40,7 +40,8 @@ import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { canAnswerRequestsFor } from '@/lib/permissions';
 import { deleteRequestRowError, registryOwnedByRow } from '@/lib/requests/rowDelete';
-import { countRegistryRefs } from '@/lib/master/scentFormulaAdmin';
+import { countRegistryDependents, countRegistryRefs } from '@/lib/master/scentFormulaAdmin';
+import { deleteScentError } from '@/lib/master/scents';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { requestedLabel } from '@/lib/requests/rowLabel';
 
@@ -671,25 +672,41 @@ export async function DELETE(request, { params }) {
        แล้วได้สูตรไร้กลิ่นค้างทะเบียน · กลิ่นที่ถูกเก็บเพราะสูตรยังอยู่ ต้องบอกเหตุนั้นตรง ๆ */
     const removed = [];
     const kept = [];
+    /* ⭐ ด่านชุดเดียวกับปุ่มลบบนหน้าทะเบียน (`deleteFormulaError` / `deleteScentError`) — นับทั้ง pointer แบบ
+       RESTRICT และแบบ SET NULL (สินค้า · สูตรที่แก้ต่อ · สูตรที่ใช้กลิ่น) · 🐞 รีวิว ม-148: สูตร "กำลังพัฒนา" ที่ SA
+       ผูกเข้าสินค้าแล้ว เคยถูกลบตามแถวได้เงียบ ๆ (products.formulaId SET NULL)
+       ⚠️ อ่านพัง = เก็บไว้ + หยุด — ไม่รู้ว่าสูตรยังอยู่ไหม ห้ามลบกลิ่นต่อ (ไม่งั้นสูตรไร้กลิ่น) */
+    const keep = (n, text) => {
+      kept.push(text);
+      if (owned.slice(n + 1).length) kept.push('กลิ่นของรายการนี้เก็บไว้ด้วย เพราะสูตรข้างต้นยังใช้กลิ่นนั้น');
+    };
     for (const [n, own] of owned.entries()) {
       const table = own.kind === 'formula' ? 'formulas' : 'scents';
-      const { data: entity } = await supabase
+      const { data: entity, error: readError } = await supabase
         .from(table).select('id, code, name, status').eq('id', own.id).maybeSingle();
-      const refs = await countRegistryRefs(supabase, own.kind, own.id);
-      const deletable = entity && refs === 0 && ['draft', 'developing'].includes(entity.status);
-      if (deletable) {
-        const { error: regError } = await supabase.from(table).delete().eq('id', own.id);
-        if (regError) throw regError;
-        await purgeUpdates(supabase, own.kind, own.id);
-        removed.push(entity.code || entity.name || own.id);
-      } else if (entity) {
-        // เหตุที่เก็บไว้ต้องตรงความจริง — ไม่มีใครอ้างแต่รับเข้าทะเบียนแล้ว ≠ "ถูกอ้างที่อื่น" (รีวิว ม-147)
-        const reason = refs > 0 ? 'ถูกอ้างที่อื่นแล้ว'
-          : entity.status === 'archived' ? 'เลิกใช้แล้ว' : 'ใช้งานอยู่ — เลิกใช้ที่หน้าทะเบียนถ้าไม่ต้องการ';
-        kept.push(`${entity.code || entity.name || own.id} ยังอยู่ในทะเบียน (${reason})`);
-        if (owned.slice(n + 1).length) kept.push('กลิ่นของรายการนี้เก็บไว้ด้วย เพราะสูตรข้างต้นยังใช้กลิ่นนั้น');
+      if (readError) {
+        keep(n, `ตรวจ ${own.id} ไม่ได้ — ยังอยู่ในทะเบียน (${readError.message})`);
         break;
       }
+      if (!entity) continue; // ไม่มีแล้วจริง (มีคนลบไปก่อน) — ตัวถัดไปเดินต่อได้
+      const label = entity.code || entity.name || own.id;
+      const refs = await countRegistryRefs(supabase, own.kind, own.id);
+      const dependents = await countRegistryDependents(supabase, own.kind, own.id);
+      const blocked = own.kind === 'formula'
+        ? deleteFormulaError(entity, { linkedCount: refs, ...dependents })
+        : deleteScentError(entity, { linkedCount: refs, ...dependents });
+      if (blocked) {
+        // เหตุที่เก็บไว้ต้องตรงความจริง — ไม่มีใครอ้างแต่รับเข้าทะเบียนแล้ว ≠ "ถูกอ้างที่อื่น" (รีวิว ม-147)
+        const reason = entity.status === 'archived' ? 'เลิกใช้แล้ว'
+          : ['draft', 'developing'].includes(entity.status) ? blocked
+            : 'ใช้งานอยู่ — เลิกใช้ที่หน้าทะเบียนถ้าไม่ต้องการ';
+        keep(n, `${label} ยังอยู่ในทะเบียน (${reason})`);
+        break;
+      }
+      const { error: regError } = await supabase.from(table).delete().eq('id', own.id);
+      if (regError) throw regError;
+      await purgeUpdates(supabase, own.kind, own.id);
+      removed.push(label);
     }
     if (removed.length) registryRemoved = removed.join(' · ');
     if (kept.length) registryKept = kept.join(' · ');

@@ -8,7 +8,7 @@ import {
   normalizeScentInput, scentTransitionError, sendScentError,
 } from '@/lib/master/scents';
 import {
-  assertDerivedFromScent, countRegistryRefs, findScent, findScentDetail,
+  assertDerivedFromScent, countRegistryDependents, countRegistryRefs, findScent, findScentDetail,
   scentCustomerName, updateScent,
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, unlinkRegistryRefs, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
@@ -218,8 +218,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ทั้งที่ใช้จริงเฉพาะตอนลบ (เดิม findScent join Rev ทุกครั้งด้วยเหตุผลเดียวกันนี้)
   // ⚠️ นับทุก pointer ที่เป็น RESTRICT (mig 0232) ไม่ใช่แค่ `producedScentId` —
   // ช่องที่ตกหล่นจะผ่านด่านนี้แล้วไปตายที่ฐานข้อมูลด้วย 23503 ที่ผู้ใช้อ่านไม่ออก
+  // ⚠️ + สูตร/สินค้าที่ชี้กลิ่นนี้ด้วย SET NULL (ม-148) — ลบแล้วฐานยอมเงียบ ได้สูตร/สินค้าไร้กลิ่น
   const error = deleteScentError(scent, {
     linkedCount: await countRegistryRefs(supabase, 'scent', id),
+    ...(await countRegistryDependents(supabase, 'scent', id)),
   });
   if (error) return badRequest(error);
 

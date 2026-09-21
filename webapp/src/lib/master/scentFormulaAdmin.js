@@ -7,7 +7,7 @@ import { genId } from '@/lib/id';
 import { registryRefTargets } from '@/lib/master/registryRefs';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import {
-  latestRevision, materialPriceState, revisionPriceRange, revisionUnitPrice,
+  latestRevision, materialPriceState, pickStampedMaterial, revisionPriceRange, revisionUnitPrice,
 } from '@/lib/materialPrices';
 import {
   derivedFromError, newScentStatus, normalizeScentInput, proposedScentStatus,
@@ -461,6 +461,25 @@ export async function productFormulaSnapshot(supabase, formulaId, { forProductId
   };
 }
 
+/* ของที่ชี้เข้ากลิ่น/สูตรด้วย FK แบบ SET NULL (ไม่อยู่ใน `countRegistryRefs`) — ด่านก่อนลบ (ม-148 · รีวิว 2026-09-22)
+   · กลิ่น: สูตรที่ใช้กลิ่นนี้ (ทุกสถานะ) + สินค้า · สูตร: สินค้า + สูตรที่แก้ต่อจากมัน
+   ⚠️ คืนเลข ไม่ตัดสินเอง — ข้อความอยู่ที่ `deleteScentError` / `deleteFormulaError` ตัวเดียวกับหน้าทะเบียน */
+export async function countRegistryDependents(supabase, kind, id) {
+  const head = (table, column) => supabase.from(table)
+    .select('id', { count: 'exact', head: true }).eq(column, id)
+    .then(({ count, error }) => { if (error) throw error; return count || 0; });
+  if (kind === 'formula') {
+    const [productCount, childCount] = await Promise.all([
+      head('products', 'formulaId'), head('formulas', 'derivedFromFormulaId'),
+    ]);
+    return { productCount, childCount };
+  }
+  const [formulaCount, productCount] = await Promise.all([
+    head('formulas', 'scentId'), head('products', 'scentId'),
+  ]);
+  return { formulaCount, productCount };
+}
+
 // จำนวนสินค้าที่อ้างสูตรนี้ — ใช้เป็นด่านก่อนลบ
 export async function countProductsUsingFormula(supabase, formulaId) {
   const { count, error } = await supabase
@@ -521,9 +540,11 @@ export async function attachRegistryPrice(supabase, rows, { column, kind, as = '
     status: null, kind, linked: { column, ids },
   });
   const byRow = new Map();
-  for (const m of materials) {
-    const key = m[column];
-    if (!key) continue;
+  const labelOf = new Map(rows.map((r) => [r.id, r.name]));
+  for (const key of new Set(materials.map((m) => m[column]).filter(Boolean))) {
+    // ⭐ ตัวเดียวกับที่ตัวเขียนราคาเลือก (`pickStampedMaterial`) — วัสดุสองตัวชี้แถวเดียวกันต้องไม่แสดงคนละตัว
+    const m = pickStampedMaterial(materials, { stampColumn: column, id: key, kind, label: labelOf.get(key) });
+    if (!m) continue;
     const rev = latestRevision(m.revisions || []);
     byRow.set(key, {
       materialId: m.id,
