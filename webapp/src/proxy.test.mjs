@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
 import { RD_ROLES, can } from '@/lib/permissions';
 
@@ -567,13 +570,13 @@ test('team:manage ต้องไม่ลามไปเส้นอื่น�
   assert.equal(apiWriteAllowed('PATCH', '/api/users/u-1', 'ts_manager', []), false);
 });
 
-/* ── ใบสเปคสินค้า FM-SA-04 (mig 0364) ────────────────────────────────────────
+/* ── สเปคสินค้า FM-SA-04 (mig 0364 → 0370) ─────────────────────────────────────
    🪤 เส้นนี้อยู่ใต้ `/api/products/...` ซึ่งกฎตัวรวมปล่อย PATCH ให้คนที่ถือ
    `ra:approve` ด้วย (เพราะ RA อนุมัติทะเบียนสินค้า) ⇒ ถ้าไม่มีกฎเฉพาะมาก่อน
-   RA จะแก้/อนุมัติใบสเปคของฝ่ายขายได้ทั้งที่ไม่ใช่งานของฝ่ายนั้น */
+   RA จะแก้/ลบสเปคของฝ่ายขายได้ทั้งที่ไม่ใช่งานของฝ่ายนั้น */
 test('⭐ ใบสเปคสินค้าเป็นเส้นของฝ่ายขาย — AC/AE/AE Sup ผ่าน', () => {
   for (const role of ['ac', 'ae', 'senior_ae', 'ae_supervisor', 'admin']) {
-    for (const method of ['POST', 'PATCH']) {
+    for (const method of ['POST', 'PATCH', 'DELETE']) {
       assert.equal(
         apiWriteAllowed(method, '/api/products/PRD-1/spec', role, []),
         true,
@@ -605,7 +608,69 @@ test('กฎใบสเปคต้องแคบ — ไม่กินเส
   assert.equal(apiWriteAllowed('POST', '/api/products/PRD-1/spec/items', 'ra', []), false);
 });
 
-test('ออกเอกสารใบสเปคตาม SO ยังเดินด่าน salesplan:edit ของ sales-planning ตามเดิม', () => {
-  assert.equal(apiWriteAllowed('POST', '/api/sales-planning/sales-orders/SO-1/spec-issues', 'ac', []), true);
-  assert.equal(apiWriteAllowed('POST', '/api/sales-planning/sales-orders/SO-1/spec-issues', 'rd', []), false);
+/* ── เอกสาร FM-SA-04 ที่ออกจาก SO (mig 0370) ─────────────────────────────────────
+   ออกจากบรรทัด SO: POST /api/sales-planning/sales-orders/<id>/spec-documents
+   ยื่น/อนุมัติ/ตีกลับ/แก้ไข/ยกเลิก: PATCH /api/sales-planning/spec-documents/<id>
+   ⚠️ ทดสอบด้วย role จริงของทุกขั้น ไม่ใช่ admin — admin ผ่าน lockedOut ตั้งแต่บรรทัดแรก
+      จึงมองไม่เห็นบั๊กของด่านนี้เลย (บทเรียนจาก /api/tax/* · /notifications · /api/rd) */
+const SPEC_DOCUMENT_WRITES = [
+  ['POST', '/api/sales-planning/sales-orders/SOR-1/spec-documents'],
+  ['PATCH', '/api/sales-planning/spec-documents/PSD-1'],
+];
+
+test('⭐ ทุกขั้นของเอกสาร FM-SA-04 (AC ออก/ยื่น · AE เจ้าของดีล · AE Sup) ผ่านทั้งสองด่านของ proxy', () => {
+  for (const role of ['ac', 'ae', 'senior_ae', 'ae_supervisor']) {
+    const user = { role, extraCaps: [] };
+    for (const [method, path] of SPEC_DOCUMENT_WRITES) {
+      assert.equal(lockedOut(user, path, method, true), false, `${role} ${method} ${path} โดน lockdown`);
+      assert.equal(apiWriteAllowed(method, path, role, []), true, `${role} ${method} ${path} โดน apiWriteAllowed`);
+    }
+    // อ่านเอกสาร + การ์ดบนหน้า SO + กระดาษ
+    for (const path of [
+      '/api/sales-planning/spec-documents/PSD-1',
+      '/api/sales-planning/spec-documents/PSD-1/document',
+      '/api/sales-planning/sales-orders/SOR-1/spec-documents',
+    ]) {
+      assert.equal(lockedOut(user, path, 'GET', true), false, `${role} GET ${path}`);
+    }
+    // หน้าเอกสาร (UI) — อยู่ใต้ /sales-planning ที่เปิดไว้แล้ว ต้องไม่ถูกเด้งกลับ /home
+    assert.equal(lockedOut(user, '/sales-planning/spec-documents/PSD-1', 'GET', false), false, `${role} หน้าเอกสาร`);
+  }
+});
+
+test('ฝ่ายที่ไม่ใช่ฝ่ายขายเขียนเอกสาร FM-SA-04 ไม่ได้ — รวม RA และฝ่ายบัญชี', () => {
+  /* ⚠️ ฝ่ายบัญชีถือ `payments:confirm` ซึ่งเปิด PATCH ของใบสั่งขายให้ (ขั้นบัญชี) —
+     ช่องนั้นต้องไม่ลามมาถึงเส้นเอกสารใต้ใบ · RA ถือ `ra:approve` ซึ่งเปิด PATCH ของ
+     ทะเบียนสินค้า — ต้องไม่ลามมาถึงลายเซ็นใบสเปคเช่นกัน */
+  for (const role of ['finance', 'ra', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'viewer', 'marketing', 'executive']) {
+    for (const [method, path] of SPEC_DOCUMENT_WRITES) {
+      assert.equal(apiWriteAllowed(method, path, role, []), false, `${role} ต้อง ${method} ${path} ไม่ได้`);
+    }
+  }
+});
+
+test('กฎเอกสาร FM-SA-04 ต้องแคบ — ไม่กินเส้นที่ชื่อคล้ายกัน และช่องของฝ่ายบัญชียังอยู่ครบ', () => {
+  const FN = 'finance';
+  // ช่องเดิมของฝ่ายบัญชีต้องไม่ถูกกฎใหม่บังไป
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', FN, []), true);
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1/installments', FN, []), true);
+  // `spec-documents-x` ไม่ใช่เส้นเอกสาร — ตกกฎรวมของ sales-planning ตามปกติ (ac ผ่าน · บัญชีไม่ผ่าน)
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/spec-documents-x/1', FN, []), false);
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/spec-documents-x/1', 'ac', []), true);
+});
+
+/* 🪤 เส้นเก่า `sales-orders/<id>/spec-issues` ถูกถอดพร้อม mig 0370 — ต้องไม่มีใครยิงอยู่
+   (จอที่ยังยิงเส้นเก่าจะได้ 404 เงียบ ๆ ทั้งที่ปุ่มขึ้นครบ) */
+test('ไม่มีโค้ดไหนยังเรียกเส้น spec-issues ที่ถูกถอดแล้ว', () => {
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(js|jsx)$/.test(entry.name)) continue;
+      if (readFileSync(full, 'utf8').includes('/spec-issues')) offenders.push(full);
+    }
+  };
+  walk(fileURLToPath(new URL('./', import.meta.url)));
+  assert.deepEqual(offenders, [], `ยังเรียกเส้นที่ถอดแล้ว:\n${offenders.join('\n')}`);
 });

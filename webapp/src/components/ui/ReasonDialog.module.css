@@ -12,6 +12,9 @@
   line-height: var(--lh-relaxed);
 }
 
+/* pre-line = ขึ้นบรรทัดตาม \n ของข้อความ (แบบเดียวกับ .confirm-dialog-detail) — รายการผลลัพธ์หลายข้อ
+   ("⚠️ ย้อนกลับเองไม่ได้" · "สิ่งที่จะเกิดขึ้นทันที:" · "· …") เคยไหลติดกันเป็นย่อหน้าเดียว
+   จนคำเตือนที่ย้อนไม่ได้จมหายไปในประโยคยาว */
 .detail {
   padding: var(--space-2-5) var(--space-3);
   border: 1px solid;
@@ -19,6 +22,7 @@
   color: var(--text-2);
   font-size: var(--fs-7);
   line-height: var(--lh-relaxed);
+  white-space: pre-line;
 }
 
 .warning {

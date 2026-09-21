@@ -70,8 +70,112 @@ import {
 } from '@/lib/sales/siteNotFound';
 import { removeReasonError } from '@/lib/sales/siteLineRemoval';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import {
+  activeDocumentsForOrder, moveDocumentsToRevisedOrder, voidDocumentsByIds, voidDocumentsForOrder,
+} from '@/lib/sales/productSpecStore';
 
 const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
+
+/* ── จังหวะของเอกสาร FM-SA-04 ที่ตามหลัง SO (mig 0370 · docs/fm-sa-04-document-model.md) ──
+   · SO ยกเลิก ⇒ เอกสารทุกใบของ SO นั้นเป็น void (เลขที่ไม่นำกลับมาใช้)
+   · SO ออก Rev ⇒ เอกสารย้ายไปผูกใบใหม่ เลขที่เดิม (approved ⇒ Rev+1 ร่าง · รออนุมัติ ⇒ ถอยเป็นร่าง)
+   ⚠️ เรียก **หลัง** ที่ SO บันทึกสำเร็จแล้วเท่านั้น · hook ล้ม = SO ยังสำเร็จ แต่ต้องตอบ `warning`
+      และลง audit (ไม่เงียบ) — เอกสารที่ค้างผูก SO ที่ยกเลิก/ถูกแทนแล้ว คือกระดาษที่เดินด่านต่อไม่ได้
+      และไม่มีใครรู้ว่าต้องไปเก็บ
+   🪤 ห่อ try — store คืน `{ error }` เสมอก็จริง แต่ hook ต้องไม่มีทางทำให้ action ของ SO ที่
+      บันทึกไปแล้วตอบ 500 (คนจะกดซ้ำ) */
+async function voidSpecDocumentsAfterCancel({ supabase, user, req, order }) {
+  const reason = `ใบสั่งขาย ${order?.orderNumber || order?.id} ถูกยกเลิก`;
+  let res;
+  try {
+    res = await voidDocumentsForOrder(supabase, { salesOrderId: order.id, reason, user });
+  } catch (error) {
+    res = { error: error?.message || String(error) };
+  }
+  if (res.error) {
+    const warning = `ยกเลิกใบสั่งขายแล้ว แต่ยกเลิกเอกสารใบสเปคสินค้าของใบนี้ไม่สำเร็จ: ${res.error} — แจ้งผู้ดูแลระบบ`;
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: order.id,
+      before: null, after: { specDocumentHookError: res.error },
+      summary: `⚠️ void FM-SA-04 documents of ${order?.orderNumber || order.id} FAILED: ${res.error}`, request: req,
+    });
+    return warning;
+  }
+  for (const doc of res.documents || []) {
+    await recordAudit({
+      user, action: 'update', entityType: 'product_spec_document', entityId: doc.id,
+      before: { status: 'active' }, after: { status: 'void', voidReason: reason },
+      summary: `void ${doc.docNo}: ${reason}`, request: req,
+    });
+  }
+  return null;
+}
+
+/* ผู้ดูแลระบบบังคับลบ SO ⇒ เอกสาร FM-SA-04 ที่ยัง active ของใบนั้นเป็น void (เหมือนทางยกเลิก SO)
+   🐞 เดิมไม่มี hook ทางนี้ ⇒ FK SET NULL ปลด SO/บรรทัดออกเงียบ ๆ เอกสารยัง active พร้อม Rev ที่อนุมัติแล้ว
+      (เลขที่ส่งลูกค้าไปแล้ว) ไม่มี SO ไม่มีรอยใน audit และหน้า SO ที่จะโชว์แถว "บรรทัดถูกถอด" ก็ไม่มีแล้ว
+   ⚠️ id ต้องจดไว้ **ก่อน** ลบ (หลังลบหาตาม SO ไม่ได้อีก) แต่ void **หลัง** ลบสำเร็จ — ลบล้มแล้วเอกสาร
+      ของ SO ที่ยังอยู่ถูก void ไปก่อน = ย้อนไม่ได้ (void คือปลายทาง)
+   ⚠️ void ล้มหลังลบสำเร็จ = การลบยังสำเร็จ แต่ต้องตอบ warning + audit (ไม่เงียบ) */
+async function voidSpecDocumentsAfterForceDelete({ supabase, user, req, order, documents }) {
+  if (!documents?.length) return null;
+  const reason = `ใบสั่งขาย ${order?.orderNumber || order?.id} ถูกลบถาวร`;
+  let res;
+  try {
+    res = await voidDocumentsByIds(supabase, { documentIds: documents.map((doc) => doc.id), reason, user });
+  } catch (error) {
+    res = { error: error?.message || String(error) };
+  }
+  if (res.error) {
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: order.id,
+      before: null, after: { specDocumentHookError: res.error, documents },
+      summary: `⚠️ void FM-SA-04 documents of deleted ${order?.orderNumber || order.id} FAILED: ${res.error}`, request: req,
+    });
+    return `ลบใบสั่งขายแล้ว แต่ยกเลิกเอกสารใบสเปคสินค้าของใบนี้ไม่สำเร็จ (${documents.map((doc) => doc.docNo).join(', ')}): ${res.error} — แจ้งผู้ดูแลระบบ`;
+  }
+  for (const doc of res.documents || []) {
+    await recordAudit({
+      user, action: 'update', entityType: 'product_spec_document', entityId: doc.id,
+      before: { status: 'active', salesOrderId: order.id }, after: { status: 'void', voidReason: reason },
+      summary: `void ${doc.docNo}: ${reason}`, request: req,
+    });
+  }
+  return null;
+}
+
+async function moveSpecDocumentsAfterRevise({ supabase, user, req, oldOrder, newOrder }) {
+  let res;
+  try {
+    res = await moveDocumentsToRevisedOrder(supabase, { oldOrderId: oldOrder.id, newOrder, user });
+  } catch (error) {
+    res = { error: error?.message || String(error) };
+  }
+  const label = `${oldOrder?.orderNumber || oldOrder.id} → ${newOrder?.orderNumber || newOrder?.id}`;
+  if (res.error) {
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: newOrder?.id || oldOrder.id,
+      before: null, after: { specDocumentHookError: res.error },
+      summary: `⚠️ move FM-SA-04 documents ${label} FAILED: ${res.error}`, request: req,
+    });
+    return `ออก Rev. ใบสั่งขายแล้ว แต่ย้ายเอกสารใบสเปคสินค้าไปใบใหม่ไม่สำเร็จ: ${res.error} — แจ้งผู้ดูแลระบบ`;
+  }
+  // ใบที่ย้ายสำเร็จ (outcome ≠ failed/skipped) ลงประวัติรายใบ · ใบที่ล้มอยู่ในก้อน warnings ข้างล่าง
+  for (const doc of (res.documents || []).filter((row) => !['failed', 'skipped'].includes(row.outcome))) {
+    await recordAudit({
+      user, action: 'update', entityType: 'product_spec_document', entityId: doc.id,
+      before: { salesOrderId: oldOrder.id }, after: { salesOrderId: newOrder.id, outcome: doc.outcome },
+      summary: `move ${doc.docNo} with SO revise ${label} (${doc.outcome})`, request: req,
+    });
+  }
+  if (!res.warnings?.length) return null;
+  await recordAudit({
+    user, action: 'update', entityType: 'sales_order', entityId: newOrder?.id || oldOrder.id,
+    before: null, after: { specDocumentWarnings: res.warnings, documents: res.documents },
+    summary: `⚠️ move FM-SA-04 documents ${label}: ${res.warnings.join(' · ')}`, request: req,
+  });
+  return `ออก Rev. ใบสั่งขายแล้ว แต่เอกสารใบสเปคสินค้าบางใบต้องตรวจ: ${res.warnings.join(' · ')}`;
+}
 
 /* ใบสั่งขายย้อนหลัง (mig 0360) — CHECK sales_orders_origin_shape ห้ามย้อนอนุมัติ/ออก Rev. อยู่แล้ว ตอบไทยก่อนถึงฐาน */
 const HISTORICAL_NO_REVISION = 'ใบสั่งขายย้อนหลังย้อนการอนุมัติ/ออก Rev. ไม่ได้ — คีย์ผิดให้ผู้ดูแลระบบลบใบแล้วคีย์ใหม่';
@@ -816,7 +920,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           : ''),
       request: req,
     });
-    return ok(revision, 201);
+    // FM-SA-04 (mig 0370): เอกสารใบสเปคย้ายไปผูกใบ Rev. ใหม่ เลขที่เดิม · ล้ม = SO ยังสำเร็จ + warning
+    const specWarning = revision?.id
+      ? await moveSpecDocumentsAfterRevise({ supabase, user, req, oldOrder: before, newOrder: revision })
+      : null;
+    return ok(specWarning ? { ...revision, warning: specWarning } : revision, 201);
   }
 
   if (action === 'save') {
@@ -1121,7 +1229,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         await recordAudit({ user, action: 'update', entityType: 'sales_deal', entityId: before.dealId, after: result?.deal, summary: `ย้อน Won (${targetLabel}) จากยกเลิก SO ${before.orderNumber}: ${revReason}`, request: req });
       }
       // แจ้งทีมขาย: ดีลถูกถอนจาก Won (จุดสำคัญ — ยอด Actual ถูกนำออก)
-      return ok(result?.order || {});
+      // FM-SA-04 (mig 0370): เอกสารใบสเปคของใบนี้เป็น void · ล้ม = SO ยังสำเร็จ + warning
+      const specWarning = await voidSpecDocumentsAfterCancel({ supabase, user, req, order: before });
+      return ok(specWarning ? { ...(result?.order || {}), warning: specWarning } : (result?.order || {}));
     }
 
     const patch = {
@@ -1138,7 +1248,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const summaryReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
     await logThread('cancel', { reason: summaryReason });
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `cancel ${before.orderNumber}: ${summaryReason}`, request: req });
-    return ok(data);
+    // FM-SA-04 (mig 0370): เอกสารใบสเปคของใบนี้เป็น void · ล้ม = SO ยังสำเร็จ + warning
+    const specWarning = await voidSpecDocumentsAfterCancel({ supabase, user, req, order: before });
+    return ok(specWarning ? { ...data, warning: specWarning } : data);
   }
 
   /* ── ขั้นบัญชีปิดใบ (mig 0250 · สลับมาอยู่ท้ายวงตามมติผู้ใช้ 2026-08-30) ────
@@ -1309,6 +1421,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       409,
     );
   }
+  /* เอกสาร FM-SA-04 ที่ยัง active ของใบนี้ — จดไว้ก่อนลบ (FK SET NULL จะล้าง salesOrderId) แล้ว void
+     หลังลบสำเร็จ (voidSpecDocumentsAfterForceDelete) · ⚠️ อ่านไม่ขึ้น = หยุดก่อนลบ ไม่ใช่ถือว่าไม่มี */
+  const specDocs = await activeDocumentsForOrder(supabase, id);
+  if (specDocs.error) return fail(`ตรวจเอกสารใบสเปคสินค้าที่ผูกใบนี้ไม่สำเร็จ: ${specDocs.error} — ยังไม่ได้ลบใบ`, 500);
   const { error } = force
     ? await supabase.rpc('force_delete_sales_order', { p_id: id })
     : await supabase.from('sales_orders').delete().eq('id', id);
@@ -1346,18 +1462,27 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       detachedPlanIds = (detached || []).map((row) => row.id);
     }
   }
+  const specWarning = await voidSpecDocumentsAfterForceDelete({
+    supabase, user, req, order: before, documents: specDocs.documents,
+  });
+  const warning = [detachWarning, specWarning].filter(Boolean).join(' · ') || null;
   await recordAudit({
     user, action: 'delete', entityType: 'sales_order', entityId: id,
     // ใบย้อนหลัง: เก็บรอบขายของโซน/รอบบริการ/งวดดิบที่ผูกไว้ก่อนลบ — CASCADE พารอบขายและงวดหายไปกับใบ
     before: historical ? { ...before, installments: installmentRows, zoneTerms, servicePlans } : before,
-    after: historical && (detachedPlanIds.length || detachWarning)
-      ? { servicePlansDetached: detachedPlanIds, ...(detachWarning ? { warning: detachWarning } : {}) }
+    after: (historical && (detachedPlanIds.length || detachWarning)) || specDocs.documents.length
+      ? {
+        ...(historical ? { servicePlansDetached: detachedPlanIds } : {}),
+        ...(specDocs.documents.length ? { specDocuments: specDocs.documents } : {}),
+        ...(warning ? { warning } : {}),
+      }
       : null,
     summary: `${historical ? 'ลบใบย้อนหลัง' : 'delete'} ${before.orderNumber}`
       + (force ? ' (บังคับลบพร้อมหลักฐาน/ฉบับตรึง — สิทธิ์ผู้ดูแลระบบ)' : '')
       + (historical && zoneTerms.length ? ` · รอบขายของโซนหายตาม ${zoneTerms.length} รอบ` : '')
-      + (detachedPlanIds.length ? ` · ปลดรอบบริการ ${detachedPlanIds.length} รอบ` : ''),
+      + (detachedPlanIds.length ? ` · ปลดรอบบริการ ${detachedPlanIds.length} รอบ` : '')
+      + (specDocs.documents.length ? ` · ยกเลิกเอกสาร FM-SA-04 ${specDocs.documents.length} ใบ` : ''),
     request: req,
   });
-  return ok({ deleted: true, forced: force, ...(detachWarning ? { warning: detachWarning } : {}) });
+  return ok({ deleted: true, forced: force, ...(warning ? { warning } : {}) });
 });

@@ -132,6 +132,14 @@ test('⭐ salesOrderForcePreview: บอกด้วยว่ารอบบร�
   assert.ok(notes.some((n) => n.includes('คิวงานเข้าใหม่จะทวงซ้ำ')));
 });
 
+test('⭐ salesOrderForcePreview: บอกว่าเอกสาร FM-SA-04 ที่ยังใช้งานจะถูกยกเลิก (นับเฉพาะใบที่ active)', async () => {
+  const supabase = stubCount({ 'product_spec_documents:salesOrderId:extra': 2 });
+  const { notes } = await salesOrderForcePreview(supabase, { id: 'SO1', status: 'approved' });
+  assert.ok(notes.some((n) => n.includes('FM-SA-04') && n.includes('2 ใบ') && n.includes('ไม่นำกลับมาใช้')));
+  const none = await salesOrderForcePreview(stubCount({}), { id: 'SO1', status: 'draft' });
+  assert.ok(!none.notes.some((n) => n.includes('FM-SA-04')), 'ไม่มีเอกสาร = ไม่มีบรรทัดนี้');
+});
+
 test('cleanupDealOrphans: ลบเธรด+งาน+คำร้องของดีล และปลด parentDealId', async () => {
   const calls = [];
   const rpcCalls = [];

@@ -3,29 +3,34 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ClipboardCheck, ExternalLink } from "lucide-react";
 import Button from "@/components/ui/Button";
+import StatusBadge from "@/components/ui/StatusBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import { apiJson } from "@/lib/apiFetch";
 import { fmtDate, naText } from "@/lib/format";
-import { SPEC_ISSUE_STATUS_LABELS, SPEC_REVISION_STATUS_LABELS } from "@/lib/sales/productSpecWorkflow";
-import { revLabel } from "@/lib/sales/productSpecView";
+import { productSpecPageHref } from "@/lib/sales/productSpecDocView";
+import { specControlDescription, specDocumentRows } from "@/lib/sales/productSpecView";
 import styles from "./ProductSpecCard.module.css";
 
 /**
- * การ์ด "ใบสเปคสินค้า" บนหน้าสินค้า — **บ้านของใบ** (มติผู้ใช้ 2026-09-17)
+ * การ์ด "สเปคสินค้า FM-SA-04" บนหน้าสินค้า — **อ่านอย่างเดียว**
  *
- * ⚠️ **อ่านอย่างเดียว** ทุก role ที่เปิดหน้าสินค้าได้เห็นการ์ดนี้ (RD/PD/QC ต้องอ่าน
- * สเปกที่ตกลงกับลูกค้าได้โดยไม่ต้องไปงัดหน้าใบสั่งขาย) · การแก้อยู่ที่หน้าใบ
+ * ⭐ มติ 21/09/2569 (docs/fm-sa-04-document-model.md): สเปคเป็นข้อมูลของสินค้า (ไม่มีเลข ไม่มี Rev)
+ * ส่วนเลขที่ · Rev · การอนุมัติ อยู่ที่ **เอกสารที่ออกจากบรรทัด SO** ⇒ การ์ดนี้บอกสองอย่าง:
+ * สินค้านี้มีสเปคหรือยัง และมีเอกสารใบไหนออกจากสเปคนี้ไปแล้วบ้าง
  *
- * ⚠️ **ไม่ใช่ `AttachmentsPanel`** — การ์ด "เอกสารของสินค้า" ข้างล่างเป็นไฟล์ที่คน
- * อัปโหลดและมีด่านนับ "ยังขาดเอกสาร" ของตัวเอง · เอาเอกสารที่ระบบออกไปปนทำให้ด่านนั้นนับผิด
+ * ⚠️ ทุก role ที่เปิดหน้าสินค้าได้เห็นการ์ดนี้ (RD/PD/QC ต้องอ่านสเปคที่ตกลงกับลูกค้าได้) ·
+ *    การแก้อยู่ที่หน้าสเปค · ป้ายปุ่มเดินตาม `permissions.canEdit` ที่ API ส่งมา ไม่ใช่สิทธิ์แก้สินค้า
+ *    (สเปคเป็นของฝ่ายขาย — คนแก้ทะเบียนสินค้าได้ไม่ได้แปลว่าแก้สเปคได้)
+ * ⚠️ **ไม่ใช่ `AttachmentsPanel`** — การ์ด "เอกสารของสินค้า" ข้างล่างเป็นไฟล์ที่คนอัปโหลดและมีด่าน
+ *    นับ "ยังขาดเอกสาร" ของตัวเอง · เอาเอกสารที่ระบบออกไปปนทำให้ด่านนั้นนับผิด
  *
- * ⚠️ **แถวในตารางคือครั้งที่ออกเอกสาร ไม่ใช่ใบคนละใบ** — Rev.02 ออกซ้ำได้หลายครั้ง
- * ถ้าขายรอบใหม่โดยสเปกไม่เปลี่ยน ⇒ คอลัมน์ "สเปก" บอก Rev. ณ ตอนออก ไม่ใช่ Rev. วันนี้
+ * คืน `null` เมื่อสินค้าอยู่นอกขอบเขต (หมวด 03/04) — สองหมวดนั้นไม่ใช่ตัวสินค้าจึงไม่มีสเปคให้ตกลง
+ * (ไม่ใช่ด่านสิทธิ์ — เป็น "ไม่มีของให้แสดง")
  *
- * คืน `null` เมื่อสินค้าอยู่นอกขอบเขต (หมวด 03/04) — ไม่ใช่การ์ดว่างที่อ่านไม่ได้ว่าทำไม
- * เพราะสองหมวดนั้นไม่ใช่ตัวสินค้าจึงไม่มีสเปกให้ตกลงเลย
+ * @param canEdit ⚠️ คงไว้ให้ผู้เรียกเดิม — ใช้เป็นค่าสำรองเฉพาะตอน API ไม่ได้ส่ง `permissions` มา
  */
 export default function ProductSpecCard({ productId, canEdit = false }) {
   const [data, setData] = useState(null);
@@ -35,10 +40,10 @@ export default function ProductSpecCard({ productId, canEdit = false }) {
     let alive = true;
     (async () => {
       try {
-        const next = await apiJson(`/api/products/${productId}/spec`, { fallbackError: "อ่านใบสเปคไม่สำเร็จ" });
+        const next = await apiJson(`/api/products/${productId}/spec`, { fallbackError: "อ่านสเปคสินค้าไม่สำเร็จ" });
         if (alive) setData(next);
       } catch (loadError) {
-        if (alive) setError(loadError.message || "อ่านใบสเปคไม่สำเร็จ");
+        if (alive) setError(loadError.message || "อ่านสเปคสินค้าไม่สำเร็จ");
       }
     })();
     return () => { alive = false; };
@@ -48,51 +53,51 @@ export default function ProductSpecCard({ productId, canEdit = false }) {
   if (data?.scopeReason) return null;
 
   const spec = data?.spec || null;
-  const revisions = data?.revisions || [];
-  const latest = revisions[0] || null;
-  const issues = data?.issues || [];
-  const href = `/database/products/${productId}/spec`;
+  const rows = specDocumentRows(data?.documents);
+  const mayEdit = data?.permissions ? Boolean(data.permissions.canEdit) : canEdit;
+  const href = productSpecPageHref(productId);
 
   return (
     <DetailCard
       icon={ClipboardCheck}
       eyebrow="FM-SA-04"
-      title={latest ? `ใบสเปคสินค้า · ${revLabel(spec?.currentRevNo || latest.revNo)}` : "ใบสเปคสินค้า"}
-      meta={spec
-        ? `ออกเอกสารมาแล้ว ${issues.length} ครั้ง · ฉบับล่าสุด ${revLabel(latest?.revNo)} (${naText(SPEC_REVISION_STATUS_LABELS[latest?.status])})`
-        : "หนึ่งสินค้าหนึ่งใบตลอดอายุ — ออกเอกสารจากใบนี้ทุกครั้งที่ขาย"}
+      title="สเปคสินค้า"
+      meta={spec ? specControlDescription({ spec, documents: data?.documents }) : "หนึ่งสินค้าหนึ่งสเปค — ออกเอกสารจากสเปคนี้ได้ทุกใบสั่งขาย"}
       actions={<Button as={Link} href={href} variant="ghost" size="sm" icon={<ExternalLink size={13} />}>
-        {spec ? "เปิดใบสเปค" : canEdit ? "สร้างใบสเปค" : "เปิดดู"}
+        {spec ? (mayEdit ? "เปิด / แก้สเปค" : "เปิดสเปค") : mayEdit ? "สร้างสเปค" : "เปิดดู"}
       </Button>}
     >
-      {error ? <p className={styles.error}>{error}</p> : null}
-      {!spec ? (
+      {error ? <div className={styles.notice}><StatusNotice tone="error">{error}</StatusNotice></div> : null}
+      {!data ? null : !spec ? (
         <EmptyState plain>
-          <strong>สินค้าชิ้นนี้ยังไม่มีใบสเปค</strong>
-          <small>กรอกครั้งเดียวแล้วออกเอกสารซ้ำได้ทุกรอบขาย — สเปกเปลี่ยนเมื่อไรค่อยออกฉบับใหม่</small>
+          <strong>สินค้าชิ้นนี้ยังไม่มีสเปค</strong>
+          <small>กรอกครั้งเดียว ใช้ออกเอกสาร FM-SA-04 ได้ทุกใบสั่งขายที่อนุมัติแล้ว</small>
         </EmptyState>
-      ) : issues.length ? (
+      ) : rows.length ? (
         <TableScroll family="list" surface="embedded">
           <table>
             <thead>
               <tr>
                 <th className={styles.colDoc}>เลขที่เอกสาร</th>
-                <th className={styles.colRev}>สเปก</th>
-                <th className={styles.colOrder}>ออกตาม</th>
+                <th className={styles.colRev}>Rev.</th>
                 <th className={styles.colStatus}>สถานะ</th>
-                <th className={`num ${styles.colQty}`}>จำนวน</th>
-                <th className={`num ${styles.colDue}`}>กำหนดส่ง</th>
+                <th className={styles.colOrder}>ใบสั่งขาย</th>
+                <th className={`num ${styles.colDate}`}>วันที่ออก</th>
               </tr>
             </thead>
             <tbody>
-              {issues.map((issue) => (
-                <tr key={issue.id}>
-                  <td className="mono">{issue.docNo}</td>
-                  <td>{revLabel(issue.revNo)}</td>
-                  <td className="mono">{naText(issue.orderNumber)}</td>
-                  <td>{SPEC_ISSUE_STATUS_LABELS[issue.status] || issue.status}</td>
-                  <td className="num">{naText(issue.qty)}</td>
-                  <td className="num">{issue.deliveryDueDate ? fmtDate(issue.deliveryDueDate) : naText(null)}</td>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="mono"><Link href={row.href}>{naText(row.docNo)}</Link></td>
+                  <td>
+                    <div>{naText(row.revLabel)}</div>
+                    {row.inUseRevLabel ? <div className={styles.sub}>ใช้อยู่ {row.inUseRevLabel}</div> : null}
+                  </td>
+                  <td><StatusBadge size="sm" tone={row.tone} label={naText(row.statusLabel)} /></td>
+                  <td className="mono">
+                    {row.orderHref ? <Link href={row.orderHref}>{naText(row.orderNumber)}</Link> : naText(row.orderNumber)}
+                  </td>
+                  <td className="num">{row.createdAt ? fmtDate(row.createdAt) : naText(null)}</td>
                 </tr>
               ))}
             </tbody>
@@ -100,8 +105,8 @@ export default function ProductSpecCard({ productId, canEdit = false }) {
         </TableScroll>
       ) : (
         <EmptyState plain>
-          <strong>มีใบสเปคแล้ว แต่ยังไม่เคยออกเอกสาร</strong>
-          <small>เอกสารออกจากหน้าใบสั่งขายที่อนุมัติแล้ว — แถวที่นี่คือครั้งที่ออก ไม่ใช่ใบคนละใบ</small>
+          <strong>มีสเปคแล้ว แต่ยังไม่เคยออกเอกสาร</strong>
+          <small>AC ออกเอกสารได้ที่หน้าใบสั่งขายหลังใบอนุมัติแล้ว — หนึ่งบรรทัดสินค้าหนึ่งใบ</small>
         </EmptyState>
       )}
     </DetailCard>

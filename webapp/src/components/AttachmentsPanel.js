@@ -327,7 +327,14 @@ export default function AttachmentsPanel({
     if (!(await confirmAction("ยืนยันการลบเอกสารนี้?"))) return;
     try {
       const res = await apiFetch(`/api/master/attachments/${id}`, { method: "DELETE" });
-      if (res.ok) setItems((prev) => prev.filter((it) => it.id !== id));
+      if (res.ok) {
+        setItems((prev) => prev.filter((it) => it.id !== id));
+        /* ⭐ รูปประกอบสเปคที่เอกสาร FM-SA-04 ซึ่งยื่น/อนุมัติแล้วอ้างอยู่ = **ปลดระวาง** แทนการลบ
+           (mig 0370 · ไฟล์ต้องอยู่ให้กระดาษเก่าเปิดได้) ⇒ เส้นลบตอบ `{ retired, message }`
+           ต้องบอกผู้ใช้ ไม่งั้นเข้าใจว่าไฟล์ถูกลบไปแล้วจริง */
+        const body = await res.json().catch(() => null);
+        if (body?.retired && body.message) notifyToast.info(body.message);
+      }
       // `(await res.json()).error` เดิมโยน exception เองถ้า body ไม่ใช่ JSON —
       // สาเหตุจริงเลยหายไปกลายเป็น "เกิดข้อผิดพลาดในการลบ" ของ catch ข้างล่าง
       else notifyToast.error(await describeResponseError(res, "ลบไม่สำเร็จ"));

@@ -168,13 +168,32 @@ export const SALES_ORDER_BELL_KINDS = Object.freeze([
   'sales_order_site_not_found',
 ]);
 
+/* ── เอกสาร FM-SA-04 ใบสเปคสินค้า: ด่านอนุมัติสามขั้น (mig 0370 · มติเจ้าของ 21/09/2569) ──
+ *
+ * ⭐ ทุกตัวคือ **คิวของคนถัดไป** — AC ยื่น ⇒ AE เจ้าของดีลต้องอนุมัติ · AE อนุมัติ ⇒ AE Supervisor
+ * ต้องอนุมัติขั้นสุดท้าย · ตีกลับ ⇒ AC ต้องแก้แล้วยื่นใหม่ · อนุมัติครบ ⇒ ผู้ยื่นกับเจ้าของดีลพิมพ์ส่งลูกค้าได้
+ * 🐞 ก่อนมีลิสต์นี้ แถวถูกเขียนลงตารางตามปกติแต่ไปโผล่ที่หน้าเต็ม `/notifications` อย่างเดียว ⇒
+ *    ผู้อนุมัติไม่รู้ว่ามีใบรอ เอกสารค้างขั้นเงียบ ๆ
+ *
+ * 🪤 **ทำไมไม่ใส่ `'product_spec_document'` ลง `entityTypes`**: เหตุผลเดียวกับสัญญา/ใบสั่งขาย —
+ * เอกสารไม่มีเธรดใน `UPDATE_ENTITIES` และเทสต์บังคับว่าทุก `entityType` ในกล่องต้องมีเธรด
+ *
+ * ⚠️ ชุดนี้ต้องตรงกับ kind ที่ยิงจริง (`api/sales-planning/spec-documents/[id]/route.js`) ·
+ *    notifications.test.mjs กวาดทั้ง src หา `kind: 'product_spec_doc_…'` มาเทียบ ดริฟต์แล้วแดง */
+export const PRODUCT_SPEC_DOC_BELL_KINDS = Object.freeze([
+  'product_spec_doc_submit',      // AC ยื่น → AE เจ้าของดีลของ SO
+  'product_spec_doc_ae_approve',  // AE อนุมัติ → AE Supervisor ทุกคนที่ active
+  'product_spec_doc_reject',      // ตีกลับ → ผู้ยื่น
+  'product_spec_doc_approve',     // AE Sup อนุมัติขั้นสุดท้าย → ผู้ยื่น + AE เจ้าของดีล
+]);
+
 export const NOTIFICATION_BOXES = {
   bell: {
     entityTypes: ['dept_request', 'system_issue'],
     kinds: [
       'task_assign',
       ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
-      ...SALES_ORDER_BELL_KINDS,
+      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS,
     ],
   },
 };

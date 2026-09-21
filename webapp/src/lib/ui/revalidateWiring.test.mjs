@@ -38,6 +38,8 @@ const WIRED = [
   "app/sales-planning/targets/page.js",
   "app/sales-planning/targets/history/page.js",
   "app/sales-planning/targets/plan/page.js",
+  // เอกสาร FM-SA-04 (mig 0370) — ผู้อนุมัติเปิดแท็บค้างรอ อีกขั้นกดไปก่อนแล้วต้องเห็นตอนกลับมามอง
+  "app/sales-planning/spec-documents/[id]/page.js",
 ];
 
 /* ── ฮุกที่ถือสัญญาณแทนหน้าทั้งโมดูล ─────────────────────────────────────────

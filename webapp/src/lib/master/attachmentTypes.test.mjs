@@ -20,6 +20,9 @@ import {
   isPreviewableImage,
   requiredDocKeys,
   resolveUploadMime,
+  RETIRED_METADATA_KEYS,
+  SPEC_ILLUSTRATION_DOC_TYPE,
+  isRetiredAttachment,
 } from './attachmentTypes.js';
 
 test('พรีวิวรูป: ยึด mimeType เป็นหลัก', () => {
@@ -210,4 +213,33 @@ test('docTypesFor ของสินค้าเดินผ่านกติ�
     unsatisfiedRequiredDocs('product', docTypesFor('product', normal), [], '2026-08-20').map((m) => m.key),
     ['artwork'],
   );
+});
+
+// ── ภาพประกอบใบสเปค FM-SA-04 ที่ปลดระวางแล้ว (มติ 21/09/2569) ──────────────────
+test('ปลดระวาง = มีวันที่ใน metadata.retiredAt เท่านั้น', () => {
+  assert.equal(isRetiredAttachment({ metadata: { retiredAt: '2026-09-22T03:00:00.000Z' } }), true);
+  for (const item of [null, undefined, {}, { metadata: null }, { metadata: {} }, { metadata: { retiredAt: null } },
+    { metadata: { retiredAt: '' } }, { metadata: { retiredBy: 'U1' } }]) {
+    assert.equal(isRetiredAttachment(item), false, JSON.stringify(item));
+  }
+});
+
+test('คีย์ปลดระวางครบชุดที่ DELETE เขียน — PATCH ใช้ชุดนี้ตัดคำขอของจอ', () => {
+  assert.deepEqual([...RETIRED_METADATA_KEYS], ['retiredAt', 'retiredBy', 'retiredByName']);
+  assert.ok(Object.isFrozen(RETIRED_METADATA_KEYS));
+});
+
+test('ภาพประกอบใบสเปคไม่เข้าด่าน "ยังขาดเอกสาร" ของทะเบียนสินค้า — ทั้งไม่นับแทนและไม่นับเป็นของที่ขาด', () => {
+  /* 🪤 รูปประกอบเป็นเนื้อของกระดาษ FM-SA-04 ไม่ใช่เอกสารที่ทะเบียนสินค้าต้องมี ⇒ มีแต่รูปประกอบ
+     (ทั้งที่ใช้อยู่และที่ปลดระวางแล้ว) ต้องยังขึ้น "ขาด Artwork" เหมือนไม่มีไฟล์เลย */
+  const record = { categoryCode: '01-002' };
+  const types = docTypesFor('product', record);
+  assert.ok(!types.some((t) => t.key === SPEC_ILLUSTRATION_DOC_TYPE), 'การ์ดของหน้าสินค้าต้องไม่มีรูปประกอบ');
+  const illustrations = [
+    { docType: SPEC_ILLUSTRATION_DOC_TYPE, mimeType: 'image/png', metadata: {} },
+    { docType: SPEC_ILLUSTRATION_DOC_TYPE, mimeType: 'image/png', metadata: { retiredAt: '2026-09-22T03:00:00.000Z' } },
+  ];
+  assert.deepEqual(unsatisfiedRequiredDocs('product', types, illustrations, '2026-09-22').map((m) => m.key), ['artwork']);
+  // สินค้าหมวดที่ไม่บังคับอะไร — รูปประกอบต้องไม่ทำให้มีของ "ขาด" งอกขึ้นมา
+  assert.deepEqual(unsatisfiedRequiredDocs('product', docTypesFor('product', { categoryCode: '02-001' }), illustrations, '2026-09-22'), []);
 });

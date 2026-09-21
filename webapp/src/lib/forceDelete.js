@@ -410,7 +410,7 @@ export async function quotationForcePreview(supabase, quote) {
 // พรีวิวการลบใบสั่งขายหนึ่งใบ (ของใหม่ — เดิม SO ไม่มีเส้นทาง force เลย).
 // sales_order_lines เป็น FK CASCADE จึงไม่ต้องนับ; ที่ต้องเตือนคือหลักฐาน+ฉบับตรึง
 export async function salesOrderForcePreview(supabase, order) {
-  const [evidence, issued, filings, installments, paidInstallments, zoneTerms] = await Promise.all([
+  const [evidence, issued, filings, installments, paidInstallments, zoneTerms, specDocuments] = await Promise.all([
     countBy(supabase, 'document_signature_evidence', 'salesOrderId', order.id),
     countBy(supabase, 'issued_documents', 'salesOrderId', order.id),
     exciseFilingsOfSalesOrder(supabase, order.id),
@@ -422,6 +422,9 @@ export async function salesOrderForcePreview(supabase, order) {
        ⚠️ โซนกับประวัติการเข้าไซต์ **ไม่หาย** (FK เป็น RESTRICT) — ที่หายคือสะพาน
        ที่บอกว่าโซนนั้นขายอยู่ในรอบไหน ⇒ โซนจะเด้งกลับไปคิว "รอตั้งไซต์/โซน" เงียบ ๆ */
     countBy(supabase, 'service_zone_terms', 'salesOrderId', order.id),
+    /* เอกสาร FM-SA-04 ที่ยังใช้งาน (mig 0370) — ไม่หายตามใบ (FK SET NULL) แต่ route void ให้หลังลบ
+       ⇒ เลขที่ที่ส่งลูกค้าไปแล้วถูกปิดถาวร ต้องบอกก่อนกด (เดิมพรีวิวไม่นับเลย) */
+    countBy(supabase, 'product_spec_documents', 'salesOrderId', order.id, (q) => q.eq('status', 'active')),
   ]);
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ใบสั่งขาย')], blocked: true };
@@ -442,6 +445,9 @@ export async function salesOrderForcePreview(supabase, order) {
   }
   if (zoneTerms > 0) {
     notes.push(`🔴 ใบนี้เป็นต้นเรื่องของรอบบริการ ${zoneTerms} รอบ — ลบแล้วโซนเหล่านั้นจะกลับไปเป็น “ขายแล้วแต่ยังไม่ผูก” และคิวงานเข้าใหม่จะทวงซ้ำ`);
+  }
+  if (specDocuments > 0) {
+    notes.push(`🔴 ใบนี้มีเอกสาร FM-SA-04 ที่ยังใช้งาน ${specDocuments} ใบ — ลบแล้วเอกสารถูกยกเลิก (เลขที่ไม่นำกลับมาใช้) และหลุดจากใบสั่งขาย`);
   }
   if (order.status === 'approved') {
     notes.push('ใบนี้อนุมัติแล้ว = แหล่งยอด Actual ของดีล — ปกติควรใช้ “ยกเลิก SO” แทน');

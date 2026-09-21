@@ -213,3 +213,23 @@ test('ทุกคำนำหน้าต้อง redirect ไปเส้น�
     );
   }
 });
+
+/* ── ใบสเปคสินค้า FM-SA-04 (mig 0370 · มติ 21/09/2569) ─────────────────────────
+   คำนำหน้าของทะเบียนคือสองตัวอักษรแรก ⇒ `FM` ทั้งตระกูลตกมาที่นี่ · ต้องจับเฉพาะเลขที่เอกสาร
+   ของ FM-SA-04 เท่านั้น ไม่ใช่รหัสแบบฟอร์มที่พิมพ์ลอย ๆ ในข้อความ */
+test('เลขที่เอกสาร FM-SA-04 เปิดหน้าเอกสารด้วย docNo', () => {
+  for (const code of ['FM-SA-04-220969-001', 'fm-sa-04-011069-123']) {
+    const ref = parseDocRef(code);
+    assert.equal(ref?.table, 'product_spec_documents', code);
+    assert.equal(ref?.column, 'docNo', code);
+    assert.equal(ref?.code, code.toUpperCase(), 'ค้นด้วยตัวพิมพ์ใหญ่ — docNo ในฐานเป็นตัวพิมพ์ใหญ่ล้วน');
+  }
+  assert.equal(DOC_REF_TYPES.FM.path('PSD-1'), '/sales-planning/spec-documents/PSD-1');
+});
+
+test('รหัสแบบฟอร์ม / แบบฟอร์มอื่น / Rev ต่อท้าย ต้องไม่กลายเป็นลิงก์ FM-SA-04', () => {
+  for (const bad of ['FM-SA-04', 'FM-RD-01', 'FM-SA-07-220969-001', 'FM-SA-04-2209-001',
+    'FM-SA-04-220969-01', 'FM-SA-04-220969-001-01', 'FM-PD-05']) {
+    assert.equal(parseDocRef(bad), null, bad);
+  }
+});

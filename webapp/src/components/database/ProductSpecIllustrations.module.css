@@ -1,4 +1,4 @@
-.error { margin: 0 0 var(--space-3); color: var(--red); line-height: var(--lh-thai); }
+.notice { margin-bottom: var(--space-3); }
 
 /* ฝั่งขวาของรูป: หัวแถว (ลำดับ · ชื่อไฟล์ · ปุ่มเลื่อน) แล้วช่องคำบรรยายใต้ลงมา */
 /* 🪤 `minmax(0, 1fr)` ไม่ใช่ค่าฟุ่มเฟือย — ลูกของ grid มี `min-width: auto` ตั้งต้น

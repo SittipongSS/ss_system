@@ -15,7 +15,8 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import ReadableText from "@/components/ui/ReadableText";
 import StatusNotice from "@/components/ui/StatusNotice";
-import Toast from "@/components/ui/Toast";
+import Toast, { notifyToast } from "@/components/ui/Toast";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -103,7 +104,8 @@ import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal"
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
 import { approvalPrompt } from "@/lib/approvalPrompt";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
+import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
   financeActionError, financeStatusOf, financeStepOwnerError, financeWorkflowStep,
@@ -319,6 +321,11 @@ export default function SalesOrderDetailPage() {
       refreshOrder();
       return false;
     }
+    /* ⚠️ สำเร็จแต่ของที่ตามหลังไม่ครบ (เช่นยกเลิก/ย้ายเอกสาร FM-SA-04 ของใบนี้ไม่สำเร็จ · mig 0370)
+       — API ตอบ 2xx พร้อม `warning` ⇒ ต้องขึ้นบนจอ ไม่ใช่กลืนไปกับ "อัปเดตเรียบร้อย" (lib/apiWarnings)
+       · ใช้ทักกลางของแอป เพราะทาง revise พาไปหน้าใบใหม่ทันที ทักของหน้านี้จะหายไปกับหน้า */
+    const warning = responseWarningText(data);
+    if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
     if (action === "revise" && data?.id) {
       setBusy("");
       setToast({ kind: "success", msg: ACTION_MESSAGE.revise });
@@ -570,7 +577,26 @@ export default function SalesOrderDetailPage() {
   // ยกเลิก SO ผ่าน modal (มติ 2026-07-18): เลือกเหตุผลมาตรฐาน + หมายเหตุ (บังคับเมื่อ "อื่น ๆ")
   // เหตุกลุ่มลูกค้า + SO อนุมัติแล้ว → เสนอ "ย้อน Won" (ถอยดีลออกจาก Won).
   const [cancelForm, setCancelForm] = useState(null); // null = ปิด; { code, note, reverseTo, lostReason } = เปิด
-  const openCancel = () => setCancelForm({ code: "", note: "", reverseTo: "", lostReason: "" });
+  /* ⭐ เอกสาร FM-SA-04 ของใบนี้ (mig 0370) — ยกเลิก/ออก Rev. ของ SO ลากเอกสารไปด้วย (hook ใน API:
+     ยกเลิก = void ทุกใบ เลขที่ไม่คืน · ออก Rev. = ย้ายไปใบใหม่ ฉบับที่อนุมัติแล้วต้องเดินด่านใหม่)
+     ⇒ โมดัลยืนยันทั้งสองต้องบอกผลนี้ (กฎ approval-confirm-modals) · นับจากเส้นเดียวกับการ์ดเอกสารต่อเนื่อง
+     ⚠️ อ่านตอนเปิดโมดัล ไม่ใช่ตอนโหลดหน้า — ตัวเลขต้องสดตอนคนกำลังจะกด ไม่ใช่ตอนเปิดหน้าไว้เมื่อชั่วโมงก่อน
+     ⚠️ อ่านไม่ขึ้น = `null` ⇒ ข้อความแบบ "ถ้ามี" (salesOrderSpecDocEffect) ดีกว่าเงียบ */
+  const [cancelSpecDocCount, setCancelSpecDocCount] = useState(null);
+  const loadSpecDocCount = async () => {
+    if (isHistoricalOrder(order)) return 0; // ใบย้อนหลังออกใบสเปคไม่ได้ (เส้นนั้นตอบ 400)
+    try {
+      return liveSpecDocumentCount(await apiJson(`/api/sales-planning/sales-orders/${id}/spec-documents`));
+    } catch {
+      return null;
+    }
+  };
+  const openCancel = () => {
+    setCancelForm({ code: "", note: "", reverseTo: "", lostReason: "" });
+    setCancelSpecDocCount(null);
+    loadSpecDocCount().then(setCancelSpecDocCount);
+  };
+  const cancelSpecDocEffect = salesOrderSpecDocEffect("cancel", cancelSpecDocCount);
   // ใบสั่งขายย้อนหลัง (mig 0360) ยกเลิกได้อย่างเดียว — ไม่เสนอย้อน Won (API ปฏิเสธซ้ำ)
   const showReversal = !!cancelForm && order?.status === "approved" && !isHistoricalOrder(order) && isCustomerCancelReason(cancelForm.code);
   async function doCancel() {
@@ -592,6 +618,9 @@ export default function SalesOrderDetailPage() {
     const res = await apiFetch(url, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setBusy(""); setError(data.error || "ลบใบสั่งขายไม่สำเร็จ"); return false; }
+    // ลบแล้วแต่ของที่ตามหลังไม่ครบ (ปลดรอบบริการ · ยกเลิกเอกสาร FM-SA-04) — ทักกลางของแอปอยู่รอดข้ามหน้า
+    const warning = responseWarningText(data);
+    if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
     router.push("/sa/sales-orders");
     return true;
   }
@@ -942,7 +971,10 @@ export default function SalesOrderDetailPage() {
       ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
     // สถานะกลางหลังย้อนการอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก
     : canRevise
-      ? { id: "revise", kind: "revise", label: "ออก Rev.", onClick: () => setConfirmState({
+      ? { id: "revise", kind: "revise", label: "ออก Rev.", onClick: async () => {
+        // เอกสาร FM-SA-04 ย้ายตามใบ Rev. ใหม่ (hook ใน API) — นับก่อนเปิดโมดัลให้บอกผลได้ครบ
+        const specDocEffect = salesOrderSpecDocEffect("revise", await loadSpecDocCount());
+        setConfirmState({
           title: "ออก Rev. ใหม่",
           description: `ระบบจะสร้างร่าง Rev. ใหม่จาก ${order.orderNumber} และเก็บฉบับนี้เป็นประวัติ`,
           /* ⭐ ชี้ทางตั้งแต่ก่อนกด (มติผู้ใช้ 2026-08-18) — Rev. ของใบสั่งขาย **คัดลอก
@@ -953,11 +985,13 @@ export default function SalesOrderDetailPage() {
           detail: [
             "รายการและยอดจะถูกคัดลอกมาทั้งหมด — แก้จำนวน/ราคาในฉบับ Rev. ไม่ได้",
             "ถ้าต้องแก้ยอด ให้ออก Rev. ที่ใบเสนอราคาแล้วออกใบสั่งขายใหม่แทน",
+            specDocEffect,
             order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
           ].filter(Boolean).join(" · "),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
           action: () => requestAction("revise", { expectedUpdatedAt: order?.updatedAt }),
-        }) }
+        });
+      } }
       : null;
   const secondaryActions = [
     { id: "edit", kind: "edit", icon: Pencil, label: "แก้ไขข้อมูล", variant: "outline", visible: canEditDocument && !editMode, onClick: () => setEditMode(true) },
@@ -1351,12 +1385,14 @@ export default function SalesOrderDetailPage() {
             )}
           </DetailCard>
 
-          {/* ⭐ เอกสารต่อเนื่อง (mig 0364) — ใบที่ออกต่อจากใบสั่งขายที่อนุมัติแล้ว
+          {/* ⭐ เอกสารต่อเนื่อง (mig 0370) — ใบที่ออกต่อจากใบสั่งขายที่อนุมัติแล้ว
               วางถัดจากการ์ดยืนยันคำสั่งซื้อเพราะใบพวกนั้นใช้ PO/วันที่จากการ์ดนี้
-              ⚠️ **หน้านี้เป็นด่านปลดล็อกกับทางเข้า ไม่ใช่บ้านของใบ** — ใบสเปคเป็นใบของ
-                 *สินค้า* หนึ่งสินค้าหนึ่งใบตลอดอายุ (มติผู้ใช้ 2026-09-17)
+              ⚠️ **หน้านี้เป็นทางเข้า ไม่ใช่บ้านของใบ** — FM-SA-04 หนึ่งใบต่อหนึ่งบรรทัด SO
+                 เส้นอนุมัติอยู่ที่หน้าเอกสาร (มติเจ้าของ 21/09/2569)
+              🐞 ส่ง `orderStatus` เสมอ — อนุมัติใบบนหน้านี้แล้วการ์ดต้องดึงใหม่เอง ไม่งั้นปุ่ม
+                 "ออกเอกสาร" ค้างเหตุ "ยังไม่อนุมัติ" จนกด F5
               ⚠️ การ์ดคืน null เองเมื่อใบไม่มีบรรทัดหมวด 01/02 เลย (ใบที่ขายแต่ค่าออกแบบ) */}
-          <SalesOrderFollowUpDocs orderId={order.id} />
+          <SalesOrderFollowUpDocs orderId={order.id} orderStatus={order.status} />
 
           {/* ⭐ การ์ดสัญญาบริการ (mig 0324) — ขึ้นเฉพาะใบที่มีรอบบริการ
               (ดีลสาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อย 1 รายการ ⇒ ทั้งใบ)
@@ -1514,6 +1550,8 @@ export default function SalesOrderDetailPage() {
                 ? `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" ทันที — เลือกเหตุผลที่ยกเลิก`
                 : "หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก"}
             </p>
+            {/* เอกสาร FM-SA-04 ของใบนี้ถูก void ตามไปด้วย (ย้อนกลับไม่ได้) — ต้องบอกก่อนกด ไม่ใช่รู้ทีหลัง */}
+            {cancelSpecDocEffect ? <StatusNotice tone="warning">{cancelSpecDocEffect}</StatusNotice> : null}
             <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล</span>
               <Select value={cancelForm.code} onChange={(e) => setCancelForm((f) => ({ ...f, code: e.target.value }))}>

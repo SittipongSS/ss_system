@@ -1,228 +1,221 @@
-// ── ด่านของใบสเปคสินค้า FM-SA-04 — ตัวตัดสินล้วน (mig 0364) ──────────────────
+// ── สเปคสินค้า FM-SA-04 — กติกาของ "ข้อมูลสเปค" ล้วน (mig 0370) ─────────────────
 //
-// ⭐ **เส้นอนุมัติอยู่ที่ "ฉบับ" ไม่ใช่ "การออกเอกสาร"** (มติผู้ใช้ 2026-09-17)
-//   เปิดร่าง → ยื่นอนุมัติ → AE Sup อนุมัติ = การอนุมัติ **เนื้อสเปก**
-//   ⇒ ออกเอกสารรอบใหม่ด้วยสเปกเดิม ไม่ต้องเดินด่านซ้ำ · ลายเซ็นบนกระดาษคือชุดที่
-//     อนุมัติ Rev. นั้นพร้อมวันที่เดิม เพราะลายเซ็นรับรอง *สเปก* ไม่ใช่รอบขาย
-//   ⇒ แก้ช่องสเปก = ฉบับใหม่ = เดินด่านใหม่ทั้งเส้น
+// ⭐ **มติเจ้าของ 21/09/2569** (docs/fm-sa-04-document-model.md): สเปคในฐานข้อมูลเป็น
+//   **ข้อมูลของสินค้า** — 1 แถวต่อสินค้า ไม่มีเลขรัน ไม่มี Rev ไม่มีด่านอนุมัติ ·
+//   ฝ่ายขายแก้ได้เลย ทุกการแก้ลง audit log
+//   เลขที่เอกสาร Rev และด่านอนุมัติย้ายไปอยู่ที่ **เอกสารที่ออกจาก SO**
+//   ⇒ กติกาของเอกสารอยู่ที่ `productSpecDocWorkflow.js` ไม่ใช่ที่นี่
 //
-// ⭐ **ลำดับเดียวกับใบเสนอราคา** (มติผู้ใช้ 2026-09-21 · mig 0369) — ร่าง · บันทึก ·
-//   ยื่น · อนุมัติ และ **ลบได้** · ขั้น "AE ตรวจ" ของ 0364 ถูกยุบออก เหลือ `pending`
-//   ขั้นเดียวที่รออยู่ที่ AE Supervisor
-//   🪤 ของเดิมสี่ขั้นแล้วคนที่ตรวจกับคนที่อนุมัติเป็นคนเดียวกันในทางปฏิบัติ ⇒ ทุกใบ
-//     ต้องกดสองปุ่มติดกันโดยไม่มีใครอ่านอะไรเพิ่มระหว่างสองปุ่มนั้น
-//
-// ⚠️ ที่นี่ตอบแค่ "ใครทำอะไรได้ และติดอะไรอยู่" — ไม่แตะฐาน ไม่รู้จัก supabase
-// ⚠️ ทุกตัวคืน **เหตุผลเป็นข้อความ** ไม่ใช่ boolean เปล่า เพราะจอต้องบอกเหตุตอนกด
+// ⚠️ ไฟล์นี้ **ไม่แตะฐาน ไม่ import ของฝั่ง server** — จอ (client) import ได้ตรง ๆ
+//    ค่าคงที่ที่จอต้องใช้ (`SPEC_CONTENT_FIELDS` ฯลฯ) จึงต้องอยู่ที่นี่ ไม่ใช่ที่ store
+// ⚠️ ตัวตัดสินคืน **เหตุผลเป็นข้อความ** ไม่ใช่ boolean เปล่า เพราะจอต้องบอกเหตุตอนกด
 //    (กฎ ui-visibility-rule) · `null` = ทำได้
-import { isSuperuser } from '@/lib/permissions';
+import {
+  PRODUCT_SPEC_CERTIFICATIONS, PRODUCT_SPEC_CERT_STATUSES, productSpecChecklistLabel,
+} from '@/lib/sales/productSpecChecklist';
 
-export const SPEC_REVISION_STATUSES = Object.freeze([
-  'draft', 'pending', 'approved', 'rejected', 'superseded',
+/** ช่องเนื้อสเปค — ลำดับเดียวกับกระดาษ · คอลัมน์ของ product_specs (0370) */
+export const SPEC_CONTENT_FIELDS = Object.freeze([
+  'texture', 'standardPackaging',
+  'targetGroup', 'keySellingPoint', 'pricingTier',
+  'productBenefit', 'longevity', 'dosagePerUse',
 ]);
 
-export const SPEC_REVISION_STATUS_LABELS = Object.freeze({
-  draft: 'ฉบับร่าง',
-  pending: 'รออนุมัติ',
-  approved: 'อนุมัติแล้ว',
-  rejected: 'ตีกลับให้แก้',
-  superseded: 'ถูกแทนด้วยฉบับใหม่',
+/* ⚠️ ต้องเท่ากับ CHECK `product_specs_text_check` ของ mig 0370 ทุกช่อง — ด่านที่หลวมกว่าฐาน
+   = ผู้ใช้เห็นข้อความ error ภาษาอังกฤษของ Postgres · ที่แน่นกว่าฐาน = ข้อมูลเดิมบันทึกซ้ำไม่ได้ */
+export const SPEC_CONTENT_LIMITS = Object.freeze({
+  texture: 200,
+  standardPackaging: 500,
+  targetGroup: 500,
+  keySellingPoint: 500,
+  pricingTier: 500,
+  productBenefit: 500,
+  longevity: 200,
+  dosagePerUse: 200,
 });
 
-export const SPEC_ISSUE_STATUS_LABELS = Object.freeze({
-  pending: 'รอฉบับอนุมัติ',
-  issued: 'ออกเอกสารแล้ว',
-  void: 'ยกเลิกแล้ว',
+export const SPEC_CONTENT_LABELS = Object.freeze({
+  texture: 'ลักษณะเนื้อสาร',
+  standardPackaging: 'บรรจุภัณฑ์มาตรฐาน',
+  targetGroup: 'กลุ่มเป้าหมาย',
+  keySellingPoint: 'จุดขายหลัก',
+  pricingTier: 'ระดับราคา',
+  productBenefit: 'ประสิทธิภาพหลัก',
+  longevity: 'ระยะเวลาการออกฤทธิ์กลิ่น',
+  dosagePerUse: 'ปริมาณแนะนำต่อการใช้งาน',
 });
 
-/* สามขั้นบนราง เท่ากับรางของใบเสนอราคา — `rejected` ไม่นับเป็นจุด มันคือ *สุขภาพ*
-   ของขั้นที่ยืนอยู่ (กติกาเดียวกับรางของคำร้องและของใบสั่งขาย) */
-export const SPEC_REVISION_STEPS = Object.freeze(['draft', 'pending', 'approved']);
+// checklist: แถวที่ผู้ใช้เพิ่มเองมีเพดาน · ความยาวเท่า CHECK ของ product_spec_items (0370)
+export const SPEC_ITEM_EXTRA_MAX = 20;
+export const SPEC_ITEM_LABEL_MAX = 200;
+export const SPEC_ITEM_TEXT_MAX = 500;
+// เอกสารที่ขอได้: แถวที่พิมพ์ชื่อเองมีเพดานเท่ากัน (jsonb ไม่มี CHECK รายแถว — ด่านอยู่ที่นี่ที่เดียว)
+export const SPEC_CERT_EXTRA_MAX = 20;
+export const SPEC_CERT_LABEL_MAX = 200;
+export const SPEC_CERT_NOTE_MAX = 500;
 
-export const isSpecRevisionOpen = (revision) => Boolean(revision)
-  && ['draft', 'pending'].includes(revision.status);
+/* ใครแก้สเปคได้ — AC กับฝ่ายขายทุกระดับ + admin
+   ⚠️ เทียบ role ตรง ๆ ไม่ใช้ `isSuperuser` (ซึ่งรวม ae_supervisor อยู่แล้ว แต่สิ่งที่ตั้งใจ
+      คือ "ฝ่ายขาย" ไม่ใช่ "ผู้ดูแลทุกทีม") · ลิสต์เดียวให้ทั้งจอและ API ถาม */
+export const SPEC_EDIT_ROLES = Object.freeze(['ac', 'ae', 'senior_ae', 'ae_supervisor', 'admin']);
 
-export const isSpecRevisionClosed = (revision) => Boolean(revision)
-  && ['approved', 'rejected', 'superseded'].includes(revision.status);
+export const canEditProductSpec = (role) => SPEC_EDIT_ROLES.includes(role);
 
-const AE_ROLES = ['ae', 'senior_ae', 'ae_supervisor'];
-
-export const canDraftProductSpec = (role) => isSuperuser(role)
-  || ['ac', ...AE_ROLES].includes(role);
-
-export const canApproveProductSpec = (role) => isSuperuser(role) || role === 'ae_supervisor';
-
-/** แก้เนื้อฉบับได้ไหม — ได้เฉพาะฉบับที่ยังไม่ยื่น (หรือผู้อนุมัติเอง) */
-export function productSpecEditBlock(revision, { role } = {}) {
-  if (!revision) return 'ยังไม่มีฉบับให้แก้ — ต้องสร้างฉบับใหม่ก่อน';
-  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงแก้ใบสเปคได้';
-  if (revision.status === 'approved') {
-    return 'ฉบับนี้อนุมัติแล้ว แก้ไม่ได้ — ต้องออกฉบับใหม่ (Rev. ถัดไป)';
-  }
-  if (revision.status === 'superseded') return 'ฉบับนี้ถูกแทนด้วยฉบับใหม่แล้ว';
-  if (revision.status === 'pending' && !canApproveProductSpec(role)) {
-    return 'ฉบับนี้ยื่นอนุมัติแล้ว — ดึงกลับมาแก้ก่อนถึงจะแก้ได้';
-  }
-  return null;
-}
-
-/** ยื่นอนุมัติ (ปุ่มเดียวเหมือนใบเสนอราคา — ไม่มีขั้นตรวจคั่นแล้ว) */
-export function productSpecSubmitBlock(revision, { role } = {}) {
-  if (!revision) return 'ยังไม่มีฉบับให้ยื่น';
-  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงยื่นใบสเปคได้';
-  if (!['draft', 'rejected'].includes(revision.status)) {
-    return `ฉบับนี้อยู่สถานะ "${SPEC_REVISION_STATUS_LABELS[revision.status] || revision.status}" ยื่นซ้ำไม่ได้`;
-  }
-  return null;
-}
-
-/** AE Sup อนุมัติ */
-export function productSpecApproveBlock(revision, { role } = {}) {
-  if (!revision) return 'ยังไม่มีฉบับให้อนุมัติ';
-  if (!canApproveProductSpec(role)) return 'ต้องเป็น AE Supervisor จึงอนุมัติใบสเปคได้';
-  if (revision.status !== 'pending') {
-    return revision.status === 'approved'
-      ? 'ฉบับนี้อนุมัติไปแล้ว'
-      : 'ฉบับนี้ยังไม่ได้ยื่นอนุมัติ';
+/**
+ * ลบสเปคได้ไหม — `null` = ลบได้
+ *
+ * 🔴 **มีแถวเอกสารแม้ใบเดียว (รวมใบที่ void) = ลบไม่ได้ ไม่ว่าใคร** — เอกสารถือเลขที่ที่ออก
+ * ไปนอกบริษัทแล้ว และฐานกันด้วย FK `ON DELETE RESTRICT` + ยามห้ามลบแถวเอกสาร (0370)
+ * ⇒ ใบที่ void แล้วก็ยังอ้างสเปคอยู่ · ที่นี่แค่บอกเหตุเป็นภาษาคนก่อนกด
+ */
+export function productSpecDeleteBlock({ spec, documents = [], role } = {}) {
+  if (!spec) return 'สินค้านี้ยังไม่มีสเปคให้ลบ';
+  if (!canEditProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงลบสเปคได้';
+  const rows = (documents || []).filter(Boolean);
+  if (rows.length) {
+    const first = rows[0]?.docNo ? ` (${rows[0].docNo})` : '';
+    return `ออกเอกสารจากสเปคนี้ไปแล้ว ${rows.length} ใบ${first} — ลบสเปคไม่ได้ เพราะเลขที่เอกสารอ้างสเปคนี้อยู่`;
   }
   return null;
 }
 
 /**
- * ลบได้ไหม — และลบแล้วหายไปแค่ไหน
+ * สิทธิ์บนหน้าสเปคของสินค้า — รูปเดียวกับที่ `GET /api/products/[id]/spec` ส่งให้จอ
  *
- * ⭐ กติกาเดียวกับใบเสนอราคา (มติ 21/09): ฉบับร่าง/ที่ถูกตีกลับ คนที่แก้ได้ก็ลบได้ ·
- * แอดมินลบได้ทุกสถานะ
- * 🔴 **แต่ใบที่ออกกระดาษไปแล้วลบไม่ได้ ไม่ว่าใคร** — `product_spec_issues` ถือเลขที่
- * เอกสารที่ออกไปนอกบริษัทแล้ว (`FM-SA-04-DDMMYY-XXX` จากตัวนับที่ไม่เคยใช้เลขซ้ำ)
- * ลบทิ้งคือทำให้เลขที่ยังอยู่บนกระดาษของลูกค้าไม่มีต้นทางในระบบ · ฐานก็กันด้วย
- * FK `ON DELETE RESTRICT` (0364) — ที่นี่แค่บอกเหตุเป็นภาษาคนก่อนกด
+ * ⚠️ ปุ่มลบ: ไม่มีสิทธิ์ = ไม่โชว์ · มีสิทธิ์แต่ติดเอกสาร = โชว์แล้วบอกเหตุ (ui-visibility-rule)
+ *    ยังไม่มีสเปค = ไม่มีของให้ลบ ⇒ ไม่โชว์
  */
-export function productSpecDeleteBlock({
-  spec, revision, revisions = [], issues = [], role,
-} = {}) {
-  if (!spec || !revision) return 'ยังไม่มีใบสเปคให้ลบ';
-  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงลบใบสเปคได้';
-  /* ฉบับเดียว = ลบใบทั้งใบ ⇒ กระดาษของทุกฉบับนับเป็นตัวขัด · หลายฉบับ = ลบเฉพาะฉบับนี้
-     ⇒ กระดาษของฉบับอื่นไม่เกี่ยว (FK ผูกรายฉบับ) */
-  const wholeSpec = productSpecDeleteScope(revisions) === 'spec';
-  const live = issues.filter((row) => row && row.status !== 'void'
-    && (wholeSpec || row.revisionId === revision.id));
-  if (live.length) {
-    return `ออกเอกสารไปแล้ว ${live.length} ฉบับ (${live[0].docNo}) — ยกเลิกเอกสารก่อนจึงลบได้`;
-  }
-  if (isSuperuser(role)) return null;
-  if (!['draft', 'rejected'].includes(revision.status)) {
-    return revision.status === 'pending'
-      ? 'ฉบับนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงลบได้'
-      : `ฉบับที่${SPEC_REVISION_STATUS_LABELS[revision.status] || revision.status}ลบได้เฉพาะแอดมิน`;
-  }
-  return null;
-}
-
-/**
- * ลบแล้วหายไปแค่ไหน — 'spec' = ทั้งใบ (สินค้ากลับไปเป็น "ยังไม่มีใบสเปค") ·
- * 'revision' = เฉพาะฉบับล่าสุด (ฉบับก่อนยังเป็นสเปกที่ใช้อยู่)
- *
- * ⚠️ จอต้องพูดให้ตรงข้อนี้ก่อนกด — "ลบ" สองความหมายที่ปุ่มเดียวกันคือที่มาของ
- * การลบพลาดแบบกู้ไม่ได้ (ไม่มีถังขยะในระบบ)
- */
-export function productSpecDeleteScope(revisions = []) {
-  return revisions.filter(Boolean).length > 1 ? 'revision' : 'spec';
-}
-
-/**
- * ออกฉบับใหม่ (Rev. ถัดไป) ได้ไหม
- *
- * ⚠️ ห้ามมีฉบับที่ยังไม่จบสองใบพร้อมกัน — unique index ของ mig 0364 กันไว้ที่ฐานด้วย
- * แต่จอต้องบอกเหตุก่อนกด ไม่ใช่ปล่อยให้ชน constraint แล้วขึ้น error ภาษาอังกฤษ
- */
-export function productSpecNewRevisionBlock(spec, latestRevision, { role } = {}) {
-  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงออกฉบับใหม่ได้';
-  if (!spec) return 'สินค้านี้ยังไม่มีใบสเปค — สร้างใบก่อน';
-  if (isSpecRevisionOpen(latestRevision)) {
-    return `ฉบับ Rev.${String(latestRevision.revNo).padStart(2, '0')} ยังไม่จบ (${SPEC_REVISION_STATUS_LABELS[latestRevision.status]}) — ปิดฉบับนั้นก่อน`;
-  }
-  return null;
-}
-
-/**
- * ออกเอกสารตาม SO ได้ไหม
- *
- * ⭐ ฉบับที่อนุมัติแล้ว = ออกได้เลย กระดาษเป็นฉบับจริงทันที
- * ⭐ ฉบับที่ยังเดินด่าน = ออกได้ แต่กระดาษเป็น "ฉบับร่าง" (ลายน้ำ) จนฉบับผ่านด่าน
- *    ⇒ เปิดทางไว้เพราะลูกค้ามักขอดูสเปกก่อนที่ใบจะผ่านหัวหน้า
- * 🛑 ฉบับที่ถูกตีกลับ = ออกไม่ได้ ต้องแก้ให้จบก่อน (ฐานก็ตีกลับเหมือนกัน)
- */
-/**
- * ด่านที่มาจาก **ใบสั่งขายกับสิทธิ์** อย่างเดียว — ไม่เกี่ยวว่าสินค้ามีใบสเปคหรือยัง
- *
- * ⚠️ แยกออกมาเพราะปุ่ม "สร้างใบสเปค" ติดได้เฉพาะสองเรื่องนี้ · เอาเหตุ "ยังไม่มีใบสเปค"
- * ไปปิดปุ่มที่มีไว้สร้างใบ = ปุ่มที่กดไม่ได้ตลอดกาลด้วยเหตุผลที่ตัวมันเองแก้ให้อยู่แล้ว
- */
-export function productSpecOrderGate({ role, salesOrder } = {}) {
-  if (!canDraftProductSpec(role)) return 'ต้องเป็น AC หรือฝ่ายขายจึงออกเอกสารได้';
-  if (!salesOrder) return 'ไม่พบใบสั่งขายต้นเรื่อง';
-  if (salesOrder.status !== 'approved') {
-    return 'ใบสั่งขายยังไม่ผ่านการอนุมัติของ AE Supervisor — ออกใบสเปคได้หลังอนุมัติ';
-  }
-  return null;
-}
-
-export function productSpecIssueBlock(spec, latestRevision, { role, salesOrder } = {}) {
-  const orderBlock = productSpecOrderGate({ role, salesOrder });
-  if (orderBlock) return orderBlock;
-  if (!spec || !latestRevision) return 'สินค้านี้ยังไม่มีใบสเปค — สร้างใบก่อนจึงออกเอกสารได้';
-  if (latestRevision.status === 'rejected') {
-    return 'ฉบับล่าสุดถูกตีกลับให้แก้ — แก้ให้จบก่อนจึงออกเอกสารได้';
-  }
-  return null;
-}
-
-/**
- * บรรทัด SO หนึ่งบรรทัดต้องทำอะไรต่อ — ตัวเดียวที่จอ (และแผงบนหน้า SO) ใช้ตัดสิน
- *
- * ⚠️ ห้ามให้จอคิดเอง: สามสถานะนี้หน้าตาใกล้กันมาก (ยังไม่มีใบ / มีใบแต่ยังไม่ออกรอบนี้ /
- * ออกรอบนี้แล้ว) และแต่ละอันมีปุ่มคนละตัว · คิดซ้ำที่จอเมื่อไรมันเพี้ยนจากที่ API ยอม
- */
-export function productSpecLineState({
-  line, spec, latestRevision, issue, salesOrder, role, scopeReason,
-} = {}) {
-  if (scopeReason) {
-    return { kind: 'out_of_scope', label: 'ไม่ต้องใช้', reason: scopeReason, action: null };
-  }
-  const revLabel = latestRevision
-    ? `Rev.${String(latestRevision.revNo).padStart(2, '0')}`
-    : null;
-  if (issue && issue.status !== 'void') {
-    return {
-      kind: 'issued',
-      label: SPEC_ISSUE_STATUS_LABELS[issue.status],
-      docNo: issue.docNo,
-      revLabel: `Rev.${String(issue.revNo).padStart(2, '0')}`,
-      reason: null,
-      action: 'open',
-    };
-  }
-  const blocked = productSpecIssueBlock(spec, latestRevision, { role, salesOrder });
-  /* ปุ่มสร้างใบติดได้เฉพาะด่านของใบสั่งขาย/สิทธิ์ — ไม่ใช่เหตุ "ยังไม่มีใบสเปค"
-     ซึ่งเป็นสิ่งที่ปุ่มนั้นมีไว้แก้ */
-  const orderReason = productSpecOrderGate({ role, salesOrder });
-  if (!spec || !latestRevision) {
-    return {
-      kind: 'no_spec',
-      label: 'ยังไม่มีใบสเปค',
-      reason: orderReason,
-      action: 'create',
-      lineId: line?.id || null,
-    };
-  }
+export function productSpecPermissions({ spec, documents = [], role } = {}) {
+  const canEdit = canEditProductSpec(role);
   return {
-    kind: 'not_issued',
-    label: 'ยังไม่ออกรอบนี้',
-    revLabel,
-    reason: blocked,
-    action: 'issue',
-    lineId: line?.id || null,
+    canEdit,
+    delete: {
+      visible: canEdit && Boolean(spec),
+      reason: spec ? productSpecDeleteBlock({ spec, documents, role }) : null,
+    },
   };
+}
+
+const cleanText = (value) => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+};
+
+/**
+ * ช่องเนื้อสเปคที่ส่งมา → ค่าที่เขียนลงฐานได้
+ *
+ * ⚠️ ส่งมาเฉพาะช่องที่มีในก้อน — ช่องที่ไม่ส่ง = ไม่แตะ (PATCH บางส่วนได้) ·
+ *    ส่งค่าว่าง = ล้างเป็น NULL
+ */
+export function normalizeSpecContent(content = {}) {
+  const value = {};
+  const source = content && typeof content === 'object' ? content : {};
+  for (const field of SPEC_CONTENT_FIELDS) {
+    if (!(field in source)) continue;
+    const text = cleanText(source[field]);
+    if (text && text.length > SPEC_CONTENT_LIMITS[field]) {
+      return { error: `${SPEC_CONTENT_LABELS[field]}ยาวเกิน ${SPEC_CONTENT_LIMITS[field]} ตัวอักษร` };
+    }
+    value[field] = text;
+  }
+  return { value };
+}
+
+/**
+ * checklist ทั้งชุด → แถวที่เขียนได้ (ยังไม่มี id/specId — store เติม)
+ *
+ * ⚠️ ส่งมาเมื่อไรคือ **ทับทั้งก้อน** — แถวที่หายไปจากที่ส่งมา = แถวที่ถูกลบ
+ * ⚠️ คำของแถวที่มีคีย์อ่านจากทะเบียนวันนี้ (กระดาษพูดคำเดียวกันทุกใบ) · แถวที่เพิ่มเองใช้คำที่พิมพ์
+ */
+export function normalizeSpecItems(rows) {
+  if (!Array.isArray(rows)) return { error: 'รูปแบบ checklist ไม่ถูกต้อง' };
+  const extras = rows.filter((row) => !row?.itemKey).length;
+  if (extras > SPEC_ITEM_EXTRA_MAX) return { error: `เพิ่มแถว checklist เองได้ไม่เกิน ${SPEC_ITEM_EXTRA_MAX} แถว` };
+  const seen = new Set();
+  const value = [];
+  for (const [index, row] of rows.entries()) {
+    const key = cleanText(row?.itemKey);
+    if (key) {
+      if (!productSpecChecklistLabel(key)) return { error: `checklist แถวที่ ${index + 1} อ้างรายการที่ไม่มีในแบบฟอร์ม` };
+      if (seen.has(key)) return { error: `checklist แถวที่ ${index + 1} ซ้ำกับแถวก่อนหน้า` };
+      seen.add(key);
+    }
+    const label = key ? productSpecChecklistLabel(key) : cleanText(row?.itemLabel);
+    if (!label) return { error: `checklist แถวที่ ${index + 1} ไม่มีชื่อรายการ` };
+    if (label.length > SPEC_ITEM_LABEL_MAX) return { error: `ชื่อรายการ checklist แถวที่ ${index + 1} ยาวเกิน ${SPEC_ITEM_LABEL_MAX} ตัวอักษร` };
+    const detail = cleanText(row?.detail);
+    const note = cleanText(row?.note);
+    if (detail && detail.length > SPEC_ITEM_TEXT_MAX) return { error: `รายละเอียด checklist แถวที่ ${index + 1} ยาวเกิน ${SPEC_ITEM_TEXT_MAX} ตัวอักษร` };
+    if (note && note.length > SPEC_ITEM_TEXT_MAX) return { error: `หมายเหตุ checklist แถวที่ ${index + 1} ยาวเกิน ${SPEC_ITEM_TEXT_MAX} ตัวอักษร` };
+    value.push({
+      sortOrder: index,
+      itemKey: key,
+      itemLabel: label,
+      detail,
+      preparedByS: Boolean(row?.preparedByS),
+      preparedByCustomer: Boolean(row?.preparedByCustomer),
+      note,
+    });
+  }
+  return { value };
+}
+
+const CERT_KEYS = new Set(PRODUCT_SPEC_CERTIFICATIONS.map((row) => row.key));
+const CERT_LABEL_BY_KEY = new Map(PRODUCT_SPEC_CERTIFICATIONS.map((row) => [row.key, row.label]));
+
+/**
+ * เอกสารที่ขอได้ทั้งชุด → ก้อน jsonb ที่เขียนได้
+ *
+ * ⚠️ jsonb ไม่มี CHECK รายแถว — ด่านรูปทรงอยู่ที่นี่ที่เดียว (สถานะมีสองค่าตามกระดาษ +
+ *    ค่าว่าง = "ยังไม่ตอบ" ซึ่งต่างจาก "อยู่ระหว่างจัดเตรียม")
+ */
+export function normalizeSpecCertifications(rows) {
+  if (!Array.isArray(rows)) return { error: 'รูปแบบรายการเอกสารที่ขอได้ไม่ถูกต้อง' };
+  const extras = rows.filter((row) => !row?.key).length;
+  if (extras > SPEC_CERT_EXTRA_MAX) return { error: `เพิ่มเอกสารเองได้ไม่เกิน ${SPEC_CERT_EXTRA_MAX} แถว` };
+  const seen = new Set();
+  const value = [];
+  for (const [index, row] of rows.entries()) {
+    const key = cleanText(row?.key);
+    if (key) {
+      if (!CERT_KEYS.has(key)) return { error: `เอกสารแถวที่ ${index + 1} อ้างรายการที่ไม่มีในแบบฟอร์ม` };
+      if (seen.has(key)) return { error: `เอกสารแถวที่ ${index + 1} ซ้ำกับแถวก่อนหน้า` };
+      seen.add(key);
+    }
+    const label = key ? CERT_LABEL_BY_KEY.get(key) : cleanText(row?.label);
+    if (!label) return { error: `เอกสารแถวที่ ${index + 1} ไม่มีชื่อ` };
+    if (label.length > SPEC_CERT_LABEL_MAX) return { error: `ชื่อเอกสารแถวที่ ${index + 1} ยาวเกิน ${SPEC_CERT_LABEL_MAX} ตัวอักษร` };
+    const status = cleanText(row?.status) || '';
+    if (status && !PRODUCT_SPEC_CERT_STATUSES.includes(status)) {
+      return { error: `สถานะเอกสารแถวที่ ${index + 1} ไม่ถูกต้อง` };
+    }
+    const note = cleanText(row?.note) || '';
+    if (note.length > SPEC_CERT_NOTE_MAX) return { error: `หมายเหตุเอกสารแถวที่ ${index + 1} ยาวเกิน ${SPEC_CERT_NOTE_MAX} ตัวอักษร` };
+    value.push({ key: key || null, label, status, note });
+  }
+  return { value };
+}
+
+/**
+ * ก้อนที่จอส่งมาบันทึกสเปค `{ content, certifications, items }` → ค่าที่เขียนได้
+ *
+ * ⚠️ `certifications` / `items` ที่ไม่ส่งมา (undefined) = ไม่แตะของเดิม · ส่งมา = ทับทั้งชุด
+ * @returns {{ value: { content: object, certifications?: object[], items?: object[] } } | { error: string }}
+ */
+export function normalizeProductSpecInput(input = {}) {
+  const content = normalizeSpecContent(input?.content || {});
+  if (content.error) return { error: content.error };
+  const value = { content: content.value };
+  if (input?.certifications !== undefined) {
+    const certs = normalizeSpecCertifications(input.certifications);
+    if (certs.error) return { error: certs.error };
+    value.certifications = certs.value;
+  }
+  if (input?.items !== undefined) {
+    const items = normalizeSpecItems(input.items);
+    if (items.error) return { error: items.error };
+    value.items = items.value;
+  }
+  return { value };
 }

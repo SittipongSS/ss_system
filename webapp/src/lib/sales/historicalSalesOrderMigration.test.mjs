@@ -197,6 +197,8 @@ const SQL_STATE_CHECK_ONLY = new Map([
   ['append_historical_installments', 'ตรวจสถานะใบก่อนเพิ่มงวด ไม่รวมยอด (0360)'],
   ['remove_historical_sales_order_line',
     'ถอดจุดออกจากใบย้อนหลัง — แตะใบเดียวที่ส่งเข้ามา และ**ปฏิเสธ**ทุกใบที่ไม่ใช่ historical (0366)'],
+  ['guard_product_spec_document_revision',
+    'ยามของ Rev เอกสาร FM-SA-04 — ตรวจว่า SO ของเอกสารยัง approved ตอนเดินหน้า ไม่รวมยอด · ใบย้อนหลังออกเอกสารไม่ได้อยู่แล้ว (0370)'],
 ]);
 
 test('🪤 ทุกฟังก์ชันในฐานที่อ่านใบสั่งขายอนุมัติแล้ว กรอง origin หรืออยู่ในรายการตรวจสถานะล้วน', () => {
