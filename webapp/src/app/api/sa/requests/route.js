@@ -478,7 +478,12 @@ export async function POST(request) {
       /* ประเมินพื้นที่ (mig 0314) — สถานที่ที่จะเข้า + **เวลา** ที่อยากให้เข้า
          วันที่ยังเป็น `requestedDueDate` ตัวเดิม เปลี่ยนแค่ป้ายบนฟอร์ม
          ⚠️ ใส่คีย์เฉพาะหัวข้อนี้ ด้วยเหตุผลเดียวกับ `quotationId` ข้างบน */
-      ...(survey ? { siteId: survey.siteId, requestedDueTime: survey.requestedDueTime } : {}),
+      ...(survey ? {
+        siteId: survey.siteId,
+        requestedDueTime: survey.requestedDueTime,
+        // วันที่อยากได้ **ผล** (mig 0368) — คนละวันกับ `requestedDueDate` ข้างบน
+        requestedResultDate: survey.requestedResultDate,
+      } : {}),
       /* ทีมเจ้าของคำร้อง — คนอยู่หลายทีมเลือกได้ว่าใบนี้เข้าคิวทีมไหน
          (ค่าที่ไม่ใช่ทีมของตัวเองถูกตีเป็นทีมหลักเสมอ — ดู attributionTeam)
          ⭐ คนที่ **ไม่มีทีมเลย** (admin/หัวหน้าฝ่ายขาย/RD/PC) เปิดใบแล้วเคยได้ team = null

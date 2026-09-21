@@ -543,7 +543,8 @@ export default function SurveySheetPage({ params }) {
           },
           {
             key: "due",
-            label: "TS กำหนดส่ง",
+            // วันส่งผล (mig 0368) — วันนัดเข้าพื้นที่อยู่แถว "นัดสำรวจ" ข้างบนแล้ว
+            label: "TS จะส่งผล",
             icon: Flag,
             value: view.due.date ? fmtDate(view.due.date) : null,
             sub: dueSub,

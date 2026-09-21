@@ -44,6 +44,44 @@ test('สองวันกำหนดอยู่คู่กันเสม�
   assert.equal(committed.sub, 'RD ยังไม่ได้แจ้งกำหนดส่ง');
 });
 
+/* ── ใบที่มีสองวัน: เข้าพื้นที่ · ส่งผล (มติผู้ใช้ 2026-09-21 · mig 0368) ──────
+   🔴 ของเดิมการ์ดหัวใบพูดว่า "ผู้ขอต้องการรับงาน" กับ "TS กำหนดส่ง" ทั้งที่ทั้งคู่คือ
+      **วันเข้าพื้นที่** ⇒ คนอ่านเข้าใจว่าใบบอกวันที่จะได้ผลไปแล้ว */
+test('🔴 ประเมินพื้นที่: หัวใบต้องแยกวันเข้าพื้นที่ออกจากวันส่งผล', () => {
+  const survey = {
+    ...base,
+    dept: 'TS',
+    kind: 'site_survey',
+    committedDueDate: '2026-08-19',
+    requestedResultDate: '2026-08-21',
+    committedResultDate: '2026-08-24',
+  };
+  const facts = requestHeaderFacts(survey, { now: NOW });
+  assert.deepEqual(
+    keys(facts),
+    ['submitted', 'requestedDue', 'committedDue', 'requestedResultDue', 'committedResultDue'],
+  );
+  // ป้ายต้องบอกชื่อวัน ไม่ใช่คำกลางที่อ่านได้ทั้งสองวัน
+  assert.equal(byKey(facts, 'requestedDue').label, 'ผู้ขอ: วันที่ต้องการให้เข้าพื้นที่');
+  assert.equal(byKey(facts, 'committedDue').label, 'TS: วันนัดเข้าพื้นที่');
+  assert.equal(byKey(facts, 'requestedResultDue').value, '21/08/2026');
+  assert.equal(byKey(facts, 'committedResultDue').label, 'TS: วันที่จะส่งผลประเมิน');
+  assert.equal(byKey(facts, 'committedResultDue').value, '24/08/2026');
+});
+
+test('หัวข้อที่มีวันเดียวยังใช้คำกลางเดิม — ไม่มีช่องวันส่งผลโผล่มาเป็นขีดเปล่า', () => {
+  const facts = requestHeaderFacts(base, { now: NOW });
+  assert.equal(byKey(facts, 'requestedDue').label, 'ผู้ขอต้องการรับงาน');
+  assert.equal(keys(facts).includes('committedResultDue'), false);
+});
+
+test('ใบประเมินที่ยังไม่ลงคิว — ช่องวันส่งผลต้องพูดว่ายังไม่แจ้ง ไม่ใช่เงียบ', () => {
+  const facts = requestHeaderFacts({ ...base, dept: 'TS', kind: 'site_survey' }, { now: NOW });
+  const committedResult = byKey(facts, 'committedResultDue');
+  assert.equal(committedResult.value, 'ยังไม่ระบุ');
+  assert.equal(committedResult.sub, 'TS ยังไม่ได้แจ้งวันส่งผล');
+});
+
 test('รับปากวันแล้ว — บอกด้วยว่าเทียบกับที่ขอแล้วเป็นยังไง', () => {
   const facts = requestHeaderFacts(
     { ...base, requestedDueDate: '2026-08-14', committedDueDate: '2026-08-13' }, { now: NOW },
