@@ -162,6 +162,35 @@ export function specControlActions({
   return { primaryAction: primary, secondaryActions: secondary, dangerActions: danger };
 }
 
+/**
+ * ข้อความกล่องยืนยันตอนลบ — **ตัวสร้างล้วน** เพื่อให้เทสต์จับได้ว่าพูดตรงขอบเขตจริง
+ *
+ * 🐞 2026-09-21 บน production: กล่องลบขึ้นข้อความแล้วกดยืนยันได้ error
+ * `E.onConfirm is not a function` เพราะจอสร้างก้อนยืนยันด้วยคีย์ `action` ตามหน้า
+ * ใบเสนอราคา แต่กล่องยืนยันของหน้านี้อ่าน `onConfirm` ⇒ ปุ่มยืนยันพังทั้งปุ่ม
+ * ⇒ ข้อความอยู่ที่นี่ (มีเทสต์) · ตัวลงมืออยู่ที่จอ · คีย์ที่กล่องอ่านมีชุดเดียว
+ *
+ * ⚠️ คืนคีย์ตามที่ `ConfirmDialog` อ่านเท่านั้น — เพิ่มคีย์ที่กล่องไม่รู้จักคือของที่
+ * หายเงียบ (คีย์ `description` ของหน้านี้เคยไม่ถูกส่งต่อ กล่องจึงไม่มีประโยคถามเลย)
+ */
+export function specDeletePrompt({ productName, revisions = [], revision } = {}) {
+  const rows = revisions.filter(Boolean);
+  const wholeSpec = productSpecDeleteScope(rows) === 'spec';
+  const of = productName ? ` ของ ${productName}` : '';
+  const previous = rows[1];
+  return {
+    title: wholeSpec ? 'ลบใบสเปคสินค้า' : `ลบฉบับร่าง ${revLabel(revision?.revNo)}`,
+    description: wholeSpec
+      ? `ยืนยันลบใบสเปค${of} หรือไม่`
+      : `ยืนยันลบ ${revLabel(revision?.revNo)}${of} หรือไม่`,
+    detail: wholeSpec
+      ? 'ฉบับทุกฉบับและ checklist ของใบนี้จะถูกลบ สินค้าจะกลับไปเป็น “ยังไม่มีใบสเปค” และกู้จากหน้าจอนี้ไม่ได้'
+      : `ลบเฉพาะฉบับร่างนี้ · ${revLabel(previous?.revNo)} ยังเป็นสเปกที่ใช้อยู่ และกู้ฉบับที่ลบจากหน้าจอนี้ไม่ได้`,
+    confirmLabel: wholeSpec ? 'ลบใบสเปคสินค้า' : 'ลบฉบับร่าง',
+    danger: true,
+  };
+}
+
 /** ช่องที่ยังว่าง — บอกความพร้อมโดยไม่บังคับ (ไม่มีช่องไหนบังคับตามกระดาษ) */
 export function specReadiness(revision) {
   if (!revision) return [];

@@ -21,12 +21,10 @@ import { fmtDate, naText } from "@/lib/format";
 import { approvalPrompt } from "@/lib/approvalPrompt";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { SPEC_CONTENT_FIELDS } from "@/lib/sales/productSpecStore";
-import {
-  SPEC_ISSUE_STATUS_LABELS, SPEC_REVISION_STATUS_LABELS, productSpecDeleteScope,
-} from "@/lib/sales/productSpecWorkflow";
+import { SPEC_ISSUE_STATUS_LABELS, SPEC_REVISION_STATUS_LABELS } from "@/lib/sales/productSpecWorkflow";
 import styles from "./page.module.css";
 import {
-  revLabel, specControlActions, specFormBlocker, specReadiness,
+  revLabel, specControlActions, specDeletePrompt, specFormBlocker, specReadiness,
   specStatusColor, specStatusHeadline, specWorkflowSteps,
 } from "@/lib/sales/productSpecView";
 
@@ -189,34 +187,29 @@ export default function ProductSpecPage() {
 
   /* ⚠️ **ลบแล้วกู้จากหน้าจอไม่ได้** — ไม่มีถังขยะในระบบ · กล่องยืนยันต้องพูดขอบเขตจริง
      ของการลบ (ทั้งใบ vs เฉพาะฉบับร่าง) ให้ตรงกับที่ปุ่มเขียนไว้ ไม่ใช่คำว่า "ลบ" ลอย ๆ */
-  const askDelete = () => {
-    const wholeSpec = productSpecDeleteScope(revisions) === "spec";
-    setConfirmState({
-      title: wholeSpec ? "ลบใบสเปคสินค้า" : `ลบฉบับร่าง ${revLabel(latest?.revNo)}`,
-      description: `ต้องการลบ${wholeSpec ? "ใบสเปคของ" : `${revLabel(latest?.revNo)} ของ`} ${productDisplayName(product)} ใช่หรือไม่`,
-      detail: wholeSpec
-        ? "ฉบับทุกฉบับและ checklist ของใบนี้จะถูกลบ สินค้าจะกลับไปเป็น “ยังไม่มีใบสเปค” และกู้จากหน้าจอนี้ไม่ได้"
-        : `ลบเฉพาะฉบับร่างนี้ · ${revLabel(revisions[1]?.revNo)} ยังเป็นสเปกที่ใช้อยู่ และกู้ฉบับที่ลบจากหน้าจอนี้ไม่ได้`,
-      confirmLabel: wholeSpec ? "ลบใบสเปคสินค้า" : "ลบฉบับร่าง",
-      tone: "danger",
-      action: async () => {
-        setBusy("delete");
-        setError("");
-        try {
-          const res = await apiFetch(`/api/products/${id}/spec`, {
-            method: "DELETE", fallbackError: "ลบใบสเปคไม่สำเร็จ",
-          });
-          const payload = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(payload?.error || "ลบใบสเปคไม่สำเร็จ");
-          await load();
-        } catch (deleteError) {
-          setError(deleteError.message || "ลบใบสเปคไม่สำเร็จ");
-        } finally {
-          setBusy("");
-        }
-      },
-    });
-  };
+  const askDelete = () => setConfirmState({
+    ...specDeletePrompt({
+      productName: productDisplayName(product),
+      revisions,
+      revision: latest,
+    }),
+    onConfirm: async () => {
+      setBusy("delete");
+      setError("");
+      try {
+        const res = await apiFetch(`/api/products/${id}/spec`, {
+          method: "DELETE", fallbackError: "ลบใบสเปคไม่สำเร็จ",
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error || "ลบใบสเปคไม่สำเร็จ");
+        await load();
+      } catch (deleteError) {
+        setError(deleteError.message || "ลบใบสเปคไม่สำเร็จ");
+      } finally {
+        setBusy("");
+      }
+    },
+  });
 
   const actions = useMemo(() => specControlActions({
     spec,
@@ -421,9 +414,13 @@ export default function ProductSpecPage() {
         <ConfirmDialog
           open
           title={confirmState.title}
+          /* 🐞 `description` เคยไม่ถูกส่งต่อ ⇒ กล่องยืนยันของหน้านี้ไม่มีประโยคถาม
+             เลยทั้งที่ `approvalPrompt` เขียนมาให้ (พบตอนแก้ปุ่มลบ 21/09) */
+          description={confirmState.description}
           message={confirmState.message}
           detail={confirmState.detail}
           confirmLabel={confirmState.confirmLabel}
+          danger={Boolean(confirmState.danger)}
           busy={Boolean(busy)}
           onConfirm={async () => { await confirmState.onConfirm(); setConfirmState(null); }}
           onClose={() => setConfirmState(null)}

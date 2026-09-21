@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  revLabel, specControlActions, specFormBlocker, specLineAction, specReadiness,
-  specStatusColor, specStatusHeadline, specWorkflowSteps,
+  revLabel, specControlActions, specDeletePrompt, specFormBlocker, specLineAction,
+  specReadiness, specStatusColor, specStatusHeadline, specWorkflowSteps,
 } from './productSpecView.js';
 
 const rev = (over = {}) => ({ id: 'R1', revNo: 1, status: 'draft', items: [], ...over });
@@ -198,4 +198,45 @@ test('คนที่ไม่มีสิทธิ์แก้ยังเห�
   assert.equal(blocked.disabled, true);
   assert.match(blocked.reason, /AC หรือฝ่ายขาย/);
   assert.equal(specLineAction({ kind: 'issued' }, { canEdit: false }).disabled, false);
+});
+
+/* ── กล่องยืนยันตอนลบ ─────────────────────────────────────────────── */
+
+/* คีย์ที่ `ConfirmDialog` อ่านจริง — ตัวสร้างข้อความต้องไม่คืนคีย์นอกลิสต์นี้
+   🐞 21/09 บน production: จอสร้างก้อนยืนยันด้วยคีย์ `action` (ลอกหน้าใบเสนอราคา)
+      แต่กล่องของหน้านี้อ่าน `onConfirm` ⇒ กดยืนยันแล้วได้ `E.onConfirm is not a function` */
+const DIALOG_KEYS = ['title', 'description', 'message', 'detail', 'confirmLabel', 'danger'];
+
+test('กล่องลบคืนเฉพาะคีย์ที่กล่องยืนยันอ่าน — คีย์นอกลิสต์คือของที่หายเงียบ', () => {
+  const prompt = specDeletePrompt({ productName: 'Eau de Tea Valley', revisions: [rev()], revision: rev() });
+  for (const key of Object.keys(prompt)) assert.ok(DIALOG_KEYS.includes(key), `คีย์เกิน: ${key}`);
+  assert.ok(!('action' in prompt), 'ห้ามใช้คีย์ action ของหน้าใบเสนอราคา');
+  assert.ok(!('onConfirm' in prompt), 'ตัวลงมือเป็นของจอ ไม่ใช่ของตัวสร้างข้อความ');
+});
+
+test('ลบใบทั้งใบ: บอกว่าสินค้ากลับไปเป็น "ยังไม่มีใบสเปค" และกู้ไม่ได้', () => {
+  const prompt = specDeletePrompt({ productName: 'Eau de Tea Valley', revisions: [rev()], revision: rev() });
+  assert.equal(prompt.title, 'ลบใบสเปคสินค้า');
+  assert.match(prompt.description, /Eau de Tea Valley/);
+  assert.match(prompt.detail, /ยังไม่มีใบสเปค/);
+  assert.match(prompt.detail, /กู้จากหน้าจอนี้ไม่ได้/);
+  assert.equal(prompt.danger, true);
+});
+
+test('ลบเฉพาะฉบับร่าง: บอก Rev. ที่ลบ และ Rev. ที่ยังใช้อยู่', () => {
+  const rev2 = rev({ id: 'R2', revNo: 2 });
+  const prompt = specDeletePrompt({
+    productName: 'Eau de Tea Valley',
+    revisions: [rev2, rev({ revNo: 1, status: 'approved' })],
+    revision: rev2,
+  });
+  assert.equal(prompt.title, 'ลบฉบับร่าง Rev.02');
+  assert.match(prompt.description, /Rev\.02/);
+  assert.match(prompt.detail, /Rev\.01 ยังเป็นสเปกที่ใช้อยู่/);
+  assert.equal(prompt.confirmLabel, 'ลบฉบับร่าง');
+});
+
+test('ไม่มีชื่อสินค้าก็ยังเป็นประโยคที่อ่านรู้เรื่อง', () => {
+  const prompt = specDeletePrompt({ revisions: [rev()], revision: rev() });
+  assert.equal(prompt.description, 'ยืนยันลบใบสเปค หรือไม่');
 });
