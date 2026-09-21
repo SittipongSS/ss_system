@@ -46,6 +46,7 @@ import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { businessDate } from "@/lib/businessDate";
 import PhotoThumb from "@/components/ui/PhotoThumb";
 import { apiFetch } from "@/lib/apiFetch";
+import styles from "./AttachmentsPanel.module.css";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
 function tooLarge(file) {
@@ -101,6 +102,11 @@ export default function AttachmentsPanel({
   //    ไม่งั้นตัวเลือกปริยายคือ **กล่องแรกใน DOM** = รูปไปโผล่ผิดพื้นที่จริง ๆ
   //    (แผงนี้อัปขึ้น server ทันที ของที่ไปผิดที่คือของที่ต้องตามลบ)
   intakeWeight = 0,
+  /* โหมด inline: `(photos) => [{ id, content }]` — เปลี่ยนตะแกรงรูปเป็น **รายการรายแถว**
+     รูปอยู่ซ้าย ของที่ผู้เรียกเขียนกำกับรูปนั้นอยู่ขวาในบรรทัดเดียวกัน
+     (มติผู้ใช้ 2026-09-21 · เหตุผลและกับดักอยู่ที่ `PhotoRows`)
+     ⚠️ ลำดับแถวเป็นของผู้เรียก · id ที่ไม่มีรูปคู่กันถูกข้าม (ไฟล์เพิ่งถูกลบ) */
+  photoRows,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -481,6 +487,73 @@ export default function AttachmentsPanel({
   // ขนาดแถวข้อความเล็กเกินกว่าจะดูออกว่าเป็นขวดทรงไหน จึงแยกรูปออกมาเป็นตารางภาพ
   // ขนาดใช้งานได้จริง (แนวเดียวกับฟีดความเคลื่อนไหวของดีล) ส่วนไฟล์ที่ไม่ใช่รูป
   // (PDF/สเปก) ยังเป็นแถวรายชื่อเหมือนเดิม เพราะภาพย่อของมันไม่ได้บอกอะไร
+  /* หนึ่งช่องรูป — ตัวเดียวที่ทั้งตะแกรง (`PhotoGrid`) และรายการรายแถว (`PhotoRows`)
+     ใช้ร่วมกัน ⇒ ปุ่มลบกับกล่องดูรูปเต็มมีทางเดียว ไม่ใช่สองชุดที่เพี้ยนหากันวันหนึ่ง */
+  const PhotoTile = ({ it }) => (
+    <div style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setPreview(it)}
+        title={it.fileName || "ดูรูปขนาดเต็ม"}
+        style={{
+          display: "block", width: "100%", aspectRatio: "var(--attach-thumb-ratio, 1 / 1)", padding: 0,
+          border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
+          background: "var(--panel-2)", cursor: "pointer",
+        }}
+      >
+        {/* ⚠️ ช่องที่เปิดรูปไม่ได้ต้องพูด — ตรรกะอยู่ใน `PhotoThumb` ตัวเดียวของระบบ
+            (เธรดอัปเดตใช้ตัวเดียวกัน · เหตุผลและกับดัก SSR อยู่ในไฟล์นั้น)
+            IS-26080016: contain ไม่ใช่ cover — cover ครอปสกรีนช็อต/รูปสินค้าทิ้ง
+            จนดูไม่ออกว่าเป็นอะไร (เหตุผลเต็มใน UpdateThread.module.css) */}
+        <PhotoThumb
+          src={fileHref(it)}
+          alt={it.fileName || "รูปแนบ"}
+          style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+        />
+      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => handleDelete(it.id)}
+          aria-label={`ลบ ${it.fileName || "รูปแนบ"}`}
+          title="ลบ"
+          style={{
+            position: "absolute", top: 4, right: 4, width: 22, height: 22,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            border: "none", borderRadius: "50%", cursor: "pointer", lineHeight: "var(--lh-none)",
+            background: "color-mix(in srgb, var(--navy) 72%, transparent)",
+            color: "var(--navy-fg)",
+          }}
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
+    </div>
+  );
+
+  /* ⭐ **รูปกับของที่ผู้เรียกเขียนกำกับรูป อยู่บรรทัดเดียวกัน** (มติผู้ใช้ 2026-09-21)
+     🐞 ใบสเปคสินค้า: คำบรรยายที่จะพิมพ์ใต้ภาพเคยเป็นตารางแยกใต้ตะแกรงรูป ⇒ คนกรอก
+       ต้องเทียบชื่อไฟล์เองว่าแถวไหนของรูปไหน · รูปเดียวยังพอเดา สิบรูปคือเดาผิด
+     ผู้เรียกส่ง **ลำดับแถวมาเอง** เพราะลำดับที่จะพิมพ์เป็นเรื่องของผู้เรียก ไม่ใช่
+     ลำดับที่ API คืนมา — และรูปที่ผู้เรียกไม่ได้สั่งให้ขึ้น ก็ไม่ขึ้น */
+  const PhotoRows = ({ photos, rows }) => {
+    const byId = new Map(photos.map((it) => [it.id, it]));
+    return (
+      <div className={styles.photoRows}>
+        {rows.map((row) => {
+          const it = byId.get(row.id);
+          if (!it) return null;
+          return (
+            <div key={row.id} className={styles.photoRow}>
+              <div className={styles.photoRowThumb}><PhotoTile it={it} /></div>
+              <div className={styles.photoRowBody}>{row.content}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const PhotoGrid = ({ photos }) => (
     <div
       className="mt-2"
@@ -498,47 +571,7 @@ export default function AttachmentsPanel({
         gap: 8,
       }}
     >
-      {photos.map((it) => (
-        <div key={it.id} style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => setPreview(it)}
-            title={it.fileName || "ดูรูปขนาดเต็ม"}
-            style={{
-              display: "block", width: "100%", aspectRatio: "var(--attach-thumb-ratio, 1 / 1)", padding: 0,
-              border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
-              background: "var(--panel-2)", cursor: "pointer",
-            }}
-          >
-            {/* ⚠️ ช่องที่เปิดรูปไม่ได้ต้องพูด — ตรรกะอยู่ใน `PhotoThumb` ตัวเดียวของระบบ
-                (เธรดอัปเดตใช้ตัวเดียวกัน · เหตุผลและกับดัก SSR อยู่ในไฟล์นั้น)
-                IS-26080016: contain ไม่ใช่ cover — cover ครอปสกรีนช็อต/รูปสินค้าทิ้ง
-                จนดูไม่ออกว่าเป็นอะไร (เหตุผลเต็มใน UpdateThread.module.css) */}
-            <PhotoThumb
-              src={fileHref(it)}
-              alt={it.fileName || "รูปแนบ"}
-              style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
-            />
-          </button>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => handleDelete(it.id)}
-              aria-label={`ลบ ${it.fileName || "รูปแนบ"}`}
-              title="ลบ"
-              style={{
-                position: "absolute", top: 4, right: 4, width: 22, height: 22,
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                border: "none", borderRadius: "50%", cursor: "pointer", lineHeight: "var(--lh-none)",
-                background: "color-mix(in srgb, var(--navy) 72%, transparent)",
-                color: "var(--navy-fg)",
-              }}
-            >
-              <Trash2 size={12} />
-            </button>
-          )}
-        </div>
-      ))}
+      {photos.map((it) => (<PhotoTile key={it.id} it={it} />))}
     </div>
   );
 
@@ -691,9 +724,10 @@ export default function AttachmentsPanel({
         {!loading && shown.length > 0 && (() => {
           const photos = shown.filter(isPreviewableImage);
           const files = shown.filter((it) => !isPreviewableImage(it));
+          const rowsOf = typeof photoRows === "function" ? photoRows(photos) : null;
           return (
             <>
-              {photos.length > 0 && <PhotoGrid photos={photos} />}
+              {photos.length > 0 && (rowsOf ? <PhotoRows photos={photos} rows={rowsOf} /> : <PhotoGrid photos={photos} />)}
               {files.length > 0 && (
                 <div className="mt-1 divide-y divide-[var(--border)]">
                   {files.map((it) => (<FileRow key={it.id} it={it} compact />))}

@@ -9,7 +9,21 @@
 //
 // ⚠️ ไฟล์เก่าที่อัปก่อนมีฟีเจอร์นี้ **ไม่มี `sortOrder`** ⇒ ถอยไปเรียงตามวันที่อัป
 // แล้วต่อด้วย id เพื่อให้ลำดับนิ่ง (ไม่นิ่ง = พิมพ์สองครั้งได้ลำดับต่างกัน)
+import { SPEC_ILLUSTRATION_DOC_TYPE, isPreviewableImage } from '@/lib/master/attachmentTypes';
+
 export const ILLUSTRATION_CAPTION_MAX = 200;
+
+/**
+ * ภาพประกอบของสินค้าหนึ่งตัว — คัดจากไฟล์แนบทั้งกองที่เดียว
+ *
+ * ⚠️ **"เปิดเป็นรูปได้" เป็นเงื่อนไขด้วย ไม่ใช่แค่ `docType`** — กระดาษวางของทุกใบ
+ * ลงช่องภาพเป็น `<img>` ⇒ PDF ที่แนบปนมาจะกลายเป็นช่องภาพแตกบนเอกสารที่ส่งลูกค้า
+ * และจอก็ให้พิมพ์คำบรรยายได้เฉพาะรูป (แถวคำบรรยายผูกกับรูปรายตัว ตามมติ 21/09)
+ * ⇒ จอกับเอกสารต้องนับชุดเดียวกัน
+ */
+export function specIllustrationsOf(rows = []) {
+  return rows.filter((row) => row?.docType === SPEC_ILLUSTRATION_DOC_TYPE && isPreviewableImage(row));
+}
 
 const orderOf = (row) => {
   const raw = row?.metadata?.sortOrder;

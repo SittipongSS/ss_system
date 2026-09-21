@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ILLUSTRATION_CAPTION_MAX, illustrationCaption, sortIllustrations } from './productSpecIllustrations.js';
+import { ILLUSTRATION_CAPTION_MAX, illustrationCaption, sortIllustrations, specIllustrationsOf } from './productSpecIllustrations.js';
 import { ATTACHMENT_TYPES, SPEC_ILLUSTRATION_DOC_TYPE, productDocTypes } from '@/lib/master/attachmentTypes';
 
 const row = (id, over = {}) => ({ id, createdAt: '2026-09-17T00:00:00Z', metadata: {}, ...over });
@@ -70,4 +70,27 @@ test('คำบรรยายตัดช่องว่างและมี�
   assert.equal(illustrationCaption({}), '');
   assert.equal(illustrationCaption(null), '');
   assert.equal(illustrationCaption({ metadata: { caption: 'ก'.repeat(300) } }).length, ILLUSTRATION_CAPTION_MAX);
+});
+
+test('คัดภาพประกอบ: เอาเฉพาะ docType ของใบสเปค', () => {
+  const rows = [
+    { id: 'a', docType: SPEC_ILLUSTRATION_DOC_TYPE, fileName: 'box.jpg' },
+    { id: 'b', docType: 'artwork', fileName: 'art.jpg' },
+    { id: 'c', fileName: 'loose.jpg' },
+  ];
+  assert.deepEqual(specIllustrationsOf(rows).map((r) => r.id), ['a']);
+});
+
+test('🪤 ไฟล์ที่เปิดเป็นรูปไม่ได้ต้องหลุดออก — กระดาษวางทุกใบลงช่องภาพเป็น <img>', () => {
+  const rows = [
+    { id: 'img', docType: SPEC_ILLUSTRATION_DOC_TYPE, fileName: 'box.png' },
+    { id: 'pdf', docType: SPEC_ILLUSTRATION_DOC_TYPE, fileName: 'spec.pdf' },
+    { id: 'mime', docType: SPEC_ILLUSTRATION_DOC_TYPE, mimeType: 'application/pdf', fileName: 'x.png' },
+  ];
+  assert.deepEqual(specIllustrationsOf(rows).map((r) => r.id), ['img']);
+});
+
+test('จอกับเอกสารนับชุดเดียวกัน — ตัวคัดตัวเดียว ไม่มีของว่างทำให้ล้ม', () => {
+  assert.deepEqual(specIllustrationsOf(), []);
+  assert.deepEqual(specIllustrationsOf([null, undefined]), []);
 });
