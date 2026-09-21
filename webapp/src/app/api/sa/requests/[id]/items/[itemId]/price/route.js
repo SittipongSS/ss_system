@@ -1,6 +1,9 @@
 // ── ขั้นใส่ราคาของแถวสายพัฒนา — ขั้นสุดท้ายในใบเดิม (P3c) ─────────────────
 //
-// POST { price, validUntil?, note? }
+// POST { prices: { F?, B?, FB? }, validUntil?, note? }   (ทางเข้าเก่า `{ price }` = ช่องหลัก)
+//
+// ⭐ **สูตรใส่ได้สามช่อง F · B · FB · กลิ่นใส่ได้ F ช่องเดียว** (ม-148 · มติผู้ใช้ 2026-09-22) —
+// ช่องที่เปิดมาจาก `rowPriceSlots` ตัวเดียวกับโมดัลบนจอ · ใส่อย่างน้อยหนึ่งช่อง
 //
 // ⭐ **ราคาเป็นขั้นสุดท้ายของสายงาน ไม่ใช่คำร้องใบใหม่** (มติผู้ใช้) — เดิมต้องเปิด
 // "ขอราคา F" อีกใบแล้วผูกกันเองในหัว ⇒ "กลิ่นนี้คอนเฟิร์มแล้วยังไม่ได้ขอราคา"
@@ -19,9 +22,9 @@ import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/sta
 import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { canPriceRow } from '@/lib/requests/rowStage';
-import { rowPriceTarget } from '@/lib/requests/rowPriceTarget';
-import { normalizeQuotedPrice } from '@/lib/materialPrices';
-import { findRequest, priceRegistryEntry } from '@/lib/materialPricesAdmin';
+import { rowPriceSlots } from '@/lib/requests/rowPriceTarget';
+import { mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
+import { findRequest, priceRegistrySlots } from '@/lib/materialPricesAdmin';
 import { findFormula, findScent } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
@@ -81,44 +84,42 @@ export async function POST(request, { params }) {
   //   แถวผูกกลิ่นอย่างเดียว → หัวน้ำหอม `RM_F` ต่อกิโล
   //   แถวผูกสูตร (พัฒนาสูตร · พัฒนากลิ่นที่ส่งเป็นสินค้า ม-148) → เบสที่ใส่กลิ่น `RM_FB` ต่อกิโล
   //
-  // ⭐ ตัวตัดสินอยู่ที่ `rowPriceTarget` — โมดัลใส่ราคาถามตัวเดียวกันเพื่อบอกว่ากำลังใส่ F หรือ FB
+  // ⭐ ช่องที่ใส่ได้มาจาก `rowPriceSlots` — โมดัลใส่ราคาถามตัวเดียวกัน (ป้าย F · B · FB ตรงกับที่ API รับ)
   // ⚠️ **ไม่ใช่ราคาต่อชิ้นของผลิตภัณฑ์** — ราคาสินค้าสำเร็จรูปต้องรวมบรรจุภัณฑ์
   // และค่าผลิต ซึ่งเป็นงานของใบขอราคาผลิต ไม่ใช่ของ RD
-  const priced = rowPriceTarget(row);
-  if (!priced) {
-    return Response.json({
-      error: 'รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน — ใส่ราคาไม่ได้',
-    }, { status: 400 });
-  }
-
+  const slots = rowPriceSlots(row);
   const body = await request.json().catch(() => ({}));
-  // ⚠️ F/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — หัวน้ำหอมคิดราคาต่อกิโลเดียว
-  // ไม่ลดตามจำนวน · รับ `price` ตัวเดียว ไม่ใช่ tiers
-  const { value: price, error: priceError } = normalizeQuotedPrice(priced.kind, body.price);
+  // ⚠️ F/B/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — ราคาต่อกิโลเดียวต่อช่อง ไม่ลดตามจำนวน
+  const { entries, error: priceError } = normalizeSlotPrices(slots, body);
   if (priceError) return Response.json({ error: priceError }, { status: 400 });
 
   const nowIso = new Date().toISOString();
+  let written;
   try {
-    // ⚠️ ทะเบียนต้นทาง **คนละตาราง** แต่หน้าตาที่ต้องใช้เหมือนกัน (ชื่อ + ลูกค้า)
-    const source = priced.stampColumn === 'formulaId'
-      ? await findFormula(supabase, priced.id)
-      : await findScent(supabase, priced.id);
-    if (!source) {
-      return Response.json({ error: 'ไม่พบกลิ่นหรือสูตรในทะเบียน' }, { status: 400 });
-    }
-
     // ตัวตนวัสดุ + ประทับ pointer + ต่อ rev — ก้อนเดียวกับปุ่มใส่ราคาบนหน้าทะเบียน
-    // (`priceRegistryEntry`) ห้ามเขียนซ้ำที่นี่ ไม่งั้นสองทางเข้าเพี้ยนหากัน
-    const { revision } = await priceRegistryEntry(supabase, {
-      kind: priced.kind,
-      stampColumn: priced.stampColumn,
-      source,
-      price,
+    // (`priceRegistryEntry` ผ่าน `priceRegistrySlots`) ห้ามเขียนซ้ำที่นี่ ไม่งั้นสองทางเข้าเพี้ยนหากัน
+    // ⚠️ ทะเบียนต้นทาง **คนละตาราง** (F = กลิ่น · B/FB = สูตร) แต่หน้าตาที่ต้องใช้เหมือนกัน (ชื่อ + ลูกค้า)
+    written = await priceRegistrySlots(supabase, {
+      entries,
+      loadSource: async (slot) => ({
+        source: slot.stampColumn === 'formulaId'
+          ? await findFormula(supabase, slot.id)
+          : await findScent(supabase, slot.id),
+      }),
       validUntil: body.validUntil || null,
       note: body.note || null,
       askItemId: row.id,
       user,
     });
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: e.status || 400 });
+  }
+
+  try {
+    /* ⭐ แถวชี้ rev **ช่องหลัก** (FB > B > F) — ช่องอื่นหาเจอจาก `material_price_revisions.sourceAskItemId`
+       (ทุก rev ที่เขียนจากขั้นนี้ประทับ id ของแถวไว้) ⇒ จอโชว์ครบทุกช่องได้โดยไม่ต้องมีคอลัมน์ใหม่ */
+    const main = mainPriceEntry(written);
+    const revision = main.revision;
 
     const { error } = await supabase.from('dept_request_items').update({
       answerStatus: 'done',
@@ -140,18 +141,22 @@ export async function POST(request, { params }) {
       if (headError) throw headError;
     }
 
+    // หนึ่งเหตุการณ์ต่อการใส่ราคาหนึ่งครั้ง — ทุกช่องในบรรทัดเดียว (ช่องไหนลงทะเบียนตัวไหนบอกด้วยรหัส)
+    const lines = written.map((w) => `${w.slot.short} ${fmtNumber(w.price)}`
+      + (w.slot.stampColumn === main.slot.stampColumn ? '' : ` (${w.source.code || w.source.name})`));
+    const target = main.source.code || main.source.name;
     await appendUpdate(supabase, {
       entityType: 'dept_request',
       entityId: id,
       kind: 'quoted',
-      body: `ใส่ราคา ${priced.short} ${source.code || source.name} — ${fmtNumber(price)} ฿/กก.`,
+      body: `ใส่ราคา ${target} — ${lines.join(' · ')} ฿/กก.`,
       user,
     }).catch(() => {});
 
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: row, after: { ...row, answerStatus: 'done', answeredRevisionId: revision.id },
-      summary: `ใส่ราคา ${priced.short} ${source.code || source.name} (${before.docNo || id})`,
+      summary: `ใส่ราคา ${written.map((w) => w.slot.short).join('/')} ${target} (${before.docNo || id})`,
       request,
     });
 

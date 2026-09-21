@@ -125,7 +125,10 @@ export default function FormulaDevBoard({
                           และราคามีแค่บางแถว คอลัมน์แยกจะว่างเป็นส่วนใหญ่ */}
                       {r.priced?.price != null && (
                         <div className={styles.note}>
-                          {money(r.priced.price)} บาท/{r.priced.perUnit || "กก."}
+                          {/* ⭐ ม-148 — ทุกช่องที่ใส่ (F · B · FB) · rev เก่าที่มีช่องเดียวไม่มีป้ายช่อง */}
+                          {(r.pricedList.length > 1 ? r.pricedList : [r.priced])
+                            .map((p) => `${p.short && r.pricedList.length > 1 ? `${p.short} ` : ""}${money(p.price)}`)
+                            .join(" · ")} บาท/{r.priced.perUnit || "กก."}
                           {r.priced.validUntil ? ` · ยืนราคาถึง ${fmtDate(r.priced.validUntil)}` : ""}
                         </div>
                       )}

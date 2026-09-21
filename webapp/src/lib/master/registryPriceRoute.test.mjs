@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { priceRegistryEntry } from '../materialPricesAdmin.js';
 import { makeRegistryPriceHandler } from './registryPriceRoute.js';
 import { SCENT_STATUS_LABELS, isScentUsable } from './scents.js';
+import { priceSlotsFor } from './priceSlots.js';
 
 // fake supabase ครอบสามตาราง + RPC ของสายราคา — บันทึกทุก insert/update/rpc
 function fakeSupabase({ materials = [] } = {}) {
@@ -41,7 +42,11 @@ function fakeSupabase({ materials = [] } = {}) {
         return { eq: () => Promise.resolve({ error: null }) };
       },
       _rows() {
-        if (table === 'material_prices') return materials;
+        // กรองตาม eq/is เหมือน PostgREST — ไม่งั้นวัสดุคนละชนิด (B กับ FB ของสูตรเดียวกัน) ปนกันในเทสต์
+        if (table === 'material_prices') {
+          return materials.filter((m) => Object.entries(c._filters)
+            .every(([col, val]) => col === 'id' || (m[col] ?? null) === val));
+        }
         return []; // revisions/tiers — ไม่มีของเดิมในเทสต์ชุดนี้
       },
       _one() {
@@ -204,4 +209,46 @@ test('RD ใส่ราคาสำเร็จ — ได้เลข rev ก�
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.revisionId, 'REV-1');
+});
+
+// ── ม-148 · ปุ่มราคาหน้าทะเบียนสูตร: F · B · FB ในจังหวะเดียว ──────────────────────
+const formulaHandler = (scentFor) => makeRegistryPriceHandler({
+  kind: 'RM_FB',
+  stampColumn: 'formulaId',
+  slotsOf: (f) => priceSlotsFor({ scentId: f.scentId, formulaId: f.id }),
+  findOther: async (_supabase, slot) => scentFor(slot.id),
+  entityType: 'formula',
+  entityLabel: 'สูตร',
+  find: async (_supabase, id) => (id === 'FML-1' ? { ...FORMULA, scentId: 'SCT-1' } : null),
+  usableError: () => null,
+});
+const callFormula = (h, body, supabase = fakeSupabase({ materials: [] })) => h({
+  user: RD, supabase, req: { json: async () => body }, ctx: { params: Promise.resolve({ id: 'FML-1' }) },
+}).then(async (res) => ({ res, data: await res.json(), supabase }));
+
+test('⭐ สูตรใส่ F · B · FB พร้อมกัน — F ลงกลิ่นของสูตร · B/FB ลงสูตร คนละวัสดุ', async () => {
+  const h = formulaHandler(() => ({ source: SCENT }));
+  const { res, data, supabase } = await callFormula(h, { prices: { F: 2800, B: 300, FB: 950 } });
+  assert.equal(res.status, 200);
+  const made = materialInserts(supabase).map((i) => [i.row.kind, i.row.formulaId || null]);
+  assert.deepEqual(made, [['RM_F', null], ['RM_B', 'FML-1'], ['RM_FB', 'FML-1']]);
+  // F ประทับกลิ่น (หลังสร้าง) · B/FB เกิดพร้อม formulaId
+  assert.equal(supabase.calls.updates.find((u) => u.patch.scentId)?.patch.scentId, 'SCT-1');
+  assert.equal(supabase.calls.rpcs.length, 3);
+  assert.deepEqual(data.revisions.map((r) => r.key), ['F', 'B', 'FB']);
+});
+
+test('กลิ่นของสูตรใส่ราคาไม่ได้ = ตีกลับก่อนเขียนสักช่อง (ไม่เหลือราคาครึ่งชุด)', async () => {
+  const h = formulaHandler(() => ({ source: null, error: 'กลิ่นของสูตรนี้สถานะ "เลิกใช้" ยังใส่ราคา F ไม่ได้' }));
+  const { res, data, supabase } = await callFormula(h, { prices: { F: 2800, FB: 950 } });
+  assert.equal(res.status, 400);
+  assert.match(data.error, /ยังใส่ราคา F ไม่ได้/);
+  assert.equal(supabase.calls.rpcs.length, 0);
+  assert.equal(materialInserts(supabase).length, 0);
+});
+
+test('หน้าทะเบียนกลิ่นยังเป็นช่องเดียว — ส่ง B มาที่กลิ่น = ตีกลับ', async () => {
+  const res = await call({ user: RD, body: { prices: { B: 100 } } });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /ใส่ให้รายการนี้ไม่ได้/);
 });

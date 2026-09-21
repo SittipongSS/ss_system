@@ -144,12 +144,14 @@ async function registryEntryMaterial(supabase, { kind, stampColumn, source, user
   const candidates = await loadMaterials(supabase, {
     status: null, kind, customerId: source.customerId ?? null,
   });
-  const stamped = candidates.find((m) => m[stampColumn] === source.id);
+  // ⚠️ เทียบชนิดซ้ำแม้ query กรองแล้ว — B กับ FB ของสูตรเดียวกันประทับ formulaId ตัวเดียวกัน
+  const stamped = candidates.find((m) => m.kind === kind && m[stampColumn] === source.id);
   if (stamped) return stamped;
   const unstampedKey = materialIdentityKey({
     kind, label: source.name, formulaId: null, customerId: source.customerId,
   });
-  const legacy = candidates.find((m) => !m[stampColumn] && materialIdentityKey(m) === unstampedKey);
+  const legacy = candidates.find((m) => m.kind === kind && !m[stampColumn]
+    && materialIdentityKey(m) === unstampedKey);
   if (legacy) return legacy;
   const { material } = await ensureMaterial(supabase, {
     kind,
@@ -160,6 +162,47 @@ async function registryEntryMaterial(supabase, { kind, stampColumn, source, user
     user,
   });
   return material;
+}
+
+// ── ใส่ราคาหลายช่องในจังหวะเดียว (F · B · FB — ม-148 · มติผู้ใช้ 2026-09-22) ──────────
+//
+// `entries` = ผลของ `normalizeSlotPrices` · `loadSource(slot)` คืน `{ source, error }` —
+// ผู้เรียกตัดสินเองว่ากลิ่น/สูตรสถานะไหนใส่ราคาได้ (ทะเบียนเข้ม · ขั้นราคาในคำร้องไม่ตรวจสถานะเหมือนเดิม)
+// ⚠️ **ตรวจแหล่งทุกช่องก่อนเขียนสักช่อง** — rev เป็น immutable ⇒ ช่องแรกเขียนแล้วช่องสองตีกลับ
+// = ราคาครึ่งชุดค้างทะเบียน และกดซ้ำได้ rev ซ้ำ · ที่ยังพลาดได้หลังผ่านด่านคือคำขอสะดุดกลางทาง
+// (ไม่มี transaction ข้ามหลายช่อง) — rev ที่เขียนแล้วยังถูกต้องทุกตัว แค่ต้องกดใส่ช่องที่เหลืออีกครั้ง
+// คืน `[{ slot, price, source, revision }]` ตามลำดับที่ส่งมา
+export async function priceRegistrySlots(supabase, {
+  entries = [], loadSource, validUntil = null, note = null, askItemId = null, user = null,
+}) {
+  const sources = new Map();
+  for (const { slot } of entries) {
+    const key = `${slot.stampColumn}:${slot.id}`;
+    if (sources.has(key)) continue;
+    const { source, error } = await loadSource(slot);
+    if (error || !source) {
+      const failure = new Error(error || `ไม่พบ${slot.registry}ในทะเบียน`);
+      failure.status = 400;
+      throw failure;
+    }
+    sources.set(key, source);
+  }
+  const written = [];
+  for (const entry of entries) {
+    const source = sources.get(`${entry.slot.stampColumn}:${entry.slot.id}`);
+    const { revision } = await priceRegistryEntry(supabase, {
+      kind: entry.slot.kind,
+      stampColumn: entry.slot.stampColumn,
+      source,
+      price: entry.price,
+      validUntil,
+      note,
+      askItemId,
+      user,
+    });
+    written.push({ ...entry, source, revision });
+  }
+  return written;
 }
 
 // ── ใส่ราคา F/FB ให้กลิ่น/สูตรในทะเบียน ─────────────────────────────────
@@ -591,16 +634,34 @@ export async function findRequest(supabase, id) {
 //
 // ⚠️ อ่านอย่างเดียว ไม่ใช่แหล่งความจริงใหม่ — ทะเบียนวัสดุยังเป็นเจ้าของราคาเหมือนเดิม
 async function attachRowPrice(supabase, items) {
-  const revisionIds = [...new Set(items.map((i) => i.answeredRevisionId).filter(Boolean))];
-  if (!revisionIds.length) return items;
+  const priced = items.filter((i) => i.answeredRevisionId);
+  if (!priced.length) return items;
 
-  const { data: revisions, error } = await supabase
+  /* ⭐ ม-148 — แถวสูตรใส่ได้ F · B · FB ในจังหวะเดียว · แถวชี้ rev ช่องหลักตัวเดียว (`answeredRevisionId`)
+     ช่องอื่นหาจาก `sourceAskItemId` ที่ขั้นใส่ราคาประทับไว้ทุก rev ⇒ ไม่ต้องมีคอลัมน์ใหม่
+     ⚠️ ≤ แถวของใบเดียว ⇒ `.in()` ปลอดภัย · `.limit` = ขอบเขตชัด (check:rowcap) */
+  const { data: bySource, error: sourceError } = await supabase
     .from('material_price_revisions')
-    .select('id, "materialId", "validUntil", note, "quotedAt", "quotedByName"')
-    .in('id', revisionIds);
-  if (error) throw error;
+    .select('id, "materialId", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"')
+    .in('sourceAskItemId', priced.map((i) => i.id))
+    .limit(1000);
+  if (sourceError) throw sourceError;
+  const knownIds = new Set((bySource || []).map((r) => r.id));
+  const missing = [...new Set(priced.map((i) => i.answeredRevisionId))].filter((rid) => !knownIds.has(rid));
+  let answered = [];
+  if (missing.length) {
+    // rev ที่เกิดก่อนมี `sourceAskItemId` (หรือไม่ได้ประทับ) — ตามจาก pointer ของแถวเหมือนเดิม
+    const { data, error } = await supabase
+      .from('material_price_revisions')
+      .select('id, "materialId", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"')
+      .in('id', missing);
+    if (error) throw error;
+    answered = data || [];
+  }
+  const revisions = [...(bySource || []), ...answered];
+  const revisionIds = revisions.map((r) => r.id);
 
-  // ราคาอยู่ที่ชั้น (0157) — F/FB ไม่มีชั้นจำนวน จึงมีชั้นเดียวเสมอ (per_kg)
+  // ราคาอยู่ที่ชั้น (0157) — F/B/FB ไม่มีชั้นจำนวน จึงมีชั้นเดียวเสมอ (per_kg)
   const { data: tiers, error: tierError } = await supabase
     .from('material_price_revision_tiers')
     .select('"revisionId", qty, "pricePerKg", "pricePerUnit"')
@@ -609,15 +670,17 @@ async function attachRowPrice(supabase, items) {
 
   const { data: materials, error: matError } = await supabase
     .from('material_prices').select('id, kind, label')
-    .in('id', [...new Set((revisions || []).map((r) => r.materialId).filter(Boolean))]);
+    .in('id', [...new Set(revisions.map((r) => r.materialId).filter(Boolean))]);
   if (matError) throw matError;
   const materialById = new Map((materials || []).map((m) => [m.id, m]));
 
-  const byRevision = new Map((revisions || []).map((rev) => {
+  const byRevision = new Map(revisions.map((rev) => {
     const material = materialById.get(rev.materialId) || null;
     const tier = (tiers || []).find((t) => t.revisionId === rev.id) || null;
     return [rev.id, {
+      revisionId: rev.id,
       kind: material?.kind || null,
+      short: PRICE_SHORT[material?.kind] || null,
       materialLabel: material?.label || null,
       price: tier ? Number(tier.pricePerKg ?? tier.pricePerUnit) : null,
       // หน่วยตามชั้นที่มีจริง ไม่เดาจากชนิด — per_piece ของ PM ก็ผ่านทางนี้ได้
@@ -626,14 +689,24 @@ async function attachRowPrice(supabase, items) {
       note: rev.note || null,
       quotedAt: rev.quotedAt || null,
       quotedByName: rev.quotedByName || null,
+      sourceAskItemId: rev.sourceAskItemId || null,
     }];
   }));
 
-  return items.map((i) => ({
-    ...i,
-    pricedResult: byRevision.get(i.answeredRevisionId) || null,
-  }));
+  return items.map((i) => {
+    if (!i.answeredRevisionId) return { ...i, pricedResult: null, pricedResults: [] };
+    const main = byRevision.get(i.answeredRevisionId) || null;
+    // ทุกช่องที่ใส่จากแถวนี้ — เรียง F · B · FB · ไม่มีช่องไหนเลย (rev เก่า) = ช่องหลักตัวเดียว
+    const all = [...byRevision.values()].filter((r) => r.sourceAskItemId === i.id);
+    const list = (all.length ? all : [main].filter(Boolean))
+      .sort((a, b) => (PRICE_ORDER[a.kind] ?? 9) - (PRICE_ORDER[b.kind] ?? 9));
+    return { ...i, pricedResult: main, pricedResults: list };
+  });
 }
+
+// ป้ายสั้น/ลำดับของช่องราคาบนแถว (ชุดเดียวกับ lib/master/priceSlots.js)
+const PRICE_SHORT = { RM_F: 'F', RM_B: 'B', RM_FB: 'FB' };
+const PRICE_ORDER = { RM_F: 0, RM_B: 1, RM_FB: 2 };
 
 // เพิ่มรุ่นราคาใหม่ให้วัสดุที่มีอยู่แล้ว — ใช้ทั้งตอนตอบคำขอราคาและตอนแก้ราคา
 // ในทะเบียน. คืน { material, revision }

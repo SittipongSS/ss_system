@@ -32,6 +32,8 @@ import { fmtNumber } from "@/lib/format";
 import { dueCellTracker } from "@/lib/requests/dueCell";
 
 const qty = (n) => fmtNumber(n);
+// เงินเต็มสองตำแหน่ง — ชุดเดียวกับตารางพัฒนาสูตร (FormulaDevBoard)
+const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
 
 /**
  * ⚠️ รับ `groups` ที่ประกอบมาแล้ว **ไม่ประกอบเอง** — แถบตัวเลขบนหน้ารายละเอียดอ่าน
@@ -182,6 +184,11 @@ export default function BriefBoard({
                                           )}
                                         </>
                                       ) : "ส่งเป็นหัวน้ำหอม"}
+                                    </div>
+                                  )}
+                                  {d.priced.length > 0 && (
+                                    <div className={styles.note}>
+                                      ราคา {d.priced.map((p) => `${p.short || ""} ${money(p.price)}`.trim()).join(" · ")} บาท/กก.
                                     </div>
                                   )}
                                   {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์

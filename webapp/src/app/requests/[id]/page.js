@@ -79,7 +79,8 @@ import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { deliveryRowLabel, normalizeDeliveryRows, normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import { defaultDeliveredCategory, isDeliveredAsProduct } from "@/lib/requests/deliveredCategory";
-import { rowPriceTarget } from "@/lib/requests/rowPriceTarget";
+import { rowPriceSlots } from "@/lib/requests/rowPriceTarget";
+import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { formulaDeliveryPreview } from "@/lib/requests/formulaRework";
 import { requestedLabel } from "@/lib/requests/rowLabel";
@@ -1896,7 +1897,7 @@ export default function RequestDetailPage() {
           canRequester: !!req._mine && REQUEST_OPEN_STATUSES.includes(req.status),
           busy: saving,
           onHop: (row, hop, outcome) => openHop(row, hop, outcome),
-          onPrice: (row) => setPricing({ item: row, price: "", validUntil: "", note: "" }),
+          onPrice: (row) => setPricing({ item: row }),
         }}
         saving={saving}
         /* ⭐ หัวข้อที่แก้ของกลาง (ทะเบียนกลิ่น/สูตร) ได้จากในใบ ต้องบอกเปลือกให้
@@ -2777,46 +2778,23 @@ export default function RequestDetailPage() {
       </Modal>
 
       {/* ใส่ราคา — ขั้นสุดท้ายของสายงาน อยู่ในใบเดิม ไม่ใช่คำร้องใบใหม่
-          ⚠️ ราคาเดียว ไม่มีชั้นจำนวน (มติผู้ใช้): หัวน้ำหอมคิดต่อกิโลเดียว ไม่ลดตามจำนวน */}
-      <Modal
-        open={!!pricing} onClose={() => setPricing(null)} size="sm" dismissible={!saving}
+          ⭐ ม-148 (มติผู้ใช้ 2026-09-22): แถวที่ผูก **สูตร** ใส่ได้ F · B · FB · แถวที่เป็น **กลิ่น** ใส่ได้ F ช่องเดียว
+          · ช่องมาจาก `rowPriceSlots` ตัวเดียวกับ API · โมดัลกลางตัวเดียวกับปุ่มราคาหน้าทะเบียน (ไม่เขียนฟอร์มแยก)
+          ⚠️ ราคาเดียวต่อช่อง ไม่มีชั้นจำนวน (มติผู้ใช้): คิดต่อกิโลเดียว ไม่ลดตามจำนวน */}
+      <RegistryPriceModal
+        open={!!pricing}
+        onClose={() => setPricing(null)}
         title={pricing ? `ใส่ราคา — ${itemText(pricing.item)}` : ""}
-      >
-        {pricing && (
-          <>
-            <div className="form-group">
-              {/* ⭐ ม-148 — บอกว่ากำลังใส่ราคาอะไร จากตัวตัดสินเดียวกับ API (`rowPriceTarget`) */}
-              <label htmlFor="row-price">{rowPriceTarget(pricing.item)?.text || "ราคา"} (฿/กก.)</label>
-              <Input
-                id="row-price" type="number" min="0" step="any" mono
-                value={pricing.price} disabled={saving}
-                onChange={(e) => setPricing({ ...pricing, price: e.target.value })}
-              />
-              <p className={styles.fieldHint}>
-                ราคานี้เข้าทะเบียนวัสดุเป็นรุ่นใหม่ของ{rowPriceTarget(pricing.item)?.registry || "กลิ่น"}ตัวนี้
-                {req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}
-                {" — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ"}
-              </p>
-            </div>
-            <div className={`action-bar ${styles.modalActions}`}>
-              <Button variant="quiet" onClick={() => setPricing(null)} disabled={saving}>ยกเลิก</Button>
-              <Button
-                tone="primary"
-                disabled={saving || !String(pricing.price ?? "").trim()}
-                onClick={async () => {
-                  const done = await call(`/items/${pricing.item.id}/price`, {
-                    method: "POST",
-                    body: JSON.stringify({ price: pricing.price, note: pricing.note || null }),
-                  }, "บันทึกราคาเข้าทะเบียนแล้ว");
-                  if (done) setPricing(null);
-                }}
-              >
-                บันทึกราคา
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
+        endpoint={pricing ? `/api/sa/requests/${id}/items/${pricing.item.id}/price` : ""}
+        slots={pricing ? rowPriceSlots(pricing.item) : null}
+        hint={`ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}`
+          + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง"}
+        onSaved={(msg) => {
+          setPricing(null);
+          setToast({ kind: "success", msg });
+          load({ background: true });
+        }}
+      />
 
       {/* ส่งงาน — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว
           ⚠️ หัวโมดัลใช้คำเดียวกับปุ่มที่กดมา (ม-120 รวมคำ "ส่งกลิ่น"/"ส่งของ" เป็น

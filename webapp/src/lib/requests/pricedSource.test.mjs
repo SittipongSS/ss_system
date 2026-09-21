@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { rowPriceTarget } from './rowPriceTarget.js';
+import { rowPriceSlots, rowPriceTarget } from './rowPriceTarget.js';
 
 const SRC = readFileSync('src/app/api/sa/requests/[id]/items/[itemId]/price/route.js', 'utf8');
 
@@ -36,8 +36,21 @@ test('แถวที่ยังไม่ผูกทะเบียน = null 
 });
 
 test('route ถามตัวตัดสินกลาง ไม่คิดชนิดราคาเอง', () => {
-  assert.ok(SRC.includes('rowPriceTarget(row)'));
-  assert.ok(!/kind: 'RM_F'/.test(SRC), 'ชนิดราคาต้องไม่ถูกเขียนซ้ำใน route');
+  assert.ok(SRC.includes('rowPriceSlots(row)'));
+  assert.ok(SRC.includes('normalizeSlotPrices('));
+  assert.ok(!/kind: 'RM_F/.test(SRC), 'ชนิดราคาต้องไม่ถูกเขียนซ้ำใน route');
+});
+
+test('⭐ ม-148 แถวสูตรใส่ได้ F · B · FB · แถวกลิ่นใส่ได้ F ช่องเดียว', () => {
+  const keys = (row) => rowPriceSlots(row).map((s) => `${s.key}:${s.id}`);
+  // พัฒนากลิ่นที่ส่งเป็นสินค้า — F ลงกลิ่นที่เพิ่งเกิด
+  assert.deepEqual(keys({ producedScentId: 'S1', producedFormulaId: 'F1' }), ['F:S1', 'B:F1', 'FB:F1']);
+  // พัฒนาสูตร — F ลงกลิ่นที่แถวอ้าง
+  assert.deepEqual(keys({ lineKind: 'product_dev', scentId: 'S9', producedFormulaId: 'F1' }), ['F:S9', 'B:F1', 'FB:F1']);
+  // กลิ่น (หัวน้ำหอม) — F อย่างเดียว
+  assert.deepEqual(keys({ producedScentId: 'S1' }), ['F:S1']);
+  // พัฒนาสูตรที่ยังไม่ส่งสูตร — ไม่ถอยไปใช้กลิ่นที่แถวอ้าง (ไม่ใช่ของที่แถวส่ง)
+  assert.deepEqual(keys({ lineKind: 'product_dev', scentId: 'S9' }), []);
 });
 
 test('🔴 ห้ามเหลือตัวแปร `scent` ที่ไม่มีอยู่แล้วในข้อความ audit/เธรด', () => {

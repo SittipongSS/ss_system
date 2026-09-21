@@ -39,6 +39,8 @@ function directionRow(item, all = []) {
     registry: item.refScent ? { ...item.refScent, kind: 'scent' } : null,
     /* ⭐ **ส่งเป็นอะไร** (ม-148) — หัวน้ำหอม หรือสินค้าหมวดไหน + สูตรที่เกิดพร้อมกลิ่น (ค่าสดจากทะเบียน)
        ⚠️ null = แถวที่ส่งก่อน ม-148 (ไม่มีใครบันทึกไว้) ไม่ใช่ "หัวน้ำหอม" — ห้ามเดา */
+    // ⭐ ราคาที่ใส่จากแถวนี้ (F · B · FB เรียงแล้ว) — ว่าง = ยังไม่ถึงขั้นราคา
+    priced: item.pricedResults || [],
     delivered: item.categoryCode ? {
       categoryCode: item.categoryCode,
       product: isDeliveredAsProduct(item.categoryCode),

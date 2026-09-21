@@ -53,6 +53,8 @@ export function formulaDevBoard(items = []) {
         // ⭐ ราคาที่ออกจากแถวนี้ (ช่องว่างข้อ 5) — `findRequest` เติมจาก rev ที่
         // `answeredRevisionId` ชี้ · null = ยังไม่ถึงขั้นราคา
         priced: item.pricedResult || null,
+        // ⭐ ม-148 — แถวสูตรใส่ได้ F · B · FB พร้อมกัน ⇒ ตารางโชว์ทุกช่องที่ใส่ (เรียง F · B · FB)
+        pricedList: item.pricedResults || [],
         // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
         rework: !!item.derivedFromItemId,
         // ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)

@@ -2,21 +2,28 @@
 // ไม่มี I/O: ใช้ร่วมกันทั้งฝั่ง API (ตรวจก่อนเขียน DB) และฝั่งหน้าจอ (ป้ายกำกับ,
 // ตรวจก่อนกดบันทึก) — กฎเดียวกันทั้งสองฝั่ง ไม่ต้องคัดลอกไปเขียนซ้ำ
 //
-// บรรทัดในแม่แบบมี 4 ชนิด และ "ชนิดเป็นตัวกำหนดหน่วย + ฝ่ายที่ต้องตอบราคา" เสมอ:
-//   RM_F  หัวน้ำหอม      ฿/กก. → ถาม RD
-//   RM_FB เนื้อสาร        ฿/กก. → ถาม RD
+// บรรทัดในแม่แบบมี 5 ชนิด และ "ชนิดเป็นตัวกำหนดหน่วย + ฝ่ายที่ต้องตอบราคา" เสมอ:
+//   RM_F  หัวน้ำหอม (F)         ฿/กก. → ถาม RD
+//   RM_B  เบส (B)               ฿/กก. → ถาม RD   (mig 0370 · ม-148)
+//   RM_FB เบสที่ใส่กลิ่น (FB)   ฿/กก. → ถาม RD
+// ⭐ นิยามผู้ใช้ 2026-09-22: *"F คือกลิ่น(หัวน้ำหอม) / B คือเบส / FB คือ เบสที่ใส่กลิ่น"* — แม่แบบที่
+//   แยก "หัวน้ำหอม + เบส" ต้องใช้ F + B · ใช้ F + FB = นับกลิ่นซ้ำ (FB มีกลิ่นอยู่แล้ว)
 //   PM    บรรจุภัณฑ์      ฿/ชิ้น → ถาม PC (จัดซื้อ)
 //   labor ค่าดำเนินการ    ฿/ชิ้น → คิดภายใน ไม่ต้องถามใคร
 // ความสัมพันธ์นี้ถูกบังคับซ้ำเป็น CHECK constraint ใน 0140 ด้วย
 
-export const COST_LINE_KINDS = ['RM_F', 'RM_FB', 'PM', 'labor'];
+export const COST_LINE_KINDS = ['RM_F', 'RM_B', 'RM_FB', 'PM', 'labor'];
 
 export const COST_LINE_KIND_LABELS = {
-  RM_F: 'หัวน้ำหอม (RM)',
-  RM_FB: 'เนื้อสาร (RM)',
+  RM_F: 'หัวน้ำหอม (F)',
+  RM_B: 'เบส (B)',
+  RM_FB: 'เบสที่ใส่กลิ่น (FB)',
   PM: 'บรรจุภัณฑ์ (PM)',
   labor: 'ค่าดำเนินการ',
 };
+
+// วัตถุดิบ (RM) ทุกชนิด — คิดต่อกิโล ถาม RD
+const RM_KINDS = ['RM_F', 'RM_B', 'RM_FB'];
 
 export const UNIT_BASIS_LABELS = {
   per_kg: 'บาท/กก.',
@@ -25,13 +32,13 @@ export const UNIT_BASIS_LABELS = {
 
 // หน่วยของบรรทัด — ผูกกับชนิด ไม่ให้ผู้ใช้เลือกเอง (กันสูตรแปลงกรัม/ชิ้นเพี้ยน)
 export function unitBasisForKind(kind) {
-  return kind === 'RM_F' || kind === 'RM_FB' ? 'per_kg' : 'per_piece';
+  return RM_KINDS.includes(kind) ? 'per_kg' : 'per_piece';
 }
 
 // ฝ่ายที่ต้องตอบราคาบรรทัดนี้ — null = คิดภายใน ไม่ต้องส่งใครตอบ
 // (ค่านี้จะถูก snapshot ลง costing_item_components."sourceDept" ตอนกางใบใน PR3)
 export function sourceDeptForKind(kind) {
-  if (kind === 'RM_F' || kind === 'RM_FB') return 'RD';
+  if (RM_KINDS.includes(kind)) return 'RD';
   if (kind === 'PM') return 'PC';
   return null;
 }

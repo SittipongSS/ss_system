@@ -514,7 +514,8 @@ export async function linkProductToRegistry(supabase, productId, { formulaId = n
 //
 // ⚠️ คืน `null` เมื่อยังไม่มีวัสดุผูก **ต่างจาก** `{ price: null }` ที่แปลว่าผูกแล้ว
 // แต่ยังไม่มีใครใส่ราคา — สองอย่างนี้ผู้ใช้ต้องอ่านออกว่าคนละเรื่อง
-export async function attachRegistryPrice(supabase, rows, { column, kind }) {
+// `as` = คีย์ที่ติดลงแถว (ตั้งต้น `price`) — หน้ารายละเอียดสูตรติดราคา B เพิ่มเป็น `basePrice` (ม-148)
+export async function attachRegistryPrice(supabase, rows, { column, kind, as = 'price' }) {
   const ids = rows.map((r) => r.id).filter(Boolean);
   const materials = await loadMaterials(supabase, {
     status: null, kind, linked: { column, ids },
@@ -533,7 +534,7 @@ export async function attachRegistryPrice(supabase, rows, { column, kind }) {
       revisionNo: rev?.revisionNo ?? null,
     });
   }
-  return rows.map((r) => ({ ...r, price: byRow.get(r.id) || null }));
+  return rows.map((r) => ({ ...r, [as]: byRow.get(r.id) || null }));
 }
 
 /* ── ใบเดียวพร้อมของประกอบ — ใช้โดยหน้ารายละเอียด ────────────────────────
@@ -579,5 +580,14 @@ export async function findFormulaDetail(supabase, id) {
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
     column: 'formulaId', kind: 'RM_FB',
   });
-  return withPrice;
+  /* ⭐ ม-148 — สูตรมีสามราคา: FB (`price` · ช่องหลักของการ์ด) · B ของสูตรเอง (`basePrice`) ·
+     F ของกลิ่นที่สูตรใช้ (`scentPrice` — ราคาเป็นของกลิ่น ไม่ใช่สำเนา) · หน้ารายการยังโชว์ FB ช่องเดียว */
+  const [withBase] = await attachRegistryPrice(supabase, [withPrice], {
+    column: 'formulaId', kind: 'RM_B', as: 'basePrice',
+  });
+  if (!withBase.scentId) return { ...withBase, scentPrice: null };
+  const [scentRow] = await attachRegistryPrice(supabase, [{ id: withBase.scentId }], {
+    column: 'scentId', kind: 'RM_F',
+  });
+  return { ...withBase, scentPrice: scentRow?.price || null };
 }

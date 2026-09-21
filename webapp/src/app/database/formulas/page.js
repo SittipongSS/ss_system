@@ -27,6 +27,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import { priceSlotsFor } from "@/lib/master/priceSlots";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
@@ -64,7 +65,7 @@ export default function FormulasPage() {
   const rowMenu = (f) => [
     {
       id: "price",
-      label: "ออกราคา FB ใหม่",
+      label: "ออกราคาใหม่",
       icon: Coins,
       visible: canPriceFormula(f) && f.price?.unitPrice != null,
       onClick: () => setPricing(f),
@@ -792,8 +793,10 @@ export default function FormulasPage() {
       <RegistryPriceModal
         open={!!pricing}
         onClose={() => setPricing(null)}
-        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคา FB ใหม่" : "ใส่ราคา FB"} — ${pricing.name}` : ""}
+        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคาใหม่" : "ใส่ราคา"} — ${pricing.name}` : ""}
         endpoint={pricing ? `/api/master/formulas/${pricing.id}/price` : ""}
+        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) */
+        slots={pricing ? priceSlotsFor({ scentId: pricing.scentId, formulaId: pricing.id }) : null}
         onSaved={(msg) => {
           setPricing(null);
           setToast({ kind: "success", msg });

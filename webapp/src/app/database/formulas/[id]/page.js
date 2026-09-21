@@ -9,6 +9,8 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import RegistryPrice from "@/components/database/RegistryPrice";
+import { priceSlotsFor } from "@/lib/master/priceSlots";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
 import { formulaToForm } from "@/components/database/FormulaForm";
 import Toast from "@/components/ui/Toast";
@@ -131,7 +133,7 @@ export default function FormulaDetailPage() {
   // ⚠️ คืน object เหมือน `scentSourceLabel` — ใช้แค่ `label` (ดูหมายเหตุที่หน้ากลิ่น)
   const src = formulaSourceLabel(formula);
   const srcLabel = src?.label || null;
-  // ปุ่มใส่ราคา FB — กติกาเดียวกับราคา F บนหน้ากลิ่น (ดูหมายเหตุที่นั่น)
+  // ปุ่มใส่ราคา (F · B · FB — ม-148) — กติกาเดียวกับราคา F บนหน้ากลิ่น (ดูหมายเหตุที่นั่น)
   const canPrice = canQuoteMaterial(me, "RM_FB") && isFormulaUsable(formula);
   const hasPrice = formula.price?.unitPrice != null;
 
@@ -149,9 +151,14 @@ export default function FormulaDetailPage() {
         { label: "ลูกค้า", value: formula.customerName || "สูตรฐาน" },
         { label: "วันที่ของสูตร", value: formula.formulaDate ? fmtDate(formula.formulaDate) : NA },
         { label: "เพิ่มเข้าทะเบียน", value: fmtDate(formula.createdAt) },
+        /* ⭐ ม-148 — ราคาอีกสองช่องของสูตร (FB อยู่การ์ดราคาหลัก) · F เป็นของกลิ่น อ่านสดจากทะเบียนกลิ่น */
+        { label: "ราคา B — เบส (บาท/Kg)", value: <RegistryPrice price={formula.basePrice} /> },
+        ...(formula.scentId
+          ? [{ label: "ราคา F — หัวน้ำหอมของกลิ่น (บาท/Kg)", value: <RegistryPrice price={formula.scentPrice} /> }]
+          : []),
       ]}
       price={formula.price}
-      priceLabel="ราคา FB (บาท/Kg)"
+      priceLabel="ราคา FB — เบสที่ใส่กลิ่น (บาท/Kg)"
       primaryAction={{
         id: "edit",
         kind: "edit",
@@ -162,7 +169,7 @@ export default function FormulaDetailPage() {
       }}
       secondaryActions={canPrice ? [{
         id: "price",
-        label: hasPrice ? "ออกราคา FB ใหม่" : "ใส่ราคา FB",
+        label: hasPrice ? "ออกราคาใหม่" : "ใส่ราคา",
         icon: BadgeDollarSign,
         onClick: () => setPricing(true),
       }] : []}
@@ -205,8 +212,10 @@ export default function FormulaDetailPage() {
       <RegistryPriceModal
         open={pricing}
         onClose={() => setPricing(false)}
-        title={`${hasPrice ? "ออกราคา FB ใหม่" : "ใส่ราคา FB"} — ${formula.name}`}
+        title={`${hasPrice ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formula.name}`}
         endpoint={`/api/master/formulas/${formula.id}/price`}
+        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่องจากตัวเดียวกับ API */
+        slots={priceSlotsFor({ scentId: formula.scentId, formulaId: formula.id })}
         onSaved={(msg) => {
           setPricing(false);
           setToast({ kind: "success", msg });
