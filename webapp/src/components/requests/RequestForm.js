@@ -111,6 +111,9 @@ export const emptyRequestForm = (over = {}) => ({
   requestedDueDate: "",
   // ประเมินพื้นที่ (mig 0314) — เวลาเป็นของหัวข้อนี้ ส่วนวันที่ใช้ช่องเดิมข้างบน
   requestedDueTime: "",
+  /* วันที่อยากได้ **ผล** (mig 0368) — คนละวันกับวันที่อยากให้เข้าพื้นที่
+     ⚠️ ช่องกางเฉพาะหัวข้อที่ทะเบียนประกาศ `resultDueLabel` ไว้ */
+  requestedResultDate: "",
   siteId: "",
   zones: [],
   scentId: "",
@@ -1222,6 +1225,8 @@ export default function RequestForm({
           /* ป้าย/คำอธิบายมาจากทะเบียนหัวข้อ — ทะเบียนเติมค่ากลางให้ครบทุกคีย์แล้ว */
           dueLabel={copy.dueLabel}
           showTime={needsSite}
+          /* วันที่สอง (วันส่งผล) — ทะเบียนหัวข้อเป็นคนบอกว่ามีหรือไม่มี */
+          resultDueLabel={copy.resultDueLabel}
           dueHint={needsSite
             ? "เจ้าหน้าที่จะยืนยันวัน/เวลาจริงตอนกด \"แจ้งกำหนดส่ง\" — ใส่ช่วงที่อาคารเข้าได้จะช่วยให้ตรงรอบเดียว"
             : undefined}

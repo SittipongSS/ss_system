@@ -126,8 +126,16 @@ test('🪤 ประเมินพื้นที่: ไซต์กับพ�
   assert.ok(zones, 'เลือกสถานที่แล้วแต่ยังไม่มีพื้นที่ = ต้องขึ้นว่าขาด');
   assert.equal(zones.tab, 'subject');
 
+  /* ⭐ **วันส่งผลเป็นช่องบังคับของหัวข้อนี้ด้วย** (มติผู้ใช้ 2026-09-21 · mig 0368) —
+     วันเข้าพื้นที่กับวันส่งผลเป็นคนละวันเสมอ ⇒ ใบที่บอกวันเดียวตอบไม่ได้ว่าฝ่ายขาย
+     จะได้ตัวเลขเมื่อไร ซึ่งเป็นคำถามเดียวที่คนเปิดใบนี้ถาม */
+  const noResult = { ...withSite, zones: [{ name: 'โซน 1' }] };
+  const resultDue = missingRequiredByTab(noResult).find((m) => m.label.includes('รับผล'));
+  assert.ok(resultDue, 'ยังไม่ระบุวันที่ต้องการรับผล = ต้องขึ้นว่าขาด');
+  assert.equal(resultDue.tab, 'due');
+
   // ครบแล้วต้องไม่เหลือของขาด และด่านส่งต้องเห็นตรงกัน
-  const full = { ...withSite, zones: [{ name: 'โซน 1' }] };
+  const full = { ...noResult, requestedResultDate: '2026-09-22' };
   assert.equal(missingRequiredByTab(full).length, 0);
   assert.equal(requestFormBlocker(full), null);
 

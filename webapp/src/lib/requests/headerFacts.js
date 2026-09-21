@@ -13,6 +13,7 @@
 // ⚠️ ลูกค้ากับคนถูกยกออกจากแถบข้อเท็จจริงแล้ว — อย่าเติมกลับเข้าไปเป็นช่องอีก
 // มันจะกลายเป็นข้อมูลเดียวกันสองที่บนหัวเดียวกัน
 import { fmtDate } from '@/lib/format';
+import { requestKindMeta } from '@/lib/master/requestTypes';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
@@ -152,9 +153,17 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
      "ปิดครบ 2/2" คือสัญญาณ "ยังไม่จบ" ที่คิว/แดชบอร์ดเลิกพูดไปแล้ว (รีวิวจับได้) */
   const closure = requestClosure(request);
   const noCountdown = requestClosureStarted(request) || closure.complete || closure.cancelled;
+  /* ⚠️ **ป้ายเดินตามทะเบียนหัวข้อ** — หัวข้อที่ฝ่ายปลายทางต้องเดินทางไปทำเองไม่ได้
+     "รับงาน" ที่ไหน (ประเมินพื้นที่ = วันที่ต้องการให้เข้าพื้นที่) · ตัวเดียวกับป้ายบน
+     ช่องจริงในฟอร์ม ⇒ การ์ดหัวใบกับฟอร์มเรียกของชิ้นเดียวกันด้วยคำเดียวกัน */
+  const copy = requestKindMeta(request.kind)?.form || {};
+  /* ⚠️ **เปลี่ยนป้ายเฉพาะหัวข้อที่มีสองวัน** — หัวข้อที่มีวันเดียวยังใช้คำกลางเดิม
+     ("ผู้ขอต้องการรับงาน" / "RD กำหนดส่ง" · มติผู้ใช้ 2026-08-19 ล็อกคำไว้)
+     ⇒ ที่เปลี่ยนคือใบที่ถ้าไม่บอกชื่อวันจะอ่านไม่ออกว่าวันไหนคือวันไหน */
+  const twoDates = !!copy.resultDueLabel;
   facts.push({
     key: 'requestedDue',
-    label: 'ผู้ขอต้องการรับงาน',
+    label: twoDates ? `ผู้ขอ: ${copy.dueLabel}` : 'ผู้ขอต้องการรับงาน',
     value: wanted ? fmtDate(wanted) : '—',
     sub: wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
   });
@@ -162,7 +171,9 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
   const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;
   facts.push({
     key: 'committedDue',
-    label: `${request.dept || 'ฝ่าย'} กำหนดส่ง`,
+    label: twoDates
+      ? `${request.dept || 'ฝ่าย'}: ${copy.committedDueLabel}`
+      : `${request.dept || 'ฝ่าย'} กำหนดส่ง`,
     // ⚠️ "ยังไม่ระบุ" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง "ไม่มีกำหนด" และ "ระบบไม่รู้"
     // ซึ่งคนละเรื่องกัน (บทเรียนเดียวกับคอลัมน์วันในคิว RD)
     /* ⚠️ ไม่มีวันและไม่มีใครต้องแจ้งแล้ว (จบ/ยกเลิก/มีฝั่งปิด) = ขีด ตรงกับช่องกำหนดส่งในคิว (ม-145)
@@ -173,6 +184,31 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
     sub: committed ? (gap?.text || null) : noDueReason(request, closure),
     tone: committed ? gap?.tone || null : 'muted',
   });
+
+  /* ── วันที่สาม/สี่: **วันส่งผล** (มติผู้ใช้ 2026-09-21 · mig 0368) ──────────
+     ⭐ หัวข้อที่ฝ่ายปลายทาง *ไปทำถึงที่* มีสองเหตุการณ์ที่ไม่เคยเป็นวันเดียวกัน — วันที่ไป
+        กับวันที่ส่งของกลับ · สองช่องข้างบนพูดถึง **วันที่ไป** เท่านั้น
+     ⚠️ ขึ้นเฉพาะหัวข้อที่ทะเบียนประกาศป้ายไว้ — ใบหัวข้ออื่นไม่มีวันชุดนี้ และการ์ด
+        ที่ขึ้นเป็นขีดเปล่า ๆ สองช่องคือสัญญาณรบกวนล้วน ๆ
+     ⚠️ **ไม่นับถอยหลัง** ที่ช่องนี้ — ตัวที่ระบบใช้นับ "เลยกำหนด" ยังเป็นวันเข้าพื้นที่
+        ตัวเดิม · มีสองนาฬิกาบนหัวเดียวกันเมื่อไร ไม่มีใครรู้ว่าอันไหนคือตัวจริง */
+  if (twoDates) {
+    const wantedResult = String(request.requestedResultDate || '').trim();
+    const committedResult = String(request.committedResultDate || '').trim();
+    facts.push({
+      key: 'requestedResultDue',
+      label: `ผู้ขอ: ${copy.resultDueLabel}`,
+      value: wantedResult ? fmtDate(wantedResult) : '—',
+      sub: wantedResult ? null : 'ใบเก่าที่เปิดก่อนกติกาแยกสองวัน',
+    });
+    facts.push({
+      key: 'committedResultDue',
+      label: `${request.dept || 'ฝ่าย'}: ${copy.committedResultLabel || 'วันที่จะส่งผล'}`,
+      value: committedResult ? fmtDate(committedResult) : (noCountdown ? '—' : 'ยังไม่ระบุ'),
+      sub: committedResult ? null : requestSideText(request, 'dept', 'ยังไม่ได้แจ้งวันส่งผล'),
+      tone: committedResult ? null : 'muted',
+    });
+  }
 
   return facts;
 }

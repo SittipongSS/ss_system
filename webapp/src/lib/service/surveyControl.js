@@ -612,9 +612,16 @@ export function surveyControlView({
        `view.foldDefaults` ได้เลย ไม่ต้องรู้ว่าต้องหักอะไรก่อน (ที่เดียวที่พลาดได้) */
     foldDefaults: surveyFoldDefaults(rows, files, { canWrite, locked }),
     step: stepOf(request, { cancelled, recallPending, recall, progress }),
+    /* ⭐ **กำหนดของจอนี้คือวันส่งผล ไม่ใช่วันเข้าพื้นที่** (มติผู้ใช้ 2026-09-21 · mig 0368)
+       — ทั้งจอเป็นเรื่องการส่งตัวเลขให้ฝ่ายขาย · วันนัดเข้าพื้นที่มีแถวของตัวเองอยู่แล้ว
+         ("นัดสำรวจ") ⇒ เอามาโชว์ซ้ำตรงนี้คือข้อมูลเดียวกันสองที่ที่นับถอยหลังผิดเรื่อง
+       ⚠️ **ถอยไปใช้วันนัดเมื่อใบยังไม่มีวันส่งผล** — ใบที่ลงคิวไว้ก่อน mig 0368 มีแต่วันนัด
+          ปล่อยว่างเมื่อไร จอจะบอกว่า "ไม่มีกำหนด" ทั้งที่ใบมีคำสัญญาอยู่ */
     due: {
-      date: request?.committedDueDate || null,
-      overdueDays: locked ? null : overdueBy(request?.committedDueDate, today),
+      date: request?.committedResultDate || request?.committedDueDate || null,
+      overdueDays: locked
+        ? null
+        : overdueBy(request?.committedResultDate || request?.committedDueDate, today),
     },
     flags: {
       sent, cancelled, locked, readOnly,

@@ -3,7 +3,8 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import {
-  normalizeSurveyRequest, normalizeSurveySite, normalizeSurveyTime,
+  normalizeSurveyCommittedResult, normalizeSurveyRequest, normalizeSurveyRequestedResult,
+  normalizeSurveySite, normalizeSurveyTime,
   normalizeSurveyZones, surveyZoneNameClash, zoneNameKey,
 } from './surveyRequest.js';
 
@@ -78,11 +79,32 @@ test('เวลาว่างได้ · รูปแบบผิดต้อ�
   assert.match(normalizeSurveyTime('25:00').error, /ไม่ถูกต้อง/);
 });
 
+/* ── วันส่งผล — คนละวันกับวันเข้าพื้นที่ (มติผู้ใช้ 2026-09-21 · mig 0368) ──────
+   🔴 ของเดิมมีวันเดียว ⇒ ตัวเลขบนใบตอบไม่ได้ว่า "12/09" คือวันที่ช่างไปถึงหน้างาน
+      หรือวันที่ฝ่ายขายจะได้ตัวเลขไปเสนอราคา */
+test('🔴 วันส่งผลบังคับทั้งสองฝั่ง และมาก่อนวันเข้าพื้นที่ไม่ได้', () => {
+  assert.match(normalizeSurveyRequestedResult('', '2026-09-08').error, /ต้องระบุ/);
+  assert.match(normalizeSurveyRequestedResult('2026-09-07', '2026-09-08').error, /ไม่มาก่อน/);
+  // เท่ากันได้ — ไปเช้า ส่งเย็น เป็นเรื่องปกติของงานจริง
+  assert.deepEqual(
+    normalizeSurveyRequestedResult('2026-09-08', '2026-09-08'),
+    { value: '2026-09-08', error: null },
+  );
+  // ยังไม่มีวันเข้าพื้นที่ให้เทียบ = ตรวจแค่รูปแบบ (ด่าน "ต้องมีวัน" อยู่ที่ requestShapeError)
+  assert.equal(normalizeSurveyRequestedResult('2026-09-08', '').error, null);
+  assert.match(normalizeSurveyRequestedResult('8/9/2026', '').error, /ไม่ถูกต้อง/);
+  // ฝั่งฝ่าย TS พูดคนละคำกับฝั่งผู้ขอ — คนอ่านต้องรู้ว่าตกด่านของช่องไหน
+  assert.match(normalizeSurveyCommittedResult('', '2026-09-08').error, /จะส่งผล/);
+  assert.match(normalizeSurveyCommittedResult('2026-09-07', '2026-09-08').error, /วันนัดเข้าพื้นที่/);
+});
+
 // ── ทั้ง payload ────────────────────────────────────────────────────────
 test('payload ที่ถูกต้องผ่านครบ', () => {
   const { value, error } = normalizeSurveyRequest({
     siteId: 'SVS-1',
     requestedDueTime: '13:00',
+    requestedDueDate: '2026-09-08',
+    requestedResultDate: '2026-09-11',
     zones: [{ zoneId: 'ZN-1' }, { name: 'โซนอาหารชั้น 4', floor: '4' }],
   });
   assert.equal(error, null);
@@ -92,6 +114,7 @@ test('payload ที่ถูกต้องผ่านครบ', () => {
   assert.equal(value.zones[1].floor, '04');
   assert.equal(value.zones[0].floor, null);   // โซนเดิมไม่ต้องถามชั้นซ้ำ
   assert.equal(value.requestedDueTime, '13:00');
+  assert.equal(value.requestedResultDate, '2026-09-11');
 });
 
 // ── ชั้นของพื้นที่ใหม่ (mig 0315) ──────────────────────────────────────────

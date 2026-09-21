@@ -73,7 +73,9 @@ import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { toHHMM } from '@/lib/service/sites';
-import { normalizeSurveyTime } from '@/lib/service/surveyRequest';
+import {
+  normalizeSurveyCommittedResult, normalizeSurveyRequestedResult, normalizeSurveyTime,
+} from '@/lib/service/surveyRequest';
 import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import {
   createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
@@ -439,6 +441,10 @@ export async function PATCH(request, { params }) {
             ไม่มีใครเห็นจนกว่าจะเปิดหน้าตารางเจ้าหน้าที่ */
       if (requestNeedsRef(before.kind, 'site')) {
         patch.committedDueTime = String(body.committedDueTime ?? '').trim() || null;
+        /* ⭐ **วันส่งผล — คำสัญญาที่ฝ่ายขายรออยู่จริง** (มติผู้ใช้ 2026-09-21 · mig 0368)
+           ⚠️ รูปร่าง/ลำดับวันถูกตรวจไปแล้วที่ `surveyScheduleError` ข้างบน — ที่นี่เขียนอย่างเดียว
+              (กฎอยู่ที่เดียว ไม่ใช่สองที่ที่ต้องคอยให้ตรงกัน) */
+        patch.committedResultDate = String(body.committedResultDate).trim();
         patch.assigneeId = technician.id;
         patch.assigneeName = technician.name || null;
         patch.assignedAt = nowIso;
@@ -457,9 +463,12 @@ export async function PATCH(request, { params }) {
           + (note ? ` — ${note}` : '')
         : `แจ้งกำหนดส่ง ${patch.committedDueDate}${note ? ` — ${note}` : ''}`;
       if (requestNeedsRef(before.kind, 'site')) {
+        /* ⚠️ **เธรดต้องพูดทั้งสองวัน** — ผู้ขออ่านเธรดเพื่อรู้ว่าจะได้ตัวเลขวันไหน
+           บอกแต่วันนัดเข้าพื้นที่ = ตอบคำถามที่เขาไม่ได้ถาม */
         summary = `ลงคิวเข้าพื้นที่ ${patch.committedDueDate}`
           + (patch.committedDueTime ? ` ${patch.committedDueTime}` : '')
           + (patch.assigneeName ? ` · ${patch.assigneeName}` : '')
+          + ` · ส่งผล ${patch.committedResultDate}`
           + (note ? ` — ${note}` : '');
       }
     } else if (action === 'update') {
@@ -552,6 +561,21 @@ export async function PATCH(request, { params }) {
         const parsed = normalizeSurveyTime(body.requestedDueTime);
         if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
         next.requestedDueTime = parsed.value;
+      }
+
+      /* ── วันที่ต้องการรับผล (mig 0368) ───────────────────────────────────
+         ⭐ แก้ได้เหมือนวันที่ต้องการให้เข้าพื้นที่ — สองช่องนี้เกิดคู่กันบนฟอร์มเดียวกัน
+            ⇒ แก้ได้ช่องเดียวคือช่องที่เหลือกลายเป็นค่าที่แก้ไม่ได้โดยไม่มีเหตุผล
+         ⚠️ เทียบกับวันเข้าพื้นที่ **ของใบหลังแก้** (`next.requestedDueDate`) ไม่ใช่ของเดิม
+            — ฟอร์มส่งสองช่องมาพร้อมกันเสมอ ⇒ เทียบกับของเดิมจะตีกลับการแก้ที่ถูกต้อง
+         ⚠️ ไม่ส่งคีย์มา = ไม่แตะของเดิม (ผู้เรียกที่แก้แค่ช่องอื่น) */
+      if (requestNeedsRef(before.kind, 'site') && body.requestedResultDate !== undefined) {
+        const parsed = normalizeSurveyRequestedResult(
+          body.requestedResultDate,
+          next.requestedDueDate || before.requestedDueDate,
+        );
+        if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
+        next.requestedResultDate = parsed.value;
       }
 
       /* ── บรรทัด (มติผู้ใช้ 2026-08-24) ───────────────────────────────────
@@ -956,7 +980,31 @@ export async function PATCH(request, { params }) {
           }
           patch.committedDueTime = raw ? toHHMM(raw) : null;
         }
+        /* ⭐ **เลื่อนวันเข้าพื้นที่แล้ววันส่งผลต้องตามไปด้วยได้** (mig 0368) — เลื่อนไป
+           หลังวันที่รับปากว่าจะส่งผลเมื่อไร ใบจะถือคำสัญญาที่เป็นไปไม่ได้
+           ⚠️ ไม่ส่งคีย์มา = ไม่แตะวันส่งผลเดิม (แพตเทิร์นเดียวกับ `committedDueTime`)
+              แต่ถ้าวันเดิมตกไปอยู่**ก่อน**วันนัดใหม่ ต้องตีกลับ ไม่ใช่ขยับให้เงียบ ๆ —
+              วันส่งผลเป็นคำสัญญาต่อฝ่ายขาย คนที่เลื่อนต้องเป็นคนเลือกวันใหม่เอง
+           🔴 ปล่อยผ่าน = CHECK ของ mig 0368 ตีกลับด้วยข้อความดิบของ Postgres */
+        if ('committedResultDate' in body) {
+          // ส่งคีย์มา = ตั้งใจแก้ ⇒ ค่าว่างถูกตีกลับ (ช่องนี้บังคับตั้งแต่ตอนลงคิว)
+          const parsed = normalizeSurveyCommittedResult(body.committedResultDate, next);
+          if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
+          patch.committedResultDate = parsed.value;
+        } else {
+          /* ไม่ส่งมา = ไม่แตะของเดิม · แต่ของเดิมที่ตกไปอยู่**ก่อน**วันนัดใหม่ต้องตีกลับ
+             ไม่ใช่ขยับให้เงียบ ๆ — วันส่งผลเป็นคำสัญญาต่อฝ่ายขาย คนเลื่อนต้องเลือกเอง */
+          const kept = String(before.committedResultDate ?? '').trim();
+          if (kept && kept < next) {
+            return Response.json({
+              error: `วันนัดใหม่ (${next}) เลยวันที่รับปากว่าจะส่งผล (${kept}) — แจ้งวันส่งผลใหม่มาด้วย`,
+            }, { status: 400 });
+          }
+        }
         summary = `เลื่อนวันนัดเข้าพื้นที่ ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
+          + (patch.committedResultDate
+            ? ` · ส่งผล ${before.committedResultDate || '(ไม่เคยระบุ)'} → ${patch.committedResultDate}`
+            : '')
           + (reason ? ` — ${reason}` : '');
       }
     } else if (action === 'assign') {

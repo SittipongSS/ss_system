@@ -24,6 +24,10 @@ import { requestSideText } from '@/lib/requests/replyTurn';
  * ⚠️ `quotationId` ยัง **แก้ไม่ได้** — เปลี่ยนใบ = เปลี่ยนดีล/ลูกค้า/ฐานยอดทั้งชุด
  * ซึ่งเป็นด่านผูกที่ POST ถืออยู่ (ดูย่อหน้าบนสุดของไฟล์)
  */
+/* ⚠️ `requestedResultDate` (วันที่ต้องการรับผล · mig 0368) **ไม่อยู่ในลิสต์นี้**
+   ด้วยเหตุผลเดียวกับ `requestedDueTime`: มันเป็นของเฉพาะหัวข้อที่มีสถานที่ และต้อง
+   ตรวจลำดับวันเทียบกับวันเข้าพื้นที่ก่อนเขียน ⇒ handler เป็นคนเติมลง patch เอง
+   (`normalizeSurveyRequestedResult`) ไม่ใช่ฟังก์ชันบริสุทธิ์ตัวนี้ */
 export const REQUEST_EDITABLE_FIELDS = Object.freeze([
   'title', 'body', 'requestedDueDate', 'urgent', 'urgentReason',
   'billPercent', 'billAmount',
