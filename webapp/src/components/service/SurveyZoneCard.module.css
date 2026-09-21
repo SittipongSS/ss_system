@@ -154,6 +154,9 @@
   border-radius: var(--radius);
 }
 
+/* จอของช่างไม่มีช่องสูตรแพ็คเกจ (มติ 2026-09-21) ⇒ เหลือสองช่อง */
+.metrics[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 .metrics > div {
   min-width: 0;
   padding: var(--space-1) var(--space-2-5);

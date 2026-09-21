@@ -31,7 +31,9 @@ import { CalendarClock, ChevronsDownUp, ChevronsUpDown, Flag, MapPin, MapPinPlus
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import SurveyControlCard from "@/components/service/SurveyControlCard";
+import SurveyFieldBar from "@/components/service/SurveyFieldBar";
 import SurveyResultTable from "@/components/service/SurveyResultTable";
+import SurveySubmitDialog from "@/components/service/SurveySubmitDialog";
 import SurveyZoneCard from "@/components/service/SurveyZoneCard";
 import { collapsibleBodyId, collapsibleHeadId } from "@/components/ui/CollapsibleCard";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -116,6 +118,12 @@ export default function SurveySheetPage({ params }) {
      ⚠️ คนละแกนกับ `dirtyZones` ซึ่งเป็นค่าที่ **ช่าง** พิมพ์ค้างบนแท็บหน้างาน —
         ด่านของปุ่มส่งผลถามทั้งสองตัว และขึ้นข้อความคนละอัน */
   const [decisionDrafts, setDecisionDrafts] = useState({});
+  /* ── ช่าง: รับงาน (= เริ่มงาน) → … → ส่งงาน อยู่จบในจอนี้ (มติผู้ใช้ 2026-09-21) ──
+     🐞 เดิมจอนี้ไม่มีปุ่มส่งงาน ช่างต้องย้อนไป "งานวันนี้" แล้วเจอแผ่นปิดงานของงานบริการ
+     ⚠️ `?submit=1` = มาจากปุ่ม "ส่งงาน" บนการ์ดงานวันนี้ ⇒ เปิดโมดัลให้ทันทีครั้งเดียว */
+  const [startingVisit, setStartingVisit] = useState(false);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const wantsSubmit = params$.get("submit") === "1";
 
   /* ⚠️ กันคำตอบมาผิดลำดับ — ช่างกดบันทึกรัว ๆ ได้ ถ้าไม่กัน คำตอบของรอบที่ตกไปแล้ว
      จะเขียนทับเป็นตัวสุดท้าย โดยไม่มี error อะไรเลย */
@@ -180,6 +188,39 @@ export default function SurveySheetPage({ params }) {
       setToast({ kind: "success", msg: `บันทึกการเคาะแล้ว ${savedIds.length} พื้นที่` });
     }
     return { savedIds, failure };
+  };
+
+  /* เริ่มงาน — server ประทับเวลาไทยเอง (ตัวเดียวกับปุ่มบนงานวันนี้) */
+  const startVisit = async () => {
+    if (!data?.visit?.id) return;
+    setStartingVisit(true);
+    try {
+      const res = await apiJson(`/api/service/visits/${data.visit.id}`, {
+        method: "PATCH", json: { status: "in_progress", stamp: "start" }, fallbackError: "เริ่มงานไม่สำเร็จ",
+      });
+      const at = String(res?.visit?.actualStartTime || "").slice(0, 5);
+      setToast({ kind: "success", msg: at ? `เริ่มงานแล้ว · ${at} น.` : "เริ่มงานแล้ว" });
+      await load({ background: true });
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setStartingVisit(false);
+    }
+  };
+
+  /* ส่งงาน = ปิดนัดประเมิน (`stamp: 'end'` ให้ server ประทับเวลาจบ) · ด่าน "ของช่างครบ"
+     อยู่ที่ route ปิดนัด — โยน error กลับไปให้โมดัลบอกตรงนั้น ไม่ใช่ toast ที่หายไป */
+  const submitField = async ({ status, unableReason, summary }) => {
+    const res = await apiJson(`/api/service/visits/${data.visit.id}`, {
+      method: "PATCH",
+      json: { status, stamp: "end", summary, ...(status === "unable" ? { unableReason } : {}) },
+      fallbackError: "ส่งงานไม่สำเร็จ",
+    });
+    setSubmitOpen(false);
+    setToast(res?.steppedBackRequest
+      ? { kind: "success", msg: "ปิดว่าไปแล้วเข้าไม่ได้ · ใบกลับไปขั้นลงคิวแล้ว — TS จะลงวันใหม่ และฝ่ายขายได้รับแจ้งพร้อมเหตุผล" }
+      : { kind: "success", msg: "ส่งงานแล้ว — หัวหน้าได้แจ้งเตือนให้เคาะจุดติดตั้งและแพ็คเกจ" });
+    await load({ background: true });
   };
 
   const send = async () => {
@@ -441,6 +482,25 @@ export default function SurveySheetPage({ params }) {
     return { id: row.zoneId, name: row.zoneName, back: !ahead };
   }, [view.zoneGaps.rows, zones]);
 
+  /* แถบงานของช่าง — คนที่ **เขียนผลวัดได้** และใบยังไม่ล็อก (ส่งผลแล้ว = งานของช่างจบ)
+     ⚠️ ไม่มีนัด = ไม่มีอะไรให้เริ่ม/ส่ง */
+  const fieldVisit = data?.visit || null;
+  /* ⚠️ หัวหน้าที่ไม่ได้อยู่บนนัด (เปิดมาเคาะแพ็คเกจ) ไม่ใช่คนส่งงาน — ปุ่มของเขาอยู่การ์ด
+     จัดการผลประเมิน · Senior ที่ออกหน้างานเองยังได้แถบ (`onVisit` มาจาก server) */
+  const showFieldBar = view.flags.canWrite && !!fieldVisit && (!canDecide || data?.onVisit === true);
+  /* ⚠️ **ส่งงานผ่าน `?submit=1` ไม่ผูกกับแถบ** — หัวหน้าที่ "ไปแทนกัน" จากงานวันนี้ของช่าง
+     (`/service/today?user=…`) กดปุ่มส่งงานมาแล้ว แถบซ่อนสำหรับเขา (ไม่ได้อยู่บนนัด) ⇒ ถ้าผูก
+     กับแถบ ปุ่มที่เขาเพิ่งกดจะพามาหน้าที่ไม่มีอะไรเกิดขึ้น · ใช้สิทธิ์เขียนตัวเดียวกับ server */
+  const canSubmitField = view.flags.canWrite && fieldVisit?.status === "in_progress";
+
+  /* มาจากปุ่ม "ส่งงาน" บนการ์ดงานวันนี้ — เปิดโมดัลครั้งเดียว แล้วถอดพารามิเตอร์ทิ้ง
+     (รีเฟรชหน้าแล้วโมดัลต้องไม่เด้งซ้ำ) */
+  useEffect(() => {
+    if (!wantsSubmit || loading) return;
+    if (canSubmitField) setSubmitOpen(true);
+    router.replace(tab === "result" ? `/service/surveys/${id}?tab=result` : `/service/surveys/${id}`, { scroll: false });
+  }, [wantsSubmit, loading, canSubmitField, router, id, tab]);
+
   if (loading) {
     return <Workspace hideHeader back={back}><SkeletonRows rows={4} /></Workspace>;
   }
@@ -624,6 +684,8 @@ export default function SurveySheetPage({ params }) {
                 index={i + 1}
                 files={filesByZone[zone.id] || []}
                 canWrite={view.flags.canWrite}
+                /* แพ็คเกจเป็นงานของหัวหน้าที่ทำทีหลัง (มติ 2026-09-21) — จอช่างไม่โชว์ตัวเลขสูตร */
+                showPackage={canDecide}
                 busy={busyZone === zone.id}
                 open={isZoneOpen(zone.id)}
                 onToggle={(next) => {
@@ -651,9 +713,32 @@ export default function SurveySheetPage({ params }) {
                 </Button>
               </div>
             )}
+            {/* แถบงานของช่าง — อยู่ **ในคอลัมน์เนื้อ** ไม่ใช่เต็มหน้า: บนจอกว้างต้องไม่ลอยทับ
+                การ์ดจัดการผลประเมินที่รางขวา · บนมือถือคือท้ายลิสต์พื้นที่พอดี */}
+            {showFieldBar && (
+              <SurveyFieldBar
+                visit={fieldVisit}
+                progress={view.progress}
+                starting={startingVisit}
+                onStart={startVisit}
+                onSubmit={() => setSubmitOpen(true)}
+              />
+            )}
           </div>
         )}
       </DetailPageLayout>
+
+
+      <SurveySubmitDialog
+        open={submitOpen}
+        visit={fieldVisit}
+        zones={zones}
+        filesByZone={filesByZone}
+        dirtyZoneIds={dirtyZoneIds}
+        onGoZone={(zoneId) => { setSubmitOpen(false); openZone(zoneId); }}
+        onClose={() => setSubmitOpen(false)}
+        onSubmit={submitField}
+      />
 
       {/* ── เพิ่มพื้นที่ที่เจอหน้างาน ─────────────────────────────────────
           ⚠️ **ไม่มีช่องเหตุผล** — แผน §9 เขียนไว้ตรง ๆ ว่า "ตัดต้องมีเหตุผลบังคับ ·

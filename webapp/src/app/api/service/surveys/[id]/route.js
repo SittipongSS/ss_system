@@ -16,6 +16,12 @@ import { visitWriteAccess } from '@/lib/service/visitAccess';
 
 export const dynamic = 'force-dynamic';
 
+const isOnVisit = (user, visit) => {
+  if (!user?.id || !visit) return false;
+  const crew = [visit.assigneeId, ...(Array.isArray(visit.assistantIds) ? visit.assistantIds : [])];
+  return crew.filter(Boolean).map(String).includes(String(user.id));
+};
+
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
@@ -89,6 +95,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
             ตอบ 403 ใส่เขา · สิทธิ์ผูกกับ role ซึ่งจอไม่รู้ ⇒ server ตอบให้ที่นี่
          ⚠️ **ไม่ใช่ด่านอ่านของใบประเมิน** — ด่านนั้นคือ `surveyReadError` ข้างบน */
       canOpenRequest: canOpenRequestPage(user),
+      /* ⭐ **คนดูอยู่บนนัดนี้ไหม** (คนไป/คนช่วย) — แถบ "เริ่มงาน/ส่งงาน" ของช่างขึ้นให้หัวหน้า
+         เฉพาะเมื่อเขาเป็นคนออกหน้างานเอง (Senior) · หัวหน้าที่เปิดมาเคาะแพ็คเกจไม่ใช่คนส่งงาน
+         ⚠️ จอไม่รู้ user id ของตัวเอง ⇒ server ตอบให้ (ท่าเดียวกับ `canWrite`) */
+      onVisit: isOnVisit(user, visit),
     });
   } catch (e) {
     return fail(e.message, 500);

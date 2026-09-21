@@ -1,0 +1,97 @@
+/* โมดัล "ส่งงานหน้างาน" — ถามแค่สองเรื่อง: เข้าได้ไหม · ผลวัดครบหรือยัง */
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.count {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.optional {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* รายการพื้นที่ — แถวละพื้นที่ บอกสภาพด้วยไอคอน+คำ ไม่ใช่สีอย่างเดียว */
+.zones {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.zone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  padding: var(--space-2-5) var(--space-3);
+}
+
+.zone + .zone { border-top: 1px solid var(--border); }
+
+.mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-3);
+}
+
+.zone[data-state="ok"] .mark { background: var(--green-soft); color: var(--green); }
+.zone[data-state="miss"] .mark,
+.zone[data-state="dirty"] .mark { background: var(--amber-soft); color: var(--amber); }
+
+.zoneCopy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  line-height: var(--lh-thai);
+}
+
+.zoneCopy b { color: var(--text-1); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
+.zoneCopy small { color: var(--text-3); font-size: var(--fs-4); }
+.zone[data-state="miss"] .zoneCopy small,
+.zone[data-state="dirty"] .zoneCopy small { color: var(--amber); }
+
+/* ปุ่มพาไปแก้ — เป้านิ้วสูงพอ ไม่ใช่ลิงก์ตัวจิ๋ว */
+.go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--ctl-h-touch);
+  font-size: var(--fs-5);
+}

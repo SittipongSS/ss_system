@@ -46,13 +46,15 @@ const emptySpot = () => ({ id: `new-${Math.random().toString(36).slice(2, 9)}`, 
    ห่างจากตัวเลขของมันเกือบ 400px บนเดสก์ท็อป (ท่าเดียวกับหัวตาราง "ขนาด (ม.)") */
 const DIMS = [["widthM", "กว้าง (ม.)"], ["lengthM", "ยาว (ม.)"], ["heightM", "สูง (ม.)"]];
 
+/* ⚠️ **ลำดับตามงานของช่าง** (มติผู้ใช้ 2026-09-21) — สองหัวข้อแรกคือของที่ช่างถ่ายเองในห้อง
+   ผังเป็นของหัวหน้า (มาร์กจุดก่อนส่ง) จึงอยู่ท้าย · เดิมผังคั่นกลางระหว่างสองหัวข้อของช่าง */
 const PHOTO_GROUPS = [
   { key: "wide", docType: SURVEY_DOC_WIDE, label: "ภาพกว้าง", required: true, hint: null },
+  { key: "spot", docType: SURVEY_DOC_SPOT, label: "ภาพจุดติดตั้ง", required: false, hint: null },
   /* ⭐ ผังไม่บล็อกที่นี่ — ช่างไม่ได้ถือผังไปด้วย · ผังมาจากฝ่ายอาคารหรือไฟล์ที่ SA แนบมา
      ขอแล้วอาจได้วันรุ่งขึ้น ⇒ ด่านผังอยู่ที่ปุ่มส่งผลของหัวหน้า และต้องเป็น
      **ผังที่มาร์กจุดแล้ว** ไม่ใช่ผังเปล่าที่ฝ่ายขายแนบมา */
   { key: "plan", docType: SURVEY_DOC_PLAN, label: "ภาพผัง", required: false, hint: "หัวหน้ามาร์กจุดก่อนส่ง — ไม่มีติดตัวก็ข้ามได้" },
-  { key: "spot", docType: SURVEY_DOC_SPOT, label: "ภาพจุดติดตั้ง", required: false, hint: null },
 ];
 
 /* `id` = จุดจอดของลิงก์ "เปิด <พื้นที่>" บนการ์ดควบคุม — คนที่กดปุ่มนั้นต้องมาโผล่ที่
@@ -78,6 +80,9 @@ export default function SurveyZoneCard({
   onGoNext,
   /* กล่องนี้เป็นเจ้าของ Ctrl+V ตอนไม่มีอะไรโฟกัสอยู่ไหม (พื้นที่ที่เปิดล่าสุด) */
   active = false,
+  /* ⭐ **โชว์ตัวเลขสูตรแพ็คเกจไหม** — แพ็คเกจเป็นงานของหัวหน้าที่ทำทีหลัง (มติผู้ใช้
+     2026-09-21) ⇒ จอของช่างเหลือแค่พื้นที่กับปริมาตร · หน้าส่ง `canDecide` มา */
+  showPackage = false,
 }) {
   const [parts, setParts] = useState(() => (Array.isArray(zone.parts) && zone.parts.length ? zone.parts : [emptyPart()]));
   const [spots, setSpots] = useState(() => (Array.isArray(zone.spots) ? zone.spots : []));
@@ -206,7 +211,9 @@ export default function SurveyZoneCard({
               ยืนอยู่ในห้อง ส่วนจำนวนแพ็คเกจเป็นงานที่ทำที่โต๊ะหลังกลับ (หัวหน้าเป็น
               คนเคาะที่แท็บสรุปส่งผล) ⇒ หัวที่พับบนมือถือต้องเหลือของที่ตอบว่า
               "ยังต้องถ่ายอีกไหม" ไม่ใช่ตัวเลขที่ยังไม่มีใครใช้ */}
-          <span className={`${styles.fact} ${styles.pkgFact}`}>สูตร <b>{fmtNumber(facts.suggestedPackages)}</b> แพ็คเกจ</span>
+          {showPackage ? (
+            <span className={`${styles.fact} ${styles.pkgFact}`}>สูตร <b>{fmtNumber(facts.suggestedPackages)}</b> แพ็คเกจ</span>
+          ) : null}
           <span className={styles.fact}>จุด <b>{fmtNumber(facts.spotsTotal)}</b></span>
           <span className={styles.fact}>รูป <b>{fmtNumber(facts.photos.total)}</b></span>
         </>
@@ -346,7 +353,7 @@ export default function SurveyZoneCard({
                       = 1 แพ็คเกจ ไม่ใช่ 2 (`suggestedPackages` รับปริมาตรรวมมาแล้ว)
                       ⭐ แถวตัวเลขสามช่องแทนแถบรวมสีเบจเดิม (แบบที่อนุมัติ) — ป้ายอยู่บนค่า
                          ไม่ใช่ข้าง ๆ ⇒ อ่านได้ว่าเลขไหนคืออะไรโดยไม่ต้องเดาจากหน่วย */}
-                  <dl className={styles.metrics}>
+                  <dl className={styles.metrics} data-cols={showPackage ? "3" : "2"}>
                     <div>
                       <dt>พื้นที่</dt>
                       <dd data-empty={size.areaSqm > 0 ? undefined : "1"}>
@@ -359,12 +366,14 @@ export default function SurveyZoneCard({
                         {size.volumeCbm > 0 ? <>{fmtNumber(size.volumeCbm)}<small>ลบ.ม.</small></> : naText(null)}
                       </dd>
                     </div>
-                    <div>
-                      <dt>สูตรแนะนำ</dt>
-                      <dd data-empty={packages ? undefined : "1"}>
-                        {packages ? <>{fmtNumber(packages)}<small>แพ็คเกจ</small></> : naText(null)}
-                      </dd>
-                    </div>
+                    {showPackage ? (
+                      <div>
+                        <dt>สูตรแนะนำ</dt>
+                        <dd data-empty={packages ? undefined : "1"}>
+                          {packages ? <>{fmtNumber(packages)}<small>แพ็คเกจ</small></> : naText(null)}
+                        </dd>
+                      </div>
+                    ) : null}
                   </dl>
                   {/* ⚠️ ระบบตรวจส่วนที่วัดทับกันไม่ได้ — คนวัดต้องแบ่งให้ไม่ทับ
                       ⭐ **โผล่เฉพาะตอนมีมากกว่าหนึ่งส่วน** (แบบที่อนุมัติไม่มีบรรทัดนี้เลย)
@@ -461,6 +470,8 @@ export default function SurveyZoneCard({
                           <AttachmentsPanel
                             entityType="service_survey_zone" entityId={zone.id} canEdit={edit} showCount={false}
                             title="" inlineUpload docTypes={[{ key: group.docType, label: group.label }]}
+                            /* ⭐ ปุ่ม "ถ่ายรูป" ขนาดนิ้ว — ช่างถือมือถืออยู่หน้างาน ไม่ใช่ลากไฟล์จากโน้ตบุ๊ก */
+                            photoCapture
                             onItemsChange={handleItems}
                             intakeWeight={active ? 0 : 1}
                           />

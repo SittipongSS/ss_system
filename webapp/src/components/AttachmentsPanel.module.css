@@ -18,3 +18,18 @@
 @media (max-width: 480px) {
   .photoRow { grid-template-columns: var(--attach-thumb-w, 96px) minmax(0, 1fr); gap: var(--space-2); }
 }
+
+/* ปุ่ม "ถ่ายรูป" ของโหมด `photoCapture` — เป้านิ้วเต็มความสูงระบบสัมผัส (44px)
+   ⚠️ เต็มแถวบนจอแคบ: ช่างกดด้วยนิ้วโป้งมือเดียว ปุ่มเล็กชิดขวาคือปุ่มที่กดพลาด */
+.captureBtn { min-height: var(--ctl-h-touch); }
+@media (max-width: 680px) {
+  .captureBtn { flex: 1 1 100%; justify-content: center; }
+}
+
+/* คำของเมาส์/คีย์บอร์ด กับคำของจอสัมผัส — จอสัมผัสทำตาม "ลากมาวาง · Ctrl+V" ไม่ได้
+   ส่วนบนคอมพิวเตอร์ปุ่มเดียวกันไม่ได้เปิดกล้อง ⇒ เรียก "แนบรูป" */
+.touchOnly { display: none; }
+@media (pointer: coarse) {
+  .pointerOnly { display: none; }
+  .touchOnly { display: inline; }
+}

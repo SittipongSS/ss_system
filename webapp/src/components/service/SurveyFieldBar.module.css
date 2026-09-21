@@ -1,0 +1,60 @@
+/* แถบงานของช่างที่ขอบล่างจอประเมิน — ติดอยู่เหนือแถบเมนูมือถือ
+   ⚠️ `sticky` ไม่ใช่ `fixed` — แถบอยู่ในลำดับของหน้า ⇒ ไม่บังเนื้อท้ายหน้า และไม่ต้องเผื่อ
+      padding ให้หน้าเอง · `--mobile-nav-h` เป็น 0 บนจอใหญ่ ค่าจึงถูกทั้งสองแบบ
+   ⚠️ พื้นทึบ (`--panel-solid`) — แถบลอยทับการ์ดพื้นที่ตอนเลื่อน พื้นโปร่งแล้วตัวหนังสือซ้อนกัน */
+.bar {
+  position: sticky;
+  bottom: calc(var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom) + var(--space-2));
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-md);
+}
+
+/* ส่งงานแล้ว = ข้อความบอกผล ไม่มีปุ่มให้กด ⇒ ไม่ต้องตามนิ้ว · ติดขอบค้างไว้ = บังการ์ดพื้นที่
+   ที่ช่างยังเปิดแก้ได้อยู่ (ยังแก้ผลวัดได้จนหัวหน้าส่งผล) */
+.bar[data-tone="ok"],
+.bar[data-tone="warn"] { position: static; box-shadow: none; }
+.bar[data-tone="ok"] { border-color: var(--green); }
+.bar[data-tone="warn"] { border-color: var(--amber); }
+
+.copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar[data-tone="ok"] .head { color: var(--green); }
+.bar[data-tone="warn"] .head { color: var(--amber); }
+
+.sub {
+  margin: var(--space-0-5) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ปุ่มหลักสูงระดับนิ้ว — ช่างถือมือถือมือเดียว อีกมือถือตลับเมตร */
+.action { flex: none; }
+.action :global(.btn) { min-height: var(--ctl-h-touch); }
+
+@media (max-width: 680px) {
+  .bar { padding: var(--space-2-5) var(--space-3); }
+}

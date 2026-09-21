@@ -11,11 +11,11 @@
 // ⚠️ ไม่มีปุ่มสลับ "ทั้งทีม" บนหน้านี้ (มติ 2026-08-02 ข้อ 2) — มุมมองทั้งฝ่ายอยู่ที่
 // หน้าจัดคิวเจ้าหน้าที่ · เคสไปแทนกันเข้าหน้านี้ด้วยลิงก์ ?user=<id> จากหน้าจัดคิวแทน
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import thaiText from "@/components/ThaiText";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { AlertTriangle, CheckCircle2, ClipboardList, FileText, MapPin, Phone, Play, Ruler, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FileText, MapPin, Phone, Play, Ruler, Send, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -95,6 +95,7 @@ export default function TodayPage() {
   // ไม่มี UI สลับคนบนหน้านี้เอง (มุมมองข้ามคนเป็นเรื่องของหน้าจัดคิว) · server เป็นคน
   // เทียบว่า id นี้คือตัวเองหรือคนอื่น — ฝั่ง client ไม่มีทางรู้ id ตัวเอง (roleContext ไม่พก id)
   const searchParams = useSearchParams();
+  const router = useRouter();
   const viewUserId = searchParams.get("user") || "";
   const viewingOther = !!viewUserId;
 
@@ -149,6 +150,15 @@ export default function TodayPage() {
     return [key, { rows: [...open, ...closed], open: open.length, closed: closed.length }];
   })), [groups]);
 
+  /* ⭐ **งานที่กำลังทำอยู่ ปักไว้บนสุด** (มติผู้ใช้ 2026-09-21) — 🐞 เดิมมีนัดค้างเมื่อไร
+     การ์ดของงานที่ช่างยืนทำอยู่ตรงหน้าถูกดันลงไปใต้กลุ่ม "ค้างอยู่" ต้องเลื่อนหาทุกครั้ง
+     ⚠️ เป็น **แถบทางลัด** ไม่ใช่กลุ่มใหม่ — การ์ดยังอยู่ในกลุ่มเดิม เลขหัวกลุ่มจึงยังตรงกับ
+        ป้ายหัวจอ (ดู sectionRows) · ปุ่มในแถบเรียกตัวเดียวกับปุ่มบนการ์ด */
+  const runningVisits = useMemo(
+    () => SECTIONS.flatMap(({ key }) => groups[key]).filter((visit) => visit.status === "in_progress"),
+    [groups],
+  );
+
   // ชื่อเจ้าหน้าที่ที่กำลังดูแทน — เอาจากนัดใบแรกที่มีชื่อ (API กรองด้วย assignee อยู่แล้ว)
   const viewedName = useMemo(() => {
     if (!viewingOther) return "";
@@ -168,6 +178,13 @@ export default function TodayPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "เริ่มงานไม่สำเร็จ");
+      /* ⭐ **นัดประเมิน: เริ่มงานแล้วพาเข้าจอกรอกทันที** (มติผู้ใช้ 2026-09-21 — รับงาน =
+         เริ่มงาน) · ช่างมาหน้านี้เพื่อไปต่อที่จอประเมินอยู่แล้ว ไม่ต้องกดอีกปุ่ม
+         ⚠️ เว้นตอนดูงานแทนคนอื่น — ผู้จัดคิวที่กดเริ่มให้ยังอยู่ที่คิวของคนนั้นต่อ */
+      if (visit.kind === SURVEY_VISIT_KIND && visit.requestId && !viewingOther) {
+        router.push(`/service/surveys/${visit.requestId}`);
+        return;
+      }
       setToast({ kind: "success", msg: `เริ่มงานแล้ว · ${data?.visit?.actualStartTime || ""} น.` });
       await load();
     } catch (e) {
@@ -243,6 +260,32 @@ export default function TodayPage() {
       ) : null}
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
+
+      {!loading && !loadError && runningVisits.length > 0 && (
+        <section className={styles.liveStrip} aria-label="งานที่กำลังทำอยู่">
+          {runningVisits.map((visit) => {
+            const site = sitesById.get(visit.siteId);
+            const survey = visit.kind === SURVEY_VISIT_KIND && visit.requestId;
+            return (
+              <div key={visit.id} className={styles.liveRow}>
+                <span className={styles.pulse} aria-hidden="true" />
+                <span className={styles.liveCopy}>
+                  <b>{site?.name || visit.siteId}</b>
+                  <small>กำลังทำอยู่ · {VISIT_KIND_LABELS[visit.kind] || visit.kind} · เริ่ม {String(visit.actualStartTime || "").slice(0, 5)} น.</small>
+                </span>
+                {survey ? (
+                  <Button as="a" href={`/service/surveys/${visit.requestId}`} tone="primary" size="sm"
+                    icon={<Ruler size={14} aria-hidden="true" />}>
+                    ไปต่อ
+                  </Button>
+                ) : canEdit ? (
+                  <Button tone="primary" size="sm" onClick={() => setClosing(visit)}>ปิดงาน</Button>
+                ) : null}
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
         SECTIONS.every((section) => groups[section.key].length === 0) ? (
@@ -333,13 +376,24 @@ export default function TodayPage() {
                       {/* ⭐ **นัดประเมินพื้นที่ไม่ปิดงานด้วยฟอร์มเดียวกับนัดบริการ** — ของที่ต้อง
                           กรอกคือขนาด·รูป·จุดติดตั้ง ซึ่งเป็นตารางลูกของใบคำร้อง ไม่ใช่ผลรายเครื่อง
                           ⇒ ปุ่มพาไปจอของตัวเอง · โผล่เฉพาะนัดที่ผูกใบคำร้องจริง */}
+                      {/* ⭐ **นัดประเมิน: กรอกและส่งงานที่จอประเมินที่เดียว** (มติผู้ใช้ 2026-09-21)
+                          🐞 เดิม "ปิดงาน" ของนัดประเมินเปิดแผ่นปิดงานของงานบริการ (ของที่ใช้ ·
+                          ลายเซ็น · รูปอีกชุด) และปิดเป็น "เสร็จ" ได้ทั้งที่ยังไม่ได้วัด
+                          ⇒ กำลังทำ = "บันทึกหน้างาน" เป็นปุ่มหลัก + "ส่งงาน" พาไปโมดัลบนจอนั้น */}
                       {surveyLink && (
-                        <Button as="a" href={`/service/surveys/${visit.requestId}`} tone="neutral" size="sm"
+                        <Button as="a" href={`/service/surveys/${visit.requestId}`}
+                          tone={running ? "primary" : "neutral"} variant={done ? "quiet" : undefined} size="sm"
                           icon={<Ruler size={14} aria-hidden="true" />}>
-                          บันทึกหน้างาน
+                          {done ? "เปิดใบประเมิน" : "บันทึกหน้างาน"}
                         </Button>
                       )}
-                      {canEdit && (running || done) && (
+                      {surveyLink && running && canEdit && (
+                        <Button as="a" href={`/service/surveys/${visit.requestId}?submit=1`} tone="neutral" size="sm"
+                          icon={<Send size={14} aria-hidden="true" />}>
+                          ส่งงาน
+                        </Button>
+                      )}
+                      {canEdit && !surveyLink && (running || done) && (
                         <Button tone={done ? "neutral" : "primary"} variant={done ? "quiet" : undefined} size="sm"
                           onClick={() => setClosing(visit)}>
                           {done ? "แก้ผลการเข้า" : "ปิดงาน"}

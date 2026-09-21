@@ -15,6 +15,7 @@ import {
   surveyTotalsDiff,
   surveyFieldMissing,
   surveyFieldProgress,
+  surveyFieldSubmitError,
   surveyResultMissing,
   surveySendError,
   surveyTotals,
@@ -220,6 +221,46 @@ test('ความคืบหน้าหน้างานนับเฉพ�
   const cut = { id: 'C', status: 'cut', cutReason: 'ลูกค้าไม่เอา' };
   const p = surveyFieldProgress([done, todo, cut], { A: [wide], B: [wide] });
   assert.deepEqual({ total: p.total, done: p.done, complete: p.complete }, { total: 2, done: 1, complete: false });
+});
+
+// ── ช่างกด "ส่งงาน" (มติผู้ใช้ 2026-09-21: บล็อก บอกเหตุ) ─────────────────
+test('⭐ ส่งงานได้เมื่อของฝั่งช่างครบ — ข้อของหัวหน้า (ผัง · เลือกจุด · แพ็คเกจ) ไม่บล็อก', () => {
+  // ไม่มีผัง ไม่มีจุดที่เลือก ไม่มีแพ็คเกจ = งานของหัวหน้าที่ทำทีหลังได้
+  assert.equal(surveyFieldSubmitError([zone({ id: 'A', packageQty: null })], { A: [wide] }), null);
+});
+
+test('🔴 ส่งงานไม่ได้เมื่อยังขาด — บอกข้อ + ชื่อพื้นที่ + ทางออกด้วยคำเดียวกับปุ่ม', () => {
+  const a = zone({ id: 'A', zoneName: 'ล็อบบี้' });
+  const b = zone({ id: 'B', zoneName: 'แพนทรี', parts: [], spots: [] });
+  const err = surveyFieldSubmitError([a, b], { A: [wide], B: [] });
+  assert.match(err, /^ยังส่งงานไม่ได้/);
+  assert.match(err, /ขนาด \(แพนทรี\)/);
+  assert.match(err, /ภาพกว้าง \(แพนทรี\)/);
+  assert.match(err, /จุดติดตั้ง \(แพนทรี\)/);
+  assert.doesNotMatch(err, /ล็อบบี้/, 'พื้นที่ที่ครบแล้วต้องไม่ถูกเอ่ยถึง');
+  // ⚠️ ป้ายปุ่มบนการ์ดพื้นที่ — เปลี่ยนป้ายเมื่อไรต้องเปลี่ยนข้อความนี้ด้วย
+  assert.match(err, /“ตัดพื้นที่นี้ออก”/);
+});
+
+test('พื้นที่ที่ตัดออกไม่ต้องวัด · ตัดออกหมดทั้งใบก็ส่งงานได้ (หัวหน้าเห็นเหตุผลเอง)', () => {
+  const cut = { id: 'C', zoneName: 'ห้องเก็บของ', status: 'cut', cutReason: 'ลูกค้าไม่เอา', parts: [] };
+  assert.equal(surveyFieldSubmitError([zone({ id: 'A' }), cut], { A: [wide] }), null);
+  assert.equal(surveyFieldSubmitError([cut], {}), null);
+});
+
+test('ใบที่ไม่มีพื้นที่เลย ส่งงานไม่ได้ — ชี้ปุ่มเพิ่มพื้นที่หรือทาง "ไปแล้วเข้าไม่ได้"', () => {
+  const err = surveyFieldSubmitError([], {});
+  assert.match(err, /“เพิ่มพื้นที่ที่เจอหน้างาน”/);
+  assert.match(err, /“ไปแล้วเข้าไม่ได้”/);
+});
+
+test('🔴 ป้ายปุ่มที่ข้อความส่งงานชี้ไปหา ต้องมีอยู่จริงบนจอ', () => {
+  const card = readFileSync(new URL('../../components/service/SurveyZoneCard.js', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  const sheet = readFileSync(new URL('../../components/service/SurveySubmitDialog.js', import.meta.url), 'utf8');
+  assert.match(card, />\s*ตัดพื้นที่นี้ออก\s*</);
+  assert.match(page, />\s*เพิ่มพื้นที่ที่เจอหน้างาน\s*</);
+  assert.match(sheet, /label: "ไปแล้วเข้าไม่ได้"/);
 });
 
 /* 🔴 ทับสูตรแล้วต้องบอกเหตุผล (mig 0345) — กติกาเดียวกับการตัดพื้นที่ออก */
