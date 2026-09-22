@@ -20,11 +20,43 @@
 }
 
 /* ปุ่ม "ถ่ายรูป" ของโหมด `photoCapture` — เป้านิ้วเต็มความสูงระบบสัมผัส (44px)
-   ⚠️ เต็มแถวบนจอแคบ: ช่างกดด้วยนิ้วโป้งมือเดียว ปุ่มเล็กชิดขวาคือปุ่มที่กดพลาด */
-.captureBtn { min-height: var(--ctl-h-touch); }
+   ⚠️ **ยืดเต็มที่ว่างของแถวทุกจอ** ไม่ใช่แค่จอแคบ — แถวหัวข้อเป็น `flex-wrap justify-end`
+      ⇒ ช่องที่แคบกว่าคำใบ้+ปุ่ม (1440 = สามช่องละ 155px · แท็บเล็ตที่คำใบ้ถูกซ่อน) ปุ่มตก
+      ไปอยู่บรรทัดของตัวเองชิดขวา ห่างจากป้ายและรูปย่อที่ชิดซ้าย (ตรวจจอจริง 2026-09-22)
+   ⚠️ จอแคบ = บรรทัดของตัวเองเต็มแถวเสมอ: ช่างกดด้วยนิ้วโป้งมือเดียว */
+.captureBtn { min-height: var(--ctl-h-touch); flex: 1 1 auto; justify-content: center; }
 @media (max-width: 680px) {
-  .captureBtn { flex: 1 1 100%; justify-content: center; }
+  .captureBtn { flex-basis: 100%; }
 }
+
+/* ป้ายสองชุดซ้อนกันในช่องเดียว — ความกว้างของปุ่ม = ป้ายที่ยาวกว่า ทั้งตอนปกติและตอนอัป */
+.captureLabel { display: inline-grid; }
+.captureLabel > * { grid-area: 1 / 1; }
+.captureLabel > [data-off] { visibility: hidden; }
+/* หนึ่งชั้น = ไอคอน+คำ ชิดกันเป็นก้อน จัดกลางช่อง · ระยะเท่าช่องไอคอนของปุ่มกลาง (.btn gap) */
+.captureLayer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+}
+
+/* กำลังอัป = ยังอ่านออก — ปุ่ม disabled กลางจางเหลือ .45 (คำ "กำลังอัป…" ต่ำกว่า 3:1)
+   ทั้งที่มันคือสัญญาณเดียวบนจอว่ารูปกำลังขึ้น */
+.captureBtn[aria-busy="true"]:disabled { opacity: 1; cursor: progress; color: var(--text-2); }
+
+/* วงหมุนระหว่างอัป — ขนาดเท่าไอคอนกล้อง ป้ายปุ่มจึงไม่ขยับ */
+.captureSpin {
+  display: inline-block;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-full);
+  animation: captureSpin calc(var(--motion-slow) * 3) linear infinite;
+}
+@keyframes captureSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .captureSpin { animation: none; } }
 
 /* คำของเมาส์/คีย์บอร์ด กับคำของจอสัมผัส — จอสัมผัสทำตาม "ลากมาวาง · Ctrl+V" ไม่ได้
    ส่วนบนคอมพิวเตอร์ปุ่มเดียวกันไม่ได้เปิดกล้อง ⇒ เรียก "แนบรูป" */

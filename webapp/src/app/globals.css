@@ -6234,7 +6234,9 @@ button.ui-workspace-back {
   min-height: var(--detail-pin-h);
   padding: 0 var(--panel-inset);
   border-bottom: 1px solid var(--border-strong);
-  background: var(--panel);
+  /* ทึบ 100% — แถบนี้ตรึงอยู่แล้วเนื้อหาเลื่อนผ่านข้างใต้ · 🐞 เดิม `--panel` (กระจก alpha .94
+     ที่ต้องคู่ backdrop-filter) ⇒ ตัวเลขของการ์ดพื้นที่ทะลุขึ้นมาหลังชื่อใบ (ตรวจจอ 2026-09-22) */
+  background: var(--panel-solid);
   box-shadow: var(--shadow-sm);
   opacity: 0;
   transform: translateY(-6px);

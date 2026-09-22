@@ -394,6 +394,73 @@ test('ช่างที่ทำส่วนของตัวเองคร�
   assert.equal(v.gatesFailed, 0, 'ข้อของหัวหน้าไม่ใช่กำแพงของช่าง');
 });
 
+// ── นัดยังเปิด = ช่างยังไม่กดส่งงาน (มติผู้ใช้ 2026-09-21) ─────────────────
+const live = { id: 'SVV-1', status: 'in_progress' };
+const scheduled = { id: 'SVV-1', status: 'scheduled' };
+const doneZones = () => [measuredZone('z1', 'Studio 01')];
+const doneFiles = { z1: measuredFiles };
+
+test('🐞 วัดครบแต่นัดยังเปิด — รางต้องไม่บอกช่างว่า "รอหัวหน้าเคาะ" ข้างปุ่มส่งงานที่ยังไม่ได้กด', () => {
+  const crew = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, visit: live, viewer: CREW });
+  assert.equal(crew.status.key, 'awaiting-submit');
+  assert.equal(crew.status.headline, 'วัดครบแล้ว — กด “ส่งงาน” เพื่อแจ้งหัวหน้า');
+  assert.equal(crew.status.sub, 'วัดแล้ว 1 / 1 พื้นที่ · ส่งแล้วหัวหน้าเคาะจุดและแพ็คเกจต่อ', 'บรรทัดรองบอกก้าวถัดไปของใคร ไม่ท่องพาดหัวซ้ำ');
+  assert.equal(crew.notices.find((n) => n.key === 'crew-done'), undefined, 'ยังไม่จบ ห้ามขึ้นเขียว');
+  // พาดหัวพูดที่เดียว — ไม่มีกล่องแจ้งซ้ำคำสั่ง (และคำว่า "แถบล่าง" ชี้ผิดทิศบนจอแคบ)
+  assert.ok(!crew.notices.some((n) => /ส่งงาน/.test(n.text)), 'คำสั่งกดส่งงานต้องมีที่เดียว');
+
+  // ส่งงานแล้ว (นัดปิด) = พาดหัวเดิม · ไม่มีกล่องแจ้งซ้ำ (แถบบอกผลของช่างพูดแล้ว)
+  const done = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, visit: { ...live, status: 'done' }, viewer: CREW });
+  assert.equal(done.status.key, 'awaiting-decision');
+  assert.equal(done.notices.find((n) => n.key === 'crew-done'), undefined);
+  // ใบไม่มีนัด (ข้อมูลเก่า) — กล่องแจ้งเดิมยังเป็นที่เดียวที่บอก
+  const legacy = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, viewer: CREW });
+  assert.ok(legacy.notices.find((n) => n.key === 'crew-done'));
+});
+
+test('ถ้อยคำเดินตามคนอ่าน — หัวหน้า · Senior ที่อยู่บนนัด · คนอ่านอย่างเดียว', () => {
+  const head = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, visit: live, viewer: HEAD });
+  assert.equal(head.status.headline, 'วัดครบแล้ว — ช่างยังไม่กดส่งงาน');
+  assert.match(head.status.sub, /เคาะจุดและแพ็คเกจได้เลย/, 'หัวหน้าไม่ต้องรอช่าง');
+
+  // 🐞 Senior ที่ออกหน้างานเอง = คนส่งงานเอง ไม่ใช่ "ช่างยังไม่กดส่งงาน"
+  const senior = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, visit: live, viewer: { ...HEAD, onVisit: true } });
+  assert.equal(senior.status.headline, 'วัดครบแล้ว — กด “ส่งงาน” เพื่อปิดงานหน้างาน');
+  assert.equal(senior.flags.controlFirst, false, 'Senior ที่ออกหน้างานต้องเห็นพื้นที่+แถบส่งงานก่อนการ์ด');
+  assert.match(senior.status.sub, /ส่งงานแล้วเคาะจุดและแพ็คเกจต่อได้เลย/);
+  // ส่งงานแล้ว — งานถัดไปของ Senior คือเคาะ/ส่งผลบนการ์ด ⇒ การ์ดกลับมาก่อน
+  const seniorDone = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, visit: { ...live, status: 'done' }, viewer: { ...HEAD, onVisit: true } });
+  assert.equal(seniorDone.flags.controlFirst, true);
+  assert.equal(seniorDone.status.key, 'awaiting-decision');
+  assert.equal(seniorDone.notices.find((n) => n.key === 'crew-done'), undefined, 'หัวหน้าไม่ใช่ผู้รับกล่องของช่าง');
+
+  // 🐞 คนอ่านอย่างเดียวไม่มีปุ่มส่งงาน ⇒ ห้ามสั่งให้กด
+  const reader = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, visit: live, viewer: VIEWER });
+  assert.equal(reader.status.headline, 'วัดครบแล้ว — ช่างยังไม่กดส่งงาน');
+  assert.doesNotMatch(reader.status.sub, /คุณ/);
+});
+
+test('ยังไม่กดเริ่มงาน — "ยังไม่เริ่มงานหน้างาน" ไม่ว่าจะกรอกล่วงหน้าไปเท่าไร (แถบมีแค่ปุ่มเริ่มงาน)', () => {
+  const none = surveyControlView({
+    request: request(), zones: [emptyZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02')],
+    filesByZone: {}, visit: scheduled, viewer: CREW,
+  });
+  assert.equal(none.status.key, 'not-started');
+  assert.equal(none.status.headline, 'ยังไม่เริ่มงานหน้างาน');
+
+  const some = surveyControlView({
+    request: request(), zones: [measuredZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02')],
+    filesByZone: { z1: measuredFiles }, visit: scheduled, viewer: CREW,
+  });
+  assert.equal(some.status.key, 'not-started');
+  assert.equal(some.status.sub, 'วัดแล้ว 1 / 2 พื้นที่ · เหลือ Studio 02', 'คำเดียวกับหัวลิสต์/ป้ายการ์ด');
+
+  // 🐞 กรอกครบก่อนกดเริ่ม — ห้ามสั่ง "กด ส่งงาน" เพราะแถบยังมีแค่ "เริ่มงาน"
+  const all = surveyControlView({ request: request(), zones: doneZones(), filesByZone: doneFiles, visit: scheduled, viewer: CREW });
+  assert.equal(all.status.key, 'not-started');
+  assert.ok(!all.notices.some((n) => /ส่งงาน/.test(n.text)));
+});
+
 test('🐞 ช่างหลังส่งแล้ว ต้องไม่ถูกส่งไปกดปุ่มบนหน้าที่ role ts เปิดไม่ได้ (403)', () => {
   const zones = [readyZone('z1', 'Studio 01')];
   const v = surveyControlView({
