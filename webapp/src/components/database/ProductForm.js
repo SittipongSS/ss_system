@@ -205,13 +205,10 @@ export default function ProductForm({
 
   // สูตรที่เก็บเข้ากรุแล้วไม่ให้เลือกใหม่ แต่ตัวที่สินค้านี้ผูกอยู่ต้องคงอยู่ในลิสต์
   // เสมอ ไม่งั้นแค่เปิดฟอร์มแก้ชื่อสินค้าแล้วกดบันทึก สูตรจะหลุดเงียบ ๆ
-  // ⭐ 1 สูตร : 1 FG (mig 0231) — สูตรที่ FG อื่นถือแล้ว (`usedByProduct` จาก
-  // loadFormulas) ตัดออกจากลิสต์ · ของตัวเองไม่นับ (productId) · server มีด่านซ้ำ
-  // อีกชั้นใน productFormulaSnapshot — ลิสต์นี้แค่กันเจอ error ตั้งแต่ปลายนิ้ว
+  // ⭐ 1 สูตรผูกได้หลาย FG (มติผู้ใช้ 2026-09-22 · ม-150) — ไม่ตัดสูตรที่ FG อื่นใช้อยู่ออกแล้ว
   const pickedFormula = formulas.find((f) => f.id === form.formulaId) || null;
   const formulaOptions = formulas
     .filter((f) => f.status !== "archived" || f.id === form.formulaId)
-    .filter((f) => !f.usedByProduct || f.usedByProduct.id === selfId || f.id === form.formulaId)
     .map((f) => ({
       value: f.id,
       label: `${f.code ? `${f.code} · ` : ""}${f.name}`

@@ -123,3 +123,6 @@
 }
 .review dt { color: var(--text-3); }
 .review dd { margin: 0; }
+
+/* "แชร์ให้ N ราย" ใต้ชื่อลูกค้าเจ้าของ (ม-150) */
+.sharedNote { display: block; font-size: var(--fs-3); color: var(--text-3); }

@@ -96,14 +96,21 @@ test('⭐ ประโยคก่อนกดมาจากแผนตัว�
   assert.equal(formulaDeliveryPreview({ row: { ...parentRow, producedFormulaId: null }, items: [], formulas: [] }).note, null);
 });
 
-test('ประโยครอบแก้บอกรหัสสินค้า FG ที่ผูกสูตรต้นทาง (รูปจริงของ usedByProduct = { id, fgCode })', () => {
+test('ประโยครอบแก้บอกรหัสสินค้า FG ที่ผูกสูตรต้นทาง (รูปจริง usedByProducts = [{ id, fgCode }] · หลาย FG ได้ — ม-150)', () => {
   const held = formulaDeliveryPreview({
-    row: reworkRow, items, formulas: [F('FML-A', { usedByProduct: { id: 'PRD-1', fgCode: 'FG-0123' } })],
+    row: reworkRow, items, formulas: [F('FML-A', { usedByProducts: [{ id: 'PRD-1', fgCode: 'FG-0123' }] })],
   });
   assert.equal(held.plan.kind, 'revise');
-  assert.match(held.note, /สินค้า FG-0123 ผูกสูตรนี้อยู่/);
-  const noCode = formulaDeliveryPreview({ row: reworkRow, items, formulas: [F('FML-A', { usedByProduct: { id: 'PRD-1', fgCode: null } })] });
-  assert.doesNotMatch(noCode.note, /สินค้า {2}/);
+  assert.match(held.note, /สินค้า FG-0123 ผูกสูตรนี้อยู่ — ขอราคา FB ของสินค้านั้น/);
+  const many = formulaDeliveryPreview({
+    row: reworkRow, items,
+    formulas: [F('FML-A', { usedByProducts: ['FG-1', 'FG-2', 'FG-3', 'FG-4'].map((c, i) => ({ id: `P${i}`, fgCode: c })) })],
+  });
+  assert.match(many.note, /สินค้า FG-1, FG-2, FG-3 \+1 ผูกสูตรนี้อยู่ — ขอราคา FB ของสินค้าเหล่านั้น/);
+  const noCode = formulaDeliveryPreview({ row: reworkRow, items, formulas: [F('FML-A', { usedByProducts: [{ id: 'PRD-1', fgCode: null }] })] });
+  assert.match(noCode.note, /สินค้า 1 รายการ ผูกสูตรนี้อยู่/);
+  const none = formulaDeliveryPreview({ row: reworkRow, items, formulas: [F('FML-A', { usedByProducts: [] })] });
+  assert.doesNotMatch(none.note, /ผูกสูตรนี้อยู่/);
 });
 
 test('⭐ ลบรายการรอบแก้: ถอยเฉพาะแถวที่บันทึกว่าการส่งคือ revise — สภาพทะเบียนอย่างเดียวไม่พอ (mig 0358)', () => {

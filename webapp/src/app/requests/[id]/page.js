@@ -297,8 +297,9 @@ export default function RequestDetailPage() {
      ⚠️ **ไม่เติมชื่อ/ชื่อที่ลูกค้าเรียกจากสูตรเดิม** (มติผู้ใช้ 2026-09-15 "ชื่อสูตร ชื่อกลิ่น รอบแก้ ไม่ต้อง suggest") — รอบแก้
      คือสูตรตัวใหม่ RD ตั้งชื่อเอง · ตรงกับฝั่งกลิ่นที่ไม่เคยเติมชื่อให้ (`reworkDeliveryRow`) */
   const formulaPreviewFor = useCallback((item) => formulaDeliveryPreview({
-    row: item, items: req?.items || [], formulas: registry.formulas,
-  }), [req?.items, registry.formulas]);
+    // ลูกค้าของใบ — รอบแก้ทับสูตรที่แชร์มาจากลูกค้าอื่นต้องขึ้น "ส่งไม่ได้" ตั้งแต่พรีวิว (ม-150 · ตัวเดียวกับ server)
+    row: item, items: req?.items || [], formulas: registry.formulas, customerId: req?.customerId || null,
+  }), [req?.items, req?.customerId, registry.formulas]);
   const formulaDraftFor = useCallback((item) => {
     const preview = formulaPreviewFor(item);
     return {

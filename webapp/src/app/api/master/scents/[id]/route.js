@@ -3,6 +3,7 @@
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { canDeleteRegistryAnyStatus } from '@/lib/permissions';
+import { saveRegistryShares } from '@/lib/master/registrySharesAdmin';
 import {
   acceptScentCode, acceptScentError, acceptedScentStatus, archiveScentError,
   canEditScent, canOfferScentDelete, canSetScentCode, canViewScents, deleteScentError, isScentRegistrar,
@@ -41,6 +42,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 //                                           (ไม่ส่งมา = ใช้รหัส/สถานะที่ผู้เสนอกรอกไว้)
 //   { action: 'sent',   sentAt }          — RD บันทึกวันที่ส่งกลิ่นให้ลูกค้า
 //   { action: 'status', status }          — developing ↔ active ↔ archived
+//   { action: 'shares', customerIds }     — RD แชร์ให้ลูกค้ารายอื่น (ม-150)
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
@@ -57,6 +59,27 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const action = body.action || 'edit';
 
   try {
+    /* ⭐ แชร์ให้ลูกค้ารายอื่น (ม-150 · mig 0373) — `{ action: 'shares', customerIds: [...] }` ตั้งรายชื่อทั้งชุด
+       · RD เท่านั้น (มติผู้ใช้ 2026-09-22) · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้ (409 พร้อมเหตุ) */
+    if (action === 'shares') {
+      if (!isScentRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แชร์กลิ่นให้ลูกค้ารายอื่นได้');
+      try {
+        const result = await saveRegistryShares(supabase, 'scent', scent, body.customerIds, user);
+        if (result.add.length || result.remove.length) {
+          await recordAudit({
+            user, action: 'update', entityType: 'scent', entityId: id, request: req,
+            before: { ...scent, sharedCustomers: result.before }, after: { ...scent, sharedCustomers: result.after },
+            summary: `แชร์กลิ่น ${scent.code || scent.name}: `
+              + [result.add.length ? `เพิ่ม ${result.add.length} ลูกค้า` : null,
+                result.remove.length ? `เลิกแชร์ ${result.remove.length} ลูกค้า` : null].filter(Boolean).join(' · '),
+          });
+        }
+        return ok({ sharedCustomers: result.after, sharedCustomerIds: result.after.map((s) => s.customerId) });
+      } catch (e) {
+        return fail(e.message, e.status || 500);
+      }
+    }
+
     if (action === 'edit') {
       if (!canEditScent(user, scent)) return forbidden('ไม่มีสิทธิ์แก้กลิ่นนี้');
       const { value, error } = normalizeScentInput({ ...scent, ...body });

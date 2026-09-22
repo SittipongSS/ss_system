@@ -60,16 +60,13 @@ test('ชื่อ/รหัส/วันที่/กลิ่น ดึงจ�
   });
 });
 
-test('1 สูตร : 1 FG — สูตรที่ FG อื่นถือแล้วเลือกซ้ำไม่ได้ แต่เจ้าของเดิมบันทึกซ้ำได้', async () => {
+test('⭐ 1 สูตรผูกได้หลาย FG (มติผู้ใช้ 2026-09-22 · ม-150) — สูตรที่ FG อื่นถืออยู่แล้วก็เลือกได้', async () => {
   const holders = [{ id: 'PRD-1', fgCode: 'FG-100-01-001-0001' }];
-  // FG อื่นมาขอใช้ → โดนตีกลับพร้อมบอกว่าใครถืออยู่
-  await assert.rejects(
-    () => productFormulaSnapshot(fakeSupabase({ holders }), 'FML-1', { forProductId: 'PRD-2' }),
-    /FG-100-01-001-0001/,
-  );
-  // เจ้าของเดิมกดบันทึกฟอร์มแก้ → ผ่าน (ไม่งั้นแก้ชื่อสินค้าเฉย ๆ ก็บันทึกไม่ได้)
-  const snap = await productFormulaSnapshot(fakeSupabase({ holders }), 'FML-1', { forProductId: 'PRD-1' });
-  assert.equal(snap.formulaId, 'FML-1');
+  // FG อื่นมาขอใช้ → ผ่าน (เดิม 1 สูตร : 1 FG ตีกลับ — ลูกค้าที่ได้รับแชร์สูตรทำ FG ของตัวเองไม่ได้)
+  const other = await productFormulaSnapshot(fakeSupabase({ holders }), 'FML-1', { forProductId: 'PRD-2' });
+  assert.equal(other.formulaId, 'FML-1');
+  const self = await productFormulaSnapshot(fakeSupabase({ holders }), 'FML-1', { forProductId: 'PRD-1' });
+  assert.equal(self.formulaId, 'FML-1');
 });
 
 test('สูตรร่างที่ยังไม่มีรหัสก็ผูกได้ — ช่องที่ว่างเป็น null ไม่ใช่ ""', async () => {

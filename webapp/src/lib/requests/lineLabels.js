@@ -10,6 +10,9 @@
 // ⚠️ คืน `{ items, error }` **ไม่โยน** — ผู้เรียกตัดสินเองว่าจะเป็น 400 หรือ 500
 // (POST เดิมโยนในบล็อก try ⇒ ออกเป็น 500 · ทางแก้ใบตอบ 400 ซึ่งตรงความจริงกว่า)
 
+import { attachShares } from '@/lib/master/registrySharesAdmin';
+import { scentUsableByCustomer } from '@/lib/master/registryShares';
+
 /**
  * เติม `label` ให้บรรทัดที่ป้ายมาจากทะเบียน — รูปร่างอื่นคืนของเดิมทั้งก้อน
  *
@@ -31,7 +34,13 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
   if (scentError) return { items: [], error: scentError.message };
   if (typeError) return { items: [], error: typeError.message };
 
-  const scentById = new Map((scentRows || []).map((r) => [r.id, r]));
+  let sharedRows;
+  try {
+    sharedRows = await attachShares(supabase, scentRows || [], 'scent');
+  } catch (e) {
+    return { items: [], error: e.message };
+  }
+  const scentById = new Map(sharedRows.map((r) => [r.id, r]));
   const typeByCode = new Map((typeRows || [])
     .map((r) => [`${r.mainCategoryCode}-${r.typeCode}`, r]));
 
@@ -41,7 +50,8 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
     if (!scent) return { items: [], error: `ไม่พบกลิ่นที่เลือกในรายการที่ ${item.sortOrder}` };
     // ⚠️ กลิ่นข้ามลูกค้าไม่ได้ (มติ 9) — ใบผูกดีลของลูกค้ารายหนึ่ง จะขอกลิ่นของ
     // อีกรายไม่ได้ · ตรวจที่นี่ ไม่ใช่แค่กรองตัวเลือกบนจอ
-    if (customerId && scent.customerId !== customerId) {
+    // ⭐ ของลูกค้ารายนี้ = เจ้าของ หรือได้รับแชร์ (ม-150)
+    if (customerId && !scentUsableByCustomer(scent, customerId)) {
       return { items: [], error: `รายการที่ ${item.sortOrder}: กลิ่นนี้เป็นของลูกค้าคนละราย` };
     }
     const type = typeByCode.get(item.categoryCode);

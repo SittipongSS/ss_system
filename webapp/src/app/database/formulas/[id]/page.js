@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import RegistryShareCard from "@/components/database/RegistryShareCard";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import { priceSlotsFor } from "@/lib/master/priceSlots";
 import { isScentUsable } from "@/lib/master/scents";
@@ -202,6 +203,8 @@ export default function FormulaDetailPage() {
           { label: "หมายเหตุ", value: formula.note, wide: true },
         ]}
       />
+      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD แชร์สูตรให้ลูกค้ารายอื่นได้ (สูตรฐานไม่ต้องแชร์) */}
+      <RegistryShareCard kind="formula" entity={formula} canManage={isFormulaRegistrar(me)} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
 
       {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
       <FormulaFormModal

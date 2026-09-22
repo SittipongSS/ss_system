@@ -16,6 +16,7 @@ import FormZone from "@/components/ui/FormZone";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
+import { formulaUsableByCustomer, scentUsableByCustomer } from "@/lib/master/registryShares";
 import styles from "./registryForm.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -72,15 +73,15 @@ export default function FormulaForm({
      ค้างอยู่แล้วโดน server ตีกลับตอนบันทึก ทั้งที่บนจอดูเหมือนถูก */
   const pickCustomer = (customerId) => {
     const keep = !value.scentId
-      || scents.find((x) => x.id === value.scentId)?.customerId === customerId;
+      || scentUsableByCustomer(scents.find((x) => x.id === value.scentId), customerId);
     set({ customerId, ...(keep ? {} : { scentId: "" }) });
   };
   const customerOptions = customerSelectOptions(customers);
 
-  // สายพันธุ์: สูตรของลูกค้ารายเดียวกัน + สูตรฐาน (ไม่ผูกลูกค้า) ซึ่งเป็นต้นทางได้จริง
+  // สายพันธุ์: สูตรของลูกค้ารายเดียวกัน (รวมที่แชร์มา · ม-150) + สูตรฐาน (ไม่ผูกลูกค้า) ซึ่งเป็นต้นทางได้จริง
   const lineageOptions = formulas
     .filter((f) => f.id !== editingId
-      && (!f.customerId || !scent?.customerId || f.customerId === scent.customerId))
+      && (!f.customerId || !value.customerId || formulaUsableByCustomer(f, value.customerId)))
     .map((f) => ({
       value: f.id,
       label: `${f.code ? `${f.code} · ` : ""}${f.name}`,
@@ -93,11 +94,14 @@ export default function FormulaForm({
     .filter((s) => isScentUsable(s) || s.id === value.scentId)
     // กรองตามลูกค้าที่เลือก — ยังไม่เลือกลูกค้า = ยังไม่มีกลิ่นให้เลือก (สูตรฐาน
     // ผูกกลิ่นของลูกค้ารายใดรายหนึ่งไม่ได้ · ดู formulaScentCustomerError)
-    .filter((s) => (value.customerId ? s.customerId === value.customerId : false)
+    // ⭐ + กลิ่นที่แชร์ให้ลูกค้ารายนี้ (ม-150) — ทำสูตรของเขาจากกลิ่นที่แชร์มาได้
+    .filter((s) => (value.customerId ? scentUsableByCustomer(s, value.customerId) : false)
       || s.id === value.scentId)
     .map((s) => ({
       value: s.id,
-      label: s.code ? `${s.name} · ${s.code}` : s.name,
+      // กลิ่นที่แชร์มา (ม-150) บอกเจ้าของไว้ — เลือกได้ แต่ต้องรู้ว่าไม่ใช่ของลูกค้ารายนี้เอง
+      label: `${s.code ? `${s.name} · ${s.code}` : s.name}${value.customerId && s.customerId && s.customerId !== value.customerId
+        ? ` (แชร์จาก ${s.customerName || "ลูกค้าอื่น"})` : ""}`,
       search: [s.name, s.code, s.customerName].filter(Boolean).join(" "),
     }));
 

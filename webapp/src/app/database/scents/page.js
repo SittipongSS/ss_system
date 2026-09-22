@@ -192,6 +192,8 @@ export default function ScentsPage() {
       return [
         s.name, s.code, customerSearchText(s.customerId, s.customerName, arIndex),
         s.customerTradeName, s.note, s.sourceRequest?.docNo,
+        // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150) — ค้นชื่อลูกค้า B แล้วต้องเจอกลิ่นที่แชร์ให้ B ด้วย
+        ...(s.sharedCustomers || []).map((c) => customerSearchText(c.customerId, c.customerName, arIndex)),
       ].filter(Boolean).join(" ").toLowerCase().includes(q);
     });
   }, [scents, statusFilter, sourceFilter, perfumerFilter, search, arIndex]);
@@ -648,6 +650,12 @@ export default function ScentsPage() {
                           </span>
                         ) : null}
                         {customerWithAr(s.customerId, s.customerName, arIndex).name}
+                        {s.sharedCustomers?.length ? (
+                          <span className={styles.sharedNote}
+                            title={s.sharedCustomers.map((c) => c.customerName || c.customerId).join(", ")}>
+                            แชร์ให้ {s.sharedCustomers.length} ราย
+                          </span>
+                        ) : null}
                       </td>
                       {/* ⭐ ที่มา — `briefId`/`dealId` เก็บครบมาตั้งแต่ mig 0213 แต่ไม่เคย
                           ขึ้นบนจอ ⇒ เปิดทะเบียนมาแล้วแยกไม่ออกว่าตัวไหนผ่านสายงานจริง

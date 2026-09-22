@@ -12,6 +12,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, FlaskConical, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import RegistryShareCard from "@/components/database/RegistryShareCard";
 import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
 import ScentFormModal from "@/components/database/ScentFormModal";
 import { scentToForm } from "@/components/database/ScentForm";
@@ -226,6 +227,8 @@ export default function ScentDetailPage() {
           { label: "หมายเหตุ", value: scent.note, wide: true },
         ]}
       />
+      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD แชร์กลิ่นให้ลูกค้ารายอื่นได้ · บันทึกแล้วโหลดใบใหม่ (ตัวเลือกทุกจออ่านจาก GET) */}
+      <RegistryShareCard kind="scent" entity={scent} canManage={isScentRegistrar(me)} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
 
       {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
       <ScentFormModal

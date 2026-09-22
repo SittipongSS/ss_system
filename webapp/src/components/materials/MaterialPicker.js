@@ -23,7 +23,9 @@ export default function MaterialPicker({
     const rows = materials
       .filter((m) => m.kind === kind && m.status !== "archived")
       // ราคาทับรายลูกค้าของลูกค้าอื่นไม่ควรโผล่ — ราคาเขาไม่ใช่ของงานนี้
-      .filter((m) => !m.customerId || m.customerId === customerId)
+      // ⭐ + ราคาของกลิ่น/สูตรที่แชร์ให้ลูกค้ารายนี้ (ม-150 · `sharedCustomerIds` ติดมาจาก GET /api/sa/materials)
+      .filter((m) => !m.customerId || m.customerId === customerId
+        || (Array.isArray(m.sharedCustomerIds) && m.sharedCustomerIds.includes(customerId)))
       // บรรทัดที่รู้ประเภทอยู่แล้ว (ขวด/ฝา/กล่อง) กรองให้เหลือเฉพาะประเภทนั้น
       .filter((m) => !pmType || !m.pmType || m.pmType === pmType)
       .map((m) => {

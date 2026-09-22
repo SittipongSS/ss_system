@@ -31,6 +31,7 @@ import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
+import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import { productDevRowText } from "@/lib/requests/productDevLabel";
 import { ALL_UNITS, unitOptions } from "@/lib/master/units";
 import styles from "./scentDelivery.module.css";
@@ -57,7 +58,8 @@ export default function ProductDevLines({
   // ⚠️ กลิ่นข้ามลูกค้าไม่ได้ (มติ 9) — กรองที่ต้นทาง ไม่ปล่อยให้เลือกผิดแล้วให้
   // server ตีกลับ · ร่างยังไม่ใช่ของจริงจึงเลือกไม่ได้ (isScentUsable)
   const scentOptions = scents
-    .filter((s) => isScentUsable(s) && (!customerId || s.customerId === customerId))
+    // ⭐ + กลิ่นที่แชร์ให้ลูกค้ารายนี้ (ม-150)
+    .filter((s) => isScentUsable(s) && (!customerId || scentUsableByCustomer(s, customerId)))
     .map((s) => ({
       value: s.id,
       label: `${s.code ? `${s.code} · ` : ""}${s.name}`,
