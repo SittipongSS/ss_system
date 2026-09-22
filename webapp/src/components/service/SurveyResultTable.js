@@ -58,6 +58,10 @@ function deltaText(qty, suggested) {
 export default function SurveyResultTable({
   zones = [], filesByZone = {}, canDecide = false, busyZone, onSaveDecisions,
   drafts = {}, onDraftsChange, caption = null,
+  /* โชว์บรรทัด "สูตร N" ไหม — แพ็คเกจเป็นงานของหัวหน้า (มติผู้ใช้ 2026-09-21) ⇒ ช่างเห็น
+     เฉพาะเลขที่หัวหน้าเคาะแล้ว ไม่เห็นตัวเลขสูตร (กติกาเดียวกับการ์ดพื้นที่ `showPackage`)
+     ⚠️ แยกจาก `canDecide` — หัวหน้าที่เปิดใบที่ส่งไปแล้ว (ล็อก) ยังต้องเห็นสูตรเทียบ */
+  showFormula = true,
 }) {
   /* ร่างของหัวหน้า — key = id ของพื้นที่ · ค่าที่ไม่มีในนี้แปลว่า "ยังไม่ถูกแตะ"
      ⚠️ ห้ามเติมค่าตั้งต้นลงไปตอนเปิดจอ — ของที่เติมไว้ล่วงหน้าแยกไม่ออกจากของที่คนพิมพ์
@@ -228,10 +232,12 @@ export default function SurveyResultTable({
                         ) : (
                           <b className={styles.qty}>{naText(draft.packageQty)}</b>
                         )}
-                        <span className={styles.sub}>
-                          สูตร {suggested ?? naText(null)}
-                          {delta ? <> · <span className={styles.delta} data-tone={delta.tone}>{delta.text}</span></> : null}
-                        </span>
+                        {showFormula ? (
+                          <span className={styles.sub}>
+                            สูตร {suggested ?? naText(null)}
+                            {delta ? <> · <span className={styles.delta} data-tone={delta.tone}>{delta.text}</span></> : null}
+                          </span>
+                        ) : null}
                         {draft.packageQty === null && suggested && canDecide ? (
                           <Button size="sm" variant="quiet" disabled={busy}
                             onClick={() => patchDraft(zone.id, { packageQty: suggested })}>
