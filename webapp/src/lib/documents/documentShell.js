@@ -60,20 +60,27 @@ export function documentFileName(...parts) {
 
 // สี accent ต่อชนิดเอกสาร — ค่าเป็น hex เพราะเอกสารพิมพ์เป็นไฟล์ self-contained
 // ใช้ตัวแปรธีมของแอปไม่ได้ · --doc-accent คุมสีชื่อเอกสาร (h1) กับเส้นเน้น
+/* ⭐ ธีมเหลือค่าเดียว (`accent`) ตั้งแต่ 2026-09-23 — เดิมทุกธีมพก `soft` กับ `watermark` แล้ว `accentStyle`
+   ประกาศ `--doc-accent-soft` · `--doc-accent-watermark` ลงเอกสารทุกใบ ทั้งที่ไม่มีกฎ CSS ไหนอ่าน:
+   · ลายน้ำของเปลือกเป็นกรมท่าจาง (`--doc-watermark`) ไม่ใช่สีเอกสาร — `-watermark` ไม่เคยมีคนอ่านเลย
+   · `-soft` มีผู้อ่านคนเดียวคือ FM-SA-04 ซึ่งถอด accent ออกจากตาราง/กรอบภาพแล้ว (มติผู้ใช้ 2026-09-22
+     "ใช้ accent แบบใบเสนอราคา" · #1789) ⇒ accent ของเอกสารทุกชนิดเหลือที่ชื่อเอกสารที่เดียว
+   ⚠️ อยากได้พื้นอ่อนตามสีเอกสารวันหน้า ให้เพิ่มค่ากลับมา **พร้อมกฎที่อ่านมัน** ในรอบเดียวกัน — ประกาศเผื่อไว้
+      ถูกด่าน tokenUsage.test ตีกลับ (ชั้นกลางที่โกหกว่าตัวเองถูกใช้)
+   ⚠️ teal/green ไม่มีในตัวเลือกแล้ว (DOCUMENT_ACCENT_KEYS) และ resolver พามาตรฐานเก่าที่ถือคีย์นี้ไปสีตั้งต้น
+      ของชนิดเอกสาร ⇒ ธีมสองตัวนี้คงไว้ให้ผู้เรียกที่ส่งคีย์ตรง ๆ ไม่ตกไป terracotta เงียบ ๆ */
 export const DOCUMENT_ACCENT_THEMES = Object.freeze({
-  terracotta: { accent: '#ad5d43', soft: '#f5ebe7', watermark: 'rgb(173 93 67 / 14%)' },
-  steel: { accent: '#1e6091', soft: '#e6eef4', watermark: 'rgb(30 96 145 / 14%)' },
-  // teal ยังไม่มีเอกสารชนิดไหนใช้ แต่เป็นคีย์ที่เลือกได้ใน DOCUMENT_ACCENT_KEYS
-  // (settings/document-standards) — คงไว้เผื่อเอกสารชนิดถัดไป
-  teal: { accent: '#0f766e', soft: '#e6f2f0', watermark: 'rgb(15 118 110 / 14%)' },
-  amber: { accent: '#b45309', soft: '#fdf1e3', watermark: 'rgb(180 83 9 / 13%)' },
-  green: { accent: '#15803d', soft: '#e8f3ec', watermark: 'rgb(21 128 61 / 13%)' },
-  navy: { accent: '#1f3551', soft: '#eef1f5', watermark: 'rgb(31 53 81 / 13%)' },
+  terracotta: { accent: '#ad5d43' },
+  steel: { accent: '#1e6091' },
+  teal: { accent: '#0f766e' },
+  amber: { accent: '#b45309' },
+  green: { accent: '#15803d' },
+  navy: { accent: '#1f3551' },
 });
 
 export function accentStyle(accentKey) {
   const theme = DOCUMENT_ACCENT_THEMES[accentKey] || DOCUMENT_ACCENT_THEMES.terracotta;
-  return `--doc-accent:${theme.accent};--doc-accent-soft:${theme.soft};--doc-accent-watermark:${theme.watermark};`;
+  return `--doc-accent:${theme.accent};`;
 }
 
 // ระยะเยื้องของแถว <div> ใน <dl> — ต้องตรงกับที่ template เว้นไว้ ไม่งั้น HTML ที่ออก
@@ -327,8 +334,6 @@ export function documentShellCss(orientation = 'portrait') {
 
   .document {
     --doc-accent: #ad5d43;
-    --doc-accent-soft: #f5ebe7;
-    --doc-accent-watermark: rgb(173 93 67 / 14%);
     --doc-navy: #1f3551;
     --doc-text: #202833;
     --doc-muted: #647080;
