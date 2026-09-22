@@ -82,6 +82,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       site: context.site,
       customer: context.customer,
       recall: context.recall,
+      /* ⭐ หัวหน้าส่งกลับให้แก้ค้างอยู่ไหม — แถบของช่างขึ้นปุ่ม "แจ้งหัวหน้าว่าแก้แล้ว" ตามตัวนี้
+         และการ์ดของหัวหน้าบอกว่ารอช่างแก้/ช่างแจ้งแล้ว */
+      sendBack: context.sendBack,
       unknown: context.unknown,
       canWrite: access.ok === true,
       /* ⭐ **คนละสิทธิ์กับ `canWrite`** — เคาะแพ็คเกจ/จุด และกดส่งผล เป็นการตัดสินใจ

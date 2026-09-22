@@ -136,6 +136,11 @@ export const UPDATE_KINDS = {
        ⚠️ แต่บรรทัดนี้ไม่ใช่ตัวที่แจ้งช่าง (ช่างไม่อยู่ในทะเบียนผู้รับของ dept_request
          และเปิดหน้าคำร้องไม่ได้) ⇒ route ยิง notifyUsers แยกอีกทาง */
     send_back: { label: 'แจ้งช่างให้กลับไป', color: 'var(--amber)', narrative: true },
+    /* ช่างแจ้งว่าแก้ตามที่หัวหน้าส่งกลับแล้ว (มติผู้ใช้ 2026-09-22) — ปิดวงของ `send_back`
+       ⚠️ **quiet** — ตัวที่แจ้งหัวหน้าคือ `notifyUsers` ของ route (href ไปแท็บสรุปส่งผลที่เคาะได้)
+         ปล่อยให้เธรดเด้งด้วย = หัวหน้าคนที่ส่งกลับ (past author) ได้สองเด้ง อันหนึ่งพาไปหน้าคำร้อง
+       ⚠️ ผู้เขียนไม่ผูก `authorId` (ช่างเปิดหน้าคำร้องไม่ได้ — ดู service-crew-role-gates) */
+    send_back_done: { label: 'ช่างแจ้งว่าแก้แล้ว', color: 'var(--green)', narrative: true, quiet: true },
     close: { label: 'ปิดเคส', color: 'var(--text-3)' },
     cancel: { label: 'ยกเลิกเคส', color: 'var(--red)', narrative: true },
   },

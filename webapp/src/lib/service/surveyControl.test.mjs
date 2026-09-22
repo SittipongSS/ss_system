@@ -461,6 +461,28 @@ test('ยังไม่กดเริ่มงาน — "ยังไม่�
   assert.ok(!all.notices.some((n) => /ส่งงาน/.test(n.text)));
 });
 
+// ── วงส่งกลับให้ช่างแก้ (มติผู้ใช้ 2026-09-22) ─────────────────────────────
+test('การ์ดของหัวหน้าบอกว่ารอช่างแก้ หรือช่างแจ้งแล้ว — ช่างไม่เห็นกล่องนี้ (อยู่บนแถบแทน)', () => {
+  const sentBack = { id: 'B-1', at: '2026-09-22T03:00:00.000Z', byName: 'หัวหน้า', note: 'ถ่ายภาพกว้างเพิ่ม' };
+  const zones = [measuredZone('z1', 'Studio 01')];
+  const files = { z1: measuredFiles };
+  const pending = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, sendBack: { pending: true, sentBack, done: null } });
+  const p = pending.notices.find((n) => n.key === 'send-back-pending');
+  assert.ok(p, 'หัวหน้าต้องเห็นว่ารอช่างอยู่');
+  assert.match(p.text, /ถ่ายภาพกว้างเพิ่ม/);
+  assert.match(p.text, /รอช่างแจ้งว่าแก้แล้ว/);
+
+  const done = { id: 'D-1', at: '2026-09-22T04:00:00.000Z', byName: 'สมชาย', note: 'ถ่ายแล้ว' };
+  const fixed = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, sendBack: { pending: false, sentBack, done } });
+  assert.match(fixed.notices.find((n) => n.key === 'send-back-done').text, /ช่างแจ้งว่าแก้แล้ว .*สมชาย — ถ่ายแล้ว/);
+
+  const crew = surveyControlView({ request: request(), zones, filesByZone: files, viewer: CREW, sendBack: { pending: true, sentBack, done: null } });
+  assert.ok(!crew.notices.some((n) => n.key.startsWith('send-back')));
+  // ใบที่ส่งผลแล้ว = วงนี้จบ ไม่ต้องบอก
+  const sent = surveyControlView({ request: request({ answeredAt: 'x' }), zones, filesByZone: files, viewer: HEAD, sendBack: { pending: true, sentBack, done: null } });
+  assert.ok(!sent.notices.some((n) => n.key.startsWith('send-back')));
+});
+
 test('🐞 ช่างหลังส่งแล้ว ต้องไม่ถูกส่งไปกดปุ่มบนหน้าที่ role ts เปิดไม่ได้ (403)', () => {
   const zones = [readyZone('z1', 'Studio 01')];
   const v = surveyControlView({

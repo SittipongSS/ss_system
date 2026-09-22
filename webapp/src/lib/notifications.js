@@ -121,6 +121,9 @@ export const SERVICE_BELL_KINDS = Object.freeze([
      จุดติดตั้ง/แพ็คเกจ · ก่อนมีตัวนี้ปิดนัดแล้วเงียบ หัวหน้าไม่รู้ว่าถึงคิวตัวเอง
      ⚠️ ยิงจาก `lib/service/surveyFieldDoneNotify.js` (`SURVEY_FIELD_DONE_KIND`) */
   'survey_field_done',
+  /* ⭐ ช่างแจ้งว่าแก้ตามที่หัวหน้าส่งกลับแล้ว → หัวหน้า TS (มติ 2026-09-22) — ปิดวงของ
+     `survey_send_back` · ยิงจาก `lib/service/surveyFieldDoneNotify.js` (`SURVEY_SEND_BACK_DONE_KIND`) */
+  'survey_send_back_done',
 ]);
 
 /* ⭐ **สัญญาเข้ากระดิ่ง แต่เข้าทาง `kinds`** (2026-09-06) — เหตุผลเดียวกับลีด

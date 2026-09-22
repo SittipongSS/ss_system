@@ -164,7 +164,8 @@ test('ใบที่ยังไม่ผูกไซต์/ลูกค้า 
   assert.deepEqual(ctx.unknown, {});
   assert.equal(ctx.site, null);
   assert.equal(ctx.customer, null);
-  assert.deepEqual(supabase.calls.map((c) => c.table), ['entity_updates']);
+  // เธรดของใบยังถามได้เสมอ (ไม่ขึ้นกับไซต์/ลูกค้า) — แถวดึงกลับ + แถวส่งกลับให้ช่างแก้ (2026-09-22)
+  assert.deepEqual(supabase.calls.map((c) => c.table), ['entity_updates', 'entity_updates']);
 });
 
 test('รหัส ZN ยิงผ่านตัวซอยก้อน — ลิสต์โตตามข้อมูล ห้ามยัด .in() ก้อนเดียว', async () => {
@@ -221,5 +222,6 @@ test('🔴 ชั้นไหลทางเดียว — ตัวอ่า�
      ⇒ ถ้ามันลาก `surveyControl.js` เข้ามา วันที่ไฟล์นั้นงอก import ฝั่ง React/Next
      (มันโตไปทางจอ อยู่แล้ว) เส้นเขียนทั้งสี่จะล้มตั้งแต่โหลดโมดูล · กฎ: จอ → กฎ → จบ */
   assert.doesNotMatch(code('./surveyRepo.js'), /from '@\/lib\/service\/surveyControl'/);
-  assert.match(code('./surveyRepo.js'), /surveyRecallRecord \} from '@\/lib\/service\/survey'/);
+  // ⚠️ import หลายบรรทัดได้ (เพิ่มตัวตัดสินการส่งกลับ 2026-09-22) — สิ่งที่ตรึงคือ "ถามกฎจาก survey.js"
+  assert.match(code('./surveyRepo.js'), /surveyRecallRecord[\s\S]{0,120}\} from '@\/lib\/service\/survey'/);
 });

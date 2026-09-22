@@ -73,7 +73,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     await appendUpdate(supabase, {
       entityType: 'dept_request', entityId: id, kind: 'send_back',
       body: text,
-      meta: { gates: gaps.map((g) => g.key), crew: crewIds.length },
+      /* `note` = ข้อความที่หัวหน้าพิมพ์ ⇒ จอของช่างยกไปโชว์บนแถบ "หัวหน้าให้กลับไปแก้" ได้ตรง ๆ
+         โดยไม่ต้องแกะจาก body (แถวเก่าก่อน 2026-09-22 ไม่มี — `surveySendBackState` ตัดจาก body ให้) */
+      meta: { gates: gaps.map((g) => g.key), crew: crewIds.length, note },
       user,
     });
 
