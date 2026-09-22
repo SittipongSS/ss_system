@@ -2,14 +2,14 @@
 //
 // ล็อกกติกา:
 //   1) หัวน้ำหอม = 02-020 ตัวเดียว · หมวดอื่นใน 01/02 = สินค้า (มีสูตร · ราคา FB)
-//   2) SDS 02-001 ส่งเป็นสินค้าไม่ได้ — ส่งเป็นหัวน้ำหอม แล้วทำสูตรทางพัฒนาสูตร
-//   3) เครื่อง/อุปกรณ์ในกลุ่ม 01/02 ไม่อยู่ในตัวเลือก · กลุ่ม 03+ ไม่ได้
+//   2) ทุกหมวดในกลุ่ม 01/02 ส่งเป็นสินค้าได้ ("01 และ 02 มีเนื้อหมด ยกเว้น 02-020 หัวน้ำหอม") · กลุ่ม 03+ ไม่ได้
+//   3) SDS 02-001 = ค่าตั้งต้นหัวน้ำหอม (ไม่ใช่ด่าน — RD เลือกส่งเป็นสินค้า 02-001 ได้)
 //   4) ค่าตั้งต้นจาก PDR 1.11 เฉพาะใบที่ขอหมวดเดียว
 //   5) ส่งเป็นสินค้า → ส่งงานสร้างสูตร → แถวผูกสูตร → ราคา FB (ต่อสายกับ rowPriceTarget)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DELIVERED_FRAGRANCE_CODE, DELIVERY_EXCLUDED_CATEGORIES, defaultDeliveredCategory, deliveredAsOf,
+  DELIVERED_FRAGRANCE_CODE, defaultDeliveredCategory, deliveredAsOf,
   deliveredCategoryError, deliveryProductCategories, isDeliveredAsProduct, scentFPriceNotice,
 } from './deliveredCategory.js';
 import { deliveryItemRow, normalizeDeliveryRows } from './delivery.js';
@@ -43,22 +43,21 @@ test('แผ่นเลือกสองทาง: กด "สินค้า"
   assert.equal(deliveredAsOf('', { productPending: true }), 'product');
 });
 
-test('ตัวเลือกหมวดสินค้า = 01/02 ที่ใช้งาน ตัดหัวน้ำหอม SDS เครื่อง/อุปกรณ์ และกลุ่ม 03', () => {
+test('ตัวเลือกหมวดสินค้า = 01/02 ที่ใช้งานทุกหมวด ตัดแค่หัวน้ำหอม · ที่ปิดใช้ · กลุ่ม 03', () => {
   const codes = deliveryProductCategories(TYPES).map((t) => `${t.mainCategoryCode}-${t.typeCode}`);
-  assert.deepEqual(codes, ['01-002', '01-003']);
+  // ⭐ มติผู้ใช้ 2026-09-22 "01 และ 02 มีเนื้อหมด ยกเว้น 02-020" — SDS · ชุดของขวัญ · เครื่องกดสบู่ ต้องอยู่ในลิสต์
+  assert.deepEqual(codes, ['01-002', '01-003', '01-037', '02-001', '02-024']);
   // หมวดที่ถูกปิดใช้ทีหลังแต่เลือกไว้แล้ว ต้องยังอยู่ในลิสต์ (ไม่งั้นช่องว่างเปล่าทั้งที่มีค่า)
   const kept = deliveryProductCategories(TYPES, '01-099').map((t) => `${t.mainCategoryCode}-${t.typeCode}`);
   assert.ok(kept.includes('01-099'));
-  for (const code of ['02-001', '02-024', '01-037']) assert.ok(DELIVERY_EXCLUDED_CATEGORIES.includes(code));
 });
 
-test('ด่านหมวดที่ส่ง — บังคับเลือก · กลุ่ม 01/02 เท่านั้น · SDS บอกทางที่ถูก', () => {
+test('ด่านหมวดที่ส่ง — บังคับเลือก · กลุ่ม 01/02 เท่านั้น · ทุกหมวดใน 01/02 ผ่าน', () => {
   assert.match(deliveredCategoryError('', TYPES), /ต้องเลือก/);
   assert.equal(deliveredCategoryError('02-020', TYPES), null);
   assert.equal(deliveredCategoryError('01-002', TYPES), null);
   assert.match(deliveredCategoryError('03-001', TYPES), /01 และ 02/);
-  assert.match(deliveredCategoryError('02-001', TYPES), /ส่งเป็นหัวน้ำหอม/);
-  assert.match(deliveredCategoryError('01-037', TYPES), /เครื่อง\/อุปกรณ์/);
+  for (const code of ['02-001', '02-024', '01-037']) assert.equal(deliveredCategoryError(code, TYPES), null, code);
   assert.match(deliveredCategoryError('01-099', TYPES), /ปิดใช้งาน/);
   assert.match(deliveredCategoryError('01-777', TYPES), /ไม่พบหมวด/);
   assert.match(deliveredCategoryError('1-2', TYPES), /ไม่ถูกต้อง/);
@@ -66,12 +65,13 @@ test('ด่านหมวดที่ส่ง — บังคับเลื
   assert.equal(deliveredCategoryError('01-777', []), null);
 });
 
-test('ค่าตั้งต้นจาก PDR 1.11 — ขอหมวดเดียวเท่านั้น · SDS = หัวน้ำหอม', () => {
+test('ค่าตั้งต้นจาก PDR 1.11 — ขอหมวดเดียวเท่านั้น · SDS ตั้งต้นเป็นหัวน้ำหอม', () => {
   assert.equal(defaultDeliveredCategory(['01-002'], TYPES), '01-002'); // SB-26080011
   assert.equal(defaultDeliveredCategory(['02-020'], TYPES), '02-020');
   assert.equal(defaultDeliveredCategory(['02-001'], TYPES), '02-020'); // SDS
   assert.equal(defaultDeliveredCategory(['01-002', '01-003'], TYPES), '');
-  assert.equal(defaultDeliveredCategory(['01-037'], TYPES), ''); // ชุดของขวัญ — ไม่เดา
+  assert.equal(defaultDeliveredCategory(['01-037'], TYPES), '01-037'); // ชุดของขวัญมีเนื้อ — เติมตามที่ขอ
+  assert.equal(defaultDeliveredCategory(['01-099'], TYPES), ''); // หมวดที่ปิดใช้ — ไม่เดา
   assert.equal(defaultDeliveredCategory([], TYPES), '');
   assert.equal(defaultDeliveredCategory(null, TYPES), '');
 });
