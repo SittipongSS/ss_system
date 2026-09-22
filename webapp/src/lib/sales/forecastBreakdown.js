@@ -66,7 +66,8 @@ export const MONTH_BASIS = ['endDate', 'demandMonth', 'expectedCloseDate', 'fore
  * ⚠️ **ยอดยังอยู่ในไฟล์เสมอ** ไม่ใช่ตัดทิ้ง — ยอดรวมทั้งไฟล์จึงไม่เปลี่ยน เปลี่ยนแค่
  *    ว่ามันไปนั่งช่องไหน · แถวที่ไม่มี `monthBasis` เลย (ผู้เรียกเก่า/เทสต์) ถือว่ารู้เดือน
  */
-export const SCHEDULED_BASIS = ['endDate', 'demandMonth'];
+/* `closeMonth` = แถวของไฟล์แกน "เดือนปิดการขาย" (มติผู้ใช้ 2026-09-22) — เดือนในกริดคือเดือนคาดปิดซึ่งรู้เสมอ ⇒ ลงช่องเดือน */
+export const SCHEDULED_BASIS = ['endDate', 'demandMonth', 'closeMonth'];
 export const isScheduledBasis = (basis) => !basis || SCHEDULED_BASIS.includes(basis);
 export const isScheduledRow = (row) => isScheduledBasis(row?.monthBasis) && !!row?.month;
 

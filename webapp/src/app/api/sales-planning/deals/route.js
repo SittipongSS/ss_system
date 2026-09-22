@@ -25,6 +25,7 @@ import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { buildDealTimelineRows, summarizeTimelineStep } from '@/lib/sales/dealTimelineGen';
 import { businessDayKey } from '@/lib/datePeriods';
 import { parseReportPeriodParams } from '@/lib/sales/reportPeriod';
+import { dealInReportPeriod, normalizeDealAxis } from '@/lib/sales/dealPeriod';
 import { attributionTeam, isSuperuser } from '@/lib/permissions';
 import { sourceLeadIdOf } from '@/lib/sales/leads';
 import { leadLinkError } from '@/lib/sales/dealLeadLink';
@@ -59,6 +60,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ⚠️ งวดผิดรูป = ไม่กรอง (พฤติกรรมเดิมของ month= ที่อ่านไม่ออก) ไม่ใช่ 400 — จอเก่าที่ค้างในแท็บต้องไม่พัง */
   const parsedPeriod = parseReportPeriodParams(params, { today: businessDayKey(new Date().toISOString()) });
   const period = parsedPeriod && !parsedPeriod.error ? parsedPeriod : null;
+  /* ⭐ แกนของงวด (มติผู้ใช้ 2026-09-22 รอบรื้อ): close = เดือนปิดการขาย (ค่าตั้งต้น · กรองที่ query) ·
+     delivery = เดือนรับของ (endDate · demandMonth · ไม่มีวันรับของ = กองของงวดที่ปิด) — กติกาซับซ้อนกว่าที่ PostgREST
+     เขียนได้ตรง ๆ ⇒ อ่านตามสิทธิ์/ขั้นแล้วคัดด้วยตัวตัดสินกลาง `dealInReportPeriod` (ดีลทั้งตาราง ~500 แถว) */
+  const axis = normalizeDealAxis(params.get('axis'));
 
   /* ⚠️ **อ่านทุกหน้า ไม่ใช่หน้าแรก** — Supabase ตั้ง Max rows = 1000 และ PostgREST
      ตัดผลลัพธ์ **โดยไม่มี error** ⇒ วันที่ดีลเกินพันใบ ลิสต์นี้จะหายไปเงียบ ๆ พร้อม
@@ -73,6 +78,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const applyFilters = (q0) => {
     let q = applyDealScope(q0, user);
     if (stage && stage !== 'all') q = q.eq('stage', normalizeStage(stage));
+    if (axis === 'delivery') return q; // คัดหลังอ่าน (ด้านล่าง)
     if (period?.mode === 'range') q = q.gte('expectedCloseDate', period.from).lte('expectedCloseDate', period.to);
     else if (period) q = q.in('forecastMonth', period.months);
     return q;
@@ -88,7 +94,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // team's pipeline but may only act on its own deals).
   const editor = canEditSalesPlanning(user);
   const driftMap = await loadForecastDriftMap(supabase, data || []).catch(() => new Map());
-  const visible = (data || []).filter((d) => inSalesViewScope(user, d));
+  const scoped = (data || []).filter((d) => inSalesViewScope(user, d));
+  // แกนรับของ: คัดงวดด้วยตัวตัดสินกลาง (แกนปิดกรองที่ query แล้ว)
+  const visible = axis === 'delivery' ? scoped.filter((d) => dealInReportPeriod(d, period, 'delivery')) : scoped;
 
   /* ขั้นตอนปัจจุบันตามไทม์ไลน์ต่อดีล (คอลัมน์ "ขั้นตอน" — มติผู้ใช้ 2026-08-08)
      ดึง task ของทุกดีลที่เห็นในคำขอเดียวแล้วสรุปฝั่ง server — task ที่ถูกรับเลี้ยง
