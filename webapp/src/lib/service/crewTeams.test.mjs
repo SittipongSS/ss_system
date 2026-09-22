@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ALL_TEAMS, NO_TEAM, filterRowsByTeam, teamByUser, teamFilterOptions, teamLoad } from './crewTeams.js';
+import { ALL_TEAMS, NO_TEAM, filterRowsByTeam, teamByUser, teamFilterOptions, teamLoad, teamViewRows } from './crewTeams.js';
 
 const teams = [
   { code: 'TS-A', name: 'ทีม A', kind: 'crew', isActive: true },
@@ -121,4 +121,43 @@ test('แถวที่ไม่มีนัดไม่ทำให้ตั�
     teamLoad({ teams, rows: withIdle, members, byUser }),
     teamLoad({ teams, rows, members, byUser }),
   );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ⭐ **ตัวกรองทีมคุมทั้งหน้า · งานที่ยังไม่มีเจ้าหน้าที่ขึ้นให้ทุกทีมเห็น** (มติผู้ใช้ 2026-09-22)
+   กริดใช้ `teamViewRows` · รายการงานใช้ `teamViewVisit` — กติกาเดียวกันทั้งหน้า
+   ⚠️ `filterRowsByTeam` ยังตอบ "แถวของทีมนี้" เหมือนเดิม (เทสต์ข้างบนไม่ถูกแตะ)
+   ═══════════════════════════════════════════════════════════════════════ */
+const UNASSIGNED = '__unassigned__';
+
+test('⭐ เลือกทีมแล้วแถว "ยังไม่มอบหมาย" ยังอยู่ — ต่อท้ายแถวของทีมเสมอ', () => {
+  assert.deepEqual(teamViewRows(rows, 'TS-A', byUser, UNASSIGNED).map((r) => r.key), ['U1', UNASSIGNED]);
+  assert.deepEqual(teamViewRows(rows, 'TS-B', byUser, UNASSIGNED).map((r) => r.key), ['U3', UNASSIGNED]);
+  // ทีมที่ไม่มีแถวของตัวเองเลย ยังเห็นงานไร้เจ้าของ
+  assert.deepEqual(teamViewRows(rows, 'TS-OLD', byUser, UNASSIGNED).map((r) => r.key), [UNASSIGNED]);
+});
+
+test('ทุกทีม = คืนแถวเดิมทั้งชุด ลำดับเดิม', () => {
+  assert.equal(teamViewRows(rows, ALL_TEAMS, byUser, UNASSIGNED), rows);
+  assert.equal(teamViewRows(rows, undefined, byUser, UNASSIGNED), rows);
+});
+
+test('🪤 เลือก "ยังไม่อยู่ทีมไหน" แล้วแถวไม่มอบหมายไม่ซ้ำสองแถว · และยังอยู่ท้ายสุด', () => {
+  const withOrphan = [{ key: UNASSIGNED, visits: [5] }, { key: 'U9', visits: [7] }, ...rows.slice(0, 2)];
+  const keys = teamViewRows(withOrphan, NO_TEAM, byUser, UNASSIGNED).map((r) => r.key);
+  assert.deepEqual(keys, ['U9', UNASSIGNED]);
+  // filterRowsByTeam เดิมยังคืนแถวไม่มอบหมายในถัง NO_TEAM เหมือนเดิม (ไม่ได้ถูกแก้)
+  assert.deepEqual(filterRowsByTeam(withOrphan, NO_TEAM, byUser).map((r) => r.key), [UNASSIGNED, 'U9']);
+});
+
+test('ไม่มีแถวไม่มอบหมาย / ไม่ส่ง key = แถวของทีมอย่างเดียว', () => {
+  const noOrphan = rows.filter((r) => r.key !== UNASSIGNED);
+  assert.deepEqual(teamViewRows(noOrphan, 'TS-A', byUser, UNASSIGNED).map((r) => r.key), ['U1']);
+  assert.deepEqual(teamViewRows(rows, 'TS-A', byUser).map((r) => r.key), ['U1']);
+});
+
+test('ภาระรายทีมไม่นับงานไร้เจ้าของเข้าทีมไหน — แถวที่มองเห็นเพิ่มขึ้น แต่ตัวเลขทีมไม่ขยับ', () => {
+  const load = teamLoad({ teams, rows, members, byUser });
+  assert.equal(load.find((t) => t.code === 'TS-A').visits, 3);
+  assert.equal(teamViewRows(rows, 'TS-A', byUser, UNASSIGNED).reduce((n, r) => n + r.visits.length, 0), 5);
 });

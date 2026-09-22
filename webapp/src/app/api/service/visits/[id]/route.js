@@ -511,8 +511,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       await appendUpdate(supabase, {
         entityType: 'service_visit', entityId: id, kind: 'queue',
         body: gateTrail.skipped?.length
-          ? `ข้ามด่านแล้วปล่อยเข้าคิว (ข้าม: ${gateTrail.skipped.join(' · ')}) — ${gateTrail.gateOverrideReason}`
-          : 'ปล่อยเข้าคิว — ด่านครบ',
+          ? `ข้ามด่านแล้วปล่อยขึ้นตาราง (ข้าม: ${gateTrail.skipped.join(' · ')}) — ${gateTrail.gateOverrideReason}`
+          : 'ปล่อยขึ้นตาราง — ด่านครบ',
         user,
       });
     }

@@ -73,6 +73,31 @@ export async function loadVisitGateContext(supabase, siteIds = []) {
   return { zonesBySite, termsBySite, ordersById, installmentsByOrderId, contractsById };
 }
 
+/* ห้าก้อนของบริบทด่าน — ลำดับเดียวกับที่ `loadVisitGateContext` คืน */
+const GATE_CONTEXT_MAPS = ['zonesBySite', 'termsBySite', 'ordersById', 'installmentsByOrderId', 'contractsById'];
+
+/** รวมบริบทด่านหลายก้อนเป็นก้อนเดียว — **ตัวหลังชนะรายคีย์** · ก้อนที่เป็น null ข้ามไป
+ *
+ *  ⭐ หน้าจัดคิวโหลดบริบทสองทาง: ของสัปดาห์ที่เปิดอยู่ (ตาราง) กับของรายการงาน (ร่างทุกวัน)
+ *     ⇒ โมดัลของร่างที่อยู่นอกสัปดาห์ต้องเห็นบริบทจากก้อนที่สอง ไม่งั้นด่านบนโมดัลตอบ "ติด"
+ *     (ไม่มีบริบท = ติด) ทั้งที่แถวในรายการงานเพิ่งบอกว่า "พร้อมปล่อย" — ปุ่มกับด่านพูดคนละเรื่อง
+ *  ⚠️ **แทนที่ทั้งค่า ไม่ต่ออาร์เรย์** — `zonesBySite[siteId]` ของแต่ละก้อนคือโซน *ทั้งหมด* ของไซต์นั้น
+ *     อยู่แล้ว (ตัวโหลดดึงรายไซต์ครบชุด) ⇒ ต่อกันเท่ากับโซนซ้ำสองเท่า แล้วด่านนับ "งดบริการ" เบิ้ล
+ *  รับได้ทั้ง object และ Map · คืน object ธรรมดาเสมอ (รูปเดียวกับที่ `gateContextForSite` อ่าน) */
+export function mergeGateContext(...ctxs) {
+  const out = Object.fromEntries(GATE_CONTEXT_MAPS.map((name) => [name, {}]));
+  for (const ctx of ctxs) {
+    if (!ctx || typeof ctx !== 'object') continue;
+    for (const name of GATE_CONTEXT_MAPS) {
+      const map = ctx[name];
+      if (!map || typeof map !== 'object') continue;
+      const entries = map instanceof Map ? map.entries() : Object.entries(map);
+      for (const [key, value] of entries) out[name][key] = value;
+    }
+  }
+  return out;
+}
+
 /** หั่นบริบทก้อนใหญ่ให้เหลือของไซต์เดียว — รูปทรงที่ `evaluateVisitGate` รับ */
 export function gateContextForSite(ctx, siteId, extra = {}) {
   return {

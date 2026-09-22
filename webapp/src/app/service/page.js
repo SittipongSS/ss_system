@@ -128,8 +128,10 @@ export default function ServiceOverviewPage() {
       title: `${fmtDate(row.visit.scheduledDate)} · ${siteName}`,
       subtitle: row.reasons.map((r) => r.message).join(" · "),
       badge: VISIT_KIND_LABELS[row.visit.kind] || row.visit.kind,
-      cta: "เปิดตารางนัด",
-      onClick: () => router.push("/service/schedule"),
+      /* ⭐ พาไปที่ **นัดใบนั้น** ไม่ใช่หน้าตารางเปล่า — หน้าจัดคิวอ่าน `?visit=` แล้วเปิดโมดัลให้เอง
+         (เดิมพาไปสัปดาห์ปัจจุบัน ⇒ นัดค้างที่อยู่สัปดาห์ก่อนต้องไล่หาเอง) */
+      cta: "เปิดนัด",
+      onClick: () => router.push(`/service/schedule?visit=${encodeURIComponent(row.visit.id)}`),
     };
   }), [attention, router]);
 
@@ -160,6 +162,10 @@ export default function ServiceOverviewPage() {
 
       {loading ? <SkeletonRows rows={6} /> : loadError ? null : (
         <>
+          {/* ⭐ การ์ดพาไปที่ **กองในรายการงาน** ที่นับเลขเดียวกับการ์ด — กดแล้วต้องเจอตัวเลขที่เห็น
+              ไม่ใช่ปฏิทินสัปดาห์ที่ต้องนับเอง · "นัดวันนี้" ลงที่ 7 วันด้วย (กลุ่ม "วันนี้" ขึ้นก่อน
+              และหัวกลุ่มนับเท่าการ์ด) เพราะรายการงานไม่มีช่วง "เฉพาะวันนี้"
+              ⚠️ นัดค้างย้อนดูแค่ LOOKBACK_DAYS — นัดที่ค้างเกินนั้นมีในรายการงานแต่ไม่ถูกนับบนการ์ด */}
           <div className={styles.kpiGrid}>
             <KpiCard
               label="นัดค้าง"
@@ -167,7 +173,7 @@ export default function ServiceOverviewPage() {
               icon={AlertTriangle}
               tone={counts.overdue > 0 ? "danger" : "success"}
               hint="เลยวันนัดแล้วยังไม่ปิดงาน"
-              onClick={() => router.push("/service/schedule")}
+              onClick={() => router.push("/service/schedule?tab=overdue")}
             />
             <KpiCard
               label="นัดวันนี้"
@@ -175,15 +181,18 @@ export default function ServiceOverviewPage() {
               icon={CalendarClock}
               tone="accent"
               hint={fmtDate(todayIso)}
-              onClick={() => router.push("/service/schedule")}
+              onClick={() => router.push("/service/schedule?tab=scheduled&range=7d")}
             />
+            {/* ⚠️ คำใบ้ "ยังไม่มอบหมาย" อยู่ **ใน** ปุ่มการ์ด (KpiCard ทั้งใบเป็น <button> เดียว) ⇒ ทำเป็น
+                ลิงก์ของตัวเองไม่ได้ (ห้ามปุ่มซ้อนปุ่ม) · การ์ดจึงไป 7 วันตามเลขบนการ์ด — ที่นั่นมีช่วง
+                "ยังไม่มีเจ้าหน้าที่" อีกคลิกเดียว · ห้ามสลับปลายทางตามคำใบ้ = กดเลข 12 แล้วเจอ 2 แถว */}
             <KpiCard
               label="นัดสัปดาห์นี้"
               value={counts.week}
               icon={CalendarDays}
               tone="info"
               hint={counts.unassigned > 0 ? `ยังไม่มอบหมายเจ้าหน้าที่ ${counts.unassigned} นัด` : "มอบหมายเจ้าหน้าที่ครบแล้ว"}
-              onClick={() => router.push("/service/schedule")}
+              onClick={() => router.push("/service/schedule?tab=scheduled&range=7d")}
             />
             <KpiCard
               label="เครื่องที่ต้องเข้าเติม"

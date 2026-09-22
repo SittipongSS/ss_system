@@ -9,10 +9,8 @@ import { normalizeVisitInput } from '@/lib/service/rounds';
 import { initialVisitStatus } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
-import { fetchAllInChunks } from '@/lib/supabaseInChunks';
-import { findPlan, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
-import { siteWorkload } from '@/lib/service/visitLoad';
-import { termIsActive } from '@/lib/service/terms';
+import { findPlan, loadVisits } from '@/lib/service/visitsRepo';
+import { visitBundle } from '@/lib/service/visitBundle';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,58 +25,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       siteId: url.searchParams.get('siteId'),
       assigneeId: url.searchParams.get('assigneeId'),
     });
-    // ปฏิทินต้องรู้ชื่อ/โซน/ช่วงเวลาเข้าไซต์เพื่อขึ้นป้ายเตือน — ส่งไปพร้อมกัน
-    // ไม่งั้นหน้าจอต้องยิงตามรายนัด (สัปดาห์หนึ่ง 40 นัด = 40 คำขอ)
-    const sites = await sitesForVisits(supabase, visits);
-    const siteIds = [...sites.keys()];
-
-    /* ⭐ ภาระของเจ้าหน้าที่นับเป็น **จุด + แพ็ค** ไม่ใช่จำนวนนัด (F-6) — ไซต์หนึ่งมี
-       เครื่องตัวเดียว อีกไซต์มี 12 ตัว "วันนี้ 5 นัด" จึงบอกไม่ได้ว่าไหวไหม
-       ⇒ ส่งจำนวนจุดที่ยังอยู่หน้างาน + แพ็คตามรอบขายของโซนมาพร้อมกัน
-       ⚠️ นับที่ server ทีเดียว ไม่ให้จอไล่ยิงรายไซต์ (200 ไซต์ = 200 คำขอ)
-       ⚠️ **ต้องเลือก `qty` มาด้วย** — ชุดอุปกรณ์ 1 แถวมีได้หลายจุด (สบู่ 242 จุด)
-          ไม่ดึงมา = ประเมินงานต่ำเงียบ ๆ (พบตอน UAT 2026-08-28) */
-    const [assets, zones] = siteIds.length ? await Promise.all([
-      // 🔴 ห่อ fetchAll (mig 0332) — เครื่องทั้งระบบเกินเพดาน 1,000 แถว และช่วงวันที่
-      //    กว้าง ๆ ก็แตะไซต์ได้เกือบทั้งหมด ⇒ ภาระคิวช่างจะต่ำกว่าจริงโดยไม่มี error
-      fetchAllInChunks(siteIds, (chunk) => supabase.from('service_assets').select('id, siteId, status, qty')
-        .in('siteId', chunk).order('id', { ascending: true })),
-      fetchAllInChunks(siteIds, (chunk) => supabase.from('service_zones').select('id, siteId')
-        .in('siteId', chunk).order('id', { ascending: true })),
-    ]) : [[], []];
-
-    const zoneIds = zones.map((z) => z.id);
-    const terms = await fetchAllInChunks(zoneIds, (chunk) => supabase
-      .from('service_zone_terms').select('id, zoneId, packageQty, salesOrderId')
-      .in('zoneId', chunk).order('id', { ascending: true }));
-
-    /* ⚠️ "รอบไหนยังมีผล" ตัดสินที่ terms.js ที่เดียว — ที่นี่แค่หยิบใบสั่งขายแม่มาให้
-       (ไม่มีใบ = ตัวตัดสินตอบ false ตามที่ออกแบบ ไม่ใช่เดาว่าใช่) */
-    const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
-    const orders = await fetchAllInChunks(orderIds, (chunk) => supabase
-      .from('sales_orders').select('id, status, supersededById')
-      .in('id', chunk).order('id', { ascending: true }));
-    const ordersById = new Map(orders.map((o) => [o.id, o]));
-    const activeTermIds = terms
-      .filter((term) => termIsActive(term, ordersById.get(term.salesOrderId)))
-      .map((term) => term.id);
-
-    const workload = {};
-    for (const siteId of siteIds) {
-      workload[siteId] = siteWorkload({
-        siteId, assets, zones, terms, activeTermIds: new Set(activeTermIds),
-      });
-    }
-
-    /* ⭐ บริบทของด่าน ①② (PR-C) — ส่งไปให้จอคำนวณด่านด้วย **ตัวประเมินตัวเดียวกับ
-       server** แทนที่จะให้จอเดาเงื่อนไขเอง · จอจัดคิวต้องประเมินสดตอนคนเปลี่ยนวัน/
-       ผู้รับผิดชอบในโมดัล จึงส่งข้อมูลไป ไม่ใช่ส่งผลสำเร็จรูปมาก้อนเดียว
-       🪤 **ซ้อนกับการโหลด zones/terms/orders ข้างบนที่ใช้คำนวณภาระ** — ของข้างบน
-          เลือกมาไม่ครบสำหรับด่าน (ไม่มีวันของ term · ไม่มี serviceContractId)
-          ⇒ รอบนี้ยอมยิงซ้ำเพื่อให้ด่านถูกก่อน · ยุบเป็นก้อนเดียวได้ถ้าเจอว่าหน้านี้หนัก */
-    const gateContext = await loadVisitGateContext(supabase, siteIds);
-
-    return ok({ visits, sites: [...sites.values()], workload, gateContext });
+    /* ไซต์ · ภาระ (จุด + แพ็ค) · บริบทด่าน ①② — ประกอบที่ visitBundle ที่เดียว
+       (รายการงาน `visits/queue` ใช้ตัวเดียวกัน ⇒ สองคอลัมน์ของหน้าจัดตารางนับภาระสูตรเดียว) */
+    const { sites, workload, gateContext } = await visitBundle(supabase, visits);
+    return ok({ visits, sites, workload, gateContext });
   } catch (e) {
     return fail(e.message, 500);
   }

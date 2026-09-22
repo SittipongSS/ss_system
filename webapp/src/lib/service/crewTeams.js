@@ -40,6 +40,22 @@ export function filterRowsByTeam(rows = [], teamCode = ALL_TEAMS, byUser = new M
   return rows.filter((row) => (byUser.get(row.key) || NO_TEAM) === teamCode);
 }
 
+/* แถวของกริดที่ **มองจากทีมหนึ่ง** — แถวของทีมนั้น + แถว "ยังไม่มอบหมาย" ต่อท้ายเสมอ
+   ⭐ มติผู้ใช้ 2026-09-22: ตัวกรองทีมคุมทั้งหน้า และ **งานที่ยังไม่มีเจ้าหน้าที่ขึ้นให้ทุกทีมเห็น**
+      (รายการงานใช้ `teamViewVisit` กติกาเดียวกัน) — ซ่อนแถวนี้เมื่อเลือกทีม = ซ่อนเหตุติดด่าน
+      ที่พบบ่อยที่สุดจากหัวหน้าทีม ซึ่งเป็นคนที่หยิบงานไปให้ลูกทีมได้
+   ⚠️ **ไม่แก้ `filterRowsByTeam`** — ตัวนั้นยังตอบคำถาม "แถวของทีมนี้คือแถวไหน" ถูกอยู่ และภาระรายทีม
+      (`teamLoad`) ต้องไม่นับงานไร้เจ้าของเข้าทีมไหน
+   ⚠️ เลือก `NO_TEAM` แล้ว `filterRowsByTeam` คืนแถวไม่มอบหมายมาด้วยอยู่แล้ว (มันตกถังนั้น) ⇒ ตัดออก
+      ก่อนแล้วค่อยต่อท้าย ไม่งั้นแถวซ้ำสองแถวด้วย key เดียวกัน */
+export function teamViewRows(rows = [], teamCode = ALL_TEAMS, byUser = new Map(), unassignedKey) {
+  if (!teamCode || teamCode === ALL_TEAMS) return rows;
+  const isUnassigned = (row) => unassignedKey != null && row.key === unassignedKey;
+  const own = filterRowsByTeam(rows, teamCode, byUser).filter((row) => !isUnassigned(row));
+  const unassigned = rows.find(isUnassigned);
+  return unassigned ? [...own, unassigned] : own;
+}
+
 /* ภาระรายทีมของช่วงที่เปิดอยู่ — นับ **นัด** กับ **คน** แยกกัน
    ⚠️ ทีมที่มีคนแต่ไม่มีนัดต้องขึ้นเป็น 0 ไม่ใช่หายไป — ทีมว่างคือข้อมูลที่คนจัดคิว
    ต้องเห็นมากที่สุด (มันคือทีมที่รับงานเพิ่มได้) */

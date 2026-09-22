@@ -511,3 +511,10 @@ test('ใบสเปคสินค้า: แจ้งเตือนพาไ
   assert.equal(notificationHref('product_spec_document', 'PSD-1'), '/sales-planning/spec-documents/PSD-1');
   assert.equal(entityLabel('product_spec_document'), 'ใบสเปคสินค้า');
 });
+
+/* ── นัดเข้าบริการ → ใบส่งงานรายใบ (หน้ารายการงาน 2026-09-22) ────────────────
+   ผู้รับหลักคือเจ้าหน้าที่เจ้าของนัด (role `ts`) — เดิมพาไป `/service/schedule` เปล่า
+   ซึ่งลงที่สัปดาห์ปัจจุบันแล้วต้องไล่หาเอง · ต้องพาไปที่ **นัดใบนั้น** และเป็นหน้าที่ ts เปิดได้ */
+test('นัดเข้าบริการ: แจ้งเตือนพาไปใบส่งงานของนัดนั้น ไม่ใช่หน้าตารางเปล่า', () => {
+  assert.equal(notificationHref('service_visit', 'SV-26090003'), '/service/visits/SV-26090003');
+});
