@@ -48,7 +48,7 @@ import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import {
   surveyAddZoneError, surveyChangeCounts, surveyChangeText,
-  surveySendBackError, surveyTotals,
+  surveySendBackDoneError, surveySendBackError, surveyTotals,
 } from "@/lib/service/survey";
 import { surveyControlView } from "@/lib/service/surveyControl";
 import { surveyPendingDecisions } from "@/lib/service/surveyDecision";
@@ -98,6 +98,10 @@ export default function SurveySheetPage({ params }) {
      ในกระดิ่งแล้วต้องรู้ว่าต้องไปทำอะไร โดยไม่ต้องโทรถามกลับ
      ⚠️ ปุ่มอยู่ในการ์ดควบคุม **ครั้งเดียวต่อใบ** — ไม่ใช่ปุ่มต่อข้อเหมือนเช็คลิสต์เดิม */
   const [sendingBack, setSendingBack] = useState(false);
+  /* ช่างแจ้งหัวหน้าว่าแก้ตามที่ส่งกลับแล้ว (มติผู้ใช้ 2026-09-22) — ปิดวงของ "แจ้งช่างให้กลับไป"
+     ⚠️ ข้อความถึงหัวหน้าไม่บังคับ — ของที่หัวหน้าต้องใช้คือผลวัดในใบ ไม่ใช่คำบรรยาย */
+  const [reportingFixed, setReportingFixed] = useState(false);
+  const [fixedNote, setFixedNote] = useState("");
   const [sendBackNote, setSendBackNote] = useState("");
   const [sendBackBusy, setSendBackBusy] = useState(false);
   /* ── พื้นที่พับได้ ──────────────────────────────────────────────────────
@@ -295,6 +299,18 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
+  /* โยน error กลับให้กล่องยืนยันบอกตรงนั้น (ไม่ใช่ toast ที่หายไป) · สำเร็จ = ปิดกล่อง + โหลดใหม่
+     ⇒ แถบกลับเป็น "ส่งงานแล้ว" และการ์ดของหัวหน้าขึ้น "ช่างแจ้งว่าแก้แล้ว" */
+  const reportFixed = async () => {
+    await apiJson(`/api/service/surveys/${id}/send-back-done`, {
+      method: "POST", json: { note: fixedNote.trim() }, fallbackError: "แจ้งหัวหน้าไม่สำเร็จ",
+    });
+    setReportingFixed(false);
+    setFixedNote("");
+    setToast({ kind: "success", msg: "แจ้งหัวหน้าแล้ว — หัวหน้าจะได้แจ้งเตือนให้ตรวจแล้วเคาะแพ็คเกจต่อ" });
+    await load({ background: true });
+  };
+
   const sendBack = async () => {
     setSendBackBusy(true);
     try {
@@ -349,6 +365,7 @@ export default function SurveySheetPage({ params }) {
     filesByZone,
     visit: data?.visit || null,
     recall: data?.recall || null,
+    sendBack: data?.sendBack || null,
     unknown: data?.unknown || {},
     viewer: {
       canWrite: data?.canWrite === true,
@@ -377,6 +394,13 @@ export default function SurveySheetPage({ params }) {
   });
   /* 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · เหตุที่เขียนไม่ได้อยู่ในการ์ด */
   const addGate = surveyAddZoneError(data?.request, { canWrite: data?.canWrite === true });
+  /* 🔑 ด่านตัวเดียวกับ route แจ้งว่าแก้แล้ว + ค่าที่ยังพิมพ์ค้าง (server มองไม่เห็น จอต้องกันเอง) */
+  const fixedGate = surveySendBackDoneError(data?.request, {
+    canWrite: view.flags.canWrite,
+    pending: data?.sendBack?.pending === true,
+    rows: zones,
+    filesByZone,
+  }) || (dirtyZoneIds.length ? "มีค่าที่ยังไม่บันทึก — กด “บันทึกพื้นที่นี้” ก่อนแจ้งหัวหน้า" : null);
   /* ตรวจด้วยตัวเดียวกับ server — ชั้นผิดต้องรู้ตั้งแต่ตอนพิมพ์ ไม่ใช่ตอนกดแล้วเด้งกลับ */
   const draftFloor = normalizeFloor(draft.floor);
   const draftClash = draft.name.trim() ? surveyRowNameClash(draft.name, zones) : null;
@@ -756,6 +780,8 @@ export default function SurveySheetPage({ params }) {
             starting={startingVisit}
             onStart={startVisit}
             onSubmit={() => setSubmitOpen(true)}
+            sendBack={data?.sendBack || null}
+            onReportFixed={() => { setFixedNote(""); setReportingFixed(true); }}
           />
         )}
       </DetailPageLayout>
@@ -878,6 +904,33 @@ export default function SurveySheetPage({ params }) {
         {/* ปุ่มจางต้องบอกเหตุเป็นตัวหนังสือ — และบอกว่าใครจะอ่านข้อความนี้ */}
         <p className={styles.gate} role="status">
           {sendBackGate || "ช่างจะเห็นข้อความนี้ในกระดิ่ง"}
+        </p>
+      </ConfirmDialog>
+
+      {/* ── ช่างแจ้งหัวหน้าว่าแก้แล้ว (มติผู้ใช้ 2026-09-22) ─────────────────────────
+          ⚠️ บอกให้ชัดว่าหัวหน้าส่งกลับเรื่องอะไร — คนกดต้องเทียบได้ว่าแก้ครบหรือยังโดยไม่ต้องไปเปิดกระดิ่ง */}
+      <ConfirmDialog
+        open={reportingFixed}
+        title="แจ้งหัวหน้าว่าแก้แล้ว"
+        /* ข้อความหลัก = เรื่องที่หัวหน้าขอ (ให้เทียบได้ว่าแก้ครบหรือยัง) · เหตุที่ยังแจ้งไม่ได้อยู่บรรทัดล่าง
+           ที่เดียว — 🐞 เคยใส่ทั้งสองที่ ข้อความเดียวกันซ้อนสองรอบในกล่อง */
+        message={`หัวหน้าส่งกลับให้แก้${data?.sendBack?.sentBack?.note ? `: ${data.sendBack.sentBack.note}` : ""}`}
+        detail={fixedGate ? undefined : "หัวหน้าจะได้แจ้งเตือนให้ตรวจแล้วเคาะจุดติดตั้งและแพ็คเกจต่อ · ใบไม่ต้องลงคิวใหม่"}
+        confirmLabel="แจ้งหัวหน้า"
+        onConfirm={fixedGate ? undefined : reportFixed}
+        onClose={() => setReportingFixed(false)}
+      >
+        <Input
+          value={fixedNote}
+          maxLength={300}
+          autoComplete="off"
+          placeholder="แก้อะไรไป (ไม่บังคับ) เช่น ถ่ายภาพกว้างห้องประชุมเพิ่มแล้ว"
+          aria-label="ข้อความถึงหัวหน้า"
+          onChange={(e) => setFixedNote(e.target.value)}
+        />
+        {/* เหตุที่ยังแจ้งไม่ได้ขึ้นเป็นตัวหนังสือ — ไม่ใช่ปุ่มจางเงียบ */}
+        <p className={styles.gate} role="status">
+          {fixedGate || "หัวหน้าจะเห็นข้อความนี้ในกระดิ่ง"}
         </p>
       </ConfirmDialog>
 

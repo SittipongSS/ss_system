@@ -460,6 +460,83 @@ export function surveySendBackError(request, {
   return null;
 }
 
+/* ══ ช่างแจ้งหัวหน้าว่าแก้ตามที่ส่งกลับแล้ว (มติผู้ใช้ 2026-09-22) ══════════════
+ *
+ * ⭐ ปิดวงของ "แจ้งช่างให้กลับไป" — เดิมช่างแก้เสร็จแล้วไม่มีทางบอก หัวหน้าต้องคอยเปิดใบดูเอง
+ * 🔑 **สภาพ "ค้างแก้" มาจากเธรดของใบ ไม่ใช่คอลัมน์ใหม่** — แถว `send_back` ล่าสุดที่ยังไม่มี
+ *   แถว `send_back_done` ตามหลัง = ค้าง · ไม่ต้องมี migration และประวัติทุกรอบอ่านย้อนได้
+ *   ในเธรดเดียวกับที่ฝ่ายขายเห็นอยู่แล้ว
+ */
+export const SEND_BACK_KIND = 'send_back';
+export const SEND_BACK_DONE_KIND = 'send_back_done';
+
+const SEND_BACK_PREFIX = 'หัวหน้าแจ้งให้กลับไปเก็บงานหน้างาน — ';
+
+/* ข้อความที่หัวหน้าพิมพ์ — แถวใหม่เก็บใน `meta.note` · แถวเก่า (ก่อน 2026-09-22) ต้องตัดจาก body
+   ที่ `surveySendBackBody` ประกอบไว้: "<คำนำ> — <ข้อความ> · <ป้ายด่าน> — ขาด …" */
+function sendBackNote(row) {
+  const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+  if (typeof meta.note === 'string' && meta.note.trim()) return meta.note.trim();
+  let body = String(row?.body ?? '').trim();
+  if (body.startsWith(SEND_BACK_PREFIX)) body = body.slice(SEND_BACK_PREFIX.length);
+  const cuts = SURVEY_GATES.map((g) => body.indexOf(` · ${g.label} — ขาด`)).filter((i) => i >= 0);
+  return (cuts.length ? body.slice(0, Math.min(...cuts)) : body).trim() || null;
+}
+
+const sendBackRecord = (row, note) => ({
+  id: row.id || null,
+  at: row.createdAt || null,
+  byId: row.authorId != null ? String(row.authorId) : null,
+  byName: row.authorName || null,
+  note,
+});
+
+/**
+ * 🔑 **สภาพการส่งกลับของใบ** — ผู้เรียกส่งแถวเธรดชนิด `send_back` / `send_back_done` มา (ลำดับใดก็ได้)
+ * @returns `{ pending, sentBack: {id, at, byId, byName, note} | null, done: {…} | null }`
+ *   `pending` = มีการส่งกลับที่ยังไม่มีใครแจ้งว่าแก้แล้ว (ส่งกลับซ้ำหลังแจ้งแล้ว = ค้างใหม่)
+ */
+export function surveySendBackState(rows = []) {
+  const list = (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && (r.kind === SEND_BACK_KIND || r.kind === SEND_BACK_DONE_KIND))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const back = list.find((r) => r.kind === SEND_BACK_KIND) || null;
+  const done = list.find((r) => r.kind === SEND_BACK_DONE_KIND) || null;
+  const pending = !!back && (!done || String(done.createdAt || '') < String(back.createdAt || ''));
+  return {
+    pending,
+    sentBack: back ? sendBackRecord(back, sendBackNote(back)) : null,
+    done: done ? sendBackRecord(done, String(done.meta?.note ?? '').trim() || null) : null,
+  };
+}
+
+/**
+ * 🔑 **ด่านปุ่ม "แจ้งหัวหน้าว่าแก้แล้ว"** — จอกับ route ถามตัวเดียวกัน
+ * ⚠️ ต้องแก้ของฝั่งช่างครบจริงก่อน (ด่านเดียวกับ "ส่งงาน") — แจ้งว่าแก้แล้วทั้งที่ยังขาด =
+ *   หัวหน้าเปิดมาเจอของเดิม แล้วต้องส่งกลับอีกรอบ (หนึ่งเที่ยวเปล่า)
+ * ⚠️ `canWrite` มาจาก server (ด่านรายใบ `visitWriteAccess`) — จอไม่รู้ user id ของตัวเอง
+ */
+export function surveySendBackDoneError(request, {
+  canWrite = false, pending = false, rows = [], filesByZone = {},
+} = {}) {
+  const locked = surveyEditLockError(request);
+  if (locked) return locked;
+  if (!canWrite) return 'แจ้งว่าแก้แล้วได้เฉพาะช่างที่ถูกมอบหมายนัดของใบนี้';
+  if (!pending) return 'ไม่มีเรื่องที่หัวหน้าแจ้งให้แก้ค้างอยู่';
+  const gaps = surveyCrewGaps(rows, filesByZone);
+  if (gaps.length) {
+    return `ยังแจ้งไม่ได้ — ยังขาด ${gaps.map((g) => `${g.short} (${g.zones.join(' · ')})`).join(' · ')}`;
+  }
+  return null;
+}
+
+/** ข้อความบรรทัดเธรดของการแจ้งว่าแก้แล้ว · `auto` = ปิดให้เองเพราะช่างกด "ส่งงาน" */
+export function surveySendBackDoneBody(note = '', { auto = false } = {}) {
+  if (auto) return 'ช่างส่งงานหน้างานแล้ว — รวมสิ่งที่หัวหน้าแจ้งให้แก้';
+  const text = String(note ?? '').trim().slice(0, 300);
+  return `ช่างแจ้งว่าแก้ตามที่หัวหน้าแจ้งแล้ว${text ? ` — ${text}` : ''}`;
+}
+
 /** ข้อความบรรทัดเธรด/กระดิ่ง — เขียนที่เดียว ใช้ทั้ง route และเทสต์
  *  ⚠️ ต้องบอก **ข้อที่ติดพร้อมชื่อพื้นที่** ไม่ใช่แค่ "ยังไม่ครบ" — ช่างต้องรู้ว่าไปที่ไหน
  *    ทำอะไร โดยไม่ต้องเปิดจอไล่อ่านทีละพื้นที่ */

@@ -41,6 +41,7 @@ export const SURVEY_UNKNOWN_LABELS = {
   customer: 'รหัสลูกค้า (AR)',
   recall: 'ประวัติการดึงผลกลับ',
   visit: 'นัดสำรวจ',
+  sendBack: 'ประวัติการส่งกลับให้ช่างแก้',
 };
 
 const isCut = (row) => (row?.status || 'ok') === 'cut';
@@ -267,6 +268,7 @@ function overdueBy(dueDate, today) {
  * @param filesByZone    `{ [zoneRowId]: ไฟล์ของแถวนั้น }`
  * @param visit          นัดของใบ (ใช้บอกว่าแจ้งช่างได้ไหม)
  * @param recall         ผลของ `surveyRecallRecord` — `null` = ไม่เคยดึงกลับ
+ * @param sendBack       ผลของ `surveySendBackState` — `null` = อ่านไม่สำเร็จ/ไม่ส่งมา (ไม่ใช่ "ไม่เคยส่งกลับ")
  * @param unknown        `{ site?, zoneCodes?, customer?, recall?, visit? }` ชิ้นที่อ่านไม่สำเร็จ
  * @param viewer         `{ canWrite, canDecide, canOpenRequest, writeBlockedReason, onVisit }` — มาจาก server ทุกตัว
  *                       (`onVisit` = คนดูเป็นคนไป/คนช่วยบนนัด — Senior ที่ออกหน้างานเองอ่านถ้อยคำของช่าง)
@@ -282,6 +284,7 @@ export function surveyControlView({
   filesByZone = {},
   visit = null,
   recall = null,
+  sendBack = null,
   unknown = {},
   viewer = {},
   dirtyZoneIds = [],
@@ -601,6 +604,27 @@ export function surveyControlView({
       key: 'crew-done', tone: 'success',
       text: 'ส่วนของช่างครบแล้ว — หัวหน้าบริการเป็นคนเคาะแพ็คเกจและส่งผล',
     });
+  }
+  /* ⭐ **วงส่งกลับให้ช่างแก้** (มติผู้ใช้ 2026-09-22) — หัวหน้าต้องเห็นว่ากำลังรอช่างอยู่ หรือช่าง
+     แจ้งแล้วว่าแก้ครบ · 🐞 ก่อนหน้านี้ส่งกลับไปแล้วเงียบทั้งสองทาง ต้องเดาจากเช็คลิสต์เอาเอง
+     ⚠️ เฉพาะหัวหน้า และใบที่ยังไม่ล็อก — ฝั่งช่างเห็นเรื่องเดียวกันบนแถบงาน (มีปุ่มแจ้ง)
+     ⚠️ "แจ้งแล้ว" ขึ้นเฉพาะรอบล่าสุดที่ยังไม่ถูกส่งกลับซ้ำ (ส่งกลับซ้ำ = ค้างใหม่) */
+  if (canDecide && !lockReason && sendBack?.sentBack) {
+    const back = sendBack.sentBack;
+    if (sendBack.pending) {
+      notices.push({
+        key: 'send-back-pending', tone: 'warning',
+        text: `ส่งกลับให้ช่างแก้${back.at ? ` ${fmtDateTime(back.at)}` : ''}${back.note ? ` — ${back.note}` : ''}`
+          + ' · รอช่างแจ้งว่าแก้แล้ว',
+      });
+    } else if (sendBack.done) {
+      const done = sendBack.done;
+      notices.push({
+        key: 'send-back-done', tone: 'success',
+        text: `ช่างแจ้งว่าแก้แล้ว${done.at ? ` ${fmtDateTime(done.at)}` : ''}${done.byName ? ` · ${done.byName}` : ''}`
+          + (done.note ? ` — ${done.note}` : ''),
+      });
+    }
   }
   /* 🔴 **อ่านไม่สำเร็จต้องพูดออกมา** — ชิ้นที่หายไปเงียบ ๆ อ่านเหมือน "ไม่มีข้อมูลนี้"
      ซึ่งเป็นคนละเรื่องกันคนละทาง (ไซต์ไม่มีที่อยู่ ≠ อ่านที่อยู่ไม่สำเร็จ) */

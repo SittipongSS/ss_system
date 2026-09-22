@@ -21,7 +21,7 @@
    ในจออยู่แล้วแต่ตรงกับแถบ เบราว์เซอร์ไม่เลื่อน ⇒ วงโฟกัสจมใต้แถบ (หนักบนจอคอมที่กรอกด้วย Tab)
    ⇒ กันที่ท้ายหน้าเท่าความสูงแถบ **เฉพาะตอนแถบที่มีปุ่มอยู่บนจอ** · แถบบอกผล (ok/warn) ไม่ติดขอบ
    จึงไม่ต้องกัน · ค่า = ปุ่มสูงระดับนิ้ว + ขอบใน/ระยะลอยของแถบ (≈ 84px เหนือแถบเมนูมือถือ) */
-:global(html):has(.bar[data-tone="plain"]) {
+:global(html):has(.bar:is([data-tone="plain"], [data-tone="todo"])) {
   scroll-padding-bottom: calc(var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom) + var(--ctl-h-touch) + var(--space-9));
 }
 
@@ -37,6 +37,9 @@
 .bar[data-tone="warn"] { position: static; box-shadow: none; }
 .bar[data-tone="ok"] { border-color: var(--green); }
 .bar[data-tone="warn"] { border-color: var(--amber); }
+/* หัวหน้าส่งกลับให้แก้ — มีปุ่มให้กด ⇒ ติดขอบล่างเหมือนแถบที่ยังทำงานอยู่ (ไม่ใช่แถบบอกผล) */
+.bar[data-tone="todo"] { border-color: var(--amber); }
+.bar[data-tone="todo"] .head { color: var(--amber); }
 
 .copy {
   flex: 1 1 auto;

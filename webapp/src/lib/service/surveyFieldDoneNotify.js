@@ -17,6 +17,7 @@ import { SERVICE_HEAD_ROLES, normalizeRole } from '@/lib/permissions';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
 export const SURVEY_FIELD_DONE_KIND = 'survey_field_done';
+export const SURVEY_SEND_BACK_DONE_KIND = 'survey_send_back_done';
 
 /** ปลายทางของกระดิ่ง — แท็บที่หัวหน้าเคาะจุด/แพ็คเกจ */
 export const surveyFieldDoneHref = (requestId) => `/service/surveys/${requestId}?tab=result`;
@@ -57,6 +58,55 @@ export function surveyFieldDoneNotice({ request, visit, users = [], actor = null
     dedupeKey: `survey-field-done:${visit.id}:${String(visit.updatedAt || '').slice(0, 19)}`,
     href: surveyFieldDoneHref(request.id),
   };
+}
+
+/* หัวหน้าที่ได้รับ — ตำแหน่งที่ส่งผลได้จริง (บัญชีที่ปิดแล้วไม่นับ) · ไม่เด้งใส่คนกดเอง */
+const headIds = (users, actorId, extraIds = []) => [...new Set([
+  ...(users || [])
+    .filter((u) => u && !u.disabled && SERVICE_HEAD_ROLES.includes(normalizeRole(u.role)))
+    .map((u) => String(u.id)),
+  ...extraIds.filter(Boolean).map(String),
+])].filter((id) => id !== (actorId ? String(actorId) : null));
+
+/**
+ * กระดิ่ง "ช่างแจ้งว่าแก้แล้ว" (มติผู้ใช้ 2026-09-22) — ปิดวงของ "แจ้งช่างให้กลับไป"
+ * ⭐ ผู้รับ = หัวหน้าที่ส่งผลได้ **รวมคนที่กดส่งกลับเสมอ** (แอดมินที่ส่งกลับแทนหัวหน้าไม่อยู่
+ *   ในลิสต์ตำแหน่ง แต่เป็นคนที่รอคำตอบนี้อยู่จริง)
+ * @param sentBack  `surveySendBackState().sentBack` — ใครส่งกลับ ด้วยข้อความอะไร
+ */
+export function surveySendBackDoneNotice({ request, users = [], actor = null, sentBack = null, note = '', doneId = null } = {}) {
+  if (!request?.id) return null;
+  const userIds = headIds(users, actor?.id, [sentBack?.byId]);
+  if (!userIds.length) return null;
+  const doc = request.docNo || request.title || 'ใบประเมิน';
+  const who = actor?.name || 'ช่าง';
+  const asked = sentBack?.note ? ` (ที่แจ้งไว้: ${String(sentBack.note).slice(0, 120)})` : '';
+  const said = String(note || '').trim() ? ` — ${String(note).trim().slice(0, 200)}` : '';
+  return {
+    userIds,
+    entityType: 'dept_request',
+    entityId: request.id,
+    kind: SURVEY_SEND_BACK_DONE_KIND,
+    title: `ช่างแจ้งว่าแก้แล้ว · ${doc}`,
+    body: `${who} แก้ตามที่หัวหน้าส่งกลับ${asked}${said} — ตรวจแล้วเคาะจุดและแพ็คเกจต่อได้`,
+    dedupeKey: `survey-send-back-done:${request.id}:${doneId || String(sentBack?.at || '').slice(0, 19)}`,
+    href: surveyFieldDoneHref(request.id),
+  };
+}
+
+export function notifySurveySendBackDone(supabase, { request, actor, sentBack, note, doneId } = {}) {
+  const deliver = async () => {
+    const directory = await loadUserDirectory(supabase);
+    const notice = surveySendBackDoneNotice({ request, users: [...directory.values()], actor, sentBack, note, doneId });
+    if (!notice) return;
+    await notifyUsers(supabase, { ...notice, actorName: actor?.name || null });
+  };
+  const safe = () => deliver().catch((e) => console.error('[survey-send-back-done] แจ้งหัวหน้าไม่สำเร็จ:', e?.message));
+  try {
+    after(safe);
+  } catch {
+    safe();
+  }
 }
 
 /**

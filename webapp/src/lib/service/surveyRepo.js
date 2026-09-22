@@ -14,7 +14,9 @@ import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { insertRowWithComposedCode } from '@/lib/entityCode';
 import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, zoneCodePrefix } from '@/lib/service/zoneCode';
 import { CUSTOMER_NAME_SELECT, customerNameIn } from '@/lib/master/customerName';
-import { surveyRecallRecord } from '@/lib/service/survey';
+import {
+  SEND_BACK_DONE_KIND, SEND_BACK_KIND, surveyRecallRecord, surveySendBackState,
+} from '@/lib/service/survey';
 import { zoneNameKey } from '@/lib/service/surveyRequest';
 
 /* ไซต์ที่ใบอ้าง ต้องมีจริง **และเป็นของลูกค้ารายเดียวกับดีล**
@@ -237,6 +239,24 @@ export async function loadZoneSurveyLocks(supabase, zoneIds = []) {
  *
  * ⚠️ ทุกชิ้นเป็นของ "ประกอบ" — ล้มชิ้นไหนก็ไม่ล้มใบ ⇒ ยิงขนานกันได้ และต้องไม่ throw
  */
+/* แถวเธรด "ส่งกลับให้ช่างแก้" / "ช่างแจ้งว่าแก้แล้ว" ล่าสุดของใบ — ใบหนึ่งวนได้หลายรอบ
+   ⚠️ เพดาน 20 แถวพอเสมอ: ตัวตัดสินต้องการแค่แถวล่าสุดของแต่ละชนิด และใบที่ส่งกลับเกินสิบรอบ
+      ก็ยังมีแถวล่าสุดของทั้งสองชนิดอยู่ในยี่สิบแถวบนสุด (สองชนิดสลับกันเป็นคู่) */
+function loadSendBackRows(supabase, requestId) {
+  return supabase.from('entity_updates')
+    .select('id, kind, body, meta, "authorId", "authorName", "createdAt"')
+    .eq('entityType', 'dept_request').eq('entityId', String(requestId))
+    .in('kind', [SEND_BACK_KIND, SEND_BACK_DONE_KIND])
+    .order('createdAt', { ascending: false }).limit(20);
+}
+
+/** สภาพการส่งกลับของใบ สำหรับ route — อ่านไม่สำเร็จโยน error (ด่านเขียนต้อง fail-closed) */
+export async function loadSurveySendBackState(supabase, requestId) {
+  const { data, error } = await loadSendBackRows(supabase, requestId);
+  if (error) throw error;
+  return surveySendBackState(data || []);
+}
+
 export async function loadSurveySheetContext(supabase, request, zones = []) {
   const unknown = {};
   const rows = Array.isArray(zones) ? zones : [];
@@ -253,7 +273,7 @@ export async function loadSurveySheetContext(supabase, request, zones = []) {
         `TypeError: fetch failed` โดยไม่มีอะไรบอก (ดู lib/supabaseInChunks.js) */
   const zoneIds = [...new Set(rows.map((r) => r.zoneId).filter(Boolean))];
 
-  const [siteRes, zoneRes, customerRes, recallRes] = await Promise.all([
+  const [siteRes, zoneRes, customerRes, recallRes, sendBackRes] = await Promise.all([
     siteId
       ? supabase.from('service_sites')
         .select('id, code, name, address, "contactName", "contactPhone"')
@@ -279,12 +299,15 @@ export async function loadSurveySheetContext(supabase, request, zones = []) {
         .eq('entityType', 'dept_request').eq('entityId', String(request.id)).eq('kind', 'recall')
         .order('createdAt', { ascending: false }).limit(1)
       : Promise.resolve({ data: [], error: null }),
+    /* การส่งกลับให้ช่างแก้ + การแจ้งว่าแก้แล้ว — ตัวตัดสินต้องการแค่แถวล่าสุดของแต่ละชนิด */
+    request?.id ? loadSendBackRows(supabase, request.id) : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (siteRes.error) note('site', siteRes.error);
   if (zoneRes.error) note('zoneCodes', zoneRes.error);
   if (customerRes.error) note('customer', customerRes.error);
   if (recallRes.error) note('recall', recallRes.error);
+  if (sendBackRes.error) note('sendBack', sendBackRes.error);
 
   const codeById = new Map((zoneRes.data || []).map((z) => [z.id, z.code]));
   for (const row of rows) {
@@ -302,6 +325,8 @@ export async function loadSurveySheetContext(supabase, request, zones = []) {
       id: customer.id, name: customerNameIn(customer, 'th') || null, arCode: customer.arCode || null,
     }),
     recall: recallRes.error ? null : surveyRecallRecord((recallRes.data || [])[0] || null),
+    // อ่านไม่สำเร็จ = null (ไม่ใช่ "ไม่เคยส่งกลับ") · `unknown.sendBack` บอกจอแทน
+    sendBack: sendBackRes.error ? null : surveySendBackState(sendBackRes.data || []),
     unknown,
   };
 }

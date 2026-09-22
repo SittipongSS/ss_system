@@ -10,7 +10,7 @@
 //   ไม่มีปุ่ม · ของหัวหน้า (เคาะแพ็คเกจ · ส่งผล) ไม่อยู่ที่นี่ — อยู่การ์ดจัดการผลประเมิน
 // ⚠️ **ติดขอบล่างเหนือแถบเมนูมือถือ** (`--mobile-nav-h` = 0 บนจอใหญ่) — ช่างเลื่อนไล่
 //   วัดทีละพื้นที่ ปุ่มส่งงานต้องอยู่ใต้นิ้วตลอด ไม่ใช่ท้ายหน้าที่ต้องเลื่อนหา
-import { CheckCircle2, Play, Send } from "lucide-react";
+import { CheckCheck, CheckCircle2, Play, Send } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { isClosedVisit } from "@/lib/service/visitStatus";
 import styles from "./SurveyFieldBar.module.css";
@@ -21,8 +21,10 @@ const hhmm = (value) => String(value || "").slice(0, 5);
  * @param visit     นัดของใบ (ต้องมี · ไม่มี = ไม่วาด)
  * @param progress  `view.progress` — `{ done, total, cut }`
  * @param starting  กำลังยิงเริ่มงานอยู่
+ * @param sendBack  `surveySendBackState` จาก server — หัวหน้าส่งกลับให้แก้ค้างอยู่ไหม (มติ 2026-09-22)
+ * @param onReportFixed  เปิดโมดัล "แจ้งหัวหน้าว่าแก้แล้ว"
  */
-export default function SurveyFieldBar({ visit, progress, starting = false, onStart, onSubmit }) {
+export default function SurveyFieldBar({ visit, progress, starting = false, sendBack = null, onStart, onSubmit, onReportFixed }) {
   if (!visit) return null;
   const status = visit.status;
 
@@ -31,7 +33,22 @@ export default function SurveyFieldBar({ visit, progress, starting = false, onSt
   let sub;
   let action = null;
 
-  if (isClosedVisit(visit)) {
+  const askedFix = sendBack?.pending === true;
+  const askedNote = sendBack?.sentBack?.note || null;
+
+  if (askedFix && isClosedVisit(visit) && status !== "unable") {
+    /* ⭐ **หัวหน้าส่งกลับให้แก้ = งานของช่างกลับมาอีกรอบ** (มติผู้ใช้ 2026-09-22) — แถบกลับมามีปุ่ม
+       และติดขอบล่างอีกครั้ง (โทน todo) · 🐞 เดิมแก้เสร็จแล้วไม่มีทางบอก หัวหน้าต้องคอยเปิดดูเอง
+       ⚠️ นัดไม่ถูกเปิดใหม่ — การส่งกลับไม่ใช่รอบวัดใหม่ (ดู `surveySendBackError`) */
+    tone = "todo";
+    head = "หัวหน้าให้กลับไปแก้";
+    sub = askedNote || "แก้ตามที่หัวหน้าแจ้งให้ครบ แล้วกดแจ้งหัวหน้า";
+    action = (
+      <Button tone="primary" icon={<CheckCheck size={16} aria-hidden="true" />} onClick={onReportFixed}>
+        แจ้งหัวหน้าว่าแก้แล้ว
+      </Button>
+    );
+  } else if (isClosedVisit(visit)) {
     tone = status === "unable" ? "warn" : "ok";
     head = status === "unable" ? "ปิดว่าไปแล้วเข้าไม่ได้" : "ส่งงานแล้ว";
     sub = status === "unable"
@@ -42,9 +59,12 @@ export default function SurveyFieldBar({ visit, progress, starting = false, onSt
       : `${hhmm(visit.actualEndTime) ? `เมื่อ ${hhmm(visit.actualEndTime)} น. · ` : ""}ยังแก้ผลวัดได้จนกว่าจะส่งผลให้ฝ่ายขาย`;
   } else if (status === "in_progress") {
     head = progress?.total ? `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่` : "ยังไม่มีพื้นที่ให้วัด";
-    sub = hhmm(visit.actualStartTime)
-      ? `เริ่มงาน ${hhmm(visit.actualStartTime)} น. · ครบแล้วกดส่งงาน`
-      : "ครบแล้วกดส่งงาน";
+    /* หัวหน้าส่งกลับระหว่างที่นัดยังเปิด — ส่งงานทีเดียวจบ (server ปิดเรื่องที่ค้างให้เอง) */
+    sub = askedFix
+      ? `หัวหน้าให้แก้: ${askedNote || "ดูข้อที่ยังขาดในแต่ละพื้นที่"} · แก้ครบแล้วกดส่งงาน`
+      : hhmm(visit.actualStartTime)
+        ? `เริ่มงาน ${hhmm(visit.actualStartTime)} น. · ครบแล้วกดส่งงาน`
+        : "ครบแล้วกดส่งงาน";
     action = (
       <Button tone="primary" icon={<Send size={16} aria-hidden="true" />} onClick={onSubmit}>
         ส่งงาน

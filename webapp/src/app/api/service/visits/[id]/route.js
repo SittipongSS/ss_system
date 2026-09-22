@@ -11,8 +11,10 @@ import {
 } from '@/lib/service/visitStatus';
 import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
-import { surveyEditLockError, surveyFieldProgress, surveyFieldSubmitError } from '@/lib/service/survey';
-import { loadSurveyFieldState } from '@/lib/service/surveyRepo';
+import {
+  SEND_BACK_DONE_KIND, surveyEditLockError, surveyFieldProgress, surveyFieldSubmitError, surveySendBackDoneBody,
+} from '@/lib/service/survey';
+import { loadSurveyFieldState, loadSurveySendBackState } from '@/lib/service/surveyRepo';
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
@@ -484,6 +486,24 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         progress: surveyFieldProgress(surveyField.zones, surveyField.filesByZone),
         cut,
       });
+      /* ⭐ **ส่งงานระหว่างที่หัวหน้าส่งกลับค้างอยู่ = แก้แล้วในตัว** (มติ 2026-09-22) — ด่านส่งงาน
+         เพิ่งยืนยันว่าของฝั่งช่างครบ และหัวหน้าได้กระดิ่ง "ส่งงานแล้ว" อยู่แล้ว ⇒ ปิดเรื่องค้างให้เงียบ ๆ
+         (kind quiet) ไม่งั้นแถบของช่างขึ้นปุ่ม "แจ้งหัวหน้าว่าแก้แล้ว" ซ้ำ = หัวหน้าได้สองเด้งเรื่องเดียว
+         ⚠️ อ่าน/เขียนพลาดไม่ตีกลับการส่งงาน — นัดปิดไปแล้ว ช่างยังกดแจ้งเองได้จากแถบ */
+      try {
+        const sendBack = await loadSurveySendBackState(supabase, before.requestId);
+        if (sendBack.pending) {
+          const { error: doneError } = await appendUpdate(supabase, {
+            entityType: 'dept_request', entityId: before.requestId, kind: SEND_BACK_DONE_KIND,
+            body: surveySendBackDoneBody('', { auto: true }),
+            meta: { auto: 'submit', sendBackId: sendBack.sentBack?.id || null },
+            user: { name: user?.name || null, department: user?.department || null },
+          });
+          if (doneError) console.error('[service-visits] ปิดเรื่องส่งกลับไม่สำเร็จ:', doneError);
+        }
+      } catch (e) {
+        console.error('[service-visits] อ่านเรื่องส่งกลับไม่สำเร็จ:', e?.message);
+      }
     }
     /* ⭐ ปล่อยเข้าคิว/ข้ามด่านต้องอยู่ในเธรด — "ทำไมนัดนี้ขึ้นตารางทั้งที่ยังไม่จ่าย"
        เป็นคำถามที่ต้องตอบได้ทีหลัง และคอลัมน์เดียวถูกเขียนทับทุกครั้งที่ปล่อย */
