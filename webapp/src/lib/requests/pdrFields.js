@@ -47,6 +47,20 @@ export const PDR_CUSTOMER_KINDS = [
   { value: 'existing', label: 'ลูกค้าเก่า' },
 ];
 
+/* ⭐ 1.8 ไทย / ต่างชาติ (มติผู้ใช้ 2026-09-23: *"อยากให้เพิ่ม ลูกค้า ไทย ต่างชาติ ใน 1.8"* · เลือก "เติมจากทะเบียนลูกค้า")
+   — **ไม่มีคอลัมน์บนใบ** อ่านสดจากธง `customers.isForeign` (mig 0319 · ช่อง "ลูกค้าต่างประเทศ" ในทะเบียน)
+   ⇒ ไม่ต้องกรอกซ้ำ ไม่มีทางขัดกับทะเบียน · ใบที่ยังไม่รู้ลูกค้า = ไม่แสดง */
+export const PDR_CUSTOMER_ORIGINS = [
+  { value: 'thai', label: 'ลูกค้าไทย' },
+  { value: 'foreign', label: 'ลูกค้าต่างชาติ' },
+];
+
+/** ไทย/ต่างชาติ ของลูกค้า — จากธงทะเบียน · ไม่มีแถวลูกค้า = null */
+export function pdrCustomerOrigin(customer) {
+  if (!customer) return null;
+  return customer.isForeign === true ? 'foreign' : 'thai';
+}
+
 // 2.8 รูปแบบบรรจุภัณฑ์ — เลือกได้หลายอย่าง
 export const PDR_PACKAGING_FORMS = [
   { value: 'bottle', label: 'ขวด' },
@@ -208,6 +222,8 @@ export const PDR_SECTIONS = [
       {
         key: 'customerKind', no: '1.8', column: 'pdrCustomerKind', max: 40, label: 'ประเภทลูกค้า',
         type: 'select', options: PDR_CUSTOMER_KINDS,
+        // ⭐ ต่อท้ายด้วยไทย/ต่างชาติจากทะเบียนลูกค้า (`context.customerOrigin`) — "ลูกค้าเก่า · ลูกค้าต่างชาติ"
+        withContext: { key: 'customerOrigin', options: PDR_CUSTOMER_ORIGINS, from: 'เติมจากทะเบียนลูกค้า' },
       },
       // ⚠️ **ไม่ derive จากดีล** — ถามมูลค่าทั้งโครงการ ไม่ใช่ค่าออกแบบกลิ่นในใบนี้
       // (ลูกค้าอาจจ่ายค่าออกแบบเก้าหมื่น แต่โครงการรวมทั้งปีเป็นล้าน — ผู้ใช้ทักเอง)
@@ -539,6 +555,13 @@ export function pdrFieldText(field, request = {}, context = {}) {
     return list.map((code) => categoryLabel(code, registry)).join(' · ');
   }
 
+  // ⭐ ช่องเลือกที่ต่อท้ายด้วยค่าจากทะเบียน (1.8 ใหม่/เก่า · ไทย/ต่างชาติ) — ค่าจากทะเบียนขึ้นได้แม้ยังไม่ได้เลือกช่องแรก
+  if (field.type === 'select' && field.withContext) {
+    const picked = raw == null || String(raw).trim() === '' ? null : (labelOf(field.options || [], raw) || String(raw));
+    const extra = context?.[field.withContext.key];
+    const extraText = extra ? (labelOf(field.withContext.options || [], extra) || String(extra)) : null;
+    return [picked, extraText].filter(Boolean).join(' · ') || null;
+  }
   if (raw == null || String(raw).trim() === '') return null;
   if (field.type === 'select') return labelOf(field.options || [], raw) || String(raw);
   if (field.type === 'money') return money(raw);
@@ -933,6 +956,8 @@ export function pdrContext({
     // ⭐ 1.7 — ที่อยู่หลัก (ออกบิล) จากทะเบียน · ตัวกลางถอยไปอ่านคอลัมน์สำเนาเดิมเองเมื่อ
     // ลูกค้ายังไม่มี `addresses` (ใบรายการลูกค้าส่งมาแต่สำเนา) ⇒ ฝั่งจอกับฝั่งเซิร์ฟเวอร์ได้คำเดียวกัน
     customerAddress: customer ? (addressTextIn(primaryBillingAddress(customerAddresses(customer)), 'th') || null) : null,
+    // ⭐ 1.8 ไทย/ต่างชาติ — จากธง `isForeign` ของทะเบียนลูกค้า (ผู้เรียกต้อง select คอลัมน์นี้มาด้วย)
+    customerOrigin: pdrCustomerOrigin(customer),
     briefs,
     categories,
   };

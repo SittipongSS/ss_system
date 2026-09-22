@@ -533,7 +533,8 @@ export async function findRequest(supabase, id) {
          ⚠️ ต้องครบทั้งลิสต์ใหม่และคอลัมน์สำเนาเดิม — `customerAddresses` ถอยไปอ่านสำเนา
          เมื่อลูกค้ายังไม่มี `addresses` · ขาดตัวไหน = ลูกค้ากลุ่มนั้นได้ 1.7 ว่างเงียบ ๆ
          ⚠️ ใช้ประกอบข้อความใน `pdrContext` เท่านั้น — ไม่ส่งออกทาง `refCustomer` */
-      ? supabase.from('customers').select('id, name, "nameEn", "arCode", contacts, "contactPerson", "contactPhone", addresses, address, "shippingAddress", "branchCode"')
+      // ⭐ `isForeign` — PDR 1.8 ไทย/ต่างชาติ อ่านจากทะเบียน (มติผู้ใช้ 2026-09-23) · ขาดคอลัมน์นี้ = ทุกใบขึ้น "ลูกค้าไทย"
+      ? supabase.from('customers').select('id, name, "nameEn", "arCode", "isForeign", contacts, "contactPerson", "contactPhone", addresses, address, "shippingAddress", "branchCode"')
         .eq('id', withBriefs.customerId).maybeSingle().then((r) => r.data)
       : null,
     withBriefs.dealId
