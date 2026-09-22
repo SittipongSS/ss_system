@@ -23,7 +23,8 @@ const FILES = [
   'src/lib/service/visitBundle.js',
   'src/app/api/sales-planning/renewals/route.js',
   'src/app/api/service/plans/route.js',
-  'src/app/api/sales-planning/report/route.js',
+  // ตัวโหลดของรายงานยอดขายย้ายจาก api/sales-planning/report/route.js (2026-09-22) — ยามตามโค้ดไป
+  'src/lib/sales/salesReportData.js',
   'src/lib/sales/handoffQueueData.js',
   // รอบ review ของ P0 (2026-09-14)
   'src/app/api/nav/counts/route.js',
