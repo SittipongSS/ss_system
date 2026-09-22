@@ -19,6 +19,8 @@ const FILES = [
   'src/app/api/finance/payments/route.js',
   'src/lib/pm/productionJobsRepo.js',
   'src/app/api/service/visits/route.js',
+  // ก้อนภาระ/ด่านของตารางสัปดาห์ย้ายมาอยู่ที่นี่ (2026-09-22) — ยามต้องตามโค้ดไปด้วย
+  'src/lib/service/visitBundle.js',
   'src/app/api/sales-planning/renewals/route.js',
   'src/app/api/service/plans/route.js',
   'src/app/api/sales-planning/report/route.js',

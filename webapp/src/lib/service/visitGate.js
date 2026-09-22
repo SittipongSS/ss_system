@@ -29,6 +29,12 @@ import { historicalGateExempt } from '@/lib/sales/historicalOrders';
      ⚠️ **ต้องไม่ติ๊กผ่านเงียบ ๆ** — ด่านที่แกล้งผ่านคือด่านที่โกหกว่าตรวจแล้ว */
 export const GATE_STATES = ['ok', 'blocked', 'parked'];
 
+/* เจ้าของข้อที่ติด — ใครต้องไปแก้ (ค่าที่จอโชว์เป็นป้ายตรง ๆ)
+   ⭐ ประกาศที่เดียวเพราะรายการงานบน /service/schedule แยกร่างที่ติดด่านเป็น
+      "TS แก้ได้เอง" กับ "รอฝ่ายอื่น" จากค่านี้ (`gateNeedsOthers`) — ถ้าข้อไหนเขียนสตริงเอง
+      แล้วสะกดต่างไปตัวเดียว ร่างที่ TS แก้ได้จะไปจมในกลุ่มรอฝ่ายอื่นที่พับไว้ */
+export const GATE_OWNERS = Object.freeze({ SA: 'SA', FN: 'SA → FN', TS: 'TS' });
+
 /* ⭐ **ปลดด่าน ①② แล้ว 2026-08-31 (PR-C)** — ค่าคงที่ `CONTRACT_PHASE_READY` ถูกถอดทิ้ง
    ทั้งสองข้อตรวจจากข้อมูลจริงแล้ว ไม่มีสถานะ `parked` เหลืออยู่ในสองข้อนี้อีก
 
@@ -83,7 +89,7 @@ export function evaluateVisitGate(visit, {
 
     if (!live.length) {
       return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: 'SA',
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.SA,
         reason: zoneTerms.length
           ? 'รอบขายของโซนนี้ไม่มีผล ณ วันนัด — ตรวจใบสั่งขายและช่วงวันของรอบ'
           : 'โซนนี้ยังไม่ถูกจัดสรรจากใบสั่งขาย — ฝ่ายขายต้องผูกงานเข้าโซนก่อน',
@@ -101,7 +107,7 @@ export function evaluateVisitGate(visit, {
     const linked = live.filter((t) => contractInForce(contractOf(t)));
     if (!linked.length) {
       return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: 'SA',
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.SA,
         reason: 'ใบสั่งขายที่ครอบโซนนี้ยังไม่ผูกสัญญาที่มีผล — ผูกที่หน้าใบสั่งขาย',
       };
     }
@@ -123,7 +129,7 @@ export function evaluateVisitGate(visit, {
     if (!covered.length) {
       const notYet = spans.includes('before');
       return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: 'SA',
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.SA,
         reason: notYet
           ? 'สัญญาที่ครอบโซนนี้ยังไม่ถึงวันเริ่มมีผล ณ วันนัด — เลื่อนนัด หรือแก้วันเริ่มที่หน้าสัญญา'
           : 'สัญญาที่ครอบโซนนี้หมดอายุก่อนวันนัด — ต่อสัญญาก่อนจึงจะส่งเจ้าหน้าที่ไปได้',
@@ -145,7 +151,7 @@ export function evaluateVisitGate(visit, {
     });
     if (!paid.length) {
       return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: 'SA → FN',
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.FN,
         reason: moneyStopReason(covered, installmentsByOrderId, visitDate),
       };
     }
@@ -169,19 +175,19 @@ export function evaluateVisitGate(visit, {
      สัญญาแล้วไม่เจออะไรผิด · เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย
      ⚠️ บล็อกเฉพาะตอน **ทุกโซนติด** — ติดบางโซนแปลว่านัดยังไปได้ (ตัดโซนนั้นบนใบส่งงาน) */
   const blockedBy = (owner) => (allBlocked ? blockedZones.find((z) => z.owner === owner) : null);
-  const moneyStop = exempt ? null : blockedBy('SA → FN');
+  const moneyStop = exempt ? null : blockedBy(GATE_OWNERS.FN);
   /* 🔴 **ไซต์ที่ไม่มีโซนเลย = ติด ไม่ใช่ผ่าน** — ไม่มีโซนแปลว่าไม่มีอะไรที่ได้รับอนุญาต
      ให้ไปทำ · เคยเขียนพลาดให้ตกไปเป็น "ผ่าน" เพราะ `blockedZones` ว่างพร้อมกัน
      ⇒ นัดที่ไม่มีบริบทอะไรเลยจะหลุดด่านทั้งหมด ซึ่งคือรูที่ด่านนี้เกิดมาเพื่ออุด */
   /* ⚠️ ลำดับสำคัญ: หาเหตุฝั่งสัญญาก่อน · ถ้าไม่มีโซนติดเลยแต่ก็ไม่มีโซนผ่าน แปลว่า
      **ไม่มีโซนอยู่เลย** ⇒ ติดที่ข้อสัญญา · ถ้ามีแต่โซนที่ติดเรื่องเงิน ข้อสัญญาต้อง `ok`
      (เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย) */
-  const contractStop = exempt ? null : (blockedBy('SA') || (allBlocked && !blockedZones.length ? {
+  const contractStop = exempt ? null : (blockedBy(GATE_OWNERS.SA) || (allBlocked && !blockedZones.length ? {
     reason: 'ไซต์นี้ยังไม่มีโซนที่ผูกกับใบสั่งขาย — ฝ่ายขายต้องจัดสรรงานลงโซนก่อน',
   } : null));
 
   items.push({
-    key: 'contract', state: contractStop ? 'blocked' : 'ok', owner: 'SA',
+    key: 'contract', state: contractStop ? 'blocked' : 'ok', owner: GATE_OWNERS.SA,
     label: 'ไซต์ผูกสัญญาที่ยังมีผล ณ วันนัด',
     detail: exempt
       ? 'งานสำรวจ/ถอนเครื่องไม่ต้องมีสัญญา (มติผู้ใช้ 2026-08-31)'
@@ -192,7 +198,7 @@ export function evaluateVisitGate(visit, {
 
   const exemptZones = okZones.filter((z) => z.paymentExempt).length;
   items.push({
-    key: 'payment', state: moneyStop ? 'blocked' : 'ok', owner: 'SA → FN',
+    key: 'payment', state: moneyStop ? 'blocked' : 'ok', owner: GATE_OWNERS.FN,
     label: 'ไม่มีงวดเลยกำหนดที่บัญชียังไม่รับรอง',
     detail: exempt
       ? 'งานสำรวจ/ถอนเครื่องไม่ต้องผ่านด่านเงิน (มติผู้ใช้ 2026-08-31)'
@@ -207,9 +213,9 @@ export function evaluateVisitGate(visit, {
   // ── 3. มีเจ้าหน้าที่ผู้รับผิดชอบ ───────────────────────────────────────────
   const hasAssignee = !!String(visit?.assigneeId ?? '').trim();
   items.push({
-    key: 'assignee', state: hasAssignee ? 'ok' : 'blocked', owner: 'TS',
+    key: 'assignee', state: hasAssignee ? 'ok' : 'blocked', owner: GATE_OWNERS.TS,
     label: 'มีเจ้าหน้าที่ผู้รับผิดชอบ',
-    detail: hasAssignee ? (visit.assigneeName || null) : 'ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยเข้าคิว',
+    detail: hasAssignee ? (visit.assigneeName || null) : 'ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยขึ้นตาราง',
     fix: hasAssignee ? null : 'assignee',
   });
 
@@ -218,7 +224,7 @@ export function evaluateVisitGate(visit, {
     date: visit?.scheduledDate, startTime: visit?.startTime, endTime: visit?.endTime,
   }) : null;
   items.push({
-    key: 'access', state: conflict ? 'blocked' : 'ok', owner: 'TS',
+    key: 'access', state: conflict ? 'blocked' : 'ok', owner: GATE_OWNERS.TS,
     label: 'วันนัดอยู่ในช่วงที่ไซต์ยอมให้เข้า',
     detail: conflict ? conflict.message : null,
     fix: conflict ? 'schedule' : null,
@@ -231,26 +237,38 @@ export function evaluateVisitGate(visit, {
    ⚠️ ตั้งแต่ PR-C ไม่มีข้อไหนเป็น `parked` แล้ว แต่คงตรรกะไว้เผื่อข้อใหม่ในอนาคต */
 export const gatePassed = (items = []) => !items.some((i) => i.state === 'blocked');
 
-/* รายการเหตุที่ยังไม่ผ่าน — ใช้ตรงจุดที่บริบท "ยังเข้าคิวไม่ได้" ชัดอยู่แล้ว
-   (แถวในคิวรอจัด) จะได้ไม่อ่านเป็น "ยังเข้าคิวไม่ได้ — ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการ…"
+/* รายการเหตุที่ยังไม่ผ่าน — ใช้ตรงจุดที่บริบท "ยังขึ้นตารางไม่ได้" ชัดอยู่แล้ว
+   (แถวในกลุ่มรอจัด) จะได้ไม่อ่านเป็น "ยังขึ้นตารางไม่ได้ — ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการ…"
    ที่มีขีดคั่นซ้อนกันสามชั้น */
 export const gateReasons = (items = []) =>
   items.filter((i) => i.state === 'blocked').map((i) => i.detail || i.label);
 
 /* เหตุพร้อม **เจ้าของ** — คิวรอจัดต้องบอกว่าใครต้องไปแก้ ไม่ใช่แค่ว่าติดอะไร
    ⭐ คนจัดคิวไม่ใช่คนแก้เกือบทุกข้อ (สัญญา=SA · เงิน=SA→FN) ⇒ ไม่บอกเจ้าของ
-      เท่ากับโยนงานให้คนที่ทำอะไรไม่ได้ แล้วใบจะค้างอยู่ในคิวเงียบ ๆ */
+      เท่ากับโยนงานให้คนที่ทำอะไรไม่ได้ แล้วใบจะค้างอยู่ในคิวเงียบ ๆ
+   ⭐ `fix` ติดไปด้วย ('assignee' | 'schedule' | null) — ข้อที่ TS แก้เองได้ แถวต้องมีปุ่มพาไป
+      ช่องนั้นตรง ๆ ("เลือกเจ้าหน้าที่" · "แก้วัน/เวลา") ไม่ใช่ให้คนเปิดโมดัลแล้วหาเอง */
 export const gateBlockedItems = (items = []) =>
   items.filter((i) => i.state === 'blocked').map((i) => ({
-    key: i.key, owner: i.owner || null, reason: i.detail || i.label,
+    key: i.key, owner: i.owner || null, reason: i.detail || i.label, fix: i.fix || null,
   }));
 
+/* ติดข้อที่ **ฝ่ายอื่น** ต้องแก้อยู่ไหม — แยกกลุ่ม "ติดด่าน · ฝ่าย TS แก้ได้เอง" ออกจาก
+   "ติดด่าน · รอฝ่ายอื่น" บนรายการงาน
+   ⚠️ เทียบกับ `GATE_OWNERS.TS` เท่านั้น — ข้อที่ไม่มีเจ้าของ (owner ว่าง) นับเป็นของฝ่ายอื่น
+      เพราะ TS ไม่รู้จะแก้อะไร · เดาว่า TS แก้ได้ = ใบค้างในกลุ่มที่ TS เปิดมาแล้วทำอะไรไม่ได้
+   ⚠️ ผ่านครบ (ไม่มีข้อติด) = false — ผู้เรียกต้องถาม `gatePassed` ก่อน ไม่ใช่อ่าน false เป็น "TS แก้ได้" */
+export const gateNeedsOthers = (items = []) =>
+  items.some((i) => i.state === 'blocked' && i.owner !== GATE_OWNERS.TS);
+
 /* ข้อความบอกเหตุสำหรับปุ่มที่กดไม่ได้ (GatedAction) — ต้องบอก**ทุกข้อที่ขาดในครั้งเดียว**
-   ไม่ใช่ทีละข้อให้แก้แล้วเจอข้อถัดไป (กฎฟอร์มของ repo) */
+   ไม่ใช่ทีละข้อให้แก้แล้วเจอข้อถัดไป (กฎฟอร์มของ repo)
+   ⚠️ คำว่า "ขึ้นตาราง" ไม่ใช่ "เข้าคิว" (มติผู้ใช้ 2026-09-22) — "คิว" บนหน้าจัดคิวคือรายการงาน
+      ทั้งก้อน ร่างก็อยู่ในรายการนั้นแล้ว ⇒ "ยังเข้าคิวไม่ได้" อ่านขัดกับสิ่งที่ตาเห็น */
 export function gateBlocker(items = []) {
   const reasons = gateReasons(items);
   if (!reasons.length) return '';
-  return `ยังเข้าคิวไม่ได้ — ${reasons.join(' · ')}`;
+  return `ยังขึ้นตารางไม่ได้ — ${reasons.join(' · ')}`;
 }
 
 export const gateSummary = (items = []) => ({

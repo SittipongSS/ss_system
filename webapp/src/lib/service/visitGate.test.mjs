@@ -8,8 +8,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GATE_EXEMPT_KINDS,
+  GATE_OWNERS,
   evaluateVisitGate,
+  gateBlockedItems,
   gateBlocker,
+  gateNeedsOthers,
   gatePassed,
   gateReasons,
   gateSummary,
@@ -156,8 +159,8 @@ test('นับผลรวมได้ครบ 4 ข้อเสมอ — จ
 test('รายการเหตุแยกจากประโยคเต็ม — จอที่บอกบริบทอยู่แล้วไม่ต้องอ่านขีดซ้อนสามชั้น', () => {
   const items = evaluateVisitGate({ ...ok, assigneeId: '' }, full);
   // บริบทสัญญา/เงินครบแล้ว ⇒ เหลือเหตุเดียวคือเรื่องคน
-  assert.deepEqual(gateReasons(items), ['ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยเข้าคิว']);
-  assert.equal(gateBlocker(items), 'ยังเข้าคิวไม่ได้ — ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยเข้าคิว');
+  assert.deepEqual(gateReasons(items), ['ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยขึ้นตาราง']);
+  assert.equal(gateBlocker(items), 'ยังขึ้นตารางไม่ได้ — ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยขึ้นตาราง');
   // นัดที่ผ่านครบ = ไม่มีเหตุเลย (บริบทครบต้องส่งมาด้วย ไม่งั้นติดที่ข้อสัญญา)
   assert.deepEqual(gateReasons(evaluateVisitGate(ok, full)), []);
 });
@@ -309,4 +312,60 @@ test('งวดรอเก็บของใบย้อนหลัง (RPC �
   const items = evaluateVisitGate(ok, historicalCtx(historicalOrder(), [{ ...reported, status: 'confirmed' }]));
   assert.equal(paymentOf(items).state, 'ok');
   assert.equal(paymentOf(items).detail, null, 'ผ่านด้วยเงินที่บัญชีรับรองจริง ไม่ใช่ด้วยการยกเว้น');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   รายการงานบน /service/schedule (มติผู้ใช้ 2026-09-22)
+   ⭐ ร่างที่ติดด่านแยกเป็น "ฝ่าย TS แก้ได้เอง" กับ "รอฝ่ายอื่น" — แถวต้องรู้ว่าใครแก้
+      และข้อที่ TS แก้เองต้องมีทางพาไปช่องนั้นตรง ๆ (`fix`)
+   ═══════════════════════════════════════════════════════════════════════ */
+test('เจ้าของข้อประกาศที่เดียว — ค่าที่จอโชว์ไม่เปลี่ยน', () => {
+  assert.deepEqual({ ...GATE_OWNERS }, { SA: 'SA', FN: 'SA → FN', TS: 'TS' });
+  assert.ok(Object.isFrozen(GATE_OWNERS));
+  const owners = Object.fromEntries(evaluateVisitGate(ok, full).map((i) => [i.key, i.owner]));
+  assert.deepEqual(owners, { contract: GATE_OWNERS.SA, payment: GATE_OWNERS.FN, assignee: GATE_OWNERS.TS, access: GATE_OWNERS.TS });
+});
+
+test('⭐ gateBlockedItems พา `fix` ไปด้วย — ข้อของ TS บอกช่องที่ต้องแก้ · ข้อของฝ่ายอื่นเป็น null', () => {
+  const items = evaluateVisitGate({ ...ok, assigneeId: '', scheduledDate: '2026-11-14' }, full);
+  const byKey = Object.fromEntries(gateBlockedItems(items).map((b) => [b.key, b]));
+  assert.deepEqual(Object.keys(byKey).sort(), ['access', 'assignee', 'payment']);
+  assert.equal(byKey.assignee.fix, 'assignee');
+  assert.equal(byKey.assignee.owner, GATE_OWNERS.TS);
+  assert.match(byKey.assignee.reason, /ปล่อยขึ้นตาราง/);
+  assert.equal(byKey.access.fix, 'schedule');
+  assert.equal(byKey.payment.fix, null);
+  assert.equal(byKey.payment.owner, GATE_OWNERS.FN);
+  assert.deepEqual(gateBlockedItems(evaluateVisitGate(ok, full)), [], 'ผ่านครบ = ไม่มีข้อติด');
+});
+
+test('⭐ gateNeedsOthers — ติดเฉพาะข้อของ TS = false · มีข้อของ SA หรือเงินปน = true', () => {
+  // TS ล้วน: ขาดคน + วันเสาร์
+  const tsOnly = evaluateVisitGate({ ...ok, assigneeId: '', scheduledDate: '2026-08-29' }, full);
+  assert.equal(gatePassed(tsOnly), false);
+  assert.equal(gateNeedsOthers(tsOnly), false);
+  // SA ล้วน: ใบยังไม่ผูกสัญญา
+  const saOnly = evaluateVisitGate(ok, { ...full, ordersById: { SO1: { id: 'SO1', status: 'approved' } } });
+  assert.deepEqual(gateBlockedItems(saOnly).map((b) => b.owner), [GATE_OWNERS.SA]);
+  assert.equal(gateNeedsOthers(saOnly), true);
+  // เงินล้วน: วันนัดเลยช่วงที่จ่ายถึง (2026-11-10 = วันอังคาร ข้อช่วงเวลาผ่าน)
+  const fnOnly = evaluateVisitGate({ ...ok, scheduledDate: '2026-11-10' }, full);
+  assert.deepEqual(gateBlockedItems(fnOnly).map((b) => b.owner), [GATE_OWNERS.FN]);
+  assert.equal(gateNeedsOthers(fnOnly), true);
+  // ปน: เงิน + ขาดคน ⇒ ยังต้องรอฝ่ายอื่น แม้ TS จะแก้ข้อของตัวเองได้
+  const mixed = evaluateVisitGate({ ...ok, assigneeId: '', scheduledDate: '2026-11-10' }, full);
+  assert.equal(gateNeedsOthers(mixed), true);
+  // ผ่านครบ = false (ผู้เรียกต้องถาม gatePassed ก่อน)
+  assert.equal(gateNeedsOthers(evaluateVisitGate(ok, full)), false);
+  // ข้อที่ไม่มีเจ้าของ = ไม่ใช่ของ TS
+  assert.equal(gateNeedsOthers([{ key: 'x', state: 'blocked', owner: null }]), true);
+  assert.equal(gateNeedsOthers(), false);
+});
+
+test('งานสำรวจ/ถอนเครื่องที่ขาดคน = TS แก้เองได้ (ข้ามด่านสัญญา/เงินจริง ไม่ไปจมกลุ่มรอฝ่ายอื่น)', () => {
+  for (const kind of GATE_EXEMPT_KINDS) {
+    const items = evaluateVisitGate({ ...ok, kind, assigneeId: '' }, { site });
+    assert.equal(gatePassed(items), false, kind);
+    assert.equal(gateNeedsOthers(items), false, kind);
+  }
 });

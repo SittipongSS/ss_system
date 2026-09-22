@@ -19,24 +19,30 @@
   .weekLabel { flex: 1 1 auto; }
 }
 
-/* ⭐ แถวขอบเขต สัปดาห์/ทีม (ListPanel 2026-09-15) เป็น `scope-row` ไม่ใช่ `.toolbar` —
-   ด่าน LP3 ห้าม `.toolbar` นอก ListPanel toolbar ⇒ แถวนี้ไม่ได้กฎ `--ctl-h` ของแถบกลางมาด้วย
-   🐞 ย้ายออกจาก `Workspace toolbar` แล้ว ‹ › หดเหลือ 28×28 · "สัปดาห์นี้" 30px · ตัวกรองทีม 38px
-      ข้างตัวสลับมุมมอง 40px ของแผงตาราง = กลับไปเป็นแถวที่ตัวควบคุมสูงไม่เท่ากัน (บั๊กที่หัวไฟล์นี้)
-   ⇒ ทวนกฎสามบรรทัดของ `.toolbar` (globals.css) เฉพาะแถวนี้ · ความสูงมาจากโทเคนเท่านั้น ห้ามเลขดิบ */
-.weekNav :global(.btn) { height: var(--ctl-h); }
-.weekNav :global(.btn-icon) { width: var(--ctl-h); height: var(--ctl-h); }
-.weekNav :global(.segmented) { min-height: var(--ctl-h); }
+/* ⭐ ลูกศรสัปดาห์อยู่ในแถบเครื่องมือของแผงตาราง (มติ 2026-09-22: สัปดาห์คุมเฉพาะตาราง)
+   🔄 เดิมอยู่ใน `scope-row` ซึ่งไม่ได้กฎ `--ctl-h` ของ `.toolbar` จึงต้องทวนกฎความสูงเอง
+      ตอนนี้กลับเข้า `.toolbar` แล้ว (`.toolbar .btn` จับลูกหลานได้) ⇒ เหลือแค่จัดกลุ่มให้ติดกัน */
+.weekNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .weekNav { flex: 1 1 100%; }
+  /* หัวกลุ่มที่กดพับได้บนจอแตะ — เป้าต้องสูงเท่านิ้ว (มติ 2026-08-02 ข้อ 3) */
+  .groupToggle { min-height: var(--ctl-h-touch); }
+}
 
-/* ตัวกรองทีมบนจอแคบ — ปุ่มไม่หดจน "ทุกทีม" ขาดสองบรรทัด
+/* ตัวสลับหลายตัวเลือกบนที่แคบ (ทีม · กลุ่มงาน · ช่วงนัด) — ปุ่มไม่หดจนป้ายขาดสองบรรทัด
    🐞 รอบก่อนให้เลื่อนในกล่องตัวเอง ⇒ ที่ 320px "supervisor" โผล่แค่ "sup" ชิดขอบขวา
    ไม่มีอะไรบอกว่าเลื่อนได้ · ขึ้นบรรทัดใหม่แทน = เห็นครบทุกทีม
    (ที่ว่างพอก็ยังเป็นแถวเดียวเหมือนเดิม — ขึ้นบรรทัดเฉพาะตอนกล่องโดน max-width บีบ) */
-.teamFilter {
+.segWrap {
   max-width: 100%;
   flex-wrap: wrap;
 }
-.teamFilter > button { flex-shrink: 0; }
+.segWrap > button { flex-shrink: 0; }
 
 /* 🐞 `table-layout: auto` แบ่งที่ว่างตามความยาวเนื้อใน ⇒ วันที่มีชิปกินคอลัมน์ไป
    432px วันอื่นเหลือ 120px · fixed = เจ็ดวันกว้างเท่ากัน (คอลัมน์ชื่อตรึง 150px) */
@@ -229,56 +235,14 @@
    (เจอตอนรีเช็ค 30/08 — `survey` เพิ่งเข้า VISIT_KINDS ตอนเฟส 2) */
 .kind_survey { --kind: var(--green); --kind-soft: var(--green-soft); }
 
-/* ── คิวรอจัด (ร่างที่ยังไม่ผ่านด่าน) ──────────────────────────────────────
-   อยู่เหนือกริด **นอกตาราง** — ร่างที่วางปนกับนัดจริงคือร่างที่เจ้าหน้าที่ออกไปทำ
-   🔄 กรอบ + หัว h2 ของกล่องเดิม (`.queue` · `.queueTitle`) ถูกแทนด้วย ListPanel (มติผู้ใช้ 2026-09-15)
-   ⚠️ ของที่ซ้อนในเนื้อแผง = --panel-2 ตาม Visual rules */
-
-.queueList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.queueRow {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  line-height: var(--lh-thai);
-  cursor: pointer;
-  min-height: var(--ctl-h);
-}
-
-.queueRow:hover { border-color: var(--text-3); }
-
 /* 🐞 ตัวกดของหน้านี้ไม่มีวงโฟกัสเลย ⇒ ได้วงฟ้าบาง ๆ ของเบราว์เซอร์ */
 .techLink:focus-visible,
 .visitChip:focus-visible,
-.queueRow:focus-visible,
-.listRow:focus-visible {
+.listRow:focus-visible,
+.groupToggle:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: var(--space-0-5);
 }
-
-.queueReason {
-  grid-column: 1 / -1;
-  font-size: var(--fs-label);
-  color: var(--amber);
-}
-
-.queueList > li[data-ready="yes"] .queueReason { color: var(--green); }
 
 /* ── ภาระรายทีมเจ้าหน้าที่บริการ (mig 0310 · T-4) ────────────────────────────────────
    ทีมว่างต้องอ่านออกทันที — มันคือทีมที่รับงานเพิ่มได้
@@ -323,27 +287,17 @@
   font-variant-numeric: tabular-nums;
 }
 
-.queueGroup { margin-bottom: var(--space-3); }
-.queueGroup:last-child { margin-bottom: 0; }
-
-.queueGroupTitle {
-  margin: 0 0 var(--space-1);
-  font-size: var(--fs-label);
-  line-height: var(--lh-thai);
-  color: var(--green);
-}
-
-/* กลุ่มที่ติดด่านใช้โทนเตือน — คนละการกระทำกับกลุ่มที่กดปล่อยได้เลย */
-.queueGroupTitle[data-bucket="blocked"] { color: var(--amber); }
-
 .placeNote {
-  margin: 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   border-inline-start: 2px solid var(--accent);
   color: var(--text-2);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
+.placeNote > p { margin: 0; }
 
 /* จำนวนเจ้าหน้าที่ที่ไปด้วยบนชิปนัด — "+2" อ่านเร็วกว่ารายชื่อในช่องที่กว้าง 100px
    (ชิดขวาได้จาก margin อัตโนมัติของ .visitTime) */
@@ -445,3 +399,164 @@
   .listTime { min-width: 0; }
   .listWho { margin-inline-start: auto; white-space: normal; }
 }
+
+/* ── รายการงานคู่ตารางสัปดาห์ (มติผู้ใช้ 2026-09-22 · ทางเลือก B) ───────────────── */
+
+.scopeNote { color: var(--text-3); font-size: var(--fs-5); }
+
+/* ต้นทางของงาน — ลิงก์ไปคิวของหน้าอื่น + เลขเดียวกับป้ายเมนู (ไม่ก๊อปคิวมาไว้ที่นี่) */
+.upstream {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.upstreamLabel { color: var(--text-3); }
+.upCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-4-5);
+  margin-inline-start: var(--space-1);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.noticeActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ⭐ วางคู่กันเมื่อ **กล่อง** กว้างพอ ไม่ใช่เมื่อจอกว้างพอ — วัดด้วย @container
+   (เมนูข้างเป็นลิ้นชักซ้อนทับ แต่วันหนึ่งอาจตรึง · ซูมเบราว์เซอร์ก็เปลี่ยนความกว้างจริง)
+   เกณฑ์ 74rem (1184px) = คอลัมน์รายการ 19–24rem + ช่องไฟ + แผงตารางที่กริดยังอ่านได้ (~47.5rem ข้างใน)
+   🐞 รอบแรก 76rem — วัดจอ 1280 ตอนซ่อนสกอร์ลบาร์เลยผ่าน แต่เบราว์เซอร์จริงมีสกอร์ลบาร์ ~15px กล่องเหลือ
+      1209px ⇒ ถอยเป็นบน-ล่างบนโน้ตบุ๊ก 1280 ซึ่งเป็นจอหลักของฝ่าย (รีวิวก่อน merge จับได้)
+   ⇒ จอ 1280 ขึ้นไปได้คู่กัน · แท็บเล็ต/มือถือถอยเป็นบน-ล่าง */
+.layout { container: schedule / inline-size; min-width: 0; }
+.layoutGrid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4-5);
+  min-width: 0;
+}
+.boardAnchor { min-width: 0; scroll-margin-top: var(--scroll-anchor-top); }
+@container schedule (min-width: 74rem) {
+  .layoutGrid {
+    display: grid;
+    grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
+    align-items: start;
+  }
+  /* แผงตารางแคบลงเมื่ออยู่ข้างรายการ — ลดขั้นต่ำของกริดลงให้ 7 วันยังพอดีกล่อง
+     (ชิปบรรทัดบนต้องการ ~67px ต่อวัน · ดูเหตุผลที่ .visitChip) · (0,2,0) ชนะขั้นต่ำของ TableScroll */
+  .layoutGrid .board { min-width: 47.5rem; }
+  .layoutGrid .techCol { width: 7.5rem; }
+}
+/* โน้ตบุ๊ก 1280 (กล่อง ~1209px) — คอลัมน์รายการกว้างเต็ม 24rem แล้วช่องวันเหลือ ~93px เวลาบนชิป
+   ("13:00–16:00" ต้องการ ~82px) ตัดสองบรรทัด ⇒ ช่วงนี้บีบรายการเหลือ 20rem ให้ตารางได้ที่คืน */
+@container schedule (min-width: 74rem) and (max-width: 84rem) {
+  .layoutGrid { grid-template-columns: 20rem minmax(0, 1fr); }
+}
+
+.search { width: 100%; }
+.search:focus-within { width: 100%; }
+
+.queueGroups { display: flex; flex-direction: column; gap: var(--space-3); }
+.group { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+.groupToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.groupToggle > svg { flex: none; }
+.groupToggle:disabled { cursor: default; }
+.groupLabel { color: var(--text); }
+.group[data-tone="ok"] .groupToggle > strong,
+.group[data-tone="ok"] .groupLabel { color: var(--green); }
+.group[data-tone="warn"] .groupToggle > strong,
+.group[data-tone="warn"] .groupLabel { color: var(--amber); }
+.group[data-tone="quiet"] .groupToggle > strong,
+.group[data-tone="quiet"] .groupLabel { color: var(--text-2); }
+.groupTotal { margin-inline-start: auto; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.groupSub { flex-basis: 100%; color: var(--text-3); font-size: var(--fs-5); }
+.groupLink { flex-basis: 100%; font-size: var(--fs-5); }
+
+/* การ์ดเรียงเป็นคอลัมน์ตามที่ว่าง — ข้างตาราง (24rem) = 1 คอลัมน์ · บน-ล่างบนจอกลาง = 2–3 คอลัมน์
+   ⚠️ min() กันล้นที่จอ 320 (เนื้อ ~290px) */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
+  gap: var(--space-2);
+}
+
+.farLine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: var(--space-3) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* แถบบอกตำแหน่ง — ปลายทางของปุ่ม "ปฏิทิน" · รับโฟกัสด้วยคีย์บอร์ดได้ (tabIndex -1) */
+.strip { margin-bottom: var(--space-3); border-radius: var(--radius-md); }
+.strip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: var(--space-0-5); }
+.warnText { color: var(--amber); font-weight: var(--fw-semibold); }
+
+/* ร่างของสัปดาห์นี้ — บอกเป็นข้อความนอกกริด (ร่างห้ามขึ้นตาราง มติ 2026-08-28) */
+.draftsLine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* ⭐ ตำแหน่งที่กำลังดูบนกริด — ขีดเส้นใต้หัววันกับชื่อคน · **ไม่วาดอะไรในช่อง** สำหรับร่าง
+   นัดที่ขึ้นตารางแล้วได้วงรอบชิปของตัวเอง */
+.board th[data-focus="yes"] { box-shadow: inset 0 calc(-1 * var(--space-1)) 0 var(--accent-ink); }
+.visitChip[data-focus="yes"],
+.listRow[data-focus="yes"] { outline: 2px solid var(--accent-ink); outline-offset: var(--space-0-5); }
+.listDay[data-focus="yes"] { color: var(--accent-ink); }
+.farLine > svg,
+.draftsLine > svg { flex: none; margin-top: var(--space-1); }
+
+.cellLoadFocus { color: var(--text); font-weight: var(--fw-bold); }
+

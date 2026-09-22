@@ -3,7 +3,8 @@
 // กฎ AGENTS.md: ห้ามเขียนฟอร์มแก้แยกอีกชุด · ต่างกันได้แค่ "โหมด" ผ่าน props
 //   visit = null → โหมดสร้าง (ไม่มีช่องสถานะ/ผลการเข้า — นัดใหม่เริ่มที่ 'นัดไว้')
 //   visit = row  → โหมดแก้ (มีสถานะ + วันเวลาที่เข้าจริง + สรุปงาน)
-import { useEffect, useMemo, useState } from "react";
+//   focusField / staffLoadFor → โหมดของ "รายการงาน" บนจอจัดคิว (มติ 2026-09-22) ไม่ใช่ฟอร์มที่สอง
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -29,6 +30,7 @@ import {
   visitWarnings,
 } from "@/lib/service/rounds";
 import UpdateThread from "@/components/updates/UpdateThread";
+import CrewLoadPicker from "./CrewLoadPicker";
 import styles from "./ServiceSiteModal.module.css";
 
 const EMPTY = {
@@ -38,9 +40,45 @@ const EMPTY = {
   rescheduleReason: "", unableReason: "",
 };
 
+/* แถวนัด → ค่าของฟอร์ม · ตัวเดียวที่ทั้งโมดัลนี้ (ตอนเปิดแก้) และปุ่ม "ปล่อยขึ้นตาราง" ลัดบนรายการงาน
+   ใช้ประกอบ body ของ PATCH (`{ ...visitToForm(v), status: "scheduled" }`)
+   ⚠️ ห้ามให้จอแม่ก๊อปแมปปิ้งนี้ไปเขียนเอง — ช่องที่ขาดไปหนึ่งช่องใน PATCH คือค่าที่ถูกล้างเงียบ ๆ
+   และสองชุดที่ต่างกันจะทำให้ "ปล่อยจากรายการ" กับ "ปล่อยจากโมดัล" บันทึกคนละผล */
+export function visitToForm(visit) {
+  if (!visit) return { ...EMPTY };
+  return {
+    siteId: visit.siteId || "",
+    kind: visit.kind || "refill",
+    scheduledDate: visit.scheduledDate || "",
+    startTime: (visit.startTime || "").slice(0, 5),
+    endTime: (visit.endTime || "").slice(0, 5),
+    assigneeId: visit.assigneeId || "",
+    assigneeName: visit.assigneeName || "",
+    assistantIds: Array.isArray(visit.assistantIds) ? visit.assistantIds : [],
+    status: visit.status || "scheduled",
+    actualDate: visit.actualDate || "",
+    actualStartTime: (visit.actualStartTime || "").slice(0, 5),
+    actualEndTime: (visit.actualEndTime || "").slice(0, 5),
+    summary: visit.summary || "",
+    note: visit.note || "",
+    rescheduleReason: "",   // ไม่ค้างจากรอบก่อน — เหตุผลผูกกับการเลื่อนครั้งนี้เท่านั้น
+    unableReason: visit.unableReason || "",
+  };
+}
+
+/* ตัวที่รับโฟกัสได้ในกล่องของช่อง — ช่องเป็น component กลาง (SearchableSelect · DateInput)
+   ที่ไม่ส่ง ref ออกมา จึงหาจากกล่องที่ห่อแทน */
+const FOCUSABLE = 'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export default function ServiceVisitModal({
   gateContext = null,   // บริบทด่าน ①② (โซน · รอบขาย · ใบ · งวด · สัญญา) จากจอแม่
   open, visit = null, sites = [], technicians = [], defaults = null, onClose, onSave,
+  /* ช่องที่จะพาโฟกัสไปตอนเปิด: 'assignee' | 'scheduledDate' | null — ปุ่ม "เลือกเจ้าหน้าที่" /
+     "แก้วัน/เวลา" บนรายการงานเปิดโมดัลนี้เพื่อแก้ช่องเดียว ต้องไม่ให้คนไล่หาเองทั้งฟอร์ม */
+  focusField = null,
+  /* (dateIso) → { state: 'ok'|'unknown', people: [...] } | null — ภาระรายคนของวันนั้น (ไม่นับร่าง)
+     ส่งมา + มีวันที่นัด ⇒ ช่องผู้รับผิดชอบเป็น CrewLoadPicker · ไม่ส่ง/คืน null ⇒ ดรอปดาวน์เดิม */
+  staffLoadFor = null,
 }) {
   const editing = !!visit;
   const [form, setForm] = useState(EMPTY);
@@ -48,35 +86,50 @@ export default function ServiceVisitModal({
   const [saving, setSaving] = useState(false);
   const [overriding, setOverriding] = useState(false);   // เปิดโมดัลข้ามด่าน
   const [overrideReason, setOverrideReason] = useState("");
+  const [focusPending, setFocusPending] = useState(null);
   const role = useRole();
+  const assigneeLabelId = useId();
+  const assigneeRef = useRef(null);
+  const dateRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     setError("");
     if (visit) {
-      setForm({
-        siteId: visit.siteId || "",
-        kind: visit.kind || "refill",
-        scheduledDate: visit.scheduledDate || "",
-        startTime: (visit.startTime || "").slice(0, 5),
-        endTime: (visit.endTime || "").slice(0, 5),
-        assigneeId: visit.assigneeId || "",
-        assigneeName: visit.assigneeName || "",
-        assistantIds: Array.isArray(visit.assistantIds) ? visit.assistantIds : [],
-        status: visit.status || "scheduled",
-        actualDate: visit.actualDate || "",
-        actualStartTime: (visit.actualStartTime || "").slice(0, 5),
-        actualEndTime: (visit.actualEndTime || "").slice(0, 5),
-        summary: visit.summary || "",
-        note: visit.note || "",
-        rescheduleReason: "",   // ไม่ค้างจากรอบก่อน — เหตุผลผูกกับการเลื่อนครั้งนี้เท่านั้น
-        unableReason: visit.unableReason || "",
-      });
+      setForm(visitToForm(visit));
     } else {
       // คลิกช่องว่างบนปฏิทิน = รู้วันและเจ้าหน้าที่อยู่แล้ว — เติมให้เลย
       setForm({ ...EMPTY, ...(defaults || {}) });
     }
   }, [open, visit, defaults]);
+
+  /* ภาระของวันที่กำลังกรอก — เปลี่ยนวันในฟอร์ม ตัวเลขเปลี่ยนตาม (ไม่ใช่วันเดิมของใบ) */
+  const dayLoad = useMemo(
+    () => (staffLoadFor && form.scheduledDate ? staffLoadFor(form.scheduledDate) : null),
+    [staffLoadFor, form.scheduledDate],
+  );
+
+  /* ⭐ พาโฟกัสไปช่องที่ถูกขอ — ตั้ง "ค้างไว้" ในรอบเดียวกับที่เติมฟอร์ม (สอง setState รวมเป็น
+     เรนเดอร์เดียว) แล้วค่อยโฟกัสในเอฟเฟกต์ถัดไป ซึ่งเห็น DOM ของฟอร์มที่เติมแล้ว
+     🪤 โฟกัสทันทีตอนเปิดไม่ได้: รอบแรกฟอร์มยังเป็นค่าเก่า ⇒ ช่องผู้รับผิดชอบยังเป็นดรอปดาวน์
+        (ยังไม่มีวันที่นัด) แล้วถูกแทนด้วย CrewLoadPicker ในรอบถัดไป = โฟกัสหลุดไปกับ element ที่ถูกถอด
+     ⚠️ ต้องมาหลัง Modal โฟกัสปุ่มแรกของตัวเอง — เอฟเฟกต์ของลูกรันก่อนแม่ และรอบนี้เป็นรอบที่สอง
+     ⚠️ ไม่ผูกกับ `visit` — จอแม่โหลดข้อมูลใหม่ (กลับมาที่แท็บ) แล้วได้ออบเจกต์ใบใหม่ระหว่างที่
+        โมดัลเปิดอยู่ = โฟกัสจะถูกดึงกลับกลางคันขณะคนกำลังพิมพ์ช่องอื่น · ปิดโมดัล = ล้างคำขอ */
+  useEffect(() => {
+    setFocusPending(open && focusField ? focusField : null);
+  }, [open, focusField]);
+
+  useEffect(() => {
+    if (!focusPending) return;
+    const box = focusPending === "assignee" ? assigneeRef.current
+      : focusPending === "scheduledDate" ? dateRef.current : null;
+    const target = box?.querySelector('input[type="radio"]:checked') || box?.querySelector(FOCUSABLE);
+    if (!target) return;   // ช่องยังไม่ขึ้นจอ — คงคำขอไว้ ลองใหม่เมื่อช่องผู้รับผิดชอบเปลี่ยนทรง
+    setFocusPending(null);
+    box.scrollIntoView({ block: "nearest" });
+    target.focus({ preventScroll: true });
+  }, [focusPending, dayLoad]);
 
   const change = (field) => (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
 
@@ -190,7 +243,7 @@ export default function ServiceVisitModal({
           )}
         </label>
 
-        <label className={styles.field}>
+        <label className={styles.field} ref={dateRef}>
           <span>วันที่นัด *</span>
           <DateInput value={form.scheduledDate} onChange={(iso) => setForm((prev) => ({ ...prev, scheduledDate: iso }))} />
         </label>
@@ -238,17 +291,37 @@ export default function ServiceVisitModal({
           <p className={styles.hint}>เว้นว่าง = นัดไว้ทั้งวัน ยังไม่ระบุเวลา</p>
         </fieldset>
 
-        <label className={styles.field}>
-          <span>เจ้าหน้าที่ผู้รับผิดชอบ</span>
-          <SearchableSelect
-            value={form.assigneeId}
-            onChange={pickTechnician}
-            options={technicians.map((t) => ({ value: t.id, label: t.name }))}
-            placeholder="ยังไม่มอบหมาย"
-            ariaLabel="เจ้าหน้าที่ผู้รับผิดชอบ"
-          />
-          <small>คนนี้คือเจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้</small>
-        </label>
+        {/* ⭐ รู้วันแล้ว + จอแม่ส่งภาระมา ⇒ กางรายชื่อพร้อมภาระของวันนั้น (ไม่ต้องเปิดปฏิทิน
+            อีกแท็บเพื่อดูว่าใครว่าง) · ไม่อย่างนั้นคงดรอปดาวน์เดิมทุกอย่าง
+            ⚠️ กล่องเป็น div ไม่ใช่ label — radio แต่ละแถวเป็น label ของตัวเองอยู่แล้ว
+               (label ซ้อน label ไม่ถูกต้อง และคลิกป้ายหัวจะไปเลือกแถวแรกแทน) */}
+        {dayLoad ? (
+          <div className={`${styles.field} ${styles.wide}`} ref={assigneeRef}>
+            <span id={assigneeLabelId}>เจ้าหน้าที่ผู้รับผิดชอบ</span>
+            <CrewLoadPicker
+              value={form.assigneeId}
+              onChange={pickTechnician}
+              technicians={technicians}
+              load={dayLoad}
+              dateIso={form.scheduledDate}
+              labelledBy={assigneeLabelId}
+              currentName={form.assigneeName}
+            />
+            <small>คนนี้คือเจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้</small>
+          </div>
+        ) : (
+          <label className={styles.field} ref={assigneeRef}>
+            <span>เจ้าหน้าที่ผู้รับผิดชอบ</span>
+            <SearchableSelect
+              value={form.assigneeId}
+              onChange={pickTechnician}
+              options={technicians.map((t) => ({ value: t.id, label: t.name }))}
+              placeholder="ยังไม่มอบหมาย"
+              ariaLabel="เจ้าหน้าที่ผู้รับผิดชอบ"
+            />
+            <small>คนนี้คือเจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้</small>
+          </label>
+        )}
 
         {/* ⭐ เจ้าหน้าที่ที่ไปด้วย (F-6) — คอลัมน์ `assistantIds` มีมาตั้งแต่ mig 0188
             แต่ไม่เคยมีจอไหนให้กรอก ⇒ งานสองคนถูกบันทึกเป็นงานคนเดียวมาตลอด
@@ -321,11 +394,11 @@ export default function ServiceVisitModal({
                     เช็คลิสต์ 4 ข้อต้องรู้ทันทีว่าเหลืออีกกี่ข้อถึงจะปล่อยได้ */}
                 <p className={styles.gateSummary} data-ready={canQueue ? "yes" : "no"}>
                   <b>ผ่าน {gateCount.ok} จาก {gateCount.total} ข้อ</b>
-                  {canQueue ? " — ปล่อยเข้าคิวได้" : " — ยังเข้าคิวไม่ได้"}
+                  {canQueue ? " — ปล่อยขึ้นตารางได้" : " — ยังขึ้นตารางไม่ได้"}
                   {gateCount.parked > 0 && ` · ${gateCount.parked} ข้อรอระบบสัญญา (ไม่บล็อก)`}
                 </p>
                 <p className={styles.hint}>
-                  ร่างไม่ขึ้นตาราง ไม่นับภาระของเจ้าหน้าที่ และไม่โผล่ในงานวันนี้ — ผ่านครบแล้วกด “ปล่อยเข้าคิว”
+                  ร่างไม่ขึ้นตาราง ไม่นับภาระของเจ้าหน้าที่ และไม่โผล่ในงานวันนี้ — ผ่านครบแล้วกด “ปล่อยขึ้นตาราง”
                 </p>
                 <ul className={styles.gate}>
                   {gate.map((item) => (
@@ -426,7 +499,7 @@ export default function ServiceVisitModal({
               blocker={canQueue ? "" : gateBlocker(gate)}
               onClick={() => submit({ status: "scheduled" })}
             >
-              ปล่อยเข้าคิว
+              ปล่อยขึ้นตาราง
             </GatedAction>
           </>
         )}
@@ -440,8 +513,8 @@ export default function ServiceVisitModal({
           ⚠️ ต้องบอกว่า "ข้ามอะไรบ้าง" ก่อนให้กด — คนที่ข้ามโดยไม่รู้ว่าข้ามอะไร
           คือคนที่จะข้ามทุกใบภายในสัปดาห์เดียว */}
       {overriding && (
-        <div className={styles.overrideSheet} role="group" aria-label="ข้ามด่านเข้าคิว">
-          <h4>ข้ามด่านเข้าคิว</h4>
+        <div className={styles.overrideSheet} role="group" aria-label="ข้ามด่านขึ้นตาราง">
+          <h4>ข้ามด่านขึ้นตาราง</h4>
           <p className={styles.hint}>
             นัดนี้จะขึ้นตารางทั้งที่ยังไม่ผ่านด่าน — ใบจะติดร่องรอย “ข้ามด่าน” ถาวร
             พร้อมชื่อคุณและเหตุผล
@@ -467,7 +540,7 @@ export default function ServiceVisitModal({
                 setOverriding(false);
               }}
             >
-              ข้ามด่านและเข้าคิว
+              ข้ามด่านและขึ้นตาราง
             </Button>
           </div>
         </div>

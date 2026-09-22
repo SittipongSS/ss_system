@@ -1,0 +1,131 @@
+/* ตัวเลือกเจ้าหน้าที่พร้อมภาระรายวัน (CrewLoadPicker) — กล่องเดียว หัว · ป้ายคอลัมน์ · รายชื่อ
+   ⚠️ โทเคนล้วน (audit:ui เพดานเลขดิบเต็มทุกช่อง ขึ้นไม่ได้แม้แต่ 1) */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  /* มุมมนของกล่องต้องตัดพื้นแถวที่ถูกเลือกด้วย ไม่งั้นพื้นส้มทะลุมุม */
+  overflow: hidden;
+}
+
+.head {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* โหลดภาระไม่ได้ — เตือน ไม่บล็อก (ยังมอบหมายได้ แค่ต้องรู้ว่าตัวเลขไม่มีจริง) */
+.unknown {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* แถวเดียวกันทั้งป้ายคอลัมน์และรายชื่อ — กริดชุดเดียว ตัวเลขจึงตรงหลักกันทุกแถว
+   ⚠️ position: relative = ที่ยึดของ .srOnly (radio ที่ซ่อนตา + หน่วยที่อ่านออกเสียง) */
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, var(--space-9));
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  /* ไทยกินความสูง 1.582em — กล่องที่ห่อข้อความไทยต้อง line-height >= 1.65 */
+  line-height: var(--lh-thai);
+}
+
+.cols {
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+}
+
+/* รายชื่อยาว (หลายทีม) เลื่อนในกล่องตัวเอง ไม่ดันปุ่มท้ายโมดัลตกจอ */
+.list {
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.option {
+  flex: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.option + .option { border-top: 1px solid var(--border); }
+.option:hover { background: var(--panel-2); }
+.option[data-on] { background: var(--accent-soft); }
+
+/* วงโฟกัสอยู่ **ในแถว** (offset ลบ) เพราะ .list ตัดขอบ · วางบนพื้นแถว ⇒ --accent-ink */
+.option:has(input:focus-visible) {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: -2px;
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+}
+
+.unassigned {
+  color: var(--text-3);
+  font-weight: var(--fw-medium);
+}
+
+.tick {
+  flex: none;
+  color: var(--accent-ink);
+}
+
+.meta {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.meta [data-tone="free"] { color: var(--green); }
+/* คำเตือนรายคน (เวลาทับ · เกินภาระ · หลุดรายชื่อ) — เตือน ไม่ห้าม จึงเป็นอำพัน ไม่ใช่แดง */
+.meta [data-tone="warn"] { color: var(--amber); font-weight: var(--fw-semibold); }
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.option .num {
+  color: var(--text-1);
+  font-size: var(--fs-7);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

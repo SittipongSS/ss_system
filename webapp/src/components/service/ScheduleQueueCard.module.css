@@ -1,0 +1,94 @@
+/* การ์ดงานในแผง "รายการงาน" (หน้าจัดคิวเจ้าหน้าที่) — โทเคนเท่านั้น
+   ⚠️ ของที่ซ้อนในเนื้อแผง = --panel-solid/--panel-2 ตาม Visual rules (ไม่ใช่การ์ดซ้อนการ์ดแบบมีเงา) */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  scroll-margin-top: var(--scroll-anchor-top);
+}
+/* ร่างที่วันเสนอผ่านไปแล้ว — แถบอำพันซ้ายบอกตั้งแต่กวาดตาว่าต้องเลือกวันใหม่ก่อน */
+.card[data-stale="yes"] { box-shadow: inset var(--space-1) 0 0 var(--amber); }
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.code {
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  white-space: nowrap;
+}
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+.kind::before {
+  content: "";
+  width: var(--space-2);
+  height: var(--space-2);
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--kind, var(--accent-ink));
+}
+.tag { margin-left: auto; flex: none; }
+
+.site { display: flex; flex-direction: column; min-width: 0; margin: 0; }
+.site > .mono { font-weight: var(--fw-semibold); }
+.sub { color: var(--text-3); font-size: var(--fs-5); overflow-wrap: anywhere; }
+.line { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.muted { color: var(--text-3); }
+.warn { color: var(--amber); }
+.bad { color: var(--red); }
+.ok { color: var(--green); }
+
+.todo { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
+.gate {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-5);
+}
+.gate > svg { flex: none; margin-top: var(--space-1); }
+.gate > span:last-child { overflow-wrap: anywhere; }
+/* ป้ายเจ้าของด่านกว้างเท่ากันทุกบรรทัด — "SA → FN" ยาวสุด ให้ "TS"/"SA" ไม่ทำให้เหตุขยับซ้ายขวา */
+.owner { flex: none; min-width: var(--space-9); justify-content: center; }
+.origin { margin: 0; color: var(--text-3); font-size: var(--fs-5); }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
+}
+
+/* สีชนิดงาน — ชุดเดียวกับชิปบนตาราง (app/service/schedule/page.module.css) */
+.kind_install { --kind: var(--violet); }
+.kind_refill { --kind: var(--accent-ink); }
+.kind_maintenance { --kind: var(--blue); }
+.kind_repair { --kind: var(--red); }
+.kind_inspect { --kind: var(--teal); }
+.kind_remove { --kind: var(--amber); }
+.kind_survey { --kind: var(--green); }
+
+@media (max-width: 640px) {
+  /* ปุ่มบนจอแตะต้องสูงเท่าเป้าแตะ (มติ 2026-08-02 ข้อ 3)
+     🐞 `.actions > *` (0,1,0) แพ้ `.btn.sm` (0,2,0) ของ globals ⇒ ปุ่มยังเตี้ย 30px · ดันเป็น (0,2,0)+ลำดับ */
+  .card .actions > * { flex: 1 1 auto; min-height: var(--ctl-h-touch); }
+  .card .code { display: inline-flex; align-items: center; min-height: var(--ctl-h-touch); }
+}

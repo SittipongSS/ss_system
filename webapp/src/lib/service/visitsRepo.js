@@ -3,13 +3,15 @@ import { forbidden, notFound } from '@/lib/http';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { canDoFieldWork } from '@/lib/permissions';
 import { visitWriteAccess } from './visitAccess';
-import { VISIT_STATUSES, isClosedVisit, isOpenVisit } from './visitStatus';
+import { VISIT_STATUSES, isClosedVisit, isDraftVisit, isOpenVisit } from './visitStatus';
 import { requireService } from './sitesRepo';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 /* ⚠️ PostgREST ต้องการ **ลิสต์ค่า** ไม่ใช่ฟังก์ชัน — ประกอบจากนิยามกลางที่
    visitStatus.js เพื่อไม่ให้มีชุดสถานะชุดที่หกในระบบ */
 const CLOSED_VISITED = VISIT_STATUSES.filter((s) => isClosedVisit({ status: s }));
 const OPEN_STATUSES = VISIT_STATUSES.filter((s) => isOpenVisit({ status: s }));
+/* ร่าง + นัดที่ยังเปิด = งานที่รายการงานยังต้องจัดการ (แท็บ รอจัด · ค้าง · จัดแล้ว) */
+const QUEUE_OPEN = VISIT_STATUSES.filter((s) => isDraftVisit({ status: s }) || isOpenVisit({ status: s }));
 
 // ── นัด ──────────────────────────────────────────────────────────────────
 // ปฏิทินอ่านเป็นช่วงวันเสมอ · siteId ใช้ตอนดูประวัติของไซต์เดียว
@@ -37,6 +39,39 @@ export async function loadVisits(supabase, { from = null, to = null, siteId = nu
     .order('startTime', { ascending: true, nullsFirst: false });
   if (error) throw error;
   return data || [];
+}
+
+/**
+ * นัดของ "รายการงาน" (คอลัมน์ซ้ายของ /service/schedule) — คนละคำถามกับ `loadVisits`
+ * ที่อ่านเป็นช่วงวันของปฏิทิน
+ *
+ * ⭐ **ร่าง + นัดที่ยังเปิด ไม่มีขอบวันที่** — ร่างที่วันเลยมาแล้วกับนัดค้างเมื่อเดือนก่อน
+ *    คือของที่ต้องเห็นที่สุด ถ้าตัดตามสัปดาห์ของปฏิทิน มันจะหายจากจอทันทีที่เลื่อนสัปดาห์
+ * ⭐ **นัดที่ปิดแล้ว เฉพาะที่เข้าจริงตั้งแต่ `closedSince`** — แท็บ "ปิดแล้ว" ดูย้อนหลังสั้น ๆ
+ *    ไม่ใช่ประวัติทั้งระบบ (ประวัติอยู่หน้าไซต์) · กรองที่ `actualDate` ได้ตรง ๆ เพราะ DB
+ *    บังคับว่าสามสถานะปิดต้องมีวันเข้าจริงเสมอ (mig 0300)
+ * ⚠️ สองก้อนนี้ไม่ซ้อนกัน (ชุดสถานะไม่ทับกัน) ⇒ ต่อกันได้เลยไม่ต้องกันแถวซ้ำ
+ * ⚠️ ไล่หน้าด้วย fetchAll + ลำดับนิ่งที่ `id` — ร่างและนัดเปิดทั้งระบบโตตามจำนวนไซต์
+ *    เพดาน 1,000 แถวตัดเงียบ ๆ ได้ (ด่าน check:rowcap)
+ * @throws error ของ Supabase ตัวแรกที่เจอ
+ */
+export async function loadQueueVisits(supabase, { closedSince }) {
+  // ไม่มีขอบล่าง = กวาดประวัติปิดงานทั้งระบบ — ผิดสัญญาของผู้เรียก ไม่ใช่ค่าตั้งต้นที่ควรเดา
+  if (!closedSince) throw new Error('loadQueueVisits: ต้องระบุ closedSince');
+  const [open, closed] = await Promise.all([
+    fetchAll(() => supabase
+      .from('service_visits').select('*')
+      .in('status', QUEUE_OPEN)
+      .order('scheduledDate', { ascending: true })
+      .order('id', { ascending: true })),
+    fetchAll(() => supabase
+      .from('service_visits').select('*')
+      .in('status', CLOSED_VISITED)
+      .gte('actualDate', closedSince)
+      .order('actualDate', { ascending: false })
+      .order('id', { ascending: true })),
+  ]);
+  return [...open, ...closed];
 }
 
 export async function findVisit(supabase, id) {
