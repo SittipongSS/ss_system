@@ -1063,7 +1063,8 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
     vat: acc.vat + Number(o.vatAmount || 0),
     total: acc.total + Number(o.totalAmount || 0),
     collected: acc.collected + Number(o.collectedAmount || 0),
-  }), { amount: 0, vat: 0, total: 0, collected: 0 }), [filtered]);
+    outstanding: acc.outstanding + Number(o.outstandingAmount || 0),
+  }), { amount: 0, vat: 0, total: 0, collected: 0, outstanding: 0 }), [filtered]);
 
   const check = drill && !extraFilters ? drillCheck(drill.expected, drilled, { historyMonths: drill.historyMonths || [] }) : null;
   const running = summary && period.mode !== "range"
@@ -1100,9 +1101,11 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
         <td className="num">{o.lineCount}</td>
         <td className="num">{o.vatAmount ? <Money value={o.vatAmount} /> : NA}</td>
         <td className="num"><Money value={o.totalAmount} /></td>
-        {/* ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT) · ที่ SA แจ้งแต่บัญชียังไม่รับรองเป็นบรรทัดรอง ไม่นับ */}
+        {/* ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT) */}
+        <td className="num">{o.free ? NA : <Money value={o.collectedAmount || 0} />}</td>
+        {/* ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง · ในนั้นมีส่วนที่ SA แจ้งแล้วแต่บัญชียังไม่รับรอง (บรรทัดรอง) */}
         <td className="num">
-          {o.free ? NA : <Money value={o.collectedAmount || 0} />}
+          {o.free ? NA : <Money value={o.outstandingAmount || 0} />}
           {Number(o.awaitingAmount || 0) > 0 && <span className="cell-sub">รอบัญชีรับรอง <Money value={o.awaitingAmount} /></span>}
           {!o.free && !o.installmentCount && <span className="cell-sub">ยังไม่มีงวด</span>}
         </td>
@@ -1115,7 +1118,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
       id="sales-report-orders"
       icon={<ClipboardList size={17} aria-hidden="true" />}
       title="ใบสั่งขายที่อนุมัติแล้ว"
-      subtitle="อนุมัติในช่วงที่เลือก · งวดคิดจากวันที่อนุมัติ เวลาไทย · ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT)"
+      subtitle="อนุมัติในช่วงที่เลือก · งวดคิดจากวันที่อนุมัติ เวลาไทย · ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT) · ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง"
       count={loading || error ? null : `${filtered.length} ใบ`}
       loading={loading}
       toolbar={(
@@ -1235,6 +1238,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                   <th className="num">VAT</th>
                   <th className="num">ยอดหน้าใบ</th>
                   <th className="num">ยอดเก็บจริง</th>
+                  <th className="num">ยอดค้างชำระ</th>
                 </tr>
               </thead>
               {pageGroups.map((group) => {
@@ -1243,7 +1247,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                   <tbody key={group.key}>
                     {group.label && (
                       <TableGroupRow
-                        colSpan={12}
+                        colSpan={13}
                         label={group.label}
                         badge={`${group.count} ใบ`}
                         total={money(group.total)}
@@ -1267,6 +1271,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                   <td className="num"><Money value={totals.vat} /></td>
                   <td className="num"><Money value={totals.total} /></td>
                   <td className="num"><Money value={totals.collected} /></td>
+                  <td className="num"><Money value={totals.outstanding} /></td>
                 </tr>
               </tfoot>
             </table>

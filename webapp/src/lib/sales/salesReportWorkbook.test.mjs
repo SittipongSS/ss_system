@@ -82,15 +82,15 @@ test('ชีตใบสั่งขาย: ลำดับคอลัมน์
   const { data, summary } = fixture();
   data.orders[0].line = 'SERVICE';
   data.orders[0].dealType = 'RE-ORDER';
-  Object.assign(data.orders[0], { collectedAmount: 1000, awaitingAmount: 675, installmentCount: 2 });
-  Object.assign(data.orders[1], { collectedAmount: 0, awaitingAmount: 0, installmentCount: 0 });
+  Object.assign(data.orders[0], { collectedAmount: 1000, awaitingAmount: 675, installmentCount: 2, outstandingAmount: 1675 });
+  Object.assign(data.orders[1], { collectedAmount: 0, awaitingAmount: 0, installmentCount: 0, outstandingAmount: 749 });
   const book = await readBook(await buildSalesReportBuffer(data, summary, { origin: 'https://suk.example' }));
   const sheet = book.getWorksheet('ใบสั่งขาย');
   const header = sheet.getRow(4).values.slice(1);
   // มติผู้ใช้ 2026-09-22 — ห้ามสลับลำดับโดยไม่ถาม
   assert.deepEqual(header, [
     '#', 'งวด', 'วันที่อนุมัติ', 'ประเภทธุรกิจ', 'ประเภทดีล', 'QT', 'SO', 'ลูกค้า', 'บรรทัด',
-    'ยอดที่นับ', 'VAT', 'ยอดหน้าใบ', 'ยอดเก็บจริง', 'ขั้นบัญชี', 'หมายเหตุ', 'ผู้รับผิดชอบ', 'ทีม',
+    'ยอดที่นับ', 'VAT', 'ยอดหน้าใบ', 'ยอดเก็บจริง', 'ยอดค้างชำระ', 'ขั้นบัญชี', 'หมายเหตุ', 'ผู้รับผิดชอบ', 'ทีม',
   ]);
   const col = (name) => header.indexOf(name);
   const first = sheet.getRow(5).values.slice(1);
@@ -103,6 +103,10 @@ test('ชีตใบสั่งขาย: ลำดับคอลัมน์
   assert.equal(col('ยอดเก็บจริง'), col('ยอดหน้าใบ') + 1);
   assert.equal(first[col('ยอดเก็บจริง')], 1000);
   assert.match(first[col('หมายเหตุ')], /รอบัญชีรับรอง ฿675\.00/);
+  // ยอดค้างชำระอยู่ถัดจากยอดเก็บจริง · เก็บจริง + ค้าง = ยอดหน้าใบ
+  assert.equal(col('ยอดค้างชำระ'), col('ยอดเก็บจริง') + 1);
+  assert.equal(first[col('ยอดค้างชำระ')], 1675);
+  assert.equal(first[col('ยอดเก็บจริง')] + first[col('ยอดค้างชำระ')], first[col('ยอดหน้าใบ')]);
   const second = sheet.getRow(6).values.slice(1);
   assert.equal(second[col('ยอดเก็บจริง')], 0);
   assert.match(second[col('หมายเหตุ')], /ยังไม่มีงวดชำระ/);
@@ -110,10 +114,12 @@ test('ชีตใบสั่งขาย: ลำดับคอลัมน์
   assert.equal(total[0], 'รวม 3 ใบ');
   assert.equal(total[col('ยอดที่นับ')], 3200);
   assert.equal(total[col('ยอดเก็บจริง')], 1000);
+  assert.equal(total[col('ยอดค้างชำระ')], 1675 + 749);
   const freeRow = sheet.getRow(7).values.slice(1);
   assert.equal(freeRow[col('ขั้นบัญชี')], 'ไม่ผ่านบัญชี');
   assert.equal(freeRow[col('หมายเหตุ')], 'ไม่คิดเงิน');
   assert.equal(freeRow[col('ยอดเก็บจริง')], '—');
+  assert.equal(freeRow[col('ยอดค้างชำระ')], '—');
   // ดีลที่ยังไม่ระบุสาย/ประเภท = ขีด ไม่เดาให้
   assert.equal(freeRow[col('ประเภทธุรกิจ')], '—');
   assert.equal(freeRow[col('ประเภทดีล')], '—');

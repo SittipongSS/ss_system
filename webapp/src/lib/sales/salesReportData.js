@@ -75,6 +75,10 @@ function shapeOrder(o, { person, lineCount, payments = new Map() }) {
        ⛔ คนละแกนกับยอดขาย — ห้ามเอาไปหัก/บวก Actual (lib/sales/salesOrderPayments หัวไฟล์) */
     collectedAmount: payments.get(o.id)?.collected || 0,
     awaitingAmount: payments.get(o.id)?.awaiting || 0,
+    /* ⭐ ยอดค้างชำระ (มติผู้ใช้ 2026-09-22) = ยอดหน้าใบ − ยอดเก็บจริง (ไม่ต่ำกว่า 0)
+       = งวดที่ยังไม่ confirmed ทั้งหมด **รวมที่รอบัญชีรับรอง** (กติกาเดียวกับ outstandingAmount ของทะเบียนการชำระ)
+       คิดจากยอดหน้าใบ ไม่ใช่ผลรวมงวด — ใบที่ยังไม่มีงวดยังค้างเต็มใบ ไม่ใช่ 0 (งวดรวมกัน = ยอดหน้าใบทุกใบที่มีงวด) */
+    outstandingAmount: Math.max(0, Math.round((money(o.totalAmount) - (payments.get(o.id)?.collected || 0)) * 100) / 100),
     installmentCount: payments.get(o.id)?.count || 0,
     discountAmount: money(o.discountAmount),
     // ใบที่ส่วนลดท้ายใบเต็มจำนวน (งานที่ไม่คิดเงิน) — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง

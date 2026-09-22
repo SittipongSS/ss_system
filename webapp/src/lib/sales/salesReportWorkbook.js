@@ -135,6 +135,7 @@ export const ORDER_SHEET_COLUMNS = [
   { key: 'vatAmount', label: 'VAT', width: 14, money: true },
   { key: 'totalAmount', label: 'ยอดหน้าใบ', width: 16, money: true },
   { key: 'collectedAmount', label: 'ยอดเก็บจริง', width: 16, money: true },
+  { key: 'outstandingAmount', label: 'ยอดค้างชำระ', width: 16, money: true },
   { key: 'finance', label: 'ขั้นบัญชี', width: 12 },
   { key: 'note', label: 'หมายเหตุ', width: 34 },
   { key: 'ownerName', label: 'ผู้รับผิดชอบ', width: 22 },
@@ -147,7 +148,7 @@ export function orderSheetRow(o, index, { teamLabel = (c) => c, overriddenMonths
   if (o.free) notes.push('ไม่คิดเงิน');
   // ยอดกรอกมือของเดือนนั้นทับยอดใบ ⇒ ใบนี้ไม่อยู่ในขายจริง (บอกไว้ ไม่งั้นรวมคอลัมน์แล้วไม่ตรง)
   if (overriddenMonths.has(o.month)) notes.push('ไม่นับ · เดือนนี้ใช้ยอดกรอกย้อนหลัง');
-  if (Number(o.awaitingAmount || 0) > 0) notes.push(`รอบัญชีรับรอง ${fmtMoney(o.awaitingAmount)}`);
+  if (Number(o.awaitingAmount || 0) > 0) notes.push(`ค้างชำระรวมที่รอบัญชีรับรอง ${fmtMoney(o.awaitingAmount)}`);
   if (!o.free && !o.installmentCount) notes.push('ยังไม่มีงวดชำระ');
   return {
     seq: index + 1,
@@ -165,6 +166,8 @@ export function orderSheetRow(o, index, { teamLabel = (c) => c, overriddenMonths
     totalAmount: o.totalAmount,
     // ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT) · ใบไม่คิดเงินไม่มีอะไรให้เก็บ = ขีด
     collectedAmount: o.free ? NA : Number(o.collectedAmount || 0),
+    // ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง (รวมงวดที่รอบัญชีรับรอง) · ใบไม่คิดเงิน = ขีด
+    outstandingAmount: o.free ? NA : Number(o.outstandingAmount || 0),
     finance: FINANCE_STATE_BADGE[financeStateOf(o)].label,
     note: notes.join(' · '),
     ownerName: o.ownerName || NA,
@@ -343,11 +346,11 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
     info: [
       stamp,
       `${orders.length} ใบ · เฉพาะใบที่อนุมัติแล้ว · กดเลข SO เพื่อเปิดใบในระบบ`,
-      'ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดชำระที่บัญชีรับรองแล้ว (รวม VAT ณ เวลาดาวน์โหลด) · ใบ "ไม่คิดเงิน" = ส่วนลดท้ายใบเต็มจำนวน นับรวมในจำนวนใบ',
+      'ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดชำระที่บัญชีรับรองแล้ว (รวม VAT ณ เวลาดาวน์โหลด) · ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง (รวมที่รอบัญชีรับรอง) · ใบ "ไม่คิดเงิน" = ส่วนลดท้ายใบเต็มจำนวน นับรวมในจำนวนใบ',
     ],
     /* ⭐ ลำดับคอลัมน์ตามที่ผู้ใช้กำหนด (2026-09-22):
        # › งวด › วันที่อนุมัติ › ประเภทธุรกิจ › ประเภทดีล › QT › SO › ลูกค้า › บรรทัด › ยอดที่นับ › VAT ›
-       ยอดหน้าใบ › ยอดเก็บจริง › ขั้นบัญชี › หมายเหตุ › ผู้รับผิดชอบ › ทีม
+       ยอดหน้าใบ › ยอดเก็บจริง › ยอดค้างชำระ › ขั้นบัญชี › หมายเหตุ › ผู้รับผิดชอบ › ทีม
        ลิงก์กลับหน้าใบย้ายไปอยู่บนเลข SO · "ไม่คิดเงิน" กับ "ไม่นับ (ยอดกรอกทับ)" รวมอยู่ในหมายเหตุ */
     columns: ORDER_SHEET_COLUMNS,
     rows: orders.map((o, index) => orderSheetRow(o, index, { teamLabel, overriddenMonths, origin: meta.origin })),
@@ -357,6 +360,7 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
       vatAmount: orderTotal('vatAmount'),
       totalAmount: orderTotal('totalAmount'),
       collectedAmount: orderTotal('collectedAmount'),
+      outstandingAmount: orderTotal('outstandingAmount'),
     },
   });
 
