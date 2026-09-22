@@ -7,7 +7,7 @@
 import { canQuoteCosting, isSuperuser, normalizeDepartment } from '@/lib/permissions';
 
 // ชนิดวัสดุ = ชุดย่อยของบรรทัดแม่แบบ (ไม่รวม labor — ค่าดำเนินการไม่ใช่ "วัสดุ")
-// ⭐ RM_B (mig 0370 · ม-148) — นิยามผู้ใช้ 2026-09-22: *"F คือกลิ่น(หัวน้ำหอม) / B คือเบส / FB คือ เบสที่ใส่กลิ่น"*
+// ⭐ RM_B (mig 0371 · ม-148) — นิยามผู้ใช้ 2026-09-22: *"F คือกลิ่น(หัวน้ำหอม) / B คือเบส / FB คือ เบสที่ใส่กลิ่น"*
 // F ผูกกลิ่น (`scentId`) · B กับ FB ผูกสูตร (`formulaId`) — ดูช่องราคาที่ lib/master/priceSlots.js
 export const MATERIAL_KINDS = ['RM_F', 'RM_B', 'RM_FB', 'PM'];
 export const MATERIAL_KIND_LABELS = {
