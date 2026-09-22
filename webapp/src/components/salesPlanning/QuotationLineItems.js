@@ -15,10 +15,10 @@ import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, naText, NA } from "@/lib/format";
 import {
-  fgLineBrand, fgLineDescription, fgLineLanguageMeta, fgLineNoteMeta, lineNoteEdit,
+  fgLineBrand, fgLineCategoryMeta, fgLineDescription, fgLineLanguageMeta, fgLineNoteMeta, lineNoteEdit,
   masterPriceDrift, masterPriceState,
 } from "@/lib/sales/quoteLines";
-import { productIdentity } from "@/lib/master/productIdentity";
+import { productCategoryName, productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productOwnerTag, productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
@@ -79,7 +79,11 @@ export function QuotationReadOnlyLineItems({
                 <td className={styles.rowNumber}>{index + 1}</td>
                 <td>
                   <div className={styles.readOnlyDescription}>
-                    {line.fgCode ? <small>{line.fgCode}</small> : null}
+                    {/* รหัส FG · ชื่อหมวดสินค้า (มติผู้ใช้ 2026-09-22) — หมวดเป็น snapshot ในบรรทัด
+                        ใบเก่าที่ยังไม่มี server เติมให้ตอนเปิดใบ (fillMissingLineCategories) */}
+                    {line.fgCode ? (
+                      <small>{[line.fgCode, productCategoryName(line)].filter(Boolean).join(" · ")}</small>
+                    ) : null}
                     <ReadableText text={line.description} lines={3} />
                     {showServiceRounds && lineIsServicePackage(line) ? (
                       <span className={styles.serviceRoundsTag}>
@@ -145,7 +149,11 @@ export default function QuotationLineItems({
   onVatRateChange,
 }) {
   // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส · แบรนด์ / ชื่อสินค้า · ปริมาตร
-  const productOptions = useMemo(() => productSelectOptions(products), [products]);
+  // + ชื่อหมวดสินค้าต่อท้ายรหัส · แบรนด์ (มติผู้ใช้ 2026-09-22 — เฉพาะเอกสารขาย)
+  const productOptions = useMemo(
+    () => productSelectOptions(products, undefined, { withCategory: true }),
+    [products],
+  );
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: discountType || null,
@@ -179,7 +187,7 @@ export default function QuotationLineItems({
       ? [line.metadata.fgOwnerArCode, line.metadata.fgOwnerBranchCode
         ? `สาขา ${line.metadata.fgOwnerBranchCode}` : ""].filter(Boolean).join(" · ")
       : "");
-    return { code: identity.code, brand: identity.brand, name: identity.detail, owner };
+    return { code: identity.code, brand: identity.brand, category: identity.category, name: identity.detail, owner };
   };
   // ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่
   // server enforce ตอนบันทึก; retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น.
@@ -200,7 +208,11 @@ export default function QuotationLineItems({
     const prevMeta = lines[index]?.metadata || {};
     const typedNote = !prevMeta.noteAuto && prevMeta.note ? prevMeta.note : null;
     const noteMeta = typedNote ? { note: typedNote } : fgLineNoteMeta(product);
-    const { note: _note, noteEn: _noteEn, noteAuto: _noteAuto, ...keptMeta } = prevMeta;
+    /* ชื่อหมวดของสินค้าตัวเก่าต้องไม่ค้างถ้าตัวใหม่ไม่มีหมวดที่มีชื่อ (มติ 2026-09-22) */
+    const {
+      note: _note, noteEn: _noteEn, noteAuto: _noteAuto,
+      categoryName: _categoryName, categoryNameEn: _categoryNameEn, ...keptMeta
+    } = prevMeta;
     setLine(index, {
       productId: product.id,
       fgCode: product.fgCode || null,
@@ -212,6 +224,7 @@ export default function QuotationLineItems({
         ...keptMeta,
         ...fgLineLanguageMeta(product),
         productBrand: fgLineBrand(product),
+        ...fgLineCategoryMeta(product),
         ...noteMeta,
       },
       // หน่วยขายผูกกับสินค้า (มติ 2026-07-23) — server enforce ทับด้วย master.saleUnit ตอนบันทึก
@@ -277,7 +290,7 @@ export default function QuotationLineItems({
                       const fg = fgDisplayFor(line);
                       return (
                         <div className={styles.fgInfo} title="ข้อมูลจากฐานข้อมูลสินค้า — แก้ที่ฐานข้อมูลสินค้า">
-                          <span className={styles.fgInfoMeta}><strong>{fg.code || "FG"}</strong>{fg.brand && <> · {fg.brand}</>}</span>
+                          <span className={styles.fgInfoMeta}><strong>{fg.code || "FG"}</strong>{fg.brand && <> · {fg.brand}</>}{fg.category && <> · {fg.category}</>}</span>
                           <div className={styles.fgInfoName}>
                             {editable ? (naText(fg.name)) : <ReadableText text={fg.name} lines={3} />}
                           </div>

@@ -17,15 +17,20 @@ export function productOwnerTag(p) {
   return p.ownerBranchCode ? `${who} · สาขา ${p.ownerBranchCode}` : String(who);
 }
 
-export function productOptionDisplay(p) {
+/* `withCategory` — ต่อชื่อหมวดสินค้าท้ายรหัส · แบรนด์ (มติผู้ใช้ 2026-09-22: ดรอปดาวน์เลือก FG
+   ของใบเสนอราคา) · opt-in เพราะมาตรฐานนี้ใช้ทั้งระบบ แต่ที่ขอคือเอกสารขายเท่านั้น
+   ⚠️ ชื่อหมวดมาจาก `categoryName` ที่ `GET /api/products` แปะมา — ลิสต์จากแหล่งอื่นไม่มี
+   ก็แค่ไม่ขึ้น ไม่พัง */
+export function productOptionDisplay(p, { withCategory = false } = {}) {
   const identity = productIdentity(p);
   const ownerTag = productOwnerTag(p);
-  const meta = [identity.meta, ownerTag].filter(Boolean).join(" · ");
+  const category = withCategory ? identity.category : "";
+  const meta = [identity.meta, category, ownerTag].filter(Boolean).join(" · ");
   return {
     // native <option>, trigger และ aria ใช้บรรทัดเดียว; menu ที่รองรับ render ใช้ 2 ชั้น.
     text: [meta, identity.detail].filter(Boolean).join(" · ") || identity.text,
     // ตาเห็นบนแถว = ต้องค้นเจอ — ชื่อบริษัทเจ้าของก็ต้องค้นเจอแม้ป้ายจะโชว์แค่รหัส AR
-    search: [identity.search, ownerTag, p?.ownerName].filter(Boolean).join(" "),
+    search: [identity.search, category, ownerTag, p?.ownerName].filter(Boolean).join(" "),
     render: createElement(
       "span",
       { className: "product-option-label" },
@@ -39,10 +44,11 @@ export function productOptionDisplay(p) {
 
 // สร้าง options ให้ SearchableSelect: เรียงตามรหัส FG (ตัวไม่มีรหัสไปท้ายลิสต์)
 // getValue กำหนดค่า value ต่อระบบ (default = product.id; สหมิตรใช้ fgCode)
-export function productSelectOptions(products = [], getValue = (p) => p.id) {
+// display = ตัวเลือกของ productOptionDisplay (เช่น { withCategory: true })
+export function productSelectOptions(products = [], getValue = (p) => p.id, display = {}) {
   return products
     .map((p) => {
-      const d = productOptionDisplay(p);
+      const d = productOptionDisplay(p, display);
       return { value: getValue(p), fgCode: p?.fgCode || "", label: d.text, search: d.search, render: d.render };
     })
     .sort((a, b) => (a.fgCode || "￿").localeCompare(b.fgCode || "￿", "en")

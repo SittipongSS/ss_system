@@ -12,6 +12,8 @@ import {
   // ตัวเดียวกับที่ pagination ใช้จองที่ให้บล็อกมูลค่ารวม — ห้ามมีสำเนาที่นี่ ไม่งั้น
   // "ที่จองไว้" กับ "ที่วาดจริง" หลุดจากกันได้เงียบ ๆ แล้วตารางโดนตัด
   hasLineDiscount,
+  // บรรทัด "รหัส · แบรนด์ · หมวด" — ชุดเดียวกับที่ rowUnits ใช้ประเมินความสูงแถว
+  lineIdentityParts,
   quotationDocLabels,
 } from '@/lib/sales/quotationMasterTemplate';
 import { amountInWords } from '@/lib/documents/amountInWords';
@@ -109,7 +111,7 @@ function discountCell(line) {
 
 function itemTable(lines, startIndex, showDiscount, L) {
   const rows = lines.map((line, index) => {
-    const identityMeta = [line.fgCode, line.brand].filter(Boolean).map(esc).join(' · ');
+    const identityMeta = lineIdentityParts(line).map(esc).join(' · ');
     return `
         <tr>
           <td class="center">${startIndex + index + 1}</td>

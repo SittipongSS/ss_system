@@ -11,6 +11,7 @@ import {
   buildQuotationMasterPreview,
   controlledFormLine,
   docLanguageOf,
+  lineIdentityParts,
   paginateQuotationMasterLines,
   quotationDocLabels,
 } from './quotationMasterTemplate.js';
@@ -705,4 +706,24 @@ test('เอกสารอ้างอิง: ไม่กรอก (หรื�
   assert.equal(refRow(buildQuotationMasterModelFromQuote(QUOTE_WITH_PROJECT), 'เอกสารอ้างอิง'), undefined);
   const blank = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, referenceNote: '   ' });
   assert.equal(refRow(blank, 'เอกสารอ้างอิง'), undefined);
+});
+
+/* ชื่อหมวดสินค้าบนบรรทัดรหัส · แบรนด์ (มติผู้ใช้ 2026-09-22) — ตัวแบ่งหน้าต้องนับบรรทัดที่
+   ยาวขึ้นด้วย ไม่งั้นประเมินแถวเตี้ยกว่าจริงแล้วตารางล้นขอบล่างของแผ่นเงียบ ๆ */
+test('ชื่อหมวดยาวจนบรรทัดรหัสตัดสองบรรทัด ⇒ หน้าหนึ่งรับรายการได้น้อยลง', () => {
+  const mk = (category) => Array.from({ length: 40 }, (_, index) => ({
+    id: `L${index}`, fgCode: 'FG-AAA-01-002-0001', brand: 'SCENT AND SENSE', category, description: 'สินค้าทดสอบ',
+  }));
+  const short = paginateQuotationMasterLines(mk(''), { mode: 'fill' });
+  const long = paginateQuotationMasterLines(mk('ผลิตภัณฑ์ปรับอากาศชนิดก้านไม้หอมกระจายกลิ่น'), { mode: 'fill' });
+  assert.ok(long[0].length < short[0].length, `มีหมวด ${long[0].length} ต้องน้อยกว่าไม่มี ${short[0].length}`);
+  assert.deepEqual(lineIdentityParts({ fgCode: 'FG-1', brand: '', category: 'น้ำหอม' }), ['FG-1', 'น้ำหอม']);
+});
+
+test('model ของใบ: หมวดตามภาษาของใบ ถอยไปไทยเมื่อไม่มีคู่อังกฤษ', () => {
+  const quote = (docLanguage, metadata) => ({ docLanguage, lines: [{ id: 'L1', fgCode: 'FG-1', description: 'x', metadata }] });
+  assert.equal(buildQuotationMasterModelFromQuote(quote('th', { categoryName: 'น้ำหอม', categoryNameEn: 'Perfume' })).lines[0].category, 'น้ำหอม');
+  assert.equal(buildQuotationMasterModelFromQuote(quote('en', { categoryName: 'น้ำหอม', categoryNameEn: 'Perfume' })).lines[0].category, 'Perfume');
+  assert.equal(buildQuotationMasterModelFromQuote(quote('en', { categoryName: 'น้ำหอม' })).lines[0].category, 'น้ำหอม');
+  assert.equal(buildQuotationMasterModelFromQuote(quote('th', {})).lines[0].category, '');
 });

@@ -17,6 +17,7 @@ import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { branchKeyOf } from '@/lib/master/customerTaxId';
 import { customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
+import { attachCategoryNames, loadProductTypeNames } from '@/lib/master/productCategoryNames';
 import { naText } from "@/lib/format";
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
@@ -157,6 +158,14 @@ export async function GET(request) {
       byProduct.get(r.productId).push(r);
     }
     for (const p of rows) p.registrationStatus = registrationStatusOf(byProduct.get(p.id));
+  }
+  /* ชื่อหมวดสินค้า (`categoryName` ไทยก่อน · `categoryNameEn`) — ดรอปดาวน์เลือก FG ของ
+     ใบเสนอราคาโชว์ และติดลงบรรทัดตอนเลือก (มติผู้ใช้ 2026-09-22) · แนบทีหลังแบบเดียวกับ
+     `ownerArCode` จึงไม่ต้องแตะ PRODUCT_PICKER_COLUMNS · ทะเบียนหมวดอ่านไม่ได้ = ลิสต์
+     ยังออกได้ แค่ไม่มีชื่อหมวด (ของประกอบ ไม่ใช่ของหลักของลิสต์นี้) */
+  if (rows.length) {
+    try { attachCategoryNames(rows, await loadProductTypeNames(supabase)); }
+    catch { /* ไม่มีชื่อหมวดดีกว่าดรอปดาวน์สินค้าว่างทั้งระบบ */ }
   }
   // Strip the confidential cost breakdown/profit for non-margin roles.
   return Response.json(rows.map((p) => redactProductMargin(user, p)));
