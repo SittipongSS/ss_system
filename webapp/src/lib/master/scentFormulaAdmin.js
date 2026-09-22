@@ -4,6 +4,7 @@
 // ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
+import { businessDate } from '@/lib/businessDate';
 import { registryRefTargets } from '@/lib/master/registryRefs';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import {
@@ -598,7 +599,8 @@ export async function linkProductToRegistry(supabase, productId, { formulaId = n
 // ⚠️ คืน `null` เมื่อยังไม่มีวัสดุผูก **ต่างจาก** `{ price: null }` ที่แปลว่าผูกแล้ว
 // แต่ยังไม่มีใครใส่ราคา — สองอย่างนี้ผู้ใช้ต้องอ่านออกว่าคนละเรื่อง
 // `as` = คีย์ที่ติดลงแถว (ตั้งต้น `price`) — หน้ารายละเอียดสูตรติดราคา B เพิ่มเป็น `basePrice` (ม-148)
-export async function attachRegistryPrice(supabase, rows, { column, kind, as = 'price' }) {
+// `today` = วันไทยที่ใช้ตัดสินหมดอายุ (ตั้งต้นวันนี้ตามนาฬิกาไทย · ส่งมาได้เพื่อเทสต์)
+export async function attachRegistryPrice(supabase, rows, { column, kind, as = 'price', today = businessDate() }) {
   const ids = rows.map((r) => r.id).filter(Boolean);
   const materials = await loadMaterials(supabase, {
     status: null, kind, linked: { column, ids },
@@ -612,7 +614,10 @@ export async function attachRegistryPrice(supabase, rows, { column, kind, as = '
     const rev = latestRevision(m.revisions || []);
     byRow.set(key, {
       materialId: m.id,
-      state: materialPriceState(m, rev),
+      /* 🐞 เดิมส่ง `rev` เป็นอาร์กิวเมนต์ที่สอง ทั้งที่ลายเซ็นคือ (material, todayIso) ⇒ `isRevisionExpired` ได้
+         String(object) = "[object Ob" ซึ่งเรียงเหนือทุก 'YYYY-MM-DD' ⇒ ราคาทุกตัวบนทะเบียนกลิ่น/สูตรขึ้น "หมดอายุ"
+         · วันนี้ต้องมาจากนาฬิกาไทย (businessDate) ไม่ใช่ UTC — ก่อน 07:00 ไทย UTC ยังเป็นเมื่อวาน */
+      state: materialPriceState(m, today),
       unitPrice: revisionUnitPrice(rev),
       range: revisionPriceRange(rev),
       validUntil: rev?.validUntil || null,
