@@ -26,10 +26,12 @@ test('Sale Order print ใช้เครื่องยนต์ V4 + FM-SA-03 
   assert.match(html, /กำหนดชำระ<\/dt><dd>15\/08\/2026/);
   // ช่องลงชื่อ 3 ช่องแบบ SO — ป้ายเป็นหน่วยงาน (มติ 2026-08-05): ฝ่ายขาย /
   // ผู้จัดการฝ่ายขาย / ฝ่ายบัญชี · ยังไม่เซ็น = โชว์ชื่อ AE เจ้าของดีลไว้ให้เซ็น
-  assert.match(html, /ฝ่ายขาย <span>AE เจ้าของดีล<\/span>[\s\S]*?\(AE ทดสอบ\)/);
+  // ⭐ ตำแหน่งเต็มใต้หน่วยงาน (มติ 2026-09-22 "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม") — ยังไม่มีคนเซ็น = ตำแหน่งของช่อง
+  assert.match(html, /ฝ่ายขาย <span>Account Executive<\/span>[\s\S]*?\(AE ทดสอบ\)/);
   assert.doesNotMatch(html, /\(คนกดสร้างใบ\)/);
-  assert.match(html, /ผู้จัดการฝ่ายขาย <span>AE Supervisor<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
-  assert.match(html, /ฝ่ายบัญชี <span>/);
+  assert.match(html, /ผู้จัดการฝ่ายขาย <span>Account Executive Supervisor<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
+  assert.match(html, /ฝ่ายบัญชี <span>Finance Officer<\/span>/);
+  assert.doesNotMatch(html, /AE เจ้าของดีล|Deal Owner \(AE\)|<span>AE Supervisor<|<span>Scent &amp; Sense<|<span>ผู้ตรวจสอบ</, 'ห้ามคำย่อ/คำกลางแทนตำแหน่ง');
   assert.doesNotMatch(html, /ผู้ยื่นอนุมัติ/);
   // อนุมัติแล้ว = ไม่มีลายน้ำ
   assert.doesNotMatch(html, /class="watermark"/);
@@ -64,7 +66,7 @@ test('approved Sale Order stamps the proposer (salesperson) e-signature image', 
   assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
   assert.match(html, /ลายเซ็น อารีย์ พนักงานขาย/);
   // ช่องฝ่ายขายไม่หล่นไปช่องเซ็นเปล่า
-  assert.doesNotMatch(html, /ฝ่ายขาย <span>AE เจ้าของดีล<\/span>[\s\S]*?\(AE ทดสอบ\)/);
+  assert.doesNotMatch(html, /ฝ่ายขาย <span>Account Executive<\/span>[\s\S]*?\(AE ทดสอบ\)/);
 });
 
 // ลายเซ็นที่ระบบ stamp มาเป็นของผู้สร้างใบ — ห้ามเอาชื่อ AE เจ้าของดีลไปแปะทับ
@@ -82,15 +84,54 @@ test('เซ็นแล้ว → ช่องฝ่ายขายใช้ช
 test('ดีลไม่มีเจ้าของ → ช่องฝ่ายขายเว้นว่าง ไม่ใช้ชื่อคนกดสร้างใบ', () => {
   const html = buildSalesOrderPrintHTML({ ...order, deal: { title: 'ดีลทดสอบ' } });
   assert.doesNotMatch(html, /\(คนกดสร้างใบ\)/);
-  assert.match(html, /ฝ่ายขาย <span>AE เจ้าของดีล<\/span>/);
+  assert.match(html, /ฝ่ายขาย <span>Account Executive<\/span>/);
+});
+
+/* 🐞 ตรวจรอบสาม: ร่าง SO-26080010-0 พิมพ์ "(Sittipong Kaenthaw)" ใต้ "Account Executive" ทั้งที่บัญชีเขาเป็น senior_ae
+   (ใบเดียวกันที่ยื่นแล้วพิมพ์ "Senior Account Executive") — ช่องที่ยังไม่เซ็นแต่พิมพ์ชื่อเจ้าของดีลรอไว้
+   ต้องใช้ตำแหน่งของเจ้าของดีลจริง (`deal.ownerRole` ที่ route GET อ่านให้) · ไม่รู้ role = ตำแหน่งของช่อง */
+test('ยังไม่มีคนยื่น → ช่องฝ่ายขายพิมพ์ชื่อเจ้าของดีลคู่ตำแหน่งเต็มของเขาเอง ไม่ใช่ตำแหน่งของช่อง', () => {
+  const draft = { ...order, status: 'draft', deal: { ...order.deal, ownerRole: 'senior_ae' } };
+  const html = buildSalesOrderPrintHTML(draft);
+  assert.match(html, /<h2>ฝ่ายขาย <span>Senior Account Executive<\/span><\/h2>[\s\S]*?\(AE ทดสอบ\)/);
+  assert.doesNotMatch(html, /<h2>ฝ่ายขาย <span>Account Executive<\/span>/);
+  // ยื่นแล้ว = role ของหลักฐานชนะ role ในบัญชีเจ้าของดีล (คนยื่นจริงอาจเป็น admin)
+  const signed = buildSalesOrderPrintHTML({
+    ...draft,
+    proposerSignature: { imageDataUri: DATA_URI, signerName: 'ผู้ดูแลระบบ', signerRole: 'admin', signedAt: '2026-07-15T03:00:00.000Z' },
+  });
+  assert.match(signed, /<h2>ฝ่ายขาย <span>Administrator<\/span><\/h2>/);
 });
 
 test('approved Sale Order without embedded images falls back to blank sign boxes for both signers', () => {
   const html = buildSalesOrderPrintHTML(order);
   // ไม่มี <img> ลายเซ็น (CSS .signatureImage ยังอยู่เสมอ จึงเช็คเฉพาะ tag รูป)
   assert.doesNotMatch(html, /<img class="signatureImage"/);
-  assert.match(html, /ฝ่ายขาย <span>AE เจ้าของดีล<\/span>[\s\S]*?\(AE ทดสอบ\)/);
-  assert.match(html, /ผู้จัดการฝ่ายขาย <span>AE Supervisor<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
+  assert.match(html, /ฝ่ายขาย <span>Account Executive<\/span>[\s\S]*?\(AE ทดสอบ\)/);
+  assert.match(html, /ผู้จัดการฝ่ายขาย <span>Account Executive Supervisor<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
+});
+
+/* ⭐ มติผู้ใช้ 2026-09-22 "ปรับการแสดงชื่อตำแหน่งในใบ QT และ SO ด้วย" — เซ็นแล้ว = ตำแหน่งเต็มของคนที่เซ็นจริง
+   จาก `signerRole` ของหลักฐาน (ae · senior_ae · ae_supervisor · finance · admin) · ไม่ซ้ำในบรรทัดวันที่ */
+test('⭐ เซ็นแล้ว → ตำแหน่งใต้หน่วยงาน = ตำแหน่งเต็มของคนที่เซ็นจริง (ทั้งใบไทยและอังกฤษ)', () => {
+  for (const docLanguage of ['th', 'en']) {
+    const html = buildSalesOrderPrintHTML({
+      ...order,
+      docLanguage,
+      proposerSignature: { imageDataUri: DATA_URI, signerName: 'สมศรี ขายดี', signerRole: 'senior_ae', signedAt: '2026-07-15T03:00:00.000Z' },
+      approverSignature: { imageDataUri: DATA_URI, signerName: 'ผู้ดูแลระบบ', signerRole: 'admin', signedAt: '2026-07-16T03:00:00.000Z' },
+      financeSignature: { imageDataUri: DATA_URI, signerName: 'Saowalak Muangsri', signerRole: 'finance', signedAt: '2026-07-17T03:00:00.000Z' },
+    });
+    const L = docLanguage === 'en' ? ['Sales', 'Sales Manager', 'Finance'] : ['ฝ่ายขาย', 'ผู้จัดการฝ่ายขาย', 'ฝ่ายบัญชี'];
+    assert.match(html, new RegExp(`<h2>${L[0]} <span>Senior Account Executive</span></h2>`), docLanguage);
+    assert.match(html, new RegExp(`<h2>${L[1]} <span>Administrator</span></h2>`), `${docLanguage}: admin อนุมัติแทน ⇒ ตำแหน่งของคนที่เซ็น`);
+    assert.match(html, new RegExp(`<h2>${L[2]} <span>Finance Officer</span></h2>`), docLanguage);
+    // บรรทัดใต้ชื่อเหลือแค่วันที่ — ไม่พิมพ์ตำแหน่งซ้ำ
+    assert.match(html, /<strong>สมศรี ขายดี<\/strong>\s*<p>15\/07\/2026<\/p>/);
+  }
+  // หลักฐานไม่บอก role = ตำแหน่งของช่อง
+  const noRole = buildSalesOrderPrintHTML({ ...order, approverSignature: { imageDataUri: DATA_URI, signerName: 'ก' } });
+  assert.match(noRole, /ผู้จัดการฝ่ายขาย <span>Account Executive Supervisor<\/span>/);
 });
 
 test('unapproved Sale Order print carries a visible status watermark', () => {

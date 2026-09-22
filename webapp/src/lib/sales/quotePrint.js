@@ -71,7 +71,13 @@ export function openQuotePrintWindow(quote, preparedWindow = null, company = nul
     documentTitleTh: resolveDocumentTitleTh(standard, 'quotation'),
     proposerSignatureImage: proposer?.imageDataUri || null,
     proposerEvidence: proposer?.imageDataUri
-      ? { id: proposer.evidenceId, signerName: proposer.signerName, signedAt: proposer.signedAt }
+      ? {
+        id: proposer.evidenceId,
+        signerName: proposer.signerName,
+        signedAt: proposer.signedAt,
+        // ตำแหน่งเต็มใต้ "ผู้จัดทำ" มาจาก role ในหลักฐานการยื่น (มติ 2026-09-22)
+        signerRole: proposer.signerRole || null,
+      }
       : null,
   }));
   win.document.close();

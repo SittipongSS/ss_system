@@ -62,7 +62,7 @@ export const ENTITY_LABEL = {
   // (ถ้าไม่มีบรรทัดนี้ แถวจะขึ้นว่า "รายการ" ซึ่งไม่บอกอะไรเลย)
   drive_orphans: 'ไฟล์กำพร้าบน Drive',
   service_renewal: 'รอบบริการใกล้หมด',
-  product_spec_document: 'ใบสเปคสินค้า',
+  product_spec_document: 'รายละเอียดผลิตภัณฑ์ (FM-SA-04)',
 };
 
 export function notificationHref(entityType, entityId) {

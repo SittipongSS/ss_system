@@ -28,6 +28,7 @@ import {
   money,
   partyGrid as shellPartyGrid,
   renderDocumentHTML,
+  signatureSection,
   val,
   watermarkBlock,
 } from '@/lib/documents/documentShell';
@@ -225,44 +226,11 @@ function sectionLead(kind, documentNumber, L) {
       </div>`;
 }
 
-function signBox(signer, L) {
-  // มีรูปลายเซ็นจริง (data URI base64) → แสดงรูป; ไม่มี → กล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์"
-  // (data URI base64 ไม่มีอักขระ " ‹ › & จึงใส่ใน src ได้ตรง ๆ ไม่ต้อง esc)
-  const esigMark = signer.esignature?.imageDataUri
-    ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="${esc(L.t('signatureOf'))} ${esc(signer.esignature.signerName || '')}" />`
-    : `<div class="signaturePreview" aria-label="${esc(L.isEnglish ? 'Electronic signature placeholder' : 'ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์')}">${esc(L.t('esignature'))}</div>`;
-  /* แถวรายละเอียด: ตำแหน่ง + เวลาลงนาม (มีเฉพาะที่มีจริง) — ผู้อนุมัติ evidence-backed
-     มีครบ; ผู้เสนอราคาเป็น stamp เชิงภาพ ส่ง role/เวลาว่าง → โชว์แค่รูป+ชื่อ
-
-     ⭐ **ไม่พิมพ์ Evidence id ลงกระดาษแล้ว** (มติผู้ใช้ 2026-08-27) — เดิมมีบรรทัด
-     `Evidence DSE-…` ใต้ลายเซ็นผู้อนุมัติ แต่มันใช้ประโยชน์ไม่ได้เลย:
-       · **ไม่มีหน้าตรวจสอบสาธารณะ** — `document_signature_evidence` อ่านได้เฉพาะ API
-         ที่ต้องล็อกอิน และ OPEN_PAGES ของ proxy ไม่มีหน้า verify ⇒ ลูกค้าถือกระดาษ
-         ที่มีเลขนี้ไปทำอะไรไม่ได้
-       · หลักฐานจริงอยู่ที่แถว evidence + contentFingerprint ของฉบับตรึงในระบบ
-         ไม่ได้อยู่ที่การพิมพ์เลขลงกระดาษ
-       · เป็น id ภายใน ลูกค้าอ่านไม่รู้เรื่อง
-     ⚠️ **ตัวข้อมูลยังเก็บครบเหมือนเดิม** — ตัดแค่การพิมพ์ · ถ้าวันหนึ่งทำหน้า verify
-     สาธารณะแล้วอยากพิมพ์กลับมา ให้เอา evidenceId มาจาก signer.esignature ที่ยังส่งมาถึงนี่ */
-  const esigMeta = [signer.esignature?.signerRole, signer.esignature?.signedAt].filter(Boolean).map(esc).join(' · ');
-  const body = signer.esignature
-    ? `
-        ${esigMark}
-        <strong>${val(signer.esignature.signerName)}</strong>
-        ${esigMeta ? `<p>${esigMeta}</p>` : ''}`
-    : `
-        <div class="signatureSpace">${esc(L.t('signHere'))}</div>
-        <strong>${signer.name ? `(${esc(signer.name)})` : '(____________________________)'}</strong>
-        <p>${esc(L.t('signDateBlank'))}</p>`;
-  return `
-        <div class="${signer.esignature ? 'signed' : ''}">
-          <h2>${esc(signer.label)}${signer.role ? ` <span>${esc(signer.role)}</span>` : ''}</h2>${body}
-        </div>`;
-}
-
+/* ช่องลงนาม — ย้ายไป `documentShell.signatureSection` แล้ว (2026-09-22) ให้ใบเสนอราคา ใบสั่งขาย และ
+   FM-SA-04 ใช้กล่องชุดเดียว (มติผู้ใช้ "final review ต้องปรับให้เหมือน QT และ SO") · เหตุผลที่ไม่พิมพ์
+   Evidence id ลงกระดาษย้ายไปอยู่เหนือ `signatureBox` */
 function signatures(model, L) {
-  return `
-      <section class="signatures" aria-label="${esc(L.t('signaturesAria'))}">${(model.signers || []).map((signer) => signBox(signer, L)).join('')}</section>`;
+  return signatureSection(model.signers || [], L);
 }
 
 // ท้ายกระดาษ: ชื่อบริษัท · รหัสแบบฟอร์ม · เลขหน้า

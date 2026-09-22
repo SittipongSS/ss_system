@@ -18,6 +18,7 @@ import { docReasonError } from "@/lib/sales/productSpecDocWorkflow";
 import {
   docReasonPrompt, followUpLineView, lineIssuePrompt, specDocumentHref,
 } from "@/lib/sales/productSpecDocView";
+import { formatSpecDocNo } from "@/lib/sales/productSpecDocNo";
 import styles from "./SalesOrderFollowUpDocs.module.css";
 
 /**
@@ -84,7 +85,10 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
       });
       setIssuing(null);
       const docNo = result?.document?.docNo;
-      notifyToast.success(docNo ? `ออกเอกสาร ${docNo} แล้ว — ยื่นอนุมัติได้ที่หน้าเอกสาร` : "ออกเอกสารแล้ว");
+      // เลขที่รูปเดียวกับกระดาษ DDMMYY-XXX-RR (ออกใหม่ = Rev.00)
+      notifyToast.success(docNo
+        ? `ออกเอกสาร ${formatSpecDocNo(docNo, result?.revision?.revNo ?? 0)} แล้ว — ยื่นอนุมัติได้ที่หน้าเอกสาร`
+        : "ออกเอกสารแล้ว");
       await load({ background: true });
       onChanged?.();
     } catch (issueError) {
@@ -111,7 +115,7 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
         fallbackError: "ยกเลิกเอกสารไม่สำเร็จ",
       });
       setVoiding(null);
-      notifyToast.success(`ยกเลิก ${voiding.docNo || "เอกสาร"} แล้ว`);
+      notifyToast.success(`ยกเลิก ${voiding.docNoText || voiding.docNo || "เอกสาร"} แล้ว`);
       await load({ background: true });
       onChanged?.();
     } catch (voidFailure) {
@@ -130,7 +134,13 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
 
   const issuePrompt = issuing ? lineIssuePrompt({ line: issuing.line }) : null;
   const voidPrompt = voiding
-    ? docReasonPrompt("void", { document: { docNo: voiding.docNo }, orphan: true })
+    /* ⭐ ส่ง Rev ของเอกสารไปด้วย — ไม่งั้นโมดัลพูด "ยกเลิก 220969-001" ขณะที่แถว/toast พูด "220969-001-02"
+       (ผลตรวจรอบสอง: เลขเดียวกันสองหน้าตาในโฟลว์เดียว) */
+    ? docReasonPrompt("void", {
+      document: { docNo: voiding.docNo },
+      latest: voiding.revNo === null || voiding.revNo === undefined ? null : { revNo: voiding.revNo },
+      orphan: true,
+    })
     : null;
 
   return (
@@ -138,7 +148,7 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
       icon={Files}
       eyebrow="FOLLOW-UP DOCS"
       title="เอกสารต่อเนื่อง"
-      meta="FM-SA-04 ใบสเปคสินค้า — หนึ่งใบต่อหนึ่งบรรทัด ออกได้หลังใบสั่งขายอนุมัติแล้ว"
+      meta="FM-SA-04 รายละเอียดผลิตภัณฑ์ (Product Spec) — หนึ่งใบต่อหนึ่งบรรทัด ออกได้หลังใบสั่งขายอนุมัติแล้ว"
     >
       {problem ? (
         <div className={styles.notice}>
@@ -174,9 +184,13 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
                     </td>
                     <td>
                       {view.docNo ? (
+                        /* ⭐ เลขที่รูปเดียวกับกระดาษ DDMMYY-XXX-RR (มติ 22/09) · บรรทัดรอง = **เลขที่เต็มในฐาน**
+                           (FM-SA-04-DDMMYY-XXX) + Rev — บอกว่าเป็นเอกสาร FM-SA-04 และสองหลักท้ายคือ Rev
+                           🐞 ผลตรวจรอบสอง: เลขรูปใหม่ไม่มีคำนำหน้า ลิงก์อัตโนมัติ (docRefs `FM`) / `/go/` รับแต่รูปเต็ม
+                              ⇒ ต้องมีที่ให้คนก๊อปเลขเต็มไปวางในเธรด */
                         <>
-                          <div className="mono">{view.docNo}</div>
-                          <div className={styles.sub}>{naText(view.revLabel)}</div>
+                          <div className="mono">{view.docNoText || view.docNo}</div>
+                          <div className={styles.sub}>{[view.docNo || "FM-SA-04", view.revLabel].filter(Boolean).join(" · ")}</div>
                         </>
                       ) : naText(null)}
                     </td>
@@ -222,8 +236,8 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
             {orphans.map((orphan) => (
               <li key={orphan.documentId} className={styles.orphanRow}>
                 <div className={styles.orphanCopy}>
-                  <Link className="mono" href={specDocumentHref(orphan.documentId)}>{naText(orphan.docNo)}</Link>
-                  <span className={styles.sub}>{[orphan.revLabel, orphan.statusLabel].filter(Boolean).join(" · ") || naText(null)}</span>
+                  <Link className="mono" href={specDocumentHref(orphan.documentId)}>{naText(orphan.docNoText || orphan.docNo)}</Link>
+                  <span className={styles.sub}>{[orphan.docNo, orphan.revLabel, orphan.statusLabel].filter(Boolean).join(" · ") || naText(null)}</span>
                 </div>
                 {orphan.voidAction?.visible ? (
                   <GatedAction

@@ -59,12 +59,23 @@ const REVISION_SUMMARY_COLUMNS = [
 ].join(', ');
 
 /* SO ต้นเรื่องของเอกสาร — เฉพาะช่องที่ด่าน (สถานะ · origin · ดีล) กับภาพนิ่ง (เลขที่ · ใบเสนอราคา ·
-   ใบยืนยัน · กำหนดส่ง · ลูกค้า) ใช้ · 🪤 ไม่ `select('*')` — ทั้งแถวลากยอดเงินมาด้วย ซึ่งด่าน
-   historicalMoneyGuards นับเป็นตัวอ่านยอดที่ต้องกรองใบย้อนหลัง ทั้งที่ที่นี่ไม่ได้รวมยอดอะไร */
+   ใบยืนยัน · กำหนดส่ง · ลูกค้า · ภาษาเอกสาร) ใช้ · 🪤 ไม่ `select('*')` — ทั้งแถวลากยอดเงินมาด้วย ซึ่งด่าน
+   historicalMoneyGuards นับเป็นตัวอ่านยอดที่ต้องกรองใบย้อนหลัง ทั้งที่ที่นี่ไม่ได้รวมยอดอะไร
+   ⭐ `docLanguage` + คู่อังกฤษของชื่อ/ที่อยู่ (มติผู้ใช้ 2026-09-22) — กระดาษ FM-SA-04 พิมพ์ภาษาเดียวตาม
+   ภาษาของ SO แบบใบเสนอราคา/ใบสั่งขาย · คู่อังกฤษเอาของ SO ก่อน ถอยไปใบเสนอราคา (กติกาของ salesOrderPrint) */
 const ORDER_COLUMNS = [
   'id', 'orderNumber', 'status', 'origin', 'dealId', 'quotationId', 'customerId', 'customerName',
+  'customerNameEn', 'billingAddressEn', 'shippingAddressEn', 'docLanguage',
   'metadata', 'confirmDocType', 'confirmDocNo', 'confirmDocDate', 'deliveryDueDate',
   'ownerId', 'ownerName', 'createdBy', 'revisedFromId', 'supersededById',
+].join(', ');
+
+/* ใบเสนอราคาที่ SO ผูก — กล่อง "ผู้ซื้อ / CUSTOMER" ของกระดาษเอาเลขผู้เสียภาษี · สาขา · ที่อยู่ ·
+   ผู้ติดต่อจากที่นี่ (sales_orders ไม่เก็บชุดนี้ · salesOrderPrint อ่านจากที่เดียวกัน) · ไม่มียอดเงิน */
+const QUOTATION_PARTY_COLUMNS = [
+  'id', 'quoteNumber', 'customerNameEn', 'customerTaxId', 'branchCode',
+  'billingAddress', 'billingAddressEn', 'shippingAddress', 'shippingAddressEn',
+  'contactName', 'contactPhone',
 ].join(', ');
 
 const PRODUCT_PRINT_COLUMNS = [
@@ -442,28 +453,93 @@ export async function loadDealOwner(supabase, salesOrder) {
   };
 }
 
-async function resolveQuotationNumber(supabase, order) {
-  const fromMeta = order?.metadata?.quoteNumber;
-  if (fromMeta) return { quotationNumber: fromMeta };
-  if (!order?.quotationId) return { quotationNumber: null };
+/* ใบเสนอราคาที่ SO ผูก — ⚠️ อ่านล้ม = error ไม่ใช่ `null` · `null` แปลว่า "ไม่มีใบเสนอราคา" ซึ่งทำให้
+   กล่องผู้ซื้อบนกระดาษที่ลูกค้าเซ็นว่างทั้งกล่อง (เลขผู้เสียภาษี/ที่อยู่เป็นขีด) โดยไม่มีใครรู้ */
+async function loadOrderQuotation(supabase, order) {
+  if (!order?.quotationId) return { quotation: null };
   const { data, error } = await supabase
-    .from('quotations').select('quoteNumber').eq('id', order.quotationId).maybeSingle();
-  if (error) return { error: messageOf(error) };
-  return { quotationNumber: data?.quoteNumber || null };
+    .from('quotations').select(QUOTATION_PARTY_COLUMNS).eq('id', order.quotationId).maybeSingle();
+  if (error) return { error: `อ่านใบเสนอราคาของใบสั่งขายไม่สำเร็จ: ${messageOf(error)}` };
+  return { quotation: data || null };
+}
+
+/**
+ * ลูกค้าบนกระดาษ (กล่อง "ผู้ซื้อ / CUSTOMER") — เก็บ **ทั้งสองภาษาดิบ** ให้ตัวพิมพ์เลือกตามภาษาของใบเอง
+ *
+ * ⭐ ที่มาชุดเดียวกับ `salesOrderPrint` (ใบสั่งขายที่ลูกค้าถือคู่กัน): ชื่อไทย = SO · คู่อังกฤษ = SO ก่อน
+ *    ถอยไปใบเสนอราคา · เลขผู้เสียภาษี/สาขา/ที่อยู่ไทย/ผู้ติดต่อ = ใบเสนอราคาที่ผูก
+ * ⚠️ `branchCode` เป็น `null` เมื่อไม่มีใบเสนอราคาให้อ่าน (ตัวอย่างจากหน้าสินค้า) — คนละความหมายกับ `''`
+ *    ของใบเสนอราคาที่ไม่ได้กรอกสาขา (= สำนักงานใหญ่ '00000') · ตัวพิมพ์พิมพ์ขีดเฉพาะ `null`
+ */
+function snapshotCustomer({ order, quotation, product }) {
+  return {
+    name: order?.customerName || product?.customerName || null,
+    nameEn: order?.customerNameEn || quotation?.customerNameEn || null,
+    taxId: quotation?.customerTaxId || null,
+    branchCode: quotation ? (quotation.branchCode ?? '') : null,
+    billingAddress: quotation?.billingAddress || null,
+    billingAddressEn: order?.billingAddressEn || quotation?.billingAddressEn || null,
+    shippingAddress: quotation?.shippingAddress || null,
+    shippingAddressEn: order?.shippingAddressEn || quotation?.shippingAddressEn || null,
+    contactName: quotation?.contactName || null,
+    contactPhone: quotation?.contactPhone || null,
+  };
 }
 
 const ITEM_SNAPSHOT_FIELDS = ['sortOrder', 'itemKey', 'itemLabel', 'detail', 'preparedByS', 'preparedByCustomer', 'note'];
+
+const hasQty = (value) => value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value));
+
+/**
+ * "จำนวนผลิต" ของเอกสาร — จำนวน + หน่วยของบรรทัด SO · บรรทัดไม่มีจำนวน (หรือบรรทัดถูกถอด) ⇒ บรรทัดใบเสนอราคา
+ * ที่ SO ผูก (มติผู้ใช้ 2026-09-22 "จำนวนผลิต ดึงมาจาก QT SO")
+ *
+ * ⭐ บรรทัดใบเสนอราคา: ตัวที่บรรทัด SO ชี้ (`quotationLineId`) ก่อน **ถ้าเป็นสินค้าเดียวกัน** · ไม่มี/หาไม่เจอ/คนละสินค้า
+ *    = บรรทัดแรกของสินค้าเดียวกัน
+ *    ในใบเสนอราคาที่ SO ผูก · ไม่มีทั้งคู่ = null (กระดาษพิมพ์ N/A)
+ * ⚠️ อ่านใบเสนอราคาล้ม = error ไม่ใช่ null — null บนกระดาษคือ "ไม่มีจำนวน" ซึ่งไม่จริง
+ * @returns {{ qty, unit, source: 'sales_order_line'|'quotation_line'|null } | { error: string }}
+ */
+export async function loadDocumentQuantity(supabase, { order = null, line = null, productId = null } = {}) {
+  if (line && hasQty(line.qty)) return { qty: line.qty, unit: line.unit || null, source: 'sales_order_line' };
+  if (!order?.quotationId) return { qty: null, unit: null, source: null };
+  const pick = async (column, value) => {
+    const { data, error } = await supabase.from('quotation_lines')
+      .select('id, quotationId, productId, qty, unit, sortOrder')
+      .eq('quotationId', order.quotationId)
+      .eq(column, value)
+      .order('sortOrder', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(1);
+    if (error) return { error: `อ่านบรรทัดใบเสนอราคาไม่สำเร็จ: ${messageOf(error)}` };
+    return { row: data?.[0] || null };
+  };
+  let found = line?.quotationLineId ? await pick('id', line.quotationLineId) : { row: null };
+  if (found.error) return { error: found.error };
+  /* 🐞 (ตรวจรอบสาม) บรรทัดที่ SO ชี้ต้องเป็น **สินค้าเดียวกัน** — ลิงก์ที่เพี้ยน (ชี้บรรทัดของสินค้าอื่น) เคยได้จำนวนของ
+     สินค้าอื่นมาพิมพ์เป็น "จำนวนผลิต" บนกระดาษที่ลูกค้าเซ็น ⇒ ไม่ตรงถือว่าไม่เจอ แล้วถอยไปค้นสินค้าเดียวกันตามปกติ
+     ⚠️ บรรทัดใบเสนอราคาที่ไม่มี productId (บรรทัดพิมพ์เอง) ยังเชื่อลิงก์ — ลิงก์ตรงเป็นหลักฐานเดียวที่มี */
+  if (found.row && productId && found.row.productId && found.row.productId !== productId) found = { row: null };
+  if (!found.row && productId) found = await pick('productId', productId);
+  if (found.error) return { error: found.error };
+  if (!found.row || !hasQty(found.row.qty)) return { qty: null, unit: null, source: null };
+  return { qty: found.row.qty, unit: found.row.unit || null, source: 'quotation_line' };
+}
 
 /**
  * ภาพนิ่งของเอกสาร — ถ่ายตอนยื่นทุกครั้ง และใช้พิมพ์ร่าง/ตัวอย่างสดด้วยก้อนเดียวกัน
  *
  * `{ schemaVersion, capturedAt, spec: {ช่องเนื้อหา..., certifications}, items: [...],
- *    product: {ช่องที่กระดาษพิมพ์}, order: {orderNumber, quotationNumber, confirmDocNo,
- *    confirmDocDate, qty, unit, deliveryDueDate, customerName, dealOwner*...},
- *    illustrations: [{attachmentId, caption, sortOrder, fileName}] }`
+ *    product: {ช่องที่กระดาษพิมพ์}, order: {orderNumber, quotationNumber, confirmDocType, confirmDocNo,
+ *    confirmDocDate, qty, unit, qtySource, deliveryDueDate, customerName, docLanguage, dealOwner*...},
+ *    customer: {name, nameEn, taxId, branchCode, billingAddress(En), shippingAddress(En), contactName,
+ *    contactPhone}, illustrations: [{attachmentId, caption, sortOrder, fileName}] }`
  *
- * ⚠️ `order`/`line` ว่างได้ (ตัวอย่างจากหน้าสเปคที่ยังไม่มี SO) — ก้อน `order` ยังมีทุกคีย์เป็น null
- *    ให้ตัวพิมพ์อ่านรูปเดียวกันเสมอ
+ * ⭐ schemaVersion 2 (2026-09-22) = เพิ่ม `order.docLanguage` · `order.confirmDocType` · ก้อน `customer`
+ *    (กระดาษตามภาษาของ SO + กล่องผู้ซื้อแบบใบเสนอราคา) · ภาพนิ่ง v1 ไม่มีคีย์เหล่านี้ ⇒ ตัวพิมพ์ต้อง
+ *    ถอยเป็นไทย/ขีดเอง (ไม่มีใบจริงบนฐานตอนเปลี่ยน แต่กติกาภาพนิ่งคือห้ามเขียนทับ ⇒ ต้องอ่านของเก่าได้เสมอ)
+ * ⚠️ `order`/`line` ว่างได้ (ตัวอย่างจากหน้าสเปคที่ยังไม่มี SO) — ก้อน `order`/`customer` ยังมีทุกคีย์
+ *    เป็น null ให้ตัวพิมพ์อ่านรูปเดียวกันเสมอ · ภาษาเป็น null = ไทย
  * @returns {{ snapshot: object, illustrationIds: string[] } | { error: string, status?: number }}
  */
 export async function buildDocumentSnapshot(supabase, {
@@ -476,13 +552,16 @@ export async function buildDocumentSnapshot(supabase, {
 
   const productRes = await loadProductPrintFields(supabase, productId);
   if (productRes.error) return { error: productRes.error, status: productRes.status };
-  const quote = order ? await resolveQuotationNumber(supabase, order) : { quotationNumber: null };
+  const quote = order ? await loadOrderQuotation(supabase, order) : { quotation: null };
   if (quote.error) return { error: quote.error };
+  const quotation = quote.quotation;
   const ill = await loadSpecIllustrations(supabase, productId);
   if (ill.error) return { error: ill.error };
+  const quantity = order ? await loadDocumentQuantity(supabase, { order, line, productId }) : { qty: null, unit: null, source: null };
+  if (quantity.error) return { error: quantity.error };
 
   const snapshot = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     capturedAt: now,
     spec: {
       ...Object.fromEntries(SPEC_CONTENT_FIELDS.map((field) => [field, spec[field] ?? null])),
@@ -496,20 +575,27 @@ export async function buildDocumentSnapshot(supabase, {
       salesOrderId: order?.id || null,
       salesOrderLineId: line?.id || null,
       orderNumber: order?.orderNumber || null,
-      quotationNumber: quote.quotationNumber,
+      // เลขที่ที่ SO แช่ไว้ตอนออกใบก่อน (ใบเสนอราคาออก Rev ทีหลังได้) · ไม่มีค่อยอ่านจากใบที่ผูก
+      quotationNumber: order?.metadata?.quoteNumber || quotation?.quoteNumber || null,
+      confirmDocType: order?.confirmDocType || null,
       confirmDocNo: order?.confirmDocNo || null,
       confirmDocDate: order?.confirmDocDate || null,
-      qty: line?.qty ?? null,
-      unit: line?.unit || null,
+      // จำนวนผลิต (Product Overview) — บรรทัด SO ก่อน ถอยไปบรรทัดใบเสนอราคา · `qtySource` บอกว่ามาจากไหน
+      qty: quantity.qty ?? null,
+      unit: quantity.unit || null,
+      qtySource: quantity.source,
       lineDescription: line?.description || null,
       deliveryDueDate: order?.deliveryDueDate || null,
       customerName: order?.customerName || productRes.product.customerName || null,
-      // Contact for Sales = AE เจ้าของดีล (ไม่ใช่คนที่เปิดดู)
+      // ภาษาของกระดาษ = ภาษาของ SO (ไม่มี SO = ตัวอย่างจากหน้าสินค้า = null = ไทย)
+      docLanguage: order ? (order.docLanguage === 'en' ? 'en' : 'th') : null,
+      // ผู้ติดต่อฝ่ายขาย (กล่องอ้างอิง) = AE เจ้าของดีล (ไม่ใช่คนที่เปิดดู)
       dealOwnerId: dealOwner?.id || null,
       dealOwnerName: dealOwner?.name || null,
       dealOwnerEmail: dealOwner?.email || null,
       dealOwnerPhone: dealOwner?.phone || null,
     },
+    customer: snapshotCustomer({ order, quotation, product: productRes.product }),
     illustrations: ill.illustrations,
   };
   return { snapshot, illustrationIds: ill.illustrations.map((row) => row.attachmentId) };

@@ -180,6 +180,82 @@ export function watermarkBlock(text) {
   return text ? `<div class="watermark">${esc(text)}</div>` : '';
 }
 
+/* ── ช่องลงนาม — ตัวเดียวของใบเสนอราคา · ใบสั่งขาย · FM-SA-04 ────────────────────────
+   ⭐ มติผู้ใช้ 2026-09-22 "final review ต้องปรับให้เหมือน QT และ SO" — ย้ายมาจาก
+      `quotationMasterDocument.js` (signBox/signatures เดิมทุกตัวอักษร) ให้สามเอกสารใช้ markup + CSS
+      ชุดเดียว (`.signatures` ด้านล่าง) · เขียนกล่องลายเซ็นชุดใหม่ที่ไหนอีก = เพี้ยนหากันแน่นอน
+      (FM-SA-04 เคยมีกล่อง `.sig` ของตัวเองที่ไม่มีรูปลายเซ็น ไม่มีตำแหน่ง ไม่มีช่อง "ลงชื่อ")
+   `L` = ตัวอ่านป้ายของภาษาใบ (`quotationDocLabels`) — ใช้ `t(key)` กับ `isEnglish` เท่านั้น
+   signer = { label, role?, name?, esignature?: { imageDataUri?, signerName, signerRole?, signedAt? } }
+     · มี `esignature` = เซ็นแล้ว: รูปลายเซ็นจริง (ไม่มีรูป = กล่อง "ลายเซ็นอิเล็กทรอนิกส์") + ชื่อ + ตำแหน่ง/วันที่
+     · ไม่มี = ช่องเซ็นมือ: "ลงชื่อ" + (ชื่อ หรือ ขีดเส้น) + "วันที่ ___/___/___" */
+/* ข้อความที่กล่องหนึ่งพิมพ์ (ป้าย · ตำแหน่ง · ชื่อ · บรรทัดล่าง) — ตัวเดียวกับที่ `signatureBox` วาด
+   ⭐ export ให้ตัวจองที่หน้า (FM-SA-04 `signaturesMm`) ประเมินความสูงจากข้อความชุดเดียวกับที่พิมพ์จริง
+      (บทเรียน v4FirstCapacity: ที่จองกับที่วาดคิดคนละทาง = ตัดเงียบ) */
+export function signatureBoxText(signer, L) {
+  if (signer.esignature) {
+    return {
+      label: signer.label || '',
+      role: signer.role || '',
+      name: signer.esignature.signerName || '-',
+      meta: [signer.esignature.signerRole, signer.esignature.signedAt].filter(Boolean).join(' · '),
+    };
+  }
+  return {
+    label: signer.label || '',
+    role: signer.role || '',
+    name: signer.name ? `(${signer.name})` : '(____________________________)',
+    meta: L.t('signDateBlank'),
+  };
+}
+
+export function signatureBox(signer, L) {
+  // มีรูปลายเซ็นจริง (data URI base64) → แสดงรูป; ไม่มี → กล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์"
+  // (data URI base64 ไม่มีอักขระ " ‹ › & จึงใส่ใน src ได้ตรง ๆ ไม่ต้อง esc)
+  const esigMark = signer.esignature?.imageDataUri
+    ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="${esc(L.t('signatureOf'))} ${esc(signer.esignature.signerName || '')}" />`
+    : `<div class="signaturePreview" aria-label="${esc(L.isEnglish ? 'Electronic signature placeholder' : 'ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์')}">${esc(L.t('esignature'))}</div>`;
+  /* แถวรายละเอียด: ตำแหน่ง + เวลาลงนาม (มีเฉพาะที่มีจริง) — ผู้อนุมัติ evidence-backed
+     มีครบ; ผู้เสนอราคาเป็น stamp เชิงภาพ ส่ง role/เวลาว่าง → โชว์แค่รูป+ชื่อ
+
+     ⭐ **ไม่พิมพ์ Evidence id ลงกระดาษแล้ว** (มติผู้ใช้ 2026-08-27) — เดิมมีบรรทัด
+     `Evidence DSE-…` ใต้ลายเซ็นผู้อนุมัติ แต่มันใช้ประโยชน์ไม่ได้เลย:
+       · **ไม่มีหน้าตรวจสอบสาธารณะ** — `document_signature_evidence` อ่านได้เฉพาะ API
+         ที่ต้องล็อกอิน และ OPEN_PAGES ของ proxy ไม่มีหน้า verify ⇒ ลูกค้าถือกระดาษ
+         ที่มีเลขนี้ไปทำอะไรไม่ได้
+       · หลักฐานจริงอยู่ที่แถว evidence + contentFingerprint ของฉบับตรึงในระบบ
+         ไม่ได้อยู่ที่การพิมพ์เลขลงกระดาษ
+       · เป็น id ภายใน ลูกค้าอ่านไม่รู้เรื่อง
+     ⚠️ **ตัวข้อมูลยังเก็บครบเหมือนเดิม** — ตัดแค่การพิมพ์ · ถ้าวันหนึ่งทำหน้า verify
+     สาธารณะแล้วอยากพิมพ์กลับมา ให้เอา evidenceId มาจาก signer.esignature ที่ยังส่งมาถึงนี่ */
+  const text = signatureBoxText(signer, L);
+  const body = signer.esignature
+    ? `
+        ${esigMark}
+        <strong>${val(signer.esignature.signerName)}</strong>
+        ${text.meta ? `<p>${esc(text.meta)}</p>` : ''}`
+    : `
+        <div class="signatureSpace">${esc(L.t('signHere'))}</div>
+        <strong>${esc(text.name)}</strong>
+        <p>${esc(text.meta)}</p>`;
+  return `
+        <div class="${signer.esignature ? 'signed' : ''}">
+          <h2>${esc(signer.label)}${signer.role ? ` <span>${esc(signer.role)}</span>` : ''}</h2>${body}
+        </div>`;
+}
+
+/* แถวช่องลงนามทั้งแถว — สามช่อง (QT/SO) ใช้กริดตั้งต้นของ `.signatures`
+   ⚠️ จำนวนช่องอื่น (FM-SA-04 มีสี่) ตั้ง `--sig-cols` บนแท็กให้ CSS กลางแบ่งคอลัมน์ตามจำนวนจริง · สามช่องไม่ตั้ง
+      ⇒ HTML ของใบเสนอราคา/ใบสั่งขายเหมือนเดิมทุกตัวอักษร
+   🐞 (ตรวจรอบสาม) เดิมติด `data-columns="N"` แต่ CSS มีกฎเฉพาะ 4 ⇒ ผู้เรียกที่ส่ง 2 หรือ 5 ช่องได้กริดสามคอลัมน์เงียบ ๆ
+      (สองช่องเหลือช่องว่างหนึ่งช่อง · ห้าช่องตกแถว) · ตัวแปรเดียวใช้ได้ทุกจำนวน */
+export function signatureSection(signers = [], L) {
+  const count = signers.length;
+  const columns = count && count !== 3 ? ` style="--sig-cols: ${count}"` : '';
+  return `
+      <section class="signatures"${columns} aria-label="${esc(L.t('signaturesAria'))}">${signers.map((signer) => signatureBox(signer, L)).join('')}</section>`;
+}
+
 // ขนาดกระดาษต่อการวางแนว — เอกสารพิมพ์เป็นไฟล์เดี่ยว จึงกำหนด @page ต่อไฟล์ได้ตรง ๆ
 // scale ใช้เลื่อนขั้นบันได zoom: กระดาษแนวนอนกว้างกว่า 297/210 เท่า จอจึงต้องเริ่มย่อ
 // ที่ความกว้างมากกว่าตามสัดส่วนเดียวกัน ไม่งั้นแนวนอนล้นจอก่อนที่ zoom จะทำงาน
@@ -368,7 +444,12 @@ export function documentShellCss(orientation = 'portrait') {
   .termsGrid p { margin: 0; color: var(--doc-text); font-size: 8.5pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .termsGrid .remarks { grid-column: 1 / -1; }
   .termsGrid .remarks p { max-width: 168mm; }
-  .signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-top: auto; padding-top: 3mm; break-inside: avoid; }
+  /* จำนวนคอลัมน์ = --sig-cols (ตั้งต้น 3 · signatureSection ตั้งค่าอื่นบนแท็กเอง)
+     ⚠️ คง 1fr (= minmax(auto, 1fr)) ไว้โดยตั้งใจ — ชื่อที่ไม่มีจุดตัด (อีเมลสำรองของบัญชีที่ไม่มีชื่อ) ถ่างช่องตัวเองแทนการตกบรรทัด
+        ลองเปลี่ยนเป็น minmax(0, 1fr) + overflow-wrap แล้ว (ตรวจรอบสาม 22/09): ช่องเท่ากันจริง แต่แถวลงนามของ QT/SO สูงขึ้น
+        140 → 157px เกินที่แบ่งหน้า v4 จองไว้ 145px (quotationMasterTemplate · blocks.signatures) ⇒ เสี่ยงล้นแผ่นที่เต็มพอดี
+        ส่วนแบบถ่างช่องสูงเท่าเดิม 140px · FM-SA-04 ทับเป็นช่องเท่ากันใน extraCss ของตัวเอง (ตัวจองหน้าของมันคิดช่องเท่ากัน) */
+  .signatures { --sig-cols: 3; display: grid; grid-template-columns: repeat(var(--sig-cols), 1fr); gap: 2.5mm; margin-top: auto; padding-top: 3mm; break-inside: avoid; }
   .signatures > div { min-height: 31mm; padding: 2mm; text-align: center; border: 1px solid var(--doc-line-strong); }
   .signatures h2 { margin: 0; color: var(--doc-navy); font-size: 8pt; }
   .signatures h2 span { display: block; color: var(--doc-muted); font-size: 6.8pt; font-weight: 400; }

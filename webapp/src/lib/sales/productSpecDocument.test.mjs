@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  PRODUCT_SPEC_PAGE_BUDGET_MM, PRODUCT_SPEC_RENDERER_VERSION, PRODUCT_SPEC_WATERMARKS,
-  applyProductSpecWatermark, productSpecDateText, productSpecRevText, productSpecWatermark,
-  renderProductSpecDocument, supersededWatermark,
+  PRODUCT_SPEC_RENDERER_VERSION, PRODUCT_SPEC_WATERMARKS,
+  applyProductSpecWatermark, planProductSpecPaper, productSizeText, productSpecDateText, productSpecRevText,
+  productSpecSignedSteps, productSpecWatermark, renderProductSpecDocument, supersededWatermark,
 } from './productSpecDocument.js';
+import { productSpecPageBudgets } from './productSpecLayout.js';
 import { productSpecCertSeed, productSpecChecklistSeed } from './productSpecChecklist.js';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 
@@ -55,6 +56,7 @@ const snapshotOf = (over = {}) => ({
     salesOrderLineId: 'SOL-1',
     orderNumber: 'SO-26090176-0',
     quotationNumber: 'QT-26090271-0',
+    confirmDocType: null,
     confirmDocNo: null,
     confirmDocDate: null,
     qty: 1500,
@@ -62,14 +64,35 @@ const snapshotOf = (over = {}) => ({
     lineDescription: null,
     deliveryDueDate: '2026-10-30',
     customerName: 'บริษัท อาเตโพเล่ จำกัด',
+    docLanguage: 'th',
     dealOwnerId: 'U-AE',
     dealOwnerName: 'สิทธิพงศ์ เจ้าของดีล',
     dealOwnerEmail: 'owner@example.com',
     dealOwnerPhone: '0613879399',
   },
+  // ก้อนลูกค้าของภาพนิ่ง v2 — ทั้งสองภาษาดิบ (ตัวพิมพ์เลือกภาษาเอง)
+  customer: {
+    name: 'บริษัท อาเตโพเล่ จำกัด',
+    nameEn: 'ARTEPOLE CO., LTD.',
+    taxId: '0105561234567',
+    branchCode: '',
+    billingAddress: '88/8 ถนนสาทรใต้ แขวงยานนาวา เขตสาทร กรุงเทพมหานคร 10120',
+    billingAddressEn: '88/8 South Sathorn Rd., Yannawa, Sathorn, Bangkok 10120',
+    shippingAddress: null,
+    shippingAddressEn: null,
+    contactName: 'คุณเบลล์',
+    contactPhone: '0844326199',
+  },
   illustrations: [],
   ...over,
 });
+
+// ใบอังกฤษ = ภาพนิ่งเดิมที่ SO เลือกภาษาอังกฤษ
+const englishSnapshot = (over = {}) => {
+  const snapshot = snapshotOf(over);
+  snapshot.order = { ...snapshot.order, docLanguage: 'en' };
+  return snapshot;
+};
 
 const revisionOf = (over = {}) => ({
   id: 'PSDR-1',
@@ -97,7 +120,18 @@ const baseInput = (over = {}) => ({
 });
 
 const sheetCount = (html) => (html.match(/class="sheet /g) || []).length;
-const headings = (html) => (html.match(/<h3>[^<]*<\/h3>/g) || []).map((h) => h.replace(/<\/?h3>/g, ''));
+const headings = (html) => (html.match(/<h3[^>]*>[^<]*<\/h3>/g) || []).map((h) => h.replace(/<\/?h3[^>]*>/g, ''));
+// ช่องลงนามทั้งแถว (`signatureSection` ของเปลือก — กล่องชุดเดียวกับ QT/SO)
+const signatureRow = (html) => html.slice(html.indexOf('<section class="signatures"'));
+const signatureBoxes = (html) => signatureRow(html).split(/<div class="(?:signed)?">/).slice(1);
+// หัวข้อไม่รวมเลขข้อ ("4. Checklist Project (ต่อ)" ⇒ "Checklist Project (ต่อ)")
+const bareHeadings = (html) => headings(html).map((h) => h.replace(/^\d+\. /, ''));
+const headerRows = (html) => html.slice(html.indexOf('class="identityBlock"'), html.indexOf('</header>'));
+const partyBox = (html) => html.slice(html.indexOf('class="partyGrid"'), html.indexOf('</section>'));
+const referenceBox = (html) => {
+  const box = partyBox(html);
+  return box.slice(box.lastIndexOf('<h2>'));
+};
 
 test('ใช้เปลือกเอกสารกลาง — ได้ .sheet · หัวเอกสาร · ท้ายกระดาษ ชุดเดียวกับใบเสนอราคา', () => {
   const html = renderProductSpecDocument(baseInput());
@@ -116,14 +150,37 @@ test('🐞 หัวกระดาษพิมพ์ชื่อบริษั
   assert.match(html, /<footer class="footer">\s*<span>บริษัท ทดสอบกระดาษ จำกัด<\/span>/);
 });
 
-test('🪤 สามเลขบนกระดาษอยู่ครบและไม่สลับกัน — Reversion No. คือ Rev ของเอกสาร', () => {
+test('🪤 สามเลขบนกระดาษอยู่ครบและไม่สลับกัน — "เลขที่" = DDMMYY-XXX-RR (RR = Rev ของเอกสาร)', () => {
   const html = renderProductSpecDocument(baseInput());
   // เวอร์ชันของ **แบบฟอร์ม** (ค่าสำรองเมื่อยังไม่มีมาตรฐานเผยแพร่)
   assert.match(html, /FM-SA-04: Rev\. No\.00\. 08\/05\/2568/);
-  // เลขที่ของเอกสาร
-  assert.match(html, /Document No\.<\/dt><dd>FM-SA-04-170969-004</);
-  // Rev ของเอกสาร — เติมศูนย์สองหลัก
-  assert.match(html, /Reversion No\.<\/dt><dd>02</);
+  // ⭐ มติผู้ใช้ 2026-09-22: ป้ายแบบใบเสนอราคา + เลขที่รูปใหม่ (ตัดรหัสแบบฟอร์ม · Rev สองหลักท้าย)
+  assert.match(headerRows(html), /<dt>เลขที่<\/dt><dd>170969-004-02<\/dd>/);
+  assert.doesNotMatch(html, /Document No\.|Reversion No\.|Doc No\./, 'ป้ายชุดเก่าต้องไม่เหลือ');
+  assert.doesNotMatch(headerRows(html), /FM-SA-04-170969-004/, 'หัวต้องไม่พิมพ์เลขที่ดิบในฐาน');
+});
+
+test('⭐ ชื่อเอกสารภาษาเดียวตามภาษาของใบ — ไทย "รายละเอียดผลิตภัณฑ์" · อังกฤษ "PRODUCT SPEC" (ค่าสำรอง)', () => {
+  const th = renderProductSpecDocument(baseInput({ standard: null }));
+  assert.match(th, /<h1>รายละเอียดผลิตภัณฑ์<\/h1>/);
+  assert.doesNotMatch(th, /PRODUCT SPEC|Product Spec/, 'ใบไทยต้องไม่มีชื่ออังกฤษซ้อน');
+  const en = renderProductSpecDocument(baseInput({ standard: null, snapshot: englishSnapshot() }));
+  assert.match(en, /<h1>PRODUCT SPEC<\/h1>/);
+  assert.doesNotMatch(en.slice(en.indexOf('<header'), en.indexOf('</header>')), /รายละเอียดผลิตภัณฑ์/);
+});
+
+test('ชื่อเอกสารตามมาตรฐานที่เผยแพร่ (titleTh/titleEn) ชนะค่าสำรอง', () => {
+  const standard = { formCode: 'FM-SA-04', revision: '00', effectiveDate: '2025-05-08', titleTh: 'สเปคผลิตภัณฑ์', titleEn: 'SPEC SHEET' };
+  assert.match(renderProductSpecDocument(baseInput({ standard })), /<h1>สเปคผลิตภัณฑ์<\/h1>/);
+  assert.match(renderProductSpecDocument(baseInput({ standard, snapshot: englishSnapshot() })), /<h1>SPEC SHEET<\/h1>/);
+});
+
+test('⭐ หัวกระดาษใช้ป้ายของใบเสนอราคา — ไทย "เลขที่/วันที่" · อังกฤษ "No./Date" (สองแถวเท่านั้น)', () => {
+  const th = headerRows(renderProductSpecDocument(baseInput()));
+  assert.deepEqual([...th.matchAll(/<dt>([^<]*)<\/dt>/g)].map((m) => m[1]), ['เลขที่', 'วันที่']);
+  const en = headerRows(renderProductSpecDocument(baseInput({ snapshot: englishSnapshot() })));
+  assert.deepEqual([...en.matchAll(/<dt>([^<]*)<\/dt>/g)].map((m) => m[1]), ['No.', 'Date']);
+  assert.match(en, /<dt>No\.<\/dt><dd>170969-004-02<\/dd>/);
 });
 
 test('แบบฟอร์มที่เผยแพร่คุมบรรทัดแบบฟอร์ม — คนละเลขกับ Rev ของเอกสาร', () => {
@@ -132,37 +189,55 @@ test('แบบฟอร์มที่เผยแพร่คุมบรร�
     revision: revisionOf({ revNo: 0 }),
   }));
   assert.match(html, /FM-SA-04: Rev\. No\.01\./);
-  assert.match(html, /Reversion No\.<\/dt><dd>00</);
+  assert.match(headerRows(html), /<dt>เลขที่<\/dt><dd>170969-004-00<\/dd>/);
 });
 
-test('ตัวอย่างจากหน้าสินค้า — Document No. / Reversion No. เป็นขีด และลายน้ำ "ตัวอย่าง"', () => {
-  const html = renderProductSpecDocument(baseInput({
-    document: null,
-    revision: null,
-    snapshot: snapshotOf({
-      order: Object.fromEntries(Object.keys(snapshotOf().order).map((key) => [key, null])),
-    }),
-    watermark: productSpecWatermark({ sample: true }),
-  }));
-  assert.match(html, /Document No\.<\/dt><dd>-</);
-  assert.match(html, /Reversion No\.<\/dt><dd>-</);
-  assert.doesNotMatch(html, /FM-SA-04-\d{6}-\d{3}/, 'ตัวอย่างต้องไม่มีเลขที่เอกสาร');
+const sampleInput = () => baseInput({
+  document: null,
+  revision: null,
+  snapshot: snapshotOf({
+    order: Object.fromEntries(Object.keys(snapshotOf().order).map((key) => [key, null])),
+    customer: {
+      name: 'ลูกค้าในทะเบียนสินค้า', nameEn: null, taxId: null, branchCode: null, billingAddress: null,
+      billingAddressEn: null, shippingAddress: null, shippingAddressEn: null, contactName: null, contactPhone: null,
+    },
+  }),
+  watermark: productSpecWatermark({ sample: true }),
+});
+
+test('ตัวอย่างจากหน้าสินค้า — เลขที่เป็นขีด · ใบไทย · ลายน้ำ "ตัวอย่าง" · สาขาเป็นขีด (ไม่เดาว่าสำนักงานใหญ่)', () => {
+  const html = renderProductSpecDocument(sampleInput());
+  assert.match(headerRows(html), /<dt>เลขที่<\/dt><dd>-<\/dd>/);
+  assert.doesNotMatch(html, /\d{6}-\d{3}-\d{2}|FM-SA-04-\d{6}/, 'ตัวอย่างต้องไม่มีเลขที่เอกสาร');
   assert.match(html, /class="watermark">ตัวอย่าง</);
+  assert.match(html, /<h1>รายละเอียดผลิตภัณฑ์<\/h1>/, 'ไม่มี SO = ใบไทย');
   // ไม่มี SO = ไม่มีเจ้าของดีล · ลูกค้าถอยไปชื่อในทะเบียนสินค้า
   assert.match(html, /ลูกค้าในทะเบียนสินค้า/);
+  assert.match(partyBox(html), /<dt>สาขา<\/dt><dd>-<\/dd>/);
+  assert.match(referenceBox(html), /<dt>ผู้ติดต่อฝ่ายขาย<\/dt><dd>-<\/dd>/);
 });
 
-test('วันที่บนกระดาษเป็น พ.ศ. ทั้งใบ และเป็นวันไทย (ไม่ใช่วันแบบ UTC)', () => {
+test('วันที่บนใบไทยเป็น พ.ศ. ทั้งใบ และเป็นวันไทย (ไม่ใช่วันแบบ UTC)', () => {
   const html = renderProductSpecDocument(baseInput());
-  assert.match(html, /วันที่จัดทำ<\/dt><dd>17\/09\/2569</);
+  assert.match(headerRows(html), /<dt>วันที่<\/dt><dd>17\/09\/2569<\/dd>/);
   assert.match(html, /กำหนดส่งสินค้า<\/dt><dd>30\/10\/2569</);
   assert.match(html, /20\/09\/2569/, 'อนุมัติตี 1 เวลาไทยต้องเป็นวันที่ 20');
   assert.doesNotMatch(html, /\/2026</, 'ห้ามมีปี ค.ศ. หลุดบนกระดาษ');
 });
 
-test('ตัวจัดวันที่ พ.ศ. — วันในปฏิทินไม่ขยับ · จุดเวลาเป็นวันไทย · ว่าง = null', () => {
+test('⭐ วันที่บนใบอังกฤษเป็น ค.ศ. ทั้งใบ (หัว · กำหนดส่ง · ลายเซ็น)', () => {
+  const html = renderProductSpecDocument(baseInput({ snapshot: englishSnapshot() }));
+  assert.match(headerRows(html), /<dt>Date<\/dt><dd>17\/09\/2026<\/dd>/);
+  assert.match(html, /Delivery Due<\/dt><dd>30\/10\/2026</);
+  assert.match(signatureRow(html), /20\/09\/2026/);
+  assert.doesNotMatch(html, /\/2569</, 'ใบอังกฤษต้องไม่มีปี พ.ศ.');
+});
+
+test('ตัวจัดวันที่ — ไทย พ.ศ. / อังกฤษ ค.ศ. · วันในปฏิทินไม่ขยับ · จุดเวลาเป็นวันไทย · ว่าง = null', () => {
   assert.equal(productSpecDateText('2026-10-30'), '30/10/2569');
+  assert.equal(productSpecDateText('2026-10-30', 'en'), '30/10/2026');
   assert.equal(productSpecDateText('2026-09-19T18:00:00.000Z'), '20/09/2569');
+  assert.equal(productSpecDateText('2026-09-19T18:00:00.000Z', 'en'), '20/09/2026');
   assert.equal(productSpecDateText(new Date('2026-01-01T00:00:00.000Z')), '01/01/2569');
   assert.equal(productSpecDateText(null), null);
   assert.equal(productSpecDateText(''), null);
@@ -176,45 +251,238 @@ test('Rev บนหัวกระดาษ — สองหลัก · ไม�
   assert.equal(productSpecRevText(undefined), null);
 });
 
-test('อ้างอิง: ใบเสนอราคา / ใบสั่งขาย · จำนวนมีคั่นหลักพัน · ชื่อลูกค้ามาจาก SO ในภาพนิ่ง', () => {
+test('⭐ กล่องอ้างอิง "ข้อมูลอ้างอิง / REFERENCE" — ใบเสนอราคากับใบสั่งขาย **แยกแถว** · กำหนดส่ง · ฝ่ายขาย (ไม่มีจำนวน)', () => {
   const html = renderProductSpecDocument(baseInput());
-  assert.match(html, /QT-26090271-0 \/ SO-26090176-0/);
-  assert.match(html, /1,500 ขวด/);
-  assert.match(html, /บริษัท อาเตโพเล่ จำกัด/);
-  assert.match(html, /Artepole/);
+  const ref = referenceBox(html);
+  assert.match(ref, /<h2>ข้อมูลอ้างอิง <span>\/ REFERENCE<\/span><\/h2>/);
+  // ⭐ ไม่มีแถว "จำนวน" แล้ว — ย้ายไป Product Overview เป็น "จำนวนผลิต (Quantity)" (มติ 22/09 · ไม่พิมพ์ซ้ำสองที่)
+  assert.deepEqual([...ref.matchAll(/<dt>([^<]*)<\/dt>/g)].map((m) => m[1]), [
+    'ใบเสนอราคา', 'ใบสั่งขาย', 'กำหนดส่งสินค้า', 'ผู้ติดต่อฝ่ายขาย', 'โทร', 'อีเมล',
+  ]);
+  assert.match(ref, /<dt>ใบเสนอราคา<\/dt><dd>QT-26090271-0<\/dd>/);
+  assert.match(ref, /<dt>ใบสั่งขาย<\/dt><dd>SO-26090176-0<\/dd>/);
+  assert.doesNotMatch(html, /QT-26090271-0 \/ SO-26090176-0/, 'สองเลขที่ต้องไม่อยู่แถวเดียวกันแล้ว');
+  assert.doesNotMatch(ref, /1,500/, 'จำนวนต้องไม่อยู่ในกล่องอ้างอิงอีก');
 });
 
-test('ลายเซ็นสามขั้นมาจากตราประทับของ Rev — ผู้ยื่น · AE เจ้าของดีล · AE Sup · ลูกค้าว่าง', () => {
+test('⭐ ผู้ติดต่อฝ่ายขาย = AE เจ้าของดีลจากภาพนิ่ง ย้ายขึ้นกล่องอ้างอิง (ชื่อ · โทรจัดรูป · อีเมล) · ส่วน Contact for Sales หายไป', () => {
   const html = renderProductSpecDocument(baseInput());
-  const sigs = html.slice(html.indexOf('class="sigs"'));
-  const order = ['Account Coordinator', 'ชลิตา เอซี', '17/09/2569',
-    'Account Executive', 'สิทธิพงศ์ เจ้าของดีล', '18/09/2569',
-    'Account Executive Supervisor', 'พัชราภิชญ์ ซุปเปอร์ไวเซอร์', '20/09/2569', 'Customer'];
-  let at = 0;
-  for (const text of order) {
-    const found = sigs.indexOf(text, at);
-    assert.ok(found >= at, `ลำดับลายเซ็นผิดที่ "${text}"`);
-    at = found + text.length;
-  }
-  assert.equal((html.match(/class="sigSpace"/g) || []).length, 4, 'ต้องเว้นที่เซ็นมือทั้งสี่ช่อง');
+  const ref = referenceBox(html);
+  assert.match(ref, /<dt>ผู้ติดต่อฝ่ายขาย<\/dt><dd>สิทธิพงศ์ เจ้าของดีล<\/dd>/);
+  assert.match(ref, /<dt>โทร<\/dt><dd>061-387-9399<\/dd>/, 'เบอร์ผ่าน fmtPhone แบบใบเสนอราคา');
+  assert.match(ref, /<dt>อีเมล<\/dt><dd>owner@example\.com<\/dd>/);
+  assert.doesNotMatch(html, /Contact for Sales|class="kv contact"/, 'ส่วนท้ายเดิมต้องไม่เหลือ');
 });
 
-test('ร่างที่ยังไม่ยื่น — ช่องลายเซ็นว่างทั้งหมด ไม่ใช่ชื่อคนเปิด', () => {
+test('PO/เอกสารยืนยันของ SO ขึ้นเป็นแถวของตัวเอง (เลขที่ · วันที่) เฉพาะเมื่อมี', () => {
+  const withPo = renderProductSpecDocument(baseInput({
+    snapshot: snapshotOf({ order: { ...snapshotOf().order, confirmDocType: 'po', confirmDocNo: 'PO-7788', confirmDocDate: '2026-09-10' } }),
+  }));
+  assert.match(referenceBox(withPo), /<dt>เลขที่ PO<\/dt><dd>PO-7788 · 10\/09\/2569<\/dd>/);
+  const confirm = renderProductSpecDocument(baseInput({
+    snapshot: englishSnapshot({ order: { ...snapshotOf().order, confirmDocType: 'order_confirmation', confirmDocNo: 'OC-1', confirmDocDate: null } }),
+  }));
+  assert.match(referenceBox(confirm), /<dt>Order Confirmation<\/dt><dd>OC-1<\/dd>/);
+  assert.doesNotMatch(referenceBox(renderProductSpecDocument(baseInput())), /เลขที่ PO|เอกสารยืนยัน/);
+});
+
+test('⭐ กล่อง "ผู้ซื้อ / CUSTOMER" แถวเดียวกับใบเสนอราคา — ที่อยู่เอกสาร · เลขผู้เสียภาษี · สาขา · ที่อยู่จัดส่ง · ผู้ติดต่อ', () => {
+  const box = partyBox(renderProductSpecDocument(baseInput()));
+  assert.match(box, /<h2>ผู้ซื้อ <span>\/ CUSTOMER<\/span><\/h2>/);
+  assert.match(box, /<strong>บริษัท อาเตโพเล่ จำกัด<\/strong>/);
+  assert.match(box, /<p>88\/8 ถนนสาทรใต้ แขวงยานนาวา เขตสาทร กรุงเทพมหานคร 10120<\/p>/);
+  const party = box.slice(0, box.lastIndexOf('<h2>'));
+  assert.deepEqual([...party.matchAll(/<dt>([^<]*)<\/dt>/g)].map((m) => m[1]), ['เลขผู้เสียภาษี', 'สาขา', 'ที่อยู่จัดส่ง', 'ผู้ติดต่อ']);
+  assert.match(party, /<dt>เลขผู้เสียภาษี<\/dt><dd>0105561234567<\/dd>/);
+  // สาขาว่างของใบเสนอราคา = สำนักงานใหญ่ = เลข 00000 (quotationBranchText ตัวเดียวกับใบเสนอราคา)
+  assert.match(party, /<dt>สาขา<\/dt><dd>00000<\/dd>/);
+  // ไม่มีที่อยู่จัดส่งของตัวเอง = ส่งตามที่อยู่เอกสาร
+  assert.match(party, /<dt>ที่อยู่จัดส่ง<\/dt><dd>88\/8 ถนนสาทรใต้/);
+  assert.match(party, /<dt>ผู้ติดต่อ<\/dt><dd>คุณเบลล์ · 084-432-6199<\/dd>/);
+  assert.doesNotMatch(party, /ชื่อแบรนด์/, 'แบรนด์ย้ายไป Product Overview แล้ว');
+});
+
+test('⭐ ใบอังกฤษ: ชื่อ/ที่อยู่ลูกค้าอังกฤษก่อน ถอยไทยเมื่อว่าง · หัวกล่อง CUSTOMER / REFERENCE บรรทัดเดียว', () => {
+  const html = renderProductSpecDocument(baseInput({ snapshot: englishSnapshot() }));
+  const box = partyBox(html);
+  assert.match(box, /<h2>CUSTOMER<\/h2>/);
+  assert.match(box, /<h2>REFERENCE<\/h2>/);
+  assert.match(box, /<strong>ARTEPOLE CO\., LTD\.<\/strong>/);
+  assert.match(box, /<p>88\/8 South Sathorn Rd\./);
+  assert.match(box, /<dt>Tax ID<\/dt>.*<dt>Branch<\/dt>.*<dt>Shipping Address<\/dt>.*<dt>Contact<\/dt>/s);
+  assert.match(box, /<dt>Quotation No\.<\/dt>.*<dt>Sales Order No\.<\/dt>.*<dt>Sales Contact<\/dt>/s);
+  assert.doesNotMatch(box, /1,500/, 'จำนวนย้ายไป Product Overview แล้ว');
+  assert.match(html, /<th>จำนวนผลิต \(Quantity\)<\/th><td>1,500 Bottle<\/td>/, 'หน่วยแปลจากลิสต์ปิดแบบใบเสนอราคา');
+  // ไม่มีคู่อังกฤษ ⇒ ถอยไทย ไม่ใช่ขีด
+  const thaiOnly = englishSnapshot();
+  thaiOnly.customer = { ...thaiOnly.customer, nameEn: null, billingAddressEn: null };
+  const fallback = partyBox(renderProductSpecDocument(baseInput({ snapshot: thaiOnly })));
+  assert.match(fallback, /<strong>บริษัท อาเตโพเล่ จำกัด<\/strong>/);
+  assert.match(fallback, /<p>88\/8 ถนนสาทรใต้/);
+});
+
+test('🪤 ภาพนิ่ง v1 (ก่อน 22/09) ไม่มีก้อน customer / docLanguage — พิมพ์ได้: ใบไทย · ชื่อลูกค้าจาก order · ช่องอื่นเป็นขีด', () => {
+  const snapshot = snapshotOf({ schemaVersion: 1 });
+  delete snapshot.customer;
+  delete snapshot.order.docLanguage;
+  delete snapshot.order.confirmDocType;
+  const html = renderProductSpecDocument(baseInput({ snapshot }));
+  assert.match(html, /<h1>รายละเอียดผลิตภัณฑ์<\/h1>/);
+  const party = partyBox(html);
+  assert.match(party, /<strong>บริษัท อาเตโพเล่ จำกัด<\/strong>/);
+  assert.match(party, /<dt>เลขผู้เสียภาษี<\/dt><dd>-<\/dd>/);
+  assert.match(party, /<dt>สาขา<\/dt><dd>-<\/dd>/);
+  assert.match(party, /<dt>ผู้ติดต่อ<\/dt><dd>-<\/dd>/);
+});
+
+test('⭐ Product Overview: "ปริมาตรบรรจุ (Size)" จากทะเบียน FG · "จำนวนผลิต (Quantity)" จาก SO/QT ในภาพนิ่ง', () => {
+  const overviewOf = (html) => html.slice(html.indexOf('1. Product Overview'), html.indexOf('2. Market Positioning'));
+  const rowsOf = (html) => [...overviewOf(html).matchAll(/<tr><th>([^<]*)<\/th><td>(.*?)<\/td><\/tr>/g)].map((m) => [m[1], m[2]]);
+  // ภาพนิ่งมีปริมาตร + หน่วยของสินค้า ⇒ ตัวเลขจัดหลักพัน · หน่วยตามทะเบียน
+  const withVolume = snapshotOf({ product: { ...snapshotOf().product, volume: 1200, volumeUnit: 'ml', volumeText: '1200 ml' } });
+  const rows = rowsOf(renderProductSpecDocument(baseInput({ snapshot: withVolume })));
+  assert.deepEqual(rows.map(([label]) => label), [
+    'ชื่อผลิตภัณฑ์', 'ชื่อแบรนด์', 'รหัสสินค้า', 'ประเภทผลิตภัณฑ์', 'กลิ่น / รหัสกลิ่น',
+    'ปริมาตรบรรจุ (Size)', 'จำนวนผลิต (Quantity)', 'ลักษณะเนื้อสาร', 'บรรจุภัณฑ์มาตรฐาน',
+  ]);
+  assert.deepEqual(rows.find(([label]) => label === 'ปริมาตรบรรจุ (Size)'), ['ปริมาตรบรรจุ (Size)', '1,200 ml']);
+  assert.deepEqual(rows.find(([label]) => label === 'จำนวนผลิต (Quantity)'), ['จำนวนผลิต (Quantity)', '1,500 ขวด']);
+  // ภาพนิ่งรุ่นเก่าที่มีแต่ volumeText ยังพิมพ์ได้ · ตัวอย่าง (ไม่มี SO) = จำนวน N/A
+  assert.match(overviewOf(renderProductSpecDocument(baseInput())), /<th>ปริมาตรบรรจุ \(Size\)<\/th><td>50 ML<\/td>/);
+  assert.match(overviewOf(renderProductSpecDocument(sampleInput())), /<th>จำนวนผลิต \(Quantity\)<\/th><td><span class="na">N\/A<\/span><\/td>/);
+  assert.doesNotMatch(renderProductSpecDocument(baseInput()), /ขนาดบรรจุ \(Size\)/, 'ป้ายเดิมต้องไม่เหลือ');
+});
+
+test('ตัวจัดปริมาตรบรรจุ — ปริมาตร + หน่วยจากทะเบียน · ทศนิยมไม่ปัดทิ้ง · ไม่มีปริมาตร = volumeText เดิม · ว่าง = null', () => {
+  assert.equal(productSizeText({ volume: 50, volumeUnit: 'ml' }), '50 ml');
+  assert.equal(productSizeText({ volume: 1200, volumeUnit: 'g' }), '1,200 g');
+  assert.equal(productSizeText({ volume: 0.25, volumeUnit: 'kg' }), '0.25 kg');
+  assert.equal(productSizeText({ volume: '30', volumeUnit: null }), '30');
+  assert.equal(productSizeText({ volume: null, volumeText: '50 ML' }), '50 ML');
+  assert.equal(productSizeText({}), null);
+});
+
+/* 🐞 ตรวจรอบสาม: ใบอังกฤษพิมพ์ "6 ขวด" — ลิสต์หน่วยบรรจุมีคำไทย (ของจริงบนฐาน: 4 สินค้า 'ขวด' · 48 สินค้า 'package')
+   ⇒ แปลตามภาษาของใบผ่าน volumeUnitLabel ชุดกลาง · ใบไทยคงคำในทะเบียน · สัญลักษณ์สากลแปลเป็นตัวเอง */
+test('⭐ ปริมาตรบรรจุใบอังกฤษแปลหน่วย (ขวด → Bottle · package → Package) · ใบไทยคงคำในทะเบียน', () => {
+  assert.equal(productSizeText({ volume: 6, volumeUnit: 'ขวด' }, 'en'), '6 Bottle');
+  assert.equal(productSizeText({ volume: 1, volumeUnit: 'package' }, 'en'), '1 Package');
+  assert.equal(productSizeText({ volume: 50, volumeUnit: 'ml' }, 'en'), '50 ml');
+  assert.equal(productSizeText({ volume: 6, volumeUnit: 'ขวด' }, 'th'), '6 ขวด');
+  assert.equal(productSizeText({ volume: 6, volumeUnit: 'ขวด' }), '6 ขวด', 'ไม่ระบุภาษา = ไทย');
+  // ทั้งแผ่น: ใบอังกฤษไม่มีคำไทยในแถวปริมาตร · แถวจำนวนแปลอยู่แล้ว (สองแถวติดกันต้องภาษาเดียวกัน)
+  const product = { ...snapshotOf().product, volume: 6, volumeUnit: 'ขวด', volumeText: '6 ขวด' };
+  const en = renderProductSpecDocument(baseInput({ snapshot: englishSnapshot({ product }) }));
+  assert.match(en, /<th>ปริมาตรบรรจุ \(Size\)<\/th><td>6 Bottle<\/td>/);
+  assert.match(en, /<th>จำนวนผลิต \(Quantity\)<\/th><td>1,500 Bottle<\/td>/);
+  const th = renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ product }) }));
+  assert.match(th, /<th>ปริมาตรบรรจุ \(Size\)<\/th><td>6 ขวด<\/td>/);
+});
+
+test('แบรนด์อยู่ใน Product Overview (ย้ายจากกล่องลูกค้า)', () => {
+  const html = renderProductSpecDocument(baseInput());
+  const overview = html.slice(html.indexOf('1. Product Overview'), html.indexOf('2. Market Positioning'));
+  assert.match(overview, /<th>ชื่อแบรนด์<\/th><td>Artepole<\/td>/);
+});
+
+/* ── ช่องลงนาม (มติผู้ใช้ 2026-09-22 "final review ต้องปรับให้เหมือน QT และ SO" · "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม") ── */
+
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+test('⭐ ช่องลงนามคือกล่องชุดเดียวกับ QT/SO — สี่ช่องตามลำดับ · ป้ายหน่วยงาน · ตำแหน่งเต็ม · ชื่อ · วันที่ของ Rev', () => {
+  const html = renderProductSpecDocument(baseInput());
+  // สี่คอลัมน์ผ่าน --sig-cols ของเปลือก (ตัวแปรเดียวใช้ได้ทุกจำนวนช่อง — กฎ data-columns เดิมรู้จักแค่ 4)
+  assert.match(signatureRow(html), /^<section class="signatures" style="--sig-cols: 4" aria-label="ส่วนลงนาม">/);
+  /* 🐞 ตรวจรอบสาม: ชื่อที่ไม่มีจุดตัด (อีเมลสำรอง) เคยถ่างช่องตัวเองจนช่องอื่นตกหลายบรรทัด — ก้อนลายเซ็นสูงเกินที่จอง 30mm
+     ⇒ FM-SA-04 บังคับช่องเท่ากัน (ที่ signaturesMm คิด) + ชื่อตัดในช่อง · ไม่แก้ที่เปลือก (QT/SO จองแถวตามแบบถ่างช่อง) */
+  assert.match(html, /\.specsheet \.signatures \{ grid-template-columns: repeat\(var\(--sig-cols\), minmax\(0, 1fr\)\);/);
+  assert.match(html, /\.specsheet \.signatures strong \{ overflow-wrap: anywhere; \}/);
+  assert.doesNotMatch(html, /class="sigs?"|class="sigSpace"/, 'กล่อง .sig ชุดเดิมของ FM-SA-04 ต้องไม่เหลือ');
+  const boxes = signatureBoxes(html);
+  assert.equal(boxes.length, 4);
+  const heads = boxes.map((box) => box.match(/<h2>([^<]*)(?: <span>([^<]*)<\/span>)?<\/h2>/).slice(1, 3));
+  assert.deepEqual(heads, [
+    ['ผู้ประสานงานฝ่ายขาย', 'Account Coordinator'],
+    ['ฝ่ายขาย', 'Account Executive'],
+    ['ผู้จัดการฝ่ายขาย', 'Account Executive Supervisor'],
+    ['ลูกค้า', 'Customer'],
+  ]);
+  // สามขั้นที่เซ็นแล้ว = กล่องลายเซ็น (ไม่ส่งรูป = "ลายเซ็นอิเล็กทรอนิกส์" แบบ QT/SO) + ชื่อ + วันที่ของขั้นนั้น
+  assert.deepEqual(boxes.slice(0, 3).map((box) => [box.match(/<strong>([^<]*)<\/strong>/)[1], box.match(/<p>([^<]*)<\/p>/)[1]]), [
+    ['ชลิตา เอซี', '17/09/2569'],
+    ['สิทธิพงศ์ เจ้าของดีล', '18/09/2569'],
+    ['พัชราภิชญ์ ซุปเปอร์ไวเซอร์', '20/09/2569'],
+  ]);
+  boxes.slice(0, 3).forEach((box) => assert.match(box, /class="signaturePreview"[^>]*>ลายเซ็นอิเล็กทรอนิกส์</));
+  // ลูกค้า = ช่องเซ็นมือว่างเสมอ
+  assert.match(boxes[3], /class="signatureSpace">ลงชื่อ<[\s\S]*<strong>\(_+\)<\/strong>[\s\S]*<p>วันที่ _+ \/ _+ \/ _+<\/p>/);
+  assert.doesNotMatch(signatureRow(html), /\bAE\b/, 'ห้ามคำย่อตำแหน่งบนกระดาษ ("AE" · "AE Supervisor")');
+});
+
+test('⭐ ขั้นที่เซ็นแล้วได้รูปลายเซ็นจริง · ตำแหน่ง = ตำแหน่งเต็มของคนที่เซ็นจริง (admin กดแทน = Administrator)', () => {
   const html = renderProductSpecDocument(baseInput({
+    signatures: {
+      submit: { imageDataUri: PNG, role: 'ac' },
+      ae: { imageDataUri: PNG, role: 'admin' },
+      sup: { imageDataUri: null, role: 'ae_supervisor' },
+    },
+  }));
+  const boxes = signatureBoxes(html);
+  assert.equal((signatureRow(html).match(/<img class="signatureImage" src="data:image\/png;base64,/g) || []).length, 2);
+  assert.match(boxes[0], /alt="ลายเซ็น ชลิตา เอซี"/);
+  assert.match(boxes[1], /<h2>ฝ่ายขาย <span>Administrator<\/span><\/h2>/, 'admin อนุมัติแทน AE ⇒ ตำแหน่งของคนที่เซ็น ไม่ใช่ของช่อง');
+  // คนที่ยังไม่อัปโหลดลายเซ็น = กล่อง "ลายเซ็นอิเล็กทรอนิกส์" + ชื่อ + วันที่ (แบบ QT/SO)
+  assert.match(boxes[2], /class="signaturePreview"[\s\S]*<strong>พัชราภิชญ์ ซุปเปอร์ไวเซอร์<\/strong>[\s\S]*<p>20\/09\/2569<\/p>/);
+  // role ที่ไม่รู้จัก = ตำแหน่งของช่อง (ไม่พิมพ์โค้ดดิบ)
+  const unknown = signatureBoxes(renderProductSpecDocument(baseInput({ signatures: { submit: { role: 'viewer' } } })));
+  assert.match(unknown[0], /<span>Account Coordinator<\/span>/);
+});
+
+test('ขั้นที่เซ็นแล้ว (มีวันที่ประทับ) + ผู้เซ็น — ฝั่ง server โหลดรูปลายเซ็นตามรายการนี้', () => {
+  assert.deepEqual(productSpecSignedSteps({
+    submittedAt: '2026-09-17', submittedBy: 'U-AC', aeApprovedAt: '2026-09-18', aeApprovedBy: 'U-AE', supApprovedAt: null, supApprovedBy: null,
+  }), [{ key: 'submit', userId: 'U-AC' }, { key: 'ae', userId: 'U-AE' }]);
+  assert.deepEqual(productSpecSignedSteps({ status: 'draft' }), []);
+  assert.deepEqual(productSpecSignedSteps(null), []);
+});
+
+test('ร่าง/ตัวอย่าง — ทุกช่องเป็นช่องเซ็นมือ "ลงชื่อ" + (____) + วันที่ว่าง ไม่มีชื่อคนเปิด · ขั้นที่ยังไม่ถึงไม่เดาชื่อ', () => {
+  const draft = renderProductSpecDocument(baseInput({
     revision: {
       id: 'PSDR-2', revNo: 0, status: 'draft', submittedByName: null, aeApprovedByName: null, supApprovedByName: null,
     },
+    signatures: { submit: { imageDataUri: PNG, role: 'ac' } },
   }));
-  const sigs = html.slice(html.indexOf('class="sigs"'));
-  assert.doesNotMatch(sigs, /ชลิตา|พัชราภิชญ์/);
+  const boxes = signatureBoxes(draft);
+  assert.equal(boxes.length, 4);
+  for (const box of boxes) {
+    assert.match(box, /class="signatureSpace">ลงชื่อ</);
+    assert.match(box, /<strong>\(_{28}\)<\/strong>/);
+  }
+  assert.doesNotMatch(signatureRow(draft), /ชลิตา|พัชราภิชญ์|<img class="signatureImage"/, 'ร่างไม่มีตราประทับ = ไม่มีรูปแม้ส่งมา');
+  // รอ AE Sup: ขั้น 1–2 เซ็นแล้ว · ขั้น 3 ยังว่าง (ไม่เดาชื่อผู้อนุมัติ)
+  const pending = signatureBoxes(renderProductSpecDocument(baseInput({
+    revision: revisionOf({ status: 'pending_ae_supervisor', supApprovedByName: null, supApprovedAt: null }),
+    watermark: PRODUCT_SPEC_WATERMARKS.draft,
+  })));
+  assert.deepEqual(pending.map((box) => /class="signatureSpace"/.test(box)), [false, false, true, true]);
+  const sample = renderProductSpecDocument(sampleInput());
+  assert.equal((signatureRow(sample).match(/class="signatureSpace"/g) || []).length, 4);
 });
 
-test('⭐ Contact for Sales = AE เจ้าของดีลจากภาพนิ่ง (ชื่อ · อีเมล · เบอร์)', () => {
-  const html = renderProductSpecDocument(baseInput());
-  const contact = html.slice(html.indexOf('Contact for Sales'), html.indexOf('Final Review'));
-  assert.match(contact, /สิทธิพงศ์ เจ้าของดีล/);
-  assert.match(contact, /owner@example\.com/);
-  assert.match(contact, /0613879399/);
+test('⭐ ใบอังกฤษ: ป้ายช่องอังกฤษ · ตำแหน่งอังกฤษเต็มชุดเดียวกัน · ช่องลูกค้าไม่ซ้ำคำ · วันที่ ค.ศ.', () => {
+  const html = renderProductSpecDocument(baseInput({ snapshot: englishSnapshot() }));
+  const heads = signatureBoxes(html).map((box) => box.match(/<h2>([^<]*)(?: <span>([^<]*)<\/span>)?<\/h2>/).slice(1, 3));
+  /* 🐞 ตรวจรอบสาม: ช่องลูกค้าใบอังกฤษเคยไม่มีบรรทัดตำแหน่ง ⇒ "Signature / Date" ลอยสูงกว่าอีกสามช่องหนึ่งบรรทัด
+     ทุกช่องต้องมีหัวสองบรรทัด (ป้าย + ตำแหน่ง) · ไม่พิมพ์ "Customer" ซ้ำ */
+  assert.deepEqual(heads, [
+    ['Sales Coordinator', 'Account Coordinator'],
+    ['Sales', 'Account Executive'],
+    ['Sales Manager', 'Account Executive Supervisor'],
+    ['Customer', 'Authorized signature'],
+  ]);
+  assert.match(signatureRow(html), /aria-label="Signatures"/);
+  assert.match(signatureBoxes(html)[3], /<p>Date _+ \/ _+ \/ _+<\/p>/);
 });
 
 test('checklist พิมพ์ครบทุกแถวและติ๊กตรงกับผู้จัดเตรียม', () => {
@@ -226,11 +494,28 @@ test('checklist พิมพ์ครบทุกแถวและติ๊ก�
   assert.ok((html.match(/☐/g) || []).length >= 20, 'แถวที่ยังไม่ติ๊กต้องพิมพ์ช่องว่างไว้ให้ติ๊กมือ');
 });
 
+test('⭐ หัวข้อในเนื้อมีเลขข้อ 1–5 ตามลำดับกระดาษ · ภาพประกอบได้เลขถัดไป · ลายเซ็นไม่มีเลข', () => {
+  const html = renderProductSpecDocument(baseInput({
+    snapshot: snapshotOf({ illustrations: [{ attachmentId: 'a', caption: 'หนึ่ง', sortOrder: 0, fileName: 'a.jpg' }] }),
+  }));
+  assert.deepEqual(headings(html), [
+    '1. Product Overview', '2. Market Positioning', '3. Functional Information',
+    '4. Checklist Project', '5. Certification &amp; Documents', '6. ภาพประกอบรายละเอียดสินค้า',
+    'Final Review &amp; Approval',
+  ]);
+});
+
+test('หัวข้อที่ไม่มีแถวไม่พิมพ์ และเลขข้อถัดไปเลื่อนขึ้น (ไม่เว้นเลข)', () => {
+  const snapshot = snapshotOf({ items: [] });
+  snapshot.spec = { ...snapshot.spec, certifications: [] };
+  const list = headings(renderProductSpecDocument(baseInput({ snapshot })));
+  assert.deepEqual(list, ['1. Product Overview', '2. Market Positioning', '3. Functional Information', 'Final Review &amp; Approval']);
+});
+
 test('🐞 ไม่มี "(ต่อ)" ปลอม — หัวข้อที่ขึ้นหน้าใหม่ไม่ใช่การตัดกลางหัวข้อ', () => {
-  // ใบมาตรฐาน 17 แถว: หัวข้อ Checklist ล้นแผ่นแรกพอดี ⇒ ของเดิมพิมพ์ "Checklist Project (ต่อ)"
-  // ตามด้วย "Checklist Project" ซ้อนกัน
+  // ใบมาตรฐาน 17 แถว — หัวข้อ Checklist ย้ายไปแผ่นใหม่ทั้งก้อน ไม่ใช่ "(ต่อ)" ตามด้วยหัวข้อเดิม
   const html = renderProductSpecDocument(baseInput());
-  const list = headings(html);
+  const list = bareHeadings(html);
   for (let index = 0; index < list.length; index += 1) {
     const cont = list[index].match(/^(.*) \(ต่อ\)$/);
     if (!cont) continue;
@@ -238,6 +523,7 @@ test('🐞 ไม่มี "(ต่อ)" ปลอม — หัวข้อท�
     assert.ok(list.slice(0, index).includes(cont[1]), `"${list[index]}" ต่อจากหัวข้อที่ยังไม่เคยขึ้น`);
   }
   assert.equal(list.filter((h) => h === 'Checklist Project').length, 1);
+  assert.ok(!list.some((h) => h.endsWith('(ต่อ)')), 'ใบมาตรฐานไม่มีหัวข้อไหนสูงเกินแผ่น ⇒ ต้องไม่มีการตัดกลางหัวข้อ');
 });
 
 test('หัวข้อไม่ค้างท้ายแผ่น — แถวแรกที่สูงกว่าปกติต้องตามหัวข้อไปหน้าใหม่ด้วย', () => {
@@ -253,11 +539,11 @@ test('หัวข้อไม่ค้างท้ายแผ่น — แถ
     // หัวข้อที่เป็นสิ่งสุดท้ายของแผ่น = หัวข้อลอย
     assert.doesNotMatch(body, /<h3>[^<]*<\/h3>\s*<\/div>\s*$/, 'มีหัวข้อค้างท้ายแผ่นโดยไม่มีแถวตาม');
   }
-  const list = headings(html);
+  const list = bareHeadings(html);
   assert.ok(!list.includes('Checklist Project (ต่อ)'), 'แถวเดียวของหัวข้อไม่ใช่การตัดกลางหัวข้อ');
 });
 
-test('ตัดกลางหัวข้อจริง = หน้าใหม่เปิดด้วย "(ต่อ)" และพิมพ์หัวตารางซ้ำ', () => {
+test('ตัดกลางหัวข้อจริง (หัวข้อสูงกว่าแผ่นเปล่า) = หน้าใหม่เปิดด้วยหัวข้อเดิม **พร้อมเลขข้อ** + "(ต่อ)" และหัวตารางซ้ำ', () => {
   const html = renderProductSpecDocument(baseInput({
     snapshot: snapshotOf({
       items: Array.from({ length: 40 }, (_, i) => ({
@@ -269,14 +555,27 @@ test('ตัดกลางหัวข้อจริง = หน้าให�
       })),
     }),
   }));
-  assert.ok(headings(html).includes('Checklist Project (ต่อ)'));
+  assert.ok(headings(html).includes('4. Checklist Project (ต่อ)'));
   assert.ok((html.match(/<th class="no">ลำดับ<\/th>/g) || []).length >= 2, 'หัวตารางต้องพิมพ์ซ้ำบนหน้าใหม่');
+});
+
+test('ใบอังกฤษ: หัวข้อต่อใช้ "(cont.)" · ท้ายกระดาษเป็น Page', () => {
+  const html = renderProductSpecDocument(baseInput({
+    snapshot: englishSnapshot({
+      items: Array.from({ length: 40 }, (_, i) => ({
+        itemKey: null, itemLabel: `รายการที่ ${i + 1}`, detail: 'รายละเอียดยาว '.repeat(12), note: null, preparedByS: true,
+      })),
+    }),
+  }));
+  assert.ok(headings(html).includes('4. Checklist Project (cont.)'));
+  assert.match(html, /Page 1 \/ /);
+  assert.doesNotMatch(html, /หน้า 1 \//);
 });
 
 test('ลบ checklist หมดใบ = ไม่มีหัวข้อ Checklist บนกระดาษ (ไม่ใช่หัวข้อกับตารางเปล่า)', () => {
   const html = renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ items: [] }) }));
   assert.ok(!html.includes('Checklist Project'), 'หัวข้อยังขึ้นทั้งที่ไม่มีแถว');
-  assert.match(html, /Certification &amp; Documents/, 'หัวข้อถัดไปต้องยังอยู่');
+  assert.match(html, /4\. Certification &amp; Documents/, 'หัวข้อถัดไปต้องยังอยู่ และเลขข้อเลื่อนขึ้น');
 });
 
 test('ช่องที่ไม่ได้กรอกพิมพ์ N/A — ไม่ใช่เว้นว่างจนอ่านไม่ออกว่าถามแล้วหรือยัง', () => {
@@ -295,7 +594,8 @@ test('ท้ายกระดาษทุกแผ่นบอกได้ว�
   const html = renderProductSpecDocument(baseInput());
   const pages = sheetCount(html);
   assert.ok(pages >= 2, 'ใบมาตรฐานต้องมีอย่างน้อยสองแผ่น (เทสต์ท้ายกระดาษจะไม่มีความหมาย)');
-  assert.equal((html.match(/FM-SA-04-170969-004 Rev\.02/g) || []).length >= pages, true);
+  // บรรทัดแบบฟอร์ม (บอกว่าใบอะไร) + เลขที่รูปใหม่ (มี Rev อยู่ในตัว)
+  assert.equal((html.match(/<span>FM-SA-04: Rev\. No\.00\. 08\/05\/2568 · 170969-004-02<\/span>/g) || []).length, pages);
   assert.match(html, /หน้า 1 \/ /);
   // หัวเอกสารมีแผ่นเดียว
   assert.equal((html.match(/class="documentHeader"/g) || []).length, 1);
@@ -317,22 +617,143 @@ test('ข้อมูลยาวขึ้นหน้าใหม่ได้ �
   assert.ok(sheetCount(long) > sheetCount(short), 'ใบที่ยาวกว่าต้องได้หน้ามากกว่า');
 });
 
-test('🔴 งบต่อแผ่นต้องไม่โตขึ้นเอง — แผ่นแรกเสียที่ให้กล่องคู่สัญญา', () => {
-  /* วัดจริง 2026-09-17: `.sheetContent` แผ่นแรก 212.2mm หัก `.partyGrid` 31.75 = 180.4
-     ⇒ 173 เผื่อไว้ 7.4mm · ตัวเลขนี้โตขึ้นเมื่อไรแปลว่ามีคนเดาแทนการวัด แล้วแผ่นจะล้น
-     เงียบ ๆ เพราะ `.sheet` เป็น overflow: hidden */
-  assert.ok(PRODUCT_SPEC_PAGE_BUDGET_MM.first <= 180, 'งบแผ่นแรกต้องไม่เกินพื้นที่จริงหลังหักกล่องคู่สัญญา');
-  assert.ok(PRODUCT_SPEC_PAGE_BUDGET_MM.rest <= 267, 'งบแผ่นถัดไปต้องไม่เกินพื้นที่จริง');
-  assert.ok(PRODUCT_SPEC_PAGE_BUDGET_MM.rest > PRODUCT_SPEC_PAGE_BUDGET_MM.first,
-    'แผ่นที่ไม่มีหัวเอกสารต้องได้ที่มากกว่าแผ่นแรก ไม่งั้นตัดหัวออกแล้วไม่ได้หน้าคืน');
+/* ── งบหน้า (แผนของกระดาษ) — คณิตล้วน ไม่ต้องเปิดเบราว์เซอร์ ───────────────────────────
+   ตัวเลขที่ "วัดได้" ในเทสต์ชุดนี้มาจากสวีปด้วย Chrome 2026-09-22 (วิธีวัดที่หัว productSpecLayout.js) */
+
+const planOf = (input) => planProductSpecPaper(input);
+const pageCost = (plan, entries) => entries.reduce((sum, entry) => {
+  if (entry.kind === 'row') return sum + entry.row.cost;
+  if (entry.kind === 'tail') return sum + plan.tailCost;
+  return sum + entry.section.openCost;
+}, 0);
+
+test('🔴 ทุกแผ่นใช้ไม่เกินงบ — แผ่นแรกหักหัวเอกสาร + กล่องผู้ซื้อ/อ้างอิงที่ประเมินจากข้อความจริง', () => {
+  const long = 'ข้อความยาวมากสำหรับทดสอบงบหน้า '.repeat(16).slice(0, 500);
+  const inputs = [
+    baseInput(),
+    baseInput({ snapshot: englishSnapshot() }),
+    baseInput({ snapshot: snapshotOf({ spec: { ...snapshotOf().spec, standardPackaging: long, targetGroup: long, keySellingPoint: long, productBenefit: long } }) }),
+    baseInput({ snapshot: snapshotOf({ items: Array.from({ length: 30 }, (_, i) => ({ itemLabel: `แถว ${i}`, detail: long, note: long })) }) }),
+  ];
+  for (const input of inputs) {
+    const plan = planOf(input);
+    plan.pages.forEach((entries, index) => {
+      const budget = index === 0 ? plan.budgets.first : plan.budgets.rest;
+      const cost = pageCost(plan, entries);
+      // ไม่มีแผ่นไหนเกินความจุเต็ม (งบ + ส่วนเผื่อ)
+      assert.ok(cost <= budget + plan.budgets.reserve + 1e-9, `แผ่น ${index + 1}: ${cost.toFixed(2)} > ความจุ`);
+      /* ส่วนเผื่อขอคืนได้เฉพาะ (ก) หัวข้อเดียวทั้งหัวข้อที่อยู่คนเดียวบนแผ่น (ข) ก้อนท้าย — หลายหัวข้อแชร์แผ่น = อยู่ในงบ */
+      const body = cost - (entries.at(-1)?.kind === 'tail' ? plan.tailCost : 0);
+      const sections = new Set(entries.filter((e) => e.section).map((e) => e.section.key));
+      if (sections.size > 1) assert.ok(body <= budget + 1e-9, `แผ่น ${index + 1}: หลายหัวข้อ ${body.toFixed(2)} > งบ ${budget.toFixed(2)}`);
+    });
+  }
 });
 
-test('🔴 หัวกระดาษกับกล่องอ้างอิงยังสามแถวเท่าตอนวัด — เพิ่มแถวต้องวัดงบใหม่', () => {
+const sheetsOf = (plan) => plan.pages.map((entries) => entries
+  .filter((e) => e.kind !== 'row')
+  .map((e) => (e.kind === 'tail' ? 'SIG' : `${e.kind === 'continue' ? '+' : ''}${e.section.number}`))
+  .join(','));
+
+test('⭐ ใบมาตรฐาน (checklist 17 · เอกสาร 4 · ไม่มีภาพ) = สองแผ่น ลายเซ็นอยู่หน้า 2 — ไม่มีหน้าที่มีแต่ลายเซ็น', () => {
+  // 🐞 ผลตรวจรอบสอง: ทุกใบจริงบนฐานเป็นรูปนี้ และเคยได้หน้า 3 ที่มีแต่ "Final Review & Approval"
+  //    (วาดจริงหน้า 2 ใส่ลายเซ็นแล้วเหลือ 3.5mm — วัดซ้ำหลังแก้: 263.29 / 266.76 พิมพ์)
+  for (const snapshot of [snapshotOf(), englishSnapshot()]) {
+    const plan = planOf(baseInput({ snapshot }));
+    assert.deepEqual(sheetsOf(plan), ['1,2,3', '4,5,SIG'], snapshot.order.docLanguage);
+  }
+});
+
+test('⭐ ภาพ 5–6 รูป (สามแถว) อยู่แผ่นเดียวทั้งหัวข้อ — ไม่มีแผ่น "(ต่อ)"', () => {
+  // 🐞 ผลตรวจรอบสอง: PRD-f52e3e4c (ภาพจริง 5 รูป) ได้หัวข้อ 6 สองแถวบนหน้า 3 + แถวที่สามบนหน้า 4 "(ต่อ)"
+  //    ทั้งที่วาดจริงลงหน้าเดียวเหลือ 3.2mm
+  for (const count of [5, 6]) {
+    const illustrations = Array.from({ length: count }, (_, i) => ({ attachmentId: `a${i}`, caption: `ภาพที่ ${i + 1}`, sortOrder: i }));
+    const plan = planOf(baseInput({ snapshot: snapshotOf({ illustrations }) }));
+    const figures = plan.sections.find((section) => section.key === 'figures');
+    const pages = new Set();
+    plan.pages.forEach((entries, index) => entries.forEach((e) => { if (e.section === figures) pages.add(index); }));
+    assert.equal(pages.size, 1, `${count} รูป: หัวข้อภาพถูกตัดข้ามแผ่น`);
+    assert.ok(!plan.pages.flat().some((e) => e.kind === 'continue'), `${count} รูป: มีหัวข้อ "(ต่อ)"`);
+  }
+});
+
+test('🔴 กล่องผู้ซื้อ/อ้างอิงยาวขึ้น = งบแผ่นแรกลดลงตาม (ไม่ใช่ค่าคงที่ 31.75 ชุดเก่า)', () => {
+  const short = planOf(baseInput());
+  const longAddress = snapshotOf();
+  longAddress.customer = {
+    ...longAddress.customer,
+    billingAddress: 'เลขที่ 88/8 อาคารเอ็มไพร์ทาวเวอร์ ชั้น 47 ถนนสาทรใต้ แขวงยานนาวา เขตสาทร กรุงเทพมหานคร 10120\n'.repeat(4),
+  };
+  const long = planOf(baseInput({ snapshot: longAddress }));
+  assert.ok(long.partyMm > short.partyMm + 30, 'ที่อยู่สี่บรรทัดยาว ๆ (ซ้ำในที่อยู่จัดส่ง) ต้องกินที่เพิ่มชัดเจน');
+  assert.ok(long.budgets.first < short.budgets.first);
+  assert.equal(long.budgets.rest, short.budgets.rest, 'แผ่นต่อไม่มีกล่องผู้ซื้อ งบต้องไม่ขยับ');
+});
+
+/* ⭐ ค่าที่วัดด้วย Chrome (สวีป 2026-09-22) — ตัวประเมินต้องไม่ต่ำกว่าของจริง
+   ถ้าเทสต์นี้แดงหลังแก้ CSS/ป้าย ⇒ วัดใหม่ตามวิธีที่หัว productSpecLayout.js แล้วแก้ทั้งค่าที่นี่และค่าคงที่ */
+// ที่อยู่ยาวของจริงบนฐาน (QT-26080236-0 · 6 บรรทัดรวมบรรทัดว่าง) และที่อยู่อังกฤษตัวใหญ่ 250 ตัว — ชุดเดียวกับที่สวีปวัด
+const REAL_LONG_TH = '*ออกใบเสนอราคา / ที่อยู่จัดส่งใบกำกับภาษี*\nบริษัท เดอะ ซีซั่น ฮิล จำกัด\nที่อยู่ 999/121 หมู่ที่ 3 ต.บางขนุน อ.บางกรวย จ.นนทบุรี 11130\nเลขประจำตัวผู้เสียภาษี 0125566039412\n\nส่งใบกำกับถึงคุณเบลล์ 0844326199 ตำบลบางขนุน อำเภอบางกรวย จังหวัดนนทบุรี 11130';
+const LONG_EN_CAPS = '88/8 EMPIRE TOWER 47TH FLOOR, SOUTH SATHORN ROAD, YANNAWA, SATHORN, BANGKOK 10120 THAILAND '.repeat(3).slice(0, 250);
+const withAddress = (snapshot, key, address) => {
+  snapshot.customer = { ...snapshot.customer, [key]: address, [key.replace('billing', 'shipping')]: address };
+  return snapshot;
+};
+const MEASURED = [
+  // [คำอธิบาย, ภาพนิ่ง, หัวเอกสาร (มม.), กล่องผู้ซื้อ+อ้างอิงรวม margin (มม.)]
+  // วัดใหม่ 2026-09-22 รอบสาม: กล่องอ้างอิงเหลือหกแถว (ถอด "จำนวน") ⇒ ใบที่อยู่สั้นฝั่งซ้าย (ผู้ซื้อ) สูงกว่า
+  ['ใบไทย ที่อยู่สั้น', () => snapshotOf(), 42.86, 53.48],
+  ['ใบอังกฤษ ที่อยู่สั้น', () => englishSnapshot(), 42.86, 53.48],
+  ['ใบไทย ที่อยู่จริง 6 บรรทัด (ทั้งเอกสาร+จัดส่ง)', () => withAddress(snapshotOf(), 'billingAddress', REAL_LONG_TH), 42.86, 104.54],
+  ['ใบอังกฤษ ที่อยู่ตัวใหญ่ 250 ตัว (ทั้งเอกสาร+จัดส่ง)', () => withAddress(englishSnapshot(), 'billingAddressEn', LONG_EN_CAPS), 42.86, 90.78],
+];
+
+test('🔴 ตัวประเมินหัวเอกสาร/กล่องผู้ซื้อไม่ต่ำกว่าค่าที่วัดได้ (และไม่เกินเกินเหตุ)', () => {
+  const measuredCompany = resolveCompanyBlock({
+    legalNameTh: 'บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด',
+    legalNameEn: 'SCENT AND SENSE LABORATORY CO., LTD.',
+    address: '2/4 ซอยเพชรเกษม 35/1 ถนนเพชรเกษม แขวงบางหว้า เขตภาษีเจริญ กรุงเทพมหานคร 10160',
+    addressEn: '2/4 Soi Phet Kasem 35/1, Phet Kasem Road, Bang Wa, Phasi Charoen, Bangkok 10160',
+    taxId: '0105560000000', phone: '02-000-7722', line: '@perfumefactory', website: 'www.scentandsense.co.th',
+  });
+  for (const [label, snapshot, header, party] of MEASURED) {
+    const snap = snapshot();
+    // ค่าที่วัดมาจากภาพนิ่งชุดสวีป: ที่อยู่สั้น ผู้ติดต่อ เจ้าของดีล เท่ากับชุดนี้ในจำนวนบรรทัด
+    const plan = planOf(baseInput({ snapshot: snap, company: measuredCompany }));
+    assert.ok(plan.headerMm >= header, `${label}: หัว ${plan.headerMm.toFixed(2)} < วัดได้ ${header}`);
+    assert.ok(plan.headerMm <= header + 6, `${label}: หัวประเมินเกินจริงเกิน 6mm (${plan.headerMm.toFixed(2)})`);
+    assert.ok(plan.partyMm >= party, `${label}: กล่อง ${plan.partyMm.toFixed(2)} < วัดได้ ${party}`);
+    assert.ok(plan.partyMm <= party + 8, `${label}: กล่องประเมินเกินจริงเกิน 8mm (${plan.partyMm.toFixed(2)})`);
+  }
+});
+
+test('🔴 หัวกระดาษสองแถว · กล่องอ้างอิงหกแถว (เจ็ดเมื่อมี PO) — เพิ่มแถวต้องประเมินใหม่', () => {
   const html = renderProductSpecDocument(baseInput());
-  const identity = html.slice(html.indexOf('class="identityBlock"'), html.indexOf('</header>'));
-  assert.equal((identity.match(/<dt>/g) || []).length, 3);
-  const reference = html.slice(html.indexOf('Reference'), html.indexOf('</section>'));
-  assert.equal((reference.match(/<dt>/g) || []).length, 3);
+  assert.equal((headerRows(html).match(/<dt>/g) || []).length, 2);
+  assert.equal((referenceBox(html).match(/<dt>/g) || []).length, 6);
+});
+
+test('ตัดหน้าตามหัวข้อ: หัวข้อที่ลงแผ่นเปล่าได้ไม่ถูกตัดกลาง · แผ่นต่อทุกแผ่นเปิดด้วยหัวข้อ', () => {
+  const plan = planOf(baseInput({ snapshot: snapshotOf({ illustrations: Array.from({ length: 3 }, (_, i) => ({ attachmentId: `a${i}`, caption: `${i}`, sortOrder: i })) }) }));
+  const pagesOf = new Map();
+  plan.pages.forEach((entries, index) => entries.forEach((entry) => {
+    if (entry.section) pagesOf.set(entry.section.key, new Set([...(pagesOf.get(entry.section.key) || []), index]));
+  }));
+  for (const section of plan.sections) {
+    const total = section.openCost + section.rows.reduce((sum, row) => sum + row.cost, 0);
+    // ลงแผ่นเปล่าได้ = ความจุเต็มของแผ่น (ก้อนเดี่ยวไม่หักส่วนเผื่อ)
+    if (total <= plan.budgets.rest + plan.budgets.reserve) assert.equal(pagesOf.get(section.key).size, 1, `${section.heading} ถูกตัดทั้งที่ลงแผ่นเปล่าได้`);
+  }
+  plan.pages.slice(1).forEach((entries, index) => {
+    assert.ok(['open', 'continue', 'tail'].includes(entries[0]?.kind), `แผ่น ${index + 2} ไม่ได้เปิดด้วยหัวข้อ`);
+  });
+});
+
+test('งบแผ่นต่อคืน margin บนของหัวข้อแรก 5mm — แผ่นแรกไม่ได้คืน (กล่องผู้ซื้อมาก่อน)', () => {
+  const budgets = productSpecPageBudgets({ headerMm: 43, partyMm: 55 });
+  assert.equal(Number((budgets.rest - (budgets.first + 43 + 55)).toFixed(6)), 5);
+  assert.ok(budgets.rest <= 267.8, 'แผ่นต่อไม่เกินกล่องใน 276 − padding 9.2 + 5 − เผื่อ 4');
 });
 
 test('escape ค่าที่มาจากผู้ใช้ — ชื่อสินค้าที่มี < > ต้องไม่กลายเป็นแท็ก', () => {
@@ -353,6 +774,16 @@ test('ลายน้ำตามสถานะ (มติ 21/09)', () => {
   assert.equal(productSpecWatermark({ document: doc, revision: { status: 'approved' } }), null);
   assert.equal(productSpecWatermark({ document: doc, revision: { status: 'superseded' }, supersededByRevNo: 3 }), 'ถูกแทนด้วย Rev.03');
   assert.equal(productSpecWatermark({ sample: true }), 'ตัวอย่าง');
+});
+
+test('ลายน้ำใบอังกฤษ = ป้ายชุดกลางแบบ QT/SO (DRAFT · CANCELLED · SUPERSEDED BY) · ใบไทยเท่าเดิม', () => {
+  const doc = { status: 'active' };
+  assert.equal(productSpecWatermark({ document: doc, revision: { status: 'pending_ae' }, language: 'en' }), 'DRAFT');
+  assert.equal(productSpecWatermark({ document: { status: 'void' }, revision: { status: 'approved' }, language: 'en' }), 'CANCELLED');
+  assert.equal(productSpecWatermark({ document: doc, revision: { status: 'superseded' }, supersededByRevNo: 3, language: 'en' }), 'SUPERSEDED BY Rev.03');
+  assert.equal(supersededWatermark(null, 'en'), 'SUPERSEDED BY A NEWER Rev.');
+  assert.equal(productSpecWatermark({ document: doc, revision: { status: 'draft' }, language: 'th' }), PRODUCT_SPEC_WATERMARKS.draft);
+  assert.equal(productSpecWatermark({ document: { status: 'void' }, language: undefined }), PRODUCT_SPEC_WATERMARKS.void);
 });
 
 test('🔴 เอกสาร void ชนะทุกสถานะของ Rev — ฉบับอนุมัติของใบที่ยกเลิกต้องไม่ออกมาสะอาด', () => {
@@ -469,7 +900,8 @@ test('ภาพเยอะขึ้นหน้าใหม่ — ไม่ย
   }));
   assert.ok(sheetCount(many) > sheetCount(few));
   for (const html of [few, many]) {
-    const at = html.indexOf('<h3>ภาพประกอบรายละเอียดสินค้า</h3>');
+    const at = html.search(/<h3>\d+\. ภาพประกอบรายละเอียดสินค้า<\/h3>/);
+    assert.ok(at >= 0, 'ต้องมีหัวข้อภาพพร้อมเลขข้อ');
     const pageEnd = html.indexOf('</article>', at);
     assert.ok(html.slice(at, pageEnd).includes('class="figGrid"'), 'หัวข้อภาพต้องมีแถวภาพตามอยู่แผ่นเดียวกัน');
   }
@@ -507,4 +939,12 @@ test('แบรนด์มีสองภาษา ใช้กฎภาษา�
   const html = renderProductSpecDocument(baseInput({ snapshot }));
   assert.match(html, /Artepole/);
   assert.match(html, /ชาวัลเลย์ 50 มล\./);
+});
+
+test('⭐ ช่องลงนามชิดขอบล่างของแผ่น (มติ 2026-09-22 "ดึงขึ้นถ้าพอ แต่ชิดล่าง")', () => {
+  const html = renderProductSpecDocument(baseInput());
+  // ก้อนท้าย (หัวข้อ Final Review + ช่องลงนาม) ห่อด้วย .signTail ตัวเดียว · margin-top:auto ใน .sheetContent (flex column)
+  assert.equal((html.match(/<div class="signTail">/g) || []).length, 1);
+  assert.match(html, /<div class="signTail"><h3 class="signHeading">Final Review &amp; Approval<\/h3>\s*<section class="signatures"/);
+  assert.match(html, /\.specsheet \.signTail \{ margin-top: auto; \}/);
 });

@@ -88,7 +88,7 @@ export default function ProductSpecCard({ productId, canEdit = false }) {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="mono"><Link href={row.href}>{naText(row.docNo)}</Link></td>
+                  <td className="mono"><Link href={row.href}>{naText(row.docNoText || row.docNo)}</Link></td>
                   <td>
                     <div>{naText(row.revLabel)}</div>
                     {row.inUseRevLabel ? <div className={styles.sub}>ใช้อยู่ {row.inUseRevLabel}</div> : null}

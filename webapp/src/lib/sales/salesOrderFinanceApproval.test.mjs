@@ -196,3 +196,15 @@ test('ทะเบียน SO คิดธงคิวบัญชีจาก�
   const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/route.js', import.meta.url), 'utf8');
   assert.match(route, /_awaitingFinanceReview:[\s\S]{0,120}awaitsFinanceReview\(row,/);
 });
+
+/* 🐞 พบ 2026-09-22 (ตอนเพิ่มตำแหน่งเต็มในช่องลงนาม): ลายเซ็นบัญชีลง signingRole 'approver' เหมือนผู้จัดการฝ่ายขาย
+   และเกิดทีหลังเสมอ ⇒ ทางพิมพ์สดที่หยิบ "แถว approver ล่าสุด" ได้ลายเซ็น/ชื่อ/ตำแหน่งของบัญชีในช่องผู้จัดการฝ่ายขาย
+   (SO ที่อนุมัติแล้ว 72 ใบบนฐานตอนพบ) ⇒ ต้องอ่านหลักฐานที่การอนุมัติตรึงไว้กับใบ (`signatureEvidenceId`) ก่อน */
+test('ช่องผู้จัดการฝ่ายขายทางพิมพ์สดอ่านหลักฐานการอนุมัติของใบ (signatureEvidenceId) ก่อนแถว approver ล่าสุด', () => {
+  const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/route.js', import.meta.url), 'utf8');
+  const body = route.slice(route.indexOf('async function loadApproverSignature'), route.indexOf('async function loadProposerSignature'));
+  const byId = body.indexOf(".eq('id', order.signatureEvidenceId)");
+  const latest = body.indexOf(".eq('signingRole', 'approver')");
+  assert.ok(byId > 0, 'ต้องอ่านตาม signatureEvidenceId');
+  assert.ok(latest > byId, 'แถว approver ล่าสุดเป็นแค่ทางสำรองของใบที่ไม่มี id');
+});

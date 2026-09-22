@@ -311,7 +311,7 @@ export default function ProductSpecPage() {
                   <tbody>
                     {documents.map((row) => (
                       <tr key={row.id}>
-                        <td className="mono"><Link href={row.href}>{naText(row.docNo)}</Link></td>
+                        <td className="mono"><Link href={row.href}>{naText(row.docNoText || row.docNo)}</Link></td>
                         <td>
                           <div>{naText(row.revLabel)}</div>
                           {row.inUseRevLabel ? <div className={styles.sub}>ใช้อยู่ {row.inUseRevLabel}</div> : null}
@@ -337,9 +337,11 @@ export default function ProductSpecPage() {
 
         <DetailCard icon={ExternalLink} eyebrow="RELATED" title="ที่มาของข้อมูลบนกระดาษ">
           <ul className={styles.sourceList}>
-            <li>ชื่อลูกค้า · แบรนด์ · รหัสสินค้า · ขนาดบรรจุ · กลิ่น ←{" "}
+            {/* ป้ายชุดเดียวกับกระดาษ (มติผู้ใช้ 22/09 "ปริมาตรบรรจุ และ จำนวนผลิต ดึงมาจาก ข้อมูล FG และ QT SO") —
+                🐞 ตรวจรอบสาม: จอยังเรียก "ขนาดบรรจุ"/"จำนวน" และไม่บอกว่าจำนวนผลิตถอยไปใบเสนอราคาได้ */}
+            <li>ชื่อลูกค้า · แบรนด์ · รหัสสินค้า · ปริมาตรบรรจุ · กลิ่น ←{" "}
               <Link href={`/database/products/${id}`}>ทะเบียนสินค้า</Link></li>
-            <li>เลขที่ใบสั่งขาย · จำนวน · กำหนดส่ง · AE เจ้าของดีล ← บรรทัดใบสั่งขาย ถ่ายลงเอกสารตอนยื่น</li>
+            <li>เลขที่ใบสั่งขาย · จำนวนผลิต · กำหนดส่ง · AE เจ้าของดีล ← บรรทัดใบสั่งขาย (จำนวนผลิตไม่มี = บรรทัดใบเสนอราคาของสินค้าเดียวกัน) ถ่ายลงเอกสารตอนยื่น</li>
             <li>สเปค · checklist · เอกสารที่ขอได้ · ภาพประกอบ ← กรอกที่หน้านี้ ถ่ายลงเอกสารตอนยื่น</li>
           </ul>
         </DetailCard>

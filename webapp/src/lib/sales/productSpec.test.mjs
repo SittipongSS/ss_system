@@ -18,7 +18,7 @@ import {
   canEditProductSpec, normalizeProductSpecInput, normalizeSpecCertifications, normalizeSpecContent,
   normalizeSpecItems, productSpecDeleteBlock, productSpecPermissions,
 } from './productSpecWorkflow.js';
-import { parseProductSpecDocNo, productSpecDocNoParts } from './productSpecDocNo.js';
+import { formatSpecDocNo, parseProductSpecDocNo, productSpecDocNoParts } from './productSpecDocNo.js';
 
 /* ── ทะเบียน checklist ─────────────────────────────────────────────── */
 
@@ -191,8 +191,10 @@ test('สิทธิ์บนหน้าสเปค: ไม่มีสิท
 
 /* ── ข้อมูลที่บันทึกได้ (ด่านเดียวกับ CHECK ของ mig 0370) ─────────────── */
 
-test('ช่องเนื้อสเปคมีแปดช่องตามกระดาษ และทุกช่องมีเพดานความยาว', () => {
-  assert.equal(SPEC_CONTENT_FIELDS.length, 8);
+test('ช่องเนื้อสเปคมีเจ็ดช่องตามกระดาษ (ระดับราคาตัดออก 22/09) และทุกช่องมีเพดานความยาว', () => {
+  assert.equal(SPEC_CONTENT_FIELDS.length, 7);
+  // ⭐ มติผู้ใช้ 2026-09-22 "ตัดระดับราคาออก" — ลิสต์นี้คือตัวเดียวที่จอ/บันทึก/ภาพนิ่ง/กระดาษอ่าน
+  assert.ok(!SPEC_CONTENT_FIELDS.includes('pricingTier'), 'ระดับราคาต้องไม่กลับมาโดยไม่ถามเจ้าของ');
   for (const field of SPEC_CONTENT_FIELDS) assert.ok(SPEC_CONTENT_LIMITS[field] > 0, field);
 });
 
@@ -307,6 +309,27 @@ test('อ่านเลขที่เอกสารกลับเป็น�
   assert.equal(parseProductSpecDocNo('FM-SA-07-150969-004'), null);
   assert.equal(parseProductSpecDocNo('FM-SA-04-150969-4'), null);
   assert.equal(parseProductSpecDocNo(''), null);
+});
+
+test('⭐ เลขที่ที่คนอ่าน = DDMMYY-XXX-RR (มติผู้ใช้ 22/09) — ตัดรหัสแบบฟอร์ม · Rev ของเอกสาร 2 หลัก', () => {
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', 0), '220969-001-00');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', 3), '220969-001-03');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', '12'), '220969-001-12');
+  // ตัวนับเกิน 999 ในเดือนเดียว (เลขรันยาวขึ้น) ยังตัดถูก
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-1000', 1), '220969-1000-01');
+});
+
+test('เลขที่ที่คนอ่าน: ไม่มีเลขที่ = "-" · ไม่รู้ Rev = ไม่เดา (ไม่ต่อ -RR) · รูปอื่นพิมพ์ตามเดิม', () => {
+  assert.equal(formatSpecDocNo(null, 0), '-');
+  assert.equal(formatSpecDocNo(undefined, undefined), '-');
+  assert.equal(formatSpecDocNo('  ', 1), '-');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', null), '220969-001');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', ''), '220969-001');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', 'x'), '220969-001');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', true), '220969-001', 'boolean ไม่ใช่ Rev');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', 123), '220969-001-123', 'Rev ≥ 100 พิมพ์เต็มหลัก ไม่ตัดทิ้ง');
+  assert.equal(formatSpecDocNo('FM-SA-04-220969-001', -1), '220969-001');
+  assert.equal(formatSpecDocNo('XYZ-1', 2), 'XYZ-1-02');
 });
 
 /* ── เอกสารที่ขอได้ ───────────────────────────────────────────────── */
@@ -685,9 +708,9 @@ test('store: บันทึก checklist = ทับทั้งชุดผ่
   assert.deepEqual(mine.map((row) => row.itemKey), ['box']);
   assert.ok(db.tables.product_spec_items.some((row) => row.id === 'OTHER'), 'ห้ามลบ checklist ของสเปคอื่น');
 
-  const untouched = await saveProductSpec(db, { spec, input: { content: { pricingTier: 'พรีเมียม' } }, user: ADMIN, now: NOW });
+  const untouched = await saveProductSpec(db, { spec, input: { content: { longevity: '6 ชม.' } }, user: ADMIN, now: NOW });
   assert.deepEqual(untouched.spec.items.map((row) => row.itemKey), ['box']);
-  assert.equal(untouched.spec.pricingTier, 'พรีเมียม');
+  assert.equal(untouched.spec.longevity, '6 ชม.');
   assert.equal(calls.length, 1, 'ไม่ส่ง items = ไม่เรียก RPC');
 });
 
@@ -797,6 +820,107 @@ test('store: ภาพนิ่งเก็บทุกช่องที่ก�
   assert.deepEqual(res.illustrationIds, ['A1', 'A2'], 'รูปที่ปลดระวางแล้ว/ไม่ใช่รูป ไม่เข้าภาพนิ่ง');
 });
 
+/* ⭐ มติผู้ใช้ 2026-09-22 — กระดาษตามภาษาของ SO + กล่อง "ผู้ซื้อ / CUSTOMER" แบบใบเสนอราคา ⇒ ภาพนิ่ง v2
+   ถ่ายภาษา + ลูกค้าทั้งสองภาษาดิบ · ที่มาชุดเดียวกับ salesOrderPrint (คู่อังกฤษ SO ก่อน ถอยใบเสนอราคา) */
+const QUOTE_ROW = {
+  id: 'QT-ID', quoteNumber: 'QT-จากใบ', customerNameEn: 'NAME FROM QUOTE', customerTaxId: '0105561234567',
+  branchCode: '00002', billingAddress: 'ที่อยู่เอกสารไทย', billingAddressEn: 'Billing EN from quote',
+  shippingAddress: 'ที่อยู่จัดส่งไทย', shippingAddressEn: 'Shipping EN from quote',
+  contactName: 'คุณเบลล์', contactPhone: '0844326199',
+};
+const snapshotSeed = () => ({
+  product_specs: [{ id: 'PSP1', productId: 'PRD1', certifications: [] }],
+  products: [{ id: 'PRD1', fgCode: 'FG-0903-01-002-10043', customerName: 'ลูกค้าในทะเบียน' }],
+  quotations: [QUOTE_ROW],
+});
+
+test('store: ภาพนิ่ง v2 ถ่ายภาษาของ SO + ลูกค้าจาก SO/ใบเสนอราคา (คู่อังกฤษ SO ก่อน) + ชนิดเอกสารยืนยัน', async () => {
+  const db = fakeDb(snapshotSeed());
+  const { snapshot, error } = await buildDocumentSnapshot(db, {
+    productId: 'PRD1',
+    order: {
+      id: 'SO1', orderNumber: 'SO-1', quotationId: 'QT-ID', metadata: {}, docLanguage: 'en',
+      customerName: 'ลูกค้าบน SO', customerNameEn: 'NAME ON SO', billingAddressEn: null, shippingAddressEn: 'Shipping EN on SO',
+      confirmDocType: 'po', confirmDocNo: 'PO-9',
+    },
+    now: NOW,
+  });
+  assert.equal(error, undefined);
+  assert.equal(snapshot.schemaVersion, 2);
+  assert.equal(snapshot.order.docLanguage, 'en');
+  assert.equal(snapshot.order.confirmDocType, 'po');
+  assert.equal(snapshot.order.quotationNumber, 'QT-จากใบ', 'ไม่มีเลขที่แช่ใน metadata = อ่านจากใบที่ผูก');
+  assert.deepEqual(snapshot.customer, {
+    name: 'ลูกค้าบน SO',
+    nameEn: 'NAME ON SO',
+    taxId: '0105561234567',
+    branchCode: '00002',
+    billingAddress: 'ที่อยู่เอกสารไทย',
+    billingAddressEn: 'Billing EN from quote',
+    shippingAddress: 'ที่อยู่จัดส่งไทย',
+    shippingAddressEn: 'Shipping EN on SO',
+    contactName: 'คุณเบลล์',
+    contactPhone: '0844326199',
+  });
+});
+
+test('store: SO ไม่มีค่าภาษา = ไทย · ใบเสนอราคาไม่กรอกสาขา = "" (สำนักงานใหญ่) ไม่ใช่ null', async () => {
+  const seed = snapshotSeed();
+  seed.quotations = [{ ...QUOTE_ROW, branchCode: null }];
+  const { snapshot } = await buildDocumentSnapshot(fakeDb(seed), {
+    productId: 'PRD1', order: { id: 'SO1', quotationId: 'QT-ID', metadata: { quoteNumber: 'QT-แช่ไว้' } }, now: NOW,
+  });
+  assert.equal(snapshot.order.docLanguage, 'th');
+  assert.equal(snapshot.order.quotationNumber, 'QT-แช่ไว้', 'เลขที่ที่ SO แช่ไว้ชนะเลขของใบที่ผูก');
+  assert.equal(snapshot.customer.branchCode, '');
+});
+
+/* ⭐ มติผู้ใช้ 2026-09-22 "ปริมาตรบรรจุ และ จำนวนผลิต ดึงมาจาก ข้อมูล FG และ QT SO" — จำนวนผลิตถ่ายลงภาพนิ่ง
+   จากบรรทัด SO · บรรทัดไม่มีจำนวน/ถูกถอด ⇒ บรรทัดใบเสนอราคา (ตัวที่บรรทัด SO ชี้ก่อน · ถอยสินค้าเดียวกัน) */
+test('⭐ store: จำนวนผลิต = บรรทัด SO · ไม่มี ⇒ บรรทัดใบเสนอราคาที่ชี้ · ถอยสินค้าเดียวกัน · ไม่มีทั้งคู่ = null', async () => {
+  const seed = snapshotSeed();
+  seed.quotation_lines = [
+    { id: 'QL-1', quotationId: 'QT-ID', productId: 'PRD-OTHER', qty: 10, unit: 'ชิ้น', sortOrder: 0 },
+    { id: 'QL-2', quotationId: 'QT-ID', productId: 'PRD1', qty: 3000, unit: 'ขวด', sortOrder: 1 },
+    { id: 'QL-3', quotationId: 'QT-OTHER', productId: 'PRD1', qty: 1, unit: 'ชิ้น', sortOrder: 0 },
+    // สินค้าเดียวกันแต่เรียงหลัง QL-2 — ลิงก์ตรงต้องชนะการค้นตามสินค้า
+    { id: 'QL-4', quotationId: 'QT-ID', productId: 'PRD1', qty: 7, unit: 'แพ็คเกจ', sortOrder: 2 },
+    // บรรทัดพิมพ์เอง (ไม่มี productId) — ลิงก์ตรงเป็นหลักฐานเดียว ยังเชื่อ
+    { id: 'QL-5', quotationId: 'QT-ID', productId: null, qty: 9, unit: 'ชิ้น', sortOrder: 3 },
+  ];
+  const order = { id: 'SO1', quotationId: 'QT-ID', metadata: {} };
+  const qtyOf = async (line, over = {}) => {
+    const res = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', order: { ...order, ...over }, line, now: NOW });
+    assert.equal(res.error, undefined, res.error);
+    const { qty, unit, qtySource } = res.snapshot.order;
+    return [qty, unit, qtySource];
+  };
+  assert.deepEqual(await qtyOf({ id: 'SOL-1', qty: 2500, unit: 'แพ็คเกจ', quotationLineId: 'QL-2' }), [2500, 'แพ็คเกจ', 'sales_order_line']);
+  assert.deepEqual(await qtyOf({ id: 'SOL-1', qty: null, unit: null, quotationLineId: 'QL-4' }), [7, 'แพ็คเกจ', 'quotation_line'], 'บรรทัดที่ SO ชี้มาก่อน');
+  // 🐞 ตรวจรอบสาม: ลิงก์ชี้บรรทัดของสินค้าอื่น = ห้ามพิมพ์จำนวนของสินค้านั้น ⇒ ถอยไปบรรทัดของสินค้าเดียวกัน
+  assert.deepEqual(await qtyOf({ id: 'SOL-1', qty: null, unit: null, quotationLineId: 'QL-1' }), [3000, 'ขวด', 'quotation_line'], 'ลิงก์คนละสินค้า = ถอยสินค้าเดียวกัน');
+  assert.deepEqual(await qtyOf({ id: 'SOL-1', qty: null, unit: null, quotationLineId: 'QL-5' }), [9, 'ชิ้น', 'quotation_line'], 'บรรทัดไม่มี productId ยังเชื่อลิงก์');
+  assert.deepEqual(await qtyOf({ id: 'SOL-1', qty: '', unit: null, quotationLineId: 'QL-หาย' }), [3000, 'ขวด', 'quotation_line'], 'ชี้ไปบรรทัดที่หาย = ถอยสินค้าเดียวกัน');
+  assert.deepEqual(await qtyOf(null), [3000, 'ขวด', 'quotation_line'], 'บรรทัดถูกถอด (ร่างพิมพ์สด) = สินค้าเดียวกันในใบเสนอราคา');
+  assert.deepEqual(await qtyOf(null, { quotationId: null }), [null, null, null]);
+});
+
+test('🔴 store: อ่านบรรทัดใบเสนอราคา (ค่าสำรองของจำนวนผลิต) ไม่ได้ = error ไม่ใช่ N/A บนกระดาษ', async () => {
+  const db = fakeDb(snapshotSeed(), { fail: (table) => (table === 'quotation_lines' ? { message: 'timeout' } : null) });
+  const res = await buildDocumentSnapshot(db, { productId: 'PRD1', order: { id: 'SO1', quotationId: 'QT-ID' }, line: null, now: NOW });
+  assert.match(res.error, /อ่านบรรทัดใบเสนอราคาไม่สำเร็จ: timeout/);
+  // บรรทัด SO มีจำนวน = ไม่แตะใบเสนอราคาเลย
+  const ok = await buildDocumentSnapshot(db, { productId: 'PRD1', order: { id: 'SO1', quotationId: 'QT-ID' }, line: { id: 'L', qty: 5, unit: 'ชิ้น' }, now: NOW });
+  assert.equal(ok.error, undefined);
+});
+
+test('🔴 store: อ่านใบเสนอราคาที่ SO ผูกไม่ได้ = error (ไม่ใช่กล่องผู้ซื้อว่างเงียบ ๆ บนกระดาษที่ลูกค้าเซ็น)', async () => {
+  const db = fakeDb(snapshotSeed(), { fail: (table) => (table === 'quotations' ? { message: 'timeout' } : null) });
+  const res = await buildDocumentSnapshot(db, { productId: 'PRD1', order: { id: 'SO1', quotationId: 'QT-ID' }, now: NOW });
+  assert.match(res.error, /อ่านใบเสนอราคาของใบสั่งขายไม่สำเร็จ: timeout/);
+  assert.equal(res.snapshot, undefined);
+});
+
 test('store: ตัวอย่างจากหน้าสเปค (ไม่มี SO) ได้ก้อน order ครบคีย์เป็นค่าว่าง', async () => {
   const db = fakeDb({
     product_specs: [{ id: 'PSP1', productId: 'PRD1', certifications: [] }],
@@ -805,6 +929,11 @@ test('store: ตัวอย่างจากหน้าสเปค (ไม�
   const { snapshot } = await buildDocumentSnapshot(db, { productId: 'PRD1', now: NOW });
   assert.equal(snapshot.order.orderNumber, null);
   assert.equal(snapshot.order.customerName, 'ลูกค้าในทะเบียน');
+  // ไม่มี SO = ไม่มีภาษา (ตัวพิมพ์ถือเป็นไทย) · ไม่มีใบเสนอราคา = สาขาเป็น null (พิมพ์ขีด ไม่ใช่ 00000)
+  assert.equal(snapshot.order.docLanguage, null);
+  assert.equal(snapshot.customer.name, 'ลูกค้าในทะเบียน');
+  assert.equal(snapshot.customer.branchCode, null);
+  assert.equal(snapshot.customer.taxId, null);
   assert.equal(snapshot.product.categoryName, '01-002', 'ไม่มีชนิดในทะเบียน = ถอยไปรหัสหมวด');
   const none = await buildDocumentSnapshot(fakeDb(), { productId: 'PRD1' });
   assert.equal(none.status, 400);

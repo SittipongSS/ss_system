@@ -4,6 +4,7 @@
 import { fmtDate } from '@/lib/format';
 import { buildQuotationMasterHTML, buildQuotationMasterSwitchableHTML } from '@/lib/sales/quotationMasterDocument';
 import { docLanguageOf, quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
+import { positionTitle } from '@/lib/documents/positionTitles';
 import { canSwitchSalesOrderDocLanguage } from '@/lib/sales/salesOrderWorkflow';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
@@ -87,7 +88,7 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
   // evidence-backed จึงไม่มี role/เวลา/Evidence (เหมือนช่องผู้เสนอราคาในใบเสนอราคา).
   // live print โหลดสด (route GET); ฉบับตรึง snapshot ฝังรูปตอนอนุมัติ.
   // ใบที่ยื่นตั้งแต่ mig 0153 มีหลักฐานการลงนามของผู้จัดทำ → โชว์วันที่ + Evidence เหมือน
-  // ช่องผู้อนุมัติ; ใบเก่าไม่มี (stamp เชิงภาพ) → signBox จะข้าม 2 บรรทัดนั้นให้เอง
+  // ช่องผู้อนุมัติ; ใบเก่าไม่มี (stamp เชิงภาพ) → signatureBox จะข้าม 2 บรรทัดนั้นให้เอง
   const proposerSig = order.proposerSignature;
   const proposerEsignature = proposerSig?.imageDataUri
     ? {
@@ -190,16 +191,23 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
     // เจ้าของดีลเสมอ เพราะการยื่น = การลงนามในช่องนี้ (mig 0153)
     // ⚠️ ถึงอย่างนั้น "เซ็นแล้ว" ก็ยังใช้ชื่อคนที่เซ็นจริงจาก evidence — ใบเก่าที่ยื่นก่อน
     // มีด่านนี้อาจถูกยื่นโดยคนอื่น เอาชื่อเจ้าของดีลไปแปะทับจะได้ชื่อคนหนึ่งคู่ลายมืออีกคน
+    /* ⭐ บรรทัดตำแหน่งใต้ชื่อหน่วยงาน = **ตำแหน่งเต็มของคนที่เซ็นจริง** (มติผู้ใช้ 2026-09-22 "ชื่อ ตำแหน่ง
+       ขอเป็นชื่อเต็ม" · "ปรับการแสดงชื่อตำแหน่งในใบ QT และ SO ด้วย") จาก `signerRole` ของหลักฐานการลงนาม
+       (ae · senior_ae · ae_supervisor · finance · admin …) · ช่องที่ยังไม่มีใครเซ็น/หลักฐานไม่บอก role =
+       ตำแหน่งของช่องนั้น · 🐞 เดิมพิมพ์คำย่อ "AE เจ้าของดีล" · "AE Supervisor" และชื่อบริษัทในช่องบัญชี
+       ⚠️ ไม่ซ้ำตำแหน่งในบรรทัดวันที่ (`esignature.signerRole` ว่าง) — บรรทัดนั้นเหลือแค่วันที่ลงนาม */
     signers: [
       proposerEsignature
-        ? { label: L.t('salesTeam'), role: L.t('salesTeamRole'), esignature: proposerEsignature }
-        : { label: L.t('salesTeam'), role: L.t('salesTeamRole'), name: order.deal?.ownerName || '' },
+        ? { label: L.t('salesTeam'), role: positionTitle(proposerSig?.signerRole, positionTitle('ae')), esignature: proposerEsignature }
+        /* ยังไม่มีคนยื่น (ร่าง) = ชื่อเจ้าของดีลรอไว้ ⇒ ตำแหน่งต้องเป็นของเขา (`deal.ownerRole` ที่ route GET อ่านจากบัญชี)
+           ไม่ใช่ตำแหน่งของช่อง — 🐞 เดิม Senior AE ได้ "Account Executive" ใต้ชื่อตัวเอง · ไม่รู้ role = ตำแหน่งของช่อง */
+        : { label: L.t('salesTeam'), role: positionTitle(order.deal?.ownerRole, positionTitle('ae')), name: order.deal?.ownerName || '' },
       approverEsignature
-        ? { label: L.t('salesManager'), role: 'AE Supervisor', esignature: approverEsignature }
-        : { label: L.t('salesManager'), role: 'AE Supervisor', name: order.approvedByName || '' },
+        ? { label: L.t('salesManager'), role: positionTitle(sig?.signerRole, positionTitle('ae_supervisor')), esignature: approverEsignature }
+        : { label: L.t('salesManager'), role: positionTitle('ae_supervisor'), name: order.approvedByName || '' },
       financeEsignature
-        ? { label: L.t('financeTeam'), role: L.t('financeTeamRole'), esignature: financeEsignature }
-        : { label: L.t('financeTeam'), role: 'Scent & Sense', name: '' },
+        ? { label: L.t('financeTeam'), role: positionTitle(financeSig?.signerRole, positionTitle('finance')), esignature: financeEsignature }
+        : { label: L.t('financeTeam'), role: positionTitle('finance'), name: '' },
     ],
     // ลายน้ำ: อนุมัติแล้วไม่มี · ยกเลิก = "เอกสารยกเลิก" · อื่น ๆ = "ฉบับร่าง" (มติ 2026-07-18)
     watermark: order.status === 'approved' ? ''

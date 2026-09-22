@@ -109,7 +109,8 @@ export default function ProductSpecForm({
           {derived("ชื่อผลิตภัณฑ์", productDisplayName(product))}
           {derived("ประเภทผลิตภัณฑ์", product?.categoryName, product?.categoryCode ? `หมวด ${product.categoryCode}` : "")}
           {derived("กลิ่น / รหัสกลิ่น", product?.scentText)}
-          {derived("ขนาดบรรจุ", product?.volumeText)}
+          {/* ป้ายเดียวกับกระดาษ "ปริมาตรบรรจุ (Size)" — ค่ามาจากปริมาตร + หน่วยของสินค้า FG ในทะเบียน */}
+          {derived("ปริมาตรบรรจุ", product?.volumeText)}
           {field("texture", "ลักษณะเนื้อสาร", { placeholder: "เช่น เหลว · ครีม · ผง", hint: "บันทึกแล้วซิงก์ลงทะเบียนสินค้า" })}
           {field("standardPackaging", "บรรจุภัณฑ์มาตรฐาน", { placeholder: "เช่น บรรจุขวดแก้วหัวสเปรย์", hint: "บันทึกแล้วซิงก์ลงทะเบียนสินค้า" })}
         </div>
@@ -124,7 +125,6 @@ export default function ProductSpecForm({
         <div className="form-grid cols-3">
           {field("targetGroup", "กลุ่มเป้าหมาย", { long: true, placeholder: "เช่น ผู้หญิงวัยรุ่น - วัยเริ่มต้นทำงาน" })}
           {field("keySellingPoint", "จุดขายหลัก", { long: true, placeholder: "เช่น กลิ่นหอมที่สร้างความมั่นใจ" })}
-          {field("pricingTier", "ระดับราคา", { long: true, placeholder: "เช่น ราคาต้นทุน 200 บาท/ขวด" })}
           {field("productBenefit", "ประสิทธิภาพหลัก", { long: true, placeholder: "เช่น ช่วยให้กลิ่นหอม สร้างคาแร็คเตอร์ที่โดดเด่น" })}
           {field("longevity", "ระยะเวลาการออกฤทธิ์กลิ่น", { placeholder: "เช่น 4-6 ชั่วโมง" })}
           {field("dosagePerUse", "ปริมาณแนะนำต่อการใช้งาน", { placeholder: "เช่น 1-2 สเปรย์ต่อครั้ง" })}

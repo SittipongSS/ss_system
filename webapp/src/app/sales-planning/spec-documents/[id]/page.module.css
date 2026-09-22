@@ -46,7 +46,7 @@
 .captionList { margin: 0; padding-left: var(--space-4-5); color: var(--text-2); line-height: var(--lh-thai); }
 
 /* ความกว้างคอลัมน์ */
-.colRev { width: 84px; }
+.colRev { width: 128px; } /* เลขที่ DDMMYY-XXX-RR ตัวอักษรเท่ากัน 13 ตัว */
 .colStatus { width: 200px; }
 .colStamp { width: 170px; }
 .colPrint { width: 96px; }

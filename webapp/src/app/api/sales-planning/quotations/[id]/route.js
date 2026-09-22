@@ -87,7 +87,7 @@ async function loadProposerSignature(supabase, quote) {
   if (!quote?.proposerSignatureEvidenceId) return null;
   const { data: ev, error: evError } = await supabase
     .from('document_signature_evidence')
-    .select('id, signerName, signedAt, signatureAssetSnapshot')
+    .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
     .eq('id', quote.proposerSignatureEvidenceId)
     .maybeSingle();
   if (evError) console.error('[quotation] โหลดหลักฐานลายเซ็นผู้จัดทำไม่สำเร็จ:', evError.message);
@@ -99,6 +99,8 @@ async function loadProposerSignature(supabase, quote) {
     // ผู้จัดทำ = คนที่กดยื่น (มติผู้ใช้ 2026-08-17) — ชื่อจากหลักฐานมาก่อนเสมอ
     // ค่าสำรองจึงต้องเป็นผู้ยื่น ไม่ใช่ผู้สร้างร่าง (createdByName เหลือไว้ให้ใบเก่า)
     signerName: ev.signerName || quote.approvalRequestedByName || quote.createdByName || '',
+    // role ของคนที่ยื่นจริง ⇒ ตำแหน่งเต็มใต้ "ผู้จัดทำ" (positionTitle · มติ 2026-09-22)
+    signerRole: ev.signerRole || null,
     signedAt: ev.signedAt || quote.approvalRequestedAt || null,
     evidenceId: ev.id,
   };

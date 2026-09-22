@@ -3,6 +3,7 @@ import { branchValue } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { headerText } from '@/lib/documents/documentShell';
+import { positionTitle } from '@/lib/documents/positionTitles';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
 import { lineNoteFor } from '@/lib/sales/quoteLines';
@@ -167,10 +168,12 @@ const DOC_LABEL_PAIRS = Object.freeze({
   projectType: ['ประเภทโครงการ', 'Project Type'],
   proposer: ['ผู้เสนอราคา', 'Proposed By'],
   salesTeam: ['ฝ่ายขาย', 'Sales'],
-  salesTeamRole: ['AE เจ้าของดีล', 'Deal Owner (AE)'],
   salesManager: ['ผู้จัดการฝ่ายขาย', 'Sales Manager'],
   financeTeam: ['ฝ่ายบัญชี', 'Finance'],
-  financeTeamRole: ['ผู้ตรวจสอบ', 'Reviewer'],
+  /* ⚠️ บรรทัดตำแหน่งใต้ชื่อหน่วยงานของช่องลงนาม **ไม่อยู่ที่นี่แล้ว** (มติผู้ใช้ 2026-09-22 "ชื่อ ตำแหน่ง
+     ขอเป็นชื่อเต็ม") — เดิม `salesTeamRole` 'AE เจ้าของดีล' / 'Deal Owner (AE)' · `financeTeamRole`
+     'ผู้ตรวจสอบ' / 'Reviewer' · ตอนนี้เป็นตำแหน่งเต็มของคนที่เซ็นจริงจาก `positionTitle`
+     (lib/documents/positionTitles.js) ซึ่งเป็นอังกฤษทั้งสองภาษา */
   cancelledDocument: ['เอกสารยกเลิก', 'CANCELLED DOCUMENT'],
   // สถานะใบสั่งขายที่พิมพ์ในบล็อกอ้างอิง
   soStatusDraft: ['ฉบับร่าง', 'Draft'],
@@ -180,6 +183,28 @@ const DOC_LABEL_PAIRS = Object.freeze({
   soStatusCancelled: ['ยกเลิก', 'Cancelled'],
   // ป้ายหัวแถวในบล็อกลูกค้า — คนละตัวกับ `branch` ที่เป็น **คำนำหน้าเลข** ("สาขาที่ 00001")
   branchRow: ['สาขา', 'Branch'],
+  /* ── ป้ายของ "รายละเอียดผลิตภัณฑ์" FM-SA-04 (มติผู้ใช้ 2026-09-22 "header ใช้ชื่อหัวข้อเหมือน
+     ใบเสนอราคา") — หัวเอกสาร/กล่องผู้ซื้อใช้คีย์ของใบเสนอราคาตรง ๆ (number · issueDate · customer ·
+     customerTaxId · branchRow · shippingAddress · contact · reference · phone) ที่นี่มีเฉพาะแถวอ้างอิง
+     ที่ใบเสนอราคาไม่มี · ⚠️ ใบเสนอราคาแยกใบเสนอราคากับใบสั่งขายคนละแถว (เจ้าของสั่ง "แยกข้อ") */
+  specQuotation: ['ใบเสนอราคา', 'Quotation No.'],
+  specSalesOrder: ['ใบสั่งขาย', 'Sales Order No.'],
+  specPoNo: ['เลขที่ PO', 'PO No.'],
+  specOrderConfirmation: ['เอกสารยืนยันการสั่งซื้อ', 'Order Confirmation'],
+  specDeliveryDue: ['กำหนดส่งสินค้า', 'Delivery Due'],
+  // ⚠️ แถว "จำนวน" ย้ายไป Product Overview เป็น "จำนวนผลิต (Quantity)" (มติผู้ใช้ 2026-09-22) — ไม่พิมพ์ซ้ำสองที่
+  // "Contact for Sales" เดิม (ส่วนท้ายกระดาษ) ย้ายขึ้นกล่องอ้างอิง = AE เจ้าของดีลของ SO
+  salesContact: ['ผู้ติดต่อฝ่ายขาย', 'Sales Contact'],
+  email: ['อีเมล', 'Email'],
+  continuedMark: ['(ต่อ)', '(cont.)'],
+  /* ช่องลงนามของ FM-SA-04 (มติผู้ใช้ 2026-09-22 "final review ต้องปรับให้เหมือน QT และ SO") — ป้ายช่อง
+     = หน่วยงาน แบบใบสั่งขาย (ฝ่ายขาย · ผู้จัดการฝ่ายขาย ใช้คีย์ของใบสั่งขายตรง ๆ) · ตำแหน่งใต้ป้ายมาจาก
+     `positionTitle` ของคนที่เซ็นจริง */
+  specSignCoordinator: ['ผู้ประสานงานฝ่ายขาย', 'Sales Coordinator'],
+  specSignCustomer: ['ลูกค้า', 'Customer'],
+  // ลายน้ำ Rev ที่ถูกแทน — ใบอังกฤษต้องเป็นอังกฤษแบบ DRAFT/CANCELLED ของ QT/SO (ผลตรวจรอบสอง)
+  specSupersededBy: ['ถูกแทนด้วย', 'SUPERSEDED BY'],
+  specSupersededNewer: ['ถูกแทนด้วย Rev. ใหม่', 'SUPERSEDED BY A NEWER Rev.'],
 });
 
 /* เลขสาขาบนเอกสาร — **เลขล้วนเสมอ** (มติผู้ใช้ 2026-08-27 สองรอบ)
@@ -276,7 +301,8 @@ const BASE_QUOTE = Object.freeze({
   installments: [{ label: 'ชำระเต็มจำนวน', percent: 100, trigger: 'เมื่อยืนยันคำสั่งซื้อ', dueRule: 'ภายใน 7 วัน', note: '' }],
   signature: {
     signerName: 'สุพิชญา ใจดี',
-    signerRole: 'ผู้จัดการฝ่ายขาย',
+    // บรรทัดวันที่เหลือแค่วันที่ — ตำแหน่งย้ายไปบรรทัดใต้ชื่อช่อง (มติ 2026-09-22) ดู signers ของพรีวิว
+    signerRole: '',
     signedAt: '20/07/2569 14:30',
     evidenceId: 'DSE-PREVIEW-0001',
     fingerprint: 'sha256:preview-only-not-production',
@@ -975,9 +1001,10 @@ function toSalesOrderPreviewModel(model, state, standard) {
       // ⚠️ ช่องลงนามของ SO เป็นชุดของตัวเอง — ป้ายช่องเป็นหน่วยงาน ไม่ใช่บทบาทในเอกสาร
       // (มติผู้ใช้ 2026-08-05) ห้ามลอกคำของใบเสนอราคามาใส่
       // ต้องตรงกับ signers ที่ salesOrderPrint.js ส่งตอนพิมพ์จริง
-      { label: 'ฝ่ายขาย', role: 'AE เจ้าของดีล', name: model.references.salesOwner },
-      { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', name: state === 'approved' ? (model.signature?.signerName || '') : '' },
-      { label: 'ฝ่ายบัญชี', role: 'Scent & Sense' },
+      // ตำแหน่งเต็มแบบใบจริง (positionTitle) — ใบจริงที่ยังไม่มีใครเซ็นพิมพ์ตำแหน่งของช่องชุดเดียวกันนี้
+      { label: 'ฝ่ายขาย', role: positionTitle('ae'), name: model.references.salesOwner },
+      { label: 'ผู้จัดการฝ่ายขาย', role: positionTitle('ae_supervisor'), name: state === 'approved' ? (model.signature?.signerName || '') : '' },
+      { label: 'ฝ่ายบัญชี', role: positionTitle('finance') },
     ],
   };
 }
@@ -1084,10 +1111,13 @@ export function buildQuotationMasterPreview(
     signers: [
       // ⚠️ ช่องแรกคือ "ผู้จัดทำ" ใช้ preparedBy ไม่ใช่ salesOwner — ต้องตรงกับ signers
       // ที่ buildQuotationMasterModel สร้างตอนพิมพ์จริง
+      /* เซ็นแล้ว = ตำแหน่งเต็มแบบใบจริงที่อ่านจากหลักฐานการยื่น (positionTitle) · ยังไม่ยื่น = คำกลาง "พนักงานขาย"
+         เหมือนใบจริง (มติ 2026-09-22) — 🐞 ตรวจรอบสาม: พรีวิวที่อนุมัติแล้วยังพิมพ์ "พนักงานขาย" ใต้ช่องที่เซ็นแล้ว */
       state === 'approved'
-        ? { label: 'ผู้จัดทำ', role: 'พนักงานขาย', esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.preparedBy, signerRole: '' } }
+        ? { label: 'ผู้จัดทำ', role: positionTitle('ae'), esignature: { imageDataUri: PREVIEW_SIGNATURE_IMAGE, signerName: BASE_QUOTE.references.preparedBy, signerRole: '' } }
         : { label: 'ผู้จัดทำ', role: 'พนักงานขาย', name: BASE_QUOTE.references.preparedBy },
-      { label: 'ผู้อนุมัติเสนอราคา', role: 'Authorized signature', esignature: state === 'approved' ? { ...BASE_QUOTE.signature } : null },
+      // ตำแหน่งผู้อนุมัติอยู่บรรทัดใต้ชื่อช่องแบบใบจริง (มติ 2026-09-22) · ยังไม่อนุมัติ = "Authorized signature"
+      { label: 'ผู้อนุมัติเสนอราคา', role: state === 'approved' ? positionTitle('ae_supervisor') : 'Authorized signature', esignature: state === 'approved' ? { ...BASE_QUOTE.signature } : null },
       { label: 'ผู้ยืนยันคำสั่งซื้อ', role: 'ลูกค้า' },
     ],
     watermark: state === 'draft' ? 'ฉบับร่าง' : state === 'cancelled' ? 'ยกเลิก' : '',
@@ -1256,6 +1286,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     ? pinnedOwnerPhone
     : ((preparerIsSalesOwner && quote.createdByPhone) || '');
 
+  /* ตำแหน่งใต้ "ผู้จัดทำ" = ตำแหน่งเต็มของคนที่ยื่นจริงจากหลักฐานการยื่น (`proposerEvidence.signerRole`)
+     — ไม่มีหลักฐาน (ร่าง · ใบเก่า) = "พนักงานขาย" / "Sales Representative" เดิม */
+  const preparedByRole = positionTitle(options.proposerEvidence?.signerRole, L.t('preparedByRole'));
+
   const firstCapacity = v4FirstCapacity(customer);
   const totalsReserve = v4TotalsReserve(discountAmount);
   const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill', totalsReserve });
@@ -1275,14 +1309,23 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const preApproval = ['not_submitted', 'pending'].includes(quote.approvalStatus);
   const watermark = options.watermark || (preApproval ? L.t('draft') : '');
   // ผู้อนุมัติ: แสดงบล็อกลายเซ็นเมื่อมีชื่อผู้อนุมัติจริง (ไม่ใช่ฉบับร่าง)
+  /* ตำแหน่งผู้อนุมัติ = ตำแหน่งเต็มของคนที่เซ็นจริง (มติผู้ใช้ 2026-09-22 "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม")
+     จาก `document_signature_evidence.signerRole` ของหลักฐานการอนุมัติ — ตัวตรึง (captureIssuedQuotationSnapshot)
+     ส่ง `options.approverRole` มา · 🐞 เดิมอ่าน `quote.approvedByRole` ซึ่ง **ไม่มีคอลัมน์นี้จริง** ⇒ ใบที่ออกทุกใบ
+     พิมพ์คำกลาง ๆ "ผู้อนุมัติ" แทนตำแหน่ง · ไม่รู้ role = คำกลางเดิม */
+  /* ⭐ ตำแหน่งอยู่ **บรรทัดใต้ชื่อช่อง** แทนคำ "Authorized signature" (มติผู้ใช้ 2026-09-22 "ย้าย") —
+     ตำแหน่งเดียวกับช่องของ SO/FM-SA-04 · บรรทัดวันที่เหลือแค่วันที่ · ไม่รู้ตำแหน่ง/ยังไม่อนุมัติ = "Authorized signature" เดิม */
+  const approverPosition = options.approverRole
+    ? positionTitle(options.approverRole, 'Authorized signature')
+    : 'Authorized signature';
   const signature = !preApproval && quote.approvedByName
     ? {
       signerName: quote.approvedByName,
-      signerRole: quote.approvedByRole || L.t('approver'),
+      signerRole: '',
       signedAt: quote.approvedAt ? fmtDate(quote.approvedAt) : '',
       evidenceId: quote.signatureEvidenceId || '',
       // รูปลายเซ็นจริงของผู้อนุมัติ (ดึงจาก signature evidence ตอนตรึง snapshot ฝั่ง server)
-      // ไม่มี → signBox หล่นไปแสดงกล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์" แทน
+      // ไม่มี → signatureBox (documentShell) หล่นไปแสดงกล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์" แทน
       imageDataUri: options.approverSignatureImage || null,
     }
     : null;
@@ -1343,12 +1386,12 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // ⚠️ มีหลักฐานการลงนามเมื่อไร ใช้ชื่อ "คนที่เซ็นจริง" (evidence.signerName) มาก่อน
       // ใบที่ยื่นตั้งแต่ mig 0155 มีหลักฐานการลงนาม →
       // โชว์วันที่ + Evidence เหมือนช่องผู้อนุมัติ (options.proposerEvidence);
-      // ใบเก่าที่ไม่มีหลักฐาน = stamp เชิงภาพ → signBox ข้าม 2 บรรทัดนั้นให้เอง;
+      // ใบเก่าที่ไม่มีหลักฐาน = stamp เชิงภาพ → signatureBox ข้าม 2 บรรทัดนั้นให้เอง;
       // ไม่มีรูปเลย → ช่องเซ็นเปล่าเดิม
       options.proposerSignatureImage
         ? {
           label: L.t('preparedBy'),
-          role: L.t('preparedByRole'),
+          role: preparedByRole,
           esignature: {
             imageDataUri: options.proposerSignatureImage,
             signerName: options.proposerEvidence?.signerName || preparedBy,
@@ -1357,9 +1400,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
             evidenceId: options.proposerEvidence?.id || '',
           },
         }
-        : { label: L.t('preparedBy'), role: L.t('preparedByRole'), name: preparedBy },
+        : { label: L.t('preparedBy'), role: preparedByRole, name: preparedBy },
       // "Authorized signature" เป็นอังกฤษอยู่แล้วทั้งสองภาษา — คำที่ใช้กันบนเอกสารการค้า
-      { label: L.t('approvedBy'), role: 'Authorized signature', esignature: signature },
+      { label: L.t('approvedBy'), role: signature ? approverPosition : 'Authorized signature', esignature: signature },
       { label: L.t('confirmedBy'), role: L.t('confirmedByRole') },
     ],
     lines,

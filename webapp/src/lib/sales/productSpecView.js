@@ -18,6 +18,7 @@ import {
 } from '@/lib/sales/productSpecDocWorkflow';
 import { SPEC_CONTENT_FIELDS } from '@/lib/sales/productSpecWorkflow';
 import { docRevisionTone, salesOrderHref, specDocumentHref } from '@/lib/sales/productSpecDocView';
+import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
 
 /** ปลายทางกระดาษตัวอย่าง (ลายน้ำ "ตัวอย่าง" · ยังไม่มีเลขที่) — HTML ทั้งหน้า เปิดแท็บใหม่ */
 export const specSamplePrintHref = (productId) => (productId ? `/api/products/${productId}/spec/document` : null);
@@ -218,8 +219,8 @@ export function specReadiness({ form, items = [] } = {}) {
     {
       id: 'market',
       label: 'ตำแหน่งทางการตลาด',
-      detail: 'กลุ่มเป้าหมาย · จุดขาย · ระดับราคา',
-      ready: has(form?.targetGroup) && has(form?.keySellingPoint) && has(form?.pricingTier),
+      detail: 'กลุ่มเป้าหมาย · จุดขาย',
+      ready: has(form?.targetGroup) && has(form?.keySellingPoint),
     },
     {
       id: 'functional',
@@ -253,6 +254,8 @@ export function specDocumentRows(documents = []) {
     return {
       id: doc.id,
       docNo: doc.docNo || null,
+      // ⭐ เลขที่ที่คนอ่าน DDMMYY-XXX-RR ของ Rev ล่าสุด (มติ 22/09) — ตัวเดียวกับกระดาษ
+      docNoText: doc.docNo ? formatSpecDocNo(doc.docNo, latest?.revNo) : null,
       href: specDocumentHref(doc.id),
       revLabel: latest ? formatRevLabel(latest.revNo) : null,
       inUseRevLabel: inUse !== null && latest && inUse !== Number(latest.revNo) ? formatRevLabel(inUse) : null,
