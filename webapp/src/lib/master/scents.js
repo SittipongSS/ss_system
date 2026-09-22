@@ -10,7 +10,7 @@
 //
 // ทำไมสายพันธุ์ดีกว่า Rev.: Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ —
 // ลูกค้าให้แก้ทั้ง A และ C พร้อมกัน แล้วเลือกตัวที่แตกจาก A
-import { canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { canDeleteRegistryAnyStatus, canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const SCENT_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
@@ -136,15 +136,27 @@ const DELETABLE_SCENT_STATUS = new Set(['draft', 'developing']);
 /* ⭐ `formulaCount` · `productCount` (ม-148 · รีวิว 2026-09-22) — `formulas.scentId` กับ `products.scentId`
    เป็น SET NULL (ไม่อยู่ในตัวนับ RESTRICT) ⇒ ลบกลิ่นแล้วฐานยอมเงียบ ๆ ได้สูตร/สินค้าที่ไม่มีกลิ่นค้าง ·
    พัฒนากลิ่นที่ส่งเป็นสินค้าทำให้กลิ่น "กำลังพัฒนา" มีสูตรผูกได้เป็นครั้งแรก จึงต้องนับด้วย */
-export function deleteScentError(scent, { linkedCount = 0, formulaCount = 0, productCount = 0 } = {}) {
+/* ⭐ `childCount` = กลิ่นที่ "แก้มาจาก" กลิ่นนี้ (`scents.derivedFromScentId` เป็น SET NULL — ลบแล้วสายพันธุ์หายเงียบ)
+   · กติกาเดียวกับ `deleteFormulaError` · เพิ่มพร้อมเปิดให้ลบกลิ่นที่ใช้งานแล้ว (กลิ่นแม่ของรอบแก้มักเป็นตัวที่ใช้งานแล้ว)
+   ⭐ `anyStatus` = ผู้ลบถือ `registry:delete` (Project Coordinator ของ RD · มติผู้ใช้ 2026-09-22) — ข้ามแค่ด่านสถานะ
+   ด่านนับของที่อ้างทุกตัวยังอยู่ ⇒ ลบได้ทุกสถานะ **เมื่อไม่มีใครอ้าง** ไม่ปลดลิงก์ให้ (นั่นคือบังคับลบของ admin)
+   ⚠️ ลบรายการในคำร้อง (`items/[itemId]`) ไม่ส่ง `anyStatus` — กลิ่นที่ลบพ่วงไปกับแถวต้องยังเป็นร่าง/กำลังพัฒนาเสมอ */
+export function deleteScentError(scent, { linkedCount = 0, formulaCount = 0, productCount = 0, childCount = 0 } = {}, { anyStatus = false } = {}) {
   if (!scent) return 'ไม่พบกลิ่น';
-  if (!DELETABLE_SCENT_STATUS.has(scent.status)) {
+  if (!anyStatus && !DELETABLE_SCENT_STATUS.has(scent.status)) {
     return 'ลบได้เฉพาะร่างหรือกลิ่นที่ยังกำลังพัฒนา — กลิ่นที่ใช้งานแล้วให้เปลี่ยนเป็น "เลิกใช้" แทน';
   }
   if (linkedCount > 0) return `กลิ่นนี้ถูกอ้างอยู่ ${linkedCount} ที่ (คำร้อง/ทะเบียนราคา) ลบไม่ได้`;
   if (formulaCount > 0) return `มีสูตร ${formulaCount} ตัวใช้กลิ่นนี้อยู่ — ลบสูตรก่อน`;
   if (productCount > 0) return `มีสินค้า ${productCount} รายการอ้างกลิ่นนี้อยู่ ลบไม่ได้`;
+  if (childCount > 0) return `มีกลิ่น ${childCount} ตัวแก้ต่อจากกลิ่นนี้ ลบไม่ได้`;
   return null;
+}
+
+/** โชว์ปุ่มลบไหม — ตัวเดียวกับที่ API ใช้ตัดสินสิทธิ์+สถานะ (ของที่อ้างอยู่ API บอกเหตุตอนกด) */
+export function canOfferScentDelete(user, scent) {
+  if (!scent || !canEditScent(user, scent)) return false;
+  return canDeleteRegistryAnyStatus(user) || DELETABLE_SCENT_STATUS.has(scent.status);
 }
 
 // ── ด่านของแต่ละ action — คืนข้อความไทย หรือ null ถ้าผ่าน ────────────────

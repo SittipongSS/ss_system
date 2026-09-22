@@ -2,9 +2,10 @@
 // action ทั้งหมดมาทาง PATCH ตัวเดียว (body.action) เพื่อให้ด่านสิทธิ์อยู่ที่เดียว
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
+import { canDeleteRegistryAnyStatus } from '@/lib/permissions';
 import {
   acceptScentCode, acceptScentError, acceptedScentStatus, archiveScentError,
-  canEditScent, canSetScentCode, canViewScents, deleteScentError, isScentRegistrar,
+  canEditScent, canOfferScentDelete, canSetScentCode, canViewScents, deleteScentError, isScentRegistrar,
   normalizeScentInput, scentTransitionError, sendScentError,
 } from '@/lib/master/scents';
 import {
@@ -27,7 +28,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // แล้วเห็นข้อมูลไม่เท่ากันคือโรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์ม
     const scent = await findScentDetail(supabase, id);
     if (!scent) return notFound('ไม่พบกลิ่น');
-    return ok(scent);
+    // ธงปุ่มลบ — ตัวเดียวกับหน้ารายการ (สิทธิ์ + สถานะ · ของที่อ้างอยู่ DELETE บอกเหตุตอนกด)
+    return ok({ ...scent, _canDelete: canOfferScentDelete(user, scent) });
   } catch (e) {
     return fail(e.message, 500);
   }
@@ -219,10 +221,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ⚠️ นับทุก pointer ที่เป็น RESTRICT (mig 0232) ไม่ใช่แค่ `producedScentId` —
   // ช่องที่ตกหล่นจะผ่านด่านนี้แล้วไปตายที่ฐานข้อมูลด้วย 23503 ที่ผู้ใช้อ่านไม่ออก
   // ⚠️ + สูตร/สินค้าที่ชี้กลิ่นนี้ด้วย SET NULL (ม-148) — ลบแล้วฐานยอมเงียบ ได้สูตร/สินค้าไร้กลิ่น
+  // ⭐ `registry:delete` (Project Coordinator ของ RD · มติผู้ใช้ 2026-09-22) ข้ามด่านสถานะ — ด่านนับของที่อ้างยังอยู่ครบ
   const error = deleteScentError(scent, {
     linkedCount: await countRegistryRefs(supabase, 'scent', id),
     ...(await countRegistryDependents(supabase, 'scent', id)),
-  });
+  }, { anyStatus: canDeleteRegistryAnyStatus(user) });
   if (error) return badRequest(error);
 
   const { error: delError } = await supabase.from('scents').delete().eq('id', id);
@@ -230,6 +233,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   await purgeUpdates(supabase, 'scent', id);
   await recordAudit({
     user, action: 'delete', entityType: 'scent', entityId: id, before: scent, request: req,
+    summary: `ลบกลิ่น ${scent.code || scent.name} (สถานะ ${scent.status})`,
   });
   return ok({ ok: true });
 });

@@ -270,15 +270,17 @@ export default function ScentsPage() {
       visible: registrar && s.status === "archived",
       onClick: () => setConfirm({ kind: "restore", scent: s }),
     },
-    // ผู้ดูแลระบบลบได้ทุกแถวทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
-    // ที่ยังไม่มีประวัติการส่ง
+    /* ⭐ `_canDelete` = ตัวตัดสินเดียวกับ API (`canOfferScentDelete`: สิทธิ์ + สถานะ) — ร่างของตัวเอง ·
+       RD ถึงกำลังพัฒนา · Project Coordinator ทุกสถานะ (มติผู้ใช้ 2026-09-22) · ของที่อ้างอยู่ API บอกเหตุตอนกด
+       🐞 เดิมหน้านี้เปิดแค่ร่าง ขณะที่ API + หน้ารายละเอียดลบ "กำลังพัฒนา" ได้ — สองจอพูดไม่ตรงกัน
+       ผู้ดูแลระบบยังเห็นทุกแถว (บังคับลบ — break-glass) */
     {
       id: "delete",
-      label: s.status === "draft" ? "ลบร่างนี้" : "ลบกลิ่น (ผู้ดูแลระบบ)",
+      label: s.status === "draft" ? "ลบร่างนี้" : s._canDelete ? "ลบกลิ่นนี้" : "ลบกลิ่น (ผู้ดูแลระบบ)",
       icon: Trash2,
       tone: "danger",
       separatorBefore: true,
-      visible: isAdmin || (s._canEdit && s.status === "draft" && (s.revisions || []).length === 0),
+      visible: isAdmin || !!s._canDelete,
       onClick: () => setConfirm({ kind: "delete", scent: s }),
     },
   ];
@@ -367,7 +369,7 @@ export default function ScentsPage() {
     try {
       const result = await deleteWithForce(`/api/master/scents/${scent.id}`, { isAdmin });
       if (result.ok) {
-        setToast({ kind: "success", msg: result.forced ? "บังคับลบกลิ่นแล้ว" : "ลบร่างแล้ว" });
+        setToast({ kind: "success", msg: result.forced ? "บังคับลบกลิ่นแล้ว" : scent.status === "draft" ? "ลบร่างแล้ว" : "ลบกลิ่นแล้ว" });
         await reload();
         setConfirm(null);
       } else if (result.cancelled) setConfirm(null);
@@ -394,7 +396,9 @@ export default function ScentsPage() {
         title: draft ? "ลบร่างกลิ่น" : "ลบกลิ่นออกจากทะเบียน",
         message: draft
           ? `ลบร่าง "${confirm.scent.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`
-          : `ลบ "${confirm.scent.name}" ออกจากทะเบียน? ถ้ามีของอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`,
+          : isAdmin
+            ? `ลบ "${confirm.scent.name}" ออกจากทะเบียน? ถ้ามีของอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`
+            : `ลบ "${confirm.scent.name}" ออกจากทะเบียน? ทำแล้วย้อนไม่ได้ · ถ้ามีคำร้อง ราคา สูตร หรือสินค้าอ้างอยู่ ระบบจะไม่ให้ลบและบอกว่าติดที่ไหน`,
         confirmLabel: draft ? "ลบร่าง" : "ลบกลิ่น",
       };
     }

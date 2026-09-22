@@ -178,8 +178,9 @@ export default function FormulaDetailPage() {
         onClick: () => setPricing(true),
       }] : []}
       /* ⚠️ **ลบอยู่ในกลุ่ม danger ของการ์ดจัดการ** — ที่เดียวกับทุกเอกสารในระบบ
-         · โผล่เฉพาะขั้นที่ลบได้จริง (ร่าง / กำลังพัฒนา) และเฉพาะคนที่คุมทะเบียน */
-      dangerActions={["draft", "developing"].includes(formula.status) && isFormulaRegistrar(me) ? [{
+         · `_canDelete` จาก GET = ตัวตัดสินเดียวกับ API และหน้ารายการ (สิทธิ์ + สถานะ: RD ถึงกำลังพัฒนา ·
+           Project Coordinator ทุกสถานะ — มติผู้ใช้ 2026-09-22) · ของที่อ้างอยู่ DELETE บอกเหตุตอนกด */
+      dangerActions={formula._canDelete ? [{
         id: "delete",
         label: "ลบสูตรนี้",
         icon: Trash2,
@@ -236,7 +237,7 @@ export default function FormulaDetailPage() {
         tone="danger"
         title={`ลบสูตร ${formula.code || formula.name}`}
         description="ลบออกจากทะเบียนถาวร ย้อนกลับไม่ได้"
-        detail="ถ้ามีคำร้องหรือทะเบียนราคาอ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
+        detail="ถ้ามีคำร้อง ราคา สินค้า หรือสูตรที่แก้ต่ออ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
         confirmLabel="ลบ"
         busy={removing}
         onClose={() => setConfirmDelete(false)}

@@ -39,7 +39,7 @@ function walk(dir, out = []) {
 const CAP_GROUPS = [
   'customers', 'products', 'sales', 'ra', 'history', 'audit', 'users', 'master',
   'pm', 'salesplan', 'sahamit', 'costing', 'production', 'service', 'payments',
-  'mgmt', 'team', 'requests',
+  'mgmt', 'team', 'requests', 'registry',
 ];
 
 /* สตริงที่หน้าตาเป็นสิทธิ์แต่ไม่ใช่ — ถ้าเจอตัวใหม่ให้เติมที่นี่พร้อมเหตุผล */
@@ -90,7 +90,7 @@ test('⚠️ การเติมสิทธิ์ให้แอดมิน�
   const head = { role: 'ae_supervisor', team: 'KA' };
   for (const cap of ['users:manage', 'users:view', 'master:manage', 'audit:view',
     'ra:approve', 'products:margin', 'mgmt:view', 'mgmt:edit',
-    'costing:approve', 'costing:quote', 'requests:answer']) {
+    'costing:approve', 'costing:quote', 'requests:answer', 'registry:delete']) {
     assert.equal(canUser(head, cap), false, `หัวหน้าฝ่ายขายไม่ควรถือ ${cap}`);
   }
 });

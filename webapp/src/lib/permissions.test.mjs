@@ -952,11 +952,15 @@ test('RD: ทะเบียนตำแหน่งครบทุกชั้�
   assert.equal(isRdRole(null), false);
 });
 
-test('RD: ทุกตำแหน่งถือ cap ชุดเดียวกับ rd เป๊ะ', () => {
+test('RD: ทุกตำแหน่งถือ cap ชุดเดียวกับ rd เป๊ะ — ต่างได้แค่ส่วนเพิ่มที่มีมติ', () => {
   const base = [...capsForRole('rd')].sort();
+  /* ⭐ ส่วนเพิ่มรายตำแหน่งที่มีมติแล้วเท่านั้น — เพิ่ม cap ให้ตำแหน่งไหนต้องมาจดที่นี่
+     · rd_coordinator + registry:delete — ลบกลิ่น/สูตรทุกสถานะเมื่อไม่มีใครอ้าง (มติผู้ใช้ 2026-09-22) */
+  const EXTRA = { rd_coordinator: ['registry:delete'] };
   for (const role of NEW_RD_ROLES) {
-    assert.deepEqual([...capsForRole(role)].sort(), base, role);
+    assert.deepEqual([...capsForRole(role)].sort(), [...base, ...(EXTRA[role] || [])].sort(), role);
   }
+  assert.equal(capsForRole('rd').includes('registry:delete'), false, 'rd เดิมยังลบได้แค่ร่าง/กำลังพัฒนา');
 });
 
 test('RD: ตำแหน่งใหม่ต้องไม่เสียสิทธิ์ที่ helper ตัวไหน', () => {

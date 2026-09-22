@@ -198,8 +198,9 @@ export default function ScentDetailPage() {
         onClick: () => setPricing(true),
       }] : []}
       /* ⚠️ **ลบอยู่ในกลุ่ม danger ของการ์ดจัดการ** — ที่เดียวกับทุกเอกสารในระบบ
-         · โผล่เฉพาะขั้นที่ลบได้จริง (ร่าง / กำลังพัฒนา) และเฉพาะคนที่คุมทะเบียน */
-      dangerActions={["draft", "developing"].includes(scent.status) && isScentRegistrar(me) ? [{
+         · `_canDelete` จาก GET = ตัวตัดสินเดียวกับ API และหน้ารายการ (สิทธิ์ + สถานะ: RD ถึงกำลังพัฒนา ·
+           Project Coordinator ทุกสถานะ — มติผู้ใช้ 2026-09-22) · ของที่อ้างอยู่ DELETE บอกเหตุตอนกด */
+      dangerActions={scent._canDelete ? [{
         id: "delete",
         label: "ลบกลิ่นนี้",
         icon: Trash2,
@@ -256,7 +257,7 @@ export default function ScentDetailPage() {
         tone="danger"
         title={`ลบกลิ่น ${scent.code || scent.name}`}
         description="ลบออกจากทะเบียนถาวร ย้อนกลับไม่ได้"
-        detail="ถ้ามีคำร้องหรือทะเบียนราคาอ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
+        detail="ถ้ามีคำร้อง ราคา สูตร สินค้า หรือกลิ่นที่แก้ต่ออ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
         confirmLabel="ลบ"
         busy={removing}
         onClose={() => setConfirmDelete(false)}
