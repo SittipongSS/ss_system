@@ -345,7 +345,8 @@ test('ข้อมูลวันนี้ (ทีมบนแถว = ทีม
 const read = (rel) => readFileSync(join(process.cwd(), 'src', rel), 'utf8');
 
 test('route: ทีมของใบมาจาก embed ดีลในคิวรีเดียวกัน · แถวมาจาก buildReportRows · ไม่อ่านทีมจากบัญชี', () => {
-  const route = read('app/api/sales-planning/report/route.js');
+  // ตัวโหลดย้ายจาก route.js ไป lib/sales/salesReportData.js (2026-09-22 · จอกับ Excel ใช้ร่วมกัน)
+  const route = read('lib/sales/salesReportData.js');
   // ใบสั่งขายย้อนหลัง (mig 0360) กรองในคิวรีเดียวกัน — pipelineRowsOnly ครอบ select (ยามรวมอยู่ที่ historicalMoneyGuards)
   assert.match(route, /fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\s*\.from\('sales_orders'\)\s*\.select\('[^']*deal:sales_deals\(team\)'\)\)\s*\.eq\('status', 'approved'\)/);
   assert.match(route, /buildReportRows\(\{/);
@@ -355,10 +356,11 @@ test('route: ทีมของใบมาจาก embed ดีลในคิ
   }
 });
 
-test('หน้า: คีย์แถวมาจาก row.key · ทีมว่างมีป้าย · ตัวเลือกผู้รับผิดชอบไม่ซ้ำ', () => {
+test('หน้า: คีย์แถวมาจาก row.key · ทีมว่างมีป้าย · นับคนไม่ซ้ำ (ตัวนับย้ายไป lib/sales/reportSummary 2026-09-22)', () => {
   const page = read('app/sales-planning/targets/report/page.js');
   assert.match(page, /<tr key=\{row\.key\}>/);
   assert.doesNotMatch(page, /key=\{row\.ownerId \|\| row\.team\}/);
   assert.match(page, /NO_TEAM_LABEL/);
-  assert.match(page, /new Set\(\[\.\.\.rows, \.\.\.pendingOnly\]\.map\(\(row\) => row\.ownerId\)\)\.size/);
+  // "รวม N คน" = คนไม่ซ้ำ (คนเดียวมีได้หลายแถว ทีมละแถว) — ตัวคิดอยู่ที่ตัวสรุปกลาง จอกับ Excel ใช้ร่วมกัน
+  assert.match(read('lib/sales/reportSummary.js'), /new Set\(all\.map\(\(r\) => r\.ownerId\)\)\.size/);
 });

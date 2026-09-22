@@ -265,12 +265,13 @@ test('บรรทัด "ไม่ระบุทีม" จับเข้า�
 const read = (rel) => readFileSync(join(process.cwd(), 'src', rel), 'utf8');
 
 test('route: อ่านใบรออนุมัติแยกก้อน ไม่ต่อ id เข้าคิวรีจำนวนบรรทัด และคืนเป็นช่องแยก', () => {
-  const source = read('app/api/sales-planning/report/route.js');
+  // ตัวโหลดย้ายจาก route.js ไป lib/sales/salesReportData.js (2026-09-22 · จอกับ Excel ใช้ร่วมกัน)
+  const source = read('lib/sales/salesReportData.js');
   assert.match(source, /\.eq\('status', 'pending_approval'\)/);
   assert.match(source, /reportPendingApproval\(\{/);
   assert.match(source, /pendingApproval,/);
   // จำนวนบรรทัดยังนับเฉพาะใบอนุมัติแล้วในช่วง — `.in()` ก้อนนี้ไม่ได้ซอย ห้ามโตตามใบรออนุมัติ
-  assert.match(source, /const ids = inRange\.map\(\(o\) => o\.id\);/);
+  assert.match(source, /const ids = inShown\.map\(\(o\) => o\.id\);/);
   // เจ้าของมาจากดีลปัจจุบัน ต้องซอยลิสต์ id (PostgREST 16 KB)
   assert.match(source, /fetchInChunks\(/);
   // ทีมตามดีล — ดีลของใบรออนุมัติต้องอ่านช่อง team มาด้วย
@@ -283,15 +284,18 @@ test('ตัวคิดยอดรออนุมัติไม่อ่า�
   assert.match(source, /const team = deal\.team \|\| null;/);
 });
 
-test('หน้า: ขายจริง ทบยอด % ส่วนต่าง ยังคิดจาก actual ล้วน', () => {
-  const source = read('app/sales-planning/targets/report/page.js');
-  assert.match(source, /actual: sum\(row\.actual\.slice\(0, closedCount\)\)/);
-  assert.match(source, /carryIn\(company\.target, company\.actual, i, closedCount, months\)/);
-  assert.doesNotMatch(source, /actual[^\n;]*\+[^\n;]*pendingApproval|pendingApproval[^\n;]*\+[^\n;]*actual/);
-  assert.match(source, /import PendingApprovalAmount from "@\/components\/salesPlanning\/PendingApprovalAmount"/);
+test('ตัวสรุป + หน้า: ขายจริง ทบยอด % ส่วนต่าง ยังคิดจาก actual ล้วน (ย้ายไป lib/sales/reportSummary 2026-09-22)', () => {
+  const summary = read('lib/sales/reportSummary.js');
+  const page = read('app/sales-planning/targets/report/page.js');
+  // ทบยอดคิดจาก target/actual ของบริษัทล้วน ไม่มีช่องรออนุมัติเข้าไปปน
+  assert.match(summary, /carryIn\(company\.target, company\.actual, i, countable, axis\)/);
+  for (const [name, source] of [['summary', summary], ['page', page]]) {
+    assert.doesNotMatch(source, /actual[^\n;]*\+[^\n;]*pendingApproval|pendingApproval[^\n;]*\+[^\n;]*actual/, `${name} ห้ามบวกยอดรออนุมัติเข้าขายจริง`);
+  }
+  assert.match(page, /import PendingApprovalAmount from "@\/components\/salesPlanning\/PendingApprovalAmount"/);
   // ช่องรออนุมัติบนหัวรายงานไม่ผ่านด่านเดือนที่จบแล้ว — เดือนที่มันอยู่คือเดือนที่ยังไม่จบเสมอ
-  assert.doesNotMatch(source, /hasPendingApproval[^\n;]*closedCount|closedCount[^\n;]*hasPendingApproval/);
-  // รายทีม/รายคน: แถวรวมต้องบอกส่วนที่ไม่มีแถว และสถานะว่างต้องชี้ไปการ์ดรายใบ ไม่ปล่อยให้ยอดหายเงียบ
-  assert.match(source, /pendingOutsideCount > 0/);
-  assert.match(source, /ดูราย\{label\}ได้ที่การ์ด/);
+  assert.doesNotMatch(summary, /pendingApproval[^\n;]*countable|countable[^\n;]*pendingApproval/);
+  // รายทีม/รายคน: ส่วนที่ไม่มีแถวต้องบอก และสถานะว่างต้องชี้ไปแผงรายใบ ไม่ปล่อยให้ยอดหายเงียบ
+  assert.match(page, /group\.pendingOutside\.count > 0/);
+  assert.match(page, /ดูราย\{label\}ได้ที่/);
 });
