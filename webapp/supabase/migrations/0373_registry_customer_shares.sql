@@ -13,12 +13,19 @@
 --     นับแถวในสองตารางนี้เอง (`lib/master/entityReferences.js`)
 --  ⚠️ ลบกลิ่น/สูตร = ลบแถวแชร์ตาม (CASCADE) — แชร์เป็นของประกอบ ไม่ใช่การอ้างอิงที่ต้องกันลบ
 --
+--  ⭐ **1 สูตรผูกได้หลาย FG** (มติผู้ใช้ 2026-09-22 ต่อจากเรื่องแชร์: *"1 สูตร ผูกได้หลาย FG"*) — ถอด
+--     `products_formula_uk` (mig 0231 · 1 สูตร : 1 FG) · ลูกค้าที่ได้รับแชร์สูตรทำ FG ของตัวเองจากสูตรเดิมได้
+--     (ตัวตนสูตร = หมวด × กลิ่น ⇒ สร้างสูตรซ้ำคู่เดิมไม่ได้ ทางเดียวคือหลาย FG ชี้สูตรเดียว)
+--     · index ธรรมดา `products_formula_idx` (0171) ยังอยู่ — query "FG ไหนใช้สูตรนี้" ไม่ช้าลง
+--
 --  ⚠ รันมือบน Supabase SQL Editor · **ต้องรันก่อน deploy** — โค้ดใหม่อ่านสองตารางนี้ทุกครั้งที่โหลด
 --     ทะเบียนกลิ่น/สูตร (ไม่มีตาราง = ทะเบียนกลิ่น/สูตรเปิดไม่ขึ้น) · รันซ้ำได้ (IF NOT EXISTS)
 --
 --  ── Rollback ─────────────────────────────────────────────────────────────
 --  DROP TABLE IF EXISTS public.formula_customer_shares;
 --  DROP TABLE IF EXISTS public.scent_customer_shares;
+--  CREATE UNIQUE INDEX products_formula_uk ON public.products ("formulaId") WHERE "formulaId" IS NOT NULL;
+--    (สร้างกลับได้เฉพาะเมื่อยังไม่มีสูตรที่ถูกหลาย FG ถือ — ตรวจด้วย GROUP BY "formulaId" HAVING count(*) > 1 ก่อน)
 --  (ต้อง revert โค้ดก่อน — ไม่งั้นทะเบียนกลิ่น/สูตรเปิดไม่ขึ้น)
 -- ============================================================
 
@@ -47,6 +54,9 @@ CREATE TABLE IF NOT EXISTS public.formula_customer_shares (
 );
 CREATE INDEX IF NOT EXISTS formula_customer_shares_customer_idx
   ON public.formula_customer_shares ("customerId");
+
+-- 1 สูตรผูกได้หลาย FG — ถอด unique ของ 0231 (ดูหัวไฟล์)
+DROP INDEX IF EXISTS public.products_formula_uk;
 
 -- RLS (แพตเทิร์นเดิมทั้งระบบ: ปิดหมด เปิดเฉพาะ service_role — ดู 0171)
 ALTER TABLE public.scent_customer_shares   ENABLE ROW LEVEL SECURITY;

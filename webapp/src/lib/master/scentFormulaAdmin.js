@@ -274,18 +274,19 @@ async function withFragranceOilPrice(supabase, rows) {
     : { ...r, priceSlot: 'FB' }));
 }
 
-// FG ที่ถือสูตรแต่ละตัว (1 สูตร : 1 FG — mig 0232) — ตัวเลือกสูตรบนฟอร์มสินค้า
-// ใช้ตัดสูตรที่มีเจ้าของแล้วออก · null = ยังว่าง
+// FG ที่ใช้สูตรแต่ละตัว — `usedByProducts: [{ id, fgCode }]` (1 สูตรผูกได้หลาย FG · ม-150)
+// · ประโยครอบแก้บอกว่ามี FG ไหนต้องย้ายไปสูตรใหม่ · ไม่ได้ใช้ตัดตัวเลือกสูตรบนฟอร์มสินค้าแล้ว
 // พ่วงชื่อกลิ่นของสูตร (`scentName`) ไปด้วย — ฟอร์มสินค้าโชว์ "กลิ่นที่จะได้"
 // ใต้ช่องสูตรโดยไม่ต้องโหลดทะเบียนกลิ่นทั้งก้อนเอง
 async function attachFormulaUsage(supabase, rows) {
   if (!rows.length) return rows;
-  const { data: holders, error } = await supabase
-    .from('products')
-    .select('id, "fgCode", "formulaId"')
-    .in('formulaId', rows.map((r) => r.id));
-  if (error) throw error;
-  const byFormula = new Map((holders || []).map((p) => [p.formulaId, { id: p.id, fgCode: p.fgCode || null }]));
+  // ⚠️ ซอยก้อน — ทะเบียนทั้งชุดส่ง id หลายร้อยตัว (กับดัก 16 KB) และหลาย FG ต่อสูตรทำให้แถวโตได้เกิน 1,000
+  const holders = await fetchAllInChunks(rows.map((r) => r.id), (chunk) => supabase
+    .from('products').select('id, "fgCode", "formulaId"').in('formulaId', chunk).order('id'));
+  const byFormula = new Map();
+  for (const p of holders) {
+    byFormula.set(p.formulaId, [...(byFormula.get(p.formulaId) || []), { id: p.id, fgCode: p.fgCode || null }]);
+  }
 
   const scentIds = [...new Set(rows.map((r) => r.scentId).filter(Boolean))];
   let scentById = new Map();
@@ -298,7 +299,7 @@ async function attachFormulaUsage(supabase, rows) {
 
   return rows.map((r) => ({
     ...r,
-    usedByProduct: byFormula.get(r.id) || null,
+    usedByProducts: byFormula.get(r.id) || [],
     scentName: scentById.get(r.scentId)?.name || null,
     // ม-148 — โมดัลราคาเปิดช่อง F (ลงกลิ่นของสูตร) เฉพาะกลิ่นที่ใส่ราคาได้ · ตัวเดียวกับที่ route ตัดสิน
     scentStatus: scentById.get(r.scentId)?.status || null,
@@ -493,9 +494,7 @@ export async function updateFormula(supabase, id, patch) {
 // (ดู loadUnsortedProducts) · โยน error เมื่อ id ไม่มีจริง — บันทึกผ่านแบบเงียบ ๆ
 // โดยไม่ผูกอะไรเลยแย่กว่า เพราะสินค้าจะโผล่กลับมาเป็น "รอจัดระเบียบ" อีกรอบ
 // ⚠️ ทุกทางที่ผูกสูตรเข้าสินค้า (สร้าง · แก้ · จัดระเบียบ) ผ่านฟังก์ชันนี้ —
-// ด่าน **1 สูตร : 1 FG** (มติผู้ใช้ 2026-08-10) จึงอยู่ที่นี่ที่เดียว ขาดไม่ได้
-// เชิงโครงสร้าง · mig 0232 มี unique index กันชั้น DB อีกชั้น แต่ข้อความไทย
-// ที่บอกว่าชนกับ FG ตัวไหน ต้องมาจากด่านนี้
+// ด่าน 1 สูตร : 1 FG (มติ 2026-08-10) **ถอดแล้ว** — 1 สูตรผูกได้หลาย FG (มติผู้ใช้ 2026-09-22 · ม-150)
 //
 // `forProductId` = สินค้าที่กำลังบันทึก — แก้สินค้าเดิมที่ถือสูตรนี้อยู่แล้วต้องผ่าน
 export async function productFormulaSnapshot(supabase, formulaId, { forProductId = null } = {}) {
@@ -507,17 +506,10 @@ export async function productFormulaSnapshot(supabase, formulaId, { forProductId
   const formula = await findFormula(supabase, formulaId);
   if (!formula) throw new Error('ไม่พบสูตรที่เลือกในทะเบียนสูตร');
 
-  // 1 สูตร : 1 FG — สูตรที่ FG อื่นถืออยู่แล้ว เลือกซ้ำไม่ได้
-  const { data: holders, error: holderError } = await supabase
-    .from('products').select('id, "fgCode"').eq('formulaId', formulaId);
-  if (holderError) throw holderError;
-  const other = (holders || []).find((p) => p.id !== forProductId);
-  if (other) {
-    throw new Error(
-      `สูตรนี้ผูกกับสินค้า ${other.fgCode || other.id} อยู่แล้ว — 1 สูตรใช้ได้กับ 1 FG เท่านั้น`,
-    );
-  }
-
+  /* ⭐ **1 สูตรผูกได้หลาย FG** (มติผู้ใช้ 2026-09-22 · ม-150 · mig 0373 ถอด `products_formula_uk`) — เดิม 1 สูตร : 1 FG
+     (mig 0231) ⇒ ลูกค้าที่ได้รับแชร์สูตรทำ FG ของตัวเองไม่ได้ และสร้างสูตรซ้ำคู่เดิมก็ไม่ได้ (ตัวตนสูตร = หมวด × กลิ่น)
+     · `forProductId` ไม่ได้ใช้ตัดสินแล้ว — คงรับไว้ให้ผู้เรียกเดิมไม่ต้องแก้ */
+  void forProductId;
   return {
     formulaId: formula.id,
     formulaCode: formula.code || null,

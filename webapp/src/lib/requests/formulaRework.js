@@ -91,10 +91,14 @@ export function formulaDeliveryPreview({ row, items = [], formulas = [], custome
   const parentName = formulaName(parent);
   let note = null;
   if (plan.kind === 'revise') {
-    // `usedByProduct` = `{ id, fgCode }` (`attachFormulaUsage`)
-    const heldBy = existing?.usedByProduct;
+    // `usedByProducts` = `[{ id, fgCode }]` (`attachFormulaUsage` · 1 สูตรผูกได้หลาย FG — ม-150)
+    const heldBy = existing?.usedByProducts || [];
+    const codes = heldBy.map((p) => p.fgCode).filter(Boolean);
+    const heldText = !heldBy.length ? ''
+      : ` (สินค้า${codes.length ? ` ${codes.slice(0, 3).join(', ')}${codes.length > 3 ? ` +${codes.length - 3}` : ''}` : ` ${heldBy.length} รายการ`}`
+        + ` ผูกสูตรนี้อยู่ — ขอราคา FB ของสินค้า${heldBy.length > 1 ? 'เหล่านั้น' : 'นั้น'}ต้องย้ายไปสูตรใหม่)`;
     note = `รอบแก้ — ได้สูตรใหม่ที่ชี้กลับ ${parentName} · ส่งแล้ว ${parentName} เปลี่ยนเป็น "เลิกใช้"`
-      + (heldBy ? ` (สินค้า${heldBy.fgCode ? ` ${heldBy.fgCode}` : ''} ผูกสูตรนี้อยู่ — ขอราคา FB ของสินค้านั้นต้องย้ายไปสูตรใหม่)` : '')
+      + heldText
       + ' · ลูกค้าขอกลับไปใช้ตัวเดิม: หน้ารายการทะเบียนสูตร (เมนู ⋯) เลิกใช้ตัวใหม่ แล้วเปิดใช้ตัวเดิม';
   } else if (plan.kind === 'create' && parentId) {
     note = `รอบแก้ — ได้สูตรใหม่ที่ชี้กลับ ${parentName}`;
