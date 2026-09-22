@@ -114,7 +114,10 @@ export default function DayRangePicker({
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       if (vw <= 640) {
-        setPanelStyle({ position: "fixed", left: 12, right: 12, top: 12, width: "auto", maxHeight: "calc(100vh - 24px)", overflowY: "auto" });
+        /* 🐞 `transform: none` จำเป็น — ที่ ≤480px `.date-calendar` ของกลางตั้ง top:50% + translateY(-50%)
+           ค้างไว้ แผงจึงถูกดึงขึ้นครึ่งความสูงตัวเอง หัวแผงหลุดเหนือจอ ~364px เลือกเดือนแรกไม่ได้ (ตรวจ 2026-09-22 ·
+           MonthRangePicker ใส่ไว้แล้ว ตัวนี้ตกหล่น — หน้าลีดโดนด้วย) */
+        setPanelStyle({ position: "fixed", left: 12, right: 12, top: 12, width: "auto", maxHeight: "calc(100vh - 24px)", overflowY: "auto", transform: "none" });
         return;
       }
       const gap = 6;

@@ -29,7 +29,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (period.error) return badRequest(period.error);
 
   const data = await loadSalesReportData(supabase, period, { now });
-  if (data.error) return fail(data.error, data.status || 500);
+  if (data.error) {
+    // ข้อความดิบของฐานไม่ส่งถึงจอ — เก็บใน log แล้วตอบภาษาไทยข้อความเดียว
+    console.error('[sales-report] โหลดข้อมูลไม่สำเร็จ:', data.error);
+    return fail('โหลดรายงานไม่สำเร็จ', data.status || 500);
+  }
 
   return ok({ ...data, summary: summarizeSalesReport(data, { now }) });
 });

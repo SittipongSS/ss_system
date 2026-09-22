@@ -48,12 +48,13 @@ import {
   sortOrders,
 } from "@/lib/sales/reportOrderView";
 import {
+  MAX_RANGE_DAYS,
   defaultDayRange,
   parseReportPeriod,
   reportPeriodLabel,
   reportPeriodQuery,
 } from "@/lib/sales/reportPeriod";
-import { businessDayKey, currentMonth, formatMonthLabel } from "@/lib/datePeriods";
+import { businessDayKey, currentMonth, daysInRange, formatMonthLabel } from "@/lib/datePeriods";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import styles from "./page.module.css";
 
@@ -138,6 +139,8 @@ export default function SalesReportPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [stale, setStale] = useState(false);
+  const [rangeError, setRangeError] = useState("");
 
   const startRun = useLatestRun();
   const load = useCallback(async (opts) => {
@@ -147,16 +150,20 @@ export default function SalesReportPage() {
       setData(null);
       setLoading(true);
     }
-    setError("");
+    if (!opts?.background) setError("");
     try {
       const res = await apiFetch(`/api/sales-planning/report?${query}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดรายงานไม่สำเร็จ");
       const json = await res.json();
       if (!isLatest()) return; // งวดเปลี่ยนระหว่างรอ — ทิ้งคำตอบรอบเก่าทั้งก้อน
       setData(json);
+      setError("");
+      setStale(false);
     } catch (e) {
       if (!isLatest()) return;
-      /* รอบเบื้องหลังพลาด = คงข้อมูลเดิมไว้เงียบ ๆ ไม่ได้ — ต้องบอก ไม่งั้นเลขเก่าอยู่ต่อโดยไม่มีใครรู้ */
+      /* รอบเบื้องหลัง (กลับมามองแท็บ) พลาด = คงตัวเลขเดิมไว้แต่บอกว่าอาจไม่ใช่ล่าสุด — ทุกหน้าในระบบทำแบบนี้
+         ล้างทิ้งเหมือนรอบที่ผู้ใช้สั่งเองจะลบตัวกรองที่ตั้งไว้ทั้งหมด (ตรวจ 2026-09-22) */
+      if (opts?.background) { setStale(true); return; }
       setData(null);
       setError(e.message || "โหลดรายงานไม่สำเร็จ");
     } finally {
@@ -216,16 +223,25 @@ export default function SalesReportPage() {
               today={todayTh}
               markedDays={Object.keys(data?.byDay || {})}
               markedLabel="มีใบอนุมัติ"
-              onChange={setRange}
+              onChange={(next) => {
+                /* เกินเพดาน = บอก แล้วคงช่วงเดิม — เดิมงวดเงียบ ๆ ตกไปเป็นทั้งปีทั้งที่ปุ่มยังเป็น "ช่วงวัน" */
+                if (daysInRange(next.from, next.to).length > MAX_RANGE_DAYS) {
+                  setRangeError("ช่วงวันยาวเกิน 5 ปี — เลือกให้สั้นลง (ดูยาวกว่านั้นให้ใช้ \"รายเดือน · ทุกเดือน\" ทีละปี)");
+                  return;
+                }
+                setRangeError("");
+                setRange(next);
+              }}
             />
           ) : (
             <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} min={minMonth} />
           )}
           {/* ไฟล์ = ทั้งรายงานของงวด (มติผู้ใช้ "ทั้งรายงาน") · ตัวเลขจากตัวคิดเดียวกับจอ
-              ⚠️ `Button as={Link}` ไม่ใช่ `<a className="btn">` (ratchet ของ audit:ui) · prefetch ปิดเพราะปลายทางเป็นไฟล์ */}
+              ⚠️ `Button as="a" download` ไม่ใช่ `<a className="btn">` (ratchet ของ audit:ui) และไม่ใช่ Link —
+              Link ของ Next ยิงคำขอ RSC ไปที่ปลายทางก่อนแล้วค่อยโหลดจริง = สร้างไฟล์ทั้งรายงานสองรอบต่อคลิก */}
           <Button
-            as={Link}
-            prefetch={false}
+            as="a"
+            download
             variant="quiet"
             icon={<Download size={15} aria-hidden="true" />}
             href={`/api/sales-planning/report/export?${query}`}
@@ -240,6 +256,15 @@ export default function SalesReportPage() {
         {error && (
           <StatusNotice tone="error" title="โหลดรายงานไม่สำเร็จ" action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
             {error}
+          </StatusNotice>
+        )}
+
+        {rangeError && (
+          <StatusNotice tone="warning" onDismiss={() => setRangeError("")}>{rangeError}</StatusNotice>
+        )}
+        {stale && !error && (
+          <StatusNotice tone="warning" title="รีเฟรชไม่สำเร็จ — ตัวเลขบนจออาจไม่ใช่ล่าสุด" action={<Button size="sm" onClick={() => load()}>โหลดใหม่</Button>}>
+            ข้อมูลที่เห็นเป็นของรอบก่อน
           </StatusNotice>
         )}
 
@@ -321,8 +346,23 @@ function HeadlineStrip({ loading, summary, period }) {
     />
   ) : null;
 
-  /* งวดที่มีแต่เดือนที่ยังไม่จบ (โหมดรายเดือน) — ไม่มีอะไรเทียบเป้าได้ ⇒ ตอบคำถาม "ยังต้องปิดอีกเท่าไร" แทน */
-  const running = !range && m.countedMonths === 0 && m.open;
+  /* ทั้งปีที่ยังไม่มีเดือนจบ (ทุกเดือนของเดือน ม.ค. หรือปีอนาคต) — บอกเป็นยอดสะสม/เป้าทั้งปี
+     🐞 เดิมตกไปกิ่ง "เดือนเดียว" แล้วเอาเป้าทั้งปีไปใส่ป้าย "เป้าเต็มเดือน · ถึงสิ้นเดือน" (ตรวจ 2026-09-22) */
+  if (period.mode === "year" && m.countedMonths === 0 && m.open) {
+    const future = m.open.months[0] > currentMonth();
+    return (
+      <MetricStrip>
+        <Metric label="ขายจริง" value={future ? NA : money(m.open.actual)} note={future ? "ยังไม่ถึงงวดนี้" : "ถึงวันนี้ · ยังไม่มีเดือนที่จบ"} />
+        <Metric label="เป้าทั้งปี" value={m.open.target ? money(m.open.target) : NA} note={m.open.target ? `${m.open.months.length} เดือน` : "ยังไม่ได้ตั้งเป้า"} />
+        <Metric label="% ทำได้" value={NA} note="คิดเมื่อจบเดือนแรก" />
+        <Metric label="ส่วนต่าง" value={NA} note="คิดเมื่อจบเดือนแรก" />
+        {pending}
+      </MetricStrip>
+    );
+  }
+
+  /* เดือนเดียวที่ยังไม่จบ/ยังไม่ถึง — ไม่มีอะไรเทียบเป้าได้ ⇒ ตอบคำถาม "ยังต้องปิดอีกเท่าไร" แทน */
+  const running = period.mode === "month" && m.countedMonths === 0 && m.open;
   if (running) {
     const row = summary.monthRows.find((r) => r.month === m.open.months[0]) || null;
     const future = m.open.months[0] > currentMonth();
@@ -344,22 +384,38 @@ function HeadlineStrip({ loading, summary, period }) {
   }
 
   const hasTarget = m.target > 0;
-  const prorated = range ? summary.monthRows.filter((r) => r.prorated) : [];
-  const targetNote = !hasTarget ? "ยังไม่ได้ตั้งเป้า"
-    : range ? (prorated.length === 1 ? `ปัน ${prorated[0].prorated.days}/${prorated[0].prorated.total} วัน` : "ปันตามวันถึงวันนี้")
-      : `ตั้งเป้าไว้ ${m.targetMonths} เดือน`;
+  /* ป้ายต้องพูดตรงกับสิ่งที่อยู่ในผลรวม (ตรวจ 2026-09-22) — "ปัน 22/30 วัน" ใช้ได้เฉพาะตอนเป้าทั้งก้อนมาจากเดือนเดียวที่ปัน
+     เป้า 0 เพราะเดือนกรอกมือถูกตัด ≠ "ยังไม่ได้ตั้งเป้า" */
+  const basis = m.targetBasis || { state: hasTarget ? "set" : "none", months: m.targetMonths, prorated: 0, full: m.targetMonths };
+  const prorated = range ? summary.monthRows.filter((r) => r.prorated && r.target > 0) : [];
+  const targetNote = basis.state === "excluded" ? "ไม่เทียบ · ยอดกรอกรายเดือน"
+    : basis.state === "notYet" ? "ยังไม่ถึงวันที่นับเป้า"
+      : !hasTarget ? "ยังไม่ได้ตั้งเป้า"
+        : !range ? `ตั้งเป้าไว้ ${m.targetMonths} เดือน`
+          : basis.full === 0 && prorated.length === 1 ? `ปัน ${prorated[0].prorated.days}/${prorated[0].prorated.total} วัน`
+            : basis.prorated === 0 ? `เต็มเดือน ${basis.full} เดือน`
+              : `เต็มเดือน ${basis.full} + ปันตามวัน ${basis.prorated} เดือน`;
+  const noCompare = basis.state === "excluded" ? "ไม่เทียบ · ยอดกรอกรายเดือน"
+    : basis.state === "notYet" ? "ยังไม่ถึงวันที่นับเป้า" : "ไม่มีเป้าให้เทียบ";
+  const historyMonths = summary.sourceSplit?.history?.months || 0;
   return (
     <MetricStrip>
       <Metric
         label="ขายจริง"
         value={money(m.actual)}
-        note={range ? "อนุมัติในช่วงนี้" : `${m.countedMonths} เดือนที่จบแล้ว`}
+        note={range
+          ? (historyMonths ? `รวมยอดกรอกย้อนหลัง ${historyMonths} เดือน` : "อนุมัติในช่วงนี้")
+          : `${m.countedMonths} เดือนที่จบแล้ว`}
       />
       <Metric
         label={range ? (
-          <Tooltip label="เป้าปันตามวัน" note={`เป้าเดือน × วันที่นับ ÷ วันทั้งเดือน · นับถึงวันนี้ (${fmtDate(period.today)}) · วันหลังจากนี้ยังไม่นับเป้า`}>
-            <span className={styles.tipLabel} tabIndex={0}>เป้าปันตามวัน ⓘ</span>
-          </Tooltip>
+          <>
+            <Tooltip label="เป้าปันตามวัน" note={`เป้าเดือน × วันที่นับ ÷ วันทั้งเดือน · นับถึงวันนี้ (${fmtDate(period.today)}) · วันหลังจากนี้ยังไม่นับเป้า`}>
+              <span className={styles.tipLabel} aria-hidden="true">เป้าปันตามวัน ⓘ</span>
+            </Tooltip>
+            {/* คำอธิบายสูตรสำหรับโปรแกรมอ่านหน้าจอ — กล่อง tooltip เป็น aria-hidden และป้ายนี้ไม่ใช่จุดโฟกัส */}
+            <span className="sr-only">เป้าปันตามวัน: เป้าเดือน คูณวันที่นับ หารวันทั้งเดือน นับถึงวันนี้</span>
+          </>
         ) : "เป้า"}
         value={hasTarget ? money(m.target) : NA}
         note={targetNote}
@@ -368,12 +424,12 @@ function HeadlineStrip({ loading, summary, period }) {
         label="% ทำได้"
         value={pctText(m.pct)}
         tone={m.pct == null ? undefined : (m.pct >= 100 ? "success" : "danger")}
-        note={m.pct == null ? "ไม่มีเป้าให้เทียบ" : (m.pct >= 100 ? "ถึงเป้า" : "ต่ำกว่าเป้า")}
+        note={m.pct == null ? noCompare : (m.pct >= 100 ? "ถึงเป้า" : "ต่ำกว่าเป้า")}
       />
       <Metric
         label="ส่วนต่าง"
         value={m.diff == null ? NA : <span className={toneOf(m.diff)}>{money(m.diff)}</span>}
-        note={m.diff == null ? "ไม่มีเป้าให้เทียบ" : (range ? "เทียบเป้าปันตามวัน" : `เทียบเป้า ${m.targetMonths} เดือนนั้น`)}
+        note={m.diff == null ? noCompare : (range ? "เทียบเป้าปันตามวัน" : `เทียบเป้า ${m.targetMonths} เดือนนั้น`)}
       />
       {pending}
     </MetricStrip>
@@ -491,8 +547,10 @@ function MonthLens({ summary, period, onDrill }) {
   const [futureOpen, setFutureOpen] = useState(false);
   const thisMonth = currentMonth();
   const rows = summary.monthRows;
-  const past = rows.filter((r) => range || r.month <= thisMonth);
-  const future = range ? [] : rows.filter((r) => r.month > thisMonth);
+  /* พับเดือนอนาคตเฉพาะโหมดทั้งปี — เดือนเดียวที่ยังไม่ถึงต้องเห็นแถวของมันเลย ไม่ใช่แถวพับแถวเดียว */
+  const foldFuture = period.mode === "year";
+  const past = rows.filter((r) => !foldFuture || r.month <= thisMonth);
+  const future = foldFuture ? rows.filter((r) => r.month > thisMonth) : [];
   const m = summary.metrics;
   const mismatch = new Set(summary.reconciliation.byMonth.filter((r) => r.mismatch).map((r) => r.month));
   const cols = range ? 6 : 8;
@@ -615,7 +673,9 @@ function MonthLens({ summary, period, onDrill }) {
                       aria-label={`ดูใบสั่งขายทั้งหมดที่รวมเป็นยอด ${money(m.actual)}`}
                       onClick={() => onDrill({
                         kind: "total",
-                        months: summary.countedMonths,
+                        /* เดือนที่ยอดมาจากการกรอกมือไม่มีใบให้ไล่ — ใบที่อนุมัติในเดือนนั้นถูกยอดกรอกทับ ไม่อยู่ในขายจริง
+                           ⇒ เจาะเฉพาะเดือนที่ยอดมาจากใบ ไม่งั้นรวมใบเกินยอด แล้วโทษ "ไม่มีใบ" ผิดตัว (ตรวจ 2026-09-22) */
+                        months: rows.filter((r) => r.closed && r.source === "orders").map((r) => r.month),
                         label: range ? "รวมช่วงที่เลือก" : `รวม ${summary.countedMonths.length} เดือนที่จบ`,
                         expected: m.actual,
                         historyMonths: rows.filter((r) => r.closed && r.source === "history").map((r) => r.month),
@@ -644,8 +704,8 @@ function MonthLens({ summary, period, onDrill }) {
             {!split.history.months && !split.orders.months && " —"}
           </p>
         )}
-        {!range && !summary.anyCarry && summary.countedMonths.length > 0 && (
-          <p>ไม่มียอดทบ — ขายสะสมตั้งแต่ ม.ค. ไม่เคยต่ำกว่าเป้าสะสม</p>
+        {!range && !summary.anyCarry && summary.countedMonths.length > 0 && m.target > 0 && (
+          <p>ไม่มียอดทบ — ขายสะสมตั้งแต่ ม.ค. ถึงเดือนก่อนหน้ายังไม่ต่ำกว่าเป้าสะสม</p>
         )}
         {range && <p>ช่วงวันไม่มีทบยอด (ทบยอดเป็นของรายเดือน)</p>}
         <p>
@@ -682,34 +742,48 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
   const pendingCount = Number(summary.metrics.pendingApproval?.count || 0);
 
   if (!months.length || (!group.rows.length && !group.pendingOnly.length)) {
-    const runningOnly = period.mode === "month" && period.month === currentMonth();
+    /* เหตุผลต้องตรงกับงวดที่ดูอยู่ (ตรวจ 2026-09-22) — เดิมขึ้น "แบ่งทีม ก.ค. 2026" กับทุกงวด รวมเดือนนี้ที่แค่ยังไม่จบ */
+    const thisMonth = currentMonth();
+    const runningOnly = period.mode === "month" && period.month === thisMonth;
+    const futureOnly = period.mode !== "range" && summary.months.every((mo) => mo > thisMonth);
+    const beforeSplit = summary.months.every((mo) => mo < "2026-07");
     return (
       <EmptyState plain>
-        <strong>ช่วงนี้ยังไม่มีเดือนที่แยกยอดราย{label}</strong>
-        <span>ฝ่ายขายแบ่งทีม ก.ค. 2026 และย้ายเข้าระบบ ส.ค. 2026 — ก่อนหน้านั้นยอดอยู่ระดับบริษัทอย่างเดียว</span>
+        <strong>ยังไม่มีเดือนที่แยกยอดราย{label}ในงวดนี้</strong>
+        {runningOnly && <small>เดือนนี้ยังไม่จบ จึงยังไม่นับ — ดูแบบเทียบเป้าปันตามวันถึงวันนี้ได้</small>}
+        {futureOnly && <small>ยังไม่ถึงงวดนี้</small>}
+        {beforeSplit && !futureOnly && <small>ฝ่ายขายแบ่งทีม ก.ค. 2026 และย้ายเข้าระบบ ส.ค. 2026 — ก่อนหน้านั้นยอดอยู่ระดับบริษัทอย่างเดียว</small>}
+        {!runningOnly && !futureOnly && !beforeSplit && <small>งวดนี้ยังไม่มียอดที่ลงรายคน</small>}
+        {pendingCount > 0 && <small>ใบรออนุมัติ {pendingCount} ใบ ดูราย{label}ได้ที่ “ใบสั่งขาย{PENDING_APPROVAL_LABEL}” ด้านล่าง</small>}
         {runningOnly && (
-          <>
-            <span>เดือนนี้ยังไม่จบ จึงยังไม่นับ</span>
+          <span className={styles.emptyAction}>
             <Button size="sm" variant="quiet" onClick={() => onRange(`${period.month}-01`, todayTh)}>เทียบเป้าปันตามวันถึงวันนี้</Button>
-          </>
+          </span>
         )}
-        {pendingCount > 0 && <span>ใบรออนุมัติ {pendingCount} ใบ ดูราย{label}ได้ที่ “ใบสั่งขาย{PENDING_APPROVAL_LABEL}” ด้านล่าง</span>}
       </EmptyState>
     );
   }
 
-  const drillOf = (row) => (kind === "team"
-    ? { kind: "team", team: row.team || null, months, label: `ทีม ${teamName(row.team)}`, expected: row.actual, historyMonths }
-    : { kind: "person", ownerId: row.ownerId, team: row.team || null, months, label: `${row.ownerName || row.ownerId} · ${teamName(row.team)}`, expected: row.actual, historyMonths });
+  /* เดือนที่แถวนี้ใช้ยอดกรอกมือ ใบของแถวในเดือนนั้นถูกทับ ⇒ เจาะเฉพาะเดือนที่ยอดมาจากใบ */
+  const drillOf = (row) => {
+    const rowHistory = row.historyMonths || [];
+    const base = { months: months.filter((mo) => !rowHistory.includes(mo)), expected: row.actual, historyMonths: rowHistory.length ? rowHistory : historyMonths };
+    return kind === "team"
+      ? { ...base, kind: "team", team: row.team || null, label: `ทีม ${teamName(row.team)}` }
+      : { ...base, kind: "person", ownerId: row.ownerId, team: row.team || null, label: `${row.ownerName || row.ownerId} · ${teamName(row.team)}` };
+  };
   const orderCountOf = (row) => ordersForDrill(orders, drillOf(row)).length;
   const orderSumOf = (row) => ordersForDrill(orders, drillOf(row)).reduce((s, o) => s + Number(o.amount || 0), 0);
 
   const t = group.total;
   const unassigned = summary.reconciliation.company - t.actual;
   const targetHead = range ? (
-    <Tooltip label="เป้าปันตามวัน" note="เป้าเดือนของแถวนั้น × วันที่นับ ÷ วันทั้งเดือน · นับถึงวันนี้">
-      <span className={styles.tipLabel} tabIndex={0}>เป้าปันตามวัน ⓘ</span>
-    </Tooltip>
+    <>
+      <Tooltip label="เป้าปันตามวัน" note="เป้าเดือนของแถวนั้น × วันที่นับ ÷ วันทั้งเดือน · นับถึงวันนี้">
+        <span className={styles.tipLabel} aria-hidden="true">เป้าปันตามวัน ⓘ</span>
+      </Tooltip>
+      <span className="sr-only">เป้าปันตามวัน</span>
+    </>
   ) : "เป้า";
 
   return (
@@ -732,7 +806,7 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
               const manual = row.actual - orderSumOf(row);
               return (
                 <tr key={row.key}>
-                  <td className={styles.nameCol}>
+                  <td>
                     {kind === "team" ? teamName(row.team) : (row.ownerName || row.ownerId)}
                     {kind === "person" && <span className="cell-sub">{teamName(row.team)}</span>}
                   </td>
@@ -766,7 +840,7 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
             })}
             {group.pendingOnly.map((row) => (
               <tr key={row.key}>
-                <td className={styles.nameCol}>
+                <td>
                   {kind === "team" ? teamName(row.team) : (row.ownerName || row.ownerId)}
                   {kind === "person" && <span className="cell-sub">{teamName(row.team)}</span>}
                 </td>
@@ -853,7 +927,7 @@ function PendingPanel({ pendingApproval }) {
               <tr key={o.id}>
                 <td>
                   <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
-                  {o.quoteNumber && <span className="cell-sub">{o.quoteNumber}</span>}
+                  {o.quoteNumber && <span className={`cell-sub ${styles.docNo}`}>{o.quoteNumber}</span>}
                 </td>
                 <td className="num"><Money value={o.amount} /></td>
                 <td>{o.customerName || NA}</td>
@@ -914,8 +988,10 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   const financeOptions = useMemo(() => (orders.some((o) => financeStateOf(o) === "rejected")
     ? [...FINANCE_STATE_OPTIONS, { value: "rejected", label: "บัญชีตีกลับ" }]
     : FINANCE_STATE_OPTIONS), [orders]);
+  const monthGroupShown = period.mode !== "range" && monthOptions.length > 1;
   useEffect(() => {
-    if (loading) return;
+    /* ไม่มีข้อมูล (กำลังโหลด/โหลดพลาด) = ห้ามตัด — ไม่งั้นตัวเลือกว่างทำให้ตัวกรองที่ตั้งไว้หายหมด */
+    if (loading || error || !orders.length) return;
     const valid = {
       owners: new Set(ownerOptions.map((o) => o.value)),
       teams: new Set(teamOptions.map((o) => o.value)),
@@ -927,12 +1003,13 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
         ...cur,
         owners: cur.owners.filter((v) => valid.owners.has(v)),
         teams: cur.teams.filter((v) => valid.teams.has(v)),
-        months: cur.months.filter((v) => valid.months.has(v)),
+        /* กลุ่ม "งวด" ซ่อนอยู่ (ช่วงวัน/เดือนเดียว) = ล้างทิ้ง — ตัวกรองที่มองไม่เห็นแต่ยังกรองอยู่คือกับดัก (ตรวจ 2026-09-22) */
+        months: monthGroupShown ? cur.months.filter((v) => valid.months.has(v)) : [],
       };
       const same = ["owners", "teams", "months"].every((k) => next[k].length === cur[k].length);
       return same ? prev : next;
     });
-  }, [loading, ownerOptions, teamOptions, monthOptions, setFilters]);
+  }, [loading, error, orders.length, ownerOptions, teamOptions, monthOptions, monthGroupShown, setFilters]);
 
   const drilled = useMemo(() => ordersForDrill(orders, drill), [orders, drill]);
   const filtered = useMemo(() => filterOrders(drilled, { q, ...f }), [drilled, q, f.owners, f.teams, f.finance, f.months, f.kinds]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -940,14 +1017,23 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   const groups = useMemo(() => groupOrders(sorted, groupBy, { teamLabels, monthLabel: (m) => formatMonthLabel(m) }), [sorted, groupBy, teamLabels]);
   const grouped = groupBy !== "none";
 
+  /* แบ่งหน้าตาม "ใบ" เสมอ แม้จัดกลุ่ม — เดิมแบ่งตามกลุ่ม ⇒ 3 ทีม/8 คน/2 งวด = ทุกใบอยู่หน้าเดียว (สูง 12,790px · ตรวจ 2026-09-22)
+     หัวกลุ่มยังบอกจำนวน/ยอดของทั้งกลุ่ม (ข้ามหน้า) · ใบเรียงตามลำดับกลุ่มก่อนตัดหน้า */
+  const ordered = useMemo(() => (grouped ? groups.flatMap((g) => g.orders) : sorted), [grouped, groups, sorted]);
   const resetKey = `${period.mode}|${period.from}|${period.to}|${q}|${JSON.stringify(f)}|${JSON.stringify(drill)}|${groupBy}|${sortKey}|${sortDir}`;
-  const flatPage = usePagination(sorted, { defaultSize: 10, resetKey });
-  const groupPage = usePagination(groups, { defaultSize: 10, resetKey });
-  const pageGroups = grouped ? groupPage.pageRows : [{ key: "all", label: null, orders: flatPage.pageRows }];
-  const pager = grouped ? groupPage : flatPage;
+  const pager = usePagination(ordered, { defaultSize: 10, resetKey });
+  const pageGroups = useMemo(() => {
+    if (!grouped) return [{ key: "all", label: null, orders: pager.pageRows }];
+    const onPage = new Set(pager.pageRows.map((o) => o.id));
+    return groups
+      .map((g) => ({ ...g, orders: g.orders.filter((o) => onPage.has(o.id)) }))
+      .filter((g) => g.orders.length);
+  }, [grouped, groups, pager.pageRows]);
 
   const filterCount = activeFilterCount(f);
   const extraFilters = filterCount > 0 || q.trim();
+  const searchRef = useRef(null);
+  const clearDrill = () => { onClearDrill(); searchRef.current?.focus(); };
   const clearAll = () => { setQ(""); setFilters(EMPTY_FILTERS); onClearDrill(); };
   const totals = useMemo(() => filtered.reduce((acc, o) => ({
     amount: acc.amount + Number(o.amount || 0),
@@ -970,7 +1056,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
           <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
           {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
           {o.free && <span className={`ui-badge warning ${styles.docNo}`}>ไม่คิดเงิน</span>}
-          {o.quoteNumber && <span className="cell-sub">{o.quoteNumber}</span>}
+          {o.quoteNumber && <span className={`cell-sub ${styles.docNo}`}>{o.quoteNumber}</span>}
         </td>
         <td className="num">
           <Money value={o.amount} />
@@ -983,9 +1069,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
         </td>
         <td className="num">{o.day ? fmtDate(o.day) : NA}</td>
         <td>
-          <span className="ui-badge-cell ui-badge-w-finance">
-            <StatusBadge size="sm" tone={badge.tone || "neutral"} label={badge.label} />
-          </span>
+          <StatusBadge className="ui-badge-cell ui-badge-w-finance" tone={badge.tone || "neutral"} label={badge.label} />
         </td>
         <td className="num">{o.lineCount}</td>
         <td className="num">{o.vatAmount ? <Money value={o.vatAmount} /> : NA}</td>
@@ -1008,6 +1092,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
           <div className="search-glass">
             <Search size={16} color="var(--text-3)" aria-hidden="true" />
             <input
+              ref={searchRef}
               autoComplete="off"
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -1016,15 +1101,16 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
             />
           </div>
           {drill && (
-            <Button ref={chipRef} size="sm" onClick={onClearDrill} aria-label="ล้างตัวกรองจากตารางแยกยอด">
-              จากแยกยอด: {drill.label} ×
+            /* ชื่อที่โปรแกรมอ่านหน้าจออ่าน = ข้อความที่ตาเห็น + คำบอกว่ากดแล้วล้าง (WCAG 2.5.3) · ล้างแล้วโฟกัสไปช่องค้นหา */
+            <Button ref={chipRef} size="sm" onClick={clearDrill} title="กดเพื่อล้างตัวกรองจากตารางแยกยอด">
+              จากแยกยอด: {drill.label} <span aria-hidden="true">×</span><span className="sr-only">(กดเพื่อล้าง)</span>
             </Button>
           )}
           <FilterPopover
             count={filterCount}
             onClear={() => setFilters(EMPTY_FILTERS)}
             groups={[
-              ...(period.mode !== "range" && monthOptions.length > 1
+              ...(monthGroupShown
                 ? [{ key: "months", label: "งวด", options: monthOptions, selected: f.months, onChange: (v) => setFilter("months", v) }]
                 : []),
               { key: "teams", label: "ทีม", options: teamOptions, selected: f.teams, onChange: (v) => setFilter("teams", v) },
@@ -1061,19 +1147,19 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
       {error ? (
         <EmptyState plain><strong>ยังไม่มีข้อมูลของงวดนี้ — โหลดรายงานไม่สำเร็จ</strong></EmptyState>
       ) : !orders.length ? (
-        <EmptyState dashed plain icon={Search}>
+        <EmptyState plain icon={Search}>
           <strong>ไม่มีใบสั่งขายที่อนุมัติในช่วงนี้</strong>
-          {historyMonthsAll.length > 0 && <span>ยอดของ {monthSpan(historyMonthsAll)} มาจากการกรอกย้อนหลัง จึงไม่มีใบให้ไล่</span>}
+          {historyMonthsAll.length > 0 && <small>ยอดของ {monthSpan(historyMonthsAll)} มาจากการกรอกย้อนหลัง จึงไม่มีใบให้ไล่</small>}
         </EmptyState>
       ) : !filtered.length ? (
-        <EmptyState dashed plain icon={Search}>
+        <EmptyState plain icon={Search} action={{ label: "ล้างตัวกรอง", onClick: clearAll }}>
           <strong>ไม่พบใบที่ตรงกับเงื่อนไข</strong>
-          <span>ลองลดตัวกรอง หรือค้นด้วยเลขที่ใบ/ชื่อลูกค้าแทน</span>
-          <Button size="sm" onClick={clearAll}>ล้างตัวกรอง</Button>
+          <small>ลองลดตัวกรอง หรือค้นด้วยเลขที่ใบ/ชื่อลูกค้าแทน</small>
         </EmptyState>
       ) : (
         <>
-          <div className={styles.resultNote} role="status">
+          {/* ประกาศเฉพาะผลเทียบยอดตอนเจาะ — ป้ายจำนวนของแผงกับ Pager ประกาศจำนวนอยู่แล้ว ไม่ต้องซ้ำทุกตัวอักษรที่พิมพ์ */}
+          <div className={styles.resultNote} role={check ? "status" : undefined}>
             {check ? (
               check.ok ? (
                 <span className={`${styles.checkLine} cell-num-ok`}>
@@ -1082,7 +1168,9 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
               ) : (
                 <span className={`${styles.checkLine} cell-num-bad`}>
                   <AlertTriangle size={15} aria-hidden="true" /> ต่างจากขายจริง {drill.label} <Money value={Math.abs(check.gap)} />
-                  {check.reason === "history" ? " — ส่วนนี้มาจากยอดกรอกย้อนหลัง (ไม่มีใบ)" : " ในตารางแยกยอด"}
+                  {check.reason === "history"
+                    ? ` — ส่วนนี้มาจากยอดกรอกย้อนหลัง (${monthSpan(drill.historyMonths)}) ซึ่งไม่มีใบให้ไล่`
+                    : " ในตารางแยกยอด"}
                 </span>
               )
             ) : (
@@ -1103,7 +1191,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                 <tr>
                   <th>ใบสั่งขาย</th>
                   <th className="num">ยอดที่นับ</th>
-                  <th>ลูกค้า</th>
+                  <th className={styles.colCustomer}>ลูกค้า</th>
                   <th>ผู้รับผิดชอบ</th>
                   <th className="num">อนุมัติเมื่อ</th>
                   <th>ขั้นบัญชี</th>
@@ -1152,7 +1240,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
             onPage={pager.setPage}
             pageSize={pager.pageSize}
             onPageSize={pager.setPageSize}
-            itemLabel={grouped ? "กลุ่ม" : "ใบ"}
+            itemLabel="ใบ"
           />
         </>
       )}

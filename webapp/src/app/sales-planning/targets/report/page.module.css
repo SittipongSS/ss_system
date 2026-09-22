@@ -51,7 +51,8 @@
 }
 .checkLine { display: inline-flex; align-items: center; gap: var(--space-1-5); flex-wrap: wrap; }
 
-/* ชื่อคนในจอแคบ — ตัดบรรทัด ไม่ใช้ … (ขายจริงต้องยังอยู่ในจอ) */
-@media (max-width: 640px) {
-  .nameCol { max-width: 120px; white-space: normal; }
-}
+/* คอลัมน์ลูกค้าในรายการใบ — จอแคบตารางเลื่อนข้างอยู่แล้ว อย่าให้ชื่อบริษัทถูกบีบเหลือ 77px แล้วหักแปดบรรทัด */
+.colCustomer { min-width: 200px; }
+
+/* ปุ่มในสถานะว่างอยู่บรรทัดของตัวเอง (EmptyState เรียงเป็นคอลัมน์ แต่ปุ่มเป็น inline) */
+.emptyAction { display: block; margin-top: var(--space-1); }

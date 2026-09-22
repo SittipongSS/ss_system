@@ -54,7 +54,7 @@ function compareRow(row, idx) {
 }
 
 /** ตารางรายทีม/รายคน + แถวรวม + ยอดรออนุมัติที่จับเข้าแถว */
-function groupSummary(rows, kind, idx, pendingApproval) {
+function groupSummary(rows, kind, idx, pendingApproval, axis = []) {
   const { byKey, extra } = matchPendingApprovalRows(pendingApproval, rows, kind);
   const shaped = (rows || []).map((row) => ({
     key: row.key,
@@ -63,6 +63,9 @@ function groupSummary(rows, kind, idx, pendingApproval) {
     team: row.team || null,
     ...compareRow(row, idx),
     pending: byKey.get(pendingApprovalRowKey(kind, row)) || null,
+    /* เดือนที่ยอดของแถวนี้มาจากการกรอกมือ (ทับยอดใบของแถวนี้) — การเจาะลงใบต้องข้ามเดือนพวกนี้
+       ไม่งั้นใบที่ถูกทับไปแล้วโผล่ในรายการแล้วรวมไม่ตรงกับแถว (ตรวจ 2026-09-22) */
+    historyMonths: idx.filter((i) => row.history?.[i]).map((i) => axis[i]),
   }))
     // มากไปน้อยตามขายจริง — รายงานใช้ประชุมสรุปยอดและคิดคอมมิชชั่น
     .sort((a, b) => b.actual - a.actual);
@@ -74,6 +77,7 @@ function groupSummary(rows, kind, idx, pendingApproval) {
     actual: 0, target: 0, targetMonths: 0, cmpActual: 0, diff: null, pct: null,
     pending: group,
     pendingOnly: true,
+    historyMonths: [],
   }));
   const pendingGroups = [...byKey.values()];
   const pendingAmount = pendingGroups.reduce((s, g) => s + g.amount, 0);
@@ -142,6 +146,19 @@ export function summarizeSalesReport(data, { now = new Date() } = {}) {
       target: sumAt(company?.target, openIdx),
       actual: sumAt(company?.actual, openIdx),
     } : null,
+    /* ที่มาของเป้าในแถบหัว — ป้ายกำกับต้องพูดตรงกับสิ่งที่อยู่ในผลรวมจริง (ตรวจ 2026-09-22):
+       set = มีเป้าเทียบ · excluded = มีเป้าแต่ไม่เทียบ (เดือนกรอกมือที่ช่วงวันคลุมไม่ครบ) ·
+       notYet = มีเป้าแต่ยังไม่ถึงวันที่นับ (ช่วงวันในอนาคต) · none = ไม่ได้ตั้งเป้า */
+    targetBasis: (() => {
+      const withTarget = counted.filter((i) => Number(company?.target?.[i] || 0) > 0);
+      const prorated = withTarget.filter((i) => Number(data?.targetFactor?.[i] ?? 1) < 1).length;
+      const hasFull = shown.some((i) => Number(company?.targetFull?.[i] ?? company?.target?.[i] ?? 0) > 0);
+      const state = withTarget.length ? 'set'
+        : shown.some((i) => unknown.has(axis[i]) && Number(company?.targetFull?.[i] || 0) > 0) ? 'excluded'
+          : hasFull && rangeMode ? 'notYet'
+            : 'none';
+      return { state, months: withTarget.length, prorated, full: withTarget.length - prorated };
+    })(),
     pendingApproval: pendingApproval && Number(pendingApproval.count || 0) > 0
       ? { month: pendingApproval.month, amount: Number(pendingApproval.amount || 0), count: Number(pendingApproval.count || 0) }
       : null,
@@ -238,8 +255,8 @@ export function summarizeSalesReport(data, { now = new Date() } = {}) {
       mismatch: splitIdx.length > 0 && Math.abs(companySplitActual - peopleActual) > 1,
       byMonth,
     },
-    teams: groupSummary(data?.teams || [], 'team', splitIdx, pendingApproval),
-    people: groupSummary(people, 'person', splitIdx, pendingApproval),
+    teams: groupSummary(data?.teams || [], 'team', splitIdx, pendingApproval, axis),
+    people: groupSummary(people, 'person', splitIdx, pendingApproval, axis),
     historyDropped: data?.historyDropped || [],
     generatedAt: data?.generatedAt || null,
   };

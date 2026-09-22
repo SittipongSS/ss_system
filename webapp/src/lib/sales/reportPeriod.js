@@ -35,6 +35,13 @@ export const MAX_RANGE_DAYS = 1830;
 
 const firstDay = (month) => `${month}-01`;
 
+/* ปีที่รับ — เดิมรับ 0000 แล้วฐานโยน "date/time field value out of range" กลับมาเป็น 500 (ตรวจ 2026-09-22) */
+const YEAR_MIN = 2000;
+const YEAR_MAX = 2100;
+const saneYear = (year) => Number(year) >= YEAR_MIN && Number(year) <= YEAR_MAX;
+/* วันที่มีจริงในปฏิทิน — รูปแบบถูกแต่ไม่มีจริง (2026-02-30) ต้องตีกลับ ไม่ใช่ส่งให้ฐานไปพังเอง */
+const realDay = (day) => isDayValue(day) && addDays(day, 0) === day && saneYear(day.slice(0, 4));
+
 /**
  * อ่านงวดจากพารามิเตอร์ของ URL/หน้าจอ
  *
@@ -49,7 +56,7 @@ export function parseReportPeriod(input = {}, { today } = {}) {
 
   if (mode === 'month') {
     const month = String(input.month || '');
-    if (!isMonthValue(month)) return { error: 'ต้องระบุเดือนเป็น YYYY-MM' };
+    if (!isMonthValue(month) || !saneYear(month.slice(0, 4))) return { error: 'ต้องระบุเดือนเป็น YYYY-MM' };
     const axis = monthsInRange(`${month.slice(0, 4)}-01`, month);
     return {
       mode, month, year: month.slice(0, 4),
@@ -60,7 +67,7 @@ export function parseReportPeriod(input = {}, { today } = {}) {
 
   if (mode === 'year') {
     const year = String(input.year || '');
-    if (!isYearValue(year)) return { error: 'ต้องระบุปีเป็น YYYY' };
+    if (!isYearValue(year) || !saneYear(year)) return { error: 'ต้องระบุปีเป็น YYYY' };
     const axis = monthsInRange(`${year}-01`, `${year}-12`);
     return {
       mode, month: null, year,
@@ -70,7 +77,7 @@ export function parseReportPeriod(input = {}, { today } = {}) {
   }
 
   if (mode === 'range') {
-    if (!isDayValue(input.from) || !isDayValue(input.to)) return { error: 'ต้องระบุช่วงวันเป็น YYYY-MM-DD ทั้งสองด้าน' };
+    if (!realDay(input.from) || !realDay(input.to)) return { error: 'ต้องระบุช่วงวันเป็น YYYY-MM-DD ที่มีจริงทั้งสองด้าน' };
     const [from, to] = input.from <= input.to ? [input.from, input.to] : [input.to, input.from];
     if (daysInRange(from, to).length > MAX_RANGE_DAYS) return { error: 'ช่วงวันยาวเกิน 5 ปี' };
     const axis = monthsInRange(from.slice(0, 7), to.slice(0, 7));

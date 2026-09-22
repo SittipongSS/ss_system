@@ -76,11 +76,14 @@ function writeTable(sheet, { info = [], columns, rows, total = null, filter = tr
 }
 
 /** แถวของชีต "สรุปรายเดือน" — ใช้ในเทสต์ได้โดยไม่ต้องสร้างไฟล์ */
-export function monthSheetRows(summary, { rangeMode = false } = {}) {
+export function monthSheetRows(summary, { rangeMode = false, thisMonth = null } = {}) {
   return summary.monthRows.map((row) => {
     const notes = [];
-    if (!row.closed) notes.push('ยังไม่จบเดือน — ไม่นับในผลรวม/%');
-    if (row.noDaily) notes.push('ยอดเดือนนี้กรอกย้อนหลังเป็นก้อนรายเดือน ช่วงวันคลุมไม่ครบ — ไม่นับในผลรวม/%');
+    // เดือนที่ยังไม่ถึง = ขีด · เดือนที่ผ่านมาแล้ว/กำลังวิ่งที่ยอด 0 = 0.00 (ตรงกับจอ — 0 คือคำตอบ ไม่ใช่ค่าว่าง)
+    const future = thisMonth ? row.month > thisMonth : false;
+    if (!row.closed) notes.push(future ? 'ยังไม่ถึงงวด' : 'ยังไม่จบเดือน — ไม่นับในผลรวม/%');
+    if (row.noDaily) notes.push('ยอดเดือนนี้กรอกย้อนหลังเป็นก้อนรายเดือน ช่วงวันคลุมไม่ครบ — นับเฉพาะใบในช่วง ไม่เทียบเป้า');
+    if (row.overridden) notes.push(`มีใบ ${row.overridden.count} ใบ ${fmtMoney(row.overridden.amount)} ที่ไม่นับ (ยอดกรอกย้อนหลังทับ)`);
     if (row.prorated) notes.push(`เป้าปันตามวัน ${row.prorated.days}/${row.prorated.total} วัน`);
     if (row.pending) notes.push(`รออนุมัติ ${row.pending.count} ใบ ${fmtMoney(Number(row.pending.amount))} (ไม่นับเป็นขายจริง)`);
     return {
@@ -90,7 +93,7 @@ export function monthSheetRows(summary, { rangeMode = false } = {}) {
       target: row.target ? row.target : NA,
       carry: rangeMode ? undefined : (row.carry ? row.carry : NA),
       mustClose: rangeMode ? undefined : (row.mustClose ? row.mustClose : NA),
-      actual: row.actual ? row.actual : NA,
+      actual: future ? NA : Number(row.actual || 0),
       diff: moneyOrDash(row.diff),
       pct: pctOrDash(row.pct),
       source: row.source === 'history' ? 'กรอกย้อนหลัง' : row.source === 'orders' ? 'จากใบสั่งขาย' : NA,
@@ -157,14 +160,28 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
     { key: 'note', label: 'หมายเหตุ', width: 44 },
   ];
   const monthSheet = book.addWorksheet('สรุปรายเดือน');
-  const headline = [
-    `เป้าที่เทียบ ${m.target ? fmtMoney(m.target) : NA} (${m.targetMonths} เดือนที่ตั้งเป้า)`,
+  /* ป้ายเป้าตามที่มาจริง — ตรงกับแถบหัวบนจอ (reportSummary.metrics.targetBasis) */
+  const basisState = m.targetBasis?.state || (m.target > 0 ? 'set' : 'none');
+  const noTargetText = basisState === 'excluded' ? 'ไม่เทียบเป้า (ยอดกรอกรายเดือน ช่วงวันคลุมไม่ครบ)'
+    : basisState === 'notYet' ? 'ยังไม่ถึงวันที่นับเป้า'
+      : 'ยังไม่ได้ตั้งเป้าในงวดนี้';
+  /* งวดที่ยังไม่มีเดือนจบ (เดือนนี้/ปีนี้เดือน ม.ค./อนาคต) — จอสลับเป็นชุด "ระหว่างงวด" ไฟล์ต้องพูดแบบเดียวกัน
+     🐞 เดิมหัวไฟล์ขึ้น "ขายจริง ฿0.00 · ยังไม่ได้ตั้งเป้า" ทั้งที่ชีตใบสั่งขายรวมได้ 5.24 ล้าน (ตรวจ 2026-09-22) */
+  const openOnly = m.countedMonths === 0 && m.open;
+  const headline = openOnly ? [
+    `ยังไม่มีเดือนที่จบในงวดนี้ · ขายจริงถึงวันนี้ ${fmtMoney(m.open.actual)}`,
+    `เป้า${m.open.months.length > 1 ? 'ทั้งงวด' : 'เต็มเดือน'} ${m.open.target ? fmtMoney(m.open.target) : NA}`,
+    '% และส่วนต่างคิดเมื่อจบเดือน',
+    m.pendingApproval ? `รออนุมัติ ${m.pendingApproval.count} ใบ ${fmtMoney(m.pendingApproval.amount)} (ไม่นับเป็นขายจริง)` : null,
+  ].filter(Boolean).join(' · ') : [
+    `เป้าที่เทียบ ${m.target ? fmtMoney(m.target) : NA} (${m.target ? `${m.targetMonths} เดือนที่ตั้งเป้า` : noTargetText})`,
     `ขายจริง ${fmtMoney(m.actual)} (${m.countedMonths} เดือนที่นับ)`,
     `% ทำได้ ${m.pct == null ? NA : fmtPercent(m.pct)}`,
     `ส่วนต่าง ${m.diff == null ? NA : fmtMoney(m.diff)}`,
     m.pendingApproval ? `รออนุมัติ ${m.pendingApproval.count} ใบ ${fmtMoney(m.pendingApproval.amount)} (ไม่นับเป็นขายจริง)` : null,
   ].filter(Boolean).join(' · ');
   const split = summary.sourceSplit;
+  const thisMonth = period?.today ? period.today.slice(0, 7) : null;
   const equation = split && (split.history.months || split.orders.months)
     ? `ขายจริง ${fmtMoney(m.actual)} = `
       + [
@@ -186,23 +203,37 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
   writeTable(monthSheet, {
     info: monthNotes,
     columns: monthCols,
-    rows: monthSheetRows(summary, { rangeMode }),
-    total: {
+    rows: monthSheetRows(summary, { rangeMode, thisMonth }),
+    total: openOnly ? {
+      month: 'ระหว่างงวด (ยังไม่จบ)',
+      target: m.open.target || NA,
+      actual: m.open.actual,
+      diff: NA,
+      pct: NA,
+      note: '% และส่วนต่างคิดเมื่อจบเดือน',
+    } : {
       month: 'รวมเดือนที่นับ',
       target: m.target || NA,
       actual: m.actual,
       diff: moneyOrDash(m.diff),
       pct: pctOrDash(m.pct),
-      note: m.targetMonths ? `% และส่วนต่างเทียบเฉพาะ ${m.targetMonths} เดือนที่ตั้งเป้า` : 'ยังไม่ได้ตั้งเป้าในงวดนี้',
+      note: m.targetMonths ? `% และส่วนต่างเทียบเฉพาะ ${m.targetMonths} เดือนที่ตั้งเป้า` : noTargetText,
     },
     filter: false,
   });
 
   /* ── รายทีม / รายคน ── */
+  /* เหตุผลเดียวกับสถานะว่างบนจอ — ตามงวดที่ดู ไม่ใช่ประโยคเดียวทุกงวด */
+  const shownMonths = summary.months || [];
+  const emptyReason = openOnly
+    ? (shownMonths.every((x) => thisMonth && x > thisMonth) ? 'ยังไม่ถึงงวดนี้' : 'ยังไม่มีเดือนที่จบ จึงยังไม่นับรายคน')
+    : shownMonths.every((x) => x < '2026-07') ? 'ฝ่ายขายแบ่งทีม ก.ค. 2026 · ย้ายเข้าระบบ ส.ค. 2026 — ก่อนหน้านั้นยอดอยู่ระดับบริษัทอย่างเดียว'
+      : 'งวดนี้ยังไม่มียอดที่ลงรายคน';
   const splitNote = summary.splitMonths.length
     ? `คิดเฉพาะ ${summary.splitMonths.length} เดือนที่แยกยอดรายคนจริง (${summary.splitMonths.map((x) => formatMonthLabel(x)).join(', ')})`
       + ' · % และส่วนต่างเทียบเฉพาะเดือนที่แถวนั้นมีเป้า · แยกทีมตามทีมของดีล ไม่ใช่ทีมปัจจุบันของคน'
-    : 'งวดนี้ยังไม่มีเดือนที่แยกยอดรายคน (ฝ่ายขายแบ่งทีม ก.ค. 2026 · ย้ายเข้าระบบ ส.ค. 2026)';
+      + (rangeMode ? ' · เป้าปันตามวันถึงวันนี้' : '')
+    : `งวดนี้ยังไม่มีเดือนที่แยกยอดรายคน — ${emptyReason}`;
   const reconcile = summary.reconciliation.mismatch
     ? `⚠ ยอดบริษัท ${fmtMoney(summary.reconciliation.company)} ไม่ตรงกับผลรวมรายคน `
       + `${fmtMoney(summary.reconciliation.people)} (ต่าง ${fmtMoney(Math.abs(summary.reconciliation.gap))})`
@@ -212,7 +243,7 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
     const columns = [
       { key: 'name', label: kind === 'team' ? 'ทีม' : 'ผู้รับผิดชอบ', width: 26 },
       ...(kind === 'person' ? [{ key: 'team', label: 'ทีม', width: 18 }] : []),
-      { key: 'target', label: 'เป้า', width: 16, money: true },
+      { key: 'target', label: rangeMode ? 'เป้า (ปันตามวัน)' : 'เป้า', width: 16, money: true },
       { key: 'actual', label: 'ขายจริง', width: 16, money: true },
       { key: 'cmpActual', label: 'ขายจริงเฉพาะเดือนที่มีเป้า', width: 18, money: true },
       { key: 'diff', label: 'ส่วนต่าง', width: 16, money: true },
@@ -222,11 +253,18 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
       { key: 'pendingCount', label: 'รออนุมัติ (ใบ)', width: 10 },
     ];
     const t = group.total;
+    /* ไม่มีเดือนที่แยกยอด = แถวคน/ทีมไม่มีความหมาย (ขายจริง 0 ทุกแถวทั้งที่ชีตใบสั่งขายมีหลายล้าน) —
+       เหลือเฉพาะแถวที่มีใบรออนุมัติ และไม่มีแถวรวมของยอดขาย (ตรวจ 2026-09-22) */
+    const hasSplit = summary.splitMonths.length > 0;
+    const rows = hasSplit
+      ? groupSheetRows(group, kind, teamLabel)
+      : groupSheetRows({ rows: [], pendingOnly: [...group.rows.filter((r) => r.pending), ...group.pendingOnly] }, kind, teamLabel)
+        .map((r) => ({ ...r, target: NA, actual: NA, cmpActual: NA, diff: NA, pct: NA, targetMonths: NA }));
     writeTable(sheet, {
       info: [stamp, splitNote, reconcile].filter(Boolean),
       columns,
-      rows: summary.splitMonths.length || group.pendingOnly.length ? groupSheetRows(group, kind, teamLabel) : [],
-      total: {
+      rows,
+      total: !hasSplit ? null : {
         name: `รวม ${t.count} ${kind === 'team' ? 'ทีม' : 'คน'}`,
         target: t.target || NA,
         actual: t.actual,

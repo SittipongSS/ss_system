@@ -52,6 +52,10 @@ test('ค่าผิดรูป = error ไม่ใช่เดาให้',
   assert.ok(parseReportPeriod({ mode: 'range', from: '2026-09-01' }, { today: TODAY }).error);
   assert.ok(parseReportPeriod({ mode: 'week' }, { today: TODAY }).error);
   assert.ok(parseReportPeriod({ mode: 'range', from: '2020-01-01', to: '2026-01-01' }, { today: TODAY }).error);
+  // ปีเพี้ยน/วันที่ไม่มีจริง ต้องตีกลับที่นี่ (เดิมหลุดไปให้ฐานโยน 500)
+  assert.ok(parseReportPeriod({ mode: 'year', year: '0000' }, { today: TODAY }).error);
+  assert.ok(parseReportPeriod({ mode: 'month', month: '0000-01' }, { today: TODAY }).error);
+  assert.ok(parseReportPeriod({ mode: 'range', from: '2026-02-30', to: '2026-03-02' }, { today: TODAY }).error);
 });
 
 test('ปันเป้าตามวัน: ตัดที่วันนี้ · เดือนเต็ม = 1 · อนาคต = 0', () => {
