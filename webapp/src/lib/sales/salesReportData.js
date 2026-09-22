@@ -6,6 +6,7 @@ import { reportPendingApproval } from '@/lib/sales/reportPendingApproval';
 import { buildReportRows, reportOrderMonth as orderMonth, reportOrderTeam } from '@/lib/sales/reportRows';
 import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { historyAppliesTo, targetFactorOf } from '@/lib/sales/reportPeriod';
+import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
 
 /* ตัวโหลดข้อมูลของรายงานยอดขาย — ใช้ร่วมกันสองทาง: JSON ของหน้าจอ (/api/sales-planning/report)
  * กับไฟล์ Excel (/api/sales-planning/report/export) ⇒ **ไฟล์กับจอได้ข้อมูลก้อนเดียวกันเสมอ**
@@ -44,7 +45,7 @@ export function reportQueryWindow(period) {
 }
 
 /** รูปของใบหนึ่งแถวที่จอและไฟล์ใช้ — ยอดที่รายงานนับ = actualAmount (= totalAmount − vatAmount) */
-function shapeOrder(o, { person, lineCount }) {
+function shapeOrder(o, { person, lineCount, payments = new Map() }) {
   return {
     id: o.id,
     orderNumber: o.orderNumber,
@@ -57,6 +58,10 @@ function shapeOrder(o, { person, lineCount }) {
     ownerName: person(o.ownerId)?.name || o.ownerName || null,
     // ทีมตามดีล — ตัวเดียวกับที่แถวทีม/รายคนใช้ ⇒ กรอง/จัดกลุ่มตามทีมในตารางใบกระทบกับสรุปได้
     team: reportOrderTeam(o),
+    // ประเภทธุรกิจ (สินค้า/บริการ) ตามตัวกลาง — โครงการก่อน ดีลทีหลัง · ประเภทดีล (SCENT/NPD/RE-ORDER/OTHER) ของดีล
+    // ⚠️ ไม่เติมค่าตั้งต้น (dealTypeOf ตีค่าว่างเป็น NPD) — ว่าง = ขีด ให้เห็นว่าดีลยังไม่ระบุ
+    line: orderBusinessLineOf(o),
+    dealType: o.deal?.dealType || null,
     month: orderMonth(o),
     day: reportOrderDay(o),
     approvedAt: o.approvedAt,
@@ -64,6 +69,13 @@ function shapeOrder(o, { person, lineCount }) {
     amount: money(o.actualAmount),
     vatAmount: money(o.vatAmount),
     totalAmount: money(o.totalAmount),
+    /* ⭐ ยอดเก็บจริง (มติผู้ใช้ 2026-09-22) = ผลรวมงวดที่บัญชี **รับรองแล้ว** (`confirmed`) · รวม VAT เหมือนยอดหน้าใบ
+       (งวดของใบรวมกันเท่ายอดหน้าใบ — ตรวจ prod ครบ 166/166 ใบ) · `reported` = SA แจ้งว่าเข้าแล้ว บัญชียังไม่รับรอง
+       ⇒ แยกเป็น awaitingAmount ไม่ใช่ยอดเก็บจริง (กติกาเดียวกับทะเบียนการชำระ · mig 0245)
+       ⛔ คนละแกนกับยอดขาย — ห้ามเอาไปหัก/บวก Actual (lib/sales/salesOrderPayments หัวไฟล์) */
+    collectedAmount: payments.get(o.id)?.collected || 0,
+    awaitingAmount: payments.get(o.id)?.awaiting || 0,
+    installmentCount: payments.get(o.id)?.count || 0,
     discountAmount: money(o.discountAmount),
     // ใบที่ส่วนลดท้ายใบเต็มจำนวน (งานที่ไม่คิดเงิน) — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง
     free: money(o.actualAmount) === 0,
@@ -100,12 +112,15 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
   if (targetError) return { error: targetError.message, status: 500 };
 
   /* ── ใบสั่งขายที่อนุมัติแล้ว ─────────────────────────────────────────
-     ⭐ ทีมของยอด = `deal:sales_deals(team)` — embed ในคิวรีเดียวกัน (FK เดียว 0107 · service role
+     ⭐ ทีมของยอด = `deal:sales_deals(team, …)` — embed ในคิวรีเดียวกัน (พ่วงประเภทดีล `dealType` + สาย `line`
+        ของดีลมาด้วย — คอลัมน์ "ประเภทธุรกิจ/ประเภทดีล" ของรายการใบ · มติผู้ใช้ 2026-09-22)
+     ⭐ ประเภทธุรกิจตัดสินด้วย `orderBusinessLineOf` ตัวกลาง: สายของ **โครงการ** ก่อน แล้วค่อยสายของดีล
+        (โครงการเป็นเจ้าของค่าจริง ดีลเป็นสำเนา — กติกาเดียวกับทะเบียนการชำระ/คิว TS) ⇒ embed `project:projects(id, line)` (FK เดียว 0107 · service role
         ไม่โดน RLS) ⚠️ ห้ามแยกไปถาม `.in('id', dealIds)` — ลิสต์โตตามจำนวนใบ ชนเพดาน URL 16 KB
      ⛔ ใบสั่งขายย้อนหลัง (mig 0360) อนุมัติ ณ เวลาคีย์แต่ไม่ใช่ยอดขาย — ไม่กรอง = งานเก่าทั้งกองโผล่เป็นยอดของเดือนที่คีย์ */
   const { data: orders, error: orderError } = await fetchAllResult(() => pipelineRowsOnly(supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, deal:sales_deals(team)'))
+    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, project:projects(id, line), deal:sales_deals(team, id, line, "dealType")'))
     .eq('status', 'approved')
     .gte('approvedAt', window.from)
     .lt('approvedAt', window.until)
@@ -132,6 +147,22 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     lineCount.set(line.salesOrderId, (lineCount.get(line.salesOrderId) || 0) + 1);
   }
 
+  /* งวดชำระของใบในงวดที่โชว์ — ยอดเก็บจริง (confirmed) + ที่รอบัญชีรับรอง (reported)
+     เฉพาะงวดที่ยอดหยุดแล้ว (`frozenAt` · B-4 mig 0259) เหมือนทะเบียนการชำระ ⇒ ตัวเลขตรงกับหน้า /finance */
+  const { data: installments, error: installmentError } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_installments').select('"salesOrderId", amount, status').in('salesOrderId', chunk)
+    .not('frozenAt', 'is', null)
+    .order('salesOrderId', { ascending: true }).order('id', { ascending: true })));
+  if (installmentError) return { error: installmentError.message, status: 500 };
+  const payments = new Map();
+  for (const row of installments || []) {
+    const acc = payments.get(row.salesOrderId) || { collected: 0, awaiting: 0, count: 0 };
+    acc.count += 1;
+    if (row.status === 'confirmed') acc.collected += money(row.amount);
+    if (row.status === 'reported') acc.awaiting += money(row.amount);
+    payments.set(row.salesOrderId, acc);
+  }
+
   /* ── ใบสั่งขายที่รออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) ──────────────────
      ยอดลง **วันนี้ (เดือนปัจจุบัน) เสมอ** ⇒ งวดที่ไม่คลุมวันนี้ไม่ต้องถามฐานเลย
      (ช่วงวัน "สัปดาห์ก่อน" อยู่ในเดือนนี้ก็จริง แต่ไม่คลุมวันนี้ — ยอดรออนุมัติไม่ใช่ของช่วงนั้น)
@@ -140,7 +171,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
   const { data: pendingOrders, error: pendingError } = coversToday
     ? await fetchAllResult(() => pipelineRowsOnly(supabase
       .from('sales_orders')
-      .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", status, "submittedAt", "vatAmount", "totalAmount", "actualAmount", metadata'))
+      .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", status, "submittedAt", "vatAmount", "totalAmount", "actualAmount", metadata, project:projects(id, line)'))
       .eq('status', 'pending_approval')
       .order('id', { ascending: true }))
     : { data: [], error: null };
@@ -152,7 +183,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     (pendingOrders || []).map((o) => o.dealId),
     (chunk) => fetchAllResult(() => supabase
       .from('sales_deals')
-      .select('id, stage, team, "ownerId", "ownerName"')
+      .select('id, stage, team, line, "dealType", "ownerId", "ownerName"')
       .in('id', chunk)
       .order('id', { ascending: true })),
   );
@@ -204,8 +235,10 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     }
   }
 
+  // ประเภทธุรกิจของใบรออนุมัติ — ตัวกลางเดียวกับใบอนุมัติแล้ว (โครงการของใบก่อน แล้วดีล)
+  const pendingDealById = new Map((pendingDeals || []).map((d) => [d.id, d]));
   const pendingApproval = reportPendingApproval({
-    orders: pendingOrders,
+    orders: (pendingOrders || []).map((o) => ({ ...o, line: orderBusinessLineOf({ ...o, deal: pendingDealById.get(o.dealId) || null }) })),
     deals: pendingDeals,
     months: coversToday ? axis : [],
     person,
@@ -229,7 +262,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     teams,
     people,
     pendingApproval,
-    orders: inShown.map((o) => shapeOrder(o, { person, lineCount })),
+    orders: inShown.map((o) => shapeOrder(o, { person, lineCount, payments })),
     byDay,
     historyDropped,
     generatedAt: now.toISOString(),

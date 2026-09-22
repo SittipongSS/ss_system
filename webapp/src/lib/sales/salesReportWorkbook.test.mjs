@@ -78,20 +78,45 @@ test('แถวรวมของชีตสรุป = แถบตัวเ�
   assert.match(header, /กรอกย้อนหลัง 1 เดือน/);
 });
 
-test('ชีตใบสั่งขาย: ทุกใบในงวด (ไม่ใช่เฉพาะที่ค้นบนจอ) · แถวรวม = ผลรวมใบ · ลิงก์กลับหน้าใบ', async () => {
+test('ชีตใบสั่งขาย: ลำดับคอลัมน์ตามที่ผู้ใช้กำหนด · ทุกใบในงวด · แถวรวม = ผลรวมใบ · ลิงก์อยู่บนเลข SO', async () => {
   const { data, summary } = fixture();
+  data.orders[0].line = 'SERVICE';
+  data.orders[0].dealType = 'RE-ORDER';
+  Object.assign(data.orders[0], { collectedAmount: 1000, awaitingAmount: 675, installmentCount: 2 });
+  Object.assign(data.orders[1], { collectedAmount: 0, awaitingAmount: 0, installmentCount: 0 });
   const book = await readBook(await buildSalesReportBuffer(data, summary, { origin: 'https://suk.example' }));
   const sheet = book.getWorksheet('ใบสั่งขาย');
   const header = sheet.getRow(4).values.slice(1);
-  assert.equal(header[0], 'วันที่อนุมัติ');
+  // มติผู้ใช้ 2026-09-22 — ห้ามสลับลำดับโดยไม่ถาม
+  assert.deepEqual(header, [
+    '#', 'งวด', 'วันที่อนุมัติ', 'ประเภทธุรกิจ', 'ประเภทดีล', 'QT', 'SO', 'ลูกค้า', 'บรรทัด',
+    'ยอดที่นับ', 'VAT', 'ยอดหน้าใบ', 'ยอดเก็บจริง', 'ขั้นบัญชี', 'หมายเหตุ', 'ผู้รับผิดชอบ', 'ทีม',
+  ]);
+  const col = (name) => header.indexOf(name);
+  const first = sheet.getRow(5).values.slice(1);
+  assert.equal(first[col('#')], 1);
+  assert.equal(first[col('ประเภทธุรกิจ')], 'บริการ (Services)');
+  assert.equal(first[col('ประเภทดีล')], 'RE-ORDER');
+  assert.equal(first[col('SO')].hyperlink, 'https://suk.example/sa/sales-orders/s1');
+  assert.equal(first[col('SO')].text, 'SO-1');
+  // ยอดเก็บจริงอยู่ถัดจากยอดหน้าใบ · ยอดที่รอบัญชีรับรองไม่นับ แต่บอกในหมายเหตุ
+  assert.equal(col('ยอดเก็บจริง'), col('ยอดหน้าใบ') + 1);
+  assert.equal(first[col('ยอดเก็บจริง')], 1000);
+  assert.match(first[col('หมายเหตุ')], /รอบัญชีรับรอง ฿675\.00/);
+  const second = sheet.getRow(6).values.slice(1);
+  assert.equal(second[col('ยอดเก็บจริง')], 0);
+  assert.match(second[col('หมายเหตุ')], /ยังไม่มีงวดชำระ/);
   const total = lastRowValues(sheet);
   assert.equal(total[0], 'รวม 3 ใบ');
-  assert.equal(total[header.indexOf('ยอดที่นับ')], 3200);
-  const link = sheet.getRow(5).getCell(header.indexOf('ลิงก์') + 1).value;
-  assert.equal(link.hyperlink, 'https://suk.example/sa/sales-orders/s1');
+  assert.equal(total[col('ยอดที่นับ')], 3200);
+  assert.equal(total[col('ยอดเก็บจริง')], 1000);
   const freeRow = sheet.getRow(7).values.slice(1);
-  assert.equal(freeRow[header.indexOf('ขั้นบัญชี')], 'ไม่ผ่านบัญชี');
-  assert.equal(freeRow[header.indexOf('หมายเหตุ')], 'ไม่คิดเงิน');
+  assert.equal(freeRow[col('ขั้นบัญชี')], 'ไม่ผ่านบัญชี');
+  assert.equal(freeRow[col('หมายเหตุ')], 'ไม่คิดเงิน');
+  assert.equal(freeRow[col('ยอดเก็บจริง')], '—');
+  // ดีลที่ยังไม่ระบุสาย/ประเภท = ขีด ไม่เดาให้
+  assert.equal(freeRow[col('ประเภทธุรกิจ')], '—');
+  assert.equal(freeRow[col('ประเภทดีล')], '—');
 });
 
 test('โหมดช่วงวัน: มีคอลัมน์วันที่นับ/เป้าเต็มเดือน ไม่มีทบยอด', () => {

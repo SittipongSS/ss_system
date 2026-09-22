@@ -113,6 +113,9 @@ export function reportPendingApproval({
       ownerId,
       ownerName,
       team,
+      // สายของใบ (ผู้เรียกคิดจากโครงการก่อนดีล) · ไม่ส่งมา = สายของดีล
+      line: order.line !== undefined ? order.line : (deal.line || null),
+      dealType: deal.dealType || null,
       submittedAt: order.submittedAt || null,
       // ยอดที่โชว์ = actualAmount (ก่อน VAT) ตัวเดียวกับที่จะนับเป็นขายจริงเมื่ออนุมัติ
       amount,
