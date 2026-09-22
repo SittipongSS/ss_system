@@ -23,7 +23,9 @@ const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\
 test('deals route: ขอบเขตรายแถวยังบังคับครบสองชั้น — ห้ามมีสวิตช์ปลดขอบเขตจาก query', () => {
   const src = codeOnly(dealsRoute);
   assert.match(src, /let q = applyDealScope\(q0, user\);/);
-  assert.match(src, /const visible = \(data \|\| \[\]\)\.filter\(\(d\) => inSalesViewScope\(user, d\)\);/);
+  // ด่านที่สอง (รายแถว) ยังครอบทุกแถว — ตัวคัดงวด (2026-09-22) คัดต่อจาก `scoped` ไม่ใช่แทนที่
+  assert.match(src, /const scoped = \(data \|\| \[\]\)\.filter\(\(d\) => inSalesViewScope\(user, d\)\);/);
+  assert.match(src, /const visible = scoped\.filter\(\(d\) => dealInReportPeriod\(d, period, axis\)\);/);
   // ⛔ กันการกลับไปทางที่ปฏิเสธไปแล้ว: พารามิเตอร์ใด ๆ ที่ทำให้ข้ามสองด่านนี้
   assert.doesNotMatch(src, /params\.get\('scope'\)/);
   assert.doesNotMatch(src, /overview \? q0/);

@@ -9,7 +9,7 @@
 //    ไม่ต้อง pivot ก่อน · แถวสรุปรายหมวดใช้รูปเดียวกันเป๊ะ เปลี่ยนแค่ว่าแถวคืออะไร
 
 import ExcelJS from 'exceljs';
-import { gridForecastLines, monthsInRows, summarizeForecastLines } from '@/lib/sales/forecastBreakdown';
+import { gridForecastLines, isScheduledRow, monthsInRows, summarizeForecastLines } from '@/lib/sales/forecastBreakdown';
 import { STAGE_LABELS } from '@/lib/salesPlanning';
 import { teamNameOf } from '@/lib/master/teams';
 import { fmtNumber } from '@/lib/format';
@@ -32,17 +32,6 @@ const MONTH_LABEL = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.
 const UNSCHEDULED_KEY = 'unscheduled';
 const UNSCHEDULED_LABEL = 'ยังไม่ระบุเดือน';
 
-/* ⚠️ ต้องเขียนไว้บนหัวไฟล์ทั้งสองชีต — ไฟล์นี้เดินทางไปถึงคนที่ไม่ได้อยู่ในระบบ
-   ถ้าเขาเอาไปเทียบกับแดชบอร์ดแล้วเดือนไม่ตรง จะกลายเป็นเรื่องว่า "เลขไหนถูก"
-   ทั้งที่มันตอบคนละคำถาม (ของต้องเสร็จเมื่อไร vs รายได้ลงเดือนไหน) */
-const MONTH_AXIS_NOTE = 'เดือนในตารางคือ "วันที่สิ้นสุด" ของดีล = เดือนที่ลูกค้าต้องการรับของ'
-  + ' (ดีลสหมิตรใช้เดือนที่ลูกค้าขอของ) — ไม่ใช่เดือนที่ปิดยอด'
-  + ` · ดีลที่ยังไม่กรอกวันที่สิ้นสุด ยอดไปอยู่คอลัมน์ "${UNSCHEDULED_LABEL}" ท้ายกริด`
-  + ' ไม่ถูกเดาเดือนให้ (ยอดยังนับรวมในไฟล์เหมือนเดิม)'
-  + ' · ดีลเข้าไฟล์ตาม **เดือนคาดปิด** (ชุดเดียวกับรายการดีลบนจอของงวดเดียวกัน) แต่วางช่องตามเดือนรับของ'
-  + ' ⇒ ดีลที่ปิดในงวดแต่ส่งของหลังงวดอยู่คอลัมน์เดือนหลังงวด'
-  + ' · ไฟล์นี้ไม่รวมดีลที่แพ้แล้ว ⇒ ยอดรวมต่างจากแดชบอร์ดโดยเจตนา';
-
 /** `2026-09` → `ก.ย. 26` — หัวคอลัมน์ต้องสั้นพอให้ 12 เดือนอยู่ในจอเดียว
  *  ⭐ เดือนในกริดคือเดือนของ `endDate` = **วันที่ลูกค้าต้องการรับของ** ไม่ใช่เดือนปิดยอด
  *     (มติผู้ใช้ 2026-09-02) */
@@ -55,6 +44,8 @@ export function monthColumnLabel(month) {
 /* คอลัมน์ที่อยู่ **ซ้ายมือของกริด** — ตัวระบุว่าแถวนี้คืออะไร
    แยกสองชุดเพราะสองชีตตอบคนละคำถาม แต่กริดเดือนทางขวาเหมือนกันเป๊ะ */
 export const SUMMARY_LEAD_COLUMNS = [
+  // ⭐ แยกสองก้อน ยืนยันแล้ว (Won) / คาดการณ์ (ยังเปิด) — มติผู้ใช้ 2026-09-22 · ฝ่ายผลิตต้องรู้ว่าอันไหนสั่งจริง
+  { key: 'statusLabel', label: 'สถานะ', width: 18 },
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
   { key: 'categoryMain', label: 'หมวดหลัก', width: 18 },
   { key: 'categorySub', label: 'หมวดย่อย', width: 28 },
@@ -73,12 +64,16 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'ownerName', label: 'ผู้ดูแล (AE)', width: 20 },
   { key: 'team', label: 'ทีม', width: 8 },
   { key: 'stage', label: 'ขั้น', width: 14 },
+  { key: 'statusLabel', label: 'สถานะ', width: 18 },
+  { key: 'probabilityPct', label: 'โอกาสปิด (%)', width: 11, number: true },
   { key: 'monthBasisLabel', label: 'ที่มาของเดือน', width: 16 },
   /* ⭐ เดือนที่คาดว่าจะปิดการขาย — **คนละช่องกับเดือนในกริด** (มติผู้ใช้ 2026-09-07)
      กริด = เดือนที่ลูกค้ารับของ · ช่องนี้ = เดือนที่คาดว่าจะปิดยอด ⇒ วางคู่กันให้เห็น
      ว่าดีลใบไหนปิดปีนี้แต่ส่งของปีหน้า · รูปแบบ `2026-09` ตามที่ผู้ใช้ขอ (เรียง/กรอง
      ใน Excel ได้ตรง ๆ ต่างจาก "ก.ย. 26" ที่เรียงตามตัวอักษรแล้วเพี้ยน) */
   { key: 'expectedCloseMonth', label: 'เดือนที่คาดการณ์ปิด', width: 17 },
+  // เดือนรับของ (endDate · เดือนที่ลูกค้าขอของสหมิตร) — ขึ้นทั้งสองแกน ฝ่ายผลิตกรองใน Excel ได้เสมอ
+  { key: 'deliveryMonthLabel', label: 'เดือนรับของ', width: 16 },
   { key: 'sourceLabel', label: 'ที่มา FC', width: 13 },
   { key: 'quoteNumber', label: 'เลขที่ใบเสนอราคา', width: 18 },
   { key: 'categoryCode', label: 'รหัสหมวด', width: 11 },
@@ -118,6 +113,7 @@ const CATEGORY_FROM_LABEL = {
    จะเชื่อว่าเป็นเดือนส่งของจริงทั้งไฟล์ ทั้งที่ 42% ของยอดยังเป็นเดือนที่ถอยมาจาก
    วันปิดการขาย (ดีลต้นทางที่ยังไม่รู้วันส่ง) */
 const MONTH_BASIS_LABEL = {
+  closeMonth: 'เดือนคาดปิด',
   endDate: 'วันสิ้นสุด',
   demandMonth: 'เดือนที่ลูกค้าขอ (สหมิตร)',
   expectedCloseDate: '⚠ ถอยจากวันปิด',
@@ -130,13 +126,53 @@ const MONTH_BASIS_LABEL = {
 
 const cell = (value) => (value === null || value === undefined || value === '' ? NA : value);
 
+export const STATUS_WON = 'ยืนยันแล้ว (Won)';
+export const STATUS_OPEN = 'คาดการณ์ (ยังเปิด)';
+
+/* หมายเหตุแกนบนหัวชีต — ไฟล์เดินทางไปถึงฝ่ายผลิตที่ไม่ได้เห็นปุ่มบนจอ ต้องรู้ว่าคอลัมน์เดือนแปลว่าอะไร */
+export function axisNote(axis) {
+  return axis === 'delivery'
+    ? 'คอลัมน์เดือน = เดือนที่ลูกค้าต้องการรับของ (วันที่สิ้นสุด · ดีลสหมิตรใช้เดือนที่ลูกค้าขอ)'
+      + ' · ดีลที่ยังไม่กรอกวันรับของ (แต่คาดปิดในงวด) อยู่คอลัมน์ "ยังไม่ระบุวันรับของ" — ไม่เดาเดือนให้'
+      + ' · ไม่รวมดีลที่แพ้แล้ว'
+    : 'คอลัมน์เดือน = เดือนที่คาดว่าจะปิดการขาย (ชุดเดียวกับรายการดีลบนจอ)'
+      + ' · เดือนที่ลูกค้ารับของอยู่ในคอลัมน์ "เดือนรับของ" ของชีตรายดีล · ไม่รวมดีลที่แพ้แล้ว';
+}
+
+/* แถวรวมย่อยของก้อนหนึ่ง — จำนวนดีลนับจากบรรทัดจริง (ดีลเดียวอยู่หลายหมวดได้ บวกจากแถวสรุปจะนับซ้ำ) */
+function subtotalRow(label, rows, lines, months) {
+  const monthsTotal = Object.fromEntries(months.map((m) => [m, null]));
+  let unscheduled = 0;
+  let total = 0;
+  for (const row of rows) {
+    for (const m of months) {
+      if (row.months?.[m] != null) monthsTotal[m] = Math.round(((monthsTotal[m] || 0) + Number(row.months[m])) * 100) / 100;
+    }
+    unscheduled += Number(row.unscheduled || 0);
+    total += Number(row.fcAmount || 0);
+  }
+  return {
+    isSubtotal: true,
+    statusLabel: label,
+    dealCount: new Set(lines.map((line) => line.dealId).filter(Boolean)).size,
+    months: monthsTotal,
+    unscheduled: Math.round(unscheduled * 100) !== 0 ? Math.round(unscheduled * 100) / 100 : null, // ติดลบได้ (เศษปัด) — ห้ามทิ้ง
+    fcAmount: Math.round(total * 100) / 100,
+  };
+}
+
 /* วาดหนึ่งชีต = คอลัมน์ระบุแถว + กริดเดือน + คอลัมน์รวม
  * ⚠️ **แถวรวมท้ายตารางเป็นตัวเลขจริง ไม่ใช่สูตร** — คนรับส่วนใหญ่กรอง/ซ่อนแถวทันที
  *    ที่เปิด ถ้าเป็น SUM ของช่วง ตัวเลขจะเปลี่ยนตามการกรองแล้วไม่ตรงกับหัวไฟล์อีก */
-function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
-  /* ช่องในกริด = 12 เดือน + กอง "ยังไม่ระบุเดือน" — เดินด้วยลิสต์เดียวทุกที่
-     (หัวตาราง · แถวข้อมูล · แถวรวม) ไม่งั้นคอลัมน์ท้ายหลุดจากผลรวมได้เงียบ ๆ */
-  const slotKeys = [...months, UNSCHEDULED_KEY];
+function paintGridSheet(sheet, leadColumns, months, rows, infoText, {
+  showUnscheduled = true,
+  unscheduledLabel = UNSCHEDULED_LABEL,
+  totalLabel = 'รวมทั้งปี',
+} = {}) {
+  /* ช่องในกริด = เดือนของงวด + กอง "ยังไม่ระบุ…" (แกนรับของ) — เดินด้วยลิสต์เดียวทุกที่
+     (หัวตาราง · แถวข้อมูล · แถวรวม) ไม่งั้นคอลัมน์ท้ายหลุดจากผลรวมได้เงียบ ๆ
+     แกนเดือนปิดไม่มีกอง (ดีลในงวดมีเดือนปิดเสมอ) ⇒ ไม่วาดคอลัมน์ว่างทิ้งไว้ */
+  const slotKeys = showUnscheduled ? [...months, UNSCHEDULED_KEY] : [...months];
   const width = leadColumns.length + slotKeys.length + 1;
   const slotValue = (shaped, key) => (key === UNSCHEDULED_KEY
     ? shaped.unscheduled ?? null
@@ -150,8 +186,8 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
   const header = sheet.addRow([
     ...leadColumns.map((c) => c.label),
     ...months.map(monthColumnLabel),
-    UNSCHEDULED_LABEL,
-    'รวมทั้งปี',
+    ...(showUnscheduled ? [unscheduledLabel] : []),
+    totalLabel,
   ]);
   header.font = { name: FONT, size: 11, bold: true, color: { argb: HEADER_TEXT } };
   header.eachCell((c) => {
@@ -161,7 +197,7 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
   sheet.columns = [
     ...leadColumns.map((c) => ({ key: c.key, width: c.width })),
     ...months.map((month) => ({ key: month, width: 14 })),
-    { key: UNSCHEDULED_KEY, width: 16 },
+    ...(showUnscheduled ? [{ key: UNSCHEDULED_KEY, width: 18 }] : []),
     { key: 'total', width: 16 },
   ];
   // ตรึงหัวตาราง **และคอลัมน์ระบุแถว** — เลื่อนไปเดือน ธ.ค. แล้วยังต้องรู้ว่าแถวไหน
@@ -189,6 +225,13 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
       slotTotals[index] += Number(slotValue(shaped, key) || 0);
     });
     row.getCell(width).numFmt = '#,##0.00';
+    /* แถวรวมย่อย (ยืนยันแล้ว / คาดการณ์) — ตัวหนาพื้นสีรวม และ **ไม่นับซ้ำ** ในแถวรวมท้ายตาราง */
+    if (shaped.isSubtotal) {
+      row.font = { name: FONT, size: 11, bold: true };
+      row.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTAL_FILL } }; });
+      slotKeys.forEach((key, index) => { slotTotals[index] -= Number(slotValue(shaped, key) || 0); });
+      continue;
+    }
     grandTotal += Number(shaped.total ?? shaped.fcAmount ?? 0);
   }
 
@@ -230,22 +273,43 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
   book.creator = 'Scent & Sense';
 
   const total = lines.reduce((sum, row) => sum + Number(row.fcAmount || 0), 0);
+  const axis = meta.axis === 'delivery' ? 'delivery' : 'close';
+  const wonLines = lines.filter((row) => row.won);
+  const openLines = lines.filter((row) => !row.won);
+  const sumOf = (list) => list.reduce((sum, row) => sum + Number(row.fcAmount || 0), 0);
+  /* คอลัมน์กองท้ายกริด: แกนรับของมีเสมอ (มติผู้ใช้ — ดีลไม่มีวันรับของต้องเห็นเป็นก้อน) · แกนปิดมีเมื่อมียอดลงกองจริง
+     (ลิงก์ไม่ระบุงวดที่มีดีลไม่มีวัน/เดือนปิด) — ไม่งั้นยอดกองอยู่ในรวมทั้งงวดแต่ไม่มีช่องให้เห็น ช่องเดือนรวมกันไม่เท่ายอดรวม */
+  const hasUnscheduled = lines.some((row) => !(isScheduledRow(row) && months.includes(row.month)));
+  const grid = {
+    showUnscheduled: axis === 'delivery' || hasUnscheduled,
+    unscheduledLabel: axis === 'delivery' ? 'ยังไม่ระบุวันรับของ' : 'ยังไม่ระบุเดือนปิด',
+    totalLabel: 'รวมทั้งงวด',
+  };
   /* ⭐ ประทับยอดรวมไว้บนหัวไฟล์ — ไฟล์ Excel เดินทางไกลกว่าหน้าจอมาก คนรับต้องเทียบ
      กับแดชบอร์ดได้ทันทีโดยไม่ต้องเปิดระบบ · ถ้าสองเลขไม่ตรงกันจะได้รู้ตั้งแต่วินาทีแรก
      ⚠️ ยอดนี้เป็น **ก่อน VAT** เหมือน FC ทุกที่ในระบบ ต้องเขียนกำกับไว้เสมอ */
   /* ⭐ ขอบเขตต้องอยู่บนหัวไฟล์เสมอ — หัวหน้าทีมโหลดได้เฉพาะทีมตัวเอง ถ้าไฟล์ไม่บอก
      แล้วถูกส่งต่อ คนรับจะอ่านยอดของทีมเดียวเป็นยอดทั้งบริษัท */
-  const stamp = `รายงาน FC ตามเดือนที่ลูกค้ารับของ · ดีลที่คาดปิดใน ${meta.periodLabel || (meta.year ? `ปี ${meta.year}` : 'ทุกงวด')}`
+  const baht = (value) => fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const periodText = meta.periodLabel || (meta.year ? `ปี ${meta.year}` : 'ทุกงวด');
+  const stamp = `รายงาน FC · ดูตาม${axis === 'delivery' ? 'เดือนที่ลูกค้ารับของ' : 'เดือนปิดการขาย'} · งวด ${periodText}`
     + ` · ขอบเขต ${meta.scopeLabel || 'ทั้งบริษัท'}`
-    + ` · ${lines.length} บรรทัด · รวม ${fmtNumber(total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท (ก่อน VAT)`
+    + ` · ${lines.length} บรรทัด · รวม ${baht(total)} บาท (ก่อน VAT)`
+    + ` = ยืนยันแล้ว (Won) ${baht(sumOf(wonLines))} + คาดการณ์ (ยังเปิด) ${baht(sumOf(openLines))}`
     + `${meta.by ? ` · ดาวน์โหลดโดย ${meta.by}` : ''}`
     + `${meta.generatedAt ? ` · ${meta.generatedAt}` : ''}`;
 
+  /* สรุปรายหมวดแยกสองก้อน: ยืนยันแล้ว (Won) → แถวรวมย่อย → คาดการณ์ (ยังเปิด) → แถวรวมย่อย → แถวรวมทั้งงวด */
+  const summaryRows = [];
+  for (const [label, group] of [[STATUS_WON, wonLines], [STATUS_OPEN, openLines]]) {
+    if (!group.length) continue;
+    const rows = summarizeForecastLines(group, months).map((row) => ({ ...named(row), statusLabel: label }));
+    summaryRows.push(...rows, subtotalRow(`รวม${label}`, rows, group, months));
+  }
   const summary = book.addWorksheet('สรุปรายหมวด');
-  paintGridSheet(summary, SUMMARY_LEAD_COLUMNS, months,
-    summarizeForecastLines(lines, months).map(named),
-    `${stamp} · ${MONTH_AXIS_NOTE}`
-    + ' · ยอดรวมของชีตนี้เท่ากับชีต "รายดีล" เสมอ · ช่องว่าง (—) = เดือนนั้นไม่มียอด ไม่ใช่ศูนย์');
+  paintGridSheet(summary, SUMMARY_LEAD_COLUMNS, months, summaryRows,
+    `${stamp} · ${axisNote(axis)}`
+    + ' · ยอดรวมของชีตนี้เท่ากับชีต "รายดีล" เสมอ · ช่องว่าง (—) = เดือนนั้นไม่มียอด ไม่ใช่ศูนย์', grid);
 
   const detail = book.addWorksheet('รายดีล');
   paintGridSheet(detail, DEAL_LEAD_COLUMNS, months,
@@ -258,10 +322,13 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
       sourceLabel: SOURCE_LABEL[row.source] || row.source,
       categoryFromLabel: CATEGORY_FROM_LABEL[row.categoryFrom] || null,
       monthBasisLabel: MONTH_BASIS_LABEL[row.monthBasis] || MONTH_BASIS_LABEL.expectedCloseDate,
+      statusLabel: row.won ? STATUS_WON : STATUS_OPEN,
+      probabilityPct: row.probability ?? null,
+      deliveryMonthLabel: row.deliveryMonth || 'ยังไม่ระบุ',
     })),
-    `${stamp} · ${MONTH_AXIS_NOTE}`
+    `${stamp} · ${axisNote(axis)}`
     + ' · หนึ่งแถว = หนึ่งบรรทัดของดีล · ยอดในช่องเดือนคือ "ส่วนแบ่งของบรรทัดในยอด FC"'
-    + ' ซึ่งต่างจาก "มูลค่าบรรทัด" เมื่อใบเสนอราคามีส่วนลดท้ายใบ');
+    + ' ซึ่งต่างจาก "มูลค่าบรรทัด" เมื่อใบเสนอราคามีส่วนลดท้ายใบ', grid);
 
   return book.xlsx.writeBuffer();
 }

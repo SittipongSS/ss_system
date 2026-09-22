@@ -66,7 +66,8 @@ export const MONTH_BASIS = ['endDate', 'demandMonth', 'expectedCloseDate', 'fore
  * ⚠️ **ยอดยังอยู่ในไฟล์เสมอ** ไม่ใช่ตัดทิ้ง — ยอดรวมทั้งไฟล์จึงไม่เปลี่ยน เปลี่ยนแค่
  *    ว่ามันไปนั่งช่องไหน · แถวที่ไม่มี `monthBasis` เลย (ผู้เรียกเก่า/เทสต์) ถือว่ารู้เดือน
  */
-export const SCHEDULED_BASIS = ['endDate', 'demandMonth'];
+/* `closeMonth` = แถวของไฟล์แกน "เดือนปิดการขาย" (มติผู้ใช้ 2026-09-22) — เดือนในกริดคือเดือนคาดปิดซึ่งรู้เสมอ ⇒ ลงช่องเดือน */
+export const SCHEDULED_BASIS = ['endDate', 'demandMonth', 'closeMonth'];
 export const isScheduledBasis = (basis) => !basis || SCHEDULED_BASIS.includes(basis);
 export const isScheduledRow = (row) => isScheduledBasis(row?.monthBasis) && !!row?.month;
 
@@ -291,6 +292,8 @@ export const monthsInRows = (rows = []) => [
 ].sort();
 
 const blankGrid = (months) => Object.fromEntries(months.map((month) => [month, null]));
+/** แถวนี้ลงช่องเดือนของกริดได้ไหม — รู้เดือนจริง **และ** เดือนนั้นมีช่อง (ไม่งั้นไปกองท้ายกริด ยอดไม่หาย) */
+const inGrid = (grid, row) => isScheduledRow(row) && row.month in grid;
 
 /* ใส่ยอดลงช่องเดือน — `null` แปลว่า "เดือนนั้นไม่มีอะไร" ซึ่งต้องต่างจาก 0 บนกระดาษ
    (กติกาค่าว่างของระบบ: ขีด ไม่ใช่ศูนย์) */
@@ -328,7 +331,9 @@ export function summarizeForecastLines(rows = [], months = null) {
     /* ⭐ ยอดที่ยังไม่รู้เดือนรับของ **ไม่ลงช่องเดือน** — ไปกองคอลัมน์ท้ายกริด
        (มติผู้ใช้ 2026-09-07) · เดิมถูกเดาเดือนให้จากวันปิดการขายแล้ววางปนกับเดือนจริง
        ทำให้ฝ่ายวางแผนอ่านทั้งกริดเป็นเดือนส่งของจริงทั้งที่ 28% ของยอดไม่ใช่ */
-    if (isScheduledRow(row)) addToMonth(group.months, row.month, row.fcAmount);
+    /* ⚠️ แถวที่มีเดือนแต่เดือนไม่อยู่ในกริด (นอกงวด) ก็ไปกองเช่นกัน — `addToMonth` ทิ้งเดือนที่ไม่มีช่องเงียบ ๆ
+       ⇒ ช่องเดือนรวมกันไม่เท่ายอดรวมทั้งงวด โดยไม่มีใครรู้ (รีวิว #1787) */
+    if (inGrid(group.months, row)) addToMonth(group.months, row.month, row.fcAmount);
     else group.unscheduled = money(group.unscheduled + num(row.fcAmount));
     if (row.dealId) group.deals.add(row.dealId);
   }
@@ -336,7 +341,10 @@ export function summarizeForecastLines(rows = [], months = null) {
     .map((group) => ({
       ...group,
       volumeTotal: group.hasVolume ? money(group.volumeTotal) : null,
-      unscheduled: group.unscheduled > 0 ? group.unscheduled : null,
+      /* ⚠️ `!== 0` ไม่ใช่ `> 0` — เศษปัดติดลบ (-0.01 บนบรรทัดแถมท้ายใบ) เป็นยอดจริงของกอง
+         🐞 รีวิว #1787: `> 0` ทิ้งมันเงียบ ⇒ ช่องกองของชีตสรุปไม่เท่ารวมทั้งงวด และไม่เท่าชีตรายดีล
+            (แยกก้อน Won/ยังเปิด ทำให้เศษติดลบอยู่กลุ่มเดี่ยวบ่อยขึ้น — เดิมหักล้างกับอีกดีลในกลุ่มเดียวกัน) */
+      unscheduled: group.unscheduled !== 0 ? group.unscheduled : null,
       dealCount: group.deals.size,
       deals: undefined,
     }))
@@ -352,7 +360,7 @@ export function gridForecastLines(rows = [], months = null) {
   const axis = months || monthsInRows(rows);
   return rows.map((row) => {
     const grid = blankGrid(axis);
-    const scheduled = isScheduledRow(row);
+    const scheduled = inGrid(grid, row);
     if (scheduled) addToMonth(grid, row.month, row.fcAmount);
     return {
       ...row,
