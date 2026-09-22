@@ -29,7 +29,7 @@ import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
 import { reworkHopError } from '@/lib/requests/rework';
-import { findFormulaByIdentity } from '@/lib/master/formulas';
+import { deleteFormulaError, findFormulaByIdentity } from '@/lib/master/formulas';
 import {
   countProductsUsingFormula, createFormula, findScent, loadFormulas, updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
@@ -40,7 +40,8 @@ import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { canAnswerRequestsFor } from '@/lib/permissions';
 import { deleteRequestRowError, registryOwnedByRow } from '@/lib/requests/rowDelete';
-import { countRegistryRefs } from '@/lib/master/scentFormulaAdmin';
+import { countRegistryDependents, countRegistryRefs } from '@/lib/master/scentFormulaAdmin';
+import { deleteScentError } from '@/lib/master/scents';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { requestedLabel } from '@/lib/requests/rowLabel';
 
@@ -379,6 +380,18 @@ export async function PATCH(request, { params }) {
       }).eq('id', row.producedScentId).eq('status', 'developing');
       if (scentError) console.error('[requests] เปลี่ยนสถานะกลิ่นเป็น active ไม่สำเร็จ:', scentError.message);
     }
+    /* ⭐ สูตรที่เกิดพร้อมกลิ่น (พัฒนากลิ่นที่ส่งเป็นสินค้า · ม-148) เดินคู่กลิ่น — เกิดมา developing
+       ลูกค้าคอนเฟิร์มแล้วใช้งานได้พร้อมกัน · ขั้นใส่ราคา FB ที่ตามมาก็ต้องการสูตรที่ใช้งานได้
+       ⚠️ เฉพาะแถวพัฒนากลิ่น — สูตรของพัฒนาสูตรเกิดมา active อยู่แล้ว และแถว "ผูกของเดิม" (bind) อาจผูก
+       สูตรที่คนอื่นตั้งใจพักไว้ ห้ามปลุกให้เอง */
+    if (hop === 'outcome' && body.outcome === 'confirmed'
+        && row.lineKind === 'scent_dev' && row.producedFormulaId) {
+      const { error: formulaError } = await supabase.from('formulas').update({
+        status: 'active',
+        updatedAt: nowIso,
+      }).eq('id', row.producedFormulaId).eq('status', 'developing');
+      if (formulaError) console.error('[requests] เปลี่ยนสถานะสูตรเป็น active ไม่สำเร็จ:', formulaError.message);
+    }
 
     // ── วันส่งลูกค้าไหลกลับขึ้นทะเบียนกลิ่น (ม-66 · mig 0224) ─────────────
     //
@@ -577,8 +590,11 @@ export async function DELETE(request, { params }) {
        ต้นทางแล้วชนดัชนีคู่ซ้ำ (เพิ่งมีคนบันทึก "ลูกค้าขอแก้" ระหว่างกดลบ) · กวาดก่อน = แถวรอดแต่ไฟล์หายถาวร */
     /* ⚠️ ลบแบบมีเงื่อนไข `outcome IS NULL` — ด่านข้างบนอ่านแถวก่อนหลายรอบ ผู้ขอบันทึกผลลูกค้าแทรกได้ ⇒ แถวที่ลูกค้า
        เพิ่งตอบต้องไม่หาย (และสูตรรอบแก้ต้องไม่ถูกถอยตาม) · ไม่โดนแถวไหน = ตีกลับ ไม่ใช่เดินต่อ (รีวิว ม-147 รอบสาม) */
+    /* ⚠️ คืนค่าที่ลบจริงกลับมา — ของในทะเบียนที่ตามลบต้องมาจาก **แถวตอนลบ** ไม่ใช่สแนปช็อตก่อนหน้า (รีวิว ม-148 รอบสอง):
+       RD ส่งงานลงแถวรอบแก้แทรกระหว่างกดลบ ⇒ แถวได้กลิ่น(+สูตร)ใหม่ที่สแนปช็อตไม่รู้จัก ⇒ ลบแถวแล้วของใหม่กำพร้า */
     const { data: deletedRows, error: rowError } = await supabase.from('dept_request_items')
-      .delete().eq('id', itemId).is('outcome', null).select('id');
+      .delete().eq('id', itemId).is('outcome', null)
+      .select('id, "producedScentId", "producedFormulaId", "producedFormulaAction"');
     if (rowError?.code === '23505') {
       return Response.json({ error: 'รายการนี้เพิ่งมีรอบแก้ต่อจากมัน — ลบไม่ได้แล้ว โหลดหน้าใหม่' }, { status: 409 });
     }
@@ -590,7 +606,15 @@ export async function DELETE(request, { params }) {
         error: still ? 'รายการนี้เพิ่งมีการบันทึกผลลูกค้า — ลบไม่ได้แล้ว โหลดหน้าใหม่' : 'รายการนี้ถูกลบไปแล้ว — โหลดหน้าใหม่',
       }, { status: 409 });
     }
-    await purgeAttachments('dept_request_item', itemId);
+    /* ⚠️ แถวลบไปแล้ว ⇒ กวาดไฟล์พังต้องไม่โยน (รีวิว ม-148 รอบสาม) — โยน = 500 · ทะเบียนที่แถวสร้างไว้ไม่ถูกเก็บกวาด
+       · ไม่มีเธรด/audit · บอกผ่าน `_warning` แทน */
+    let attachWarning = null;
+    try {
+      await purgeAttachments('dept_request_item', itemId);
+    } catch (e) {
+      console.error('[requests] กวาดไฟล์แนบหลังลบแถวไม่สำเร็จ:', e?.message);
+      attachWarning = 'ลบรายการแล้ว แต่ลบไฟล์แนบของรายการไม่สำเร็จ';
+    }
 
     /* ⭐ **คิดตราปิดของใบใหม่หลังลบแถว** (รีวิว ม-144 · บั๊กเดิมทุกหัวข้อที่มีแถว) — ลบแถวที่ค้างตัวสุดท้าย
        (เช่นแถวรอบแก้) แล้วแถวที่เหลือจบครบหมด แต่ใบยังค้าง "รับเรื่องแล้ว" ไม่มีตราฝั่งฝ่าย ⇒ ปุ่ม "ตอบแล้ว"
@@ -613,7 +637,7 @@ export async function DELETE(request, { params }) {
     // ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามเมื่อไม่มีใครอ้างต่อแล้ว
     let registryRemoved = null;
     let registryKept = null;
-    const owned = reviseUndo ? null : registryOwnedByRow(row);
+    const owned = reviseUndo ? [] : registryOwnedByRow({ ...row, ...(deletedRows?.[0] || {}) });
     let restoredParent = null;
     let undoWarning = null;
     if (reviseUndo) {
@@ -654,24 +678,63 @@ export async function DELETE(request, { params }) {
         }
       }
     }
-    if (owned) {
-      const table = owned.kind === 'formula' ? 'formulas' : 'scents';
-      const { data: entity } = await supabase
-        .from(table).select('id, code, name, status').eq('id', owned.id).maybeSingle();
-      const refs = await countRegistryRefs(supabase, owned.kind, owned.id);
-      const deletable = entity && refs === 0 && ['draft', 'developing'].includes(entity.status);
-      if (deletable) {
-        const { error: regError } = await supabase.from(table).delete().eq('id', owned.id);
+    /* ⭐ แถวพัฒนากลิ่นที่ส่งเป็นสินค้า (ม-148) สร้างสองอย่าง — `registryOwnedByRow` เรียงสูตรก่อนกลิ่น
+       ⚠️ **หยุดที่ตัวแรกที่เก็บไว้** — สูตรลบไม่ได้แล้วยังลบกลิ่นต่อ = ฐานยอม (formulas.scentId SET NULL)
+       แล้วได้สูตรไร้กลิ่นค้างทะเบียน · กลิ่นที่ถูกเก็บเพราะสูตรยังอยู่ ต้องบอกเหตุนั้นตรง ๆ */
+    const removed = [];
+    const kept = [];
+    let registryWarning = null;
+    /* ⭐ ด่านชุดเดียวกับปุ่มลบบนหน้าทะเบียน (`deleteFormulaError` / `deleteScentError`) — นับทั้ง pointer แบบ
+       RESTRICT และแบบ SET NULL (สินค้า · สูตรที่แก้ต่อ · สูตรที่ใช้กลิ่น) · 🐞 รีวิว ม-148: สูตร "กำลังพัฒนา" ที่ SA
+       ผูกเข้าสินค้าแล้ว เคยถูกลบตามแถวได้เงียบ ๆ (products.formulaId SET NULL)
+       ⚠️ อ่านพัง = เก็บไว้ + หยุด — ไม่รู้ว่าสูตรยังอยู่ไหม ห้ามลบกลิ่นต่อ (ไม่งั้นสูตรไร้กลิ่น) */
+    const keep = (n, text) => {
+      kept.push(text);
+      if (owned.slice(n + 1).length) kept.push('กลิ่นของรายการนี้เก็บไว้ด้วย เพราะสูตรข้างต้นยังใช้กลิ่นนั้น');
+    };
+    /* ⚠️ **แถวถูกลบไปแล้วจริง ⇒ ห้ามโยนต่อจากนี้** (รีวิว ม-148 รอบสอง) — โยน = 500 ทั้งที่แถวหายแล้ว ไม่มีเธรด/audit
+       และคนกดคิดว่าลบไม่สำเร็จ · พังตรงไหน = เก็บตัวนั้น (และกลิ่นที่ตามมา) ไว้ บอกเหตุผ่าน `registryKept` */
+    for (const [n, own] of owned.entries()) {
+      const table = own.kind === 'formula' ? 'formulas' : 'scents';
+      let label = own.id;
+      try {
+        const { data: entity, error: readError } = await supabase
+          .from(table).select('*').eq('id', own.id).maybeSingle();
+        if (readError) throw readError;
+        if (!entity) continue; // ไม่มีแล้วจริง (มีคนลบไปก่อน) — ตัวถัดไปเดินต่อได้
+        label = entity.code || entity.name || own.id;
+        const refs = await countRegistryRefs(supabase, own.kind, own.id);
+        const dependents = await countRegistryDependents(supabase, own.kind, own.id);
+        const blocked = own.kind === 'formula'
+          ? deleteFormulaError(entity, { linkedCount: refs, ...dependents })
+          : deleteScentError(entity, { linkedCount: refs, ...dependents });
+        if (blocked) {
+          // เหตุที่เก็บไว้ต้องตรงความจริง — ไม่มีใครอ้างแต่รับเข้าทะเบียนแล้ว ≠ "ถูกอ้างที่อื่น" (รีวิว ม-147)
+          const reason = entity.status === 'archived' ? 'เลิกใช้แล้ว'
+            : ['draft', 'developing'].includes(entity.status) ? blocked
+              : 'ใช้งานอยู่ — เลิกใช้ที่หน้าทะเบียนถ้าไม่ต้องการ';
+          keep(n, `${label} ยังอยู่ในทะเบียน (${reason})`);
+          break;
+        }
+        const { error: regError } = await supabase.from(table).delete().eq('id', own.id);
         if (regError) throw regError;
-        await purgeUpdates(supabase, owned.kind, owned.id);
-        registryRemoved = entity.code || entity.name || owned.id;
-      } else if (entity) {
-        // เหตุที่เก็บไว้ต้องตรงความจริง — ไม่มีใครอ้างแต่รับเข้าทะเบียนแล้ว ≠ "ถูกอ้างที่อื่น" (รีวิว ม-147)
-        const reason = refs > 0 ? 'ถูกอ้างที่อื่นแล้ว'
-          : entity.status === 'archived' ? 'เลิกใช้แล้ว' : 'ใช้งานอยู่ — เลิกใช้ที่หน้าทะเบียนถ้าไม่ต้องการ';
-        registryKept = `${entity.code || entity.name || owned.id} ยังอยู่ในทะเบียน (${reason})`;
+        await purgeUpdates(supabase, own.kind, own.id);
+        removed.push(label);
+        // ⭐ กู้คืนได้จาก audit เท่านั้น (ไม่มีถังขยะ) — แถวทะเบียนเต็มก้อนลง `before` แบบเดียวกับปุ่มลบหน้าทะเบียน
+        await recordAudit({
+          user, action: 'delete', entityType: own.kind, entityId: own.id, before: entity, request,
+          summary: `ลบ${own.kind === 'formula' ? 'สูตร' : 'กลิ่น'} ${label} — ลบรายการ ${rowText(row) || itemId} (${before.docNo || id})`,
+        });
+      } catch (e) {
+        const text = `ตรวจ/ลบ ${label} ไม่สำเร็จ — ยังอยู่ในทะเบียน (${e?.code === '23503' ? 'ถูกอ้างเพิ่มระหว่างลบ' : e?.message})`;
+        keep(n, text);
+        // ⚠️ พังจริง (ไม่ใช่เก็บตามกติกา) ต้องขึ้นจอ — `registryKept` ไม่มีจอไหนแสดง (รีวิว ม-148 รอบสาม)
+        registryWarning = `ลบรายการแล้ว แต่${text} — ลบเองที่หน้าทะเบียน`;
+        break;
       }
     }
+    if (removed.length) registryRemoved = removed.join(' · ');
+    if (kept.length) registryKept = kept.join(' · ');
 
     /* ลงเธรดเสมอ — แถวที่หายไปจากตารางโดยไม่มีร่องรอยคือสิ่งที่ทำให้คนถามว่า
        "ของที่ส่งมาเมื่อวานหายไปไหน" · ชนิด `update` = เนื้อในของใบเปลี่ยน */
@@ -692,7 +755,9 @@ export async function DELETE(request, { params }) {
     });
     return Response.json({
       ok: true, registryRemoved, registryKept,
-      ...(closureWarning || undoWarning ? { _warning: [undoWarning, closureWarning].filter(Boolean).join(' · ') } : {}),
+      ...(closureWarning || undoWarning || attachWarning || registryWarning
+        ? { _warning: [undoWarning, closureWarning, attachWarning, registryWarning].filter(Boolean).join(' · ') }
+        : {}),
     });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

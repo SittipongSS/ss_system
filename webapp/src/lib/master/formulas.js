@@ -146,13 +146,26 @@ export function archiveFormulaError(formula) {
    (ดู `deleteScentError`) · สองทะเบียนนี้ต้องมีกติกาเดียวกันเสมอ */
 const DELETABLE_FORMULA_STATUS = new Set(['draft', 'developing']);
 
-export function deleteFormulaError(formula, { productCount = 0, linkedCount = 0 } = {}) {
+// `childCount` = สูตรที่ "แก้มาจาก" สูตรนี้ (`derivedFromFormulaId` เป็น SET NULL — ลบแล้วสายพันธุ์หายเงียบ)
+export function deleteFormulaError(formula, { productCount = 0, linkedCount = 0, childCount = 0 } = {}) {
   if (!formula) return 'ไม่พบสูตร';
   if (!DELETABLE_FORMULA_STATUS.has(formula.status)) {
     return 'ลบได้เฉพาะร่างหรือสูตรที่ยังกำลังพัฒนา — สูตรที่ใช้งานแล้วให้เปลี่ยนเป็น "เลิกใช้" แทน';
   }
   if (productCount > 0) return `มีสินค้า ${productCount} รายการอ้างสูตรนี้อยู่ ลบไม่ได้`;
   if (linkedCount > 0) return `สูตรนี้ถูกอ้างอยู่ ${linkedCount} ที่ (คำร้อง/ทะเบียนราคา) ลบไม่ได้`;
+  if (childCount > 0) return `มีสูตร ${childCount} ตัวแก้ต่อจากสูตรนี้ ลบไม่ได้`;
+  return null;
+}
+
+/* ── วันที่ของสูตร — กติกาเดียวของทุกทางที่สร้างสูตร (ทะเบียน · ส่งงานพัฒนาสูตร · ส่งงานพัฒนากลิ่นที่เป็นสินค้า)
+   🐞 รีวิว ม-148: ด่านส่งงานตรวจแค่รูปแบบ ⇒ ปี '2202' ผ่านจอ แล้วไปตายที่ `createFormula` หลังกลิ่นเกิดแล้ว
+   กันปีพิมพ์ผิดแบบที่เจอจริงบน prod ('2202-08-06') — ปีเกินช่วงที่เป็นไปได้แปลว่าพิมพ์ผิด ต้องดักตั้งแต่ตอนกรอก */
+export function formulaDateError(formulaDate) {
+  if (!formulaDate) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(formulaDate)) return 'วันที่ของสูตรไม่ถูกต้อง';
+  const year = Number(formulaDate.slice(0, 4));
+  if (year < 1990 || year > 2100) return 'ปีของวันที่สูตรไม่ถูกต้อง';
   return null;
 }
 
@@ -166,15 +179,8 @@ export function normalizeFormulaInput(body = {}) {
   if (code && code.length > 100) return { value: null, error: 'รหัสสูตรยาวเกิน 100 ตัวอักษร' };
 
   const formulaDate = String(body.formulaDate ?? '').trim() || null;
-  if (formulaDate && !/^\d{4}-\d{2}-\d{2}$/.test(formulaDate)) {
-    return { value: null, error: 'วันที่ของสูตรไม่ถูกต้อง' };
-  }
-  // กันปีพิมพ์ผิดแบบที่เจอจริงบน prod ('2202-08-06') — ปีเกินช่วงที่เป็นไปได้
-  // แปลว่าพิมพ์ผิด ไม่ใช่ข้อมูลจริง ต้องดักตั้งแต่ตอนกรอก
-  if (formulaDate) {
-    const year = Number(formulaDate.slice(0, 4));
-    if (year < 1990 || year > 2100) return { value: null, error: 'ปีของวันที่สูตรไม่ถูกต้อง' };
-  }
+  const dateError = formulaDateError(formulaDate);
+  if (dateError) return { value: null, error: dateError };
 
   const note = String(body.note ?? '').trim();
   if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };

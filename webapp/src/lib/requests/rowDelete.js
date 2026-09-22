@@ -3,6 +3,7 @@
 // ⭐ **1 แถว = 1 direction = กลิ่น 1 ตัว** (กติกาตั้งแต่ mig 0204) ⇒ "ลบรายการนี้"
 // กับ "ลบกลิ่นที่รายการนี้สร้าง" เป็นการกระทำเดียวกัน · แยกกันเมื่อไรจะได้ของค้าง:
 // ลบเฉพาะกลิ่น = แถวชี้ไปที่ว่าง · ลบเฉพาะแถว = กลิ่นลอยในทะเบียนไม่มีที่มา
+// ⭐ **+ สูตร 1 ตัว เมื่อ direction ส่งเป็นสินค้า** (ม-148) — แถวเดียวสร้างสองอย่าง ลบทั้งคู่
 //
 // 🐞 ที่มา: RD พิมพ์ชื่อ/รหัสผิดตอนกดส่งงาน แล้วไม่มีทางถอย — แก้ได้แต่ชื่อ (ทะเบียน)
 // ส่วนแถวในคำร้องลบไม่ได้เลย ⇒ ต้องปล่อยแถวผิดค้างไว้ทั้งใบ
@@ -42,10 +43,18 @@ export function deleteRequestRowError(request, row) {
   return null;
 }
 
-/** ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามไปด้วยเมื่อยังไม่มีใครอ้างต่อ */
+/**
+ * ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามไปด้วยเมื่อยังไม่มีใครอ้างต่อ · คืน **ลิสต์ตามลำดับที่ต้องลบ**
+ *
+ * ⚠️ **สูตรก่อนกลิ่นเสมอ** (ม-148) — `formulas.scentId` เป็น `ON DELETE SET NULL` และไม่อยู่ในตัวนับ
+ * การอ้างของกลิ่น (registryRefs.js) ⇒ ลบกลิ่นก่อน = ฐานยอมเงียบ ๆ แล้วได้สูตรที่ไม่มีกลิ่นค้างทะเบียน
+ * ผู้เรียกต้อง **หยุดที่ตัวแรกที่เก็บไว้** (ลบสูตรไม่ได้ = ห้ามลบกลิ่นที่สูตรนั้นยังใช้)
+ * ⚠️ แถวพัฒนาสูตรผูก `producedFormulaId` อย่างเดียว (กลิ่นเป็นของที่อ้าง `scentId` ไม่ใช่ของที่สร้าง)
+ */
 export function registryOwnedByRow(row) {
-  if (!row) return null;
-  if (row.producedScentId) return { kind: 'scent', id: row.producedScentId };
-  if (row.producedFormulaId) return { kind: 'formula', id: row.producedFormulaId };
-  return null;
+  if (!row) return [];
+  return [
+    row.producedFormulaId ? { kind: 'formula', id: row.producedFormulaId } : null,
+    row.producedScentId ? { kind: 'scent', id: row.producedScentId } : null,
+  ].filter(Boolean);
 }

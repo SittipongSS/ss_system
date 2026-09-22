@@ -12,6 +12,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, FlaskConical, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
 import ScentFormModal from "@/components/database/ScentFormModal";
 import { scentToForm } from "@/components/database/ScentForm";
 import Toast from "@/components/ui/Toast";
@@ -242,6 +243,7 @@ export default function ScentDetailPage() {
         onClose={() => setPricing(false)}
         title={`${hasPrice ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${scent.name}`}
         endpoint={`/api/master/scents/${scent.id}/price`}
+        notice={scentFPriceNotice(scent)}
         onSaved={(msg) => {
           setPricing(false);
           setToast({ kind: "success", msg });

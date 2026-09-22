@@ -24,7 +24,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import { ListPanel } from "@/components/ui/Workspace";
 import { matchesQueueSearch, useQueueBoard } from "@/lib/requests/useQueueBoard";
-import { fmtDate, fmtTime, NA } from "@/lib/format";
+import { fmtDate, fmtNumber, fmtTime, NA } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
@@ -37,6 +37,7 @@ import {
   requestFacetOptions, requestFilterCount, sortRequestRows,
 } from "@/lib/requests/queueList";
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
+import { priceLineText, requestPriceSummary } from "@/lib/requests/rowPrices";
 import { requestQueueTrack } from "@/lib/requests/queueTrack";
 import { requestAssignee } from "@/lib/requests/assign";
 import { requestSideLabel } from "@/lib/requests/replyTurn";
@@ -114,7 +115,7 @@ export default function RequestQueuePanel({
   // ⚠️ `doc` กว้างขึ้นเพราะรางสี่ขั้นย้ายเข้ามาอยู่ในเซลล์เดียวกัน (2026-08-18)
   const COL_WIDTH = {
     next: styles.colNext, due: styles.colDue, progress: styles.colProgress, doc: styles.colDoc,
-    deal: styles.colDeal, created: styles.colDue, closed: styles.colDue,
+    deal: styles.colDeal, created: styles.colDue, closed: styles.colDue, price: styles.colPrice,
   };
   // รับได้ทั้ง "full"/"search"/"none" และ true/false ของผู้เรียกเดิม
   const toolLevel = tools === true ? "full" : tools === false ? "search" : tools;
@@ -227,7 +228,8 @@ export default function RequestQueuePanel({
   /* ── คอลัมน์: ทะเบียนบอกว่ามีอะไร ที่นี่บอกว่าวาดยังไง ──────────────────
      ⚠️ **ทุกคีย์ในทะเบียนต้องมีตัววาดที่นี่** — `queueColumns.test.mjs` สแกนไฟล์นี้
      เช็คไว้ · ขาดไปแล้วคอลัมน์นั้นจะเป็นช่องว่างเงียบ ๆ ไม่มี error ให้เห็น */
-  const cols = requestColumns(columns);
+  // ⚠️ ส่งแถวทั้งชุดที่กรองแล้ว (ไม่ใช่แค่หน้าปัจจุบัน) — คอลัมน์ราคาไม่กระพริบหาย/โผล่ตอนเปลี่ยนหน้า
+  const cols = requestColumns(columns, visibleRows);
 
   /* ── ก้อน "คืบหน้า" — ป้ายสถานะ + ราง + ตัวเลขรายบรรทัด ──────────────────
      ⭐ **ยุบเข้าเซลล์ "คำร้อง"** (มติผู้ใช้ 2026-08-18) — ของเดิมเป็นคอลัมน์ท้ายสุด
@@ -566,6 +568,32 @@ export default function RequestQueuePanel({
          ⚠️ ใบยกเลิกไม่มีราง — ป้ายอย่างเดียว (รางที่ตายแล้วอ่านเหมือนใบยังเดินอยู่) */
       case "progress":
         return progressBlock(ask, p);
+      /* ⭐ **ราคาที่ใส่แล้ว** (ผู้ใช้ 2026-09-22) — ใบเดียวหลายรายการ: บรรทัดละรายการ (ชื่อ · F · B · FB) ·
+         เกินสามรายการสรุป "+N" (คิวอ่านเร็ว ไม่ใช่ที่ไล่ทั้งใบ — รายละเอียดอยู่ตารางในใบ)
+         · ยังใส่ไม่ครบทุกรายการบอก "ใส่ราคาแล้ว x/y" ⇒ รู้ว่ายังมีรายการรอราคา
+         ⚠️ ตัวจัดรูปเดียวกับตารางในใบ (`requestPriceSummary` → `rowPriceLines`) */
+      case "price": {
+        const summary = requestPriceSummary(ask.items, { settled: requestSettled(ask) });
+        if (!summary.priced) return <span className={styles.muted}>{NA}</span>;
+        // ใบหลายรายการบอกชื่อเสมอ (แม้จบแล้วเหลือราคาแถวเดียว) — กติกาเดียวกับการ์ด
+        const one = summary.rows <= 1;
+        return (
+          <>
+            {summary.lines.slice(0, 3).map((line) => (
+              <div key={line.id} className={styles.priceLine} title={line.label || undefined}>
+                {!one && line.label ? <span className={styles.priceLabel}>{line.label}</span> : null}
+                {priceLineText(line.prices)}
+              </div>
+            ))}
+            {summary.lines.length > 3 && (
+              <div className={styles.subText}>+{summary.lines.length - 3} รายการ</div>
+            )}
+            {summary.priced < summary.total && (
+              <div className={styles.subText}>ใส่ราคาแล้ว {summary.priced}/{summary.total}</div>
+            )}
+          </>
+        );
+      }
       case "status":
         return <RequestStatusBadge request={ask} />;
       default:
@@ -760,6 +788,20 @@ export default function RequestQueuePanel({
                         {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
                       </span>
                     )}
+                    {/* ⭐ ราคาที่ใส่แล้ว (รีวิว ม-148 รอบสาม) — มือถือ/จอตั้งเปิดเป็นการ์ดตั้งต้น · ไม่มีบรรทัดนี้ = คำขอ
+                        "หน้ารายการโชว์ราคา" ไม่เกิดบนมือถือเลย · ขึ้นตามเงื่อนไขเดียวกับคอลัมน์ (`cols.includes`) */}
+                    {cols.includes("price") && (() => {
+                      const summary = requestPriceSummary(ask.items, { settled: requestSettled(ask) });
+                      if (!summary.priced) return null;
+                      const [first] = summary.lines;
+                      return (
+                        <span className={styles.subText}>
+                          ราคา {summary.rows > 1 && first.label ? `${first.label} ` : ""}{priceLineText(first.prices)} บาท/กก.
+                          {summary.lines.length > 1 ? ` · +${summary.lines.length - 1} รายการ` : ""}
+                          {summary.priced < summary.total ? ` · ใส่ราคาแล้ว ${summary.priced}/${summary.total}` : ""}
+                        </span>
+                      );
+                    })()}
                     <span className={styles.cardMeta}>
                       {bounced && (
                         <span className={`ui-badge ${styles.overdue}`}>ตีกลับ · {bounced.note}</span>

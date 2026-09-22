@@ -775,3 +775,17 @@
   gap: var(--space-3);
   min-height: var(--ctl-h);
 }
+
+/* ── คอลัมน์ราคาในคิว (2026-09-22) — โผล่เมื่อมีใบที่ใส่ราคาแล้ว ─────────────────── */
+.colPrice { width: 170px; }
+/* บรรทัดละรายการ: ชื่อรายการ (ตัดด้วย …) บน · ตัวเลขล่าง — ชิดขวาตามคอลัมน์ตัวเลข */
+.priceLine { font-size: var(--fs-5); white-space: nowrap; }
+.priceLine + .priceLine { margin-top: var(--space-1); }
+.priceLabel {
+  display: block;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}

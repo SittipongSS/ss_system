@@ -174,3 +174,21 @@ test('⭐ คอมเมนต์ "ขอให้แก้" โชว์ที
   assert.equal(parent.outcomeNote, null);
   assert.equal(rework.reworkBrief, note);
 });
+
+test('⭐ ม-148 ตารางบอกว่าแต่ละ direction ส่งเป็นอะไร — แถวก่อน ม-148 ไม่เดา', () => {
+  const items = [
+    { id: 'P', lineKind: 'scent_dev', briefId: 'B1', label: 'EDP', categoryCode: '01-002',
+      producedScentId: 'S1', producedFormulaId: 'F1',
+      refFormula: { id: 'F1', code: 'PF-1-P1', name: 'EDP', status: 'developing' } },
+    { id: 'O', lineKind: 'scent_dev', briefId: 'B1', label: 'oil', categoryCode: '02-020', producedScentId: 'S2' },
+    { id: 'L', lineKind: 'scent_dev', briefId: 'B1', label: 'legacy', producedScentId: 'S3' },
+  ];
+  const [group] = briefBoard([{ id: 'B1', label: 'บรีฟ' }], items);
+  const by = Object.fromEntries(group.directions.map((d) => [d.id, d.delivered]));
+  assert.deepEqual(by.P, {
+    categoryCode: '01-002', product: true,
+    formula: { id: 'F1', code: 'PF-1-P1', name: 'EDP', status: 'developing', kind: 'formula' },
+  });
+  assert.deepEqual(by.O, { categoryCode: '02-020', product: false, formula: null });
+  assert.equal(by.L, null);
+});

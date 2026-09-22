@@ -3,6 +3,9 @@
 // ⭐ **หัวข้อ "พัฒนากลิ่น" ไม่มีตารางบรรทัดตอนเปิดใบ** — SA ไม่มีทางรู้ล่วงหน้าว่า
 // RD จะส่งกี่ direction ⇒ แถวเกิดตอน **ส่งของ** ไม่ใช่ตอนเปิด · 1 แถว = 1 direction
 // = กลิ่น 1 ตัวในทะเบียน (มติ: กลิ่น 1 ตัวถูกส่งครั้งเดียวตลอดชีวิต)
+// ⭐ **+ สูตร 1 ตัว เมื่อส่งเป็นสินค้า** (ม-148 · 2026-09-22) — direction ที่ RD ส่งเป็นสินค้าสำเร็จ
+// (เช่น EDP หมวด 01-002) ได้สูตร "หมวดนั้น × กลิ่นนี้" เกิดพร้อมกลิ่น ⇒ ขั้นราคาเป็น FB บนสูตร
+// ส่งเป็นหัวน้ำหอม (02-020) = กลิ่นอย่างเดียว ราคา F เหมือนเดิม · กติกาอยู่ที่ deliveredCategory.js
 //
 // ⚠️ ก้าวสองก้าวแรกเกิดพร้อมกันตรงนี้ — RD สร้างแถวตอนส่ง แปลว่า "รับเรื่อง" กับ
 // "ส่งของ" จบไปพร้อมกัน ⇒ แถวที่เกิดต้องอยู่ขั้น `ready` (รอ SA ไปรับ) ไม่ใช่
@@ -10,6 +13,8 @@
 import { businessDate } from '@/lib/businessDate';
 import { briefLinkError } from '@/lib/requests/scentBriefs';
 import { reworkSlotFrom, reworkTargetError } from '@/lib/requests/rework';
+import { deliveredCategoryError, isDeliveredAsProduct } from '@/lib/requests/deliveredCategory';
+import { formulaDateError } from '@/lib/master/formulas';
 
 export const MAX_DELIVERY_ROWS = 20;
 
@@ -32,10 +37,18 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // ── ตรวจของที่ RD กรอกตอนส่ง — คืน { rows, error } ───────────────────────
 //
 // `existingCodes` = รหัสกลิ่นที่มีอยู่แล้วในทะเบียน (ผู้เรียกโหลดมาให้)
+// `existingFormulaCodes` = รหัสสูตรทั้งทะเบียน (ม-148 — direction ที่ส่งเป็นสินค้าสร้างสูตรด้วย)
+// ⚠️ **ทะเบียนละชุด** — `scents_code_uk` กับ `formulas_code_uk` แยกกัน รหัสเดียวกันอยู่ได้ทั้งสองที่
+//   (RD ใช้รหัส PF เดียวกันทั้งกลิ่นและสูตรอยู่จริง) ⇒ เทียบรหัสสูตรกับทะเบียนสูตรเท่านั้น
+// `productTypes` = ทะเบียนหมวดสินค้า — ด่านหมวดที่ส่ง (ว่าง = ตรวจได้แค่รูปแบบ/กลุ่ม)
+// `labelOf(row, i)` = ป้ายของรายการในข้อความด่าน — จอส่งป้ายแท็บมา ให้ข้อความชี้แท็บที่คนเห็นได้
 // ⚠️ **เตือนรหัสซ้ำที่นี่ ไม่ปล่อยไปตายที่ DB** — unique violation จาก Postgres
 // เป็นภาษาอังกฤษอ่านไม่รู้เรื่อง และมาตอนกดส่งไปแล้วซึ่งสายเกินจะแก้ทีละช่อง
+// ⭐ **จอเรียกตัวนี้ตัวเดียวกับ server** (ม-148) — เดิมจอเขียนด่านย่อยเอง (ชื่อ/รหัส/ชนรหัส)
+//   แล้วช่องที่เพิ่มทีหลังตกหล่นจากจอ ปุ่มกดได้แต่ได้ 400 กลับมา
 export function normalizeDeliveryRows(input, {
-  existingCodes = [], today = null, briefs = [], items = [],
+  existingCodes = [], existingFormulaCodes = [], productTypes = [],
+  today = null, briefs = [], items = [], labelOf = null,
 } = {}) {
   const raw = Array.isArray(input) ? input : [];
   if (!raw.length) return { rows: [], error: 'ต้องมีอย่างน้อย 1 รายการที่ส่ง' };
@@ -43,14 +56,17 @@ export function normalizeDeliveryRows(input, {
     return { rows: [], error: `ส่งครั้งเดียวได้สูงสุด ${MAX_DELIVERY_ROWS} รายการ` };
   }
 
-  const taken = new Set(existingCodes.map((c) => String(c ?? '').trim().toLowerCase()).filter(Boolean));
+  const codeSet = (codes) => new Set(codes.map((c) => String(c ?? '').trim().toLowerCase()).filter(Boolean));
+  const taken = codeSet(existingCodes);
+  const takenFormula = codeSet(existingFormulaCodes);
+  const seenFormulaCode = new Set();
   const seenCode = new Set();
   const seenName = new Set();
   const rows = [];
 
   for (let i = 0; i < raw.length; i += 1) {
     const row = raw[i] || {};
-    const at = `รายการที่ ${i + 1}`;
+    const at = (labelOf && labelOf(row, i)) || `รายการที่ ${i + 1}`;
     /* ⭐ **ฟอร์มเดียวกับทะเบียนกลิ่น** (มติผู้ใช้ 2026-08-19) — ของที่เข้าทะเบียนอยู่ใน
        ก้อน `scent` ชื่อช่องชุดเดียวกับ `ScentForm` · ที่เหลือ (บรีฟ · รายละเอียด ·
        แถวรอบแก้) เป็นของแถวคำร้อง จึงยังอยู่ระดับบนเหมือนเดิม */
@@ -127,6 +143,38 @@ export function normalizeDeliveryRows(input, {
     const note = String(scent.note ?? '').trim();
     if (note.length > 2000) return { rows: [], error: `${at}: หมายเหตุยาวเกิน 2000 ตัวอักษร` };
 
+    /* ── ส่งเป็นอะไร (ม-148) — **บังคับเลือก** ─────────────────────────────────
+       ⭐ ตัวเลือกนี้ตัดสินว่าราคาที่ RD จะใส่ทีหลังเป็น F (กลิ่น) หรือ FB (สูตร) — ปล่อยว่างได้
+       เมื่อไร ก็กลับไปเป็นบั๊กเดิมที่ราคาเนื้อ EDP เข้าทะเบียนเป็นราคาหัวน้ำหอม
+       ⚠️ รอบแก้ **ไม่ล็อกหมวด** — รอบแรกส่งหัวน้ำหอม รอบสองลูกค้าขอเป็น EDP ได้จริง
+       (ค่าตั้งต้นบนจอยกจากรอบก่อนให้แล้ว) */
+    const categoryCode = String(row.categoryCode ?? '').trim();
+    const categoryError = deliveredCategoryError(categoryCode, productTypes);
+    if (categoryError) return { rows: [], error: `${at}: ${categoryError}` };
+
+    let formula = null;
+    if (isDeliveredAsProduct(categoryCode)) {
+      // ⭐ ฟอร์มเดียวกับทะเบียนสูตร (ก้อน `formula` ชื่อช่องชุด FormulaForm) — ด่านตัวเดียวกับสายพัฒนาสูตร
+      const { value, error: formulaError } = normalizeFormulaDelivery({ formula: row.formula });
+      if (formulaError) return { rows: [], error: `${at}: ${formulaError}` };
+      const formulaKey = value.code.toLowerCase();
+      if (seenFormulaCode.has(formulaKey)) {
+        return { rows: [], error: `${at}: รหัสสูตร "${value.code}" ซ้ำกับรายการก่อนหน้า` };
+      }
+      if (takenFormula.has(formulaKey)) {
+        return { rows: [], error: `${at}: รหัสสูตร "${value.code}" ถูกใช้ไปแล้วในทะเบียนสูตร` };
+      }
+      seenFormulaCode.add(formulaKey);
+      formula = {
+        ...value,
+        /* ⚠️ รอบแก้: สูตรตัวใหม่ชี้กลับสูตรที่รอบก่อนส่งไว้ — **ค่าที่ระบบรู้ ไม่ใช่คำถาม**
+           (แบบเดียวกับ derivedFromScentId) · รอบก่อนส่งเป็นหัวน้ำหอม = ไม่มีสูตรต้นทาง
+           ⚠️ ไม่เก็บสูตรต้นทางเข้ากรุ (ต่างจาก ม-147) — กลิ่นรอบนี้เป็นตัวใหม่ ⇒ หมวด × กลิ่น
+           เป็นคู่ใหม่ ไม่ชนตัวตนของสูตรเดิม */
+        derivedFromFormulaId: slot ? (slot.parentFormulaId || null) : value.derivedFromFormulaId,
+      };
+    }
+
     rows.push({
       // แถวที่จะเติมของลงไป — null = สร้างแถวใหม่ตามปกติ
       targetItemId,
@@ -145,6 +193,9 @@ export function normalizeDeliveryRows(input, {
       // ไม่ใช่คำถาม · ปล่อยให้เลือกเองเมื่อไรก็ชี้ผิดตัวได้ทั้งที่คำตอบมีตัวเดียว
       derivedFromScentId: slot?.derivedFromScentId
         || String(scent.derivedFromScentId ?? '').trim() || null,
+      // ส่งเป็นอะไร — '02-020' = หัวน้ำหอม · หมวดอื่น = สินค้า (มีก้อน `formula`)
+      categoryCode,
+      formula,
     });
   }
   return { rows, error: null };
@@ -157,7 +208,7 @@ export function normalizeDeliveryRows(input, {
 // บนแถวที่ตัวเองเพิ่งส่งไป · ค่าตั้งต้นยกมาจาก **วันที่รับเรื่องของใบ** ซึ่งเป็น
 // ความจริงที่ใกล้ที่สุด (แผน: การรับเรื่องระดับใบ fan-out ลงแถวที่ยังไม่มี ackAt)
 export function deliveryItemRow(row, {
-  requestId, sortOrder, scentId, ackAt, user = null,
+  requestId, sortOrder, scentId, formulaId = null, ackAt, user = null,
 }) {
   const by = { id: user?.id ?? null, name: user?.name ?? null };
   return {
@@ -173,6 +224,13 @@ export function deliveryItemRow(row, {
     // ส่วนสายพัฒนากลิ่น กลิ่นคือ **ผลลัพธ์** ไม่ใช่ของที่อ้าง · ใส่ทั้งสองช่อง =
     // แหล่งความจริงสองที่ที่ drift ได้
     producedScentId: scentId,
+    /* ⭐ ส่งเป็นอะไร (ม-148) — `categoryCode` ของแถวพัฒนากลิ่น = **หมวดที่ RD ส่งจริง**
+       (ของ product_dev คือหมวดที่ขอ · ชุดรหัสเดียวกับ PDR ข้อ 1.11 ⇒ เทียบที่ขอกับที่ส่งได้ตรง ๆ)
+       · สูตรที่เกิดพร้อมกลิ่นผูก `producedFormulaId` ⇒ ขั้นราคาเลือก FB เอง (rowPriceTarget)
+       · `producedFormulaAction: 'create'` = แถวนี้เป็นคนสร้างสูตร — บันทึกตอนส่ง ไม่เดาจากทะเบียน (ม-147) */
+    categoryCode: row.categoryCode || null,
+    producedFormulaId: formulaId || null,
+    producedFormulaAction: formulaId ? 'create' : null,
     // ชั้นกลาง — direction นี้ตอบบรีฟก้อนไหน (mig 0213)
     briefId: row.briefId ?? null,
     answerStatus: 'pending',
@@ -214,9 +272,9 @@ export function normalizeFormulaDelivery(input = {}) {
   if (code.length > 100) return { value: null, error: 'รหัสสูตรยาวเกิน 100 ตัวอักษร' };
 
   const formulaDate = String(src.formulaDate ?? '').trim() || null;
-  if (formulaDate && !ISO_DATE.test(formulaDate)) {
-    return { value: null, error: 'วันที่ของสูตรไม่ถูกต้อง' };
-  }
+  // ⭐ กติกาเดียวกับ `createFormula` (รูปแบบ + ช่วงปี) — ไม่งั้นผ่านด่านแล้วไปตายหลังกลิ่นเกิด
+  const dateError = formulaDateError(formulaDate);
+  if (dateError) return { value: null, error: dateError };
 
   const customerTradeName = String(src.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
   if (customerTradeName.length > 200) {
