@@ -4,8 +4,8 @@ import {
   canViewSalesPlanning, inSalesViewScope, monthKey, salesPlanningViewScope,
 } from '@/lib/salesPlanning';
 import {
-  canExportForecastReport, forecastBreakdownOfDeal, forecastMonthOfDeal,
-  monthsInRows, monthsOfYear, normalizeFgCode,
+  canExportForecastReport, forecastBreakdownOfDeal, isScheduledRow,
+  monthsInRows, normalizeFgCode,
 } from '@/lib/sales/forecastBreakdown';
 import { eligibleForecastQuotations } from '@/lib/sales/forecastSource';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
@@ -16,7 +16,8 @@ import { teamNameOf } from '@/lib/master/teams';
 import { reportQuotationIdOf } from '@/lib/sales/reportQuotation';
 import { businessDayKey } from '@/lib/datePeriods';
 import { parseReportPeriodParams, reportPeriodLabel } from '@/lib/sales/reportPeriod';
-import { dealInReportPeriod } from '@/lib/sales/dealPeriod';
+import { dealAxisPlacement, dealDeliveryMonth, dealInReportPeriod, normalizeDealAxis } from '@/lib/sales/dealPeriod';
+import { isWonStage } from '@/lib/salesPlanning';
 
 export const runtime = 'nodejs';
 
@@ -74,10 +75,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const period = parseReportPeriodParams(params, { today: businessDayKey(new Date().toISOString()) });
   if (period?.error) return Response.json({ error: period.error }, { status: 400 });
   const year = period?.mode === 'year' ? period.year : null;
+  /* ⭐ แกน (มติผู้ใช้ 2026-09-22 รอบรื้อ) — ตัวเดียวกับปุ่ม "ดูตาม" บนหน้าดีล
+     close    = ดีลที่คาดปิดในงวด · คอลัมน์ = เดือนคาดปิด
+     delivery = ดีลที่ลูกค้ารับของในงวด (+ กอง "ยังไม่ระบุวันรับของ" ของดีลที่ปิดในงวด) · คอลัมน์ = เดือนรับของ
+     ทั้งสองแกน: คอลัมน์ = **เฉพาะเดือนในงวด** (มติผู้ใช้ — เดิมยาวไปถึงเดือนส่งของสุดท้าย เลือก ก.ย. ได้ถึง มิ.ย. 28) */
+  const axis = normalizeDealAxis(params.get('axis'));
 
   const [deals, quotations, valueItems, products, productTypes] = await Promise.all([
     fetchAllResult(() => supabase.from('sales_deals')
-      .select('id, code, title, stage, "customerName", "ownerId", "ownerName", team, "endDate", "expectedCloseDate", "forecastMonth", metadata, "projectValue", "forecastSource", "forecastQuotationId"')
+      .select('id, code, title, stage, "customerName", "ownerId", "ownerName", team, "endDate", "expectedCloseDate", "forecastMonth", metadata, "projectValue", probability, "forecastSource", "forecastQuotationId"')
       .order('id', { ascending: true })),
     /* ต้องอ่านช่องที่ `eligibleForecastQuotations` ใช้ให้ครบ — รายงานเลือก "ใบที่ควร
        ยึด" ด้วยกติกาเดียวกับ FC ไม่ใช่กติกาของตัวเอง (สองรูลบุ๊กเพี้ยนหากันแน่นอน) */
@@ -180,8 +186,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (!inSalesViewScope(user, deal)) continue;
     // กติกาเดือนอยู่ที่ lib (มีเทสต์) — ที่นี่แค่เรียกใช้
     // ในงวด = เดือนคาดปิดอยู่ในงวด (ตัวตัดสินเดียวกับรายการดีล · lib/sales/dealPeriod)
-    if (period && !dealInReportPeriod(deal, period)) continue;
-    const { month, basis: monthBasis } = forecastMonthOfDeal(deal, monthKey);
+    if (period && !dealInReportPeriod(deal, period, axis)) continue;
+    /* ช่องเดือน = ฟิลด์เดียวกับที่คัดเข้างวด (`dealAxisPlacement`) ⇒ ดีลในงวดลงช่องในงวดเสมอ
+       แกนปิด: เดือนคาดปิด (ช่วงวัน = เดือนของวันคาดปิด) · แกนรับของ: endDate → demandMonth · ไม่รู้ = กองท้ายกริด
+       🐞 เดิมแกนรับของใช้ `forecastMonthOfDeal` + `monthKey` (อ่านรูปคนละแบบกับตัวคัด) และแกนปิดช่วงวันลงช่องด้วย
+          forecastMonth ทั้งที่คัดด้วย expectedCloseDate ⇒ ยอดไปลงเดือนนอกงวดแล้วหายจากกริดเงียบ ๆ */
+    const { month, basis: monthBasis } = dealAxisPlacement(deal, axis, period);
     /* ดีลยอด 0 ข้ามได้เฉพาะเมื่อไม่มีใบที่เป็นตัวแทน — ใบที่ลูกค้ารับแต่ลด 100% (มติผู้ใช้ 2026-09-16)
        ยังต้องผลิตของจริง ⇒ ต้องมีบรรทัดจำนวน/ปริมาตรในไฟล์ (ยอดเงินเป็น 0 ไม่กระทบยอดรวมไฟล์) */
     if (!Number(deal.projectValue) && !reportQuotationIdOf(deal)) continue;
@@ -206,6 +216,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
            ⚠️ **ไม่ใช่ตัวกำหนดช่องในกริด** แม้ดีลจะไม่มีวันที่สิ้นสุด — ยอดแบบนั้นไปกอง
               "ยังไม่ระบุเดือน" · ช่องนี้มีไว้ให้เทียบด้วยตาว่าดีลปิดเดือนไหน ส่งของเดือนไหน */
         expectedCloseMonth: monthKey(deal.expectedCloseDate),
+        deliveryMonth: dealDeliveryMonth(deal),
+        // สองก้อนของชีตสรุป: ยืนยันแล้ว (Won) / คาดการณ์ (ยังเปิด) · โอกาสปิด (FC%) ให้ฝ่ายผลิตชั่งน้ำหนักเอง
+        won: isWonStage(deal.stage),
+        probability: deal.probability ?? null,
         dealCode: deal.code,
         dealTitle: deal.title,
         customerName: deal.customerName,
@@ -228,13 +242,20 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     ? 'ทั้งบริษัท'
     // ไม่มีทีม = ขอบเขตพิสูจน์ไม่ได้ ⇒ เขียนตรง ๆ ดีกว่าโชว์ "ทีม —" ที่อ่านเหมือนทีมชื่อขีด
     : (user.team ? `ทีม ${teamNameOf(teamNames, user.team)}` : 'เฉพาะที่มองเห็น (ไม่ระบุทีม)');
-  /* คอลัมน์กริด = เดือนของงวด (ทั้งปี = 12 เดือนเสมอ ให้ไฟล์แต่ละรอบวางเทียบกันได้) ∪ เดือนส่งของที่มีจริง
-     ⚠️ ต้องรวมเดือนที่มีจริงเสมอ — addToMonth ทิ้งยอดของเดือนที่ไม่มีคอลัมน์เงียบ ๆ ⇒ ดีลที่ปิดในงวดแต่ส่งของ
-        หลังงวดจะหายจากกริดทั้งที่ยังอยู่ในยอดรวม */
-  const gridMonths = [...new Set([...(year ? monthsOfYear(year) : (period?.months || [])), ...monthsInRows(rows)])].sort();
+  /* คอลัมน์กริด = **เฉพาะเดือนของงวด** บนแกนที่เลือก (ทั้งปี = 12 เดือนเสมอ ให้ไฟล์แต่ละรอบวางเทียบกันได้)
+     ดีลเข้าไฟล์ด้วยแกนเดียวกับคอลัมน์ ⇒ แถวที่ลงช่องเดือนได้มีเดือนอยู่ในงวดเสมอ · ไม่ระบุงวด = เดือนที่มีจริง */
+  const gridMonths = period ? period.months : monthsInRows(rows);
+  /* ยามกันยอดหาย: แถวที่มีเดือนแต่เดือนไม่อยู่ในกริด = ตัวคัดกับตัวลงช่องเพี้ยนกัน (ไม่ควรเกิด — เทสต์สวีปไว้)
+     ตัววาดไฟล์ย้ายแถวแบบนี้ไปกอง "ยังไม่ระบุ…" ให้ยอดไม่หาย · ที่นี่ส่งเสียงให้รู้ว่ามีของหลุด */
+  const strayRows = rows.filter((row) => isScheduledRow(row) && !gridMonths.includes(row.month));
+  if (strayRows.length) {
+    console.warn(`[forecast-report] ${strayRows.length} บรรทัดมีเดือนนอกงวด (แกน ${axis}) — ย้ายไปกองท้ายกริด`,
+      [...new Set(strayRows.map((row) => row.dealCode))].slice(0, 20).join(', '));
+  }
   const buffer = await buildForecastReportBuffer(rows, {
     year,
     periodLabel: period ? reportPeriodLabel(period) : null,
+    axis,
     scopeLabel,
     months: gridMonths,
     categoryNames,
@@ -245,7 +266,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   return new Response(buffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': forecastReportDisposition(forecastPeriodSpan(period), today, scopeLabel),
+      'Content-Disposition': forecastReportDisposition(`${forecastPeriodSpan(period) || 'all'}${axis === 'delivery' ? '-delivery' : ''}`, today, scopeLabel),
       'Cache-Control': 'no-store',
     },
   });

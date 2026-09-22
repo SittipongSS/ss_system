@@ -35,6 +35,8 @@ import Select from "@/components/ui/Select";
 import ReportPeriodControl from "@/components/ui/ReportPeriodControl";
 import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import useReportPeriod from "@/lib/ui/useReportPeriod";
+import { DEAL_AXIS_OPTIONS, dealDeliveryMonth, dealDeliveryState, dealMissingDelivery, normalizeDealAxis } from "@/lib/sales/dealPeriod";
+import { formatMonthLabel } from "@/lib/datePeriods";
 import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
@@ -102,6 +104,14 @@ export default function SalesPlanningPipelinePage() {
   const pageNow = useMemo(() => new Date(), []);
   const periodState = useReportPeriod({ defaultAllMonths: true, now: pageNow });
   const { month, allMonths, period: dealPeriod, query: periodQuery } = periodState;
+  /* ⭐ แกนของงวด (มติผู้ใช้ 2026-09-22 รอบรื้อ "FC ยอดปิด รวมถึงวันที่รับของ เพื่อส่งให้ผลิตวางแผน")
+     close = เดือนปิดการขาย (ฝ่ายขาย · ค่าตั้งต้น) · delivery = เดือนรับของ (ฝ่ายผลิต) — รายการ KPI ไฟล์เดินตามแกนเดียวกัน
+     กติกาทั้งหมดอยู่ที่ lib/sales/dealPeriod (ตัวเดียวกับ API รายการดีลและไฟล์ FC) */
+  const [dealAxis, setDealAxis] = useStickyState("dealAxis", "close");
+  const axis = normalizeDealAxis(dealAxis);
+  const axisQuery = `${periodQuery}&axis=${axis}`;
+  const periodWord = axis === "delivery" ? "รับของใน" : "คาดปิดใน";
+  const [deliveryFilter, setDeliveryFilter] = useStickyState("deliveryFilter", EMPTY);
   const [rangeError, setRangeError] = useState("");
   const [downloadError, setDownloadError] = useState("");
   const [deals, setDeals] = useState([]);
@@ -222,7 +232,7 @@ export default function SalesPlanningPipelinePage() {
            เดิมสองอย่างนี้ยิง URL เดียวกัน = ติ๊กทุกเดือนแล้วได้ดีลทุกปีมาปนกัน */
         apiFetch(reviewOnly
           ? "/api/sales-planning/deals"
-          : `/api/sales-planning/deals?${periodQuery}`),
+          : `/api/sales-planning/deals?${axisQuery}`),
         apiFetch("/api/master/customers"),
         apiFetch("/api/pm/projects"),
       ]);
@@ -251,7 +261,7 @@ export default function SalesPlanningPipelinePage() {
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [month, allMonths, reviewOnly, periodQuery, dealPeriod, startRun]);
+  }, [month, allMonths, reviewOnly, axisQuery, dealPeriod, startRun]);
 
   useEffect(() => {
     load();
@@ -296,6 +306,9 @@ export default function SalesPlanningPipelinePage() {
         if (!dueFilter.includes(key)) return false;
       }
       if (reviewOnly && !deal.metadata?.needsReview) return false;
+      /* วันรับของ: ยังไม่ระบุ / ระบุแล้ว (มติผู้ใช้ 2026-09-22 — กอง "ยังไม่ระบุวันรับของ" ต้องไล่ได้จากจอ)
+         ⚠️ ดีลแพ้ที่ไม่มีวันรับของไม่อยู่ทั้งสองกลุ่ม (dealDeliveryState = null) — "ระบุแล้ว" ต้องไม่โชว์แถวที่ไม่มีเดือนรับของ */
+      if (deliveryFilter.length && !deliveryFilter.includes(dealDeliveryState(deal))) return false;
       if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
       if (!q) return true;
@@ -323,7 +336,7 @@ export default function SalesPlanningPipelinePage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
       return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [deals, query, inScopeDeal, dueFilter, currentMonth, stageFilter, typeFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
+  }, [deals, query, inScopeDeal, dueFilter, currentMonth, stageFilter, typeFilter, deliveryFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
 
   /* จับกลุ่มจากรายการที่กรอง+เรียงแล้ว (ลำดับในกลุ่ม = ลำดับที่ผู้ใช้เลือกเรียงไว้)
      · กุญแจกลุ่มใช้ id ก่อน (กันชื่อซ้ำ) — แบรนด์เป็นข้อความอิสระจึง normalize ตัวพิมพ์
@@ -386,6 +399,17 @@ export default function SalesPlanningPipelinePage() {
   });
 
   const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
+  /* ดีลที่ยังไม่มีวันรับของในงวด+ขอบเขตที่ดูอยู่ (ไม่นับดีลแพ้) — แถบเตือนให้ AE กรอก · ไฟล์ FC แกนรับของกองไว้ "ยังไม่ระบุวันรับของ" */
+  const noDelivery = useMemo(() => {
+    const list = deals.filter((d) => inScopeDeal(d) && dealMissingDelivery(d));
+    return { count: list.length, value: list.reduce((sum, d) => sum + Number(d.projectValue || 0), 0) };
+  }, [deals, inScopeDeal]);
+  /* "ดูเฉพาะดีลกลุ่มนี้" = ล้างตัวกรอง/ค้นหาอื่นก่อน — จำนวนบนแถบเตือนนับจากขอบเขตอย่างเดียว
+     🐞 ถ้าคงสถานะ=Won หรือคำค้นที่ค้างไว้ แถบบอก 34 แต่ตารางโชว์น้อยกว่า (บั๊กตระกูลเดียวกับ 34 vs 36) */
+  const showMissingDelivery = () => {
+    setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); setQuery("");
+    setDeliveryFilter(["missing"]);
+  };
 
   /* นับจาก **ดีลที่ผู้ใช้เห็นตามขอบเขตที่เลือก** ไม่ใช่ทั้งตาราง — แถบเตือนบอกว่า
      "ของคุณค้างกี่ใบ" ไม่ใช่ยอดทั้งบริษัทที่เขาทำอะไรไม่ได้ */
@@ -400,7 +424,7 @@ export default function SalesPlanningPipelinePage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filteredDeals, {
-      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${periodQuery}|${groupBy}`,
+      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${deliveryFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${axisQuery}|${groupBy}`,
     });
 
   const openNewDeal = () => setCreateModal(true);
@@ -795,6 +819,10 @@ export default function SalesPlanningPipelinePage() {
           canEdit={deal.canEdit && !isClosedStage(deal.stage)}
           onSaved={load}
         />
+        {/* เดือนรับของ (วันที่สิ้นสุด) คู่กับเดือน FC เสมอ — สองแกนของหน้านี้ต้องเห็นพร้อมกันในแถว */}
+        {dealDeliveryMonth(deal)
+          ? <span className="cell-sub">รับของ {formatMonthLabel(dealDeliveryMonth(deal))}</span>
+          : dealMissingDelivery(deal) && <span className={`cell-sub ${styles.noDelivery}`}>ยังไม่ระบุวันรับของ</span>}
       </td>
       <td className="num mono" style={{ whiteSpace: "nowrap" }} title={isWonStage(deal.stage) ? "มูลค่าปิดจริง (Won · Actual — ไม่รวมยอด SO รออนุมัติ)" : "มูลค่าคาดการณ์"}>
         {fmtMoney(dealDisplayValue(deal))}
@@ -840,15 +868,17 @@ export default function SalesPlanningPipelinePage() {
      ปุ่มกลาง ExcelDownloadButton โหลดผ่าน apiFetch (ต้องมีเซสชัน · พลาดแล้วบอกเป็นภาษาไทย) */
   const headerRight = (
     <>
+      {/* แกนของงวด — ฝ่ายขายดูยอดปิด ฝ่ายผลิตดูของที่ต้องส่ง (มติผู้ใช้ 2026-09-22) */}
+      <Segmented ariaLabel="ดูงวดตาม" value={axis} onChange={setDealAxis} options={DEAL_AXIS_OPTIONS} />
       {/* ตัวเลือกงวดตัวกลาง — ทรงเดียวกับรายงานยอดขาย/ลีด (มติผู้ใช้ 2026-09-22 "ทุกหน้าตัวคุมชุดเดียว") */}
       <ReportPeriodControl state={periodState} onRangeError={setRangeError} />
 
       {canExportReport && (
         <ExcelDownloadButton
-          href={`/api/sales-planning/forecast-report?${periodQuery}`}
+          href={`/api/sales-planning/forecast-report?${axisQuery}`}
           fallbackName="FC-by-category.xlsx"
           label="ดาวน์โหลด Excel FC"
-          title={`รายงาน FC รายหมวดของดีลที่คาดปิดใน ${periodState.label} — ไม่ขึ้นกับตัวกรองของตาราง`}
+          title={`รายงาน FC รายหมวดของดีลที่${periodWord} ${periodState.label} (คอลัมน์ = เดือน${axis === "delivery" ? "รับของ" : "ปิดการขาย"} เฉพาะในงวด · แยก Won/คาดการณ์) — ไม่ขึ้นกับตัวกรองของตาราง`}
           onError={setDownloadError}
         />
       )}
@@ -914,6 +944,17 @@ export default function SalesPlanningPipelinePage() {
             </div>
           )}
           {rangeError && <StatusNotice tone="warning" onDismiss={() => setRangeError("")}>{rangeError}</StatusNotice>}
+          {/* ⭐ กอง "ยังไม่ระบุวันรับของ" ต้องเห็นบนจอ (มติผู้ใช้ 2026-09-22) — ฝ่ายผลิตวางแผนจากวันรับของ
+              ดีลที่ไม่มีวันนี้ไม่ถูกเดาเดือนให้ ⇒ บอกจำนวน + ปุ่มกรองให้ AE ไปเติม */}
+          {!reviewOnly && noDelivery.count > 0 && !deliveryFilter.includes("missing") && (
+            <StatusNotice
+              tone="warning"
+              title={`ดีล ${noDelivery.count} ใบ ยังไม่มีวันรับของ (มูลค่า ${fmtMoney(noDelivery.value)})`}
+              action={<Button size="sm" onClick={showMissingDelivery}>ดูเฉพาะดีลกลุ่มนี้</Button>}
+            >
+              ฝ่ายผลิตวางแผนจากวันรับของ — ยอดของดีลกลุ่มนี้อยู่คอลัมน์ &quot;ยังไม่ระบุวันรับของ&quot; ในไฟล์ FC (มุมมองเดือนรับของ) · เติม &quot;วันที่สิ้นสุด&quot; ในดีล
+            </StatusNotice>
+          )}
           {downloadError && (
             <StatusNotice tone="error" title="ดาวน์โหลด Excel FC ไม่สำเร็จ" onDismiss={() => setDownloadError("")}>{downloadError}</StatusNotice>
           )}
@@ -946,7 +987,7 @@ export default function SalesPlanningPipelinePage() {
               </div>
 
               <SaMetricStrip>
-                <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note={reviewOnly ? "ตามขอบเขต · ทุกงวด (รอเติมข้อมูล)" : `ตามขอบเขต · คาดปิดใน ${periodState.label}`} />
+                <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note={reviewOnly ? "ตามขอบเขต · ทุกงวด (รอเติมข้อมูล)" : `ตามขอบเขต · ${periodWord} ${periodState.label}`} />
                 <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />
                 <SaMetric icon={<CheckCircle2 />} label="ปิดสำเร็จ (Won)" value={wonDeals.length} note={wonNote} tone="good" />
                 <SaMetric icon={<Ban />} label="ไม่ไปต่อ (Lost)" value={lostDeals.length} note="ดีลที่ปิดโดยไม่เกิดยอดขาย" tone={lostDeals.length ? "danger" : undefined} />
@@ -979,8 +1020,8 @@ export default function SalesPlanningPipelinePage() {
               <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหารหัส / ดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
             <FilterPopover
-              count={stageFilter.length + typeFilter.length + dueFilter.length + reviewFilter.length}
-              onClear={() => { setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); }}
+              count={stageFilter.length + typeFilter.length + dueFilter.length + reviewFilter.length + deliveryFilter.length}
+              onClear={() => { setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); setDeliveryFilter([]); }}
               groups={[
                 {
                   key: "stage", label: "สถานะ", icon: Flag,
@@ -1000,6 +1041,14 @@ export default function SalesPlanningPipelinePage() {
                     { value: "ontime", label: `ตรงกำหนด (${dueCounts.ontime})` },
                   ],
                   selected: dueFilter, onChange: setDueFilter,
+                },
+                {
+                  key: "delivery", label: "วันรับของ", icon: Truck,
+                  options: [
+                    { value: "missing", label: `ยังไม่ระบุวันรับของ (${noDelivery.count})` },
+                    { value: "known", label: "ระบุแล้ว" },
+                  ],
+                  selected: deliveryFilter, onChange: setDeliveryFilter,
                 },
                 {
                   key: "review", label: "ข้อมูลดีล", icon: AlertTriangle,
@@ -1098,7 +1147,7 @@ export default function SalesPlanningPipelinePage() {
                 {!filteredDeals.length && (
                   <tr>
                     <td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
-                      {reviewOnly ? "ไม่มีดีลที่รอเติมข้อมูล" : `ไม่มีดีลที่คาดปิดใน ${periodState.label}`} {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
+                      {reviewOnly ? "ไม่มีดีลที่รอเติมข้อมูล" : `ไม่มีดีลที่${periodWord} ${periodState.label}`} {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
                 )}
