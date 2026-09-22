@@ -38,3 +38,12 @@
 .pinnedEdit:hover {
   text-decoration: underline;
 }
+
+/* ข้อความของฟอร์มแก้ไขดีล — อยู่ในโมดัลเหนือแถบปุ่ม (เดิมไปขึ้นใต้โมดัล กดบันทึกแล้วเงียบ) */
+.formError {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--fs-7);
+  line-height: var(--lh-text);
+  color: var(--red);
+}
