@@ -7,7 +7,7 @@
 //        ⚠️ ด่านจริงอยู่ที่นี่ — proxy เห็นแค่ role ไม่รู้ว่าใครเป็นเจ้าของทะเบียน
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
-import { canEditScent, canProposeScent, canViewScents, isScentRegistrar } from '@/lib/master/scents';
+import { canEditScent, canOfferScentDelete, canProposeScent, canViewScents, isScentRegistrar } from '@/lib/master/scents';
 import { createScent, loadScents } from '@/lib/master/scentFormulaAdmin';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +28,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // ติดธงสิทธิ์มากับแถวเลย — หน้าจอไม่มี user id ให้เทียบ `createdById` เอง
     // (แพตเทิร์นเดียวกับ `_mine` ของคิวเคสขอราคา) · ธงนี้เป็นแค่เรื่องการแสดงผล
     // ด่านจริงยังอยู่ที่ handler ทุกเส้น
-    return ok(rows.map((s) => ({ ...s, _canEdit: canEditScent(user, s) })));
+    return ok(rows.map((s) => ({ ...s, _canEdit: canEditScent(user, s), _canDelete: canOfferScentDelete(user, s) })));
   } catch (e) {
     return fail(e.message, 500);
   }

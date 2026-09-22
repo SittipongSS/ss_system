@@ -3,7 +3,7 @@
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import {
-  canEditFormula, canProposeFormula, canViewFormulas, isFormulaRegistrar,
+  canEditFormula, canOfferFormulaDelete, canProposeFormula, canViewFormulas, isFormulaRegistrar,
 } from '@/lib/master/formulas';
 import { createFormula, loadFormulas } from '@/lib/master/scentFormulaAdmin';
 
@@ -22,7 +22,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       customerId: sp.get('customerId') || null,
     });
     // ธงสิทธิ์มากับแถว — หน้าจอไม่มี user id ให้เทียบเอง (ดูหมายเหตุใน scents/route.js)
-    return ok(rows.map((f) => ({ ...f, _canEdit: canEditFormula(user, f) })));
+    return ok(rows.map((f) => ({ ...f, _canEdit: canEditFormula(user, f), _canDelete: canOfferFormulaDelete(user, f) })));
   } catch (e) {
     return fail(e.message, 500);
   }

@@ -472,6 +472,8 @@ const SALES_OPS = [
 const SUPERUSER_CAPS = [
   'customers:view', 'customers:edit', 'customers:delete',
   'products:view', 'products:edit', 'products:delete', 'products:margin', 'products:cost',
+  // ลบกลิ่น/สูตรในทะเบียนได้ทุกสถานะ (ยังต้องไม่มีใครอ้าง) — ดู ROLE_CAPS.rd_coordinator
+  'registry:delete',
   'sales:view', 'sales:act', 'sales:delete',
   'ra:view', 'ra:approve',
   'history:view', 'audit:view',
@@ -520,6 +522,8 @@ const SALES_HEAD_EXCLUDED = [
   //    `users:view` เปิดหน้า /users + /api/users ให้เขาทันที (proxy.js) ซึ่งไม่เคยเป็น
   //    สิทธิ์ของเขา · `requests:answer` เขาผ่านทาง isSuperuser อยู่แล้วจึงไม่ต้องถือ cap
   'users:view', 'requests:answer',
+  // ลบกลิ่น/สูตรทุกสถานะเป็นของ RD Project Coordinator (มติผู้ใช้ 2026-09-22) — หัวหน้าฝ่ายขายไม่ได้ตาม admin
+  'registry:delete',
 ];
 
 // Sales head (ae_supervisor): every remaining sales/RA-view/PM capability
@@ -692,6 +696,13 @@ for (const role of SERVICE_HEAD_ROLES) ROLE_CAPS[role] = SERVICE_HEAD_CAPS;
    ⚠️ **ชี้ไปที่ชุดเดียวกัน ไม่ก๊อปสี่รอบ** — วันที่แก้ cap ของ `rd` ตำแหน่งที่ลืมแก้
    จะเดินออกจากกันเงียบ ๆ · วันที่จะรัดสิทธิ์รายตำแหน่งจริง ค่อยเขียนอาเรย์ของตัวเอง
    ให้ตำแหน่งนั้นใน `ROLE_CAPS` แล้วบรรทัดนี้จะไม่ทับ (เช็ค `ROLE_CAPS[role] ||`) */
+/* ⭐ **ตำแหน่งแรกที่สิทธิ์ต่างจาก `rd`** — Project Coordinator ลบกลิ่น/สูตรในทะเบียนได้ **ทุกสถานะ**
+   (ผู้ใช้ 2026-09-22: *"อยากเพิ่มสิทธิ์การลบ ทะเบียนกลิ่น สูตร ให้ Project Co RD ด้วย"* · เลือก "ลบได้ทุกสถานะ
+   ถ้าไม่มีใครอ้าง") — ตำแหน่งอื่นของ RD ยังลบได้แค่ร่าง/กำลังพัฒนา
+   ⚠️ **ไม่ใช่บังคับลบ** — ด่านนับของที่อ้าง (คำร้อง · ราคา · สูตร · สินค้า · สายพันธุ์) ยังอยู่ครบ
+   ไม่ปลดลิงก์ให้ (บังคับลบยังเป็นของ admin คนเดียว — `canForceDelete`)
+   ⚠️ ประกอบจากชุดของ `rd` ไม่พิมพ์ซ้ำ — วันแก้ cap ของ `rd` ตำแหน่งนี้ขยับตาม */
+ROLE_CAPS.rd_coordinator = [...ROLE_CAPS.rd, 'registry:delete'];
 for (const role of RD_ROLES) ROLE_CAPS[role] = ROLE_CAPS[role] || ROLE_CAPS.rd;
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
@@ -768,6 +779,12 @@ export function capsForUser(user) {
 
 export function canUser(user, cap) {
   return capsForUser(user).includes(cap);
+}
+
+/* ลบกลิ่น/สูตรในทะเบียนได้ทุกสถานะ (ร่าง · กำลังพัฒนา · ใช้งาน · เลิกใช้) — ยังต้องไม่มีใครอ้าง
+   ⭐ ตัวเดียวที่ API · หน้ารายการ · หน้ารายละเอียด ถาม (ดู `deleteScentError` / `deleteFormulaError`) */
+export function canDeleteRegistryAnyStatus(user) {
+  return canUser(user, 'registry:delete');
 }
 
 // Superuser roles: 'all'-team data scope on every resource (view/edit/delete).

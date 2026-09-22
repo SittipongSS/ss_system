@@ -3,8 +3,9 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 // ⭐ ชื่อ/รหัสเปลี่ยน = คำร้องทุกใบที่อ้างถึงต้องมีบรรทัดในประวัติ (มติผู้ใช้ 2026-08-18)
 import { logRegistryChangeToRequests } from '@/lib/requests/registryNotify';
 import { recordAudit } from '@/lib/audit';
+import { canDeleteRegistryAnyStatus } from '@/lib/permissions';
 import {
-  acceptFormulaError, archiveFormulaError, canEditFormula, canViewFormulas,
+  acceptFormulaError, archiveFormulaError, canEditFormula, canOfferFormulaDelete, canViewFormulas,
   deleteFormulaError, formulaTransitionError, isFormulaRegistrar, normalizeFormulaInput,
 } from '@/lib/master/formulas';
 import {
@@ -24,7 +25,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // แล้วเห็นข้อมูลไม่เท่ากันคือโรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์ม
     const formula = await findFormulaDetail(supabase, id);
     if (!formula) return notFound('ไม่พบสูตร');
-    return ok(formula);
+    // ธงปุ่มลบ — ตัวเดียวกับหน้ารายการ (สิทธิ์ + สถานะ · ของที่อ้างอยู่ DELETE บอกเหตุตอนกด)
+    return ok({ ...formula, _canDelete: canOfferFormulaDelete(user, formula) });
   } catch (e) {
     return fail(e.message, 500);
   }
@@ -187,13 +189,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     linkedCount: await countRegistryRefs(supabase, 'formula', id),
     // สูตรที่แก้ต่อจากตัวนี้ (SET NULL) — ด่านชุดเดียวกับลบรายการในคำร้อง (รีวิว ม-148 รอบสอง)
     childCount: (await countRegistryDependents(supabase, 'formula', id)).childCount,
-  });
+  }, { anyStatus: canDeleteRegistryAnyStatus(user) }); // `registry:delete` ข้ามด่านสถานะ (ดู deleteFormulaError)
   if (error) return badRequest(error);
 
   const { error: delError } = await supabase.from('formulas').delete().eq('id', id);
   if (delError) return fail(delError.message, 500);
   await recordAudit({
     user, action: 'delete', entityType: 'formula', entityId: id, before: formula, request: req,
+    summary: `ลบสูตร ${formula.code || formula.name} (สถานะ ${formula.status})`,
   });
   return ok({ ok: true });
 });

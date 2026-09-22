@@ -6,7 +6,7 @@
 //
 // ⚠️ รหัสสูตรเป็นของจริงจาก RD ไม่ใช่เลขรันของระบบ (มติ 8) — ร่างยังไม่มีรหัสได้
 // เพราะของจริงบน prod มี 10 แถวที่มีแต่ชื่อไม่มีรหัส (ดูหัว migration 0171)
-import { canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { canDeleteRegistryAnyStatus, canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const FORMULA_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
@@ -147,15 +147,22 @@ export function archiveFormulaError(formula) {
 const DELETABLE_FORMULA_STATUS = new Set(['draft', 'developing']);
 
 // `childCount` = สูตรที่ "แก้มาจาก" สูตรนี้ (`derivedFromFormulaId` เป็น SET NULL — ลบแล้วสายพันธุ์หายเงียบ)
-export function deleteFormulaError(formula, { productCount = 0, linkedCount = 0, childCount = 0 } = {}) {
+// `anyStatus` = ผู้ลบถือ `registry:delete` — ข้ามแค่ด่านสถานะ ด่านนับของที่อ้างยังอยู่ครบ (ดู `deleteScentError`)
+export function deleteFormulaError(formula, { productCount = 0, linkedCount = 0, childCount = 0 } = {}, { anyStatus = false } = {}) {
   if (!formula) return 'ไม่พบสูตร';
-  if (!DELETABLE_FORMULA_STATUS.has(formula.status)) {
+  if (!anyStatus && !DELETABLE_FORMULA_STATUS.has(formula.status)) {
     return 'ลบได้เฉพาะร่างหรือสูตรที่ยังกำลังพัฒนา — สูตรที่ใช้งานแล้วให้เปลี่ยนเป็น "เลิกใช้" แทน';
   }
   if (productCount > 0) return `มีสินค้า ${productCount} รายการอ้างสูตรนี้อยู่ ลบไม่ได้`;
   if (linkedCount > 0) return `สูตรนี้ถูกอ้างอยู่ ${linkedCount} ที่ (คำร้อง/ทะเบียนราคา) ลบไม่ได้`;
   if (childCount > 0) return `มีสูตร ${childCount} ตัวแก้ต่อจากสูตรนี้ ลบไม่ได้`;
   return null;
+}
+
+/** โชว์ปุ่มลบไหม — ตัวเดียวกับที่ API ใช้ตัดสินสิทธิ์+สถานะ (ของที่อ้างอยู่ API บอกเหตุตอนกด) */
+export function canOfferFormulaDelete(user, formula) {
+  if (!formula || !canEditFormula(user, formula)) return false;
+  return canDeleteRegistryAnyStatus(user) || DELETABLE_FORMULA_STATUS.has(formula.status);
 }
 
 /* ── วันที่ของสูตร — กติกาเดียวของทุกทางที่สร้างสูตร (ทะเบียน · ส่งงานพัฒนาสูตร · ส่งงานพัฒนากลิ่นที่เป็นสินค้า)

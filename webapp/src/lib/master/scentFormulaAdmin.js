@@ -527,7 +527,7 @@ export async function rowPriceSlotsLive(supabase, row) {
 }
 
 /* ของที่ชี้เข้ากลิ่น/สูตรด้วย FK แบบ SET NULL (ไม่อยู่ใน `countRegistryRefs`) — ด่านก่อนลบ (ม-148 · รีวิว 2026-09-22)
-   · กลิ่น: สูตรที่ใช้กลิ่นนี้ (ทุกสถานะ) + สินค้า · สูตร: สินค้า + สูตรที่แก้ต่อจากมัน
+   · กลิ่น: สูตรที่ใช้กลิ่นนี้ (ทุกสถานะ) + สินค้า + กลิ่นที่แก้ต่อจากมัน · สูตร: สินค้า + สูตรที่แก้ต่อจากมัน
    ⚠️ คืนเลข ไม่ตัดสินเอง — ข้อความอยู่ที่ `deleteScentError` / `deleteFormulaError` ตัวเดียวกับหน้าทะเบียน */
 export async function countRegistryDependents(supabase, kind, id) {
   const head = (table, column) => supabase.from(table)
@@ -539,10 +539,11 @@ export async function countRegistryDependents(supabase, kind, id) {
     ]);
     return { productCount, childCount };
   }
-  const [formulaCount, productCount] = await Promise.all([
-    head('formulas', 'scentId'), head('products', 'scentId'),
+  // `childCount` = กลิ่นที่แก้ต่อจากกลิ่นนี้ (`scents.derivedFromScentId` SET NULL) — กติกาเดียวกับฝั่งสูตร
+  const [formulaCount, productCount, childCount] = await Promise.all([
+    head('formulas', 'scentId'), head('products', 'scentId'), head('scents', 'derivedFromScentId'),
   ]);
-  return { formulaCount, productCount };
+  return { formulaCount, productCount, childCount };
 }
 
 // จำนวนสินค้าที่อ้างสูตรนี้ — ใช้เป็นด่านก่อนลบ

@@ -95,11 +95,12 @@ export default function FormulasPage() {
     },
     {
       id: "delete",
-      label: f.status === "draft" ? "ลบร่างนี้" : "ลบสูตร (ผู้ดูแลระบบ)",
+      // `_canDelete` = ตัวตัดสินเดียวกับ API (`canOfferFormulaDelete`) — ดูหน้าทะเบียนกลิ่น
+      label: f.status === "draft" ? "ลบร่างนี้" : f._canDelete ? "ลบสูตรนี้" : "ลบสูตร (ผู้ดูแลระบบ)",
       icon: Trash2,
       tone: "danger",
       separatorBefore: true,
-      visible: isAdmin || (f._canEdit && f.status === "draft"),
+      visible: isAdmin || !!f._canDelete,
       onClick: () => setConfirm({ kind: "delete", formula: f }),
     },
   ];
@@ -355,7 +356,7 @@ export default function FormulasPage() {
     try {
       const result = await deleteWithForce(`/api/master/formulas/${formula.id}`, { isAdmin });
       if (result.ok) {
-        setToast({ kind: "success", msg: result.forced ? "บังคับลบสูตรแล้ว" : "ลบร่างแล้ว" });
+        setToast({ kind: "success", msg: result.forced ? "บังคับลบสูตรแล้ว" : formula.status === "draft" ? "ลบร่างแล้ว" : "ลบสูตรแล้ว" });
         await reload();
         setConfirm(null);
       } else if (result.cancelled) setConfirm(null);
@@ -382,7 +383,9 @@ export default function FormulasPage() {
         title: draft ? "ลบร่างสูตร" : "ลบสูตรออกจากทะเบียน",
         message: draft
           ? `ลบร่าง "${confirm.formula.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`
-          : `ลบ "${confirm.formula.name}" ออกจากทะเบียน? ถ้ามีสินค้าอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`,
+          : isAdmin
+            ? `ลบ "${confirm.formula.name}" ออกจากทะเบียน? ถ้ามีสินค้าอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`
+            : `ลบ "${confirm.formula.name}" ออกจากทะเบียน? ทำแล้วย้อนไม่ได้ · ถ้ามีคำร้อง ราคา สินค้า หรือสูตรที่แก้ต่ออ้างอยู่ ระบบจะไม่ให้ลบและบอกว่าติดที่ไหน`,
         confirmLabel: draft ? "ลบร่าง" : "ลบสูตร",
       };
     }
