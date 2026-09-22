@@ -482,3 +482,29 @@ test('escape คำบรรยายที่ผู้ใช้พิมพ์'
   assert.doesNotMatch(html, /<img onerror/);
   assert.match(html, /&lt;img onerror/);
 });
+
+test('🐞 สินค้าที่มีแบรนด์/ชื่อแต่ภาษาอังกฤษ พิมพ์ภาษาอังกฤษ — ไม่ใช่ N/A', () => {
+  // ของจริง 22/09/2569: FG-646-01-002-1968 brandName "" · brandNameEn "M Marthest"
+  // (สินค้าหมวด 01/02 มีแบรนด์อังกฤษล้วน 107/418 · ชื่ออังกฤษล้วน 199/418)
+  const snapshot = snapshotOf();
+  snapshot.product = {
+    ...snapshot.product,
+    brandName: '', brandNameEn: 'M Marthest',
+    productDescription: '', productDescriptionEn: 'ERROR 404: Identity Not Found',
+  };
+  const html = renderProductSpecDocument(baseInput({ snapshot }));
+  assert.match(html, /M Marthest/);
+  assert.match(html, /ERROR 404: Identity Not Found/);
+});
+
+test('แบรนด์มีสองภาษา ใช้กฎภาษาเดียวชุดกลาง (อังกฤษก่อน) · ชื่อสินค้าไทยก่อน', () => {
+  const snapshot = snapshotOf();
+  snapshot.product = {
+    ...snapshot.product,
+    brandName: 'อาร์เทโพล', brandNameEn: 'Artepole',
+    productDescription: 'ชาวัลเลย์ 50 มล.', productDescriptionEn: 'Eau de Tea Valley 50 ml',
+  };
+  const html = renderProductSpecDocument(baseInput({ snapshot }));
+  assert.match(html, /Artepole/);
+  assert.match(html, /ชาวัลเลย์ 50 มล\./);
+});

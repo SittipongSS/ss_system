@@ -7,6 +7,7 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 import { TableScroll } from "@/components/ui/Table";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { naText } from "@/lib/format";
+import { productBrandName, productDisplayName } from "@/lib/master/productIdentity";
 import {
   PRODUCT_SPEC_CERT_STATUS_LABELS, PRODUCT_SPEC_CHECKLIST, productSpecCertPendingLabel,
   productSpecChecklistMissing, restoreChecklistItem,
@@ -102,9 +103,10 @@ export default function ProductSpecForm({
       >
         <div className="form-grid cols-3">
           {derived("ชื่อลูกค้า", product?.customerName)}
-          {derived("ชื่อแบรนด์", product?.brandName)}
+          {/* 🐞 แบรนด์/ชื่อที่มีแต่ภาษาอังกฤษเคยขึ้นขีด — ตัวเลือกภาษาชุดเดียวกับกระดาษ */}
+          {derived("ชื่อแบรนด์", productBrandName(product))}
           {derived("รหัสสินค้า", product?.fgCode)}
-          {derived("ชื่อผลิตภัณฑ์", product?.productDescription)}
+          {derived("ชื่อผลิตภัณฑ์", productDisplayName(product))}
           {derived("ประเภทผลิตภัณฑ์", product?.categoryName, product?.categoryCode ? `หมวด ${product.categoryCode}` : "")}
           {derived("กลิ่น / รหัสกลิ่น", product?.scentText)}
           {derived("ขนาดบรรจุ", product?.volumeText)}

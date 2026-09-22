@@ -40,7 +40,7 @@ function storeFailure(res, { missing }) {
 async function loadProduct(supabase, id, user) {
   const { data, error } = await supabase
     .from('products')
-    .select('id, fgCode, categoryCode, productDescription, brandName, customerName, team, ownerId')
+    .select('id, fgCode, categoryCode, productDescription, productDescriptionEn, brandName, brandNameEn, customerName, team, ownerId')
     .eq('id', id)
     .maybeSingle();
   if (error) return { error: error.message };

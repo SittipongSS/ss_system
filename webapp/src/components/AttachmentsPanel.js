@@ -17,7 +17,7 @@ import DateInput from "@/components/ui/DateInput";
 //    อัป/ลบในการ์ดได้เลย. เห็นชัดว่าเอกสารจำเป็นไหนยังขาด.
 //  • ฟอร์มรายละเอียด (order — entity ที่มี ATTACHMENT_META_FIELDS) — เก็บ
 //    เลขใบเสร็จ/วันที่/ยอด/อ้างอิงออเดอร์ ฯลฯ ลง metadata.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { fmtDate, naText } from "@/lib/format";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
@@ -112,7 +112,7 @@ export default function AttachmentsPanel({
   intakeWeight = 0,
   /* โหมด inline: `(photos) => [{ id, content }]` — เปลี่ยนตะแกรงรูปเป็น **รายการรายแถว**
      รูปอยู่ซ้าย ของที่ผู้เรียกเขียนกำกับรูปนั้นอยู่ขวาในบรรทัดเดียวกัน
-     (มติผู้ใช้ 2026-09-21 · เหตุผลและกับดักอยู่ที่ `PhotoRows`)
+     (มติผู้ใช้ 2026-09-21 · เหตุผลและกับดักอยู่ที่ `renderPhotoRows`)
      ⚠️ ลำดับแถวเป็นของผู้เรียก · id ที่ไม่มีรูปคู่กันถูกข้าม (ไฟล์เพิ่งถูกลบ) */
   photoRows,
   /* โหมด inline: **ปุ่ม "ถ่ายรูป" ขนาดนิ้ว** แทนลิงก์ "แนบไฟล์" ตัวจิ๋ว (มติผู้ใช้ 2026-09-21)
@@ -394,7 +394,14 @@ export default function AttachmentsPanel({
   // กติกาอยู่ที่ `attachmentStorage` ที่เดียว — หน้าสัญญาเปิดไฟล์เองด้วยตัวเดียวกันนี้
   const fileHref = (it) => attachmentHref(it);
 
-  const FileRow = ({ it, compact }) => (
+  /* ⚠️ **แถว/ช่องย่อยของแผงนี้เป็นฟังก์ชันวาด (`renderX(...)`) ไม่ใช่ component (`<X />`)**
+     🐞 2026-09-22 ช่องคำบรรยายภาพของใบสเปคสินค้า พิมพ์ได้ทีละตัวแล้วเคอร์เซอร์หลุด —
+       `PhotoRows` เคยประกาศเป็น component ข้างในฟังก์ชันนี้ ⇒ ทุกครั้งที่แผงวาดใหม่ (ผู้เรียก
+       พิมพ์หนึ่งตัว = `photoRows` ตัวใหม่) React เห็นเป็น "ชนิดใหม่" แล้วทิ้งทั้งกิ่งสร้างใหม่
+       ช่องที่ผู้เรียกฝากมาใน `row.content` จึงหลุดโฟกัสทุกตัวอักษร (รูปย่อก็ถูกสร้างใหม่ทุกครั้งด้วย)
+     ⇒ เรียกเป็นฟังก์ชันให้มันเป็นส่วนหนึ่งของต้นไม้ของแผงเอง · ห้ามเปลี่ยนกลับเป็น `<X />`
+       (เทสต์ `attachmentsPanelRender.test.mjs` กันไว้) · ห้ามใช้ hook ข้างในฟังก์ชันพวกนี้ */
+  const renderFileRow = ({ it, compact }) => (
     <div className="flex items-center justify-between gap-2 text-xs py-1">
       {/* ⭐ เอกสารส่วนบุคคลของลูกค้าที่คนนอกทีมผู้ดูแลไม่มีสิทธิ์เปิด (มติผู้ใช้ 2026-08-16)
           — API ส่งแถวมาแบบปิดเนื้อหาไว้ (`restricted`) เพื่อให้การ์ด "เอกสารบังคับ" ยัง
@@ -480,7 +487,7 @@ export default function AttachmentsPanel({
   // ── วันที่ออกเอกสาร (เฉพาะชนิดที่มีอายุ เช่น หนังสือรับรอง 6 เดือน) ──────
   // ⚠️ ต้องเป็นช่องแก้ได้ ไม่ใช่ถามแค่ตอนอัป: ไฟล์ที่แนบไว้ก่อนมีฟีเจอร์นี้ต้องเติม
   // วันที่ย้อนหลังได้ ไม่งั้นต้องลบทิ้งแล้วอัปใหม่เพียงเพื่อกรอกวันที่หนึ่งช่อง
-  const IssuedDateRow = ({ it }) => {
+  const renderIssuedDateRow = ({ it }) => {
     const validity = documentValidity(entityType, it, today);
     if (!validity) return null;
     return (
@@ -515,9 +522,9 @@ export default function AttachmentsPanel({
   // ขนาดแถวข้อความเล็กเกินกว่าจะดูออกว่าเป็นขวดทรงไหน จึงแยกรูปออกมาเป็นตารางภาพ
   // ขนาดใช้งานได้จริง (แนวเดียวกับฟีดความเคลื่อนไหวของดีล) ส่วนไฟล์ที่ไม่ใช่รูป
   // (PDF/สเปก) ยังเป็นแถวรายชื่อเหมือนเดิม เพราะภาพย่อของมันไม่ได้บอกอะไร
-  /* หนึ่งช่องรูป — ตัวเดียวที่ทั้งตะแกรง (`PhotoGrid`) และรายการรายแถว (`PhotoRows`)
+  /* หนึ่งช่องรูป — ตัวเดียวที่ทั้งตะแกรง (`renderPhotoGrid`) และรายการรายแถว (`renderPhotoRows`)
      ใช้ร่วมกัน ⇒ ปุ่มลบกับกล่องดูรูปเต็มมีทางเดียว ไม่ใช่สองชุดที่เพี้ยนหากันวันหนึ่ง */
-  const PhotoTile = ({ it }) => (
+  const renderPhotoTile = ({ it }) => (
     <div style={{ position: "relative" }}>
       <button
         type="button"
@@ -564,7 +571,7 @@ export default function AttachmentsPanel({
        ต้องเทียบชื่อไฟล์เองว่าแถวไหนของรูปไหน · รูปเดียวยังพอเดา สิบรูปคือเดาผิด
      ผู้เรียกส่ง **ลำดับแถวมาเอง** เพราะลำดับที่จะพิมพ์เป็นเรื่องของผู้เรียก ไม่ใช่
      ลำดับที่ API คืนมา — และรูปที่ผู้เรียกไม่ได้สั่งให้ขึ้น ก็ไม่ขึ้น */
-  const PhotoRows = ({ photos, rows }) => {
+  const renderPhotoRows = ({ photos, rows }) => {
     const byId = new Map(photos.map((it) => [it.id, it]));
     return (
       <div className={styles.photoRows}>
@@ -573,7 +580,7 @@ export default function AttachmentsPanel({
           if (!it) return null;
           return (
             <div key={row.id} className={styles.photoRow}>
-              <div className={styles.photoRowThumb}><PhotoTile it={it} /></div>
+              <div className={styles.photoRowThumb}>{renderPhotoTile({ it })}</div>
               <div className={styles.photoRowBody}>{row.content}</div>
             </div>
           );
@@ -582,7 +589,7 @@ export default function AttachmentsPanel({
     );
   };
 
-  const PhotoGrid = ({ photos }) => (
+  const renderPhotoGrid = ({ photos }) => (
     <div
       className="mt-2"
       /* 🐞 **เดิม `minmax(148px, 1fr)`** — พอกล่องแม่กว้างพอดีหนึ่งช่อง (การ์ดขวา
@@ -599,7 +606,7 @@ export default function AttachmentsPanel({
         gap: 8,
       }}
     >
-      {photos.map((it) => (<PhotoTile key={it.id} it={it} />))}
+      {photos.map((it) => (<Fragment key={it.id}>{renderPhotoTile({ it })}</Fragment>))}
     </div>
   );
 
@@ -783,10 +790,10 @@ export default function AttachmentsPanel({
           const rowsOf = typeof photoRows === "function" ? photoRows(photos) : null;
           return (
             <>
-              {photos.length > 0 && (rowsOf ? <PhotoRows photos={photos} rows={rowsOf} /> : <PhotoGrid photos={photos} />)}
+              {photos.length > 0 && (rowsOf ? renderPhotoRows({ photos, rows: rowsOf }) : renderPhotoGrid({ photos }))}
               {files.length > 0 && (
                 <div className="mt-1 divide-y divide-[var(--border)]">
-                  {files.map((it) => (<FileRow key={it.id} it={it} compact />))}
+                  {files.map((it) => (<Fragment key={it.id}>{renderFileRow({ it, compact: true })}</Fragment>))}
                 </div>
               )}
             </>
@@ -1025,8 +1032,8 @@ export default function AttachmentsPanel({
                     <div className="divide-y divide-[var(--border)]">
                       {files.map((it) => (
                         <div key={it.id}>
-                          <FileRow it={it} compact />
-                          <IssuedDateRow it={it} />
+                          {renderFileRow({ it, compact: true })}
+                          {renderIssuedDateRow({ it })}
                         </div>
                       ))}
                     </div>

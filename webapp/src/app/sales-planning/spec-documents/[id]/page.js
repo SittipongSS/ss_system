@@ -23,6 +23,7 @@ import { notifyToast } from "@/lib/feedback";
 import { fmtDate, fmtDateTime, naText } from "@/lib/format";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { SALES_ORDER_STATUS_LABELS } from "@/lib/sales/salesOrderWorkflow";
+import { productBrandName, productDisplayName } from "@/lib/master/productIdentity";
 import {
   DOC_REVISION_STATUS_LABELS, DOC_STATUS_LABELS, docReasonError, formatRevLabel,
 } from "@/lib/sales/productSpecDocWorkflow";
@@ -196,7 +197,7 @@ export default function ProductSpecDocumentPage() {
         <DetailOverview
           eyebrow="FM-SA-04 · PRODUCT SPECIFICATION"
           title={specDoc.docNo}
-          description={[product?.fgCode, product?.productDescription, product?.brandName].filter(Boolean).join(" · ") || "ใบสเปคสินค้า"}
+          description={[product?.fgCode, productDisplayName(product), productBrandName(product)].filter(Boolean).join(" · ") || "ใบสเปคสินค้า"}
           badges={<>
             <StatusBadge tone="neutral" label={formatRevLabel(latest?.revNo)} />
             <StatusBadge tone={isVoid ? "neutral" : docRevisionTone(latest?.status)} label={naText(statusLabel)} />
@@ -277,8 +278,8 @@ export default function ProductSpecDocumentPage() {
             href={productSpecPageHref(productId) || undefined}
             eyebrow="สเปคสินค้า"
             title={product?.fgCode || null}
-            subtitle={product?.productDescription || "สเปคของสินค้าที่เอกสารนี้อ้าง"}
-            facts={[{ label: "แบรนด์", value: product?.brandName || null }]}
+            subtitle={productDisplayName(product) || "สเปคของสินค้าที่เอกสารนี้อ้าง"}
+            facts={[{ label: "แบรนด์", value: productBrandName(product) || null }]}
           />
         </ContextGrid>
 

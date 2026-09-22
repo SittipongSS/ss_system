@@ -76,7 +76,10 @@ function documentPayload(loaded, user) {
         id: product.id,
         fgCode: product.fgCode,
         productDescription: product.productDescription,
+        productDescriptionEn: product.productDescriptionEn,
+        // ⚠️ ส่งทั้งสองภาษา — จอเลือกภาษาด้วย productBrandName/productDisplayName (สินค้าที่มีแต่ชื่ออังกฤษเคยขึ้นขีด)
         brandName: product.brandName,
+        brandNameEn: product.brandNameEn,
       }
       : null,
     actions: documentActions({
