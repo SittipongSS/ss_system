@@ -11,6 +11,7 @@
 // ทำไมสายพันธุ์ดีกว่า Rev.: Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ —
 // ลูกค้าให้แก้ทั้ง A และ C พร้อมกัน แล้วเลือกตัวที่แตกจาก A
 import { canDeleteRegistryAnyStatus, canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { scentUsableByCustomer } from '@/lib/master/registryShares';
 
 export const SCENT_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
@@ -242,8 +243,9 @@ export function scentTransitionError(scent, next) {
 export function derivedFromError(parent, { customerId, id } = {}) {
   if (!parent) return 'ไม่พบกลิ่นต้นทางที่อ้างถึง';
   if (id && parent.id === id) return 'กลิ่นอ้างตัวเองเป็นต้นทางไม่ได้';
-  if (parent.customerId !== customerId) {
-    return 'กลิ่นต้นทางเป็นของลูกค้าคนละราย — อ้างข้ามลูกค้าไม่ได้';
+  // ⭐ กลิ่นที่แชร์ให้ลูกค้ารายนี้แตกรอบแก้ได้ (ม-150 · "ใช้ได้เหมือนเป็นของตัวเอง") — `parent` ต้องติด `sharedCustomerIds` มา
+  if (!scentUsableByCustomer(parent, customerId)) {
+    return 'กลิ่นต้นทางเป็นของลูกค้าคนละราย — อ้างข้ามลูกค้าไม่ได้ (ให้ RD แชร์กลิ่นนี้ให้ลูกค้ารายนี้ก่อน)';
   }
   return null;
 }

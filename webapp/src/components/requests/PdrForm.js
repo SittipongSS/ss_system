@@ -34,6 +34,7 @@ import {
 } from "@/lib/requests/pdrTargets";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { isScentUsable } from "@/lib/master/scents";
+import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import { unitOptions } from "@/lib/master/units";
 import {
   BRAND_ARCHETYPES, SCENTOTYPES, SCENT_PERFORMANCE,
@@ -249,8 +250,9 @@ function PdrTargetList({
     search: [x.code, x.name, x.customerTradeName].filter(Boolean).join(" "),
   });
   const scentOptions = pickScent && dealChosen ? scents
-    .filter((x) => isScentUsable(x) && (!customerId || x.customerId === customerId))
-    .map((x) => toOption(x)) : [];
+    // ⭐ + กลิ่นที่แชร์ให้ลูกค้ารายนี้ (ม-150)
+    .filter((x) => isScentUsable(x) && (!customerId || scentUsableByCustomer(x, customerId)))
+    .map((x) => toOption(x, customerId && x.customerId !== customerId ? ` (แชร์จาก ${x.customerName || 'ลูกค้าอื่น'})` : "")) : [];
   /* ⭐ กลิ่นที่ใบถืออยู่แล้วแต่หลุดตัวกรอง (เลิกใช้/ย้ายเจ้าของทีหลัง) ต้อง **ยังโชว์เป็นค่าที่เลือก**
      — server ยอมเก็บไว้ (ตรวจเฉพาะกลิ่นที่เพิ่งเลือก) · ไม่พ่วงไว้ = ช่องบังคับขึ้นว่างทั้งที่มีค่า
      (แพตเทิร์นเดียวกับ `unitOptions` ที่พ่วงหน่วยเดิมที่หลุดลิสต์) */

@@ -18,19 +18,43 @@ import { customerSnapshotName, CUSTOMER_NAME_SELECT } from '@/lib/master/custome
 import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
 import { priceSlotsFor } from '@/lib/master/priceSlots';
 import { rowPriceSlots } from '@/lib/requests/rowPriceTarget';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
+import { attachShares, sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
 // ⭐ **กลิ่น 1 ตัวถูกส่งครั้งเดียวตลอดชีวิต** (มติ: แก้แล้วได้กลิ่นตัวใหม่ที่มีรหัส
 // ชื่อ วันที่ ของตัวเอง ไม่ใช่ Rev. ของตัวเดิม) ⇒ ไม่มีตารางรอบให้ join อีกแล้ว
 // วันที่ส่งย้ายมาอยู่บนตัวกลิ่นเอง (`sentAt` — mig 0205 ยกมาจาก scent_revisions)
-export async function loadScents(supabase, { status = null, customerId = null } = {}) {
-  let query = supabase.from('scents').select('*');
-  if (status) query = query.in('status', Array.isArray(status) ? status : [status]);
-  if (customerId) query = query.eq('customerId', customerId);
-  const { data, error } = await query.order('name', { ascending: true });
+/* ── อ่านแถวทะเบียนกลิ่น/สูตร — `customerId` = ของลูกค้ารายนี้ **รวมที่แชร์มา** (ม-150) ─────────────
+   ⚠️ เดิม `.eq('customerId')` ตัวเดียว ⇒ กลิ่นที่แชร์ให้ลูกค้ารายนี้หายจากตัวเลือกของเขา (โมดัลปิดบรีฟ · หน้าลูกค้า)
+   · สองก้อน (ของตัวเอง + ที่แชร์มา) แล้วรวม — ไม่ใช้ `.or(id.in.(…))` เพราะลิสต์โตตามข้อมูล (กับดัก 16 KB) */
+async function loadRegistryRows(supabase, table, kind, { status = null, customerId = null } = {}) {
+  const base = () => {
+    let query = supabase.from(table).select('*');
+    if (status) query = query.in('status', Array.isArray(status) ? status : [status]);
+    return query;
+  };
+  if (!customerId) {
+    const { data, error } = await base().order('name', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  const { data: owned, error } = await base().eq('customerId', customerId).order('name', { ascending: true });
   if (error) throw error;
-  const withSource = await attachScentSource(supabase, data || []);
+  const sharedIds = await sharedIdsForCustomer(supabase, kind, customerId);
+  if (!sharedIds.length) return owned || [];
+  const shared = await fetchAllInChunks(sharedIds, (chunk) => base().in('id', chunk).order('id'));
+  const seen = new Set((owned || []).map((r) => r.id));
+  return [...(owned || []), ...shared.filter((r) => !seen.has(r.id))]
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'th'));
+}
+
+export async function loadScents(supabase, { status = null, customerId = null } = {}) {
+  const data = await loadRegistryRows(supabase, 'scents', 'scent', { status, customerId });
+  // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150) — ทุกตัวเลือก/ด่านที่ถาม "ของลูกค้ารายนี้ไหม" อ่านจากตรงนี้
+  const withShares = await attachShares(supabase, data, 'scent');
+  const withSource = await attachScentSource(supabase, withShares);
   // ราคา F ของกลิ่น — ดูเหตุผลที่ `attachRegistryPrice`
   return attachRegistryPrice(supabase, withSource, { column: 'scentId', kind: 'RM_F' });
 }
@@ -78,6 +102,14 @@ export async function findScent(supabase, id) {
   return data || null;
 }
 
+/** กลิ่น + ลูกค้าที่ได้รับแชร์ (ม-150) — ด่าน "ของลูกค้ารายนี้ไหม" ต้องใช้ตัวนี้ ไม่ใช่ `findScent` เปล่า */
+export async function findScentShared(supabase, id) {
+  const scent = await findScent(supabase, id);
+  if (!scent) return null;
+  const [withShares] = await attachShares(supabase, [scent], 'scent');
+  return withShares;
+}
+
 // กลิ่นนี้ถูกคำร้องผลิตขึ้นมาแล้วหรือยัง — ด่านก่อนลบ
 //
 // ⚠️ ตาข่ายนี้มาแทน "มีประวัติการส่งแล้ว ลบไม่ได้" ของเดิม · `producedScentId`
@@ -117,7 +149,7 @@ export async function countRegistryRefs(supabase, kind, id) {
 // แต่ไม่กันคนยิง API ตรง · กลิ่นข้ามลูกค้าเป็นข้อห้ามระดับโมเดล (มติ 9)
 export async function assertDerivedFromScent(supabase, { derivedFromScentId, customerId, id }) {
   if (!derivedFromScentId) return;
-  const parent = await findScent(supabase, derivedFromScentId);
+  const parent = await findScentShared(supabase, derivedFromScentId);
   const error = derivedFromError(parent, { customerId, id });
   if (error) throw new Error(error);
 }
@@ -214,12 +246,9 @@ function translateScentConflict(error) {
 
 // ── สูตร ─────────────────────────────────────────────────────────────────
 export async function loadFormulas(supabase, { status = null, customerId = null } = {}) {
-  let query = supabase.from('formulas').select('*');
-  if (status) query = query.in('status', Array.isArray(status) ? status : [status]);
-  if (customerId) query = query.eq('customerId', customerId);
-  const { data, error } = await query.order('name', { ascending: true });
-  if (error) throw error;
-  const withSource = await attachFormulaSource(supabase, data || []);
+  const data = await loadRegistryRows(supabase, 'formulas', 'formula', { status, customerId });
+  const withShares = await attachShares(supabase, data, 'formula');
+  const withSource = await attachFormulaSource(supabase, withShares);
   const withUsage = await attachFormulaUsage(supabase, withSource);
   // ราคา FB ของสูตร — คู่ขนานกับ F ของกลิ่น
   const withPrice = await attachRegistryPrice(supabase, withUsage, { column: 'formulaId', kind: 'RM_FB' });
@@ -324,6 +353,14 @@ export async function findFormula(supabase, id) {
   return data || null;
 }
 
+/** สูตร + ลูกค้าที่ได้รับแชร์ (ม-150) — คู่กับ `findScentShared` */
+export async function findFormulaShared(supabase, id) {
+  const formula = await findFormula(supabase, id);
+  if (!formula) return null;
+  const [withShares] = await attachShares(supabase, [formula], 'formula');
+  return withShares;
+}
+
 // ⭐ **ลูกค้าของสูตรมาจากกลิ่นเสมอ ไม่ใช่จากฟอร์ม** (mig 0207)
 //
 // เดิมช่องลูกค้าอยู่ในฟอร์มและเว้นว่างได้ ⇒ สูตรผูกลูกค้า A แต่ใช้กลิ่นของลูกค้า B
@@ -345,12 +382,16 @@ export async function findFormula(supabase, id) {
    ⚠️ `customerName` อ่านจากทะเบียนลูกค้าเสมอ ไม่รับจาก client (ชื่ออาจเก่า) */
 async function customerForFormula(supabase, { customerId, scentId }) {
   if (scentId) {
-    const scent = await findScent(supabase, scentId);
+    const scent = await findScentShared(supabase, scentId);
     if (!scent) throw new Error('ไม่พบกลิ่นที่เลือกในทะเบียนกลิ่น');
     const mismatch = formulaScentCustomerError(scent, { customerId });
     if (mismatch) throw new Error(mismatch);
-    // ผ่านด่านแล้ว = ลูกค้าของสูตรกับของกลิ่นเป็นคนเดียวกัน ⇒ ใช้ชื่อจากกลิ่นได้เลย
-    return { customerId: scent.customerId, customerName: scent.customerName ?? null };
+    // ผ่านด่านแล้ว + เป็นเจ้าของกลิ่น ⇒ ใช้ชื่อจากกลิ่นได้เลย
+    if (scent.customerId === customerId) {
+      return { customerId: scent.customerId, customerName: scent.customerName ?? null };
+    }
+    /* ⭐ กลิ่นที่แชร์มา (ม-150) — ลูกค้าของสูตรคือ **ลูกค้าที่เลือก** ไม่ใช่เจ้าของกลิ่น · ชื่ออ่านจากทะเบียนลูกค้า (ข้างล่าง)
+       ⚠️ ห้ามคืน `scent.customerId` แบบเดิม — สูตรของลูกค้า B จะกลายเป็นของ A เงียบ ๆ */
   }
   if (!customerId) return { customerId: null, customerName: null };
   // ⚠️ ต้องแยก error ออกจาก "ไม่เจอ" — ทิ้ง error แล้วเช็ค `!data` ทำให้ปัญหาการอ่าน
@@ -365,7 +406,7 @@ async function customerForFormula(supabase, { customerId, scentId }) {
 
 export async function assertDerivedFromFormula(supabase, { derivedFromFormulaId, customerId, id }) {
   if (!derivedFromFormulaId) return;
-  const parent = await findFormula(supabase, derivedFromFormulaId);
+  const parent = await findFormulaShared(supabase, derivedFromFormulaId);
   const error = derivedFromFormulaError(parent, { customerId, id });
   if (error) throw new Error(error);
 }
@@ -633,7 +674,7 @@ export async function attachRegistryPrice(supabase, rows, { column, kind, as = '
  * สองทางแล้วเห็นข้อมูลไม่เท่ากัน — โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์ม
  */
 export async function findScentDetail(supabase, id) {
-  const scent = await findScent(supabase, id);
+  const scent = await findScentShared(supabase, id);
   if (!scent) return null;
   const [withSource] = await attachScentSource(supabase, [scent]);
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
@@ -665,7 +706,7 @@ async function attachScentDelivery(supabase, scent) {
 }
 
 export async function findFormulaDetail(supabase, id) {
-  const formula = await findFormula(supabase, id);
+  const formula = await findFormulaShared(supabase, id);
   if (!formula) return null;
   const [withSource] = await attachFormulaSource(supabase, [formula]);
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {

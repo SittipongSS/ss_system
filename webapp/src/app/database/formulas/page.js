@@ -239,6 +239,8 @@ export default function FormulasPage() {
       return [
         f.name, f.code, customerSearchText(f.customerId, f.customerName, arIndex),
         f.customerTradeName, f.categoryCode,
+        // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150)
+        ...(f.sharedCustomers || []).map((c) => customerSearchText(c.customerId, c.customerName, arIndex)),
         // ค้นชื่อหมวดได้ทั้งไทย/อังกฤษ ไม่ใช่แค่รหัส (มติ 2026-08-12)
         categoryNameBoth(findCategoryByCode(categories, f.categoryCode)),
         scentName(f.scentId),
@@ -618,6 +620,12 @@ export default function FormulasPage() {
                     <td className="num">{f.formulaDate ? fmtDate(f.formulaDate) : NA}</td>
                     <td>
                       {customerCell(f, <span className={styles.muted}>สูตรกลาง</span>)}
+                      {f.sharedCustomers?.length ? (
+                        <span className={styles.sharedNote}
+                          title={f.sharedCustomers.map((c) => c.customerName || c.customerId).join(", ")}>
+                          แชร์ให้ {f.sharedCustomers.length} ราย
+                        </span>
+                      ) : null}
                     </td>
                     {/* ราคา FB ล่าสุดจากทะเบียนวัสดุ · ปุ่มใส่ราคาเฉพาะแถวที่ยัง
                         ไม่มีราคา (งานกรอกจริง) — แถวที่มีแล้วออกใหม่ที่ปุ่ม Coins

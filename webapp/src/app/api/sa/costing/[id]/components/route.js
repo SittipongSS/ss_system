@@ -14,6 +14,7 @@ import { findCostingRequest } from '@/lib/costingAdmin';
 import { MATERIAL_KINDS, canQuoteMaterial } from '@/lib/materialPrices';
 import { ensureMaterial, findMaterial, loadMaterials } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
+import { attachMaterialShares } from '@/lib/master/registrySharesAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,8 +91,13 @@ export async function PATCH(request, { params }) {
         if (linkedMaterial.status === 'archived') {
           return Response.json({ error: 'วัสดุตัวนี้ถูกเก็บเข้ากรุแล้ว' }, { status: 409 });
         }
-        // ราคาทับรายลูกค้าของ "ลูกค้าอื่น" ไม่ใช่ราคาของงานนี้
-        if (linkedMaterial.customerId && linkedMaterial.customerId !== (before.customerId || null)) {
+        // ราคาทับรายลูกค้าของ "ลูกค้าอื่น" ไม่ใช่ราคาของงานนี้ — ยกเว้นราคาของกลิ่น/สูตรที่แชร์ให้ลูกค้าของใบ (ม-150)
+        //   ⚠️ ตัวเลือกบนจอ (`MaterialPicker`) เปิดของที่แชร์แล้ว — server ต้องถามชุดเดียวกัน ไม่งั้นเลือกได้แต่บันทึกไม่ได้
+        const [sharedMaterial] = linkedMaterial.customerId && linkedMaterial.customerId !== (before.customerId || null)
+          ? await attachMaterialShares(supabase, [linkedMaterial])
+          : [linkedMaterial];
+        if (linkedMaterial.customerId && linkedMaterial.customerId !== (before.customerId || null)
+          && !(before.customerId && (sharedMaterial.sharedCustomerIds || []).includes(before.customerId))) {
           return Response.json({
             error: 'วัสดุตัวนี้เป็นราคาเฉพาะของลูกค้ารายอื่น',
           }, { status: 400 });

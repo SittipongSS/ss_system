@@ -7,6 +7,7 @@
 // ⚠️ รหัสสูตรเป็นของจริงจาก RD ไม่ใช่เลขรันของระบบ (มติ 8) — ร่างยังไม่มีรหัสได้
 // เพราะของจริงบน prod มี 10 แถวที่มีแต่ชื่อไม่มีรหัส (ดูหัว migration 0171)
 import { canDeleteRegistryAnyStatus, canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { formulaUsableByCustomer, scentUsableByCustomer } from '@/lib/master/registryShares';
 
 export const FORMULA_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
@@ -235,8 +236,9 @@ export function derivedFromFormulaError(parent, { customerId, id } = {}) {
   if (!parent) return 'ไม่พบสูตรต้นทางที่อ้างถึง';
   if (id && parent.id === id) return 'สูตรอ้างตัวเองเป็นต้นทางไม่ได้';
   // สูตรฐาน (ไม่ผูกลูกค้า) เป็นต้นทางของสูตรลูกค้าได้ — เป็นกรณีที่ผู้ใช้บอกว่ามีจริง
-  if (parent.customerId && customerId && parent.customerId !== customerId) {
-    return 'สูตรต้นทางเป็นของลูกค้าคนละราย — อ้างข้ามลูกค้าไม่ได้';
+  // ⭐ สูตรที่แชร์ให้ลูกค้ารายนี้เป็นต้นทางได้ (ม-150) — `parent` ต้องติด `sharedCustomerIds` มา
+  if (parent.customerId && customerId && !formulaUsableByCustomer(parent, customerId)) {
+    return 'สูตรต้นทางเป็นของลูกค้าคนละราย — อ้างข้ามลูกค้าไม่ได้ (ให้ RD แชร์สูตรนี้ให้ลูกค้ารายนี้ก่อน)';
   }
   return null;
 }
@@ -320,12 +322,12 @@ export function matchesFormulaSource(formula, filter) {
  */
 export function formulaScentCustomerError(scent, { customerId } = {}) {
   if (!scent) return null;
-  const owner = scent.customerId || null;
   if (!customerId) {
     return 'สูตรฐาน (ไม่ผูกลูกค้า) เลือกกลิ่นของลูกค้าไม่ได้ — เลือกลูกค้าก่อน หรือเอากลิ่นออก';
   }
-  if (owner && owner !== customerId) {
-    return 'กลิ่นที่เลือกเป็นของลูกค้าคนละราย — เลือกกลิ่นของลูกค้ารายนี้';
+  // ⭐ กลิ่นที่แชร์ให้ลูกค้ารายนี้ทำสูตรของเขาได้ (ม-150) — `scent` ต้องติด `sharedCustomerIds` มา
+  if (scent.customerId && !scentUsableByCustomer(scent, customerId)) {
+    return 'กลิ่นที่เลือกเป็นของลูกค้าคนละราย — เลือกกลิ่นของลูกค้ารายนี้ (หรือให้ RD แชร์กลิ่นนี้ให้ก่อน)';
   }
   return null;
 }

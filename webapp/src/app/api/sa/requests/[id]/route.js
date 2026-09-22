@@ -67,7 +67,9 @@ import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
-import { createScent, rowPriceSlotsLive } from '@/lib/master/scentFormulaAdmin';
+import { createScent, findScentShared, rowPriceSlotsLive } from '@/lib/master/scentFormulaAdmin';
+import { attachShares } from '@/lib/master/registrySharesAdmin';
+import { scentUsableByCustomer } from '@/lib/master/registryShares';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { findRequest } from '@/lib/materialPricesAdmin';
@@ -121,13 +123,16 @@ async function resolveScentOutcome(supabase, request, outcome, user) {
   if (!outcome || outcome.mode === 'none') return null;
 
   if (outcome.mode === 'link') {
-    const { data, error } = await supabase.from('scents')
-      .select('id, customerId').eq('id', outcome.scentId).maybeSingle();
-    if (error) return { error: error.message };
+    let data;
+    try {
+      data = await findScentShared(supabase, outcome.scentId);
+    } catch (e) {
+      return { error: e.message };
+    }
     if (!data) return { error: 'ไม่พบกลิ่นที่เลือก' };
-    // มติ 9: กลิ่นของลูกค้า A ใช้กับ B ไม่ได้ — ผูกข้ามลูกค้าคือทำทะเบียนพัง
-    if (request.customerId && data.customerId !== request.customerId) {
-      return { error: 'กลิ่นนี้เป็นของลูกค้ารายอื่น ผูกกับคำร้องนี้ไม่ได้' };
+    // มติ 9: กลิ่นของลูกค้า A ใช้กับ B ไม่ได้ — ยกเว้นที่ RD แชร์ให้ B แล้ว (ม-150)
+    if (request.customerId && !scentUsableByCustomer(data, request.customerId)) {
+      return { error: 'กลิ่นนี้เป็นของลูกค้ารายอื่น ผูกกับคำร้องนี้ไม่ได้ (ให้ RD แชร์กลิ่นนี้ให้ลูกค้ารายนี้ก่อน)' };
     }
     return { scentId: data.id };
   }
@@ -355,7 +360,9 @@ export async function PATCH(request, { params }) {
           const { data: scentRows, error: scentError } = await supabase
             .from('scents').select('id, code, name, "customerId"').in('id', ids);
           if (scentError) throw scentError;
-          const ownerError = npdWorkRowsScentError(npdRowsPlan, before.targets, scentRows || [], {
+          // ลูกค้าที่ได้รับแชร์ (ม-150) — ด่านเจ้าของถาม `scentUsableByCustomer`
+          const sharedRows = await attachShares(supabase, scentRows || [], 'scent');
+          const ownerError = npdWorkRowsScentError(npdRowsPlan, before.targets, sharedRows, {
             customerId: before.customerId,
           });
           if (ownerError) {

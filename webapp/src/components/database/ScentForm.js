@@ -28,6 +28,7 @@ import DateInput from "@/components/ui/DateInput";
 import FormZone from "@/components/ui/FormZone";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { SCENT_STATUS_LABELS } from "@/lib/master/scents";
+import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import styles from "./registryForm.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -96,7 +97,8 @@ export default function ScentForm({
   // ลูกค้าเป็นข้อห้ามระดับโมเดล (มติ 9) ไม่ใช่ค่าที่แค่ "ไม่แนะนำ"
   // (ด่านจริงยังอยู่ที่ server — ตัวกรองนี้กันคนกดผิด ไม่ได้กันคนยิง API ตรง)
   const lineageOptions = scents
-    .filter((s) => s.customerId === value.customerId && s.id !== editingId)
+    // ⭐ + กลิ่นที่แชร์ให้ลูกค้ารายนี้ (ม-150) — แตกรอบแก้จากกลิ่นที่แชร์มาได้
+    .filter((s) => scentUsableByCustomer(s, value.customerId) && s.id !== editingId)
     .map((s) => ({
       value: s.id,
       // รหัสมาก่อนชื่อ — คนหาด้วยรหัสเป็นหลัก · ร่างที่ยังไม่มีรหัสต้องไม่ขึ้นบรรทัดว่าง

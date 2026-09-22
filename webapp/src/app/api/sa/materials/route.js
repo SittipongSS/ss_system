@@ -11,6 +11,7 @@ import {
 } from '@/lib/materialPrices';
 import { appendMaterialRevision, ensureMaterial, loadMaterials } from '@/lib/materialPricesAdmin';
 import { recordAudit } from '@/lib/audit';
+import { attachMaterialShares } from '@/lib/master/registrySharesAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,9 @@ export async function GET(request) {
       // ไม่ระบุ = ทุกสถานะ (หน้าทะเบียนกรองเอง) · 'active' = เฉพาะที่ใช้ได้จริง
       status: statusParam ? statusParam.split(',').filter(Boolean) : null,
     });
-    return Response.json(data, { headers: { 'Cache-Control': 'no-store' } });
+    // ราคาของกลิ่น/สูตรที่แชร์ — ตัวเลือกวัสดุของลูกค้าที่ได้รับแชร์ต้องเห็นด้วย (ม-150)
+    const withShares = await attachMaterialShares(getSupabaseAdmin(), data);
+    return Response.json(withShares, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
