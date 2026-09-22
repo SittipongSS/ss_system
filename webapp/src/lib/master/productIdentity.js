@@ -61,9 +61,17 @@ export function productVolumeLabel(product) {
   return `${clean(product.volume)} ${first(product?.volumeUnit, 'ml')}`;
 }
 
+/* ชื่อหมวดสินค้า (ไทยก่อน) — `categoryName` แปะมากับลิสต์ `GET /api/products` ส่วน
+   `metadata.categoryName` คือ snapshot ที่ตรึงมากับบรรทัดเอกสารขาย (มติผู้ใช้ 2026-09-22)
+   ไม่มีชื่อ = '' (ไม่ถอยไปโชว์รหัสหมวด — รหัสหมวดอยู่ในรหัส FG อยู่แล้ว) */
+export function productCategoryName(product) {
+  return first(product?.categoryName, product?.metadata?.categoryName);
+}
+
 export function productIdentity(product, { fallback = '-' } = {}) {
   const code = productCode(product);
   const brand = productBrandName(product);
+  const category = productCategoryName(product);
   const name = productDisplayName(product);
   const volume = productVolumeLabel(product);
   const meta = [code, brand].filter(Boolean).join(' · ');
@@ -87,5 +95,5 @@ export function productIdentity(product, { fallback = '-' } = {}) {
     product?.metadata?.productBrand,
     volume,
   ].map(clean).filter(Boolean).join(' ');
-  return { code, brand, name, volume, meta, detail, text, search };
+  return { code, brand, category, name, volume, meta, detail, text, search };
 }

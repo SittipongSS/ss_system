@@ -13,6 +13,7 @@ import { quotationApprovalContent } from '@/lib/sales/quotationApprovalFingerpri
 import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { fillMissingLineCategories } from '@/lib/sales/quoteLines';
 import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh } from '@/lib/documentStandards';
 
 // Bump when the payload shape or the rendered artifact structure changes so old
@@ -246,7 +247,13 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
   // ค่านั้น จะมีช่องว่าง. หน้ารายละเอียดเติมจากทะเบียนลูกค้าตอนอ่าน (GET) อยู่แล้ว แต่
   // **ฉบับตรึงไม่เคยเติม** → เอกสารที่ออกจริงแสดง '-' ทั้งที่หน้าเว็บแสดงครบ (บั๊กที่ผู้ใช้เจอ
   // 2026-07-26). เติมที่ชั้น capture = ทุก caller ได้เหมือนกัน ไม่ต้องจำไปเรียกเองทีละที่
-  const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
+  const customerFilled = await fillCustomerSnapshotFromMaster(supabase, quote);
+  /* ชื่อหมวดของบรรทัด FG (มติ 2026-09-22) — บรรทัดที่บันทึกก่อนมตินี้ยังไม่มี เติมที่ชั้น
+     capture ด้วยเหตุผลเดียวกับข้อมูลลูกค้าข้างบน · อยู่ใน metadata ⇒ payload/ลายนิ้วมือ
+     เนื้อหาไม่ขยับ ขยับแค่ HTML ที่ตรึง */
+  const filledQuote = Array.isArray(customerFilled?.lines)
+    ? { ...customerFilled, lines: await fillMissingLineCategories(supabase, customerFilled.lines) }
+    : customerFilled;
   const payload = buildIssuedQuotationPayload(filledQuote, evidence, company);
   // ฝังรูปลายเซ็นลงในใบตรึง (self-contained เหมือนฟอนต์) — ผู้อนุมัติ = evidence-backed
   // (path ตรึงใน evidence); ผู้เสนอราคา = evidence ที่ตรึงตอน "ยื่น" (mig 0155) ถ้ามี →

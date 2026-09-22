@@ -5,6 +5,8 @@ import {
   customerMismatchedLines,
   enforceMasterPrices,
   fgLineBrand,
+  fgLineCategoryMeta,
+  fillMissingLineCategories,
   fgLineDescription,
   masterPriceDrift,
   masterPriceState,
@@ -16,9 +18,18 @@ import {
    `customers` เข้ามาด้วยตั้งแต่ 2026-09-07 — ด่าน "FG ของลูกค้ารายอื่น" ต้องถาม
    ทะเบียนลูกค้าว่าเป็นนิติบุคคลเดียวกันไหม (customerTaxSiblings) · ไม่ส่ง customers
    มา = ทุกใบไม่มีเลข ⇒ ไม่มีใบพี่น้อง = พฤติกรรมก่อนหน้าเป๊ะ */
-const fakeSupabase = (products, customers = []) => ({
+/* `types` = ทะเบียนหมวดสินค้า (มติ 2026-09-22 ชื่อหมวดติดไปกับบรรทัด) · ไม่ส่ง = ทะเบียนว่าง
+   ⇒ ไม่มีบรรทัดไหนได้ชื่อหมวด = พฤติกรรมก่อนหน้าเป๊ะ · ส่ง `null` = อ่านทะเบียนไม่ได้ */
+const fakeSupabase = (products, customers = [], types = []) => ({
   from: (table) => {
-    assert.ok(table === 'products' || table === 'customers', `unexpected table: ${table}`);
+    assert.ok(['products', 'customers', 'product_types'].includes(table), `unexpected table: ${table}`);
+    if (table === 'product_types') {
+      return {
+        select: async () => (types
+          ? { data: types, error: null }
+          : { data: null, error: { message: 'product_types down' } }),
+      };
+    }
     if (table === 'customers') {
       const rows = customers;
       const result = { data: rows, error: null };
@@ -34,12 +45,16 @@ const fakeSupabase = (products, customers = []) => ({
       };
       return { select: () => chain };
     }
+    // `.in()` ตรง ๆ (await ได้ทันที) หรือห่อ fetchAllInChunks (ต่อ `.order().range()`)
     return {
       select: () => ({
-        in: async (col, ids) => ({
-          data: products.filter((p) => ids.includes(p.id)),
-          error: null,
-        }),
+        in: (col, ids) => {
+          const result = { data: products.filter((p) => ids.includes(p.id)), error: null };
+          const chain = Promise.resolve(result);
+          chain.order = () => chain;
+          chain.range = async () => result;
+          return chain;
+        },
       }),
     };
   },
@@ -319,4 +334,73 @@ test('masterPriceDrift stays quiet when the master price is unknown or unset', (
 
 test('masterPriceDrift ignores manual lines that are not bound to a product', () => {
   assert.equal(masterPriceDrift({ id: 'P1', costPrice: 195 }, { productId: null, unitPrice: 1000 }), null);
+});
+
+// ── ชื่อหมวดสินค้าบนบรรทัด FG (มติผู้ใช้ 2026-09-22) ─────────────────────────
+
+const TYPES = [
+  { mainCategoryCode: '01', typeCode: '002', nameTh: 'น้ำหอม', nameEn: 'Perfume' },
+  { mainCategoryCode: '02', typeCode: '010', nameTh: 'เทียนหอม', nameEn: 'Candle' },
+];
+
+test('บันทึกใบ: ชื่อหมวดตรึงลง metadata จาก master (รหัสหมวดที่บันทึกไว้ก่อนรหัส FG)', async () => {
+  const master = [{ id: 'P1', fgCode: 'FG-AAA-02-010-0001', categoryCode: '01-002', costPrice: 100 }];
+  const [line] = await enforceMasterPrices(fakeSupabase(master, [], TYPES), [fgLine()]);
+  assert.equal(line.metadata.categoryName, 'น้ำหอม');
+  assert.equal(line.metadata.categoryNameEn, 'Perfume');
+});
+
+test('บันทึกใบ: สินค้าย้ายไปหมวดที่ไม่มีชื่อ = ชื่อหมวดเก่าถูกล้าง ไม่ค้าง', async () => {
+  const master = [{ id: 'P1', fgCode: 'FG-001', categoryCode: '09-999', costPrice: 100 }];
+  const stale = fgLine({ metadata: { categoryName: 'น้ำหอม', categoryNameEn: 'Perfume' } });
+  const [line] = await enforceMasterPrices(fakeSupabase(master, [], TYPES), [stale]);
+  assert.equal('categoryName' in line.metadata, false);
+  assert.equal('categoryNameEn' in line.metadata, false);
+});
+
+test('บันทึกใบ: อ่านทะเบียนหมวดไม่ได้ = คงชื่อที่ตรึงไว้ ไม่ล้าง และบันทึกไม่ล้ม', async () => {
+  const master = [{ id: 'P1', fgCode: 'FG-AAA-02-010-0001', costPrice: 100 }];
+  const kept = fgLine({ metadata: { categoryName: 'น้ำหอม', categoryNameEn: 'Perfume' } });
+  const [line] = await enforceMasterPrices(fakeSupabase(master, [], null), [kept]);
+  assert.equal(line.metadata.categoryName, 'น้ำหอม');
+  assert.equal(line.unitPrice, 100);
+});
+
+test('บันทึกใบ: สินค้าถูกลบจาก master = คงชื่อหมวดของบรรทัดที่บันทึกไว้', async () => {
+  const prev = [fgLine({ metadata: { categoryName: 'เทียนหอม', categoryNameEn: 'Candle' } })];
+  const [line] = await enforceMasterPrices(fakeSupabase([], [], TYPES), [fgLine()], prev);
+  assert.equal(line.metadata.categoryName, 'เทียนหอม');
+  assert.equal(line.metadata.categoryNameEn, 'Candle');
+});
+
+test('เปิดใบ: ใบ final เติมแค่ชื่อหมวดที่ยังไม่มี — คำอธิบายที่ตรึงไว้ไม่ขยับ', async () => {
+  const master = [{ id: 'P1', fgCode: 'FG-AAA-01-002-0001', productDescription: 'ชื่อใหม่' }];
+  const accepted = { status: 'accepted', lines: [{ productId: 'P1', description: 'ชื่อเก่า', fgCode: 'FG-AAA-01-002-0001' }] };
+  const frozen = { status: 'closed', lines: [{ productId: 'P1', description: 'ชื่อเก่า', metadata: { categoryName: 'หมวดตอนปิด' } }] };
+  await refreshFgLinesForDisplay(fakeSupabase(master, [], TYPES), [accepted, frozen]);
+  assert.equal(accepted.lines[0].description, 'ชื่อเก่า');
+  assert.equal(accepted.lines[0].metadata.categoryName, 'น้ำหอม');
+  assert.equal(frozen.lines[0].metadata.categoryName, 'หมวดตอนปิด');
+});
+
+test('เติมชื่อหมวด: บรรทัดที่ไม่ผูกสินค้าถอดหมวดจากรหัส FG · บรรทัดพิมพ์เองไม่แตะ', async () => {
+  const lines = [
+    { productId: null, fgCode: 'FG-OLD-02-010-0009', description: 'ของเก่า' },
+    { productId: null, fgCode: null, description: 'ค่าออกแบบ' },
+  ];
+  const out = await fillMissingLineCategories(fakeSupabase([], [], TYPES), lines);
+  assert.equal(out[0].metadata.categoryName, 'เทียนหอม');
+  assert.equal(out[1], lines[1]);
+  assert.equal(lines[0].metadata, undefined, 'ไม่แก้อาร์เรย์เดิม');
+});
+
+test('เติมชื่อหมวด: ไม่มีอะไรต้องเติม = ไม่ยิง query เลย', async () => {
+  const neverCalled = { from: () => { throw new Error('must not query'); } };
+  const lines = [{ productId: 'P1', fgCode: 'FG-1', metadata: { categoryName: 'น้ำหอม' } }, { description: 'พิมพ์เอง' }];
+  assert.equal(await fillMissingLineCategories(neverCalled, lines), lines);
+});
+
+test('fgLineCategoryMeta ไม่รู้ชื่อ = {} (spread แล้วไม่ทับของเดิมด้วยค่าว่าง)', () => {
+  assert.deepEqual(fgLineCategoryMeta({}), {});
+  assert.deepEqual(fgLineCategoryMeta({ categoryName: 'น้ำหอม' }), { categoryName: 'น้ำหอม', categoryNameEn: 'น้ำหอม' });
 });

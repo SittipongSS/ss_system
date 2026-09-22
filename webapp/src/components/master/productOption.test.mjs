@@ -49,3 +49,16 @@ test('FG ของใบลูกค้าตัวเอง = ไม่มี�
   const [option] = productSelectOptions(products);
   assert.doesNotMatch(option.label, /สาขา/);
 });
+
+// ชื่อหมวดสินค้าในดรอปดาวน์ FG ของเอกสารขาย (มติผู้ใช้ 2026-09-22) — opt-in
+test('withCategory ต่อชื่อหมวดท้ายรหัส · แบรนด์ และค้นด้วยชื่อหมวดได้ · ไม่ขอ = เหมือนเดิม', () => {
+  const rows = [{ ...products[0], categoryName: 'น้ำหอม', categoryNameEn: 'Perfume' }];
+  const [plain] = productSelectOptions(rows);
+  assert.equal(plain.label.includes('น้ำหอม'), false);
+  const [withCat] = productSelectOptions(rows, undefined, { withCategory: true });
+  assert.ok(withCat.label.startsWith('FG-000-01-002-0000 · SCENT AND SENSE · น้ำหอม · '), withCat.label);
+  assert.ok(withCat.search.includes('น้ำหอม'));
+  // ลิสต์ที่ไม่มีชื่อหมวดแปะมา ไม่ขึ้นตัวคั่นลอย
+  const [none] = productSelectOptions(products, undefined, { withCategory: true });
+  assert.equal(none.label, plain.label);
+});

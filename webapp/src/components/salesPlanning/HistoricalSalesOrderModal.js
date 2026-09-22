@@ -116,7 +116,11 @@ export default function HistoricalSalesOrderModal({ open, onClose, onSaved }) {
   }, [open, customerId]);
 
   const customerOptions = useMemo(() => customerSelectOptions(customers), [customers]);
-  const productOptions = useMemo(() => productSelectOptions(products), [products]);
+  // ชื่อหมวดสินค้าต่อท้ายรหัส · แบรนด์ — มาตรฐานเดียวกับดรอปดาวน์ FG ของใบเสนอราคา (มติ 2026-09-22)
+  const productOptions = useMemo(
+    () => productSelectOptions(products, undefined, { withCategory: true }),
+    [products],
+  );
 
   /* ⭐ **รายชื่อ AE ไม่กรองตามทีมของผู้คีย์** — ต่างจาก `useDealOwners` ที่ใช้ทีมของคนดู
      เหตุผล: ผู้คีย์คือ AE Supervisor/แอดมิน ซึ่ง `salesPlanningEditScope` = 'all' ⇒

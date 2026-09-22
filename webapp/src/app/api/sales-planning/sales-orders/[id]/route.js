@@ -53,6 +53,7 @@ import { captureIssuedSalesOrderSnapshot } from '@/lib/sales/issuedSalesOrderSna
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { fillMissingLineCategories } from '@/lib/sales/quoteLines';
 import {
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder, isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
@@ -371,6 +372,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (order.quotation) {
     order.quotation = await fillCustomerSnapshotFromMaster(supabase, order.quotation);
   }
+  // ชื่อหมวดของบรรทัด FG — บรรทัดที่ก๊อปจากใบเสนอราคาก่อนมติ 2026-09-22 ยังไม่มี
+  // เติมเพื่อแสดง/พิมพ์เท่านั้น ไม่บันทึก (บรรทัด SO เป็น snapshot แก้ไม่ได้)
+  order.lines = await fillMissingLineCategories(supabase, order.lines || []);
   // รูปลายเซ็นผู้จัดทำ + ผู้อนุมัติ (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังออกได้ ตกช่องเซ็นเปล่า)
   let approverSignature = null;
   let proposerSignature = null;

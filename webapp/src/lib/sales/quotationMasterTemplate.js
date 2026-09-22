@@ -308,6 +308,8 @@ function lineAt(index, overrides = {}) {
     id: `preview-line-${index + 1}`,
     fgCode: overrides.fgCode ?? `FG-PV-${String(index + 1).padStart(3, '0')}`,
     brand: overrides.brand ?? 'SCENT AND SENSE',
+    // ชื่อหมวดสินค้า (มติ 2026-09-22) — พรีวิวต้องสูงเท่าแถวจริงที่มีหมวด ไม่งั้นคาลิเบรตพลาด
+    category: overrides.category ?? 'น้ำหอมปรับอากาศ',
     description: overrides.description ?? PRODUCT_NAMES[index % PRODUCT_NAMES.length],
     note: overrides.note ?? (index % 5 === 0 ? 'กลิ่น Signature Bloom · บรรจุตามมาตรฐานที่ตกลง' : ''),
     qty,
@@ -374,8 +376,16 @@ function estimatedTextLines(value, charsPerLine) {
     .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.trimEnd().length / charsPerLine)), 0);
 }
 
+/* บรรทัดเล็กเหนือชื่อสินค้าบนเอกสาร: รหัส FG · แบรนด์ · หมวดสินค้า (หมวดเพิ่มตามมติผู้ใช้
+   2026-09-22) — ที่เดียวที่กำหนดว่าบรรทัดนี้มีอะไร ใช้ทั้งตอนวาด (quotationMasterDocument)
+   และตอนประเมินความสูงแถวด้านล่าง ⚠️ ถ้าสองฝั่งนับคนละชุด ตัวแบ่งหน้าจะประเมินแถวเตี้ย
+   กว่าจริง แล้วตารางล้นขอบล่างของแผ่นเงียบ ๆ (`.sheet` เป็น overflow:hidden) */
+export function lineIdentityParts(line) {
+  return [line?.fgCode, line?.brand, line?.category].filter(Boolean);
+}
+
 function rowUnits(line) {
-  const meta = [line.fgCode, line.brand].filter(Boolean).join(' · ');
+  const meta = lineIdentityParts(line).join(' · ');
   const metaLines = meta ? estimatedTextLines(meta, 54) : 0;
   const detailLines = estimatedTextLines(line.description, 48);
   // แถวพื้นฐานรองรับโครงสร้าง 2 ชั้นอยู่แล้ว จึงหักหนึ่งหน่วยก่อนคิดความสูงเพิ่ม.
@@ -1128,6 +1138,11 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       id: line.id,
       fgCode: line.fgCode || '',
       brand: line.metadata?.productBrand || line.brand || '',
+      /* ชื่อหมวดสินค้าตามภาษาของใบ (มติผู้ใช้ 2026-09-22) — ถอยไปอีกภาษาเหมือนชื่อสินค้า
+         บรรทัดพิมพ์เอง/ใบเก่าที่ไม่มีชื่อหมวด = ไม่พิมพ์ (ไม่ใช่ขีด) */
+      category: (language === 'en'
+        ? line.metadata?.categoryNameEn
+        : line.metadata?.categoryName) || line.metadata?.categoryName || '',
       /* ชื่อสินค้าตามภาษาของใบ แล้วค่อยตกไปอีกภาษา (มติผู้ใช้ 2026-08-20)
          ⚠️ ตกกลับไปที่ `line.description` เสมอเมื่อไม่มีคู่ภาษาในบรรทัด — บรรทัดที่
          พิมพ์เอง (ไม่ผูก FG) และใบเก่าก่อนกติกานี้ไม่มี metadata ⇒ ต้องพิมพ์ของเดิม

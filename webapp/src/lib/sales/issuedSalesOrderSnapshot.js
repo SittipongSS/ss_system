@@ -12,6 +12,7 @@ import { documentApprovalFingerprint } from '@/lib/documentApproval';
 import { buildSalesOrderPrintHTML } from '@/lib/sales/salesOrderPrint';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { fillMissingLineCategories } from '@/lib/sales/quoteLines';
 import {
   loadSignatureImageDataUri,
   loadActiveSignatureAsset,
@@ -161,9 +162,14 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order: rawOrde
   // ข้อมูลลูกค้าบนใบสั่งขายอ่านจาก snapshot ของใบเสนอราคาที่ผูก — ช่องที่ว่าง (ผู้ติดต่อ/
   // เลขผู้เสียภาษี) เคยถูกเติมจากทะเบียนลูกค้าเฉพาะตอนอ่านหน้ารายละเอียด (GET) ทำให้
   // **ฉบับตรึงแสดง '-' ทั้งที่หน้าเว็บแสดงครบ**. เติมที่ชั้น capture เหมือนฝั่ง QT
-  const order = rawOrder?.quotation
+  const customerFilled = rawOrder?.quotation
     ? { ...rawOrder, quotation: await fillCustomerSnapshotFromMaster(supabase, rawOrder.quotation) }
     : rawOrder;
+  // ชื่อหมวดของบรรทัด FG (มติ 2026-09-22) — บรรทัดที่ก๊อปมาก่อนมตินี้ยังไม่มี เติมที่นี่
+  // เหมือนฝั่ง QT · อยู่ใน metadata ⇒ payload/ลายนิ้วมือไม่ขยับ
+  const order = Array.isArray(customerFilled?.lines)
+    ? { ...customerFilled, lines: await fillMissingLineCategories(supabase, customerFilled.lines) }
+    : customerFilled;
   const payload = buildIssuedSalesOrderPayload(order, company);
   // ผู้อนุมัติ = รูปจาก evidence ที่ตรึงตอนอนุมัติ
   // ผู้จัดทำ = รูปจาก evidence ที่ตรึงตอน "ยื่น" (mig 0153) ถ้ามี — ตรึงเวอร์ชันลายเซ็นจริง

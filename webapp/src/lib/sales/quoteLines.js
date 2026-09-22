@@ -11,6 +11,8 @@ import {
   productDisplayNameFor,
   productVolumeLabel,
 } from '@/lib/master/productIdentity';
+import { attachCategoryNames, categoryNamesOf, loadProductTypeNames } from '@/lib/master/productCategoryNames';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 
 export function productLabel(product) {
   return productDisplayName(product) || product?.fgCode || 'สินค้า';
@@ -47,6 +49,65 @@ export function fgLineLanguageMeta(product) {
 
 export function fgLineBrand(product) {
   return productBrandName(product);
+}
+
+/* ชื่อหมวดสินค้าของบรรทัด FG (มติผู้ใช้ 2026-09-22) — snapshot คู่กับแบรนด์/ชื่อสองภาษา
+   `product` ต้องถูกแปะชื่อหมวดมาแล้ว (`attachCategoryNames` · ลิสต์ `GET /api/products`)
+   คืน `{}` เมื่อไม่รู้ชื่อ ⇒ ผู้เรียกที่ทับด้วย spread ไม่ลบค่าเดิมเอง — ต้องลบเองถ้าตั้งใจ
+   ⚠️ อยู่ใน metadata ⇒ ไม่กระทบ fingerprint การอนุมัติ (quotationApprovalFingerprint)
+   และ payload ของฉบับตรึง (อ่านเฉพาะคีย์ที่ระบุชื่อ) */
+export function fgLineCategoryMeta(product) {
+  const th = String(product?.categoryName || '').trim();
+  const en = String(product?.categoryNameEn || '').trim();
+  if (!th && !en) return {};
+  return { categoryName: th || en, categoryNameEn: en || th };
+}
+
+/* ทับชื่อหมวดใน metadata ด้วยของสินค้าตัวนี้ — ลบคู่เดิมก่อนเสมอ (สินค้าที่เปลี่ยนไปอยู่หมวด
+   ไม่มีชื่อ ต้องไม่ติดชื่อหมวดของตัวเก่าค้างไว้) */
+function withCategoryMeta(metadata, product) {
+  const { categoryName: _th, categoryNameEn: _en, ...rest } = metadata || {};
+  return { ...rest, ...fgLineCategoryMeta(product) };
+}
+
+/* ทะเบียนหมวดสำหรับหาชื่อ — **อ่านไม่ได้ = null** (ไม่รู้) ไม่ใช่ [] (รู้ว่าไม่มี)
+   ผู้เรียกที่บันทึกลงใบต้องแยกสองอย่างนี้ ไม่งั้นทะเบียนหมวดสะดุดครั้งเดียว ชื่อหมวดที่
+   ตรึงไว้ในบรรทัดจะถูกล้างทิ้งตอนกดบันทึก · ชื่อหมวดเป็นของประกอบการแสดงผล
+   บันทึก/เปิดใบต้องไม่ล้มเพราะมัน */
+async function productTypesOrNull(supabase) {
+  try {
+    return await loadProductTypeNames(supabase);
+  } catch {
+    return null;
+  }
+}
+
+/* เติมชื่อหมวดให้บรรทัดที่ **ยังไม่มี** (ใบเก่าก่อนมติ 2026-09-22 · ใบสั่งขายที่ก๊อปบรรทัด
+   มาก่อนนั้น) — เพื่อการแสดงผล/พิมพ์เท่านั้น ไม่บันทึกลง DB · บรรทัดที่มีชื่ออยู่แล้วไม่แตะ
+   (ใบ final ต้องคงค่าที่ตรึงไว้) · คืนอาร์เรย์ใหม่ ไม่แก้ของเดิม · พังตรงไหนคืนของเดิม */
+export async function fillMissingLineCategories(supabase, lines = []) {
+  if (!Array.isArray(lines)) return lines;
+  const needs = (line) => (line?.productId || line?.fgCode) && !line?.metadata?.categoryName;
+  if (!lines.some(needs)) return lines;
+  // ซอยก้อน + ไล่หน้า: หน้าดีลรวบบรรทัดของทุกใบมาทีเดียว ลิสต์ id จึงโตตามจำนวนใบได้
+  let products;
+  try {
+    products = await fetchAllInChunks(
+      lines.filter(needs).map((l) => l.productId).filter(Boolean),
+      (chunk) => supabase.from('products').select('id, fgCode, categoryCode').in('id', chunk).order('id'),
+    );
+  } catch {
+    return lines;
+  }
+  const types = await productTypesOrNull(supabase);
+  if (!types) return lines;
+  const byId = new Map(attachCategoryNames(products, types).map((p) => [p.id, p]));
+  return lines.map((line) => {
+    if (!needs(line)) return line;
+    // สินค้าหายจาก master (หรือไม่เคยผูก) ยังถอดหมวดจากรหัส FG บนบรรทัดได้
+    const meta = fgLineCategoryMeta(byId.get(line.productId) || categoryNamesOf({ fgCode: line.fgCode }, types));
+    return meta.categoryName ? { ...line, metadata: { ...(line.metadata || {}), ...meta } } : line;
+  });
 }
 
 /* ── หมายเหตุประจำสินค้า (mig 0317) ────────────────────────────────────────
@@ -95,9 +156,11 @@ export async function seedLinesFromProject(supabase, deal) {
      โดยไม่มีอะไรบอกว่า seed ล้มเหลว */
   const { data, error } = await supabase
     .from('project_products')
-    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice, "docNote", "docNoteEn")')
+    .select('*, product:products(id, fgCode, categoryCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice, "docNote", "docNoteEn")')
     .eq('projectId', deal.projectId);
   if (error) throw error;
+  const types = data?.length ? await productTypesOrNull(supabase) : null;
+  if (types) attachCategoryNames((data || []).map((row) => row.product).filter(Boolean), types);
   return (data || []).map((row, index) => {
     const qty = qtyFromProjectProduct(row);
     const unitPrice = toMoney(row.product?.[QUOTE_PRICE_FIELD]);
@@ -121,6 +184,7 @@ export async function seedLinesFromProject(supabase, deal) {
         ...fgLineNoteMeta(row.product),
         projectProductId: row.id,
         productBrand: fgLineBrand(row.product),
+        ...fgLineCategoryMeta(row.product),
       },
     };
   });
@@ -234,9 +298,12 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
   if (!ids.length) return lines;
   const { data, error } = await supabase
     .from('products')
-    .select('id, fgCode, customerId, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice')
+    .select('id, fgCode, customerId, categoryCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice')
     .in('id', ids);
   if (error) throw error;
+  // ทะเบียนหมวดอ่านไม่ได้ (null) = คงชื่อหมวดที่ตรึงไว้เดิม ไม่ใช่ล้างทิ้ง
+  const types = await productTypesOrNull(supabase);
+  if (types) attachCategoryNames(data || [], types);
   const productById = new Map((data || []).map((p) => [p.id, p]));
   /* ประทับ "FG ตัวนี้เป็นของใบลูกค้าใบไหน" ลงบรรทัด — ทำที่นี่ ไม่ใช่ที่หน้าจอ เพราะ
      บรรทัดเกิดได้หลายทาง (ฟอร์ม · seed จากโครงการ · Rev. · ยิง API ตรง) ถ้าประทับที่
@@ -289,7 +356,13 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
         descriptionEn: prev?.metadata?.descriptionEn ?? line.metadata?.descriptionEn,
       };
     const ownerMeta = ownerMetaOf(master);
-    const metadata = { ...(line.metadata || {}), ...languageMeta, productBrand };
+    let metadata = { ...(line.metadata || {}), ...languageMeta, productBrand };
+    /* ชื่อหมวด (มติ 2026-09-22) sync จาก master เหมือนแบรนด์ · สินค้าถูกลบ = คงของเดิม
+       ที่บันทึกไว้ · อ่านทะเบียนหมวดไม่ได้ = ไม่แตะ (ค่าที่ติดมากับบรรทัดอยู่ต่อ) */
+    if (master && types) metadata = withCategoryMeta(metadata, master);
+    else if (!master && prev?.metadata?.categoryName) {
+      metadata = withCategoryMeta(metadata, prev.metadata);
+    }
     // ของใบตัวเอง = ลบร่องรอยเก่าทิ้ง ไม่ใช่ปล่อยค้าง (เปลี่ยนสินค้าบนบรรทัดเดิมได้)
     if (ownerMeta) Object.assign(metadata, ownerMeta);
     else { delete metadata.fgOwnerCustomerId; delete metadata.fgOwnerArCode; delete metadata.fgOwnerBranchCode; }
@@ -304,6 +377,8 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
       && languageMeta.descriptionTh === line.metadata?.descriptionTh
       && languageMeta.descriptionEn === line.metadata?.descriptionEn
       && (ownerMeta?.fgOwnerCustomerId ?? null) === (line.metadata?.fgOwnerCustomerId ?? null)
+      && metadata.categoryName === line.metadata?.categoryName
+      && metadata.categoryNameEn === line.metadata?.categoryNameEn
     ) return line;
     const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
     return {
@@ -327,24 +402,40 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
   const editable = new Set(['draft', 'sent', 'rejected']);
   const targets = quotes.filter((q) => q && editable.has(q.status) && Array.isArray(q.lines));
   const ids = [...new Set(targets.flatMap((q) => q.lines.filter((l) => l?.productId).map((l) => l.productId)))];
-  if (!ids.length) return quotes;
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit')
-    .in('id', ids);
-  if (error) return quotes; // เสริมการแสดงผลเท่านั้น — อย่าให้ GET ล้มเพราะ join นี้
-  const byId = new Map((data || []).map((p) => [p.id, p]));
-  for (const q of targets) {
-    q.lines = q.lines.map((l) => {
-      const p = l?.productId ? byId.get(l.productId) : null;
-      return p ? {
-        ...l,
-        description: fgLineDescription(p),
-        fgCode: p.fgCode || l.fgCode,
-        unit: p.saleUnit || l.unit || DEFAULT_SALE_UNIT,
-        metadata: { ...(l.metadata || {}), ...fgLineLanguageMeta(p), productBrand: fgLineBrand(p) },
-      } : l;
-    });
+  if (ids.length) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, fgCode, categoryCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit')
+      .in('id', ids);
+    // เสริมการแสดงผลเท่านั้น — อย่าให้ GET ล้มเพราะ join นี้
+    if (!error) {
+      const types = await productTypesOrNull(supabase);
+      if (types) attachCategoryNames(data || [], types);
+      const byId = new Map((data || []).map((p) => [p.id, p]));
+      for (const q of targets) {
+        q.lines = q.lines.map((l) => {
+          const p = l?.productId ? byId.get(l.productId) : null;
+          if (!p) return l;
+          const metadata = { ...(l.metadata || {}), ...fgLineLanguageMeta(p), productBrand: fgLineBrand(p) };
+          return {
+            ...l,
+            description: fgLineDescription(p),
+            fgCode: p.fgCode || l.fgCode,
+            unit: p.saleUnit || l.unit || DEFAULT_SALE_UNIT,
+            metadata: types ? withCategoryMeta(metadata, p) : metadata,
+          };
+        });
+      }
+    }
+  }
+  /* ใบ final ยังคงของเดิม — เติมแค่ชื่อหมวดให้บรรทัดที่ไม่เคยมี (ใบก่อนมติ 2026-09-22)
+     รวบทุกใบยิงชุดเดียว (หน้าดีลส่งมาหลายใบ) แล้วแจกกลับตามลำดับเดิม */
+  const withLines = quotes.filter((q) => q && Array.isArray(q.lines));
+  const filled = await fillMissingLineCategories(supabase, withLines.flatMap((q) => q.lines));
+  let at = 0;
+  for (const q of withLines) {
+    q.lines = filled.slice(at, at + q.lines.length);
+    at += q.lines.length;
   }
   return quotes;
 }

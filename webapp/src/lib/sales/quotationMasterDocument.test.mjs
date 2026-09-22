@@ -70,6 +70,18 @@ test('V4 doc: รายการสินค้าแสดง FG · แบร�
   assert.match(html, /class="itemName"/);
 });
 
+test('V4 doc: ชื่อหมวดสินค้าต่อท้าย FG · แบรนด์ ตามภาษาของใบ (มติผู้ใช้ 2026-09-22)', () => {
+  const line = lineOf('1', {
+    metadata: { productBrand: 'SCENT AND SENSE', categoryName: 'น้ำหอม', categoryNameEn: 'Perfume' },
+  });
+  assert.ok(buildQuotationMasterHTML(baseQuote([line]), {}).includes('FG-1 · SCENT AND SENSE · น้ำหอม'));
+  const en = buildQuotationMasterHTML({ ...baseQuote([line]), docLanguage: 'en' }, {});
+  assert.ok(en.includes('FG-1 · SCENT AND SENSE · Perfume'));
+  // บรรทัด/ใบเก่าที่ไม่มีชื่อหมวด = พิมพ์เหมือนเดิม ไม่มีตัวคั่นลอย
+  const old = buildQuotationMasterHTML(baseQuote([lineOf('1', { metadata: { productBrand: 'SCENT AND SENSE' } })]), {});
+  assert.ok(old.includes('FG-1 · SCENT AND SENSE</span>'));
+});
+
 /* ⚠️ ข้อนี้เคยยืนยันตรงกันข้าม ("ไม่โชว์สาขา") ตามมติ 2026-08-05 ที่ตัดแถวสาขาออกเพราะ
    ตอนนั้นเลขสาขาฝังอยู่ในข้อความที่อยู่ · 2026-08-06 เลขสาขากลับมาเป็นฟิลด์แยกของแถว
    ที่อยู่ และ composeThaiAddress ไม่เคยเอามันใส่ข้อความ ⇒ เอกสารเลยไม่มีสาขาเลยตั้งแต่
