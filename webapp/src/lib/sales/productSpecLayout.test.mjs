@@ -252,3 +252,16 @@ test('งบแผ่นแรก = งบแผ่นต่อ − หัวเ
   assert.ok(Math.abs(rest - first - 43.4 - 55 - PRODUCT_SPEC_COST_MM.headingTopMargin) < 1e-9);
   assert.equal(reserve, PRODUCT_SPEC_LAYOUT_MM.safety, 'ส่วนเผื่อที่หักไว้ต้องบอกผู้ตัดหน้า (ขอคืนได้เฉพาะก้อนเดี่ยว/ก้อนท้าย)');
 });
+
+test('⭐ หัวข้อ breakBefore (ภาพประกอบ) ขึ้นแผ่นใหม่เสมอ แม้แผ่นเดิมยังเหลือที่ (มติผู้ใช้ 2026-09-22)', () => {
+  const figs = { ...section('fig', 10, [20]), breakBefore: true };
+  // แผ่นแรกเหลือที่พอ แต่ต้องขึ้นแผ่นใหม่
+  assert.deepEqual(shape(paginateProductSpecSections([section('a', 10, [20]), figs], { cost: 30 }, BUDGET)),
+    ['[a a0', '[fig fig0 SIG']);
+  // แผ่นแรกไม่มีหัวข้ออื่น (มีแต่หัวเอกสาร + กล่องผู้ซื้อ) ⇒ ก็ขึ้นแผ่นใหม่
+  assert.deepEqual(shape(paginateProductSpecSections([figs], null, BUDGET)), ['', '[fig fig0']);
+  // แผ่นต่อที่เพิ่งเปิดและยังว่าง ไม่เปิดซ้อนเป็นแผ่นเปล่า
+  const pages = paginateProductSpecSections([section('big', 10, Array(12).fill(20)), figs], null, BUDGET);
+  assert.ok(pages.every((entries, index) => index === 0 || entries.length > 0), 'ไม่มีแผ่นต่อที่ว่าง');
+  assert.equal(shape(pages).at(-1), '[fig fig0');
+});

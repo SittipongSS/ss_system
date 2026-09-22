@@ -23,14 +23,15 @@ export const DOCUMENT_STANDARD_LABELS = Object.freeze({
 // เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
 // (DOCUMENT_ACCENT_THEMES) รองรับมากกว่านี้ แต่ตัวเลือกที่ไม่มีเอกสารชนิดไหนใช้
 // ก็เป็นปุ่มที่กดแล้วไม่เกิดอะไร · เพิ่มคีย์ที่นี่ตอนมีเอกสารชนิดใหม่จริง
-export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber', 'navy', 'teal']);
+/* ⭐ FM-SA-04 ใช้สีเดียวกับใบเสนอราคา (มติผู้ใช้ 2026-09-22 "ขอเปลี่ยน accent เป็นเหมือน QT") ⇒ teal ไม่มีเอกสารใช้แล้ว
+   จึงถอดจากตัวเลือก · แถวมาตรฐานเก่าที่ถือ teal ตกไปสีตั้งต้นของชนิดนั้นเอง (resolver ข้างล่าง) ไม่ต้องแก้ข้อมูล */
+export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber', 'navy']);
 
 export const DOCUMENT_ACCENT_LABELS = Object.freeze({
-  terracotta: 'Terracotta · ใบเสนอราคา',
+  terracotta: 'Terracotta · ใบเสนอราคา · รายละเอียดผลิตภัณฑ์',
   steel: 'Steel · ใบสั่งขาย',
   amber: 'Amber · ใบแจ้งชำระภาษี',
   navy: 'Navy · ไทม์ไลน์โครงการ',
-  teal: 'Teal · รายละเอียดผลิตภัณฑ์',
 });
 
 // สีตั้งต้นต่อชนิดเอกสาร ใช้ทั้งตอนยังไม่มีมาตรฐานเผยแพร่ และตอนมาตรฐานถือคีย์เก่า
@@ -40,7 +41,7 @@ const DEFAULT_ACCENT_BY_KEY = Object.freeze({
   salesOrder: 'steel',
   exciseTaxNotice: 'amber',
   projectTimeline: 'navy',
-  productSpec: 'teal',
+  productSpec: 'terracotta',
 });
 
 export const DOCUMENT_STANDARD_LIMITS = Object.freeze({
