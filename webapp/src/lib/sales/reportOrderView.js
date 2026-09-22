@@ -14,6 +14,8 @@ export const ORDER_GROUP_OPTIONS = [
   { value: 'team', label: 'ทีม' },
   { value: 'customer', label: 'ลูกค้า' },
   { value: 'month', label: 'งวด' },
+  { value: 'line', label: 'ประเภทธุรกิจ' },
+  { value: 'dealType', label: 'ประเภทดีล' },
 ];
 
 export const ORDER_SORT_OPTIONS = [
@@ -86,7 +88,7 @@ export function matchesQuery(order, q) {
  * กลุ่มที่ไม่ได้เลือกอะไรเลย = ไม่กรองด้วยกลุ่มนั้น (ไม่ใช่กรองทิ้งหมด)
  */
 export function filterOrders(orders = [], {
-  q = '', owners = [], teams = [], finance = [], months = [], kinds = [],
+  q = '', owners = [], teams = [], finance = [], months = [], kinds = [], lines = [], dealTypes = [],
 } = {}) {
   return orders.filter((order) => {
     if (!matchesQuery(order, q)) return false;
@@ -95,12 +97,15 @@ export function filterOrders(orders = [], {
     if (finance.length && !finance.includes(financeStateOf(order))) return false;
     if (months.length && !months.includes(order.month)) return false;
     if (kinds.includes('free') && !order.free) return false;
+    // ประเภทธุรกิจ/ประเภทดีลของดีลของใบ (มติผู้ใช้ 2026-09-22) — ดีลที่ยังไม่ระบุ = NONE_VALUE
+    if (lines.length && !lines.includes(order.line || NONE_VALUE)) return false;
+    if (dealTypes.length && !dealTypes.includes(order.dealType || NONE_VALUE)) return false;
     return true;
   });
 }
 
 /** จำนวนตัวกรองที่ใช้อยู่ — ป้ายเลขบนปุ่มตัวกรองนับของที่ **มีผลจริง** (ไม่ใช่ร่าง · ตรวจ 2026-09-22) */
-export const activeFilterCount = (filters = {}) => ['owners', 'teams', 'finance', 'months', 'kinds']
+export const activeFilterCount = (filters = {}) => ['owners', 'teams', 'finance', 'months', 'kinds', 'lines', 'dealTypes']
   .reduce((sum, key) => sum + (filters[key]?.length || 0), 0);
 
 /**
@@ -161,7 +166,7 @@ export function sortOrders(orders = [], key = ORDER_SORT_DEFAULT, dir = ORDER_SO
  * จัดกลุ่มใบ → `[{ key, label, orders, total, count }]`
  * `groupBy: 'none'` คืนกลุ่มเดียวที่ไม่มีป้าย เพื่อให้ผู้เรียกวาดตารางด้วยโค้ดชุดเดียว
  */
-export function groupOrders(orders = [], groupBy = 'none', { teamLabels = {}, monthLabel = (m) => m } = {}) {
+export function groupOrders(orders = [], groupBy = 'none', { teamLabels = {}, monthLabel = (m) => m, lineLabel = (l) => l } = {}) {
   const total = (list) => list.reduce((sum, order) => sum + Number(order?.amount || 0), 0);
   if (groupBy === 'none' || !ORDER_GROUP_OPTIONS.some((option) => option.value === groupBy)) {
     return [{ key: 'all', label: null, orders, total: total(orders), count: orders.length }];
@@ -172,11 +177,15 @@ export function groupOrders(orders = [], groupBy = 'none', { teamLabels = {}, mo
     const key = groupBy === 'owner' ? (order.ownerId || '—')
       : groupBy === 'team' ? (order.team || '—')
         : groupBy === 'month' ? (order.month || '—')
-          : (order.customerId || order.customerName || '—');
+          : groupBy === 'line' ? (order.line || '—')
+            : groupBy === 'dealType' ? (order.dealType || '—')
+              : (order.customerId || order.customerName || '—');
     const label = groupBy === 'owner' ? (order.ownerName || 'ไม่ระบุผู้รับผิดชอบ')
       : groupBy === 'team' ? (teamLabels[order.team] || order.team || 'ไม่ระบุทีม')
         : groupBy === 'month' ? (monthLabel(order.month) || 'ไม่ระบุงวด')
-          : (order.customerName || 'ไม่ระบุลูกค้า');
+          : groupBy === 'line' ? (order.line ? lineLabel(order.line) : 'ยังไม่ระบุประเภทธุรกิจ')
+            : groupBy === 'dealType' ? (order.dealType || 'ยังไม่ระบุประเภทดีล')
+              : (order.customerName || 'ไม่ระบุลูกค้า');
     if (!buckets.has(key)) buckets.set(key, { key, label, orders: [], latest: '' });
     const bucket = buckets.get(key);
     bucket.orders.push(order);

@@ -348,7 +348,8 @@ test('route: ทีมของใบมาจาก embed ดีลในคิ
   // ตัวโหลดย้ายจาก route.js ไป lib/sales/salesReportData.js (2026-09-22 · จอกับ Excel ใช้ร่วมกัน)
   const route = read('lib/sales/salesReportData.js');
   // ใบสั่งขายย้อนหลัง (mig 0360) กรองในคิวรีเดียวกัน — pipelineRowsOnly ครอบ select (ยามรวมอยู่ที่ historicalMoneyGuards)
-  assert.match(route, /fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\s*\.from\('sales_orders'\)\s*\.select\('[^']*deal:sales_deals\(team\)'\)\)\s*\.eq\('status', 'approved'\)/);
+  // embed ดีลพ่วง line/dealType ได้ (คอลัมน์ประเภทธุรกิจ/ประเภทดีล 2026-09-22) แต่ต้องมี team ในคิวรีเดียวกัน
+  assert.match(route, /fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\s*\.from\('sales_orders'\)\s*\.select\('[^']*deal:sales_deals\(team[^)]*\)'\)\)\s*\.eq\('status', 'approved'\)/);
   assert.match(route, /buildReportRows\(\{/);
   assert.match(route, /team: reportOrderTeam\(o\),/);
   for (const [name, source] of [['route', route], ['reportRows', read('lib/sales/reportRows.js')]]) {

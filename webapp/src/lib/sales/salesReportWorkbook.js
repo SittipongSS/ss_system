@@ -10,6 +10,7 @@ import ExcelJS from 'exceljs';
 import { businessDayKey, formatMonthLabel } from '@/lib/datePeriods';
 import { fmtMoney, fmtPercent } from '@/lib/format';
 import { NO_TEAM_LABEL } from '@/lib/sales/personSlice';
+import { BUSINESS_LINE_LABELS } from '@/lib/master/businessLines';
 import { FINANCE_STATE_BADGE, financeStateOf } from '@/lib/sales/reportOrderView';
 import { reportPeriodLabel } from '@/lib/sales/reportPeriod';
 import { teamNameOf } from '@/lib/master/teams';
@@ -117,6 +118,53 @@ export function groupSheetRows(group, kind, teamLabel) {
     pending: r.pending ? Number(r.pending.amount) : NA,
     pendingCount: r.pending ? Number(r.pending.count) : NA,
   }));
+}
+
+/** คอลัมน์ชีต "ใบสั่งขาย" — ลำดับตามที่ผู้ใช้กำหนด (2026-09-22) */
+export const ORDER_SHEET_COLUMNS = [
+  { key: 'seq', label: '#', width: 6 },
+  { key: 'month', label: 'งวด', width: 11 },
+  { key: 'day', label: 'วันที่อนุมัติ', width: 13 },
+  { key: 'line', label: 'ประเภทธุรกิจ', width: 18 },
+  { key: 'dealType', label: 'ประเภทดีล', width: 12 },
+  { key: 'quoteNumber', label: 'QT', width: 16 },
+  { key: 'orderNumber', label: 'SO', width: 16 },
+  { key: 'customerName', label: 'ลูกค้า', width: 34 },
+  { key: 'lineCount', label: 'บรรทัด', width: 8 },
+  { key: 'amount', label: 'ยอดที่นับ', width: 16, money: true },
+  { key: 'vatAmount', label: 'VAT', width: 14, money: true },
+  { key: 'totalAmount', label: 'ยอดหน้าใบ', width: 16, money: true },
+  { key: 'finance', label: 'ขั้นบัญชี', width: 12 },
+  { key: 'note', label: 'หมายเหตุ', width: 34 },
+  { key: 'ownerName', label: 'ผู้รับผิดชอบ', width: 22 },
+  { key: 'team', label: 'ทีม', width: 16 },
+];
+
+/** แถวหนึ่งของชีต "ใบสั่งขาย" — ใช้ในเทสต์ได้โดยไม่ต้องสร้างไฟล์ */
+export function orderSheetRow(o, index, { teamLabel = (c) => c, overriddenMonths = new Set(), origin = null } = {}) {
+  const notes = [];
+  if (o.free) notes.push('ไม่คิดเงิน');
+  // ยอดกรอกมือของเดือนนั้นทับยอดใบ ⇒ ใบนี้ไม่อยู่ในขายจริง (บอกไว้ ไม่งั้นรวมคอลัมน์แล้วไม่ตรง)
+  if (overriddenMonths.has(o.month)) notes.push('ไม่นับ · เดือนนี้ใช้ยอดกรอกย้อนหลัง');
+  return {
+    seq: index + 1,
+    month: o.month || NA,
+    day: dmy(o.day),
+    // ประเภทธุรกิจ = ป้ายกลางของสาย (สินค้า (Products) / บริการ (Services)) · ประเภทดีล = รหัส (SCENT/NPD/RE-ORDER/OTHER)
+    line: o.line ? (BUSINESS_LINE_LABELS[o.line] || o.line) : NA,
+    dealType: o.dealType || NA,
+    quoteNumber: o.quoteNumber || NA,
+    orderNumber: origin ? { text: o.orderNumber, hyperlink: `${origin}/sa/sales-orders/${o.id}` } : o.orderNumber,
+    customerName: o.customerName || NA,
+    lineCount: o.lineCount,
+    amount: o.amount,
+    vatAmount: o.vatAmount,
+    totalAmount: o.totalAmount,
+    finance: FINANCE_STATE_BADGE[financeStateOf(o)].label,
+    note: notes.join(' · '),
+    ownerName: o.ownerName || NA,
+    team: o.team ? teamLabel(o.team) : (o.ownerId ? NO_TEAM_LABEL : NA),
+  };
 }
 
 /**
@@ -284,46 +332,18 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
   const overriddenMonths = new Set(summary.monthRows.filter((r) => r.overridden).map((r) => r.month));
   const orders = [...(data.orders || [])].sort((a, b) => String(a.approvedAt || '').localeCompare(String(b.approvedAt || '')) || String(a.orderNumber).localeCompare(String(b.orderNumber)));
   const orderSheet = book.addWorksheet('ใบสั่งขาย');
-  const orderTotal = (key) => orders.reduce((s, o) => s + Number(o[key] || 0), 0);
+  // ปัดสตางค์ — ผลบวกทศนิยมลอยได้ 5611903.140000001 ในเซลล์ (จอโชว์ถูกเพราะ numFmt แต่คนคัดลอกค่าไปใช้ต่อจะเห็นเศษ)
+  const orderTotal = (key) => Math.round(orders.reduce((s, o) => s + Number(o[key] || 0), 0) * 100) / 100;
   writeTable(orderSheet, {
-    info: [stamp, `${orders.length} ใบ · เฉพาะใบที่อนุมัติแล้ว`, 'ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ใบ "ไม่คิดเงิน" = ส่วนลดท้ายใบเต็มจำนวน นับรวมในจำนวนใบ'],
-    columns: [
-      { key: 'day', label: 'วันที่อนุมัติ', width: 13 },
-      { key: 'month', label: 'งวด', width: 11 },
-      { key: 'orderNumber', label: 'ใบสั่งขาย', width: 16 },
-      { key: 'quoteNumber', label: 'ใบเสนอราคา', width: 16 },
-      { key: 'customerName', label: 'ลูกค้า', width: 34 },
-      { key: 'ownerName', label: 'ผู้รับผิดชอบ', width: 22 },
-      { key: 'team', label: 'ทีม', width: 16 },
-      { key: 'lineCount', label: 'บรรทัด', width: 8 },
-      { key: 'amount', label: 'ยอดที่นับ', width: 16, money: true },
-      { key: 'vatAmount', label: 'VAT', width: 14, money: true },
-      { key: 'totalAmount', label: 'ยอดหน้าใบ', width: 16, money: true },
-      { key: 'finance', label: 'ขั้นบัญชี', width: 11 },
-      { key: 'free', label: 'หมายเหตุ', width: 12 },
-      { key: 'counted', label: 'นับในยอด', width: 30 },
-      { key: 'link', label: 'ลิงก์', width: 40 },
-    ],
-    rows: orders.map((o) => ({
-      day: dmy(o.day),
-      month: o.month || NA,
-      orderNumber: o.orderNumber,
-      quoteNumber: o.quoteNumber || NA,
-      customerName: o.customerName || NA,
-      ownerName: o.ownerName || NA,
-      team: o.team ? teamLabel(o.team) : (o.ownerId ? NO_TEAM_LABEL : NA),
-      lineCount: o.lineCount,
-      amount: o.amount,
-      vatAmount: o.vatAmount,
-      totalAmount: o.totalAmount,
-      finance: FINANCE_STATE_BADGE[financeStateOf(o)].label,
-      free: o.free ? 'ไม่คิดเงิน' : '',
-      // ยอดกรอกมือของเดือนนั้นทับยอดใบ ⇒ ใบนี้ไม่อยู่ในขายจริง (บอกไว้ ไม่งั้นรวมคอลัมน์แล้วไม่ตรง)
-      counted: overriddenMonths.has(o.month) ? 'ไม่นับ · เดือนนี้ใช้ยอดกรอกย้อนหลัง' : '',
-      link: meta.origin ? { text: o.orderNumber, hyperlink: `${meta.origin}/sa/sales-orders/${o.id}` } : '',
-    })),
+    info: [stamp, `${orders.length} ใบ · เฉพาะใบที่อนุมัติแล้ว · กดเลข SO เพื่อเปิดใบในระบบ`, 'ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ใบ "ไม่คิดเงิน" = ส่วนลดท้ายใบเต็มจำนวน นับรวมในจำนวนใบ'],
+    /* ⭐ ลำดับคอลัมน์ตามที่ผู้ใช้กำหนด (2026-09-22):
+       # › งวด › วันที่อนุมัติ › ประเภทธุรกิจ › ประเภทดีล › QT › SO › ลูกค้า › บรรทัด › ยอดที่นับ › VAT ›
+       ยอดหน้าใบ › ขั้นบัญชี › หมายเหตุ › ผู้รับผิดชอบ › ทีม
+       ลิงก์กลับหน้าใบย้ายไปอยู่บนเลข SO · "ไม่คิดเงิน" กับ "ไม่นับ (ยอดกรอกทับ)" รวมอยู่ในหมายเหตุ */
+    columns: ORDER_SHEET_COLUMNS,
+    rows: orders.map((o, index) => orderSheetRow(o, index, { teamLabel, overriddenMonths, origin: meta.origin })),
     total: {
-      day: `รวม ${orders.length} ใบ`,
+      seq: `รวม ${orders.length} ใบ`,
       amount: orderTotal('amount'),
       vatAmount: orderTotal('vatAmount'),
       totalAmount: orderTotal('totalAmount'),
@@ -339,6 +359,8 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
       columns: [
         { key: 'orderNumber', label: 'ใบสั่งขาย', width: 16 },
         { key: 'quoteNumber', label: 'ใบเสนอราคา', width: 16 },
+        { key: 'line', label: 'ประเภทธุรกิจ', width: 18 },
+        { key: 'dealType', label: 'ประเภทดีล', width: 12 },
         { key: 'customerName', label: 'ลูกค้า', width: 34 },
         { key: 'ownerName', label: 'ผู้รับผิดชอบ (เจ้าของดีล)', width: 22 },
         { key: 'team', label: 'ทีม', width: 16 },
@@ -348,6 +370,8 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
       rows: pending.orders.map((o) => ({
         orderNumber: o.orderNumber,
         quoteNumber: o.quoteNumber || NA,
+        line: o.line ? (BUSINESS_LINE_LABELS[o.line] || o.line) : NA,
+        dealType: o.dealType || NA,
         customerName: o.customerName || NA,
         ownerName: o.ownerName || NA,
         team: o.team ? teamLabel(o.team) : (o.ownerId ? NO_TEAM_LABEL : NA),

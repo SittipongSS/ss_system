@@ -57,6 +57,10 @@ function shapeOrder(o, { person, lineCount }) {
     ownerName: person(o.ownerId)?.name || o.ownerName || null,
     // ทีมตามดีล — ตัวเดียวกับที่แถวทีม/รายคนใช้ ⇒ กรอง/จัดกลุ่มตามทีมในตารางใบกระทบกับสรุปได้
     team: reportOrderTeam(o),
+    // ประเภทธุรกิจ (สินค้า/บริการ · mig 0275) + ประเภทดีล (SCENT/NPD/RE-ORDER/OTHER) — ของดีลของใบ
+    // ⚠️ ไม่เติมค่าตั้งต้น (dealTypeOf ตีค่าว่างเป็น NPD) — ว่าง = ขีด ให้เห็นว่าดีลยังไม่ระบุ
+    line: o.deal?.line || null,
+    dealType: o.deal?.dealType || null,
     month: orderMonth(o),
     day: reportOrderDay(o),
     approvedAt: o.approvedAt,
@@ -100,12 +104,13 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
   if (targetError) return { error: targetError.message, status: 500 };
 
   /* ── ใบสั่งขายที่อนุมัติแล้ว ─────────────────────────────────────────
-     ⭐ ทีมของยอด = `deal:sales_deals(team)` — embed ในคิวรีเดียวกัน (FK เดียว 0107 · service role
+     ⭐ ทีมของยอด = `deal:sales_deals(team, …)` — embed ในคิวรีเดียวกัน (พ่วงสายธุรกิจ `line` + ประเภทดีล
+        `dealType` ของดีลมาด้วย — คอลัมน์ "ประเภทธุรกิจ/ประเภทดีล" ของรายการใบ · มติผู้ใช้ 2026-09-22) (FK เดียว 0107 · service role
         ไม่โดน RLS) ⚠️ ห้ามแยกไปถาม `.in('id', dealIds)` — ลิสต์โตตามจำนวนใบ ชนเพดาน URL 16 KB
      ⛔ ใบสั่งขายย้อนหลัง (mig 0360) อนุมัติ ณ เวลาคีย์แต่ไม่ใช่ยอดขาย — ไม่กรอง = งานเก่าทั้งกองโผล่เป็นยอดของเดือนที่คีย์ */
   const { data: orders, error: orderError } = await fetchAllResult(() => pipelineRowsOnly(supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, deal:sales_deals(team)'))
+    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, deal:sales_deals(team, line, "dealType")'))
     .eq('status', 'approved')
     .gte('approvedAt', window.from)
     .lt('approvedAt', window.until)
@@ -152,7 +157,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     (pendingOrders || []).map((o) => o.dealId),
     (chunk) => fetchAllResult(() => supabase
       .from('sales_deals')
-      .select('id, stage, team, "ownerId", "ownerName"')
+      .select('id, stage, team, line, "dealType", "ownerId", "ownerName"')
       .in('id', chunk)
       .order('id', { ascending: true })),
   );

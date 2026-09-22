@@ -113,6 +113,8 @@ export function reportPendingApproval({
       ownerId,
       ownerName,
       team,
+      line: deal.line || null,
+      dealType: deal.dealType || null,
       submittedAt: order.submittedAt || null,
       // ยอดที่โชว์ = actualAmount (ก่อน VAT) ตัวเดียวกับที่จะนับเป็นขายจริงเมื่ออนุมัติ
       amount,

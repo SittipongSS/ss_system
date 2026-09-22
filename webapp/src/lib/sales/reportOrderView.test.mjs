@@ -149,3 +149,19 @@ test('เรียงตามวันอนุมัติเป็นค่�
   const groups = groupOrders(rows, 'month', { monthLabel: (m) => `งวด ${m}` });
   assert.deepEqual(groups.map((g) => g.label), ['งวด 2026-09', 'งวด 2026-08']);
 });
+
+test('ประเภทธุรกิจ/ประเภทดีล: กรอง (ว่าง = NONE_VALUE) · นับในป้ายตัวกรอง · จัดกลุ่ม', () => {
+  const rows = [
+    o({ orderNumber: 'A', line: 'PRODUCT', dealType: 'SCENT', amount: 1 }),
+    o({ orderNumber: 'B', line: 'SERVICE', dealType: 'RE-ORDER', amount: 5 }),
+    o({ orderNumber: 'C', line: null, dealType: null, amount: 2 }),
+  ];
+  const nums = (list) => list.map((r) => r.orderNumber);
+  assert.deepEqual(nums(filterOrders(rows, { lines: ['SERVICE'] })), ['B']);
+  assert.deepEqual(nums(filterOrders(rows, { dealTypes: ['SCENT', 'RE-ORDER'] })), ['A', 'B']);
+  assert.deepEqual(nums(filterOrders(rows, { lines: [NONE_VALUE] })), ['C']);
+  assert.equal(activeFilterCount({ lines: ['PRODUCT'], dealTypes: ['NPD', 'OTHER'] }), 3);
+  const byLine = groupOrders(rows, 'line', { lineLabel: (l) => `สาย ${l}` });
+  assert.deepEqual(byLine.map((g) => g.label), ['สาย SERVICE', 'ยังไม่ระบุประเภทธุรกิจ', 'สาย PRODUCT']);
+  assert.deepEqual(groupOrders(rows, 'dealType').map((g) => g.label), ['RE-ORDER', 'ยังไม่ระบุประเภทดีล', 'SCENT']);
+});

@@ -17,7 +17,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Tooltip from "@/components/ui/Tooltip";
 import DayRangePicker from "@/components/ui/DayRangePicker";
-import { MonthPicker } from "@/components/salesPlanning/ui";
+import { MonthPicker, businessLineBadge, dealTypeBadge } from "@/components/salesPlanning/ui";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
@@ -29,6 +29,8 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { historyYearOptions } from "@/lib/sales/historyEntry";
 import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
+import { BUSINESS_LINES, businessLineLabel } from "@/lib/master/businessLines";
+import { DEAL_TYPES } from "@/lib/salesPlanning";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import {
   FINANCE_STATE_BADGE,
@@ -85,7 +87,12 @@ const LENSES = [
 
 const PERIOD_MODES = [{ value: "month", label: "รายเดือน" }, { value: "range", label: "ช่วงวัน" }];
 
-const EMPTY_FILTERS = { owners: [], teams: [], finance: [], months: [], kinds: [] };
+const EMPTY_FILTERS = { owners: [], teams: [], finance: [], months: [], kinds: [], lines: [], dealTypes: [] };
+
+/* ประเภทธุรกิจ/ประเภทดีลของดีลของใบ (มติผู้ใช้ 2026-09-22) — ป้ายกลางชุดเดียวกับหน้ารวมดีล
+   ⚠️ ค่าว่างต้องเป็นขีด — `dealTypeBadge(null)` ตีเป็น NPD (normalizeDealType) จะโกหกว่าดีลเป็น NPD */
+const lineCell = (line) => businessLineBadge(line, "ui-badge-cell") || NA;
+const dealTypeCell = (type) => (DEAL_TYPES.includes(type) ? dealTypeBadge(type, "ui-badge-cell ui-badge-w-deal-type") : NA);
 
 const money = (v) => fmtMoney(v);
 const pctText = (v) => (v == null ? NA : fmtPercent(v));
@@ -919,6 +926,8 @@ function PendingPanel({ pendingApproval }) {
               <th className="num">ยอดก่อน VAT</th>
               <th>ลูกค้า</th>
               <th>ผู้รับผิดชอบ</th>
+              <th>ประเภทธุรกิจ</th>
+              <th>ประเภทดีล</th>
               <th className="num">ยื่นเมื่อ</th>
             </tr>
           </thead>
@@ -935,6 +944,8 @@ function PendingPanel({ pendingApproval }) {
                   {o.ownerName || NA}
                   <span className="cell-sub">{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</span>
                 </td>
+                <td>{lineCell(o.line)}</td>
+                <td>{dealTypeCell(o.dealType)}</td>
                 <td className="num">{o.submittedAt ? fmtDate(o.submittedAt) : NA}</td>
               </tr>
             ))}
@@ -943,7 +954,7 @@ function PendingPanel({ pendingApproval }) {
             <tr>
               <td>รวม {pendingApproval.count} ใบ</td>
               <td className="num"><Money value={pendingApproval.amount} /></td>
-              <td colSpan={3} />
+              <td colSpan={5} />
             </tr>
           </tfoot>
         </table>
@@ -985,6 +996,16 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   }, [orders, teamRegistry]);
   const monthOptions = useMemo(() => [...new Set(orders.map((o) => o.month).filter(Boolean))].sort()
     .map((m) => ({ value: m, label: formatMonthLabel(m) })), [orders]);
+  const lineOptions = useMemo(() => {
+    const list = BUSINESS_LINES.filter((l) => orders.some((o) => o.line === l)).map((l) => ({ value: l, label: businessLineLabel(l) }));
+    if (orders.some((o) => !o.line)) list.push({ value: NONE_VALUE, label: "ยังไม่ระบุ" });
+    return list;
+  }, [orders]);
+  const dealTypeOptions = useMemo(() => {
+    const list = DEAL_TYPES.filter((t) => orders.some((o) => o.dealType === t)).map((t) => ({ value: t, label: t }));
+    if (orders.some((o) => !o.dealType)) list.push({ value: NONE_VALUE, label: "ยังไม่ระบุ" });
+    return list;
+  }, [orders]);
   const financeOptions = useMemo(() => (orders.some((o) => financeStateOf(o) === "rejected")
     ? [...FINANCE_STATE_OPTIONS, { value: "rejected", label: "บัญชีตีกลับ" }]
     : FINANCE_STATE_OPTIONS), [orders]);
@@ -1012,9 +1033,11 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   }, [loading, error, orders.length, ownerOptions, teamOptions, monthOptions, monthGroupShown, setFilters]);
 
   const drilled = useMemo(() => ordersForDrill(orders, drill), [orders, drill]);
-  const filtered = useMemo(() => filterOrders(drilled, { q, ...f }), [drilled, q, f.owners, f.teams, f.finance, f.months, f.kinds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filtered = useMemo(() => filterOrders(drilled, { q, ...f }), [drilled, q, f.owners, f.teams, f.finance, f.months, f.kinds, f.lines, f.dealTypes]); // eslint-disable-line react-hooks/exhaustive-deps
   const sorted = useMemo(() => sortOrders(filtered, sortKey, sortDir), [filtered, sortKey, sortDir]);
-  const groups = useMemo(() => groupOrders(sorted, groupBy, { teamLabels, monthLabel: (m) => formatMonthLabel(m) }), [sorted, groupBy, teamLabels]);
+  const groups = useMemo(() => groupOrders(sorted, groupBy, {
+    teamLabels, monthLabel: (m) => formatMonthLabel(m), lineLabel: businessLineLabel,
+  }), [sorted, groupBy, teamLabels]);
   const grouped = groupBy !== "none";
 
   /* แบ่งหน้าตาม "ใบ" เสมอ แม้จัดกลุ่ม — เดิมแบ่งตามกลุ่ม ⇒ 3 ทีม/8 คน/2 งวด = ทุกใบอยู่หน้าเดียว (สูง 12,790px · ตรวจ 2026-09-22)
@@ -1068,6 +1091,8 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
           <span className="cell-sub">{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</span>
         </td>
         <td className="num">{o.day ? fmtDate(o.day) : NA}</td>
+        <td>{lineCell(o.line)}</td>
+        <td>{dealTypeCell(o.dealType)}</td>
         <td>
           <StatusBadge className="ui-badge-cell ui-badge-w-finance" tone={badge.tone || "neutral"} label={badge.label} />
         </td>
@@ -1113,6 +1138,8 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
               ...(monthGroupShown
                 ? [{ key: "months", label: "งวด", options: monthOptions, selected: f.months, onChange: (v) => setFilter("months", v) }]
                 : []),
+              { key: "lines", label: "ประเภทธุรกิจ", options: lineOptions, selected: f.lines, onChange: (v) => setFilter("lines", v) },
+              { key: "dealTypes", label: "ประเภทดีล", options: dealTypeOptions, selected: f.dealTypes, onChange: (v) => setFilter("dealTypes", v) },
               { key: "teams", label: "ทีม", options: teamOptions, selected: f.teams, onChange: (v) => setFilter("teams", v) },
               { key: "owners", label: "ผู้รับผิดชอบ", options: ownerOptions, selected: f.owners, onChange: (v) => setFilter("owners", v) },
               { key: "finance", label: "ขั้นบัญชี", options: financeOptions, selected: f.finance, onChange: (v) => setFilter("finance", v) },
@@ -1194,6 +1221,8 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                   <th className={styles.colCustomer}>ลูกค้า</th>
                   <th>ผู้รับผิดชอบ</th>
                   <th className="num">อนุมัติเมื่อ</th>
+                  <th>ประเภทธุรกิจ</th>
+                  <th>ประเภทดีล</th>
                   <th>ขั้นบัญชี</th>
                   <th className="num">บรรทัด</th>
                   <th className="num">VAT</th>
@@ -1206,7 +1235,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                   <tbody key={group.key}>
                     {group.label && (
                       <TableGroupRow
-                        colSpan={9}
+                        colSpan={11}
                         label={group.label}
                         badge={`${group.count} ใบ`}
                         total={money(group.total)}
@@ -1226,7 +1255,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                 <tr>
                   <td>รวม {filtered.length} ใบ{pager.pageCount > 1 ? " (ทุกหน้า)" : ""}</td>
                   <td className="num"><Money value={totals.amount} /></td>
-                  <td colSpan={5} />
+                  <td colSpan={7} />
                   <td className="num"><Money value={totals.vat} /></td>
                   <td className="num"><Money value={totals.total} /></td>
                 </tr>
