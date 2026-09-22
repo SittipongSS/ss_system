@@ -205,9 +205,14 @@ export default function ScentDevDetail({
         tone="danger"
         title={`ลบ ${deleteRow?.registry?.code || deleteRow?.name || "directionนี้"}`}
         description={`${deleteRow?.registry
-          ? `ลบออกจากคำร้อง และลบ ${deleteRow.registry.code || deleteRow.registry.name} ออกจากทะเบียนด้วย`
+          ? `ลบออกจากคำร้อง และลบ${deleteRow.delivered?.formula
+            // ม-148 — direction ที่ส่งเป็นสินค้าสร้างสองอย่าง ต้องบอกทั้งคู่ก่อนกด
+            ? `สูตร ${deleteRow.delivered.formula.code || deleteRow.delivered.formula.name} กับกลิ่น `
+            : " "}${deleteRow.registry.code || deleteRow.registry.name} ออกจากทะเบียนด้วย`
           : "ลบรายการนี้ออกจากคำร้อง"} · ย้อนกลับไม่ได้`}
-        detail="ถ้าของในทะเบียนถูกอ้างที่อื่นแล้ว ระบบจะลบเฉพาะรายการในคำร้อง แล้วบอกไว้ในประวัติ"
+        detail={deleteRow?.delivered?.formula
+          ? "ถ้าสูตรถูกใช้ที่อื่นแล้ว (สินค้า · สูตรที่แก้ต่อ · คำร้อง/ราคา) ระบบเก็บทั้งสูตรและกลิ่นไว้ ลบเฉพาะรายการในคำร้อง แล้วบอกไว้ในประวัติ"
+          : "ถ้าของในทะเบียนถูกอ้างที่อื่นแล้ว ระบบจะลบเฉพาะรายการในคำร้อง แล้วบอกไว้ในประวัติ"}
         confirmLabel="ลบ"
         busy={deleting}
         onClose={() => setDeleteRow(null)}

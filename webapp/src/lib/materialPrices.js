@@ -7,10 +7,13 @@
 import { canQuoteCosting, isSuperuser, normalizeDepartment } from '@/lib/permissions';
 
 // ชนิดวัสดุ = ชุดย่อยของบรรทัดแม่แบบ (ไม่รวม labor — ค่าดำเนินการไม่ใช่ "วัสดุ")
-export const MATERIAL_KINDS = ['RM_F', 'RM_FB', 'PM'];
+// ⭐ RM_B (mig 0372 · ม-148) — นิยามผู้ใช้ 2026-09-22: *"F คือกลิ่น(หัวน้ำหอม) / B คือเบส / FB คือ เบสที่ใส่กลิ่น"*
+// F ผูกกลิ่น (`scentId`) · B กับ FB ผูกสูตร (`formulaId`) — ดูช่องราคาที่ lib/master/priceSlots.js
+export const MATERIAL_KINDS = ['RM_F', 'RM_B', 'RM_FB', 'PM'];
 export const MATERIAL_KIND_LABELS = {
-  RM_F: 'หัวน้ำหอม (RM)',
-  RM_FB: 'เนื้อสาร (RM)',
+  RM_F: 'หัวน้ำหอม (F)',
+  RM_B: 'เบส (B)',
+  RM_FB: 'เบสที่ใส่กลิ่น (FB)',
   PM: 'บรรจุภัณฑ์ (PM)',
 };
 
@@ -130,6 +133,21 @@ export function normLabel(value) {
 // mig 0181: เปลี่ยนจาก `formulaCode` (text ที่คนพิมพ์เอง) → `formulaId` ของทะเบียนสูตร
 export function materialIdentityKey({ kind, label, formulaId, customerId } = {}) {
   return [kind, normLabel(label), formulaId || '', customerId || ''].join('::');
+}
+
+/**
+ * วัสดุของกลิ่น/สูตรตัวหนึ่ง (ประทับ `stampColumn` = `id` และชนิดตรง) — ตัวเขียนราคา (`registryEntryMaterial`)
+ * กับตัวแสดงราคาบนทะเบียน (`attachRegistryPrice`) ต้องถามตัวนี้ตัวเดียว (รีวิว ม-148)
+ *
+ * ⚠️ ตามปกติมีตัวเดียว แต่ไม่มี unique บน pointer — ข้อมูลเก่ามีสองตัวได้ (ชื่อเปลี่ยนแล้วเกิดวัสดุใหม่) ·
+ * ถ้าสองทางเลือกคนละตัว ราคาที่เพิ่งใส่จะไม่ขึ้นบนจอ ⇒ เลือกตัวที่ชื่อตรงก่อน แล้วค่อยตัวที่ขยับล่าสุด
+ */
+export function pickStampedMaterial(materials = [], { stampColumn, id, kind, label } = {}) {
+  const mine = (materials || []).filter((m) => m && m.kind === kind && m[stampColumn] === id);
+  if (mine.length <= 1) return mine[0] || null;
+  const named = mine.filter((m) => normLabel(m.label) === normLabel(label));
+  const pool = named.length ? named : mine;
+  return [...pool].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];
 }
 
 export function findMaterialByIdentity(materials = [], identity = {}) {

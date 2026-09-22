@@ -10,6 +10,7 @@
 // และปุ่มท้ายเธรดใช้ ⇒ ตัวเลขบนจอนี้ขัดกับที่อื่นไม่ได้เชิงโครงสร้าง
 //
 // ⚠️ **ประกอบที่ lib ไม่ใช่ใน JSX** — กฎที่ตั้งไว้หลังบั๊กรางซ้ำ (#1033)
+import { rowPriceLines } from '@/lib/requests/rowPrices';
 import { ROW_STAGE_LABELS, ROW_STAGE_TONES, isRowSettled, rowStage } from '@/lib/requests/rowStage';
 import { hopLabel } from '@/lib/requests/hops';
 /* ⭐ **รางขั้น + อายุงานเป็นของกลางทุกหัวข้อ** (มติผู้ใช้ 2026-08-25) — สามตาราง
@@ -53,6 +54,8 @@ export function formulaDevBoard(items = []) {
         // ⭐ ราคาที่ออกจากแถวนี้ (ช่องว่างข้อ 5) — `findRequest` เติมจาก rev ที่
         // `answeredRevisionId` ชี้ · null = ยังไม่ถึงขั้นราคา
         priced: item.pricedResult || null,
+        // ⭐ ม-148 — ทุกช่องที่ใส่ (F · B · FB เรียงแล้ว) · ตัวจัดรูปเดียวกับหน้ารายการ (`rowPriceLines`)
+        prices: rowPriceLines(item),
         // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
         rework: !!item.derivedFromItemId,
         // ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)

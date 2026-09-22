@@ -67,3 +67,6 @@
   font-size: var(--fs-2);
   white-space: nowrap;
 }
+
+/* ม-148 — ป้ายช่องราคาต่อท้ายตัวเลข (FB · F ของสูตรหัวน้ำหอม) */
+.priceSlot { font-size: var(--fs-3); color: var(--text-3); }

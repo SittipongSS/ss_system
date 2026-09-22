@@ -100,7 +100,7 @@ const CAPS = {
   service_visits: 3,
   sales_order_installments: 1,
   sahamit_fc_flags: 2,
-  material_prices: 2,
+  material_prices: 1, // 2026-09-22 ม-148: attachRowPrice ซอย .in() เป็นก้อน (คิวทั้งหน้าอ่านราคา) 2 → 1
   audit_logs: 0,
   document_updates: 0,
 };

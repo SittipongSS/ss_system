@@ -77,17 +77,27 @@ import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/
 import { scentDesignLines } from "@/lib/requests/scentDesignOrders";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
-import { deliveryRowLabel, normalizeFormulaDelivery } from "@/lib/requests/delivery";
+import { deliveryRowLabel, normalizeDeliveryRows, normalizeFormulaDelivery } from "@/lib/requests/delivery";
+import { defaultDeliveredCategory, isDeliveredAsProduct } from "@/lib/requests/deliveredCategory";
+import { rowPriceSlots } from "@/lib/requests/rowPriceTarget";
+import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { formulaDeliveryPreview } from "@/lib/requests/formulaRework";
 import { requestedLabel } from "@/lib/requests/rowLabel";
 
 // ป้ายรายการในหัวโมดัล/ข้อความ — พัฒนาสูตรตัดหาง "→ รหัส" ของป้ายเก่าในฐาน (2026-09-15 · รหัสตอนส่ง ไม่ใช่รหัสปัจจุบัน)
 const itemText = (item) => (item?.lineKind === "product_dev" ? requestedLabel(item?.label) : item?.label);
+/* ก้อนที่ส่ง POST /items — คีย์ขีดล่าง (`_files` · `_as` ฯลฯ) เป็นของฟอร์มล้วน ตัดทิ้งทุกระดับ
+   (File serialize เป็น {} เปล่า ๆ) · ส่งเป็นหัวน้ำหอม = ไม่มีก้อนสูตร (ม-148) */
+const stripFormKeys = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => !k.startsWith("_")));
+const deliveryPayload = (rows) => (rows || []).map((row) => {
+  const { formula, ...rest } = stripFormKeys(row);
+  return isDeliveredAsProduct(row.categoryCode) ? { ...rest, formula: stripFormKeys(formula) } : rest;
+});
 import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
-  codeConflict, emptyDeliveryRow, reworkDeliveryRow,
+  emptyDeliveryRow, reworkDeliveryRow,
 } from "@/components/requests/ScentDeliveryFields";
 import Tabs from "@/components/ui/Tabs";
 import { reworkSlots } from "@/lib/requests/rework";
@@ -254,6 +264,9 @@ export default function RequestDetailPage() {
   const pdrPicksScent = req ? requestPdrRowsPickScent(req) : false;
   const needsScents = hasFormulaRows || pdrPicksScent;
   const needsCustomers = needsScents || req?.kind === "scent_dev";
+  /* ⭐ ม-148 — พัฒนากลิ่นที่ส่งเป็นสินค้าสร้างสูตรด้วย ⇒ ฟอร์มส่งงานต้องมีทะเบียนสูตร (ตัวเลือก "แก้มาจากสูตร"
+     + ด่านรหัสสูตรซ้ำก่อนกดส่ง) เหมือนใบพัฒนาสูตร */
+  const needsFormulas = hasFormulaRows || req?.kind === "scent_dev";
   useEffect(() => {
     if (!needsCustomers) return;
     const get = (url) => apiFetch(url, { cache: "no-store" })
@@ -264,9 +277,9 @@ export default function RequestDetailPage() {
       get("/api/customers"),
       // กลิ่นใช้กับฟอร์มสูตร/แถวสินค้า NPD · สูตรใช้เฉพาะฟอร์มสูตร — ใบอื่นไม่ลากทั้งทะเบียนมาเปล่า ๆ
       needsScents ? get("/api/master/scents") : [],
-      hasFormulaRows ? get("/api/master/formulas") : [],
+      needsFormulas ? get("/api/master/formulas") : [],
     ]).then(([customers, scents, formulas]) => setRegistry({ customers, scents, formulas }));
-  }, [needsCustomers, needsScents, hasFormulaRows]);
+  }, [needsCustomers, needsScents, needsFormulas]);
   /* ดึงทะเบียนกลิ่นใหม่เงียบ ๆ หลังด่านกลิ่นของ NPD บล็อก — ทะเบียนบนจอโหลดครั้งเดียวตอนเปิดหน้า ⇒ เจ้าของกลิ่น
      ที่ถูกแก้ทีหลังจะบล็อกค้างจนต้อง F5 (ร่างที่พิมพ์หาย) · ดึงใหม่ = กดอีกครั้งตัดสินด้วยของสด (รีวิวรอบ 4) */
   const refreshScents = useCallback(() => {
@@ -652,19 +665,21 @@ export default function RequestDetailPage() {
 
   // ปุ่มส่งปิดด้วยกติกาเดียวกับที่ช่องเตือน — ฟอร์มไม่คิดกฎเอง (บทเรียนเดิม:
   // หน้าจอคำนวณเงื่อนไขเองแล้วเพี้ยนจาก server จนปุ่มกดได้แต่ได้ 400 กลับมา)
+  /* ⭐ ม-148 — **ถามด่านตัวเดียวกับ server** (`normalizeDeliveryRows`) แทนด่านย่อยที่เขียนเองสามข้อ ·
+     ช่องที่เพิ่มรอบนี้ (ส่งเป็นอะไร · หมวด · ฟอร์มสูตร · รหัสสูตรซ้ำ) จึงตรงกับ API โดยโครงสร้าง
+     ⚠️ ป้ายต้องตรงกับ **แท็บ** ที่คนเห็น (`labelOf`) ไม่งั้นข้อความบอกว่าใบไหนพังแล้วหาแท็บไม่เจอ
+     ⚠️ ทะเบียนหมวดยังโหลดไม่เสร็จ (ว่าง) = ด่านตรวจได้แค่รูปแบบ/กลุ่ม — server ตรวจครบอีกชั้น */
   const deliveryBlocker = (() => {
     if (!delivery) return null;
-    const codes = new Set(allScents.map((s) => String(s.code ?? "").trim().toLowerCase()).filter(Boolean));
-    for (let i = 0; i < delivery.length; i += 1) {
-      const row = delivery[i];
-      // ป้ายต้องตรงกับ **แท็บ** ที่คนเห็น ไม่งั้นข้อความบอกว่าใบไหนพังแล้วหาแท็บไม่เจอ
-      const at = deliveryRowLabel(row, i);
-      if (!String(row.scent?.name ?? "").trim()) return `${at}: ต้องระบุชื่อกลิ่น`;
-      if (!String(row.scent?.code ?? "").trim()) return `${at}: ต้องระบุรหัสกลิ่น`;
-      const clash = codeConflict(row.scent?.code, i, delivery, codes);
-      if (clash) return `${at}: ${clash}`;
-    }
-    return null;
+    return normalizeDeliveryRows(deliveryPayload(delivery), {
+      existingCodes: allScents.map((s) => s.code).filter(Boolean),
+      existingFormulaCodes: registry.formulas.map((f) => f.code).filter(Boolean),
+      productTypes,
+      briefs: req.briefs || [],
+      items: req.items || [],
+      today: businessDate(),
+      labelOf: (row, i) => deliveryRowLabel(delivery[i] || row, i),
+    }).error;
   })();
 
   // ⚠️ คืน null เมื่อ "ยังไม่มีอะไรให้เทียบ" — แถบจะไม่ขึ้นเลย ดีกว่าขึ้นแถบเขียว
@@ -1184,11 +1199,13 @@ export default function RequestDetailPage() {
      ⭐ **รอบแก้ที่ค้างอยู่ขึ้นมาก่อนเสมอ** — ลูกค้าสั่งแก้ไว้แล้ว แถวรออยู่แล้ว RD ไม่ต้อง
      ไปจำเองว่าค้างอะไร และไม่มีทางสร้างแถวใหม่ทับของที่รออยู่ (กติกาเดิมของปุ่มระดับใบ)
      ⚠️ กรองรอบแก้ **ตามบรีฟ** — ก้อนอื่นที่ค้างอยู่ไม่ใช่เรื่องของการกดปุ่มก้อนนี้ */
+  // ⭐ ม-148 — "ส่งเป็น" ตั้งต้นตาม PDR ข้อ 1.11 เมื่อใบขอไว้หมวดเดียว (RD เปลี่ยนได้)
+  const deliveryDefault = defaultDeliveredCategory(req.pdrProductKinds || [], productTypes);
   const openDelivery = (briefId) => {
     const waiting = reworkSlots(req.items || [])
       .filter((slot) => !briefId || slot.briefId === briefId)
       .map(reworkDeliveryRow);
-    setDelivery(waiting.length ? waiting : [{ ...emptyDeliveryRow(), briefId: briefId || "" }]);
+    setDelivery(waiting.length ? waiting : [{ ...emptyDeliveryRow({ categoryCode: deliveryDefault }), briefId: briefId || "" }]);
     setDeliveryTab(0);
   };
 
@@ -1880,7 +1897,7 @@ export default function RequestDetailPage() {
           canRequester: !!req._mine && REQUEST_OPEN_STATUSES.includes(req.status),
           busy: saving,
           onHop: (row, hop, outcome) => openHop(row, hop, outcome),
-          onPrice: (row) => setPricing({ item: row, price: "", validUntil: "", note: "" }),
+          onPrice: (row) => setPricing({ item: row }),
         }}
         saving={saving}
         /* ⭐ หัวข้อที่แก้ของกลาง (ทะเบียนกลิ่น/สูตร) ได้จากในใบ ต้องบอกเปลือกให้
@@ -2761,52 +2778,37 @@ export default function RequestDetailPage() {
       </Modal>
 
       {/* ใส่ราคา — ขั้นสุดท้ายของสายงาน อยู่ในใบเดิม ไม่ใช่คำร้องใบใหม่
-          ⚠️ ราคาเดียว ไม่มีชั้นจำนวน (มติผู้ใช้): หัวน้ำหอมคิดต่อกิโลเดียว ไม่ลดตามจำนวน */}
-      <Modal
-        open={!!pricing} onClose={() => setPricing(null)} size="sm" dismissible={!saving}
+          ⭐ ม-148 (มติผู้ใช้ 2026-09-22): แถวที่ผูก **สูตร** ใส่ได้ F · B · FB · แถวที่เป็น **กลิ่น** ใส่ได้ F ช่องเดียว
+          · ช่องมาจาก `rowPriceSlots` ตัวเดียวกับ API · โมดัลกลางตัวเดียวกับปุ่มราคาหน้าทะเบียน (ไม่เขียนฟอร์มแยก)
+          ⚠️ ราคาเดียวต่อช่อง ไม่มีชั้นจำนวน (มติผู้ใช้): คิดต่อกิโลเดียว ไม่ลดตามจำนวน */}
+      <RegistryPriceModal
+        open={!!pricing}
+        onClose={() => setPricing(null)}
         title={pricing ? `ใส่ราคา — ${itemText(pricing.item)}` : ""}
-      >
-        {pricing && (
-          <>
-            <div className="form-group">
-              <label htmlFor="row-price">ราคา (฿/กก.)</label>
-              <Input
-                id="row-price" type="number" min="0" step="any" mono
-                value={pricing.price} disabled={saving}
-                onChange={(e) => setPricing({ ...pricing, price: e.target.value })}
-              />
-              <p className={styles.fieldHint}>
-                ราคานี้เข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่นตัวนี้
-                {req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}
-                {" — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ"}
-              </p>
-            </div>
-            <div className={`action-bar ${styles.modalActions}`}>
-              <Button variant="quiet" onClick={() => setPricing(null)} disabled={saving}>ยกเลิก</Button>
-              <Button
-                tone="primary"
-                disabled={saving || !String(pricing.price ?? "").trim()}
-                onClick={async () => {
-                  const done = await call(`/items/${pricing.item.id}/price`, {
-                    method: "POST",
-                    body: JSON.stringify({ price: pricing.price, note: pricing.note || null }),
-                  }, "บันทึกราคาเข้าทะเบียนแล้ว");
-                  if (done) setPricing(null);
-                }}
-              >
-                บันทึกราคา
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
+        endpoint={pricing ? `/api/sa/requests/${id}/items/${pricing.item.id}/price` : ""}
+        // ช่องที่ server คิดจากทะเบียนสดให้แล้ว (ตัวเดียวกับ POST) · ไม่มี = ถอยไปคิดจากแถว
+        slots={pricing ? (pricing.item.priceSlots || rowPriceSlots(pricing.item)) : null}
+        hint={`ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}`
+          + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง"}
+        /* ⚠️ **โหลดใบใหม่ผ่าน GET เสมอ** — ห้ามตั้ง `req` จาก body ที่ route ราคาตอบ (รีวิว ม-148 รอบสาม): body นั้นเป็น
+           `findRequest` เปล่า ไม่มีลิงก์ทะเบียน (`refScent`/`refFormula`) และธงของคนดู (`_mine` · `_canEditPdr` …) ที่ GET เติม
+           ⇒ ตั้งแล้วรหัส/ลิงก์ในตารางหาย · ปุ่มปิดเรื่องของแอดมินหาย จนกด F5 */
+        onSaved={async (msg) => {
+          setPricing(null);
+          setToast({ kind: "success", msg });
+          // ⚠️ ล็อกปุ่มทั้งหน้าจนใบใหม่มาถึง (เหมือน `call()`) — ไม่งั้นปุ่ม "ใส่ราคา" ของแถวที่เพิ่งใส่ยังกดได้ แล้วได้ 409 งง ๆ
+          setSaving(true);
+          try { await load({ background: true }); } finally { setSaving(false); }
+        }}
+        onError={() => load({ background: true })}
+      />
 
       {/* ส่งงาน — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว
           ⚠️ หัวโมดัลใช้คำเดียวกับปุ่มที่กดมา (ม-120 รวมคำ "ส่งกลิ่น"/"ส่งของ" เป็น
           "ส่งงาน") — กดปุ่มชื่อหนึ่งแล้วเจอหัวกล่องอีกชื่อ คนจะไม่แน่ใจว่ากดถูกกล่องไหม */}
       <Modal
         open={!!delivery} onClose={() => setDelivery(null)} size="lg" dismissible={!saving}
-        title="ส่งงานให้ผู้ขอ — กลิ่นเข้าทะเบียนทันที"
+        title="ส่งงานให้ผู้ขอ — เข้าทะเบียนทันที"
         /* ── แถบเครื่องมือใต้หัวโมดัล (โซนที่ไม่เลื่อนตามฟอร์ม) ─────────────────
            ⭐ **ปุ่มเพิ่มอยู่แถวเดียวกับแท็บ** (มติผู้ใช้ 2026-08-19 · ยกแพตเทิร์นมาจาก
            โมดัลสร้างดีล) — ปุ่มล่างสุดหลุดบริบท และมองไม่ออกว่ามันเพิ่ม "แท็บ"
@@ -2842,7 +2844,7 @@ export default function RequestDetailPage() {
               variant="ghost" size="sm" disabled={saving}
               className={styles.deliveryAdd}
               onClick={() => {
-                setDelivery([...delivery, emptyDeliveryRow()]);
+                setDelivery([...delivery, emptyDeliveryRow({ categoryCode: deliveryDefault })]);
                 setDeliveryTab(delivery.length);
               }}
             >
@@ -2855,7 +2857,7 @@ export default function RequestDetailPage() {
           <>
             <p className={styles.fieldHint}>
               แต่ละแท็บคือ <strong>1 direction</strong> — บันทึกแล้วกลิ่นเข้าทะเบียนทันที
-              พร้อมรหัสและวันที่ส่ง ไม่ต้องไปกรอกซ้ำที่หน้าทะเบียน
+              (ส่งเป็นสินค้า = ได้สูตรพร้อมกัน) ไม่ต้องไปกรอกซ้ำที่หน้าทะเบียน
               {delivery.some((r) => r.targetItemId)
                 && " · รอบแก้ที่ลูกค้าสั่งไว้ขึ้นให้แล้ว — เติมชื่อกับรหัสของตัวใหม่ได้เลย"}
             </p>
@@ -2864,6 +2866,7 @@ export default function RequestDetailPage() {
               customers={registry.customers} active={deliveryTab}
               customerId={req.customerId} disabled={saving}
               briefs={req.briefs || []}
+              productTypes={productTypes} formulas={registry.formulas}
             />
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" onClick={() => setDelivery(null)} disabled={saving}>ยกเลิก</Button>
@@ -2874,14 +2877,14 @@ export default function RequestDetailPage() {
                   // ⚠️ คีย์ขีดล่าง (_files ฯลฯ) เป็นของฟอร์มล้วน — File serialize
                   // เป็น {} เปล่า ๆ ส่งไปมีแต่ทางให้ server งง
                   const prevIds = new Set((req.items || []).map((x) => x.id));
-                  const rows = delivery.map(
-                    ({ _files, _sourceLabel, _customerNote, ...r }) => r,
-                  );
+                  const rows = deliveryPayload(delivery);
                   const done = await call("/items", {
                     method: "POST", body: JSON.stringify({ rows }),
-                  }, `ส่งกลิ่น ${delivery.length} รายการ · เข้าทะเบียนแล้ว`);
+                  }, `ส่งงาน ${delivery.length} รายการ · เข้าทะเบียนแล้ว`);
                   if (!done) return;
                   setDelivery(null);
+                  // ม-148 — ส่งเป็นสินค้าเกิดสูตรใหม่ ⇒ ทะเบียนสูตรบนจอต้องสด (ด่านรหัสสูตรซ้ำ · ตัวเลือก "แก้มาจากสูตร")
+                  if (delivery.some((r) => isDeliveredAsProduct(r.categoryCode))) refreshFormulas();
                   // ⭐ ไฟล์ประกอบ (ม-91) — แถวเพิ่งเกิดตอนส่ง จึงอัปได้ตอนนี้เท่านั้น
                   // จับคู่: แถวใหม่เรียง sortOrder ตามลำดับ direction ที่กรอก ·
                   // รอบแก้เติมแถวเดิม (targetItemId รู้อยู่แล้ว)
@@ -2908,7 +2911,7 @@ export default function RequestDetailPage() {
                     }
                   }
                   if (failed.length) {
-                    setToast({ kind: "error", msg: `กลิ่นเข้าทะเบียนแล้ว แต่แนบไฟล์ไม่สำเร็จ ${failed.length} ไฟล์ (${failed.join(", ")}) — แนบใหม่ได้ที่การ์ดรายการ` });
+                    setToast({ kind: "error", msg: `ส่งงานเข้าทะเบียนแล้ว แต่แนบไฟล์ไม่สำเร็จ ${failed.length} ไฟล์ (${failed.join(", ")}) — แนบใหม่ได้ที่การ์ดรายการ` });
                   }
                   await load();
                 }}

@@ -7,13 +7,16 @@ import { genId } from '@/lib/id';
 import { registryRefTargets } from '@/lib/master/registryRefs';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import {
-  latestRevision, materialPriceState, revisionPriceRange, revisionUnitPrice,
+  latestRevision, materialPriceState, pickStampedMaterial, revisionPriceRange, revisionUnitPrice,
 } from '@/lib/materialPrices';
 import {
-  derivedFromError, newScentStatus, normalizeScentInput, proposedScentStatus,
+  SCENT_STATUS_LABELS, derivedFromError, isScentUsable, newScentStatus, normalizeScentInput, proposedScentStatus,
 } from '@/lib/master/scents';
 import { formulaScentCustomerError, derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 import { customerSnapshotName, CUSTOMER_NAME_SELECT } from '@/lib/master/customerName';
+import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
+import { priceSlotsFor } from '@/lib/master/priceSlots';
+import { rowPriceSlots } from '@/lib/requests/rowPriceTarget';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -218,7 +221,27 @@ export async function loadFormulas(supabase, { status = null, customerId = null 
   const withSource = await attachFormulaSource(supabase, data || []);
   const withUsage = await attachFormulaUsage(supabase, withSource);
   // ราคา FB ของสูตร — คู่ขนานกับ F ของกลิ่น
-  return attachRegistryPrice(supabase, withUsage, { column: 'formulaId', kind: 'RM_FB' });
+  const withPrice = await attachRegistryPrice(supabase, withUsage, { column: 'formulaId', kind: 'RM_FB' });
+  return withFragranceOilPrice(supabase, withPrice);
+}
+
+/* ⭐ **สูตรหมวดหัวน้ำหอม (02-020) ราคาหลักคือ F ของกลิ่น** (ม-148 · `priceSlotsFor`) — สูตรพวกนี้ใส่ได้แค่ F ลงที่กลิ่น
+   ⇒ ช่องราคา FB ของมันว่างตลอดกาล · ตาราง/หน้ารายละเอียดต้องโชว์ราคาที่ใส่ได้จริง ไม่ใช่ "ยังไม่ผูกราคา" ถาวร
+   · `priceSlot` บอกจอว่าราคาที่ติดมาคือช่องไหน (ป้ายคอลัมน์/การ์ด) */
+async function withFragranceOilPrice(supabase, rows) {
+  /* ⚠️ เงื่อนไขเดียวกับ `priceSlotsFor` เป๊ะ (รีวิว ม-148 รอบสาม) — กลิ่นใช้ไม่ได้ = สูตรถอยไปช่อง B/FB ⇒ ราคาหลักยังเป็น FB
+     ของสูตร · ต้องมี `scentStatus` บนแถวก่อนเรียก (loadFormulas: attachFormulaUsage · หน้ารายละเอียด: โหลดกลิ่นก่อน) */
+  const isOil = (r) => r.categoryCode === PDR_FRAGRANCE_OIL_CODE && r.scentId
+    && (r.scentStatus ? isScentUsable({ status: r.scentStatus }) : true);
+  const oil = rows.filter(isOil);
+  if (!oil.length) return rows.map((r) => ({ ...r, priceSlot: 'FB' }));
+  const scentPrices = await attachRegistryPrice(
+    supabase, [...new Set(oil.map((r) => r.scentId))].map((id) => ({ id })), { column: 'scentId', kind: 'RM_F' },
+  );
+  const byScent = new Map(scentPrices.map((s) => [s.id, s.price]));
+  return rows.map((r) => (isOil(r)
+    ? { ...r, price: byScent.get(r.scentId) || null, priceSlot: 'F' }
+    : { ...r, priceSlot: 'FB' }));
 }
 
 // FG ที่ถือสูตรแต่ละตัว (1 สูตร : 1 FG — mig 0232) — ตัวเลือกสูตรบนฟอร์มสินค้า
@@ -235,18 +258,20 @@ async function attachFormulaUsage(supabase, rows) {
   const byFormula = new Map((holders || []).map((p) => [p.formulaId, { id: p.id, fgCode: p.fgCode || null }]));
 
   const scentIds = [...new Set(rows.map((r) => r.scentId).filter(Boolean))];
-  let scentNameById = new Map();
+  let scentById = new Map();
   if (scentIds.length) {
     const { data: scents, error: scentError } = await supabase
-      .from('scents').select('id, name').in('id', scentIds);
+      .from('scents').select('id, name, status').in('id', scentIds);
     if (scentError) throw scentError;
-    scentNameById = new Map((scents || []).map((s) => [s.id, s.name]));
+    scentById = new Map((scents || []).map((s) => [s.id, s]));
   }
 
   return rows.map((r) => ({
     ...r,
     usedByProduct: byFormula.get(r.id) || null,
-    scentName: scentNameById.get(r.scentId) || null,
+    scentName: scentById.get(r.scentId)?.name || null,
+    // ม-148 — โมดัลราคาเปิดช่อง F (ลงกลิ่นของสูตร) เฉพาะกลิ่นที่ใส่ราคาได้ · ตัวเดียวกับที่ route ตัดสิน
+    scentStatus: scentById.get(r.scentId)?.status || null,
   }));
 }
 
@@ -347,8 +372,13 @@ export async function assertDerivedFromFormula(supabase, { derivedFromFormulaId,
 // `fallbackCustomer` ใช้ได้เฉพาะตอน **ไม่มีกลิ่น** — ทางเดียวที่ยังส่งมาคือ
 // "จัดระเบียบ" ซึ่งย้ายสินค้าของลูกค้ารายหนึ่งมาเป็นสูตรฐาน · ฟอร์มทะเบียนไม่ส่ง
 // ค่านี้เลย และห้ามส่ง (นั่นคือรูที่ 0207 ปิดไป)
+/* `developing` (ม-148 · มติผู้ใช้ 2026-09-22) — สูตรที่เกิดพร้อมกลิ่นตอนส่งงาน **พัฒนากลิ่น**
+   เดินคู่กลิ่น: รับเข้าทะเบียนแล้ว (มีรหัส · มีเจ้าของ) แต่ยัง "กำลังพัฒนา" จนลูกค้าคอนเฟิร์ม
+   (ก้าว outcome ของแถวพลิกเป็น active พร้อมกลิ่น) · ⚠️ ต่างจากกติกาทั่วไปที่สูตรรับเข้าแล้ว
+   active ทันที (ดู ALLOWED_TRANSITIONS ใน formulas.js) — direction ที่ลูกค้าปฏิเสธจะไม่ทิ้งสูตร
+   "ใช้งาน" ค้างทะเบียน และยังลบตามแถวได้ตอนส่งผิด (ด่านลบรับเฉพาะ draft/developing) */
 export async function createFormula(supabase, input, user, {
-  accepted = false, fallbackCustomer = null,
+  accepted = false, fallbackCustomer = null, developing = false,
 } = {}) {
   const { value, error } = normalizeFormulaInput(input);
   if (error) throw new Error(error);
@@ -376,7 +406,7 @@ export async function createFormula(supabase, input, user, {
     // RD ที่สร้างเองเป็นเจ้าของสูตรโดยปริยาย (ตรงกับทะเบียนกลิ่น)
     ownerId: accepted ? user?.id ?? null : null,
     ownerName: accepted ? user?.name ?? null : null,
-    status: accepted ? 'active' : 'draft',
+    status: accepted ? (developing ? 'developing' : 'active') : 'draft',
     acceptedById: accepted ? user?.id ?? null : null,
     acceptedByName: accepted ? user?.name ?? null : null,
     acceptedAt: accepted ? nowIso : null,
@@ -456,6 +486,64 @@ export async function productFormulaSnapshot(supabase, formulaId, { forProductId
   };
 }
 
+/* ── แหล่งของช่องราคา (F → กลิ่น · B/FB → สูตร) — ด่านเดียวของทุกทางใส่ราคา (รีวิว ม-148 รอบสอง) ──────────
+   ⭐ ขั้นใส่ราคาในคำร้องกับปุ่มราคาหน้าทะเบียนสูตรต้องตัดสินเหมือนกัน — เดิมหน้าทะเบียนตรวจสถานะกลิ่นก่อนใส่ F
+   แต่ขั้นในคำร้องไม่ตรวจ ⇒ กลิ่นที่เลิกใช้ไปแล้วยังได้ราคา F ใหม่จากคำร้อง
+   คืน `{ source, error }` (รูปที่ `priceRegistrySlots` ใช้) */
+export async function loadPriceSlotSource(supabase, slot) {
+  if (slot.stampColumn === 'formulaId') {
+    const formula = await findFormula(supabase, slot.id);
+    return formula ? { source: formula } : { source: null, error: 'ไม่พบสูตรในทะเบียน' };
+  }
+  const scent = await findScent(supabase, slot.id);
+  if (!scent) return { source: null, error: 'ไม่พบกลิ่นในทะเบียน — ใส่ราคา F ไม่ได้' };
+  if (!isScentUsable(scent)) {
+    return {
+      source: null,
+      error: `กลิ่น ${scent.code || scent.name} สถานะ "${SCENT_STATUS_LABELS[scent.status] || scent.status}" ยังใส่ราคา F ไม่ได้`,
+    };
+  }
+  return { source: scent };
+}
+
+/* ── ช่องราคาของแถวคำร้อง — คิดจาก **ทะเบียนสด** ที่เดียว (รีวิว ม-148 รอบสาม) ─────────────────────────
+   ⭐ ขั้นใส่ราคา (POST) กับโมดัลบนจอ (GET ติดผลนี้ให้แถวที่รอราคา) ถามตัวนี้ตัวเดียว — เดิมโมดัลคิดจากสแนปช็อตของแถว
+   ส่วน API คิดจากสูตรสด ⇒ RD แก้กลิ่นของสูตร/กลิ่นเลิกใช้ แล้วโมดัลเปิดช่องที่ API ตีกลับ ทั้งชุดบันทึกไม่ได้
+   · แถวผูกสูตร: F ลงกลิ่นของ **สูตร** · หมวดของสูตร (02-020 = F อย่างเดียว) · กลิ่นใช้ไม่ได้ = ไม่มีช่อง F
+   · แถวกลิ่นอย่างเดียว / สูตรหาไม่เจอ: ถอยไปตัวคิดจากแถว (`rowPriceSlots`) */
+export async function rowPriceSlotsLive(supabase, row) {
+  if (!row?.producedFormulaId) return rowPriceSlots(row);
+  const formula = await findFormula(supabase, row.producedFormulaId);
+  if (!formula) return rowPriceSlots(row);
+  const scent = formula.scentId ? await findScent(supabase, formula.scentId) : null;
+  return priceSlotsFor({
+    scentId: formula.scentId || null,
+    formulaId: formula.id,
+    // หมวดของ **สูตร** อย่างเดียว — กติกาเดียวกับปุ่มราคาหน้าทะเบียนสูตรและ withFragranceOilPrice (รีวิวรอบสี่)
+    categoryCode: formula.categoryCode || null,
+    scentUsable: scent ? isScentUsable(scent) : true,
+  });
+}
+
+/* ของที่ชี้เข้ากลิ่น/สูตรด้วย FK แบบ SET NULL (ไม่อยู่ใน `countRegistryRefs`) — ด่านก่อนลบ (ม-148 · รีวิว 2026-09-22)
+   · กลิ่น: สูตรที่ใช้กลิ่นนี้ (ทุกสถานะ) + สินค้า · สูตร: สินค้า + สูตรที่แก้ต่อจากมัน
+   ⚠️ คืนเลข ไม่ตัดสินเอง — ข้อความอยู่ที่ `deleteScentError` / `deleteFormulaError` ตัวเดียวกับหน้าทะเบียน */
+export async function countRegistryDependents(supabase, kind, id) {
+  const head = (table, column) => supabase.from(table)
+    .select('id', { count: 'exact', head: true }).eq(column, id)
+    .then(({ count, error }) => { if (error) throw error; return count || 0; });
+  if (kind === 'formula') {
+    const [productCount, childCount] = await Promise.all([
+      head('products', 'formulaId'), head('formulas', 'derivedFromFormulaId'),
+    ]);
+    return { productCount, childCount };
+  }
+  const [formulaCount, productCount] = await Promise.all([
+    head('formulas', 'scentId'), head('products', 'scentId'),
+  ]);
+  return { formulaCount, productCount };
+}
+
 // จำนวนสินค้าที่อ้างสูตรนี้ — ใช้เป็นด่านก่อนลบ
 export async function countProductsUsingFormula(supabase, formulaId) {
   const { count, error } = await supabase
@@ -509,15 +597,18 @@ export async function linkProductToRegistry(supabase, productId, { formulaId = n
 //
 // ⚠️ คืน `null` เมื่อยังไม่มีวัสดุผูก **ต่างจาก** `{ price: null }` ที่แปลว่าผูกแล้ว
 // แต่ยังไม่มีใครใส่ราคา — สองอย่างนี้ผู้ใช้ต้องอ่านออกว่าคนละเรื่อง
-export async function attachRegistryPrice(supabase, rows, { column, kind }) {
+// `as` = คีย์ที่ติดลงแถว (ตั้งต้น `price`) — หน้ารายละเอียดสูตรติดราคา B เพิ่มเป็น `basePrice` (ม-148)
+export async function attachRegistryPrice(supabase, rows, { column, kind, as = 'price' }) {
   const ids = rows.map((r) => r.id).filter(Boolean);
   const materials = await loadMaterials(supabase, {
     status: null, kind, linked: { column, ids },
   });
   const byRow = new Map();
-  for (const m of materials) {
-    const key = m[column];
-    if (!key) continue;
+  const labelOf = new Map(rows.map((r) => [r.id, r.name]));
+  for (const key of new Set(materials.map((m) => m[column]).filter(Boolean))) {
+    // ⭐ ตัวเดียวกับที่ตัวเขียนราคาเลือก (`pickStampedMaterial`) — วัสดุสองตัวชี้แถวเดียวกันต้องไม่แสดงคนละตัว
+    const m = pickStampedMaterial(materials, { stampColumn: column, id: key, kind, label: labelOf.get(key) });
+    if (!m) continue;
     const rev = latestRevision(m.revisions || []);
     byRow.set(key, {
       materialId: m.id,
@@ -528,7 +619,7 @@ export async function attachRegistryPrice(supabase, rows, { column, kind }) {
       revisionNo: rev?.revisionNo ?? null,
     });
   }
-  return rows.map((r) => ({ ...r, price: byRow.get(r.id) || null }));
+  return rows.map((r) => ({ ...r, [as]: byRow.get(r.id) || null }));
 }
 
 /* ── ใบเดียวพร้อมของประกอบ — ใช้โดยหน้ารายละเอียด ────────────────────────
@@ -542,7 +633,29 @@ export async function findScentDetail(supabase, id) {
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
     column: 'scentId', kind: 'RM_F',
   });
-  return withPrice;
+  return attachScentDelivery(supabase, withPrice);
+}
+
+/* ⭐ **กลิ่นนี้ส่งเป็นอะไร + สูตรที่ใช้กลิ่นนี้** (ม-148) — ปุ่ม "ใส่ราคา F" บนทะเบียนกลิ่นเป็นทางที่ราคา
+   ผิดชนิดเข้ามามากที่สุด (วัด prod 2026-09-22: 14 จาก 18 ราคา F มาจากปุ่มนี้ · 8 ตัวเป็น EDP) เพราะหน้า
+   กลิ่นไม่รู้เลยว่ามีสูตร ⇒ ติดสองอย่างให้หน้ารายละเอียด/โมดัลราคาเตือนได้ (`scentFPriceNotice`)
+   · `deliveredCategoryCode` = หมวดที่แถวคำร้องบันทึกตอนส่ง (null = ส่งก่อน ม-148 หรือเพิ่มตรงจากทะเบียน)
+   · `formulas` = สูตรที่ยังไม่เลิกใช้ของกลิ่นนี้ (ก้อนเล็ก — ไม่ส่งทั้งแถวทะเบียน)
+   ⚠️ เฉพาะหน้ารายละเอียด — `loadScents` เป็นตัวเลือกกลิ่นทั้งระบบ ไม่ลากสอง query นี้ไปทุกดรอปดาวน์ */
+async function attachScentDelivery(supabase, scent) {
+  const [{ data: rows, error: rowError }, { data: formulas, error: formulaError }] = await Promise.all([
+    supabase.from('dept_request_items').select('"categoryCode", "producedFormulaId"')
+      .eq('producedScentId', scent.id).not('categoryCode', 'is', null).limit(1),
+    supabase.from('formulas').select('id, code, name, "categoryCode", status')
+      .eq('scentId', scent.id).neq('status', 'archived').order('code'),
+  ]);
+  if (rowError) throw rowError;
+  if (formulaError) throw formulaError;
+  return {
+    ...scent,
+    deliveredCategoryCode: rows?.[0]?.categoryCode || null,
+    formulas: formulas || [],
+  };
 }
 
 export async function findFormulaDetail(supabase, id) {
@@ -552,5 +665,17 @@ export async function findFormulaDetail(supabase, id) {
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
     column: 'formulaId', kind: 'RM_FB',
   });
-  return withPrice;
+  /* ⭐ ม-148 — สูตรมีสามราคา: FB (`price` · ช่องหลักของการ์ด) · B ของสูตรเอง (`basePrice`) ·
+     F ของกลิ่นที่สูตรใช้ (`scentPrice` — ราคาเป็นของกลิ่น ไม่ใช่สำเนา) · หน้ารายการยังโชว์ FB ช่องเดียว */
+  const [withBase] = await attachRegistryPrice(supabase, [withPrice], {
+    column: 'formulaId', kind: 'RM_B', as: 'basePrice',
+  });
+  // กลิ่นก่อน — `withFragranceOilPrice` ต้องรู้สถานะกลิ่น (ตัดสินชุดเดียวกับ priceSlotsFor)
+  const scent = withBase.scentId ? await findScent(supabase, withBase.scentId) : null;
+  const [withOil] = await withFragranceOilPrice(supabase, [{ ...withBase, scentStatus: scent?.status || null }]);
+  if (!withOil.scentId) return { ...withOil, scentPrice: null };
+  const [scentRow] = await attachRegistryPrice(supabase, [{ id: withOil.scentId }], {
+    column: 'scentId', kind: 'RM_F',
+  });
+  return { ...withOil, scentPrice: scentRow?.price || null };
 }

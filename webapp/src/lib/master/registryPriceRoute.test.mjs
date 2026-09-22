@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { priceRegistryEntry } from '../materialPricesAdmin.js';
 import { makeRegistryPriceHandler } from './registryPriceRoute.js';
 import { SCENT_STATUS_LABELS, isScentUsable } from './scents.js';
+import { priceSlotsFor } from './priceSlots.js';
 
 // fake supabase ครอบสามตาราง + RPC ของสายราคา — บันทึกทุก insert/update/rpc
 function fakeSupabase({ materials = [] } = {}) {
@@ -41,7 +42,11 @@ function fakeSupabase({ materials = [] } = {}) {
         return { eq: () => Promise.resolve({ error: null }) };
       },
       _rows() {
-        if (table === 'material_prices') return materials;
+        // กรองตาม eq/is เหมือน PostgREST — ไม่งั้นวัสดุคนละชนิด (B กับ FB ของสูตรเดียวกัน) ปนกันในเทสต์
+        if (table === 'material_prices') {
+          return materials.filter((m) => Object.entries(c._filters)
+            .every(([col, val]) => col === 'id' || (m[col] ?? null) === val));
+        }
         return []; // revisions/tiers — ไม่มีของเดิมในเทสต์ชุดนี้
       },
       _one() {
@@ -103,6 +108,60 @@ test('กลิ่นที่มีวัสดุผูกแล้ว: ต่
   assert.equal(supabase.calls.rpcs[0].args.p_material_id, 'MAT-1');
 });
 
+// ── 🐞 ราคา FB ครั้งที่สองของสูตรเดียวกัน (พบ 2026-09-22 · ม-148) ──────────────
+// เดิม `ensureMaterial` ถูกเรียกโดยไม่มี formulaId ทั้งที่ตัวตนวัสดุรวม formulaId (mig 0181)
+// ⇒ ครั้งที่สองหาตัวเดิมไม่เจอ → สร้างตัวกำพร้า → ประทับ formulaId ชน unique (23505)
+const FORMULA = {
+  id: 'FML-1', code: 'PF0020401-B', name: 'Secret Valley #1',
+  customerId: 'CUS-1', customerName: 'บริษัท อาเตโพเล่ จำกัด', status: 'active',
+};
+const materialInserts = (supabase) => supabase.calls.inserts.filter((i) => i.table === 'material_prices');
+
+test('🐞 สูตรใส่ราคา FB สองครั้ง: วัสดุตัวเดียว ครั้งที่สองต่อ rev บนตัวเดิม', async () => {
+  const supabase = fakeSupabase({ materials: [] });
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 900, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 1);
+  // เกิดพร้อม formulaId เลย — ตรงตัวตน ไม่ต้องประทับทีหลัง
+  assert.equal(materialInserts(supabase)[0].row.formulaId, 'FML-1');
+  assert.equal(supabase.calls.updates.filter((u) => u.patch.formulaId).length, 0);
+
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 950, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 1, 'ห้ามเกิดวัสดุตัวที่สอง');
+  assert.equal(supabase.calls.rpcs.length, 2);
+  assert.equal(supabase.calls.rpcs[1].args.p_material_id, materialInserts(supabase)[0].row.id);
+});
+
+test('วัสดุ FB ที่ประทับสูตรแล้วแต่ชื่อเก่า (สูตรถูกแก้ชื่อ): ยังต่อ rev บนตัวเดิม', async () => {
+  const existing = {
+    id: 'MAT-FB', kind: 'RM_FB', label: 'ชื่อเดิมก่อนแก้',
+    customerId: 'CUS-1', formulaId: 'FML-1', status: 'active', revisions: [],
+  };
+  const supabase = fakeSupabase({ materials: [existing] });
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 1000, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 0);
+  assert.equal(supabase.calls.rpcs[0].args.p_material_id, 'MAT-FB');
+});
+
+test('วัสดุ FB เก่าที่ยังไม่ประทับสูตร ชื่อ+ลูกค้าตรง: รับมาประทับ ไม่สร้างใหม่', async () => {
+  const legacy = {
+    id: 'MAT-OLD', kind: 'RM_FB', label: 'Secret Valley #1',
+    customerId: 'CUS-1', formulaId: null, status: 'active', revisions: [],
+  };
+  const supabase = fakeSupabase({ materials: [legacy] });
+  await priceRegistryEntry(supabase, {
+    kind: 'RM_FB', stampColumn: 'formulaId', source: FORMULA, price: 1000, user: null,
+  });
+  assert.equal(materialInserts(supabase).length, 0);
+  assert.equal(supabase.calls.updates.find((u) => u.patch.formulaId)?.patch.formulaId, 'FML-1');
+  assert.equal(supabase.calls.rpcs[0].args.p_material_id, 'MAT-OLD');
+});
+
 // ── ด่านของ handler (สิทธิ์ · สถานะ · ราคา) ─────────────────────────────
 const handler = makeRegistryPriceHandler({
   kind: 'RM_F',
@@ -150,4 +209,61 @@ test('RD ใส่ราคาสำเร็จ — ได้เลข rev ก�
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.revisionId, 'REV-1');
+});
+
+// ── ม-148 · ปุ่มราคาหน้าทะเบียนสูตร: F · B · FB ในจังหวะเดียว ──────────────────────
+const formulaHandler = (scentFor) => makeRegistryPriceHandler({
+  kind: 'RM_FB',
+  stampColumn: 'formulaId',
+  slotsOf: (f) => priceSlotsFor({ scentId: f.scentId, formulaId: f.id }),
+  findOther: async (_supabase, slot) => scentFor(slot.id),
+  entityType: 'formula',
+  entityLabel: 'สูตร',
+  find: async (_supabase, id) => (id === 'FML-1' ? { ...FORMULA, scentId: 'SCT-1' } : null),
+  usableError: () => null,
+});
+const callFormula = (h, body, supabase = fakeSupabase({ materials: [] })) => h({
+  user: RD, supabase, req: { json: async () => body }, ctx: { params: Promise.resolve({ id: 'FML-1' }) },
+}).then(async (res) => ({ res, data: await res.json(), supabase }));
+
+test('⭐ สูตรใส่ F · B · FB พร้อมกัน — F ลงกลิ่นของสูตร · B/FB ลงสูตร คนละวัสดุ', async () => {
+  const h = formulaHandler(() => ({ source: SCENT }));
+  const { res, data, supabase } = await callFormula(h, { prices: { F: 2800, B: 300, FB: 950 } });
+  assert.equal(res.status, 200);
+  const made = materialInserts(supabase).map((i) => [i.row.kind, i.row.formulaId || null]);
+  assert.deepEqual(made, [['RM_F', null], ['RM_B', 'FML-1'], ['RM_FB', 'FML-1']]);
+  // F ประทับกลิ่น (หลังสร้าง) · B/FB เกิดพร้อม formulaId
+  assert.equal(supabase.calls.updates.find((u) => u.patch.scentId)?.patch.scentId, 'SCT-1');
+  assert.equal(supabase.calls.rpcs.length, 3);
+  assert.deepEqual(data.revisions.map((r) => r.key), ['F', 'B', 'FB']);
+});
+
+test('กลิ่นของสูตรใส่ราคาไม่ได้ = ตีกลับก่อนเขียนสักช่อง (ไม่เหลือราคาครึ่งชุด)', async () => {
+  const h = formulaHandler(() => ({ source: null, error: 'กลิ่นของสูตรนี้สถานะ "เลิกใช้" ยังใส่ราคา F ไม่ได้' }));
+  const { res, data, supabase } = await callFormula(h, { prices: { F: 2800, FB: 950 } });
+  assert.equal(res.status, 400);
+  assert.match(data.error, /ยังใส่ราคา F ไม่ได้/);
+  assert.equal(supabase.calls.rpcs.length, 0);
+  assert.equal(materialInserts(supabase).length, 0);
+});
+
+test('หน้าทะเบียนกลิ่นยังเป็นช่องเดียว — ส่ง B มาที่กลิ่น = ตีกลับ', async () => {
+  const res = await call({ user: RD, body: { prices: { B: 100 } } });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /ใส่ให้รายการนี้ไม่ได้/);
+});
+
+test('🐞 ชื่อชนกับวัสดุของกลิ่นอื่น (ชื่อเก่าหลังเปลี่ยนชื่อ): ห้ามต่อท้ายประวัติของกลิ่นอื่น — สร้างวัสดุป้ายใหม่', async () => {
+  // กลิ่น A เคยชื่อ "Rose" (วัสดุ F ป้าย "Rose" ผูก A) → เปลี่ยนชื่อ · กลิ่น B ใหม่ของลูกค้าเดิมใช้ชื่อ "Rose"
+  const ofA = {
+    id: 'MAT-A', kind: 'RM_F', label: 'Rose', customerId: 'CUS-1', scentId: 'SCT-A', status: 'active', revisions: [],
+  };
+  const supabase = fakeSupabase({ materials: [ofA] });
+  const scentB = { id: 'SCT-B', code: 'PF-B', name: 'Rose', customerId: 'CUS-1', customerName: 'x', status: 'active' };
+  await priceRegistryEntry(supabase, { kind: 'RM_F', stampColumn: 'scentId', source: scentB, price: 2500, user: null });
+  const made = materialInserts(supabase);
+  assert.equal(made.length, 1, 'ต้องสร้างวัสดุของ B เอง');
+  assert.equal(made[0].row.label, 'Rose (PF-B)');
+  assert.notEqual(supabase.calls.rpcs[0].args.p_material_id, 'MAT-A', 'ห้ามต่อ rev บนวัสดุของ A');
+  assert.equal(supabase.calls.updates.find((u) => u.patch.scentId)?.patch.scentId, 'SCT-B');
 });

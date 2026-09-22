@@ -67,7 +67,9 @@ import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
-import { createScent } from '@/lib/master/scentFormulaAdmin';
+import { createScent, rowPriceSlotsLive } from '@/lib/master/scentFormulaAdmin';
+import { canPriceRow } from '@/lib/requests/rowStage';
+import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
@@ -166,6 +168,14 @@ export async function GET(request, { params }) {
         { error: 'คำร้องนี้ไม่ใช่ของคุณ และไม่ได้ส่งถึงฝ่ายของคุณ' },
         { status: 403 },
       );
+    }
+    /* ⭐ ช่องราคาของแถวที่รอใส่ราคา — คิดจากทะเบียนสด ตัวเดียวกับ POST ขั้นราคา (`rowPriceSlotsLive` · รีวิว ม-148 รอบสาม)
+       ⚠️ ด่านชุดเดียวกับ POST (รีวิวรอบสี่): หลังด่านอ่าน · ใบเปิดอยู่ · คนดูตอบราคาได้ — คนอื่นไม่มีวันเปิดโมดัล
+       ⚠️ ยิงขนานกัน ไม่ใช่ทีละแถว · อ่านพัง = ไม่ติด (โมดัลถอยไปคิดจากแถว · API ตัดสินจริงอยู่ดี) */
+    if (REQUEST_OPEN_STATUSES.includes(row.status) && canAnswerRequest(user, row)) {
+      await Promise.all((row.items || []).filter(canPriceRow).map(async (item) => {
+        item.priceSlots = await rowPriceSlotsLive(getSupabaseAdmin(), item).catch(() => undefined);
+      }));
     }
     // ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย) —
     // ติดธงมาจาก server ให้ปุ่มส่ง/ยกเลิกโผล่เฉพาะกับผู้เปิดคำร้องจริง ๆ

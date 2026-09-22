@@ -730,9 +730,10 @@ const hasKind = (events, test) => (events || []).some((e) => test(e?.kind));
  */
 export function leadOutcome(lead = {}, events = null) {
   const status = lead?.status || null;
-  /* ชนะ/แพ้อ่านจากสถานะเสมอ แม้จะมีประวัติ — สองสถานะนี้เป็นปลายทางที่ไม่มีทางถอย
+  /* ชนะ/แพ้อ่านจากสถานะเสมอ แม้จะมีประวัติ — ปุ่มบนหน้าลีดไม่มีทางถอยจากสองสถานะนี้
      (`LEAD_TRANSITIONS.qualified` เหลือแค่ `create_deal` · `disqualified` ว่าง)
-     คอลัมน์จึงไม่มีวันถูกล้างเหมือน meetingAt/firstContactAt */
+     ⚠️ ยกเว้นการผูก/ถอดดีลย้อนหลัง (lib/sales/dealLeadLink · มติ 2026-09-22): ผูก = ไม่ไปต่อ → เปิดลูกค้าแล้ว
+        · ถอด/ลบดีลใบสุดท้าย = เปิดลูกค้าแล้ว → สถานะก่อนเปิดดีล ⇒ ยิ่งต้องอ่านสถานะปัจจุบัน ไม่ใช่ประวัติ */
   const won = status === 'qualified';
   const lost = status === 'disqualified';
 

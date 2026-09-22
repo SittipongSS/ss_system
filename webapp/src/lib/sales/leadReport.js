@@ -85,7 +85,9 @@ export function leadReportRow(lead = {}, { teamNames = null } = {}) {
     /* ใช้ตัวเดียวกับหน้ารายละเอียด — อ่านออกทั้งใบใหม่ (รหัส + ข้อความ) และใบเก่า
        ที่มีแต่ข้อความ · ใบที่ยังไม่ปิดจะได้ค่าว่าง ไม่ใช่ขีด (ในไฟล์ ช่องว่าง = ยังไม่มี) */
     lostReason: lead.status === 'disqualified' ? (leadLostText(lead) || '') : '',
-    revisitAt: day(lead.revisitAt),
+    /* ⚠️ เฉพาะใบที่ปิดไม่ไปต่ออยู่ — ลีดไม่ไปต่อที่ถูกผูกดีลย้อนหลัง (มติ 2026-09-22) เป็น
+       "เปิดลูกค้าแล้ว" แต่คงวันกลับมาถามใหม่ไว้บนแถว (ถอดแล้วต้องกลับไปครบ) ⇒ ห้ามโผล่ในไฟล์ */
+    revisitAt: lead.status === 'disqualified' ? day(lead.revisitAt) : '',
     createdByName: lead.createdByName || '',
   };
 }

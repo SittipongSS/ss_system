@@ -25,7 +25,9 @@ import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { buildDealTimelineRows, summarizeTimelineStep } from '@/lib/sales/dealTimelineGen';
 import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { attributionTeam, isSuperuser } from '@/lib/permissions';
-import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } from '@/lib/sales/leads';
+import { sourceLeadIdOf } from '@/lib/sales/leads';
+import { leadLinkError } from '@/lib/sales/dealLeadLink';
+import { loadLeadForLink, recordLeadDealOpened } from '@/lib/sales/dealLeadLinkRepo';
 import { CUSTOMER_NAME_SELECT, customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
@@ -292,22 +294,19 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // another team. Superusers (scope 'all') are unrestricted.
   if (!inSalesEditScope(user, row)) return forbidden();
 
-  // แตกดีลจากลีด: deal-POST คือทางเดียวที่ปิดลีด (transition route ปิด create_deal
-  // ของตัวเองไว้) — ต้อง re-implement guard เหมือน transition route: ห้ามแตะลีดนอก
-  // scope ของผู้แก้ และลีดต้องอยู่สถานะที่แตกดีลได้ (contacted/meeting/qualified).
+  // แตกดีลจากลีด (ปุ่มที่หน้าลีด หรือเลือกลีดต้นทางในฟอร์มเพิ่มดีลที่หน้าดีล — มติ 2026-09-22)
+  // ด่านเดียวกับ "ผูกลีดย้อนหลัง" (lib/sales/dealLeadLink · leadLinkError) — ใครผูกได้ · ลีดสถานะไหน
   // เชื่อค่าที่ client ส่งมาดิบ ๆ ไม่ได้ (เดิมยิงลีดทีมอื่น/สถานะใดก็บังคับ qualified ได้)
   // ⚠️ ด่านนี้ต้องผูกกับ `row.leadId` เท่านั้น = ค่าเดียวกับที่เขียนลงคอลัมน์ ห้ามเพิ่ม
   // เงื่อนไขอย่าง metadata.source มาคั่น ไม่งั้นจะกลับไปมี "ทางเขียนคอลัมน์ที่ไม่ผ่านด่าน"
+  // ⚠️ ตรวจก่อน insert เสมอ — ลีดไม่ผ่าน = ไม่มีดีลเกิด
   let sourceLead = null;
   if (row.leadId) {
-    const { data: lead, error: leadError } = await supabase.from('sales_leads')
-      .select('id, status, team, assigneeId, createdBy').eq('id', row.leadId).maybeSingle();
+    const { data: lead, error: leadError } = await loadLeadForLink(supabase, row.leadId);
     if (leadError) return fail(leadError.message, 500);
     if (!lead) return badRequest('ไม่พบลีดต้นทาง');
-    if (!inLeadScope(user, lead)) return forbidden('ไม่มีสิทธิ์แตกดีลจากลีดนี้');
-    if (!LEAD_TRANSITIONS[lead.status]?.includes('create_deal')) {
-      return badRequest(`ลีดสถานะ "${LEAD_STATUS_LABELS[lead.status] || lead.status}" ยังแตกดีลไม่ได้`);
-    }
+    const denied = leadLinkError({ user, lead });
+    if (denied) return fail(denied.message, denied.status);
     sourceLead = lead;
   }
 
@@ -387,64 +386,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     request: req,
   });
 
-  // ถ้าดีลนี้สร้างมาจากลีด (ผ่าน guard ด้านบนแล้ว): เปลี่ยนสถานะลีดเป็น qualified
-  // (ครั้งแรก) + บันทึก event "create_deal" ทุกครั้ง (ลีด 1 ใบมีได้หลายดีล — นับ conversion ครบ)
+  // ถ้าดีลนี้สร้างมาจากลีด (ผ่าน guard ด้านบนแล้ว): ลีดเป็น "เปิดลูกค้าแล้ว" (ครั้งแรก) +
+  // บันทึกเหตุการณ์ create_deal ทุกครั้ง (ลีด 1 ใบมีได้หลายดีล) — เส้นเดียวกับผูกย้อนหลัง
+  // ⚠️ ห้ามตอบ 500 จากตรงนี้: ดีลเกิดแล้ว กดสร้างซ้ำ = ดีลซ้ำ ⇒ พลาดอะไรกลายเป็น leadWarning
   let leadWarning = null;
   if (sourceLead) {
-    const leadId = sourceLead.id;
-    const lead = sourceLead;
-    {
-      const now = new Date().toISOString();
-      // สถานะลีดหลังจบเส้นนี้ตามจริง — event ข้างล่างต้องไม่อ้าง qualified ถ้าเขียนไม่ลง
-      let leadStatusAfter = lead.status;
-      // อัปเดตสถานะเฉพาะครั้งแรก (ยังไม่ qualified) — ครั้งถัดไปคงสถานะเดิม
-      if (lead.status !== 'qualified') {
-        /* 🐞 เดิมไม่รับ error — อัปเดตพัง = ลีดค้าง contacted/meeting ทั้งที่แตกดีลไปแล้ว
-           ⇒ cron ตีกลับอัตโนมัติ (contacted เลยวันติดตาม) ส่งลีดที่ปิดแล้วกลับคิวคัดกรอง +
-           ทวงเลยนัดต่อ · audit เขียน after ที่แต่งขึ้น `{ ...lead, status: 'qualified' }`
-           ⚠️ ห้ามตอบ 500: ดีลเกิดแล้ว กดสร้างซ้ำ = ดีลซ้ำ ⇒ log + leadWarning */
-        const { data: updatedLead, error: leadUpdateError } = await supabase.from('sales_leads')
-          .update({ status: 'qualified', closedAt: now, updatedAt: now }).eq('id', leadId).select().single();
-        if (leadUpdateError) {
-          console.error(`[deal-create ${data.id}] ปิดลีด ${leadId} เป็น qualified ไม่สำเร็จ:`, leadUpdateError.message);
-          leadWarning = `สร้างดีลแล้ว แต่เปลี่ยนสถานะลีดต้นทางเป็น "${LEAD_STATUS_LABELS.qualified}" ไม่สำเร็จ: ${leadUpdateError.message} — ลีดยังค้างสถานะเดิม (ระบบอาจตีกลับอัตโนมัติ) แจ้งแอดมิน`;
-        } else {
-          leadStatusAfter = 'qualified';
-          await recordAudit({
-            user, action: 'update', entityType: 'sales_lead', entityId: leadId,
-            before: lead, after: updatedLead,
-            summary: `ลีด → qualified (สร้างดีล ${dealAuditLabel(data)})`, request: req,
-          });
-        }
-      }
-      // event ต่อดีล — บันทึกทุกครั้ง (แม้ลีด qualified อยู่แล้ว) เพื่อให้ conversion นับครบ
-      //
-      // 🐞 เส้นนี้ล้มเหลว **เงียบ** มาตลอด: CHECK ของ lead_events.kind (mig 0091) ไม่มี
-      // ค่า 'create_deal' อยู่ในชุด → insert ชน constraint ทุกครั้ง แล้ว error ถูกทิ้ง
-      // เพราะไม่ได้อ่าน (mig 0199 เปิดค่านี้ให้แล้ว). เจตนา "นับ conversion ครบ" จึงไม่
-      // เคยทำงานจริง และไม่มีอะไรบนหน้าจอบอกให้รู้
-      // ⚠️ ยังไม่ทำให้ทั้ง request ล้ม — ดีลถูกสร้าง+ลีดถูกปิดไปแล้วก่อนถึงบรรทัดนี้
-      // การตอบ 500 จะทำให้หน้าเว็บเข้าใจว่าเปิดดีลไม่สำเร็จทั้งที่สำเร็จ; แต่ต้อง log
-      // ไม่ใช่กลืน — ประวัติที่หายต้องมีร่องรอยให้ตามได้
-      const { error: leadEventError } = await supabase.from('lead_events').insert({
-        id: genId('LEV'),
-        leadId,
-        kind: 'create_deal',
-        fromStatus: lead.status,
-        toStatus: leadStatusAfter,
-        createdBy: user.id || null,
-        createdByName: user.name || null,
-        eventAt: now,
-      });
-      if (leadEventError) {
-        console.error(`[deal-create] บันทึก lead_event create_deal ของลีด ${leadId} ไม่สำเร็จ:`, leadEventError.message);
-      }
-    }
+    const opened = await recordLeadDealOpened(supabase, { lead: sourceLead, deal: data, user, req, via: 'create' });
+    leadWarning = opened.warning;
   }
 
   // timelineWarning / valueItemsWarning / leadWarning: ดีลสร้างสำเร็จแต่ของประกอบไม่ครบ —
   // โมดัลใช้แจ้งต่อ (ไม่ใช่ error: ดีลเกิดจริงแล้ว กดสร้างซ้ำจะได้ดีลซ้ำ)
-  // ⚠️ leadWarning ยังไม่มีจอไหนอ่าน — โมดัลฝั่งลีดไม่มี onCreated และพาไปหน้าดีลเลย
   return ok({
     ...data,
     ...(timelineWarning ? { timelineWarning } : {}),

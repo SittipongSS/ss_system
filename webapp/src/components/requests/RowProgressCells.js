@@ -11,7 +11,7 @@
 import StepTrack from "@/components/ui/StepTrack";
 import ReadableText from "@/components/ui/ReadableText";
 import { idleFromStamps, idleLabel } from "@/lib/requests/rowTrack";
-import { naText } from "@/lib/format";
+import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./briefBoard.module.css";
 
 /* ⚠️ `compact` เสมอ — รางพร้อมป้ายคำกิน 320px ซึ่งกว้างกว่าคอลัมน์เนื้อทุกตัวของ
@@ -59,6 +59,26 @@ export function RowIdleCell({ row, today = null }) {
   return (
     <td className={`num ${styles.idleCell} ${idle?.late ? styles.idleLate : ""}`.trim()}>
       {naText(label)}
+    </td>
+  );
+}
+
+/* ── เซลล์ "ราคา" (ผู้ใช้ 2026-09-22: "เมื่อส่งราคาแล้ว อยากให้โชว์ราคาด้วย") ─────────────
+   ⭐ ทุกช่องที่ใส่ บรรทัดละช่อง (F · B · FB) — ป้ายช่องนำหน้า ตัวเลขเต็มสองตำแหน่ง (กติกาเงินทั้งระบบ)
+   · หน่วยอยู่ที่หัวคอลัมน์ ไม่ซ้ำทุกบรรทัด · วันยืนราคาเป็นบรรทัดรอง
+   ⚠️ ใช้ `rowPriceLines` ตัวเดียวกับหน้ารายการ — ตารางในใบกับคิวต้องพูดเลขเดียวกัน */
+export function RowPriceCell({ prices = [] }) {
+  if (!prices.length) return <td className={`num ${styles.priceCell}`}>{naText(null)}</td>;
+  const until = prices.find((p) => p.validUntil)?.validUntil || null;
+  return (
+    <td className={`num ${styles.priceCell}`}>
+      {prices.map((p) => (
+        <div key={p.key}>
+          {p.short && <span className={styles.priceKind}>{p.short}</span>}
+          {fmtNumber(p.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+      ))}
+      {until && <div className={styles.note}>ยืนราคาถึง {fmtDate(until)}</div>}
     </td>
   );
 }

@@ -1,0 +1,45 @@
+/* โมดัลผูกลีดต้นทาง — โครงสามชั้นของ Modal ถือระยะ/สกอลล์/แถบปุ่มแล้ว
+   ไฟล์นี้เหลือแค่จังหวะในเนื้อหา (ท่าเดียวกับ DealCreateModal.module.css) */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.intro {
+  margin: 0;
+  font-size: var(--fs-7);
+  line-height: var(--lh-text);
+  color: var(--text-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--fs-7);
+}
+
+/* ผลลัพธ์ของการกดผูก — ต้องอ่านก่อนกด จึงอยู่เหนือแถบปุ่ม ไม่ซ่อนใน tooltip */
+.effects {
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-7);
+  line-height: var(--lh-text);
+  color: var(--text-2);
+}
+
+.effects ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  list-style: disc;
+}
+
+.error {
+  margin: 0;
+  font-size: var(--fs-7);
+  line-height: var(--lh-text);
+  color: var(--red);
+}

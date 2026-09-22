@@ -224,3 +224,14 @@
 /* เลยกำหนดแล้ว = แดง · ครบวันนี้/รอแจ้งวันรอบแก้ = เหลือง (ชุดสีเดียวกับคิว) */
 .wrap td.due_late { color: var(--red); font-weight: var(--fw-semibold); }
 .wrap td.due_wait { color: var(--amber); }
+
+/* ── คอลัมน์ราคา (2026-09-22) — โผล่เมื่อใบนั้นมีแถวที่ใส่ราคาแล้ว ─────────────────── */
+.colPrice { width: 14%; min-width: 120px; }
+.priceCell { white-space: nowrap; }
+/* ป้ายช่อง (F · B · FB) เล็กกว่าตัวเลข ให้ตากวาดเลขได้ตรงแนว */
+.priceKind {
+  margin-right: var(--space-1);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  color: var(--text-3);
+}

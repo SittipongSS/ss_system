@@ -8,6 +8,7 @@ import {
   leadBounceHistory, leadHandoffContext, chunkLeadIds, LEAD_BOUNCE_KINDS, LEAD_FOLLOW_UP_ACTIONS,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
+import { leadLinkError } from '@/lib/sales/dealLeadLink';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
@@ -38,6 +39,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   });
   if (error) return fail(error.message, 500);
   const leads = data || [];
+
+  /* `?linkable=1` = ลีดที่ผู้ใช้คนนี้ผูกกับดีลได้ (โมดัลผูกลีดที่หน้าดีล + ช่องลีดต้นทางในฟอร์มเพิ่มดีล)
+     ⭐ กรองด้วยด่านตัวเดียวกับ POST /deals และ /deals/[id]/link-lead (leadLinkError) — ที่ server
+        เพราะรู้ตัวตนจริงของผู้ใช้ (id/ทีมหลายทีม) · จอกรองเองแล้วได้คำตอบคนละอย่างกับด่านได้
+     ⚠️ ไม่แนบบริบทตีกลับ — โมดัลผูกไม่ได้ใช้ */
+  if (params.get('linkable') === '1') {
+    return ok(leads.filter((lead) => !leadLinkError({ user, lead })));
+  }
 
   /* ⭐ บริบทของใบที่ถูกส่งกลับ — ติดไปกับแถวเลย ไม่ให้จอต้องยิงรายใบ
      ใบที่ไม่เคยถูกตีกลับไม่มีคีย์นี้เลย (ไม่ใช่ค่าว่าง) ⇒ จอเช็ค `lead.bounce` ตรง ๆ ได้

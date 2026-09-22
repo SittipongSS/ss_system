@@ -56,3 +56,28 @@
   font-size: var(--fs-5);
   color: var(--text-2);
 }
+
+/* ม-148 — "ส่งเป็น" อยู่หัวการ์ด: เว้นจากโซนกลิ่นข้างล่างให้อ่านเป็นคำถามแยก */
+.deliveredAs { margin-bottom: var(--space-4); }
+
+/* สูตรที่เกิดพร้อมกลิ่น — ฟอร์มซ้อนในการ์ด direction: กรอบ + พื้นอ่อนให้รู้ว่าเป็นของอีกทะเบียน */
+.formulaBlock {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+}
+
+.blockTitle {
+  margin: 0;
+  font-size: var(--fs-8);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+}
+
+.blockNote {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--fs-6);
+  color: var(--text-3);
+}

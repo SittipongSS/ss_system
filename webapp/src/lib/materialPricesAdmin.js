@@ -7,7 +7,7 @@ import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
-  materialIdentityKey, normalizeMaterialInput, unitBasisForMaterialKind,
+  materialIdentityKey, normalizeMaterialInput, pickStampedMaterial, unitBasisForMaterialKind,
 } from '@/lib/materialPrices';
 import { normalizePmType } from '@/lib/master/materialTypes';
 import { brandDisplayFromList } from '@/lib/master/brands';
@@ -126,6 +126,101 @@ export async function ensureMaterial(supabase, input = {}) {
   return { material: { ...data, revisions: [] }, created: true };
 }
 
+// ── วัสดุของกลิ่น/สูตรตัวหนึ่ง — หาตัวเดิมก่อน ไม่เจอค่อยสร้าง ─────────────────
+//
+// 🐞 **ใส่ราคา FB ครั้งที่สองของสูตรเดียวกันพัง** (พบ 2026-09-22 ตอนทำ ม-148) — เดิมเรียก
+// `ensureMaterial` โดยไม่ส่ง `formulaId` แต่ตัวตนของวัสดุ **รวม formulaId** (mig 0181)
+// ⇒ ครั้งแรกสร้างวัสดุ (formulaId ว่าง) แล้วประทับ formulaId · ครั้งที่สองคีย์ที่หา
+// (formulaId ว่าง) ไม่ตรงตัวที่ประทับแล้ว ⇒ สร้างวัสดุตัวใหม่ แล้วประทับ formulaId ชน
+// `material_prices_identity_uk` (23505) · ทุกครั้งถัดไปเจอตัวกำพร้าแล้วพังแบบเดิม
+// ราคา F ไม่โดนเพราะ scentId ไม่อยู่ในตัวตน · บน prod ยังไม่มีใครเจอเพราะ FB มีตัวเดียว
+//
+// ⇒ ลำดับการหา:
+//   1) ตัวที่ **ประทับ pointer นี้แล้ว** = วัสดุของกลิ่น/สูตรนี้ (ไม่ขึ้นกับชื่อ — ทะเบียนแก้ชื่อได้)
+//   2) ตัวเก่าที่ **ยังไม่ประทับ** ชื่อ+ลูกค้าตรง (ราคาจากยุคคำร้องขอราคา) → รับมาประทับ
+//      (พฤติกรรมเดิมของราคาแรก — ประวัติราคาเก่าไม่หลุด)
+//   3) สร้างใหม่ผ่าน `ensureMaterial` — สูตรใส่ `formulaId` ตั้งแต่เกิดให้ตรงตัวตน
+async function registryEntryMaterial(supabase, { kind, stampColumn, source, user }) {
+  const candidates = await loadMaterials(supabase, {
+    status: null, kind, customerId: source.customerId ?? null,
+  });
+  // ⚠️ เทียบชนิดซ้ำแม้ query กรองแล้ว — B กับ FB ของสูตรเดียวกันประทับ formulaId ตัวเดียวกัน
+  // ⭐ ตัวเลือกเดียวกับที่หน้าทะเบียนใช้แสดงราคา (`pickStampedMaterial`) — ใส่แล้วต้องเห็นตัวที่ใส่
+  const stamped = pickStampedMaterial(candidates, {
+    stampColumn, id: source.id, kind, label: source.name,
+  });
+  if (stamped) return stamped;
+  const unstampedKey = materialIdentityKey({
+    kind, label: source.name, formulaId: null, customerId: source.customerId,
+  });
+  const legacy = candidates.find((m) => m.kind === kind && !m[stampColumn]
+    && materialIdentityKey(m) === unstampedKey);
+  if (legacy) return legacy;
+  const make = (label) => ensureMaterial(supabase, {
+    kind,
+    label,
+    customerId: source.customerId,
+    customerName: source.customerName,
+    formulaId: stampColumn === 'formulaId' ? source.id : null,
+    user,
+  }).then(({ material }) => material);
+  const material = await make(source.name);
+  if (!material[stampColumn] || material[stampColumn] === source.id) return material;
+  /* 🐞 **ชื่อชนกับวัสดุของอีกตัว** (รีวิว ม-148 รอบสอง) — ตัวตนวัสดุ F ไม่มี scentId (แค่ ชนิด+ชื่อ+ลูกค้า) ⇒ กลิ่น A
+     เปลี่ยนชื่อ "Rose" → "Rose Garden" แล้วกลิ่น B ใหม่ของลูกค้าเดิมใช้ชื่อ "Rose" · ใส่ราคา F ให้ B แล้ว `ensureMaterial`
+     คืนวัสดุของ A ⇒ ราคาของ B ไปต่อท้ายประวัติ A เงียบ ๆ (ของ A เปลี่ยน · B ยังไม่มีราคา) · มีบน main มาก่อน
+     แต่แบรนช์นี้เพิ่มทางเข้า F (ช่อง F ของสูตร · แถวพัฒนาสูตร) ⇒ **ห้ามต่อท้ายวัสดุที่ผูกตัวอื่นเด็ดขาด**
+     · ดัชนีตัวตนห้ามมี "Rose" ตัวที่สองของลูกค้าเดิม ⇒ สร้างด้วยป้ายที่ไม่ชน (ชื่อ + รหัส) แทนการปฏิเสธ */
+  const own = await make(`${source.name} (${source.code || source.id})`);
+  if (own[stampColumn] && own[stampColumn] !== source.id) {
+    const failure = new Error(`มีวัสดุชื่อนี้ผูกกับ${stampColumn === 'formulaId' ? 'สูตร' : 'กลิ่น'}อื่นอยู่แล้ว — ใส่ราคาไม่ได้ ติดต่อผู้ดูแลระบบ`);
+    failure.status = 409;
+    throw failure;
+  }
+  return own;
+}
+
+// ── ใส่ราคาหลายช่องในจังหวะเดียว (F · B · FB — ม-148 · มติผู้ใช้ 2026-09-22) ──────────
+//
+// `entries` = ผลของ `normalizeSlotPrices` · `loadSource(slot)` คืน `{ source, error }` —
+// ผู้เรียกตัดสินเองว่ากลิ่น/สูตรสถานะไหนใส่ราคาได้ (ทะเบียนเข้ม · ขั้นราคาในคำร้องไม่ตรวจสถานะเหมือนเดิม)
+// ⚠️ **ตรวจแหล่งทุกช่องก่อนเขียนสักช่อง** — rev เป็น immutable ⇒ ช่องแรกเขียนแล้วช่องสองตีกลับ
+// = ราคาครึ่งชุดค้างทะเบียน และกดซ้ำได้ rev ซ้ำ · ที่ยังพลาดได้หลังผ่านด่านคือคำขอสะดุดกลางทาง
+// (ไม่มี transaction ข้ามหลายช่อง) — rev ที่เขียนแล้วยังถูกต้องทุกตัว แค่ต้องกดใส่ช่องที่เหลืออีกครั้ง
+// คืน `[{ slot, price, source, revision }]` ตามลำดับที่ส่งมา
+export async function priceRegistrySlots(supabase, {
+  entries = [], loadSource, validUntil = null, note = null, askItemId = null, user = null,
+}) {
+  const sources = new Map();
+  for (const { slot } of entries) {
+    const key = `${slot.stampColumn}:${slot.id}`;
+    if (sources.has(key)) continue;
+    const { source, error } = await loadSource(slot);
+    if (error || !source) {
+      const failure = new Error(error || `ไม่พบ${slot.registry}ในทะเบียน`);
+      failure.status = 400;
+      throw failure;
+    }
+    sources.set(key, source);
+  }
+  const written = [];
+  for (const entry of entries) {
+    const source = sources.get(`${entry.slot.stampColumn}:${entry.slot.id}`);
+    const { revision } = await priceRegistryEntry(supabase, {
+      kind: entry.slot.kind,
+      stampColumn: entry.slot.stampColumn,
+      source,
+      price: entry.price,
+      validUntil,
+      note,
+      askItemId,
+      user,
+    });
+    written.push({ ...entry, source, revision });
+  }
+  return written;
+}
+
 // ── ใส่ราคา F/FB ให้กลิ่น/สูตรในทะเบียน ─────────────────────────────────
 //
 // ⭐ **ทางเข้าราคา RM มีกี่ทาง ก็ต้องผ่านก้อนนี้ก้อนเดียว** — ตอนนี้มีสองทาง:
@@ -149,13 +244,7 @@ export async function priceRegistryEntry(supabase, {
   askItemId = null,
   user = null,
 }) {
-  const { material } = await ensureMaterial(supabase, {
-    kind,
-    label: source.name,
-    customerId: source.customerId,
-    customerName: source.customerName,
-    user,
-  });
+  const material = await registryEntryMaterial(supabase, { kind, stampColumn, source, user });
 
   if (!material[stampColumn]) {
     const { error: stampError } = await supabase.from('material_prices')
@@ -216,12 +305,16 @@ export async function loadRequests(supabase, {
   if (!asks.length) return [];
 
   // PostgREST เรียงต่อก้อน ไม่ได้เรียงทั้งชุด ⇒ เรียงซ้ำหลังรวม (ลำดับแถวในใบ = sortOrder)
-  const items = await fetchAllInChunks(
+  const rawItems = await fetchAllInChunks(
     asks.map((a) => a.id),
     (chunk) => supabase.from('dept_request_items').select('*').in('requestId', chunk)
       .order('sortOrder', { ascending: true }).order('id', { ascending: true }),
     { sort: byColumns('sortOrder', 'id') },
   );
+  /* ⭐ **ราคาที่ใส่แล้วติดมากับแถว** (ผู้ใช้ 2026-09-22: "ในหน้ารายการคำร้อง … ไม่ได้โชว์ราคาเลย") — ตัวเดียวกับ
+     หน้าใบเดียว (`attachRowPrice`) ⇒ คิวกับหน้ารายละเอียดพูดเลขเดียวกัน · ยิงเฉพาะแถวที่มีราคา (ส่วนน้อยมาก) */
+  // ⚠️ โหมด `lean` (ตัวนับบนเมนู · poll ถี่) ไม่ต้องใช้ราคา — ข้ามสามคำสั่งอ่านทะเบียนวัสดุ
+  const items = lean ? rawItems : await attachRowPrice(supabase, rawItems);
 
   /* ⭐ **แถวสินค้า PDR ของใบ NPD ที่คิวต้องใช้ตัดสิน "ตาใคร"** (ม-144 · รีวิวรอบ 5–6) — สินค้าที่ยังไม่มีแถวงาน
      (`npdUncoveredPairs`) คืองานของฝ่าย · ไม่ดึง ⇒ ป้ายขึ้นตาผู้ขอ ("รอปิดเรื่อง"/"รอ SA ทำต่อ") แล้วหลุดจากคิว
@@ -477,7 +570,8 @@ export async function findRequest(supabase, id) {
     targets: targets || [],
   });
 
-  const items = await attachRowPrice(supabase, withBriefs.items || []);
+  // ราคาติดมาแล้วจาก `loadRequests` (ตัวเดียวกัน) — ไม่ยิงซ้ำ (รีวิว ม-148 รอบสอง)
+  const items = withBriefs.items || [];
   /* ⭐ แถวงานต้นทางของพัฒนาสูตร NPD ที่มีไฟล์แนบ (ม-144) — แบบฟอร์ม PDR ถอนแถวพวกนี้ไม่ได้ (ถอน = กวาดไฟล์)
      ⇒ จอต้องรู้ก่อนกดบันทึก ไม่งั้นหัวใบบันทึกไปแล้วค่อยโดนตีกลับที่ก้าวแบบฟอร์ม (บันทึกครึ่งเดียว)
      ⚠️ ถามเฉพาะใบที่มีแถวแบบนี้ · ≤ 20 แถว ⇒ `.in()` ปลอดภัย · `.limit` = ขอบเขตชัด (check:rowcap) */
@@ -561,33 +655,47 @@ export async function findRequest(supabase, id) {
 //
 // ⚠️ อ่านอย่างเดียว ไม่ใช่แหล่งความจริงใหม่ — ทะเบียนวัสดุยังเป็นเจ้าของราคาเหมือนเดิม
 async function attachRowPrice(supabase, items) {
-  const revisionIds = [...new Set(items.map((i) => i.answeredRevisionId).filter(Boolean))];
-  if (!revisionIds.length) return items;
+  const priced = items.filter((i) => i.answeredRevisionId);
+  if (!priced.length) return items;
 
-  const { data: revisions, error } = await supabase
-    .from('material_price_revisions')
-    .select('id, "materialId", "validUntil", note, "quotedAt", "quotedByName"')
-    .in('id', revisionIds);
-  if (error) throw error;
+  /* ⭐ ม-148 — แถวสูตรใส่ได้ F · B · FB ในจังหวะเดียว · แถวชี้ rev ช่องหลักตัวเดียว (`answeredRevisionId`)
+     ช่องอื่นหาจาก `sourceAskItemId` ที่ขั้นใส่ราคาประทับไว้ทุก rev ⇒ ไม่ต้องมีคอลัมน์ใหม่
+     ⚠️ ตัวนี้ถูกเรียกทั้งหน้าใบเดียวและ **คิวทั้งหน้า** (หลายร้อยใบ · ผู้ใช้ 2026-09-22 ขอให้หน้ารายการโชว์ราคา)
+     ⇒ ทุก `.in()` ซอยเป็นก้อน (fetchAllInChunks · กับดัก 16 KB) */
+  const REV_COLUMNS = 'id, "materialId", "revisionNo", "validUntil", note, "quotedAt", "quotedByName", "sourceAskItemId"';
+  const bySource = await fetchAllInChunks(
+    priced.map((i) => i.id),
+    (chunk) => supabase.from('material_price_revisions').select(REV_COLUMNS)
+      .in('sourceAskItemId', chunk).order('id'),
+  );
+  const knownIds = new Set(bySource.map((r) => r.id));
+  const missing = [...new Set(priced.map((i) => i.answeredRevisionId))].filter((rid) => !knownIds.has(rid));
+  // rev ที่เกิดก่อนมี `sourceAskItemId` (หรือไม่ได้ประทับ) — ตามจาก pointer ของแถวเหมือนเดิม
+  const answered = missing.length
+    ? await fetchAllInChunks(missing, (chunk) => supabase.from('material_price_revisions')
+      .select(REV_COLUMNS).in('id', chunk).order('id'))
+    : [];
+  const revisions = [...bySource, ...answered];
 
-  // ราคาอยู่ที่ชั้น (0157) — F/FB ไม่มีชั้นจำนวน จึงมีชั้นเดียวเสมอ (per_kg)
-  const { data: tiers, error: tierError } = await supabase
-    .from('material_price_revision_tiers')
-    .select('"revisionId", qty, "pricePerKg", "pricePerUnit"')
-    .in('revisionId', revisionIds);
-  if (tierError) throw tierError;
+  // ราคาอยู่ที่ชั้น (0157) — F/B/FB ไม่มีชั้นจำนวน จึงมีชั้นเดียวเสมอ (per_kg)
+  const tiers = await fetchAllInChunks(
+    revisions.map((r) => r.id),
+    (chunk) => supabase.from('material_price_revision_tiers')
+      .select('"revisionId", qty, "pricePerKg", "pricePerUnit"').in('revisionId', chunk).order('revisionId'),
+  );
+  const materials = await fetchAllInChunks(
+    revisions.map((r) => r.materialId).filter(Boolean),
+    (chunk) => supabase.from('material_prices').select('id, kind, label').in('id', chunk).order('id'),
+  );
+  const materialById = new Map(materials.map((m) => [m.id, m]));
 
-  const { data: materials, error: matError } = await supabase
-    .from('material_prices').select('id, kind, label')
-    .in('id', [...new Set((revisions || []).map((r) => r.materialId).filter(Boolean))]);
-  if (matError) throw matError;
-  const materialById = new Map((materials || []).map((m) => [m.id, m]));
-
-  const byRevision = new Map((revisions || []).map((rev) => {
+  const byRevision = new Map(revisions.map((rev) => {
     const material = materialById.get(rev.materialId) || null;
     const tier = (tiers || []).find((t) => t.revisionId === rev.id) || null;
     return [rev.id, {
+      revisionId: rev.id,
       kind: material?.kind || null,
+      short: PRICE_SHORT[material?.kind] || null,
       materialLabel: material?.label || null,
       price: tier ? Number(tier.pricePerKg ?? tier.pricePerUnit) : null,
       // หน่วยตามชั้นที่มีจริง ไม่เดาจากชนิด — per_piece ของ PM ก็ผ่านทางนี้ได้
@@ -596,14 +704,36 @@ async function attachRowPrice(supabase, items) {
       note: rev.note || null,
       quotedAt: rev.quotedAt || null,
       quotedByName: rev.quotedByName || null,
+      sourceAskItemId: rev.sourceAskItemId || null,
+      revisionNo: rev.revisionNo ?? null,
+      quotedAtRaw: rev.quotedAt || '',
     }];
   }));
 
-  return items.map((i) => ({
-    ...i,
-    pricedResult: byRevision.get(i.answeredRevisionId) || null,
-  }));
+  return items.map((i) => {
+    if (!i.answeredRevisionId) return { ...i, pricedResult: null, pricedResults: [] };
+    const main = byRevision.get(i.answeredRevisionId) || null;
+    /* ทุกช่องที่ใส่จากแถวนี้ — **ชนิดละหนึ่ง** เรียง F · B · FB (รีวิว ม-148 รอบสอง)
+       ⚠️ ใส่หลายช่องแล้วคำขอสะดุดกลางทาง กดซ้ำ = rev ของช่องแรกเกิดสองตัว (ประทับ id แถวเดียวกัน) ⇒ ไม่คัด
+       จะโชว์ F สองบรรทัด · ช่องของ rev หลัก (`answeredRevisionId`) ยึดตัวนั้น · ช่องอื่นเอาตัวล่าสุด */
+    const latest = new Map();
+    for (const r of byRevision.values()) {
+      if (r.sourceAskItemId !== i.id || !r.kind) continue;
+      const cur = latest.get(r.kind);
+      const newer = !cur || r.quotedAtRaw > cur.quotedAtRaw
+        || (r.quotedAtRaw === cur.quotedAtRaw && (r.revisionNo ?? 0) > (cur.revisionNo ?? 0));
+      if (newer) latest.set(r.kind, r);
+    }
+    if (main?.kind) latest.set(main.kind, main);
+    const list = (latest.size ? [...latest.values()] : [main].filter(Boolean))
+      .sort((a, b) => (PRICE_ORDER[a.kind] ?? 9) - (PRICE_ORDER[b.kind] ?? 9));
+    return { ...i, pricedResult: main, pricedResults: list };
+  });
 }
+
+// ป้ายสั้น/ลำดับของช่องราคาบนแถว (ชุดเดียวกับ lib/master/priceSlots.js)
+const PRICE_SHORT = { RM_F: 'F', RM_B: 'B', RM_FB: 'FB' };
+const PRICE_ORDER = { RM_F: 0, RM_B: 1, RM_FB: 2 };
 
 // เพิ่มรุ่นราคาใหม่ให้วัสดุที่มีอยู่แล้ว — ใช้ทั้งตอนตอบคำขอราคาและตอนแก้ราคา
 // ในทะเบียน. คืน { material, revision }

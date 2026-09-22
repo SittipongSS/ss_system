@@ -43,6 +43,10 @@ export function reworkSlotFrom(row, items = []) {
     briefId: row.briefId || source?.briefId || null,
     // กลิ่นตัวใหม่ต้องชี้กลับว่าแก้มาจากตัวไหน — เป็นค่าที่ระบบรู้ ไม่ใช่คำถาม
     derivedFromScentId: source?.producedScentId || null,
+    /* ส่งเป็นอะไร (ม-148) — ค่าตั้งต้นของรอบนี้ยกจากรอบก่อน (RD เปลี่ยนได้ ไม่ล็อก) ·
+       สูตรที่รอบก่อนส่งไว้ = ต้นทางของสูตรรอบนี้ (server ใช้ค่านี้ ไม่เชื่อ client) */
+    categoryCode: row.categoryCode || source?.categoryCode || null,
+    parentFormulaId: source?.producedFormulaId || null,
     // ป้ายบนจอ: แก้มาจากตัวไหน และลูกค้าว่าอย่างไร
     sourceLabel: source?.label || row.label || null,
     customerNote: source?.outcomeNote || null,

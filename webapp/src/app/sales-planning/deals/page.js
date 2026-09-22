@@ -51,6 +51,9 @@ import { businessDate } from "@/lib/businessDate";
 import { customerArIndex, customerSearchText } from "@/lib/master/customerAr";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import { apiFetch } from "@/lib/apiFetch";
+import { notifyToast } from "@/components/ui/Toast";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
+import { DEAL_DELETE_LEAD_NOTE, canLinkLeadRole } from "@/lib/sales/dealLeadLink";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอด Actual (SO อนุมัติแล้ว) นอกนั้นใช้ยอดคาดการณ์
@@ -483,12 +486,17 @@ export default function SalesPlanningPipelinePage() {
     // เฟส B: ลบดีล "ไม่ลบโครงการ PM" ที่ผูกอยู่ — โครงการมีได้หลายดีลและอาจมีดีลอื่น
     // มาผูกแทน; ลบดีลแค่ถอดงานของดีลนี้ออก โครงการยังอยู่ (ลบเองที่หน้าโครงการ)
     const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะงานของดีลนี้ออก" : "";
-    if (!(await confirmAction(`ลบดีล "${deal.title}"?${withPm}\n\nงานที่ผูกดีลนี้จะถูกลบไปด้วย\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
+    // ลีดต้นทาง: ลบดีล = ถอดลีด (มติ 2026-09-22) — ลีดที่ไม่เหลือดีลกลับไปสถานะก่อนเปิดดีล
+    const withLead = deal.leadId ? `\n\n${DEAL_DELETE_LEAD_NOTE}` : "";
+    if (!(await confirmAction(`ลบดีล "${deal.title}"?${withPm}${withLead}\n\nงานที่ผูกดีลนี้จะถูกลบไปด้วย\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
       const result = await deleteWithForce(`/api/sales-planning/deals/${deal.id}`, { isAdmin: role === "admin" });
       if (!result.ok) return;
+      // ลบสำเร็จแต่ย้อนสถานะลีดต้นทางไม่ครบ — ดู lib/apiWarnings
+      const warning = responseWarningText(result.data);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       // ดีลใบสุดท้ายของโครงการ → ถามว่าจะลบโครงเปล่าทิ้งด้วยไหม (ไม่ตัดสินใจแทน)
       const cleanup = await offerDeleteEmptyProject(result.data?.emptyProject);
       if (cleanup.error) setError(`ลบดีลแล้ว แต่${cleanup.error}`);
@@ -1121,6 +1129,9 @@ export default function SalesPlanningPipelinePage() {
           owners={owners}
           defaultOwnerId={defaultOwnerId}
           lockedOwner={lockedOwner}
+          /* ช่องเลือกลีดต้นทาง (มติผู้ใช้ 2026-09-22) — SA ลืมกดเปิดดีลจากหน้าลีด ⇒ เลือกลีดได้ที่นี่
+             เฉพาะบทบาทที่ผูกลีดได้ (ด่านเดียวกับ server) — ลีดใบไหนผูกได้ server กรองให้ */
+          leadPicker={canLinkLeadRole(role)}
           onClose={() => setCreateModal(false)}
           onCreated={() => {
             setCreateModal(false);
