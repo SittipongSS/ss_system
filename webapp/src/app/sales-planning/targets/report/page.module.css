@@ -1,23 +1,57 @@
 /* หน้ารายงานยอดขาย — เปลือก/ตาราง/ป้าย ใช้ของกลางทั้งหมด
-   ไฟล์นี้เหลือไว้เฉพาะความกว้างคอลัมน์กับสีตัวเลข ซึ่งเป็นของเฉพาะหน้านี้ */
+   ไฟล์นี้เหลือเฉพาะของที่เป็นของหน้านี้จริง ๆ (รื้อ 2026-09-22)
+   🐞 เดิมมีคลาสความกว้างขั้นต่ำต่อคอลัมน์รวม ~1,000px — ต้นเหตุที่ตารางรายเดือนโชว์ได้แค่ 2 คอลัมน์ที่จอ 390px
+      ตอนนี้เงินใช้ .money (ไม่ตัดบรรทัดกลางจำนวน) แทนการจองความกว้าง */
 
-/* ความกว้างขั้นต่ำของคอลัมน์ — ตัวเลขเงินต้องไม่ตัดบรรทัดกลางจำนวน */
-.colPeriod { min-width: 120px; }
-.colMoney { min-width: 140px; }
-.colMoneySm { min-width: 120px; }
-.colPct { min-width: 96px; }
-.colSource { min-width: 150px; }
-.colName { min-width: 200px; }
-.colTeam { min-width: 120px; }
-.colDoc { min-width: 160px; }
-.colCount { min-width: 84px; }
+/* ตัวเลขเงินห้ามตัดบรรทัดกลางจำนวน ("-฿" แยกจากตัวเลข) */
+.money { white-space: nowrap; }
 
+/* เลขที่เอกสาร/ป้ายสั้นในเซลล์ — ห้ามหักกลางเลข ("SO-" / "26090219-0") ที่จอแคบ */
+.docNo { white-space: nowrap; }
 
-.footNote { color: var(--text-3); font-size: var(--fs-5); }
-.emptyBox { margin: var(--space-4); }
+.howToggle { display: inline-flex; align-items: center; gap: var(--space-0-5); }
+
+/* บรรทัดรอง "⚠ ไม่ตรงรายคน" ใต้ชื่อเดือน */
+.warnSub { color: var(--amber); }
+
+/* ที่มาของยอด — ข้อความ + ไอคอน ไม่ใช่ป้าย (ป้ายเดิมหน้าตาเหมือนปุ่ม) */
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* ป้ายที่มี tooltip — เส้นประใต้บอกว่าชี้แล้วมีคำอธิบาย */
+.tipLabel {
+  text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.noticeActions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+.noticeLines { display: flex; flex-direction: column; gap: var(--space-0-5); }
+
+.footNote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+.footNote p { margin: 0; }
+.howList { margin: 0; padding-left: var(--space-5); }
 
 .resultNote {
   margin-bottom: var(--space-3);
   color: var(--text-2);
   font-size: var(--fs-6);
+}
+.checkLine { display: inline-flex; align-items: center; gap: var(--space-1-5); flex-wrap: wrap; }
+
+/* ชื่อคนในจอแคบ — ตัดบรรทัด ไม่ใช้ … (ขายจริงต้องยังอยู่ในจอ) */
+@media (max-width: 640px) {
+  .nameCol { max-width: 120px; white-space: normal; }
 }

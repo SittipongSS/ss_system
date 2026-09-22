@@ -1,92 +1,140 @@
 "use client";
-import { TableScroll } from "@/components/ui/Table";
-import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import useLatestRun from "@/lib/ui/useLatestRun";
-import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { ChartColumn, ClipboardList, Info, Search, TriangleAlert } from "lucide-react";
-import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspace";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle, ChartColumn, CheckCircle2, ChevronDown, ChevronUp, ClipboardList, Download, PencilLine, Search,
+} from "lucide-react";
+import Workspace, { ListPanel, Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Segmented from "@/components/ui/Segmented";
-import SkeletonRows from "@/components/ui/Skeleton";
+import SkeletonRows, { Skeleton } from "@/components/ui/Skeleton";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
+import Pager from "@/components/ui/Pager";
+import StatusBadge from "@/components/ui/StatusBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Tooltip from "@/components/ui/Tooltip";
+import DayRangePicker from "@/components/ui/DayRangePicker";
+import { MonthPicker } from "@/components/salesPlanning/ui";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
+import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
+import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import useStickyState from "@/lib/ui/useStickyState";
+import { usePagination } from "@/lib/usePagination";
+import { useCan, useRole } from "@/lib/roleContext";
+import { apiFetch } from "@/lib/apiFetch";
+import { historyYearOptions } from "@/lib/sales/historyEntry";
+import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
+import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import {
+  FINANCE_STATE_BADGE,
   FINANCE_STATE_OPTIONS,
+  NONE_VALUE,
   ORDER_GROUP_OPTIONS,
+  ORDER_KIND_OPTIONS,
   ORDER_SORT_DEFAULT,
   ORDER_SORT_DIR,
   ORDER_SORT_OPTIONS,
+  activeFilterCount,
+  drillCheck,
   filterOrders,
   financeStateOf,
   groupOrders,
+  ordersForDrill,
   sortOrders,
 } from "@/lib/sales/reportOrderView";
-import MonthRangePicker from "@/components/ui/MonthRangePicker";
-import { useCan, useRole } from "@/lib/roleContext";
-
-import { historyYearOptions } from "@/lib/sales/historyEntry";
-import { carryIn, closedCountOnAxis } from "@/lib/sales/performanceMath";
-import { matchPendingApprovalRows, pendingApprovalRowKey } from "@/lib/sales/reportPendingApproval";
-import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
-import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
-import { currentMonth, formatMonthLabel, monthRangeOfWholeYear } from "@/lib/datePeriods";
-import { fmtDate, fmtMoney, fmtPercent, NA } from "@/lib/format";
-import StatusNotice from "@/components/ui/StatusNotice";
-import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import {
+  defaultDayRange,
+  parseReportPeriod,
+  reportPeriodLabel,
+  reportPeriodQuery,
+} from "@/lib/sales/reportPeriod";
+import { businessDayKey, currentMonth, formatMonthLabel } from "@/lib/datePeriods";
+import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import styles from "./page.module.css";
-import { apiFetch } from "@/lib/apiFetch";
 
-/* รายงานยอดขาย — เป้าเทียบยอดจริงตามช่วงเดือน แล้วเจาะลงถึงใบสั่งขาย
+/* รายงานยอดขาย — เป้าเทียบยอดจริงตามงวด แล้วไล่ลงถึงใบสั่งขาย
  *
- * ⭐ **หน้าของตัวเอง ไม่ใช่ส่วนขยายของแท็บผลงานขาย** (มติผู้ใช้ 2026-08-26 หลังรื้อรอบสอง)
- * แท็บผลงานขายเป็นจอ *เฝ้าดู* รายปี (บอร์ดเช้า · heatmap · YoY) ส่วนหน้านี้เป็นจอ
- * *ค้นแล้วเอาออก* ตามช่วง — คนละผู้ใช้ คนละหน้าที่ · ยัดรวมกันแล้วต้องทุบของที่ไม่ได้พัง
- *
+ * ⭐ **หน้าของตัวเอง ไม่ใช่ส่วนขยายของแท็บผลงานขาย** (มติผู้ใช้ 2026-08-26)
  * 🔒 `salesplan:target` เท่านั้น (หัวหน้าฝ่ายขาย + admin) เพราะกางยอดรายคนทั้งฝ่ายในหน้าเดียว
  *
- * ⚠️ **ไทม์ไลน์ของข้อมูลจริงไม่เท่ากันทุกระดับ** (ตรวจกับ prod 2026-08-26):
- *   2023–2024  กรอกยอดรายเดือนย้อนหลังได้ · ไม่มีเป้า
- *   2025       ยอดบริษัทกรอกมือครบ 12 เดือน · ไม่มีเป้า
- *   ม.ค. 2026  เป้าบริษัทเริ่มมีทั้งปี
- *   ก.ค. 2026  **แบ่งทีมจริงเดือนนี้** ⇒ เป้าทีม/รายคนเริ่มมี
- *   ส.ค. 2026  **ย้ายเข้าระบบเดือนนี้** ⇒ ยอดรายคนมาจากใบสั่งขายตั้งแต่นี่ไป
- * ⇒ เดือนก่อนแบ่งทีมต้องขึ้นว่า "ยังไม่แบ่งทีม" ไม่ใช่ปล่อยว่างให้ดูเหมือนข้อมูลหาย
+ * ⭐ รื้อรอบ 2026-09-22 (มติผู้ใช้ "จัด layout ใหม่ · ตัวเลือกช่วงแบบ KPI ลีด · โหลด Excel ได้"):
+ *   - หัวหน้าถือตัวเลือกงวดทรงเดียวกับหน้าลีด: รายเดือน (เดือนเดียว / ติ๊ก "ทุกเดือน" = ทั้งปี) | ช่วงวัน
+ *     กติกางวดอยู่ที่ lib/sales/reportPeriod (ช่วงวันปันเป้าตามวัน · เดือนเดียวทบยอดตั้งแต่ ม.ค.)
+ *   - โซ่เดียวบนลงล่าง: แถบตัวเลข → "แยกยอด" (ตามเดือน/ทีม/คน) → ใบที่รวมเป็นยอดนั้น
+ *     กดขายจริงในตาราง = กรองรายการใบให้เหลือใบของยอดนั้น แล้วบอกว่ารวมตรงกับตาราง (✓/✗)
+ *   - **ตัวเลขทุกตัวมาจาก `summary` ที่ API คิดด้วย lib/sales/reportSummary** — ตัวเดียวกับไฟล์ Excel
+ *     หน้านี้ไม่คิดยอดสรุปเอง (เดิมคิดใน page.js ทั้งหมด → เพิ่มไฟล์แล้วเลขจะแยกทางกันสักวัน)
+ *   - รายการใบกางทันทีแบบแบ่งหน้า 10 แถว แทนด่าน "กดค้นหาก่อน" (มติ 2026-08-27 แก้ปัญหาหน้าสูง 6,000px —
+ *     Pager แก้ปัญหาเดียวกันโดยไม่ต้องกดก่อนเห็น)
+ *
+ * ⚠️ ไทม์ไลน์ข้อมูลจริง: 2023–2025 ยอดบริษัทกรอกมือ ไม่มีเป้า · ม.ค. 2026 เป้าบริษัทเริ่ม ·
+ *    ก.ค. 2026 แบ่งทีม · ส.ค. 2026 ย้ายเข้าระบบ (ยอดรายคนมาจากใบ) — ข้อความบนจออิงไทม์ไลน์นี้
  */
 
-const SCOPES = [
-  { value: "month", label: "รายเดือน" },
-  { value: "team", label: "รายทีม" },
-  { value: "person", label: "รายคน" },
+const LENSES = [
+  { value: "month", label: "ตามเดือน" },
+  { value: "team", label: "ตามทีม" },
+  { value: "person", label: "ตามคน" },
 ];
 
-const sum = (arr) => (arr || []).reduce((s, v) => s + Number(v || 0), 0);
-const money = (v) => fmtMoney(v);
-const pct = (actual, target) => (target > 0 ? fmtPercent((actual / target) * 100) : NA);
+const PERIOD_MODES = [{ value: "month", label: "รายเดือน" }, { value: "range", label: "ช่วงวัน" }];
 
-/* สีเขียว/แดงของ "ส่วนต่าง"
-   ⚠️ ต้องอยู่บน <span> ใน <td> ไม่ใช่บน <td> เอง — `.…scroll[data-family] td` ของเปลือกตาราง
-   กับ `.ui-metric strong` ของแถบตัวเลข ต่างก็จำเพาะกว่าคลาสสีเดี่ยว ๆ แล้วกลืนสีทิ้งเงียบ ๆ
-   (คลาสอยู่ใน DOM ครบ แต่ตัวเลขออกมาสีเดียวกันหมด) · `cell-num-ok/bad` เป็นของกลางใน globals */
-const tone = (diff) => (diff >= 0 ? "cell-num-ok" : "cell-num-bad");
+const EMPTY_FILTERS = { owners: [], teams: [], finance: [], months: [], kinds: [] };
+
+const money = (v) => fmtMoney(v);
+const pctText = (v) => (v == null ? NA : fmtPercent(v));
+/* สีเขียว/แดงต้องอยู่บน <span> ใน <td> — `.…scroll[data-family] td` กับ `.ui-metric strong` จำเพาะกว่าคลาสสีเดี่ยว ๆ */
+const toneOf = (diff) => (diff >= 0 ? "cell-num-ok" : "cell-num-bad");
+
+function Money({ value, tone = false }) {
+  if (value == null) return NA;
+  return <span className={`${styles.money} ${tone ? toneOf(value) : ""}`.trim()}>{money(value)}</span>;
+}
+
+/* ช่วงเดือนแบบอ่านง่าย "ต.ค.–ธ.ค. 2026" */
+function monthSpan(months) {
+  if (!months?.length) return "";
+  if (months.length === 1) return formatMonthLabel(months[0]);
+  const first = months[0];
+  const last = months.at(-1);
+  return first.slice(0, 4) === last.slice(0, 4)
+    ? `${formatMonthLabel(first, { includeYear: false })}–${formatMonthLabel(last)}`
+    : `${formatMonthLabel(first)} – ${formatMonthLabel(last)}`;
+}
 
 export default function SalesReportPage() {
-  const teamRegistry = useSalesTeams();
   const canTarget = useCan("salesplan:target");
   const role = useRole();
 
   const now = useMemo(() => new Date(), []);
+  const todayTh = businessDayKey(now.toISOString());
   const thisMonth = currentMonth(now);
-  const thisYear = thisMonth.slice(0, 4);
-  /* ขอบล่างของช่วง = ปีเก่าสุดที่ "หน้ากรอกยอดย้อนหลัง" ยอมให้กรอก — ผูกกับกติกาเดียวกัน
-     ไม่ฝังเลขปีไว้ในโค้ด ไม่งั้นปีหน้าขอบค้างอยู่ที่เดิมโดยไม่มีใครสังเกต */
+  /* ขอบล่างของ MonthPicker = ปีเก่าสุดที่หน้ากรอกยอดย้อนหลังยอมให้กรอก (กติกาเดียวกัน ไม่ฝังเลขปี) */
   const minMonth = `${historyYearOptions(now).at(-1)}-01`;
 
-  // ตั้งต้นที่ "ปีนี้" — ช่วงเดียวที่มีเป้าครบทุกเดือน
-  const [range, setRange] = useState(() => monthRangeOfWholeYear(thisYear));
-  const [scope, setScope] = useState("month");
+  /* งวด — จำไว้เฉพาะตอนกดย้อน (useStickyState) ⇒ เปิดใบแล้วกดกลับมาเจองวดเดิม
+     ค่าตั้งต้น = ทุกเดือนของปีนี้ (นิสัยเดิมของหน้านี้ "ปีนี้") */
+  const [periodMode, setPeriodMode] = useStickyState("periodMode", "month");
+  const [month, setMonth] = useStickyState("month", thisMonth);
+  const [allMonths, setAllMonths] = useStickyState("allMonths", true);
+  const [range, setRange] = useStickyState("range", defaultDayRange(todayTh));
+  const [lens, setLens] = useStickyState("lens", "month");
+  const [drill, setDrill] = useState(null);
+
+  const period = useMemo(() => {
+    const input = periodMode === "range"
+      ? { mode: "range", from: range?.from, to: range?.to }
+      : allMonths ? { mode: "year", year: String(month || thisMonth).slice(0, 4) } : { mode: "month", month };
+    const parsed = parseReportPeriod(input, { today: todayTh });
+    return parsed.error ? parseReportPeriod({ mode: "year", year: thisMonth.slice(0, 4) }, { today: todayTh }) : parsed;
+  }, [periodMode, range?.from, range?.to, allMonths, month, thisMonth, todayTh]);
+  const query = reportPeriodQuery(period);
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -94,73 +142,50 @@ export default function SalesReportPage() {
   const startRun = useLatestRun();
   const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    if (!opts?.background) setLoading(true);
+    if (!opts?.background) {
+      /* 🐞 ต้องล้างก่อนโหลด — เดิมโหลดพลาดแล้วตัวเลขของงวดเก่าค้างใต้หัวงวดใหม่ (ตรวจ 2026-08-28/09-22) */
+      setData(null);
+      setLoading(true);
+    }
     setError("");
     try {
-      const res = await apiFetch(`/api/sales-planning/report?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`);
+      const res = await apiFetch(`/api/sales-planning/report?${query}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดรายงานไม่สำเร็จ");
       const json = await res.json();
-      if (!isLatest()) return; // ช่วงเปลี่ยนระหว่างรอ — ทิ้งคำตอบรอบเก่าทั้งก้อน
+      if (!isLatest()) return; // งวดเปลี่ยนระหว่างรอ — ทิ้งคำตอบรอบเก่าทั้งก้อน
       setData(json);
     } catch (e) {
-      if (isLatest() && !opts?.background) setError(e.message || "โหลดรายงานไม่สำเร็จ");
+      if (!isLatest()) return;
+      /* รอบเบื้องหลังพลาด = คงข้อมูลเดิมไว้เงียบ ๆ ไม่ได้ — ต้องบอก ไม่งั้นเลขเก่าอยู่ต่อโดยไม่มีใครรู้ */
+      setData(null);
+      setError(e.message || "โหลดรายงานไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [range.from, range.to, startRun]);
+  }, [query, startRun]);
 
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
+  // เปลี่ยนงวด = ตัวกรองจากตารางแยกยอดหมดความหมาย (เดือน/เจ้าของอาจไม่มีในงวดใหม่)
+  useEffect(() => { setDrill(null); }, [query]);
 
-  // ห่อไว้ก่อน — อาเรย์ใหม่ทุกเรนเดอร์จะทำให้ useMemo/useCallback ข้างล่างคิดใหม่ทุกครั้ง
-  const months = useMemo(() => data?.months || [], [data]);
-  const nowAxis = useMemo(() => ({ year: Number(thisMonth.slice(0, 4)), monthIdx: Number(thisMonth.slice(5, 7)) - 1 }), [thisMonth]);
-  const closedCount = useMemo(() => closedCountOnAxis(months, nowAxis), [months, nowAxis]);
+  const summary = data?.summary || null;
+  const ordersRef = useRef(null);
+  const breakdownRef = useRef(null);
+  const chipRef = useRef(null);
 
-  /* เดือนที่ยังไม่จบไม่เข้าผลรวม — เอาเป้าเต็มเดือนไปเทียบยอดครึ่งเดือนแล้วอ่านผิดทุกครั้ง
-     (บทเรียนเดียวกับ yearSummary ของแท็บผลงานขาย) */
-  const rowStat = useCallback((row) => {
-    if (!row) return { target: 0, actual: 0 };
-    return {
-      target: sum(row.target.slice(0, closedCount)),
-      actual: sum(row.actual.slice(0, closedCount)),
-    };
-  }, [closedCount]);
+  const openDrill = useCallback((next) => {
+    setDrill(next);
+    requestAnimationFrame(() => {
+      ordersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      chipRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
 
-  const company = data?.company || null;
-  const companyStat = rowStat(company);
-
-  /* 🐞 **% และส่วนต่างต้องเทียบเฉพาะเดือนที่ "มีเป้า"** (UAT 2026-08-27)
-     ช่วงที่คร่อมยุคก่อนตั้งเป้า (2023–2025 ไม่มีเป้าเลย) จะเอายอดของทุกเดือนไปหาร
-     เป้าของไม่กี่เดือน — ของจริงที่เจอ: ธ.ค. 2023 – ม.ค. 2026 ขึ้น **2,367%**
-     เพราะ 26 เดือนมียอด แต่มีเป้าแค่เดือนเดียว
-     ⇒ "ขายจริง" ยังเป็นยอดรวมทุกเดือนที่จบแล้ว (เป็นข้อเท็จจริง ไม่ได้เทียบกับอะไร)
-        ส่วน % กับส่วนต่างจำกัดเฉพาะเดือนที่ตั้งเป้าไว้ และบอกจำนวนเดือนกำกับ */
-  const targetIdx = useMemo(() => months
-    .map((_, i) => i)
-    .filter((i) => i < closedCount && Number(company?.target[i] || 0) > 0), [months, closedCount, company]);
-  const cmp = useMemo(() => ({
-    target: targetIdx.reduce((sum, i) => sum + Number(company?.target[i] || 0), 0),
-    actual: targetIdx.reduce((sum, i) => sum + Number(company?.actual[i] || 0), 0),
-  }), [targetIdx, company]);
-
-  /* 🪤 **เดือนที่ "แยกยอดรายคน" จริง ๆ ไม่ใช่ทุกเดือนในช่วง** — ก่อนย้ายเข้าระบบ (ส.ค. 2026)
-     ยอดถูกกรอกไว้ระดับบริษัทอย่างเดียว แถวรายคนของเดือนพวกนั้นจึงเป็น 0 ทั้งแถว
-     ถ้าเอา 0 ไปหารเป้าที่ตั้งไว้ (ก.ค. มีเป้ารายคนแล้ว) รายงานจะบอกว่า "ทุกคนทำได้ 0%"
-     ทั้งที่ความจริงคือ *ไม่รู้* เพราะไม่เคยแยกยอด — คนละเรื่องกับทำไม่ได้
-     ⇒ มุมมองรายทีม/รายคนคิดเฉพาะเดือนที่มียอดแยกจริงเท่านั้น */
-  const splitIdx = useMemo(() => {
-    const people = data?.people || [];
-    return months.map((_, i) => i).filter((i) => i < closedCount && people.some((p) => Number(p.actual[i] || 0) > 0));
-  }, [data, months, closedCount]);
-  const peopleActualTotal = sum((data?.people || []).map((p) => sum(splitIdx.map((i) => p.actual[i]))));
-  const companySplitActual = sum(splitIdx.map((i) => company?.actual[i]));
-
-  /* ⭐ ใบสั่งขาย "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — ก้อนแยกจาก API
-     ลงเดือนปัจจุบันเสมอ ⇒ **ไม่ผ่านด่าน closedCount** (เดือนที่ยังไม่จบ = เดือนเดียวที่มันมีได้)
-     ⛔ ไม่เข้า rowStat / cmp / splitIdx / carryIn / แถบเตือนยอดไม่ตรง — ขายจริงเท่าเดิมทุกตัว */
-  const pendingApproval = data?.pendingApproval?.month ? data.pendingApproval : null;
-  const hasPendingApproval = Number(pendingApproval?.count || 0) > 0;
+  const switchToRange = useCallback((from, to) => {
+    setPeriodMode("range");
+    setRange({ from, to });
+  }, [setPeriodMode, setRange]);
 
   if (!canTarget) {
     return (
@@ -172,646 +197,967 @@ export default function SalesReportPage() {
     );
   }
 
+  const periodLabel = reportPeriodLabel(period);
+
   return (
     <Workspace
       icon={<ChartColumn size={22} />}
       title="รายงานยอดขาย"
-      subtitle="เป้าเทียบยอดขายจริงตามช่วงที่เลือก · เจาะลงถึงใบสั่งขายที่อนุมัติแล้ว · ใบรออนุมัติแยกไว้ ไม่นับเป็นยอดขาย"
+      subtitle="ยอดขายจริงจากใบสั่งขายที่อนุมัติแล้ว เทียบเป้า · กดยอดขายจริงในตารางเพื่อดูใบที่รวมเป็นยอดนั้น · ใบรออนุมัติแยกไว้ ไม่นับเป็นยอดขาย"
       back={{ href: "/sa/targets", label: "กลับหน้าวางเป้า" }}
-      headerRight={
-        <MonthRangePicker
-          from={range.from}
-          to={range.to}
-          min={minMonth}
-          now={now}
-          onChange={setRange}
-        />
-      }
+      headerRight={(
+        <>
+          {/* ทรงเดียวกับหน้าลีด (มติผู้ใช้ 2026-09-22 "ปุ่มเลือกช่วงอยากได้เหมือน KPI ลีด") */}
+          <Segmented ariaLabel="หน่วยของงวด" value={periodMode} onChange={setPeriodMode} options={PERIOD_MODES} />
+          {periodMode === "range" ? (
+            <DayRangePicker
+              from={period.from}
+              to={period.to}
+              today={todayTh}
+              markedDays={Object.keys(data?.byDay || {})}
+              markedLabel="มีใบอนุมัติ"
+              onChange={setRange}
+            />
+          ) : (
+            <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} min={minMonth} />
+          )}
+          {/* ไฟล์ = ทั้งรายงานของงวด (มติผู้ใช้ "ทั้งรายงาน") · ตัวเลขจากตัวคิดเดียวกับจอ
+              ⚠️ `Button as={Link}` ไม่ใช่ `<a className="btn">` (ratchet ของ audit:ui) · prefetch ปิดเพราะปลายทางเป็นไฟล์ */}
+          <Button
+            as={Link}
+            prefetch={false}
+            variant="quiet"
+            icon={<Download size={15} aria-hidden="true" />}
+            href={`/api/sales-planning/report/export?${query}`}
+            title={`ดาวน์โหลดทั้งรายงานของ ${periodLabel} — ไม่ขึ้นกับการค้นหาและตัวกรองในรายการใบ`}
+          >
+            ดาวน์โหลด Excel
+          </Button>
+        </>
+      )}
     >
       <div className="flex flex-col gap-4">
-        {error && <StatusNotice tone="error">{error}</StatusNotice>}
+        {error && (
+          <StatusNotice tone="error" title="โหลดรายงานไม่สำเร็จ" action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+            {error}
+          </StatusNotice>
+        )}
 
-        {/* ⚠️ ระหว่างโหลดซ่อนแถบตัวเลขกับแถบเตือน — ยังไม่มีข้อมูลจะขึ้น 0 / "ยังไม่ได้ตั้งเป้า" หลอกตา
-            และตอนเปลี่ยนช่วงจะเป็นตัวเลขของช่วงเก่าใต้ตัวเลือกช่วงใหม่ · เดิม Workspace loading ถอดทั้งหน้า
-            ตอนนี้ย้าย loading ลงการ์ดทีละใบ (มติผู้ใช้ 2026-09-15) ⇒ แผงค้นหาใบไม่ถูกถอด เงื่อนไขที่ค้นไว้ไม่หาย */}
-        {!loading && (<>
-          {/* ช่องที่ 5 "รออนุมัติ" มีเฉพาะช่วงที่คร่อมเดือนนี้และมีใบค้าง — แถบต้องบอกจำนวนช่องเอง
-              (ไม่ส่ง = 4 คอลัมน์ ช่องที่ 5 ตกบรรทัด) */}
-          <section className="ui-metric-strip" data-cols={hasPendingApproval ? "5" : undefined}>
-            <span className="ui-metric">
-              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-              <span>
-                <small>เป้าของงวดที่จบแล้ว</small>
-                <strong>{money(cmp.target)}</strong>
-                <em>{targetIdx.length ? `ตั้งเป้าไว้ ${targetIdx.length} เดือน` : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em>
-              </span>
-            </span>
-            <span className="ui-metric">
-              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-              <span><small>ขายจริง</small><strong>{money(companyStat.actual)}</strong>
-                <em>{closedCount} เดือนที่จบแล้ว · ไม่รวม VAT ท้ายใบ</em></span>
-            </span>
-            <span className="ui-metric">
-              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-              <span><small>% ทำได้</small><strong>{pct(cmp.actual, cmp.target)}</strong>
-                <em>{cmp.target > 0
-                  ? `เทียบเฉพาะ ${targetIdx.length} เดือนที่ตั้งเป้า${cmp.actual >= cmp.target ? " · ถึงเป้า" : " · ต่ำกว่าเป้า"}`
-                  : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em></span>
-            </span>
-            <span className="ui-metric">
-              <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-              <span><small>ส่วนต่าง</small>
-                {/* ไม่มีเป้า = เทียบไม่ได้ ต้องขึ้นขีดเหมือน % — ของเดิมโชว์ (ยอดจริง − 0)
-                    ซึ่งอ่านเป็น "เกินเป้า 135 ล้าน" ในช่วงปี 2023–2024 ที่ยังไม่เคยตั้งเป้า */}
-                <strong>
-                  {cmp.target > 0
-                    ? <span className={tone(cmp.actual - cmp.target)}>{money(cmp.actual - cmp.target)}</span>
-                    : NA}
-                </strong>
-                <em>{cmp.target > 0 ? `เทียบเป้าของ ${targetIdx.length} เดือนนั้น` : "ไม่มีเป้าให้เทียบ"}</em></span>
-            </span>
-            {/* ยอดรออนุมัติ — ช่องของตัวเอง ไม่ใช่บรรทัดรองของ "ขายจริง" เพราะช่องนั้นนับเฉพาะเดือนที่จบแล้ว
-                ส่วนยอดนี้อยู่เดือนปัจจุบันเสมอ · คำว่า "รออนุมัติ" สีสถานะเดียวกับ PendingApprovalAmount
-                ตัวเลขสีข้อความปกติ (ไม่ใช่เขียวของขายจริง) */}
-            {hasPendingApproval && (
-              <span className="ui-metric">
-                <span className="ui-metric-icon"><ClipboardList size={16} /></span>
-                <span>
-                  <small>
-                    <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span>
-                    {" "}· {formatMonthLabel(pendingApproval.month)}
-                  </small>
-                  <strong>{money(pendingApproval.amount)}</strong>
-                  <em>{pendingApproval.count} ใบ · ยังไม่นับเป็นขายจริง</em>
-                </span>
-              </span>
-            )}
-          </section>
+        {!error && <HeadlineStrip loading={loading} summary={summary} period={period} />}
 
-          {/* กระทบยอดสามระดับ — ระบบเก็บบริษัท/ทีม/รายคนเป็นสามเส้นแยกกัน ไม่ได้บวกขึ้นไป
-              กรอกรายคนไม่ตรงกับยอดบริษัทจึงไม่มีอะไรเตือน ต้องบอกตรงนี้ก่อนเอาไปคิดคอมมิชชั่น */}
-          {closedCount > 0 && !splitIdx.length && (
-            <div className="alert-banner">
-              <span className="alert-banner-icon"><Info size={17} /></span>
-              <span className="alert-banner-text">
-                ช่วงนี้ยังไม่มีเดือนที่<b>แยกยอดรายคน</b> — ดูได้เฉพาะยอดรวมของทั้งบริษัท ·
-                {" "}ฝ่ายขายแบ่งทีมเมื่อ ก.ค. 2026 และย้ายเข้าระบบเมื่อ ส.ค. 2026
-                {" "}(ยอดรายคนก่อนหน้านั้นต้องกรอกที่หน้า “ยอดขายย้อนหลัง” ถ้าต้องการ)
-              </span>
-            </div>
-          )}
-          {splitIdx.length > 0 && Math.abs(companySplitActual - peopleActualTotal) > 1 && (
-            <div className="alert-banner" data-tone="danger">
-              <span className="alert-banner-icon"><TriangleAlert size={17} /></span>
-              <span className="alert-banner-text">
-                เฉพาะ {splitIdx.length} เดือนที่แยกยอดรายคน: ยอดบริษัท <b>{money(companySplitActual)}</b>
-                {" "}ไม่ตรงกับผลรวมรายคน <b>{money(peopleActualTotal)}</b>
-                {" "}(ต่าง {money(Math.abs(companySplitActual - peopleActualTotal))}) —
-                {" "}ระบบเก็บบริษัท/ทีม/รายคนเป็นสามเส้นแยกกัน กรอกไม่ตรงกันจะไม่มีอะไรเตือน
-                {" "}ต้องแก้ให้ตรงก่อนเอาไปคิดคอมมิชชั่น
-              </span>
-            </div>
-          )}
-        </>)}
+        {!loading && summary && (
+          <Notices
+            summary={summary}
+            period={period}
+            thisMonth={thisMonth}
+            todayTh={todayTh}
+            onRange={switchToRange}
+            onPersonLens={() => {
+              setLens("person");
+              requestAnimationFrame(() => breakdownRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+            }}
+          />
+        )}
 
-        {/* ⭐ ตัวสลับมุมมองอยู่ใน **หัวการ์ดสรุป** ไม่ใช่ toolbar ของหน้า (รื้อ 2026-08-27)
-            ของเดิมมันลอยอยู่กลางหน้าในตำแหน่งที่หน้าอื่นวาง "ตัวกรอง" แต่คุมแค่ตารางบน
-            คนกดแล้วไม่รู้ว่ามีผลกับอะไร — ตัวคุมต้องอยู่ติดกับของที่มันคุม */}
-        <SummaryCard
-          loading={loading}
-          scope={scope} onScope={setScope}
-          data={data} months={months} closedCount={closedCount} splitIdx={splitIdx}
-          pendingApproval={pendingApproval}
-        />
+        <div ref={breakdownRef} className="scroll-anchor">
+          <Breakdown
+            loading={loading}
+            error={Boolean(error)}
+            lens={lens}
+            onLens={setLens}
+            summary={summary}
+            data={data}
+            period={period}
+            todayTh={todayTh}
+            onDrill={openDrill}
+            onRange={switchToRange}
+          />
+        </div>
 
-        {/* ⚠️ ซ่อนทั้งใบระหว่างโหลด เหมือนแถบตัวเลขข้างบน — `hasPendingApproval`/`pendingApproval` มาจาก `data`
-            ของช่วงเก่าที่ยังค้างอยู่จนผลใหม่มา ถ้าคงการ์ดไว้ หัวการ์ดจะโชว์จำนวนใบ/ยอดของช่วงเก่าเหนือโครงกระดูก
-            และช่วงใหม่ที่ไม่มีใบค้างการ์ดจะโผล่แล้วหายไปเอง */}
-        {!loading && hasPendingApproval && <PendingApprovalCard pendingApproval={pendingApproval} />}
+        {!loading && Number(data?.pendingApproval?.count || 0) > 0 && (
+          <PendingPanel pendingApproval={data.pendingApproval} />
+        )}
 
-        <OrderSearchCard orders={data?.orders || []} people={data?.people || []} loading={loading} />
+        <div ref={ordersRef} className="scroll-anchor">
+          <OrdersPanel
+            orders={data?.orders || []}
+            summary={summary}
+            period={period}
+            loading={loading}
+            error={Boolean(error)}
+            drill={drill}
+            onClearDrill={() => setDrill(null)}
+            chipRef={chipRef}
+          />
+        </div>
       </div>
     </Workspace>
   );
 }
 
-/* ── การ์ดสรุป — หัวการ์ดถือตัวสลับมุมมอง เนื้อในเปลี่ยนตามที่เลือก ────────── */
-function SummaryCard({ loading, scope, onScope, data, months, closedCount, splitIdx, pendingApproval }) {
-  /* การ์ดสรุป = ไม่ใช่รายการ ⇒ WorkspaceSection (เดิมเขียน markup .ui-section เอง · ด่าน LP8)
-     ⚠️ ตารางต้องอยู่ใน `.ui-section-body` — WorkspaceSection ใส่ชั้นนี้ให้เอง · เปลือกการ์ดใส่ระยะขอบ
-        ให้ตัวเลื่อนตารางที่เป็น *ลูกตรง* ของ `.ui-section` โดยคิดว่าไม่มีชั้นนี้ พอไม่มี body ตารางจะกว้าง
-        เกินการ์ด 32px แล้วโดน `overflow: hidden` ตัดคอลัมน์ขวาสุดทิ้งโดยเลื่อนตามไปดูไม่ได้
-     ⚠️ ระหว่างโหลดหัวการ์ดกับตัวสลับมุมมองยังอยู่ — แทนที่เฉพาะเนื้อ (ของเดิม Workspace loading ถอดทั้งหน้า) */
+/* ── แถบตัวเลขบนหัว ─────────────────────────────────────────────────────────
+   ⭐ ไม่มีไอคอน (เดิมไอคอนเดียวกันสี่ใบ ไม่มีความหมาย และกินที่จนเงินเต็มหลักโดนตัด "฿81,620,000...." ที่ 390px)
+   ⭐ งวดที่ยังไม่มีเดือนจบ (เดือนนี้เดือนเดียว) สลับเป็นชุด "ระหว่างเดือน" แทนที่จะขึ้นขีดทั้งแถบ */
+function HeadlineStrip({ loading, summary, period }) {
+  if (loading || !summary) {
+    return (
+      <MetricStrip aria-busy="true">
+        {["ขายจริง", "เป้า", "% ทำได้", "ส่วนต่าง"].map((label) => (
+          <Metric key={label} label={label} value={<Skeleton width="70%" />} note={<Skeleton width="50%" />} />
+        ))}
+      </MetricStrip>
+    );
+  }
+  const m = summary.metrics;
+  const range = period.mode === "range";
+  const pending = m.pendingApproval ? (
+    <Metric
+      as="a"
+      href="#sales-report-pending"
+      label={<><span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span> · {formatMonthLabel(m.pendingApproval.month)}</>}
+      value={money(m.pendingApproval.amount)}
+      note={`${m.pendingApproval.count} ใบ · ยังไม่นับ`}
+      aria-label={`ดูใบสั่งขายรออนุมัติ ${m.pendingApproval.count} ใบ`}
+    />
+  ) : null;
+
+  /* งวดที่มีแต่เดือนที่ยังไม่จบ (โหมดรายเดือน) — ไม่มีอะไรเทียบเป้าได้ ⇒ ตอบคำถาม "ยังต้องปิดอีกเท่าไร" แทน */
+  const running = !range && m.countedMonths === 0 && m.open;
+  if (running) {
+    const row = summary.monthRows.find((r) => r.month === m.open.months[0]) || null;
+    const future = m.open.months[0] > currentMonth();
+    const mustClose = summary.monthRows.filter((r) => !r.closed).reduce((s, r) => s + r.mustClose, 0);
+    const left = Math.max(0, mustClose - m.open.actual);
+    return (
+      <MetricStrip>
+        <Metric label="ขายจริง" value={future ? NA : money(m.open.actual)} note={future ? "ยังไม่ถึงงวดนี้" : "ยังไม่จบเดือน"} />
+        <Metric
+          label={row && row.carry > 0 ? "ต้องปิดทั้งเดือน" : "เป้า"}
+          value={mustClose ? money(mustClose) : NA}
+          note={row && row.carry > 0 ? "เป้า + ทบยกมา" : (mustClose ? "เป้าเต็มเดือน" : "ยังไม่ได้ตั้งเป้า")}
+        />
+        <Metric label="% ทำได้" value={NA} note="คิดเมื่อจบเดือน" />
+        <Metric label="ต้องปิดอีก" value={mustClose ? money(left) : NA} note={left > 0 ? "ถึงสิ้นเดือน" : (mustClose ? "ปิดครบแล้ว" : "ไม่มีเป้าให้เทียบ")} />
+        {pending}
+      </MetricStrip>
+    );
+  }
+
+  const hasTarget = m.target > 0;
+  const prorated = range ? summary.monthRows.filter((r) => r.prorated) : [];
+  const targetNote = !hasTarget ? "ยังไม่ได้ตั้งเป้า"
+    : range ? (prorated.length === 1 ? `ปัน ${prorated[0].prorated.days}/${prorated[0].prorated.total} วัน` : "ปันตามวันถึงวันนี้")
+      : `ตั้งเป้าไว้ ${m.targetMonths} เดือน`;
+  return (
+    <MetricStrip>
+      <Metric
+        label="ขายจริง"
+        value={money(m.actual)}
+        note={range ? "อนุมัติในช่วงนี้" : `${m.countedMonths} เดือนที่จบแล้ว`}
+      />
+      <Metric
+        label={range ? (
+          <Tooltip label="เป้าปันตามวัน" note={`เป้าเดือน × วันที่นับ ÷ วันทั้งเดือน · นับถึงวันนี้ (${fmtDate(period.today)}) · วันหลังจากนี้ยังไม่นับเป้า`}>
+            <span className={styles.tipLabel} tabIndex={0}>เป้าปันตามวัน ⓘ</span>
+          </Tooltip>
+        ) : "เป้า"}
+        value={hasTarget ? money(m.target) : NA}
+        note={targetNote}
+      />
+      <Metric
+        label="% ทำได้"
+        value={pctText(m.pct)}
+        tone={m.pct == null ? undefined : (m.pct >= 100 ? "success" : "danger")}
+        note={m.pct == null ? "ไม่มีเป้าให้เทียบ" : (m.pct >= 100 ? "ถึงเป้า" : "ต่ำกว่าเป้า")}
+      />
+      <Metric
+        label="ส่วนต่าง"
+        value={m.diff == null ? NA : <span className={toneOf(m.diff)}>{money(m.diff)}</span>}
+        note={m.diff == null ? "ไม่มีเป้าให้เทียบ" : (range ? "เทียบเป้าปันตามวัน" : `เทียบเป้า ${m.targetMonths} เดือนนั้น`)}
+      />
+      {pending}
+    </MetricStrip>
+  );
+}
+
+/* ── ข้อความกำกับข้อมูล (แทน .alert-banner ที่ไม่มี CSS แล้ว) ── วางติดเหนือตัวเลขที่มันกำกับ */
+function Notices({ summary, period, thisMonth, todayTh, onRange, onPersonLens }) {
+  const notes = [];
+  const m = summary.metrics;
+  const rec = summary.reconciliation;
+
+  if (period.mode === "month" && period.month === thisMonth) {
+    notes.push(
+      <StatusNotice
+        key="running"
+        tone="info"
+        title={`${formatMonthLabel(thisMonth)} ยังไม่จบเดือน`}
+        action={<Button size="sm" variant="quiet" onClick={() => onRange(`${thisMonth}-01`, todayTh)}>เทียบเป้าปันตามวันถึงวันนี้</Button>}
+      >
+        ยอดถึงวันนี้ยังไม่เทียบเป้าเต็มเดือน — % และส่วนต่างคิดเมื่อจบเดือน
+      </StatusNotice>,
+    );
+  }
+  if (period.mode === "month" && period.month > thisMonth) {
+    notes.push(<StatusNotice key="future" tone="neutral">ยังไม่ถึงงวดนี้ — มีแต่เป้า ยังไม่มียอดขาย</StatusNotice>);
+  }
+  if (rec.mismatch) {
+    const bad = rec.byMonth.filter((r) => r.mismatch);
+    const ok = rec.byMonth.length - bad.length;
+    const fromHistory = bad.some((r) => r.source === "history");
+    notes.push(
+      <StatusNotice
+        key="reconcile"
+        tone="warning"
+        title="ยอดบริษัทไม่ตรงกับผลรวมรายคน — ยังไม่ควรใช้คิดคอมมิชชั่น"
+        action={(
+          <span className={styles.noticeActions}>
+            <Button size="sm" onClick={onPersonLens}>ดูตามคน</Button>
+            {fromHistory && <Button as={Link} size="sm" variant="quiet" href="/sa/targets/history">ไปแก้ที่ยอดขายย้อนหลัง</Button>}
+          </span>
+        )}
+      >
+        <span className={styles.noticeLines}>
+          {bad.map((r) => (
+            <span key={r.month}>
+              {formatMonthLabel(r.month)} · บริษัท <Money value={r.company} /> · รวมรายคน <Money value={r.people} />
+              {" "}· ต่าง <Money value={Math.abs(r.gap)} /> · ที่มา: {r.source === "history" ? "กรอกย้อนหลัง" : "ใบสั่งขาย"}
+              {r.ownerless.count > 0 && <> · ใบไม่มีเจ้าของ {r.ownerless.count} ใบ <Money value={r.ownerless.amount} /></>}
+            </span>
+          ))}
+          {ok > 0 && <span>เดือนอื่นที่แยกยอดรายคนตรงกันแล้ว</span>}
+        </span>
+      </StatusNotice>,
+    );
+  }
+  if (summary.historyDropped?.length) {
+    notes.push(
+      <StatusNotice key="dropped" tone="info" title={`ช่วงนี้คลุม ${summary.historyDropped.map((x) => formatMonthLabel(x)).join(", ")} ไม่เต็มเดือน`}>
+        ยอดของเดือนนั้นกรอกย้อนหลังเป็นรายเดือน แยกรายวันไม่ได้ — เดือนนั้นนับเฉพาะใบสั่งขายที่อนุมัติในช่วง และไม่เทียบเป้า
+      </StatusNotice>,
+    );
+  }
+  if (!notes.length || !m) return null;
+  return <>{notes}</>;
+}
+
+/* ── แยกยอด ── การ์ดเดียว สลับมุมมองในหัวการ์ด (ตัวคุมอยู่ติดกับของที่มันคุม · มติ 2026-08-27) */
+function Breakdown({ loading, error, lens, onLens, summary, data, period, todayTh, onDrill, onRange }) {
+  const range = period.mode === "range";
+  const scope = !summary ? null
+    : lens === "month"
+      ? (range
+        ? `${reportPeriodLabel(period)} · เป้าปันตามวัน`
+        : period.mode === "month"
+          ? `${formatMonthLabel(period.month)} · ทบยอดนับตั้งแต่ ม.ค.`
+          : `${monthSpan(summary.months)} · จบแล้ว ${summary.countedMonths.length} เดือน`)
+      : (range
+        ? `${reportPeriodLabel(period)} · เป้าปันตามวัน · ทีมตามดีล`
+        : summary.splitMonths.length
+          ? `คิดเฉพาะ ${summary.splitMonths.length} เดือนที่จบแล้วและแยกยอดรายคน (${monthSpan(summary.splitMonths)}) · ทีมตามดีล`
+          : "ทีมตามดีล");
   return (
     <WorkspaceSection
+      id="sales-report-breakdown"
       icon={<ChartColumn size={17} aria-hidden="true" />}
-      title="สรุปยอด"
-      subtitle={loading ? null : `${months.length} เดือนในช่วง · จบแล้ว ${closedCount} เดือน`}
-      actions={<Segmented ariaLabel="มุมมองสรุป" options={SCOPES} value={scope} onChange={onScope} />}
+      title="แยกยอด"
+      subtitle={loading ? null : scope}
+      actions={<Segmented ariaLabel="มุมมองแยกยอด" options={LENSES} value={lens} onChange={onLens} />}
     >
-      {loading ? <SkeletonRows rows={6} /> : (
-        <>
-          {scope === "month" && <MonthTable data={data} closedCount={closedCount} pendingApproval={pendingApproval} />}
-          {scope === "team" && <GroupTable rows={data?.teams || []} idx={splitIdx} months={months} kind="team" pendingApproval={pendingApproval} />}
-          {scope === "person" && <GroupTable rows={data?.people || []} idx={splitIdx} months={months} kind="person" pendingApproval={pendingApproval} />}
-        </>
+      {loading ? <SkeletonRows rows={6} /> : error || !summary ? (
+        <EmptyState plain>
+          <strong>ยังไม่มีข้อมูลของงวดนี้ — โหลดรายงานไม่สำเร็จ</strong>
+        </EmptyState>
+      ) : lens === "month" ? (
+        <MonthLens summary={summary} period={period} onDrill={onDrill} />
+      ) : (
+        <GroupLens
+          kind={lens}
+          summary={summary}
+          orders={data?.orders || []}
+          period={period}
+          todayTh={todayTh}
+          onDrill={onDrill}
+          onRange={onRange}
+        />
       )}
     </WorkspaceSection>
   );
 }
 
-/* ── รายเดือน ─────────────────────────────────────────────────────────── */
-function MonthTable({ data, closedCount, pendingApproval }) {
-  const months = data?.months || [];
-  const company = data?.company;
-  if (!company) return null;
-  const hasPending = Number(pendingApproval?.count || 0) > 0;
+/* ── ตามเดือน ─────────────────────────────────────────────────────────── */
+function MonthLens({ summary, period, onDrill }) {
+  const range = period.mode === "range";
+  const [futureOpen, setFutureOpen] = useState(false);
+  const thisMonth = currentMonth();
+  const rows = summary.monthRows;
+  const past = rows.filter((r) => range || r.month <= thisMonth);
+  const future = range ? [] : rows.filter((r) => r.month > thisMonth);
+  const m = summary.metrics;
+  const mismatch = new Set(summary.reconciliation.byMonth.filter((r) => r.mismatch).map((r) => r.month));
+  const cols = range ? 6 : 8;
+  const split = summary.sourceSplit;
+  const totalOrders = rows.filter((r) => r.closed && r.source === "orders").reduce((s, r) => s + r.orderCount, 0);
+  const [howOpen, setHowOpen] = useState(false);
 
-  /* ทบยอด: เป้าที่ต้องปิดของเดือนนี้ = เป้าเดือนนี้ + ยอดที่ขาดสะสมในปีเดียวกัน
-     ⭐ รีเซ็ตทุกต้นปีปฏิทิน (มติผู้ใช้ 2026-08-26) — `carryIn` รับ months แล้วตัดรอบให้เอง */
+  const actualCell = (r) => {
+    const drillable = r.source === "orders" && r.orderCount > 0;
+    const value = <Money value={r.actual} />;
+    return (
+      <>
+        {drillable ? (
+          <button
+            type="button"
+            className="table-metric-button"
+            aria-label={`ดูใบสั่งขายที่รวมเป็นยอด ${formatMonthLabel(r.month)} ${money(r.actual)}`}
+            onClick={() => onDrill({ kind: "month", month: r.month, label: formatMonthLabel(r.month), expected: r.actual, historyMonths: [] })}
+          >{value}</button>
+        ) : value}
+        {r.pending && <PendingApprovalAmount amount={r.pending.amount} count={r.pending.count} />}
+      </>
+    );
+  };
+
+  const monthRow = (r) => {
+    const running = !range && !r.closed && r.month === thisMonth;
+    const left = running && r.mustClose > r.actual ? r.mustClose - r.actual : 0;
+    return (
+      <tr key={r.month}>
+        <td>
+          {formatMonthLabel(r.month)}
+          {running && <span className="cell-sub">ยังไม่จบ · ถึง {fmtDate(period.today)}</span>}
+          {r.prorated && <span className="cell-sub">ปัน {r.prorated.days}/{r.prorated.total} วัน</span>}
+          {mismatch.has(r.month) && <span className={`cell-sub ${styles.warnSub}`}>⚠ ไม่ตรงรายคน</span>}
+        </td>
+        <td className="num">{actualCell(r)}</td>
+        <td className="num">{pctText(r.pct)}</td>
+        <td className="num"><Money value={r.diff} tone /></td>
+        {!range && (
+          <td className="num">
+            {r.mustClose ? <Money value={r.mustClose} /> : NA}
+            {left > 0 && <span className="cell-sub">ต้องปิดอีก <Money value={left} /></span>}
+          </td>
+        )}
+        <td className="num">
+          {r.noDaily ? NA : (r.target ? <Money value={r.target} /> : NA)}
+          {range && r.noDaily && <span className="cell-sub">ไม่เทียบเป้า · ยอดกรอกรายเดือน</span>}
+          {range && !r.noDaily && r.prorated && r.fullTarget ? <span className="cell-sub">เต็มเดือน <Money value={r.fullTarget} /></span> : null}
+        </td>
+        {!range && <td className="num">{r.carry ? <Money value={r.carry} /> : NA}</td>}
+        <td>
+          {r.source === "history" ? (
+            <span className={styles.source}><PencilLine size={13} aria-hidden="true" /> กรอกย้อนหลัง</span>
+          ) : r.source === "orders" ? (
+            <span className={styles.source}><ClipboardList size={13} aria-hidden="true" /> ใบสั่งขาย {r.orderCount} ใบ</span>
+          ) : NA}
+          {r.overridden && <span className="cell-sub">มีใบ {r.overridden.count} ใบที่ไม่นับ</span>}
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <>
-      <TableScroll surface="embedded" family="list">
+      <TableScroll surface="embedded" family="list" cells="stacked">
         <table>
           <thead>
             <tr>
-              <th className={styles.colPeriod}>งวด</th>
-              <th className={`num ${styles.colMoneySm}`}>เป้า</th>
-              <th className={`num ${styles.colMoneySm}`}>ทบยกมา</th>
-              <th className={`num ${styles.colMoney}`}>ต้องปิด</th>
-              <th className={`num ${styles.colMoney}`}>ขายจริง</th>
-              <th className={`num ${styles.colMoneySm}`}>ส่วนต่าง</th>
-              <th className={`num ${styles.colPct}`}>% ทำได้</th>
-              <th className={styles.colSource}>ที่มาของยอด</th>
+              <th>{range ? "เดือน" : "งวด"}</th>
+              <th className="num">ขายจริง</th>
+              <th className="num">% ทำได้{!range && <span className="cell-sub">เทียบต้องปิด</span>}</th>
+              <th className="num">ส่วนต่าง{!range && <span className="cell-sub">เทียบต้องปิด</span>}</th>
+              {!range && <th className="num">ต้องปิด</th>}
+              <th className="num">{range ? "เป้าปันตามวัน" : "เป้า"}</th>
+              {!range && <th className="num">ทบยกมา</th>}
+              <th>ที่มาของยอด</th>
             </tr>
           </thead>
           <tbody>
-            {months.map((month, i) => {
-              const target = Number(company.target[i] || 0);
-              const actual = Number(company.actual[i] || 0);
-              const closed = i < closedCount;
-              const carry = closed ? carryIn(company.target, company.actual, i, closedCount, months) : 0;
-              const mustClose = target + carry;
-              const diff = actual - mustClose;
-              return (
-                <tr key={month}>
-                  <td>
-                    {formatMonthLabel(month)}
-                    {!closed && <span className="ui-badge warning">ยังไม่จบเดือน</span>}
-                  </td>
-                  <td className="num">{target ? money(target) : NA}</td>
-                  <td className="num">{carry ? money(carry) : NA}</td>
-                  <td className="num">{mustClose ? money(mustClose) : NA}</td>
-                  <td className="num">
-                    {actual ? money(actual) : NA}
-                    {/* บรรทัดรองของเดือนปัจจุบันเท่านั้น — ไม่เข้าส่วนต่าง/%/ทบยอดของแถวนี้ */}
-                    {pendingApproval?.month === month && (
-                      <PendingApprovalAmount amount={pendingApproval.amount} count={pendingApproval.count} />
-                    )}
-                  </td>
-                  <td className="num">
-                    {closed && mustClose ? <span className={tone(diff)}>{money(diff)}</span> : NA}
-                  </td>
-                  <td className="num">{closed ? pct(actual, mustClose) : NA}</td>
-                  <td>
-                    {company.history[i]
-                      ? <span className="ui-badge">กรอกย้อนหลัง</span>
-                      : (actual ? <span className="ui-badge info">จากใบสั่งขาย</span> : NA)}
-                  </td>
-                </tr>
-              );
-            })}
+            {past.map(monthRow)}
           </tbody>
+          {future.length > 0 && (
+            <tbody>
+              <TableGroupRow
+                colSpan={cols}
+                label="ยังไม่ถึงงวด"
+                sub={monthSpan(future.map((r) => r.month))}
+                badge={`${future.length} เดือน`}
+                total={`เป้า ${money(future.reduce((s, r) => s + r.target, 0))}`}
+                collapsed={!futureOpen}
+                onToggle={() => setFutureOpen((v) => !v)}
+              />
+              {futureOpen && future.map((r) => (
+                <tr key={r.month}>
+                  <td>{formatMonthLabel(r.month)}</td>
+                  <td className="num">{NA}</td>
+                  <td className="num">{NA}</td>
+                  <td className="num">{NA}</td>
+                  <td className="num">{r.mustClose ? <Money value={r.mustClose} /> : NA}</td>
+                  <td className="num">{r.target ? <Money value={r.target} /> : NA}</td>
+                  <td className="num">{r.carry ? <Money value={r.carry} /> : NA}</td>
+                  <td>{NA}</td>
+                </tr>
+              ))}
+            </tbody>
+          )}
+          {summary.countedMonths.length > 0 && (
+            <tfoot>
+              <tr>
+                <td>
+                  {range ? "รวมช่วงที่เลือก" : `รวม ${summary.countedMonths.length} เดือนที่จบ`}
+                  {!range && <span className="cell-sub">เทียบเป้า ไม่รวมทบ</span>}
+                </td>
+                <td className="num">
+                  {totalOrders > 0 ? (
+                    <button
+                      type="button"
+                      className="table-metric-button"
+                      aria-label={`ดูใบสั่งขายทั้งหมดที่รวมเป็นยอด ${money(m.actual)}`}
+                      onClick={() => onDrill({
+                        kind: "total",
+                        months: summary.countedMonths,
+                        label: range ? "รวมช่วงที่เลือก" : `รวม ${summary.countedMonths.length} เดือนที่จบ`,
+                        expected: m.actual,
+                        historyMonths: rows.filter((r) => r.closed && r.source === "history").map((r) => r.month),
+                      })}
+                    ><Money value={m.actual} /></button>
+                  ) : <Money value={m.actual} />}
+                </td>
+                <td className="num">{pctText(m.pct)}</td>
+                <td className="num"><Money value={m.diff} tone /></td>
+                {!range && <td className="num">{NA}</td>}
+                <td className="num">{m.target ? <Money value={m.target} /> : NA}</td>
+                {!range && <td className="num">{NA}</td>}
+                <td>{totalOrders > 0 ? <span className={styles.source}><ClipboardList size={13} aria-hidden="true" /> ใบสั่งขาย {totalOrders} ใบ</span> : NA}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </TableScroll>
-      <div className={`ui-table-footer ${styles.footNote}`}>
-        เรียงตามเวลาจริง ข้ามปีปฏิทินได้ · ทบยอดที่ขาดเข้างวดถัดไปและรีเซ็ตทุกต้นปี ·
-        {" "}เดือนที่ยังไม่จบไม่คิด % และไม่เข้าผลรวมด้านบน · เดือนที่ไม่ได้ตั้งเป้าขึ้นขีด ไม่ใช่ 0%
-        {hasPending && (
-          <>
-            {" "}· <b>{PENDING_APPROVAL_LABEL}</b> = ใบสั่งขายที่ยื่นแล้วรอ AE Supervisor อนุมัติ
-            {" "}โชว์ไว้ใต้ขายจริงของเดือนนี้ ไม่นับในขายจริง ทบยอด ส่วนต่าง และ %
-          </>
+      <div className={styles.footNote}>
+        {summary.countedMonths.length > 0 && (
+          <p>
+            ขายจริง{range ? "" : ` ${summary.countedMonths.length} เดือน`} <Money value={m.actual} /> =
+            {split.history.months > 0 && <> กรอกย้อนหลัง {split.history.months} เดือน <Money value={split.history.amount} /></>}
+            {split.history.months > 0 && split.orders.months > 0 && " +"}
+            {split.orders.months > 0 && <> ใบสั่งขาย {split.orders.months} เดือน <Money value={split.orders.amount} /></>}
+            {!split.history.months && !split.orders.months && " —"}
+          </p>
+        )}
+        {!range && !summary.anyCarry && summary.countedMonths.length > 0 && (
+          <p>ไม่มียอดทบ — ขายสะสมตั้งแต่ ม.ค. ไม่เคยต่ำกว่าเป้าสะสม</p>
+        )}
+        {range && <p>ช่วงวันไม่มีทบยอด (ทบยอดเป็นของรายเดือน)</p>}
+        <p>
+          ข้อมูล ณ {fmtDateTime(summary.generatedAt || new Date().toISOString())} น. ·{" "}
+          <button type="button" className={`text-action ${styles.howToggle}`} aria-expanded={howOpen} onClick={() => setHowOpen((v) => !v)}>
+            วิธีนับ {howOpen ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
+          </button>
+        </p>
+        {howOpen && (
+          <ul className={styles.howList}>
+            {!range && <li>ทบยอดที่ขาดเข้างวดถัดไปและรีเซ็ตทุกต้นปี</li>}
+            {!range && <li>% และส่วนต่างรายเดือนเทียบต้องปิด (เป้า + ทบยกมา) · แถวรวมและแถบบนสุดเทียบเป้าไม่รวมทบ</li>}
+            {!range && <li>เดือนที่ยังไม่จบไม่คิด % และไม่เข้าผลรวม</li>}
+            {range && <li>เป้าเดือน × วันที่ช่วงคลุมถึงวันนี้ ÷ วันทั้งเดือน — วันหลังจากวันนี้ยังไม่นับเป้า</li>}
+            <li>เดือนที่ไม่ได้ตั้งเป้าเป็นขีด ไม่ใช่ 0%</li>
+            <li>ใบรออนุมัติไม่นับในขายจริง ทบยอด ส่วนต่าง และ %</li>
+            <li>ยอด = ยอดหน้าใบ − VAT ท้ายใบ · งวดคิดจากวันที่อนุมัติตามเวลาไทย</li>
+          </ul>
         )}
       </div>
     </>
   );
 }
 
-/* ── รายทีม / รายคน ───────────────────────────────────────────────────── */
-function GroupTable({ rows, idx, months, kind, pendingApproval }) {
+/* ── ตามทีม / ตามคน ───────────────────────────────────────────────────── */
+function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange }) {
   const teamRegistry = useSalesTeams();
-  // ไม่มีเดือนที่แยกยอด = ไม่มีอะไรให้เทียบ ต่างจาก "ไม่มีคน" — ต้องบอกคนละแบบ
-  const empty = !rows.length || !idx.length;
-  const label = kind === "team" ? "ทีม" : "ผู้รับผิดชอบ";
-  const pick = (arr) => idx.reduce((s, i) => s + Number(arr[i] || 0), 0);
-  /* ยอดรออนุมัติของเดือนนี้ตามเจ้าของดีลปัจจุบันและทีมของดีล — บรรทัดรองใต้ขายจริง ไม่ได้อยู่ในช่วง idx
-     (idx = เดือนที่จบแล้วเท่านั้น) จึงไม่เข้าเรียงลำดับ ส่วนต่าง หรือ %
-     คน/ทีมที่มีแต่ใบรออนุมัติ (ไม่มีเป้า/ขายจริงในช่วง) ต้องเติมแถวให้ ไม่งั้นยอดหายจากตาราง */
-  const { byKey: pendingByKey, extra: pendingOnly } = matchPendingApprovalRows(pendingApproval, rows, kind);
-  const pendingGroups = [...pendingByKey.values()];
-  const pendingTotal = pendingGroups.reduce((s, g) => s + g.amount, 0);
-  const pendingCount = pendingGroups.reduce((s, g) => s + g.count, 0);
-  const hasPending = Number(pendingApproval?.count || 0) > 0;
-  /* ใบรออนุมัติที่ไม่มีแถวในตารางนี้ — ดีลไม่มีเจ้าของ เข้าเฉพาะยอดบริษัท (ทั้งสองมุม · ดีลที่มีเจ้าของ
-     แต่ไม่ระบุทีมลงแถว "ไม่ระบุทีม" แล้ว) ⇒ แถวรวมน้อยกว่าช่อง "รออนุมัติ" บนหัวรายงาน
-     ต้องบอกส่วนที่ขาดไว้ ไม่งั้นกระทบยอดกับหัวรายงานในที่ประชุมไม่ได้ (เหตุผลเดียวกับแถวรวม) */
-  const pendingOutsideCount = Math.max(0, Number(pendingApproval?.count || 0) - pendingCount);
-  const pendingOutside = Math.max(0, Number(pendingApproval?.amount || 0) - pendingTotal);
-  /* ⭐ ทีมตามดีล (มติผู้ใช้ 2026-09-14) — คนเดียวมีได้หลายแถว (ทีมละแถว) ⇒ คอลัมน์ทีมคือตัวแยก
-     คีย์ React ต้องเป็น row.key (ownerId ซ้ำได้) และ "รวม N คน" นับคนไม่ซ้ำ ไม่ใช่นับแถว
-     🪤 salesTeamLabel คืนค่าว่างให้ทีม null ⇒ แถว/คอลัมน์ทีมว่างต้องใส่ป้าย "ไม่ระบุทีม" เอง */
+  const range = period.mode === "range";
+  const group = kind === "team" ? summary.teams : summary.people;
+  const label = kind === "team" ? "ทีม" : "คน";
   const teamName = (team) => (team ? salesTeamLabel(teamRegistry, team) : NO_TEAM_LABEL);
-  const groupName = (row) => (kind === "team" ? teamName(row.team) : row.ownerName);
-  const hasNoTeamRow = [...rows, ...pendingOnly].some((row) => !row.team);
-  const headCount = kind === "team"
-    ? rows.length + pendingOnly.length
-    : new Set([...rows, ...pendingOnly].map((row) => row.ownerId)).size;
+  const months = summary.splitMonths;
+  const historyMonths = summary.monthRows.filter((r) => r.source === "history" && months.includes(r.month)).map((r) => r.month);
+  const pendingCount = Number(summary.metrics.pendingApproval?.count || 0);
+
+  if (!months.length || (!group.rows.length && !group.pendingOnly.length)) {
+    const runningOnly = period.mode === "month" && period.month === currentMonth();
+    return (
+      <EmptyState plain>
+        <strong>ช่วงนี้ยังไม่มีเดือนที่แยกยอดราย{label}</strong>
+        <span>ฝ่ายขายแบ่งทีม ก.ค. 2026 และย้ายเข้าระบบ ส.ค. 2026 — ก่อนหน้านั้นยอดอยู่ระดับบริษัทอย่างเดียว</span>
+        {runningOnly && (
+          <>
+            <span>เดือนนี้ยังไม่จบ จึงยังไม่นับ</span>
+            <Button size="sm" variant="quiet" onClick={() => onRange(`${period.month}-01`, todayTh)}>เทียบเป้าปันตามวันถึงวันนี้</Button>
+          </>
+        )}
+        {pendingCount > 0 && <span>ใบรออนุมัติ {pendingCount} ใบ ดูราย{label}ได้ที่ “ใบสั่งขาย{PENDING_APPROVAL_LABEL}” ด้านล่าง</span>}
+      </EmptyState>
+    );
+  }
+
+  const drillOf = (row) => (kind === "team"
+    ? { kind: "team", team: row.team || null, months, label: `ทีม ${teamName(row.team)}`, expected: row.actual, historyMonths }
+    : { kind: "person", ownerId: row.ownerId, team: row.team || null, months, label: `${row.ownerName || row.ownerId} · ${teamName(row.team)}`, expected: row.actual, historyMonths });
+  const orderCountOf = (row) => ordersForDrill(orders, drillOf(row)).length;
+  const orderSumOf = (row) => ordersForDrill(orders, drillOf(row)).reduce((s, o) => s + Number(o.amount || 0), 0);
+
+  const t = group.total;
+  const unassigned = summary.reconciliation.company - t.actual;
+  const targetHead = range ? (
+    <Tooltip label="เป้าปันตามวัน" note="เป้าเดือนของแถวนั้น × วันที่นับ ÷ วันทั้งเดือน · นับถึงวันนี้">
+      <span className={styles.tipLabel} tabIndex={0}>เป้าปันตามวัน ⓘ</span>
+    </Tooltip>
+  ) : "เป้า";
+
   return (
     <>
-      {empty ? (
-        <div className={`empty-state dashed ${styles.emptyBox}`}>
-          <strong>ช่วงนี้ยังไม่มีเดือนที่แยกยอดราย{label}</strong>
-          <span>
-            ฝ่ายขายแบ่งทีมเมื่อ ก.ค. 2026 และย้ายเข้าระบบเมื่อ ส.ค. 2026 —
-            {" "}ก่อนหน้านั้นยอดถูกกรอกไว้ระดับบริษัทอย่างเดียว จึงเทียบราย{label}ไม่ได้
-            {" "}(เดือนที่ยังไม่จบก็ยังไม่นับ)
-          </span>
-          {/* ช่วงที่มีแต่เดือนปัจจุบัน (หรือเดือน ม.ค.) ตารางนี้ว่างเสมอ — ใบรออนุมัติต้องไม่หายเงียบ
-              ชี้ไปการ์ดรายใบที่มีคอลัมน์ผู้รับผิดชอบ/ทีมอยู่แล้ว */}
-          {hasPending && (
-            <span>
-              <b>{PENDING_APPROVAL_LABEL}</b> ของเดือนนี้ {pendingApproval.count} ใบ
-              {" "}— ดูราย{label}ได้ที่การ์ด “ใบสั่งขาย{PENDING_APPROVAL_LABEL}” ด้านล่าง
-            </span>
-          )}
-        </div>
-      ) : (
-        <TableScroll surface="embedded" family="list">
-          <table>
-            <thead>
-              <tr>
-                <th className={styles.colName}>{label}</th>
-                {kind === "person" && <th className={styles.colTeam}>ทีม</th>}
-                <th className={`num ${styles.colMoneySm}`}>เป้า</th>
-                <th className={`num ${styles.colMoney}`}>ขายจริง</th>
-                <th className={`num ${styles.colMoneySm}`}>ส่วนต่าง</th>
-                <th className={`num ${styles.colPct}`}>% ทำได้</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* เรียงตามยอดขายจริงมากไปน้อย — รายงานนี้ใช้ประชุมสรุปยอดและคิดคอมมิชชั่น
-                  ลำดับตามที่ฐานข้อมูลคืนมาอ่านไม่รู้เรื่องเวลากางในที่ประชุม */}
-              {[...rows].sort((a, b) => pick(b.actual) - pick(a.actual)).map((row) => {
-                const target = pick(row.target);
-                const actual = pick(row.actual);
-                const diff = actual - target;
-                const pendingRow = pendingByKey.get(pendingApprovalRowKey(kind, row));
-                return (
-                  <tr key={row.key}>
-                    <td>{groupName(row)}</td>
-                    {kind === "person" && <td>{teamName(row.team)}</td>}
-                    <td className="num">{target ? money(target) : NA}</td>
-                    <td className="num">
-                      {actual ? money(actual) : NA}
-                      {pendingRow && <PendingApprovalAmount amount={pendingRow.amount} count={pendingRow.count} />}
-                    </td>
-                    <td className="num">
-                      {target ? <span className={tone(diff)}>{money(diff)}</span> : NA}
-                    </td>
-                    <td className="num">{pct(actual, target)}</td>
-                  </tr>
-                );
-              })}
-              {pendingOnly.map((group) => (
-                <tr key={`pending-approval:${pendingApprovalRowKey(kind, group)}`}>
-                  <td>{groupName(group)}</td>
-                  {kind === "person" && <td>{teamName(group.team)}</td>}
-                  <td className="num">{NA}</td>
-                  <td className="num">
-                    {NA}
-                    <PendingApprovalAmount amount={group.amount} count={group.count} />
+      <TableScroll surface="embedded" family="list" cells="stacked">
+        <table>
+          <thead>
+            <tr>
+              <th>{kind === "team" ? "ทีม" : "ผู้รับผิดชอบ"}</th>
+              <th className="num">ขายจริง</th>
+              <th className="num">% ทำได้</th>
+              <th className="num">ส่วนต่าง</th>
+              <th className="num">{targetHead}</th>
+              <th className="num">ใบ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.rows.map((row) => {
+              const count = orderCountOf(row);
+              const manual = row.actual - orderSumOf(row);
+              return (
+                <tr key={row.key}>
+                  <td className={styles.nameCol}>
+                    {kind === "team" ? teamName(row.team) : (row.ownerName || row.ownerId)}
+                    {kind === "person" && <span className="cell-sub">{teamName(row.team)}</span>}
                   </td>
-                  <td className="num">{NA}</td>
-                  <td className="num">{NA}</td>
+                  <td className="num">
+                    {count > 0 ? (
+                      <button
+                        type="button"
+                        className="table-metric-button"
+                        aria-label={`ดูใบสั่งขาย ${count} ใบของ${kind === "team" ? `ทีม ${teamName(row.team)}` : ` ${row.ownerName || ""}`}`}
+                        onClick={() => onDrill(drillOf(row))}
+                      ><Money value={row.actual} /></button>
+                    ) : <Money value={row.actual} />}
+                    {row.pending && <PendingApprovalAmount amount={row.pending.amount} count={row.pending.count} />}
+                  </td>
+                  <td className="num">
+                    {pctText(row.pct)}
+                  </td>
+                  <td className="num"><Money value={row.diff} tone /></td>
+                  <td className="num">
+                    {row.target ? <Money value={row.target} /> : NA}
+                    {row.target > 0 && row.targetMonths < months.length && (
+                      <span className="cell-sub">มีเป้า {row.targetMonths}/{months.length} เดือน</span>
+                    )}
+                  </td>
+                  <td className="num">
+                    {count ? `${count} ใบ` : NA}
+                    {manual > 1 && <span className="cell-sub">+ กรอกย้อนหลัง <Money value={manual} /></span>}
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-            {/* แถวรวม — ต้องมี เพราะคนอ่านต้องกระทบยอดกับหัวรายงานได้ทันทีในที่ประชุม */}
-            <tfoot>
-              <tr>
-                <td>รวม {headCount} {kind === "team" ? "ทีม" : "คน"}</td>
-                {kind === "person" && <td>{NA}</td>}
-                <td className={`num ${styles.colMoneySm}`}>{money(rows.reduce((s, r) => s + pick(r.target), 0))}</td>
-                <td className={`num ${styles.colMoney}`}>
-                  {money(rows.reduce((s, r) => s + pick(r.actual), 0))}
-                  <PendingApprovalAmount amount={pendingTotal} count={pendingCount} />
+              );
+            })}
+            {group.pendingOnly.map((row) => (
+              <tr key={row.key}>
+                <td className={styles.nameCol}>
+                  {kind === "team" ? teamName(row.team) : (row.ownerName || row.ownerId)}
+                  {kind === "person" && <span className="cell-sub">{teamName(row.team)}</span>}
                 </td>
-                <td className="num">
-                  {money(rows.reduce((s, r) => s + pick(r.actual) - pick(r.target), 0))}
-                </td>
-                <td className="num">
-                  {pct(rows.reduce((s, r) => s + pick(r.actual), 0), rows.reduce((s, r) => s + pick(r.target), 0))}
-                </td>
+                <td className="num">{NA}<PendingApprovalAmount amount={row.pending.amount} count={row.pending.count} /></td>
+                <td className="num">{NA}</td>
+                <td className="num">{NA}</td>
+                <td className="num">{NA}</td>
+                <td className="num">{NA}</td>
               </tr>
-            </tfoot>
-          </table>
-        </TableScroll>
-      )}
-      {!empty && (
-        <div className={`ui-table-footer ${styles.footNote}`}>
-          คิดเฉพาะ <b>{idx.length} เดือน</b>ที่จบแล้วและมีการแยกยอดราย{label}จริง
-          {idx.length ? ` (${months[idx[0]] ? formatMonthLabel(months[idx[0]]) : ""} – ${months[idx.at(-1)] ? formatMonthLabel(months[idx.at(-1)]) : ""})` : ""}
-          {" "}· ยอดรวมจาก<b>ใบสั่งขายที่อนุมัติแล้ว</b> และเดือนที่กรอกยอดย้อนหลังไว้
-          {" "}· แยกทีม<b>ตามทีมของดีล</b> ไม่ใช่ทีมปัจจุบันของคน (ย้ายทีมแล้วยอดเดิมอยู่ทีมเดิม)
-          {hasNoTeamRow && <>{" "}· <b>{NO_TEAM_LABEL}</b> = ดีลไม่ระบุทีม</>}
-          {hasPending && (
-            <>
-              {" "}· <b>{PENDING_APPROVAL_LABEL}</b> = ใบที่ยื่นแล้วของเดือนนี้ ({formatMonthLabel(pendingApproval.month)})
-              {" "}ตามเจ้าของดีลปัจจุบันและทีมของดีล ไม่นับในขายจริง ส่วนต่าง และ %
-              {pendingOutsideCount > 0 && (
-                <>
-                  {" "}· อีก {pendingOutsideCount} ใบ ({money(pendingOutside)}) ดีลไม่มีเจ้าของ
-                  {" "}จึงนับเฉพาะในยอดบริษัท
-                </>
-              )}
-            </>
-          )}
-        </div>
-      )}
+            ))}
+          </tbody>
+          {/* แถวรวม + กระทบยอดกับบริษัท — คนอ่านต้องกระทบกับหัวรายงานได้ทันทีในที่ประชุม */}
+          <tfoot>
+            <tr>
+              <td>รวม {t.count} {label}</td>
+              <td className="num">
+                <Money value={t.actual} />
+                <PendingApprovalAmount amount={t.pendingAmount} count={t.pendingCount} />
+              </td>
+              <td className="num">{pctText(t.pct)}</td>
+              <td className="num"><Money value={t.diff} tone /></td>
+              <td className="num">{t.target ? <Money value={t.target} /> : NA}</td>
+              <td className="num">{NA}</td>
+            </tr>
+            <tr>
+              <td>ยอดบริษัท (เดือนเดียวกัน)</td>
+              <td className="num"><Money value={summary.reconciliation.company} /></td>
+              <td colSpan={4} />
+            </tr>
+            <tr>
+              <td>ยังไม่ลง{label}</td>
+              <td className="num">
+                {Math.abs(unassigned) > 1
+                  ? <span className="cell-num-bad"><Money value={unassigned} /></span>
+                  : <span className="cell-num-ok">ตรงกัน</span>}
+              </td>
+              <td colSpan={4} />
+            </tr>
+          </tfoot>
+        </table>
+      </TableScroll>
+      <div className={styles.footNote}>
+        <p>
+          คิดเฉพาะเดือนที่แยกยอดรายคนจริง · % และส่วนต่างเทียบเฉพาะเดือนที่แถวนั้นมีเป้า ·
+          {" "}แยกทีมตามทีมของดีล ไม่ใช่ทีมปัจจุบันของคน (ย้ายทีมแล้วยอดเดิมอยู่ทีมเดิม)
+          {group.hasNoTeamRow && <> · <b>{NO_TEAM_LABEL}</b> = ดีลไม่ระบุทีม</>}
+        </p>
+        {kind === "team" && <p>เป้ารายทีมตั้งแยกจากเป้ารายคนและเป้าบริษัท — ผลรวมของสามระดับจึงไม่จำเป็นต้องเท่ากัน</p>}
+        {group.pendingOutside.count > 0 && (
+          <p>อีก {group.pendingOutside.count} ใบรออนุมัติ <Money value={group.pendingOutside.amount} /> ดีลไม่มีเจ้าของ จึงนับเฉพาะในยอดบริษัท</p>
+        )}
+      </div>
     </>
   );
 }
 
-/* ── ใบสั่งขายรออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) ──────────────────────
-   การ์ดแยกจาก "ใบสั่งขาย" ข้างล่างโดยตั้งใจ — ตารางนั้นคือใบที่ **นับแล้ว** (ยอดรวมที่ค้นเจอ ·
-   ป้าย "ไม่คิดเงิน" · ขั้นบัญชี) ถ้าเอาใบรออนุมัติไปปน ยอดรวมจะบวมและขึ้น "รอตรวจ" ของบัญชี
-   ให้ใบที่บัญชียังตรวจไม่ได้ ⇒ ที่นี่ไม่มีขั้นบัญชี และผู้รับผิดชอบคือเจ้าของดีลปัจจุบัน
-   (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ · mig 0294) ทีมคือทีมของดีล (มติผู้ใช้ 2026-09-14)
-   · ใบน้อยและเป็นของค้างชั่วคราว จึงกางเลย */
-function PendingApprovalCard({ pendingApproval }) {
+/* ── ใบสั่งขายรออนุมัติ (มติผู้ใช้ 2026-09-11 · mig 0353) ─────────────────────
+   แผงแยกจาก "ใบที่อนุมัติแล้ว" โดยตั้งใจ — ใบที่นับแล้วกับใบที่ยังไม่นับต้องไม่อยู่ในรายการเดียวกัน
+   ผู้รับผิดชอบ = เจ้าของดีลปัจจุบัน (ใบยังไม่ถูกแช่เจ้าของจนกว่าจะอนุมัติ) · ทีม = ทีมของดีล */
+function PendingPanel({ pendingApproval }) {
   const teamRegistry = useSalesTeams();
   const orders = pendingApproval?.orders || [];
-  /* การ์ดกางใบรออนุมัติทั้งหมด (ไม่มีตัวค้น/ตัวกรอง/Pager) ⇒ WorkspaceSection ตามแผนขอบเขต
-     (เดิมเขียน markup .ui-section เอง · ด่าน LP8) · คำอธิบายเก็บจำนวนใบไว้ได้ — กติกา "ห้ามเลขซ้ำใน
-     คำอธิบาย" เป็นของป้ายจำนวนของ ListPanel */
   return (
-    <WorkspaceSection
+    <ListPanel
+      id="sales-report-pending"
       icon={<ClipboardList size={17} aria-hidden="true" />}
       title={`ใบสั่งขาย${PENDING_APPROVAL_LABEL}`}
-      subtitle={`${pendingApproval.count} ใบ · ยอดก่อน VAT ${money(pendingApproval.amount)} · โชว์ไว้ที่เดือนนี้ (${formatMonthLabel(pendingApproval.month)}) ยังไม่นับเป็นขายจริง — อนุมัติแล้วยอดลงเดือนที่อนุมัติ`}
+      subtitle="ยังไม่นับเป็นขายจริง · อนุมัติแล้วยอดลงเดือนที่อนุมัติ"
+      count={`${pendingApproval.count} ใบ`}
     >
-      <TableScroll surface="embedded" family="list">
+      <TableScroll surface="embedded" family="list" cells="stacked">
         <table>
           <thead>
             <tr>
-              <th className={styles.colDoc}>ใบสั่งขาย</th>
-              <th className={`num ${styles.colMoney}`}>ใบเสนอราคา</th>
-              <th className={styles.colName}>ลูกค้า</th>
-              <th className={styles.colDoc}>ผู้รับผิดชอบ</th>
-              <th className={styles.colTeam}>ทีม</th>
-              <th className={styles.colPeriod}>ยื่นเมื่อ</th>
-              <th className={`num ${styles.colMoney}`}>ยอดก่อน VAT</th>
+              <th>ใบสั่งขาย</th>
+              <th className="num">ยอดก่อน VAT</th>
+              <th>ลูกค้า</th>
+              <th>ผู้รับผิดชอบ</th>
+              <th className="num">ยื่นเมื่อ</th>
             </tr>
           </thead>
           <tbody>
             {orders.map((o) => (
               <tr key={o.id}>
-                <td><a href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</a></td>
-                <td className="num">{o.quoteNumber || NA}</td>
+                <td>
+                  <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
+                  {o.quoteNumber && <span className="cell-sub">{o.quoteNumber}</span>}
+                </td>
+                <td className="num"><Money value={o.amount} /></td>
                 <td>{o.customerName || NA}</td>
-                <td>{o.ownerName || NA}</td>
-                <td>{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</td>
-                <td>{o.submittedAt ? fmtDate(o.submittedAt) : NA}</td>
-                <td className="num">{money(o.amount)}</td>
+                <td>
+                  {o.ownerName || NA}
+                  <span className="cell-sub">{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</span>
+                </td>
+                <td className="num">{o.submittedAt ? fmtDate(o.submittedAt) : NA}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={6}>รวม {pendingApproval.count} ใบ</td>
-              <td className="num">{money(pendingApproval.amount)}</td>
+              <td>รวม {pendingApproval.count} ใบ</td>
+              <td className="num"><Money value={pendingApproval.amount} /></td>
+              <td colSpan={3} />
             </tr>
           </tfoot>
         </table>
       </TableScroll>
-    </WorkspaceSection>
+    </ListPanel>
   );
 }
 
-/* ── ค้นหาใบสั่งขาย ───────────────────────────────────────────────────────
-   ⭐ **ไม่แสดงรายการจนกว่าจะกดค้นหา** (มติผู้ใช้ 2026-08-27)
-   ของเดิมกางทุกใบทันที — 82 ใบ = ตารางสูง 4,686px คิดเป็น 77% ของทั้งหน้า
-   ดันตารางสรุปหายจากจอ และสิ้นปีจะเป็นหลายร้อยใบ
-   ⇒ ใส่เงื่อนไขก่อน แล้วค่อยกด — คนเปิดรายงานมาดู "สรุป" เป็นหลัก ส่วนรายใบคือ
-   การไล่หาเฉพาะกิจ (ใบของใคร ลูกค้าไหน รอบัญชีตรวจกี่ใบ)
-
-   ⚠️ ใบทั้งช่วงถูกส่งมากับ response อยู่แล้ว การกดค้นหาจึงเป็นการ *กรองในหน้า*
-   ไม่ยิงเซิร์ฟเวอร์ใหม่ — เร็วทันที และตัวเลขตรงกับสรุปด้านบนเสมอเพราะมาจากก้อนเดียวกัน */
-function OrderSearchCard({ orders, people, loading }) {
+/* ── ใบสั่งขายที่อนุมัติแล้ว ─────────────────────────────────────────────
+   ⭐ กางทันที แบ่งหน้า 10 แถว (แทนด่าน "กดค้นหาก่อน" ของ 2026-08-27) · ค้นหา/กรองมีผลทันที
+   ⚠️ ใบทั้งงวดมากับ response อยู่แล้ว การกรองจึงทำในหน้า — ตัวเลขตรงกับสรุปด้านบนเสมอเพราะมาจากก้อนเดียวกัน
+   ⭐ กดขายจริงในตาราง "แยกยอด" = ชิป "จากแยกยอด: …" + บรรทัดเทียบยอด ✓/✗ */
+function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDrill, chipRef }) {
   const teamRegistry = useSalesTeams();
-  const [draft, setDraft] = useState({ q: "", owners: [], teams: [], finance: [] });
-  const [applied, setApplied] = useState(null);   // null = ยังไม่เคยกดค้นหา
-  const [groupBy, setGroupBy] = useState("none");
-  const [sortKey, setSortKey] = useState(ORDER_SORT_DEFAULT);
-  const [sortDir, setSortDir] = useState(ORDER_SORT_DIR[ORDER_SORT_DEFAULT]);
+  const [q, setQ] = useStickyState("q", "");
+  const [filters, setFilters] = useStickyState("filters", EMPTY_FILTERS);
+  const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
+  const [sortKey, setSortKey] = useStickyState("sortKey", ORDER_SORT_DEFAULT);
+  const [sortDir, setSortDir] = useStickyState("sortDir", ORDER_SORT_DIR[ORDER_SORT_DEFAULT]);
   const [collapsed, setCollapsed] = useState(() => new Set());
 
-  /* คนเดียวมีได้หลายแถว (ทีมละแถว · ทีมตามดีล) — ตัวเลือกต้องไม่ซ้ำ ไม่งั้นค่า/คีย์ใน FilterPopover ชนกัน
-     ตัวกรองนี้กรองด้วย ownerId ⇒ เลือกหนึ่งคน = ใบของคนนั้นทุกทีม (ตั้งใจ) */
-  const ownerOptions = useMemo(() => [...new Map(people
-    .filter((p) => p.ownerId)
-    .map((p) => [p.ownerId, { value: p.ownerId, label: p.ownerName || p.ownerId }])).values()], [people]);
-  const teamOptions = useMemo(() => [...new Set(orders.map((o) => o.team).filter(Boolean))]
-    .map((team) => ({ value: team, label: salesTeamLabel(teamRegistry, team) })), [orders, teamRegistry]);
+  const teamLabels = useMemo(() => Object.fromEntries((teamRegistry || []).map((t) => [t.code, t.name])), [teamRegistry]);
+  const f = { ...EMPTY_FILTERS, ...(filters || {}) };
+  const setFilter = (key, value) => setFilters((prev) => ({ ...EMPTY_FILTERS, ...(prev || {}), [key]: value }));
 
-  const filterCount = draft.owners.length + draft.teams.length + draft.finance.length;
-  const setDraftField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
-  const clearFilters = () => setDraft({ q: "", owners: [], teams: [], finance: [] });
+  // ตัวเลือกมาจากใบของงวดนี้ — เลือกค้างของงวดก่อนที่ไม่มีแล้วถูกตัดทิ้ง (ไม่งั้นกรองว่างโดยไม่รู้ตัว)
+  const ownerOptions = useMemo(() => {
+    const seen = new Map();
+    for (const o of orders) if (o.ownerId && !seen.has(o.ownerId)) seen.set(o.ownerId, { value: o.ownerId, label: o.ownerName || o.ownerId });
+    const list = [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, "th"));
+    if (orders.some((o) => !o.ownerId)) list.push({ value: NONE_VALUE, label: "ไม่มีเจ้าของ" });
+    return list;
+  }, [orders]);
+  const teamOptions = useMemo(() => {
+    const list = [...new Set(orders.map((o) => o.team).filter(Boolean))]
+      .map((team) => ({ value: team, label: salesTeamLabel(teamRegistry, team) }));
+    if (orders.some((o) => !o.team)) list.push({ value: NONE_VALUE, label: NO_TEAM_LABEL });
+    return list;
+  }, [orders, teamRegistry]);
+  const monthOptions = useMemo(() => [...new Set(orders.map((o) => o.month).filter(Boolean))].sort()
+    .map((m) => ({ value: m, label: formatMonthLabel(m) })), [orders]);
+  const financeOptions = useMemo(() => (orders.some((o) => financeStateOf(o) === "rejected")
+    ? [...FINANCE_STATE_OPTIONS, { value: "rejected", label: "บัญชีตีกลับ" }]
+    : FINANCE_STATE_OPTIONS), [orders]);
+  useEffect(() => {
+    if (loading) return;
+    const valid = {
+      owners: new Set(ownerOptions.map((o) => o.value)),
+      teams: new Set(teamOptions.map((o) => o.value)),
+      months: new Set(monthOptions.map((o) => o.value)),
+    };
+    setFilters((prev) => {
+      const cur = { ...EMPTY_FILTERS, ...(prev || {}) };
+      const next = {
+        ...cur,
+        owners: cur.owners.filter((v) => valid.owners.has(v)),
+        teams: cur.teams.filter((v) => valid.teams.has(v)),
+        months: cur.months.filter((v) => valid.months.has(v)),
+      };
+      const same = ["owners", "teams", "months"].every((k) => next[k].length === cur[k].length);
+      return same ? prev : next;
+    });
+  }, [loading, ownerOptions, teamOptions, monthOptions, setFilters]);
 
-  const groups = useMemo(() => {
-    if (!applied) return [];
-    return groupOrders(sortOrders(filterOrders(orders, applied), sortKey, sortDir), groupBy, { teamLabels: Object.fromEntries((teamRegistry || []).map((t) => [t.code, t.name])) });
-  }, [applied, orders, sortKey, sortDir, groupBy]);
-  const shown = groups.reduce((sum, g) => sum + g.count, 0);
-  const shownTotal = groups.reduce((sum, g) => sum + g.total, 0);
-  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.key));
+  const drilled = useMemo(() => ordersForDrill(orders, drill), [orders, drill]);
+  const filtered = useMemo(() => filterOrders(drilled, { q, ...f }), [drilled, q, f.owners, f.teams, f.finance, f.months, f.kinds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sorted = useMemo(() => sortOrders(filtered, sortKey, sortDir), [filtered, sortKey, sortDir]);
+  const groups = useMemo(() => groupOrders(sorted, groupBy, { teamLabels, monthLabel: (m) => formatMonthLabel(m) }), [sorted, groupBy, teamLabels]);
+  const grouped = groupBy !== "none";
 
-  /* ⭐ รายการใบ = ListPanel (มติผู้ใช้ 2026-09-15) — เดิมเขียน markup .ui-section เอง + แถบ .toolbarRow ของตัวเอง
-     ป้ายจำนวน: ยังไม่กดค้นหา = ใบทั้งช่วง (`N ใบในช่วง`) · กดแล้ว = ใบที่ค้นเจอ (`N ใบ`) — เลขนี้ถอดออกจาก
-     คำอธิบายและบรรทัดผลค้นหาแล้ว (เลขเดียวกันห้ามโผล่สองที่) · ระหว่างโหลดส่ง null ⇒ ขีด */
+  const resetKey = `${period.mode}|${period.from}|${period.to}|${q}|${JSON.stringify(f)}|${JSON.stringify(drill)}|${groupBy}|${sortKey}|${sortDir}`;
+  const flatPage = usePagination(sorted, { defaultSize: 10, resetKey });
+  const groupPage = usePagination(groups, { defaultSize: 10, resetKey });
+  const pageGroups = grouped ? groupPage.pageRows : [{ key: "all", label: null, orders: flatPage.pageRows }];
+  const pager = grouped ? groupPage : flatPage;
+
+  const filterCount = activeFilterCount(f);
+  const extraFilters = filterCount > 0 || q.trim();
+  const clearAll = () => { setQ(""); setFilters(EMPTY_FILTERS); onClearDrill(); };
+  const totals = useMemo(() => filtered.reduce((acc, o) => ({
+    amount: acc.amount + Number(o.amount || 0),
+    vat: acc.vat + Number(o.vatAmount || 0),
+    total: acc.total + Number(o.totalAmount || 0),
+  }), { amount: 0, vat: 0, total: 0 }), [filtered]);
+
+  const check = drill && !extraFilters ? drillCheck(drill.expected, drilled, { historyMonths: drill.historyMonths || [] }) : null;
+  const running = summary && period.mode !== "range"
+    ? summary.monthRows.filter((r) => !r.closed && r.orderCount > 0) : [];
+  const overridden = summary ? summary.monthRows.filter((r) => r.overridden) : [];
+  const historyMonthsAll = summary ? summary.monthRows.filter((r) => r.source === "history").map((r) => r.month) : [];
+  const overriddenMonths = new Set(overridden.map((r) => r.month));
+
+  const orderRow = (o) => {
+    const badge = FINANCE_STATE_BADGE[financeStateOf(o)];
+    return (
+      <tr key={o.id}>
+        <td>
+          <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
+          {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
+          {o.free && <span className={`ui-badge warning ${styles.docNo}`}>ไม่คิดเงิน</span>}
+          {o.quoteNumber && <span className="cell-sub">{o.quoteNumber}</span>}
+        </td>
+        <td className="num">
+          <Money value={o.amount} />
+          {overriddenMonths.has(o.month) && <span className="cell-sub">ไม่นับ · เดือนนี้ใช้ยอดกรอก</span>}
+        </td>
+        <td>{o.customerName || NA}</td>
+        <td>
+          {o.ownerName || NA}
+          <span className="cell-sub">{o.team ? salesTeamLabel(teamRegistry, o.team) : (o.ownerId ? NO_TEAM_LABEL : NA)}</span>
+        </td>
+        <td className="num">{o.day ? fmtDate(o.day) : NA}</td>
+        <td>
+          <span className="ui-badge-cell ui-badge-w-finance">
+            <StatusBadge size="sm" tone={badge.tone || "neutral"} label={badge.label} />
+          </span>
+        </td>
+        <td className="num">{o.lineCount}</td>
+        <td className="num">{o.vatAmount ? <Money value={o.vatAmount} /> : NA}</td>
+        <td className="num"><Money value={o.totalAmount} /></td>
+      </tr>
+    );
+  };
+
   return (
     <ListPanel
+      id="sales-report-orders"
       icon={<ClipboardList size={17} aria-hidden="true" />}
-      title="รายการใบสั่งขาย"
-      subtitle="เฉพาะใบที่อนุมัติแล้ว งวดคิดจากวันที่อนุมัติตามเวลาไทย"
-      count={loading ? null : applied ? `${shown} ใบ` : `${orders.length} ใบในช่วง`}
+      title="ใบสั่งขายที่อนุมัติแล้ว"
+      subtitle="อนุมัติในช่วงที่เลือก · งวดคิดจากวันที่อนุมัติ เวลาไทย · ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ"
+      count={loading || error ? null : `${filtered.length} ใบ`}
       loading={loading}
       toolbar={(
-        /* ลำดับบน toolbar ตามกติกากลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */
+        /* ลำดับตามกติกากลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */
         <>
           <div className="search-glass">
-            <Search size={16} color="var(--text-3)" />
+            <Search size={16} color="var(--text-3)" aria-hidden="true" />
             <input
               autoComplete="off"
-              value={draft.q}
-              onChange={(e) => setDraftField("q", e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") setApplied({ ...draft }); }}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
               placeholder="เลขที่ใบ / ใบเสนอราคา / ลูกค้า / ผู้รับผิดชอบ"
               aria-label="ค้นหาใบสั่งขาย"
             />
           </div>
-          <FilterPopover
-            count={filterCount}
-            onClear={clearFilters}
-            groups={[
-              { key: "owners", label: "ผู้รับผิดชอบ", options: ownerOptions, selected: draft.owners, onChange: (v) => setDraftField("owners", v) },
-              { key: "teams", label: "ทีม", options: teamOptions, selected: draft.teams, onChange: (v) => setDraftField("teams", v) },
-              { key: "finance", label: "ขั้นบัญชี", options: FINANCE_STATE_OPTIONS, selected: draft.finance, onChange: (v) => setDraftField("finance", v) },
-            ]}
-          />
-          <Button tone="primary" onClick={() => setApplied({ ...draft })}>
-            <Search size={15} aria-hidden="true" /> ค้นหา
-          </Button>
-          {applied && (
-            <Button variant="quiet" size="sm" onClick={() => { clearFilters(); setApplied(null); }}>
-              ล้าง ×
+          {drill && (
+            <Button ref={chipRef} size="sm" onClick={onClearDrill} aria-label="ล้างตัวกรองจากตารางแยกยอด">
+              จากแยกยอด: {drill.label} ×
             </Button>
           )}
-
-          {applied && (
-            <>
-              <GroupMenu
-                title="จัดกลุ่มใบ"
-                value={groupBy}
-                onChange={(value) => { setGroupBy(value); setCollapsed(new Set()); }}
-                options={ORDER_GROUP_OPTIONS}
-              />
-              {groupBy !== "none" && groups.length > 0 && (
-                <CollapseAllButton
-                  collapsed={allCollapsed}
-                  onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
-                />
-              )}
-              <span className="spacer" />
-              {/* เปลี่ยนแบบเรียง = ตั้งทิศตั้งต้นของแบบนั้นให้ด้วย (กติกาเดียวกับทะเบียนการชำระ) */}
-              <SortMenu
-                title="เรียงลำดับใบ"
-                value={sortKey}
-                defaultValue={ORDER_SORT_DEFAULT}
-                onChange={(value) => { setSortKey(value); setSortDir(ORDER_SORT_DIR[value]); }}
-                options={ORDER_SORT_OPTIONS}
-              />
-              <SortDirButton dir={sortDir} onToggle={() => setSortDir(sortDir === "asc" ? "desc" : "asc")} />
-            </>
+          <FilterPopover
+            count={filterCount}
+            onClear={() => setFilters(EMPTY_FILTERS)}
+            groups={[
+              ...(period.mode !== "range" && monthOptions.length > 1
+                ? [{ key: "months", label: "งวด", options: monthOptions, selected: f.months, onChange: (v) => setFilter("months", v) }]
+                : []),
+              { key: "teams", label: "ทีม", options: teamOptions, selected: f.teams, onChange: (v) => setFilter("teams", v) },
+              { key: "owners", label: "ผู้รับผิดชอบ", options: ownerOptions, selected: f.owners, onChange: (v) => setFilter("owners", v) },
+              { key: "finance", label: "ขั้นบัญชี", options: financeOptions, selected: f.finance, onChange: (v) => setFilter("finance", v) },
+              { key: "kinds", label: "ชนิดใบ", options: ORDER_KIND_OPTIONS, selected: f.kinds, onChange: (v) => setFilter("kinds", v) },
+            ]}
+          />
+          <GroupMenu
+            title="จัดกลุ่มใบ"
+            value={groupBy}
+            onChange={(value) => { setGroupBy(value); setCollapsed(new Set()); }}
+            options={ORDER_GROUP_OPTIONS}
+          />
+          {grouped && groups.length > 0 && (
+            <CollapseAllButton
+              collapsed={groups.every((g) => collapsed.has(g.key))}
+              onToggle={() => setCollapsed(groups.every((g) => collapsed.has(g.key)) ? new Set() : new Set(groups.map((g) => g.key)))}
+            />
           )}
+          <span className="spacer" />
+          {/* เปลี่ยนแบบเรียง = ตั้งทิศตั้งต้นของแบบนั้นให้ด้วย (กติกาเดียวกับทะเบียนการชำระ) */}
+          <SortMenu
+            title="เรียงลำดับใบ"
+            value={sortKey}
+            defaultValue={ORDER_SORT_DEFAULT}
+            onChange={(value) => { setSortKey(value); setSortDir(ORDER_SORT_DIR[value]); }}
+            options={ORDER_SORT_OPTIONS}
+          />
+          <SortDirButton dir={sortDir} onToggle={() => setSortDir(sortDir === "asc" ? "desc" : "asc")} />
         </>
       )}
     >
-      {!applied ? (
-        <EmptyState dashed plain icon={Search} className={styles.emptyBox}>
-          <strong>ใส่เงื่อนไขแล้วกด “ค้นหา”</strong>
-          <span>
-            ช่วงนี้มีใบสั่งขายที่อนุมัติแล้ว {orders.length} ใบ — กดค้นหาโดยไม่ใส่อะไรเลยก็ได้ จะขึ้นทั้งหมด
-          </span>
+      {error ? (
+        <EmptyState plain><strong>ยังไม่มีข้อมูลของงวดนี้ — โหลดรายงานไม่สำเร็จ</strong></EmptyState>
+      ) : !orders.length ? (
+        <EmptyState dashed plain icon={Search}>
+          <strong>ไม่มีใบสั่งขายที่อนุมัติในช่วงนี้</strong>
+          {historyMonthsAll.length > 0 && <span>ยอดของ {monthSpan(historyMonthsAll)} มาจากการกรอกย้อนหลัง จึงไม่มีใบให้ไล่</span>}
         </EmptyState>
-      ) : !shown ? (
-        <EmptyState dashed plain icon={Search} className={styles.emptyBox}>
+      ) : !filtered.length ? (
+        <EmptyState dashed plain icon={Search}>
           <strong>ไม่พบใบที่ตรงกับเงื่อนไข</strong>
           <span>ลองลดตัวกรอง หรือค้นด้วยเลขที่ใบ/ชื่อลูกค้าแทน</span>
+          <Button size="sm" onClick={clearAll}>ล้างตัวกรอง</Button>
         </EmptyState>
       ) : (
         <>
-          {/* จำนวนใบที่ค้นเจออยู่บนป้ายจำนวนของแผงแล้ว — บรรทัดนี้เหลือแค่ยอดเงิน */}
-          <div className={styles.resultNote}>
-            ยอดที่นับรวม <b>{money(shownTotal)}</b>
+          <div className={styles.resultNote} role="status">
+            {check ? (
+              check.ok ? (
+                <span className={`${styles.checkLine} cell-num-ok`}>
+                  <CheckCircle2 size={15} aria-hidden="true" /> รวม <Money value={check.total} /> ตรงกับขายจริง {drill.label} ในตารางแยกยอด
+                </span>
+              ) : (
+                <span className={`${styles.checkLine} cell-num-bad`}>
+                  <AlertTriangle size={15} aria-hidden="true" /> ต่างจากขายจริง {drill.label} <Money value={Math.abs(check.gap)} />
+                  {check.reason === "history" ? " — ส่วนนี้มาจากยอดกรอกย้อนหลัง (ไม่มีใบ)" : " ในตารางแยกยอด"}
+                </span>
+              )
+            ) : (
+              <>
+                ยอดที่นับรวม <b><Money value={totals.amount} /></b>
+                {!drill && !extraFilters && running.length > 0 && period.mode === "year" && (
+                  <> · รวม {running.map((r) => formatMonthLabel(r.month)).join(", ")} ที่ยังไม่จบ <Money value={running.reduce((s, r) => s + r.actual, 0)} /> ซึ่งไม่อยู่ในแถบสรุป</>
+                )}
+                {!drill && !extraFilters && overridden.length > 0 && (
+                  <> · ไม่นับ {overridden.reduce((s, r) => s + r.overridden.count, 0)} ใบ <Money value={overridden.reduce((s, r) => s + r.overridden.amount, 0)} /> (เดือนที่ใช้ยอดกรอกย้อนหลัง)</>
+                )}
+              </>
+            )}
           </div>
-          <TableScroll surface="embedded" family="list">
+          <TableScroll surface="embedded" family="list" cells="stacked">
             <table>
               <thead>
                 <tr>
-                  <th className={styles.colPeriod}>งวด</th>
-                  <th className={styles.colDoc}>ใบสั่งขาย</th>
-                  <th className={`num ${styles.colMoney}`}>ใบเสนอราคา</th>
-                  <th className={styles.colName}>ลูกค้า</th>
-                  <th className={styles.colDoc}>ผู้รับผิดชอบ</th>
-                  <th className={`num ${styles.colCount}`}>บรรทัด</th>
-                  <th className={`num ${styles.colMoney}`}>ยอดที่นับ</th>
-                  <th className={`num ${styles.colMoneySm}`}>VAT</th>
-                  <th className={`num ${styles.colMoney}`}>ยอดหน้าใบ</th>
-                  <th className={`num ${styles.colMoneySm}`}>ขั้นบัญชี</th>
+                  <th>ใบสั่งขาย</th>
+                  <th className="num">ยอดที่นับ</th>
+                  <th>ลูกค้า</th>
+                  <th>ผู้รับผิดชอบ</th>
+                  <th className="num">อนุมัติเมื่อ</th>
+                  <th>ขั้นบัญชี</th>
+                  <th className="num">บรรทัด</th>
+                  <th className="num">VAT</th>
+                  <th className="num">ยอดหน้าใบ</th>
                 </tr>
               </thead>
-              {groups.map((group) => {
+              {pageGroups.map((group) => {
                 const isCollapsed = collapsed.has(group.key);
                 return (
                   <tbody key={group.key}>
                     {group.label && (
-                      <tr className="group-row">
-                        <td colSpan={10}>
-                          {/* พับ/กางกลุ่มในหน้าเดิม = disclosure ไม่ใช่ navigation
-                              ⇒ `.text-action` (เส้นประ) + `.text-action-block`
-                              ให้ทั้งแถวเป็นเป้าเดียว ไม่ใช่ปุ่มลอยกลางแถว
-                              🐞 `aria-expanded` เดิมไม่มีเลย — โปรแกรมอ่านหน้าจอ
-                              จึงไม่รู้ว่ากลุ่มพับอยู่หรือกางอยู่ (WCAG §4.1.2) */}
-                          <button
-                            type="button"
-                            className="text-action text-action-block"
-                            aria-expanded={!isCollapsed}
-                            onClick={() => setCollapsed((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(group.key)) next.delete(group.key); else next.add(group.key);
-                              return next;
-                            })}
-                          >
-                            {isCollapsed ? "▸" : "▾"} {group.label} · {group.count} ใบ · {money(group.total)}
-                          </button>
-                        </td>
-                      </tr>
+                      <TableGroupRow
+                        colSpan={9}
+                        label={group.label}
+                        badge={`${group.count} ใบ`}
+                        total={money(group.total)}
+                        collapsed={isCollapsed}
+                        onToggle={() => setCollapsed((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(group.key)) next.delete(group.key); else next.add(group.key);
+                          return next;
+                        })}
+                      />
                     )}
-                    {!isCollapsed && group.orders.map((o) => (
-                      <tr key={o.id}>
-                        <td>{formatMonthLabel(o.month)}</td>
-                        <td>
-                          <a href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</a>
-                          {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
-                          {o.free && <span className="ui-badge warning">ไม่คิดเงิน</span>}
-                        </td>
-                        <td className="num">{o.quoteNumber || NA}</td>
-                        <td>{o.customerName || NA}</td>
-                        <td>{o.ownerName || NA}</td>
-                        <td className="num">{o.lineCount}</td>
-                        <td className="num">{money(o.amount)}</td>
-                        <td className="num">{o.vatAmount ? money(o.vatAmount) : NA}</td>
-                        <td className="num">{money(o.totalAmount)}</td>
-                        <td className="num">
-                          {financeStateOf(o) === "approved"
-                            ? <span className="ui-badge success">ตรวจแล้ว</span>
-                            : <span className="ui-badge">รอตรวจ</span>}
-                        </td>
-                      </tr>
-                    ))}
+                    {!isCollapsed && group.orders.map(orderRow)}
                   </tbody>
                 );
               })}
               <tfoot>
                 <tr>
-                  <td colSpan={6}>รวมที่ค้นเจอ {shown} ใบ</td>
-                  <td className="num">{money(shownTotal)}</td>
-                  <td className="num">{money(groups.flatMap((g) => g.orders).reduce((s, o) => s + o.vatAmount, 0))}</td>
-                  <td className="num">{money(groups.flatMap((g) => g.orders).reduce((s, o) => s + o.totalAmount, 0))}</td>
-                  <td />
+                  <td>รวม {filtered.length} ใบ{pager.pageCount > 1 ? " (ทุกหน้า)" : ""}</td>
+                  <td className="num"><Money value={totals.amount} /></td>
+                  <td colSpan={5} />
+                  <td className="num"><Money value={totals.vat} /></td>
+                  <td className="num"><Money value={totals.total} /></td>
                 </tr>
               </tfoot>
             </table>
           </TableScroll>
+          <Pager
+            page={pager.page}
+            pageCount={pager.pageCount}
+            total={pager.total}
+            onPage={pager.setPage}
+            pageSize={pager.pageSize}
+            onPageSize={pager.setPageSize}
+            itemLabel={grouped ? "กลุ่ม" : "ใบ"}
+          />
         </>
       )}
-
       <div className={styles.footNote}>
-        <Info size={13} aria-hidden="true" />{" "}
-        <b>ยอดที่นับ</b> = ยอดที่เข้ารายงาน (ยอดหน้าใบ − VAT ที่บวกท้ายใบ) ·
-        {" "}รายการสินค้าและจำนวนอยู่ในใบ กดเลขที่ใบเพื่อเปิดดู
+        <p>กดเลขที่ใบเพื่อเปิดดูสินค้า จำนวน และส่วนลดในใบ</p>
       </div>
     </ListPanel>
   );

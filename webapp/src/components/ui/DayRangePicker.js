@@ -68,6 +68,9 @@ export default function DayRangePicker({
   onChange,
   /** วันที่มีข้อมูลจริง — โชว์เป็นจุดใต้ตัวเลข เพื่อให้เห็นว่ากำลังลากคลุมวันว่างกี่วัน */
   markedDays = [],
+  /** ความหมายของจุด ("มีลีดเข้า" · "มีใบอนุมัติ") — ขึ้นทั้งท้ายแผงและชื่อปุ่มวันของโปรแกรมอ่านหน้าจอ
+      เดิมฝังคำว่า "มีลีดเข้า" ไว้ในตัว ⇒ หน้าอื่นเอาไปใช้แล้วจุดโกหกว่าเป็นลีด */
+  markedLabel = "มีลีดเข้า",
   disabled = false,
   ariaLabel = "เลือกช่วงวัน",
   className = "",
@@ -178,7 +181,7 @@ export default function DayRangePicker({
               key={cell.key}
               className={classes}
               onClick={() => pick(cell.day)}
-              aria-label={`${fmtDate(cell.day)}${marked.has(cell.day) ? " มีลีดเข้า" : ""}`}
+              aria-label={`${fmtDate(cell.day)}${marked.has(cell.day) ? ` ${markedLabel}` : ""}`}
             >
               {Number(cell.day.slice(8))}
               {marked.has(cell.day) && <i className="dayrange-dot" aria-hidden="true" />}
@@ -209,7 +212,7 @@ export default function DayRangePicker({
         {/* ผู้เรียกที่ไม่ได้ส่ง `markedDays` มา (เช่นแถบหัวหน้าภาพรวมซึ่งยังไม่มีข้อมูล
             ตอนวาดปุ่ม) ต้องไม่โฆษณาจุดที่ไม่มีอยู่จริง */}
         <span>
-          {marked.size ? "จุดใต้วันที่ = วันที่มีลีดเข้า · " : ""}
+          {marked.size ? `จุดใต้วันที่ = วันที่${markedLabel} · ` : ""}
           {pending ? "เลือกวันสุดท้าย" : "เลือกวันแรก"}
         </span>
         {pending && <button type="button" onClick={() => setPending(null)}>ยกเลิกที่เลือกค้าง</button>}

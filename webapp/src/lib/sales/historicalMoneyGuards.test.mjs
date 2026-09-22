@@ -92,7 +92,7 @@ const isById = (body) => /\.eq\(\s*['"]id['"]/.test(body);
 
 /* ต้องกรองที่ query — รวมยอด/เข้าคิวงานจากใบอนุมัติทั้งทะเบียน (count = จำนวนคำสั่งที่ไม่ใช่ by-id ในไฟล์) */
 const MUST_FILTER = new Map([
-  ['app/api/sales-planning/report/route.js', { count: 2, reason: 'รายงานยอดขาย: ใบอนุมัติรายเดือน + ใบรออนุมัติ' }],
+  ['lib/sales/salesReportData.js', { count: 2, reason: 'รายงานยอดขาย (จอ + Excel): ใบอนุมัติในงวด + ใบรออนุมัติ' }],
   ['lib/pm/productionJobsRepo.js', { count: 1, reason: 'ร่างงานผลิตอัตโนมัติจากใบอนุมัติทั้งทะเบียน' }],
   ['lib/sales/handoffQueueData.js', { count: 1, reason: 'คิวรอยื่นภาษี (แดชบอร์ดของฉัน · ภาพรวมดีล · ปิดโครงการ)' }],
   ['app/api/tax/orders/from-sales-order/route.js', { count: 1, reason: 'ตัวเลือกใบสั่งขายที่รอยื่นภาษี' }],

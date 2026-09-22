@@ -2529,6 +2529,7 @@ h1, h2, h3, h4, h5, h6 {
 .ui-badge-w-nextstep { --cell-badge-w: 88px; } /* ก้าวถัดไปของคำร้อง — "รอฝ่ายทำต่อ" / "รอผู้ขอทำต่อ" 84px */
 .ui-badge-w-registry { --cell-badge-w: 92px; } /* สถานะกลิ่น/สูตร — "รอเข้าทะเบียน" 89px */
 .ui-badge-w-source { --cell-badge-w: 132px; }  /* ที่มาของกลิ่น — "คำร้อง SB-2608-001" 130px */
+.ui-badge-w-finance { --cell-badge-w: 96px; }  /* ขั้นบัญชีของ SO ในรายงานยอดขาย — "ไม่ผ่านบัญชี" / "บัญชีตีกลับ" (วัดจริงก่อนตั้ง) */
 
 .ui-badge.success, .status-pill.success, .chip.success { color: var(--green); }
 .ui-badge.warning, .status-pill.warning, .chip.warning { color: var(--amber); }

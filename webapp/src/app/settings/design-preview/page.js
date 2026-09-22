@@ -156,7 +156,7 @@ const BADGE_TONES = STATUS_TONES;
    ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
-  { cls: "ui-badge", count: 173 },
+  { cls: "ui-badge", count: 168 },
   { cls: "status-pill", count: 43 },
   { cls: "chip", count: 21 },   // 📉 23 → 20 (2026-09-16) หน้าแรกเดิมถูกลบตาม ADR 0016 · 📈 20 → 21 ชิประบบที่ยังไม่เปิดใช้บนสารบัญหน้าแรก
 ];
