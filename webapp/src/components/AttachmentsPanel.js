@@ -42,6 +42,8 @@ import {
   MAX_UPLOAD_MB,
   UPLOAD_ACCEPT_ATTR,
   ACCEPTED_IMAGE_MIME,
+  attachmentFileRuleError,
+  docTypeFileRule,
 } from "@/lib/master/attachmentTypes";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
@@ -63,6 +65,21 @@ function tooLarge(file) {
     return true;
   }
   return false;
+}
+
+/* ไฟล์ที่ docType นี้ไม่รับ (กติกาอยู่ที่ `DOC_TYPE_FILE_RULES`) — แยกออกก่อนอัป ไม่ทิ้งทั้งชุด
+   ⭐ ภาพประกอบใบสเปครับเฉพาะรูป (มติผู้ใช้ 2026-09-22) · ⚠️ POST ของเส้นไฟล์แนบตรวจซ้ำเสมอ
+   — ที่นี่แค่กันไม่ให้อัปไบต์ขึ้น Drive ฟรี ๆ แล้วค่อยโดนตีกลับ */
+function splitByFileRule(docType, files) {
+  const accepted = [];
+  const rejected = [];
+  for (const file of files) {
+    const error = attachmentFileRuleError(docType, file);
+    if (error) rejected.push(error);
+    else accepted.push(file);
+  }
+  if (rejected.length) notifyToast.error(rejected.join(" · "));
+  return accepted;
 }
 
 function formatSize(bytes) {
@@ -227,16 +244,27 @@ export default function AttachmentsPanel({
   };
 
   // ── card mode: อัปไฟล์เข้าประเภทที่กดในการ์ด ──
+  /* ชนิดไฟล์ที่ปุ่มเลือกไฟล์ยอม — docType ที่มีกติกาแคบกว่า (ภาพประกอบใบสเปค = รูปเท่านั้น)
+     ใช้กติกาของมัน · ⚠️ ช่องเลือกไฟล์ใช้ร่วมทุกการ์ด ⇒ ตั้ง `accept` ก่อนเปิดทุกครั้ง
+     ไม่งั้นการ์ดที่รับทุกชนิดเปิดตัวเลือกที่ถูกบีบเหลือแค่รูปตามการ์ดก่อนหน้า */
+  const defaultAccept = photoCapture ? PHOTO_ACCEPT_ATTR : UPLOAD_ACCEPT_ATTR;
+  const acceptFor = (typeKey) => docTypeFileRule(typeKey)?.accept || defaultAccept;
+  const cardAccept = acceptFor(types.length === 1 ? types[0]?.key : null);
   const pickForType = (typeKey) => {
     pendingTypeRef.current = typeKey;
+    if (cardFileRef.current) cardFileRef.current.accept = acceptFor(typeKey);
     cardFileRef.current?.click();
   };
   const handleCardFile = async (e) => {
     /* หลายไฟล์ต่อครั้งมาได้เฉพาะโหมด `photoCapture` (input มี `multiple`) — ไฟล์ที่ใหญ่เกิน
        ข้ามทีละไฟล์ ไม่ทิ้งทั้งชุด (ช่างเลือกมาห้ารูป ใหญ่รูปเดียว ต้องได้อีกสี่) */
-    const files = Array.from(e.target.files || []);
     const typeKey = pendingTypeRef.current;
-    if (!files.length || !typeKey) return;
+    const files = splitByFileRule(typeKey, Array.from(e.target.files || []));
+    if (!files.length || !typeKey) {
+      pendingTypeRef.current = null;
+      if (cardFileRef.current) cardFileRef.current.value = "";
+      return;
+    }
     const ok = files.filter((f) => !tooLarge(f));
     if (!ok.length) {
       pendingTypeRef.current = null;
@@ -264,9 +292,9 @@ export default function AttachmentsPanel({
   // เข้าประเภทเอกสารตัวแรกของ entity เสมอ (โหมดที่มีการ์ดแยกประเภทไม่เปิดใช้ทางนี้
   // เพราะเดาไม่ได้ว่าผู้ใช้ตั้งใจวางลงการ์ดไหน)
   const acceptFiles = useCallback(async (fileList) => {
-    const files = Array.from(fileList || []).filter(Boolean);
-    if (!files.length || !canEdit) return;
     const typeKey = types[0]?.key || "other";
+    const files = splitByFileRule(typeKey, Array.from(fileList || []).filter(Boolean));
+    if (!files.length || !canEdit) return;
     setUploadingType(typeKey);
     try {
       for (const f of files) {
@@ -804,7 +832,7 @@ export default function AttachmentsPanel({
           <input
             ref={cardFileRef}
             type="file"
-            accept={photoCapture ? PHOTO_ACCEPT_ATTR : UPLOAD_ACCEPT_ATTR}
+            accept={cardAccept}
             multiple={photoCapture || undefined}
             onChange={handleCardFile}
             className="hidden"

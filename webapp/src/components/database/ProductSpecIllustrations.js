@@ -8,10 +8,13 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { apiJson } from "@/lib/apiFetch";
 import { naText } from "@/lib/format";
-import { SPEC_ILLUSTRATION_DOC_TYPE } from "@/lib/master/attachmentTypes";
+import { SPEC_ILLUSTRATION_DOC_TYPE, docTypeFileRule } from "@/lib/master/attachmentTypes";
 import { ILLUSTRATION_CAPTION_MAX, sortIllustrations } from "@/lib/sales/productSpecIllustrations";
 import { illustrationReorderPlan, isRetiredIllustration, liveIllustrations } from "@/lib/sales/productSpecView";
 import styles from "./ProductSpecIllustrations.module.css";
+
+// ชนิดไฟล์ที่ภาพประกอบรับ — ป้ายบนจอมาจากกติกาเดียวกับที่ปุ่ม/ลากวาง/POST ใช้ตัดสิน
+const specIllustrationRule = docTypeFileRule(SPEC_ILLUSTRATION_DOC_TYPE);
 
 /**
  * ภาพประกอบรายละเอียดสินค้า (แผ่นที่ 3 ของกระดาษ FM-SA-04)
@@ -189,6 +192,10 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
         showCount={false}
         title=""
         inlineUpload
+        /* ⭐ รับเฉพาะรูป (มติผู้ใช้ 2026-09-22 · "pdf ai ก็ดันแนบได้") — ปุ่ม "แนบรูป" เลือกได้หลายรูป
+           ต่อครั้ง · ชนิดที่รับจริงมาจากกติกาของ docType (`DOC_TYPE_FILE_RULES`) ซึ่งลากวาง/Ctrl+V
+           และ POST ของเส้นไฟล์แนบถามตัวเดียวกัน */
+        photoCapture
         docTypes={[{ key: SPEC_ILLUSTRATION_DOC_TYPE, label: "ภาพประกอบใบสเปคสินค้า" }]}
         onItemsChange={handleItems}
         photoRows={photoRows}
@@ -196,7 +203,8 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
 
       {count || retired ? (
         <p className={`form-note ${styles.note}`}>
-          คำบรรยายพิมพ์ใต้ภาพบนกระดาษ · จองไว้สองบรรทัดเสมอเพื่อให้ทุกแถวสูงเท่ากัน
+          รับเฉพาะ{specIllustrationRule.label}
+          · คำบรรยายพิมพ์ใต้ภาพบนกระดาษ · จองไว้สองบรรทัดเสมอเพื่อให้ทุกแถวสูงเท่ากัน
           · ไม่ใส่ก็ได้ กระดาษจะขึ้นแค่เลขลำดับ
           · ลบภาพที่เอกสารซึ่งยื่นแล้วใช้อยู่ = ภาพถูกซ่อนจากหน้านี้ แต่กระดาษเดิมยังเปิดภาพได้
           {retired ? ` (ซ่อนไว้ ${retired} ภาพ)` : ""}
