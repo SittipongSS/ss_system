@@ -62,7 +62,7 @@ const CAPS = {
   notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
   personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
   sales_deals: 28,              // 353
-  products: 24,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ
+  products: 22,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ · 24 → 22 (ม-150: ด่าน 1 สูตร : 1 FG ถอดแล้ว + attachFormulaUsage ซอยก้อน)
   quotations: 6,                // 198
   customers: 7,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ
   projects: 7,                  // 155
