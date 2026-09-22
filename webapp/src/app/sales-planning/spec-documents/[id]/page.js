@@ -32,6 +32,7 @@ import {
   docContentSummary, docControlActions, docHeadline, docRailSteps, docReasonPrompt, docRevisionRows,
   docRevisionTone, productSpecPageHref, salesOrderHref,
 } from "@/lib/sales/productSpecDocView";
+import { formatSpecDocNo } from "@/lib/sales/productSpecDocNo";
 import styles from "./page.module.css";
 
 /**
@@ -182,7 +183,11 @@ export default function ProductSpecDocumentPage() {
     actions: data?.actions, document: specDoc, latest, onAction,
   });
   const summary = docContentSummary({ source, snapshot: latest?.snapshot, spec: liveSpec });
-  const history = docRevisionRows(revisions, { documentId: specDoc.id });
+  const history = docRevisionRows(revisions, { documentId: specDoc.id, docNo: specDoc.docNo });
+  /* ⭐ เลขที่รูปเดียวกับกระดาษ DDMMYY-XXX-RR ของ Rev ล่าสุด (มติ 22/09) · eyebrow = **เลขที่เต็มในฐาน**
+     (FM-SA-04-DDMMYY-XXX) — บอกแบบฟอร์ม และเป็นรูปเดียวที่ลิงก์อัตโนมัติ (docRefs `FM`) / `/go/` รู้จัก
+     🐞 ผลตรวจรอบสอง: หลังเปลี่ยนเป็นรูปใหม่ ไม่มีจอไหนโชว์เลขเต็มให้ก๊อปไปวางในเธรดเลย */
+  const docNoText = formatSpecDocNo(specDoc.docNo, latest?.revNo);
   // Rev ที่ยังไม่ยื่น (ร่าง/ถูกตีกลับ) = เนื้อบนจอคือสเปคสด · ยื่นแล้วแก้สเปคไม่มีผลกับเอกสาร
   const liveDraft = !isVoid && ["draft", "rejected"].includes(latest?.status);
   /* "แก้สเปคที่หน้าสินค้า" — เฉพาะคนที่แก้สเปคได้ (API ส่ง `canEditSpec` มา) · หน้านี้เปิดได้ทุกคนที่เห็น SO
@@ -195,9 +200,9 @@ export default function ProductSpecDocumentPage() {
     <Workspace hideHeader back={back}>
       <div className={styles.page}>
         <DetailOverview
-          eyebrow="FM-SA-04 · PRODUCT SPECIFICATION"
-          title={specDoc.docNo}
-          description={[product?.fgCode, productDisplayName(product), productBrandName(product)].filter(Boolean).join(" · ") || "ใบสเปคสินค้า"}
+          eyebrow={`${specDoc.docNo || "FM-SA-04"} · รายละเอียดผลิตภัณฑ์ (Product Spec)`}
+          title={docNoText}
+          description={[product?.fgCode, productDisplayName(product), productBrandName(product)].filter(Boolean).join(" · ") || "รายละเอียดผลิตภัณฑ์"}
           badges={<>
             <StatusBadge tone="neutral" label={formatRevLabel(latest?.revNo)} />
             <StatusBadge tone={isVoid ? "neutral" : docRevisionTone(latest?.status)} label={naText(statusLabel)} />
@@ -314,7 +319,7 @@ export default function ProductSpecDocumentPage() {
                 <table>
                   <thead>
                     <tr>
-                      <th className={styles.colRev}>Rev.</th>
+                      <th className={styles.colRev}>เลขที่</th>
                       <th className={styles.colStatus}>สถานะ</th>
                       <th>เหตุผลที่แก้</th>
                       <th className={styles.colStamp}>AC ยื่น</th>
@@ -326,7 +331,10 @@ export default function ProductSpecDocumentPage() {
                   <tbody>
                     {history.map((row) => (
                       <tr key={row.id}>
-                        <td className="mono">{row.revLabel}</td>
+                        <td>
+                          <div className="mono">{row.docNoText || row.revLabel}</div>
+                          <div className={styles.sub}>{row.revLabel}</div>
+                        </td>
                         <td>
                           <StatusBadge size="sm" tone={row.tone} label={row.statusLabel} />
                           {row.rejected ? <div className={styles.sub}>ตีกลับ: {row.rejected}</div> : null}
@@ -428,9 +436,11 @@ function DocumentContent({ summary, source, latest, liveError }) {
           <dl className={styles.facts}>
             <div><dt>ใบสั่งขาย</dt><dd>{naText(order.orderNumber)}</dd></div>
             <div><dt>ลูกค้า</dt><dd>{naText(order.customerName)}</dd></div>
-            <div><dt>จำนวน</dt><dd>{order.qty === null ? naText(null) : `${order.qty}${order.unit ? ` ${order.unit}` : ""}`}</dd></div>
+            {/* ชื่อเดียวกับแถวบนกระดาษ "จำนวนผลิต (Quantity)" (มติ 22/09 — ย้ายจากกล่องอ้างอิงไป Product Overview) */}
+            <div><dt>จำนวนผลิต</dt><dd>{order.qty === null ? naText(null) : `${order.qty}${order.unit ? ` ${order.unit}` : ""}`}</dd></div>
             <div><dt>กำหนดส่ง</dt><dd>{order.deliveryDueDate ? fmtDate(order.deliveryDueDate) : naText(null)}</dd></div>
-            <div><dt>Contact for Sales</dt><dd>{naText(order.dealOwnerName)}</dd></div>
+            {/* ชื่อเดียวกับแถวบนกระดาษ — "Contact for Sales" ย้ายขึ้นกล่องอ้างอิงแล้ว (มติ 22/09) */}
+            <div><dt>ผู้ติดต่อฝ่ายขาย</dt><dd>{naText(order.dealOwnerName)}</dd></div>
           </dl>
         ) : null}
         <dl className={styles.facts}>

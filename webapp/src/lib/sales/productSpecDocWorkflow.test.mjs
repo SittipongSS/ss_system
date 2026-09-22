@@ -347,6 +347,7 @@ test('ออกแล้ว: ลิงก์เปิดเอกสาร พ�
     action: 'open',
     documentId: 'PSD1',
     docNo: 'FM-SA-04-220969-001',
+    docNoText: '220969-001-01',
     revLabel: 'Rev.01',
     statusLabel: 'รอ AE อนุมัติ',
     revStatus: 'pending_ae',
@@ -362,7 +363,7 @@ test('เอกสาร void บนบรรทัด = นับว่าย�
 });
 
 test('ทุกสถานะคืนคีย์ครบชุดเดียวกัน (จออ่านได้ไม่ต้องเช็คทีละคีย์)', () => {
-  const keys = ['kind', 'label', 'reason', 'action', 'documentId', 'docNo', 'revLabel', 'statusLabel', 'revStatus'].sort();
+  const keys = ['kind', 'label', 'reason', 'action', 'documentId', 'docNo', 'docNoText', 'revLabel', 'statusLabel', 'revStatus'].sort();
   for (const state of [
     lineDocumentState({ line, scopeReason: 'x', user: U.ac }),
     lineDocumentState({ line, spec: null, user: U.ac }),

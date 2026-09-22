@@ -299,14 +299,22 @@ async function loadApproverSignature(supabase, order) {
   // ต้องกรอง signingRole (mig 0151) — เอกสารหนึ่งใบมีหลักฐานหลายบทบาทได้ (ผู้ยื่น/ผู้อนุมัติ)
   // ถ้าเรียงด้วย approvalSequence ล้วน แถวของผู้ยื่นที่เกิดหลังสุด (เช่น approved → ยกเลิก →
   // คืนร่าง → ยื่นใหม่) จะถูกหยิบมาแสดงในช่องผู้อนุมัติ = ลายเซ็นผิดคนบนเอกสาร
-  const { data: ev, error: evError } = await supabase
+  /* 🐞 (พบ 2026-09-22 ตอนเพิ่มตำแหน่งเต็มในช่องลงนาม) ลายเซ็น **ฝ่ายบัญชี** (mig 0251) ก็ลง `signingRole = 'approver'`
+     และเกิดทีหลังเสมอ ⇒ "แถว approver ล่าสุด" คือบัญชี ไม่ใช่ผู้จัดการฝ่ายขาย · วัดบนฐาน: SO ที่อนุมัติแล้ว 72 ใบ
+     ได้ลายเซ็น/ชื่อ (และตอนนี้ตำแหน่ง Finance Officer) ของบัญชีในช่อง "ผู้จัดการฝ่ายขาย" ทางพิมพ์สด
+     ⇒ ใช้หลักฐานที่การอนุมัติตรึงไว้กับใบ (`signatureEvidenceId` — SO ที่อนุมัติแล้วมีครบทุกใบ) ก่อนเสมอ
+     ไม่มี id (ใบเก่ามาก) ค่อยถอยไปแถว approver ล่าสุดแบบเดิม */
+  const evidenceQuery = supabase
     .from('document_signature_evidence')
-    .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
-    .eq('salesOrderId', order.id)
-    .eq('signingRole', 'approver')
-    .order('approvalSequence', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot');
+  const { data: ev, error: evError } = order.signatureEvidenceId
+    ? await evidenceQuery.eq('id', order.signatureEvidenceId).maybeSingle()
+    : await evidenceQuery
+      .eq('salesOrderId', order.id)
+      .eq('signingRole', 'approver')
+      .order('approvalSequence', { ascending: false })
+      .limit(1)
+      .maybeSingle();
   // ลายเซ็นผู้อนุมัติหาย = เอกสารยังพิมพ์ได้แต่ไม่มีลายเซ็น · ไม่ throw (จะทำให้เปิดหน้า
   // SO ไม่ได้ทั้งใบ) แต่ต้อง log เพราะลายเซ็นคือหลักฐานอนุมัติ หายเงียบ ๆ ไม่ได้
   if (evError) console.error('[sales-order] โหลดหลักฐานลายเซ็นผู้อนุมัติไม่สำเร็จ:', evError.message);
@@ -331,17 +339,25 @@ async function loadProposerSignature(supabase, order) {
   // ใบที่ยื่นตั้งแต่ mig 0153: อ่านจากหลักฐานที่ตรึงตอนยื่น → ได้วันที่ลงนาม + Evidence id
   // และรูปเป็นเวอร์ชันที่ตรึงไว้จริง (ไม่ใช่ลายเซ็นสดที่อาจถูกเปลี่ยนภายหลัง)
   if (order.proposerSignatureEvidenceId) {
-    const { data: ev } = await supabase
+    const { data: ev, error: evError } = await supabase
       .from('document_signature_evidence')
-      .select('id, signerName, signedAt, signatureAssetSnapshot')
+      .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
       .eq('id', order.proposerSignatureEvidenceId)
       .maybeSingle();
+    /* อ่านพลาด = ช่องฝ่ายขายของพิมพ์สดเป็นช่องเปล่า — ไม่ throw (เปิดหน้า SO ไม่ได้ทั้งใบ) แต่ต้อง log แบบผู้อนุมัติ
+       ⚠️ ต้องจบที่นี่ ไม่ถอยไปทางใบเก่าข้างล่าง — ใบนี้มีหลักฐานจริง ถอยไปลายเซ็นสดของผู้สร้างจะได้รูปอีกคนไม่มีวันที่ */
+    if (evError) {
+      console.error('[sales-order] โหลดหลักฐานลายเซ็นผู้ยื่นไม่สำเร็จ:', evError.message);
+      return null;
+    }
     if (ev?.signatureAssetSnapshot) {
       const imageDataUri = await loadSignatureImageDataUri(admin, ev.signatureAssetSnapshot);
       if (imageDataUri) {
         return {
           imageDataUri,
           signerName: ev.signerName || order.createdByName || '',
+          // role ของคนที่ยื่นจริง ⇒ ตำแหน่งเต็มใต้ "ฝ่ายขาย" (positionTitle · มติ 2026-09-22)
+          signerRole: ev.signerRole || null,
           signedAt: ev.signedAt || order.submittedAt || null,
           evidenceId: ev.id,
         };
@@ -356,6 +372,27 @@ async function loadProposerSignature(supabase, order) {
   const imageDataUri = await loadSignatureImageDataUri(admin, asset);
   if (!imageDataUri) return null;
   return { imageDataUri, signerName: order.createdByName || '' };
+}
+
+/* ตำแหน่งของ AE เจ้าของดีล (role ในบัญชี) — ช่อง "ฝ่ายขาย" ของ SO ที่ยังไม่มีหลักฐานการยื่น (ร่าง · ยกเลิกก่อนยื่น)
+   พิมพ์ชื่อเจ้าของดีลรอไว้ (คนที่ต้องกดยื่นคือเขา — canSubmitSalesOrder) ⇒ ตำแหน่งใต้ชื่อต้องเป็นของเขาจริง
+   🐞 (ตรวจรอบสาม) เดิมพิมพ์ตำแหน่งของช่อง "Account Executive" คู่ชื่อ Senior AE — ใบที่ยื่นแล้วของใบเดียวกันพิมพ์
+      "Senior Account Executive" จากหลักฐาน · ใบที่มีหลักฐานการยื่นไม่ต้องอ่าน (salesOrderPrint ใช้ signerRole ของหลักฐาน)
+   ⚠️ role อยู่ใน app_metadata ของบัญชี (ไม่มีตาราง users) ⇒ service role · best-effort: อ่านไม่ได้ = ตำแหน่งของช่อง + log */
+async function loadDealOwnerRole(order) {
+  const ownerId = order?.deal?.ownerId;
+  if (order?.proposerSignatureEvidenceId || !ownerId) return null;
+  try {
+    const res = await getSupabaseAdmin().auth.admin.getUserById(ownerId);
+    if (res?.error) {
+      console.error('[sales-order] อ่านบัญชีเจ้าของดีลไม่สำเร็จ — ช่องฝ่ายขายพิมพ์ตำแหน่งของช่อง:', res.error.message);
+      return null;
+    }
+    return res?.data?.user?.app_metadata?.role || null;
+  } catch (error) {
+    console.error('[sales-order] อ่านบัญชีเจ้าของดีลไม่สำเร็จ — ช่องฝ่ายขายพิมพ์ตำแหน่งของช่อง:', error?.message || error);
+    return null;
+  }
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -378,11 +415,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // รูปลายเซ็นผู้จัดทำ + ผู้อนุมัติ (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังออกได้ ตกช่องเซ็นเปล่า)
   let approverSignature = null;
   let proposerSignature = null;
+  let dealOwnerRole = null;
   if (!user.devBypass) {
     try { approverSignature = await loadApproverSignature(supabase, order); }
     catch { approverSignature = null; }
     try { proposerSignature = await loadProposerSignature(supabase, order); }
     catch { proposerSignature = null; }
+    dealOwnerRole = await loadDealOwnerRole(order);
   }
   // ⭐ ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177 · มติผู้ใช้ 2026-07-29:
   // "PR RM เข้า มันจะเชื่อมกับ SO เพราะว่ามันติดตามเพื่อสู่การผลิต")
@@ -403,6 +442,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // ไม่ใช่ role ⇒ ส่งมาด้วย ไม่งั้นหน้าเว็บซ่อนปุ่มผิดคนแล้วไปเจอ 400 ตอนกด
   return ok({
     ...order,
+    // ตำแหน่งของเจ้าของดีลสำหรับช่อง "ฝ่ายขาย" ที่ยังไม่มีคนยื่น (loadDealOwnerRole) · อ่านไม่ได้/ไม่ต้องอ่าน = ไม่เติม
+    deal: dealOwnerRole ? { ...order.deal, ownerRole: dealOwnerRole } : order.deal,
     meId: user.id || null,
     meDepartment: departmentOf(user),
     /* ⭐ **สิทธิ์แก้ต้องมาจาก server** — จอเคยคิดเองด้วย `useCan("salesplan:edit")` ล้วน

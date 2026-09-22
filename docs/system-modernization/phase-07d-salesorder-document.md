@@ -31,6 +31,21 @@ Phase 7C ทำให้ **ใบเสนอราคา** ใช้เคร�
      ผู้เสนอราคา/โทร; SO = อ้างอิง QT/สถานะ/ดีล/โครงการ
    - ช่องลงชื่อ: `signers[]` (label/role/name/esignature?) — QT 3 ช่องเดิม; SO =
      ผู้จัดทำ(พนักงานขาย)/ผู้อนุมัติ(ผจก.ฝ่ายขาย)/ฝ่ายบัญชี
+     - ⭐ 2026-09-22 (มติผู้ใช้ "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม"): `role` ใต้ชื่อหน่วยงาน = **ตำแหน่งเต็มของคนที่เซ็นจริง**
+       จาก `signerRole` ของหลักฐานการลงนาม ผ่าน `positionTitle` (`lib/documents/positionTitles.js` ที่เดียว) ·
+       ยังไม่มีคนเซ็น = ตำแหน่งของช่อง (Account Executive · Account Executive Supervisor · Finance Officer) ·
+       คำย่อ "AE เจ้าของดีล" / "AE Supervisor" / "Scent & Sense" ถูกถอด · ใบเสนอราคา: ผู้จัดทำจากหลักฐานการยื่น
+       (ไม่มี = พนักงานขาย) · ผู้อนุมัติพิมพ์ตำแหน่งในบรรทัดวันที่จากหลักฐานการอนุมัติ
+     - กล่องลงนาม (`signatureBox`/`signatureSection`) ย้ายไป `lib/documents/documentShell.js` ให้ QT · SO · FM-SA-04
+       ใช้ markup + CSS ชุดเดียว · ใบที่ตรึงแล้ว (issued) ไม่เปลี่ยน — layout version QT v4.5 · SO v4.4
+     - 🐞 พิมพ์สดของ SO เคยหยิบ "หลักฐาน approver ล่าสุด" ซึ่งเป็นของฝ่ายบัญชี (ลง signingRole เดียวกัน) มาใส่ช่อง
+       ผู้จัดการฝ่ายขาย (72 ใบที่อนุมัติแล้ว) ⇒ อ่านตาม `sales_orders.signatureEvidenceId` ก่อน
+     - ร่าง SO (ยังไม่มีหลักฐานการยื่น) พิมพ์ชื่อเจ้าของดีลรอไว้ในช่องฝ่ายขาย ⇒ ตำแหน่ง = role ในบัญชีของเจ้าของดีล
+       (`deal.ownerRole` ที่ route GET อ่านด้วย service role · อ่านไม่ได้ = ตำแหน่งของช่อง + log) — เดิม Senior AE ได้ "Account Executive"
+     - อ่านหลักฐานการลงนาม (ผู้ยื่น · ฝ่ายบัญชี) พลาดตอนตรึง = throw ไม่ตรึง (ผู้เรียกครอบ best-effort + log) —
+       RPC ตรึงแบบ idempotent ตามลายนิ้วมือ กระดาษที่ขาดลายเซ็น/ตำแหน่งจะกลายเป็นฉบับที่ออกถาวร
+     - กริด `.signatures` = `repeat(var(--sig-cols), 1fr)` (ตั้งต้น 3 · FM-SA-04 ตั้ง 4 บนแท็ก) — เดิม `data-columns` มีกฎเฉพาะ 4
+       ⚠️ ไม่ใช้ `minmax(0, 1fr)`: ลองแล้วชื่อที่ไม่มีจุดตัด (อีเมล) ตกบรรทัด แถวลงนาม QT/SO สูง 157px เกินที่แบ่งหน้า v4 จอง 145px
    - หัวเอกสารบริษัท + ตาราง + งวดชำระ + CSS = ใช้ร่วมเหมือนเดิม
 2. **ปรับ model builder ของ QT** (`buildQuotationMasterModelFromQuote` + fixture
    `buildQuotationMasterPreview`) ให้เติม field ใหม่โดย**ผลลัพธ์ QT ต้องเท่าเดิมเป๊ะ**

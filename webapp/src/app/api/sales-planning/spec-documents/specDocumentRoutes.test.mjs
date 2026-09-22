@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { DOC_ACTION_KEYS } from '@/lib/sales/productSpecDocWorkflow';
+import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
 
 const API = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const stripComments = (s) => s
@@ -138,6 +139,35 @@ test('แจ้งเตือนตามตารางมติ: ยื่น
   assert.match(source, /filter\(\(uid\) => uid !== actorId\)/);
 });
 
+test('หัวแจ้งเตือน = "…รายละเอียดผลิตภัณฑ์ · DDMMYY-XXX-RR" ทั้งสี่การกระทำ — ไม่ใช่เลขที่ดิบ + "Rev."', () => {
+  /* เราต์ส่งออกฟังก์ชันอื่นนอกจาก handler ไม่ได้ (ข้อจำกัดของไฟล์ route) ⇒ ดึง `describe` + `noticeText` จากซอร์ส
+     มารันจริง (ไม่ใช่แค่จับข้อความ) · 🐞 ผลตรวจรอบสอง: ไม่มีเทสต์ตรึงหัวแจ้งเตือน ถอยกลับเป็นรูปเก่าก็ยังเขียว */
+  const source = code(DOC_ROUTE);
+  const block = source.slice(source.indexOf('function describe('), source.indexOf('function notifyLater'));
+  const { describe, noticeText } = new Function('formatSpecDocNo', `${block}\nreturn { describe, noticeText };`)(formatSpecDocNo);
+  const context = {
+    document: { docNo: 'FM-SA-04-220969-001' },
+    revision: { revNo: 1 },
+    product: { fgCode: 'FG-1', productDescription: 'น้ำหอม' },
+    salesOrder: { orderNumber: 'SO-26090177-0' },
+  };
+  const { head, body } = describe(context);
+  assert.equal(head, '220969-001-01');
+  assert.equal(body, 'FG-1 น้ำหอม · ใบสั่งขาย SO-26090177-0');
+  const titles = {
+    submit: 'รอ AE อนุมัติรายละเอียดผลิตภัณฑ์ · 220969-001-01',
+    ae_approve: 'รอ AE Supervisor อนุมัติรายละเอียดผลิตภัณฑ์ · 220969-001-01',
+    reject: 'รายละเอียดผลิตภัณฑ์ถูกตีกลับ · 220969-001-01',
+    sup_approve: 'รายละเอียดผลิตภัณฑ์อนุมัติแล้ว · 220969-001-01',
+  };
+  for (const [action, title] of Object.entries(titles)) {
+    const text = noticeText(action, { head, body, reason: 'แก้ฝา' });
+    assert.equal(text.title, title, action);
+    assert.doesNotMatch(text.title, /FM-SA-04-220969-001|Rev\./, `${action}: ห้ามเลขที่ดิบ/"Rev." ในหัว`);
+  }
+  assert.match(noticeText('reject', { head, body, reason: 'แก้ฝา' }).body, /^แก้ฝา — /);
+});
+
 test('GET ของเอกสาร: ขอบเขตมาจาก SO ที่ผูก (loadScoped view) · ไม่มี SO แล้ว = ฝ่ายขายเท่านั้น', () => {
   const source = code(DOC_ROUTE);
   assert.match(source, /loadScoped\(supabase, 'sales_orders', loaded\.document\.salesOrderId, user, mode\)/);
@@ -167,6 +197,8 @@ test('GET ของการ์ดบนหน้า SO: สถานะรา�
   assert.match(source, /state: lineDocumentState\(\{/);
   assert.match(source, /doc\.status === 'active' && \(!doc\.salesOrderLineId \|\| !lineIds\.has\(doc\.salesOrderLineId\)\)/);
   assert.match(source, /\}\)\.void,/, 'ปุ่มยกเลิกของแถวที่บรรทัดถูกถอดต้องมาจาก documentActions().void');
+  // โมดัลยกเลิกต้องประกอบเลขรูปเดียวกับแถว (DDMMYY-XXX-RR) ⇒ ต้องได้ Rev ดิบ (ผลตรวจรอบสอง)
+  assert.match(source, /revNo: doc\.latest \? doc\.latest\.revNo : null/);
   assert.match(source, /return ok\(\{ orderStatus: order\.status, rows, orphans \}\)/);
 });
 

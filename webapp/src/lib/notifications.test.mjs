@@ -509,7 +509,7 @@ test('⭐ "อ่านทั้งหมด" ในกระดิ่งล้�
    UPDATE_ENTITIES ที่เทสต์ข้างบนไล่) ⇒ ต้องตรวจตรง ๆ ว่ากดแล้วไปถึงหน้าเอกสาร ไม่ใช่แถวลอย ๆ */
 test('ใบสเปคสินค้า: แจ้งเตือนพาไปหน้าเอกสาร และมีป้ายชื่อของตัวเอง', () => {
   assert.equal(notificationHref('product_spec_document', 'PSD-1'), '/sales-planning/spec-documents/PSD-1');
-  assert.equal(entityLabel('product_spec_document'), 'ใบสเปคสินค้า');
+  assert.equal(entityLabel('product_spec_document'), 'รายละเอียดผลิตภัณฑ์ (FM-SA-04)');
 });
 
 /* ── นัดเข้าบริการ → ใบส่งงานรายใบ (หน้ารายการงาน 2026-09-22) ────────────────

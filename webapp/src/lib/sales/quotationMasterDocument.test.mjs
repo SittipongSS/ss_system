@@ -187,7 +187,7 @@ test('V4 doc: ใบที่ยังไม่ยื่น (not_submitted) ก�
 });
 
 /* ⭐ 2026-08-27: **เลิกพิมพ์ Evidence id ลงกระดาษ** — ใช้ประโยชน์ไม่ได้ (ไม่มีหน้า verify
-   สาธารณะ) · ตัวข้อมูลยังเก็บครบ ตัดแค่การพิมพ์ ดูเหตุผลเต็มที่ signBox() */
+   สาธารณะ) · ตัวข้อมูลยังเก็บครบ ตัดแค่การพิมพ์ ดูเหตุผลเต็มที่ signatureBox() ใน documentShell */
 test('V4 doc: ช่องผู้เสนอราคาได้ชื่อ + วันที่จากหลักฐานการยื่น (ไม่พิมพ์ Evidence id)', () => {
   const png = 'data:image/png;base64,UFJPUA==';
   const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {
@@ -202,6 +202,45 @@ test('V4 doc: ช่องผู้เสนอราคาได้ชื่อ
   // ไม่มีหลักฐาน (ใบเก่า) → stamp เชิงภาพ ไม่มี Evidence
   const legacy = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { proposerSignatureImage: png });
   assert.doesNotMatch(legacy, /DSE-9/);
+});
+
+/* ⭐ มติผู้ใช้ 2026-09-22 "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม" + "ปรับการแสดงชื่อตำแหน่งในใบ QT และ SO ด้วย"
+   ผู้จัดทำ = ตำแหน่งเต็มจาก role ในหลักฐานการยื่น · ผู้อนุมัติ = จาก role ในหลักฐานการอนุมัติ (options.approverRole)
+   🐞 เดิมช่องผู้อนุมัติอ่าน quote.approvedByRole ที่ไม่มีคอลัมน์จริง ⇒ ทุกใบพิมพ์คำกลาง "ผู้อนุมัติ" */
+test('V4 doc: ช่องลงนามพิมพ์ตำแหน่งเต็มของคนที่เซ็นจริง · ไม่รู้ role = คำเดิม', () => {
+  const png = 'data:image/png;base64,UFJPUA==';
+  for (const docLanguage of ['th', 'en']) {
+    const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), docLanguage }, {
+      proposerSignatureImage: png,
+      proposerEvidence: { id: 'DSE-9', signerName: 'ผู้ยื่นจริง', signedAt: '2026-07-26T04:00:00.000Z', signerRole: 'senior_ae' },
+      approverSignatureImage: png,
+      approverRole: 'ae_supervisor',
+    });
+    const prepared = docLanguage === 'en' ? 'Prepared By' : 'ผู้จัดทำ';
+    assert.match(html, new RegExp(`<h2>${prepared} <span>Senior Account Executive</span></h2>`), docLanguage);
+    // ⭐ มติ 2026-09-22 "ย้าย": ตำแหน่งผู้อนุมัติแทนคำ Authorized signature ใต้ชื่อช่อง · บรรทัดวันที่มีแค่วันที่
+    assert.match(html, /<span>Account Executive Supervisor<\/span><\/h2>/, `${docLanguage}: ตำแหน่งผู้อนุมัติใต้ชื่อช่อง`);
+    assert.doesNotMatch(html, /Authorized signature/, `${docLanguage}: รู้ตำแหน่งแล้วไม่พิมพ์คำกลาง`);
+    assert.match(html, /<p>\d{2}\/\d{2}\/\d{4}<\/p>/, `${docLanguage}: บรรทัดวันที่เหลือแค่วันที่`);
+  }
+  // ร่าง/ใบที่ไม่มีหลักฐาน = "พนักงานขาย" · ผู้อนุมัติไม่รู้ role = "Authorized signature" ใต้ชื่อช่อง (คำเดิมของช่องนี้)
+  const legacy = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {});
+  assert.match(legacy, /<h2>ผู้จัดทำ <span>พนักงานขาย<\/span><\/h2>/);
+  assert.match(legacy, /<span>Authorized signature<\/span><\/h2>/);
+  assert.doesNotMatch(legacy, /<p>ผู้อนุมัติ · /);
+  // role แปลก (ไม่อยู่ในทะเบียนตำแหน่ง) = คำเดิม ไม่พิมพ์โค้ดดิบ
+  const odd = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { approverRole: 'viewer', proposerEvidence: { signerRole: 'viewer' } });
+  assert.doesNotMatch(odd, /viewer/);
+});
+
+// 🐞 ตรวจรอบสาม: พรีวิวในหน้าตั้งค่า (อนุมัติแล้ว) ยังพิมพ์ "พนักงานขาย" ใต้ช่องผู้จัดทำที่เซ็นแล้ว ทั้งที่ใบจริงพิมพ์ตำแหน่งเต็ม
+test('พรีวิวใบเสนอราคา: ผู้จัดทำที่เซ็นแล้ว = ตำแหน่งเต็มแบบใบจริง · ร่าง = คำกลาง "พนักงานขาย" แบบใบจริง', () => {
+  const approved = buildQuotationMasterPreview('compact', 'approved', 'v4');
+  assert.equal(approved.signers[0].role, 'Account Executive');
+  assert.ok(approved.signers[0].esignature, 'พรีวิวอนุมัติแล้ว = ช่องที่เซ็นแล้ว');
+  const draft = buildQuotationMasterPreview('compact', 'draft', 'v4');
+  assert.equal(draft.signers[0].role, 'พนักงานขาย');
+  assert.equal(draft.signers[0].esignature, undefined);
 });
 
 test('V4 doc: override ลายน้ำ (เช่น ยกเลิก) ผ่าน options', () => {

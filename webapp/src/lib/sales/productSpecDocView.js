@@ -15,7 +15,7 @@ import { toneColor } from '@/lib/ui/tone';
 import {
   PRODUCT_SPEC_CERT_STATUS_LABELS, productSpecCertPendingLabel,
 } from '@/lib/sales/productSpecChecklist';
-import { productSpecDocNoParts } from '@/lib/sales/productSpecDocNo';
+import { formatSpecDocNo, productSpecDocNoParts } from '@/lib/sales/productSpecDocNo';
 import {
   DOC_REASON_MAX, DOC_REASON_MIN, DOC_REVISION_STATUS_LABELS, DOC_STATUS_LABELS,
   docRevisionSteps, formatRevLabel, rejectStageOf,
@@ -54,8 +54,12 @@ const stampText = (name, at) => [name, at ? fmtDate(at) : null].filter(Boolean).
 
 const ownerNameOf = (dealOwner) => dealOwner?.name || null;
 
-const subjectOf = (document, latest) => [document?.docNo, latest ? formatRevLabel(latest.revNo) : null]
-  .filter(Boolean).join(' ') || 'เอกสารใบนี้';
+/* ⭐ เลขที่ในข้อความบนจอ = รูปเดียวกับกระดาษ `DDMMYY-XXX-RR` (มติ 22/09) — Rev อยู่ในเลขแล้ว ไม่ต่อ "Rev.XX" ซ้ำ
+   `baseNoOf` = เลขที่ไม่มี Rev (ตอนพูดถึง "เลขที่" ทั้งใบ เช่น ยกเลิก = เลขที่ปิดถาวรทุก Rev) */
+const subjectOf = (document, latest) => (document?.docNo
+  ? formatSpecDocNo(document.docNo, latest?.revNo)
+  : 'เอกสารใบนี้');
+const baseNoOf = (document) => (document?.docNo ? formatSpecDocNo(document.docNo, null) : null);
 
 /**
  * พาดหัวสถานะบนหัวใบ/การ์ดจัดการ — `{ status, sub, tone, color }`
@@ -288,7 +292,7 @@ export function docConfirmPrompt(key, {
       checklist: ['สเปคในภาพนิ่งตรงกับที่ตกลงกับลูกค้า และ AE เจ้าของดีลอนุมัติแล้ว'],
       effects: [
         'ชื่อคุณลงช่อง Account Executive Supervisor บนเอกสาร',
-        `${rev} กลายเป็นฉบับที่ใช้ของเลขที่ ${document?.docNo || 'นี้'}`,
+        `${rev} กลายเป็นฉบับที่ใช้ของเลขที่ ${baseNoOf(document) || 'นี้'}`,
         ...(previous ? [`${formatRevLabel(previous.revNo)} ที่ใช้อยู่เดิมกลายเป็น "ถูกแทนด้วย Rev. ใหม่"`] : []),
         'ระบบตรึงกระดาษฉบับนี้ไว้ — พิมพ์ซ้ำเมื่อไรก็ได้หน้าตาเดิม',
         'ระบบแจ้งเตือนผู้ยื่นและ AE เจ้าของดีล',
@@ -322,7 +326,7 @@ const bullets = (lines, { irreversible = false } = {}) => [
 export function docReasonPrompt(key, {
   document, latest, orphan = false,
 } = {}) {
-  const docNo = document?.docNo || 'เอกสารใบนี้';
+  const docNo = baseNoOf(document) || 'เอกสารใบนี้';
   const subject = subjectOf(document, latest);
   const base = { minLength: DOC_REASON_MIN, maxLength: DOC_REASON_MAX };
   if (key === 'reject') {
@@ -344,13 +348,14 @@ export function docReasonPrompt(key, {
   }
   if (key === 'revise') {
     const current = formatRevLabel(latest?.revNo);
-    const next = formatRevLabel((Number(latest?.revNo) || 0) + 1);
+    const nextRevNo = (Number(latest?.revNo) || 0) + 1;
+    const next = formatRevLabel(nextRevNo);
     return {
       ...base,
       title: `แก้ไขเอกสาร — ออก ${next}`,
-      description: `เปิด ${next} ของ ${docNo} หรือไม่`,
+      description: `เปิด ${next} ของ ${subject} หรือไม่`,
       detail: bullets([
-        `ได้ ${next} เป็นฉบับร่าง เลขที่เดิม ${docNo}`,
+        `ได้ ${next} เป็นฉบับร่าง เลขที่เดิม ${docNo}${document?.docNo ? ` (พิมพ์เป็น ${formatSpecDocNo(document.docNo, nextRevNo)})` : ''}`,
         `${current} ยังเป็นฉบับที่ใช้ จนกว่า ${next} จะอนุมัติครบ`,
         `${next} ต้องยื่นและผ่าน AE เจ้าของดีลกับ AE Supervisor ใหม่ทั้งหมด`,
         'เหตุผลนี้ขึ้นในประวัติ Rev ของเอกสาร',
@@ -365,7 +370,7 @@ export function docReasonPrompt(key, {
     return {
       ...base,
       title: 'ยกเลิกเอกสาร',
-      description: `ยกเลิก ${docNo} หรือไม่`,
+      description: `ยกเลิก ${subject} หรือไม่`,
       detail: bullets([
         `เลขที่ ${docNo} ถูกปิดถาวร — นำกลับมาใช้ไม่ได้`,
         'ทุกปุ่มของเอกสารใบนี้ปิด Rev ที่ค้างอยู่หยุดเดินด่าน',
@@ -403,13 +408,15 @@ export function docActionDoneMessage(key, { dealOwner } = {}) {
  * แถวประวัติ Rev (ใหม่ก่อน) — ทุกแถวพิมพ์ได้ (กระดาษของ Rev นั้นเอง)
  * ⚠️ ตราประทับว่างเป็น `null` ให้จอส่ง `naText` เอง — ไม่ประกอบขีดที่นี่
  */
-export function docRevisionRows(revisions = [], { documentId } = {}) {
+export function docRevisionRows(revisions = [], { documentId, docNo = null } = {}) {
   return [...(revisions || [])].filter(Boolean)
     .sort((a, b) => Number(b.revNo) - Number(a.revNo))
     .map((rev) => ({
       id: rev.id,
       revNo: rev.revNo,
       revLabel: formatRevLabel(rev.revNo),
+      // เลขที่ของ Rev นั้น (DDMMYY-XXX-RR) — แต่ละแถวต่างกันแค่สองหลักท้าย
+      docNoText: docNo ? formatSpecDocNo(docNo, rev.revNo) : null,
       status: rev.status,
       statusLabel: DOC_REVISION_STATUS_LABELS[rev.status] || rev.status,
       tone: docRevisionTone(rev.status),
@@ -518,7 +525,8 @@ export function lineIssuePrompt({ line, now = new Date() } = {}) {
     subject: [line?.fgCode, line?.description].filter(Boolean).join(' ') || 'บรรทัดนี้',
     irreversible: true,
     effects: [
-      `ระบบออกเลขที่ ${prefix}XXX ทันที — เลขที่นี้คืนไม่ได้ ยกเลิกเอกสารภายหลังเลขก็ถูกใช้ไปแล้ว`,
+      // เลขที่ที่คนเห็นบนกระดาษ/จอ = DDMMYY-XXX-RR (Rev.00 ตอนออก)
+      `ระบบออกเลขที่ ${formatSpecDocNo(`${prefix}XXX`, 0)} ทันที — เลขที่นี้คืนไม่ได้ ยกเลิกเอกสารภายหลังเลขก็ถูกใช้ไปแล้ว`,
       'ได้ Rev.00 ฉบับร่าง — ยังไม่มีใครต้องอนุมัติจนกว่า AC จะกดยื่นที่หน้าเอกสาร',
       'บรรทัดใบสั่งขายหนึ่งบรรทัดมีเอกสารที่ใช้งานได้ใบเดียว',
     ],
@@ -576,7 +584,7 @@ export function followUpLineView(row) {
   if (state.kind === 'out_of_scope') {
     return {
       kind: 'out_of_scope', tone: 'neutral', statusLabel: state.label || 'ไม่ต้องใช้', note: state.reason || null,
-      docNo: null, revLabel: null, action: null,
+      docNo: null, docNoText: null, revLabel: null, action: null,
     };
   }
   if (state.kind === 'no_spec') {
@@ -586,6 +594,7 @@ export function followUpLineView(row) {
       statusLabel: state.label || 'ยังไม่มีสเปค',
       note: 'สร้างสเปคที่หน้าสินค้าก่อน จึงออกเอกสารได้',
       docNo: null,
+      docNoText: null,
       revLabel: null,
       action: state.action === 'create_spec' && line.productId
         ? { kind: 'create_spec', label: 'สร้างสเปค', href: productSpecPageHref(line.productId) }
@@ -600,6 +609,7 @@ export function followUpLineView(row) {
       statusLabel: state.statusLabel || state.label || 'ออกแล้ว',
       note: null,
       docNo: state.docNo || null,
+      docNoText: state.docNoText || (state.docNo ? formatSpecDocNo(state.docNo, null) : null),
       revLabel: state.revLabel || null,
       action: state.documentId
         ? { kind: 'open', label: 'เปิดเอกสาร', href: specDocumentHref(state.documentId) }
@@ -612,6 +622,7 @@ export function followUpLineView(row) {
     statusLabel: state.label || 'ยังไม่ออก',
     note: state.action === 'issue' ? null : 'AC เป็นผู้ออกเอกสารหลังใบสั่งขายอนุมัติแล้ว',
     docNo: null,
+    docNoText: null,
     revLabel: null,
     action: state.action === 'issue'
       ? { kind: 'issue', label: 'ออกเอกสาร', blocker: state.reason || null }

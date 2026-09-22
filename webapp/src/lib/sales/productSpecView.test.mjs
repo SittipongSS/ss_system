@@ -173,6 +173,9 @@ test('แถวเอกสาร: เลขที่ · Rev ล่าสุด 
   ]);
   assert.equal(rows[0].href, '/sales-planning/spec-documents/PSD1');
   assert.equal(rows[0].revLabel, 'Rev.01');
+  // ⭐ เลขที่รูปเดียวกับกระดาษ DDMMYY-XXX-RR ของ Rev ล่าสุด (มติ 22/09)
+  assert.equal(rows[0].docNoText, '220969-001-01');
+  assert.equal(rows[1].docNoText, '220969-002-00');
   assert.equal(rows[0].inUseRevLabel, 'Rev.00', 'กำลังแก้ Rev.01 — ฉบับที่ใช้ยังเป็น Rev.00');
   assert.equal(rows[0].statusLabel, 'รอ AE อนุมัติ');
   assert.equal(rows[0].orderHref, '/sa/sales-orders/SO1');

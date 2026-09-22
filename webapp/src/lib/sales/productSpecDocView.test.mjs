@@ -209,7 +209,9 @@ test('🔴 ทุกการกระทำมีโมดัลที่บอ
     const prompt = confirm || reason;
     assert.ok(prompt.title && prompt.description && prompt.confirmLabel, `${key}: ขาดคีย์`);
     assert.match(prompt.detail, /สิ่งที่จะเกิดขึ้นทันที/, `${key}: ต้องบอกผลลัพธ์`);
-    assert.match(prompt.description, /FM-SA-04-220969-001/, `${key}: ต้องเอ่ยเลขที่`);
+    // ⭐ เลขที่รูปเดียวกับกระดาษ DDMMYY-XXX-RR (มติ 22/09) — Rev อยู่ในเลข ไม่ใช่เลขที่ดิบในฐาน
+    assert.match(prompt.description, /220969-001-01/, `${key}: ต้องเอ่ยเลขที่ (รูปบนกระดาษ)`);
+    assert.doesNotMatch(prompt.description, /FM-SA-04-220969-001/, `${key}: ต้องไม่ใช่เลขที่ดิบ`);
     assert.ok(docActionDoneMessage(key, { dealOwner: owner }));
   }
 });
@@ -250,6 +252,10 @@ test('โมดัลเหตุผลใช้ความยาวเดี�
   assert.match(voidIt.detail, /ออกเอกสารใบใหม่ได้/);
   const orphan = docReasonPrompt('void', { document: doc, orphan: true });
   assert.match(orphan.detail, /ถูกถอด/);
+  // เอกสารค้าง (บรรทัดถูกถอด): การ์ดส่ง Rev มาด้วย ⇒ โมดัลพูดเลขเดียวกับแถว/toast (DDMMYY-XXX-RR)
+  const orphanWithRev = docReasonPrompt('void', { document: doc, latest: { revNo: 2 }, orphan: true });
+  assert.match(orphanWithRev.description, /ยกเลิก 220969-001-02 หรือไม่/);
+  assert.match(orphanWithRev.detail, /เลขที่ 220969-001 ถูกปิดถาวร/, 'ยกเลิก = เลขที่ทั้งใบ (ทุก Rev) ไม่มี RR');
   assert.equal(docReasonPrompt('submit', { document: doc }), null);
 });
 
@@ -259,6 +265,10 @@ test('ประวัติ Rev: ใหม่ก่อน · ตราประ�
     rev('draft', { id: 'R1', revNo: 1, reason: 'ลูกค้าเปลี่ยนฝา' }),
   ], { documentId: 'PSD1' });
   assert.deepEqual(rows.map((r) => r.revLabel), ['Rev.01', 'Rev.00']);
+  assert.deepEqual(rows.map((r) => r.docNoText), [null, null], 'ไม่ส่งเลขที่มา = ไม่มีเลขที่รายแถว');
+  const numbered = docRevisionRows([rev('draft', { id: 'R1', revNo: 1 }), rev('superseded', { id: 'R0', revNo: 0 })],
+    { documentId: 'PSD1', docNo: 'FM-SA-04-220969-001' });
+  assert.deepEqual(numbered.map((r) => r.docNoText), ['220969-001-01', '220969-001-00']);
   assert.equal(rows[0].reason, 'ลูกค้าเปลี่ยนฝา');
   assert.equal(rows[0].submitted, null);
   assert.equal(rows[1].supApproved, 'หัวหน้า · 01/09/2026');
@@ -292,7 +302,7 @@ test('สรุปเนื้อ: ภาพนิ่งกับสเปคส
   const frozen = docContentSummary({ source: 'snapshot', snapshot });
   assert.equal(frozen.source, 'snapshot');
   assert.equal(frozen.fields.find((f) => f.key === 'texture').value, 'เหลว');
-  assert.equal(frozen.fields.length, 8);
+  assert.equal(frozen.fields.length, 7, 'ระดับราคาตัดออก (มติ 22/09)');
   assert.equal(frozen.items[0].preparedBy, 'S&S · ลูกค้า');
   assert.equal(frozen.certifications[0].statusLabel, 'อยู่ระหว่างยื่น', 'แถว อย. ใช้คำของตัวเอง');
   assert.equal(frozen.certifications[1].statusLabel, 'ยังไม่ตอบ');
@@ -314,7 +324,8 @@ test('🔴 โมดัลออกเอกสารบอกเลขที่
     line: { fgCode: 'FG-01-0001', description: 'สเปรย์ปรับอากาศ' },
     now: new Date('2026-09-21T23:30:00Z'),
   });
-  assert.match(prompt.detail, /FM-SA-04-220969-XXX/);
+  // เลขที่ที่คนจะเห็นบนกระดาษ/จอ = DDMMYY-XXX-RR · ออกใหม่ = Rev.00
+  assert.match(prompt.detail, /220969-XXX-00/);
   assert.match(prompt.detail, /คืนไม่ได้/);
   assert.match(prompt.detail, /ย้อนกลับเองไม่ได้/);
   assert.match(prompt.description, /FG-01-0001/);
@@ -348,6 +359,9 @@ test('แถวการ์ดหน้า SO: สี่สถานะ · ป�
     },
   });
   assert.equal(issued.docNo, 'FM-SA-04-220969-001');
+  assert.equal(issued.docNoText, '220969-001', 'state เก่าที่ไม่มี docNoText = เลขที่ไม่มี Rev (ไม่เดา Rev)');
+  const withText = followUpLineView({ line, state: { kind: 'issued', documentId: 'PSD1', docNo: 'FM-SA-04-220969-001', docNoText: '220969-001-03' } });
+  assert.equal(withText.docNoText, '220969-001-03');
   assert.equal(issued.statusLabel, 'ฉบับร่าง');
   assert.equal(issued.action.href, '/sales-planning/spec-documents/PSD1');
 });

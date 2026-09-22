@@ -104,7 +104,7 @@ test('capture ไม่ล้มเมื่อ SO ไม่มีใบเส�
 });
 
 test('layout version ถูก tag ไว้สำหรับติดตาม generator', () => {
-  assert.equal(ISSUED_SALES_ORDER_LAYOUT_VERSION, 'so-master-v4.3');
+  assert.equal(ISSUED_SALES_ORDER_LAYOUT_VERSION, 'so-master-v4.4');
 });
 
 test('payload ตรึงชื่อ/ที่อยู่อังกฤษ — ค่าบนใบมาก่อน แล้วถอยไปใบเสนอราคาที่ผูก', () => {
@@ -132,4 +132,74 @@ test('payload ตรึงชื่อ/ที่อยู่อังกฤษ �
   assert.equal(old.customer.customerNameEn, null);
   assert.equal(old.customer.billingAddressEn, null);
   assert.equal(old.customer.shippingAddressEn, null);
+});
+
+/* ⭐ มติผู้ใช้ 2026-09-22 "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม" + "ปรับการแสดงชื่อตำแหน่งในใบ QT และ SO ด้วย"
+   ฉบับตรึงพิมพ์ตำแหน่งเต็มของคนที่เซ็นจริงทุกช่อง — role มาจากหลักฐานการลงนามแต่ละใบ (ยื่น · อนุมัติ · บัญชี) */
+test('capture ฝังตำแหน่งเต็มของผู้ลงนามทั้งสามช่องจาก signerRole ของหลักฐาน', async () => {
+  const sink = {};
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const asset = { storageBucket: 'sig', storagePath: 'p.png', mimeType: 'image/png' };
+  const rows = {
+    'DSE-SUBMIT': { id: 'DSE-SUBMIT', signerName: 'สมศรี ขายดี', signerRole: 'senior_ae', signedAt: '2026-07-24T03:00:00.000Z', signatureAssetSnapshot: asset },
+    'DSE-FIN': { signerRole: 'finance', signatureAssetSnapshot: asset },
+  };
+  const client = {
+    from(table) {
+      let id = null;
+      const q = {
+        select: () => q,
+        eq: (col, value) => { if (col === 'id') id = value; return q; },
+        maybeSingle: async () => ({ data: table === 'document_signature_evidence' ? rows[id] || null : null, error: null }),
+      };
+      return q;
+    },
+    storage: { from: () => ({ download: async () => ({ data: { arrayBuffer: async () => png.buffer }, error: null }) }) },
+    async rpc(name, args) { sink.args = args; return { data: {}, error: null }; },
+  };
+  await captureIssuedSalesOrderSnapshot(client, {
+    order: {
+      ...baseOrder,
+      proposerSignatureEvidenceId: 'DSE-SUBMIT',
+      financeSignatureEvidenceId: 'DSE-FIN',
+      financeApprovedByName: 'Saowalak Muangsri',
+    },
+    evidence: { ...evidence, signerRole: 'admin', signatureAssetSnapshot: asset },
+    user: { id: 'U1' },
+  });
+  const html = sink.args.p_artifact_html;
+  assert.match(html, /<h2>ฝ่ายขาย <span>Senior Account Executive<\/span><\/h2>/);
+  assert.match(html, /<h2>ผู้จัดการฝ่ายขาย <span>Administrator<\/span><\/h2>/, 'admin อนุมัติแทน ⇒ ตำแหน่งของคนที่เซ็น');
+  assert.match(html, /<h2>ฝ่ายบัญชี <span>Finance Officer<\/span><\/h2>/);
+  assert.equal((html.match(/<img class="signatureImage"/g) || []).length, 3);
+  assert.doesNotMatch(html, /AE เจ้าของดีล|<span>AE Supervisor<|<span>ผู้ตรวจสอบ</);
+});
+
+/* 🐞 ตรวจรอบสาม: อ่านหลักฐานพลาดแล้วเดินต่อเงียบ ๆ ⇒ ตรึงกระดาษที่ช่องฝ่ายขายเป็นลายเซ็นสด/ช่องบัญชีว่าง + ตำแหน่งคำกลาง
+   และ RPC idempotent ตามลายนิ้วมือ ⇒ กระดาษผิดกลายเป็นฉบับที่ออกถาวร · ต้อง throw ก่อนถึง RPC
+   (ผู้เรียกทุกจุดครอบ best-effort + log — การอนุมัติไม่ถูกย้อน) */
+test('🔴 capture: อ่านหลักฐานของผู้ยื่น/ฝ่ายบัญชีไม่ได้ = throw ไม่ตรึงกระดาษที่ขาดลายเซ็น/ตำแหน่ง', async () => {
+  for (const [failing, pattern] of [['DSE-SUBMIT', /ผู้ยื่นไม่สำเร็จ: timeout/], ['DSE-FIN', /ฝ่ายบัญชีไม่สำเร็จ: timeout/]]) {
+    const sink = {};
+    const client = {
+      from(table) {
+        let id = null;
+        const q = {
+          select: () => q,
+          eq: (col, value) => { if (col === 'id') id = value; return q; },
+          maybeSingle: async () => (table === 'document_signature_evidence' && id === failing
+            ? { data: null, error: { message: 'timeout' } }
+            : { data: null, error: null }),
+        };
+        return q;
+      },
+      async rpc(name, args) { sink.args = args; return { data: {}, error: null }; },
+    };
+    await assert.rejects(captureIssuedSalesOrderSnapshot(client, {
+      order: { ...baseOrder, proposerSignatureEvidenceId: 'DSE-SUBMIT', financeSignatureEvidenceId: 'DSE-FIN' },
+      evidence,
+      user: { id: 'U1' },
+    }), pattern);
+    assert.equal(sink.args, undefined, `${failing}: ห้ามเรียก RPC ตรึง`);
+  }
 });

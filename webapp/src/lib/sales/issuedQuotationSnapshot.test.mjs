@@ -142,6 +142,7 @@ test('capture ใช้หลักฐานการยื่นที่ตร
             ? {
               id: 'DSE-SUBMIT',
               signerName: 'ผู้ยื่นจริง',
+              signerRole: 'senior_ae',
               signedAt: '2026-07-26T04:00:00.000Z',
               signatureAssetSnapshot: { storageBucket: 'sig', storagePath: 'p.png', mimeType: 'image/png' },
             }
@@ -157,10 +158,17 @@ test('capture ใช้หลักฐานการยื่นที่ตร
   };
   await captureIssuedQuotationSnapshot(client, {
     quote: { ...baseQuote, proposerSignatureEvidenceId: 'DSE-SUBMIT' },
-    evidence,
+    // ⭐ role ของผู้อนุมัติอยู่ในหลักฐานการอนุมัติที่ใบนี้ตรึงอยู่
+    evidence: { ...evidence, signerRole: 'ae_supervisor' },
     user: { id: 'U1' },
   });
   assert.match(sink.args.p_artifact_html, /ผู้ยื่นจริง/);
+  // ⭐ มติ 2026-09-22 "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม": ผู้จัดทำ = ตำแหน่งจากหลักฐานการยื่น · ผู้อนุมัติ = จากหลักฐานการอนุมัติ
+  assert.match(sink.args.p_artifact_html, /<h2>ผู้จัดทำ <span>Senior Account Executive<\/span><\/h2>/);
+  // ⭐ มติ 2026-09-22 "ย้าย": ตำแหน่งผู้อนุมัติอยู่บรรทัดใต้ชื่อช่อง (แทน Authorized signature) · บรรทัดวันที่เหลือแค่วันที่
+  assert.match(sink.args.p_artifact_html, /<span>Account Executive Supervisor<\/span><\/h2>/);
+  assert.doesNotMatch(sink.args.p_artifact_html, /<p>Account Executive Supervisor · /);
+  assert.doesNotMatch(sink.args.p_artifact_html, /<span>พนักงานขาย<\/span>|<p>ผู้อนุมัติ · /, 'รู้ role แล้วต้องไม่ถอยไปคำกลาง');
   // เลข evidence ไม่ขึ้นกระดาษแล้ว (2026-08-27) — ตัวหลักฐานยังเก็บในตาราง evidence ครบ
   assert.doesNotMatch(sink.args.p_artifact_html, /Evidence DSE-SUBMIT/);
   assert.match(sink.args.p_artifact_html, /26\/07\/2026/);
@@ -180,7 +188,7 @@ test('capture ไม่ทับค่าที่ตรึงไว้แล้
 });
 
 test('layout version is tagged for regeneration tracking', () => {
-  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.4');
+  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.5');
 });
 
 test('payload ตรึงชื่อ/ที่อยู่อังกฤษคู่กับไทย — ว่าง = null ไม่ใช่ค่าไทยซ้ำ', () => {
@@ -301,4 +309,28 @@ test('artifact ที่ตรึงถูกอบเป็นภาษาข�
   const thai = buildIssuedQuotationArtifactHtml(baseQuote);
   assert.match(thai, /<html lang="th">/);
   assert.ok(thai.includes('ยอดรวมทั้งสิ้น'));
+});
+
+// 🐞 ตรวจรอบสาม: อ่านหลักฐานการยื่นพลาด = throw ก่อนถึง RPC — เดิมตรึงช่องผู้จัดทำเป็นลายเซ็นสด + "พนักงานขาย" ถาวร
+test('🔴 capture: อ่านหลักฐานการยื่นไม่ได้ = throw ไม่ตรึงกระดาษที่ช่องผู้จัดทำผิด', async () => {
+  const sink = {};
+  const client = {
+    from(table) {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => (table === 'document_signature_evidence'
+          ? { data: null, error: { message: 'timeout' } }
+          : { data: null, error: null }),
+      };
+      return q;
+    },
+    async rpc(name, args) { sink.args = args; return { data: {}, error: null }; },
+  };
+  await assert.rejects(captureIssuedQuotationSnapshot(client, {
+    quote: { ...baseQuote, proposerSignatureEvidenceId: 'DSE-SUBMIT' },
+    evidence,
+    user: { id: 'U1' },
+  }), /อ่านหลักฐานการลงนามของผู้ยื่นไม่สำเร็จ: timeout/);
+  assert.equal(sink.args, undefined, 'ห้ามเรียก RPC ตรึง');
 });

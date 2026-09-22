@@ -105,7 +105,7 @@ export const REFERENCE_REGISTRY = {
          **เลขที่ไหน** ค้างอยู่ แทน error ดิบของ FK
          🔴 ไม่มีทางออกโดยเจตนา — เอกสารลบไม่ได้แม้ void แล้ว ⇒ สินค้าที่เคยออกเอกสาร FM-SA-04
             ลบไม่ได้ตลอดไป (ใช้การพักใช้งานแทน) */
-      { table: 'product_spec_documents', label: 'เอกสารใบสเปคสินค้า (FM-SA-04)', sample: 'docNo' },
+      { table: 'product_spec_documents', label: 'เอกสารรายละเอียดผลิตภัณฑ์ (FM-SA-04)', sample: 'docNo' },
     ],
     ignored: {
       /* ⚠️ **ห้ามเอามาบล็อกการลบ** — เป็นสมุดประวัติ *ของตัวสินค้าเอง* ไม่ใช่ของที่อื่น

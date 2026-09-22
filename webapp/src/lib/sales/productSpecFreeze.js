@@ -20,9 +20,11 @@ import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { printPlaceholderHtml } from '@/lib/printTheme';
 import { DOC_REVISION_STATUS_LABELS, formatRevLabel } from '@/lib/sales/productSpecDocWorkflow';
 import {
-  PRODUCT_SPEC_RENDERER_VERSION, applyProductSpecWatermark, productSpecWatermark, renderProductSpecDocument,
+  PRODUCT_SPEC_RENDERER_VERSION, applyProductSpecWatermark, productSpecSignedSteps, productSpecWatermark,
+  renderProductSpecDocument,
 } from '@/lib/sales/productSpecDocument';
 import { buildDocumentSnapshot, loadSpecDocument } from '@/lib/sales/productSpecStore';
+import { loadActiveSignatureAsset, loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
 
 const STANDARD_KEY = 'productSpec';
 // Rev ที่มีกระดาษตรึง — `superseded` เคยเป็น `approved` มาก่อนเสมอ (trigger 0370 ⑧)
@@ -72,6 +74,55 @@ export async function loadSpecPrintContext(supabase, { strict = false } = {}) {
     company: company.company || resolveCompanyBlock(null),
     standard: standard.standard || null,
   };
+}
+
+/* ── ลายเซ็นของขั้นที่เซ็นแล้ว ─────────────────────────────────────────────── */
+
+/* role ในบัญชีของคนที่ประทับตรา — ตำแหน่งเต็มบนช่องลงนามมาจากตัวนี้ (admin กดแทน = Administrator)
+   ⚠️ อ่านไม่ได้ = null (ช่องพิมพ์ตำแหน่งของช่องแทน) + log · ไม่ throw — ห่อ try เพราะ auth admin เป็น
+      fetch ที่ reject ได้ (ไม่ใช่ query builder ที่คืน error เสมอ) */
+async function loadSignerRole(supabase, userId) {
+  try {
+    const res = await supabase.auth?.admin?.getUserById?.(userId);
+    if (!res) return null;
+    if (res.error) {
+      console.error('[productSpecFreeze] อ่านบัญชีผู้ลงนามไม่สำเร็จ — พิมพ์ตำแหน่งของช่องแทน', userId, res.error.message || res.error);
+      return null;
+    }
+    return res.data?.user?.app_metadata?.role || null;
+  } catch (error) {
+    console.error('[productSpecFreeze] อ่านบัญชีผู้ลงนามไม่สำเร็จ — พิมพ์ตำแหน่งของช่องแทน', userId, error?.message || error);
+    return null;
+  }
+}
+
+/**
+ * รูปลายเซ็น + role ของคนที่เซ็นแต่ละขั้นของ Rev (มติผู้ใช้ 2026-09-22 "final review ต้องปรับให้เหมือน QT และ SO")
+ *
+ * ⭐ รูป = ลายเซ็นที่ **ใช้งานอยู่** ของคนนั้น (`loadActiveSignatureAsset` ตัวเดียวกับช่องผู้จัดทำของ QT/SO)
+ *    ตอนตรึงกระดาษฝังเป็น data URI ลง `frozenHtml` ⇒ กระดาษที่อนุมัติแล้วไม่เปลี่ยนแม้เจ้าตัวเปลี่ยนลายเซ็นทีหลัง
+ * ⚠️ best effort ทุกชั้น — โหลดไม่ได้ = ช่องนั้นเป็นกล่อง "ลายเซ็นอิเล็กทรอนิกส์" + ชื่อ + วันที่ (แบบ QT/SO)
+ *    **ห้ามขวางการตรึง** (Rev อนุมัติไปแล้ว ถอยไม่ได้) แต่ทุกความล้มต้องลง log (ตัวโหลดสองตัวล็อกเอง + ตัวนี้)
+ * ⚠️ ต้องเป็น client service role — ลายเซ็นอยู่ใน bucket ส่วนตัว (`withUser` ส่งตัวนี้มาอยู่แล้ว)
+ * @returns {Promise<{ submit?: {imageDataUri, role}, ae?: {...}, sup?: {...} }>} ขั้นที่ไม่มีคนเซ็น = ไม่มีคีย์
+ */
+export async function loadProductSpecSignatures(supabase, revision) {
+  const steps = productSpecSignedSteps(revision).filter((step) => step.userId);
+  const entries = await Promise.all(steps.map(async ({ key, userId }) => {
+    try {
+      const [asset, role] = await Promise.all([
+        loadActiveSignatureAsset(supabase, userId),
+        loadSignerRole(supabase, userId),
+      ]);
+      const imageDataUri = asset ? await loadSignatureImageDataUri(supabase, asset) : null;
+      if (!asset) console.warn('[productSpecFreeze] ผู้ลงนามยังไม่มีลายเซ็นที่ใช้งานอยู่ — พิมพ์กล่องลายเซ็นอิเล็กทรอนิกส์', key, userId);
+      return [key, { imageDataUri, role }];
+    } catch (error) {
+      console.error('[productSpecFreeze] โหลดลายเซ็นไม่สำเร็จ — พิมพ์กล่องลายเซ็นอิเล็กทรอนิกส์', key, userId, error?.message || error);
+      return [key, { imageDataUri: null, role: null }];
+    }
+  }));
+  return Object.fromEntries(entries);
 }
 
 /* ── เลือกฉบับ ─────────────────────────────────────────────────────────── */
@@ -160,6 +211,8 @@ export async function freezeProductSpecRevision(supabase, {
   }
   const context = await loadSpecPrintContext(supabase, { strict: true });
   if (context.error) return { error: `ตรึงกระดาษไม่สำเร็จ — ${context.error}` };
+  // รูปลายเซ็นของสามขั้นฝังลงกระดาษที่ตรึงครั้งเดียว (best effort — โหลดไม่ได้ไม่ขวางการตรึง)
+  const signatures = await loadProductSpecSignatures(supabase, revision);
 
   const html = renderProductSpecDocument({
     snapshot: revision.snapshot,
@@ -168,6 +221,7 @@ export async function freezeProductSpecRevision(supabase, {
     watermark: null,
     company: context.company,
     standard: context.standard,
+    signatures,
   });
 
   const { data, error } = await supabase.from('product_spec_document_revisions')
@@ -197,7 +251,7 @@ async function liveSnapshot(supabase, loaded, now) {
   let line = null;
   if (document.salesOrderLineId) {
     const res = await supabase.from('sales_order_lines')
-      .select('id, salesOrderId, productId, fgCode, description, qty, unit, sortOrder')
+      .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder')
       .eq('id', document.salesOrderLineId)
       .maybeSingle();
     if (res.error) return { error: `อ่านบรรทัดใบสั่งขายไม่สำเร็จ: ${messageOf(res.error)}` };
@@ -227,8 +281,10 @@ export async function renderSpecDocumentPaper(supabase, {
 } = {}) {
   if (!loaded?.document || !revision) return { error: 'ไม่พบเอกสารหรือ Rev. ที่จะพิมพ์', status: 404 };
   const { document, revisions } = loaded;
-  const watermark = productSpecWatermark({
+  // ⭐ ลายน้ำตามภาษาของกระดาษ (ใบอังกฤษ = DRAFT/CANCELLED/SUPERSEDED BY) — ภาษาอยู่ในภาพนิ่งที่กระดาษพิมพ์จาก
+  const watermarkFor = (snapshot) => productSpecWatermark({
     document, revision, supersededByRevNo: supersedingRevNo(revisions, revision),
+    language: snapshot?.order?.docLanguage,
   });
 
   if (FROZEN_STATUSES.includes(revision.status)) {
@@ -240,7 +296,8 @@ export async function renderSpecDocumentPaper(supabase, {
     if (frozen.error) {
       return { error: `เปิดกระดาษฉบับอนุมัติไม่สำเร็จ — ${frozen.error}`, status: frozen.status };
     }
-    return { html: applyProductSpecWatermark(frozen.frozenHtml, watermark) };
+    // กระดาษที่ตรึงเรนเดอร์จากภาพนิ่งของ Rev นี้ (freezeProductSpecRevision) ⇒ ภาษาเดียวกัน
+    return { html: applyProductSpecWatermark(frozen.frozenHtml, watermarkFor(revision.snapshot)) };
   }
 
   let snapshot = SNAPSHOT_STATUSES.includes(revision.status) && isObject(revision.snapshot)
@@ -252,9 +309,13 @@ export async function renderSpecDocumentPaper(supabase, {
     snapshot = live.snapshot;
   }
   const context = await loadSpecPrintContext(supabase, { strict: false });
+  /* ขั้นที่เซ็นแล้วของ Rev ที่ยังไม่จบ (รออนุมัติ · ตีกลับ) ได้รูปลายเซ็นเหมือนฉบับอนุมัติ — กระดาษยังมีลายน้ำ
+     "ฉบับร่าง" · ร่างไม่มีตราประทับ ⇒ ไม่โหลดอะไร */
+  const signatures = await loadProductSpecSignatures(supabase, revision);
   return {
     html: renderProductSpecDocument({
-      snapshot, document, revision, watermark, company: context.company, standard: context.standard,
+      snapshot, document, revision, watermark: watermarkFor(snapshot), company: context.company, standard: context.standard,
+      signatures,
     }),
   };
 }
@@ -309,7 +370,7 @@ export function specPaperErrorResponse(req, message, status = 500) {
   const accept = req?.headers?.get?.('accept') || '';
   if (!/text\/html/i.test(accept)) return Response.json({ error: text }, { status });
   return new Response(printPlaceholderHtml({
-    title: 'เปิดเอกสารใบสเปคสินค้าไม่ได้',
+    title: 'เปิดเอกสารรายละเอียดผลิตภัณฑ์ไม่ได้',
     message: text,
     tone: 'error',
     closeButton: true,

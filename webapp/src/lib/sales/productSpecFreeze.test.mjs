@@ -13,7 +13,7 @@ import {
 import { PRODUCT_SPEC_RENDERER_VERSION } from './productSpecDocument.js';
 import { loadSpecDocument } from './productSpecStore.js';
 
-function fakeDb(seed = {}, { fail = () => null, users = {}, beforeUpdate = null } = {}) {
+function fakeDb(seed = {}, { fail = () => null, users = {}, beforeUpdate = null, files = {}, downloads = [] } = {}) {
   const tables = structuredClone(seed);
   const writes = [];
   const rowsOf = (table) => (tables[table] ||= []);
@@ -69,6 +69,18 @@ function fakeDb(seed = {}, { fail = () => null, users = {}, beforeUpdate = null 
       admin: {
         getUserById: async (id) => ({ data: { user: users[id] || null }, error: null }),
       },
+    },
+    // bucket ลายเซ็น (ส่วนตัว) — `files[path]` = ไบต์ของไฟล์ · Error = ดาวน์โหลดล้ม · ไม่มี = ไม่พบไฟล์
+    storage: {
+      from: (bucket) => ({
+        download: async (path) => {
+          downloads.push(`${bucket}/${path}`);
+          const file = files[path];
+          if (file instanceof Error) return { data: null, error: file };
+          if (!file) return { data: null, error: { message: 'Object not found' } };
+          return { data: new Blob([file]), error: null };
+        },
+      }),
     },
   };
 }
@@ -182,13 +194,104 @@ test('ตรึง Rev ที่อนุมัติแล้ว — เรน�
   const html = row.frozenHtml;
   assert.match(html, /เนื้อของRev1/, 'ต้องมาจากภาพนิ่งของ Rev');
   assert.doesNotMatch(html, /เนื้อสเปคสดวันนี้/, '🔴 กระดาษที่ตรึงต้องไม่อ่านสเปคสด');
-  assert.match(html, /Document No\.<\/dt><dd>FM-SA-04-170969-004</);
-  assert.match(html, /Reversion No\.<\/dt><dd>01</);
+  // เลขที่รูป DDMMYY-XXX-RR (มติ 22/09) · RR = Rev ของเอกสารที่ตรึง
+  assert.match(html, /<dt>เลขที่<\/dt><dd>170969-004-01<\/dd>/);
   assert.match(html, /ชลิตา เอซี[\s\S]*สิทธิพงศ์ AE[\s\S]*พัชราภิชญ์ Sup/);
   assert.match(html, /<strong>บริษัท จากหน้าตั้งค่า จำกัด<\/strong>/, 'หัวกระดาษต้องใช้ข้อมูลบริษัทที่เผยแพร่');
   assert.match(html, /FM-SA-04: Rev\. No\.01\./, 'บรรทัดแบบฟอร์มมาจากมาตรฐานที่เผยแพร่');
-  assert.match(html, /เจ้าของดีลในภาพนิ่ง/, 'Contact for Sales มาจากภาพนิ่ง ไม่ใช่เจ้าของดีลวันนี้');
+  assert.match(html, /<dt>ผู้ติดต่อฝ่ายขาย<\/dt><dd>เจ้าของดีลในภาพนิ่ง<\/dd>/, 'ผู้ติดต่อฝ่ายขายมาจากภาพนิ่ง ไม่ใช่เจ้าของดีลวันนี้');
+  // 🪤 ภาพนิ่ง v1 (ไม่มีก้อน customer / docLanguage) ยังตรึงได้ — ใบไทย ช่องที่ไม่มีเป็นขีด
+  assert.match(html, /<h1>รายละเอียดผลิตภัณฑ์<\/h1>/);
+  assert.match(html, /<dt>เลขผู้เสียภาษี<\/dt><dd>-<\/dd>/);
   assert.doesNotMatch(html, /class="watermark"/, 'ฉบับอนุมัติที่ตรึงต้องไม่มีลายน้ำ');
+});
+
+/* ── ลายเซ็นบนกระดาษ (มติผู้ใช้ 2026-09-22 "final review ต้องปรับให้เหมือน QT และ SO") ──────────────── */
+
+const SIGNERS = { submittedBy: 'U-AC', aeApprovedBy: 'U-ADMIN', supApprovedBy: 'U-SUP' };
+const signatureSeed = (over = {}) => seed({
+  product_spec_document_revisions: [rev('R1', 1, 'approved', SIGNERS)],
+  user_signatures: [
+    { userId: 'U-AC', activeVersionId: 'V-AC' },
+    { userId: 'U-ADMIN', activeVersionId: 'V-ADMIN' },
+    // U-SUP ยังไม่อัปโหลดลายเซ็น
+  ],
+  user_signature_versions: [
+    { id: 'V-AC', storageBucket: 'signature-assets', storagePath: 'users/ac.png', mimeType: 'image/png' },
+    { id: 'V-ADMIN', storageBucket: 'signature-assets', storagePath: 'users/admin.png', mimeType: 'image/png' },
+  ],
+  ...over,
+});
+const SIGNER_USERS = {
+  ...USERS,
+  'U-AC': { id: 'U-AC', app_metadata: { role: 'ac' } },
+  'U-ADMIN': { id: 'U-ADMIN', app_metadata: { role: 'admin' } },
+  'U-SUP': { id: 'U-SUP', app_metadata: { role: 'ae_supervisor' } },
+};
+const PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+const PNG_URI = `data:image/png;base64,${Buffer.from(PNG_BYTES).toString('base64')}`;
+const signatureBoxes = (html) => html.slice(html.indexOf('<section class="signatures"')).split(/<div class="(?:signed)?">/).slice(1);
+
+test('⭐ ตรึงกระดาษ = ฝังรูปลายเซ็นที่ใช้งานอยู่ของผู้ลงนามแต่ละขั้น + ตำแหน่งเต็มจาก role ในบัญชี', async () => {
+  const downloads = [];
+  const db = fakeDb(signatureSeed(), {
+    users: SIGNER_USERS, downloads, files: { 'users/ac.png': PNG_BYTES, 'users/admin.png': PNG_BYTES },
+  });
+  const res = await freezeProductSpecRevision(db, { documentId: 'PSD-1', revisionId: 'R1', now: NOW });
+  assert.equal(res.error, undefined, res.error);
+  const boxes = signatureBoxes(frozenOf(db, 'R1').frozenHtml);
+  assert.equal(boxes.length, 4);
+  // ขั้น 1–2 มีรูปจริงเป็น data URI (กระดาษที่ตรึงไม่พึ่งไฟล์ภายนอก) · ขั้น 3 ยังไม่อัปโหลด = กล่องลายเซ็นอิเล็กทรอนิกส์
+  assert.ok(boxes[0].includes(`<img class="signatureImage" src="${PNG_URI}"`));
+  assert.ok(boxes[1].includes(`<img class="signatureImage" src="${PNG_URI}"`));
+  assert.match(boxes[2], /class="signaturePreview"[\s\S]*<strong>พัชราภิชญ์ Sup<\/strong>/);
+  assert.deepEqual(boxes.map((box) => box.match(/<span>([^<]*)<\/span>/)?.[1]), [
+    'Account Coordinator', 'Administrator', 'Account Executive Supervisor', 'Customer',
+  ]);
+  assert.match(boxes[3], /class="signatureSpace">ลงชื่อ</, 'ช่องลูกค้าว่างเสมอ');
+  assert.deepEqual(downloads.sort(), ['signature-assets/users/ac.png', 'signature-assets/users/admin.png']);
+});
+
+test('🔴 โหลดรูปลายเซ็น/บัญชีผู้ลงนามไม่ได้ ไม่ขวางการตรึง — กล่องลายเซ็นอิเล็กทรอนิกส์ + ตำแหน่งของช่อง + มี log', async (t) => {
+  const logged = [];
+  t.mock.method(console, 'error', (...args) => { logged.push(args.join(' ')); });
+  t.mock.method(console, 'warn', () => {});
+  const db = fakeDb(signatureSeed(), {
+    users: {}, files: { 'users/ac.png': new Error('storage down'), 'users/admin.png': new Error('storage down') },
+  });
+  db.auth.admin.getUserById = async () => ({ data: null, error: { message: 'auth down' } });
+  const res = await freezeProductSpecRevision(db, { documentId: 'PSD-1', revisionId: 'R1', now: NOW });
+  assert.equal(res.error, undefined, res.error);
+  const boxes = signatureBoxes(frozenOf(db, 'R1').frozenHtml);
+  assert.doesNotMatch(frozenOf(db, 'R1').frozenHtml, /<img class="signatureImage"/);
+  boxes.slice(0, 3).forEach((box) => assert.match(box, /class="signaturePreview"/));
+  assert.deepEqual(boxes.map((box) => box.match(/<span>([^<]*)<\/span>/)?.[1]).slice(0, 3), [
+    'Account Coordinator', 'Account Executive', 'Account Executive Supervisor',
+  ]);
+  assert.ok(logged.some((line) => /storage down/.test(line)), 'ดาวน์โหลดรูปล้มต้องลง log');
+  assert.ok(logged.some((line) => /auth down/.test(line)), 'อ่านบัญชีผู้ลงนามล้มต้องลง log');
+});
+
+test('Rev ที่รออนุมัติ (พิมพ์จากภาพนิ่ง) มีรูปของขั้นที่เซ็นแล้ว · ร่างไม่โหลดลายเซ็นเลย', async () => {
+  const downloads = [];
+  const pending = fakeDb(signatureSeed({
+    product_spec_document_revisions: [rev('R1', 1, 'pending_ae_supervisor', { ...SIGNERS, supApprovedBy: null })],
+  }), { users: SIGNER_USERS, downloads, files: { 'users/ac.png': PNG_BYTES, 'users/admin.png': PNG_BYTES } });
+  const res = await paper(pending, null);
+  assert.equal(res.error, undefined, res.error);
+  assert.match(res.html, /class="watermark">ฉบับร่าง</);
+  const boxes = signatureBoxes(res.html);
+  assert.deepEqual(boxes.map((box) => box.includes('<img class="signatureImage"')), [true, true, false, false]);
+  assert.match(boxes[2], /class="signatureSpace">ลงชื่อ</, 'ขั้นที่ยังไม่ถึง = ช่องเซ็นมือ');
+
+  const draftDownloads = [];
+  const draft = fakeDb(signatureSeed({ product_spec_document_revisions: [rev('R0', 0, 'draft')] }), {
+    users: SIGNER_USERS, downloads: draftDownloads, files: { 'users/ac.png': PNG_BYTES },
+  });
+  const draftPaper = await paper(draft, null);
+  assert.equal(draftPaper.error, undefined, draftPaper.error);
+  assert.equal(draftDownloads.length, 0);
+  assert.equal((draftPaper.html.match(/class="signatureSpace"/g) || []).length, 4);
 });
 
 test('ตรึงซ้ำ = คืนของเดิม ไม่เขียนทับ (frozenHtml เขียนได้ครั้งเดียว)', async () => {
@@ -343,6 +446,27 @@ test('🔴 เอกสาร void = "ยกเลิก" บนทุก Rev �
   }
 });
 
+test('⭐ ใบอังกฤษ = ลายน้ำอังกฤษ (DRAFT · SUPERSEDED BY · CANCELLED) ตามภาษาในภาพนิ่งของกระดาษ', async () => {
+  // 🐞 ผลตรวจรอบสอง: ใบอังกฤษยังประทับ "ฉบับร่าง"/"ถูกแทนด้วย Rev.02" ทั้งที่ QT/SO อังกฤษพิมพ์ DRAFT/CANCELLED
+  const english = (id, revNo, status, over = {}) => {
+    const row = rev(id, revNo, status, over);
+    return { ...row, snapshot: { ...row.snapshot, order: { ...row.snapshot.order, docLanguage: 'en' } } };
+  };
+  const base = seed({
+    product_spec_document_revisions: [
+      english('R0', 0, 'superseded', { frozenHtml: '<html>Rev0<article class="sheet explicit-page" aria-label="x"><!--psd:watermark--><!--/psd:watermark-->R0</article></html>' }),
+      english('R1', 1, 'approved'),
+      english('R2', 2, 'pending_ae'),
+    ],
+  });
+  let db = fakeDb(base, { users: USERS });
+  assert.match((await paper(db, '0')).html, /class="watermark">SUPERSEDED BY Rev\.01</);
+  assert.match((await paper(db, '2')).html, /class="watermark">DRAFT</);
+  base.product_spec_documents[0].status = 'void';
+  db = fakeDb(base, { users: USERS });
+  assert.match((await paper(db, '1')).html, /class="watermark">CANCELLED</);
+});
+
 test('รออนุมัติ/ตีกลับ = ภาพนิ่งของ Rev นั้น (ไม่ใช่สเปคสด) + "ฉบับร่าง" · ไม่ตรึงอะไร', async () => {
   for (const status of ['pending_ae', 'pending_ae_supervisor', 'rejected']) {
     const db = fakeDb(seed({
@@ -365,14 +489,44 @@ test('ร่าง = สเปค + SO ปัจจุบัน (สด) + เ�
   assert.match(html, /เนื้อสเปคสดวันนี้/);
   assert.match(html, /checklist สดวันนี้/);
   assert.match(html, /2,500 ขวด/, 'จำนวนมาจากบรรทัด SO ปัจจุบัน');
-  assert.match(html, /QT-26090271-1 \/ SO-26090176-1/);
+  // ใบเสนอราคากับใบสั่งขายคนละแถว (มติ 22/09 "แยกข้อ")
+  assert.match(html, /<dt>ใบเสนอราคา<\/dt><dd>QT-26090271-1<\/dd>/);
+  assert.match(html, /<dt>ใบสั่งขาย<\/dt><dd>SO-26090176-1<\/dd>/);
   assert.match(html, /15\/11\/2569/, 'กำหนดส่งเป็น พ.ศ.');
-  assert.match(html, /สิทธิพงศ์ เจ้าของดีล[\s\S]*owner@example\.com[\s\S]*0613879399/);
-  assert.match(html, /Reversion No\.<\/dt><dd>02</);
+  assert.match(html, /สิทธิพงศ์ เจ้าของดีล[\s\S]*061-387-9399[\s\S]*owner@example\.com/);
+  assert.match(html, /<dt>เลขที่<\/dt><dd>170969-004-02<\/dd>/);
   assert.match(html, /class="watermark">ฉบับร่าง</);
-  const sigs = html.slice(html.indexOf('class="sigs"'));
-  assert.doesNotMatch(sigs, /ชลิตา|พัชราภิชญ์/);
+  /* ลายเซ็นว่างทั้งแถว: สี่ช่องเป็นช่องเซ็นมือ ไม่มีรูป/กล่องลายเซ็นอิเล็กทรอนิกส์ ไม่มีชื่อ — ไม่เดาชื่อเจ้าของดีลด้วย
+     🐞 ตรวจรอบสาม: ข้อนี้เคยหั่นจาก `class="sigs"` ที่ถอดไปแล้ว (indexOf = -1 ⇒ ได้ตัวอักษรสุดท้ายของไฟล์) ⇒ ผ่านเสมอ */
+  const boxes = signatureBoxes(html);
+  assert.equal(boxes.length, 4);
+  for (const box of boxes) {
+    assert.match(box, /class="signatureSpace">ลงชื่อ</);
+    assert.doesNotMatch(box, /<img class="signatureImage"|class="signaturePreview"|ชลิตา|พัชราภิชญ์|สิทธิพงศ์/);
+  }
   assert.equal(revWrites(db).length, 0);
+});
+
+test('⭐ ร่าง = ภาษาของ SO ปัจจุบัน + กล่องผู้ซื้อจากใบเสนอราคาที่ผูก (สด) — SO อังกฤษได้ PRODUCT SPEC', async () => {
+  const base = seed({
+    quotations: [{
+      id: 'QT-ID', quoteNumber: 'QT-26090271-1', customerNameEn: 'CURRENT CUSTOMER CO., LTD.', customerTaxId: '0105561234567',
+      branchCode: '00003', billingAddress: 'ที่อยู่ไทย', billingAddressEn: 'Current billing EN', shippingAddress: null,
+      shippingAddressEn: null, contactName: 'คุณเบลล์', contactPhone: '0844326199',
+    }],
+  });
+  base.sales_orders[0] = { ...base.sales_orders[0], quotationId: 'QT-ID', docLanguage: 'en' };
+  const db = fakeDb(base, { users: USERS });
+  const res = await paper(db, '2');
+  assert.equal(res.error, undefined, res.error);
+  const { html } = res;
+  assert.match(html, /<h1>PRODUCT SPEC<\/h1>/);
+  assert.match(html, /<strong>CURRENT CUSTOMER CO\., LTD\.<\/strong>/);
+  assert.match(html, /<dt>Tax ID<\/dt><dd>0105561234567<\/dd>/);
+  assert.match(html, /<dt>Branch<\/dt><dd>00003<\/dd>/);
+  assert.match(html, /<dt>Shipping Address<\/dt><dd>Current billing EN<\/dd>/, 'ไม่มีที่อยู่จัดส่ง = ตามที่อยู่เอกสาร');
+  assert.match(html, /<dt>Contact<\/dt><dd>คุณเบลล์ · 084-432-6199<\/dd>/);
+  assert.match(html, /15\/11\/2026/, 'ใบอังกฤษ = ค.ศ.');
 });
 
 test('🪤 ร่างที่บรรทัดชี้ไปบรรทัดของ SO อื่น = พิมพ์แบบไม่มีบรรทัด ไม่ยืมจำนวนของใบอื่น', async () => {
@@ -414,14 +568,14 @@ test('ร่าง/ตัวอย่าง: อ่านบริษัทไ�
 
 /* ── ตัวอย่างจากหน้าสินค้า ───────────────────────────────────────────────── */
 
-test('ตัวอย่าง = สเปคสด · ลายน้ำ "ตัวอย่าง" · Document No./Reversion No. เป็นขีด · บริษัทจากตั้งค่า', async () => {
+test('ตัวอย่าง = สเปคสด · ลายน้ำ "ตัวอย่าง" · เลขที่เป็นขีด · ใบไทย · บริษัทจากตั้งค่า', async () => {
   const db = fakeDb(seed(), { users: USERS });
   const res = await renderProductSpecSample(db, { productId: 'P-1', now: NOW });
   assert.equal(res.error, undefined, res.error);
   const { html } = res;
   assert.match(html, /class="watermark">ตัวอย่าง</);
-  assert.match(html, /Document No\.<\/dt><dd>-</);
-  assert.match(html, /Reversion No\.<\/dt><dd>-</);
+  assert.match(html, /<dt>เลขที่<\/dt><dd>-<\/dd>/);
+  assert.match(html, /<h1>รายละเอียดผลิตภัณฑ์<\/h1>/, 'ไม่มี SO = ใบไทย');
   assert.match(html, /เนื้อสเปคสดวันนี้/);
   assert.match(html, /<strong>บริษัท จากหน้าตั้งค่า จำกัด<\/strong>/);
   assert.match(html, /22\/09\/2569/, 'วันที่จัดทำ = วันนี้ (พ.ศ.)');

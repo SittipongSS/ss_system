@@ -30,6 +30,7 @@ import {
   transitionRevision, voidDocument,
 } from '@/lib/sales/productSpecStore';
 import { freezeProductSpecRevision } from '@/lib/sales/productSpecFreeze';
+import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
 
 export const dynamic = 'force-dynamic';
 
@@ -149,7 +150,9 @@ function hiddenActionResponse(action, { document, latest, user, dealOwnerId }) {
       (`notifyUsers` กลืน error เองแล้ว · ไล่รายชื่อ ae_supervisor ต้องอ่านบัญชีทั้งระบบ
       จึงไม่ควรให้คนกดรอ) */
 function describe({ document, revision, product, salesOrder }) {
-  const head = `${document.docNo} ${formatRevLabel(revision?.revNo)}`;
+  /* ⭐ เลขที่ในหัวแจ้งเตือน = รูปเดียวกับกระดาษ `DDMMYY-XXX-RR` (มติ 22/09) — Rev อยู่ในเลขแล้ว
+     ชื่อชนิด "(FM-SA-04)" อยู่ที่ป้ายของแถวแจ้งเตือน (ENTITY_LABEL) ไม่ต้องซ้ำในหัว */
+  const head = formatSpecDocNo(document.docNo, revision?.revNo);
   const body = [
     [product?.fgCode, product?.productDescription].filter(Boolean).join(' '),
     salesOrder?.orderNumber ? `ใบสั่งขาย ${salesOrder.orderNumber}` : null,
@@ -172,20 +175,20 @@ async function recipientsFor(supabase, action, { latest, dealOwner }) {
 
 function noticeText(action, { head, body, reason }) {
   if (action === 'submit') {
-    return { kind: 'product_spec_doc_submit', title: `รอ AE อนุมัติใบสเปคสินค้า · ${head}`, body };
+    return { kind: 'product_spec_doc_submit', title: `รอ AE อนุมัติรายละเอียดผลิตภัณฑ์ · ${head}`, body };
   }
   if (action === 'ae_approve') {
-    return { kind: 'product_spec_doc_ae_approve', title: `รอ AE Supervisor อนุมัติใบสเปคสินค้า · ${head}`, body };
+    return { kind: 'product_spec_doc_ae_approve', title: `รอ AE Supervisor อนุมัติรายละเอียดผลิตภัณฑ์ · ${head}`, body };
   }
   if (action === 'reject') {
     return {
       kind: 'product_spec_doc_reject',
-      title: `ใบสเปคสินค้าถูกตีกลับ · ${head}`,
+      title: `รายละเอียดผลิตภัณฑ์ถูกตีกลับ · ${head}`,
       body: [String(reason || '').trim().slice(0, 300), body].filter(Boolean).join(' — ') || null,
     };
   }
   if (action === 'sup_approve') {
-    return { kind: 'product_spec_doc_approve', title: `ใบสเปคสินค้าอนุมัติแล้ว · ${head}`, body };
+    return { kind: 'product_spec_doc_approve', title: `รายละเอียดผลิตภัณฑ์อนุมัติแล้ว · ${head}`, body };
   }
   return null;
 }
@@ -217,11 +220,12 @@ function notifyLater(supabase, action, context) {
   }
 }
 
-/* บรรทัด SO ที่เอกสารอ้าง — ใช้ถ่ายภาพนิ่งตอนยื่น (จำนวน · หน่วย · คำบรรยาย)
+/* บรรทัด SO ที่เอกสารอ้าง — ใช้ถ่ายภาพนิ่งตอนยื่น (จำนวน · หน่วย · คำบรรยาย · บรรทัดใบเสนอราคาต้นทาง
+   ที่เป็นค่าสำรองของ "จำนวนผลิต")
    ⚠️ ต้องเป็นบรรทัดของ SO เดียวกับเอกสาร — เช็คเอง ไม่เชื่อ id ลอย ๆ */
 async function loadDocumentLine(supabase, document) {
   const { data, error } = await supabase.from('sales_order_lines')
-    .select('id, salesOrderId, productId, fgCode, description, qty, unit, sortOrder')
+    .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder')
     .eq('id', document.salesOrderLineId)
     .maybeSingle();
   if (error) return { error: `อ่านบรรทัดใบสั่งขายไม่สำเร็จ: ${error.message}` };

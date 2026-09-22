@@ -14,10 +14,17 @@ import {
   PRODUCT_SPEC_CERTIFICATIONS, PRODUCT_SPEC_CERT_STATUSES, productSpecChecklistLabel,
 } from '@/lib/sales/productSpecChecklist';
 
-/** ช่องเนื้อสเปค — ลำดับเดียวกับกระดาษ · คอลัมน์ของ product_specs (0370) */
+/** ช่องเนื้อสเปค — ลำดับเดียวกับกระดาษ · คอลัมน์ของ product_specs (0370)
+ *
+ * ⭐ **"ระดับราคา" (`pricingTier`) ถูกตัดออก** (มติผู้ใช้ 2026-09-22 "ตัดระดับราคาออก") — ช่องบนจอ
+ *   ชวนให้พิมพ์ราคาทุน/ราคาขาย (ของจริง 3 ใบ: "ราคาต้นทุน 200 บาท/ขวด" · "ราคาขายลูกค้า 3,500 บาท")
+ *   ลงกระดาษที่ส่งให้ลูกค้าเซ็น
+ * ⚠️ **คอลัมน์ `product_specs.pricingTier` ยังอยู่และค่าที่เคยพิมพ์ไว้ยังอยู่** — ไม่อยู่ในลิสต์นี้ =
+ *   จอไม่แสดง · บันทึกไม่แตะ · ภาพนิ่งไม่ถ่าย · กระดาษไม่พิมพ์ (ลิสต์นี้คือตัวเดียวที่ทุกทางอ่าน)
+ *   ⇒ อย่าใส่กลับโดยไม่ถามเจ้าของ */
 export const SPEC_CONTENT_FIELDS = Object.freeze([
   'texture', 'standardPackaging',
-  'targetGroup', 'keySellingPoint', 'pricingTier',
+  'targetGroup', 'keySellingPoint',
   'productBenefit', 'longevity', 'dosagePerUse',
 ]);
 
@@ -28,7 +35,6 @@ export const SPEC_CONTENT_LIMITS = Object.freeze({
   standardPackaging: 500,
   targetGroup: 500,
   keySellingPoint: 500,
-  pricingTier: 500,
   productBenefit: 500,
   longevity: 200,
   dosagePerUse: 200,
@@ -39,7 +45,6 @@ export const SPEC_CONTENT_LABELS = Object.freeze({
   standardPackaging: 'บรรจุภัณฑ์มาตรฐาน',
   targetGroup: 'กลุ่มเป้าหมาย',
   keySellingPoint: 'จุดขายหลัก',
-  pricingTier: 'ระดับราคา',
   productBenefit: 'ประสิทธิภาพหลัก',
   longevity: 'ระยะเวลาการออกฤทธิ์กลิ่น',
   dosagePerUse: 'ปริมาณแนะนำต่อการใช้งาน',

@@ -17,6 +17,7 @@
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { SALES_ORDER_STATUS_LABELS } from '@/lib/sales/salesOrderWorkflow';
 import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
+import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
 
 export const DOC_REVISION_STATUSES = Object.freeze([
   'draft', 'pending_ae', 'pending_ae_supervisor', 'approved', 'rejected', 'superseded',
@@ -338,13 +339,13 @@ export function docRevisionSteps(rev) {
  *    หน้าสเปค/หน้าเอกสาร · 🐞 เดิมการ์ดทาเขียวทุกใบที่ "ออกแล้ว" จนใบที่ถูกตีกลับดูเหมือนเสร็จ
  * @returns {{ kind: 'out_of_scope'|'no_spec'|'not_issued'|'issued', label: string, reason: string|null,
  *   action: null|'create_spec'|'issue'|'open', documentId: string|null, docNo: string|null,
- *   revLabel: string|null, statusLabel: string|null, revStatus: string|null }}
+ *   docNoText: string|null, revLabel: string|null, statusLabel: string|null, revStatus: string|null }}
  */
 export function lineDocumentState({
   line, spec, document, latest, salesOrder, user, scopeReason,
 } = {}) {
   const base = {
-    reason: null, action: null, documentId: null, docNo: null, revLabel: null, statusLabel: null, revStatus: null,
+    reason: null, action: null, documentId: null, docNo: null, docNoText: null, revLabel: null, statusLabel: null, revStatus: null,
   };
   if (scopeReason) {
     return { ...base, kind: 'out_of_scope', label: 'ไม่ต้องใช้', reason: scopeReason };
@@ -358,6 +359,8 @@ export function lineDocumentState({
       action: 'open',
       documentId: live.id || null,
       docNo: live.docNo || null,
+      // ⭐ เลขที่ที่คนอ่าน DDMMYY-XXX-RR (มติ 22/09) — ตัวเดียวกับกระดาษ (`formatSpecDocNo`)
+      docNoText: live.docNo ? formatSpecDocNo(live.docNo, latest?.revNo) : null,
       revLabel: latest ? formatRevLabel(latest.revNo) : null,
       statusLabel: latest ? (DOC_REVISION_STATUS_LABELS[latest.status] || latest.status) : null,
       revStatus: latest?.status || null,

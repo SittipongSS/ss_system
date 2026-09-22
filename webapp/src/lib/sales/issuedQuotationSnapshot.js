@@ -30,7 +30,9 @@ import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh }
 //        ที่ตรึงเป็นภาษาที่ใบเลือกไว้ ณ เวลาอนุมัติ และ locale บันทึกภาษานั้นจริง ๆ
 // v4.4 = ชื่อ/ที่อยู่ลูกค้าภาษาอังกฤษเข้า payload — payload เปลี่ยนรูป ⇒ capture ใบเดิม
 //        ครั้งถัดไปต้องได้ฉบับใหม่ ไม่ reuse ฉบับที่ยังไม่มีช่องอังกฤษ
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.4';
+// v4.5 = ช่องลงนามพิมพ์ตำแหน่งเต็มของคนที่เซ็นจริง (signerRole ของหลักฐานการยื่น/การอนุมัติ · มติ 2026-09-22)
+//        แทน "พนักงานขาย" / "ผู้อนุมัติ" — payload ไม่เปลี่ยน เปลี่ยนแค่ artifact ⇒ ใบที่ตรึงแล้วคงเดิม
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.5';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 /* ── docLanguage กับฉบับตรึง: ตัดสินแล้ว (2026-08-12) ────────────────────────
@@ -161,8 +163,10 @@ export function buildIssuedQuotationArtifactHtml(quote = {}, options = {}) {
       accentKey: resolveDocumentAccentKey(options.standard, 'quotation'),
       documentTitleTh: resolveDocumentTitleTh(options.standard, 'quotation'),
       approverSignatureImage: options.approverSignatureImage || null,
+      // role ของผู้อนุมัติจากหลักฐานการอนุมัติ ⇒ ตำแหน่งเต็มในช่องผู้อนุมัติ (มติ 2026-09-22)
+      approverRole: options.approverRole || null,
       proposerSignatureImage: options.proposerSignatureImage || null,
-      // มีหลักฐานการยื่น (mig 0155) → ฝังวันที่ลงนาม + Evidence id ของผู้เสนอราคาลงในใบตรึง
+      // มีหลักฐานการยื่น (mig 0155) → ฝังวันที่ลงนาม + Evidence id + ตำแหน่งของผู้เสนอราคาลงในใบตรึง
       proposerEvidence: options.proposerEvidence || null,
     },
   );
@@ -196,14 +200,23 @@ export async function loadActiveSignatureAsset(supabase, userId) {
 // (มี storageBucket/storagePath/mimeType). ล้มเหลว/ไม่มี → null (ใบยังออกได้ ไม่บล็อก)
 export async function loadSignatureImageDataUri(supabase, asset) {
   if (!asset || !asset.storageBucket || !asset.storagePath) return null;
+  /* ⚠️ ล้ม = คืน null (ใบยังออกได้) แต่ **ต้องมีร่องรอย** — ช่องลงนามที่ควรมีรูปกลายเป็นกล่อง
+     "ลายเซ็นอิเล็กทรอนิกส์" เงียบ ๆ บนกระดาษที่ตรึงแล้วแก้ไม่ได้ (FM-SA-04 ตรึงตอนอนุมัติ · QT/SO ก็เช่นกัน) */
   try {
     const { data, error } = await supabase.storage.from(asset.storageBucket).download(asset.storagePath);
-    if (error || !data) return null;
+    if (error || !data) {
+      console.error('[signature] โหลดไฟล์รูปลายเซ็นไม่สำเร็จ:', asset.storagePath, error?.message || 'ไม่มีไฟล์');
+      return null;
+    }
     const buffer = Buffer.from(await data.arrayBuffer());
-    if (!buffer.length) return null;
+    if (!buffer.length) {
+      console.error('[signature] ไฟล์รูปลายเซ็นว่าง:', asset.storagePath);
+      return null;
+    }
     const mime = asset.mimeType || 'image/png';
     return `data:${mime};base64,${buffer.toString('base64')}`;
-  } catch {
+  } catch (error) {
+    console.error('[signature] โหลดไฟล์รูปลายเซ็นไม่สำเร็จ:', asset.storagePath, error?.message || error);
     return null;
   }
 }
@@ -262,11 +275,14 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
   let proposerAsset = null;
   let proposerEvidence = null;
   if (filledQuote.proposerSignatureEvidenceId) {
-    const { data: ev } = await supabase
+    const { data: ev, error: evError } = await supabase
       .from('document_signature_evidence')
-      .select('id, signerName, signedAt, signatureAssetSnapshot')
+      .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
       .eq('id', filledQuote.proposerSignatureEvidenceId)
       .maybeSingle();
+    /* 🐞 (ตรวจรอบสาม) อ่านพลาดต้อง throw — เดิมเดินต่อด้วย `ev = null` ⇒ ช่องผู้จัดทำตกเป็นลายเซ็นสด + "พนักงานขาย"
+       ไม่มีวันที่ แล้ว RPC idempotent ตรึงกระดาษผิดนั้นถาวร · ผู้เรียกทุกจุดครอบ best-effort + log ไว้แล้ว */
+    if (evError) throw new Error(`อ่านหลักฐานการลงนามของผู้ยื่นไม่สำเร็จ: ${evError.message}`);
     if (ev?.signatureAssetSnapshot) {
       proposerAsset = ev.signatureAssetSnapshot;
       proposerEvidence = ev;
@@ -287,6 +303,7 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
     company,
     standard: evidence?.controlledFormSnapshot || null,
     approverSignatureImage,
+    approverRole: evidence?.signerRole || null,
     proposerSignatureImage,
     proposerEvidence,
   });

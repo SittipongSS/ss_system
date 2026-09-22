@@ -47,11 +47,12 @@ export const DOCUMENT_FORMS = Object.freeze({
     title: 'PROJECT TIMELINE',
   }),
   // ใบสเปคสินค้า FM-SA-04 (mig 0364) — ค่าสำรองตรงกับกระดาษ Rev.00 08/05/2568
+  // ⭐ `title` = ชื่อบนหัวของ **ใบภาษาอังกฤษ** (มติผู้ใช้ 2026-09-22) · ใบไทยใช้ DOCUMENT_STANDARD_LABELS.productSpec
   productSpec: Object.freeze({
     code: 'FM-SA-04',
     revision: '00',
     effectiveDate: '08/05/2568',
-    title: 'PRODUCT SPECIFICATION SHEET',
+    title: 'PRODUCT SPEC',
   }),
   // ⭐ แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ — ค่าจากกระดาษจริงที่ผู้ใช้ส่งมา (Rev.02 · 06/02/2569)
   pdr: Object.freeze({

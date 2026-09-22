@@ -22,7 +22,9 @@ import {
 // v4.2 = ช่องผู้จัดทำเป็น evidence-backed (วันที่ลงนาม + Evidence id ฝังในใบตรึง, mig 0153)
 // v4.3 = ชื่อ/ที่อยู่ลูกค้าภาษาอังกฤษเข้า payload — payload เปลี่ยนรูป ⇒ capture ใบเดิม
 //        ครั้งถัดไปต้องได้ฉบับใหม่ ไม่ reuse ฉบับที่ยังไม่มีช่องอังกฤษ
-export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.3';
+// v4.4 = ช่องลงนามพิมพ์ตำแหน่งเต็มของคนที่เซ็นจริง (signerRole ของหลักฐาน · มติ 2026-09-22) แทนคำย่อ
+//        "AE เจ้าของดีล" / "AE Supervisor" — payload ไม่เปลี่ยน เปลี่ยนแค่ artifact ⇒ ใบที่ตรึงแล้วคงเดิม
+export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.4';
 export const ISSUED_SALES_ORDER_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {
@@ -120,10 +122,13 @@ export function buildIssuedSalesOrderArtifactHtml(order = {}, options = {}) {
   return buildSalesOrderPrintHTML({
     ...order,
     status: 'approved',
+    /* `signerRole` = role ของคนที่เซ็นจริงจากหลักฐาน — ตัวพิมพ์แปลงเป็นตำแหน่งเต็มใต้ชื่อหน่วยงาน
+       (มติผู้ใช้ 2026-09-22 "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม") · ไม่มี = ตำแหน่งของช่อง */
     approverSignature: options.approverSignatureImage
       ? {
         imageDataUri: options.approverSignatureImage,
         signerName: order.approvedByName || '',
+        signerRole: options.approverRole || '',
         signedAt: order.approvedAt || null,
         evidenceId: order.signatureEvidenceId || '',
       }
@@ -133,6 +138,7 @@ export function buildIssuedSalesOrderArtifactHtml(order = {}, options = {}) {
       ? {
         imageDataUri: options.financeSignatureImage,
         signerName: order.financeApprovedByName || '',
+        signerRole: options.financeRole || '',
         signedAt: order.financeApprovedAt || null,
         evidenceId: order.financeSignatureEvidenceId || '',
       }
@@ -142,6 +148,7 @@ export function buildIssuedSalesOrderArtifactHtml(order = {}, options = {}) {
       ? {
         imageDataUri: options.proposerSignatureImage,
         signerName: options.proposerEvidence?.signerName || order.createdByName || '',
+        signerRole: options.proposerEvidence?.signerRole || '',
         signedAt: options.proposerEvidence?.signedAt || null,
         evidenceId: options.proposerEvidence?.id || '',
       }
@@ -175,14 +182,19 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order: rawOrde
   // ผู้จัดทำ = รูปจาก evidence ที่ตรึงตอน "ยื่น" (mig 0153) ถ้ามี — ตรึงเวอร์ชันลายเซ็นจริง
   //           ทำให้ reprint คงรูปเดิมแม้เจ้าตัวเปลี่ยนลายเซ็นภายหลัง; ใบเก่าที่ยื่นก่อนมี
   //           หลักฐานผู้จัดทำ fallback เป็นลายเซ็น active เดิม (stamp เชิงภาพ ไม่มีวันที่)
+  /* 🐞 (ตรวจรอบสาม) อ่านหลักฐานพลาดต้อง **throw** ไม่ใช่เดินต่อเงียบ ๆ — supabase ไม่ throw เอง ⇒ เดิมได้ `ev = null`
+     แล้วตรึงกระดาษที่ช่องฝ่ายขายเป็นลายเซ็นสด/ช่องบัญชีว่าง + ตำแหน่งคำกลาง และ RPC ตรึงแบบ idempotent ตามลายนิ้วมือเนื้อหา
+     ⇒ กระดาษผิดนั้นกลายเป็นฉบับที่ออกถาวร · throw แล้วผู้เรียกทุกจุดครอบ best-effort + log ไว้ (อนุมัติไม่ถูกย้อน)
+     และการอนุมัติ/เปลี่ยนภาษาครั้งถัดไปตรึงใหม่ได้ */
   let proposerAsset = null;
   let proposerEvidence = null;
   if (order.proposerSignatureEvidenceId) {
-    const { data: ev } = await supabase
+    const { data: ev, error: evError } = await supabase
       .from('document_signature_evidence')
-      .select('id, signerName, signedAt, signatureAssetSnapshot')
+      .select('id, signerName, signerRole, signedAt, signatureAssetSnapshot')
       .eq('id', order.proposerSignatureEvidenceId)
       .maybeSingle();
+    if (evError) throw new Error(`อ่านหลักฐานการลงนามของผู้ยื่นไม่สำเร็จ: ${evError.message}`);
     if (ev?.signatureAssetSnapshot) {
       proposerAsset = ev.signatureAssetSnapshot;
       proposerEvidence = ev;
@@ -193,13 +205,16 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order: rawOrde
      ⚠️ อ่านจาก evidence เท่านั้น ไม่ fallback ไปลายเซ็น active — ช่องนี้เป็นการรับรอง
      ต้องมีหลักฐานคู่เสมอ ต่างจากช่องผู้จัดทำที่ใบเก่ายอมให้ stamp เชิงภาพได้ */
   let financeAsset = null;
+  let financeRole = null;
   if (order.financeSignatureEvidenceId) {
-    const { data: fev } = await supabase
+    const { data: fev, error: fevError } = await supabase
       .from('document_signature_evidence')
-      .select('signatureAssetSnapshot')
+      .select('signerRole, signatureAssetSnapshot')
       .eq('id', order.financeSignatureEvidenceId)
       .maybeSingle();
+    if (fevError) throw new Error(`อ่านหลักฐานการลงนามของฝ่ายบัญชีไม่สำเร็จ: ${fevError.message}`);
     financeAsset = fev?.signatureAssetSnapshot || null;
+    financeRole = fev?.signerRole || null;
   }
   const [approverSignatureImage, proposerSignatureImage, financeSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
@@ -211,7 +226,9 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order: rawOrde
   const standard = evidence?.controlledFormSnapshot || null;
   const html = buildIssuedSalesOrderArtifactHtml(order, {
     company, standard, approverSignatureImage, proposerSignatureImage, proposerEvidence,
-    financeSignatureImage,
+    financeSignatureImage, financeRole,
+    // ตำแหน่งของผู้อนุมัติ = role ในหลักฐานการอนุมัติที่ใบนี้ตรึงอยู่
+    approverRole: evidence?.signerRole || null,
   });
   const { data, error } = await supabase.rpc('capture_issued_sales_order_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),

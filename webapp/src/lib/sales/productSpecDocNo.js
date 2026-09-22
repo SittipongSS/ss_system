@@ -30,6 +30,31 @@ export function productSpecDocNoParts(now = new Date()) {
   };
 }
 
+/**
+ * เลขที่ที่ **คนอ่าน** — `DDMMYY-XXX-RR` (มติผู้ใช้ 2026-09-22 "Doc No. ใช้ form DDMMYY-XXX-RR")
+ * เช่น `FM-SA-04-220969-001` + Rev 0 ⇒ `220969-001-00`
+ *
+ * ⭐ ใช้ทั้งบนกระดาษ (ช่อง "เลขที่" ของหัวเอกสาร · ท้ายกระดาษ) และบนจอทุกที่ที่เลขที่โชว์คู่กับ Rev
+ *    (การ์ดบนหน้า SO · หน้าเอกสาร · รายการเอกสารบนหน้าสเปค · หัวแจ้งเตือน) — ที่เดียวที่ประกอบรูปนี้
+ *    ห้ามต่อสตริงเองที่ปลายทาง ไม่งั้นกระดาษกับจอพิมพ์เลขใบเดียวกันคนละหน้าตา
+ * ⚠️ **เลขที่ในฐาน (`product_spec_documents.docNo`) ไม่เปลี่ยน** — ยังเป็น `FM-SA-04-DDMMYY-XXX`
+ *    ที่ตัวนับ/UNIQUE/ตัวค้นเลขอ้างอิง (docRefs `FM`) ใช้อยู่ · ที่นี่แค่ตัดรหัสแบบฟอร์มออก (บรรทัด
+ *    แบบฟอร์ม `FM-SA-04: Rev. No.00` บนหัวกระดาษบอกอยู่แล้วว่าใบอะไร) แล้วต่อ Rev ของเอกสาร 2 หลัก
+ * ⚠️ RR = Rev ของ **เอกสาร** ไม่ใช่เวอร์ชันแบบฟอร์ม — Rev ใหม่เลขที่เดิม ⇒ ส่วนหน้าเท่าเดิม RR ขยับ
+ * @param docNo เลขที่ในฐาน · ว่าง = `'-'` (ตัวอย่างจากหน้าสินค้ายังไม่มีเอกสาร)
+ * @param revNo Rev ของเอกสาร · ว่าง/ไม่ใช่ตัวเลข = ไม่ต่อ `-RR` (รู้แค่เลขที่ ไม่เดา Rev)
+ */
+export function formatSpecDocNo(docNo, revNo) {
+  const raw = String(docNo ?? '').trim();
+  if (!raw) return '-';
+  // เลขที่รูปอื่น (ไม่ควรมี — ตัวนับออกรูปเดียว) พิมพ์ตามเดิม ดีกว่าตัดผิดที่
+  const base = raw.startsWith(`${PRODUCT_SPEC_DOC_PREFIX}-`) ? raw.slice(PRODUCT_SPEC_DOC_PREFIX.length + 1) : raw;
+  // 🪤 `Number(true)` = 1 — boolean ไม่ใช่ Rev (ผลตรวจรอบสอง: true เคยได้ "-01") · Rev ≥ 100 พิมพ์เต็มหลัก (ไม่ตัด)
+  const known = typeof revNo !== 'boolean' && revNo !== null && revNo !== undefined && revNo !== ''
+    && Number.isInteger(Number(revNo)) && Number(revNo) >= 0;
+  return known ? `${base}-${String(Number(revNo)).padStart(2, '0')}` : base;
+}
+
 /** แยกชิ้นส่วนกลับจากเลขที่ออกไปแล้ว — ใช้ตอนเรียงและตอนอ่านเลขบนตาราง */
 export function parseProductSpecDocNo(docNo) {
   const match = String(docNo || '').match(/^FM-SA-04-(\d{2})(\d{2})(\d{2})-(\d{3})$/);
