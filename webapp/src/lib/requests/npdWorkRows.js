@@ -22,6 +22,7 @@
 import { pdrTargetSizeText } from '@/lib/requests/pdrTargets';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { npdTargetPairs, pairKey } from '@/lib/requests/npdPairs';
+import { scentUsableByCustomer } from '@/lib/master/registryShares';
 
 // คู่ หมวด × กลิ่น อยู่ `npdPairs.js` (โมดูลใบไม้ที่ `stages.js` ใช้ด้วย) — ส่งต่อให้ผู้เรียกเดิม
 export { npdTargetPairs };
@@ -123,7 +124,8 @@ export function npdWorkRowsScentError(plan, targets = [], scents = [], { custome
       if (skipMissing) continue;
       return `${at}: ไม่พบกลิ่นนี้ในทะเบียนแล้ว`;
     }
-    if (customerId && scent.customerId !== customerId) {
+    // ⭐ เจ้าของ หรือได้รับแชร์ (ม-150)
+    if (customerId && !scentUsableByCustomer(scent, customerId)) {
       return `${at}: กลิ่น ${scent.code || scent.name} เป็นของลูกค้ารายอื่นแล้ว`;
     }
   }

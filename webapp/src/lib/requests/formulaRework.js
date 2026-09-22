@@ -32,7 +32,7 @@ const formulaName = (f, fallback = 'สูตรเดิม') => f?.code || f?.
  *  · `{ kind: 'bind', formulaId, warn }` — ผูกกับสูตรที่มีอยู่ (`warn` = ฟอร์มที่กรอกไม่ได้ใช้ ต้องบอกผู้ใช้)
  *  · `{ kind: 'blocked', error }` — ส่งไม่ได้จนกว่าจะแก้ที่ทะเบียน (ตีกลับก่อนเขียนอะไร)
  */
-export function planFormulaDelivery({ row, items = [], existing = null, clientDerivedFrom = null }) {
+export function planFormulaDelivery({ row, items = [], existing = null, clientDerivedFrom = null, customerId = null }) {
   const parentId = reworkParentFormulaId(row, items);
   // ⚠️ รอบแก้: ต้นทางมาจากแถว **ไม่เชื่อ client** — ให้เลือกเองเมื่อไรก็ชี้ผิดตัวได้ทั้งที่คำตอบมีตัวเดียว
   const derivedFromFormulaId = parentId || clientDerivedFrom || null;
@@ -46,6 +46,15 @@ export function planFormulaDelivery({ row, items = [], existing = null, clientDe
       return {
         kind: 'blocked',
         error: `สูตรต้นทาง ${formulaName(existing)} ยังเป็นร่างในทะเบียน — รับเข้าทะเบียน (ใส่รหัส) ที่ทะเบียนสูตรก่อน แล้วส่งงานใหม่`,
+      };
+    }
+    /* ⭐ สูตรต้นทางเป็นของลูกค้ารายอื่น (แชร์มา · ม-150) — รอบแก้ = เลิกใช้สูตรต้นทาง ⇒ ใบของลูกค้ารายนี้ห้ามแตะสูตรของลูกค้าอื่น
+       · หมวดเดียวกับกลิ่นเดียวมีสูตรได้ตัวเดียว ⇒ ไม่มีทาง "สร้างของตัวเอง" คู่เดียวกัน · บอกทางออกตั้งแต่พรีวิว ไม่ใช่ 409 ตอนกดส่ง */
+    if (customerId && existing.customerId && existing.customerId !== customerId) {
+      return {
+        kind: 'blocked',
+        error: `สูตรต้นทาง ${formulaName(existing)} เป็นของ ${existing.customerName || 'ลูกค้ารายอื่น'} (แชร์มา) — ส่งรอบแก้ทับสูตรของลูกค้าอื่นไม่ได้ `
+          + '· หมวดเดียวกับกลิ่นเดียวมีสูตรได้ตัวเดียว ให้ RD ตกลงกับเจ้าของสูตรก่อน',
       };
     }
     return { kind: 'revise', derivedFromFormulaId: parentId, archiveId: parentId };
@@ -74,18 +83,22 @@ export function formulaBindWarning(formula) {
  * @param formulas ทะเบียนสูตรทุกสถานะที่จอโหลดไว้
  * @returns `{ plan, parent, note, lockLineage }` — `note` = ประโยคบอกผลก่อนกด (null = ไม่มีอะไรพิเศษ)
  */
-export function formulaDeliveryPreview({ row, items = [], formulas = [] }) {
+export function formulaDeliveryPreview({ row, items = [], formulas = [], customerId = null }) {
   const parentId = reworkParentFormulaId(row, items);
   const existing = findFormulaByIdentity(formulas, { categoryCode: row?.categoryCode, scentId: row?.scentId });
-  const plan = planFormulaDelivery({ row, items, existing });
+  const plan = planFormulaDelivery({ row, items, existing, customerId });
   const parent = parentId ? (formulas || []).find((f) => f.id === parentId) || null : null;
   const parentName = formulaName(parent);
   let note = null;
   if (plan.kind === 'revise') {
-    // `usedByProduct` = `{ id, fgCode }` (`attachFormulaUsage`)
-    const heldBy = existing?.usedByProduct;
+    // `usedByProducts` = `[{ id, fgCode }]` (`attachFormulaUsage` · 1 สูตรผูกได้หลาย FG — ม-150)
+    const heldBy = existing?.usedByProducts || [];
+    const codes = heldBy.map((p) => p.fgCode).filter(Boolean);
+    const heldText = !heldBy.length ? ''
+      : ` (สินค้า${codes.length ? ` ${codes.slice(0, 3).join(', ')}${codes.length > 3 ? ` +${codes.length - 3}` : ''}` : ` ${heldBy.length} รายการ`}`
+        + ` ผูกสูตรนี้อยู่ — ขอราคา FB ของสินค้า${heldBy.length > 1 ? 'เหล่านั้น' : 'นั้น'}ต้องย้ายไปสูตรใหม่)`;
     note = `รอบแก้ — ได้สูตรใหม่ที่ชี้กลับ ${parentName} · ส่งแล้ว ${parentName} เปลี่ยนเป็น "เลิกใช้"`
-      + (heldBy ? ` (สินค้า${heldBy.fgCode ? ` ${heldBy.fgCode}` : ''} ผูกสูตรนี้อยู่ — ขอราคา FB ของสินค้านั้นต้องย้ายไปสูตรใหม่)` : '')
+      + heldText
       + ' · ลูกค้าขอกลับไปใช้ตัวเดิม: หน้ารายการทะเบียนสูตร (เมนู ⋯) เลิกใช้ตัวใหม่ แล้วเปิดใช้ตัวเดิม';
   } else if (plan.kind === 'create' && parentId) {
     note = `รอบแก้ — ได้สูตรใหม่ที่ชี้กลับ ${parentName}`;

@@ -41,6 +41,9 @@ export const REFERENCE_REGISTRY = {
       { table: 'costing_requests', label: 'ใบขอราคาผลิต', sample: 'docNo' },
       { table: 'scents', label: 'กลิ่นในทะเบียน', sample: 'code' },
       { table: 'formulas', label: 'สูตรในทะเบียน', sample: 'code' },
+      // แชร์กลิ่น/สูตรให้ลูกค้ารายนี้ (ม-150 · mig 0373) — ไม่มี FK ไป customers ⇒ ลบลูกค้าแล้วแถวแชร์ค้างเงียบ
+      { table: 'scent_customer_shares', label: 'กลิ่นที่แชร์ให้ลูกค้ารายนี้', sample: null },
+      { table: 'formula_customer_shares', label: 'สูตรที่แชร์ให้ลูกค้ารายนี้', sample: null },
       { table: 'material_prices', label: 'ราคาวัสดุ', sample: null },
       { table: 'service_sites', label: 'ไซต์บริการ', sample: 'code' },
       { table: 'shipment_prep', label: 'งานเตรียมจัดส่ง', sample: null },

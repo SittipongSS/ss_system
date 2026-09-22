@@ -16,8 +16,11 @@ function query(getRows) {
     eq(col, val) { filters.push((r) => r[col] === val); return chain; },
     in(col, vals) { filters.push((r) => vals.includes(r[col])); return chain; },
     order() { return chain; },
+    // `fetchAll` ไล่หน้าด้วย `.range()` (ของที่แชร์ · ม-150)
+    range(from, to) { chain.window = [from, to + 1]; return chain; },
     then(resolve, reject) {
-      const data = getRows().filter((r) => filters.every((f) => f(r)));
+      let data = getRows().filter((r) => filters.every((f) => f(r)));
+      if (chain.window) data = data.slice(...chain.window);
       return Promise.resolve({ data, error: null }).then(resolve, reject);
     },
   };
@@ -128,3 +131,32 @@ test('loadPendingAskLinks อ้าง dept_request_items.requestId ตามช
   assert.doesNotMatch(costing, /i\.askId/, 'ห้ามอ่าน field ที่ไม่มีในผลลัพธ์');
   assert.match(costing, /askId: i\.requestId/, 'สัญญาขาออกยังเป็น askId ตามที่หน้าใบขอราคาผลิตใช้');
 });
+
+// ── ม-150 · แชร์กลิ่น/สูตรให้ลูกค้ารายอื่น ─────────────────────────────────────────
+test('ม-150: กลิ่น/สูตรที่แชร์มาขึ้นในหน้าลูกค้าที่ได้รับแชร์ พร้อมป้าย "แชร์จาก" · สูตรของลูกค้าอื่นที่ใช้กลิ่นเราไม่ขึ้น', async () => {
+  const rows = {
+    ...baseRows,
+    scents: [
+      ...baseRows.scents,
+      { id: 'SCT-A', code: 'SC-A', name: 'กลิ่นของ A', status: 'active', customerId: 'CUS-A', customerName: 'บริษัท เอ' },
+    ],
+    formulas: [
+      ...baseRows.formulas,
+      { id: 'FML-A', code: 'PF-A', name: 'สูตรของ A', status: 'active', customerId: 'CUS-A', customerName: 'บริษัท เอ', scentId: 'SCT-A' },
+      // สูตรของ CUS-2 ที่ใช้กลิ่นของ CUS-1 (CUS-1 แชร์กลิ่นให้) — ไม่ใช่ของ CUS-1
+      { id: 'FML-X', code: 'PF-X', name: 'สูตร CUS-2 ใช้กลิ่น CUS-1', status: 'active', customerId: 'CUS-2', scentId: 'SCT-1' },
+    ],
+    scent_customer_shares: [{ scentId: 'SCT-A', customerId: 'CUS-1' }],
+    formula_customer_shares: [{ formulaId: 'FML-A', customerId: 'CUS-1' }],
+  };
+  const rel = await customerRelations(fakeSupabase(rows), 'CUS-1', admin);
+  const shared = rel.scents.find((s) => s.id === 'SCT-A');
+  assert.ok(shared, 'กลิ่นที่แชร์มาต้องขึ้น');
+  assert.equal(shared.sharedFrom, 'บริษัท เอ');
+  assert.equal(rel.scents.find((s) => s.id === 'SCT-1').sharedFrom, undefined);
+  const ids = rel.formulas.map((f) => f.id);
+  assert.ok(ids.includes('FML-A'));
+  assert.equal(rel.formulas.find((f) => f.id === 'FML-A').sharedFrom, 'บริษัท เอ');
+  assert.ok(!ids.includes('FML-X'), 'สูตรของลูกค้าอื่นที่ใช้กลิ่นของเรา ไม่ใช่ของเรา');
+});
+

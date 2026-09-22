@@ -14,6 +14,7 @@
 
 import { ALL_UNITS, VOLUME_UNITS } from '@/lib/master/units';
 import { isScentUsable } from '@/lib/master/scents';
+import { scentUsableByCustomer } from '@/lib/master/registryShares';
 import { fmtNumber } from '@/lib/format';
 
 export const MAX_PDR_TARGETS = 20;
@@ -332,8 +333,9 @@ export function pdrTargetScentError(rows = [], scents = [], { customerId = null 
     if (!scent) return `${at}: ไม่พบกลิ่นนี้ในทะเบียน — อาจถูกลบไปแล้ว เลือกใหม่`;
     // ⚠️ กลิ่นมีเจ้าของเสมอ (`scents.customerId` อยู่ในคีย์ตัวตน · มติ 9) ⇒ ไม่ผ่อนให้
     //    กลิ่นที่ "ไม่มีเจ้าของ" — ใบที่ยังไม่รู้ลูกค้า (ไม่มีดีล) ต่างหากที่ข้ามข้อนี้
-    if (customerId && scent.customerId !== customerId) {
-      return `${at}: กลิ่น ${scent.code || scent.name} เป็นของลูกค้ารายอื่น — เลือกได้เฉพาะกลิ่นของลูกค้าเจ้าของดีล`;
+    // ⭐ ของลูกค้ารายนี้ = เจ้าของ หรือได้รับแชร์ (ม-150) — `scents` ต้องติด `sharedCustomerIds` มา
+    if (customerId && !scentUsableByCustomer(scent, customerId)) {
+      return `${at}: กลิ่น ${scent.code || scent.name} เป็นของลูกค้ารายอื่น — เลือกได้เฉพาะกลิ่นของลูกค้าเจ้าของดีล (หรือที่ RD แชร์ให้)`;
     }
     if (!isScentUsable(scent)) {
       return `${at}: กลิ่น ${scent.code || scent.name} ยังใช้ทำสูตรไม่ได้ (รอเข้าทะเบียน/เลิกใช้) — เลือกกลิ่นอื่น`;

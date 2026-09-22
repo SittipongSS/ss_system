@@ -30,6 +30,8 @@ import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
 import { reworkHopError } from '@/lib/requests/rework';
 import { deleteFormulaError, findFormulaByIdentity } from '@/lib/master/formulas';
+import { formulaUsableByCustomer } from '@/lib/master/registryShares';
+import { ensureShared } from '@/lib/master/registrySharesAdmin';
 import {
   countProductsUsingFormula, createFormula, findScent, loadFormulas, updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
@@ -196,6 +198,7 @@ export async function PATCH(request, { params }) {
       );
       const plan = planFormulaDelivery({
         row, items: before.items || [], existing, clientDerivedFrom: formulaDelivery.derivedFromFormulaId,
+        customerId: before.customerId || null,
       });
       /* 🐞 **ต้องส่งลูกค้าไปด้วย** — มติ 2026-08-10 กลับทิศจาก mig 0207: server เลิก
          *derive* ลูกค้าจากกลิ่น แล้วเปลี่ยนเป็น *ตรวจ* ว่าลูกค้าที่ส่งมาตรงกับเจ้าของกลิ่น
@@ -221,10 +224,27 @@ export async function PATCH(request, { params }) {
       };
       // ต้นทางยังเป็นร่าง ฯลฯ — ตีกลับ **ก่อนเขียนอะไร** พร้อมทางออก (ไม่ใช่ 500 จาก CHECK ทุกครั้งที่กดซ้ำ)
       if (plan.kind === 'blocked') return Response.json({ error: plan.error }, { status: 409 });
+      /* ⭐ สูตรของคู่ (หมวด × กลิ่น) เป็นของลูกค้ารายอื่น — เกิดได้เมื่อกลิ่นถูกแชร์มา (ม-150)
+         · รอบแก้ทับสูตรของลูกค้าอื่น = `planFormulaDelivery` ตีกลับเป็น `blocked` แล้ว (ตัวเดียวกับพรีวิวบนจอ)
+         · ผูก = แชร์สูตรให้ลูกค้าของใบอัตโนมัติ — RD คนส่งคือคนที่มีสิทธิ์แชร์อยู่แล้ว · ไม่แชร์ = สูตรที่ใบนี้ได้ไปติดด่าน
+           "ของลูกค้ารายอื่น" ทุกครั้งที่ใช้ต่อ */
+      const foreignFormula = !!(existing && before.customerId && existing.customerId
+        && existing.customerId !== before.customerId);
       let formula;
       if (plan.kind === 'bind') {
         formula = existing;
         if (plan.warn) deliveryWarning = formulaBindWarning(existing);
+        if (foreignFormula && !formulaUsableByCustomer(existing, before.customerId)) {
+          await ensureShared(supabase, 'formula', existing, before.customerId, before.customerName || null, user);
+          const note = `สูตร ${existing.code || existing.name} เป็นของ ${existing.customerName || 'ลูกค้ารายอื่น'} — แชร์ให้ลูกค้าของใบนี้ให้แล้ว`;
+          deliveryWarning = deliveryWarning ? `${deliveryWarning} · ${note}` : note;
+          await recordAudit({
+            user, action: 'update', entityType: 'formula', entityId: existing.id,
+            before: existing, after: { ...existing, sharedCustomerIds: [...(existing.sharedCustomerIds || []), before.customerId] },
+            summary: `แชร์สูตร ${existing.code || existing.name} ให้ ${before.customerName || before.customerId} — ผูกตอนส่งงาน ${rowText(row)} (${before.docNo || id})`,
+            request,
+          });
+        }
       } else if (plan.kind === 'revise') {
         /* ⚠️ **เก็บก่อน สร้างทีหลัง** — ดัชนีตัวตนไม่ให้มีสูตรใช้งานสองตัวของคู่เดียว · ไม่มี transaction ⇒ สร้างล้ม
            (รหัสซ้ำ · ช่องไม่ผ่าน) ต้องคืนสถานะสูตรเดิม ไม่งั้นคู่นี้ไม่มีสูตรใช้งานเลยทั้งที่ยังไม่ได้ส่งอะไร */
