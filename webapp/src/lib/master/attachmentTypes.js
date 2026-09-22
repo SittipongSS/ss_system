@@ -430,6 +430,50 @@ export const IMAGE_ACCEPT_ATTR = [
   ...ACCEPTED_IMAGE_EXT.map((e) => `.${e}`),
 ].join(",");
 
+/* ── ชนิดเอกสารที่รับไฟล์ได้แคบกว่าชุดมาตรฐาน ──────────────────────────────
+   ⭐ มติผู้ใช้ 2026-09-22: "ภาพประกอบใบสเปค อยากจำกัดไฟล์แค่รูป เพราะตอนนี้ pdf ai ก็ดันแนบได้"
+   ⇒ กติกาผูกกับ **docType** ไม่ใช่กับจอ — แผงไฟล์แนบ (ปุ่มเลือก · ลากวาง · Ctrl+V) และ
+     POST ของเส้นไฟล์แนบถามตัวเดียวกัน · กันที่จออย่างเดียวเมื่อไร ลากวางหรือยิง API ตรง
+     ก็เข้าได้อีก
+   ⚠️ ภาพประกอบรับแค่ชนิดที่ **เบราว์เซอร์วาดบนกระดาษได้** (png · jpg · webp · gif) — ไม่ใช่
+      ACCEPTED_IMAGE_MIME ทั้งชุด: HEIC/TIFF/BMP อัปได้แต่ Chrome วาดไม่ขึ้น ⇒ กระดาษ FM-SA-04
+      จะมีกรอบรูปว่างโดยไม่มีอะไรฟ้อง
+   ⚠️ ตัดสินจาก mimeType ก่อน · ไม่มี mimeType (เบราว์เซอร์บางตัวส่งว่างตอนลากวาง) ค่อยดูนามสกุล
+      — ไฟล์ .ai ส่ง `application/postscript` หรือว่าง ⇒ ทั้งสองทางตกด่านเหมือนกัน */
+export const PRINTABLE_IMAGE_MIME = Object.freeze(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+export const PRINTABLE_IMAGE_EXT = Object.freeze(["png", "jpg", "jpeg", "webp", "gif"]);
+
+export const DOC_TYPE_FILE_RULES = Object.freeze({
+  [SPEC_ILLUSTRATION_DOC_TYPE]: Object.freeze({
+    label: "รูปภาพ (JPG · PNG · WEBP · GIF)",
+    accept: [...PRINTABLE_IMAGE_MIME, ...PRINTABLE_IMAGE_EXT.map((e) => `.${e}`)].join(","),
+    mime: PRINTABLE_IMAGE_MIME,
+    ext: PRINTABLE_IMAGE_EXT,
+  }),
+});
+
+/** กติกาไฟล์ของ docType นี้ — `null` = รับชุดมาตรฐานทั้งหมด */
+export const docTypeFileRule = (docType) => DOC_TYPE_FILE_RULES[docType] || null;
+
+/**
+ * ไฟล์นี้แนบเป็น docType นี้ได้ไหม — `null` = ได้ · ข้อความ = เหตุผลที่ไม่ได้
+ * รับได้ทั้ง `File` ของเบราว์เซอร์ (`type`/`name`) และคำขอฝั่ง server (`mimeType`/`fileName`)
+ */
+export function attachmentFileRuleError(docType, file = {}) {
+  const rule = docTypeFileRule(docType);
+  if (!rule) return null;
+  const mime = String(file.mimeType ?? file.type ?? "").toLowerCase().trim();
+  const name = String(file.fileName ?? file.name ?? "");
+  /* ⚠️ ต้องผ่าน **ทั้งสองทาง** ที่มีข้อมูล — mimeType มาจาก client (ประกาศ image/png ให้ไฟล์ .pdf ได้)
+     ส่วนนามสกุลคือสิ่งที่เส้นเสิร์ฟไฟล์ใช้ตัดสิน Content-Type (`resolveUploadMime`) ⇒ ดูอย่างเดียวไม่พอ
+     · ไม่มีทั้งคู่ = ไม่รู้ว่าเป็นอะไร ⇒ ไม่รับ */
+  const ext = name.includes(".") ? fileExt(name) : "";
+  const mimeOk = !mime || rule.mime.includes(mime);
+  const extOk = !ext || rule.ext.includes(ext);
+  const ok = (mime || ext) && mimeOk && extOk;
+  return ok ? null : `${name || "ไฟล์นี้"} — แนบได้เฉพาะ${rule.label}`;
+}
+
 // นามสกุล → Content-Type ที่ **server** เป็นคนตัดสิน
 // 🐞 เดิมเก็บ `contentType: file.type` ที่ client ส่งมาดิบ ๆ = ตั้งชื่อ x.pdf แล้วประกาศ
 // text/html ก็ได้ ซึ่งกลายเป็น stored XSS ทันทีที่ไฟล์ถูกเสิร์ฟกลับมาแบบเปิดในหน้า

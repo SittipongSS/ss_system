@@ -10,7 +10,7 @@ import {
   GoogleDocError, buildGoogleAttachment, googleDocsEnvError, stripDriveMetadata, workspaceEmail,
 } from '@/lib/master/googleDocs';
 import { hasFolderBranch } from '@/lib/master/driveEntityMap';
-import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
+import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES, attachmentFileRuleError, docTypeFileRule } from '@/lib/master/attachmentTypes';
 import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
 
 import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
@@ -176,6 +176,18 @@ export async function POST(request) {
   // docType ต้องเป็นชนิดที่รองรับของ entity นั้น — ที่ไม่รู้จักตกเป็น 'other'.
   const allowed = (ATTACHMENT_TYPES[entityType] || []).map((t) => t.key);
   const safeDocType = allowed.includes(docType) ? docType : 'other';
+
+  /* ชนิดเอกสารที่รับไฟล์แคบกว่าชุดมาตรฐาน (ภาพประกอบใบสเปค = รูปที่วาดบนกระดาษได้เท่านั้น ·
+     มติผู้ใช้ 2026-09-22) — ด่านจริงอยู่ที่นี่ ไม่ใช่ที่ปุ่มเลือกไฟล์: ลากวาง/Ctrl+V/ยิง API ตรง
+     ผ่านปุ่มไปได้ทั้งหมด · ⚠️ ไบต์ขึ้น Drive ไปก่อนแล้ว — ผู้เรียก (`uploadAttachment`) ลบไฟล์
+     บน Drive ทิ้งเองเมื่อคำขอนี้ไม่ผ่าน · เอกสาร Google ไม่ใช่รูป ⇒ ตกด่านเสมอ */
+  const fileRule = docTypeFileRule(safeDocType);
+  if (fileRule) {
+    const ruleError = google
+      ? `เอกสาร Google แนบเป็นหัวข้อนี้ไม่ได้ — แนบได้เฉพาะ${fileRule.label}`
+      : attachmentFileRuleError(safeDocType, { mimeType, fileName });
+    if (ruleError) return Response.json({ error: ruleError }, { status: 400 });
+  }
 
   // เอกสารมีชีวิต: คุยกับ Drive **หลังผ่านด่านสิทธิ์แล้วเท่านั้น** — ไม่งั้นคนที่แนบ
   // ไม่ได้ยังสร้างไฟล์ค้างไว้บน Shared Drive ได้ทุกครั้งที่กด

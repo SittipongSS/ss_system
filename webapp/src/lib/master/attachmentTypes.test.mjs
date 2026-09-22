@@ -243,3 +243,33 @@ test('ภาพประกอบใบสเปคไม่เข้าด่�
   // สินค้าหมวดที่ไม่บังคับอะไร — รูปประกอบต้องไม่ทำให้มีของ "ขาด" งอกขึ้นมา
   assert.deepEqual(unsatisfiedRequiredDocs('product', docTypesFor('product', { categoryCode: '02-001' }), illustrations, '2026-09-22'), []);
 });
+
+/* ── ภาพประกอบใบสเปครับเฉพาะรูปที่พิมพ์บนกระดาษได้ (มติผู้ใช้ 2026-09-22) ────────── */
+test('ภาพประกอบใบสเปค: รับ jpg/png/webp/gif · ไม่รับ pdf/ai/heic · ดูทั้ง mimeType และนามสกุล', async () => {
+  const { attachmentFileRuleError, docTypeFileRule, SPEC_ILLUSTRATION_DOC_TYPE } = await import('./attachmentTypes.js');
+  const rule = docTypeFileRule(SPEC_ILLUSTRATION_DOC_TYPE);
+  assert.ok(rule, 'spec_illustration ต้องมีกติกาไฟล์');
+  assert.match(rule.accept, /image\/png/);
+  assert.doesNotMatch(rule.accept, /pdf|\.ai\b|heic/);
+
+  const ok = (file) => attachmentFileRuleError(SPEC_ILLUSTRATION_DOC_TYPE, file);
+  // File ของเบราว์เซอร์ (type/name) และคำขอของ server (mimeType/fileName)
+  assert.equal(ok({ type: 'image/png', name: 'การวางการ์ด.png' }), null);
+  assert.equal(ok({ mimeType: 'image/jpeg', fileName: 'หน้ากล่อง.JPG' }), null);
+  assert.equal(ok({ type: 'image/jpeg', name: 'image' }), null, 'รูปจากคลิปบอร์ดอาจไม่มีนามสกุล');
+  assert.equal(ok({ type: '', name: 'photo.webp' }), null, 'ลากวางบางเบราว์เซอร์ไม่ส่ง type');
+
+  assert.match(ok({ type: 'application/pdf', name: 'artwork.pdf' }), /artwork\.pdf — แนบได้เฉพาะรูปภาพ/);
+  assert.ok(ok({ type: 'application/postscript', name: 'logo.ai' }));
+  assert.ok(ok({ type: '', name: 'logo.ai' }));
+  assert.ok(ok({ type: 'image/heic', name: 'IMG_0001.HEIC' }), 'HEIC อัปได้แต่ Chrome วาดบนกระดาษไม่ขึ้น');
+  assert.ok(ok({ type: 'image/png', name: 'แอบ.pdf' }), 'type ที่ client ประกาศเองต้องไม่พาไฟล์ .pdf ผ่าน');
+  assert.ok(ok({ type: '', name: '' }), 'ไม่รู้ทั้งชนิดและนามสกุล = ไม่รับ');
+});
+
+test('docType ที่ไม่มีกติกา รับชุดมาตรฐานเหมือนเดิม', async () => {
+  const { attachmentFileRuleError, docTypeFileRule } = await import('./attachmentTypes.js');
+  assert.equal(docTypeFileRule('other'), null);
+  assert.equal(attachmentFileRuleError('other', { type: 'application/pdf', name: 'a.pdf' }), null);
+  assert.equal(attachmentFileRuleError('artwork', { type: '', name: 'logo.ai' }), null);
+});
