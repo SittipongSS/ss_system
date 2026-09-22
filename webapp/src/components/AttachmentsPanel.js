@@ -722,19 +722,31 @@ export default function AttachmentsPanel({
             </p>
           )}
           {canEdit && fileUploads && photoCapture && (
+            /* ⚠️ **ป้ายสองชุดซ้อนในช่องเดียวกัน** (ปกติ · กำลังอัป) แล้วซ่อนตัวที่ไม่ใช้ด้วย
+               `visibility` ⇒ ปุ่มกว้างเท่าป้ายที่ยาวกว่าเสมอ ไม่ขยับตอนเริ่ม/จบการอัป
+               🐞 ป้ายสลับตรง ๆ = ปุ่มกว้างขึ้นตอนอัป ⇒ ช่องแคบ (1196–1249px · 1280) แถวหัวข้อตกบรรทัด
+                  แล้วรูปย่อกระโดด · และห้ามเหลือแค่วงหมุน: ปุ่มจาง+วงที่หยุด (reduced motion) อ่าน
+                  เหมือนปุ่มกดไม่ได้เฉย ๆ ⇒ ต้องมีคำ "กำลังอัป…" (ตัวที่มองไม่เห็นหลุดจากชื่อที่อ่านออกเสียงเอง) */
             <Button
               variant="outline"
               className={styles.captureBtn}
               onClick={() => pickForType(inlineType)}
               disabled={busy}
-              icon={<Camera size={16} aria-hidden="true" />}
+              aria-busy={busy || undefined}
             >
-              {busy ? "กำลังอัปโหลด…" : (
-                <>
+              {/* ⚠️ ซ้อน **ทั้งชั้น** (ไอคอน+คำ) ไม่ใช่ซ้อนแค่คำ — ซ้อนแค่คำแล้วช่องกว้างเท่า "กำลังอัป…"
+                  ป้ายปกติที่สั้นกว่าลอยกลางช่อง ไอคอนกล้องห่างคำเป็นสองเท่าของปุ่มอื่นทั้งระบบ */}
+              <span className={styles.captureLabel}>
+                <span className={styles.captureLayer} data-off={busy ? "1" : undefined}>
+                  <Camera size={16} aria-hidden="true" />
                   <span className={styles.touchOnly}>ถ่ายรูป</span>
                   <span className={styles.pointerOnly}>แนบรูป</span>
-                </>
-              )}
+                </span>
+                <span className={styles.captureLayer} data-off={busy ? undefined : "1"}>
+                  <span className={styles.captureSpin} aria-hidden="true" />
+                  กำลังอัป…
+                </span>
+              </span>
             </Button>
           )}
           {canEdit && fileUploads && !photoCapture && (

@@ -112,7 +112,10 @@ export default function Modal({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
       if (previousActiveElement instanceof HTMLElement && document.contains(previousActiveElement)) {
-        previousActiveElement.focus();
+        /* ⚠️ `preventScroll` — คืนโฟกัสคือพาคนกลับไปที่เดิม ไม่ใช่เลื่อนหน้า · 🐞 ปุ่มที่เปิดโมดัล
+           อยู่ในแถบติดขอบล่าง (แถบงานของช่าง) ซึ่งตกอยู่ในแถบกัน `scroll-padding-bottom` ของหน้า
+           ⇒ ปิดโมดัลทีไร Chrome เลื่อนหน้าไปครึ่งจอเพื่อ "พา" ปุ่มออกจากแถบกัน (ตรวจ 2026-09-22) */
+        previousActiveElement.focus({ preventScroll: true });
       }
     };
   }, [open, initialFocusRef]);

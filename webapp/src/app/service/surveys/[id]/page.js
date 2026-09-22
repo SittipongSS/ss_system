@@ -219,7 +219,10 @@ export default function SurveySheetPage({ params }) {
     setSubmitOpen(false);
     setToast(res?.steppedBackRequest
       ? { kind: "success", msg: "ปิดว่าไปแล้วเข้าไม่ได้ · ใบกลับไปขั้นลงคิวแล้ว — TS จะลงวันใหม่ และฝ่ายขายได้รับแจ้งพร้อมเหตุผล" }
-      : { kind: "success", msg: "ส่งงานแล้ว — หัวหน้าได้แจ้งเตือนให้เคาะจุดติดตั้งและแพ็คเกจ" });
+      : data?.canDecide === true
+        /* Senior ที่ออกหน้างานเองคือคนเคาะต่อ — "หัวหน้าได้แจ้งเตือน" คือการแจ้งตัวเอง */
+        ? { kind: "success", msg: "ส่งงานแล้ว — เคาะจุดติดตั้งและแพ็คเกจต่อได้ที่แท็บสรุปส่งผล" }
+        : { kind: "success", msg: "ส่งงานแล้ว — หัวหน้าได้แจ้งเตือนให้เคาะจุดติดตั้งและแพ็คเกจ" });
     await load({ background: true });
   };
 
@@ -355,6 +358,7 @@ export default function SurveySheetPage({ params }) {
           ซึ่ง `visitWriteAccess` พิมพ์มาแล้วรายคน "นัดนี้ไม่ใช่งานของคุณ …") */
       canOpenRequest: data?.canOpenRequest === true,
       writeBlockedReason: data?.writeBlockedReason || null,
+      onVisit: data?.onVisit === true,
     },
     dirtyZoneIds,
     pendingDecisionZoneIds,
@@ -434,11 +438,11 @@ export default function SurveySheetPage({ params }) {
 
   /* ลิงก์ "เปิด <พื้นที่>" — กลับไปแท็บหน้างานก่อนเสมอ แล้วค่อยกางการ์ดของมัน
      ⚠️ ต้องรอให้แท็บสลับเสร็จก่อน ไม่งั้นเลื่อนไปหา element ที่ยังไม่ถูกวาด */
-  const openZone = useCallback((zoneId) => {
+  const openZone = useCallback((zoneId, { focus = false } = {}) => {
     if (tab !== "field") goTab("field");
     setZoneOpen(zoneId, true);
     setActiveZone(zoneId);
-    scrollToZone(zoneId);
+    scrollToZone(zoneId, { focus });
   }, [tab, goTab, setZoneOpen, scrollToZone]);
 
   /* ⭐ **"ถัดไป: … (ยังไม่ครบ)" แทนการพับเองหลังบันทึก** (กติกาข้อ 3 ของแบบที่อนุมัติ)
@@ -492,6 +496,18 @@ export default function SurveySheetPage({ params }) {
      (`/service/today?user=…`) กดปุ่มส่งงานมาแล้ว แถบซ่อนสำหรับเขา (ไม่ได้อยู่บนนัด) ⇒ ถ้าผูก
      กับแถบ ปุ่มที่เขาเพิ่งกดจะพามาหน้าที่ไม่มีอะไรเกิดขึ้น · ใช้สิทธิ์เขียนตัวเดียวกับ server */
   const canSubmitField = view.flags.canWrite && fieldVisit?.status === "in_progress";
+
+  /* ⭐ **ลำดับบนจอแคบ (เนื้อก่อน/การ์ดก่อน) ตรึงไว้ตลอดการเปิดหน้านี้** — ค่าคิดจากสถานะ
+     ตอนโหลดครั้งแรกของนัดนี้ แล้วไม่พลิกระหว่างใช้งาน · 🐞 Senior ที่ออกหน้างานเองกด "ส่งงาน"
+     แล้วตัวตัดสินพลิกเป็นการ์ดก่อนทันที ⇒ รางย้ายขึ้นไปอยู่หน้าเนื้อ หน้ากระโดด 245–335px
+     ใต้นิ้ว · เปิดหน้าใหม่ครั้งหน้าค่อยได้ลำดับใหม่ */
+  const orderKey = `${id}:${data?.visit?.id || ""}`;
+  const [stableOrder, setStableOrder] = useState(null);
+  useEffect(() => {
+    if (!data) return;
+    setStableOrder((prev) => (prev?.key === orderKey ? prev : { key: orderKey, controlFirst: view.flags.controlFirst }));
+  }, [data, orderKey, view.flags.controlFirst]);
+  const controlFirst = stableOrder?.key === orderKey ? stableOrder.controlFirst : view.flags.controlFirst;
 
   /* มาจากปุ่ม "ส่งงาน" บนการ์ดงานวันนี้ — เปิดโมดัลครั้งเดียว แล้วถอดพารามิเตอร์ทิ้ง
      (รีเฟรชหน้าแล้วโมดัลต้องไม่เด้งซ้ำ) */
@@ -622,7 +638,7 @@ export default function SurveySheetPage({ params }) {
         /* ⭐ **ลำดับบนจอแคบเดินตามคนดู** (แบบที่อนุมัติ) — ช่างที่ยังกรอกได้ถามว่า
            "พื้นที่ไหนต้องวัด" ⇒ เนื้อมาก่อน · คนอื่นถามว่า "ใบนี้อยู่สถานะไหน และกด
            อะไรต่อ" ⇒ การ์ดมาก่อน · ตัวตัดสินคำนวณมาให้แล้ว ไม่ต้องเดาที่นี่ */
-        controlFirst={view.flags.controlFirst}
+        controlFirst={controlFirst}
         aside={controlCard}
       >
         {/* ⚠️ กติกา UI ของระบบ: สลับ "มุมมองคนละชุดข้อมูล" = Tabs · กรองในชุดเดิม = segmented */}
@@ -637,14 +653,28 @@ export default function SurveySheetPage({ params }) {
         />
 
         {zones.length === 0 ? (
-          <EmptyState icon={Search}>
-            ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน — ฝ่ายขายเป็นคนระบุพื้นที่ตอนเปิดใบ
-          </EmptyState>
+          <>
+            <EmptyState icon={Search}>
+              ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน — ฝ่ายขายเป็นคนระบุพื้นที่ตอนเปิดใบ
+            </EmptyState>
+            {/* 🐞 ใบว่างก็ต้องมีปุ่มเพิ่มพื้นที่ — โมดัลส่งงานชี้มาที่ปุ่มนี้ ("กด เพิ่มพื้นที่ที่เจอ
+                หน้างาน ก่อน") แต่เดิมมันอยู่ท้ายลิสต์ ซึ่งไม่ถูกวาดเลยเมื่อไม่มีพื้นที่ */}
+            {/* ⚠️ ทั้งสองแท็บ — แถบส่งงานขึ้นทั้งสองแท็บ และโมดัลของมันชี้มาหาปุ่มนี้ */}
+            {!addGate && (
+              <div className={styles.listFoot}>
+                <Button variant="outline" icon={<MapPinPlus size={15} aria-hidden="true" />}
+                  onClick={() => setAdding(true)}>
+                  เพิ่มพื้นที่ที่เจอหน้างาน
+                </Button>
+              </div>
+            )}
+          </>
         ) : tab === "result" ? (
           <SurveyResultTable
             zones={zones}
             filesByZone={filesByZone}
             canDecide={canDecide && !view.flags.locked}
+            showFormula={canDecide}
             busyZone={busyZone}
             onSaveDecisions={saveDecisions}
             drafts={decisionDrafts}
@@ -713,21 +743,22 @@ export default function SurveySheetPage({ params }) {
                 </Button>
               </div>
             )}
-            {/* แถบงานของช่าง — อยู่ **ในคอลัมน์เนื้อ** ไม่ใช่เต็มหน้า: บนจอกว้างต้องไม่ลอยทับ
-                การ์ดจัดการผลประเมินที่รางขวา · บนมือถือคือท้ายลิสต์พื้นที่พอดี */}
-            {showFieldBar && (
-              <SurveyFieldBar
-                visit={fieldVisit}
-                progress={view.progress}
-                starting={startingVisit}
-                onStart={startVisit}
-                onSubmit={() => setSubmitOpen(true)}
-              />
-            )}
           </div>
         )}
+        {/* แถบงานของช่าง — อยู่ **ในคอลัมน์เนื้อ** ไม่ใช่เต็มหน้า: บนจอกว้างต้องไม่ลอยทับ
+            การ์ดจัดการผลประเมินที่รางขวา · บนมือถือคือท้ายเนื้อของแท็บพอดี
+            ⚠️ **อยู่นอกตัวเลือกแท็บ** — 🐞 เดิมอยู่ในลิสต์ของแท็บหน้างาน ⇒ ช่างที่เปิดแท็บ
+               สรุปส่งผลไม่มีปุ่มส่งงานเลย ทั้งที่ส่งงานยังเป็นก้าวที่เขายังไม่ได้ทำ */}
+        {showFieldBar && (
+          <SurveyFieldBar
+            visit={fieldVisit}
+            progress={view.progress}
+            starting={startingVisit}
+            onStart={startVisit}
+            onSubmit={() => setSubmitOpen(true)}
+          />
+        )}
       </DetailPageLayout>
-
 
       <SurveySubmitDialog
         open={submitOpen}
@@ -735,7 +766,13 @@ export default function SurveySheetPage({ params }) {
         zones={zones}
         filesByZone={filesByZone}
         dirtyZoneIds={dirtyZoneIds}
-        onGoZone={(zoneId) => { setSubmitOpen(false); openZone(zoneId); }}
+        /* หัวหน้าที่อยู่บนนัดเอง (Senior) ส่งงานของตัวเอง ไม่ใช่ "ส่งแทนช่าง" และเป็นคนเคาะต่อเอง */
+        viewerKind={!canDecide ? "crew" : data?.onVisit === true ? "senior" : "head"}
+        /* ⚠️ โฟกัสไปที่หัวของพื้นที่ **หลัง** โมดัลคืนโฟกัสให้ปุ่มส่งงานแล้ว — 🐞 เดิมหน้าเลื่อนไปถูก
+           พื้นที่ แต่วงโฟกัสค้างที่ "ส่งงาน" ⇒ กด Tab ถัดไปหนีออกจากพื้นที่ที่ถูกพามาแก้
+           (`scrollToZone` เลื่อน/โฟกัสใน requestAnimationFrame ซึ่งวิ่งหลัง cleanup ของโมดัล) */
+        onGoZone={(zoneId) => { setSubmitOpen(false); openZone(zoneId, { focus: true }); }}
+        onAddZone={addGate ? undefined : () => { setSubmitOpen(false); setAdding(true); }}
         onClose={() => setSubmitOpen(false)}
         onSubmit={submitField}
       />

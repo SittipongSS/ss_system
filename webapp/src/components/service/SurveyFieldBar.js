@@ -36,7 +36,10 @@ export default function SurveyFieldBar({ visit, progress, starting = false, onSt
     head = status === "unable" ? "ปิดว่าไปแล้วเข้าไม่ได้" : "ส่งงานแล้ว";
     sub = status === "unable"
       ? "ใบกลับไปขั้นลงคิว — TS จะลงวันใหม่"
-      : `${hhmm(visit.actualEndTime) ? `เมื่อ ${hhmm(visit.actualEndTime)} น. · ` : ""}รอหัวหน้าเคาะจุดติดตั้งและแพ็คเกจ · ยังแก้ผลวัดได้จนกว่าจะส่งผลให้ฝ่ายขาย`;
+      /* ⚠️ ไม่พูดสถานะของหัวหน้า ("รอหัวหน้าเคาะ") — รางขวาบอกอยู่แล้วและเป็นคนรู้ว่าเคาะหรือยัง
+         🐞 เคยเขียนตายตัว ⇒ ซ้ำพาดหัวของราง และเถียงกับรางทันทีที่หัวหน้าเคาะครบ ("พร้อมส่งผล") */
+      /* ไม่ระบุว่า "หัวหน้า" เป็นคนส่ง — Senior ที่ออกหน้างานเองอ่านแถบนี้ด้วย และเขาคือคนส่งเอง */
+      : `${hhmm(visit.actualEndTime) ? `เมื่อ ${hhmm(visit.actualEndTime)} น. · ` : ""}ยังแก้ผลวัดได้จนกว่าจะส่งผลให้ฝ่ายขาย`;
   } else if (status === "in_progress") {
     head = progress?.total ? `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่` : "ยังไม่มีพื้นที่ให้วัด";
     sub = hhmm(visit.actualStartTime)

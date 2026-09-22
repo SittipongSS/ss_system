@@ -268,7 +268,8 @@ function overdueBy(dueDate, today) {
  * @param visit          นัดของใบ (ใช้บอกว่าแจ้งช่างได้ไหม)
  * @param recall         ผลของ `surveyRecallRecord` — `null` = ไม่เคยดึงกลับ
  * @param unknown        `{ site?, zoneCodes?, customer?, recall?, visit? }` ชิ้นที่อ่านไม่สำเร็จ
- * @param viewer         `{ canWrite, canDecide, canOpenRequest, writeBlockedReason }` — มาจาก server ทุกตัว
+ * @param viewer         `{ canWrite, canDecide, canOpenRequest, writeBlockedReason, onVisit }` — มาจาก server ทุกตัว
+ *                       (`onVisit` = คนดูเป็นคนไป/คนช่วยบนนัด — Senior ที่ออกหน้างานเองอ่านถ้อยคำของช่าง)
  *                       (`canOpenRequest` = เปิดหน้าคำร้องได้ไหม · `writeBlockedReason` = เหตุที่เขียนไม่ได้)
  * @param dirtyZoneIds   พื้นที่ที่มีค่าพิมพ์ค้างยังไม่บันทึก (จอส่งมา · PR4)
  * @param pendingDecisionZoneIds พื้นที่ที่เคาะแล้วยังไม่กดบันทึก (จอส่งมา · PR5)
@@ -316,6 +317,17 @@ export function surveyControlView({
   /* ใบที่ถูกดึงกลับ **และยังไม่ได้ส่งซ้ำ** — แถว recall ค้างอยู่ตลอดไป ⇒ ต้องคู่กับ
      "ยังไม่มี answeredAt" เสมอ ไม่งั้นใบที่ส่งรอบสองไปแล้วจะอ่านว่ายังถูกดึงกลับอยู่ */
   const recallPending = !!recall && !sent && !cancelled;
+  /* ⭐ **นัดยังเปิดอยู่ = ช่างยังไม่กด "ส่งงาน"** (มติผู้ใช้ 2026-09-21) — วัดครบแล้วยังไม่ใช่
+     "ส่วนของช่างจบ" จนกว่าจะส่งงาน (ปิดนัด + กระดิ่งถึงหัวหน้า) · 🐞 ก่อนแก้ รางขวาบอกช่างว่า
+     "รอหัวหน้าเคาะ" ข้างแถบที่ยังขอให้กดส่งงาน = สองข้อความเถียงกันบนจอเดียว
+     ⚠️ ไม่มีนัด (`visit` = null) = ใช้ถ้อยคำเดิม — ใบเก่า/เทสต์ที่ไม่ส่งนัดมาไม่ควรเปลี่ยนความหมาย */
+  const visitNotStarted = visit?.status === 'scheduled';
+  const crewNotSubmitted = visitNotStarted || visit?.status === 'in_progress';
+  /* ใครกำลังอ่าน — ถ้อยคำ "กด ส่งงาน" ต้องขึ้นเฉพาะคนที่มีแถบส่งงานบนจอจริง
+     (กติกาเดียวกับ `showFieldBar` ของหน้า: เขียนได้ และไม่ใช่หัวหน้า หรือเป็นหัวหน้าที่อยู่บนนัดเอง)
+     🐞 ไม่แยก = คนอ่านอย่างเดียวถูกสั่งให้กดปุ่มที่ไม่มี · Senior ที่ออกหน้างานเองถูกเรียกว่า "ช่าง" */
+  const onVisit = viewer?.onVisit === true;
+  const actsAsCrew = canWrite && (!canDecide || onVisit);
 
   const progress = surveyFieldProgress(rows, files);
   const leftZones = active.filter((r) => surveyFieldMissing(r, files[r.id] || []).length > 0);
@@ -394,13 +406,36 @@ export function surveyControlView({
       key: 'recalled', tone: 'warning', headline: 'ดึงผลกลับมาแก้',
       sub: progress.complete ? 'วัดครบแล้ว · รอหัวหน้าส่งผลอีกครั้ง' : measuredSub,
     };
+  } else if (visitNotStarted && allGates.some((g) => !g.ok)) {
+    /* ยังไม่กดเริ่มงาน = ยังไม่มีใครไปหน้างาน **ไม่ว่าจะกรอกล่วงหน้าไปแล้วเท่าไร** · 🐞 เดิมขึ้น
+       "กำลังวัดหน้างาน"/"กด ส่งงาน" ข้างแถบที่มีแค่ปุ่ม "เริ่มงาน" บนจอเดียวกัน
+       ⚠️ ใบที่ผ่านครบหกข้อแล้ว (หัวหน้าเคาะแล้ว) ยังขึ้น "พร้อมส่งผล" — การส่งผลไม่รอนัด (มติ 16/09) */
+    /* ⚠️ บรรทัดรองใช้คำ "วัดแล้ว" ชุดเดียวกับหัวลิสต์ · ป้ายการ์ด · รางขั้นตอน — เคยเขียน
+       "กรอกล่วงหน้าแล้ว" แล้วรางเถียงกับตัวเองบนจอเดียว */
+    status = { key: 'not-started', tone: 'neutral', headline: 'ยังไม่เริ่มงานหน้างาน', sub: measuredSub };
   } else if (!progress.complete) {
     status = { key: 'measuring', tone: 'warning', headline: 'กำลังวัดหน้างาน', sub: measuredSub };
   } else if (allGates.some((g) => !g.ok)) {
-    status = {
-      key: 'awaiting-decision', tone: 'info', headline: 'วัดครบแล้ว — รอหัวหน้าเคาะ',
-      sub: `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่ · เหลือเคาะจุดและแพ็คเกจ`,
-    };
+    const measured = `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`;
+    status = !crewNotSubmitted
+      ? {
+        key: 'awaiting-decision', tone: 'info', headline: 'วัดครบแล้ว — รอหัวหน้าเคาะ',
+        sub: `${measured} · เหลือเคาะจุดและแพ็คเกจ`,
+      }
+      : actsAsCrew
+        ? {
+          key: 'awaiting-submit', tone: 'info',
+          /* Senior ที่ออกหน้างานเองคือคนเคาะเองต่อ — "เพื่อแจ้งหัวหน้า" คือการแจ้งตัวเอง */
+          headline: canDecide ? 'วัดครบแล้ว — กด “ส่งงาน” เพื่อปิดงานหน้างาน' : 'วัดครบแล้ว — กด “ส่งงาน” เพื่อแจ้งหัวหน้า',
+          /* บรรทัดรองบอก **ก้าวถัดไปของใคร** ไม่ใช่ท่องพาดหัวซ้ำ */
+          sub: canDecide
+            ? `${measured} · ส่งงานแล้วเคาะจุดและแพ็คเกจต่อได้เลย`
+            : `${measured} · ส่งแล้วหัวหน้าเคาะจุดและแพ็คเกจต่อ`,
+        }
+        : {
+          key: 'awaiting-submit', tone: 'info', headline: 'วัดครบแล้ว — ช่างยังไม่กดส่งงาน',
+          sub: canDecide ? `${measured} · เคาะจุดและแพ็คเกจได้เลย ไม่ต้องรอ` : measured,
+        };
   } else {
     status = {
       key: 'ready', tone: 'info', headline: 'พร้อมส่งผลให้ฝ่ายขาย',
@@ -558,7 +593,10 @@ export function surveyControlView({
       key: 'crew-sent', tone: 'neutral',
       text: 'ส่งผลแล้ว แก้ไม่ได้ — ถ้าตัวเลขต้องเปลี่ยน แจ้งหัวหน้าบริการให้กด "ดึงผลกลับมาแก้"',
     });
-  } else if (!canDecide && canWrite && progress.complete && active.length > 0) {
+  } else if (!canDecide && canWrite && progress.complete && active.length > 0 && !visit) {
+    /* ⚠️ **เฉพาะใบที่ไม่มีนัด** — มีนัดเมื่อไร แถบงานของช่าง (ส่งงานแล้ว · รอหัวหน้าเคาะ) กับพาดหัว
+       สถานะพูดเรื่องนี้ครบแล้ว · 🐞 เคยขึ้นกล่องแจ้งซ้ำพาดหัว (ก่อนส่ง: "กด ส่งงาน ที่แถบล่าง" ซึ่ง
+       ชี้ผิดทิศบนจอแคบ · หลังส่ง: ข้อเท็จจริงเดียวสามกล่องซ้อนกัน) */
     notices.push({
       key: 'crew-done', tone: 'success',
       text: 'ส่วนของช่างครบแล้ว — หัวหน้าบริการเป็นคนเคาะแพ็คเกจและส่งผล',
@@ -639,7 +677,12 @@ export function surveyControlView({
       recallKnown: unknown?.recall !== true,
       /* ลำดับใน DOM: ช่างที่ยังกรอกได้ถามว่า "พื้นที่ไหนต้องวัด" ⇒ เนื้อมาก่อนการ์ด ·
          คนอื่นถามว่า "ใบนี้อยู่สถานะไหน" ⇒ การ์ดมาก่อน */
-      controlFirst: !(canWrite && !canDecide),
+      /* ⚠️ ใช้ `actsAsCrew` ตัวเดียวกับถ้อยคำ "กด ส่งงาน" — 🐞 Senior ที่ออกหน้างานเอง (หัวหน้า
+         ที่อยู่บนนัด) เคยได้การ์ดขึ้นก่อน ⇒ จอ 390 พาดหัวสั่ง "กด ส่งงาน" แต่แถบส่งงานอยู่ใต้
+         พื้นที่ทั้งหมด ต้องเลื่อนหาเอง
+         ⚠️ Senior ได้เนื้อก่อน **เฉพาะตอนแถบส่งงานยังมีปุ่ม** — ส่งงานแล้วงานถัดไปของเขาคือเคาะและ
+            ส่งผล ซึ่งอยู่บนการ์ด ⇒ กลับไปการ์ดก่อนเหมือนหัวหน้าคนอื่น */
+      controlFirst: !(canWrite && (!canDecide || (onVisit && crewNotSubmitted))),
     },
     lockReason,
     unknown: { ...(unknown || {}) },
