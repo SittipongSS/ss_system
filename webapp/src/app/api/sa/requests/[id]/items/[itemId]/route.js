@@ -610,7 +610,9 @@ export async function DELETE(request, { params }) {
        · ไม่มีเธรด/audit · บอกผ่าน `_warning` แทน */
     let attachWarning = null;
     try {
-      await purgeAttachments('dept_request_item', itemId);
+      // ⚠️ ลบแถวไฟล์แนบพังไม่ throw — คืน `error` มาให้อ่านเอง (ไม่อ่าน = แถวกำพร้าค้างเงียบ)
+      const { error: purgeError } = await purgeAttachments('dept_request_item', itemId);
+      if (purgeError) attachWarning = 'ลบรายการแล้ว แต่ลบข้อมูลไฟล์แนบของรายการไม่สำเร็จ — ไฟล์แนบยังค้างในระบบ';
     } catch (e) {
       console.error('[requests] กวาดไฟล์แนบหลังลบแถวไม่สำเร็จ:', e?.message);
       attachWarning = 'ลบรายการแล้ว แต่ลบไฟล์แนบของรายการไม่สำเร็จ';

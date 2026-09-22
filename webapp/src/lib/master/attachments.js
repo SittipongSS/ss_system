@@ -120,16 +120,25 @@ export async function releaseAttachmentFile(att) {
 
 // ลบไฟล์แนบทั้งหมดของ entity แม่ (row + ไฟล์จริง) — ใช้ตอนลบ entity (cascade).
 // live DB ไม่มี FK cascade จาก attachments → ต้องเก็บกวาดเอง กันไฟล์/แถวกำพร้า.
-// best-effort ต่อไฟล์; ลบแถวเป็นชุดเดียวท้ายสุด. คืนจำนวนเอกสารที่จัดการ.
+// best-effort ต่อไฟล์; ลบแถวเป็นชุดเดียวท้ายสุด.
 // `client` ไว้ให้ผู้เรียกที่ถือ supabase ของตัวเองอยู่แล้ว (และให้เทสต์ยัดตัวปลอมได้) —
 // ไม่ส่งมาก็ใช้ admin client ตามเดิม
+//
+// คืน `{ count, error }` — `count` = เอกสารที่จัดการ · `error` = ลบ **แถว** attachments ไม่สำเร็จ (null = สำเร็จ)
+// 🐞 เดิมทิ้ง `{ error }` ของคำสั่งลบแถว (supabase-js ไม่ throw) ⇒ ลบพัง = แถวกำพร้าค้าง ทั้งที่ผู้เรียกทุกคน
+//    เข้าใจว่าเก็บกวาดสำเร็จ · ⚠️ **ไม่ throw โดยเจตนา** — ผู้เรียก ~20 จุด await ตรง ๆ ไม่มี try/catch และหลายจุด
+//    เรียกหลังลบ entity แม่ไปแล้ว ⇒ throw = 500 ทั้งที่ของหลักลบสำเร็จ · ผู้เรียกที่บอกจอได้ให้อ่าน `error` เอง
+//    · พังแล้วยัง log ดังให้ตามเก็บได้แม้ผู้เรียกไม่อ่าน
 export async function purgeAttachments(entityType, entityId, client = null) {
-  if (!entityType || !entityId) return 0;
+  if (!entityType || !entityId) return { count: 0, error: null };
   const supabase = client || getSupabaseAdmin();
   const list = await listAttachments(entityType, entityId, supabase);
-  if (!list.length) return 0;
+  if (!list.length) return { count: 0, error: null };
   for (const att of list) await releaseAttachmentFile(att);
-  await supabase
+  const { error } = await supabase
     .from('attachments').delete().eq('entityType', entityType).eq('entityId', entityId);
-  return list.length;
+  if (error) {
+    console.error('[attachments] ลบแถวไฟล์แนบไม่สำเร็จ — แถวกำพร้าค้าง', entityType, entityId, error.message);
+  }
+  return { count: list.length, error: error || null };
 }
