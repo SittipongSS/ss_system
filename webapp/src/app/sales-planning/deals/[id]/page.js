@@ -68,6 +68,7 @@ import { legacyClosedNoteOf } from "@/lib/sales/legacyDealSwitch";
 import { DEAL_DELETE_LEAD_NOTE, LEAD_RELEASE_NOTE, canLinkLeadRole, dealLeadLinkBlocker, leadLabel, leadLinkEffects, leadLinkOptions } from "@/lib/sales/dealLeadLink";
 import { LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS } from "@/lib/sales/leads";
 import DealLeadLinkModal from "@/components/salesPlanning/DealLeadLinkModal";
+import LeadSourcePicker from "@/components/salesPlanning/LeadSourcePicker";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -486,6 +487,11 @@ export default function DealOverviewPage() {
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [dealForm, setDealForm] = useState(null);
   const [savingDeal, setSavingDeal] = useState(false);
+  /* 🐞 ข้อความของฟอร์มแก้ไขต้องอยู่ **ในโมดัล** — เดิมเขียนลงแถบบนหน้าซึ่งอยู่ใต้โมดัล ⇒ กด "บันทึก"
+     แล้วเงียบ (prod 22/09: ดีล 146/508 ใบติดช่องบังคับ มูลค่ารายหมวด/วันเริ่ม/วันสิ้นสุด แล้วไม่มีใครเห็นเหตุ) */
+  const [dealFormError, setDealFormError] = useState("");
+  // ลีดต้นทางที่เลือกในฟอร์มแก้ไข (มติผู้ใช้ 2026-09-22 รอบสอง — แก้ดีลแล้วผูกลีดย้อนหลังได้ด้วย)
+  const [editLeadId, setEditLeadId] = useState("");
   const [pmModalOpen, setPmModalOpen] = useState(false);
   const [pmInitial, setPmInitial] = useState(null);
 
@@ -703,12 +709,14 @@ export default function DealOverviewPage() {
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
       ownerId: deal.ownerId || "",
     });
+    setDealFormError("");
+    setEditLeadId("");
     setDealModalOpen(true);
   };
   const saveDeal = async (e) => {
     e.preventDefault();
     setSavingDeal(true);
-    setError("");
+    setDealFormError("");
     /* ⭐ ฟอร์มแก้ต้องบังคับช่องเดียวกับตอนสร้าง (มติผู้ใช้ 2026-09-02) — เดิมตรวจแค่
        ในโมดัลสร้าง ⇒ แก้ดีลเก่าแล้วบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้ตลอด
        สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
@@ -718,7 +726,7 @@ export default function DealOverviewPage() {
       alreadyWon,
       title: dealForm.title,
     });
-    if (missingFields) { setError(missingFields); setSavingDeal(false); return; }
+    if (missingFields) { setDealFormError(missingFields); setSavingDeal(false); return; }
     try {
       const selected = customers.find((c) => c.id === dealForm.customerId);
       // อย่าให้ชื่อลูกค้าหายเมื่อ dropdown โหลดไม่ครบ/ลูกค้า pending ถูกซ่อน — fallback
@@ -744,10 +752,23 @@ export default function DealOverviewPage() {
         const linkWarning = responseWarningText(linked);
         if (linkWarning) notifyToast.warning(linkWarning, RESPONSE_WARNING_TOAST);
       }
+      /* ผูกลีดต้นทางหลังบันทึกดีลสำเร็จ — endpoint เดียวกับปุ่ม "ผูกลีดต้นทาง" (ด่านเดียวกัน)
+         พลาด = ดีลบันทึกแล้ว แต่บอกในโมดัลให้กดใหม่ได้ (บันทึกซ้ำไม่เสียหาย) */
+      if (editLeadId && !deal.leadId) {
+        try {
+          const linkedLead = await apiJson(`/api/sales-planning/deals/${id}/link-lead`, {
+            method: "POST", json: { leadId: editLeadId }, fallbackError: "ผูกลีดต้นทางไม่สำเร็จ",
+          });
+          const leadWarning = responseWarningText(linkedLead);
+          if (leadWarning) notifyToast.warning(leadWarning, RESPONSE_WARNING_TOAST);
+        } catch (linkError) {
+          throw new Error(`บันทึกดีลแล้ว แต่ผูกลีดต้นทางไม่สำเร็จ: ${linkError.message}`);
+        }
+      }
       setDealModalOpen(false);
       await load();
     } catch (e2) {
-      setError(e2.message || "บันทึกไม่สำเร็จ");
+      setDealFormError(e2.message || "บันทึกไม่สำเร็จ");
     } finally {
       setSavingDeal(false);
     }
@@ -1800,6 +1821,20 @@ export default function DealOverviewPage() {
               alreadyWon={alreadyWon}
               owners={dealOwners}
             />
+            {/* ลีดต้นทาง — ตัวเดียวกับฟอร์มเพิ่มดีล · ผูกแล้ว = บอกทางถอด (แผงจัดการ) แทนช่องเลือก */}
+            {canLinkLead && (
+              <LeadSourcePicker
+                via="link"
+                value={editLeadId}
+                onChange={(leadId) => setEditLeadId(leadId)}
+                disabled={savingDeal}
+                ownerId={dealForm.ownerId || deal?.ownerId}
+                ownerName={ownerName}
+                linkedNote={deal?.leadId ? `ผูกกับลีด ${data?.sourceLead ? leadLabel(data.sourceLead) : "ต้นทาง"} แล้ว — ถอดได้ที่ปุ่ม “ถอดลีดต้นทาง” บนแผงจัดการ` : ""}
+                blocker={linkLeadBlocker || ""}
+              />
+            )}
+            {dealFormError ? <p className={styles.formError} role="alert">{dealFormError}</p> : null}
             <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModalOpen(false)}>ยกเลิก</button>
               <button type="submit" className="btn btn-primary" disabled={savingDeal}>

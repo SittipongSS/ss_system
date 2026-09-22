@@ -50,10 +50,11 @@ import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
 import { customerArIndex, customerSearchText } from "@/lib/master/customerAr";
 import { entityCodeDisplay } from "@/lib/entityCode";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
-import { DEAL_DELETE_LEAD_NOTE, canLinkLeadRole } from "@/lib/sales/dealLeadLink";
+import { DEAL_DELETE_LEAD_NOTE, canLinkLeadRole, dealLeadLinkBlocker } from "@/lib/sales/dealLeadLink";
+import LeadSourcePicker from "@/components/salesPlanning/LeadSourcePicker";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอด Actual (SO อนุมัติแล้ว) นอกนั้นใช้ยอดคาดการณ์
@@ -183,6 +184,12 @@ export default function SalesPlanningPipelinePage() {
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [reportYear, setReportYear] = useState(String(REPORT_THIS_YEAR));
   const [dealForm, setDealForm] = useState({ ...initialDealForm });
+  /* 🐞 ข้อความของฟอร์มแก้ไขต้องอยู่ในโมดัล — เดิมเขียนลงแถบบนหน้าซึ่งอยู่ใต้โมดัล ⇒ กดบันทึกแล้วเงียบ
+     (prod 22/09: ดีล 146/508 ใบติดช่องบังคับแล้วไม่มีใครเห็นเหตุ) */
+  const [dealFormError, setDealFormError] = useState("");
+  // แถวดีลที่กำลังแก้ (ต้องรู้ leadId/origin/metadata ของใบจริงเพื่อช่องลีดต้นทาง) + ลีดที่เลือก
+  const [editingDeal, setEditingDeal] = useState(null);
+  const [editLeadId, setEditLeadId] = useState("");
   const [createModal, setCreateModal] = useState(false); // โมดัลสร้างดีล (ตัวกลาง ใช้ร่วมกับฝั่งลีด)
   const [submitting, setSubmitting] = useState(false);
   const [quoteModal, setQuoteModal] = useState(false);
@@ -439,13 +446,16 @@ export default function SalesPlanningPipelinePage() {
       // ทีมปัจจุบันของดีล — เจ้าของที่อยู่หลายทีมย้ายใบนี้ระหว่างทีมตัวเองได้จากช่องนี้
       team: deal.team || "",
     });
+    setEditingDeal(deal);
+    setEditLeadId("");
+    setDealFormError("");
     setDealModal(true);
   };
 
   const saveDeal = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    setError("");
+    setDealFormError("");
     /* ⭐ ฟอร์มแก้ต้องบังคับช่องเดียวกับตอนสร้าง (มติผู้ใช้ 2026-09-02) — เดิมตรวจแค่
        ในโมดัลสร้าง ⇒ แก้ดีลเก่าแล้วบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้ตลอด
        สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
@@ -454,7 +464,7 @@ export default function SalesPlanningPipelinePage() {
       alreadyWon: isWonStage(dealForm.stage),
       title: dealForm.title,
     });
-    if (missingFields) { setError(missingFields); setSubmitting(false); return; }
+    if (missingFields) { setDealFormError(missingFields); setSubmitting(false); return; }
     const selectedCustomer = customers.find((c) => c.id === dealForm.customerId);
     const payload = { ...dealForm, customerName: selectedCustomer?.name || dealForm.customerName || null };
     try {
@@ -473,10 +483,23 @@ export default function SalesPlanningPipelinePage() {
         });
         if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || "บันทึกดีลแล้ว แต่เชื่อมโครงการไม่สำเร็จ");
       }
+      /* ผูกลีดต้นทางหลังบันทึกดีลสำเร็จ — endpoint เดียวกับปุ่มบนหน้าดีล (ด่านเดียวกัน)
+         พลาด = ดีลบันทึกแล้ว แต่บอกในโมดัลให้กดใหม่ได้ (บันทึกซ้ำไม่เสียหาย) */
+      if (dealForm.id && editLeadId && !editingDeal?.leadId) {
+        try {
+          const linkedLead = await apiJson(`/api/sales-planning/deals/${dealForm.id}/link-lead`, {
+            method: "POST", json: { leadId: editLeadId }, fallbackError: "ผูกลีดต้นทางไม่สำเร็จ",
+          });
+          const leadWarning = responseWarningText(linkedLead);
+          if (leadWarning) notifyToast.warning(leadWarning, RESPONSE_WARNING_TOAST);
+        } catch (linkError) {
+          throw new Error(`บันทึกดีลแล้ว แต่ผูกลีดต้นทางไม่สำเร็จ: ${linkError.message}`);
+        }
+      }
       setDealModal(false);
       await load();
     } catch (e2) {
-      setError(e2.message || "บันทึกดีลไม่สำเร็จ");
+      setDealFormError(e2.message || "บันทึกดีลไม่สำเร็จ");
     } finally {
       setSubmitting(false);
     }
@@ -1155,6 +1178,21 @@ export default function SalesPlanningPipelinePage() {
               alreadyWon={isWonStage(dealForm.stage)}
               owners={owners}
             />
+            {/* ลีดต้นทาง — ตัวเดียวกับฟอร์มเพิ่มดีลและฟอร์มแก้ของหน้าดีล · mount เฉพาะตอนโมดัลเปิด
+                (ตัวเลือกโหลดตอน mount) · สิทธิ์: แก้ดีลใบนี้ได้ + บทบาทที่ผูกลีดได้ */}
+            {dealModal && editingDeal?.canEdit && canLinkLeadRole(role) && (
+              <LeadSourcePicker
+                via="link"
+                value={editLeadId}
+                onChange={(leadId) => setEditLeadId(leadId)}
+                disabled={submitting}
+                ownerId={dealForm.ownerId || editingDeal.ownerId}
+                ownerName={editingDeal.ownerName || ""}
+                linkedNote={editingDeal.leadId ? "ดีลนี้ผูกลีดต้นทางแล้ว — ถอดหรือเปลี่ยนได้ที่หน้าดีล (ปุ่ม “ถอดลีดต้นทาง”)" : ""}
+                blocker={dealLeadLinkBlocker(editingDeal) || ""}
+              />
+            )}
+            {dealFormError ? <p className={styles.formError} role="alert">{dealFormError}</p> : null}
             <div className="form-action-bar">
               <button type="button" className="btn" onClick={() => setDealModal(false)}>ยกเลิก</button>
               <button type="submit" className="btn btn-primary" disabled={submitting}>

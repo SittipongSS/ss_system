@@ -291,3 +291,37 @@ test('ลบดีลใช้กติกาเดียวกับถอด �
   assert.match(leads, /params\.get\('linkable'\) === '1'/);
   assert.match(leads, /leads\.filter\(\(lead\) => !leadLinkError\(\{ user, lead \}\)\)/);
 });
+
+/* ── ฟอร์มแก้ไขดีล (มติผู้ใช้ 2026-09-22 รอบสอง) ────────────────────────────── */
+
+test('ช่องลีดต้นทางเป็น component เดียวของฟอร์มเพิ่มดีลและฟอร์มแก้ทั้งสองหน้า (ฟอร์มแก้ = ฟอร์มสร้าง)', () => {
+  for (const rel of [
+    'src/components/salesPlanning/DealCreateModal.js',
+    'src/app/sales-planning/deals/page.js',
+    'src/app/sales-planning/deals/[id]/page.js',
+  ]) {
+    const src = read(rel);
+    assert.match(src, /<LeadSourcePicker/, `${rel} ต้องใช้ LeadSourcePicker`);
+  }
+  // ฟอร์มแก้ผูกผ่าน endpoint เดียวกับปุ่มบนหน้าดีล (ด่านเดียวกัน) หลังบันทึกดีลสำเร็จ
+  for (const rel of ['src/app/sales-planning/deals/page.js', 'src/app/sales-planning/deals/[id]/page.js']) {
+    const src = read(rel);
+    assert.match(src, /\/link-lead`, \{\s*method: "POST", json: \{ leadId: editLeadId \}/, `${rel} ผูกผ่าน /link-lead`);
+    assert.match(src, /บันทึกดีลแล้ว แต่ผูกลีดต้นทางไม่สำเร็จ/, `${rel} ผูกพลาดต้องบอกว่าดีลบันทึกแล้ว`);
+  }
+});
+
+/* 🐞 prod 22/09: ฟอร์มแก้ไขดีลเขียน error ลงแถบบนหน้า (อยู่ใต้โมดัล) ⇒ ดีล 146/508 ใบที่ติดช่องบังคับ
+   กดบันทึกแล้วเงียบ ผู้ใช้เห็นว่า "แก้ไขดีลไม่ได้" */
+test('ฟอร์มแก้ไขดีลโชว์ข้อความในโมดัล ไม่ใช่แถบบนหน้าที่อยู่ใต้โมดัล', () => {
+  for (const rel of ['src/app/sales-planning/deals/page.js', 'src/app/sales-planning/deals/[id]/page.js']) {
+    const src = read(rel);
+    const start = src.indexOf('const saveDeal = async (e) => {');
+    const save = src.slice(start, src.indexOf('const deleteDeal = async', start));
+    assert.ok(start > 0 && save.length > 0, `${rel}: หา saveDeal ไม่เจอ`);
+    assert.doesNotMatch(save, /setError\(/, `${rel}: saveDeal ห้ามเขียน error ลงแถบบนหน้า`);
+    assert.match(save, /setDealFormError\(missingFields\)/);
+    assert.match(src, /\{dealFormError \? <p className=\{styles\.formError\} role="alert">\{dealFormError\}<\/p> : null\}/,
+      `${rel}: ต้องวาดข้อความในฟอร์ม`);
+  }
+});
