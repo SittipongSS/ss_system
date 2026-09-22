@@ -104,7 +104,8 @@ test('หน้ารายการดีล: มูลค่า · การ�
 test('หน้ารายการดีล: ยอดรออนุมัติของหัวกลุ่ม/KPI คัดงวด · งวดกับเวลาจับในรอบโหลดเดียวกับชุดดีล', () => {
   const page = stripComments(read(DEALS_PAGE));
   assert.match(page, /import \{[^}]*\bpendingPeriodMatcher\b[^}]*\} from "@\/lib\/sales\/dealAmountDisplay"/);
-  assert.match(page, /setPendingPeriod\(\{ inPeriod: pendingPeriodMatcher\(\{ month, allMonths, reviewOnly \}\), now: new Date\(\) \}\)/,
+  // ช่วงวันของตัวคุมงวดกลาง (2026-09-22) ส่ง period ไปด้วย — ยังต้องจับตอนโหลดเหมือนเดิม
+  assert.match(page, /setPendingPeriod\(\{ inPeriod: pendingPeriodMatcher\(\{ month, allMonths, reviewOnly, period: dealPeriod \}\), now: new Date\(\) \}\)/,
     'งวด+เวลาต้องจับตอนโหลด (ไม่อ่านนาฬิกาตอนเรนเดอร์ · ไม่ใช้งวดใหม่กับดีลของรอบเก่า)');
   // จุด set อยู่หลังด่านทิ้งคำตอบรอบเก่า — ไม่งั้นงวดของรอบเก่าทับรอบใหม่
   const guard = page.indexOf('if (!isLatest()) return;');

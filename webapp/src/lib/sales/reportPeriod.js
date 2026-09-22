@@ -87,6 +87,24 @@ export function parseReportPeriod(input = {}, { today } = {}) {
   return { error: 'โหมดของงวดไม่ถูกต้อง' };
 }
 
+/**
+ * อ่านงวดจาก URLSearchParams ของ route ที่เคยรับพารามิเตอร์รุ่นเก่า (ไฟล์ลีด · ไฟล์ FC · รายการดีล)
+ *   ?mode=… (รุ่นปัจจุบัน) → parseReportPeriod
+ *   รุ่นเก่า: ?year=YYYY → ทั้งปี · ?month=YYYY-MM → เดือนเดียว · ?from=&to= (วัน) → ช่วงวัน
+ *   ไม่มีอะไรเลย → `null` = ไม่จำกัดงวด (ผู้เรียกตัดสินเองว่ารับได้ไหม)
+ * ⭐ ลิงก์/บุ๊กมาร์กเก่ายังใช้ได้ ส่วนหน้าจอรุ่นใหม่ส่ง `reportPeriodQuery` ตัวเดียวกับจอ
+ */
+export function parseReportPeriodParams(params, { today } = {}) {
+  const get = (key) => (params?.get ? params.get(key) : params?.[key]) || null;
+  if (get('mode')) {
+    return parseReportPeriod({ mode: get('mode'), month: get('month'), year: get('year'), from: get('from'), to: get('to') }, { today });
+  }
+  if (get('year')) return parseReportPeriod({ mode: 'year', year: get('year') }, { today });
+  if (get('month')) return parseReportPeriod({ mode: 'month', month: get('month') }, { today });
+  if (get('from') || get('to')) return parseReportPeriod({ mode: 'range', from: get('from'), to: get('to') }, { today });
+  return null;
+}
+
 /** สัดส่วนของเดือนที่ช่วงวันคลุมและ "ถึงวันนี้แล้ว" — 0..1
  *  โหมดรายเดือน/ทั้งปีคืน 1 เสมอ (เป้าเต็มเดือน · เดือนที่ยังไม่จบกันด้วย closedCount ตามเดิม) */
 export function targetFactorOf(period, month) {

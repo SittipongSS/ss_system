@@ -54,6 +54,9 @@ import DateTimeInput from "@/components/ui/DateTimeInput";
 import MonthPicker from "@/components/ui/MonthPicker";
 import DayRangePicker from "@/components/ui/DayRangePicker";
 import MonthRangePicker from "@/components/ui/MonthRangePicker";
+import ReportPeriodControl from "@/components/ui/ReportPeriodControl";
+import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
+import useReportPeriod from "@/lib/ui/useReportPeriod";
 import MonthGrid from "@/components/ui/MonthGrid";
 import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -2173,6 +2176,16 @@ export default function DesignPreviewPage() {
               </div>
             </div>
 
+            {/* ── ตัวเลือกงวดรวม + ปุ่มดาวน์โหลด Excel (มติผู้ใช้ 2026-09-22 "ทุกหน้าตัวคุมชุดเดียว") ──
+                หน้ารายงานยอดขาย · ลีด · ดีล ใช้คู่นี้ชุดเดียว — งวดจาก useReportPeriod ส่งเป็น querystring
+                ตัวเดียวกันทั้ง API ข้อมูลและไฟล์ ⇒ จอกับไฟล์ไม่มีทางคนละงวด */}
+            <div className={styles.stack}>
+              <span className={styles.caption}>ตัวเลือกงวดรวม (ReportPeriodControl) + ปุ่มดาวน์โหลด Excel (ExcelDownloadButton)</span>
+              <div className={styles.row}>
+                <PeriodControlDemo />
+              </div>
+            </div>
+
             {/* ── กริดปฏิทินทั้งเดือน ─────────────────────────────────────────
                 วางไว้ในกลุ่ม "ตัวควบคุม" ไม่ใช่ "แสดงข้อมูล" เพราะช่องกดได้ และเพราะคนที่
                 มาหา "ปฏิทิน" จะเปิดกลุ่มวันที่เป็นที่แรก */}
@@ -3233,5 +3246,16 @@ export default function DesignPreviewPage() {
         </Section>
       </div>
     </Workspace>
+  );
+}
+
+/* ตัวอย่างตัวเลือกงวดรวม — hook เก็บค่าใน sessionStorage ของหน้านี้ · ปุ่ม Excel ปิดไว้ (หน้านี้ห้ามยิง API) */
+function PeriodControlDemo() {
+  const state = useReportPeriod({ defaultAllMonths: false, now: DEMO_NOW });
+  return (
+    <>
+      <ReportPeriodControl state={state} markedDays={DEMO_MARKED_DAYS} markedLabel="มีข้อมูล" />
+      <ExcelDownloadButton href={`/api/example?${state.query}`} disabled title={`งวดที่ส่ง: ${state.query}`} />
+    </>
   );
 }

@@ -42,8 +42,15 @@ export function compareDealDisplayValue(a, b) {
      เดือนอ่านไม่ออก     ไม่กรอง (ไม่มีงวด)
    คืน `null` = ไม่กรอง · ไม่งั้นคืนตัวเทียบ (pendingMonth) => boolean
    ⚠️ ตัวเทียบตอบ false เสมอเมื่อไม่มีเดือน — ไม่มีเดือน = ไม่มีใบรออนุมัติ */
-export function pendingPeriodMatcher({ month, allMonths = false, reviewOnly = false } = {}) {
-  if (reviewOnly || !isMonthValue(month)) return null;
+export function pendingPeriodMatcher({ month, allMonths = false, reviewOnly = false, period = null } = {}) {
+  if (reviewOnly) return null;
+  /* ⭐ ช่วงวัน (ตัวคุมงวดกลาง · มติผู้ใช้ 2026-09-22) — ยอดรออนุมัติลง "วันนี้" ⇒ นับเฉพาะช่วงที่คลุมวันนี้
+     (กติกาเดียวกับรายงานยอดขาย: "สัปดาห์ก่อน" อยู่ในเดือนนี้ก็จริง แต่ไม่ใช่ของช่วงนั้น) */
+  if (period?.mode === 'range') {
+    const coversToday = Boolean(period.today) && period.from <= period.today && period.today <= period.to;
+    return (pendingMonth) => coversToday && Boolean(pendingMonth) && (period.months || []).includes(pendingMonth);
+  }
+  if (!isMonthValue(month)) return null;
   if (allMonths) {
     const year = yearOfMonth(month);
     return (pendingMonth) => Boolean(pendingMonth) && yearOfMonth(pendingMonth) === year;

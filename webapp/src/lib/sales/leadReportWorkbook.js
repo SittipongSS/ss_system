@@ -25,7 +25,9 @@ export async function buildLeadReportBuffer(leads = [], meta = {}) {
 
   /* บรรทัดบนสุดบอกว่าไฟล์นี้คือช่วงไหน ใครโหลด เมื่อไร — ไฟล์ Excel เดินทางต่อได้
      ไกลกว่าหน้าจอมาก ถ้าไม่ประทับไว้ อีกสองสัปดาห์ไม่มีใครรู้ว่ามันคือข้อมูลของช่วงไหน */
-  const span = meta.from && meta.to ? `${meta.from} ถึง ${meta.to}` : 'ทั้งหมด (ไม่ระบุช่วง)';
+  const span = meta.label
+    ? `${meta.label}${meta.from && meta.to ? ` (${meta.from} ถึง ${meta.to})` : ''}`
+    : meta.from && meta.to ? `${meta.from} ถึง ${meta.to}` : 'ทั้งหมด (ไม่ระบุช่วง)';
   const info = sheet.addRow([`รายงานลีด · ช่วง ${span} · ${leads.length} ใบ`
     + `${meta.by ? ` · ดาวน์โหลดโดย ${meta.by}` : ''}`
     + `${meta.generatedAt ? ` · ${meta.generatedAt}` : ''}`

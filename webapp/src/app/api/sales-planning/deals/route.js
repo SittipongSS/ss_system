@@ -23,7 +23,8 @@ import {
 } from '@/lib/salesPlanning';
 import { loadForecastDriftMap } from '@/lib/salesPlanningForecast';
 import { buildDealTimelineRows, summarizeTimelineStep } from '@/lib/sales/dealTimelineGen';
-import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
+import { businessDayKey } from '@/lib/datePeriods';
+import { parseReportPeriodParams } from '@/lib/sales/reportPeriod';
 import { attributionTeam, isSuperuser } from '@/lib/permissions';
 import { sourceLeadIdOf } from '@/lib/sales/leads';
 import { leadLinkError } from '@/lib/sales/dealLeadLink';
@@ -52,10 +53,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const params = new URL(req.url).searchParams;
   const stage = params.get('stage');
-  const month = monthKey(params.get('month'));
-  // year=YYYY = "ทุกเดือนของปีนั้น" (ติ๊ก "ทุกเดือน" บน MonthPicker) — เดิมหน้าดีล
-  // ตัดตัวกรองทิ้งทั้งก้อนแล้วดึงมาทุกปี ตัวเลขจึงไม่ตรงกับปีที่ค้างบนปุ่ม
-  const year = isYearValue(params.get('year')) ? params.get('year') : null;
+  /* ⭐ งวดชุดเดียวกับหน้ารายงาน/ลีด (มติผู้ใช้ 2026-09-22 "ทุกหน้าตัวคุมชุดเดียว") — ตัวอ่านกลาง
+     `parseReportPeriodParams` รับทั้ง ?mode=… และพารามิเตอร์เดิม (?month= · ?year= = ทุกเดือนของปีนั้น)
+     ดีลในงวด = เดือนคาดปิด (กติกาที่ lib/sales/dealPeriod · ไฟล์ FC ใช้ตัวเดียวกัน)
+     ⚠️ งวดผิดรูป = ไม่กรอง (พฤติกรรมเดิมของ month= ที่อ่านไม่ออก) ไม่ใช่ 400 — จอเก่าที่ค้างในแท็บต้องไม่พัง */
+  const parsedPeriod = parseReportPeriodParams(params, { today: businessDayKey(new Date().toISOString()) });
+  const period = parsedPeriod && !parsedPeriod.error ? parsedPeriod : null;
 
   /* ⚠️ **อ่านทุกหน้า ไม่ใช่หน้าแรก** — Supabase ตั้ง Max rows = 1000 และ PostgREST
      ตัดผลลัพธ์ **โดยไม่มี error** ⇒ วันที่ดีลเกินพันใบ ลิสต์นี้จะหายไปเงียบ ๆ พร้อม
@@ -70,11 +73,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const applyFilters = (q0) => {
     let q = applyDealScope(q0, user);
     if (stage && stage !== 'all') q = q.eq('stage', normalizeStage(stage));
-    if (month) q = q.eq('forecastMonth', month);
-    else if (year) {
-      const range = monthRangeOfYear(year);
-      q = q.gte('forecastMonth', range.first).lte('forecastMonth', range.last);
-    }
+    if (period?.mode === 'range') q = q.gte('expectedCloseDate', period.from).lte('expectedCloseDate', period.to);
+    else if (period) q = q.in('forecastMonth', period.months);
     return q;
   };
 
