@@ -24,8 +24,15 @@
 //     "จำนวนผลิต (Quantity)" (บรรทัด SO · ถอยบรรทัดใบเสนอราคา) · แถว "จำนวน" ในกล่องอ้างอิงถูกถอด
 //   · "final review ต้องปรับให้เหมือน QT และ SO" + "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม" — ช่องลงนามเป็นกล่องของเปลือกชุดเดียวกับ
 //     QT/SO (รูปลายเซ็นจริง · ตำแหน่งเต็มของคนที่เซ็นจริง · ชื่อเต็ม · วันที่) · ดู PRODUCT_SPEC_SIGN_STEPS
-//   · ตัดหน้า **ทั้งหัวข้อ** และหัวข้อในเนื้อมีเลขข้อ ("1. Product Overview" …) — ดู `productSpecLayout.js`
-//   ⚠️ **เนื้อสเปค (ป้ายในตาราง · หัวข้อ) ยังเป็นชุดเดียวทั้งสองภาษา** — มติรอบนี้เปลี่ยนเฉพาะหัว/กล่อง/วันที่
+//   · ตัดหน้า **ทั้งหัวข้อ** และหัวข้อในเนื้อมีเลขข้อ ("1. ข้อมูลผลิตภัณฑ์ …") — ดู `productSpecLayout.js`
+//
+// ⭐ **มติผู้ใช้ 2026-09-22 รอบสี่ — "ปรับการใช้ accent color ในเอกสารใหม่ ดูใบเสนอราคาเป็นตัวอย่าง และปรับชื่อหัวข้อตามภาษา
+//    เอาใบเสนอราคาเป็นต้นแบบ"**
+//   · สี accent (`--doc-accent*`) อยู่ **ที่ชื่อเอกสาร (h1 ของเปลือก) ที่เดียว** เหมือนใบเสนอราคา · หัวตาราง/ป้ายแถว/เลขลำดับ/
+//     กรอบภาพใช้ navy/neutral ชุดเดียวกับตารางของใบเสนอราคา — ดู extraCss ท้ายไฟล์
+//   · หัวข้อในเนื้อ + หัวช่องลงนามตามภาษาของใบผ่าน `L.pair()` แบบ "งวดชำระเงิน / PAYMENT SCHEDULE" (ใบไทย "ไทย / ENGLISH" ·
+//     ใบอังกฤษอังกฤษล้วน) · คู่คำอยู่ `DOC_LABEL_PAIRS` (spec* ของ quotationMasterTemplate)
+//   ⚠️ **ป้ายแถว/หัวคอลัมน์/สถานะในตารางยังชุดเดียวทั้งสองภาษา** (มติเจ้าของ — ไม่แปลเนื้อ) · เปลี่ยนเฉพาะหัวข้อ
 //
 // ⚠️ ฉบับที่ออกจริงเป็น **HTML ไม่ใช่ PDF** เหมือน QT/SO ⇒ ปุ่มเขียนว่า "พิมพ์" ไม่ใช่ "ดาวน์โหลด"
 //
@@ -49,6 +56,7 @@
 //     (🐞 รอบก่อนหักค่าคงที่ 31.75 ที่วัดตอนกล่องมีสามแถว)
 //   ระยะแถวตารางในตารางจริง (รอบสอง) 1 บรรทัด 7.55 · 2 บรรทัด 12.44 (กรอบ 2.65–2.69 + n × 4.89) · หัวตาราง
 //     checklist 12.44 · cert 7.67 · h3 12.69 (ตัวแรกของแผ่นต่อไม่มี margin บน 5) · แถวภาพ (คำบรรยายบรรทัดเดียว) 85.37
+//     (รอบสี่: หัวข้อแบบใบเสนอราคา 8.7pt ⇒ h3 10.06 · margin บน 3.5 — ดูข้างล่าง)
 //   ลายเซ็นแบบ QT/SO (รอบสาม): กล่องทุกบรรทัดเดียว 34.13 · ชื่อสองบรรทัด 38.63 · สามบรรทัด 43.13 · ทั้งก้อนรวมหัวข้อ
 //     (margin บน 2.5) 44.32 / 48.81 / 53.31 — ตัวประเมิน `signaturesMm` เผื่อ 0.65–0.74 (วิธีวัดใน productSpecLayout)
 //   สวีปรอบสอง (ตามผลตรวจ): 442 กรณี (ไทย/อังกฤษ × ที่อยู่สั้น/จริง 6 บรรทัด/ยาวมาก × checklist 0/17/30 × เอกสาร 0/4/8 ×
@@ -63,6 +71,19 @@
 //     ที่ว่างเหลือน้อยสุดเท่ารอบสอง (3.18 พิมพ์ / 3.38 จอ) · ช่องลงนาม 146 แบบ (ไทย/อังกฤษ × 4 สถานะ × ชื่อยาว 1–3 บรรทัด ×
 //     มี/ไม่มีรูป × ตำแหน่งของช่อง/admin/ยาวสุด) ไม่มีกล่องไหนประเมินต่ำ · ฟัซ 36 ใบไม่ล้น ·
 //     ข้อมูลจริง 6 SO × 8 สถานะ + 5 ตัวอย่าง พร้อมลายเซ็นจริง (อ่านอย่างเดียว) ไม่ล้น · จำนวนหน้า PDF = จำนวนแผ่น
+//   รอบสี่ (accent แบบใบเสนอราคา + หัวข้อตามภาษา · 22/09): สีไม่กินที่ · เปลี่ยนแค่หัวข้อ (10.5pt → 8.7pt แบบ "งวดชำระเงิน /
+//     PAYMENT SCHEDULE" · margin 5/1.6 → 3.5/1.5) ⇒ h3 วาด 19.14px + 5 = 10.06 (ค่าคงที่ 10.2) · หัวช่องลงนาม 9.06 (9.2) ·
+//     ก้อนลายเซ็นทั้งก้อน 43.16 / 47.66 / 52.15 (ชื่อ 1/2/3 บรรทัด) · ตารางไม่ขยับ (สีอย่างเดียว)
+//     สวีป 442 กรณี × จอ/สื่อพิมพ์ (ช่องลงนามไม่ชิดล่างตอนวัด) = 2,045 แผ่นต่อสื่อ (รุ่นก่อนบนชุดเดียวกัน 2,087): ไม่มีแผ่นไหนล้น ·
+//     ไม่มีก้อนไหนประเมินต่ำ · **รายแผ่น: ที่แผนคิด ≥ ที่วาดทุกแผ่น (เผื่อต่ำสุด 0.54)** · ไม่มีหัวข้อที่ลงแผ่นเปล่าได้ถูกตัด ·
+//     เผื่อต่ำสุดรายก้อน หัว +0.54 · กล่องผู้ซื้อ +3.07 · ลายเซ็น +0.71 · ตาราง +0.33 · แถวภาพ +0.08 · ใบมาตรฐานยัง 2 แผ่น
+//     (แผ่นสองเหลือ 8.50 พิมพ์ / 8.70 จอ · รุ่นก่อน 3.47) · ช่องลงนาม 242 แบบไม่มีก้อนไหนประเมินต่ำ (เผื่อก้อน ≥ 0.71) ·
+//     ข้อมูลจริง 6 SO × 8 สถานะ + 5 ตัวอย่าง (อ่านอย่างเดียว · 53 ใบ × จอ/พิมพ์) ไม่ล้น PDF = จำนวนแผ่น · ฟัซ 36 ใบไม่ล้น
+//   รอบสี่ (แก้ตามผลตรวจ): หัวคอลัมน์ "ลำดับ" บรรทัดเดียว (padding ข้างของหัว 0.5 + nowrap · ช่อง 9mm เท่าเดิม) ⇒ หัวตาราง
+//     checklist 12.44 → 7.67 เท่า cert (ค่าคงที่ 12.7 → 7.9) · ตาราง checklist 17 แถว 141.02 → 136.26 · หัวข้อต่อแผ่นยาวขึ้น
+//     (" (cont.)" ท้ายภาษารอง) ยังบรรทัดเดียว (h3 5.03 ทุกตัว) · สวีปเดิม 442 กรณี × จอ/พิมพ์ = 2,045 แผ่นต่อสื่อ ไม่มีแผ่นไหนล้น ·
+//     ไม่มีก้อนไหนประเมินต่ำ · ที่แผนคิด ≥ ที่วาดทุกแผ่น (เผื่อต่ำสุด 0.54) · ไม่มีหัวข้อที่ลงแผ่นเปล่าได้ถูกตัด ·
+//     ใบมาตรฐานแผ่นสองเหลือ 13.26 พิมพ์ / 13.46 จอ
 import {
   documentFileName, documentFooter, documentHeader, esc, headerText, partyGrid, renderDocumentHTML, signatureBoxText,
   signatureSection, watermarkBlock,
@@ -99,8 +120,12 @@ const SPEC_KEY = 'productSpec';
    · `@2026-09-22e` = ใบอังกฤษแปลหน่วยปริมาตร (ขวด → Bottle) · ช่องลูกค้าใบอังกฤษมีบรรทัดตำแหน่ง (Authorized signature)
      ให้แถวตรงกับอีกสามช่อง · สี่คอลัมน์ผ่านตัวแปร --sig-cols ของเปลือก (แทนกฎ data-columns="4") ·
      ช่องลงนามกว้างเท่ากันเสมอ (ชื่อที่ไม่มีจุดตัดเคยถ่างช่องจนก้อนลายเซ็นสูงเกินที่จอง)
-   · `@2026-09-22f` = ภาพประกอบขึ้นแผ่นใหม่เสมอ (`breakBefore` · มติผู้ใช้ 22/09) · ช่องลงนามชิดขอบล่าง (`.signTail`) */
-export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-09-22f';
+   · `@2026-09-22f` = ภาพประกอบขึ้นแผ่นใหม่เสมอ (`breakBefore` · มติผู้ใช้ 22/09) · ช่องลงนามชิดขอบล่าง (`.signTail`)
+   · `@2026-09-22g` = accent เหลือที่ชื่อเอกสารที่เดียวแบบใบเสนอราคา (หัวตาราง navy · ป้ายแถว/กรอบภาพ neutral · เลขลำดับสีเนื้อ) +
+     หัวข้อตามภาษาของใบ ("ข้อมูลผลิตภัณฑ์ / PRODUCT OVERVIEW" · ใบอังกฤษอังกฤษล้วน) หน้าตาหัวข้อของใบเสนอราคา (8.7pt)
+     ⇒ หัวข้อเตี้ยลง งบหน้าวัดใหม่ · (ผลตรวจรอบสี่ ยังไม่ขึ้น prod จึงรวมในรุ่นเดียวกัน) หัวข้อต่อแผ่นมีป้าย "ต่อ" ทั้งสองภาษา
+     ("(ต่อ) / CHECKLIST (cont.)") · หัวคอลัมน์ "ลำดับ" บรรทัดเดียว (หัวตาราง checklist 12.44 → 7.67) */
+export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-09-22g';
 
 const TICK_ON = '☑';
 const TICK_OFF = '☐';
@@ -315,7 +340,7 @@ function certRow(row) {
     </tr>`;
 }
 
-/* ── ช่องลงนาม "Final Review & Approval" ─────────────────────────────────────
+/* ── ช่องลงนาม "การตรวจสอบและอนุมัติ / FINAL REVIEW & APPROVAL" ──────────────────────
    ⭐ มติผู้ใช้ 2026-09-22 "final review ต้องปรับให้เหมือน QT และ SO" — กล่องชุดเดียวกับใบเสนอราคา/ใบสั่งขาย
       (`signatureSection` ของเปลือก: ชื่อหน่วยงาน · ตำแหน่ง · รูปลายเซ็นจริง · ชื่อเต็ม · วันที่) ไม่ใช่กล่อง `.sig`
       ของตัวเองแบบเดิม · สี่ช่องตามลำดับ:
@@ -377,14 +402,29 @@ export function productSpecSigners(revision, signatures = null, language = 'th')
   return [...steps, { label: L.t('specSignCustomer'), role: L.isEnglish ? 'Authorized signature' : 'Customer', name: '' }];
 }
 
-/* หัวข้อ "Final Review & Approval" ห่างก้อนบน 2.5mm (หัวข้อเนื้อ 5mm) — กล่องแบบ QT/SO สูงกว่ากล่องเดิม 2.5mm
-   (ป้าย · ตำแหน่ง · ช่องเซ็น 12mm · ชื่อ · วันที่) · ระยะนี้ชดเชยให้ก้อนลายเซ็นทั้งก้อนสูงเท่าเดิม (44.32 วัดทั้งคู่)
-   ⇒ ใบมาตรฐานยังสองแผ่น ไม่เกิดแผ่นที่มีแต่ลายเซ็น (ผลตรวจรอบสองเคยจับได้) */
-/* ⭐ **ช่องลงนามชิดขอบล่างของแผ่น** (มติผู้ใช้ 2026-09-22 "ดึงขึ้นถ้าพอ แต่ชิดล่าง") — ก้อนท้ายห่อด้วย `.signTail`
+/* หัวข้อสองภาษาแบบใบเสนอราคา (`dualHeading` ของ quotationMasterDocument) — ใบไทย "ไทย <span>/ ENGLISH</span>" ·
+   ใบอังกฤษบรรทัดเดียว · `lead` = เลขข้อนำหน้า · `mark` = คู่ป้าย "ต่อ" `{ text, sub }` (ดู `continuedMarks`) — ต่อท้าย
+   **ทั้งสองภาษา** แบบ `paymentScheduleContinued` ของใบเสนอราคา: ใบไทย "4. รายการที่ต้องเตรียม (ต่อ) / CHECKLIST (cont.)" ·
+   ใบอังกฤษ "4. CHECKLIST (cont.)" (ไม่มีภาษารอง = ไม่มีที่ต่อท้าย)
+   ⚠️ ข้อความหัวข้อเป็นค่าคงที่จากพจนานุกรม (ไม่ใช่ข้อมูลผู้ใช้) ⇒ ตัวจองหน้าคิดหัวข้อบรรทัดเดียวเสมอ — เทสต์ตรึงว่า
+      หัวข้อที่ยาวที่สุด (รวมเลขข้อ + ป้าย "ต่อ" ทั้งสองภาษา) ยังบรรทัดเดียวในเนื้อกว้าง 186mm */
+function headingHtml({ text, sub }, { lead = '', mark = null, className = '' } = {}) {
+  const main = [lead, text, mark?.text].filter(Boolean).join(' ');
+  const second = sub ? [sub, mark?.sub].filter(Boolean).join(' ') : '';
+  return `<h3${className ? ` class="${className}"` : ''}>${esc(main)}${second ? ` <span>${esc(second)}</span>` : ''}</h3>`;
+}
+
+/* ป้าย "ต่อ" ของหัวข้อที่ตัดข้ามแผ่น — คำหลักตามภาษาของใบ ("(ต่อ)" · ใบอังกฤษ "(cont.)") + ภาษารองเป็นอังกฤษเสมอ
+   (ภาษารองของใบไทยคือคำอังกฤษ ⇒ "(cont.)" คู่กับ "(ต่อ)" แบบ "งวดชำระเงิน (ต่อ) / PAYMENT SCHEDULE (cont.)")
+   🐞 ผลตรวจรอบสี่: เดิมต่อท้ายเฉพาะคำหลัก ใบไทยได้ "(ต่อ) / CHECKLIST" — ครึ่งเดียวของแบบใบเสนอราคาที่คอมเมนต์อ้าง */
+const continuedMarks = (L) => ({ text: L.t('continuedMark'), sub: quotationDocLabels('en').t('continuedMark') });
+
+/* หัวข้อของช่องลงนาม ("การตรวจสอบและอนุมัติ / FINAL REVIEW & APPROVAL" · ไม่มีเลขข้อ) ห่างก้อนบน 2.5mm (หัวข้อเนื้อ 3.5mm)
+   ⭐ **ช่องลงนามชิดขอบล่างของแผ่น** (มติผู้ใช้ 2026-09-22 "ดึงขึ้นถ้าพอ แต่ชิดล่าง") — ก้อนท้ายห่อด้วย `.signTail`
    ที่ `margin-top: auto` ใน `.sheetContent` (flex column) ⇒ วางต่อหัวข้อสุดท้ายในแผ่นเดียวกันเมื่อที่พอ (ตัวแบ่งหน้า
-   ตัดสินเหมือนเดิม) แต่ลงไปชิดล่างแบบกลุ่มท้ายของ QT/SO · ความสูงของก้อนไม่เปลี่ยน ⇒ งบหน้าไม่ต้องวัดใหม่ */
+   ตัดสินเหมือนเดิม) แต่ลงไปชิดล่างแบบกลุ่มท้ายของ QT/SO */
 function signatureBlock(signers, L) {
-  return `<div class="signTail"><h3 class="signHeading">Final Review &amp; Approval</h3>${signatureSection(signers, L)}</div>`;
+  return `<div class="signTail">${headingHtml(L.pair('specFinalReview'), { className: 'signHeading' })}${signatureSection(signers, L)}</div>`;
 }
 
 /* กล่องภาพหนึ่งใบ — กรอบสูงคงที่ · คำบรรยายใต้ภาพ · เลขลำดับนำหน้าเสมอ
@@ -405,18 +445,19 @@ function figureBlock(row, number) {
 
 /* หัวข้อทุกหัวข้อในเนื้อมีเลขข้อ (มติผู้ใช้ 22/09 "เพิ่มเลขที่ข้อด้วย") — เลขเรียงตามหัวข้อที่พิมพ์จริง
    ⚠️ หัวข้อที่ไม่มีแถว (ลบ checklist หมด · ไม่มีเอกสารที่ขอได้ · ไม่มีรูป) ไม่พิมพ์ ⇒ เลขข้อถัดไปเลื่อนขึ้น
-      ไม่เว้นเลข — กระดาษที่ข้ามจาก 3 ไป 5 อ่านเหมือนหน้าหาย */
-function buildSections({ spec, product, order, checkItems, certs, figures, language }) {
+      ไม่เว้นเลข — กระดาษที่ข้ามจาก 3 ไป 5 อ่านเหมือนหน้าหาย
+   ⭐ ชื่อหัวข้อตามภาษาของใบ (`heading` = คู่ `{ text, sub }` ของ `L.pair` · มติผู้ใช้ 22/09 รอบสี่) — เนื้อในตารางไม่แปล */
+function buildSections({ spec, product, order, checkItems, certs, figures, language, L }) {
   const sections = [];
-  const kvSection = (key, heading, pairs) => sections.push({
+  const kvSection = (key, headingKey, pairs) => sections.push({
     key,
-    heading,
+    heading: L.pair(headingKey),
     table: 'kv',
     headCost: 0,
     rows: pairs.map(([label, value]) => ({ html: kvRow(label, value), cost: kvRowMm(label, value) })),
   });
 
-  kvSection('overview', 'Product Overview', [
+  kvSection('overview', 'specOverview', [
     // ใบอังกฤษ = ชื่ออังกฤษก่อน ถอยไปไทย · ใบไทย = ไทยก่อน (สินค้าหมวด 01/02 ราวครึ่งหนึ่งมีแต่ชื่ออังกฤษ)
     ['ชื่อผลิตภัณฑ์', productDisplayNameFor(product, language)],
     /* ⭐ แบรนด์ย้ายจากกล่องลูกค้าเดิมมาอยู่ที่นี่ (มติ 22/09 — กล่องผู้ซื้อเหลือแถวแบบใบเสนอราคา)
@@ -434,12 +475,12 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
     ['ลักษณะเนื้อสาร', spec.texture],
     ['บรรจุภัณฑ์มาตรฐาน', spec.standardPackaging],
   ]);
-  kvSection('market', 'Market Positioning', [
+  kvSection('market', 'specMarket', [
     ['กลุ่มเป้าหมาย (Target Group)', spec.targetGroup],
     ['จุดขายหลัก (Key Selling Point)', spec.keySellingPoint],
     // ⭐ ระดับราคาตัดออก (มติผู้ใช้ 2026-09-22) — ดูหัว SPEC_CONTENT_FIELDS
   ]);
-  kvSection('functional', 'Functional Information', [
+  kvSection('functional', 'specFunctional', [
     ['ประสิทธิภาพหลัก (Product Benefit)', spec.productBenefit],
     ['ระยะเวลาการออกฤทธิ์กลิ่น', spec.longevity],
     ['ปริมาณแนะนำต่อการใช้งาน', spec.dosagePerUse],
@@ -448,7 +489,7 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
   if (checkItems.length) {
     sections.push({
       key: 'checklist',
-      heading: 'Checklist Project',
+      heading: L.pair('specChecklist'),
       table: 'checklist',
       headCost: PRODUCT_SPEC_COST_MM.checklistHead,
       rows: checkItems.map((row, index) => ({ html: checklistRow(row, index), cost: checklistRowMm(row) })),
@@ -457,7 +498,7 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
   if (certs.length) {
     sections.push({
       key: 'cert',
-      heading: 'Certification & Documents',
+      heading: L.pair('specCertification'),
       table: 'cert',
       headCost: PRODUCT_SPEC_COST_MM.certHead,
       rows: certs.map((row) => ({ html: certRow(row), cost: certRowMm(row) })),
@@ -478,7 +519,7 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
       });
     }
     // ⭐ ภาพประกอบขึ้นแผ่นใหม่เสมอ (มติผู้ใช้ 2026-09-22) — ตัวแบ่งหน้าอ่าน `breakBefore`
-    sections.push({ key: 'figures', heading: 'ภาพประกอบรายละเอียดสินค้า', table: null, headCost: 0, rows, breakBefore: true });
+    sections.push({ key: 'figures', heading: L.pair('specIllustrations'), table: null, headCost: 0, rows, breakBefore: true });
   }
   return sections.map((section, index) => ({
     ...section,
@@ -493,7 +534,7 @@ function renderPage(entries, { tailHtml, continuedMark }) {
   const out = [];
   let open = null;
   const close = () => { if (open) { out.push(`${open.html}</table>`); open = null; } };
-  const heading = (section, continued) => `<h3>${esc(`${section.number}. ${section.heading}${continued ? ` ${continuedMark}` : ''}`)}</h3>`;
+  const heading = (section, continued) => headingHtml(section.heading, { lead: `${section.number}.`, mark: continued ? continuedMark : null });
   for (const entry of entries) {
     if (entry.kind === 'row' && entry.section.table) {
       if (open && open.section !== entry.section) close();
@@ -581,7 +622,7 @@ export function planProductSpecPaper({
   const budgets = productSpecPageBudgets({ headerMm, partyMm });
 
   const figures = sortIllustrations(snapshotIllustrationRows(snapshot?.illustrations));
-  const sections = buildSections({ spec, product, order, checkItems, certs, figures, language });
+  const sections = buildSections({ spec, product, order, checkItems, certs, figures, language, L });
   // ลายเซ็น: ข้อความชุดเดียวกับที่วาด (ป้าย · ตำแหน่ง · ชื่อ · วันที่) ⇒ ความสูงที่จองกับที่วาดไม่หลุดจากกัน
   const signers = productSpecSigners(revision, signatures, language);
   const tailCost = signaturesMm(signers.map((signer) => signatureBoxText(signer, L)));
@@ -654,7 +695,7 @@ export function renderProductSpecDocument({
         (เลขที่รูปใหม่มี Rev อยู่ในตัวแล้ว) */
   const footerCenter = [formLine, docNoText].filter(Boolean).join(' · ');
   const footerLeft = headerText(language, companyBlock.nameTh, companyBlock.nameEn);
-  const continuedMark = L.t('continuedMark');
+  const continuedMark = continuedMarks(L);
   const sheets = pages.map((entries, index) => `
     <article class="sheet explicit-page" aria-label="${esc(title)} ${esc(L.t('page'))} ${index + 1}">
       ${watermarkSlot(watermark)}
@@ -679,31 +720,55 @@ export function renderProductSpecDocument({
     toolbar: toolbar === false ? null : { label: `${titleTh} (${form.code}) · ${docNoText || 'ตัวอย่าง'}`, button: 'พิมพ์เอกสาร' },
     extraCss: `
       .specsheet .sheetContent { gap: 0; padding-top: 5mm; }
-      .specsheet h3 { margin: 5mm 0 1.6mm; color: var(--doc-navy); font-size: 10.5pt; }
+      /* หัวข้อในเนื้อ = หน้าตาหัวข้อ "งวดชำระเงิน / PAYMENT SCHEDULE" ของใบเสนอราคา (.installmentSection h2 ของเปลือก:
+         navy 8.7pt · ภาษารองสีจาง 7.2pt/500 · ห่างก้อนบน 3.5 = margin ของ .installmentSection · ห่างตาราง 1.5)
+         เลือกตัวนี้เพราะเป็นหัวข้อในเนื้อที่มีตารางตามใต้หัว แบบเดียวกับหัวข้อของใบนี้ · .sectionLead (13pt + เส้นใต้ +
+         เลขที่ชิดขวา) เป็นหัวของ **แผ่น** ที่กลุ่มท้ายเอกสารได้แผ่นของตัวเอง ใบนี้มีสามสี่หัวข้อต่อแผ่น ใช้ตัวนั้นแล้วหนักและเปลืองที่
+         ⚠️ ค่าในสองบรรทัดนี้ต้องตรงกับกฎของเปลือก — เทสต์เทียบให้ (แก้ขนาด/ระยะ = วัดงบหน้าใหม่ · productSpecLayout) */
+      .specsheet h3 { margin: 3.5mm 0 1.5mm; color: var(--doc-navy); font-size: 8.7pt; }
+      .specsheet h3 span { color: var(--doc-muted); font-size: 7.2pt; font-weight: 500; }
       .specsheet .sheetContent > h3:first-child { margin-top: 0; }
       .specsheet .na { color: var(--doc-muted); font-style: italic; }
       /* ลายน้ำของ Rev ที่ถูกแทนยาวกว่า "ฉบับร่าง" — กล่อง absolute กว้างได้แค่ครึ่งแผ่นแล้วตัดกลางประโยค
          CSS นี้ตรึงไปกับ frozenHtml ด้วย ลายน้ำที่ประทับทับทีหลังจึงได้บรรทัดเดียวเหมือนกัน */
       .specsheet .watermark { white-space: nowrap; }
-      .specsheet .no { color: var(--doc-accent); font-weight: 600; text-align: center; }
 
+      /* ⭐ **สีแบบใบเสนอราคา** (มติผู้ใช้ 2026-09-22 รอบสี่ "ปรับการใช้ accent color … ดูใบเสนอราคาเป็นตัวอย่าง")
+         ใบเสนอราคาใช้ accent (--doc-accent) ที่ชื่อเอกสาร (h1 ของเปลือก) ที่เดียว ส่วนโครงทั้งหมดเป็น navy/neutral
+         ⇒ กฎของใบนี้ **ไม่ใช้สี accent เลย** (เทสต์ตรึง: กฎที่ใช้ accent ในกระดาษต้องเป็นชุดเดียวกับของใบเสนอราคา)
+           · หัวตาราง checklist/cert = .itemTable th (พื้น navy ตัวอักษรขาว) + แถวสลับ --doc-neutral-subtle — เส้นขอบหัวเป็น navy
+             ด้วย หัวจึงเป็นแถบเดียวแบบตารางรายการของใบเสนอราคา
+           · ป้ายแถวตาราง kv = .installmentTable th (ตัวอักษร navy บนพื้น --doc-neutral-soft)
+           · เลขลำดับ = สีเนื้อ น้ำหนักปกติ แบบคอลัมน์ "ลำดับ" ของใบเสนอราคา · กรอบภาพ = พื้น --doc-neutral-soft แบบกล่องผู้ซื้อ
+         🐞 เดิม accent อ่อนทาป้ายแถว/หัวตาราง/กรอบภาพ และ accent เข้มทาเลขลำดับ ⇒ ใบ terracotta ทั้งแผ่นดูเป็นเอกสารคนละชุดกับ QT/SO
+         ⚠️ เปลี่ยน **สีเท่านั้น** — ระยะ/ขนาดตัวอักษร/เส้นของแถวตารางเท่าเดิม (งบแถวตารางที่วัดไว้ยังใช้ได้) ·
+            ป้ายแถว kv คง 8.4pt/600 ของตารางใบนี้ (ไม่ใช่ 7.8pt/700 ของ .installmentTable) — ขนาดตัวอักษรคือความสูงแถวที่วัดไว้ */
       .specsheet table { width: 100%; table-layout: fixed; border-collapse: collapse; }
       .specsheet table th, .specsheet table td {
         padding: 1.2mm 2mm; border: 0.2mm solid var(--doc-line);
         font-size: 8.4pt; line-height: 1.65; text-align: left; vertical-align: top;
         overflow-wrap: anywhere;
       }
-      .specsheet table.kv th { width: 38%; background: var(--doc-accent-soft); font-weight: 600; }
+      .specsheet table.kv th { width: 38%; color: var(--doc-navy); background: var(--doc-neutral-soft); font-weight: 600; }
       .specsheet table.checklist thead th, .specsheet table.cert thead th {
-        background: var(--doc-accent-soft); font-weight: 600;
+        color: var(--doc-paper); background: var(--doc-navy); border-color: var(--doc-navy); font-weight: 600;
       }
+      .specsheet table.checklist tbody tr:nth-child(even) td, .specsheet table.cert tbody tr:nth-child(even) td {
+        background: var(--doc-neutral-subtle);
+      }
+      .specsheet .no { text-align: center; }
       .specsheet table.checklist th.no, .specsheet table.checklist td.no { width: 9mm; }
+      /* หัวคอลัมน์ "ลำดับ" บรรทัดเดียวแบบคอลัมน์ "ลำดับ" ของใบเสนอราคา — ตัวหนังสือกว้าง 6.97mm (Chrome) แต่ช่อง 9mm หัก
+         padding 2+2 เหลือ 4.73 ⇒ เคยตก "ลำ / ดับ" สองบรรทัด (หัวตารางสูง 12.44) ซึ่งเห็นชัดขึ้นบนแถบ navy
+         ⇒ ลด padding ข้างเฉพาะหัว (เหลือ 7.73 · border-box กว้างคอลัมน์เท่าเดิม ช่องอื่นไม่ขยับ) + nowrap ให้สูงบรรทัดเดียวแน่นอน
+            (หัวตารางวัดได้ 7.67 เท่า cert · งบ checklistHead ใน productSpecLayout) · แถวเนื้อ (ตัวเลข) คง padding เดิม */
+      .specsheet table.checklist thead th.no { padding-left: 0.5mm; padding-right: 0.5mm; white-space: nowrap; }
       .specsheet table.checklist th.tick, .specsheet table.checklist td.tick { width: 12mm; text-align: center; }
       .specsheet table.cert th:first-child { width: 34%; }
       .specsheet table.cert .status span { display: block; }
 
       /* ช่องลงนาม = .signatures ของเปลือกตัวเดียวกับ QT/SO (สี่คอลัมน์ผ่าน --sig-cols) — ที่นี่ปรับแค่ระยะ:
-         อยู่ในเนื้อต่อจากหัวข้อ "Final Review" (ไม่ดันลงขอบล่างแบบกลุ่มท้ายของ QT) ห่างหัวข้อเท่าตาราง
+         อยู่ต่อจากหัวข้อ "การตรวจสอบและอนุมัติ / FINAL REVIEW & APPROVAL" ห่างหัวข้อเท่าตาราง (ก้อนทั้งก้อนชิดล่างด้วย .signTail)
          + **ช่องกว้างเท่ากันเสมอ** (minmax(0, 1fr)) ชื่อยาวตัดในช่องตัวเอง — ตัวจอง signaturesMm คิดทุกช่องกว้าง 40.18mm
          🐞 ตรวจรอบสาม: 1fr ของเปลือก (= minmax(auto, 1fr)) ให้ชื่อที่ไม่มีจุดตัด (อีเมลสำรองของบัญชีที่ไม่มีชื่อ) ถ่างช่องตัวเอง
             ช่องอื่นแคบจนตกหลายบรรทัด · วัดได้ก้อนลายเซ็นสูงกว่าที่จองถึง 30mm ⇒ แผ่นล้นเงียบ (.sheet ตัดทิ้ง)
@@ -713,12 +778,12 @@ export function renderProductSpecDocument({
       .specsheet h3.signHeading { margin-top: 2.5mm; }
       .specsheet .signTail { margin-top: auto; }
 
-      /* แผ่นภาพประกอบ — กรอบสูงคงที่ ภาพย่อลงในกรอบโดยไม่บิดสัดส่วน */
+      /* แผ่นภาพประกอบ — กรอบสูงคงที่ ภาพย่อลงในกรอบโดยไม่บิดสัดส่วน · พื้นกรอบ neutral แบบกล่องผู้ซื้อ (ไม่ใช่ accent) */
       .specsheet .figGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4mm 5mm; margin: 2mm 0 4mm; }
       .specsheet .fig { margin: 0; min-width: 0; }
       .specsheet .figBox {
         height: 70mm; border: 0.2mm solid var(--doc-line); border-radius: 1mm;
-        background: var(--doc-accent-soft); display: flex; align-items: center; justify-content: center;
+        background: var(--doc-neutral-soft); display: flex; align-items: center; justify-content: center;
         overflow: hidden;
       }
       .specsheet .figBox img { max-width: 100%; max-height: 100%; object-fit: contain; }

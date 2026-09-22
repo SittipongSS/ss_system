@@ -105,16 +105,24 @@ test('🔴 แถวตารางไม่ต่ำกว่าระยะแ
   assert.ok(certRowMm({ label: 'COA', note: null }) >= 12.4354, 'แถว cert มีสองบรรทัดสถานะเสมอ');
   assert.ok(checklistRowMm({ itemLabel: 'ฝา', detail: null, note: null }) >= 7.5527);
   assert.ok(PRODUCT_SPEC_COST_MM.tableEdge >= 0.41, 'แถวแรก + เส้นขอบบนสูงกว่าระยะแถวได้ถึง 0.41');
-  // ใบมาตรฐาน: checklist 17 แถวบรรทัดเดียว + หัวตาราง วาดจริง 141.02 · ต้องไม่ต่ำกว่า และไม่เกินเกิน 2.5
+  // ใบมาตรฐาน: checklist 17 แถวบรรทัดเดียว + หัวตาราง วาดจริง 136.26 (หัวบรรทัดเดียวรอบสี่ · เดิมหัวสองบรรทัด 141.02)
+  // ต้องไม่ต่ำกว่า และไม่เกินเกิน 2.5
   const checklist = sectionOpenMm({ table: 'checklist', headCost: PRODUCT_SPEC_COST_MM.checklistHead })
     - PRODUCT_SPEC_COST_MM.heading + 17 * checklistRowMm({ itemLabel: 'ฝา' });
-  assert.ok(checklist >= 141.02 && checklist <= 141.02 + 2.5, `ตาราง checklist 17 แถว ประเมิน ${checklist.toFixed(2)}`);
+  assert.ok(checklist >= 136.26 && checklist <= 136.26 + 2.5, `ตาราง checklist 17 แถว ประเมิน ${checklist.toFixed(2)}`);
 });
+
+/* หัวข้อแบบ "งวดชำระเงิน / PAYMENT SCHEDULE" ของใบเสนอราคา (มติผู้ใช้ 2026-09-22 รอบสี่): h3 8.7pt วาด 19.14px (5.06) +
+   margin 3.5 + 1.5 = 10.06 (ระยะจริงขอบล่างตาราง → ขอบบนตารางถัดไป 10.05–10.32 ปัดพิกเซลของสองก้อน) · รุ่นก่อน 12.69 */
+const HEADING_MEASURED = 10.06;
 
 test('ต้นทุนเปิดหัวข้อ = หัวข้อ + หัวตาราง + ขอบตาราง (เฉพาะหัวข้อที่เป็นตาราง)', () => {
   assert.equal(sectionOpenMm({ table: null, headCost: 0 }), PRODUCT_SPEC_COST_MM.heading);
-  assert.ok(sectionOpenMm({ table: 'checklist', headCost: PRODUCT_SPEC_COST_MM.checklistHead }) >= 12.7 + 12.44);
-  assert.ok(sectionOpenMm({ table: 'cert', headCost: PRODUCT_SPEC_COST_MM.certHead }) >= 12.7 + 7.67);
+  assert.ok(PRODUCT_SPEC_COST_MM.heading >= HEADING_MEASURED && PRODUCT_SPEC_COST_MM.heading <= HEADING_MEASURED + 0.5,
+    `หัวข้อ ${PRODUCT_SPEC_COST_MM.heading} ต้องครอบที่วัดได้ ${HEADING_MEASURED} (และไม่เกินเกินเหตุ)`);
+  // หัวตารางบรรทัดเดียวทั้งสองตาราง (วัด 7.67 · "ลำดับ" ไม่ตกบรรทัดแล้ว — ดู checklistHead)
+  assert.ok(sectionOpenMm({ table: 'checklist', headCost: PRODUCT_SPEC_COST_MM.checklistHead }) >= HEADING_MEASURED + 7.67);
+  assert.ok(sectionOpenMm({ table: 'cert', headCost: PRODUCT_SPEC_COST_MM.certHead }) >= HEADING_MEASURED + 7.67);
 });
 
 test('แถวภาพสูงตามคำบรรยายที่ยาวที่สุดในแถว — บรรทัดเดียวไม่ต่ำกว่าที่วัดได้ 85.37', () => {
@@ -125,7 +133,8 @@ test('แถวภาพสูงตามคำบรรยายที่ย�
 
 /* ⭐ ช่องลงนามแบบ QT/SO (มติ 2026-09-22) — วัดด้วย Chrome รอบสาม (จอ = พิมพ์ · กล่องเนื้อกว้าง 40.185):
    กล่องทุกบรรทัดเดียว 34.13 · ชื่อสองบรรทัด 38.63 · สามบรรทัด 43.13 · ช่องลูกค้าใบอังกฤษ (ไม่มีบรรทัดตำแหน่ง) 30.16
-   (min-height 31) · ทั้งก้อนรวมหัวข้อ (margin บน 2.5) 44.32 / 48.81 / 53.31 */
+   (min-height 31) · ทั้งก้อนรวมหัวข้อ (margin บน 2.5) วัดรอบสี่ (หัวข้อ 8.7pt แบบใบเสนอราคา) 43.16 / 47.66 / 52.15
+   (รุ่นหัวข้อ 10.5pt 44.32 / 48.81 / 53.31) */
 const box = (name, { label = 'ผู้ประสานงานฝ่ายขาย', role = 'Account Coordinator', meta = '17/09/2569' } = {}) => ({ label, role, name, meta });
 const UNSIGNED = { label: 'ลูกค้า', role: 'Customer', name: '(____________________________)', meta: 'วันที่ ______ / ______ / ______' };
 const SIGNATURE_MEASURED = [
@@ -146,12 +155,12 @@ test('🔴 กล่องลงนามไม่ต่ำกว่าที่
   }
 });
 
-test('ลายเซ็นทั้งก้อน = หัวข้อ + กล่องที่สูงที่สุด — ไม่ต่ำกว่าที่วัดได้ (44.32 · ชื่อสองบรรทัด 48.81)', () => {
+test('ลายเซ็นทั้งก้อน = หัวข้อ + กล่องที่สูงที่สุด — ไม่ต่ำกว่าที่วัดได้ (43.16 · ชื่อสองบรรทัด 47.66)', () => {
   const four = (names) => names.map((name) => box(name));
   const oneLine = signaturesMm([...four(['ชลิตา เอซี', 'สิทธิพงศ์', 'พัชราภิชญ์']), UNSIGNED]);
-  assert.ok(oneLine >= 44.32 && oneLine <= 44.32 + 1, `บรรทัดเดียว ${oneLine.toFixed(2)}`);
+  assert.ok(oneLine >= 43.16 && oneLine <= 43.16 + 1, `บรรทัดเดียว ${oneLine.toFixed(2)}`);
   const twoLine = signaturesMm([...four(['ชลิตา เอซี', 'Patcharaphit Wongsakulchaiyaporn']), UNSIGNED]);
-  assert.ok(twoLine >= 48.81, `ชื่อสองบรรทัด ${twoLine.toFixed(2)}`);
+  assert.ok(twoLine >= 47.66, `ชื่อสองบรรทัด ${twoLine.toFixed(2)}`);
   // ไม่มีกล่อง (ป้องกันผู้เรียกพลาด) ยังจองเท่ากล่องขั้นต่ำ + หัวข้อ
   assert.ok(signaturesMm([]) >= PRODUCT_SPEC_COST_MM.signatureHeading + 31);
 });
