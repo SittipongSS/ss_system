@@ -41,7 +41,7 @@ import {
 } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import { BRIEF_LIMITS, briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
 import {
-  PDR_BRIEF_LABELS, PDR_CUSTOMER_KINDS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
+  PDR_BRIEF_LABELS, PDR_CUSTOMER_KINDS, PDR_CUSTOMER_ORIGINS, PDR_DOCUMENTS, PDR_FIELDS, PDR_PACKAGING_FORMS,
   PDR_REQUEST_TYPES, PDR_SECTIONS, pdrFieldVisible, pdrFormProgress,
 } from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
@@ -513,6 +513,7 @@ export default function PdrForm({
   const {
     scentCount = null, customer = null, deal = null, requester = null,
     coordinator = null, contactName = null, contactPhone = null, customerAddress = null,
+    customerOrigin = null,
   } = context;
   const usesBriefs = scentSource === "briefs";
   const pickScent = scentSource === "registry";
@@ -687,6 +688,12 @@ export default function PdrForm({
             <label htmlFor="pdr-ckind">{numbered("customerKind")}</label>
             <Select id="pdr-ckind" value={value.customerKind} disabled={disabled}
               maxLength={cap("customerKind")} onChange={(e) => set({ customerKind: e.target.value })} options={withBlank(PDR_CUSTOMER_KINDS)} />
+            {/* ⭐ ไทย/ต่างชาติ — อ่านจากทะเบียนลูกค้า ไม่มีช่องให้เลือก (มติผู้ใช้ 2026-09-23) */}
+            <small className={styles.hint}>
+              {customerOrigin
+                ? `${PDR_CUSTOMER_ORIGINS.find((o) => o.value === customerOrigin)?.label} · ${FIELD.customerKind.withContext.from} (ช่อง "ลูกค้าต่างประเทศ")`
+                : `ไทย/ต่างชาติ ${FIELD.customerKind.withContext.from} เมื่อเลือกลูกค้าแล้ว`}
+            </small>
           </div>
           {/* ⚠️ **ไม่ derive จากดีล** — ฟอร์มถาม "มูลค่าโปรเจกต์ทั้งหมด" ซึ่งเป็นทั้ง
               โครงการ ไม่ใช่แค่ค่าออกแบบกลิ่นที่อยู่ในดีล/SO ใบนี้ · ลูกค้าอาจจ่ายค่า
