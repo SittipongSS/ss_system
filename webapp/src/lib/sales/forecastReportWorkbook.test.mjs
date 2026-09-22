@@ -74,3 +74,25 @@ test('ยอดไม่หาย: แถวที่ไม่มีเดือ
     assert.equal(total.at(-3) + total.at(-2), 1290, `${name}: ช่องเดือน + กอง = รวมทั้งงวด`);
   }
 });
+
+test('เศษปัดติดลบในกองไม่ถูกทิ้ง — ช่องกองของชีตสรุป/แถวรวมย่อยเท่ารวมทั้งงวดและเท่าชีตรายดีล (รีวิว #1787)', async () => {
+  // ดีล Won ที่บรรทัดแถมท้ายใบได้เศษ -0.01 (allocateToLines ลงเศษบรรทัดสุดท้าย) · ไม่มีวันรับของทั้งคู่ ⇒ กอง
+  const pile = { month: null, monthBasis: 'expectedCloseDate' };
+  const lines = [
+    line({ ...pile, dealId: 'A', fcAmount: 66.67, volume: 100 }),
+    line({ ...pile, dealId: 'A', fcAmount: 66.67, volume: 100 }),
+    line({ ...pile, dealId: 'A', fcAmount: 66.67, volume: 100 }),
+    line({ ...pile, dealId: 'A', fcAmount: -0.01, volume: 5 }),
+    line({ ...pile, dealId: 'B', fcAmount: 50, volume: 5, won: false }),
+  ];
+  const buffer = await buildForecastReportBuffer(lines, { axis: 'delivery', months: ['2026-09'] });
+  const summary = await sheetOf(buffer, 'สรุปรายหมวด');
+  const header = headerOf(summary);
+  const pileAt = header.indexOf('ยังไม่ระบุวันรับของ');
+  for (const row of rowsOf(summary)) {
+    const pileValue = typeof row[pileAt] === 'number' ? row[pileAt] : 0;
+    assert.equal(Math.round(pileValue * 100), Math.round(Number(row.at(-1)) * 100), `แถว ${row[0]}: กอง = รวมทั้งงวด`);
+  }
+  const detailRows = rowsOf(await sheetOf(buffer, 'รายดีล'));
+  assert.equal(rowsOf(summary).at(-1)[pileAt], detailRows.at(-1)[headerOf(await sheetOf(buffer, 'รายดีล')).indexOf('ยังไม่ระบุวันรับของ')]);
+});

@@ -341,7 +341,10 @@ export function summarizeForecastLines(rows = [], months = null) {
     .map((group) => ({
       ...group,
       volumeTotal: group.hasVolume ? money(group.volumeTotal) : null,
-      unscheduled: group.unscheduled > 0 ? group.unscheduled : null,
+      /* ⚠️ `!== 0` ไม่ใช่ `> 0` — เศษปัดติดลบ (-0.01 บนบรรทัดแถมท้ายใบ) เป็นยอดจริงของกอง
+         🐞 รีวิว #1787: `> 0` ทิ้งมันเงียบ ⇒ ช่องกองของชีตสรุปไม่เท่ารวมทั้งงวด และไม่เท่าชีตรายดีล
+            (แยกก้อน Won/ยังเปิด ทำให้เศษติดลบอยู่กลุ่มเดี่ยวบ่อยขึ้น — เดิมหักล้างกับอีกดีลในกลุ่มเดียวกัน) */
+      unscheduled: group.unscheduled !== 0 ? group.unscheduled : null,
       dealCount: group.deals.size,
       deals: undefined,
     }))

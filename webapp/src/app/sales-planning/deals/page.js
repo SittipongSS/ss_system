@@ -952,7 +952,7 @@ export default function SalesPlanningPipelinePage() {
               title={`ดีล ${noDelivery.count} ใบ ยังไม่มีวันรับของ (มูลค่า ${fmtMoney(noDelivery.value)})`}
               action={<Button size="sm" onClick={showMissingDelivery}>ดูเฉพาะดีลกลุ่มนี้</Button>}
             >
-              ฝ่ายผลิตวางแผนจากวันรับของ — ดีลกลุ่มนี้อยู่คอลัมน์ &quot;ยังไม่ระบุวันรับของ&quot; ในไฟล์ FC (มุมมองเดือนรับของ) · เติม &quot;วันที่สิ้นสุด&quot; ในดีล
+              ฝ่ายผลิตวางแผนจากวันรับของ — ยอดของดีลกลุ่มนี้อยู่คอลัมน์ &quot;ยังไม่ระบุวันรับของ&quot; ในไฟล์ FC (มุมมองเดือนรับของ) · เติม &quot;วันที่สิ้นสุด&quot; ในดีล
             </StatusNotice>
           )}
           {downloadError && (

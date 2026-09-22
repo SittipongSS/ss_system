@@ -156,7 +156,7 @@ function subtotalRow(label, rows, lines, months) {
     statusLabel: label,
     dealCount: new Set(lines.map((line) => line.dealId).filter(Boolean)).size,
     months: monthsTotal,
-    unscheduled: unscheduled > 0 ? Math.round(unscheduled * 100) / 100 : null,
+    unscheduled: Math.round(unscheduled * 100) !== 0 ? Math.round(unscheduled * 100) / 100 : null, // ติดลบได้ (เศษปัด) — ห้ามทิ้ง
     fcAmount: Math.round(total * 100) / 100,
   };
 }
