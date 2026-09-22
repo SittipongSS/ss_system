@@ -5,8 +5,12 @@ import {
   applyProductSpecWatermark, planProductSpecPaper, productSizeText, productSpecDateText, productSpecRevText,
   productSpecSignedSteps, productSpecWatermark, renderProductSpecDocument, supersededWatermark,
 } from './productSpecDocument.js';
-import { productSpecPageBudgets } from './productSpecLayout.js';
+import {
+  PRODUCT_SPEC_COST_MM, PRODUCT_SPEC_LAYOUT_MM, productSpecPageBudgets, textWidthMm,
+} from './productSpecLayout.js';
 import { productSpecCertSeed, productSpecChecklistSeed } from './productSpecChecklist.js';
+import { buildQuotationMasterPreview, quotationDocLabels } from './quotationMasterTemplate.js';
+import { renderQuotationMasterDocumentHTML } from './quotationMasterDocument.js';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 
 /* 🪤 **บล็อกบริษัทรูปจริง** — `getPublishedCompanyProfile` คืนผลของ `resolveCompanyBlock`
@@ -120,12 +124,17 @@ const baseInput = (over = {}) => ({
 });
 
 const sheetCount = (html) => (html.match(/class="sheet /g) || []).length;
-const headings = (html) => (html.match(/<h3[^>]*>[^<]*<\/h3>/g) || []).map((h) => h.replace(/<\/?h3[^>]*>/g, ''));
+/* หัวข้อทุกตัวบนกระดาษ — { main: "เลขข้อ. คำหลัก (ต่อ)", sub: ภาษารองใน <span> ("/ ENGLISH" ของใบไทย · ใบอังกฤษไม่มี) }
+   ⭐ มติผู้ใช้ 2026-09-22 รอบสี่: หัวข้อสองภาษาแบบ "งวดชำระเงิน / PAYMENT SCHEDULE" ของใบเสนอราคา */
+const headingParts = (html) => [...html.matchAll(/<h3[^>]*>([^<]*)(?: <span>([^<]*)<\/span>)?<\/h3>/g)]
+  .map((m) => ({ main: m[1], sub: m[2] || '' }));
+// หัวข้อเต็มบรรทัดตามที่ตาเห็น ("1. ข้อมูลผลิตภัณฑ์ / PRODUCT OVERVIEW")
+const headings = (html) => headingParts(html).map(({ main, sub }) => (sub ? `${main} ${sub}` : main));
 // ช่องลงนามทั้งแถว (`signatureSection` ของเปลือก — กล่องชุดเดียวกับ QT/SO)
 const signatureRow = (html) => html.slice(html.indexOf('<section class="signatures"'));
 const signatureBoxes = (html) => signatureRow(html).split(/<div class="(?:signed)?">/).slice(1);
-// หัวข้อไม่รวมเลขข้อ ("4. Checklist Project (ต่อ)" ⇒ "Checklist Project (ต่อ)")
-const bareHeadings = (html) => headings(html).map((h) => h.replace(/^\d+\. /, ''));
+// คำหลักของหัวข้อไม่รวมเลขข้อและภาษารอง ("4. รายการที่ต้องเตรียม (ต่อ) / CHECKLIST (cont.)" ⇒ "รายการที่ต้องเตรียม (ต่อ)")
+const bareHeadings = (html) => headingParts(html).map(({ main }) => main.replace(/^\d+\. /, ''));
 const headerRows = (html) => html.slice(html.indexOf('class="identityBlock"'), html.indexOf('</header>'));
 const partyBox = (html) => html.slice(html.indexOf('class="partyGrid"'), html.indexOf('</section>'));
 const referenceBox = (html) => {
@@ -336,7 +345,7 @@ test('🪤 ภาพนิ่ง v1 (ก่อน 22/09) ไม่มีก้�
 });
 
 test('⭐ Product Overview: "ปริมาตรบรรจุ (Size)" จากทะเบียน FG · "จำนวนผลิต (Quantity)" จาก SO/QT ในภาพนิ่ง', () => {
-  const overviewOf = (html) => html.slice(html.indexOf('1. Product Overview'), html.indexOf('2. Market Positioning'));
+  const overviewOf = (html) => html.slice(html.indexOf('1. ข้อมูลผลิตภัณฑ์'), html.indexOf('2. ตำแหน่งทางการตลาด'));
   const rowsOf = (html) => [...overviewOf(html).matchAll(/<tr><th>([^<]*)<\/th><td>(.*?)<\/td><\/tr>/g)].map((m) => [m[1], m[2]]);
   // ภาพนิ่งมีปริมาตร + หน่วยของสินค้า ⇒ ตัวเลขจัดหลักพัน · หน่วยตามทะเบียน
   const withVolume = snapshotOf({ product: { ...snapshotOf().product, volume: 1200, volumeUnit: 'ml', volumeText: '1200 ml' } });
@@ -381,7 +390,7 @@ test('⭐ ปริมาตรบรรจุใบอังกฤษแปล�
 
 test('แบรนด์อยู่ใน Product Overview (ย้ายจากกล่องลูกค้า)', () => {
   const html = renderProductSpecDocument(baseInput());
-  const overview = html.slice(html.indexOf('1. Product Overview'), html.indexOf('2. Market Positioning'));
+  const overview = html.slice(html.indexOf('1. ข้อมูลผลิตภัณฑ์'), html.indexOf('2. ตำแหน่งทางการตลาด'));
   assert.match(overview, /<th>ชื่อแบรนด์<\/th><td>Artepole<\/td>/);
 });
 
@@ -487,7 +496,7 @@ test('⭐ ใบอังกฤษ: ป้ายช่องอังกฤษ �
 
 test('checklist พิมพ์ครบทุกแถวและติ๊กตรงกับผู้จัดเตรียม', () => {
   const html = renderProductSpecDocument(baseInput());
-  assert.match(html, /Checklist Project/);
+  assert.match(html, /รายการที่ต้องเตรียม/);
   assert.match(html, /วัตถุดิบ\/สารประกอบ/);
   assert.match(html, /สายคาดกล่อง/);          // แถวที่ 16 ของทะเบียน
   assert.ok((html.match(/☑/g) || []).length >= 3, 'ต้องมีช่องที่ติ๊กแล้ว');
@@ -499,17 +508,140 @@ test('⭐ หัวข้อในเนื้อมีเลขข้อ 1–5 
     snapshot: snapshotOf({ illustrations: [{ attachmentId: 'a', caption: 'หนึ่ง', sortOrder: 0, fileName: 'a.jpg' }] }),
   }));
   assert.deepEqual(headings(html), [
-    '1. Product Overview', '2. Market Positioning', '3. Functional Information',
-    '4. Checklist Project', '5. Certification &amp; Documents', '6. ภาพประกอบรายละเอียดสินค้า',
-    'Final Review &amp; Approval',
+    '1. ข้อมูลผลิตภัณฑ์ / PRODUCT OVERVIEW', '2. ตำแหน่งทางการตลาด / MARKET POSITIONING',
+    '3. คุณสมบัติผลิตภัณฑ์ / FUNCTIONAL INFORMATION', '4. รายการที่ต้องเตรียม / CHECKLIST',
+    '5. เอกสารที่ขอได้ / CERTIFICATION &amp; DOCUMENTS', '6. ภาพประกอบรายละเอียดสินค้า / ILLUSTRATIONS',
+    'การตรวจสอบและอนุมัติ / FINAL REVIEW &amp; APPROVAL',
   ]);
+});
+
+test('⭐ หัวข้อตามภาษาของใบแบบใบเสนอราคา — ใบไทย "ไทย / ENGLISH" (อังกฤษใน <span>) · ใบอังกฤษอังกฤษล้วน · เนื้อไม่แปล', () => {
+  // มติผู้ใช้ 2026-09-22 รอบสี่ "ปรับชื่อหัวข้อตามภาษาด้วย เอาใบเสนอราคาเป็นต้นแบบ" — คู่คำชุดเดียวกับ L.pair ของใบเสนอราคา
+  const snapshot = (make) => make({ illustrations: [{ attachmentId: 'a', caption: 'หนึ่ง', sortOrder: 0, fileName: 'a.jpg' }] });
+  const th = renderProductSpecDocument(baseInput({ snapshot: snapshot(snapshotOf) }));
+  headingParts(th).forEach(({ main, sub }) => {
+    assert.match(main, /[฀-๿]/, `ใบไทย: คำหลักต้องเป็นไทย (${main})`);
+    assert.match(sub, /^\/ (?:[A-Z ]|&amp;)+$/, `ใบไทย: ภาษารองเป็นอังกฤษตัวใหญ่ใน <span> (${sub})`);
+  });
+  const en = renderProductSpecDocument(baseInput({ snapshot: snapshot(englishSnapshot) }));
+  assert.deepEqual(headings(en), [
+    '1. PRODUCT OVERVIEW', '2. MARKET POSITIONING', '3. FUNCTIONAL INFORMATION', '4. CHECKLIST',
+    '5. CERTIFICATION &amp; DOCUMENTS', '6. ILLUSTRATIONS', 'FINAL REVIEW &amp; APPROVAL',
+  ]);
+  assert.ok(headingParts(en).every(({ sub }) => sub === ''), 'ใบอังกฤษไม่มีภาษารอง (ลูกค้าต่างชาติอ่าน)');
+  assert.doesNotMatch(headings(en).join(' '), /[฀-๿]/, 'หัวข้อใบอังกฤษต้องไม่มีอักษรไทย');
+  // ⚠️ มติเจ้าของ: ป้ายแถว/หัวคอลัมน์/สถานะในตารางไม่แปล — ใบอังกฤษยังพิมพ์ชุดเดิม
+  assert.match(en, /<th>ชื่อผลิตภัณฑ์<\/th>/);
+  assert.match(en, /<th class="no">ลำดับ<\/th>/);
+  assert.match(en, /<th>เอกสารที่สามารถขอได้<\/th>/);
+});
+
+test('หัวข้อทุกตัวลงบรรทัดเดียว (ตัวจองคิดบรรทัดเดียว) — ยาวสุดทั้งสองภาษา รวมเลขข้อ + ป้าย "ต่อ" ทั้งคำหลักและภาษารอง', () => {
+  const keys = ['specOverview', 'specMarket', 'specFunctional', 'specChecklist', 'specCertification', 'specIllustrations', 'specFinalReview'];
+  for (const language of ['th', 'en']) {
+    const L = quotationDocLabels(language);
+    for (const key of keys) {
+      const { text, sub } = L.pair(key);
+      assert.ok(text, `${language} ขาดคำของ ${key}`);
+      // หัวข้อ 8.7pt · ภาษารอง 7.2pt (ความกว้างรายตัวของตัวประเมินเผื่อตัวหนาแล้ว)
+      // หัวข้อต่อของใบไทย "99. คำหลัก (ต่อ) / ENGLISH (cont.)" = กรณียาวสุด
+      const width = textWidthMm(`99. ${text} ${L.t('continuedMark')} `, 8.7) + textWidthMm(sub ? `${sub} (cont.)` : '', 7.2);
+      assert.ok(width < PRODUCT_SPEC_LAYOUT_MM.contentWidth, `${language} ${key}: ${width.toFixed(1)}mm ไม่ลงบรรทัดเดียว`);
+    }
+  }
+});
+
+/* ── สีแบบใบเสนอราคา (มติผู้ใช้ 2026-09-22 รอบสี่ "ปรับการใช้ accent color ในเอกสารใหม่ ดูใบเสนอราคาเป็นตัวอย่าง") ── */
+
+// กฎ CSS ทั้งไฟล์ (ทุก <style> · ตัดคอมเมนต์) → [{ selector, body }] — กฎใน @media ได้ตัวในสุด
+const cssRules = (html) => {
+  const css = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim().replace(/\s+/g, ' '), body: m[2] }));
+};
+const declOf = (rules, selector, prop) => {
+  const rule = rules.find((r) => r.selector === selector);
+  assert.ok(rule, `ไม่มีกฎ ${selector}`);
+  return new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(rule.body)?.[1].trim();
+};
+// selector ที่ **ใช้** สี accent (อ่าน var(--doc-accent…)) — การประกาศค่าธีมบน .document ไม่นับ
+const accentUsers = (html) => cssRules(html).filter((r) => /var\(\s*--doc-accent/.test(r.body)).map((r) => r.selector).sort();
+const quotationHtml = () => renderQuotationMasterDocumentHTML(buildQuotationMasterPreview('standard', 'approved', 'v4'), { toolbar: false });
+
+test('🔴 accent อยู่ที่ชื่อเอกสารที่เดียว — กฎที่ใช้ accent เป็นชุดเดียวกับใบเสนอราคาทุกตัว', () => {
+  const quotation = accentUsers(quotationHtml());
+  assert.deepEqual(quotation, ['.identityBlock h1'], 'ต้นแบบ: ใบเสนอราคาใช้ accent ที่ชื่อเอกสารเท่านั้น');
+  for (const snapshot of [snapshotOf({ illustrations: [{ attachmentId: 'a', caption: 'x', sortOrder: 0 }] }), englishSnapshot()]) {
+    const html = renderProductSpecDocument(baseInput({ snapshot }));
+    assert.deepEqual(accentUsers(html), quotation);
+    // 🐞 เดิมป้ายแถว/หัวตาราง/กรอบภาพทาพื้น accent อ่อน · เลขลำดับสี accent — กฎของใบนี้ต้องไม่อ้าง accent เลย
+    const own = cssRules(html).filter((r) => r.selector.includes('.specsheet'));
+    assert.ok(own.length > 10, 'หากฎของใบนี้ไม่เจอ (ตัวแยก CSS พัง)');
+    own.forEach((r) => assert.doesNotMatch(r.body, /--doc-accent/, `${r.selector} ยังใช้ accent`));
+    // ในเนื้อกระดาษ (นอก <style>) accent มีได้แค่ค่าธีมที่ประกาศบน .document
+    const markup = html.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/ style="--doc-accent:[^"]*"/, '');
+    assert.doesNotMatch(markup, /--doc-accent/);
+  }
+});
+
+test('⭐ หัวตาราง/ป้ายแถว/แถวสลับ ใช้ navy/neutral ชุดเดียวกับตารางของใบเสนอราคา', () => {
+  const rules = cssRules(renderProductSpecDocument(baseInput()));
+  const heads = '.specsheet table.checklist thead th, .specsheet table.cert thead th';
+  // หัวตาราง checklist/cert = .itemTable th (พื้น navy ตัวอักษรขาว) · เส้นหัวเป็น navy (แถบเดียว)
+  assert.equal(declOf(rules, heads, 'background'), declOf(rules, '.itemTable th', 'background'));
+  assert.equal(declOf(rules, heads, 'border-color'), 'var(--doc-navy)');
+  assert.equal(declOf(rules, heads, 'color'), 'var(--doc-paper)');
+  assert.equal(declOf(rules, '.document', '--doc-paper'), declOf(rules, '.itemTable th', 'color'), 'ตัวอักษรหัวตาราง = สีขาวของ .itemTable th');
+  // แถวสลับ = .itemTable
+  assert.equal(
+    declOf(rules, '.specsheet table.checklist tbody tr:nth-child(even) td, .specsheet table.cert tbody tr:nth-child(even) td', 'background'),
+    declOf(rules, '.itemTable tbody tr:nth-child(even) td', 'background'),
+  );
+  // ป้ายแถว kv = .installmentTable th (ตัวอักษร navy บนพื้น neutral)
+  assert.equal(declOf(rules, '.specsheet table.kv th', 'background'), declOf(rules, '.installmentTable th', 'background'));
+  assert.equal(declOf(rules, '.specsheet table.kv th', 'color'), declOf(rules, '.installmentTable th', 'color'));
+  // เลขลำดับสีเนื้อ (ไม่กำหนดสี) · กรอบภาพพื้น neutral แบบกล่องผู้ซื้อ
+  assert.equal(declOf(rules, '.specsheet .no', 'color'), undefined);
+  assert.equal(declOf(rules, '.specsheet .figBox', 'background'), declOf(rules, '.partyGrid > div', 'background'));
+});
+
+test('หัวคอลัมน์ "ลำดับ" บรรทัดเดียวแบบคอลัมน์ "ลำดับ" ของใบเสนอราคา — หัวตาราง checklist สูงเท่า cert', () => {
+  // 🐞 ผลตรวจรอบสี่: ช่อง 9mm หัก padding 2+2 เหลือ 4.73 < ตัวหนังสือ 6.97 (Chrome) ⇒ "ลำ / ดับ" สองบรรทัดบนแถบ navy
+  const rules = cssRules(renderProductSpecDocument(baseInput()));
+  const head = '.specsheet table.checklist thead th.no';
+  assert.equal(declOf(rules, head, 'white-space'), 'nowrap', 'หัวต้องสูงบรรทัดเดียวแน่นอน (งบ checklistHead คิดบรรทัดเดียว)');
+  const column = parseFloat(declOf(rules, '.specsheet table.checklist th.no, .specsheet table.checklist td.no', 'width'));
+  const inner = column - parseFloat(declOf(rules, head, 'padding-left')) - parseFloat(declOf(rules, head, 'padding-right'));
+  // ตัวประเมิน (เผื่อ 3% · 7.18) ต้องลงช่อง — Chrome วาด 6.97 ในช่อง 7.73
+  assert.ok(textWidthMm('ลำดับ', 8.4) <= inner, `"ลำดับ" ${textWidthMm('ลำดับ', 8.4).toFixed(2)}mm ไม่ลงช่อง ${inner}mm`);
+  assert.equal(PRODUCT_SPEC_COST_MM.checklistHead, PRODUCT_SPEC_COST_MM.certHead, 'หัวตารางบรรทัดเดียวทั้งคู่ (วัด 7.67)');
+});
+
+test('⭐ หัวข้อหน้าตาเดียวกับ "งวดชำระเงิน / PAYMENT SCHEDULE" ของใบเสนอราคา + งบหน้าคิด margin เดียวกับที่วาด', () => {
+  const rules = cssRules(renderProductSpecDocument(baseInput()));
+  const shellHeading = '.partyGrid h2, .installmentSection h2, .termsGrid h2';
+  const shellSub = '.partyGrid h2 span, .installmentSection h2 span, .termsGrid h2 span';
+  for (const prop of ['color', 'font-size']) {
+    assert.equal(declOf(rules, '.specsheet h3', prop), declOf(rules, shellHeading, prop), `หัวข้อ ${prop}`);
+  }
+  for (const prop of ['color', 'font-size', 'font-weight']) {
+    assert.equal(declOf(rules, '.specsheet h3 span', prop), declOf(rules, shellSub, prop), `ภาษารอง ${prop}`);
+  }
+  // margin: บน = ระยะของ .installmentSection · ล่าง = ของหัวข้อเปลือก (0 0 1.5mm)
+  const [top, , bottom] = declOf(rules, '.specsheet h3', 'margin').split(/\s+/);
+  assert.equal(top, declOf(rules, '.installmentSection', 'margin-top'));
+  assert.equal(bottom, declOf(rules, shellHeading, 'margin').split(/\s+/)[2]);
+  // 🔴 งบแผ่นต่อคืน margin บนของหัวข้อแรก — ค่าต้องเท่ากับที่ CSS วาด (แก้ CSS แล้วลืมงบ = คืนผิด)
+  assert.equal(`${PRODUCT_SPEC_COST_MM.headingTopMargin}mm`, top);
 });
 
 test('หัวข้อที่ไม่มีแถวไม่พิมพ์ และเลขข้อถัดไปเลื่อนขึ้น (ไม่เว้นเลข)', () => {
   const snapshot = snapshotOf({ items: [] });
   snapshot.spec = { ...snapshot.spec, certifications: [] };
   const list = headings(renderProductSpecDocument(baseInput({ snapshot })));
-  assert.deepEqual(list, ['1. Product Overview', '2. Market Positioning', '3. Functional Information', 'Final Review &amp; Approval']);
+  assert.deepEqual(list, [
+    '1. ข้อมูลผลิตภัณฑ์ / PRODUCT OVERVIEW', '2. ตำแหน่งทางการตลาด / MARKET POSITIONING',
+    '3. คุณสมบัติผลิตภัณฑ์ / FUNCTIONAL INFORMATION', 'การตรวจสอบและอนุมัติ / FINAL REVIEW &amp; APPROVAL',
+  ]);
 });
 
 test('🐞 ไม่มี "(ต่อ)" ปลอม — หัวข้อที่ขึ้นหน้าใหม่ไม่ใช่การตัดกลางหัวข้อ', () => {
@@ -522,7 +654,7 @@ test('🐞 ไม่มี "(ต่อ)" ปลอม — หัวข้อท�
     assert.notEqual(list[index + 1], cont[1], `"${list[index]}" ตามด้วยหัวข้อเดิมที่ยังไม่เคยเริ่ม`);
     assert.ok(list.slice(0, index).includes(cont[1]), `"${list[index]}" ต่อจากหัวข้อที่ยังไม่เคยขึ้น`);
   }
-  assert.equal(list.filter((h) => h === 'Checklist Project').length, 1);
+  assert.equal(list.filter((h) => h === 'รายการที่ต้องเตรียม').length, 1);
   assert.ok(!list.some((h) => h.endsWith('(ต่อ)')), 'ใบมาตรฐานไม่มีหัวข้อไหนสูงเกินแผ่น ⇒ ต้องไม่มีการตัดกลางหัวข้อ');
 });
 
@@ -537,10 +669,10 @@ test('หัวข้อไม่ค้างท้ายแผ่น — แถ
   for (const page of pages) {
     const body = page.replace(/<footer[\s\S]*$/, '');
     // หัวข้อที่เป็นสิ่งสุดท้ายของแผ่น = หัวข้อลอย
-    assert.doesNotMatch(body, /<h3>[^<]*<\/h3>\s*<\/div>\s*$/, 'มีหัวข้อค้างท้ายแผ่นโดยไม่มีแถวตาม');
+    assert.doesNotMatch(body, /<h3>[^<]*(?:<span>[^<]*<\/span>)?<\/h3>\s*<\/div>\s*$/, 'มีหัวข้อค้างท้ายแผ่นโดยไม่มีแถวตาม');
   }
   const list = bareHeadings(html);
-  assert.ok(!list.includes('Checklist Project (ต่อ)'), 'แถวเดียวของหัวข้อไม่ใช่การตัดกลางหัวข้อ');
+  assert.ok(!list.includes('รายการที่ต้องเตรียม (ต่อ)'), 'แถวเดียวของหัวข้อไม่ใช่การตัดกลางหัวข้อ');
 });
 
 test('ตัดกลางหัวข้อจริง (หัวข้อสูงกว่าแผ่นเปล่า) = หน้าใหม่เปิดด้วยหัวข้อเดิม **พร้อมเลขข้อ** + "(ต่อ)" และหัวตารางซ้ำ', () => {
@@ -555,7 +687,10 @@ test('ตัดกลางหัวข้อจริง (หัวข้อส
       })),
     }),
   }));
-  assert.ok(headings(html).includes('4. Checklist Project (ต่อ)'));
+  // ป้าย "ต่อ" ทั้งสองภาษา — แบบ "งวดชำระเงิน (ต่อ) / PAYMENT SCHEDULE (cont.)" ของใบเสนอราคา (ผลตรวจรอบสี่:
+  // เดิมต่อท้ายเฉพาะคำหลัก ได้ "(ต่อ) / CHECKLIST")
+  assert.ok(headings(html).includes('4. รายการที่ต้องเตรียม (ต่อ) / CHECKLIST (cont.)'), headings(html).join(' | '));
+  assert.match(html, /<h3>4\. รายการที่ต้องเตรียม \(ต่อ\) <span>\/ CHECKLIST \(cont\.\)<\/span><\/h3>/);
   assert.ok((html.match(/<th class="no">ลำดับ<\/th>/g) || []).length >= 2, 'หัวตารางต้องพิมพ์ซ้ำบนหน้าใหม่');
 });
 
@@ -567,15 +702,17 @@ test('ใบอังกฤษ: หัวข้อต่อใช้ "(cont.)" �
       })),
     }),
   }));
-  assert.ok(headings(html).includes('4. Checklist Project (cont.)'));
+  assert.ok(headings(html).includes('4. CHECKLIST (cont.)'));
+  // ใบอังกฤษไม่มีภาษารอง ⇒ ป้าย "ต่อ" ตัวเดียว (ไม่มี <span> · ไม่มี "(ต่อ)")
+  assert.match(html, /<h3>4\. CHECKLIST \(cont\.\)<\/h3>/);
   assert.match(html, /Page 1 \/ /);
   assert.doesNotMatch(html, /หน้า 1 \//);
 });
 
 test('ลบ checklist หมดใบ = ไม่มีหัวข้อ Checklist บนกระดาษ (ไม่ใช่หัวข้อกับตารางเปล่า)', () => {
   const html = renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ items: [] }) }));
-  assert.ok(!html.includes('Checklist Project'), 'หัวข้อยังขึ้นทั้งที่ไม่มีแถว');
-  assert.match(html, /4\. Certification &amp; Documents/, 'หัวข้อถัดไปต้องยังอยู่ และเลขข้อเลื่อนขึ้น');
+  assert.ok(!html.includes('รายการที่ต้องเตรียม'), 'หัวข้อยังขึ้นทั้งที่ไม่มีแถว');
+  assert.match(html, /4\. เอกสารที่ขอได้ <span>\/ CERTIFICATION &amp; DOCUMENTS<\/span>/, 'หัวข้อถัดไปต้องยังอยู่ และเลขข้อเลื่อนขึ้น');
 });
 
 test('ช่องที่ไม่ได้กรอกพิมพ์ N/A — ไม่ใช่เว้นว่างจนอ่านไม่ออกว่าถามแล้วหรือยัง', () => {
@@ -585,7 +722,7 @@ test('ช่องที่ไม่ได้กรอกพิมพ์ N/A —
 
 test('เอกสารที่ขอได้พิมพ์ทั้งสองสถานะเสมอ และ อย. ใช้คำของตัวเอง', () => {
   const html = renderProductSpecDocument(baseInput());
-  assert.match(html, /Certification &amp; Documents/);
+  assert.match(html, /เอกสารที่ขอได้ <span>\/ CERTIFICATION &amp; DOCUMENTS<\/span>/);
   assert.match(html, /อยู่ระหว่างยื่น/);          // แถว อย.
   assert.match(html, /อยู่ระหว่างจัดเตรียม/);     // แถวอื่น
 });
@@ -656,7 +793,7 @@ const sheetsOf = (plan) => plan.pages.map((entries) => entries
   .join(','));
 
 test('⭐ ใบมาตรฐาน (checklist 17 · เอกสาร 4 · ไม่มีภาพ) = สองแผ่น ลายเซ็นอยู่หน้า 2 — ไม่มีหน้าที่มีแต่ลายเซ็น', () => {
-  // 🐞 ผลตรวจรอบสอง: ทุกใบจริงบนฐานเป็นรูปนี้ และเคยได้หน้า 3 ที่มีแต่ "Final Review & Approval"
+  // 🐞 ผลตรวจรอบสอง: ทุกใบจริงบนฐานเป็นรูปนี้ และเคยได้หน้า 3 ที่มีแต่หัวข้อช่องลงนาม
   //    (วาดจริงหน้า 2 ใส่ลายเซ็นแล้วเหลือ 3.5mm — วัดซ้ำหลังแก้: 263.29 / 266.76 พิมพ์)
   for (const snapshot of [snapshotOf(), englishSnapshot()]) {
     const plan = planOf(baseInput({ snapshot }));
@@ -743,17 +880,18 @@ test('ตัดหน้าตามหัวข้อ: หัวข้อที
   for (const section of plan.sections) {
     const total = section.openCost + section.rows.reduce((sum, row) => sum + row.cost, 0);
     // ลงแผ่นเปล่าได้ = ความจุเต็มของแผ่น (ก้อนเดี่ยวไม่หักส่วนเผื่อ)
-    if (total <= plan.budgets.rest + plan.budgets.reserve) assert.equal(pagesOf.get(section.key).size, 1, `${section.heading} ถูกตัดทั้งที่ลงแผ่นเปล่าได้`);
+    if (total <= plan.budgets.rest + plan.budgets.reserve) assert.equal(pagesOf.get(section.key).size, 1, `${section.key} ถูกตัดทั้งที่ลงแผ่นเปล่าได้`);
   }
   plan.pages.slice(1).forEach((entries, index) => {
     assert.ok(['open', 'continue', 'tail'].includes(entries[0]?.kind), `แผ่น ${index + 2} ไม่ได้เปิดด้วยหัวข้อ`);
   });
 });
 
-test('งบแผ่นต่อคืน margin บนของหัวข้อแรก 5mm — แผ่นแรกไม่ได้คืน (กล่องผู้ซื้อมาก่อน)', () => {
+test('งบแผ่นต่อคืน margin บนของหัวข้อแรก 3.5mm — แผ่นแรกไม่ได้คืน (กล่องผู้ซื้อมาก่อน)', () => {
+  // margin บนของหัวข้อ = 3.5 แบบ .installmentSection ของใบเสนอราคา (มติผู้ใช้ 2026-09-22 รอบสี่ · เดิม 5)
   const budgets = productSpecPageBudgets({ headerMm: 43, partyMm: 55 });
-  assert.equal(Number((budgets.rest - (budgets.first + 43 + 55)).toFixed(6)), 5);
-  assert.ok(budgets.rest <= 267.8, 'แผ่นต่อไม่เกินกล่องใน 276 − padding 9.2 + 5 − เผื่อ 4');
+  assert.equal(Number((budgets.rest - (budgets.first + 43 + 55)).toFixed(6)), 3.5);
+  assert.ok(budgets.rest <= 266.3, 'แผ่นต่อไม่เกินกล่องใน 276 − padding 9.2 + 3.5 − เผื่อ 4');
 });
 
 test('escape ค่าที่มาจากผู้ใช้ — ชื่อสินค้าที่มี < > ต้องไม่กลายเป็นแท็ก', () => {
@@ -900,7 +1038,7 @@ test('ภาพเยอะขึ้นหน้าใหม่ — ไม่ย
   }));
   assert.ok(sheetCount(many) > sheetCount(few));
   for (const html of [few, many]) {
-    const at = html.search(/<h3>\d+\. ภาพประกอบรายละเอียดสินค้า<\/h3>/);
+    const at = html.search(/<h3>\d+\. ภาพประกอบรายละเอียดสินค้า <span>\/ ILLUSTRATIONS<\/span><\/h3>/);
     assert.ok(at >= 0, 'ต้องมีหัวข้อภาพพร้อมเลขข้อ');
     const pageEnd = html.indexOf('</article>', at);
     assert.ok(html.slice(at, pageEnd).includes('class="figGrid"'), 'หัวข้อภาพต้องมีแถวภาพตามอยู่แผ่นเดียวกัน');
@@ -943,8 +1081,8 @@ test('แบรนด์มีสองภาษา ใช้กฎภาษา�
 
 test('⭐ ช่องลงนามชิดขอบล่างของแผ่น (มติ 2026-09-22 "ดึงขึ้นถ้าพอ แต่ชิดล่าง")', () => {
   const html = renderProductSpecDocument(baseInput());
-  // ก้อนท้าย (หัวข้อ Final Review + ช่องลงนาม) ห่อด้วย .signTail ตัวเดียว · margin-top:auto ใน .sheetContent (flex column)
+  // ก้อนท้าย (หัวข้อช่องลงนาม + ช่องลงนาม) ห่อด้วย .signTail ตัวเดียว · margin-top:auto ใน .sheetContent (flex column)
   assert.equal((html.match(/<div class="signTail">/g) || []).length, 1);
-  assert.match(html, /<div class="signTail"><h3 class="signHeading">Final Review &amp; Approval<\/h3>\s*<section class="signatures"/);
+  assert.match(html, /<div class="signTail"><h3 class="signHeading">การตรวจสอบและอนุมัติ <span>\/ FINAL REVIEW &amp; APPROVAL<\/span><\/h3>\s*<section class="signatures"/);
   assert.match(html, /\.specsheet \.signTail \{ margin-top: auto; \}/);
 });

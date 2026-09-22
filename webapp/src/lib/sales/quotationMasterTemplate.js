@@ -205,6 +205,19 @@ const DOC_LABEL_PAIRS = Object.freeze({
   // ลายน้ำ Rev ที่ถูกแทน — ใบอังกฤษต้องเป็นอังกฤษแบบ DRAFT/CANCELLED ของ QT/SO (ผลตรวจรอบสอง)
   specSupersededBy: ['ถูกแทนด้วย', 'SUPERSEDED BY'],
   specSupersededNewer: ['ถูกแทนด้วย Rev. ใหม่', 'SUPERSEDED BY A NEWER Rev.'],
+  /* หัวข้อในเนื้อของ FM-SA-04 (มติผู้ใช้ 2026-09-22 "ปรับชื่อหัวข้อตามภาษาด้วย เอาใบเสนอราคาเป็นต้นแบบ") — อ่านผ่าน
+     `pair()` แบบ "งวดชำระเงิน / PAYMENT SCHEDULE": ใบไทย "ไทย / ENGLISH" (อังกฤษเป็น <span> สีจาง) · ใบอังกฤษเหลืออังกฤษ
+     🐞 เดิมหัวข้อเป็นอังกฤษตายตัวในตัวพิมพ์ ("Product Overview" · "Checklist Project") ⇒ ใบไทยมีหัวข้ออังกฤษล้วน
+        ข้าง "ภาพประกอบรายละเอียดสินค้า" ที่เป็นไทยล้วน — สองภาษาปนกันคนละกติกาในใบเดียว
+     ⚠️ **เฉพาะหัวข้อ** — ป้ายแถว/หัวคอลัมน์/สถานะในตารางยังชุดเดียวทั้งสองภาษา (มติเจ้าของ · ไม่แปลเนื้อ) */
+  specOverview: ['ข้อมูลผลิตภัณฑ์', 'PRODUCT OVERVIEW'],
+  specMarket: ['ตำแหน่งทางการตลาด', 'MARKET POSITIONING'],
+  specFunctional: ['คุณสมบัติผลิตภัณฑ์', 'FUNCTIONAL INFORMATION'],
+  specChecklist: ['รายการที่ต้องเตรียม', 'CHECKLIST'],
+  specCertification: ['เอกสารที่ขอได้', 'CERTIFICATION & DOCUMENTS'],
+  specIllustrations: ['ภาพประกอบรายละเอียดสินค้า', 'ILLUSTRATIONS'],
+  // หัวของช่องลงนาม — ไม่มีเลขข้อ (ไม่ใช่เนื้อสเปค)
+  specFinalReview: ['การตรวจสอบและอนุมัติ', 'FINAL REVIEW & APPROVAL'],
 });
 
 /* เลขสาขาบนเอกสาร — **เลขล้วนเสมอ** (มติผู้ใช้ 2026-08-27 สองรอบ)
