@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useParams, useRouter } from "next/navigation";
-import { Handshake, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Mail, Pencil, Phone, Save, Sparkles, Trash2, UserRound, Users, X } from "lucide-react";
+import { Handshake, Building2, CalendarClock, CircleDollarSign, Contact, Inbox, Link2, Mail, Pencil, Phone, Save, Sparkles, Trash2, UserRound, Users, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Select from "@/components/ui/Select";
@@ -15,6 +15,9 @@ import Button from "@/components/ui/Button";
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
+import DealLeadLinkModal from "@/components/salesPlanning/DealLeadLinkModal";
+import GatedAction from "@/components/ui/GatedAction";
+import { canLinkLeadRole, dealLinkOptions, leadLinkError, leadLinkEffects, leadLinkScopeOk } from "@/lib/sales/dealLeadLink";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import useLeadWorkload from "@/lib/sales/useLeadWorkload";
 import { autoBounceCountdown } from "@/lib/sales/leadAutoBounce";
@@ -30,7 +33,7 @@ import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABEL
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { STAGE_LABELS } from "@/lib/salesPlanning";
@@ -42,7 +45,10 @@ import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmo
    ไม่งั้นเหตุการณ์จะโชว์เป็นชื่อ kind ดิบบนไทม์ไลน์
    ⚠️ `create_deal` คือค่าที่ POST /deals เขียนจริง ส่วน `qualify` เป็นค่าของเส้นทางเก่า
    ที่เลิกใช้แล้ว — คงไว้เผื่อแถวเก่า แต่ของใหม่มาทาง create_deal ทั้งหมด */
-const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", meeting: "นัดหมาย", qualify: "สร้างดีล", create_deal: "สร้างดีลจากลีดนี้", bounce: "ส่งกลับคิวคัดกรอง", disqualify: "ปิดลีด — ไม่ไปต่อ", update: "แก้ไขข้อมูลลีด" };
+/* ⭐ `link_deal`/`unlink_deal` (mig 0371 · มติผู้ใช้ 2026-09-22) = ผูก/ถอดดีลย้อนหลัง — แยกจาก create_deal
+   เพราะเวลาที่บันทึกคือเวลาผูก ไม่ใช่เวลาเปิดดีลจริง · ป้าย followup/reassign/auto_bounce เคยตกหล่น
+   (อยู่ใน CHECK ตั้งแต่ mig 0291 แต่ขึ้นเป็นชื่อ kind ดิบบนไทม์ไลน์) — เติมพร้อมกันในรอบนี้ */
+const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", reassign: "เปลี่ยนผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", followup: "ติดตามต่อ", meeting: "นัดหมาย", qualify: "สร้างดีล", create_deal: "สร้างดีลจากลีดนี้", link_deal: "ผูกดีลย้อนหลัง", unlink_deal: "ถอดดีลออกจากลีด", bounce: "ส่งกลับคิวคัดกรอง", auto_bounce: "ระบบส่งกลับคิวคัดกรองอัตโนมัติ", disqualify: "ปิดลีด — ไม่ไปต่อ", update: "แก้ไขข้อมูลลีด" };
 
 /* เนื้อของเหตุการณ์ระบบบนไทม์ไลน์
    🐞 ของเดิมโชว์แค่ `reason` กับ `assigneeName` ⇒ **เวลานัดและรูปแบบนัดที่ AE กรอกทุกครั้ง
@@ -254,6 +260,58 @@ export default function LeadDetailPage() {
     lead, user: viewer, canCreateDeals, icon: Handshake, onClick: openDealForm,
   });
 
+  /* ผูกดีลที่มีอยู่ (มติผู้ใช้ 2026-09-22) — SA ลืมกด "เปิดดีลจากลีดนี้" แล้วเปิดดีลตรงจากหน้าดีล
+     · สิทธิ์ (บทบาท + ทำงานลีดใบนี้ได้) ไม่ผ่าน = ไม่โชว์ · สถานะลีดยังผูกไม่ได้ = โชว์แล้วบอกเหตุ
+     · ด่านทั้งสองมาจาก lib/sales/dealLeadLink ตัวเดียวกับ server · ยิง endpoint ฝั่งดีล
+       (/deals/{ดีลที่เลือก}/link-lead) ⇒ ด่าน "แก้ดีลใบนั้นได้" อยู่ที่ server ทางเดียว
+     · ถอดไม่มีที่นี่โดยเจตนา — การ์ดดีลเป็นลิงก์ทั้งใบ ถอดที่หน้าดีล (ปุ่มบนแผงจัดการ) */
+  const linkDealVisible = !!lead && canLinkLeadRole(role) && leadLinkScopeOk(viewer, lead);
+  const linkDealBlocker = linkDealVisible ? (leadLinkError({ user: viewer, lead })?.message || null) : null;
+  const [linkDealOpen, setLinkDealOpen] = useState(false);
+  const [linkDeals, setLinkDeals] = useState([]);
+  const [linkDealId, setLinkDealId] = useState("");
+  const [linkDealsLoading, setLinkDealsLoading] = useState(false);
+  const [linkDealsError, setLinkDealsError] = useState("");
+  const [linkDealError, setLinkDealError] = useState("");
+  const [linkingDeal, setLinkingDeal] = useState(false);
+  async function openLinkDeal() {
+    setLinkDealOpen(true);
+    setLinkDealsLoading(true);
+    setLinkDeals([]);
+    setLinkDealId("");
+    setLinkDealsError("");
+    setLinkDealError("");
+    try {
+      // โหลดพลาด ≠ ไม่มีดีลให้ผูก — ต้องบอกให้ลองใหม่ ไม่ใช่โชว์ลิสต์ว่าง
+      const rows = await apiJson("/api/sales-planning/deals", { fallbackError: "โหลดรายการดีลไม่สำเร็จ" });
+      setLinkDeals(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setLinkDealsError(e.message || "โหลดรายการดีลไม่สำเร็จ");
+    } finally {
+      setLinkDealsLoading(false);
+    }
+  }
+  // error ขึ้นในโมดัลเอง (ไม่ใช่ toast ที่หายไปเอง) — ผู้ใช้ยังเลือกใบอื่นต่อได้ในโมดัลเดิม
+  async function submitLinkDeal() {
+    if (!linkDealId) return;
+    setLinkingDeal(true);
+    setLinkDealError("");
+    try {
+      const body = await apiJson(`/api/sales-planning/deals/${linkDealId}/link-lead`, {
+        method: "POST", json: { leadId: lead.id }, fallbackError: "ผูกดีลไม่สำเร็จ",
+      });
+      const warning = responseWarningText(body);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
+      else notifyToast.success("ผูกดีลกับลีดนี้แล้ว");
+      setLinkDealOpen(false);
+      await load();
+    } catch (e) {
+      setLinkDealError(e.message || "ผูกดีลไม่สำเร็จ");
+    } finally {
+      setLinkingDeal(false);
+    }
+  }
+
   /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การจัดการตัวระเบียน"
      แก้ไข = secondary (ทำได้ แต่ไม่ใช่ก้าวถัดไป) · ลบ = danger (ทำลาย) */
   const recordActions = [
@@ -331,21 +389,37 @@ export default function LeadDetailPage() {
         {/* ── ส่วนของ "ดีล" แยกขาดจากการ์ดคุม flow ─────────────────────────────
             โผล่เมื่อมีดีลแล้ว **หรือ** เปิดดีลได้ — ไม่งั้นลีดที่ยังไม่มีดีลจะไม่มีที่ให้
             ปุ่มยืน และคนต้องไปหาในการ์ดสถานะซึ่งเป็นคนละเรื่องกัน */}
-        {(!!lead.relatedDeals?.length || dealAction.visible) && (
+        {(!!lead.relatedDeals?.length || dealAction.visible || linkDealVisible) && (
           <DetailCard
             icon={Handshake}
             eyebrow="Converted opportunities"
             title="ดีลจากลีดนี้"
             meta={lead.relatedDeals?.length ? `${lead.relatedDeals.length} ดีล` : "ยังไม่มีดีล"}
-            actions={dealAction.visible ? (
-              <Button
-                tone="primary"
-                icon={<Handshake size={14} aria-hidden="true" />}
-                onClick={openDealForm}
-                disabled={busy}
-              >
-                {dealAction.label}
-              </Button>
+            actions={dealAction.visible || linkDealVisible ? (
+              <>
+                {/* สองทางเข้าคนละความหมาย (ท่าเดียวกับการ์ดดีลของหน้าโครงการ):
+                    ผูกดีลที่มีอยู่ = ดีลเปิดไปแล้วที่หน้าดีล · เปิดดีลจากลีดนี้ = สร้างใบใหม่ */}
+                {linkDealVisible && (
+                  <GatedAction
+                    blocker={linkDealBlocker}
+                    icon={<Link2 size={14} aria-hidden="true" />}
+                    onClick={openLinkDeal}
+                    disabled={busy}
+                  >
+                    ผูกดีลที่มีอยู่
+                  </GatedAction>
+                )}
+                {dealAction.visible && (
+                  <Button
+                    tone="primary"
+                    icon={<Handshake size={14} aria-hidden="true" />}
+                    onClick={openDealForm}
+                    disabled={busy}
+                  >
+                    {dealAction.label}
+                  </Button>
+                )}
+              </>
             ) : null}
           >
             {lead.relatedDeals?.length ? (
@@ -387,7 +461,9 @@ export default function LeadDetailPage() {
               </ContextGrid>
             ) : (
               <p className="empty">
-                ลีดนี้ยังไม่ได้เปิดดีล — กด “{dealAction.label}” เพื่อเริ่ม (เปิดได้หลายใบจากลีดเดียว)
+                ลีดนี้ยังไม่มีดีล
+                {dealAction.visible ? <> — กด “{dealAction.label}” เพื่อเริ่ม (เปิดได้หลายใบจากลีดเดียว)</> : null}
+                {linkDealVisible ? <>{dealAction.visible ? " · " : " — "}เปิดดีลไปแล้วที่หน้าดีล? กด “ผูกดีลที่มีอยู่”</> : null}
               </p>
             )}
           </DetailCard>
@@ -423,6 +499,34 @@ export default function LeadDetailPage() {
             onClose={() => setDealOpen(false)}
           />
         )}
+
+        {/* ผูกดีลที่มีอยู่ — โมดัลตัวเดียวกับฝั่งหน้าดีล (ต่างกันแค่เลือกดีล/เลือกลีด) */}
+        <DealLeadLinkModal
+          open={linkDealOpen}
+          title="ผูกดีลที่มีอยู่กับลีดนี้"
+          intro="เลือกดีลที่เปิดจากหน้าดีลโดยไม่ได้กด “เปิดดีลจากลีดนี้” — แสดงเฉพาะดีลที่ยังไม่มีลีดต้นทางและคุณแก้ได้"
+          fieldLabel="ดีลที่มาจากลีดนี้"
+          entity="deal"
+          options={dealLinkOptions(linkDeals, {
+            assigneeId: lead.assigneeId,
+            assigneeName: livePersonName(directory, lead.assigneeId, lead.assigneeName),
+            stageLabel: (stage) => STAGE_LABELS[stage] || stage,
+          })}
+          value={linkDealId}
+          onChange={(value) => { setLinkDealId(value); setLinkDealError(""); }}
+          loading={linkDealsLoading}
+          loadError={linkDealsError}
+          error={linkDealError}
+          placeholder="— เลือกดีล —"
+          emptyPlaceholder="ไม่มีดีลที่ยังไม่ผูกลีดและคุณแก้ได้"
+          searchPlaceholder="ค้นหารหัสดีล ชื่อดีล ลูกค้า หรือผู้ดูแล…"
+          emptyText="ไม่พบดีลที่ตรงกับคำค้น"
+          effects={linkDealId ? leadLinkEffects(lead) : []}
+          busy={linkingDeal}
+          submitLabel="ผูกดีลนี้"
+          onSubmit={submitLinkDeal}
+          onClose={() => setLinkDealOpen(false)}
+        />
     </div>}
   </Workspace>;
 }

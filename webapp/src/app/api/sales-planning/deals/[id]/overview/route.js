@@ -8,6 +8,8 @@ import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 import { canViewUpdates } from '@/lib/master/updateAccess';
 import { customerNameIn } from '@/lib/master/customerName';
+import { canViewLeads, inLeadScope } from '@/lib/sales/leads';
+import { leadLinkError } from '@/lib/sales/dealLeadLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +71,29 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     : { data: null, warning: null };
   // ชื่อที่ส่งให้จอวาดต้องตกไปอังกฤษได้ — ลูกค้าที่มีแต่ชื่ออังกฤษเคยขึ้นเป็นขีดบนหัวหน้านี้
   const customerCard = customer.data ? { ...customer.data, name: customerNameIn(customer.data) } : null;
+
+  /* ลีดต้นทาง (มติผู้ใช้ 2026-09-22 — ผูกย้อนหลังได้) — การ์ด "ลีดต้นทาง" + ปุ่มถอดบนหน้าดีล
+     ⚠️ คนเห็นดีลไม่ได้เห็นลีดทุกใบ (TS/บัญชี/RD/AE คนอื่น) ⇒ ส่งเฉพาะช่องที่ไม่ใช่ข้อมูลติดต่อ
+        (ไม่มีเบอร์/อีเมล) · `canOpen` บอกจอว่าลิงก์ไปหน้าลีดได้ไหม ไม่งั้นการ์ดพาไปเจอ 403
+     ⚠️ `canUnlink` คิดที่นี่ด้วยด่านตัวเดียวกับ DELETE /link-lead — จอไม่ได้ถือแถวลีดเต็มจะคิดเองไม่ได้
+        · ด่านถอดมีแต่เรื่องสิทธิ์ (บทบาท + ทำงานลีดใบนี้ได้) ⇒ ไม่ผ่าน = ซ่อนปุ่ม (กติกา ui-visibility) */
+  const sourceLeadRow = deal.leadId
+    ? await safe('source lead', supabase.from('sales_leads')
+      .select('id, contactName, company, status, channel, team, assigneeId, assigneeName, createdBy, createdAt')
+      .eq('id', deal.leadId).maybeSingle(), null)
+    : { data: null, warning: null };
+  const sourceLead = sourceLeadRow.data ? {
+    id: sourceLeadRow.data.id,
+    contactName: sourceLeadRow.data.contactName,
+    company: sourceLeadRow.data.company,
+    status: sourceLeadRow.data.status,
+    channel: sourceLeadRow.data.channel,
+    team: sourceLeadRow.data.team,
+    assigneeName: sourceLeadRow.data.assigneeName,
+    createdAt: sourceLeadRow.data.createdAt,
+    canOpen: canViewLeads(user) && inLeadScope(user, sourceLeadRow.data),
+    canUnlink: !leadLinkError({ user, lead: sourceLeadRow.data, forUnlink: true }),
+  } : null;
 
   // ── สายภาษี: ปลายทางของ SO ที่เดิมหน้าดีลมองไม่เห็น ────────────────────────
   // ใบยื่นชำระสรรพสามิตผูก SO ตัวต่อตัว (unique 1 SO = 1 ใบยื่น — mig 0160) แต่หน้าดีล
@@ -147,6 +172,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     valueItems.warning,
     // รหัส AR ของลูกค้า — อ่านไม่ได้ = หัวใบจะเหลือชื่อเปล่า ต้องมีคำเตือน ไม่ใช่เงียบ
     customer.warning,
+    // ลีดต้นทาง — อ่านไม่ได้ = การ์ดขึ้นว่า "โหลดไม่ได้" ต้องบอกเหตุ
+    sourceLeadRow.warning,
   ].filter(Boolean);
 
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
@@ -200,6 +227,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        ลิสต์ว่างจึงแปลว่า "ลบทุกแถว" หน้าเว็บต้องแยกสองกรณีนี้ออกจากกันได้ */
     deal: { ...deal, customer: customerCard, valueItems: valueItems.warning ? null : (valueItems.data || []) },
     canEdit,
+    sourceLead,
     forecastDrift,
     quotations: latestQuotationRevisions(quotations.data),
     /* ที่มาของยอด FC (mig 0337) — คิดที่ server เพราะ resolver ต้องเห็นใบ **ทุกแถว**

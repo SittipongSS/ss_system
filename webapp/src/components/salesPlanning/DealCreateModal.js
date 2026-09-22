@@ -19,7 +19,7 @@
 // ⚠️ `metadata.leadId` คือเส้นเดียวที่ผูกดีลกลับไปหาลีด — เปิดจากหน้ารวมดีล (`lead` = null)
 // จะไม่ส่งค่านี้โดยตั้งใจ: ดีลนั้นสร้างจากศูนย์ ไม่ได้มาจากลีด
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useRouter } from "next/navigation";
 import { Check, CircleAlert, Plus, Trash2 } from "lucide-react";
@@ -31,12 +31,15 @@ import { initialDealForm } from "@/components/salesPlanning/ui";
 import { CREATABLE_STAGES } from "@/lib/salesPlanning";
 
 import styles from "./DealCreateModal.module.css";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { legacyWonCreateError } from "@/lib/sales/legacyDealSwitch";
 import { businessDate } from "@/lib/businessDate";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { leadLinkEffects, leadLinkOptions } from "@/lib/sales/dealLeadLink";
+import { fmtDate } from "@/lib/format";
 
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
    "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
@@ -74,7 +77,10 @@ const nextDeal = (lead, ownerId, defaults) => (lead ? {
    (สายลีดเคยเจอจริงตอนทดสอบ: ปุ่มขึ้น "สร้าง 0 ดีล")
 
    @param lead  มาจากลีด = เติมค่าตั้งต้น + ผูก metadata.leadId + เด้งไปหน้าดีลหลังสร้าง
-                null = เปิดจากหน้ารวมดีล (ใบเปล่า ไม่ผูกลีด อยู่หน้าเดิม) */
+                null = เปิดจากหน้ารวมดีล (ใบเปล่า อยู่หน้าเดิม)
+   @param leadPicker  true = มีช่อง "ลีดต้นทาง" ให้เลือกเอง (หน้ารวมดีล · มติผู้ใช้ 2026-09-22 —
+                SA ลืมกดเปิดดีลจากหน้าลีด) · ใช้เมื่อ `lead` = null เท่านั้น · ไม่เติมค่าตั้งต้นจากลีด
+                (ร่างเกิดไปแล้วตอน mount) และไม่เด้งหน้า — แค่ผูก metadata.leadId ทุกใบในรอบนี้ */
 export default function DealCreateModal({
   lead = null,
   customers = [],
@@ -90,6 +96,7 @@ export default function DealCreateModal({
      โครงการส่ง { customerId, projectId, lockedProjectId } มาเพื่อให้ดีลใหม่ผูกกลับ
      เข้าโครงการนั้นเสมอ (อ่านตอน mount ครั้งเดียว เหมือน lead) */
   defaults = null,
+  leadPicker = false,
   onClose,
   onCreated,
 }) {
@@ -108,6 +115,34 @@ export default function DealCreateModal({
      รอบถัดไปจะ "ผูกอย่างเดียว" ไม่สร้างดีลใหม่ */
   const [done, setDone] = useState({});
   const [failedKey, setFailedKey] = useState(null);
+
+  /* ลีดต้นทางที่เลือกเองบนหน้ารวมดีล — ใช้กับ **ทุกใบในรอบนี้** (เคสจริงบน prod: ลูกค้ารายเดียว
+     เปิดหลายหมวดพร้อมกัน แล้วผูกลีดแค่ใบแรก) · รายการมาจาก `?linkable=1` = server กรองด้วยด่าน
+     ตัวเดียวกับ POST /deals แล้ว (ผู้ใช้คนนี้ผูกใบไหนได้) */
+  const showLeadPicker = leadPicker && !lead;
+  const [pickLeads, setPickLeads] = useState([]);
+  const [pickLeadsLoading, setPickLeadsLoading] = useState(false);
+  const [pickLeadsError, setPickLeadsError] = useState("");
+  const [pickedLeadId, setPickedLeadId] = useState("");
+  useEffect(() => {
+    if (!showLeadPicker) return undefined;
+    let alive = true;
+    setPickLeadsLoading(true);
+    // โหลดพลาด ≠ ไม่มีลีดให้ผูก — บอกใต้ช่อง (ดีลยังสร้างได้ตามปกติ แค่ผูกลีดไม่ได้รอบนี้)
+    apiJson("/api/sales-planning/leads?linkable=1", { fallbackError: "โหลดรายการลีดไม่สำเร็จ" })
+      .then((rows) => { if (alive) setPickLeads(Array.isArray(rows) ? rows : []); })
+      .catch((e) => { if (alive) setPickLeadsError(e.message || "โหลดรายการลีดไม่สำเร็จ"); })
+      .finally(() => { if (alive) setPickLeadsLoading(false); });
+    // ⚠️ cleanup ต้องเป็นตัวแปร ไม่ใช่ arrow ที่คืนตรง ๆ — เทสต์แถบเครื่องมือหาปลายบล็อก toolbar
+    //    ด้วยคำว่า return ตามด้วยวงเล็บเปิดตัวแรกของไฟล์ (dealCreateModal.test.mjs)
+    const cancel = () => { alive = false; };
+    return cancel;
+  }, [showLeadPicker]);
+  const pickedLead = showLeadPicker ? pickLeads.find((row) => row.id === pickedLeadId) || null : null;
+  // ลีดที่ดีลรอบนี้ผูก — มาจากหน้าลีด (prop) หรือเลือกเองบนหน้ารวมดีล
+  const sourceLead = lead || pickedLead;
+  // สร้างไปแล้วอย่างน้อยหนึ่งใบ = ล็อกช่องลีด (ใบที่เหลือต้องผูกลีดเดียวกับใบที่เกิดไปแล้ว)
+  const anyCreated = Object.values(done).some((state) => state?.dealId);
 
   const patch = (index, values) =>
     setDrafts((prev) => prev.map((draft, i) => (i === index ? { ...draft, ...values } : draft)));
@@ -188,7 +223,7 @@ export default function DealCreateModal({
             customerName: customers.find((c) => c.id === draft.customerId)?.name || draft.customerName || null,
           };
           const metadata = {
-            ...(lead ? { leadId: lead.id, source: "lead", leadChannel: lead.channel } : {}),
+            ...(sourceLead ? { leadId: sourceLead.id, source: "lead", leadChannel: sourceLead.channel } : {}),
             ...(legacy ? { legacy: true } : {}),
           };
           // ด่านเดียวกับ server (lib/sales/legacyDealSwitch) — ฝั่งจอเหลือแค่วันที่ปิดในอนาคตที่ชนได้
@@ -323,6 +358,44 @@ export default function DealCreateModal({
       )}
     >
       <div className={styles.body}>
+        {showLeadPicker ? (
+          <div className={styles.leadPick}>
+            <label className={styles.leadPickField}>
+              ลีดต้นทาง (ถ้ามี)
+              <SearchableSelect
+                className="w-full"
+                entity="lead"
+                ariaLabel="ลีดต้นทาง"
+                value={pickedLeadId}
+                onChange={setPickedLeadId}
+                disabled={busy || anyCreated || pickLeadsLoading || !!pickLeadsError}
+                /* ⚠️ ตัวเลือก "ไม่ผูกลีด" (ค่าว่าง) ใส่เฉพาะตอนโหลดเสร็จ — ค่าเริ่มต้นเป็นค่าว่าง ถ้าใส่ไว้ตลอด
+                   ช่องจะขึ้น "ไม่ผูกลีด" ระหว่างโหลดแทน placeholder "กำลังโหลด" */
+                options={pickLeadsLoading || pickLeadsError ? [] : [
+                  { value: "", label: "— ไม่ผูกลีด (ดีลนี้ไม่ได้มาจากลีดในคิว) —" },
+                  ...leadLinkOptions(pickLeads, { ownerId: defaultOwnerId, ownerName: lockedOwner?.name || "", fmtDate }),
+                ]}
+                placeholder={pickLeadsLoading ? "กำลังโหลดลีด…" : pickLeadsError ? "โหลดรายการลีดไม่สำเร็จ" : "— ไม่ผูกลีด —"}
+                searchPlaceholder="ค้นหาชื่อ บริษัท เบอร์โทร หรืออีเมล…"
+                emptyText="ไม่พบลีดที่ตรงกับคำค้น"
+              />
+            </label>
+            {pickLeadsError ? (
+              <p className={styles.error}>โหลดรายการลีดไม่สำเร็จ: {pickLeadsError} — ดีลยังสร้างได้ตามปกติ ผูกลีดย้อนหลังได้ที่หน้าดีล</p>
+            ) : anyCreated ? (
+              <p className={styles.leadPickHint}>
+                {pickedLead ? `ใบที่สร้างแล้วผูกกับลีด ${pickedLead.contactName} — ใบที่เหลือในรอบนี้ใช้ลีดเดียวกัน (ล็อกช่องไว้)` : "ใบที่สร้างแล้วไม่ได้ผูกลีด — ใบที่เหลือในรอบนี้ก็ไม่ผูกเช่นกัน (ผูกย้อนหลังได้ที่หน้าดีล)"}
+              </p>
+            ) : pickedLead ? (
+              <ul className={styles.leadPickEffects}>
+                {leadLinkEffects(pickedLead, { via: "create" }).map((line) => <li key={line}>{line}</li>)}
+                {drafts.length > 1 ? <li>ผูกกับทุกใบในรอบนี้ ({drafts.length} ใบ)</li> : null}
+              </ul>
+            ) : (
+              <p className={styles.leadPickHint}>ลูกค้ามาจากลีดในคิว? เลือกลีดที่นี่ — ลีดจะเปลี่ยนเป็นเปิดลูกค้าแล้ว และระบบเลิกทวงติดตาม</p>
+            )}
+          </div>
+        ) : null}
         {drafts.map((draft, index) => (
           <div
             key={draft._key}

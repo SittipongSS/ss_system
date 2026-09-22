@@ -61,9 +61,19 @@ export function clientDealMetadataOnCreate(metadata) {
  *     ตัวบ่งชี้หลุด ⇒ ดีลกลับเข้ากอง "Won รอยื่น SO" (เช่นบล็อก B DL-26080340 283,350) · กลับด้านก็เหมือนกัน
  *     (ใส่ legacy:true ให้ดีลที่ไม่ใช่ดีลเก่า)
  *  ⚠️ ถอดเฉพาะ PATCH — ห้ามย้าย 'legacy' ไปไว้ใน SERVER_ONLY_DEAL_METADATA_KEYS เพราะ POST ต้องเก็บธง */
+/** คีย์ของเส้นผูกลีดต้นทาง — กระจกของคอลัมน์ `sales_deals.leadId` + ป้ายที่มาของดีล
+ *  เขียนได้สองทางเท่านั้น: POST /deals (ตอนสร้าง ผ่าน sourceLeadIdOf + ด่านลีด) และ
+ *  /deals/[id]/link-lead (ผูก/ถอดย้อนหลัง · มติผู้ใช้ 2026-09-22)
+ *  🐞 ก่อนหน้านี้ PATCH รับ `metadata.leadId` จาก client ได้ ⇒ กระจกชี้ลีดใบหนึ่ง คอลัมน์ชี้อีกใบ
+ *     (หรือว่าง) โดยไม่ผ่านด่านลีดเลย = "สองความจริงในแถวเดียว" ที่ sourceLeadIdOf มีไว้กัน
+ *  ⚠️ `source` อยู่ในลิสต์ด้วย — สหมิตรเขียนค่านี้ตรงที่ฐาน (service-role) ไม่ผ่าน PATCH จึงไม่กระทบ
+ *     และไม่มีจอไหนส่ง metadata ใน PATCH (ตรวจผู้เรียก 2026-09-15) */
+export const LEAD_LINK_METADATA_KEYS = ['leadId', 'source', 'leadChannel'];
+
 export function clientDealMetadataOnPatch(metadata) {
   const out = stripServerOnlyDealMetadata(metadata);
   delete out.legacy;
+  for (const key of LEAD_LINK_METADATA_KEYS) delete out[key];
   return out;
 }
 
