@@ -548,7 +548,7 @@ export async function loadSpecDocument(supabase, documentId, { includeFrozenHtml
   if (owner.error) return { error: owner.error };
 
   const productRes = await supabase.from('products')
-    .select('id, fgCode, productDescription, brandName, customerName, categoryCode, team, ownerId')
+    .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, customerName, categoryCode, team, ownerId')
     .eq('id', document.productId).maybeSingle();
   if (productRes.error) return { error: messageOf(productRes.error) };
 

@@ -31,6 +31,7 @@ import {
   illustrationCaption, snapshotIllustrationRows, sortIllustrations,
 } from '@/lib/sales/productSpecIllustrations';
 import { formatRevLabel } from '@/lib/sales/productSpecDocWorkflow';
+import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 
 const SPEC_KEY = 'productSpec';
 
@@ -411,7 +412,8 @@ export function renderProductSpecDocument({
       headingEn: 'Customer',
       name: order.customerName || product.customerName,
       rows: [
-        { label: 'ชื่อแบรนด์', value: product.brandName },
+        // 🐞 สินค้าที่มีแบรนด์ภาษาอังกฤษอย่างเดียวเคยพิมพ์ N/A — ใช้กฎภาษาเดียวชุดกลางของแบรนด์
+        { label: 'ชื่อแบรนด์', value: productBrandName(product) },
       ],
     },
     reference: {
@@ -435,7 +437,8 @@ export function renderProductSpecDocument({
   };
 
   const overviewPairs = [
-    ['ชื่อผลิตภัณฑ์', product.productDescription],
+    // 🐞 ชื่อไทยว่าง (สินค้าหมวด 01/02 ราวครึ่งหนึ่งมีแต่ชื่ออังกฤษ) เคยพิมพ์ N/A — ไทยก่อน ไม่มีค่อยอังกฤษ
+    ['ชื่อผลิตภัณฑ์', productDisplayName(product)],
     ['รหัสสินค้า', product.fgCode],
     ['ประเภทผลิตภัณฑ์', product.categoryName],
     ['กลิ่น / รหัสกลิ่น', product.scentText],
@@ -523,7 +526,7 @@ export function renderProductSpecDocument({
   const identity = docNo ? [docNo, revLabel].filter(Boolean).join(' ') : `${form.code} ตัวอย่าง`;
   return renderDocumentHTML({
     // ชื่อไฟล์ตอน "บันทึกเป็น PDF" — รหัส_ลูกค้า_สินค้า (มติ 2026-08-05 ของเปลือก)
-    title: documentFileName(identity, order.customerName || product.customerName, product.productDescription),
+    title: documentFileName(identity, order.customerName || product.customerName, productDisplayName(product)),
     accentKey: resolveDocumentAccentKey(standard, SPEC_KEY),
     variantClass: 'specsheet',
     pages: sheets,
