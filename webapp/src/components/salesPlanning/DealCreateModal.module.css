@@ -66,3 +66,33 @@
 .draft[hidden] {
   display: none;
 }
+
+/* ช่อง "ลีดต้นทาง" บนหน้ารวมดีล (มติผู้ใช้ 2026-09-22) — ใช้กับทุกใบในรอบ จึงอยู่เหนือแท็บร่าง
+   ไม่อยู่ในฟอร์มรายใบ */
+.leadPick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.leadPickField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--fs-7);
+}
+
+.leadPickHint,
+.leadPickEffects {
+  margin: 0;
+  font-size: var(--fs-7);
+  line-height: var(--lh-text);
+  color: var(--text-3);
+}
+
+.leadPickEffects {
+  padding-left: var(--space-4);
+  list-style: disc;
+}

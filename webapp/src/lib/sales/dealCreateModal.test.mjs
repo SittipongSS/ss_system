@@ -129,8 +129,13 @@ test('ทุกหน้าที่สร้างดีลใช้โมด�
 test('เปิดจากหน้ารวมดีล (ไม่มีลีด) ต้องไม่ผูก metadata.leadId และไม่เด้งหน้า', () => {
   assert.match(src, /lead\s*=\s*null/, 'lead เป็น optional');
   // metadata ประกอบแบบมีเงื่อนไข: leadId เฉพาะตอนมาจากลีด · legacy เฉพาะดีลเก่า
-  assert.match(src, /\.\.\.\(lead \? \{ leadId: lead\.id, source: "lead", leadChannel: lead\.channel \} : \{\}\)/,
-    'ผูกลีดเฉพาะตอนมาจากลีด');
+  // ลีดต้นทาง = ลีดที่ส่งมาจากหน้าลีด หรือที่เลือกเองในช่อง "ลีดต้นทาง" ของหน้ารวมดีล (มติ 2026-09-22)
+  assert.match(src, /const sourceLead = lead \|\| pickedLead;/, 'ลีดต้นทางมาได้สองทางเท่านั้น');
+  assert.match(src, /\.\.\.\(sourceLead \? \{ leadId: sourceLead\.id, source: "lead", leadChannel: sourceLead\.channel \} : \{\}\)/,
+    'ผูกลีดเฉพาะตอนมีลีดต้นทาง');
+  // ช่องเลือกเปิดเฉพาะเมื่อผู้เรียกขอ และไม่มีลีดมาจากหน้าลีดอยู่แล้ว · ไม่ขอ = ไม่ผูกอะไรเลย
+  assert.match(src, /const showLeadPicker = leadPicker && !lead;/);
+  assert.match(src, /const pickedLead = showLeadPicker \?/);
   assert.match(src, /\.\.\.\(legacy \? \{ legacy: true \} : \{\}\)/,
     'ธงดีลเก่าไปกับ metadata เฉพาะตอนเปิดสวิตช์');
   assert.match(src, /if \(lead\) router\.push\(/, 'เด้งไปหน้าดีลเฉพาะตอนมาจากลีด');

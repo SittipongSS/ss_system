@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 // ⚠️ ต้องชี้ migration **ล่าสุด** ที่นิยาม CHECK นี้ — ชี้ไฟล์เก่าเมื่อไหร่เทสต์จะเขียว
 // ทั้งที่ของจริงบน DB เป็นอีกชุด (บทเรียนเดียวกับ deal_probability_for_stage)
-const KIND_CHECK_MIGRATION = 'supabase/migrations/0291_lead_auto_bounce.sql';
+const KIND_CHECK_MIGRATION = 'supabase/migrations/0371_lead_events_link_deal_kinds.sql';
 
 function allowedKinds() {
   const sql = read(KIND_CHECK_MIGRATION);
@@ -44,6 +44,8 @@ const WRITERS = [
   // ⭐ cron ตีกลับอัตโนมัติ (mig 0291) เขียน lead_events เองไม่ผ่าน transition route —
   // ไม่ใส่ที่นี่ = เทสต์ตาบอดต่อผู้เขียนรายใหม่ ซึ่งเป็นสิ่งเดียวที่ไฟล์นี้มีไว้จับ
   'src/app/api/cron/auto-bounce-leads/route.js',
+  // ⭐ ผูก/ถอดดีลย้อนหลัง (mig 0371) + เปิดดีลจากลีดของ POST /deals ย้ายมาเขียนที่นี่ที่เดียว
+  'src/lib/sales/dealLeadLinkRepo.js',
 ];
 
 test('CHECK ของ lead_events.kind ต้องมี create_deal (mig 0199)', () => {
@@ -86,12 +88,26 @@ test('ทุก transition ของลีดมีที่ยืนใน CHEC
   }
 });
 
-test('insert lead_event ตอนเปิดดีลต้องอ่าน error ไม่ใช่ทิ้ง', () => {
-  const src = read('src/app/api/sales-planning/deals/route.js');
-  assert.match(
-    src,
-    /const \{ error: leadEventError \} = await supabase\.from\('lead_events'\)\.insert\(/,
-    'ต้องรับ error กลับมา',
-  );
-  assert.match(src, /if \(leadEventError\)/, 'ต้องมีทางจัดการเมื่อเขียนไม่สำเร็จ');
+/* เส้นเปิดดีลจากลีดของ POST /deals ย้ายไปอยู่ที่ dealLeadLinkRepo (ใช้ร่วมกับผูกย้อนหลัง) —
+   ด่านเดิมตามไปตรวจที่นั่น: ทุก insert ลง lead_events ต้องรับ error กลับมาและมีทางจัดการ */
+test('insert lead_event ตอนเปิด/ผูก/ถอดดีลต้องอ่าน error ไม่ใช่ทิ้ง', () => {
+  const src = read('src/lib/sales/dealLeadLinkRepo.js');
+  const inserts = src.match(/\.from\('lead_events'\)\.insert\(/g) || [];
+  assert.ok(inserts.length >= 3, 'ต้องเจอ insert ของ create_deal · link_deal · unlink_deal');
+  const handled = src.match(/const \{ error: leadEventError \} = /g) || [];
+  assert.equal(handled.length, 2, 'สองจุดที่เขียนประวัติ (เปิด/ผูก · ถอด) ต้องรับ error ทั้งคู่');
+  assert.equal((src.match(/if \(leadEventError\)/g) || []).length, 2, 'ต้องมีทางจัดการเมื่อเขียนไม่สำเร็จ');
+  // POST /deals ต้องเรียกเส้นกลาง ไม่เขียน lead_events เอง (สองที่ = เพี้ยนกันในวันหนึ่ง)
+  const route = read('src/app/api/sales-planning/deals/route.js');
+  assert.match(route, /recordLeadDealOpened\(supabase, \{ lead: sourceLead, deal: data, user, req, via: 'create' \}\)/);
+  assert.doesNotMatch(route, /from\('lead_events'\)/);
+});
+
+test('CHECK ของ lead_events.kind รับ link_deal/unlink_deal (mig 0371)', () => {
+  const allowed = allowedKinds();
+  assert.ok(allowed.has('link_deal') && allowed.has('unlink_deal'));
+  // ชุดเดิมต้องอยู่ครบ — migration ใหม่เขียน CHECK ทั้งชุดทับ ลืมตัวไหน = ประวัติชนิดนั้นล้มเงียบ
+  for (const kind of ['create', 'screen', 'assign', 'reassign', 'contact', 'followup', 'meeting', 'qualify', 'create_deal', 'disqualify', 'bounce', 'auto_bounce', 'update']) {
+    assert.ok(allowed.has(kind), `ชุดใหม่ทำ kind '${kind}' หาย`);
+  }
 });

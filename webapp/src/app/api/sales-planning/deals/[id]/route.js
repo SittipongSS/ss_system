@@ -44,6 +44,8 @@ import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { isDealFormSave, missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
 import { clientDealMetadataOnPatch } from '@/lib/sales/legacyDealSwitch';
+import { loadLeadForLink, releaseLeadAfterDealGone } from '@/lib/sales/dealLeadLinkRepo';
+import { dealLabelForLead } from '@/lib/sales/dealLeadLink';
 import { naText } from '@/lib/format';
 import { historicalDealWriteMessage } from '@/lib/sales/documentWorkflowErrors';
 import {
@@ -753,6 +755,26 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     });
   }
 
+  /* ลีดต้นทาง (มติผู้ใช้ 2026-09-22) — ลบดีล = ดีลหลุดจากลีด กติกาเดียวกับ "ถอดลีดต้นทาง":
+     ลีดที่ไม่เหลือดีลแล้วกลับไปสถานะก่อนเปิดดีล + บันทึกประวัติ `unlink_deal`
+     🐞 เดิมลบดีลแล้วลีดค้าง "เปิดลูกค้าแล้ว" ทั้งที่ไม่มีดีลเหลือ (prod 21/09: LEAD-mt8h2nk93ozb)
+        ⇒ KPI นับเป็นลีดที่แปลงสำเร็จ และไม่มีใครรู้ว่าต้องตามต่อ
+     ⚠️ หลังลบสำเร็จแล้ว — พลาดตรงนี้เป็นคำเตือน ไม่ใช่ error (ดีลหายไปแล้ว) */
+  let leadWarning = null;
+  if (before.leadId) {
+    const { data: sourceLead, error: sourceLeadError } = await loadLeadForLink(supabase, before.leadId);
+    if (sourceLeadError) {
+      leadWarning = `ลบดีลแล้ว แต่อ่านลีดต้นทางไม่สำเร็จ (${sourceLeadError.message}) — สถานะลีดยังไม่ถูกย้อน แจ้งแอดมิน`;
+    } else if (sourceLead) {
+      const released = await releaseLeadAfterDealGone(supabase, {
+        lead: sourceLead, deal: before, user, req,
+        reason: `ลบดีล ${dealLabelForLead(before)}${force ? ' (บังคับ)' : ''}`,
+      });
+      leadWarning = released.warning;
+    }
+    if (leadWarning) console.error(`[deal delete ${id}] ลีดต้นทาง ${before.leadId}:`, leadWarning);
+  }
+
   // โครงการที่ไม่เหลือดีลผูกเลย = โครงเปล่า — ไม่ลบให้เอง (เฟส B: อาจรอดีลใหม่มาผูก)
   // แต่ต้องส่งกลับให้หน้าเว็บถามผู้ใช้ว่าจะลบทิ้งด้วยไหม ไม่งั้นค้างในรายการเงียบ ๆ.
   // นับพลาดตรงนี้ไม่ใช่เหตุให้ทั้ง request ล้ม (ดีลถูกลบไปแล้ว) — log แล้วไปต่อ.
@@ -778,5 +800,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `ลบดีล ${dealAuditLabel(before)}${detachNote}${forceNote}`,
     request: req,
   });
-  return ok({ ok: true, deletedProject: null, detachedFromProject, emptyProject, forced: force });
+  return ok({
+    ok: true, deletedProject: null, detachedFromProject, emptyProject, forced: force,
+    ...(leadWarning ? { leadWarning } : {}),
+  });
 });

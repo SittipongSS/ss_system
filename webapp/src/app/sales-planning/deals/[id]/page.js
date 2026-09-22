@@ -11,7 +11,7 @@ import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmo
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, ChartGantt, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Handshake, Layers, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, ChartGantt, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Handshake, Inbox, Layers, Link2, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, Unlink, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -58,13 +58,16 @@ import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
 import { wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
 import { legacyClosedNoteOf } from "@/lib/sales/legacyDealSwitch";
+import { DEAL_DELETE_LEAD_NOTE, LEAD_RELEASE_NOTE, canLinkLeadRole, dealLeadLinkBlocker, leadLabel, leadLinkEffects, leadLinkOptions } from "@/lib/sales/dealLeadLink";
+import { LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS } from "@/lib/sales/leads";
+import DealLeadLinkModal from "@/components/salesPlanning/DealLeadLinkModal";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -583,6 +586,64 @@ export default function DealOverviewPage() {
     if (okDone) setLinkOpen(false);
   };
 
+  /* ลีดต้นทาง (มติผู้ใช้ 2026-09-22) — SA ลืมกด "เปิดดีลจากลีดนี้" แล้วเปิดดีลตรงจากหน้าดีล
+     ⇒ ผูกย้อนหลังได้จากที่นี่ · รายการลีดมาจาก `?linkable=1` ซึ่ง server กรองด้วยด่านตัวเดียวกับ
+     endpoint ผูก (ผู้ใช้คนนี้ผูกใบไหนได้บ้าง) — จอไม่คิดสิทธิ์เอง */
+  const [leadLinkOpen, setLeadLinkOpen] = useState(false);
+  const [linkLeads, setLinkLeads] = useState([]);
+  const [linkLeadId, setLinkLeadId] = useState("");
+  const [linkLeadsLoading, setLinkLeadsLoading] = useState(false);
+  const [linkLeadsError, setLinkLeadsError] = useState("");
+  const [linkLeadError, setLinkLeadError] = useState("");
+  const openLinkLead = async () => {
+    setLeadLinkOpen(true);
+    setLinkLeadsLoading(true);
+    setLinkLeads([]);
+    setLinkLeadId("");
+    setLinkLeadsError("");
+    setLinkLeadError("");
+    try {
+      // โหลดพลาด ≠ ไม่มีลีดให้ผูก — ต้องบอกให้ลองใหม่ ไม่ใช่โชว์ลิสต์ว่าง
+      const rows = await apiJson("/api/sales-planning/leads?linkable=1", { fallbackError: "โหลดรายการลีดไม่สำเร็จ" });
+      setLinkLeads(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setLinkLeadsError(e.message || "โหลดรายการลีดไม่สำเร็จ");
+    } finally {
+      setLinkLeadsLoading(false);
+    }
+  };
+  /* ⚠️ ไม่ผ่าน runAction — ตัวนั้นเขียน error ลงแถบบนหน้า ซึ่งอยู่ **ใต้โมดัล** (ผูกไม่สำเร็จแล้วโมดัลค้างเฉย ๆ)
+     ⇒ error ขึ้นในโมดัลเอง · สำเร็จแล้วค่อยปิดและโหลดหน้าใหม่ */
+  const submitLinkLead = async () => {
+    if (!linkLeadId) return;
+    setActionBusy("link-lead");
+    setLinkLeadError("");
+    try {
+      const body = await apiJson(`/api/sales-planning/deals/${id}/link-lead`, {
+        method: "POST", json: { leadId: linkLeadId }, fallbackError: "ผูกลีดไม่สำเร็จ",
+      });
+      const warning = responseWarningText(body);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
+      else notifyToast.success("ผูกลีดต้นทางแล้ว");
+      setLeadLinkOpen(false);
+      await load();
+    } catch (e) {
+      setLinkLeadError(e.message || "ผูกลีดไม่สำเร็จ");
+    } finally {
+      setActionBusy("");
+    }
+  };
+  const unlinkLead = async () => {
+    const source = data?.sourceLead;
+    if (!(await confirmAction({
+      title: "ถอดลีดต้นทาง",
+      description: `ถอดลีด ${source ? leadLabel(source) : "ต้นทาง"} ออกจากดีลนี้?`,
+      detail: `${LEAD_RELEASE_NOTE} · ประวัติลีดบันทึกการถอดไว้`,
+      confirmLabel: "ถอดลีดต้นทาง",
+    }))) return;
+    await runAction("unlink-lead", `/api/sales-planning/deals/${id}/link-lead`, { method: "DELETE" });
+  };
+
   // สร้างโครงการ PM ผ่านโมดัล (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล
   const openCreatePM = () => {
     if (!deal) return;
@@ -705,12 +766,17 @@ export default function DealOverviewPage() {
     // นับเฉพาะที่ผูก dealId ตรง ๆ · งานที่ผูกผ่านโครงการไม่ถูกแตะ
     const ownDealTasks = (data?.dealTasks || []).filter((t) => t.dealId === deal.id).length;
     const taskText = ownDealTasks ? `\n\nงานที่ผูกดีลนี้ (${ownDealTasks} งาน) จะถูกลบไปด้วย` : "";
-    if (!(await confirmAction(`ลบดีล "${deal.title}"?${detachText}${taskText}\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
+    // ลีดต้นทาง: ลบดีล = ถอดลีด (มติ 2026-09-22) — ลีดที่ไม่เหลือดีลกลับไปสถานะก่อนเปิดดีล
+    const leadText = deal.leadId ? `\n\n${DEAL_DELETE_LEAD_NOTE}` : "";
+    if (!(await confirmAction(`ลบดีล "${deal.title}"?${detachText}${taskText}${leadText}\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
       const result = await deleteWithForce(`/api/sales-planning/deals/${id}`, { isAdmin: role === "admin" });
       if (!result.ok) return;
+      // ลบสำเร็จแต่ย้อนสถานะลีดต้นทางไม่ครบ — ดู lib/apiWarnings
+      const deleteWarning = responseWarningText(result.data);
+      if (deleteWarning) notifyToast.warning(deleteWarning, RESPONSE_WARNING_TOAST);
       // ดีลใบสุดท้ายของโครงการ → ถามว่าจะลบโครงเปล่าทิ้งด้วยไหม (ไม่ตัดสินใจแทน)
       const cleanup = await offerDeleteEmptyProject(result.data?.emptyProject);
       // ลบโครงการพลาด = ดีลลบไปแล้ว แต่ยังต้องบอกให้รู้ จึงคาไว้ที่หน้านี้ ไม่เด้งออก
@@ -793,11 +859,32 @@ export default function DealOverviewPage() {
     return false;
   }
 
+  /* ผูกลีดต้นทางได้ไหม: บทบาทที่ผูกได้ + แก้ดีลใบนี้ได้ (ด่านเดียวกับ /link-lead ฝั่งดีล) */
+  const canLinkLead = canEdit && canLinkLeadRole(role);
+  const linkLeadBlocker = deal ? dealLeadLinkBlocker(deal) : null;
+
   /* action ที่ไม่ใช่การย้ายสถานะ — lifecycle ไม่รู้จัก แต่เป็น "การควบคุม" เหมือนกัน */
   const recordActions = [
     {
       id: "edit", kind: "edit", slot: "secondary", label: "แก้ไขข้อมูลดีล", icon: Pencil,
       visible: canEdit, disabled: !!actionBusy, onClick: openEditDeal,
+    },
+    /* ผูก/ถอดลีดต้นทาง — สิทธิ์ (บทบาท + แก้ดีลได้) ไม่ผ่าน = ไม่โชว์ · ดีลที่ไม่มีวันมาจากลีด
+       (SO ย้อนหลัง · สหมิตร) = โชว์แล้วบอกเหตุ · ข้อความมาจากด่านตัวเดียวกับ server */
+    {
+      id: "link_lead", kind: "edit", slot: "secondary", label: "ผูกลีดต้นทาง", icon: Link2,
+      visible: canLinkLead && !deal?.leadId,
+      disabled: !!actionBusy || !!linkLeadBlocker,
+      disabledReason: linkLeadBlocker,
+      onClick: openLinkLead,
+    },
+    /* ถอด: ต้องทำงานลีดใบนั้นได้ด้วย = ด่านสิทธิ์ ⇒ ไม่ผ่านซ่อน (server คิด `canUnlink` ด้วยด่านเดียวกับ
+       DELETE /link-lead) · โหลดลีดไม่ได้ (sourceLead ว่าง) = โชว์ไว้ ให้ server ตัดสินตอนกด */
+    {
+      id: "unlink_lead", kind: "edit", slot: "secondary", label: "ถอดลีดต้นทาง", icon: Unlink,
+      visible: canLinkLead && !!deal?.leadId && (data?.sourceLead ? !!data.sourceLead.canUnlink : true),
+      disabled: !!actionBusy,
+      onClick: unlinkLead,
     },
     {
       id: "delete", kind: "delete", slot: "danger", label: "ลบดีลนี้", icon: Trash2,
@@ -946,6 +1033,31 @@ export default function DealOverviewPage() {
                 { label: "กำหนดเสร็จ", value: data.project.dueDate ? fmtDate(data.project.dueDate) : NA },
               ] : []}
             />
+            {/* ลีดต้นทาง (มติผู้ใช้ 2026-09-22) — โชว์เมื่อดีลมีลีด หรือผู้ใช้ผูกได้ (บอกว่ายังไม่ผูก + ทางผูก)
+                ⚠️ ลิงก์ไปหน้าลีดเฉพาะคนที่เปิดลีดใบนั้นได้ (`canOpen` จาก server) — คนเห็นดีลไม่ได้เห็นลีดทุกใบ
+                ⚠️ ไม่มีเบอร์/อีเมลบนการ์ดโดยเจตนา (server ไม่ส่งมา) */}
+            {deal.leadId ? (
+              <ContextCard
+                icon={Inbox}
+                href={data.sourceLead?.canOpen ? `/sa/leads/${data.sourceLead.id}` : undefined}
+                eyebrow="ลีดต้นทาง"
+                title={data.sourceLead ? data.sourceLead.contactName : "โหลดข้อมูลลีดต้นทางไม่ได้"}
+                subtitle={data.sourceLead ? (data.sourceLead.company || "บุคคลทั่วไป") : "ดูเหตุที่แถบคำเตือนด้านล่าง"}
+                badges={data.sourceLead ? <SalesStateBadge label={LEAD_STATUS_LABELS[data.sourceLead.status] || data.sourceLead.status} color={LEAD_STATUS_COLORS[data.sourceLead.status]} /> : null}
+                facts={data.sourceLead ? [
+                  { label: "ผู้รับผิดชอบลีด", value: naText(data.sourceLead.assigneeName) },
+                  { label: "ช่องทาง", value: naText(LEAD_CHANNEL_LABELS[data.sourceLead.channel] || data.sourceLead.channel) },
+                  { label: "รับลีดเมื่อ", value: data.sourceLead.createdAt ? fmtDate(data.sourceLead.createdAt) : NA },
+                ] : []}
+              />
+            ) : canLinkLead ? (
+              <ContextCard
+                icon={Inbox}
+                eyebrow="ลีดต้นทาง"
+                title="ยังไม่ผูกลีดต้นทาง"
+                subtitle={linkLeadBlocker || "ดีลนี้มาจากลีดในคิวแต่เปิดจากหน้าดีล? กด “ผูกลีดต้นทาง” ที่แผงจัดการ — ลีดจะเปลี่ยนเป็นเปิดลูกค้าแล้ว"}
+              />
+            ) : null}
           </ContextGrid>}
 
           {/* การ์ด "รายละเอียดดีล" เดี่ยว ๆ ที่เคยอยู่ตรงนี้ (#911) ย้ายเข้าไปเป็นบล็อก
@@ -1628,6 +1740,30 @@ export default function DealOverviewPage() {
           </div>
         </div>
       </Modal>
+
+      {/* ผูกลีดต้นทาง — โมดัลตัวเดียวกับฝั่งหน้าลีด (ต่างกันแค่เลือกลีด/เลือกดีล) */}
+      <DealLeadLinkModal
+        open={leadLinkOpen}
+        title="ผูกลีดต้นทาง"
+        intro={<>เลือกลีดที่ดีล <strong>{deal?.code || deal?.title}</strong> มาจาก — ใช้เมื่อเปิดดีลจากหน้าดีลโดยไม่ได้กด “เปิดดีลจากลีดนี้” ที่หน้าลีด</>}
+        fieldLabel="ลีดต้นทาง"
+        entity="lead"
+        options={leadLinkOptions(linkLeads, { ownerId: deal?.ownerId, ownerName, fmtDate })}
+        value={linkLeadId}
+        onChange={(value) => { setLinkLeadId(value); setLinkLeadError(""); }}
+        loading={linkLeadsLoading}
+        loadError={linkLeadsError}
+        error={linkLeadError}
+        placeholder="— เลือกลีด —"
+        emptyPlaceholder="ไม่มีลีดที่คุณผูกได้ (ลีดที่ดูแลอยู่ทั้งหมดผูกไม่ได้ หรือยังไม่มีลีด)"
+        searchPlaceholder="ค้นหาชื่อ บริษัท เบอร์โทร หรืออีเมล…"
+        emptyText="ไม่พบลีดที่ตรงกับคำค้น"
+        effects={leadLinkEffects(linkLeads.find((lead) => lead.id === linkLeadId))}
+        busy={actionBusy === "link-lead"}
+        submitLabel="ผูกลีดนี้"
+        onSubmit={submitLinkLead}
+        onClose={() => setLeadLinkOpen(false)}
+      />
 
       <Modal open={lostOpen} onClose={() => !actionBusy && setLostOpen(false)} title="ปิดดีลแบบไม่สำเร็จ (Lost)" size="sm">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
