@@ -9,6 +9,8 @@
 import { can, canViewRecord, viewScope, inScope } from '@/lib/permissions';
 import { canViewScents } from '@/lib/master/scents';
 import { canViewFormulas } from '@/lib/master/formulas';
+import { sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 
 // projects ที่ผู้ใช้เห็นได้ (PM เป็นเครื่องมือของ SALES — ต้องมี pm:view).
 function visibleProjects(user, rows) {
@@ -27,8 +29,8 @@ const PROJECT_COLS = 'id, code, name, status, customerId, team, ownerId';
 // ทะเบียนกลิ่น/สูตร (mig 0171) — สรุปพอโชว์ในแท็บ ไม่ดึงโน้ตมาทั้งก้อน
 // `sentAt` = วันที่ส่งกลิ่นให้ลูกค้า อยู่บนตัวกลิ่นเองแล้ว (0205) — กลิ่นตัวหนึ่งถูกส่ง
 // ครั้งเดียวตลอดชีวิต จึงไม่มี "Rev ล่าสุด" ให้แสดงอีก
-const SCENT_COLS = 'id, code, name, status, sentAt, customerId, createdAt';
-const FORMULA_COLS = 'id, code, name, status, formulaDate, scentId, customerId';
+const SCENT_COLS = 'id, code, name, status, sentAt, customerId, customerName, createdAt';
+const FORMULA_COLS = 'id, code, name, status, formulaDate, scentId, customerId, customerName';
 
 // กลิ่น + สูตรของลูกค้า 1 ราย.
 //
@@ -36,28 +38,53 @@ const FORMULA_COLS = 'id, code, name, status, formulaDate, scentId, customerId';
 // (= "สูตรกลาง") แต่ scents."customerId" เป็น NOT NULL เสมอ (มติ 9: กลิ่นของลูกค้า
 // A ใช้กับ B ไม่ได้) ดังนั้น "สูตรที่ผูกกลิ่นของลูกค้ารายนี้" ย่อมเป็นของลูกค้ารายนี้
 // เสมอ — ถ้ากรองด้วย customerId ล้วน สูตรที่ RD ผูกกลิ่นแล้วแต่ยังไม่ได้เติมลูกค้า
-// จะหายไปเงียบ ๆ · เกณฑ์นี้ over-match ไม่ได้เพราะกลิ่นหนึ่งมีลูกค้าได้รายเดียว
+// จะหายไปเงียบ ๆ · ⚠️ ตั้งแต่ ม-150 กลิ่นแชร์ให้ลูกค้าอื่นได้ ⇒ สูตรที่ใช้กลิ่นของรายนี้อาจเป็นของ
+// ลูกค้าที่ได้รับแชร์ — ตัดสูตรที่มีเจ้าของคนอื่นออก (เหลือของรายนี้ + สูตรที่ยังไม่มีลูกค้า)
 async function scentsAndFormulas(supabase, customerId, user) {
   const seesScents = canViewScents(user);
   const seesFormulas = canViewFormulas(user);
   if (!seesScents && !seesFormulas) return { scents: [], formulas: [] };
 
+  /* ⭐ **รวมที่ได้รับแชร์** (ม-150 · mig 0373) — กลิ่น/สูตรของลูกค้าอื่นที่ RD แชร์ให้รายนี้ขึ้นด้วย
+     (`sharedFrom` = ชื่อเจ้าของ · จอติดป้าย "แชร์จาก …") · ⚠️ ไม่อ่านแบบนี้ = ของที่ใช้ได้จริงหายจากหน้าลูกค้า */
+  const [sharedScentIds, sharedFormulaIds] = await Promise.all([
+    sharedIdsForCustomer(supabase, 'scent', customerId),
+    seesFormulas ? sharedIdsForCustomer(supabase, 'formula', customerId) : Promise.resolve([]),
+  ]);
   const { data: scentRows } = await supabase.from('scents').select(SCENT_COLS)
     .eq('customerId', customerId).order('name', { ascending: true });
-  const scents = scentRows || [];
+  const sharedScents = sharedScentIds.length
+    ? await fetchAllInChunks(sharedScentIds, (chunk) => supabase.from('scents').select(SCENT_COLS).in('id', chunk).order('id'))
+    : [];
+  const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'th');
+  const scents = [
+    ...(scentRows || []),
+    ...sharedScents.map((s) => ({ ...s, sharedFrom: s.customerName || s.customerId })),
+  ].sort(byName);
   if (!seesFormulas) return { scents: seesScents ? scents : [], formulas: [] };
 
-  const scentIds = scents.map((s) => s.id);
-  const [byCustomer, byScent] = await Promise.all([
+  const ownScentIds = (scentRows || []).map((s) => s.id);
+  const [byCustomer, byScent, byShare] = await Promise.all([
     supabase.from('formulas').select(FORMULA_COLS).eq('customerId', customerId),
-    scentIds.length
-      ? supabase.from('formulas').select(FORMULA_COLS).in('scentId', scentIds)
+    ownScentIds.length
+      ? supabase.from('formulas').select(FORMULA_COLS).in('scentId', ownScentIds)
+      : Promise.resolve({ data: [] }),
+    sharedFormulaIds.length
+      ? fetchAllInChunks(sharedFormulaIds, (chunk) => supabase.from('formulas').select(FORMULA_COLS).in('id', chunk).order('id'))
+        .then((data) => ({ data }))
       : Promise.resolve({ data: [] }),
   ]);
-  // รวมสองชุดแล้ว dedupe ด้วย id — สูตรที่เข้าเกณฑ์ทั้งคู่ต้องขึ้นแถวเดียว
+  // รวมสามชุดแล้ว dedupe ด้วย id — สูตรที่เข้าเกณฑ์หลายชุดต้องขึ้นแถวเดียว
+  // ⚠️ สูตรที่ใช้กลิ่นของรายนี้แต่ **เป็นของลูกค้าอื่น** (กลิ่นที่แชร์ออกไป) ไม่ใช่ของรายนี้ — ตัดทิ้ง (ม-150)
   const merged = new Map();
-  for (const f of [...(byCustomer.data || []), ...(byScent.data || [])]) merged.set(f.id, f);
-  const formulas = [...merged.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+  for (const f of [...(byCustomer.data || []), ...(byScent.data || [])]) {
+    if (f.customerId && f.customerId !== customerId) continue;
+    merged.set(f.id, f);
+  }
+  for (const f of byShare.data || []) {
+    if (!merged.has(f.id)) merged.set(f.id, { ...f, sharedFrom: f.customerName || f.customerId });
+  }
+  const formulas = [...merged.values()].sort(byName);
 
   return { scents: seesScents ? scents : [], formulas };
 }

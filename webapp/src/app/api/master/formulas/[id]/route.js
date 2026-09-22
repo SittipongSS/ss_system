@@ -4,6 +4,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { logRegistryChangeToRequests } from '@/lib/requests/registryNotify';
 import { recordAudit } from '@/lib/audit';
 import { canDeleteRegistryAnyStatus } from '@/lib/permissions';
+import { saveRegistryShares } from '@/lib/master/registrySharesAdmin';
 import {
   acceptFormulaError, archiveFormulaError, canEditFormula, canOfferFormulaDelete, canViewFormulas,
   deleteFormulaError, formulaTransitionError, isFormulaRegistrar, normalizeFormulaInput,
@@ -32,7 +33,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   }
 });
 
-// PATCH  { action: 'edit' | 'accept' | 'status' }
+// PATCH  { action: 'edit' | 'accept' | 'status' | 'shares' (ม-150 · RD แชร์ให้ลูกค้ารายอื่น) }
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
@@ -49,6 +50,31 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const action = body.action || 'edit';
 
   try {
+    /* ⭐ แชร์ให้ลูกค้ารายอื่น (ม-150 · mig 0373) — `{ action: 'shares', customerIds: [...] }` ตั้งรายชื่อทั้งชุด
+       · RD เท่านั้น (มติผู้ใช้ 2026-09-22) · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้ (409 พร้อมเหตุ) */
+    if (action === 'shares') {
+      if (!isFormulaRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แชร์สูตรให้ลูกค้ารายอื่นได้');
+      try {
+        const result = await saveRegistryShares(supabase, 'formula', formula, body.customerIds, user);
+        if (result.add.length || result.remove.length) {
+          await recordAudit({
+            user, action: 'update', entityType: 'formula', entityId: id, request: req,
+            before: { ...formula, sharedCustomers: result.before }, after: { ...formula, sharedCustomers: result.after },
+            summary: `แชร์สูตร ${formula.code || formula.name}: `
+              + [result.add.length ? `เพิ่ม ${result.add.length} ลูกค้า` : null,
+                result.remove.length ? `เลิกแชร์ ${result.remove.length} ลูกค้า` : null].filter(Boolean).join(' · '),
+          });
+        }
+        return ok({
+          sharedCustomers: result.after, sharedCustomerIds: result.after.map((s) => s.customerId),
+          // แชร์กลิ่นของสูตรให้รายใหม่ไปด้วย (คำร้องเลือกกลิ่น) — จอบอกผู้ใช้
+          scentSharedWith: result.scentSharedWith || [],
+        });
+      } catch (e) {
+        return fail(e.message, e.status || 500);
+      }
+    }
+
     if (action === 'edit') {
       if (!canEditFormula(user, formula)) return forbidden('ไม่มีสิทธิ์แก้สูตรนี้');
       const { value, error } = normalizeFormulaInput({ ...formula, ...body });

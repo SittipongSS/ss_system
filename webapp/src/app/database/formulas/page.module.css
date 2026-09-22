@@ -70,3 +70,6 @@
 
 /* ม-148 — ป้ายช่องราคาต่อท้ายตัวเลข (FB · F ของสูตรหัวน้ำหอม) */
 .priceSlot { font-size: var(--fs-3); color: var(--text-3); }
+
+/* "แชร์ให้ N ราย" ใต้ชื่อลูกค้าเจ้าของ (ม-150) */
+.sharedNote { display: block; font-size: var(--fs-3); color: var(--text-3); }

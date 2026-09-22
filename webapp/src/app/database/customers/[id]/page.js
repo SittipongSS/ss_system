@@ -985,14 +985,14 @@ export default function CustomerDetails() {
                 {scents.length > 0 && (
                   <div className="grid grid-cols-1 gap-2">
                     <div className="flex items-center gap-2 text-[var(--text-2)] text-xs font-semibold">
-                      <FlaskConical size={14} aria-hidden="true" /> กลิ่นของลูกค้ารายนี้ ({scents.length})
+                      <FlaskConical size={14} aria-hidden="true" /> กลิ่นของลูกค้ารายนี้ (รวมที่แชร์มา · {scents.length})
                     </div>
                     {scents.map((s) => (
                       <RelationRow
                         key={s.id}
                         href={`/database/scents?q=${encodeURIComponent(s.code || s.name)}`}
                         title={s.name}
-                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.sentAt ? ` · ส่งเมื่อ ${fmtDate(s.sentAt)}` : " · ยังไม่ส่ง"}`}
+                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.sentAt ? ` · ส่งเมื่อ ${fmtDate(s.sentAt)}` : " · ยังไม่ส่ง"}${s.sharedFrom ? ` · แชร์จาก ${s.sharedFrom}` : ""}`}
                         right={(
                           <RegistryBadge
                             className="shrink-0"
@@ -1008,7 +1008,7 @@ export default function CustomerDetails() {
                 {formulas.length > 0 && (
                   <div className="grid grid-cols-1 gap-2">
                     <div className="flex items-center gap-2 text-[var(--text-2)] text-xs font-semibold">
-                      <Beaker size={14} aria-hidden="true" /> สูตรของลูกค้ารายนี้ ({formulas.length})
+                      <Beaker size={14} aria-hidden="true" /> สูตรของลูกค้ารายนี้ (รวมที่แชร์มา · {formulas.length})
                     </div>
                     {formulas.map((f) => {
                       // ชื่อกลิ่นหาจากชุดที่โหลดมาแล้ว — ไม่เจอให้เงียบ **ห้ามถอยไปโชว์ id ดิบ**
@@ -1022,6 +1022,7 @@ export default function CustomerDetails() {
                             f.code || "ยังไม่มีรหัส",
                             scentName ? `กลิ่น: ${scentName}` : null,
                             f.formulaDate ? fmtDate(f.formulaDate) : null,
+                            f.sharedFrom ? `แชร์จาก ${f.sharedFrom}` : null,
                           ].filter(Boolean).join(" · ")}
                           right={(
                             <RegistryBadge
