@@ -9,7 +9,7 @@
 //    ไม่ต้อง pivot ก่อน · แถวสรุปรายหมวดใช้รูปเดียวกันเป๊ะ เปลี่ยนแค่ว่าแถวคืออะไร
 
 import ExcelJS from 'exceljs';
-import { gridForecastLines, monthsInRows, summarizeForecastLines } from '@/lib/sales/forecastBreakdown';
+import { gridForecastLines, isScheduledRow, monthsInRows, summarizeForecastLines } from '@/lib/sales/forecastBreakdown';
 import { STAGE_LABELS } from '@/lib/salesPlanning';
 import { teamNameOf } from '@/lib/master/teams';
 import { fmtNumber } from '@/lib/format';
@@ -277,7 +277,14 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
   const wonLines = lines.filter((row) => row.won);
   const openLines = lines.filter((row) => !row.won);
   const sumOf = (list) => list.reduce((sum, row) => sum + Number(row.fcAmount || 0), 0);
-  const grid = { showUnscheduled: axis === 'delivery', unscheduledLabel: 'ยังไม่ระบุวันรับของ', totalLabel: 'รวมทั้งงวด' };
+  /* คอลัมน์กองท้ายกริด: แกนรับของมีเสมอ (มติผู้ใช้ — ดีลไม่มีวันรับของต้องเห็นเป็นก้อน) · แกนปิดมีเมื่อมียอดลงกองจริง
+     (ลิงก์ไม่ระบุงวดที่มีดีลไม่มีวัน/เดือนปิด) — ไม่งั้นยอดกองอยู่ในรวมทั้งงวดแต่ไม่มีช่องให้เห็น ช่องเดือนรวมกันไม่เท่ายอดรวม */
+  const hasUnscheduled = lines.some((row) => !(isScheduledRow(row) && months.includes(row.month)));
+  const grid = {
+    showUnscheduled: axis === 'delivery' || hasUnscheduled,
+    unscheduledLabel: axis === 'delivery' ? 'ยังไม่ระบุวันรับของ' : 'ยังไม่ระบุเดือนปิด',
+    totalLabel: 'รวมทั้งงวด',
+  };
   /* ⭐ ประทับยอดรวมไว้บนหัวไฟล์ — ไฟล์ Excel เดินทางไกลกว่าหน้าจอมาก คนรับต้องเทียบ
      กับแดชบอร์ดได้ทันทีโดยไม่ต้องเปิดระบบ · ถ้าสองเลขไม่ตรงกันจะได้รู้ตั้งแต่วินาทีแรก
      ⚠️ ยอดนี้เป็น **ก่อน VAT** เหมือน FC ทุกที่ในระบบ ต้องเขียนกำกับไว้เสมอ */

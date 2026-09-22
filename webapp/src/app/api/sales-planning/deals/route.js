@@ -78,10 +78,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const applyFilters = (q0) => {
     let q = applyDealScope(q0, user);
     if (stage && stage !== 'all') q = q.eq('stage', normalizeStage(stage));
-    if (axis === 'delivery') return q; // คัดหลังอ่าน (ด้านล่าง)
-    if (period?.mode === 'range') q = q.gte('expectedCloseDate', period.from).lte('expectedCloseDate', period.to);
-    else if (period) q = q.in('forecastMonth', period.months);
-    return q;
+    /* งวดที่ query = **อ่านชุดที่ใหญ่กว่าไว้ก่อน** แล้วคัดจริงด้วยตัวตัดสินกลางด้านล่าง (ทั้งสองแกน)
+       แกนปิด: ช่วงวัน = วันคาดปิดในช่วง · รายเดือน/ทุกเดือน = เดือน FC ในงวด **หรือ** วันคาดปิดในงวด
+       (ตัวตัดสินถอยไปใช้เดือนของวันคาดปิดเมื่อไม่มีเดือน FC — query เดิม `forecastMonth IN` อย่างเดียว
+       ทิ้งดีลกลุ่มนั้นจากจอทั้งที่ไฟล์นับ) · แกนรับของ: กติกาซับซ้อนเกิน PostgREST ⇒ ไม่กรองที่ query */
+    if (!period || axis === 'delivery') return q;
+    if (period.mode === 'range') return q.gte('expectedCloseDate', period.from).lte('expectedCloseDate', period.to);
+    return q.or(`forecastMonth.in.(${period.months.join(',')}),and(expectedCloseDate.gte.${period.from},expectedCloseDate.lte.${period.to})`);
   };
 
   const { data, error } = await fetchAllResult(() => applyFilters(supabase.from('sales_deals')
@@ -95,8 +98,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const editor = canEditSalesPlanning(user);
   const driftMap = await loadForecastDriftMap(supabase, data || []).catch(() => new Map());
   const scoped = (data || []).filter((d) => inSalesViewScope(user, d));
-  // แกนรับของ: คัดงวดด้วยตัวตัดสินกลาง (แกนปิดกรองที่ query แล้ว)
-  const visible = axis === 'delivery' ? scoped.filter((d) => dealInReportPeriod(d, period, 'delivery')) : scoped;
+  // คัดงวดด้วยตัวตัดสินกลางทั้งสองแกน — ชุดเดียวกับไฟล์ FC (query ด้านบนแค่ตัดให้เล็กลง)
+  const visible = scoped.filter((d) => dealInReportPeriod(d, period, axis));
 
   /* ขั้นตอนปัจจุบันตามไทม์ไลน์ต่อดีล (คอลัมน์ "ขั้นตอน" — มติผู้ใช้ 2026-08-08)
      ดึง task ของทุกดีลที่เห็นในคำขอเดียวแล้วสรุปฝั่ง server — task ที่ถูกรับเลี้ยง

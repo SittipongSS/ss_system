@@ -35,7 +35,7 @@ import Select from "@/components/ui/Select";
 import ReportPeriodControl from "@/components/ui/ReportPeriodControl";
 import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import useReportPeriod from "@/lib/ui/useReportPeriod";
-import { DEAL_AXIS_OPTIONS, dealDeliveryMonth, dealMissingDelivery, normalizeDealAxis } from "@/lib/sales/dealPeriod";
+import { DEAL_AXIS_OPTIONS, dealDeliveryMonth, dealDeliveryState, dealMissingDelivery, normalizeDealAxis } from "@/lib/sales/dealPeriod";
 import { formatMonthLabel } from "@/lib/datePeriods";
 import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
@@ -306,8 +306,9 @@ export default function SalesPlanningPipelinePage() {
         if (!dueFilter.includes(key)) return false;
       }
       if (reviewOnly && !deal.metadata?.needsReview) return false;
-      // วันรับของ: ยังไม่ระบุ / ระบุแล้ว (มติผู้ใช้ 2026-09-22 — กอง "ยังไม่ระบุวันรับของ" ต้องไล่ได้จากจอ)
-      if (deliveryFilter.length && !deliveryFilter.includes(dealMissingDelivery(deal) ? "missing" : "known")) return false;
+      /* วันรับของ: ยังไม่ระบุ / ระบุแล้ว (มติผู้ใช้ 2026-09-22 — กอง "ยังไม่ระบุวันรับของ" ต้องไล่ได้จากจอ)
+         ⚠️ ดีลแพ้ที่ไม่มีวันรับของไม่อยู่ทั้งสองกลุ่ม (dealDeliveryState = null) — "ระบุแล้ว" ต้องไม่โชว์แถวที่ไม่มีเดือนรับของ */
+      if (deliveryFilter.length && !deliveryFilter.includes(dealDeliveryState(deal))) return false;
       if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
       if (!q) return true;
@@ -403,6 +404,12 @@ export default function SalesPlanningPipelinePage() {
     const list = deals.filter((d) => inScopeDeal(d) && dealMissingDelivery(d));
     return { count: list.length, value: list.reduce((sum, d) => sum + Number(d.projectValue || 0), 0) };
   }, [deals, inScopeDeal]);
+  /* "ดูเฉพาะดีลกลุ่มนี้" = ล้างตัวกรอง/ค้นหาอื่นก่อน — จำนวนบนแถบเตือนนับจากขอบเขตอย่างเดียว
+     🐞 ถ้าคงสถานะ=Won หรือคำค้นที่ค้างไว้ แถบบอก 34 แต่ตารางโชว์น้อยกว่า (บั๊กตระกูลเดียวกับ 34 vs 36) */
+  const showMissingDelivery = () => {
+    setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); setQuery("");
+    setDeliveryFilter(["missing"]);
+  };
 
   /* นับจาก **ดีลที่ผู้ใช้เห็นตามขอบเขตที่เลือก** ไม่ใช่ทั้งตาราง — แถบเตือนบอกว่า
      "ของคุณค้างกี่ใบ" ไม่ใช่ยอดทั้งบริษัทที่เขาทำอะไรไม่ได้ */
@@ -943,7 +950,7 @@ export default function SalesPlanningPipelinePage() {
             <StatusNotice
               tone="warning"
               title={`ดีล ${noDelivery.count} ใบ ยังไม่มีวันรับของ (มูลค่า ${fmtMoney(noDelivery.value)})`}
-              action={<Button size="sm" onClick={() => setDeliveryFilter(["missing"])}>ดูเฉพาะดีลกลุ่มนี้</Button>}
+              action={<Button size="sm" onClick={showMissingDelivery}>ดูเฉพาะดีลกลุ่มนี้</Button>}
             >
               ฝ่ายผลิตวางแผนจากวันรับของ — ดีลกลุ่มนี้อยู่คอลัมน์ &quot;ยังไม่ระบุวันรับของ&quot; ในไฟล์ FC (มุมมองเดือนรับของ) · เติม &quot;วันที่สิ้นสุด&quot; ในดีล
             </StatusNotice>
@@ -1014,7 +1021,7 @@ export default function SalesPlanningPipelinePage() {
             </div>
             <FilterPopover
               count={stageFilter.length + typeFilter.length + dueFilter.length + reviewFilter.length + deliveryFilter.length}
-              onClear={() => { setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); }}
+              onClear={() => { setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); setDeliveryFilter([]); }}
               groups={[
                 {
                   key: "stage", label: "สถานะ", icon: Flag,

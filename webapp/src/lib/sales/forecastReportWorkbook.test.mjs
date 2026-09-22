@@ -57,3 +57,20 @@ test('แกนเดือนรับของ: ดีลที่ไม่ม
   assert.equal(rows[1][at('สถานะ')], STATUS_OPEN);
   assert.equal(rows.at(-1).at(-1), 900);
 });
+
+test('ยอดไม่หาย: แถวที่ไม่มีเดือน/เดือนนอกงวด ไปคอลัมน์กอง และคอลัมน์โผล่แม้แกนปิด (รีวิว #1787)', async () => {
+  const lines = [
+    line({ dealId: 'a', fcAmount: 1000 }),
+    line({ dealId: 'b', fcAmount: 250, month: null }), // ลิงก์ไม่ระบุงวด · ดีลไม่มีวัน/เดือนปิด
+    line({ dealId: 'c', fcAmount: 40, month: '2026-12' }), // ตัวคัดกับตัวลงช่องเพี้ยนกัน (ไม่ควรเกิด) — ต้องไม่หาย
+  ];
+  const buffer = await buildForecastReportBuffer(lines, { axis: 'close', months: ['2026-09'] });
+  for (const name of ['สรุปรายหมวด', 'รายดีล']) {
+    const sheet = await sheetOf(buffer, name);
+    const header = headerOf(sheet);
+    assert.deepEqual(header.slice(-3), ['ก.ย. 26', 'ยังไม่ระบุเดือนปิด', 'รวมทั้งงวด'], name);
+    const total = rowsOf(sheet).at(-1);
+    assert.equal(total.at(-1), 1290, name);
+    assert.equal(total.at(-3) + total.at(-2), 1290, `${name}: ช่องเดือน + กอง = รวมทั้งงวด`);
+  }
+});
