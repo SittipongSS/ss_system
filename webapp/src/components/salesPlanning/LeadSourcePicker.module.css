@@ -1,0 +1,34 @@
+/* ช่อง "ลีดต้นทาง" — ใช้ทั้งในฟอร์มเพิ่มดีล (flex) และฟอร์มแก้ไขดีล (`form-grid cols-2`)
+   ⇒ กินเต็มแถวเสมอ · กรอบ/เส้นคั่นเป็นของผู้เรียก (ส่งผ่าน className) */
+
+.wrap {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--fs-7);
+}
+
+.hint,
+.effects,
+.error {
+  margin: 0;
+  font-size: var(--fs-7);
+  line-height: var(--lh-text);
+  color: var(--text-3);
+}
+
+.effects {
+  padding-left: var(--space-4);
+  list-style: disc;
+}
+
+.error {
+  color: var(--red);
+}
