@@ -9,13 +9,22 @@ import {
 } from '@/lib/sales/forecastBreakdown';
 import { eligibleForecastQuotations } from '@/lib/sales/forecastSource';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { buildForecastReportBuffer, forecastReportFilename } from '@/lib/sales/forecastReportWorkbook';
+import { buildForecastReportBuffer, forecastReportDisposition } from '@/lib/sales/forecastReportWorkbook';
 import { businessDate } from '@/lib/businessDate';
 import { loadTeamNames } from '@/lib/master/teamsRepo';
 import { teamNameOf } from '@/lib/master/teams';
 import { reportQuotationIdOf } from '@/lib/sales/reportQuotation';
+import { businessDayKey } from '@/lib/datePeriods';
+import { parseReportPeriodParams, reportPeriodLabel } from '@/lib/sales/reportPeriod';
+import { dealInReportPeriod } from '@/lib/sales/dealPeriod';
 
 export const runtime = 'nodejs';
+
+/* ท่อนงวดในชื่อไฟล์ — เดือน 2026-09 · ปี 2026 · ช่วงวัน 2026-09-01_2026-09-14 · ไม่ระบุ = all (ชื่อ ASCII ล้วน) */
+const forecastPeriodSpan = (period) => (!period ? null
+  : period.mode === 'month' ? period.month
+    : period.mode === 'year' ? period.year
+      : `${period.from}_${period.to}`);
 export const dynamic = 'force-dynamic';
 
 /* ดาวน์โหลดรายงาน FC รายหมวด (.xlsx) — มติผู้ใช้ 2026-09-02
@@ -56,8 +65,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!canExportForecastReport(user.role)) return forbidden();
 
   const params = new URL(req.url).searchParams;
-  const rawYear = params.get('year');
-  const year = /^\d{4}$/.test(rawYear || '') ? rawYear : null;
+  /* ⭐ งวดชุดเดียวกับหน้าดีล (มติผู้ใช้ 2026-09-22 "ใช้เหมือนกัน") — รายเดือน / ทุกเดือน / ช่วงวัน
+     ⭐ **ดีลเข้าไฟล์ตามเดือนคาดปิด** (`forecastMonth` / `expectedCloseDate`) = แกนเดียวกับรายการดีลบนจอ
+        (มติผู้ใช้ 2026-09-22) — เดิมตัดปีด้วยเดือนส่งของ ⇒ ไฟล์กับจอเห็นดีลคนละชุด
+     ⭐ **กริดยังแยกตามเดือนที่ลูกค้ารับของ** (endDate · มติ 2026-09-02) — ดีลที่ปิดในงวดแต่ส่งของหลังงวด
+        กริดขยายคอลัมน์ไปถึงเดือนส่งของ (ไม่ตัดทิ้ง) · ไม่มีวันส่ง = คอลัมน์ "ยังไม่ระบุเดือน" ตามเดิม
+     ลิงก์รุ่นเก่า `?year=YYYY` ยังใช้ได้ (= ทั้งปี) · ไม่ระบุงวดเลย = ทุกดีล */
+  const period = parseReportPeriodParams(params, { today: businessDayKey(new Date().toISOString()) });
+  if (period?.error) return Response.json({ error: period.error }, { status: 400 });
+  const year = period?.mode === 'year' ? period.year : null;
 
   const [deals, quotations, valueItems, products, productTypes] = await Promise.all([
     fetchAllResult(() => supabase.from('sales_deals')
@@ -163,8 +179,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (deal.stage === 'lost') continue;
     if (!inSalesViewScope(user, deal)) continue;
     // กติกาเดือนอยู่ที่ lib (มีเทสต์) — ที่นี่แค่เรียกใช้
+    // ในงวด = เดือนคาดปิดอยู่ในงวด (ตัวตัดสินเดียวกับรายการดีล · lib/sales/dealPeriod)
+    if (period && !dealInReportPeriod(deal, period)) continue;
     const { month, basis: monthBasis } = forecastMonthOfDeal(deal, monthKey);
-    if (year && String(month || '').slice(0, 4) !== year) continue;
     /* ดีลยอด 0 ข้ามได้เฉพาะเมื่อไม่มีใบที่เป็นตัวแทน — ใบที่ลูกค้ารับแต่ลด 100% (มติผู้ใช้ 2026-09-16)
        ยังต้องผลิตของจริง ⇒ ต้องมีบรรทัดจำนวน/ปริมาตรในไฟล์ (ยอดเงินเป็น 0 ไม่กระทบยอดรวมไฟล์) */
     if (!Number(deal.projectValue) && !reportQuotationIdOf(deal)) continue;
@@ -211,10 +228,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     ? 'ทั้งบริษัท'
     // ไม่มีทีม = ขอบเขตพิสูจน์ไม่ได้ ⇒ เขียนตรง ๆ ดีกว่าโชว์ "ทีม —" ที่อ่านเหมือนทีมชื่อขีด
     : (user.team ? `ทีม ${teamNameOf(teamNames, user.team)}` : 'เฉพาะที่มองเห็น (ไม่ระบุทีม)');
+  /* คอลัมน์กริด = เดือนของงวด (ทั้งปี = 12 เดือนเสมอ ให้ไฟล์แต่ละรอบวางเทียบกันได้) ∪ เดือนส่งของที่มีจริง
+     ⚠️ ต้องรวมเดือนที่มีจริงเสมอ — addToMonth ทิ้งยอดของเดือนที่ไม่มีคอลัมน์เงียบ ๆ ⇒ ดีลที่ปิดในงวดแต่ส่งของ
+        หลังงวดจะหายจากกริดทั้งที่ยังอยู่ในยอดรวม */
+  const gridMonths = [...new Set([...(year ? monthsOfYear(year) : (period?.months || [])), ...monthsInRows(rows)])].sort();
   const buffer = await buildForecastReportBuffer(rows, {
     year,
+    periodLabel: period ? reportPeriodLabel(period) : null,
     scopeLabel,
-    months: year ? monthsOfYear(year) : monthsInRows(rows),
+    months: gridMonths,
     categoryNames,
     teamNames,
     generatedAt: today,
@@ -223,7 +245,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   return new Response(buffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${forecastReportFilename(year, today, scopeLabel)}"`,
+      'Content-Disposition': forecastReportDisposition(forecastPeriodSpan(period), today, scopeLabel),
       'Cache-Control': 'no-store',
     },
   });

@@ -1,7 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import Select from "@/components/ui/Select";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
@@ -9,7 +8,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
 import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Download, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
@@ -20,7 +19,8 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
 import { CREATABLE_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, PIPELINE_STAGES, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, editableStages, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, businessLineBadge, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, SCOPE_LABELS, businessLineBadge, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge } from "@/components/salesPlanning/ui";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
@@ -31,6 +31,10 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import MenuSelect from "@/components/ui/MenuSelect";
+import Select from "@/components/ui/Select";
+import ReportPeriodControl from "@/components/ui/ReportPeriodControl";
+import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
+import useReportPeriod from "@/lib/ui/useReportPeriod";
 import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
@@ -73,12 +77,6 @@ import styles from "./page.module.css";
    "เปลี่ยนแล้ว" ตลอดเวลา */
 const EMPTY = [];
 
-/* ปีที่เลือกได้ในรายงาน FC — ปีนี้ ย้อนหลัง 2 ปี และปีหน้า (แผนผลิตมองข้ามปีเสมอ ·
-   ของจริง 2026-09-02: ดีลที่ปิดปีนี้แต่ลูกค้ารับของปี 2027 มี 8,176,500 บาท)
-   ⚠️ ห้ามอ่านนาฬิกาตอนเรนเดอร์ (กติกา thai-time) — คิดครั้งเดียวตอนโหลดโมดูล */
-const REPORT_THIS_YEAR = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric" }).format(new Date()));
-const REPORT_YEARS = [REPORT_THIS_YEAR + 1, REPORT_THIS_YEAR, REPORT_THIS_YEAR - 1, REPORT_THIS_YEAR - 2].map(String);
-
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
   const role = useRole();
@@ -99,8 +97,13 @@ export default function SalesPlanningPipelinePage() {
   const [typeFilter, setTypeFilter] = useStickyState("typeFilter", EMPTY); // ประเภทดีล SCENT/NPD/RE-ORDER
   const [reviewFilter, setReviewFilter] = useStickyState("reviewFilter", EMPTY);
   const reviewOnly = reviewFilter.includes("needsReview");
-  const [month, setMonth] = useStickyState("month", thisMonth());
-  const [allMonths, setAllMonths] = useStickyState("allMonths", true);
+  /* งวด "รายเดือน | ช่วงวัน" — ตัวกลางเดียวกับรายงานยอดขาย/ลีด (useReportPeriod · มติผู้ใช้ 2026-09-22)
+     ค่าตั้งต้น = ทุกเดือนของปีนี้ตามเดิม · ดีลในงวด = เดือนคาดปิด (ช่วงวัน = วันคาดปิด · lib/sales/dealPeriod) */
+  const pageNow = useMemo(() => new Date(), []);
+  const periodState = useReportPeriod({ defaultAllMonths: true, now: pageNow });
+  const { month, allMonths, period: dealPeriod, query: periodQuery } = periodState;
+  const [rangeError, setRangeError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
   const [deals, setDeals] = useState([]);
   /* งวด + เวลาที่ใช้คัดยอด SO "รออนุมัติ" เข้ายอดหัวกลุ่ม/KPI (มติผู้ใช้ 2026-09-14)
      ยอดรออนุมัติลงเดือนปัจจุบันเวลาไทยเสมอ ⇒ นับเฉพาะเมื่อเดือนนั้นอยู่ในงวดที่หน้าโชว์
@@ -181,8 +184,6 @@ export default function SalesPlanningPipelinePage() {
   const sort = { sortKey, sortDir, sortBy: handleSort };
 
   const [dealModal, setDealModal] = useState(false);
-  const [downloadingReport, setDownloadingReport] = useState(false);
-  const [reportYear, setReportYear] = useState(String(REPORT_THIS_YEAR));
   const [dealForm, setDealForm] = useState({ ...initialDealForm });
   /* 🐞 ข้อความของฟอร์มแก้ไขต้องอยู่ในโมดัล — เดิมเขียนลงแถบบนหน้าซึ่งอยู่ใต้โมดัล ⇒ กดบันทึกแล้วเงียบ
      (prod 22/09: ดีล 146/508 ใบติดช่องบังคับแล้วไม่มีใครเห็นเหตุ) */
@@ -221,9 +222,7 @@ export default function SalesPlanningPipelinePage() {
            เดิมสองอย่างนี้ยิง URL เดียวกัน = ติ๊กทุกเดือนแล้วได้ดีลทุกปีมาปนกัน */
         apiFetch(reviewOnly
           ? "/api/sales-planning/deals"
-          : allMonths
-            ? `/api/sales-planning/deals?year=${encodeURIComponent(yearOfMonth(month) || "")}`
-            : `/api/sales-planning/deals?month=${encodeURIComponent(month)}`),
+          : `/api/sales-planning/deals?${periodQuery}`),
         apiFetch("/api/master/customers"),
         apiFetch("/api/pm/projects"),
       ]);
@@ -244,7 +243,7 @@ export default function SalesPlanningPipelinePage() {
       // (เขียนบางตัวแล้วทิ้งตัวที่เหลือ = จอกลายเป็นลูกผสมของสองเดือน)
       if (!isLatest()) return;
       try { setDeals(dTxt ? JSON.parse(dTxt) : []); } catch(e) { setDeals([]); }
-      setPendingPeriod({ inPeriod: pendingPeriodMatcher({ month, allMonths, reviewOnly }), now: new Date() });
+      setPendingPeriod({ inPeriod: pendingPeriodMatcher({ month, allMonths, reviewOnly, period: dealPeriod }), now: new Date() });
       setCustomers(custData);
       setProjects(projData);
     } catch (e) {
@@ -252,7 +251,7 @@ export default function SalesPlanningPipelinePage() {
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [month, allMonths, reviewOnly, startRun]);
+  }, [month, allMonths, reviewOnly, periodQuery, dealPeriod, startRun]);
 
   useEffect(() => {
     load();
@@ -401,7 +400,7 @@ export default function SalesPlanningPipelinePage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filteredDeals, {
-      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${month}|${allMonths}|${groupBy}`,
+      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${periodQuery}|${groupBy}`,
     });
 
   const openNewDeal = () => setCreateModal(true);
@@ -833,48 +832,25 @@ export default function SalesPlanningPipelinePage() {
     </DetailRow>
   );
 
-  /* ⭐ รายงาน FC รายหมวด (Excel) — อยู่ที่หน้านี้เพราะเป็นหน้าที่หัวหน้าฝ่ายขายเปิดอยู่แล้ว
-     (มติผู้ใช้ 2026-09-02) · เลือกปีได้เพราะแผนผลิตมองข้ามปีเสมอ
-     ⚠️ **เห็นเฉพาะ AE Supervisor ขึ้นไป** — ไฟล์มียอด FC ของทุกทีมทุกคนพร้อมชื่อลูกค้า
-        และราคาต่อหน่วย · server บังคับซ้ำด้วย `canExportForecastReport` (ปุ่มที่ซ่อน
-        ไม่ใช่ด่าน — คนพิมพ์ URL เองยังยิงได้)
-     ⚠️ ต้องผ่าน `apiFetch` แล้วสร้าง blob เอง ไม่ใช่เปิดแท็บใหม่ไป URL ตรง ๆ —
-        เส้นนี้ต้องมีเซสชัน แท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง */
-  const downloadForecastReport = async () => {
-    setDownloadingReport(true);
-    try {
-      const res = await apiFetch(`/api/sales-planning/forecast-report?year=${reportYear}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("ดาวน์โหลดรายงานไม่สำเร็จ");
-      const blob = await res.blob();
-      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1]
-        || "FC-by-category.xlsx";
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url; link.download = name;
-      document.body.appendChild(link); link.click(); link.remove();
-      URL.revokeObjectURL(url);
-      setError("");
-    } catch (downloadError) {
-      setError(downloadError.message || "ดาวน์โหลดรายงานไม่สำเร็จ");
-    } finally {
-      setDownloadingReport(false);
-    }
-  };
-
+  /* ⭐ รายงาน FC รายหมวด (Excel) — อยู่ที่หน้านี้เพราะเป็นหน้าที่หัวหน้าฝ่ายขายเปิดอยู่แล้ว (มติผู้ใช้ 2026-09-02)
+     ⭐ งวดของไฟล์ = งวดบนปุ่มของหน้านี้ (มติผู้ใช้ 2026-09-22 "ใช้เหมือนกัน") — ดีลเข้าไฟล์ตามเดือนคาดปิด
+        ชุดเดียวกับรายการดีลบนจอ · เดิมมีตัวเลือกปีของตัวเอง แยกจากงวดของหน้า
+     ⚠️ **เห็นเฉพาะ AE Supervisor ขึ้นไป** — ไฟล์มียอด FC ของทุกทีมทุกคนพร้อมชื่อลูกค้าและราคาต่อหน่วย ·
+        server บังคับซ้ำด้วย `canExportForecastReport` (ปุ่มที่ซ่อนไม่ใช่ด่าน)
+     ปุ่มกลาง ExcelDownloadButton โหลดผ่าน apiFetch (ต้องมีเซสชัน · พลาดแล้วบอกเป็นภาษาไทย) */
   const headerRight = (
     <>
-      <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+      {/* ตัวเลือกงวดตัวกลาง — ทรงเดียวกับรายงานยอดขาย/ลีด (มติผู้ใช้ 2026-09-22 "ทุกหน้าตัวคุมชุดเดียว") */}
+      <ReportPeriodControl state={periodState} onRangeError={setRangeError} />
 
       {canExportReport && (
-        <>
-          <Select value={reportYear} onChange={(e) => setReportYear(e.target.value)} aria-label="ปีของรายงาน FC">
-            {REPORT_YEARS.map((option) => <option key={option} value={option}>ปี {option}</option>)}
-          </Select>
-          <Button variant="ghost" size="sm" disabled={downloadingReport} onClick={downloadForecastReport}>
-            <Download size={14} aria-hidden="true" />
-            {downloadingReport ? "กำลังสร้างไฟล์…" : "รายงาน FC รายหมวด"}
-          </Button>
-        </>
+        <ExcelDownloadButton
+          href={`/api/sales-planning/forecast-report?${periodQuery}`}
+          fallbackName="FC-by-category.xlsx"
+          label="ดาวน์โหลด Excel FC"
+          title={`รายงาน FC รายหมวดของดีลที่คาดปิดใน ${periodState.label} — ไม่ขึ้นกับตัวกรองของตาราง`}
+          onError={setDownloadError}
+        />
       )}
 
       {canCreateDeals && (
@@ -937,6 +913,10 @@ export default function SalesPlanningPipelinePage() {
               {error}
             </div>
           )}
+          {rangeError && <StatusNotice tone="warning" onDismiss={() => setRangeError("")}>{rangeError}</StatusNotice>}
+          {downloadError && (
+            <StatusNotice tone="error" title="ดาวน์โหลด Excel FC ไม่สำเร็จ" onDismiss={() => setDownloadError("")}>{downloadError}</StatusNotice>
+          )}
 
           {canSeeDealKpi(role) && (
             <>
@@ -966,7 +946,7 @@ export default function SalesPlanningPipelinePage() {
               </div>
 
               <SaMetricStrip>
-                <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note="ตามขอบเขตและเดือนที่เลือก" />
+                <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note={reviewOnly ? "ตามขอบเขต · ทุกงวด (รอเติมข้อมูล)" : `ตามขอบเขต · คาดปิดใน ${periodState.label}`} />
                 <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />
                 <SaMetric icon={<CheckCircle2 />} label="ปิดสำเร็จ (Won)" value={wonDeals.length} note={wonNote} tone="good" />
                 <SaMetric icon={<Ban />} label="ไม่ไปต่อ (Lost)" value={lostDeals.length} note="ดีลที่ปิดโดยไม่เกิดยอดขาย" tone={lostDeals.length ? "danger" : undefined} />
@@ -1118,7 +1098,7 @@ export default function SalesPlanningPipelinePage() {
                 {!filteredDeals.length && (
                   <tr>
                     <td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีดีลในเดือนนี้ {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
+                      {reviewOnly ? "ไม่มีดีลที่รอเติมข้อมูล" : `ไม่มีดีลที่คาดปิดใน ${periodState.label}`} {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
                 )}

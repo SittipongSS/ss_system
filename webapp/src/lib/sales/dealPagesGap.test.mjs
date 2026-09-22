@@ -281,3 +281,13 @@ test('ดีลมูลค่า > 0: คำชนิด awaiting_so ⇔ isWonA
   }
   assert.equal(awaitingCases, 2, 'ไม่มี SO + ใบยื่น 0 บาท — กันเทสต์ผ่านเพราะทุกเคสเป็น false');
 });
+
+test('pendingPeriodMatcher: ช่วงวัน = นับเฉพาะช่วงที่คลุมวันนี้ (ตัวคุมงวดกลาง 2026-09-22)', () => {
+  const covers = pendingPeriodMatcher({ period: { mode: 'range', from: '2026-09-09', to: '2026-09-22', months: ['2026-09'], today: '2026-09-22' } });
+  assert.equal(covers('2026-09'), true);
+  assert.equal(covers(null), false);
+  const lastWeek = pendingPeriodMatcher({ period: { mode: 'range', from: '2026-09-14', to: '2026-09-20', months: ['2026-09'], today: '2026-09-22' } });
+  assert.equal(lastWeek('2026-09'), false);
+  // "รอเติมข้อมูล" ยังไม่กรองแม้ส่งช่วงมา
+  assert.equal(pendingPeriodMatcher({ reviewOnly: true, period: { mode: 'range' } }), null);
+});

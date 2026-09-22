@@ -10,7 +10,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Download, Filter, Users, UserRound } from "lucide-react";
+import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound } from "lucide-react";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -39,9 +39,11 @@ import {
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone, leadFollowUpState,
 } from "@/lib/sales/leads";
 import { canExportLeadReport } from "@/lib/sales/leadReport";
-import { MonthPicker, SCOPE_LABELS, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
-import DayRangePicker from "@/components/ui/DayRangePicker";
-import { addDays, businessDayKey } from "@/lib/datePeriods";
+import { SCOPE_LABELS, yearOfMonth } from "@/components/salesPlanning/ui";
+import StatusNotice from "@/components/ui/StatusNotice";
+import ReportPeriodControl from "@/components/ui/ReportPeriodControl";
+import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
+import useReportPeriod from "@/lib/ui/useReportPeriod";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
@@ -184,15 +186,15 @@ export default function LeadsPage() {
      ⇒ หัวตารางกดด้วยคีย์บอร์ดได้ + มี aria-sort (WCAG 2.1.1 · 1.3.1 · 4.1.2)
      🪤 ลูกศรมาจาก SortTh แล้ว ห้ามวาดเองซ้ำ — ไม่งั้นคอลัมน์เดียวมีสองตัวบอกทิศ */
   const sort = { sortKey, sortDir, sortBy: handleSort };
-  const [month, setMonth] = useStickyState("month", thisMonth());
-  const [allMonths, setAllMonths] = useStickyState("allMonths", false);
-  /* โหมดช่วงเวลา (IS-26080023) — Marketing นับลีดรายวัน/สัปดาห์เทียบยอด Spending Ads
-     ⚠️ ค่าตั้งต้นยังเป็น "รายเดือน" · คนที่ไม่ได้ทำงานรายวันต้องไม่เจออะไรใหม่
-     วันนี้คิดจาก **วันไทย** ไม่ใช่ `new Date()` ของเบราว์เซอร์ ไม่งั้นช่วง "สัปดาห์นี้"
-     ของคนที่ตั้งเครื่องเป็น timezone อื่นจะเลื่อนไปคนละสัปดาห์กับตัวเลขที่ server นับ */
-  const todayTh = businessDayKey(new Date().toISOString());
-  const [periodMode, setPeriodMode] = useState("month");
-  const [range, setRange] = useState(() => ({ from: addDays(todayTh, -13), to: todayTh }));
+  /* งวด "รายเดือน | ช่วงวัน" — ตัวกลางเดียวกับรายงานยอดขาย/หน้าดีล (useReportPeriod · มติผู้ใช้ 2026-09-22)
+     โหมดช่วงวันเกิดที่หน้านี้ก่อน (IS-26080023 · Marketing นับลีดรายวัน/สัปดาห์เทียบ Spending Ads)
+     ⚠️ ค่าตั้งต้นยังเป็น "รายเดือน · เดือนนี้" (ไม่ติ๊กทุกเดือน) ตามเดิมของหน้านี้
+     วันนี้คิดจาก **วันไทย** ใน hook — ไม่งั้น "สัปดาห์นี้" ของเครื่องที่ตั้ง timezone อื่นเลื่อนไปคนละสัปดาห์กับ server */
+  const pageNow = useMemo(() => new Date(), []);
+  const periodState = useReportPeriod({ defaultAllMonths: false, now: pageNow });
+  const { mode: periodMode, month, allMonths, range, period: reportPeriod, query: periodQuery, today: todayTh } = periodState;
+  const [rangeError, setRangeError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
   const [busy, setBusy] = useState("");
 
   // modals
@@ -243,18 +245,19 @@ export default function LeadsPage() {
     try {
       // ติ๊ก "ทุกเดือน" = ทุกเดือนของปีที่เลือก (เดิมส่ง month=all = ทุกปีตั้งแต่เปิดระบบ)
       // โหมดช่วงวันส่ง from/to ซึ่ง API ให้มาก่อน month/year (IS-26080023)
-      const res = await apiFetch(periodMode === "range"
-        ? `/api/sales-planning/leads/kpi?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
-        : allMonths
-          ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
-          : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`);
+      // งวดจากตัวกลาง — แปลงเป็นพารามิเตอร์ที่ API KPI รับอยู่แล้ว (month / year / from-to)
+      const res = await apiFetch(reportPeriod.mode === "range"
+        ? `/api/sales-planning/leads/kpi?from=${encodeURIComponent(reportPeriod.from)}&to=${encodeURIComponent(reportPeriod.to)}`
+        : reportPeriod.mode === "year"
+          ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(reportPeriod.year)}`
+          : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(reportPeriod.month)}`);
       const data = res.ok ? await res.json() : null;
       if (!isLatest()) return; // ตัวกรองขยับไปแล้ว — คำตอบนี้เป็นของช่วงเก่า
       setKpi(data);
     } catch {
       // แถบตัวเลขพังต้องไม่ทำให้คิวลีดพัง — คงเลขเดิมไว้เงียบ ๆ
     }
-  }, [month, allMonths, periodMode, range.from, range.to, showKpi, startKpiRun]);
+  }, [reportPeriod, showKpi, startKpiRun]);
 
   /** ดึงใหม่ทั้งหน้า — ใช้หลังทำรายการที่กระทบทั้งตารางและตัวเลข */
   const load = useCallback(async (opts) => {
@@ -522,48 +525,24 @@ export default function LeadsPage() {
       subtitle="Marketing กรอกลีดรายวัน → คัดกรองส่งทีมใน 1 วันทำการ → AE ติดต่อกลับใน 1 วันทำการ"
       headerRight={
         <>
-          {/* สลับหน่วยของงวด — รายเดือนคือค่าตั้งต้นเดิม ช่วงวันเพิ่มมาให้ Marketing
-              (IS-26080023) · ใช้ `Segmented` ตัวกลาง ไม่ก๊อปแถบปุ่มขึ้นมาเอง */}
-          <Segmented
-            ariaLabel="หน่วยของงวด"
-            value={periodMode}
-            onChange={setPeriodMode}
-            options={[{ value: "month", label: "รายเดือน" }, { value: "range", label: "ช่วงวัน" }]}
+          {/* ตัวเลือกงวดตัวกลาง — ทรงเดียวกับรายงานยอดขาย/หน้าดีล (มติผู้ใช้ 2026-09-22 "ทุกหน้าตัวคุมชุดเดียว") */}
+          <ReportPeriodControl
+            state={periodState}
+            markedDays={Object.keys(kpi?.byDay || {})}
+            markedLabel="มีลีดเข้า"
+            onRangeError={setRangeError}
           />
-          {periodMode === "range" ? (
-            <DayRangePicker
-              from={range.from}
-              to={range.to}
-              today={todayTh}
-              markedDays={Object.keys(kpi?.byDay || {})}
-              onChange={setRange}
-            />
-          ) : (
-            <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
-          )}
-          {/* ⭐ ดาวน์โหลดรายงาน (มติผู้ใช้ 2026-08-27) — วางไว้ที่นี่ ไม่ใช่แท็บ KPI
-              เพราะไฟล์เป็น **แถวลีดดิบ** ⇒ สิ่งที่โหลดได้ต้องตรงกับสิ่งที่เห็นบนจอนี้
-              (แท็บ KPI เป็นตัวเลขสรุป คนละของ) · ปุ่มโผล่เฉพาะ Marketing/Admin
-              ⚠️ ส่งช่วงวันเฉพาะตอนอยู่โหมด "ช่วงวัน" — โหมดรายเดือนยังไม่รองรับ
-              ที่ปลายทาง จึงไม่ส่งอะไรไปแทนที่จะส่งค่าที่แปลผิด (ดู route) */}
+          {/* ⭐ ดาวน์โหลดรายงาน (มติผู้ใช้ 2026-08-27) — ไฟล์เป็น **แถวลีดดิบ** ของงวดที่เลือก · เฉพาะ Marketing/Admin
+              ⭐ ตามงวดบนปุ่มทุกโหมด (มติผู้ใช้ 2026-09-22 · ไม่ขึ้นกับตัวกรอง/ค้นหาของตาราง)
+                 🐞 เดิมโหมดรายเดือนได้ลีด **ทั้งหมดตั้งแต่เปิดระบบ** — ปลายทางรับแค่ช่วงวัน
+              ปุ่มกลางตัวเดียวกับรายงานยอดขาย/FC (โหลดผ่าน apiFetch · พลาดแล้วบอกเป็นภาษาไทย) */}
           {canExportReport && (
-            /* ⚠️ ใช้ `Button as={Link}` ไม่ใช่ `<a className="btn">` — คลาสปุ่มดิบ
-               ถูก ratchet ของ audit:ui นับไว้ และเพดานของหน้านี้ขึ้นไม่ได้
-               `prefetch={false}` เพราะปลายทางเป็นไฟล์ ไม่ใช่หน้า */
-            <Button
-              as={Link}
-              prefetch={false}
-              variant="quiet"
-              icon={<Download size={15} />}
-              href={periodMode === "range"
-                ? `/api/sales-planning/leads/report?from=${range.from}&to=${range.to}`
-                : "/api/sales-planning/leads/report"}
-              title={periodMode === "range"
-                ? `ดาวน์โหลดลีดช่วง ${range.from} ถึง ${range.to}`
-                : "ดาวน์โหลดลีดทั้งหมด — เลือก “ช่วงวัน” ถ้าต้องการเฉพาะบางช่วง"}
-            >
-              ดาวน์โหลด Excel
-            </Button>
+            <ExcelDownloadButton
+              href={`/api/sales-planning/leads/report?${periodQuery}`}
+              fallbackName="leads.xlsx"
+              title={`ดาวน์โหลดลีดที่รับเข้าใน${periodState.label.startsWith("ทั้งปี") ? "" : "งวด "}${periodState.label} — ไม่ขึ้นกับตัวกรองของตาราง`}
+              onError={setDownloadError}
+            />
           )}
           {canCreate && (
             <button type="button" className="btn btn-accent" onClick={() => { setForm(initialForm); setPendingFiles([]); setFormOpen(true); }}>
@@ -576,6 +555,10 @@ export default function LeadsPage() {
       <div className="flex flex-col gap-4">
         {error && (
           <div className="glass-panel" role="alert" style={{ padding: "12px 14px", borderColor: "var(--red)", color: "var(--red)" }}>{error}</div>
+        )}
+        {rangeError && <StatusNotice tone="warning" onDismiss={() => setRangeError("")}>{rangeError}</StatusNotice>}
+        {downloadError && (
+          <StatusNotice tone="error" title="ดาวน์โหลด Excel ไม่สำเร็จ" onDismiss={() => setDownloadError("")}>{downloadError}</StatusNotice>
         )}
 
           {/* ขอบเขต + ทางไป KPI เต็ม อยู่ใต้หัวหน้า เหนือแถบ KPI — ตำแหน่งเดียวกับ

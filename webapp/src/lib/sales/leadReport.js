@@ -93,7 +93,10 @@ export function leadReportRow(lead = {}, { teamNames = null } = {}) {
 }
 
 /** ชื่อไฟล์ — วันไทยเสมอ และบอกช่วงที่ขอไว้ในชื่อ เพื่อไม่ให้ไฟล์สองช่วงชนกันในโฟลเดอร์เดียว */
-export function leadReportFilename({ from, to } = {}) {
-  const span = from && to ? `${from}_${to}` : 'ทั้งหมด';
+export function leadReportFilename({ from, to, period = null } = {}) {
+  // ชื่อตามงวดบนจอ: เดือน = 2026-09 · ทั้งปี = 2026 · ช่วงวัน = from_to
+  const span = period?.mode === 'month' ? period.month
+    : period?.mode === 'year' ? period.year
+      : from && to ? `${from}_${to}` : 'ทั้งหมด';
   return `leads_${span}.xlsx`;
 }

@@ -91,6 +91,9 @@ test('ทุกคอลัมน์มีที่มาในแถว — ไ
 test('ชื่อไฟล์บอกช่วงที่ขอ', () => {
   assert.equal(leadReportFilename({ from: '2026-08-01', to: '2026-08-27' }), 'leads_2026-08-01_2026-08-27.xlsx');
   assert.match(leadReportFilename({}), /^leads_.*\.xlsx$/);
+  // ชื่อตามงวดบนจอ (2026-09-22) — เดือนเดียว/ทั้งปีไม่ต้องยาวเป็นช่วงวัน
+  assert.equal(leadReportFilename({ from: '2026-09-01', to: '2026-09-30', period: { mode: 'month', month: '2026-09' } }), 'leads_2026-09.xlsx');
+  assert.equal(leadReportFilename({ from: '2026-01-01', to: '2026-12-31', period: { mode: 'year', year: '2026' } }), 'leads_2026.xlsx');
 });
 
 /* 🪤 เพดาน 1,000 แถวตัดเงียบ ๆ — รายงานที่ขาดแถวไปโดยไม่มี error คือรายงานที่หลอกคนอ่าน

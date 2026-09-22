@@ -4,7 +4,8 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { applyLeadScope } from '@/lib/sales/leads';
 import { canExportLeadReport, leadReportFilename } from '@/lib/sales/leadReport';
 import { buildLeadReportBuffer } from '@/lib/sales/leadReportWorkbook';
-import { businessTimeKey, dateRangeOfBusinessDays, isDayValue } from '@/lib/datePeriods';
+import { businessDayKey, businessTimeKey, dateRangeOfBusinessDays } from '@/lib/datePeriods';
+import { parseReportPeriodParams, reportPeriodLabel } from '@/lib/sales/reportPeriod';
 import { businessDate } from '@/lib/businessDate';
 
 export const runtime = 'nodejs';
@@ -28,11 +29,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (!canExportLeadReport(user.role)) return forbidden();
 
   const params = new URL(req.url).searchParams;
-  const from = isDayValue(params.get('from')) ? params.get('from') : null;
-  const to = isDayValue(params.get('to')) ? params.get('to') : null;
-  /* ไม่ระบุช่วง = ทั้งหมด (ตั้งใจ) — ปุ่มบนหน้าจอส่งช่วงมาเสมอ แต่ถ้าใครยิง URL เปล่า
-     การคืนทั้งหมดตรงไปตรงมากว่าการเดาช่วงให้ แล้วเขาได้ไฟล์ที่ไม่ตรงกับที่คิด */
-  const range = from && to ? dateRangeOfBusinessDays(from, to) : null;
+  /* ⭐ งวดชุดเดียวกับจอ (มติผู้ใช้ 2026-09-22 "ใช้เหมือนกัน") — รายเดือน / ทุกเดือน / ช่วงวัน
+     🐞 เดิมรับแค่ from/to ⇒ โหมด "รายเดือน" บนจอกดดาวน์โหลดแล้วได้ **ลีดทั้งหมดตั้งแต่เปิดระบบ**
+        ไม่ใช่ลีดของเดือนที่ค้างอยู่บนปุ่ม · ตอนนี้ทุกโหมดแปลงเป็นช่วงวันไทยเดียวกับแท็บ KPI
+     ไม่ระบุงวดเลย = ทั้งหมด (ตั้งใจ — ลิงก์ URL เปล่าคืนทั้งหมดตรงไปตรงมากว่าการเดางวดให้) */
+  const nowIso = new Date().toISOString();
+  const period = parseReportPeriodParams(params, { today: businessDayKey(nowIso) });
+  if (period?.error) return Response.json({ error: period.error }, { status: 400 });
+  const from = period?.from || null;
+  const to = period?.to || null;
+  const range = period ? dateRangeOfBusinessDays(period.from, period.to) : null;
 
   const { data, error } = await fetchAllResult(() => {
     let query = supabase.from('sales_leads').select('*')
@@ -56,10 +62,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     console.warn('[lead-report] อ่านชื่อทีมไม่สำเร็จ — คอลัมน์ทีมจะขึ้นเป็นรหัส', err?.message);
     return null;
   });
-  const now = new Date().toISOString();
+  const now = nowIso;
   const buffer = await buildLeadReportBuffer(leads, {
     from,
     to,
+    label: period ? reportPeriodLabel(period) : null,
     generatedAt: `${businessDate(now)} ${businessTimeKey(now)}`,
     by: user.name || null,
     teamNames,
@@ -70,7 +77,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       // ชื่อไฟล์มีอักษรไทยได้ผ่าน filename* (RFC 5987) — filename เปล่าไว้ให้ตัวที่อ่าน * ไม่เป็น
       'Content-Disposition': `attachment; filename="lead-report.xlsx"; `
-        + `filename*=UTF-8''${encodeURIComponent(leadReportFilename({ from, to }))}`,
+        + `filename*=UTF-8''${encodeURIComponent(leadReportFilename({ from, to, period }))}`,
       'Cache-Control': 'no-store',
     },
   });

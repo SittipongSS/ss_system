@@ -4,6 +4,7 @@ import {
   coveredDaysOf,
   historyAppliesTo,
   parseReportPeriod,
+  parseReportPeriodParams,
   reportPeriodFilename,
   reportPeriodLabel,
   reportPeriodQuery,
@@ -93,4 +94,16 @@ test('query/ป้าย/ชื่อไฟล์มาจากงวดเด�
   // querystring วนกลับมาเป็นงวดเดิมได้
   const back = parseReportPeriod(Object.fromEntries(new URLSearchParams(reportPeriodQuery(r))), { today: TODAY });
   assert.deepEqual(back, r);
+});
+
+test('พารามิเตอร์รุ่นเก่ายังอ่านได้ (ลิงก์ไฟล์ลีด/FC เดิม) · ไม่มีอะไร = null', () => {
+  const q = (text) => parseReportPeriodParams(new URLSearchParams(text), { today: TODAY });
+  assert.equal(q('year=2026').mode, 'year');
+  assert.equal(q('month=2026-09').mode, 'month');
+  const r = q('from=2026-09-01&to=2026-09-14');
+  assert.equal(r.mode, 'range');
+  assert.equal(r.to, '2026-09-14');
+  assert.equal(q('mode=month&month=2026-08').month, '2026-08');
+  assert.equal(q(''), null);
+  assert.ok(q('year=abc').error);
 });

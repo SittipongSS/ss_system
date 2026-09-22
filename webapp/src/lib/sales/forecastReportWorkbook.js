@@ -39,9 +39,9 @@ const MONTH_AXIS_NOTE = 'เดือนในตารางคือ "วั�
   + ' (ดีลสหมิตรใช้เดือนที่ลูกค้าขอของ) — ไม่ใช่เดือนที่ปิดยอด'
   + ` · ดีลที่ยังไม่กรอกวันที่สิ้นสุด ยอดไปอยู่คอลัมน์ "${UNSCHEDULED_LABEL}" ท้ายกริด`
   + ' ไม่ถูกเดาเดือนให้ (ยอดยังนับรวมในไฟล์เหมือนเดิม)'
-  + ' ⇒ **ทั้งการกระจายรายเดือนและยอดรวมทั้งปี ต่างจากแดชบอร์ดโดยเจตนา** เพราะ'
-  + ' (ก) ดีลที่ปิดปีนี้แต่ส่งของปีหน้าจะย้ายไปอยู่ไฟล์ของปีหน้า และ'
-  + ' (ข) ไฟล์นี้ไม่รวมดีลที่แพ้แล้ว · เทียบยอดกับแดชบอร์ดตรง ๆ ไม่ได้';
+  + ' · ดีลเข้าไฟล์ตาม **เดือนคาดปิด** (ชุดเดียวกับรายการดีลบนจอของงวดเดียวกัน) แต่วางช่องตามเดือนรับของ'
+  + ' ⇒ ดีลที่ปิดในงวดแต่ส่งของหลังงวดอยู่คอลัมน์เดือนหลังงวด'
+  + ' · ไฟล์นี้ไม่รวมดีลที่แพ้แล้ว ⇒ ยอดรวมต่างจากแดชบอร์ดโดยเจตนา';
 
 /** `2026-09` → `ก.ย. 26` — หัวคอลัมน์ต้องสั้นพอให้ 12 เดือนอยู่ในจอเดียว
  *  ⭐ เดือนในกริดคือเดือนของ `endDate` = **วันที่ลูกค้าต้องการรับของ** ไม่ใช่เดือนปิดยอด
@@ -214,7 +214,7 @@ function paintGridSheet(sheet, leadColumns, months, rows, infoText) {
 
 /**
  * @param lines   บรรทัดจาก forecastBreakdownOfDeal + บริบทของดีล (month/dealCode/…)
- * @param meta    { year, months, generatedAt, by, categoryNames, teamNames }
+ * @param meta    { year, periodLabel, months, generatedAt, by, categoryNames, teamNames }
  *                `categoryNames` = Map รหัสหมวด→{ main, sub } (สองช่องแยกกัน ไม่ใช่สตริงเดียว)
  *                `teamNames` = Map รหัสทีม→ชื่อ จากทะเบียนจริง (ไม่ส่ง = คอลัมน์ทีมเป็นรหัส)
  */
@@ -235,7 +235,7 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
      ⚠️ ยอดนี้เป็น **ก่อน VAT** เหมือน FC ทุกที่ในระบบ ต้องเขียนกำกับไว้เสมอ */
   /* ⭐ ขอบเขตต้องอยู่บนหัวไฟล์เสมอ — หัวหน้าทีมโหลดได้เฉพาะทีมตัวเอง ถ้าไฟล์ไม่บอก
      แล้วถูกส่งต่อ คนรับจะอ่านยอดของทีมเดียวเป็นยอดทั้งบริษัท */
-  const stamp = `รายงาน FC ตามเดือนที่ลูกค้ารับของ · ปี ${meta.year || 'ทั้งหมด'}`
+  const stamp = `รายงาน FC ตามเดือนที่ลูกค้ารับของ · ดีลที่คาดปิดใน ${meta.periodLabel || (meta.year ? `ปี ${meta.year}` : 'ทุกงวด')}`
     + ` · ขอบเขต ${meta.scopeLabel || 'ทั้งบริษัท'}`
     + ` · ${lines.length} บรรทัด · รวม ${fmtNumber(total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท (ก่อน VAT)`
     + `${meta.by ? ` · ดาวน์โหลดโดย ${meta.by}` : ''}`
@@ -269,6 +269,15 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
 /** ชื่อไฟล์ — ปีอยู่ในชื่อเพราะไฟล์พวกนี้ถูกเก็บต่อในโฟลเดอร์ของฝ่ายวางแผน
  *  ⚠️ **ทีมต้องอยู่ในชื่อด้วยเมื่อเป็นไฟล์ของทีมเดียว** — หัวหน้าสามทีมโหลดวันเดียวกัน
  *     แล้วส่งเข้าโฟลเดอร์เดียวกัน ชื่อซ้ำจะทับกันเงียบ ๆ และไม่มีใครรู้ว่าเหลือของทีมไหน */
+/** header Content-Disposition ของไฟล์ FC — ชื่อ ASCII ใน filename= + ชื่อเต็ม (อาจมีชื่อทีมไทย) ใน filename*
+ *  🐞 เดิมใส่ชื่อที่มี "ทีมODM" ลง filename="…" ตรง ๆ ⇒ Response โยน TypeError (ByteString > 255) ⇒ AE Supervisor
+ *     ระดับทีม (senior_ae) กดดาวน์โหลดแล้วได้ 500 ทุกครั้งมาตั้งแต่ #1584 · admin ไม่เจอเพราะป้าย "ทั้งบริษัท" ไม่ติดชื่อไฟล์ */
+export function forecastReportDisposition(span, stampDay, scopeLabel) {
+  const full = forecastReportFilename(span, stampDay, scopeLabel);
+  const ascii = forecastReportFilename(span, stampDay, 'ทั้งบริษัท').replace(/[^\x20-\x7E]/g, '');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(full)}`;
+}
+
 export function forecastReportFilename(year, stampDay, scopeLabel) {
   const team = scopeLabel && scopeLabel !== 'ทั้งบริษัท'
     ? `-${String(scopeLabel).replace(/\s+/g, '')}`

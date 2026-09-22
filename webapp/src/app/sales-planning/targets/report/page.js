@@ -16,14 +16,16 @@ import Pager from "@/components/ui/Pager";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Tooltip from "@/components/ui/Tooltip";
-import DayRangePicker from "@/components/ui/DayRangePicker";
-import { MonthPicker, businessLineBadge, dealTypeBadge } from "@/components/salesPlanning/ui";
+import ReportPeriodControl from "@/components/ui/ReportPeriodControl";
+import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
+import { businessLineBadge, dealTypeBadge } from "@/components/salesPlanning/ui";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
+import useReportPeriod from "@/lib/ui/useReportPeriod";
 import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole } from "@/lib/roleContext";
 import { apiFetch } from "@/lib/apiFetch";
@@ -49,14 +51,8 @@ import {
   ordersForDrill,
   sortOrders,
 } from "@/lib/sales/reportOrderView";
-import {
-  MAX_RANGE_DAYS,
-  defaultDayRange,
-  parseReportPeriod,
-  reportPeriodLabel,
-  reportPeriodQuery,
-} from "@/lib/sales/reportPeriod";
-import { businessDayKey, currentMonth, daysInRange, formatMonthLabel } from "@/lib/datePeriods";
+import { reportPeriodLabel } from "@/lib/sales/reportPeriod";
+import { currentMonth, formatMonthLabel } from "@/lib/datePeriods";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import styles from "./page.module.css";
 
@@ -84,8 +80,6 @@ const LENSES = [
   { value: "team", label: "ตามทีม" },
   { value: "person", label: "ตามคน" },
 ];
-
-const PERIOD_MODES = [{ value: "month", label: "รายเดือน" }, { value: "range", label: "ช่วงวัน" }];
 
 const EMPTY_FILTERS = { owners: [], teams: [], finance: [], months: [], kinds: [], lines: [], dealTypes: [] };
 
@@ -120,34 +114,22 @@ export default function SalesReportPage() {
   const role = useRole();
 
   const now = useMemo(() => new Date(), []);
-  const todayTh = businessDayKey(now.toISOString());
-  const thisMonth = currentMonth(now);
   /* ขอบล่างของ MonthPicker = ปีเก่าสุดที่หน้ากรอกยอดย้อนหลังยอมให้กรอก (กติกาเดียวกัน ไม่ฝังเลขปี) */
   const minMonth = `${historyYearOptions(now).at(-1)}-01`;
 
-  /* งวด — จำไว้เฉพาะตอนกดย้อน (useStickyState) ⇒ เปิดใบแล้วกดกลับมาเจองวดเดิม
-     ค่าตั้งต้น = ทุกเดือนของปีนี้ (นิสัยเดิมของหน้านี้ "ปีนี้") */
-  const [periodMode, setPeriodMode] = useStickyState("periodMode", "month");
-  const [month, setMonth] = useStickyState("month", thisMonth);
-  const [allMonths, setAllMonths] = useStickyState("allMonths", true);
-  const [range, setRange] = useStickyState("range", defaultDayRange(todayTh));
+  /* งวด — ตัวกลางเดียวกับหน้าลีด/ดีล (useReportPeriod + ReportPeriodControl · มติผู้ใช้ 2026-09-22)
+     ค่าตั้งต้น = ทุกเดือนของปีนี้ (นิสัยเดิมของหน้านี้ "ปีนี้") · จำไว้เฉพาะตอนกดย้อน */
+  const periodState = useReportPeriod({ defaultAllMonths: true, now });
+  const { period, query, today: todayTh, thisMonth, setMode: setPeriodMode, setRange } = periodState;
   const [lens, setLens] = useStickyState("lens", "month");
   const [drill, setDrill] = useState(null);
-
-  const period = useMemo(() => {
-    const input = periodMode === "range"
-      ? { mode: "range", from: range?.from, to: range?.to }
-      : allMonths ? { mode: "year", year: String(month || thisMonth).slice(0, 4) } : { mode: "month", month };
-    const parsed = parseReportPeriod(input, { today: todayTh });
-    return parsed.error ? parseReportPeriod({ mode: "year", year: thisMonth.slice(0, 4) }, { today: todayTh }) : parsed;
-  }, [periodMode, range?.from, range?.to, allMonths, month, thisMonth, todayTh]);
-  const query = reportPeriodQuery(period);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [stale, setStale] = useState(false);
   const [rangeError, setRangeError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
 
   const startRun = useLatestRun();
   const load = useCallback(async (opts) => {
@@ -221,41 +203,21 @@ export default function SalesReportPage() {
       back={{ href: "/sa/targets", label: "กลับหน้าวางเป้า" }}
       headerRight={(
         <>
-          {/* ทรงเดียวกับหน้าลีด (มติผู้ใช้ 2026-09-22 "ปุ่มเลือกช่วงอยากได้เหมือน KPI ลีด") */}
-          <Segmented ariaLabel="หน่วยของงวด" value={periodMode} onChange={setPeriodMode} options={PERIOD_MODES} />
-          {periodMode === "range" ? (
-            <DayRangePicker
-              from={period.from}
-              to={period.to}
-              today={todayTh}
-              markedDays={Object.keys(data?.byDay || {})}
-              markedLabel="มีใบอนุมัติ"
-              onChange={(next) => {
-                /* เกินเพดาน = บอก แล้วคงช่วงเดิม — เดิมงวดเงียบ ๆ ตกไปเป็นทั้งปีทั้งที่ปุ่มยังเป็น "ช่วงวัน" */
-                if (daysInRange(next.from, next.to).length > MAX_RANGE_DAYS) {
-                  setRangeError("ช่วงวันยาวเกิน 5 ปี — เลือกให้สั้นลง (ดูยาวกว่านั้นให้ใช้ \"รายเดือน · ทุกเดือน\" ทีละปี)");
-                  return;
-                }
-                setRangeError("");
-                setRange(next);
-              }}
-            />
-          ) : (
-            <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} min={minMonth} />
-          )}
-          {/* ไฟล์ = ทั้งรายงานของงวด (มติผู้ใช้ "ทั้งรายงาน") · ตัวเลขจากตัวคิดเดียวกับจอ
-              ⚠️ `Button as="a" download` ไม่ใช่ `<a className="btn">` (ratchet ของ audit:ui) และไม่ใช่ Link —
-              Link ของ Next ยิงคำขอ RSC ไปที่ปลายทางก่อนแล้วค่อยโหลดจริง = สร้างไฟล์ทั้งรายงานสองรอบต่อคลิก */}
-          <Button
-            as="a"
-            download
-            variant="quiet"
-            icon={<Download size={15} aria-hidden="true" />}
+          {/* ตัวเลือกงวดตัวกลาง — ทรงเดียวกับหน้าลีด/ดีล (มติผู้ใช้ 2026-09-22 "ทุกหน้าตัวคุมชุดเดียว") */}
+          <ReportPeriodControl
+            state={periodState}
+            markedDays={Object.keys(data?.byDay || {})}
+            markedLabel="มีใบอนุมัติ"
+            minMonth={minMonth}
+            onRangeError={setRangeError}
+          />
+          {/* ไฟล์ = ทั้งรายงานของงวด (มติผู้ใช้ "ทั้งรายงาน") · ตัวเลขจากตัวคิดเดียวกับจอ · ปุ่มกลางตัวเดียวกับลีด/FC */}
+          <ExcelDownloadButton
             href={`/api/sales-planning/report/export?${query}`}
+            fallbackName="sales-report.xlsx"
             title={`ดาวน์โหลดทั้งรายงานของ ${periodLabel} — ไม่ขึ้นกับการค้นหาและตัวกรองในรายการใบ`}
-          >
-            ดาวน์โหลด Excel
-          </Button>
+            onError={setDownloadError}
+          />
         </>
       )}
     >
@@ -268,6 +230,9 @@ export default function SalesReportPage() {
 
         {rangeError && (
           <StatusNotice tone="warning" onDismiss={() => setRangeError("")}>{rangeError}</StatusNotice>
+        )}
+        {downloadError && (
+          <StatusNotice tone="error" title="ดาวน์โหลด Excel ไม่สำเร็จ" onDismiss={() => setDownloadError("")}>{downloadError}</StatusNotice>
         )}
         {stale && !error && (
           <StatusNotice tone="warning" title="รีเฟรชไม่สำเร็จ — ตัวเลขบนจออาจไม่ใช่ล่าสุด" action={<Button size="sm" onClick={() => load()}>โหลดใหม่</Button>}>
