@@ -501,6 +501,9 @@ export function paginateProductSpecSections(sections = [], tail = null, budgets)
   for (const section of sections) {
     const rows = section.rows || [];
     const total = section.openCost + rows.reduce((sum, row) => sum + row.cost, 0);
+    /* ⭐ `breakBefore` = หัวข้อนี้ขึ้นแผ่นใหม่เสมอ (ภาพประกอบ · มติผู้ใช้ 2026-09-22 "อยากให้ขึ้นหน้าใหม่เสมอ")
+       ⚠️ แผ่นต่อที่ยังว่างไม่เปิดซ้อน · แผ่นแรกนับว่ามีของเสมอ (หัวเอกสาร + กล่องผู้ซื้อ) ⇒ เปิดแผ่นใหม่ */
+    if (section.breakBefore && !blankContinuation()) newPage();
     // ก้อนแรกของแผ่นได้ความจุเต็ม · แชร์แผ่นกับก้อนก่อนหน้า = หักส่วนเผื่อ
     if (used + total <= budget + (page.length === 0 ? reserve : 0)) {
       placeWhole(section, rows);

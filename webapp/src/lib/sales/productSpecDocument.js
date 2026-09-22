@@ -98,8 +98,9 @@ const SPEC_KEY = 'productSpec';
      Product Overview มี "ปริมาตรบรรจุ" (FG) และ "จำนวนผลิต" (SO/QT) · กล่องอ้างอิงถอดแถวจำนวน
    · `@2026-09-22e` = ใบอังกฤษแปลหน่วยปริมาตร (ขวด → Bottle) · ช่องลูกค้าใบอังกฤษมีบรรทัดตำแหน่ง (Authorized signature)
      ให้แถวตรงกับอีกสามช่อง · สี่คอลัมน์ผ่านตัวแปร --sig-cols ของเปลือก (แทนกฎ data-columns="4") ·
-     ช่องลงนามกว้างเท่ากันเสมอ (ชื่อที่ไม่มีจุดตัดเคยถ่างช่องจนก้อนลายเซ็นสูงเกินที่จอง) */
-export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-09-22e';
+     ช่องลงนามกว้างเท่ากันเสมอ (ชื่อที่ไม่มีจุดตัดเคยถ่างช่องจนก้อนลายเซ็นสูงเกินที่จอง)
+   · `@2026-09-22f` = ภาพประกอบขึ้นแผ่นใหม่เสมอ (`breakBefore` · มติผู้ใช้ 22/09) · ช่องลงนามชิดขอบล่าง (`.signTail`) */
+export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-09-22f';
 
 const TICK_ON = '☑';
 const TICK_OFF = '☐';
@@ -476,7 +477,8 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
         cost: figureRowMm(pair.map((row, offset) => figureCaption(row, index + offset + 1))),
       });
     }
-    sections.push({ key: 'figures', heading: 'ภาพประกอบรายละเอียดสินค้า', table: null, headCost: 0, rows });
+    // ⭐ ภาพประกอบขึ้นแผ่นใหม่เสมอ (มติผู้ใช้ 2026-09-22) — ตัวแบ่งหน้าอ่าน `breakBefore`
+    sections.push({ key: 'figures', heading: 'ภาพประกอบรายละเอียดสินค้า', table: null, headCost: 0, rows, breakBefore: true });
   }
   return sections.map((section, index) => ({
     ...section,
