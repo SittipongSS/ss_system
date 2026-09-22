@@ -9,7 +9,7 @@ import {
 } from '@/lib/sales/forecastBreakdown';
 import { eligibleForecastQuotations } from '@/lib/sales/forecastSource';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { buildForecastReportBuffer, forecastReportFilename } from '@/lib/sales/forecastReportWorkbook';
+import { buildForecastReportBuffer, forecastReportDisposition } from '@/lib/sales/forecastReportWorkbook';
 import { businessDate } from '@/lib/businessDate';
 import { loadTeamNames } from '@/lib/master/teamsRepo';
 import { teamNameOf } from '@/lib/master/teams';
@@ -245,7 +245,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   return new Response(buffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${forecastReportFilename(forecastPeriodSpan(period), today, scopeLabel)}"`,
+      'Content-Disposition': forecastReportDisposition(forecastPeriodSpan(period), today, scopeLabel),
       'Cache-Control': 'no-store',
     },
   });

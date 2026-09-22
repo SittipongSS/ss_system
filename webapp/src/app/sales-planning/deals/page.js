@@ -103,6 +103,7 @@ export default function SalesPlanningPipelinePage() {
   const periodState = useReportPeriod({ defaultAllMonths: true, now: pageNow });
   const { month, allMonths, period: dealPeriod, query: periodQuery } = periodState;
   const [rangeError, setRangeError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
   const [deals, setDeals] = useState([]);
   /* งวด + เวลาที่ใช้คัดยอด SO "รออนุมัติ" เข้ายอดหัวกลุ่ม/KPI (มติผู้ใช้ 2026-09-14)
      ยอดรออนุมัติลงเดือนปัจจุบันเวลาไทยเสมอ ⇒ นับเฉพาะเมื่อเดือนนั้นอยู่ในงวดที่หน้าโชว์
@@ -848,8 +849,7 @@ export default function SalesPlanningPipelinePage() {
           fallbackName="FC-by-category.xlsx"
           label="ดาวน์โหลด Excel FC"
           title={`รายงาน FC รายหมวดของดีลที่คาดปิดใน ${periodState.label} — ไม่ขึ้นกับตัวกรองของตาราง`}
-          onError={(message) => setError(message)}
-          onDone={() => setError("")}
+          onError={setDownloadError}
         />
       )}
 
@@ -914,6 +914,9 @@ export default function SalesPlanningPipelinePage() {
             </div>
           )}
           {rangeError && <StatusNotice tone="warning" onDismiss={() => setRangeError("")}>{rangeError}</StatusNotice>}
+          {downloadError && (
+            <StatusNotice tone="error" title="ดาวน์โหลด Excel FC ไม่สำเร็จ" onDismiss={() => setDownloadError("")}>{downloadError}</StatusNotice>
+          )}
 
           {canSeeDealKpi(role) && (
             <>
@@ -943,7 +946,7 @@ export default function SalesPlanningPipelinePage() {
               </div>
 
               <SaMetricStrip>
-                <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note={`ตามขอบเขต · คาดปิดใน ${periodState.label}`} />
+                <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note={reviewOnly ? "ตามขอบเขต · ทุกงวด (รอเติมข้อมูล)" : `ตามขอบเขต · คาดปิดใน ${periodState.label}`} />
                 <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />
                 <SaMetric icon={<CheckCircle2 />} label="ปิดสำเร็จ (Won)" value={wonDeals.length} note={wonNote} tone="good" />
                 <SaMetric icon={<Ban />} label="ไม่ไปต่อ (Lost)" value={lostDeals.length} note="ดีลที่ปิดโดยไม่เกิดยอดขาย" tone={lostDeals.length ? "danger" : undefined} />
@@ -1095,7 +1098,7 @@ export default function SalesPlanningPipelinePage() {
                 {!filteredDeals.length && (
                   <tr>
                     <td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีดีลในเดือนนี้ {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
+                      {reviewOnly ? "ไม่มีดีลที่รอเติมข้อมูล" : `ไม่มีดีลที่คาดปิดใน ${periodState.label}`} {canCreateDeals ? "เริ่มจากปุ่มเพิ่มดีลด้านบน" : ""}
                     </td>
                   </tr>
                 )}

@@ -18,7 +18,7 @@ import {
   monthsOfYear,
   summarizeForecastLines,
 } from './forecastBreakdown.js';
-import { forecastReportFilename } from './forecastReportWorkbook.js';
+import { forecastReportDisposition, forecastReportFilename } from './forecastReportWorkbook.js';
 
 const product = (over = {}) => ({
   id: 'P1', fgCode: 'FG-001', productDescription: 'EDP 30 ml',
@@ -444,4 +444,14 @@ test('ไม่มีทั้งแถวที่กรอกและใบ�
   assert.equal(rows[0].source, 'manual');
   assert.equal(rows[0].fcAmount, 110000);
   assert.equal(rows[0].categoryLabel, UNCATEGORIZED);
+});
+
+test('🐞 header ไฟล์ FC ต้องสร้าง Response ได้แม้ชื่อมีทีมภาษาไทย (senior_ae เคยได้ 500 ทุกครั้ง)', () => {
+  for (const scope of ['ทั้งบริษัท', 'ทีม ODM', 'เฉพาะที่มองเห็น (ไม่ระบุทีม)']) {
+    const header = forecastReportDisposition('2026-09', '2026-09-22', scope);
+    assert.doesNotThrow(() => new Response('x', { headers: { 'Content-Disposition': header } }), scope);
+    assert.match(header, /^attachment; filename="[\x20-\x7E]+"; filename\*=UTF-8''/);
+  }
+  const team = forecastReportDisposition('2026', '2026-09-22', 'ทีม ODM');
+  assert.equal(decodeURIComponent(team.split("filename*=UTF-8''")[1]), 'FC-by-category-2026-ทีมODM-2026-09-22.xlsx');
 });

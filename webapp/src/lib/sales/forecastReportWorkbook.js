@@ -269,6 +269,15 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
 /** ชื่อไฟล์ — ปีอยู่ในชื่อเพราะไฟล์พวกนี้ถูกเก็บต่อในโฟลเดอร์ของฝ่ายวางแผน
  *  ⚠️ **ทีมต้องอยู่ในชื่อด้วยเมื่อเป็นไฟล์ของทีมเดียว** — หัวหน้าสามทีมโหลดวันเดียวกัน
  *     แล้วส่งเข้าโฟลเดอร์เดียวกัน ชื่อซ้ำจะทับกันเงียบ ๆ และไม่มีใครรู้ว่าเหลือของทีมไหน */
+/** header Content-Disposition ของไฟล์ FC — ชื่อ ASCII ใน filename= + ชื่อเต็ม (อาจมีชื่อทีมไทย) ใน filename*
+ *  🐞 เดิมใส่ชื่อที่มี "ทีมODM" ลง filename="…" ตรง ๆ ⇒ Response โยน TypeError (ByteString > 255) ⇒ AE Supervisor
+ *     ระดับทีม (senior_ae) กดดาวน์โหลดแล้วได้ 500 ทุกครั้งมาตั้งแต่ #1584 · admin ไม่เจอเพราะป้าย "ทั้งบริษัท" ไม่ติดชื่อไฟล์ */
+export function forecastReportDisposition(span, stampDay, scopeLabel) {
+  const full = forecastReportFilename(span, stampDay, scopeLabel);
+  const ascii = forecastReportFilename(span, stampDay, 'ทั้งบริษัท').replace(/[^\x20-\x7E]/g, '');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(full)}`;
+}
+
 export function forecastReportFilename(year, stampDay, scopeLabel) {
   const team = scopeLabel && scopeLabel !== 'ทั้งบริษัท'
     ? `-${String(scopeLabel).replace(/\s+/g, '')}`

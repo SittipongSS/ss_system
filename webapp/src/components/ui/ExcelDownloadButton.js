@@ -29,11 +29,15 @@ export default function ExcelDownloadButton({
   const download = async () => {
     if (busy || !href) return;
     setBusy(true);
+    onError?.(""); // ล้างข้อความพลาดของรอบก่อน — ไม่งั้นโหลดสำเร็จแล้วแถบแดงยังค้าง
     try {
       const res = await apiFetch(href, { cache: "no-store" });
       if (!res.ok) {
+        /* 401/403 ของระบบตอบเป็นคำอังกฤษ ('unauthorized'/'forbidden') — แปลงเป็นไทยก่อนใช้ข้อความจาก body */
+        if (res.status === 401) throw new Error("เซสชันหมดอายุ — เข้าสู่ระบบใหม่แล้วลองอีกครั้ง");
+        if (res.status === 403) throw new Error("ไม่มีสิทธิ์ดาวน์โหลดไฟล์นี้");
         const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error || (res.status === 403 ? "ไม่มีสิทธิ์ดาวน์โหลดไฟล์นี้" : "ดาวน์โหลดไฟล์ไม่สำเร็จ"));
+        throw new Error(body?.error || "ดาวน์โหลดไฟล์ไม่สำเร็จ");
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
