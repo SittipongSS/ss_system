@@ -131,12 +131,14 @@ test('🔴 ลบนัดที่ปิดงานแล้วต้องเ
   const src = readFileSync(new URL('../../app/api/service/visits/[id]/route.js', import.meta.url), 'utf8');
   assert.match(src, /isForceRequest\(req\)\s*&&\s*canForceDelete\(user\)/,
     'ต้องเช็คทั้งธงและสิทธิ์ในนิพจน์เดียว');
-  assert.match(src, /!canDeleteVisit\(before\)\s*&&\s*!force/,
+  /* ⭐ ตั้งแต่ 24/09 ด่านสถานะคือ `visitDeleteBlock` (กติกาเดียวกับปุ่ม "ลบนัด" — ครอบ "ไปถึงไซต์แล้ว" เดิม
+     ด้วย `canDeleteVisit` ข้างใน · เทสต์ของกติกาอยู่ที่ visitDelete.test.mjs) */
+  assert.match(src, /if \(block && !force\) return conflict\(block\.message\)/,
     'ด่านสถานะต้องยอมให้ force ข้ามได้ ไม่ใช่บล็อกตายตัว');
   // ด่านสิทธิ์รายใบต้องยังอยู่ **ก่อน** force — force ข้ามได้แค่ด่านสถานะ
   assert.ok(src.indexOf('requireVisit(') < src.indexOf('isForceRequest('),
     'requireVisit ต้องมาก่อน — ไม่งั้น ?force=1 กลายเป็นทางข้ามสิทธิ์');
-  assert.match(src, /แอดมินข้ามด่านประวัติ/,
+  assert.match(src, /แอดมินข้ามด่าน\$\{VISIT_DELETE_BLOCK_LABELS\[block\.code\]\}/,
     'audit ต้องอ่านออกว่าใบไหนถูกลบด้วยสิทธิ์พิเศษ');
 });
 

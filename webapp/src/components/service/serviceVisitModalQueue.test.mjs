@@ -88,6 +88,25 @@ test('CrewLoadPicker: radio จริง · ไม่นับร่าง · �
   assert.doesNotMatch(src, /PersonLoadSelect/);
 });
 
+/* ⭐ มติเจ้าของ 23/09 — ตัวเลือกเดียวกันถูกใช้ในโมดัลลงคิวคำร้อง ซึ่ง **บังคับ** เจ้าหน้าที่
+   ⇒ แถว "ยังไม่มอบหมาย" ปิดได้ผ่าน prop · ค่าตั้งต้นต้องเป็นของเดิม (โมดัลนัดไม่ขยับ) */
+test('CrewLoadPicker: allowUnassigned — ค่าตั้งต้น true · false = ไม่มีแถว "ยังไม่มอบหมาย" + aria-required', () => {
+  const src = code(picker);
+  assert.match(src, /allowUnassigned = true,/);
+  assert.match(src, /\{allowUnassigned && \(\s*<label className=\{`\$\{styles\.row\} \$\{styles\.option\}`\} data-on=\{!value \? "1" : undefined\}>/);
+  assert.match(src, /aria-required=\{allowUnassigned \? undefined : "true"\}/);
+  // โมดัลนัดไม่ส่ง prop นี้ ⇒ ยังเลือก "ยังไม่มอบหมาย" ได้เหมือนเดิม
+  assert.doesNotMatch(code(modal), /allowUnassigned/);
+});
+
+test('CrewLoadPicker: ยังไม่มีวัน = บอกให้เลือกวันก่อน ไม่ใช่ "โหลดภาระไม่ได้"', () => {
+  const src = code(picker);
+  assert.match(src, /const dated = !!dateIso;/);
+  assert.match(src, /const known = dated && load\?\.state === "ok";/);
+  assert.match(src, /\{dated && !known && \(/);
+  assert.match(src, /เลือกวันก่อนจึงจะเห็นตัวเลข/);
+});
+
 test('คำบนจอ: ปล่อย "ขึ้นตาราง" ไม่ใช่ "เข้าคิว" (มติ 2026-09-22 ข้อ 3)', () => {
   const live = code(modal);
   assert.doesNotMatch(live, /เข้าคิว/);

@@ -10,6 +10,7 @@ import { AirVent, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshC
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
+import GatedAction from "@/components/ui/GatedAction";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
@@ -34,6 +35,7 @@ import {
   VISIT_STATUS_LABELS,
   visitTimeText,
 } from "@/lib/service/rounds";
+import { visitDeleteBlocker, visitDeleteButton } from "@/lib/service/visitDelete";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
@@ -249,6 +251,15 @@ export default function ServiceSiteDetailPage({ params }) {
   /* ลบนัด — เส้นนี้มี route มาตลอดแต่ **ไม่เคยมีปุ่มไหนเรียกเลย** (ผู้ใช้แจ้ง 2026-09-02
      "แอดมินลบแล้วติดนู่นนี่") · นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ ส่วนนัดที่ปิดงานแล้ว
      เป็นประวัติการเข้าไซต์ ⇒ ต้องเป็นแอดมินและส่ง ?force=1 มาโดยตั้งใจ
+     ⭐ **ตั้งแต่ 24/09 ด่านของ API คือ `visitDeleteBlock`** (กติกาเดียวกับปุ่ม "ลบนัด" บนหน้าจัดคิว ·
+        มติเจ้าของ 24/09) — ลบได้เฉพาะงานนอกรอบที่ยังไม่มีใครไปถึงไซต์ · นัดของรอบ/ใบคำร้อง/นัดถอนจาก
+        เรื่องไม่ต่อสัญญา ต้องยกเลิกแทน ⇒ แถว "นัดที่จะถึง" ถามด่านตัวเดียวกัน · แอดมิน = เดินเส้น ?force=1
+        พร้อมกล่องที่บอกว่ากำลังข้ามกติกาข้อไหน
+     ⭐ **โชว์ถังขยะด้วยกติกาเดียวกับหน้าจัดคิว** (`visitDeleteButton` · รีวิว 24/09) — คนที่ไม่ใช่แอดมินเห็นถังขยะ
+        เฉพาะงานนอกรอบ (ติดด่าน = โชว์แล้วบอกเหตุตอนกด) · นัดของรอบ/ใบคำร้องไม่มีถังขยะ
+        🐞 เดิมโชว์ทุกแถวแล้วติดด่าน ⇒ แถวส่วนใหญ่ (นัดของรอบ) มีถังขยะที่กดแล้วได้แต่ toast "ลบไม่ได้"
+           และสองจอพูดคนละแบบกับนัดใบเดียวกัน (หน้าจัดคิวไม่มีปุ่ม · หน้าไซต์มีปุ่มที่ใช้ไม่ได้)
+        ⚠️ **ต้องให้เจ้าของยืนยัน** — ก่อน 24/09 ผู้จัดคิวลบนัดของรอบที่ยังไม่ถึงวันจากตารางนี้ได้ (ดู F-6d ③)
      ⚠️ ตารางลูกของนัดเป็น CASCADE ทั้งคู่ ⇒ ลบแล้วผลรายเครื่อง/ของที่ใช้หายตามเอง */
   const removeVisit = async () => {
     setBusy(true);
@@ -403,14 +414,19 @@ export default function ServiceSiteDetailPage({ params }) {
       message: (row) => `ลบนัด ${row.code || row.scheduledDate}?`,
       /* ⚠️ ข้อความเปลี่ยนตามว่าเป็นการลบธรรมดา หรือแอดมินข้ามด่านประวัติ —
          สองอย่างนี้มีน้ำหนักต่างกันมาก คนกดต้องรู้ว่ากำลังทำอันไหน */
-      detail: "นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ · ผลรายเครื่องและของที่ใช้ในนัดนี้จะหายไปด้วย",
+      detail: "งานนอกรอบที่ยังไม่มีใครไปถึงไซต์ลบได้ · นัดหายจากตารางและรายการงาน พร้อมความเคลื่อนไหวของนัดนี้ — กู้คืนเองไม่ได้",
       confirmLabel: "ลบนัด",
       onConfirm: removeVisit,
     },
+    /* ⚠️ กล่องของแอดมิน **บอกกติกาที่กำลังข้าม** จากด่านตัวเดียวกับ API (`visitDeleteBlocker`) —
+       เดิมเขียนตายตัวว่า "ลบนัดที่ปิดงานแล้ว" ซึ่งผิดทันทีที่แอดมินลบนัดของรอบที่ยังไม่ถึงวัน (24/09) */
     visitForce: {
-      title: "ลบนัดที่ปิดงานแล้ว",
-      message: (row) => `ลบนัด ${row.code || row.scheduledDate} ที่ปิดงานไปแล้ว?`,
-      detail: "🔴 นัดนี้เป็นประวัติการเข้าไซต์ — ลบแล้วผลรายเครื่อง ของที่ใช้ และร่องรอยว่าเจ้าหน้าที่เคยมา จะหายถาวร · ใช้สิทธิ์ผู้ดูแลระบบ และจะถูกบันทึกไว้ว่าข้ามด่าน",
+      title: "ลบนัดถาวร (ผู้ดูแลระบบ)",
+      message: (row) => `ลบนัด ${row.code || row.scheduledDate} ถาวร?`,
+      detail: (row) => {
+        const rule = visitDeleteBlocker(row);
+        return `${rule ? `🔴 กติกาปกติ: ${rule}\n` : ""}ลบแล้วผลรายเครื่อง ของที่ใช้ และความเคลื่อนไหวของนัดนี้หายถาวร · ใช้สิทธิ์ผู้ดูแลระบบ และจะถูกบันทึกไว้ว่าข้ามด่าน`;
+      },
       confirmLabel: "ลบถาวร",
       onConfirm: removeVisit,
     },
@@ -419,7 +435,11 @@ export default function ServiceSiteDetailPage({ params }) {
     ? (() => {
       const key = pendingDelete.type === "visit" && pendingDelete.force ? "visitForce" : pendingDelete.type;
       const copy = DELETE_COPY[key];
-      return copy ? { ...copy, message: copy.message(pendingDelete.row) } : null;
+      return copy ? {
+        ...copy,
+        message: copy.message(pendingDelete.row),
+        detail: typeof copy.detail === "function" ? copy.detail(pendingDelete.row) : copy.detail,
+      } : null;
     })()
     : null;
 
@@ -779,6 +799,10 @@ export default function ServiceSiteDetailPage({ params }) {
                 {upcoming.map((visit) => {
                   const kindLabel = VISIT_KIND_LABELS[visit.kind] || visit.kind;
                   const order = orderOfVisit(visit);
+                  /* ด่านลบตัวเดียวกับ API — แอดมินข้ามได้ (เส้น force) · คนอื่นเห็นถังขยะตามกติกาเดียวกับหน้าจัดคิว */
+                  const deleteRule = visitDeleteBlocker(visit);
+                  const forceDelete = isAdmin && !!deleteRule;
+                  const showDelete = isAdmin || !!visitDeleteButton(visit);
                   return (
                   <tr key={visit.id}>
                     {/* วันที่ · เวลา · รหัส ห้ามตัดกลาง — ตารางเลื่อนข้างแทนการบีบ (ดู .nowrap) */}
@@ -801,16 +825,20 @@ export default function ServiceSiteDetailPage({ params }) {
                     </td>
                     <td className={styles.wideCol}>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
                     <td className={`mono ${styles.nowrap} ${styles.wideCol}`}>{naText(visit.code)}</td>
-                    {/* นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ — route รองรับมาตลอด
-                        แต่ไม่เคยมีปุ่มไหนเรียก (ผู้ใช้แจ้ง 2026-09-02) */}
+                    {/* ปุ่มลบนัด (ผู้ใช้แจ้ง 2026-09-02) — ตั้งแต่ 24/09 ถามด่าน `visitDeleteBlocker` ตัวเดียวกับ API
+                        และโชว์ตาม `visitDeleteButton` ตัวเดียวกับหน้าจัดคิว: งานนอกรอบเท่านั้น (ติดด่าน = บอกเหตุตอนกด)
+                        · แอดมินเห็นทุกแถว (เส้น force) · เซลล์ยังอยู่เมื่อไม่มีปุ่ม (คอลัมน์ไม่เหลื่อม) */}
                     {canEdit && (
                       <td>
-                        <div className={styles.rowActions}>
-                          <Button iconOnly tone="danger" variant="quiet"
-                            aria-label={`ลบนัด ${visit.code || visit.scheduledDate}`}
-                            onClick={() => setPendingDelete({ type: "visit", row: visit })}
-                            icon={<Trash2 size={14} aria-hidden="true" />} />
-                        </div>
+                        {showDelete && (
+                          <div className={styles.rowActions}>
+                            <GatedAction iconOnly tone="danger" variant="quiet"
+                              aria-label={`ลบนัด ${visit.code || visit.scheduledDate}`}
+                              blocker={forceDelete ? "" : deleteRule}
+                              onClick={() => setPendingDelete({ type: "visit", row: visit, force: forceDelete })}
+                              icon={<Trash2 size={14} aria-hidden="true" />} />
+                          </div>
+                        )}
                       </td>
                     )}
                   </tr>

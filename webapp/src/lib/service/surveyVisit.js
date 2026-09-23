@@ -20,26 +20,37 @@ export const SURVEY_VISIT_KIND = 'survey';
 
 
 /**
- * ตรวจของที่ต้องมีก่อนลงคิว — คืนข้อความไทย หรือ `null` ถ้าผ่าน
+ * ตรวจของที่ต้องมีก่อนลงคิว — คืน **ทุกข้อที่ขาด** เป็นลิสต์ข้อความไทย (ผ่าน = `[]`)
  *
+ * ⭐ **ลิสต์ ไม่ใช่ข้อแรกข้อเดียว** (มติเจ้าของ 23/09 · ลงคิวจากหน้าจัดคิวได้) — ปุ่ม "ลงคิว"
+ *    ของโมดัลกลาง (`CommitDueDialog`) ต้องบอกทุกช่องที่ขาดในครั้งเดียว (กฎฟอร์มของ repo)
+ *    ไม่ใช่ให้คนแก้ทีละช่องแล้วเจอข้อถัดไป · server ยังตอบข้อแรกข้อเดียวผ่าน
+ *    `surveyScheduleError` **ด้วยลำดับเดิมเป๊ะ** ⇒ ข้อความที่ API ตอบไม่เปลี่ยน
  * ⚠️ **เจ้าหน้าที่บังคับ** ต่างจากหัวข้ออื่นที่แจ้งกำหนดส่งได้โดยยังไม่รู้ว่าใครทำ — งานนี้
  *    ต้องมีคนขับรถไปจริง และนัดที่ไม่มีเจ้าหน้าที่จะไม่ผ่านด่านเข้าไซต์ (`evaluateVisitGate`)
  *    ⇒ จอดเป็นร่างที่ไม่โผล่บนตารางใคร ซึ่งอ่านเหมือนลงคิวไม่สำเร็จ
  * ⚠️ **เวลาไม่บังคับ** — "ไปวันนั้นทั้งวัน" เป็นคำตอบที่ถูกต้องของงานจริง
  */
-export function surveyScheduleError(body = {}, request = {}) {
-  if (!request?.siteId) return 'ใบนี้ไม่มีสถานที่ — ลงคิวไม่ได้';
-  if (!String(body.committedDueDate ?? '').trim()) return 'ต้องระบุวันนัดเข้าพื้นที่';
-  if (!String(body.assigneeId ?? '').trim()) return 'ต้องเลือกเจ้าหน้าที่ผู้รับผิดชอบ';
-  const time = String(body.committedDueTime ?? '').trim();
-  if (time && !toHHMM(time)) return 'เวลานัดไม่ถูกต้อง';
+export function surveyScheduleGaps(body = {}, request = {}) {
+  const gaps = [];
+  const input = body || {};
+  if (!request?.siteId) gaps.push('ใบนี้ไม่มีสถานที่ — ลงคิวไม่ได้');
+  if (!String(input.committedDueDate ?? '').trim()) gaps.push('ต้องระบุวันนัดเข้าพื้นที่');
+  if (!String(input.assigneeId ?? '').trim()) gaps.push('ต้องเลือกเจ้าหน้าที่ผู้รับผิดชอบ');
+  const time = String(input.committedDueTime ?? '').trim();
+  if (time && !toHHMM(time)) gaps.push('เวลานัดไม่ถูกต้อง');
   /* ⭐ **วันส่งผลบังคับตั้งแต่ตอนลงคิว** (มติผู้ใช้ 2026-09-21 · mig 0368) — ฝ่ายขาย
      ที่ต้องเสนอราคาถามคำถามเดียวคือ "ได้ตัวเลขวันไหน" · วันนัดเข้าพื้นที่ตอบคำถาม
      นั้นไม่ได้ ⇒ รับปากวันไปแล้วแต่ยังไม่บอกวันส่งผล = ใบที่ตอบคำถามผิดข้อ
      ⚠️ ตรวจที่นี่ ไม่ใช่ที่ route — จอกับ server ต้องอ่านกฎตัวเดียวกัน */
-  const result = normalizeSurveyCommittedResult(body.committedResultDate, body.committedDueDate);
-  if (result.error) return result.error;
-  return null;
+  const result = normalizeSurveyCommittedResult(input.committedResultDate, input.committedDueDate);
+  if (result.error) gaps.push(result.error);
+  return gaps;
+}
+
+/** ข้อแรกที่ขาด หรือ `null` ถ้าผ่าน — ตัวที่ route ใช้ตีกลับ 400 (ลำดับเดียวกับ `surveyScheduleGaps`) */
+export function surveyScheduleError(body = {}, request = {}) {
+  return surveyScheduleGaps(body, request)[0] ?? null;
 }
 
 /**

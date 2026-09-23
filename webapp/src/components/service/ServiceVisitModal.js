@@ -4,8 +4,9 @@
 //   visit = null → โหมดสร้าง (ไม่มีช่องสถานะ/ผลการเข้า — นัดใหม่เริ่มที่ 'นัดไว้')
 //   visit = row  → โหมดแก้ (มีสถานะ + วันเวลาที่เข้าจริง + สรุปงาน)
 //   focusField / staffLoadFor → โหมดของ "รายการงาน" บนจอจัดคิว (มติ 2026-09-22) ไม่ใช่ฟอร์มที่สอง
+//   onDelete → ปุ่ม "ลบนัด" ของงานนอกรอบในโหมดแก้ (มติเจ้าของ 24/09) — ไม่ส่ง = ไม่มีปุ่ม (ไม่มีสิทธิ์)
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
@@ -17,6 +18,7 @@ import Select from "@/components/ui/Select";
 import TimeInput from "@/components/ui/TimeInput";
 import { accessWindowText } from "@/lib/service/sites";
 import { evaluateVisitGate, gateBlocker, gatePassed, gateReasons, gateSummary } from "@/lib/service/visitGate";
+import { visitDeleteButton } from "@/lib/service/visitDelete";
 import { isSuperuser } from "@/lib/permissions";
 import { useRole } from "@/lib/roleContext";
 import {
@@ -79,6 +81,11 @@ export default function ServiceVisitModal({
   /* (dateIso) → { state: 'ok'|'unknown', people: [...] } | null — ภาระรายคนของวันนั้น (ไม่นับร่าง)
      ส่งมา + มีวันที่นัด ⇒ ช่องผู้รับผิดชอบเป็น CrewLoadPicker · ไม่ส่ง/คืน null ⇒ ดรอปดาวน์เดิม */
   staffLoadFor = null,
+  /* (visit) → Promise — ลบนัดนี้ (จอแม่ถามยืนยัน ยิง API บอกผล และปิดโมดัลเมื่อสำเร็จ)
+     ⚠️ จอแม่ส่งมาเฉพาะคนที่แก้งานบริการได้ (`canEditService`) — ไม่ส่ง = ไม่มีปุ่ม */
+  onDelete = null,
+  /* คำขอลบของใบนี้กำลังวิ่ง (จอแม่ถือสถานะ — กล่องยืนยันยังเปิดอยู่ไม่นับว่ากำลังลบ) */
+  deleting = false,
 }) {
   const editing = !!visit;
   const [form, setForm] = useState(EMPTY);
@@ -170,6 +177,18 @@ export default function ServiceVisitModal({
   const pickTechnician = (id) => {
     const tech = technicians.find((t) => t.id === id);
     setForm((prev) => ({ ...prev, assigneeId: id, assigneeName: tech?.name || "" }));
+  };
+
+  /* ⭐ ปุ่ม "ลบนัด" (มติเจ้าของ 24/09) — เฉพาะงานนอกรอบที่ยังไม่ปิด · เหตุที่ลบไม่ได้บอกตอนกด
+     ⚠️ ถามด่านจาก **ใบที่บันทึกไว้** (`visit`) ไม่ใช่ค่าที่กำลังกรอก — ลบคือลบของที่อยู่ในฐาน และ API ก็ตัดสินจากแถวในฐาน */
+  const deleteAction = editing && onDelete ? visitDeleteButton(visit) : null;
+  const remove = async () => {
+    setError("");
+    try {
+      await onDelete(visit);
+    } catch (e) {
+      setError(e.message || "ลบนัดไม่สำเร็จ");
+    }
   };
 
   const submit = async (override = null) => {
@@ -478,34 +497,52 @@ export default function ServiceVisitModal({
         </div>
       )}
 
-      <div className="form-actions">
-        <Button tone="neutral" onClick={onClose} disabled={saving}>ยกเลิก</Button>
-        {/* ⭐ ปุ่มนี้ **โชว์เสมอตอนเป็นร่าง** ต่อให้ยังผ่านด่านไม่ครบ — บอกเหตุตอนกด
-            ปุ่มที่หายไปไม่ได้สอนใครว่าต้องไปแก้อะไร (GatedAction §มติ 2026-08-22) */}
-        {visit?.status === "draft" && (
-          <>
-            {/* ⭐ หัวหน้าข้ามด่านได้ พร้อมเหตุผลบังคับที่ติดกับใบถาวร — ของจริงมี 25 จุด
-                ที่วิ่งอยู่ทั้งที่หมดสัญญา ถ้าบล็อกแข็งวันแรก งานหยุดทันที
-                ⚠️ โชว์เฉพาะหัวหน้า เพราะ server ปฏิเสธคนอื่นอยู่แล้ว (ปุ่มที่กดยังไง
-                ก็ไม่ผ่านไม่ได้สอนอะไรใคร ต่างจากปุ่มที่ติดเงื่อนไข *ข้อมูล* ซึ่งต้องโชว์) */}
-            {!canQueue && canOverride && (
-              <Button tone="neutral" variant="quiet" disabled={saving}
-                onClick={() => { setOverrideReason(""); setOverriding(true); }}>
-                ข้ามด่าน (หัวหน้า)
-              </Button>
-            )}
-            <GatedAction
-              tone="primary" variant="quiet" disabled={saving}
-              blocker={canQueue ? "" : gateBlocker(gate)}
-              onClick={() => submit({ status: "scheduled" })}
-            >
-              ปล่อยขึ้นตาราง
-            </GatedAction>
-          </>
+      {/* ⭐ ปุ่มลบอยู่ซ้าย แยกจากกลุ่มยกเลิก/บันทึกทางขวา — กดพลาดจากปุ่มบันทึกไม่ได้ · สีแดงแบบเส้นขอบ = การกระทำรอง
+          ⚠️ กลุ่มขวาเป็น `form-actions-buttons` เสมอ (มีหรือไม่มีปุ่มลบ ตำแหน่งปุ่มบันทึกไม่ขยับ)
+          📱 จอ ≤680 แถบนี้มีได้ถึงห้าปุ่ม — `.visitFooter` ให้กลุ่มขวาตัดบรรทัดเป็นสองคอลัมน์ + ปุ่มลบสูงเท่าปุ่มนิ้วแตะ
+             (ดูเหตุผลใน ServiceSiteModal.module.css) */}
+      <div className={`form-actions ${styles.visitFooter}`}>
+        {deleteAction && (
+          <GatedAction
+            tone="danger" variant="outline"
+            blocker={deleteAction.blocker}
+            onClick={remove}
+            disabled={saving || deleting}
+            icon={<Trash2 size={15} aria-hidden="true" />}
+          >
+            {deleting ? "กำลังลบ…" : "ลบนัด"}
+          </GatedAction>
         )}
-        <Button tone="primary" onClick={() => submit()} disabled={saving}>
-          {saving ? "กำลังบันทึก…" : editing ? "บันทึกการแก้ไข" : "สร้างนัด"}
-        </Button>
+        <div className="form-actions-buttons">
+          <Button tone="neutral" onClick={onClose} disabled={saving || deleting}>ยกเลิก</Button>
+          {/* ⭐ ปุ่มนี้ **โชว์เสมอตอนเป็นร่าง** ต่อให้ยังผ่านด่านไม่ครบ — บอกเหตุตอนกด
+              ปุ่มที่หายไปไม่ได้สอนใครว่าต้องไปแก้อะไร (GatedAction §มติ 2026-08-22) */}
+          {visit?.status === "draft" && (
+            <>
+              {/* ⭐ หัวหน้าข้ามด่านได้ พร้อมเหตุผลบังคับที่ติดกับใบถาวร — ของจริงมี 25 จุด
+                  ที่วิ่งอยู่ทั้งที่หมดสัญญา ถ้าบล็อกแข็งวันแรก งานหยุดทันที
+                  ⚠️ โชว์เฉพาะหัวหน้า เพราะ server ปฏิเสธคนอื่นอยู่แล้ว (ปุ่มที่กดยังไง
+                  ก็ไม่ผ่านไม่ได้สอนอะไรใคร ต่างจากปุ่มที่ติดเงื่อนไข *ข้อมูล* ซึ่งต้องโชว์) */}
+              {!canQueue && canOverride && (
+                <Button tone="neutral" variant="quiet" disabled={saving || deleting}
+                  onClick={() => { setOverrideReason(""); setOverriding(true); }}>
+                  ข้ามด่าน (หัวหน้า)
+                </Button>
+              )}
+              {/* ⚠️ `|| deleting` — ระหว่างคำขอลบวิ่ง ปุ่มที่เขียนใบเดียวกันต้องดับทุกตัว (ไม่งั้นปล่อยขึ้นตารางชนกับการลบ) */}
+              <GatedAction
+                tone="primary" variant="quiet" disabled={saving || deleting}
+                blocker={canQueue ? "" : gateBlocker(gate)}
+                onClick={() => submit({ status: "scheduled" })}
+              >
+                ปล่อยขึ้นตาราง
+              </GatedAction>
+            </>
+          )}
+          <Button tone="primary" onClick={() => submit()} disabled={saving || deleting}>
+            {saving ? "กำลังบันทึก…" : editing ? "บันทึกการแก้ไข" : "สร้างนัด"}
+          </Button>
+        </div>
       </div>
 
       {/* ⭐ แผ่นข้ามด่าน — แยกจากฟอร์มโดยตั้งใจ เพราะเป็นการตัดสินใจคนละเรื่องกับ

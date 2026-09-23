@@ -1,0 +1,55 @@
+/* โมดัลลงคิวเข้าพื้นที่ / แจ้งกำหนดส่ง (CommitDueDialog) — โครงสามชั้นของ Modal ถือระยะ/สกอลล์/
+   แถบปุ่มแล้ว ไฟล์นี้เหลือแค่จังหวะในเนื้อหา (ท่าเดียวกับ DealLeadLinkModal.module.css)
+   ⚠️ โทเคนล้วน */
+
+/* fieldset ถูกใช้เพื่อ `disabled` ทั้งฟอร์มระหว่างส่ง — ล้างกรอบ/ระยะของเบราว์เซอร์ทิ้ง */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* วัน | เวลา — คู่ที่อ่านด้วยกัน · กล่องแคบถอยเป็นบน-ล่างเอง ไม่ต้องใช้ media query */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-6);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.hint {
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+/* แทนที่ตัวเลือกคนเมื่อยังไม่มีรายชื่อ — ต่างกันให้เห็นระหว่าง "กำลังโหลด" กับ "ไม่มีใครเลย" */
+.note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}

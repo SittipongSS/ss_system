@@ -18,6 +18,7 @@ import {
   WAITING_GROUPS,
   WAITING_GROUP_LABELS,
   addDaysIso,
+  crewLoadPeople,
   freeCrewOn,
   inQueueRange,
   isStaleDraft,
@@ -48,7 +49,10 @@ test('ค่าคงที่ของรายการงานครบต�
   assert.equal(QUEUE_BUCKET_UNITS.waiting, 'ใบ', 'ร่างยังไม่ใช่นัด');
   assert.deepEqual([...QUEUE_RANGES], ['all', '7d', 'unassigned']);
   for (const key of QUEUE_RANGES) assert.ok(QUEUE_RANGE_LABELS[key], key);
-  assert.deepEqual([...WAITING_GROUPS], ['ready', 'ts', 'others', 'far']);
+  // ⭐ คำร้องรอลงคิวขึ้นก่อนทุกกลุ่ม (มติเจ้าของ 23/09) — งานที่ TS ต้องลงมือเองเท่านั้น
+  assert.deepEqual([...WAITING_GROUPS], ['requests', 'ready', 'ts', 'others', 'far']);
+  for (const key of WAITING_GROUPS) assert.ok(WAITING_GROUP_LABELS[key], key);
+  assert.equal(WAITING_GROUP_LABELS.requests, 'คำร้องรอลงคิว');
   assert.equal(WAITING_GROUP_LABELS.far, 'ร่างล่วงหน้าเกิน 14 วัน');
   assert.equal(QUEUE_SOON_DAYS, 14);
   assert.equal(QUEUE_CLOSED_DAYS, 14);
@@ -184,9 +188,18 @@ test('🔴 ไม่มีผลด่าน = ไม่พร้อม (ห้�
   assert.equal(waitingGroupOf(passedGate, { status: 'scheduled', scheduledDate: FUTURE }, win), null);
 });
 
-test('กลุ่มย่อยต่อกับด่านจริง — ไม่มีบริบทสัญญา = รอฝ่ายอื่น · งานสำรวจที่ขาดคน = TS แก้เอง', () => {
+/* ⭐ ไซต์ที่ยังไม่มีโซน / โซนที่ยังไม่จัดสรรจากใบสั่งขาย = งานของ TS ที่หน้า "งานเข้าใหม่"
+   (มติเจ้าของ 23/09) — เดิมไปจมกลุ่ม "รอฝ่ายอื่น" ที่พับไว้ ทั้งที่คนแก้คือคนที่จัดคิวอยู่ */
+test('กลุ่มย่อยต่อกับด่านจริง — ไซต์ยังไม่มีโซน = TS แก้เอง · ใบยังไม่ผูกสัญญา = รอฝ่ายอื่น · งานสำรวจที่ขาดคน = TS แก้เอง', () => {
   const noContext = evaluateVisitGate({ status: 'draft', kind: 'refill', scheduledDate: FUTURE, assigneeId: 'U1' }, { todayIso: TODAY });
-  assert.equal(waitingGroupOf(noContext, { status: 'draft', scheduledDate: FUTURE }, win), 'others');
+  assert.equal(waitingGroupOf(noContext, { status: 'draft', scheduledDate: FUTURE }, win), 'ts');
+  const unlinked = evaluateVisitGate({ status: 'draft', kind: 'refill', scheduledDate: FUTURE, assigneeId: 'U1' }, {
+    todayIso: TODAY,
+    zones: [{ id: 'Z1' }],
+    terms: [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1' }],
+    ordersById: { SO1: { id: 'SO1', status: 'approved' } },
+  });
+  assert.equal(waitingGroupOf(unlinked, { status: 'draft', scheduledDate: FUTURE }, win), 'others');
   const survey = { status: 'draft', kind: 'survey', scheduledDate: FUTURE, assigneeId: '' };
   assert.equal(waitingGroupOf(evaluateVisitGate(survey, { todayIso: TODAY }), survey, win), 'ts');
   const surveyReady = { ...survey, assigneeId: 'U1' };
@@ -284,6 +297,34 @@ test('สองใบที่ไซต์เดียวกันวันเ�
   ];
   assert.deepEqual(staffLoadOn(visits, TODAY, workload).get('U1'), { visits: 2, assets: 12, packs: 4, assisting: 0 });
   assert.equal(visits.filter((v) => queueBucketOf(v, win) === 'scheduled').length, 2);
+});
+
+/* ⭐ สูตรเดียวของตัวเลือกเจ้าหน้าที่ (มติเจ้าของ 23/09) — ยกมาจาก `staffLoadFor` ของหน้าจัดคิว
+   ให้โมดัลลงคิวคำร้องใช้ร่วม · ค่าที่คาดไว้ = ผลของสูตรเดิมบนข้อมูลชุดนี้ */
+test('⭐ crewLoadPeople — ภาระรายคน + ทีม + หมายเหตุ "ไปช่วย"/"เกินภาระ" ตามลำดับรายชื่อเดิม', () => {
+  const visits = [
+    { id: 'a', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', assistantIds: ['U2'] },
+    { id: 'b', status: 'done', scheduledDate: TODAY, siteId: 'BIG', assigneeId: 'U1' },
+    { id: 'c', status: 'draft', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U3' },
+  ];
+  const technicians = [{ id: 'U3', name: 'อนุชา' }, { id: 'U1', name: 'สมชาย' }, { id: 'U2', name: 'วิชัย' }, { id: 'U9', name: 'ไร้ทีม' }];
+  const people = crewLoadPeople({
+    visits, dateIso: TODAY,
+    workload: { ...workload, BIG: { assets: 40, packs: 9 } },
+    technicians,
+    crewByUser: new Map([['U1', 'TS-A'], ['U2', 'TS-B'], ['U3', NO_TEAM]]),
+    teamNames: new Map([['TS-A', 'ทีมเหนือ'], ['TS-B', 'ทีมใต้']]),
+  });
+  assert.deepEqual(people, [
+    { id: 'U3', name: 'อนุชา', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, note: '' },
+    { id: 'U1', name: 'สมชาย', team: 'ทีมเหนือ', visits: 2, assets: 46, packs: 11, assisting: 0, note: 'เกินภาระ 12 จุด' },
+    { id: 'U2', name: 'วิชัย', team: 'ทีมใต้', visits: 0, assets: 0, packs: 0, assisting: 1, note: 'ไปช่วย 1 นัด' },
+    { id: 'U9', name: 'ไร้ทีม', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, note: '' },
+  ]);
+  // object แทน Map ก็ได้ · ไม่มีรายชื่อ = []
+  const viaObject = crewLoadPeople({ visits, dateIso: TODAY, workload, technicians: [{ id: 'U1', name: 'สมชาย' }], crewByUser: { U1: 'TS-A' }, teamNames: { 'TS-A': 'ทีมเหนือ' } });
+  assert.equal(viaObject[0].team, 'ทีมเหนือ');
+  assert.deepEqual(crewLoadPeople({ visits, dateIso: TODAY }), []);
 });
 
 test('⭐ คนว่างวันนั้น — ไปช่วยก็คือไม่ว่าง · ร่างไม่ทำให้ใครไม่ว่าง', () => {
