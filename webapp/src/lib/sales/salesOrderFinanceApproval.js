@@ -68,8 +68,14 @@ export const FINANCE_REVIEW_POINTS = [
  * ⚠️ ใบที่อนุมัติไปแล้ว **ก่อน** mig 0250 มี `financeStatus` เป็น NULL ซึ่งแปลว่า
  * "ออกก่อนมีขั้นนี้" ไม่ใช่ "รอบัญชี" — ตั้งเป็น pending ย้อนหลังเมื่อไร บัญชีจะเปิดมา
  * เจอคิวค้างทั้งกองที่ไม่มีใครตั้งใจสร้าง (เหตุผลเดียวกับที่ไม่ backfill ใน migration)
+ *
+ * ⭐ ใบที่ตายแล้ว (ยกเลิก / ถูกออก Rev. ทับ) = `null` เสมอ — ออกจากแกนบัญชีแล้ว
+ * 🐞 UAT 24/09 (SO-26090237-1): ใบยกเลิกยังขึ้นป้าย "รอปิดใบ" ที่หัวใบ + ขั้น "บัญชีปิดใบ"
+ *   บนราง เพราะ `financeStatus` ค้าง pending จากตอนอนุมัติ · ค่าในฐานคงไว้เป็นประวัติ
+ *   ตัดที่ตัวอ่านตัวนี้ตัวเดียว ป้ายกับรางเลยหายพร้อมกัน
  */
 export function financeStatusOf(order) {
+  if (order?.status === 'cancelled' || order?.status === 'revised') return null;
   const raw = order?.financeStatus;
   return FINANCE_STATUSES.includes(raw) ? raw : null;
 }
