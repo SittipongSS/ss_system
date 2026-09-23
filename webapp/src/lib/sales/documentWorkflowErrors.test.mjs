@@ -171,6 +171,37 @@ test('ทุกรหัสที่ 0374 โยนมีในตาราง�
   assert.equal(documentWorkflowError({ message: 'contract_monthly_sequence_exhausted: -' }).code, 'contract_monthly_sequence_exhausted');
 });
 
+/* 0379 (มติ 23/09 — บรรทัดโซนแบบใบเสนอราคา) เพิ่มรหัสสามตัว + รหัสด่านของไฟล์ — ทุกตัวต้องได้ข้อความไทย + สถานะที่ถูก */
+test('ทุกรหัสที่ 0379 โยนมีในตารางแปล · ราคาในทะเบียนเพิ่งเปลี่ยน = 409 ให้ตรวจใหม่', () => {
+  const sql = readFileSync(new URL('../../../supabase/migrations/0379_historical_so_quote_lines.sql', import.meta.url), 'utf8')
+    .replace(/--[^\n]*/g, '');
+  const raised = new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z0-9_]+)/g)].map((m) => m[1]));
+  for (const code of ['historical_so_line_money_mismatch', 'historical_so_line_unpriced', 'historical_so_line_price_not_registry',
+    'mig_0379_historical_lines_not_quote_shaped']) {
+    assert.ok(raised.has(code), `0379 ต้องโยน ${code}`);
+  }
+  for (const code of raised) assert.ok(WORKFLOW_ERROR_CODES.includes(code), `${code} ยังไม่มีข้อความไทย`);
+  const expected = {
+    historical_so_line_money_mismatch: 400,
+    historical_so_line_unpriced: 400,
+    historical_so_line_price_not_registry: 409,
+    mig_0379_historical_lines_not_quote_shaped: 409,
+  };
+  for (const [code, status] of Object.entries(expected)) {
+    const mapped = documentWorkflowError({ message: `P0001: ${code}` });
+    assert.equal(mapped.code, code, code);
+    assert.equal(mapped.status, status, code);
+    assert.match(mapped.message, /[\u0E00-\u0E7F]/, `${code} ต้องเป็นข้อความไทย`);
+  }
+  assert.equal(workflowErrorMessage('historical_so_line_price_not_registry'), 'ราคาในทะเบียนเพิ่งเปลี่ยน — ตรวจใหม่แล้วบันทึก');
+  assert.match(workflowErrorMessage('historical_so_line_unpriced'), /ยังไม่ตั้งราคาในฐานข้อมูลสินค้า/);
+  // ด่านของไฟล์ต่อจำนวนบรรทัดท้ายรหัส — ตัวแปลหาด้วย includes จึงยังจับได้
+  assert.equal(documentWorkflowError({ message: 'mig_0379_historical_lines_not_quote_shaped — 2 บรรทัด' }).status, 409);
+  /* line_invalid คือสิ่งที่ฟอร์มรุ่นก่อน (ไม่ส่งคีย์ส่วนลด) ได้หลังรัน 0379 ⇒ ต้องบอกทางออก "โหลดหน้าใหม่" */
+  assert.match(workflowErrorMessage('historical_so_line_invalid'), /โหลดหน้าฟอร์มใหม่/);
+  assert.match(workflowErrorMessage('historical_so_line_invalid'), /ส่วนลด/);
+});
+
 test('ข้อความของรหัสที่ 0374 เปลี่ยนความหมาย ไม่พูดถึงโมเดลเดิม', () => {
   // ฝ่ายขายทุกตำแหน่งคีย์ได้แล้ว · โมดัลถูกแทนด้วยหน้าฟอร์ม · บรรทัดคือโซนจากทะเบียน
   assert.match(workflowErrorMessage('historical_so_actor_forbidden'), /ฝ่ายขายและแอดมิน/);

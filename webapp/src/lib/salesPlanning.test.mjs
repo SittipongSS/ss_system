@@ -5,7 +5,10 @@ import {
   requiredConfirmDateForNeedMonth,
   buildSahamitReverseRiskRows,
 } from './salesPlanningReverse';
-import { canApproveQuotation, inSalesEditScope, inSalesViewScope, salesPlanningEditScope, salesPlanningViewScope } from './salesPlanning';
+import {
+  QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, canApproveQuotation, inSalesEditScope, inSalesViewScope, quoteLineMoney, quoteLineNet,
+  salesPlanningEditScope, salesPlanningViewScope,
+} from './salesPlanning';
 
 test('requiredConfirmDateForNeedMonth subtracts working days from first day of need month', () => {
   assert.equal(requiredConfirmDateForNeedMonth('2026-08', 1, new Set()), '2026-07-31');
@@ -100,4 +103,31 @@ test('canApproveQuotation: only deal owner and superuser may approve (owner sign
   // กัน null
   assert.equal(canApproveQuotation(null, deal), false);
   assert.equal(canApproveQuotation({ id: 'x', role: 'ae' }, null), false);
+});
+
+/* ── เงินของหนึ่งบรรทัดตามที่ใบเสนอราคาบันทึก (มติเจ้าของ 23/09 — ใบสั่งขายย้อนหลังใช้ตัวเดียวกัน) ── */
+
+test('quoteLineMoney: ชนิดส่วนลดที่ไม่รู้จัก = ไม่ลด · % ตัดเหลือ 100 · บาทไม่เกินยอด · คิดด้วย quoteLineNet ตัวเดียวกับจอ', () => {
+  assert.deepEqual([...QUOTE_DISCOUNT_TYPES], ['percent', 'amount']);
+  assert.deepEqual(QUOTE_VAT_OPTIONS.map((o) => [o.value, o.label]), [[0, 'รวม VAT แล้ว'], [7, '+ VAT 7% ท้ายใบ']]);
+  // ตัวอย่างเจ้าของ 23/09: 1 ชุด × 12 เดือน = จำนวน 12 × 3,500
+  assert.deepEqual(quoteLineMoney({ qty: 12, unitPrice: 3500 }), {
+    discountType: null, discountValue: 0, gross: 42000, discountAmount: 0, lineTotal: 42000,
+  });
+  assert.deepEqual(quoteLineMoney({ qty: 12, unitPrice: 3500, discountType: 'percent', discountValue: 5 }), {
+    discountType: 'percent', discountValue: 5, gross: 42000, discountAmount: 2100, lineTotal: 39900,
+  });
+  assert.deepEqual(quoteLineMoney({ qty: 12, unitPrice: 3500, discountType: 'percent', discountValue: 150 }), {
+    discountType: 'percent', discountValue: 100, gross: 42000, discountAmount: 42000, lineTotal: 0,
+  });
+  assert.deepEqual(quoteLineMoney({ qty: 1, unitPrice: 100, discountType: 'amount', discountValue: 250 }), {
+    discountType: 'amount', discountValue: 250, gross: 100, discountAmount: 100, lineTotal: 0,
+  });
+  assert.deepEqual(quoteLineMoney({ qty: 2, unitPrice: 100, discountType: 'foo', discountValue: 9 }), {
+    discountType: null, discountValue: 0, gross: 200, discountAmount: 0, lineTotal: 200,
+  });
+  // ค่าเดียวกับ quoteLineNet เมื่อป้อนค่าที่บันทึกได้แล้ว
+  const m = quoteLineMoney({ qty: 7, unitPrice: 33.33, discountType: 'percent', discountValue: '12.5' });
+  assert.deepEqual({ gross: m.gross, discountAmount: m.discountAmount, lineTotal: m.lineTotal },
+    quoteLineNet({ qty: 7, unitPrice: 33.33, discountType: 'percent', discountValue: 12.5 }));
 });

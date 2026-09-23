@@ -31,6 +31,31 @@ function orderedRows(installments) {
   });
 }
 
+/**
+ * บรรทัดหนึ่งบรรทัด **ตามลำดับคอลัมน์ของใบเสนอราคา** — จำนวน (หน่วย) × ราคา/หน่วย [− ส่วนลดรายการ] = จำนวนเงิน
+ * ⭐ มติเจ้าของ 23/09: ผู้อนุมัติต้องเห็นบรรทัดแบบเดียวกับที่ผู้คีย์คีย์ (ไม่ใช่ "N แพ็ค" ที่อ่านได้สองความหมาย)
+ * @param line `{ qty, unit, unitPrice, discountAmount, lineTotal }` (บรรทัดใบสั่งขาย หรือแถวโซนจาก GET ของใบ)
+ */
+export function quoteLineText(line = {}) {
+  const discount = Number(line?.discountAmount) || 0;
+  return `${fmtNumber(Number(line?.qty) || 0)} ${text(line?.unit) || 'หน่วย'} × ${fmtMoney(Number(line?.unitPrice) || 0)}`
+    + `${discount > 0 ? ` − ส่วนลด ${fmtMoney(discount)}` : ''} = ${fmtMoney(Number(line?.lineTotal) || 0)}`;
+}
+
+/* บรรทัดที่หน้าตาเหมือนกันรวมเป็นกลุ่มเดียว (สินค้า · จำนวน · หน่วย · ราคา · ส่วนลด) — ใบย้อนหลังส่วนใหญ่คือ
+   แพ็คเกจเดียวกันทุกโซน ⇒ โมดัลพูด "12 แพ็คเกจ × 3,500 = 42,000 (4 โซน)" บรรทัดเดียวแทนสี่บรรทัดที่ซ้ำกัน */
+const LINE_GROUPS_SHOWN = 3;
+function lineGroups(lines) {
+  const groups = new Map();
+  for (const line of list(lines)) {
+    const key = [text(line.fgCode), Number(line.qty) || 0, text(line.unit), Number(line.unitPrice) || 0, Number(line.discountAmount) || 0].join('|');
+    const group = groups.get(key) || { fgCode: text(line.fgCode) || null, line, count: 0 };
+    group.count += 1;
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
 /* ป้ายเอกสารแทนสัญญา "ใบสั่งซื้อของลูกค้า (PO) PO-SPW-2026-0118" — ชนิดที่ไม่รู้จัก (ขีด) ไม่พูด */
 function contractDocText(contract) {
   if (!contract) return '';
@@ -232,7 +257,8 @@ export function historicalCoverageSegments(installments = [], { start = null, en
      อ่านเหมือน "ไม่มีเรื่องต้องตรวจ" ซึ่งตรงข้ามกับความจริง
    @param order   ใบ (orderNumber · customerName · customer.arCode · totalAmount · subtotal · vatAmount · lines · notes)
    @param extras  `{ installments, contract, contractFiles, lineZones, liveTermWarnings, signedFile, extrasError }`
-     · lineZones: `[{ zoneId, zoneCode, zoneName, siteId, siteCode, siteName, packs? }]` (หนึ่งแถวต่อบรรทัด)
+     · lineZones: `[{ zoneId, zoneCode, zoneName, siteId, siteCode, siteName, fgCode?, qty?, unit?, unitPrice?,
+       discountAmount?, lineTotal? }]` (หนึ่งแถวต่อบรรทัด — ของเสริมจาก loadHistoricalOrderExtras)
      · liveTermWarnings: สตริง หรือ `{ zoneCode|zoneName, orderNumber, endDate }`
    @returns `{ subject, checklist, effects }` — effects ไม่รวม HISTORICAL_STATUS_NOTE (ตัวสร้างโมดัลเติมเอง) */
 export function historicalApprovalFacts(order, {
@@ -269,17 +295,10 @@ export function historicalApprovalFacts(order, {
     checklist.push(`ไฟล์เอกสารแทนสัญญา: ${extrasError ? 'โหลดไม่ขึ้น' : 'ยังไม่มีไฟล์'} — อนุมัติไม่ได้จนกว่าจะเห็นไฟล์`);
   }
 
-  // ── โซนและแพ็ค รายไซต์ ──
+  // ── โซน รายไซต์ + รายการแบบใบเสนอราคา (มติ 23/09 — ไม่นับ "แพ็ค" แล้ว) ──
   const zones = list(lineZones).length
     ? list(lineZones)
-    : list(order?.lines).filter((l) => l.serviceZoneId).map((l) => ({ zoneId: l.serviceZoneId, packs: l.qty, siteName: null }));
-  const packsOf = (zone) => {
-    // ⚠️ ว่าง ≠ 0 แพ็ค (`Number(null)` = 0) — ไม่มีค่าในของเสริมก็ถอยไปอ่านบรรทัดของใบ
-    if (text(zone.packs) && Number.isFinite(Number(zone.packs))) return Number(zone.packs);
-    const line = list(order?.lines).find((l) => l.serviceZoneId === zone.zoneId);
-    return Number(line?.qty) || 0;
-  };
-  const totalPacks = zones.reduce((sum, zone) => sum + packsOf(zone), 0);
+    : list(order?.lines).filter((l) => l.serviceZoneId).map((l) => ({ zoneId: l.serviceZoneId, siteName: null }));
   const bySite = new Map();
   for (const zone of zones) {
     const key = zone.siteId || zone.siteCode || zone.siteName || '';
@@ -289,13 +308,25 @@ export function historicalApprovalFacts(order, {
   }
   const siteText = [...bySite.values()].filter((s) => s.name).map((s) => `${s.name} ${fmtNumber(s.count)} โซน`).join(' · ');
   checklist.push(zones.length
-    ? `โซน: ${fmtNumber(zones.length)} โซน · ${fmtNumber(totalPacks)} แพ็ค${siteText ? ` — ${siteText}` : ''}`
+    ? `โซน: ${fmtNumber(zones.length)} โซน${siteText ? ` — ${siteText}` : ''}`
     : `โซน: ${missing} — ใบย้อนหลังต้องมีอย่างน้อย 1 โซน`);
+  /* บรรทัดของใบ = ของจริงที่จะอนุมัติ · ไม่มี (ของเสริมโหลดไม่ขึ้นและใบไม่พกบรรทัดมา) ⇒ ถอยไปแถวโซน */
+  const priced = list(order?.lines).filter((l) => l.serviceZoneId || l.productId);
+  const groups = lineGroups(priced.length ? priced : zones.filter((zone) => zone.qty !== undefined && zone.qty !== null));
+  if (groups.length) {
+    const lineCount = groups.reduce((sum, group) => sum + group.count, 0);
+    checklist.push(groups.length <= LINE_GROUPS_SHOWN
+      ? `รายการ: ${groups.map((group) => `${group.fgCode ? `${group.fgCode} ` : ''}${quoteLineText(group.line)}`
+        + `${group.count > 1 ? ` (${fmtNumber(group.count)} โซน)` : ''}`).join(' · ')}`
+      : `รายการ: ${fmtNumber(lineCount)} บรรทัด ${fmtNumber(groups.length)} แบบ — ยอดรวมสินค้า/บริการ ${fmtMoney(order?.subtotal)} (ดูตารางรายการในหน้าใบ)`);
+  }
 
-  // ── เงิน ──
+  // ── เงิน (ป้ายท้ายตารางของใบเสนอราคา) ──
+  const vat = Number(order?.vatAmount) || 0;
   checklist.push(zeroValue
-    ? `ยอดทั้งใบ: ${fmtMoney(0)} — ไม่มีงวดให้เก็บ${text(order?.notes) ? ` · หมายเหตุ: ${text(order.notes)}` : ''}`
-    : `ยอดทั้งใบ: ${fmtMoney(order?.totalAmount)} — ก่อน VAT ${fmtMoney(order?.subtotal)} · VAT ${fmtMoney(order?.vatAmount)}`);
+    ? `ยอดรวมทั้งสิ้น: ${fmtMoney(0)} — ไม่มีงวดให้เก็บ${text(order?.notes) ? ` · หมายเหตุ: ${text(order.notes)}` : ''}`
+    : `ยอดรวมทั้งสิ้น: ${fmtMoney(order?.totalAmount)} — ยอดรวมสินค้า/บริการ ${fmtMoney(order?.subtotal)}`
+      + ` · ${vat > 0 ? `ภาษีมูลค่าเพิ่ม ${fmtMoney(vat)}` : 'รวม VAT แล้ว'}`);
   if (!zeroValue) {
     if (opening) {
       const evidence = list(opening.evidence).length;

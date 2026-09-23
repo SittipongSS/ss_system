@@ -34,10 +34,11 @@ import { EXTERNAL_DOC_TYPE } from "@/lib/master/attachmentTypes";
 import { EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS } from "@/lib/sales/contracts";
 import { DOC_DATE_MAX, DOC_DATE_MIN, HISTORICAL_STATUS_NOTE } from "@/lib/sales/historicalOrders";
 import {
-  HISTORICAL_REF_MAX, REGISTRY_LOAD_FAILED, charLength, contractSpan, historicalCoverageWarning,
+  HISTORICAL_REF_MAX, HISTORICAL_VAT_RATES, REGISTRY_LOAD_FAILED, charLength, contractSpan, historicalCoverageWarning,
   historicalDownstreamReset, historicalFieldAnchorId, historicalStepIssueNotice,
 } from "@/lib/sales/historicalIntakeForm";
 import { fmtNumber, naText } from "@/lib/format";
+import { QUOTE_VAT_OPTIONS } from "@/lib/salesPlanning";
 import styles from "./HistoricalOrderWizard.module.css";
 
 /* คำอธิบายใต้ชื่อชนิดเอกสาร — ป้ายมาจากทะเบียนสัญญา (EXTERNAL_DOC_KIND_LABELS) ที่เดียว */
@@ -49,23 +50,18 @@ const DOC_KIND_HINTS = {
   other: "เอกสารอื่นที่ใช้ยืนยันข้อตกลง",
 };
 
-/* VAT สามแผ่น — หนึ่งคำถามหนึ่งคำตอบ (ม็อกมีสองแถว แต่ "ไม่มี VAT" ทำให้แถวอัตราไม่มีความหมาย)
-   ⚠️ ไม่มีค่าตั้งต้น (form-design-rules §2) · ค่าที่ส่งขึ้น API เป็นคู่ (vatRate, amountsIncludeVat) */
-const VAT_TILES = [
-  { value: "net7", label: "ราคาไม่รวม VAT", description: "บวก VAT 7% ท้ายใบ" },
-  { value: "gross7", label: "ราคารวม VAT แล้ว", description: "ถอด VAT 7% ออกจากราคา" },
-  { value: "none", label: "ไม่มี VAT", description: "ไม่คิดภาษี" },
-];
-const vatTileOf = (state) => {
-  if (state.vatRate === 0) return "none";
-  if (state.vatRate === 7) return state.amountsIncludeVat === true ? "gross7" : (state.amountsIncludeVat === false ? "net7" : null);
-  return null;
+/* VAT ของใบ = **สองตัวเลือกของใบเสนอราคา** (ช่อง "ภาษีมูลค่าเพิ่ม" ท้ายตาราง · QUOTE_VAT_OPTIONS) — มติเจ้าของ 23/09
+   🚫 แผ่นที่สาม "ราคารวม VAT แล้ว — ถอด VAT 7%" ถูกถอด: มันหารทุกบรรทัดด้วย 1.07 ⇒ จำนวนเงินของบรรทัด ≠
+      จำนวน × ราคา/หน่วย ซึ่งใบเสนอราคาไม่มีวันเป็น · "ไม่มี VAT" กับ "ไม่รวม VAT +7%" เดิม = 0 กับ 7 เงินก้อนเดียวกัน
+   ⚠️ ไม่มีค่าตั้งต้น (form-design-rules §2) · แผ่น = ตัวเลือกชุดเล็กที่ต้องเห็นทั้งหมด (ไม่ใช่ดรอปดาวน์)
+   ⚠️ ป้ายมาจากค่าคงที่กลางตัวเดียวกับใบเสนอราคา — คำอธิบายใต้ป้ายเป็นของจอนี้ (ใบเสนอราคาไม่มีที่ให้อธิบาย) */
+const VAT_TILE_HINTS = {
+  0: "ราคา/หน่วยในทะเบียนรวม VAT แล้ว — ไม่บวกเพิ่ม",
+  7: "บวก VAT 7% ของยอดรวมสินค้า/บริการไว้ท้ายใบ",
 };
-const VAT_TILE_VALUES = {
-  net7: { vatRate: 7, amountsIncludeVat: false },
-  gross7: { vatRate: 7, amountsIncludeVat: true },
-  none: { vatRate: 0, amountsIncludeVat: false },
-};
+const VAT_TILES = QUOTE_VAT_OPTIONS.map((option) => ({
+  value: option.value, label: option.label, description: VAT_TILE_HINTS[option.value] || null,
+}));
 
 const REF_FIELDS = [
   { key: "quote", label: "ใบเสนอราคาเดิม", hint: "ข้อความอ้างอิง — ไม่ผูกกับทะเบียนใบเสนอราคา" },
@@ -275,7 +271,7 @@ export default function WizardContractStep({
             ariaLabel="วันสิ้นสุดสัญญา"
           />
           {/* ⚠️ "N เดือน" ขึ้นเฉพาะช่วงที่ลงตัวเป็นเดือนจริง ๆ — ช่วงที่ไม่ลงตัวบอกไปตรง ๆ
-              ว่าปุ่มลัดยอดโซนใช้ไม่ได้ ไม่ใช่ปัดเศษเดือนแล้วเสนอยอดผิด */}
+              ว่าแบ่งงวดอัตโนมัติไม่ได้ ไม่ใช่ปัดเศษเดือนแล้วเสนอยอดผิด */}
           {/* 🔴 มติข้อ 9 มีสองหน้า: ใบใหม่ที่สัญญาสิ้นสุดไปแล้ว = ด่าน · ใบที่คีย์ค้างไว้แล้ว
               สิ้นสุดระหว่างทาง = **คำเตือน** (ฝั่ง server คือ `ctx.editing`) — กระจกที่ลืมข้อนี้
               ทำให้ใบที่ถูกตีกลับหลังสัญญาหมดอายุ แก้และส่งใหม่ไม่ได้อีกเลย */}
@@ -366,21 +362,20 @@ export default function WizardContractStep({
         ))}
       </div>
 
-      <FormZone title="ราคาและภาษี" note="ใช้กับยอดทุกโซนในขั้นถัดไป" />
+      <FormZone title="ภาษี" note="เลือกแบบเดียวกับช่อง “ภาษีมูลค่าเพิ่ม” ของใบเสนอราคา — ราคา/หน่วยของทุกโซนมาจากทะเบียนสินค้า" />
       <div className={styles.field} id={historicalFieldAnchorId("vatRate")}>
-        <span>ยอดที่กรอก <b className={styles.req}>*</b></span>
+        <span>ภาษีมูลค่าเพิ่ม <b className={styles.req}>*</b></span>
         <OptionTiles
-          ariaLabel="ยอดที่กรอกรวม VAT แล้วหรือยัง"
+          ariaLabel="ภาษีมูลค่าเพิ่มของใบ"
           options={VAT_TILES}
-          value={vatTileOf(state)}
+          value={HISTORICAL_VAT_RATES.includes(state.vatRate) ? state.vatRate : null}
           onChange={(value) => {
-            const next = VAT_TILE_VALUES[value];
-            /* ยอดใบคิดใหม่ตามโหมดที่เลือก ⇒ งวดที่คีย์ไว้ไม่ตรงยอดอีก — ถามแล้วล้างเป็นชุดเดียว */
-            if (next) changeUpstream("vat", next);
+            /* ยอดใบคิดใหม่ตาม VAT ที่เลือก ⇒ งวดที่คีย์ไว้ไม่ตรงยอดอีก — ถามแล้วล้างเป็นชุดเดียว */
+            if (HISTORICAL_VAT_RATES.includes(value) && value !== state.vatRate) changeUpstream("vat", { vatRate: value });
           }}
           disabled={busy}
         />
-        <small>ไม่มีค่าตั้งต้น · ระบบคิดยอดก่อน VAT / VAT / ยอดรวมให้เองจากยอดโซน · เปลี่ยนโหมดแล้วงวดในขั้น ③ ถูกล้าง</small>
+        <small>ไม่มีค่าตั้งต้น · ระบบคิดยอดรวมสินค้า/บริการ ภาษีมูลค่าเพิ่ม และยอดรวมทั้งสิ้นให้เองจากรายการของทุกโซน · เปลี่ยนแล้วงวดในขั้น ③ ถูกล้าง</small>
       </div>
 
       <div className={styles.field}>

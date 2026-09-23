@@ -421,6 +421,31 @@ export function quoteLineNet(line = {}) {
   return { gross, discountAmount, lineTotal: round2(gross - discountAmount) };
 }
 
+/* ชนิดส่วนลดรายบรรทัดที่บันทึกได้ — ตัวเลือก "ไม่ลด / % / บาท" ของตารางรายการ (ไม่ลด = null)
+   ⭐ ชุดเดียวกับที่ตัวตรวจบรรทัดของใบสั่งขายย้อนหลังในฐานรับ (mig 0379 · เทสต์เทียบสองฝั่ง) */
+export const QUOTE_DISCOUNT_TYPES = Object.freeze(['percent', 'amount']);
+
+/* ตัวเลือก VAT ของใบ — ป้ายเดียวกับช่อง "ภาษีมูลค่าเพิ่ม" ท้ายตารางใบเสนอราคา
+   (มติเจ้าของ 23/09: ใบสั่งขายย้อนหลังต้องคีย์ **เหมือนใบเสนอราคา** — ห้ามมีโหมดที่สามของตัวเอง) */
+export const QUOTE_VAT_OPTIONS = Object.freeze([
+  Object.freeze({ value: 0, label: 'รวม VAT แล้ว' }),
+  Object.freeze({ value: 7, label: '+ VAT 7% ท้ายใบ' }),
+]);
+
+/**
+ * เงินของหนึ่งบรรทัด **ตามที่ใบเสนอราคาบันทึก** — ชนิดส่วนลดที่ไม่รู้จัก = ไม่ลด · % เกิน 100 ตัดเหลือ 100
+ * (normalizeDiscountValue) แล้วจึงคิดด้วย quoteLineNet ตัวเดียวกับจอ
+ * ⭐ ตัวเดียวที่ `normalizeManualLines` (บันทึกใบเสนอราคา) และแผนใบสั่งขายย้อนหลังใช้คิดบรรทัด
+ *   ⇒ บรรทัดของสองเอกสารคิดเงินสูตรเดียวกันทุกสตางค์ (มติเจ้าของ 23/09)
+ * @returns `{ discountType, discountValue, gross, discountAmount, lineTotal }` — สองช่องแรกคือค่าที่บันทึกได้จริง
+ */
+export function quoteLineMoney({ qty, unitPrice, discountType = null, discountValue = 0 } = {}) {
+  const type = QUOTE_DISCOUNT_TYPES.includes(discountType) ? discountType : null;
+  const value = normalizeDiscountValue(type, discountValue);
+  const net = quoteLineNet({ qty, unitPrice, discountType: type, discountValue: value });
+  return { discountType: type, discountValue: value, ...net };
+}
+
 // รวมทั้งใบ (FM-SA-01): subtotal(หลังลดรายบรรทัด) − ส่วนลดท้ายใบ = ฐานภาษี → + VAT
 // vatRate default 0 = "ราคารวม VAT แล้ว" (ราคาบรรทัด = ราคาผลิตจาก master — มติ
 // 2026-07-19); เลือก 7 เมื่อต้องการบวก VAT แยกท้ายใบ. ทุกยอดปัดสตางค์ก่อนคืน.

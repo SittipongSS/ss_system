@@ -374,9 +374,11 @@ test("ห้ามห่อ TableScroll ด้วยการ์ดที่ม�
 });
 
 /* สองจุดบนหน้าใบเสนอราคาต้องไม่ไหลกลับ — ตัวนับข้างบนเป็นเพดานรวม
-   ถ้าใครห่อกลับที่นี่แล้วไปถอดที่อื่น ยอดยังเท่าเดิมและเพดานไม่ฟ้อง */
+   ถ้าใครห่อกลับที่นี่แล้วไปถอดที่อื่น ยอดยังเท่าเดิมและเพดานไม่ฟ้อง
+   ⭐ กล่องของตารางรายการย้ายจาก QuotationLineItems ไปอยู่ที่ QuoteLineCells (`QuoteLinesTable`) —
+   ตัวเดียวกับบรรทัดโซนของใบสั่งขายย้อนหลัง (มติเจ้าของ 23/09) ⇒ ยามตามไปเฝ้าที่ไฟล์เจ้าของกล่อง */
 for (const target of [
-  "src/components/salesPlanning/QuotationLineItems.js",
+  "src/components/salesPlanning/QuoteLineCells.js",
   "src/components/salesPlanning/QuotationInstallments.js",
 ]) {
   test(`${target.split("/").pop()} — คลาสการ์ดเก่าต้องอยู่บน TableScroll เอง`, () => {
@@ -388,3 +390,11 @@ for (const target of [
       "ตารางนี้ไม่ใช่ .premium-table เซลล์ยังต้องพึ่งสไตล์ของคลาสเก่า ⇒ ย้ายมา ไม่ใช่ลบ");
   });
 }
+
+test("QuotationLineItems.js — ตารางรายการใช้กล่อง QuoteLinesTable ตัวเดียว (ไม่มี TableScroll ของตัวเองซ้อน)", () => {
+  const source = fs.readFileSync(path.join(WEBAPP, "src/components/salesPlanning/QuotationLineItems.js"), "utf8")
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+  assert.match(source, /<QuoteLinesTable>/, "กล่องของตารางแก้ไขต้องมาจาก QuoteLineCells ที่ยามข้างบนเฝ้าอยู่");
+  assert.doesNotMatch(source, /premium-glass-table/,
+    "คลาสการ์ดเก่าเขียนซ้ำที่นี่ = กล่องสองชุดที่เพี้ยนจากกันได้ (ตารางฝั่งอ่านใช้ .premium-table ไม่ใช่คลาสนี้)");
+});

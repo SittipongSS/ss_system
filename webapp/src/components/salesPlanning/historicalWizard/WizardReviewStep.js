@@ -7,14 +7,19 @@
 //   อนุมัติใบตัวเองไม่ได้ ⇒ ต้องบอกตั้งแต่ก่อนกดว่าใบจะไปรอใคร
 // 🔴 ด่าน "ใบที่อาจซ้ำ" — ปุ่มบันทึกโชว์แต่กดไม่ผ่านจนกว่าจะเปิดสวิตช์ (กฎบ้าน: ติดด่าน = โชว์แล้วบอกเหตุ)
 //   ตัวด่านอยู่ที่ `historicalDuplicateGate` ไม่ใช่เงื่อนไขในวงเล็บของ JSX
-import { AlertTriangle, Building2, FileText, MapPin, UserRound, Wallet } from "lucide-react";
+// ⭐ รายการของใบ = **ตารางรายการฝั่งอ่านตัวเดียวกับหน้าใบสั่งขาย/ใบเสนอราคา** (`QuotationReadOnlyLineItems`)
+//   มติเจ้าของ 23/09: ผู้คีย์ต้องเห็นบรรทัดแบบใบเสนอราคา (จำนวน · หน่วย · ราคาต่อหน่วย · ส่วนลด · รวม) ไม่ใช่
+//   "N แพ็ค" + ยอดที่พิมพ์เอง · ไซต์ · โซน กับรอบบริการที่ขายไว้ ขึ้นใต้คำอธิบายของแต่ละบรรทัด
+import { AlertTriangle, Building2, FileText, UserRound, Wallet } from "lucide-react";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
+import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
+import { QUOTE_VAT_OPTIONS } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { externalDocKindLabel } from "@/lib/sales/contracts";
 import { HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL } from "@/lib/sales/historicalOrders";
 import { historicalAfterSaveSteps } from "@/lib/sales/historicalOrderCopy";
-import { contractSpan, historicalReviewStaleNotice } from "@/lib/sales/historicalIntakeForm";
+import { contractSpan, historicalReviewStaleNotice, historicalTotalsView } from "@/lib/sales/historicalIntakeForm";
 import styles from "./HistoricalOrderWizard.module.css";
 
 function Card({ icon: Icon, title, children }) {
@@ -43,7 +48,10 @@ export default function WizardReviewStep({
      ขั้น ①–③ (`contractSpan().note`) ไม่ใช่พิมพ์จำนวนเดือนทั้งที่ขั้นอื่นบอกว่ายังไม่รู้ —
      ของเดิมเรียก `contractMonths` ตรง ๆ ซึ่งไม่มีช่องบอกเหตุ ⇒ สองที่พูดคนละเรื่องบนใบเดียวกัน */
   const { months, note: spanNote } = contractSpan(contract?.startDate, contract?.endDate);
-  const totalPacks = lines.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+  /* ป้ายตัวเลือก VAT ของใบ — ชุดเดียวกับช่อง "ภาษีมูลค่าเพิ่ม" ท้ายตารางใบเสนอราคา */
+  const vatLabel = QUOTE_VAT_OPTIONS.find((option) => option.value === Number(header.vatRate))?.label || null;
+  /* กล่องสรุปท้ายตาราง — ตัวเดียวกับท้ายตารางรายการของขั้น ② (แผนมาถึงขั้นนี้ได้ = เงินผ่านด่านแล้ว ⇒ ok) */
+  const totals = historicalTotalsView({ ok: true, ...header }, header.vatRate);
   const steps = historicalAfterSaveSteps(plan, { keyerIsReviewer });
   const dupes = Array.isArray(duplicates) ? duplicates : [];
 
@@ -73,38 +81,12 @@ export default function WizardReviewStep({
           </dl>
         </Card>
 
-        <Card icon={MapPin} title="โซนและแพ็ค">
-          <dl className={styles.kv}>
-            <dt>รวม</dt><dd>{fmtNumber(lines.length)} โซน · {fmtNumber(totalPacks)} แพ็ค</dd>
-          </dl>
-          <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={420}>
-            <table className="w-full text-sm">
-              <thead><tr>
-                <th>ไซต์ · โซน</th>
-                <th className="num">แพ็ค</th>
-                <th className="num">ยอด</th>
-              </tr></thead>
-              <tbody>
-                {lines.map((line) => (
-                  <tr key={line.zoneId}>
-                    <td>
-                      {naText(line.zoneName)}
-                      <span className={styles.cellSub}>{[line.siteCode, line.siteName].filter(Boolean).join(" ")} · {naText(line.zoneCode)}</span>
-                    </td>
-                    <td className="num">{fmtNumber(line.qty)}</td>
-                    <td className="num">{fmtMoney(line.grossAmount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        </Card>
-
         <Card icon={Wallet} title="เงิน">
           <dl className={styles.kv}>
-            <dt>รวมทั้งใบ</dt><dd>{fmtMoney(header.totalAmount)}</dd>
-            <dt>ก่อน VAT</dt><dd>{fmtMoney(header.subtotal)}</dd>
-            <dt>VAT {header.vatRate}%</dt><dd>{fmtMoney(header.vatAmount)}</dd>
+            {/* ยอดรวมสินค้า/บริการ + ภาษีมูลค่าเพิ่มอยู่ท้ายตารางรายการข้างล่าง (ป้ายของใบเสนอราคา) —
+                ที่นี่เหลือยอดที่งวดชำระต้องรวมให้ได้ */}
+            <dt>ยอดรวมทั้งสิ้น</dt><dd>{fmtMoney(header.totalAmount)}</dd>
+            <dt>ภาษีมูลค่าเพิ่ม</dt><dd>{naText(vatLabel)}</dd>
             <dt>{OPENING_INSTALLMENT_LABEL}</dt>
             <dd>
               {opening
@@ -132,6 +114,18 @@ export default function WizardReviewStep({
           </dl>
         </Card>
       </div>
+
+      <h4 className={styles.section}>
+        รายการ
+        <span className={styles.sectionKind}>{fmtNumber(lines.length)} โซน · หนึ่งโซนหนึ่งบรรทัด</span>
+      </h4>
+      <QuotationReadOnlyLineItems
+        lines={lines}
+        showServiceRounds
+        showInstallationPoint
+        summaryRows={totals.rows}
+        grandTotal={totals.grandTotal}
+      />
 
       <h4 className={styles.section}>
         หลังบันทึก จะเกิดอะไร

@@ -29,8 +29,34 @@
 
 .lineDescriptionCell > input { width: 100%; }
 
-.fgCode {
+/* ความกว้างคอลัมน์ของบรรทัด (QuoteLineHeadCells) — table-layout: fixed ล็อกตาม th
+   ⚠️ ผลรวมคอลัมน์ตายตัวคือที่มาของพื้น 900 ข้างบน ⇒ เปลี่ยนเลขตรงนี้ต้องคิดพื้นใหม่ด้วย */
+.colIndex { width: 36px; }
+.colQty { width: 120px; }
+.colPrice { width: 130px; }
+.colDiscount { width: 210px; }
+.colAmount { width: 150px; }
+.colActions { width: 40px; }
+
+/* "หน่วย: แพ็คเกจ" ใต้ช่องจำนวน — หน่วยล็อกตามทะเบียนสินค้า (มติ 2026-07-23) */
+.unitNote {
   color: var(--text-3);
+  font-size: var(--fs-2);
+}
+
+/* เหตุที่จำนวนใช้ไม่ได้ ใต้ช่องจำนวน (`qtyNote` — ใบย้อนหลังรับเฉพาะจำนวนเต็ม > 0) · บล็อกของตัวเอง
+   ไม่งั้นไปต่อท้ายช่องกรอกในบรรทัดเดียวกันตอนคอลัมน์กว้างพอ (เหตุผลเดียวกับ .priceHint) */
+.qtyNote {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--red);
+  font-size: var(--fs-2);
+  line-height: var(--lh-thai);
+}
+
+/* ลิงก์ "ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →" ใต้ช่องราคา */
+.unpricedLink {
+  color: var(--amber);
   font-size: var(--fs-2);
 }
 
@@ -130,8 +156,8 @@
   font-size: var(--fs-6);
 }
 
-/* จำนวนรอบบริการต่อบรรทัด (mig 0326) — ป้าย+ช่องกรอกที่ซ้อนอยู่ในช่อง "จำนวน"
-   ช่องแคบ 120px จึงวางเป็นสองบรรทัด ไม่ใช่ป้ายซ้ายช่องขวา */
+/* ช่อง "รอบบริการที่ขายไว้" ของบรรทัดใบสั่งขาย (QuoteLineServiceRounds · มติ 23/09) — ป้ายบน ช่องล่าง
+   วางใต้คำอธิบายในเซลล์ "รายการ" ตรงที่ฝั่งอ่านโชว์ .serviceRoundsTag */
 .serviceRounds {
   display: flex;
   flex-direction: column;
@@ -141,10 +167,33 @@
   font-size: var(--fs-6);
 }
 
-/* ฝั่งอ่านอย่างเดียว (หน้าใบสั่งขาย) — บรรทัดเล็กใต้คำอธิบาย */
+/* ช่องกรอก + "รอบ" — ทรงเดียวกับการ์ดสัญญาบริการของใบสั่งขาย (ServiceContractCard .roundsField)
+   96px = พอสำหรับ 4 หลัก + ปุ่ม spinner ของเบราว์เซอร์ · ชิดขวาให้ตัวเลขเทียบกันข้ามแถวได้ */
+.roundsField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.roundsField input {
+  width: 96px;
+  text-align: right;
+}
+
+.roundsUnit {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+/* ฝั่งอ่านอย่างเดียว (หน้าใบสั่งขาย) — บรรทัดเล็กใต้คำอธิบาย: รอบบริการที่ขายไว้ · ไซต์ · โซนของใบย้อนหลัง
+   ⚠️ ช่องของ `.premium-table` เป็น nowrap (!important ที่ td — ลูกยังตั้งของตัวเองได้) ⇒ ชื่อไซต์ · โซนที่ยาว
+   ต้องขึ้นบรรทัดใหม่ในช่องของมันเอง ไม่ใช่ถูกเพดานช่องตัดทิ้งเงียบ ๆ */
 .serviceRoundsTag {
   color: var(--text-3);
   font-size: var(--fs-6);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .noteReadonly strong {
@@ -314,6 +363,18 @@
     gap: var(--space-2-5);
     text-align: left !important;
   }
+
+  /* ฝั่งอ่าน: เพดานช่องข้อความ 220px (`--cell-text-max` ใน Table.module.css) กับความกว้าง 42px ของช่องลำดับ
+     เป็นกติกาของ **ตาราง** — พอแถวกลายเป็นการ์ดเต็มความกว้าง สองค่านี้ตัดข้อความทิ้งกลางคำ
+     🐞 เห็นชัดที่ขั้น ④ ของใบสั่งขายย้อนหลัง (คอลัมน์แคบกว่า 900 เสมอ) — "รายกา…" แทน "รายการที่ 1"
+        และ "ไซต์ · โซน: … M Clin" · ฝั่งแก้ไขไม่เป็นเพราะ editable + stacked ถอดเพดานให้อยู่แล้ว
+     ⚠️ ต้อง !important: กฎเพดานผูกกับ `.scroll[data-family] td` ซึ่ง specificity สูงกว่าคลาสของหน้า */
+  .readOnlyTable tbody td {
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
+  .readOnlyTable tbody td:first-child { width: 100%; }
 
   .linesTable tbody td[data-label]::before,
   .readOnlyTable tbody td[data-label]::before {

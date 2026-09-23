@@ -1,6 +1,7 @@
 // ── ตัวเขียนใบสั่งขายย้อนหลัง (0374): ด่าน · พรีวิว · ยืนยันใบซ้ำ · RPC สร้าง/แก้ · ส่งซ้ำ · หลักฐานงวดยกมา · audit ────
 // ยิงด้วย supabase ปลอม (แพตเทิร์น lib/forceDelete.test.mjs) — ห้ามแตะฐานจริง (dev DB = prod DB)
-// ข้อมูลชุดม็อก (mockups/legacy-so-service-flow) ย่อเหลือ 2 โซน: ก่อน VAT 144,000 · VAT 10,080 · รวม 154,080
+// ข้อมูลชุดม็อก (mockups/legacy-so-service-flow) ย่อเหลือ 2 โซน แบบบรรทัดใบเสนอราคา (มติ 23/09):
+//   จำนวน 72 + 48 × ราคาในทะเบียน 1,200 = ยอดรวมสินค้า/บริการ 144,000 · VAT 10,080 · รวม 154,080
 //   ยกมา 115,560 ครอบ ม.ค.–ก.ย. + งวด ต.ค.–ธ.ค. 38,520 = ยอดใบพอดี ครอบต่อเนื่องเต็มสัญญา 2026
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,8 +24,12 @@ const pim = { id: 'U-PIM', name: 'พิมพ์ชนก รัตนา', rol
 const spw = { id: 'CUS-SPW', name: 'บจก. สยามพิวรรธน์', nameEn: 'Siam Piwat', approvalStatus: 'approved', isActive: true };
 const pimOwner = { ok: true, ownerId: 'U-PIM', ownerName: 'พิมพ์ชนก รัตนา', team: 'SV', teams: ['SV'] };
 const PRODUCTS = [
-  { id: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจกลิ่นรายเดือน (30 วัน)', saleUnit: 'แพ็ค' },
+  { id: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจกลิ่นรายเดือน (30 วัน)', saleUnit: 'แพ็คเกจ', costPrice: 1200 },
 ];
+/* ตาราง products ปลอมคืน **เฉพาะคอลัมน์ที่ select มา** — ลืม select "costPrice" = แผนตอบ "อ่านราคาไม่ได้" (ไม่ใช่ราคา 0)
+   ⇒ เทสต์พรีวิวด้านล่างล้มทันทีถ้าตัวเขียนเลิกอ่านราคาจากทะเบียน */
+const selectedColumns = (selected) => String(selected).split(',').map((c) => c.trim().replace(/"/g, '')).filter(Boolean);
+const project = (row, selected) => Object.fromEntries(selectedColumns(selected).filter((c) => c in row).map((c) => [c, row[c]]));
 const SITES = [
   { id: 'ST-1002', code: 'ST-1002', name: 'สยามพารากอน', customerId: 'CUS-SPW', kind: 'customer', isActive: true },
   { id: 'ST-1044', code: 'ST-1044', name: 'สยามดิสคัฟเวอรี่', customerId: 'CUS-SPW', kind: 'customer', isActive: true },
@@ -45,7 +50,7 @@ const inIds = (q, column) => q.filters.find((f) => f[0] === 'in' && f[1] === col
 
 function fakeDb({
   probeError = null, customerRow = spw, deals = [], orders = [], terms = [], termOrders = [], loaded = null,
-  auditRow = null, rpc = [], stored = null, beforeLines = [], beforeInstallments = [], beforeContract = null,
+  auditRow = null, rpc = [], stored = null, beforeLines = [], beforeInstallments = [], beforeContract = null, products = null,
 } = {}) {
   const calls = { from: [], rpc: [], storage: [] };
   const respond = (q) => {
@@ -63,7 +68,8 @@ function fakeDb({
         }
         return { data: orders, error: null };                                           // ใบย้อนหลังของลูกค้า
       case 'customers': return { data: customerRow, error: null };
-      case 'products': return { data: PRODUCTS.filter((p) => inIds(q, 'id').includes(p.id)), error: null };
+      case 'products':
+        return { data: (products || PRODUCTS).filter((p) => inIds(q, 'id').includes(p.id)).map((p) => project(p, q.selected)), error: null };
       case 'service_zones': return { data: ZONES.filter((z) => inIds(q, 'id').includes(z.id)), error: null };
       case 'service_sites': return { data: SITES.filter((s) => inIds(q, 'id').includes(s.id)), error: null };
       case 'service_zone_terms': return { data: terms.filter((t) => inIds(q, 'zoneId').includes(t.zoneId)), error: null };
@@ -118,12 +124,11 @@ const body = (extra = {}) => ({
   ownerId: 'U-PIM',
   contract: { docKind: 'customer_po', ref: 'PO-SPW-2026-0118', startDate: '2026-01-01', endDate: '2026-12-31' },
   refs: { quote: null, express: null, invoice: 'IV-2601-0412' },
-  amountsIncludeVat: false,
   vatRate: 7,
   notes: null,
   zones: [
-    { zoneId: 'Z-1002-01', productId: 'P-PKG', packs: 6, rounds: 12, lineAmount: 86400 },
-    { zoneId: 'Z-1044-01', productId: 'P-PKG', packs: 4, rounds: 12, lineAmount: 57600 },
+    { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: null, discountValue: 0, rounds: 12 },
+    { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: null, discountValue: 0, rounds: 12 },
   ],
   opening: { amount: 115560, coversTo: '2026-09-30', paidOn: '2026-09-15', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.' },
   installments: [
@@ -229,6 +234,26 @@ test('พรีวิว: คืนแผน · ไม่เรียก RPC · 
   assert.equal(db.calls.storage.length, 0);
 });
 
+/* ⭐ มติ 23/09: ราคา/หน่วยของบรรทัดโซนอ่านจากทะเบียน (ราคาผลิต — ตัวเดียวกับใบเสนอราคา) ที่ตัวเขียนนี้ที่เดียว */
+test('⭐ ราคา/หน่วยอ่านจาก products."costPrice" · ราคาที่จอส่งมาไม่ถูกใช้ · ไม่ select ราคา = ตีกลับ ไม่ใช่ราคา 0', async () => {
+  const db = fakeDb({ rpc: [created()] });
+  const res = await run(db, {
+    preview: true, intakeKey: undefined,
+    zones: body().zones.map((z) => ({ ...z, unitPrice: 1, lineTotal: 1, lineAmount: 1 })),
+  });
+  assert.equal(res.status, 200);
+  const select = db.calls.from.find((q) => q.table === 'products').selected;
+  assert.ok(selectedColumns(select).includes('costPrice'), select);
+  assert.deepEqual(res.body.plan.lines.map((l) => [l.qty, l.unit, l.unitPrice, l.lineTotal]),
+    [[72, 'แพ็คเกจ', 1200, 86400], [48, 'แพ็คเกจ', 1200, 57600]]);
+  // แพ็คเกจยังไม่ตั้งราคาในทะเบียน = 400 พร้อมข้อความรายช่อง · ไม่เรียก RPC
+  const unpriced = fakeDb({ rpc: [created()], products: [{ ...PRODUCTS[0], costPrice: null }] });
+  const bad = await run(unpriced);
+  assert.equal(bad.status, 400);
+  assert.ok(bad.body.errors.some((e) => e.field === 'zones.0' && /ยังไม่ตั้งราคาในฐานข้อมูลสินค้า/.test(e.message)));
+  assert.equal(unpriced.calls.rpc.length, 0);
+});
+
 test('แผนมี error = 400 พร้อมรายช่อง · ไม่เรียก RPC', async () => {
   const db = fakeDb({ rpc: [created()] });
   const res = await run(db, { zones: [] });
@@ -263,7 +288,7 @@ test('R7: พรีวิวที่ "ยอดเองยังผิด" ต
   const bad = fakeDb({ rpc: [created()] });
   const res = await run(bad, {
     preview: true, intakeKey: undefined,
-    zones: [{ zoneId: 'Z-1002-01', productId: 'P-PKG', packs: 6, rounds: 12, lineAmount: 'ยังไม่ได้ใส่' }],
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-PKG', qty: '', discountType: null, discountValue: 0, rounds: 12 }],
   });
   assert.equal(res.status, 400);
   assert.equal(res.body.money, null, 'ยอดคิดไม่ได้ = ยังไม่รู้ ห้ามส่งศูนย์');
@@ -274,9 +299,9 @@ test('R7: พรีวิวที่ "ยอดเองยังผิด" ต
   assert.equal(none.status, 400);
   assert.equal(none.body.money, null);
 
-  /* โหมด VAT ยังไม่ตอบ = คิดยอดไม่ได้ (ตัวเดียวกับที่ฟอร์มบอกว่า "เลือกโหมดและอัตรา VAT ก่อน") */
+  /* ยังไม่เลือก VAT = คิดยอดไม่ได้ (ตัวเดียวกับที่ฟอร์มบอกว่า "เลือก VAT ของใบในขั้น ① ก่อน") */
   const noVat = fakeDb({ rpc: [created()] });
-  const vat = await run(noVat, { preview: true, intakeKey: undefined, amountsIncludeVat: null });
+  const vat = await run(noVat, { preview: true, intakeKey: undefined, vatRate: null });
   assert.equal(vat.status, 400);
   assert.equal(vat.body.money, null);
 });
@@ -286,9 +311,10 @@ test('R7: ใบยอด 0 บาทจริงยังคืนยอดม�
   const db = fakeDb({ rpc: [created()] });
   const res = await run(db, {
     preview: true, intakeKey: undefined,
+    /* ใบ ฿0 แบบใบเสนอราคา = ส่วนลดเต็มจำนวน */
     zones: [
-      { zoneId: 'Z-1002-01', productId: 'P-PKG', packs: 6, rounds: 12, lineAmount: 0 },
-      { zoneId: 'Z-1044-01', productId: 'P-PKG', packs: 4, rounds: 12, lineAmount: 0 },
+      { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: 'percent', discountValue: 100, rounds: 12 },
+      { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: 'percent', discountValue: 100, rounds: 12 },
     ],
     opening: null,
     installments: [],
@@ -379,7 +405,7 @@ test('ใบที่อาจซ้ำยังไม่ยืนยัน = 40
   assert.equal((await run(self)).status, 200);
 });
 
-test('สร้าง: RPC ครั้งเดียว · อาร์กิวเมนต์รุ่น 0374 · ลายนิ้วมือ 64 hex · ดีลใหม่ได้ถัง/prefix/ความกว้าง DL', async () => {
+test('สร้าง: RPC ครั้งเดียว · อาร์กิวเมนต์รุ่น 0374 + บรรทัดแบบใบเสนอราคา (0379) · ลายนิ้วมือ 64 hex · ดีลใหม่ได้ถัง/prefix/ความกว้าง DL', async () => {
   const db = fakeDb({ rpc: [created()] });
   const res = await run(db);
   assert.equal(res.status, 201);
@@ -400,6 +426,11 @@ test('สร้าง: RPC ครั้งเดียว · อาร์กิ�
   assert.equal(args.p_header.totalAmount, 154080);
   assert.deepEqual(args.p_contract, { docKind: 'customer_po', ref: 'PO-SPW-2026-0118', startDate: '2026-01-01', endDate: '2026-12-31' });
   assert.deepEqual(args.p_lines.map((l) => l.zoneId), ['Z-1002-01', 'Z-1044-01']);
+  assert.deepEqual(args.p_lines[0], {
+    zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
+    discountAmount: 0, lineTotal: 86400, serviceRounds: 12,
+  });
+  assert.deepEqual(args.p_header.intake, { vatRate: 7 });
   assert.deepEqual(args.p_installments.map((r) => r.kind), ['opening', 'regular']);
   assert.ok(args.p_installments.every((r) => !('evidence' in r)), 'ตอนสร้างยังไม่มีหลักฐาน (โฟลเดอร์ของใบยังไม่เกิด)');
   assert.equal(args.p_new_deal.ownerName, 'พิมพ์ชนก รัตนา');

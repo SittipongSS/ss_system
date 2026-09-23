@@ -1,5 +1,6 @@
 // ── ถ้อยคำของใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ชุดข้อมูลม็อก mockups/legacy-so-service-flow ──────
-// สยามพิวรรธน์ · 4 โซน 17 แพ็ค · 261,936 · ยกมา 196,452 ครอบ ม.ค.–ก.ย. + งวด ต.ค.–ธ.ค. 65,484
+// สยามพิวรรธน์ · 4 โซน (บรรทัดแบบใบเสนอราคา: จำนวน 72/48/36/48 × 1,200) · 261,936 · ยกมา 196,452 ครอบ ม.ค.–ก.ย.
+// + งวด ต.ค.–ธ.ค. 65,484
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import {
   HISTORICAL_APPROVE_TOAST, historicalAfterSaveSteps, historicalApprovalFacts, historicalCancelEffect,
   historicalCoverageSegments, historicalOpeningRejectNote, historicalOverrideNote, historicalRejectDetail,
   historicalServiceProgress, historicalStatusCopy, historicalWithdrawDetail, historicalWorkflowSteps,
-  historicalZoneState,
+  historicalZoneState, quoteLineText,
 } from './historicalOrderCopy.js';
 import { HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE } from './historicalOrders.js';
 import { historicalApprovalPrompt } from '../approvalPrompt.js';
@@ -24,18 +25,22 @@ const ORDER = {
   approvedAt: null, approvedBy: null, approvedByName: null, approvalMode: 'standard',
   serviceContractId: 'CTR-H1',
   lines: [
-    { id: 'L1', serviceZoneId: 'Z-1002-01', qty: 6 },
-    { id: 'L2', serviceZoneId: 'Z-1002-02', qty: 4 },
-    { id: 'L3', serviceZoneId: 'Z-1002-03', qty: 3 },
-    { id: 'L4', serviceZoneId: 'Z-1044-01', qty: 4 },
+    { id: 'L1', serviceZoneId: 'Z-1002-01', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 72, unit: 'แพ็คเกจ', unitPrice: 1200, discountAmount: 0, lineTotal: 86400 },
+    { id: 'L2', serviceZoneId: 'Z-1002-02', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 48, unit: 'แพ็คเกจ', unitPrice: 1200, discountAmount: 0, lineTotal: 57600 },
+    { id: 'L3', serviceZoneId: 'Z-1002-03', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 36, unit: 'แพ็คเกจ', unitPrice: 1200, discountAmount: 0, lineTotal: 43200 },
+    { id: 'L4', serviceZoneId: 'Z-1044-01', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 48, unit: 'แพ็คเกจ', unitPrice: 1200, discountAmount: 0, lineTotal: 57600 },
   ],
 };
+/* แถวโซนจาก loadHistoricalOrderExtras — พกบรรทัดแบบใบเสนอราคามาด้วย (ไม่มี "แพ็ค" แล้ว · มติ 23/09) */
 const LINE_ZONES = [
-  { zoneId: 'Z-1002-01', zoneCode: 'Z-1002-01', zoneName: 'ชั้น G ล็อบบี้', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน', packs: 6 },
-  { zoneId: 'Z-1002-02', zoneCode: 'Z-1002-02', zoneName: 'ชั้น M ทางเชื่อม BTS', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน', packs: 4 },
-  { zoneId: 'Z-1002-03', zoneCode: 'Z-1002-03', zoneName: 'ห้องน้ำหญิง ชั้น 1', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน', packs: 3 },
-  { zoneId: 'Z-1044-01', zoneCode: 'Z-1044-01', zoneName: 'ทางเข้าหลัก', siteId: 'ST-1044', siteCode: 'ST-1044', siteName: 'สยามดิสคัฟเวอรี่', packs: 4 },
-];
+  { zoneId: 'Z-1002-01', zoneCode: 'Z-1002-01', zoneName: 'ชั้น G ล็อบบี้', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน' },
+  { zoneId: 'Z-1002-02', zoneCode: 'Z-1002-02', zoneName: 'ชั้น M ทางเชื่อม BTS', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน' },
+  { zoneId: 'Z-1002-03', zoneCode: 'Z-1002-03', zoneName: 'ห้องน้ำหญิง ชั้น 1', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน' },
+  { zoneId: 'Z-1044-01', zoneCode: 'Z-1044-01', zoneName: 'ทางเข้าหลัก', siteId: 'ST-1044', siteCode: 'ST-1044', siteName: 'สยามดิสคัฟเวอรี่' },
+].map((zone, index) => {
+  const { fgCode, qty, unit, unitPrice, discountAmount, lineTotal } = ORDER.lines[index];
+  return { ...zone, fgCode, qty, unit, unitPrice, discountAmount, lineTotal };
+});
 const CONTRACT = {
   id: 'CTR-H1', source: 'external', status: 'draft', kind: 'service', contractNo: null,
   externalDocKind: 'customer_po', externalRef: 'PO-SPW-2026-0118',
@@ -236,8 +241,11 @@ test('โมดัลอนุมัติ: ชุดม็อก — ตรว�
     'ลูกค้า: AR-1207 · บจก. สยามพิวรรธน์',
     'เอกสารแทนสัญญา: ใบสั่งซื้อของลูกค้า (PO) PO-SPW-2026-0118 · 01/01/2026–31/12/2026 — อนุมัติพร้อมใบนี้ ไม่ต้องอนุมัติสัญญาแยก',
     'ไฟล์ที่ผูกเป็นหลักฐานลงนามของสัญญา: PO-SPW-2026-0118.pdf',
-    'โซน: 4 โซน · 17 แพ็ค — ST-1002 สยามพารากอน 3 โซน · ST-1044 สยามดิสคัฟเวอรี่ 1 โซน',
-    'ยอดทั้งใบ: ฿261,936.00 — ก่อน VAT ฿244,800.00 · VAT ฿17,136.00',
+    'โซน: 4 โซน — ST-1002 สยามพารากอน 3 โซน · ST-1044 สยามดิสคัฟเวอรี่ 1 โซน',
+    'รายการ: FG-SNS-02-001-0012 72 แพ็คเกจ × ฿1,200.00 = ฿86,400.00'
+      + ' · FG-SNS-02-001-0012 48 แพ็คเกจ × ฿1,200.00 = ฿57,600.00 (2 โซน)'
+      + ' · FG-SNS-02-001-0012 36 แพ็คเกจ × ฿1,200.00 = ฿43,200.00',
+    'ยอดรวมทั้งสิ้น: ฿261,936.00 — ยอดรวมสินค้า/บริการ ฿244,800.00 · ภาษีมูลค่าเพิ่ม ฿17,136.00',
     'งวดยกมา: ฿196,452.00 · ครอบบริการ 01/01/2026–30/09/2026 · รับเงิน 15/09/2026 · หลักฐาน 1 ไฟล์',
     'งวดที่ยังต้องเก็บ: งวด ต.ค.–ธ.ค. 2026 ฿65,484.00 ครบกำหนด 01/10/2026',
     'ยอดงวดรวม = ยอดใบ · ช่วงบริการต่อเนื่อง 01/01/2026–31/12/2026 ไม่มีช่องโหว่',
@@ -268,11 +276,13 @@ test('🔴 โมดัลอนุมัติ: ของเสริมโห�
   assert.match(facts.checklist[0], /โหลดข้อมูลประกอบไม่ขึ้น \(timeout\)/);
   assert.ok(facts.checklist.includes('เอกสารแทนสัญญา: โหลดไม่ขึ้น — เปิดใบใหม่ก่อนอนุมัติ'));
   assert.ok(facts.checklist.includes('ไฟล์เอกสารแทนสัญญา: โหลดไม่ขึ้น — อนุมัติไม่ได้จนกว่าจะเห็นไฟล์'));
-  // โซนยังนับได้จากบรรทัดของใบ (ไม่มีชื่อไซต์ก็ไม่เดา)
-  assert.ok(facts.checklist.includes('โซน: 4 โซน · 17 แพ็ค'));
-  // ของเสริมมาแต่ไม่มีจำนวนแพ็ค = ถอยไปอ่านบรรทัด ไม่ใช่นับเป็น 0 (Number(null) = 0)
-  const noPacks = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: LINE_ZONES.map((z) => ({ ...z, packs: null })) }));
-  assert.ok(noPacks.checklist.some((l) => l.startsWith('โซน: 4 โซน · 17 แพ็ค — ST-1002')));
+  // โซนยังนับได้จากบรรทัดของใบ (ไม่มีชื่อไซต์ก็ไม่เดา) · รายการยังอ่านจากบรรทัดของใบได้
+  assert.ok(facts.checklist.includes('โซน: 4 โซน'));
+  assert.ok(facts.checklist.some((l) => l.startsWith('รายการ: FG-SNS-02-001-0012 72 แพ็คเกจ × ฿1,200.00')));
+  // ใบไม่พกบรรทัดมา = ถอยไปอ่านแถวโซนของเสริม (มีจำนวน/ราคาเหมือนกัน)
+  const fromZones = collect(historicalApprovalFacts({ ...ORDER, lines: [] }, EXTRAS));
+  assert.ok(fromZones.checklist.includes('โซน: 4 โซน — ST-1002 สยามพารากอน 3 โซน · ST-1044 สยามดิสคัฟเวอรี่ 1 โซน'));
+  assert.ok(fromZones.checklist.some((l) => l.startsWith('รายการ: FG-SNS-02-001-0012 72 แพ็คเกจ')));
   assert.ok(facts.checklist.some((l) => /ช่วงสัญญาโหลดไม่ขึ้น/.test(l)));
 });
 
@@ -301,7 +311,7 @@ test('โมดัลอนุมัติ: ยอดงวดไม่เท่
 test('โมดัลอนุมัติ: ใบ ฿0 · ใบไม่มีงวดยกมา · งวดหลายงวดสรุปเป็นบรรทัดเดียว', () => {
   const zeroOrder = { ...ORDER, totalAmount: 0, subtotal: 0, vatAmount: 0, notes: 'บริการเสริมฟรีตามสัญญาหลัก' };
   const zero = collect(historicalApprovalFacts(zeroOrder, { ...EXTRAS, installments: [] }));
-  assert.ok(zero.checklist.includes('ยอดทั้งใบ: ฿0.00 — ไม่มีงวดให้เก็บ · หมายเหตุ: บริการเสริมฟรีตามสัญญาหลัก'));
+  assert.ok(zero.checklist.includes('ยอดรวมทั้งสิ้น: ฿0.00 — ไม่มีงวดให้เก็บ · หมายเหตุ: บริการเสริมฟรีตามสัญญาหลัก'));
   assert.ok(!zero.checklist.some((l) => /งวดยกมา|ยอดงวดรวม/.test(l)));
   assert.ok(zero.effects.includes('ใบยอด 0 บาท — ไม่มีงวดเข้าคิวบัญชี'));
   assert.match(zero.effects[zero.effects.length - 1], /นัดขึ้นตารางได้ทันที/);
@@ -317,6 +327,36 @@ test('โมดัลอนุมัติ: ใบ ฿0 · ใบไม่มี
   }));
   const many = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, installments: [OPENING, ...months] }));
   assert.ok(many.checklist.includes('งวดที่ยังต้องเก็บ: 4 งวด รวม ฿65,484.00 · งวดแรกครบกำหนด 01/10/2026'));
+});
+
+/* ⭐ มติเจ้าของ 23/09: ผู้อนุมัติเห็นบรรทัดแบบเดียวกับที่ผู้คีย์คีย์ — ลำดับคอลัมน์ของใบเสนอราคา */
+test('⭐ บรรทัดตามลำดับคอลัมน์ใบเสนอราคา: จำนวน (หน่วย) × ราคา/หน่วย [− ส่วนลด] = จำนวนเงิน', () => {
+  assert.equal(collect(quoteLineText({ qty: 12, unit: 'แพ็คเกจ', unitPrice: 3500, discountAmount: 0, lineTotal: 42000 })),
+    '12 แพ็คเกจ × ฿3,500.00 = ฿42,000.00');
+  assert.equal(collect(quoteLineText({ qty: 12, unit: 'แพ็คเกจ', unitPrice: 3500, discountAmount: 2100, lineTotal: 39900 })),
+    '12 แพ็คเกจ × ฿3,500.00 − ส่วนลด ฿2,100.00 = ฿39,900.00');
+  assert.equal(quoteLineText({ qty: '3', unitPrice: '10.1', lineTotal: '30.3' }), '3 หน่วย × ฿10.10 = ฿30.30', 'ไม่มีหน่วย = คำกลาง ไม่ใช่ช่องว่าง');
+});
+
+test('โมดัลอนุมัติ: ตัวอย่างเจ้าของ (1 ชุด × 12 เดือน = 12 × 3,500) · ส่วนลด · เกิน 3 แบบ = สรุปบรรทัดเดียว', () => {
+  const line = (id, zone, qty, unitPrice, discountAmount = 0) => ({
+    id, serviceZoneId: zone, fgCode: 'FG-SNS-02-001-0020', qty, unit: 'แพ็คเกจ', unitPrice, discountAmount,
+    lineTotal: qty * unitPrice - discountAmount,
+  });
+  const owner = collect(historicalApprovalFacts({ ...ORDER, subtotal: 42000, vatAmount: 0, totalAmount: 42000,
+    lines: [line('L1', 'Z-1002-01', 12, 3500)] }, { ...EXTRAS, lineZones: [] }));
+  assert.ok(owner.checklist.includes('รายการ: FG-SNS-02-001-0020 12 แพ็คเกจ × ฿3,500.00 = ฿42,000.00'));
+  assert.ok(owner.checklist.includes('ยอดรวมทั้งสิ้น: ฿42,000.00 — ยอดรวมสินค้า/บริการ ฿42,000.00 · รวม VAT แล้ว'),
+    'VAT 0 = ตัวเลือก "รวม VAT แล้ว" ของใบเสนอราคา');
+  const discounted = collect(historicalApprovalFacts({ ...ORDER, lines: [line('L1', 'Z-1002-01', 12, 3500, 2100)] }, { ...EXTRAS, lineZones: [] }));
+  assert.ok(discounted.checklist.some((l) => l.includes('12 แพ็คเกจ × ฿3,500.00 − ส่วนลด ฿2,100.00 = ฿39,900.00')));
+  const many = collect(historicalApprovalFacts({ ...ORDER, lines: [
+    line('L1', 'Z-1', 12, 3500), line('L2', 'Z-2', 6, 3500), line('L3', 'Z-3', 3, 3500), line('L4', 'Z-4', 1, 3500),
+  ] }, { ...EXTRAS, lineZones: [] }));
+  assert.ok(many.checklist.includes('รายการ: 4 บรรทัด 4 แบบ — ยอดรวมสินค้า/บริการ ฿244,800.00 (ดูตารางรายการในหน้าใบ)'));
+  for (const facts of [owner, discounted, many]) {
+    assert.ok(!facts.checklist.some((l) => /แพ็ค(?!เกจ)/.test(l)), 'ไม่มีคำว่า "แพ็ค" ที่อ่านได้สองความหมายแล้ว');
+  }
 });
 
 // ── ผลของการยกเลิก/ลบ ต่อเอกสารแทนสัญญา (trigger ของ 0374) ─────────────────────────────────────
@@ -358,18 +398,18 @@ test('บัญชีตีกลับงวดยกมา: บอกทาง
 // ── "หลังบันทึก จะเกิดอะไร" (ขั้น ④) — ป้อนด้วยแผนจริงของ planHistoricalServiceOrder ─────────────────────
 const PIM = { id: 'U-PIM', role: 'ae', team: 'SV', teams: ['SV'] };
 const SPW = { id: 'CUS-SPW', name: 'บจก. สยามพิวรรธน์', approvalStatus: 'approved', isActive: true };
-const PKG = { id: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจกลิ่นรายเดือน (30 วัน)', saleUnit: 'แพ็ค' };
+const PKG = { id: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจกลิ่นรายเดือน (30 วัน)', saleUnit: 'แพ็คเกจ', costPrice: 1200 };
 const SITES = [
   { id: 'ST-1002', code: 'ST-1002', name: 'สยามพารากอน', customerId: 'CUS-SPW', kind: 'customer', isActive: true },
   { id: 'ST-1044', code: 'ST-1044', name: 'สยามดิสคัฟเวอรี่', customerId: 'CUS-SPW', kind: 'customer', isActive: true },
 ];
 const ZONES = LINE_ZONES.map((z) => ({ id: z.zoneId, siteId: z.siteId, name: z.zoneName, code: z.zoneCode, isActive: true }));
-const zoneRow = (zoneId, packs, lineAmount) => ({ zoneId, productId: 'P-PKG', packs, rounds: 12, lineAmount });
+const zoneRow = (zoneId, qty, extra = {}) => ({ zoneId, productId: 'P-PKG', qty, discountType: null, discountValue: 0, rounds: 12, ...extra });
 const planOf = (extra = {}, actor = PIM) => planHistoricalServiceOrder({
   customerId: 'CUS-SPW', ownerId: 'U-PIM',
   contract: { docKind: 'customer_po', ref: 'PO-SPW-2026-0118', startDate: '2026-01-01', endDate: '2026-12-31' },
-  refs: { quote: null, express: null, invoice: 'IV-2601-0412' }, amountsIncludeVat: false, vatRate: 7, notes: null,
-  zones: [zoneRow('Z-1002-01', 6, 86400), zoneRow('Z-1002-02', 4, 57600), zoneRow('Z-1002-03', 3, 43200), zoneRow('Z-1044-01', 4, 57600)],
+  refs: { quote: null, express: null, invoice: 'IV-2601-0412' }, vatRate: 7, notes: null,
+  zones: [zoneRow('Z-1002-01', 72), zoneRow('Z-1002-02', 48), zoneRow('Z-1002-03', 36), zoneRow('Z-1044-01', 48)],
   opening: { amount: 196452, coversTo: '2026-09-30', paidOn: '2026-09-15', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.' },
   installments: [{ label: 'งวด ต.ค.–ธ.ค. 2026', amount: 65484, dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-12-31' }],
   ...extra,
@@ -400,7 +440,8 @@ test('หลังบันทึก: ผู้คีย์เป็นผู้
 
 test('หลังบันทึก: ใบ ฿0 ไม่มีขั้นบัญชี/ฝ่ายขาย · ไม่มีงวดยกมา = บัญชีรับรองงวดแรก · งวดหลายงวดบอกที่เหลือ', () => {
   const zero = planOf({
-    zones: [zoneRow('Z-1002-01', 6, 0)], opening: null, installments: [], notes: 'บริการเสริมฟรีตามสัญญาหลัก',
+    zones: [zoneRow('Z-1002-01', 72, { discountType: 'percent', discountValue: 100 })], opening: null, installments: [],
+    notes: 'บริการเสริมฟรีตามสัญญาหลัก',
   });
   assert.deepEqual(zero.errors, []);
   assert.equal(zero.zeroValue, true);

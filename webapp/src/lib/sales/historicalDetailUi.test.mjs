@@ -274,6 +274,19 @@ test('การ์ดโซนไม่คิดสถานะเอง · ไ�
   assert.match(card, /extrasError \? "error" : "warning"/);
 });
 
+/* ⭐ มติเจ้าของ 23/09: บรรทัดของใบย้อนหลัง = บรรทัดของใบเสนอราคา ⇒ การ์ดโซนพูด "12 แพ็คเกจ" (จำนวน + หน่วยของ
+   บรรทัด) ไม่ใช่ "N แพ็ค" ที่อ่านได้สองความหมาย (1 ชุด × 12 เดือน เคยถูกคีย์ทั้ง 1 และ 12) */
+test('⭐ 23/09: การ์ดโซนพูดรายการ · จำนวน + หน่วย · รอบบริการที่ขายไว้ · จำนวนเงิน — ไม่มี "แพ็ค"', () => {
+  const card = code(ZONES_CARD);
+  const heads = [...slice(card, '<thead>', '</thead>').matchAll(/<th\b[^>]*>([^<]+)<\/th>/g)].map((m) => m[1].trim());
+  assert.deepEqual(heads, ['ไซต์ · โซน', 'รายการ', 'จำนวน', 'รอบบริการที่ขายไว้', 'จำนวนเงิน', 'สถานะรอบ']);
+  assert.doesNotMatch(card, /packs|แพ็ค/);
+  assert.match(card, /const unit = zone\.unit \|\| line\?\.unit \|\| "";/, 'หน่วยมาจากบรรทัด (ของเสริมก่อน แล้วถอยไปที่บรรทัดของใบ)');
+  assert.match(card, /`\$\{fmtNumber\(zones\.length\)\} โซน — /, 'บรรทัดหัวนับโซน ไม่นับแพ็ค');
+  /* ตารางรายการของหน้าใบบอกไซต์ · โซนของแต่ละบรรทัด (บรรทัดของสี่โซนหน้าตาเหมือนกันทุกช่อง) */
+  assert.match(code(PAGE), /showInstallationPoint=\{historical\}/);
+});
+
 test('การ์ดสัญญาแสดง "เอกสารแทนสัญญา" ของใบย้อนหลังที่ยังไม่อนุมัติ (ร่างยังไม่มีเลข CT)', () => {
   const card = code(CONTRACT_CARD);
   assert.match(card, /const substituteDraft = isHistoricalOrder\(order\) && isSubstituteContract\(linked\) && linked\?\.status === "draft";/);
