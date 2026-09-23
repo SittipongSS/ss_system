@@ -504,3 +504,20 @@ test('พรีวิวใบเสนอราคาที่อ่านส�
   assert.equal(preview.blocked, true);
   assert.match(preview.notes[0], /ตรวจสัญญาของใบเสนอราคาไม่สำเร็จ/);
 });
+
+/* 🔴 review (qt-force-delete-bypasses-movedout / UI-6): งวดที่ย้ายไปจากใบสั่งขาย (ออก Rev. 0376 · ยกเงิน 0378) ยังใช้สลิป/ใบกำกับ
+   ในโฟลเดอร์ของใบนั้น (และ order-confirmation ใต้ใบเสนอราคาต้นทาง) ⇒ พรีวิวบังคับลบต้องบอก blocked ตั้งแต่พรีวิว
+   (ผู้เรียกโหลด movedOut ด้วยงวดสด แล้วส่งเข้ามา) — ไม่ใช่รู้ตอน 409 หลังกดยืนยัน หรือหลักฐานเงินถูกกวาดทิ้ง */
+test('🔴 quotationForcePreview / salesOrderForcePreview: มีงวดที่ย้ายไปจากใบ (movedOut) = blocked พร้อมเหตุ', async () => {
+  const movedOut = [{ id: 'S1', salesOrderId: 'SOR-B', orderNumber: 'SO-B', reason: 'carry' }];
+  const qt = await quotationForcePreview(stubCount({ 'sales_orders:quotationId': 1 }), { id: 'Q1', status: 'accepted' }, { movedOut });
+  assert.equal(qt.blocked, true);
+  assert.deepEqual(qt.cascade, []);
+  assert.match(qt.notes[0], /^ลบถาวรไม่ได้: งวดชำระ 1 งวดของ SO-B ย้ายไปจากใบสั่งขายของใบเสนอราคานี้/);
+  const so = await salesOrderForcePreview(stubCount({}), { id: 'SO1', status: 'cancelled' }, { movedOut });
+  assert.equal(so.blocked, true);
+  assert.match(so.notes[0], /^ลบถาวรไม่ได้: งวดชำระ 1 งวดของ SO-B ย้ายไปจากใบนี้/);
+  // ไม่มีงวดย้ายออก = พรีวิวเดิม
+  assert.equal((await quotationForcePreview(stubCount({}), { id: 'Q1', status: 'sent' }, { movedOut: [] })).blocked, false);
+  assert.equal((await salesOrderForcePreview(stubCount({}), { id: 'SO1', status: 'cancelled' })).blocked, false);
+});

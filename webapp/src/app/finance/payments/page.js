@@ -24,7 +24,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, Receipt, Search,
+  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, HandCoins, Receipt, Search,
   Wallet, Wrench,
 } from "lucide-react";
 import Workspace, { ListPanel, Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
@@ -39,17 +39,20 @@ import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
-  LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
-  LEDGER_STATUS, LEDGER_STATUS_KEYS, groupAsOrder, groupLedgerBuckets, groupLedgerByOrder,
-  groupNote, ledgerSortDir, pendingConfirmations, pendingTaxInvoices, sortLedgerGroups,
+  LEDGER_CANCELLED_TAG, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
+  LEDGER_STATUS, LEDGER_STATUS_KEYS, LEDGER_STRANDED_TITLE, groupAsOrder, groupLedgerBuckets, groupLedgerByOrder,
+  groupNote, ledgerSortDir, pendingConfirmations, pendingStranded, pendingTaxInvoices, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
 import StatusBadge from "@/components/ui/StatusBadge";
 import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConfirmDialog";
 import TaxInvoiceDialog from "@/components/salesPlanning/TaxInvoiceDialog";
+import InstallmentRefundDialog from "@/components/salesPlanning/InstallmentRefundDialog";
+import { CARRY_BUTTON } from "@/lib/sales/installmentCarry";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
+import { REPLANNED_BADGE, REPLANNED_BADGE_TITLE } from "@/lib/sales/installmentReplan";
 /* ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ตัดสินด้วยตัวกลางเท่านั้น (literal ของ origin มีบ้านเดียว) */
 import { isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalOrders";
 import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
@@ -233,6 +236,12 @@ export default function FinancePaymentsPage() {
      ⚠️ **แยกจากคิวแรก** — ป้ายตัวเลขบนเมนูนับ `reported` อยู่ · เอามารวมกันเมื่อไร
      เลขบนเมนูจะไม่ตรงกับของที่เห็นตอนกดเข้ามา */
   const invoiceQueue = useMemo(() => pendingTaxInvoices(rows), [rows]);
+  /* ⭐ **คิวที่สาม: เงินค้างจากใบที่ยกเลิก** (PR3 · mig 0378 · มติเจ้าของ 23/09 D4) — ใบยกเลิกแล้วแต่มีเงินรับแล้ว/รอตรวจ
+     ทางออก: ยกเข้าใบใหม่ของดีลเดียวกัน (ที่ใบใหม่) หรือบันทึกคืนเงินลูกค้า (ที่นี่/ที่ใบเดิม) · นับจากแถวที่กรองแล้ว (กติกาเดียวกับคิวอื่น)
+     ⚠️ งวด reported ของใบยกเลิกอยู่ทั้งคิวรับรองและคิวนี้ — รับรอง/ตีกลับก่อนแล้วจึงตัดสินเรื่องคืน/ยก */
+  const strandedQueue = useMemo(() => pendingStranded(rows), [rows]);
+  const [strandedOpen, setStrandedOpen] = useState(false);
+  const [refundFor, setRefundFor] = useState(null);
   const [queueOpen, setQueueOpen] = useState(false);   // "ดูอีก n งวด"
   const [invoiceQueueOpen, setInvoiceQueueOpen] = useState(false);
   const [confirmFor, setConfirmFor] = useState(null);
@@ -242,17 +251,26 @@ export default function FinancePaymentsPage() {
   const [actionError, setActionError] = useState("");
 
   /* ⭐ เรียก **API ตัวเดิมของใบ** — ด่านจริงคือ `installmentActionError` ใน route นั้น
-     ไม่สร้างเส้นเขียนที่สองให้ทะเบียน (ดูหัวไฟล์) */
+     ไม่สร้างเส้นเขียนที่สองให้ทะเบียน (ดูหัวไฟล์)
+     ⭐ optimistic lock (PR0) — ส่ง `updatedAt` ของแถวที่ตาเห็น · แถวถูกแก้จากอีกหน้าต่าง = 409 แล้วดึงทะเบียนสด
+       (โหมดเบื้องหลัง — ตารางไม่หายแล้วโผล่ใหม่) ⇒ โมดัลวาดแถวล่าสุด (`liveRow`) แล้วกดใหม่ได้ */
   const runAction = useCallback(async (row, action, extra = {}) => {
     setActing(true); setActionError("");
     try {
       const res = await apiFetch(`/api/sales-planning/sales-orders/${row.orderId}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ installmentId: row.id, action, ...extra }),
+        body: JSON.stringify({
+          installmentId: row.id, action, ...extra,
+          expectedUpdatedAt: row.updatedAt || undefined,
+        }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) { setActionError(body.error || "ดำเนินการไม่สำเร็จ"); return false; }
+      if (!res.ok) {
+        if (res.status === 409) load({ background: true });
+        setActionError(body.error || "ดำเนินการไม่สำเร็จ");
+        return false;
+      }
       await load();
       return true;
     } catch (runError) {
@@ -263,11 +281,20 @@ export default function FinancePaymentsPage() {
     }
   }, [load]);
 
+  /* แถวล่าสุดของทะเบียน — โมดัลจำแถวไว้ตอนเปิด แต่ต้องวาดและส่งแถวล่าสุดเสมอ (ตัวล็อกคือ updatedAt ของแถวที่ตาเห็น)
+     ⚠️ หาไม่เจอ (ตัวกรองตัดแถวนั้นออกหลังดึงสด) = ใช้สำเนาเดิม — API ตอบ 409 เองถ้ามันเก่า */
+  const liveRow = (row) => (row ? rows.find((r) => r.id === row.id) || row : null);
+  const confirmRow = liveRow(confirmFor);
+  const invoiceRow = liveRow(invoiceFor);
+  const refundRow = liveRow(refundFor);
+
   const QUEUE_PREVIEW = 3;
   const queueShown = queueOpen ? queue : queue.slice(0, QUEUE_PREVIEW);
   const queueTotal = queue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
   const invoiceShown = invoiceQueueOpen ? invoiceQueue : invoiceQueue.slice(0, QUEUE_PREVIEW);
   const invoiceTotal = invoiceQueue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const strandedShown = strandedOpen ? strandedQueue : strandedQueue.slice(0, QUEUE_PREVIEW);
+  const strandedTotal = strandedQueue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
   /* ── แถวของ "ใบ" หนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────────
      ⚠️ ยกออกมาเป็นฟังก์ชันตัวเดียว ไม่ใช่เขียนซ้ำในสองสาขาของ tbody
@@ -304,6 +331,9 @@ export default function FinancePaymentsPage() {
         <td className="num mono">
           {group.paidCount}/{group.count}
           <span className="cell-sub">{group.count === 1 ? "ชำระครั้งเดียว" : `แบ่ง ${group.count} งวด`}</span>
+          {/* ⭐ งวดจริงต่างจากแผนของ QT (ปรับแผนหลังอนุมัติ · 0377 · มติ D5) — ฉบับพิมพ์ SO ที่ลูกค้าถือยังแสดงแผน QT
+              ⇒ บัญชีต้องรู้ก่อนโทรตามเงินว่ายอดต่องวดบนกระดาษไม่ใช่ยอดในทะเบียน · ค่าระดับใบประทับจากชุดก่อนกรอง */}
+          {group.replanned ? <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} /> : null}
         </td>
         {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
             ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
@@ -466,6 +496,8 @@ export default function FinancePaymentsPage() {
                     <span className="cell-sub">
                       {row.customerName}
                       {isHistoricalOrder({ origin: row.origin }) ? ` · ${LEDGER_HISTORICAL_TAG}` : ""}
+                      {/* ใบที่ยกเลิก (review UI-1) — รับรองแล้วเงินเป็น "เงินค้างจากใบที่ยกเลิก" ไม่ใช่เงินของใบที่เดินอยู่ */}
+                      {row.orderStatus === "cancelled" ? ` · ${LEDGER_CANCELLED_TAG}` : ""}
                       {row.coversFrom && row.coversTo ? ` · ครอบ ${fmtDate(row.coversFrom)}–${fmtDate(row.coversTo)}` : ""}
                       {row.reportedByName ? ` · แจ้งโดย ${row.reportedByName}` : ""}
                       {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
@@ -537,6 +569,60 @@ export default function FinancePaymentsPage() {
                 <div className={styles.qmore}>
                   <Button size="sm" variant="quiet" onClick={() => setInvoiceQueueOpen((v) => !v)}>
                     {invoiceQueueOpen ? "ย่อคิว" : `ดูอีก ${invoiceQueue.length - QUEUE_PREVIEW} งวด`}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </WorkspaceSection>
+        )}
+
+        {/* ── คิวที่สาม: เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) ──────────────────────────────
+            ⚠️ ขึ้นเฉพาะตอนมีของค้าง — คิวว่างที่โชว์ตลอดคือเสียงรบกวน · อยู่ใต้คิวเอกสาร (เคสไม่บ่อย) */}
+        {strandedQueue.length > 0 && (
+          <WorkspaceSection
+            icon={<HandCoins size={17} />}
+            title={`${LEDGER_STRANDED_TITLE} ${strandedQueue.length} งวด · ${fmtMoney(strandedTotal)}`}
+            subtitle={`ใบยกเลิกแล้วแต่มีเงินรับแล้ว — ยกเข้าใบใหม่ของดีลเดียวกันได้ที่ใบใหม่ (ปุ่ม “${CARRY_BUTTON}”) หรือบันทึกคืนเงินลูกค้าจากที่นี่`}
+          >
+            <div className={styles.queue}>
+              {strandedShown.map((row) => (
+                <div key={row.id} className={styles.qrow}>
+                  <div className={styles.qmain}>
+                    <div>
+                      <Link
+                        prefetch={false}
+                        href={`/sa/sales-orders/${row.orderId}#payment`}
+                        target="_blank" rel="noreferrer"
+                        className={`linklike mono ${styles.openLink}`}
+                        title="เปิดใบในแท็บใหม่"
+                      >
+                        <strong>{row.orderNumber}</strong>
+                        <ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
+                      </Link>
+                      <span className={styles.qsep}>·</span>
+                      <span>{row.label || `งวดที่ ${row.seq}`}</span>
+                    </div>
+                    <span className="cell-sub">
+                      {row.customerName}
+                      {` · ${row.statusLabel}`}
+                      {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
+                      {row.taxInvoiceNo ? ` · ใบกำกับ ${row.taxInvoiceNo}` : ""}
+                    </span>
+                  </div>
+                  <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
+                  {/* คืนเงินได้เฉพาะงวดที่รับรองแล้ว — งวดรอตรวจอยู่ในคิวรับรองข้างบน (รับรอง/ตีกลับก่อน) */}
+                  {row.status === "confirmed" ? (
+                    <Button size="sm" tone="danger" variant="ghost" disabled={acting}
+                      onClick={() => { setActionError(""); setRefundFor(row); }}>
+                      บันทึกคืนเงิน
+                    </Button>
+                  ) : <span className="cell-sub">รับรอง/ตีกลับที่คิวข้างบนก่อน</span>}
+                </div>
+              ))}
+              {strandedQueue.length > QUEUE_PREVIEW && (
+                <div className={styles.qmore}>
+                  <Button size="sm" variant="quiet" onClick={() => setStrandedOpen((v) => !v)}>
+                    {strandedOpen ? "ย่อคิว" : `ดูอีก ${strandedQueue.length - QUEUE_PREVIEW} งวด`}
                   </Button>
                 </div>
               )}
@@ -730,14 +816,15 @@ export default function FinancePaymentsPage() {
             (กรอง "รอบัญชีรับรอง" แล้วงวดถัดไป/งวดที่รับรองแล้วหลุด) */}
         <InstallmentConfirmDialog
           open={!!confirmFor}
-          row={confirmFor}
+          row={confirmRow}
           order={confirmFor ? {
             id: confirmFor.orderId, orderNumber: confirmFor.orderNumber, customerName: confirmFor.customerName,
             totalAmount: confirmFor.orderTotal, approvedByName: confirmFor.orderApprovedByName,
             approvedAt: confirmFor.orderApprovedAt, historicalInvoiceRef: confirmFor.historicalInvoiceRef,
+            status: confirmFor.orderStatus,
           } : null}
           historical={isHistoricalOrder({ origin: confirmFor?.origin })}
-          outlook={confirmFor?.confirmOutlook || null}
+          outlook={confirmRow?.confirmOutlook || null}
           multi={Boolean(confirmFor && groups.find((g) => g.orderId === confirmFor.orderId)?.count > 1)}
           busy={acting}
           error={actionError}
@@ -749,17 +836,31 @@ export default function FinancePaymentsPage() {
             ⚠️ **แยกจากโมดัลรับรอง** โดยตั้งใจ (ดูหัวไฟล์ TaxInvoiceDialog) */}
         <TaxInvoiceDialog
           open={!!invoiceFor}
-          row={invoiceFor}
+          row={invoiceRow}
           order={invoiceFor ? { id: invoiceFor.orderId, orderNumber: invoiceFor.orderNumber, customerName: invoiceFor.customerName } : null}
           todayIso={todayIso}
           busy={acting}
           error={actionError}
           onClose={() => { setInvoiceFor(null); setActionError(""); }}
           onSubmit={async (values) => {
-            if (await runAction(invoiceFor, "tax-invoice", values)) setInvoiceFor(null);
+            if (await runAction(invoiceRow, "tax-invoice", values)) setInvoiceFor(null);
           }}
           onClear={async () => {
-            if (await runAction(invoiceFor, "tax-invoice-clear")) setInvoiceFor(null);
+            if (await runAction(invoiceRow, "tax-invoice-clear")) setInvoiceFor(null);
+          }}
+        />
+
+        {/* ⭐ บันทึกคืนเงิน (PR3 · mig 0378) — โมดัลตัวเดียวกับเมนูงวดบนใบที่ยกเลิก · สิทธิ์ตัดสินที่ API (ฝ่ายบัญชี) */}
+        <InstallmentRefundDialog
+          open={!!refundFor}
+          row={refundRow}
+          order={refundFor ? { orderNumber: refundFor.orderNumber, customerName: refundFor.customerName } : null}
+          todayIso={todayIso}
+          busy={acting}
+          error={actionError}
+          onClose={() => { setRefundFor(null); setActionError(""); }}
+          onSubmit={async (values) => {
+            if (await runAction(refundRow, "refund", values)) setRefundFor(null);
           }}
         />
 
@@ -776,7 +877,7 @@ export default function FinancePaymentsPage() {
           onChange={(reason) => setRejectFor((f) => ({ ...f, reason }))}
           onClose={() => { setRejectFor(null); setActionError(""); }}
           onConfirm={async () => {
-            if (await runAction(rejectFor.row, "reject", { reason: rejectFor.reason })) setRejectFor(null);
+            if (await runAction(liveRow(rejectFor.row), "reject", { reason: rejectFor.reason })) setRejectFor(null);
           }}
           confirmLabel="ยืนยันตีกลับ"
           placeholder={`ระบุเหตุผลอย่างน้อย ${MIN_REJECT_REASON} ตัวอักษร`}

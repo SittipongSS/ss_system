@@ -26,6 +26,27 @@
 .rowNumber { color: var(--text-3); text-align: center; }
 .readonlyValue { display: inline-block; padding: var(--space-2) var(--space-2-5); color: var(--text); }
 
+/* ── โหมด "replan" ของตัวแก้งวด (ปรับแผนงวดของใบสั่งขายที่อนุมัติแล้ว · mig 0377) ──────────────────
+   ⚠️ ตารางไม่ใช้คลาสการ์ดเก่า (`premium-glass-table`) — th/td มาจาก Table.module.css ที่เดียว (ratchet legacyTable) */
+.replanToolbar { gap: var(--space-2); }
+.replanSum { font-variant-numeric: tabular-nums; }
+.replanDue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+.replanTable { width: 100%; border-collapse: collapse; }
+.replanTable strong { display: block; color: var(--text); font-weight: var(--fw-bold); }
+.replanSeq { width: 48px; }
+.replanPct { width: 96px; }
+.replanAmount { width: 150px; }
+.replanLocked > td { color: var(--text-2); }
+.replanCover { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
 @media (max-width: 680px) {
   .paymentHeading { align-items: flex-start; }
   .installmentToggle { width: 100%; }

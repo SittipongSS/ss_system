@@ -121,3 +121,9 @@
   font-size: var(--fs-6); line-height: var(--lh-thai);
 }
 .coverBar > span { flex: 1; min-width: 0; color: var(--text-2); }
+
+/* ── โมดัลยกเงินจากใบที่ยกเลิก (PR3 · mig 0378) — ตารางแผนก่อน/หลัง ──────────────────────────────────
+   แถวที่ยกมา = พื้นอ่อนของ accent (เงินที่เข้ามาใหม่ในใบนี้) · งวดที่ถูกหักจนหมด = จาง + ขีดฆ่ายอด (ถูกลบ) */
+.carriedRow > td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+.removedRow > td { color: var(--text-3); }
+.removedRow :global(.num) { text-decoration: line-through; }

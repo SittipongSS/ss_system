@@ -11,7 +11,7 @@ import { loadScoped } from '@/lib/scopedRow';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
-import { isQuotationEvidencePath, isSalesOrderEvidencePath } from '@/lib/upload/privateEvidence';
+import { isInstallmentEvidencePath } from '@/lib/upload/privateEvidence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,7 +33,8 @@ export async function GET(request, { params }) {
 
   const { data: row, error: rowError } = await supabase
     .from('sales_order_installments')
-    .select('id, salesOrderId, evidence, "taxInvoiceFile"')
+    /* "movedFrom" (mig 0376) = ใบ/QT ที่แถวนี้เคยอยู่ก่อนย้ายมากับใบ Rev. — ด่าน path ข้างล่างยอมรับโฟลเดอร์ของใบเหล่านั้น */
+    .select('id, salesOrderId, evidence, "taxInvoiceFile", "movedFrom"')
     .eq('id', installmentId)
     .maybeSingle();
   if (rowError) return Response.json({ error: rowError.message }, { status: 500 });
@@ -58,9 +59,11 @@ export async function GET(request, { params }) {
   //    `order-confirmation` โดยไม่มีใครกลับมาแก้ที่นี่ ⇒ งวดที่ยืมไฟล์ยืนยันคำสั่งซื้อมา
   //    ตอบ "ไม่พบไฟล์แนบ" ทุกใบ · ตอนนี้ถามจากทะเบียนเดียวกับที่ใช้ตอนเขียนไฟล์
   // ⚠️ ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคา — id ว่างทำให้ตัวตรวจ path ถอยเป็นตัวจับทุกใบ (privateEvidence)
-  //    ⇒ ถามโฟลเดอร์ใบเสนอราคาเฉพาะใบที่มีจริง
-  const allowed = isSalesOrderEvidencePath(att.storagePath, order.id)
-    || (order.quotationId ? isQuotationEvidencePath(att.storagePath, order.quotationId) : false);
+  //    ⇒ ตัวตัดสินทิ้ง id ว่างเอง (installmentEvidenceOwners) ถามเฉพาะใบ/QT ที่มีจริง
+  // ⭐ PR1 (mig 0376): การออก Rev. **ย้ายแถวงวดมาทั้งแถว** — สลิป/ใบกำกับที่แนบก่อนย้ายยังอยู่ใต้โฟลเดอร์ของใบเดิม
+  //    (และ QT ของใบเดิม) ⇒ ยอมรับโฟลเดอร์ของทุกใบ/QT ใน `movedFrom` ของแถวนี้เท่านั้น ไม่เปิดกว้างทั้ง bucket
+  //    · สิทธิ์อ่านยังผูกกับใบที่ถืองวดอยู่ตอนนี้ (ด่านข้างบน) — movedFrom ขยายแค่โฟลเดอร์ ไม่ขยายสิทธิ์ข้ามใบ
+  const allowed = isInstallmentEvidencePath(att.storagePath, row, order);
   if (att.storageBucket !== privateBucket || !allowed) {
     return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
   }

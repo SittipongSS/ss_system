@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 
 import {
   LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
-  groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir,
+  groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir, ledgerVoidInstallment,
   ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
-  sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, undatedHiddenBy
+  sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
+  pendingStranded, LEDGER_STRANDED_TITLE, LEDGER_ORDER_STATES, LEDGER_CANCELLED_TAG,
 } from './paymentLedger.js';
+import { installmentVoid } from '@/lib/sales/salesOrderPayments';
 
 const TODAY = '2026-08-13';
 
@@ -830,4 +832,229 @@ test('⭐ ภาพหลังรับรองประทับจากง�
   assert.equal(all[1].confirmOutlook, undefined);
   assert.equal(all[2].confirmOutlook.collected, 15000);
   assert.equal(all[2].confirmOutlook.next, null);
+});
+
+/* ══ PR0 · งวดที่ยังไม่มีเงินของใบที่ตายแล้ว = โมฆะ ไม่ใช่ยอดค้างรับ (แผน so-payment-unlock-replan) ══════
+   🐞 ทะเบียนเคยไม่ดูสถานะใบเลย ⇒ วันที่ตรวจ (23/09) นับยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว
+   ⭐ ตัดเฉพาะ pending/rejected ของใบ cancelled/revised — reported ยังอยู่ในคิวบัญชี (บัญชีรับรอง/ตีกลับได้ ·
+     pipelineInstallmentLock) · confirmed ยังนับเป็นเงินที่เก็บได้ (PR3 จะแยกเป็น "เงินค้างจากใบที่ยกเลิก") */
+test('ledgerVoidInstallment: pending/rejected ของใบยกเลิก/ถูกออก Rev. = โมฆะ · สถานะอื่นหรือใบที่ยังเดินไม่ตัด', () => {
+  for (const status of ['cancelled', 'revised']) {
+    for (const row of ['pending', 'rejected', undefined]) {
+      assert.equal(ledgerVoidInstallment({ status: row }, { status }), true, `${status}/${row}`);
+    }
+    for (const row of ['reported', 'confirmed']) {
+      assert.equal(ledgerVoidInstallment({ status: row }, { status }), false, `${status}/${row}`);
+    }
+  }
+  for (const status of ['approved', 'approval_revoked', 'draft', 'pending_approval', 'rejected']) {
+    for (const row of ['pending', 'rejected', 'reported', 'confirmed']) {
+      assert.equal(ledgerVoidInstallment({ status: row }, { status }), false, `${status}/${row}`);
+    }
+  }
+  assert.equal(ledgerVoidInstallment(null, { status: 'cancelled' }), false);
+  assert.equal(ledgerVoidInstallment({ status: 'pending' }, null), false);
+});
+
+test('แถว pending/rejected ของใบยกเลิก/ถูกออก Rev. ไม่นับในยอดค้างรับและเลยกำหนด · แถวที่มีเงินยังอยู่', () => {
+  const PAST = '2026-08-01';
+  const raw = [
+    [{ id: 'd1', seq: 1, amount: 100, status: 'pending', dueDate: PAST }, { id: 'SOR-D', status: 'cancelled' }],
+    [{ id: 'd2', seq: 2, amount: 200, status: 'rejected', dueDate: PAST }, { id: 'SOR-D', status: 'cancelled' }],
+    [{ id: 'd3', seq: 1, amount: 300, status: 'pending', dueDate: PAST }, { id: 'SOR-R', status: 'revised' }],
+    [{ id: 'd4', seq: 3, amount: 400, status: 'reported', dueDate: PAST }, { id: 'SOR-D', status: 'cancelled' }],
+    [{ id: 'live', seq: 1, amount: 1000, status: 'pending', dueDate: PAST }, { id: 'SOR-A', status: 'approved' }],
+  ];
+  const rows = raw
+    .filter(([installment, order]) => !ledgerVoidInstallment(installment, order))
+    .map(([installment, order]) => ledgerRow({ installment, order, todayIso: TODAY }));
+  assert.deepEqual(rows.map((r) => r.id), ['d4', 'live']);
+  const summary = ledgerSummary(rows);
+  assert.equal(summary.outstandingAmount, 1400, 'เหลือแค่เงินที่รอบัญชีตรวจของใบยกเลิก + งวดของใบที่ยังเดิน');
+  assert.equal(summary.overdueAmount, 1400);
+  assert.equal(summary.awaitingAmount, 400, 'สลิปรอบัญชีตรวจของใบยกเลิกยังอยู่ในคิว');
+  // ธงระดับใบบนแถว — จอ/Excel แยกใบที่ตายแล้วออกได้โดยไม่ต้องเดา literal ของสถานะ
+  assert.equal(rows[0].orderDead, true);
+  assert.equal(rows[1].orderDead, false);
+  assert.equal(ledgerRow({ installment: { id: 'x' }, order: { id: 'o', status: 'revised' } }).orderDead, true);
+  assert.equal(ledgerRow({ installment: { id: 'x' }, order: { id: 'o', status: 'approval_revoked' } }).orderDead, false);
+});
+
+/* ⭐ PATCH งวดเป็น optimistic lock แล้ว (PR0) — คิวบนทะเบียนต้องส่ง updatedAt ของแถวที่ตาเห็นกลับไป
+   ⚠️ ledgerRow เป็น whitelist — ลืมเติมที่นี่ = ทุกคำสั่งจากทะเบียนไม่มีตัวล็อก (หรือ 409 ตลอดถ้าบังคับ) */
+test('ledgerRow พก updatedAt ของงวดมาด้วย (ตัวล็อกของ PATCH จากคิวบัญชี)', () => {
+  const r = ledgerRow({ installment: { id: 'i', updatedAt: '2026-09-23T03:00:00.123456+00:00' }, order: { id: 'o' } });
+  assert.equal(r.updatedAt, '2026-09-23T03:00:00.123456+00:00');
+  assert.equal(ledgerRow({ installment: { id: 'i' }, order: { id: 'o' } }).updatedAt, null);
+});
+
+/* ── ป้าย "ปรับแผนหลังอนุมัติ" บนทะเบียนบัญชี (PR2 · mig 0377 · มติ D5) ────────────────────────────────────
+   ⭐ ไม่เก็บข้อมูลเพิ่ม — เทียบงวดของใบกับแผนของ QT (installmentsReplanned) · ค่าระดับใบ ⇒ ประทับจากชุดก่อนกรอง
+     (กรองสถานะงวดแล้วงวดหลุด จำนวนงวดจะไม่ตรงแผน = ป้ายขึ้นผิด) — แพตเทิร์นเดียวกับ stampOrderPaidThrough
+   ⚠️ ใบย้อนหลังไม่มี QT · ใบยกเลิก/ถูกออก Rev. ทับเหลือแต่แถวที่มีเงิน (แถวโมฆะถูกตัดตั้งแต่ PR0) ⇒ ไม่ประทับ */
+test('stampOrderReplanned: งวดต่างจากแผน QT = replanned ทุกแถวของใบ · ตรงแผน/ใบย้อนหลัง/ใบตายแล้ว = ไม่ขึ้น', () => {
+  const plan = { type: 'installment', installments: [{ label: 'มัดจำ', percent: 50 }, { label: '', percent: 50 }] };
+  const row = (orderId, seq, amount, orderExtra = {}, label = seq === 1 ? 'มัดจำ' : `งวดที่ ${seq}`) => ledgerRow({
+    installment: { id: `${orderId}-${seq}`, seq, label, percent: 50, amount, status: 'pending', evidence: [] },
+    order: { id: orderId, orderNumber: orderId, quotationId: `QT-${orderId}`, totalAmount: 30000, status: 'approved', ...orderExtra },
+    quotation: null, customer: null, todayIso: TODAY,
+  });
+  const rows = [
+    row('A', 1, 15000), row('A', 2, 15000),                       // ตรงแผน
+    row('B', 1, 15000), row('B', 2, 10000), row('B', 3, 5000),    // ปรับเป็น 3 งวด
+    row('C', 1, 15000, { origin: 'historical', quotationId: null }), row('C', 2, 15000, { origin: 'historical', quotationId: null }),
+    row('D', 1, 15000, { status: 'cancelled' }),                  // ใบยกเลิก — แถวโมฆะถูกตัดแล้ว เหลือไม่ครบ
+  ];
+  const plans = new Map([['QT-A', plan], ['QT-B', plan], ['QT-D', plan]]);
+  const stamped = stampOrderReplanned(rows, plans);
+  assert.equal(stamped, rows, 'ประทับลงแถวเดิม (แพตเทิร์น stampOrderPaidThrough)');
+  const byOrder = (id) => [...new Set(rows.filter((r) => r.orderId === id).map((r) => r.orderReplanned))];
+  assert.deepEqual(byOrder('A'), [false]);
+  assert.deepEqual(byOrder('B'), [true]);
+  assert.deepEqual(byOrder('C'), [false]);
+  assert.deepEqual(byOrder('D'), [false]);
+  const groups = groupLedgerByOrder(rows);
+  assert.equal(groups.find((g) => g.orderId === 'B').replanned, true);
+  assert.equal(groups.find((g) => g.orderId === 'A').replanned, false);
+});
+
+
+/* ══ PR3 · เงินค้างจากใบที่ยกเลิก + บันทึกคืนเงิน (mig 0378 · มติเจ้าของ 23/09 D4) ═══════════════════════════════════ */
+const DEAD = { status: 'cancelled' };
+const refundOf = (over = {}) => ({
+  refundedAt: '2026-09-21T03:00:00Z', refundedOn: '2026-09-20', refundedByName: 'บัญชี',
+  refundReason: 'ลูกค้ายกเลิกงาน ขอคืนมัดจำทั้งหมด', refundCreditNoteNo: 'CN-0001', ...over,
+});
+
+test('ledgerRow: แถวเงินของใบที่ยกเลิก = stranded · คืนเงินแล้ว = refunded (ไม่ค้าง) · ป้ายสถานะ "คืนเงินแล้ว" · ช่องคืนเงินถึงจอ/Excel', () => {
+  const confirmed = make({ status: 'confirmed', amount: 20000 }, DEAD);
+  assert.equal(confirmed.stranded, true);
+  assert.equal(confirmed.refunded, false);
+  assert.equal(make({ status: 'reported' }, DEAD).stranded, true, 'รอบัญชีตรวจก็ค้างอยู่กับใบที่ยกเลิก');
+  assert.equal(make({ status: 'confirmed' }).stranded, false, 'ใบที่ยังเดิน = ไม่ใช่เงินค้าง');
+  const refunded = make({ status: 'confirmed', amount: 20000, taxInvoiceNo: 'IV-7', ...refundOf() }, DEAD);
+  assert.equal(refunded.stranded, false);
+  assert.equal(refunded.refunded, true);
+  assert.equal(refunded.statusLabel, 'คืนเงินแล้ว');
+  assert.equal(refunded.refundedOn, '2026-09-20');
+  assert.equal(refunded.refundCreditNoteNo, 'CN-0001');
+  assert.equal(refunded.refundReason, 'ลูกค้ายกเลิกงาน ขอคืนมัดจำทั้งหมด');
+  // ก่อนรัน 0378 ไม่มีคอลัมน์ (undefined) = ยังไม่คืน · ไม่พัง
+  assert.equal(make({ status: 'confirmed' }, DEAD).refundedOn, null);
+  const keys = LEDGER_COLUMNS.map((c) => c.key);
+  assert.ok(keys.includes('refundedOn') && keys.includes('refundCreditNoteNo'), 'ไฟล์ Excel ต้องมีวันคืนเงิน/เลขใบลดหนี้');
+  assert.equal(LEDGER_COLUMNS.find((c) => c.key === 'refundedOn').date, true);
+  assert.notEqual(LEDGER_COLUMNS.find((c) => c.key === 'refundCreditNoteNo').date, true, 'เลขที่ห้ามยัดรูปวันที่');
+});
+
+test('ledgerSummary: เก็บได้ = confirmed ที่ยังไม่คืน · เงินค้างนับแยก · คืนเงินแล้วออกจากทั้งเก็บได้และเงินค้าง', () => {
+  const rows = [
+    make({ seq: 1, status: 'confirmed', amount: 20000 }, DEAD),
+    make({ seq: 2, status: 'reported', amount: 10000 }, DEAD),
+    make({ seq: 3, status: 'confirmed', amount: 5000, ...refundOf({ refundCreditNoteNo: null }) }, DEAD),
+    make({ seq: 1, status: 'confirmed', amount: 40000 }, { id: 'SOR-A', status: 'approved' }),
+  ];
+  const s = ledgerSummary(rows);
+  assert.equal(s.collectedAmount, 60000, 'confirmed ที่ยังไม่คืน (รวมเงินค้างที่รับรองแล้ว) — คืนแล้วไม่นับ');
+  assert.equal(s.strandedCount, 2);
+  assert.equal(s.strandedAmount, 30000);
+  assert.equal(s.refundedCount, 1);
+  assert.equal(s.refundedAmount, 5000);
+  assert.equal(s.awaitingAmount, 10000, 'สลิปรอตรวจของใบยกเลิกยังอยู่ในคิวบัญชี');
+  assert.equal(s.outstandingAmount, 10000, 'ค้างรับคงกติกาเดิม (ยังไม่ confirmed) — PR0 ตรึงไว้');
+});
+
+test('pendingStranded: คิว "เงินค้างจากใบที่ยกเลิก" — แถวที่ค้างเท่านั้น เรียงตามใบแล้วเลขงวด', () => {
+  const rows = [
+    make({ id: 'b2', seq: 2, status: 'reported' }, { id: 'SOR-B', orderNumber: 'SO-B', status: 'cancelled' }),
+    make({ id: 'a1', seq: 1, status: 'confirmed' }, { id: 'SOR-A', orderNumber: 'SO-A', status: 'cancelled' }),
+    make({ id: 'b1', seq: 1, status: 'confirmed' }, { id: 'SOR-B', orderNumber: 'SO-B', status: 'cancelled' }),
+    make({ id: 'r', seq: 3, status: 'confirmed', ...refundOf() }, { id: 'SOR-B', orderNumber: 'SO-B', status: 'cancelled' }),
+    make({ id: 'live', seq: 1, status: 'confirmed' }),
+  ];
+  assert.deepEqual(pendingStranded(rows).map((r) => r.id), ['a1', 'b1', 'b2']);
+  assert.deepEqual(pendingStranded(null), []);
+  assert.equal(LEDGER_STRANDED_TITLE, 'เงินค้างจากใบที่ยกเลิก');
+});
+
+test('ใบกำกับค้าง: งวดที่คืนเงินแล้วไม่ใช่ของค้างเอกสาร · เงินค้างที่ยังไม่มีใบยังค้างตามเดิม', () => {
+  const refunded = make({ seq: 1, status: 'confirmed', amount: 5000, ...refundOf({ refundCreditNoteNo: null }) }, DEAD);
+  const stranded = make({ seq: 2, status: 'confirmed', amount: 7000 }, DEAD);
+  assert.deepEqual(pendingTaxInvoices([refunded, stranded]).map((r) => r.seq), [2]);
+  const s = ledgerSummary([refunded, stranded]);
+  assert.equal(s.missingInvoiceCount, 1);
+  assert.equal(s.missingInvoiceAmount, 7000);
+});
+
+test('ก้อนของใบที่ยกเลิก: นับเงินค้าง/คืนแล้ว · ป้ายสรุปบอก "เงินค้างจากใบที่ยกเลิก" ก่อนเรื่องอื่น', () => {
+  const rows = [
+    make({ id: 'x1', seq: 1, status: 'confirmed', amount: 20000 }, { id: 'SOR-X', orderNumber: 'SO-X', status: 'cancelled' }),
+    make({ id: 'x2', seq: 2, status: 'confirmed', amount: 5000, ...refundOf() }, { id: 'SOR-X', orderNumber: 'SO-X', status: 'cancelled' }),
+  ];
+  const [group] = groupLedgerByOrder(rows);
+  assert.equal(group.stranded, 1);
+  assert.equal(group.strandedAmount, 20000);
+  assert.equal(group.refunded, 1);
+  assert.deepEqual(groupNote(group), { label: 'เงินค้าง 1 งวด', tone: 'warning' });
+  const [allRefunded] = groupLedgerByOrder([rows[1]]);
+  assert.deepEqual(groupNote(allRefunded), { label: 'คืนเงินแล้ว', tone: 'neutral' });
+});
+
+
+/* ══ review รอบ PR0–PR3 (แผน so-payment-unlock-replan) ══════════════════════════════════════════════════════════ */
+
+/* 🐞 F1 (tests): ตัวนับ "ยังไม่ออกใบกำกับ" (ledgerSummary · คิว) ตัดงวดที่คืนเงินแล้ว แต่ตัวกรอง taxInvoice=missing ยังใช้
+   taxInvoicePending ตัวเดิม ⇒ การ์ดบอก 0 งวด กดเข้าไปเจอแถว "คืนเงินแล้ว" + ไฟล์ Excel ก็ติดไปด้วย */
+test('🔴 ตัวกรอง "ยังไม่ออกใบกำกับ" ใช้เกณฑ์เดียวกับตัวนับ — งวดที่คืนเงินแล้วไม่อยู่ในรายการ', () => {
+  const refunded = make({ id: 'r1', seq: 1, status: 'confirmed', amount: 30000, ...refundOf({ refundCreditNoteNo: null }) }, DEAD);
+  const stranded = make({ id: 's2', seq: 2, status: 'confirmed', amount: 7000 }, DEAD);
+  const listed = filterLedger([refunded, stranded], { taxInvoice: 'missing' });
+  assert.deepEqual(listed.map((r) => r.id), ['s2']);
+  assert.equal(ledgerSummary([refunded, stranded]).missingInvoiceCount, listed.length, 'ตัวเลขบนการ์ด = จำนวนแถวที่กรองได้');
+});
+
+/* 🐞 F2 (tests): ใบที่ยกเลิกที่เหลือแต่เงินค้าง/คืนเงินแล้ว (งวดโมฆะถูกตัดตั้งแต่ PR0) ถูกจัดเป็น "เก็บครบแล้ว" */
+test('🔴 สถานะระดับใบ: ใบที่ยกเลิก/ถูกแทน = สถานะของตัวเอง (ไม่ใช่ "เก็บครบแล้ว") · งวดที่คืนเงินแล้วไม่นับว่าเก็บได้', () => {
+  const cancelled = { id: 'SOR-C', orderNumber: 'SO-C', status: 'cancelled' };
+  const strandedOnly = [make({ id: 'c1', seq: 1, status: 'confirmed', amount: 30000 }, cancelled)];
+  const refundedOnly = [make({ id: 'c2', seq: 1, status: 'confirmed', amount: 30000, ...refundOf() }, cancelled)];
+  const dead = Object.keys(LEDGER_ORDER_STATES).find((k) => !['open', 'done'].includes(k));
+  assert.ok(dead, 'ต้องมีสถานะของใบที่ยกเลิก/ถูกแทนแยกจาก เก็บครบ/ยังไม่ครบ');
+  assert.equal(orderStateIndex(strandedOnly).get('SOR-C'), dead);
+  assert.equal(orderStateIndex(refundedOnly).get('SOR-C'), dead);
+  assert.deepEqual(filterLedger(strandedOnly, { orderState: ['done'], orderStates: orderStateIndex(strandedOnly) }), [],
+    'ตัวกรอง "เก็บครบแล้ว" ต้องไม่มีใบที่ยกเลิก');
+  assert.equal(filterLedger(strandedOnly, { orderState: [dead], orderStates: orderStateIndex(strandedOnly) }).length, 1);
+  // ใบที่ยังเดิน: เดิมทุกข้อ
+  assert.equal(orderStateIndex([make({ seq: 1, status: 'confirmed' })]).get('SOR-1'), 'done');
+  // จัดกลุ่ม "สถานะการเก็บ" ใช้ถังเดียวกับตัวกรอง — ใบยกเลิกไม่ตกถัง "เก็บครบแล้ว"/"รอลูกค้าชำระ"
+  const [bucket] = groupLedgerBuckets(groupLedgerByOrder(refundedOnly), 'state');
+  assert.equal(bucket.label, LEDGER_ORDER_STATES[dead]);
+});
+
+/* 🐞 UI-2: งวดที่คืนเงินแล้วยังเป็น confirmed ในฐาน — ก้อนของใบนับเป็น "เก็บครบ" ทั้งที่ยอดเก็บได้เป็น 0 */
+test('🔴 ก้อนของใบ: งวดที่คืนเงินแล้วไม่นับ "เก็บแล้ว x/y" และใบที่คืนครบไม่ใช่ "เก็บครบ"', () => {
+  const cancelled = { id: 'SOR-X', orderNumber: 'SO-X', status: 'cancelled' };
+  const rows = [
+    make({ id: 'x1', seq: 1, status: 'confirmed', amount: 500, ...refundOf() }, cancelled),
+    make({ id: 'x2', seq: 2, status: 'confirmed', amount: 500, ...refundOf() }, cancelled),
+  ];
+  const [group] = groupLedgerByOrder(rows);
+  assert.equal(group.paidCount, 0);
+  assert.equal(group.complete, false);
+  assert.equal(group.summary.collectedAmount, 0);
+  assert.deepEqual(groupNote(group), { label: 'คืนเงินแล้ว', tone: 'neutral' });
+  assert.equal(groupAsOrder(group).payment.complete, false);
+});
+
+/* ⭐ UI-1: แถวคิวรับรองของใบที่ยกเลิกต้องบอกว่า "ใบยกเลิกแล้ว" — ตาเห็นบนแถว = ต้องค้นเจอ (กติกา search haystack) */
+test('ป้าย "ใบยกเลิกแล้ว" ของแถวคิว ค้นเจอ · ทะเบียนตัดงวดโมฆะด้วยตัวตัดสินเดียวกับแผงงวด (installmentVoid)', () => {
+  const cancelled = { id: 'SOR-Z', orderNumber: 'SO-Z', status: 'cancelled' };
+  const rows = [make({ id: 'z1', seq: 1, status: 'reported' }, cancelled), make({ id: 'live', seq: 1, status: 'reported' })];
+  assert.equal(LEDGER_CANCELLED_TAG, 'ใบยกเลิกแล้ว');
+  assert.deepEqual(filterLedger(rows, { q: LEDGER_CANCELLED_TAG }).map((r) => r.id), ['z1']);
+  const pending = { id: 'p', status: 'pending' };
+  for (const status of ['cancelled', 'revised', 'approved', 'approval_revoked']) {
+    assert.equal(ledgerVoidInstallment(pending, { status }), installmentVoid(pending, { status }), status);
+  }
 });

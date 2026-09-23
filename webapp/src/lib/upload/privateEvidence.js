@@ -20,8 +20,19 @@ const safeId = (value) => String(value).replace(/[^a-zA-Z0-9_-]+/g, '_');
    (`sales_orders_status_check` ของ 0166: draft · pending_approval · approved ·
    rejected · cancelled · revised · approval_revoked)
    ⚠️ `approval_revoked` **ไม่อยู่ในนี้** — ใบที่ย้อนการอนุมัติยังเป็นใบเดิมและงวดยัง
-   อยู่ครบ คนที่กำลังตามเก็บเงินไม่ควรถูกตัดมือระหว่างที่ใบรอออก Rev. */
-export const SO_PAYMENT_EVIDENCE_CLOSED = ['cancelled', 'rejected', 'revised'];
+   อยู่ครบ คนที่กำลังตามเก็บเงินไม่ควรถูกตัดมือระหว่างที่ใบรอออก Rev.
+   ⚠️ `rejected` **ไม่อยู่ในนี้แล้ว** (review 23/09 · มติ D3) — ใบที่ AE Sup ตีกลับคือใบที่กลับเข้ารอบแก้ ไม่ใช่ใบที่ตาย
+     · ตั้งแต่ 0376 ใบ Rev. ถืองวดเงินที่ย้ายมา (ตรึงยอดแล้ว) — Rev. ที่ถูกตีกลับยังต้องรับแจ้งชำระงวดถัดไปได้
+     · `pipelineInstallmentLock` ปล่อย report บนใบ rejected อยู่แล้ว ⇒ ด่านไฟล์ปิดไว้ = ปุ่มขึ้นแต่อัปสลิปไม่ได้ (คลาส IS-26080026)
+     ⇒ ยามความสัมพันธ์ไล่ทุกสถานะของ CHECK 0166 (privateEvidenceGate.test) */
+export const SO_PAYMENT_EVIDENCE_CLOSED = ['cancelled', 'revised'];
+/* ใบกำกับภาษีของงวด — **ใบยกเลิกยังแนบได้** (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09)
+   ใบ pipeline ที่ยกเลิกแล้ว บัญชียังรับรอง/บันทึกใบกำกับของเงินที่เข้าแล้วได้ (`pipelineInstallmentLock` ปล่อย
+   `tax-invoice`) ⇒ ด่านไฟล์ต้องไม่แคบกว่าด่านคำสั่ง (ยาม: privateEvidenceGate.test "ล็อกทั้งใบของใบ pipeline")
+   ⚠️ ใบย้อนหลังที่ยกเลิก: คำสั่งยังถูก `historicalInstallmentLock` ปิดทั้งใบ — ด่านไฟล์กว้างกว่าได้ (ไม่มีปุ่มให้ถึง)
+   ⚠️ สลิปการชำระ (`SO_PAYMENT_EVIDENCE_CLOSED`) ยังปิดใบยกเลิก — แจ้งชำระงวดใหม่บนใบยกเลิกถูกบล็อกเหมือนกัน
+   ⚠️ `rejected` เปิดแล้ว (review 23/09 · มติ D3) — ใบ Rev. ที่ถูกตีกลับถืองวดที่รับเงินแล้ว (0376) บัญชียังบันทึกใบกำกับได้ */
+export const SO_TAX_INVOICE_CLOSED = ['revised'];
 
 const TARGETS = {
   // หลักฐาน Won แนบได้เฉพาะตอนใบยังเปิดอยู่ — หลัง accept ใบกลายเป็นแหล่งของ Actual
@@ -56,14 +67,14 @@ const TARGETS = {
    * `/api/upload/session` ทุกครั้ง · ฟีเจอร์ไม่เคยทำงานเลยตั้งแต่วันที่ merge
    *
    * ⭐ **ด่านของไฟล์ต้องไม่แคบกว่าด่านของคำสั่ง** — คนตัดสินว่างวดไหนแจ้งได้คือ
-   * `installmentActionError` ซึ่งไม่ดูสถานะใบเลย · ที่นี่จึงเหลือแค่ตัดใบที่ไม่มีเงิน
-   * ให้เก็บอีกแล้ว: ยกเลิก/ตีกลับ (ชุดเดียวกับที่ POST /installments ปฏิเสธ) และใบที่
-   * ถูกออก Rev. ทับไปแล้ว ซึ่งหลักฐานต้องไปแขวนบนใบใหม่ ไม่ใช่ใบที่ตายไปแล้ว */
+   * `installmentActionError` (+ `pipelineInstallmentLock`) · ที่นี่จึงเหลือแค่ตัดใบที่ไม่มีเงิน
+   * ให้เก็บอีกแล้ว: ยกเลิก และใบที่ถูกออก Rev. ทับไปแล้ว ซึ่งหลักฐานต้องไปแขวนบนใบใหม่
+   * ไม่ใช่ใบที่ตายไปแล้ว · ใบที่ถูกตีกลับยังรับเงินได้ (มติ D3 — ดู SO_PAYMENT_EVIDENCE_CLOSED) */
   sales_order_payment_evidence: {
     table: 'sales_orders',
     notFound: 'ไม่พบใบสั่งขาย',
     gate: (row) => (SO_PAYMENT_EVIDENCE_CLOSED.includes(row.status)
-      ? 'ใบสั่งขายนี้ยกเลิก/ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบหลักฐานการชำระไม่ได้'
+      ? 'ใบสั่งขายนี้ยกเลิก/ถูกออก Rev. ทับแล้ว — แนบหลักฐานการชำระไม่ได้'
       : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/payments/`,
   },
@@ -76,13 +87,13 @@ const TARGETS = {
    * 🔴 ถ้าปล่อยให้ตกไปใช้ด่านตั้งต้น ปุ่มจะขึ้นให้ FN กดตามปกติแล้วตายที่ 403 ของ
    * `/api/upload/session` โดย error ไปโผล่ **ใต้โมดัล** มองไม่เห็น (อาการเดียวกับ
    * IS-26080026 ที่ด่านไฟล์แคบกว่าด่านปุ่ม)
-   * ⚠️ ด่าน **สถานะ** ใช้ชุดเดียวกับหลักฐานการชำระ — ใบที่ยกเลิก/ตีกลับ/ถูกออก Rev.
-   * ทับแล้ว ไม่มีใบกำกับให้แนบอีก */
+   * ⚠️ ด่าน **สถานะ** = `SO_TAX_INVOICE_CLOSED` — ใบที่ถูกออก Rev. ทับแล้ว ไม่มีใบกำกับให้แนบอีก (ใบที่ตีกลับแนบได้ — มติ D3)
+   * · ใบยกเลิกยังแนบได้ตั้งแต่ PR0 (เงินที่เข้าแล้วยังต้องมีใบกำกับ — ดูคอมเมนต์ที่ค่าคงที่) */
   sales_order_tax_invoice: {
     table: 'sales_orders',
     notFound: 'ไม่พบใบสั่งขาย',
-    gate: (row) => (SO_PAYMENT_EVIDENCE_CLOSED.includes(row.status)
-      ? 'ใบสั่งขายนี้ยกเลิก/ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบใบกำกับภาษีไม่ได้'
+    gate: (row) => (SO_TAX_INVOICE_CLOSED.includes(row.status)
+      ? 'ใบสั่งขายนี้ถูกออก Rev. ทับแล้ว — แนบใบกำกับภาษีไม่ได้'
       : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/tax-invoices/`,
     allow: (user) => canConfirmPayment(user),
@@ -211,6 +222,34 @@ export function isSalesOrderEvidencePath(storagePath, orderId = null) {
 }
 
 export { SALES_ORDER_EVIDENCE_FOLDERS };
+
+/* ── เจ้าของไฟล์หลักฐานของงวดหนึ่งแถว (PR1 · mig 0376 · แผน so-payment-unlock-replan) ─────────────────
+ *
+ * ⭐ ตั้งแต่ 0376 การออก Rev. **ย้ายแถวงวดไปใบ Rev. ทั้งแถว** — สลิป/ใบกำกับที่แนบไว้ก่อนย้ายยังอยู่ใต้โฟลเดอร์
+ *   ของ **ใบเดิม** (และเอกสารยืนยันคำสั่งซื้อที่งวดแรกยืมมาอยู่ใต้ QT ของใบเดิม) ⇒ ด่านอ่านที่ผูกแค่ id ของใบที่ถืองวด
+ *   อยู่ตอนนี้จะตอบ "ไม่พบไฟล์แนบ" กับทุกไฟล์ของงวดที่ย้ายมา (โรคเดียวกับ #1391 ที่ด่านอ่านตกโฟลเดอร์ที่สาม)
+ * ⭐ เจ้าของ = ใบที่ถืองวดอยู่ + ทุกใบ/QT ที่แถว **เคยอยู่จริง** ตาม `movedFrom` (ต่อท้ายทุกทอด) — ไม่เปิดกว้างทั้ง bucket
+ * 🔴 **id ว่าง/ไม่ใช่สตริงต้องถูกทิ้ง** — ตัวตรวจ path ถอยเป็นตัวจับทุกใบเมื่อไม่ได้ส่ง id (ใบย้อนหลังไม่มี QT ·
+ *   รายการ movedFrom ที่เพี้ยน) ⇒ ห้ามส่งค่าว่างเข้า `isSalesOrderEvidencePath`/`isQuotationEvidencePath` ทางนี้เด็ดขาด
+ */
+const ownerId = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+export function installmentEvidenceOwners(row, order) {
+  const moved = Array.isArray(row?.movedFrom) ? row.movedFrom : [];
+  const entries = moved.filter((m) => m && typeof m === 'object');
+  const uniq = (values) => [...new Set(values.map(ownerId).filter(Boolean))];
+  return {
+    salesOrderIds: uniq([order?.id, ...entries.map((m) => m.salesOrderId)]),
+    quotationIds: uniq([order?.quotationId, ...entries.map((m) => m.quotationId)]),
+  };
+}
+
+/** path นี้เป็นไฟล์หลักฐานของงวดแถวนี้ไหม — ใต้ใบสั่งขายหรือ QT ที่แถวเคยอยู่ (ด่านอ่านของ payment-file) */
+export function isInstallmentEvidencePath(storagePath, row, order) {
+  const { salesOrderIds, quotationIds } = installmentEvidenceOwners(row, order);
+  return salesOrderIds.some((id) => isSalesOrderEvidencePath(storagePath, id))
+    || quotationIds.some((id) => isQuotationEvidencePath(storagePath, id));
+}
 
 /**
  * ด่าน **สถานะเอกสาร** ของ entityType นั้น — คืนข้อความผิดพลาด หรือ null เมื่อผ่าน

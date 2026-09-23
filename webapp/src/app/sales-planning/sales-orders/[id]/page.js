@@ -102,7 +102,11 @@ import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
-import { paymentRollup } from "@/lib/sales/salesOrderPayments";
+import {
+  cancelledMoneyRestoreBlock, installmentReportDoneMessage, installmentVoid, paymentRollup, salesOrderMoneyOutcome,
+} from "@/lib/sales/salesOrderPayments";
+import { REPLAN_DONE_MESSAGE } from "@/lib/sales/installmentReplan";
+import { CARRY_DONE_MESSAGE } from "@/lib/sales/installmentCarry";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
@@ -462,7 +466,9 @@ export default function SalesOrderDetailPage() {
   }
 
   /* ด่านของแต่ละคำสั่งอยู่ที่ `installmentActionError` ซึ่งการ์ดใช้ซ่อนปุ่มและ API ใช้ปฏิเสธ
-     ที่นี่จึงเหลือแค่ "อัปไฟล์ (ถ้ามี) แล้วยิง" — ไม่ตัดสินสิทธิ์ซ้ำ */
+     ที่นี่จึงเหลือแค่ "อัปไฟล์ (ถ้ามี) แล้วยิง" — ไม่ตัดสินสิทธิ์ซ้ำ
+     ⭐ optimistic lock (PR0) — ส่ง `updatedAt` ของแถวที่ตาเห็น (แผงส่งแถวล่าสุดของตารางมาเสมอ)
+       ⇒ แถวถูกแก้จากอีกหน้าต่าง = 409 แล้วดึงใบสดมา (`refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง) ให้กดใหม่ได้ */
   async function runInstallmentAction(row, action, options = {}) {
     setBusy(`installment-${action}`);
     setError("");
@@ -476,15 +482,23 @@ export default function SalesOrderDetailPage() {
       const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ installmentId: row.id, action, ...options, files: undefined, evidence }),
+        body: JSON.stringify({
+          installmentId: row.id, action, ...options, files: undefined, evidence,
+          expectedUpdatedAt: row.updatedAt || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setError(data.error || "อัปเดตงวดชำระไม่สำเร็จ"); return false; }
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "อัปเดตงวดชำระไม่สำเร็จ");
+        return false;
+      }
       setOrder((current) => ({ ...current, installments: data.installments || [] }));
       setToast({
         kind: action === "reject" ? "info" : "success",
         msg: {
-          report: "ส่งให้บัญชีตรวจแล้ว",
+          // ตามปลายทางจริงของแถว — บัญชีบันทึกเองจบที่ "ชำระแล้ว" · งวดร่างยังไม่ถึงบัญชี
+          report: installmentReportDoneMessage(data.installment?.status),
           withdraw: "ดึงกลับแล้ว",
           confirm: "บัญชีรับรองการชำระแล้ว",
           reject: "ตีกลับให้ฝ่ายขายแก้แล้ว",
@@ -494,11 +508,75 @@ export default function SalesOrderDetailPage() {
           unlink: "ถอดคำร้องออกจากงวดแล้ว",
           "tax-invoice": "บันทึกใบกำกับภาษีของงวดแล้ว",
           "tax-invoice-clear": "ลบใบกำกับภาษีของงวดแล้ว",
+          // เงินค้างจากใบที่ยกเลิก (PR3 · 0378)
+          refund: "บันทึกคืนเงินแล้ว — งวดออกจากเงินค้างของใบที่ยกเลิก",
+          "refund-clear": "ถอนการบันทึกคืนเงินแล้ว — งวดกลับเป็นเงินค้าง",
         }[action] || "อัปเดตเรียบร้อยแล้ว",
       });
       return true;
     } catch (uploadError) {
       setError(uploadError.message || "อัปโหลดหลักฐานไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── ปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377 · มติ D1) — คำสั่งของทั้งใบ (ไม่มี installmentId) ──────────────────
+     ⭐ แผงประกอบ body ครบแล้ว (แถวเปิดเป็นบาท + expected ของแถวที่ตาเห็นตอนเปิดตัวแก้ + เหตุผล) — ที่นี่แค่ยิงแล้วบอกผล
+     ⭐ 409 (มีคนแก้งวดจากอีกหน้าต่าง) = ดึงใบสด ⇒ แผงเห็นว่า base เก่าแล้วขึ้นปุ่ม "เริ่มใหม่จากงวดล่าสุด"
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วจะได้ 409 ที่ทำให้คนเข้าใจผิดว่าไม่สำเร็จ */
+  async function runInstallmentReplan({ rows, expected, reason }) {
+    setBusy("installment-replan");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        json: { action: "replan", rows, expected, reason },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "ปรับแผนงวดไม่สำเร็จ");
+        return false;
+      }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      setToast({ kind: "success", msg: REPLAN_DONE_MESSAGE });
+      return true;
+    } catch (replanError) {
+      setError(replanError.message || "ปรับแผนงวดไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── ยกเงินจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) — คำสั่งของทั้งใบ (ใบนี้ = ใบปลายทาง · ไม่มี installmentId) ──────────
+     ⭐ แผงประกอบ body ครบแล้ว (ใบต้นทาง + งวดที่เลือก + expected ของแถวที่ตาเห็นตอนเปิดโมดัล + เหตุผล) — ที่นี่แค่ยิงแล้วบอกผล
+     ⭐ 409 (มีคนแก้งวด/ยกไปก่อนจากอีกหน้าต่าง) = ดึงใบสด ⇒ แผงเห็นว่า base เก่าแล้วบอกให้เปิดโมดัลใหม่
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วจะได้ 409 ที่ทำให้คนเข้าใจผิดว่าไม่สำเร็จ */
+  async function runInstallmentCarry({ sourceOrderId, installmentIds, expected, reason }) {
+    setBusy("installment-carry");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        json: { action: "carry", sourceOrderId, installmentIds, expected, reason },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "ยกเงินจากใบที่ยกเลิกไม่สำเร็จ");
+        return false;
+      }
+      /* ตัวใบต้องสดด้วย — ต้นทางที่ยกหมดแล้วต้องหายจากปุ่ม (`carrySources` มากับ GET ของใบ) */
+      await refreshOrder();
+      setToast({ kind: "success", msg: CARRY_DONE_MESSAGE });
+      return true;
+    } catch (carryError) {
+      setError(carryError.message || "ยกเงินจากใบที่ยกเลิกไม่สำเร็จ");
       return false;
     } finally {
       setBusy("");
@@ -529,8 +607,10 @@ export default function SalesOrderDetailPage() {
           subject: `ใบสั่งขาย ${order.orderNumber}`,
           effects: [
             `ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`,
-            "สร้างงวดชำระตามแผนการชำระที่ระบุไว้ใน QT",
-            "เปิดขั้นของบัญชีบนใบนี้ — บัญชีปิดใบได้เมื่อเก็บเงินครบทุกงวด",
+            /* งวด + ขั้นบัญชี (PR1 · mig 0376): ใบ Rev. ที่ยกงวดมา = ใช้งวดเดิม ไม่สร้างจาก QT (freeze ไม่แตะแถวที่ตรึงแล้ว)
+               · เก็บครบแล้ว = เข้าคิวปิดใบของบัญชีทันที (financeStatus ของใบ Rev. เกิดเป็น NULL → pending · มติ D2) */
+            /* PR3 (มติ D4): ดีลนี้มีเงินค้างจากใบที่ยกเลิก = เตือนให้ยกเข้าหลังอนุมัติ (RPC 0378 รับเฉพาะใบ approved) */
+            ...salesOrderMoneyOutcome(order, installments, "approve", { strandedSources: order.carrySources }),
             "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
           ],
           confirmLabel: "อนุมัติและนับ Actual",
@@ -674,6 +754,11 @@ export default function SalesOrderDetailPage() {
       .then((r) => r.json()).catch(() => null);
     setBusy("");
     if (!preview) { setError("ขอพรีวิวการลบไม่สำเร็จ"); return; }
+    /* ด่านที่บังคับลบก็ข้ามไม่ได้ (สายโซ่ Rev. · งวดที่ย้ายไปจากใบนี้ · ใบยื่นภาษี) — บอกเหตุ ไม่เปิดโมดัลยืนยันที่ลบไม่ได้จริง (review UI-6) */
+    if (preview.blocked) {
+      setError(preview.notes?.[0] || "บังคับลบใบนี้ไม่ได้");
+      return;
+    }
     const lines = (preview.cascade || []).map((c) => `· ${c.label}: ${c.count}`).join("\n");
     const notes = (preview.notes || []).join("\n");
     // ใบย้อนหลัง: เอกสารแทนสัญญาถูกยกเลิกตามใบด้วย (trigger ของ 0374) — ไม่ได้อยู่ในรายการ cascade ของพรีวิว
@@ -837,9 +922,11 @@ export default function SalesOrderDetailPage() {
     label: "ส่วนลดท้ายใบ",
     value: Number(order?.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : NA,
   }), [order?.discountAmount]);
+  /* ตัวเลข "เก็บเงินแล้ว x/y" ของภาพรวม/หัวแท็บ — กติกาเดียวกับแผงงวด (review UI-2/UI-3): งวดโมฆะของใบยกเลิกไม่ใช่งวดที่ต้องเก็บ
+     · งวดที่คืนเงินแล้วไม่ใช่เงินที่เก็บได้ (paymentRollup) */
   const paymentSummary = useMemo(
-    () => paymentRollup(installments, todayIso),
-    [installments, todayIso],
+    () => paymentRollup(installments.filter((row) => !installmentVoid(row, { status: order?.status })), todayIso),
+    [installments, todayIso, order?.status],
   );
 
   /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับด่านเงิน (สาย SERVICE + บรรทัดหมวด 02-001)
@@ -847,6 +934,8 @@ export default function SalesOrderDetailPage() {
        ⇒ เป็นอาร์กิวเมนต์ตายที่อ่านแล้วเข้าใจผิดว่าทำงาน · ตัวถอยของฟังก์ชันอ่าน
        `order.project` ให้อยู่แล้ว จึงตัดทิ้ง ไม่ใช่แก้ชื่อคีย์ */
   const hasServiceRounds = orderHasServiceRounds(order, order?.lines);
+  /* ใบที่ยกเลิกแล้วเงินยกไป/คืนลูกค้าแล้ว = กู้คืนไม่ได้ (PR3 · mig 0378) — ตัวเดียวกับที่ route ใช้ปฏิเสธ (คำใบ้ของปุ่ม) */
+  const restoreMoneyBlock = cancelledMoneyRestoreBlock(installments, order?.carriedAway);
   /* 🔑 **เส้นบริการ — กว้างกว่า และตั้งใจให้กว้าง** (ดูเหตุผลเต็มที่ `orderOnServiceLine`)
      วัดจริง 08/09: ใบบนเส้นบริการ 30 ใบ แต่เข้าเกณฑ์แคบแค่ 8 ⇒ อีก 22 ใบเปิดแท็บสัญญา
      ไม่ได้เลย ทั้งที่เป็นงานบริการจริง และสัญญาคือด่านแรกของทั้งเส้น */
@@ -1157,11 +1246,15 @@ export default function SalesOrderDetailPage() {
              ⇒ คนที่กดเพราะคิดว่าจะแก้จำนวนได้ จะไปเจอใบใหม่ที่แก้อะไรไม่ได้
              ยอดต้องแก้ที่ต้นทางคือใบเสนอราคา (บรรทัด SO ผูก `quotationLineId` ไว้) */
           detail: [
-            "รายการและยอดจะถูกคัดลอกมาทั้งหมด — แก้จำนวน/ราคาในฉบับ Rev. ไม่ได้",
-            "ถ้าต้องแก้ยอด ให้ออก Rev. ที่ใบเสนอราคาแล้วออกใบสั่งขายใหม่แทน",
-            specDocEffect,
-            order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
-          ].filter(Boolean).join(" · "),
+            [
+              "รายการและยอดจะถูกคัดลอกมาทั้งหมด — แก้จำนวน/ราคาในฉบับ Rev. ไม่ได้",
+              "ถ้าต้องแก้ยอด ให้ออก Rev. ที่ใบเสนอราคาแล้วออกใบสั่งขายใหม่แทน",
+              specDocEffect,
+              order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
+            ].filter(Boolean).join(" · "),
+            /* ⭐ งวดชำระ **ย้ายไปใบ Rev. ทั้งชุด** (mig 0376) — บรรทัดของตัวเอง (detail เป็น pre-line) · ใบไม่มีงวด = ไม่พูด */
+            ...salesOrderMoneyOutcome(order, installments, "revise"),
+          ].join("\n"),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
           /* 🐞 ออก Rev. ไม่ผ่านต้องอ่านได้ในโมดัล — ด่านกันแท็บค้าง (`expectedUpdatedAt`) ของ
              `revise_approved_sales_order_atomic` ตีกลับเมื่อมีคนออก Rev. ไปก่อน ⇒ ถ้าเงียบ
@@ -1211,7 +1304,12 @@ export default function SalesOrderDetailPage() {
     // label ชัดเจนว่าเป็นการกู้ SO ที่ "ยกเลิก" แล้ว — เดิมใช้ default "คืนเป็นฉบับร่าง"
     // ซึ่งความหมายชนกับ "ดึงกลับ" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
     // ใบสั่งขายย้อนหลังคืนเป็นร่างไม่ได้ (mig 0360 · API ปฏิเสธซ้ำ)
-    { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin" && !isHistoricalOrder(order), onClick: () => requestAction("restore") },
+    /* ⛔ PR3 (mig 0378): เงินของใบยกไปใบใหม่/คืนลูกค้าแล้ว = กู้คืนไม่ได้ — ปุ่มโชว์แล้วบอกเหตุ (ตัวเดียวกับที่ API ปฏิเสธ)
+       ⚠️ คำใบ้จากข้อมูลที่หน้าโหลดมา · route อ่านสดแบบโยน error อีกชั้น */
+    { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin" && !isHistoricalOrder(order),
+      disabled: !!restoreMoneyBlock,
+      disabledReason: restoreMoneyBlock || undefined,
+      onClick: () => requestAction("restore") },
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
     /* ── ขั้นบัญชีตรวจใบ (mig 0250) ────────────────────────────────────────
        ⚠️ **ไม่ใช่ปุ่มหลัก** — ปุ่มหลักของใบยังเป็นสายอนุมัติเอกสาร บัญชีเป็นคนละแกน
@@ -1225,7 +1323,9 @@ export default function SalesOrderDetailPage() {
       disabled: !!financeGate("finance_approve"),
       disabledReason: financeGate("finance_approve") || undefined,
       /* ⚠️ ขั้นบัญชีเป็นปลายทาง — อนุมัติแล้วบัญชีตีกลับเองไม่ได้ และ AE Sup ส่งตรวจใหม่
-         ก็ไม่ได้ (ทั้งสองทาง API ตอบ "บัญชีอนุมัติใบนี้ไปแล้ว") ⇒ ต้องบอกว่าย้อนไม่ได้ */
+         ก็ไม่ได้ (ทั้งสองทาง API ตอบ "บัญชีอนุมัติใบนี้ไปแล้ว") ⇒ ต้องบอกว่าบัญชีย้อนเองไม่ได้
+         ⭐ มติ D2 (23/09 · PR1): AE Sup **ย้อนการอนุมัติ/ออก Rev. ใบที่บัญชีปิดแล้วได้** — ใบ Rev. กลับเข้าคิวให้บัญชี
+           ปิดใหม่ (ไม่สืบสถานะปิดจากใบเดิม) ⇒ คำเดิมที่สัญญาว่าใบจบถาวรเป็นเท็จ ต้องบอกทางนั้นแทน */
       onClick: () => {
         // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
         setError("");
@@ -1237,7 +1337,7 @@ export default function SalesOrderDetailPage() {
             checklist: FINANCE_REVIEW_POINTS,
             effects: [
               "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
-              "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ ไม่มีการตีกลับหลังจากนี้",
+              "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ · ถ้า AE Sup ย้อนการอนุมัติภายหลัง ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่",
               "ยอด Actual ไม่เปลี่ยนจากการกดนี้ (ยอดเข้าตั้งแต่ AE Supervisor อนุมัติ)",
             ],
             confirmLabel: "ยืนยันปิดใบ",
@@ -1257,6 +1357,8 @@ export default function SalesOrderDetailPage() {
         รายการว่าง (ด่านจริงที่ route อ่านงวดสดแบบโยน error) · จอที่เปิดค้างไว้ก็ยังได้ 400 ⇒ โมดัลยังต้อง
         โชว์ error ของคำขอเองอยู่ดี */
   const historicalCancelBlocked = historicalCancelBlock(order, installments);
+  /* ผลเรื่องเงินของการยกเลิก (PR3 · mig 0378) — StatusNotice ในโมดัลยกเลิก · ใบย้อนหลังได้ [] (กติกาเดิม) */
+  const cancelMoneyLines = salesOrderMoneyOutcome(order, installments, "cancel");
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
     { id: "delete", kind: "delete", icon: Trash2, label: "ลบฉบับร่างถาวร", visible: role === "admin" && canHardDeleteSalesOrder(order), onClick: remove },
@@ -1267,7 +1369,8 @@ export default function SalesOrderDetailPage() {
       label: "ยกเลิก SO",
       // ปุ่มพูดเรื่องเดียวกับ API แล้ว (มติผู้ใช้ 2026-08-18) — เดิม `approved && reviewer`
       // ทำให้ใบที่ถอนอนุมัติแล้ว/ใบร่าง/ใบตีกลับ ไม่มีทางยกเลิกจากหน้าจอเลย
-      visible: canCancelSalesOrder(order, { reviewer, canEdit }),
+      /* ใบที่ถือเงิน (งวดรับรองแล้ว/รอตรวจ) ยกเลิกได้เฉพาะผู้ตรวจสอบ ทุกสถานะ — ตัวเดียวกับ route (review MONEY-2) */
+      visible: canCancelSalesOrder(order, { reviewer, canEdit, installments }),
       disabled: !!filingState.filing || !!historicalCancelBlocked,
       disabledReason: filingState.filing
         ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน"
@@ -1673,6 +1776,8 @@ export default function SalesOrderDetailPage() {
             busy={busy}
             onStart={startPaymentTracking}
             onAction={runInstallmentAction}
+            onReplan={runInstallmentReplan}
+            onCarry={runInstallmentCarry}
             /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** — กดบันทึก
                งวดแล้วโมดัลค้างเงียบ ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้ง 2026-08-27)
                อาการเดียวกับที่ `ReasonDialog.submitError` แก้ไว้เมื่อ 2026-08-19 —
@@ -1754,7 +1859,12 @@ export default function SalesOrderDetailPage() {
         /* ดึงกลับ = ใบออกจากกอง "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — บอกยอดที่หายไป
            จากภาพรวม/ดีล/โครงการ ให้คนกดรู้ก่อน ไม่ต้องไปงงทีหลังว่ายอดหายไปไหน */
         detail={{
-          revoke: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
+          /* ⭐ เรื่องเงินของการย้อน (PR1 · mig 0376): เงินที่รับแล้วยังนับว่ารับแล้ว + ย้ายไปใบ Rev. ทั้งชุดตอนออก Rev. ·
+             สลิปรอตรวจยังอยู่ในคิว · ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง/ผูกโซนใหม่) — บรรทัดละข้อ (pre-line) */
+          revoke: [
+            `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
+            ...salesOrderMoneyOutcome(order, installments, "revoke", { serviceRounds: hasServiceRounds }),
+          ].join("\n"),
         }[workflowForm?.action]
           /* ใบย้อนหลังไม่มียอดในกอง "รออนุมัติ" และไม่มีลายเซ็นให้ยื่นใหม่ — พูดเรื่องนั้นคือพูดของที่ไม่มี */
           || (historical ? historicalWithdrawDetail(order)
@@ -1812,6 +1922,13 @@ export default function SalesOrderDetailPage() {
             {/* ⭐ ใบย้อนหลัง: ฐานยกเลิก **เอกสารแทนสัญญา** ตามใบในทรานแซกชันเดียวกัน (trigger ของ 0374)
                 ⇒ คนกดต้องรู้ก่อนว่าสัญญาหายไปด้วย และเลข CT ของฉบับที่ลงนามแล้วไม่คืน */}
             {cancelContractEffect ? <StatusNotice tone="warning">{cancelContractEffect}</StatusNotice> : null}
+            {/* ⭐ เรื่องเงินของการยกเลิก (PR3 · mig 0378 · มติ D4) — ใบที่มีเงินรับแล้วยกเลิกได้ เงินอยู่กับใบนี้เป็น
+                "เงินค้างจากใบที่ยกเลิก" (ยกเข้าใบใหม่/คืนเงิน) · สลิปรอตรวจ · งวดที่หลุดจากค้างรับ · ใบกำกับที่ต้องลดหนี้ถ้าคืน */}
+            {cancelMoneyLines.length ? (
+              <StatusNotice tone="warning" title="เงินของใบนี้">
+                <span className="pre-line">{cancelMoneyLines.join("\n")}</span>
+              </StatusNotice>
+            ) : null}
             <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล</span>
               <Select value={cancelForm.code} onChange={(e) => setCancelForm((f) => ({ ...f, code: e.target.value }))}>
@@ -1841,7 +1958,8 @@ export default function SalesOrderDetailPage() {
               </div>
             )}
             {/* 🐞 เหตุที่ API ตีกลับต้องอ่านได้ **ในโมดัลที่ยังเปิดอยู่** — แถบ error ของหน้าอยู่ใต้โมดัล
-                (ด่านงวดยกมารอบัญชีรับรอง · งวดที่รับรองแล้ว · ใบยื่นสรรพสามิต · สิทธิ์ผู้ตรวจ)
+                (ใบย้อนหลัง: งวดยกมารอบัญชีรับรอง · งวดที่รับรองแล้ว — ใบ pipeline ไม่ติดข้อนี้แล้วตั้งแต่ PR3 ·
+                ใบยื่นสรรพสามิต · สิทธิ์ผู้ตรวจ)
                 ของเดิมกดแล้วโมดัลค้างเงียบ ปุ่มกลับมากดได้ โดยไม่มีอะไรบอกว่าทำไมไม่ผ่าน */}
             {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

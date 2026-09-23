@@ -12,8 +12,8 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import {
-  filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, stampConfirmOutlook,
-  stampOrderPaidThrough, undatedHiddenBy,
+  filterLedger, ledgerReport, ledgerRow, ledgerSummary, ledgerVoidInstallment, orderStateIndex, sortLedger,
+  stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
@@ -115,14 +115,16 @@ async function loadLedger(supabase, todayIso) {
     orderHasServiceRounds(o, linesByOrder.get(o.id) || [], { projectsById, dealsById }),
   ]));
 
+  /* `paymentPlan` = แผนของ QT — ป้าย "ปรับแผนหลังอนุมัติ" (0377 · มติ D5) เทียบงวดจริงกับแผนนี้ (ไม่เก็บข้อมูลเพิ่ม) */
   const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
   const quoteById = new Map();
   if (quoteIds.length) {
     const { data: quotes, error: quoteError } = await fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
-      .from('quotations').select('id, "quoteNumber"').in('id', chunk).order('id', { ascending: true })));
+      .from('quotations').select('id, "quoteNumber", "paymentPlan"').in('id', chunk).order('id', { ascending: true })));
     if (quoteError) throw quoteError;
     (quotes || []).forEach((q) => quoteById.set(q.id, q));
   }
+  const planByQuotation = new Map([...quoteById.values()].map((q) => [q.id, q.paymentPlan ?? null]));
 
   const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
   const customerById = new Map();
@@ -137,7 +139,7 @@ async function loadLedger(supabase, todayIso) {
     (customers || []).forEach((c) => customerById.set(c.id, { ...c, name: customerNameIn(c) }));
   }
 
-  return rows
+  const ledger = rows
     .map((installment) => {
       const order = orderById.get(installment.salesOrderId);
       if (!order) return null; // ใบถูกลบไปแล้วแต่แถวยังค้าง — ไม่ให้หลุดเป็นแถวไร้เลขที่
@@ -145,6 +147,10 @@ async function loadLedger(supabase, todayIso) {
          ของบัญชี · ใบเก่ายังมีแถวค้างอยู่จริง (prod 13 ใบ) — **ไม่ลบ** แค่ไม่เอามาโชว์
          เป็นคิวงาน ไม่งั้นบัญชีเปิดมาเจอของที่ไม่มีวันมีเงินให้ตรวจ */
       if (paymentNotRequired(order.totalAmount)) return null;
+      /* ⭐ งวดที่ยังไม่มีเงินของใบยกเลิก/ถูกออก Rev. ทับ = โมฆะ ไม่ใช่ยอดค้างรับ (PR0 · แผน so-payment-unlock-replan)
+         🐞 23/09 ทะเบียนนับยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว · reported/confirmed ยังอยู่ครบ
+         ⚠️ ตัดก่อน `orderStateIndex`/"จ่ายถึง" (ประทับจาก `all`) — งวดโมฆะไม่ใช่งวดของใบอีกต่อไป */
+      if (ledgerVoidInstallment(installment, order)) return null;
       return ledgerRow({
         installment,
         order,
@@ -156,6 +162,9 @@ async function loadLedger(supabase, todayIso) {
       });
     })
     .filter(Boolean);
+  /* ป้ายระดับใบ — ประทับที่นี่ = ชุดก่อนกรองเสมอ (ตัวกรองของ GET ทำงานหลังฟังก์ชันนี้คืนค่า) */
+  stampOrderReplanned(ledger, planByQuotation);
+  return ledger;
 }
 
 const listParam = (value) => String(value || '').split(',').map((s) => s.trim()).filter(Boolean);

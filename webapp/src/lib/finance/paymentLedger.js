@@ -15,7 +15,10 @@
 import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
-import { installmentConfirmOutlook } from '@/lib/sales/salesOrderPayments';
+import {
+  installmentConfirmOutlook, installmentRefunded, installmentVoid, strandedInstallment,
+} from '@/lib/sales/salesOrderPayments';
+import { installmentsReplanned } from '@/lib/sales/installmentReplan';
 import { taxInvoicePending } from '@/lib/sales/taxInvoice';
 import {
   OPENING_INSTALLMENT_LABEL, ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder, isOpeningInstallment,
@@ -33,6 +36,34 @@ export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
 
 /* ป้ายของใบสั่งขายย้อนหลังบนแถวคิว/ทะเบียน (มติ 22/09) — จอกับชุดค้นใช้ค่าเดียวกัน (ตาเห็น = ต้องค้นเจอ) */
 export const LEDGER_HISTORICAL_TAG = 'ใบย้อนหลัง';
+/* ป้ายของแถวคิวรับรองที่มาจากใบที่ยกเลิก (review UI-1) — บัญชีต้องรู้ก่อนกดว่ารับรองแล้วเงินเป็น "เงินค้าง" ไม่ใช่เงินของใบที่เดินอยู่
+   ⚠️ อยู่ในชุดค้นด้วย (ตาเห็น = ต้องค้นเจอ) */
+export const LEDGER_CANCELLED_TAG = 'ใบยกเลิกแล้ว';
+
+/* ── เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติเจ้าของ 23/09 D4) ──────────────────────────────────────────
+   ยกเลิกใบที่มีเงินรับแล้วได้ — งวด confirmed/reported ที่ยังไม่คืนเงินของใบนั้น = "เงินค้าง" (strandedInstallment)
+   ⭐ ทางออก: ยกเข้าใบใหม่ของดีลเดียวกัน (แถวย้ายออกจากใบนี้ — หายจากคิวเอง) หรือบัญชีบันทึกคืนเงิน (refunded)
+   ⭐ เก็บได้ (collected) = confirmed ที่ยังไม่คืนเงิน — เงินค้างที่รับรองแล้วยังนับว่าเก็บได้จนกว่าจะคืน (เงินอยู่กับบริษัท)
+   ⚠️ ค้างรับ/เลยกำหนดคงกติกาเดิมของ PR0 (ตัดสินจากสถานะงวด) — เทสต์ของ PR0 ตรึงไว้ */
+export const LEDGER_STRANDED_TITLE = 'เงินค้างจากใบที่ยกเลิก';
+const collectedRow = (r) => r.status === 'confirmed' && !r.refunded;
+/* ใบกำกับค้าง — งวดที่คืนเงินแล้วไม่ใช่ของค้างเอกสาร (เลขใบลดหนี้คู่ใบกำกับอยู่ที่แถวแล้ว) */
+const ledgerInvoicePending = (r) => !r.refunded && taxInvoicePending(r);
+
+/* ── ใบที่ตายแล้ว (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ────────────────────────────
+   ยกเลิก = ไม่มีงานให้เก็บเงินต่อ · ถูกออก Rev. ทับ = งวดเป็นของใบ Rev. แล้ว
+   🐞 ทะเบียนเคยไม่ดูสถานะใบเลย ⇒ วันที่ตรวจ (23/09) นับ "ค้างรับ" เทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว
+   ⭐ **งวดที่ยังไม่มีเงิน (pending/rejected) ของใบที่ตายแล้ว = โมฆะ** — ไม่ใช่ยอดค้างรับ ไม่ใช่เลยกำหนด
+   ⚠️ reported ยังอยู่ (บัญชีรับรอง/ตีกลับได้ — `pipelineInstallmentLock`) · confirmed ยังนับเป็นเงินที่เก็บได้
+     ⏭ PR3 แยกกลุ่ม "เงินค้างจากใบที่ยกเลิก" (stranded) + คืนเงิน/ยกเงินเข้าใบใหม่
+   ⚠️ ตัดที่ผู้เรียก (route) ก่อน `ledgerRow` — `ledgerRow` เป็นตัวจัดรูปแถว ไม่ใช่ตัวตัดสินว่าแถวไหนเข้าทะเบียน */
+const LEDGER_DEAD_ORDER_STATUSES = Object.freeze(['cancelled', 'revised']);
+const isLedgerDeadOrder = (order) => LEDGER_DEAD_ORDER_STATUSES.includes(order?.status);
+
+/* ⭐ ตัวตัดสินอยู่ที่ `installmentVoid` (salesOrderPayments) — แผงงวดบนใบ · ตารางรายการ SO · ทะเบียนนี้ ถามตัวเดียวกัน (review UI-3) */
+export function ledgerVoidInstallment(installment, order) {
+  return installmentVoid(installment, order);
+}
 
 /**
  * แถวเดียวของทะเบียน — แบนราบพอที่ทั้งตารางและ Excel ใช้ได้โดยไม่ต้องไล่ join ต่อ
@@ -76,6 +107,8 @@ export function ledgerRow({
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
     financeStatus: order.financeStatus || null,
+    /* ใบยกเลิก/ถูกออก Rev. ทับ (PR0) — แถวที่เหลือของใบแบบนี้คือเงินที่เข้าแล้วหรือรอบัญชีตรวจเท่านั้น */
+    orderDead: isLedgerDeadOrder(order),
     /* ⚠️ **ผู้ดูแล (AE) กับทีม อยู่ที่ "ดีล" ไม่ใช่ที่ใบ** — `sales_orders` ไม่มี
        สองคอลัมน์นี้ (เคยใส่ใน select แล้วได้ 500 ทั้งหน้า) ⇒ ต้อง join ดีลมาส่งเป็น
        `deal` · รับจากใบไว้ด้วยเผื่อผู้เรียกที่ประกอบ order มาเองแล้ว */
@@ -106,7 +139,17 @@ export function ledgerRow({
     serviceRounds: Boolean(serviceRounds),
     paidOn: installment.paidOn || null,
     status,
-    statusLabel: LEDGER_STATUS[status]?.label || status,
+    /* คืนเงินแล้ว (0378) — ค่าใน DB ยังเป็น confirmed แต่ในไฟล์/จอต้องไม่อ่านว่า "เก็บเงินแล้ว" */
+    statusLabel: installmentRefunded(installment) ? 'คืนเงินแล้ว' : (LEDGER_STATUS[status]?.label || status),
+    /* ⭐ เงินค้างจากใบที่ยกเลิก / คืนเงินแล้ว (PR3 · 0378) — whitelist: ลืมเติม = คิว "เงินค้าง" ว่างเงียบ ๆ
+       ⚠️ อ่านจาก select('*') — ก่อนรัน 0378 คอลัมน์ไม่มี (undefined) ⇒ ยังไม่คืน · ช่องว่าง (ไม่พัง) */
+    stranded: strandedInstallment(installment, order),
+    refunded: installmentRefunded(installment),
+    refundedAt: installment.refundedAt || null,
+    refundedOn: installment.refundedOn || null,
+    refundedByName: installment.refundedByName || '',
+    refundReason: installment.refundReason || '',
+    refundCreditNoteNo: installment.refundCreditNoteNo || '',
     /* เลยกำหนด = มีวันกำหนด ยังไม่ confirmed และวันนั้นผ่านไปแล้ว
        ⚠️ งวดที่ "รอบัญชีตรวจ" ก็เลยกำหนดได้ — เงินอาจเข้าแล้วแต่ยังไม่มีใครรับรอง
        ซึ่งเป็นภาระของบัญชี ไม่ใช่ของลูกค้า จึงต้องยังขึ้นธง */
@@ -132,6 +175,9 @@ export function ledgerRow({
     taxInvoiceDate: installment.taxInvoiceDate || null,
     taxInvoiceFileName: installment.taxInvoiceFile?.fileName || '',
     hasTaxInvoiceFile: Boolean(installment.taxInvoiceFile?.storagePath),
+    /* ⭐ ตัวล็อกของ PATCH งวด (optimistic lock · PR0) — คิวบนทะเบียนส่งค่านี้ของแถวที่ตาเห็นกลับไปทุกคำสั่ง
+       ⚠️ whitelist: ลืมเติม = คำสั่งจากทะเบียนไม่มีตัวล็อก (เขียนทับงานของอีกหน้าต่างได้เงียบ ๆ) */
+    updatedAt: installment.updatedAt || null,
   };
 }
 
@@ -164,8 +210,23 @@ export function pendingConfirmations(rows = []) {
  */
 export function pendingTaxInvoices(rows = []) {
   return (Array.isArray(rows) ? rows : [])
-    .filter((row) => row && taxInvoicePending(row))
+    .filter((row) => row && ledgerInvoicePending(row))
     .sort((a, b) => String(a.paidOn || a.dueDate || '9999').localeCompare(String(b.paidOn || b.dueDate || '9999')));
+}
+
+/**
+ * คิว **"เงินค้างจากใบที่ยกเลิก"** — คิวที่สามของฝ่ายบัญชี (PR3 · mig 0378 · มติ D4)
+ *
+ * ⭐ ของที่ต้องตัดสิน: ยกเข้าใบใหม่ของดีลเดียวกัน (ที่ใบใหม่ — AE Sup/บัญชี) หรือบันทึกคืนเงินลูกค้า (ที่นี่/ที่ใบเดิม)
+ * ⚠️ แยกจากคิวรับรองโดยตั้งใจ — งวด reported ของใบยกเลิกอยู่ทั้งสองคิว (บัญชีรับรอง/ตีกลับได้ตามเดิม) ป้ายตัวเลขบนเมนู
+ *   นับคิวรับรองอยู่ ⇒ รวมกันเมื่อไรเลขบนเมนูไม่ตรงกับของที่เห็น
+ * ⚠️ เรียงตามใบแล้วเลขงวด — คนตามเงินค้างไล่ทีละใบ (ไม่ใช่ตามความด่วน · ไม่มีวันครบกำหนดให้ตาม)
+ */
+export function pendingStranded(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && row.stranded)
+    .sort((a, b) => String(a.orderNumber || '').localeCompare(String(b.orderNumber || ''))
+      || (Number(a.seq) || 0) - (Number(b.seq) || 0));
 }
 
 /**
@@ -201,6 +262,9 @@ export const LEDGER_COLUMNS = [
      ⚠️ เลขที่ **ห้ามใส่ flag** — ใส่ `date:true` จะยัด numFmt วันที่ทับข้อความ */
   { key: 'taxInvoiceNo', label: 'เลขที่ใบกำกับภาษี' },
   { key: 'taxInvoiceDate', label: 'วันที่ใบกำกับภาษี', date: true },
+  /* คืนเงินของงวดใบที่ยกเลิก (0378) — บัญชีกระทบยอดคืนเงิน/ใบลดหนี้จากไฟล์นี้ด้วย · ⚠️ เลขที่ห้ามใส่ `date` */
+  { key: 'refundedOn', label: 'วันที่คืนเงิน', date: true },
+  { key: 'refundCreditNoteNo', label: 'เลขที่ใบลดหนี้' },
 ];
 
 /**
@@ -215,7 +279,8 @@ export function ledgerSummary(rows = []) {
   return {
     count: list.length,
     totalAmount: sum(() => true),
-    collectedAmount: sum((r) => r.status === 'confirmed'),
+    // เก็บได้ = confirmed ที่ยังไม่คืนเงิน (PR3) — เงินที่คืนลูกค้าไปแล้วไม่ใช่เงินที่เก็บได้
+    collectedAmount: sum(collectedRow),
     awaitingAmount: sum((r) => r.status === 'reported'),
     outstandingAmount: sum((r) => r.status !== 'confirmed'),
     overdueCount: list.filter((r) => r.overdue).length,
@@ -224,8 +289,13 @@ export function ledgerSummary(rows = []) {
     /* ⭐ ของค้าง "เงินเข้าแล้วแต่ยังไม่มีใบกำกับ" (มติผู้ใช้ 2026-09-07 — บริษัทเก็บ VAT
        ⇒ ทุกงวดที่ลูกค้าจ่ายต้องมีใบ) · เป็น **คิวที่สอง** ของฝ่ายบัญชี คนละแกนกับคิว
        "รอรับรอง" ⇒ ต้องเป็นตัวเลขของตัวเอง ไม่ใช่เอาไปบวกรวมกัน */
-    missingInvoiceCount: list.filter(taxInvoicePending).length,
-    missingInvoiceAmount: sum(taxInvoicePending),
+    missingInvoiceCount: list.filter(ledgerInvoicePending).length,
+    missingInvoiceAmount: sum(ledgerInvoicePending),
+    /* ⭐ เงินค้างจากใบที่ยกเลิก / คืนเงินแล้ว (PR3 · 0378) — ตัวเลขของตัวเอง (คนละแกนกับค้างรับ) */
+    strandedCount: list.filter((r) => r.stranded).length,
+    strandedAmount: sum((r) => r.stranded),
+    refundedCount: list.filter((r) => r.refunded).length,
+    refundedAmount: sum((r) => r.refunded),
   };
 }
 
@@ -238,10 +308,15 @@ export function ledgerSummary(rows = []) {
    ทันที และตัวเลขสรุปด้านบนก็จะนับของที่ตาไม่เห็น */
 export const ORDER_STATE_OPEN = 'open';
 export const ORDER_STATE_DONE = 'done';
+/* ใบที่ยกเลิก/ถูกออก Rev. ทับ (review F2) — ไม่มีงานเก็บเงินต่อ · แถวที่เหลือคือเงินค้าง/คืนเงินแล้ว/รอบัญชีตรวจ
+   🐞 เดิมงวดโมฆะถูกตัดก่อนทำดัชนี (PR0) แล้วที่เหลือเป็น confirmed ล้วน ⇒ ใบยกเลิกถูกจัดเป็น "เก็บครบแล้ว"
+     (ขัดกับป้ายของก้อนที่บอก "เงินค้าง"/"คืนเงินแล้ว") · ถอดออกจากดัชนีเฉย ๆ ก็ถอยไป "ยังเก็บไม่ครบ" = ผิดอีกทาง */
+export const ORDER_STATE_DEAD = 'dead';
 
 export const LEDGER_ORDER_STATES = {
   [ORDER_STATE_OPEN]: 'ยังเก็บไม่ครบ',
   [ORDER_STATE_DONE]: 'เก็บครบแล้ว',
+  [ORDER_STATE_DEAD]: 'ใบยกเลิก/ถูกแทนแล้ว',
 };
 
 /**
@@ -302,18 +377,51 @@ export function stampConfirmOutlook(rows = []) {
   return list;
 }
 
+/**
+ * ป้าย "ปรับแผนหลังอนุมัติ" ของใบ (PR2 · mig 0377 · มติ D5) — ประทับ `orderReplanned` ลงทุกแถวของใบ
+ *
+ * ⭐ ไม่เก็บข้อมูลเพิ่ม: เทียบงวดของใบกับแผนของ QT ด้วย `installmentsReplanned` ตัวเดียวกับแผงงวดบนใบ
+ * ⚠️ ค่าระดับใบ ⇒ ต้องประทับจาก **ชุดก่อนกรอง** (กติกาเดียวกับ `stampOrderPaidThrough`) — กรองแล้วงวดหลุด
+ *   จำนวนงวดไม่ตรงแผนทันที = ป้ายขึ้นผิดทุกใบที่ถูกตัวกรองหั่น
+ * ⚠️ ไม่ประทับ: ใบย้อนหลัง (ไม่มี QT — แผนว่างอ่านเป็น "ชำระเต็มจำนวน") · ใบยกเลิก/ถูกออก Rev. ทับ
+ *   (แถวโมฆะถูกตัดตั้งแต่ PR0 ⇒ ชุดไม่ครบ) · ใบที่ไม่รู้แผน (QT ไม่อยู่ในชุดที่โหลด)
+ * @param planByQuotation Map|object ของ quotationId → paymentPlan
+ */
+export function stampOrderReplanned(rows = [], planByQuotation = new Map()) {
+  const list = Array.isArray(rows) ? rows : [];
+  const planOf = (id) => (planByQuotation instanceof Map ? planByQuotation.get(id) : planByQuotation?.[id]);
+  const byOrder = new Map();
+  for (const row of list) {
+    if (!row?.orderId) continue;
+    const group = byOrder.get(row.orderId) || [];
+    group.push(row);
+    byOrder.set(row.orderId, group);
+  }
+  for (const [, group] of byOrder) {
+    const head = group[0];
+    const plan = head.quotationId ? planOf(head.quotationId) : undefined;
+    const replanned = !isHistoricalOrder({ origin: head.origin }) && !head.orderDead && plan !== undefined
+      && installmentsReplanned(group, plan, head.orderTotal);
+    for (const row of group) row.orderReplanned = Boolean(replanned);
+  }
+  return list;
+}
+
 export function orderStateIndex(rows = []) {
   const tally = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row?.orderId) continue;
-    const current = tally.get(row.orderId) || { total: 0, confirmed: 0 };
+    const current = tally.get(row.orderId) || { total: 0, confirmed: 0, dead: false };
     current.total += 1;
-    if (row.status === 'confirmed') current.confirmed += 1;
+    // เก็บได้ = confirmed ที่ยังไม่คืนเงิน (กติกาเดียวกับ collectedRow) · ใบที่ตายแล้ว = สถานะของตัวเอง (review F2)
+    if (collectedRow(row)) current.confirmed += 1;
+    if (row.orderDead) current.dead = true;
     tally.set(row.orderId, current);
   }
   const states = new Map();
-  for (const [orderId, { total, confirmed }] of tally) {
-    states.set(orderId, total > 0 && confirmed === total ? ORDER_STATE_DONE : ORDER_STATE_OPEN);
+  for (const [orderId, { total, confirmed, dead }] of tally) {
+    states.set(orderId, dead ? ORDER_STATE_DEAD
+      : total > 0 && confirmed === total ? ORDER_STATE_DONE : ORDER_STATE_OPEN);
   }
   return states;
 }
@@ -348,7 +456,8 @@ export function filterLedger(rows = [], {
     /* ใบกำกับภาษี: 'missing' = เงินเข้า/แจ้งแล้วแต่ยังไม่มีเลข · 'issued' = มีแล้ว
        ⚠️ ว่าง = ไม่กรอง (ค่าที่ไม่รู้จักก็ไม่กรอง — ตัวกรองที่พิมพ์ผิดใน URL ต้องไม่
        ทำให้ทะเบียนว่างเปล่าโดยไม่มีคำอธิบาย) */
-    if (taxInvoice === 'missing' && !taxInvoicePending(r)) return false;
+    // ⚠️ เกณฑ์เดียวกับตัวนับ (ledgerSummary · คิว) — งวดที่คืนเงินแล้วไม่ใช่ของค้างเอกสาร (review F1)
+    if (taxInvoice === 'missing' && !ledgerInvoicePending(r)) return false;
     if (taxInvoice === 'issued' && !String(r.taxInvoiceNo || '').trim()) return false;
     /* ⚠️ **งวดที่ยังไม่มีกำหนดชำระถูกตัดออกเมื่อกรองช่วงวัน** — และนั่นถูกต้องตาม
        ความหมายของตัวกรอง ("ครบกำหนดในช่วงนี้") แต่มัน **เงียบ** ไม่ได้: `ledgerSummary`
@@ -366,7 +475,8 @@ export function filterLedger(rows = [], {
       /* ⚠️ ป้าย "ใบย้อนหลัง" / "งวดยกมา" ที่คิวโชว์บนแถวต้องค้นเจอด้วย (มติ 22/09 · ตาเห็น = ต้องค้นเจอ) */
       const hay = [r.orderNumber, r.quoteNumber, r.referenceDoc, r.customerName, r.customerCode,
         r.label, r.taxInvoiceNo, r.historicalRefs,
-        isHistoricalOrder(r) ? LEDGER_HISTORICAL_TAG : '', isOpeningInstallment(r) ? OPENING_INSTALLMENT_LABEL : '']
+        isHistoricalOrder(r) ? LEDGER_HISTORICAL_TAG : '', isOpeningInstallment(r) ? OPENING_INSTALLMENT_LABEL : '',
+        r.orderStatus === 'cancelled' ? LEDGER_CANCELLED_TAG : '']
         .join(' ').toLowerCase();
       if (!hay.includes(needle)) return false;
     }
@@ -471,6 +581,8 @@ export function groupLedgerByOrder(rows = []) {
         serviceRounds: Boolean(row.serviceRounds),
         // เลขใบกำกับเดิม (Express) ของใบย้อนหลัง — คอลัมน์ใบกำกับบอกว่างวดยกมาออกใบที่ไหน
         historicalInvoiceRef: row.historicalInvoiceRef || '',
+        // ป้าย "ปรับแผนหลังอนุมัติ" (0377 · D5) — ค่าระดับใบที่ `stampOrderReplanned` ประทับจากชุดก่อนกรอง
+        replanned: Boolean(row.orderReplanned),
         rows: [],
       });
     }
@@ -487,7 +599,8 @@ export function groupLedgerByOrder(rows = []) {
         // (ต่างจากลำดับของก้อนซึ่งเรียงตามความด่วน)
         rows: [...rowsInOrder].sort((a, b) => (a.seq || 0) - (b.seq || 0)),
         summary,
-        paidCount: rowsInOrder.filter((r) => r.status === 'confirmed').length,
+        // งวดที่คืนเงินแล้ว (0378) ไม่ใช่ "เก็บแล้ว" — ค่าในฐานยังเป็น confirmed (review UI-2 · collectedRow)
+        paidCount: rowsInOrder.filter(collectedRow).length,
         count: rowsInOrder.length,
         overdue: rowsInOrder.some((r) => r.overdue),
         awaiting: rowsInOrder.filter((r) => r.status === 'reported').length,
@@ -499,9 +612,13 @@ export function groupLedgerByOrder(rows = []) {
            ทั้งที่ออกใบในระบบนี้ครบแล้ว · จอบอกแยกด้วย `openingCount` */
         openingCount: rowsInOrder.filter(isOpeningInstallment).length,
         invoiced: rowsInOrder.filter((r) => !isOpeningInstallment(r) && String(r.taxInvoiceNo || '').trim()).length,
-        invoicePending: rowsInOrder.filter(taxInvoicePending).length,
+        invoicePending: rowsInOrder.filter(ledgerInvoicePending).length,
+        // เงินค้าง/คืนแล้วของใบที่ยกเลิก (PR3) — ป้ายสรุปของก้อนพูดเรื่องนี้ก่อน
+        stranded: rowsInOrder.filter((r) => r.stranded).length,
+        strandedAmount: summary.strandedAmount,
+        refunded: rowsInOrder.filter((r) => r.refunded).length,
         rejected: rowsInOrder.filter((r) => r.status === 'rejected').length,
-        complete: rowsInOrder.length > 0 && rowsInOrder.every((r) => r.status === 'confirmed'),
+        complete: rowsInOrder.length > 0 && rowsInOrder.every(collectedRow),
         // งวดที่ด่วนที่สุด — ใช้ทั้งจัดลำดับก้อนและโชว์บนแถวที่ยุบอยู่
         lead: rowsInOrder[0] || null,
         /* กำหนดชำระที่ต้องตามต่อไป = งวดที่ **ยังเก็บไม่ได้** และมีวันใกล้ที่สุด
@@ -568,6 +685,9 @@ export function groupAsOrder(group) {
 /** ป้ายสรุปของใบที่ยุบอยู่ — เรื่องเดียวที่ด่วนที่สุด (กติกาเดียวกับตารางรายการ SO) */
 export function groupNote(group) {
   if (!group) return null;
+  /* ใบที่ยกเลิก (PR3): เรื่องเดียวที่ต้องตามคือเงินค้าง — "เลยกำหนด"/"เก็บครบ" ของใบที่ตายแล้วไม่มีความหมาย */
+  if (group.stranded) return { label: `เงินค้าง ${group.stranded} งวด`, tone: 'warning' };
+  if (group.refunded && group.refunded === group.count) return { label: 'คืนเงินแล้ว', tone: 'neutral' };
   if (group.overdue) return { label: 'เลยกำหนด', tone: 'danger' };
   if (group.rejected) return { label: `ตีกลับ ${group.rejected} งวด`, tone: 'danger' };
   if (group.awaiting) return { label: `รอรับรอง ${group.awaiting} งวด`, tone: 'warning' };
@@ -643,6 +763,8 @@ export const LEDGER_GROUP_OPTIONS = [
 
 /** ป้ายของกลุ่ม "สถานะการเก็บ" — ชุดเดียวกับ `groupNote` ย่อให้เหลือ 5 หมวด */
 const STATE_BUCKETS = [
+  // ใบยกเลิก/ถูกแทน (review F2) — ถังของตัวเองก่อนเรื่องอื่น (กติกาเดียวกับ groupNote ที่พูดเรื่องเงินค้างก่อน)
+  { key: ORDER_STATE_DEAD, label: LEDGER_ORDER_STATES[ORDER_STATE_DEAD], match: (g) => ['cancelled', 'revised'].includes(g.orderStatus) },
   { key: 'overdue', label: 'เลยกำหนด', match: (g) => g.overdue },
   { key: 'rejected', label: 'มีงวดถูกตีกลับ', match: (g) => g.rejected > 0 },
   { key: 'awaiting', label: 'รอบัญชีรับรอง', match: (g) => g.awaiting > 0 },

@@ -17,6 +17,10 @@ import { registryRefTargets } from '@/lib/master/registryRefs';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isWonStage } from '@/lib/salesPlanning';
+import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
+
+/* ใบสั่งขายลูกของใบเสนอราคา — ประโยคของด่าน "งวดที่ย้ายไปจากใบนี้" ตอนลบใบเสนอราคา (route ใช้คำเดียวกับพรีวิว) */
+export const QUOTATION_CHILD_ORDERS = 'ใบสั่งขายของใบเสนอราคานี้';
 
 // อ่าน query flag จาก request URL.
 function flag(req, name) {
@@ -361,7 +365,11 @@ export async function forceDeleteDealDocuments(supabase, dealId, actor = {}) {
 // preview การลบใบเสนอราคาหนึ่งใบ. quotation_lines cascade เอง (FK); sales_orders
 // .quotationId เป็น ON DELETE CASCADE → Sale Order (แหล่งยอด Actual) หายตามทันที
 // ที่ระดับ DB — โชว์ให้ผู้ดูแลเห็นชัดก่อน.
-export async function quotationForcePreview(supabase, quote) {
+/* ⭐ `movedOut` = งวดที่ย้ายไปจากใบสั่งขายลูก (store.loadMovedOutOfOrders — ผู้เรียกอ่านสด) ⇒ blocked ตั้งแต่พรีวิว
+   (break-glass ก็ห้ามกวาดหลักฐานของเงินที่ย้ายไปใบอื่น — review qt-force-delete-bypasses-movedout) */
+export async function quotationForcePreview(supabase, quote, { movedOut = [] } = {}) {
+  const movedBlock = movedOutDeleteBlock(movedOut, { subject: QUOTATION_CHILD_ORDERS });
+  if (movedBlock) return { cascade: [], notes: [movedBlock], blocked: true };
   // ⚠️ contractsOfQuotation โยน error เมื่ออ่านไม่สำเร็จ — จับไว้แล้วบล็อก ไม่ใช่ปล่อยให้
   //    Promise.all พาทั้งพรีวิวพัง (และไม่ใช่แปลว่า "ไม่มีสัญญา")
   const [salesOrders, evidence, issued, filings, contracts] = await Promise.all([
@@ -409,7 +417,10 @@ export async function quotationForcePreview(supabase, quote) {
 
 // พรีวิวการลบใบสั่งขายหนึ่งใบ (ของใหม่ — เดิม SO ไม่มีเส้นทาง force เลย).
 // sales_order_lines เป็น FK CASCADE จึงไม่ต้องนับ; ที่ต้องเตือนคือหลักฐาน+ฉบับตรึง
-export async function salesOrderForcePreview(supabase, order) {
+/* ⭐ `movedOut` = งวดที่ย้ายไปจากใบนี้ (store.loadMovedOut — ผู้เรียกอ่านสด) ⇒ blocked ตั้งแต่พรีวิว (review UI-6 — เดิมรู้ตอน 409 หลังกดยืนยัน) */
+export async function salesOrderForcePreview(supabase, order, { movedOut = [] } = {}) {
+  const movedBlock = movedOutDeleteBlock(movedOut);
+  if (movedBlock) return { cascade: [], notes: [movedBlock], blocked: true };
   const [evidence, issued, filings, installments, paidInstallments, zoneTerms, specDocuments] = await Promise.all([
     countBy(supabase, 'document_signature_evidence', 'salesOrderId', order.id),
     countBy(supabase, 'issued_documents', 'salesOrderId', order.id),

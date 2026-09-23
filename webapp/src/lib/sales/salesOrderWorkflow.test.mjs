@@ -10,6 +10,7 @@ import {
   canHardDeleteSalesOrder,
   canIssueSalesOrderRevision,
   canCancelSalesOrder,
+  salesOrderCancelNeedsReviewer,
   canRevokeSalesOrderApproval,
   canSwitchSalesOrderDocLanguage,
   canSalesOrderTransition,
@@ -320,6 +321,26 @@ test('ยกเลิก SO: ใบที่ยกเลิก/ถูกแท�
 
 test('ยกเลิก SO: ไม่มีสิทธิ์แก้งานขาย = ไม่มีปุ่ม แม้เป็นผู้ตรวจสอบ', () => {
   assert.equal(canCancelSalesOrder({ status: 'draft' }, { canEdit: false, reviewer: true }), false);
+});
+
+/* 🐞 review MONEY-2: PR3 ปลดด่าน "มีงวดที่บัญชีรับรองแล้ว" ของการยกเลิกใบ pipeline แต่ด่าน "ต้องเป็นผู้ตรวจสอบ" ยังดูแค่
+   pending_approval/approved ⇒ ใบที่ย้อนการอนุมัติแล้ว (D3 รับเงินต่อได้) และใบ Rev. ร่างที่งวดเงินย้ายมา (0376) — AE เจ้าของดีล
+   คนเดียวยกเลิกได้ แล้วเงินที่รับรองแล้วกลายเป็น "เงินค้างจากใบที่ยกเลิก" โดยไม่มี AE Sup เกี่ยวเลย
+   ⭐ ใบที่ถือเงิน (งวด confirmed/reported) ยกเลิกได้เฉพาะผู้ตรวจสอบ — ทุกสถานะ · route ถามตัวเดียวกันด้วยงวดที่อ่านสด */
+test('🔴 ยกเลิก SO ที่ถือเงิน (งวดรับรองแล้ว/รอบัญชีตรวจ) ต้องเป็นผู้ตรวจสอบ — รวมใบที่ย้อนการอนุมัติ/ใบ Rev. ร่าง', () => {
+  const money = [{ id: 'a', status: 'confirmed', amount: 50000 }, { id: 'b', status: 'pending', amount: 1 }];
+  for (const status of ['draft', 'rejected', 'approval_revoked']) {
+    assert.equal(canCancelSalesOrder({ status }, { canEdit: true, installments: money }), false, `${status} (ไม่ใช่ reviewer)`);
+    assert.equal(canCancelSalesOrder({ status }, { canEdit: true, reviewer: true, installments: money }), true, status);
+    assert.equal(salesOrderCancelNeedsReviewer({ status }, money), true, status);
+    assert.equal(salesOrderCancelNeedsReviewer({ status }, [{ status: 'reported' }]), true, `${status}: สลิปรอตรวจก็เป็นเงิน`);
+    // ไม่มีเงิน (งวดร่าง · บันทึกการจ่ายไว้ก่อนอนุมัติ) = สิทธิ์แก้งานขายตามเดิม
+    assert.equal(salesOrderCancelNeedsReviewer({ status }, [{ status: 'pending', paidOn: '2026-09-01', evidence: [{}] }]), false);
+    assert.equal(canCancelSalesOrder({ status }, { canEdit: true, installments: [] }), true);
+  }
+  assert.equal(salesOrderCancelNeedsReviewer({ status: 'approved' }, []), true, 'ใบที่อนุมัติแล้วต้องเป็นผู้ตรวจสอบตามเดิม');
+  assert.equal(salesOrderCancelNeedsReviewer({ status: 'pending_approval' }, []), true);
+  assert.equal(salesOrderCancelNeedsReviewer({ status: 'draft' }, null), false);
 });
 
 // ── เปลี่ยนภาษาเอกสารได้ไหม (มติผู้ใช้ 2026-08-27) ───────────────────────────

@@ -99,6 +99,8 @@ const MUST_FILTER = new Map([
   /* 0374: ใบย้อนหลังมีร่าง/ตีกลับได้แล้ว แต่ส่งอนุมัติโดยไม่เก็บลายเซ็น (CHECK บังคับว่าง) — นับเข้า "ต้องยื่น" = ชี้ผู้คีย์
      ไปอัปลายเซ็นที่ไม่มีวันถูกใช้ (ย้ายจาก SCOPED_SAFE ที่เคยอ้างว่า "ใบย้อนหลังเกิดเป็นอนุมัติแล้ว") */
   ['app/api/admin/signature-coverage/route.js', { count: 1, reason: 'รายงานความพร้อมลายเซ็น: ร่าง/ตีกลับที่ผู้สร้างต้องยื่นพร้อมลายเซ็น' }],
+  /* PR3 (mig 0378): ต้นทางของ "ยกเงินจากใบที่ยกเลิก" = ใบที่ยกเลิกของดีลเดียวกัน — ใบย้อนหลังไม่มีทางนี้ (RPC รับเฉพาะ pipeline) */
+  ['lib/sales/salesOrderInstallmentsStore.js', { count: 1, reason: 'ต้นทางเงินค้าง: ใบ pipeline ที่ยกเลิกของดีลเดียวกัน (loadCarrySources)' }],
 ]);
 /* โหลดใบเดียวด้วย id — ไฟล์ต้องตัดสินใบย้อนหลังเองด้วย isHistoricalOrder( */
 const PER_ID_GUARDED = new Map([
@@ -340,10 +342,15 @@ test('ยื่นภาษีจากใบสั่งขาย: GET แล�
   assert.ok(post.indexOf('isHistoricalOrder(salesOrder)') < post.indexOf('insertOrder('), 'POST ต้องปฏิเสธก่อนสร้างใบยื่น');
 });
 
+/* ⚠️ แก้ยามโดยตั้งใจใน PR1 (mig 0376): payment-file ไม่ต่อ id เองแล้ว — ถามตัวตัดสินกลาง `isInstallmentEvidencePath`
+   (ใบที่ถืองวด + ใบ/QT ใน movedFrom) ซึ่ง **ทิ้ง id ว่างเอง** ⇒ ใบย้อนหลัง (ไม่มี QT) ยังไม่เปิดโฟลเดอร์ QT ของใบไหนเลย
+   · ตัวทิ้ง id ว่างตรึงด้วยเทสต์เรียกตรงที่ upload/installmentEvidenceOwners.test.mjs ("id ว่าง/เพี้ยนไม่กลายเป็นตัวจับทุกใบ") */
 test('ไฟล์หลักฐาน: ถามโฟลเดอร์ใบเสนอราคาเฉพาะใบที่มี quotationId (id ว่าง = ตัวตรวจ path จับทุกใบ)', () => {
   const payment = code('app/api/sales-planning/sales-orders/[id]/payment-file/route.js');
-  assert.match(payment, /\(order\.quotationId \? isQuotationEvidencePath\(att\.storagePath, order\.quotationId\) : false\)/);
-  assert.doesNotMatch(payment, /\|\|\s*isQuotationEvidencePath\(/);
+  assert.match(payment, /const allowed = isInstallmentEvidencePath\(att\.storagePath, row, order\);/);
+  assert.doesNotMatch(payment, /isQuotationEvidencePath\(|isSalesOrderEvidencePath\(/, 'ห้ามต่อ id เองในเราต์ — ตัวทิ้ง id ว่างอยู่ใน lib');
+  const owners = code('lib/upload/privateEvidence.js');
+  assert.match(owners, /const ownerId = \(value\) => \(typeof value === 'string' && value\.trim\(\) \? value\.trim\(\) : null\);/);
   const confirm = code('app/api/sales-planning/sales-orders/[id]/confirm-file/route.js');
   assert.match(confirm, /!\(order\.quotationId && isQuotationEvidencePath\(att\.storagePath, order\.quotationId\)\)/);
   assert.doesNotMatch(confirm, /\|\|\s*!isQuotationEvidencePath\(/);

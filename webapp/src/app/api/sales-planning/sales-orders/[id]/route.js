@@ -27,13 +27,19 @@ import {
   isValidCancelReasonCode,
   isValidReversalTarget,
   salesOrderActionNeedsEditScope,
+  salesOrderCancelNeedsReviewer,
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
-import { freezeInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
+import {
+  freezeInstallments, installmentMoveColumnError, loadCarrySources, loadInstallments, loadMovedOut,
+} from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
-import { paymentLockReason, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+import {
+  cancelledMoneyRestoreBlock, installmentsTotalMismatch, movedOutDeleteBlock, paymentLockReason, paymentNotRequired,
+  revisionAuditSummary,
+} from '@/lib/sales/salesOrderPayments';
 import { financeActionError } from '@/lib/sales/salesOrderFinanceApproval';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
@@ -70,6 +76,7 @@ import {
   voidedContractLabel,
 } from '@/lib/sales/historicalOrderWorkflow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import {
   activeDocumentsForOrder, moveDocumentsToRevisedOrder, voidDocumentsByIds, voidDocumentsForOrder,
 } from '@/lib/sales/productSpecStore';
@@ -284,6 +291,48 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   const installmentRows = await loadInstallments(supabase, order.id)
     .catch((error) => { installmentsError = error; return []; });
 
+  /* ⭐ คำร้องวางบิลที่งวดผูกอยู่ แต่เป็นของ **ใบเสนอราคาอื่น** (review F3) — งวดที่ยกมาจากใบที่ยกเลิก (0378) พก billingRequestId
+     ของใบเดิมมาด้วย และใบใหม่ของดีลเดียวกันมาจาก QT คนละใบเสมอ (sales_orders.quotationId UNIQUE) ⇒ ค้นด้วย QT ของใบนี้ไม่เจอ
+     แผงจึงขึ้น "คำร้องขอเอกสารถูกลบไปแล้ว" ทั้งที่คำร้องยังอยู่ = ชวนออกคำร้องซ้ำให้เงินที่วางบิล/เก็บไปแล้ว
+     ⇒ อ่านเพิ่มด้วย id (แบ่งก้อน · เงื่อนไขชุดเดียวกับข้างบน) · อ่านพลาด = บอกบนแผง (`billingRequestsError`) ไม่ใช่ "ถูกลบ" */
+  let billingRequestsError = null;
+  const knownRequestIds = new Set(billingRequests.map((r) => r.id));
+  const linkedRequestIds = [...new Set(installmentRows.map((r) => r?.billingRequestId)
+    .filter((requestId) => requestId && !knownRequestIds.has(requestId)))];
+  if (linkedRequestIds.length) {
+    const { data: linkedRows, error: linkedError } = await fetchInChunks(linkedRequestIds, (chunk) => fetchAllResult(() => supabase
+      .from('dept_requests')
+      .select('id, docNo, status, title, "billAmount", "billPercent", "quotationId", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
+      .in('id', chunk).eq('kind', 'billing_doc')
+      .neq('status', 'cancelled')
+      .order('id', { ascending: true })));
+    if (linkedError) {
+      console.error('[sales-order] โหลดคำร้องวางบิลของงวดที่ยกมาไม่สำเร็จ:', id, linkedError);
+      billingRequestsError = `อ่านคำร้องขอเอกสารของงวดไม่สำเร็จ: ${linkedError.message || linkedError}`;
+    } else {
+      billingRequests = [...billingRequests, ...(linkedRows || [])];
+    }
+  }
+
+  /* ── เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) ────────────────────────────────────────────────
+     · ใบ pipeline ที่ยังเดินอยู่: ใบที่ยกเลิกของดีลเดียวกันที่มีเงินค้าง — ปุ่ม "ยกเงินจากใบที่ยกเลิก" + คำเตือนในโมดัลอนุมัติ
+     · ใบที่ยกเลิก: แถวที่ยกออกไปแล้ว (movedFrom reason carry) — ลิงก์ "ยกไป {SO}" + เหตุที่ปุ่มกู้คืนปิด
+     ⚠️ อ่านไม่ขึ้นไม่บล็อกหน้าใบ แต่ต้องบอก (`moneyLinksError`) — กลืนเป็น [] = ปุ่มหาย/เตือนหายเงียบ ๆ
+     ⚠️ ใบย้อนหลังไม่มีทางนี้ (ยกเลิกได้เฉพาะตอนไม่มีเงินรับแล้ว · RPC 0378 รับเฉพาะใบ pipeline) — ไม่ยิง query
+     ⚠️ เฉพาะ GET (`extras`) — action ใน PATCH/DELETE ไม่ใช้ก้อนนี้ (ด่านกู้คืน/ลบถาวรอ่านสดของตัวเองแบบโยน error) */
+  let carrySources = [];
+  let carriedAway = [];
+  let moneyLinksError = null;
+  if (extras) {
+    try {
+      if (!historical && !['cancelled', 'revised'].includes(order.status)) carrySources = await loadCarrySources(supabase, order);
+      if (!historical && order.status === 'cancelled') carriedAway = await loadMovedOut(supabase, order.id, { reason: 'carry' });
+    } catch (moneyError) {
+      console.error('[sales-order] โหลดเงินค้างจากใบที่ยกเลิกไม่สำเร็จ:', id, moneyError);
+      moneyLinksError = `อ่านเงินค้างจากใบที่ยกเลิกไม่สำเร็จ: ${moneyError?.message || moneyError}`;
+    }
+  }
+
   /* ── ของเสริมของใบย้อนหลัง (historicalOrderWorkflow) — อ่านไม่ขึ้นไม่บล็อกหน้าใบ แต่ต้องบอก (`extrasError`)
      ⚠️ ห้ามกลืนเป็นรายการว่าง — โมดัลอนุมัติที่แถวหายเงียบ ๆ อ่านเหมือน "ไม่มีเรื่องต้องตรวจ"
      ⚠️ งวดอ่านไม่ขึ้นก็นับ — หลักฐานงวดยกมาอ่านจากแถวงวด ⇒ ว่างเพราะอ่านพัง ≠ "ไม่มีหลักฐาน" */
@@ -306,6 +355,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   return {
     ...order,
     billingRequests,
+    billingRequestsError,
     ...(historicalExtras || {}),
     serviceContract: historicalExtras?.serviceContract || serviceContract,
     contractChoices,
@@ -316,6 +366,9 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     revisionHistory: revisionHistory || [],
     hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
     scentRequest: scentRequest || null,
+    carrySources,
+    carriedAway,
+    moneyLinksError,
     installments: historical
       ? installmentRows
       : withLiveAmounts(installmentRows, quotation?.paymentPlan, order.totalAmount),
@@ -722,10 +775,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
       return forbidden('ย้อนการอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
-    // ⚠️ เงินที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง — ถอยใบทับมันเงียบ ๆ ไม่ได้
-    // (กติกาเดียวกับที่ใบยื่นสรรพสามิตบล็อกปุ่มนี้อยู่แล้ว)
-    const paymentBlock = paymentLockReason(before.installments);
-    if (paymentBlock) return badRequest(paymentBlock);
+    /* ⭐ **งวดที่บัญชีรับรองแล้วไม่ล็อกขั้นนี้อีก** (PR1 · mig 0376 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09)
+       เดิมถาม paymentLockReason ที่นี่ เพราะ RPC ออก Rev. ก๊อปงวดเป็นแถวค้างรับ (เงินก้อนเดียวสองแถว) ⇒ ใบที่รับเงินแล้ว
+       แก้เอกสารไม่ได้เลย · 0376 ย้ายแถวไปใบ Rev. ทั้งแถว (สถานะ · หลักฐาน · ใบกำกับคงเดิม) ⇒ ไม่มีเงินให้ถอยทับอีก
+       · มติ D2: ใบที่บัญชีปิดแล้ว (financeStatus = approved) ย้อนได้ — ใบ Rev. เกิดเป็น NULL แล้วเข้าคิวปิดใหม่ตอนอนุมัติ
+       🛑 **ลำดับ deploy** — ฐานยังเป็น RPC ตัวก๊อป (ยังไม่รัน 0376) = ย้อนไม่ได้ (503) ไม่งั้นเงินถูกก๊อปซ้ำเงียบ ๆ
+       ⚠️ อ่านงวดสดแบบโยน error — `before.installments` ของ loadOrder กลืนการอ่านพังเป็น [] (ด่านเปิดเงียบ)
+       ⚠️ Σ งวด ≠ ยอดใบ = RPC ออก Rev. RAISE ⇒ ต้องกันตั้งแต่ขั้นนี้ ไม่งั้นใบค้างที่ approval_revoked (ทางตัน) */
+    const moveSchemaError = await installmentMoveColumnError(supabase);
+    if (moveSchemaError) return fail(moveSchemaError, 503);
+    let liveInstallments;
+    try { liveInstallments = await loadInstallments(supabase, id); }
+    catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
+    const totalMismatch = installmentsTotalMismatch(liveInstallments, before.totalAmount);
+    if (totalMismatch) return fail(totalMismatch, 409);
     const reason = String(body.reason || '').trim();
     const expected = resolveExpectedUpdatedAt(body);
     if (!expected.ok) return badRequest(expected.error);
@@ -790,15 +853,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ⚠️ ลงเธรดของ **ใบเดิม** ไม่ใช่ใบ Rev. ใหม่ (คนละ id) ไม่งั้นใบเดิมจบห้วน ๆ
     await logThread('revise', { reason, toRevisionNo: revision?.revisionNo ?? null });
 
-    /* ⭐ **แผนงวดชำระถูกก๊อปไปใบใหม่แล้ว (mig 0346)** — ต้องบอกในสรุปว่าไปกี่งวด
-       🐞 ก่อน 0346 ใบ Rev. เกิดมาไม่มีงวดสักแถว ⇒ `paidThrough` เป็น null ⇒ ด่านเงิน
-         บล็อกนัดช่างทั้งไซต์ โดยไม่มีอะไรบนจอหรือใน audit บอกว่าเกิดอะไรขึ้น
-       ⚠️ นับจากของจริงที่ลงฐานแล้ว ไม่ใช่นับจากใบเดิม — ถ้า RPC เก่ายังอยู่ (ยังไม่รัน
-         migration) ตัวเลขจะเป็น 0 แล้วสรุปจะบอกความจริงว่ายังไม่ได้ก๊อป */
-    const carried = revision?.id
-      ? await loadInstallments(supabase, revision.id).catch(() => [])
-      : [];
-    const covered = carried.filter((row) => row.coversFrom && row.coversTo).length;
+    /* ⭐ **งวดชำระย้ายไปใบ Rev. ทั้งแถว (mig 0376)** — RPC บอกผลการย้ายมาใน `moved` (นับจากแถวบนใบ Rev. จริง)
+       ⇒ สรุป audit บอกว่าย้ายกี่งวด รับแล้วเท่าไร รอบัญชีตรวจกี่งวด (revisionAuditSummary)
+       🛑 ไม่มี `moved` = ฐานยังเป็น RPC ตัวก๊อป (ยังไม่รัน 0376) ⇒ งวดถูกก๊อปเป็นแถวค้างรับ — ใส่ warning ในคำตอบ
+         (ปกติมาไม่ถึง: ขั้นย้อนการอนุมัติถามคอลัมน์ของ 0376 ก่อนแล้ว · เหลือเฉพาะใบที่ย้อนไว้ก่อน deploy) */
+    const { summary: reviseSummary, warning: moveWarning } = revisionAuditSummary({
+      fromNumber: before.orderNumber, toNumber: revision?.orderNumber || revisionId, reason, moved: result?.moved,
+    });
+    if (moveWarning) console.error(`[sales order revise ${id}] ${moveWarning} — RPC ไม่คืน moved`);
 
     await recordAudit({
       user,
@@ -807,17 +869,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: revision?.id || revisionId,
       before,
       after: revision,
-      summary: `ออก Rev. ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`
-        + (carried.length
-          ? ` · ยกแผนงวดชำระไป ${carried.length} งวด${covered ? ` (มีช่วงครอบบริการ ${covered})` : ''}`
-          : ''),
+      summary: reviseSummary,
       request: req,
     });
     // FM-SA-04 (mig 0370): เอกสารใบสเปคย้ายไปผูกใบ Rev. ใหม่ เลขที่เดิม · ล้ม = SO ยังสำเร็จ + warning
     const specWarning = revision?.id
       ? await moveSpecDocumentsAfterRevise({ supabase, user, req, oldOrder: before, newOrder: revision })
       : null;
-    return ok(specWarning ? { ...revision, warning: specWarning } : revision, 201);
+    const warning = [moveWarning, specWarning].filter(Boolean).join(' · ') || null;
+    return ok(warning ? { ...revision, warning } : revision, 201);
   }
 
   if (action === 'save') {
@@ -1023,10 +1083,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        · ใบที่ไม่เคยกด "เริ่มติดตาม" ยังได้งวดสร้างให้ตรงนี้เหมือนพฤติกรรมเดิม
        ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว งวดล้มต้องไม่ roll back
        กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" + อนุมัติซ้ำ (freezeInstallments idempotent) */
+    /* 🛑 review MONEY-1: ดีลนี้มี "เงินค้างจากใบที่ยกเลิก" ⇒ ห้ามยืมสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรก — สลิปนั้นมักเป็น
+       มัดจำก้อนเดียวกับเงินค้าง ยืมแล้วโมดัลก็บอกให้กด "ยกเงินจากใบที่ยกเลิก" = เงินก้อนเดียวนับสองครั้ง (SO-26080039-0 / -043-0)
+       ⚠️ อ่านไม่ขึ้น = ไม่ยืม (ทางที่ปลอดภัย — ฝ่ายขายแจ้งชำระงวดแรกเองได้เสมอ) · โมดัลอนุมัติบอกผลนี้แล้ว (salesOrderMoneyOutcome) */
+    let borrowConfirmation = true;
+    try {
+      borrowConfirmation = !(await loadCarrySources(supabase, before)).length;
+    } catch (strandedError) {
+      borrowConfirmation = false;
+      console.error('sales order approve: อ่านเงินค้างของดีลไม่สำเร็จ — ไม่ยืมสลิปมาตั้งงวดแรก', id, strandedError);
+    }
     try {
       await freezeInstallments(supabase, {
         order: { ...before, ...data, quotation: before.quotation },
         user,
+        borrowConfirmation,
       });
     } catch (installmentError) {
       console.error('sales order installment freeze failed', id, installmentError);
@@ -1068,10 +1139,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   if (action === 'cancel') {
-    // ⚠️ เหตุผลเดียวกับ revoke — งวดที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง
-    // ยกเลิกใบทิ้งเงียบ ๆ ไม่ได้ ต้องให้บัญชีจัดการก่อน
-    const cancelPaymentBlock = paymentLockReason(before.installments);
-    if (cancelPaymentBlock) return badRequest(cancelPaymentBlock);
+    /* ⭐ PR3 (mig 0378 · มติเจ้าของ 23/09 D4): **ใบ pipeline ที่มีเงินรับแล้วยกเลิกได้** — เงินอยู่กับใบนี้ต่อเป็น
+       "เงินค้างจากใบที่ยกเลิก" (ไม่หาย · ไม่ต้องถอนคำรับรอง) แล้วออกทางยกเข้าใบใหม่ของดีลเดียวกัน หรือบัญชีบันทึกคืนเงิน
+       ⇒ ด่าน paymentLockReason ย้ายเข้าบล็อกใบย้อนหลังข้างล่าง (ใบย้อนหลังไม่มีทางยก/คืน — กติกาเดิมทุกข้อ)
+       · RPC ย้อน Won (0170) และ UPDATE ยกเลิกธรรมดาไม่เปลี่ยน · StatusNotice ในโมดัลบอกผลเรื่องเงินก่อนกด (salesOrderMoneyOutcome) */
     // Once Tax owns a downstream filing, cancelling/reversing the source would
     // invalidate its immutable snapshot. Delete the eligible filing first.
     const { data: filing, error: filingError } = await supabase
@@ -1107,13 +1178,30 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         ? 'ยกเลิกใบย้อนหลังที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (เอกสารแทนสัญญาถูกยกเลิกตาม)'
         : 'ยกเลิก SO ที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (ถอนยอด Actual)');
     }
-    /* ⛔ ใบย้อนหลังที่มีงวดรอบัญชีรับรอง (งวดยกมาที่ขั้นอนุมัติดันขึ้นคิว ฯลฯ) ยกเลิกไม่ได้ — ยกเลิกแล้วล็อกงวดของใบ
-       ตอบ "ใบยกเลิกแล้ว" กับทุกคำสั่งรวมรับรอง/ตีกลับ แต่คิวบัญชีกับป้ายเมนูยังนับแถวนั้น ⇒ ค้างถาวร (historicalCancelBlock)
+    /* ⛔ review MONEY-2: ใบที่ถือเงิน (งวด confirmed/reported) ยกเลิกได้เฉพาะผู้ตรวจสอบ — **ทุกสถานะ** ไม่ใช่แค่รออนุมัติ/อนุมัติแล้ว
+       🐞 PR3 ถอด paymentLockReason ออกจากใบ pipeline ⇒ ใบที่ย้อนการอนุมัติ (D3 รับเงินต่อได้) และใบ Rev. ร่างที่งวดเงินย้ายมา (0376)
+         เหลือด่านแค่สิทธิ์แก้งานขาย = AE เจ้าของดีลคนเดียวทำให้เงินที่รับรองแล้วค้างอยู่กับใบที่ยกเลิกได้ (ปรับแผน/ยกเงินเป็นของ
+         AE Sup/admin/บัญชีทั้งนั้น) · ปุ่มถามตัวเดียวกัน (canCancelSalesOrder → salesOrderCancelNeedsReviewer)
+       ⚠️ อ่านงวดสดแบบโยน error — อ่านไม่ขึ้น ≠ ไม่มีเงิน · ใบย้อนหลังมีด่านของตัวเองข้างล่าง (กติกาเดิมทุกข้อ) */
+    if (!reviewer && !isHistoricalOrder(before)) {
+      let moneyRows;
+      try { moneyRows = await loadInstallments(supabase, id); }
+      catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message} — ยังไม่ได้ยกเลิก`, 500); }
+      if (salesOrderCancelNeedsReviewer(before, moneyRows)) {
+        return forbidden('ใบนี้มีเงินรับแล้ว/รอบัญชีตรวจ — ยกเลิกต้องให้ AE Supervisor ดำเนินการ (เงินจะค้างอยู่กับใบที่ยกเลิก)');
+      }
+    }
+    /* ⛔ ใบย้อนหลังที่มีงวดที่บัญชีรับรองแล้ว (paymentLockReason) หรือมีงวดรอบัญชีรับรอง (งวดยกมาที่ขั้นอนุมัติดันขึ้นคิว ฯลฯ)
+       ยกเลิกไม่ได้ — ยกเลิกแล้วล็อกงวดของใบตอบ "ใบยกเลิกแล้ว" กับทุกคำสั่งรวมรับรอง/ตีกลับ แต่คิวบัญชีกับป้ายเมนูยังนับ
+       แถวนั้น ⇒ ค้างถาวร (historicalCancelBlock)
        ⚠️ อ่านงวดสดแบบโยน error — `before.installments` ของ loadOrder กลืนการอ่านพังเป็นรายการว่าง = ด่านเปิดเงียบ */
     if (isHistoricalOrder(before)) {
       let liveInstallments;
       try { liveInstallments = await loadInstallments(supabase, id); }
       catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
+      /* งวดที่บัญชีรับรองแล้ว = เงินที่รับมาจริง · ใบย้อนหลังไม่มีทางยก/คืนเงิน ⇒ ยกเลิกทับเงียบ ๆ ไม่ได้ (กติกาเดิม) */
+      const cancelPaymentBlock = paymentLockReason(liveInstallments);
+      if (cancelPaymentBlock) return badRequest(cancelPaymentBlock);
       const waitingBlock = historicalCancelBlock(before, liveInstallments);
       if (waitingBlock) return badRequest(waitingBlock);
     }
@@ -1286,6 +1374,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return fail('ใบสั่งขายย้อนหลังคืนเป็นร่างไม่ได้ — คีย์ใบใหม่แทน', 409);
     }
     if (before.status !== 'cancelled') return badRequest('ใบสั่งขายนี้ไม่ได้อยู่ในสถานะยกเลิก');
+    /* ⛔ PR3 (mig 0378): เงินของใบนี้ยกไปใบใหม่แล้ว หรือบัญชีบันทึกคืนลูกค้าแล้ว = ใบนี้ไม่ใช่เจ้าของเงินก้อนนั้นอีก
+       ⇒ คืนเป็นร่างไม่ได้ (เงินก้อนเดียวจะมีสองที่ที่อ้างว่าเป็นของตัวเอง) — ให้ออกใบใหม่ · เงินค้างที่ยังอยู่กับใบ = กู้คืนได้ตามเดิม
+       ⚠️ อ่านสดแบบโยน error — อ่านไม่ขึ้น ≠ ไม่มีเงินย้ายออก */
+    let moneyRows;
+    let carriedAway;
+    try {
+      moneyRows = await loadInstallments(supabase, id);
+      carriedAway = await loadMovedOut(supabase, id, { reason: 'carry' });
+    } catch (error) { return fail(`ตรวจเงินของใบไม่สำเร็จ: ${error.message} — ยังไม่ได้คืนสถานะ`, 500); }
+    const moneyBlock = cancelledMoneyRestoreBlock(moneyRows, carriedAway);
+    if (moneyBlock) return fail(moneyBlock, 409);
     // คืนเป็น draft สะอาด: ล้างทั้งฟิลด์ยกเลิก/อนุมัติ และ submitted*/rejected* ที่ค้าง
     // (เดิมเหลือ rejectionReason → หน้ารายละเอียดโชว์ป้าย "ตีกลับ" บน draft ใหม่)
     const patch = {
@@ -1317,8 +1416,17 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!before) return notFound('ไม่พบ ใบสั่งขาย');
 
   // ?dryRun=1 = พรีวิวว่าจะทำลายอะไร (หลักฐาน/ฉบับตรึง) — ใช้เส้นทางเดียวกับตอนลบจริง
+  /* ⭐ พรีวิวบอกด่านที่ break-glass ข้ามไม่ได้ตั้งแต่พรีวิว (review UI-6) — สายโซ่ Rev. · งวดที่ย้ายไปจากใบนี้ (อ่านสด)
+     🐞 เดิมพรีวิวลิสต์ "สิ่งที่จะถูกทำลาย" ของใบที่ลบไม่ได้จริง แล้ว 409 โผล่หลังกด "ยืนยันบังคับลบ" · อ่านไม่ขึ้น = blocked (ไม่ใช่ลบได้) */
   if (isDryRun(req)) {
-    const preview = await salesOrderForcePreview(supabase, before);
+    const chain = salesOrderRevisionChainDeleteBlock(before);
+    if (chain) return ok({ dryRun: true, cascade: [], notes: [chain], blocked: true });
+    let movedOutPreview;
+    try { movedOutPreview = await loadMovedOut(supabase, id); }
+    catch (error) {
+      return ok({ dryRun: true, cascade: [], notes: [`ตรวจงวดที่ย้ายไปจากใบนี้ไม่สำเร็จ: ${error.message}`], blocked: true });
+    }
+    const preview = await salesOrderForcePreview(supabase, before, { movedOut: movedOutPreview });
     return ok({ dryRun: true, ...preview });
   }
   // ?force=1 = break-glass ผู้ดูแลระบบ (mig 0152) ลบใบที่มีหลักฐาน/ฉบับตรึงได้ — มติผู้ใช้
@@ -1328,6 +1436,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // (force_delete_sales_order ล้างหลักฐาน/ฉบับตรึง ไม่ได้ล้าง pointer ของอีกฉบับ)
   const chainBlock = salesOrderRevisionChainDeleteBlock(before);
   if (chainBlock) return fail(chainBlock, 409);
+  /* ⛔ PR3 (mig 0378) — งวดที่ย้ายไปจากใบนี้ (ออก Rev. 0376 · ยกเงิน 0378) ยังใช้สลิป/ใบกำกับในโฟลเดอร์ของใบนี้
+     ⇒ ลบใบแล้ว purgePrivateEvidence กวาดโฟลเดอร์ทิ้ง = หลักฐานเงินของใบอื่นหาย (บทเรียน SO-26080125-0) · มาก่อน force
+       เหมือนด่าน chain (break-glass ก็ห้ามทำลายหลักฐานของเงินที่ย้ายไปแล้ว) · อ่านไม่ขึ้น = หยุดก่อนลบ */
+  let movedOut;
+  try { movedOut = await loadMovedOut(supabase, id); }
+  catch (error) { return fail(`ตรวจงวดที่ย้ายไปจากใบนี้ไม่สำเร็จ: ${error.message} — ยังไม่ได้ลบใบ`, 500); }
+  const movedBlock = movedOutDeleteBlock(movedOut);
+  if (movedBlock) return fail(movedBlock, 409);
   // ใบยื่นภาษีมาก่อน force เช่นกัน — RPC break-glass ไม่ล้างตาราง orders ให้ ถ้าไม่ดัก
   // ตรงนี้จะไปพังที่ FK RESTRICT แล้วได้ข้อความกลาง ๆ ที่ชี้ทางผิด ("ใช้ยกเลิก SO แทน"
   // ซึ่งใบยื่นก็บล็อกเหมือนกัน = ผู้ใช้วนกลับที่เดิม)
