@@ -36,6 +36,10 @@ test('คิวของใบสั่งขายตัดใบที่ต�
   assert.equal(isSalesOrderWaitingOnMe(others, { userId: 'U1', reviewer: true }), true);
   assert.equal(isSalesOrderSelfApproval(mine, 'U1'), true, 'ใบของตัวเองต้องถูกจับได้');
   assert.equal(isSalesOrderSelfApproval(others, 'U1'), false);
+  /* ⭐ "รอฉันลงมือ" (ป้ายบนเมนู + ตัวกรองทะเบียน) ต้องตัดใบตัวเองเหมือนคิวนี้ (22/09) — เดิมนับใบที่ตัวเองยื่น
+     ทั้งที่อนุมัติเองไม่ได้ ⇒ ป้ายเกินคิว · เหลือ admin ที่นับ เพราะ override ใบตัวเองได้ (ทำที่หน้าใบ) */
+  assert.equal(isSalesOrderWaitingOnMe(mine, { userId: 'U1', reviewer: true, role: 'ae_supervisor' }), false);
+  assert.equal(isSalesOrderWaitingOnMe(mine, { userId: 'U1', reviewer: true, role: 'admin' }), true);
 });
 
 test('ธง _awaitingMyApproval ติดที่ server ทั้งสองทะเบียน — จอไม่คำนวณเอง', () => {
@@ -44,6 +48,8 @@ test('ธง _awaitingMyApproval ติดที่ server ทั้งสอง
   assert.match(quotes, /_awaitingMyApproval: isQuotationAwaitingMyApproval\(/);
   assert.match(orders, /_awaitingMyApproval: isSalesOrderReviewer\(user\.role\)/);
   assert.match(orders, /!isSalesOrderSelfApproval\(row, user\.id\)/, 'ใบของตัวเองต้องถูกตัดที่ server');
+  // ธง "รอฉันลงมือ" ต้องส่ง role ตัวเดียวกับที่ป้ายบนเมนูส่ง — ไม่งั้น admin เห็นลิสต์กับป้ายไม่ตรงกัน
+  assert.match(orders, /_waitingOnMe: isSalesOrderWaitingOnMe\(row, \{ userId: user\.id, reviewer: isSalesOrderReviewer\(user\.role\), role: user\.role \}\)/);
   /* แกนที่สองของใบเดียวกัน — ขั้นบัญชีปิดใบ (mig 0250)
      ⭐ ตั้งแต่มติ 2026-08-30 ด่านนี้ขึ้นกับ **งวดชำระ** ⇒ ต้องป้อนงวดของใบนั้นเข้าไปด้วย
      🪤 เรียกมือเปล่าได้ false ทุกใบ = คิวบัญชีว่างเงียบ ๆ ทั้งที่มีงานรออยู่ */

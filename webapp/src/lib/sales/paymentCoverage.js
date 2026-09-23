@@ -130,6 +130,86 @@ export function coverageWarnings(installments = []) {
   return out;
 }
 
+/* ── ช่วงครอบต่อเนื่องเต็มสัญญา — **ด่าน** ของใบสั่งขายย้อนหลัง (mig 0374 · มติ 22/09) ──────────
+   ⭐ ตัวเดียวกับลูปท้ายของ `historical_so_check_installments` ในฐาน: เรียงตามวันเริ่มครอบ (แล้ววันสิ้นสุด)
+     งวดแรกเริ่มวันเริ่มสัญญา · งวดถัดไปเริ่มวันถัดจากวันสิ้นสุดของงวดก่อนพอดี · งวดสุดท้ายจบวันสิ้นสุดสัญญาพอดี
+     ⇒ `coverageIsContinuous` ตอบ true ⇔ ฐานผ่านข้อนี้ — พรีวิวกับบันทึกต้องตัดสินเหมือนกัน (บทเรียน #1685)
+   ⚠️ **คนละกติกากับ `coverageWarnings`** ข้างบน — ตัวนั้นเตือนใบปกติ (แผนชำระจริงพิมพ์มือหลายรูปแบบ ห้ามบล็อก)
+     ส่วนใบย้อนหลังคีย์เงินทั้งสัญญาในครั้งเดียว (ยกมา + ที่ยังต้องเก็บ) ⇒ ช่องโหว่/ช่วงซ้อน = คีย์ผิดแน่นอน
+   · 'missing' = งวดที่ไม่มีช่วงครอบที่ใช้ได้ (ไม่กรอก · วันไม่มีจริง · เริ่มหลังสิ้นสุด) — ฐานตีกลับงวดแบบนี้ตั้งแต่
+     ตรวจรายงวด ⇒ เจอแล้วคืนเฉพาะกลุ่มนี้ ไม่ไล่ต่อ (ไล่ต่อได้แต่ช่องโหว่ปลอมรอบงวดที่ขาด)
+     · ไม่มีงวดเลย / ช่วงสัญญาใช้ไม่ได้ = 'missing' แถวเดียว (ไม่ครอบอะไรเลย) — ⚠️ ฐาน **ข้าม** ลูปนี้เมื่อไม่มีงวด
+       เพราะใบ ฿0 ไม่มีงวด ⇒ ผู้เรียกตัดสินใบ ฿0 เองก่อนถามตัวนี้ (fail-closed ที่นี่ ไม่ใช่เดาว่าผ่าน)
+   · 'start' / 'gap' / 'overlap' / 'end' พก since..until = ช่วงวันที่ขาด/ซ้อน/เกินจริง ให้จอบอกได้ตรงวัน
+     · `index` = ตำแหน่งในอาเรย์ที่ส่งเข้ามา (ผู้เรียกผูกกลับไปหาช่องในฟอร์ม) · `seq` = row.seq ถ้ามี
+   · "วันที่คาด" เดินแบบเดียวกับฐาน (วันสิ้นสุดงวดล่าสุด + 1) แต่ **ไม่ถอยหลัง** เมื่องวดซ้อนอยู่ข้างในงวดก่อน —
+     กันรายงานช่องโหว่ปลอมถัดจากงวดที่ซ้อน · ผลว่าผ่าน/ไม่ผ่านยังเท่าฐานเป๊ะ: ก่อนเจอข้อผิดข้อแรกทุกงวดเดินหน้า
+     เสมอ (เริ่ม = วันที่คาด และสิ้นสุด ≥ เริ่ม) ⇒ วันที่คาดสองฝั่งเท่ากันจนถึงจุดนั้น */
+const calendarDay = (value) => {
+  const day = dateOf(value);
+  // `new Date('2026-02-30')` ไม่ error แต่ปัดเป็น 2 มี.ค. — บวก 0 วันแล้วต้องได้สตริงเดิม (ฐาน cast แล้ว error)
+  return day && addDays(day, 0) === day ? day : null;
+};
+const minDay = (a, b) => (isBefore(a, b) ? a : b);
+
+export function coverageContinuityErrors(rows = [], { start = null, end = null } = {}) {
+  const first = calendarDay(start);
+  const last = calendarDay(end);
+  const list = Array.isArray(rows) ? rows : [];
+  if (!first || !last || isBefore(last, first) || !list.length) {
+    return [{ kind: 'missing', seq: null, index: null, since: first && last ? first : null, until: first && last ? last : null }];
+  }
+
+  const spans = [];
+  const missing = [];
+  list.forEach((row, index) => {
+    const from = calendarDay(row?.coversFrom);
+    const to = calendarDay(row?.coversTo);
+    const seq = row?.seq ?? null;
+    if (!from || !to || isBefore(to, from)) {
+      missing.push({ kind: 'missing', seq, index, since: null, until: null });
+      return;
+    }
+    spans.push({ from, to, seq, index });
+  });
+  if (missing.length) return missing;
+
+  // = ORDER BY coversFrom, coversTo ของฐาน (สตริงวัน ISO เรียงตามตัวอักษร = เรียงตามเวลา)
+  spans.sort((a, b) => (a.from === b.from ? (a.to < b.to ? -1 : a.to > b.to ? 1 : 0) : (a.from < b.from ? -1 : 1)));
+
+  const out = [];
+  let expect = first;
+  spans.forEach((span, i) => {
+    const at = { seq: span.seq, index: span.index };
+    if (span.from !== expect) {
+      if (i === 0) {
+        // งวดแรกไม่เริ่มวันเริ่มสัญญา — เริ่มช้า (วันต้นสัญญาไม่มีใครครอบ) หรือเริ่มก่อนสัญญา
+        out.push(isBefore(expect, span.from)
+          ? { kind: 'start', ...at, since: expect, until: addDays(span.from, -1) }
+          : { kind: 'start', ...at, since: span.from, until: addDays(expect, -1) });
+      } else if (isBefore(expect, span.from)) {
+        out.push({ kind: 'gap', ...at, since: expect, until: addDays(span.from, -1) });
+      } else {
+        out.push({ kind: 'overlap', ...at, since: span.from, until: minDay(addDays(expect, -1), span.to) });
+      }
+    }
+    const next = addDays(span.to, 1);
+    if (isBefore(expect, next)) expect = next;
+  });
+
+  const through = addDays(expect, -1);
+  if (through !== last) {
+    const tail = spans[spans.length - 1];
+    const at = { seq: tail.seq, index: tail.index };
+    out.push(isBefore(through, last)
+      ? { kind: 'end', ...at, since: expect, until: last }            // ยังไม่ถึงวันสิ้นสุดสัญญา
+      : { kind: 'end', ...at, since: addDays(last, 1), until: through }); // ครอบเกินวันสิ้นสุดสัญญา
+  }
+  return out;
+}
+
+export const coverageIsContinuous = (rows, bounds) => coverageContinuityErrors(rows, bounds).length === 0;
+
 /* ── เลขคณิตปฏิทิน (ไม่มีโซนเวลา) ──────────────────────────────────────── */
 export function addDays(dateIso, days) {
   const day = dateOf(dateIso);

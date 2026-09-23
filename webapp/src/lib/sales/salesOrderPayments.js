@@ -17,9 +17,13 @@
 // ที่รวมเข้าดีลฟังเฉพาะ `status/actualAmount/orderDate/dealId` ของ `sales_orders`
 // ⇒ ตารางงวดอยู่คนละแกน **ห้ามมีโค้ดไหนเอายอดที่เก็บได้ไปหัก Actual**
 // ไฟล์นี้จึงไม่ export อะไรที่ชื่อ `actual*` เลย และมีเทสต์ล็อกไว้
+import { fmtDate } from '@/lib/format';
 import { canConfirmPayment, canUser } from '@/lib/permissions';
 import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
+import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
+// งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import { OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
 
 export const INSTALLMENT_STATUSES = ['pending', 'reported', 'confirmed', 'rejected'];
 
@@ -259,6 +263,33 @@ export function paymentRollup(rows = [], todayIso = null) {
   };
 }
 
+/**
+ * ภาพหลังบัญชีกดรับรองงวดนี้ — ป้อนโมดัลรับรองของใบสั่งขายย้อนหลัง (mock FnConfirm · มติ 22/09)
+ *
+ * ⭐ บัญชีกำลังรับรอง **ด่านเงินของนัดบริการ** ไม่ใช่แค่ยอดหนึ่งก้อน ⇒ โมดัลต้องบอกว่ากดแล้ว
+ *   "จ่ายถึง" ขยับไปวันไหน · เก็บแล้วรวมเท่าไร · งวดถัดไปที่ต้องตามคืออะไร
+ * ⚠️ "จ่ายถึง" คิดด้วย `paidThrough` ตัวเดียวของระบบ (สมมติว่างวดนี้รับรองแล้ว) — ไม่คิดเงื่อนไขซ้ำที่จอ
+ * ⚠️ ส่ง **งวดทั้งหมดของใบ** มาเสมอ — ทะเบียนการชำระต้องคิดจากงวดก่อนกรอง (กติกาเดียวกับ orderPaidThrough)
+ *   ไม่งั้นกรอง "รอบัญชีตรวจ" แล้วงวดถัดไป/งวดที่รับรองแล้วหลุด ตัวเลขในโมดัลจะเพี้ยนตามตัวกรอง
+ * ⚠️ ไม่มียอด Actual ในนี้ — งวดชำระคนละแกนกับ Actual (หัวไฟล์)
+ * @returns `{ paidThrough, collected, next }` — next = งวดถัดไป (seq มากกว่า) ที่ยังไม่รับรอง หรือ null
+ */
+export function installmentConfirmOutlook(row, rows = []) {
+  if (!row) return { paidThrough: null, collected: 0, next: null };
+  const others = (Array.isArray(rows) ? rows : []).filter((r) => r && r.id !== row.id);
+  const collected = money(others.filter((r) => r.status === 'confirmed')
+    .reduce((sum, r) => sum + (Number(r.amount) || 0), 0) + (Number(row.amount) || 0));
+  const seq = Number(row.seq) || 0;
+  const next = others
+    .filter((r) => (Number(r.seq) || 0) > seq && r.status !== 'confirmed')
+    .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))[0] || null;
+  return {
+    paidThrough: paidThrough([...others, { ...row, status: 'confirmed' }]),
+    collected,
+    next: next ? { label: next.label || '', amount: Number(next.amount) || 0, dueDate: next.dueDate || null } : null,
+  };
+}
+
 /** สถานะรวมหนึ่งบรรทัด — คืน { state, tone } ให้หน้าเว็บเลือกป้าย/ข้อความเอง */
 export function paymentState(rollup, { notRequired = false } = {}) {
   // ใบยอด 0 — จบที่อนุมัติใบ ไม่ใช่ "ยังไม่เก็บเงิน" (มติผู้ใช้ 2026-08-18)
@@ -323,9 +354,100 @@ export function installmentReportOutcome(user, row = null) {
   return canConfirmPayment(user) ? 'confirmed' : 'reported';
 }
 
+/* วันสุดท้ายที่ **งวดอื่น** ของใบครอบถึง — ใช้แทนวันสิ้นสุดสัญญาเมื่อผู้เรียกไม่ได้ส่งช่วงสัญญามา
+   (ช่วงครอบของใบย้อนหลังต่อเนื่องจนจบสัญญาตั้งแต่ตอน AE Sup อนุมัติ — RPC ของ 0374 บังคับ)
+   ⚠️ ตัดงวดยกมาออกด้วย `isOpeningInstallment` ไม่ใช่ด้วย id — ใบละไม่เกิน 1 งวดยกมา และผู้เรียก
+      บางทางส่งแถวที่ยังไม่มี id มา (แถว preview) */
+const lastDayCoveredByOthers = (rows) => (Array.isArray(rows) ? rows : [])
+  .filter((r) => r && !isOpeningInstallment(r))
+  .map((r) => String(r.coversTo || '').trim())
+  .reduce((latest, day) => (day > latest ? day : latest), '');
+
+/* ── ปลายช่วงที่งวดยกมาครอบได้ — **กติกาเดียว ปุ่มกับ API เรียกตัวนี้ตัวเดียว** ────────────────
+   🐞 **review 23/09: สองฝั่งได้วันคนละวัน** — แผงงวดอ่านจากเอกสารแทนสัญญา
+     (`order.serviceContract.expiryDate`) ส่วน route ของงวดไม่ได้โหลดสัญญามาเลย ⇒ ถอยไปอ่าน
+     จากงวดอื่นของใบ · สองทางนี้ไม่เท่ากันเมื่อบัญชีเคยหดช่วงของงวดปกติงวดสุดท้ายลงมาก่อน
+     (งวดปกติของใบย้อนหลังไม่มีกฎช่วง) ⇒ แถบบันทึกไม่ขึ้นเหตุ ปุ่มเปิดให้กด แล้ว API ตีกลับด้วย
+     วันคนละวัน = คลาส "ปุ่มบอกอย่าง API บอกอีกอย่าง" ที่รอบนี้ตั้งใจล้างทิ้ง
+   ⇒ **ทั้งสองฝั่งคิดวันนี้ที่นี่ที่เดียว** แล้วส่งเข้าด่านเป็น `contractEnd`
+     (ด่านไม่มีทางถอยของตัวเองอีกแล้ว — มีสองสูตรเมื่อไรก็กลับมาเพี้ยนหากันเหมือนเดิม)
+   ⭐ **สัญญามาก่อนเสมอ** — เป็นของจริงที่ RPC ของ 0374 ใช้กั้นตอนคีย์ใบ
+   ⭐ ไม่มีสัญญาผูก (ถอดทีหลัง · ใบที่ยังไม่ได้ผูก) = ถอยไปอ่านจากงวดอื่นของใบ เพราะช่วงครอบที่
+     AE Sup รับรองไว้ต่อเนื่องจนจบสัญญาพอดี
+   ⚠️ ไม่ได้ทั้งสองทาง (ใบที่มีแต่งวดยกมางวดเดียว + ไม่มีสัญญา) = `null` ⇒ ด่านไม่ตัดสินข้อนี้
+     — ล็อกเซลล์ทิ้งไว้โดยไม่มีวันจะบอกคือทางตัน
+   ⚠️ ใบ pipeline คืน `null` เสมอ — กฎนี้เป็นของงวดยกมาเท่านั้น */
+export function openingCoverageEnd(order, rows) {
+  if (!isHistoricalOrder(order)) return null;
+  const contractEnd = String(order?.serviceContract?.expiryDate || '').trim();
+  return contractEnd || lastDayCoveredByOthers(rows) || null;
+}
+
 export function installmentActionError(row, action, user, options = {}) {
+  /* ── ล็อกทั้งใบ (ผู้เรียกคำนวณมา · ตอนนี้ = historicalInstallmentLock) — ชนะทุกคำสั่ง ─────────
+     ใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ: งวดยังไม่หยุดยอด บัญชียังไม่เห็น และทั้งชุดแก้ที่ฟอร์มคีย์ใบ
+     ⇒ ปุ่มบนแผงงวดกับ API ต้องตอบคำเดียวกันก่อนดูอะไรในแถว (ไม่งั้นได้ "ยังไม่มีการแจ้งชำระ" ที่ชี้ทางผิด) */
+  if (options.orderLock) return options.orderLock;
   if (!row) return 'ไม่พบงวดที่ระบุ';
   const status = row.status || 'pending';
+
+  /* ── งวดของใบสั่งขายย้อนหลังที่อนุมัติแล้ว (มติ 22/09 · mig 0374) — `options.historical` ─────────
+     ⭐ ช่วงครอบของใบนี้ **ถูกรับรองเป็นชุด** ตอน AE Sup อนุมัติ (ต่อเนื่องเต็มสัญญา · งวดยกมาเริ่มวันเริ่มสัญญา)
+       ⇒ แก้รายงวดทีหลังได้เฉพาะฝ่ายบัญชี (คนเดียวกับที่ถือด่าน "จ่ายถึง") ไม่ใช่ฝ่ายขายที่ได้ประโยชน์
+     ⭐ งวดยกมาไม่มีวันครบกำหนดและถอนไม่ได้ — ปล่อยไปถึงฐานจะชน CHECK sales_order_installments_opening_shape
+       เป็น 500 ดิบ (ตั้งวันครบกำหนด · ล้างช่วงครอบ) หรือกลายเป็นงวดเปล่าที่ไม่มีใครแจ้งซ้ำได้ (ถอน)
+     ⭐ ที่ฝ่ายบัญชีขยับได้จริงคือ **ปลายช่วงของงวดยกมา** เท่านั้น (วันเริ่มล็อกที่วันเริ่มสัญญา ·
+       ห้ามล้างช่อง · ห้ามเลยวันสิ้นสุดสัญญา) — ยอดที่อนุมัติไปแล้วผิดยังไม่มีทางแก้รายงวด
+     ⚠️ ทางแก้ของความผิดเชิงโครงสร้าง (ยอด · โซน · จำนวนงวด) ทางเดียวคือ HISTORICAL_CORRECTION_PATH
+     ⚠️ ใบ pipeline (`historical` เป็นเท็จ) ไม่ผ่านกิ่งนี้เลย — พฤติกรรมเดิมทุกข้อ */
+  if (options.historical) {
+    const opening = isOpeningInstallment(row);
+    if (opening && action === 'schedule') return `${OPENING_INSTALLMENT_LABEL}ไม่มีกำหนดชำระ`;
+    if (opening && action === 'withdraw') {
+      return `${OPENING_INSTALLMENT_LABEL}ถอนไม่ได้ — ถ้าข้อมูลผิดให้บัญชีตีกลับ แล้ว AE Sup ยกเลิกใบให้คีย์ใหม่`;
+    }
+    // แจ้งชำระที่พกช่วงครอบมาด้วย = แก้ช่วงครอบทางอ้อม (route เขียนช่วงลงแถวเมื่อส่งมา) ⇒ ด่านเดียวกัน
+    const touchesCoverage = action === 'coverage'
+      || (action === 'report' && Boolean(options.coversFrom || options.coversTo));
+    if (touchesCoverage) {
+      if (!canConfirmPayment(user)) {
+        return opening
+          ? `ช่วงครอบของ${OPENING_INSTALLMENT_LABEL}แก้ได้เฉพาะฝ่ายบัญชี`
+          : 'ช่วงครอบของใบย้อนหลังตรึงตอน AE Sup อนุมัติ — แก้ได้เฉพาะฝ่ายบัญชี';
+      }
+      if (opening) {
+        /* 🐞 **"ใครแก้ได้" กับ "ค่านี้ผ่านไหม" เป็นคนละคำถาม** (review 23/09) — เซลล์บนแผงงวด
+           ถามด่านแบบ **ไม่ส่งค่า** เพื่อรู้ว่าจะวาดช่องกรอกหรือข้อความล็อก (แพตเทิร์นเดียวกับ
+           `tax-invoice` ที่ส่งค่าหลอก) · เดิมกิ่งนี้ตรวจค่าทันที ⇒ ค่าที่ไม่ได้ส่ง (`''`) ไม่เท่า
+           วันเริ่มสัญญาเสมอ = ช่องครอบบริการของงวดยกมาล็อก **ทุกคนรวมฝ่ายบัญชี** ซึ่งเป็นฝ่าย
+           เดียวที่กติกานี้เปิดให้ และไม่มีจออื่นในระบบแก้ค่านี้ได้เลย ⇒ ทางตันจริง
+           !! เทียบ `undefined` เป๊ะ ๆ **ห้ามใช้ falsy** — `null` คือ "ล้างช่อง" ที่ต้องตีกลับตามเดิม
+              (route ส่ง `body.coversFrom || null` เสมอ ⇒ คำขอจริงไม่มีทางเป็น undefined) */
+        const proposed = options.coversFrom !== undefined || options.coversTo !== undefined;
+        if (proposed) {
+          const from = String(options.coversFrom || '').trim();
+          const to = String(options.coversTo || '').trim();
+          if (from !== String(row.coversFrom || '').trim()) return `ช่วงเริ่มของ${OPENING_INSTALLMENT_LABEL}ล็อกที่วันเริ่มสัญญา`;
+          if (!to) return `${OPENING_INSTALLMENT_LABEL}ต้องมีวันสิ้นสุดช่วงครอบเสมอ — ล้างช่องไม่ได้`;
+          /* ⭐ ปลายช่วงต้องอยู่ในอายุสัญญา — `coversTo` ของงวดยกมาคือค่าที่ดัน "จ่ายถึง" ⇒ เลื่อนเลย
+             วันสิ้นสุดสัญญาเมื่อไร ด่านเข้าไซต์เปิดให้รอบที่ไม่มีใครจ่าย (อาการกลับด้านของทางตันข้างบน
+             ที่เพิ่งปลดล็อกไป — ปลดแล้วต้องไม่เปิดกว้างกว่าตอนคีย์ใบ ซึ่ง RPC บังคับ `to` อยู่ในสัญญา)
+             · `options.contractEnd` = ปลายช่วงที่ **`openingCoverageEnd` คิดให้** — ผู้เรียกทั้งสองฝั่ง
+               (แผงงวดบนใบ · PATCH ของ route) เรียกตัวนั้นตัวเดียวแล้วส่งค่าเข้ามา
+             🔴 **ด่านนี้ห้ามมีทางถอยของตัวเอง** — เดิมถอยไปอ่าน `lastDayCoveredByOthers(options.rows)`
+               เองเมื่อไม่ได้ส่งค่ามา ⇒ ฝั่งที่ส่ง (จอ) กับฝั่งที่ไม่ส่ง (route) ได้คนละวัน = ปุ่มเปิดแล้ว
+               API ตีกลับ · ทางถอยย้ายไปอยู่ใน `openingCoverageEnd` แล้ว มีสูตรเดียวทั้งระบบ
+             ⚠️ ไม่มีค่าส่งมา = ไม่ตัดสินข้อนี้ (ใบที่ไม่มีสัญญาและมีแต่งวดยกมางวดเดียว)
+             ⚠️ **บอกวันที่กั้นอยู่ในข้อความเสมอ** — วันอาจมาจากสัญญาหรือจากงวดอื่นของใบ ถ้าไม่บอกวัน
+               คนอ่านจะเดาไม่ออกว่าติดที่ตรงไหน */
+          const spanEnd = String(options.contractEnd || '').trim();
+          if (spanEnd && to > spanEnd) {
+            return `ช่วงครอบของ${OPENING_INSTALLMENT_LABEL}ครอบได้ถึง ${fmtDate(spanEnd)} (วันสิ้นสุดสัญญา) — เงินที่เก็บก่อนเข้าระบบครอบเกินอายุสัญญาไม่ได้`;
+          }
+        }
+      }
+    }
+  }
 
   /* ใบยอด 0 ไม่มีขั้นยืนยันการชำระ (มติผู้ใช้ 2026-08-18) — อนุมัติใบแล้วจบ
      ⚠️ **ไม่ลบงวดเก่าทิ้ง** ใบที่ออกก่อนมตินี้ยังมีแถวอยู่ (prod 13 ใบ) พร้อมร่องรอย
@@ -549,8 +671,10 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
     /* ⭐ ใบกำกับภาษี (mig 0348) — **คนละแกนกับเงิน** จึงนับแยก ไม่ใช่ยัดรวมกับ `paid`
        ฐานคือ "งวดที่ต้องมีใบ" = งวดที่แจ้ง/รับรองแล้ว (บริษัทเก็บ VAT ⇒ จ่ายแล้วต้องมีใบ)
        ไม่ใช่จำนวนงวดทั้งใบ — งวดที่ยังไม่ถึงกำหนดจ่ายยังไม่มีเงินให้ออกใบ
-       ⚠️ ต้องมี `taxInvoiceNo` ใน `.select()` ของผู้เรียก ไม่งั้นได้ 0 ทุกใบเงียบ ๆ */
-    const needsInvoice = list.filter((r) => ['reported', 'confirmed'].includes(r.status));
+       ⚠️ ต้องมี `taxInvoiceNo` ใน `.select()` ของผู้เรียก ไม่งั้นได้ 0 ทุกใบเงียบ ๆ
+       ⭐ งวดยกมาของใบย้อนหลังไม่นับ — ใบกำกับของเงินก้อนนั้นออกในระบบเดิมแล้ว (กติกาเดียวกับ `taxInvoicePending`)
+         ⚠️ ผู้เรียกต้องเลือก `kind` มาด้วย ไม่งั้นงวดยกมาถูกนับเป็น "ค้างใบกำกับ" ตลอดกาล */
+    const needsInvoice = list.filter((r) => ['reported', 'confirmed'].includes(r.status) && !isOpeningInstallment(r));
     const invoiced = needsInvoice.filter((r) => String(r.taxInvoiceNo || '').trim()).length;
     return {
       tracked: true,

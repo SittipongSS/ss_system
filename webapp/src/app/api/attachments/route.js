@@ -14,6 +14,7 @@ import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES, attachmentFileRuleError, doc
 import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
 
 import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
+import { historicalContractFilesFrozenGate } from '@/lib/sales/historicalContractLock';
 
 export const dynamic = 'force-dynamic';
 // สาขา "เอกสารมีชีวิต" โหลด googleapis (หนัก + อ่าน OIDC token) — ต้อง Node runtime
@@ -171,6 +172,15 @@ export async function POST(request) {
   // else must press "ขอแก้ไข" first (reverts it to draft for re-approval).
   if (entityType === 'registration' && parent.status === 'approved' && !can(user?.role, 'ra:approve')) {
     return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก — ต้องให้ฝ่าย RA ปลดอนุมัติก่อนจึงจะแนบเอกสารเพิ่มได้' }, { status: 403 });
+  }
+
+  /* ล็อกไฟล์ของเอกสารแทนสัญญา (ใบสั่งขายย้อนหลัง · 0374) — ชุดไฟล์ตรึงระหว่างรอ AE Sup อนุมัติ เพราะ AE Sup
+     เลือกไฟล์ที่จะเป็น `signedFileId` จากชุดที่เห็นในโมดัล · ด่านเดียวกับลบ/แก้ไฟล์ (guardAttachmentWrite)
+     ⚠️ มาก่อนคุยกับ Drive (สาขาเอกสาร Google) — ไม่งั้นไฟล์ถูกสร้างค้างบน Shared Drive ทุกครั้งที่กด
+     ⚠️ ร่าง/ตีกลับยังแนบได้ตามปกติ — ฟอร์มคีย์ใบอัปไฟล์ของใบนี้ผ่านเส้นนี้ก่อนกดส่งอนุมัติ */
+  if (entityType === 'contract') {
+    const frozen = await historicalContractFilesFrozenGate(supabase, parent);
+    if (frozen) return Response.json({ error: frozen.message }, { status: frozen.status });
   }
 
   // docType ต้องเป็นชนิดที่รองรับของ entity นั้น — ที่ไม่รู้จักตกเป็น 'other'.

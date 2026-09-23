@@ -28,6 +28,10 @@ export default function PendingFiles({
   max = 0,
   multiple = true,
   accept = UPLOAD_ACCEPT_ATTR,
+  /* ⭐ ช่องไฟล์ที่ **บังคับ** ต้องมีหน้าตาตอนผิดเหมือนช่องอื่น (เดียวกับ `invalid` ของ Input)
+     🐞 UAT 23/09 (ฟอร์มคีย์ใบย้อนหลัง): ไฟล์เอกสารแทนสัญญาเป็นด่านที่บล็อกปุ่ม "ถัดไป" บ่อยที่สุด
+        แต่ตะกร้าไฟล์อ่านเหมือนช่องไม่บังคับทุกประการ ⇒ ผู้คีย์มองไม่ออกว่าปุ่มค้างเพราะช่องนี้ */
+  invalid = false,
   // คำบรรยายใต้ปุ่ม — ผู้เรียกที่มีข้อจำกัดของตัวเอง (PNG · 1 MB) เขียนทับได้
   hint,
 }) {
@@ -43,7 +47,10 @@ export default function PendingFiles({
   });
 
   return (
-    <div className="pending-files" {...zoneProps}>
+    <div className="pending-files" data-invalid={invalid ? "1" : undefined} {...zoneProps}>
+      {/* ⚠️ สถานะ "ผิด" อยู่ที่กล่องนอก (data-invalid) ไม่ใช่ `aria-invalid` ที่ปุ่ม —
+          role=button ไม่รองรับแอตทริบิวต์นั้น (ด่าน jsx-a11y) · เหตุผลที่คนอ่านจริงคือ
+          ข้อความใต้ช่องของผู้เรียก + ก้อน error ของขั้น */}
       <button
         type="button" className="pending-files-add" disabled={off}
         onClick={open}

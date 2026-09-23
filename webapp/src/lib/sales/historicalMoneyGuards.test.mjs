@@ -96,22 +96,29 @@ const MUST_FILTER = new Map([
   ['lib/pm/productionJobsRepo.js', { count: 1, reason: 'ร่างงานผลิตอัตโนมัติจากใบอนุมัติทั้งทะเบียน' }],
   ['lib/sales/handoffQueueData.js', { count: 1, reason: 'คิวรอยื่นภาษี (แดชบอร์ดของฉัน · ภาพรวมดีล · ปิดโครงการ)' }],
   ['app/api/tax/orders/from-sales-order/route.js', { count: 1, reason: 'ตัวเลือกใบสั่งขายที่รอยื่นภาษี' }],
+  /* 0374: ใบย้อนหลังมีร่าง/ตีกลับได้แล้ว แต่ส่งอนุมัติโดยไม่เก็บลายเซ็น (CHECK บังคับว่าง) — นับเข้า "ต้องยื่น" = ชี้ผู้คีย์
+     ไปอัปลายเซ็นที่ไม่มีวันถูกใช้ (ย้ายจาก SCOPED_SAFE ที่เคยอ้างว่า "ใบย้อนหลังเกิดเป็นอนุมัติแล้ว") */
+  ['app/api/admin/signature-coverage/route.js', { count: 1, reason: 'รายงานความพร้อมลายเซ็น: ร่าง/ตีกลับที่ผู้สร้างต้องยื่นพร้อมลายเซ็น' }],
 ]);
 /* โหลดใบเดียวด้วย id — ไฟล์ต้องตัดสินใบย้อนหลังเองด้วย isHistoricalOrder( */
 const PER_ID_GUARDED = new Map([
   ['app/api/tax/orders/from-sales-order/route.js', 'GET ตอบ "ไม่เข้าเกณฑ์" · POST ปฏิเสธ'],
-  ['app/api/sales-planning/sales-orders/[id]/route.js', 'loadOrder — revoke/revise/restore/ย้อน Won/ลบ ตัดสินจาก before'],
-  ['app/api/sales-planning/sales-orders/[id]/installments/route.js', 'loadOrderForUser — append เฉพาะใบย้อนหลัง · ทางกู้จากใบเสนอราคาปฏิเสธ'],
+  ['app/api/sales-planning/sales-orders/[id]/route.js',
+    'loadOrder — ส่งอนุมัติ/อนุมัติใบย้อนหลังแยกกิ่ง (historicalOrderWorkflow · ไม่นับ Actual) · แก้ใบ/ย้อนอนุมัติ/ออก Rev./คืนร่าง/ย้อน Won/ลบ ตัดสินจาก before · งวดไม่ทับยอดตามแผน'],
+  ['app/api/sales-planning/sales-orders/[id]/installments/route.js',
+    'loadOrderForUser — งวดของใบย้อนหลังล็อกจนอนุมัติ (historicalInstallmentLock) · ไม่ทับยอดตามแผน · ไม่มีทางเพิ่มงวด/ทางกู้จากใบเสนอราคา'],
 ]);
 /* เห็นใบย้อนหลังโดยตั้งใจ · count = จำนวนคำสั่งผู้ต้องสงสัยทั้งไฟล์ (ทั้ง by-id และไม่ใช่)
    🐞 ของเดิมยกเว้นทั้งไฟล์ ⇒ เพิ่มยอด "ใบอนุมัติทั้งทะเบียน" ใหม่ในทะเบียนการชำระ/ทะเบียน SO แล้วเขียวต่อ
    (ใบย้อนหลัง approvedAt = เวลาคีย์ ⇒ ~220 ใบโผล่เป็นยอดเดือนนี้) · เลขตรึงไว้ ⇒ คำสั่งใหม่ต้องจัดชั้นใหม่เสมอ */
 const SEES_HISTORICAL = new Map([
-  ['app/api/nav/counts/route.js', { count: 3, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ (ใบย้อนหลังไม่มี) · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับใบย้อนหลัง (มติข้อ 17)' }],
-  ['app/api/service/intake/route.js', { count: 1, reason: 'คิวงานเข้าใหม่ของ TS — ใบย้อนหลังต้องมาผูกโซน (มติข้อ 17)' }],
+  ['app/api/nav/counts/route.js', { count: 4, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังผูกโซน + ถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09) — นับแถว ไม่รวมยอด' }],
+  ['app/api/service/intake/route.js', { count: 1, reason: 'คิวงานเข้าใหม่ของ TS — ใบย้อนหลังที่อนุมัติแล้วมาพร้อมโซนที่ผูกตอนอนุมัติ (ถังตั้งรอบ · มติ 22/09) · ยอดใช้ตัดสินใบ ฿0 เท่านั้น (paymentNotRequired) ไม่ออกไปกับ response' }],
+  ['lib/service/gateContext.js', { count: 1, reason: 'บริบทด่านเข้าไซต์ — ใบของรอบขาย (ใบย้อนหลังที่อนุมัติแล้วด้วยโดยตั้งใจ) · ยอดใช้ตัดสินใบ ฿0 ของข้อ② เท่านั้น (paymentNotRequired) ส่งออกเป็น 0/null ไม่รวมยอด (มติ 22/09)' }],
   ['app/api/finance/payments/route.js', { count: 1, reason: 'ทะเบียนการชำระ — งวดที่ยังต้องเก็บของใบย้อนหลังเป็นเงินจริง (คำตอบข้อ 2) · แถวพก origin' }],
   ['app/api/sales-planning/sales-orders/route.js', { count: 1, reason: 'ทะเบียนใบสั่งขาย — แถวโชว์ได้ ยอดผ่าน salesOrderAmountKind (ใบย้อนหลัง = excluded)' }],
   ['app/api/sales-planning/deals/[id]/overview/route.js', { count: 1, reason: 'ใบของดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts/salesOrderAmountKind' }],
+  ['app/api/sales-planning/deals/[id]/route.js', { count: 1, reason: 'ด่านย้ายเจ้าของดีลภาชนะ (0374) — หาใบย้อนหลังที่ยังไม่อนุมัติของดีลเดียวผ่าน historicalRowsOnly · ไม่รวมยอด' }],
 ]);
 /* ขอบเขตของคำสั่งทำให้ใบย้อนหลังเข้ามาไม่ได้ · count ความหมายเดียวกับข้างบน */
 const SCOPED_SAFE = new Map([
@@ -119,7 +126,6 @@ const SCOPED_SAFE = new Map([
   ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ดีลของโครงการ — เหตุผลเดียวกัน' }],
   ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'projectId / ดีลของโครงการ — ใบย้อนหลังไม่มีโครงการ' }],
   ['app/api/sales-planning/quotations/[id]/route.js', { count: 1, reason: 'quotationId ใบเดียว — ใบย้อนหลังไม่มีใบเสนอราคา' }],
-  ['app/api/admin/signature-coverage/route.js', { count: 1, reason: 'ร่าง/ตีกลับเท่านั้น — ใบย้อนหลังเกิดเป็นอนุมัติแล้ว' }],
 ]);
 
 test('🪤 ทุกคำสั่งอ่านใบสั่งขายที่แตะยอด/สถานะ ถูกจัดชั้นแล้ว — ของใหม่ต้องกรอง pipeline หรือบอกเหตุผล', () => {
@@ -409,12 +415,24 @@ test('ดีลภาชนะ: ไทม์ไลน์ · สร้างโ�
 });
 
 // ── 11–12. เส้นเขียน ─────────────────────────────────────────────────────────────────────────
-test('เส้นคีย์ใบย้อนหลังไม่หยิบผลข้างเคียงของการอนุมัติปกติ (หยุดยอดงวดตามแผน · ฉบับตรึง)', () => {
-  for (const rel of ['lib/sales/historicalOrderCommit.js', 'app/api/sales-planning/sales-orders/historical/route.js']) {
-    assert.doesNotMatch(code(rel), /import[^;]*\b(freezeInstallments|captureIssuedSalesOrderSnapshot)\b/, rel);
+test('เส้นคีย์/ส่ง/อนุมัติใบย้อนหลังไม่หยิบผลข้างเคียงของการอนุมัติปกติ (หยุดยอดงวดตามแผน · ยอดงวดสด · ฉบับตรึง)', () => {
+  /* 0374: ใบเกิดเป็นร่างแล้วแก้ในฟอร์มเดิม (PATCH historical/[id]) — งวดยังไม่หยุดยอดจน AE Sup อนุมัติ และขั้นอนุมัติ
+     หยุดยอดใน RPC ของตัวเอง ⇒ ทั้งเส้นสร้าง/แก้/ส่ง/อนุมัติห้ามแตะตัวหยุดยอด/ตัวคิดยอดสดตามแผน (ยอดจะขึ้น "ชำระเต็มจำนวน" ปลอม) */
+  for (const rel of [
+    'lib/sales/historicalOrderCommit.js',
+    'lib/sales/historicalOrderWorkflow.js',
+    'app/api/sales-planning/sales-orders/historical/route.js',
+    'app/api/sales-planning/sales-orders/historical/[id]/route.js',
+  ]) {
+    assert.doesNotMatch(code(rel), /import[^;]*\b(freezeInstallments|withLiveAmounts|captureIssuedSalesOrderSnapshot)\b/, rel);
   }
+  /* งวด: ไม่มีทางคีย์งวดเพิ่มแล้ว (RPC ถูก DROP ใน 0374) · ใบย้อนหลังตัดสินด้วย isHistoricalOrder ทั้งตัวทับยอดและด่าน */
   const installments = code('app/api/sales-planning/sales-orders/[id]/installments/route.js');
-  assert.ok(installments.includes("rpc('append_historical_installments'") && installments.includes('isHistoricalOrder(order)'));
+  assert.ok(!installments.includes('append_historical_installments'));
+  assert.ok(installments.includes('isHistoricalOrder(order)') && installments.includes('historicalInstallmentLock(order)'));
+  /* หน้าใบ: งวดของใบย้อนหลังไม่ผ่าน withLiveAmounts */
+  const load = slice(code('app/api/sales-planning/sales-orders/[id]/route.js'), 'async function loadOrder', '\n}\n');
+  assert.match(load, /installments: historical\s*\? installmentRows\s*: withLiveAmounts\(/);
 });
 
 // ── 13. จอ ────────────────────────────────────────────────────────────────────────────────────
@@ -425,7 +443,11 @@ test('หน้าใบสั่งขาย: ป้าย Actual เดิน�
   assert.doesNotMatch(page, /(hint|value): approved \?/);
   assert.match(page, /const showReversal = [^;]*!isHistoricalOrder\(order\)/);
   assert.match(page, /\{ id: "restore",[^\n]*!isHistoricalOrder\(order\)/);
-  assert.match(page, /description: HISTORICAL_STATUS_NOTE/);
+  /* เจตนาเดิม: คำอธิบายสถานะของใบย้อนหลังต้องไม่ใช่ของใบปกติ ("ยอดถูกนับเป็น Actual แล้ว")
+     0374 ย้ายทั้งชุดไป `historicalStatusCopy` (ทุกสถานะ ไม่ใช่เฉพาะ "อนุมัติแล้ว") ซึ่งมียามของตัวเอง
+     ที่ไล่ทุกสตริงว่าไม่มีประโยคไหนบอกว่า "นับ Actual" ⇒ ยามที่นี่เฝ้าว่าหน้าใบยังหยิบจากที่นั่น */
+  assert.match(page, /const historicalCopy = historical \? historicalStatusCopy\(order\.status\) : null/);
+  assert.match(page, /const status = historicalCopy/);
   assert.match(page, /\{order\.quotationId \? \(\s*<ContextCard icon=\{FileText\} href=\{`\/sa\/quotations\/\$\{order\.quotationId\}`\}/);
   assert.match(page, /actions=\{order\.quotationId \? <Link href=\{`\/sa\/quotations\/\$\{order\.quotationId\}`\}/);
   assert.match(page, /confirmationOnFile\?\.source === "order" \|\| !order\.quotationId/);

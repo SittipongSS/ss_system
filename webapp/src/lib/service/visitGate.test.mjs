@@ -249,48 +249,87 @@ test('🐞 เงินติดสามแบบ ต้องบอกคน�
   assert.match(reasonOf(overdue), /เลยกำหนดที่บัญชียังไม่รับรอง/);
 });
 
-/* ── ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 13 · คำตอบข้อ 2) ─────────────────────────────────
-   ⭐ งวดที่เก็บนอกระบบแล้วไม่ถูกคีย์ ⇒ AE Sup/แอดมินยกเว้นด่านเงินรายใบได้ = ข้าม **ข้อ② ข้อเดียว**
-   🔴 ข้อ① สัญญาไม่มีทางยกเว้น — ใบย้อนหลังต้องผูกเอกสารแทนสัญญาที่ครอบวันนัดเหมือนใบปกติ */
-const EXEMPT_AT = '2026-09-15T03:00:00.000Z';
+/* ── ใบยอด 0 · ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) ─────────────────────────────────────
+   ⭐ ใบยอด 0 ไม่มีงวดให้เก็บ ⇒ ผ่านข้อ② เอง ด้วยตัวตัดสินเดียวกับงวดชำระ (`paymentNotRequired`) — ทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง
+   🔄 สวิตช์ยกเว้นด่านเงินรายใบของใบย้อนหลัง (มติข้อ 13 · 0360) ถอดแล้ว — เงินที่เก็บก่อนเข้าระบบคีย์เป็น
+      "งวดยกมา" ให้บัญชีรับรองครั้งเดียว ⇒ ใบย้อนหลังที่มียอดเดินข้อ② ด้วยงวดจริงเหมือนใบปกติ
+   🔴 ข้อ① สัญญาไม่มีทางข้าม — ใบ ฿0 ก็ต้องผูกเอกสารแทนสัญญาที่ครอบวันนัด */
+const FROZEN_AT = '2026-09-15T03:00:00.000Z';
 const historicalOrder = (extra = {}) => ({
-  id: 'SO1', status: 'approved', origin: ORIGIN_HISTORICAL, serviceContractId: 'CT1', ...extra,
+  id: 'SO1', status: 'approved', origin: ORIGIN_HISTORICAL, serviceContractId: 'CT1', totalAmount: 261936, ...extra,
 });
-const coveringContract = { CT1: { id: 'CT1', status: 'signed', effectiveDate: '2024-06-01', expiryDate: '2027-05-31' } };
+const coveringContract = { CT1: { id: 'CT1', status: 'signed', effectiveDate: '2026-01-01', expiryDate: '2026-12-31' } };
 const historicalCtx = (order, installments = []) => ({
   ...full, ordersById: { SO1: order }, contractsById: coveringContract, installmentsByOrderId: { SO1: installments },
 });
 const paymentOf = (items) => items.find((i) => i.key === 'payment');
 
-test('⭐ ใบย้อนหลังที่ยกเว้นด่านเงิน + ผูกสัญญาที่ครอบวันนัด = ผ่านครบ แม้ไม่มีงวดสักงวด', () => {
-  const ctx = historicalCtx(historicalOrder({ paymentGateExemptAt: EXEMPT_AT }));
+test('⭐ ใบยอด 0 ผ่านข้อ② เองโดยไม่มีงวดสักงวด — ทั้งใบ pipeline และใบย้อนหลัง · ผ่านแล้วต้องบอกเหตุ', () => {
+  for (const origin of [ORIGIN_PIPELINE, ORIGIN_HISTORICAL]) {
+    const ctx = historicalCtx(historicalOrder({ origin, totalAmount: 0 }));
+    const items = evaluateVisitGate(ok, ctx);
+    assert.equal(gatePassed(items), true, origin);
+    assert.equal(paymentOf(items).state, 'ok', origin);
+    assert.equal(paymentOf(items).detail, 'ไม่มีเงินให้เก็บ 1 โซน — ใบยอด 0 บาท', 'ผ่านเพราะไม่มีเงินต้องบอก — ด่านห้ามติ๊กผ่านเงียบ ๆ');
+    assert.equal(items.zoneGates[0].paymentNotRequired, true);
+    assert.equal(initialVisitStatus(ok, ctx), 'scheduled');
+  }
+});
+
+test('🔴 ไม่รู้ยอด ≠ ยอด 0 — ใบที่ไม่ได้ส่งยอดมาและไม่มีงวด ต้องติดข้อเงิน (fail-closed)', () => {
+  for (const totalAmount of [undefined, null, '']) {
+    const items = evaluateVisitGate(ok, historicalCtx(historicalOrder({ totalAmount })));
+    assert.equal(paymentOf(items).state, 'blocked', String(totalAmount));
+    assert.equal(items.zoneGates[0].paymentNotRequired, undefined);
+  }
+});
+
+test('⭐ ใบย้อนหลังที่บัญชีรับรองงวดยกมาแล้ว — ข้อ② เปิดถึงวันท้ายของงวดยกมา · เลยจากนั้นติดข้อเงินจนงวดถัดไปรับรอง', () => {
+  const opening = {
+    id: 'I1', seq: 1, kind: 'opening', status: 'confirmed', frozenAt: FROZEN_AT, amount: 196452,
+    dueDate: null, paidOn: '2026-01-15', coversFrom: '2026-01-01', coversTo: '2026-09-30',
+  };
+  const next = {
+    id: 'I2', seq: 2, kind: 'regular', status: 'pending', frozenAt: FROZEN_AT, amount: 65484,
+    dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-12-31',
+  };
+  const ctx = historicalCtx(historicalOrder(), [opening, next]);
   const items = evaluateVisitGate(ok, ctx);
-  assert.equal(gatePassed(items), true);
   assert.equal(paymentOf(items).state, 'ok');
-  assert.match(paymentOf(items).detail, /ยกเว้นด่านเงิน 1 โซน/, 'ผ่านเพราะยกเว้นต้องบอก — ด่านห้ามติ๊กผ่านเงียบ ๆ');
-  assert.equal(items.zoneGates[0].paymentExempt, true);
-  assert.equal(initialVisitStatus(ok, ctx), 'scheduled');
+  assert.equal(paymentOf(items).detail, null, 'ผ่านด้วยเงินที่บัญชีรับรองจริง ไม่ใช่เพราะยอด 0');
+  assert.equal(items.zoneGates[0].paymentNotRequired, undefined);
+
+  const late = evaluateVisitGate({ ...ok, scheduledDate: '2026-10-15' }, ctx);
+  assert.equal(paymentOf(late).state, 'blocked');
+  assert.equal(paymentOf(late).owner, GATE_OWNERS.FN);
 });
 
-test('ใบย้อนหลังที่ไม่ได้ยกเว้น + มีแต่งวดรอเก็บ = ติดข้อเงิน เหตุ "ยังไม่มีงวดไหนที่บัญชีรับรอง"', () => {
-  const pending = [{ status: 'pending', dueDate: '2026-12-01', coversFrom: '2026-06-01', coversTo: '2027-05-31' }];
-  const payment = paymentOf(evaluateVisitGate(ok, historicalCtx(historicalOrder(), pending)));
+test('ใบย้อนหลังที่ไม่มีงวดยกมา + งวดแรกเลยกำหนดยังไม่รับรอง = ติดข้อเงิน เจ้าของ "SA → FN"', () => {
+  const first = {
+    id: 'I1', seq: 1, kind: 'regular', status: 'pending', frozenAt: FROZEN_AT, amount: 21828,
+    dueDate: '2026-08-01', coversFrom: '2026-01-01', coversTo: '2026-12-31',
+  };
+  const items = evaluateVisitGate(ok, historicalCtx(historicalOrder(), [first]));
+  const payment = paymentOf(items);
   assert.equal(payment.state, 'blocked');
-  assert.match(payment.detail, /ยังไม่มีงวดไหนที่บัญชีรับรอง/);
-});
-
-test('🔴 ใบ pipeline (หรือไม่มี origin) ที่มีร่องรอยยกเว้นปลอม ยังติดด่านเงินตามเดิม', () => {
-  const spoofed = historicalOrder({ origin: ORIGIN_PIPELINE, paymentGateExemptAt: EXEMPT_AT });
-  const items = evaluateVisitGate(ok, historicalCtx(spoofed));
-  assert.equal(paymentOf(items).state, 'blocked');
+  assert.equal(payment.owner, GATE_OWNERS.FN);
+  assert.equal(payment.owner, 'SA → FN');
+  assert.match(payment.detail, /เลยกำหนดที่บัญชียังไม่รับรอง/);
   assert.equal(gatePassed(items), false);
-  const { origin: _dropped, ...noOrigin } = spoofed;
-  assert.equal(_dropped, ORIGIN_PIPELINE);
-  assert.equal(paymentOf(evaluateVisitGate(ok, historicalCtx(noOrigin))).state, 'blocked');
 });
 
-test('🔴 ยกเว้นด่านเงินไม่ครอบข้อสัญญา — ใบย้อนหลังที่ยังไม่ผูกสัญญาติดข้อ ① และไม่อ้างว่ายกเว้น', () => {
-  const items = evaluateVisitGate(ok, historicalCtx(historicalOrder({ paymentGateExemptAt: EXEMPT_AT, serviceContractId: null })));
+test('🔴 ร่องรอยยกเว้นด่านเงิน (paymentGateExemptAt ของ 0360) ไม่มีใครอ่านแล้ว — ปลอมมาก็ไม่ปลดด่าน', () => {
+  for (const origin of [ORIGIN_HISTORICAL, ORIGIN_PIPELINE]) {
+    const spoofed = historicalOrder({ origin, paymentGateExemptAt: FROZEN_AT });
+    const items = evaluateVisitGate(ok, historicalCtx(spoofed));
+    assert.equal(paymentOf(items).state, 'blocked', origin);
+    assert.equal(gatePassed(items), false, origin);
+    assert.doesNotMatch(String(paymentOf(items).detail), /ยกเว้น/);
+  }
+});
+
+test('🔴 ใบยอด 0 ไม่ข้ามข้อสัญญา — ยังไม่ผูกสัญญา = ติดข้อ ① และข้อเงินไม่อ้างว่าผ่านเพราะยอด 0', () => {
+  const items = evaluateVisitGate(ok, historicalCtx(historicalOrder({ totalAmount: 0, serviceContractId: null })));
   const contract = items.find((i) => i.key === 'contract');
   assert.equal(contract.state, 'blocked');
   assert.match(contract.detail, /ยังไม่ผูกสัญญาที่มีผล/);
@@ -298,11 +337,11 @@ test('🔴 ยกเว้นด่านเงินไม่ครอบข้
   assert.equal(paymentOf(items).detail, null);
 });
 
-test('งวดรอเก็บของใบย้อนหลัง (RPC ตรึงแล้ว) เดินสายเดิม: แจ้ง → reported · บัญชีรับรองพร้อมช่วงครอบ → ข้อ② เปิดโดยไม่ต้องยกเว้น', () => {
+test('งวดรอเก็บของใบย้อนหลัง (ตรึงตอน AE Sup อนุมัติ) เดินสายเดิม: แจ้ง → reported · บัญชีรับรองพร้อมช่วงครอบ → ข้อ② เปิด', () => {
   const AE_USER = { id: 'u-ae', role: 'ae' };
   const FN_USER = { id: 'u-fn', role: 'finance', department: 'FN' };
   const frozenPending = {
-    id: 'I1', seq: 1, status: 'pending', frozenAt: EXEMPT_AT, amount: 30160,
+    id: 'I1', seq: 1, status: 'pending', frozenAt: FROZEN_AT, amount: 30160,
     dueDate: '2026-08-01', coversFrom: '2026-06-01', coversTo: '2027-05-31',
   };
   assert.equal(installmentActionError(frozenPending, 'report', AE_USER, { paidOn: '2026-08-10', serviceRounds: 36 }), null);
@@ -311,7 +350,7 @@ test('งวดรอเก็บของใบย้อนหลัง (RPC �
   assert.equal(installmentActionError(reported, 'confirm', FN_USER, { serviceRounds: 36 }), null);
   const items = evaluateVisitGate(ok, historicalCtx(historicalOrder(), [{ ...reported, status: 'confirmed' }]));
   assert.equal(paymentOf(items).state, 'ok');
-  assert.equal(paymentOf(items).detail, null, 'ผ่านด้วยเงินที่บัญชีรับรองจริง ไม่ใช่ด้วยการยกเว้น');
+  assert.equal(paymentOf(items).detail, null, 'ผ่านด้วยเงินที่บัญชีรับรองจริง');
 });
 
 /* ═══════════════════════════════════════════════════════════════════════

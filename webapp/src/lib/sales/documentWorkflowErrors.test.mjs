@@ -101,6 +101,36 @@ test('รหัสของใบสั่งขายย้อนหลัง�
     sales_order_installments_dates_sane: 400,
     origin_immutable: 409,
     sales_order_yearly_sequence_exhausted: 409,
+    // ── mig 0374 (AE Sup อนุมัติ · โซนจากทะเบียน · งวดยกมา · เอกสารแทนสัญญาในใบ) ──
+    historical_so_zone_invalid: 400,
+    historical_so_zone_duplicate: 400,
+    historical_so_line_not_package: 400,
+    historical_so_contract_invalid: 400,
+    historical_so_contract_state_invalid: 409,
+    historical_so_contract_file_missing: 409,
+    historical_so_signed_file_invalid: 409,
+    historical_so_opening_invalid: 400,
+    historical_so_opening_evidence_missing: 409,
+    historical_so_installment_sum_mismatch: 400,
+    historical_so_coverage_broken: 400,
+    historical_so_zero_value_has_installments: 400,
+    historical_so_edit_state_invalid: 409,
+    historical_so_owner_locked: 409,
+    historical_so_submit_state_invalid: 409,
+    historical_so_approve_forbidden: 403,
+    historical_so_approve_state_invalid: 409,
+    historical_so_self_approval: 403,
+    historical_so_approval_note_invalid: 400,
+    historical_so_reopen_forbidden: 409,
+    historical_so_not_found: 404,
+    contract_already_issued: 409,
+    contract_not_draft: 409,
+    contract_monthly_sequence_exhausted: 409,
+    sales_order_installments_kind_check: 400,
+    sales_order_installments_opening_shape: 400,
+    sales_order_installments_opening_uk: 409,
+    sales_contracts_external_kind: 400,
+    mig_0374_old_historical_rows_exist: 409,
   };
   for (const [code, status] of Object.entries(expected)) {
     const mapped = documentWorkflowError({ message: `P0001: ${code}` });
@@ -119,6 +149,39 @@ test('ทุกรหัสที่ 0360 โยนมีในตาราง�
   for (const code of [...raised, ...constraints].filter((c) => c !== 'sales_orders_origin_check' && c !== 'sales_deals_origin_check')) {
     assert.ok(WORKFLOW_ERROR_CODES.includes(code), `${code} ยังไม่มีข้อความไทย`);
   }
+});
+
+/* 0374 โยนรหัสสามทาง: RAISE ของ RPC/ตัวตรวจ/trigger · CHECK/UNIQUE ที่ไฟล์นั้นประกาศ · รหัสที่ trigger ต่อท้ายเลขใบ
+   (`historical_so_reopen_forbidden: SO-…`) — ทุกตัวต้องได้ข้อความไทย ไม่ใช่ 500 กลาง
+   ⚠️ จับ [a-z0-9_] (รหัสด่านของไฟล์มีตัวเลข: mig_0374_…) และไม่บังคับให้ปิดด้วย ' ทันที (ด่านนั้นต่อคำอธิบายไทย) */
+test('ทุกรหัสที่ 0374 โยนมีในตารางแปล (อ่านไฟล์ migration ตรง ๆ)', () => {
+  const sql = readFileSync(new URL('../../../supabase/migrations/0374_historical_so_approval_flow.sql', import.meta.url), 'utf8')
+    .replace(/--[^\n]*/g, '');
+  const raised = new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z0-9_]+)/g)].map((m) => m[1]));
+  const constraints = new Set([...sql.matchAll(/ADD CONSTRAINT ([a-z0-9_]+)/g)].map((m) => m[1]));
+  const indexes = new Set([...sql.matchAll(/CREATE UNIQUE INDEX ([a-z0-9_]+)/g)].map((m) => m[1]));
+  assert.ok(raised.size >= 25, `ต้องหา RAISE ของ 0374 เจอ (เจอ ${raised.size})`);
+  assert.ok(constraints.size >= 4 && indexes.size >= 1, 'ต้องหา CHECK/UNIQUE ของ 0374 เจอ');
+  for (const code of [...raised, ...constraints, ...indexes]) {
+    assert.ok(WORKFLOW_ERROR_CODES.includes(code), `${code} ยังไม่มีข้อความไทย`);
+  }
+  // trigger ต่อท้ายเลขใบ — ตัวแปลหาด้วย includes จึงยังจับได้
+  assert.equal(documentWorkflowError({ message: 'historical_so_reopen_forbidden: SO-26090001-0' }).status, 409);
+  // เลข CT เต็ม/ชนมาจาก approve_external_sales_contract (0322) ที่ขั้นอนุมัติเรียกต่อ
+  assert.equal(documentWorkflowError({ message: 'contract_monthly_sequence_exhausted: -' }).code, 'contract_monthly_sequence_exhausted');
+});
+
+test('ข้อความของรหัสที่ 0374 เปลี่ยนความหมาย ไม่พูดถึงโมเดลเดิม', () => {
+  // ฝ่ายขายทุกตำแหน่งคีย์ได้แล้ว · โมดัลถูกแทนด้วยหน้าฟอร์ม · บรรทัดคือโซนจากทะเบียน
+  assert.match(workflowErrorMessage('historical_so_actor_forbidden'), /ฝ่ายขายและแอดมิน/);
+  for (const code of ['historical_so_intake_key_required', 'historical_so_intake_hash_invalid', 'historical_so_header_invalid']) {
+    assert.doesNotMatch(workflowErrorMessage(code), /โมดัล/, code);
+  }
+  assert.match(workflowErrorMessage('historical_so_line_invalid'), /โซน/);
+  assert.doesNotMatch(workflowErrorMessage('historical_so_line_invalid'), /ไม่ระบุโซน/);
+  assert.doesNotMatch(workflowErrorMessage('sales_orders_origin_shape'), /คืนเป็นร่าง/);
+  // ทางออกของใบที่อนุมัติแล้วคือยกเลิกแล้วคีย์ใหม่ — ข้อความต้องบอกทางนี้
+  assert.match(workflowErrorMessage('historical_so_reopen_forbidden'), /ยกเลิกแล้วคีย์ใหม่/);
 });
 
 test('CHECK ที่ฐานตีกลับดิบ ๆ (23514) ก็ยังแปลได้', () => {

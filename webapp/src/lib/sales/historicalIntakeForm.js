@@ -1,238 +1,1150 @@
-// ── ตัวตัดสินฝั่งจอของโมดัลคีย์ใบสั่งขายย้อนหลัง (เฟส 2a) ─────────────────────────────
+// ── ตัวตัดสินฝั่งจอของฟอร์มคีย์ใบสั่งขายย้อนหลัง (หน้าเต็ม 4 ขั้น · มติเจ้าของ 22/09 · mig 0374) ─────
 //
 // ⭐ คู่แฝดของ `historicalOrderPlan.js` ฝั่ง server: ไฟล์นี้ **บริสุทธิ์ ไม่มี React ไม่ยิง API**
-//    รับ state ของโมดัลแล้วคืน (ก) body ที่ส่งขึ้น API (ข) ขั้นที่ error แต่ละช่องสังกัด
-//    (ค) ทางออกของแต่ละรหัสตอนบันทึกไม่สำเร็จ ⇒ ทดสอบได้โดยไม่ต้องเรนเดอร์อะไรเลย
+//    รับ state ของฟอร์มแล้วคืน (ก) body ที่ส่งขึ้น API (ข) ขั้นที่ error แต่ละช่องสังกัด
+//    (ค) ลำดับการบันทึกทีละจังหวะ (ง) ทางออกของแต่ละรหัสตอนบันทึกไม่สำเร็จ
+//    ⇒ ทดสอบได้โดยไม่ต้องเรนเดอร์อะไรเลย (ชุดเทสต์ของรีโปนี้ไม่มีตัวเรนเดอร์ React)
 //
-// 🔴 **ไม่มีกฎตรวจข้อมูลชุดที่สองที่นี่** — ด่านจริงคือ `planHistoricalOrder` + RPC 0360
+// 🔴 **ไม่มีกฎตรวจข้อมูลชุดที่สองที่นี่** — ด่านจริงคือ `planHistoricalServiceOrder` + RPC ของ 0374
 //    ข้อความไทยรายช่องมาจากพรีวิวเสมอ (`errors[{ field, message }]`) · ที่นี่แค่จัดว่า
 //    ช่องไหนอยู่ขั้นไหน แล้วพาผู้คีย์กลับไปที่ขั้นนั้น
 //
-// ⚠️ ข้อยกเว้นเดียว — **สี่ช่องที่ API เติมคำตอบให้เงียบ ๆ** (กฎบ้าน "ไม่มีค่าตั้งต้น
-//    ให้กับสิ่งที่เป็นการตัดสินใจ" · docs/form-design-rules.md §2):
-//      · `amountsIncludeVat` ไม่ส่ง = true    (historicalOrderPlan.js: `!== false`)
-//      · `vatRate` ไม่ส่ง = 7                 (historicalOrderPlan.js)
-//      · `team` ไม่ส่ง = ทีมหลักของ AE        (attributionTeam ฝั่ง server)
-//      · `paymentGateExemptReason` ไม่ส่ง = **ไม่ยกเว้น** (API ไม่มีบูลีนของสวิตช์เลย)
-//    ทั้งสี่ตัวถ้าปล่อยให้ server เติมให้ ผู้คีย์จะไม่มีทางรู้ว่าใบไปลงฐาน VAT ไหน/ทีมไหน
-//    ⇒ โมดัลบังคับเลือกเอง (`historicalIntakeLocalIssues`) แล้ว **ส่งค่าที่เลือกไปตรง ๆ**
-//    🐞 ที่มาของช่องทีม: AE สองทีม (ODM + SV) ไม่ส่ง `team` ⇒ ดีลไปลงทีมหลัก แล้วหัวหน้า
-//       อีกทีมมองไม่เห็นใบเลย (ทีมอยู่ในลายนิ้วมือคำขอด้วย ⇒ แก้ทีหลังไม่ได้)
-//    🐞 ที่มาของช่องเหตุผล: สวิตช์ยกเว้นเป็นของโมดัลล้วน ๆ — API อ่านแต่ข้อความเหตุผล
-//       ⇒ เปิดสวิตช์แล้วเหตุผลว่าง = ส่ง null = **ใบลงฐานโดยไม่มีการยกเว้นเลย เงียบสนิท**
-//       (นัดบริการติดด่านเงินทุกครั้ง และเฟส 2a ไม่มีจอยกเว้นย้อนหลัง ⇒ ต้องลบใบคีย์ใหม่)
+// ⚠️ ข้อยกเว้นเดียว — **ของที่ server มองไม่เห็นตอนพรีวิว** (`historicalWizardLocalIssues`):
+//      · โหมด VAT / อัตรา VAT ที่ยังไม่เลือก (กฎบ้าน "ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็นการตัดสินใจ")
+//      · ทีมของดีล เมื่อ **เลือกได้จริง** ตั้งแต่ 2 ทีม (`historicalTeamField`)
+//      · **ไฟล์ที่ยังอยู่ในเครื่อง** — เอกสารแทนสัญญาและหลักฐานงวดยกมาอัปได้หลังใบเกิดแล้ว
+//        ⇒ พรีวิวไม่มีทางรู้ว่าผู้คีย์แนบหรือยัง แต่ RPC ส่งอนุมัติตีกลับทั้งสองข้อ
+//        (`historical_so_contract_file_missing` · `historical_so_opening_evidence_missing`)
+//        ⇒ ถามตั้งแต่บนฟอร์ม ไม่ใช่ปล่อยไปตายที่จังหวะสุดท้ายของการบันทึก
+//      · เคยเก็บเงินไปแล้วหรือยัง (งวดยกมา) — คำถามที่ไม่มีคำตอบตั้งต้น
+//      · **สองช่องวันสัญญา** — ไม่ใช่กฎชุดที่สอง แต่เป็น *กระจก* ของแผน: ข้อความมาจาก
+//        `CONTRACT_DATE_MESSAGES` ของ `historicalOrderPlan` ก้อนเดียวกับที่ตีกลับ
+//        (เหตุผลที่ต้องมีกระจก อยู่ที่หัว `historicalContractDateIssues`)
+//
+// 🔴 **กฎเหล็กของข้อยกเว้นชุดนี้ (รีวิว S8): ถามได้เฉพาะข้อที่ "มีช่องให้ตอบอยู่บนจอจริง"**
+//    ทั้งสองข้อที่เคยพลาดมาแล้วพังแบบเดียวกัน — ปุ่มบันทึกติดด่าน แล้วเด้งกลับไปขั้นที่ไม่มี
+//    ช่องให้แก้ วนไม่รู้จบโดยไม่มี error สักตัว:
+//      · ใบยอด 0 บาท (`zeroValue`) — ขั้น ③ ซ่อนทั้งแผ่นเลือกงวดยกมา ตารางงวด และช่องหลักฐาน
+//      · ทีมของดีล — `TeamPickerField` คืน `null` เมื่อเหลือตัวเลือก < 2
+//    ⇒ ฝั่งคำถามกับฝั่งช่องต้องอ่าน **ธง/ชุดตัวเลือกตัวเดียวกัน** เสมอ
+import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
+import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
+import { externalDocKindLabel } from '@/lib/sales/contracts';
+import { splitCoverageEvenly } from '@/lib/sales/paymentCoverage';
 import {
-  EXEMPT_REASON_MAX, EXEMPT_REASON_MIN, INSTALLATION_POINT_MAX, INSTALLMENT_LABEL_MAX,
-  HISTORICAL_REF_MAX, ZERO_VALUE_EXEMPT_REASON, charLength, exemptReasonError,
+  HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
+  charLength, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
-import { HISTORICAL_VAT_RATES } from '@/lib/sales/historicalOrderPlan';
+import {
+  CONTRACT_DATE_MESSAGES, HISTORICAL_VAT_RATES, splitHistoricalAmounts,
+} from '@/lib/sales/historicalOrderPlan';
 
 export {
-  EXEMPT_REASON_MAX, EXEMPT_REASON_MIN, INSTALLATION_POINT_MAX, INSTALLMENT_LABEL_MAX,
-  HISTORICAL_REF_MAX, ZERO_VALUE_EXEMPT_REASON, charLength, exemptReasonError, HISTORICAL_VAT_RATES,
+  HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, HISTORICAL_VAT_RATES,
+  CONTRACT_DATE_MESSAGES, charLength,
 };
 
-/* ── ขั้นของโมดัล ─────────────────────────────────────────────────────────────
-   ⚠️ รางขั้นเป็น "ที่บอกตำแหน่ง" ไม่ใช่ปุ่มกด — ข้ามขั้นไม่ได้เพราะขั้นหลังต้องผ่านด่าน
-   ของขั้นก่อน (แพตเทิร์นเดียวกับ LegacySiteModal · IntakeWizard) */
-export const HISTORICAL_INTAKE_STEPS = Object.freeze([
-  { key: 'doc', label: 'ใบ' },
-  { key: 'lines', label: 'จุดติดตั้ง' },
-  { key: 'money', label: 'งวดและด่านเงิน' },
-  { key: 'review', label: 'ตรวจก่อนบันทึก' },
+/* ── ขั้นของฟอร์ม (ม็อก Step1–Step4 · REVISION 2) ────────────────────────────────────
+   ⚠️ รางขั้นเป็น "ที่บอกตำแหน่ง" — ข้ามขั้นไม่ได้เพราะขั้นหลังต้องผ่านด่านของขั้นก่อน
+   ⚠️ ป้ายขั้น ④ พูดถึงการส่งอนุมัติตรง ๆ: ปุ่มของขั้นนั้นคือ "บันทึกและส่งอนุมัติ" ไม่ใช่ "บันทึก" */
+export const HISTORICAL_WIZARD_STEPS = Object.freeze([
+  { key: 'contract', label: 'ลูกค้าและสัญญา', hint: 'ลูกค้า · เอกสาร · VAT' },
+  { key: 'zones', label: 'ไซต์ โซน และแพ็ค', hint: 'เลือกจากทะเบียนไซต์' },
+  { key: 'money', label: 'งวดชำระ', hint: 'งวดยกมา + งวดที่ยังต้องเก็บ' },
+  { key: 'review', label: 'ตรวจและส่งอนุมัติ', hint: 'ส่ง AE Sup อนุมัติ' },
 ]);
-export const HISTORICAL_INTAKE_STEP_ORDER = Object.freeze(HISTORICAL_INTAKE_STEPS.map((s) => s.key));
+export const HISTORICAL_WIZARD_STEP_ORDER = Object.freeze(HISTORICAL_WIZARD_STEPS.map((s) => s.key));
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
-const toNumber = (value) => (value === null || value === undefined || value === '' ? Number.NaN : Number(value));
+const list = (value) => (Array.isArray(value) ? value : []);
+const toSatang = (value) => Math.round((Number(value) || 0) * 100);
+/* วันในปฏิทินรูป YYYY-MM-DD — เทียบกันด้วยสตริงได้ตรง ๆ (รูปนี้เรียงตามเวลาอยู่แล้ว) */
+const isDateText = (value) => /^\d{4}-\d{2}-\d{2}$/.test(text(value));
 
 let seq = 0;
 const nextKey = (prefix) => { seq += 1; return `${prefix}-${seq}`; };
 
-/** บรรทัด = จุดติดตั้ง (มติข้อ 8) — `key` มีไว้ให้ React เท่านั้น ไม่ถูกส่งขึ้น API */
-export const emptyHistoricalLine = () => ({
-  key: nextKey('line'), installationPoint: '', productId: '', qty: '', serviceRounds: '', lineAmount: '',
+/** แถวโซน = หนึ่งบรรทัดของใบ — `key` มีไว้ให้ React เท่านั้น ไม่ถูกส่งขึ้น API */
+export const emptyHistoricalZone = (defaults = {}) => ({
+  key: nextKey('zone'),
+  zoneId: text(defaults.zoneId),
+  siteId: text(defaults.siteId),
+  productId: text(defaults.productId),
+  packs: text(defaults.packs),
+  rounds: text(defaults.rounds),
+  lineAmount: text(defaults.lineAmount),
 });
 
-/** งวดที่ยังต้องเก็บ — ไม่มีช่อง `status` โดยเจตนา (ดู `historicalIntakeBody`) */
-export const emptyHistoricalInstallment = () => ({
-  key: nextKey('inst'), label: '', amount: '', dueDate: '', coversFrom: '', coversTo: '',
+/** งวดที่ยังต้องเก็บ — ไม่มีช่อง `status`/`kind` โดยเจตนา (ดู `historicalWizardBody`) */
+export const emptyHistoricalInstallment = (defaults = {}) => ({
+  key: nextKey('inst'),
+  label: text(defaults.label),
+  amount: text(defaults.amount),
+  dueDate: text(defaults.dueDate),
+  coversFrom: text(defaults.coversFrom),
+  coversTo: text(defaults.coversTo),
+  note: text(defaults.note),
 });
 
 /**
- * state ตั้งต้นของโมดัลหนึ่งใบ
- * @param defaults ค่าที่ยกมาให้ — ปุ่ม "คีย์ใบถัดไปของลูกค้านี้" ส่งมาแค่ `customerId`
- *   ⚠️ **AE ว่างเสมอ** ลูกค้ารายเดียวมี AE ได้สองคน = คนละดีล · AE ที่ติดมาเงียบ ๆ
- *   แปลว่าใบไปลงผิดดีลโดยไม่มีอะไรบนจอฟ้อง
+ * state ตั้งต้นของฟอร์มหนึ่งใบ
+ * ⚠️ **ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็นการตัดสินใจ** (form-design-rules §2) — ชนิดเอกสาร · VAT ·
+ *   "เคยเก็บเงินไปแล้วหรือยัง" เริ่มที่ค่าว่าง/null · AE ตั้งต้นเฉพาะตอนที่ระบบล็อกให้เป็นตัวเอง
  */
-export function emptyHistoricalIntake(defaults = {}) {
+export function emptyHistoricalWizard(defaults = {}) {
   return {
-    customerId: text(defaults.customerId) || '',
-    ownerId: '',
-    team: '',
-    orderDate: '',
-    /* ⭐ ภาษาเอกสารมีค่าตั้งต้น "ไทย" ต่างจากอีกสามช่องข้างล่าง — มันไม่ใช่การตัดสินใจ
-       ที่ค้างอยู่: สลับภาษาเอกสารของใบย้อนหลังถูกปิดไว้ (docs §4) และพิมพ์ใบย้อนหลัง
-       ยังไม่รองรับ ⇒ ค่านี้กำหนดแค่ **ภาษาคำอธิบายสินค้าบนบรรทัด** ซึ่งมีคำตอบตั้งต้น
-       ที่ถูกอยู่แล้ว (ชีตเป็นไทยทั้งใบ) · ม็อกก็วาดไว้ว่าเลือก "ไทย" ไว้แล้ว */
-    docLanguage: 'th',
+    orderId: null,
+    status: null,
+    updatedAt: null,
+    orderNumber: null,
+    rejection: null,
+    customerId: text(defaults.customerId),
+    ownerId: text(defaults.ownerId),
+    team: text(defaults.team),
+    contract: { docKind: '', ref: '', startDate: '', endDate: '' },
+    refs: { quote: '', express: '', invoice: '' },
     amountsIncludeVat: null,   // null = ยังไม่เลือก (ไม่ใช่ false)
     vatRate: null,             // null = ยังไม่เลือก (ไม่ใช่ 0)
-    refs: { quote: '', express: '', invoice: '' },
     notes: '',
-    lines: [emptyHistoricalLine()],
+    packageProductId: '',      // แพ็คเกจที่ใช้กับทุกโซน — แต่ละแถวเขียนทับได้
+    zones: [],
+    hasOpening: null,          // null = ยังไม่เลือก · true = เคยเก็บแล้ว · false = ยังไม่เคยเก็บ
+    opening: { amount: '', coversTo: '', paidOn: '', note: '' },
+    openingEvidence: [],       // ref ของหลักฐานที่อยู่บนเซิร์ฟเวอร์แล้ว (โหมดแก้ใบ)
     installments: [],
-    exempt: false,
-    exemptReason: '',
   };
 }
 
 /**
- * ใบยอด 0 ไหม — อ่านจากยอดบรรทัดที่ผู้คีย์พิมพ์ตรง ๆ
- * ⚠️ ต้องตรงกับ `zeroValue` ของ `planHistoricalOrder` เป๊ะ: มีบรรทัด · ยอดทุกบรรทัดเป็นตัวเลข
- * ไม่ติดลบ · ผลรวมเป็น 0 (VAT ไม่เคยเปลี่ยน 0 ให้เป็นค่าอื่น จึงคิดจากยอดดิบได้)
+ * ใบที่โหลดมา → state ของฟอร์ม (โหมดแก้ใบ = ฟอร์มตัวเดียวกับตอนสร้าง)
+ * ⚠️ อ่านค่าจาก **ใบจริง** ไม่ใช่จากแผนที่พรีวิวคืน — ผู้คีย์ต้องเห็นสิ่งที่ลงฐานไปแล้ว
+ * ⚠️ โหมด VAT เก็บไม่ได้ในคอลัมน์ ⇒ อยู่ใน `metadata.historicalIntake` (RPC เขียนให้)
+ * ⚠️ ยอดของโซน = ยอดที่ผู้คีย์พิมพ์ (`metadata.grossAmount` ของบรรทัด) ไม่ใช่ `lineTotal`
+ *   ซึ่งเป็นยอดก่อน VAT ที่ระบบคิดให้ — เติมกลับผิดช่องแปลว่ายอดเพี้ยนทุกครั้งที่เปิดแก้
  */
-export function historicalIntakeZeroValue(state = {}) {
-  const lines = Array.isArray(state.lines) ? state.lines : [];
-  if (!lines.length) return false;
-  let sum = 0;
-  for (const line of lines) {
-    const amount = toNumber(line?.lineAmount);
-    if (!Number.isFinite(amount) || amount < 0) return false;
-    sum += amount;
+export function wizardStateFromOrder(order = {}, { contract = null, installments = null } = {}) {
+  const base = emptyHistoricalWizard();
+  const intake = order?.metadata?.historicalIntake || {};
+  const doc = contract || order?.serviceContract || null;
+  const rows = list(installments === null ? order?.installments : installments);
+  const opening = rows.find(isOpeningInstallment) || null;
+  const regular = rows.filter((row) => !isOpeningInstallment(row))
+    .slice()
+    .sort((a, b) => text(a.coversFrom).localeCompare(text(b.coversFrom)) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
+  const lines = list(order?.lines).slice().sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+  const zoneRows = lines.filter((line) => line.serviceZoneId).map((line) => emptyHistoricalZone({
+    zoneId: line.serviceZoneId,
+    productId: line.productId,
+    packs: line.qty,
+    rounds: line.serviceRounds,
+    lineAmount: line.metadata?.grossAmount ?? line.lineTotal,
+  }));
+
+  return {
+    ...base,
+    orderId: order?.id || null,
+    status: order?.status || null,
+    updatedAt: order?.updatedAt || null,
+    orderNumber: order?.orderNumber || null,
+    rejection: order?.status === 'rejected'
+      ? { by: text(order?.rejectedByName) || null, at: order?.rejectedAt || null, reason: text(order?.rejectionReason) || null }
+      : null,
+    customerId: text(order?.customerId),
+    ownerId: text(order?.deal?.ownerId),
+    team: text(order?.deal?.team),
+    contract: {
+      docKind: text(doc?.externalDocKind),
+      ref: text(doc?.externalRef),
+      startDate: text(doc?.effectiveDate) || text(doc?.contractDate) || text(order?.orderDate),
+      endDate: text(doc?.expiryDate),
+    },
+    refs: {
+      quote: text(order?.historicalQuoteRef),
+      express: text(order?.historicalExpressRef),
+      invoice: text(order?.historicalInvoiceRef),
+    },
+    amountsIncludeVat: typeof intake.amountsIncludeVat === 'boolean' ? intake.amountsIncludeVat : null,
+    vatRate: HISTORICAL_VAT_RATES.includes(Number(intake.vatRate)) ? Number(intake.vatRate) : null,
+    notes: text(order?.notes),
+    packageProductId: text(zoneRows[0]?.productId),
+    zones: zoneRows,
+    hasOpening: rows.length ? Boolean(opening) : null,
+    opening: opening
+      ? {
+        amount: text(opening.amount),
+        coversTo: text(opening.coversTo),
+        paidOn: text(opening.paidOn),
+        note: text(opening.note),
+      }
+      : base.opening,
+    openingEvidence: list(opening?.evidence),
+    installments: regular.map((row) => emptyHistoricalInstallment({
+      label: row.label, amount: row.amount, dueDate: row.dueDate,
+      coversFrom: row.coversFrom, coversTo: row.coversTo, note: row.note,
+    })),
+  };
+}
+
+/* ── ช่องต้นน้ำเปลี่ยน = ของปลายน้ำต้องล้างให้ครบ และต้องถามก่อน ──────────────────────
+ *
+ * 🐞 UAT 23/09 (ข้อมูลหาย + ทางตัน): สลับลูกค้าที่ขั้น ① เรียก
+ *   `patch({ customerId, zones: [], packageProductId: '' })` — **ล้างโซน แต่ทิ้งงวดไว้**
+ *   ทั้งที่งวดยกมาและงวดที่เหลือคิดมาจากยอดของโซนชุดที่เพิ่งลบทิ้ง ⇒ ขั้น ③ ยังถือยอดของ
+ *   บรรทัดที่ไม่มีอยู่แล้ว แล้วผู้คีย์ไปโผล่ที่ "ยอดงวดรวมไม่เท่ายอดใบ" โดยไม่มีอะไรบอกว่า
+ *   ทำไม · และของที่หายไปก็หายเงียบ ๆ โดยไม่เคยถาม
+ * ⇒ กติกา: **ล้างให้ครบเป็นชุดเดียว และถามก่อนเสมอเมื่อมีของจะหาย** (กฎบ้าน: การกระทำที่
+ *   ทำลายของที่พิมพ์ไว้ต้องมีโมดัลบอกผลลัพธ์) · ตัวตัดสินอยู่ที่นี่ที่เดียว ⇒ คำถามที่ถาม
+ *   กับของที่ล้างจริงไม่มีทางไม่ตรงกัน (JSX ที่เขียนเองสองที่จะเพี้ยนกันวันใดวันหนึ่ง)
+ *
+ * ⚠️ **วันสัญญาไม่อยู่ในชุดนี้** — `DateInput` ยิง onChange ระหว่างพิมพ์ทีละตัว ⇒ ถามตอนนั้น
+ *   = โมดัลเด้งกลางคำ · ช่วงสัญญาไม่ได้ทำให้งวดเป็นโมฆะทันที (มันแค่ต้องครอบใหม่ให้เต็ม)
+ *   ⇒ ใช้คำเตือนค้างบนขั้น ① แทน (`historicalCoverageWarning`) — บอกว่าจะเกิดอะไร ไม่ล้างให้เอง
+ * ⚠️ **ไม่ล้าง `openingEvidence`** — นั่นคือไฟล์ที่อยู่บนเซิร์ฟเวอร์จริงแล้ว (โหมดแก้ใบ)
+ *   ล้างจากฟอร์ม = ไฟล์กำพร้าใน bucket โดยที่ผู้คีย์ไม่ได้สั่งลบสักไฟล์
+ *
+ * @param field 'customer' (ลูกค้า) | 'vat' (โหมด/อัตรา VAT)
+ * @returns `{ ask, clears, patch, title, description, detail, confirmLabel }`
+ *   - `ask` เท็จ = ยังไม่มีอะไรให้หาย ⇒ ผู้เรียกใช้ `patch` ได้เลยโดยไม่ต้องถาม
+ */
+export function historicalDownstreamReset(state = {}, field = 'customer') {
+  const zoneCount = list(state.zones).length;
+  const installmentCount = list(state.installments).length;
+  const openingAnswered = state.hasOpening === true || state.hasOpening === false;
+  const hasPackage = Boolean(text(state.packageProductId));
+  /* งวดทั้งชุดกลับไปเป็น "ยังไม่ตัดสินใจ" ไม่ใช่ false — ไม่มีค่าตั้งต้นให้การตัดสินใจ */
+  const moneyPatch = { hasOpening: null, opening: emptyHistoricalWizard().opening, installments: [] };
+  const moneyClears = [
+    ...(openingAnswered ? [`คำตอบและยอดของ${OPENING_INSTALLMENT_LABEL}`] : []),
+    ...(installmentCount ? [`งวดที่ยังต้องเก็บ ${installmentCount} งวด`] : []),
+  ];
+
+  if (field === 'vat') {
+    const clears = moneyClears;
+    return {
+      ask: clears.length > 0,
+      clears,
+      patch: moneyPatch,
+      title: 'เปลี่ยนโหมด VAT แล้วงวดชำระจะถูกล้าง',
+      description: `ยอดใบคิดใหม่จากโหมด VAT ที่เลือก ⇒ งวดที่คีย์ไว้จะไม่ตรงยอดใบอีก · ระบบจะล้าง: ${clears.join(' · ')}`,
+      detail: 'โซนและยอดต่อโซนยังอยู่ครบ — กดยกเลิกเพื่อคงโหมด VAT เดิมไว้',
+      confirmLabel: 'เปลี่ยน VAT และล้างงวด',
+    };
   }
-  return sum === 0;
+
+  const clears = [
+    ...(zoneCount ? [`โซนที่เลือกไว้ ${zoneCount} โซน`] : []),
+    ...(hasPackage ? ['แพ็คเกจที่ใช้กับทุกโซน'] : []),
+    ...moneyClears,
+  ];
+  return {
+    ask: clears.length > 0,
+    clears,
+    patch: { zones: [], packageProductId: '', ...moneyPatch },
+    title: 'เปลี่ยนลูกค้าแล้วของขั้น ② และ ③ จะถูกล้าง',
+    description: `โซนมาจากทะเบียนไซต์ของลูกค้าเดิม และงวดชำระคิดจากยอดของโซนพวกนั้น ⇒ ระบบจะล้าง: ${clears.join(' · ')}`,
+    detail: 'กดยกเลิกเพื่อคงลูกค้าเดิมไว้ — คีย์ผิดลูกค้าทั้งใบให้เริ่มใบใหม่แทน',
+    confirmLabel: 'เปลี่ยนลูกค้าและล้างข้อมูล',
+  };
 }
 
 /**
- * body ของ `POST /api/sales-planning/sales-orders/historical` — **ตัวประกอบตัวเดียว**
- * ที่ทั้งพรีวิวและบันทึกเรียก ⇒ ลายนิ้วมือคำขอของสองรอบตรงกันเสมอ
- *
- * 🪤 กับดักเงียบสามตัวของ API ที่ตัวประกอบนี้กันไว้ให้:
- *   1. บรรทัดที่มีคีย์ `zoneId` (แม้ค่า null) = error ทันที — ฝ่ายขายไม่ระบุโซน (มติข้อ 17)
- *   2. งวดที่มีคีย์ `status` = error — ป้ายบนจอคือ "รอชำระ" ซึ่งเป็นค่าตั้งต้นของ RPC อยู่แล้ว
- *   3. `running:false` = ตีกลับทั้งใบ (งานที่จบแล้วเป็นรอบคีย์ที่สอง)
- *   ⇒ สร้างออบเจกต์ใหม่จากช่องที่รู้จักเท่านั้น **ห้าม spread state ดิบลง lines/installments**
+ * คำเตือนของขั้น ① เมื่อแก้วันสัญญาทั้งที่คีย์งวดไว้แล้ว — **บอกว่าจะเกิดอะไร ไม่ล้างให้**
+ * (ช่วงครอบของทุกงวดต้องเต็มสัญญาพอดี ⇒ ขยับวันแล้วงวดเดิมยังใช้ได้ แค่ต้องแก้ช่วง)
  */
-export function historicalIntakeBody(state = {}, options = {}) {
-  const { preview = false, intakeKey = null, acknowledgeDuplicates = false } = options;
-  const zeroValue = historicalIntakeZeroValue(state);
-  const lines = (Array.isArray(state.lines) ? state.lines : []).map((line) => ({
-    installationPoint: text(line?.installationPoint),
-    productId: text(line?.productId) || null,
-    qty: text(line?.qty),
-    serviceRounds: text(line?.serviceRounds),
-    lineAmount: text(line?.lineAmount),
-  }));
-  const installments = (Array.isArray(state.installments) ? state.installments : []).map((row) => ({
-    label: text(row?.label),
-    amount: text(row?.amount),
-    dueDate: text(row?.dueDate) || null,
-    coversFrom: text(row?.coversFrom) || null,
-    coversTo: text(row?.coversTo) || null,
-  }));
-  /* ⭐ ใบยอด 0 = **ส่ง null เสมอ** แม้ผู้คีย์เคยเปิดสวิตช์และพิมพ์เหตุผลไว้ก่อนยอดกลายเป็น 0
-     API ไม่บังคับข้อนี้ (ส่งเหตุผลไป = เก็บเหตุผลนั้นแทนข้อความตายตัวและเลิกถือว่าอัตโนมัติ)
-     ⇒ กติกา "ใบยอด 0 ยกเว้นอัตโนมัติ ถอนไม่ได้" (มติข้อ 11) จริงได้เพราะโมดัลทิ้งเหตุผลที่นี่ */
-  const reason = zeroValue ? null : (state.exempt ? text(state.exemptReason) || null : null);
+export function historicalCoverageWarning(state = {}) {
+  const rows = list(state.installments).length;
+  const opening = state.hasOpening === true;
+  if (!rows && !opening) return null;
+  const held = [
+    ...(opening ? [OPENING_INSTALLMENT_LABEL] : []),
+    ...(rows ? [`งวดที่ยังต้องเก็บ ${rows} งวด`] : []),
+  ].join(' · ');
+  return `แก้วันสัญญาแล้ว ${held} ที่คีย์ไว้ในขั้น ③ ไม่ถูกล้าง — แต่ช่วงครอบบริการต้องเต็มสัญญาพอดี ⇒ กลับไปตรวจขั้น ③ ก่อนส่งอนุมัติ`;
+}
+
+/**
+ * body ของทั้งสองเส้น (POST `…/historical` และ PATCH `…/historical/[id]`) — **ตัวประกอบตัวเดียว**
+ * ที่ทั้งพรีวิวและบันทึกเรียก ⇒ ของที่ตรวจแล้วเท่ากับของที่บันทึกเสมอ
+ *
+ * 🪤 กับดักเงียบที่ตัวประกอบนี้กันไว้ให้ — **ห้าม spread state ดิบ**:
+ *   1. `key` ของแถว (ของ React) ไหลขึ้น API แล้วกลายเป็นคีย์แปลกปลอมในแผน
+ *   2. งวด/บรรทัดที่มี `status` · `kind` · `frozenAt` = ค่าที่ฐานเป็นคนตั้ง ไม่ใช่ค่าที่จอส่ง
+ *   3. `opening` ของใบที่ยังไม่เลือกว่าเคยเก็บเงินไหม ต้องเป็น `null` ไม่ใช่ก้อนว่าง
+ *      (ก้อนว่าง = ตัวตรวจอ่านว่า "มีงวดยกมาที่กรอกไม่ครบ" แล้วตีกลับคนละเรื่อง)
+ * @param options `{ preview, intakeKey, expectedUpdatedAt, acknowledgeDuplicates, openingEvidenceRefs }`
+ *   - openingEvidenceRefs: ref ของหลักฐานงวดยกมาทั้งชุด (ของเดิม + ที่เพิ่งอัป) — โหมดแก้ใบเท่านั้น
+ *     ⚠️ RPC แก้ใบเขียนงวดใหม่ทั้งชุด ⇒ ไม่ส่ง = หลักฐานเดิมหาย
+ */
+export function historicalWizardBody(state = {}, options = {}) {
+  const {
+    preview = false, intakeKey = null, expectedUpdatedAt = null, acknowledgeDuplicates = false,
+    openingEvidenceRefs = null,
+  } = options;
+  const evidence = openingEvidenceRefs === null ? list(state.openingEvidence) : list(openingEvidenceRefs);
   const body = {
     preview,
-    running: true,
     customerId: text(state.customerId) || null,
     ownerId: text(state.ownerId) || null,
     team: text(state.team) || null,
-    orderDate: text(state.orderDate) || null,
-    docLanguage: state.docLanguage === 'en' ? 'en' : 'th',
-    amountsIncludeVat: state.amountsIncludeVat,
-    vatRate: state.vatRate,
+    contract: {
+      docKind: text(state.contract?.docKind) || null,
+      ref: text(state.contract?.ref) || null,
+      startDate: text(state.contract?.startDate) || null,
+      endDate: text(state.contract?.endDate) || null,
+    },
     refs: {
       quote: text(state.refs?.quote) || null,
       express: text(state.refs?.express) || null,
       invoice: text(state.refs?.invoice) || null,
     },
+    amountsIncludeVat: state.amountsIncludeVat,
+    vatRate: state.vatRate,
     notes: text(state.notes) || null,
-    lines,
-    installments,
-    paymentGateExemptReason: reason,
+    zones: list(state.zones).map((row) => ({
+      zoneId: text(row?.zoneId) || null,
+      productId: text(row?.productId) || null,
+      packs: text(row?.packs),
+      rounds: text(row?.rounds),
+      lineAmount: text(row?.lineAmount),
+    })),
+    opening: state.hasOpening === true
+      ? {
+        amount: text(state.opening?.amount),
+        coversTo: text(state.opening?.coversTo) || null,
+        paidOn: text(state.opening?.paidOn) || null,
+        note: text(state.opening?.note) || null,
+        evidence,
+      }
+      : null,
+    installments: list(state.installments).map((row) => ({
+      label: text(row?.label),
+      amount: text(row?.amount),
+      dueDate: text(row?.dueDate) || null,
+      coversFrom: text(row?.coversFrom) || null,
+      coversTo: text(row?.coversTo) || null,
+      note: text(row?.note) || null,
+    })),
   };
-  /* รหัสการคีย์: บังคับเฉพาะตอนบันทึก แต่ส่งตั้งแต่พรีวิวด้วย — มันคือตัวที่ทำให้ใบของ
+  /* รหัสการคีย์: บังคับเฉพาะตอนสร้างจริง แต่ส่งตั้งแต่พรีวิวด้วย — มันคือตัวที่ทำให้ใบของ
      รหัสนี้เอง (ส่งซ้ำหลังเน็ตหลุด) ไม่ถูกนับเป็น "ใบที่อาจซ้ำ" ของตัวเอง */
   if (intakeKey) body.intakeKey = intakeKey;
+  if (expectedUpdatedAt) body.expectedUpdatedAt = expectedUpdatedAt;
   if (acknowledgeDuplicates) body.acknowledgeDuplicates = true;
   return body;
 }
 
 /* ── ช่อง → ขั้น ───────────────────────────────────────────────────────────────
-   ชื่อช่องมาจาก `planHistoricalOrder` (`err(field, …)`) · ของที่ไม่รู้จักตกที่ขั้นแรก
-   เพราะขั้นแรกคือที่ที่ผู้คีย์เห็นข้อความได้แน่นอนที่สุด */
+   ชื่อช่องมาจาก `planHistoricalServiceOrder` (`err(field, …)`) และจาก local issues ข้างล่าง
+   ของที่ไม่รู้จักตกที่ขั้นแรก เพราะขั้นแรกคือที่ที่ผู้คีย์เห็นข้อความได้แน่นอนที่สุด */
 const FIELD_STEP = new Map([
-  ['running', 'doc'], ['customerId', 'doc'], ['ownerId', 'doc'], ['team', 'doc'],
-  ['orderDate', 'doc'], ['docLanguage', 'doc'], ['amountsIncludeVat', 'doc'], ['vatRate', 'doc'],
-  ['notes', 'doc'], ['deal', 'doc'],
-  ['lines', 'lines'],
-  ['installments', 'money'], ['paymentGateExemptReason', 'money'],
+  ['customerId', 'contract'], ['ownerId', 'contract'], ['team', 'contract'], ['deal', 'contract'],
+  ['contract', 'contract'], ['refs', 'contract'], ['vatRate', 'contract'], ['amountsIncludeVat', 'contract'],
+  ['notes', 'contract'], ['todayIso', 'contract'],
+  ['zones', 'zones'],
+  ['opening', 'money'], ['installments', 'money'],
 ]);
 
-export function stepOfIntakeField(field) {
+export function stepOfField(field) {
   const name = text(field);
   if (FIELD_STEP.has(name)) return FIELD_STEP.get(name);
   const head = name.split('.')[0];
-  if (head === 'refs') return 'doc';
   if (FIELD_STEP.has(head)) return FIELD_STEP.get(head);
-  return 'doc';
+  return 'contract';
 }
 
-/** error ของขั้นนั้น — ขั้น ① จึงไม่โชว์ "ต้องมีอย่างน้อย 1 จุดติดตั้ง" ซึ่งจริงเสมอตอนนั้น */
-export function issuesForStep(issues = [], step = 'doc') {
-  return (Array.isArray(issues) ? issues : []).filter((issue) => stepOfIntakeField(issue?.field) === step);
+/** error ของขั้นนั้น — ขั้น ① จึงไม่โชว์ "ต้องเลือกอย่างน้อย 1 โซน" ซึ่งจริงเสมอตอนนั้น */
+export function issuesForStep(issues = [], step = 'contract') {
+  return list(issues).filter((issue) => stepOfField(issue?.field) === step);
 }
 
 /** ขั้นแรกที่ยังมีข้อผิดพลาด — ปุ่ม "กลับไปแก้" ของ 400 พาไปที่นี่ */
 export function firstStepWithIssues(issues = []) {
-  const steps = new Set((Array.isArray(issues) ? issues : []).map((issue) => stepOfIntakeField(issue?.field)));
-  return HISTORICAL_INTAKE_STEP_ORDER.find((step) => steps.has(step)) || null;
+  const steps = new Set(list(issues).map((issue) => stepOfField(issue?.field)));
+  return HISTORICAL_WIZARD_STEP_ORDER.find((step) => steps.has(step)) || null;
 }
 
 /**
- * สี่ช่องที่ต้องเลือกเองเพราะ API เติมคำตอบให้เงียบ ๆ (ดูหัวไฟล์)
- * @param ownerTeams ทีมที่ AE ที่เลือกสังกัด — ช่องทีมมีคำตอบให้เลือกจริงเมื่อ ≥ 2 ทีม
- * @returns [{ field, message }] รูปเดียวกับ `plan.errors` ⇒ ใช้ตัวจัดขั้นตัวเดียวกันได้
+ * ทีมของดีลที่ใบนี้จะเข้า — **คำถาม ช่องบนจอ และค่าที่ส่งขึ้น API มาจากตัวนี้ตัวเดียว**
+ *
+ * 🔴 กับดักที่ตัวนี้ปิด (รีวิว S8): คำถามเคยนับจาก "AE อยู่กี่ทีม" แต่ช่องบนจอนับจาก
+ *    "ทีมที่เลือกได้จริง" ⇒ AC ที่ดูแลทีมเดียวแต่ AE อยู่สองทีม โดนถามข้อที่ **ไม่มีช่องให้ตอบ**
+ *    (`TeamPickerField` คืน `null` เมื่อเหลือ < 2 ตัวเลือก) แล้วปุ่มบันทึกเด้งกลับขั้น ① วนไม่จบ
+ * 🔴 และการ "เลิกถามเฉย ๆ" ยังไม่พอ: ไม่ส่งทีมขึ้นไป = `attributionTeam` ถอยไป **ทีมหลักของ AE**
+ *    ซึ่งอาจเป็นทีมที่ผู้คีย์ไม่ได้ดูแล ⇒ แผนฝั่ง server ตีกลับที่ช่อง AE ("ดีล…อยู่ทีม X ซึ่งคุณ
+ *    ไม่ได้ดูแล") โดยฟอร์มยังไม่มีอะไรให้แก้อยู่ดี ⇒ เหลือทีมเดียว = **ตอบให้แล้วล็อกไว้ให้เห็น**
+ *
+ * @param ownerTeams  ทีมที่ AE ที่เลือกสังกัด
+ * @param sharedTeams ทีมที่ผู้คีย์กับ AE มีร่วมกัน (ผู้คีย์ที่ขอบเขตไม่ใช่ทั้งบริษัท) — ว่าง = ไม่จำกัด
+ * @param locked      โหมดแก้ใบ — ดีลผูกไปแล้วและ RPC แก้ใบไม่อ่านทีมเลย ⇒ ไม่ถาม ไม่ล็อกทับของเดิม
  */
-export function historicalIntakeLocalIssues(state = {}, { ownerTeams = [] } = {}) {
+export function historicalTeamField({ ownerTeams = [], sharedTeams = [], locked = false } = {}) {
+  const teams = list(ownerTeams).map(text).filter(Boolean);
+  const shared = list(sharedTeams).map(text).filter(Boolean);
+  const options = shared.length ? teams.filter((team) => shared.includes(team)) : teams;
+  return {
+    options,
+    /* ถาม = มีคำตอบให้เลือกจริงตั้งแต่ 2 — เกณฑ์เดียวกับที่ช่องบนจอโผล่ */
+    ask: !locked && options.length >= 2,
+    /* เลือกได้ทีมเดียวทั้งที่ AE อยู่หลายทีม = ค่าที่ฟอร์มต้องเติมเองแล้วโชว์เป็นช่องล็อก */
+    lockedTeam: !locked && options.length === 1 && teams.length >= 2 ? options[0] : null,
+  };
+}
+
+/**
+ * สองช่องวันสัญญา — **กระจกของแผนฝั่ง server ไม่ใช่กฎชุดที่สอง** (ข้อความมาจาก
+ * `CONTRACT_DATE_MESSAGES` ของ `historicalOrderPlan` ก้อนเดียวกับที่แผนตีกลับ)
+ *
+ * 🐞 UAT 23/09: ช่องวันเริ่มถูกล้อมด้วย `max={todayIso}` และช่องวันสิ้นสุดด้วย `min={startDate}`
+ *    ⇒ `DateInput` **ไม่เรียก onChange เมื่อค่าหลุดขอบ** แล้วเด้งกลับค่าเดิมตอนเบลอ: ผู้คีย์พิมพ์
+ *    วันอนาคตแล้วเห็นช่องคืนค่าเก่าโดยไม่มีข้อความสักบรรทัด (และ server ไม่เคยได้เห็นค่านั้นเลย)
+ * ⇒ ฟอร์มรับค่าที่พิมพ์เข้ามาก่อน แล้ว **โชว์กฎที่ช่องนั้นทันที** · ลำดับ else-if ตรงกับแผน
+ *    (เกินวันนี้ > ก่อนวันเริ่ม > สิ้นสุดไปแล้ว) ไม่งั้นช่องเดียวขึ้นสองเหตุผลพร้อมกัน
+ * ⚠️ ไม่รู้วันนี้ = ไม่ตัดสินข้อที่อิง "วันนี้" (ด่านจริงคือแผน ซึ่งตีกลับที่ `todayIso` เอง)
+ *
+ * 🔴 **`editing` ต้องตรงกับ `ctx.editing` ของแผนเป๊ะ** (มติข้อ 9) — ใบที่มีอยู่แล้ว (ร่าง/ตีกลับ)
+ *    ที่สัญญาสิ้นสุดไประหว่างทางคือ **คำเตือน ไม่ใช่ด่าน** · กระจกที่ลืมข้อนี้ = ทางตันตัวเดิม
+ *    กลับมาอยู่ฝั่งจอแทน: server ยอมรับ PATCH แล้ว แต่ `goToStep` ไม่เดิน และปุ่มบันทึกเด้ง
+ *    กลับขั้น ① ⇒ ใบที่ AE Sup ตีกลับหลังสัญญาหมดอายุ แก้และส่งใหม่ไม่ได้อีกเลย
+ *    ⇒ ข้อที่เป็นคำเตือนอยู่ที่ `historicalContractDateWarnings` (ไม่ไหลเข้า local issues)
+ */
+export function historicalContractDateIssues(state = {}, { todayIso = null, editing = false } = {}) {
   const issues = [];
-  if (state.amountsIncludeVat !== true && state.amountsIncludeVat !== false) {
-    issues.push({ field: 'amountsIncludeVat', message: 'เลือกว่ายอดที่คีย์รวม VAT แล้วหรือยัง' });
+  const today = isDateText(todayIso) ? text(todayIso) : null;
+  const from = text(state?.contract?.startDate);
+  const to = text(state?.contract?.endDate);
+  if (isDateText(from) && today && from > today) {
+    issues.push({ field: 'contract.startDate', message: CONTRACT_DATE_MESSAGES.startAfterToday });
   }
-  if (!HISTORICAL_VAT_RATES.includes(state.vatRate)) {
-    issues.push({ field: 'vatRate', message: 'เลือกอัตรา VAT ของใบนี้' });
-  }
-  const teams = Array.isArray(ownerTeams) ? ownerTeams : [];
-  if (teams.length >= 2 && !teams.includes(text(state.team))) {
-    issues.push({ field: 'team', message: `AE คนนี้อยู่ ${teams.length} ทีม — เลือกทีมที่ใบนี้เข้า (ทีมของดีลตามที่เลือก)` });
-  }
-  /* 🔴 สวิตช์เปิดแต่เหตุผลว่าง — API ไม่มีบูลีนของสวิตช์ (อ่านแต่ข้อความ) ⇒ ไม่มีใครตีกลับ
-     ใบจะลงฐานแบบ "ไม่ยกเว้น" ทั้งที่ผู้คีย์เปิดสวิตช์ไว้ · ใช้ตัวตรวจตัวเดียวกับ server
-     (`exemptReasonError` 10–500) ⇒ ข้อความเดียวกันทั้งสองฝั่ง · ใบยอด 0 ยกเว้นอัตโนมัติ
-     และโมดัลทิ้งเหตุผลเสมอ จึงไม่เข้าด่านนี้ */
-  if (state.exempt && !historicalIntakeZeroValue(state)) {
-    const reasonError = exemptReasonError(state.exemptReason);
-    if (reasonError) issues.push({ field: 'paymentGateExemptReason', message: reasonError });
+  if (isDateText(to)) {
+    if (isDateText(from) && to < from) {
+      issues.push({ field: 'contract.endDate', message: CONTRACT_DATE_MESSAGES.endBeforeStart });
+    } else if (today && to < today && !editing) {
+      issues.push({ field: 'contract.endDate', message: CONTRACT_DATE_MESSAGES.endBeforeToday });
+    }
   }
   return issues;
 }
 
-/* ── ทางออกตอนบันทึกไม่สำเร็จ — ตารางรหัสในม็อก (docs §6.1) ─────────────────────────
+/**
+ * คำเตือนของสองช่องวันสัญญา — **ไม่บล็อกอะไร** แต่ต้องขึ้นบนจอ (เงียบ = ผู้คีย์ไม่รู้ว่าใบนี้พิเศษ)
+ * ⚠️ รูปเดียวกับ issues (`{ field, message }`) แต่ **ห้ามไหลเข้า `historicalWizardLocalIssues`** —
+ *   ทุกข้อในนั้นบล็อกปุ่ม "ถัดไป" และปุ่มบันทึก
+ * ⚠️ ลำดับเดียวกับแผน: "ก่อนวันเริ่ม" เป็น error ที่ชนะข้อนี้ ⇒ ไม่ขึ้นพร้อมกันสองเหตุผลในช่องเดียว
+ */
+export function historicalContractDateWarnings(state = {}, { todayIso = null, editing = false } = {}) {
+  if (!editing) return [];
+  const today = isDateText(todayIso) ? text(todayIso) : null;
+  const from = text(state?.contract?.startDate);
+  const to = text(state?.contract?.endDate);
+  if (!today || !isDateText(to) || to >= today) return [];
+  if (isDateText(from) && to < from) return [];
+  return [{ field: 'contract.endDate', message: CONTRACT_DATE_MESSAGES.endBeforeTodayEditing }];
+}
+
+/**
+ * ของที่พรีวิวฝั่ง server มองไม่เห็น (ดูหัวไฟล์) — รูปเดียวกับ `plan.errors` ⇒ ใช้ตัวจัดขั้นตัวเดียวกันได้
+ * @param ownerTeams / sharedTeams  ส่งต่อให้ `historicalTeamField` ตัวเดียวกับที่ขั้น ① ใช้วาดช่อง
+ * @param contractFileCount / evidenceFileCount  ไฟล์ที่ **นับรวมทั้งของที่แนบไว้แล้วบนเซิร์ฟเวอร์**
+ * @param zeroValue  ธงใบยอด 0 บาทจากแผนของ server (`plan.zeroValue`) — ตัวเดียวกับที่ขั้น ③ ใช้ซ่อนช่อง
+ * @param todayIso  วันนี้ตามนาฬิกาไทย (`businessDate()` ของผู้เรียก) — ไม่ส่ง = ไม่ตรวจข้อที่อิงวันนี้
+ */
+export function historicalWizardLocalIssues(state = {}, {
+  role = null, userId = null, ownerTeams = [], sharedTeams = [], contractFileCount = 0, evidenceFileCount = 0,
+  zeroValue = false, todayIso = null,
+} = {}) {
+  const issues = [];
+  const add = (field, message) => issues.push({ field, message });
+  /* ⚠️ วันสัญญาอยู่ก่อนเพื่อน — มันคือช่องที่ผู้คีย์เพิ่งพิมพ์ค้างไว้บนจอ (ดูหัว
+     `historicalContractDateIssues`) · ขั้น ① หยิบข้อความชุดนี้ไปแปะใต้ช่องเอง
+     🔴 `editing` = ตัวแยกสร้าง/แก้ตัวเดียวกับที่ไฟล์นี้ใช้กับช่องทีม (`locked`) และตรงกับ
+        `ctx.editing` ของแผน ⇒ สัญญาที่สิ้นสุดไปแล้วบนใบที่มีอยู่แล้วเป็นคำเตือน ไม่ใช่ด่าน */
+  const editing = Boolean(state.orderId);
+  for (const issue of historicalContractDateIssues(state, { todayIso, editing })) issues.push(issue);
+
+  /* AE / Senior AE คีย์ได้เฉพาะของตัวเอง — ช่องบนจอล็อกเป็นตัวเองอยู่แล้ว (form-design-rules §2)
+     ที่นี่กันกรณี state เพี้ยน (เช่น hydrate ใบของคนอื่นมาแก้) ก่อนยิงพรีวิวให้เปลือง */
+  if (ownerLockedToSelf(role) && text(userId) && text(state.ownerId) && text(state.ownerId) !== text(userId)) {
+    add('ownerId', 'AE / Senior AE คีย์ใบย้อนหลังได้เฉพาะของตัวเอง');
+  }
+  if (state.amountsIncludeVat !== true && state.amountsIncludeVat !== false && state.vatRate !== 0) {
+    add('amountsIncludeVat', 'เลือกว่ายอดที่คีย์รวม VAT แล้วหรือยัง');
+  }
+  if (!HISTORICAL_VAT_RATES.includes(state.vatRate)) add('vatRate', 'เลือกอัตรา VAT ของใบนี้');
+
+  /* ⚠️ ถามจาก **ชุดตัวเลือกที่อยู่บนจอจริง** ไม่ใช่จากจำนวนทีมของ AE (ดูหัว `historicalTeamField`) */
+  const teamField = historicalTeamField({ ownerTeams, sharedTeams, locked: Boolean(state.orderId) });
+  if (teamField.ask && !teamField.options.includes(text(state.team))) {
+    add('team', `AE คนนี้อยู่ ${teamField.options.length} ทีม — เลือกทีมที่ใบนี้เข้า (ทีมของดีลตามที่เลือก)`);
+  }
+
+  /* 🔴 ไฟล์ทั้งสองชุดอัปได้ **หลังใบเกิดแล้ว** (ต้องมีแถวก่อนถึงจะมีโฟลเดอร์ให้แนบ) ⇒ พรีวิวไม่เห็น
+     แต่ขั้นส่งอนุมัติตีกลับทั้งคู่ · ถามที่นี่ = ผู้คีย์รู้ตั้งแต่ก่อนกด ไม่ใช่หลังใบร่างเกิดแล้ว */
+  /* 🪤 `null` = **ยังไม่รู้** (แผงไฟล์แนบยังไม่รายงานและไม่มีจำนวนที่ hydrate มาให้ถอย) —
+     ห้ามนับเป็น 0 แล้วบอกว่า "ยังไม่แนบ" และห้ามปล่อยผ่าน · ดู `historicalContractFileCount` */
+  if (contractFileCount === null) {
+    add('contract.file', 'ยังอ่านจำนวนไฟล์เอกสารแทนสัญญาไม่ได้ — โหลดหน้านี้ใหม่แล้วลองอีกครั้ง');
+  } else if (contractFileCount < 1) {
+    add('contract.file', 'ต้องแนบไฟล์เอกสารที่ใช้แทนสัญญาอย่างน้อย 1 ไฟล์ — AE Sup อนุมัติจากไฟล์นี้');
+  }
+  /* 🪤 ใบยอด 0 บาท **ไม่มีงวดสักงวด** (ตัวตรวจงวดของแผน + CHECK ของ 0374) ⇒ ขั้น ③ ซ่อนทั้ง
+     แผ่นเลือก ตารางงวด และช่องหลักฐาน · ถามต่อที่นี่ = ถามข้อที่ไม่มีช่องให้ตอบ แล้วปุ่มบันทึก
+     เด้งกลับขั้น ③ ทุกครั้งไม่รู้จบ ⇒ ธงตัวเดียวกับที่ขั้น ③ ใช้ซ่อนช่อง ต้องปิดคำถามคู่นี้ด้วย */
+  if (!zeroValue) {
+    if (state.hasOpening !== true && state.hasOpening !== false) {
+      add('opening', `เลือกว่าเคยเก็บเงินไปแล้วบางส่วนหรือยัง — เคยเก็บแล้ว = คีย์เป็น${OPENING_INSTALLMENT_LABEL} 1 งวด`);
+    }
+    if (state.hasOpening === true && evidenceFileCount < 1) {
+      add('opening.evidence', `${OPENING_INSTALLMENT_LABEL}ต้องมีหลักฐานการเก็บเงินอย่างน้อย 1 ไฟล์ (ใบกำกับ ใบเสร็จ หรือ statement)`);
+    }
+  }
+  return issues;
+}
+
+/* ── จำนวนไฟล์เอกสารแทนสัญญา: "ภาพนิ่งตอน mount" ⇒ ทางตันปิดฟอร์ม (รีวิว R6) ─────────────
+ *
+ * 🐞 ของเดิม: `serverContractFiles` ถูกตั้งครั้งเดียวตอน hydrate แล้วบวกตะกร้าไฟล์ในเครื่อง ⇒
+ *    ขั้น ① สลับไปเรนเดอร์ `AttachmentsPanel` ทันทีที่มี `contractId` ซึ่ง **อัป/ลบไฟล์ขึ้น
+ *    server ตรง ๆ** ⇒ ตัวนับไม่ขยับตามของจริงทั้งสองทาง:
+ *      · แนบไฟล์สำเร็จ เห็นอยู่ตรงหน้า แต่ด่านยังค้าง "ต้องแนบอย่างน้อย 1 ไฟล์" ⇒ ส่งอนุมัติไม่ได้อีกเลย
+ *      · ลบไฟล์ในแผง ตัวนับยังเป็น 1 ⇒ ด่านบนจอผ่าน แต่ RPC ตีกลับ historical_so_contract_file_missing
+ * ⇒ กติกา: **จำนวนจากของจริงเสมอ** — แผงรายงานผ่าน `onItemsChange` (นับเฉพาะ `external_doc`
+ *   ซึ่งเป็นชนิดเดียวที่ RPC ส่งอนุมัติยอมรับ) · ยังไม่รายงาน = ถอยไปใช้จำนวนที่ hydrate มา ·
+ *   ไม่มีทั้งสองอย่าง = **`null` (ยังไม่รู้)** ไม่ใช่ 0 (ดู `historicalWizardLocalIssues`)
+ *
+ * @param contractId     มีสัญญาแล้วหรือยัง — ไม่มี = ยังเป็นตะกร้าไฟล์ในเครื่องล้วน
+ * @param serverCount    จำนวนที่แผงไฟล์แนบรายงานมา (นับแล้วเฉพาะ external_doc) · null = ยังไม่รายงาน
+ * @param hydratedCount  จำนวนที่ติดมากับใบตอนเปิดฟอร์ม (โหมดแก้ใบ) · null = ไม่มี
+ * @param pendingCount   ไฟล์ในตะกร้าที่ **ยังไม่ได้อัป** (อัปแล้วอยู่ในจำนวนของ server แทน)
+ * @returns จำนวนจริง หรือ `null` = ยังไม่รู้
+ */
+export function historicalContractFileCount({
+  contractId = null, serverCount = null, hydratedCount = null, pendingCount = 0,
+} = {}) {
+  const pending = Number.isFinite(Number(pendingCount)) ? Math.max(0, Number(pendingCount)) : 0;
+  if (!text(contractId)) return pending;
+  const known = (value) => (value === null || value === undefined || !Number.isFinite(Number(value))
+    ? null : Math.max(0, Number(value)));
+  const server = known(serverCount) ?? known(hydratedCount);
+  if (server === null) return pending > 0 ? pending : null;
+  return server + pending;
+}
+
+/* ── ยอดใบตอนที่ยังไม่มีแผนจาก server (รีวิว R7) ─────────────────────────────────────
+ *
+ * 🐞 ของเดิม: ทุกตัวเลขเงินบนจอมาจาก `plan` อย่างเดียว แต่พรีวิวที่ยังมี error **ตอบ 400
+ *    โดยไม่คืน plan** ⇒ ผู้คีย์มาถึงขั้น ③ พร้อม `plan === null` เสมอ (ฟอร์มเปล่าไม่มีงวด =
+ *    พรีวิวรอบ ②→③ error ที่ `installments` ทุกครั้ง) ⇒ ยอดใบขึ้นขีด · แผ่น "แบ่งงวดที่เหลือ
+ *    อัตโนมัติ" เทาทั้งชุด · จอบอกว่า "ตรวจขั้น ② ให้ผ่านก่อน" ทั้งที่ขั้น ② ผ่านแล้ว
+ *    ⇒ ต้องคิดยอด N งวดด้วยมือให้ตรงยอดใบ ±1 สตางค์ โดยไม่เห็นยอดใบ (97 ใบของเฟส 3)
+ * ⇒ **ไม่ใช่กฎชุดที่สอง**: ยอดใบมาจาก `splitHistoricalAmounts` ก้อนเดียวกับที่แผนใช้
+ *   (import จาก historicalOrderPlan) — ที่นี่แค่ป้อนของที่อยู่บนฟอร์มให้มันตอนที่ยังไม่มีแผน
+ * ⚠️ มีแผน = ใช้แผนเสมอ (แผนคืนมาเฉพาะตอนไม่มี error ⇒ เงินของมันผ่านด่านครบแล้ว)
+ * ⚠️ ของที่คิดเองไม่ได้ ต้องตอบ `ok:false` พร้อม **เหตุที่จริง** ไม่ใช่ยอด 0 ที่อ่านเหมือนใบ ฿0
+ */
+/* 🐞 รีวิว R9: `emptyText` ของช่องเลือกอ่านเป็น **คำตอบ** ("ทะเบียนไม่มีรายการ") ⇒ ตอนทะเบียน
+   โหลดไม่ขึ้นมันกลายเป็นคำตอบที่ผิด และผู้คีย์ไปไล่อีกฝ่ายให้สร้างของที่มีอยู่แล้ว
+   ⇒ ทุกช่องที่มีสองเหตุ ต้องพูดคนละคำ · ข้อความอยู่ที่นี่ที่เดียวทั้งสามช่อง */
+/* ⚠️ ข้อความนี้ชี้ไปที่ **ปุ่มบนก้อนแดงของฟอร์ม** ⇒ เปลี่ยนป้ายปุ่มต้องเปลี่ยนที่นี่ด้วย
+   (N4: ปุ่มนั้นเลิกเป็น “โหลดหน้าใหม่” แล้ว เพราะการรีโหลดชนยามของงานที่ยังไม่บันทึก) */
+export const REGISTRY_LOAD_FAILED = 'โหลดทะเบียนไม่ขึ้น — กด “ลองอ่านทะเบียนอีกครั้ง” ที่ข้อความแดงด้านบน (ไม่ใช่ว่าทะเบียนไม่มีรายการ)';
+
+export const HISTORICAL_MONEY_UNKNOWN = Object.freeze({
+  vat: 'เลือกโหมดและอัตรา VAT ในขั้น ① ก่อน ระบบจึงคิดยอดใบได้',
+  zones: 'เลือกโซนอย่างน้อย 1 โซนในขั้น ② ก่อน ระบบจึงคิดยอดใบได้',
+  amounts: 'ยอดของบางโซนในขั้น ② ยังว่างหรือไม่ใช่ตัวเลข — เติมให้ครบก่อน',
+});
+
+/**
+ * ยอดใบที่จอใช้ได้ตรง ๆ — `{ ok, source, reason, subtotal, vatAmount, totalAmount }`
+ * `ok` เท็จ = ยังไม่รู้ยอด (ทุกช่องเป็น null และ `reason` บอกว่าขาดอะไร)
+ *
+ * ลำดับความน่าเชื่อ: แผนที่ไม่มี error → **ยอดที่ server ส่งมากับ 400 ของพรีวิว** → คิดเองจากฟอร์ม
+ * @param serverMoney `{ subtotal, vatAmount, totalAmount }` จาก `data.money` ของพรีวิวที่ตอบ 400
+ *   (`null` = server บอกเองว่ายังคิดยอดไม่ได้ ⇒ ถอยไปคิดเอง ซึ่งจะได้ `ok:false` พร้อมเหตุอยู่แล้ว)
+ */
+export function historicalMoneyView(state = {}, plan = null, serverMoney = null) {
+  /* 🪤 เชื่อแผนได้ **เฉพาะแผนที่ไม่มี error** — แผนที่เงินยังไม่ผ่านด่านคืนบล็อกเงินเป็นศูนย์ทั้งก้อน
+     (moneyOk เท็จ ⇒ subtotal/vat/total เป็นศูนย์หมด) ⇒ เชื่อตามนั้น = พิมพ์ศูนย์บาทว่าเป็นยอดใบ
+     วันนี้เส้นพรีวิวคืนแผนเฉพาะตอนไม่มี error อยู่แล้ว · ด่านนี้กันวันที่ข้อนั้นเปลี่ยน */
+  if (plan?.header && !list(plan.errors).length) {
+    return {
+      ok: true,
+      source: 'plan',
+      reason: null,
+      subtotal: plan.header.subtotal,
+      vatAmount: plan.header.vatAmount,
+      totalAmount: plan.header.totalAmount,
+    };
+  }
+  /* ⭐ R7 (ครึ่ง server): พรีวิวที่ยังไม่ผ่านคืน "ครึ่งเงิน" ของแผนมาด้วย ⇒ ใช้ของ server
+     ⇒ จอกับฐานพูดเลขเดียวกันตั้งแต่ก่อนแผนผ่าน · การคิดเองด้านล่างเหลือไว้สำหรับก่อนกดตรวจครั้งแรก
+     ⚠️ ผู้เรียกต้องทิ้งค่านี้ทุกครั้งที่ฟอร์มถูกแก้ (`patch`) — ไม่ทิ้ง = ยอดของ payload เก่าค้างบนจอ */
+  const fromServer = Number(serverMoney?.totalAmount);
+  if (serverMoney && Number.isFinite(fromServer)) {
+    return {
+      ok: true,
+      source: 'server',
+      reason: null,
+      subtotal: serverMoney.subtotal,
+      vatAmount: serverMoney.vatAmount,
+      totalAmount: serverMoney.totalAmount,
+    };
+  }
+  const unknown = (reason) => ({
+    ok: false, source: 'local', reason, subtotal: null, vatAmount: null, totalAmount: null,
+  });
+  const vatRate = state.vatRate;
+  if (!HISTORICAL_VAT_RATES.includes(vatRate)) return unknown(HISTORICAL_MONEY_UNKNOWN.vat);
+  /* อัตรา 0% ไม่ต้องตอบว่ารวม VAT หรือยัง (กติกาเดียวกับ local issues) */
+  const includeVat = vatRate === 0 ? false : state.amountsIncludeVat;
+  if (includeVat !== true && includeVat !== false) return unknown(HISTORICAL_MONEY_UNKNOWN.vat);
+  const zones = list(state.zones);
+  if (!zones.length) return unknown(HISTORICAL_MONEY_UNKNOWN.zones);
+  const gross = [];
+  for (const row of zones) {
+    const raw = text(row?.lineAmount);
+    const value = raw === '' ? Number.NaN : Number(raw);
+    if (!Number.isFinite(value) || value < 0) return unknown(HISTORICAL_MONEY_UNKNOWN.amounts);
+    gross.push(value);
+  }
+  const money = splitHistoricalAmounts(gross, { amountsIncludeVat: includeVat, vatRate });
+  return {
+    ok: true,
+    source: 'local',
+    reason: null,
+    subtotal: money.subtotal,
+    vatAmount: money.vatAmount,
+    totalAmount: money.totalAmount,
+  };
+}
+
+/**
+ * ผลรวมงวดทั้งใบตามที่ฟอร์มถืออยู่ (สตางค์ล้วน) — **ตัวช่วยคิดของขั้น ③ ไม่ใช่ด่าน**
+ * ด่านจริงคือ `plan.check` + CHECK ของ 0374 · ที่นี่มีไว้บอกผู้คีย์ว่ายังขาด/เกินเท่าไร
+ * ตอนที่พรีวิวยังไม่ผ่าน (ซึ่งคือตอนที่เขาต้องการตัวเลขนี้ที่สุด — รีวิว R7)
+ * @returns `{ sum, diff }` — `diff` = ยอดใบ − ผลรวมงวด (บวก = ยังขาด) · ไม่รู้ยอดใบ = null ทั้งคู่
+ */
+export function historicalInstallmentSum(state = {}, totalAmount = null) {
+  const rows = list(state.installments);
+  let satang = state.hasOpening === true ? toSatang(state.opening?.amount) : 0;
+  for (const row of rows) satang += toSatang(row?.amount);
+  const sum = satang / 100;
+  if (totalAmount === null || totalAmount === undefined || !Number.isFinite(Number(totalAmount))) {
+    return { sum, diff: null };
+  }
+  return { sum, diff: (toSatang(totalAmount) - satang) / 100 };
+}
+
+/* ── เปลือกของฟอร์ม: ป้ายปุ่ม · จุดยึดของช่อง · ราง · แถบสรุป · ถ้อยคำของแถบท้าย ──────────
+ *
+ * 🔴 ทั้งก้อนนี้เกิดจาก UAT 23/09 ซึ่งเจอ **อาการเดียวกันสี่หน้ากาก**: จอพูดถึงของที่ไม่มีอยู่จริง
+ *   หรือพูดแทนข้อมูลที่ยังไม่ได้ถาม ⇒ คำบนจอต้องประกอบจากตัวตัดสินที่ตรึงด้วยเทสต์ได้
+ *   ไม่ใช่สตริงที่พิมพ์ทิ้งไว้ใน JSX (สตริงใน JSX ไม่มีใครเฝ้าให้ว่ามันยังจริงอยู่ไหม)
+ */
+
+/* ป้ายของปุ่มบนแถบท้าย — **ที่เดียวของทั้งฟอร์ม**
+   🐞 UAT 23/09: ขั้น ④ สั่งให้กด "ตรวจอีกครั้ง" ซึ่งไม่มีปุ่มนั้นอยู่บนจอเลย ⇒ ผู้คีย์มองหาปุ่ม
+      ที่ไม่มีวันเจอ · คำสั่งที่ชี้ปุ่มต้องอ้างค่าคงที่ตัวเดียวกับที่ปุ่มนั้นใช้เป็นป้าย */
+export const HISTORICAL_SAVE_BUTTON_LABEL = 'บันทึกและส่งอนุมัติ';
+export const HISTORICAL_NEXT_BUTTON_LABEL = 'ถัดไป';
+
+/* ── จุดยึดของช่องบน DOM ────────────────────────────────────────────────────────
+ *
+ * 🐞 UAT 23/09 (ทางตัน): กด "ถัดไป" ตอนยังไม่แนบไฟล์เอกสารแทนสัญญา = **ไม่มีอะไรเกิดขึ้นเลย**
+ *    (`if (issuesForStep(localIssues, from).length) { setIssues([]); return; }`) — ปุ่มอ่านเหมือน
+ *    ปุ่มตาย ซ้ำยังล้าง error ของ server ที่ค้างอยู่บนจอทิ้งไปด้วย
+ * ⇒ กติกา (กฎบ้าน ui-visibility): ติดด่าน = **คาข้อความไว้ + พาไปที่ช่องนั้น + ทำเครื่องหมายว่าผิด**
+ * ⚠️ สองชื่อช่องที่เป็นคำถามเดียวกันบนจอต้องได้จุดยึด **เดียวกัน** (โหมด VAT กับอัตรา VAT อยู่บน
+ *   แผ่นตัวเลือกใบเดียว) ไม่งั้นพาไปหา id ที่ไม่มีอยู่จริง แล้วกลายเป็นทางตันแบบเดิมอีกรอบ
+ */
+const FIELD_ANCHOR = new Map([
+  ['customerId', 'customer'], ['ownerId', 'owner'], ['team', 'team'],
+  ['contract.startDate', 'contract-start'], ['contract.endDate', 'contract-end'],
+  ['contract.ref', 'contract-ref'], ['contract.file', 'contract-file'],
+  ['amountsIncludeVat', 'vat'], ['vatRate', 'vat'],
+  ['zones', 'zones'],
+  ['opening', 'opening'], ['opening.evidence', 'opening-evidence'],
+]);
+
+/** id ของกล่องช่องบนจอ — ผู้เรียกใช้ทั้งตอนวาด (`id=`) และตอนพาไปหา (`getElementById`) */
+export function historicalFieldAnchorId(field) {
+  const name = text(field);
+  if (!name) return null;
+  return `hist-f-${FIELD_ANCHOR.get(name) || name.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`;
+}
+
+/**
+ * กด "ถัดไป" (หรือแตะขั้นข้างหน้าบนราง) ทั้งที่ขั้นที่ยืนอยู่ยังมีข้อที่จอตรวจเองได้
+ * @returns `{ blocked, issues, field, anchorId, message }` — `blocked` เท็จ = เดินต่อได้ตามปกติ
+ * ⚠️ ผู้เรียก **ห้ามล้าง error ที่อยู่บนจอ** ตอนติดด่าน — สิ่งที่ต้องทำคือพาไปหาช่องแรกที่ผิด
+ */
+export function historicalNextBlock(localIssues = [], step = 'contract') {
+  const blocking = issuesForStep(localIssues, step);
+  const first = blocking[0] || null;
+  return {
+    blocked: blocking.length > 0,
+    issues: blocking,
+    field: first ? text(first.field) || null : null,
+    anchorId: first ? historicalFieldAnchorId(first.field) : null,
+    message: first ? text(first.message) || null : null,
+  };
+}
+
+const packTotal = (zones) => list(zones).reduce((sum, row) => sum + (Number(text(row?.packs)) || 0), 0);
+/* ชนิดเอกสารที่ยังไม่เลือก = ไม่มีคำ (ป้ายกลางคืนขีดให้ชนิดที่ไม่รู้จัก ซึ่งอ่านเหมือนค่าที่หายไป) */
+const docKindText = (kind) => {
+  const label = text(kind) ? externalDocKindLabel(kind) : '';
+  return label === '—' ? '' : label;
+};
+const vatModeText = (includeVat) => {
+  if (includeVat === true) return 'รวม VAT แล้ว';
+  if (includeVat === false) return 'ไม่รวม VAT';
+  return 'ยังไม่เลือกโหมด';
+};
+
+/**
+ * รางขั้น — **สรุปที่เป็นความจริง ไม่ใช่เศษส่วนที่เดาเอาเอง**
+ *
+ * 🐞 UAT 23/09 (รางโกหก): ของเดิมส่ง `count: { filled: stepIssues ? 0 : 1, total: 1 }` ⇒ บนฟอร์ม
+ *    เปล่า ๆ ขั้น "ไซต์ โซน และแพ็ค" กับ "ตรวจและส่งอนุมัติ" ขึ้น **1/1 (ครบ)** เพราะ error ของสองขั้นนั้น
+ *    มาจากพรีวิวของ server ซึ่งยังไม่เคยรักันสักครั้ง ⇒ รางบอกว่างานเสร็จ ทั้งที่ยังไม่ได้เริ่ม
+ * ⇒ เลิกใช้เศษส่วน · ขั้นละหนึ่งบรรทัดตามม็อก ("4 โซน · 17 แพ็ค" · "ยกมา 1 งวด · ต้องเก็บ 1 งวด")
+ *   และจุดสีบอกเฉพาะสิ่งที่รู้จริง: มีข้อต้องแก้ (some) · กรอกแล้ว (full) · ยังว่าง (none)
+ * ⚠️ ใช้เฉพาะช่องที่ `SectionRail` มีอยู่แล้ว (label/tone/title) — ไม่เพิ่มช่องให้ primitive กลาง
+ *   เพื่อจอเดียว · บรรทัดสรุปถูกส่งเป็น node ของ `label` ที่ผู้เรียกประกอบเอง
+ *
+ * @param step ขั้นที่ยืนอยู่ — ใช้ตัดสินว่าขั้นข้างหน้า "แตะแล้วไปไม่ได้เพราะอะไร"
+ */
+export function historicalWizardRail(state = {}, {
+  step = 'contract', localIssues = [], serverIssues = [], plan = null, customerLabel = null,
+} = {}) {
+  const all = [...list(localIssues), ...list(serverIssues)];
+  const block = historicalNextBlock(localIssues, step);
+  const here = HISTORICAL_WIZARD_STEP_ORDER.indexOf(step);
+  const zones = list(state.zones);
+  const installments = list(state.installments);
+  const docKind = docKindText(state.contract?.docKind);
+
+  const summaries = {
+    contract: [text(customerLabel), docKind].filter(Boolean).join(' · '),
+    zones: zones.length ? `${fmtNumber(zones.length)} โซน · ${fmtNumber(packTotal(zones))} แพ็ค` : '',
+    money: plan?.zeroValue ? 'ใบยอด 0 บาท — ไม่มีงวด' : [
+      state.hasOpening === true ? 'ยกมา 1 งวด' : (state.hasOpening === false ? 'ไม่มีงวดยกมา' : ''),
+      installments.length ? `ต้องเก็บ ${fmtNumber(installments.length)} งวด` : '',
+    ].filter(Boolean).join(' · '),
+    /* ขั้น ④ มีของให้สรุปก็ต่อเมื่อพรีวิวผ่านแล้วจริง ๆ — ไม่มีแผน = ยังไม่มีอะไรถูกตรวจ */
+    review: plan ? 'ตรวจแล้ว — พร้อมส่ง AE Sup' : '',
+  };
+
+  return HISTORICAL_WIZARD_STEPS.map((item, index) => {
+    const issues = issuesForStep(all, item.key).length;
+    const summary = text(summaries[item.key]);
+    const blocked = index > here && block.blocked ? `ยังไปขั้นนี้ไม่ได้ — ${block.message}` : null;
+    return {
+      key: item.key,
+      label: item.label,
+      /* ไม่มีอะไรจะสรุป = บอกว่าขั้นนี้ถามอะไร (ป้ายเดิมของม็อก) ไม่ใช่ปล่อยบรรทัดว่าง */
+      summary: summary || item.hint,
+      filled: Boolean(summary),
+      issues,
+      tone: issues ? 'some' : (summary ? 'full' : 'none'),
+      blocked,
+      title: [item.hint, blocked].filter(Boolean).join(' · '),
+    };
+  });
+}
+
+/**
+ * แถบ "สรุปใบ" ข้างฟอร์ม (ม็อก Step1–Step4)
+ *
+ * 🐞 UAT 23/09 (แถบสรุปโกหก): แถว "ลูกค้า" กับ "AE ผู้ดูแล" อ่านจาก `plan?.header` อย่างเดียว ⇒
+ *    เลือกลูกค้าแล้วยังขึ้นขีดอยู่ ทั้งที่แถว "ช่วงสัญญา" ใต้มันขยับทันที (แถวนั้นอ่าน state)
+ *    ⇒ ครึ่งหนึ่งของแถบค้างอยู่ในอดีตจนกว่าจะมีคนกดตรวจ โดยไม่มีอะไรบอกว่าทำไม
+ * ⇒ **ทุกแถวถอยมาที่ state ของฟอร์มเสมอ** · เหลือว่างได้เฉพาะของที่มีแต่ server คิดให้ได้
+ *   (ยอดก่อน VAT · VAT) ซึ่งผู้คีย์ไม่ได้พิมพ์เองอยู่แล้ว
+ * @returns `[{ id, label, value }]` — `value` เป็นข้อความพร้อมวาง หรือ null (ผู้เรียกแปลงเป็นขีดเอง)
+ */
+export function historicalAsideRows(state = {}, {
+  plan = null, serverMoney = null, customerLabel = null, ownerLabel = null,
+  contractFileCount = 0, evidenceFileCount = 0,
+} = {}) {
+  const zones = list(state.zones);
+  /* ⚠️ ยอดก่อน VAT / VAT ถอยมาที่ยอดที่ server ส่งมากับ 400 ของพรีวิว แล้วจึงคิดเอง (รีวิว R7 สองครึ่ง)
+     — ขีดค้างตลอดรอบคีย์คือสิ่งที่ทำให้ผู้คีย์ต้องคิดยอดงวดโดยไม่เห็นยอดใบ */
+  const money = historicalMoneyView(state, plan, serverMoney);
+  const span = contractSpan(state.contract?.startDate, state.contract?.endDate);
+  const refs = [state.refs?.quote, state.refs?.express, state.refs?.invoice].map(text).filter(Boolean);
+  const docKind = docKindText(state.contract?.docKind);
+  const openingRows = plan?.opening || state.hasOpening === true ? 1 : 0;
+  const restRows = plan?.installments?.length ?? list(state.installments).length;
+
+  const vat = state.vatRate === 0
+    ? 'ไม่มี VAT'
+    : (HISTORICAL_VAT_RATES.includes(state.vatRate)
+      ? `${vatModeText(state.amountsIncludeVat)} · ${fmtNumber(state.vatRate)}%`
+      : null);
+
+  const openingValue = (() => {
+    if (plan?.opening) return `${fmtMoney(plan.opening.amount)} · หลักฐาน ${fmtNumber(evidenceFileCount)} ไฟล์`;
+    if (state.hasOpening === false) return 'ไม่มี — ยังไม่เคยเก็บเงิน';
+    if (state.hasOpening !== true) return null;
+    return text(state.opening?.amount)
+      ? `${fmtMoney(state.opening.amount)} · หลักฐาน ${fmtNumber(evidenceFileCount)} ไฟล์`
+      : 'เคยเก็บแล้ว — ยังไม่ใส่ยอด';
+  })();
+
+  return [
+    { id: 'customer', label: 'ลูกค้า', value: text(plan?.header?.customerName) || text(customerLabel) || null },
+    { id: 'owner', label: 'AE ผู้ดูแล', value: text(plan?.header?.ownerName) || text(ownerLabel) || null },
+    { id: 'contract', label: 'สัญญา', value: [docKind, text(state.contract?.ref)].filter(Boolean).join(' ') || null },
+    {
+      id: 'span',
+      label: 'ช่วงสัญญา',
+      value: span.dated
+        ? `${fmtDate(state.contract.startDate)} – ${fmtDate(state.contract.endDate)}${span.months ? ` · ${fmtNumber(span.months)} เดือน` : ''}`
+        : null,
+    },
+    /* `null` = ยังอ่านจำนวนไม่ได้ ⇒ ขีด (เหมือน "ยังไม่มีข้อมูล") · 0 = รู้แล้วว่ายังไม่แนบ */
+    {
+      id: 'files',
+      label: 'ไฟล์',
+      value: contractFileCount === null || contractFileCount === undefined
+        ? null
+        : (contractFileCount ? `แนบแล้ว ${fmtNumber(contractFileCount)} ไฟล์` : 'ยังไม่แนบ'),
+    },
+    { id: 'refs', label: 'อ้างอิงเดิม', value: refs.join(' · ') || null },
+    { id: 'tax', label: 'ภาษี', value: vat },
+    {
+      id: 'zones',
+      label: 'โซน',
+      value: zones.length ? `${fmtNumber(zones.length)} โซน · ${fmtNumber(packTotal(zones))} แพ็ค` : null,
+    },
+    { id: 'subtotal', label: 'ยอดก่อน VAT', value: money.ok ? fmtMoney(money.subtotal) : null },
+    { id: 'vat', label: 'VAT', value: money.ok ? fmtMoney(money.vatAmount) : null },
+    { id: 'opening', label: OPENING_INSTALLMENT_LABEL, value: openingValue },
+    {
+      id: 'rest',
+      label: 'งวดที่ยังต้องเก็บ',
+      value: openingRows || restRows ? `${fmtNumber(restRows)} งวด` : null,
+    },
+  ];
+}
+
+/**
+ * บรรทัดใต้ปุ่มของแถบท้าย
+ * 🐞 UAT 23/09: ขั้น ①–③ ที่มีปุ่มเดียวคือ "ถัดไป" เขียนว่า "ส่งให้ AE Sup อนุมัติทันทีที่บันทึก"
+ *    — ประโยคของขั้นที่บันทึกจริง ไปยืนอยู่บนขั้นที่ยังไม่บันทึกอะไรสักอย่าง
+ */
+export function historicalFootNote({ step = 'contract', gate = null } = {}) {
+  if (step === 'review') return text(gate?.footNote);
+  return `ยังไม่บันทึกอะไร — “${HISTORICAL_NEXT_BUTTON_LABEL}” คือการตรวจข้อมูลของขั้นนี้ · ใบเกิดและถูกส่งให้ AE Sup ตอนกด “${HISTORICAL_SAVE_BUTTON_LABEL}” ในขั้นสุดท้าย`;
+}
+
+/**
+ * หัวก้อน error ของขั้นที่ยังกรอกไม่ครบ — **ตัวเลขต้องไม่โกหก**
+ * 🐞 UAT 23/09: ฟอร์มเปล่าขึ้น "ยังกรอกไม่ครบ 3 ข้อ" ทั้งที่ช่องดาวแดงยังว่างอยู่ราว 7 ช่อง
+ *    (ที่เหลือเป็นหน้าที่ของพรีวิว ซึ่งยังไม่เคยรัน) ⇒ ผู้คีย์อ่านว่า "เหลืออีก 3 ข้อก็จบ"
+ * ⇒ พูดเฉพาะสิ่งที่นับได้จริง แล้วบอกตรง ๆ ว่ายังมีด่านของ server อีกชั้น
+ */
+export function historicalStepIssueNotice(count = 0) {
+  return {
+    title: `ต้องแก้ ${fmtNumber(Number(count) || 0)} ข้อนี้ก่อนไปขั้นถัดไป`,
+    note: `ช่องที่มีดาวแดงต้องกรอกให้ครบด้วย — ระบบตรวจทั้งใบให้ตอนกด “${HISTORICAL_NEXT_BUTTON_LABEL}”`,
+  };
+}
+
+/**
+ * ขั้น ④ ที่ยังไม่มีแผน (แก้ฟอร์มหลังตรวจ) — บอกปุ่ม **ที่มีอยู่จริงบนจอ**
+ * 🐞 UAT 23/09: ของเดิมสั่งให้กด "ตรวจอีกครั้ง" ซึ่งไม่เคยมีปุ่มนั้น · ปุ่มจริงคือปุ่มบันทึก
+ *    และการกดครั้งแรกตอนยังไม่มีแผนคือ **การตรวจ** (ฟอร์มยิงพรีวิวก่อน ยังไม่บันทึก)
+ */
+export function historicalReviewStaleNotice() {
+  return {
+    title: 'ข้อมูลเปลี่ยนหลังตรวจ — ตรวจใหม่ก่อนบันทึก',
+    body: `กด “${HISTORICAL_SAVE_BUTTON_LABEL}” ที่แถบท้ายฟอร์มได้เลย — ครั้งแรกระบบจะตรวจข้อมูลให้ก่อน ยังไม่บันทึก`,
+  };
+}
+
+/* ── ตัวช่วยของขั้น ② และ ③ (ปุ่มให้คนกด ไม่ใช่ค่าที่เติมเงียบ ๆ) ───────────────────────── */
+
+/* ── ระยะสัญญา: ลงตัวเป็นเดือน หรือไม่ก็ไม่ตอบเลย ────────────────────────────────
+   🐞 UAT 23/09 (เรื่องเงิน): ของเดิมเขียนคอมเมนต์ว่า "ช่วงที่ไม่ลงตัวเป็นเดือน = null"
+      แต่โค้ด **ปัดลง** (`iso <= to`) ⇒ 1 ม.ค.–15 มี.ค. ตอบ 2 · 1 ม.ค.–30 ธ.ค. ตอบ 11
+      แล้วปุ่มลัด `zoneAmountSuggestion` (ราคา × แพ็ค × เดือน) เสนอยอด **11/12 ของของจริง**
+      ให้ใบที่ขาดไปวันเดียว — ผิดเงียบ ๆ ทั้งใบ เพราะเลขที่เสนอดูสมเหตุสมผลทุกตัว
+   ⇒ กติกาเดียวของบ้านนี้: **ลงตัวเป็นเดือนเท่านั้นถึงจะตอบเป็นตัวเลข** ช่วงอื่นตอบ null แล้ว
+      ทุกคนที่ถาม (ป้ายใต้ช่องวันสิ้นสุด · ช่อง "ระยะสัญญา" ของขั้น ② · ปุ่มลัดยอดโซน ·
+      ชุดแบ่งงวดของขั้น ③) ต้อง **บอกเหตุแล้วให้ผู้คีย์ใส่ยอดเอง** ไม่ใช่เดาต่อ */
+export const CONTRACT_PARTIAL_NOTE = 'ช่วงสัญญาไม่ลงตัวเป็นเดือน — ใส่ยอดต่อโซนเอง';
+
+/**
+ * จำนวนเดือนเต็มของสัญญา — "n เดือน" แปลว่า **วันสิ้นสุด = วันเริ่ม + n เดือน − 1 วัน**
+ * (ม็อก: 1 ม.ค.–31 ธ.ค. 2026 = 12 เดือน · 15 ม.ค.–14 ก.พ. = 1 เดือน) · ช่วงที่เหลือ = null
+ * ⚠️ เลขคณิตปฏิทินล้วน (ตรึง T00:00:00Z แล้วบวกลบด้วย setUTC*) ไม่มีโซนเวลาเข้ามาเกี่ยว —
+ *   แพตเทิร์นเดียวกับ `addDays` ของ paymentCoverage · **ไม่ตัดสตริงจาก toISOString** (ด่าน check:thaitime)
+ * ── กติกาวันสิ้นเดือน (ตัดสินไว้ 23/09 · อย่าเปลี่ยนโดยไม่แก้เทสต์คู่กัน) ─────────────────
+ * ขอบของรอบที่ n = `Date.UTC(ปี, เดือน-1+n, วัน)` แล้วถอยหนึ่งวัน · รับได้สองกรณีเท่านั้น:
+ *   (ก) **ไม่ล้นเลย** — เดือนปลายทางมีวันที่นั้นอยู่จริง (1 ม.ค.–31 ธ.ค. = 12 · 31 ม.ค.–30 มี.ค. = 2)
+ *   (ข) **ล้นพอดีหนึ่งวัน** = วันที่ 31 ไปตกเดือนที่มี 30 วัน ⇒ ขอบคือ "สิ้นเดือนนั้น"
+ *        (31 ม.ค.–30 เม.ย. = 3 · 31 มี.ค.–30 เม.ย. = 1) — อ่านอย่างที่คนเขียนสัญญาอ่าน
+ *        และไม่กำกวม เพราะ 30 เม.ย. คือวันสุดท้ายของเดือนนั้นพอดี
+ * 🪤 **ล้นเกินหนึ่งวันตอบ null เสมอ** — 31 ม.ค. + 1 เดือน ไม่มีวันนั้นใน ก.พ. (JS ล้นไปเป็น
+ *    3 มี.ค.) ⇒ ไม่ดัก = ระบบจะบอกว่า 31 ม.ค.–2 มี.ค. คือ "1 เดือน" · 31 ม.ค.–28 ก.พ. ก็ยัง
+ *    ถือว่าไม่ลงตัว (จะนับเป็น 1 เดือนหรือไม่ ขึ้นกับกติกาที่ตกลงกับลูกค้า) ⇒ ถามผู้คีย์
+ *    ดีกว่าเดาแทนเขาในเรื่องเงิน
+ * 🐞 ก่อน 23/09 กติกา (ข) หายไป ⇒ 31 ม.ค.–30 เม.ย. ตอบ null (เดิมตอบ 3) ⇒ ลูกค้าที่สัญญา
+ *    เริ่มวันที่ 31 เสียปุ่มลัดยอดโซนและชุดแบ่งงวดทั้งใบ โดยไม่มีอะไรบนจอบอกว่าทำไม
+ */
+export function contractMonths(startDate, endDate) {
+  const from = text(startDate);
+  const to = text(endDate);
+  if (!isDateText(from) || !isDateText(to) || to < from) return null;
+  const [year, month, day] = from.split('-').map(Number);
+  const gross = (Number(to.slice(0, 4)) - year) * 12 + (Number(to.slice(5, 7)) - month);
+  for (const n of [gross + 1, gross]) {
+    if (n < 1) continue;
+    const probe = new Date(Date.UTC(year, month - 1 + n, day));
+    const exact = probe.getUTCDate() === day;
+    /* ล้นพอดีหนึ่งวัน = วันที่ 31 ตกเดือนที่มี 30 วัน ⇒ ถอยหนึ่งวันแล้วได้สิ้นเดือนนั้นพอดี
+       (ก.พ. ล้น 2–3 วัน ⇒ `getUTCDate()` เป็น 2/3 ไม่ใช่ 1 ⇒ ตกกติกานี้ตามเจตนา) */
+    const endOfShortMonth = day === 31 && probe.getUTCDate() === 1;
+    if (!exact && !endOfShortMonth) continue;   // เดือนนั้นไม่มีวันที่นี้ ⇒ ไม่ใช่ขอบเดือนของสัญญานี้
+    probe.setUTCDate(probe.getUTCDate() - 1);
+    const iso = `${probe.getUTCFullYear()}-${String(probe.getUTCMonth() + 1).padStart(2, '0')}-${String(probe.getUTCDate()).padStart(2, '0')}`;
+    if (iso === to) return n;                   // เท่ากันเป๊ะเท่านั้น — "เกือบครบเดือน" ไม่ใช่เดือน
+  }
+  return null;
+}
+
+/**
+ * ระยะสัญญาในรูปที่จอใช้ได้ตรง ๆ — `months` เป็นตัวเลขหรือ null และ `note` บอกเหตุเมื่อเป็น null
+ * ⭐ แยก "ยังกรอกวันไม่ครบ" (note = null · ขั้น ① ยังไม่ถึงคิวบอกอะไร) ออกจาก
+ *   "กรอกครบแล้วแต่ไม่ลงตัวเป็นเดือน" (note = CONTRACT_PARTIAL_NOTE) — สองอย่างนี้คนละข้อความ
+ */
+export function contractSpan(startDate, endDate) {
+  const from = text(startDate);
+  const to = text(endDate);
+  const months = contractMonths(from, to);
+  const dated = isDateText(from) && isDateText(to) && to >= from;
+  const partial = months === null && dated;
+  return { months, dated, partial, note: partial ? CONTRACT_PARTIAL_NOTE : null };
+}
+
+/**
+ * ยอดของโซนที่ปุ่มลัดเสนอ = ราคาแพ็คเกจ × แพ็ค × เดือน (ม็อก Step2: 1,200 × 6 × 12 = 86,400)
+ * ⚠️ **ไม่ใช่ค่าตั้งต้น** — ราคาจริงของใบเก่าต่อรองกันมาแล้ว ⇒ เป็นปุ่มให้กดทับเมื่อผู้คีย์ตัดสินใจ
+ * ⚠️ `months` ที่เป็น null (ช่วงไม่ลงตัวเป็นเดือน) ⇒ null เสมอ — ห้ามปัดเศษเดือนให้เอง
+ */
+export function zoneAmountSuggestion({ unitPrice, packs, months } = {}) {
+  const price = Number(unitPrice);
+  const count = Number(packs);
+  const span = Number(months);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  if (!Number.isInteger(count) || count <= 0) return null;
+  if (!Number.isInteger(span) || span <= 0) return null;
+  return Math.round(price * count * span * 100) / 100;
+}
+
+/**
+ * ปุ่มลัดยอดโซน **กดไม่ได้เพราะอะไร** — `null` = กดได้ (และ `zoneAmountSuggestion` คืนตัวเลขแน่นอน)
+ * 🔴 กฎบ้าน "ติดด่าน = โชว์แล้วบอกเหตุ" · ของเดิมปุ่มกดได้ตลอดแล้ว **เงียบ** เมื่อคิดยอดไม่ได้
+ *   (`if (value !== null)` แล้วจบ) ⇒ ผู้คีย์กดซ้ำ ๆ โดยไม่รู้ว่าขาดอะไร
+ * ⚠️ เงื่อนไขต้องเป็นชุดเดียวกับ `zoneAmountSuggestion` เป๊ะ — เทสต์ผูกสองตัวนี้ไว้ด้วยกัน
+ * @param monthsPartial ช่วงสัญญากรอกครบแล้วแต่ไม่ลงตัวเป็นเดือน (`contractSpan().partial`)
+ */
+export function zoneAmountSuggestionNote({ unitPrice, packs, months, monthsPartial = false } = {}) {
+  const span = Number(months);
+  if (!Number.isInteger(span) || span <= 0) {
+    return monthsPartial ? CONTRACT_PARTIAL_NOTE : 'กรอกวันเริ่ม–วันสิ้นสุดสัญญาในขั้น ① ก่อน';
+  }
+  const count = Number(packs);
+  /* ⚠️ ไม่ใช้คำว่า "จำนวนแพ็ค" — ICU ตัดบรรทัดตรงรอยต่อนั้นผิด (ด่าน check:thaiwrap) */
+  if (!Number.isInteger(count) || count <= 0) return 'ใส่แพ็คของโซนนี้ก่อน';
+  const price = Number(unitPrice);
+  if (!Number.isFinite(price) || price <= 0) return 'แพ็คเกจนี้ไม่มีราคาต่อหน่วยในทะเบียน — ใส่ยอดเอง';
+  return null;
+}
+
+/* ── ตัวกางทะเบียนไซต์/โซนของขั้น ② ──────────────────────────────────────────────
+ *
+ * 🐞 UAT 23/09 (ของจริงบนฐาน): AR-374 บริษัท เซ็นทรัล ฟู้ด รีเทล มี **26 ไซต์ 43 โซน**
+ *   ⇒ ขั้น ② กางการ์ด 26 ใบรวด ไม่มีช่องค้น และไซต์เดียวที่โหลดโซนไม่สำเร็จทำให้ทั้งลิสต์ว่าง
+ *   (Promise.all ตัวเดียวพังทั้งก้อน) · ตัวตัดสินสามข้อนี้จึงอยู่ที่นี่ ไม่ใช่ใน JSX:
+ *     ① ค้นด้วยคำเดียว — รหัสไซต์ · ชื่อไซต์ · ชื่อโซน · รหัสโซน (**ทุกอย่างที่ตาเห็นบนแถว**
+ *        ตามกฎบ้าน search haystack · เห็นแล้วค้นไม่เจอ = บั๊ก)
+ *     ② ไซต์ที่ตรงชื่อ/รหัสกางทั้งใบ (ทุกโซนของมันคือคำตอบ) · ไซต์ที่ตรงเฉพาะบางโซน
+ *        โชว์เฉพาะโซนนั้น · ไม่ตรงเลย = ซ่อน แล้วรายงานจำนวนที่ซ่อนไว้ให้เห็น — เลขนั้นคือ
+ *        `siteTotal − rows.length` (จอพูดว่า "แสดง N จาก M ไซต์") ไม่ใช่คีย์ของตัวเองในผลลัพธ์
+ *     ③ **โซนที่เลือกไว้แล้วแต่ถูกคำค้นซ่อน** ต้องถูกนับมาบอก — ยอดรวมท้ายจอนับมันอยู่
+ *        ถ้าไม่บอก ผู้คีย์จะอ่านว่า "ยอดมาจากไหนไม่รู้"
+ * ⚠️ ไซต์ที่โหลดโซนไม่สำเร็จ **โชว์เสมอ** แม้กำลังค้นอยู่ — ยังไม่รู้ว่าข้างในมีโซนที่ตรงไหม
+ *   การซ่อนมันคือการตอบแทนข้อมูลที่ไม่มี (กฎบ้าน: บอกเหตุ ไม่ใช่เงียบ)
+ */
+export const ZONE_SITE_AUTO_OPEN_MAX = 4;
+
+const zoneHaystack = (...parts) => parts.map(text).filter(Boolean).join(' ').toLowerCase();
+
+/**
+ * @param sites        ไซต์จากทะเบียน (ตามลำดับที่ API คืนมา)
+ * @param zonesBySite  `{ [siteId]: zone[] }` — ไซต์ที่ยังโหลดไม่สำเร็จไม่มีคีย์ของตัวเอง
+ * @param siteErrors   `{ [siteId]: ข้อความ }` ของไซต์ที่โหลดโซนไม่สำเร็จ (โหลดทีละไซต์ ⇒ พังทีละใบ)
+ * @param pickedZoneIds โซนที่ติ๊กไว้แล้ว — ใช้ตัดสินว่ากางใบไหนและนับใบที่คำค้นซ่อน
+ * @param ready        ทะเบียนโหลดเสร็จแล้วหรือยัง — เท็จ = ยังตัดสิน `orphans` ไม่ได้
+ * @returns `{ rows, siteTotal, zoneTotal, shownZones, hiddenPicked, orphans, unresolved }`
+ *   rows: `{ site, zones, picked, total, error, defaultOpen }`
+ *   ⚠️ **ไม่มี `hiddenSites`** — ไซต์หนึ่งใบไม่ถูกใส่ใน `rows` ก็คือใบที่คำค้นซ่อน ⇒ จำนวนคือ
+ *      `siteTotal − rows.length` เป๊ะ ๆ อยู่แล้ว · คีย์ที่ไม่มีใครอ่านคือของที่รอเพี้ยนจากจอ
+ *
+ * 🔴 `orphans` = โซนที่ใบผูกไว้แต่ **ไม่มีอยู่ในทะเบียนที่โหลดมาเลยสักไซต์** (รีวิว R10) —
+ *    ไซต์ถูกปิดใช้งาน (`includeInactive=0`) · ไซต์ถูกโอนไปลูกค้ารายอื่น · โซนถูกลบโดยแอดมิน
+ *    ⇒ แถวไม่ถูกเรนเดอร์สักแถว แต่ `state.zones` ยังนับมันอยู่ และตัวติ๊กคือทางเดียวที่ถอดออกได้
+ *    ⇒ ทางตัน: แก้ใบให้ผ่านไม่ได้จนกว่าฝ่าย TS จะเปิดคืน · ต้องมีปุ่มถอดของตัวเองบนจอ
+ *
+ * 🔴 **N1 (รีวิวรอบสอง 23/09 — ของเดิมทำลายข้อมูล)**: `orphans` เคยสร้างจาก "ทุกไซต์" โดย
+ *    **ไม่ดู `siteErrors` เลย** ⇒ ไซต์เดียวอ่านโซนไม่สำเร็จ (เน็ตกระตุก · 500 ชั่วคราว) =
+ *    ทุกโซนของไซต์นั้นขึ้นก้อนแดงพร้อมปุ่ม "ถอดโซนนี้ออกจากใบ" ⇒ ผู้คีย์ทำตามที่จอสั่งแล้ว
+ *    **ลบบรรทัดจริงของใบเพราะคำขอที่พังชั่วคราว** (ถอดแล้วยอดใบเปลี่ยน ไม่มีทางกู้นอกจากคีย์ใหม่)
+ *    ⇒ กติกาใหม่: กำพร้าได้เฉพาะเมื่อ **อ่านทะเบียนครบทุกไซต์แล้ว** · ยังมีไซต์ที่อ่านไม่ได้
+ *      = ตัดสินไม่ได้ ⇒ ไปกอง `unresolved` ซึ่งจอต้องวาดเป็น "ยังอ่านทะเบียนไม่ได้" พร้อม
+ *      ปุ่มลองอ่านใหม่ของไซต์ **ห้ามมีปุ่มถอด**
+ *    ⚠️ ทำไมต้องตัดสินทั้งกอง ไม่ใช่รายไซต์: โซนที่ติ๊กไว้มีแต่รหัสโซน · แถวที่ hydrate มากับใบ
+ *      ไม่มี `siteId` ติดมาด้วย (`wizardStateFromOrder` อ่านจากบรรทัด SO ซึ่งมีแต่ `serviceZoneId`)
+ *      ⇒ แมตช์ "โซนนี้อยู่ไซต์ไหน" เองไม่ได้เมื่อไซต์นั้นคือไซต์ที่อ่านไม่สำเร็จ
+ */
+export function historicalZoneBrowser({
+  sites = [], zonesBySite = {}, siteErrors = {}, query = '', pickedZoneIds = [], ready = true,
+} = {}) {
+  const q = text(query).toLowerCase();
+  const picked = new Set(list(pickedZoneIds).map(text).filter(Boolean));
+  const all = list(sites);
+  const rows = [];
+  let zoneTotal = 0;
+  let shownZones = 0;
+  let hiddenPicked = 0;
+
+  for (const site of all) {
+    const zones = list(zonesBySite?.[site?.id]);
+    const error = text(siteErrors?.[site?.id]) || null;
+    const pickedHere = zones.filter((zone) => picked.has(text(zone?.id))).length;
+    zoneTotal += zones.length;
+    const siteHit = !q || zoneHaystack(site?.code, site?.name).includes(q);
+    const shown = siteHit ? zones : zones.filter((zone) => zoneHaystack(zone?.name, zone?.code).includes(q));
+    if (q && !siteHit && !shown.length && !error) {
+      hiddenPicked += pickedHere;
+      continue;                                 // ไซต์ที่ไม่อยู่ใน rows = ใบที่คำค้นซ่อน (ดู @returns)
+    }
+    const shownIds = new Set(shown.map((zone) => text(zone?.id)));
+    hiddenPicked += zones.filter((zone) => picked.has(text(zone?.id)) && !shownIds.has(text(zone?.id))).length;
+    shownZones += shown.length;
+    rows.push({
+      site,
+      zones: shown,
+      picked: pickedHere,
+      total: zones.length,
+      error,
+      /* กางเองเมื่อ "มีเรื่องต้องทำในใบนี้" — พัง · ตรงคำค้น · มีโซนที่ติ๊กไว้ · หรือลูกค้ามีไซต์ไม่กี่ใบ
+         (ม็อกมี 2 ไซต์ ⇒ ของเดิมกางหมดคือถูกแล้วสำหรับลูกค้าทั่วไป · 26 ใบต่างหากที่ต้องพับ) */
+      defaultOpen: Boolean(error) || Boolean(q) || pickedHere > 0 || all.length <= ZONE_SITE_AUTO_OPEN_MAX,
+    });
+  }
+
+  /* โซนที่ทะเบียนไม่มีให้เห็นเลย — นับจาก **ทุกโซนของทุกไซต์** ไม่ใช่เฉพาะที่คำค้นโชว์
+     (คำค้นซ่อนของไว้เฉย ๆ ⇒ `hiddenPicked` เป็นคนบอก ไม่ใช่ `orphans`) */
+  const known = new Set();
+  for (const site of all) for (const zone of list(zonesBySite?.[site?.id])) known.add(text(zone?.id));
+  const missing = ready
+    ? [...new Set(list(pickedZoneIds).map(text).filter(Boolean))].filter((id) => !known.has(id))
+    : [];
+  /* 🔴 N1: ยังมีไซต์ที่อ่านโซนไม่สำเร็จ = **ยังไม่รู้** ว่าโซนที่หายไปอยู่ในไซต์นั้นหรือหายจริง
+     ⇒ ห้ามตอบ "กำพร้า" (ปุ่มถอด = ลบบรรทัดจริง) · ตอบ "ยังอ่านทะเบียนไม่ได้" แล้วรอปุ่มลองอีกครั้ง */
+  const blind = all.some((site) => Boolean(text(siteErrors?.[site?.id])));
+  const orphans = blind ? [] : missing;
+  const unresolved = blind ? missing : [];
+
+  return { rows, siteTotal: all.length, zoneTotal, shownZones, hiddenPicked, orphans, unresolved };
+}
+
+/**
+ * "แบ่งงวดที่เหลืออัตโนมัติ" — ช่วงต่อกันสนิทถึงวันสิ้นสุดสัญญา และยอดรวมเท่ายอดที่เหลือเป๊ะ
+ * ⚠️ เศษสตางค์ลงงวดสุดท้าย (เหมือน `splitCoverageEvenly` ที่ให้งวดสุดท้ายกินเศษวัน) — ผลรวมต้องตรง
+ *   ยอดใบเสมอ ไม่งั้นตัวตรวจงวดตีกลับ "ยอดงวดรวมไม่เท่ายอดใบ" ทันทีที่กดปุ่มนี้
+ */
+export function splitRemaining({ startDate, endDate, count, amount, label = 'งวด' } = {}) {
+  const spans = splitCoverageEvenly({ startDate, endDate, count });
+  if (!spans.length) return [];
+  const total = toSatang(amount);
+  const each = Math.floor(total / spans.length);
+  return spans.map((span, index) => {
+    const last = index === spans.length - 1;
+    const satang = last ? total - each * (spans.length - 1) : each;
+    return emptyHistoricalInstallment({
+      label: spans.length === 1 ? label : `${label} ${index + 1}/${spans.length}`,
+      amount: String(satang / 100),
+      dueDate: span.coversFrom,
+      coversFrom: span.coversFrom,
+      coversTo: span.coversTo,
+    });
+  });
+}
+
+/* ── ลำดับการบันทึก (มติ 22/09 · ปุ่มเดียวเดินหลายจังหวะ) ────────────────────────────────
+   🔴 **ทำไมต้องหลายจังหวะ**: ไฟล์เอกสารแทนสัญญาต้องเป็นแถว attachments ของ *สัญญา* และหลักฐาน
+   งวดยกมาต้องอยู่ใต้โฟลเดอร์ `sales-orders/<ใบ>/payments/` ⇒ ทั้งคู่เกิดก่อนใบไม่ได้
+       ① persist (สร้าง/แก้)  → ② อัปไฟล์สัญญา → ③ อัปหลักฐานงวดยกมา
+       → ④ แก้ใบอีกครั้งเพื่อผูก ref ของหลักฐานกับงวด → ⑤ ส่งอนุมัติ
+   ⭐ กดใหม่หลังพังกลางทาง **ต้องไม่อัปไฟล์ซ้ำ** (กฎบ้าน retry-must-not-reupload) ⇒ ไฟล์ที่อัปแล้ว
+     ถูกนับออกจาก `pendingContractFiles` / `pendingEvidence` ของรอบถัดไป
+   ⭐ ใบที่ถูกตีกลับต้องผ่าน ① ก่อนเสมอ — ด่านอัปหลักฐานการชำระไม่รับใบสถานะ 'rejected'
+     (privateEvidence) และ RPC แก้ใบพลิกใบกลับเป็นร่างให้ ⇒ ลำดับนี้เป็นเรื่องข้อมูล ไม่ใช่ความสวยงาม */
+export const HISTORICAL_SAVE_STAGES = Object.freeze(['persist', 'contractFiles', 'evidence', 'persistEvidence', 'submit']);
+
+/** ความคืบหน้าตั้งต้นของการกดบันทึกหนึ่งรอบ — `pending*` นับเฉพาะไฟล์ที่ยังไม่ได้อัป */
+export function emptySaveProgress({ orderId = null, pendingContractFiles = 0, pendingEvidence = 0 } = {}) {
+  return {
+    orderId: orderId || null,
+    persisted: false,
+    pendingContractFiles,
+    pendingEvidence,
+    /* ไม่มีหลักฐานใหม่ให้อัป = ref ที่ผูกกับงวดอยู่แล้วถูกส่งไปตั้งแต่จังหวะ ① ⇒ ไม่ต้องแก้ใบซ้ำ */
+    evidencePersisted: pendingEvidence === 0,
+    submitted: false,
+  };
+}
+
+/** จังหวะถัดไปที่ต้องทำ — `null` = จบแล้ว */
+export function nextSaveStage(progress = {}) {
+  if (progress.submitted) return null;
+  if (!progress.persisted) return 'persist';
+  if (Number(progress.pendingContractFiles) > 0) return 'contractFiles';
+  if (Number(progress.pendingEvidence) > 0) return 'evidence';
+  if (!progress.evidencePersisted) return 'persistEvidence';
+  return 'submit';
+}
+
+/**
+ * ความคืบหน้าหลังจังหวะหนึ่งสำเร็จ
+ * ⚠️ `persist` จำ `orderId` ที่ RPC ออกให้ไว้เสมอ — กดใหม่รอบถัดไปต้องเป็น "แก้ใบ" ไม่ใช่ "สร้างใหม่"
+ *   (สร้างซ้ำด้วยรหัสการคีย์เดิมได้ใบเดิมคืนก็จริง แต่ถ้าผู้คีย์แก้ฟอร์มระหว่างนั้นจะชนรหัสแทน)
+ */
+export function saveProgressAfter(progress = {}, stage, patch = {}) {
+  const base = { ...progress, ...patch };
+  if (stage === 'persist') return { ...base, persisted: true };
+  if (stage === 'contractFiles') return { ...base, pendingContractFiles: 0 };
+  if (stage === 'evidence') return { ...base, pendingEvidence: 0, evidencePersisted: false };
+  if (stage === 'persistEvidence') return { ...base, evidencePersisted: true };
+  if (stage === 'submit') return { ...base, submitted: true };
+  return base;
+}
+
+/* ── ทางออกตอนบันทึกไม่สำเร็จ ───────────────────────────────────────────────
    ⚠️ ตัดสินจาก `data.code` ไม่ใช่ข้อความ · ข้อความไทยมาจาก server เสมอ (documentWorkflowErrors)
    ⚠️ 403 กับ 503 ของ route **ไม่มี code** — ต้องถอยไปดู status */
-const RETRY_HINT = 'ส่งข้อมูลชุดเดิมด้วยรหัสการคีย์เดิม — ห้ามแก้ฟอร์มก่อนกด ไม่งั้นจะกลายเป็นคำขอคนละชุดแล้วชนรหัสแทน';
-/* 🔴 ชนการย้ายเจ้าของดีลต่างจากเน็ตหลุดตรงข้อเท็จจริงเดียวที่ผู้คีย์ต้องรู้: RPC raise ข้างใน
-   ทรานแซกชัน ⇒ **ยังไม่มีอะไรลงฐาน** · ถ้าใช้คำเดียวกับเน็ตหลุด ผู้คีย์จะกลัวว่าใบลงไปแล้ว
-   แล้วปิดโมดัลทิ้งแทนที่จะกดอีกครั้ง (ม็อก: ใบซ้ำกันสองจอ คนละข้อความ) */
-const RACE_HINT = 'ส่งข้อมูลชุดเดิมด้วยรหัสการคีย์เดิม — ยังไม่มีอะไรลงฐาน ระบบหาดีลของคู่ลูกค้า × AE ใหม่เอง';
-/* รหัสที่ server ตั้งกฎไว้เอง: ส่งก้อนเดิมซ้ำติดเหมือนเดิมทุกครั้ง แต่แก้ฟอร์มแล้วส่งใหม่ได้
-   เพราะ RPC raise = ทรานแซกชันถอย รหัสการคีย์ยังไม่ถูกใช้ */
-const BLOCKED_HINT = 'ส่งข้อมูลชุดเดิมซ้ำจะติดเหมือนเดิมทุกครั้ง — แก้ข้อมูลตามข้อความข้างบนแล้วบันทึกใหม่ '
-  + '(ยังไม่มีอะไรลงฐาน รหัสการคีย์ของรอบนี้ยังใช้ได้)';
+const RETRY_HINT = 'กดบันทึกอีกครั้งด้วยข้อมูลชุดเดิม — ระบบจำใบที่สร้างไปแล้วและไฟล์ที่อัปแล้ว จะไม่เกิดใบซ้ำหรืออัปไฟล์ซ้ำ';
+/* 🔴 ชนการหาดีลภาชนะต่างจากเน็ตหลุดตรงข้อเท็จจริงเดียวที่ผู้คีย์ต้องรู้: RPC raise ข้างใน
+   ทรานแซกชัน ⇒ **ยังไม่มีอะไรลงฐาน** · ใช้คำเดียวกับเน็ตหลุด = ผู้คีย์กลัวว่าใบลงไปแล้วแล้วทิ้งฟอร์ม */
+const RACE_HINT = 'กดบันทึกอีกครั้งได้เลย — ยังไม่มีอะไรลงฐาน ระบบหาดีลของคู่ลูกค้า × AE ใหม่เอง';
+/* รหัสที่ server ตั้งกฎไว้เอง: ส่งก้อนเดิมซ้ำติดเหมือนเดิมทุกครั้ง แต่แก้ฟอร์มแล้วบันทึกใหม่ได้ */
+const BLOCKED_HINT = 'บันทึกก้อนเดิมซ้ำจะติดเหมือนเดิมทุกครั้ง — แก้ข้อมูลตามข้อความข้างบนแล้วบันทึกใหม่';
 
 export function historicalSaveExit(error) {
   const status = Number(error?.status) || 0;
@@ -242,18 +1154,17 @@ export function historicalSaveExit(error) {
   const base = {
     kind: 'unknown', code, message, hint: null, goToStep: null,
     duplicates: null, existingOrderId: null, errors: null,
-    canRetry: false, canEdit: false, canOpenExisting: false, keySpent: false,
+    canRetry: false, canEdit: false, canOpenExisting: false,
   };
 
   if (code === 'historical_so_intake_key_conflict') {
     return {
       ...base,
       kind: 'intake_key_conflict',
-      existingOrderId: text(data.existingOrderId) || null,
+      /* ⭐ id ที่ server คำนวณจากรหัสการคีย์เดิม — ทางออกเดียวที่ไม่เสียงานที่พิมพ์ไว้คือเปิดใบนั้นในฟอร์มแก้ */
+      existingOrderId: text(data.orderId) || null,
       canOpenExisting: true,
-      keySpent: true,
-      hint: 'แก้แล้วบันทึกซ้ำจะชนอีกทุกครั้ง — รหัสการคีย์ของรอบนี้ใช้ต่อไม่ได้ · '
-        + 'ต้องคีย์ใหม่: ปิดโมดัล (ยืนยันทิ้งข้อมูล) แล้วกด "SO ย้อนหลัง" อีกครั้ง = รหัสการคีย์ใหม่',
+      hint: 'ใบของรหัสการคีย์รอบนี้เกิดไปแล้วแต่เนื้อไม่ตรงกัน — เปิดใบที่สร้างไว้ในฟอร์มแก้ไข แล้วแก้ต่อที่นั่น',
     };
   }
   if (code === 'historical_so_container_deal_race') {
@@ -263,7 +1174,7 @@ export function historicalSaveExit(error) {
     return {
       ...base,
       kind: 'duplicate',
-      duplicates: Array.isArray(data.duplicates) ? data.duplicates : [],
+      duplicates: list(data.duplicates),
       goToStep: 'review',
     };
   }
@@ -271,39 +1182,36 @@ export function historicalSaveExit(error) {
     const errors = data.errors;
     return { ...base, kind: 'invalid', errors, canEdit: true, goToStep: firstStepWithIssues(errors) };
   }
-  /* 400 ที่ไม่มี `errors[]` (เช่น `historical_so_money_mismatch`) — ข้อความของ server คือ
-     เหตุผลเดียวที่มี ⇒ โมดัลต้องพกมันไปโชว์ที่ขั้นปลายทางด้วย ไม่งั้น "กลับไปแก้" = จอเปล่า */
-  if (status === 400) return { ...base, kind: 'invalid', canEdit: true, goToStep: 'doc' };
+  /* 400 ที่ไม่มี `errors[]` (เช่น `historical_so_money_mismatch`) — ข้อความของ server คือเหตุผลเดียวที่มี
+     ⇒ ต้องพกมันไปโชว์ที่ขั้นปลายทางด้วย ไม่งั้น "กลับไปแก้" = จอเปล่า */
+  if (status === 400) return { ...base, kind: 'invalid', canEdit: true, goToStep: 'contract' };
   if (status === 403) return { ...base, kind: 'forbidden' };
   if (status === 503) return { ...base, kind: 'schema' };
-  /* 🔴 รหัสอื่นที่มากับ 404/409/500 (`historical_so_deal_invalid` · `historical_so_customer_inactive`
-     · `sales_deals_historical_shape` · `workflow_stale` …) — ทั้งหมดมาจากกฎฝั่ง server ที่ raise
-     ข้างในทรานแซกชัน ⇒ **ห้ามเสนอ "บันทึกอีกครั้ง"** เพราะก้อนเดิมจะได้รหัสเดิมวนไม่รู้จบ
-     (เคยตกถังเน็ตหลุด: ปุ่มเดียวบนจอคือปุ่มที่ไม่มีวันผ่าน ทางออกจริงคือปิด = เสียใบทั้งใบ) */
-  if (code) return { ...base, kind: 'blocked', canEdit: true, goToStep: 'doc', hint: BLOCKED_HINT };
-  /* 5xx / เน็ตหลุด (ไม่มี response) = อาจลงฐานไปแล้ว — กดซ้ำด้วยรหัสเดิมได้ใบเดิมคืน */
+  /* 🔴 รหัสอื่นที่มากับ 404/409/500 (`historical_so_edit_state_invalid` · `workflow_stale` …) — มาจากกฎ
+     ฝั่ง server ที่ raise ข้างในทรานแซกชัน ⇒ **ห้ามเสนอ "บันทึกอีกครั้ง"** เพราะก้อนเดิมได้รหัสเดิมวนไม่รู้จบ */
+  if (code) return { ...base, kind: 'blocked', canEdit: true, goToStep: 'review', hint: BLOCKED_HINT };
+  /* 5xx / เน็ตหลุด (ไม่มี response) = อาจลงฐานไปแล้ว — กดซ้ำได้ใบเดิมคืน (replayed) */
   if (!status || status >= 500) return { ...base, kind: 'unknown', canRetry: true, hint: RETRY_HINT };
-  /* 4xx ที่ไม่มีทั้งรหัสและ `errors[]` — ไม่มีทางออกเฉพาะให้เดา ปิดพร้อมข้อความของ server */
+  /* 4xx ที่ไม่มีทั้งรหัสและ `errors[]` — ไม่มีทางออกเฉพาะให้เดา */
   return { ...base, kind: 'unknown' };
 }
 
-/* ── ทางออกที่เรนเดอร์จริงบนจอ "บันทึกไม่สำเร็จ" ───────────────────────────────────
-   🔴 แยกออกมาเป็นข้อมูลเพราะ JSX สี่ก้อนที่เขียน `{exit.canX && (` ถอดออกทีละอันได้โดย
-   ชุดเทสต์ยังเขียว — ตัวตัดสินถูกคุ้มอยู่แล้ว แต่ "ปุ่มที่ผู้ใช้เห็น" ไม่มีใครคุ้ม
-   ⚠️ "ปิด" มาก่อนเสมอ (ซ้ายสุด) · ปุ่มเติมสีคือตัวท้ายสุดของแถว */
+/* ── ทางออกที่เรนเดอร์จริงบนจอ ───────────────────────────────────────────────
+   🔴 แยกออกมาเป็นข้อมูลเพราะ JSX ที่เขียน `{exit.canX && (` ถอดออกทีละอันได้โดยชุดเทสต์ยังเขียว —
+   ตัวตัดสินถูกคุ้มอยู่แล้ว แต่ "ปุ่มที่ผู้ใช้เห็น" ไม่มีใครคุ้ม */
 const EXIT_ACTION_LABELS = Object.freeze({
-  close: 'ปิด', edit: 'กลับไปแก้', open: 'เปิดใบที่สร้างไว้', retry: 'บันทึกอีกครั้ง',
+  edit: 'กลับไปแก้', open: 'เปิดใบที่สร้างไว้ในฟอร์มแก้ไข', retry: 'บันทึกอีกครั้ง',
 });
 
 export function historicalExitActions(exit) {
-  const actions = [{ key: 'close', label: EXIT_ACTION_LABELS.close }];
+  const actions = [];
   if (exit?.canEdit) {
-    const errors = Array.isArray(exit.errors) ? exit.errors : [];
+    const errors = list(exit.errors);
     actions.push({
       key: 'edit',
       label: EXIT_ACTION_LABELS.edit,
       errors,
-      goToStep: exit.goToStep || firstStepWithIssues(errors) || 'doc',
+      goToStep: exit.goToStep || firstStepWithIssues(errors) || 'contract',
       /* ไม่มี error รายช่อง = ข้อความของ server คือสิ่งเดียวที่อธิบายได้ว่าทำไมถึงกลับมา */
       carryMessage: errors.length ? null : (text(exit.message) || null),
     });
@@ -316,24 +1224,28 @@ export function historicalExitActions(exit) {
 }
 
 /**
- * จอไหนหลังบันทึกไม่สำเร็จ — **ใบซ้ำไม่ใช่จอ "บันทึกไม่สำเร็จ"** แต่เป็นการกลับไปขั้น ④
- * 🔴 ทางออกของรหัสใบซ้ำตั้ง `canRetry/canEdit/canOpenExisting` เป็นเท็จหมดโดยเจตนา —
- *    ถ้ามันหลุดไปจอ "บันทึกไม่สำเร็จ" ปุ่มเดียวที่เหลือคือ "ปิด" = ผู้คีย์เสียใบทั้งใบ
+ * จอไหนหลังบันทึกไม่สำเร็จ — **ใบซ้ำไม่ใช่จอผิดพลาด** แต่เป็นการกลับไปขั้น ④ พร้อมรายการใหม่
+ * 🔴 ทางออกของรหัสใบซ้ำตั้ง `canRetry/canEdit/canOpenExisting` เป็นเท็จหมดโดยเจตนา — หลุดไปทางอื่น
+ *    เมื่อไร ผู้คีย์จะไม่มีปุ่มที่พากลับไปติ๊กยืนยันเลย
  */
 export function historicalSaveFailureState(exit) {
   if (exit?.kind === 'duplicate') {
     return {
       step: 'review',
       exit: null,
-      duplicates: Array.isArray(exit.duplicates) ? exit.duplicates : [],
+      duplicates: list(exit.duplicates),
       acknowledged: false,
       error: exit.message,
     };
   }
-  return { step: 'failed', exit: exit || null, duplicates: null, acknowledged: null, error: '' };
+  return {
+    step: exit?.goToStep || 'review',
+    exit: exit || null,
+    duplicates: null,
+    acknowledged: null,
+    error: exit?.message || '',
+  };
 }
-
-/* ── ป้ายบนปุ่ม/แถบท้าย ──────────────────────────────────────────────────────── */
 
 /**
  * ด่านใบซ้ำของขั้น ④ — ปุ่มบันทึก **โชว์แต่กดไม่ผ่าน** จนกว่าจะเปิดสวิตช์ (กฎบ้าน:
@@ -341,49 +1253,28 @@ export function historicalSaveFailureState(exit) {
  * 🔴 ตัวด่านอยู่ที่นี่ไม่ใช่ใน JSX เพราะเงื่อนไขในวงเล็บของ JSX ลบทิ้งได้โดยไม่มีเทสต์ไหนแดง
  *    และการพลาดข้อนี้แปลว่าใบซ้ำลงฐานจริง (พรีวิวไม่ถือว่าใบซ้ำเป็น error)
  */
-export function historicalDuplicateGate({ duplicates = [], acknowledged = false, warnings = [] } = {}) {
-  const count = Array.isArray(duplicates) ? duplicates.length : 0;
-  const warnCount = Array.isArray(warnings) ? warnings.length : 0;
-  const gated = count > 0 && !acknowledged;
+export function historicalDuplicateGate({ duplicates = [], acknowledged = false, warnings = [], localIssues = [] } = {}) {
+  const count = list(duplicates).length;
+  const warnCount = list(warnings).length;
+  const missing = list(localIssues).length;
+  const gated = (count > 0 && !acknowledged) || missing > 0;
+  /* ⚠️ ไม่พูดว่า "ยังกรอกไม่ครบ N ข้อ" — N นับเฉพาะข้อที่จอตรวจเองได้ ไม่ใช่ทุกช่องที่บังคับ
+     (ช่องบังคับที่เหลือเป็นหน้าที่ของพรีวิว) ⇒ ตัวเลขนั้นอ่านเป็นคำสัญญาที่ระบบรักษาไม่ได้ */
+  const blockedNote = missing > 0
+    ? `ยังมี ${missing} ข้อที่ต้องแก้ก่อนบันทึก — กดแล้วระบบพาไปที่ช่องนั้น`
+    : (gated ? 'เปิดสวิตช์นี้ก่อนจึงบันทึกได้ — ระบบพบใบที่อาจซ้ำของลูกค้ารายนี้' : null);
   return {
     gated,
-    blockedNote: gated ? 'เปิดสวิตช์นี้ก่อนจึงบันทึกได้ — ระบบพบใบที่อาจซ้ำของลูกค้ารายนี้' : null,
-    buttonTitle: gated ? 'เปิด “ตรวจแล้ว ไม่ใช่ใบซ้ำ” ก่อน' : null,
+    blockedNote,
+    buttonTitle: gated ? (missing > 0 ? 'ยังมีข้อที่ต้องแก้' : 'เปิด “ตรวจแล้ว ไม่ใช่ใบซ้ำ” ก่อน') : null,
     footNote: gated
-      ? `ยังบันทึกไม่ได้ — เปิด “ตรวจแล้ว ไม่ใช่ใบซ้ำ” ก่อน · ข้อผิดพลาด 0 · คำเตือน ${warnCount} ข้อ`
+      ? `ยังบันทึกไม่ได้ — ${blockedNote} · คำเตือน ${warnCount} ข้อ`
       : `ไม่มีข้อผิดพลาด · คำเตือน ${warnCount} ข้อ`,
   };
 }
 
-const countPart = (label, n) => (n > 0 ? `${label} ${n}` : null);
-
-/** "บันทึก · ใบ 1 · จุดติดตั้ง 2 · งวด 1 · ดีลใหม่ 1" — ท่อนที่เป็น 0 หายไป ไม่พิมพ์ "งวด 0" */
-export function historicalSaveLabel(plan) {
-  const parts = [
-    'ใบ 1',
-    countPart('จุดติดตั้ง', (plan?.lines || []).length),
-    countPart('งวด', (plan?.installments || []).length),
-    plan?.deal?.willCreate ? 'ดีลใหม่ 1' : null,
-  ].filter(Boolean);
-  return `บันทึก · ${parts.join(' · ')}`;
-}
-
-/** บรรทัดสรุปของจอจบ — อ่านจาก response ของการบันทึกตรง ๆ ไม่ยิง GET ตาม */
-export function historicalDoneSummary(result) {
-  const order = result?.order || {};
-  const parts = [
-    text(order.orderNumber) || '—',
-    `${(result?.lines || []).length} จุดติดตั้ง`,
-  ];
-  const installments = (result?.installments || []).length;
-  if (installments) parts.push(`งวด ${installments} รอชำระ`);
-  const dealCode = text(result?.deal?.code);
-  if (dealCode) parts.push(`ดีล ${dealCode}${result?.dealCreated ? ' (สร้างใหม่)' : ''}`);
-  return parts.join(' · ');
-}
-
 /**
- * รหัสการคีย์ของโมดัลหนึ่งรอบ — ออกใหม่เฉพาะตอนเปิดโมดัลคีย์ใบใหม่
+ * รหัสการคีย์ของฟอร์มหนึ่งรอบ — ออกใหม่เฉพาะตอนเปิดฟอร์มคีย์ใบใหม่
  * ⚠️ ห้ามออกใหม่ระหว่างกดบันทึกซ้ำ: รหัสเดิม + ข้อมูลเดิม = ได้ใบเดิมคืน (replayed)
  */
 export function newHistoricalIntakeKey() {

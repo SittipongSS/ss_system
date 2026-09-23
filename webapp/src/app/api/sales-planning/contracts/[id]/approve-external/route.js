@@ -11,6 +11,7 @@ import {
   externalDocKindLabel,
 } from '@/lib/sales/contracts';
 import { documentNumberSlots } from '@/lib/documentStandards';
+import { historicalContractLockGate } from '@/lib/sales/historicalContractLock';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { row: before, response } = await loadScoped(supabase, 'sales_contracts', id, user, 'view');
   if (response) return response;
+
+  /* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ ออกเลขทางนี้ไม่ได้ (0374) — ใบนี้อนุมัติพร้อมใบสั่งขาย
+     ใน `approve_external_sales_contract` ตัวเดียวกันแต่เรียกจาก RPC อนุมัติใบ (ไฟล์ที่ AE Sup เลือก + ทรานแซกชันเดียว)
+     อนุมัติแยกตรงนี้ = ใบกลายเป็น signed ก่อน RPC อนุมัติใบจะหาร่างเจอ ⇒ ใบสั่งขายอนุมัติไม่ได้ตลอดกาล
+     ⚠️ มาก่อนด่านเดิมทั้งหมด — ด่านสิทธิ์ข้างล่างจะตอบ "เฉพาะ AE Supervisor" ซึ่งไม่ใช่เหตุจริงของใบนี้ */
+  const lock = await historicalContractLockGate(supabase, before);
+  if (lock) return fail(lock.message, lock.status);
 
   const body = await req.json().catch(() => ({}));
   const signedFileId = String(body?.signedFileId || '').trim();

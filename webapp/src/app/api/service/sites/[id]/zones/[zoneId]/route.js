@@ -76,6 +76,13 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       // FK RESTRICT จาก service_zone_terms — โซนที่มีประวัติการขายลบไม่ได้ (ปิดใช้แทน)
       // ส่วนเครื่อง (service_assets.zoneId) เป็น SET NULL: หลุดกลับกอง "ยังไม่ระบุโซน"
       if (error.code === '23503') {
+        /* ⭐ FK ตัวที่สอง (mig 0374): บรรทัดใบสั่งขายย้อนหลังชี้โซนนี้ — คนละทางออกกับรอบขาย
+           (รอบขายหายเมื่อลบใบ/บังคับลบ · บรรทัดเป็นเนื้อเอกสารขาย ระบบไม่ปลดให้) ⇒ แยกข้อความตามชื่อ FK
+           ⚠️ ชื่อ FK ตั้งอัตโนมัติจากคอลัมน์ที่ประกาศใน ADD COLUMN … REFERENCES (0374 §1) */
+        const detail = `${error.message || ''} ${error.details || ''}`;
+        if (detail.includes('sales_order_lines_serviceZoneId_fkey')) {
+          return conflict('โซนนี้อยู่ในใบสั่งขาย ลบไม่ได้ — ปิดใช้งานแทนเพื่อเก็บประวัติ');
+        }
         return conflict('โซนนี้มีรอบขายผูกอยู่ ลบไม่ได้ — ปิดใช้งานแทนเพื่อเก็บประวัติ');
       }
       return fail(error.message, 500);

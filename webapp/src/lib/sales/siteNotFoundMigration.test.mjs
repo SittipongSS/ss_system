@@ -1,8 +1,12 @@
 // ── ยามของ mig 0362 "จุดที่ TS หาไม่เจอหน้างาน" ───────────────────────────────
 //
 // ⭐ ธงนี้ตัดจุดออกจากคิว TS และป้ายเมนูทันที ⇒ CHECK ที่หลวมไปหนึ่งช่องแปลว่า **จุดที่ยังขายอยู่หายจากคิว
-//    โดยไม่มีใครตัดสิน** · เทสต์นี้ตรึงรูป CHECK/trigger กับค่าคงที่ฝั่ง JS (`lib/sales/siteNotFound.js`)
-//    ให้พังพร้อมกันเมื่อฝั่งใดฝั่งหนึ่งขยับ
+//    โดยไม่มีใครตัดสิน** · เทสต์นี้ตรึงรูป CHECK/trigger ของไฟล์ 0362 ไว้
+//
+// ⚠️ **ฝั่ง JS ของเส้นนี้ถูกถอดแล้ว** (มติ 22/09 · 0374) — บรรทัดของใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ใบ
+//    ⇒ ไม่มีจุดข้อความอิสระให้ TS "หาไม่เจอ" อีก · `lib/sales/siteNotFound.js` และทางแจ้ง/ตัดสินหายไปทั้งเส้น
+//    **แต่ของในฐานยังอยู่ครบ** (คอลัมน์ 9 ช่อง · CHECK · trigger · 0 แถว) และยังเป็นของจริงที่ใครก็ลบไม่ได้เงียบ ๆ
+//    ⇒ ไฟล์นี้อยู่ต่อเป็นยามของ **ฐาน** ล้วน ๆ และถือค่าคงที่ของตัวเองแทนการ import จากโมดูลที่ตายแล้ว
 //
 // 🔑 มติที่ตรึงไว้ที่นี่ (16/09/2026 ข้อ 23 ส่วน ข1):
 //    · เหตุผล 4 รหัส · หมายเหตุบังคับเฉพาะ 'other' · หมายเหตุตอนปิดจุดไม่บังคับ
@@ -12,9 +16,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import {
-  SITE_FLAG_COLUMNS, SITE_NOTE_MAX, SITE_NOT_FOUND_REASON_CODES, SITE_NOTE_REQUIRED_REASON,
-} from './siteNotFound.js';
+
+/* ค่าคงที่ของ 0362 — เคยอยู่ที่ `lib/sales/siteNotFound.js` ซึ่งถอดไปพร้อมเส้นนั้น (มติ 22/09)
+   ⚠️ ตรงกับ CHECK ของไฟล์ 0362 เป๊ะ ๆ · เทสต์ข้างล่างเทียบกับ SQL ทุกตัว */
+const SITE_FLAG_COLUMNS = Object.freeze([
+  'siteNotFoundAt', 'siteNotFoundById', 'siteNotFoundByName', 'siteNotFoundReason', 'siteNotFoundNote',
+  'siteClosedAt', 'siteClosedById', 'siteClosedByName', 'siteClosedNote',
+]);
+const SITE_NOT_FOUND_REASON_CODES = Object.freeze(['name_mismatch', 'branch_closed', 'customer_dropped', 'other']);
+const SITE_NOTE_MAX = 500;
+const SITE_NOTE_REQUIRED_REASON = 'other';
 
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
 const FILE_0362 = '0362_sales_order_line_site_not_found.sql';

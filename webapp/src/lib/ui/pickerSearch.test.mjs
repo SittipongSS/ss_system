@@ -27,6 +27,18 @@ test('filterByQuery: ใช้ search ก่อน label และคืนข�
   assert.equal(filterByQuery(rows, '   ').length, 2);
 });
 
+/* 🐞 UAT 23/09 (ฟอร์มคีย์ใบสั่งขายย้อนหลัง): "ช่องค้นในดรอปดาวน์ลูกค้าไม่รับโฟกัสตอนเปิด"
+   ของเดิมพึ่งแอตทริบิวต์ `autoFocus` อย่างเดียว — สเปก HTML สั่งให้เบราว์เซอร์ **ทิ้ง** autofocus
+   ของ element ที่ถูกแทรกเข้ามาหลังเอกสารเคลียร์คิว autofocus ของรอบโหลดไปแล้ว และเมนูนี้เกิดจาก
+   การคลิกเสมอ ⇒ พึ่งไม่ได้ว่าจะได้โฟกัสทุกเบราว์เซอร์/ทุกเวอร์ชันของ React
+   ⇒ โฟกัสเองด้วย ref เมื่อเมนูเปิด · ลิสต์ลูกค้าบน prod ~76 ราย เปิดแล้วพิมพ์ไม่เข้า = ไถหาด้วยตา */
+test('ดรอปดาวน์ที่ค้นได้ ต้องโฟกัสช่องค้นเองตอนเปิด ไม่พึ่งแอตทริบิวต์ autofocus', () => {
+  const src = fs.readFileSync(path.join(SRC, 'components/ui/SearchableSelect.js'), 'utf8');
+  assert.match(src, /ref=\{searchRef\}/);
+  assert.match(src, /searchRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.doesNotMatch(src, /\bautoFocus\b/);
+});
+
 // ⭐ ratchet: ทุกจุดที่ให้ผู้ใช้เลือกดีลต้องผ่าน DealPicker ตัวกลาง — เดิมมีคู่ช่อง
 // "โครงการ + ดีล" กระจาย 4 หน้า แต่ละที่กรอง/ค้น/เขียนป้ายไม่เหมือนกัน
 test('หน้าที่ต้องเลือกดีล ใช้ DealPicker ตัวกลาง ไม่ประกอบ dropdown เอง', () => {

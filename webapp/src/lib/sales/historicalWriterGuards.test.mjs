@@ -17,38 +17,95 @@ function slice(text, from, to) {
   return text.slice(start, end < 0 ? undefined : end);
 }
 
-test('PATCH ใบสั่งขาย set_payment_gate_exemption: สิทธิ์ AE Sup/Admin · ใบย้อนหลังที่อนุมัติ · ใบ 0 บาทถอดไม่ได้ · audit', () => {
+/* ── ขั้นเดินงานของใบย้อนหลังบนเส้น PATCH ใบสั่งขาย (mig 0374 · มติ 22/09) ─────────────────────────────
+   ⭐ กิ่งของใบย้อนหลังต้องมาก่อนโค้ดของใบปกติ — ทางของใบปกติเก็บลายเซ็น · ตรึงฉบับ · ตั้ง financeStatus · หยุดยอดงวดจากแผน
+     ของใบเสนอราคา ซึ่ง CHECK ของ 0374 ห้าม (ลายเซ็น/financeStatus) หรือทำลายงวดที่คีย์ ("ชำระเต็มจำนวน" 100%) */
+test('PATCH ใบสั่งขาย submit/approve: กิ่งใบย้อนหลังมาก่อนด่านและ RPC ของใบปกติ แล้วส่งต่อตัวเดินงานกลาง', () => {
   const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
-  const block = slice(route, "if (action === 'set_payment_gate_exemption')", "if (action === 'set_service_rounds')");
-  for (const needle of [
-    'canKeyHistoricalSalesOrder(user)', 'isHistoricalOrder(before)', "before.status !== 'approved'",
-    'paymentNotRequired(before.totalAmount)', 'exemptReasonError(reason)', 'historicalRowsOnly(',
-    ".eq('status', 'approved')", 'recordAudit(',
-  ]) {
-    assert.ok(block.includes(needle), `ขาด ${needle}`);
+  const submit = slice(route, "if (action === 'submit')", "if (action === 'approve')");
+  const s = submit.indexOf('if (isHistoricalOrder(before))');
+  assert.ok(s > 0, 'submit ต้องตรวจใบย้อนหลังก่อน');
+  assert.ok(s < submit.indexOf('submitHistoricalOrder('), 'ส่งต่อ submitHistoricalOrder');
+  for (const pipeline of ["before.status)) return badRequest('SO ใบนี้ยื่นอนุมัติไม่ได้')", 'canSubmitSalesOrder(', 'salesOrderConfirmationGate(', 'submitSalesOrderWithSignatureEvidence(']) {
+    assert.ok(submit.indexOf('submitHistoricalOrder(') < submit.indexOf(pipeline), `กิ่งใบย้อนหลังต้องมาก่อน ${pipeline}`);
   }
-  /* 🐞 exempt ที่ไม่ใช่ boolean (ลืมส่ง / "true" / 1) ต้อง 400 — ห้ามตกทางถอดการยกเว้น */
-  const typed = block.indexOf("if (typeof body.exempt !== 'boolean')");
-  assert.ok(typed > 0 && typed < block.indexOf('const exempt = body.exempt;'), 'ตรวจชนิดก่อนอ่านค่า');
-  assert.match(block, /if \(typeof body\.exempt !== 'boolean'\) \{\s*return badRequest\(/);
-  assert.doesNotMatch(block, /body\.exempt === true/);
+  const approve = slice(route, "if (action === 'approve')", "if (action === 'reject')");
+  const a = approve.indexOf('if (isHistoricalOrder(before))');
+  assert.ok(a > 0 && a < approve.indexOf('approveHistoricalOrder('), 'approve ต้องตรวจใบย้อนหลังแล้วส่งต่อ approveHistoricalOrder');
+  for (const pipeline of ['if (!reviewer)', 'approveSalesOrderWithSignatureEvidence(', 'captureIssuedSalesOrderSnapshot(', "financeStatus: 'pending'", 'freezeInstallments(']) {
+    assert.ok(approve.indexOf('approveHistoricalOrder(') < approve.indexOf(pipeline), `กิ่งใบย้อนหลังต้องมาก่อน ${pipeline}`);
+  }
+  // กิ่งใบย้อนหลังคืนคำตอบของตัวเดินงานเลย ไม่ไหลลงทางของใบปกติ
+  assert.match(approve, /if \(isHistoricalOrder\(before\)\) \{\s*return historicalReply\(/);
+  assert.match(submit, /if \(isHistoricalOrder\(before\)\) \{\s*return historicalReply\(/);
 });
 
-test('POST งวด action append: ด่านก่อนทางกู้เดิม · RPC ล็อกหัวใบ · ใบย้อนหลังไม่ตกไปข้อความใบเสนอราคา', () => {
+test('PATCH ใบสั่งขาย save: ใบย้อนหลังแก้ที่ฟอร์มคีย์ใบเท่านั้น — ปฏิเสธก่อนเขียน', () => {
+  const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
+  const save = slice(route, "if (action === 'save')", "if (action === 'submit')");
+  const guard = save.indexOf('if (isHistoricalOrder(before)) return fail(');
+  assert.ok(guard > 0, 'save ต้องปฏิเสธใบย้อนหลัง');
+  assert.ok(guard < save.indexOf('.update(patch)'), 'ด่านต้องมาก่อนเขียน');
+  assert.ok(save.includes('แก้ใบย้อนหลังที่ฟอร์มคีย์ใบ'));
+});
+
+test('PATCH งวด: ส่งล็อกทั้งใบ + ธงใบย้อนหลังเข้าด่านเดียวกับปุ่ม · POST ไม่มีทางคีย์งวดเพิ่มแล้ว · ไม่ทับยอดใบย้อนหลัง', () => {
   const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/installments/route.js'));
+  const patch = slice(route, 'export const PATCH');
+  const gate = slice(patch, 'installmentActionError(row, action, user, {', '});');
+  assert.ok(gate.includes('orderLock: historicalInstallmentLock(order)'), 'ต้องส่ง orderLock');
+  assert.ok(gate.includes('historical: isHistoricalOrder(order)'), 'ต้องส่งธงใบย้อนหลัง');
+  // CHECK ของงวดที่หลุดด่าน = ข้อความไทยจากตารางกลาง ไม่ใช่ 500 ภาษาอังกฤษ
+  const write = slice(patch, 'updated = await updateInstallment(', 'await recordAudit(');
+  assert.ok(write.includes('documentWorkflowError(writeError'), 'แปล error ตอนเขียนงวด');
   const post = slice(route, 'export const POST', 'export const PATCH');
-  const append = post.indexOf("body?.action === 'append'");
-  const recovery = post.indexOf('ensureInstallments(');
-  assert.ok(append > 0 && recovery > append, 'append ต้องมาก่อน ensureInstallments');
-  const block = post.slice(append, recovery);
-  for (const needle of [
-    'canKeyHistoricalSalesOrder(user)', 'inSalesEditScope(user, order.deal)', 'isHistoricalOrder(order)',
-    'validateHistoricalInstallments(', "rpc('append_historical_installments'", 'recordAudit(', 'documentWorkflowError(',
-  ]) {
-    assert.ok(block.includes(needle), `ขาด ${needle}`);
+  assert.doesNotMatch(post, /append/);
+  assert.ok(post.indexOf('if (isHistoricalOrder(order))') < post.indexOf('ensureInstallments('), 'ใบย้อนหลังตีกลับก่อนทางกู้จากใบเสนอราคา');
+  assert.doesNotMatch(route, /validateHistoricalInstallments|append_historical_installments/);
+  // ยอดของงวดบนจอ: ใบย้อนหลังไม่ผ่าน withLiveAmounts (แผนว่าง = "ชำระเต็มจำนวน" 100% ทับงวดที่คีย์)
+  assert.match(route, /const installmentsForScreen = \(order, rows\) => \(isHistoricalOrder\(order\)\s*\? rows\s*: withLiveAmounts\(/);
+  assert.equal((route.match(/withLiveAmounts\(/g) || []).length, 1, 'withLiveAmounts เหลือจุดเดียวในตัวเลือกยอด');
+});
+
+test('ยกเลิก/ลบใบย้อนหลัง: ไม่มีตัวยกเลิกสัญญาฝั่ง JS — trigger ของ 0374 ทำในทรานแซกชันเดียว · route แค่อ่านผล', () => {
+  const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
+  const cancel = slice(route, "if (action === 'cancel')", "if (action === 'finance_approve')");
+  const del = slice(route, 'export const DELETE');
+  for (const [name, block] of [['cancel', cancel], ['DELETE', del]]) {
+    assert.doesNotMatch(block, /from\('sales_contracts'\)/, `${name}: route ห้ามแตะตารางสัญญาเอง`);
+    assert.doesNotMatch(block, /cancel_sales_contract|cancelHistoricalContract/, `${name}: ห้ามยกเลิกสัญญาซ้ำฝั่ง JS`);
+    assert.ok(block.includes('historicalContractVoided(supabase, before)'), `${name}: อ่านผลของ trigger มาบอก`);
   }
-  assert.match(block, /if \(isHistoricalOrder\(order\)\) \{\s*return badRequest\(/);
-  assert.doesNotMatch(block, /freezeInstallments/);
+  // ตัวอ่านผลในตัวเดินงานกลางอ่านอย่างเดียว — ตัวเดินงานทั้งไฟล์ไม่เขียนตารางเอง (เขียนผ่าน RPC เท่านั้น)
+  const workflow = stripComments(read('lib/sales/historicalOrderWorkflow.js'));
+  assert.doesNotMatch(workflow, /\.(update|insert|upsert|delete)\(/);
+});
+
+/* ยกเลิกใบย้อนหลังที่งวดรอบัญชีรับรอง = งวดค้างคิว "รอคุณรับรอง" + ป้ายเมนูบัญชีถาวร (ล็อกงวดของใบยกเลิกปิดรับรอง/ตีกลับ
+   แต่คิว/ป้ายไม่ดูสถานะใบ) ⇒ บัญชีตีกลับก่อน แล้ว AE Sup ค่อยยกเลิก · ด่านกลางตัวเดียวกับปุ่ม */
+test('ยกเลิกใบย้อนหลัง: งวดรอบัญชีรับรองบล็อกก่อนเขียน — อ่านงวดสดแบบโยน error · ถามด่านกลาง historicalCancelBlock', () => {
+  const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
+  const cancel = slice(route, "if (action === 'cancel')", "if (action === 'finance_approve')");
+  const gate = cancel.indexOf('historicalCancelBlock(before, liveInstallments)');
+  assert.ok(gate > 0, 'ต้องถามด่านกลาง historicalCancelBlock');
+  const load = cancel.lastIndexOf('await loadInstallments(supabase, id)', gate);
+  assert.ok(load > 0, 'ต้องอ่านงวดสด ไม่ใช่ before.installments (loadOrder กลืนการอ่านพังเป็นรายการว่าง)');
+  assert.doesNotMatch(cancel.slice(load, gate), /\.catch\(/, 'อ่านพังต้องตอบ error ไม่ใช่ปล่อยผ่าน');
+  assert.match(cancel.slice(load, gate), /catch \(error\) \{ return fail\(/);
+  // หลังด่านสิทธิ์ (คนที่ยกเลิกไม่ได้อยู่แล้วไม่ต้องเห็นเหตุเรื่องงวด) · ก่อนทุกทางเขียน
+  assert.ok(cancel.indexOf("if (before.status === 'approved' && !reviewer)") < load);
+  for (const write of ["rpc('cancel_sales_order_with_reversal_atomic'", ".update(patch)"]) {
+    assert.ok(gate < cancel.indexOf(write), `ด่านต้องมาก่อน ${write}`);
+  }
+});
+
+test('คืนร่างใบย้อนหลัง: ด่านเดิมอยู่ · คอมเมนต์อ้าง trigger no_reopen ของ 0374 (ไม่ใช่ CHECK อีกแล้ว)', () => {
+  const raw = read('app/api/sales-planning/sales-orders/[id]/route.js');
+  const restore = slice(raw, "if (action === 'restore')", 'export const DELETE');
+  const guard = restore.indexOf('if (isHistoricalOrder(before))');
+  assert.ok(guard > 0 && guard < restore.indexOf('.update(patch)'));
+  assert.ok(restore.includes('sales_orders_historical_no_reopen'), 'คอมเมนต์ต้องอ้าง trigger ตัวจริง');
+  assert.doesNotMatch(restore, /CHECK sales_orders_origin_shape ห้ามอยู่แล้ว/);
 });
 
 test('PATCH ดีล: ย้ายเจ้าของดีลภาชนะ = AE Sup/Admin + ตรวจดีลภาชนะของ AE ปลายทางก่อนเขียน + แปล error ของฐาน', () => {
@@ -59,7 +116,9 @@ test('PATCH ดีล: ย้ายเจ้าของดีลภาชนะ
   const write = patch.indexOf('.update(patch)');
   assert.ok(owner > 0 && move > owner && write > move, 'ด่านย้ายเจ้าของต้องอยู่หลัง validateDealOwner และก่อนเขียนดีล');
   const gate = patch.slice(move, write);
-  for (const needle of ['isHistoricalDeal(before)', 'canKeyHistoricalSalesOrder(user)', 'historicalRowsOnly(', 'historicalOwnerTakenMessage(']) {
+  // ⚠️ ด่านย้ายเจ้าของ ≠ ด่านผู้คีย์ (0374 ขยายผู้คีย์เป็นฝ่ายขายทุกตำแหน่ง แต่ย้ายเจ้าของยังเป็นของหัวหน้า)
+  assert.ok(!gate.includes('canKeyHistoricalSalesOrder('), 'ห้ามใช้ด่านผู้คีย์กับการย้ายเจ้าของ');
+  for (const needle of ['isHistoricalDeal(before)', 'canMoveHistoricalDealOwner(user)', 'historicalRowsOnly(', 'historicalOwnerTakenMessage(']) {
     assert.ok(gate.includes(needle), `ขาด ${needle}`);
   }
   /* ทีมตามดีล (คำตอบข้อ 1): AE ปลายทางไม่มีทีม = 400 · team ถูกทับด้วยทีมของ AE ปลายทางเสมอ (body.team ค้างไม่รอด) */
@@ -67,9 +126,26 @@ test('PATCH ดีล: ย้ายเจ้าของดีลภาชนะ
   assert.match(gate, /if \(!ownerTeam\) \{\s*return badRequest\('AE คนนี้ยังไม่มีทีม/);
   const noTeam = gate.indexOf('if (!ownerTeam)');
   const retag = gate.indexOf('patch.team = ownerTeam;');
-  assert.ok(gate.indexOf('canKeyHistoricalSalesOrder(user)') < noTeam && noTeam < retag, 'สิทธิ์ → ทีม → ทับทีม');
+  assert.ok(gate.indexOf('canMoveHistoricalDealOwner(user)') < noTeam && noTeam < retag, 'สิทธิ์ → ทีม → ทับทีม');
   assert.ok(retag < gate.indexOf('historicalRowsOnly('), 'ทับทีมก่อนค้นดีลชน/เขียน');
   assert.ok(patch.includes('historicalDealWriteMessage(error)'), 'error ตอนเขียนดีลต้องผ่าน historicalDealWriteMessage');
+});
+
+/* 0374: ใบย้อนหลังที่ยังไม่อนุมัติผูกเอกสารแทนสัญญาร่างที่ถือทีม/เจ้าของตามดีลตอนคีย์ — ย้ายเจ้าของไม่ซิงก์สองช่องนั้น
+   ⇒ ต้องปิดเรื่องก่อน (อนุมัติ/ยกเลิก) · ด่านต้องอยู่หลังด่านสิทธิ์ และก่อนเขียนดีล/ย้ายเจ้าของบนใบ */
+test('PATCH ดีล: ดีลภาชนะที่ยังมีใบย้อนหลังไม่อนุมัติ (ร่าง/รออนุมัติ/ตีกลับ) ย้ายเจ้าของไม่ได้ — ตรวจก่อนเขียน', () => {
+  const route = stripComments(read('app/api/sales-planning/deals/[id]/route.js'));
+  const patch = slice(route, 'export const PATCH', 'export const DELETE');
+  const gate = patch.slice(patch.indexOf('const historicalOwnerMove'), patch.indexOf('.update(patch)'));
+  const pending = gate.indexOf(".in('status', [...HISTORICAL_UNAPPROVED_STATUSES])");
+  assert.ok(pending > 0, 'ต้องถามใบของดีลนี้ด้วยชุดสถานะกลาง HISTORICAL_UNAPPROVED_STATUSES');
+  const query = gate.slice(gate.lastIndexOf('historicalRowsOnly(', pending), pending);
+  assert.ok(query.includes("from('sales_orders')") && query.includes(".eq('dealId', id)"), 'ใบของดีลนี้เท่านั้น ผ่าน historicalRowsOnly');
+  assert.ok(gate.indexOf('canMoveHistoricalDealOwner(user)') < pending, 'ด่านสิทธิ์มาก่อนอ่านใบ');
+  assert.match(gate, /if \(unapprovedError\) return fail\(unapprovedError\.message, 500\);/);
+  assert.match(gate, /return conflict\(`ดีลนี้มีใบย้อนหลังที่ยังไม่อนุมัติ \(\$\{which\}\) — อนุมัติหรือยกเลิกก่อนย้ายเจ้าของ`\);/);
+  // ต้องอยู่ก่อนเขียนดีล และก่อนทางย้ายเจ้าของบนใบ (update sales_orders หลังเขียนดีล)
+  assert.ok(patch.indexOf(".in('status', [...HISTORICAL_UNAPPROVED_STATUSES])") < patch.indexOf('.update(patch)'));
 });
 
 test('โอนงานพนักงาน: ดีลเปิดเท่านั้นที่ย้าย · พรีวิว (GET) และผลลัพธ์บอกดีลภาชนะที่ยังค้าง', () => {
@@ -96,6 +172,7 @@ test('literal "historical" และตัวกรอง .eq("origin") มี�
   for (const rel of [
     'lib/sales/historicalOrderPlan.js',
     'lib/sales/historicalOrderCommit.js',
+    'lib/sales/historicalOrderWorkflow.js',
     'app/api/sales-planning/sales-orders/historical/route.js',
     'app/api/sales-planning/sales-orders/[id]/route.js',
     'app/api/sales-planning/sales-orders/[id]/installments/route.js',
@@ -109,61 +186,4 @@ test('literal "historical" และตัวกรอง .eq("origin") มี�
     assert.doesNotMatch(code, /['"`]historical['"`]/, rel);
     assert.doesNotMatch(code, /\.(n?eq)\(\s*['"]origin['"]/, rel);
   }
-});
-
-/* ── ตัดสินจุดที่ TS ไม่พบหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ──────────── */
-test('PATCH ใบสั่งขาย: ตัดสินจุดที่ TS ไม่พบ — สิทธิ์ · ใบย้อนหลังที่อนุมัติ · ตัดสินซ้ำไม่ได้ · audit', () => {
-  const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
-  const block = slice(route, "if (action === 'rename_installation_point'", "if (action === 'remove_installation_point')");
-  for (const needle of [
-    'canKeyHistoricalSalesOrder(user)', 'isHistoricalOrder(before)', "before.status !== 'approved'",
-    'lineAwaitingSiteDecision(line)', 'installationPointError(point)', 'siteNoteError(', 'recordAudit(',
-  ]) {
-    assert.ok(block.includes(needle), `ขาด ${needle}`);
-  }
-  /* 🪤 ตัวกรองตอนเขียนต้องบอกสถานะที่คาดไว้ด้วย — TS ถอนการแจ้งพอดีตอนฝ่ายขายกด
-     ต้องได้ 0 แถวแล้วตอบ 409 ไม่ใช่เขียนตราปิดทับบรรทัดที่ไม่มีธงแล้ว */
-  assert.ok(block.includes(".not('siteNotFoundAt', 'is', null)"));
-  assert.ok(block.includes(".is('siteClosedAt', null)"));
-  assert.ok(block.includes(".eq('salesOrderId', id)"), 'บรรทัดต้องเป็นของใบนี้');
-
-  /* ⭐ แก้ชื่อจุด = **ข้อยกเว้นเดียว** ของ "บรรทัด SO เป็นภาพนิ่ง" — ต้องไม่ลามไปช่องอื่น
-     ⛔ และต้องไม่มีทางถอดบรรทัด/คิดเงินหัวใบใหม่ (ข2 ยังไม่ทำ) */
-  for (const forbidden of ['qty:', 'unitPrice:', 'lineTotal:', 'totalAmount', '.delete()']) {
-    assert.ok(!block.includes(forbidden), `🔴 การตัดสินจุดห้ามแตะ ${forbidden}`);
-  }
-  assert.ok(block.includes('siteFlagClearPatch()'), 'แก้ชื่อต้องล้างธงทั้งชุด');
-  assert.ok(block.includes('siteClosePatch('), 'ปิดจุดต้องใช้ตัวประกอบก้อนเดียวกับเทสต์หน่วย');
-});
-
-test('ทาง TS เขียนได้เฉพาะธง · ทางฝ่ายขายเขียนได้เฉพาะตราปิด/ชื่อจุด (คนละชุดคอลัมน์)', () => {
-  /* TS **อ่าน** ตราปิดได้ (ต้องรู้ว่าถอนการแจ้งไม่ได้แล้ว) แต่ **เขียนไม่ได้**
-     · ล้างธงตอนถอน (`siteFlagClearPatch`) ล้างตราปิดไปด้วย ซึ่งเป็นการล้าง ไม่ใช่การประทับ */
-  const ts = stripComments(read('app/api/service/intake/site-not-found/route.js'));
-  assert.ok(!ts.includes('siteClosePatch('), '🔴 ทางของ TS ห้ามประทับตราปิดจุด');
-  assert.ok(!ts.includes('installationPoint:'), '🔴 TS ห้ามแก้ชื่อจุดบนเอกสารของฝ่ายขาย');
-  const sales = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
-  const block = slice(sales, "if (action === 'rename_installation_point'", "if (action === 'remove_installation_point')");
-  assert.ok(!block.includes('siteNotFoundPatch('), '🔴 ฝ่ายขายห้ามตั้งธงแทน TS');
-});
-
-
-/* ── ถอดจุดออกจากใบ (มติข้อ 23 ส่วน ข2 · RPC ของ mig 0366) ──────────────────── */
-test('PATCH ใบสั่งขาย: ถอดจุดออกจากใบ — สิทธิ์ · เหตุผลบังคับ · ผ่าน RPC ตัวเดียว · audit เก็บบรรทัดเต็ม', () => {
-  const route = stripComments(read('app/api/sales-planning/sales-orders/[id]/route.js'));
-  const block = slice(route, "if (action === 'remove_installation_point')", "if (action === 'set-doc-language')");
-  for (const needle of [
-    'canKeyHistoricalSalesOrder(user)', 'removeReasonError(reason)',
-    "supabase.rpc('remove_historical_sales_order_line'", 'historicalSchemaMissing(error)',
-    'documentWorkflowError(error', 'recordAudit(',
-  ]) {
-    assert.ok(block.includes(needle), `ขาด ${needle}`);
-  }
-  /* 🔴 **ลบบรรทัด + คิดเงินหัวใบใหม่ ต้องอยู่ใน RPC ตัวเดียว** — route ห้ามลบเอง ห้ามเขียนยอดเอง
-     ครึ่งทางคือใบที่ยอดหัวไม่ตรงบรรทัด ซึ่งตัวเขียนของใบย้อนหลังถือเป็น money_mismatch */
-  assert.ok(!block.includes(".from('sales_order_lines')"), '🔴 route ห้ามแตะตารางบรรทัดเอง');
-  assert.ok(!/\.from\('sales_orders'\)\s*\.update\(/.test(block), '🔴 route ห้ามเขียนยอดหัวใบเอง');
-  /* audit ต้องเก็บบรรทัดเต็ม + ยอดเดิม — ระบบไม่มีถังขยะ กู้ได้จาก audit_logs.before เท่านั้น */
-  assert.ok(block.includes('before: {') && block.includes('line,'), 'audit ต้องเก็บบรรทัดเต็ม');
-  assert.ok(block.includes('totalAmount: before.totalAmount'), 'audit ต้องเก็บยอดหัวใบเดิม');
 });

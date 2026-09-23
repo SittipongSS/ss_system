@@ -26,6 +26,7 @@ export default function SearchableSelect({
   const [menuStyle, setMenuStyle] = useState({});
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
+  const searchRef = useRef(null);
 
   const selected = options.find((option) => String(option.value) === String(value ?? ""));
   const selectedLabel = selected ? selected.label : allowFreeText ? value || "" : "";
@@ -83,6 +84,15 @@ export default function SearchableSelect({
     };
   }, [open, placeMenu]);
 
+  /* ⭐ ช่องค้นรับโฟกัสเอง **โดยไม่พึ่งแอตทริบิวต์ `autofocus`** — สเปก HTML สั่งให้เบราว์เซอร์
+     ทิ้ง autofocus ของ element ที่ถูกแทรกเข้ามาหลังจากเอกสารเคลียร์คิว autofocus ของรอบโหลดไปแล้ว
+     ⇒ เมนูนี้เกิดจากการคลิก (หลังโหลดเสมอ) จึงพึ่งไม่ได้ว่าจะได้โฟกัสทุกเบราว์เซอร์/ทุกเวอร์ชันของ
+     React · เปิดแล้วพิมพ์ไม่เข้าช่องค้น = ดรอปดาวน์ที่ยาวเป็นร้อยแถวกลายเป็นการไถหาด้วยตา */
+  useEffect(() => {
+    if (!open || disabled || !searchEnabled) return;
+    searchRef.current?.focus({ preventScroll: true });
+  }, [open, disabled, searchEnabled]);
+
   const choose = (option) => {
     onChange?.(option.value);
     setSearch("");
@@ -114,7 +124,7 @@ export default function SearchableSelect({
             <label className="ui-select-search">
               <Search size={15} aria-hidden="true" />
               <input autoComplete="off"
-                autoFocus
+                ref={searchRef}
                 value={search}
                 placeholder={searchPlaceholder}
                 onChange={(event) => {

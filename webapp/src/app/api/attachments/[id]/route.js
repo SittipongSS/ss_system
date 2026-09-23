@@ -17,6 +17,7 @@ import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import {
   SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, isSalesAttachment,
 } from '@/lib/sales/salesAttachmentAccess';
+import { historicalContractFilesFrozenGate } from '@/lib/sales/historicalContractLock';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,13 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
     // เหมือนระบบขอราคา: ให้เก็บกวาดไฟล์ที่ค้างได้ ไม่ใช่ให้เปิดอ่านของใคร)
     const allowed = deal ? canAttachToSalesEntity(deal, user) : canViewSalesPlanning(user);
     if (!allowed) return Response.json({ error: 'forbidden' }, { status: 403 });
+    /* ล็อกไฟล์ของเอกสารแทนสัญญา (ใบสั่งขายย้อนหลัง · 0374) — ตรึงระหว่างรอ AE Sup อนุมัติ ด่านเดียวกับตอนแนบ
+       (POST /api/attachments) · ลบไฟล์ที่ AE Sup กำลังดูอยู่ = อนุมัติด้วยไฟล์ที่ไม่มีแล้ว (RPC ตีกลับ
+       signed_file_invalid) หรือได้ชุดไฟล์ที่ไม่ใช่ชุดที่ตรวจ · แถวแม่ถูกลบแล้ว = ไม่มีอะไรให้ล็อก */
+    if (att.entityType === 'contract' && deal) {
+      const frozen = await historicalContractFilesFrozenGate(supabase, deal);
+      if (frozen) return Response.json({ error: frozen.message }, { status: frozen.status });
+    }
   }
 
   // สิทธิ์ลบ = สิทธิ์แก้ entity แม่ (team scope จาก canEditRecord).

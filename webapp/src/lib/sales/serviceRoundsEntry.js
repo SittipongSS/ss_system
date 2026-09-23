@@ -14,6 +14,8 @@
 //
 // ⚠️ ไฟล์นี้ถูก import ทั้งฝั่งจอและฝั่ง API — ห้าม import อะไรที่เป็น server-only
 import { lineIsServicePackage } from '@/lib/sales/serviceOrders';
+// ใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 /** บรรทัดไหนกรอกรอบได้ — เกณฑ์เดียวกับที่ใช้ตัดสินว่าใบไหนมีรอบบริการ */
 export const lineTakesServiceRounds = (line) => lineIsServicePackage(line);
@@ -47,6 +49,12 @@ export function serviceRoundsEditError(order, { canEdit = false } = {}) {
      แต่ทำให้ประวัติอ่านย้อนแล้วขัดกัน (กติกาเดียวกับการผูกสัญญา) */
   if (['cancelled', 'revised'].includes(order?.status)) {
     return 'ใบนี้ปิดไปแล้ว — แก้จำนวนรอบไม่ได้';
+  }
+  /* ⭐ ใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ (มติ 22/09 · mig 0374) — จำนวนรอบเป็นส่วนหนึ่งของบรรทัดโซนที่ฟอร์มคีย์ใบ
+     เขียนใหม่ทั้งชุดทุกครั้งที่บันทึก และ AE Sup กำลังตรวจตัวเลขชุดนั้น ⇒ แก้ตรงนี้ = ถูกทับตอนบันทึกฟอร์ม หรือ
+     เปลี่ยนสิ่งที่ผู้อนุมัติเห็นระหว่างรอ · อนุมัติแล้วแก้ได้ตามกติกาเดิม (ไม่ต้องออก Rev.) */
+  if (isHistoricalOrder(order) && order?.status !== 'approved') {
+    return 'จำนวนรอบของใบย้อนหลังแก้ที่ฟอร์มคีย์ใบจนกว่า AE Sup จะอนุมัติ';
   }
   return null;
 }

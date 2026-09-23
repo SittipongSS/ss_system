@@ -271,7 +271,26 @@ test('กฎ 5ข: การล้างการอนุมัติต้อ�
    ⚠️ `loadScoped('sales_orders', …)` แทนไม่ได้ **และจะพัง** — เหตุผลเดียวกับสองข้อข้างบนทุกตัวอักษร:
    มันใช้ด่าน *สายขาย* (`inSalesViewScope`) ส่วนคนที่แจ้งคือฝ่าย TS ซึ่งผ่านด่านของ *โมดูลบริการ*
    (`requireService({ edit: true })`) มาแล้ว ⇒ TS ทุกคนจะแจ้งไม่ได้เลยสักใบ
-   ⇒ รูปเดียวกับ `intake/bind/route.js` ที่นับอยู่แล้ว (ประตูเข้าคือโมดูลบริการ ไม่ใช่ใบสั่งขาย) */
+   ⇒ รูปเดียวกับ `intake/bind/route.js` ที่นับอยู่แล้ว (ประตูเข้าคือโมดูลบริการ ไม่ใช่ใบสั่งขาย)
+
+   2026-09-22 — **60 → 59** (มติ 22/09) · ทางแจ้ง "ไม่พบจุดนี้หน้างาน" ถูกถอดทั้งเส้น
+   (`service/intake/site-not-found/route.js` ลบแล้ว) — บรรทัดของใบย้อนหลังผูกโซนจากทะเบียน
+   ตั้งแต่ตอนคีย์ใบ ⇒ ไม่มีชื่อจุดข้อความอิสระให้ TS "หาไม่เจอ" · เพดานรูดลงตามของที่หายไปจริง
+
+   2026-09-23 — **59 → 60** (ปุ่มกับ API กั้นปลายช่วงงวดยกมาด้วยวันเดียวกัน · review-fix ของ 0374) ·
+   `sales-planning/sales-orders/[id]/installments/route.js` (sales_contracts) อ่าน `expiryDate` ของ
+   **เอกสารแทนสัญญาที่ใบชี้อยู่แล้ว** หลังใบผ่าน `inSalesViewScope(user, deal)` ไปสองบรรทัดก่อนหน้า
+   ⇒ รูปเดียวกับสามจุดของ addenda ข้างบน (อ่านของที่ผูกอยู่ของแถวที่ผ่านด่านแล้ว)
+   🐞 ที่มา: แผงงวดบนใบมีสัญญาติดมากับใบ แล้วส่งวันสิ้นสุดเข้าด่าน ส่วน route นี้ไม่เคยโหลด ⇒ ด่าน
+   ถอยไปอ่านจากงวดอื่นของใบ = สองฝั่งกั้นคนละวัน ปุ่มเปิดให้กดแล้ว API ตีกลับ
+   ⚠️ `loadScoped('sales_contracts', …)` แทนไม่ได้ **และจะเปลี่ยนพฤติกรรม**:
+     · เพรดิเคตของมันคือ `inSalesViewScope` **บนดีลใบเดียวกัน** ที่เพิ่งตรวจไปแล้ว ⇒ ถามซ้ำคำถามเดิม
+       โดยลาก `*, deal:sales_deals(*)` มาทั้งก้อน ทั้งที่ตรงนี้ต้องการคอลัมน์เดียว
+     · มันคืน `response` 404 ให้ return ทันที ⇒ สัญญาที่ถูกลบทิ้ง (FK เป็น ON DELETE SET NULL
+       แต่แถวกำพร้ามีได้) จะเปลี่ยน "บัญชีเลื่อนปลายช่วงงวดยกมา" เป็น "ไม่พบสัญญา" = หยุดรับเงิน
+       เพราะค่าที่ใช้แค่เป็นขอบเขตอ่านไม่ขึ้น
+   ⚠️ "ไม่พบแถว" กับ "ถามไม่สำเร็จ" แยกกันที่นี่: ไม่พบ = `null` แล้วให้ `openingCoverageEnd`
+   ถอยไปอ่านจากงวดอื่น · อ่านพลาด = `throw` เป็น 500 ไม่กลืน (ไม่งั้นด่านเงินเปลี่ยนวันเงียบ ๆ) */
 const SELF_LOAD_CAP = 60;
 
 test('กฎ 6: การโหลดแถวเองบนตารางที่มีทะเบียนขอบเขต ต้องไม่เพิ่ม (ratchet)', () => {
@@ -320,4 +339,63 @@ test('กฎ 7: createFormula ที่ส่ง scentId ต้องส่ง c
   assert.deepEqual(bad, [],
     'สร้างสูตรจากกลิ่นโดยไม่ส่งลูกค้า — ด่าน formulaScentCustomerError จะตีกลับทุกครั้ง\n'
     + bad.join('\n'));
+});
+
+// ── 8. prop `icon` ของ StatusNotice รับ "ตัวคอมโพเนนต์" ไม่ใช่ element ────────
+//
+// 🐞 **บั๊กจริง 2026-09-23 (UAT ฟอร์มคีย์ SO ย้อนหลัง)** — `StatusNotice` ประกาศ
+// `icon: CustomIcon` แล้วเรียกเป็น `<Icon size={18} />` ⇒ ส่ง `icon={<FileText />}`
+// (element) เข้าไป React โยน "Element type is invalid … but got: <FileText />"
+// **ทั้งหน้าขาว** · หลุดถึงสามจอ (ขั้นสัญญา · ขั้นเลือกโซน · ขั้นตรวจก่อนบันทึก)
+// เพราะ `icon={<X />}` เป็นรูปที่ถูกต้องของ `Button`/`Metric` ⇒ มือเขียนไปตามความเคย
+//
+// ⚠️ เทสต์ทั้งชุดไม่มีวันจับได้ — รีโปนี้ไม่มี React renderer ⇒ กันที่ "รูปของโค้ด"
+// ตรงนี้แทน · ถ้าวันหนึ่ง `StatusNotice` เปลี่ยนไปรับ element ให้แก้เทสต์นี้พร้อมกัน
+test('กฎ 8: StatusNotice ต้องรับ icon เป็นตัวคอมโพเนนต์ (icon={Foo}) ไม่ใช่ icon={<Foo />}', () => {
+  const notice = read('components/ui/StatusNotice.js');
+  assert.match(notice, /icon:\s*CustomIcon/,
+    'StatusNotice เลิกใช้ชื่อ CustomIcon แล้ว — ทบทวนกฎนี้ก่อนแก้เทสต์');
+  assert.match(notice, /<Icon size=/, 'StatusNotice เลิกเรียก icon เป็นคอมโพเนนต์แล้ว — ทบทวนกฎนี้');
+
+  /* ⚠️ regex เดียวจบไม่ได้ — attribute ของแท็กนี้มี JSX ซ้อน (`action={(<Button …/>)}`)
+     ⇒ `[^>]*>` ไปหยุดที่ `>` ของปุ่มข้างใน แล้วนับ `icon={<…` ของปุ่มเป็นของ StatusNotice
+     (เคสจริง: LegacySiteModal · สองจอสเปค) ⇒ เดินทีละอักขระ นับวงเล็บปีกกา หยุดที่ `>`
+     ตัวที่อยู่ระดับบนสุดของแท็กเท่านั้น */
+  const ownAttrs = (text, from) => {
+    let depth = 0;
+    for (let i = from; i < text.length; i += 1) {
+      const ch = text[i];
+      if (ch === '{') depth += 1;
+      else if (ch === '}') depth -= 1;
+      else if (ch === '>' && depth === 0) return text.slice(from, i);
+    }
+    return text.slice(from);
+  };
+  /* และ `icon=` ที่นับ ต้องเป็นของแท็กนี้จริง ๆ — `action={<Button icon={<X />} …/>}`
+     มี `icon={<` อยู่ข้างในเสมอ ⇒ ยอมรับเฉพาะตัวที่อยู่นอกวงเล็บปีกกาของ attribute อื่น */
+  const elementIcon = (attrs) => {
+    let depth = 0;
+    for (let i = 0; i < attrs.length; i += 1) {
+      const ch = attrs[i];
+      if (ch === '{') { depth += 1; continue; }
+      if (ch === '}') { depth -= 1; continue; }
+      if (depth !== 0) continue;
+      if (!attrs.startsWith('icon=', i)) continue;
+      const rest = attrs.slice(i + 'icon='.length).replace(/^\s*/, '');
+      if (rest.startsWith('{') && rest.slice(1).replace(/^\s*/, '').startsWith('<')) return true;
+    }
+    return false;
+  };
+  const bad = [];
+  for (const rel of [...listFiles('components', '*.js'), ...listFiles('app', 'page.js')]) {
+    const text = stripComments(read(rel));
+    let at = text.indexOf('<StatusNotice');
+    while (at !== -1) {
+      const attrs = ownAttrs(text, at + '<StatusNotice'.length);
+      if (elementIcon(attrs)) bad.push(`${rel}: ${attrs.replace(/\s+/g, ' ').slice(0, 80)}`);
+      at = text.indexOf('<StatusNotice', at + 1);
+    }
+  }
+  assert.deepEqual(bad, [],
+    'ส่ง element ให้ prop icon ของ StatusNotice = จอขาวทั้งหน้า (ใช้ icon={Foo})\n' + bad.join('\n'));
 });

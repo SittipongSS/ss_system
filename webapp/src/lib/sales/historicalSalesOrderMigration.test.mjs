@@ -10,6 +10,10 @@
 //
 // ⚠️ ค่าคงที่ฝั่ง JS (`lib/sales/historicalOrders.js` — มากับคอมมิตโค้ด) ต้องเทียบกับตัวเลขที่ตรึงใน
 //    SQL_LIMITS ข้างล่าง · ไฟล์นี้เทียบ SQL กับ CHECK ของตารางเดิมก่อน (ตัวตรวจงวดต้องไม่หลวมกว่า/ไม่แน่นกว่าตาราง)
+//
+// ⭐ mig 0374 (มติ 22/09) แทนโมเดล "เกิดเป็นอนุมัติแล้ว" — ใบเกิดเป็นร่าง · AE Sup อนุมัติ · โซนจากทะเบียน · งวดยกมา
+//    ยามที่อ่าน **นิยามล่าสุด** (rpc / latestConstraintBody) จึงตรึงโมเดลใหม่ ส่วนยามที่อ่านตัวไฟล์ 0360 (SQL /
+//    constraintBody) ตรึงประวัติของไฟล์นั้นต่อ · ยามรายละเอียดของ 0374 อยู่ที่ historicalApprovalMigration.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -29,6 +33,7 @@ const SQL = stripComments(RAW);
 const SQL_LIMITS = Object.freeze({
   refMax: 200, installationPointMax: 200, installmentLabelMax: 120,
   exemptReasonMin: 10, exemptReasonMax: 500, docDateMin: '2000-01-01', docDateMax: '2100-12-31',
+  installmentNoteMax: 1000,
 });
 
 function latestDefinitionOf(fnName) {
@@ -113,13 +118,59 @@ function insertPairs(body, table) {
   return Object.fromEntries(cols.map((c, i) => [c, vals[i]]));
 }
 
+/* เหมือน insertPairs แต่ฝั่งค่าเป็น SELECT ที่ FROM ซับคิวรี/JOIN — ตัดที่ FROM ชั้นนอกสุดตัวแรก */
+function insertPairsFrom(body, table) {
+  const start = body.indexOf(`INSERT INTO public.${table} (`);
+  assert.ok(start >= 0, `หา INSERT INTO public.${table} ไม่เจอ`);
+  const block = body.slice(start);
+  const open = block.indexOf('(');
+  const close = matchingParen(block, open);
+  const cols = topLevelItems(block.slice(open, close + 1)).map((c) => c.replace(/"/g, ''));
+  const rest = block.slice(close + 1).trimStart();
+  assert.match(rest, /^SELECT\b/i, `${table}: ฝั่งค่าต้องเป็น SELECT`);
+  const select = rest.replace(/^SELECT\s*/i, '');
+  let depth = 0; let quote = null; let end = -1;
+  for (let i = 0; i < select.length; i += 1) {
+    const ch = select[i];
+    if (quote) { if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (depth === 0 && /^\bFROM\b/i.test(select.slice(i, i + 5)) && /\s/.test(select[i - 1] || ' ')) { end = i; break; }
+  }
+  assert.ok(end > 0, `${table}: หา FROM ของ SELECT ไม่เจอ`);
+  const vals = topLevelItems(`(${select.slice(0, end)})`);
+  assert.equal(vals.length, cols.length, `${table}: INSERT มีชื่อคอลัมน์ ${cols.length} ตัว แต่ค่า ${vals.length} ตัว`);
+  return Object.fromEntries(cols.map((c, i) => [c, vals[i]]));
+}
+
 const constraintBody = (name) => {
   const from = SQL.indexOf(`ADD CONSTRAINT ${name}`);
   assert.ok(from >= 0, `ไม่มี ADD CONSTRAINT ${name}`);
   return squeeze(SQL.slice(from, SQL.indexOf(';', from)));
 };
 
+/* นิยามล่าสุดของ CHECK ชื่อนี้ข้ามทุก migration (ไฟล์ใหม่กว่าทับ · ในไฟล์เดียวกันตัวหลังทับ) — CHECK ที่ 0374 แทนแล้ว
+   ต้องตรึงของที่ฐานใช้อยู่จริง ไม่ใช่ของ 0360 */
+function latestConstraintBody(name) {
+  let latest = null;
+  for (const file of sqlFiles()) {
+    const sql = stripComments(read(file));
+    const from = sql.lastIndexOf(`ADD CONSTRAINT ${name}`);
+    if (from >= 0) latest = { file, body: squeeze(sql.slice(from, sql.indexOf(';', from))) };
+  }
+  assert.ok(latest, `ไม่มี ADD CONSTRAINT ${name} ในโฟลเดอร์ migrations`);
+  return latest;
+}
+
 const rpc = (name) => stripComments(latestDefinitionOf(name).body);
+
+/* สองสายของ CHECK รูปทรง — แยกที่ OR ชั้นนอกสุดก่อนสาย historical (สายนั้นมี `) OR (` ข้างในเองแล้วตั้งแต่ 0374) */
+function originBranches(shape) {
+  const at = shape.indexOf(") OR ( origin = 'historical'");
+  assert.ok(at > 0, 'หาจุดแยกสาย pipeline/historical ไม่เจอ');
+  return [shape.slice(0, at), shape.slice(at)];
+}
 
 // ═══ 1) cache Actual / ยอดรออนุมัติของดีล ═══════════════════════════════════════
 
@@ -193,10 +244,12 @@ const SQL_STATE_CHECK_ONLY = new Map([
   ['capture_issued_sales_order_snapshot_atomic', 'ฉบับตรึงตอนอนุมัติ — ตรวจสถานะรายใบ ไม่รวมยอด (0148)'],
   ['finance_approve_sales_order_with_signature_evidence_atomic', "ขั้นบัญชีปิดใบต้อง financeStatus 'pending' — ใบย้อนหลังว่างเสมอ (0251)"],
   ['revoke_sales_order_approval_atomic', 'ย้อนอนุมัติ — ใบย้อนหลังตายที่ CHECK sales_orders_origin_shape (0166)'],
-  ['create_historical_sales_order', 'ตัวเขียนของใบย้อนหลังเอง (0360)'],
-  ['append_historical_installments', 'ตรวจสถานะใบก่อนเพิ่มงวด ไม่รวมยอด (0360)'],
-  ['remove_historical_sales_order_line',
-    'ถอดจุดออกจากใบย้อนหลัง — แตะใบเดียวที่ส่งเข้ามา และ**ปฏิเสธ**ทุกใบที่ไม่ใช่ historical (0366)'],
+  ['create_historical_sales_order', "ตัวเขียนของใบย้อนหลังเอง — 'approved' คือสถานะอนุมัติของลูกค้า ไม่รวมยอดใบ (0360 → 0374)"],
+  ['approve_historical_sales_order',
+    'ขั้นอนุมัติใบย้อนหลัง — ตรวจ/เปลี่ยนสถานะใบเดียวที่ส่งเข้ามา ไม่รวมยอด · ไม่แตะ actualAmount (0374)'],
+  /* 🪤 allLatestDefinitions ไม่เห็น DROP FUNCTION ⇒ นิยามเก่ายังนับเป็น "ล่าสุด" · คงไว้พร้อมเหตุผลตามจริง */
+  ['append_historical_installments', 'ถูก DROP ใน 0374 — นิยามเก่ายังอยู่ในไฟล์ 0360 (ตรวจสถานะใบก่อนเพิ่มงวด ไม่รวมยอด)'],
+  ['remove_historical_sales_order_line', 'ถูก DROP ใน 0374 — นิยามเก่ายังอยู่ในไฟล์ 0366 (แตะใบเดียว ไม่รวมยอด)'],
   ['guard_product_spec_document_revision',
     'ยามของ Rev เอกสาร FM-SA-04 — ตรวจว่า SO ของเอกสารยัง approved ตอนเดินหน้า ไม่รวมยอด · ใบย้อนหลังออกเอกสารไม่ได้อยู่แล้ว (0370)'],
 ]);
@@ -344,19 +397,35 @@ test('🪤 RPC สร้างใบ: ชนดีลภาชนะที่เ
 
 // ═══ 4) รูปทรงใบสั่งขาย ══════════════════════════════════════════════════════
 
+/* นิยามล่าสุด (0374): ใบย้อนหลังเป็นร่าง/รออนุมัติ/ตีกลับได้แล้ว — approvedAt ผูกกับ approved เท่านั้น
+   · ย้อนอนุมัติ/ออก Rev./ขั้นบัญชี/หลักฐานลายเซ็น/ยกเว้นด่านเงิน ยังตายที่ CHECK · คืนเป็นร่างหลังอนุมัติ = trigger ของ 0374 */
 test('ใบสั่งขาย: CHECK สองสาย — pipeline ต้องมีใบเสนอราคา · historical ย้อนอนุมัติ/Rev./ขั้นบัญชีไม่ได้', () => {
-  const shape = constraintBody('sales_orders_origin_shape');
-  const [pipeline, historical] = shape.split(/\)\s*OR\s*\(/);
+  const { file, body: shape } = latestConstraintBody('sales_orders_origin_shape');
+  assert.equal(file, '0374_historical_so_approval_flow.sql');
+  const [pipeline, historical] = originBranches(shape);
   for (const piece of [`origin = 'pipeline'`, '"quotationId" IS NOT NULL', '"historicalIntakeHash" IS NULL', '"paymentGateExemptAt" IS NULL']) {
     assert.ok(pipeline.includes(piece), `สาย pipeline ขาด ${piece}`);
   }
   for (const piece of [
-    `origin = 'historical'`, '"quotationId" IS NULL', '"projectId" IS NULL', "status IN ('approved', 'cancelled')",
-    '"approvedAt" IS NOT NULL', `"approvalMode" = 'standard'`, '"revisionNo" = 0', '"revisedFromId" IS NULL',
-    '"supersededById" IS NULL', '"financeStatus" IS NULL', '"signatureEvidenceId" IS NULL', '"historicalIntakeHash" IS NOT NULL',
+    `origin = 'historical'`, '"quotationId" IS NULL', '"projectId" IS NULL',
+    "status IN ('draft', 'pending_approval', 'rejected', 'approved', 'cancelled')",
+    `(status <> 'approved' OR ("approvedAt" IS NOT NULL AND "approvedBy" IS NOT NULL))`,
+    `(status NOT IN ('draft', 'pending_approval', 'rejected') OR ("approvedAt" IS NULL AND "approvedBy" IS NULL))`,
+    `(status <> 'pending_approval' OR "submittedAt" IS NOT NULL)`,
+    `"approvalMode" IN ('standard', 'admin_override')`, '"revisionNo" = 0', '"revisedFromId" IS NULL',
+    '"supersededById" IS NULL', '"financeStatus" IS NULL', '"signatureEvidenceId" IS NULL',
+    '"proposerSignatureEvidenceId" IS NULL', '"historicalIntakeHash" IS NOT NULL', '"paymentGateExemptAt" IS NULL',
   ]) {
     assert.ok(historical.includes(piece), `สาย historical ขาด ${piece}`);
   }
+  assert.ok(!historical.includes('approval_revoked') && !historical.includes("'revised'"), 'ย้อนอนุมัติ/Rev. ต้องยังตาย');
+});
+
+test('🪤 สาย pipeline ของ CHECK ใหม่เหมือน 0360 ทุกตัวอักษร — ADD CONSTRAINT ตรวจแถวเดิมทั้งหมดใหม่ (ห้ามแน่นขึ้น)', () => {
+  assert.equal(
+    originBranches(latestConstraintBody('sales_orders_origin_shape').body)[0],
+    originBranches(constraintBody('sales_orders_origin_shape'))[0],
+  );
 });
 
 test('origin แก้ไม่ได้หลังเกิด — trigger ทั้งสองตาราง', () => {
@@ -372,24 +441,31 @@ test('🪤 Rev./ใบร่างไม่ก๊อป origin — ใบที�
     assert.ok(insert.length > 50, `${fn}: หา INSERT ไม่เจอ`);
     assert.doesNotMatch(insert, /[(,]\s*"?origin"?[\s,)]/, `${fn} ห้ามก๊อป origin`);
   }
-  assert.ok(constraintBody('sales_orders_origin_shape').includes(`origin = 'pipeline' AND "quotationId" IS NOT NULL`));
+  assert.ok(latestConstraintBody('sales_orders_origin_shape').body.includes(`origin = 'pipeline' AND "quotationId" IS NOT NULL`));
 });
 
 // ═══ 5) ตัวเขียน (RPC) ════════════════════════════════════════════════════════
 
 test('🔐 ฟังก์ชันใหม่ทุกตัว REVOKE จาก PUBLIC/anon/authenticated และให้ service_role เท่านั้น', () => {
+  // ประวัติของ 0360 เอง (ฟังก์ชันเพิ่มงวด/ตัวรวมงวดถูก DROP ใน 0374 — สิทธิ์ของ 0374 ตรึงที่ historicalApprovalMigration.test.mjs)
   for (const fn of ['create_historical_sales_order', 'append_historical_installments', 'historical_so_installments_total']) {
     assert.match(SQL, new RegExp(`REVOKE ALL ON FUNCTION public\\.${fn}\\([^)]*\\)\\s+FROM PUBLIC, anon, authenticated;`), fn);
     assert.match(SQL, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${fn}\\([^)]*\\)\\s+TO service_role;`), fn);
   }
   assert.match(SQL, /REVOKE ALL ON FUNCTION public\.guard_record_origin_immutable\(\) FROM PUBLIC, anon, authenticated;/);
-  for (const fn of ['create_historical_sales_order', 'append_historical_installments']) {
+  // ตัวเขียนที่ยังมีชีวิต (นิยามล่าสุด) ต้อง SECURITY DEFINER + ตรึง search_path
+  for (const fn of ['create_historical_sales_order', 'update_historical_sales_order', 'submit_historical_sales_order', 'approve_historical_sales_order']) {
     assert.match(rpc(fn), /SECURITY DEFINER\s+SET search_path = public/, `${fn}: SECURITY DEFINER ต้องตรึง search_path`);
   }
 });
 
+/* ตัวเขียนตอนคีย์/แก้/ส่ง ไม่แตะรอบขายของโซน — รอบขายเกิดที่ขั้นอนุมัติ (approve_historical_sales_order) ที่เดียว
+   · ตัวเขียนบรรทัดอ่านรอบขายเพื่อ **กัน** การลบ ไม่ได้เขียน ⇒ ไม่อยู่ในรายการนี้ (ยามของมันอยู่ที่เทสต์ 0374) */
 test('RPC ไม่แตะของที่เป็นของขั้นอื่น (โซน · สถานะที่บัญชียืนยัน · ฉบับตรึง · ตัวช่วยที่ทิ้งคีย์เงียบ)', () => {
-  for (const fn of ['create_historical_sales_order', 'append_historical_installments', 'historical_so_installments_total']) {
+  for (const fn of [
+    'create_historical_sales_order', 'update_historical_sales_order', 'submit_historical_sales_order',
+    'historical_so_check_contract', 'historical_so_check_lines', 'historical_so_check_installments',
+  ]) {
     const body = rpc(fn);
     for (const banned of ['master_row_', 'service_zone_terms', "'confirmed'", 'capture_issued_sales_order_snapshot']) {
       assert.ok(!body.includes(banned), `${fn} ห้ามมี ${banned}`);
@@ -397,36 +473,46 @@ test('RPC ไม่แตะของที่เป็นของขั้น�
   }
 });
 
-test('RPC สร้างใบ: หัวใบเกิดเป็นอนุมัติแล้วสายย้อนหลัง · ไม่เข้าขั้นบัญชี · ไม่มีใบเสนอราคา/โครงการ', () => {
+test('RPC สร้างใบ: หัวใบเกิดเป็นร่างสายย้อนหลัง (0374) · ไม่เข้าขั้นบัญชี · ไม่มีใบเสนอราคา/โครงการ · ผูกเอกสารแทนสัญญา', () => {
   const order = insertPairs(rpc('create_historical_sales_order'), 'sales_orders');
   assert.equal(order.origin, "'historical'");
-  assert.equal(order.status, "'approved'");
+  assert.equal(order.status, "'draft'");
   assert.equal(order.quotationId, 'NULL');
   assert.equal(order.projectId, 'NULL');
   assert.equal(order.financeStatus, 'NULL');
   assert.equal(order.approvalMode, "'standard'");
-  assert.equal(order.approvedAt, 'now()');
+  assert.equal(order.approvedAt, 'NULL', 'ร่องรอยอนุมัติเกิดที่ขั้น AE Sup อนุมัติเท่านั้น');
+  assert.equal(order.approvedBy, 'NULL');
+  assert.equal(order.serviceContractId, 'v_contract.id', 'ใบเกิดพร้อมเอกสารแทนสัญญา (ร่าง)');
+  assert.ok(!Object.keys(order).some((col) => col.startsWith('paymentGateExempt')), 'สวิตช์ยกเว้นด่านเงินเลิกใช้');
   assert.equal(order.historicalIntakeHash, 'p_intake_hash');
   assert.equal(order.customerName, 'v_customer_name', 'ชื่อสำเนาอ่านจากทะเบียน ไม่รับจาก payload');
   assert.ok(!('ownerId' in order), 'ownerId มาจาก trigger snapshot_sales_order_owner (0294) ไม่ใช่ payload');
   assert.ok(!('signatureEvidenceId' in order));
 });
 
-test('RPC: บรรทัดเก็บจุดติดตั้ง · งวดเป็น pending และหยุดยอดทันทีทั้งตอนคีย์และตอนเพิ่ม', () => {
+/* 0374: บรรทัด = โซนจากทะเบียน (แทนมติข้อ 17) · งวดยังไม่หยุดยอดจนกว่า AE Sup อนุมัติ (บัญชียังไม่เห็น)
+   ตัวเขียนบรรทัด+งวดตัวเดียวทั้งตอนสร้างและตอนแก้ (historical_so_write_children) */
+test('RPC: บรรทัดชี้โซน · งวดเป็น pending ยังไม่หยุดยอด · มีชนิดงวด — ตัวเขียนเดียวทั้งสร้างและแก้', () => {
   const create = rpc('create_historical_sales_order');
-  const lines = insertPairs(create, 'sales_order_lines');
-  assert.equal(lines.installationPoint, "btrim(e.l->>'installationPoint')");
-  assert.equal(lines.quotationLineId, 'NULL');
-  assert.match(create, /v_item \? 'zoneId'/, 'zoneId บนบรรทัด = ฝ่ายขายผูกโซนเอง (ผิดมติข้อ 17)');
-  for (const [fn, body] of [['create', create], ['append', rpc('append_historical_installments')]]) {
-    const inst = insertPairs(body, 'sales_order_installments');
-    assert.equal(inst.status, "'pending'", fn);
-    assert.equal(inst.frozenAt, 'now()', fn);
-    assert.equal(inst.evidence, "'[]'::jsonb", fn);
-    assert.ok(!('confirmedAt' in inst) && !('reportedAt' in inst) && !('taxInvoiceNo' in inst), fn);
-    assert.match(body, /public\.historical_so_installments_total\(/, `${fn}: ต้องผ่านตัวตรวจงวดกลาง`);
-    assert.match(body, /RAISE EXCEPTION 'historical_so_installment_over_total'/, fn);
+  const children = rpc('historical_so_write_children');
+  for (const [fn, body] of [['create', create], ['update', rpc('update_historical_sales_order')]]) {
+    assert.match(body, /PERFORM public\.historical_so_write_children\(/, `${fn}: บรรทัด/งวดต้องผ่านตัวเขียนกลาง`);
+    assert.ok(!body.includes('INSERT INTO public.sales_order_lines'), `${fn}: ห้ามเขียนบรรทัดเอง`);
+    assert.ok(!body.includes('INSERT INTO public.sales_order_installments'), `${fn}: ห้ามเขียนงวดเอง`);
+    assert.match(body, /public\.historical_so_check_installments\(/, `${fn}: ต้องผ่านตัวตรวจงวดกลาง`);
+    assert.match(body, /public\.historical_so_check_lines\(/, `${fn}: ต้องผ่านตัวตรวจบรรทัดกลาง`);
   }
+  const lines = insertPairsFrom(children, 'sales_order_lines');
+  assert.equal(lines.serviceZoneId, 'z.id');
+  assert.equal(lines.quotationLineId, 'NULL');
+  assert.equal(lines.fgCode, 'p."fgCode"', 'รหัส FG อ่านจากทะเบียนสินค้า ไม่รับจาก payload');
+  assert.match(lines.installationPoint, /left\(/, 'ภาพนิ่งชื่อไซต์·โซนต้องตัดให้ไม่เกิน CHECK');
+  const inst = insertPairsFrom(children, 'sales_order_installments');
+  assert.equal(inst.status, "'pending'");
+  assert.equal(inst.frozenAt, 'NULL', 'หยุดยอดตอน AE Sup อนุมัติ ไม่ใช่ตอนคีย์');
+  assert.equal(inst.kind, 'x.kind');
+  assert.ok(!('confirmedAt' in inst) && !('reportedAt' in inst) && !('taxInvoiceNo' in inst));
 });
 
 test('RPC สร้างใบ: ส่งซ้ำได้ใบเดิมเฉพาะคำขอเดิมทุกตัวอักษร · ล็อกรหัสการคีย์ก่อนล็อกคู่ลูกค้า×AE', () => {
@@ -436,17 +522,11 @@ test('RPC สร้างใบ: ส่งซ้ำได้ใบเดิม�
   assert.ok(keyLock > 0 && pairLock > keyLock);
   const replay = body.slice(body.indexOf('IF FOUND THEN'), pairLock);
   assert.match(replay, /v_existing\."historicalIntakeHash" IS DISTINCT FROM p_intake_hash/);
-  assert.match(replay, /v_existing\.status <> 'approved'/, 'ใบที่ยกเลิกแล้วห้ามตอบว่าสำเร็จ');
+  // 0374: ใบเกิดเป็นร่าง ⇒ ส่งซ้ำได้ใบเดิมทุกสถานะที่ยังไม่ยกเลิก (ฟอร์มกดซ้ำหลังเน็ตหลุด) · ใบที่ยกเลิกแล้วห้ามตอบว่าสำเร็จ
+  assert.match(replay, /v_existing\.status = 'cancelled'/, 'ใบที่ยกเลิกแล้วห้ามตอบว่าสำเร็จ');
   assert.match(replay, /RAISE EXCEPTION 'historical_so_intake_key_conflict'/);
   assert.match(body, /v_order_id := 'SOR-H' \|\| substr\(md5\(p_intake_key\), 1, 16\);/,
     'รูปแบบ id ต้องตรงกับ historicalOrderIdOf ฝั่ง JS');
-});
-
-test('RPC เพิ่มงวด: ล็อกหัวใบก่อนรวมยอด · เฉพาะใบย้อนหลังที่ยังอนุมัติอยู่', () => {
-  const body = rpc('append_historical_installments');
-  const lock = body.indexOf('FOR UPDATE');
-  assert.ok(lock > 0 && lock < body.indexOf('sum(amount)'), 'ผลรวมต้องอ่านหลังล็อกหัวใบ');
-  assert.match(body, /v_order\.origin <> 'historical' OR v_order\.status <> 'approved'/);
 });
 
 test('⭐ บล็อกออกเลขใบคัดจาก RPC สร้างใบร่างทุกตัวอักษร', () => {
@@ -463,11 +543,12 @@ test('⭐ บล็อกออกเลขใบคัดจาก RPC สร�
 
 // ═══ 6) ตัวเลขต้องตรงกับ CHECK ของตาราง ════════════════════════════════════════
 
-test('ตัวตรวจงวดเท่ากับ CHECK ของตาราง (0245 ชื่องวด/ยอด/วันที่ · 0320 ช่วงครอบ)', () => {
+/* 0374: ตัวตรวจงวดตัวใหม่ (historical_so_check_installments) แทนตัวรวมงวดของ 0360 — ต้องไม่หลวมกว่า CHECK ของตาราง */
+test('ตัวตรวจงวดเท่ากับ CHECK ของตาราง (0245 ชื่องวด/ยอด/วันที่/หมายเหตุ · 0320 ช่วงครอบ)', () => {
   const t0245 = squeeze(read('0245_sales_order_installments.sql'));
   const t0320 = squeeze(read('0320_installment_service_coverage.sql'));
-  const v = squeeze(latestDefinitionOf('historical_so_installments_total').body);
-  const { installmentLabelMax: labelMax, docDateMin: dMin, docDateMax: dMax } = SQL_LIMITS;
+  const v = squeeze(latestDefinitionOf('historical_so_check_installments').body);
+  const { installmentLabelMax: labelMax, docDateMin: dMin, docDateMax: dMax, installmentNoteMax: noteMax } = SQL_LIMITS;
   assert.ok(t0245.includes(`CHECK (length(btrim(label)) BETWEEN 1 AND ${labelMax})`), '0245 ชื่องวด');
   assert.ok(v.includes(`length(btrim(COALESCE(v_item->>'label', ''))) NOT BETWEEN 1 AND ${labelMax}`));
   assert.ok(t0245.includes('CHECK (amount >= 0)'));
@@ -478,7 +559,8 @@ test('ตัวตรวจงวดเท่ากับ CHECK ของตา�
     assert.ok(v.includes(`${col} NOT BETWEEN DATE '${dMin}' AND DATE '${dMax}'`), col);
   }
   assert.ok(v.includes('v_from > v_to'));
-  assert.ok(v.includes(`COALESCE(v_item->>'status', 'pending') <> 'pending'`));
+  assert.ok(t0245.includes(`length(note) <= ${noteMax}`), '0245 หมายเหตุงวด');
+  assert.ok(v.split(`length(btrim(COALESCE(v_item->>'note', ''))) > ${noteMax}`).length - 1 === 2, 'หมายเหตุ ≤ 1000 ทั้งงวดยกมาและงวดปกติ');
 });
 
 test('ความยาว/ช่วงของใบย้อนหลังเท่ากันทั้ง CHECK และ RPC', () => {
@@ -490,10 +572,12 @@ test('ความยาว/ช่วงของใบย้อนหลัง�
   }
   assert.ok(constraintBody('sales_order_lines_installation_point_len')
     .includes(`length(btrim("installationPoint")) BETWEEN 1 AND ${installationPointMax}`));
-  const create = squeeze(rpc('create_historical_sales_order'));
-  assert.ok(create.includes(`length(btrim(COALESCE(v_item->>'installationPoint', ''))) NOT BETWEEN 1 AND ${installationPointMax}`));
+  // 0374: จุดติดตั้งเป็นภาพนิ่งชื่อไซต์·โซนที่ตัวเขียนประกอบเอง — ตัดไม่ให้เกิน CHECK
+  assert.ok(squeeze(rpc('historical_so_write_children')).includes(`, ${installationPointMax}))`), 'ภาพนิ่งต้องตัดที่ความยาว CHECK');
+  // CHECK ยกเว้นด่านเงินอยู่ต่อ (คอลัมน์ยังอยู่ ใบย้อนหลังต้องว่าง) — ไม่มี RPC ไหนเขียนแล้ว
   assert.ok(constraintBody('sales_orders_payment_gate_exempt_sane')
     .includes(`length(btrim("paymentGateExemptReason")) BETWEEN ${exemptReasonMin} AND ${exemptReasonMax}`));
-  assert.ok(create.includes(`length(v_exempt_reason) NOT BETWEEN ${exemptReasonMin} AND ${exemptReasonMax}`));
-  assert.ok(create.includes(`v_order_date < DATE '${SQL_LIMITS.docDateMin}'`));
+  assert.ok(!squeeze(rpc('create_historical_sales_order')).includes('paymentGateExempt'), 'สวิตช์ยกเว้นด่านเงินเลิกใช้ (0374)');
+  // วันที่ใบ = วันเริ่มสัญญา — ช่วงปีเดียวกับ CHECK วันที่ของงวด
+  assert.ok(squeeze(rpc('historical_so_check_contract')).includes(`v_start NOT BETWEEN DATE '${SQL_LIMITS.docDateMin}' AND DATE '${SQL_LIMITS.docDateMax}'`));
 });

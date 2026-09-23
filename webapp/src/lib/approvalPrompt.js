@@ -12,6 +12,9 @@
 //
 // ใช้คู่กับ `confirmAction()` จาก components/ui/ConfirmDialog:
 //   if (!await confirmAction(approvalPrompt({ ... }))) return;
+//
+// ⚠️ ไฟล์นี้ถูก import ฝั่งจอ — import ได้เฉพาะไฟล์ที่ไม่มี import ต่อ (historicalOrders ตั้งใจไม่มี import)
+import { HISTORICAL_STATUS_NOTE } from '@/lib/sales/historicalOrders';
 
 /** ข้อความเตือนของการกระทำที่ถอนคืนไม่ได้ — ขึ้นเป็นบรรทัดแรกของ detail เสมอ */
 export const IRREVERSIBLE_NOTE = 'ย้อนกลับเองไม่ได้';
@@ -112,16 +115,79 @@ export function costingPriceApprovalPrompt({ subject, tierCount } = {}) {
 }
 
 /**
+ * AE Sup อนุมัติใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — **โมดัลเดียวทั้งผู้ตรวจปกติและ Admin Override**
+ *
+ * ⭐ ต่างจากใบ pipeline ทั้งชุด: ใบย้อนหลังขายไปก่อนเข้าระบบ ⇒ อนุมัติแล้ว **ไม่นับ Actual** · ไม่มีลายเซ็น ·
+ *   ไม่สร้างงวดจากใบเสนอราคา · สิ่งที่เกิดจริงคือ เอกสารแทนสัญญาได้เลข CT · งวดหยุดยอดเข้าคิวบัญชี ·
+ *   โซนเปิดให้ TS ตั้งรอบ ⇒ ป้าย "อนุมัติและนับ Actual" ของใบปกติ **ห้ามโผล่** กับใบนี้
+ * ⭐ Override ใช้ **รายการตรวจชุดเดิม** แค่เติมบรรทัดของ override — ไม่ใช่โมดัลมือของใบ pipeline
+ *   (ตัวนั้นไม่บอกผลลัพธ์ และไม่ส่งเวอร์ชันของใบ)
+ * ⚠️ `effects` ของผู้เรียกยังบังคับอย่างน้อย 1 ข้อ — บรรทัด "ไม่นับ Actual" ที่เติมท้ายเสมอไม่นับแทนผลลัพธ์จริง
+ *   (ไม่งั้นโมดัลที่พูดแต่ป้ายสถานะก็ผ่านด่านของ approvalPrompt ได้)
+ *
+ * @param subject    เช่น "ใบสั่งขาย SO-26090051-0"
+ * @param checklist  สิ่งที่ AE Sup รับรองว่าตรวจแล้ว (ดู historicalApprovalFacts)
+ * @param effects    สิ่งที่เกิดทันทีหลังกด (ไม่รวม HISTORICAL_STATUS_NOTE — เติมให้เอง)
+ * @param override   null = ผู้ตรวจปกติ · `{ note }` = admin อนุมัติใบที่ตัวเองคีย์/ส่ง
+ */
+export function historicalApprovalPrompt({ subject, checklist = [], effects, override = null } = {}) {
+  const given = (Array.isArray(effects) ? effects : []).map((line) => String(line || '').trim()).filter(Boolean);
+  if (!given.length) throw new Error('approvalPrompt: ต้องบอกอย่างน้อย 1 อย่างที่จะเกิดขึ้นหลังกดอนุมัติ');
+  const overrideNote = override ? String(override.note || '').trim() : '';
+  return approvalPrompt({
+    title: 'อนุมัติ ใบสั่งขาย',
+    subject,
+    checklist,
+    effects: [...given, ...(overrideNote ? [overrideNote] : []), HISTORICAL_STATUS_NOTE],
+    confirmLabel: override ? 'ยืนยัน Override ใบย้อนหลัง (ไม่นับ Actual)' : 'อนุมัติใบย้อนหลัง',
+  });
+}
+
+/**
  * บัญชีคอนเฟิร์มว่าเงินงวดนี้เข้าจริง — ไม่ใช่การอนุมัติเอกสาร จึงใช้คำคนละชุด
  *
  * ⚠️ ถอนคืนไม่ได้จริง ๆ: ไม่มี action "un-confirm" ในระบบ และงวดที่คอนเฟิร์มแล้ว
  * ทำให้ใบย้อนการอนุมัติ/ออก Rev. ใหม่ไม่ได้ (ดู `paymentLockReason` ใน
  * lib/sales/salesOrderPayments.js) ⇒ โมดัลต้องพูดเรื่องนี้ตรง ๆ ก่อนกด
  *
- * @param label   ชื่องวด เช่น "งวดที่ 2" หรือ "ชำระเต็มจำนวน"
- * @param amount  ยอดที่จะถูกบันทึกว่าเก็บได้แล้ว (ข้อความจัดรูปมาแล้ว)
+ * ⭐ **ใบสั่งขายย้อนหลัง (`historical`) พูดคนละชุด** (มติ 22/09 · mock FnConfirm):
+ *   ใบนี้ไม่มี Rev. และไม่นับ Actual ตั้งแต่แรก ⇒ สองบรรทัดนั้นของใบปกติเป็นเรื่องไม่จริง
+ *   สิ่งที่เกิดจริงคือ "จ่ายถึง" ขยับ (ด่านเงินของนัดบริการ) และ AE Sup ยกเลิกใบไม่ได้อีก
+ *   จนกว่าบัญชีถอนคำรับรอง (`paymentLockReason` ล็อกการยกเลิกด้วย) — ซึ่งปิดทางแก้ข้อมูลผิด
+ *   "ยกเลิกแล้วคีย์ใหม่" ⇒ ต้องบอกก่อนกด ไม่ใช่รู้ทีหลัง
+ *   ⚠️ ใบ pipeline ได้ผลลัพธ์เดิมทุกตัวอักษร (ค่าตั้งต้นของพารามิเตอร์ใหม่ทั้งหมด = ปิด)
+ *
+ * @param label               ชื่องวด เช่น "งวดที่ 2" หรือ "ชำระเต็มจำนวน"
+ * @param amount              ยอดที่จะถูกบันทึกว่าเก็บได้แล้ว (ข้อความจัดรูปมาแล้ว)
+ * @param historical          งวดของใบสั่งขายย้อนหลัง
+ * @param opening             งวดยกมา (เงินที่เก็บก่อนเข้าระบบ)
+ * @param paidThroughLabel    "จ่ายถึง" หลังรับรอง (ข้อความจัดรูปมาแล้ว) — ปกติ = ปลายช่วงครอบของงวดนี้
+ * @param nextInstallmentLabel งวดที่ต้องเก็บถัดไป (ข้อความจัดรูปมาแล้ว) · ไม่มี = ไม่พูด
  */
-export function paymentConfirmPrompt({ label, amount }) {
+export function paymentConfirmPrompt({
+  label, amount, historical = false, opening = false, paidThroughLabel = null, nextInstallmentLabel = null,
+} = {}) {
+  if (historical) {
+    const through = String(paidThroughLabel || '').trim();
+    const next = String(nextInstallmentLabel || '').trim();
+    return approvalPrompt({
+      title: 'บัญชีคอนเฟิร์มการชำระ',
+      verb: 'การรับชำระ',
+      subject: [label, amount].filter(Boolean).join(' · '),
+      irreversible: true,
+      effects: [
+        'บันทึกว่าเงินงวดนี้เข้าบัญชีบริษัทแล้วจริง',
+        ...(opening ? ['งวดยกมา — เงินที่เก็บก่อนเข้าระบบ รับรองครั้งเดียว'] : []),
+        through
+          ? `เปิดด่านเงินของนัดบริการถึง ${through}`
+          : 'เปิดด่านเงินของนัดบริการตามช่วงครอบของงวดนี้',
+        'AE Sup ยกเลิกใบนี้ไม่ได้อีกจนกว่าบัญชีถอนคำรับรอง — ถ้ายอดหรือช่วงครอบผิด ให้ตีกลับแทนการรับรอง',
+        ...(next ? [`งวดถัดไป ${next}`] : []),
+        HISTORICAL_STATUS_NOTE,
+      ],
+      confirmLabel: 'ยืนยันว่าเงินเข้าแล้ว',
+    });
+  }
   return approvalPrompt({
     title: 'บัญชีคอนเฟิร์มการชำระ',
     verb: 'การรับชำระ',

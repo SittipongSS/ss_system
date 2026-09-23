@@ -9,6 +9,7 @@
 //   ติดหมด ซึ่งดังพอให้รู้ตัวทันที (ดีกว่าปล่อยผ่านเงียบ ๆ แล้วส่งคนไปที่ที่ยังไม่จ่าย)
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { loadTerms, loadZonesForSites } from './termsRepo';
 
 /** โหลดบริบทด่านของ "หลายไซต์" ทีเดียว — จอตารางมีนัดหลายไซต์ในหน้าเดียว
@@ -46,13 +47,21 @@ export async function loadVisitGateContext(supabase, siteIds = []) {
        พร้อมเหตุผิดฝ่าย (ส่ง SA ไปไล่ใบสั่งขายที่ไม่มีอะไรผิด) · ตอนนี้โยนให้ catch ของผู้เรียกตอบ 500 ที่อ่านออก
        (ผู้เรียกทั้ง 6 จุดอยู่ใน try/catch ของ route แล้ว — visits · visits/[id] · plans×2 ผ่าน planGen ·
        renewals ผ่าน renewalRetrieveVisit · sales-orders/[id]/service)
-       ⭐ `origin` + `paymentGateExemptAt` (mig 0360) — ด่านข้อ② ยกเว้นใบย้อนหลังที่ AE Sup/แอดมินกดยกเว้น
-          (`historicalGateExempt` ใน visitGate) · 🔴 คอลัมน์ของ 0360: ด่านนี้ตอบ 500 จนกว่าจะรัน migration */
+       ⭐ `totalAmount` — ด่านข้อ② ปล่อยใบยอด 0 ผ่านเอง (`paymentNotRequired` · มติ 22/09 · mig 0374)
+          🔄 แทน `paymentGateExemptAt` ของ 0360 (สวิตช์ยกเว้นด่านเงินรายใบของใบย้อนหลัง — ถอดแล้ว)
+          · `origin` คงไว้ให้จอบอกว่าใบไหนเป็นใบย้อนหลัง */
     const { data: orders, error: orderError } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
-      .select('id, status, "supersededById", "serviceContractId", origin, "paymentGateExemptAt"')
+      .select('id, status, "supersededById", "serviceContractId", origin, "totalAmount"')
       .in('id', chunk).order('id', { ascending: true })));
     if (orderError) throw orderError;
-    for (const o of orders || []) ordersById[o.id] = o;
+    /* 🔒 **ยอดจริงของใบไม่ออกไปกับบริบทนี้** — บริบทด่านถูกส่งถึงจอฝ่ายบริการทั้งก้อน
+       (`/api/service/visits` · คิวจัดคิว) และฝ่ายบริการไม่เห็นราคาของใบสั่งขายโดยตั้งใจ (หัวไฟล์
+       api/service/intake · งวดข้างล่างก็ไม่ดึงยอด) ⇒ เหลือแค่คำตอบที่ด่านต้องใช้: ใบยอด 0 = `0` ·
+       ใบที่มียอด = `null` (ไม่รู้ยอด ≠ ยอด 0 — `paymentNotRequired` ตอบ false ⇒ เดินตามงวด ตรงกับของจริง)
+       ⚠️ ตัดสินด้วยตัวเดียวกับที่ด่านใช้ ⇒ server กับจอเห็นคำตอบเดียวกันเสมอ */
+    for (const o of orders || []) {
+      ordersById[o.id] = { ...o, totalAmount: paymentNotRequired(o.totalAmount) ? 0 : null };
+    }
 
     const { data: rows, error: installmentError } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_order_installments')
       .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo"')

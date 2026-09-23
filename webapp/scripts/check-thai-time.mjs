@@ -21,7 +21,7 @@
  *
  * รัน: npm run check:thaitime
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { relative } from 'node:path';
 
@@ -38,9 +38,13 @@ const ALLOWED = new Map([
   // แล้วถอดออกจากลิสต์) · `genAt` ใช้ businessDayKey/businessTimeKey แล้ว
 ]);
 
+/* 🪤 `git ls-files` คือ **ทะเบียน** ไม่ใช่สิ่งที่อยู่บนดิสก์ — ไฟล์ที่เพิ่งลบแต่ยังไม่ stage
+   ยังอยู่ในลิสต์ ⇒ `readFileSync` โยน ENOENT แล้วด่านตายทั้งตัวเพราะการลบไฟล์ ไม่ใช่เพราะเจอจุดผิด
+   (เจอตอนถอดเส้น "ไม่พบจุดนี้หน้างาน" ทิ้ง) · ไฟล์ที่ยังอยู่ถูกตรวจครบเหมือนเดิม */
 const FILES = execSync('git ls-files "src/**/*.js" "src/**/*.jsx"', { cwd: ROOT, encoding: 'utf8' })
   .split('\n')
-  .filter((f) => f && !f.includes('.test.'));
+  .filter((f) => f && !f.includes('.test.'))
+  .filter((f) => existsSync(`${ROOT}/${f}`));
 
 /* จับสี่รูปที่เป็นบั๊กจริง:
  *   1. `new Date().toISOString().slice(0, 10|7)` — "วันนี้/เดือนนี้" ตามนาฬิกา UTC

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -103,7 +103,7 @@ import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
-import { approvalPrompt } from "@/lib/approvalPrompt";
+import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
 import {
@@ -112,9 +112,27 @@ import {
   salesOrderWorkflowIndex,
 } from "@/lib/sales/salesOrderFinanceApproval";
 import {
-  HISTORICAL_STATUS_NOTE, canKeyHistoricalSalesOrder, historicalRefsOf, isHistoricalOrder,
+  HISTORICAL_EDITABLE_STATUSES, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
+  historicalCancelBlock, historicalEditPath, historicalRefsOf, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
-import SiteDecisionCard from "@/components/salesPlanning/SiteDecisionCard";
+/* ⭐ ถ้อยคำ/ตรรกะของใบย้อนหลังอยู่ที่ `historicalOrderCopy` ทั้งชุด — หน้านี้ยาว ~1,600 บรรทัด
+   และใบย้อนหลังพูดคนละเรื่องกับใบปกติแทบทุกจุด ⇒ ที่นี่แตกกิ่ง JSX อย่างเดียว ไม่เขียนคำเอง */
+import {
+  HISTORICAL_APPROVE_TOAST, historicalApprovalFacts, historicalCancelEffect, historicalCoverageSegments,
+  historicalOverrideNote, historicalRejectDetail, historicalServiceProgress, historicalStatusCopy,
+  historicalWithdrawDetail, historicalWorkflowSteps,
+} from "@/lib/sales/historicalOrderCopy";
+import HistoricalZonesCard from "@/components/salesPlanning/HistoricalZonesCard";
+import CoverageTimeline from "@/components/salesPlanning/historicalWizard/CoverageTimeline";
+
+/* โทนของ `historicalStatusCopy` → สีของป้ายสถานะบนหัวใบ/การ์ดจัดการ (ชิ้นพวกนั้นรับ `color` ไม่ใช่ tone)
+   ⚠️ แผนที่ของ **การแสดงผล** เท่านั้น — ตัวตัดสินว่าสถานะไหนโทนอะไรอยู่ที่ historicalOrderCopy ที่เดียว */
+const HISTORICAL_TONE_COLOR = Object.freeze({
+  muted: "var(--text-3)",
+  warning: "var(--amber)",
+  danger: "var(--red)",
+  success: "var(--green)",
+});
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
@@ -163,8 +181,6 @@ export default function SalesOrderDetailPage() {
   const canOpenRequest = useCan("costing:edit");
   const role = useRole();
   const reviewer = ["admin", "ae_supervisor"].includes(role);
-  /* ⚠️ ด่านเดียวกับที่ route ใช้ — ตัดสินจุดที่ TS ไม่พบได้เฉพาะ AE Sup/แอดมิน (มติข้อ 15/23) */
-  const canKeyHistorical = canKeyHistoricalSalesOrder({ role });
   const [order, setOrder] = useState(null);
   const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน
   /* แก้ได้เหลือสองช่อง (มติผู้ใช้ 2026-08-18) — วันที่ SO ล็อกเป็นวันที่สร้าง
@@ -186,6 +202,11 @@ export default function SalesOrderDetailPage() {
   const [workflowForm, setWorkflowForm] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  /* เหตุผล Admin Override ของใบย้อนหลัง — ไม่บังคับ (พาริตี้กับสาย pipeline · มติ 2026-07-25)
+     ⚠️ เก็บคู่กับ ref เพราะ `confirmState.action` ถูกสร้างตอน *เปิด* โมดัล ⇒ closure ของมันเห็นค่าตอนนั้น
+     ถ้าอ่านจาก state ตรง ๆ จะส่งค่าว่างเสมอ (คนพิมพ์แล้วเหตุผลหายเงียบ) */
+  const [overrideReason, setOverrideReason] = useState("");
+  const overrideReasonRef = useRef("");
   const [filingState, setFilingState] = useState({
     loading: true,
     filing: null,
@@ -336,35 +357,14 @@ export default function SalesOrderDetailPage() {
     setBusy("");
     setToast({
       kind: action === "withdraw" ? "info" : "success",
-      msg: ACTION_MESSAGE[action] || "อัปเดตเรียบร้อยแล้ว",
+      /* ⚠️ ข้อความของใบปกติพูดว่า "อัปเดต Actual แล้ว" ซึ่งไม่จริงกับใบย้อนหลังสักตัวอักษร —
+         ของใบนี้บอกสิ่งที่เกิดจริง (เอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS) */
+      msg: (action === "approve" && isHistoricalOrder(order)
+        ? HISTORICAL_APPROVE_TOAST
+        : ACTION_MESSAGE[action]) || "อัปเดตเรียบร้อยแล้ว",
     });
     if (action === "save") setSaveState("saved");
     return data || true;
-  }
-
-  /* ⭐ ตัดสินจุดที่ TS ไม่พบหน้างาน (มติข้อ 23 · mig 0362) — ไม่ผ่าน `requestAction`
-     เพราะตัวนั้นเก็บข้อความผิดพลาดไว้ใน **แถบของหน้า** ซึ่งอยู่*ใต้*โมดัลที่เปิดค้าง
-     ⇒ กดแล้วจอเงียบสนิท (บทเรียนเดิมของ ReasonDialog 2026-08-19) · ที่นี่โยนกลับให้
-     โมดัลโชว์เอง แล้วโหลดใบใหม่เฉพาะตอนสำเร็จ
-     ⚠️ ไม่ขอ `retry: true` — ส่งซ้ำได้ 409 "จุดนี้ถูกตัดสินไปแล้ว" ทั้งที่ครั้งแรกสำเร็จ */
-  async function decideSitePoint({ action, ...payload }) {
-    const res = await apiFetch(`/api/sales-planning/sales-orders/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action, ...payload }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "บันทึกไม่สำเร็จ");
-    await load();
-    setToast({
-      kind: "success",
-      msg: action === "rename_installation_point"
-        ? "แก้ชื่อจุดแล้ว — กลับเข้าคิวงานเข้าใหม่ของ TS · ยอดใบและงวดไม่เปลี่ยน"
-        : (action === "remove_installation_point"
-          ? "ถอดจุดออกจากใบแล้ว — ยอดหัวใบคิดใหม่ตามบรรทัดที่เหลือ"
-          : "ปิดจุดนี้แล้ว — ไม่ต้องผูกโซน · ยอดใบและงวดไม่เปลี่ยน"),
-    });
-    return data;
   }
 
   async function save() {
@@ -406,6 +406,8 @@ export default function SalesOrderDetailPage() {
   /* ⭐ จังหวะที่ยอดกลายเป็น "รออนุมัติ" คือปุ่มนี้ (มติผู้ใช้ 2026-09-11 · mig 0353) — โมดัล
      ต้องบอกว่าเงินไปอยู่ไหน ไม่ใช่บอกแค่ว่าเอกสารถูกล็อก (กติกา approval-confirm-modals #1223) */
   function openSubmitConfirm() {
+    // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง (ดูคอมเมนต์ที่ `showsError` ข้างล่าง)
+    setError("");
     setConfirmState({
       title: "ยื่นอนุมัติ ใบสั่งขาย",
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
@@ -414,6 +416,10 @@ export default function SalesOrderDetailPage() {
         `ยอด ${fmtMoney(order.actualAmount)} (ก่อน VAT) จะขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนภาพรวม ดีล และโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ`,
       ].join("\n"),
       confirmLabel: "ยื่นอนุมัติ",
+      /* 🐞 เหตุที่ API ปฏิเสธการยื่นต้องอ่านได้ **ในโมดัลที่ยังเปิดอยู่** — แถบ error ของหน้าอยู่บนสุด
+         ของคอลัมน์ ⇒ โมดัลบังไว้หมด · ด่านของ `submit` ตอบหลายข้อจริง ๆ (ใบขยับไปแล้ว · ยังไม่มี
+         หลักฐานยืนยันคำสั่งซื้อ · บรรทัดไม่ครบ) ⇒ เงียบแล้วคนกดจะกดซ้ำโดยไม่รู้ว่าติดอะไร */
+      showsError: true,
       action: () => requestAction("submit"),
     });
   }
@@ -515,6 +521,8 @@ export default function SalesOrderDetailPage() {
          ⭐ ข้อแรกบอกทางของเงิน (มติผู้ใช้ 2026-09-11 · mig 0353): ยอดย้ายออกจาก "รออนุมัติ"
          เข้า Actual ของ **เดือนที่กด** — Actual ลงเดือนของ approvedAt เวลาไทย
          (`currentMonth()` เวลาไทย · ห้าม businessMonthKey ที่คืน YYMM ของเลขเอกสาร) */
+      // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
+      setError("");
       setConfirmState({
         ...approvalPrompt({
           title: "อนุมัติ ใบสั่งขาย",
@@ -527,10 +535,16 @@ export default function SalesOrderDetailPage() {
           ],
           confirmLabel: "อนุมัติและนับ Actual",
         }),
+        /* 🐞 เหตุที่ RPC ตีกลับการอนุมัติต้องอ่านได้ในโมดัล — แถบของหน้าอยู่ใต้โมดัล · ด่านของ
+           `approve` อ่านแถวสดทุกครั้ง (`expectedUpdatedAt` · ใบขยับไปแล้ว · ลายเซ็นไม่พร้อม)
+           ⇒ ข้อความ "ใบนี้อนุมัติแล้ว" ต้องขึ้นตรงที่ผู้อนุมัติเพิ่งกด ไม่ใช่หลังปิดโมดัล */
+        showsError: true,
         action: () => requestAction("approve"),
       });
       return;
     }
+    // เหตุที่ API ตีกลับจะไปโผล่ใน `submitError` ของโมดัล (แถบของหน้าอยู่ใต้โมดัล) — ล้างของรอบก่อนตอนเปิด
+    setError("");
     setRejectForm({ reason: "" });
   }
 
@@ -591,12 +605,22 @@ export default function SalesOrderDetailPage() {
       return null;
     }
   };
+  /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** (บทเรียนเดิมของแผงงวดชำระ 2026-08-27)
+     ⇒ โมดัลนี้โชว์ error ของคำขอเอง (ข้างล่าง) · เปิด/ปิดโมดัลล้างของรอบก่อนทิ้ง ไม่งั้นข้อความเก่า
+     ทักคนที่เพิ่งกดเปิด ทั้งที่ยังไม่ได้กดยืนยันอะไรเลย */
   const openCancel = () => {
+    setError("");
     setCancelForm({ code: "", note: "", reverseTo: "", lostReason: "" });
     setCancelSpecDocCount(null);
     loadSpecDocCount().then(setCancelSpecDocCount);
   };
+  const closeCancel = () => {
+    setCancelForm(null);
+    setError("");
+  };
   const cancelSpecDocEffect = salesOrderSpecDocEffect("cancel", cancelSpecDocCount);
+  /* ผลต่อเอกสารแทนสัญญาเมื่อยกเลิก/ลบใบย้อนหลัง — ใบปกติคืน null (การ์ดหายเอง) */
+  const cancelContractEffect = historicalCancelEffect(order, order?.serviceContract);
   // ใบสั่งขายย้อนหลัง (mig 0360) ยกเลิกได้อย่างเดียว — ไม่เสนอย้อน Won (API ปฏิเสธซ้ำ)
   const showReversal = !!cancelForm && order?.status === "approved" && !isHistoricalOrder(order) && isCustomerCancelReason(cancelForm.code);
   async function doCancel() {
@@ -626,12 +650,17 @@ export default function SalesOrderDetailPage() {
   }
 
   function remove() {
+    setError("");
     setConfirmState({
       title: "ลบใบสั่งขายฉบับร่าง",
       description: `ต้องการลบ ${order.orderNumber} ถาวรหรือไม่`,
-      detail: "การลบไม่สามารถย้อนกลับได้",
+      // ใบย้อนหลัง: ฐานยกเลิกเอกสารแทนสัญญาตามใบในทรานแซกชันเดียวกัน (trigger ของ 0374) — ต้องบอกก่อนกด
+      detail: ["การลบไม่สามารถย้อนกลับได้", historicalCancelEffect(order, order?.serviceContract)].filter(Boolean).join(" · "),
       confirmLabel: "ลบฉบับร่าง",
       tone: "danger",
+      /* 🐞 เหตุที่ API ปฏิเสธการลบต้องอ่านได้ในโมดัล — แถบ error ของหน้าอยู่ใต้โมดัล และด่านลบของ
+         ใบย้อนหลัง (`historicalDeleteBlock`: เปิดโซนให้ TS แล้ว · งวดที่บัญชีคอนเฟิร์ม ฯลฯ) ตอบ 400 */
+      showsError: true,
       action: () => deleteOrder(`/api/sales-planning/sales-orders/${id}`),
     });
   }
@@ -647,12 +676,16 @@ export default function SalesOrderDetailPage() {
     if (!preview) { setError("ขอพรีวิวการลบไม่สำเร็จ"); return; }
     const lines = (preview.cascade || []).map((c) => `· ${c.label}: ${c.count}`).join("\n");
     const notes = (preview.notes || []).join("\n");
+    // ใบย้อนหลัง: เอกสารแทนสัญญาถูกยกเลิกตามใบด้วย (trigger ของ 0374) — ไม่ได้อยู่ในรายการ cascade ของพรีวิว
+    const contractEffect = historicalCancelEffect(order, order?.serviceContract);
     setConfirmState({
       title: "บังคับลบใบสั่งขายพร้อมหลักฐาน",
       description: `ต้องการบังคับลบ ${order.orderNumber} ถาวรหรือไม่`,
-      detail: <span className="pre-line">สิ่งที่จะถูกทำลาย:{"\n"}{lines || "· (ไม่มีข้อมูลพ่วง)"}{notes ? `\n\n${notes}` : ""}</span>,
+      detail: <span className="pre-line">สิ่งที่จะถูกทำลาย:{"\n"}{lines || "· (ไม่มีข้อมูลพ่วง)"}{contractEffect ? `\n· ${contractEffect}` : ""}{notes ? `\n\n${notes}` : ""}</span>,
       confirmLabel: "ยืนยันบังคับลบ",
       tone: "danger",
+      // 🐞 เหมือนกับโมดัลลบฉบับร่าง — ลบไม่ผ่าน (FK โซน · ของพ่วงที่ปลดไม่ได้) ต้องอ่านได้ในโมดัล
+      showsError: true,
       action: () => deleteOrder(`/api/sales-planning/sales-orders/${id}?force=1`),
     });
   }
@@ -707,6 +740,31 @@ export default function SalesOrderDetailPage() {
   const plan = useMemo(
     () => salesOrderPlanSummary(production.jobs, production.lines),
     [production],
+  );
+
+  /* ── ฝั่งบริการของใบย้อนหลัง: ไซต์ไหนที่ฝ่าย TS ตั้งรอบแล้ว ───────────────────
+     ⭐ รางก้าวกับการ์ด "โซนในใบนี้" ต้องตอบว่า "ตั้งรอบหรือยัง" แต่ GET ของใบ **ไม่ได้**
+        โหลดรอบขายของโซน/รอบบริการมาด้วยโดยตั้งใจ (คิวรี 5 ตาราง · ใบส่วนใหญ่เป็นสายสินค้า)
+        ⇒ ยิงเส้นสรุปงานบริการของใบเองเฉพาะ **ใบย้อนหลังที่อนุมัติแล้ว** — ก่อนอนุมัติยังไม่มี
+        รอบขายของโซนสักแถว (RPC อนุมัติเป็นคนสร้าง) จึงไม่มีอะไรให้ถาม
+     ⚠️ โหลดไม่ขึ้น = สถานะรายโซนบอกว่าตรวจไม่ขึ้น ไม่ใช่เดาว่า "ยังไม่ตั้งรอบ" */
+  const historicalApproved = isHistoricalOrder(order) && order?.status === "approved";
+  const [serviceProgress, setServiceProgress] = useState({ status: "idle", data: null });
+  useEffect(() => {
+    if (!order?.id || !historicalApproved) { setServiceProgress({ status: "idle", data: null }); return undefined; }
+    let alive = true;
+    setServiceProgress({ status: "loading", data: null });
+    apiFetch(`/api/sales-planning/sales-orders/${order.id}/service`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => { if (alive) setServiceProgress({ status: body ? "ready" : "error", data: body || null }); })
+      .catch(() => { if (alive) setServiceProgress({ status: "error", data: null }); });
+    return () => { alive = false; };
+  }, [order?.id, historicalApproved]);
+  const historicalProgress = useMemo(
+    () => (serviceProgress.status === "ready"
+      ? historicalServiceProgress(serviceProgress.data, order?.id || null)
+      : { terms: [], plans: [], plannedSiteIds: null }),
+    [serviceProgress, order?.id],
   );
 
   // ── บรีฟกลิ่นของใบนี้ ────────────────────────────────────────────────
@@ -843,6 +901,8 @@ export default function SalesOrderDetailPage() {
   }
 
   const approved = order.status === "approved";
+  /* ⭐ ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — เกือบทุกกิ่งของหน้านี้ถามตัวนี้ตัวเดียว */
+  const historical = isHistoricalOrder(order);
   /* ⭐ ยอดของใบนี้อยู่กองไหน (มติผู้ใช้ 2026-09-11 · mig 0353) — ตัวตัดสินกลางตัวเดียวกับ
      ตาราง SO ทุกจอ: 'actual' | 'pending_approval' | 'excluded' */
   const amountKind = salesOrderAmountKind(order);
@@ -867,7 +927,11 @@ export default function SalesOrderDetailPage() {
   const ownSalesOrder = isSalesOrderSelfApproval(order, order.meId);
   const canReviewThis = reviewer && !ownSalesOrder;
   const canAdminOverride = role === "admin" && ownSalesOrder && order.status === "pending_approval";
-  const canEditDocument = canEdit && ["draft", "rejected"].includes(order.status);
+  /* ⚠️ **ใบย้อนหลังไม่มีโหมดแก้ในหน้านี้** — ทั้งใบ (สัญญา · โซน · งวด · หลักฐาน) แก้ที่ฟอร์มคีย์ใบ
+     หน้าเต็มตัวเดียวกับตอนสร้าง (กฎ AGENTS.md "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง")
+     ⇒ ปุ่มหลักของใบร่าง/ตีกลับคือลิงก์ไปฟอร์มนั้น ไม่ใช่ `setEditMode(true)` ที่แก้ได้แค่หมายเหตุ */
+  const canEditDocument = canEdit && !historical && ["draft", "rejected"].includes(order.status);
+  const canEditHistorical = canEdit && historical && HISTORICAL_EDITABLE_STATUSES.includes(order.status);
   // ยื่น = ลงนามช่อง "ฝ่ายขาย" ซึ่งเป็นของ AE เจ้าของดีล — AC สร้างใบแทนได้ แต่ต้องส่งต่อ
   // ให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05) · server บังคับซ้ำที่ action submit
   const canSubmitThis = canSubmitSalesOrder({ id: order.meId, role }, order.deal);
@@ -879,9 +943,15 @@ export default function SalesOrderDetailPage() {
   // สองขั้น (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
   const canRevoke = canRevokeSalesOrderApproval(order, { reviewer });
   const canRevise = canIssueSalesOrderRevision(order, { reviewer });
-  /* ใบสั่งขายย้อนหลัง (mig 0360) อนุมัติแล้วแต่ไม่นับ Actual — คำอธิบายสถานะต้องไม่พูดว่า "ยอดถูกนับเป็น Actual แล้ว" */
-  const status = isHistoricalOrder(order) && order.status === "approved"
-    ? { ...STATUS.approved, description: HISTORICAL_STATUS_NOTE }
+  /* ใบสั่งขายย้อนหลัง (mig 0374) พูดคนละเรื่องกับใบปกติทุกสถานะ — ของใบปกติบอกผลต่อ Actual ทุกบรรทัด
+     ⇒ ป้าย/คำอธิบายมาจาก `historicalStatusCopy` ที่เดียว (พร้อมเทสต์ว่าไม่มีประโยคไหนบอกว่า "นับ Actual") */
+  const historicalCopy = historical ? historicalStatusCopy(order.status) : null;
+  const status = historicalCopy
+    ? {
+      label: historicalCopy.label,
+      color: HISTORICAL_TONE_COLOR[historicalCopy.tone] || "var(--text-3)",
+      description: historicalCopy.description,
+    }
     : STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3
     : ["pending_approval", "approval_revoked"].includes(order.status) ? 1 : 0;
@@ -908,7 +978,22 @@ export default function SalesOrderDetailPage() {
     baseIndex: workflowIndex,
     stepCount: workflow.length,
   });
-  const workflowSteps = workflowStepsFromIndex(workflow, workflowIndexResolved, order.status === "cancelled");
+  /* ⭐ รางก้าวของใบย้อนหลังเป็นคนละเส้น 5 ขั้น (คีย์ใบ → AE Sup อนุมัติ → บัญชีรับรองงวดยกมา →
+     TS ตั้งรอบ → เข้าบริการ · ไม่มีขั้น "นับ Actual" และไม่มีขั้นบัญชีปิดใบ) ⇒ สลับทั้งเส้น ณ จุดเดียว
+     ⚠️ ของใบปกติข้างบนยังคำนวณเหมือนเดิมทุกบรรทัด — ไม่แตะ */
+  const historicalRail = historical
+    ? historicalWorkflowSteps(order, installments, historicalProgress.terms, historicalProgress.plans, todayIso)
+    : null;
+  const workflowSteps = historicalRail
+    ? workflowStepsFromIndex(historicalRail.steps, historicalRail.index, order.status === "cancelled")
+    : workflowStepsFromIndex(workflow, workflowIndexResolved, order.status === "cancelled");
+  /* ช่วงบริการของใบย้อนหลัง = ช่วงของ **เอกสารแทนสัญญา** (ใบนี้ไม่มีสัญญาฉบับอื่น) — ไม่มีช่วง = ไม่มีแถบ */
+  const historicalCoverage = historical
+    ? historicalCoverageSegments(installments, {
+      start: order.serviceContract?.effectiveDate || order.serviceContract?.contractDate,
+      end: order.serviceContract?.expiryDate,
+    })
+    : null;
   // เอกสารยืนยันที่ใบนี้มีจริง (ของใบเอง ถ้าไม่มีถอยไปดูหลักฐาน Won ของใบเสนอราคา)
   const confirmationOnFile = orderConfirmationOf(order, order.quotation);
   /* 🐞 ปุ่มเปิดไฟล์ต้องเลือก proxy ตาม **บ้านที่ไฟล์อยู่จริง** ไม่ใช่ยิง confirm-file ตายตัว —
@@ -919,7 +1004,9 @@ export default function SalesOrderDetailPage() {
   const confirmFileHref = (index) => (confirmationOnFile?.source === "order" || !order.quotationId
     ? `/api/sales-planning/sales-orders/${order.id}/confirm-file?i=${index}`
     : `/api/sales-planning/quotations/${order.quotationId}/file?i=${index}`);
-  const confirmationGate = ["draft", "rejected"].includes(order.status)
+  /* ⚠️ ใบย้อนหลังไม่มีขั้น "ยืนยันคำสั่งซื้อ" — เอกสารแทนสัญญาที่คีย์ในฟอร์มทำหน้าที่นั้นแทน
+     (ปล่อยด่านเดิมไว้ = ใบร่างทุกใบติด "ยังไม่มีเอกสารยืนยัน" ที่ไม่มีที่ให้แนบบนหน้านี้) */
+  const confirmationGate = !historical && ["draft", "rejected"].includes(order.status)
     ? salesOrderConfirmationGate(order, order.quotation)
     : null;
   /* ⚠️ ต้องส่ง `installments` เข้าด่านเสมอ (มติ 2026-08-30) — ด่านปิดใบตัดสินจาก
@@ -939,6 +1026,73 @@ export default function SalesOrderDetailPage() {
     order, action, { id: order.meId, role, department: order.meDepartment },
     { ...options, installments },
   );
+
+  /* ── AE Sup อนุมัติใบย้อนหลัง — **โมดัลเดียว** ทั้งผู้ตรวจปกติและ Admin Override ────────────────
+     ⭐ ไฟล์ที่ AE Sup เห็นในโมดัลคือไฟล์ที่จะกลายเป็น `signedFileId` ของเอกสารแทนสัญญาจริง ๆ (D4)
+        ⇒ ส่ง id ของไฟล์นั้นไปกับคำขอ ไม่ปล่อยให้ฐานหยิบ "ไฟล์แรกที่หาเจอ" เอง
+     ⚠️ **ไม่ใช่โมดัลมือของใบ pipeline** (`overrideForm` ข้างล่าง) — ตัวนั้นพูดแต่ยอด Actual ซึ่งใบนี้ไม่มี
+        และไม่ส่ง `expectedUpdatedAt` · ทั้งสองทางที่นี่ส่งเวอร์ชันของใบที่จอเห็นเสมอ
+     ⚠️ ของเสริมโหลดไม่ขึ้น (`extrasError`) ไม่ซ่อนแถว — `historicalApprovalFacts` เขียน "โหลดไม่ขึ้น" ให้ */
+  const contractFiles = order.serviceContractFiles || [];
+  const signedFileCandidate = contractFiles.find((file) => file.signedFileCandidate) || null;
+  const historicalApproveBlocked = signedFileCandidate
+    ? null
+    : "ยังไม่เห็นไฟล์เอกสารแทนสัญญาของใบนี้ — อนุมัติไม่ได้จนกว่าไฟล์จะขึ้น";
+  const openHistoricalApprove = (override = false) => {
+    /* ⚠️ เปิดโมดัลไหนที่โชว์ error ของหน้า (`showsError`) ก็ต้องล้างของรอบก่อนทิ้ง — ไม่งั้นข้อความค้าง
+       จากคำขออื่น (แผงงวดชำระ · set_service_contract ที่ได้ 409) จะไปโผล่ในกล่องอนุมัติ
+       อ่านเหมือนว่า "การอนุมัติครั้งนี้" ล้มเหลวทั้งที่ยังไม่ได้กดด้วยซ้ำ */
+    setError("");
+    setOverrideReason("");
+    overrideReasonRef.current = "";
+    const facts = historicalApprovalFacts(order, {
+      installments,
+      contract: order.serviceContract,
+      contractFiles,
+      lineZones: order.lineZones,
+      liveTermWarnings: order.liveTermWarnings,
+      signedFile: signedFileCandidate,
+      extrasError: order.extrasError,
+    });
+    setConfirmState({
+      ...historicalApprovalPrompt({ ...facts, override: override ? { note: historicalOverrideNote } : null }),
+      /* ลิงก์ ไม่ใช่พรีวิวฝัง — ผู้อนุมัติเปิดไฟล์จริงได้จากในโมดัล ไม่ต้องปิดโมดัลไปตามเอง */
+      children: (
+        <div className="form-field">
+          <span className="form-field-label">เปิดดูก่อนกดอนุมัติ</span>
+          {signedFileCandidate ? (
+            <a className="linklike" href={`/api/master/attachments/${signedFileCandidate.id}/file`} target="_blank" rel="noopener noreferrer">
+              เอกสารแทนสัญญา · {signedFileCandidate.fileName || "ไฟล์ไม่มีชื่อ"}
+            </a>
+          ) : (
+            <span className="readable-field-empty">ยังไม่มีไฟล์เอกสารแทนสัญญาให้เปิด</span>
+          )}
+          {(order.openingEvidence || []).map((ref) => (
+            <a
+              key={`${ref.installmentId}-${ref.index}`}
+              className="linklike"
+              href={`/api/sales-planning/sales-orders/${order.id}/payment-file?installment=${encodeURIComponent(ref.installmentId)}&i=${ref.index}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              หลักฐาน{OPENING_INSTALLMENT_LABEL} · {ref.fileName || "ไฟล์ไม่มีชื่อ"}
+            </a>
+          ))}
+        </div>
+      ),
+      overrideReason: override,
+      /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** (บทเรียนเดิมของแผงงวดชำระ
+         2026-08-27) · เหตุที่ RPC ตีกลับใบย้อนหลังมีหลายข้อจริง ๆ (ใบขยับไปแล้ว · ไฟล์ไม่ตรง ·
+         ยอด/ช่วงครอบไม่ผ่าน) ⇒ ต้องอ่านได้ในโมดัลที่ยังเปิดค้างอยู่ ไม่ใช่หลังปิดโมดัล */
+      showsError: true,
+      action: () => requestAction("approve", {
+        expectedUpdatedAt: order.updatedAt,
+        signedFileId: signedFileCandidate?.id,
+        ...(override ? { overrideReason: overrideReasonRef.current } : {}),
+      }),
+    });
+  };
+
   const primaryAction = editable
     ? {
         id: "save",
@@ -948,6 +1102,15 @@ export default function SalesOrderDetailPage() {
         disabledReason: !dirty ? "ยังไม่มีข้อมูลที่เปลี่ยนแปลง" : undefined,
         onClick: save,
       }
+    /* ใบย้อนหลังร่าง/ตีกลับ — กลับเข้าฟอร์มคีย์ใบหน้าเต็ม (ฟอร์มแก้ = ฟอร์มสร้าง) แล้วกด
+       "บันทึกและส่งอนุมัติ" ที่นั่น ⇒ ไม่มีปุ่ม "ยื่นอนุมัติ" แยกบนหน้านี้ */
+    : canEditHistorical
+      ? {
+          id: "historical-edit",
+          kind: "edit",
+          label: "แก้ไขและส่งอนุมัติ",
+          href: historicalEditPath(order.id),
+        }
     : canEditDocument
       ? {
           id: "submit",
@@ -967,6 +1130,15 @@ export default function SalesOrderDetailPage() {
             : (confirmationGate || undefined),
           onClick: openSubmitConfirm,
         }
+    : historical && canReviewThis && order.status === "pending_approval"
+      ? {
+          id: "approve",
+          kind: "approve",
+          label: "อนุมัติใบย้อนหลัง",
+          disabled: !!historicalApproveBlocked,
+          disabledReason: historicalApproveBlocked || undefined,
+          onClick: () => openHistoricalApprove(false),
+        }
     : canReviewThis && order.status === "pending_approval"
       ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
     // สถานะกลางหลังย้อนการอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก
@@ -974,6 +1146,8 @@ export default function SalesOrderDetailPage() {
       ? { id: "revise", kind: "revise", label: "ออก Rev.", onClick: async () => {
         // เอกสาร FM-SA-04 ย้ายตามใบ Rev. ใหม่ (hook ใน API) — นับก่อนเปิดโมดัลให้บอกผลได้ครบ
         const specDocEffect = salesOrderSpecDocEffect("revise", await loadSpecDocCount());
+        // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
+        setError("");
         setConfirmState({
           title: "ออก Rev. ใหม่",
           description: `ระบบจะสร้างร่าง Rev. ใหม่จาก ${order.orderNumber} และเก็บฉบับนี้เป็นประวัติ`,
@@ -989,6 +1163,10 @@ export default function SalesOrderDetailPage() {
             order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
           ].filter(Boolean).join(" · "),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
+          /* 🐞 ออก Rev. ไม่ผ่านต้องอ่านได้ในโมดัล — ด่านกันแท็บค้าง (`expectedUpdatedAt`) ของ
+             `revise_approved_sales_order_atomic` ตีกลับเมื่อมีคนออก Rev. ไปก่อน ⇒ ถ้าเงียบ
+             คนกดจะกดซ้ำแล้วได้ข้อความเดิมจนต้อง F5 เอง */
+          showsError: true,
           action: () => requestAction("revise", { expectedUpdatedAt: order?.updatedAt }),
         });
       } }
@@ -996,10 +1174,19 @@ export default function SalesOrderDetailPage() {
   const secondaryActions = [
     { id: "edit", kind: "edit", icon: Pencil, label: "แก้ไขข้อมูล", variant: "outline", visible: canEditDocument && !editMode, onClick: () => setEditMode(true) },
     { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
-    { id: "withdraw", kind: "withdraw", variant: "outline", visible: canWithdraw, onClick: () => setWorkflowForm({ action: "withdraw", reason: "" }) },
+    // ⚠️ เปิดโมดัลไหนก็ล้าง error ของรอบก่อน — โมดัลโชว์เหตุที่ API ตีกลับเอง (แถบของหน้าอยู่ใต้โมดัล)
+    { id: "withdraw", kind: "withdraw", variant: "outline", visible: canWithdraw, onClick: () => { setError(""); setWorkflowForm({ action: "withdraw", reason: "" }); } },
     // ขั้นที่ 1 — ยอด Actual หลุดที่ปุ่มนี้ จึงต้องกรอกเหตุผล (ใช้ต่อในขั้นออก Rev.)
-    { id: "revoke", kind: "revoke", variant: "outline", visible: canRevoke, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => setWorkflowForm({ action: "revoke", reason: "" }) },
-    { id: "override", kind: "approve", label: "อนุมัติแบบ Admin Override", variant: "outline", visible: canAdminOverride, onClick: () => setOverrideForm({ reason: "" }) },
+    { id: "revoke", kind: "revoke", variant: "outline", visible: canRevoke, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => { setError(""); setWorkflowForm({ action: "revoke", reason: "" }); } },
+    /* ⚠️ ใบย้อนหลังใช้ **โมดัลเดียวกับผู้ตรวจปกติ** (historicalApprovalPrompt + บรรทัด override) —
+       โมดัลมือของใบ pipeline ข้างล่างไม่บอกผลลัพธ์และไม่ส่งเวอร์ชันของใบ ⇒ ห้ามใช้กับใบนี้ */
+    {
+      id: "override", kind: "approve", label: "อนุมัติแบบ Admin Override", variant: "outline",
+      visible: canAdminOverride,
+      disabled: historical && !!historicalApproveBlocked,
+      disabledReason: historical ? (historicalApproveBlocked || undefined) : undefined,
+      onClick: () => (historical ? openHistoricalApprove(true) : setOverrideForm({ reason: "" })),
+    },
     {
       /* ⭐ **ออกสัญญาจากใบนี้** — เดิมทางออกสัญญามีสี่ทาง (ดีล · โครงการ · ใบเสนอราคา ·
          ทะเบียนสัญญา) แต่ไม่มีทางจาก SO ทั้งที่การ์ดสัญญาบนใบนี้เองเป็นคนบอกว่า
@@ -1016,7 +1203,9 @@ export default function SalesOrderDetailPage() {
       kind: "goto",
       label: "ออกสัญญาจากใบนี้",
       variant: "outline",
-      visible: canEdit && !editMode && !["cancelled", "revised"].includes(order.status),
+      /* ⚠️ ใบย้อนหลังไม่มีปุ่มนี้ — สัญญาของใบคือ "เอกสารแทนสัญญา" ที่ฟอร์มคีย์ใบสร้างให้และอนุมัติ
+         พร้อมใบ · ออกสัญญาฉบับที่สองจากใบนี้ = ฉบับที่ผูกไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่) */
+      visible: canEdit && !historical && !editMode && !["cancelled", "revised"].includes(order.status),
       onClick: () => setContractOpen(true),
     },
     // label ชัดเจนว่าเป็นการกู้ SO ที่ "ยกเลิก" แล้ว — เดิมใช้ default "คืนเป็นฉบับร่าง"
@@ -1037,23 +1226,37 @@ export default function SalesOrderDetailPage() {
       disabledReason: financeGate("finance_approve") || undefined,
       /* ⚠️ ขั้นบัญชีเป็นปลายทาง — อนุมัติแล้วบัญชีตีกลับเองไม่ได้ และ AE Sup ส่งตรวจใหม่
          ก็ไม่ได้ (ทั้งสองทาง API ตอบ "บัญชีอนุมัติใบนี้ไปแล้ว") ⇒ ต้องบอกว่าย้อนไม่ได้ */
-      onClick: () => setConfirmState({
-        ...approvalPrompt({
-          title: "ปิดใบสั่งขาย",
-          subject: `ใบสั่งขาย ${order.orderNumber}`,
-          irreversible: true,
-          checklist: FINANCE_REVIEW_POINTS,
-          effects: [
-            "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
-            "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ ไม่มีการตีกลับหลังจากนี้",
-            "ยอด Actual ไม่เปลี่ยนจากการกดนี้ (ยอดเข้าตั้งแต่ AE Supervisor อนุมัติ)",
-          ],
-          confirmLabel: "ยืนยันปิดใบ",
-        }),
-        action: () => requestAction("finance_approve"),
-      }),
+      onClick: () => {
+        // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
+        setError("");
+        setConfirmState({
+          ...approvalPrompt({
+            title: "ปิดใบสั่งขาย",
+            subject: `ใบสั่งขาย ${order.orderNumber}`,
+            irreversible: true,
+            checklist: FINANCE_REVIEW_POINTS,
+            effects: [
+              "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
+              "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ ไม่มีการตีกลับหลังจากนี้",
+              "ยอด Actual ไม่เปลี่ยนจากการกดนี้ (ยอดเข้าตั้งแต่ AE Supervisor อนุมัติ)",
+            ],
+            confirmLabel: "ยืนยันปิดใบ",
+          }),
+          /* 🐞 เหตุที่ขั้นบัญชีตีกลับต้องอ่านได้ในโมดัล — ด่าน `finance_approve` อ่านงวดสดทุกครั้ง
+             (ยังเก็บไม่ครบทุกงวด · AE Sup ยังไม่อนุมัติ · บัญชีปิดไปแล้ว) และปุ่มนี้ **โชว์เสมอกับ
+             เจ้าของขั้น** ⇒ เหตุคือสิ่งเดียวที่บอกว่าต้องรออะไร · แถบของหน้าอยู่ใต้โมดัล */
+          showsError: true,
+          action: () => requestAction("finance_approve"),
+        });
+      },
     },
   ];
+  /* ⛔ ด่านยกเลิกใบย้อนหลังที่มีงวดรอบัญชีรับรอง — **ตัวเดียวกับที่ API ใช้ปฏิเสธ** (historicalCancelBlock)
+     ⇒ ปุ่มกับ API ถามตัวเดียวกัน คนกดเห็นเหตุ (และลำดับ "ให้บัญชีตีกลับก่อน") ตั้งแต่ก่อนเปิดโมดัล
+     ⚠️ ค่านี้เป็น **คำใบ้ ไม่ใช่ตัวตัดสิน** — `order.installments` มาจาก loadOrder ซึ่งกลืนการอ่านพังเป็น
+        รายการว่าง (ด่านจริงที่ route อ่านงวดสดแบบโยน error) · จอที่เปิดค้างไว้ก็ยังได้ 400 ⇒ โมดัลยังต้อง
+        โชว์ error ของคำขอเองอยู่ดี */
+  const historicalCancelBlocked = historicalCancelBlock(order, installments);
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
     { id: "delete", kind: "delete", icon: Trash2, label: "ลบฉบับร่างถาวร", visible: role === "admin" && canHardDeleteSalesOrder(order), onClick: remove },
@@ -1065,8 +1268,10 @@ export default function SalesOrderDetailPage() {
       // ปุ่มพูดเรื่องเดียวกับ API แล้ว (มติผู้ใช้ 2026-08-18) — เดิม `approved && reviewer`
       // ทำให้ใบที่ถอนอนุมัติแล้ว/ใบร่าง/ใบตีกลับ ไม่มีทางยกเลิกจากหน้าจอเลย
       visible: canCancelSalesOrder(order, { reviewer, canEdit }),
-      disabled: !!filingState.filing,
-      disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined,
+      disabled: !!filingState.filing || !!historicalCancelBlocked,
+      disabledReason: filingState.filing
+        ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน"
+        : (historicalCancelBlocked || undefined),
       onClick: openCancel,
     },
   ];
@@ -1080,7 +1285,9 @@ export default function SalesOrderDetailPage() {
           /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — API แนบ `customer` ที่อ่านสด
              จากทะเบียนมาให้ ไม่ใช่ค่าที่ประทับไว้ในใบ */
           description={`${customerHeadline(order.customerName, order.customer?.arCode) || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}</>}
+          /* ⭐ ป้าย "ย้อนหลัง" + "ไม่นับ Actual" บนหัวใบ (ม็อก SoStatus) — โทน info ตัวเดียวกับชิปในทะเบียน
+             และคิวงานเข้าใหม่ของ TS · คนที่เปิดใบมาต้องรู้ตั้งแต่บรรทัดแรกว่ายอดนี้ไม่เข้า Actual/FC/เป้า */
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -1214,9 +1421,11 @@ export default function SalesOrderDetailPage() {
                     ? <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>
                     : null}
               </>}
+              /* ⚠️ ใบย้อนหลัง **ไม่เก็บลายเซ็น** เลยสักขั้น (CHECK ของ 0374 ตรึง signature id เป็น NULL)
+                 ⇒ ป้ายชวนตั้งลายเซ็นบนใบนี้คือการไล่คนไปทำของที่ระบบไม่ได้ขอ */
               evidence={(
                 <SignatureReadyNotice
-                  active={(canReviewThis && order.status === "pending_approval") || canAdminOverride || editable}
+                  active={!historical && ((canReviewThis && order.status === "pending_approval") || canAdminOverride || editable)}
                   docLabel="ใบสั่งขายนี้"
                 />
               )}
@@ -1246,12 +1455,9 @@ export default function SalesOrderDetailPage() {
 
           {activeTab === "overview" && <>
           {/* ใบสั่งขายย้อนหลัง (mig 0360) คีย์บรรทัดจากเอกสารเดิม — ไม่มี QT ต้นทางให้เปิด */}
-          {/* ⭐ ของค้างมาก่อนรายการ — TS ส่งจุดกลับมาแล้วเรื่องหยุดอยู่ที่ฝ่ายขาย (มติข้อ 23 · mig 0362)
-              ⚠️ การ์ดหายเองเมื่อไม่มีจุดติดธง (component คืน null) ⇒ ใบปกติไม่เห็นอะไรเพิ่ม */}
-          {canKeyHistorical && isHistoricalOrder(order) ? (
-            <SiteDecisionCard order={order} lines={sortedLines} installments={installments} onDecide={decideSitePoint} />
-          ) : null}
-
+          {/* 🚫 การ์ด "ตัดสินจุดที่ TS ไม่พบ" (มติข้อ 23 · mig 0362) ถอดแล้ว (มติ 22/09) — บรรทัดของใบย้อนหลัง
+              ผูกโซนจากทะเบียนตั้งแต่ตอนคีย์ใบ ⇒ ไม่มีชื่อจุดลอย ๆ ให้ TS "หาไม่เจอ" อีก · โซนของใบอยู่ที่
+              การ์ด "โซนที่บริการ" ข้างล่างแทน */}
           <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={order.quotationId ? `${sortedLines.length} รายการ · snapshot จาก QT Won` : `${sortedLines.length} รายการ · คีย์จากเอกสารเดิม`} actions={order.quotationId ? <Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link> : undefined}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}
@@ -1265,6 +1471,39 @@ export default function SalesOrderDetailPage() {
               highlightRows={[amountHighlight]}
             />
           </DetailCard>
+
+          {/* ⭐ โซนที่ใบนี้ขาย (mig 0374) — ใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ตารางรายการข้างบน
+              ไม่มีคอลัมน์ไซต์/โซนให้ดูเลย · การ์ดนี้บอกด้วยว่าฝ่าย TS ตั้งรอบไปถึงไหนแล้ว */}
+          {historical ? (
+            <HistoricalZonesCard
+              order={order}
+              lineZones={order.lineZones}
+              plannedSiteIds={historicalProgress.plannedSiteIds}
+              loadingPlans={serviceProgress.status === "loading"}
+              extrasError={order.extrasError}
+            />
+          ) : null}
+
+          {/* ⭐ "ช่วงบริการ" (ม็อก SoStatus) — เงินที่บัญชีรับรองแล้วเป็นตัวเปิดด่านของนัดบริการ
+              ⇒ คำถามที่ฝ่ายขายถามจริงคือ "นัดเดือนไหนขึ้นได้แล้วบ้าง" ซึ่งตารางงวดตอบเป็นตัวเลข
+              แต่ไม่ตอบเป็นเวลา · แถบเป็น SVG ล้วน (ไม่มี style={{…}} — งบ inlineStyle เต็มเพดาน) */}
+          {historicalCoverage ? (
+            <DetailCard
+              icon={CalendarDays}
+              eyebrow="SERVICE COVERAGE"
+              title="ช่วงบริการ"
+              meta={historicalCoverage.through
+                ? `ตามสัญญา ${fmtDate(historicalCoverage.start)} – ${fmtDate(historicalCoverage.end)} · เปิดบริการถึง ${fmtDate(historicalCoverage.through)} — นัดที่ตกหลังจากนี้ติดด่านเงินจนกว่าบัญชีรับรองงวดถัดไป`
+                : `ตามสัญญา ${fmtDate(historicalCoverage.start)} – ${fmtDate(historicalCoverage.end)} · ยังไม่มีงวดที่บัญชีรับรอง — นัดบริการยังติดด่านเงินทั้งช่วง`}
+            >
+              <CoverageTimeline
+                startDate={historicalCoverage.start}
+                endDate={historicalCoverage.end}
+                segments={historicalCoverage.segments}
+                todayIso={todayIso}
+              />
+            </DetailCard>
+          ) : null}
 
           {/* ⭐ การ์ดเดียว "ข้อมูลบนเอกสาร" (มติผู้ใช้ 2026-08-13) — ของเดิมแตกเป็น
               สองการ์ดในราง 330px: "ตรวจข้อมูลเอกสาร" (ฟอร์ม) กับ "ข้อมูลลูกค้าในเอกสาร"
@@ -1353,7 +1592,11 @@ export default function SalesOrderDetailPage() {
               ⚠️ **ช่องกรอกใช้ component เดียวกับหน้าสร้างใบ** (กฎ AGENTS.md: ฟอร์มสร้าง
               กับฟอร์มแก้ต้องเป็นตัวเดียวกัน ต่างกันได้แค่โหมด) — ที่นี่คือโหมด `saved`
               เพราะไฟล์ที่บันทึกแล้วเปิดผ่าน proxy ได้ ส่วนไฟล์ใหม่ยังเป็น File[] ที่รออัป
-              ⚠️ ใบเก่าที่หลักฐานอยู่ที่ใบเสนอราคา อ่านจากที่นั่น + บอกว่ามาจากไหน */}
+              ⚠️ ใบเก่าที่หลักฐานอยู่ที่ใบเสนอราคา อ่านจากที่นั่น + บอกว่ามาจากไหน
+              ⚠️ **ใบย้อนหลังไม่มีการ์ดนี้** (มติ 22/09) — ขั้นนี้ถามว่า "ลูกค้ายืนยันคำสั่งซื้อด้วยเอกสารอะไร"
+                 ซึ่งใบย้อนหลังตอบด้วย *เอกสารแทนสัญญา* (PO/อีเมล/สัญญาเก่า/ใบเสนอราคาที่ลูกค้าเซ็น) ที่
+                 คีย์ในฟอร์มและอนุมัติพร้อมใบอยู่แล้ว ⇒ ปล่อยไว้ = ขอเอกสารชุดที่สองที่ไม่มีใครมี */}
+          {historical ? null : (
           <DetailCard
             icon={FileCheck2}
             eyebrow="ORDER CONFIRMATION"
@@ -1384,6 +1627,7 @@ export default function SalesOrderDetailPage() {
               <p className="form-note" role="status" style={{ marginTop: 12 }}>{confirmationGate}</p>
             )}
           </DetailCard>
+          )}
 
           {/* ⭐ เอกสารต่อเนื่อง (mig 0370) — ใบที่ออกต่อจากใบสั่งขายที่อนุมัติแล้ว
               วางถัดจากการ์ดยืนยันคำสั่งซื้อเพราะใบพวกนั้นใช้ PO/วันที่จากการ์ดนี้
@@ -1509,7 +1753,10 @@ export default function SalesOrderDetailPage() {
            จากภาพรวม/ดีล/โครงการ ให้คนกดรู้ก่อน ไม่ต้องไปงงทีหลังว่ายอดหายไปไหน */
         detail={{
           revoke: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
-        }[workflowForm?.action] || `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" จนกว่าจะยื่นใหม่ · หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่`}
+        }[workflowForm?.action]
+          /* ใบย้อนหลังไม่มียอดในกอง "รออนุมัติ" และไม่มีลายเซ็นให้ยื่นใหม่ — พูดเรื่องนั้นคือพูดของที่ไม่มี */
+          || (historical ? historicalWithdrawDetail(order)
+            : `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" จนกว่าจะยื่นใหม่ · หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่`)}
         label="เหตุผล"
         value={workflowForm?.reason || ""}
         onChange={(reason) => setWorkflowForm((current) => ({ ...current, reason }))}
@@ -1523,13 +1770,19 @@ export default function SalesOrderDetailPage() {
         maxLength={500}
         tone={workflowForm?.action === "withdraw" ? "warning" : "danger"}
         busy={busy === workflowForm?.action}
+        /* 🐞 เหตุที่ API ตีกลับต้องอ่านได้ในโมดัลที่ยังเปิดอยู่ (แถบ error ของหน้าอยู่ใต้โมดัล) —
+           ของใบย้อนหลังมีจริงหลายข้อ: ใบขยับไปแล้ว · ดึงกลับได้เฉพาะผู้ยื่น · ย้อนการอนุมัติไม่ได้ */
+        submitError={error}
       />
 
       <ReasonDialog
         open={!!rejectForm}
         title="ตีกลับให้ผู้จัดทำแก้ไข"
-        /* ตีกลับ = ยอดออกจากกอง "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — เดิมไม่มีบรรทัดผลลัพธ์เลย */
-        detail={`ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" — ใบกลับไปให้ผู้จัดทำแก้ไขแล้วยื่นใหม่ ยังไม่นับเป็น Actual`}
+        /* ตีกลับ = ยอดออกจากกอง "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — เดิมไม่มีบรรทัดผลลัพธ์เลย
+           ⚠️ ใบย้อนหลังไม่เคยเข้ากองไหน ⇒ บอกสิ่งที่เกิดจริง: ใบกลับไปที่ฟอร์มคีย์ใบ เอกสารแทนสัญญายังเป็นร่าง */
+        detail={historical
+          ? historicalRejectDetail(order)
+          : `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" — ใบกลับไปให้ผู้จัดทำแก้ไขแล้วยื่นใหม่ ยังไม่นับเป็น Actual`}
         label="เหตุผลที่ตีกลับ"
         value={rejectForm?.reason || ""}
         onChange={(reason) => setRejectForm({ reason })}
@@ -1539,10 +1792,12 @@ export default function SalesOrderDetailPage() {
         placeholder="ระบุสิ่งที่ต้องแก้ไข"
         maxLength={500}
         busy={busy === "reject"}
+        /* 🐞 เช่นเดียวกับโมดัลข้างบน — RPC ตีกลับใบย้อนหลังตอบได้หลายข้อ (ใบขยับไปแล้ว · ไม่ใช่ผู้ตรวจ) */
+        submitError={error}
       />
 
       {cancelForm && (
-        <Modal open onClose={() => setCancelForm(null)} title="ยกเลิก ใบสั่งขาย" size="sm" dismissible={!busy}>
+        <Modal open onClose={closeCancel} title="ยกเลิก ใบสั่งขาย" size="sm" dismissible={!busy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {/* ใบรออนุมัติที่ผู้ตรวจยกเลิก = ยอดออกจากกอง "รออนุมัติ" ไม่ใช่จาก Actual (มติ 2026-09-11) */}
             <p style={{ color: "var(--text-2)", margin: 0 }}>
@@ -1552,6 +1807,9 @@ export default function SalesOrderDetailPage() {
             </p>
             {/* เอกสาร FM-SA-04 ของใบนี้ถูก void ตามไปด้วย (ย้อนกลับไม่ได้) — ต้องบอกก่อนกด ไม่ใช่รู้ทีหลัง */}
             {cancelSpecDocEffect ? <StatusNotice tone="warning">{cancelSpecDocEffect}</StatusNotice> : null}
+            {/* ⭐ ใบย้อนหลัง: ฐานยกเลิก **เอกสารแทนสัญญา** ตามใบในทรานแซกชันเดียวกัน (trigger ของ 0374)
+                ⇒ คนกดต้องรู้ก่อนว่าสัญญาหายไปด้วย และเลข CT ของฉบับที่ลงนามแล้วไม่คืน */}
+            {cancelContractEffect ? <StatusNotice tone="warning">{cancelContractEffect}</StatusNotice> : null}
             <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล</span>
               <Select value={cancelForm.code} onChange={(e) => setCancelForm((f) => ({ ...f, code: e.target.value }))}>
@@ -1580,14 +1838,22 @@ export default function SalesOrderDetailPage() {
                 )}
               </div>
             )}
+            {/* 🐞 เหตุที่ API ตีกลับต้องอ่านได้ **ในโมดัลที่ยังเปิดอยู่** — แถบ error ของหน้าอยู่ใต้โมดัล
+                (ด่านงวดยกมารอบัญชีรับรอง · งวดที่รับรองแล้ว · ใบยื่นสรรพสามิต · สิทธิ์ผู้ตรวจ)
+                ของเดิมกดแล้วโมดัลค้างเงียบ ปุ่มกลับมากดได้ โดยไม่มีอะไรบอกว่าทำไมไม่ผ่าน */}
+            {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" className="btn ghost" onClick={() => setCancelForm(null)} disabled={!!busy}>ยกเลิก</button>
+              <button type="button" className="btn ghost" onClick={closeCancel} disabled={!!busy}>ยกเลิก</button>
               <button type="button" className="btn btn-danger" onClick={doCancel} disabled={!!busy || !cancelForm.code}><XCircle size={15} /> ยืนยันยกเลิก SO</button>
             </div>
           </div>
         </Modal>
       )}
 
+      {/* ⭐ `children` = ของที่ต้อง **เปิดดู/กรอก** ในโมดัลยืนยัน (ConfirmDialog รองรับอยู่แล้ว) —
+          โมดัลอนุมัติใบย้อนหลังใส่ลิงก์ไฟล์เอกสารแทนสัญญา + หลักฐานงวดยกมาเข้ามาทางนี้
+          ⚠️ ช่องเหตุผล Admin Override **ไม่บังคับ** จึงอยู่ในกล่องยืนยันได้ (กติกา ConfirmDialog)
+             ถ้าวันไหนเจ้าของสั่งให้บังคับ ต้องย้ายไปเป็น ReasonDialog ไม่ใช่เติมด่านที่นี่ */}
       <ConfirmDialog
         open={!!confirmState}
         title={confirmState?.title}
@@ -1596,9 +1862,28 @@ export default function SalesOrderDetailPage() {
         confirmLabel={confirmState?.confirmLabel}
         tone={confirmState?.tone}
         busy={confirmBusy}
+        error={confirmState?.showsError ? error : undefined}
         onConfirm={runConfirmed}
         onClose={() => { if (!confirmBusy) setConfirmState(null); }}
-      />
+      >
+        {confirmState?.children || confirmState?.overrideReason ? (
+          <>
+            {confirmState?.children}
+            {confirmState?.overrideReason ? (
+              <label className="form-field">
+                <span className="form-field-label">เหตุผลของ Admin Override (ไม่บังคับ)</span>
+                <Textarea
+                  rows={2}
+                  maxLength={500}
+                  value={overrideReason}
+                  placeholder="บันทึกไว้กับใบว่าทำไมต้องอนุมัติใบของตัวเอง"
+                  onChange={(event) => { overrideReasonRef.current = event.target.value; setOverrideReason(event.target.value); }}
+                />
+              </label>
+            ) : null}
+          </>
+        ) : null}
+      </ConfirmDialog>
       {/* ⭐ **โมดัลตัวเดียวกับที่หน้าดีล/โครงการ/ใบเสนอราคาใช้** — ห้ามเขียนฟอร์มที่สอง
           (กติกา "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ของ AGENTS.md)
           ส่ง `dealId`+`quotationId` ของใบมาให้ ⇒ ข้ามขั้นเลือกลูกค้า/ดีลไปเลย

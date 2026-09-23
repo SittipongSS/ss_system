@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  MAX_TAX_INVOICE_NO, hasTaxInvoice, taxInvoiceActionError, taxInvoiceClearPatch,
+  MAX_TAX_INVOICE_NO, hasTaxInvoice, openingInvoiceNote, taxInvoiceActionError, taxInvoiceClearPatch,
   taxInvoicePatch, taxInvoicePending, taxInvoiceValueError,
 } from '@/lib/sales/taxInvoice';
 import { installmentActionError } from '@/lib/sales/salesOrderPayments';
@@ -81,6 +81,20 @@ test('ของค้าง = แจ้ง/รับรองแล้วแต�
   // ยังไม่ถึงกำหนดจ่าย = ยังไม่มีเงิน ไม่ใช่ของค้าง
   assert.equal(taxInvoicePending(row({ status: 'pending' })), false);
   assert.equal(taxInvoicePending(row({ status: 'rejected' })), false);
+});
+
+/* ⭐ งวดยกมาของใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ใบกำกับของเงินก้อนนั้นออกไปแล้วในระบบเดิม
+   (Express · อ้างที่ historicalInvoiceRef) ⇒ ไม่ใช่ของค้างของบัญชี · นับเมื่อไรคิวมีงวดที่ไม่มีวันเคลียร์ได้
+   ⚠️ งวดอื่นของใบเดียวกันยังนับตามปกติ — กติกา "ทุกงวดที่จ่ายต้องมีใบกำกับ" ไม่ได้ถูกยกเลิก */
+test('งวดยกมาไม่ค้างใบกำกับ · งวดปกติยังค้างตามเดิม', () => {
+  for (const status of ['reported', 'confirmed']) {
+    assert.equal(taxInvoicePending(row({ status, kind: 'opening' })), false, status);
+    assert.equal(taxInvoicePending(row({ status, kind: 'regular' })), true, status);
+    assert.equal(taxInvoicePending(row({ status })), true, `${status} ไม่มี kind = งวดปกติ`);
+  }
+  assert.match(openingInvoiceNote, /ระบบเดิม/);
+  // บัญชียังบันทึกเลขให้งวดยกมาได้ ถ้าอยากผูกเลข Express ไว้ (ด่านสิทธิ์เดิม ไม่ดูชนิดงวด)
+  assert.equal(taxInvoiceActionError(row({ kind: 'opening' }), 'tax-invoice', FN, OK), null);
 });
 
 /* 🔴 patch ต้องเป็น object จริงเสมอ — คืน null เมื่อไร route จะเขียนแต่ `updatedAt`

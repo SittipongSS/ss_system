@@ -11,7 +11,9 @@
 //
 // ⚠️ **ตรรกะอยู่ที่นี่ ไม่ใช่ในหน้าเว็บ** — `components/ui/StepTrack` วาดอย่างเดียว
 //    (แพตเทิร์นเดียวกับ `salesOrderListTrack.js` และ `requests/queueTrack.js`)
-import { daysAwaitingSignature, isExternalContract, SIGNATURE_LATE_DAYS } from '@/lib/sales/contracts';
+import {
+  daysAwaitingSignature, isExternalContract, isSubstituteContract, SIGNATURE_LATE_DAYS,
+} from '@/lib/sales/contracts';
 
 const step = (key, label, state, note = null) => ({ key, label, state, note });
 
@@ -29,17 +31,20 @@ const step = (key, label, state, note = null) => ({ key, label, state, note });
      ไม่เคยผ่าน และร่างจะถูกสั่งให้ "กรอกข้อมูลคู่สัญญา" ซึ่งเป็นช่องที่ใบนี้ไม่มี
    ⚠️ **คำต้องตรงกับรางบนหน้ารายละเอียด** (`EXTERNAL_STEPS` ใน contractLifecycle.js) —
       คนคนเดียวกันเปิดสองหน้านี้ห่างกันคลิกเดียว · มีเทสต์ล็อกคู่คำไว้แล้ว */
-function externalTrack(status) {
+/* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (0374) — หมุดเดียวกัน คำใบ้ตาม `SUBSTITUTE_STEPS` ของหน้ารายละเอียด:
+   ฟอร์มคีย์ใบสร้าง/แก้ และ AE Sup อนุมัติพร้อมใบสั่งขาย ไม่ใช่ที่หน้าสัญญา */
+function externalTrack(status, substitute = false) {
   const signed = status === 'signed';
   return {
     closed: false,
     steps: [
       signed
         ? step('draft', 'ร่าง', 'done')
-        : step('draft', 'ร่าง', 'now', 'แนบเอกสารที่ใช้แทนสัญญา'),
+        : step('draft', 'ร่าง', 'now', substitute ? 'แก้ที่ฟอร์มคีย์ใบสั่งขายย้อนหลัง' : 'แนบเอกสารที่ใช้แทนสัญญา'),
       signed
         ? step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'done')
-        : step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'todo', 'รอ AE Supervisor อนุมัติ'),
+        : step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'todo',
+          substitute ? 'อนุมัติพร้อมใบสั่งขายย้อนหลัง' : 'รอ AE Supervisor อนุมัติ'),
     ],
   };
 }
@@ -47,7 +52,7 @@ function externalTrack(status) {
 export function contractListTrack(contract = {}) {
   const status = contract?.status || 'draft';
   if (status === 'cancelled' || status === 'revised') return { closed: true, steps: [] };
-  if (isExternalContract(contract)) return externalTrack(status);
+  if (isExternalContract(contract)) return externalTrack(status, isSubstituteContract(contract));
 
   /* ⭐ `awaiting_approval` เพิ่ม 2026-08-31 (mig 0323) — ใบที่ SA บันทึกลงนามแล้ว
      แต่ AE Sup ยังไม่รับรอง · ต้องนับว่า "ออกเลขแล้ว" ด้วย ไม่งั้นรางถอยกลับไปขั้นร่าง

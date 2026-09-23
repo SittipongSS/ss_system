@@ -219,3 +219,74 @@ test('เส้น /api/nav/counts ไม่มี .limit(5000) เหลือ�
   const overCap = [...code.matchAll(/\.limit\(\s*(\d+)\s*\)/g)].map((m) => Number(m[1])).filter((n) => n > 1000);
   assert.deepEqual(overCap, [], `.limit() ที่เกินเพดาน 1,000 แถว: ${overCap.join(', ')}`);
 });
+
+// ── ป้ายใบสั่งขาย: เลนผู้รีวิวตัดใบตัวเอง · เลนร่างของใบย้อนหลัง (มติ 22/09 · mig 0374) ──────────
+/* 🐞 ป้ายเคยนับใบที่ AE Sup สร้าง/ยื่นเองทั้งที่อนุมัติเองไม่ได้ ⇒ ป้ายเกินคิว "รออนุมัติจากคุณ" เสมอ
+   ⭐ ร่างของใบย้อนหลัง = บันทึกค้างครึ่งทาง ต้องขึ้นป้ายให้ผู้คีย์ — ไม่งั้นใบค้างเงียบ
+   ⚠️ helper ตัดสินจากแถว ⇒ select ต้องพกคอลัมน์ที่ helper อ่าน (ขาด = ตัดสินผิดเงียบ ไม่ error) */
+test('ป้ายใบสั่งขาย: เลนอนุมัติพก submittedBy/origin · ส่ง role · เลนร่างใบย้อนหลังผ่าน historicalRowsOnly', () => {
+  const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
+  const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('projectCloses'"));
+  assert.ok(job.length > 100, 'หาก้อนตัวนับใบสั่งขายไม่เจอ');
+  assert.match(job, /\.select\('id, status, createdBy, submittedBy, origin'\)\s*\.in\('status', \['pending_approval', 'rejected'\]\)/);
+  assert.match(job, /fetchAllResult\(\(\) => historicalRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, createdBy, origin'\)\)\s*\.eq\('status', 'draft'\)\.eq\('createdBy', user\.id\)\.order\('id', \{ ascending: true \}\)\)/);
+  assert.match(job, /isSalesOrderWaitingOnMe\(row, \{ userId: user\.id, reviewer, role: user\.role \}\)/);
+  // error ของเลนร่างต้องโยน ไม่ใช่กลืนเป็น [] (ป้ายนับขาดเงียบ)
+  assert.match(job, /if \(approvalError \|\| draftError \|\| financeError\) throw/);
+  // literal ของ origin มีบ้านเดียว — ห้ามกรองเองในไฟล์นี้
+  assert.doesNotMatch(code, /\.eq\(\s*['"]origin['"]/);
+});
+
+test('ตัวตัดสินของป้าย: ผู้ตรวจไม่ถูกนับใบตัวเอง (ยกเว้น admin) · ร่างใบย้อนหลังของฉันนับ', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('../sales/salesOrderWorkflow.js');
+  const mine = { status: 'pending_approval', origin: 'pipeline', createdBy: 'U-SUP', submittedBy: 'U-SUP' };
+  assert.equal(isSalesOrderWaitingOnMe(mine, { userId: 'U-SUP', reviewer: true, role: 'ae_supervisor' }), false);
+  assert.equal(isSalesOrderWaitingOnMe(mine, { userId: 'U-SUP', reviewer: true, role: 'admin' }), true);
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'draft', origin: 'historical', createdBy: 'U-AE' },
+    { userId: 'U-AE', reviewer: false, role: 'ae' }), true);
+});
+
+// ── ป้ายสัญญา: เอกสารแทนสัญญาของใบสั่งขายย้อนหลังไม่นับซ้ำกับป้ายใบสั่งขาย (0374) ──────────────
+/* `isContractWaitingOnMe` ตัดร่างที่ชี้กลับใบสั่งขายย้อนหลังจาก `metadata.historicalSalesOrderId`
+   ⚠️ helper ตัดสินจากแถว ⇒ select ต้องพก `metadata` (ขาด = ร่างที่แนบไฟล์แล้วนับในป้ายสัญญาของ AE Sup เงียบ ๆ)
+   ⚠️ select ต้องอยู่ในระยะที่ check:columns มองเห็น (200 ตัวอักษรหลัง `.from()`) — คอมเมนต์อยู่เหนือ `.from()` */
+test('ป้ายสัญญา: select พก metadata ให้ตัวตัดสินตัดเอกสารแทนสัญญาได้ · check:columns มองเห็น', () => {
+  const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
+  const job = route.slice(route.indexOf("attempt('contracts'"), route.indexOf('externalDocReadyIds(supabase, latest'));
+  assert.ok(job.length > 100, 'หาก้อนตัวนับสัญญาไม่เจอ');
+  assert.match(job, /\.from\('sales_contracts'\)\s*\.select\('id, status, source, metadata, /);
+});
+
+// ── ป้ายงานเข้าใหม่ของ TS: ถังผูกโซน + ถังตั้งรอบ (มติ 22/09 · mig 0374) ────────────────────
+/* 🐞 ใบสั่งขายย้อนหลังเลือกโซนจากทะเบียนตอนคีย์ และรอบขายเกิดตอน AE Sup อนุมัติ ⇒ ไม่เคยผ่านถังผูกโซน
+   ป้ายที่นับถังเดียว = ใบย้อนหลังมาถึง TS โดยไม่มีสัญญาณอะไรเลย (ถังตั้งรอบไม่มีป้าย)
+   ⚠️ โซน/รอบต้องไล่หน้า (เพดาน 1,000 แถว) · error ต้องโยนผ่าน mustData ไม่ใช่กลืนเป็นชุดว่าง */
+test('ป้ายงานเข้าใหม่: นับ bind + plan · อ่านโซน/รอบแบบไล่หน้าและไม่กลืน error', () => {
+  const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
+  const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const job = code.slice(code.indexOf("attempt('serviceIntake'"), code.indexOf("attempt('payments'"));
+  assert.ok(job.length > 100, 'หาก้อนตัวนับงานเข้าใหม่ไม่เจอ');
+  assert.match(code, /import \{ bindQueue, planQueue \} from '@\/lib\/service\/intake';/);
+  assert.match(job, /fetchAllResult\(\(\) => supabase\.from\('service_zones'\)\.select\('id, "siteId", "isActive"'\)\s*\.order\('id', \{ ascending: true \}\)\)\.then\(mustData\)/);
+  assert.match(job, /fetchAllResult\(\(\) => supabase\.from\('service_plans'\)\.select\('id, "siteId", "salesOrderId", "isActive"'\)\s*\.order\('id', \{ ascending: true \}\)\)\.then\(mustData\)/);
+  // โซนต้องเป็นทุกโซน (หน้าคิวใช้ loadAllZones) — กรองที่ query แล้วป้ายนับไม่ตรงแท็บ
+  assert.doesNotMatch(job, /from\('service_zones'\)[^;]*\.eq\(/);
+  assert.match(job, /const plan = planQueue\(\{\s*zones, terms, plans,/);
+  assert.match(job, /return bind\.rows\.length \+ plan\.length;/);
+});
+
+test('ตัวตัดสินของป้ายงานเข้าใหม่: ใบย้อนหลังที่ผูกโซนตอนอนุมัติแล้วนับที่ถังตั้งรอบ · มีรอบแล้วไม่นับ', async () => {
+  const { bindQueue, planQueue } = await import('../service/intake.js');
+  // คอลัมน์ผอมชุดเดียวกับที่ตัวนับเลือก (ไม่มี origin · ไม่มียอด)
+  const orders = [{ id: 'SOH', status: 'approved', supersededById: null, projectId: null, dealId: 'DL-S', orderNumber: 'SO-26090051-0' }];
+  const lines = [{ id: 'L1', salesOrderId: 'SOH', qty: 6 }];
+  const terms = [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SOH', salesOrderLineId: 'L1', packageQty: 6 }];
+  const zones = [{ id: 'Z1', siteId: 'S1', isActive: true }];
+  const bind = bindQueue({ orders, lines, terms, dealsById: new Map([['DL-S', { id: 'DL-S', line: 'SERVICE' }]]) });
+  assert.equal(bind.rows.length, 0, 'ผูกครบตอนอนุมัติ = ไม่อยู่ถังผูกโซน');
+  const ordersById = new Map(orders.map((o) => [o.id, o]));
+  assert.equal(planQueue({ zones, terms, plans: [], ordersById, todayIso: '2026-09-23' }).length, 1);
+  const plans = [{ id: 'PL1', siteId: 'S1', salesOrderId: 'SOH', isActive: true }];
+  assert.equal(planQueue({ zones, terms, plans, ordersById, todayIso: '2026-09-23' }).length, 0, 'ตั้งรอบแล้วหลุดจากป้าย');
+});

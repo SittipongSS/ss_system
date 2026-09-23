@@ -20,7 +20,8 @@ import { termIsActive } from './terms';
 import { coversDate, hasOverdueUnconfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { contractInForce } from '@/lib/sales/contracts';
 import { contractSpanAt } from '@/lib/sales/serviceContractLink';
-import { historicalGateExempt } from '@/lib/sales/historicalOrders';
+// ใบยอด 0 ไม่มีงวดให้เก็บ — ตัวตัดสินเดียวกับงวดชำระ (ไฟล์ logic ล้วน ฝั่ง client ใช้ได้)
+import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 
 /* สถานะของแต่ละข้อ
    · ok      — ผ่าน
@@ -56,7 +57,8 @@ export const visitSkipsContractGates = (visit) => GATE_EXEMPT_KINDS.includes(vis
  * @param ctx.site                 ไซต์ของนัด (ข้อ ④)
  * @param ctx.zones                โซนของไซต์นั้น — ใช้บอกว่าติดโซนไหนบ้าง
  * @param ctx.terms                รอบขายของโซน (`service_zone_terms`) ของไซต์นั้น
- * @param ctx.ordersById           ใบสั่งขายของ term (Map/object id → order)
+ * @param ctx.ordersById           ใบสั่งขายของ term (Map/object id → order) — ข้อ② อ่าน `totalAmount`
+ *                                 (ใบยอด 0 ผ่านเอง · ไม่ส่งมา = ไม่รู้ยอด = เดินตามงวด)
  * @param ctx.installmentsByOrderId งวดชำระราย SO (id → installments[])
  * @param ctx.contractsById        สัญญา (id → contract)
  * @param ctx.todayIso             วันอ้างอิง (ทดสอบส่งเข้ามาได้)
@@ -140,12 +142,17 @@ export function evaluateVisitGate(visit, {
        ⚠️ **"แจ้งแล้ว" ไม่ปลดด่าน** — `coversDate` นับเฉพาะงวดที่บัญชีรับรอง
        ⚠️ งวดเลยกำหนดที่ยังไม่รับรอง = ติดด้วย แม้วันนัดจะอยู่ในช่วงที่จ่ายแล้ว
           (ค้างชำระอยู่ = ยังไม่ควรส่งคนไปเพิ่ม) */
+    /* ⭐ **ใบยอด 0 = ไม่มีเงินให้เก็บ ⇒ ผ่านข้อ② เอง** (มติ 22/09 · mig 0374) — ตัวตัดสินเดียวกับงวดชำระ
+       (`paymentNotRequired` · มติ 2026-08-18 "ยอด 0 = จบที่อนุมัติใบ ไม่มีงวด") ใช้กับทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง
+       🔄 แทนสวิตช์ยกเว้นด่านเงินรายใบของใบย้อนหลัง (มติข้อ 13 · 0360) ที่ถอดแล้ว — เงินที่เก็บก่อนเข้าระบบ
+          คีย์เป็น "งวดยกมา" ให้บัญชีรับรอง ⇒ ใบย้อนหลังที่มียอดเดินข้อ② ด้วยงวดจริงเหมือนใบปกติ
+          (ร่องรอย `paymentGateExemptAt` ที่ค้างในแถวไม่มีใครอ่านแล้ว — ปลอมมาก็ไม่ปลดด่าน)
+       ⚠️ ถาม **ยอดของใบ** ไม่ใช่ "ไม่มีแถว" — ใบยอดจริงที่ยังไม่มีงวดต้องติด (fail-closed ของ `coversDate`)
+          และไม่รู้ยอด (ไม่ได้ select มา) ≠ ยอด 0 — `paymentNotRequired` ตอบ false ให้เอง
+       ⚠️ ปลดข้อนี้ข้อเดียว — ข้อ① สัญญาตัดไปแล้วข้างบน ใบ ฿0 ก็ต้องผูกสัญญาที่ครอบวันนัด */
+    const noPaymentStep = (t) => paymentNotRequired(pick(ordersById, t.salesOrderId)?.totalAmount);
     const paid = covered.filter((t) => {
-      /* ⭐ **ใบสั่งขายย้อนหลังที่ยกเว้นด่านเงินรายใบ** (มติข้อ 13 · mig 0360) — AE Sup/แอดมินกดยกเว้นพร้อมเหตุผล
-         (งวดที่เก็บนอกระบบไปแล้วไม่ถูกคีย์ — คำตอบข้อ 2) ⇒ ผ่านข้อ② โดยไม่ดูงวด
-         ⚠️ ยกเว้น **ข้อนี้ข้อเดียว** — ข้อ① สัญญาตัดไปแล้วข้างบน ไม่มีทางยกเว้น
-         ⚠️ `historicalGateExempt` ถาม origin ด้วยเสมอ ⇒ ใบ pipeline ที่มีร่องรอยยกเว้นปลอมยังติดตามเดิม */
-      if (historicalGateExempt(pick(ordersById, t.salesOrderId))) return true;
+      if (noPaymentStep(t)) return true;
       const rows = pick(installmentsByOrderId, t.salesOrderId) || [];
       return coversDate(rows, visitDate) && !hasOverdueUnconfirmed(rows, visitDate);
     });
@@ -155,12 +162,12 @@ export function evaluateVisitGate(visit, {
         reason: moneyStopReason(covered, installmentsByOrderId, visitDate),
       };
     }
-    /* ⚠️ ผ่านเพราะยกเว้นล้วน ๆ ต้องบอก — ด่านที่แกล้งผ่านคือด่านที่โกหกว่าตรวจแล้ว (กติกาหัวไฟล์)
+    /* ⚠️ ผ่านเพราะไม่มีเงินให้เก็บล้วน ๆ ต้องบอก — ด่านที่แกล้งผ่านคือด่านที่โกหกว่าตรวจแล้ว (กติกาหัวไฟล์)
        ติดธงเฉพาะตอนเป็นจริง เพื่อไม่ขยับรูปผลของโซนปกติ */
-    const paymentExempt = paid.every((t) => historicalGateExempt(pick(ordersById, t.salesOrderId)));
+    const zeroValueOnly = paid.every(noPaymentStep);
     return {
       zoneId: zone.id, zoneName: zone.name || null, state: 'ok', owner: null, reason: null,
-      ...(paymentExempt ? { paymentExempt: true } : {}),
+      ...(zeroValueOnly ? { paymentNotRequired: true } : {}),
     };
   });
 
@@ -196,7 +203,7 @@ export function evaluateVisitGate(visit, {
         : (blockedZones.length ? `งดบริการ ${blockedZones.length} โซน` : null),
   });
 
-  const exemptZones = okZones.filter((z) => z.paymentExempt).length;
+  const zeroValueZones = okZones.filter((z) => z.paymentNotRequired).length;
   items.push({
     key: 'payment', state: moneyStop ? 'blocked' : 'ok', owner: GATE_OWNERS.FN,
     label: 'ไม่มีงวดเลยกำหนดที่บัญชียังไม่รับรอง',
@@ -204,7 +211,7 @@ export function evaluateVisitGate(visit, {
       ? 'งานสำรวจ/ถอนเครื่องไม่ต้องผ่านด่านเงิน (มติผู้ใช้ 2026-08-31)'
       : moneyStop
         ? moneyStop.reason
-        : (exemptZones ? `ยกเว้นด่านเงิน ${exemptZones} โซน — ใบสั่งขายย้อนหลังที่ยกเว้นรายใบ ไม่ได้ตรวจงวดชำระ` : null),
+        : (zeroValueZones ? `ไม่มีเงินให้เก็บ ${zeroValueZones} โซน — ใบยอด 0 บาท` : null),
   });
 
   // ผลรายโซนติดไปกับด่านเสมอ — ใบส่งงาน/ปิดงานอ่านจากตรงนี้ ไม่คิดเงื่อนไขเอง

@@ -17,7 +17,7 @@
 //   `contracts.js` ตามเดิม ที่นี่แค่หาข้อมูลมาป้อนให้มัน
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { EXTERNAL_DOC_TYPE } from '@/lib/master/attachmentTypes';
-import { canApproveExternalContract, isExternalContract } from '@/lib/sales/contracts';
+import { canApproveExternalContract, isExternalContract, isSubstituteContract } from '@/lib/sales/contracts';
 
 /**
  * id ของใบ external ที่เป็นร่างและ **แนบเอกสารแทนสัญญาไว้แล้ว**
@@ -28,8 +28,10 @@ import { canApproveExternalContract, isExternalContract } from '@/lib/sales/cont
  */
 export async function externalDocReadyIds(supabase, rows = [], user = null, { strict = false } = {}) {
   if (!canApproveExternalContract(user)) return new Set();
+  /* ⚠️ เอกสารแทนสัญญาของใบสั่งขายย้อนหลังไม่ต้องถาม — `isContractWaitingOnMe` ตัดมันออกจากทุกเลนอยู่แล้ว
+     (งานของคิวใบสั่งขาย · 0374) ⇒ ถามไปก็ได้คำตอบที่ไม่มีใครใช้ · ต้องมี `metadata` ในแถวถึงจะตัดได้ */
   const ids = (rows || [])
-    .filter((row) => isExternalContract(row) && row?.status === 'draft' && row?.id)
+    .filter((row) => isExternalContract(row) && row?.status === 'draft' && row?.id && !isSubstituteContract(row))
     .map((row) => row.id);
   if (!ids.length) return new Set();
 

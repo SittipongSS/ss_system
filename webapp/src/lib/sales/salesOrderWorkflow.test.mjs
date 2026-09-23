@@ -13,6 +13,7 @@ import {
   canRevokeSalesOrderApproval,
   canSwitchSalesOrderDocLanguage,
   canSalesOrderTransition,
+  canSubmitHistoricalSalesOrder,
   canSubmitSalesOrder,
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
@@ -226,8 +227,15 @@ test('⭐ เลนผู้รีวิว: ใบที่ยื่นมา�
   assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-BOSS', reviewer: true }), true);
   assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-BOSS', reviewer: false }), false,
     'คนที่ไม่ใช่ผู้รีวิวไม่มีอะไรให้ทำกับใบที่รออนุมัติ');
-  // ใบที่ตัวเองยื่นแล้วตัวเองอนุมัติได้ก็ยังนับ — ระบบเปิดให้จริง
-  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-MAKER', reviewer: true }), true);
+  /* ใบที่ตัวเองสร้าง/ยื่นไม่นับ — route อนุมัติปฏิเสธผู้ตรวจที่อนุมัติใบตัวเอง (22/09 แก้ความเข้าใจเดิม)
+     ⭐ admin นับ เพราะอนุมัติใบตัวเองได้จริง (Admin Override) · ไม่ส่ง role = ถือว่าไม่ใช่ admin */
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-MAKER', reviewer: true }), false);
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-MAKER', reviewer: true, role: 'ae_supervisor' }), false);
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-MAKER', reviewer: true, role: 'admin' }), true);
+  // ยื่นแทนคนอื่น (submittedBy = ฉัน) ก็อนุมัติเองไม่ได้เหมือนกัน
+  const submittedByBoss = { ...pending, submittedBy: 'USR-BOSS' };
+  assert.equal(isSalesOrderWaitingOnMe(submittedByBoss, { userId: 'USR-BOSS', reviewer: true, role: 'ae_supervisor' }), false);
+  assert.equal(isSalesOrderWaitingOnMe(submittedByBoss, { userId: 'USR-OTHER-SUP', reviewer: true, role: 'ae_supervisor' }), true);
   // ผู้รีวิวไม่ได้ถูกทวงใบที่อนุมัติไปแล้ว
   assert.equal(isSalesOrderWaitingOnMe({ status: 'approved' }, { reviewer: true }), false);
   // ใบตีกลับของคนอื่น ผู้รีวิวก็ไม่ต้องแก้ให้
@@ -244,6 +252,23 @@ test('⭐ ใบสั่งขายที่ถูกตีกลับมา�
   // ใบตีกลับของคนอื่นไม่ใช่ของค้างของเรา
   assert.equal(isSalesOrderWaitingOnMe({ status: 'rejected', createdBy: 'USR-OTHER' }, { userId: me }), false);
   assert.equal(isSalesOrderWaitingOnMe(null, { userId: me }), false);
+});
+
+/* ⭐ ร่างของใบสั่งขายย้อนหลัง = บันทึกค้างครึ่งทาง/ดึงกลับ (มติ 22/09 · 0374) — ผู้คีย์ต้องกลับมาทำต่อ
+   ⚠️ ร่างของใบปกติยังไม่นับเหมือนเดิม (ไม่มีใครรออยู่ปลายทาง) */
+test('⭐ ร่างใบย้อนหลังของฉันนับ · ร่างใบปกติยังไม่นับ · ร่างของคนอื่นไม่นับ', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('./salesOrderWorkflow.js');
+  const me = 'USR-KEYER';
+  const draft = { status: 'draft', origin: 'historical', createdBy: me };
+  assert.equal(isSalesOrderWaitingOnMe(draft, { userId: me }), true);
+  assert.equal(isSalesOrderWaitingOnMe(draft, { userId: me, reviewer: true, role: 'ae_supervisor' }), true);
+  assert.equal(isSalesOrderWaitingOnMe({ ...draft, origin: 'pipeline' }, { userId: me }), false);
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'draft', createdBy: me }, { userId: me }), false);
+  assert.equal(isSalesOrderWaitingOnMe({ ...draft, createdBy: 'USR-OTHER' }, { userId: me, reviewer: true, role: 'admin' }), false);
+  assert.equal(isSalesOrderWaitingOnMe(draft, { userId: '' }), false);
+  // ใบย้อนหลังที่ถูกตีกลับยังนับเลนเดิม · ที่ส่งแล้วรออนุมัติเป็นงานของผู้ตรวจ ไม่ใช่ของผู้คีย์
+  assert.equal(isSalesOrderWaitingOnMe({ ...draft, status: 'rejected' }, { userId: me }), true);
+  assert.equal(isSalesOrderWaitingOnMe({ ...draft, status: 'pending_approval', submittedBy: me }, { userId: me }), false);
 });
 
 // ── สิทธิ์ที่ต้องมีต่อคำสั่ง (บั๊กจริง 2026-08-13) ────────────────────────
@@ -352,18 +377,54 @@ test('ใบย้อนหลังอนุมัติแล้ว: ไม่
   }
 });
 
-test('ใบย้อนหลัง: ย้อนอนุมัติ/ออก Rev./เปลี่ยนภาษาเอกสารไม่ได้ · ลบแบบปกติได้ทั้งอนุมัติ/ยกเลิก (ทาง undo)', () => {
+test('ใบย้อนหลัง: ย้อนอนุมัติ/ออก Rev./เปลี่ยนภาษาเอกสารไม่ได้ · ลบแบบปกติได้เฉพาะตอนยังไม่เคยอนุมัติ (0374)', () => {
   assert.equal(canRevokeSalesOrderApproval(HISTORICAL_APPROVED, { reviewer: true }), false);
   assert.equal(canIssueSalesOrderRevision({ ...HISTORICAL_APPROVED, status: 'approval_revoked' }, { reviewer: true }), false);
   assert.equal(canSwitchSalesOrderDocLanguage(HISTORICAL_APPROVED), false);
-  assert.equal(canHardDeleteSalesOrder(HISTORICAL_APPROVED), true);
-  assert.equal(canHardDeleteSalesOrder({ ...HISTORICAL_APPROVED, status: 'cancelled' }), true);
+  /* ⭐ ทาง undo ของผู้คีย์ = ใบที่ยังไม่มีอะไรปลายน้ำ (ไม่มีรอบขายของโซน · งวดยังไม่หยุดยอด · สัญญายังร่าง)
+     อนุมัติแล้ว/ยกเลิกหลังอนุมัติ ⇒ บังคับลบ (พรีวิวนับรอบขาย/รอบบริการให้เห็นก่อน) — ไม่ใช่ปุ่มลบที่กดแล้วติดทุกครั้ง */
+  for (const status of ['draft', 'pending_approval', 'rejected']) {
+    assert.equal(canHardDeleteSalesOrder({ ...HISTORICAL_APPROVED, status }), true, status);
+  }
+  assert.equal(canHardDeleteSalesOrder({ ...HISTORICAL_APPROVED, status: 'cancelled', approvedAt: null }), true,
+    'ยกเลิกก่อนเคยอนุมัติ = ยังไม่มีอะไรปลายน้ำ');
+  assert.equal(canHardDeleteSalesOrder({ ...HISTORICAL_APPROVED, approvedAt: '2026-09-22T03:00:00Z' }), false);
+  assert.equal(canHardDeleteSalesOrder(HISTORICAL_APPROVED), false);
+  assert.equal(canHardDeleteSalesOrder({ ...HISTORICAL_APPROVED, status: 'cancelled', approvedAt: '2026-09-22T03:00:00Z' }), false,
+    'ยกเลิกหลังอนุมัติ = รอบขาย/งวดที่หยุดยอดแล้วยังอยู่ ต้องผ่านพรีวิวบังคับลบ');
   // ใบ pipeline ที่อนุมัติแล้วยังเป็นกติกาเดิมทุกข้อ
   const pipeline = { status: 'approved', origin: 'pipeline', actualAmount: 1000, quotationId: 'QT-1' };
   assert.equal(canRevokeSalesOrderApproval(pipeline, { reviewer: true }), true);
   assert.equal(canIssueSalesOrderRevision({ ...pipeline, status: 'approval_revoked' }, { reviewer: true }), true);
   assert.equal(canSwitchSalesOrderDocLanguage(pipeline), true);
   assert.equal(canHardDeleteSalesOrder(pipeline), false);
+});
+
+/* ── ยื่นใบย้อนหลังเข้าคิว AE Sup (0374) — ผู้คีย์ยื่นเอง ไม่ใช่เฉพาะ AE เจ้าของดีลแบบใบปกติ ── */
+test('canSubmitHistoricalSalesOrder: ฝ่ายขายทุกตำแหน่ง + admin · AE/Senior AE เฉพาะใบของตัวเอง · ร่าง/ตีกลับเท่านั้น', () => {
+  const order = { status: 'draft', origin: 'historical', deal: { ownerId: 'U-AE' } };
+  const inScope = { inScope: true };
+  // AC ยื่นแทน AE ได้ (ใบย้อนหลังไม่มีช่องลงนามของฝ่ายขาย) — ต่างจาก canSubmitSalesOrder ของใบปกติ
+  for (const role of ['ac', 'ae_supervisor', 'admin']) {
+    assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-X', role }, order, inScope), true, role);
+  }
+  assert.equal(canSubmitSalesOrder({ id: 'U-X', role: 'ac' }, order.deal), false, 'ใบปกติยังเป็นกติกาเดิม');
+  // AE / Senior AE คีย์ได้แค่ของตัวเอง ⇒ ยื่นได้แค่ใบที่ตัวเองเป็นเจ้าของ
+  for (const role of ['ae', 'senior_ae']) {
+    assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-AE', role }, order, inScope), true, role);
+    assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-OTHER', role }, order, inScope), false, role);
+  }
+  assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-AE', role: 'ae' }, { ...order, status: 'rejected' }, inScope), true);
+  // นอกขอบเขต · ไม่ใช่ฝ่ายขาย · สถานะที่แก้ในฟอร์มไม่ได้ · ใบปกติ = ไม่ได้
+  assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-X', role: 'ac' }, order, { inScope: false }), false);
+  assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-X', role: 'ac' }, order), false, 'ไม่ส่ง inScope = ไม่ได้');
+  assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-FN', role: 'finance' }, order, inScope), false);
+  for (const status of ['pending_approval', 'approved', 'cancelled']) {
+    assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-X', role: 'admin' }, { ...order, status }, inScope), false, status);
+  }
+  assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-X', role: 'admin' }, { ...order, origin: 'pipeline' }, inScope), false);
+  assert.equal(canSubmitHistoricalSalesOrder(null, order, inScope), false);
+  assert.equal(canSubmitHistoricalSalesOrder({ id: 'U-X', role: 'admin' }, null, inScope), false);
 });
 
 test('ใบย้อนหลังไม่เข้าขั้นบัญชีปิดใบ — financeStatus ว่าง ⇒ ด่านตอบ "ยังไม่เข้าคิว" (finance_approve ไปไม่ถึง)', () => {

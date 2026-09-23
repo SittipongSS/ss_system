@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
+  LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir,
   ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
-  sortLedgerGroups, stampOrderPaidThrough, undatedHiddenBy
+  sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, undatedHiddenBy
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -733,4 +733,101 @@ test('ใบย้อนหลัง: แถวพก origin + เลขเด�
   assert.equal(make().origin, 'pipeline');
   assert.equal(make().historicalRefs, '');
   assert.equal(make({}, { historicalQuoteRef: 'Q#OLD' }).quoteNumber, 'QT-26080042-0');
+});
+
+/* ── ใบย้อนหลังแบบ AE Sup อนุมัติ (มติ 22/09 · mig 0374) — งวดยกมาในคิวบัญชี ─────────────────────────
+ *
+ * ⭐ ตัวเลขของ mock FnConfirm: ยกมา 196,452 ครอบ 1 ม.ค.–30 ก.ย. · งวด ต.ค.–ธ.ค. 65,484 · ยอดใบ 261,936
+ * ⚠️ ledgerRow เป็น whitelist — ค่าที่โมดัลรับรองต้องใช้ (kind · note · ยอดใบ · ผู้อนุมัติ) ลืมเติม = หายเงียบ
+ *   และ `kind` หายเมื่อไร งวดยกมาโผล่ในคิว "ยังไม่ออกใบกำกับ" ตลอดกาล (ใบกำกับออกใน Express แล้ว)
+ */
+const HIST_ORDER = {
+  id: 'SOR-H51', orderNumber: 'SO-26090051-0', quotationId: null, origin: 'historical', status: 'approved',
+  totalAmount: 261936, approvedByName: 'วรเชษฐ์ ทองดี', approvedAt: '2026-09-22T03:00:00.000Z',
+  historicalQuoteRef: null, historicalExpressRef: null, historicalInvoiceRef: 'IV-2601-0412',
+};
+const hist = (installment) => ledgerRow({
+  installment: { evidence: [], ...installment },
+  order: HIST_ORDER,
+  quotation: null,
+  customer: { name: 'บจก. สยามพิวรรธน์', arCode: 'AR-1207' },
+  todayIso: '2026-09-23',
+});
+const H_OPENING = hist({
+  id: 'SOI-H51-1', seq: 1, kind: 'opening', label: 'งวดยกมา', amount: 196452, status: 'reported',
+  coversFrom: '2026-01-01', coversTo: '2026-09-30', paidOn: '2026-09-15', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.',
+});
+const H_NEXT = hist({
+  id: 'SOI-H51-2', seq: 2, kind: 'regular', label: 'งวด ต.ค.–ธ.ค.', amount: 65484, status: 'pending',
+  dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-12-31',
+});
+
+test('🔴 ledgerRow พกค่าที่โมดัลรับรองของใบย้อนหลังใช้ (kind · note · ยอดใบ · ผู้อนุมัติ · เลขใบกำกับเดิม)', () => {
+  assert.equal(H_OPENING.kind, 'opening');
+  assert.equal(H_OPENING.note, 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.');
+  assert.equal(H_OPENING.orderTotal, 261936);
+  assert.equal(H_OPENING.orderApprovedByName, 'วรเชษฐ์ ทองดี');
+  assert.equal(H_OPENING.orderApprovedAt, '2026-09-22T03:00:00.000Z');
+  assert.equal(H_OPENING.historicalInvoiceRef, 'IV-2601-0412');
+  // แถวปกติ/ใบ pipeline: kind ตั้งต้น regular · ค่าว่างเป็นค่าว่าง ไม่ใช่ undefined · ยอดใบไม่รู้ = null ไม่ใช่ 0
+  const plain = make();
+  assert.equal(plain.kind, 'regular');
+  assert.equal(plain.note, '');
+  assert.equal(plain.orderTotal, null);
+  assert.equal(plain.orderApprovedByName, '');
+  assert.equal(plain.orderApprovedAt, null);
+  assert.equal(plain.historicalInvoiceRef, '');
+  assert.equal(make({}, { totalAmount: 0 }).orderTotal, 0);
+});
+
+test('🔴 งวดยกมาไม่อยู่ในของค้างใบกำกับ — ทั้งคิว ทั้งตัวเลขสรุป ทั้งตัวกรอง (ใบกำกับออกในระบบเดิมแล้ว)', () => {
+  const confirmedOpening = { ...H_OPENING, status: 'confirmed' };
+  const paidRegular = { ...H_NEXT, status: 'confirmed', paidOn: '2026-10-01' };
+  assert.deepEqual(pendingTaxInvoices([confirmedOpening, paidRegular]).map((r) => r.id), ['SOI-H51-2']);
+  const summary = ledgerSummary([confirmedOpening, paidRegular]);
+  assert.equal(summary.missingInvoiceCount, 1);
+  assert.equal(summary.missingInvoiceAmount, 65484);
+  assert.deepEqual(filterLedger([confirmedOpening, paidRegular], { taxInvoice: 'missing' }).map((r) => r.id), ['SOI-H51-2']);
+  // ก้อนของใบ: งวดยกมาไม่อยู่ทั้งตัวตั้งและตัวหาร · จอบอกแยกด้วย openingCount + เลขใบกำกับเดิม
+  const [group] = groupLedgerByOrder([confirmedOpening, { ...paidRegular, taxInvoiceNo: 'IV-6810001' }]);
+  assert.equal(group.openingCount, 1);
+  assert.equal(group.invoiced, 1);
+  assert.equal(group.count - group.openingCount, 1);
+  assert.equal(group.invoicePending, 0);
+  assert.equal(group.historicalInvoiceRef, 'IV-2601-0412');
+  // ใบ pipeline ไม่เปลี่ยน
+  const [plain] = groupLedgerByOrder([make(INVOICED), make({ seq: 2, status: 'confirmed' })]);
+  assert.equal(plain.openingCount, 0);
+  assert.equal(plain.invoiced, 1);
+});
+
+test('🔴 ค้นด้วยป้ายที่ตาเห็นบนแถวคิวต้องเจอ — "ใบย้อนหลัง" · "งวดยกมา"/"ยกมา"', () => {
+  const rows = [H_OPENING, H_NEXT, make()];
+  assert.deepEqual(filterLedger(rows, { q: LEDGER_HISTORICAL_TAG }).map((r) => r.id), ['SOI-H51-1', 'SOI-H51-2']);
+  assert.deepEqual(filterLedger(rows, { q: 'ยกมา' }).map((r) => r.id), ['SOI-H51-1']);
+  assert.deepEqual(filterLedger(rows, { q: 'งวดยกมา' }).map((r) => r.id), ['SOI-H51-1']);
+  // ใบ pipeline ไม่ติดป้ายใบย้อนหลังในชุดค้น
+  assert.equal(filterLedger([make()], { q: LEDGER_HISTORICAL_TAG }).length, 0);
+});
+
+test('คิวรับรองเรียงเหมือนเดิม — งวดยกมาไม่ได้ลัดคิว (เลยกำหนดก่อน แล้วยอดมากก่อน)', () => {
+  const late = make({ id: 'late', status: 'reported', amount: 1000, dueDate: '2026-08-01' });
+  const big = make({ id: 'big', status: 'reported', amount: 500000 });
+  const queue = pendingConfirmations([H_OPENING, late, big]);
+  assert.deepEqual(queue.map((r) => r.id), ['late', 'big', 'SOI-H51-1']);
+});
+
+test('⭐ ภาพหลังรับรองประทับจากงวดทั้งใบก่อนกรอง — กรองเหลือ "รอบัญชีตรวจ" แล้วงวดถัดไปยังอยู่', () => {
+  const all = [{ ...H_OPENING }, { ...H_NEXT }, make({ status: 'reported' })];
+  stampConfirmOutlook(all);
+  const [opening] = filterLedger(all, { status: ['reported'] }).filter((r) => r.id === 'SOI-H51-1');
+  assert.deepEqual(opening.confirmOutlook, {
+    paidThrough: '2026-09-30',
+    collected: 196452,
+    next: { label: 'งวด ต.ค.–ธ.ค.', amount: 65484, dueDate: '2026-10-01' },
+  });
+  // ประทับเฉพาะงวดที่กดรับรองได้ (reported) · ใบอื่นไม่ปนเข้าก้อนของใบนี้
+  assert.equal(all[1].confirmOutlook, undefined);
+  assert.equal(all[2].confirmOutlook.collected, 15000);
+  assert.equal(all[2].confirmOutlook.next, null);
 });

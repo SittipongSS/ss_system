@@ -168,29 +168,46 @@ test('ใบย้อนหลังที่ยังมีงวดค้า�
   assert.equal(steps[1].label, 'เก็บเงิน 0/2');
 });
 
-/* ⭐ ยกเว้นด่านเงิน + ไม่มีงวด = เงินเก็บนอกระบบไปแล้ว ไม่มีอะไรให้รอ (มติข้อ 13)
-   ⚠️ การยกเว้นปลดแค่ *ด่านนัดบริการ* — ใบที่ยกเว้นแต่ยังคีย์งวดไว้ ต้องเก็บงวดนั้นตามปกติ */
-test('⭐ ใบย้อนหลังที่ยกเว้นด่านเงินและไม่มีงวด — ขั้นเก็บเงิน = ข้าม และทั้งรางจบ', () => {
-  const exempt = {
-    origin: 'historical', status: 'approved', totalAmount: 144000,
-    paymentGateExemptAt: '2026-09-16T03:00:00.000Z', payment: null,
+/* ── ใบย้อนหลังแบบ 22/09 (mig 0374) — มีร่าง/รออนุมัติ/ตีกลับ และเก็บเงินด้วยงวดจริง ─────────────
+   🔄 ถอดสาขา "ยกเว้นด่านเงิน" แล้ว — เงินที่เก็บก่อนเข้าระบบคีย์เป็น "งวดยกมา" ให้บัญชีรับรอง
+   ⇒ ใบที่มียอดเดินขั้นเก็บเงินเหมือนใบปกติ · ใบ ฿0 ข้ามด้วยสาขายอด 0 ตัวเดียวกับใบปกติ */
+test('⭐ ใบย้อนหลังที่อนุมัติแล้ว — ขั้นเก็บเงินนับงวดจริง (งวดยกมาเป็นหนึ่งงวด) · ไม่มีสาขายกเว้นอีก', () => {
+  const order = {
+    origin: 'historical', status: 'approved', totalAmount: 261936,
+    payment: cell({ paid: 1, count: 2, tracked: true }),
   };
-  const { steps } = salesOrderListTrack(exempt);
-  assert.deepEqual(steps.map((s) => `${s.key}:${s.state}`), ['doc:done', 'money:skip', 'finance:skip']);
-  assert.equal(steps[1].label, 'ยกเว้นด่านเงิน');
-  assert.equal(steps[1].note, 'ไม่มีงวดที่ต้องเก็บ');
-  assert.equal(salesOrderTrackSummary(exempt).label, 'เสร็จสมบูรณ์');
-
-  // ยกเว้นแล้วแต่ยังมีงวดที่คีย์ไว้ = ยังต้องเก็บ
-  const withRows = { ...exempt, payment: cell({ count: 1 }) };
-  assert.equal(salesOrderListTrack(withRows).steps[1].state, 'now');
+  const { steps } = salesOrderListTrack(order);
+  assert.deepEqual(steps.map((s) => `${s.key}:${s.state}`), ['doc:done', 'money:now', 'finance:skip']);
+  assert.equal(steps[1].label, 'เก็บเงิน 1/2');
+  assert.equal(salesOrderTrackSummary(order).label, 'รอ เก็บเงิน 1/2');
+  // เก็บครบ = จบทั้งราง (ขั้นบัญชีข้ามเพราะใบย้อนหลังไม่เข้าคิวบัญชี)
+  const paid = { ...order, payment: cell({ paid: 2, count: 2, complete: true }) };
+  assert.equal(salesOrderTrackSummary(paid).label, 'เสร็จสมบูรณ์');
 });
 
-/* ร่องรอยการยกเว้นบนใบ pipeline เป็นไปไม่ได้ (CHECK ของ 0360 ห้ามไว้) — กันอีกชั้น
-   เผื่อข้อมูลปลอม/ฟิกซ์เจอร์เก่า ไม่งั้นใบปกติจะข้ามขั้นเก็บเงินไปเฉย ๆ */
-test('ใบ pipeline ที่มีร่องรอยยกเว้นติดมา ต้องไม่ข้ามขั้นเก็บเงิน', () => {
-  const { steps } = salesOrderListTrack({
-    status: 'approved', totalAmount: 1000, paymentGateExemptAt: '2026-09-16T03:00:00.000Z', payment: null,
-  });
-  assert.equal(steps[1].state, 'todo');
+test('ใบย้อนหลังยอด 0 — ขั้นเก็บเงินข้ามด้วยสาขายอด 0 ตัวเดียวกับใบปกติ', () => {
+  const { steps } = salesOrderListTrack({ origin: 'historical', status: 'approved', totalAmount: 0, payment: null });
+  assert.deepEqual(steps.map((s) => `${s.key}:${s.state}`), ['doc:done', 'money:skip', 'finance:skip']);
+  assert.equal(steps[1].label, 'ไม่เก็บเงิน');
+  assert.equal(steps[1].note, 'ยอด 0 — ไม่มีขั้นนี้');
+});
+
+test('ใบย้อนหลังรออนุมัติ = AE Sup กำลังตรวจ · ร่าง = ยังไม่ถึง · ตีกลับ = ธงแดงที่ขั้นเอกสาร', () => {
+  const base = { origin: 'historical', totalAmount: 261936, payment: cell({ count: 2 }) };
+  assert.deepEqual(at({ ...base, status: 'pending_approval' }), ['doc:now', 'money:todo', 'finance:skip']);
+  assert.deepEqual(at({ ...base, status: 'draft' }), ['doc:todo', 'money:todo', 'finance:skip']);
+  assert.deepEqual(at({ ...base, status: 'rejected' }), ['doc:bad', 'money:todo', 'finance:skip']);
+  assert.equal(salesOrderTrackSummary({ ...base, status: 'pending_approval' }).label, 'รอ AE Sup');
+});
+
+/* 🔴 ร่องรอยยกเว้นของ 0360 (`paymentGateExemptAt`) ไม่มีใครอ่านแล้ว — ใบที่มีร่องรอยติดมา (ข้อมูลปลอม/
+   ฟิกซ์เจอร์เก่า) ต้องไม่ข้ามขั้นเก็บเงิน ไม่ว่าจะเป็นใบย้อนหลังหรือใบปกติ */
+test('ร่องรอยยกเว้นด่านเงินติดมา — ขั้นเก็บเงินไม่ข้าม ทั้งใบย้อนหลังและใบ pipeline', () => {
+  for (const origin of ['historical', 'pipeline']) {
+    const { steps } = salesOrderListTrack({
+      origin, status: 'approved', totalAmount: 1000, paymentGateExemptAt: '2026-09-16T03:00:00.000Z', payment: null,
+    });
+    assert.equal(steps[1].state, 'todo', origin);
+    assert.notEqual(steps[1].label, 'ยกเว้นด่านเงิน', origin);
+  }
 });
