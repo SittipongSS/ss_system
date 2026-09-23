@@ -208,3 +208,20 @@ test('ช่องผู้จัดการฝ่ายขายทางพ�
   assert.ok(byId > 0, 'ต้องอ่านตาม signatureEvidenceId');
   assert.ok(latest > byId, 'แถว approver ล่าสุดเป็นแค่ทางสำรองของใบที่ไม่มี id');
 });
+
+/* 🐞 UAT 24/09 (SO-26090237-1): ใบที่ยกเลิกแล้วยังขึ้นป้าย "รอปิดใบ" ที่หัวใบ + ขั้น "บัญชีปิดใบ" บนราง — financeStatus ค้าง
+   pending จากตอนอนุมัติ · ใบที่ตายแล้ว (ยกเลิก / ถูกออก Rev. ทับ) ไม่อยู่บนแกนบัญชีอีก ⇒ ไม่มีสถานะบัญชีให้โชว์
+   ⚠️ ค่าในฐานไม่ถูกแก้ (ประวัติคงเดิม) — ตัดที่ตัวอ่านตัวเดียวที่ป้ายกับรางใช้ร่วมกัน */
+test('ใบที่ยกเลิก/ถูกออก Rev. ทับ ไม่มีสถานะบัญชี: ป้าย "รอปิดใบ"/"ปิดใบแล้ว" และขั้นบัญชีปิดใบบนรางหายไป', () => {
+  for (const status of ['cancelled', 'revised']) {
+    for (const financeStatus of ['pending', 'approved', 'rejected']) {
+      const order = { status, financeStatus, totalAmount: 1284 };
+      assert.equal(financeStatusOf(order), null, `${status}/${financeStatus}`);
+      assert.equal(financeWorkflowStep(order), null, `${status}/${financeStatus}`);
+    }
+  }
+  // ใบที่ยังเดินอยู่ (รวมย้อนการอนุมัติระหว่างรอ Rev. — มติ D3) ยังเห็นสถานะบัญชีตามเดิม
+  for (const status of ['approved', 'approval_revoked']) {
+    assert.equal(financeStatusOf({ status, financeStatus: 'pending' }), 'pending', status);
+  }
+});
