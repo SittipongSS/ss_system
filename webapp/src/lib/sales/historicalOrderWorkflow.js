@@ -294,8 +294,13 @@ export async function loadHistoricalOrderExtras(supabase, order, { todayIso = bu
       siteName: site?.name || null,
       siteActive: site ? site.isActive !== false : null,
       productId: line.productId || null,
+      /* บรรทัดแบบใบเสนอราคา (มติ 23/09): จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน — ไม่มี "แพ็ค" แล้ว
+         (จำนวนมีหน่วยของสินค้าตัวเอง · 12 แพ็คเกจ = 1 ชุด × 12 เดือน ไม่ใช่ 12 ชุด) */
       fgCode: line.fgCode || null,
-      packs: line.qty ?? null,
+      qty: line.qty ?? null,
+      unit: line.unit || null,
+      unitPrice: line.unitPrice ?? null,
+      discountAmount: line.discountAmount ?? null,
       rounds: line.serviceRounds ?? null,
       lineTotal: line.lineTotal ?? null,
       installationPoint: line.installationPoint || null,

@@ -3,7 +3,7 @@
 import { genId } from '@/lib/id';
 import { branchKeyOf } from '@/lib/master/customerTaxId';
 import { customerTaxSiblingIds, customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
-import { normalizeDiscountValue, quoteLineNet, toMoney } from '@/lib/salesPlanning';
+import { quoteLineMoney, quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
 import {
   productBrandName,
@@ -229,6 +229,24 @@ export function masterPriceDrift(product, line) {
   return masterPrice === toMoney(line.unitPrice) ? null : masterPrice;
 }
 
+/**
+ * ช่องไหนของบรรทัดล็อก — ตัวตัดสินตัวเดียวของเซลล์เงิน (`QuoteLineMoneyCells`) ที่ใบเสนอราคาและบรรทัดโซนของ
+ * ใบสั่งขายย้อนหลังใช้ร่วมกัน (มติเจ้าของ 23/09: สองฟอร์มต้องไม่ต่างกัน)
+ * - `bound`: ผูกสินค้าแล้ว (productId หรือ fgCode) ⇒ ราคา/หน่วยและหน่วยมาจากทะเบียน (มติ 2026-07-19 · 2026-07-23)
+ * - `unitLocked`: ผูกแล้ว **หรือเป็นบรรทัดสินค้าที่ยังไม่เลือกสินค้า** (`_lineKind: 'product'`) — ไม่นับข้อหลัง
+ *   = เปิดให้เลือกหน่วยแล้วโดนทะเบียนทับทิ้งเงียบ ๆ ตอนเลือกสินค้า · บรรทัดที่พิมพ์เอง (manual) เลือกหน่วยได้
+ * - `priceLocked`: ผูกแล้ว หรือฟอร์มนั้นรับราคาจากทะเบียน **เท่านั้น** (`registryPriceOnly` — ใบย้อนหลังไม่ส่งราคาขึ้นไป
+ *   ⇒ ช่องที่เปิดให้พิมพ์ก่อนเลือกแพ็คเกจคือช่องที่พิมพ์แล้วหายเงียบ · รีวิว 23/09)
+ */
+export function quoteLineLocks(line = {}, { registryPriceOnly = false } = {}) {
+  const bound = Boolean(line?.productId || line?.fgCode);
+  return {
+    bound,
+    unitLocked: bound || line?._lineKind === 'product',
+    priceLocked: bound || Boolean(registryPriceOnly),
+  };
+}
+
 // ── FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) ──────────────────────
 //
 // FG ผูกกับลูกค้าเสมอ (`products.customerId` — POST /api/products บังคับ) แต่ตัวเลือก
@@ -440,6 +458,45 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
   return quotes;
 }
 
+/**
+ * บรรทัดหลังเลือกสินค้าในตารางรายการ — **ตัวเดียว** ที่ช่องเลือกสินค้าของใบเสนอราคาและบรรทัดโซนของ
+ * ใบสั่งขายย้อนหลังใช้ (มติเจ้าของ 23/09: สองฟอร์มต้องไม่ต่างกัน) · คืนบรรทัดใหม่ ไม่แก้ของเดิม
+ * - รหัส / คำอธิบาย / ชื่อสองภาษา / แบรนด์ / ชื่อหมวด มาจากทะเบียนสินค้า
+ * - หน่วย = หน่วยขายของสินค้า (มติ 2026-07-23) · ราคา = ราคาผลิต `QUOTE_PRICE_FIELD` (มติ 2026-07-19)
+ *   ⇒ ช่องราคาล็อกตั้งแต่ตอนนี้ · server เขียนทับด้วยค่าในทะเบียนตอนบันทึกอีกชั้น
+ * - หมายเหตุประจำสินค้า (mig 0317) เติมเฉพาะตอนเลือกสินค้า · เปลี่ยนสินค้าบนบรรทัดเดิม: หมายเหตุที่ระบบเติมให้
+ *   ตามสินค้าตัวใหม่ แต่ข้อความที่คนพิมพ์เองห้ามถูกทับ (ธง `noteAuto` เป็นตัวแยก)
+ * - ชื่อหมวดของสินค้าตัวเก่าต้องไม่ค้าง ถ้าตัวใหม่ไม่มีหมวดที่มีชื่อ (มติ 2026-09-22)
+ * - ช่องอื่นของบรรทัด (จำนวน · ส่วนลด · โซน · รอบ) คงเดิม
+ */
+export function quoteLineFromProduct(prevLine = {}, product = null) {
+  const line = prevLine || {};
+  if (!product) return line;
+  const prevMeta = line.metadata || {};
+  const typedNote = !prevMeta.noteAuto && prevMeta.note ? prevMeta.note : null;
+  const noteMeta = typedNote ? { note: typedNote } : fgLineNoteMeta(product);
+  const {
+    note: _note, noteEn: _noteEn, noteAuto: _noteAuto,
+    categoryName: _categoryName, categoryNameEn: _categoryNameEn, ...keptMeta
+  } = prevMeta;
+  return {
+    ...line,
+    productId: product.id,
+    fgCode: product.fgCode || null,
+    // คำอธิบายหลักเก็บแยกจากรหัส/แบรนด์ เพื่อให้ทุกจุดจัดลำดับชั้นเหมือนกัน
+    description: fgLineDescription(product),
+    metadata: {
+      ...keptMeta,
+      ...fgLineLanguageMeta(product),
+      productBrand: fgLineBrand(product),
+      ...fgLineCategoryMeta(product),
+      ...noteMeta,
+    },
+    unit: product.saleUnit || DEFAULT_SALE_UNIT,
+    unitPrice: Number(product[QUOTE_PRICE_FIELD] || 0),
+  };
+}
+
 // normalize บรรทัดจาก client (สร้าง/แก้): คิดส่วนลดรายบรรทัด + ยอดสุทธิที่ server เสมอ
 export function normalizeManualLines(lines = []) {
   return lines
@@ -447,9 +504,10 @@ export function normalizeManualLines(lines = []) {
       // เว้นว่าง/ไม่ระบุ → default 1; ระบุ 0 มาจริง → 0 (ให้ filter qty>0 ตัดออก ไม่ใช่ดันเป็น 1)
       const qty = line.qty === '' || line.qty == null ? 1 : toMoney(line.qty, 0);
       const unitPrice = toMoney(line.unitPrice);
-      const discountType = ['percent', 'amount'].includes(line.discountType) ? line.discountType : null;
-      const discountValue = normalizeDiscountValue(discountType, line.discountValue);
-      const net = quoteLineNet({ qty, unitPrice, discountType, discountValue });
+      // ชนิดที่ไม่รู้จัก = ไม่ลด · % เกิน 100 ตัดเหลือ 100 — ตัวเดียวกับแผนใบสั่งขายย้อนหลัง (quoteLineMoney)
+      const { discountType, discountValue, discountAmount, lineTotal } = quoteLineMoney({
+        qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue,
+      });
       return {
         id: genId('QTL'),
         productId: line.productId || null,
@@ -463,8 +521,8 @@ export function normalizeManualLines(lines = []) {
         unitPrice,
         discountType,
         discountValue,
-        discountAmount: net.discountAmount,
-        lineTotal: net.lineTotal,
+        discountAmount,
+        lineTotal,
         source: line.source === 'project_products' ? 'project_products' : 'manual',
         sortOrder: index,
         metadata: line.metadata || {},

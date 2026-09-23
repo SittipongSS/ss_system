@@ -11,8 +11,10 @@ import {
   masterPriceDrift,
   masterPriceState,
   normalizeManualLines,
+  quoteLineFromProduct,
   refreshFgLinesForDisplay,
 } from './quoteLines.js';
+import { quoteLineMoney } from '../salesPlanning.js';
 
 /* stub supabase: คืนราคา master ตาม map ที่กำหนด
    `customers` เข้ามาด้วยตั้งแต่ 2026-09-07 — ด่าน "FG ของลูกค้ารายอื่น" ต้องถาม
@@ -403,4 +405,65 @@ test('เติมชื่อหมวด: ไม่มีอะไรต้อ
 test('fgLineCategoryMeta ไม่รู้ชื่อ = {} (spread แล้วไม่ทับของเดิมด้วยค่าว่าง)', () => {
   assert.deepEqual(fgLineCategoryMeta({}), {});
   assert.deepEqual(fgLineCategoryMeta({ categoryName: 'น้ำหอม' }), { categoryName: 'น้ำหอม', categoryNameEn: 'น้ำหอม' });
+});
+
+/* ── บรรทัดหลังเลือกสินค้า (มติเจ้าของ 23/09 — ช่องเลือกสินค้าของใบเสนอราคากับบรรทัดโซนของใบย้อนหลังใช้ตัวเดียวกัน) ── */
+const SDS = {
+  id: 'P-SDS', fgCode: 'FG-SNS-02-001-0020', productDescription: 'แพ็คเกจ SDS รายเดือน', brandName: 'Scent & Sense',
+  volume: 30, volumeUnit: 'วัน', saleUnit: 'แพ็คเกจ', costPrice: 3500, categoryName: 'บริการ', categoryNameEn: 'Service',
+  docNote: 'รวมเติมน้ำหอมทุกเดือน', docNoteEn: 'Monthly refill included',
+};
+
+test('quoteLineFromProduct: รหัส · คำอธิบาย · หน่วยขาย · ราคาผลิต · ชื่อสองภาษา/แบรนด์/หมวด · หมายเหตุประจำสินค้า — ช่องอื่นคงเดิม', () => {
+  const prev = { key: 'zone-1', zoneId: 'Z-1', qty: 12, discountType: 'percent', discountValue: 5, rounds: '12', metadata: { keep: 1 } };
+  const line = quoteLineFromProduct(prev, SDS);
+  assert.equal(line.productId, 'P-SDS');
+  assert.equal(line.fgCode, 'FG-SNS-02-001-0020');
+  assert.equal(line.description, fgLineDescription(SDS));
+  assert.equal(line.unit, 'แพ็คเกจ');
+  assert.equal(line.unitPrice, 3500);
+  assert.deepEqual([line.key, line.zoneId, line.qty, line.discountType, line.discountValue, line.rounds],
+    ['zone-1', 'Z-1', 12, 'percent', 5, '12'], 'จำนวน/ส่วนลด/โซน/รอบไม่ถูกแตะ');
+  assert.equal(line.metadata.keep, 1);
+  assert.equal(line.metadata.productBrand, fgLineBrand(SDS));
+  assert.equal(line.metadata.categoryName, 'บริการ');
+  assert.deepEqual([line.metadata.note, line.metadata.noteEn, line.metadata.noteAuto], ['รวมเติมน้ำหอมทุกเดือน', 'Monthly refill included', true]);
+  assert.ok(line.metadata.descriptionTh && line.metadata.descriptionEn);
+  assert.notEqual(line, prev, 'คืนบรรทัดใหม่');
+  assert.equal(prev.productId, undefined, 'ไม่แก้ของเดิม');
+  // เงินของบรรทัดคิดต่อได้ทันทีด้วยสูตรใบเสนอราคา
+  assert.equal(quoteLineMoney(line).lineTotal, 39900);
+});
+
+test('quoteLineFromProduct: หน่วยว่าง = "ชิ้น" · ราคาว่าง = 0 · หมายเหตุที่พิมพ์เองไม่ถูกทับ · ชื่อหมวดตัวเก่าไม่ค้าง · ไม่มีสินค้า = คืนของเดิม', () => {
+  const bare = quoteLineFromProduct({}, { id: 'P-X', fgCode: 'FG-X' });
+  assert.equal(bare.unit, 'ชิ้น');
+  assert.equal(bare.unitPrice, 0);
+  assert.equal(bare.metadata.categoryName, undefined);
+  const typed = quoteLineFromProduct({ metadata: { note: 'ลูกค้าขอส่งช่วงเช้า', categoryName: 'หมวดเก่า', categoryNameEn: 'Old' } }, SDS);
+  assert.equal(typed.metadata.note, 'ลูกค้าขอส่งช่วงเช้า');
+  assert.equal(typed.metadata.noteAuto, undefined);
+  assert.equal(typed.metadata.categoryName, 'บริการ');
+  const swapped = quoteLineFromProduct(
+    { metadata: { note: 'หมายเหตุของตัวเก่า', noteEn: 'old', noteAuto: true, categoryName: 'หมวดเก่า' } },
+    { id: 'P-Y', fgCode: 'FG-Y' },
+  );
+  assert.equal(swapped.metadata.note, undefined, 'หมายเหตุที่ระบบเติมตามสินค้าตัวใหม่ (ตัวใหม่ไม่มี = หาย)');
+  assert.equal(swapped.metadata.categoryName, undefined, 'ชื่อหมวดตัวเก่าไม่ค้าง');
+  const same = { productId: 'P-SDS', qty: 3 };
+  assert.equal(quoteLineFromProduct(same, null), same);
+});
+
+test('normalizeManualLines คิดเงินผ่าน quoteLineMoney — ตัวเดียวกับใบสั่งขายย้อนหลัง', () => {
+  const rows = [
+    { description: 'a', qty: 12, unitPrice: 3500, discountType: 'percent', discountValue: 150 },
+    { description: 'b', qty: 3, unitPrice: 33.33, discountType: 'amount', discountValue: 100.555 },
+    { description: 'c', qty: 2, unitPrice: 10, discountType: 'weird', discountValue: 4 },
+  ];
+  const lines = normalizeManualLines(rows);
+  lines.forEach((line, i) => {
+    const m = quoteLineMoney(rows[i]);
+    assert.deepEqual([line.discountType, line.discountValue, line.discountAmount, line.lineTotal],
+      [m.discountType, m.discountValue, m.discountAmount, m.lineTotal]);
+  });
 });

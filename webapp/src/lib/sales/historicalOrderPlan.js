@@ -15,7 +15,8 @@ import { isQuotableCustomer } from '@/lib/sales/dealCustomerAdopt';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
 import { fmtDate, fmtMoney } from '@/lib/format';
-import { inSalesEditScope } from '@/lib/salesPlanning';
+import { QUOTE_VAT_OPTIONS, inSalesEditScope, quoteLineMoney, quoteTotals, toMoney } from '@/lib/salesPlanning';
+import { QUOTE_PRICE_FIELD } from '@/lib/sales/quoteLines';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { EXTERNAL_DOC_KINDS } from '@/lib/sales/contracts';
 import { SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
@@ -31,7 +32,38 @@ import {
 /* หมวดแพ็คเกจบริการ = SERVICE_ROUND_CATEGORY ของ lib/sales/serviceOrders.js (ส่งต่อ ไม่ประกาศซ้ำ)
    ⚠️ ไฟล์นั้นลาก lib/service/intake มาด้วย — รุ่น v2 ต้องใช้ bindTargetError ของ intake อยู่แล้ว จึงไม่มีเหตุให้แยก */
 export const SERVICE_PACKAGE_CATEGORY = SERVICE_ROUND_CATEGORY;
-export const HISTORICAL_VAT_RATES = Object.freeze([0, 7]);
+/* ⭐ มติเจ้าของ 23/09: VAT ของใบย้อนหลัง = ตัวเลือกของใบเสนอราคาเป๊ะ ("รวม VAT แล้ว" 0 · "+ VAT 7% ท้ายใบ" 7)
+   โหมด "ราคารวม VAT แล้ว — ถอด VAT 7%" ของรุ่น 0374 ถูกถอด: มันหารทุกบรรทัดด้วย 1.07 ⇒ ยอดบรรทัด ≠ จำนวน × ราคา
+   ซึ่งใบเสนอราคาไม่มีวันเป็น · อ่านอัตราจากชุดตัวเลือกกลางตัวเดียว (ไม่สะกดเลขซ้ำ) */
+export const HISTORICAL_VAT_RATES = Object.freeze(QUOTE_VAT_OPTIONS.map((option) => option.value));
+const VAT_CHOICES_TEXT = QUOTE_VAT_OPTIONS.map((option) => `“${option.label}”`).join(' หรือ ');
+
+/* ข้อความรายช่องของบรรทัดโซน — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง */
+export const HISTORICAL_LINE_MESSAGES = Object.freeze({
+  staleForm: 'ฟอร์มรุ่นก่อน (แพ็ค · ยอดที่พิมพ์เอง) — โหลดหน้าใหม่ แล้วคีย์โซนนี้เป็น จำนวน × ราคา/หน่วย แบบใบเสนอราคา',
+  qty: 'จำนวนต้องเป็นจำนวนเต็มมากกว่า 0',
+  unpriced: 'แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน แล้วค่อยบันทึก',
+  priceUnknown: 'อ่านราคาของแพ็คเกจจากฐานข้อมูลสินค้าไม่ได้ — ลองใหม่อีกครั้ง (ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบ)',
+  rounds: 'รอบบริการที่ขายไว้ต้องเป็นจำนวนเต็มมากกว่า 0',
+});
+
+/**
+ * เงินของทั้งใบจากบรรทัดโซน — **สูตรของใบเสนอราคาทุกตัวอักษร** (quoteLineMoney ต่อบรรทัด · quoteTotals ทั้งใบ)
+ * ⭐ ตัวเดียวที่แผน (server) และฟอร์ม (ยอดก่อนมีแผน) คิดเงิน ⇒ จอกับฐานพูดเลขเดียวกันโดยโครงสร้าง
+ * ⚠️ ใบย้อนหลังไม่มีส่วนลดท้ายใบ (ส่วนลดอยู่รายบรรทัดเท่านั้น) · ผู้เรียกต้องตรวจจำนวน/ราคามาแล้ว
+ * @param rows `[{ qty, unitPrice, discountType, discountValue }]`
+ * @returns `{ lines: [{ discountType, discountValue, gross, discountAmount, lineTotal }], subtotal, discountAmount, vatAmount, totalAmount }`
+ */
+export function historicalLinesMoney(rows = [], vatRate = 0) {
+  const lines = (rows || []).map((row) => quoteLineMoney(row || {}));
+  const totals = quoteTotals((rows || []).map((row, index) => ({
+    qty: row?.qty,
+    unitPrice: row?.unitPrice,
+    discountType: lines[index].discountType,
+    discountValue: lines[index].discountValue,
+  })), { vatRate });
+  return { lines, ...totals };
+}
 
 /* ── ข้อความของสองช่องวันสัญญา — **ก้อนเดียวที่ทั้งแผนและฟอร์มอ่าน** ────────────────
    🐞 UAT 23/09: ช่อง "วันเริ่มสัญญา" ส่ง `max={todayIso}` ให้ `DateInput` ⇒ พิมพ์วันอนาคต
@@ -64,43 +96,8 @@ export function isCalendarDate(value) {
 }
 const inDocRange = (value) => isCalendarDate(value) && value >= DOC_DATE_MIN && value <= DOC_DATE_MAX;
 
-/* แบ่งยอดตาม VAT (ชีตเป็นยอดรวม VAT — brief §1) ด้วยสตางค์ล้วน ไม่มีเศษทศนิยมลอย
-   ยอดรวม VAT: subtotal = ปัด(total × 100 / (100+r)) · เศษของบรรทัดโยนให้บรรทัดยอดสูงสุด ⇒ Σ บรรทัด = subtotal เป๊ะ */
-export function splitHistoricalAmounts(grossList, { amountsIncludeVat = true, vatRate = 7 } = {}) {
-  const gross = grossList.map(toSatang);
-  let lines;
-  let subtotal;
-  let vat;
-  let total;
-  if (!vatRate) {
-    lines = gross.slice();
-    subtotal = gross.reduce((s, v) => s + v, 0);
-    vat = 0;
-    total = subtotal;
-  } else if (amountsIncludeVat) {
-    total = gross.reduce((s, v) => s + v, 0);
-    subtotal = Math.round((total * 100) / (100 + vatRate));
-    vat = total - subtotal;
-    lines = gross.map((g) => Math.round((g * 100) / (100 + vatRate)));
-    const diff = subtotal - lines.reduce((s, v) => s + v, 0);
-    if (diff && lines.length) {
-      let largest = 0;
-      gross.forEach((g, i) => { if (g > gross[largest]) largest = i; });
-      lines[largest] += diff;
-    }
-  } else {
-    lines = gross.slice();
-    subtotal = gross.reduce((s, v) => s + v, 0);
-    vat = Math.round((subtotal * vatRate) / 100);
-    total = subtotal + vat;
-  }
-  return {
-    lineTotals: lines.map(fromSatang),
-    subtotal: fromSatang(subtotal),
-    vatAmount: fromSatang(vat),
-    totalAmount: fromSatang(total),
-  };
-}
+/* 🚫 ตัวแบ่งยอดตาม VAT (`splitHistoricalAmounts` — หารทุกบรรทัดด้วย 1.07 เมื่อ "ราคารวม VAT แล้ว") ถูกลบตามมติ 23/09
+   ยอดบรรทัดของใบย้อนหลังต้องเป็น จำนวน × ราคา/หน่วย − ส่วนลด เหมือนใบเสนอราคา ⇒ ใช้ historicalLinesMoney แทน */
 
 const normRef = (value) => text(value).toLowerCase();
 
@@ -116,11 +113,18 @@ function stableStringify(value) {
 /* ══ v2 · ใบย้อนหลังงานบริการ (มติเจ้าของ 22/09/2026 · mig 0374) ═══════════════════════════════════
    ⭐ ตัวตัดสินเดียวของฟอร์มคีย์หน้าเต็ม — พรีวิวทุกขั้น · บันทึกครั้งแรก (create) · แก้ใบร่าง/ตีกลับ (update)
       เรียกตัวนี้ตัวเดียวแล้วส่งแผนก้อนเดียวกันเข้า RPC (historicalServiceRpcArgs)
-   ⭐ **ตัดสินเท่าฐานข้อต่อข้อ** — ข้อไหน RPC ของ 0374 ตีกลับ ที่นี่ต้องตีกลับด้วย (พร้อมข้อความไทยรายช่อง):
+   ⭐ **ตัดสินเท่าฐานข้อต่อข้อ** — ข้อไหน RPC ของ 0374/0379 ตีกลับ ที่นี่ต้องตีกลับด้วย (พร้อมข้อความไทยรายช่อง):
         เอกสารแทนสัญญา  ↔ historical_so_check_contract     (ชนิด · เลขอ้างอิง ≤200 · วันเริ่ม ≤ วันสิ้นสุด · เริ่มไม่เกินวันนี้)
-        โซน × แพ็คเกจ   ↔ historical_so_check_lines        (โซนของลูกค้าในใบ ยังใช้งาน · ไม่ซ้ำ · สินค้าหมวด 02-001 · แพ็คจำนวนเต็ม)
+        โซน × แพ็คเกจ   ↔ historical_so_check_lines (0379)  (โซนของลูกค้าในใบ ยังใช้งาน · ไม่ซ้ำ · สินค้าหมวด 02-001 · จำนวนเต็ม
+                                                          · ยอดบรรทัด = จำนวน × ราคา/หน่วย − ส่วนลด ตามสูตรใบเสนอราคา)
+        ราคา/หน่วย     ↔ historical_so_write_children (0379) (ราคา = ราคาผลิตในทะเบียน ณ ตอนบันทึก · ยังไม่ตั้งราคา = ตีกลับ)
         งวด            ↔ historical_so_check_installments (งวดยกมา ≤1 · ผลรวม = ยอดใบ · ช่วงครอบต่อเนื่องเต็มสัญญา)
         ใบ ฿0          ↔ zero_value_note_required / zero_value_has_installments
+   ⭐ **บรรทัดโซน = บรรทัดใบเสนอราคา** (มติเจ้าของ 23/09 — "3500 x 1 ชุด x 12 เดือน · ต้องไม่ต่างจากฟอร์มใบเสนอราคา"):
+        จำนวน × ราคา/หน่วย − ส่วนลดรายการ = จำนวนเงิน · ราคามาจากทะเบียน (ค่าที่จอส่งมาไม่ถูกอ่าน) · หน่วยมาจากสินค้า
+        · "1 ชุด 12 เดือน" = จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000 เหมือนที่คีย์ในใบเสนอราคา
+        🐞 ก่อนมติ: ช่อง "แพ็ค" + ยอดที่พิมพ์เอง + ปุ่มลัด "ราคา × แพ็ค × เดือน" ⇒ ผู้คีย์สามคนคีย์สามแบบ
+           (1 × 42,000 · 12 × 3,500 · ปุ่มลัดเสนอ 3,500 × 12 × 12 = 504,000) — ถอดทั้งชุด
       ส่วนที่ฐานตรวจไม่ได้ (role/ทีมอยู่ใน Supabase Auth) ตัดสินที่นี่ที่เดียว แล้ว route เรียกตัวนี้ทั้งตอนพรีวิวและบันทึก:
         · AE / Senior AE คีย์ได้เฉพาะใบของตัวเอง (ownerLockedToSelf — ช่อง AE ล็อกเป็นตัวเอง)
         · ผู้คีย์ต้องแก้ **ดีลที่ใบจะเข้าไปอยู่จริง** ได้ (ดีลภาชนะของคู่ที่มีอยู่แล้ว หรือดีลใหม่ทีมตาม AE)
@@ -133,7 +137,7 @@ function stableStringify(value) {
           ⇒ แก้ใบ = **คำเตือน** (endBeforeTodayEditing) · ฐานไม่ตรวจข้อนี้โดยเจตนาด้วยเหตุผลเดียวกัน (0374 §7a):
           ใบที่ค้างรออนุมัติข้ามวันสิ้นสุดต้องยังอนุมัติได้ · กฎที่เหลือ (ช่วงครอบเต็มสัญญา ฯลฯ) ยังตรวจเท่าเดิม
    ⚠️ บริสุทธิ์ — ไม่อ่านฐาน ไม่อ่านนาฬิกา · ของที่ตัวเขียน (historicalOrderCommit) โหลดมาเข้าทาง `ctx`
-   ⚠️ ยอดคิดด้วยสตางค์ (splitHistoricalAmounts) · ค่าที่ส่งเข้า RPC คือค่าที่ผ่านตัวนี้แล้ว (ปัดสองตำแหน่ง) ไม่ใช่ค่าดิบจากจอ */
+   ⚠️ ยอดคิดด้วยสูตรใบเสนอราคา (historicalLinesMoney) · ค่าที่ส่งเข้า RPC คือค่าที่ผ่านตัวนี้แล้ว ไม่ใช่ค่าดิบจากจอ */
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const MAX_INT4 = 2147483647; // serviceRounds เป็น integer ในฐาน — เกินนี้ cast แล้ว error
@@ -145,8 +149,9 @@ const money2 = (value) => {
   return Number.isFinite(number) ? round2(number) : Number.NaN;
 };
 
-/* ชื่อจุดบนบรรทัด = '<รหัสไซต์> <ชื่อไซต์> · <ชื่อโซน>' ตัด 200 — สูตรเดียวกับตัวเขียนบรรทัดของ 0374 (โชว์ในพรีวิว) */
-function zonePointOf(zone, site) {
+/* ชื่อจุดบนบรรทัด = '<รหัสไซต์> <ชื่อไซต์> · <ชื่อโซน>' ตัด 200 — สูตรเดียวกับตัวเขียนบรรทัดของ 0374 (โชว์ในพรีวิว)
+   ⭐ export ให้บรรทัดโซนของฟอร์ม (ขั้น ②) พูดชื่อจุดคำเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย */
+export function historicalZonePoint(zone, site) {
   const siteText = [text(site?.code), text(site?.name)].filter(Boolean).join(' ');
   return [...`${siteText} · ${text(zone?.name)}`].slice(0, INSTALLATION_POINT_MAX).join('').trim();
 }
@@ -155,13 +160,16 @@ function zonePointOf(zone, site) {
 const pick = (source, key) => (source instanceof Map ? source.get(key) : source?.[key]) || null;
 
 /**
- * @param input `{ customerId, ownerId, team, contract: { docKind, ref, startDate, endDate }, refs, amountsIncludeVat,
- *   vatRate, notes, zones: [{ zoneId, productId, packs, rounds, lineAmount }],
+ * @param input `{ customerId, ownerId, team, contract: { docKind, ref, startDate, endDate }, refs,
+ *   vatRate, notes, zones: [{ zoneId, productId, qty, discountType, discountValue, rounds }],
  *   opening: null | { amount, coversTo, paidOn, note, evidence? },
  *   installments: [{ label, amount, dueDate, coversFrom, coversTo, note? }], acknowledgeDuplicates }`
- *   - lineAmount = ยอดของโซนตามที่คีย์ (รวม/ไม่รวม VAT ตาม amountsIncludeVat) · opening.coversFrom = วันเริ่มสัญญาเสมอ
+ *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · รอบบริการที่ขายไว้
+ *     ⚠️ **ไม่มีราคา/ยอดจากจอ** — ราคา/หน่วยอ่านจาก `ctx.products[].costPrice` (QUOTE_PRICE_FIELD) เสมอ
+ *   - vatRate = ตัวเลือกของใบเสนอราคา (0 "รวม VAT แล้ว" · 7 "+ VAT 7% ท้ายใบ") · opening.coversFrom = วันเริ่มสัญญาเสมอ
  * @param ctx `{ actor, customer, owner, products, zones, sites, containerDeals, existingHistorical, liveTermsByZone,
  *   todayIso, selfOrderId, editing }`
+ *   - products: สินค้าที่เลือก — ต้อง select `costPrice` มาด้วย (ไม่มีคีย์ = "อ่านราคาไม่ได้" ไม่ใช่ราคา 0)
  *   - actor: ผู้คีย์ `{ id, role, team, teams }` (user ของ route) · owner: ผลของ validateDealOwner
  *   - zones: แถว service_zones ของโซนที่เลือก (`id, siteId, name, code, isActive`) · sites: ไซต์ของโซนเหล่านั้น
  *     (`id, code, name, customerId, kind, isActive`) — หรือพก `zone.site` มาเองก็ได้
@@ -269,21 +277,20 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   }
   const notes = text(body.notes) || null;
 
-  // ── VAT — ไม่มีค่าตั้งต้น (กฎฟอร์ม: สิ่งที่เป็นการตัดสินใจห้ามเติมเอง) ────────────────────
+  // ── VAT — ตัวเลือกของใบเสนอราคา · ไม่มีค่าตั้งต้น (กฎฟอร์ม: สิ่งที่เป็นการตัดสินใจห้ามเติมเอง) ────────
   let vatRate = null;
-  if (body.vatRate === undefined || body.vatRate === null || body.vatRate === '') {
-    err('vatRate', 'ต้องเลือกว่ายอดที่คีย์ไม่รวม VAT · รวม VAT หรือไม่มี VAT');
+  if (body.amountsIncludeVat === true) {
+    /* 🪤 แท็บที่เปิดค้างจากรุ่นก่อน 23/09 ยังส่งโหมด "ราคารวม VAT แล้ว — ถอด VAT 7%" มาได้ — ห้ามตีความเงียบ ๆ
+       (ตีเป็น 7% = ยอดใบบวก VAT ซ้ำบนราคาที่รวม VAT แล้ว · ตีเป็น 0 = ยอดคนละก้อนกับที่ผู้คีย์เห็น) */
+    err('vatRate', `โหมด “ราคารวม VAT แล้ว — ถอด VAT” เลิกใช้แล้ว (ฟอร์มรุ่นก่อน) — โหลดหน้าใหม่ แล้วเลือก ${VAT_CHOICES_TEXT} แบบใบเสนอราคา`);
+  } else if (body.vatRate === undefined || body.vatRate === null || body.vatRate === '') {
+    err('vatRate', `ต้องเลือก VAT ของใบ — ${VAT_CHOICES_TEXT} (ตัวเลือกเดียวกับใบเสนอราคา)`);
   } else if (!HISTORICAL_VAT_RATES.includes(Number(body.vatRate))) {
-    err('vatRate', 'อัตรา VAT ต้องเป็น 0 หรือ 7');
+    err('vatRate', `VAT ของใบต้องเป็น ${VAT_CHOICES_TEXT}`);
   } else {
     vatRate = Number(body.vatRate);
   }
-  let amountsIncludeVat = false;
-  if (vatRate) {
-    if (typeof body.amountsIncludeVat !== 'boolean') err('amountsIncludeVat', 'ต้องเลือกว่ายอดที่คีย์รวม VAT แล้วหรือยัง');
-    else amountsIncludeVat = body.amountsIncludeVat;
-  }
-  const vatOk = vatRate === 0 || (vatRate !== null && typeof body.amountsIncludeVat === 'boolean');
+  const vatOk = vatRate !== null;
 
   // ── โซนจากทะเบียน × แพ็คเกจ (มติ 22/09 ข้อ 1 — หนึ่งโซน = หนึ่งบรรทัด) ───────────────────
   const productsById = new Map((products || []).map((p) => [p?.id, p]));
@@ -330,16 +337,32 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       push(`${product.fgCode || 'สินค้านี้'} ไม่ใช่แพ็คเกจบริการ (หมวด ${SERVICE_ROUND_CATEGORY}) — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ`);
     }
 
-    const packs = toNumber(row.packs);
-    if (!Number.isInteger(packs) || packs <= 0) { push('แพ็คต้องเป็นจำนวนเต็มมากกว่า 0'); linesMoneyOk = false; }
+    /* ── บรรทัดแบบใบเสนอราคา: จำนวน × ราคา/หน่วย (ทะเบียน) − ส่วนลดรายการ (มติเจ้าของ 23/09) ──
+       🪤 แท็บรุ่นก่อนส่ง `packs` + `lineAmount` (ยอดที่พิมพ์เอง) — ห้ามเดาว่า packs คือจำนวน
+          (1 แพ็ค × 12 เดือน เคยถูกคีย์ทั้งเป็น 1 และ 12) ⇒ ตีกลับให้โหลดหน้าใหม่ */
+    const staleForm = row.qty === undefined && (has(row, 'packs') || has(row, 'lineAmount'));
+    if (staleForm) { push(HISTORICAL_LINE_MESSAGES.staleForm); linesMoneyOk = false; }
+    /* จำนวนว่าง = ตีกลับ ไม่ใช่ 1 (ใบเสนอราคานับว่างเป็น 1) — การเดาจำนวนแทนผู้คีย์คือบั๊กที่มติ 23/09 แก้ */
+    const qty = toNumber(row.qty);
+    const qtyOk = Number.isInteger(qty) && qty > 0;
+    if (!staleForm && !qtyOk) { push(HISTORICAL_LINE_MESSAGES.qty); linesMoneyOk = false; }
+    /* ราคา/หน่วย = ราคาผลิตในทะเบียนเสมอ (QUOTE_PRICE_FIELD — ตัวเดียวกับใบเสนอราคา) · ค่าที่จอส่งมาไม่ถูกอ่าน
+       ⚠️ ต่างจากใบเสนอราคาข้อเดียว: ใบนั้นคงราคาเดิมเมื่อทะเบียนยังไม่ตั้งราคา แล้วไปตีกลับตอนส่ง ·
+          ใบนี้บันทึกกับส่งอนุมัติในจังหวะเดียว ⇒ ยังไม่ตั้งราคา = ตีกลับตั้งแต่ตอนนี้ (ฐานตีกลับด้วย — 0379) */
+    let unitPrice = 0;
+    let priceOk = false;
+    if (product && lineIsServicePackage(product)) {
+      if (!has(product, QUOTE_PRICE_FIELD)) push(HISTORICAL_LINE_MESSAGES.priceUnknown);
+      else if (toMoney(product[QUOTE_PRICE_FIELD]) <= 0) push(HISTORICAL_LINE_MESSAGES.unpriced);
+      else { unitPrice = toMoney(product[QUOTE_PRICE_FIELD]); priceOk = true; }
+    }
+    if (!priceOk) linesMoneyOk = false;
     let serviceRounds = null;
     if (text(row.rounds)) {
       const rounds = Number(row.rounds);
-      if (!Number.isInteger(rounds) || rounds <= 0 || rounds > MAX_INT4) push('จำนวนรอบในสัญญาต้องเป็นจำนวนเต็มมากกว่า 0');
+      if (!Number.isInteger(rounds) || rounds <= 0 || rounds > MAX_INT4) push(HISTORICAL_LINE_MESSAGES.rounds);
       else serviceRounds = rounds;
     }
-    const lineAmount = money2(row.lineAmount);
-    if (!Number.isFinite(lineAmount) || lineAmount < 0) { push('ยอดของโซนต้องเป็นตัวเลขไม่ติดลบ'); linesMoneyOk = false; }
 
     // รอบขายที่ยังมีผลของใบอื่นบนโซนเดียวกัน — เตือน ไม่บล็อก (ต่อสัญญาช่วงคาบเกี่ยวเป็นเรื่องปกติ · AE Sup ตัดสิน)
     const seenOrders = new Set();
@@ -362,28 +385,42 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       siteId: site?.id || null,
       siteName: site ? text(site.name) || null : null,
       siteCode: site ? text(site.code) || null : null,
-      installationPoint: zone && site ? zonePointOf(zone, site) : null,
+      installationPoint: zone && site ? historicalZonePoint(zone, site) : null,
       productId: productId || null,
       fgCode: product?.fgCode || null,
       description: text(product?.productDescription) || null,
       unit: text(product?.saleUnit) || DEFAULT_SALE_UNIT,
-      qty: packs,
-      grossAmount: lineAmount,
+      qty: qtyOk ? qty : null,
+      unitPrice,
+      // ส่วนลดรายการตามที่จอส่ง — ทำให้เป็นค่าที่บันทึกได้จริงตอนคิดเงิน (quoteLineMoney) ข้างล่าง
+      rawDiscountType: row.discountType ?? null,
+      rawDiscountValue: row.discountValue ?? 0,
       serviceRounds,
     });
   });
 
-  // ── เงิน ─────────────────────────────────────────────────────────────
-  const moneyOk = linesMoneyOk && vatOk;
-  let money = { lineTotals: draftLines.map(() => 0), subtotal: 0, vatAmount: 0, totalAmount: 0 };
-  if (moneyOk) {
-    money = splitHistoricalAmounts(draftLines.map((l) => l.grossAmount), { amountsIncludeVat, vatRate });
-  }
-  const lines = draftLines.map((line, index) => {
-    const lineTotal = money.lineTotals[index] ?? 0;
-    return { ...line, lineTotal, unitPrice: Number.isInteger(line.qty) && line.qty > 0 ? round2(lineTotal / line.qty) : 0 };
+  // ── เงิน — สูตรใบเสนอราคา (historicalLinesMoney) · ใบย้อนหลังไม่มีส่วนลดท้ายใบ ─────────────────
+  const moneyOk = linesMoneyOk && vatOk && draftLines.length > 0;
+  const money = moneyOk
+    ? historicalLinesMoney(draftLines.map((line) => ({
+      qty: line.qty, unitPrice: line.unitPrice, discountType: line.rawDiscountType, discountValue: line.rawDiscountValue,
+    })), vatRate)
+    : null;
+  const lines = draftLines.map(({ rawDiscountType, rawDiscountValue, ...line }, index) => {
+    const m = money?.lines[index] || null;
+    /* แผนที่เงินยังไม่ผ่านด่าน = ศูนย์ทั้งก้อน (เหมือนเดิม) · ส่วนลดคงรูปที่บันทึกได้ไว้ให้พรีวิวเห็น */
+    const discount = m || quoteLineMoney({ qty: 0, unitPrice: 0, discountType: rawDiscountType, discountValue: rawDiscountValue });
+    return {
+      ...line,
+      discountType: discount.discountType,
+      discountValue: discount.discountValue,
+      discountAmount: m ? m.discountAmount : 0,
+      lineTotal: m ? m.lineTotal : 0,
+    };
   });
-  const totalAmount = money.totalAmount;
+  const totalAmount = money ? money.totalAmount : 0;
+  const subtotal = money ? money.subtotal : 0;
+  const vatAmount = money ? money.vatAmount : 0;
   const zeroValue = moneyOk && totalAmount === 0;
   const header = {
     customerId: customerId || null,
@@ -394,14 +431,14 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     // วันที่ใบ = วันเริ่มสัญญาจริง (มติข้อ 5 เดิม · RPC ตั้งเอง) · ภาษาเอกสารไทย (ใบย้อนหลังไม่พิมพ์)
     orderDate: contract.startDate,
     docLanguage: 'th',
-    amountsIncludeVat,
     vatRate,
     notes,
-    subtotal: money.subtotal,
-    discountAmount: 0,
-    vatAmount: money.vatAmount,
+    subtotal,
+    // ใบย้อนหลังไม่มีส่วนลดท้ายใบ — ส่วนลดอยู่ในบรรทัด (ยอดบรรทัดหักแล้ว) · quoteTotals คืน 0 ให้เสมอ
+    discountAmount: money ? money.discountAmount : 0,
+    vatAmount,
     totalAmount,
-    actualAmount: Math.max(0, round2(totalAmount - money.vatAmount)),
+    actualAmount: Math.max(0, round2(totalAmount - vatAmount)),
     refs,
   };
 
@@ -582,6 +619,8 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
  *   - create: ยังไม่มีหลักฐานงวดยกมา (ไฟล์ต้องอยู่ใต้โฟลเดอร์ของใบ ซึ่งยังไม่เกิด)
  *   - update: ส่งหลักฐานงวดยกมา **ทั้งชุดเสมอ** — ตัวเขียนของฐานเขียนงวดใหม่ทั้งชุด ไม่ส่ง = หลักฐานเดิมหาย
  * ⚠️ ไม่ส่งรหัส FG/คำอธิบาย/หน่วย — ฐานอ่านจากทะเบียนสินค้าเอง (ไม่รับจาก payload)
+ * ⭐ บรรทัดส่งรูปเดียวกับบรรทัดใบเสนอราคาที่ถูกก๊อปลงใบสั่งขาย (0363): จำนวน · ราคา/หน่วย · ส่วนลด 3 ช่อง · ยอดบรรทัด
+ *   ตัวเขียนของ 0379 บังคับให้มี discountAmount/discountValue และราคา = ราคาในทะเบียน ณ ตอนบันทึก
  * ⚠️ p_intake_key/p_intake_hash/p_actor_* /p_new_deal/p_expected_updated_at ประกอบที่ route (ต้องมีตัวตน/เวลา)
  */
 export function historicalServiceRpcArgs(plan, mode = 'create') {
@@ -623,16 +662,18 @@ export function historicalServiceRpcArgs(plan, mode = 'create') {
       historicalQuoteRef: header.refs.quote,
       historicalExpressRef: header.refs.express,
       historicalInvoiceRef: header.refs.invoice,
-      // ของที่คอลัมน์เก็บไม่ได้ แต่ฟอร์มแก้ต้องได้คืน (โหมด VAT) → sales_orders.metadata.historicalIntake
-      intake: { amountsIncludeVat: header.amountsIncludeVat, vatRate: header.vatRate },
+      // ของที่คอลัมน์เก็บไม่ได้ แต่ฟอร์มแก้ต้องได้คืน (ตัวเลือก VAT) → sales_orders.metadata.historicalIntake
+      intake: { vatRate: header.vatRate },
     },
     p_lines: lines.map((line) => ({
       zoneId: line.zoneId,
       productId: line.productId,
       qty: line.qty,
       unitPrice: line.unitPrice,
+      discountType: line.discountType,
+      discountValue: line.discountValue,
+      discountAmount: line.discountAmount,
       lineTotal: line.lineTotal,
-      grossAmount: line.grossAmount,
       serviceRounds: line.serviceRounds,
     })),
     p_installments: rows,

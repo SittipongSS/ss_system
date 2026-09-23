@@ -10,7 +10,7 @@
 //    ช่องไหนอยู่ขั้นไหน แล้วพาผู้คีย์กลับไปที่ขั้นนั้น
 //
 // ⚠️ ข้อยกเว้นเดียว — **ของที่ server มองไม่เห็นตอนพรีวิว** (`historicalWizardLocalIssues`):
-//      · โหมด VAT / อัตรา VAT ที่ยังไม่เลือก (กฎบ้าน "ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็นการตัดสินใจ")
+//      · VAT ของใบที่ยังไม่เลือก (กฎบ้าน "ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็นการตัดสินใจ") — ตัวเลือกของใบเสนอราคา
 //      · ทีมของดีล เมื่อ **เลือกได้จริง** ตั้งแต่ 2 ทีม (`historicalTeamField`)
 //      · **ไฟล์ที่ยังอยู่ในเครื่อง** — เอกสารแทนสัญญาและหลักฐานงวดยกมาอัปได้หลังใบเกิดแล้ว
 //        ⇒ พรีวิวไม่มีทางรู้ว่าผู้คีย์แนบหรือยัง แต่ RPC ส่งอนุมัติตีกลับทั้งสองข้อ
@@ -27,7 +27,8 @@
 //      · ใบยอด 0 บาท (`zeroValue`) — ขั้น ③ ซ่อนทั้งแผ่นเลือกงวดยกมา ตารางงวด และช่องหลักฐาน
 //      · ทีมของดีล — `TeamPickerField` คืน `null` เมื่อเหลือตัวเลือก < 2
 //    ⇒ ฝั่งคำถามกับฝั่งช่องต้องอ่าน **ธง/ชุดตัวเลือกตัวเดียวกัน** เสมอ
-import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
+import { NA, fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
+import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney } from '@/lib/salesPlanning';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { splitCoverageEvenly } from '@/lib/sales/paymentCoverage';
@@ -36,12 +37,13 @@ import {
   charLength, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import {
-  CONTRACT_DATE_MESSAGES, HISTORICAL_VAT_RATES, splitHistoricalAmounts,
+  CONTRACT_DATE_MESSAGES, HISTORICAL_LINE_MESSAGES, HISTORICAL_VAT_RATES, historicalLinesMoney, historicalZonePoint,
 } from '@/lib/sales/historicalOrderPlan';
+import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
 
 export {
   HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, HISTORICAL_VAT_RATES,
-  CONTRACT_DATE_MESSAGES, charLength,
+  CONTRACT_DATE_MESSAGES, HISTORICAL_LINE_MESSAGES, charLength,
 };
 
 /* ── ขั้นของฟอร์ม (ม็อก Step1–Step4 · REVISION 2) ────────────────────────────────────
@@ -49,7 +51,7 @@ export {
    ⚠️ ป้ายขั้น ④ พูดถึงการส่งอนุมัติตรง ๆ: ปุ่มของขั้นนั้นคือ "บันทึกและส่งอนุมัติ" ไม่ใช่ "บันทึก" */
 export const HISTORICAL_WIZARD_STEPS = Object.freeze([
   { key: 'contract', label: 'ลูกค้าและสัญญา', hint: 'ลูกค้า · เอกสาร · VAT' },
-  { key: 'zones', label: 'ไซต์ โซน และแพ็ค', hint: 'เลือกจากทะเบียนไซต์' },
+  { key: 'zones', label: 'ไซต์ โซน และรายการ', hint: 'เลือกจากทะเบียนไซต์' },
   { key: 'money', label: 'งวดชำระ', hint: 'งวดยกมา + งวดที่ยังต้องเก็บ' },
   { key: 'review', label: 'ตรวจและส่งอนุมัติ', hint: 'ส่ง AE Sup อนุมัติ' },
 ]);
@@ -57,6 +59,10 @@ export const HISTORICAL_WIZARD_STEP_ORDER = Object.freeze(HISTORICAL_WIZARD_STEP
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const list = (value) => (Array.isArray(value) ? value : []);
+
+/* ป้ายของตัวเลือก VAT — ชุดเดียวกับช่อง "ภาษีมูลค่าเพิ่ม" ของใบเสนอราคา (QUOTE_VAT_OPTIONS) */
+const vatLabelOf = (rate) => QUOTE_VAT_OPTIONS.find((option) => option.value === rate)?.label || null;
+export const HISTORICAL_VAT_CHOICE_MESSAGE = `เลือก VAT ของใบนี้ — ${QUOTE_VAT_OPTIONS.map((option) => `“${option.label}”`).join(' หรือ ')} (ตัวเลือกเดียวกับใบเสนอราคา)`;
 const toSatang = (value) => Math.round((Number(value) || 0) * 100);
 /* วันในปฏิทินรูป YYYY-MM-DD — เทียบกันด้วยสตริงได้ตรง ๆ (รูปนี้เรียงตามเวลาอยู่แล้ว) */
 const isDateText = (value) => /^\d{4}-\d{2}-\d{2}$/.test(text(value));
@@ -64,15 +70,32 @@ const isDateText = (value) => /^\d{4}-\d{2}-\d{2}$/.test(text(value));
 let seq = 0;
 const nextKey = (prefix) => { seq += 1; return `${prefix}-${seq}`; };
 
-/** แถวโซน = หนึ่งบรรทัดของใบ — `key` มีไว้ให้ React เท่านั้น ไม่ถูกส่งขึ้น API */
+/**
+ * แถวโซน = หนึ่งบรรทัดของใบ = **หนึ่งบรรทัดของใบเสนอราคา** (มติเจ้าของ 23/09)
+ * ช่องเดียวกับตารางรายการของใบเสนอราคา: สินค้า (รหัส · คำอธิบาย · หน่วย · ราคา/หน่วยจากทะเบียน) ·
+ * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่มสองอย่างเท่านั้น: โซนที่ผูก และรอบบริการที่ขายไว้
+ * ⚠️ จำนวนเริ่มที่ **ว่าง** (ใบเสนอราคาเริ่มที่ 1) — จำนวนที่เดาให้คือบั๊กที่มติ 23/09 แก้ · ว่าง = แผนตีกลับ
+ * ⚠️ `fgCode` · `description` · `unit` · `unitPrice` มีไว้ **โชว์** อย่างเดียว (มาจาก `quoteLineFromProduct`)
+ *   ไม่ถูกส่งขึ้น API — server อ่านราคา/หน่วยจากทะเบียนเอง · `key` มีไว้ให้ React เท่านั้น
+ * ⭐ `_lineKind: 'product'` + หน่วยตั้งต้น `DEFAULT_SALE_UNIT` = **บรรทัดสินค้าใหม่ของใบเสนอราคา** (`newProductLine`)
+ *   🐞 รีวิว 23/09: แถวที่ติ๊กโซนแล้วแต่ยังไม่เลือกแพ็คเกจ (ทางปกติเมื่อ "ใช้แพ็คเกจเดียวกันทุกโซน" ยังว่าง)
+ *      ไม่มี `_lineKind` ⇒ เซลล์เปิดดรอปดาวน์หน่วยให้เลือก ทั้งที่ใบเสนอราคาล็อกเป็น "หน่วย: ชิ้น" ตั้งแต่ยังไม่เลือก
+ *      และหน่วยที่เลือก (เช่น "ชุด") ถูกแพ็คเกจทับทิ้งเงียบ ๆ · ไม่ถูกส่งขึ้น API (body เลือกช่องเอง)
+ */
 export const emptyHistoricalZone = (defaults = {}) => ({
   key: nextKey('zone'),
+  _lineKind: 'product',
   zoneId: text(defaults.zoneId),
   siteId: text(defaults.siteId),
   productId: text(defaults.productId),
-  packs: text(defaults.packs),
+  fgCode: text(defaults.fgCode) || null,
+  description: text(defaults.description),
+  unit: text(defaults.unit) || DEFAULT_SALE_UNIT,
+  unitPrice: defaults.unitPrice === undefined || defaults.unitPrice === null ? '' : defaults.unitPrice,
+  qty: defaults.qty === undefined || defaults.qty === null ? '' : defaults.qty,
+  discountType: QUOTE_DISCOUNT_TYPES.includes(defaults.discountType) ? defaults.discountType : null,
+  discountValue: QUOTE_DISCOUNT_TYPES.includes(defaults.discountType) ? (defaults.discountValue ?? 0) : 0,
   rounds: text(defaults.rounds),
-  lineAmount: text(defaults.lineAmount),
 });
 
 /** งวดที่ยังต้องเก็บ — ไม่มีช่อง `status`/`kind` โดยเจตนา (ดู `historicalWizardBody`) */
@@ -103,8 +126,7 @@ export function emptyHistoricalWizard(defaults = {}) {
     team: text(defaults.team),
     contract: { docKind: '', ref: '', startDate: '', endDate: '' },
     refs: { quote: '', express: '', invoice: '' },
-    amountsIncludeVat: null,   // null = ยังไม่เลือก (ไม่ใช่ false)
-    vatRate: null,             // null = ยังไม่เลือก (ไม่ใช่ 0)
+    vatRate: null,             // null = ยังไม่เลือก (ไม่ใช่ 0 — 0 คือ "รวม VAT แล้ว")
     notes: '',
     packageProductId: '',      // แพ็คเกจที่ใช้กับทุกโซน — แต่ละแถวเขียนทับได้
     zones: [],
@@ -118,9 +140,12 @@ export function emptyHistoricalWizard(defaults = {}) {
 /**
  * ใบที่โหลดมา → state ของฟอร์ม (โหมดแก้ใบ = ฟอร์มตัวเดียวกับตอนสร้าง)
  * ⚠️ อ่านค่าจาก **ใบจริง** ไม่ใช่จากแผนที่พรีวิวคืน — ผู้คีย์ต้องเห็นสิ่งที่ลงฐานไปแล้ว
- * ⚠️ โหมด VAT เก็บไม่ได้ในคอลัมน์ ⇒ อยู่ใน `metadata.historicalIntake` (RPC เขียนให้)
- * ⚠️ ยอดของโซน = ยอดที่ผู้คีย์พิมพ์ (`metadata.grossAmount` ของบรรทัด) ไม่ใช่ `lineTotal`
- *   ซึ่งเป็นยอดก่อน VAT ที่ระบบคิดให้ — เติมกลับผิดช่องแปลว่ายอดเพี้ยนทุกครั้งที่เปิดแก้
+ * ⚠️ ตัวเลือก VAT เก็บไม่ได้ในคอลัมน์ ⇒ อยู่ใน `metadata.historicalIntake` (RPC เขียนให้)
+ * ⭐ บรรทัดโซนเติมกลับ **ช่องต่อช่องแบบใบเสนอราคา** — จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด (ชนิด/ค่า) · รอบ
+ *   (ไม่มี "ยอดที่พิมพ์เอง" ให้เติมกลับอีกแล้ว — `metadata.grossAmount` ของรุ่น 0374 ไม่ถูกอ่าน)
+ * 🪤 ใบที่คีย์ในโหมด "ราคารวม VAT แล้ว — ถอด VAT" ของรุ่นก่อน (`intake.amountsIncludeVat === true`) โหลดมาเป็น
+ *   **ยังไม่เลือก VAT** — โหมดนั้นถูกถอด (มติ 23/09) และตัวเลือกที่เหลือไม่มีตัวไหนแปลว่าเงินก้อนเดียวกัน
+ *   ⇒ ผู้คีย์ต้องเลือกใหม่เอง ไม่ใช่ระบบเดาให้
  */
 export function wizardStateFromOrder(order = {}, { contract = null, installments = null } = {}) {
   const base = emptyHistoricalWizard();
@@ -135,10 +160,16 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
   const zoneRows = lines.filter((line) => line.serviceZoneId).map((line) => emptyHistoricalZone({
     zoneId: line.serviceZoneId,
     productId: line.productId,
-    packs: line.qty,
+    fgCode: line.fgCode,
+    description: line.description,
+    unit: line.unit,
+    unitPrice: line.unitPrice,
+    qty: line.qty,
+    discountType: line.discountType,
+    discountValue: line.discountValue,
     rounds: line.serviceRounds,
-    lineAmount: line.metadata?.grossAmount ?? line.lineTotal,
   }));
+  const legacyGrossVat = intake.amountsIncludeVat === true;
 
   return {
     ...base,
@@ -163,8 +194,7 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
       express: text(order?.historicalExpressRef),
       invoice: text(order?.historicalInvoiceRef),
     },
-    amountsIncludeVat: typeof intake.amountsIncludeVat === 'boolean' ? intake.amountsIncludeVat : null,
-    vatRate: HISTORICAL_VAT_RATES.includes(Number(intake.vatRate)) ? Number(intake.vatRate) : null,
+    vatRate: !legacyGrossVat && HISTORICAL_VAT_RATES.includes(Number(intake.vatRate)) ? Number(intake.vatRate) : null,
     notes: text(order?.notes),
     packageProductId: text(zoneRows[0]?.productId),
     zones: zoneRows,
@@ -202,7 +232,7 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
  * ⚠️ **ไม่ล้าง `openingEvidence`** — นั่นคือไฟล์ที่อยู่บนเซิร์ฟเวอร์จริงแล้ว (โหมดแก้ใบ)
  *   ล้างจากฟอร์ม = ไฟล์กำพร้าใน bucket โดยที่ผู้คีย์ไม่ได้สั่งลบสักไฟล์
  *
- * @param field 'customer' (ลูกค้า) | 'vat' (โหมด/อัตรา VAT)
+ * @param field 'customer' (ลูกค้า) | 'vat' (ตัวเลือก VAT ของใบ)
  * @returns `{ ask, clears, patch, title, description, detail, confirmLabel }`
  *   - `ask` เท็จ = ยังไม่มีอะไรให้หาย ⇒ ผู้เรียกใช้ `patch` ได้เลยโดยไม่ต้องถาม
  */
@@ -224,9 +254,9 @@ export function historicalDownstreamReset(state = {}, field = 'customer') {
       ask: clears.length > 0,
       clears,
       patch: moneyPatch,
-      title: 'เปลี่ยนโหมด VAT แล้วงวดชำระจะถูกล้าง',
-      description: `ยอดใบคิดใหม่จากโหมด VAT ที่เลือก ⇒ งวดที่คีย์ไว้จะไม่ตรงยอดใบอีก · ระบบจะล้าง: ${clears.join(' · ')}`,
-      detail: 'โซนและยอดต่อโซนยังอยู่ครบ — กดยกเลิกเพื่อคงโหมด VAT เดิมไว้',
+      title: 'เปลี่ยน VAT แล้วงวดชำระจะถูกล้าง',
+      description: `ยอดใบคิดใหม่จาก VAT ที่เลือก ⇒ งวดที่คีย์ไว้จะไม่ตรงยอดใบอีก · ระบบจะล้าง: ${clears.join(' · ')}`,
+      detail: 'รายการของทุกโซนยังอยู่ครบ — กดยกเลิกเพื่อคง VAT เดิมไว้',
       confirmLabel: 'เปลี่ยน VAT และล้างงวด',
     };
   }
@@ -297,15 +327,17 @@ export function historicalWizardBody(state = {}, options = {}) {
       express: text(state.refs?.express) || null,
       invoice: text(state.refs?.invoice) || null,
     },
-    amountsIncludeVat: state.amountsIncludeVat,
     vatRate: state.vatRate,
     notes: text(state.notes) || null,
+    /* บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · จำนวน · ส่วนลดรายการ (+ โซน · รอบ) — **ไม่ส่งราคา/ยอด**
+       ราคา/หน่วยเป็นของทะเบียนสินค้า (server อ่านเอง) · ยอดบรรทัดเป็นของสูตร ไม่ใช่ของที่จอคิด */
     zones: list(state.zones).map((row) => ({
       zoneId: text(row?.zoneId) || null,
       productId: text(row?.productId) || null,
-      packs: text(row?.packs),
+      qty: text(row?.qty),
+      discountType: QUOTE_DISCOUNT_TYPES.includes(row?.discountType) ? row.discountType : null,
+      discountValue: QUOTE_DISCOUNT_TYPES.includes(row?.discountType) ? text(row?.discountValue) : '',
       rounds: text(row?.rounds),
-      lineAmount: text(row?.lineAmount),
     })),
     opening: state.hasOpening === true
       ? {
@@ -338,7 +370,7 @@ export function historicalWizardBody(state = {}, options = {}) {
    ของที่ไม่รู้จักตกที่ขั้นแรก เพราะขั้นแรกคือที่ที่ผู้คีย์เห็นข้อความได้แน่นอนที่สุด */
 const FIELD_STEP = new Map([
   ['customerId', 'contract'], ['ownerId', 'contract'], ['team', 'contract'], ['deal', 'contract'],
-  ['contract', 'contract'], ['refs', 'contract'], ['vatRate', 'contract'], ['amountsIncludeVat', 'contract'],
+  ['contract', 'contract'], ['refs', 'contract'], ['vatRate', 'contract'],
   ['notes', 'contract'], ['todayIso', 'contract'],
   ['zones', 'zones'],
   ['opening', 'money'], ['installments', 'money'],
@@ -466,10 +498,11 @@ export function historicalWizardLocalIssues(state = {}, {
   if (ownerLockedToSelf(role) && text(userId) && text(state.ownerId) && text(state.ownerId) !== text(userId)) {
     add('ownerId', 'AE / Senior AE คีย์ใบย้อนหลังได้เฉพาะของตัวเอง');
   }
-  if (state.amountsIncludeVat !== true && state.amountsIncludeVat !== false && state.vatRate !== 0) {
-    add('amountsIncludeVat', 'เลือกว่ายอดที่คีย์รวม VAT แล้วหรือยัง');
-  }
-  if (!HISTORICAL_VAT_RATES.includes(state.vatRate)) add('vatRate', 'เลือกอัตรา VAT ของใบนี้');
+  if (!HISTORICAL_VAT_RATES.includes(state.vatRate)) add('vatRate', HISTORICAL_VAT_CHOICE_MESSAGE);
+  /* 🪤 โหมด "ราคารวม VAT แล้ว — ถอด VAT 7%" ถูกถอด (มติ 23/09) และ body ไม่ส่งมันแล้ว ⇒ state ที่ยังพกมันมา
+     จะกลายเป็น "+ VAT 7% ท้ายใบ" เงียบ ๆ = ยอดใบบวก VAT ซ้ำ ⇒ ต้องเลือกใหม่ ไม่ใช่เดา
+     ⚠️ ขั้น ① ไม่มีแผ่นที่ตั้งธงนี้แล้ว (แผ่น VAT = QUOTE_VAT_OPTIONS) · ด่านนี้เหลือไว้กัน state ที่มาจากทางอื่น */
+  else if (state.amountsIncludeVat === true) add('vatRate', `โหมด “ราคารวม VAT แล้ว — ถอด VAT” เลิกใช้แล้ว — ${HISTORICAL_VAT_CHOICE_MESSAGE}`);
 
   /* ⚠️ ถามจาก **ชุดตัวเลือกที่อยู่บนจอจริง** ไม่ใช่จากจำนวนทีมของ AE (ดูหัว `historicalTeamField`) */
   const teamField = historicalTeamField({ ownerTeams, sharedTeams, locked: Boolean(state.orderId) });
@@ -536,8 +569,10 @@ export function historicalContractFileCount({
  *    พรีวิวรอบ ②→③ error ที่ `installments` ทุกครั้ง) ⇒ ยอดใบขึ้นขีด · แผ่น "แบ่งงวดที่เหลือ
  *    อัตโนมัติ" เทาทั้งชุด · จอบอกว่า "ตรวจขั้น ② ให้ผ่านก่อน" ทั้งที่ขั้น ② ผ่านแล้ว
  *    ⇒ ต้องคิดยอด N งวดด้วยมือให้ตรงยอดใบ ±1 สตางค์ โดยไม่เห็นยอดใบ (97 ใบของเฟส 3)
- * ⇒ **ไม่ใช่กฎชุดที่สอง**: ยอดใบมาจาก `splitHistoricalAmounts` ก้อนเดียวกับที่แผนใช้
- *   (import จาก historicalOrderPlan) — ที่นี่แค่ป้อนของที่อยู่บนฟอร์มให้มันตอนที่ยังไม่มีแผน
+ * ⇒ **ไม่ใช่กฎชุดที่สอง**: ยอดใบมาจาก `historicalLinesMoney` ก้อนเดียวกับที่แผนใช้ (สูตรใบเสนอราคา ·
+ *   import จาก historicalOrderPlan) — ที่นี่แค่ป้อนของที่อยู่บนฟอร์มให้มันตอนที่ยังไม่มีแผน
+ *   ⚠️ ราคา/หน่วยบนฟอร์มคือราคาในทะเบียนตอนเลือกแพ็คเกจ (`quoteLineFromProduct`) — แผนอ่านราคาปัจจุบันเอง
+ *      ⇒ ถ้าทะเบียนเพิ่งเปลี่ยนราคา ยอดที่คิดเองกับยอดของแผนต่างกันได้จนกว่าจะกดตรวจ (แผนชนะเสมอ)
  * ⚠️ มีแผน = ใช้แผนเสมอ (แผนคืนมาเฉพาะตอนไม่มี error ⇒ เงินของมันผ่านด่านครบแล้ว)
  * ⚠️ ของที่คิดเองไม่ได้ ต้องตอบ `ok:false` พร้อม **เหตุที่จริง** ไม่ใช่ยอด 0 ที่อ่านเหมือนใบ ฿0
  */
@@ -549,10 +584,74 @@ export function historicalContractFileCount({
 export const REGISTRY_LOAD_FAILED = 'โหลดทะเบียนไม่ขึ้น — กด “ลองอ่านทะเบียนอีกครั้ง” ที่ข้อความแดงด้านบน (ไม่ใช่ว่าทะเบียนไม่มีรายการ)';
 
 export const HISTORICAL_MONEY_UNKNOWN = Object.freeze({
-  vat: 'เลือกโหมดและอัตรา VAT ในขั้น ① ก่อน ระบบจึงคิดยอดใบได้',
+  vat: 'เลือก VAT ของใบในขั้น ① ก่อน ระบบจึงคิดยอดใบได้',
   zones: 'เลือกโซนอย่างน้อย 1 โซนในขั้น ② ก่อน ระบบจึงคิดยอดใบได้',
-  amounts: 'ยอดของบางโซนในขั้น ② ยังว่างหรือไม่ใช่ตัวเลข — เติมให้ครบก่อน',
+  lines: 'เลือกแพ็คเกจ / ใส่จำนวนของทุกโซนในขั้น ② ให้ครบก่อน ระบบจึงคิดยอดใบได้',
+  /* 🐞 รีวิว 23/09: จำนวน 1.5 / 0 เคยได้เหตุ "lines" (ให้ไปใส่ให้ครบ) ทั้งที่แพ็คเกจกับจำนวนกรอกแล้วทั้งคู่ —
+     เหตุจริงโผล่ตอนกด "ถัดไป" เท่านั้น ⇒ ข้อความเดียวกับที่แผนตีกลับ (HISTORICAL_LINE_MESSAGES.qty) */
+  qty: `${HISTORICAL_LINE_MESSAGES.qty} — แก้จำนวนของโซนนั้นในขั้น ② ก่อน ระบบจึงคิดยอดใบได้`,
+  price: 'แพ็คเกจของบางโซนยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน ระบบจึงคิดยอดใบได้',
 });
+
+/* ด่านของแถวโซนหนึ่งแถวก่อนคิดเงิน — **ตัวเดียว** ที่ยอดใบ (historicalMoneyView) และเซลล์ "จำนวนเงิน" ของ
+   ขั้น ② (historicalZoneLineAmount) ถาม ⇒ แถวที่เซลล์พูดขีด คือแถวเดียวกับที่ทำให้ยอดใบยังคิดไม่ได้
+   · ด่านเดียวกับแผน: จำนวนว่าง/ไม่ใช่จำนวนเต็ม = ยังคิดไม่ได้ (ไม่ใช่ 1 แบบใบเสนอราคา — มติ 23/09)
+   · ว่าง ≠ ผิดรูป: ว่าง = "ยังไม่ได้ใส่" (lines) · 1.5 / 0 = "ใส่แล้วแต่ใช้ไม่ได้" (qty) — คนละคำตอบ คนละทางแก้
+   · ราคาว่าง = แถวยังไม่ได้ผ่าน quoteLineFromProduct (ยังไม่รู้ราคา) ≠ ราคา 0 ในทะเบียน (รู้แล้วว่ายังไม่ตั้ง)
+   @returns `{ input }` (ป้อน quoteLineMoney ได้เลย) หรือ `{ reason }` = คีย์ของ HISTORICAL_MONEY_UNKNOWN */
+function zoneRowMoneyInput(row) {
+  if (!text(row?.productId) || text(row?.qty) === '') return { reason: 'lines' };
+  const qty = Number(row.qty);
+  if (!Number.isInteger(qty) || qty <= 0) return { reason: 'qty' };
+  if (text(row?.unitPrice) === '') return { reason: 'lines' };
+  const price = Number(row.unitPrice);
+  if (!Number.isFinite(price) || price <= 0) return { reason: 'price' };
+  return { input: { qty, unitPrice: price, discountType: row.discountType, discountValue: row.discountValue } };
+}
+
+/**
+ * จำนวนเงินของแถวโซนหนึ่งแถว — ค่าที่เซลล์ "จำนวนเงิน" ของขั้น ② พูด (สูตรใบเสนอราคา `quoteLineMoney`)
+ * ⚠️ `known` เท็จ = เซลล์พูดขีด ไม่ใช่ 0.00 — ใบเสนอราคานับจำนวนว่างเป็น 1 แต่ใบย้อนหลังตีกลับ
+ *   (แถวที่ยังไม่เลือกแพ็คเกจ / ยังไม่ใส่จำนวน / จำนวนไม่ใช่จำนวนเต็ม > 0 / แพ็คเกจยังไม่ตั้งราคา ยังไม่มียอดให้พูด)
+ * @returns `{ known: true, lineTotal }` หรือ `{ known: false, lineTotal: null, reason, qtyNote }`
+ *   - reason: คีย์ของ HISTORICAL_MONEY_UNKNOWN (ตัวเดียวกับที่ยอดใบใช้บอกเหตุ)
+ *   - qtyNote: ข้อความใต้ช่องจำนวนของแถวนั้น (เฉพาะจำนวนผิดรูป — เหตุอื่นเห็นได้จากช่องเองอยู่แล้ว)
+ */
+export function historicalZoneLineAmount(row = {}) {
+  const { input, reason } = zoneRowMoneyInput(row);
+  if (!input) {
+    return { known: false, lineTotal: null, reason, qtyNote: reason === 'qty' ? HISTORICAL_LINE_MESSAGES.qty : null };
+  }
+  return { known: true, lineTotal: quoteLineMoney(input).lineTotal };
+}
+
+/**
+ * ราคา/หน่วยของแผนที่ตรวจผ่าน → แถวโซนบนจอ (รีวิว 23/09)
+ * 🐞 แผนอ่านราคาจากทะเบียน **ตอนกดตรวจ** (`products.costPrice`) แต่แถวถือราคาที่เติมตอนเลือกแพ็คเกจจาก
+ *    ลิสต์สินค้าที่แคชไว้ถึง 2 นาที ⇒ ทะเบียนขยับราคาระหว่างทาง (หรือใบที่ถูกตีกลับแล้วเปิดใหม่) = เซลล์
+ *    "จำนวนเงิน" กับยอดไซต์พูดราคาเก่า ขณะที่ยอดใบ/ขั้น ③/④ พูดราคาของแผน — จอเดียวสองตัวเลข
+ *    ใบเสนอราคาไม่เป็นเพราะโหลดบรรทัดใหม่จาก server หลังบันทึก ⇒ ที่นี่ทำแบบเดียวกันกับแผน
+ * ⚠️ แตะแค่ `unit` · `unitPrice` ของแถวที่แพ็คเกจตรงกับบรรทัดของแผน (จับคู่ด้วยโซน) — ไม่ใช่การแก้ฟอร์ม
+ *   ⇒ ผู้เรียกตั้ง state ตรง ๆ **ไม่ผ่าน patch** (patch ปั๊ม dirty และทิ้งแผนที่เพิ่งตรวจผ่าน)
+ * ⚠️ แผนที่ยังมี error ไม่ถูกเชื่อ (บล็อกเงินเป็นศูนย์ทั้งก้อน — เหตุเดียวกับ historicalMoneyView)
+ * @returns อาร์เรย์เดิม (อ้างอิงเดียวกัน) เมื่อไม่มีอะไรเปลี่ยน — ผู้เรียกใช้ `!==` ตัดสินว่าต้องตั้ง state ไหม
+ */
+export function historicalZonesWithPlanPrices(zones = [], plan = null) {
+  if (!plan || list(plan.errors).length) return zones;
+  const byZone = new Map(list(plan.lines).filter((line) => text(line?.zoneId)).map((line) => [text(line.zoneId), line]));
+  let changed = false;
+  const next = list(zones).map((row) => {
+    const line = byZone.get(text(row?.zoneId));
+    if (!line || text(line.productId) !== text(row?.productId)) return row;
+    const unitPrice = Number(line.unitPrice);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return row;
+    const unit = text(line.unit) || text(row.unit);
+    if (text(row.unitPrice) !== '' && toSatang(row.unitPrice) === toSatang(unitPrice) && text(row.unit) === unit) return row;
+    changed = true;
+    return { ...row, unit, unitPrice };
+  });
+  return changed ? next : zones;
+}
 
 /**
  * ยอดใบที่จอใช้ได้ตรง ๆ — `{ ok, source, reason, subtotal, vatAmount, totalAmount }`
@@ -595,19 +694,15 @@ export function historicalMoneyView(state = {}, plan = null, serverMoney = null)
   });
   const vatRate = state.vatRate;
   if (!HISTORICAL_VAT_RATES.includes(vatRate)) return unknown(HISTORICAL_MONEY_UNKNOWN.vat);
-  /* อัตรา 0% ไม่ต้องตอบว่ารวม VAT หรือยัง (กติกาเดียวกับ local issues) */
-  const includeVat = vatRate === 0 ? false : state.amountsIncludeVat;
-  if (includeVat !== true && includeVat !== false) return unknown(HISTORICAL_MONEY_UNKNOWN.vat);
   const zones = list(state.zones);
   if (!zones.length) return unknown(HISTORICAL_MONEY_UNKNOWN.zones);
-  const gross = [];
+  const rows = [];
   for (const row of zones) {
-    const raw = text(row?.lineAmount);
-    const value = raw === '' ? Number.NaN : Number(raw);
-    if (!Number.isFinite(value) || value < 0) return unknown(HISTORICAL_MONEY_UNKNOWN.amounts);
-    gross.push(value);
+    const { input, reason } = zoneRowMoneyInput(row);
+    if (!input) return unknown(HISTORICAL_MONEY_UNKNOWN[reason]);
+    rows.push(input);
   }
-  const money = splitHistoricalAmounts(gross, { amountsIncludeVat: includeVat, vatRate });
+  const money = historicalLinesMoney(rows, vatRate);
   return {
     ok: true,
     source: 'local',
@@ -615,6 +710,30 @@ export function historicalMoneyView(state = {}, plan = null, serverMoney = null)
     subtotal: money.subtotal,
     vatAmount: money.vatAmount,
     totalAmount: money.totalAmount,
+  };
+}
+
+/**
+ * กล่องสรุปท้ายตารางรายการ (ขั้น ② และ ④) — ป้ายของใบเสนอราคา: ยอดรวมสินค้า/บริการ · ภาษีมูลค่าเพิ่ม (ตัวเลือก VAT) ·
+ * ยอดรวมทั้งสิ้น · ⭐ ตัวเดียวที่สองขั้นอ่าน ⇒ ป้ายไม่มีทางพูดคนละคำระหว่างขั้นคีย์กับขั้นตรวจ
+ * ⚠️ ใบย้อนหลัง **ไม่มีส่วนลดท้ายใบ** (แผนคิดส่วนลดรายบรรทัดอย่างเดียว) ⇒ ไม่มีแถว "หัก ส่วนลด" ให้ตอบ
+ * @param money   `{ ok, subtotal, vatAmount, totalAmount }` (ขั้น ②: historicalMoneyView · ขั้น ④: header ของแผน + ok)
+ * @param vatRate ตัวเลือก VAT ของใบ (0 = รวม VAT แล้ว ⇒ แถว VAT เป็นขีด เหมือนท้ายตารางใบเสนอราคา)
+ * @returns `{ rows: [{ id, label, value }], grandTotal }` — ยังไม่รู้ยอด = ขีดทุกช่อง (ห้ามเป็น 0.00)
+ */
+export function historicalTotalsView(money = {}, vatRate = null) {
+  const ok = Boolean(money?.ok);
+  const vatLabel = HISTORICAL_VAT_RATES.includes(Number(vatRate)) && vatRate !== null ? vatLabelOf(Number(vatRate)) : null;
+  return {
+    rows: [
+      { id: 'subtotal', label: 'ยอดรวมสินค้า/บริการ', value: ok ? fmtMoney(money.subtotal) : null },
+      {
+        id: 'vat',
+        label: vatLabel ? `ภาษีมูลค่าเพิ่ม (${vatLabel})` : 'ภาษีมูลค่าเพิ่ม',
+        value: ok && Number(vatRate) > 0 ? fmtMoney(money.vatAmount) : null,
+      },
+    ],
+    grandTotal: ok ? fmtMoney(money.totalAmount) : NA,
   };
 }
 
@@ -648,20 +767,32 @@ export function historicalInstallmentSum(state = {}, totalAmount = null) {
 export const HISTORICAL_SAVE_BUTTON_LABEL = 'บันทึกและส่งอนุมัติ';
 export const HISTORICAL_NEXT_BUTTON_LABEL = 'ถัดไป';
 
+/* ── ขั้นที่ไม่มีแถบสรุปข้างขวา ─────────────────────────────────────────────────────
+ * ⭐ ขั้น ② (บรรทัดโซน) และ ④ (ตารางรายการฝั่งอ่าน) คือตารางรายการของใบเสนอราคา ซึ่งต้องการกล่อง ≥ 900px
+ *   (`QUOTE_LINES_MIN_WIDTH` — แคบกว่านั้นตารางพับเป็นการ์ดต่อบรรทัด)
+ * 🐞 รีวิว/UAT 23/09 (วัดจริง): รางขั้น 13rem + แถบสรุป 330px กินที่จนเนื้อขั้นเหลือ 826px ที่จอ 1440 และ 866px
+ *   ที่จอ 1920 ⇒ ตารางสองขั้นนี้เป็นการ์ดเสมอบนเดสก์ท็อป ขณะที่ใบเสนอราคาที่จอเดียวกันเป็นตาราง (956px) —
+ *   ขัดมติเจ้าของ 23/09 "ต้องไม่ต่างจาก form ใบเสนอราคา" ตรงจุดที่เห็นชัดที่สุด
+ * ⇒ สองขั้นนี้ยุบแถบสรุปออกให้ตารางได้ความกว้างเต็มคอลัมน์ (≈1140px ที่จอ 1440) · ของที่แถบสรุปบอก
+ *   มีอยู่ในขั้นเองแล้ว (ขั้น ②: กล่องสรุปท้ายตาราง · ขั้น ④: การ์ดสรุปทั้งใบ) · ขั้น ① ③ ยังมีแถบสรุปตามม็อก
+ */
+export const HISTORICAL_FULL_WIDTH_STEPS = Object.freeze(['zones', 'review']);
+export const historicalStepShowsAside = (step) => !HISTORICAL_FULL_WIDTH_STEPS.includes(step);
+
 /* ── จุดยึดของช่องบน DOM ────────────────────────────────────────────────────────
  *
  * 🐞 UAT 23/09 (ทางตัน): กด "ถัดไป" ตอนยังไม่แนบไฟล์เอกสารแทนสัญญา = **ไม่มีอะไรเกิดขึ้นเลย**
  *    (`if (issuesForStep(localIssues, from).length) { setIssues([]); return; }`) — ปุ่มอ่านเหมือน
  *    ปุ่มตาย ซ้ำยังล้าง error ของ server ที่ค้างอยู่บนจอทิ้งไปด้วย
  * ⇒ กติกา (กฎบ้าน ui-visibility): ติดด่าน = **คาข้อความไว้ + พาไปที่ช่องนั้น + ทำเครื่องหมายว่าผิด**
- * ⚠️ สองชื่อช่องที่เป็นคำถามเดียวกันบนจอต้องได้จุดยึด **เดียวกัน** (โหมด VAT กับอัตรา VAT อยู่บน
- *   แผ่นตัวเลือกใบเดียว) ไม่งั้นพาไปหา id ที่ไม่มีอยู่จริง แล้วกลายเป็นทางตันแบบเดิมอีกรอบ
+ * ⚠️ ช่องที่ server ตีกลับกับช่องที่จอตรวจเองต้องได้จุดยึด **เดียวกัน** (VAT ของใบคือแผ่นตัวเลือกใบเดียว —
+ *   ทั้งคำตอบที่ยังไม่เลือกและโหมดรุ่นก่อนที่ถูกถอดตกที่ `vatRate`) ไม่งั้นพาไปหา id ที่ไม่มีอยู่จริง
  */
 const FIELD_ANCHOR = new Map([
   ['customerId', 'customer'], ['ownerId', 'owner'], ['team', 'team'],
   ['contract.startDate', 'contract-start'], ['contract.endDate', 'contract-end'],
   ['contract.ref', 'contract-ref'], ['contract.file', 'contract-file'],
-  ['amountsIncludeVat', 'vat'], ['vatRate', 'vat'],
+  ['vatRate', 'vat'],
   ['zones', 'zones'],
   ['opening', 'opening'], ['opening.evidence', 'opening-evidence'],
 ]);
@@ -690,16 +821,10 @@ export function historicalNextBlock(localIssues = [], step = 'contract') {
   };
 }
 
-const packTotal = (zones) => list(zones).reduce((sum, row) => sum + (Number(text(row?.packs)) || 0), 0);
 /* ชนิดเอกสารที่ยังไม่เลือก = ไม่มีคำ (ป้ายกลางคืนขีดให้ชนิดที่ไม่รู้จัก ซึ่งอ่านเหมือนค่าที่หายไป) */
 const docKindText = (kind) => {
   const label = text(kind) ? externalDocKindLabel(kind) : '';
   return label === '—' ? '' : label;
-};
-const vatModeText = (includeVat) => {
-  if (includeVat === true) return 'รวม VAT แล้ว';
-  if (includeVat === false) return 'ไม่รวม VAT';
-  return 'ยังไม่เลือกโหมด';
 };
 
 /**
@@ -708,7 +833,8 @@ const vatModeText = (includeVat) => {
  * 🐞 UAT 23/09 (รางโกหก): ของเดิมส่ง `count: { filled: stepIssues ? 0 : 1, total: 1 }` ⇒ บนฟอร์ม
  *    เปล่า ๆ ขั้น "ไซต์ โซน และแพ็ค" กับ "ตรวจและส่งอนุมัติ" ขึ้น **1/1 (ครบ)** เพราะ error ของสองขั้นนั้น
  *    มาจากพรีวิวของ server ซึ่งยังไม่เคยรักันสักครั้ง ⇒ รางบอกว่างานเสร็จ ทั้งที่ยังไม่ได้เริ่ม
- * ⇒ เลิกใช้เศษส่วน · ขั้นละหนึ่งบรรทัดตามม็อก ("4 โซน · 17 แพ็ค" · "ยกมา 1 งวด · ต้องเก็บ 1 งวด")
+ * ⇒ เลิกใช้เศษส่วน · ขั้นละหนึ่งบรรทัดตามม็อก ("4 โซน" · "ยกมา 1 งวด · ต้องเก็บ 1 งวด")
+ *   ⚠️ ไม่นับ "แพ็ค" แล้ว (มติ 23/09) — จำนวนของแต่ละบรรทัดมีหน่วยของสินค้าตัวเอง บวกข้ามบรรทัดไม่มีความหมาย
  *   และจุดสีบอกเฉพาะสิ่งที่รู้จริง: มีข้อต้องแก้ (some) · กรอกแล้ว (full) · ยังว่าง (none)
  * ⚠️ ใช้เฉพาะช่องที่ `SectionRail` มีอยู่แล้ว (label/tone/title) — ไม่เพิ่มช่องให้ primitive กลาง
  *   เพื่อจอเดียว · บรรทัดสรุปถูกส่งเป็น node ของ `label` ที่ผู้เรียกประกอบเอง
@@ -727,7 +853,7 @@ export function historicalWizardRail(state = {}, {
 
   const summaries = {
     contract: [text(customerLabel), docKind].filter(Boolean).join(' · '),
-    zones: zones.length ? `${fmtNumber(zones.length)} โซน · ${fmtNumber(packTotal(zones))} แพ็ค` : '',
+    zones: zones.length ? `${fmtNumber(zones.length)} โซน` : '',
     money: plan?.zeroValue ? 'ใบยอด 0 บาท — ไม่มีงวด' : [
       state.hasOpening === true ? 'ยกมา 1 งวด' : (state.hasOpening === false ? 'ไม่มีงวดยกมา' : ''),
       installments.length ? `ต้องเก็บ ${fmtNumber(installments.length)} งวด` : '',
@@ -761,7 +887,8 @@ export function historicalWizardRail(state = {}, {
  *    เลือกลูกค้าแล้วยังขึ้นขีดอยู่ ทั้งที่แถว "ช่วงสัญญา" ใต้มันขยับทันที (แถวนั้นอ่าน state)
  *    ⇒ ครึ่งหนึ่งของแถบค้างอยู่ในอดีตจนกว่าจะมีคนกดตรวจ โดยไม่มีอะไรบอกว่าทำไม
  * ⇒ **ทุกแถวถอยมาที่ state ของฟอร์มเสมอ** · เหลือว่างได้เฉพาะของที่มีแต่ server คิดให้ได้
- *   (ยอดก่อน VAT · VAT) ซึ่งผู้คีย์ไม่ได้พิมพ์เองอยู่แล้ว
+ *   (ยอดรวมสินค้า/บริการ · ภาษีมูลค่าเพิ่ม) ซึ่งผู้คีย์ไม่ได้พิมพ์เองอยู่แล้ว
+ * ⭐ ป้ายเงินเป็นป้ายท้ายตารางของใบเสนอราคา (มติ 23/09) — "ยอดรวมสินค้า/บริการ" · "ภาษีมูลค่าเพิ่ม" · ตัวเลือก VAT
  * @returns `[{ id, label, value }]` — `value` เป็นข้อความพร้อมวาง หรือ null (ผู้เรียกแปลงเป็นขีดเอง)
  */
 export function historicalAsideRows(state = {}, {
@@ -778,11 +905,7 @@ export function historicalAsideRows(state = {}, {
   const openingRows = plan?.opening || state.hasOpening === true ? 1 : 0;
   const restRows = plan?.installments?.length ?? list(state.installments).length;
 
-  const vat = state.vatRate === 0
-    ? 'ไม่มี VAT'
-    : (HISTORICAL_VAT_RATES.includes(state.vatRate)
-      ? `${vatModeText(state.amountsIncludeVat)} · ${fmtNumber(state.vatRate)}%`
-      : null);
+  const vat = HISTORICAL_VAT_RATES.includes(state.vatRate) ? vatLabelOf(state.vatRate) : null;
 
   const openingValue = (() => {
     if (plan?.opening) return `${fmtMoney(plan.opening.amount)} · หลักฐาน ${fmtNumber(evidenceFileCount)} ไฟล์`;
@@ -814,13 +937,9 @@ export function historicalAsideRows(state = {}, {
     },
     { id: 'refs', label: 'อ้างอิงเดิม', value: refs.join(' · ') || null },
     { id: 'tax', label: 'ภาษี', value: vat },
-    {
-      id: 'zones',
-      label: 'โซน',
-      value: zones.length ? `${fmtNumber(zones.length)} โซน · ${fmtNumber(packTotal(zones))} แพ็ค` : null,
-    },
-    { id: 'subtotal', label: 'ยอดก่อน VAT', value: money.ok ? fmtMoney(money.subtotal) : null },
-    { id: 'vat', label: 'VAT', value: money.ok ? fmtMoney(money.vatAmount) : null },
+    { id: 'zones', label: 'โซน', value: zones.length ? `${fmtNumber(zones.length)} โซน` : null },
+    { id: 'subtotal', label: 'ยอดรวมสินค้า/บริการ', value: money.ok ? fmtMoney(money.subtotal) : null },
+    { id: 'vat', label: 'ภาษีมูลค่าเพิ่ม', value: money.ok ? fmtMoney(money.vatAmount) : null },
     { id: 'opening', label: OPENING_INSTALLMENT_LABEL, value: openingValue },
     {
       id: 'rest',
@@ -865,17 +984,18 @@ export function historicalReviewStaleNotice() {
   };
 }
 
-/* ── ตัวช่วยของขั้น ② และ ③ (ปุ่มให้คนกด ไม่ใช่ค่าที่เติมเงียบ ๆ) ───────────────────────── */
+/* ── ตัวช่วยของขั้น ③ (ปุ่มให้คนกด ไม่ใช่ค่าที่เติมเงียบ ๆ) ─────────────────────────────── */
 
 /* ── ระยะสัญญา: ลงตัวเป็นเดือน หรือไม่ก็ไม่ตอบเลย ────────────────────────────────
    🐞 UAT 23/09 (เรื่องเงิน): ของเดิมเขียนคอมเมนต์ว่า "ช่วงที่ไม่ลงตัวเป็นเดือน = null"
       แต่โค้ด **ปัดลง** (`iso <= to`) ⇒ 1 ม.ค.–15 มี.ค. ตอบ 2 · 1 ม.ค.–30 ธ.ค. ตอบ 11
-      แล้วปุ่มลัด `zoneAmountSuggestion` (ราคา × แพ็ค × เดือน) เสนอยอด **11/12 ของของจริง**
+      แล้วปุ่มลัดยอดโซน (ราคา × แพ็ค × เดือน — ถอดแล้วตามมติ 23/09) เสนอยอด **11/12 ของของจริง**
       ให้ใบที่ขาดไปวันเดียว — ผิดเงียบ ๆ ทั้งใบ เพราะเลขที่เสนอดูสมเหตุสมผลทุกตัว
    ⇒ กติกาเดียวของบ้านนี้: **ลงตัวเป็นเดือนเท่านั้นถึงจะตอบเป็นตัวเลข** ช่วงอื่นตอบ null แล้ว
-      ทุกคนที่ถาม (ป้ายใต้ช่องวันสิ้นสุด · ช่อง "ระยะสัญญา" ของขั้น ② · ปุ่มลัดยอดโซน ·
-      ชุดแบ่งงวดของขั้น ③) ต้อง **บอกเหตุแล้วให้ผู้คีย์ใส่ยอดเอง** ไม่ใช่เดาต่อ */
-export const CONTRACT_PARTIAL_NOTE = 'ช่วงสัญญาไม่ลงตัวเป็นเดือน — ใส่ยอดต่อโซนเอง';
+      ทุกคนที่ถาม (ป้ายใต้ช่องวันสิ้นสุด · ชุดแบ่งงวดของขั้น ③) ต้อง **บอกเหตุแล้วให้ผู้คีย์ทำเอง** ไม่ใช่เดาต่อ
+   ⭐ มติเจ้าของ 23/09: ยอดของโซนไม่ได้คิดจากเดือนอีกแล้ว — เป็น จำนวน × ราคา/หน่วย แบบใบเสนอราคา
+      (ระยะสัญญาไม่เข้าสูตรเงินที่ไหน) ⇒ สิ่งเดียวที่ช่วงไม่ลงตัวกระทบคือการแบ่งงวดอัตโนมัติ */
+export const CONTRACT_PARTIAL_NOTE = 'ช่วงสัญญาไม่ลงตัวเป็นเดือน — แบ่งงวดชำระเอง (ขั้น ③)';
 
 /**
  * จำนวนเดือนเต็มของสัญญา — "n เดือน" แปลว่า **วันสิ้นสุด = วันเริ่ม + n เดือน − 1 วัน**
@@ -893,7 +1013,7 @@ export const CONTRACT_PARTIAL_NOTE = 'ช่วงสัญญาไม่ลง
  *    ถือว่าไม่ลงตัว (จะนับเป็น 1 เดือนหรือไม่ ขึ้นกับกติกาที่ตกลงกับลูกค้า) ⇒ ถามผู้คีย์
  *    ดีกว่าเดาแทนเขาในเรื่องเงิน
  * 🐞 ก่อน 23/09 กติกา (ข) หายไป ⇒ 31 ม.ค.–30 เม.ย. ตอบ null (เดิมตอบ 3) ⇒ ลูกค้าที่สัญญา
- *    เริ่มวันที่ 31 เสียปุ่มลัดยอดโซนและชุดแบ่งงวดทั้งใบ โดยไม่มีอะไรบนจอบอกว่าทำไม
+ *    เริ่มวันที่ 31 เสียชุดแบ่งงวดทั้งใบ โดยไม่มีอะไรบนจอบอกว่าทำไม
  */
 export function contractMonths(startDate, endDate) {
   const from = text(startDate);
@@ -930,40 +1050,9 @@ export function contractSpan(startDate, endDate) {
   return { months, dated, partial, note: partial ? CONTRACT_PARTIAL_NOTE : null };
 }
 
-/**
- * ยอดของโซนที่ปุ่มลัดเสนอ = ราคาแพ็คเกจ × แพ็ค × เดือน (ม็อก Step2: 1,200 × 6 × 12 = 86,400)
- * ⚠️ **ไม่ใช่ค่าตั้งต้น** — ราคาจริงของใบเก่าต่อรองกันมาแล้ว ⇒ เป็นปุ่มให้กดทับเมื่อผู้คีย์ตัดสินใจ
- * ⚠️ `months` ที่เป็น null (ช่วงไม่ลงตัวเป็นเดือน) ⇒ null เสมอ — ห้ามปัดเศษเดือนให้เอง
- */
-export function zoneAmountSuggestion({ unitPrice, packs, months } = {}) {
-  const price = Number(unitPrice);
-  const count = Number(packs);
-  const span = Number(months);
-  if (!Number.isFinite(price) || price <= 0) return null;
-  if (!Number.isInteger(count) || count <= 0) return null;
-  if (!Number.isInteger(span) || span <= 0) return null;
-  return Math.round(price * count * span * 100) / 100;
-}
-
-/**
- * ปุ่มลัดยอดโซน **กดไม่ได้เพราะอะไร** — `null` = กดได้ (และ `zoneAmountSuggestion` คืนตัวเลขแน่นอน)
- * 🔴 กฎบ้าน "ติดด่าน = โชว์แล้วบอกเหตุ" · ของเดิมปุ่มกดได้ตลอดแล้ว **เงียบ** เมื่อคิดยอดไม่ได้
- *   (`if (value !== null)` แล้วจบ) ⇒ ผู้คีย์กดซ้ำ ๆ โดยไม่รู้ว่าขาดอะไร
- * ⚠️ เงื่อนไขต้องเป็นชุดเดียวกับ `zoneAmountSuggestion` เป๊ะ — เทสต์ผูกสองตัวนี้ไว้ด้วยกัน
- * @param monthsPartial ช่วงสัญญากรอกครบแล้วแต่ไม่ลงตัวเป็นเดือน (`contractSpan().partial`)
- */
-export function zoneAmountSuggestionNote({ unitPrice, packs, months, monthsPartial = false } = {}) {
-  const span = Number(months);
-  if (!Number.isInteger(span) || span <= 0) {
-    return monthsPartial ? CONTRACT_PARTIAL_NOTE : 'กรอกวันเริ่ม–วันสิ้นสุดสัญญาในขั้น ① ก่อน';
-  }
-  const count = Number(packs);
-  /* ⚠️ ไม่ใช้คำว่า "จำนวนแพ็ค" — ICU ตัดบรรทัดตรงรอยต่อนั้นผิด (ด่าน check:thaiwrap) */
-  if (!Number.isInteger(count) || count <= 0) return 'ใส่แพ็คของโซนนี้ก่อน';
-  const price = Number(unitPrice);
-  if (!Number.isFinite(price) || price <= 0) return 'แพ็คเกจนี้ไม่มีราคาต่อหน่วยในทะเบียน — ใส่ยอดเอง';
-  return null;
-}
+/* 🚫 ปุ่มลัด "ใช้ราคาแพ็คเกจ × แพ็ค × เดือน" (`zoneAmountSuggestion` / `zoneAmountSuggestionNote`) ถูกถอดตามมติ 23/09
+   🐞 มันคูณเดือนซ้ำบนจำนวนที่นับเดือนไปแล้ว — 1 ชุด × 12 เดือน คีย์เป็นจำนวน 12 แล้วปุ่มเสนอ 3,500 × 12 × 12 = 504,000
+   ⇒ ยอดของโซนคือ จำนวน × ราคา/หน่วย − ส่วนลด ตามสูตรใบเสนอราคา (historicalLinesMoney) ไม่มีปุ่มเสนอยอดอีก */
 
 /* ── ตัวกางทะเบียนไซต์/โซนของขั้น ② ──────────────────────────────────────────────
  *
@@ -1062,6 +1151,61 @@ export function historicalZoneBrowser({
   const unresolved = blind ? missing : [];
 
   return { rows, siteTotal: all.length, zoneTotal, shownZones, hiddenPicked, orphans, unresolved };
+}
+
+/**
+ * บรรทัดของใบในขั้น ② — หนึ่งแถวโซนที่ติ๊กไว้ = หนึ่งบรรทัดของ **ตารางรายการแบบใบเสนอราคา** ใต้การ์ดไซต์
+ * (มติเจ้าของ 23/09 · รีวิว 23/09: ตารางแยกจากการ์ดไซต์ ⇒ คอลัมน์ # · รายการ · … · ปุ่มลบ เท่าใบเสนอราคาเป๊ะ
+ * และโซนที่ผูกกลายเป็นบรรทัด "ไซต์ · โซน" ใต้คำอธิบาย แบบเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย)
+ *
+ * ต่อแถวคืน `{ row, index, zone, site, point, note, name, removable, removeTitle }`
+ *   - point: ชื่อจุด (`historicalZonePoint` — สูตรเดียวกับที่แผนเขียนลงบรรทัด) · null เมื่อยังหาโซนไม่เจอ
+ *   - note:  เหตุที่ยังไม่มีชื่อจุด (กำลังโหลด · ยังอ่านทะเบียนไม่ได้ · ไม่อยู่ในทะเบียน) — ขึ้นแทนชื่อ
+ *   - name:  ชื่อบรรทัดของโปรแกรมอ่านหน้าจอ ("รายการของโซน <ชื่อโซน>" · หาโซนไม่เจอ = "รายการ N")
+ *   - removable/removeTitle: ปุ่มลบท้ายแถว (= ถอนติ๊กโซน)
+ * 🔴 N1: โซนที่ **ยังตัดสินไม่ได้** (มีไซต์ที่อ่านโซนไม่สำเร็จ) ลบไม่ได้ — ยังไม่รู้ว่ามันหายจริงหรือแค่อยู่ในไซต์
+ *    ที่อ่านไม่ถึง (ปุ่มลบ = ลบบรรทัดจริง) · ระหว่างโหลดก็เช่นกัน · โซนกำพร้าจริง (อ่านครบแล้วไม่เจอ) ลบได้ (R10)
+ */
+export function historicalZoneLines({
+  zones = [], sites = [], zonesBySite = {}, siteErrors = {}, ready = true,
+} = {}) {
+  const where = new Map();
+  for (const site of list(sites)) {
+    for (const zone of list(zonesBySite?.[site?.id])) where.set(text(zone?.id), { zone, site });
+  }
+  const blind = list(sites).some((site) => Boolean(text(siteErrors?.[site?.id])));
+  return list(zones).map((row, index) => {
+    const found = where.get(text(row?.zoneId)) || null;
+    const zone = found?.zone || null;
+    const site = found?.site || null;
+    let note = null;
+    let removable = true;
+    let removeTitle = null;
+    if (!found) {
+      if (!ready) {
+        note = 'กำลังโหลดทะเบียนไซต์…';
+        removable = false;
+        removeTitle = 'รอทะเบียนไซต์โหลดเสร็จก่อน';
+      } else if (blind) {
+        note = `${text(row?.zoneId)} — ยังอ่านทะเบียนไม่ได้`;
+        removable = false;
+        removeTitle = 'ยังอ่านทะเบียนไซต์ไม่ครบ — กด “ลองอ่านไซต์ที่พังอีกครั้ง” ก่อน จึงจะรู้ว่าโซนนี้หายจริงไหม';
+      } else {
+        note = `${text(row?.zoneId)} — ไม่อยู่ในทะเบียนที่โหลดมา`;
+      }
+    }
+    return {
+      row,
+      index,
+      zone,
+      site,
+      point: zone && site ? historicalZonePoint(zone, site) : null,
+      note,
+      name: zone ? `รายการของโซน ${text(zone.name) || text(zone.id)}` : `รายการ ${index + 1}`,
+      removable,
+      removeTitle,
+    };
+  });
 }
 
 /**

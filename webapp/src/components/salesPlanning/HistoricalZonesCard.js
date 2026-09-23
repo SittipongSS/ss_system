@@ -18,36 +18,45 @@ import { historicalZoneState } from "@/lib/sales/historicalOrderCopy";
 
 /**
  * @param order          ใบ (อ่าน `status` · `lines` เป็นตัวถอยเมื่อของเสริมไม่มา)
- * @param lineZones      ของเสริมจาก GET ของใบ — `[{ lineId, zoneId, zoneCode, zoneName, siteCode, siteName, siteId, packs, rounds, lineTotal }]`
+ * @param lineZones      ของเสริมจาก GET ของใบ — `[{ lineId, zoneId, zoneCode, zoneName, siteCode, siteName, siteId,
+ *                       fgCode, qty, unit, unitPrice, discountAmount, rounds, lineTotal }]` (loadHistoricalOrderExtras)
  * @param plannedSiteIds ไซต์ที่ฝ่าย TS ตั้งรอบแล้ว (historicalServiceProgress) · `null` = ยังไม่รู้
  * @param loadingPlans   กำลังยิงเส้นสรุปงานบริการอยู่ — สถานะรายโซนพูดว่า "กำลังตรวจ" ไม่ใช่ "ยังไม่ตั้ง"
  * @param extrasError    ของเสริมของใบโหลดไม่ขึ้น (หน้าใบส่งมาให้) — ต้องดัง ไม่ใช่การ์ดว่าง
+ *
+ * ⭐ มติเจ้าของ 23/09: บรรทัดของใบย้อนหลังคือบรรทัดของใบเสนอราคา ⇒ การ์ดพูด **รายการ · จำนวน + หน่วย**
+ *   ของบรรทัดนั้น (12 แพ็คเกจ) ไม่ใช่ "N แพ็ค" ที่อ่านได้สองความหมาย (1 ชุด × 12 เดือน เคยถูกคีย์ทั้ง 1 และ 12)
+ *   ราคาต่อหน่วย/ส่วนลดอยู่ที่ตารางรายการข้างบน — การ์ดนี้ตอบ "ของลงโซนไหน · TS ตั้งรอบหรือยัง"
  */
 export default function HistoricalZonesCard({
   order, lineZones = [], plannedSiteIds = null, loadingPlans = false, extrasError = null,
 }) {
   const zones = Array.isArray(lineZones) ? lineZones : [];
-  const packsOf = (zone) => {
-    // ⚠️ ว่าง ≠ 0 แพ็ค (`Number(null)` = 0) — ไม่มีค่าในของเสริมก็ถอยไปอ่านบรรทัดของใบ
-    if (String(zone.packs ?? "").trim() && Number.isFinite(Number(zone.packs))) return Number(zone.packs);
-    const line = (order?.lines || []).find((l) => l.serviceZoneId === zone.zoneId);
-    return Number(line?.qty) || 0;
+  /* ⚠️ ของเสริมที่ไม่มีค่า (รุ่นก่อน/ของเสริมบางช่องว่าง) ถอยไปอ่านบรรทัดของใบ — ว่าง ≠ 0 (`Number(null)` = 0) */
+  const lineOf = (zone) => (order?.lines || []).find((l) => (zone.lineId && l.id === zone.lineId))
+    || (order?.lines || []).find((l) => l.serviceZoneId === zone.zoneId) || null;
+  const qtyText = (zone) => {
+    const line = lineOf(zone);
+    const qty = zone.qty ?? line?.qty;
+    if (qty === null || qty === undefined || !String(qty).trim() || !Number.isFinite(Number(qty))) return NA;
+    const unit = zone.unit || line?.unit || "";
+    return `${fmtNumber(Number(qty))}${unit ? ` ${unit}` : ""}`;
   };
-  const totalPacks = zones.reduce((sum, zone) => sum + packsOf(zone), 0);
   const meta = zones.length
-    ? `${fmtNumber(zones.length)} โซน · ${fmtNumber(totalPacks)} แพ็ค — โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย`
+    ? `${fmtNumber(zones.length)} โซน — โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย`
     : "โซนของใบนี้";
 
   return (
     <DetailCard icon={MapPin} eyebrow="SERVICE ZONES" title="โซนในใบนี้" meta={meta}>
       {zones.length ? (
-        <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={520}>
+        <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={680}>
           <table className="w-full text-sm">
             <thead><tr>
               <th>ไซต์ · โซน</th>
-              <th className="num">แพ็ค</th>
-              <th className="num">รอบ</th>
-              <th className="num">ยอด</th>
+              <th>รายการ</th>
+              <th className="num">จำนวน</th>
+              <th className="num">รอบบริการที่ขายไว้</th>
+              <th className="num">จำนวนเงิน</th>
               <th>สถานะรอบ</th>
             </tr></thead>
             <tbody>
@@ -59,7 +68,8 @@ export default function HistoricalZonesCard({
                       {[zone.siteCode, zone.siteName].filter(Boolean).join(" ") || NA} · {naText(zone.zoneCode)}
                     </span>
                   </td>
-                  <td className="num">{fmtNumber(packsOf(zone))}</td>
+                  <td className="mono">{naText(zone.fgCode || lineOf(zone)?.fgCode)}</td>
+                  <td className="num">{qtyText(zone)}</td>
                   <td className="num">{zone.rounds == null ? NA : `${fmtNumber(zone.rounds)} รอบ`}</td>
                   <td className="num">{zone.lineTotal == null ? NA : fmtMoney(zone.lineTotal)}</td>
                   <td>{historicalZoneState(order, zone, { plannedSiteIds, loading: loadingPlans })}</td>
