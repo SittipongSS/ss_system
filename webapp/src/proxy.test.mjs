@@ -611,11 +611,16 @@ test('กฎใบสเปคต้องแคบ — ไม่กินเส
 /* ── เอกสาร FM-SA-04 ที่ออกจาก SO (mig 0370) ─────────────────────────────────────
    ออกจากบรรทัด SO: POST /api/sales-planning/sales-orders/<id>/spec-documents
    ยื่น/อนุมัติ/ตีกลับ/แก้ไข/ยกเลิก: PATCH /api/sales-planning/spec-documents/<id>
+   ลบร่างที่ยังไม่เคยยื่น (มติ 23/09 · mig 0375): DELETE /api/sales-planning/spec-documents/<id>
    ⚠️ ทดสอบด้วย role จริงของทุกขั้น ไม่ใช่ admin — admin ผ่าน lockedOut ตั้งแต่บรรทัดแรก
-      จึงมองไม่เห็นบั๊กของด่านนี้เลย (บทเรียนจาก /api/tax/* · /notifications · /api/rd) */
+      จึงมองไม่เห็นบั๊กของด่านนี้เลย (บทเรียนจาก /api/tax/* · /notifications · /api/rd)
+   ⚠️ DELETE ต้องอยู่ในลิสต์นี้ด้วย — `lockedOut` ปล่อยผ่านเพราะ `/api/sales-planning` อยู่ใน
+      OPEN_WRITE_APIS แต่ `apiWriteAllowed` เห็นแค่ method+path ⇒ เมธอดใหม่ที่ไม่มีเทสต์
+      จะไปตกกฎรวมข้างล่างโดยไม่มีใครรู้ (ด่านรายคน AC/admin อยู่ใน handler) */
 const SPEC_DOCUMENT_WRITES = [
   ['POST', '/api/sales-planning/sales-orders/SOR-1/spec-documents'],
   ['PATCH', '/api/sales-planning/spec-documents/PSD-1'],
+  ['DELETE', '/api/sales-planning/spec-documents/PSD-1'],
 ];
 
 test('⭐ ทุกขั้นของเอกสาร FM-SA-04 (AC ออก/ยื่น · AE เจ้าของดีล · AE Sup) ผ่านทั้งสองด่านของ proxy', () => {
@@ -625,17 +630,52 @@ test('⭐ ทุกขั้นของเอกสาร FM-SA-04 (AC ออ�
       assert.equal(lockedOut(user, path, method, true), false, `${role} ${method} ${path} โดน lockdown`);
       assert.equal(apiWriteAllowed(method, path, role, []), true, `${role} ${method} ${path} โดน apiWriteAllowed`);
     }
-    // อ่านเอกสาร + การ์ดบนหน้า SO + กระดาษ
+    // อ่านเอกสาร + การ์ดบนหน้า SO + กระดาษ + หน้า "ออกเอกสาร" (ข้อมูล · กระดาษร่าง — มติ 23/09)
     for (const path of [
       '/api/sales-planning/spec-documents/PSD-1',
       '/api/sales-planning/spec-documents/PSD-1/document',
       '/api/sales-planning/sales-orders/SOR-1/spec-documents',
+      '/api/sales-planning/sales-orders/SOR-1/spec-documents/new',
+      '/api/sales-planning/sales-orders/SOR-1/spec-documents/preview',
     ]) {
       assert.equal(lockedOut(user, path, 'GET', true), false, `${role} GET ${path}`);
+      assert.equal(apiWriteAllowed('GET', path, role, []), true, `${role} GET ${path} (อ่าน)`);
     }
-    // หน้าเอกสาร (UI) — อยู่ใต้ /sales-planning ที่เปิดไว้แล้ว ต้องไม่ถูกเด้งกลับ /home
+    // หน้าเอกสาร + หน้าออกเอกสาร (UI) — อยู่ใต้ /sales-planning ที่เปิดไว้แล้ว ต้องไม่ถูกเด้งกลับ /home
     assert.equal(lockedOut(user, '/sales-planning/spec-documents/PSD-1', 'GET', false), false, `${role} หน้าเอกสาร`);
+    assert.equal(lockedOut(user, '/sales-planning/spec-documents/new', 'GET', false), false, `${role} หน้าออกเอกสาร`);
   }
+});
+
+/* ⭐ หน้า "ออกเอกสาร" (มติเจ้าของ 23/09/2569 "ยังไม่ต้องรันอะไร จนกว่าจะบันทึก") — สองเส้นใหม่เป็นเส้น **อ่าน**
+   ⇒ ที่ชั้น proxy ผ่านเท่ากฎเดิมของ GET ใต้ใบสั่งขาย · ทางเขียนยังเป็น POST ตัวเดิม
+   ⚠️ **proxy ไม่ใช่ด่านของสองเส้นนี้** — ด่านจริงอยู่ใน handler: เส้นข้อมูลกว้าง (ทุกคนที่เห็นใบสั่งขาย แต่ไม่มีสิทธิ์ออก
+      = ได้แค่คำบอก ไม่ได้สเปค) ส่วนกระดาษร่างแคบเท่าปุ่มที่พามา (AC/admin — `canIssueProductSpecDocument`
+      ล็อกไว้ที่ specDocumentRoutes.test.mjs) · ที่นี่ล็อกแค่ว่า proxy ไม่ไปตัดเส้นอ่านทิ้งก่อนถึง handler
+   ⚠️ เส้นอ่านต้องไม่ติดกฎเขียนของ FM-SA-04 (salesplan:edit) — ไม่งั้น RD/FN/TS ที่เปิดใบสั่งขายได้จะอ่านหน้านี้ไม่ได้
+      และถ้าวันหนึ่งมีคนเติม POST ใต้สองเส้นนี้ ฝ่ายที่ไม่ใช่ขายต้องยังเขียนไม่ได้ (กฎเดียวกับเส้นเอกสาร) */
+test('หน้าออกเอกสาร FM-SA-04: เส้นอ่านใหม่ไม่ถูก proxy ตัดทิ้ง · เส้นเขียนใต้ spec-documents ยังเป็นของฝ่ายขาย', () => {
+  const READS = [
+    '/api/sales-planning/sales-orders/SOR-1/spec-documents/new',
+    '/api/sales-planning/sales-orders/SOR-1/spec-documents/preview',
+  ];
+  for (const role of ['ac', 'ae', 'ae_supervisor', 'rd', 'finance', 'viewer']) {
+    const user = { role, extraCaps: [] };
+    for (const path of READS) {
+      assert.equal(lockedOut(user, path, 'GET', true), false, `${role} GET ${path}`);
+      assert.equal(apiWriteAllowed('GET', path, role, []), true, `${role} GET ${path}`);
+    }
+    assert.equal(lockedOut(user, '/sales-planning/spec-documents/new', 'GET', false), false, `${role} หน้าออกเอกสาร`);
+  }
+  for (const role of ['finance', 'ra', 'rd', 'viewer']) {
+    for (const path of READS) {
+      assert.equal(apiWriteAllowed('POST', path, role, []), false, `${role} ต้อง POST ${path} ไม่ได้`);
+    }
+  }
+  // การบันทึกจริง (ออกเลข) ยังเป็น POST ตัวเดิม — AC ผ่านทั้งสองด่าน
+  const ac = { role: 'ac', extraCaps: [] };
+  assert.equal(lockedOut(ac, '/api/sales-planning/sales-orders/SOR-1/spec-documents', 'POST', true), false);
+  assert.equal(apiWriteAllowed('POST', '/api/sales-planning/sales-orders/SOR-1/spec-documents', 'ac', []), true);
 });
 
 test('ฝ่ายที่ไม่ใช่ฝ่ายขายเขียนเอกสาร FM-SA-04 ไม่ได้ — รวม RA และฝ่ายบัญชี', () => {

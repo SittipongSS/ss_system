@@ -1,10 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
-  CalendarDays, ClipboardCheck, ClipboardList, FileBadge, History, Images, ListChecks, Package,
-  Pencil, Printer, Target, Undo2, UserRound,
+  CalendarDays, ClipboardCheck, ClipboardList, History, Package, Pencil, Printer, Undo2, UserRound,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
@@ -18,6 +17,7 @@ import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
 import { TableScroll } from "@/components/ui/Table";
+import SpecDocumentContent from "@/components/salesPlanning/SpecDocumentContent";
 import { apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/lib/feedback";
 import { fmtDate, fmtDateTime, naText } from "@/lib/format";
@@ -28,9 +28,9 @@ import {
   DOC_REVISION_STATUS_LABELS, DOC_STATUS_LABELS, docReasonError, formatRevLabel,
 } from "@/lib/sales/productSpecDocWorkflow";
 import {
-  DOC_REASON_ACTIONS, docActionDoneMessage, docApiAction, docConfirmPrompt, docContentSource,
-  docContentSummary, docControlActions, docHeadline, docRailSteps, docReasonPrompt, docRevisionRows,
-  docRevisionTone, productSpecPageHref, salesOrderHref,
+  DOC_DELETE_KEY, DOC_REASON_ACTIONS, docActionDoneMessage, docApiAction, docConfirmPrompt,
+  docContentSource, docContentSummary, docControlActions, docHeadline, docRailSteps, docReasonPrompt,
+  docRevisionRows, docRevisionTone, productSpecPageHref, salesOrderHref,
 } from "@/lib/sales/productSpecDocView";
 import { formatSpecDocNo } from "@/lib/sales/productSpecDocNo";
 import styles from "./page.module.css";
@@ -39,7 +39,8 @@ import styles from "./page.module.css";
  * หน้าเอกสาร FM-SA-04 ใบสเปคสินค้า — หนึ่งใบต่อหนึ่งบรรทัดใบสั่งขาย (mig 0370)
  *
  * ⭐ **มติเจ้าของ 21/09/2569** (docs/fm-sa-04-document-model.md)
- *   · เลขที่ออกตอน AC กด "ออกเอกสาร" ที่หน้า SO (หลัง SO อนุมัติแล้ว) · เริ่ม Rev.00
+ *   · เลขที่ออกตอน AC กด "บันทึก" ที่หน้าออกเอกสาร (`spec-documents/new` · เปิดจากการ์ดหน้า SO หลัง SO อนุมัติแล้ว
+ *     · มติ 23/09 "ยังไม่ต้องรันอะไร จนกว่าจะบันทึก") · เริ่ม Rev.00
  *   · เส้นอนุมัติ: AC ยื่น → AE เจ้าของดีลของ SO → AE Supervisor (ขั้นสุดท้าย) · admin กดแทนได้ทุกขั้น
  *   · แก้ก่อนอนุมัติครบ = Rev เดิม · อนุมัติครบแล้ว "แก้ไขเอกสาร" = Rev+1 เลขที่เดิม เดินด่านใหม่
  *
@@ -49,6 +50,7 @@ import styles from "./page.module.css";
  */
 export default function ProductSpecDocumentPage() {
   const { id } = useParams();
+  const router = useRouter();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -62,15 +64,20 @@ export default function ProductSpecDocumentPage() {
   const [liveError, setLiveError] = useState("");
   const [warning, setWarning] = useState("");
 
+  /* ⚠️ คืนใบที่โหลดได้กลับไปด้วย (`null` = โหลดไม่ขึ้น) — ผู้เรียกบางรายต้องตัดสินใจต่อจาก
+     **ปุ่มของข้อมูลชุดใหม่** ไม่ใช่จากชุดที่ค้างอยู่บนจอ (ดู `removeDraft`) · setState เป็น
+     async ⇒ อ่าน `data` ทันทีหลัง `await load()` จะได้ค่าเก่า */
   const load = useCallback(async (opts) => {
     if (!opts?.background) setLoading(true);
     try {
       const next = await apiJson(`/api/sales-planning/spec-documents/${id}`, { fallbackError: "โหลดเอกสารไม่สำเร็จ" });
       setData(next);
       setLoadError("");
+      return next;
     } catch (fetchError) {
       // รอบเบื้องหลังที่ล้ม = เงียบ ไม่ทับของที่กำลังอ่าน
       if (!opts?.background) setLoadError(fetchError.message || "โหลดเอกสารไม่สำเร็จ");
+      return null;
     } finally {
       if (!opts?.background) setLoading(false);
     }
@@ -129,6 +136,42 @@ export default function ProductSpecDocumentPage() {
     }
   };
 
+  /* ลบร่าง = `DELETE` ไม่ใช่ `PATCH { action }` (แถวหายทั้งใบ ไม่ใช่การเปลี่ยนสถานะ) ⇒ ทางของตัวเอง
+     ⚠️ ห้ามเปิด `retry` — คำขอที่ไม่ได้คำตอบอาจลบไปแล้ว รอบสองจะได้ 404 แล้วจอจะบอกว่า
+        "ไม่พบเอกสาร" ทั้งที่ลบสำเร็จ (กฎ apiFetch: DELETE ไม่ลองใหม่เอง)
+     ⚠️ ลบแล้วเอกสารนี้ไม่มีอยู่อีก — ห้าม `load()` ซ้ำ (จะได้ 404 แล้วจอขึ้น "ไม่พบเอกสารนี้"
+        แทน toast) ⇒ เด้งกลับหน้าใบสั่งขายทันที · การ์ดเอกสารบนหน้านั้นโหลดใหม่เองตอน mount */
+  const removeDraft = async () => {
+    setBusy(DOC_DELETE_KEY);
+    try {
+      const result = await apiJson(`/api/sales-planning/spec-documents/${id}`, {
+        method: "DELETE",
+        fallbackError: "ลบร่างไม่สำเร็จ",
+      });
+      notifyToast.success(docActionDoneMessage(DOC_DELETE_KEY));
+      const orderId = result?.salesOrderId || salesOrder?.id || null;
+      /* ⚠️ **ไม่คืน `busy` ตรงนี้โดยตั้งใจ** — แถวถูกลบไปแล้ว หน้านี้กำลังถูกถอดทิ้ง
+         การปลดปุ่ม/ปิดโมดัลคือ setState บนหน้าที่ไม่มีอะไรให้ทำต่อ (และเปิดช่องให้กดซ้ำ
+         จนได้ 404 ระหว่างรอ router) ⇒ ปล่อยค้างเป็นสถานะ "กำลังพาไปหน้าใบสั่งขาย" */
+      router.replace(orderId ? salesOrderHref(orderId) : "/sa/sales-orders");
+    } catch (deleteError) {
+      /* ⭐ ลบไม่ผ่าน = มีคนยื่นไปก่อน/ใบเปลี่ยนสภาพ ⇒ ดึงใบใหม่ ปุ่มจะได้ตรงกับของจริง
+         🔴 **ใบชุดใหม่ลบไม่ได้แล้ว = ต้องปิดโมดัลด้วย** — ปล่อยไว้คือจอที่ยังพิมพ์ผลลัพธ์
+            ของการลบ ("บรรทัดใบสั่งขายนี้ว่างอีกครั้ง…") คร่อมข้อความที่บอกว่าลบไม่ได้ และ
+            ปุ่ม "ลบร่างนี้" ยังกดซ้ำได้ ทั้งที่การ์ดข้างหลังไม่มีปุ่มนั้นแล้ว — สวนกฎ
+            ui-visibility-rule ที่ productSpecDocWorkflow.js ประกาศไว้เอง (ปุ่มที่ซ่อนแล้ว
+            ต้องกดไม่ได้) · เหตุผลจริงของเซิร์ฟเวอร์ย้ายไปอยู่บนแถบของหน้าแทน */
+      const next = await load({ background: true });
+      setBusy("");
+      if (next && next.actions?.remove?.visible === false) {
+        setConfirmKey(null);
+        setWarning(deleteError.message || "ลบร่างไม่สำเร็จ");
+        return;
+      }
+      throw deleteError;
+    }
+  };
+
   const onAction = (key) => {
     if (DOC_REASON_ACTIONS.includes(key)) {
       setReasonKey(key);
@@ -139,13 +182,14 @@ export default function ProductSpecDocumentPage() {
     }
   };
 
-  // ⚠️ ส่ง `orphan` ด้วย — โมดัลยกเลิกของใบที่บรรทัดถูกถอดต้องไม่บอกว่า "บรรทัดนี้ออกใบใหม่ได้"
+  // ⚠️ ส่ง `orphan` ด้วย — โมดัลยกเลิก/ลบของใบที่บรรทัดถูกถอดต้องไม่บอกว่า "บรรทัดนี้ออกใบใหม่ได้"
   //    (บรรทัดไม่มีแล้ว · ขัดกับแถบเตือนบนหน้าเดียวกัน) · เงื่อนไขเดียวกับแถบ `orphan` ข้างล่าง
+  const lineRemoved = Boolean(specDoc) && specDoc.status !== "void" && !specDoc.salesOrderLineId;
   const reasonPrompt = reasonKey ? docReasonPrompt(reasonKey, {
-    document: specDoc, latest, orphan: Boolean(specDoc) && specDoc.status !== "void" && !specDoc.salesOrderLineId,
+    document: specDoc, latest, orphan: lineRemoved,
   }) : null;
   const confirmPrompt = confirmKey ? docConfirmPrompt(confirmKey, {
-    document: specDoc, latest, revisions, dealOwner,
+    document: specDoc, latest, revisions, dealOwner, orphan: lineRemoved,
   }) : null;
 
   const submitReason = async () => {
@@ -193,7 +237,7 @@ export default function ProductSpecDocumentPage() {
   /* "แก้สเปคที่หน้าสินค้า" — เฉพาะคนที่แก้สเปคได้ (API ส่ง `canEditSpec` มา) · หน้านี้เปิดได้ทุกคนที่เห็น SO
      (RD · FN · TS ...) ⇒ ไม่มีสิทธิ์ = ไม่แสดงปุ่ม (ui-visibility-rule) ไม่ใช่ปุ่มที่พาไปหน้าอ่านอย่างเดียว */
   const editSpecHref = liveDraft && data?.canEditSpec ? productSpecPageHref(productId) : null;
-  const orphan = !isVoid && !specDoc.salesOrderLineId;
+  const orphan = lineRemoved; // แถบเตือนกับโมดัล (ยกเลิก/ลบ) ต้องใช้เงื่อนไขเดียวกันเสมอ
   const statusLabel = isVoid ? DOC_STATUS_LABELS.void : DOC_REVISION_STATUS_LABELS[latest?.status] || latest?.status;
 
   return (
@@ -310,7 +354,7 @@ export default function ProductSpecDocumentPage() {
             />
           }
         >
-          <DocumentContent summary={summary} source={source} latest={latest} liveError={liveError} />
+          <SpecDocumentContent summary={summary} meta={contentMeta(summary, source, latest)} liveError={liveError} />
 
           <DetailCard icon={History} eyebrow="REVISION HISTORY" title={`ประวัติ Rev. (${history.length})`}
             meta="ทุก Rev. พิมพ์ได้ — ฉบับที่อนุมัติครบแล้วพิมพ์จากกระดาษที่ตรึงไว้ตอนอนุมัติ">
@@ -370,8 +414,17 @@ export default function ProductSpecDocumentPage() {
         description={confirmPrompt?.description}
         detail={confirmPrompt?.detail}
         confirmLabel={confirmPrompt?.confirmLabel}
+        tone={confirmPrompt?.tone || "default"}
         busy={Boolean(busy)}
-        onConfirm={async () => { await act(confirmKey); setConfirmKey(null); }}
+        /* ลบร่างเดินคนละเส้นกับการกระทำอื่น (DELETE ไม่ใช่ PATCH) และไม่ปิดโมดัลเองเมื่อสำเร็จ
+           เพราะหน้าถูกเปลี่ยนไปที่ใบสั่งขายแล้ว — ปิดหลังจากนั้นคือ setState บนหน้าที่กำลังถูกถอด
+           ⚠️ ทางล้มปิดโมดัลเองได้ (อยู่ใน `removeDraft`) เมื่อใบชุดใหม่ลบไม่ได้แล้ว — ที่เหลือ
+              ยังโยน error ให้ ConfirmDialog พิมพ์ในกล่อง เพราะกดใหม่ยังมีความหมาย */
+        onConfirm={async () => {
+          if (confirmKey === DOC_DELETE_KEY) { await removeDraft(); return; }
+          await act(confirmKey);
+          setConfirmKey(null);
+        }}
         onClose={() => setConfirmKey(null)}
       />
 
@@ -397,8 +450,6 @@ export default function ProductSpecDocumentPage() {
   );
 }
 
-/* เนื้อเอกสารแบบอ่านอย่างเดียว — ภาพนิ่งตอนยื่น หรือสเปคสด (ร่าง/ถูกตีกลับ)
-   ⚠️ ไม่ใช่กระดาษ — กระดาษจริงอยู่ที่ปุ่มพิมพ์ · ที่นี่ให้ผู้อนุมัติอ่านสิ่งที่กำลังเซ็นได้โดยไม่ต้องเปิดแท็บใหม่ */
 /* 🐞 Rev ที่ถูกตีกลับเคยขึ้นว่า "ยังไม่ได้ยื่น" ข้างใต้กล่อง "ตีกลับโดย …" — มันยื่นแล้ว ถูกประทับแล้ว
    แล้วค่อยถูกส่งคืน ⇒ ข้อความของสองสถานะต้องแยกกัน ("ยังไม่ได้ยื่น" ใช้กับร่างเท่านั้น) */
 function liveRevLead(latest) {
@@ -414,110 +465,11 @@ function liveDraftNotice(latest, canEdit) {
   return `${lead} — ${body}${canEdit ? " · แก้ที่หน้าสินค้าแล้วกลับมายื่น" : ""}`;
 }
 
-function DocumentContent({ summary, source, latest, liveError }) {
+/* บรรทัดใต้หัวการ์ด "เนื้อเอกสาร" — เนื้อบนจอมาจากไหน (ภาพนิ่งตอนยื่น หรือสเปคสดของร่าง/ถูกตีกลับ)
+   ⚠️ ตัวการ์ดอยู่ที่ `SpecDocumentContent` ตัวเดียวกับหน้า "ออกเอกสาร" — ที่นี่บอกแค่ที่มาของเนื้อ */
+function contentMeta(summary, source, latest) {
   const captured = summary?.capturedAt ? ` ${fmtDateTime(summary.capturedAt)}` : "";
-  const meta = source === "snapshot"
+  return source === "snapshot"
     ? `ภาพนิ่งตอนยื่น${captured} — แก้สเปคที่หน้าสินค้าหลังจากนี้ไม่เปลี่ยนเนื้อนี้`
     : `${liveRevLead(latest)} — แสดงสเปคปัจจุบันของสินค้า`;
-  if (!summary) {
-    return (
-      <DetailCard icon={Target} eyebrow="CONTENT" title="เนื้อเอกสาร" meta={meta}>
-        {liveError
-          ? <StatusNotice tone="error">{liveError}</StatusNotice>
-          : <EmptyState plain><strong>กำลังอ่านสเปคของสินค้า…</strong></EmptyState>}
-      </DetailCard>
-    );
-  }
-  const order = summary.order;
-  return (
-    <>
-      <DetailCard icon={Target} eyebrow="CONTENT" title="เนื้อเอกสาร" meta={meta}>
-        {order ? (
-          <dl className={styles.facts}>
-            <div><dt>ใบสั่งขาย</dt><dd>{naText(order.orderNumber)}</dd></div>
-            <div><dt>ลูกค้า</dt><dd>{naText(order.customerName)}</dd></div>
-            {/* ชื่อเดียวกับแถวบนกระดาษ "จำนวนผลิต (Quantity)" (มติ 22/09 — ย้ายจากกล่องอ้างอิงไป Product Overview) */}
-            <div><dt>จำนวนผลิต</dt><dd>{order.qty === null ? naText(null) : `${order.qty}${order.unit ? ` ${order.unit}` : ""}`}</dd></div>
-            <div><dt>กำหนดส่ง</dt><dd>{order.deliveryDueDate ? fmtDate(order.deliveryDueDate) : naText(null)}</dd></div>
-            {/* ชื่อเดียวกับแถวบนกระดาษ — "Contact for Sales" ย้ายขึ้นกล่องอ้างอิงแล้ว (มติ 22/09) */}
-            <div><dt>ผู้ติดต่อฝ่ายขาย</dt><dd>{naText(order.dealOwnerName)}</dd></div>
-          </dl>
-        ) : null}
-        <dl className={styles.facts}>
-          {summary.fields.map((field) => (
-            <div key={field.key}><dt>{field.label}</dt><dd>{naText(field.value)}</dd></div>
-          ))}
-        </dl>
-      </DetailCard>
-
-      <DetailCard icon={ListChecks} eyebrow="CHECKLIST PROJECT" title={`Checklist บรรจุภัณฑ์ (${summary.items.length})`}>
-        {summary.items.length ? (
-          <TableScroll family="list" surface="embedded">
-            <table>
-              <thead>
-                <tr>
-                  <th className={`num ${styles.colNo}`}>ลำดับ</th>
-                  <th className={styles.colItem}>สิ่งที่ต้องเตรียม</th>
-                  <th>รายละเอียด</th>
-                  <th className={styles.colBy}>ผู้จัดเตรียม</th>
-                  <th className={styles.colNote}>หมายเหตุ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.items.map((row) => (
-                  <tr key={`${row.no}-${row.label}`}>
-                    <td className="num">{row.no}</td>
-                    <td>{naText(row.label)}</td>
-                    <td>{naText(row.detail)}</td>
-                    <td>{naText(row.preparedBy)}</td>
-                    <td>{naText(row.note)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        ) : <EmptyState plain><strong>ไม่มีแถว checklist</strong></EmptyState>}
-      </DetailCard>
-
-      <DetailCard icon={FileBadge} eyebrow="CERTIFICATION & DOCUMENTS" title="เอกสารที่ขอได้">
-        {summary.certifications.length ? (
-          <TableScroll family="list" surface="embedded">
-            <table>
-              <thead>
-                <tr>
-                  <th className={styles.colCert}>เอกสาร</th>
-                  <th className={styles.colCertStatus}>สถานะ</th>
-                  <th>หมายเหตุ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.certifications.map((row, index) => (
-                  <tr key={`${row.label}-${index}`}>
-                    <td>{naText(row.label)}</td>
-                    <td>{row.statusLabel}</td>
-                    <td>{naText(row.note)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        ) : <EmptyState plain><strong>ไม่มีรายการเอกสาร</strong></EmptyState>}
-      </DetailCard>
-
-      <DetailCard icon={Images} eyebrow="ILLUSTRATIONS" title="ภาพประกอบ"
-        meta={summary.illustrations ? `${summary.illustrations.length} ภาพในภาพนิ่ง` : "ภาพชุดปัจจุบันอยู่ที่หน้าสเปคของสินค้า — ถ่ายลงเอกสารตอนยื่น"}>
-        {summary.illustrations?.length ? (
-          <ol className={styles.captionList}>
-            {summary.illustrations.map((row) => (
-              <li key={row.no}>{row.caption || <span className={styles.sub}>ไม่มีคำบรรยาย ({naText(row.fileName)})</span>}</li>
-            ))}
-          </ol>
-        ) : (
-          <p className={styles.sub}>
-            {summary.illustrations ? "ภาพนิ่งนี้ไม่มีภาพประกอบ" : "ดูและจัดลำดับภาพได้ที่หน้าสเปคของสินค้า"}
-          </p>
-        )}
-      </DetailCard>
-    </>
-  );
 }

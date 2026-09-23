@@ -168,7 +168,10 @@ test('⭐ หน้าเอกสาร FM-SA-04 ตามบ้านของ
   for (const system of Object.keys(ADOPTED_SHARED_PATHS)) {
     if (!adoptsPathname(system, '/sa/sales-orders/1')) continue;
     assert.ok(adoptsPathname(system, path), `${system} รับใบสั่งขายแล้วต้องรับหน้าเอกสาร FM-SA-04 ด้วย`);
+    // หน้า "ออกเอกสาร" (มติ 23/09) อยู่ใต้ prefix เดียวกัน — เปิดจากการ์ดหน้า SO ต้องไม่สลับเปลือก
+    assert.ok(adoptsPathname(system, '/sales-planning/spec-documents/new'), `${system} ต้องรับหน้าออกเอกสาร FM-SA-04 ด้วย`);
   }
+  assert.equal(systemForPathname('/sales-planning/spec-documents/new', AE), 'salesplan');
   assert.equal(systemForPathname(path, RD), 'rd');
   assert.equal(systemForPathname(path, FN), 'finance');
   assert.equal(systemForPathname(path, AE), 'salesplan');

@@ -5,69 +5,36 @@
  *   `FM-SA-04-DDMMYY-XXX` + Rev.00 ร่าง ตอนกดออก · เลขที่ออกแล้วคืนไม่ได้
  *   เส้นอนุมัติของเอกสารอยู่ที่ `/api/sales-planning/spec-documents/[id]`
  *
+ * ⭐ **มติเจ้าของ 23/09/2569** ("การสร้างเอกสาร ยังไม่ต้องรันอะไร จนกว่าจะบันทึก เอาแบบ คำร้อง แบบใบเสนอราคา")
+ *   ผู้เรียก POST มีที่เดียวคือปุ่ม "บันทึก" ของหน้า `/sales-planning/spec-documents/new` — การ์ดบนหน้า SO แค่พาไป
+ *   หน้านั้น ไม่ยิงเส้นนี้เองอีกแล้ว · หน้านั้นอ่านผ่าน `spec-documents/new` (ข้อมูล + ด่าน) และ
+ *   `spec-documents/preview` (กระดาษร่าง) ซึ่งไม่เขียนอะไรเลย ⇒ เลขที่ถูกใช้ที่เส้นนี้เส้นเดียว
+ *
  * ⚠️ ด่านทุกตัวถาม `productSpecDocWorkflow` ตัวเดียวกับที่การ์ดบนหน้า SO ใช้
  *   (`lineDocumentState` / `documentCreateGate` / `documentActions`) — คิดซ้ำที่นี่เมื่อไร
  *   ปุ่มจะบอกอย่างหนึ่งแล้วเซิร์ฟเวอร์ทำอีกอย่าง
  */
 import { withUser, ok, fail, badRequest, forbidden, conflict, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
-import { loadScoped } from '@/lib/scopedRow';
-import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
 import {
   DOC_REVISION_STATUS_LABELS, canIssueProductSpecDocument, documentActions, documentCreateGate,
   formatRevLabel, lineDocumentState,
 } from '@/lib/sales/productSpecDocWorkflow';
-import { createSpecDocument, loadDocumentsForOrder, loadSpecRecord } from '@/lib/sales/productSpecStore';
+import {
+  loadSpecDocOrder, specDocLineScopeReason, specDocLineView,
+} from '@/lib/sales/productSpecDocOrder';
+import {
+  createSpecDocument, loadDocumentsForOrder, loadLiveDocumentForLine, loadSpecRecord,
+} from '@/lib/sales/productSpecStore';
 import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
 
 export const dynamic = 'force-dynamic';
 
-const NO_PRODUCT_LINK = 'บรรทัดนี้ไม่ได้ผูกสินค้าในทะเบียน — ออกใบสเปคสินค้าไม่ได้';
-
-/* โหลด + ตรวจขอบเขตในจังหวะเดียว (`loadScoped` — กฎ 6 ของด่านรายแถว) แล้วค่อยต่อ
-   บรรทัดสินค้า · บรรทัดไม่ได้ scope เอง มันสังกัดใบที่ผ่านด่านมาแล้ว
-   ⭐ `loadScoped` join ดีลแม่มาให้แล้ว (`order.deal`) ⇒ `order.deal.ownerId` คือ AE เจ้าของดีล
-   (`sales_deals.ownerId`) — คนเดียวกับที่ขั้น AE ของเอกสารเป็นของเขา
-   🛑 **ใบย้อนหลังออกใบสเปคไม่ได้** — ใบที่คีย์จากชีตคือของที่ส่งไปแล้วในอดีต
-      ไม่มี "รอบขายที่กำลังจะส่ง" ให้ตกลงสเปก · ปล่อยผ่านเมื่อไรจะกินเลขที่เอกสาร
-      ของเดือนนี้ไปกับใบที่ไม่มีใครใช้ (มติข้อ 21 ของสาย SO ย้อนหลัง) · RPC กันซ้ำอีกชั้น */
-async function loadOrder(supabase, id, user, mode) {
-  const scoped = await loadScoped(supabase, 'sales_orders', id, user, mode);
-  if (scoped.response) return { response: scoped.response };
-  const order = scoped.row;
-  if (isHistoricalOrder(order)) {
-    return { blocked: 'ใบสั่งขายย้อนหลังไม่ออกใบสเปคสินค้า — ใบนี้คีย์จากเอกสารเดิมที่ส่งของไปแล้ว' };
-  }
-  // ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวของ PostgREST ตัดเงียบ ๆ · ลำดับต้องนิ่ง
-  //    ไม่งั้นหน้าที่สองซ้อนหน้าแรก (ด่าน check:rowcap)
-  const lines = await fetchAllResult(() => supabase
-    .from('sales_order_lines')
-    .select('id, salesOrderId, productId, fgCode, description, qty, unit, sortOrder')
-    .eq('salesOrderId', id)
-    .order('sortOrder', { ascending: true })
-    .order('id', { ascending: true }));
-  if (lines.error) return { error: lines.error.message };
-  return { order: { ...order, lines: lines.data || [] }, dealOwnerId: order.deal?.ownerId || null };
-}
-
-/* เหตุที่บรรทัดนี้ไม่เข้าเกณฑ์ใบสเปค — หมวดนอก 01/02 หรือไม่ได้ผูกสินค้า (ไม่มีสเปคให้อ้าง)
-   ⚠️ บรรทัด SO แก้ไม่ได้ (เป็น snapshot) ⇒ บรรทัดที่ไม่ผูกสินค้าไม่มีทางออกเอกสาร
-      นับเป็น "ไม่ต้องใช้" พร้อมเหตุ ตามกติกาเดิมของการ์ด */
-const lineScopeReason = (line) => productSpecScopeReason({ fgCode: line?.fgCode })
-  || (line?.productId ? null : NO_PRODUCT_LINK);
-
-const lineView = (line) => ({
-  id: line.id,
-  fgCode: line.fgCode || null,
-  description: line.description || null,
-  qty: line.qty ?? null,
-  unit: line.unit || null,
-  productId: line.productId || null,
-  sortOrder: line.sortOrder ?? null,
-});
+/* ⭐ ตัวโหลดใบ/บรรทัด (ขอบเขต `loadScoped` · ใบย้อนหลังถูกกัน · บรรทัดไล่หน้า) อยู่ที่ `productSpecDocOrder`
+   ตัวเดียวกับหน้า "ออกเอกสาร" (`spec-documents/new`) และกระดาษตัวอย่าง (`spec-documents/preview`) —
+   ไฟล์ route ส่งออกฟังก์ชันอื่นไม่ได้ จึงแชร์ผ่าน lib (แยกเมื่อ 23/09 ตอนย้ายการออกเลขไปหน้าใหม่) */
 
 /* สเปคของสินค้าที่บรรทัดอ้าง — ถามแค่ "มีไหม" (ไม่ลาก checklist มาทุกบรรทัด)
    ⚠️ query ล้ม = error ไม่ใช่ "ไม่มีสเปค" — ไม่งั้นการ์ดบอกให้ไปสร้างสเปคที่มีอยู่แล้ว */
@@ -82,7 +49,7 @@ async function specsByProduct(supabase, productIds) {
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
-  const loaded = await loadOrder(supabase, id, user, 'view');
+  const loaded = await loadSpecDocOrder(supabase, id, user, 'view');
   if (loaded.response) return loaded.response;
   if (loaded.error) return fail(`อ่านบรรทัดใบสั่งขายไม่สำเร็จ: ${loaded.error}`, 500);
   if (loaded.blocked) return badRequest(loaded.blocked);
@@ -93,7 +60,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const documents = docsRes.documents || [];
 
   const lines = [...order.lines].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  const inScopeProducts = lines.filter((line) => !lineScopeReason(line)).map((line) => line.productId);
+  const inScopeProducts = lines.filter((line) => !specDocLineScopeReason(line)).map((line) => line.productId);
   const specRes = await specsByProduct(supabase, inScopeProducts);
   if (specRes.error) return fail(`อ่านสเปคสินค้าไม่สำเร็จ: ${specRes.error}`, 500);
 
@@ -105,7 +72,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const rows = lines.map((line) => {
     const document = liveByLine.get(line.id) || null;
     return {
-      line: lineView(line),
+      line: specDocLineView(line),
       state: lineDocumentState({
         line,
         spec: specRes.specs.get(line.productId) || null,
@@ -113,7 +80,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
         latest: document?.latest || null,
         salesOrder: order,
         user,
-        scopeReason: lineScopeReason(line),
+        scopeReason: specDocLineScopeReason(line),
       }),
     };
   });
@@ -146,7 +113,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ไม่มีสิทธิ์ออก = ปุ่มไม่โชว์อยู่แล้ว (ui-visibility-rule) · ถึงตรงนี้ได้แปลว่ายิงตรง
   if (!canIssueProductSpecDocument(user.role)) return forbidden('ออกใบสเปคสินค้าได้เฉพาะ AC');
   const { id } = await ctx.params;
-  const loaded = await loadOrder(supabase, id, user, 'edit');
+  const loaded = await loadSpecDocOrder(supabase, id, user, 'edit');
   if (loaded.response) return loaded.response;
   if (loaded.error) return fail(`อ่านบรรทัดใบสั่งขายไม่สำเร็จ: ${loaded.error}`, 500);
   if (loaded.blocked) return badRequest(loaded.blocked);
@@ -166,14 +133,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   /* ⚠️ กันกดซ้ำก่อนถึงฐาน — unique index ของ 0370 กันอีกชั้น แต่ RPC ที่ชนกลางทางอ่านยาก
-     และด่านที่อ่านไม่ขึ้นต้องไม่ "เปิดเอง" (query ล้ม = 500 ไม่ใช่ถือว่ายังไม่มีเอกสาร) */
-  const existingRes = await supabase.from('product_spec_documents')
-    .select('id, docNo, status')
-    .eq('salesOrderLineId', lineId)
-    .neq('status', 'void')
-    .limit(1);
-  if (existingRes.error) return fail(`ตรวจเอกสารเดิมของบรรทัดไม่สำเร็จ: ${existingRes.error.message}`, 500);
-  const existingDocument = existingRes.data?.[0] || null;
+     และด่านที่อ่านไม่ขึ้นต้องไม่ "เปิดเอง" (query ล้ม = 500 ไม่ใช่ถือว่ายังไม่มีเอกสาร)
+     ⭐ ตัวอ่านเดียวกับหน้า "ออกเอกสาร" (`loadLiveDocumentForLine`) — หน้ากับปุ่มบันทึกเห็นเอกสารเดิมชุดเดียวกัน */
+  const existingRes = await loadLiveDocumentForLine(supabase, lineId);
+  if (existingRes.error) return fail(`ตรวจเอกสารเดิมของบรรทัดไม่สำเร็จ: ${existingRes.error}`, 500);
+  const existingDocument = existingRes.document;
 
   const gate = documentCreateGate({
     user,

@@ -22,12 +22,12 @@ import { loadUserDirectory } from '@/lib/usersRepo';
 import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
 import {
   DOC_ACTION_KEYS, canAeApproveProductSpecDocument, canIssueProductSpecDocument,
-  canSupApproveProductSpecDocument, docReasonError, documentActions, formatRevLabel,
+  canSupApproveProductSpecDocument, docReasonError, documentActions, draftDeleteBlock, formatRevLabel,
   rejectStageOf, revisionPatch,
 } from '@/lib/sales/productSpecDocWorkflow';
 import {
-  applyFinalApproval, buildDocumentSnapshot, loadSpecDocument, missingSnapshotIllustrations, openNextRevision,
-  transitionRevision, voidDocument,
+  applyFinalApproval, buildDocumentSnapshot, deleteDraftDocument, loadSpecDocument,
+  missingSnapshotIllustrations, openNextRevision, transitionRevision, voidDocument,
 } from '@/lib/sales/productSpecStore';
 import { freezeProductSpecRevision } from '@/lib/sales/productSpecFreeze';
 import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
@@ -383,4 +383,75 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
   const payload = documentPayload(reloaded, user);
   return ok(warning ? { ...payload, warning } : payload);
+});
+
+/* ── DELETE — ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) ──────────
+ *
+ * ⭐ **มติ**: ใบที่บันทึกไว้แล้วแต่ยังไม่เคยยื่นให้ใครดู ลบทิ้งได้เหมือนร่างใบเสนอราคา ·
+ *   ผู้ลบ = ชุดเดียวกับผู้ออกเอกสาร (AC + admin) · **เลขที่ไม่นำกลับมาใช้** — ตัวนับ FMSA04
+ *   ไม่ถอย บรรทัด SO เดิมออกใบใหม่ได้ทันทีและได้ **เลขใหม่**
+ * 🔴 ร่างที่ยื่นแล้วดึงกลับ · ถูกตีกลับ · อนุมัติแล้ว **ลบไม่ได้** — AE เห็นใบนั้นแล้ว
+ *   ทางออกเดียวยังเป็น "ยกเลิกเอกสาร" (void)
+ *
+ * ⚠️ ด่านเป็น `documentActions().remove` ตัวเดียวกับที่จอใช้วาดปุ่ม — ที่นี่ไม่ตัดสินเอง
+ * ⚠️ ฐานตรวจซ้ำทุกข้อใน RPC `delete_product_spec_document_draft` (ล็อก Rev → เอกสาร ตาม
+ *    ลำดับเดียวกับทางยื่น) ⇒ คนกด "ยื่น" แทรกกลางจะถูกเห็น และเราต์ตอบ 409 ไม่ใช่ลบทับ
+ */
+export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
+  if (!user) return unauthorized();
+  const { id } = await ctx.params;
+  const loaded = await loadVisibleDocument(supabase, id, user, 'edit');
+  if (loaded.response) return loaded.response;
+  const { document, latest, salesOrder, dealOwner } = loaded;
+
+  const gate = documentActions({
+    document, latest, salesOrder, dealOwnerId: dealOwner?.id || null, user,
+  }).remove;
+  if (!gate.visible) {
+    /* ⚠️ ปุ่มถูกซ่อน = อาจเป็น "ไม่มีสิทธิ์" หรือ "ใบนี้ลบไม่ได้มาแต่ต้น" — สองเรื่องคนละข้อความ
+       ห้ามตอบ "สถานะเปลี่ยนแล้ว โหลดใหม่" รวด ๆ เพราะร่างที่เคยยื่นแล้วดึงกลับ **ไม่ได้
+       เปลี่ยนสถานะ** มันแค่ลบไม่ได้ตลอดกาล · โหลดใหม่กี่รอบก็เหมือนเดิม */
+    if (!canIssueProductSpecDocument(user?.role)) return forbidden('ลบร่างเอกสารได้เฉพาะ AC');
+    return conflict(draftDeleteBlock(document, latest) || STALE);
+  }
+
+  /* 🔴 **ลง audit ก่อนลบ** — ระบบไม่มีถังขยะ `audit_logs.before` คือทางกู้ทางเดียว
+     ([[deleted-data-recovery]]) · ลบก่อนแล้วค่อยเขียน = จังหวะที่แถวหายไปโดยยังไม่มีสำเนา
+     (และ `recordAudit` กลืน error เอง ⇒ เราต์ไม่มีทางรู้ว่าต้องหยุด) · ลบไม่ผ่านหลังจากนี้
+     จะมีแถว audit แก้ไว้ข้างล่าง ไม่ปล่อยให้บันทึกโกหกว่าลบไปแล้ว */
+  const revLabel = formatRevLabel(latest?.revNo);
+  await recordAudit({
+    user,
+    action: 'delete',
+    entityType: 'product_spec_document',
+    entityId: document.id,
+    before: { document, revision: latest },
+    after: null,
+    summary: `delete ${document.docNo} ${revLabel} (ร่างที่ยังไม่เคยยื่น — เลขที่ไม่นำกลับมาใช้)`,
+    request: req,
+  });
+
+  const removed = await deleteDraftDocument(supabase, { document });
+  if (removed.error) {
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'product_spec_document',
+      entityId: document.id,
+      before: { document, revision: latest },
+      after: { document, revision: latest, deleteFailed: removed.error },
+      summary: `delete ${document.docNo} ${revLabel} ไม่สำเร็จ — แถวยังอยู่: ${removed.error}`,
+      request: req,
+    });
+    return fail(removed.error, removed.status || 500);
+  }
+
+  /* จอเด้งกลับหน้าใบสั่งขาย — ส่ง id ของ SO กลับไปด้วย เพราะเอกสารที่ลบแล้วอ่านซ้ำไม่ได้
+     (การ์ดบนหน้า SO และรายการเอกสารบนหน้าสเปคดึงใหม่เองตอนกลับไปถึง) */
+  return ok({
+    deleted: true,
+    docNo: removed.docNo,
+    salesOrderId: document.salesOrderId || null,
+    salesOrderNumber: salesOrder?.orderNumber || null,
+  });
 });

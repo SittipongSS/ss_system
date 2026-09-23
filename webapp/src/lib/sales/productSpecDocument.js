@@ -649,10 +649,13 @@ export function planProductSpecPaper({
  * @param {object|null} input.signatures `{ submit|ae|sup: { imageDataUri, role } }` ของขั้นที่เซ็นแล้ว
  *                                 (`loadProductSpecSignatures` ฝั่ง server) · ไม่ส่ง = ช่องที่เซ็นแล้วเป็นกล่อง
  *                                 "ลายเซ็นอิเล็กทรอนิกส์" + ตำแหน่งของช่อง
+ * @param {string} [input.unnumberedLabel] คำแทนเลขที่บนแถบเครื่องมือ/ชื่อไฟล์เมื่อยังไม่มีเลขที่
+ *                                 (ตั้งต้น "ตัวอย่าง" ของหน้าสินค้า · กระดาษร่างของหน้า "ออกเอกสาร" = "ฉบับร่าง")
+ *                                 ⚠️ ช่อง "เลขที่" บนกระดาษยังเป็นขีดเสมอ — คำนี้ไม่ลงเนื้อกระดาษ
  */
 export function renderProductSpecDocument({
   snapshot = {}, document = null, revision = null, watermark = null,
-  company = {}, standard = null, toolbar = true, signatures = null,
+  company = {}, standard = null, toolbar = true, signatures = null, unnumberedLabel = 'ตัวอย่าง',
 } = {}) {
   const plan = planProductSpecPaper({ snapshot, document, revision, company, standard, signatures });
   const {
@@ -709,7 +712,7 @@ export function renderProductSpecDocument({
     </article>`).join('');
 
   // ชื่อไฟล์/แถบเครื่องมือ (ของคนในบริษัท) ยังพกรหัสแบบฟอร์ม — เลขที่รูปใหม่ไม่มี FM-SA-04 ในตัวแล้ว
-  const fileIdentity = docNoText ? `${form.code} ${docNoText}` : `${form.code} ตัวอย่าง`;
+  const fileIdentity = docNoText ? `${form.code} ${docNoText}` : `${form.code} ${unnumberedLabel}`;
   return renderDocumentHTML({
     lang: language,
     // ชื่อไฟล์ตอน "บันทึกเป็น PDF" — รหัส_ลูกค้า_สินค้า (มติ 2026-08-05 ของเปลือก) · ตามภาษาของใบ
@@ -717,7 +720,7 @@ export function renderProductSpecDocument({
     accentKey: resolveDocumentAccentKey(standard, SPEC_KEY),
     variantClass: 'specsheet',
     pages: sheets,
-    toolbar: toolbar === false ? null : { label: `${titleTh} (${form.code}) · ${docNoText || 'ตัวอย่าง'}`, button: 'พิมพ์เอกสาร' },
+    toolbar: toolbar === false ? null : { label: `${titleTh} (${form.code}) · ${docNoText || unnumberedLabel}`, button: 'พิมพ์เอกสาร' },
     extraCss: `
       .specsheet .sheetContent { gap: 0; padding-top: 5mm; }
       /* หัวข้อในเนื้อ = หน้าตาหัวข้อ "งวดชำระเงิน / PAYMENT SCHEDULE" ของใบเสนอราคา (.installmentSection h2 ของเปลือก:

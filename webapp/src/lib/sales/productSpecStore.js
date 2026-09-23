@@ -44,6 +44,9 @@ const isFkViolation = (error) => error?.code === '23503' || /foreign key|violate
       ไม่งั้นจอไม่เห็นค่านั้นเงียบ ๆ */
 const REVISION_COLUMNS = [
   'id', 'documentId', 'revNo', 'status', 'reason', 'snapshot', 'illustrationIds',
+  // 🔴 รอยการยื่นที่ลบไม่ได้ (mig 0375) — ด่าน "ลบร่างที่ยังไม่เคยยื่น" อ่านช่องนี้
+  //    ตกหล่นเมื่อไร = undefined = "ไม่เคยยื่น" ⇒ ปุ่มลบโผล่บนใบที่ยื่นแล้วดึงกลับ
+  'firstSubmittedAt',
   'submittedAt', 'submittedBy', 'submittedByName',
   'aeApprovedAt', 'aeApprovedBy', 'aeApprovedByName',
   'supApprovedAt', 'supApprovedBy', 'supApprovedByName',
@@ -52,9 +55,14 @@ const REVISION_COLUMNS = [
   'createdBy', 'createdByName', 'createdAt', 'updatedAt',
 ].join(', ');
 
-// Rev แบบย่อสำหรับรายการเอกสาร (หน้าสเปค · การ์ดบนหน้า SO) — ไม่ลากภาพนิ่งมาด้วย
+/* Rev แบบย่อสำหรับรายการเอกสาร (หน้าสเปค · การ์ดบนหน้า SO) — ไม่ลากภาพนิ่งมาด้วย
+   🔴 `firstSubmittedAt` อยู่ในชุดนี้ด้วยทั้งที่ยังไม่มีจอไหน *แสดง* มัน เพราะแถวชุดนี้
+      **ถูกส่งเข้า `documentActions` จริงแล้ว** — api/sales-planning/sales-orders/[id]/spec-documents
+      ส่ง `doc.latest` ของใบกำพร้าเข้าไปเอา `.void` · ตัวคิดเดียวกันนั้นคิด `.remove` ไปด้วยเสมอ
+      ⇒ ถอดคอลัมน์นี้ออกเมื่อไร ค่าจะเป็น undefined = "ไม่เคยยื่น" (fail-open) และวันที่ใครอ่าน
+      `.remove` จากที่นั่น ปุ่มลบจะโผล่บนใบที่ยื่นแล้วดึงกลับ โดยไม่มีอะไรเตือน */
 const REVISION_SUMMARY_COLUMNS = [
-  'id', 'documentId', 'revNo', 'status', 'submittedBy', 'submittedAt',
+  'id', 'documentId', 'revNo', 'status', 'submittedBy', 'submittedAt', 'firstSubmittedAt',
   'aeApprovedAt', 'supApprovedAt', 'rejectedStage', 'updatedAt',
 ].join(', ');
 
@@ -454,8 +462,10 @@ export async function loadDealOwner(supabase, salesOrder) {
 }
 
 /* ใบเสนอราคาที่ SO ผูก — ⚠️ อ่านล้ม = error ไม่ใช่ `null` · `null` แปลว่า "ไม่มีใบเสนอราคา" ซึ่งทำให้
-   กล่องผู้ซื้อบนกระดาษที่ลูกค้าเซ็นว่างทั้งกล่อง (เลขผู้เสียภาษี/ที่อยู่เป็นขีด) โดยไม่มีใครรู้ */
-async function loadOrderQuotation(supabase, order) {
+   กล่องผู้ซื้อบนกระดาษที่ลูกค้าเซ็นว่างทั้งกล่อง (เลขผู้เสียภาษี/ที่อยู่เป็นขีด) โดยไม่มีใครรู้
+   ⭐ ส่งออกให้หน้า "ออกเอกสาร" (`spec-documents/new`) อ่านเลขที่ใบเสนอราคาด้วยกติกาเดียวกับกระดาษ
+      (`specDocQuotationNumber`) — จอกับกระดาษร่างต้องพิมพ์เลขเดียวกัน */
+export async function loadOrderQuotation(supabase, order) {
   if (!order?.quotationId) return { quotation: null };
   const { data, error } = await supabase
     .from('quotations').select(QUOTATION_PARTY_COLUMNS).eq('id', order.quotationId).maybeSingle();
@@ -485,6 +495,12 @@ function snapshotCustomer({ order, quotation, product }) {
     contactPhone: quotation?.contactPhone || null,
   };
 }
+
+/**
+ * เลขที่ใบเสนอราคาบนเอกสาร — เลขที่ SO แช่ไว้ตอนออกใบก่อน (ใบเสนอราคาออก Rev ทีหลังได้) · ไม่มีค่อยอ่านจากใบที่ผูก
+ * ⚠️ ตัวเดียวที่ภาพนิ่ง (กระดาษ) และหน้า "ออกเอกสาร" ใช้ — ต่อเองที่ปลายทางเมื่อไร จอกับกระดาษพิมพ์คนละเลข
+ */
+export const specDocQuotationNumber = (order, quotation) => order?.metadata?.quoteNumber || quotation?.quoteNumber || null;
 
 const ITEM_SNAPSHOT_FIELDS = ['sortOrder', 'itemKey', 'itemLabel', 'detail', 'preparedByS', 'preparedByCustomer', 'note'];
 
@@ -576,7 +592,7 @@ export async function buildDocumentSnapshot(supabase, {
       salesOrderLineId: line?.id || null,
       orderNumber: order?.orderNumber || null,
       // เลขที่ที่ SO แช่ไว้ตอนออกใบก่อน (ใบเสนอราคาออก Rev ทีหลังได้) · ไม่มีค่อยอ่านจากใบที่ผูก
-      quotationNumber: order?.metadata?.quoteNumber || quotation?.quoteNumber || null,
+      quotationNumber: specDocQuotationNumber(order, quotation),
       confirmDocType: order?.confirmDocType || null,
       confirmDocNo: order?.confirmDocNo || null,
       confirmDocDate: order?.confirmDocDate || null,
@@ -655,6 +671,26 @@ export async function loadSpecDocument(supabase, documentId, { includeFrozenHtml
  */
 export async function loadDocumentsForOrder(supabase, salesOrderId) {
   return loadDocumentsWhere(supabase, 'salesOrderId', salesOrderId);
+}
+
+/**
+ * เอกสารที่ยังไม่ void ของบรรทัด SO หนึ่งบรรทัด (`id` · `docNo` · `status`) หรือ `null`
+ *
+ * ⭐ ตัวเดียวที่ทั้งการออกเลขจริง (`POST .../spec-documents`) และหน้า "ออกเอกสาร" (`GET .../spec-documents/new`)
+ *    ถาม — ต่างกันเมื่อไร หน้าจะบอกว่าออกได้ แล้วปุ่มบันทึกโดนตีกลับว่า "ออกไปแล้ว"
+ * ⚠️ unique index ของ 0370 การันตีไม่เกินหนึ่งใบต่อบรรทัด · อ่านไม่ขึ้น = error ไม่ใช่ `null` — ด่านที่อ่าน
+ *    ไม่ขึ้นต้องไม่ "เปิดเอง" (ถือว่ายังไม่มีเอกสาร = เสนอให้ออกซ้ำ)
+ * @returns {{ document: {id, docNo, status} | null } | { error: string }}
+ */
+export async function loadLiveDocumentForLine(supabase, salesOrderLineId) {
+  if (!salesOrderLineId) return { document: null };
+  const { data, error } = await supabase.from('product_spec_documents')
+    .select('id, docNo, status')
+    .eq('salesOrderLineId', salesOrderLineId)
+    .neq('status', 'void')
+    .limit(1);
+  if (error) return { error: messageOf(error) };
+  return { document: data?.[0] || null };
 }
 
 function mapCreateDocumentError(error) {
@@ -835,6 +871,58 @@ export async function voidDocument(supabase, {
   if (error) return { error: `ยกเลิกเอกสารไม่สำเร็จ: ${messageOf(error)}` };
   if (!data) return { conflict: true, error: CONFLICT_MESSAGE, status: 409 };
   return { document: data };
+}
+
+/* ── ลบร่างที่ยังไม่เคยยื่น (มติ 23/09/2569 · mig 0375) ────────────────────── */
+
+/**
+ * ข้อความของฐานตอนปฏิเสธการลบ → ภาษาคน
+ *
+ * ⚠️ ยามของ 0370/0375 อยู่บน trigger + ใน RPC ⇒ error ที่ขึ้นมาเป็นสตริงดิบภาษาอังกฤษ
+ *    ปล่อยผ่านเมื่อไร คนกดจะเห็น `product_spec_document_draft_delete_forbidden: …` บน toast
+ * 🔴 ทุกเหตุที่ลบไม่ได้ใช้คำนำหน้าเดียว (`..._draft_delete_forbidden`) แล้วต่อเหตุไทยหลัง `—`
+ *    ⇒ ที่นี่ตัดเอาเฉพาะเหตุไทยมาเป็นข้อความบนจอ · **409 ทุกกรณี** เพราะมันคือ "ของจริง
+ *    เปลี่ยนไปแล้ว/ไม่ใช่ของที่ลบได้" ไม่ใช่คำขอที่ประกอบผิด
+ */
+function mapDeleteDraftError(error) {
+  const text = messageOf(error);
+  if (/product_spec_document_not_found/.test(text)) {
+    return { error: 'ไม่พบเอกสารนี้ — อาจถูกลบไปแล้ว โหลดหน้าใหม่', status: 404 };
+  }
+  const forbidden = text.match(/product_spec_document_draft_delete_forbidden:\s*\S+\s*—\s*([\s\S]+)/);
+  if (forbidden) {
+    return { conflict: true, status: 409, error: `ลบร่างไม่ได้ — ${forbidden[1].trim()}` };
+  }
+  /* ยามของ 0375 ข้อ ⑤ (Rev หายเดี่ยว ๆ) กับยาม DELETE ของ 0370 — ถึงที่นี่ได้แปลว่ามีคนลบนอกทาง RPC
+     ⇒ ไม่ใช่เรื่องของคนกด แต่ต้องไม่เงียบ */
+  if (/product_spec_document(_revision)?(_orphan)?_delete/.test(text)) {
+    return { conflict: true, status: 409, error: `ลบร่างไม่ได้ — ฐานข้อมูลปฏิเสธการลบ: ${text}` };
+  }
+  return { error: `ลบร่างไม่สำเร็จ: ${text}` };
+}
+
+/**
+ * ลบร่างที่ยังไม่เคยยื่น — เอกสาร + Rev.00 ในทรานแซกชันเดียวผ่าน RPC ของ 0375
+ *
+ * ⚠️ **ด่านของคน (`documentActions().remove`) ต้องผ่านมาก่อนแล้ว** — RPC ตรวจซ้ำทุกข้อที่ฐาน
+ *    โดยล็อกแถว Rev ก่อนแล้วค่อยล็อกเอกสาร (ลำดับเดียวกับทางยื่น) ⇒ คนที่กด "ยื่น" แทรก
+ *    ระหว่างทางจะถูกเห็นเสมอ และ RPC ปฏิเสธแทนที่จะลบทับ
+ * ⚠️ **ไม่แตะ `entity_number_counters`** — เลขที่ที่ลบไปแล้วเป็นรูถาวรตามมติ (เหมือนใบเสนอราคา)
+ * ⚠️ คืนแถวที่ลบจริงกลับมาให้เราต์เขียน `audit_logs.before` — ระบบไม่มีถังขยะ นี่คือทางกู้ทางเดียว
+ * @returns {{ docNo: string, document: object, revision: object }
+ *   | { conflict?: true, error: string, status?: number }}
+ */
+export async function deleteDraftDocument(supabase, { document }) {
+  if (!document?.id) return { error: 'ไม่พบเอกสารนี้', status: 404 };
+  const { data, error } = await supabase.rpc('delete_product_spec_document_draft', {
+    p_document_id: document.id,
+  });
+  if (error) return mapDeleteDraftError(error);
+  /* RPC คืนก้อนเสมอเมื่อสำเร็จ — ไม่มีก้อน = ผิดสัญญา ห้ามตอบว่า "ลบแล้ว" เพราะ audit จะไม่มีของกู้ */
+  if (!data?.document || !data?.revision) {
+    return { error: 'ลบร่างไม่สำเร็จ: ฐานข้อมูลไม่คืนแถวที่ลบ — แจ้งผู้ดูแลระบบ' };
+  }
+  return { docNo: data.docNo || document.docNo || null, document: data.document, revision: data.revision };
 }
 
 /**

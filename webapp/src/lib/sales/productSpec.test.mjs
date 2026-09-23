@@ -370,9 +370,9 @@ test('seed ยกสถานะเอกสารเดิมมาด้วย
  */
 const {
   activeDocumentsForOrder, applyFinalApproval, buildDocumentSnapshot, createProductSpec, createSpecDocument,
-  deleteProductSpec, isIllustrationReferenced, loadDealOwner, loadProductSpec, missingSnapshotIllustrations,
-  moveDocumentsToRevisedOrder, revisedOrderLineId, saveProductSpec, transitionRevision, voidDocumentsByIds,
-  voidDocumentsForOrder,
+  deleteDraftDocument, deleteProductSpec, isIllustrationReferenced, loadDealOwner, loadProductSpec,
+  missingSnapshotIllustrations, moveDocumentsToRevisedOrder, revisedOrderLineId, saveProductSpec,
+  transitionRevision, voidDocumentsByIds, voidDocumentsForOrder,
 } = await import('./productSpecStore.js');
 
 function fakeDb(seed = {}, { fail = () => null, rpc = null, users = {} } = {}) {
@@ -1001,6 +1001,71 @@ test('store: ออกเอกสารส่งชิ้นส่วนเล�
   assert.equal((await call('sales_order_not_approved: SO-1 (draft)')).status, 400);
   assert.match((await call('sales_order_historical: SO-1')).error, /ย้อนหลัง/);
   assert.equal((await call('something else')).status, undefined, 'error ที่ไม่รู้จัก = 500 พร้อมข้อความเดิม');
+});
+
+/* ── ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) ────────────────
+ *
+ * ⚠️ ของจริงเดินผ่าน RPC `delete_product_spec_document_draft` ซึ่งล็อกแถว Rev ก่อนแล้วค่อยล็อก
+ *    เอกสาร ตรวจกติกาซ้ำที่ฐาน แล้วลบทั้งคู่ในทรานแซกชันเดียว · ที่นี่ตรวจสองอย่างที่ฝั่ง JS
+ *    รับผิดชอบ: **ส่งอาร์กิวเมนต์ให้ถูก** และ **แปล error ของฐานเป็นภาษาคนพร้อมรหัสสถานะ**
+ * 🔴 store ต้องไม่แตะ `entity_number_counters` เลย — เลขที่ที่ลบไปแล้วเป็นรูถาวรตามมติ
+ */
+test('store: ลบร่างเรียก RPC ของ 0375 ด้วย id ของเอกสาร และคืนแถวที่ลบไว้ให้ audit', async () => {
+  let args = null;
+  const removedDoc = { id: 'D1', docNo: 'FM-SA-04-230969-001', status: 'active', currentRevNo: null };
+  const removedRev = { id: 'R1', documentId: 'D1', revNo: 0, status: 'draft' };
+  const db = fakeDb({}, {
+    rpc: (name, a) => {
+      args = { name, ...a };
+      return { data: { docNo: removedDoc.docNo, document: removedDoc, revision: removedRev }, error: null };
+    },
+  });
+  const res = await deleteDraftDocument(db, { document: { id: 'D1', docNo: removedDoc.docNo } });
+  assert.equal(args.name, 'delete_product_spec_document_draft');
+  assert.deepEqual(Object.keys(args).sort(), ['name', 'p_document_id']);
+  assert.equal(args.p_document_id, 'D1');
+  assert.equal(res.docNo, 'FM-SA-04-230969-001');
+  // ⚠️ แถวเต็มทั้งคู่ — `audit_logs.before` คือทางกู้ทางเดียว (ระบบไม่มีถังขยะ)
+  assert.deepEqual(res.document, removedDoc);
+  assert.deepEqual(res.revision, removedRev);
+  assert.equal((await deleteDraftDocument(db, {})).status, 404);
+});
+
+test('🔴 store: ฐานปฏิเสธการลบ = 409 พร้อมเหตุไทยของฐาน ไม่ใช่สตริงดิบภาษาอังกฤษ', async () => {
+  const failing = (message) => fakeDb({}, { rpc: () => ({ data: null, error: { message } }) });
+  const call = (message) => deleteDraftDocument(failing(message), { document: { id: 'D1' } });
+
+  const submitted = await call('product_spec_document_draft_delete_forbidden: FM-SA-04-230969-003 — เคยยื่นให้ผู้อนุมัติดูแล้ว ลบไม่ได้ ใช้ยกเลิกเอกสารแทน');
+  assert.equal(submitted.status, 409);
+  assert.equal(submitted.conflict, true);
+  assert.match(submitted.error, /^ลบร่างไม่ได้ — เคยยื่นให้ผู้อนุมัติดูแล้ว/);
+  assert.doesNotMatch(submitted.error, /forbidden|FM-SA-04-230969-003/, 'ห้ามมีรหัสดิบ/เลขที่ดิบบน toast');
+
+  const approved = await call('product_spec_document_draft_delete_forbidden: FM-SA-04-230969-005 — เอกสารผ่านการอนุมัติแล้ว (Rev.0)');
+  assert.match(approved.error, /เอกสารผ่านการอนุมัติแล้ว/);
+  assert.equal(approved.status, 409);
+
+  const missing = await call('product_spec_document_not_found: D-NOPE');
+  assert.equal(missing.status, 404);
+  assert.match(missing.error, /ไม่พบเอกสารนี้/);
+
+  // ยามของ 0375 ⑤ / DELETE ของ 0370 — ถึงตรงนี้ได้แปลว่ามีคนลบนอกทาง RPC ต้องไม่เงียบ
+  const orphan = await call('product_spec_document_revision_orphan_delete: R1 — ลบ Rev. เดี่ยว ๆ ไม่ได้ ต้องลบทั้งเอกสาร');
+  assert.equal(orphan.status, 409);
+  assert.match(orphan.error, /ฐานข้อมูลปฏิเสธการลบ/);
+
+  // error ที่ไม่รู้จัก = 500 พร้อมข้อความเดิม (ไม่กลืน ไม่เดา)
+  const unknown = await call('connection reset');
+  assert.equal(unknown.status, undefined);
+  assert.match(unknown.error, /connection reset/);
+});
+
+test('🔴 store: RPC ตอบสำเร็จแต่ไม่คืนแถว = ห้ามบอกว่าลบแล้ว (audit จะไม่มีของกู้)', async () => {
+  const db = fakeDb({}, { rpc: () => ({ data: { docNo: 'X' }, error: null }) });
+  const res = await deleteDraftDocument(db, { document: { id: 'D1' } });
+  assert.ok(res.error);
+  assert.match(res.error, /ไม่คืนแถวที่ลบ/);
+  assert.equal(res.docNo, undefined);
 });
 
 test('store: รายการเอกสารของสินค้าพก Rev ล่าสุด + เลขที่ SO ปัจจุบัน (รวมใบที่ void)', async () => {

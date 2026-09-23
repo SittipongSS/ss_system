@@ -116,6 +116,60 @@ function forwardBlock(document, salesOrder) {
 const shown = (reason) => ({ visible: true, reason: reason || null });
 const hidden = () => ({ visible: false, reason: null });
 
+/* ── ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) ────────────────
+ *
+ * ⭐ ร่างที่ **บันทึกไว้แล้วแต่ยังไม่เคยยื่นให้ใครดู** ลบทิ้งได้เหมือนร่างใบเสนอราคา
+ *   ⚠️ **เลขที่ไม่นำกลับมาใช้** — ลบแล้วเลขที่นั้นเป็นรูถาวรในตัวนับ FMSA04 (เหมือนใบเสนอราคา
+ *      ที่ถูกลบ ซึ่ง `next_quote_number` ไม่เคยถอย) · บรรทัด SO เดิมออกใบใหม่ได้ทันที **เลขใหม่**
+ * 🔴 ร่างที่เคยยื่นแล้ว "ดึงกลับ" และร่างที่ถูกตีกลับ **ลบไม่ได้** — AE เห็นใบนั้นและได้รับแจ้งเตือน
+ *   ไปแล้ว ทางออกของสองกรณีนี้ยังเป็น "ยกเลิกเอกสาร" (void) เหมือนเดิม
+ * 🪤 "ดึงกลับ" ล้าง `submittedAt/By/ByName` + `snapshot` จนหมด (`revisionPatch('withdraw')`)
+ *   ⇒ ร่างที่เคยยื่นหน้าตา **เหมือนร่างที่ไม่เคยยื่นทุกช่อง** · รอยที่แยกสองอย่างนี้คือ
+ *   `firstSubmittedAt` ซึ่ง trigger ของ 0375 ประทับตอนเข้าสู่ `pending_ae` และลบ/แก้ไม่ได้
+ *   ⚠️ แถวที่อ่านมาโดยไม่มีคอลัมน์นี้ (select ตกหล่น) จะกลายเป็น undefined = "ไม่เคยยื่น"
+ *      ⇒ ทุกทางที่ประกอบ `latest` ต้องดึงคอลัมน์นี้มาด้วย (productSpecStore ล็อกไว้ทั้งสองชุด)
+ */
+/* ⚠️ **ไม่ใช่รายชื่อเดียวกับ RPC เป๊ะ ๆ ช่องสุดท้าย** — ฐานตรวจ `frozenHtml` แต่ที่นี่ใช้ `frozenAt`
+   เพราะ `frozenHtml` คือกระดาษทั้งแผ่น `REVISION_COLUMNS` จึงไม่ดึงมา (`latest` ไม่มีช่องนั้นเลย)
+   ⇒ `frozenAt` เป็นตัวแทนที่อ่านได้ของเงื่อนไขเดียวกัน · 0370 ประกาศสองคอลัมน์นี้แยกกันโดยไม่มี
+   CHECK ผูก ⇒ เพี้ยนกันได้ทางทฤษฎี แต่ไม่มีทางทำให้ลบของที่ไม่ควรลบ: frozenHtml มี/frozenAt ว่าง
+   = ปุ่มโผล่แล้ว RPC ปฏิเสธพร้อมเหตุจริง (409) · กลับกัน = ปุ่มไม่โผล่ ไม่มีอะไรถูกยิง
+   🔴 **คำตัดสินสุดท้ายอยู่ที่ RPC เสมอ** — ที่นี่คือด่านของจอกับข้อความ ไม่ใช่ของจริง */
+const SUBMIT_TRACE_FIELDS = Object.freeze([
+  'firstSubmittedAt', 'submittedAt', 'aeApprovedAt', 'supApprovedAt', 'rejectedAt', 'frozenAt',
+]);
+
+/**
+ * เหตุที่ลบร่างใบนี้ไม่ได้ — `null` = ลบได้ (กติกาชุดเดียวกับที่ RPC `delete_product_spec_document_draft`
+ * ตรวจซ้ำที่ฐาน · ต่างกันช่องเดียวคือ `frozenAt` แทน `frozenHtml` — ดูเหตุผลที่ `SUBMIT_TRACE_FIELDS`)
+ *
+ * ⚠️ ข้อความที่นี่คือสิ่งที่ API ตอบตอนมีคนยิงเส้นลบทั้งที่ปุ่มถูกซ่อน (แท็บค้าง/ยิงตรง) —
+ *    ต้องบอกเหตุจริง ไม่ใช่ "สถานะเปลี่ยนแล้ว" ลอย ๆ ซึ่งไม่จริงในกรณีที่มันลบไม่ได้มาแต่ต้น
+ * @returns {string|null}
+ */
+export function draftDeleteBlock(document, latest) {
+  if (!document) return 'ไม่พบเอกสารนี้';
+  if (document.status !== 'active') return 'เอกสารถูกยกเลิกแล้ว — ลบไม่ได้';
+  if (document.currentRevNo !== null && document.currentRevNo !== undefined) {
+    return `เอกสารผ่านการอนุมัติแล้ว (${formatRevLabel(document.currentRevNo)}) — ลบไม่ได้ ใช้ "ยกเลิกเอกสาร" แทน`;
+  }
+  if (!latest) return 'เอกสารนี้ไม่มี Rev.';
+  if (Number(latest.revNo) !== 0) {
+    return `เอกสารมี ${formatRevLabel(latest.revNo)} แล้ว — ลบได้เฉพาะใบที่มี Rev.00 ฉบับเดียว`;
+  }
+  if (latest.status !== 'draft') {
+    const label = DOC_REVISION_STATUS_LABELS[latest.status] || latest.status;
+    return `Rev.00 อยู่ในขั้น "${label}" ไม่ใช่ร่างที่ยังไม่ได้ยื่น — ลบไม่ได้ ใช้ "ยกเลิกเอกสาร" แทน`;
+  }
+  if (SUBMIT_TRACE_FIELDS.some((field) => latest[field])) {
+    return 'เอกสารนี้เคยยื่นให้ผู้อนุมัติดูแล้ว — ลบไม่ได้ ใช้ "ยกเลิกเอกสาร" แทน';
+  }
+  return null;
+}
+
+/** ลบร่างใบนี้ได้ไหม (ไม่ดูสิทธิ์ของคน — ดู `documentActions().remove`) */
+export const isDeletableDraft = (document, latest) => draftDeleteBlock(document, latest) === null;
+
 /**
  * ออกเอกสารจากบรรทัด SO ได้ไหม (ปุ่ม "ออกเอกสาร" บนหน้า SO)
  *
@@ -150,14 +204,14 @@ export function documentCreateGate({
  * @param {object} input.salesOrder SO ปัจจุบันของเอกสาร (`{ status, orderNumber }` พอ)
  * @param {string} input.dealOwnerId `sales_deals.ownerId` ของดีลที่ SO ผูก
  * @param {object} input.user       `{ id, role }`
- * @returns {{ submit, withdraw, aeApprove, supApprove, reject, revise, void }} แต่ละตัว `{ visible, reason }`
+ * @returns {{ submit, withdraw, aeApprove, supApprove, reject, revise, void, remove }} แต่ละตัว `{ visible, reason }`
  */
 export function documentActions({
   document, latest, salesOrder, dealOwnerId, user,
 } = {}) {
   const none = {
     submit: hidden(), withdraw: hidden(), aeApprove: hidden(), supApprove: hidden(),
-    reject: hidden(), revise: hidden(), void: hidden(),
+    reject: hidden(), revise: hidden(), void: hidden(), remove: hidden(),
   };
   // เอกสารที่ void แล้ว = ไม่มีของให้ทำ (เลขที่ถูกปิดถาวร)
   if (!document || document.status !== 'active' || !latest) return none;
@@ -207,12 +261,21 @@ export function documentActions({
   // ยกเลิกเอกสาร: AC/admin ตลอดอายุที่ยัง active
   const voidAction = mayIssue ? shown(null) : hidden();
 
+  /* ลบร่าง (มติ 23/09/2569 · mig 0375): เฉพาะใบที่ยังไม่เคยยื่นให้ใครดู — ใบที่ยื่น/ถูกตีกลับ/
+     อนุมัติแล้ว **ไม่มีของให้ลบ** จึงซ่อน (กติกาเดียวกับปุ่ม "ยื่น" ที่หายเมื่อยื่นไปแล้ว)
+     ⚠️ ไม่เช็ค SO — ลบร่างของตัวเองคือถอย ไม่ใช่เดินหน้า (เหมือนดึงกลับ/ยกเลิก) · SO ที่ถูก
+        ย้อนการอนุมัติยิ่งต้องเก็บกวาดร่างที่ออกค้างไว้ได้ */
+  const remove = mayIssue && isDeletableDraft(document, latest) ? shown(null) : hidden();
+
   return {
-    submit, withdraw, aeApprove, supApprove, reject, revise, void: voidAction,
+    submit, withdraw, aeApprove, supApprove, reject, revise, void: voidAction, remove,
   };
 }
 
-/** คีย์ action ของ API (`PATCH { action }`) → คีย์ใน `documentActions` */
+/* คีย์ action ของ API (`PATCH { action }`) → คีย์ใน `documentActions`
+   ⚠️ **ไม่มี `remove` ในตารางนี้โดยเจตนา** — ลบร่างเป็น `DELETE /api/sales-planning/spec-documents/<id>`
+      ไม่ใช่ action ของ PATCH (การลบไม่ใช่การเปลี่ยนสถานะ · แถวหายทั้งใบ) · เติมลงตารางนี้เมื่อไร
+      เทสต์จะไปบังคับให้ PATCH มี branch `action === 'remove'` ซึ่งไม่มีอยู่จริง */
 export const DOC_ACTION_KEYS = Object.freeze({
   submit: 'submit',
   withdraw: 'withdraw',
