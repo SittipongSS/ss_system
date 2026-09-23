@@ -13,6 +13,7 @@ import Tabs from "@/components/ui/Tabs";
 import DetailRow from "@/components/ui/DetailRow";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { poRollupStatus } from "@/lib/sahamit/po";
 import { fmtNumber, fmtMoney, fmtPercent, naText } from "@/lib/format";
 import { dashboardKpis, categoryOptions, volumeOptions, yearOptions, fgCodeFilterSet, filterRoundsByFg, filterPosByFg } from "@/lib/sahamit/dashboard";
@@ -56,10 +57,10 @@ function UnitToggle({ unit, onChange }) {
 
 export default function SahamitOverview() {
   const router = useRouter();
-  const { data: rounds, loading: l1, error: e1, staleError: s1, loaded: ld1, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
-  const { data: pos, loading: l2, error: e2, staleError: s2, loaded: ld2, reload: reloadPos } = useApiList("/api/sahamit/po");
-  const { data: coverages, loading: l3, error: e3, staleError: s3, loaded: ld3, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
-  const { data: products, loading: l4, error: e4, staleError: s4, loaded: ld4, reload: reloadProducts } = useApiList("/api/sahamit/products");
+  const { data: rounds, loading: l1, error: e1, staleError: s1, errorDetail: d1, loaded: ld1, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: pos, loading: l2, error: e2, staleError: s2, errorDetail: d2, loaded: ld2, reload: reloadPos } = useApiList("/api/sahamit/po");
+  const { data: coverages, loading: l3, error: e3, staleError: s3, errorDetail: d3, loaded: ld3, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
+  const { data: products, loading: l4, error: e4, staleError: s4, errorDetail: d4, loaded: ld4, reload: reloadProducts } = useApiList("/api/sahamit/products");
 
   /* ── โหลดพัง = ทั้งจอไม่ครบ ไม่ใช่แค่แผงใดแผงหนึ่ง ────────────────────────────
      ⭐ **ป้ายเดียวคลุมทั้งจอ ไม่แยกรายแผง** — ต่างจากหน้ารายการที่หนึ่งแผงมีหนึ่งตาราง
@@ -85,10 +86,10 @@ export default function SahamitOverview() {
      ระดับโมดูลทำให้เดินกลับเข้าจอนี้แล้วยังมีของครบในมือ — รอบใหม่ล้มก็แค่บอกว่าเก่า
      `staleError` = รอบเบื้องหลังล้ม ⇒ ขึ้นป้ายเหมือนกัน แต่ไม่ใช่เหตุให้ซ่อนของที่มีอยู่ */
   const sources = [
-    { label: "รอบ FC", error: e1 || s1, empty: !ld1, reload: reloadRounds },
-    { label: "PO", error: e2 || s2, empty: !ld2, reload: reloadPos },
-    { label: "การชดเชยข้ามเดือน", error: e3 || s3, empty: !ld3, reload: reloadCoverages },
-    { label: "สินค้า", error: e4 || s4, empty: !ld4, reload: reloadProducts },
+    { label: "รอบ FC", error: e1 || s1, empty: !ld1, detail: d1, reload: reloadRounds },
+    { label: "PO", error: e2 || s2, empty: !ld2, detail: d2, reload: reloadPos },
+    { label: "การชดเชยข้ามเดือน", error: e3 || s3, empty: !ld3, detail: d3, reload: reloadCoverages },
+    { label: "สินค้า", error: e4 || s4, empty: !ld4, detail: d4, reload: reloadProducts },
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
@@ -99,6 +100,8 @@ export default function SahamitOverview() {
       ? "ตัวเลขทุกตัวบนหน้านี้คำนวณจากข้อมูลทุกก้อนพร้อมกัน จึงยังแสดงไม่ได้"
       : "ตัวเลขที่เห็นอยู่เป็นข้อมูลรอบก่อน ไม่ใช่ล่าสุด"} · ${causes}`
     : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
   // กด "ลองใหม่" = รอบหน้าบ้าน ⇒ `l1..l4` เป็น true ⇒ `Workspace loading` (ด้านล่าง)
   // สลับเนื้อเป็น skeleton ให้เองระหว่างรอ — ไม่ต้องมีสถานะปุ่มซ้อนอีกชั้น
 
@@ -168,6 +171,7 @@ export default function SahamitOverview() {
         {loadError && (
           <StatusNotice
             tone="error"
+            detail={loadErrorDetail}
             action={<Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())}>ลองใหม่</Button>}
           >
             {loadError}

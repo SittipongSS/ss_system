@@ -58,7 +58,7 @@ export default function RegistrationsPage() {
   const router = useRouter();
   const canEdit = useCan("products:edit");   // SA: create / edit / resubmit / delete
 
-  const { data: regs, loading, error: loadError, reload } = useApiList("/api/excise-registrations?view=queue");
+  const { data: regs, loading, error: loadError, errorDetail: loadErrorDetail, reload } = useApiList("/api/excise-registrations?view=queue");
 
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกา **ไทย** — ห้ามอ่านนาฬิกาตอนเรนเดอร์
      (ค่าจะขยับระหว่างเรนเดอร์ และเครื่องที่ตั้งโซนเวลาอื่นจะได้คนละวัน) */
@@ -426,6 +426,7 @@ export default function RegistrationsPage() {
         <StatusNotice
           tone="error"
           className="mb-4"
+          detail={loadErrorDetail}
           action={<Button size="sm" variant="ghost" onClick={() => reload()}>ลองใหม่</Button>}
         >
           {loadError}

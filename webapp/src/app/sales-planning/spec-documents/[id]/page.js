@@ -30,7 +30,7 @@ import {
 import {
   DOC_DELETE_KEY, DOC_REASON_ACTIONS, docActionDoneMessage, docApiAction, docConfirmPrompt,
   docContentSource, docContentSummary, docControlActions, docHeadline, docRailSteps, docReasonPrompt,
-  docRevisionRows, docRevisionTone, productSpecPageHref, salesOrderHref,
+  docRevisionRows, docRevisionTone, lineRemovedNotice, productSpecPageHref, salesOrderHref,
 } from "@/lib/sales/productSpecDocView";
 import { formatSpecDocNo } from "@/lib/sales/productSpecDocNo";
 import styles from "./page.module.css";
@@ -148,7 +148,8 @@ export default function ProductSpecDocumentPage() {
         method: "DELETE",
         fallbackError: "ลบร่างไม่สำเร็จ",
       });
-      notifyToast.success(docActionDoneMessage(DOC_DELETE_KEY));
+      // บรรทัดถูกถอด = ไม่มีบรรทัดให้ออกใบใหม่ ⇒ toast ต้องพูดเรื่องเดียวกับโมดัลที่เพิ่งกดผ่านมา
+      notifyToast.success(docActionDoneMessage(DOC_DELETE_KEY, { orphan: lineRemoved }));
       const orderId = result?.salesOrderId || salesOrder?.id || null;
       /* ⚠️ **ไม่คืน `busy` ตรงนี้โดยตั้งใจ** — แถวถูกลบไปแล้ว หน้านี้กำลังถูกถอดทิ้ง
          การปลดปุ่ม/ปิดโมดัลคือ setState บนหน้าที่ไม่มีอะไรให้ทำต่อ (และเปิดช่องให้กดซ้ำ
@@ -237,7 +238,10 @@ export default function ProductSpecDocumentPage() {
   /* "แก้สเปคที่หน้าสินค้า" — เฉพาะคนที่แก้สเปคได้ (API ส่ง `canEditSpec` มา) · หน้านี้เปิดได้ทุกคนที่เห็น SO
      (RD · FN · TS ...) ⇒ ไม่มีสิทธิ์ = ไม่แสดงปุ่ม (ui-visibility-rule) ไม่ใช่ปุ่มที่พาไปหน้าอ่านอย่างเดียว */
   const editSpecHref = liveDraft && data?.canEditSpec ? productSpecPageHref(productId) : null;
-  const orphan = lineRemoved; // แถบเตือนกับโมดัล (ยกเลิก/ลบ) ต้องใช้เงื่อนไขเดียวกันเสมอ
+  /* แถบเตือนกับโมดัล (ยกเลิก/ลบ) ต้องใช้เงื่อนไขเดียวกันเสมอ · เนื้อแถบชี้ปุ่มปลายทางที่ใบนี้มีจริง
+     (มติ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง" — ร่างที่ไม่เคยยื่นมีแต่ "ลบร่าง" ⇒ ห้ามบอกให้ไปกดยกเลิก)
+     · ส่ง `actions` ของคนดูด้วย — คนที่ไม่มีปุ่มปลายทาง (AE/RD/FN …) ได้ "รอ AC …" ไม่ใช่คำสั่งให้กดปุ่มที่ตัวเองไม่มี */
+  const orphan = lineRemoved ? lineRemovedNotice({ document: specDoc, latest, actions: data?.actions }) : null;
   const statusLabel = isVoid ? DOC_STATUS_LABELS.void : DOC_REVISION_STATUS_LABELS[latest?.status] || latest?.status;
 
   return (
@@ -285,9 +289,7 @@ export default function ProductSpecDocumentPage() {
           </StatusNotice>
         ) : null}
         {orphan ? (
-          <StatusNotice tone="warning" title="บรรทัดของใบสั่งขายที่เอกสารนี้อ้างถูกถอดแล้ว">
-            ไม่มีสินค้าให้รับรองต่อ — ยกเลิกเอกสารใบนี้แทนการเดินด่าน
-          </StatusNotice>
+          <StatusNotice tone="warning" title={orphan.title}>{orphan.body}</StatusNotice>
         ) : null}
         {latest?.status === "rejected" ? (
           <div className={styles.rejection}>
@@ -302,7 +304,9 @@ export default function ProductSpecDocumentPage() {
             </div>
           </div>
         ) : null}
-        {liveDraft ? (
+        {/* ⚠️ บรรทัดถูกถอด = ยื่นไม่ได้ตลอดกาล ⇒ ไม่ขึ้นแถบ "แก้ที่หน้าสินค้าแล้วกลับมายื่น" คู่กับแถบที่บอกให้ลบ/ยกเลิก
+            (สองแถบสั่งคนละทาง · ลิงก์ไปหน้าสเปคยังอยู่ที่การ์ด "สเปคสินค้า" ข้างล่าง) */}
+        {liveDraft && !lineRemoved ? (
           <StatusNotice
             tone="info"
             action={editSpecHref

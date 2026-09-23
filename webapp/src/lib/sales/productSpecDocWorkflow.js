@@ -105,11 +105,10 @@ export function salesOrderApprovedBlock(salesOrder) {
 }
 
 /* ด่านร่วมของทุกการกระทำที่ "เดินหน้า" (ยื่น · อนุมัติ · แก้ไขเอกสาร)
-   ⚠️ บรรทัดถูกถอด = ไม่มีของให้รับรองแล้ว ทางออกคือยกเลิกเอกสาร ไม่ใช่เดินด่านต่อ */
-function forwardBlock(document, salesOrder) {
-  if (!document?.salesOrderLineId) {
-    return 'บรรทัดของใบสั่งขายที่เอกสารนี้อ้างถูกถอดแล้ว — ยกเลิกเอกสารใบนี้แทน';
-  }
+   ⚠️ บรรทัดถูกถอด = ไม่มีของให้รับรองแล้ว ทางออกคือปุ่มปลายทางของใบ (ยกเลิก หรือ ลบร่าง —
+      ดู `lineRemovedBlock`) ไม่ใช่เดินด่านต่อ */
+function forwardBlock(document, latest, salesOrder) {
+  if (!document?.salesOrderLineId) return lineRemovedBlock(document, latest);
   return salesOrderApprovedBlock(salesOrder);
 }
 
@@ -135,7 +134,7 @@ const hidden = () => ({ visible: false, reason: null });
    CHECK ผูก ⇒ เพี้ยนกันได้ทางทฤษฎี แต่ไม่มีทางทำให้ลบของที่ไม่ควรลบ: frozenHtml มี/frozenAt ว่าง
    = ปุ่มโผล่แล้ว RPC ปฏิเสธพร้อมเหตุจริง (409) · กลับกัน = ปุ่มไม่โผล่ ไม่มีอะไรถูกยิง
    🔴 **คำตัดสินสุดท้ายอยู่ที่ RPC เสมอ** — ที่นี่คือด่านของจอกับข้อความ ไม่ใช่ของจริง */
-const SUBMIT_TRACE_FIELDS = Object.freeze([
+export const SUBMIT_TRACE_FIELDS = Object.freeze([
   'firstSubmittedAt', 'submittedAt', 'aeApprovedAt', 'supApprovedAt', 'rejectedAt', 'frozenAt',
 ]);
 
@@ -169,6 +168,47 @@ export function draftDeleteBlock(document, latest) {
 
 /** ลบร่างใบนี้ได้ไหม (ไม่ดูสิทธิ์ของคน — ดู `documentActions().remove`) */
 export const isDeletableDraft = (document, latest) => draftDeleteBlock(document, latest) === null;
+
+/* ── ปุ่มปลายทางของใบ: "ยกเลิกเอกสาร" หรือ "ลบร่างเอกสารถาวร" — ทีละปุ่มเสมอ ─────────────
+ *
+ * ⭐ **มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง"** — ร่างที่ยังไม่เคยยื่น (ลบได้) โชว์แค่
+ *   "ลบร่างเอกสารถาวร" · ใบที่เคยยื่นแล้วแม้ครั้งเดียว (ดึงกลับ/ตีกลับ/รออนุมัติ/อนุมัติแล้ว —
+ *   `draftDeleteBlock` ไม่ว่าง) "ยกเลิกเอกสาร" กลับมาเหมือนเดิมทุกอย่าง
+ *   เหตุ: สองปุ่มยืนคู่กันบนร่าง = คนต้องเลือกระหว่าง "ยกเลิก" กับ "ลบ" ที่ต่างกันแค่ใบค้างใน
+ *   ประวัติหรือไม่ · ร่างที่ไม่เคยมีใครเห็น ไม่มีประวัติอะไรให้เก็บ ⇒ ลบคือทางเดียวที่ถูก
+ * 🔴 **ไม่มีทางตัน** — ใบ active ทุกใบมีปุ่มปลายทาง **หนึ่งตัวพอดี** (ตัวใดตัวหนึ่งจากฟังก์ชันนี้)
+ *   ทุกจอที่เคยโชว์ "ยกเลิก" ต้องโชว์ตัวที่ฟังก์ชันนี้เลือก ไม่ใช่ยึด `void` ตายตัว
+ *   (การ์ดหน้า SO แถว "บรรทัดถูกถอด" ก็เดินตามนี้ — ดู `SalesOrderFollowUpDocs`)
+ * ⚠️ ไม่ดูสิทธิ์ของคน — AC/admin เท่านั้นที่เห็นปุ่มจริง (`documentActions`)
+ * 🪤 ตอนนี้ "จอว่าลบได้แต่ RPC ปฏิเสธ" ไม่ใช่แค่ปุ่มที่กดแล้วได้ 409 อีกแล้ว — มันคือใบที่ไม่มีปุ่มยกเลิกให้
+ *    ถอย ⇒ ตัวตัดสินฝั่งจอ **ต้องไม่หลวมกว่า RPC** · ช่องเดียวที่ต่างคือ `frozenAt` แทน `frozenHtml` และมันไปไม่ถึง
+ *    กรณีจริง: กระดาษถูกตรึงตอน `sup_approve` เท่านั้น ซึ่ง Rev ต้องผ่าน `pending_ae` มาก่อน (trigger ของ 0375
+ *    ประทับ `firstSubmittedAt` แล้ว) และ Rev ที่ `approved` ถอยเป็น `draft` ไม่ได้ (ยามของ 0370)
+ *    ⇒ ร่าง Rev.00 ที่มี `frozenHtml` แต่ไม่มีรอยอื่นเกิดจากแอปไม่ได้ · อย่าหลวมด่านข้างบนโดยไม่คิดข้อนี้
+ * @returns {'remove'|'void'|null} `null` = ใบนี้ไม่มีปุ่มปลายทาง (void แล้ว/ไม่มี Rev)
+ */
+export function documentExitKey(document, latest) {
+  if (!document || document.status !== 'active' || !latest) return null;
+  return isDeletableDraft(document, latest) ? 'remove' : 'void';
+}
+
+/** เหตุที่เดินหน้าไม่ได้เพราะบรรทัด SO ถูกถอด — ชี้ปุ่มปลายทางที่ใบนี้มีจริง ไม่ชี้ปุ่มที่ถูกซ่อน */
+export function lineRemovedBlock(document, latest) {
+  return documentExitKey(document, latest) === 'remove'
+    ? 'บรรทัดของใบสั่งขายที่เอกสารนี้อ้างถูกถอดแล้ว — ร่างนี้ยังไม่เคยยื่น ลบร่างทิ้งแทน'
+    : 'บรรทัดของใบสั่งขายที่เอกสารนี้อ้างถูกถอดแล้ว — ยกเลิกเอกสารใบนี้แทน';
+}
+
+/* ข้อความตอบเมื่อมีคนยิง PATCH `void` ใส่ร่างที่ยังไม่เคยยื่น (แท็บที่เปิดค้างจากก่อนมติ 23/09 / ยิงตรง)
+   ⚠️ ต้องบอกทางที่ใช้ได้จริง — "สถานะเปลี่ยนแล้ว" ไม่จริง ใบไม่ได้ขยับ แค่ทางออกของมันคือลบ */
+export const FRESH_DRAFT_VOID_BLOCK = 'ร่างที่ยังไม่เคยยื่นไม่มีการยกเลิก — ใช้ "ลบร่างเอกสารถาวร" แทน (โหลดหน้าใหม่แล้วปุ่มจะตรงกับเอกสาร)';
+
+/* ข้อความตอบเมื่อ RPC ลบปฏิเสธ **ทั้งที่อ่านใบใหม่แล้วตัวตัดสินฝั่งแอปยังว่า "ลบได้"** (ไม่ใช่มีคนยื่นแทรก)
+   🔴 ทางตันที่มติ 23/09 เปิดไว้ทางทฤษฎี: RPC บอก "ใช้ยกเลิกเอกสารแทน" แต่ใบนี้ไม่มีปุ่มยกเลิก และ PATCH void ตอบ
+      `FRESH_DRAFT_VOID_BLOCK` กลับมาว่า "ใช้ลบร่าง" — สองข้อความส่งคนวนกันไม่รู้จบ · เกิดได้เมื่อรอยการยื่นที่ RPC เห็น
+      ไม่อยู่ในชุดที่แอปอ่าน (`frozenHtml` มีแต่ `frozenAt` ว่าง — ทางของแอปสร้างไม่ได้ ดู `documentExitKey`)
+   ⇒ บอกตรง ๆ ว่าเป็นเรื่องของข้อมูล ไม่ใช่ของคนกด และชี้คนที่แก้ได้ ไม่ชี้ปุ่มที่ไม่มี */
+export const DRAFT_EXIT_MISMATCH = 'ฐานข้อมูลไม่ยอมลบร่างนี้ ทั้งที่ระบบเห็นว่ายังไม่เคยยื่น (ใบนี้จึงไม่มีปุ่มยกเลิกให้ใช้แทน) — แจ้งผู้ดูแลระบบพร้อมเลขที่เอกสาร';
 
 /**
  * ออกเอกสารจากบรรทัด SO ได้ไหม (ปุ่ม "ออกเอกสาร" บนหน้า SO)
@@ -220,7 +260,7 @@ export function documentActions({
   const mayIssue = canIssueProductSpecDocument(user?.role);
   const mayAe = canAeApproveProductSpecDocument(user, dealOwnerId);
   const maySup = canSupApproveProductSpecDocument(user);
-  const forward = forwardBlock(document, salesOrder);
+  const forward = forwardBlock(document, latest, salesOrder);
   const notSubmitted = SUBMITTABLE.includes(status)
     ? 'เอกสาร Rev. นี้ยังไม่ได้ยื่น — รอ AC ยื่นก่อน'
     : null;
@@ -258,14 +298,16 @@ export function documentActions({
   // แก้ไขเอกสาร (Rev+1): เฉพาะเมื่อ Rev ล่าสุดอนุมัติแล้ว · มี Rev ค้างอยู่ = กำลังแก้อยู่ ซ่อน
   const revise = mayIssue && status === 'approved' ? shown(forward) : hidden();
 
-  // ยกเลิกเอกสาร: AC/admin ตลอดอายุที่ยัง active
-  const voidAction = mayIssue ? shown(null) : hidden();
-
-  /* ลบร่าง (มติ 23/09/2569 · mig 0375): เฉพาะใบที่ยังไม่เคยยื่นให้ใครดู — ใบที่ยื่น/ถูกตีกลับ/
-     อนุมัติแล้ว **ไม่มีของให้ลบ** จึงซ่อน (กติกาเดียวกับปุ่ม "ยื่น" ที่หายเมื่อยื่นไปแล้ว)
-     ⚠️ ไม่เช็ค SO — ลบร่างของตัวเองคือถอย ไม่ใช่เดินหน้า (เหมือนดึงกลับ/ยกเลิก) · SO ที่ถูก
-        ย้อนการอนุมัติยิ่งต้องเก็บกวาดร่างที่ออกค้างไว้ได้ */
-  const remove = mayIssue && isDeletableDraft(document, latest) ? shown(null) : hidden();
+  /* ปุ่มปลายทาง — AC/admin ได้ **หนึ่งตัวพอดี** ตลอดอายุที่ยัง active (`documentExitKey`)
+     · ยกเลิกเอกสาร: ใบที่เคยยื่นแล้ว (รวมดึงกลับ/ตีกลับ) · ร่างที่ไม่เคยยื่น = **ซ่อน**
+       (มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง")
+     · ลบร่าง (mig 0375): เฉพาะใบที่ยังไม่เคยยื่นให้ใครดู — ใบที่ยื่น/ถูกตีกลับ/อนุมัติแล้ว
+       **ไม่มีของให้ลบ** จึงซ่อน (กติกาเดียวกับปุ่ม "ยื่น" ที่หายเมื่อยื่นไปแล้ว)
+     ⚠️ ทั้งคู่ไม่เช็ค SO — ถอย ไม่ใช่เดินหน้า (เหมือนดึงกลับ) · SO ที่ถูกย้อนการอนุมัติยิ่งต้อง
+        เก็บกวาดร่างที่ออกค้างไว้ได้ */
+  const exit = documentExitKey(document, latest);
+  const voidAction = mayIssue && exit === 'void' ? shown(null) : hidden();
+  const remove = mayIssue && exit === 'remove' ? shown(null) : hidden();
 
   return {
     submit, withdraw, aeApprove, supApprove, reject, revise, void: voidAction, remove,

@@ -74,9 +74,12 @@ test("ฮุกที่ถือสัญญาณแทนทั้งโม�
     /* 🪤 รอบเบื้องหลังที่ล้มมีสองข้อห้าม ไม่ใช่ข้อเดียว — ห้ามลง `error` (จอรายการหลายจอ
        เขียน `error ? null : <ตาราง>` ⇒ ตารางที่กำลังอ่านอยู่หายทั้งใบตอนเน็ตสะดุด) และ
        **ห้ามกลืนทิ้งเงียบ ๆ** ด้วย: แท็บที่เปิดค้างทั้งวันจะยืนยันตัวเลขของเมื่อวานต่อไป
-       โดยไม่มีอะไรบอกเลย = บั๊ก 26 วันตัวเดิมที่เข้ามาทางประตูหลัง ⇒ ต้องลง `staleError` */
-    assert.match(text, /if \(opts\?\.background\) setStaleError\(\w+\); else setError\(\w+\);/,
+       โดยไม่มีอะไรบอกเลย = บั๊ก 26 วันตัวเดิมที่เข้ามาทางประตูหลัง ⇒ ต้องลง `staleError`
+       (ตั้งแต่มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก" ช่องนี้เก็บเป็นก้อน `{ message, detail }` ชื่อ
+       `staleFailure`/`failure` แล้วแตกเป็น `staleError`/`error` + `errorDetail` ตอนคืนค่า) */
+    assert.match(text, /if \(opts\?\.background\) setStaleFailure\(\w+\); else setFailure\(\w+\);/,
       `${rel}: รอบเบื้องหลังต้องลง staleError (ไม่ใช่ error และไม่ใช่เงียบ)`);
+    assert.match(text, /staleError: staleFailure\?\.message/, `${rel}: staleFailure ต้องออกไปเป็น staleError ของจอ`);
   }
 });
 

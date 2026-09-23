@@ -2,8 +2,9 @@
 import { TableScroll } from "@/components/ui/Table";
 import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState, useEffect } from "react";
-import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download, Search } from "lucide-react";
+import { Boxes, ChevronRight, ChevronDown, Save, Download, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -128,7 +129,7 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
 const rowStage = (r) => lineStage(r.status, !!r.tracking?.pmArrivedAt, !!r.tracking?.rmArrivedAt);
 
 export default function MaterialPage() {
-  const { data: rows, loading, error, reload } = useApiList("/api/sahamit/material");
+  const { data: rows, loading, error, errorDetail, reload } = useApiList("/api/sahamit/material");
   const { data: products } = useApiList("/api/sahamit/products");
   const prodIdx = useMemo(() => indexProducts(products), [products]);
   const canEdit = useCan("sahamit:edit");
@@ -190,9 +191,9 @@ export default function MaterialPage() {
       }
     >
       {error && (
-        <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <AlertCircle size={18} /> {error}
-        </div>
+        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
+        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
       )}
 
       {loading ? <Spinner /> : error ? null : rows.length === 0 ? (

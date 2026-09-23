@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, FilePlus2, Files, XCircle } from "lucide-react";
+import { ExternalLink, FilePlus2, Files, Trash2, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import GatedAction from "@/components/ui/GatedAction";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -15,7 +16,8 @@ import { naText } from "@/lib/format";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { docReasonError } from "@/lib/sales/productSpecDocWorkflow";
 import {
-  docReasonPrompt, followUpLineView, specDocumentHref,
+  DOC_DELETE_KEY, docActionDoneMessage, docConfirmPrompt, docReasonPrompt, followUpLineView,
+  orphanRemoveFailureOutcome, specDocumentHref,
 } from "@/lib/sales/productSpecDocView";
 import styles from "./SalesOrderFollowUpDocs.module.css";
 
@@ -38,8 +40,16 @@ import styles from "./SalesOrderFollowUpDocs.module.css";
  *    ⇒ `orderStatus` เข้า deps ของตัวโหลด: หน้า SO ส่งสถานะใบมา สถานะขยับเมื่อไรการ์ดดึงใหม่เอง
  *    + ดึงใหม่ตอนกลับมามองแท็บ (อีกคนออกเอกสาร/อนุมัติไประหว่างที่แท็บเปิดค้าง)
  *
+ * ⭐ **แถว "บรรทัดถูกถอด" มีปุ่มปลายทางตัวเดียวตามที่ API ส่งมา** (มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง")
+ *    — ร่างที่ยังไม่เคยยื่น = "ลบร่างเอกสารถาวร" · ใบที่เคยยื่นแล้ว = "ยกเลิกเอกสาร" (`documentExitKey`)
+ *    🔴 **ตัดสินใจ: ลบจากการ์ดได้เลย ไม่ใช่คงปุ่มยกเลิกไว้ที่นี่** — แถวนี้เป็นจอเดียวที่ใบกำพร้าโผล่ (บรรทัดหายแล้ว
+ *       ไม่มีแถวสินค้าให้กดเข้าไป) ถ้าการ์ดยังยึด `void` ตายตัว ร่างแบบนี้จะเหลือแถวเปล่าไม่มีปุ่ม = ทางตัน
+ *       · ถ้าคงปุ่มยกเลิกไว้เฉพาะที่นี่ = ใบเดียวกันได้คนละปุ่มบนสองจอ (หน้าเอกสารบอก "ลบ" การ์ดบอก "ยกเลิก")
+ *       สวนมติตรง ๆ ⇒ ใช้เส้น `DELETE` ตัวเดียวกับหน้าเอกสาร + โมดัล `docConfirmPrompt('remove', { orphan: true })`
+ *       ข้อความชุดเดียวกับหน้าเอกสาร (ไม่สัญญาว่าออกใบใหม่บนบรรทัดได้ — บรรทัดไม่มีแล้ว)
+ *
  * @param orderStatus สถานะของใบสั่งขายที่หน้า SO ถืออยู่ — เปลี่ยนเมื่อไร การ์ดโหลดใหม่
- * @param onChanged เรียกหลังยกเลิกเอกสารสำเร็จ (ให้หน้า SO ดึงของตัวเองถ้าต้องการ)
+ * @param onChanged เรียกหลังยกเลิก/ลบเอกสารสำเร็จ (ให้หน้า SO ดึงของตัวเองถ้าต้องการ)
  */
 export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged }) {
   const [rows, setRows] = useState([]);
@@ -50,7 +60,11 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
   const [voidReason, setVoidReason] = useState("");
   const [voidError, setVoidError] = useState("");
   const [voidBusy, setVoidBusy] = useState(false);
+  const [removing, setRemoving] = useState(null);
+  const [warning, setWarning] = useState("");
 
+  /* ⚠️ คืนคำตอบชุดใหม่ด้วย (`null` = โหลดไม่ขึ้น) — ทางล้มของการลบต้องตัดสินจาก **ปุ่มของข้อมูลชุดใหม่**
+     ไม่ใช่ชุดที่ค้างบนจอ (setState เป็น async · กติกาเดียวกับ `load` ของหน้าเอกสาร) */
   const load = useCallback(async (opts) => {
     try {
       const next = await apiJson(`/api/sales-planning/sales-orders/${orderId}/spec-documents`, {
@@ -59,11 +73,13 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
       setRows(Array.isArray(next?.rows) ? next.rows : []);
       setOrphans(Array.isArray(next?.orphans) ? next.orphans : []);
       setProblem(null);
+      return next;
     } catch (loadError) {
       // รอบเบื้องหลัง (กลับมามองแท็บ) ที่ล้ม = เงียบ ไม่ทับของที่ผู้ใช้กำลังอ่าน
       if (!opts?.background) {
         setProblem({ message: loadError.message || "อ่านสถานะเอกสารต่อเนื่องไม่สำเร็จ", status: loadError.status || 0 });
       }
+      return null;
     } finally {
       setLoaded(true);
     }
@@ -103,6 +119,46 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
     }
   };
 
+  /* ลบร่างที่บรรทัดถูกถอด — `DELETE` เส้นเดียวกับหน้าเอกสาร (RPC ของ 0375 ตรวจซ้ำทุกข้อที่ฐาน)
+     ⚠️ ห้ามเปิด `retry` — คำขอที่ไม่ได้คำตอบอาจลบไปแล้ว รอบสองได้ 404 แล้วจอบอกว่าล้มทั้งที่สำเร็จ
+     ⚠️ ล้ม ⇒ ดึงการ์ดใหม่แล้วตัดสินจาก **ข้อมูลชุดใหม่** (`orphanRemoveFailureOutcome`):
+        · `done`  — เน็ตหลุด/5xx แต่ใบหายจากการ์ดแล้ว = เซิร์ฟเวอร์ลบไปแล้ว คำตอบแค่หายกลางทาง ⇒ ปิดโมดัล + toast สำเร็จ
+          (🐞 UAT 23/09: เคยขึ้น "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — …ลองอีกครั้ง" ทั้งที่แถวหายไปต่อหน้า)
+        · `moved` — มีคนยื่นแทรก/ใบไม่มีปุ่มลบแล้ว ⇒ **ปิดโมดัล** แล้วย้ายเหตุจริงขึ้นแถบของการ์ด
+          (ปล่อยโมดัลค้าง = ข้อความผลของการลบคร่อมข้อความว่าลบไม่ได้ และปุ่ม "ลบร่างนี้" ยังกดซ้ำได้ ทั้งที่แถวข้างหลัง
+          กลายเป็นปุ่มยกเลิกไปแล้ว — ท่าเดียวกับ `removeDraft` ของหน้าเอกสาร)
+        · `retry` — ยังลบได้/โหลดการ์ดไม่ขึ้น ⇒ โยนต่อ ให้ข้อความขึ้นในโมดัลแล้วกดใหม่ได้ */
+  const removeDone = () => {
+    setRemoving(null);
+    notifyToast.success(docActionDoneMessage(DOC_DELETE_KEY, { orphan: true }));
+  };
+  const confirmRemove = async () => {
+    const target = removing;
+    try {
+      await apiJson(`/api/sales-planning/spec-documents/${target.documentId}`, {
+        method: "DELETE",
+        fallbackError: "ลบร่างไม่สำเร็จ",
+      });
+      removeDone();
+      await load({ background: true });
+      onChanged?.();
+    } catch (removeFailure) {
+      const next = await load({ background: true });
+      const outcome = orphanRemoveFailureOutcome({ failure: removeFailure, next, documentId: target.documentId });
+      if (outcome === "done") {
+        removeDone();
+        onChanged?.();
+        return;
+      }
+      if (outcome === "moved") {
+        setRemoving(null);
+        setWarning(removeFailure.message || "ลบร่างไม่สำเร็จ");
+        return;
+      }
+      throw removeFailure;
+    }
+  };
+
   if (!loaded) return null;
   const inScope = rows.filter((row) => row?.state?.kind !== "out_of_scope");
   // ไม่มีบรรทัดในขอบเขตและไม่มีเอกสารค้าง (ใบที่ขายแต่ค่าออกแบบ/รายได้อื่น) = ไม่มีการ์ดนี้ทั้งใบ
@@ -114,6 +170,14 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
     ? docReasonPrompt("void", {
       document: { docNo: voiding.docNo },
       latest: voiding.revNo === null || voiding.revNo === undefined ? null : { revNo: voiding.revNo },
+      orphan: true,
+    })
+    : null;
+  // ⭐ ข้อความชุดเดียวกับโมดัลลบของหน้าเอกสาร — `orphan: true` = ไม่สัญญาว่าออกใบใหม่บนบรรทัดนี้ได้
+  const removePrompt = removing
+    ? docConfirmPrompt(DOC_DELETE_KEY, {
+      document: { docNo: removing.docNo },
+      latest: removing.revNo === null || removing.revNo === undefined ? null : { revNo: removing.revNo },
       orphan: true,
     })
     : null;
@@ -129,6 +193,11 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
         <div className={styles.notice}>
           {/* 4xx = คำตอบของระบบ (เช่นใบย้อนหลังไม่ออกใบสเปค) ไม่ใช่ความผิดพลาด ⇒ กล่องข้อมูล ไม่ใช่แถบแดง */}
           <StatusNotice tone={problem.status >= 400 && problem.status < 500 ? "info" : "error"}>{problem.message}</StatusNotice>
+        </div>
+      ) : null}
+      {warning ? (
+        <div className={styles.notice}>
+          <StatusNotice tone="warning" onDismiss={() => setWarning("")}>{warning}</StatusNotice>
         </div>
       ) : null}
 
@@ -208,7 +277,8 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
       ) : null}
 
       {/* ⭐ เอกสารที่บรรทัด SO ถูกถอด (salesOrderLineId = NULL) — ไม่มีสินค้าให้รับรองต่อแล้ว
-          ทางออกเดียวคือยกเลิกเอกสาร (มติ: "โผล่ในการ์ดหน้า SO เป็นแถวบรรทัดถูกถอด พร้อมปุ่มยกเลิก") */}
+          ทางออกคือปุ่มปลายทางของใบ (มติ 21/09: "โผล่ในการ์ดหน้า SO เป็นแถวบรรทัดถูกถอด พร้อมปุ่มยกเลิก")
+          · มติ 23/09 "ซ่อนปุ่มยกเลิกช่วงร่าง": ร่างที่ไม่เคยยื่น = ปุ่มลบร่างแทน (ดูหัวไฟล์) — API ส่งมาทีละตัว */}
       {orphans.length ? (
         <div className={styles.orphans}>
           <p className={styles.orphanTitle}>เอกสารที่บรรทัดถูกถอดจากใบสั่งขายแล้ว ({orphans.length})</p>
@@ -229,6 +299,18 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
                     onClick={() => openVoid(orphan)}
                   >
                     ยกเลิกเอกสาร
+                  </GatedAction>
+                ) : null}
+                {orphan.removeAction?.visible ? (
+                  <GatedAction
+                    blocker={orphan.removeAction.reason || ""}
+                    tone="danger"
+                    variant="outline"
+                    size="sm"
+                    icon={<Trash2 size={13} />}
+                    onClick={() => { setWarning(""); setRemoving(orphan); }}
+                  >
+                    ลบร่างเอกสารถาวร
                   </GatedAction>
                 ) : null}
               </li>
@@ -259,6 +341,17 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
         busy={voidBusy}
         onConfirm={confirmVoid}
         onClose={() => { if (!voidBusy) setVoiding(null); }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(removePrompt)}
+        title={removePrompt?.title}
+        description={removePrompt?.description}
+        detail={removePrompt?.detail}
+        confirmLabel={removePrompt?.confirmLabel}
+        tone={removePrompt?.tone || "danger"}
+        onConfirm={confirmRemove}
+        onClose={() => setRemoving(null)}
       />
     </DetailCard>
   );

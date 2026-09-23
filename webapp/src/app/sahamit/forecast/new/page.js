@@ -6,6 +6,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import ForecastForm from "@/components/sahamit/ForecastForm";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 
@@ -14,8 +15,8 @@ import { useCan } from "@/lib/roleContext";
 export default function ForecastCreatePage() {
   const router = useRouter();
   const canEdit = useCan("sahamit:edit");
-  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
-  const { data: rounds, loading: lRounds, error: roundsError, staleError: roundsStale, loaded: roundsLoaded, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
+  const { data: rounds, loading: lRounds, error: roundsError, staleError: roundsStale, errorDetail: roundsDetail, loaded: roundsLoaded, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
 
   /* ── โหลดพัง = ห้ามเปิดฟอร์ม ไม่ใช่แค่ขึ้นป้ายเหนือฟอร์ม ──────────────────────
      ⭐ **ป้ายเดียวคลุมทั้งหน้า** — หน้านี้มีของชิ้นเดียวคือ `ForecastForm` และมันกิน
@@ -37,8 +38,8 @@ export default function ForecastCreatePage() {
      ระบบที่ยังไม่มีรอบเลยก็โหลด `[]` มาสำเร็จ นั่นคือคำตอบที่ใช้ได้ ไม่ใช่ความไม่รู้
      `staleError` = รอบเบื้องหลังล้มทั้งที่มีของอยู่ ⇒ ขึ้นป้ายว่าของเก่า แต่ไม่บล็อกฟอร์ม */
   const sources = [
-    { label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, reload: reloadProducts },
-    { label: "รอบ FC ที่มีอยู่", error: roundsError || roundsStale, empty: !roundsLoaded, reload: reloadRounds },
+    { label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts },
+    { label: "รอบ FC ที่มีอยู่", error: roundsError || roundsStale, empty: !roundsLoaded, detail: roundsDetail, reload: reloadRounds },
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
@@ -49,6 +50,8 @@ export default function ForecastCreatePage() {
       ? "ยังลงรอบ FC ไม่ได้ เพราะฟอร์มจะขาดสินค้าหรือตัวกันลงรอบซ้ำ"
       : "ฟอร์มกำลังใช้ข้อมูลรอบก่อน ไม่ใช่ล่าสุด"} · ${causes}`
     : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
   // หน้านี้ไม่ได้ส่ง `loading` ให้ Workspace (ฟอร์มหายกลางคันไม่ได้) ⇒ ปุ่มต้องบอกเอง
   // ว่ากำลังลองอยู่ ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ
   const retrying = lProducts || lRounds;
@@ -56,6 +59,7 @@ export default function ForecastCreatePage() {
     <StatusNotice
       tone="error"
       className="mb-4"
+      detail={loadErrorDetail}
       action={(
         <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
           {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}

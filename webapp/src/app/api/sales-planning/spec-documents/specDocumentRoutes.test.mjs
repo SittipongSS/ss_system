@@ -97,7 +97,7 @@ test('ทุกการเปลี่ยนสถานะ Rev เดินผ
 
 test('ยื่น = ถ่ายภาพนิ่งจาก buildDocumentSnapshot ด้วยบรรทัด SO ของเอกสารเอง', () => {
   const branch = branchOf(code(DOC_ROUTE), 'submit');
-  assert.match(branch, /loadDocumentLine\(supabase, document\)/);
+  assert.match(branch, /loadDocumentLine\(supabase, document, latest\)/);
   assert.match(branch, /buildDocumentSnapshot\(supabase, \{/);
   assert.match(branch, /snapshot: snap\.snapshot, illustrationIds: snap\.illustrationIds/);
 });
@@ -284,11 +284,14 @@ test('กระดาษร่าง: บรรทัดนอกหมวด/�
   assert.match(source, /export const runtime = 'nodejs'/);
 });
 
-test('GET ของการ์ดบนหน้า SO: สถานะรายบรรทัดจาก lineDocumentState + เอกสารที่บรรทัดถูกถอดพร้อมปุ่มยกเลิก', () => {
+test('GET ของการ์ดบนหน้า SO: สถานะรายบรรทัดจาก lineDocumentState + เอกสารที่บรรทัดถูกถอดพร้อมปุ่มปลายทาง', () => {
   const source = code(ORDER_DOCS_ROUTE);
   assert.match(source, /state: lineDocumentState\(\{/);
   assert.match(source, /doc\.status === 'active' && \(!doc\.salesOrderLineId \|\| !lineIds\.has\(doc\.salesOrderLineId\)\)/);
-  assert.match(source, /\}\)\.void,/, 'ปุ่มยกเลิกของแถวที่บรรทัดถูกถอดต้องมาจาก documentActions().void');
+  /* 🔴 ทั้งคู่ต้องมาจาก `documentActions` ก้อนเดียวกัน (มติ 23/09 "ซ่อนปุ่มยกเลิกช่วงร่าง") — ส่งแต่ `.void`
+     = แถวของร่างที่ไม่เคยยื่นไม่มีปุ่มอะไรเลยบนการ์ด (ทางตัน) */
+  assert.match(source, /voidAction: actions\.void,/, 'ปุ่มยกเลิกของแถวที่บรรทัดถูกถอดต้องมาจาก documentActions().void');
+  assert.match(source, /removeAction: actions\.remove,/, 'ปุ่มลบร่างของแถวที่บรรทัดถูกถอดต้องมาจาก documentActions().remove');
   // โมดัลยกเลิกต้องประกอบเลขรูปเดียวกับแถว (DDMMYY-XXX-RR) ⇒ ต้องได้ Rev ดิบ (ผลตรวจรอบสอง)
   assert.match(source, /revNo: doc\.latest \? doc\.latest\.revNo : null/);
   assert.match(source, /return ok\(\{ orderStatus: order\.status, rows, orphans \}\)/);
@@ -365,6 +368,35 @@ test('🔴 ลบร่างไม่ผ่าน = ไม่ปล่อยใ
   assert.match(failure, /await recordAudit\(\{/, 'ลบไม่ผ่านต้องมีแถว audit แก้กลับ');
   assert.match(failure, /deleteFailed: removed\.error/);
   assert.match(failure, /return fail\(removed\.error, removed\.status \|\| 500\)/);
+});
+
+/* 🔴 มติ 23/09 ถอดปุ่มยกเลิกของร่างที่ไม่เคยยื่น ⇒ ถ้า RPC ปฏิเสธการลบทั้งที่ตัวตัดสินฝั่งแอปยังว่า "ลบได้"
+   ข้อความของ RPC ("ใช้ยกเลิกเอกสารแทน") กับ PATCH void (`FRESH_DRAFT_VOID_BLOCK` "ใช้ลบร่าง") จะส่งคนวนกัน */
+test('🔴 RPC ปฏิเสธการลบแต่อ่านใหม่ยังลบได้ = ให้แจ้งผู้ดูแล ไม่ส่งไปหาปุ่มยกเลิกที่ไม่มี', () => {
+  const del = deleteBranch(code(DOC_ROUTE));
+  const failure = del.slice(del.indexOf('if (removed.error)'));
+  const guard = failure.indexOf('if (removed.conflict)');
+  assert.ok(guard > 0, 'ต้องแยกกรณี RPC ปฏิเสธ (409)');
+  assert.ok(guard < failure.indexOf('return fail(removed.error'), 'ต้องตัดสินก่อนส่งข้อความของ RPC ต่อ');
+  const branch = failure.slice(guard, failure.indexOf('return fail(removed.error'));
+  assert.match(branch, /loadVisibleDocument\(supabase, id, user, 'edit'\)/, 'ต้องอ่านใบใหม่ — มีคนยื่นแทรกคือกรณีปกติ');
+  assert.match(branch, /documentExitKey\(again\.document, again\.latest\) === 'remove'/);
+  assert.match(branch, /return conflict\(DRAFT_EXIT_MISMATCH\)/);
+});
+
+test('⭐ ยกเลิกร่างที่ไม่เคยยื่น (ปุ่มถูกซ่อนตามมติ 23/09) = 409 พร้อมทางที่ใช้ได้จริง ไม่ใช่ "สถานะเปลี่ยนแล้ว"', () => {
+  const source = code(DOC_ROUTE);
+  const start = source.indexOf('function hiddenActionResponse');
+  const end = source.indexOf('function describe(', start);
+  assert.ok(start > 0 && end > start, 'ไม่พบ hiddenActionResponse');
+  const hidden = source.slice(start, end);
+  const specific = hidden.indexOf("documentExitKey(document, latest) === 'remove'");
+  const stale = hidden.indexOf('return conflict(STALE)');
+  assert.ok(specific > 0, 'ต้องแยกกรณี void บนร่างที่ลบได้');
+  assert.ok(specific < stale, 'ต้องตัดสินก่อนตก "สถานะเปลี่ยนแล้ว"');
+  assert.match(hidden, /return conflict\(FRESH_DRAFT_VOID_BLOCK\)/);
+  // เหตุบนปุ่มยื่นของใบที่บรรทัดหาย ต้องชี้ปุ่มที่มีจริง (ร่างที่ไม่เคยยื่น = ลบ)
+  assert.match(source, /return \{ error: lineRemovedBlock\(document, latest\), status: 400 \}/);
 });
 
 test('ลบร่างที่ปุ่มถูกซ่อน: ไม่ใช่ AC = 403 · ใบที่ลบไม่ได้มาแต่ต้น = เหตุจริง ไม่ใช่ "สถานะเปลี่ยนแล้ว"', () => {

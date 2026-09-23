@@ -86,23 +86,30 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   });
 
   /* ⭐ เอกสารที่บรรทัดหายไป (ถอดบรรทัดตอน SO ออก Rev · FK SET NULL) — ไม่มีบรรทัดให้ผูก
-     แต่เลขที่ยังออกไปแล้ว ⇒ ต้องโผล่บนการ์ดพร้อมปุ่มยกเลิก ไม่งั้นค้างอยู่เงียบ ๆ ตลอดกาล */
+     แต่เลขที่ยังออกไปแล้ว ⇒ ต้องโผล่บนการ์ดพร้อมปุ่มปลายทาง ไม่งั้นค้างอยู่เงียบ ๆ ตลอดกาล
+     🔴 **ส่งทั้ง `voidAction` และ `removeAction`** (มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง") —
+        ร่างที่ยังไม่เคยยื่นไม่มีปุ่มยกเลิกแล้ว ถ้าส่งแต่ `void` แถวของร่างแบบนั้นจะไม่มีปุ่มอะไรเลย
+        (ทางตันบนการ์ด) · สองตัวมาจาก `documentActions` ก้อนเดียว ⇒ AC/admin ได้ตัวใดตัวหนึ่งพอดี */
   const lineIds = new Set(lines.map((line) => line.id));
   const orphans = documents
     .filter((doc) => doc.status === 'active' && (!doc.salesOrderLineId || !lineIds.has(doc.salesOrderLineId)))
-    .map((doc) => ({
-      documentId: doc.id,
-      docNo: doc.docNo,
-      // เลขที่ที่คนอ่าน DDMMYY-XXX-RR (มติ 22/09) — ตัวเดียวกับกระดาษ/แถวที่ออกแล้ว
-      docNoText: formatSpecDocNo(doc.docNo, doc.latest?.revNo),
-      // Rev ดิบให้โมดัลยกเลิกประกอบเลขรูปเดียวกับแถว (docReasonPrompt ต้องได้ latest.revNo)
-      revNo: doc.latest ? doc.latest.revNo : null,
-      revLabel: doc.latest ? formatRevLabel(doc.latest.revNo) : null,
-      statusLabel: doc.latest ? (DOC_REVISION_STATUS_LABELS[doc.latest.status] || doc.latest.status) : null,
-      voidAction: documentActions({
+    .map((doc) => {
+      const actions = documentActions({
         document: doc, latest: doc.latest, salesOrder: order, dealOwnerId, user,
-      }).void,
-    }));
+      });
+      return {
+        documentId: doc.id,
+        docNo: doc.docNo,
+        // เลขที่ที่คนอ่าน DDMMYY-XXX-RR (มติ 22/09) — ตัวเดียวกับกระดาษ/แถวที่ออกแล้ว
+        docNoText: formatSpecDocNo(doc.docNo, doc.latest?.revNo),
+        // Rev ดิบให้โมดัลยกเลิก/ลบประกอบเลขรูปเดียวกับแถว (docReasonPrompt/docConfirmPrompt ต้องได้ latest.revNo)
+        revNo: doc.latest ? doc.latest.revNo : null,
+        revLabel: doc.latest ? formatRevLabel(doc.latest.revNo) : null,
+        statusLabel: doc.latest ? (DOC_REVISION_STATUS_LABELS[doc.latest.status] || doc.latest.status) : null,
+        voidAction: actions.void,
+        removeAction: actions.remove,
+      };
+    });
 
   return ok({ orderStatus: order.status, rows, orphans });
 });

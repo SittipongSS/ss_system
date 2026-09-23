@@ -2,8 +2,9 @@
 import { TableScroll } from "@/components/ui/Table";
 import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
-import { Flag, AlertCircle, ChevronRight, ChevronDown, Save } from "lucide-react";
+import { Flag, ChevronRight, ChevronDown, Save } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import { FLAG_KIND_LABEL, FLAG_STATUS_LABEL } from "@/lib/sahamit/flags";
@@ -81,7 +82,7 @@ function FlagRow({ flag, onSaved, canEdit }) {
 const TABS = [{ key: "open", label: "ต้องตรวจ" }, { key: "all", label: "ทั้งหมด" }];
 
 export default function ReviewPage() {
-  const { data: flags, loading, error, reload } = useApiList("/api/sahamit/flags");
+  const { data: flags, loading, error, errorDetail, reload } = useApiList("/api/sahamit/flags");
   const canEdit = useCan("sahamit:edit");
   const [tab, setTab] = useState("open");
   const shown = useMemo(() => (tab === "open" ? flags.filter((f) => f.status === "open") : flags), [flags, tab]);
@@ -99,9 +100,9 @@ export default function ReviewPage() {
       }
     >
       {error && (
-        <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <AlertCircle size={18} /> {error}
-        </div>
+        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
+        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
       )}
       {loading ? <Spinner /> : error ? null : shown.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
