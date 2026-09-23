@@ -1,5 +1,31 @@
 "use client";
-// ── ขั้น ② ไซต์ โซน และแพ็ค (ม็อก Step2) ─────────────────────────────────────────
+// ── ขั้น ② ไซต์ โซน และรายการ (ม็อก Step2) ─────────────────────────────────────────
+//
+// ⭐ **มติเจ้าของ 23/09: บรรทัดของโซน = บรรทัดของใบเสนอราคา** — "3500 x 1 ชุด x 12 เดือน · มันต้องไม่ควร
+//   แตกต่างจาก form ใบเสนอราคา เพื่อไม่ให้ USER สับสน" ⇒ แถวโซนที่ติ๊กวาดด้วยเซลล์ชุดเดียวกับตาราง
+//   รายการของใบเสนอราคา (`QuoteLineCells`): รายการ · จำนวน (+หน่วย) · ราคา/หน่วย · ส่วนลดรายการ · จำนวนเงิน
+//   · ราคา/หน่วยมาจากทะเบียนและล็อกทันทีที่เลือกแพ็คเกจ · หน่วยมาจากสินค้า · ยอดคิดด้วย `quoteLineNet`
+//   · 1 ชุด × 12 เดือน = จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000 — แบบเดียวกับที่ใบเสนอราคาคีย์
+//   · ของที่เพิ่มจากใบเสนอราคามีสองอย่างเท่านั้น: **โซนที่ผูก** และ **รอบบริการที่ขายไว้** — ทั้งคู่เป็นบรรทัด
+//     ใต้คำอธิบายในเซลล์ "รายการ" (ตรงเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย)
+//   🚫 ถอดแล้ว: "แพ็ค" · ยอดที่พิมพ์เอง · ปุ่มลัด "ราคาแพ็คเกจ × แพ็ค × เดือน" (มันคูณเดือนซ้ำ = 504,000) ·
+//      ช่องระยะสัญญา (ยอดไม่คิดจากเดือนแล้ว — แถบสรุปข้างฟอร์มยังบอกช่วงสัญญาอยู่)
+// ⭐ **ตารางรายการแยกจากการ์ดไซต์** (รีวิว/UAT 23/09) — การ์ดไซต์เหลือหน้าที่เดียวคือ "เลือกโซน" (ติ๊ก = เพิ่มบรรทัด)
+//   แล้วบรรทัดของใบทั้งหมดอยู่ในตารางเดียวใต้การ์ด: # · รายการ · จำนวน · ราคา/หน่วย · ส่วนลดรายการ · จำนวนเงิน · ปุ่มลบ
+//   = คอลัมน์ของใบเสนอราคาเป๊ะ · กล่องสรุปท้ายตารางก็เป็นกล่องเดียวกับท้ายตารางใบเสนอราคา (`QuoteLineTotals`)
+//   🐞 ของเดิมซ้อนตารางไว้ในการ์ดไซต์ แล้วเอาคอลัมน์ "โซน" (176px) มาแทน "#" ⇒ กล่องตารางกว้างแค่ 726px ที่จอ 1440
+//      และ 766px ที่จอ 1920/2560 (วัดด้วย puppeteer) — ต่ำกว่าจุดพับ 900 ตลอด ⇒ **การ์ดต่อบรรทัดเสมอบนเดสก์ท็อป**
+//      ขณะที่ใบเสนอราคาที่จอเดียวกันเป็นตาราง (964px) = ฟอร์มหน้าตาคนละแบบ ซึ่งคือสิ่งที่มติ 23/09 ห้าม
+//      (คอมเมนต์เดิมที่เขียนว่า "ราว 1270 ที่จอ 1920 (ตาราง)" ผิด · พื้น `ZONE_LINES_MIN_WIDTH` 1040 ไม่เคยมีผล)
+//   ⇒ ขั้นนี้กับขั้น ④ ยุบแถบสรุปข้างขวาออกด้วย (`historicalStepShowsAside`) ⇒ ตารางได้ความกว้างเต็มคอลัมน์เนื้อหา
+//      และใช้พื้น 900 ของใบเสนอราคาเอง (`QuoteLinesTable` ค่าตั้งต้น) เพราะคอลัมน์เท่ากันเป๊ะ
+// ⚠️ ข้อยกเว้นจากตารางใบเสนอราคา (เหตุผลด้านข้อมูล — **รอเจ้าของรับรอง**, รายการเต็มใน docs/historical-sales-orders.md §8A):
+//   ไม่มีหมายเหตุรายบรรทัด (หมายเหตุพิมพ์ลงใบเสนอราคาเท่านั้น — ใบย้อนหลังไม่พิมพ์ และ body ไม่มีช่องนี้) ·
+//   จำนวนเริ่มที่ว่าง (ใบเสนอราคาเริ่มที่ 1 — ว่าง = ตีกลับ ไม่ใช่นับเป็น 1) · จำนวนต้องเป็นจำนวนเต็ม (RPC 0379 +
+//   service_zone_terms.packageQty) · ราคา/หน่วยปิดตั้งแต่ยังไม่เลือกแพ็คเกจ (`registryPriceOnly` — ใบนี้ไม่ส่งราคาขึ้นไป
+//   ⇒ ช่องที่เปิดไว้คือช่องที่พิมพ์แล้วหาย) · ยังไม่ตั้งราคา = ตีกลับ ไม่ใช่คงราคาเดิม · ไม่มีส่วนลดท้ายใบ (แผน/RPC
+//   ไม่มีช่องนี้) · VAT เลือกที่ขั้น ① (ไม่มีค่าตั้งต้น) · เพิ่มบรรทัดด้วยการติ๊กโซน (ไม่มีปุ่ม "เพิ่มสินค้า") ·
+//   ช่อง "ใช้แพ็คเกจเดียวกันทุกโซน" (ลูกค้าจริงมี 43 โซน — เลือกทีละแถวคือ 43 ครั้ง)
 //
 // ⭐ **โซนเลือกจากทะเบียน ไม่ใช่พิมพ์ชื่อเอง** (มติ 22/09 แทนข้อ 17 ของ 0360) — หนึ่งโซนที่ติ๊ก
 //   = หนึ่งบรรทัดของใบ = หนึ่งรอบขายของโซน (service_zone_terms) ที่เกิดตอน AE Sup อนุมัติ
@@ -32,18 +58,22 @@ import Link from "next/link";
 import Button from "@/components/ui/Button";
 import CollapsibleCard from "@/components/ui/CollapsibleCard";
 import Input from "@/components/ui/Input";
-import MoneyInput from "@/components/ui/MoneyInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { TableScroll } from "@/components/ui/Table";
 import { apiJson } from "@/lib/apiFetch";
 import { productSelectOptions } from "@/components/master/productOption";
-import { fmtMoney, fmtNumber, NA } from "@/lib/format";
-import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import {
-  REGISTRY_LOAD_FAILED, contractSpan, emptyHistoricalZone, historicalMoneyView, historicalZoneBrowser,
-  zoneAmountSuggestion, zoneAmountSuggestionNote,
+  QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
+  QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
+  QuoteLineServiceRounds, QuoteLineTotals, QuoteLinesEmptyRow, QuoteLinesTable,
+} from "@/components/salesPlanning/QuoteLineCells";
+import { fmtMoney, fmtNumber } from "@/lib/format";
+import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
+import { quoteLineFromProduct } from "@/lib/sales/quoteLines";
+import {
+  HISTORICAL_NEXT_BUTTON_LABEL, REGISTRY_LOAD_FAILED, emptyHistoricalZone,
+  historicalMoneyView, historicalTotalsView, historicalZoneBrowser, historicalZoneLineAmount, historicalZoneLines,
 } from "@/lib/sales/historicalIntakeForm";
 import styles from "./HistoricalOrderWizard.module.css";
 
@@ -118,27 +148,27 @@ export default function WizardZonesStep({
     [products],
   );
   const productsById = useMemo(() => new Map((products || []).map((p) => [p.id, p])), [products]);
-  /* ⚠️ `months` เป็น null เมื่อช่วงสัญญา **ไม่ลงตัวเป็นเดือน** (ไม่ใช่ปัดลงอย่างที่เคยเป็น)
-     ⇒ ปุ่มลัดยอดโซนกดไม่ได้ และต้องบอกเหตุ ไม่ใช่เสนอยอดที่ขาดไปทั้งเดือน */
-  const { months, note: spanNote } = contractSpan(state.contract?.startDate, state.contract?.endDate);
 
   const rows = useMemo(() => state.zones || [], [state.zones]);
   const rowByZone = useMemo(() => new Map(rows.map((row, index) => [row.zoneId, { row, index }])), [rows]);
-  const planLines = plan?.lines || [];
   const liveTermByZone = useMemo(() => {
     const map = new Map();
     for (const term of plan?.liveTerms || []) if (!map.has(term.zoneId)) map.set(term.zoneId, term);
     return map;
   }, [plan]);
-  const issueByZone = useMemo(() => {
+  /* ข้อที่พรีวิวตีกลับรายแถว (`zones.<ลำดับ>…`) — ลำดับเดียวกับบรรทัดของตาราง (body ส่ง `state.zones` ตามลำดับนี้)
+     ⇒ ข้อความขึ้นใต้บรรทัดของมันเอง · ข้อที่ไม่ชี้แถว (`zones`) อยู่ในก้อนรวมหัวขั้นอย่างเดียว */
+  const issueByIndex = useMemo(() => {
     const map = new Map();
     for (const issue of issues) {
       const index = Number(String(issue.field || "").split(".")[1]);
-      const zoneId = Number.isInteger(index) ? rows[index]?.zoneId : null;
-      if (zoneId && !map.has(zoneId)) map.set(zoneId, issue.message);
+      if (Number.isInteger(index) && !map.has(index)) map.set(index, issue.message);
     }
     return map;
-  }, [issues, rows]);
+  }, [issues]);
+  const issueByZone = useMemo(() => new Map(
+    [...issueByIndex].map(([index, message]) => [rows[index]?.zoneId, message]).filter(([zoneId]) => zoneId),
+  ), [issueByIndex, rows]);
 
   /* ค้น · ซ่อน · กาง · โซนกำพร้า — ตัวตัดสินอยู่ที่ lib (ดูหัวไฟล์ ③) จอแค่วาดตามที่มันตอบ
      ⚠️ `ready` เท็จระหว่างโหลด/โหลดพัง — ไม่งั้นทุกโซนที่ใบผูกไว้ถูกอ่านว่า "กำพร้า" ชั่วครู่ */
@@ -146,30 +176,39 @@ export default function WizardZonesStep({
     sites, zonesBySite, siteErrors, query, pickedZoneIds: rows.map((row) => row.zoneId),
     ready: !loading && !loadError,
   }), [sites, zonesBySite, siteErrors, query, rows, loading, loadError]);
-  /* ยอดใบ: มีแผนใช้แผน ไม่มีก็คิดจากยอดโซน + โหมด VAT ด้วยตัวเดียวกับ server (รีวิว R7) */
+  /* บรรทัดของตาราง (ชื่อจุด "ไซต์ · โซน" · ชื่อบรรทัด · ปุ่มลบกดได้ไหม) — ตัวตัดสินตัวเดียวกับที่ตรึงด้วยเทสต์
+     ⚠️ ไม่ขึ้นกับคำค้น: คำค้นซ่อนแค่การ์ดไซต์ บรรทัดของใบยังอยู่ครบ (ยอดท้ายตารางนับทุกบรรทัด) */
+  const lines = useMemo(() => historicalZoneLines({
+    zones: rows, sites, zonesBySite, siteErrors, ready: !loading && !loadError,
+  }), [rows, sites, zonesBySite, siteErrors, loading, loadError]);
+  /* ยอดใบ: มีแผนใช้แผน ไม่มีก็คิดจากบรรทัดโซน + VAT ด้วยสูตรใบเสนอราคาตัวเดียวกับ server (รีวิว R7) */
   const moneyView = useMemo(() => money || historicalMoneyView(state, plan), [money, state, plan]);
+  const totals = historicalTotalsView(moneyView, state.vatRate);
 
   const setRows = (next) => onChange({ zones: next });
   const patchRow = (zoneId, patch) => setRows(rows.map((row) => (row.zoneId === zoneId ? { ...row, ...patch } : row)));
-  const toggleZone = (zone, site) => {
-    if (rowByZone.has(zone.id)) { setRows(rows.filter((row) => row.zoneId !== zone.id)); return; }
-    setRows([...rows, emptyHistoricalZone({ zoneId: zone.id, siteId: site.id, productId: state.packageProductId })]);
+  const removeRow = (zoneId) => setRows(rows.filter((row) => row.zoneId !== zoneId));
+  /* ⭐ ทุกทางที่ใส่แพ็คเกจให้แถว (ติ๊กโซน · ช่องรายแถว · "ใช้แพ็คเกจเดียวกันทุกโซน") ผ่าน `quoteLineFromProduct`
+     ตัวเดียวกับช่องเลือกสินค้าของใบเสนอราคา ⇒ หน่วย · ราคา/หน่วย (ล็อก) · ข้อมูล FG มาจากทะเบียนแบบเดียวกัน
+     ⚠️ ทะเบียนสินค้าโหลดไม่ขึ้น = ไม่รู้จักสินค้า ⇒ ผูกรหัสไว้เฉย ๆ (แผนอ่านราคาจากทะเบียนเองตอนตรวจอยู่แล้ว) */
+  const withPackage = (row, productId) => {
+    const product = productId ? productsById.get(productId) || null : null;
+    return product ? quoteLineFromProduct(row, product) : { ...row, productId: productId || "" };
   };
+  const toggleZone = (zone, site) => {
+    if (rowByZone.has(zone.id)) { removeRow(zone.id); return; }
+    setRows([...rows, withPackage(emptyHistoricalZone({ zoneId: zone.id, siteId: site.id }), state.packageProductId)]);
+  };
+  const pickRowPackage = (zoneId, productId) => setRows(rows.map((row) => (
+    row.zoneId === zoneId ? withPackage(row, productId) : row
+  )));
   const applyPackage = (productId) => onChange({
     packageProductId: productId,
-    zones: rows.map((row) => ({ ...row, productId })),
+    zones: rows.map((row) => withPackage(row, productId)),
   });
-  const suggestInput = (row) => ({
-    unitPrice: productsById.get(row.productId)?.costPrice,
-    packs: Number(row.packs),
-    months,
-  });
-  const suggestAmount = (row) => {
-    const value = zoneAmountSuggestion(suggestInput(row));
-    if (value !== null) patchRow(row.zoneId, { lineAmount: String(value) });
-  };
+  /* 🚫 ปุ่มลัด "ใช้ราคาแพ็คเกจ × แพ็ค × เดือน" ถูกถอดตามมติเจ้าของ 23/09 — มันคูณเดือนซ้ำบนจำนวนที่นับเดือน
+     ไปแล้ว (3,500 × 12 × 12 = 504,000) · ยอดของแถวคือสูตรของใบเสนอราคา ไม่มีปุ่มเสนอยอดอีก */
 
-  const totalPacks = rows.reduce((sum, row) => sum + (Number(row.packs) || 0), 0);
   const anySiteError = Object.values(siteErrors).some(Boolean);
   const retryingAny = Object.values(retrying).some(Boolean);
   /* 🔴 N1: ทางออกเดียวของกอง "ยังอ่านทะเบียนไม่ได้" = อ่านไซต์ที่พังใหม่ทั้งหมด (ไม่รู้ว่าโซนอยู่ใบไหน)
@@ -194,6 +233,8 @@ export default function WizardZonesStep({
       )}
       {loadError ? <StatusNotice tone="error" title="โหลดทะเบียนไซต์ไม่สำเร็จ">{loadError}</StatusNotice> : null}
 
+      {/* ⭐ ช่องค้นหนึ่งช่องกินทั้ง **รหัสไซต์ · ชื่อไซต์ · ชื่อโซน · รหัสโซน** = ทุกอย่างที่ตาเห็น
+          บนแถว (กฎบ้าน search haystack) · autoComplete ปิดตามกฎช่องค้นทั้งระบบ */}
       <div className={styles.grid2}>
         <div className={styles.field}>
           <span>ใช้แพ็คเกจเดียวกันทุกโซน</span>
@@ -212,24 +253,8 @@ export default function WizardZonesStep({
               ? REGISTRY_LOAD_FAILED
               : "ลูกค้ารายนี้ยังไม่มีสินค้าหมวด 02-001 ในทะเบียน — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ"}
           />
-          <small>เลือกแล้วใส่ให้ทุกแถวที่ติ๊กไว้ · แต่ละแถวเปลี่ยนเองได้</small>
+          <small>เลือกแล้วใส่ให้ทุกบรรทัดในตารางรายการ (ราคา/หน่วยและหน่วยมาจากทะเบียนสินค้า) · แต่ละบรรทัดเปลี่ยนเองได้</small>
         </div>
-        <div className={styles.field}>
-          <span>ระยะสัญญา</span>
-          <p className={styles.derived} data-empty={months ? undefined : "yes"}>
-            {months ? `${fmtNumber(months)} เดือน` : (spanNote || "กรอกวันสัญญาในขั้น ① ก่อน")}
-          </p>
-          <small>
-            {months
-              ? "ใช้กับปุ่มลัด “ใช้ราคาแพ็คเกจ × แพ็ค × เดือน” ของแต่ละแถว"
-              : "ปุ่มลัดยอดต่อโซนกดไม่ได้จนกว่าช่วงสัญญาจะลงตัวเป็นเดือน — ใส่ยอดที่ตกลงกับลูกค้าเองได้เลย"}
-          </small>
-        </div>
-      </div>
-
-      {/* ⭐ ช่องค้นหนึ่งช่องกินทั้ง **รหัสไซต์ · ชื่อไซต์ · ชื่อโซน · รหัสโซน** = ทุกอย่างที่ตาเห็น
-          บนแถว (กฎบ้าน search haystack) · autoComplete ปิดตามกฎช่องค้นทั้งระบบ */}
-      <div className={styles.grid2}>
         <div className={styles.field}>
           <span>ค้นหาไซต์หรือโซน</span>
           <Input
@@ -246,31 +271,32 @@ export default function WizardZonesStep({
               : `ลูกค้ารายนี้มี ${fmtNumber(browser.siteTotal)} ไซต์ · ${fmtNumber(browser.zoneTotal)} โซนในทะเบียน`}
           </small>
         </div>
-        <div className={styles.field}>
-          <span>การแสดงผล</span>
-          <div className={styles.browseRow}>
-            <Button
-              size="sm" variant="quiet"
-              disabled={busy || !browser.rows.length}
-              onClick={toggleAll}
-              icon={allOpen ? <ChevronsDownUp size={14} aria-hidden="true" /> : <ChevronsUpDown size={14} aria-hidden="true" />}
-            >
-              {allOpen ? "ย่อทุกไซต์" : "ขยายทุกไซต์"}
-            </Button>
-            {query ? (
-              <Button size="sm" variant="quiet" disabled={busy} onClick={() => setQuery("")}>ล้างคำค้น</Button>
-            ) : null}
-          </div>
-          <small>
-            ไซต์ที่เลือกโซนไว้แล้ว ไซต์ที่ตรงคำค้น และไซต์ที่โหลดไม่สำเร็จ กางให้เอง · ที่เหลือพับไว้
-          </small>
-        </div>
       </div>
 
-      {/* 🪤 โซนที่ติ๊กไว้แล้วแต่ถูกคำค้นซ่อน **ยังถูกนับในยอดรวมท้ายจอ** — ไม่บอก = ยอดลอยมาจากไหนไม่รู้ */}
+      <div className={`${styles.field} ${styles.browseField}`}>
+        <span>การแสดงผล</span>
+        <div className={styles.browseRow}>
+          <Button
+            size="sm" variant="quiet"
+            disabled={busy || !browser.rows.length}
+            onClick={toggleAll}
+            icon={allOpen ? <ChevronsDownUp size={14} aria-hidden="true" /> : <ChevronsUpDown size={14} aria-hidden="true" />}
+          >
+            {allOpen ? "ย่อทุกไซต์" : "ขยายทุกไซต์"}
+          </Button>
+          {query ? (
+            <Button size="sm" variant="quiet" disabled={busy} onClick={() => setQuery("")}>ล้างคำค้น</Button>
+          ) : null}
+        </div>
+        <small>
+          ไซต์ที่เลือกโซนไว้แล้ว ไซต์ที่ตรงคำค้น และไซต์ที่โหลดไม่สำเร็จ กางให้เอง · ที่เหลือพับไว้
+        </small>
+      </div>
+
+      {/* คำค้นซ่อนแค่การ์ดไซต์ — บรรทัดของโซนที่ติ๊กไว้ยังอยู่ในตารางรายการครบ (ไม่บอก = ผู้คีย์คิดว่าโซนหายไป) */}
       {browser.hiddenPicked > 0 ? (
         <p className={styles.hint}>
-          คำค้นนี้ซ่อนโซนที่เลือกไว้แล้วอยู่ {fmtNumber(browser.hiddenPicked)} โซน — ยอดรวมท้ายจอยังนับโซนพวกนั้นอยู่
+          คำค้นนี้ซ่อนโซนที่เลือกไว้แล้ว {fmtNumber(browser.hiddenPicked)} โซน — บรรทัดของโซนพวกนั้นยังอยู่ในตารางรายการด้านล่าง
         </p>
       ) : null}
 
@@ -284,9 +310,13 @@ export default function WizardZonesStep({
 
       {browser.rows.map(({ site, zones, picked, total, error, defaultOpen }) => {
         const open = openSites[site.id] ?? defaultOpen;
-        const siteTotal = rows
+        /* ยอดของไซต์ = Σ จำนวนเงินของบรรทัดที่เห็นในไซต์นี้ (ตัวเดียวกับเซลล์ "จำนวนเงิน") —
+           บรรทัดที่ยังคิดไม่ได้ (จำนวนว่าง/ยังไม่เลือกแพ็คเกจ) ไม่ถูกนับเป็น 0 เงียบ ๆ แต่บอกว่ายังขาดกี่โซน */
+        const siteAmounts = rows
           .filter((row) => zones.some((zone) => zone.id === row.zoneId))
-          .reduce((sum, row) => sum + (Number(row.lineAmount) || 0), 0);
+          .map(historicalZoneLineAmount);
+        const siteTotal = siteAmounts.reduce((sum, amount) => sum + (amount.known ? amount.lineTotal : 0), 0);
+        const sitePending = siteAmounts.filter((amount) => !amount.known).length;
         return (
           <CollapsibleCard
             key={site.id}
@@ -301,7 +331,11 @@ export default function WizardZonesStep({
             summary={(
               <>
                 <span>{fmtNumber(total)} โซน</span>
-                <span>{picked ? fmtMoney(siteTotal) : "ยังไม่เลือกโซนในไซต์นี้"}</span>
+                <span>
+                  {picked
+                    ? `${fmtMoney(siteTotal)}${sitePending ? ` · ยังคิดยอดไม่ได้ ${fmtNumber(sitePending)} โซน` : ""}`
+                    : "ยังไม่เลือกโซนในไซต์นี้"}
+                </span>
               </>
             )}
             badges={(
@@ -326,150 +360,57 @@ export default function WizardZonesStep({
                 </Button>
               </div>
             ) : (
-              <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={880}>
-                <table className="w-full text-sm">
-                  <thead><tr>
-                    <th>โซน</th>
-                    <th>แพ็คเกจ</th>
-                    <th className="num">แพ็ค</th>
-                    <th className="num">รอบในสัญญา</th>
-                    <th className="num">ยอด</th>
-                  </tr></thead>
-                  <tbody>
-                    {zones.map((zone) => {
-                      const entry = rowByZone.get(zone.id) || null;
-                      const row = entry?.row || null;
-                      const planLine = entry ? planLines[entry.index] || null : null;
-                      const inactive = zone.isActive === false;
-                      const warn = liveTermByZone.get(zone.id) || null;
-                      const problem = issueByZone.get(zone.id) || null;
-                      /* 🐞 รีวิว R9: ทะเบียนสินค้าโหลดไม่ขึ้น ⇒ `unitPrice` เป็น undefined แล้วปุ่มลัด
-                         บอกเหตุผิดว่า "แพ็คเกจนี้ไม่มีราคาต่อหน่วยในทะเบียน" ⇒ พูดเหตุจริงก่อน */
-                      const blocked = row
-                        ? ((productsError && row.productId && !productsById.has(row.productId))
-                          ? "ทะเบียนสินค้าโหลดไม่ขึ้น — ยังคิดราคาแพ็คเกจให้ไม่ได้ · ใส่ยอดเอง หรือกด “ลองอ่านทะเบียนอีกครั้ง” ด้านบน"
-                          : zoneAmountSuggestionNote({ ...suggestInput(row), monthsPartial: Boolean(spanNote) }))
-                        : null;
-                      return (
-                        <tr key={zone.id}>
-                          <td>
-                            <label className={styles.addRow}>
-                              {/* 🐞 รีวิว R10: `disabled={busy || inactive}` ปิด **การถอนติ๊ก** ของแถว
-                                  ที่ใบผูกไว้อยู่แล้วด้วย · ระหว่างนั้น `bindTargetError` ฝั่ง server
-                                  ตีกลับโซนที่ปิดใช้งานเสมอ และตัวติ๊กคือทางเดียวที่ถอดแถวออกจากใบได้
-                                  ⇒ ใบที่ถูกตีกลับแล้ว TS ปิดโซนระหว่างนั้น แก้ต่อไม่ได้เลย และ
-                                    ข้อความ "หรือเลือกโซนอื่น" ทำตามไม่ได้เพราะสลับโซนต้องถอนติ๊กก่อน
-                                  ⇒ **ถอนติ๊กได้เสมอ · ติ๊กใหม่ไม่ได้** (จอบริการ IntakeWizard ทำแบบนี้อยู่แล้ว) */}
-                              <input
-                                type="checkbox"
-                                checked={Boolean(row)}
-                                disabled={busy || (inactive && !row)}
-                                onChange={() => toggleZone(zone, site)}
-                                aria-label={`เลือกโซน ${zone.name}`}
-                              />
-                              <span>{zone.name}</span>
-                            </label>
-                            <span className={styles.cellSub}>{zone.code}</span>
-                            {inactive ? (
-                              <span className={styles.cellSub}>
-                                {row
-                                  ? "ปิดใช้งานในทะเบียน — ถอนติ๊กออกได้ หรือให้ TS เปิดใช้งานคืน"
-                                  : "ปิดใช้งานในทะเบียน — เลือกไม่ได้"}
-                              </span>
-                            ) : null}
-                            {warn ? (
-                              <span className={styles.cellSub}>
-                                ⚠️ มีรอบขายของ {warn.orderNumber} อยู่แล้ว{warn.endDate ? ` (ถึง ${warn.endDate})` : ""}
-                              </span>
-                            ) : null}
-                            {problem ? <span className={styles.cellSub}>{problem}</span> : null}
-                          </td>
-                          <td>
-                            {row ? (
-                              <SearchableSelect
-                                entity="product"
-                                ariaLabel={`แพ็คเกจของโซน ${zone.name}`}
-                                options={packageOptions}
-                                value={row.productId}
-                                onChange={(value) => patchRow(zone.id, { productId: value })}
-                                disabled={busy}
-                                placeholder="เลือกแพ็คเกจ"
-                                searchPlaceholder="ค้นหารหัส FG"
-                                /* 🐞 รีวิว R9: ช่องนี้ไม่มี emptyText ⇒ ตกไปที่ "ไม่พบรายการ" ของตัวห่อ
-                                   ซึ่งอ่านเป็นคำตอบ · และเมื่อทะเบียนโหลดไม่ขึ้น ค่าที่แถวถืออยู่จะเด้ง
-                                   กลับเป็น placeholder ทั้งที่ใบยังผูกแพ็คเกจนั้นอยู่ ⇒ บอกทั้งสองอย่าง */
-                                emptyText={productsError ? REGISTRY_LOAD_FAILED : undefined}
-                              />
-                            ) : <span className={styles.muted}>{NA}</span>}
-                            {row && productsError && row.productId && !productsById.has(row.productId) ? (
-                              <span className={styles.cellSub}>
-                                แถวนี้ผูกแพ็คเกจไว้แล้ว ({row.productId}) — ชื่อไม่ขึ้นเพราะทะเบียนสินค้าโหลดไม่สำเร็จ
-                              </span>
-                            ) : null}
-                            {planLine?.fgCode ? <span className={styles.cellSub}>{planLine.fgCode}</span> : null}
-                          </td>
-                          <td className="num">
-                            {row ? (
-                              <Input
-                                mono type="number" min="1" step="1" autoComplete="off"
-                                value={row.packs}
-                                disabled={busy}
-                                onChange={(event) => patchRow(zone.id, { packs: event.target.value })}
-                                aria-label={`แพ็คของโซน ${zone.name}`}
-                              />
-                            ) : <span className={styles.muted}>{NA}</span>}
-                          </td>
-                          <td className="num">
-                            {row ? (
-                              <Input
-                                mono type="number" min="1" step="1" autoComplete="off"
-                                value={row.rounds}
-                                disabled={busy}
-                                onChange={(event) => patchRow(zone.id, { rounds: event.target.value })}
-                                aria-label={`รอบในสัญญาของโซน ${zone.name}`}
-                              />
-                            ) : <span className={styles.muted}>{NA}</span>}
-                            {row ? <span className={styles.cellSub}>รอบที่ขายไว้ · TS ตั้งวันเอง</span> : null}
-                          </td>
-                          <td className="num">
-                            {row ? (
-                              <>
-                                <MoneyInput
-                                  value={row.lineAmount}
-                                  disabled={busy}
-                                  onChange={(value) => patchRow(zone.id, { lineAmount: value })}
-                                  aria-label={`ยอดของโซน ${zone.name}`}
-                                />
-                                <span className={styles.cellSub}>ก่อน VAT {planLine ? fmtMoney(planLine.lineTotal) : NA}</span>
-                                {/* ⭐ กดไม่ได้ = **โชว์แล้วบอกเหตุ** ไม่ใช่ปุ่มที่กดแล้วเงียบ (กฎบ้าน)
-                                    เหตุมาจากตัวตัดสินตัวเดียวกับที่คิดยอด ⇒ ไม่มีทางบอกคนละเรื่องกัน */}
-                                <Button
-                                  size="sm" variant="quiet"
-                                  disabled={busy || Boolean(blocked)}
-                                  onClick={() => suggestAmount(row)}
-                                  title={blocked || "ราคาแพ็คเกจ × แพ็ค × เดือน"}
-                                >
-                                  ใช้ราคาแพ็คเกจ × แพ็ค × เดือน
-                                </Button>
-                                {blocked ? <span className={styles.cellSub}>{blocked}</span> : null}
-                              </>
-                            ) : <span className={styles.muted}>{NA}</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {zones.length === 0 && (
-                      <tr>
-                        <td colSpan={5}>
-                          <span className={styles.muted}>
-                            {query ? "ไม่มีโซนที่ตรงคำค้นในไซต์นี้" : "ไซต์นี้ยังไม่มีโซนในทะเบียน"}
-                          </span>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </TableScroll>
+              /* การ์ดไซต์ = ที่เลือกโซนอย่างเดียว (ติ๊ก = เพิ่มบรรทัดในตารางรายการข้างล่าง) — ไม่มีช่องกรอกในการ์ด */
+              <ul className={styles.zonePicks}>
+                {zones.map((zone) => {
+                  const row = rowByZone.get(zone.id)?.row || null;
+                  const inactive = zone.isActive === false;
+                  const warn = liveTermByZone.get(zone.id) || null;
+                  const problem = issueByZone.get(zone.id) || null;
+                  return (
+                    <li key={zone.id}>
+                      <label className={styles.zonePick}>
+                        {/* 🐞 รีวิว R10: `disabled={busy || inactive}` ปิด **การถอนติ๊ก** ของแถว
+                            ที่ใบผูกไว้อยู่แล้วด้วย · ระหว่างนั้น `bindTargetError` ฝั่ง server
+                            ตีกลับโซนที่ปิดใช้งานเสมอ และตัวติ๊กคือทางเดียวที่ถอดแถวออกจากใบได้
+                            ⇒ ใบที่ถูกตีกลับแล้ว TS ปิดโซนระหว่างนั้น แก้ต่อไม่ได้เลย และ
+                              ข้อความ "หรือเลือกโซนอื่น" ทำตามไม่ได้เพราะสลับโซนต้องถอนติ๊กก่อน
+                            ⇒ **ถอนติ๊กได้เสมอ · ติ๊กใหม่ไม่ได้** (จอบริการ IntakeWizard ทำแบบนี้อยู่แล้ว)
+                            (ปุ่มลบท้ายบรรทัดในตารางรายการก็ถอดได้อีกทาง) */}
+                        <input
+                          type="checkbox"
+                          checked={Boolean(row)}
+                          disabled={busy || (inactive && !row)}
+                          onChange={() => toggleZone(zone, site)}
+                          aria-label={`เลือกโซน ${zone.name}`}
+                        />
+                        <span className={styles.zonePickText}>
+                          <span>{zone.name}</span>
+                          <span className={styles.cellSub}>{zone.code}</span>
+                          {inactive ? (
+                            <span className={styles.cellSub}>
+                              {row
+                                ? "ปิดใช้งานในทะเบียน — ถอนติ๊กออกได้ หรือให้ TS เปิดใช้งานคืน"
+                                : "ปิดใช้งานในทะเบียน — เลือกไม่ได้"}
+                            </span>
+                          ) : null}
+                          {warn ? (
+                            <span className={styles.cellSub}>
+                              ⚠️ มีรอบขายของ {warn.orderNumber} อยู่แล้ว{warn.endDate ? ` (ถึง ${warn.endDate})` : ""}
+                            </span>
+                          ) : null}
+                          {problem ? <span className={styles.cellBad}>{problem}</span> : null}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+                {zones.length === 0 && (
+                  <li className={styles.muted}>
+                    {query ? "ไม่มีโซนที่ตรงคำค้นในไซต์นี้" : "ไซต์นี้ยังไม่มีโซนในทะเบียน"}
+                  </li>
+                )}
+              </ul>
             )}
           </CollapsibleCard>
         );
@@ -484,7 +425,8 @@ export default function WizardZonesStep({
 
       {/* 🔴 **N1** — ยังมีไซต์ที่อ่านโซนไม่สำเร็จ ⇒ โซนที่ใบผูกไว้แต่หาไม่เจอ **ยังตัดสินไม่ได้**
           ว่าหายจากทะเบียนจริงหรือแค่อยู่ในไซต์ที่อ่านไม่ถึง ⇒ ก้อนนี้มีแต่ปุ่มลองอ่านใหม่
-          **ห้ามมีปุ่มถอด** (ของเดิมโชว์ปุ่มถอด ⇒ ผู้คีย์ลบบรรทัดจริงเพราะเน็ตกระตุก) */}
+          **ห้ามมีปุ่มถอด** (ของเดิมโชว์ปุ่มถอด ⇒ ผู้คีย์ลบบรรทัดจริงเพราะเน็ตกระตุก) — ปุ่มลบท้ายบรรทัด
+          ของโซนพวกนี้ในตารางรายการก็ปิดด้วยเหตุเดียวกัน (`historicalZoneLines().removable`) */}
       {browser.unresolved.length > 0 ? (
         <StatusNotice
           tone="warning"
@@ -504,7 +446,7 @@ export default function WizardZonesStep({
           <p className={styles.hint}>
             ไซต์ที่ขึ้นป้ายแดงยังอ่านโซนไม่สำเร็จ ⇒ ยังบอกไม่ได้ว่าโซนพวกนี้หายไปจากทะเบียนจริง
             หรือแค่อยู่ในไซต์ที่อ่านไม่ถึง — อ่านทะเบียนได้ครบก่อนจึงจะมีปุ่มถอดออกจากใบให้
-            (ยอดรวมท้ายจอยังนับโซนพวกนี้อยู่)
+            (ยอดรวมท้ายตารางยังนับโซนพวกนี้อยู่)
           </p>
           <ul className={styles.warnList}>
             {browser.unresolved.map((zoneId) => (
@@ -518,8 +460,8 @@ export default function WizardZonesStep({
       ) : null}
 
       {/* 🔴 รีวิว R10: โซนที่ใบผูกไว้แต่ไม่มีอยู่ในทะเบียนที่โหลดมาเลย (ไซต์ถูกปิดใช้งาน · ไซต์ถูก
-          โอนไปลูกค้ารายอื่น · โซนถูกลบ) **ไม่ถูกเรนเดอร์สักแถว** แต่ยังถูกนับในยอดรวมและยังทำให้
-          พรีวิวตีกลับ ⇒ ต้องมีปุ่มถอดของตัวเอง ไม่งั้น `state.zones` ลดลงไม่ได้เลยไม่ว่าด้วยเหตุใด */}
+          โอนไปลูกค้ารายอื่น · โซนถูกลบ) ไม่มีการ์ดไซต์ให้ถอนติ๊ก แต่ยังถูกนับในยอดรวมและยังทำให้
+          พรีวิวตีกลับ ⇒ ต้องบอกเหตุพร้อมปุ่มถอดของตัวเอง (บรรทัดในตารางรายการก็มีปุ่มลบเช่นกัน) */}
       {browser.orphans.length > 0 ? (
         <StatusNotice
           tone="error"
@@ -528,7 +470,7 @@ export default function WizardZonesStep({
         >
           <p className={styles.hint}>
             อาจถูกปิดใช้งาน ถูกย้ายไปลูกค้ารายอื่น หรือถูกลบ — ให้ฝ่าย TS เปิด/คืนโซนให้
-            หรือถอดออกจากใบนี้ (ยอดรวมท้ายจอยังนับโซนพวกนี้อยู่)
+            หรือถอดออกจากใบนี้ (ยอดรวมท้ายตารางยังนับโซนพวกนี้อยู่)
           </p>
           <ul className={styles.warnList}>
             {browser.orphans.map((zoneId) => (
@@ -547,14 +489,99 @@ export default function WizardZonesStep({
         </StatusNotice>
       ) : null}
 
-      <div className={styles.sumBar}>
-        <span className={styles.sumItem}><b>{fmtNumber(rows.length)}</b> โซน</span>
-        <span className={styles.sumItem}><b>{fmtNumber(totalPacks)}</b> แพ็ค</span>
-        {/* ⭐ ยอดสามช่องนี้เคยขึ้นขีดตลอดรอบคีย์ (แผนคืนมาเฉพาะตอนไม่มี error) — รีวิว R7 */}
-        <span className={styles.sumItem}>ยอดก่อน VAT <b>{moneyView.ok ? fmtMoney(moneyView.subtotal) : NA}</b></span>
-        <span className={styles.sumItem}>VAT <b>{moneyView.ok ? fmtMoney(moneyView.vatAmount) : NA}</b></span>
-        <span className={`${styles.sumItem} ${styles.sumTotal}`}>รวม <b>{moneyView.ok ? fmtMoney(moneyView.totalAmount) : NA}</b></span>
-      </div>
+      {/* ⭐ ตารางรายการของใบ = ตารางของใบเสนอราคา (มติเจ้าของ 23/09): กล่อง · หัวคอลัมน์ · เซลล์ · ปุ่มลบ
+          · กล่องสรุปท้ายตาราง มาจาก QuoteLineCells ทั้งหมด · หนึ่งโซนที่ติ๊ก = หนึ่งบรรทัด
+          ⚠️ อยู่นอกการ์ดไซต์โดยเจตนา — ซ้อนในการ์ดแล้วกล่องแคบกว่า 900 ทุกจอ = พับเป็นการ์ดต่อบรรทัด (หัวไฟล์) */}
+      <h4 className={styles.section}>
+        รายการ
+        <span className={styles.sectionKind}>{fmtNumber(rows.length)} โซน · หนึ่งโซนหนึ่งบรรทัด</span>
+      </h4>
+      <QuoteLinesTable>
+        <thead>
+          <tr>
+            <QuoteLineIndexHead />
+            <QuoteLineHeadCells />
+            <QuoteLineActionsHead />
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map(({ row, index, point, note, name, removable, removeTitle }) => {
+            const product = row.productId ? productsById.get(row.productId) || null : null;
+            const amount = historicalZoneLineAmount(row);
+            const warn = liveTermByZone.get(row.zoneId) || null;
+            const problem = issueByIndex.get(index) || null;
+            return (
+              <tr key={row.key || row.zoneId} className="premium-row">
+                <QuoteLineIndexCell index={index} />
+                <QuoteLineItemCell>
+                  <QuoteLineProductPicker
+                    value={row.productId}
+                    onChange={(value) => pickRowPackage(row.zoneId, value)}
+                    name={name}
+                    options={packageOptions}
+                    disabled={busy}
+                    /* 🐞 รีวิว R9: ช่องนี้ไม่มี emptyText ⇒ ตกไปที่ "ไม่พบรายการ" ของตัวห่อ
+                       ซึ่งอ่านเป็นคำตอบ · และเมื่อทะเบียนโหลดไม่ขึ้น ค่าที่แถวถืออยู่จะเด้ง
+                       กลับเป็น placeholder ทั้งที่ใบยังผูกแพ็คเกจนั้นอยู่ ⇒ บอกทั้งสองอย่าง
+                       ⭐ placeholder/ช่องค้นเป็นค่าตั้งต้นของใบเสนอราคา (“เลือก FG / สินค้า...”) — รีวิว 23/09 */
+                    emptyText={productsError ? REGISTRY_LOAD_FAILED : undefined}
+                  />
+                  {row.productId || row.fgCode ? (
+                    <QuoteLineFgInfo line={row} product={product} />
+                  ) : null}
+                  {productsError && row.productId && !product ? (
+                    <span className={styles.cellSub}>
+                      บรรทัดนี้ผูกแพ็คเกจไว้แล้ว ({row.productId}) — ชื่อไม่ขึ้นเพราะทะเบียนสินค้าโหลดไม่สำเร็จ
+                    </span>
+                  ) : null}
+                  {/* ของเพิ่มสองอย่างของใบย้อนหลัง ใต้คำอธิบาย (ตรงเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย):
+                      ① โซนที่ผูก ② รอบบริการที่ขายไว้ (ช่องของบรรทัดใบสั่งขาย — ใบเสนอราคาไม่มี) */}
+                  <QuoteLineInstallationPoint point={point} note={note} />
+                  <QuoteLineServiceRounds
+                    value={row.rounds}
+                    onChange={(value) => patchRow(row.zoneId, { rounds: value })}
+                    disabled={busy}
+                    name={name}
+                    note="เว้นว่างได้ · TS ตั้งวันนัดเอง"
+                  />
+                  {warn ? (
+                    <span className={styles.cellSub}>
+                      ⚠️ โซนนี้มีรอบขายของ {warn.orderNumber} อยู่แล้ว{warn.endDate ? ` (ถึง ${warn.endDate})` : ""}
+                    </span>
+                  ) : null}
+                  {problem ? <span className={styles.cellBad}>{problem}</span> : null}
+                </QuoteLineItemCell>
+                <QuoteLineMoneyCells
+                  line={row}
+                  product={product}
+                  editable={!busy}
+                  onPatch={(patch) => patchRow(row.zoneId, patch)}
+                  name={name}
+                  driftNote={`ระบบคิดด้วยราคานี้ตอนกด “${HISTORICAL_NEXT_BUTTON_LABEL}”`}
+                  amountPending={!amount.known}
+                  registryPriceOnly
+                  qtyNote={amount.qtyNote}
+                />
+                {/* ปุ่มลบ = ถอนติ๊กโซน · โซนที่ยังตัดสินไม่ได้ (ทะเบียนอ่านไม่ครบ/กำลังโหลด) ลบไม่ได้ พร้อมเหตุใน title */}
+                <QuoteLineRemoveCell
+                  name={name}
+                  onRemove={() => removeRow(row.zoneId)}
+                  disabled={busy || !removable}
+                  title={removeTitle}
+                />
+              </tr>
+            );
+          })}
+          {!lines.length && (
+            <QuoteLinesEmptyRow colSpan={7}>ยังไม่มีรายการ — ติ๊กโซนในการ์ดไซต์ด้านบน (หนึ่งโซนหนึ่งบรรทัด)</QuoteLinesEmptyRow>
+          )}
+        </tbody>
+      </QuoteLinesTable>
+
+      {/* ⭐ กล่องสรุปท้ายตาราง = กล่องของใบเสนอราคา · ป้ายมาจาก `historicalTotalsView` ตัวเดียวกับขั้น ④
+          ⚠️ ไม่มีแถว "หัก ส่วนลด" (ใบย้อนหลังไม่มีส่วนลดท้ายใบ) และ VAT เป็นป้ายของตัวเลือกที่ขั้น ① ไม่ใช่ดรอปดาวน์
+          ⭐ ยอดเคยขึ้นขีดตลอดรอบคีย์ (แผนคืนมาเฉพาะตอนไม่มี error) — รีวิว R7 ⇒ คิดจากบรรทัดตั้งแต่ก่อนมีแผน */}
+      <QuoteLineTotals rows={totals.rows} grandTotal={totals.grandTotal} />
       {moneyView.ok ? null : <p className={styles.hint}>{moneyView.reason}</p>}
 
       <StatusNotice

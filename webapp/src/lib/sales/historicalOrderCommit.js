@@ -49,7 +49,7 @@ const coded = (code, extra = {}) => ({ error: workflowErrorMessage(code), code, 
  * ⇒ คืน `money` มาพร้อม 400 ของ **พรีวิว** · สถานะ 400 กับ `errors[]` คงรูปเดิมเป๊ะ (ผู้เรียก/เทสต์ยึดไว้)
  *
  * ⚠️ **ห้ามตอบยอดที่ยังคิดไม่ได้** — แผนตั้งบล็อกเงินเป็นศูนย์ทั้งก้อนเมื่อด่านเงินไม่ผ่าน
- *   (ยอดโซนไม่ใช่ตัวเลข · แพ็คไม่ใช่จำนวนเต็ม · ไม่ตอบโหมด VAT · ไม่มีโซนเลย) ⇒ ส่งศูนย์ไปให้จอ
+ *   (จำนวนของโซนว่าง/ไม่ใช่จำนวนเต็ม · แพ็คเกจยังไม่ตั้งราคาในทะเบียน · ยังไม่เลือก VAT · ไม่มีโซนเลย) ⇒ ส่งศูนย์ไปให้จอ
  *   = จอพิมพ์ "0 บาท" เป็นยอดใบ ซึ่งเป็นคำตอบผิด · ตัวแยกคือ `zeroValue` ของแผนเอง ซึ่งนิยามว่า
  *   `moneyOk && totalAmount === 0` ⇒ **ยอดเชื่อได้ ⟺ totalAmount > 0 หรือ zeroValue จริง**
  *   (อ่านจากผลของแผนตัวเดียวกัน ไม่ใช่คิดเงื่อนไขใหม่ที่นี่ — เทสต์ยิงแผนจริงตรึงข้อนี้ไว้) */
@@ -200,8 +200,10 @@ export async function commitHistoricalOrder({
     const lockedElsewhere = ownerLockedToSelf(user.role) && ownerId !== text(user.id);
     if (ownerId && !lockedElsewhere) owner = await validateOwner(supabase, ownerId, user, text(input.team) || null);
     if (productIds.length) {
+      /* ⭐ ราคา/หน่วยของบรรทัดอ่านจากที่นี่ที่เดียว (มติ 23/09 — ราคาของใบเสนอราคา = ราคาผลิตในทะเบียน)
+         ⚠️ ไม่ select "costPrice" = แผนตอบ "อ่านราคาไม่ได้" ทุกบรรทัด ไม่ใช่ราคา 0 (แยกสองอย่างนี้โดยเจตนา) */
       const { data, error } = await fetchInChunks(productIds, (chunk) => fetchAllResult(() => supabase.from('products')
-        .select('id, "fgCode", "productDescription", "saleUnit"')
+        .select('id, "fgCode", "productDescription", "saleUnit", "costPrice"')
         .in('id', chunk).order('id', { ascending: true })));
       if (error) throw error;
       products = data || [];

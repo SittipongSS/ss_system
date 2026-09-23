@@ -1462,6 +1462,8 @@ export default function SalesOrderDetailPage() {
             <QuotationReadOnlyLineItems
               lines={sortedLines}
               showServiceRounds
+              /* ใบย้อนหลัง: หนึ่งบรรทัด = หนึ่งโซน ⇒ บอกไซต์ · โซนใต้คำอธิบาย (บรรทัดของโซนต่าง ๆ หน้าตาเหมือนกันทุกช่อง) */
+              showInstallationPoint={historical}
               summaryRows={[
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
                 discountRow,

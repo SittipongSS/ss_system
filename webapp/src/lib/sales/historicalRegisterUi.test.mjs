@@ -347,17 +347,12 @@ test('⭐ ขั้นโซนมีช่องค้น (ปิด autoComple
     'ค่าตั้งต้นของการพับมาจากตัวตัดสิน · ที่ผู้ใช้กดเองทับได้');
 });
 
-/* 🐞 UAT 23/09: ปุ่มลัดยอดโซนกดได้ตลอดแล้วเงียบเมื่อคิดยอดไม่ได้ (กฎบ้าน: ติดด่าน = โชว์แล้วบอกเหตุ) */
-test('⭐ ปุ่มลัดยอดโซนติดด่านแล้วบอกเหตุจากตัวตัดสินตัวเดียวกับที่คิดยอด', () => {
+/* 🐞 มติเจ้าของ 23/09: ปุ่มลัด "ใช้ราคาแพ็คเกจ × แพ็ค × เดือน" คูณเดือนซ้ำบนจำนวนที่นับเดือนไปแล้ว
+   (1 ชุด × 12 เดือน = จำนวน 12 แล้วปุ่มเสนอ 3,500 × 12 × 12 = 504,000) ⇒ ถอดทั้งปุ่มและตัวคิดยอดของมัน */
+test('🚫 ขั้น ② ไม่มีปุ่มลัดยอดโซนจากเดือนอีกแล้ว', () => {
   const src = code(STEP_ZONES);
-  assert.match(src, /zoneAmountSuggestionNote\(\{ \.\.\.suggestInput\(row\), monthsPartial: Boolean\(spanNote\) \}\)/);
-  /* 🐞 รีวิว R9: ทะเบียนสินค้าโหลดไม่ขึ้น ⇒ ไม่มีราคาต่อหน่วย ⇒ เหตุที่ขึ้นคือ "แพ็คเกจนี้ไม่มี
-     ราคาต่อหน่วยในทะเบียน" ซึ่งเป็นคำตอบที่ผิด · เหตุจริงต้องชนะก่อน */
-  assert.match(src, /productsError && row\.productId && !productsById\.has\(row\.productId\)/,
-    'โหลดทะเบียนไม่ขึ้น ต้องพูดคนละคำกับ "แพ็คเกจนี้ไม่มีราคา"');
-  assert.match(src, /disabled=\{busy \|\| Boolean\(blocked\)\}/);
-  assert.match(src, /title=\{blocked \|\| "ราคาแพ็คเกจ × แพ็ค × เดือน"\}/);
-  assert.match(src, /\{blocked \? <span className=\{styles\.cellSub\}>\{blocked\}<\/span> : null\}/);
+  assert.doesNotMatch(src, /zoneAmountSuggestion|suggestAmount|suggestInput/);
+  assert.doesNotMatch(src, /ราคาแพ็คเกจ × แพ็ค × เดือน/);
 });
 
 /* 🐞 UAT 23/09 (ข้อมูลหาย): สลับลูกค้าล้างแค่โซน แล้วทิ้งงวดที่คิดจากโซนชุดนั้นไว้ — เงียบด้วย
@@ -371,7 +366,7 @@ test('⭐ เปลี่ยนลูกค้า/โหมด VAT ถามก�
   assert.match(src, /patch\(\{ \.\.\.next, \.\.\.reset\.patch \}\);/,
     'ล้างด้วย patch ก้อนที่ตัวตัดสินคืนมา ไม่ใช่รายการที่เขียนมือใน JSX');
   assert.match(src, /changeUpstream\("customer", \{ customerId: value \}\)/);
-  assert.match(src, /changeUpstream\("vat", next\)/);
+  assert.match(src, /changeUpstream\("vat", \{ vatRate: value \}\)/);
   assert.doesNotMatch(src, /zones: \[\], packageProductId: ""/,
     'ล้างมือใน JSX = ลืมงวดอีกครั้ง (บั๊กเดิม)');
 });
@@ -392,15 +387,18 @@ test('⭐ ช่องวันสัญญาไม่กลืนค่าท�
 /* ป้าย "N เดือน" เคยปัดเศษลง ⇒ ปุ่มลัดเสนอยอดขาดไปทั้งเดือน (ดู contractMonths)
    🐞 ยามตัวนี้เคยไล่แค่ขั้น ①–② ⇒ **ขั้น ④ หลุดออกมา** แล้วเรียก `contractMonths` ตรง ๆ อยู่
       ⇒ ช่วงที่ไม่ลงตัวเป็นเดือน: ขั้น ①–③ บอกว่ายังไม่รู้ แต่แผ่นตรวจพิมพ์ "N เดือน" ให้เลย
-      ⇒ ทุกขั้นที่ถามระยะสัญญาต้องอยู่ในลิสต์นี้ ไม่ใช่เฉพาะขั้นที่นึกออกตอนเขียนยาม */
+      ⇒ ทุกขั้นที่ถามระยะสัญญาต้องอยู่ในลิสต์นี้ ไม่ใช่เฉพาะขั้นที่นึกออกตอนเขียนยาม
+   ⭐ มติเจ้าของ 23/09: ขั้น ② **เลิกถามระยะสัญญา** — ยอดของโซนคือ จำนวน × ราคา/หน่วย แบบใบเสนอราคา
+      (ช่อง "ระยะสัญญา" มีไว้ให้ปุ่มลัด × เดือน ซึ่งถูกถอด) ⇒ ขั้น ② ต้องไม่มีตัวเดือนสักตัว */
 test('⭐ ป้ายระยะสัญญาอ่านจาก contractSpan — ช่วงที่ไม่ลงตัวเป็นเดือนต้องบอกเหตุ', () => {
-  for (const file of [STEP_CONTRACT, STEP_ZONES, STEP_MONEY, STEP_REVIEW]) {
+  for (const file of [STEP_CONTRACT, STEP_MONEY, STEP_REVIEW]) {
     const src = code(file);
     assert.match(src, /contractSpan\(/, file);
     assert.doesNotMatch(src, /contractMonths\(/, `${file} ต้องไม่เรียกตัวเดือนดิบ (ไม่มีช่องบอกเหตุ)`);
   }
   assert.match(code(STEP_CONTRACT), /\|\| spanNote/);
-  assert.match(code(STEP_ZONES), /\(spanNote \|\| "กรอกวันสัญญาในขั้น ① ก่อน"\)/);
+  assert.doesNotMatch(code(STEP_ZONES), /contractSpan\(|contractMonths\(|ระยะสัญญา<\/span>/,
+    'ขั้น ② ไม่คิดอะไรจากเดือนแล้ว — ป้ายเดือนข้างช่องจำนวนชวนให้คูณเดือนซ้ำ (บั๊ก 504,000)');
   assert.match(code(STEP_MONEY), /\{spanPartial/);
   assert.match(code(STEP_REVIEW), /months \? ` · \$\{fmtNumber\(months\)\} เดือน` : \(spanNote \? ` · \$\{spanNote\}` : ""\)/,
     'ขั้น ④ ต้องพูดเหตุเดียวกัน ไม่ใช่เว้นว่างเมื่อช่วงไม่ลงตัวเป็นเดือน');
@@ -582,8 +580,11 @@ test('⭐ N1: ก้อน "ยังอ่านทะเบียนไม่�
   assert.match(src, /for \(const row of browser\.rows\) if \(row\.error\) retrySite\(row\.site\);/,
     'ปุ่มนี้ต้องยิงขาโหลดรายไซต์ตัวเดิม ไม่ใช่รีโหลดหน้า');
   /* ปุ่มถอดยังต้องอยู่กับกองกำพร้าจริง (ทางตัน R10 ห้ามกลับมา) */
-  const orphanBlock = slice(src, 'browser.orphans.length > 0', 'styles.sumBar');
+  const orphanBlock = slice(src, 'browser.orphans.length > 0', '<QuoteLinesTable>');
   assert.match(orphanBlock, /ถอดโซนนี้ออกจากใบ/);
+  /* ปุ่มลบท้ายบรรทัดของตารางรายการคือทางถอดอีกทาง ⇒ ต้องเคารพกติกาเดียวกัน (ตัวตัดสิน historicalZoneLines) */
+  assert.match(src, /disabled=\{busy \|\| !removable\}/);
+  assert.match(src, /title=\{removeTitle\}/);
   assert.notEqual(typeof intakeForm.historicalZoneBrowser({}).unresolved, 'undefined',
     'historicalZoneBrowser ต้องคืน unresolved จริง ๆ');
 });
@@ -600,7 +601,7 @@ test('⭐ N4: ทางออกของ "โหลดทะเบียนไ�
   assert.match(wizard, /const reloadRegistries = useCallback\(/);
   assert.match(wizard, /onClick=\{reloadRegistries\}/);
   assert.match(wizard, /\}, \[registryRound\]\);/, 'เส้นทะเบียนลูกค้าต้องยิงใหม่ตามรอบ');
-  assert.match(wizard, /\}, \[customerId, registryRound\]\);/, 'เส้นทะเบียนสินค้าต้องยิงใหม่ตามรอบ');
+  assert.match(wizard, /\}, \[customerId, registryRound, productsRound\]\);/, 'เส้นทะเบียนสินค้าต้องยิงใหม่ตามรอบ');
 
   /* 🐞 ธง "กำลังโหลด…" ของปุ่มเคยล้างที่ `.finally()` ของ **เส้นลูกค้าเส้นเดียว** ⇒ เส้นสินค้าที่
      ตอบช้ากว่ายังค้างอยู่แต่ปุ่มกลับมากดได้ ⇒ กดรอบสองซ้อนรอบแรก แล้วอ่านว่า "กดแล้วไม่เกิดอะไร"
@@ -710,4 +711,122 @@ test('⭐ คำเตือนวันสัญญาของใบที่�
   assert.match(contract, /warnOf\("contract\.endDate"\)/);
   assert.match(contract, /noteOf\("contract\.endDate"\)\s*\n?\s*\|\| warnOf\("contract\.endDate"\)/,
     'error ต้องชนะคำเตือนในช่องเดียวกัน');
+});
+
+// ── 9. มติเจ้าของ 23/09: บรรทัดโซน = บรรทัดใบเสนอราคา ─────────────────────────────────────────
+//   "3500 x 1 ชุด x 12 เดือน · มันต้องไม่ควรแตกต่างจาก form ใบเสนอราคา เพื่อไม่ให้ USER สับสน"
+//   (ความเป็นชุดเดียวของเซลล์ถูกตรึงที่ components/salesPlanning/quoteLineCells.test.mjs · ที่นี่เฝ้าฝั่งฟอร์มคีย์ใบ)
+
+const LINE_ITEMS = 'components/salesPlanning/QuotationLineItems.js';
+
+test('⭐ 23/09: ขั้น ② ไม่เหลือ "แพ็ค" · ยอดที่พิมพ์เอง · รอบในสัญญา — ช่องเงินทุกช่องมาจากเซลล์กลาง', () => {
+  const src = code(STEP_ZONES);
+  assert.doesNotMatch(src, /lineAmount|\bpacks\b|grossAmount|totalPacks/);
+  assert.doesNotMatch(src, />แพ็ค<|>ยอด<|รอบในสัญญา|ก่อน VAT/);
+  assert.doesNotMatch(src, /import MoneyInput/, 'ช่องเงินทุกช่องมาจากเซลล์กลาง ไม่ใช่ช่องของขั้นนี้เอง');
+});
+
+/* 🐞 รีวิว/UAT 23/09 (วัดด้วย puppeteer): ตารางซ้อนในการ์ดไซต์ + คอลัมน์ "โซน" แทน "#" ⇒ กล่อง 726–766px
+   ทุกจอเดสก์ท็อป ⇒ ตารางพับเป็นการ์ดต่อบรรทัดตลอด (ใบเสนอราคาที่จอเดียวกันเป็นตาราง 964px) · พื้น 1040 ของ
+   `ZONE_LINES_MIN_WIDTH` ไม่เคยมีผล (container query ตัดสินก่อน) · คอมเมนต์ "ราว 1270 ที่จอ 1920 (ตาราง)" ผิด
+   ⇒ การ์ดไซต์เหลือหน้าที่เลือกโซน · บรรทัดทั้งใบอยู่ในตารางเดียว **นอกการ์ด** · แถบสรุปข้างขวายุบในขั้นนี้ */
+test('⭐ 23/09: ตารางรายการของขั้น ② อยู่นอกการ์ดไซต์ เป็นตารางเดียวแบบใบเสนอราคา (# · … · ปุ่มลบ)', () => {
+  const src = code(STEP_ZONES);
+  const cards = slice(src, '<CollapsibleCard', '</CollapsibleCard>');
+  assert.doesNotMatch(cards, /<QuoteLinesTable|<QuoteLineMoneyCells|<QuoteLineProductPicker/,
+    'การ์ดไซต์มีแต่ตัวติ๊กโซน — ตารางที่ซ้อนในการ์ดแคบกว่า 900 ทุกจอ');
+  assert.match(cards, /type="checkbox"/);
+  assert.equal((src.match(/<QuoteLinesTable\b/g) || []).length, 1, 'บรรทัดทั้งใบอยู่ในตารางเดียว');
+  assert.match(src, /<QuoteLinesTable>\s*\n\s*<thead>\s*\n\s*<tr>\s*\n\s*<QuoteLineIndexHead \/>\s*\n\s*<QuoteLineHeadCells \/>\s*\n\s*<QuoteLineActionsHead \/>/);
+  assert.doesNotMatch(src, /ZONE_LINES_MIN_WIDTH|zoneCol|ราว 1270/);
+  assert.doesNotMatch(read('components/salesPlanning/historicalWizard/HistoricalOrderWizard.module.css'), /\.zoneCol\b/);
+  /* บรรทัดของตารางมาจากตัวตัดสินที่ตรึงด้วยเทสต์ (ชื่อจุด · ชื่อบรรทัด · ลบได้ไหม) · ไม่ขึ้นกับคำค้น */
+  assert.match(src, /historicalZoneLines\(\{\s*\n?\s*zones: rows, sites, zonesBySite, siteErrors, ready: !loading && !loadError,/);
+  assert.match(src, /<QuoteLineIndexCell index=\{index\} \/>/);
+  assert.match(src, /<QuoteLineInstallationPoint point=\{point\} note=\{note\} \/>/);
+  assert.match(src, /<QuoteLineRemoveCell\s*\n\s*name=\{name\}\s*\n\s*onRemove=\{\(\) => removeRow\(row\.zoneId\)\}/);
+  assert.match(src, /<QuoteLinesEmptyRow colSpan=\{7\}>/);
+});
+
+test('⭐ 23/09: ขั้น ② และ ④ ยุบแถบสรุปข้างขวา — ตัวตัดสินตัวเดียว (historicalStepShowsAside)', () => {
+  const wizard = code(WIZARD);
+  assert.match(wizard, /<DetailPageLayout asideLabel="สรุปใบสั่งขายย้อนหลัง" aside=\{historicalStepShowsAside\(step\) \? aside : null\}>/);
+  assert.equal(intakeForm.historicalStepShowsAside('zones'), false);
+  assert.equal(intakeForm.historicalStepShowsAside('review'), false);
+  assert.equal(intakeForm.historicalStepShowsAside('contract'), true);
+});
+
+/* 🐞 รีวิว 23/09: หลังกด "ถัดไป" เซลล์ "จำนวนเงิน" กับยอดไซต์ยังใช้ราคาที่แถวถือไว้ ขณะที่ยอดใบใช้ราคาของแผน */
+test('⭐ 23/09: พรีวิวที่ผ่านเขียนราคา/หน่วยของแผนกลับลงแถว — ไม่ผ่าน patch · ราคาขยับ = อ่านทะเบียนสินค้าใหม่', () => {
+  const wizard = code(WIZARD);
+  const preview = slice(wizard, 'const runPreview = useCallback(', '}, [state, intakeKey, evidenceRefs]);');
+  assert.match(preview, /const synced = historicalZonesWithPlanPrices\(state\.zones, data\?\.plan \|\| null\);/);
+  assert.match(preview, /setState\(\(current\) => \(current\.zones === state\.zones \? \{ \.\.\.current, zones: synced \} : current\)\);/);
+  assert.doesNotMatch(preview, /\bpatch\(/, 'patch ปั๊ม dirty และทิ้งแผนที่เพิ่งตรวจผ่าน');
+  assert.match(preview, /dropCache\(PRODUCTS_PATH\(state\.customerId\)\)/,
+    'ลิสต์แคชเก่ากว่าทะเบียน ⇒ คำเตือนราคาขยับจะพูดราคาเก่าว่าเป็นราคาปัจจุบัน');
+  assert.match(wizard, /cachedFetchJson\(PRODUCTS_PATH\(customerId\)\)/, 'ตัวโหลดกับตัวทิ้งแคชต้องใช้คีย์เดียวกัน');
+  assert.match(wizard, /\}, \[customerId, registryRound, productsRound\]\);/);
+});
+
+test('⭐ 23/09: ทุกทางที่ใส่แพ็คเกจให้แถว ผ่าน quoteLineFromProduct ตัวเดียวกับช่องเลือกสินค้าของใบเสนอราคา', () => {
+  const src = code(STEP_ZONES);
+  assert.match(src, /import \{ quoteLineFromProduct \} from "@\/lib\/sales\/quoteLines"/);
+  assert.match(src, /return product \? quoteLineFromProduct\(row, product\) : \{ \.\.\.row, productId: productId \|\| "" \};/);
+  assert.match(slice(src, 'const toggleZone = ', '};'), /withPackage\(emptyHistoricalZone\(\{ zoneId: zone\.id, siteId: site\.id \}\), state\.packageProductId\)/);
+  assert.match(slice(src, 'const pickRowPackage = ', ')));'), /withPackage\(row, productId\)/);
+  assert.match(slice(src, 'const applyPackage = ', '});'), /withPackage\(row, productId\)/);
+  assert.match(code(LINE_ITEMS), /quoteLineFromProduct\(line, product\)/, 'ใบเสนอราคาเองก็ต้องเรียกตัวเดียวกัน');
+  assert.doesNotMatch(code(LINE_ITEMS), /fgLineNoteMeta|fgLineCategoryMeta/, 'ตรรกะเลือกสินค้าแบบก๊อปต้องไม่เหลือในใบเสนอราคา');
+});
+
+test('⭐ 23/09: ช่องเลือกแพ็คเกจรายแถวกรองด้วย lineIsServicePackage และบอกเหตุเมื่อทะเบียนโหลดไม่ขึ้น', () => {
+  const src = code(STEP_ZONES);
+  assert.match(src, /productSelectOptions\(\(products \|\| \[\]\)\.filter\(lineIsServicePackage\), undefined, \{ withCategory: true \}\)/);
+  const picker = slice(src, '<QuoteLineProductPicker', '/>');
+  assert.match(picker, /options=\{packageOptions\}/);
+  /* 🐞 รีวิว 23/09: placeholder "เลือกแพ็คเกจ" ต่างจากใบเสนอราคา ("เลือก FG / สินค้า...") ⇒ ใช้ค่าตั้งต้นของเซลล์กลาง */
+  assert.doesNotMatch(picker, /placeholder=|searchPlaceholder=/);
+  assert.match(picker, /emptyText=\{productsError \? REGISTRY_LOAD_FAILED : undefined\}/);
+  /* ของเพิ่มอย่างที่สองของใบย้อนหลัง — รอบบริการที่ขายไว้ (ช่องของบรรทัดใบสั่งขาย) */
+  assert.match(src, /<QuoteLineServiceRounds\s*\n\s*value=\{row\.rounds\}/);
+  assert.match(src, /onChange=\{\(value\) => patchRow\(row\.zoneId, \{ rounds: value \}\)\}/);
+});
+
+test('⭐ 23/09: ท้ายตารางของขั้น ② = กล่องสรุปของใบเสนอราคา · ยอดไซต์นับจากตัวตัดสินเดียวกับเซลล์ · เหตุที่ยังคิดไม่ได้ขึ้นใต้กล่อง', () => {
+  const src = code(STEP_ZONES);
+  assert.match(src, /const totals = historicalTotalsView\(moneyView, state\.vatRate\);/);
+  assert.match(src, /<QuoteLineTotals rows=\{totals\.rows\} grandTotal=\{totals\.grandTotal\} \/>/);
+  assert.match(src, /\{moneyView\.ok \? null : <p className=\{styles\.hint\}>\{moneyView\.reason\}<\/p>\}/);
+  assert.doesNotMatch(src, /styles\.sumBar|ก่อน VAT/, 'แถบยอดบรรทัดเดียวของเดิมถูกแทนด้วยกล่องของใบเสนอราคา');
+  assert.match(src, /\.map\(historicalZoneLineAmount\);/, 'ยอดไซต์ต้องนับจากตัวเดียวกับเซลล์ "จำนวนเงิน"');
+});
+
+test('⭐ 23/09: VAT ของขั้น ① = สองตัวเลือกของใบเสนอราคา — ไม่มีโหมด "ถอด VAT"', () => {
+  const src = code(STEP_CONTRACT);
+  assert.match(src, /const VAT_TILES = QUOTE_VAT_OPTIONS\.map\(\(option\) => \(\{/);
+  assert.match(src, /import \{ QUOTE_VAT_OPTIONS \} from "@\/lib\/salesPlanning"/);
+  assert.doesNotMatch(src, /amountsIncludeVat|gross7|net7|ถอด VAT/);
+  assert.match(src, /<span>ภาษีมูลค่าเพิ่ม <b className=\{styles\.req\}>\*<\/b><\/span>/, 'ป้ายเดียวกับช่องท้ายตารางใบเสนอราคา');
+  assert.match(src, /value=\{HISTORICAL_VAT_RATES\.includes\(state\.vatRate\) \? state\.vatRate : null\}/,
+    'ไม่มีค่าตั้งต้น — ใบที่ยังไม่เลือกไม่มีแผ่นไหนติด');
+  assert.deepEqual([...intakeForm.HISTORICAL_VAT_RATES], [0, 7]);
+});
+
+test('⭐ 23/09: ขั้น ④ โชว์รายการด้วยตารางฝั่งอ่านตัวเดียวกับหน้าใบสั่งขาย (ไซต์ · โซน และรอบใต้คำอธิบาย)', () => {
+  const review = code(STEP_REVIEW);
+  assert.match(review, /import \{ QuotationReadOnlyLineItems \} from "@\/components\/salesPlanning\/QuotationLineItems"/);
+  const table = slice(review, '<QuotationReadOnlyLineItems', '/>');
+  assert.match(table, /lines=\{lines\}/);
+  assert.match(table, /showServiceRounds/);
+  assert.match(table, /showInstallationPoint/);
+  /* กล่องสรุปท้ายตารางอ่านตัวเดียวกับขั้น ② ⇒ ป้ายสองขั้นพูดคำเดียวกันเสมอ */
+  assert.match(review, /const totals = historicalTotalsView\(\{ ok: true, \.\.\.header \}, header\.vatRate\);/);
+  assert.match(table, /summaryRows=\{totals\.rows\}/);
+  assert.match(table, /grandTotal=\{totals\.grandTotal\}/);
+  assert.doesNotMatch(review, /grossAmount|totalPacks|แพ็ค|ก่อน VAT/);
+  const ro = slice(code(LINE_ITEMS), 'export function QuotationReadOnlyLineItems', 'export default function');
+  assert.match(ro, /showInstallationPoint = false,/, 'ปิดเป็นค่าตั้งต้น — บรรทัดใบเสนอราคาไม่มีโซน');
+  assert.match(ro, /\{showInstallationPoint \? <QuoteLineInstallationPoint point=\{line\.installationPoint\} \/> : null\}/,
+    'ตัวเดียวกับบรรทัดโซนของฟอร์มคีย์ใบ (QuoteLineCells)');
 });

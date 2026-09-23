@@ -22,12 +22,16 @@ import {
   historicalFootNote, historicalInstallmentSum, historicalMoneyView, historicalNextBlock,
   historicalReviewStaleNotice, historicalSaveExit,
   historicalSaveFailureState, historicalStepIssueNotice,
-  historicalTeamField, historicalWizardRail, historicalZoneBrowser,
+  HISTORICAL_FULL_WIDTH_STEPS, HISTORICAL_LINE_MESSAGES, historicalStepShowsAside, historicalTotalsView,
+  historicalZoneLines, historicalZonesWithPlanPrices,
+  historicalTeamField, historicalWizardRail, historicalZoneBrowser, historicalZoneLineAmount,
   historicalWizardBody, historicalWizardLocalIssues, issuesForStep, newHistoricalIntakeKey,
   nextSaveStage, saveProgressAfter, splitRemaining, stepOfField, wizardStateFromOrder,
-  zoneAmountSuggestion, zoneAmountSuggestionNote,
 } from './historicalIntakeForm.js';
-import { CONTRACT_DATE_MESSAGES, splitHistoricalAmounts } from './historicalOrderPlan.js';
+import * as intakeForm from './historicalIntakeForm.js';
+import { CONTRACT_DATE_MESSAGES, planHistoricalServiceOrder } from './historicalOrderPlan.js';
+import { QUOTE_VAT_OPTIONS } from '../salesPlanning.js';
+import { quoteLineFromProduct } from './quoteLines.js';
 import { OPENING_INSTALLMENT_LABEL } from './historicalOrders.js';
 import { coverageIsContinuous } from './paymentCoverage.js';
 
@@ -40,11 +44,14 @@ function filledState(extra = {}) {
     customerId: 'CUS-1', ownerId: 'USR-AE', team: 'KA',
     contract: { ...CONTRACT },
     refs: { quote: '', express: '', invoice: 'IV-2601-0412' },
-    amountsIncludeVat: false,
     vatRate: 7,
     notes: '',
     packageProductId: 'PRD-1',
-    zones: [emptyHistoricalZone({ zoneId: 'ZN-1', siteId: 'ST-1', productId: 'PRD-1', packs: '6', rounds: '12', lineAmount: '86400' })],
+    /* แถวโซนแบบใบเสนอราคา — ราคา/หน่วยมาจากทะเบียนตอนเลือกแพ็คเกจ (quoteLineFromProduct) */
+    zones: [emptyHistoricalZone({
+      zoneId: 'ZN-1', siteId: 'ST-1', productId: 'PRD-1', fgCode: 'FG-SNS-02-001-0012', unit: 'แพ็คเกจ',
+      unitPrice: 1200, qty: '72', rounds: '12',
+    })],
     hasOpening: true,
     opening: { amount: '196452', coversTo: '2026-09-30', paidOn: '2026-09-22', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.' },
     openingEvidence: [],
@@ -75,10 +82,14 @@ test('🪤 ตัวประกอบสร้างคีย์เองจา
   state.zones[0].frozenAt = '2026-01-01T00:00:00Z';
   const body = historicalWizardBody(state, { intakeKey: 'KEY-1' });
   const json = JSON.stringify(body);
-  for (const forbidden of ['"key"', '"status"', '"frozenAt"', '"kind"', '"seq"']) {
+  /* `_lineKind` (ธงล็อกหน่วยของบรรทัดสินค้า — รีวิว 23/09) · unit/unitPrice/fgCode/description มีไว้โชว์อย่างเดียว */
+  for (const forbidden of ['"key"', '"status"', '"frozenAt"', '"kind"', '"seq"', '"_lineKind"', '"unitPrice"', '"unit"']) {
     assert.ok(!json.includes(forbidden), `body ต้องไม่มี ${forbidden}`);
   }
-  assert.deepEqual(Object.keys(body.zones[0]).sort(), ['lineAmount', 'packs', 'productId', 'rounds', 'zoneId']);
+  /* ⭐ บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · จำนวน · ส่วนลดรายการ (+ โซน · รอบ) — **ไม่ส่งราคา/ยอด/หน่วย**
+     (ราคาเป็นของทะเบียน server อ่านเอง · ยอดเป็นของสูตร) · ไม่มี packs/lineAmount ของรุ่น 0374 แล้ว */
+  assert.deepEqual(Object.keys(body.zones[0]).sort(), ['discountType', 'discountValue', 'productId', 'qty', 'rounds', 'zoneId']);
+  assert.ok(!('amountsIncludeVat' in body), 'โหมด VAT ที่สามถูกถอด (มติ 23/09)');
   assert.deepEqual(
     Object.keys(body.installments[0]).sort(),
     ['amount', 'coversFrom', 'coversTo', 'dueDate', 'label', 'note'],
@@ -121,15 +132,19 @@ const ORDER = {
   updatedAt: '2026-09-22T09:00:00Z', customerId: 'CUS-1', orderDate: '2026-01-01',
   notes: 'ย้ายจาก Express', historicalInvoiceRef: 'IV-2601-0412',
   rejectedByName: 'วรเชษฐ์ ทองดี', rejectedAt: '2026-09-22T08:00:00Z', rejectionReason: 'ยอดงวดยกมาไม่ตรงใบกำกับ',
-  metadata: { historicalIntake: { amountsIncludeVat: false, vatRate: 7 } },
+  metadata: { historicalIntake: { vatRate: 7 } },
   deal: { ownerId: 'USR-AE', team: 'KA' },
   serviceContract: {
     id: 'CTR-Habc', externalDocKind: 'customer_po', externalRef: 'PO-SPW-2026-0118',
     effectiveDate: '2026-01-01', expiryDate: '2026-12-31',
   },
   lines: [
-    { id: 'SOL-2', sortOrder: 1, serviceZoneId: 'ZN-2', productId: 'PRD-1', qty: 4, serviceRounds: 12, lineTotal: 53831.78, metadata: { grossAmount: 57600 } },
-    { id: 'SOL-1', sortOrder: 0, serviceZoneId: 'ZN-1', productId: 'PRD-1', qty: 6, serviceRounds: 12, lineTotal: 80747.66, metadata: { grossAmount: 86400 } },
+    { id: 'SOL-2', sortOrder: 1, serviceZoneId: 'ZN-2', productId: 'PRD-1', fgCode: 'FG-SNS-02-001-0012', description: 'แพ็คเกจ',
+      unit: 'แพ็คเกจ', qty: 48, unitPrice: 1200, discountType: 'amount', discountValue: 600, discountAmount: 600,
+      serviceRounds: 12, lineTotal: 57000, metadata: {} },
+    { id: 'SOL-1', sortOrder: 0, serviceZoneId: 'ZN-1', productId: 'PRD-1', fgCode: 'FG-SNS-02-001-0012', description: 'แพ็คเกจ',
+      unit: 'แพ็คเกจ', qty: 72, unitPrice: 1200, discountType: 'percent', discountValue: 5, discountAmount: 4320,
+      serviceRounds: 12, lineTotal: 82080, metadata: {} },
   ],
   installments: [
     { id: 'SOI-2', seq: 2, kind: 'regular', label: 'งวด ต.ค.–ธ.ค. 2026', amount: 65484, dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-12-31', note: null },
@@ -148,7 +163,7 @@ test('⭐ ใบที่โหลดมา → state ของฟอร์ม: 
   assert.equal(state.team, 'KA');
   assert.deepEqual(state.contract, CONTRACT);
   assert.equal(state.vatRate, 7);
-  assert.equal(state.amountsIncludeVat, false);
+  assert.ok(!('amountsIncludeVat' in state), 'ไม่มีโหมด VAT ที่สามให้โหลดกลับแล้ว');
   assert.deepEqual(state.zones.map((z) => z.zoneId), ['ZN-1', 'ZN-2'], 'เรียงตาม sortOrder ของบรรทัด');
   assert.equal(state.hasOpening, true);
   assert.equal(state.opening.coversTo, '2026-09-30');
@@ -156,18 +171,40 @@ test('⭐ ใบที่โหลดมา → state ของฟอร์ม: 
   assert.deepEqual(state.installments.map((r) => r.label), ['งวด ต.ค.–ธ.ค. 2026']);
 });
 
-/* 🐞 ยอดของโซนบนฟอร์มคือ **ยอดที่ผู้คีย์พิมพ์** (metadata.grossAmount) ไม่ใช่ `lineTotal` ซึ่งเป็น
-   ยอดก่อน VAT ที่ระบบคิดให้ — เติมกลับผิดช่องแปลว่ายอดหดลงทุกครั้งที่เปิดใบมาแก้ */
-test('🪤 ยอดของโซนเติมกลับจาก metadata.grossAmount ไม่ใช่ lineTotal (ยอดก่อน VAT)', () => {
+/* ⭐ มติ 23/09: บรรทัดโซนเติมกลับ **ช่องต่อช่องแบบใบเสนอราคา** — จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · รอบ
+   (ไม่มี "ยอดที่พิมพ์เอง" ให้เติมกลับแล้ว) · เติมผิดช่อง = เปิดใบมาแก้แล้วส่วนลดหาย/จำนวนเพี้ยนโดยจอดูปกติ */
+test('⭐ บรรทัดโซนเติมกลับจากบรรทัดใบ: จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด (ชนิด/ค่า) · รอบ', () => {
   const state = wizardStateFromOrder(ORDER);
-  assert.equal(state.zones[0].lineAmount, '86400');
-  assert.equal(state.zones[1].lineAmount, '57600');
+  const pick = (z) => [z.productId, z.fgCode, z.unit, z.unitPrice, z.qty, z.discountType, z.discountValue, z.rounds];
+  assert.deepEqual(pick(state.zones[0]), ['PRD-1', 'FG-SNS-02-001-0012', 'แพ็คเกจ', 1200, 72, 'percent', 5, '12']);
+  assert.deepEqual(pick(state.zones[1]), ['PRD-1', 'FG-SNS-02-001-0012', 'แพ็คเกจ', 1200, 48, 'amount', 600, '12']);
+  for (const zone of state.zones) {
+    assert.ok(!('packs' in zone) && !('lineAmount' in zone), 'ช่องของรุ่น 0374 ไม่มีแล้ว');
+  }
+  // บรรทัดรุ่น 0374 (ไม่มีส่วนลด · metadata.grossAmount) โหลดเป็นไม่ลด — grossAmount ไม่ถูกอ่าน
+  const old = wizardStateFromOrder({ ...ORDER, lines: [{ serviceZoneId: 'ZN-1', productId: 'PRD-1', qty: 12, unitPrice: 3500,
+    discountType: null, discountValue: 0, lineTotal: 42000, metadata: { grossAmount: 99999 } }] });
+  assert.deepEqual([old.zones[0].qty, old.zones[0].unitPrice, old.zones[0].discountType, old.zones[0].discountValue], [12, 3500, null, 0]);
+});
+
+/* 🪤 ใบที่คีย์ในโหมด "ราคารวม VAT แล้ว — ถอด VAT" ของรุ่นก่อน: โหมดนั้นถูกถอด และตัวเลือกที่เหลือไม่มีตัวไหน
+   แปลว่าเงินก้อนเดียวกัน ⇒ โหลดมาเป็น "ยังไม่เลือก" ให้ผู้คีย์เลือกใหม่เอง (ไม่เดาเป็น 7 ซึ่งบวก VAT ซ้ำ) */
+test('🪤 intake รุ่นก่อนแบบรวม VAT แล้ว → vatRate null (เลือกใหม่) · แบบอื่นโหลดตามอัตราเดิม', () => {
+  const at = (intake) => wizardStateFromOrder({ ...ORDER, metadata: { historicalIntake: intake } }).vatRate;
+  assert.equal(at({ amountsIncludeVat: true, vatRate: 7 }), null);
+  assert.equal(at({ amountsIncludeVat: false, vatRate: 7 }), 7, '"ไม่รวม VAT +7%" = "+ VAT 7% ท้ายใบ" เงินก้อนเดียวกัน');
+  assert.equal(at({ amountsIncludeVat: false, vatRate: 0 }), 0, '"ไม่มี VAT" = "รวม VAT แล้ว" เงินก้อนเดียวกัน');
+  assert.equal(at({ vatRate: 7 }), 7);
+  assert.equal(at({ vatRate: 0 }), 0);
+  assert.equal(at({ vatRate: 5 }), null);
+  assert.equal(at(undefined), null);
 });
 
 test('⭐ โหลดมาแล้วประกอบ body กลับได้ค่าชุดเดิม (สร้าง = แก้ ฟอร์มเดียวกันจริง)', () => {
   const body = historicalWizardBody(wizardStateFromOrder(ORDER), { expectedUpdatedAt: ORDER.updatedAt });
   assert.deepEqual(body.contract, { docKind: 'customer_po', ref: 'PO-SPW-2026-0118', startDate: '2026-01-01', endDate: '2026-12-31' });
-  assert.deepEqual(body.zones.map((z) => z.packs), ['6', '4']);
+  assert.deepEqual(body.zones.map((z) => [z.qty, z.discountType, z.discountValue, z.rounds]),
+    [['72', 'percent', '5', '12'], ['48', 'amount', '600', '12']]);
   assert.equal(body.opening.amount, '196452');
   assert.equal(body.opening.evidence.length, 1);
   assert.equal(body.installments[0].amount, '65484');
@@ -282,11 +319,21 @@ test('⭐ AE หลายทีมแต่ผู้คีย์ดูแลร�
   }), []);
 });
 
-test('VAT: ไม่เลือกอัตรา = ติด · เลือก "ไม่มี VAT" (0%) ไม่ต้องตอบว่ารวม VAT หรือยัง', () => {
+test('VAT: ไม่เลือก = ติด (ข้อความบอกสองตัวเลือกของใบเสนอราคา) · เลือก 0 หรือ 7 = ผ่าน ไม่มีคำถามโหมดที่สาม', () => {
   const base = { role: 'ac', userId: 'USR-AC', contractFileCount: 1, evidenceFileCount: 1 };
-  const none = historicalWizardLocalIssues(filledState({ vatRate: null, amountsIncludeVat: null }), base);
-  assert.ok(none.some((i) => i.field === 'vatRate'));
-  assert.deepEqual(historicalWizardLocalIssues(filledState({ vatRate: 0, amountsIncludeVat: false }), base), []);
+  const none = historicalWizardLocalIssues(filledState({ vatRate: null }), base);
+  const vat = none.find((i) => i.field === 'vatRate');
+  assert.ok(vat);
+  for (const option of QUOTE_VAT_OPTIONS) assert.ok(vat.message.includes(option.label), option.label);
+  assert.ok(!none.some((i) => i.field === 'amountsIncludeVat'));
+  assert.deepEqual(historicalWizardLocalIssues(filledState({ vatRate: 0 }), base), []);
+  assert.deepEqual(historicalWizardLocalIssues(filledState({ vatRate: 7 }), base), []);
+  /* 🪤 state ที่ยังพกโหมดรวม VAT ของรุ่นก่อน (ไทล์เก่า) — body ไม่ส่งมันแล้ว ⇒ ถ้าไม่ติดด่านจะกลายเป็น +7% เงียบ ๆ */
+  const legacy = historicalWizardLocalIssues(filledState({ vatRate: 7, amountsIncludeVat: true }), base);
+  assert.deepEqual(legacy.map((i) => i.field), ['vatRate']);
+  assert.match(legacy[0].message, /เลิกใช้แล้ว/);
+  assert.ok(!('amountsIncludeVat' in historicalWizardBody(filledState({ amountsIncludeVat: true }), {})));
+  assert.deepEqual(historicalWizardLocalIssues(filledState({ vatRate: 7, amountsIncludeVat: false }), base), []);
 });
 
 /* 🐞 UAT 23/09: ช่องวันสองช่องถูกล้อมด้วย min/max ⇒ `DateInput` กลืนค่าที่พิมพ์แล้วเด้งกลับเงียบ ๆ
@@ -380,7 +427,9 @@ test('🪤 ช่วงที่ไม่ลงตัวเป็นเดือ
   assert.equal(contractMonths(null, null), null);
 });
 
-test('⭐ contractSpan แยก "ยังกรอกไม่ครบ" ออกจาก "กรอกครบแล้วแต่ไม่ลงตัวเป็นเดือน"', () => {
+test('⭐ contractSpan แยก "ยังกรอกไม่ครบ" ออกจาก "กรอกครบแล้วแต่ไม่ลงตัวเป็นเดือน" · ช่วงไม่ลงตัวกระทบแค่การแบ่งงวด (มติ 23/09)', () => {
+  assert.equal(CONTRACT_PARTIAL_NOTE, 'ช่วงสัญญาไม่ลงตัวเป็นเดือน — แบ่งงวดชำระเอง (ขั้น ③)');
+  assert.doesNotMatch(CONTRACT_PARTIAL_NOTE, /ยอดต่อโซน/, 'ยอดของโซนไม่ได้คิดจากเดือนอีกแล้ว');
   assert.deepEqual(contractSpan('2026-01-01', '2026-12-31'), { months: 12, dated: true, partial: false, note: null });
   assert.deepEqual(contractSpan('2026-01-01', '2026-12-30'), {
     months: null, dated: true, partial: true, note: CONTRACT_PARTIAL_NOTE,
@@ -389,37 +438,11 @@ test('⭐ contractSpan แยก "ยังกรอกไม่ครบ" อ�
   assert.deepEqual(contractSpan('2026-12-31', '2026-01-01'), { months: null, dated: false, partial: false, note: null });
 });
 
-test('ปุ่มลัดยอดโซน = ราคาแพ็คเกจ × แพ็ค × เดือน (ม็อก 1,200 × 6 × 12) · ข้อมูลไม่ครบ = null', () => {
-  assert.equal(zoneAmountSuggestion({ unitPrice: 1200, packs: 6, months: 12 }), 86400);
-  assert.equal(zoneAmountSuggestion({ unitPrice: 1200, packs: 0, months: 12 }), null);
-  assert.equal(zoneAmountSuggestion({ unitPrice: 0, packs: 6, months: 12 }), null);
-  assert.equal(zoneAmountSuggestion({ unitPrice: 1200, packs: 6, months: null }), null);
-});
-
-/* 🔴 "คิดยอดไม่ได้" ต้องมีเหตุผลให้โชว์เสมอ — ของเดิมปุ่มกดได้แล้วเงียบเมื่อยอดเป็น null */
-test('⭐ ปุ่มลัดที่กดไม่ได้ต้องบอกเหตุ และเหตุมีเมื่อไรก็คือตอนที่คิดยอดไม่ได้เป๊ะ', () => {
-  assert.equal(zoneAmountSuggestionNote({ unitPrice: 1200, packs: 6, months: 12 }), null);
-  assert.match(zoneAmountSuggestionNote({ unitPrice: 1200, packs: 6, months: null }), /ขั้น ①/);
-  assert.equal(
-    zoneAmountSuggestionNote({ unitPrice: 1200, packs: 6, months: null, monthsPartial: true }),
-    CONTRACT_PARTIAL_NOTE,
-    'ช่วงไม่ลงตัวเป็นเดือน = คนละเหตุกับยังไม่กรอกวัน',
-  );
-  assert.match(zoneAmountSuggestionNote({ unitPrice: 1200, packs: 0, months: 12 }), /แพ็ค/);
-  assert.match(zoneAmountSuggestionNote({ unitPrice: null, packs: 6, months: 12 }), /ราคาต่อหน่วย/);
-
-  for (const unitPrice of [null, 0, 1200]) {
-    for (const packs of [null, 0, 2.5, 6]) {
-      for (const months of [null, 0, 12]) {
-        const input = { unitPrice, packs, months };
-        assert.equal(
-          zoneAmountSuggestionNote(input) === null,
-          zoneAmountSuggestion(input) !== null,
-          `เหตุกับยอดต้องสลับกันเสมอ: ${JSON.stringify(input)}`,
-        );
-      }
-    }
-  }
+/* 🐞 มติเจ้าของ 23/09: ปุ่มลัด "ราคาแพ็คเกจ × แพ็ค × เดือน" คูณเดือนซ้ำบนจำนวนที่นับเดือนไปแล้ว
+   (1 ชุด × 12 เดือน = จำนวน 12 แล้วปุ่มเสนอ 3,500 × 12 × 12 = 504,000) ⇒ ถอดทั้งตัวเสนอยอดและตัวบอกเหตุ */
+test('🚫 ไม่มีตัวเสนอยอดโซนจากเดือนอีกแล้ว', () => {
+  assert.equal(intakeForm.zoneAmountSuggestion, undefined);
+  assert.equal(intakeForm.zoneAmountSuggestionNote, undefined);
 });
 
 // ── ช่องต้นน้ำเปลี่ยน = ล้างปลายน้ำให้ครบ และถามก่อน ────────────────────────────────
@@ -743,7 +766,7 @@ test('⭐ ด่านของปุ่มบันทึก: ใบซ้ำ�
    = กด "ถัดไป" แล้ว **ไม่มีอะไรเกิดขึ้นบนจอเลย** (ซ้ำยังล้าง error ของ server ทิ้ง)
    ⇒ ตัวตัดสินต้องตอบได้ว่า "ติดข้อไหน · ช่องไหน · ข้อความว่าอะไร" ให้ผู้เรียกพาไปหา */
 test('🐞 "ถัดไป" ที่ติดด่าน ต้องบอกได้ว่าติดช่องไหน — ไม่ใช่คืนเงียบ ๆ', () => {
-  const state = { ...emptyHistoricalWizard(), amountsIncludeVat: false, vatRate: 7 };
+  const state = { ...emptyHistoricalWizard(), vatRate: 7 };
   const stuck = historicalNextBlock(historicalWizardLocalIssues(state, { contractFileCount: 0 }), 'contract');
   assert.equal(stuck.blocked, true);
   assert.equal(stuck.field, 'contract.file', 'ไฟล์เอกสารแทนสัญญาคือตัวบล็อกที่เหลืออยู่');
@@ -762,8 +785,9 @@ test('🐞 "ถัดไป" ที่ติดด่าน ต้องบอ�
 });
 
 test('⭐ จุดยึดของช่อง: คำถามเดียวกันบนจอ = id เดียวกัน · ช่องคนละใบ = คนละ id', () => {
-  assert.equal(historicalFieldAnchorId('vatRate'), historicalFieldAnchorId('amountsIncludeVat'),
-    'โหมด VAT กับอัตรา VAT อยู่บนแผ่นตัวเลือกใบเดียว — ชี้คนละ id = พาไปที่ช่องที่ไม่มีอยู่');
+  /* VAT ของใบคือแผ่นตัวเลือกใบเดียว — ทั้งข้อที่จอตรวจเองและข้อที่ server ตีกลับ (รวมโหมดรุ่นก่อน) ตกที่ vatRate */
+  assert.equal(historicalFieldAnchorId('vatRate'), 'hist-f-vat');
+  assert.equal(stepOfField('vatRate'), 'contract');
   assert.notEqual(historicalFieldAnchorId('contract.file'), historicalFieldAnchorId('opening.evidence'));
   assert.match(historicalFieldAnchorId('contract.file'), /^hist-f-[a-z0-9-]+$/);
   assert.equal(historicalFieldAnchorId(''), null);
@@ -783,18 +807,20 @@ test('🐞 ฟอร์มเปล่า: ต้องไม่มีขั้�
   }
 });
 
-test('⭐ รางสรุปของจริงตามม็อก ("4 โซน · 17 แพ็ค" · "ยกมา 1 งวด · ต้องเก็บ 1 งวด")', () => {
+test('⭐ รางสรุปของจริงตามม็อก ("4 โซน" · "ยกมา 1 งวด · ต้องเก็บ 1 งวด") — ไม่นับ "แพ็ค" แล้ว (มติ 23/09)', () => {
   const state = filledState({
     zones: [
-      emptyHistoricalZone({ zoneId: 'ZN-1', packs: '6' }),
-      emptyHistoricalZone({ zoneId: 'ZN-2', packs: '5' }),
-      emptyHistoricalZone({ zoneId: 'ZN-3', packs: '4' }),
-      emptyHistoricalZone({ zoneId: 'ZN-4', packs: '2' }),
+      emptyHistoricalZone({ zoneId: 'ZN-1', qty: '72' }),
+      emptyHistoricalZone({ zoneId: 'ZN-2', qty: '60' }),
+      emptyHistoricalZone({ zoneId: 'ZN-3', qty: '48' }),
+      emptyHistoricalZone({ zoneId: 'ZN-4', qty: '24' }),
     ],
   });
   const rail = historicalWizardRail(state, { step: 'zones', customerLabel: 'บจก. สยามพิวรรธน์' });
   const by = Object.fromEntries(rail.map((item) => [item.key, item]));
-  assert.equal(by.zones.summary, '4 โซน · 17 แพ็ค');
+  assert.equal(by.zones.summary, '4 โซน');
+  assert.equal(by.zones.label, 'ไซต์ โซน และรายการ');
+  assert.ok(rail.every((item) => !/แพ็ค/.test(`${item.label} ${item.summary}`)), 'ราง/สรุปไม่มีคำว่าแพ็ค');
   assert.equal(by.money.summary, 'ยกมา 1 งวด · ต้องเก็บ 1 งวด');
   assert.match(by.contract.summary, /สยามพิวรรธน์/);
   assert.match(by.contract.summary, /ใบสั่งซื้อ/, 'ชนิดเอกสารมาจากป้ายกลางของทะเบียนสัญญา');
@@ -833,16 +859,21 @@ test('🐞 แถบสรุปต้องขยับตั้งแต่ย
   assert.match(by.span, /12 เดือน/);
   assert.equal(by.files, 'แนบแล้ว 1 ไฟล์');
   assert.equal(by.refs, 'IV-2601-0412');
-  assert.equal(by.tax, 'ไม่รวม VAT · 7%');
-  assert.match(by.zones, /1 โซน · 6 แพ็ค/);
-  /* 🔴 เปลี่ยนโดยเจตนา 23/09 (รีวิว R7): ยอดก่อน VAT / VAT **ไม่ต้องรอแผน** อีกแล้ว — ของที่
-     คิดได้จากยอดโซน + โหมด VAT ที่อยู่บนฟอร์ม ระบบคิดให้ด้วย `splitHistoricalAmounts`
-     ก้อนเดียวกับ server · ขีดค้างทั้งรอบคีย์คือสิ่งที่ทำให้ขั้น ③ ใช้งานไม่ได้ */
+  assert.equal(by.tax, '+ VAT 7% ท้ายใบ', 'ป้ายตัวเลือกเดียวกับใบเสนอราคา');
+  assert.equal(by.zones, '1 โซน');
+  /* 🔴 เปลี่ยนโดยเจตนา 23/09 (รีวิว R7): ยอดรวมสินค้า/บริการ / VAT **ไม่ต้องรอแผน** — คิดจากบรรทัดบนฟอร์ม
+     (จำนวน × ราคา/หน่วย − ส่วนลด) ด้วย `historicalLinesMoney` ก้อนเดียวกับ server */
   assert.equal(by.subtotal, '฿86,400.00');
   assert.equal(by.vat, '฿6,048.00');
-  /* ยังไม่เลือกโหมด VAT = ยังคิดไม่ได้จริง ⇒ ว่างตามเดิม (ไม่เดาเป็น 0) */
+  const labels = Object.fromEntries(rows.map((row) => [row.id, row.label]));
+  assert.equal(labels.subtotal, 'ยอดรวมสินค้า/บริการ', 'ป้ายท้ายตารางของใบเสนอราคา');
+  assert.equal(labels.vat, 'ภาษีมูลค่าเพิ่ม');
+  assert.ok(rows.every((row) => !/แพ็ค/.test(`${row.label} ${row.value || ''}`)), 'แถบสรุปไม่มีคำว่าแพ็ค');
+  const vat0 = Object.fromEntries(historicalAsideRows(filledState({ vatRate: 0 }), {}).map((row) => [row.id, row.value]));
+  assert.equal(vat0.tax, 'รวม VAT แล้ว');
+  /* ยังไม่เลือก VAT = ยังคิดไม่ได้จริง ⇒ ว่างตามเดิม (ไม่เดาเป็น 0) */
   const noVat = Object.fromEntries(historicalAsideRows(
-    filledState({ hasOpening: false, installments: [], vatRate: null, amountsIncludeVat: null }), { plan: null },
+    filledState({ hasOpening: false, installments: [], vatRate: null }), { plan: null },
   ).map((row) => [row.id, row.value]));
   assert.equal(noVat.subtotal, null);
   assert.equal(noVat.vat, null);
@@ -949,23 +980,47 @@ test('⭐ R6: "ยังไม่รู้จำนวนไฟล์" ต้อ
 /* 🐞 **R7 — พรีวิวตอบ 400 โดยไม่คืน plan** ⇒ ขั้น ③ ไม่รู้ยอดใบตลอดรอบคีย์ใบใหม่ (ฟอร์มที่ยัง
    ไม่มีงวดสักงวดมี error `installments` เสมอ) ⇒ แผ่น "แบ่งงวดที่เหลืออัตโนมัติ" เทาทั้งชุด
    และผู้คีย์ต้องคิดยอดให้ตรง ±1 สตางค์โดยไม่เห็นยอดใบ */
-test('⭐ R7: ยอดใบคิดได้ตั้งแต่ยังไม่มีแผน — ตัวเลขตรงกับ splitHistoricalAmounts ของ server', () => {
+/* ⭐ ยอดที่ฟอร์มคิดเองต้องเท่ากับแผนของ server ทุกสตางค์ — ป้อนแผนตัวจริงด้วยสินค้าราคาเดียวกัน */
+const PRD = { id: 'PRD-1', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจรายเดือน', saleUnit: 'แพ็คเกจ', costPrice: 1200 };
+const planCtx = {
+  actor: { id: 'USR-AE', role: 'ae', team: 'KA', teams: ['KA'] },
+  customer: { id: 'CUS-1', name: 'บจก. สยามพิวรรธน์', approvalStatus: 'approved', isActive: true },
+  owner: { ok: true, ownerId: 'USR-AE', ownerName: 'AE', team: 'KA', teams: ['KA'] },
+  products: [PRD],
+  zones: [{ id: 'ZN-1', siteId: 'ST-1', name: 'ล็อบบี้', isActive: true }, { id: 'ZN-2', siteId: 'ST-1', name: 'ห้องน้ำ', isActive: true }],
+  sites: [{ id: 'ST-1', code: 'ST-1', name: 'สยามพารากอน', customerId: 'CUS-1', kind: 'customer', isActive: true }],
+  todayIso: '2026-09-23',
+};
+const zoneFromProduct = (defaults) => emptyHistoricalZone(quoteLineFromProduct(defaults, PRD));
+
+test('⭐ R7: ยอดใบคิดได้ตั้งแต่ยังไม่มีแผน — ตัวเลขเท่าแผนของ server ทุกสตางค์ (สูตรใบเสนอราคา)', () => {
+  for (const vatRate of [0, 7]) {
+    const state = filledState({
+      vatRate,
+      zones: [
+        zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '163', rounds: '12', discountType: 'percent', discountValue: '7.5' }),
+        zoneFromProduct({ zoneId: 'ZN-2', productId: 'PRD-1', qty: '54', rounds: '12', discountType: 'amount', discountValue: '100.555' }),
+      ],
+    });
+    const view = historicalMoneyView(state, null);
+    const plan = planHistoricalServiceOrder(historicalWizardBody(state, {}), planCtx);
+    assert.equal(view.ok, true);
+    assert.equal(view.source, 'local');
+    assert.deepEqual(
+      [view.subtotal, view.vatAmount, view.totalAmount],
+      [plan.header.subtotal, plan.header.vatAmount, plan.header.totalAmount],
+      'ต้องเป็นก้อนเดียวกับ server ไม่ใช่กฎชุดที่สอง',
+    );
+  }
   const state = filledState({
     zones: [
-      emptyHistoricalZone({ zoneId: 'ZN-1', productId: 'PRD-1', packs: '6', rounds: '12', lineAmount: '196452' }),
-      emptyHistoricalZone({ zoneId: 'ZN-2', productId: 'PRD-1', packs: '2', rounds: '12', lineAmount: '65484' }),
+      zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '163', rounds: '12' }),
+      zoneFromProduct({ zoneId: 'ZN-2', productId: 'PRD-1', qty: '41', rounds: '12' }),
     ],
-    amountsIncludeVat: true,
     vatRate: 7,
   });
   const view = historicalMoneyView(state, null);
-  const server = splitHistoricalAmounts([196452, 65484], { amountsIncludeVat: true, vatRate: 7 });
-  assert.equal(view.ok, true);
-  assert.equal(view.source, 'local');
-  assert.equal(view.totalAmount, server.totalAmount, 'ต้องเป็นก้อนเดียวกับ server ไม่ใช่กฎชุดที่สอง');
-  assert.equal(view.subtotal, server.subtotal);
-  assert.equal(view.vatAmount, server.vatAmount);
-  assert.equal(view.totalAmount, 261936, 'ชุดตัวเลขของม็อก');
+  assert.deepEqual([view.subtotal, view.vatAmount, view.totalAmount], [244800, 17136, 261936], 'ชุดตัวเลขของม็อก');
 
   /* มีแผนแล้วเชื่อแผนเสมอ (แผนคืนมาเฉพาะตอนไม่มี error ⇒ เงินผ่านด่านครบแล้ว) */
   const fromPlan = historicalMoneyView(state, { header: { subtotal: 1, vatAmount: 2, totalAmount: 3 } });
@@ -981,11 +1036,49 @@ test('⭐ R7: ยอดใบคิดได้ตั้งแต่ยังไ
     errors: [{ field: 'installments', message: 'ต้องมีงวดอย่างน้อย 1 งวด' }],
   });
   assert.equal(errored.source, 'local');
-  assert.equal(errored.totalAmount, 261936, 'ต้องถอยไปคิดเองจากยอดโซน ไม่ใช่เชื่อ 0 ของแผนที่ยังไม่ผ่าน');
+  assert.equal(errored.totalAmount, 261936, 'ต้องถอยไปคิดเองจากบรรทัดโซน ไม่ใช่เชื่อ 0 ของแผนที่ยังไม่ผ่าน');
+});
+
+/* ⭐ มติเจ้าของ 23/09: เซลล์ "จำนวนเงิน" ของขั้น ② (และยอดของแต่ละไซต์) ถามตัวตัดสินตัวเดียวกับยอดใบ
+   ⇒ แถวที่เซลล์พูดขีด = แถวที่ทำให้ยอดใบยังคิดไม่ได้ · ผลรวมของแถว = ยอดรวมสินค้า/บริการของใบ */
+test('⭐ historicalZoneLineAmount: 12 × 3,500 = 42,000 · ยังคิดไม่ได้ = ขีด ไม่ใช่ 0 · ผลรวมแถว = ยอดรวมสินค้า/บริการ', () => {
+  const OWNER_EXAMPLE = { ...PRD, id: 'PRD-35', costPrice: 3500 };
+  const row = emptyHistoricalZone(quoteLineFromProduct({ zoneId: 'ZN-1', qty: 12 }, OWNER_EXAMPLE));
+  assert.deepEqual(historicalZoneLineAmount(row), { known: true, lineTotal: 42000 }, '1 ชุด × 12 เดือน = จำนวน 12 × 3,500');
+  /* 🐞 รีวิว 23/09: จำนวน 1.5 / 0 เคยได้เหตุเดียวกับจำนวนว่าง ("เลือกแพ็คเกจ / ใส่จำนวน…ให้ครบ") ทั้งที่กรอกครบแล้ว —
+     เหตุจริงโผล่ตอนกด "ถัดไป" เท่านั้น ⇒ ว่าง = ยังไม่ได้ใส่ (lines) · ผิดรูป = ใส่แล้วใช้ไม่ได้ (qty + ข้อความใต้ช่อง) */
+  for (const [bad, reason] of [
+    [{ ...row, qty: '' }, 'lines'], [{ ...row, qty: 1.5 }, 'qty'], [{ ...row, qty: 0 }, 'qty'], [{ ...row, qty: -3 }, 'qty'],
+    [{ ...row, qty: 'abc' }, 'qty'], [{ ...row, productId: '' }, 'lines'],
+    [{ ...row, unitPrice: '' }, 'lines'], [{ ...row, unitPrice: 0 }, 'price'],
+  ]) {
+    assert.deepEqual(historicalZoneLineAmount(bad), {
+      known: false, lineTotal: null, reason, qtyNote: reason === 'qty' ? HISTORICAL_LINE_MESSAGES.qty : null,
+    }, JSON.stringify(bad));
+    /* ชุดเดียวกับที่ทำให้ยอดใบคิดไม่ได้ — เซลล์กับกล่องสรุปพูดตรงกัน และพูดเหตุเดียวกัน */
+    const view = historicalMoneyView(filledState({ zones: [bad] }), null);
+    assert.equal(view.ok, false, JSON.stringify(bad));
+    assert.equal(view.reason, HISTORICAL_MONEY_UNKNOWN[reason], JSON.stringify(bad));
+  }
+  assert.ok(HISTORICAL_MONEY_UNKNOWN.qty.startsWith(HISTORICAL_LINE_MESSAGES.qty),
+    'ข้อความเดียวกับที่แผนตีกลับตอนกด "ถัดไป" — ไม่ใช่คำที่สอง');
+  assert.equal(historicalZoneLineAmount({ ...row, discountType: 'percent', discountValue: 10 }).lineTotal, 37800);
+  assert.equal(historicalZoneLineAmount({ ...row, discountType: 'amount', discountValue: 50000 }).lineTotal, 0,
+    'ส่วนลดเกินยอดตัดที่ยอดบรรทัด (quoteLineNet) — ไม่ติดลบ');
+  assert.equal(historicalZoneLineAmount({ ...row, discountType: 'foo', discountValue: 10 }).lineTotal, 42000,
+    'ชนิดที่ไม่รู้จัก = ไม่ลด ตามที่บันทึกจริง');
+
+  const rows = [
+    zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '163', discountType: 'percent', discountValue: '7.5' }),
+    zoneFromProduct({ zoneId: 'ZN-2', productId: 'PRD-1', qty: '54', discountType: 'amount', discountValue: '100.555' }),
+  ];
+  const view = historicalMoneyView(filledState({ vatRate: 0, zones: rows }), null);
+  const sum = rows.reduce((total, one) => total + historicalZoneLineAmount(one).lineTotal, 0);
+  assert.equal(Math.round(sum * 100) / 100, view.subtotal);
 });
 
 test('⭐ R7: คิดยอดไม่ได้ ต้องตอบ null + เหตุที่จริง — ห้ามตอบ 0 (0 อ่านเหมือนใบยอด ฿0)', () => {
-  const noVat = historicalMoneyView(filledState({ vatRate: null, amountsIncludeVat: null }), null);
+  const noVat = historicalMoneyView(filledState({ vatRate: null }), null);
   assert.equal(noVat.ok, false);
   assert.equal(noVat.totalAmount, null, 'ห้ามเป็น 0 — ใบยอด 0 บาทเป็นสถานะจริงที่ซ่อนทั้งขั้น ③');
   assert.equal(noVat.reason, HISTORICAL_MONEY_UNKNOWN.vat);
@@ -993,15 +1086,34 @@ test('⭐ R7: คิดยอดไม่ได้ ต้องตอบ null + 
   const noZones = historicalMoneyView(filledState({ zones: [] }), null);
   assert.equal(noZones.reason, HISTORICAL_MONEY_UNKNOWN.zones);
 
-  const blankAmount = historicalMoneyView(filledState({
-    zones: [emptyHistoricalZone({ zoneId: 'ZN-1', productId: 'PRD-1', packs: '6', lineAmount: '' })],
+  /* จำนวนว่าง = ยังคิดไม่ได้ (ไม่ใช่ 1 แบบใบเสนอราคา) · ยังไม่เลือกแพ็คเกจ — "ใส่ให้ครบ" */
+  for (const zone of [
+    zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '' }),
+    emptyHistoricalZone({ zoneId: 'ZN-1', qty: '12' }),
+  ]) {
+    const blank = historicalMoneyView(filledState({ zones: [zone] }), null);
+    assert.equal(blank.ok, false);
+    assert.equal(blank.totalAmount, null);
+    assert.equal(blank.reason, HISTORICAL_MONEY_UNKNOWN.lines);
+  }
+  assert.match(HISTORICAL_MONEY_UNKNOWN.lines, /เลือกแพ็คเกจ \/ ใส่จำนวนของทุกโซน/);
+  /* 🐞 รีวิว 23/09: จำนวนไม่เต็ม/ศูนย์ ใส่ครบแล้ว — เหตุต้องเป็น "จำนวนต้องเป็นจำนวนเต็ม" ไม่ใช่ "ใส่ให้ครบ" */
+  for (const qty of ['2.5', '0']) {
+    const wrong = historicalMoneyView(filledState({ zones: [zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty })] }), null);
+    assert.equal(wrong.ok, false);
+    assert.equal(wrong.totalAmount, null);
+    assert.equal(wrong.reason, HISTORICAL_MONEY_UNKNOWN.qty, qty);
+  }
+  /* แพ็คเกจยังไม่ตั้งราคา = คิดไม่ได้ พร้อมเหตุของมันเอง (ไม่ใช่ยอด 0) */
+  const unpriced = historicalMoneyView(filledState({
+    zones: [emptyHistoricalZone(quoteLineFromProduct({ zoneId: 'ZN-1', qty: '12' }, { ...PRD, costPrice: null }))],
   }), null);
-  assert.equal(blankAmount.ok, false);
-  assert.equal(blankAmount.reason, HISTORICAL_MONEY_UNKNOWN.amounts);
+  assert.equal(unpriced.ok, false);
+  assert.equal(unpriced.reason, HISTORICAL_MONEY_UNKNOWN.price);
 
-  /* ใบยอด 0 บาทของจริง (โซนยอด 0) ยังต้องตอบได้ว่า "รู้แล้วว่าเป็น 0" */
+  /* ใบยอด 0 บาทของจริง (ส่วนลดเต็มจำนวน) ยังต้องตอบได้ว่า "รู้แล้วว่าเป็น 0" */
   const zero = historicalMoneyView(filledState({
-    zones: [emptyHistoricalZone({ zoneId: 'ZN-1', productId: 'PRD-1', packs: '1', lineAmount: '0' })],
+    zones: [zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '1', discountType: 'percent', discountValue: 100 })],
   }), null);
   assert.equal(zero.ok, true);
   assert.equal(zero.totalAmount, 0);
@@ -1142,4 +1254,110 @@ test('⭐ N1: ไซต์เดียวอ่านทะเบียนไม
   assert.deepEqual(loading.orphans, []);
   assert.deepEqual(loading.unresolved, []);
   assert.deepEqual(historicalZoneBrowser({}).unresolved, []);
+});
+
+// ── รีวิว/UAT 23/09 รอบ "ไม่ต่างจากใบเสนอราคา": แถวใหม่ · ความกว้าง · ราคาของแผน · กล่องสรุป · บรรทัดของตาราง ──
+
+/* 🐞 แถวที่ติ๊กโซนแล้วแต่ยังไม่เลือกแพ็คเกจ (ทางปกติเมื่อ "ใช้แพ็คเกจเดียวกันทุกโซน" ยังว่าง) ไม่มี `_lineKind`
+   ⇒ เซลล์เปิดดรอปดาวน์หน่วยให้เลือก ทั้งที่บรรทัดสินค้าใหม่ของใบเสนอราคาล็อกเป็น "หน่วย: ชิ้น"
+   และหน่วยที่เลือก (เช่น "ชุด") ถูกแพ็คเกจทับทิ้งเงียบ ๆ · โหลดใบมาแก้ก็ต้องได้แถวรูปเดียวกัน */
+test('⭐ แถวโซน = บรรทัดสินค้าใหม่ของใบเสนอราคา (`_lineKind: product` · หน่วยตั้งต้น) ทั้งตอนติ๊กและตอนโหลดใบมาแก้', () => {
+  const fresh = emptyHistoricalZone({ zoneId: 'ZN-1', siteId: 'ST-1' });
+  assert.equal(fresh._lineKind, 'product');
+  assert.equal(fresh.unit, 'ชิ้น', 'หน่วยตั้งต้นของบรรทัดสินค้าใหม่ในใบเสนอราคา (DEFAULT_SALE_UNIT)');
+  assert.equal(fresh.unitPrice, '');
+  assert.equal(fresh.qty, '', 'จำนวนเริ่มที่ว่าง — ข้อยกเว้นที่ตั้งใจ (ว่าง = ตีกลับ ไม่ใช่ 1)');
+  const hydrated = wizardStateFromOrder({
+    id: 'SO-1', status: 'draft',
+    lines: [{ serviceZoneId: 'ZN-1', productId: 'PRD-1', fgCode: 'FG-1', unit: 'แพ็คเกจ', unitPrice: 3500, qty: 12, sortOrder: 0 }],
+  });
+  assert.equal(hydrated.zones[0]._lineKind, 'product');
+  assert.equal(hydrated.zones[0].unit, 'แพ็คเกจ');
+});
+
+/* 🐞 วัดจริง 23/09: รางขั้น + แถบสรุป 330px ⇒ เนื้อขั้น 816px (จอ 1440) · 866px (จอ 1920) — ตารางรายการของใบเสนอราคา
+   พับเป็นการ์ดต่อบรรทัดเมื่อกล่องแคบกว่า 900 ⇒ ขั้นที่วาดตารางรายการ (② แก้ไข · ④ ฝั่งอ่าน) ต้องไม่มีแถบสรุป */
+test('⭐ ขั้น ② และ ④ ไม่มีแถบสรุปข้างขวา — ตารางรายการได้กว้างพอเป็นตารางแบบใบเสนอราคา', () => {
+  assert.deepEqual([...HISTORICAL_FULL_WIDTH_STEPS], ['zones', 'review']);
+  assert.deepEqual(HISTORICAL_WIZARD_STEP_ORDER.map((step) => [step, historicalStepShowsAside(step)]), [
+    ['contract', true], ['zones', false], ['money', true], ['review', false],
+  ]);
+});
+
+/* 🐞 แผนอ่านราคาจากทะเบียนตอนกดตรวจ แต่แถวถือราคาที่เติมตอนเลือกแพ็คเกจ (ลิสต์แคช 2 นาที · ใบที่ถูกตีกลับ
+   แล้วเปิดใหม่) ⇒ เซลล์ "จำนวนเงิน" กับยอดไซต์พูดราคาเก่า ขณะที่ยอดใบ/ขั้น ③/④ พูดราคาของแผน = จอเดียวสองตัวเลข */
+test('⭐ ราคา/หน่วยของแผนไหลกลับลงแถวบนจอ — เซลล์ ยอดไซต์ และยอดใบพูดเลขเดียวกันหลังตรวจ', () => {
+  const stale = filledState({
+    vatRate: 7,
+    zones: [
+      emptyHistoricalZone({ ...zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '12' }), unitPrice: 1000 }),
+      emptyHistoricalZone({ ...zoneFromProduct({ zoneId: 'ZN-2', productId: 'PRD-1', qty: '5' }), unit: 'ชิ้น' }),
+    ],
+    installments: [], hasOpening: false,
+  });
+  const plan = planHistoricalServiceOrder(historicalWizardBody(stale, {}), planCtx);
+  const cleanPlan = { ...plan, errors: [] };   // เส้นพรีวิวคืนแผนเฉพาะตอนไม่มี error
+  assert.notEqual(historicalZoneLineAmount(stale.zones[0]).lineTotal, cleanPlan.lines[0].lineTotal, 'ก่อนแก้: เซลล์พูดราคาเก่า');
+
+  const synced = historicalZonesWithPlanPrices(stale.zones, cleanPlan);
+  assert.notEqual(synced, stale.zones);
+  assert.deepEqual(synced.map((row) => [row.unit, row.unitPrice]), [['แพ็คเกจ', 1200], ['แพ็คเกจ', 1200]]);
+  assert.deepEqual(synced.map((row) => [row.key, row.qty, row.zoneId]), stale.zones.map((row) => [row.key, row.qty, row.zoneId]),
+    'แตะแค่หน่วยกับราคา — ช่องที่ผู้คีย์กรอกไม่ขยับ');
+  const cells = synced.map((row) => historicalZoneLineAmount(row).lineTotal);
+  assert.deepEqual(cells, cleanPlan.lines.map((line) => line.lineTotal), 'เซลล์ "จำนวนเงิน" = บรรทัดของแผน');
+  assert.equal(cells.reduce((sum, value) => sum + value, 0), cleanPlan.header.subtotal, 'ผลรวมเซลล์ = ยอดรวมสินค้า/บริการของแผน');
+
+  /* ไม่มีอะไรเปลี่ยน = อ้างอิงเดิม (ผู้เรียกใช้ !== ตัดสินว่าจะตั้ง state/อ่านทะเบียนใหม่ไหม) */
+  assert.equal(historicalZonesWithPlanPrices(synced, cleanPlan), synced);
+  /* แผนที่ยังมี error ไม่ถูกเชื่อ · ไม่มีแผน · แพ็คเกจไม่ตรงกับบรรทัดของแผน (ผู้คีย์เปลี่ยนไปแล้ว) = ไม่แตะ */
+  assert.equal(historicalZonesWithPlanPrices(stale.zones, { ...cleanPlan, errors: [{ field: 'x', message: 'y' }] }), stale.zones);
+  assert.equal(historicalZonesWithPlanPrices(stale.zones, null), stale.zones);
+  const switched = [{ ...stale.zones[0], productId: 'PRD-9' }];
+  assert.equal(historicalZonesWithPlanPrices(switched, cleanPlan), switched);
+  /* ราคาในแผนเป็นศูนย์ (ยังไม่ตั้งราคา) ไม่เขียนทับ — แผนแบบนั้นมี error อยู่แล้ว แต่ตัวนี้ไม่ฝากความถูกไว้กับข้อนั้น */
+  const unpriced = { ...cleanPlan, lines: cleanPlan.lines.map((line) => ({ ...line, unitPrice: 0 })) };
+  assert.equal(historicalZonesWithPlanPrices(stale.zones, unpriced), stale.zones);
+});
+
+/* ⭐ กล่องสรุปท้ายตารางของขั้น ② และ ④ อ่านตัวเดียวกัน — ป้ายของใบเสนอราคา · ยังไม่รู้ยอด = ขีด (ห้าม 0.00) */
+test('⭐ historicalTotalsView: ป้ายท้ายตารางของใบเสนอราคา · VAT บอกตัวเลือกของใบ · ไม่รู้ยอด = ขีด', () => {
+  const known = historicalTotalsView({ ok: true, subtotal: 42000, vatAmount: 2940, totalAmount: 44940 }, 7);
+  assert.deepEqual(known.rows.map((row) => row.id), ['subtotal', 'vat']);
+  assert.equal(known.rows[0].label, 'ยอดรวมสินค้า/บริการ');
+  assert.equal(known.rows[1].label, `ภาษีมูลค่าเพิ่ม (${QUOTE_VAT_OPTIONS.find((o) => o.value === 7).label})`);
+  assert.match(known.rows[0].value, /42,000\.00/);
+  assert.match(known.rows[1].value, /2,940\.00/);
+  assert.match(known.grandTotal, /44,940\.00/);
+  const included = historicalTotalsView({ ok: true, subtotal: 42000, vatAmount: 0, totalAmount: 42000 }, 0);
+  assert.equal(included.rows[1].label, `ภาษีมูลค่าเพิ่ม (${QUOTE_VAT_OPTIONS.find((o) => o.value === 0).label})`);
+  assert.equal(included.rows[1].value, null, 'รวม VAT แล้ว = แถว VAT เป็นขีด เหมือนท้ายตารางใบเสนอราคา');
+  const unknown = historicalTotalsView({ ok: false, subtotal: null, vatAmount: null, totalAmount: null }, null);
+  assert.equal(unknown.rows[1].label, 'ภาษีมูลค่าเพิ่ม', 'ยังไม่เลือก VAT = ไม่เดาตัวเลือก');
+  assert.deepEqual(unknown.rows.map((row) => row.value), [null, null]);
+  assert.equal(unknown.grandTotal, '—');
+});
+
+/* ⭐ บรรทัดของตารางรายการ (แยกจากการ์ดไซต์) — ชื่อจุดแบบที่แผนเขียนลงบรรทัด · ปุ่มลบ = ถอนติ๊ก
+   🔴 N1: ยังอ่านทะเบียนไม่ครบ/กำลังโหลด = ลบไม่ได้ (ยังไม่รู้ว่าหายจริงไหม) · กำพร้าจริง = ลบได้ (R10) */
+test('⭐ historicalZoneLines: ไซต์ · โซนใต้คำอธิบาย · ลำดับตามใบ · ปุ่มลบปิดเฉพาะตอนยังตัดสินไม่ได้', () => {
+  const sites = [{ id: 'ST-1', code: 'ST-1', name: 'สยามพารากอน' }, { id: 'ST-2', code: 'ST-2', name: 'เซ็นทรัลเวิลด์' }];
+  const zonesBySite = { 'ST-1': [{ id: 'ZN-1', name: 'ล็อบบี้' }], 'ST-2': [{ id: 'ZN-2', name: 'ห้องน้ำ' }] };
+  const zones = [emptyHistoricalZone({ zoneId: 'ZN-2' }), emptyHistoricalZone({ zoneId: 'ZN-1' }), emptyHistoricalZone({ zoneId: 'ZN-X' })];
+
+  const ok = historicalZoneLines({ zones, sites, zonesBySite, ready: true });
+  assert.deepEqual(ok.map((line) => line.index), [0, 1, 2]);
+  assert.deepEqual(ok.map((line) => line.point), ['ST-2 เซ็นทรัลเวิลด์ · ห้องน้ำ', 'ST-1 สยามพารากอน · ล็อบบี้', null]);
+  assert.deepEqual(ok.map((line) => line.name), ['รายการของโซน ห้องน้ำ', 'รายการของโซน ล็อบบี้', 'รายการ 3']);
+  assert.match(ok[2].note, /ZN-X — ไม่อยู่ในทะเบียนที่โหลดมา/);
+  assert.deepEqual(ok.map((line) => line.removable), [true, true, true], 'กำพร้าจริงถอดได้ (R10)');
+
+  const blind = historicalZoneLines({ zones, sites, zonesBySite, siteErrors: { 'ST-2': 'พัง' }, ready: true });
+  assert.equal(blind[2].removable, false, 'N1: ยังมีไซต์ที่อ่านไม่ได้ = ห้ามลบบรรทัดที่หาไม่เจอ');
+  assert.match(blind[2].removeTitle, /ลองอ่านไซต์ที่พังอีกครั้ง/);
+  assert.equal(blind[0].removable, true, 'บรรทัดที่หาเจอแล้วถอดได้ตามปกติ');
+
+  const loading = historicalZoneLines({ zones, sites: [], zonesBySite: {}, ready: false });
+  assert.deepEqual(loading.map((line) => line.removable), [false, false, false]);
+  assert.ok(loading.every((line) => line.note === 'กำลังโหลดทะเบียนไซต์…'));
 });

@@ -29,7 +29,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import { apiJson } from "@/lib/apiFetch";
-import { cachedFetchJson } from "@/lib/apiCache";
+import { cachedFetchJson, dropCache } from "@/lib/apiCache";
 import { businessDate } from "@/lib/businessDate";
 import { notifyToast } from "@/lib/feedback";
 import { fmtMoney, NA } from "@/lib/format";
@@ -51,9 +51,9 @@ import {
   firstStepWithIssues, historicalAsideRows, historicalContractDateWarnings, historicalContractFileCount,
   historicalDuplicateGate, historicalExitActions,
   historicalFieldAnchorId, historicalFootNote, historicalMoneyView, historicalNextBlock, historicalSaveExit,
-  historicalSaveFailureState, historicalTeamField, historicalWizardBody, historicalWizardLocalIssues,
-  historicalWizardRail, issuesForStep, newHistoricalIntakeKey, nextSaveStage, saveProgressAfter,
-  wizardStateFromOrder,
+  historicalSaveFailureState, historicalStepShowsAside, historicalTeamField, historicalWizardBody,
+  historicalWizardLocalIssues, historicalWizardRail, historicalZonesWithPlanPrices, issuesForStep,
+  newHistoricalIntakeKey, nextSaveStage, saveProgressAfter, wizardStateFromOrder,
 } from "@/lib/sales/historicalIntakeForm";
 import { uploadContractFiles, uploadOpeningEvidence } from "@/lib/sales/historicalWizardUploads";
 import WizardContractStep from "./WizardContractStep";
@@ -66,6 +66,9 @@ const REGISTER_PATH = "/sa/sales-orders";
 const ORDER_PATH = (id) => `/sa/sales-orders/${id}`;
 const HISTORICAL_PATH = "/api/sales-planning/sales-orders/historical";
 const SAVE_ERROR = "บันทึกใบสั่งขายย้อนหลังไม่สำเร็จ";
+/* FG ของนิติบุคคลของลูกค้า — `taxSiblings=1` รวมใบอื่นที่เลขผู้เสียภาษีเดียวกัน (กติกาเดียวกับหน้าออกใบเสนอราคา)
+   ⚠️ ที่เดียวของ URL นี้ — ตัวโหลดกับตัวทิ้งแคช (`dropCache`) ต้องชี้คีย์เดียวกันเป๊ะ */
+const PRODUCTS_PATH = (customerId) => `/api/products?customerId=${encodeURIComponent(customerId)}&taxSiblings=1`;
 
 /* คีย์ของไฟล์ในตะกร้า = ตัวเดียวกับที่ `PendingFiles` ใช้ ⇒ อัปแล้วจำได้ว่าใบไหนอัปไปแล้ว */
 const fileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
@@ -209,21 +212,22 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     return () => { alive = false; };
   }, [registryRound]);
 
-  /* FG ของนิติบุคคลของลูกค้าที่เลือก — `taxSiblings=1` รวมใบอื่นที่เลขผู้เสียภาษีเดียวกัน
-     (กติกาเดียวกับหน้าออกใบเสนอราคา) */
+  /* FG ของนิติบุคคลของลูกค้าที่เลือก (`PRODUCTS_PATH`)
+     ⭐ `productsRound` = อ่านใหม่หลังพรีวิวพบว่าราคาในทะเบียนขยับจากลิสต์ที่แคชไว้ (ดู `runPreview`) */
   const customerId = state.customerId;
+  const [productsRound, setProductsRound] = useState(0);
   useEffect(() => {
     if (!customerId) { setProducts([]); setProductsError(""); setProductsBusy(false); return undefined; }
     let alive = true;
     setProductsBusy(true);
-    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}&taxSiblings=1`)
+    cachedFetchJson(PRODUCTS_PATH(customerId))
       .then((rows) => { if (alive) { setProducts(Array.isArray(rows) ? rows : []); setProductsError(""); } })
       .catch((loadError) => {
         if (alive) { setProducts([]); setProductsError(loadError?.message || "โหลดทะเบียนสินค้าไม่สำเร็จ"); }
       })
       .finally(() => { if (alive) setProductsBusy(false); });
     return () => { alive = false; };
-  }, [customerId, registryRound]);
+  }, [customerId, registryRound, productsRound]);
 
   const customerOptions = useMemo(() => customerSelectOptions(customers), [customers]);
   const ownerOptions = useMemo(() => owners.map((person) => ({
@@ -372,6 +376,19 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         ? await apiJson(`${HISTORICAL_PATH}/${state.orderId}`, { method: "PATCH", json: body, fallbackError: "ตรวจข้อมูลไม่สำเร็จ" })
         : await apiJson(HISTORICAL_PATH, { method: "POST", json: body, fallbackError: "ตรวจข้อมูลไม่สำเร็จ" });
       setPlan(data?.plan || null);
+      /* ⭐ ราคา/หน่วยของแผน (อ่านจากทะเบียนตอนตรวจ) → แถวบนจอ (รีวิว 23/09) — ไม่งั้นเซลล์ "จำนวนเงิน" กับยอดไซต์
+         พูดราคาที่เติมตอนเลือกแพ็คเกจ (ลิสต์แคช 2 นาที · ใบที่ถูกตีกลับแล้วเปิดใหม่) ขณะที่ยอดใบ/ขั้น ③/④ พูดราคาของแผน
+         = จอเดียวสองตัวเลข · ใบเสนอราคาไม่เป็นเพราะโหลดบรรทัดใหม่หลังบันทึก ⇒ ที่นี่ทำแบบเดียวกันกับแผน
+         ⚠️ `setState` ตรง ๆ **ไม่ผ่าน `patch`** — patch ปั๊ม dirty และทิ้งแผนที่เพิ่งตรวจผ่าน · ช่องถูกปิดระหว่างตรวจ
+            (`busy`) แต่ยังเทียบกับ `state.zones` ชุดที่ส่งไปตรวจก่อนทับ กันเขียนทับของที่เปลี่ยนไปแล้ว
+         ⚠️ ราคาขยับ = ลิสต์สินค้าที่แคชไว้เก่ากว่าทะเบียน ⇒ ทิ้งแคชแล้วอ่านใหม่ ไม่งั้นคำเตือน "ราคาในฐานข้อมูลตอนนี้"
+            ของเซลล์ราคาจะเอาราคาเก่าในแคชมาพูดว่าเป็นราคาปัจจุบัน (กลับหัวกับความจริง) */
+      const synced = historicalZonesWithPlanPrices(state.zones, data?.plan || null);
+      if (synced !== state.zones) {
+        setState((current) => (current.zones === state.zones ? { ...current, zones: synced } : current));
+        if (state.customerId) dropCache(PRODUCTS_PATH(state.customerId));
+        setProductsRound((round) => round + 1);
+      }
       /* แผนผ่านแล้ว = แผนเป็นเจ้าของยอด ⇒ ไม่ต้องถือยอดสำรองของรอบก่อนไว้ */
       setServerMoney(null);
       setDuplicates(data?.plan?.duplicates || []);
@@ -710,7 +727,9 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       {exit?.hint ? <StatusNotice tone="info" title="ทำต่อยังไง">{exit.hint}</StatusNotice> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
-      <DetailPageLayout asideLabel="สรุปใบสั่งขายย้อนหลัง" aside={aside}>
+      {/* ⭐ ขั้น ② และ ④ ไม่มีแถบสรุปข้างขวา (`historicalStepShowsAside`) — ตารางรายการของใบเสนอราคาต้องการ
+          กล่อง ≥ 900px ไม่งั้นพับเป็นการ์ดต่อบรรทัด · มีแถบสรุป = เนื้อขั้นเหลือ 816–866px ทุกจอเดสก์ท็อป (วัด 23/09) */}
+      <DetailPageLayout asideLabel="สรุปใบสั่งขายย้อนหลัง" aside={historicalStepShowsAside(step) ? aside : null}>
         <SectionRail
           sections={sections}
           value={step}

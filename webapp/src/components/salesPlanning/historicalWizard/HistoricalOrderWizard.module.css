@@ -23,7 +23,7 @@
 
 /* ── ป้ายบนรางขั้น: ชื่อขั้น + หนึ่งบรรทัดสรุป (ม็อก Step1–Step4) ────────────────
    🐞 ของเดิมเป็นเศษส่วน "1/1" ที่นับจากข้อผิดพลาดซึ่งยังไม่เคยถูกตรวจ ⇒ ขั้นที่ยังไม่ได้เริ่ม
-      อ่านว่าเสร็จแล้ว · บรรทัดสรุปพูดสิ่งที่ฟอร์มรู้จริง ("4 โซน · 17 แพ็ค")
+      อ่านว่าเสร็จแล้ว · บรรทัดสรุปพูดสิ่งที่ฟอร์มรู้จริง ("4 โซน" — ไม่นับ "แพ็ค" แล้ว มติ 23/09)
    ⚠️ ส่งเป็น node ของ `label` — ไม่เพิ่มช่องให้ SectionRail ซึ่งเป็น primitive ของทั้งระบบ */
 .railName { display: block; }
 
@@ -159,23 +159,52 @@
   color: var(--text-3);
 }
 
-.addRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) 0;
-}
-
-.addRow > span {
+/* ข้อที่พรีวิวตีกลับของโซนนั้น — อยู่ใต้ชื่อโซนในแถวของมันเอง (ก้อนรวมหัวขั้นลิสต์ไว้ด้วย) */
+.cellBad {
+  display: block;
+  margin-top: var(--space-0-5);
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
-  color: var(--text-3);
+  color: var(--red);
 }
 
-/* ── ขั้น ② ไซต์ โซน และแพ็ค ───────────────────────────────────────────────
+/* ── ขั้น ② ไซต์ โซน และรายการ ─────────────────────────────────────────────
    การ์ดไซต์ = `ui/CollapsibleCard` ของกลาง (ลูกค้ารายใหญ่มี 26 ไซต์ — กางหมดคือจอที่
-   เลื่อนหาของไม่เจอ) ⇒ ไม่มีหัวการ์ดที่วาดเอง · ที่เหลือคือแถวปุ่มของแผงค้น/ลองใหม่ */
+   เลื่อนหาของไม่เจอ) ⇒ ไม่มีหัวการ์ดที่วาดเอง · ที่เหลือคือแถวปุ่มของแผงค้น/ลองใหม่
+   ⭐ การ์ดไซต์มีหน้าที่เดียวคือ "เลือกโซน" — ตารางรายการ (`QuoteLinesTable` ของใบเสนอราคา · สไตล์เป็นของชีต
+   ฝั่งนั้น) อยู่ **นอก** การ์ด ใต้การ์ดทุกใบ (มติเจ้าของ 23/09 · รีวิว 23/09: ซ้อนในการ์ดแล้วกล่องแคบกว่า 900
+   ทุกจอ = ตารางพับเป็นการ์ดต่อบรรทัดตลอด ต่างจากใบเสนอราคาที่จอเดียวกัน) */
+/* รายการโซนของไซต์ — ติ๊กได้หลายคอลัมน์ตามความกว้างการ์ด (43 โซนต่อลูกค้าเรียงแถวเดียวคือเลื่อนยาว) */
+.zonePicks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ทั้งแถวเป็น <label> ⇒ แตะชื่อโซนก็ติ๊กได้ (เป้ากดใหญ่กว่าช่องติ๊กตัวเดียว)
+   baseline = ช่องติ๊กตรงกับบรรทัดชื่อโซน ไม่ใช่ขอบบนของก้อน (ชื่อ + รหัส + ป้ายเตือน) */
+.zonePick {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.zonePickText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* แถว "การแสดงผล" อยู่ใต้กริดสองช่อง (แพ็คเกจ · ค้นหา) — กริดไม่มีระยะล่างของตัวเอง */
+.browseField { margin-top: var(--space-3); }
+
 .browseRow {
   display: flex;
   flex-wrap: wrap;
@@ -184,34 +213,6 @@
   min-height: var(--ctl-h);
   line-height: var(--lh-thai);
 }
-
-.sumBar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-4);
-  margin-top: var(--space-3);
-  padding: var(--space-2-5) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-  line-height: var(--lh-thai);
-}
-
-.sumItem {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-1-5);
-  font-size: var(--fs-label);
-  color: var(--text-3);
-}
-
-.sumItem > b {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-1);
-}
-
-.sumTotal { margin-left: auto; }
 
 /* ── ขั้น ③ งวดชำระ ───────────────────────────────────────────────────── */
 .carry {

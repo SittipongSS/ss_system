@@ -391,8 +391,10 @@ const extrasTables = ({ files = [], terms = [], termOrders = [], contract = null
 });
 const extrasOrder = (extra = {}) => pending({
   lines: [
-    { id: 'SOL-2', sortOrder: 1, serviceZoneId: 'Z-2', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 4, serviceRounds: 12, lineTotal: 57600 },
-    { id: 'SOL-1', sortOrder: 0, serviceZoneId: 'Z-1', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 6, serviceRounds: 12, lineTotal: 86400 },
+    { id: 'SOL-2', sortOrder: 1, serviceZoneId: 'Z-2', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 48, unit: 'แพ็คเกจ',
+      unitPrice: 1200, discountType: 'amount', discountValue: 600, discountAmount: 600, serviceRounds: 12, lineTotal: 57000 },
+    { id: 'SOL-1', sortOrder: 0, serviceZoneId: 'Z-1', productId: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', qty: 72, unit: 'แพ็คเกจ',
+      unitPrice: 1200, discountType: null, discountValue: 0, discountAmount: 0, serviceRounds: 12, lineTotal: 86400 },
   ],
   installments: [
     { id: 'SOI-1', kind: 'opening', evidence: [
@@ -407,10 +409,16 @@ const extrasOrder = (extra = {}) => pending({
 test('ของเสริม: โซนหนึ่งแถวต่อบรรทัดตามลำดับบนใบ พร้อมไซต์/สถานะใช้งาน · อ่านโซน/ไซต์ซอยลิสต์ + ไล่หน้า', async () => {
   const db = fakeDb({ tables: extrasTables() });
   const extras = await loadHistoricalOrderExtras(db.supabase, extrasOrder(), { todayIso: '2026-09-22' });
-  assert.deepEqual(extras.lineZones.map((z) => [z.lineId, z.zoneCode, z.siteCode, z.packs, z.zoneActive]), [
-    ['SOL-1', 'ZN-1', 'ST-1002', 6, true],
-    ['SOL-2', 'ZN-2', 'ST-1044', 4, false],
+  assert.deepEqual(extras.lineZones.map((z) => [z.lineId, z.zoneCode, z.siteCode, z.zoneActive]), [
+    ['SOL-1', 'ZN-1', 'ST-1002', true],
+    ['SOL-2', 'ZN-2', 'ST-1044', false],
   ]);
+  /* ⭐ มติ 23/09: แถวโซนพกบรรทัดแบบใบเสนอราคา (จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน) — ไม่มี "แพ็ค" แล้ว */
+  assert.deepEqual(extras.lineZones.map((z) => [z.fgCode, z.qty, z.unit, z.unitPrice, z.discountAmount, z.lineTotal, z.rounds]), [
+    ['FG-SNS-02-001-0012', 72, 'แพ็คเกจ', 1200, 0, 86400, 12],
+    ['FG-SNS-02-001-0012', 48, 'แพ็คเกจ', 1200, 600, 57000, 12],
+  ]);
+  assert.ok(extras.lineZones.every((z) => !('packs' in z)));
   for (const table of ['service_zones', 'service_sites']) {
     const q = db.calls.from.find((c) => c.table === table);
     assert.ok(q.orders.includes('id'), `${table} ต้องเรียง id (ไล่หน้า)`);

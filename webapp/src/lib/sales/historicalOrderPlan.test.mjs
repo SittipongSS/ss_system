@@ -2,25 +2,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import * as planModule from './historicalOrderPlan.js';
 import {
-  CONTRACT_DATE_MESSAGES, SERVICE_PACKAGE_CATEGORY, historicalServiceFingerprintSource,
-  historicalServiceRpcArgs, isCalendarDate, planHistoricalServiceOrder, splitHistoricalAmounts,
+  CONTRACT_DATE_MESSAGES, HISTORICAL_LINE_MESSAGES, HISTORICAL_VAT_RATES, SERVICE_PACKAGE_CATEGORY,
+  historicalLinesMoney, historicalServiceFingerprintSource, historicalServiceRpcArgs, isCalendarDate,
+  planHistoricalServiceOrder,
 } from './historicalOrderPlan.js';
 import { SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
 import { OPENING_INSTALLMENT_LABEL } from './historicalOrders.js';
+import { QUOTE_VAT_OPTIONS, quoteLineMoney, quoteTotals } from '../salesPlanning.js';
+import { normalizeManualLines } from './quoteLines.js';
 
 /* รุ่นแรกของตัวตัดสิน (โมดัล 0360 · จุดติดตั้งเป็นข้อความ · ยกเว้นด่านเงิน) และตัวตรวจงวดของทางคีย์งวดเพิ่ม
-   ถูกลบพร้อมเทสต์ของมัน — เหลือตัวแบ่งยอดตาม VAT · วันในปฏิทิน */
+   ถูกลบพร้อมเทสต์ของมัน · ตัวแบ่งยอดตาม VAT (`splitHistoricalAmounts`) ถูกลบตามมติ 23/09 */
 const satang = (n) => Math.round(n * 100);
 
-test('เศษสตางค์ของบรรทัดโยนให้บรรทัดยอดสูงสุด — Σ บรรทัดไม่คลาดจากยอดก่อน VAT', () => {
-  const split = splitHistoricalAmounts([100, 100, 100.01], { amountsIncludeVat: true, vatRate: 7 });
-  assert.equal(split.lineTotals.reduce((s, v) => s + satang(v), 0), satang(split.subtotal));
-  assert.equal(satang(split.subtotal) + satang(split.vatAmount), satang(split.totalAmount));
-  const excl = splitHistoricalAmounts([90480], { amountsIncludeVat: false, vatRate: 7 });
-  assert.deepEqual(excl, { lineTotals: [90480], subtotal: 90480, vatAmount: 6333.6, totalAmount: 96813.6 });
-  const zeroRate = splitHistoricalAmounts([500, 250], { vatRate: 0 });
-  assert.deepEqual(zeroRate, { lineTotals: [500, 250], subtotal: 750, vatAmount: 0, totalAmount: 750 });
+test('🚫 ตัวแบ่งยอด "รวม VAT แล้ว — ถอด VAT" ไม่มีอีกแล้ว · VAT ของใบ = ตัวเลือกของใบเสนอราคา (0 · 7)', () => {
+  assert.equal(planModule.splitHistoricalAmounts, undefined, 'หารบรรทัดด้วย 1.07 = ยอดบรรทัด ≠ จำนวน × ราคา');
+  assert.deepEqual([...HISTORICAL_VAT_RATES], QUOTE_VAT_OPTIONS.map((o) => o.value));
+  assert.deepEqual(QUOTE_VAT_OPTIONS.map((o) => o.label), ['รวม VAT แล้ว', '+ VAT 7% ท้ายใบ']);
+});
+
+/* ⭐ เงินของใบย้อนหลัง = สูตรใบเสนอราคาทุกตัวอักษร — บรรทัดเดียวกันต้องได้เลขเดียวกันกับที่ใบเสนอราคาบันทึก */
+test('⭐ historicalLinesMoney = quoteLineMoney ต่อบรรทัด + quoteTotals ทั้งใบ = ที่ใบเสนอราคาบันทึก (normalizeManualLines)', () => {
+  const rows = [
+    { qty: 12, unitPrice: 3500, discountType: null, discountValue: 0 },
+    { qty: 12, unitPrice: 3500, discountType: 'percent', discountValue: 150 },   // ตัดเหลือ 100
+    { qty: 3, unitPrice: 33.33, discountType: 'amount', discountValue: 100.555 },
+    { qty: 7, unitPrice: 1.005, discountType: 'foo', discountValue: 9 },         // ชนิดแปลก = ไม่ลด
+  ];
+  for (const vatRate of [0, 7]) {
+    const money = historicalLinesMoney(rows, vatRate);
+    const quote = normalizeManualLines(rows.map((r) => ({ ...r, description: 'x' })));
+    assert.deepEqual(money.lines.map((l) => l.lineTotal), quote.map((l) => l.lineTotal));
+    assert.deepEqual(money.lines.map((l) => [l.discountType, l.discountValue]), quote.map((l) => [l.discountType, l.discountValue]));
+    assert.deepEqual(
+      { subtotal: money.subtotal, discountAmount: money.discountAmount, vatAmount: money.vatAmount, totalAmount: money.totalAmount },
+      quoteTotals(quote, { vatRate }),
+    );
+  }
+  assert.deepEqual(historicalLinesMoney([rows[1]]).lines[0], quoteLineMoney(rows[1]));
 });
 
 test('วันในปฏิทิน', () => {
@@ -37,8 +58,12 @@ const V2_TODAY = '2026-09-22';
 const spw = { id: 'CUS-SPW', name: 'บจก. สยามพิวรรธน์', nameEn: 'Siam Piwat', approvalStatus: 'approved', isActive: true };
 const pim = { id: 'U-PIM', role: 'ae', team: 'SV', teams: ['SV'] };
 const pimOwner = { ok: true, ownerId: 'U-PIM', ownerName: 'พิมพ์ชนก รัตนา', team: 'SV', teams: ['SV'] };
-const pkg = { id: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจกลิ่นรายเดือน (30 วัน)', saleUnit: 'แพ็ค' };
-const oil = { id: 'P-OIL', fgCode: 'FG-SNS-01-002-0001', productDescription: 'น้ำมันหอม', saleUnit: null };
+const pkg = { id: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจกลิ่นรายเดือน (30 วัน)', saleUnit: 'แพ็คเกจ', costPrice: 1200 };
+const oil = { id: 'P-OIL', fgCode: 'FG-SNS-01-002-0001', productDescription: 'น้ำมันหอม', saleUnit: null, costPrice: 800 };
+/* แพ็คเกจของตัวอย่างเจ้าของ 23/09 — "3500 x 1 ชุด x 12 เดือน" */
+const sds = { id: 'P-SDS', fgCode: 'FG-SNS-02-001-0020', productDescription: 'แพ็คเกจ SDS รายเดือน', saleUnit: 'แพ็คเกจ', costPrice: 3500 };
+const unpriced = { id: 'P-NOPRICE', fgCode: 'FG-SNS-02-001-0021', productDescription: 'แพ็คเกจใหม่', saleUnit: 'แพ็คเกจ', costPrice: null };
+const noPriceKey = { id: 'P-NOKEY', fgCode: 'FG-SNS-02-001-0022', productDescription: 'แพ็คเกจ (route ลืม select ราคา)', saleUnit: 'แพ็คเกจ' };
 const v2Sites = [
   { id: 'ST-1002', code: 'ST-1002', name: 'สยามพารากอน', customerId: 'CUS-SPW', kind: 'customer', isActive: true },
   { id: 'ST-1044', code: 'ST-1044', name: 'สยามดิสคัฟเวอรี่', customerId: 'CUS-SPW', kind: 'customer', isActive: true },
@@ -55,23 +80,23 @@ const v2Zones = [
   { id: 'Z-WH', siteId: 'WH-1', name: 'ชั้นวาง A', isActive: true },
 ];
 const v2Ctx = (extra = {}) => ({
-  actor: pim, customer: spw, owner: pimOwner, products: [pkg, oil], zones: v2Zones, sites: v2Sites,
+  actor: pim, customer: spw, owner: pimOwner, products: [pkg, oil, sds, unpriced, noPriceKey], zones: v2Zones, sites: v2Sites,
   containerDeals: [], existingHistorical: [], liveTermsByZone: null, todayIso: V2_TODAY, selfOrderId: null, ...extra,
 });
-const zoneRow = (zoneId, packs, lineAmount, extra = {}) => ({ zoneId, productId: 'P-PKG', packs, rounds: 12, lineAmount, ...extra });
+/* แถวโซนแบบใบเสนอราคา — จำนวน × ราคา/หน่วย (ทะเบียน 1,200) · ไม่มีส่วนลด (ม็อกเดิม "6 แพ็ค × 12 เดือน" = จำนวน 72) */
+const zoneRow = (zoneId, qty, extra = {}) => ({ zoneId, productId: 'P-PKG', qty, discountType: null, discountValue: 0, rounds: 12, ...extra });
 const v2Input = (extra = {}) => ({
   customerId: 'CUS-SPW',
   ownerId: 'U-PIM',
   contract: { docKind: 'customer_po', ref: 'PO-SPW-2026-0118', startDate: '2026-01-01', endDate: '2026-12-31' },
   refs: { quote: null, express: null, invoice: 'IV-2601-0412' },
-  amountsIncludeVat: false,
   vatRate: 7,
   notes: null,
   zones: [
-    zoneRow('Z-1002-01', 6, 86400),
-    zoneRow('Z-1002-02', 4, 57600),
-    zoneRow('Z-1002-03', 3, 43200),
-    zoneRow('Z-1044-01', 4, 57600),
+    zoneRow('Z-1002-01', 72),
+    zoneRow('Z-1002-02', 48),
+    zoneRow('Z-1002-03', 36),
+    zoneRow('Z-1044-01', 48),
   ],
   opening: { amount: 196452, coversTo: '2026-09-30', paidOn: '2026-09-15', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.' },
   installments: [
@@ -87,7 +112,7 @@ const v2Has = (plan, field, pattern) => {
 };
 const zonesWith = (index, patch) => v2Input().zones.map((z, i) => (i === index ? { ...z, ...patch } : z));
 
-test('v2 ⭐ ม็อก: ไม่รวม VAT 7% · 4 โซน 17 แพ็ค → ก่อน VAT 244,800 · VAT 17,136 · รวม 261,936 · งวดครบ ครอบต่อเนื่อง', () => {
+test('v2 ⭐ ม็อก: + VAT 7% ท้ายใบ · 4 โซน จำนวน 72/48/36/48 × 1,200 → ยอดรวมสินค้า/บริการ 244,800 · VAT 17,136 · รวม 261,936 · งวดครบ ครอบต่อเนื่อง', () => {
   const plan = planV2();
   assert.deepEqual(plan.errors, []);
   assert.equal(plan.header.subtotal, 244800);
@@ -96,9 +121,11 @@ test('v2 ⭐ ม็อก: ไม่รวม VAT 7% · 4 โซน 17 แพ็
   assert.equal(plan.header.actualAmount, 244800);
   assert.equal(plan.header.orderDate, '2026-01-01', 'วันที่ใบ = วันเริ่มสัญญา');
   assert.equal(plan.header.docLanguage, 'th');
-  assert.equal(plan.lines.reduce((s, l) => s + l.qty, 0), 17);
+  assert.deepEqual(plan.lines.map((l) => l.qty), [72, 48, 36, 48]);
   assert.deepEqual(plan.lines.map((l) => l.lineTotal), [86400, 57600, 43200, 57600]);
-  assert.equal(plan.lines[0].unitPrice, 14400);
+  assert.equal(plan.lines[0].unitPrice, 1200, 'ราคา/หน่วย = ราคาผลิตในทะเบียน');
+  assert.equal(plan.lines[0].unit, 'แพ็คเกจ', 'หน่วย = หน่วยขายของสินค้า');
+  assert.deepEqual([plan.lines[0].discountType, plan.lines[0].discountValue, plan.lines[0].discountAmount], [null, 0, 0]);
   assert.equal(plan.lines[0].installationPoint, 'ST-1002 สยามพารากอน · ชั้น G ล็อบบี้');
   assert.equal(plan.lines[0].fgCode, pkg.fgCode);
   assert.equal(plan.lines[0].serviceRounds, 12);
@@ -111,28 +138,103 @@ test('v2 ⭐ ม็อก: ไม่รวม VAT 7% · 4 โซน 17 แพ็
   assert.equal(plan.zeroValue, false);
 });
 
-test('v2 เงิน: ยอดรวม VAT แล้ว — Σ บรรทัด = ก่อน VAT · ก่อน VAT + VAT = ยอดรวม (สตางค์เป๊ะ) · ไม่มี VAT', () => {
-  const inclusive = planV2({ amountsIncludeVat: true, opening: null, installments: [
-    { label: 'ทั้งสัญญา', amount: 244800, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' },
-  ] });
-  assert.deepEqual(inclusive.errors, []);
-  assert.equal(inclusive.header.totalAmount, 244800);
-  assert.equal(satang(inclusive.header.subtotal) + satang(inclusive.header.vatAmount), satang(244800));
-  assert.equal(inclusive.lines.reduce((s, l) => s + satang(l.lineTotal), 0), satang(inclusive.header.subtotal));
-  const noVat = planV2({ vatRate: 0, amountsIncludeVat: undefined, opening: null, installments: [
-    { label: 'ทั้งสัญญา', amount: 244800, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' },
-  ] });
-  assert.deepEqual(noVat.errors, []);
-  assert.equal(noVat.header.vatAmount, 0);
-  assert.equal(noVat.header.amountsIncludeVat, false);
+/* ⭐⭐ มติเจ้าของ 23/09 — "3500 x 1 ชุด x 12 เดือน" คีย์เหมือนใบเสนอราคา: จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000 */
+const ownerExample = (vatRate, extra = {}) => {
+  const total = vatRate ? 44940 : 42000;
+  return planV2({
+    vatRate,
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty: 12, discountType: null, discountValue: 0, rounds: 12 }],
+    opening: null,
+    installments: [{ label: 'ทั้งสัญญา', amount: total, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' }],
+    ...extra,
+  });
+};
+
+test('v2 ⭐⭐ ตัวอย่างเจ้าของ: 1 ชุด × 12 เดือน = จำนวน 12 × 3,500 = 42,000 · + VAT 7% ท้ายใบ → 2,940 / 44,940 · รวม VAT แล้ว → 42,000', () => {
+  const vat7 = ownerExample(7);
+  assert.deepEqual(vat7.errors, []);
+  assert.deepEqual(
+    [vat7.lines[0].qty, vat7.lines[0].unit, vat7.lines[0].unitPrice, vat7.lines[0].discountAmount, vat7.lines[0].lineTotal],
+    [12, 'แพ็คเกจ', 3500, 0, 42000],
+  );
+  assert.deepEqual([vat7.header.subtotal, vat7.header.vatAmount, vat7.header.totalAmount], [42000, 2940, 44940]);
+  assert.equal(vat7.header.actualAmount, 42000);
+  const vat0 = ownerExample(0);
+  assert.deepEqual(vat0.errors, []);
+  assert.deepEqual([vat0.header.subtotal, vat0.header.vatAmount, vat0.header.totalAmount], [42000, 0, 42000]);
+  // 🐞 สิ่งที่ปุ่มลัดเดิมเสนอ (3,500 × 12 × 12 = 504,000) ต้องไม่มีทางเกิดจากแผน
+  assert.notEqual(vat0.header.subtotal, 504000);
 });
 
-test('v2 VAT ไม่มีค่าตั้งต้น: ไม่เลือก = ตีกลับ · 7% ต้องบอกว่ารวม VAT หรือยัง · อัตราอื่นไม่รับ', () => {
-  v2Has(planV2({ vatRate: undefined }), 'vatRate', /รวม VAT/);
+test('v2 ⭐ ราคา/หน่วยมาจากทะเบียนเสมอ — unitPrice / lineAmount / lineTotal ที่จอส่งมาไม่ถูกอ่าน', () => {
+  const base = ownerExample(7);
+  const forged = ownerExample(7, {
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty: 12, discountType: null, discountValue: 0, rounds: 12,
+      unitPrice: 1, lineTotal: 12, lineAmount: 999999, grossAmount: 5 }],
+  });
+  assert.deepEqual(forged.errors, []);
+  assert.deepEqual(forged.lines, base.lines);
+  assert.deepEqual(forged.header, base.header);
+  assert.equal(historicalServiceFingerprintSource(forged), historicalServiceFingerprintSource(base), 'ค่าปลอมไม่เข้าลายนิ้วมือ');
+});
+
+test('v2 ส่วนลดรายการ = ตัวเลือกของใบเสนอราคา: % · บาท · ไม่ลด · ชนิดแปลก = ไม่ลด · % เกิน 100 ตัดเหลือ 100 · บาทเกินยอด = ยอด', () => {
+  const lineOf = (discountType, discountValue, qty = 12) => {
+    const total = historicalLinesMoney([{ qty, unitPrice: 3500, discountType, discountValue }], 7).totalAmount;
+    const plan = planV2({
+      zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty, discountType, discountValue, rounds: 12 }],
+      opening: null,
+      notes: total ? null : 'ส่วนลดเต็มจำนวน',
+      installments: total ? [{ label: 'ทั้งสัญญา', amount: total, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' }] : [],
+    });
+    assert.deepEqual(plan.errors, [], JSON.stringify([discountType, discountValue]));
+    const { discountType: t, discountValue: v, discountAmount: a, lineTotal: l } = plan.lines[0];
+    return [t, v, a, l];
+  };
+  assert.deepEqual(lineOf('percent', 5), ['percent', 5, 2100, 39900]);
+  assert.deepEqual(lineOf('percent', '12.5'), ['percent', 12.5, 5250, 36750]);
+  assert.deepEqual(lineOf('amount', 1000), ['amount', 1000, 1000, 41000]);
+  assert.deepEqual(lineOf(null, 0), [null, 0, 0, 42000]);
+  assert.deepEqual(lineOf('foo', 9), [null, 0, 0, 42000]);
+  assert.deepEqual(lineOf('percent', 150), ['percent', 100, 42000, 0]);
+  assert.deepEqual(lineOf('amount', 50000), ['amount', 50000, 42000, 0]);
+  // ยอดเงินของบรรทัด = สูตรเดียวกับใบเสนอราคา
+  assert.deepEqual(lineOf('percent', 7.5, 7).slice(2), [
+    quoteLineMoney({ qty: 7, unitPrice: 3500, discountType: 'percent', discountValue: 7.5 }).discountAmount,
+    quoteLineMoney({ qty: 7, unitPrice: 3500, discountType: 'percent', discountValue: 7.5 }).lineTotal,
+  ]);
+});
+
+test('v2 เงินทั้งใบ = quoteTotals ของบรรทัดเดียวกัน (ใบย้อนหลังไม่มีส่วนลดท้ายใบ) · + VAT 7% · รวม VAT แล้ว', () => {
+  for (const vatRate of [0, 7]) {
+    const zones = [
+      zoneRow('Z-1002-01', 72, { discountType: 'percent', discountValue: 5 }),
+      zoneRow('Z-1002-02', 48, { productId: 'P-SDS', discountType: 'amount', discountValue: 999.99 }),
+    ];
+    const first = planV2({ vatRate, zones, opening: null, installments: [] });
+    const plan = planV2({ vatRate, zones, opening: null, installments: [
+      { label: 'ทั้งสัญญา', amount: first.header.totalAmount, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' },
+    ] });
+    assert.deepEqual(plan.errors, []);
+    const expected = quoteTotals(plan.lines, { vatRate });
+    assert.deepEqual(
+      { subtotal: plan.header.subtotal, discountAmount: plan.header.discountAmount, vatAmount: plan.header.vatAmount, totalAmount: plan.header.totalAmount },
+      expected,
+    );
+    assert.equal(plan.header.discountAmount, 0);
+    assert.equal(plan.lines.reduce((s, l) => s + satang(l.lineTotal), 0), satang(plan.header.subtotal));
+  }
+});
+
+test('v2 VAT ไม่มีค่าตั้งต้น: ไม่เลือก = ตีกลับ · อัตราอื่นไม่รับ · โหมด "รวม VAT แล้ว — ถอด VAT" ของแท็บรุ่นก่อน = ตีกลับ ไม่ตีความเอง', () => {
+  v2Has(planV2({ vatRate: undefined }), 'vatRate', /รวม VAT แล้ว.*\+ VAT 7% ท้ายใบ/);
   v2Has(planV2({ vatRate: '' }), 'vatRate');
-  v2Has(planV2({ vatRate: 5 }), 'vatRate', /0 หรือ 7/);
-  v2Has(planV2({ amountsIncludeVat: undefined }), 'amountsIncludeVat');
-  v2Has(planV2({ amountsIncludeVat: 'false' }), 'amountsIncludeVat');
+  v2Has(planV2({ vatRate: 5 }), 'vatRate', /รวม VAT แล้ว/);
+  v2Has(planV2({ amountsIncludeVat: true }), 'vatRate', /เลิกใช้แล้ว.*โหลดหน้าใหม่/);
+  v2Has(planV2({ vatRate: 0, amountsIncludeVat: true }), 'vatRate', /เลิกใช้แล้ว/);
+  // false / ไม่ส่ง = ของเดิมที่มีความหมายเท่า 0 / 7 ปกติ — ไม่ขวาง
+  assert.deepEqual(planV2({ amountsIncludeVat: false }).errors, []);
+  assert.ok(!('amountsIncludeVat' in planV2().header), 'หัวใบไม่มีโหมด VAT ที่สามแล้ว');
 });
 
 test('v2 โซน: ต้องเป็นโซนของลูกค้าในใบ · ไซต์ลูกค้า · ใช้งานอยู่ · ไม่ซ้ำ (ด่านเดียวกับที่ TS ผูกโซน)', () => {
@@ -153,16 +255,43 @@ test('v2 โซน: ต้องเป็นโซนของลูกค้า
   assert.deepEqual(planV2({}, { zones: embedded, sites: [] }).errors, []);
 });
 
-test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 = error (ไม่ใช่คำเตือน) · แพ็คจำนวนเต็ม · รอบ · ยอดไม่ติดลบ', () => {
+test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 = error (ไม่ใช่คำเตือน) · จำนวนเต็ม > 0 (ว่าง = ตีกลับ ไม่ใช่ 1) · รอบบริการที่ขายไว้', () => {
   v2Has(planV2({ zones: zonesWith(0, { productId: 'P-OIL' }) }), 'zones.0', /ไม่ใช่แพ็คเกจบริการ \(หมวด 02-001\)/);
   v2Has(planV2({ zones: zonesWith(0, { productId: '' }) }), 'zones.0', /ต้องเลือกแพ็คเกจ/);
   v2Has(planV2({ zones: zonesWith(0, { productId: 'P-NONE' }) }), 'zones.0', /ไม่พบแพ็คเกจ/);
-  for (const packs of [0, -1, 1.5, '', 'สาม']) v2Has(planV2({ zones: zonesWith(0, { packs }) }), 'zones.0', /แพ็คต้องเป็นจำนวนเต็ม/);
-  for (const rounds of [0, 2.5, 3e9]) v2Has(planV2({ zones: zonesWith(0, { rounds }) }), 'zones.0', /รอบในสัญญา/);
+  for (const qty of [0, -1, 1.5, '', null, 'สาม']) {
+    const plan = planV2({ zones: zonesWith(0, { qty }) });
+    v2Has(plan, 'zones.0', /จำนวนต้องเป็นจำนวนเต็มมากกว่า 0/);
+    assert.equal(plan.header.totalAmount, 0, 'คิดยอดไม่ได้ = ศูนย์ทั้งก้อน (ไม่ใช่เดาจำนวน 1)');
+    assert.equal(plan.zeroValue, false);
+  }
+  const { qty: _qty, ...noQty } = v2Input().zones[0];
+  v2Has(planV2({ zones: [noQty, ...v2Input().zones.slice(1)] }), 'zones.0', /จำนวนต้องเป็นจำนวนเต็ม/);
+  assert.deepEqual(planV2({ zones: zonesWith(0, { qty: '72' }) }).errors, [], 'สตริงตัวเลขจากช่องกรอกรับได้');
+  for (const rounds of [0, 2.5, 3e9]) v2Has(planV2({ zones: zonesWith(0, { rounds }) }), 'zones.0', /รอบบริการที่ขายไว้/);
   assert.equal(planV2({ zones: zonesWith(0, { rounds: '' }) }).lines[0].serviceRounds, null, 'ไม่ระบุรอบได้');
-  v2Has(planV2({ zones: zonesWith(0, { lineAmount: -1 }) }), 'zones.0', /ไม่ติดลบ/);
-  v2Has(planV2({ zones: zonesWith(0, { lineAmount: 'abc' }) }), 'zones.0', /ไม่ติดลบ/);
   assert.equal(SERVICE_PACKAGE_CATEGORY, SERVICE_ROUND_CATEGORY);
+});
+
+test('v2 ราคา: แพ็คเกจยังไม่ตั้งราคา = ตีกลับ (ใบเสนอราคาคงราคาเดิม แต่ใบนี้บันทึกกับส่งจังหวะเดียว) · ไม่มีคีย์ราคา = "อ่านราคาไม่ได้"', () => {
+  const unpricedPlan = planV2({ zones: zonesWith(0, { productId: 'P-NOPRICE' }) });
+  v2Has(unpricedPlan, 'zones.0', /ยังไม่ตั้งราคาในฐานข้อมูลสินค้า/);
+  assert.equal(unpricedPlan.header.totalAmount, 0);
+  assert.equal(unpricedPlan.zeroValue, false, 'ราคาที่ไม่รู้ ≠ ใบ ฿0');
+  const zeroPrice = planV2({}, { products: [{ ...pkg, costPrice: 0 }, oil] });
+  v2Has(zeroPrice, 'zones.0', new RegExp(HISTORICAL_LINE_MESSAGES.unpriced.slice(0, 20)));
+  v2Has(planV2({ zones: zonesWith(0, { productId: 'P-NOKEY' }) }), 'zones.0', /อ่านราคาของแพ็คเกจ.*ไม่ได้/);
+  // ราคาเป็นสตริงจากฐาน (numeric ของ PostgREST บางทางคืนเป็นข้อความ) ก็อ่านได้
+  assert.deepEqual(planV2({}, { products: [{ ...pkg, costPrice: '1200.00' }, oil] }).errors, []);
+});
+
+test('v2 🪤 แท็บรุ่นก่อน (แพ็ค + ยอดที่พิมพ์เอง ไม่มีจำนวน) = ตีกลับให้โหลดหน้าใหม่ — ห้ามเดาว่าแพ็คคือจำนวน', () => {
+  const stale = v2Input().zones.map(({ qty, discountType, discountValue, ...z }) => ({ ...z, packs: 6, lineAmount: 86400 }));
+  const plan = planV2({ zones: stale });
+  for (const index of [0, 1, 2, 3]) v2Has(plan, `zones.${index}`, /ฟอร์มรุ่นก่อน.*โหลดหน้าใหม่/);
+  assert.ok(!plan.errors.some((e) => /จำนวนต้องเป็นจำนวนเต็ม/.test(e.message)), 'ข้อความเดียวต่อแถว: บอกเหตุจริง');
+  assert.equal(plan.header.totalAmount, 0);
+  v2Has(planV2({ zones: zonesWith(0, { qty: undefined, lineAmount: 1 }) }), 'zones.0', /ฟอร์มรุ่นก่อน/);
 });
 
 test('v2 AE / Senior AE คีย์ได้เฉพาะของตัวเอง · AE Sup / Admin คีย์ให้ AE คนไหนก็ได้', () => {
@@ -332,7 +461,8 @@ test('v2 ช่วงครอบต่อเนื่องเต็มสั�
 });
 
 test('v2 ใบ ฿0: ไม่มีงวด + ต้องมีหมายเหตุ (มติข้อ 11) · ไม่มีคำเตือน "ไม่มีงวดยกมา"', () => {
-  const zero = { zones: [zoneRow('Z-1002-01', 1, 0)], opening: null, installments: [] };
+  /* ใบ ฿0 แบบใบเสนอราคา = ส่วนลดเต็มจำนวน (ไม่มี "ยอดที่พิมพ์เป็น 0" ให้คีย์แล้ว) */
+  const zero = { zones: [zoneRow('Z-1002-01', 1, { discountType: 'percent', discountValue: 100 })], opening: null, installments: [] };
   const withNote = planV2({ ...zero, notes: 'เครื่องแถมตามสัญญาเดิม' });
   assert.deepEqual(withNote.errors, []);
   assert.equal(withNote.zeroValue, true);
@@ -391,7 +521,7 @@ test('v2 โซนที่มีรอบขายของใบอื่น�
   assert.deepEqual(asObject.liveTerms, plan.liveTerms);
 });
 
-test('v2 อาร์กิวเมนต์ RPC: คีย์ตรงกับที่ 0374 อ่าน · งวดยกมาเป็นแถวแรก · หลักฐานส่งเฉพาะทางแก้ใบ', () => {
+test('v2 อาร์กิวเมนต์ RPC: คีย์ตรงกับที่ 0374 + 0379 อ่าน · งวดยกมาเป็นแถวแรก · หลักฐานส่งเฉพาะทางแก้ใบ', () => {
   const plan = planV2({ opening: { ...v2Input().opening, evidence: [{ storagePath: 'sales-orders/SOR-H1/payments/a.pdf' }] } });
   const create = historicalServiceRpcArgs(plan, 'create');
   assert.deepEqual(Object.keys(create).sort(), ['p_contract', 'p_header', 'p_installments', 'p_lines']);
@@ -399,10 +529,20 @@ test('v2 อาร์กิวเมนต์ RPC: คีย์ตรงกั�
     'customerId', 'discountAmount', 'historicalExpressRef', 'historicalInvoiceRef', 'historicalQuoteRef', 'intake',
     'notes', 'ownerId', 'subtotal', 'team', 'totalAmount', 'vatAmount',
   ]);
-  assert.deepEqual(create.p_header.intake, { amountsIncludeVat: false, vatRate: 7 });
+  assert.deepEqual(create.p_header.intake, { vatRate: 7 });
+  /* ⭐ รูปเดียวกับบรรทัดใบเสนอราคาที่ถูกก๊อปลงใบสั่งขาย (0363) + โซน + รอบ — ไม่มี grossAmount แล้ว */
   assert.deepEqual(Object.keys(create.p_lines[0]).sort(), [
-    'grossAmount', 'lineTotal', 'productId', 'qty', 'serviceRounds', 'unitPrice', 'zoneId',
+    'discountAmount', 'discountType', 'discountValue', 'lineTotal', 'productId', 'qty', 'serviceRounds', 'unitPrice', 'zoneId',
   ]);
+  assert.deepEqual(create.p_lines[0], {
+    zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
+    discountAmount: 0, lineTotal: 86400, serviceRounds: 12,
+  });
+  // 0379 บังคับ discountAmount/discountValue เป็นตัวเลขเสมอ (jsonb_typeof = 'number')
+  for (const line of create.p_lines) {
+    assert.equal(typeof line.discountAmount, 'number');
+    assert.equal(typeof line.discountValue, 'number');
+  }
   assert.deepEqual(create.p_lines.map((l) => l.zoneId), ['Z-1002-01', 'Z-1002-02', 'Z-1002-03', 'Z-1044-01']);
   assert.deepEqual(create.p_installments.map((r) => r.kind), ['opening', 'regular']);
   assert.deepEqual(create.p_installments[0], {
@@ -420,8 +560,11 @@ test('v2 อาร์กิวเมนต์ RPC: คีย์ตรงกั�
     assert.ok(!JSON.stringify(update).includes(`"${forbidden}"`), forbidden);
   }
 
-  /* ⭐ ทุกคีย์ที่ส่ง ต้องเป็นคีย์ที่ฐานอ่านจริง (สะกดผิด = ค่าหายเงียบ — jsonb ไม่ฟ้อง) */
-  const SQL = readFileSync(new URL('../../../supabase/migrations/0374_historical_so_approval_flow.sql', import.meta.url), 'utf8')
+  /* ⭐ ทุกคีย์ที่ส่ง ต้องเป็นคีย์ที่ฐานอ่านจริง (สะกดผิด = ค่าหายเงียบ — jsonb ไม่ฟ้อง)
+     อ่าน 0374 (RPC · ตัวตรวจสัญญา/งวด) + 0379 (ตัวตรวจ/ตัวเขียนบรรทัดรุ่นใบเสนอราคา) ซึ่งนิยามทับสองตัวนั้น */
+  const SQL = ['0374_historical_so_approval_flow.sql', '0379_historical_so_quote_lines.sql']
+    .map((name) => readFileSync(new URL(`../../../supabase/migrations/${name}`, import.meta.url), 'utf8'))
+    .join('\n')
     .replace(/--[^\n]*/g, '');
   const readKeys = (pattern) => new Set([...SQL.matchAll(pattern)].map((m) => m[1]));
   const headerKeys = readKeys(/p_header(?:->>|->| \? )'(\w+)'/g);
@@ -448,16 +591,28 @@ test('v2 ลายนิ้วมือ: ไม่ขึ้นกับลำด
     base, 'หลักฐานเกิดหลังใบ — ไม่ใช่ส่วนของคำขอสร้าง',
   );
   const variants = [
-    { zones: zonesWith(0, { packs: 7, lineAmount: 100800 }) },
+    { zones: zonesWith(0, { qty: 84 }) },
+    { zones: zonesWith(0, { discountType: 'percent', discountValue: 5 }) },
+    { zones: zonesWith(0, { discountType: 'amount', discountValue: 5 }) },
+    { zones: zonesWith(0, { discountType: 'percent', discountValue: 6 }) },
     { zones: zonesWith(0, { rounds: 13 }) },
     { opening: { ...v2Input().opening, paidOn: '2026-09-14' } },
     { installments: [{ ...v2Input().installments[0], label: 'งวดสุดท้าย' }] },
     { contract: { ...v2Input().contract, ref: 'PO-SPW-2026-0119' } },
     { refs: { ...v2Input().refs, express: 'EX-1' } },
     { notes: 'หมายเหตุใหม่' },
-    { amountsIncludeVat: true },
+    { vatRate: 0 },
   ];
   for (const variant of variants) {
     assert.notEqual(historicalServiceFingerprintSource(planV2(variant)), base, JSON.stringify(variant));
   }
+  // อินพุตเดียวกัน (ส่วนลดที่เขียนต่างรูปแต่บันทึกได้ค่าเดียวกัน) = ลายนิ้วมือเดียวกัน — ส่งซ้ำได้ใบเดิม
+  assert.equal(
+    historicalServiceFingerprintSource(planV2({ zones: zonesWith(0, { discountType: 'percent', discountValue: '5' }) })),
+    historicalServiceFingerprintSource(planV2({ zones: zonesWith(0, { discountType: 'percent', discountValue: 5 }) })),
+  );
+  assert.equal(
+    historicalServiceFingerprintSource(planV2({ zones: zonesWith(0, { discountType: 'foo', discountValue: 3 }) })),
+    base, 'ชนิดแปลก = ไม่ลด (เหมือนใบเสนอราคา)',
+  );
 });
