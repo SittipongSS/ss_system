@@ -8,10 +8,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   freezeProductSpecRevision, loadSpecPrintContext, pickDocumentRevision, renderProductSpecSample,
-  renderSpecDocumentPaper, specPaperErrorResponse, supersedingRevNo,
+  renderSpecDocumentDraftPreview, renderSpecDocumentPaper, specPaperErrorResponse, supersedingRevNo,
 } from './productSpecFreeze.js';
 import { PRODUCT_SPEC_RENDERER_VERSION } from './productSpecDocument.js';
-import { loadSpecDocument } from './productSpecStore.js';
+import {
+  loadDealOwner, loadDocumentQuantity, loadLiveDocumentForLine, loadOrderQuotation, loadProductPrintFields,
+  loadSpecDocument, loadSpecIllustrations, loadSpecRecord, specDocQuotationNumber,
+} from './productSpecStore.js';
+import { loadSpecDocOrder, specDocLineView } from './productSpecDocOrder.js';
+import { documentCreateGate } from './productSpecDocWorkflow.js';
+import { productSpecScopeReason } from './productSpecScope.js';
 
 function fakeDb(seed = {}, { fail = () => null, users = {}, beforeUpdate = null, files = {}, downloads = [] } = {}) {
   const tables = structuredClone(seed);
@@ -588,6 +594,156 @@ test('ตัวอย่างของสินค้าที่ยังไ�
   const res = await renderProductSpecSample(db, { productId: 'P-1', now: NOW });
   assert.match(res.error, /ยังไม่มีสเปค/);
   assert.equal(res.status, 400);
+});
+
+/* ── กระดาษร่างของหน้า "ออกเอกสาร" (ยังไม่บันทึก · มติเจ้าของ 23/09/2569) ───────────────────── */
+
+/* ใบ/บรรทัดรูปเดียวกับที่ตัวโหลดของเราต์ (`loadSpecDocOrder`) ส่งมา — แถว SO เต็ม + บรรทัดที่พก quotationLineId */
+async function draftPreview(db, { order = db.tables.sales_orders[0], line = db.tables.sales_order_lines[0] } = {}) {
+  const owner = await loadDealOwner(db, order);
+  assert.equal(owner.error, undefined, owner.error);
+  return renderSpecDocumentDraftPreview(db, { order, line, dealOwner: owner.dealOwner, now: NOW });
+}
+
+test('⭐ กระดาษร่างก่อนบันทึก = สเปคสด + SO/บรรทัดนี้ + เจ้าของดีล · ลายน้ำ "ฉบับร่าง" · เลขที่เป็นขีด · ไม่เขียนอะไร', async () => {
+  const db = fakeDb(seed({ product_spec_documents: [], product_spec_document_revisions: [] }), { users: USERS });
+  const res = await draftPreview(db);
+  assert.equal(res.error, undefined, res.error);
+  const { html } = res;
+  assert.match(html, /class="watermark">ฉบับร่าง</);
+  assert.match(html, /<dt>เลขที่<\/dt><dd>-<\/dd>/, 'ยังไม่มีเลขที่ — ไม่เดาเลข');
+  // ไม่ใช่ตัวอย่างจากหน้าสินค้า — ชื่อไฟล์ (บันทึกเป็น PDF) และแถบเครื่องมือบอก "ฉบับร่าง"
+  assert.match(html, /<title>FM-SA-04 ฉบับร่าง_/);
+  assert.doesNotMatch(html, /FM-SA-04 ตัวอย่าง|FM-SA-04\) · ตัวอย่าง|class="watermark">ตัวอย่าง</);
+  assert.match(html, /เนื้อสเปคสดวันนี้/);
+  assert.match(html, /checklist สดวันนี้/);
+  assert.match(html, /2,500 ขวด/, 'จำนวนผลิตจากบรรทัด SO — ตัวเดียวกับร่างของเอกสารจริง');
+  assert.match(html, /<dt>ใบเสนอราคา<\/dt><dd>QT-26090271-1<\/dd>/);
+  assert.match(html, /<dt>ใบสั่งขาย<\/dt><dd>SO-26090176-1<\/dd>/);
+  assert.match(html, /สิทธิพงศ์ เจ้าของดีล[\s\S]*061-387-9399[\s\S]*owner@example\.com/);
+  assert.match(html, /<h1>รายละเอียดผลิตภัณฑ์<\/h1>/);
+  // ลายเซ็นว่างทั้งแถว — ยังไม่มี Rev ให้ประทับ
+  for (const box of signatureBoxes(html)) assert.match(box, /class="signatureSpace">ลงชื่อ</);
+  assert.equal(db.writes.length, 0, 'เปิดกระดาษร่างต้องไม่เขียนอะไรลงฐาน');
+  assert.equal(db.tables.product_spec_documents.length, 0, 'ไม่มีเอกสารเกิดขึ้น');
+});
+
+test('กระดาษร่างก่อนบันทึก: SO อังกฤษ = PRODUCT SPEC + ลายน้ำ DRAFT (ภาษาของใบ = ภาษาของ SO)', async () => {
+  const base = seed({ product_spec_documents: [], product_spec_document_revisions: [] });
+  base.sales_orders[0] = { ...base.sales_orders[0], docLanguage: 'en' };
+  const db = fakeDb(base, { users: USERS });
+  const res = await draftPreview(db);
+  assert.equal(res.error, undefined, res.error);
+  assert.match(res.html, /<h1>PRODUCT SPEC<\/h1>/);
+  assert.match(res.html, /class="watermark">DRAFT</);
+});
+
+test('กระดาษร่างก่อนบันทึก: ไม่มีสเปค / ไม่ระบุบรรทัด = error ภาษาไทยพร้อมสถานะ (ไม่ใช่กระดาษเปล่า)', async () => {
+  const db = fakeDb(seed({ product_specs: [] }), { users: USERS });
+  const noSpec = await draftPreview(db);
+  assert.match(noSpec.error, /ยังไม่มีสเปค/);
+  assert.equal(noSpec.status, 400);
+  const noLine = await renderSpecDocumentDraftPreview(db, { order: db.tables.sales_orders[0], line: { id: 'SOL-9', productId: null } });
+  assert.equal(noLine.status, 400);
+  assert.equal(noLine.html, undefined);
+});
+
+/* ── เส้นข้อมูลของหน้า "ออกเอกสาร" — ทั้งสายตัวโหลด ไม่เขียนอะไร ────────────────────────────
+ *
+ * 🔴 ยามของเราต์ `GET .../spec-documents/new` เป็น regex บนซอร์สของไฟล์ route เท่านั้น (เราต์ import
+ *    ใต้ raw Node ไม่ได้) ⇒ มันมองไม่เห็นตัวที่ route เรียก · วันที่มีใครเติมคำสั่งเขียนลงตัวโหลดร่วมสักตัว
+ *    เส้น GET นี้จะกลายเป็นเส้นที่เขียนฐานโดยยามไม่แดง ซึ่งขัดกับมติ 23/09 "เปิดหน้าแล้วกดยกเลิก
+ *    ต้องไม่เหลืออะไร" ⇒ ที่นี่เดินสายเรียกจริงตามลำดับของ route แล้วนับการเขียน (ยามเชิงพฤติกรรม
+ *    แบบเดียวกับกระดาษร่างข้างบน)
+ * ⚠️ ฐานจำลองไม่มี `.insert/.delete/.rpc` ในตัว builder ด้วย — ใครเรียกเข้ามาจะ TypeError ที่นี่ทันที
+ */
+async function newPageChain(db, { user, orderId = 'SOR-1', lineId = 'SOL-1' } = {}) {
+  const loaded = await loadSpecDocOrder(db, orderId, user, 'view');
+  assert.equal(loaded.error, undefined, loaded.error);
+  assert.equal(loaded.response, undefined, 'ใบนี้ต้องผ่านขอบเขต');
+  const { order } = loaded;
+  const line = order.lines.find((row) => row.id === lineId);
+  assert.ok(line, 'ต้องเจอบรรทัด');
+
+  const specRes = await loadSpecRecord(db, line.productId);
+  assert.equal(specRes.error, undefined, specRes.error);
+  const existingRes = await loadLiveDocumentForLine(db, line.id);
+  assert.equal(existingRes.error, undefined, existingRes.error);
+  const scopeReason = productSpecScopeReason({ fgCode: line.fgCode });
+  const gate = documentCreateGate({
+    user, salesOrder: order, line, spec: specRes.spec, existingDocument: existingRes.document, scopeReason,
+  });
+
+  const printed = await loadProductPrintFields(db, line.productId);
+  assert.equal(printed.error, undefined, printed.error);
+  const quote = order.metadata?.quoteNumber ? { quotation: null } : await loadOrderQuotation(db, order);
+  assert.equal(quote.error, undefined, quote.error);
+  const quantity = await loadDocumentQuantity(db, { order, line, productId: line.productId });
+  assert.equal(quantity.error, undefined, quantity.error);
+  const owner = await loadDealOwner(db, order);
+  assert.equal(owner.error, undefined, owner.error);
+  const ill = specRes.spec ? await loadSpecIllustrations(db, line.productId) : { illustrations: null };
+  assert.equal(ill.error, undefined, ill.error);
+
+  return {
+    order,
+    line: specDocLineView(line),
+    gate,
+    existingDocument: existingRes.document,
+    spec: specRes.spec,
+    quantity,
+    quotationNumber: specDocQuotationNumber(order, quote.quotation),
+    illustrationCount: ill.illustrations ? ill.illustrations.length : null,
+    dealOwner: owner.dealOwner,
+  };
+}
+
+const AC = { id: 'U-AC', role: 'ac', team: 'KA' };
+
+test('🔴 เส้นข้อมูลของหน้า "ออกเอกสาร": เดินตัวโหลดครบทั้งสาย แล้วไม่เขียนอะไรลงฐานเลย (เปิดหน้า = ไม่มีเลขถูกใช้)', async () => {
+  const base = seed({ product_spec_documents: [], product_spec_document_revisions: [], attachments: [] });
+  // `loadScoped` join ดีลมาให้ในของจริง — ฐานจำลองไม่ join ให้ ⇒ แนบก้อนดีลที่ด่านขอบเขตใช้
+  base.sales_orders[0] = { ...base.sales_orders[0], team: 'KA', deal: { id: 'D-1', ownerId: 'U-AE', team: 'KA' } };
+  // หมวดของบรรทัดมาจาก fgCode (01/02 เท่านั้นที่ออกใบสเปคได้) — บรรทัดของ seed ไม่ได้พกมา
+  base.sales_order_lines[0] = { ...base.sales_order_lines[0], fgCode: 'FG-0903-01-002-10043' };
+  const db = fakeDb(base, { users: USERS });
+
+  const payload = await newPageChain(db, { user: AC });
+  assert.equal(db.writes.length, 0, 'เปิดหน้าออกเอกสารต้องไม่เขียนอะไรลงฐาน');
+  assert.equal(db.tables.product_spec_documents.length, 0, 'ไม่มีเอกสารเกิดขึ้น — เลขที่ยังไม่ถูกใช้');
+
+  // รูปคำตอบที่จอวาด: บรรทัด · ด่าน · เอกสารเดิม · ของที่กระดาษจะพิมพ์
+  assert.equal(payload.existingDocument, null, 'บรรทัดนี้ยังไม่มีเอกสาร');
+  assert.equal(payload.gate.visible, true, 'AC ของทีมเดียวกับใบ เห็นปุ่มบันทึก');
+  assert.equal(payload.gate.reason, null, 'ใบอนุมัติแล้ว + มีสเปค = กดบันทึกได้');
+  assert.equal(payload.line.id, 'SOL-1');
+  assert.equal(payload.line.salesOrderId, undefined, 'ไม่ส่งคอลัมน์ภายในออกไปให้จอ');
+  assert.match(payload.spec.texture, /เนื้อสเปคสดวันนี้/);
+  assert.equal(payload.spec.items.length, 1);
+  assert.deepEqual([payload.quantity.qty, payload.quantity.unit], [2500, 'ขวด']);
+  assert.equal(payload.quotationNumber, 'QT-26090271-1');
+  assert.equal(payload.illustrationCount, 0, 'สเปคนี้ยังไม่มีภาพ — จอบอกได้ว่าเอกสารจะไม่มีภาพ');
+  assert.equal(payload.dealOwner.name, 'สิทธิพงศ์ เจ้าของดีล');
+});
+
+test('เส้นข้อมูลของหน้า "ออกเอกสาร": บรรทัดที่ออกเอกสารไปแล้ว + ทางที่ต้องอ่านใบเสนอราคา — ก็ยังไม่เขียนอะไร', async () => {
+  const base = seed({ attachments: [{ id: 'ATT-1', entityType: 'product', entityId: 'P-1', docType: 'spec_illustration', fileName: 'a.jpg', createdAt: '2026-09-01T00:00:00.000Z' }] });
+  // ไม่มีเลขใบเสนอราคาแช่ไว้ ⇒ สายนี้ต้องถอยไปอ่านตารางใบเสนอราคาจริง (ทางที่ route เปิดเมื่อ metadata ว่าง)
+  base.sales_orders[0] = {
+    ...base.sales_orders[0], metadata: {}, quotationId: 'QT-1', team: 'KA', deal: { id: 'D-1', ownerId: 'U-AE', team: 'KA' },
+  };
+  base.sales_order_lines[0] = { ...base.sales_order_lines[0], fgCode: 'FG-0903-01-002-10043' };
+  base.quotations = [{ id: 'QT-1', quoteNumber: 'QT-26090271-2' }];
+  const db = fakeDb(base, { users: USERS });
+
+  const payload = await newPageChain(db, { user: AC });
+  assert.equal(db.writes.length, 0, 'อ่านอย่างเดียวทุกทาง');
+  assert.equal(payload.quotationNumber, 'QT-26090271-2', 'ไม่มีเลขแช่ไว้ = อ่านจากใบที่ผูก');
+  assert.equal(payload.illustrationCount, 1);
+  // บรรทัดนี้มีเอกสารอยู่แล้ว (seed มี PSD-1 ที่ SOL-1) ⇒ ด่านต้องปิด ไม่ใช่ปล่อยให้กดบันทึกแล้วโดน 409
+  assert.equal(payload.existingDocument.id, 'PSD-1');
+  assert.equal(payload.gate.visible, true, 'AC ยังเห็นปุ่ม — ติดด่านพร้อมเหตุ ไม่ใช่ปุ่มหาย (ui-visibility-rule)');
+  assert.match(payload.gate.reason, /ออกเอกสารไปแล้ว \(FM-SA-04-170969-004\)/);
 });
 
 /* ── คำตอบของเราต์ ──────────────────────────────────────────────────────── */

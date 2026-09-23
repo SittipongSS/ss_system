@@ -20,9 +20,16 @@ const code = (rel) => stripComments(readFileSync(join(API, rel), 'utf8'));
 
 const DOC_ROUTE = 'sales-planning/spec-documents/[id]/route.js';
 const ORDER_DOCS_ROUTE = 'sales-planning/sales-orders/[id]/spec-documents/route.js';
+// หน้า "ออกเอกสาร" (มติเจ้าของ 23/09/2569) — ข้อมูล + ด่าน · กระดาษร่าง · ทั้งสองเส้นอ่านอย่างเดียว
+const NEW_PAGE_ROUTE = 'sales-planning/sales-orders/[id]/spec-documents/new/route.js';
+const PREVIEW_ROUTE = 'sales-planning/sales-orders/[id]/spec-documents/preview/route.js';
 const SPEC_ROUTE = 'products/[id]/spec/route.js';
 const SO_ROUTE = 'sales-planning/sales-orders/[id]/route.js';
-const NEW_ROUTES = [DOC_ROUTE, ORDER_DOCS_ROUTE, SPEC_ROUTE];
+const NEW_ROUTES = [DOC_ROUTE, ORDER_DOCS_ROUTE, NEW_PAGE_ROUTE, PREVIEW_ROUTE, SPEC_ROUTE];
+const LIB = join(API, '..', '..', 'lib');
+const libCode = (rel) => stripComments(readFileSync(join(LIB, rel), 'utf8'));
+// ตัวโหลดใบ/บรรทัดที่ทุกเส้นใต้ `sales-orders/[id]/spec-documents` ใช้ร่วมกัน (ไฟล์ route ส่งออกฟังก์ชันอื่นไม่ได้)
+const ORDER_LOADER = 'sales/productSpecDocOrder.js';
 
 /* ตัดก้อนโค้ดของ action หนึ่งตัว **ใน PATCH handler** — จาก `action === '<x>'` ถึง
    `} else if (action ===` ถัดไป (หรือจุดจบของสาย) · ⚠️ ต้องเริ่มค้นที่ `export const PATCH`
@@ -180,16 +187,101 @@ test('ออกเอกสารจากบรรทัด SO: AC เท่า
   const source = code(ORDER_DOCS_ROUTE);
   const post = source.slice(source.indexOf('export const POST'));
   assert.match(post, /canIssueProductSpecDocument\(user\.role\)/);
-  assert.match(post, /loadOrder\(supabase, id, user, 'edit'\)/);
-  const existingAt = post.indexOf(".from('product_spec_documents')");
+  assert.match(post, /loadSpecDocOrder\(supabase, id, user, 'edit'\)/);
+  const existingAt = post.indexOf('loadLiveDocumentForLine(supabase, lineId)');
   const createAt = post.indexOf('createSpecDocument(supabase');
   assert.ok(existingAt > 0 && createAt > existingAt, 'ต้องตรวจเอกสารเดิมก่อนออกเลข');
   assert.match(post, /if \(existingRes\.error\) return fail\(/, 'ตรวจไม่ขึ้นต้องไม่ถือว่ายังไม่มีเอกสาร');
   assert.match(post, /documentCreateGate\(\{/);
-  assert.match(source, /isHistoricalOrder\(order\)/);
-  assert.match(source, /loadOrder\(supabase, id, user, 'view'\)/);
-  // บรรทัดใบสั่งขายโตตามธุรกรรม — ต้องไล่หน้า (check:rowcap)
-  assert.match(source, /fetchAllResult\(\(\) => supabase\s*\.from\('sales_order_lines'\)/);
+  assert.match(source, /loadSpecDocOrder\(supabase, id, user, 'view'\)/);
+  // ตัวโหลดกลาง: ใบย้อนหลังถูกกัน · ขอบเขตจาก loadScoped · บรรทัดโตตามธุรกรรม — ต้องไล่หน้า (check:rowcap)
+  const loader = libCode(ORDER_LOADER);
+  assert.match(loader, /isHistoricalOrder\(order\)/);
+  assert.match(loader, /loadScoped\(supabase, 'sales_orders', id, user, mode\)/);
+  assert.match(loader, /fetchAllResult\(\(\) => supabase\s*\.from\('sales_order_lines'\)/);
+  // บรรทัดพก quotationLineId — จำนวนผลิตของกระดาษร่างถอยไปบรรทัดใบเสนอราคาที่บรรทัดชี้
+  assert.match(loader, /select\('id, salesOrderId, quotationLineId, productId,/);
+  // ตัวอ่านเอกสารเดิมของบรรทัด: ไม่นับใบ void · อ่านไม่ขึ้น = error (ไม่ใช่ "ยังไม่มี")
+  const store = libCode('sales/productSpecStore.js');
+  const live = store.slice(store.indexOf('export async function loadLiveDocumentForLine'), store.indexOf('function mapCreateDocumentError'));
+  assert.match(live, /\.eq\('salesOrderLineId', salesOrderLineId\)\s*\.neq\('status', 'void'\)/);
+  assert.match(live, /if \(error\) return \{ error: messageOf\(error\) \}/);
+});
+
+/* 🔴 มติเจ้าของ 23/09/2569 "การสร้างเอกสาร ยังไม่ต้องรันอะไร จนกว่าจะบันทึก" — เปิดหน้าออกเอกสาร/ดูกระดาษร่างแล้ว
+   กดยกเลิก ต้องไม่เหลืออะไรในฐาน ⇒ สองเส้นของหน้านั้นห้ามมีคำสั่งเขียนแม้แต่ตัวเดียว (ทั้งในเราต์และในตัวประกอบกระดาษร่าง) */
+const WRITE_CALL = /\.(insert|update|upsert|delete|rpc)\(/;
+test('🔴 เส้นของหน้า "ออกเอกสาร" (ข้อมูล · กระดาษร่าง) ไม่เขียนอะไรเลย — ไม่ insert/update/rpc ไม่ออกเลข', () => {
+  for (const rel of [NEW_PAGE_ROUTE, PREVIEW_ROUTE]) {
+    const source = code(rel);
+    assert.doesNotMatch(source, WRITE_CALL, `${rel} ห้ามมีคำสั่งเขียน`);
+    assert.doesNotMatch(source, /createSpecDocument|recordAudit|freezeProductSpecRevision|renderSpecDocumentPaper/,
+      `${rel} ห้ามเรียกตัวที่ออกเลข/ลง audit/ตรึงกระดาษ`);
+    assert.doesNotMatch(source, /export const (POST|PUT|PATCH|DELETE)\b/, `${rel} มีแต่ GET`);
+    assert.match(source, /export const GET = withUser\(/);
+    // ตัวโหลด/ขอบเขตชุดเดียวกับการ์ดและการออกเลขจริง
+    assert.match(source, /loadSpecDocOrder\(supabase, id, user, 'view'\)/, `${rel} ขอบเขตโหมด view ผ่านตัวโหลดกลาง`);
+    assert.match(source, /if \(loaded\.blocked\)/, `${rel} ใบย้อนหลังต้องถูกกัน`);
+    assert.match(source, /if \(loaded\.error\)/, `${rel} อ่านบรรทัดไม่ขึ้นต้องไม่เงียบ`);
+  }
+  // ตัวประกอบกระดาษร่างใน productSpecFreeze ก็ห้ามเขียน (ต่างจากตัวพิมพ์เอกสารจริงที่ตรึงฉบับอนุมัติ)
+  const freeze = libCode('sales/productSpecFreeze.js');
+  const draft = freeze.slice(freeze.indexOf('export async function renderSpecDocumentDraftPreview'), freeze.indexOf('export function specPaperResponse'));
+  assert.ok(draft.length > 50, 'หา renderSpecDocumentDraftPreview ไม่เจอ');
+  assert.doesNotMatch(draft, WRITE_CALL);
+  assert.doesNotMatch(draft, /freezeProductSpecRevision|\.from\(/, 'กระดาษร่างประกอบผ่าน buildDocumentSnapshot เท่านั้น');
+  assert.match(draft, /buildDocumentSnapshot\(supabase, \{/);
+  assert.match(draft, /document: null,\s*revision: null,/, 'ยังไม่มีเอกสาร = เลขที่เป็นขีด');
+  assert.match(draft, /productSpecWatermark\(\{ language:/, 'ลายน้ำ "ฉบับร่าง" ตามภาษาของ SO');
+});
+
+test('⭐ เส้นข้อมูลของหน้าออกเอกสาร ถามด่านชุดเดียวกับ POST — documentCreateGate + เอกสารเดิมของบรรทัด + สเปค', () => {
+  const source = code(NEW_PAGE_ROUTE);
+  assert.match(source, /documentCreateGate\(\{\s*user, salesOrder: order, line, spec, existingDocument: existing, scopeReason,\s*\}\)/);
+  assert.match(source, /const scopeReason = productSpecScopeReason\(\{ fgCode: line\.fgCode \}\)/, 'scopeReason รูปเดียวกับ POST');
+  assert.match(source, /loadLiveDocumentForLine\(supabase, line\.id\)/);
+  assert.match(source, /if \(existingRes\.error\) return fail\(/);
+  assert.match(source, /loadSpecRecord\(supabase, line\.productId\)/);
+  assert.match(source, /if \(specRes\.error\) return fail\(/);
+  // ของที่กระดาษจะพิมพ์อ่านด้วยตัวเดียวกับภาพนิ่ง · อ่านล้ม = 500 ไม่ใช่ขีด
+  assert.match(source, /loadDocumentQuantity\(supabase, \{ order, line, productId: line\.productId \}\)/);
+  assert.match(source, /if \(quantity\.error\) return fail\(/);
+  assert.match(source, /loadDealOwner\(supabase, order\)/);
+  assert.match(source, /if \(owner\.error\) return fail\(/);
+  assert.match(source, /specDocQuotationNumber\(order, quote\.quotation\)/);
+  // ไม่ส่งแถว SO ทั้งแถว (ยอดเงิน · metadata) ให้จอ
+  assert.doesNotMatch(source, /order: order[,\s}]/);
+  assert.doesNotMatch(source, /\.\.\.order\b/);
+  assert.match(source, /canEditSpec: canEditProductSpec\(user\.role\)/);
+});
+
+/* 🐞 ผลตรวจสด 23/09: role ที่หน้าใหม่บอกว่า "ไม่มีสิทธิ์ออกเอกสารนี้" (senior_ae · rd) ยิง URL ของกระดาษร่าง
+   ตรง ๆ แล้วได้กระดาษเต็มใบ (สเปค + กล่องผู้ซื้อ) ⇒ จอปิดประตูแต่หน้าต่างเปิด · มติ 23/09: **กระดาษของ
+   "ของที่ยังไม่มีใครตัดสินใจออก" แคบเท่าปุ่มที่พามา** (AC/admin) — ต่างจากกระดาษของเอกสารที่ *มีแล้ว*
+   ซึ่งกว้างเท่าคนที่เห็นใบสั่งขาย เพราะมันมีอยู่ได้ก็ต่อเมื่อ AC ออกไปแล้ว (docs §จอ) */
+test('🔴 กระดาษร่างแคบเท่าปุ่มที่พามา — AC/admin เท่านั้น และตัดก่อนแตะฐาน', () => {
+  const source = code(PREVIEW_ROUTE);
+  const gateAt = source.indexOf('canIssueProductSpecDocument(user.role)');
+  const loadAt = source.indexOf('loadSpecDocOrder(supabase');
+  assert.ok(gateAt > 0, 'กระดาษร่างต้องถาม canIssueProductSpecDocument');
+  assert.ok(loadAt > gateAt, 'ด่านคนต้องมาก่อนอ่านฐาน');
+  assert.match(source, /canIssueProductSpecDocument\(user\.role\)\) \{\s*return specPaperErrorResponse\(req, 'ออกเอกสาร FM-SA-04 ได้เฉพาะ AC/,
+    'ไม่ผ่านด่าน = หน้าไทยที่บอกเหตุเดียวกับจอ ไม่ใช่ "forbidden" ดิบ');
+  // เส้นข้อมูลของหน้าใหม่ยัง **กว้าง** โดยตั้งใจ (ทุกคนที่เห็นใบสั่งขายเปิดได้) แต่ตอบแค่คำบอกเมื่อไม่มีสิทธิ์ออก
+  const data = code(NEW_PAGE_ROUTE);
+  assert.match(data, /if \(!canViewSalesPlanning\(user\)\) return forbidden\(/);
+  assert.match(data, /if \(!gate\.visible\) \{\s*return ok\(\{ order: orderView, line: specDocLineView\(line\), gate, existingDocument: null, spec: null \}\)/,
+    'ไม่มีสิทธิ์ออก = ไม่ส่งสเปค/สินค้า/เจ้าของดีลออกไป (จอขึ้นแค่คำบอก)');
+});
+
+test('กระดาษร่าง: บรรทัดนอกหมวด/ไม่ผูกสินค้า = หน้าแจ้งเหตุภาษาไทย · ล้ม/throw = หน้าไทย ไม่ใช่ 500 ดิบ', () => {
+  const source = code(PREVIEW_ROUTE);
+  assert.match(source, /const scopeReason = specDocLineScopeReason\(line\)/);
+  assert.match(source, /if \(scopeReason\) return specPaperErrorResponse\(req, scopeReason, 400\)/);
+  assert.match(source, /specPaperScopedErrorResponse\(req, loaded\.response\)/);
+  assert.match(source, /renderSpecDocumentDraftPreview\(supabase, \{ order, line, dealOwner: owner\.dealOwner \}\)/);
+  assert.match(source, /\} catch \(error\) \{[\s\S]*specPaperErrorResponse\(req,/);
+  assert.match(source, /export const runtime = 'nodejs'/);
 });
 
 test('GET ของการ์ดบนหน้า SO: สถานะรายบรรทัดจาก lineDocumentState + เอกสารที่บรรทัดถูกถอดพร้อมปุ่มยกเลิก', () => {
@@ -233,6 +325,62 @@ test('🔴 ยื่น: ตรวจรูปในภาพนิ่งซ้�
   assert.match(guard, /if \(check\.error \|\| check\.missing\.length\)/);
   assert.match(guard, /undoSubmitPatch\(latest, step\.patch,/);
   assert.match(guard, /return conflict\(/);
+});
+
+/* ── DELETE: ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) ────────────
+   🔴 ระบบไม่มีถังขยะ — `audit_logs.before` คือทางกู้ทางเดียว ([[deleted-data-recovery]])
+      ⇒ ลำดับ "audit ก่อน แล้วค่อยลบ" เป็นข้อบังคับ ไม่ใช่รสนิยม */
+const deleteBranch = (source) => source.slice(source.indexOf('export const DELETE'));
+
+test('⭐ ลบร่าง: เป็น DELETE ของเราต์เอกสาร ไม่ใช่ action ของ PATCH · ด่านคือ documentActions().remove', () => {
+  const source = code(DOC_ROUTE);
+  assert.match(source, /export const DELETE = withUser\(/, 'ต้องมีเมธอด DELETE');
+  const del = deleteBranch(source);
+  assert.match(del, /const \{ id \} = await ctx\.params/);
+  assert.match(del, /loadVisibleDocument\(supabase, id, user, 'edit'\)/, 'ขอบเขตชุดเดียวกับ PATCH');
+  assert.match(del, /documentActions\(\{[\s\S]*?\}\)\.remove/, 'ด่านต้องเป็น documentActions().remove ไม่ใช่เงื่อนไขที่คิดเองที่เราต์');
+  // ลบร่างต้องไม่ปนเข้าไปในทะเบียน action ของ PATCH (ไม่งั้นเมธอดจะเพี้ยนกันคนละทาง)
+  assert.doesNotMatch(source, /action === 'remove'/);
+});
+
+test('🔴 ลบร่าง: ลง audit (before = เอกสาร + Rev เต็ม) **ก่อน** เรียกตัวลบ — ลบก่อนแล้วเขียนคือจังหวะที่แถวหายโดยไม่มีสำเนา', () => {
+  const del = deleteBranch(code(DOC_ROUTE));
+  const auditAt = del.indexOf('await recordAudit({');
+  const deleteAt = del.indexOf('deleteDraftDocument(supabase');
+  assert.ok(auditAt > 0, 'ต้องลง audit');
+  assert.ok(deleteAt > auditAt, 'audit ต้องมาก่อนการลบ');
+  const audit = del.slice(auditAt, deleteAt);
+  assert.match(audit, /action: 'delete'/);
+  assert.match(audit, /entityType: 'product_spec_document'/);
+  assert.match(audit, /before: \{ document, revision: latest \}/, 'before ต้องเป็นแถวเต็มทั้งคู่ ไม่ใช่แค่ id');
+  // ลบเดินผ่าน store (RPC ของ 0375) — ห้าม .delete() ตรงจากเราต์ (ยามของ 0370 อยู่บน trigger)
+  assert.doesNotMatch(del, /\.delete\(\)/);
+});
+
+test('🔴 ลบร่างไม่ผ่าน = ไม่ปล่อยให้ audit โกหกว่าลบแล้ว · ตอบรหัสของ store (409 เมื่อมีคนยื่นแทรก)', () => {
+  const del = deleteBranch(code(DOC_ROUTE));
+  const failAt = del.indexOf('if (removed.error)');
+  assert.ok(failAt > 0, 'ต้องเช็ค error ของตัวลบ');
+  const failure = del.slice(failAt);
+  assert.match(failure, /await recordAudit\(\{/, 'ลบไม่ผ่านต้องมีแถว audit แก้กลับ');
+  assert.match(failure, /deleteFailed: removed\.error/);
+  assert.match(failure, /return fail\(removed\.error, removed\.status \|\| 500\)/);
+});
+
+test('ลบร่างที่ปุ่มถูกซ่อน: ไม่ใช่ AC = 403 · ใบที่ลบไม่ได้มาแต่ต้น = เหตุจริง ไม่ใช่ "สถานะเปลี่ยนแล้ว"', () => {
+  const del = deleteBranch(code(DOC_ROUTE));
+  assert.match(del, /if \(!canIssueProductSpecDocument\(user\?\.role\)\) return forbidden\('ลบร่างเอกสารได้เฉพาะ AC'\)/);
+  assert.match(del, /return conflict\(draftDeleteBlock\(document, latest\) \|\| STALE\)/,
+    'ร่างที่เคยยื่นแล้วดึงกลับไม่ได้ "เปลี่ยนสถานะ" — โหลดใหม่กี่รอบก็ลบไม่ได้ ต้องบอกเหตุจริง');
+});
+
+test('ลบสำเร็จ = ส่ง id ใบสั่งขายกลับให้จอเด้งไปหน้านั้น (อ่านเอกสารที่ลบแล้วซ้ำไม่ได้)', () => {
+  const del = deleteBranch(code(DOC_ROUTE));
+  assert.match(del, /return ok\(\{\s*deleted: true,/);
+  assert.match(del, /salesOrderId: document\.salesOrderId \|\| null/);
+  assert.doesNotMatch(del, /loadSpecDocument\(supabase, id\)/, 'ลบแล้วห้ามอ่านกลับ — ได้ 404 แน่นอน');
+  // 🔴 เลขที่ไม่นำกลับมาใช้ — ห้ามมีโค้ดไหนไปยุ่งกับตัวนับ
+  assert.doesNotMatch(del, /entity_number_counters|next_quote_number/);
 });
 
 test('ปุ่ม "แก้สเปคที่หน้าสินค้า" ตามสิทธิ์แก้สเปค — API ส่ง canEditSpec มาจาก canEditProductSpec', () => {

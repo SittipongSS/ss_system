@@ -426,7 +426,13 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
      AE Supervisor · admin) ⇒ `salesplan:edit`
      ⚠️ **ต้องมาก่อนช่องของฝ่ายบัญชีข้างล่าง** — วันไหนช่องนั้นถูกขยาย (เช่นเปิดทุกเส้นลูกของใบ)
         ฝ่ายบัญชีจะกดอนุมัติใบสเปคได้ทั้งที่ไม่ใช่ลายเซ็นของฝ่ายนั้น · กฎเฉพาะมาก่อนกฎกว้างเสมอ
-     ⚠️ ด่านรายขั้น (AC / เจ้าของดีล / AE Sup) อยู่ใน handler (`documentActions`) ซึ่ง proxy มองไม่เห็น */
+     ⚠️ ด่านรายขั้น (AC / เจ้าของดีล / AE Sup) อยู่ใน handler (`documentActions`) ซึ่ง proxy มองไม่เห็น
+     ⭐ หน้า "ออกเอกสาร" (มติเจ้าของ 23/09/2569 · `/sales-planning/spec-documents/new`) มีเส้นอ่านสองเส้น
+        `sales-orders/<id>/spec-documents/new` (ข้อมูล + ด่าน) และ `.../preview` (กระดาษร่าง HTML) — **GET ล้วน**
+        ⇒ ผ่านที่ `OPEN_READ_APIS` ('/api/sales-planning') + บรรทัดแรกของฟังก์ชันนี้ (reads ok) เหมือน GET ของการ์ด ·
+        หน้าอยู่ใต้ '/sales-planning' ของ `OPEN_PAGES` · ด่านจริงอยู่ใน handler: `loadScoped` โหมด view +
+        `documentCreateGate` (เส้นข้อมูล) และ `canIssueProductSpecDocument` (กระดาษร่าง — แคบเท่าปุ่มที่พามา)
+        · การออกเลขยังเป็น POST ตัวเดิมที่กฎนี้คุม (proxy.test.mjs ล็อกทั้งสามทางไว้) */
   if (/^\/api\/sales-planning\/spec-documents(\/|$)/.test(path)
     || /^\/api\/sales-planning\/sales-orders\/[^/]+\/spec-documents(\/|$)/.test(path)) {
     return can(role, 'salesplan:edit');

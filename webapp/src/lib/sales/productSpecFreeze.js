@@ -6,6 +6,7 @@
 //   · Rev ที่ยื่นแล้วแต่ยังไม่จบ (pending_* · rejected) พิมพ์จากภาพนิ่งของตัวเอง
 //   · ร่าง = พิมพ์สดจากสเปค + SO ปัจจุบัน (ภาพนิ่งสดจาก `buildDocumentSnapshot` ตัวเดียวกับตอนยื่น)
 //   · ตัวอย่างจากหน้าสินค้า = ภาพนิ่งสดที่ไม่มี SO + ลายน้ำ "ตัวอย่าง"
+//   · กระดาษร่างของหน้า "ออกเอกสาร" (ยังไม่บันทึก · มติ 23/09) = ภาพนิ่งสดจาก SO/บรรทัด + "ฉบับร่าง" · เลขที่ขีด
 //
 // ⚠️ **ตรึงแล้วเขียนทับไม่ได้** (trigger 0370 ⑧) ⇒ ตอนตรึง ข้อมูลบริษัท/มาตรฐานเอกสาร
 //    ต้องอ่านได้จริง (อ่านไม่ได้ = ไม่ตรึง คืน error ให้ลองใหม่) · ส่วนร่าง/ตัวอย่างอ่านแบบ best effort
@@ -339,6 +340,40 @@ export async function renderProductSpecSample(supabase, { productId, now = new D
       watermark: productSpecWatermark({ sample: true }),
       company: context.company,
       standard: context.standard,
+    }),
+  };
+}
+
+/**
+ * กระดาษร่างของเอกสารที่ **ยังไม่ได้บันทึก** — หน้า "ออกเอกสาร" (`/sales-planning/spec-documents/new`)
+ *
+ * ⭐ มติเจ้าของ 23/09/2569 "การสร้างเอกสาร ยังไม่ต้องรันอะไร จนกว่าจะบันทึก" — ก่อนกดบันทึกยังไม่มีแถวเอกสาร
+ *    ไม่มีเลขที่ ไม่มี Rev ⇒ ประกอบภาพนิ่งสดจากสเปค + SO/บรรทัด + เจ้าของดีล **ตัวสร้างเดียวกับร่างของเอกสารจริง**
+ *    (`buildDocumentSnapshot`) แล้วพิมพ์แบบ `document = null` ⇒ ช่อง "เลขที่" เป็นขีด · ลายน้ำ "ฉบับร่าง"
+ *    ตามภาษาของ SO (ใบอังกฤษ DRAFT) · ภาษา/กล่องผู้ซื้อ/จำนวนผลิตตรงกับกระดาษที่จะได้หลังบันทึก
+ * ⚠️ **ไม่เขียนอะไรเลย** — ไม่ออกเลข ไม่ตรึง ไม่แตะตัวนับ (ต่างจาก `renderSpecDocumentPaper` ที่ตรึงฉบับอนุมัติ)
+ *    ด่าน (ขอบเขต SO · บรรทัดอยู่ในใบ · อยู่ในหมวด) เป็นของเราต์ ที่นี่ประกอบกระดาษอย่างเดียว
+ * @returns {{ html: string } | { error: string, status?: number }}
+ */
+export async function renderSpecDocumentDraftPreview(supabase, {
+  order, line, dealOwner = null, now = new Date().toISOString(),
+} = {}) {
+  if (!order || !line?.productId) return { error: 'ไม่ระบุใบสั่งขายหรือบรรทัดสินค้า', status: 400 };
+  const built = await buildDocumentSnapshot(supabase, {
+    productId: line.productId, order, line, dealOwner, now,
+  });
+  if (built.error) return { error: built.error, status: built.status };
+  const context = await loadSpecPrintContext(supabase, { strict: false });
+  return {
+    html: renderProductSpecDocument({
+      snapshot: built.snapshot,
+      document: null,
+      revision: null,
+      // ไม่มีเอกสาร/Rev = สถานะที่ไม่รู้จัก ⇒ "ฉบับร่าง" (กระดาษไร้ลายน้ำเป็นได้แค่ฉบับอนุมัติ)
+      watermark: productSpecWatermark({ language: built.snapshot?.order?.docLanguage }),
+      company: context.company,
+      standard: context.standard,
+      unnumberedLabel: 'ฉบับร่าง',
     }),
   };
 }

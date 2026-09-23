@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, FilePlus2, Files, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import GatedAction from "@/components/ui/GatedAction";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -16,9 +15,8 @@ import { naText } from "@/lib/format";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { docReasonError } from "@/lib/sales/productSpecDocWorkflow";
 import {
-  docReasonPrompt, followUpLineView, lineIssuePrompt, specDocumentHref,
+  docReasonPrompt, followUpLineView, specDocumentHref,
 } from "@/lib/sales/productSpecDocView";
-import { formatSpecDocNo } from "@/lib/sales/productSpecDocNo";
 import styles from "./SalesOrderFollowUpDocs.module.css";
 
 /**
@@ -31,20 +29,23 @@ import styles from "./SalesOrderFollowUpDocs.module.css";
  * ⚠️ **สถานะทุกบรรทัดมาจาก API** (`lineDocumentState` ที่คิดด้วยผู้ใช้จริง) — จอห้ามคิดเอง
  * ⚠️ **บรรทัดที่ยังออกไม่ได้ก็ขึ้น** พร้อมปุ่มที่บอกเหตุตอนกด (ui-visibility-rule) · ไม่มีสิทธิ์ออก
  *    = ไม่มีปุ่ม บอกแค่ว่าใครเป็นคนออก
+ * ⭐ **"ออกเอกสาร" พาไปหน้าออกเอกสาร ไม่ได้ออกเลขจากการ์ด** (มติเจ้าของ 23/09/2569 "การสร้างเอกสาร ยังไม่ต้องรันอะไร
+ *    จนกว่าจะบันทึก เอาแบบ คำร้อง แบบใบเสนอราคา") — เดิมกดแล้วขึ้นโมดัลยืนยันแล้ว POST ทันที (เลขที่ถูกใช้ตั้งแต่
+ *    ยังไม่ได้เห็นเนื้อเอกสาร) · ตอนนี้การ์ดไม่ยิง POST เองอีกเลย ⇒ หน้า `/sales-planning/spec-documents/new`
+ *    เป็นที่เดียวที่เลขที่ถูกใช้ (ตอนกด "บันทึก")
  *
  * 🐞 **อนุมัติใบสั่งขายบนหน้าเดียวกันแล้วการ์ดค้างสถานะเดิมจน F5** — การ์ดโหลดครั้งเดียวตอน mount
  *    ⇒ `orderStatus` เข้า deps ของตัวโหลด: หน้า SO ส่งสถานะใบมา สถานะขยับเมื่อไรการ์ดดึงใหม่เอง
  *    + ดึงใหม่ตอนกลับมามองแท็บ (อีกคนออกเอกสาร/อนุมัติไประหว่างที่แท็บเปิดค้าง)
  *
  * @param orderStatus สถานะของใบสั่งขายที่หน้า SO ถืออยู่ — เปลี่ยนเมื่อไร การ์ดโหลดใหม่
- * @param onChanged เรียกหลังออก/ยกเลิกเอกสารสำเร็จ (ให้หน้า SO ดึงของตัวเองถ้าต้องการ)
+ * @param onChanged เรียกหลังยกเลิกเอกสารสำเร็จ (ให้หน้า SO ดึงของตัวเองถ้าต้องการ)
  */
 export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged }) {
   const [rows, setRows] = useState([]);
   const [orphans, setOrphans] = useState([]);
   const [problem, setProblem] = useState(null);
   const [loaded, setLoaded] = useState(false);
-  const [issuing, setIssuing] = useState(null);
   const [voiding, setVoiding] = useState(null);
   const [voidReason, setVoidReason] = useState("");
   const [voidError, setVoidError] = useState("");
@@ -71,31 +72,6 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
   // ⚠️ `orderStatus` อยู่ใน deps โดยตั้งใจ — ดูหัวไฟล์ (สถานะใบสั่งขายขยับ = บรรทัดทุกบรรทัดเปลี่ยนคำตอบ)
   useEffect(() => { load(); }, [load, orderStatus]);
   useRevalidateOnFocus(load);
-
-  /* ออกเอกสาร — POST กินเลขจากตัวนับ ⇒ **ไม่ลองซ้ำเอง** (apiFetch ไม่ retry POST อยู่แล้ว)
-     ⚠️ ล้ม = โยนให้กล่องยืนยันโชว์ข้อความในกล่อง (แถบของการ์ดอยู่ใต้โมดัล) และดึงสถานะใหม่
-        เพราะคำตอบ 4xx แปลว่าจอไม่ตรงกับของจริง (เช่นอีกแท็บออกไปก่อนแล้ว) */
-  const issue = async () => {
-    const lineId = issuing?.line?.id;
-    try {
-      const result = await apiJson(`/api/sales-planning/sales-orders/${orderId}/spec-documents`, {
-        method: "POST",
-        json: { salesOrderLineId: lineId },
-        fallbackError: "ออกเอกสารไม่สำเร็จ",
-      });
-      setIssuing(null);
-      const docNo = result?.document?.docNo;
-      // เลขที่รูปเดียวกับกระดาษ DDMMYY-XXX-RR (ออกใหม่ = Rev.00)
-      notifyToast.success(docNo
-        ? `ออกเอกสาร ${formatSpecDocNo(docNo, result?.revision?.revNo ?? 0)} แล้ว — ยื่นอนุมัติได้ที่หน้าเอกสาร`
-        : "ออกเอกสารแล้ว");
-      await load({ background: true });
-      onChanged?.();
-    } catch (issueError) {
-      load({ background: true });
-      throw issueError;
-    }
-  };
 
   const openVoid = (orphan) => {
     setVoiding(orphan);
@@ -132,7 +108,6 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
   // ไม่มีบรรทัดในขอบเขตและไม่มีเอกสารค้าง (ใบที่ขายแต่ค่าออกแบบ/รายได้อื่น) = ไม่มีการ์ดนี้ทั้งใบ
   if (!inScope.length && !orphans.length && !problem) return null;
 
-  const issuePrompt = issuing ? lineIssuePrompt({ line: issuing.line }) : null;
   const voidPrompt = voiding
     /* ⭐ ส่ง Rev ของเอกสารไปด้วย — ไม่งั้นโมดัลพูด "ยกเลิก 220969-001" ขณะที่แถว/toast พูด "220969-001-02"
        (ผลตรวจรอบสอง: เลขเดียวกันสองหน้าตาในโฟลว์เดียว) */
@@ -171,7 +146,7 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
             </thead>
             <tbody>
               {rows.map((row) => {
-                const view = followUpLineView(row);
+                const view = followUpLineView(row, { orderId });
                 const line = row.line || {};
                 return (
                   <tr key={line.id} className={view.kind === "out_of_scope" ? styles.muted : undefined}>
@@ -200,15 +175,20 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
                     </td>
                     <td>
                       {view.action?.kind === "issue" ? (
-                        /* ⚠️ ติดด่าน (เช่นใบสั่งขายถูกย้อนการอนุมัติ) = ปุ่มอยู่ แล้วบอกเหตุตอนกด
-                           · ปุ่มในตารางเป็นเส้นขอบทุกแถว — ทึบสงวนไว้หน้าละปุ่ม */
+                        /* ⚠️ ติดด่าน (เช่นใบสั่งขายถูกย้อนการอนุมัติ) = ปุ่มอยู่ แล้วบอกเหตุตอนกด ไม่พาไป
+                           · ผ่านด่าน = **พาไปหน้าออกเอกสาร** (`href`) ยังไม่มีอะไรถูกบันทึก — ไม่มีโมดัล ไม่มี POST ที่นี่
+                           · ปุ่มในตารางเป็นเส้นขอบทุกแถว — ทึบสงวนไว้หน้าละปุ่ม
+                           ⚠️ **ยังเป็น `GatedAction` (`<button>`) ทั้งคอลัมน์ ทั้งที่ตอนนี้มันแค่นำทาง** ⇒ เสีย "เปิดในแท็บใหม่"
+                              (AC เปิดหลายบรรทัดพร้อมกันไม่ได้) · แลกมาเพราะแถวในตารางเดียวกันมีทั้งที่ติดด่านและไม่ติด
+                              สลับ `<a>`/`<button>` ตามสถานะของแถว = คลาส/โฟกัส/เมนูคลิกขวาไม่เท่ากันในคอลัมน์เดียว
+                              (เหตุผลที่ `GatedAction` เขียนไว้เอง) · เอกสารที่ออกแล้วยังเป็น `<Link>` ตามเดิม */
                         <GatedAction
                           blocker={view.action.blocker || ""}
+                          href={view.action.href || ""}
                           tone="primary"
                           variant="outline"
                           size="sm"
                           icon={<FilePlus2 size={13} />}
-                          onClick={() => setIssuing(row)}
                         >
                           {view.action.label}
                         </GatedAction>
@@ -258,19 +238,9 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
       ) : null}
 
       <p className={`form-note ${styles.footNote}`}>
-        AC ออกเอกสาร → ยื่นที่หน้าเอกสาร → AE เจ้าของดีลอนุมัติ → AE Supervisor อนุมัติขั้นสุดท้าย ·
+        AC ออกเอกสาร (ตรวจเนื้อแล้วกดบันทึกจึงได้เลขที่) → ยื่นที่หน้าเอกสาร → AE เจ้าของดีลอนุมัติ → AE Supervisor อนุมัติขั้นสุดท้าย ·
         ขึ้นเฉพาะบรรทัดหมวด 01 และ 02 · FM-SA-07 (รายงานติดตามคำสั่งซื้อ) จะมาในรอบถัดไป
       </p>
-
-      <ConfirmDialog
-        open={Boolean(issuing)}
-        title={issuePrompt?.title}
-        description={issuePrompt?.description}
-        detail={issuePrompt?.detail}
-        confirmLabel={issuePrompt?.confirmLabel}
-        onConfirm={issue}
-        onClose={() => setIssuing(null)}
-      />
 
       <ReasonDialog
         open={Boolean(voiding)}

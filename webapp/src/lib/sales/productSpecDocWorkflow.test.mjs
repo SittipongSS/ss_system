@@ -11,8 +11,8 @@ import {
   DOC_ACTION_KEYS, DOC_REASON_MAX, DOC_REASON_MIN, DOC_REVISION_STATUSES, DOC_REVISION_STATUS_LABELS,
   DOC_STATUS_LABELS, DOC_STEPS, OPEN_REVISION_STATUSES,
   canAeApproveProductSpecDocument, canIssueProductSpecDocument, canSupApproveProductSpecDocument,
-  docReasonError, docRevisionSteps, documentActions, documentCreateGate, formatRevLabel,
-  isRevisionOpen, lineDocumentState, rejectStageOf, revisionPatch, salesOrderApprovedBlock,
+  docReasonError, docRevisionSteps, documentActions, documentCreateGate, draftDeleteBlock, formatRevLabel,
+  isDeletableDraft, isRevisionOpen, lineDocumentState, rejectStageOf, revisionPatch, salesOrderApprovedBlock,
 } from './productSpecDocWorkflow.js';
 
 /* ── ตัวละคร ───────────────────────────────────────────────────────── */
@@ -38,7 +38,7 @@ const rev = (status, over = {}) => ({
   id: 'PSDR1', documentId: 'PSD1', revNo: 0, status, submittedBy: U.ac.id, ...over,
 });
 
-const ACTIONS = ['submit', 'withdraw', 'aeApprove', 'supApprove', 'reject', 'revise', 'void'];
+const ACTIONS = ['submit', 'withdraw', 'aeApprove', 'supApprove', 'reject', 'revise', 'void', 'remove'];
 
 /* ย่อผลให้อ่านง่าย: ปุ่มที่โชว์ → 'ok' (กดได้) / 'blocked' (โชว์พร้อมเหตุ) · ไม่โชว์ = ไม่อยู่ในก้อน */
 function summarize(actions) {
@@ -67,14 +67,15 @@ const run = (status, user, over = {}) => summarize(documentActions({
 
 /* ⭐ เมทริกซ์หลัก (SO อนุมัติอยู่ · บรรทัดยังอยู่ · ผู้ยื่นคือ U.ac) */
 const MATRIX = {
+  /* ⭐ ร่างที่ยังไม่เคยยื่น = สถานะเดียวที่มีปุ่ม "ลบร่าง" (มติ 23/09/2569 · mig 0375) */
   draft: {
-    ac: { submit: 'ok', void: 'ok' },
-    ac2: { submit: 'ok', void: 'ok' },
+    ac: { submit: 'ok', void: 'ok', remove: 'ok' },
+    ac2: { submit: 'ok', void: 'ok', remove: 'ok' },
     owner: { aeApprove: 'blocked', reject: 'blocked' },
     ae2: {},
     senior: {},
     sup: { supApprove: 'blocked', reject: 'blocked' },
-    admin: { submit: 'ok', aeApprove: 'blocked', supApprove: 'blocked', reject: 'blocked', void: 'ok' },
+    admin: { submit: 'ok', aeApprove: 'blocked', supApprove: 'blocked', reject: 'blocked', void: 'ok', remove: 'ok' },
     rd: {},
   },
   pending_ae: {
@@ -118,8 +119,11 @@ const MATRIX = {
     rd: {},
   },
 };
-// ตีกลับ = งานกลับไปอยู่ที่ AC · ปุ่มเหมือนร่างทุกช่อง (ยื่นใหม่ได้ใน Rev เดิม)
-MATRIX.rejected = MATRIX.draft;
+/* ตีกลับ = งานกลับไปอยู่ที่ AC · ปุ่มเหมือนร่างทุกช่อง (ยื่นใหม่ได้ใน Rev เดิม)
+   ⚠️ **ยกเว้น "ลบร่าง"** — ใบที่ถูกตีกลับผ่านตาผู้อนุมัติมาแล้ว ลบไม่ได้ (มติ 23/09 · ทางออกคือยกเลิก) */
+MATRIX.rejected = Object.fromEntries(Object.entries(MATRIX.draft).map(([who, buttons]) => [
+  who, Object.fromEntries(Object.entries(buttons).filter(([key]) => key !== 'remove')),
+]));
 
 test('เมทริกซ์ครบทุกสถานะของ Rev', () => {
   assert.deepEqual(Object.keys(MATRIX).sort(), [...DOC_REVISION_STATUSES].sort());
@@ -263,6 +267,96 @@ test('เอกสาร void แล้ว: ทุกปุ่มหายสำ
 test('ไม่มีเอกสารหรือไม่มี Rev = ไม่มีปุ่ม', () => {
   assert.deepEqual(summarize(documentActions({ user: U.admin })), {});
   assert.deepEqual(summarize(documentActions({ document: doc, user: U.admin, salesOrder: approvedOrder })), {});
+});
+
+/* ── ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) ────────────────
+ *
+ * 🪤 กับดักของเรื่องนี้: "ดึงกลับ" ล้าง `submittedAt/By/ByName` + `snapshot` จนหมด ⇒ ร่างที่
+ *    เคยยื่นหน้าตาเหมือนร่างที่ไม่เคยยื่นทุกช่อง · รอยที่แยกได้คือ `firstSubmittedAt` ซึ่ง
+ *    trigger ของ 0375 ประทับตอนเข้า `pending_ae` และลบไม่ได้ — เทสต์ชุดนี้ยืนบนช่องนั้น
+ */
+
+const draftRev = (over = {}) => ({
+  id: 'PSDR1', documentId: 'PSD1', revNo: 0, status: 'draft',
+  firstSubmittedAt: null, submittedAt: null, submittedBy: null, submittedByName: null,
+  aeApprovedAt: null, supApprovedAt: null, rejectedAt: null, frozenAt: null, ...over,
+});
+
+test('⭐ ร่าง Rev.00 ที่ไม่เคยยื่น = ลบได้ · AC/admin เห็นปุ่ม คนอื่นไม่เห็น', () => {
+  const fresh = draftRev();
+  assert.equal(draftDeleteBlock(doc, fresh), null);
+  assert.equal(isDeletableDraft(doc, fresh), true);
+  for (const who of ['ac', 'ac2', 'admin']) {
+    assert.deepEqual(documentActions({
+      document: doc, latest: fresh, salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U[who],
+    }).remove, { visible: true, reason: null }, who);
+  }
+  for (const who of ['owner', 'ae2', 'senior', 'sup', 'rd']) {
+    assert.deepEqual(documentActions({
+      document: doc, latest: fresh, salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U[who],
+    }).remove, { visible: false, reason: null }, who);
+  }
+});
+
+test('🔴 ร่างที่ "ยื่นแล้วดึงกลับ" ลบไม่ได้ — ตราประทับถูกล้างหมดแล้ว เหลือแต่ firstSubmittedAt', () => {
+  // สภาพหลัง revisionPatch('withdraw'): status กลับเป็น draft · submittedAt/By/ByName = null · snapshot = null
+  const withdrawn = draftRev({ firstSubmittedAt: '2026-09-23T02:00:00.000Z' });
+  assert.match(draftDeleteBlock(doc, withdrawn), /เคยยื่นให้ผู้อนุมัติดูแล้ว/);
+  assert.equal(isDeletableDraft(doc, withdrawn), false);
+  for (const who of ['ac', 'admin']) {
+    assert.equal(documentActions({
+      document: doc, latest: withdrawn, salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U[who],
+    }).remove.visible, false, who);
+  }
+});
+
+test('รอยการยื่นช่องไหนก็ตามที่ยังเหลืออยู่ = ลบไม่ได้ (ไม่ได้ดูแค่ firstSubmittedAt ช่องเดียว)', () => {
+  for (const field of ['firstSubmittedAt', 'submittedAt', 'aeApprovedAt', 'supApprovedAt', 'rejectedAt', 'frozenAt']) {
+    const stamped = draftRev({ [field]: '2026-09-23T02:00:00.000Z' });
+    assert.match(draftDeleteBlock(doc, stamped), /เคยยื่นให้ผู้อนุมัติดูแล้ว/, field);
+  }
+  // `submittedBy` ที่ค้างอยู่โดยไม่มีเวลา ไม่ใช่รอยการยื่น (ดึงกลับล้างทั้งคู่อยู่แล้ว)
+  assert.equal(draftDeleteBlock(doc, draftRev({ submittedBy: U.ac.id })), null);
+});
+
+test('🔴 ทุกสถานะที่ไม่ใช่ร่าง ลบไม่ได้ และบอกเหตุเป็นภาษาคน (ไม่ใช่ "สถานะเปลี่ยนแล้ว")', () => {
+  for (const status of DOC_REVISION_STATUSES.filter((s) => s !== 'draft')) {
+    const block = draftDeleteBlock(doc, draftRev({ status }));
+    assert.ok(block, status);
+    assert.match(block, /ไม่ใช่ร่างที่ยังไม่ได้ยื่น|ยกเลิกเอกสาร/, status);
+    assert.equal(documentActions({
+      document: doc, latest: draftRev({ status }), salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U.admin,
+    }).remove.visible, false, status);
+  }
+});
+
+test('🔴 เอกสารที่อนุมัติแล้ว (currentRevNo มีค่า) / มี Rev.01 / ถูก void — ลบไม่ได้ทั้งหมด', () => {
+  assert.match(draftDeleteBlock({ ...doc, currentRevNo: 0 }, draftRev()), /ผ่านการอนุมัติแล้ว \(Rev\.00\)/);
+  assert.match(draftDeleteBlock({ ...doc, currentRevNo: 1 }, draftRev()), /ผ่านการอนุมัติแล้ว \(Rev\.01\)/);
+  assert.match(draftDeleteBlock(doc, draftRev({ revNo: 1 })), /มี Rev\.01 แล้ว/);
+  assert.match(draftDeleteBlock({ ...doc, status: 'void' }, draftRev()), /ยกเลิกแล้ว/);
+  // ใบที่ void แล้วไม่มีปุ่มอะไรเลยอยู่แล้ว (documentActions ตัดตั้งแต่ต้น) — รวมปุ่มลบ
+  assert.equal(documentActions({
+    document: { ...doc, status: 'void' }, latest: draftRev(), salesOrder: approvedOrder, user: U.admin,
+  }).remove.visible, false);
+});
+
+test('ลบร่างไม่ผูกกับสถานะของ SO — ถอย ไม่ใช่เดินหน้า (เหมือนดึงกลับ/ยกเลิก)', () => {
+  for (const salesOrder of [{ ...approvedOrder, status: 'draft' }, null]) {
+    assert.deepEqual(documentActions({
+      document: doc, latest: draftRev(), salesOrder, dealOwnerId: OWNER_ID, user: U.ac,
+    }).remove, { visible: true, reason: null });
+  }
+  // บรรทัด SO ถูกถอด = ยังเก็บกวาดร่างที่ออกค้างไว้ได้
+  assert.equal(documentActions({
+    document: { ...doc, salesOrderLineId: null }, latest: draftRev(), salesOrder: approvedOrder, user: U.ac,
+  }).remove.visible, true);
+});
+
+test('draftDeleteBlock ทนกับก้อนที่ไม่ครบ — ไม่มีเอกสาร/ไม่มี Rev ต้องไม่บอกว่าลบได้', () => {
+  assert.ok(draftDeleteBlock(null, draftRev()));
+  assert.ok(draftDeleteBlock(doc, null));
+  assert.equal(isDeletableDraft(undefined, undefined), false);
 });
 
 /* ── ด่านออกเอกสารจากบรรทัด SO ─────────────────────────────────────── */

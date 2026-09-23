@@ -28,6 +28,24 @@ export const specDocumentHref = (documentId) => (documentId ? `/sales-planning/s
 // ⚠️ ใบสั่งขายใช้เส้นสั้น /sa/... เหมือนเมนูและกระดิ่ง (next.config rewrite) — ไม่ใช่ /sales-planning
 export const salesOrderHref = (orderId) => (orderId ? `/sa/sales-orders/${orderId}` : null);
 export const productSpecPageHref = (productId) => (productId ? `/database/products/${productId}/spec` : null);
+/* ⭐ หน้า "ออกเอกสาร" ของบรรทัด SO หนึ่งบรรทัด (มติเจ้าของ 23/09/2569 "การสร้างเอกสาร ยังไม่ต้องรันอะไร จนกว่าจะบันทึก
+   เอาแบบ คำร้อง แบบใบเสนอราคา") — การ์ดบนหน้า SO พามาที่นี่ · เลขที่ถูกใช้ตอนกด "บันทึก" บนหน้านั้นเท่านั้น
+   ⚠️ id อยู่ใน query ⇒ ห่อ `encodeURIComponent` (id วันนี้เป็นตัวอักษรปลอดภัยล้วน แต่ลิงก์ต้องไม่พังวันที่ไม่ใช่) */
+const enc = (value) => encodeURIComponent(String(value));
+export const specDocumentNewHref = (orderId, lineId) => (orderId && lineId
+  ? `/sales-planning/spec-documents/new?order=${enc(orderId)}&line=${enc(lineId)}`
+  : null);
+/* เส้นอ่านของหน้าออกเอกสาร (ข้อมูล + ด่าน) · เส้นบันทึก (POST ตัวเดิมของการ์ด) · กระดาษร่าง (HTML แท็บใหม่ —
+   ข้อยกเว้นเอกสารเดี่ยวของ apiFetch เหมือน `docPrintHref`) — ที่เดียว ห้ามต่อสตริงเองในหน้า */
+export const specDocNewApiPath = (orderId, lineId) => (orderId && lineId
+  ? `/api/sales-planning/sales-orders/${enc(orderId)}/spec-documents/new?line=${enc(lineId)}`
+  : null);
+export const specDocCreateApiPath = (orderId) => (orderId
+  ? `/api/sales-planning/sales-orders/${enc(orderId)}/spec-documents`
+  : null);
+export const specDocDraftPreviewHref = (orderId, lineId) => (orderId && lineId
+  ? `/api/sales-planning/sales-orders/${enc(orderId)}/spec-documents/preview?line=${enc(lineId)}`
+  : null);
 /* กระดาษของ Rev หนึ่ง — ⚠️ เส้นนี้คืน **HTML ทั้งหน้า** ไม่ใช่ JSON จึงเปิดเป็นลิงก์แท็บใหม่
    ไม่ผ่าน apiFetch (ข้อยกเว้นเอกสารเดี่ยวใน AGENTS.md) */
 export const docPrintHref = (documentId, revNo) => (
@@ -154,6 +172,10 @@ const API_ACTION = Object.freeze({
 
 export const docApiAction = (key) => API_ACTION[key] || null;
 
+/* ⭐ ลบร่างไม่ได้อยู่ใน `API_ACTION` โดยเจตนา — มันเป็น `DELETE /api/sales-planning/spec-documents/<id>`
+   ไม่ใช่ `PATCH { action }` (แถวหายทั้งใบ ไม่ใช่การเปลี่ยนสถานะ) · จอแยกทางด้วยคีย์นี้ ไม่ใช่เดาจากชื่อ */
+export const DOC_DELETE_KEY = 'remove';
+
 /** การกระทำที่ต้องมีช่องเหตุผล (โมดัลเหตุผล) — ที่เหลือใช้โมดัลยืนยันที่บอกผลลัพธ์ */
 export const DOC_REASON_ACTIONS = Object.freeze(['reject', 'revise', 'void']);
 
@@ -209,9 +231,16 @@ export function docControlActions({
     }] : []),
   ].filter((button) => button.visible !== false);
 
+  /* ⚠️ "ลบร่างเอกสารถาวร" อยู่ท้ายสุดของช่องอันตราย — ปุ่มเดียวที่ทำให้แถวหายจริง (มติ 23/09 · mig 0375)
+     · โชว์เฉพาะร่างที่ยังไม่เคยยื่น ซึ่งเป็นช่วงที่ "ยกเลิกเอกสาร" ยังโชว์อยู่ด้วย ⇒ สองปุ่มนี้
+     ยืนคู่กันได้ และโมดัลของแต่ละตัวบอกความต่าง (ยกเลิก = เก็บใบไว้เป็นประวัติ · ลบ = ไม่เหลืออะไร)
+     ⚠️ **ป้ายต้องบอกทั้งของและความถาวร** — คำว่า "ลบร่าง" เฉย ๆ ยืนติดกับ "ยกเลิกเอกสาร" แล้ว
+        อ่านเป็นเรื่องเดียวกัน ทั้งที่ยกเลิกเก็บใบไว้ ส่วนลบไม่เหลืออะไร · ทรงเดียวกับปุ่มลบถาวร
+        ที่อื่นในระบบ (หน้าใบสั่งขาย "ลบฉบับร่างถาวร") ⇒ ความต่างอยู่บนปุ่ม ไม่ใช่เฉพาะในโมดัล */
   const danger = [
     make('reject', 'reject', 'ตีกลับให้แก้ไข'),
     make('void', 'cancel', 'ยกเลิกเอกสาร'),
+    make(DOC_DELETE_KEY, 'delete', 'ลบร่างเอกสารถาวร'),
   ].filter((button) => button.visible);
 
   return { primaryAction: primary, secondaryActions: secondary, dangerActions: danger };
@@ -229,15 +258,41 @@ const previousApprovedOf = (revisions = [], latest) => (revisions || [])
  * (`title` · `description` · `detail` · `confirmLabel`)
  *
  * ⚠️ ทุกข้อความบอก **สิ่งที่เกิดขึ้นทันทีหลังกด** ผ่าน `approvalPrompt` (บังคับอย่างน้อยหนึ่งผล)
- * @param key 'submit' | 'withdraw' | 'aeApprove' | 'supApprove'
+ * @param key 'submit' | 'withdraw' | 'aeApprove' | 'supApprove' | 'remove'
+ * @param orphan true = บรรทัด SO ที่เอกสารอ้างถูกถอดแล้ว (โมดัลลบต้องไม่สัญญาว่าออกใบใหม่บนบรรทัดนั้นได้)
  * @returns {object|null} null = คีย์นี้ใช้โมดัลเหตุผล (ดู `docReasonPrompt`)
  */
 export function docConfirmPrompt(key, {
-  document, latest, revisions = [], dealOwner,
+  document, latest, revisions = [], dealOwner, orphan = false,
 } = {}) {
   const subject = subjectOf(document, latest);
   const rev = formatRevLabel(latest?.revNo);
   const owner = ownerNameOf(dealOwner);
+  /* ⭐ ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) — โมดัลต้องพูดสามเรื่องที่คน
+     เข้าใจผิดได้: **เลขที่ถูกเผาถาวร** (ตัวนับไม่ถอย เหมือนร่างใบเสนอราคาที่ถูกลบ) ·
+     **บรรทัด SO ว่างและออกใบใหม่ได้ แต่ได้เลขใหม่** · **ไม่มีถังขยะ กดแล้วกู้เองไม่ได้**
+     🔴 ต่างจาก "ยกเลิกเอกสาร" ตรงที่ void ยังเหลือใบไว้ในประวัติของบรรทัด — ลบคือไม่เหลืออะไรเลย */
+  if (key === DOC_DELETE_KEY) {
+    const docNo = baseNoOf(document) || 'เอกสารใบนี้';
+    // ⚠️ `tone: 'danger'` — โมดัลของการลบต้องหน้าตาเป็นการลบ (ไอคอนถังขยะ + ปุ่มแดง)
+    //    ไม่ใช่กล่องยืนยันธรรมดาแบบการอนุมัติ ซึ่งคนกดผ่านด้วยความเคยชิน
+    return { ...approvalPrompt({
+      title: 'ลบร่างเอกสาร',
+      verb: 'ลบ',
+      subject,
+      irreversible: true,
+      checklist: ['ร่างนี้ยังไม่เคยยื่นให้ใครดู — ยื่นแล้วหรือถูกตีกลับแล้วต้องใช้ "ยกเลิกเอกสาร" แทน'],
+      effects: [
+        `แถวของเอกสารและ ${rev} หายออกจากระบบ — ไม่มีถังขยะ กู้คืนเองไม่ได้`,
+        `เลขที่ ${docNo} ถูกเผาทิ้งถาวร ไม่มีใบไหนได้เลขนี้อีก (ตัวนับไม่ถอยกลับ)`,
+        orphan
+          ? 'บรรทัดที่เอกสารอ้างถูกถอดจากใบสั่งขายแล้ว — ไม่มีบรรทัดให้ออกใบใหม่'
+          : 'บรรทัดใบสั่งขายนี้ว่างอีกครั้ง — ออกเอกสารใบใหม่ได้ทันที และใบใหม่จะได้เลขที่ใหม่',
+        'ไม่มีการแจ้งเตือนใคร — ใบนี้ยังไม่เคยเข้าคิวของผู้อนุมัติ',
+      ],
+      confirmLabel: 'ลบร่างนี้',
+    }), tone: 'danger' };
+  }
   if (key === 'submit') {
     const again = latest?.status === 'rejected';
     return approvalPrompt({
@@ -399,6 +454,8 @@ export function docActionDoneMessage(key, { dealOwner } = {}) {
     reject: 'ตีกลับให้ AC แก้ไขแล้ว',
     revise: 'เปิด Rev ใหม่เป็นฉบับร่างแล้ว — แก้สเปคที่หน้าสินค้าแล้วยื่นอนุมัติ',
     void: 'ยกเลิกเอกสารแล้ว',
+    // ⭐ บอกด้วยว่าเลขที่ไม่กลับมา ไม่งั้นคนจะรอให้ใบใหม่ได้เลขเดิม (มติ 23/09)
+    [DOC_DELETE_KEY]: 'ลบร่างแล้ว — เลขที่เดิมไม่นำกลับมาใช้ ออกใบใหม่บนบรรทัดนี้ได้ (เลขใหม่)',
   }[key] || 'ดำเนินการแล้ว';
 }
 
@@ -462,14 +519,19 @@ const certStatusLabel = (row) => {
  * @param source 'snapshot' | 'live'
  * @param snapshot `latest.snapshot` (schemaVersion 1)
  * @param spec สเปคสดจาก `GET /api/products/[id]/spec` (มี items)
+ * @param order (สเปคสดเท่านั้น) ก้อนใบสั่งขายรูปเดียวกับ `snapshot.order` — ภาพนิ่งใช้ของตัวเองเสมอ
  * @returns {{ source, capturedAt, fields, items, certifications, illustrations, order } | null}
  */
-export function docContentSummary({ source, snapshot, spec } = {}) {
+export function docContentSummary({
+  source, snapshot, spec, order: liveOrder = null,
+} = {}) {
   const fromSnapshot = source === 'snapshot';
   const content = fromSnapshot ? snapshot?.spec : spec;
   if (!content) return null;
   const items = fromSnapshot ? snapshot?.items : spec?.items;
-  const order = fromSnapshot ? snapshot?.order || null : null;
+  /* ก้อนใบสั่งขาย: ภาพนิ่งถือของตัวเอง · สเปคสดไม่มี ⇒ ผู้เรียกส่งมาเองได้ (หน้า "ออกเอกสาร" ส่งของที่กระดาษ
+     จะพิมพ์ — `specDocNewOrderFacts`) · ไม่ส่ง = ไม่มีแถวใบสั่งขาย (ร่างบนหน้าเอกสารเดิม) */
+  const order = fromSnapshot ? snapshot?.order || null : liveOrder;
   return {
     source: fromSnapshot ? 'snapshot' : 'live',
     capturedAt: fromSnapshot ? snapshot?.capturedAt || null : null,
@@ -508,30 +570,191 @@ export function docContentSummary({ source, snapshot, spec } = {}) {
   };
 }
 
-/* ── การ์ด "เอกสารต่อเนื่อง" บนหน้า SO ──────────────────────────────────── */
+/**
+ * บรรทัดใต้การ์ด "ภาพประกอบ" ตอนเนื้อยังเป็นสเปคสด (ยังไม่มีภาพนิ่ง)
+ *
+ * 🐞 ผลตรวจสด 23/09: หน้าออกเอกสารเขียนแค่ "ดูภาพได้ที่หน้าสเปคของสินค้า" ขณะที่กระดาษร่างพิมพ์ 5 ภาพ
+ *    ⇒ คนที่อ่านแต่จอแล้วกดบันทึก ไม่รู้ว่าจะมีภาพอะไรไปอยู่บนเอกสาร · จอที่เป็นจุดตัดสินใจต้องบอกอย่างน้อย "กี่ภาพ"
+ * ⚠️ `null` = ผู้เรียกไม่ได้นับมา (หน้าเอกสารที่ยังเป็นร่าง) — ไม่ใช่ "ไม่มีภาพ" ⇒ ข้อความเดิม ไม่เดาเลข
+ */
+export function liveIllustrationNote(count) {
+  if (count === null || count === undefined) return 'ดูและจัดลำดับภาพได้ที่หน้าสเปคของสินค้า';
+  if (!count) return 'หน้าสเปคของสินค้ายังไม่มีภาพประกอบ — เอกสารใบนี้จะไม่มีภาพ';
+  return `${count} ภาพจากหน้าสเปคจะถูกถ่ายลงเอกสารตอนยื่น — ดูภาพจริงได้ที่ปุ่ม "ดูตัวอย่างกระดาษ" หรือหน้าสเปคของสินค้า`;
+}
+
+/* ── หน้า "ออกเอกสาร" (ยังไม่บันทึก · มติเจ้าของ 23/09/2569) ─────────────────────────── */
 
 /**
- * ข้อความโมดัลยืนยันตอน AC กด "ออกเอกสาร" ที่บรรทัด SO
- *
- * 🔴 **กดแล้วเลขที่ถูกใช้ทันทีและคืนไม่ได้** (ตัวนับเดินใน RPC เดียวกับ INSERT) — ยกเลิก
- *    เอกสารทีหลังเลขก็ยังหายไปจากลำดับ ⇒ โมดัลต้องพูดเรื่องนี้ตรง ๆ พร้อมหน้าตาเลขจริงของวันนี้
+ * หน้าตาเลขที่ที่จะได้ถ้าบันทึกวันนี้ — `DDMMYY-XXX-00` (XXX = ลำดับที่ตัวนับให้ตอนบันทึก รู้ล่วงหน้าไม่ได้)
  * ⚠️ วันที่ในเลขมาจากนาฬิกาไทย (`productSpecDocNoParts` → businessDate) ไม่ใช่ UTC
  */
-export function lineIssuePrompt({ line, now = new Date() } = {}) {
+export function specDocNextNumberText(now = new Date()) {
   const { prefix } = productSpecDocNoParts(now);
-  return approvalPrompt({
-    title: 'ออกเอกสาร FM-SA-04',
-    verb: 'ออกเอกสารให้',
-    subject: [line?.fgCode, line?.description].filter(Boolean).join(' ') || 'บรรทัดนี้',
-    irreversible: true,
-    effects: [
-      // เลขที่ที่คนเห็นบนกระดาษ/จอ = DDMMYY-XXX-RR (Rev.00 ตอนออก)
-      `ระบบออกเลขที่ ${formatSpecDocNo(`${prefix}XXX`, 0)} ทันที — เลขที่นี้คืนไม่ได้ ยกเลิกเอกสารภายหลังเลขก็ถูกใช้ไปแล้ว`,
-      'ได้ Rev.00 ฉบับร่าง — ยังไม่มีใครต้องอนุมัติจนกว่า AC จะกดยื่นที่หน้าเอกสาร',
-      'บรรทัดใบสั่งขายหนึ่งบรรทัดมีเอกสารที่ใช้งานได้ใบเดียว',
+  return formatSpecDocNo(`${prefix}XXX`, 0);
+}
+
+export const SPEC_DOC_NEW_FOOTER = 'เลขที่เอกสารออกตอนกดบันทึก และใช้ซ้ำไม่ได้ — ยังไม่มีอะไรถูกบันทึกจนกว่าจะกด';
+
+export const SPEC_DOC_NEW_DENIED = 'ออกเอกสาร FM-SA-04 ได้เฉพาะ AC (ผู้ประสานงานฝ่ายขาย) — '
+  + 'เอกสารของบรรทัดนี้จะขึ้นบนการ์ด "เอกสารต่อเนื่อง" ของใบสั่งขายเมื่อ AC ออกแล้ว';
+
+/**
+ * ก้อนใบสั่งขายของเนื้อเอกสารบนหน้า "ออกเอกสาร" — รูปเดียวกับ `snapshot.order` ที่ `docContentSummary` อ่าน
+ * ⭐ จำนวนผลิตมาจาก `quantity` ที่ API อ่านด้วยตัวเดียวกับกระดาษ (บรรทัด SO ก่อน ถอยบรรทัดใบเสนอราคา)
+ *    ไม่ใช่ `line.qty` ดิบ — ไม่งั้นจอบอก "—" ขณะที่กระดาษพิมพ์จำนวนจากใบเสนอราคา
+ */
+export function specDocNewOrderFacts(payload) {
+  const order = payload?.order || null;
+  if (!order) return null;
+  return {
+    orderNumber: order.orderNumber || null,
+    lineDescription: payload?.line?.description || null,
+    qty: payload?.quantity?.qty ?? null,
+    unit: payload?.quantity?.unit || null,
+    deliveryDueDate: order.deliveryDueDate || null,
+    customerName: order.customerName || null,
+    dealOwnerName: payload?.dealOwner?.name || null,
+  };
+}
+
+/**
+ * หน้า "ออกเอกสาร" อยู่สถานะไหน + ของทุกชิ้นบนการ์ดจัดการ — ตัวเดียวที่หน้า `/sales-planning/spec-documents/new` วาด
+ *
+ * ⭐ ลำดับการตัดสิน (ui-visibility-rule):
+ *   1. ไม่มีสิทธิ์ออก (`gate.visible = false`) ⇒ `denied` — คำบอกแทนฟอร์ม ไม่มีปุ่ม
+ *   2. บรรทัดมีเอกสารที่ยังใช้งานอยู่แล้ว ⇒ `exists` — คำบอก + ลิงก์ไปเอกสารใบนั้น (ไม่ใช่ปุ่มบันทึกที่กดแล้วโดน 409)
+ *   3. ที่เหลือ ⇒ `form` · ติดด่าน = ปุ่ม "บันทึก" อยู่แต่กดไม่ได้พร้อมเหตุเป็นตัวหนังสือ (`disabledReason`)
+ * ⚠️ **ด่านมาจาก API (`documentCreateGate` ตัวเดียวกับ POST)** — ที่นี่ไม่คิดเงื่อนไขเอง แค่แปลงเป็นปุ่ม
+ * ⚠️ ปุ่ม "ยกเลิก" เป็นลิงก์กลับใบสั่งขายเฉย ๆ — ยังไม่มีอะไรถูกบันทึก จึงไม่มีอะไรให้ลบหรือยืนยัน
+ *
+ * @param payload คำตอบของ `GET .../spec-documents/new`
+ * @param opts.saving กำลังบันทึกอยู่ (ปุ่มเปลี่ยนคำ + การ์ดทั้งใบ busy)
+ * @param opts.onSave ตัวบันทึกของหน้า
+ * @param opts.now นาฬิกา (เทสต์) — หน้าตาเลขที่ของวันนี้
+ * @returns {{ kind: 'denied'|'exists'|'form', notice: object|null, blocker: string|null, control: object|null,
+ *   orderFacts: object|null, editSpecHref: string|null, contentNotice: object|null, contentMeta: string|null,
+ *   liveNotice: string|null, backHref: string|null }}
+ */
+export function specDocNewView(payload, { saving = false, onSave = () => {}, now = new Date() } = {}) {
+  const order = payload?.order || null;
+  const line = payload?.line || null;
+  const gate = payload?.gate || { visible: false, reason: null };
+  const backHref = salesOrderHref(order?.id);
+  const base = {
+    notice: null,
+    blocker: null,
+    control: null,
+    orderFacts: null,
+    editSpecHref: null,
+    contentNotice: null,
+    contentMeta: null,
+    liveNotice: null,
+    illustrationCount: null,
+    backHref,
+  };
+  if (!gate.visible) {
+    return {
+      ...base,
+      kind: 'denied',
+      notice: { tone: 'info', title: 'ไม่มีสิทธิ์ออกเอกสารนี้', message: SPEC_DOC_NEW_DENIED },
+    };
+  }
+  const existing = payload?.existingDocument || null;
+  if (existing) {
+    return {
+      ...base,
+      kind: 'exists',
+      notice: {
+        tone: 'info',
+        title: 'บรรทัดนี้ออกเอกสารไปแล้ว',
+        message: `เลขที่ ${existing.docNoText || existing.docNo || 'ไม่ทราบเลขที่'} — บรรทัดใบสั่งขายหนึ่งบรรทัดมีเอกสารที่ใช้งานได้ใบเดียว`,
+        href: specDocumentHref(existing.id),
+        hrefLabel: 'เปิดเอกสาร',
+      },
+    };
+  }
+
+  const blocker = gate.reason || null;
+  const owner = payload?.dealOwner?.name || null;
+  // ดูกระดาษร่างได้เมื่อมีสเปคให้พิมพ์ และบรรทัดอยู่ในหมวด — เส้นกระดาษตอบหน้าแจ้งเหตุในกรณีอื่นอยู่แล้ว
+  // แต่ปุ่มที่พาไปหน้าแจ้งเหตุเสมอไม่ได้บอกอะไรเพิ่มจากเหตุบนปุ่มบันทึก
+  const previewable = Boolean(payload?.spec) && Boolean(line?.productId) && !payload?.scopeReason;
+  const control = {
+    status: 'ยังไม่บันทึก',
+    statusDescription: 'ตรวจเนื้อเอกสารก่อนบันทึก — เลขที่ออกตอนกดบันทึก',
+    workflowSteps: [
+      {
+        id: 'save',
+        label: 'บันทึกเอกสาร',
+        hint: `คุณอยู่ตรงนี้ — ได้เลขที่ ${specDocNextNumberText(now)} (Rev.00 ฉบับร่าง) ตอนกดบันทึก`,
+        state: 'current',
+      },
+      { id: 'submit', label: 'AC ยื่น', hint: 'ที่หน้าเอกสาร — ระบบถ่ายภาพนิ่งของสเปคตอนยื่น', state: 'pending' },
+      { id: 'ae', label: 'AE อนุมัติ', hint: owner ? `${owner} (AE เจ้าของดีล)` : 'AE เจ้าของดีล', state: 'pending' },
+      { id: 'ae_supervisor', label: 'AE Sup อนุมัติ', hint: 'ขั้นสุดท้าย — ระบบตรึงกระดาษฉบับอนุมัติ', state: 'pending' },
     ],
-    confirmLabel: 'ออกเอกสาร',
-  });
+    primaryAction: {
+      id: 'save',
+      kind: 'save',
+      label: saving ? 'กำลังบันทึก…' : 'บันทึก',
+      disabled: Boolean(blocker),
+      disabledReason: blocker,
+      onClick: onSave,
+    },
+    secondaryActions: previewable ? [{
+      id: 'preview',
+      kind: 'print',
+      label: 'ดูตัวอย่างกระดาษ',
+      href: specDocDraftPreviewHref(order?.id, line?.id),
+      external: true,
+    }] : [],
+    dangerActions: backHref ? [{ id: 'cancel', kind: 'cancel', label: 'ยกเลิก', href: backHref }] : [],
+    footer: SPEC_DOC_NEW_FOOTER,
+  };
+  // "แก้สเปคที่หน้าสินค้า" — เฉพาะคนที่แก้สเปคได้ (ไม่มีสิทธิ์ = ไม่แสดง ไม่ใช่ลิงก์ไปหน้าอ่านอย่างเดียว)
+  const editSpecHref = payload?.canEditSpec && !payload?.scopeReason ? productSpecPageHref(line?.productId) : null;
+  /* ยังไม่มีเนื้อให้แสดง (ไม่มีสเปค · นอกหมวด · บรรทัดไม่ผูกสินค้า) — การ์ดเนื้อบอกเหตุเดียวกับปุ่มบันทึก
+     ⚠️ ไม่เขียน "ยังไม่มีสเปค" ตายตัว — บรรทัดนอกหมวดก็ไม่มีสเปคเหมือนกัน แต่เหตุคนละเรื่อง */
+  const contentNotice = payload?.spec ? null : {
+    title: payload?.scopeReason || !line?.productId ? 'บรรทัดนี้ไม่มีเนื้อเอกสารให้แสดง' : 'สินค้านี้ยังไม่มีสเปค',
+    message: blocker || 'ยังไม่มีสเปคของสินค้าให้แสดง',
+    action: editSpecHref ? { href: editSpecHref, label: 'สร้างสเปคที่หน้าสินค้า' } : null,
+  };
+  return {
+    ...base,
+    kind: 'form',
+    blocker,
+    control,
+    orderFacts: specDocNewOrderFacts(payload),
+    editSpecHref,
+    /* จำนวนภาพที่จะถูกถ่ายลงเอกสารตอนยื่น (API นับด้วยตัวเดียวกับกระดาษ) — จอนี้เป็น **จุดตัดสินใจ**
+       ⇒ ต้องบอกอย่างน้อยว่ากี่ภาพ · `null` = ไม่ได้นับมา (ไม่มีสเปค/นอกหมวด) ไม่ใช่ "ไม่มีภาพ" */
+    illustrationCount: payload?.illustrationCount ?? null,
+    contentNotice,
+    contentMeta: 'ยังไม่ออกเอกสาร — แสดงสเปคปัจจุบันของสินค้า',
+    liveNotice: `ยังไม่ได้บันทึก — เนื้อเอกสารคือสเปคปัจจุบันของสินค้า ระบบถ่ายภาพนิ่งลงเอกสารตอนยื่น${editSpecHref ? ' · แก้ที่หน้าสินค้าแล้วกลับมาบันทึก' : ''}`,
+  };
+}
+
+/**
+ * อ่านหน้า "ออกเอกสาร" ไม่ขึ้น → กล่องที่จอวาด `{ tone, message }`
+ * ⚠️ 4xx = คำตอบของระบบ (ใบย้อนหลัง · ไม่พบบรรทัด · นอกขอบเขต) ไม่ใช่ระบบพัง ⇒ กล่องเตือน ไม่ใช่แถบแดง
+ *    (กติกาเดียวกับการ์ดบนหน้า SO) · `forbidden` ดิบของ proxy/ด่านขอบเขตแปลเป็นไทยที่นี่
+ */
+export function specDocNewLoadProblem(error) {
+  const status = Number(error?.status) || 0;
+  const raw = String(error?.message || '').trim();
+  const message = raw === 'forbidden' ? 'คุณไม่มีสิทธิ์เปิดใบสั่งขายนี้' : (raw || 'อ่านข้อมูลเอกสารไม่สำเร็จ');
+  return { tone: status >= 400 && status < 500 ? 'warning' : 'error', message };
+}
+
+/** toast หลังบันทึกสำเร็จ — เลขที่รูปเดียวกับกระดาษ DDMMYY-XXX-RR (ออกใหม่ = Rev.00) และบอกว่างานไปอยู่ที่ไหนต่อ */
+export function specDocSavedMessage(result) {
+  const docNo = result?.document?.docNo;
+  return docNo
+    ? `บันทึกเอกสาร ${formatSpecDocNo(docNo, result?.revision?.revNo ?? 0)} แล้ว — ยื่นอนุมัติได้ที่หน้านี้`
+    : 'บันทึกเอกสารแล้ว — ยื่นอนุมัติได้ที่หน้านี้';
 }
 
 /* ── ผลกับเอกสาร FM-SA-04 เมื่อ SO ถูกยกเลิก / ออก Rev. (โมดัลบนหน้า SO) ─────────── */
@@ -572,13 +795,16 @@ export function salesOrderSpecDocEffect(action, count) {
   return null;
 }
 
+/* ── การ์ด "เอกสารต่อเนื่อง" บนหน้า SO ──────────────────────────────────── */
+
 /**
  * แถวหนึ่งของการ์ดบนหน้า SO — แปลง `state` (จาก `lineDocumentState` ที่ API คิดแล้ว) เป็นของที่จอวาด
  *
  * ⚠️ ไม่มีสิทธิ์ออก = ไม่มีปุ่ม (บอกแค่ว่าใครเป็นคนออก) · มีสิทธิ์แต่ติดด่าน = ปุ่มอยู่ พร้อม `blocker`
  *    ที่จอบอกตอนกด (GatedAction) — ตรงกับ ui-visibility-rule
+ * @param opts.orderId ใบสั่งขายของการ์ด — ประกอบลิงก์ไปหน้าออกเอกสาร (`specDocumentNewHref`)
  */
-export function followUpLineView(row) {
+export function followUpLineView(row, { orderId = null } = {}) {
   const state = row?.state || {};
   const line = row?.line || {};
   if (state.kind === 'out_of_scope') {
@@ -624,8 +850,12 @@ export function followUpLineView(row) {
     docNo: null,
     docNoText: null,
     revLabel: null,
+    /* ⭐ "ออกเอกสาร" = **ลิงก์ไปหน้าออกเอกสาร** ไม่ใช่ปุ่มที่ออกเลขทันที (มติเจ้าของ 23/09/2569) — เลขที่ถูกใช้
+       ตอนกดบันทึกบนหน้านั้น · ติดด่าน = ปุ่มอยู่ บอกเหตุตอนกด ไม่พาไป (GatedAction) */
     action: state.action === 'issue'
-      ? { kind: 'issue', label: 'ออกเอกสาร', blocker: state.reason || null }
+      ? {
+        kind: 'issue', label: 'ออกเอกสาร', blocker: state.reason || null, href: specDocumentNewHref(orderId, line.id),
+      }
       : null,
   };
 }

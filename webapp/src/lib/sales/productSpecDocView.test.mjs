@@ -7,13 +7,19 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-  DOC_REASON_ACTIONS, docActionDoneMessage, docApiAction, docConfirmPrompt, docContentSource,
+  DOC_DELETE_KEY, DOC_REASON_ACTIONS, SPEC_DOC_NEW_FOOTER, docActionDoneMessage, docApiAction,
+  docConfirmPrompt, docContentSource,
   docContentSummary, docControlActions, docHeadline, docPrintHref, docRailSteps, docReasonPrompt,
-  docRevisionRows, docRevisionTone, followUpLineView, lineIssuePrompt, liveSpecDocumentCount, productSpecPageHref,
-  salesOrderHref, salesOrderSpecDocEffect, specDocumentHref,
+  docRevisionRows, docRevisionTone, followUpLineView, liveIllustrationNote, liveSpecDocumentCount, productSpecPageHref,
+  salesOrderHref, salesOrderSpecDocEffect, specDocCreateApiPath, specDocDraftPreviewHref, specDocNewApiPath,
+  specDocNewLoadProblem, specDocNewOrderFacts, specDocNewView, specDocNextNumberText, specDocSavedMessage,
+  specDocumentHref, specDocumentNewHref,
 } from './productSpecDocView.js';
-import { DOC_ACTION_KEYS, DOC_REASON_MIN, documentActions } from './productSpecDocWorkflow.js';
+import { DOC_ACTION_KEYS, DOC_REASON_MIN, documentActions, documentCreateGate } from './productSpecDocWorkflow.js';
 
 const doc = {
   id: 'PSD1', docNo: 'FM-SA-04-220969-001', status: 'active',
@@ -40,6 +46,18 @@ test('ลิงก์ทุกปลายทางมาจากที่เ�
   assert.equal(productSpecPageHref('PRD1'), '/database/products/PRD1/spec');
   assert.equal(docPrintHref('PSD1', 0), '/api/sales-planning/spec-documents/PSD1/document?rev=0');
   assert.equal(docPrintHref('PSD1', null), null);
+  // หน้า "ออกเอกสาร" (มติ 23/09) — หน้า · เส้นอ่าน · เส้นบันทึก (POST ตัวเดิม) · กระดาษร่าง
+  assert.equal(specDocumentNewHref('SO1', 'SOL-1'), '/sales-planning/spec-documents/new?order=SO1&line=SOL-1');
+  assert.equal(specDocumentNewHref('SO1', null), null);
+  assert.equal(specDocumentNewHref(null, 'SOL-1'), null);
+  assert.equal(specDocNewApiPath('SO1', 'SOL-1'), '/api/sales-planning/sales-orders/SO1/spec-documents/new?line=SOL-1');
+  assert.equal(specDocNewApiPath('SO1', ''), null);
+  assert.equal(specDocCreateApiPath('SO1'), '/api/sales-planning/sales-orders/SO1/spec-documents');
+  assert.equal(specDocCreateApiPath(''), null);
+  assert.equal(specDocDraftPreviewHref('SO1', 'SOL-1'), '/api/sales-planning/sales-orders/SO1/spec-documents/preview?line=SOL-1');
+  assert.equal(specDocDraftPreviewHref('SO1', null), null);
+  // id ใน query ถูกห่อ — ลิงก์ต้องไม่พังวันที่ id มีอักขระพิเศษ
+  assert.equal(specDocumentNewHref('SO 1', 'L&2'), '/sales-planning/spec-documents/new?order=SO%201&line=L%262');
 });
 
 test('คีย์ของตัวตัดสิน → action ของ API ครบทุกตัว (กลับทิศของ DOC_ACTION_KEYS)', () => {
@@ -199,9 +217,11 @@ test('เอกสารยกเลิก = รางจางทั้งเ�
   assert.deepEqual(steps.map((s) => s.state), ['cancelled', 'cancelled', 'cancelled']);
 });
 
+/* ⚠️ รวม `remove` (ลบร่าง) ด้วย ทั้งที่ไม่ได้อยู่ใน DOC_ACTION_KEYS — มันเป็น DELETE ไม่ใช่ PATCH
+   แต่กฎ approval-confirm-modals ไม่สนว่าเมธอดอะไร: ทุกปุ่มที่ลงมือต้องมีโมดัลที่บอกผลลัพธ์ */
 test('🔴 ทุกการกระทำมีโมดัลที่บอกผลลัพธ์ — ยืนยันหรือเหตุผล ไม่มีคีย์ไหนหลุด', () => {
   const latest = rev('pending_ae_supervisor', { revNo: 1 });
-  for (const key of Object.values(DOC_ACTION_KEYS)) {
+  for (const key of [...Object.values(DOC_ACTION_KEYS), DOC_DELETE_KEY]) {
     const confirm = docConfirmPrompt(key, { document: doc, latest, dealOwner: owner });
     const reason = docReasonPrompt(key, { document: doc, latest });
     assert.ok(Boolean(confirm) !== Boolean(reason), `${key}: ต้องมีโมดัลชนิดเดียว`);
@@ -236,6 +256,108 @@ test('อนุมัติขั้นสุดท้าย: ถอนไม่
   assert.match(prompt.detail, /Rev\.03/);
   const firstTime = docConfirmPrompt('supApprove', { document: doc, latest: rev('pending_ae_supervisor') });
   assert.doesNotMatch(firstTime.detail, /ที่ใช้อยู่เดิม/);
+});
+
+/* ── ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) ──────────────── */
+
+test('⭐ ปุ่ม "ลบร่างเอกสารถาวร" อยู่ช่องอันตรายของการ์ด เฉพาะร่างที่ยังไม่เคยยื่น · ยื่นแล้วเหลือแต่ "ยกเลิกเอกสาร"', () => {
+  const fresh = rev('draft', { submittedBy: null });
+  const card = docControlActions({
+    actions: documentActions({ document: doc, latest: fresh, salesOrder: order, dealOwnerId: owner.id, user: U.ac }),
+    document: doc, latest: fresh,
+  });
+  const remove = card.dangerActions.find((button) => button.id === DOC_DELETE_KEY);
+  assert.ok(remove, 'ปุ่มลบร่างต้องอยู่ช่องอันตราย');
+  /* ⚠️ ป้ายต้องบอกทั้งของและความถาวร — ปุ่มนี้ยืนติดกับ "ยกเลิกเอกสาร" ซึ่งในภาษาพูดแปลว่า
+     "เอาออก" เหมือนกัน (ทรงเดียวกับ "ลบฉบับร่างถาวร" ของหน้าใบสั่งขาย) */
+  assert.equal(remove.label, 'ลบร่างเอกสารถาวร');
+  assert.match(remove.label, /ถาวร/, 'ปุ่มลบถาวรต้องบอกความถาวรบนตัวปุ่ม ไม่ใช่เฉพาะในโมดัล');
+  assert.equal(remove.kind, 'delete');
+  assert.equal(remove.disabled, false);
+  // ยกเลิกเอกสารกับลบร่างยืนคู่กันได้ในช่วงร่าง — และลบอยู่ท้ายสุด (ปุ่มที่ทำให้แถวหายจริง)
+  assert.deepEqual(card.dangerActions.map((button) => button.id), ['void', DOC_DELETE_KEY]);
+
+  const submitted = rev('pending_ae', { firstSubmittedAt: '2026-09-23T02:00:00.000Z' });
+  const afterSubmit = docControlActions({
+    actions: documentActions({ document: doc, latest: submitted, salesOrder: order, dealOwnerId: owner.id, user: U.ac }),
+    document: doc, latest: submitted,
+  });
+  assert.deepEqual(afterSubmit.dangerActions.map((button) => button.id), ['void']);
+});
+
+test('🔴 โมดัลลบร่างบอกสามเรื่องที่คนเข้าใจผิด: กู้ไม่ได้ · เลขที่ถูกเผาถาวร · ใบใหม่ได้เลขใหม่', () => {
+  const prompt = docConfirmPrompt(DOC_DELETE_KEY, { document: doc, latest: rev('draft') });
+  assert.equal(prompt.title, 'ลบร่างเอกสาร');
+  assert.equal(prompt.confirmLabel, 'ลบร่างนี้');
+  assert.equal(prompt.tone, 'danger', 'โมดัลของการลบต้องหน้าตาเป็นการลบ');
+  assert.match(prompt.description, /ยืนยันลบ 220969-001-00/);
+  assert.match(prompt.detail, /ย้อนกลับเองไม่ได้/);
+  assert.match(prompt.detail, /ไม่มีถังขยะ/);
+  assert.match(prompt.detail, /เลขที่ 220969-001 ถูกเผาทิ้งถาวร/);
+  assert.match(prompt.detail, /ตัวนับไม่ถอยกลับ/);
+  assert.match(prompt.detail, /ออกเอกสารใบใหม่ได้ทันที และใบใหม่จะได้เลขที่ใหม่/);
+  assert.match(prompt.detail, /ยังไม่เคยยื่นให้ใครดู/, 'ต้องมี checklist ให้คนตรวจก่อนกด');
+  assert.match(prompt.detail, /ไม่มีการแจ้งเตือนใคร/);
+  // ⚠️ ไม่ใช่โมดัลเหตุผล — ลบร่างไม่ต้องเขียนเหตุผล (ต่างจาก "ยกเลิกเอกสาร")
+  assert.equal(docReasonPrompt(DOC_DELETE_KEY, { document: doc, latest: rev('draft') }), null);
+  assert.equal(DOC_REASON_ACTIONS.includes(DOC_DELETE_KEY), false);
+});
+
+test('โมดัลลบร่างของใบที่บรรทัด SO ถูกถอด ต้องไม่สัญญาว่าออกใบใหม่บนบรรทัดนั้นได้', () => {
+  const prompt = docConfirmPrompt(DOC_DELETE_KEY, { document: doc, latest: rev('draft'), orphan: true });
+  assert.match(prompt.detail, /ไม่มีบรรทัดให้ออกใบใหม่/);
+  assert.doesNotMatch(prompt.detail, /ออกเอกสารใบใหม่ได้ทันที/);
+});
+
+test('ลบร่างไม่ใช่ action ของ PATCH — docApiAction ต้องไม่รู้จัก (จอจะได้ไม่ยิงผิดเมธอด)', () => {
+  assert.equal(docApiAction(DOC_DELETE_KEY), null);
+  assert.equal(Object.values(DOC_ACTION_KEYS).includes(DOC_DELETE_KEY), false);
+  assert.match(docActionDoneMessage(DOC_DELETE_KEY), /เลขที่เดิมไม่นำกลับมาใช้/);
+});
+
+/* 🪤 กับดักที่เทสต์ข้างบนเปิดไว้: `docApiAction('remove')` เป็น `null` ⇒ ถ้าหน้าเอกสารส่งปุ่มลบ
+   เข้าทาง `act()` เหมือนปุ่มอื่น มันจะยิง `PATCH { action: null }` แล้วได้ 400 "ไม่รู้จักการกระทำนี้"
+   โดยไม่มีอะไรจับ (จอกับ API ต่างก็ถูกตามสัญญาของตัวเอง) ⇒ ล็อกที่ซอร์สของหน้าเลย */
+const PAGE = join(
+  dirname(fileURLToPath(import.meta.url)), '..', '..',
+  'app', 'sales-planning', 'spec-documents', '[id]', 'page.js',
+);
+
+test('🔴 หน้าเอกสารยิงลบร่างด้วยเมธอด DELETE แล้วเด้งออกจากหน้า — ไม่ใช่ PATCH และไม่โหลดใบที่ลบไปแล้วซ้ำ', () => {
+  const page = readFileSync(PAGE, 'utf8');
+  const start = page.indexOf('const removeDraft');
+  assert.ok(start > 0, 'หน้าเอกสารต้องมีทางลบร่างของตัวเอง');
+  const body = page.slice(start, page.indexOf('const onAction', start));
+  assert.match(body, /method: "DELETE"/);
+  assert.doesNotMatch(body, /method: "PATCH"|docApiAction/);
+  assert.doesNotMatch(body, /retry: true/, 'DELETE ห้ามลองใหม่เอง — รอบสองได้ 404 ทั้งที่ลบสำเร็จ');
+  assert.match(body, /router\.replace\(/, 'ลบแล้วต้องออกจากหน้านี้');
+  assert.match(body, /salesOrderHref\(orderId\)/);
+  // โมดัลยืนยันต้องแยกทางไปหา removeDraft ไม่ใช่ปล่อยให้ตกลงไปที่ act()
+  assert.match(page, /if \(confirmKey === DOC_DELETE_KEY\) \{ await removeDraft\(\); return; \}/);
+});
+
+test('🔴 ลบไม่ผ่าน + ใบชุดใหม่ลบไม่ได้แล้ว = ปิดโมดัลทิ้ง — ปุ่มที่การ์ดซ่อนแล้วต้องกดซ้ำไม่ได้', () => {
+  /* 🐞 ของจริงที่วัดได้: มีคนกด "ยื่น" แทรกกลาง ⇒ DELETE ได้ 409 ⇒ จอดึงใบใหม่จนปุ่ม "ลบร่าง"
+     หายจากการ์ดถูกต้องแล้ว **แต่โมดัลที่ค้างอยู่ยังพิมพ์ผลลัพธ์ของการลบ** ("บรรทัดใบสั่งขายนี้
+     ว่างอีกครั้ง…") คร่อมแถบแดงที่บอกว่าลบไม่ได้ และปุ่ม "ลบร่างนี้" ยังกดได้ไม่จำกัด (ยิง DELETE
+     เพิ่มใบละคลิก) ⇒ สวนกฎ ui-visibility-rule ที่ productSpecDocWorkflow.js ประกาศไว้เอง */
+  const page = readFileSync(PAGE, 'utf8');
+  const start = page.indexOf('const removeDraft');
+  const body = page.slice(start, page.indexOf('const onAction', start));
+  const catchAt = body.indexOf('} catch (deleteError) {');
+  assert.ok(catchAt > 0, 'ต้องมีทางล้ม');
+  const failure = body.slice(catchAt);
+  // ต้องรอใบชุดใหม่ก่อนตัดสิน — `data` บนจอยังเป็นชุดเก่า (setState เป็น async)
+  assert.match(failure, /const next = await load\(\{ background: true \}\)/);
+  assert.match(failure, /next\.actions\?\.remove\?\.visible === false/);
+  assert.match(failure, /setConfirmKey\(null\)/, 'ใบใหม่ลบไม่ได้แล้ว = ปิดโมดัล');
+  assert.match(failure, /setWarning\(deleteError\.message/, 'เหตุผลของเซิร์ฟเวอร์ต้องขึ้นแถบของหน้า ไม่หายไปกับโมดัลที่ปิด');
+  assert.match(failure, /throw deleteError/, 'กรณีอื่นที่กดใหม่ยังมีความหมาย ยังโยนให้โมดัลพิมพ์');
+  // `load` ต้องคืนใบที่โหลดได้จริง ไม่งั้นเงื่อนไขข้างบนอ่านได้แค่ undefined แล้วเงียบ
+  const loader = page.slice(page.indexOf('const load = useCallback'), page.indexOf('useEffect(() => { load(); }'));
+  assert.match(loader, /return next;/);
+  assert.match(loader, /return null;/);
 });
 
 test('โมดัลเหตุผลใช้ความยาวเดียวกับ API และพูดผลลัพธ์ตามชนิด', () => {
@@ -316,20 +438,197 @@ test('สรุปเนื้อ: ภาพนิ่งกับสเปคส
   assert.equal(live.illustrations, null, 'สเปคสดยังไม่รู้ว่าจะถ่ายรูปไหน — ไม่ใช่ "ไม่มีรูป"');
   assert.equal(live.order, null);
   assert.equal(docContentSummary({ source: 'live', spec: null }), null);
+
+  // หน้า "ออกเอกสาร" ส่งก้อนใบสั่งขายของตัวเองมากับสเปคสด (รูปเดียวกับ snapshot.order) · ภาพนิ่งไม่ยอมให้ทับ
+  const withOrder = docContentSummary({
+    source: 'live', spec: { certifications: [], items: [] }, order: { orderNumber: 'SO-X', qty: 5, unit: 'ขวด' },
+  });
+  assert.equal(withOrder.order.orderNumber, 'SO-X');
+  assert.equal(withOrder.order.qty, 5);
+  assert.equal(docContentSummary({ source: 'snapshot', snapshot, order: { orderNumber: 'SO-X' } }).order.orderNumber,
+    'SO-26090001-0', 'ภาพนิ่งใช้ก้อนของตัวเองเสมอ');
 });
 
-test('🔴 โมดัลออกเอกสารบอกเลขที่ของวันนี้ (เวลาไทย) และว่าคืนเลขไม่ได้', () => {
+test('🔴 เลขที่ที่จะได้ตอนบันทึก = เลขของวันนี้ตามเวลาไทย + Rev.00 (XXX รู้ล่วงหน้าไม่ได้)', () => {
   // 21/09/2026 23:30 UTC = 22/09/2026 เวลาไทย ⇒ 220969 (พ.ศ. 2569)
-  const prompt = lineIssuePrompt({
-    line: { fgCode: 'FG-01-0001', description: 'สเปรย์ปรับอากาศ' },
-    now: new Date('2026-09-21T23:30:00Z'),
+  assert.equal(specDocNextNumberText(new Date('2026-09-21T23:30:00Z')), '220969-XXX-00');
+});
+
+/* ── หน้า "ออกเอกสาร" (มติเจ้าของ 23/09/2569 "ยังไม่ต้องรันอะไร จนกว่าจะบันทึก") ─────────────── */
+
+const newOrder = {
+  id: 'SO1', orderNumber: 'SO-26090001-0', status: 'approved', origin: 'pipeline', quotationId: 'QT1',
+  quotationNumber: 'QT-26090002-0', customerName: 'บริษัท ลูกค้า จำกัด', deliveryDueDate: '2026-10-30', docLanguage: 'th',
+};
+const newLine = { id: 'SOL-1', productId: 'PRD1', fgCode: 'FG-01-0001', description: 'สเปรย์', qty: null, unit: null };
+const newSpec = { id: 'PSP1', productId: 'PRD1', texture: 'เหลว', certifications: [], items: [] };
+/* payload รูปเดียวกับ `GET .../spec-documents/new` — ด่านคิดด้วย `documentCreateGate` ตัวจริง (ไม่ปลอม gate เอง)
+   ⇒ เทสต์พิสูจน์ว่าหน้าอ่านผลของตัวตัดสินชุดเดียวกับ POST ไม่ใช่ค่าที่เทสต์แต่งขึ้น */
+const newPayload = ({
+  user = U.ac, order: orderOver = {}, line: lineOver = {}, spec = newSpec, existing = null, scopeReason = null,
+  // API นับภาพเฉพาะตอนมีสเปคให้พิมพ์ — ไม่มีสเปค = ไม่ได้นับ (`null` = ไม่รู้ ไม่ใช่ "ไม่มีภาพ")
+  canEditSpec = true, illustrationCount = spec ? 5 : null,
+} = {}) => {
+  const salesOrder = { ...newOrder, ...orderOver };
+  const line = { ...newLine, ...lineOver };
+  return {
+    order: salesOrder,
+    line,
+    product: { id: 'PRD1', fgCode: 'FG-01-0001', productDescription: 'สเปรย์ปรับอากาศ', brandName: 'แบรนด์' },
+    quantity: { qty: 300, unit: 'ขวด', source: 'quotation_line' },
+    dealOwner: { id: 'U-OWNER', name: 'เอกี เจ้าของดีล' },
+    spec,
+    illustrationCount,
+    scopeReason,
+    gate: documentCreateGate({ user, salesOrder, line, spec, existingDocument: existing, scopeReason }),
+    existingDocument: existing,
+    canEditSpec,
+  };
+};
+const NEW_NOW = new Date('2026-09-23T03:00:00Z');
+
+test('⭐ หน้าออกเอกสาร: AC + ใบอนุมัติ + มีสเปค = ฟอร์มพร้อมบันทึก · ยกเลิกกลับใบสั่งขาย · เลขที่ออกตอนบันทึก', () => {
+  let saved = 0;
+  const view = specDocNewView(newPayload(), { onSave: () => { saved += 1; }, now: NEW_NOW });
+  assert.equal(view.kind, 'form');
+  assert.equal(view.blocker, null);
+  const { control } = view;
+  assert.equal(control.primaryAction.label, 'บันทึก');
+  assert.equal(control.primaryAction.kind, 'save');
+  assert.equal(control.primaryAction.disabled, false);
+  control.primaryAction.onClick();
+  assert.equal(saved, 1, 'ปุ่มบันทึกเรียกตัวบันทึกของหน้า');
+  // ยกเลิก = ลิงก์กลับใบสั่งขายเฉย ๆ (ยังไม่มีอะไรถูกบันทึก — ไม่มีโมดัล ไม่มีคำขอ)
+  assert.deepEqual(control.dangerActions.map((a) => [a.label, a.href, a.onClick]), [['ยกเลิก', '/sa/sales-orders/SO1', undefined]]);
+  // ดูตัวอย่างกระดาษ = กระดาษร่างสด (แท็บใหม่) ไม่ใช่ปุ่มที่สร้างอะไร
+  assert.deepEqual(control.secondaryActions.map((a) => [a.id, a.href, a.external]),
+    [['preview', '/api/sales-planning/sales-orders/SO1/spec-documents/preview?line=SOL-1', true]]);
+  assert.equal(control.footer, SPEC_DOC_NEW_FOOTER);
+  assert.match(control.footer, /ออกตอนกดบันทึก/);
+  assert.match(control.footer, /ใช้ซ้ำไม่ได้/);
+  assert.match(control.footer, /ยังไม่มีอะไรถูกบันทึกจนกว่าจะกด/);
+  // รางบอกเลขที่ของวันนี้ (XXX) และเจ้าของดีลที่จะต้องอนุมัติ
+  assert.equal(control.workflowSteps[0].state, 'current');
+  assert.match(control.workflowSteps[0].hint, /230969-XXX-00/);
+  assert.match(control.workflowSteps[2].hint, /เอกี เจ้าของดีล/);
+  for (const step of control.workflowSteps) assert.ok(['current', 'pending'].includes(step.state), 'รางรู้จักแค่ done/current/pending/cancelled');
+  assert.equal(specDocNewView(newPayload(), { saving: true }).control.primaryAction.label, 'กำลังบันทึก…');
+  // แก้สเปคที่หน้าสินค้า — เฉพาะคนที่แก้สเปคได้
+  assert.equal(view.editSpecHref, '/database/products/PRD1/spec');
+  assert.match(view.liveNotice, /แก้ที่หน้าสินค้า/);
+  assert.equal(specDocNewView(newPayload({ canEditSpec: false })).editSpecHref, null);
+  assert.doesNotMatch(specDocNewView(newPayload({ canEditSpec: false })).liveNotice, /แก้ที่หน้าสินค้า/);
+  assert.equal(view.contentNotice, null);
+});
+
+test('หน้าออกเอกสาร: ไม่มีสิทธิ์ออก (ไม่ใช่ AC/admin) = คำบอกแทนฟอร์ม ไม่มีปุ่ม (ui-visibility-rule)', () => {
+  for (const user of [U.owner, U.sup, U.rd]) {
+    const view = specDocNewView(newPayload({ user }));
+    assert.equal(view.kind, 'denied', user.role);
+    assert.equal(view.control, null, `${user.role} ต้องไม่มีปุ่มบันทึก`);
+    assert.match(view.notice.message, /AC/);
+  }
+  // admin ออกได้เหมือน AC
+  assert.equal(specDocNewView(newPayload({ user: U.admin })).kind, 'form');
+  // คำตอบไม่ครบรูป = ไม่ถือว่ามีสิทธิ์ (ด่านต้องไม่เปิดเอง)
+  assert.equal(specDocNewView(null).kind, 'denied');
+  assert.equal(specDocNewView({ order: newOrder }).kind, 'denied');
+});
+
+test('หน้าออกเอกสาร: บรรทัดมีเอกสารอยู่แล้ว = คำบอก + ลิงก์ไปเอกสารใบนั้น (ไม่ใช่ปุ่มบันทึกที่กดแล้ว 409)', () => {
+  const view = specDocNewView(newPayload({
+    existing: { id: 'PSD9', docNo: 'FM-SA-04-220969-001', docNoText: '220969-001', status: 'active' },
+  }));
+  assert.equal(view.kind, 'exists');
+  assert.equal(view.control, null);
+  assert.equal(view.notice.href, '/sales-planning/spec-documents/PSD9');
+  assert.match(view.notice.message, /220969-001/);
+});
+
+test('🔴 หน้าออกเอกสาร: ติดด่าน = ปุ่มบันทึกอยู่แต่กดไม่ได้ พร้อมเหตุเป็นตัวหนังสือ — เหตุเดียวกับที่ POST ตอบ', () => {
+  // ใบสั่งขายถูกย้อนการอนุมัติ
+  const revoked = specDocNewView(newPayload({ order: { status: 'pending_approval' } }));
+  assert.equal(revoked.kind, 'form');
+  assert.equal(revoked.control.primaryAction.disabled, true);
+  assert.match(revoked.control.primaryAction.disabledReason, /ยังไม่อยู่สถานะอนุมัติ/);
+  assert.equal(revoked.blocker, revoked.control.primaryAction.disabledReason);
+  // ยังดูกระดาษร่างได้ (มีสเปค) — การดูไม่บันทึกอะไร
+  assert.equal(revoked.control.secondaryActions.length, 1);
+
+  // สินค้ายังไม่มีสเปค ⇒ การ์ดเนื้อบอกเหตุเดียวกัน + ลิงก์ไปสร้างสเปค · ไม่มีกระดาษร่างให้ดู
+  const noSpec = specDocNewView(newPayload({ spec: null }));
+  assert.equal(noSpec.control.primaryAction.disabled, true);
+  assert.match(noSpec.control.primaryAction.disabledReason, /ยังไม่มีสเปค/);
+  assert.equal(noSpec.control.secondaryActions.length, 0);
+  assert.equal(noSpec.contentNotice.title, 'สินค้านี้ยังไม่มีสเปค');
+  assert.equal(noSpec.contentNotice.message, noSpec.blocker);
+  assert.equal(noSpec.contentNotice.action.href, '/database/products/PRD1/spec');
+  assert.equal(specDocNewView(newPayload({ spec: null, canEditSpec: false })).contentNotice.action, null);
+
+  // นอกหมวด 01/02 — ไม่ใช่ "ยังไม่มีสเปค" และไม่ชวนไปสร้างสเปค
+  const scope = specDocNewView(newPayload({ spec: null, scopeReason: 'สินค้าหมวด 03 ไม่มีใบสเปค' }));
+  assert.equal(scope.control.primaryAction.disabledReason, 'สินค้าหมวด 03 ไม่มีใบสเปค');
+  assert.equal(scope.contentNotice.title, 'บรรทัดนี้ไม่มีเนื้อเอกสารให้แสดง');
+  assert.equal(scope.contentNotice.action, null);
+
+  // บรรทัดไม่ผูกสินค้า
+  const unlinked = specDocNewView(newPayload({ line: { productId: null }, spec: null }));
+  assert.match(unlinked.control.primaryAction.disabledReason, /ไม่ได้ผูกสินค้า/);
+  assert.equal(unlinked.control.secondaryActions.length, 0);
+  assert.equal(unlinked.contentNotice.title, 'บรรทัดนี้ไม่มีเนื้อเอกสารให้แสดง');
+
+  // ใบย้อนหลัง
+  const historical = specDocNewView(newPayload({ order: { origin: 'historical' } }));
+  assert.match(historical.control.primaryAction.disabledReason, /ย้อนหลัง/);
+});
+
+test('หน้าออกเอกสาร: ก้อนใบสั่งขายของเนื้อ = ของที่กระดาษจะพิมพ์ (จำนวนผลิตจาก quantity ไม่ใช่ line.qty ดิบ)', () => {
+  const facts = specDocNewOrderFacts(newPayload());
+  assert.deepEqual(facts, {
+    orderNumber: 'SO-26090001-0',
+    lineDescription: 'สเปรย์',
+    qty: 300,
+    unit: 'ขวด',
+    deliveryDueDate: '2026-10-30',
+    customerName: 'บริษัท ลูกค้า จำกัด',
+    dealOwnerName: 'เอกี เจ้าของดีล',
   });
-  // เลขที่ที่คนจะเห็นบนกระดาษ/จอ = DDMMYY-XXX-RR · ออกใหม่ = Rev.00
-  assert.match(prompt.detail, /220969-XXX-00/);
-  assert.match(prompt.detail, /คืนไม่ได้/);
-  assert.match(prompt.detail, /ย้อนกลับเองไม่ได้/);
-  assert.match(prompt.description, /FG-01-0001/);
-  assert.equal(prompt.confirmLabel, 'ออกเอกสาร');
+  assert.equal(specDocNewOrderFacts(null), null);
+  assert.equal(specDocNewOrderFacts({ order: newOrder }).qty, null, 'ไม่รู้จำนวน = null (จอพิมพ์ขีด)');
+  // ก้อนนี้ป้อน docContentSummary แล้วได้แถว "ใบสั่งขาย" บนการ์ดเนื้อ
+  const summary = docContentSummary({ source: 'live', spec: newSpec, order: facts });
+  assert.equal(summary.order.qty, 300);
+});
+
+/* 🐞 ผลตรวจสด 23/09: จอเขียนแค่ "ภาพอยู่ที่หน้าสเปคของสินค้า" ขณะที่กระดาษร่างพิมพ์ครบ 5 ภาพ ⇒ คนที่อ่านแต่จอ
+   แล้วกดบันทึก ไม่เคยรู้ว่ามีภาพอะไรจะไปอยู่บนเอกสาร · จอนี้เป็นจุดตัดสินใจ ไม่ใช่จอรายงาน */
+test('🐞 หน้าออกเอกสาร: บอกจำนวนภาพที่จะถูกถ่ายลงเอกสาร — ไม่ใช่ "ไปดูเอาที่หน้าสินค้า" เฉย ๆ', () => {
+  assert.equal(specDocNewView(newPayload()).illustrationCount, 5, 'จำนวนที่ API นับมาต้องถึงการ์ดภาพประกอบ');
+  assert.equal(specDocNewView(newPayload({ illustrationCount: 0 })).illustrationCount, 0);
+  // ไม่ได้นับมา (ไม่มีสเปค/นอกหมวด) = ไม่รู้ ⇒ ต้องไม่กลายเป็น 0 ("ไม่มีภาพ")
+  assert.equal(specDocNewView(newPayload({ illustrationCount: null })).illustrationCount, null);
+  assert.equal(specDocNewView(newPayload({ spec: null })).illustrationCount, null);
+
+  assert.match(liveIllustrationNote(5), /5 ภาพ/);
+  assert.match(liveIllustrationNote(5), /ถ่ายลงเอกสารตอนยื่น/);
+  assert.match(liveIllustrationNote(0), /ยังไม่มีภาพประกอบ/, '0 = บอกว่าเอกสารจะไม่มีภาพ');
+  assert.doesNotMatch(liveIllustrationNote(null), /\d/, 'ไม่รู้จำนวน = ไม่เดาเลข');
+});
+
+test('หน้าออกเอกสาร: toast หลังบันทึกใช้เลขที่รูปกระดาษ DDMMYY-XXX-00 · อ่านไม่ขึ้น 4xx = กล่องเตือน ไม่ใช่แถบแดง', () => {
+  assert.equal(
+    specDocSavedMessage({ document: { id: 'PSD1', docNo: 'FM-SA-04-230969-001' }, revision: { revNo: 0 } }),
+    'บันทึกเอกสาร 230969-001-00 แล้ว — ยื่นอนุมัติได้ที่หน้านี้',
+  );
+  assert.match(specDocSavedMessage({ document: { docNo: 'FM-SA-04-230969-001' } }), /230969-001-00/, 'ไม่รู้ Rev = ออกใหม่ Rev.00');
+  assert.match(specDocSavedMessage(null), /บันทึกเอกสารแล้ว/);
+
+  assert.deepEqual(specDocNewLoadProblem({ status: 400, message: 'ใบสั่งขายย้อนหลังไม่ออกใบสเปคสินค้า' }),
+    { tone: 'warning', message: 'ใบสั่งขายย้อนหลังไม่ออกใบสเปคสินค้า' });
+  assert.deepEqual(specDocNewLoadProblem({ status: 403, message: 'forbidden' }),
+    { tone: 'warning', message: 'คุณไม่มีสิทธิ์เปิดใบสั่งขายนี้' });
+  assert.equal(specDocNewLoadProblem({ status: 500, message: 'db down' }).tone, 'error');
+  assert.equal(specDocNewLoadProblem({}).message, 'อ่านข้อมูลเอกสารไม่สำเร็จ');
 });
 
 test('แถวการ์ดหน้า SO: สี่สถานะ · ปุ่มตามสิทธิ์ · ติดด่านเป็น blocker ไม่ใช่ปุ่มหาย', () => {
@@ -342,10 +641,12 @@ test('แถวการ์ดหน้า SO: สี่สถานะ · ป�
   assert.equal(noSpec.action.href, '/database/products/PRD1/spec');
   assert.equal(followUpLineView({ line, state: { kind: 'no_spec', action: null } }).action, null);
 
-  const ready = followUpLineView({ line, state: { kind: 'not_issued', label: 'ยังไม่ออก', action: 'issue', reason: null } });
+  const ready = followUpLineView({ line, state: { kind: 'not_issued', label: 'ยังไม่ออก', action: 'issue', reason: null } }, { orderId: 'SO1' });
   assert.equal(ready.action.kind, 'issue');
   assert.equal(ready.action.blocker, null);
-  const blocked = followUpLineView({ line, state: { kind: 'not_issued', action: 'issue', reason: 'ใบสั่งขายยังไม่อนุมัติ' } });
+  // ⭐ "ออกเอกสาร" = ลิงก์ไปหน้าออกเอกสาร (มติ 23/09) ไม่ใช่ปุ่มที่ออกเลขทันที
+  assert.equal(ready.action.href, '/sales-planning/spec-documents/new?order=SO1&line=SOL-1');
+  const blocked = followUpLineView({ line, state: { kind: 'not_issued', action: 'issue', reason: 'ใบสั่งขายยังไม่อนุมัติ' } }, { orderId: 'SO1' });
   assert.equal(blocked.action.blocker, 'ใบสั่งขายยังไม่อนุมัติ');
   const notAc = followUpLineView({ line, state: { kind: 'not_issued', label: 'ยังไม่ออก', action: null } });
   assert.equal(notAc.action, null);
