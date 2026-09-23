@@ -16,15 +16,21 @@ import {
   installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock, withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
 import {
-  ensureInstallments, loadInstallment, loadInstallments, replanInstallments, updateInstallment,
+  carryInstallments, ensureInstallments, installmentRefundSchemaError, loadInstallment, loadInstallments, replanInstallments,
+  updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
 import {
   REPLAN_STALE_MESSAGE, buildReplanRows, installmentReplanBlocker, replanAuditSummary, replanReasonError, replanStale,
 } from '@/lib/sales/installmentReplan';
+import {
+  CARRY_FORBIDDEN, CARRY_STALE_MESSAGE, applyCarryIn, canCarryInstallments, carryAuditSummary, carryBlocker,
+  carrySourceError, carrySourcesFrom, carryStale,
+} from '@/lib/sales/installmentCarry';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { historicalInstallmentLock, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { loadScoped } from '@/lib/scopedRow';
 
 export const dynamic = 'force-dynamic';
 
@@ -239,7 +245,68 @@ async function replanOrderInstallments({ user, supabase, req, id, body }) {
   }
 }
 
-/* PATCH — เดินสถานะของงวดเดียว (+ `replan` ของทั้งใบ — ดูข้างบน)
+/* ── ยกเงินค้างจากใบที่ยกเลิกเข้าใบนี้ (PR3 · mig 0378 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D4) ──────────
+   ⭐ คำสั่งของ **ทั้งใบ** (ใบปลายทาง = ใบของ route นี้) ⇒ PATCH ส่งมาที่นี่ก่อนด่าน `installmentId`
+     · proxy ให้ FN ผ่านเฉพาะ PATCH ของ `/sales-orders/[id]` และ `/installments` ⇒ คำสั่งที่ FN กดได้ต้องอยู่ที่นี่
+   ⭐ ลำดับ: สิทธิ์ (AE Sup/admin/บัญชี) → ใบปลายทาง (view-scope) → ใบต้นทาง (ดีลเดียวกัน = scope เดียวกัน) → งวดสดทั้งสองใบ
+     (โยน error) → ด่านเดียวกับปุ่ม → เหตุผล → ข้อมูลเก่า → ชุดสุดท้ายจาก lib → RPC → audit ทั้งสองใบ
+   ⭐ body `{ action:'carry', sourceOrderId, installmentIds:[…], expected:[{id,updatedAt}], reason }` — แผนที่เหลือคิดที่นี่เอง
+     (applyCarryIn · หักงวดเปิดแรก ๆ ก่อน) ไม่เชื่อแผนจากจอ · จอพรีวิวด้วยตัวเดียวกัน
+   🔴 ทางเขียนทางเดียวคือ RPC 0378 (ไม่แตะตัวใบ ⇒ Actual ไม่ขยับ) — ห้ามย้ายแถวเองทีละแถวที่นี่ */
+async function carryIntoOrder({ user, supabase, req, id, body }) {
+  if (!canCarryInstallments(user)) return forbidden(CARRY_FORBIDDEN);
+  try {
+    const { order, error } = await loadOrderForUser(supabase, user, id);
+    if (error) return error;
+    const sourceId = String(body.sourceOrderId || '').trim();
+    const ids = Array.isArray(body.installmentIds)
+      ? [...new Set(body.installmentIds.map((v) => String(v || '').trim()).filter(Boolean))]
+      : [];
+    if (!sourceId || !ids.length) return badRequest('เลือกใบที่ยกเลิกและงวดที่จะยกมาก่อน');
+    /* ใบต้นทาง — โหลดพร้อมด่านขอบเขตการเห็นตามดีล (loadScoped · กฎ 6 ของ systemRules) · ไม่พบ = 404 · อ่านพลาด = 500
+       ⚠️ ด่านดีลเดียวกัน (carrySourceError) มาก่อนแตะงวดของใบนั้น */
+    const { row: source, response: sourceResponse } = await loadScoped(supabase, 'sales_orders', sourceId, user, 'view');
+    if (sourceResponse) return sourceResponse;
+    const sourceError = carrySourceError(order, source);
+    if (sourceError) return fail(sourceError, 409);
+    /* ⚠️ อ่านสดแบบโยน error ทั้งสองใบ — กลืนเป็น [] แล้วแผนที่เหลือถูกคิดจากงวดที่ไม่มีอยู่จริง */
+    const live = await loadInstallments(supabase, order.id);
+    const sourceRows = await loadInstallments(supabase, source.id);
+    const gate = carryBlocker(order, live, user, carrySourcesFrom([source], sourceRows));
+    if (gate.blocker) return fail(gate.blocker, 409);
+    const reasonError = replanReasonError(body.reason);
+    if (reasonError) return badRequest(reasonError);
+    const carried = ids.map((rowId) => sourceRows.find((r) => r.id === rowId) || null);
+    if (carried.some((r) => !r)) return fail('งวดที่เลือกไม่อยู่กับใบที่ยกเลิกแล้ว (อาจถูกยกไปก่อน) — โหลดหน้าใหม่', 409);
+    if (carryStale(live, carried, body.expected)) return fail(CARRY_STALE_MESSAGE, 409);
+    const built = applyCarryIn(order, live, carried);
+    if (built.error) return badRequest(built.error);
+    const reason = String(body.reason).trim();
+    const result = await carryInstallments(supabase, {
+      sourceId: source.id, targetId: order.id, ids, rows: built.rows, expected: body.expected, reason, user,
+    });
+    if (result.error) return fail(result.error, result.status);
+    const summary = carryAuditSummary({
+      fromNumber: source.orderNumber, toNumber: order.orderNumber, carried: result.carried, reason,
+    });
+    /* audit before/after ทั้งสองใบ — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) · งวดเปิดที่ถูกหักจนหมดอยู่ใน before ครบ */
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order_installments', entityId: order.id,
+      before: { installments: result.before }, after: { installments: result.after, carried: result.carried, reason },
+      summary, request: req,
+    });
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order_installments', entityId: source.id,
+      before: { installments: carried }, after: { movedTo: order.id, carried: result.carried, reason },
+      summary, request: req,
+    });
+    return ok({ installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)) });
+  } catch (carryError) {
+    return fail(carryError.message, 500);
+  }
+}
+
+/* PATCH — เดินสถานะของงวดเดียว (+ `replan` / `carry` ของทั้งใบ — ดูข้างบน)
    pending/rejected ──report──> reported ──confirm──> confirmed
                         ↑                    └─reject──> rejected
                         └────── withdraw ────┘
@@ -252,6 +319,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '').trim();
   if (action === 'replan') return replanOrderInstallments({ user, supabase, req, id, body });
+  if (action === 'carry') return carryIntoOrder({ user, supabase, req, id, body });
   const installmentId = String(body.installmentId || '').trim();
   if (!installmentId) return badRequest('ไม่ได้ระบุงวดที่ต้องการ');
 
@@ -273,6 +341,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ใบกำกับภาษีของงวด (mig 0348) — ด่านค่าอยู่ที่ `taxInvoiceActionError` (เรียกผ่าน gate ข้างล่าง)
     const taxInvoiceNo = String(body.taxInvoiceNo || '').trim();
     const taxInvoiceDate = String(body.taxInvoiceDate || '').trim();
+    /* บันทึกคืนเงินของงวดใบที่ยกเลิก (PR3 · mig 0378) — ด่านค่าอยู่ที่ installmentActionError (refund) */
+    const refundedOn = String(body.refundedOn || '').trim();
+    const creditNoteNo = String(body.creditNoteNo || '').trim();
     /* งวดอื่นของใบเดียวกัน — ด่าน "ไล่ลำดับงวด" ต้องเห็นทั้งใบ ไม่ใช่แค่แถวที่กด
        (อ่านสดที่นี่ ไม่เชื่อค่าที่ client ส่งมา) */
     const siblings = await loadInstallments(supabase, order.id);
@@ -300,6 +371,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       orderLock: historicalInstallmentLock(order) || pipelineInstallmentLock(order, action),
       historical: isHistoricalOrder(order),
       contractEnd: openingCoverageEnd(order, siblings),
+      /* ⭐ PR3: คืนเงินได้เฉพาะงวดของใบ pipeline ที่ยกเลิก — แผงงวดส่งค่าเดียวกันจากใบเดียวกัน */
+      orderCancelled: order.status === 'cancelled' && !isHistoricalOrder(order),
+      refundedOn, creditNoteNo,
     });
     if (gate) return badRequest(gate);
 
@@ -446,6 +520,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       /* ล้างของที่แนบผิดใบ — ร่องรอยอยู่ที่ audit (before/after ทั้งแถว)
          ⚠️ ล้างสำเนาบนบรรทัดคำร้องด้วย ไม่งั้นเลขที่ถอนแล้วยังค้างให้ผู้ขอเห็น */
       patch = taxInvoiceClearPatch();
+    } else if (action === 'refund') {
+      /* ── บัญชีบันทึกคืนเงินเต็มจำนวน (PR3 · mig 0378 · มติ D4) — ทางออกที่สองของเงินค้างจากใบที่ยกเลิก
+         ⭐ สถานะคง `confirmed` (เงินเคยเข้าจริง) · CHECK refund_shape บังคับ: confirmed · วันคืน · เหตุผล ≥ 10 ·
+           มีใบกำกับต้องมีเลขใบลดหนี้ · ระหว่างที่คืนแล้วถอนคำรับรอง/ยกไปใบใหม่ไม่ได้ */
+      patch = {
+        refundedAt: now, refundedOn, refundedById: user.id, refundedByName: actorName,
+        refundReason: reason, refundCreditNoteNo: creditNoteNo || null,
+      };
+    } else if (action === 'refund-clear') {
+      /* ถอนการบันทึกคืนเงิน (บันทึกผิดงวด/ผิดยอด) — ล้างครบทุกช่อง (CHECK ห้ามเหลือเศษ) · ร่องรอยอยู่ที่ audit */
+      patch = {
+        refundedAt: null, refundedOn: null, refundedById: null, refundedByName: null,
+        refundReason: null, refundCreditNoteNo: null,
+      };
     }
 
     /* CHECK ของงวด (0245 · 0320 · 0374) ที่หลุดด่านข้างบนมา — แปลเป็นไทยผ่านตารางกลาง แทน 500 ภาษาอังกฤษของ Postgres
@@ -456,6 +544,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     try {
       updated = await updateInstallment(supabase, installmentId, patch, { expectedUpdatedAt: row.updatedAt });
     } catch (writeError) {
+      /* ฐานยังไม่ได้รัน 0378 (ไม่มีคอลัมน์คืนเงิน) — บอกให้รันมิก ไม่ใช่ 500 ดิบ */
+      const refundSchema = installmentRefundSchemaError(writeError);
+      if (refundSchema) return fail(refundSchema, 503);
       const mapped = documentWorkflowError(writeError, { context: `installment ${action} ${installmentId}` });
       if (mapped.code) return fail(mapped.message, mapped.status);
       throw writeError;

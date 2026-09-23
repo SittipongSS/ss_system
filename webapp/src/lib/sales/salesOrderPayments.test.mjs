@@ -36,6 +36,12 @@ import {
   paymentState,
   previewInstallments,
   withLiveAmounts,
+  installmentRefunded,
+  strandedInstallment,
+  cancelledMoneyRestoreBlock,
+  movedOutDeleteBlock,
+  MAX_REFUND_CREDIT_NOTE_NO,
+  MIN_REJECT_REASON,
 } from './salesOrderPayments.js';
 
 /* ⭐ งวดที่ **ยอดหยุดแล้ว** (B-4 · mig 0259) — ทุกแถวที่เดินสายแจ้ง/คอนเฟิร์มได้
@@ -1058,9 +1064,14 @@ test('ใบ pipeline ยกเลิกแล้ว: บล็อกแจ้�
   for (const action of ['report', 'schedule', 'coverage', 'link', 'unlink']) {
     assert.match(pipelineInstallmentLock(order, action) || '', /^ใบยกเลิกแล้ว — งวดของใบนี้เหลือให้/, action);
   }
-  for (const action of ['confirm', 'reject', 'unconfirm', 'withdraw', 'tax-invoice', 'tax-invoice-clear']) {
+  /* PR3 (mig 0378 · มติ D4): เงินค้างของใบยกเลิกมีทางออกสองทาง — บัญชีบันทึกคืนเงิน/ถอนการบันทึก · ยกเข้าใบใหม่ของดีลเดียวกัน */
+  for (const action of ['confirm', 'reject', 'unconfirm', 'withdraw', 'tax-invoice', 'tax-invoice-clear',
+    'refund', 'refund-clear', 'carry']) {
     assert.equal(pipelineInstallmentLock(order, action), null, action);
   }
+  assert.equal(pipelineInstallmentLock(order, 'report'),
+    'ใบยกเลิกแล้ว — งวดของใบนี้เหลือให้บัญชีรับรอง/ตีกลับ/ถอนคำรับรอง/บันทึกคืนเงิน ยกเงินไปใบใหม่ของดีลเดียวกัน'
+      + ' และผู้แจ้งดึงกลับการแจ้งเท่านั้น');
   // คำสั่งที่ไม่รู้จักไม่ถูกปล่อยผ่านด่านใบ (allowlist ไม่ใช่ blocklist)
   assert.ok(pipelineInstallmentLock(order, 'ไม่รู้จัก'));
   // ไม่ส่ง action = ถามระดับใบ (ข้อความบนแผงงวด) ⇒ ได้ข้อความล็อก
@@ -1196,8 +1207,10 @@ test('โมดัลย้อนการอนุมัติ: เงินร
   assert.equal(lines[0], 'เงินที่บัญชีรับรองแล้ว 1 งวด ฿53,500.00 ยังนับว่ารับแล้ว ไม่ต้องถอนคำรับรอง — ตอนออก Rev. งวดทั้ง 3 งวด'
     + ' (สลิป · ใบกำกับภาษี · ช่วงครอบ) ย้ายไปอยู่กับใบ Rev. บัญชีไม่ต้องรับรองซ้ำ');
   assert.ok(lines.includes('สลิปรอบัญชีตรวจ 1 งวดยังอยู่ในคิวบัญชีตามปกติ'));
-  // ข้อความชั่วคราวจนกว่า PR3 เปิดการยกเลิกใบที่มีเงิน — ขึ้นเฉพาะใบที่มีเงินรับแล้ว
-  assert.equal(lines[lines.length - 1], 'ใบที่มีเงินรับแล้วไปต่อได้ทางออก Rev. — การยกเลิกเปิดในรอบถัดไป');
+  /* ⚠️ แก้ยามโดยตั้งใจใน PR3 (mig 0378): บรรทัดชั่วคราว "การยกเลิกเปิดในรอบถัดไป" ถอดออกแล้ว — ยกเลิกใบที่มีเงินรับแล้วได้
+     (เงินค้างอยู่กับใบ → ยกเข้าใบใหม่/บันทึกคืนเงิน) ⇒ บรรทัดสุดท้ายคือสลิปรอตรวจ */
+  assert.equal(lines[lines.length - 1], 'สลิปรอบัญชีตรวจ 1 งวดยังอยู่ในคิวบัญชีตามปกติ');
+  assert.ok(!lines.some((l) => /รอบถัดไป/.test(l)), 'คำชั่วคราวของ PR1 ต้องหายไปแล้ว');
   assert.ok(!lines.some((l) => /บัญชีปิดใบนี้แล้ว|นัดช่าง/.test(l)), 'ไม่ใช่ใบที่บัญชีปิดแล้ว/ใบบริการ');
   // ใช้คำ "ย้อนการอนุมัติ" เท่านั้น
   assert.ok(!lines.some((l) => /ยกเลิกอนุมัติ|ถอดอนุมัติ/.test(l)));
@@ -1285,4 +1298,174 @@ test('สรุป audit ของการออก Rev.: บอกจำนว
   assert.equal(legacy.warning, REVISION_MOVE_SCHEMA_MISSING);
   assert.equal(REVISION_MOVE_SCHEMA_MISSING, 'ฐานยังไม่ได้รัน 0376 — แจ้งผู้ดูแลระบบ');
   assert.match(legacy.summary, /^ออก Rev\. SO-26090001-0 → SO-26090001-1: แก้ที่อยู่ส่งของตามลูกค้าแจ้ง · ⚠️ ฐานยังไม่ได้รัน 0376/);
+});
+
+
+/* ══ PR3 · ยกเลิกใบที่มีเงินรับแล้ว + เงินค้าง (mig 0378 · มติเจ้าของ 23/09 D4) ═════════════════════════════════ */
+const CANCELLED_SO = { ...APPROVED_SO, status: 'cancelled' };
+const REFUND_OK = { refundedOn: '2026-09-20', reason: 'ลูกค้ายกเลิกงาน ขอคืนมัดจำทั้งหมด', creditNoteNo: 'CN-0001' };
+const refundOpts = (order, extra = {}) => ({
+  rows: MONEY_ROWS, orderTotal: 107000,
+  orderLock: pipelineInstallmentLock(order, extra.action || 'refund'),
+  orderCancelled: order.status === 'cancelled' && order.origin !== 'historical',
+  ...REFUND_OK, ...extra,
+});
+const refundedRow = (over = {}) => ({
+  ...MONEY_ROWS[0], refundedAt: '2026-09-21T03:00:00Z', refundedOn: '2026-09-20',
+  refundReason: 'ลูกค้ายกเลิกงาน ขอคืนมัดจำทั้งหมด', refundCreditNoteNo: 'CN-0001', ...over,
+});
+
+test('เงินค้างจากใบที่ยกเลิก = งวด confirmed/reported ที่ยังไม่คืนเงินของใบที่ยกเลิก (ใบอื่น/งวดไม่มีเงิน/คืนแล้ว ไม่ใช่)', () => {
+  assert.equal(strandedInstallment(MONEY_ROWS[0], CANCELLED_SO), true, 'confirmed');
+  assert.equal(strandedInstallment(MONEY_ROWS[1], CANCELLED_SO), true, 'reported — รอบัญชีรับรอง/ตีกลับ');
+  assert.equal(strandedInstallment(MONEY_ROWS[2], CANCELLED_SO), false, 'pending = โมฆะ ไม่ใช่เงิน');
+  assert.equal(strandedInstallment({ ...MONEY_ROWS[2], status: 'rejected' }, CANCELLED_SO), false);
+  assert.equal(strandedInstallment(refundedRow(), CANCELLED_SO), false, 'คืนลูกค้าแล้ว = ไม่ค้าง');
+  for (const status of ['approved', 'approval_revoked', 'draft', 'revised']) {
+    assert.equal(strandedInstallment(MONEY_ROWS[0], { ...APPROVED_SO, status }), false, status);
+  }
+  assert.equal(strandedInstallment(null, CANCELLED_SO), false);
+  assert.equal(strandedInstallment(MONEY_ROWS[0], null), false);
+  assert.equal(installmentRefunded(refundedRow()), true);
+  assert.equal(installmentRefunded(MONEY_ROWS[0]), false);
+  assert.equal(installmentRefunded({ refundedAt: '  ' }), false, 'ช่องว่างล้วนไม่ใช่การคืนเงิน');
+});
+
+test('บันทึกคืนเงิน: ฝ่ายบัญชี · งวด confirmed ของใบ pipeline ที่ยกเลิก · เต็มจำนวน — ครบข้อมูลแล้วผ่าน', () => {
+  assert.equal(installmentActionError(MONEY_ROWS[0], 'refund', FN_STAFF, refundOpts(CANCELLED_SO)), null);
+  assert.equal(installmentActionError(MONEY_ROWS[0], 'refund', { id: 'u-admin', role: 'admin' }, refundOpts(CANCELLED_SO)), null);
+  assert.match(installmentActionError(MONEY_ROWS[0], 'refund', AE_SUP, refundOpts(CANCELLED_SO)), /เฉพาะฝ่ายบัญชี/);
+  assert.match(installmentActionError(MONEY_ROWS[0], 'refund', SA, refundOpts(CANCELLED_SO)), /เฉพาะฝ่ายบัญชี/);
+  // ใบที่ยังเดินอยู่ไม่มีทางคืนเงินรายงวด — ใช้ถอนคำรับรอง
+  assert.match(installmentActionError(MONEY_ROWS[0], 'refund', FN_STAFF, refundOpts(APPROVED_SO)),
+    /เฉพาะงวดของใบที่ยกเลิกแล้ว/);
+  // งวดที่ยังไม่มีเงินรับรอง
+  assert.match(installmentActionError(MONEY_ROWS[1], 'refund', FN_STAFF, refundOpts(CANCELLED_SO)),
+    /เฉพาะงวดที่บัญชีรับรองแล้ว — งวดที่รอตรวจให้ตีกลับแทน/);
+  assert.match(installmentActionError(MONEY_ROWS[2], 'refund', FN_STAFF, refundOpts(CANCELLED_SO)), /เฉพาะงวดที่บัญชีรับรองแล้ว/);
+  assert.match(installmentActionError(refundedRow(), 'refund', FN_STAFF, refundOpts(CANCELLED_SO)), /บันทึกคืนเงินไปแล้ว/);
+});
+
+test('บันทึกคืนเงิน: วันที่คืนบังคับ · เหตุผล 10–500 · มีใบกำกับภาษีต้องมีเลขใบลดหนี้ (กติกาเดียวกับ CHECK ของ 0378)', () => {
+  const at = (extra) => installmentActionError(MONEY_ROWS[0], 'refund', FN_STAFF, refundOpts(CANCELLED_SO, extra));
+  assert.match(at({ refundedOn: '' }), /ต้องระบุวันที่คืนเงิน/);
+  assert.match(at({ refundedOn: '2026-02-30' }), /วันที่คืนเงินไม่ถูกต้อง/);
+  assert.match(at({ refundedOn: '1999-12-31' }), /วันที่คืนเงินไม่ถูกต้อง/);
+  assert.match(at({ reason: 'คืนเงิน' }), /เหตุผลที่คืนเงินอย่างน้อย 10 ตัวอักษร/);
+  assert.match(at({ reason: 'ก'.repeat(501) }), /ไม่เกิน 500/);
+  // MONEY_ROWS[0] มีใบกำกับ IV-1 ⇒ ต้องมีเลขใบลดหนี้
+  assert.match(at({ creditNoteNo: '  ' }), /มีใบกำกับภาษี IV-1 — ต้องระบุเลขที่ใบลดหนี้/);
+  assert.match(at({ creditNoteNo: 'C'.repeat(MAX_REFUND_CREDIT_NOTE_NO + 1) }), /เลขที่ใบลดหนี้ยาวเกิน/);
+  // ไม่มีใบกำกับ = เลขใบลดหนี้ไม่บังคับ
+  const noInvoice = { ...MONEY_ROWS[0], taxInvoiceNo: null };
+  assert.equal(installmentActionError(noInvoice, 'refund', FN_STAFF, refundOpts(CANCELLED_SO, { creditNoteNo: '' })), null);
+});
+
+test('ถอนการบันทึกคืนเงิน: ฝ่ายบัญชี · เฉพาะงวดที่บันทึกคืนไว้ · ใบยกเลิกเท่านั้น', () => {
+  const opts = (order) => refundOpts(order, { action: 'refund-clear' });
+  assert.equal(installmentActionError(refundedRow(), 'refund-clear', FN_STAFF, opts(CANCELLED_SO)), null);
+  assert.match(installmentActionError(MONEY_ROWS[0], 'refund-clear', FN_STAFF, opts(CANCELLED_SO)), /ยังไม่ได้บันทึกคืนเงิน/);
+  assert.match(installmentActionError(refundedRow(), 'refund-clear', SA, opts(CANCELLED_SO)), /เฉพาะฝ่ายบัญชี/);
+});
+
+test('🔴 งวดที่คืนเงินแล้ว: ถอนคำรับรอง/แก้ใบกำกับไม่ได้ — ถอนการบันทึกคืนเงินก่อน (CHECK ของ 0378 กันซ้ำที่ฐาน)', () => {
+  const row = refundedRow();
+  const base = { rows: [row], orderTotal: 107000, orderCancelled: true };
+  for (const action of ['unconfirm', 'tax-invoice', 'tax-invoice-clear']) {
+    const why = installmentActionError(row, action, FN_STAFF, {
+      ...base, orderLock: pipelineInstallmentLock(CANCELLED_SO, action),
+      reason: 'x'.repeat(MIN_REJECT_REASON), taxInvoiceNo: 'IV-9', taxInvoiceDate: '2026-09-20',
+    });
+    assert.match(why || '', /งวดนี้บันทึกคืนเงินแล้ว — ถอนการบันทึกคืนเงินก่อน/, action);
+  }
+  // งวดที่ยังไม่คืน ถอนคำรับรองบนใบยกเลิกได้ตามเดิม (PR0)
+  assert.equal(installmentActionError(MONEY_ROWS[0], 'unconfirm', FN_STAFF, {
+    rows: MONEY_ROWS, orderTotal: 107000, orderLock: pipelineInstallmentLock(CANCELLED_SO, 'unconfirm'),
+    reason: 'x'.repeat(MIN_REJECT_REASON),
+  }), null);
+});
+
+test('ใบย้อนหลังที่ยกเลิก: คืนเงิน/ยกเงินไม่มี — ล็อกของใบย้อนหลังชนะ (กติกาเดิมทุกข้อ)', () => {
+  const historical = { origin: 'historical', status: 'cancelled' };
+  assert.equal(pipelineInstallmentLock(historical, 'refund'), null, 'ใบย้อนหลังไม่ผ่านตัวนี้');
+  // ผู้เรียกส่ง historicalInstallmentLock(order) || … — ใบย้อนหลังยกเลิกแล้ว = ล็อกทั้งใบ
+  assert.match(installmentActionError(MONEY_ROWS[0], 'refund', FN_STAFF, {
+    ...refundOpts(historical), orderLock: 'ใบยกเลิกแล้ว — งวดของใบนี้ขยับไม่ได้', orderCancelled: false,
+  }), /ขยับไม่ได้/);
+});
+
+test('สถานะที่แสดงของงวดที่คืนเงินแล้ว = "คืนเงินแล้ว" (ไม่ใช่ "ชำระแล้ว")', () => {
+  assert.equal(installmentDisplayStatus(refundedRow()), 'refunded');
+  assert.equal(INSTALLMENT_STATUS_LABELS.refunded, 'คืนเงินแล้ว');
+  assert.equal(INSTALLMENT_STATUS_TONES.refunded, 'neutral');
+  assert.ok(INSTALLMENT_DISPLAY_STATUSES.includes('refunded'));
+  assert.ok(!INSTALLMENT_STATUSES.includes('refunded'), 'ไม่ใช่ค่าใน DB — CHECK ของ 0245 ไม่มีสถานะนี้');
+  assert.equal(installmentDisplayStatus(MONEY_ROWS[0]), 'confirmed');
+});
+
+test('โมดัลยกเลิก (ใบ pipeline): เงินรับแล้วอยู่กับใบ ไม่หาย · สลิปรอตรวจยังอยู่ในคิว · งวดไม่มีเงินหลุดจากค้างรับ · ใบกำกับต้องลดหนี้ถ้าคืน', () => {
+  const lines = salesOrderMoneyOutcome(APPROVED_SO, MONEY_ROWS, 'cancel');
+  assert.deepEqual(lines, [
+    'ใบนี้มีเงินรับแล้ว ฿53,500.00 (1 งวด) — ยกเลิกแล้วเงินยังบันทึกอยู่กับใบนี้ ไม่หายและไม่ต้องถอนคำรับรอง'
+      + ' · บัญชีเห็นในหัวข้อ “เงินค้างจากใบที่ยกเลิก” · ถ้าจะออกใบใหม่ให้ดีลนี้ กด “ยกเงินจากใบที่ยกเลิก” ที่ใบใหม่หลังอนุมัติ'
+      + ' · ถ้าคืนเงินลูกค้า บัญชีกด “บันทึกคืนเงิน”',
+    'สลิปรอบัญชีตรวจ 1 งวด ฿32,100.00 ยังอยู่ในคิวบัญชี',
+    'งวดที่ยังไม่ชำระ 1 งวด ฿21,400.00 หลุดจากยอดค้างรับทันที',
+    'มีใบกำกับภาษี IV-1 — ถ้าคืนเงินต้องออกใบลดหนี้',
+  ]);
+  // ไม่มีเงินเลย = บอกแค่ส่วนที่มี · ไม่มีงวด = ไม่พูดเรื่องเงิน
+  assert.deepEqual(salesOrderMoneyOutcome(APPROVED_SO, [MONEY_ROWS[2]], 'cancel'),
+    ['งวดที่ยังไม่ชำระ 1 งวด ฿21,400.00 หลุดจากยอดค้างรับทันที']);
+  assert.deepEqual(salesOrderMoneyOutcome(APPROVED_SO, [], 'cancel'), []);
+  // ใบร่าง: งวดยังไม่ตรึงยอด = ไม่อยู่ในทะเบียนบัญชีอยู่แล้ว (ไม่พูดว่า "หลุดจากค้างรับ") · เงินที่บันทึกไว้ก่อนอนุมัติต้องบอก
+  const draft = { ...APPROVED_SO, status: 'draft' };
+  const draftRows = [
+    { id: 'd1', seq: 1, status: 'pending', amount: 1000, paidOn: '2026-09-01', evidence: [{ fileName: 's.jpg' }] },
+    { id: 'd2', seq: 2, status: 'pending', amount: 2000 },
+  ];
+  assert.deepEqual(salesOrderMoneyOutcome(draft, draftRows, 'cancel'), [
+    'บันทึกการจ่ายไว้ 1 งวด ฿1,000.00 (ยังไม่ถึงบัญชี) — ยกเลิกแล้วงวดเป็นโมฆะ ถ้าลูกค้าจ่ายจริงให้แจ้งใหม่ที่ใบใหม่ของดีลนี้',
+  ]);
+  // ใบย้อนหลังคงกติกาเดิม (ยกเลิกได้เฉพาะตอนไม่มีเงินรับแล้ว) — โมดัลไม่มีบรรทัดชุดนี้
+  assert.deepEqual(salesOrderMoneyOutcome({ origin: 'historical', status: 'approved' }, MONEY_ROWS, 'cancel'), []);
+});
+
+test('โมดัลอนุมัติ: ดีลนี้มีเงินค้างจากใบที่ยกเลิก = เตือนให้กด "ยกเงินจากใบที่ยกเลิก" หลังอนุมัติ', () => {
+  const draft = { ...APPROVED_SO, status: 'pending_approval' };
+  const sources = [
+    { id: 'SOR-X', orderNumber: 'SO-26080039-0', amount: 7639.8 },
+    { id: 'SOR-Y', orderNumber: 'SO-26080041-0', amount: 1000 },
+  ];
+  const lines = salesOrderMoneyOutcome(draft, [], 'approve', { strandedSources: sources });
+  assert.equal(lines[lines.length - 1],
+    'ดีลนี้มีเงินค้างจากใบที่ยกเลิก SO-26080039-0 ฿7,639.80 · SO-26080041-0 ฿1,000.00 — หลังอนุมัติกด ‘ยกเงินจากใบที่ยกเลิก’ ที่แท็บการชำระ');
+  assert.equal(salesOrderMoneyOutcome(draft, [], 'approve').length, 2, 'ไม่มีเงินค้าง = คำเดิมสองบรรทัด');
+  assert.equal(salesOrderMoneyOutcome(draft, [], 'approve', { strandedSources: [] }).length, 2);
+});
+
+test('กู้คืนใบที่ยกเลิก: เงินยกไปใบใหม่แล้ว หรือคืนลูกค้าแล้ว = คืนสถานะไม่ได้ (ให้ออกใบใหม่)', () => {
+  assert.equal(cancelledMoneyRestoreBlock(MONEY_ROWS, []), null, 'เงินค้างที่ยังอยู่กับใบ = กู้คืนได้ตามเดิม');
+  assert.equal(cancelledMoneyRestoreBlock([], []), null);
+  const carried = [
+    { id: 'SOI-1', reason: 'carry', salesOrderId: 'SOR-N', orderNumber: 'SO-26090002-0' },
+    { id: 'SOI-2', reason: 'carry', salesOrderId: 'SOR-N', orderNumber: 'SO-26090002-0' },
+  ];
+  assert.equal(cancelledMoneyRestoreBlock([], carried), 'เงินของใบนี้ยกไป SO-26090002-0 แล้ว — คืนสถานะไม่ได้ ให้ออกใบใหม่');
+  assert.equal(cancelledMoneyRestoreBlock([refundedRow()], []), 'เงินของใบนี้คืนลูกค้าแล้ว 1 งวด — คืนสถานะไม่ได้ ให้ออกใบใหม่');
+  assert.equal(cancelledMoneyRestoreBlock([refundedRow()], carried),
+    'เงินของใบนี้ยกไป SO-26090002-0 แล้ว · คืนลูกค้าแล้ว 1 งวด — คืนสถานะไม่ได้ ให้ออกใบใหม่');
+  // แถวที่ย้ายออกเพราะออก Rev. ไม่ใช่เงินที่ยก (ใบ revised กู้คืนไม่ได้อยู่แล้ว)
+  assert.equal(cancelledMoneyRestoreBlock([], [{ id: 'x', reason: 'revision', orderNumber: 'SO-1-1' }]), null);
+});
+
+test('ลบถาวร: มีงวดที่ไหนอ้างใบนี้ใน movedFrom (ออก Rev./ยกเงิน) = ลบไม่ได้ — ไฟล์หลักฐานยังอยู่ในโฟลเดอร์ของใบนี้', () => {
+  assert.equal(movedOutDeleteBlock([]), null);
+  assert.equal(movedOutDeleteBlock(null), null);
+  const why = movedOutDeleteBlock([
+    { id: 'SOI-1', reason: 'carry', orderNumber: 'SO-26090002-0' },
+    { id: 'SOI-2', reason: 'revision', orderNumber: 'SO-26090001-1' },
+    { id: 'SOI-3', reason: 'carry', orderNumber: 'SO-26090002-0' },
+  ]);
+  assert.equal(why, 'ลบถาวรไม่ได้: งวดชำระ 3 งวดของ SO-26090002-0, SO-26090001-1 ย้ายไปจากใบนี้ (ออก Rev./ยกเงิน)'
+    + ' และยังใช้หลักฐาน (สลิป · ใบกำกับ) ในโฟลเดอร์ของใบนี้ — ใบนี้เป็นประวัติของเงินก้อนนั้น');
 });

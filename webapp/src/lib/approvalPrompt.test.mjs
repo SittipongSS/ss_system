@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { IRREVERSIBLE_NOTE, approvalPrompt, paymentConfirmPrompt, costingPriceApprovalEffects, costingPriceApprovalPrompt,
-  historicalApprovalPrompt, paymentPlanEditPrompt,
+  historicalApprovalPrompt, paymentPlanEditPrompt, paymentCarryPrompt, paymentRefundPrompt, paymentRefundClearPrompt,
 } from './approvalPrompt.js';
+import { applyCarryIn, carryPromptFacts } from './sales/installmentCarry.js';
 import { HISTORICAL_STATUS_NOTE } from './sales/historicalOrders.js';
 import { buildReplanRows, replanPromptFacts } from './sales/installmentReplan.js';
 
@@ -234,4 +235,85 @@ test('paymentPlanEditPrompt: ไม่มีงวดที่เปลี่ย
   assert.throws(() => paymentPlanEditPrompt({ ...facts, actualMonthLabel: '' }), /Actual/);
   assert.throws(() => paymentPlanEditPrompt({ ...facts, actualAmountLabel: '' }), /Actual/);
   assert.throws(() => paymentPlanEditPrompt(), /อย่างน้อย 1 งวด/);
+});
+
+
+/* ══ PR3 · เงินค้างจากใบที่ยกเลิก (mig 0378 · มติ D4) ═══════════════════════════════════════════════════════ */
+const CARRY_TARGET = {
+  id: 'SOR-N', orderNumber: 'SO-26090002-0', origin: 'pipeline', status: 'approved', dealId: 'D1', totalAmount: 100000,
+  actualAmount: 93457.94, approvedAt: '2026-08-31T18:30:00Z', quotation: { quoteNumber: 'QT-26090002' }, financeStatus: 'pending',
+};
+const CARRY_SOURCE = { id: 'SOR-C', orderNumber: 'SO-26080039-0', origin: 'pipeline', status: 'cancelled', dealId: 'D1', totalAmount: 80000 };
+const carryRow = (over) => ({
+  seq: 1, label: 'งวดที่ 1', percent: 0, amount: 0, status: 'pending', frozenAt: 'f', evidence: [], movedFrom: [],
+  updatedAt: 'u', ...over,
+});
+const CT1 = carryRow({ id: 'T1', seq: 1, percent: 30, amount: 30000 });
+const CT2 = carryRow({ id: 'T2', seq: 2, label: 'ก่อนส่งมอบ', percent: 70, amount: 70000 });
+const CS1 = carryRow({ id: 'S1', salesOrderId: 'SOR-C', label: 'มัดจำ', amount: 20000, status: 'confirmed', taxInvoiceNo: 'IV-7' });
+const CS2 = carryRow({ id: 'S2', salesOrderId: 'SOR-C', seq: 2, label: 'งวดที่ 2', amount: 10000, status: 'reported' });
+const carryFacts = (carried = [CS1, CS2], extra = {}) => carryPromptFacts(CARRY_TARGET, CARRY_SOURCE, [CT1, CT2], carried,
+  applyCarryIn(CARRY_TARGET, [CT1, CT2], carried), { sourceRows: [CS1, CS2], ...extra });
+
+test('paymentCarryPrompt: หัว/คำถาม/ปุ่ม · ถอนคืนเองไม่ได้ · ย้ายแถวเงินทั้งแถว (บัญชีไม่ต้องรับรองซ้ำ)', () => {
+  const p = paymentCarryPrompt(carryFacts());
+  assert.equal(p.title, 'ยืนยันยกเงินจากใบที่ยกเลิก');
+  assert.equal(p.description, 'ยืนยันการยกเงิน 2 งวด ฿30,000.00 จาก SO-26080039-0 → SO-26090002-0 หรือไม่');
+  assert.equal(p.confirmLabel, 'ยืนยันยกเงิน');
+  assert.match(p.detail, /^⚠️ ย้อนกลับเองไม่ได้/);
+  assert.match(p.detail, /· ย้ายงวดที่มีเงิน 2 งวด ฿30,000\.00 จาก SO-26080039-0 \(ยกเลิกแล้ว\) มาเป็นงวดของใบนี้ — สลิป · วันจ่าย · คำรับรองของบัญชี · ใบกำกับภาษีคงเดิม บัญชีไม่ต้องรับรองซ้ำ/);
+  assert.match(p.detail, /· ยกมาเป็นงวดที่ 1: มัดจำ ฿20,000\.00 · รับเงินแล้ว/);
+  assert.match(p.detail, /· ยกมาเป็นงวดที่ 2: งวดที่ 2 ฿10,000\.00 · รอบัญชีตรวจ/);
+  assert.match(p.detail, /· สลิปรอบัญชีตรวจ 1 งวด ฿10,000\.00 ย้ายมาอยู่ในคิวบัญชีของใบนี้/);
+  assert.match(p.detail, /· ใบกำกับภาษี IV-7 ย้ายมากับงวด — ไม่ต้องออกใหม่/);
+});
+
+test('paymentCarryPrompt: แผนที่เหลือของใบนี้ก่อน→หลัง · Σ = ยอดใบ · Actual ไม่เปลี่ยน (ยอด + เดือนไทย) · เงินค้างที่เหลือของใบเดิม · D5', () => {
+  const p = paymentCarryPrompt(carryFacts());
+  assert.match(p.detail, /· ลบ งวดที่ 1 ฿30,000\.00 \(ยังไม่มีการชำระ\)/);
+  assert.match(p.detail, /· งวดที่ 2 → งวดที่ 3: ยอดคงเดิม ฿70,000\.00/);
+  assert.match(p.detail, /· ยอดรวมทุกงวด ฿100,000\.00 = ยอดใบ \(รวม VAT\)/);
+  assert.match(p.detail, /· ยอด Actual ฿93,457\.94 เดือน ก\.ย\. 2026 ของใบนี้ไม่เปลี่ยน — SO-26080039-0 ยกเลิกแล้วไม่นับ Actual อยู่แล้ว/);
+  assert.match(p.detail, /· SO-26080039-0 ไม่เหลือเงินค้าง — ออกจากหัวข้อ “เงินค้างจากใบที่ยกเลิก” ของบัญชี/);
+  assert.match(p.detail, /· ใบสั่งขายฉบับพิมพ์ยังแสดงแผนตามใบเสนอราคา QT-26090002 — งวดที่ต่างจากแผนขึ้นป้าย “ปรับแผนหลังอนุมัติ”/);
+  assert.doesNotMatch(p.detail, /เข้าคิวปิดใบ/);
+  const partial = paymentCarryPrompt(carryFacts([CS1]));
+  assert.match(partial.detail, /· SO-26080039-0 ยังเหลือเงินค้าง 1 งวด ฿10,000\.00 — ยกเพิ่มหรือให้บัญชีบันทึกคืนเงินได้ภายหลัง/);
+  assert.doesNotMatch(partial.detail, /สลิปรอบัญชีตรวจ/);
+});
+
+test('paymentCarryPrompt: ไม่มีงวดที่ยก หรือไม่รู้ยอด/เดือน Actual = สร้างโมดัลไม่ได้ · ทุกงวดรับเงินแล้ว = เข้าคิวปิดใบ', () => {
+  const facts = carryFacts();
+  assert.throws(() => paymentCarryPrompt({ ...facts, count: 0 }), /อย่างน้อย 1 งวด/);
+  assert.throws(() => paymentCarryPrompt({ ...facts, actualMonthLabel: '' }), /Actual/);
+  assert.throws(() => paymentCarryPrompt(), /อย่างน้อย 1 งวด/);
+  assert.match(paymentCarryPrompt({ ...facts, complete: true }).detail, /· ทุกงวดรับเงินครบ — ใบเข้าคิวปิดใบของบัญชี/);
+});
+
+test('paymentRefundPrompt: บอกยอดที่คืน · ทะเบียนลดยอดเก็บได้ · ใบลดหนี้คู่ใบกำกับ · ทางถอน · Actual ไม่เปลี่ยน', () => {
+  const p = paymentRefundPrompt({
+    label: 'มัดจำ', amount: '฿20,000.00', orderNumber: 'SO-26080039-0', refundedOnLabel: '20/09/2026',
+    taxInvoiceNo: 'IV-7', creditNoteNo: 'CN-0001',
+  });
+  assert.equal(p.title, 'บันทึกคืนเงินให้ลูกค้า');
+  assert.equal(p.description, 'ยืนยันการบันทึกคืนเงิน มัดจำ · ฿20,000.00 หรือไม่');
+  assert.equal(p.confirmLabel, 'ยืนยันบันทึกคืนเงิน');
+  assert.doesNotMatch(p.detail, /ย้อนกลับเองไม่ได้/, 'ถอนการบันทึกได้');
+  assert.match(p.detail, /· บันทึกว่าคืนเงินงวดนี้ ฿20,000\.00 ให้ลูกค้าเต็มจำนวนแล้ว \(วันที่คืน 20\/09\/2026\)/);
+  assert.match(p.detail, /· งวดออกจาก “เงินค้างจากใบที่ยกเลิก” ของ SO-26080039-0 และยอดเก็บได้ในทะเบียนบัญชีลดลง ฿20,000\.00/);
+  assert.match(p.detail, /· งวดนี้มีใบกำกับภาษี IV-7 — บันทึกคู่กับใบลดหนี้ CN-0001/);
+  assert.match(p.detail, /· งวดที่คืนเงินแล้วยกไปใบใหม่และถอนคำรับรองไม่ได้ — บันทึกผิดให้ “ถอนการบันทึกคืนเงิน” \(เมนูแถว\)/);
+  assert.match(p.detail, /· ยอด Actual ไม่เปลี่ยน — ใบนี้ยกเลิกแล้วไม่นับ Actual อยู่แล้ว/);
+  const plain = paymentRefundPrompt({ label: 'งวดที่ 2', amount: '฿1.00', orderNumber: 'SO-1' });
+  assert.doesNotMatch(plain.detail, /ใบลดหนี้/);
+  assert.throws(() => paymentRefundPrompt({ label: 'x' }), /ยอด/);
+});
+
+test('paymentRefundClearPrompt: งวดกลับเป็นเงินค้าง · ล้างข้อมูลคืนเงิน (ร่องรอยอยู่ในประวัติ)', () => {
+  const p = paymentRefundClearPrompt({ label: 'มัดจำ', amount: '฿20,000.00', creditNoteNo: 'CN-0001' });
+  assert.equal(p.title, 'ถอนการบันทึกคืนเงิน');
+  assert.equal(p.confirmLabel, 'ยืนยันถอนการบันทึก');
+  assert.match(p.detail, /· งวดนี้กลับเป็น “เงินค้างจากใบที่ยกเลิก” ฿20,000\.00 — ยกไปใบใหม่ของดีลเดียวกันหรือบันทึกคืนใหม่ได้/);
+  assert.match(p.detail, /· ล้างวันที่คืน เหตุผล และเลขใบลดหนี้ CN-0001 ของงวดนี้ — ร่องรอยอยู่ในประวัติการแก้ไข/);
+  assert.match(p.detail, /· ยอดเก็บได้ในทะเบียนบัญชีเพิ่มกลับ ฿20,000\.00/);
 });

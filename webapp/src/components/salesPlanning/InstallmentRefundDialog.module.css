@@ -1,0 +1,20 @@
+/* ── โมดัลบันทึกคืนเงินของงวด (PR3 · mig 0378) — ทรงเดียวกับโมดัลใบกำกับภาษี/รับรองการชำระ ──────────
+   สีและระยะมาจากตัวแปรกลางทั้งหมด — ห้ามใส่ค่าดิบ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* งวดที่กำลังบันทึกคืน — ป้ายซ้าย ค่าขวา (ชุดเดียวกับ TaxInvoiceDialog) */
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--fs-6);
+}
+
+.facts dt { color: var(--text-3); }
+.facts dd { margin: 0; text-align: right; }

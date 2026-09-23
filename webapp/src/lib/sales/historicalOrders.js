@@ -114,7 +114,8 @@ export function historicalInstallmentLock(order) {
    🐞 ยกเลิกทั้งที่งวดยังรอรับรอง = งวดค้างคิว "รอคุณรับรอง" + ป้ายเมนูของบัญชีตลอดไป — ล็อกข้างบนตอบ
       "ใบยกเลิกแล้ว" กับทุกคำสั่งรวมรับรอง/ตีกลับ ส่วนคิวกับป้ายนับจากสถานะงวดล้วน ไม่ดูสถานะใบ ⇒ ต้องแก้ที่ฐานเท่านั้น
    ⭐ ลำดับของทางแก้หลังอนุมัติ (HISTORICAL_CORRECTION_PATH): บัญชีตีกลับงวดก่อน แล้ว AE Sup ค่อยยกเลิกใบ
-   ⚠️ งวดที่บัญชีรับรองแล้วเป็นของ paymentLockReason (ด่านเดิมของทุกใบ) ไม่ใช่ตัวนี้ · ใบ pipeline คืน null เสมอ */
+   ⚠️ งวดที่บัญชีรับรองแล้วเป็นของ paymentLockReason (ตั้งแต่ PR3 · mig 0378 เหลือเป็นด่านของใบย้อนหลังเท่านั้น — route
+      เรียกในบล็อกเดียวกับตัวนี้) ไม่ใช่ตัวนี้ · ใบ pipeline คืน null เสมอ (ยกเลิกได้ · เงินค้าง → ยกเข้าใบใหม่/คืนเงิน) */
 export function historicalCancelBlock(order, installments = []) {
   if (!isHistoricalOrder(order)) return null;
   const waiting = (Array.isArray(installments) ? installments : []).filter((row) => row?.status === 'reported');

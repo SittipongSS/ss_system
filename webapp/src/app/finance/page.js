@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlarmClock, CircleDollarSign, ClipboardCheck, Wallet } from "lucide-react";
+import { AlarmClock, CircleDollarSign, ClipboardCheck, HandCoins, Wallet } from "lucide-react";
 import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
@@ -22,6 +22,7 @@ import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import { LEDGER_STRANDED_TITLE } from "@/lib/finance/paymentLedger";
 
 export default function FinanceOverviewPage() {
   const router = useRouter();
@@ -113,6 +114,14 @@ export default function FinanceOverviewPage() {
             <Metric
               icon={<CircleDollarSign />} label="ค้างรับทั้งหมด" value={fmtMoney(summary?.outstandingAmount ?? 0)}
               note={`เก็บได้แล้ว ${fmtMoney(summary?.collectedAmount ?? 0)}`}
+            />
+            {/* ⭐ เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) — ต้องตัดสินยกเข้าใบใหม่/คืนลูกค้า · กดแล้วไปคิวบนทะเบียน */}
+            <Metric
+              as="button" type="button"
+              icon={<HandCoins />} label={LEDGER_STRANDED_TITLE} value={`${summary?.strandedCount ?? 0} งวด`}
+              note={fmtMoney(summary?.strandedAmount ?? 0)}
+              tone={summary?.strandedCount ? "warning" : "good"}
+              onClick={() => router.push("/finance/payments")}
             />
           </MetricStrip>
         )}

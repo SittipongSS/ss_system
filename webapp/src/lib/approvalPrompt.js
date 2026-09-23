@@ -152,7 +152,8 @@ export function historicalApprovalPrompt({ subject, checklist = [], effects, ove
  * ⭐ PR1 (mig 0376 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09): งวดที่คอนเฟิร์มแล้ว **ไม่ล็อกการย้อนการอนุมัติ/
  *   ออก Rev. อีกแล้ว** — RPC ออก Rev. ย้ายแถวไปใบ Rev. ทั้งแถว (สถานะ · หลักฐาน · ใบกำกับคงเดิม) ⇒ บรรทัด Rev. ของใบปกติ
  *   บอกผลนั้นแทนคำเดิม "ใบนี้จะย้อนการอนุมัติหรือออก Rev. ใหม่ไม่ได้อีก" (ซึ่งกลายเป็นเท็จ)
- *   · การยกเลิกใบยังถูก `paymentLockReason` ล็อกอยู่จนถึง PR3 (lib/sales/salesOrderPayments.js)
+ *   · PR3 (mig 0378): ยกเลิกใบ pipeline ที่มีเงินรับแล้วได้ — เงินค้างอยู่กับใบ (ยกเข้าใบใหม่/บันทึกคืนเงิน · paymentCarryPrompt/
+ *     paymentRefundPrompt) · `paymentLockReason` เหลือล็อกการยกเลิกเฉพาะใบย้อนหลัง (บรรทัดของใบย้อนหลังข้างล่างจึงยังจริง)
  * ⭐ บัญชีกด "บันทึกการรับชำระ" เอง (แจ้ง+รับรองในก้าวเดียว) ใช้ข้อความชุดนี้ด้วย ผ่าน
  *   `installmentConfirmPrompt` (components/salesPlanning/InstallmentConfirmDialog.js)
  *
@@ -256,5 +257,95 @@ export function paymentPlanEditPrompt({
       complete ? 'ทุกงวดรับเงินครบ — ใบเข้าคิวปิดใบของบัญชี' : null,
     ],
     confirmLabel: 'ยืนยันปรับแผนงวด',
+  });
+}
+
+/* ══ PR3 · เงินค้างจากใบที่ยกเลิก (mig 0378 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D4) ═════════════════════
+   ข้อความจัดรูปมาแล้วจากผู้เรียก (`carryPromptFacts` ใน lib/sales/installmentCarry.js · ตัวเลขเงินจาก fmtMoney) —
+   ไฟล์นี้ import ต่อไม่ได้ (หัวไฟล์) */
+
+/**
+ * AE Sup/admin/บัญชี **ยกเงินจากใบที่ยกเลิก** เข้าใบใหม่ของดีลเดียวกัน
+ * ⭐ แถวเงินย้ายทั้งแถว (สลิป · คำรับรอง · ใบกำกับคงเดิม) — บัญชีไม่ต้องรับรองซ้ำ · แผนที่เหลือของใบนี้หักงวดแรก ๆ ก่อน
+ * ⚠️ irreversible — ไม่มีทางยกกลับ (ใบเดิมยกเลิกแล้ว) · คนกดต้องเห็นแผนก่อน/หลังของใบนี้ครบ (ความเสี่ยงของแผน:
+ *   บัญชีเป็นคนกดแล้วแผนของฝ่ายขายขยับ)
+ */
+export function paymentCarryPrompt({
+  orderNumber = '', sourceNumber = '', count = 0, amountLabel = '', reportedCount = 0, reportedAmountLabel = '',
+  invoiceNos = [], carriedLines = [], changes = [], totalLabel = '', actualAmountLabel = '', actualMonthLabel = '',
+  quotationNumber = '', remainingCount = 0, remainingAmountLabel = '', complete = false,
+} = {}) {
+  if (!(Number(count) > 0)) throw new Error('paymentCarryPrompt: ต้องยกอย่างน้อย 1 งวด');
+  const actual = String(actualAmountLabel || '').trim();
+  const month = String(actualMonthLabel || '').trim();
+  if (!actual || !month) throw new Error('paymentCarryPrompt: ต้องบอกยอดและเดือนของ Actual ที่ไม่เปลี่ยน');
+  const quote = String(quotationNumber || '').trim();
+  const invoices = (Array.isArray(invoiceNos) ? invoiceNos : []).map((no) => String(no || '').trim()).filter(Boolean);
+  return approvalPrompt({
+    title: 'ยืนยันยกเงินจากใบที่ยกเลิก',
+    verb: 'การยกเงิน',
+    subject: `${count} งวด ${amountLabel} จาก ${sourceNumber} → ${orderNumber}`,
+    irreversible: true,
+    effects: [
+      `ย้ายงวดที่มีเงิน ${count} งวด ${amountLabel} จาก ${sourceNumber} (ยกเลิกแล้ว) มาเป็นงวดของใบนี้`
+        + ' — สลิป · วันจ่าย · คำรับรองของบัญชี · ใบกำกับภาษีคงเดิม บัญชีไม่ต้องรับรองซ้ำ',
+      ...(Array.isArray(carriedLines) ? carriedLines : []),
+      reportedCount ? `สลิปรอบัญชีตรวจ ${reportedCount} งวด ${reportedAmountLabel} ย้ายมาอยู่ในคิวบัญชีของใบนี้` : null,
+      invoices.length ? `ใบกำกับภาษี ${invoices.join(', ')} ย้ายมากับงวด — ไม่ต้องออกใหม่` : null,
+      ...(Array.isArray(changes) ? changes : []),
+      `ยอดรวมทุกงวด ${totalLabel} = ยอดใบ (รวม VAT)`,
+      `ยอด Actual ${actual} เดือน ${month} ของใบนี้ไม่เปลี่ยน — ${sourceNumber} ยกเลิกแล้วไม่นับ Actual อยู่แล้ว`,
+      remainingCount
+        ? `${sourceNumber} ยังเหลือเงินค้าง ${remainingCount} งวด ${remainingAmountLabel} — ยกเพิ่มหรือให้บัญชีบันทึกคืนเงินได้ภายหลัง`
+        : `${sourceNumber} ไม่เหลือเงินค้าง — ออกจากหัวข้อ “เงินค้างจากใบที่ยกเลิก” ของบัญชี`,
+      `ใบสั่งขายฉบับพิมพ์ยังแสดงแผนตามใบเสนอราคา${quote ? ` ${quote}` : ''} — งวดที่ต่างจากแผนขึ้นป้าย “ปรับแผนหลังอนุมัติ”`,
+      complete ? 'ทุกงวดรับเงินครบ — ใบเข้าคิวปิดใบของบัญชี' : null,
+    ],
+    confirmLabel: 'ยืนยันยกเงิน',
+  });
+}
+
+/**
+ * บัญชี **บันทึกคืนเงิน** งวดหนึ่งของใบที่ยกเลิก (คืนเต็มจำนวน)
+ * ⚠️ ไม่ใช่ irreversible — ถอนการบันทึกได้ (refund-clear) · แต่ระหว่างที่บันทึกไว้ งวดนี้ยก/ถอนคำรับรองไม่ได้
+ * @param amount ยอดที่คืน (จัดรูปแล้ว) — บังคับ
+ */
+export function paymentRefundPrompt({
+  label = '', amount = '', orderNumber = '', refundedOnLabel = '', taxInvoiceNo = '', creditNoteNo = '',
+} = {}) {
+  const money = String(amount || '').trim();
+  if (!money) throw new Error('paymentRefundPrompt: ต้องบอกยอดที่คืน');
+  const invoice = String(taxInvoiceNo || '').trim();
+  const creditNote = String(creditNoteNo || '').trim();
+  const on = String(refundedOnLabel || '').trim();
+  return approvalPrompt({
+    title: 'บันทึกคืนเงินให้ลูกค้า',
+    verb: 'การบันทึกคืนเงิน',
+    subject: [label, money].filter(Boolean).join(' · '),
+    effects: [
+      `บันทึกว่าคืนเงินงวดนี้ ${money} ให้ลูกค้าเต็มจำนวนแล้ว${on ? ` (วันที่คืน ${on})` : ''}`,
+      `งวดออกจาก “เงินค้างจากใบที่ยกเลิก”${orderNumber ? ` ของ ${orderNumber}` : ''} และยอดเก็บได้ในทะเบียนบัญชีลดลง ${money}`,
+      invoice ? `งวดนี้มีใบกำกับภาษี ${invoice} — บันทึกคู่กับใบลดหนี้${creditNote ? ` ${creditNote}` : ''}` : null,
+      'งวดที่คืนเงินแล้วยกไปใบใหม่และถอนคำรับรองไม่ได้ — บันทึกผิดให้ “ถอนการบันทึกคืนเงิน” (เมนูแถว)',
+      'ยอด Actual ไม่เปลี่ยน — ใบนี้ยกเลิกแล้วไม่นับ Actual อยู่แล้ว',
+    ],
+    confirmLabel: 'ยืนยันบันทึกคืนเงิน',
+  });
+}
+
+/** บัญชี **ถอนการบันทึกคืนเงิน** (บันทึกผิดงวด/ผิดยอด) — งวดกลับเป็นเงินค้าง */
+export function paymentRefundClearPrompt({ label = '', amount = '', creditNoteNo = '' } = {}) {
+  const money = String(amount || '').trim();
+  const creditNote = String(creditNoteNo || '').trim();
+  return approvalPrompt({
+    title: 'ถอนการบันทึกคืนเงิน',
+    verb: 'การถอนการบันทึกคืนเงิน',
+    subject: [label, money].filter(Boolean).join(' · '),
+    effects: [
+      `งวดนี้กลับเป็น “เงินค้างจากใบที่ยกเลิก” ${money} — ยกไปใบใหม่ของดีลเดียวกันหรือบันทึกคืนใหม่ได้`,
+      `ล้างวันที่คืน เหตุผล และเลขใบลดหนี้${creditNote ? ` ${creditNote}` : ''} ของงวดนี้ — ร่องรอยอยู่ในประวัติการแก้ไข`,
+      `ยอดเก็บได้ในทะเบียนบัญชีเพิ่มกลับ ${money}`,
+    ],
+    confirmLabel: 'ยืนยันถอนการบันทึก',
   });
 }

@@ -411,13 +411,14 @@ export function replanSwitchUnit(draft = [], view = []) {
 /* ── ผลลัพธ์ก่อนกด (paymentPlanEditPrompt ใน lib/approvalPrompt.js) ──────────────────────────────── */
 
 /* เดือน Actual = เดือนของ approvedAt **เวลาไทย** (มติ 2026-08-21 · mig 0279) — ไม่มี approvedAt ถอยไปวันที่บนใบ */
-function actualMonthLabel(order) {
+export function actualMonthLabel(order) {
   const at = order?.approvedAt ? new Date(order.approvedAt) : null;
   const key = at && !Number.isNaN(at.getTime()) ? currentMonth(at) : text(order?.orderDate).slice(0, 7);
   return formatMonthLabel(key);
 }
 
-function changeLine(change) {
+/** บรรทัดก่อน→หลังของงวดหนึ่งแถว (ผลของ `replanDiff`) — โมดัลปรับแผนและโมดัลยกเงิน (PR3) ใช้ประโยคชุดเดียวกัน */
+export function replanChangeLine(change) {
   const { kind, before: b, after: a } = change;
   if (kind === 'removed') return `ลบ งวดที่ ${b.seq} ${fmtMoney(b.amount)} (ยังไม่มีการชำระ)`;
   if (kind === 'added') {
@@ -458,7 +459,7 @@ export function replanPromptFacts(order, before = [], after = [], { serviceRound
     orderNumber: order?.orderNumber || '',
     beforeCount: prev.length,
     afterCount: next.length,
-    changes: replanDiff(prev, next).map(changeLine),
+    changes: replanDiff(prev, next).map(replanChangeLine),
     lockedCount: locked.length,
     lockedAmountLabel: fmtMoney(locked.reduce((sum, r) => sum + toCents(r.amount), 0) / 100),
     totalLabel: fmtMoney(order?.totalAmount),

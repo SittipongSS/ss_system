@@ -48,10 +48,13 @@ test('ย้อนการอนุมัติ: ไม่มี paymentLockRea
   assert.match(revoke, /if \(totalMismatch\) return fail\(totalMismatch, 409\);/);
 });
 
-// ⏭ PR3 ย้ายด่านนี้เข้าไปอยู่ในบล็อกใบย้อนหลัง — PR1 ยังล็อกการยกเลิกใบที่มีเงินรับแล้วทุกใบ (ยังไม่มีทางยก/คืนเงิน)
-test('ยกเลิกใบ: ยังล็อกเมื่อมีงวดที่บัญชีรับรองแล้ว (จนถึง PR3)', () => {
+/* ⚠️ แก้ยามโดยตั้งใจใน PR3 (mig 0378 · มติ D4): ด่านนี้ย้ายเข้าบล็อกใบย้อนหลังแล้ว — ใบ pipeline ที่มีเงินรับแล้วยกเลิกได้
+   (เงินค้างอยู่กับใบ → ยกเข้าใบใหม่/บันทึกคืนเงิน) · รูปเต็มของเส้นยกเลิกตรึงที่ cancelledMoneyGuards.test.mjs */
+test('ยกเลิกใบ (PR3): paymentLockReason เหลือเป็นด่านของใบย้อนหลังเท่านั้น — ใบ pipeline ไม่ถูกล็อกด้วยเงินรับแล้ว', () => {
   const cancel = slice(code(SO_ROUTE), "if (action === 'cancel')", "if (action === 'finance_approve')");
-  assert.match(cancel, /const cancelPaymentBlock = paymentLockReason\(before\.installments\);/);
+  assert.doesNotMatch(cancel, /paymentLockReason\(before\.installments\)/);
+  const hist = cancel.indexOf('if (isHistoricalOrder(before)) {\n      let liveInstallments;');
+  assert.ok(hist > 0 && cancel.indexOf('paymentLockReason(liveInstallments)') > hist);
 });
 
 // ── 2. ออก Rev.: สรุป audit จาก result.moved · ไม่มี moved = warning ─────────────────────────────────────
@@ -101,7 +104,8 @@ test('หน้าใบ: โมดัลย้อน · ออก Rev. · อ�
   const page = code(SO_PAGE);
   assert.match(page, /salesOrderMoneyOutcome\(order, installments, "revoke", \{ serviceRounds: hasServiceRounds \}\)/);
   assert.match(page, /\.\.\.salesOrderMoneyOutcome\(order, installments, "revise"\),/);
-  assert.match(page, /\.\.\.salesOrderMoneyOutcome\(order, installments, "approve"\),/);
+  /* PR3 (มติ D4): โมดัลอนุมัติส่งต้นทางเงินค้างของดีลเข้าตัวเดียวกัน (เตือนให้ยกเข้าหลังอนุมัติ) — แก้ยามโดยตั้งใจ */
+  assert.match(page, /\.\.\.salesOrderMoneyOutcome\(order, installments, "approve", \{ strandedSources: order\.carrySources \}\),/);
   assert.doesNotMatch(page, /"สร้างงวดชำระตามแผนการชำระที่ระบุไว้ใน QT"/, 'คำนี้ย้ายไปอยู่ใน lib (ใบ Rev. ไม่สร้างงวดจาก QT)');
 });
 

@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   INSTALLMENT_MOVE_SCHEMA_MISSING, ensureInstallments, freezeInstallments, installmentMoveColumnError, replanInstallments,
-  updateInstallment,
+  updateInstallment, carryInstallments, loadMovedOut, loadCarrySources, INSTALLMENT_REFUND_SCHEMA_MISSING,
+  installmentRefundSchemaError,
 } from './salesOrderInstallmentsStore.js';
 import { INSTALLMENT_REPLAN_SCHEMA_MISSING } from './installmentReplan.js';
+import { INSTALLMENT_CARRY_SCHEMA_MISSING } from './installmentCarry.js';
 
 /* สัญญาที่ "งวดเกิดพร้อมใบ" (มติผู้ใช้ 2026-08-19) พิงอยู่ — POST ของการออกใบสั่งขาย
    เรียก `ensureInstallments` โดย **ไม่ส่ง `frozenAt`** ⇒ ต้องได้งวดร่างล้วนเสมอ
@@ -581,4 +583,119 @@ test('replanInstallments: error ที่ไม่รู้จัก = ข้อ
   } finally {
     console.error = original;
   }
+});
+
+
+/* ══ PR3 · เงินค้างจากใบที่ยกเลิก (mig 0378) ══════════════════════════════════════════════════════════════ */
+const CARRY_ARGS = {
+  sourceId: 'SOR-C', targetId: 'SOR-N', ids: ['S1', 'S2'],
+  rows: [{ id: 'S1', seq: 1, label: 'มัดจำ', percent: 20, amount: 20000, dueDate: null, coversFrom: null, coversTo: null, note: null }],
+  expected: [{ id: 'S1', updatedAt: '2026-09-23T03:00:00.123456+00:00' }],
+  reason: 'ลูกค้าออกใบใหม่แทนใบที่ยกเลิก',
+  user: { id: 'U-FN', name: 'บัญชี', role: 'finance' },
+};
+
+test('carryInstallments: เรียก RPC 0378 ครั้งเดียวด้วยใบต้นทาง/ปลายทาง/แถวที่ยก/แผนทั้งใบ/expected/ผู้กด · คืน before/after/carried', async () => {
+  const carried = { count: 2, amount: 30000, confirmedCount: 1, reportedCount: 1 };
+  const supabase = rpcSupabase({ data: { before: [{ id: 'T1' }], after: [{ id: 'S1' }], carried, reason: CARRY_ARGS.reason }, error: null });
+  const out = await carryInstallments(supabase, CARRY_ARGS);
+  assert.deepEqual(out, { before: [{ id: 'T1' }], after: [{ id: 'S1' }], carried });
+  assert.deepEqual(supabase.calls, [['carry_sales_order_installments', {
+    p_source_order_id: 'SOR-C', p_target_order_id: 'SOR-N', p_installment_ids: ['S1', 'S2'],
+    p_target_rows: CARRY_ARGS.rows, p_expected: CARRY_ARGS.expected, p_reason: CARRY_ARGS.reason,
+    p_actor_id: 'U-FN', p_actor_name: 'บัญชี', p_actor_role: 'finance',
+  }]]);
+});
+
+test('carryInstallments: ฐานยังไม่มี RPC (PGRST202) = 503 "ยังไม่ได้รัน 0378" · รหัสของ RPC แปลเป็นไทย · error แปลกหน้า = 500 ไม่รั่วข้อความดิบ', async () => {
+  assert.deepEqual(await carryInstallments(rpcSupabase({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }), CARRY_ARGS),
+    { error: INSTALLMENT_CARRY_SCHEMA_MISSING, status: 503 });
+  const cross = await carryInstallments(rpcSupabase({ data: null, error: { code: 'P0001', message: 'installment_carry_cross_deal' } }), CARRY_ARGS);
+  assert.deepEqual(cross, { error: 'ยกเงินได้เฉพาะใบของดีลเดียวกัน', status: 409 });
+  const over = await carryInstallments(rpcSupabase({ data: null, error: { code: 'P0001', message: 'installment_carry_overpaid' } }), CARRY_ARGS);
+  assert.equal(over.status, 400);
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const odd = await carryInstallments(rpcSupabase({ data: null, error: { code: 'XX000', message: 'relation "x" does not exist' } }), CARRY_ARGS);
+    assert.equal(odd.status, 500);
+    assert.doesNotMatch(odd.error, /relation/);
+  } finally {
+    console.error = original;
+  }
+});
+
+/* ตัวปลอมของ query builder — จำทุกคำสั่งที่ถูกเรียก แล้วคืนผลตามตาราง (range = หน้าเดียว) */
+const queryFake = (resultByTable) => {
+  const calls = [];
+  const from = (table) => {
+    const chain = {
+      select: (v) => { calls.push([table, 'select', v]); return chain; },
+      filter: (col, op, v) => { calls.push([table, 'filter', col, op, v]); return chain; },
+      eq: (col, v) => { calls.push([table, 'eq', col, v]); return chain; },
+      neq: (col, v) => { calls.push([table, 'neq', col, v]); return chain; },
+      in: (col, v) => { calls.push([table, 'in', col, v]); return chain; },
+      order: (col) => { calls.push([table, 'order', col]); return chain; },
+      range: async () => resultByTable[table],
+      then: (resolve, reject) => Promise.resolve(resultByTable[table]).then(resolve, reject),
+    };
+    return chain;
+  };
+  return { calls, from };
+};
+
+test('loadMovedOut: ถามด้วย @> ของ movedFrom เป็นสตริง JSON (ไม่ใช่ JS array — supabase-js ต่อเป็นรูป {a,b} ของ Postgres) · แนบเลขใบที่ถืองวดอยู่', async () => {
+  const supabase = queryFake({
+    sales_order_installments: { data: [
+      { id: 'S1', salesOrderId: 'SOR-N', seq: 1, label: 'มัดจำ', amount: '20000', status: 'confirmed',
+        movedFrom: [{ salesOrderId: 'SOR-C', reason: 'carry', movedAt: '2026-09-23T03:00:00Z' }] },
+    ], error: null },
+    sales_orders: { data: [{ id: 'SOR-N', orderNumber: 'SO-26090002-0' }], error: null },
+  });
+  const out = await loadMovedOut(supabase, 'SOR-C', { reason: 'carry' });
+  assert.deepEqual(out, [{
+    id: 'S1', salesOrderId: 'SOR-N', orderNumber: 'SO-26090002-0', seq: 1, label: 'มัดจำ', amount: 20000,
+    status: 'confirmed', reason: 'carry', movedAt: '2026-09-23T03:00:00Z',
+  }]);
+  const filter = supabase.calls.find((c) => c[1] === 'filter');
+  assert.deepEqual(filter, ['sales_order_installments', 'filter', 'movedFrom', 'cs', '[{"salesOrderId":"SOR-C","reason":"carry"}]']);
+  assert.ok(supabase.calls.some((c) => c[0] === 'sales_order_installments' && c[1] === 'order'), 'fetchAll ต้องมีลำดับที่นิ่ง');
+  // ไม่ส่ง reason = ทุกการย้าย (ด่านลบถาวร)
+  const any = queryFake({ sales_order_installments: { data: [], error: null } });
+  assert.deepEqual(await loadMovedOut(any, 'SOR-C'), []);
+  assert.equal(any.calls.find((c) => c[1] === 'filter')[4], '[{"salesOrderId":"SOR-C"}]');
+  // อ่านพลาด = โยน (ด่านกู้คืน/ลบถาวรต้องหยุด ไม่ใช่ถือว่าไม่มี)
+  const down = queryFake({ sales_order_installments: { data: null, error: { message: 'boom' } } });
+  await assert.rejects(() => loadMovedOut(down, 'SOR-C'), { message: 'boom' });
+});
+
+test('loadCarrySources: ใบยกเลิก pipeline ของดีลเดียวกัน (ไม่รวมใบนี้) + งวดที่มีเงินของใบเหล่านั้น → ต้นทางที่มีเงินค้าง', async () => {
+  const supabase = queryFake({
+    sales_orders: { data: [{ id: 'SOR-C', orderNumber: 'SO-C', status: 'cancelled', origin: 'pipeline', dealId: 'D1', totalAmount: 80000 }], error: null },
+    sales_order_installments: { data: [
+      { id: 'S1', salesOrderId: 'SOR-C', seq: 1, status: 'confirmed', amount: 20000 },
+      { id: 'S3', salesOrderId: 'SOR-C', seq: 3, status: 'confirmed', amount: 5000, refundedAt: '2026-09-21T00:00:00Z' },
+    ], error: null },
+  });
+  const sources = await loadCarrySources(supabase, { id: 'SOR-N', dealId: 'D1' });
+  assert.equal(sources.length, 1);
+  assert.deepEqual(sources[0].rows.map((r) => r.id), ['S1'], 'คืนเงินแล้วไม่ใช่เงินค้าง');
+  const orderQuery = supabase.calls.filter((c) => c[0] === 'sales_orders');
+  assert.ok(orderQuery.some((c) => c[1] === 'eq' && c[2] === 'dealId' && c[3] === 'D1'));
+  assert.ok(orderQuery.some((c) => c[1] === 'eq' && c[2] === 'status' && c[3] === 'cancelled'));
+  assert.ok(orderQuery.some((c) => c[1] === 'eq' && c[2] === 'origin' && c[3] === 'pipeline'));
+  assert.ok(orderQuery.some((c) => c[1] === 'neq' && c[2] === 'id' && c[3] === 'SOR-N'));
+  // งวดอ่านด้วย select('*') — ก่อนรัน 0378 ไม่มีคอลัมน์คืนเงิน ห้ามเอ่ยชื่อ (อ่านพัง = ปุ่มหายทั้งระบบ)
+  const rowSelect = supabase.calls.find((c) => c[0] === 'sales_order_installments' && c[1] === 'select');
+  assert.equal(rowSelect[2], '*');
+  assert.ok(!supabase.calls.some((c) => String(c[2]).includes('refund')));
+  assert.deepEqual(await loadCarrySources(queryFake({}), { id: 'X', dealId: null }), [], 'ใบไม่มีดีล = ไม่มีต้นทาง (ไม่ยิง query)');
+});
+
+test('installmentRefundSchemaError: ฐานยังไม่มีคอลัมน์คืนเงิน (PGRST204/42703) = 503 ให้รัน 0378 · อย่างอื่นไม่โทษ migration', () => {
+  assert.equal(installmentRefundSchemaError({ code: 'PGRST204', message: "Could not find the 'refundedAt' column" }), INSTALLMENT_REFUND_SCHEMA_MISSING);
+  assert.equal(installmentRefundSchemaError({ code: '42703', message: 'column "refundedAt" does not exist' }), INSTALLMENT_REFUND_SCHEMA_MISSING);
+  assert.equal(installmentRefundSchemaError({ code: '08006', message: 'connection reset' }), null);
+  assert.equal(installmentRefundSchemaError(null), null);
+  assert.match(INSTALLMENT_REFUND_SCHEMA_MISSING, /0378/);
 });

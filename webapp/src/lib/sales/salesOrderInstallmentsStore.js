@@ -9,6 +9,10 @@ import {
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { INSTALLMENT_REPLAN_SCHEMA_MISSING } from '@/lib/sales/installmentReplan';
+import { INSTALLMENT_CARRY_SCHEMA_MISSING, carrySourcesFrom } from '@/lib/sales/installmentCarry';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 const TABLE = 'sales_order_installments';
 
@@ -338,4 +342,114 @@ export async function replanInstallments(supabase, { orderId, rows, expected, re
     before: Array.isArray(data?.before) ? data.before : [],
     after: Array.isArray(data?.after) ? data.after : [],
   };
+}
+
+
+/* ══ PR3 · เงินค้างจากใบที่ยกเลิก (mig 0378 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D4) ══════════════════ */
+
+/**
+ * ยกเงินค้างจากใบที่ยกเลิกเข้าใบใหม่ของดีลเดียวกัน — ทางเขียนทางเดียว (RPC `carry_sales_order_installments` ของ 0378)
+ * ⭐ RPC ตรวจทุกด่านในทรานแซกชันเดียว (สิทธิ์ · ต้นทางยกเลิก/ปลายทางอนุมัติ · ดีลเดียวกัน · บัญชียังไม่ปิด · แถวเป็นเงินค้าง ·
+ *   p_expected ครบ · ยกเกิน) แล้วย้ายแถวเดิม + เขียนแผนที่เหลือผ่านแกน 0377 — **ไม่แตะตัวใบ** ⇒ Actual ไม่ขยับ
+ * 🛑 ห้ามถอยไปย้ายแถวเองเมื่อ RPC ไม่มี — ข้ามด่านทั้งชุด · ไม่มี = 503 ให้ไปรัน 0378
+ * @param rows ชุดสุดท้ายทั้งใบของใบปลายทางจาก `applyCarryIn().rows`
+ * @returns `{ before, after, carried }` หรือ `{ error, status }`
+ */
+export async function carryInstallments(supabase, { sourceId, targetId, ids, rows, expected, reason, user }) {
+  const { data, error } = await supabase.rpc('carry_sales_order_installments', {
+    p_source_order_id: sourceId,
+    p_target_order_id: targetId,
+    p_installment_ids: ids,
+    p_target_rows: rows,
+    p_expected: expected,
+    p_reason: reason,
+    p_actor_id: user?.id ?? null,
+    p_actor_name: user?.name || user?.email || null,
+    p_actor_role: user?.role ?? null,
+  });
+  if (error) {
+    if (error.code === 'PGRST202') return { error: INSTALLMENT_CARRY_SCHEMA_MISSING, status: 503 };
+    const mapped = documentWorkflowError(error, { context: `installment carry ${sourceId} → ${targetId}` });
+    return { error: mapped.message, status: mapped.status };
+  }
+  return {
+    before: Array.isArray(data?.before) ? data.before : [],
+    after: Array.isArray(data?.after) ? data.after : [],
+    carried: data?.carried && typeof data.carried === 'object' ? data.carried : null,
+  };
+}
+
+/**
+ * แถวงวด (ที่ไหนก็ได้) ที่ movedFrom อ้างใบนี้ — ด่านกู้คืน/ลบถาวร และลิงก์ "ยกไป …" บนใบที่ยกเลิก
+ * ⭐ ถามด้วย `@>` (ดัชนี GIN ของ 0378) · ⚠️ ต้องส่ง **สตริง JSON** — `.contains()` ของ supabase-js รับ JS array
+ *   แล้วต่อเป็นรูป `{a,b}` (array ของ Postgres · ผิดรูปสำหรับ jsonb) ⇒ ใช้ `.filter(col, 'cs', JSON.stringify([...]))`
+ * ⚠️ อ่านพลาด = โยน (supabase ไม่ throw เอง) — ด่านที่ถามต้องหยุด ไม่ใช่ถือว่า "ไม่มีเงินย้ายออก"
+ * @param reason 'carry' | 'revision' | null (ทุกการย้าย)
+ * @returns `[{ id, salesOrderId, orderNumber (ใบที่ถืองวดอยู่ตอนนี้), seq, label, amount, status, reason, movedAt }]`
+ */
+export async function loadMovedOut(supabase, orderId, { reason = null } = {}) {
+  const needle = JSON.stringify([{ salesOrderId: orderId, ...(reason ? { reason } : {}) }]);
+  const { data, error } = await fetchAllResult(() => supabase.from(TABLE)
+    .select('id, "salesOrderId", seq, label, amount, status, "movedFrom"')
+    .filter('movedFrom', 'cs', needle)
+    .order('id', { ascending: true }));
+  if (error) throw error;
+  const rows = (data || []).filter((r) => r && r.salesOrderId !== orderId);
+  if (!rows.length) return [];
+  const { data: holders, error: holderError } = await fetchInChunks(
+    rows.map((r) => r.salesOrderId),
+    (chunk) => fetchAllResult(() => supabase.from('sales_orders').select('id, "orderNumber"').in('id', chunk)
+      .order('id', { ascending: true })),
+  );
+  if (holderError) throw holderError;
+  const numberOf = new Map((holders || []).map((o) => [o.id, o.orderNumber]));
+  return rows.map((r) => {
+    const entry = [...(Array.isArray(r.movedFrom) ? r.movedFrom : [])].reverse()
+      .find((m) => m && m.salesOrderId === orderId && (!reason || m.reason === reason)) || {};
+    return {
+      id: r.id,
+      salesOrderId: r.salesOrderId,
+      orderNumber: numberOf.get(r.salesOrderId) || '',
+      seq: r.seq,
+      label: r.label,
+      amount: Number(r.amount) || 0,
+      status: r.status,
+      reason: entry.reason || null,
+      movedAt: entry.movedAt || null,
+    };
+  });
+}
+
+/**
+ * ใบที่ยกเลิกของดีลเดียวกันที่มีเงินค้าง — ตัวเลือกต้นทางของปุ่ม "ยกเงินจากใบที่ยกเลิก" + คำเตือนในโมดัลอนุมัติ
+ * ⚠️ งวดอ่านด้วย `select('*')` **ห้ามเอ่ยชื่อคอลัมน์คืนเงิน** — ก่อนรัน 0378 ไม่มีคอลัมน์ ⇒ query พัง = ปุ่มหายทั้งระบบ
+ *   (ตัวตัดสิน "ยังไม่คืน" อ่าน undefined เป็นยังไม่คืนอยู่แล้ว) · กรองสถานะที่มีเงินที่ query แล้วกรองซ้ำที่ lib
+ * ⚠️ อ่านพลาด = โยน — ผู้เรียก (หน้าใบ) จับแล้วบอกบนจอ ไม่กลืนเป็น "ไม่มีเงินค้าง"
+ */
+export async function loadCarrySources(supabase, order) {
+  if (!order?.dealId) return [];
+  /* ใบย้อนหลังไม่เป็นต้นทาง (RPC 0378 รับเฉพาะใบ pipeline) — กรองที่ query ด้วยตัวกลาง (literal ของ origin มีบ้านเดียว) */
+  const { data: orders, error } = await fetchAllResult(() => pipelineRowsOnly(supabase
+    .from('sales_orders')
+    .select('id, "orderNumber", "quotationId", "dealId", status, origin, "totalAmount"'))
+    .eq('dealId', order.dealId)
+    .eq('status', 'cancelled')
+    .neq('id', order.id)
+    .order('id', { ascending: true }));
+  if (error) throw error;
+  if (!orders?.length) return [];
+  const { data: rows, error: rowError } = await fetchInChunks(orders.map((o) => o.id), (chunk) => fetchAllResult(() => supabase
+    .from(TABLE).select('*').in('salesOrderId', chunk).in('status', ['confirmed', 'reported'])
+    .order('id', { ascending: true })));
+  if (rowError) throw rowError;
+  return carrySourcesFrom(orders, rows || []);
+}
+
+/* ด่านลำดับ deploy ของ PR3 — บันทึกคืนเงินเขียนคอลัมน์ของ 0378 · ยังไม่รัน = PostgREST ตอบ PGRST204 (ไม่รู้จักคอลัมน์)
+   ⇒ บอกให้รันมิก ไม่ใช่ 500 ดิบ · ⚠️ error อย่างอื่นห้ามโทษ migration (คนจะไปรันซ้ำผิดเรื่อง) */
+export const INSTALLMENT_REFUND_SCHEMA_MISSING = 'ฐานยังไม่ได้รัน 0378 (บันทึกคืนเงินของงวด) — แจ้งผู้ดูแลระบบ';
+
+export function installmentRefundSchemaError(error) {
+  if (!error) return null;
+  return error.code === 'PGRST204' || error.code === '42703' ? INSTALLMENT_REFUND_SCHEMA_MISSING : null;
 }

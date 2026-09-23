@@ -5,7 +5,8 @@ import {
   LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir, ledgerVoidInstallment,
   ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
-  sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy
+  sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
+  pendingStranded, LEDGER_STRANDED_TITLE,
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -914,4 +915,86 @@ test('stampOrderReplanned: งวดต่างจากแผน QT = replanne
   const groups = groupLedgerByOrder(rows);
   assert.equal(groups.find((g) => g.orderId === 'B').replanned, true);
   assert.equal(groups.find((g) => g.orderId === 'A').replanned, false);
+});
+
+
+/* ══ PR3 · เงินค้างจากใบที่ยกเลิก + บันทึกคืนเงิน (mig 0378 · มติเจ้าของ 23/09 D4) ═══════════════════════════════════ */
+const DEAD = { status: 'cancelled' };
+const refundOf = (over = {}) => ({
+  refundedAt: '2026-09-21T03:00:00Z', refundedOn: '2026-09-20', refundedByName: 'บัญชี',
+  refundReason: 'ลูกค้ายกเลิกงาน ขอคืนมัดจำทั้งหมด', refundCreditNoteNo: 'CN-0001', ...over,
+});
+
+test('ledgerRow: แถวเงินของใบที่ยกเลิก = stranded · คืนเงินแล้ว = refunded (ไม่ค้าง) · ป้ายสถานะ "คืนเงินแล้ว" · ช่องคืนเงินถึงจอ/Excel', () => {
+  const confirmed = make({ status: 'confirmed', amount: 20000 }, DEAD);
+  assert.equal(confirmed.stranded, true);
+  assert.equal(confirmed.refunded, false);
+  assert.equal(make({ status: 'reported' }, DEAD).stranded, true, 'รอบัญชีตรวจก็ค้างอยู่กับใบที่ยกเลิก');
+  assert.equal(make({ status: 'confirmed' }).stranded, false, 'ใบที่ยังเดิน = ไม่ใช่เงินค้าง');
+  const refunded = make({ status: 'confirmed', amount: 20000, taxInvoiceNo: 'IV-7', ...refundOf() }, DEAD);
+  assert.equal(refunded.stranded, false);
+  assert.equal(refunded.refunded, true);
+  assert.equal(refunded.statusLabel, 'คืนเงินแล้ว');
+  assert.equal(refunded.refundedOn, '2026-09-20');
+  assert.equal(refunded.refundCreditNoteNo, 'CN-0001');
+  assert.equal(refunded.refundReason, 'ลูกค้ายกเลิกงาน ขอคืนมัดจำทั้งหมด');
+  // ก่อนรัน 0378 ไม่มีคอลัมน์ (undefined) = ยังไม่คืน · ไม่พัง
+  assert.equal(make({ status: 'confirmed' }, DEAD).refundedOn, null);
+  const keys = LEDGER_COLUMNS.map((c) => c.key);
+  assert.ok(keys.includes('refundedOn') && keys.includes('refundCreditNoteNo'), 'ไฟล์ Excel ต้องมีวันคืนเงิน/เลขใบลดหนี้');
+  assert.equal(LEDGER_COLUMNS.find((c) => c.key === 'refundedOn').date, true);
+  assert.notEqual(LEDGER_COLUMNS.find((c) => c.key === 'refundCreditNoteNo').date, true, 'เลขที่ห้ามยัดรูปวันที่');
+});
+
+test('ledgerSummary: เก็บได้ = confirmed ที่ยังไม่คืน · เงินค้างนับแยก · คืนเงินแล้วออกจากทั้งเก็บได้และเงินค้าง', () => {
+  const rows = [
+    make({ seq: 1, status: 'confirmed', amount: 20000 }, DEAD),
+    make({ seq: 2, status: 'reported', amount: 10000 }, DEAD),
+    make({ seq: 3, status: 'confirmed', amount: 5000, ...refundOf({ refundCreditNoteNo: null }) }, DEAD),
+    make({ seq: 1, status: 'confirmed', amount: 40000 }, { id: 'SOR-A', status: 'approved' }),
+  ];
+  const s = ledgerSummary(rows);
+  assert.equal(s.collectedAmount, 60000, 'confirmed ที่ยังไม่คืน (รวมเงินค้างที่รับรองแล้ว) — คืนแล้วไม่นับ');
+  assert.equal(s.strandedCount, 2);
+  assert.equal(s.strandedAmount, 30000);
+  assert.equal(s.refundedCount, 1);
+  assert.equal(s.refundedAmount, 5000);
+  assert.equal(s.awaitingAmount, 10000, 'สลิปรอตรวจของใบยกเลิกยังอยู่ในคิวบัญชี');
+  assert.equal(s.outstandingAmount, 10000, 'ค้างรับคงกติกาเดิม (ยังไม่ confirmed) — PR0 ตรึงไว้');
+});
+
+test('pendingStranded: คิว "เงินค้างจากใบที่ยกเลิก" — แถวที่ค้างเท่านั้น เรียงตามใบแล้วเลขงวด', () => {
+  const rows = [
+    make({ id: 'b2', seq: 2, status: 'reported' }, { id: 'SOR-B', orderNumber: 'SO-B', status: 'cancelled' }),
+    make({ id: 'a1', seq: 1, status: 'confirmed' }, { id: 'SOR-A', orderNumber: 'SO-A', status: 'cancelled' }),
+    make({ id: 'b1', seq: 1, status: 'confirmed' }, { id: 'SOR-B', orderNumber: 'SO-B', status: 'cancelled' }),
+    make({ id: 'r', seq: 3, status: 'confirmed', ...refundOf() }, { id: 'SOR-B', orderNumber: 'SO-B', status: 'cancelled' }),
+    make({ id: 'live', seq: 1, status: 'confirmed' }),
+  ];
+  assert.deepEqual(pendingStranded(rows).map((r) => r.id), ['a1', 'b1', 'b2']);
+  assert.deepEqual(pendingStranded(null), []);
+  assert.equal(LEDGER_STRANDED_TITLE, 'เงินค้างจากใบที่ยกเลิก');
+});
+
+test('ใบกำกับค้าง: งวดที่คืนเงินแล้วไม่ใช่ของค้างเอกสาร · เงินค้างที่ยังไม่มีใบยังค้างตามเดิม', () => {
+  const refunded = make({ seq: 1, status: 'confirmed', amount: 5000, ...refundOf({ refundCreditNoteNo: null }) }, DEAD);
+  const stranded = make({ seq: 2, status: 'confirmed', amount: 7000 }, DEAD);
+  assert.deepEqual(pendingTaxInvoices([refunded, stranded]).map((r) => r.seq), [2]);
+  const s = ledgerSummary([refunded, stranded]);
+  assert.equal(s.missingInvoiceCount, 1);
+  assert.equal(s.missingInvoiceAmount, 7000);
+});
+
+test('ก้อนของใบที่ยกเลิก: นับเงินค้าง/คืนแล้ว · ป้ายสรุปบอก "เงินค้างจากใบที่ยกเลิก" ก่อนเรื่องอื่น', () => {
+  const rows = [
+    make({ id: 'x1', seq: 1, status: 'confirmed', amount: 20000 }, { id: 'SOR-X', orderNumber: 'SO-X', status: 'cancelled' }),
+    make({ id: 'x2', seq: 2, status: 'confirmed', amount: 5000, ...refundOf() }, { id: 'SOR-X', orderNumber: 'SO-X', status: 'cancelled' }),
+  ];
+  const [group] = groupLedgerByOrder(rows);
+  assert.equal(group.stranded, 1);
+  assert.equal(group.strandedAmount, 20000);
+  assert.equal(group.refunded, 1);
+  assert.deepEqual(groupNote(group), { label: 'เงินค้าง 1 งวด', tone: 'warning' });
+  const [allRefunded] = groupLedgerByOrder([rows[1]]);
+  assert.deepEqual(groupNote(allRefunded), { label: 'คืนเงินแล้ว', tone: 'neutral' });
 });

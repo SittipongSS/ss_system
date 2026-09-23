@@ -1,7 +1,10 @@
 "use client";
 import { Fragment, useState } from "react";
-import { CalendarClock, CalendarRange, FileText, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
+import {
+  ArrowRightLeft, CalendarClock, CalendarRange, FileText, HandCoins, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle,
+} from "lucide-react";
 import Button from "@/components/ui/Button";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 import DateInput from "@/components/ui/DateInput";
 import GatedAction from "@/components/ui/GatedAction";
 import Textarea from "@/components/ui/Textarea";
@@ -20,8 +23,12 @@ import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import InstallmentConfirmDialog, { installmentConfirmPrompt } from "./InstallmentConfirmDialog";
 import TaxInvoiceDialog from "./TaxInvoiceDialog";
+import InstallmentRefundDialog from "./InstallmentRefundDialog";
 import QuotationInstallments from "./QuotationInstallments";
-import { paymentPlanEditPrompt } from "@/lib/approvalPrompt";
+import { paymentCarryPrompt, paymentPlanEditPrompt, paymentRefundClearPrompt } from "@/lib/approvalPrompt";
+import {
+  CARRY_BUTTON, applyCarryIn, carriedAwayGroups, carriedFromOf, carryBlocker, carryExpected, carryPromptFacts,
+} from "@/lib/sales/installmentCarry";
 import {
   REPLANNED_BADGE, REPLANNED_BADGE_TITLE, REPLAN_MAX_REASON, REPLAN_STALE_MESSAGE, buildReplanRows,
   installmentReplanBlocker, installmentsReplanned, replanDraftFrom, replanExpected, replanPromptFacts,
@@ -33,6 +40,7 @@ import {
   installmentActionError, installmentConfirmOutlook, installmentDisplayStatus, installmentPlanDrift,
   installmentPrepaid, installmentReportOutcome, installmentStartBlock, installmentUnconfirmOutcome, openingCoverageEnd,
   paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments, revisedInstallmentsNote,
+  strandedInstallment,
 } from "@/lib/sales/salesOrderPayments";
 import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
 import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
@@ -40,6 +48,10 @@ import { historicalInstallmentLock, isHistoricalOrder, isOpeningInstallment } fr
 import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
 import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
 import styles from "./SalesOrderPaymentPanel.module.css";
+
+/* ค่าหลอกให้ด่าน `refund` ตรวจเฉพาะ "ใคร/งวดไหน/ใบไหน" (เมนูแถว) — ค่าจริงตรวจในโมดัลด้วย refundValueError ตัวเดียวกับ API
+   ⚠️ เลขใบลดหนี้หลอกไว้ด้วย ไม่งั้นงวดที่มีใบกำกับจะไม่มีเมนูให้เปิดโมดัลไปกรอกเลขนั้น (ทางตัน) */
+const REFUND_PROBE = Object.freeze({ refundedOn: "2026-01-01", reason: "x".repeat(MIN_REJECT_REASON), creditNoteNo: "x" });
 
 /* การ์ด "การชำระ" ของใบสั่งขาย (mig 0245/0246) — **แบบ ข** (มติผู้ใช้ 2026-08-13)
    เทียบสามแบบไว้ที่ `docs/so-payment-panel-options-mockup.html`
@@ -54,7 +66,7 @@ import styles from "./SalesOrderPaymentPanel.module.css";
    ⚠️ ยอด Actual ไม่เกี่ยวกับการ์ดนี้ — SA ได้ยอดเต็ม 100% ตั้งแต่ใบอนุมัติ
    ⚠️ ยอด "เก็บแล้ว" นับเฉพาะที่บัญชีคอนเฟิร์ม — `reported` ไม่นับ */
 export default function SalesOrderPaymentPanel({
-  order, installments, user, todayIso, canStart, busy, onStart, onAction, onReplan,
+  order, installments, user, todayIso, canStart, busy, onStart, onAction, onReplan, onCarry,
   error = "", onClearError,
 }) {
   const [reportFor, setReportFor] = useState(null);
@@ -73,6 +85,11 @@ export default function SalesOrderPaymentPanel({
   /* ⭐ ตัวปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377) — `base` = งวดที่ตาเห็นตอนเปิด (ตัวล็อกข้อมูลเก่า = expected ของ RPC)
      · `draft` = แถวเปิดในตัวแก้ · `unit` = บาท/% · `confirming` = โมดัลยืนยันเปิดอยู่ (กัน Escape ปิดสองชั้น) */
   const [replan, setReplan] = useState(null);
+  /* ⭐ ยกเงินจากใบที่ยกเลิก (PR3 · mig 0378) — `base` = งวดของใบนี้ที่ตาเห็นตอนเปิด · `sources` = ต้นทางที่ตาเห็นตอนเปิด
+     (ตัวล็อกข้อมูลเก่า = expected ของ RPC) · `sourceId` + `ids` = ใบ/งวดที่เลือกยก */
+  const [carry, setCarry] = useState(null);
+  // บันทึกคืนเงินของงวดใบที่ยกเลิก (PR3) — โมดัลตัวเดียวกับคิวเงินค้างบนทะเบียนการชำระ
+  const [refundFor, setRefundFor] = useState(null);
 
   /* ⭐ **ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374)** — งวดมาจากฟอร์มคีย์ใบทั้งชุด (งวดยกมา + ที่ยังต้องเก็บ)
      ไม่มีใบเสนอราคาให้คำนวณแผน ⇒ ไม่มี preview · ไม่มี "แผนเปลี่ยน" · ไม่มีปุ่มเริ่มติดตาม
@@ -165,6 +182,8 @@ export default function SalesOrderPaymentPanel({
   const gate = (row, action, options) => installmentActionError(row, action, user, {
     ...options, rows, orderTotal: order?.totalAmount, serviceRounds: hasServiceRounds,
     orderLock: orderLock || pipelineInstallmentLock(order, action), historical, contractEnd,
+    /* PR3 (mig 0378): คืนเงินได้เฉพาะงวดของใบ pipeline ที่ยกเลิก — ค่าเดียวกับที่ route PATCH ส่ง */
+    orderCancelled: order?.status === "cancelled" && !historical,
   });
   /* ── ปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D1/D5) ──────────
      ⭐ ปุ่มกับ route ถามด่านตัวเดียวกัน (`installmentReplanBlocker`) — ไม่ใช่ AE Sup/admin · ใบย้อนหลัง · ใบที่ไม่ใช่
@@ -208,10 +227,60 @@ export default function SalesOrderPaymentPanel({
     });
     if (done) setReplan(null);
   };
-  const cardActions = replanned || replanGate.visible ? (
+  /* ── ยกเงินจากใบที่ยกเลิก (PR3 · mig 0378 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D4) ─────────────────
+     ⭐ ต้นทาง = ใบที่ยกเลิกของดีลเดียวกันที่มีเงินค้าง (route ของหน้าใบโหลดมาให้ `order.carrySources`)
+     ⭐ ปุ่มกับ route ถามด่านตัวเดียวกัน (`carryBlocker`) — ไม่มีสิทธิ์/ดีลไม่มีเงินค้าง = ไม่มีปุ่ม · ยังไม่อนุมัติ/บัญชีปิด/
+       ยังไม่มีงวด = ปุ่มอยู่ กดแล้วบอกเหตุ (GatedAction)
+     ⭐ พรีวิวก่อน/หลังมาจาก `applyCarryIn` ตัวเดียวกับที่ route ใช้สร้างชุดสุดท้าย (หักงวดเปิดแรก ๆ ก่อน) ⇒ จอกับ API ตรงกัน
+     ⚠️ ความเสี่ยงของแผน: บัญชีเป็นคนกดแล้วแผนของฝ่ายขายขยับ ⇒ โมดัลโชว์แผนก่อน/หลังเต็ม ๆ + โมดัลยืนยันบอกผลทุกงวด */
+  const carrySources = Array.isArray(order?.carrySources) ? order.carrySources : [];
+  const carryGate = carryBlocker(order, saved, user, carrySources);
+  const carrySource = carry ? carry.sources.find((src) => src.id === carry.sourceId) || null : null;
+  const carryRows = carrySource ? carrySource.rows.filter((r) => carry.ids.includes(r.id)) : [];
+  const carryBuild = carry ? applyCarryIn(order, carry.base, carryRows, { requestById }) : null;
+  const carryBaseStale = carry ? replanStale(saved, replanExpected(carry.base)) : false;
+  const carryReasonProblem = carry ? replanReasonError(carry.reason) : null;
+  const openCarry = () => {
+    onClearError?.();
+    const first = carrySources[0];
+    setCarry({
+      base: saved, sources: carrySources, sourceId: first?.id || null,
+      ids: (first?.rows || []).map((r) => r.id), reason: "", confirming: false,
+    });
+  };
+  const patchCarry = (patch) => setCarry((current) => (current ? { ...current, ...patch } : current));
+  const pickCarrySource = (sourceId) => {
+    const src = carry?.sources.find((s) => s.id === sourceId);
+    patchCarry({ sourceId, ids: (src?.rows || []).map((r) => r.id) });
+  };
+  /* ⭐ โมดัลยืนยันบอกผลที่ตรวจได้ (paymentCarryPrompt): งวดที่ยก (สถานะ · ยอด) · แผนที่เหลือก่อน→หลัง · Actual ไม่เปลี่ยน ·
+     เงินค้างที่เหลือของใบเดิม — แล้วจึงยิง · expected มาจากชุดที่ตาเห็นตอนเปิดโมดัล (ห้ามแอบเปลี่ยนเป็นของใหม่) */
+  const submitCarry = async () => {
+    if (!carry || !carrySource || !carryBuild || carryBuild.error || carryReasonProblem || carryBaseStale) return;
+    patchCarry({ confirming: true });
+    const confirmed = await confirmAction(paymentCarryPrompt(carryPromptFacts(order, carrySource, carry.base, carryRows,
+      carryBuild, { sourceRows: carrySource.rows })));
+    patchCarry({ confirming: false });
+    if (!confirmed) return;
+    const done = await onCarry({
+      sourceOrderId: carrySource.id,
+      installmentIds: carryRows.map((r) => r.id),
+      expected: carryExpected(carry.base, carryRows),
+      reason: carry.reason.trim(),
+    });
+    if (done) setCarry(null);
+  };
+
+  const cardActions = replanned || replanGate.visible || carryGate.visible ? (
     <>
       {replanned ? (
         <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} />
+      ) : null}
+      {carryGate.visible ? (
+        <GatedAction size="sm" variant="ghost" icon={<ArrowRightLeft size={13} aria-hidden="true" />}
+          blocker={carryGate.blocker} disabled={!!busy} onClick={openCarry}>
+          {CARRY_BUTTON}
+        </GatedAction>
       ) : null}
       {replanGate.visible ? (
         <GatedAction size="sm" variant="ghost" icon={<CalendarRange size={13} aria-hidden="true" />}
@@ -221,6 +290,11 @@ export default function SalesOrderPaymentPanel({
       ) : null}
     </>
   ) : null;
+
+  /* ── เงินค้างของใบที่ยกเลิก (PR3) — บอกยอดที่ค้าง + ทางออก · แถวที่ยกไปแล้วมีลิงก์ไปใบที่ถือเงินอยู่ตอนนี้ ── */
+  const strandedRows = saved.filter((r) => strandedInstallment(r, order));
+  const strandedAmount = strandedRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const carriedAway = carriedAwayGroups(order?.carriedAway);
 
   /* งวดร่าง = บันทึกเก็บไว้ ยังไม่ส่งให้บัญชี (มติผู้ใช้ 2026-08-19)
      ⚠️ ตัดสินจากฟังก์ชันเดียวกับที่ route ใช้เขียนสถานะจริง — เขียนเงื่อนไข
@@ -452,6 +526,29 @@ export default function SalesOrderPaymentPanel({
       {movedAway ? <StatusNotice tone="info">{movedAway}</StatusNotice>
         : pipelineLock ? <StatusNotice tone="info">{pipelineLock}</StatusNotice> : null}
 
+      {/* ⭐ เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) — เงินไม่หาย · ทางออกสองทางต้องเห็นจากที่นี่ */}
+      {strandedRows.length ? (
+        <StatusNotice tone="warning" title={`เงินค้างจากใบที่ยกเลิก ${fmtMoney(strandedAmount)} (${strandedRows.length} งวด)`}>
+          ยกเข้าใบใหม่ของดีลนี้ได้ที่แท็บการชำระของใบใหม่หลังอนุมัติ (ปุ่ม “{CARRY_BUTTON}”)
+          · หรือบัญชีบันทึกคืนเงินลูกค้าจากเมนูของงวด
+        </StatusNotice>
+      ) : null}
+      {carriedAway.length ? (
+        <StatusNotice tone="info" title="เงินของใบนี้ยกไปใบใหม่แล้ว">
+          {carriedAway.map((group, index) => (
+            <Fragment key={group.salesOrderId || group.orderNumber}>
+              {index ? " · " : ""}
+              ยกไป{" "}
+              <a className="linklike mono" href={`/sa/sales-orders/${group.salesOrderId}#payment`}>
+                {group.orderNumber || "ใบใหม่"}
+              </a>
+              {` ${group.count} งวด ${fmtMoney(group.amount)}`}
+            </Fragment>
+          ))}
+        </StatusNotice>
+      ) : null}
+      {order?.moneyLinksError ? <StatusNotice tone="error">{order.moneyLinksError}</StatusNotice> : null}
+
       {isDraftPlan && !historical && !pipelineLock ? (
         <StatusNotice tone="info">
           กรอกกำหนดชำระและบันทึกเงินที่ลูกค้าจ่ายมาแล้วได้เลยตั้งแต่ตอนนี้ —
@@ -510,6 +607,8 @@ export default function SalesOrderPaymentPanel({
                    สิ่งเดียวที่เขาทำได้คือ "ดึงกลับ" ซึ่งเป็นการถอย ไม่ใช่ก้าวถัดไป
                    เอามาเป็นปุ่มเด่นจะกลายเป็นชวนให้ถอย */
                 const canReport = !row.preview && !gate(row, "report", { paidOn: "placeholder" });
+                /* งวดที่ยกมาจากใบที่ยกเลิก (PR3) — ลิงก์กลับไปใบเดิม (ประวัติของเงินก้อนนี้อยู่ที่นั่น) */
+                const carriedFrom = carriedFromOf(row);
                 const canConfirm = !row.preview && !gate(row, "confirm");
                 const rowStatus = installmentDisplayStatus(row);
                 /* บัญชีกดปุ่มเดียวกันแต่จบในก้าวเดียว (มติผู้ใช้ 2026-08-18 — ทางเลือก ก.)
@@ -531,7 +630,8 @@ export default function SalesOrderPaymentPanel({
                       label: "บัญชีคอนเฟิร์ม",
                       /* ⚠️ ถอยได้ทางเดียวคือบัญชี "ถอนคำรับรอง" พร้อมเหตุผล (action `unconfirm` · มติผู้ใช้ 2026-08-13)
                          · ย้อนการอนุมัติ/ออก Rev. ไม่ถูกล็อกด้วยงวดที่คอนเฟิร์มแล้วอีก (PR1 · mig 0376 — งวดย้ายไปกับใบ Rev.)
-                           แต่การยกเลิกใบยังล็อกอยู่ (paymentLockReason · จนถึง PR3)
+                           และยกเลิกใบ pipeline ได้ด้วย (PR3 · mig 0378 — เงินค้างอยู่กับใบ → ยกเข้าใบใหม่/คืนเงิน) ·
+                           ใบย้อนหลังยังล็อกการยกเลิกตามเดิม (paymentLockReason)
                          ⇒ ต้องถามก่อนเสมอ (มติผู้ใช้ 2026-08-13) */
                       /* ⭐ โมดัลตัวเดียวกับคิวบนทะเบียนการชำระ (มติผู้ใช้ 2026-08-13) —
                          และมัน **โชว์หลักฐานก่อนกด** ซึ่งของเดิมไม่มี ทั้งที่หน้านี้เป็น
@@ -591,6 +691,23 @@ export default function SalesOrderPaymentPanel({
                     label: row.taxInvoiceNo ? "แก้ไขใบกำกับภาษี" : "บันทึกใบกำกับภาษี",
                     onClick: () => { onClearError?.(); setInvoiceFor(row); },
                   },
+                  /* ── คืนเงินของงวดใบที่ยกเลิก (PR3 · mig 0378) — **ของฝ่ายบัญชี** (ด่าน canConfirmPayment) ────────
+                     ส่งค่าหลอกให้ด่านตรวจเฉพาะ "ใคร/งวดไหน" (ค่าจริงตรวจในโมดัลด้วย refundValueError ตัวเดียวกับ API) */
+                  !gate(row, "refund", REFUND_PROBE) && {
+                    id: "refund", icon: HandCoins, tone: "danger", label: "บันทึกคืนเงิน",
+                    onClick: () => { onClearError?.(); setRefundFor(row); },
+                  },
+                  !gate(row, "refund-clear") && {
+                    id: "refund-clear", icon: Undo2, tone: "warning", label: "ถอนการบันทึกคืนเงิน",
+                    onClick: async () => {
+                      onClearError?.();
+                      const ok = await confirmAction(paymentRefundClearPrompt({
+                        label: row.label || `งวดที่ ${row.seq}`, amount: fmtMoney(row.amount),
+                        creditNoteNo: row.refundCreditNoteNo || "",
+                      }));
+                      if (ok) await onAction(live(row), "refund-clear");
+                    },
+                  },
                 ].filter(Boolean);
 
                 return (
@@ -604,6 +721,14 @@ export default function SalesOrderPaymentPanel({
                         <StatusBadge size="sm" tone="info" label="ยกมา" title="เงินที่เก็บก่อนเข้าระบบ — บัญชีรับรองครั้งเดียว" />
                       ) : null}
                       {single ? null : <small>{fmtPercent(row.percent)}</small>}
+                      {carriedFrom ? (
+                        <small>
+                          ยกมาจาก{" "}
+                          <a className="linklike mono" href={`/sa/sales-orders/${carriedFrom.salesOrderId}#payment`}>
+                            {carriedFrom.orderNumber || "ใบที่ยกเลิก"}
+                          </a>
+                        </small>
+                      ) : null}
                       {/* ⭐ คำร้องขอเอกสารที่ครอบงวดนี้ (B-5) — โชว์ **เลขที่เอกสารที่บัญชี
                           ออกให้จริง** ไม่ใช่แค่เลขคำร้อง เพราะสิ่งที่ SA เอาไปคุยกับลูกค้า
                           คือเลขใบวางบิล · ตามกลับไม่เจอ = คำร้องถูกลบ ต้องบอกตรง ๆ */}
@@ -780,6 +905,13 @@ export default function SalesOrderPaymentPanel({
                         tone={row.preview ? "neutral" : (INSTALLMENT_STATUS_TONES[rowStatus] || "neutral")}
                         label={row.preview ? "ยังไม่เริ่มติดตาม" : (INSTALLMENT_STATUS_LABELS[rowStatus] || rowStatus)}
                       />
+                      {/* คืนเงินแล้ว (0378) — วันคืน + ใบลดหนี้ต้องเห็นบนแถว (บัญชีถูกถามด้วยเลขนี้) */}
+                      {rowStatus === "refunded" ? (
+                        <small>
+                          คืน {row.refundedOn ? fmtDate(row.refundedOn) : NA}
+                          {row.refundCreditNoteNo ? ` · ใบลดหนี้ ${row.refundCreditNoteNo}` : ""}
+                        </small>
+                      ) : null}
                     </td>
                     <td className={styles.actionCell}>
                       {primary ? (
@@ -967,7 +1099,8 @@ export default function SalesOrderPaymentPanel({
       ) : null}
 
       {/* ⚠️ ถอนคำรับรอง = กลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว (ยอดเก็บแล้วลด · "จ่ายถึง" อาจถอย) และปลดล็อก
-          การยกเลิกใบ (paymentLockReason) ⇒ ต้องมีเหตุผลเท่ากับตอนตีกลับ ไม่ใช่กดแล้วจบ */}
+          การยกเลิกของใบย้อนหลัง (paymentLockReason — ใบ pipeline ยกเลิกได้อยู่แล้วตั้งแต่ PR3)
+          ⇒ ต้องมีเหตุผลเท่ากับตอนตีกลับ ไม่ใช่กดแล้วจบ */}
       <InstallmentConfirmDialog
         open={!!confirmFor}
         row={live(confirmFor?.row)}
@@ -1035,6 +1168,118 @@ export default function SalesOrderPaymentPanel({
           </div>
         </Modal>
       ) : null}
+
+      {/* ⭐ ยกเงินจากใบที่ยกเลิก (PR3 · mig 0378) — โมดัลอยู่ในแผง (ไม่ใช่ page.js) · แผนก่อน/หลังจาก applyCarryIn ตัวเดียวกับ route
+          ⚠️ ปุ่ม "ตรวจผลก่อนยก" เปิดโมดัลยืนยันที่บอกผลก่อน แล้วจึงยิง · error ของ API ขึ้นในโมดัล (แถบของหน้าอยู่ใต้โมดัล) */}
+      {carry ? (
+        <Modal open onClose={() => setCarry(null)} title={CARRY_BUTTON} size="lg"
+          dismissible={!busy && !carry.confirming}>
+          <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
+            {carryBaseStale ? (
+              <StatusNotice tone="warning">
+                งวดของใบนี้เพิ่งถูกแก้จากอีกหน้าต่าง — ปิดแล้วเปิดใหม่เพื่อดูแผนล่าสุด
+              </StatusNotice>
+            ) : null}
+            <p className="form-note">
+              {order?.orderNumber} · ยอดใบ {fmtMoney(order?.totalAmount)} (รวม VAT) — งวดที่ยกมาย้ายมาทั้งแถว (สลิป · คำรับรอง ·
+              ใบกำกับคงเดิม) · แผนที่เหลือของใบนี้หักงวดที่ยังไม่มีการชำระงวดแรก ๆ ก่อน · ยอด Actual ไม่เปลี่ยน
+            </p>
+            {carry.sources.length > 1 ? (
+              <div className={styles.field}>
+                <span>ใบที่ยกเลิก (ดีลเดียวกัน)</span>
+                <ChoiceChips value={carry.sourceId} onChange={pickCarrySource} ariaLabel="ใบที่ยกเลิกที่จะยกเงินมา"
+                  disabled={!!busy || carry.confirming}
+                  options={carry.sources.map((src) => ({ value: src.id, label: `${src.orderNumber} · ${fmtMoney(src.amount)}` }))} />
+              </div>
+            ) : null}
+            {carrySource ? (
+              <div className={styles.field}>
+                <span>งวดที่ยกจาก {carrySource.orderNumber}</span>
+                <ChoiceChips multiple value={carry.ids} onChange={(ids) => patchCarry({ ids })} ariaLabel="งวดที่จะยกมา"
+                  disabled={!!busy || carry.confirming}
+                  options={carrySource.rows.map((r) => ({
+                    value: r.id,
+                    label: `${r.label || `งวดที่ ${r.seq}`} · ${fmtMoney(r.amount)} · ${INSTALLMENT_STATUS_LABELS[r.status] || r.status}`,
+                  }))} />
+              </div>
+            ) : null}
+            {carryBuild && !carryBuild.error ? (
+              <TableScroll surface="auto" cells="stacked" minWidth={560}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th className={styles.seqCol}>งวด</th>
+                      <th>รายละเอียด</th>
+                      <th className="num">ก่อน</th>
+                      <th className="num">หลังยก</th>
+                      <th>สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {carryBuild.view.map((r) => (
+                      <tr key={r.id} className={r.carried ? styles.carriedRow : undefined}>
+                        <td className={styles.seqCol}>{r.seq}</td>
+                        <td>
+                          <strong>{r.label}</strong>
+                          <small>{r.carried ? `ยกมาจาก ${carrySource?.orderNumber}` : fmtPercent(r.percent)}</small>
+                        </td>
+                        <td className="num">{r.carried ? NA : fmtMoney(r.beforeAmount)}</td>
+                        <td className="num">{fmtMoney(r.amount)}</td>
+                        <td>
+                          <StatusBadge size="sm" tone={INSTALLMENT_STATUS_TONES[r.status] || "neutral"}
+                            label={INSTALLMENT_STATUS_LABELS[r.status] || r.status} />
+                        </td>
+                      </tr>
+                    ))}
+                    {carryBuild.removed.map((r) => (
+                      <tr key={`removed-${r.id}`} className={styles.removedRow}>
+                        <td className={styles.seqCol}>{r.seq}</td>
+                        <td><strong>{r.label || `งวดที่ ${r.seq}`}</strong><small>ลบ — เงินที่ยกมาครอบแทน</small></td>
+                        <td className="num">{fmtMoney(r.amount)}</td>
+                        <td className="num">{NA}</td>
+                        <td><StatusBadge size="sm" tone="neutral" label="ลบ" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            ) : null}
+            {carryBuild?.error ? <StatusNotice tone="warning">{carryBuild.error}</StatusNotice> : null}
+            <label className={styles.field}>
+              <span>เหตุผลที่ยกเงิน *</span>
+              <Textarea rows={3} value={carry.reason} maxLength={REPLAN_MAX_REASON} disabled={!!busy || carry.confirming}
+                placeholder={`เช่น ลูกค้ายกเลิกใบเดิมแล้วออกใบใหม่แทน — อย่างน้อย ${MIN_REJECT_REASON} ตัวอักษร`}
+                onChange={(event) => patchCarry({ reason: event.target.value })} />
+            </label>
+            {carry.reason && carryReasonProblem ? <p className="form-note">{carryReasonProblem}</p> : null}
+            <div className="action-bar">
+              <Button variant="ghost" onClick={() => setCarry(null)} disabled={!!busy || carry.confirming}>ยกเลิก</Button>
+              <Button tone="primary"
+                disabled={!!busy || carry.confirming || !carryBuild || !!carryBuild.error || !!carryReasonProblem || carryBaseStale}
+                title={carryBuild?.error || carryReasonProblem || undefined}
+                onClick={submitCarry}>
+                {busy === "installment-carry" ? "กำลังยก…" : "ตรวจผลก่อนยก"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* ⭐ บันทึกคืนเงินของงวดใบที่ยกเลิก (PR3) — โมดัลตัวเดียวกับคิว "เงินค้างจากใบที่ยกเลิก" บนทะเบียนการชำระ */}
+      <InstallmentRefundDialog
+        open={!!refundFor}
+        row={live(refundFor)}
+        order={order}
+        todayIso={todayIso}
+        busy={!!busy}
+        error={error}
+        onClose={() => setRefundFor(null)}
+        onSubmit={async (values) => {
+          const done = await onAction(live(refundFor), "refund", values);
+          if (done) setRefundFor(null);
+        }}
+      />
 
       {/* ⭐ โมดัลใบกำกับตัวเดียวกับคิวบนทะเบียนการชำระ — หนึ่งฟอร์ม สองทางเรียก
           ⚠️ ปุ่ม "ลบใบกำกับ" มีที่นี่ด้วย เพราะแนบผิดใบแล้วต้องถอนได้จากที่ที่เห็นของ */}
