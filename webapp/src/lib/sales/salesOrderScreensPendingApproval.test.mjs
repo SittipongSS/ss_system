@@ -278,11 +278,11 @@ test('ป้าย "รออนุมัติ" บนทุกจอมาจ�
 });
 
 test('ปุ่มย้อนการรับดูทุกใบ SO กติกาเดียวกับ RPC unaccept — ไม่ใช่แค่ใบที่เลือกโชว์', () => {
-  // สาย Rev. ที่ฉบับใหม่ถูกยกเลิก: ใบที่เลือกโชว์ = ใบยกเลิก แต่ใบต้นทาง 'revised' ยังค้าง
-  // ⇒ RPC (0138/0170) บล็อกเพราะมีใบที่ไม่ใช่ cancelled · จอต้องไม่ชวนกดแล้วโดน 409
+  // ปุ่มกับ RPC ต้องใช้นิยามเดียวกัน · ⚠️ 0380 (UAT 24/09): ใบต้นทาง 'revised' ไม่นับว่ายังมีชีวิตอีกแล้ว —
+  //   เดิมทั้งสองฝั่งนับ ⇒ สาย Rev. ที่ฉบับใหม่ถูกยกเลิกโดยไม่ถอยดีล = ดีลติด Won (ยามเต็มอยู่ใน unacceptIgnoresRevised)
   const route = readFileSync(new URL('../../app/api/sales-planning/quotations/[id]/route.js', import.meta.url), 'utf8');
   const page = readFileSync(new URL('../../app/sales-planning/quotations/[id]/page.js', import.meta.url), 'utf8');
-  assert.match(route, /data\.hasNonCancelledSalesOrder = rows\.some\(\(row\) => row\.status !== 'cancelled'\)/);
-  assert.match(page, /canUnaccept = [^;]*!quote\.hasNonCancelledSalesOrder/);
+  assert.match(route, /data\.hasLiveSalesOrder = rows\.some\(isLiveSalesOrder\)/);
+  assert.match(page, /canUnaccept = [^;]*!quote\.hasLiveSalesOrder/);
   assert.doesNotMatch(page, /canUnaccept = [^;]*quote\.salesOrder\.status === "cancelled"/);
 });
