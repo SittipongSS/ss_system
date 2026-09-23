@@ -1,5 +1,5 @@
 "use client";
-import { ChevronRight, CheckCircle2, ClipboardCheck } from "lucide-react";
+import { AlertCircle, ChevronRight, CheckCircle2, ClipboardCheck } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import { ListPanel } from "@/components/ui/Workspace";
@@ -12,16 +12,33 @@ import { ListPanel } from "@/components/ui/Workspace";
 // เดิมหน้า /tax เขียนหัว "งานของฉันตอนนี้" + ป้ายจำนวนแยกไว้เหนือกล่อง และทุกแถวเป็น
 // glass-panel ของตัวเอง ⇒ ตอนนี้หัว/ป้ายจำนวนเป็นของแผง แถวเป็นแถวเรียบในเนื้อแผง
 // ⚠️ แถวยังเป็น `<button>` จริง — ทางเข้าของคีย์บอร์ดมาฟรี ห้ามเปลี่ยนเป็น div onClick
-export default function WorkQueue({ items = [] }) {
+//
+// ⭐ `incomplete` = แหล่งข้อมูลที่ป้อนคิวนี้โหลดไม่สำเร็จอย่างน้อยหนึ่งก้อน (จอที่เรียกเป็น
+// คนบอก และเป็นคนขึ้น StatusNotice อธิบายเอง) ⇒ ที่นี่แค่เลิกพูดตัวเลขที่พิสูจน์ไม่ได้:
+// ป้ายจำนวนเลิกอ้างยอดเต็ม และช่องว่างเปลี่ยนจาก "ไม่มีงานค้าง 🎉" เป็นคำบอกว่าคิวยังไม่ครบ
+// 🐞 ของจริง: /api/orders ตอบ 500 อยู่ 26 วัน คิวนี้ขึ้น "0 งาน · ไม่มีงานค้างที่ต้องทำ 🎉"
+//    ทุกวันทั้งที่ใบยื่นค้างเต็มระบบ — ตัวเลข 0 ที่มาจากความไม่รู้คือคำตอบที่ผิด ไม่ใช่ว่าง
+export default function WorkQueue({ items = [], incomplete = false }) {
+  /* 🪤 ขีดเฉพาะตอน **ไม่มีอะไรให้นับจริง ๆ** — แปะขีดทับคิวที่ยังมีแถวโชว์อยู่ใต้หัวแผง
+     อ่านเป็นป้ายเสียมากกว่า "ข้อมูลไม่ครบ" · มีแถวก็บอกไปว่าอย่างน้อยเท่านี้ แล้วปล่อยให้
+     ป้าย error ด้านบนเป็นคนอธิบายว่าทำไมถึงยังไม่ใช่ตัวเลขเต็ม
+     (กติกาเดียวกับ `noData` ที่ /tax/filings: ขีดเมื่อยังไม่มีข้อมูลในมือเลยเท่านั้น) */
+  const count = !incomplete ? `${items.length} งาน`
+    : items.length ? `อย่างน้อย ${items.length} งาน`
+      : null;
   return (
     <ListPanel
       icon={<ClipboardCheck size={17} aria-hidden="true" />}
       title="รายการงานของฉันตอนนี้"
       subtitle="งานที่รอคุณลงมือ เรียงจากค้างนานสุด"
-      count={`${items.length} งาน`}
+      count={count}
     >
       {!items.length ? (
-        <EmptyState plain icon={CheckCircle2}>ไม่มีงานค้างที่ต้องทำตอนนี้ 🎉</EmptyState>
+        incomplete ? (
+          <EmptyState plain icon={AlertCircle}>คิวงานยังไม่ครบเพราะโหลดข้อมูลไม่สำเร็จ — ดูข้อความด้านบนแล้วกด “ลองใหม่”</EmptyState>
+        ) : (
+          <EmptyState plain icon={CheckCircle2}>ไม่มีงานค้างที่ต้องทำตอนนี้ 🎉</EmptyState>
+        )
       ) : (
         <div className="flex flex-col">
           {items.map((it) => (

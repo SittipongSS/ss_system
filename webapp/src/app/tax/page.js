@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import {
-  AlarmClock, BadgeCheck, BarChart3, Calendar, ChevronRight, CircleDollarSign, ClipboardCheck,
+  AlarmClock, AlertCircle, BadgeCheck, BarChart3, Calendar, ChevronRight, CircleDollarSign, ClipboardCheck,
   Clock3, LayoutDashboard, ReceiptText, RotateCcw, Send,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
 import { useCan } from "@/lib/roleContext";
 import { useApiList } from "@/lib/excise/useApiList";
 import KpiCard from "@/components/ui/KpiCard";
@@ -31,8 +33,53 @@ export default function TaxDashboard() {
 
   // โหมด slim: จอนี้ใช้แค่สถานะ/ตัวเลขสรุป/ชื่อในคิวงาน — ไม่ต้องดาวน์โหลด
   // order_items + master product เต็มแถว (ลด traffic ต่อการเปิดหลายเท่า)
-  const { data: rawRegs, loading: l1 } = useApiList("/api/excise-registrations?slim=1");
-  const { data: rawOrders, loading: l2 } = useApiList("/api/orders?slim=1");
+  const { data: rawRegs, loading: l1, error: regsError, staleError: regsStale, loaded: regsLoaded, reload: reloadRegs } = useApiList("/api/excise-registrations?slim=1");
+  const { data: rawOrders, loading: l2, error: ordersError, staleError: ordersStale, loaded: ordersLoaded, reload: reloadOrders } = useApiList("/api/orders?slim=1");
+
+  /* ── โหลดพัง ≠ ไม่มีของ ─────────────────────────────────────────────────────
+     🐞 26 วัน: `/api/orders?slim=1` ตอบ 500 (ORDER_SELECT_SLIM เลือกคอลัมน์ที่ไม่มีจริง)
+     ⇒ `rawOrders` ค้างที่ `[]` แล้วจอนี้ตอบว่า "ยังไม่มีใบยื่นชำระภาษีในระบบ" + คิวงานว่าง
+     ซึ่งอ่านได้ว่างานหมดแล้ว ไม่ใช่โหลดไม่ขึ้น — ไม่มีใครเอะใจเลยตลอดเดือน
+
+     ⭐ **ป้ายเดียวที่หัวจอ ไม่ใช่ป้ายประจำแผง** — จอนี้ไม่ใช่หนึ่งแผงต่อหนึ่งแหล่ง
+     "รายการงานของฉันตอนนี้" ผสมทะเบียน+ใบยื่นอยู่ในกองเดียว ⇒ ถ้าแปะป้ายเฉพาะแผงที่พัง
+     คิวงานจะขาดแถวเงียบ ๆ โดยไม่มีอะไรบอก · ข้อความจึงบอกด้วยว่าพังสายไหน
+
+     ⚠️ **สองคำถามคนละข้อ ห้ามยุบเป็นตัวเดียว** (กติกาเดียวกับ `loadError` / `noData`
+     ที่ /tax/filings และ /tax/registrations) —
+       1. **ขึ้นป้ายไหม** = มี `error` ก็ขึ้น จบ · `apiCache` อยู่ระดับโมดูล อายุเท่าแท็บ
+          ⇒ เดินออกจากหน้านี้แล้วกดกลับเข้ามา จอวาดของเก่าจากแคชทันที แล้วรอบใหม่
+          (mount `reload()` = รอบหน้าบ้าน ไม่ใช่เบื้องหลัง) ค่อยล้ม · ถ้าผูกป้ายไว้กับ
+          "ว่างด้วย" ป้ายจะเงียบสนิททั้งที่ตัวเลขบนจอเป็นของเมื่อวาน = บั๊กตัวเดิมกลับมา
+       2. **ซ่อนเนื้อไหม** = error **คู่กับ** ไม่มีของในมือ (`…Failed`) · มีแคชเก่าก็วาด
+          ต่อดีกว่าจอเปล่า ป้ายเป็นคนบอกเองว่าตัวเลขที่เห็นเป็นของรอบก่อน */
+  /* 🪤 `empty` = **ไม่มีของในมือ** ไม่ใช่ `list.length === 0` — ลิสต์ที่โหลดสำเร็จแล้ว
+     ตอบว่าไม่มีแถว คือคำตอบที่ใช้ได้ ส่วนลิสต์ที่ยังไม่เคยโหลดสำเร็จคือความไม่รู้
+     (ดู `loaded` ใน useApiList) · และ `staleError` = รอบเบื้องหลังล้มทั้งที่มีของอยู่
+     ⇒ ต้องขึ้นป้ายเหมือนกัน ไม่งั้นแท็บที่เปิดค้างทั้งวันยืนยันตัวเลขเมื่อวานเงียบ ๆ */
+  const sources = [
+    { label: "การขึ้นทะเบียน", error: regsError || regsStale, empty: !regsLoaded, reload: reloadRegs },
+    { label: "การยื่นชำระภาษี", error: ordersError || ordersStale, empty: !ordersLoaded, reload: reloadOrders },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const regsFailed = !!(regsError || regsStale) && !regsLoaded;
+  const ordersFailed = !!(ordersError || ordersStale) && !ordersLoaded;
+  /* 🪤 พ่วง **ทุก** ข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ (สายหนึ่ง SQL ผิด
+     อีกสายหมดเวลา/สิทธิ์) และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้ — คดี 26 วันนั้นแก้ได้
+     เพราะสตริง `column orders.updatedAt does not exist` เท่านั้น */
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* สำนวนเดียวกับสามจอสหมิตร: ชื่อสายอยู่หลัง "ดึงข้อมูลไม่ได้:" — ถ้าแทรกไว้กลาง
+     "ดึงข้อมูล…ไม่ได้" จุดคั่นสองสายจะไปตกกลางกริยา แล้วต้องอ่านซ้ำถึงจะแยกออก */
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      blocked.length ? "ตัวเลขและคิวงานของสายที่ดึงไม่ได้จึงยังไม่แสดง" : null,
+      blocked.length < failing.length ? "ตัวเลขที่ยังเห็นอยู่เป็นข้อมูลรอบก่อน ไม่ใช่ล่าสุด" : null,
+    ].filter(Boolean).join(" · ")} · ${causes}`
+    : null;
+  // กด "ลองใหม่" = รอบหน้าบ้าน ⇒ `l1/l2` เป็น true ⇒ `Workspace loading` สลับเนื้อเป็น
+  // skeleton ให้เองระหว่างรอ (ไม่ต้องมีสถานะปุ่มซ้อนอีกชั้น)
+  const retryLoad = () => failing.forEach((s) => s.reload());
 
   const [timeRange, setTimeRange] = useState("all"); // 'all', 'month', 'quarter'
 
@@ -127,7 +174,9 @@ export default function TaxDashboard() {
   queue.sort((a, b) => (b.sortDays ?? -1) - (a.sortDays ?? -1));
 
   // สายยื่นชำระยังไม่เคยมีใบเลย ≠ "ทุกช่องเป็น 0" — ต้องบอกว่าใบมาจากไหน
-  const noFilingsAtAll = !l2 && rawOrders.length === 0;
+  // 🪤 ต้องตัด `ordersFailed` ออกก่อน ไม่งั้นโหลดพังจะได้ข้อความ "ยังไม่มีใบยื่นในระบบ"
+  //    ซึ่งคือหน้าตาที่จอโชว์อยู่ 26 วันตอน API ตอบ 500 — ว่างจริงกับพังต้องคนละข้อความ
+  const noFilingsAtAll = !l2 && !ordersFailed && rawOrders.length === 0;
 
   return (
     <Workspace
@@ -154,6 +203,15 @@ export default function TaxDashboard() {
       }
     >
       <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+        {loadError && (
+          <StatusNotice
+            tone="error"
+            action={<Button size="sm" variant="ghost" onClick={retryLoad}>ลองใหม่</Button>}
+          >
+            {loadError}
+          </StatusNotice>
+        )}
 
         {/* ⭐ แถบค้างนาน — ขึ้นบนสุดเมื่อมีของค้าง เพราะเป็นสิ่งเดียวบนหน้านี้ที่
             "ต้องลงมือวันนี้" · ไม่มีของค้างก็ไม่ขึ้นเลย ไม่ใช่แถบเขียวกินที่ */}
@@ -185,6 +243,13 @@ export default function TaxDashboard() {
             </Link>
           </div>
 
+          {/* โหลดพังและไม่มีแคชเก่า = ซ่อนโดนัท + การ์ด KPI ทั้งแถว — "ฉบับร่าง 0 · รออนุมัติ 0"
+              วางข้างข้อความ error คือคำโกหกซ้อนอีกชั้น (ท่าเดียวกับที่ /tax/filings ซ่อน DataList)
+              🪤 แต่ห้ามเหลือหัวข้อลอยอยู่เหนือที่ว่าง — อ่านเป็น "จอเรนเดอร์ไม่ครบ" ไม่ใช่
+              "ตั้งใจซ่อน" ⇒ วางบรรทัดเดียวแทนที่ (ท่าเดียวกับช่องว่างของ WorkQueue ตอนคิวไม่ครบ) */}
+          {regsFailed ? (
+            <EmptyState icon={AlertCircle}>ตัวเลขฝั่งทะเบียนยังแสดงไม่ได้ — ดูข้อความด้านบน</EmptyState>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-1 glass-panel p-4 h-[220px]">
               <div className={styles.chartTitle}>สัดส่วนสถานะการขึ้นทะเบียน</div>
@@ -206,6 +271,7 @@ export default function TaxDashboard() {
               <KpiCard label="ตีกลับให้แก้ไข" value={r.rejected} tone="danger" icon={RotateCcw} onClick={() => goReg("rejected")} />
             </div>
           </div>
+          )}
         </section>
 
         {/* Track 2: การยื่นชำระภาษี */}
@@ -217,7 +283,11 @@ export default function TaxDashboard() {
             </Link>
           </div>
 
-          {noFilingsAtAll ? (
+          {/* ลำดับสำคัญ: พังก่อน ว่างทีหลัง — ซ่อนทั้งกราฟและ KPI หกใบ เพราะ "รอรับเงิน 0 ฿0"
+              หกช่องรวดข้างข้อความ error อ่านว่าเคลียร์งานหมดแล้ว ตรงข้ามกับความจริง */}
+          {ordersFailed ? (
+            <EmptyState icon={AlertCircle}>ตัวเลขฝั่งใบยื่นยังแสดงไม่ได้ — ดูข้อความด้านบน</EmptyState>
+          ) : noFilingsAtAll ? (
             /* 🐞 ของเดิมโชว์ KPI หกใบเป็น 0 ทั้งแถว + กราฟเปล่า ซึ่งอ่านไม่ออกว่า
                "ยังไม่มีใบ" หรือ "ตัวเลขพัง" — ของจริงคือยังไม่เคยมีใบยื่นสักใบ */
             <EmptyState icon={ReceiptText}>
@@ -242,8 +312,10 @@ export default function TaxDashboard() {
           )}
         </section>
 
-        {/* Action queue — WorkQueue วาดแผงรายการ (หัว · ป้ายจำนวน) ของตัวเอง (มติผู้ใช้ 2026-09-15) */}
-        <WorkQueue items={queue} />
+        {/* Action queue — WorkQueue วาดแผงรายการ (หัว · ป้ายจำนวน) ของตัวเอง (มติผู้ใช้ 2026-09-15)
+            `incomplete` = คิวนี้ผสมสองแหล่ง สายไหนโหลดไม่ขึ้นก็ขาดแถวไปเงียบ ๆ ⇒ ป้ายจำนวน
+            ต้องเป็นขีดไม่ใช่ "0 งาน" และช่องว่างต้องไม่ยินดีด้วยว่าเคลียร์งานหมดแล้ว */}
+        <WorkQueue items={queue} incomplete={regsFailed || ordersFailed} />
       </div>
     </Workspace>
   );

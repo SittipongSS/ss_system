@@ -22,6 +22,18 @@ export function useApiList(url) {
   const [data, setData] = useState(() => (url ? apiCache.get(url) : null) ?? []);
   const [loading, setLoading] = useState(() => !!url && !apiCache.has(url));
   const [error, setError] = useState(null);
+  /* ⭐ **"มีของในมือ" ≠ "ลิสต์ยาวกว่าศูนย์"** — ลิสต์ที่เพิ่งตอบ `200 []` คือ *รู้แล้ว*
+     ว่าไม่มีแถว (จอคำนวณต่อได้ถูกต้อง) · ลิสต์ที่ยังไม่เคยโหลดสำเร็จคือ *ไม่รู้*
+     🐞 ถ้าวัดด้วย `!list.length` สองอย่างนี้หน้าตาเหมือนกันเป๊ะ แล้วจอที่ตั้งใจกัน
+     "เลข 0 ที่มาจากความไม่รู้" จะเผลอซ่อนเนื้อทั้งใบเพราะลิสต์ที่ **ว่างอยู่แล้วตามปกติ**
+     ตอบ 500 — ของจริง: `/api/sahamit/coverage` บน prod ตอบ `200 []` ทุกวัน ⇒ 500 ของมัน
+     เคยทำให้แดชบอร์ดสหมิตรทั้งจอหาย ทั้งที่ตัวเลขชุดเดียวกันเป๊ะถูกโชว์เต็มใบตอนมันตอบ []
+     🪤 แคชอยู่ระดับโมดูล (อายุเท่าแท็บ) ⇒ `apiCache.has(url)` = เคยโหลดสำเร็จมาแล้วในแท็บนี้ */
+  const [loaded, setLoaded] = useState(() => !!url && apiCache.has(url));
+  /* รอบ **เบื้องหลัง** ที่ล้ม — แยกช่องจาก `error` เพราะจอรายการหลายจอเขียน
+     `error ? null : <ตาราง>` ⇒ ยัดลง `error` = ตารางที่ผู้ใช้กำลังอ่านอยู่หายทั้งใบ
+     ตอนเน็ตสะดุด · ช่องนี้แปลว่า "ของบนจอเป็นของรอบก่อน" ไม่ใช่ "ไม่มีของ" */
+  const [staleError, setStaleError] = useState(null);
 
   const reload = useCallback(async (opts) => {
     if (!url) return null;
@@ -36,11 +48,17 @@ export function useApiList(url) {
       primeCache(url, arr); // อัปเดต timestamp ให้ cachedFetchJson นับว่าสด
       setData(arr);
       setError(null);
+      setStaleError(null);
+      setLoaded(true);
       return arr;
     } catch (e) {
-      // รอบเบื้องหลังที่ล้ม (เน็ตสะดุดตอนสลับแท็บ) ต้องเงียบ — ผู้ใช้ไม่ได้สั่งอะไรเลย
-      // การขึ้นแบนเนอร์ error ทับหน้าที่เขากำลังอ่านอยู่แย่กว่าปล่อยข้อมูลเดิมค้างไว้
-      if (!opts?.background) setError(e?.message || "เกิดข้อผิดพลาด");
+      /* รอบเบื้องหลังที่ล้มต้องไม่ **พาจอไปอยู่สถานะโหลดหรือขึ้นแบนเนอร์บล็อก** ทับหน้า
+         ที่ผู้ใช้กำลังอ่าน — แต่ "เงียบสนิท" คือบั๊ก 26 วันตัวเดิมที่เข้ามาทางประตูหลัง:
+         🐞 แท็บที่เปิดค้างไว้ทั้งวัน (เคสที่ useRevalidateOnFocus มีไว้รับ) จะยืนยันตัวเลข
+         ของเมื่อวานเป็นตัวหนา ๆ ต่อไปทั้งที่รอบใหม่ล้มทุกรอบ และไม่มีอะไรบอกเลย จนกว่า
+         จะ F5 ⇒ ที่นี่บันทึกไว้คนละช่อง ให้จอเลือกพูดเองว่า "ของที่เห็นเป็นรอบก่อน" */
+      const msg = e?.message || "เกิดข้อผิดพลาด";
+      if (opts?.background) setStaleError(msg); else setError(msg);
       return null;
     } finally {
       if (!opts?.background) setLoading(false);
@@ -48,11 +66,14 @@ export function useApiList(url) {
   }, [url]);
 
   useEffect(() => {
-    if (!url) { setData([]); setLoading(false); return; }
+    if (!url) { setData([]); setLoading(false); setLoaded(false); setStaleError(null); return; }
+    // URL เปลี่ยน = ของที่ถืออยู่เป็นของ URL เดิม ⇒ "เคยโหลดสำเร็จ" ต้องวัดจากแคชของตัวใหม่
+    setLoaded(apiCache.has(url));
+    setStaleError(null);
     reload();
   }, [reload, url]);
 
   useRevalidateOnFocus(reload);
 
-  return { data, loading, error, reload, setData };
+  return { data, loading, error, staleError, loaded, reload, setData };
 }
