@@ -82,6 +82,21 @@ export async function findVisit(supabase, id) {
 }
 
 /**
+ * จำนวนแถวลูกที่เป็น **ผลของการไปจริง** ของนัดหนึ่งใบ — ผลรายเครื่อง (`service_visit_assets`) + ของที่ใช้
+ * (`service_visit_items`) · ด่านลบนัดใช้ (`visitDeleteBlock(visit, { fieldRecords })`)
+ * ⚠️ ตารางลูกทั้งสองเป็น CASCADE ⇒ ลบนัดเมื่อไร ของพวกนี้หายตามเงียบ ๆ — ต้องถามก่อนลบเสมอ
+ * ⚠️ supabase ไม่ throw ⇒ คืน `{ count, error }` ให้ผู้เรียกตีกลับเอง (ห้ามถือว่า error = 0 แถว = ลบได้)
+ */
+export async function visitFieldRecordCount(supabase, visitId) {
+  const [assets, items] = await Promise.all([
+    supabase.from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('visitId', visitId),
+    supabase.from('service_visit_items').select('id', { count: 'exact', head: true }).eq('visitId', visitId),
+  ]);
+  const error = assets.error || items.error || null;
+  return { count: error ? null : (assets.count || 0) + (items.count || 0), error };
+}
+
+/**
  * ด่านของ "นัดใบนี้" — คืน `{ visit, ownWorkOnly }` หรือ `{ response }`
  *
  * ⭐ **เจ้าหน้าที่หน้างานเขียนได้เฉพาะใบของตัวเอง** (มติผู้ใช้ 2026-08-30) — ตำแหน่ง Operation

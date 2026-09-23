@@ -68,6 +68,19 @@
 /* ป้ายเจ้าของด่านกว้างเท่ากันทุกบรรทัด — "SA → FN" ยาวสุด ให้ "TS"/"SA" ไม่ทำให้เหตุขยับซ้ายขวา */
 .owner { flex: none; min-width: var(--space-9); justify-content: center; }
 .origin { margin: 0; color: var(--text-3); font-size: var(--fs-5); }
+/* เรื่องที่ขอของการ์ดคำร้อง — ตัดที่สองบรรทัด (อ่านเต็มที่หน้าใบ) */
+.title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* คำใบ้ข้างปุ่มลงคิวใหม่ ("ใบมีวันแล้วแต่นัดยังไม่ขึ้นตาราง…") — ข้อความที่คำค้นหาเจอต้องเห็นบนการ์ด */
+.actionHint { flex-basis: 100%; color: var(--text-3); font-size: var(--fs-5); }
 
 .actions {
   display: flex;
@@ -90,5 +103,7 @@
   /* ปุ่มบนจอแตะต้องสูงเท่าเป้าแตะ (มติ 2026-08-02 ข้อ 3)
      🐞 `.actions > *` (0,1,0) แพ้ `.btn.sm` (0,2,0) ของ globals ⇒ ปุ่มยังเตี้ย 30px · ดันเป็น (0,2,0)+ลำดับ */
   .card .actions > * { flex: 1 1 auto; min-height: var(--ctl-h-touch); }
+  /* คำใบ้ไม่ใช่เป้าแตะ — ไม่ต้องสูงเท่าปุ่ม */
+  .card .actions > .actionHint { min-height: 0; }
   .card .code { display: inline-flex; align-items: center; min-height: var(--ctl-h-touch); }
 }

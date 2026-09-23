@@ -203,6 +203,25 @@ test('gateSiteIds จำกัดเฉพาะบริบทด่าน — 
   assert.deepEqual(Object.keys(got.workload).sort(), ['S1', 'S2']);
 });
 
+test('⭐ extraSiteIds (ไซต์ของการ์ดคำร้อง · มติ 23/09) ได้ไซต์ + ภาระ แต่ไม่ได้บริบทด่าน', async () => {
+  const db = fakeDb(bundleTables());
+  const onlyS1 = [{ id: 'V1', siteId: 'S1', status: 'draft' }];
+  const got = await visitBundle(db, onlyS1, { extraSiteIds: ['S2', null, 'S2'] });
+  assert.deepEqual(got.sites.map((s) => s.id).sort(), ['S1', 'S2']);
+  assert.deepEqual(Object.keys(got.workload).sort(), ['S1', 'S2']);
+  // ไม่ส่ง gateSiteIds = ด่านของไซต์ **ที่มีนัด** เท่านั้น — ไซต์ของคำร้องไม่มีนัดให้ตรวจ
+  assert.deepEqual(gateZoneSiteIds(db), ['S1']);
+  assert.deepEqual(Object.keys(got.gateContext.zonesBySite), ['S1']);
+  // ส่ง gateSiteIds มา = ใช้ตามนั้น (route ของรายการงาน)
+  const db2 = fakeDb(bundleTables());
+  await visitBundle(db2, onlyS1, { gateSiteIds: [], extraSiteIds: ['S2'] });
+  assert.deepEqual(gateZoneSiteIds(db2), []);
+  // ไม่มีนัดเลยแต่มีไซต์ของคำร้อง = ยังได้ไซต์
+  const db3 = fakeDb(bundleTables());
+  const lone = await visitBundle(db3, [], { gateSiteIds: [], extraSiteIds: ['S2'] });
+  assert.deepEqual(lone.sites.map((s) => s.id), ['S2']);
+});
+
 test('ไม่มีร่างเลย (gateSiteIds ว่าง) = ไม่ยิงคำขอของด่านสักคำขอ', async () => {
   const db = fakeDb(bundleTables());
   const got = await visitBundle(db, visits, { gateSiteIds: [] });
@@ -269,12 +288,36 @@ test('ตัวโหลดไล่หน้าด้วย fetchAll + ลำ�
 
 test('⭐ บริบทด่านของรายการงานโหลดเฉพาะไซต์ของร่าง · asOf มาจากนาฬิกาไทย', () => {
   const route = code(QUEUE_ROUTE);
-  assert.match(route, /const gateSiteIds = visits\.filter\(isDraftVisit\)\.map\(\(visit\) => visit\.siteId\);/);
-  assert.match(route, /visitBundle\(supabase, visits, \{ gateSiteIds \}\)/);
+  assert.match(route, /const gateSiteIds = mode\.gate \? visits\.filter\(isDraftVisit\)\.map\(\(visit\) => visit\.siteId\) : \[\];/);
+  assert.match(route, /visitBundle\(supabase, visits, \{ gateSiteIds, extraSiteIds \}\)/);
   assert.match(route, /const todayIso = businessDate\(\);/);
   assert.match(route, /addDaysIso\(todayIso, -QUEUE_CLOSED_DAYS\)/);
   assert.match(route, /loadQueueVisits\(supabase, \{ closedSince \}\)/);
-  assert.match(route, /ok\(\{ asOf: todayIso, closedSince, visits, sites, workload, gateContext \}\)/);
+  assert.match(route, /ok\(\{\s*asOf: todayIso, closedSince, visits, sites, workload, gateContext,\s*surveyRequests, surveyRequestsError,\s*\}\)/);
+});
+
+/* ── คำร้องรอลงคิว (มติเจ้าของ 23/09) ── */
+test('⭐ route ส่งคำร้องรอลงคิวเฉพาะคนที่ตอบคำร้องของ TS ได้ · ?requests=0 = ไม่เอา', () => {
+  const route = code(QUEUE_ROUTE);
+  assert.match(route, /import \{ canAnswerServiceRequests \} from '@\/lib\/permissions';/);
+  assert.match(route, /const mode = queueRouteMode\(url\.searchParams, \{ canAnswer: canAnswerServiceRequests\(user\) \}\);/);
+  assert.match(route, /const wantRequests = mode\.requests;/);
+  // ไม่มีสิทธิ์/ไม่ขอ = null (UI visibility rule: ไม่มีสิทธิ์ = ไม่โชว์) — ไม่ใช่ [] ที่อ่านว่า "ไม่มีใบ"
+  assert.match(route, /let surveyRequests = null;/);
+  assert.match(route, /if \(wantRequests\) \{\s*try \{\s*surveyRequests = await loadSurveyQueueRequests\(supabase, \{ visits \}\);/);
+  // ไซต์ของการ์ดคำร้องมาด้วยก้อนเดียวกัน
+  assert.match(route, /const extraSiteIds = \(surveyRequests \|\| \[\]\)\.map\(\(request\) => request\.siteId\);/);
+  // ด่านอ่านชั้นนอกยังเป็นตัวเดิม
+  assert.match(route, /requireService\(\{ user \}\)/);
+});
+
+test('🔴 คำร้องพัง ≠ รายการงานพัง — try แยก · error แยกช่อง · ส่ง null ไม่ใช่ []', () => {
+  const route = code(QUEUE_ROUTE);
+  const block = route.slice(route.indexOf('if (wantRequests)'), route.indexOf('const gateSiteIds'));
+  assert.match(block, /\} catch \(e\) \{\s*surveyRequests = null;\s*surveyRequestsError = `โหลดคำร้องรอลงคิวไม่สำเร็จ — \$\{e\?\.message \|\| 'ไม่ทราบสาเหตุ'\}`;/);
+  assert.doesNotMatch(block, /return fail/, 'ห้ามตอบ 500 ทั้งเส้นเพราะคำร้อง');
+  // โหลดนัดก่อนคำร้อง — "ลงคิวแล้วหรือยัง" ตอบด้วยนัดชุดที่จอวาด
+  assert.ok(route.indexOf('loadQueueVisits(') < route.indexOf('loadSurveyQueueRequests('));
 });
 
 test('ตารางสัปดาห์ประกอบผ่าน visitBundle ที่เดียว — รูป response เดิม ด่านทุกไซต์เหมือนเดิม', () => {
@@ -291,4 +334,26 @@ test('proxy ปล่อย GET /api/service/visits/queue ไปถึง handle
     assert.equal(lockedOut({ role }, '/api/service/visits/queue', 'GET', true), false, role);
     assert.equal(apiWriteAllowed('GET', '/api/service/visits/queue', role, []), true, role);
   }
+});
+
+/* 🐞 รีวิว 24/09: ตัวเลือกเจ้าหน้าที่บนหน้าใบคำร้อง (`useCrewLoad`) ยิง `?requests=0` แล้วได้ **ทั้งก้อน**
+   ของรายการงาน — บริบทด่านเต็ม (โซน · รอบขาย · ใบสั่งขาย · งวด · สัญญา) ของทุกไซต์ที่มีร่าง รวมร่างของรอบ
+   บริการล่วงหน้า ~90 วัน · ทุกครั้งที่เปิดโมดัลลงคิว ทั้งที่ฮุกอ่านแค่ นัด · ภาระ · closedSince
+   ⭐ `?view=load` = ภาระอย่างเดียว: ไม่เอาคำร้อง · ไม่โหลดบริบทด่าน · ไม่ส่งร่าง (ร่างไม่นับภาระ — staffLoadOn) */
+test('🐞 ?view=load = ภาระอย่างเดียว — ไม่มีคำร้อง ไม่มีบริบทด่าน ไม่มีร่าง', async () => {
+  const { queueRouteMode } = await import('./scheduleQueue.js');
+  const params = (q) => new URLSearchParams(q);
+  assert.deepEqual(queueRouteMode(params(''), { canAnswer: true }), { load: false, requests: true, gate: true, drafts: true });
+  assert.deepEqual(queueRouteMode(params(''), { canAnswer: false }), { load: false, requests: false, gate: true, drafts: true },
+    'ไม่มีสิทธิ์ตอบคำร้อง = ไม่เอาคำร้อง (UI visibility rule)');
+  assert.deepEqual(queueRouteMode(params('requests=0'), { canAnswer: true }), { load: false, requests: false, gate: true, drafts: true });
+  assert.deepEqual(queueRouteMode(params('view=load'), { canAnswer: true }), { load: true, requests: false, gate: false, drafts: false });
+  assert.deepEqual(queueRouteMode(null, {}), { load: false, requests: false, gate: true, drafts: true });
+
+  const route = code(QUEUE_ROUTE);
+  assert.match(route, /const visits = mode\.drafts \? loaded : loaded\.filter\(\(visit\) => !isDraftVisit\(visit\)\);/);
+  // ฮุกของหน้าใบขอโหมดภาระ ไม่ใช่ทั้งก้อน
+  const hook = readFileSync(new URL('./useCrewLoad.js', import.meta.url), 'utf8');
+  assert.match(hook, /apiFetch\("\/api\/service\/visits\/queue\?view=load"\)/);
+  assert.doesNotMatch(hook, /queue\?requests=0/);
 });

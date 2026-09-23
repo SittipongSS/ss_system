@@ -60,10 +60,17 @@ export default function CrewLoadPicker({
   labelledBy,
   /* ชื่อของผู้รับผิดชอบเดิมที่หลุดจากรายชื่อแล้ว (ย้ายฝ่าย/ปิดบัญชี) — ดูแถวค้างข้างล่าง */
   currentName = "",
+  /* ⭐ แถว "ยังไม่มอบหมาย" เป็นตัวเลือกได้ไหม (มติเจ้าของ 23/09 — โมดัลลงคิวคำร้องใช้ตัวเลือกนี้ด้วย)
+     · โมดัลนัด (ค่าตั้งต้น true) — นัดไม่มีเจ้าหน้าที่ได้ (เป็นร่าง รอมอบหมาย)
+     · โมดัลลงคิวคำร้อง (false) — เจ้าหน้าที่ **บังคับ** (`surveyScheduleGaps` ตัวเดียวกับ server)
+       ⇒ ปล่อยแถวนี้ไว้ = ให้เลือกคำตอบที่กดแล้วโดนตีกลับแน่นอน */
+  allowUnassigned = true,
 }) {
   const group = useId();
   const headId = useId();
-  const known = load?.state === "ok";
+  /* ยังไม่มีวันที่ = ยังไม่รู้ว่าจะดูภาระวันไหน — บอกให้เลือกวันก่อน ไม่ใช่ขึ้น "โหลดไม่ได้" */
+  const dated = !!dateIso;
+  const known = dated && load?.state === "ok";
   const byId = new Map((load?.people || []).map((person) => [person.id, person]));
 
   /* ทีมเอาจากผลภาระก่อน แล้วค่อยจากรายชื่อ — โหลดภาระไม่ได้ (people ว่าง) ชื่อทีมจะได้ไม่หายไปด้วย */
@@ -100,9 +107,9 @@ export default function CrewLoadPicker({
   return (
     <div className={styles.picker}>
       <div className={styles.head} id={headId}>
-        ภาระวันที่ {dayLabel(dateIso)} — ไม่นับร่าง
+        {dated ? <>ภาระวันที่ {dayLabel(dateIso)} — ไม่นับร่าง</> : "ภาระของแต่ละคน — เลือกวันก่อนจึงจะเห็นตัวเลข"}
       </div>
-      {!known && (
+      {dated && !known && (
         <p className={styles.unknown}>ยังโหลดภาระไม่ได้ — ตัวเลขว่างไม่ได้แปลว่าว่าง</p>
       )}
       {/* ป้ายคอลัมน์ครั้งเดียว ไม่ซ้ำทุกแถว · aria-hidden เพราะแต่ละตัวเลขมีหน่วยอ่านออกเสียงในตัว */}
@@ -112,19 +119,25 @@ export default function CrewLoadPicker({
       </div>
       {/* ⭐ radio จริงของเบราว์เซอร์ — ลูกศรขึ้นลงเลื่อนคน · Tab เข้าออกกลุ่มทีเดียว
           ได้ฟรีโดยไม่ต้องเขียนคีย์บอร์ดเอง (ปุ่มซ่อนตา แต่ยังอยู่ในลำดับโฟกัส) */}
-      <div className={styles.list} role="radiogroup" aria-labelledby={[labelledBy, headId].filter(Boolean).join(" ")}>
-        <label className={`${styles.row} ${styles.option}`} data-on={!value ? "1" : undefined}>
-          <input
-            type="radio" name={group} value="" className={styles.srOnly}
-            checked={!value} onChange={() => onChange?.("")}
-          />
-          <span className={styles.who}>
-            <span className={`${styles.name} ${styles.unassigned}`}>
-              ยังไม่มอบหมาย
-              {!value && <Check size={14} aria-hidden="true" className={styles.tick} />}
+      <div
+        className={styles.list} role="radiogroup"
+        aria-labelledby={[labelledBy, headId].filter(Boolean).join(" ")}
+        aria-required={allowUnassigned ? undefined : "true"}
+      >
+        {allowUnassigned && (
+          <label className={`${styles.row} ${styles.option}`} data-on={!value ? "1" : undefined}>
+            <input
+              type="radio" name={group} value="" className={styles.srOnly}
+              checked={!value} onChange={() => onChange?.("")}
+            />
+            <span className={styles.who}>
+              <span className={`${styles.name} ${styles.unassigned}`}>
+                ยังไม่มอบหมาย
+                {!value && <Check size={14} aria-hidden="true" className={styles.tick} />}
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
         {rows.map((row) => {
           const on = row.id === value;
           const meta = metaOf(row, known);

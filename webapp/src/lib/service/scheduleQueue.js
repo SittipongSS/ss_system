@@ -11,6 +11,7 @@
 //    ⇒ เทสต์ตรึงวันได้ และจอกับ API ใช้วันอ้างอิงเดียวกันได้ (`asOf` ของ response)
 import { ALL_TEAMS, NO_TEAM } from './crewTeams';
 import { overdueDays } from './myVisits';
+import { MAX_ASSETS_PER_DAY } from './visitLoad';
 import { gateNeedsOthers, gatePassed } from './visitGate';
 import { isClosedVisit, isDraftVisit, isLiveVisit, isOpenVisit } from './visitStatus';
 
@@ -35,8 +36,12 @@ export const QUEUE_RANGES = Object.freeze(['all', '7d', 'unassigned']);
 export const QUEUE_RANGE_LABELS = Object.freeze({ all: 'ทั้งหมด', '7d': '7 วัน', unassigned: 'ยังไม่มีเจ้าหน้าที่' });
 
 // ── กลุ่มย่อยของถัง "รอจัด" — ลำดับนี้คือลำดับบนจอ ─────────────────────────
-export const WAITING_GROUPS = Object.freeze(['ready', 'ts', 'others', 'far']);
+/* ⭐ `requests` = คำร้องประเมินพื้นที่ที่ยังไม่มีนัด (มติเจ้าของ 23/09) — ขึ้น **ก่อนทุกกลุ่ม**
+   เพราะเป็นงานที่ TS ต้องลงมือเองเท่านั้น (รับเรื่อง/ลงคิว) และไม่มีทางไปโผล่ที่อื่นบนหน้านี้
+   ⚠️ ไม่ใช่กลุ่มของร่าง — `waitingGroupOf` ไม่มีทางตอบ 'requests' (การ์ดคำร้องไม่มีนัด) */
+export const WAITING_GROUPS = Object.freeze(['requests', 'ready', 'ts', 'others', 'far']);
 export const WAITING_GROUP_LABELS = Object.freeze({
+  requests: 'คำร้องรอลงคิว',
   ready: 'พร้อมปล่อย',
   ts: 'ติดด่าน · ฝ่าย TS แก้ได้เอง',
   others: 'ติดด่าน · รอฝ่ายอื่น',
@@ -124,6 +129,26 @@ export function isStaleDraft(visit, win) {
   if (!isDraftVisit(visit)) return false;
   const date = dateOf(visit);
   return !!date && date < asWindow(win).todayIso;
+}
+
+/** โหมดของ `GET /api/service/visits/queue` — ส่วนไหนของก้อนที่ผู้เรียกต้องการจริง
+ *  · ค่าตั้งต้น   = ทั้งก้อน (หน้าจัดคิว): นัดทุกสถานะ · บริบทด่านของไซต์ที่มีร่าง · การ์ดคำร้อง (ถ้ามีสิทธิ์)
+ *  · requests=0  = ไม่เอาการ์ดคำร้อง
+ *  · view=load   = **ภาระอย่างเดียว** (ตัวเลือกเจ้าหน้าที่บนหน้าใบคำร้อง — `useCrewLoad`)
+ *                  ไม่เอาคำร้อง · ไม่โหลดบริบทด่าน · ไม่ส่งร่าง (ร่างไม่นับภาระ — `staffLoadOn`)
+ *  🐞 รีวิว 24/09: หน้าใบเคยขอ `requests=0` แล้วได้บริบทด่านเต็ม (โซน · รอบขาย · ใบสั่งขาย · งวด · สัญญา)
+ *     ของทุกไซต์ที่มีร่าง รวมร่างรอบบริการล่วงหน้า ~90 วัน ทุกครั้งที่เปิดโมดัล — แล้วทิ้งเกือบทั้งก้อน
+ *  @param searchParams URLSearchParams ของคำขอ (null = ค่าตั้งต้น)
+ *  @param canAnswer    ผู้ขอตอบคำร้องของ TS ได้ไหม (`canAnswerServiceRequests`) — ไม่มีสิทธิ์ = ไม่เอาคำร้องเสมอ */
+export function queueRouteMode(searchParams, { canAnswer = false } = {}) {
+  const get = (key) => (searchParams && typeof searchParams.get === 'function' ? searchParams.get(key) : null);
+  const load = get('view') === 'load';
+  return {
+    load,
+    requests: !!canAnswer && !load && get('requests') !== '0',
+    gate: !load,
+    drafts: !load,
+  };
 }
 
 /** กลุ่มย่อยของร่างในถัง "รอจัด" — 'ready' | 'ts' | 'others' | 'far' (นัดที่ไม่ใช่ร่าง = null)
@@ -226,6 +251,38 @@ export function staffLoadOn(visits, date, workload = {}) {
     for (const id of assistantsOf(visit)) rowOf(id).assisting += 1;
   }
   return map;
+}
+
+/** แถวของตัวเลือกเจ้าหน้าที่ (`CrewLoadPicker`) ของวันหนึ่ง — ภาระ + ทีม + หมายเหตุรายคน
+ *
+ *  ⭐ **สูตรเดียวของสองจอ** (มติเจ้าของ 23/09) — โมดัลนัดบนหน้าจัดคิว กับโมดัลลงคิวคำร้อง
+ *     (หน้าจัดคิวและหน้าคำร้อง) เลือกคนจากตัวเลขชุดเดียวกัน · เดิมสูตรนี้เขียนอยู่ในหน้าจัดคิว
+ *     ⇒ ก๊อปไปอีกหน้าเมื่อไร วันหนึ่งสองโมดัลบอกภาระของคนเดียวกันไม่เท่ากัน
+ *  @param visits      นัดที่นับภาระ (ตัวนี้กรอง `isLiveVisit` เองผ่าน `staffLoadOn`)
+ *  @param technicians รายชื่อที่จะโชว์ [{ id, name }] — ลำดับเดิม
+ *  @param crewByUser  Map/object userId → teamCode · teamNames Map/object teamCode → ชื่อทีม
+ *  ⚠️ คนที่ไม่อยู่ทีมไหน (NO_TEAM) = ทีมว่าง ไม่ใช่คำว่า "ไม่มีทีม" */
+export function crewLoadPeople({
+  visits = [], dateIso, workload = {}, technicians = [], crewByUser = new Map(), teamNames = new Map(),
+} = {}) {
+  const load = staffLoadOn(visits, dateIso, workload);
+  return (technicians || []).map((tech) => {
+    const row = load.get(tech.id) || { visits: 0, assets: 0, packs: 0, assisting: 0 };
+    const teamCode = pick(crewByUser, tech.id);
+    const notes = [];
+    if (row.assisting > 0) notes.push(`ไปช่วย ${row.assisting} นัด`);
+    if (row.assets > MAX_ASSETS_PER_DAY) notes.push(`เกินภาระ ${MAX_ASSETS_PER_DAY} จุด`);
+    return {
+      id: tech.id,
+      name: tech.name,
+      team: teamCode && teamCode !== NO_TEAM ? pick(teamNames, teamCode) || '' : '',
+      visits: row.visits,
+      assets: row.assets,
+      packs: row.packs,
+      assisting: row.assisting,
+      note: notes.join(' · '),
+    };
+  });
 }
 
 /** ใครว่างในวันนั้น — "วันนั้นว่าง 7 จาก 8 คน" บนแถวร่างที่ยังไม่มีเจ้าหน้าที่

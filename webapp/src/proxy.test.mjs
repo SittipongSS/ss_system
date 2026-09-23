@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
-import { RD_ROLES, can } from '@/lib/permissions';
+import { RD_ROLES, ROLES, can, canAnswerServiceRequests } from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -713,4 +713,19 @@ test('ไม่มีโค้ดไหนยังเรียกเส้น s
   };
   walk(fileURLToPath(new URL('./', import.meta.url)));
   assert.deepEqual(offenders, [], `ยังเรียกเส้นที่ถอดแล้ว:\n${offenders.join('\n')}`);
+});
+
+/* ⭐ คำร้องรอลงคิวบนหน้าจัดคิว (มติเจ้าของ 23/09) — ปุ่ม "รับเรื่อง" กับ "ลงคิวเข้าพื้นที่" บนการ์ดโชว์ให้คน
+   ที่ `canAnswerServiceRequests` (UI visibility rule) แล้วยิง `PATCH /api/sa/requests/[id]` ตรง ๆ
+   ⇒ ทุก role ที่เห็นปุ่มต้องผ่าน proxy ถึง handler · ของวันนี้ผ่านอยู่ (ts_planner · ts_manager · ts_audit ·
+   ts_senior · admin) — เทสต์นี้กันถอยหลัง: วันหนึ่งกฎ proxy ของเส้นคำร้องเปลี่ยน = ปุ่มโชว์แต่กดแล้ว 403
+   ⚠️ ผูกกับตัวตัดสินเดียวกับที่จอใช้โชว์ปุ่ม ไม่ใช่ลิสต์ role ที่พิมพ์ไว้ (เพิ่มตำแหน่งใหม่แล้วไม่ต้องจำมาแก้) */
+test('ทุก role ที่เห็นปุ่มรับเรื่อง/ลงคิวบนการ์ดคำร้อง ผ่าน proxy ถึง PATCH /api/sa/requests/[id]', () => {
+  const answerers = ROLES.filter((role) => canAnswerServiceRequests({ role, extraCaps: [] }));
+  for (const role of ['ts_planner', 'ts_manager', 'admin']) assert.ok(answerers.includes(role), `${role} ต้องตอบคำร้องของ TS ได้`);
+  assert.equal(answerers.includes('ts'), false, 'เจ้าหน้าที่หน้างานไม่ได้ปุ่ม');
+  for (const role of answerers) {
+    assert.equal(apiWriteAllowed('PATCH', '/api/sa/requests/DR-1', role, []), true, role);
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/api/sa/requests/DR-1', 'PATCH', true), false, `${role} lockedOut`);
+  }
 });

@@ -14,7 +14,7 @@ import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PersonSelect from "@/components/ui/PersonSelect";
-import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { usePeopleDirectoryState } from "@/lib/usePeopleDirectory";
 import { personFullName } from "@/lib/ui/personName";
 import { deptQueueHref } from "@/lib/requests/modules";
 import { requestAssignee } from "@/lib/requests/assign";
@@ -36,8 +36,6 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
-import TimeInput from "@/components/ui/TimeInput";
-import SearchableSelect from "@/components/ui/SearchableSelect";
 import { canAnswerRequestsFor, canBeServiceAssignee, canDoFieldWork, canEditService } from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
@@ -55,7 +53,7 @@ import {
 import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import {
-  canEditPdrRefManual, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
+  canEditPdrRefManual, normalizePdrRefNo, pdrRefManualError,
   pdrRefMode, pdrRefNoError,
 } from "@/lib/requests/pdrRefNo";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -69,7 +67,6 @@ import {
 import { assignBriefPerfumerError } from "@/lib/requests/briefPerfumer";
 import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
-import { dueIsStale } from "@/lib/requests/dueRound";
 import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
 import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
@@ -116,7 +113,11 @@ import Textarea from "@/components/ui/Textarea";
 import { requestDueCell } from "@/lib/requests/dueCell";
 import { apiFetch } from "@/lib/apiFetch";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
-import { holdsRequestSlot } from "@/lib/service/visitStatus";
+import { surveyQueueStep } from "@/lib/service/surveyQueue";
+/* ⭐ โมดัลลงคิว/แจ้งกำหนดส่ง + ข้อความกล่องรับเรื่อง — ตัวเดียวกับหน้าจัดคิว (มติเจ้าของ 23/09) */
+import CommitDueDialog from "@/components/requests/CommitDueDialog";
+import { commitDueLabels } from "@/lib/requests/commitDue";
+import { acknowledgeConfirmCopy } from "@/lib/requests/acknowledgeConfirm";
 
 const STATUS_TONE = {
   draft: "var(--text-3)",
@@ -189,7 +190,9 @@ export default function RequestDetailPage() {
   /* ⭐ **แจ้งกำหนดส่ง — ก้าวของตัวเอง** (มติผู้ใช้ 2026-08-19) · `null` = ปิดโมดัล
      ⚠️ ไม่ใช่ช่องในโมดัลรับเรื่องอีกแล้ว — รับเรื่องคือการตัดรอบ ส่วนวันที่รับปาก
      ฝ่ายกดทีหลังได้เมื่อรู้จริง (รอวัตถุดิบ · รอฝ่ายอื่น) */
-  const [commitDue, setCommitDue] = useState(null);
+  /* ⭐ ฟอร์มอยู่ใน `CommitDueDialog` (ตัวเดียวกับหน้าจัดคิว · มติเจ้าของ 23/09) — หน้านี้ถือแค่เปิด/ปิด
+     ⚠️ ค่าตั้งต้นของฟอร์มเกิดใหม่ทุกครั้งที่เปิด (`commitDueDefaults`) ไม่ค้างจากรอบก่อน */
+  const [dueDialogOpen, setDueDialogOpen] = useState(false);
   /* วันนี้ — จับใน effect ตามกฎ react-hooks/purity (ห้ามอ่านนาฬิการะหว่าง render)
      ⭐ ใช้ตัวเดียวสำหรับคอลัมน์ "ค้างมา" ของตารางสรุปทุกหัวข้อ (มติผู้ใช้ 2026-08-25)
      ⚠️ ส่งลงไปเป็น prop ไม่ให้ตารางอ่านเอง — สามตารางอ่านนาฬิกาคนละครั้งจะได้เลข
@@ -216,14 +219,19 @@ export default function RequestDetailPage() {
      (`requestHeaderPeople`) ซึ่งเป็นคนละเรื่องกันสิ้นเชิง
      ⚠️ `usePeopleDirectory` รวมคนที่ปิดบัญชีแล้วด้วย (ใบเก่าต้องอ่านชื่อออก) —
      ตัวเลือกในโมดัลจึงกรองเฉพาะคนที่ยังใช้งานอยู่ ไม่งั้นมอบงานให้คนที่ลาออกได้ */
-  const directory = usePeopleDirectory();
+  /* ⭐ ธงกำลังโหลด/พังส่งเข้าโมดัลลงคิว — ไม่งั้นทะเบียนช้าหรือพัง = โมดัลบอกว่า "ยังไม่มีบัญชีฝ่าย TS" (รีวิว 24/09) */
+  const { users: directory, loading: directoryLoading, error: directoryError } = usePeopleDirectoryState();
   // ใบนี้อยู่ที่ใคร — ผู้รับผิดชอบก่อน แล้วถอยไปคนที่กดรับเรื่อง (กฎเดียวกับคิว)
   const assignee = requestAssignee(req || {});
   const activePeople = useMemo(() => directory.filter((u) => !u.disabled), [directory]);
   /* คนที่ "ถูกมอบหมายให้เข้าไซต์" ได้ — ใช้ตัวกรองเดียวกับหน้าจัดคิวเจ้าหน้าที่และหน้าไซต์
      ⚠️ สองจอต้องเห็นรายชื่อชุดเดียวกัน ไม่งั้นคนที่เลือกได้ที่นี่จะหายไปจากตารางอีกที่
      ⭐ ไม่ยิง API เพิ่ม — ทะเบียนคนโหลดมาแล้วสำหรับโมดัลมอบหมาย */
-  const technicians = useMemo(() => activePeople.filter(canBeServiceAssignee), [activePeople]);
+  /* ⚠️ ตัวเลือกคน (`CrewLoadPicker`) เรียงตามลำดับที่ส่งให้ ไม่เรียงเอง ⇒ เรียงชื่อที่นี่
+     · ชื่อว่างถอยไปอีเมล/รหัส (ของเดิมของดรอปดาวน์) — แถวที่ไม่มีชื่อเลยคือแถวที่เลือกไม่ได้ */
+  const technicians = useMemo(() => activePeople.filter(canBeServiceAssignee)
+    .map((u) => ({ ...u, name: u.name || u.email || u.id }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), "th")), [activePeople]);
   // แก้ข้อมูลคำร้อง — ช่องต้องตรงกับ REQUEST_EDITABLE_FIELDS
   const [editDraft, setEditDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
@@ -442,10 +450,9 @@ export default function RequestDetailPage() {
      ⚠️ รายชื่อมาจากก้อนเดียวกับช่องผู้เซ็น PDR (`/api/pm/assignable-users`) — ไม่ยิงเพิ่ม */
   const canAssignPerfumer = canAssignBriefPerfumer(me, req);
   const perfumerPeople = signerPeople.filter((p) => p.role === "rd_perfumer");
-  /* ⭐ **วันที่ถืออยู่เป็นของรอบก่อน** (มติผู้ใช้ 2026-08-25) — เปลี่ยนคำบนปุ่ม/โมดัล
-     จาก "แจ้งกำหนดส่ง" เป็น "แจ้งวันส่งรอบแก้" · ตัวตัดสินอยู่ที่ `lib/requests/dueRound.js`
-     ตัวเดียวกับที่ราง คิว และด่านฝั่ง server ใช้ ⇒ ปุ่มกับ API เห็นตรงกันเสมอ */
-  const dueStale = dueIsStale(req, req.items);
+  /* ⭐ **วันที่ถืออยู่เป็นของรอบก่อน** (มติผู้ใช้ 2026-08-25) — คำบนปุ่ม/โมดัลเปลี่ยนจาก
+     "แจ้งกำหนดส่ง" เป็น "แจ้งวันส่งรอบแก้" · ตัดสินใน `commitDueLabels` (ถาม `dueIsStale`
+     ตัวเดียวกับที่ราง คิว และด่านฝั่ง server ใช้) ⇒ ปุ่มกับ API เห็นตรงกันเสมอ */
   /* ⭐ **ก้าว "แจ้งกำหนดส่ง" ของใบประเมินคือ "ลงคิว"** (แผน เฟส 2) — วัน เวลา เจ้าหน้าที่
      และนัดบนตารางเกิดพร้อมกัน ⇒ โมดัลเดียวกันแต่ถามครบสามอย่าง
      ⚠️ ธงมาจาก **ทะเบียนหัวข้อ** (`needs` มี `site`) ไม่ใช่ `kind === '...'` กลางหน้า
@@ -457,9 +464,13 @@ export default function RequestDetailPage() {
   /* 🐞 **"ไม่มีนัด" ต้องหมายถึงไม่มีนัดที่ยัง *มีชีวิต*** ไม่ใช่ "ไม่มีแถวนัดเลย" —
      ของเดิมเช็ค `!req.surveyVisit` ⇒ ใบที่เจ้าหน้าที่ไปแล้วเข้าไม่ได้ (`unable`) หรือนัดถูกยกเลิก
      จะไม่เหลือปุ่มลงคิวให้กดอีกเลยทั้งใบ ทั้งที่ฝั่ง API เปิดทางไว้แล้ว (ธง `requeue`)
-     ⚠️ ถามด้วยตัวเดียวกับ server และกับ index ของ mig 0316 (`holdsRequestSlot`) */
-  const needsRequeue = isScheduling && !!req.committedDueDate
-    && !holdsRequestSlot(req.surveyVisit);
+     ⚠️ ถามด้วยตัวเดียวกับ server และกับ index ของ mig 0316 (`holdsRequestSlot`)
+     🐞 **ช่างไปถึงไซต์แล้ว (`done`/`partial`) ไม่ใช่ "ไม่มีนัด"** — ของเดิมถามแค่ "ไม่มีนัดที่ยังมีชีวิต"
+        ⇒ ใบที่เข้าพื้นที่เสร็จแล้วขึ้นปุ่ม "ลงคิวใหม่" พร้อมคำใบ้ "นัดยังไม่ขึ้นตาราง" ซึ่งผิดทั้งสองท่อน
+        (งานเดินหน้าไปรอผลแล้ว — surveyStepBack.js) · ใบที่ผู้ขอปิดแล้วก็เคยได้ปุ่มนี้
+        ⇒ ถาม `surveyQueueStep` **ตัวเดียวกับการ์ดบนหน้าจัดคิว** (มติเจ้าของ 23/09) — สองจอตอบตรงกันเสมอ */
+  const needsRequeue = surveyQueueStep(req) === "requeue";
+  const dueDialogLabels = commitDueLabels(req, { requeue: needsRequeue });
   const dueLabels = requestKindMeta(req.kind)?.form || {};
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
@@ -728,38 +739,10 @@ export default function RequestDetailPage() {
     }
     /* ⭐ **รับเรื่องต้องมีโมดัลบอกผลลัพธ์** — กติกาเดียวกับทุกการอนุมัติในระบบ ·
        ยิ่งจำเป็นหลังแยกก้าว: คนกดต้องรู้ว่ากดแล้วใบ **ยังไม่มีวันกำหนดส่ง** และ
-       ต้องกลับมากด "แจ้งกำหนดส่ง" อีกที ไม่งั้นจะเข้าใจว่าจบแล้ว */
-    if (confirm.kind === "acknowledge") {
-      return {
-        title: "รับเรื่อง",
-        description: req.docNo || "",
-        detail: `ใบนี้จะเข้าคิวของ ${req.dept} ทันที และนับเป็นงานที่ ${req.dept} รับไว้แล้ว`
-          /* ⚠️ ชื่อปุ่มขั้นถัดไป **ต่างตามหัวข้อ** — ใบประเมินไม่มีปุ่มชื่อ "แจ้งกำหนดส่ง"
-             บนจอเลย (ปุ่มจริงคือ "ลงคิวเข้าพื้นที่") ⇒ สั่งให้ไปกดปุ่มที่ไม่มีอยู่ */
-          + (isScheduling
-            ? " · ยังไม่ต้องระบุวันตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
-              + " แล้วกด \"ลงคิวเข้าพื้นที่\" เมื่อรู้วัน เวลา และเจ้าหน้าที่ที่จะไป"
-            : " · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
-              + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง")
-          /* ⭐ บอกด้วยว่ากดแล้ว **ได้เลขที่เอกสารหรือยัง** — สองโหมดคนละเรื่องกันเลย
-             (mig 0271 · 0272) · เลขอัตโนมัติใช้วันที่ของวินาทีที่กดและแก้ทีหลังไม่ได้
-             ส่วนช่วงกรอกเองต้องบอกให้ชัดว่ายังต้องไปกดอีกปุ่ม ไม่งั้นคนกดจะเข้าใจว่า
-             จบแล้ว แล้วเอกสารออกไปโดยไม่มีเลข */
-          + (!requestUsesPdr(req) ? ""
-            : issuesPdrRefNoOnAcknowledge(req)
-              ? " · ระบบจะออกเลขที่เอกสารของ PDR (วันที่วันนี้) ให้ในจังหวะเดียวกัน"
-              : " · เดือนนี้ยังไม่ออกเลขให้เอง — รับเรื่องแล้วกด \"กรอกเลขที่เอกสาร\" ใส่เลขจากกระดาษ")
-          /* ⭐ พัฒนาสูตร NPD (ม-144) — บอกล่วงหน้าว่ากดแล้ว **ได้รายการส่งสูตรกี่รายการ** (ตัววางแผนตัวเดียว
-             กับที่ server ใช้) · สเปรย์กลิ่นเดียวกันหลายขนาดรวมเป็นสูตรเดียว ต้องไม่ทำให้คนกดงงว่าหายไปไหน */
-          + (requestUsesDeliveredRows(req) && requestPdrRowsPickScent(req)
-            ? (() => {
-              const n = planNpdWorkRows({ targets: req.targets, items: req.items }).insert.length;
-              return n ? ` · ระบบจะแตกสินค้าในแบบฟอร์ม PDR เป็นรายการส่งสูตร ${n} รายการ (หนึ่งรายการต่อคู่หมวด × กลิ่น)` : "";
-            })()
-            : ""),
-        confirmLabel: "รับเรื่อง",
-      };
-    }
+       ต้องกลับมากด "แจ้งกำหนดส่ง" อีกที ไม่งั้นจะเข้าใจว่าจบแล้ว
+       ⭐ ข้อความย้ายไป `lib/requests/acknowledgeConfirm.js` (มติเจ้าของ 23/09) — การ์ดคำร้องบน
+          หน้าจัดคิวกดรับเรื่องได้ด้วย ⇒ สองปุ่มต้องบอกผลชุดเดียวกัน (ตัวอักษรเดิม · เทสต์ล็อกไว้) */
+    if (confirm.kind === "acknowledge") return acknowledgeConfirmCopy(req);
     /* ⭐ ออกเลขที่เอกสารย้อนหลัง — ใบที่รับเรื่องไปก่อน mig 0271 ยังไม่มีเลข
        ⚠️ ต้องบอกให้ชัดว่า **เลขใช้วันที่รับเรื่องของใบ ไม่ใช่วันนี้** และแก้ไม่ได้
        (เลขที่พิมพ์ลงกระดาษไปแล้วต้องตามกลับมาที่ใบเดิมได้เสมอ) */
@@ -1047,33 +1030,14 @@ export default function RequestDetailPage() {
       : owner && (requestAwaitingDue(req) || needsRequeue)
         ? {
           id: "commit-due",
-          label: needsRequeue
-            ? "ลงคิวใหม่"
-            : (isScheduling
-              ? (dueStale ? "ลงคิวรอบใหม่" : "ลงคิวเข้าพื้นที่")
-              : (dueStale ? "แจ้งวันส่งรอบแก้" : "แจ้งกำหนดส่ง")),
-          hint: needsRequeue
-            ? "ใบมีวันแล้วแต่นัดยังไม่ขึ้นตารางเจ้าหน้าที่"
-            : (dueStale ? `รอบก่อนแจ้งไว้ ${fmtDate(req.committedDueDate)}` : undefined),
+          /* ป้าย/คำใบ้มาจาก `commitDueLabels` ตัวเดียวกับปุ่มบนการ์ดหน้าจัดคิว (ลงคิวใหม่ · รอบแก้ · หัวข้อ) */
+          label: dueDialogLabels.action,
+          hint: dueDialogLabels.hint,
           kind: "approve",
           icon: CalendarClock,
-          /* ⭐ ตั้งต้นด้วย **วันที่ผู้ขอต้องการ** สำหรับใบประเมิน — คนลงคิวส่วนใหญ่
-             ตอบรับวันนั้นอยู่แล้ว · หัวข้ออื่นตั้งต้นวันนี้เหมือนเดิม (ฝ่ายเป็นคนกำหนด) */
-          onClick: () => setCommitDue({
-            // ตอนกู้ ตั้งต้นด้วย **ของเดิมบนใบ** — คนกดจะได้ยืนยันวันเดิมได้ทันที
-            date: needsRequeue
-              ? req.committedDueDate
-              : ((isScheduling && req.requestedDueDate) || businessDate()),
-            time: needsRequeue
-              ? String(req.committedDueTime || "").slice(0, 5)
-              : (isScheduling ? (req.requestedDueTime || "") : ""),
-            /* วันส่งผล (mig 0368) — ตั้งต้นด้วยของเดิมบนใบ แล้วถอยไปวันที่ผู้ขอต้องการ
-               ⚠️ ไม่ตั้งต้นเป็นวันนัด — สองวันนี้เท่ากันได้ก็จริง แต่ค่าเริ่มต้นที่เท่ากัน
-                  จะทำให้คนกดผ่านไปโดยไม่ได้คิด ซึ่งคือปัญหาที่ช่องนี้เกิดมาแก้ */
-            resultDate: req.committedResultDate || req.requestedResultDate || "",
-            assigneeId: req.assigneeId || "",
-            reason: "",
-          }),
+          /* ⭐ ค่าตั้งต้น (วันที่ผู้ขอต้องการ · ของเดิมบนใบตอนกู้ · วันส่งผล) เกิดในโมดัลกลาง
+             (`commitDueDefaults`) — หน้านี้แค่เปิด */
+          onClick: () => setDueDialogOpen(true),
         }
       /* ⚠️ **ปุ่ม "ส่งงาน" ไม่อยู่บน Control Panel แล้ว** (มติผู้ใช้ 2026-08-18) —
          ย้ายไปอยู่ **ในแถวของบรีฟ** ที่ตารางสรุปทั้งใบ (ดู `openDelivery` ข้างล่าง)
@@ -2083,117 +2047,24 @@ export default function RequestDetailPage() {
 
       {/* ⭐ **แจ้งกำหนดส่ง — ก้าวที่สองของฝ่ายผู้รับ** (มติผู้ใช้ 2026-08-19)
           ⚠️ ของเดิมโมดัลนี้คือ "รับเรื่อง — ระบุวันกำหนดส่ง" ซึ่งมัดสองก้าวไว้ด้วยกัน
-          ⇒ ฝ่ายที่ยังตอบวันไม่ได้ต้องเดาวันไปก่อน หรือไม่ก็ไม่กดรับเลย */}
-      <Modal
-        open={commitDue !== null} onClose={() => setCommitDue(null)} size="sm" dismissible={!saving}
-        title={isScheduling
-          ? (dueStale ? "ลงคิวรอบใหม่" : "ลงคิวเข้าพื้นที่")
-          : (dueStale ? "แจ้งวันส่งของรอบแก้" : "แจ้งกำหนดส่ง")}
-      >
-        {commitDue && (
-          <>
-            <div className="form-group">
-              <label htmlFor="commit-due">{dueLabels.committedDueLabel || "วันกำหนดส่ง"}</label>
-              <DateInput
-                id="commit-due" value={commitDue.date} disabled={saving}
-                onChange={(v) => setCommitDue({ ...commitDue, date: v })}
-              />
-              {/* วันที่ผู้ขอต้องการเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง และ
-                  เป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง — คนละช่อง คนละเจ้าของ */}
-              {/* ⚠️ รอบแก้ต้องเห็นวันของรอบก่อน — ไม่งั้นคนกรอกไม่รู้ว่ากำลังแทนที่อะไร */}
-              <small className={styles.hint}>
-                เป็นวันที่ {req.dept} แจ้ง และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
-                {dueStale ? ` · รอบก่อนแจ้งไว้ ${fmtDate(req.committedDueDate)}` : ""}
-                {req.requestedDueDate ? ` · ผู้ขอต้องการรับงาน ${fmtDate(req.requestedDueDate)}` : ""}
-              </small>
-            </div>
-            {/* ── ลงคิว: เวลา + เจ้าหน้าที่ (แผน เฟส 2) ────────────────────────────
-                ⭐ **สามอย่างในจังหวะเดียว** — กดปุ่มเดียวแล้วใบได้วัน เจ้าหน้าที่ได้นัดบนตาราง
-                ⚠️ เจ้าหน้าที่บังคับ · เวลาไม่บังคับ ("ไปทั้งวัน" เป็นคำตอบที่ถูกของงานจริง)
-                   — ด่านเดียวกับ `surveyScheduleError` ฝั่ง server */}
-            {isScheduling && (
-              <>
-                <div className="form-group">
-                  <span className={styles.hint}>เวลานัด (ไม่บังคับ)</span>
-                  <TimeInput
-                    value={commitDue.time || ""} disabled={saving}
-                    ariaLabel="เวลานัดเข้าพื้นที่"
-                    onChange={(v) => setCommitDue({ ...commitDue, time: v })}
-                  />
-                  <small className={styles.hint}>
-                    เว้นว่าง = ไปทั้งวัน
-                    {req.requestedDueTime ? ` · ผู้ขอต้องการช่วง ${req.requestedDueTime}` : ""}
-                  </small>
-                </div>
-                <div className="form-group">
-                  <span className={styles.hint}>เจ้าหน้าที่ผู้รับผิดชอบ *</span>
-                  <SearchableSelect
-                    value={commitDue.assigneeId || ""}
-                    onChange={(value) => setCommitDue({ ...commitDue, assigneeId: value })}
-                    options={technicians.map((t) => ({ value: t.id, label: t.name || t.email || t.id }))}
-                    placeholder="เลือกเจ้าหน้าที่บริการ"
-                    ariaLabel="เจ้าหน้าที่ผู้รับผิดชอบ"
-                    emptyText="ยังไม่มีบัญชีที่รับงานเข้าไซต์ได้ — เปิดบัญชีฝ่าย TS หรือใส่ทีม SV ก่อน"
-                  />
-                </div>
-                {/* ⭐ **วันส่งผล — คนละวันกับวันนัด** (มติผู้ใช้ 2026-09-21 · mig 0368)
-                    ⚠️ **บังคับ** — ฝ่ายขายที่รอเสนอราคาถามคำถามเดียวคือ "ได้ตัวเลขวันไหน"
-                       ซึ่งวันนัดเข้าพื้นที่ตอบไม่ได้ · ด่านจริงคือ `surveyScheduleError`
-                       ตัวเดียวกับ server */}
-                <div className="form-group">
-                  <label htmlFor="commit-result">
-                    {dueLabels.committedResultLabel || "วันที่จะส่งผล"}
-                  </label>
-                  <DateInput
-                    id="commit-result" value={commitDue.resultDate || ""} disabled={saving}
-                    onChange={(v) => setCommitDue({ ...commitDue, resultDate: v })}
-                  />
-                  <small className={styles.hint}>
-                    ต้องไม่มาก่อนวันนัดเข้าพื้นที่
-                    {req.requestedResultDate ? ` · ผู้ขอต้องการผลวันที่ ${fmtDate(req.requestedResultDate)}` : ""}
-                  </small>
-                </div>
-              </>
-            )}
-
-            <div className="form-group">
-              <label htmlFor="commit-why">หมายเหตุ (ไม่บังคับ)</label>
-              <Textarea
-                id="commit-why" rows={2} maxLength={500}
-                value={commitDue.reason} disabled={saving}
-                placeholder="เช่น รอวัตถุดิบเข้าวันที่ 25 — ส่งได้หลังจากนั้น"
-                onChange={(e) => setCommitDue({ ...commitDue, reason: e.target.value })}
-              />
-            </div>
-            <div className={`action-bar ${styles.modalActions}`}>
-              <Button variant="quiet" disabled={saving} onClick={() => setCommitDue(null)}>ยกเลิก</Button>
-              <Button
-                tone="primary"
-                disabled={saving || !commitDue.date
-                  || (isScheduling && (!commitDue.assigneeId || !commitDue.resultDate))}
-                onClick={() => call("", {
-                  method: "PATCH",
-                  body: JSON.stringify({
-                    action: "commit-due",
-                    committedDueDate: commitDue.date,
-                    reason: commitDue.reason,
-                    ...(isScheduling ? {
-                      committedDueTime: commitDue.time || null,
-                      // วันส่งผล (mig 0368) — ด่านฝั่ง server เป็นคนตรวจลำดับวัน
-                      committedResultDate: commitDue.resultDate || null,
-                      assigneeId: commitDue.assigneeId,
-                      assigneeName: technicians.find((t) => t.id === commitDue.assigneeId)?.name || null,
-                    } : {}),
-                  }),
-                }, isScheduling ? "ลงคิวแล้ว — นัดขึ้นตารางเจ้าหน้าที่เรียบร้อย" : "แจ้งกำหนดส่งแล้ว")
-                  .then((ok) => { if (ok) setCommitDue(null); })}
-              >
-                {isScheduling ? "ลงคิว" : "แจ้งกำหนดส่ง"}
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
+          ⇒ ฝ่ายที่ยังตอบวันไม่ได้ต้องเดาวันไปก่อน หรือไม่ก็ไม่กดรับเลย
+          ⭐ **โมดัลกลางตัวเดียวกับหน้าจัดคิว** (มติเจ้าของ 23/09 — TS ลงคิวคำร้องได้จากหน้าจัดคิวด้วย)
+             ก้อนที่ส่งประกอบจาก `commitDuePayload` ตัวเดียว · ตัวเลือกเจ้าหน้าที่เห็นภาระของวันนั้น
+             (หน้านี้ไม่ส่งภาระ ⇒ โมดัลโหลดเองด้วยสูตรเดียวกับหน้าจัดคิว) */}
+      <CommitDueDialog
+        open={dueDialogOpen}
+        request={req}
+        technicians={technicians}
+        techniciansLoading={!technicians.length && directoryLoading}
+        techniciansError={!technicians.length && directoryError}
+        today={today}
+        busy={saving}
+        onClose={() => setDueDialogOpen(false)}
+        onSubmit={(payload) => call("", {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        }, dueDialogLabels.okMsg).then((ok) => { if (ok) setDueDialogOpen(false); })}
+      />
 
       {/* ⭐ เลื่อนวันกำหนดส่ง — **ไม่แก้เงียบ ๆ** วันนี้คือคำสัญญาที่ให้ฝ่ายขายไปแล้ว
           และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ลงเธรดว่าเลื่อนจากวันไหนเป็นวันไหน */}
