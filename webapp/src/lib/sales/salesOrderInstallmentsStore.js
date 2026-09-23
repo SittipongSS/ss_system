@@ -7,6 +7,8 @@ import {
   buildInstallmentsForOrder, installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen,
 } from '@/lib/sales/salesOrderPayments';
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
+import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
+import { INSTALLMENT_REPLAN_SCHEMA_MISSING } from '@/lib/sales/installmentReplan';
 
 const TABLE = 'sales_order_installments';
 
@@ -304,4 +306,36 @@ export async function loadInstallment(supabase, id) {
   const { data, error } = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
+}
+
+/**
+ * ปรับแผนงวดของใบที่อนุมัติแล้ว (PR2 · mig 0377 · แผน so-payment-unlock-replan · มติ D1) — ทางเขียนทางเดียว
+ *
+ * ⭐ RPC `replan_sales_order_installments` ตรวจทุกด่านในทรานแซกชันเดียว (สิทธิ์ · สถานะใบ · บัญชียังไม่ปิด · เหตุผล ·
+ *   p_expected ครบทุกแถว · แถวล็อกไม่เปลี่ยน · Σ = ยอดใบ) แล้วเขียนเฉพาะตารางงวด — **ไม่แตะตัวใบ** ⇒ Actual ไม่ขยับ
+ * 🛑 ห้ามถอยไปเขียนงวดทีละแถวเองเมื่อ RPC ไม่มี — ข้ามด่านทั้งชุด · ไม่มี = 503 ให้ไปรัน 0377
+ * ⚠️ supabase ไม่ throw ⇒ อ่าน `error` เอง · รหัสของ RPC แปลเป็นไทยผ่าน `documentWorkflowError` (ตารางกลาง)
+ * @param rows      ชุดสุดท้ายทั้งใบจาก `buildReplanRows().rows` (บาท · เลขงวด · สัดส่วน คำนวณแล้ว)
+ * @param expected  `[{ id, updatedAt }]` ของทุกแถวที่ตาเห็นตอนเปิดตัวแก้ (สตริงจาก API ห้ามแปลงรูปเวลา)
+ * @returns `{ before, after }` (แถวทั้งใบก่อน/หลัง สำหรับ audit) หรือ `{ error, status }`
+ */
+export async function replanInstallments(supabase, { orderId, rows, expected, reason, user }) {
+  const { data, error } = await supabase.rpc('replan_sales_order_installments', {
+    p_order_id: orderId,
+    p_rows: rows,
+    p_expected: expected,
+    p_reason: reason,
+    p_actor_id: user?.id ?? null,
+    p_actor_name: user?.name || user?.email || null,
+    p_actor_role: user?.role ?? null,
+  });
+  if (error) {
+    if (error.code === 'PGRST202') return { error: INSTALLMENT_REPLAN_SCHEMA_MISSING, status: 503 };
+    const mapped = documentWorkflowError(error, { context: `installment replan ${orderId}` });
+    return { error: mapped.message, status: mapped.status };
+  }
+  return {
+    before: Array.isArray(data?.before) ? data.before : [],
+    after: Array.isArray(data?.after) ? data.after : [],
+  };
 }

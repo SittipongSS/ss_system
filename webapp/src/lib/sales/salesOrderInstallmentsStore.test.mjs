@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  INSTALLMENT_MOVE_SCHEMA_MISSING, ensureInstallments, freezeInstallments, installmentMoveColumnError, updateInstallment,
+  INSTALLMENT_MOVE_SCHEMA_MISSING, ensureInstallments, freezeInstallments, installmentMoveColumnError, replanInstallments,
+  updateInstallment,
 } from './salesOrderInstallmentsStore.js';
+import { INSTALLMENT_REPLAN_SCHEMA_MISSING } from './installmentReplan.js';
 
 /* สัญญาที่ "งวดเกิดพร้อมใบ" (มติผู้ใช้ 2026-08-19) พิงอยู่ — POST ของการออกใบสั่งขาย
    เรียก `ensureInstallments` โดย **ไม่ส่ง `frozenAt`** ⇒ ต้องได้งวดร่างล้วนเสมอ
@@ -519,4 +521,64 @@ test('installmentMoveColumnError: มีคอลัมน์ = null · ไม�
   const why = await installmentMoveColumnError(down);
   assert.match(why, /connection reset/);
   assert.doesNotMatch(why, /0376/, 'เน็ตสะดุดห้ามโทษ migration — คนจะไปรันซ้ำผิดเรื่อง');
+});
+
+/* ── PR2 · ปรับแผนงวดหลังอนุมัติ (mig 0377) ──────────────────────────────────────────────────────────────
+   ⭐ ทางเขียนทางเดียวคือ RPC replan_sales_order_installments — store ห้ามถอยไปเขียนงวดทีละแถวเอง
+     (ข้ามด่าน Σ = ยอดใบ · แถวล็อก · ข้อมูลเก่า ที่ RPC ตรวจในทรานแซกชันเดียว)
+   ⚠️ supabase ไม่ throw — ตัวนี้ต้องอ่าน `error` เอง แล้วคืนข้อความไทย+สถานะให้ route ตอบ */
+const rpcSupabase = (result) => {
+  const calls = [];
+  return {
+    calls,
+    rpc: async (fn, args) => { calls.push([fn, args]); return result; },
+    from: () => { throw new Error('ห้ามเขียนตารางงวดตรง — ต้องผ่าน RPC'); },
+  };
+};
+const REPLAN_ARGS = {
+  orderId: 'SOR-1',
+  rows: [{ id: 'A', seq: 1, label: 'งวดที่ 1', percent: 100, amount: 1000, dueDate: null, coversFrom: null, coversTo: null, note: null }],
+  expected: [{ id: 'A', updatedAt: '2026-09-23T03:00:00.123456+00:00' }],
+  reason: 'ลูกค้าขอรวมเป็นงวดเดียว',
+  user: { id: 'U-SUP', name: 'หัวหน้า', role: 'ae_supervisor' },
+};
+
+test('replanInstallments: เรียก RPC 0377 ครั้งเดียวด้วยชุดสุดท้ายทั้งใบ + expected + ผู้กด · คืน before/after', async () => {
+  const before = [{ id: 'A', amount: 500 }, { id: 'B', amount: 500 }];
+  const after = [{ id: 'A', amount: 1000 }];
+  const supabase = rpcSupabase({ data: { before, after, reason: REPLAN_ARGS.reason }, error: null });
+  const out = await replanInstallments(supabase, REPLAN_ARGS);
+  assert.deepEqual(out, { before, after });
+  assert.deepEqual(supabase.calls, [['replan_sales_order_installments', {
+    p_order_id: 'SOR-1', p_rows: REPLAN_ARGS.rows, p_expected: REPLAN_ARGS.expected, p_reason: REPLAN_ARGS.reason,
+    p_actor_id: 'U-SUP', p_actor_name: 'หัวหน้า', p_actor_role: 'ae_supervisor',
+  }]]);
+});
+
+test('replanInstallments: ฐานยังไม่มี RPC (PGRST202) = 503 "ยังไม่ได้รัน 0377" · รหัสของ RPC แปลเป็นไทยผ่านตารางกลาง', async () => {
+  const missing = await replanInstallments(rpcSupabase({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.replan_sales_order_installments' } }), REPLAN_ARGS);
+  assert.deepEqual(missing, { error: INSTALLMENT_REPLAN_SCHEMA_MISSING, status: 503 });
+  assert.match(INSTALLMENT_REPLAN_SCHEMA_MISSING, /0377/);
+
+  const stale = await replanInstallments(rpcSupabase({ data: null, error: { code: 'P0001', message: 'workflow_stale' } }), REPLAN_ARGS);
+  assert.equal(stale.status, 409);
+  assert.match(stale.error, /โหลดใหม่/);
+  const locked = await replanInstallments(rpcSupabase({ data: null, error: { code: 'P0001', message: 'installment_replan_locked_changed' } }), REPLAN_ARGS);
+  assert.equal(locked.status, 409);
+  const closed = await replanInstallments(rpcSupabase({ data: null, error: { code: 'P0001', message: 'installment_replan_finance_closed' } }), REPLAN_ARGS);
+  assert.deepEqual(closed, { error: 'บัญชีปิดใบนี้แล้ว — ปรับแผนงวดไม่ได้', status: 409 });
+  const sum = await replanInstallments(rpcSupabase({ data: null, error: { code: 'P0001', message: 'installment_replan_sum_mismatch' } }), REPLAN_ARGS);
+  assert.equal(sum.status, 400);
+});
+
+test('replanInstallments: error ที่ไม่รู้จัก = ข้อความกลาง 500 (ไม่ส่งข้อความดิบของ Postgres ออกหน้าเว็บ)', async () => {
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const out = await replanInstallments(rpcSupabase({ data: null, error: { code: 'XX000', message: 'relation "x" does not exist' } }), REPLAN_ARGS);
+    assert.equal(out.status, 500);
+    assert.doesNotMatch(out.error, /relation/);
+  } finally {
+    console.error = original;
+  }
 });

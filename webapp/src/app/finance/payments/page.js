@@ -50,6 +50,7 @@ import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConf
 import TaxInvoiceDialog from "@/components/salesPlanning/TaxInvoiceDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
+import { REPLANNED_BADGE, REPLANNED_BADGE_TITLE } from "@/lib/sales/installmentReplan";
 /* ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ตัดสินด้วยตัวกลางเท่านั้น (literal ของ origin มีบ้านเดียว) */
 import { isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalOrders";
 import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
@@ -319,6 +320,9 @@ export default function FinancePaymentsPage() {
         <td className="num mono">
           {group.paidCount}/{group.count}
           <span className="cell-sub">{group.count === 1 ? "ชำระครั้งเดียว" : `แบ่ง ${group.count} งวด`}</span>
+          {/* ⭐ งวดจริงต่างจากแผนของ QT (ปรับแผนหลังอนุมัติ · 0377 · มติ D5) — ฉบับพิมพ์ SO ที่ลูกค้าถือยังแสดงแผน QT
+              ⇒ บัญชีต้องรู้ก่อนโทรตามเงินว่ายอดต่องวดบนกระดาษไม่ใช่ยอดในทะเบียน · ค่าระดับใบประทับจากชุดก่อนกรอง */}
+          {group.replanned ? <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} /> : null}
         </td>
         {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
             ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}

@@ -1,8 +1,11 @@
 "use client";
 import { Fragment, useState } from "react";
-import { CalendarClock, FileText, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
+import { CalendarClock, CalendarRange, FileText, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
+import GatedAction from "@/components/ui/GatedAction";
+import Textarea from "@/components/ui/Textarea";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import PendingFiles from "@/components/ui/PendingFiles";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -17,6 +20,13 @@ import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import InstallmentConfirmDialog, { installmentConfirmPrompt } from "./InstallmentConfirmDialog";
 import TaxInvoiceDialog from "./TaxInvoiceDialog";
+import QuotationInstallments from "./QuotationInstallments";
+import { paymentPlanEditPrompt } from "@/lib/approvalPrompt";
+import {
+  REPLANNED_BADGE, REPLANNED_BADGE_TITLE, REPLAN_MAX_REASON, REPLAN_STALE_MESSAGE, buildReplanRows,
+  installmentReplanBlocker, installmentsReplanned, replanDraftFrom, replanExpected, replanPromptFacts,
+  replanReasonError, replanRequestRows, replanStale,
+} from "@/lib/sales/installmentReplan";
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
@@ -44,7 +54,7 @@ import styles from "./SalesOrderPaymentPanel.module.css";
    ⚠️ ยอด Actual ไม่เกี่ยวกับการ์ดนี้ — SA ได้ยอดเต็ม 100% ตั้งแต่ใบอนุมัติ
    ⚠️ ยอด "เก็บแล้ว" นับเฉพาะที่บัญชีคอนเฟิร์ม — `reported` ไม่นับ */
 export default function SalesOrderPaymentPanel({
-  order, installments, user, todayIso, canStart, busy, onStart, onAction,
+  order, installments, user, todayIso, canStart, busy, onStart, onAction, onReplan,
   error = "", onClearError,
 }) {
   const [reportFor, setReportFor] = useState(null);
@@ -60,6 +70,9 @@ export default function SalesOrderPaymentPanel({
      ท่าเดียวกับตารางไทม์ไลน์ของดีล (`DealTimelineTable`: drafts → saveDrafts) */
   const [coverDrafts, setCoverDrafts] = useState({});
   const [savingCover, setSavingCover] = useState(false);
+  /* ⭐ ตัวปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377) — `base` = งวดที่ตาเห็นตอนเปิด (ตัวล็อกข้อมูลเก่า = expected ของ RPC)
+     · `draft` = แถวเปิดในตัวแก้ · `unit` = บาท/% · `confirming` = โมดัลยืนยันเปิดอยู่ (กัน Escape ปิดสองชั้น) */
+  const [replan, setReplan] = useState(null);
 
   /* ⭐ **ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374)** — งวดมาจากฟอร์มคีย์ใบทั้งชุด (งวดยกมา + ที่ยังต้องเก็บ)
      ไม่มีใบเสนอราคาให้คำนวณแผน ⇒ ไม่มี preview · ไม่มี "แผนเปลี่ยน" · ไม่มีปุ่มเริ่มติดตาม
@@ -153,6 +166,62 @@ export default function SalesOrderPaymentPanel({
     ...options, rows, orderTotal: order?.totalAmount, serviceRounds: hasServiceRounds,
     orderLock: orderLock || pipelineInstallmentLock(order, action), historical, contractEnd,
   });
+  /* ── ปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D1/D5) ──────────
+     ⭐ ปุ่มกับ route ถามด่านตัวเดียวกัน (`installmentReplanBlocker`) — ไม่ใช่ AE Sup/admin · ใบย้อนหลัง · ใบที่ไม่ใช่
+       approved = ไม่มีปุ่ม · บัญชีปิดใบ/ยังไม่มีงวด/ทุกงวดล็อก = ปุ่มอยู่ กดแล้วบอกเหตุ (GatedAction)
+     ⭐ พรีวิว/ยอดวิ่ง/ข้อผิดพลาดมาจาก `buildReplanRows` ตัวเดียวกับที่ route ใช้สร้างชุดสุดท้าย ⇒ จอกับ API ตัดสินคำเดียวกัน
+     ⭐ ป้าย "ปรับแผนหลังอนุมัติ" (D5): งวดจริงต่างจากแผนของ QT — ฉบับพิมพ์ยังแสดงแผน QT จึงต้องเห็นว่าไม่ตรงกัน
+       ⚠️ เฉพาะชุดที่ตรึงยอดครบ (งวดร่างเดินตาม QT สด ๆ อยู่แล้ว) · ใบย้อนหลังไม่มี QT */
+  const replanGate = installmentReplanBlocker(order, saved, user);
+  const replanned = !historical && saved.length > 0 && saved.every((r) => r.frozenAt)
+    && installmentsReplanned(saved, order?.quotation?.paymentPlan, order?.totalAmount);
+  const replanBuild = replan ? buildReplanRows(order, replan.base, replan.draft, {
+    unit: replan.unit, serviceRounds: hasServiceRounds, requestById,
+  }) : null;
+  /* หลัง 409 หน้าโหลดงวดใหม่มา — แผนที่แก้ค้างอยู่อิง `base` เดิม ⇒ บอกตรง ๆ และให้เริ่มใหม่จากงวดล่าสุด
+     (ห้ามแอบเปลี่ยน expected เป็นของใหม่ใต้มือคนกด — เท่ากับยืนยันแผนที่ตัดสินจากข้อมูลเก่า) */
+  const replanBaseStale = replan ? replanStale(saved, replanExpected(replan.base)) : false;
+  const replanReasonProblem = replan ? replanReasonError(replan.reason) : null;
+  const openReplan = () => {
+    onClearError?.();
+    setReplan({ base: saved, draft: replanDraftFrom(saved, { requestById }), unit: "amount", reason: "", confirming: false });
+  };
+  const resetReplan = () => {
+    onClearError?.();
+    setReplan((current) => (current
+      ? { ...current, base: saved, draft: replanDraftFrom(saved, { requestById }), unit: "amount" }
+      : current));
+  };
+  const patchReplan = (patch) => setReplan((current) => (current ? { ...current, ...patch } : current));
+  /* ⭐ โมดัลยืนยันบอกผลที่ตรวจได้ (approvalPrompt · กติกา #1223): รายงวดก่อน→หลัง · งวดล็อกไม่ถูกแตะ · Actual ไม่เปลี่ยน
+     (ยอด + เดือนไทย) · ฉบับพิมพ์ยังแสดงแผน QT (D5) — แล้วจึงยิง · body เป็นบาทเสมอ (route สร้างชุดเดิมซ้ำ) */
+  const submitReplan = async () => {
+    if (!replan || !replanBuild || replanBuild.error || replanReasonProblem || replanBaseStale) return;
+    patchReplan({ confirming: true });
+    const confirmed = await confirmAction(paymentPlanEditPrompt(replanPromptFacts(order, replan.base, replanBuild.rows, {
+      serviceRounds: hasServiceRounds,
+    })));
+    patchReplan({ confirming: false });
+    if (!confirmed) return;
+    const done = await onReplan({
+      rows: replanRequestRows(replanBuild), expected: replanExpected(replan.base), reason: replan.reason.trim(),
+    });
+    if (done) setReplan(null);
+  };
+  const cardActions = replanned || replanGate.visible ? (
+    <>
+      {replanned ? (
+        <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} />
+      ) : null}
+      {replanGate.visible ? (
+        <GatedAction size="sm" variant="ghost" icon={<CalendarRange size={13} aria-hidden="true" />}
+          blocker={replanGate.blocker} disabled={!!busy} onClick={openReplan}>
+          ปรับแผนงวด
+        </GatedAction>
+      ) : null}
+    </>
+  ) : null;
+
   /* งวดร่าง = บันทึกเก็บไว้ ยังไม่ส่งให้บัญชี (มติผู้ใช้ 2026-08-19)
      ⚠️ ตัดสินจากฟังก์ชันเดียวกับที่ route ใช้เขียนสถานะจริง — เขียนเงื่อนไข
      `!row.frozenAt` ซ้ำที่นี่เมื่อไร คำบนจอกับผลของ API แยกกันเดินทันที */
@@ -285,7 +354,8 @@ export default function SalesOrderPaymentPanel({
   }
 
   return (
-    <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta={headline}>
+    <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta={headline}
+      actions={cardActions}>
       {/* แถบสัดส่วนเงิน — เฉพาะใบที่แบ่งงวดจริง ใบงวดเดียวไม่มีอะไรให้เทียบ */}
       {!isPreview && !single ? (
         <div className={styles.progress}>
@@ -914,6 +984,57 @@ export default function SalesOrderPaymentPanel({
           if (done) setConfirmFor(null);
         }}
       />
+
+      {/* ⭐ ปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377) — โมดัลอยู่ในแผง (ไม่ใช่ page.js) · ตัวแก้คือ QuotationInstallments
+          โหมด replan (ฟอร์มงวดตัวเดียวของระบบ) · error ของ API ขึ้นในโมดัล (แถบของหน้าอยู่ใต้โมดัล)
+          ⚠️ ปุ่ม "ตรวจผลก่อนบันทึก" เปิดโมดัลยืนยันที่บอกผลก่อน แล้วจึงยิง */}
+      {replan ? (
+        <Modal open onClose={() => setReplan(null)} title="ปรับแผนงวดชำระ" size="xl"
+          dismissible={!busy && !replan.confirming}>
+          <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
+            {replanBaseStale ? (
+              <StatusNotice tone="warning">
+                {REPLAN_STALE_MESSAGE}{" "}
+                <Button size="sm" variant="quiet" onClick={resetReplan}>เริ่มใหม่จากงวดล่าสุด</Button>
+              </StatusNotice>
+            ) : null}
+            <p className="form-note">
+              {order?.orderNumber} · ยอดใบ {fmtMoney(order?.totalAmount)} (รวม VAT) — งวดที่รับเงินแล้ว รอบัญชีตรวจ
+              หรือมีเอกสารผูกถูกล็อกไว้ ปรับได้เฉพาะงวดที่ยังไม่มีการชำระ · ใบยังอนุมัติอยู่ ยอด Actual ไม่เปลี่ยน
+            </p>
+            <QuotationInstallments
+              mode="replan"
+              view={replanBuild.view}
+              value={replan.draft}
+              onChange={(draft) => patchReplan({ draft })}
+              entryUnit={replan.unit}
+              onEntryUnitChange={(unit) => patchReplan({ unit })}
+              totals={replanBuild.totals}
+              showCoverage={showCoverage}
+              disabled={!!busy || replan.confirming}
+            />
+            {replanBuild.error ? <StatusNotice tone="warning">{replanBuild.error}</StatusNotice> : null}
+            {replanBuild.warnings.length ? <StatusNotice tone="info">{replanBuild.warnings.join(" · ")}</StatusNotice> : null}
+            <label className={styles.field}>
+              <span>เหตุผลที่ปรับแผน *</span>
+              <Textarea rows={3} value={replan.reason} maxLength={REPLAN_MAX_REASON} disabled={!!busy || replan.confirming}
+                placeholder={`เช่น ลูกค้าขอแบ่งงวดที่เหลือเป็นรายเดือน — อย่างน้อย ${MIN_REJECT_REASON} ตัวอักษร`}
+                onChange={(event) => patchReplan({ reason: event.target.value })} />
+            </label>
+            {replan.reason && replanReasonProblem ? <p className="form-note">{replanReasonProblem}</p> : null}
+            <div className="action-bar">
+              <Button variant="ghost" onClick={() => setReplan(null)} disabled={!!busy || replan.confirming}>ยกเลิก</Button>
+              <Button tone="primary"
+                disabled={!!busy || replan.confirming || !!replanBuild.error || !!replanReasonProblem || replanBaseStale}
+                title={replanBuild.error || replanReasonProblem || undefined}
+                onClick={submitReplan}>
+                {busy === "installment-replan" ? "กำลังบันทึก…" : "ตรวจผลก่อนบันทึก"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {/* ⭐ โมดัลใบกำกับตัวเดียวกับคิวบนทะเบียนการชำระ — หนึ่งฟอร์ม สองทางเรียก
           ⚠️ ปุ่ม "ลบใบกำกับ" มีที่นี่ด้วย เพราะแนบผิดใบแล้วต้องถอนได้จากที่ที่เห็นของ */}

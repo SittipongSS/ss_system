@@ -16,6 +16,7 @@ import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { installmentConfirmOutlook } from '@/lib/sales/salesOrderPayments';
+import { installmentsReplanned } from '@/lib/sales/installmentReplan';
 import { taxInvoicePending } from '@/lib/sales/taxInvoice';
 import {
   OPENING_INSTALLMENT_LABEL, ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder, isOpeningInstallment,
@@ -322,6 +323,36 @@ export function stampConfirmOutlook(rows = []) {
   return list;
 }
 
+/**
+ * ป้าย "ปรับแผนหลังอนุมัติ" ของใบ (PR2 · mig 0377 · มติ D5) — ประทับ `orderReplanned` ลงทุกแถวของใบ
+ *
+ * ⭐ ไม่เก็บข้อมูลเพิ่ม: เทียบงวดของใบกับแผนของ QT ด้วย `installmentsReplanned` ตัวเดียวกับแผงงวดบนใบ
+ * ⚠️ ค่าระดับใบ ⇒ ต้องประทับจาก **ชุดก่อนกรอง** (กติกาเดียวกับ `stampOrderPaidThrough`) — กรองแล้วงวดหลุด
+ *   จำนวนงวดไม่ตรงแผนทันที = ป้ายขึ้นผิดทุกใบที่ถูกตัวกรองหั่น
+ * ⚠️ ไม่ประทับ: ใบย้อนหลัง (ไม่มี QT — แผนว่างอ่านเป็น "ชำระเต็มจำนวน") · ใบยกเลิก/ถูกออก Rev. ทับ
+ *   (แถวโมฆะถูกตัดตั้งแต่ PR0 ⇒ ชุดไม่ครบ) · ใบที่ไม่รู้แผน (QT ไม่อยู่ในชุดที่โหลด)
+ * @param planByQuotation Map|object ของ quotationId → paymentPlan
+ */
+export function stampOrderReplanned(rows = [], planByQuotation = new Map()) {
+  const list = Array.isArray(rows) ? rows : [];
+  const planOf = (id) => (planByQuotation instanceof Map ? planByQuotation.get(id) : planByQuotation?.[id]);
+  const byOrder = new Map();
+  for (const row of list) {
+    if (!row?.orderId) continue;
+    const group = byOrder.get(row.orderId) || [];
+    group.push(row);
+    byOrder.set(row.orderId, group);
+  }
+  for (const [, group] of byOrder) {
+    const head = group[0];
+    const plan = head.quotationId ? planOf(head.quotationId) : undefined;
+    const replanned = !isHistoricalOrder({ origin: head.origin }) && !head.orderDead && plan !== undefined
+      && installmentsReplanned(group, plan, head.orderTotal);
+    for (const row of group) row.orderReplanned = Boolean(replanned);
+  }
+  return list;
+}
+
 export function orderStateIndex(rows = []) {
   const tally = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -491,6 +522,8 @@ export function groupLedgerByOrder(rows = []) {
         serviceRounds: Boolean(row.serviceRounds),
         // เลขใบกำกับเดิม (Express) ของใบย้อนหลัง — คอลัมน์ใบกำกับบอกว่างวดยกมาออกใบที่ไหน
         historicalInvoiceRef: row.historicalInvoiceRef || '',
+        // ป้าย "ปรับแผนหลังอนุมัติ" (0377 · D5) — ค่าระดับใบที่ `stampOrderReplanned` ประทับจากชุดก่อนกรอง
+        replanned: Boolean(row.orderReplanned),
         rows: [],
       });
     }

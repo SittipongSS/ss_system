@@ -5,7 +5,7 @@ import {
   LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir, ledgerVoidInstallment,
   ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
-  sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, undatedHiddenBy
+  sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -884,4 +884,34 @@ test('ledgerRow พก updatedAt ของงวดมาด้วย (ตัว
   const r = ledgerRow({ installment: { id: 'i', updatedAt: '2026-09-23T03:00:00.123456+00:00' }, order: { id: 'o' } });
   assert.equal(r.updatedAt, '2026-09-23T03:00:00.123456+00:00');
   assert.equal(ledgerRow({ installment: { id: 'i' }, order: { id: 'o' } }).updatedAt, null);
+});
+
+/* ── ป้าย "ปรับแผนหลังอนุมัติ" บนทะเบียนบัญชี (PR2 · mig 0377 · มติ D5) ────────────────────────────────────
+   ⭐ ไม่เก็บข้อมูลเพิ่ม — เทียบงวดของใบกับแผนของ QT (installmentsReplanned) · ค่าระดับใบ ⇒ ประทับจากชุดก่อนกรอง
+     (กรองสถานะงวดแล้วงวดหลุด จำนวนงวดจะไม่ตรงแผน = ป้ายขึ้นผิด) — แพตเทิร์นเดียวกับ stampOrderPaidThrough
+   ⚠️ ใบย้อนหลังไม่มี QT · ใบยกเลิก/ถูกออก Rev. ทับเหลือแต่แถวที่มีเงิน (แถวโมฆะถูกตัดตั้งแต่ PR0) ⇒ ไม่ประทับ */
+test('stampOrderReplanned: งวดต่างจากแผน QT = replanned ทุกแถวของใบ · ตรงแผน/ใบย้อนหลัง/ใบตายแล้ว = ไม่ขึ้น', () => {
+  const plan = { type: 'installment', installments: [{ label: 'มัดจำ', percent: 50 }, { label: '', percent: 50 }] };
+  const row = (orderId, seq, amount, orderExtra = {}, label = seq === 1 ? 'มัดจำ' : `งวดที่ ${seq}`) => ledgerRow({
+    installment: { id: `${orderId}-${seq}`, seq, label, percent: 50, amount, status: 'pending', evidence: [] },
+    order: { id: orderId, orderNumber: orderId, quotationId: `QT-${orderId}`, totalAmount: 30000, status: 'approved', ...orderExtra },
+    quotation: null, customer: null, todayIso: TODAY,
+  });
+  const rows = [
+    row('A', 1, 15000), row('A', 2, 15000),                       // ตรงแผน
+    row('B', 1, 15000), row('B', 2, 10000), row('B', 3, 5000),    // ปรับเป็น 3 งวด
+    row('C', 1, 15000, { origin: 'historical', quotationId: null }), row('C', 2, 15000, { origin: 'historical', quotationId: null }),
+    row('D', 1, 15000, { status: 'cancelled' }),                  // ใบยกเลิก — แถวโมฆะถูกตัดแล้ว เหลือไม่ครบ
+  ];
+  const plans = new Map([['QT-A', plan], ['QT-B', plan], ['QT-D', plan]]);
+  const stamped = stampOrderReplanned(rows, plans);
+  assert.equal(stamped, rows, 'ประทับลงแถวเดิม (แพตเทิร์น stampOrderPaidThrough)');
+  const byOrder = (id) => [...new Set(rows.filter((r) => r.orderId === id).map((r) => r.orderReplanned))];
+  assert.deepEqual(byOrder('A'), [false]);
+  assert.deepEqual(byOrder('B'), [true]);
+  assert.deepEqual(byOrder('C'), [false]);
+  assert.deepEqual(byOrder('D'), [false]);
+  const groups = groupLedgerByOrder(rows);
+  assert.equal(groups.find((g) => g.orderId === 'B').replanned, true);
+  assert.equal(groups.find((g) => g.orderId === 'A').replanned, false);
 });

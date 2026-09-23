@@ -207,3 +207,54 @@ export function paymentConfirmPrompt({
     confirmLabel: 'ยืนยันว่าเงินเข้าแล้ว',
   });
 }
+
+/**
+ * AE Sup/admin **ปรับแผนงวดชำระ** ของใบสั่งขายที่อนุมัติแล้ว (PR2 · mig 0377 · แผน so-payment-unlock-replan · มติ D1/D5)
+ *
+ * ⭐ ใบยังอนุมัติอยู่ ⇒ Actual ไม่ขยับ — แต่คนกดต้องเห็นว่า "ไม่ขยับ" เป็นตัวเลขจริง (ยอด + เดือนไทยของ approvedAt)
+ *   ไม่ใช่เดาเอาจากชื่อปุ่ม · งวดที่มีเงิน/เอกสารผูกไม่ถูกแตะ · Σ งวด = ยอดใบ · ทะเบียนบัญชีเห็นทันที
+ * ⭐ D5: ใบสั่งขายฉบับพิมพ์ยังแสดงแผนตามใบเสนอราคา — แผงงวดและทะเบียนบัญชีขึ้นป้าย "ปรับแผนหลังอนุมัติ" แทน
+ * ⚠️ ไม่ใช่ irreversible — ปรับซ้ำได้อีก (ตราบที่บัญชียังไม่ปิดใบ)
+ * ⚠️ ข้อความจัดรูปมาแล้วจาก `replanPromptFacts` (lib/sales/installmentReplan.js) — ไฟล์นี้ import ต่อไม่ได้ (หัวไฟล์)
+ *
+ * @param changes            บรรทัดรายงวด (ก่อน→หลัง · เพิ่ม · ลบ) — **บังคับอย่างน้อย 1**
+ * @param actualAmountLabel  ยอด Actual ของใบ (จัดรูปแล้ว) — บังคับ
+ * @param actualMonthLabel   เดือน Actual = เดือนของ approvedAt เวลาไทย (จัดรูปแล้ว) — บังคับ
+ * @param complete           หลังปรับทุกงวดรับเงินแล้ว ⇒ ใบเข้าคิวปิดใบของบัญชี
+ */
+export function paymentPlanEditPrompt({
+  orderNumber = '', beforeCount = 0, afterCount = 0, changes = [], lockedCount = 0, lockedAmountLabel = '',
+  totalLabel = '', actualAmountLabel = '', actualMonthLabel = '', quotationNumber = '',
+  serviceRounds = false, paidThroughLabel = '', coverageNotes = [], contractNumber = null, complete = false,
+} = {}) {
+  const rowLines = (Array.isArray(changes) ? changes : []).map((line) => String(line || '').trim()).filter(Boolean);
+  if (!rowLines.length) throw new Error('paymentPlanEditPrompt: ต้องมีอย่างน้อย 1 งวดที่เปลี่ยน');
+  const actual = String(actualAmountLabel || '').trim();
+  const month = String(actualMonthLabel || '').trim();
+  if (!actual || !month) throw new Error('paymentPlanEditPrompt: ต้องบอกยอดและเดือนของ Actual ที่ไม่เปลี่ยน');
+  const quote = String(quotationNumber || '').trim();
+  const through = String(paidThroughLabel || '').trim();
+  return approvalPrompt({
+    title: 'ยืนยันปรับแผนงวดชำระ',
+    verb: 'การปรับแผนงวด',
+    subject: `${orderNumber} · ${beforeCount} งวด → ${afterCount} งวด`,
+    irreversible: false,
+    effects: [
+      ...rowLines,
+      lockedCount
+        ? `งวดที่รับเงินแล้ว/รอบัญชีตรวจ/มีเอกสารผูก ${lockedCount} งวด ${lockedAmountLabel} ไม่ถูกแตะ (ยอด หลักฐาน ใบกำกับคงเดิม)`
+        : null,
+      `ยอดรวมทุกงวด ${totalLabel} = ยอดใบ (รวม VAT)`,
+      `ยอด Actual ${actual} เดือน ${month} ไม่เปลี่ยน — ใบยังอนุมัติอยู่ ไม่ต้องย้อนการอนุมัติ`,
+      'ทะเบียนรับชำระของบัญชีแสดงยอดใหม่ทันที',
+      `ใบสั่งขายฉบับพิมพ์ยังแสดงแผนตามใบเสนอราคา${quote ? ` ${quote}` : ''} — แผงงวดและทะเบียนบัญชีขึ้นป้าย “ปรับแผนหลังอนุมัติ”`,
+      serviceRounds
+        ? (through ? `“จ่ายถึง” ยังเป็น ${through}` : '“จ่ายถึง” ยังว่าง — ยังไม่มีงวดที่บัญชีรับรองครอบบริการ')
+        : null,
+      ...(serviceRounds && Array.isArray(coverageNotes) ? coverageNotes : []),
+      contractNumber ? `สัญญา ${contractNumber} ข้อ 3 ยังระบุงวดเดิม — ทำบันทึกเพิ่มเติมถ้าต้องให้ลูกค้าลงนาม` : null,
+      complete ? 'ทุกงวดรับเงินครบ — ใบเข้าคิวปิดใบของบัญชี' : null,
+    ],
+    confirmLabel: 'ยืนยันปรับแผนงวด',
+  });
+}

@@ -103,6 +103,7 @@ import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { installmentReportDoneMessage, paymentRollup, salesOrderMoneyOutcome } from "@/lib/sales/salesOrderPayments";
+import { REPLAN_DONE_MESSAGE } from "@/lib/sales/installmentReplan";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
@@ -509,6 +510,36 @@ export default function SalesOrderDetailPage() {
       return true;
     } catch (uploadError) {
       setError(uploadError.message || "อัปโหลดหลักฐานไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── ปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377 · มติ D1) — คำสั่งของทั้งใบ (ไม่มี installmentId) ──────────────────
+     ⭐ แผงประกอบ body ครบแล้ว (แถวเปิดเป็นบาท + expected ของแถวที่ตาเห็นตอนเปิดตัวแก้ + เหตุผล) — ที่นี่แค่ยิงแล้วบอกผล
+     ⭐ 409 (มีคนแก้งวดจากอีกหน้าต่าง) = ดึงใบสด ⇒ แผงเห็นว่า base เก่าแล้วขึ้นปุ่ม "เริ่มใหม่จากงวดล่าสุด"
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วจะได้ 409 ที่ทำให้คนเข้าใจผิดว่าไม่สำเร็จ */
+  async function runInstallmentReplan({ rows, expected, reason }) {
+    setBusy("installment-replan");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        json: { action: "replan", rows, expected, reason },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "ปรับแผนงวดไม่สำเร็จ");
+        return false;
+      }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      setToast({ kind: "success", msg: REPLAN_DONE_MESSAGE });
+      return true;
+    } catch (replanError) {
+      setError(replanError.message || "ปรับแผนงวดไม่สำเร็จ");
       return false;
     } finally {
       setBusy("");
@@ -1688,6 +1719,7 @@ export default function SalesOrderDetailPage() {
             busy={busy}
             onStart={startPaymentTracking}
             onAction={runInstallmentAction}
+            onReplan={runInstallmentReplan}
             /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** — กดบันทึก
                งวดแล้วโมดัลค้างเงียบ ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้ง 2026-08-27)
                อาการเดียวกับที่ `ReasonDialog.submitError` แก้ไว้เมื่อ 2026-08-19 —

@@ -16,8 +16,12 @@ import {
   installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock, withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
 import {
-  ensureInstallments, loadInstallment, loadInstallments, updateInstallment,
+  ensureInstallments, loadInstallment, loadInstallments, replanInstallments, updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
+import {
+  REPLAN_STALE_MESSAGE, buildReplanRows, installmentReplanBlocker, replanAuditSummary, replanReasonError, replanStale,
+} from '@/lib/sales/installmentReplan';
+import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { historicalInstallmentLock, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -185,7 +189,57 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 });
 
-/* PATCH — เดินสถานะของงวดเดียว
+/* ── ปรับแผนงวดของใบที่อนุมัติแล้ว (PR2 · mig 0377 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D1/D5) ─────────
+   ⭐ คำสั่งของ **ทั้งใบ** ไม่ใช่งวดเดียว ⇒ PATCH ส่งมาที่นี่ก่อนด่าน `installmentId`
+     · proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้อยู่แล้ว — แต่ด่าน D1 (AE Sup/admin) ตัดก่อนแตะข้อมูล
+   ⭐ ลำดับ: สิทธิ์ → ใบ (view-scope) → งวดสด (โยน error) → ด่านเดียวกับปุ่ม → เหตุผล → ข้อมูลเก่า → ชุดสุดท้ายจาก lib → RPC → audit
+   ⭐ body `{ action:'replan', rows:[แถวเปิด {id|null,label,amount,dueDate,coversFrom,coversTo,note}], expected:[{id,updatedAt}], reason }`
+     — บาทเสมอ (จอโหมด % แปลงด้วย buildReplanRows ตัวเดียวกันก่อนส่ง) · แถวล็อกยกมาจากฐานเอง ไม่เชื่อจอ
+   🔴 ทางเขียนทางเดียวคือ RPC 0377 (ไม่แตะตัวใบ ⇒ Actual/เดือน Actual ไม่ขยับ) — ห้ามเขียนงวดทีละแถวที่นี่
+   ⚠️ `body.expected` ส่งต่อให้ RPC ตามที่จอส่ง — RPC ตรวจซ้ำใต้ล็อก (ตัวที่นี่ตอบ 409 เร็วเท่านั้น) */
+async function replanOrderInstallments({ user, supabase, req, id, body }) {
+  if (!isSalesOrderReviewer(user?.role)) return forbidden();
+  try {
+    const { order, error } = await loadOrderForUser(supabase, user, id);
+    if (error) return error;
+    /* ⚠️ อ่านสดแบบโยน error — กลืนเป็น [] แล้ว "ไม่มีงวดเปิด" ถูกอ่านเป็นแผนที่ต้องลบทุกงวด */
+    const live = await loadInstallments(supabase, order.id);
+    const gate = installmentReplanBlocker(order, live, user);
+    if (gate.blocker) return fail(gate.blocker, 409);
+    const reasonError = replanReasonError(body.reason);
+    if (reasonError) return badRequest(reasonError);
+    // ไม่ส่งแผนมา ≠ แผนที่ลบทุกงวดเปิด (อาเรย์ว่างเป็นคำขอที่ตั้งใจได้ — ใบที่งวดล็อกครบยอดแล้ว)
+    if (!Array.isArray(body.rows)) return badRequest('ไม่ได้ส่งแผนงวดมา — โหลดหน้าใหม่แล้วลองอีกครั้ง');
+    if (replanStale(live, body.expected)) return fail(REPLAN_STALE_MESSAGE, 409);
+    const built = buildReplanRows(order, live, body.rows, {
+      unit: 'amount', serviceRounds: orderHasServiceRounds(order, order.lines),
+    });
+    if (built.error) return badRequest(built.error);
+    const reason = String(body.reason).trim();
+    const result = await replanInstallments(supabase, {
+      orderId: order.id, rows: built.rows, expected: body.expected, reason, user,
+    });
+    if (result.error) return fail(result.error, result.status);
+    /* audit before/after ทุกแถว — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) · งวดเปิดที่ถูกลบอยู่ใน before ครบ */
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_order_installments',
+      entityId: order.id,
+      before: { installments: result.before },
+      after: { installments: result.after, reason },
+      summary: replanAuditSummary({
+        orderNumber: order.orderNumber, beforeCount: result.before.length, afterCount: result.after.length, reason,
+      }),
+      request: req,
+    });
+    return ok({ installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)) });
+  } catch (replanError) {
+    return fail(replanError.message, 500);
+  }
+}
+
+/* PATCH — เดินสถานะของงวดเดียว (+ `replan` ของทั้งใบ — ดูข้างบน)
    pending/rejected ──report──> reported ──confirm──> confirmed
                         ↑                    └─reject──> rejected
                         └────── withdraw ────┘
@@ -197,6 +251,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '').trim();
+  if (action === 'replan') return replanOrderInstallments({ user, supabase, req, id, body });
   const installmentId = String(body.installmentId || '').trim();
   if (!installmentId) return badRequest('ไม่ได้ระบุงวดที่ต้องการ');
 
