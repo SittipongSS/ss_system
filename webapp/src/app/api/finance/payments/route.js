@@ -11,7 +11,10 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
-import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, stampOrderPaidThrough, undatedHiddenBy } from '@/lib/finance/paymentLedger';
+import {
+  filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, stampConfirmOutlook,
+  stampOrderPaidThrough, undatedHiddenBy,
+} from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
@@ -52,9 +55,11 @@ async function loadLedger(supabase, todayIso) {
   /* 🪤 คอมเมนต์ทั้งหมดอยู่เหนือคำสั่ง ไม่แทรกระหว่าง `.from()` กับ `.select()` (2026-09-15) — `check:columns`
      มองหา select ไม่เกิน 200 ตัวอักษรหลัง `.from()` · คอมเมนต์ที่เคยคั่นตรงนั้น (~830 ตัวอักษร) ทำให้ select นี้
      (รวม `origin` + เลขเอกสารเดิมของ mig 0360) หลุดจากด่านมาตลอด */
+  /* `approvedAt` + `approvedByName` = บรรทัด "อนุมัติใบ: <AE Sup> · <วัน> · ไม่นับ Actual" ในโมดัลรับรองงวดของ
+     ใบย้อนหลัง (มติ 22/09 · mock FnConfirm) — บัญชีต้องเห็นว่าใบผ่าน AE Sup แล้วก่อนรับรองเงินก้อนแรก */
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -167,6 +172,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     /* ⚠️ "จ่ายถึง" ก็เป็นค่าระดับใบเหมือนกัน ⇒ ต้องประทับจากชุดก่อนกรองด้วยเหตุผลเดียวกัน
        (กรองสถานะงวดแล้วงวด confirmed หลุด ค่าจะกลายเป็น "ยังไม่ครอบ" ทั้งที่เงินครอบอยู่) */
     stampOrderPaidThrough(all);
+    /* ภาพหลังรับรอง (จ่ายถึง · เก็บแล้ว · งวดถัดไป) ของงวดในคิว — ค่าระดับใบเหมือนกัน ประทับก่อนกรองด้วยเหตุผลเดียวกัน */
+    stampConfirmOutlook(all);
     const filters = {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,

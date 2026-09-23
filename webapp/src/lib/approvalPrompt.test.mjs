@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { IRREVERSIBLE_NOTE, approvalPrompt, paymentConfirmPrompt, costingPriceApprovalEffects, costingPriceApprovalPrompt
+import { IRREVERSIBLE_NOTE, approvalPrompt, paymentConfirmPrompt, costingPriceApprovalEffects, costingPriceApprovalPrompt,
+  historicalApprovalPrompt,
 } from './approvalPrompt.js';
+import { HISTORICAL_STATUS_NOTE } from './sales/historicalOrders.js';
 
 test('โมดัลบอก "สิ่งที่จะเกิดขึ้น" เป็นบรรทัดละข้อ ไม่ใช่ถามลอย ๆ ว่าแน่ใจไหม', () => {
   const p = approvalPrompt({
@@ -70,4 +72,80 @@ test('costingPriceApprovalPrompt: ผ่านด่าน effects บังค�
   assert.match(prompt.description, /FG-0119-001/);
   assert.match(prompt.detail, /สิ่งที่จะเกิดขึ้นทันที:/);
   assert.match(prompt.detail, /ป้อนต้นทุนเข้า FG/);
+});
+
+// ── ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) ───────────────────────────────
+/* 🔴 ใบปกติต้องได้ผลลัพธ์เดิมทุกตัวอักษร — ภาพนิ่งของโมดัลรับรองเงิน (ห้ามพารามิเตอร์ใหม่รั่วเข้าใบปกติ) */
+test('คอนเฟิร์มการชำระของใบปกติไม่เปลี่ยนแม้แต่ตัวอักษรเดียว', () => {
+  const expected = {
+    title: 'บัญชีคอนเฟิร์มการชำระ',
+    description: 'ยืนยันการรับชำระ งวดที่ 2 · ฿16,050.00 หรือไม่',
+    detail: [
+      `⚠️ ${IRREVERSIBLE_NOTE}`, '',
+      'สิ่งที่จะเกิดขึ้นทันที:',
+      '· บันทึกว่าเงินงวดนี้เข้าบัญชีบริษัทแล้วจริง',
+      '· ใบนี้จะย้อนการอนุมัติหรือออก Rev. ใหม่ไม่ได้อีก',
+      '· ยอด Actual ของฝ่ายขายไม่เปลี่ยน — เป็นยอดเต็มตั้งแต่ใบอนุมัติแล้ว',
+    ].join('\n'),
+    confirmLabel: 'ยืนยันว่าเงินเข้าแล้ว',
+  };
+  assert.deepEqual(paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00' }), expected);
+  assert.deepEqual(paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00', historical: false, opening: true }), expected,
+    'opening ของใบปกติไม่มีความหมาย — ต้องไม่เปลี่ยนอะไร');
+});
+
+/* ⭐ ใบย้อนหลังไม่มี Rev. และไม่นับ Actual ตั้งแต่แรก ⇒ สองบรรทัดนั้นของใบปกติเป็นเรื่องไม่จริงกับใบนี้
+   สิ่งที่เกิดจริง: "จ่ายถึง" ขยับ · AE Sup ยกเลิกใบไม่ได้อีก (ทางแก้ข้อมูลผิดปิด) · ไม่นับ Actual */
+test('คอนเฟิร์มงวดของใบย้อนหลัง: ไม่มีบรรทัด Rev./Actual ของใบปกติ · บอกด่านเงิน · งวดถัดไป · ไม่นับ Actual', () => {
+  const p = paymentConfirmPrompt({
+    label: 'งวดยกมา', amount: '฿196,452.00', historical: true, opening: true,
+    paidThroughLabel: '30/09/2026', nextInstallmentLabel: 'งวด ต.ค.–ธ.ค. ฿65,484.00 ครบกำหนด 01/10/2026',
+  });
+  assert.equal(p.title, 'บัญชีคอนเฟิร์มการชำระ');
+  assert.equal(p.confirmLabel, 'ยืนยันว่าเงินเข้าแล้ว');
+  assert.equal(p.description, 'ยืนยันการรับชำระ งวดยกมา · ฿196,452.00 หรือไม่');
+  assert.equal(p.detail.split('\n')[0], `⚠️ ${IRREVERSIBLE_NOTE}`);
+  assert.doesNotMatch(p.detail, /Rev\./);
+  assert.doesNotMatch(p.detail, /Actual ของฝ่ายขาย/);
+  assert.match(p.detail, /· บันทึกว่าเงินงวดนี้เข้าบัญชีบริษัทแล้วจริง/);
+  assert.match(p.detail, /· งวดยกมา — เงินที่เก็บก่อนเข้าระบบ รับรองครั้งเดียว/);
+  assert.match(p.detail, /· เปิดด่านเงินของนัดบริการถึง 30\/09\/2026/);
+  assert.match(p.detail, /ยกเลิกใบนี้ไม่ได้อีกจนกว่าบัญชีถอนคำรับรอง/);
+  assert.match(p.detail, /· งวดถัดไป งวด ต.ค.–ธ.ค./);
+  assert.ok(p.detail.includes(`· ${HISTORICAL_STATUS_NOTE}`));
+
+  // งวดปกติของใบย้อนหลัง · ไม่รู้ "จ่ายถึง" · ไม่มีงวดถัดไป = ไม่พูดสิ่งที่ไม่รู้
+  const plain = paymentConfirmPrompt({ label: 'งวด ต.ค.–ธ.ค.', amount: '฿65,484.00', historical: true });
+  assert.doesNotMatch(plain.detail, /งวดยกมา/);
+  assert.doesNotMatch(plain.detail, /งวดถัดไป/);
+  assert.doesNotMatch(plain.detail, /undefined|null/);
+  assert.match(plain.detail, /ตามช่วงครอบของงวดนี้/);
+});
+
+test('โมดัลอนุมัติใบย้อนหลัง: ป้ายที่ตัดสินแล้ว · ไม่นับ Actual ท้ายรายการเสมอ · ไม่ใช่ "อนุมัติและนับ Actual"', () => {
+  const checklist = ['ลูกค้า: AR-1207 · บจก. สยามพิวรรธน์', 'ยอดทั้งใบ: ฿261,936.00'];
+  const effects = ['เอกสารแทนสัญญา PO-SPW-2026-0118 อนุมัติ ออกเลข CT แล้วผูกกับใบนี้'];
+  const p = historicalApprovalPrompt({ subject: 'ใบสั่งขาย SO-26090051-0', checklist, effects });
+  assert.equal(p.title, 'อนุมัติ ใบสั่งขาย');
+  assert.equal(p.description, 'ยืนยันอนุมัติ ใบสั่งขาย SO-26090051-0 หรือไม่');
+  assert.equal(p.confirmLabel, 'อนุมัติใบย้อนหลัง');
+  assert.doesNotMatch(`${p.confirmLabel} ${p.detail}`, /อนุมัติและนับ Actual/);
+  const lines = p.detail.split('\n');
+  assert.equal(lines[lines.length - 1], `· ${HISTORICAL_STATUS_NOTE}`, 'ป้ายไม่นับ Actual ต้องเป็นบรรทัดสุดท้าย');
+  assert.ok(lines.indexOf('สิ่งที่ต้องตรวจก่อนกด:') < lines.indexOf('สิ่งที่จะเกิดขึ้นทันที:'));
+
+  // Override: รายการตรวจชุดเดิม + บรรทัดของ override ก่อนป้ายสถานะ · ป้ายปุ่มบอกว่าไม่นับ Actual
+  const o = historicalApprovalPrompt({ subject: 'ใบสั่งขาย SO-26090051-0', checklist, effects, override: { note: 'อนุมัติใบตัวเอง' } });
+  assert.equal(o.confirmLabel, 'ยืนยัน Override ใบย้อนหลัง (ไม่นับ Actual)');
+  assert.equal(o.title, p.title);
+  const checks = (detail) => detail.split('สิ่งที่จะเกิดขึ้นทันที:')[0];
+  assert.equal(checks(o.detail), checks(p.detail), 'override ต้องตรวจชุดเดียวกับผู้ตรวจปกติ');
+  const oLines = o.detail.split('\n');
+  assert.deepEqual(oLines.slice(-2), ['· อนุมัติใบตัวเอง', `· ${HISTORICAL_STATUS_NOTE}`]);
+});
+
+test('โมดัลอนุมัติใบย้อนหลังยังบังคับผลลัพธ์จริง — ป้าย "ไม่นับ Actual" ที่เติมเองไม่นับแทน', () => {
+  assert.throws(() => historicalApprovalPrompt({ subject: 'x', effects: [] }), /อย่างน้อย 1 อย่าง/);
+  assert.throws(() => historicalApprovalPrompt({ subject: 'x', effects: [' '], override: { note: 'n' } }), /อย่างน้อย 1 อย่าง/);
+  assert.throws(() => historicalApprovalPrompt({ subject: 'x' }), /อย่างน้อย 1 อย่าง/);
 });

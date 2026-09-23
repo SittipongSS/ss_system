@@ -9,6 +9,7 @@ import { contractQuotationNotice, newerApprovedQuotation } from '@/lib/sales/con
 import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { purgeNotificationsMany } from '@/lib/notifications';
+import { historicalContractLockGate, loadLinkedHistoricalOrder } from '@/lib/sales/historicalContractLock';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     : { data: null };
   const newerApproved = quotation ? newerApprovedQuotation(quotation, siblings || []) : null;
 
+  /* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (0374) — หน้าสัญญาต้องรู้ใบสั่งขายที่ใบนี้ชี้กลับ เพื่อถามล็อก
+     ด้วยตัวตัดสินเดียวกับ API (`historicalContractLockReason`) แล้วซ่อนปุ่ม + พาไปหน้าใบสั่งขาย
+     ⚠️ อ่านไม่ได้ = 500 ไม่ใช่ null — null แปลว่า "ไม่ล็อก" แล้วจอโชว์ปุ่มที่ API จะตีกลับ
+     · ใบที่ไม่ใช่เอกสารแทนสัญญาไม่แตะฐาน */
+  const linked = await loadLinkedHistoricalOrder(supabase, current);
+  if (linked.error) return fail(linked.error.message, 500);
+
   const { issuedHtml, ...rest } = current;
   return ok({
     ...rest,
@@ -73,6 +81,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     quotation: quotation || null,
     quotationNotice: contractQuotationNotice(current, quotation, { newerApproved }),
     revisions: revisions || [],
+    linkedHistoricalOrder: linked.order,
     canEdit: inSalesEditScope(user, row.deal) && canEditSalesPlanning(user),
   });
 });
@@ -84,6 +93,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { row: before, response } = await loadScoped(supabase, 'sales_contracts', id, user, 'edit');
   if (response) return response;
+
+  /* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ แก้ที่ฟอร์มคีย์ใบเท่านั้น (0374) — RPC แก้ใบเขียน
+     ชนิด/เลขอ้างอิง/ช่วงสัญญาชุดเดียวกับที่ใบสั่งขายถือ · แก้ตรงนี้ = สองที่ไม่ตรงกันโดยไม่มีใครรู้ */
+  const lock = await historicalContractLockGate(supabase, before);
+  if (lock) return fail(lock.message, lock.status);
 
   // ⭐ ใบที่ออกเลขไปแล้วคือกระดาษที่ลูกค้าถืออยู่ — แก้เนื้อไม่ได้ ต้องยกเลิกแล้วออกใหม่
   if (!isContractEditable(before)) {
@@ -139,6 +153,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { row, response } = await loadScoped(supabase, 'sales_contracts', id, user, 'edit');
   if (response) return response;
+  /* ลบร่างที่ใบสั่งขายย้อนหลังยังถือ = RPC อนุมัติหาเอกสารแทนสัญญาไม่เจอ ใบค้างอนุมัติไม่ได้ตลอดกาล
+     ⇒ ลบ/ยกเลิกที่ใบสั่งขาย (trigger ของ 0374 ยกเลิกใบนี้ตามในทรานแซกชันเดียวกัน) */
+  const lock = await historicalContractLockGate(supabase, row);
+  if (lock) return fail(lock.message, lock.status);
   if (!canDeleteContract(row)) {
     return fail('ลบได้เฉพาะร่างที่ยังไม่ออกเลขที่สัญญา — ใบที่ออกแล้วให้กดยกเลิก', 409);
   }

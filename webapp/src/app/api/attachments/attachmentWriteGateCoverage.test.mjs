@@ -67,3 +67,25 @@ test('ชนิดที่เดินเข้าบล็อก PARENT_TABLE 
     `อยู่ใน PARENT_TABLE แต่ไม่มีใน RESOURCE และไม่มีสาขาเฉพาะ: ${missing.join(', ')}`,
   );
 });
+
+/* ── ไฟล์ของเอกสารแทนสัญญาตรึงระหว่างรอ AE Sup อนุมัติใบสั่งขายย้อนหลัง (0374) ──────────────
+   AE Sup เลือกไฟล์ที่จะเป็น `signedFileId` จากชุดที่เห็นในโมดัล ⇒ **ทุกทางที่ขยับชุดไฟล์** (แนบ · ลบ · แก้)
+   ต้องถามด่านเดียวกัน · ขาดทางไหน = ชุดไฟล์เปลี่ยนใต้มือผู้อนุมัติได้ทางนั้นเงียบ ๆ */
+const postSource = readFileSync(fileURLToPath(new URL('./route.js', import.meta.url)), 'utf8');
+
+test('⭐ แนบ (POST) และลบ/แก้ (guardAttachmentWrite) ไฟล์ของสัญญา ถามด่านตรึงไฟล์ตัวเดียวกัน', () => {
+  assert.match(postSource, /if \(entityType === 'contract'\) \{\s*const frozen = await historicalContractFilesFrozenGate\(supabase, parent\);/);
+  // ต้องอยู่หลังด่านสิทธิ์ และก่อนคุยกับ Drive (ไม่งั้นเอกสาร Google ถูกสร้างค้าง) และก่อนเขียนแถว
+  const gate = postSource.indexOf('historicalContractFilesFrozenGate(supabase, parent)');
+  assert.ok(postSource.indexOf('canEditAttachmentParent(supabase, entityType, parent, user)') < gate);
+  assert.ok(gate < postSource.indexOf('buildGoogleAttachment({'));
+  assert.ok(gate < postSource.indexOf(".from('attachments').insert("));
+
+  const guard = routeSource.slice(
+    routeSource.indexOf('async function guardAttachmentWrite'),
+    routeSource.indexOf('const SPEC_ILLUSTRATION_RETIRED_MESSAGE'),
+  );
+  assert.match(guard, /if \(att\.entityType === 'contract' && deal\) \{\s*const frozen = await historicalContractFilesFrozenGate\(supabase, deal\);/);
+  // DELETE และ PATCH ผ่าน guardAttachmentWrite ทั้งคู่ — ด่านอยู่ในตัวกลางจึงครอบสองทางพร้อมกัน
+  assert.equal((routeSource.match(/await guardAttachmentWrite\(supabase, att, user,/g) || []).length, 2);
+});

@@ -8,12 +8,14 @@ import {
   INSTALLMENT_STATUSES,
   buildInstallmentsForOrder,
   installmentActionError,
+  installmentConfirmOutlook,
   installmentDisplayStatus,
   installmentPlanDrift,
   installmentPrepaid,
   installmentReportOutcome,
   installmentsFromPaymentPlan,
   isInstallmentFrozen,
+  openingCoverageEnd,
   paymentNotRequired,
   paymentLockReason,
   paymentRollup,
@@ -740,4 +742,275 @@ test('บรรทัดใบกำกับ: ครบ / ค้าง / เง
   // ใบที่ยังไม่เริ่มติดตาม ตัวเลขมาจากแผนใน QT ไม่ใช่ของจริง ⇒ พูดเรื่องเอกสารไม่ได้
   assert.equal(salesOrderTaxInvoiceNote({ tracked: false, invoiceNeeded: 0, invoiced: 0 }), null);
   assert.equal(salesOrderTaxInvoiceNote(null), null);
+});
+
+/* ── ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ล็อกทั้งใบ + งวดยกมา + ช่วงครอบที่รับรองเป็นชุด ────────
+   ⭐ ปุ่มบนแผงงวดกับ route PATCH ถามตัวเดียวกันนี้ ⇒ ที่นี่คือด่านจริงของทั้งสองทาง
+   🐞 ถ้าไม่กั้นที่นี่: ตั้งวันครบกำหนดของงวดยกมา / ล้างช่วงครอบ = ชน CHECK opening_shape เป็น 500 ดิบ
+     · ถอนงวดยกมา = งวดเปล่าที่ไม่มีใครแจ้งซ้ำได้ · ฝ่ายขายขยับช่วงครอบ = ปลดด่านเงินตัวเอง */
+const OPENING = frozen({
+  id: 'SOI-OPEN', seq: 1, kind: 'opening', status: 'reported', amount: 196452,
+  dueDate: null, coversFrom: '2026-01-01', coversTo: '2026-09-30', paidOn: '2026-09-15',
+  evidence: [{ storagePath: 'sales-orders/SOR-H1/payments/a.pdf' }], reportedById: SA.id,
+});
+const REGULAR = frozen({
+  id: 'SOI-2', seq: 2, kind: 'regular', status: 'pending', amount: 65484,
+  dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-12-31',
+});
+const HIST = { historical: true, serviceRounds: true, orderTotal: 261936 };
+const LOCK = 'งวดของใบย้อนหลังขยับได้หลัง AE Sup อนุมัติ';
+
+test('🔴 ล็อกทั้งใบ (orderLock) ชนะทุกคำสั่ง — ก่อนดูอะไรในแถว แม้แถวจะไม่มี', () => {
+  const actions = ['report', 'confirm', 'reject', 'withdraw', 'unconfirm', 'schedule', 'coverage', 'link', 'unlink',
+    'tax-invoice', 'tax-invoice-clear', 'ไม่รู้จัก'];
+  for (const action of actions) {
+    for (const user of [SA, FN_STAFF, ADMIN]) {
+      assert.equal(installmentActionError(REGULAR, action, user, { ...HIST, orderLock: LOCK }), LOCK, `${action}/${user.role}`);
+    }
+  }
+  assert.equal(installmentActionError(null, 'report', SA, { orderLock: LOCK }), LOCK);
+  // ไม่มีล็อก = ด่านเดิม
+  assert.equal(installmentActionError(null, 'report', SA, {}), 'ไม่พบงวดที่ระบุ');
+  assert.equal(installmentActionError(REGULAR, 'schedule', SA, { orderLock: null }), null);
+});
+
+test('งวดยกมา: ไม่มีกำหนดชำระ · ถอนไม่ได้ทั้งฝ่ายขายและบัญชี (ชี้ทางแก้ของใบย้อนหลัง)', () => {
+  for (const user of [SA, FN_STAFF, ADMIN]) {
+    assert.match(installmentActionError(OPENING, 'schedule', user, HIST), /งวดยกมาไม่มีกำหนดชำระ/);
+    const withdraw = installmentActionError(OPENING, 'withdraw', user, HIST);
+    assert.match(withdraw, /งวดยกมาถอนไม่ได้/);
+    assert.match(withdraw, /AE Sup ยกเลิกใบให้คีย์ใหม่/);
+  }
+});
+
+test('งวดยกมา: ช่วงครอบแก้ได้เฉพาะบัญชี · วันเริ่มล็อกที่วันเริ่มสัญญา · ล้างวันสิ้นสุดไม่ได้', () => {
+  const keep = { coversFrom: '2026-01-01', coversTo: '2026-08-31' };
+  assert.match(installmentActionError(OPENING, 'coverage', SA, { ...HIST, ...keep }), /แก้ได้เฉพาะฝ่ายบัญชี/);
+  assert.match(installmentActionError(OPENING, 'coverage', AE_SUP, { ...HIST, ...keep }), /แก้ได้เฉพาะฝ่ายบัญชี/);
+  assert.equal(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, ...keep }), null, 'บัญชีเลื่อนปลายช่วงได้');
+  assert.equal(installmentActionError(OPENING, 'coverage', ADMIN, { ...HIST, ...keep }), null);
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, coversFrom: '2026-02-01', coversTo: '2026-09-30' }),
+    /ช่วงเริ่มของงวดยกมาล็อกที่วันเริ่มสัญญา/);
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, coversFrom: null, coversTo: '2026-09-30' }),
+    /ล็อกที่วันเริ่มสัญญา/);
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, coversFrom: '2026-01-01', coversTo: null }),
+    /ล้างช่องไม่ได้/);
+  // ด่านเดิมของช่วงครอบยังทำงานต่อหลังกิ่งนี้ (ช่วงกลับหัว)
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, coversFrom: '2026-01-01', coversTo: '2025-12-31' }),
+    /ไม่เกินวันสิ้นสุด/);
+});
+
+/* 🐞 **UAT/review 23/09: ช่องครอบบริการของงวดยกมาล็อกทุกคน รวมฝ่ายบัญชี** — แผงงวดถามด่านว่า
+   "เซลล์นี้ใครแก้ได้" แบบ **ไม่ส่งค่า** (SalesOrderPaymentPanel.js) แต่กิ่งนี้ตรวจค่าทันที
+   ⇒ ค่าที่ไม่ได้ส่ง (`''`) ไม่เท่าวันเริ่มสัญญาเสมอ = ตอบ "ล็อกที่วันเริ่มสัญญา" ให้ทุกคน
+   ⇒ เซลล์วาดเป็นข้อความ ไม่มี DateInput ⇒ บัญชีซึ่งเป็นฝ่ายเดียวที่แก้ได้ตามกติกา แก้ไม่ได้เลย
+   และไม่มีจออื่นในระบบแก้ `coversTo` ของงวดยกมาได้ (ทะเบียนการชำระมีแค่รับรอง/ตีกลับ/ใบกำกับ)
+   ⇒ ทางออกเดียวคือ HISTORICAL_CORRECTION_PATH ทั้งที่เป็นแค่การเลื่อนวันหนึ่งช่อง */
+test('🔴 ถามด่านแบบไม่ส่งค่า = ถามว่า "ใครแก้ได้" ไม่ใช่ "ค่านี้ผ่านไหม" — งวดยกมาต้องไม่ล็อกบัญชี', () => {
+  // ไม่ส่ง coversFrom/coversTo เลย (เซลล์บนจอถามแบบนี้) ⇒ ตอบเรื่องสิทธิ์อย่างเดียว
+  assert.equal(installmentActionError(OPENING, 'coverage', FN_STAFF, HIST), null, 'บัญชีต้องได้ช่องกรอก');
+  assert.equal(installmentActionError(OPENING, 'coverage', ADMIN, HIST), null);
+  assert.match(installmentActionError(OPENING, 'coverage', SA, HIST), /แก้ได้เฉพาะฝ่ายบัญชี/,
+    'ฝ่ายขายยังล็อกเหมือนเดิม — ถามไม่ส่งค่าไม่ได้แปลว่าปล่อยผ่าน');
+  assert.equal(installmentActionError(REGULAR, 'coverage', FN_STAFF, HIST), null);
+  /* !! ส่งค่ามาจริง = ตรวจค่าตามเดิมทุกข้อ — `null` คือ "ล้างช่อง" ไม่ใช่ "ไม่ได้ส่ง"
+     (route ส่ง `body.coversFrom || null` เสมอ ⇒ คำขอจริงไม่มีทางเลี่ยงด่านด้วยการไม่ส่งคีย์) */
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, coversFrom: null, coversTo: '2026-09-30' }),
+    /ล็อกที่วันเริ่มสัญญา/);
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, coversFrom: '2026-01-01', coversTo: null }),
+    /ล้างช่องไม่ได้/);
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, coversFrom: '2026-02-01', coversTo: '2026-09-30' }),
+    /ล็อกที่วันเริ่มสัญญา/);
+});
+
+/* ⭐ ปลดล็อกแล้วต้องไม่เปิดกว้างกว่าตอนคีย์ใบ — RPC ของ 0374 บังคับ `coversTo` ของงวดยกมาอยู่ในสัญญา
+   ⇒ ถ้าเลื่อนเลยวันสิ้นสุดสัญญาได้ทีหลัง "จ่ายถึง" จะเปิดด่านเข้าไซต์ให้รอบที่ไม่มีใครจ่าย */
+test('งวดยกมา: ปลายช่วงต้องไม่เลยอายุสัญญา — วันที่กั้นมาจาก openingCoverageEnd เท่านั้น', () => {
+  const keep = { coversFrom: '2026-01-01' };
+  const END = '2026-12-31';
+  assert.equal(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, ...keep, coversTo: END, contractEnd: END }), null,
+    'ถึงวันสุดท้ายของสัญญาพอดี = ได้');
+  assert.match(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, ...keep, coversTo: '2027-01-01', contractEnd: END }),
+    /ครอบได้ถึง 31\/12\/2026/);
+  /* 🔴 **ด่านไม่มีสูตรของตัวเอง** — เดิมถอยไปอ่าน `rows` เองเมื่อไม่ได้ส่ง `contractEnd` มา ซึ่งทำให้
+     ฝั่งที่ส่ง (แผงงวด) กับฝั่งที่ไม่ส่ง (route) กั้นคนละวัน · ทางถอยอยู่ที่ `openingCoverageEnd` แล้ว */
+  assert.equal(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, ...keep, coversTo: '2027-06-30', rows: [OPENING, REGULAR] }), null,
+    'ส่ง rows มาเฉย ๆ ต้องไม่ทำให้ด่านคิดวันเอง');
+  // ไม่มีวันให้กั้น = ไม่ตัดสินข้อนี้ (ใบที่ไม่มีสัญญาและมีแต่งวดยกมางวดเดียว) — ล็อกเซลล์ทิ้งไว้คือทางตัน
+  assert.equal(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, ...keep, coversTo: '2027-06-30', contractEnd: null }), null);
+  // ถามเฉย ๆ ว่าใครแก้ได้ ยังต้องไม่ถูกข้อนี้ล็อก แม้ค่าที่เก็บไว้จะเลยสัญญาไปแล้ว
+  assert.equal(installmentActionError(OPENING, 'coverage', FN_STAFF, { ...HIST, contractEnd: '2026-06-30' }), null);
+});
+
+/* ── 🔴 ปุ่มบนแผงงวดกับ API ต้องกั้นด้วย **วันเดียวกัน** (review-fix 23/09) ──────────────────────
+   🐞 อาการที่ปิดอยู่: แผงงวดอ่านวันจาก `order.serviceContract.expiryDate` ส่วน route ของงวดไม่เคย
+     โหลดสัญญา ⇒ ด่านถอยไปอ่านจากงวดอื่นของใบ · สองทางนี้ไม่เท่ากันทันทีที่บัญชีหดช่วงของงวดปกติ
+     งวดสุดท้ายลงมา (งวดปกติของใบย้อนหลังไม่มีกฎช่วง) ⇒ แถบบันทึกเงียบ ปุ่มเปิด แล้ว API ตีกลับ
+     ด้วยวันคนละวัน = คลาสเดียวกับที่รอบนี้ตั้งใจล้าง
+   ⇒ ทั้งสองฝั่งคิดวันด้วย `openingCoverageEnd(order, rows)` ตัวเดียว · ที่นี่จำลองสองฝั่งด้วยค่าที่
+     แต่ละฝั่งมีจริง (จอ = งวดที่โหลดมากับใบ · API = งวดที่อ่านสดจากฐาน) แล้วเทียบคำตอบ */
+const HIST_ORDER = (expiryDate) => ({
+  origin: 'historical', serviceContract: expiryDate ? { id: 'CT-1', expiryDate } : null,
+});
+const askPanel = (order, rows, options) => installmentActionError(OPENING, 'coverage', FN_STAFF, {
+  ...HIST, ...options, rows, contractEnd: openingCoverageEnd(order, rows),
+});
+const askApi = (order, siblings, options) => installmentActionError(OPENING, 'coverage', FN_STAFF, {
+  ...HIST, ...options, rows: siblings, contractEnd: openingCoverageEnd(order, siblings),
+});
+
+test('🔴 openingCoverageEnd = สูตรเดียวของ "ครอบได้ถึงวันไหน" — สัญญามาก่อน แล้วค่อยถอยไปงวดอื่นของใบ', () => {
+  /* ของจริงจากรีวิว: สัญญาถึง 31/12 แต่บัญชีเคยหดงวดปกติงวดสุดท้ายลงมาจบ 30/11 */
+  const SHORTENED = frozen({ ...REGULAR, coversTo: '2026-11-30' });
+  const rows = [OPENING, SHORTENED];
+  assert.equal(openingCoverageEnd(HIST_ORDER('2026-12-31'), rows), '2026-12-31', 'สัญญาชนะงวดอื่นเสมอ');
+  assert.equal(openingCoverageEnd(HIST_ORDER(null), rows), '2026-11-30', 'ไม่มีสัญญา = ถอยไปอ่านจากงวดอื่น');
+  assert.equal(openingCoverageEnd(HIST_ORDER(null), [OPENING]), null, 'ไม่มีทั้งสองทาง = ไม่มีวันให้กั้น');
+  assert.equal(openingCoverageEnd(HIST_ORDER(null), null), null);
+  // งวดยกมาต้องไม่นับตัวเองเข้าเป็นขอบ (ไม่งั้นค่าที่เพิ่งเลยสัญญาไปจะกลายเป็นขอบของตัวมันเอง)
+  assert.equal(openingCoverageEnd(HIST_ORDER(null), [{ ...OPENING, coversTo: '2099-12-31' }, SHORTENED]), '2026-11-30');
+  // ใบ pipeline ไม่มีกฎนี้ — ต้องไม่ไปกั้นช่วงครอบของใบปกติด้วยงวดของมันเอง
+  assert.equal(openingCoverageEnd({ origin: 'pipeline' }, rows), null);
+  assert.equal(openingCoverageEnd(null, rows), null);
+});
+
+test('🔴 ปุ่มกับ API ตอบเหมือนกันทั้งสี่เคส — ในสัญญา · ตรงวันสุดท้าย · เลยสัญญา · ไม่มีสัญญาผูก', () => {
+  const keep = { coversFrom: '2026-01-01' };
+  /* ฝั่งจอเห็นงวดที่โหลดมากับใบ ฝั่ง API อ่านงวดสดจากฐาน — ที่นี่ให้เป็นชุดเดียวกันโดยตั้งใจ
+     เพราะสิ่งที่ทดสอบคือ **กติกา** ไม่ใช่ความสดของข้อมูล · ตัวแปรเดียวที่ต่างกันคือสัญญา */
+  const SHORTENED = frozen({ ...REGULAR, coversTo: '2026-11-30' });
+  const rows = [OPENING, SHORTENED];
+
+  // 1. ในช่วงสัญญา (และเลยงวดปกติงวดสุดท้ายที่บัญชีหดลงมา — เคสที่เคยแตกเป็นสองคำตอบ)
+  const withContract = HIST_ORDER('2026-12-31');
+  const inside = { ...keep, coversTo: '2026-12-15' };
+  assert.equal(askPanel(withContract, rows, inside), null);
+  assert.equal(askApi(withContract, rows, inside), null, 'API ต้องไม่ตีกลับสิ่งที่ปุ่มเปิดให้กด');
+
+  // 2. ตรงวันสุดท้ายของสัญญาพอดี
+  const onEnd = { ...keep, coversTo: '2026-12-31' };
+  assert.equal(askPanel(withContract, rows, onEnd), null);
+  assert.equal(askApi(withContract, rows, onEnd), null);
+
+  // 3. เลยวันสิ้นสุดสัญญา — ทั้งสองฝั่งต้องตีกลับด้วย **ประโยคและวันเดียวกัน**
+  const past = { ...keep, coversTo: '2027-01-01' };
+  const panelPast = askPanel(withContract, rows, past);
+  const apiPast = askApi(withContract, rows, past);
+  assert.match(panelPast, /ครอบได้ถึง 31\/12\/2026/);
+  assert.equal(apiPast, panelPast, 'ข้อความ + วันที่กั้นต้องเป็นประโยคเดียวกัน');
+
+  // 4. ไม่มีสัญญาผูก — ทั้งสองฝั่งถอยไปอ่านจากงวดอื่นของใบเหมือนกัน (30/11 ไม่ใช่ 31/12)
+  const noContract = HIST_ORDER(null);
+  assert.equal(askPanel(noContract, rows, inside), askApi(noContract, rows, inside));
+  assert.match(askApi(noContract, rows, inside), /ครอบได้ถึง 30\/11\/2026/);
+  assert.equal(askPanel(noContract, rows, { ...keep, coversTo: '2026-11-30' }), null);
+  assert.equal(askApi(noContract, rows, { ...keep, coversTo: '2026-11-30' }), null);
+});
+
+/* ── ใบ pipeline: เซลล์ "ครอบบริการ" หลังรอบ 23/09 ────────────────────────────────────────────
+   รอบนั้นเปลี่ยนสองอย่างให้ **ทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง**: เซลล์ที่ล็อกกลายเป็นปุ่มที่บอกเหตุตอนกด
+   และแถบบันทึกถามด่านเต็มแทนเงื่อนไข "ช่วงกลับหัว" ที่จอเขียนเอง
+   ⇒ ต้องพิสูจน์สองข้อสำหรับใบ pipeline: (ก) ด่านมี "เหตุ" ให้ปุ่มพูดเสมอเมื่อเซลล์ล็อก —
+     ไม่มีสถานะไหนที่เซลล์ล็อกแล้วปุ่มไม่มีอะไรจะพูด · (ข) ด่านไม่กั้นแคบไปกว่า API
+     (เป็นฟังก์ชันตัวเดียวกัน) และไม่กว้างกว่า CHECK ของฐาน */
+test('ใบ pipeline: เซลล์ช่วงครอบ — ถามไม่ส่งค่าได้ช่องกรอก · ล็อกมีเหตุให้พูดเสมอ · ร่างที่ผิดได้เหตุจากด่าน', () => {
+  const PIPE = { historical: false, orderLock: null, contractEnd: null, serviceRounds: true, orderTotal: 261936 };
+  const PENDING = frozen({ id: 'SOI-P1', seq: 1, status: 'pending', amount: 1000, coversFrom: '2026-01-01', coversTo: '2026-03-31' });
+  const CONFIRMED = frozen({ ...PENDING, id: 'SOI-P2', status: 'confirmed' });
+
+  // (ก) ถามแบบไม่ส่งค่า = "ใครแก้เซลล์นี้ได้" — ฝ่ายขายได้ช่องกรอก
+  assert.equal(installmentActionError(PENDING, 'coverage', SA, PIPE), null, 'ฝ่ายขายกรอกช่วงของงวดที่ยังไม่รับรองได้');
+  assert.equal(installmentActionError(PENDING, 'coverage', FN_STAFF, PIPE), null);
+  // เซลล์ล็อกเมื่อไร ต้องมีประโยคให้ปุ่มพูด — ห้ามเป็น true/ว่าง (ปุ่มที่กดแล้วเงียบ = อ่านเหมือนระบบพัง)
+  for (const [row, user, re] of [
+    [CONFIRMED, SA, /บัญชีรับรองแล้ว/],          // ฝ่ายขายเลื่อน "จ่ายถึง" ของงวดที่รับรองแล้วเองไม่ได้
+    [PENDING, PC_STAFF, /ไม่มีสิทธิ์แก้ช่วงครอบบริการ/], // คนนอกสายขาย/บัญชีเห็นใบได้ แต่แก้ไม่ได้
+  ]) {
+    const lock = installmentActionError(row, 'coverage', user, PIPE);
+    assert.equal(typeof lock, 'string');
+    assert.ok(lock.trim().length > 10, `เหตุผลของล็อกต้องเป็นประโยคไทยที่อ่านรู้เรื่อง: ${lock}`);
+    assert.match(lock, re);
+  }
+  assert.equal(installmentActionError(CONFIRMED, 'coverage', FN_STAFF, PIPE), null, 'บัญชียังแก้งวดที่รับรองแล้วได้');
+
+  /* (ข) แถบบันทึกถามด่านเต็มด้วยค่าที่จะยิงจริง — กว้างกว่าเงื่อนไข "ช่วงกลับหัว" เดิมสองข้อ
+     และสองข้อนั้นคือสิ่งที่ API/ฐานตีกลับอยู่แล้ว ⇒ ปุ่มไม่ได้เปิดให้กดสิ่งที่จะเด้ง */
+  assert.match(installmentActionError(PENDING, 'coverage', SA, { ...PIPE, coversFrom: '2026-04-01', coversTo: '2026-03-31' }),
+    /ไม่เกินวันสิ้นสุด/, 'ช่วงกลับหัว = เงื่อนไขเดิมที่จอเคยเขียนเอง');
+  assert.match(installmentActionError(PENDING, 'coverage', SA, { ...PIPE, coversFrom: '2026-01-01', coversTo: '2202-08-06' }),
+    /ปีของช่วงครอบบริการไม่ถูกต้อง/, 'ปีเกิน = CHECK ของฐาน ซึ่งเงื่อนไขเดิมปล่อยผ่านแล้วไปเด้งเป็น 500');
+  // ล้างช่องทั้งคู่ได้ตามเดิม (ใบที่ไม่ใช่สายบริการไม่ควรถูกบังคับให้มีค่าค้าง)
+  assert.equal(installmentActionError(PENDING, 'coverage', SA, { ...PIPE, coversFrom: null, coversTo: null }), null);
+  // กฎของงวดยกมาต้องไม่รั่วมาใบ pipeline แม้แถวจะมี kind มาด้วย
+  const OPENING_SHAPED = frozen({ ...OPENING, status: 'pending' });
+  assert.equal(installmentActionError(OPENING_SHAPED, 'coverage', SA, { ...PIPE, coversFrom: '2026-02-01', coversTo: '2099-12-31' }), null);
+});
+
+test('งวดปกติของใบย้อนหลัง: ช่วงครอบตรึงตอนอนุมัติ — แก้ได้เฉพาะบัญชี · กำหนดชำระฝ่ายขายยังเลื่อนได้', () => {
+  const range = { coversFrom: '2026-10-01', coversTo: '2026-11-30' };
+  assert.match(installmentActionError(REGULAR, 'coverage', SA, { ...HIST, ...range }), /ตรึงตอน AE Sup อนุมัติ/);
+  assert.equal(installmentActionError(REGULAR, 'coverage', FN_STAFF, { ...HIST, ...range }), null);
+  assert.equal(installmentActionError(REGULAR, 'schedule', SA, HIST), null, 'ลูกค้าเลื่อนจ่ายเป็นเรื่องปกติ');
+  // แจ้งชำระที่พกช่วงครอบมาด้วย = แก้ช่วงทางอ้อม ⇒ ด่านเดียวกัน · ไม่พกมา = แจ้งได้ตามปกติ
+  assert.match(installmentActionError(REGULAR, 'report', SA, { ...HIST, paidOn: '2026-10-01', ...range }), /ตรึงตอน AE Sup อนุมัติ/);
+  assert.equal(installmentActionError(REGULAR, 'report', SA, { ...HIST, paidOn: '2026-10-01', coversFrom: null, coversTo: null }), null);
+  assert.equal(installmentActionError(REGULAR, 'withdraw', SA, HIST), 'ดึงกลับได้เฉพาะงวดที่แจ้งแล้วและบัญชียังไม่ตรวจ',
+    'งวดปกติถอนตามกติกาเดิม (ยังไม่แจ้ง = ถอนไม่ได้ ด้วยเหตุผลเดิม)');
+});
+
+test('บัญชีรับรอง/ตีกลับงวดยกมาได้ตามทางเดิม — ช่วงครอบมีครบตั้งแต่คีย์', () => {
+  assert.equal(installmentActionError(OPENING, 'confirm', FN_STAFF, HIST), null);
+  assert.equal(installmentActionError(OPENING, 'reject', FN_STAFF, { ...HIST, reason: 'ยอดไม่ตรงกับใบกำกับ Express' }), null);
+  assert.match(installmentActionError(OPENING, 'confirm', SA, HIST), /เฉพาะฝ่ายบัญชี/);
+});
+
+test('ใบ pipeline (historical ไม่ส่ง/เป็นเท็จ) ได้ด่านเดิมทุกข้อ — แม้แถวจะมี kind', () => {
+  const plainOpeningShape = { ...OPENING, status: 'pending' };
+  assert.equal(installmentActionError(plainOpeningShape, 'schedule', SA, {}), null);
+  assert.equal(installmentActionError({ status: 'reported', reportedById: SA.id }, 'withdraw', SA, { historical: false }), null);
+  assert.equal(installmentActionError({ status: 'pending' }, 'coverage', SA, { coversFrom: '2026-09-01', coversTo: '2026-09-30' }), null);
+  assert.equal(installmentActionError({ status: 'pending' }, 'coverage', SA, { historical: false, coversFrom: '2026-09-02' }), null);
+});
+
+test('คอลัมน์ "ใบกำกับ x/y": งวดยกมาไม่นับเป็นงวดที่ต้องมีใบ (ออกในระบบเดิมแล้ว)', () => {
+  const cell = salesOrderPaymentCell([
+    { ...OPENING, status: 'confirmed' },
+    { ...REGULAR, status: 'confirmed', taxInvoiceNo: 'IV-6810001' },
+  ], null, '2026-10-05', 261936);
+  assert.equal(cell.invoiceNeeded, 1);
+  assert.equal(cell.invoiced, 1);
+  assert.deepEqual(salesOrderTaxInvoiceNote(cell), { label: 'ใบกำกับครบ', tone: 'success' });
+});
+
+/* ── ภาพหลังบัญชีรับรองงวด (โมดัลรับรองของใบย้อนหลัง · mock FnConfirm) ─────────────────────────
+   ⭐ ตัวเลขของ mock: ยกมา 196,452 ครอบถึง 30 ก.ย. · งวดถัดไป 65,484 ครบกำหนด 1 ต.ค. */
+test('ภาพหลังรับรองงวดยกมา: จ่ายถึงปลายช่วงยกมา · เก็บแล้ว = ยอดยกมา · งวดถัดไป = งวดปกติแรก', () => {
+  const outlook = installmentConfirmOutlook(OPENING, [OPENING, REGULAR]);
+  assert.equal(outlook.paidThrough, '2026-09-30');
+  assert.equal(outlook.collected, 196452);
+  assert.deepEqual(outlook.next, { label: '', amount: 65484, dueDate: '2026-10-01' });
+});
+
+test('ภาพหลังรับรองงวดปกติ: เก็บแล้วรวมงวดที่รับรองไปแล้ว · จ่ายถึงขยับไปปลายช่วงงวดนี้ · ไม่มีงวดถัดไป', () => {
+  const rows = [{ ...OPENING, status: 'confirmed' }, { ...REGULAR, status: 'reported', label: 'งวด ต.ค.–ธ.ค.' }];
+  const outlook = installmentConfirmOutlook(rows[1], rows);
+  assert.equal(outlook.paidThrough, '2026-12-31');
+  assert.equal(outlook.collected, 261936);
+  assert.equal(outlook.next, null);
+});
+
+test('ภาพหลังรับรอง: งวดที่รับรองแล้วครอบไกลกว่าไม่ถอยหลัง · งวดก่อนหน้าที่ยังค้างไม่ใช่ "งวดถัดไป"', () => {
+  const rows = [
+    { id: 'a', seq: 1, status: 'pending', amount: 100, coversFrom: '2026-01-01', coversTo: '2026-03-31' },
+    { id: 'b', seq: 2, status: 'reported', amount: 100, coversFrom: '2026-04-01', coversTo: '2026-06-30' },
+    { id: 'c', seq: 3, status: 'confirmed', amount: 100, coversFrom: '2026-07-01', coversTo: '2026-09-30' },
+    { id: 'd', seq: 4, status: 'confirmed', amount: 100, coversFrom: '2026-10-01', coversTo: '2026-12-31' },
+  ];
+  const outlook = installmentConfirmOutlook(rows[1], rows);
+  assert.equal(outlook.paidThrough, '2026-12-31', 'ค่าเดียวกับ paidThrough ของทั้งใบ');
+  assert.equal(outlook.collected, 300);
+  assert.equal(outlook.next, null, 'งวด 1 ที่ยังไม่จ่ายอยู่ก่อนงวดนี้ — ไม่ใช่งวดถัดไป');
+  // ไม่มีช่วงครอบเลย = จ่ายถึงยังว่าง (ไม่ใช่เดาเอง) · ไม่มีแถว = ค่าว่างที่ปลอดภัย
+  assert.equal(installmentConfirmOutlook({ id: 'x', seq: 1, amount: 50 }, []).paidThrough, null);
+  assert.deepEqual(installmentConfirmOutlook(null, rows), { paidThrough: null, collected: 0, next: null });
 });

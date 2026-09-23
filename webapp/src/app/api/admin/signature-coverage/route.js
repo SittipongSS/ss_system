@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { buildSignatureCoverage, canViewSignatureCoverage } from '@/lib/admin/signatureCoverage';
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
+import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,10 +51,12 @@ export async function GET() {
       .eq('approvalStatus', 'not_submitted')
       .in('status', APPROVABLE_STATUSES)
       .limit(5000),
-    supabase
+    // ใบสั่งขายย้อนหลัง (0374) มีร่าง/ตีกลับได้แล้ว แต่ส่งอนุมัติโดยไม่เก็บลายเซ็น (CHECK บังคับว่าง) — ผู้คีย์ไม่ต้องมี
+    // ลายเซ็นก็ส่งได้ ⇒ ห้ามนับเข้า "ต้องยื่น" ไม่งั้นรายงานชี้ให้คนไปอัปลายเซ็นที่ไม่มีวันถูกใช้
+    pipelineRowsOnly(supabase
       .from('sales_orders')
       .select('id, createdBy')
-      .in('status', ['draft', 'rejected'])
+      .in('status', ['draft', 'rejected']))
       .limit(5000),
   ]);
 

@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning } from '@/lib/salesPlanning';
 import { canCancelContract, contractKindLabel } from '@/lib/sales/contracts';
+import { historicalContractLockGate } from '@/lib/sales/historicalContractLock';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const { row: before, response } = await loadScoped(supabase, 'sales_contracts', id, user, 'edit');
   if (response) return response;
+  /* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ ยกเลิกที่ใบสั่งขาย ไม่ใช่ที่นี่ (0374) — ยกเลิกตรงนี้
+     = ใบสั่งขายค้างอนุมัติไม่ได้ (RPC หาร่างที่ชี้กลับไม่เจอ) · ยกเลิกใบสั่งขาย = trigger ยกเลิกใบนี้ตามเอง */
+  const lock = await historicalContractLockGate(supabase, before);
+  if (lock) return fail(lock.message, lock.status);
   if (!canCancelContract(before)) {
     return fail('ยกเลิกได้เฉพาะสัญญาที่ยังเป็นร่างหรือรอลงนาม', 409);
   }

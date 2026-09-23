@@ -4,7 +4,7 @@
 // หัวข้อย้ายบ้านได้ แต่ชุดหัวข้อ ฝ่ายเจ้าของ และธงของแต่ละตัวต้องเท่าเดิมเป๊ะ
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { KINDS_BY_OWNER, REQUEST_KINDS, assertKind } from './registry.js';
 import {
@@ -168,7 +168,11 @@ test('ตัวอ่านรูปทรงต้องได้ "ทั้ง
     .split('\n')
     .filter((f) => /\.(js|mjs)$/.test(f))
     // ไฟล์นี้เองเขียนแพตเทิร์นไว้ในสตริงของ regex — ไม่งั้นเทสต์จับตัวเอง
-    .filter((f) => !f.endsWith('kinds/registry.test.mjs'));
+    .filter((f) => !f.endsWith('kinds/registry.test.mjs'))
+    /* 🪤 `git ls-files` คือ **ทะเบียน** ไม่ใช่สิ่งที่อยู่บนดิสก์ — ไฟล์ที่เพิ่งลบแต่ยังไม่ stage
+       ยังอยู่ในลิสต์ ⇒ `readFileSync` โยน ENOENT แล้วเทสต์ทั้งชุดแดงเพราะการลบไฟล์ ไม่ใช่เพราะบั๊ก
+       (เจอตอนถอดเส้น "ไม่พบจุดนี้หน้างาน" ทิ้ง) · ไฟล์ที่ยังอยู่ถูกสแกนครบเหมือนเดิม */
+    .filter((f) => existsSync(f));
   const hits = [];
   for (const file of files) {
     const lines = readFileSync(file, 'utf8').split('\n');

@@ -1,5 +1,5 @@
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
-import { historicalGateExempt, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 // ── รางสามขั้นบนตารางรายการใบสั่งขาย (มติผู้ใช้ 2026-08-13 · แบบ ข) ─────────
 //
@@ -98,14 +98,11 @@ export function salesOrderListTrack(order = {}) {
      ⇒ ขั้นนี้ต้องเป็น `done` ไม่ใช่ `todo` ค้างตลอดกาล
      🐞 ถ้าปล่อยเป็น todo: ใบยอด 0 จะไม่มีวันขึ้น "เสร็จสมบูรณ์" ใน
      `salesOrderTrackSummary` และค้างเป็น "รอเก็บเงิน" ทั้งที่ไม่มีอะไรให้รอ */
-  /* ⭐ **ใบย้อนหลังที่ยกเว้นด่านเงินและไม่มีงวด** (มติข้อ 13) — เงินเก็บนอกระบบไปแล้ว
-     ⇒ ไม่มีงวดให้รอ · ต้องเป็น `skip` ไม่ใช่ `todo` ที่อ่านเหมือนค้างเก็บเงินตลอดกาล
-     ⚠️ มีงวดเมื่อไรขั้นนี้กลับมาเดินตามปกติ — การยกเว้นปลดแค่ *ด่านนัดบริการ*
-     ไม่ได้แปลว่างวดที่คีย์ไว้ไม่ต้องเก็บ */
+  /* 🔄 **ถอดสาขา "ยกเว้นด่านเงิน" ของใบย้อนหลังแล้ว** (มติ 22/09 · mig 0374 แทนมติข้อ 13) — เงินที่เก็บก่อน
+     เข้าระบบคีย์เป็น "งวดยกมา" ให้บัญชีรับรอง ⇒ ใบย้อนหลังที่มียอดเดินขั้นนี้ด้วยงวดจริงเหมือนใบปกติ
+     (เก็บเงิน x/y · งวดยกมานับเป็นหนึ่งงวด) · ใบ ฿0 ข้ามด้วยสาขายอด 0 ข้างบนตัวเดียวกับใบปกติ */
   const moneyStep = approved && paymentNotRequired(order?.totalAmount)
     ? step('money', 'ไม่เก็บเงิน', 'skip', 'ยอด 0 — ไม่มีขั้นนี้')
-    : historicalGateExempt(order) && !count
-    ? step('money', 'ยกเว้นด่านเงิน', 'skip', 'ไม่มีงวดที่ต้องเก็บ')
     : !approved || !payment
     ? step('money', money, 'todo')
     : payment.overdue

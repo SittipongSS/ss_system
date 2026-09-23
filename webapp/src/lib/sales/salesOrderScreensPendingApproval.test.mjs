@@ -225,7 +225,10 @@ test('หน้าใบสั่งขาย: ทุกโมดัลของ
   // ดึงกลับ + ตีกลับ = ยอดออกจากรออนุมัติ
   const leaves = page.match(/จะออกจาก "\$\{PENDING_APPROVAL_LABEL\}"/g) || [];
   assert.ok(leaves.length >= 2, 'ทั้งดึงกลับและตีกลับต้องบอกว่ายอดออกจากรออนุมัติ');
-  assert.match(page, /open=\{!!rejectForm\}[\s\S]{0,400}detail=\{`ยอด \$\{fmtMoney\(order\.actualAmount\)\} จะออกจาก "\$\{PENDING_APPROVAL_LABEL\}"/);
+  /* ⚠️ 0374 แตกกิ่ง: ใบย้อนหลังไม่เคยเข้ากอง "รออนุมัติ" จึงใช้ `historicalRejectDetail` แทน
+     — บรรทัดของใบปกติต้องยังอยู่ครบ (ยามนี้เฝ้าตัวนั้น) */
+  assert.match(page, /open=\{!!rejectForm\}[\s\S]{0,600}: `ยอด \$\{fmtMoney\(order\.actualAmount\)\} จะออกจาก "\$\{PENDING_APPROVAL_LABEL\}"/);
+  assert.match(page, /detail=\{historical\s*\n\s*\? historicalRejectDetail\(order\)/);
 });
 
 test('หน้าใบเสนอราคา: การ์ดใบสั่งขายไม่ขึ้น "Actual ฿0.00" ข้างป้ายรออนุมัติอีก', () => {

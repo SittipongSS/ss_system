@@ -49,7 +49,8 @@ import { dealLabelForLead } from '@/lib/sales/dealLeadLink';
 import { naText } from '@/lib/format';
 import { historicalDealWriteMessage } from '@/lib/sales/documentWorkflowErrors';
 import {
-  canKeyHistoricalSalesOrder, historicalDealPatchError, historicalOwnerTakenMessage, historicalRowsOnly, isHistoricalDeal,
+  HISTORICAL_UNAPPROVED_STATUSES, canMoveHistoricalDealOwner, historicalDealPatchError, historicalOwnerTakenMessage,
+  historicalRowsOnly, isHistoricalDeal,
 } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
@@ -195,13 +196,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   /* ── ย้ายเจ้าของดีลของใบสั่งขายย้อนหลังทีละใบ (คำตอบข้อ 4 · mig 0360) ─────────────────
      ⭐ ปุ่มโอนงานพนักงานไม่ย้ายดีลภาชนะ (ดีล Won อยู่นอกเงื่อนไขโอน) ⇒ ทางย้ายคือ PATCH `{ ownerId }` ทีละใบ
        · AE ปลายทางผ่าน validateDealOwner ข้างบนแล้ว (AE/Senior AE ที่ยังใช้งานอยู่ · ทีมตามเจ้าของ)
-     ⚠️ เฉพาะ AE Supervisor/Admin — ดีลภาชนะถือใบย้อนหลังทุกใบของคู่ (ลูกค้า × AE)
+     ⚠️ เฉพาะ AE Supervisor/Admin (canMoveHistoricalDealOwner) — ดีลภาชนะถือใบย้อนหลังทุกใบของคู่ (ลูกค้า × AE)
+        · แคบกว่าผู้คีย์ใบโดยเจตนา (0374 ขยายผู้คีย์เป็นฝ่ายขายทุกตำแหน่ง แต่การย้ายเจ้าของยังเป็นของหัวหน้า)
      ⚠️ AE ปลายทางมีดีลภาชนะของลูกค้ารายนี้อยู่แล้ว = 409 (P1 ไม่รวมดีล) · UNIQUE ของ 0360 คือด่านสุดท้าย
        (แข่งกันพอดี ⇒ historicalDealWriteMessage ตอนเขียนข้างล่าง) */
   const historicalOwnerMove = isHistoricalDeal(before) && 'ownerId' in patch
     && String(patch.ownerId || '') !== String(before.ownerId || '');
   if (historicalOwnerMove) {
-    if (!canKeyHistoricalSalesOrder(user)) {
+    if (!canMoveHistoricalDealOwner(user)) {
       return forbidden('ย้ายเจ้าของดีลของใบสั่งขายย้อนหลังได้เฉพาะ AE Supervisor หรือ Admin');
     }
     /* ทีมตามดีล = ทีมของ AE ปลายทาง (คำตอบข้อ 1) — ด่านเดียวกับตอนคีย์ (historicalOrderPlan · RPC
@@ -211,6 +213,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest('AE คนนี้ยังไม่มีทีม — ตั้งทีมที่หน้าจัดทีมก่อน จึงย้ายดีลของใบย้อนหลังให้ได้ (ทีมตามดีล)');
     }
     patch.team = ownerTeam;
+    /* ใบย้อนหลังที่ยังไม่อนุมัติ (ร่าง · รออนุมัติ · ตีกลับ) ค้างอยู่ = ย้ายไม่ได้ (409) — เอกสารแทนสัญญาร่างของใบ
+       ถือทีม/เจ้าของตามดีลตอนคีย์ (0374) และการย้ายนี้ไม่ได้ซิงก์สองช่องนั้นของสัญญา
+       ⇒ ย้ายไปแล้วเจ้าของใหม่จัดการไฟล์สัญญาร่างของใบตัวเองไม่ได้ · ให้ปิดเรื่องก่อน (อนุมัติ หรือยกเลิก) แล้วค่อยย้าย
+       ⚠️ ใบที่อนุมัติแล้วไม่ติด — เอกสารแทนสัญญาอนุมัติพร้อมใบไปแล้ว (ไม่ใช่ร่างที่ยังต้องแนบไฟล์) ย้ายได้ตามคำตอบข้อ 4 */
+    const { data: unapproved, error: unapprovedError } = await historicalRowsOnly(supabase.from('sales_orders')
+      .select('id, "orderNumber"').eq('dealId', id))
+      .in('status', [...HISTORICAL_UNAPPROVED_STATUSES]).limit(1);
+    if (unapprovedError) return fail(unapprovedError.message, 500);
+    if (unapproved?.length) {
+      const which = unapproved[0].orderNumber || unapproved[0].id;
+      return conflict(`ดีลนี้มีใบย้อนหลังที่ยังไม่อนุมัติ (${which}) — อนุมัติหรือยกเลิกก่อนย้ายเจ้าของ`);
+    }
     const { data: taken, error: takenError } = await historicalRowsOnly(supabase.from('sales_deals')
       .select('id, code').eq('customerId', before.customerId).eq('ownerId', patch.ownerId))
       .neq('id', id).limit(1);

@@ -1,7 +1,7 @@
-// ── ใบสั่งขายย้อนหลังฝั่งบริการ (mig 0360 · แผน P1 §3-K) — ยามสายไฟที่เทสต์หน่วยมองไม่เห็น ─────────────
+// ── ใบสั่งขายย้อนหลังฝั่งบริการ (mig 0360 → 0374 · มติ 22/09) — ยามสายไฟที่เทสต์หน่วยมองไม่เห็น ─────────────
 //
 // ⭐ ตัวตัดสิน (fgSummary · bindQueue · bindTargetError · evaluateVisitGate) มีเทสต์หน่วยของตัวเองแล้ว
-//   ไฟล์นี้กัน "สายไฟ": select ที่ต้องพกคอลัมน์ของ 0360 · route ที่ต้องเรียกตัวตัดสินก่อนเขียน ·
+//   ไฟล์นี้กัน "สายไฟ": select ที่ต้องพกคอลัมน์ที่ตัวตัดสินอ่าน · route ที่ต้องเรียกตัวตัดสินก่อนเขียน ·
 //   ตัวโหลดบริบทด่านที่ห้ามกลืน error · จอที่ต้องถามตัวตัดสินตัวเดียวกับ server
 // 🔴 คอลัมน์ตกจาก select = ตัวตัดสินได้ undefined แล้วตอบผิดเงียบ ๆ — คิวนี้เจอมาแล้วกับ `serviceContractId`
 //    (UAT 2026-09-01: ชิป "ยังไม่ผูกสัญญา" ทุกใบตลอดกาล) · `check:columns` จับได้แค่คอลัมน์ที่ไม่มีในฐาน
@@ -21,13 +21,21 @@ const selectOf = (src, table) => {
   return hit[1];
 };
 
-test('คิวงานเข้าใหม่: ใบพก origin + เลขเดิม + ร่องรอยยกเว้น · บรรทัดพกจุดติดตั้ง', () => {
+test('คิวงานเข้าใหม่: ใบพก origin + เลขเดิม + ยอด (ตัดสินใบ ฿0) · บรรทัดพกจุดติดตั้ง · ถังตั้งรอบได้งวด', () => {
   const route = code('app/api/service/intake/route.js');
   const orders = selectOf(route, 'sales_orders');
-  for (const col of ['origin', '"historicalQuoteRef"', '"historicalExpressRef"', '"historicalInvoiceRef"', '"paymentGateExemptAt"']) {
+  for (const col of ['origin', '"historicalQuoteRef"', '"historicalExpressRef"', '"historicalInvoiceRef"', '"totalAmount"']) {
     assert.ok(orders.includes(col), `select ของใบต้องมี ${col}`);
   }
+  // มติ 22/09 (0374) ถอดสวิตช์ยกเว้นด่านเงิน — ร่องรอยของ 0360 ต้องไม่ถูกอ่านอีก
+  assert.ok(!orders.includes('paymentGateExemptAt'), 'ห้ามอ่านร่องรอยยกเว้นของ 0360 อีก');
   assert.ok(selectOf(route, 'sales_order_lines').includes('"installationPoint"'));
+  // ⭐ แถวรอตั้งรอบพก "เงินครอบถึง" — ต้องส่งงวดชุดเดียวกับชิปของถังผูกโซนเข้า planQueue
+  assert.match(route, /planQueue\(\{[^}]*installmentsByOrderId[^}]*\}\)/);
+  // 🔒 ยอดของใบไม่ออกไปกับ response — ส่งออกเฉพาะแถวคิวที่ตัวตัดสินประกอบแล้ว (ไม่มี orders/ordersById ดิบ)
+  const reply = route.slice(route.indexOf('return ok({'), route.indexOf('});', route.indexOf('return ok({')));
+  assert.ok(reply.length > 0, 'หา response ของ route ไม่เจอ');
+  assert.doesNotMatch(reply, /\borders\b|ordersById/);
 });
 
 test('ผูกโซน: ตรวจปลายทางด้วย bindTargetError ก่อนเขียน · ตัดวันของ term จาก body · audit รายแถวพกจุดติดตั้ง', () => {
@@ -48,10 +56,13 @@ test('ผูกโซน: ตรวจปลายทางด้วย bindTarg
   assert.match(route, /installationPoint: linesById\.get\(t\.salesOrderLineId\)\?\.installationPoint \?\? null/);
 });
 
-test('🔴 บริบทด่านเข้าไซต์: เลือก origin + paymentGateExemptAt และไม่กลืน error ของทั้งสามก้อน', () => {
+test('🔴 บริบทด่านเข้าไซต์: เลือก origin + totalAmount · ยอดจริงไม่ออกไปกับบริบท · ไม่กลืน error ของทั้งสามก้อน', () => {
   const src = code('lib/service/gateContext.js');
   const orders = selectOf(src, 'sales_orders');
-  assert.ok(orders.includes('origin') && orders.includes('"paymentGateExemptAt"'));
+  assert.ok(orders.includes('origin') && orders.includes('"totalAmount"'));
+  assert.ok(!orders.includes('paymentGateExemptAt'), 'ร่องรอยยกเว้นของ 0360 ไม่มีใครอ่านแล้ว');
+  // บริบทถูกส่งถึงจอฝ่ายบริการทั้งก้อน ⇒ เหลือแค่คำตอบของด่าน (0 = ใบยอด 0 · null = ไม่รู้/มียอด)
+  assert.match(src, /ordersById\[o\.id\] = \{ \.\.\.o, totalAmount: paymentNotRequired\(o\.totalAmount\) \? 0 : null \};/);
   const loads = src.match(/const \{[^}]*\} = await fetchInChunks\(/g) || [];
   assert.equal(loads.length, 3, 'ใบ · งวด · สัญญา');
   for (const load of loads) assert.match(load, /error:/, `ต้องรับ error: ${load}`);
@@ -60,14 +71,63 @@ test('🔴 บริบทด่านเข้าไซต์: เลือก 
   }
 });
 
-test('ด่านเข้าไซต์: ยกเว้นเฉพาะข้อ② ผ่าน historicalGateExempt — ไม่แตะข้อ① และไม่อ่านคอลัมน์เอง', () => {
+test('บริบทด่านเข้าไซต์ (พฤติกรรม): ใบยอด 0 ส่งออกเป็น 0 · ใบที่มียอดส่งออกเป็น null — ด่านข้อ② ตอบตรงกับยอดจริง', async () => {
+  const { loadVisitGateContext } = await import('./gateContext.js');
+  const { evaluateVisitGate } = await import('./visitGate.js');
+  const tables = {
+    service_zones: [{ id: 'Z1', siteId: 'S1', name: 'ล็อบบี้' }, { id: 'Z2', siteId: 'S2', name: 'ล็อบบี้' }],
+    service_zone_terms: [
+      { id: 'T1', zoneId: 'Z1', salesOrderId: 'SO0', createdAt: '2026-09-01' },
+      { id: 'T2', zoneId: 'Z2', salesOrderId: 'SO9', createdAt: '2026-09-01' },
+    ],
+    sales_orders: [
+      { id: 'SO0', status: 'approved', supersededById: null, serviceContractId: 'CT1', origin: 'historical', totalAmount: 0 },
+      { id: 'SO9', status: 'approved', supersededById: null, serviceContractId: 'CT1', origin: 'pipeline', totalAmount: 261936 },
+    ],
+    sales_order_installments: [],
+    sales_contracts: [{ id: 'CT1', status: 'signed', effectiveDate: '2026-01-01', expiryDate: '2026-12-31' }],
+  };
+  const supabase = {
+    from(table) {
+      const filters = [];
+      let range = null;
+      const q = {
+        select: () => q,
+        in: (col, values) => { filters.push((r) => values.includes(r[col])); return q; },
+        eq: (col, value) => { filters.push((r) => r[col] === value); return q; },
+        order: () => q,
+        range: (a, b) => { range = [a, b]; return q; },
+        then: (resolve, reject) => Promise.resolve().then(() => {
+          const rows = (tables[table] || []).filter((r) => filters.every((keep) => keep(r)));
+          return { data: range ? rows.slice(range[0], range[1] + 1) : rows, error: null };
+        }).then(resolve, reject),
+      };
+      return q;
+    },
+  };
+  const ctx = await loadVisitGateContext(supabase, ['S1', 'S2']);
+  assert.equal(ctx.ordersById.SO0.totalAmount, 0);
+  assert.equal(ctx.ordersById.SO9.totalAmount, null, '🔒 ยอดจริงของใบห้ามออกไปกับบริบทด่าน');
+  assert.ok(!JSON.stringify(ctx).includes('261936'));
+  const visit = { assigneeId: 'U1', scheduledDate: '2026-08-27', kind: 'refill' };
+  const paymentOf = (siteId) => evaluateVisitGate(visit, {
+    zones: ctx.zonesBySite[siteId], terms: ctx.termsBySite[siteId], ordersById: ctx.ordersById,
+    installmentsByOrderId: ctx.installmentsByOrderId, contractsById: ctx.contractsById,
+  }).find((i) => i.key === 'payment');
+  assert.equal(paymentOf('S1').state, 'ok', 'ใบยอด 0 ผ่านข้อ② เอง');
+  assert.equal(paymentOf('S2').state, 'blocked', 'ใบที่มียอดแต่ไม่มีงวดรับรองต้องติด');
+});
+
+test('ด่านเข้าไซต์: ใบยอด 0 ผ่านเฉพาะข้อ② ผ่าน paymentNotRequired — ไม่แตะข้อ① และไม่อ่านร่องรอยยกเว้นอีก', () => {
   const src = code('lib/service/visitGate.js');
   const linked = src.indexOf('const linked = live.filter(');
   const paid = src.indexOf('const paid = covered.filter(');
-  const exempt = src.indexOf('historicalGateExempt(pick(ordersById, t.salesOrderId))');
-  assert.ok(linked > 0 && paid > linked && exempt > paid, 'ยกเว้นต้องอยู่ในตัวกรองข้อเงิน หลังข้อสัญญา');
-  assert.doesNotMatch(src.slice(0, paid), /historicalGateExempt\(/, 'ห้ามยกเว้นก่อนถึงข้อเงิน');
-  assert.doesNotMatch(src, /paymentGateExemptAt/, 'ถามผ่านตัวตัดสินกลางเท่านั้น (ถาม origin ด้วยเสมอ)');
+  const zero = src.indexOf('paymentNotRequired(pick(ordersById, t.salesOrderId)?.totalAmount)');
+  assert.ok(linked > 0 && zero > linked && paid > zero, 'ตัวตัดสินใบ ฿0 ต้องอยู่ที่ข้อเงิน หลังข้อสัญญา');
+  assert.doesNotMatch(src.slice(0, linked), /paymentNotRequired\(/, 'ห้ามปล่อยผ่านก่อนถึงข้อสัญญา');
+  assert.match(src, /if \(noPaymentStep\(t\)\) return true;/);
+  assert.doesNotMatch(src, /paymentGateExemptAt|historicalGateExempt/, 'สวิตช์ยกเว้นของ 0360 ถอดแล้ว (มติ 22/09)');
+  assert.match(src, /import \{ paymentNotRequired \} from '@\/lib\/sales\/salesOrderPayments';/);
 });
 
 test('wizard: ใบย้อนหลังชี้ไป "เพิ่มไซต์ย้อนหลัง" ด้วยลิงก์ (ไม่ฝังโมดัล) · ถามด่านปลายทางตัวเดียวกับ server ก่อนส่ง', () => {
@@ -84,77 +144,36 @@ test('wizard: ใบย้อนหลังชี้ไป "เพิ่มไ�
   assert.match(src, /\{group\.installationPoint && \(/);
 });
 
-test('หน้างานเข้าใหม่: ป้าย "ย้อนหลัง" ตัดสินด้วย isHistoricalOrder · ชิปยกเว้นด่านเงินอ่านจาก readiness', () => {
+test('หน้างานเข้าใหม่: ป้าย "ย้อนหลัง" ตัดสินด้วย isHistoricalOrder · ชิปใบ ฿0 อ่านจาก readiness.paymentNotRequired', () => {
   const src = code('app/service/intake/page.js');
   assert.match(src, /isHistoricalOrder\(row\) && \(\s*<span className="cell-sub">\s*<StatusBadge tone="info" size="sm" label="ย้อนหลัง" \/>/);
-  // ชิปอยู่ใน PaidBadge (#1720 แยกคอมโพเนนต์ให้ตาราง + การ์ดใช้ร่วม) — ตัวอ่านเดียวคือ readiness.paymentGateExempt
-  assert.match(src, /function PaidBadge\(\{ readiness \}\) \{[\s\S]{0,400}readiness\?\.paymentGateExempt[\s\S]{0,80}label="ยกเว้นด่านเงิน"/);
+  // ชิปอยู่ใน PaidBadge (#1720 แยกคอมโพเนนต์ให้ตาราง + การ์ดใช้ร่วม) — ใบ ฿0 = ไม่มีงวดให้เก็บ (ตัวตัดสินเดียวกับ visitGate ข้อ②)
+  assert.match(src, /function PaidBadge\(\{ readiness, label = "จ่ายถึง" \}\) \{[\s\S]{0,600}readiness\?\.paymentNotRequired[\s\S]{0,80}label="ไม่มีงวดให้เก็บ"/);
+  assert.doesNotMatch(src, /paymentGateExempt|ยกเว้นด่านเงิน/, 'ชิปยกเว้นของ 0360 ถอดแล้ว (มติ 22/09)');
   assert.equal((src.match(/<PaidBadge readiness=\{row\.readiness\} \/>/g) || []).length >= 2, true, 'ตารางและการ์ดใช้ PaidBadge ตัวเดียวกัน');
-  assert.equal((src.match(/label="ย้อนหลัง"/g) || []).length, 2, 'ป้ายย้อนหลังขึ้นทั้งตารางและการ์ด');
+  // ถังผูกโซนสองจุด (ตาราง + การ์ด) + ถังตั้งรอบสองจุด (ตาราง + การ์ด · มติ 22/09 ม็อก TsIntake)
+  assert.equal((src.match(/label="ย้อนหลัง"/g) || []).length, 4, 'ป้ายย้อนหลังขึ้นทั้งตารางและการ์ดของสองถัง');
 });
 
-/* ── จุดที่ TS หาไม่เจอหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ────────────────
-   🔴 ทุกตัวอ่านที่ตัดสินว่า "บรรทัดนี้ยังต้องผูกไหม" ต้องเห็นธง — ตัวไหนไม่เห็น ตัวนั้นจะนับ
-      จุดที่แจ้งไปแล้วต่อ ⇒ ป้ายบนเมนูกับแท็บบอกคนละเลข ซึ่งเป็นอาการที่คนไม่ไว้ใจทั้งหน้า */
-const SITE_FLAG_ALL = [
-  '"siteNotFoundAt"', '"siteNotFoundById"', '"siteNotFoundByName"', '"siteNotFoundReason"',
-  '"siteNotFoundNote"', '"siteClosedAt"', '"siteClosedById"', '"siteClosedByName"', '"siteClosedNote"',
-];
-
-test('0362: ทุกตัวอ่านบรรทัดของคิวเห็นธง "ไม่พบจุดนี้หน้างาน"', () => {
-  const intake = selectOf(code('app/api/service/intake/route.js'), 'sales_order_lines');
-  for (const col of SITE_FLAG_ALL) assert.ok(intake.includes(col), `select ของคิวต้องมี ${col}`);
-
-  // ป้ายบนเมนูเลือกคอลัมน์ผอมโดยตั้งใจ — แต่ธงตัดออกไม่ได้ ไม่งั้นป้ายนับใบที่แท็บไม่โชว์แล้ว
-  const nav = selectOf(code('app/api/nav/counts/route.js'), 'sales_order_lines');
-  assert.ok(nav.includes('"siteNotFoundAt"'), 'ตัวนับบนเมนูต้องเห็นธง');
-
-  // ผูกโซน: ตรวจธงก่อน แล้วค่อยไปถึงบรรทัดที่เขียน (trigger ของ 0362 เป็นด่านสุดท้าย ไม่ใช่ด่านแรก)
-  const bind = code('app/api/service/intake/bind/route.js');
-  assert.ok(selectOf(bind, 'sales_order_lines').includes('"siteNotFoundAt"'));
-  const guard = bind.indexOf('lineSiteNotFound(line)');
-  const insert = bind.indexOf(".from('service_zone_terms').insert(");
-  assert.ok(guard > 0 && insert > guard, 'ต้องตรวจธงก่อน insert');
+/* ── ถังตั้งรอบ: ใบย้อนหลังมาถึง TS ที่นี่ครั้งแรก (มติ 22/09 · mig 0374) ────────────────────
+   ⭐ รอบขายเกิดตอน AE Sup อนุมัติ ⇒ ใบย้อนหลังไม่ผ่านถังผูกโซน · TS ต้องเห็น "เงินครอบถึง" ตั้งแต่ตอนตั้งรอบ
+      และป้ายบนเมนูต้องนับถังนี้ ไม่งั้นใบมาถึงแบบไม่มีสัญญาณ */
+test('หน้างานเข้าใหม่: ถังตั้งรอบโชว์ "เงินครอบถึง" ด้วย PaidBadge ตัวเดียวกัน · โน้ตโซนผูกแล้ว · เปิดแท็บแรกที่มีงานครั้งเดียว', () => {
+  const src = code('app/service/intake/page.js');
+  assert.equal((src.match(/<PaidBadge readiness=\{row\} label="เงินครอบถึง" \/>/g) || []).length, 2, 'ตาราง + การ์ดของถังตั้งรอบ');
+  assert.match(src, /<th scope="col">เงินครอบถึง<\/th>/);
+  // โน้ตขึ้นเฉพาะแท็บตั้งรอบที่มีใบย้อนหลังจริง
+  assert.match(src, /showCounts && tab === "plan" && historicalPlanOrders\.length > 0 && \(/);
+  assert.match(src, /โซนผูกจากฝ่ายขายตอนคีย์ใบแล้ว — ใบย้อนหลังไม่ต้องผ่าน “รอตั้งไซต์\/โซน”/);
+  // สลับแท็บครั้งเดียวหลังโหลดสำเร็จครั้งแรก · ไม่ทับแท็บที่คนเลือกเอง
+  assert.match(src, /if \(!autoTabDone\.current\) \{\s*autoTabDone\.current = true;/);
+  assert.match(src, /setTab\(\(current\) => \(current === "bind" \? "plan" : current\)\)/);
 });
 
-test('0362: ทางแจ้ง/ถอนของ TS — ด่านครบและ audit ทุกครั้ง', () => {
-  const route = code('app/api/service/intake/site-not-found/route.js');
-  for (const needle of [
-    "requireService({ user, edit: true })",   // ฝ่าย TS เท่านั้น
-    'orderReceivable(order)',                 // ใบต้องอนุมัติและไม่ถูก Rev. ทับ
-    'isHistoricalOrder(order)',               // ใบย้อนหลังเท่านั้น
-    'siteNotFoundInputError(',                // เหตุผล 4 ตัว + หมายเหตุของ "อื่น ๆ"
-    'allocatedByLine(',                       // ผูกโซนไปแล้วแจ้งไม่ได้
-    'lineSiteClosed(line)',                   // ตัดสินแล้วถอนไม่ได้
-    'recordAudit(',
-  ]) {
-    assert.ok(route.includes(needle), `ทางแจ้งต้องมี ${needle}`);
-  }
-  /* ⚠️ ตัวกรองตอนเขียนต้องบอกสถานะที่คาดไว้ด้วย — สองคนกดพร้อมกันแล้วคนหลังต้องได้ 0 แถว
-     ไม่ใช่ทับธงของคนแรกเงียบ ๆ */
-  assert.ok(route.includes(".is('siteNotFoundAt', null)"), 'แจ้งต้องเขียนทับได้เฉพาะแถวที่ยังไม่ติดธง');
-  assert.ok(route.includes(".is('siteClosedAt', null)"), 'ถอนต้องเขียนได้เฉพาะแถวที่ยังไม่ถูกตัดสิน');
-});
-
-test('0362: จอคิวส่งการแจ้งด้วย apiFetch และไม่ขอ retry', () => {
-  const page = code('app/service/intake/page.js');
-  const from = page.indexOf('/api/service/intake/site-not-found');
-  assert.ok(from > 0, 'หน้าคิวต้องยิงไปที่ route ของธง');
-  const call = page.slice(from - 200, from + 400);
-  assert.ok(call.includes('apiFetch('), 'ต้องผ่าน apiFetch');
-  assert.ok(!call.includes('retry: true'), '🪤 ส่งซ้ำ = 409 "ถูกแจ้งไว้แล้ว" ทั้งที่ธงลงไปแล้ว');
-
-  /* วิซาร์ดต้องอ่านแถวของรอบโหลดล่าสุด ไม่ใช่ภาพนิ่งตอนกดเปิด */
-  assert.ok(page.includes('liveWizardOrder'), 'วิซาร์ดต้องรับแถวสด');
-
-  const wizard = code('components/service/IntakeWizard.js');
-  assert.ok(wizard.includes('salesOrderId: order.orderId'), '🐞 แถวคิวใช้ชื่อ orderId ไม่ใช่ id');
-  assert.ok(!wizard.includes('salesOrderId: order.id'), 'ห้ามกลับไปใช้ order.id ที่ไม่มีอยู่จริง');
-  // แผงแจ้งต้องอยู่ทั้งขั้น 1 (ทั้งใบ) และขั้น 2 (รายกลุ่ม) — ขั้น 1 คือทางเดียวของลูกค้าที่ไม่มีไซต์เลย
-  assert.ok(wizard.includes('setNotFoundFor("order")'), 'ขั้น 1 ต้องมีทางแจ้งทั้งใบ');
-  assert.ok(wizard.includes('setNotFoundFor(group.key)'), 'ขั้น 2 ต้องมีทางแจ้งรายกลุ่ม');
-
-  const panel = code('components/service/SiteNotFoundPanel.js');
-  assert.ok(panel.includes('SITE_NOT_FOUND_REASONS'), 'ไทล์เหตุผลต้องมาจากทะเบียนเดียว');
-  assert.ok(panel.includes('siteNotFoundInputError('), 'จอต้องใช้ตัวตรวจตัวเดียวกับ route');
+test('ป้ายงานเข้าใหม่บนเมนูนับถังตั้งรอบด้วย — ใบย้อนหลังไม่ผ่านถังผูกโซน', () => {
+  const route = code('app/api/nav/counts/route.js');
+  const job = route.slice(route.indexOf("attempt('serviceIntake'"), route.indexOf("attempt('payments'"));
+  assert.match(job, /return bind\.rows\.length \+ plan\.length;/);
+  assert.ok(selectOf(job, 'service_zones').includes('"siteId"'));
+  assert.ok(selectOf(job, 'service_plans').includes('"salesOrderId"'));
 });

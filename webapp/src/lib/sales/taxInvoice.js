@@ -18,6 +18,8 @@
 // ให้เรียกผ่าน action `tax-invoice` ของ route งวดชำระ ไม่ใช่ `.update()` ตรง ๆ
 // (คลาสเดียวกับชื่อลูกค้าที่ก๊อปไป 5 ตาราง แล้วต้องมีทะเบียนกลางตามเก็บทีหลัง)
 import { canConfirmPayment } from '@/lib/permissions';
+// งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import { isOpeningInstallment } from '@/lib/sales/historicalOrders';
 
 /** ยาวสุดของเลขที่ใบกำกับ — ต้องตรงกับ CHECK `sales_order_installments_tax_invoice_sane` */
 export const MAX_TAX_INVOICE_NO = 40;
@@ -36,9 +38,17 @@ export const hasTaxInvoice = (row) => !!String(row?.taxInvoiceNo || '').trim();
  * ⚠️ นับ `confirmed` เป็นหลัก และรวม `reported` ด้วยเพราะบัญชีที่แจ้งชำระเองจบเป็น
  * `confirmed` ในก้าวเดียว (`installmentReportOutcome`) ⇒ ถ้านับจาก "เคยผ่านคิว"
  * งวดกลุ่มนั้นจะหายไปจากของค้างทั้งที่เงินเข้าแล้ว
+ * ⭐ **งวดยกมาของใบสั่งขายย้อนหลังไม่นับ** (มติ 22/09 · mig 0374) — กติกา "ทุกงวดที่จ่ายต้องมีใบกำกับ"
+ * ยังจริง แต่ใบกำกับของเงินก้อนนั้น **ออกไปแล้วในระบบเดิม (Express)** ก่อนใบเข้าระบบ (อ้างที่
+ * `historicalInvoiceRef` ของใบ) ⇒ นับเป็นของค้างเมื่อไร คิว "ยังไม่ออกใบกำกับ" ของบัญชีจะมีงวดที่ไม่มีวัน
+ * เคลียร์ได้ (ออกใบซ้ำ = ใบกำกับสองใบต่อเงินก้อนเดียว) · งวดที่เหลือของใบเดียวกันยังนับตามปกติ
  */
 export const taxInvoicePending = (row) => ['reported', 'confirmed'].includes(row?.status)
+  && !isOpeningInstallment(row)
   && !hasTaxInvoice(row);
+
+/** ป้ายแทน "ค้างใบกำกับ" ของงวดยกมา — จอต่อท้ายด้วยเลขอ้างอิงเดิม (`historicalInvoiceRef`) ถ้ามี */
+export const openingInvoiceNote = 'ใบกำกับออกในระบบเดิม (Express)';
 
 /**
  * ตรวจค่าที่กรอก — **ตายที่นี่ ไม่ปล่อยไปตาย CHECK ของ DB**

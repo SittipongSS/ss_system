@@ -1,7 +1,11 @@
 // กติกาสถานะ/สิทธิ์ของใบสั่งขาย — ใช้ร่วมกันทั้งหน้าเว็บและ route (pure, ไม่แตะ DB)
 import { isSuperuser } from '@/lib/permissions';
-// ใบสั่งขายย้อนหลัง (mig 0360) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
-import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+// ใบสั่งขายย้อนหลัง (mig 0360 → 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import {
+  HISTORICAL_UNAPPROVED_STATUSES, canKeyHistoricalSalesOrder, historicalOrderEditable, isHistoricalOrder,
+} from '@/lib/sales/historicalOrders';
+import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
+import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 
 export const SALES_ORDER_STATUS_LABELS = {
   draft: 'ฉบับร่าง',
@@ -37,15 +41,37 @@ export function isSalesOrderSubmitter(order, userId) {
    ⚠️ `draft` ไม่นับ แม้จะเป็นใบของตัวเอง — ร่างที่ยังไม่เคยยื่นไม่มีใครรออยู่ปลายทาง
    (กติกาเดียวกับใบร่างคำร้อง ม-112 และใบเสนอราคา) · ต่างกันตรงใบสั่งขายเก็บ "ตีกลับ"
    เป็น `status` ของมันเอง จึงไม่ต้องดูเหตุผลค้างเหมือนใบเสนอราคา
+   ⭐ **ยกเว้นร่างของใบสั่งขายย้อนหลัง** (มติ 22/09 · mig 0374) — ฟอร์มคีย์ใบกดครั้งเดียวจบที่ "รออนุมัติ"
+     ร่างของใบนี้จึงเหลือค้างเฉพาะตอน **บันทึกไปครึ่งทาง** (สร้างใบแล้ว แต่อัปไฟล์/ส่งอนุมัติสะดุด) หรือดึงกลับเอง
+     = งานที่ผู้คีย์ต้องกลับมาทำต่อจริง ⇒ นับให้คนสร้าง ไม่งั้นใบค้างเงียบจนไม่มีใครเห็น
    ⭐ **เลนผู้รีวิวเติมใน ม-119** — ใบที่ยื่นมาแล้วรออนุมัติ (`pending_approval`)
    ผู้รีวิวคือ role ระดับหัวหน้า (`isSalesOrderReviewer`) **ไม่ใช่เจ้าของดีล** แบบใบเสนอราคา
    ⇒ ต้องส่ง `reviewer` เข้ามา ห้ามเดาจาก `userId`
-   ⚠️ ใบที่ตัวเองยื่นแล้วตัวเองอนุมัติได้ก็นับ — ระบบเปิดให้จริง (route อนุมัติเช็คแค่
-   `reviewer`) ⇒ มันรอเราลงมืออยู่จริง ไม่ใช่ของคนอื่น */
-export function isSalesOrderWaitingOnMe(order, { userId = '', reviewer = false } = {}) {
+   ⭐ **ใบที่ตัวเองสร้าง/ยื่นไม่นับในเลนผู้รีวิว** (แก้ความเข้าใจเดิมของคอมเมนต์นี้ · 22/09) — route อนุมัติ
+     ปฏิเสธผู้ตรวจที่อนุมัติใบตัวเองมาตลอด (`isSalesOrderSelfApproval` → 403) ⇒ ใบนั้นไม่ได้รอเรา
+     ป้ายบนเมนูเคยนับเกินคิว "รออนุมัติจากคุณ" ที่ตัดใบตัวเองออกแล้ว · เหลือ **admin** ที่นับ เพราะ
+     admin อนุมัติใบตัวเองได้จริง (Admin Override) ⇒ ต้องส่ง `role` มาด้วย ไม่ส่ง = ถือว่าไม่ใช่ admin */
+export function isSalesOrderWaitingOnMe(order, { userId = '', reviewer = false, role = '' } = {}) {
   if (!order) return false;
-  if (reviewer && order.status === 'pending_approval') return true;
-  return Boolean(userId) && order.status === 'rejected' && order.createdBy === userId;
+  if (reviewer && order.status === 'pending_approval') {
+    return role === 'admin' || !isSalesOrderSelfApproval(order, userId);
+  }
+  if (!userId || order.createdBy !== userId) return false;
+  if (order.status === 'rejected') return true;
+  return order.status === 'draft' && isHistoricalOrder(order);
+}
+
+/* ยื่นใบสั่งขายย้อนหลังเข้าคิว AE Sup (มติ 22/09 · mig 0374) — คู่ขนานกับ `canSubmitSalesOrder` ของใบปกติ
+   ⭐ ผู้ยื่น = **ผู้คีย์** (ฝ่ายขายทุกตำแหน่ง + admin) ไม่ใช่ AE เจ้าของดีลเท่านั้น — ฟอร์มคีย์ใบกดครั้งเดียว
+     บันทึกแล้วส่งเลย และใบย้อนหลังไม่มีช่องลงนามของฝ่ายขายให้ต้องเป็นของเจ้าของดีล (ไม่เก็บลายเซ็น)
+   ⚠️ AE / Senior AE ยื่นได้เฉพาะใบที่ตัวเองเป็นเจ้าของ (คีย์ได้แค่ของตัวเอง — ownerLockedToSelf ·
+     form-design-rules §2) · `inScope` = inSalesEditScope(user, ดีลของใบ) ผู้เรียกคำนวณมา
+   ⚠️ ด่านจริงอยู่ที่ RPC submit_historical_sales_order (ตรวจ role · สถานะ · ไฟล์ · งวด) — ที่นี่ตอบว่าปุ่มควรโผล่ไหม */
+export function canSubmitHistoricalSalesOrder(user, order, { inScope = false } = {}) {
+  if (!user || !order || !inScope) return false;
+  if (!historicalOrderEditable(order) || !canKeyHistoricalSalesOrder(user)) return false;
+  if (ownerLockedToSelf(user.role)) return Boolean(user.id) && order.deal?.ownerId === user.id;
+  return true;
 }
 
 // ดึงกลับ = **ของผู้ยื่นเท่านั้น** (มติ 2026-07-26) — ผู้รีวิวที่อยากส่งเอกสารกลับใช้
@@ -70,7 +96,8 @@ export function canEditSalesOrderContent(
 // สองขั้นแยกกัน (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
 // เหตุผลกรอกครั้งเดียวที่ขั้นแรก เพราะเป็นเจตนาเดียวที่ถูกแบ่งเป็นสองคลิก
 // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ย้อนอนุมัติ/ออก Rev. ไม่ได้ — ไม่มีใบเสนอราคาให้ออกฉบับใหม่
-//    (CHECK sales_orders_origin_shape ตรึงที่ฐานอีกชั้น) · คีย์ผิด = แอดมินลบใบแล้วคีย์ใหม่
+//    (CHECK sales_orders_origin_shape ตรึงที่ฐานอีกชั้น) · อนุมัติแล้วข้อมูลผิด = AE Sup ยกเลิกใบแล้วคีย์ใหม่
+//    (HISTORICAL_CORRECTION_PATH · มติ 22/09 — ฐานยกเลิกเอกสารแทนสัญญาตามใบเอง)
 export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
   return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order);
 }
@@ -82,11 +109,17 @@ export function canIssueSalesOrderRevision(order, { reviewer = false } = {}) {
 // Hard delete is only cleanup for a draft that has never entered the signed
 // workflow. Historical evidence remains authoritative even after the active
 // pointer is cleared by cancellation or restore-to-draft.
-// ⭐ ใบสั่งขายย้อนหลัง (mig 0360) = ข้อยกเว้นเดียว: ลบแบบปกติได้ทั้งตอนอนุมัติ/ยกเลิก เพราะเป็น **ทาง undo
-//    ของคนคีย์** (ไม่มีหลักฐานลายเซ็น/ฉบับตรึง · ไม่นับ Actual) — route ตรวจของปลายน้ำก่อนลบเสมอ
-//    (historicalDeleteBlock: รอบขายของโซน · รอบบริการ · งวดที่บัญชีคอนเฟิร์ม · เลขใบกำกับ)
+// ⭐ ใบสั่งขายย้อนหลัง (mig 0374) ลบแบบปกติได้เฉพาะตอน **ยังไม่เคยอนุมัติ** — ร่าง/รออนุมัติ/ตีกลับ และยกเลิก
+//    ที่ approvedAt ว่าง: ยังไม่มีรอบขายของโซน · งวดยังไม่หยุดยอด · เอกสารแทนสัญญายังเป็นร่าง (= ทาง undo ของคนคีย์)
+//    · อนุมัติแล้ว/ยกเลิกหลังอนุมัติ ⇒ ปุ่ม "บังคับลบ" ซึ่งพรีวิวนับรอบขาย/รอบบริการให้เห็นก่อน
+//    🐞 ของเดิม (0360) กลับหัว: ใบเกิดเป็นอนุมัติ ⇒ เปิดให้ลบแบบปกติเฉพาะอนุมัติ/ยกเลิก — พอใบมีร่าง ร่างกลับ
+//      ลบไม่ได้ และใบอนุมัติที่มีรอบขายแล้วได้ปุ่มลบแบบปกติที่กดแล้วติด historicalDeleteBlock ทุกครั้ง (ทางตัน)
+//    ⚠️ route ยังถาม historicalDeleteBlock ก่อนลบเสมอ · ฐานยกเลิกเอกสารแทนสัญญาตามใบเอง (trigger ของ 0374)
 export function canHardDeleteSalesOrder(order) {
-  if (isHistoricalOrder(order)) return ['approved', 'cancelled'].includes(order?.status);
+  if (isHistoricalOrder(order)) {
+    if (HISTORICAL_UNAPPROVED_STATUSES.includes(order?.status)) return true;
+    return order?.status === 'cancelled' && !order?.approvedAt;
+  }
   return order?.status === 'draft'
     && !order?.signatureEvidenceId
     && !order?.hasSignatureEvidence;

@@ -47,10 +47,10 @@ export const GET = withUser(async ({ user, supabase }) => {
   const orderIds = (orders || []).map((row) => row.id);
   const { data: lines, error: lineError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_lines')
-    /* ⭐ ธงของ 0362 สองช่อง — ชิป/ตัวกรอง "TS ไม่พบจุด" บนทะเบียนนับจากบรรทัด ไม่ใช่จากหัวใบ
-       ⚠️ ไม่ดึงครบ 9 ช่องที่นี่โดยตั้งใจ: ทะเบียนตอบแค่ "มีเรื่องค้างกี่จุด" ส่วนเหตุผล/ผู้แจ้ง
-          อ่านที่หน้าใบซึ่ง select ทั้งบรรทัดอยู่แล้ว (`lines:sales_order_lines(*)`) */
-    .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds", "siteNotFoundAt", "siteClosedAt"')
+    /* 🚫 ธงของ 0362 (`siteNotFoundAt`/`siteClosedAt`) ไม่ถูกอ่านที่นี่แล้ว (มติ 22/09) — ชิป/ตัวกรอง
+       "TS ไม่พบจุด" ถอดไปพร้อมเส้นนั้น · บรรทัดใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ไม่มีจุดลอยให้แจ้ง
+       ⚠️ คอลัมน์ยังอยู่ในฐาน (0 แถว) — ไม่ต้องเลือกมาเพื่อให้ทะเบียนเบาลงอีกช่อง */
+    .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds"')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('sortOrder', { ascending: true })
@@ -115,14 +115,16 @@ export const GET = withUser(async ({ user, supabase }) => {
   /* ── งวดชำระของแต่ละใบ (mig 0245) — คอลัมน์ "เก็บแล้ว x/y" ในตาราง ────────
      ⚠️ ยิงรวดเดียวทั้งหน้าแล้วจัดกลุ่มใน JS — ห้ามยิงรายใบในลูป (N+1)
      ⚠️ ดึงแค่ 3 คอลัมน์ที่ใช้จริง ไม่เอา evidence/เหตุผลมาทั้งก้อน
-     (`orderIds` ประกาศไว้ข้างบนแล้วตอนดึงบรรทัดของใบ) */
+     (`orderIds` ประกาศไว้ข้างบนแล้วตอนดึงบรรทัดของใบ)
+     ⭐ `kind` (mig 0374) — งวดยกมาของใบย้อนหลังไม่นับเป็น "ต้องมีใบกำกับ" (ออกในระบบเดิมแล้ว · salesOrderPaymentCell)
+     ⚠️ คอมเมนต์ใหม่วางเหนือ `.from()` — ด่าน check:columns มองหา `.select(` ไม่เกิน 200 ตัวอักษรหลัง `.from(` */
   const installmentsByOrder = new Map();
   if (orderIds.length) {
     const { data: rows, error: installmentError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
       .from('sales_order_installments')
       /* `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" ในคอลัมน์งวดชำระ (mig 0348)
          ⚠️ เอาแค่คอลัมน์นี้ ไม่ลากไฟล์/ผู้บันทึกมาทั้งก้อน — ตารางต้องการแค่ "มีหรือยัง" */
-      .select('salesOrderId, status, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo"')
+      .select('salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo"')
       .in('salesOrderId', chunk)
       .order('salesOrderId', { ascending: true })
       .order('id', { ascending: true })));
@@ -210,7 +212,9 @@ export const GET = withUser(async ({ user, supabase }) => {
          บนแกน `financeStatus` ไม่ใช่ `status` ⇒ ฝ่ายบัญชีได้ธง false ทุกใบ:
          เมนูใบสั่งขายไม่มีป้าย และถ้ากดลิงก์ `?count=salesOrders` มาก็ได้ลิสต์ว่าง
          ทั้งที่การ์ด "รอบัญชีตรวจ" บนหัวหน้าเดียวกันมีของอยู่ */
-      _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer: isSalesOrderReviewer(user.role) })
+      /* ⚠️ ส่ง `role` ด้วยเสมอ — เลนผู้รีวิวตัดใบที่ตัวเองสร้าง/ยื่นออก ยกเว้น admin (อนุมัติใบตัวเองได้)
+         ไม่ส่ง = admin ถูกตัดใบของตัวเองออก ⇒ ลิสต์ "รอฉันลงมือ" ไม่ตรงกับป้ายบนเมนู (nav/counts ส่ง role) */
+      _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer: isSalesOrderReviewer(user.role), role: user.role })
         || (canConfirmPayment(user) && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || [])),
       /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
          (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว) */

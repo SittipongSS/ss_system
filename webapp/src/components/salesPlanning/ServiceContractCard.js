@@ -29,7 +29,8 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import Input from "@/components/ui/Input";
-import { contractKindLabel, contractStatusLabel } from "@/lib/sales/contracts";
+import { contractKindLabel, contractStatusLabel, externalDocKindLabel, isSubstituteContract } from "@/lib/sales/contracts";
+import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { serviceContractLinkError, serviceContractOptions } from "@/lib/sales/serviceContractLink";
 import { normalizeServiceRounds, serviceRoundLines, serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
 import { fmtDate, naText } from "@/lib/format";
@@ -46,6 +47,17 @@ export default function ServiceContractCard({
   const linked = order?.serviceContract || null;
   const options = useMemo(() => serviceContractOptions(choices), [choices]);
   const [picked, setPicked] = useState("");
+
+  /* ── เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) ───────────────────────────
+     ⭐ ใบย้อนหลังไม่ได้ "ผูกสัญญาที่มีอยู่" — ฟอร์มคีย์ใบสร้างเอกสารแทนสัญญาเป็น **ร่าง** ให้พร้อมใบ
+       แล้ว RPC อนุมัติออกเลข CT + เปลี่ยนเป็น signed ในทรานแซกชันเดียวกับใบ
+     🐞 การ์ดเดิมอ่านไม่ได้กับใบแบบนี้: ร่างยังไม่มี `contractNo` ⇒ ลิงก์ "เลขที่สัญญา" ว่างเปล่า
+       และช่องชนิดขึ้น "สัญญาบริการ" ทั้งที่ของจริงคือ PO/อีเมล/สัญญาเก่า/ใบเสนอราคาที่ลูกค้าเซ็น
+     ⚠️ ปุ่มผูก/ถอดปิดอยู่แล้วด้วยด่าน `serviceContractLinkError` ตัวเดียวกับ API — ที่นี่แค่เปลี่ยน
+       สิ่งที่ *แสดง* ไม่ได้เพิ่มด่านที่สอง */
+  const substituteDraft = isHistoricalOrder(order) && isSubstituteContract(linked) && linked?.status === "draft";
+  const historicalUnlinked = isHistoricalOrder(order) && order?.status !== "approved" && !linked;
+  const contractFiles = order?.serviceContractFiles || [];
 
   const target = choices.find((c) => c.id === picked) || null;
   const gate = serviceContractLinkError(order, target, { canEdit });
@@ -76,7 +88,40 @@ export default function ServiceContractCard({
   return (
     <>
     <DetailCard icon={FileSignature} title="สัญญาบริการของใบนี้">
-      {linked ? (
+      {substituteDraft ? (
+        <>
+          <div className="form-grid cols-2">
+            <div className="form-field">
+              <span className="form-field-label">เอกสารแทนสัญญา</span>
+              <span>{externalDocKindLabel(linked.externalDocKind)}</span>
+            </div>
+            <div className="form-field">
+              <span className="form-field-label">เลขที่เอกสารของลูกค้า</span>
+              <span className="mono">{naText(linked.externalRef)}</span>
+            </div>
+            <div className="form-field">
+              <span className="form-field-label">วันที่เอกสาร</span>
+              <span>{naText(fmtDate(linked.contractDate))}</span>
+            </div>
+            <div className="form-field">
+              <span className="form-field-label">ช่วงสัญญา</span>
+              <span>{naText(fmtDate(linked.effectiveDate))} – {naText(fmtDate(linked.expiryDate))}</span>
+            </div>
+            <div className="form-field span-2">
+              <span className="form-field-label">ไฟล์ที่แนบ ({contractFiles.length})</span>
+              {contractFiles.length ? contractFiles.map((file) => (
+                <Link key={file.id} href={`/api/master/attachments/${file.id}/file`} className="linklike" target="_blank" rel="noopener noreferrer">
+                  {file.fileName || "ไฟล์ไม่มีชื่อ"}
+                </Link>
+              )) : <span className="hint">ยังไม่มีไฟล์ — แนบที่ฟอร์มคีย์ใบก่อนส่งอนุมัติ</span>}
+            </div>
+          </div>
+          <StatusNotice tone="info" title="ยังไม่มีเลข CT">
+            อนุมัติพร้อมใบนี้ตอน AE Sup อนุมัติ — เอกสารจะได้เลขที่สัญญาและเปลี่ยนเป็น “ลงนามแล้ว”
+            ในการกดครั้งเดียวกัน · แก้ชนิด/เลขที่/วันที่/ไฟล์ ที่ฟอร์มคีย์ใบ
+          </StatusNotice>
+        </>
+      ) : linked ? (
         <>
           {/* ⚠️ ใช้คลาสของฟอร์มที่มีอยู่จริง (`form-field` = ป้ายบน ค่าล่าง) ไม่ตั้งคลาส
               ชุดใหม่ของตัวเอง — `audit:ui` เตะคลาสที่ไม่มี selector จริงใน globals.css */}
@@ -114,6 +159,13 @@ export default function ServiceContractCard({
             </div>
           )}
         </>
+      ) : historicalUnlinked ? (
+        /* ⚠️ ใบย้อนหลังที่ยังไม่อนุมัติแต่ไม่มีเอกสารแทนสัญญา = ของที่ไม่ควรเกิด (RPC คีย์ใบสร้างให้เสมอ)
+           ⇒ เสนอลิสต์สัญญาของดีลให้เลือกคือชี้ทางผิด — ด่านผูก/ถอดปิดอยู่ และใบจะอนุมัติไม่ผ่าน */
+        <StatusNotice tone="warning" title="ใบนี้ยังไม่มีเอกสารแทนสัญญา">
+          ใบสั่งขายย้อนหลังต้องมีเอกสารแทนสัญญาของตัวเอง (PO · อีเมล · สัญญาเก่า · ใบเสนอราคาที่ลูกค้าเซ็น) —
+          เปิดฟอร์มคีย์ใบแล้วกรอกในขั้น “เอกสารแทนสัญญา”
+        </StatusNotice>
       ) : (
         <>
           {/* ⚠️ ลิสต์ว่าง = ดีลนี้ยังไม่มีสัญญาที่ใช้ได้ ไม่ใช่จอพัง ⇒ ต้องบอกว่าทำอะไรต่อ

@@ -11,7 +11,9 @@
 //    บทเรียนจากโมดูลบัญชี: ด่านที่แยกสองชุดจะเพี้ยนหากันแล้วได้ปุ่มที่กดแล้ว 403 เงียบ ๆ
 
 import { dealTypeOf } from '@/lib/salesPlanning';
-import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
+import {
+  HISTORICAL_UNAPPROVED_STATUSES, isHistoricalDeal, isHistoricalOrder,
+} from '@/lib/sales/historicalOrders';
 
 export const CONTRACT_KINDS = Object.freeze(['scent_design', 'manufacturing', 'service']);
 
@@ -51,12 +53,17 @@ export const CONTRACT_SOURCE_LABELS = Object.freeze({
   external: 'เอกสารภายนอกใช้แทนสัญญา',
 });
 
-export const EXTERNAL_DOC_KINDS = Object.freeze(['customer_po', 'email', 'paper_contract', 'other']);
+/* ⭐ 'signed_quotation' เพิ่ม 22/09/2026 (mig 0374 · มติเจ้าของสำหรับใบสั่งขายย้อนหลัง) — ใบเสนอราคา
+   ที่ลูกค้าเซ็นรับเป็นเอกสารผูกพันที่งานบริการเก่าใช้จริง · เปิดให้ใบ external ทุกใบ ไม่ใช่แค่ใบย้อนหลัง
+   !! ลำดับและสมาชิกต้องตรงกับ CHECK `sales_contracts_external_kind` ของ 0374 (contracts.test เทียบไฟล์ SQL)
+      JS ขึ้นก่อนรัน 0374 = เลือกชนิดนี้แล้วฐานตีกลับ 23514 */
+export const EXTERNAL_DOC_KINDS = Object.freeze(['customer_po', 'email', 'paper_contract', 'signed_quotation', 'other']);
 
 export const EXTERNAL_DOC_KIND_LABELS = Object.freeze({
   customer_po: 'ใบสั่งซื้อของลูกค้า (PO)',
   email: 'อีเมลยืนยันจากลูกค้า',
   paper_contract: 'สัญญากระดาษฉบับเดิม',
+  signed_quotation: 'ใบเสนอราคาที่ลูกค้าเซ็น',
   other: 'เอกสารอื่น',
 });
 
@@ -64,6 +71,42 @@ export const contractSourceOf = (contract) =>
   (CONTRACT_SOURCES.includes(contract?.source) ? contract.source : 'generated');
 export const isExternalContract = (contract) => contractSourceOf(contract) === 'external';
 export const externalDocKindLabel = (kind) => EXTERNAL_DOC_KIND_LABELS[kind] || '—';
+
+/* ── เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (มติ 22/09/2026 · mig 0374) ─────────────────────────
+   RPC คีย์ใบ (`create_historical_sales_order`) สร้างใบ external ร่างให้พร้อมใบสั่งขาย แล้วประทับ
+   `metadata.historicalSalesOrderId` ชี้กลับ · AE Sup อนุมัติ **ที่หน้าใบสั่งขาย** ครั้งเดียว RPC อนุมัติออกเลข
+   CT + เปลี่ยนใบนี้เป็น signed ในทรานแซกชันเดียวกับใบสั่งขาย · ยกเลิก/ลบใบสั่งขาย = trigger ยกเลิกใบนี้ตาม
+   ⇒ ระหว่างใบสั่งขายยังไม่อนุมัติ ปุ่มของหน้าสัญญา (แก้ · ลบ · ยกเลิก · อนุมัติเอกสารแทนสัญญา) คือทางอ้อม
+     ที่ทำให้ RPC อนุมัติหาใบร่างที่ชี้กลับมาไม่เจอ (historical_so_contract_state_invalid) หรือออกเลขซ้อนนอกใบ
+   ⚠️ **ล็อกคิดจากใบสั่งขายที่ยังมีชีวิตเท่านั้น ไม่ใช่จาก metadata ล้วน** — ใบสั่งขายหาย/ยกเลิกแล้ว = ไม่ล็อก
+      ⇒ ใบกำพร้าไม่มีวันติดล็อกค้าง (แอดมินยกเลิก/ลบเองได้เสมอ) · ผู้เรียกฝั่ง server โหลดใบสั่งขายผ่าน
+      `loadLinkedHistoricalOrder` (historicalContractLock.js) · หน้าสัญญาได้ `linkedHistoricalOrder` มากับ GET */
+export const isSubstituteContract = (contract) =>
+  Boolean(contract?.metadata?.historicalSalesOrderId) && isExternalContract(contract);
+
+/* ใบสั่งขายที่ส่งมาคือใบที่ใบนี้ชี้กลับจริง ยังเป็นใบย้อนหลัง และอยู่ในสถานะที่ถามมา */
+function liveSubstituteDraft(contract, linkedOrder, statuses) {
+  if (!isSubstituteContract(contract) || contract?.status !== 'draft') return false;
+  if (!linkedOrder || linkedOrder.id !== contract.metadata.historicalSalesOrderId) return false;
+  return isHistoricalOrder(linkedOrder) && statuses.includes(linkedOrder.status);
+}
+
+/** ล็อกของเอกสารแทนสัญญา — คืนข้อความไทย หรือ null (ปุ่มบนหน้าสัญญากับ API ถามตัวเดียวกัน)
+ *  ล็อกเฉพาะร่างที่ใบสั่งขายย้อนหลังของมันยังไม่อนุมัติ (ร่าง · รออนุมัติ · ตีกลับ) */
+export function historicalContractLockReason(contract, linkedOrder) {
+  if (!liveSubstituteDraft(contract, linkedOrder, HISTORICAL_UNAPPROVED_STATUSES)) return null;
+  return `เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง ${linkedOrder.orderNumber || linkedOrder.id} — `
+    + 'แก้ที่ฟอร์มคีย์ใบ และอนุมัติพร้อมใบที่หน้าใบสั่งขาย';
+}
+
+/* ⭐ ไฟล์ของใบล็อกเฉพาะช่วง **รอ AE Sup อนุมัติ** — AE Sup ตรวจชุดไฟล์ที่เห็นในโมดัลแล้วเลือกไฟล์ที่จะเป็น
+   `signedFileId` · ชุดไฟล์ขยับใต้มือระหว่างนั้น = อนุมัติของที่ไม่ได้ดู (RPC ตรวจ p_signed_file_id ซ้ำอีกชั้น)
+   ⚠️ ร่าง/ตีกลับยังแนบ-ลบได้ — ฟอร์มคีย์ใบอัปไฟล์ของใบนี้ก่อนกดส่งอนุมัติ · อยากเปลี่ยนไฟล์ตอนรออนุมัติ = ดึงกลับก่อน */
+export const historicalContractFilesFrozen = (contract, linkedOrder) =>
+  liveSubstituteDraft(contract, linkedOrder, ['pending_approval']);
+
+export const HISTORICAL_CONTRACT_FILES_FROZEN_MESSAGE =
+  'ไฟล์เอกสารแทนสัญญาล็อกระหว่างรอ AE Sup อนุมัติ — ดึงกลับก่อนถ้าต้องเปลี่ยนไฟล์';
 
 /* 🔴 **ใบ external ไม่มีเอกสารของระบบให้พิมพ์** — เนื้อของมันคือไฟล์ที่แนบไว้
    ปล่อยให้เส้นพิมพ์ทำงานเมื่อไร ระบบจะเรนเดอร์ "สัญญา" จากแม่แบบด้วยช่องที่ไม่มีใคร
@@ -363,9 +406,15 @@ export function latestContractRevisions(contracts = []) {
  *     ผ่าน `externalDocReady` เพราะแถวในฐานไม่มีคอลัมน์ที่ตอบได้ (ดู `markExternalDocReady`)
  *     ⚠️ ไม่ส่งมา = ถือว่า **ยังไม่แนบ** ⇒ ใบตกอยู่เลนเจ้าของเหมือนเดิม ไม่ใช่ไปโผล่
  *        ในป้ายของ AE Sup ด้วยใบที่เขายังกดไม่ได้
+ *
+ *  ⭐ **เอกสารแทนสัญญาของใบสั่งขายย้อนหลังที่ยังเป็นร่าง ไม่อยู่คิวไหนของสัญญาเลย** (0374) — งานของมัน
+ *     คืองานของคิวใบสั่งขาย (ผู้คีย์ส่งอนุมัติ · AE Sup อนุมัติพร้อมใบ) · ปล่อยไว้ = ใบที่แนบไฟล์แล้วโผล่ในป้าย
+ *     สัญญาของ AE Sup ซ้ำกับป้ายใบสั่งขาย ทั้งที่ปุ่มอนุมัติบนหน้าสัญญาถูกล็อก · ตัดจาก metadata ล้วน
+ *     (ตัวนับไม่ต้องโหลดใบสั่งขาย) — ใบกำพร้าไม่มีจริง: ยกเลิก/ลบใบสั่งขาย = trigger ยกเลิกใบนี้ตาม
  */
 export function isContractWaitingOnMe(contract, { userId = '', user = null, externalDocReady = false } = {}) {
   if (!contract) return false;
+  if (contract.status === 'draft' && isSubstituteContract(contract)) return false;
   if (contract.status === 'awaiting_approval') return canApproveExternalContract(user);
   if (isExternalContract(contract) && contract.status === 'draft' && externalDocReady) {
     return canApproveExternalContract(user);
@@ -425,8 +474,13 @@ export const canApproveExternalContract = (user) =>
      (สิทธิ์ · ที่มาของใบ · สถานะ · ชนิดเอกสาร · มีไฟล์แนบแล้วหรือยัง)
    ⚠️ ต้องเป็น **คำนำหน้าแท้** ของด่านกดยืนยัน — `externalApproveError` เรียกตัวนี้ก่อน
       เสมอ ⇒ ปุ่มเปิดได้ = ผ่านด่านชั้นแรกครบแล้วจริง ไม่ใช่ด่านคนละชุดที่ขัดกันได้ */
+/* ⚠️ `payload.linkedOrder` = ใบสั่งขายย้อนหลังที่ใบนี้ชี้กลับ (ถ้ามี) — ล็อกมาก่อนทุกด่าน: ใบที่ต้องอนุมัติพร้อม
+   ใบสั่งขายห้ามออกเลขทางนี้ · ไม่ส่งมาก็อ่าน `contract.linkedHistoricalOrder` ที่ GET ของหน้าสัญญาแนบมา
+   route approve-external โหลดเองแล้วตีกลับ 409 ก่อนถึงตัวนี้อยู่แล้ว */
 export function externalApproveOpenError(contract, user, payload = {}) {
   if (!contract) return 'ไม่พบสัญญา';
+  const lock = historicalContractLockReason(contract, payload.linkedOrder ?? contract.linkedHistoricalOrder);
+  if (lock) return lock;
   if (!canApproveExternalContract(user)) {
     return 'อนุมัติเอกสารแทนสัญญาได้เฉพาะ AE Supervisor';
   }
@@ -454,8 +508,11 @@ export function externalApproveError(contract, user, payload = {}) {
 }
 
 /** ปุ่ม "อนุมัติเอกสารแทนสัญญา" ควรโผล่ไหม — แยกจากด่านกดได้ตามกติกา GatedAction
- *  (คนที่เป็นเจ้าของขั้นต้องเห็นปุ่มเสมอแล้วบอกเหตุตอนกด ไม่ใช่ปุ่มหายเงียบ ๆ) */
-export const showExternalApprove = (contract, user) =>
+ *  (คนที่เป็นเจ้าของขั้นต้องเห็นปุ่มเสมอแล้วบอกเหตุตอนกด ไม่ใช่ปุ่มหายเงียบ ๆ)
+ *  ⚠️ เอกสารแทนสัญญาของใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ **ซ่อน** ไม่ใช่จาง — ขั้นนี้ไม่ได้อยู่บนหน้าสัญญา
+ *     (อนุมัติพร้อมใบที่หน้าใบสั่งขาย) · หน้าสัญญาขึ้นประกาศล็อกพร้อมลิงก์ไปใบสั่งขายแทน */
+export const showExternalApprove = (contract, user, linkedOrder = contract?.linkedHistoricalOrder) =>
   isExternalContract(contract)
   && contract?.status === 'draft'
-  && canApproveExternalContract(user);
+  && canApproveExternalContract(user)
+  && !historicalContractLockReason(contract, linkedOrder);

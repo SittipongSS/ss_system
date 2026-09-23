@@ -206,8 +206,95 @@ test('⭐ ใบย้อนหลัง: สัญญาต้องครอ�
   assert.match(serviceContractLinkError(historical, signed({ effectiveDate: null, expiryDate: '2025-01-01' }), ok), /ไม่ครอบ/);
   // สัญญายังไม่มีผล/ข้ามดีล ยังตีกลับด้วยเหตุเดิมก่อนถึงด่านช่วง
   assert.match(serviceContractLinkError(historical, signed({ status: 'draft' }), ok), /ยังไม่มีผล/);
-  // ถอดสัญญาออกจากใบย้อนหลังได้เสมอ
+  // ใบย้อนหลังที่อนุมัติแล้วและ **ไม่ได้** ชี้เอกสารแทนสัญญาอยู่ ถอด/ผูกได้ตามกติกาเดิม (ทางกู้ — ดูเทสต์ถัดไป)
   assert.equal(serviceContractLinkError(historical, null, ok), null);
   // ใบปกติ: สัญญาที่ช่วงไม่ครอบวันที่ใบยังผูกล่วงหน้าได้เหมือนเดิม
   assert.equal(serviceContractLinkError(order({ orderDate: '2024-06-01' }), signed(), ok), null);
+});
+
+/* 🔴 **เอกสารแทนสัญญาเป็นของใบตั้งแต่เกิดจนตาย** — *"เกิดพร้อมใบ อนุมัติพร้อมใบ"* (0374 ข้อ 7e)
+   ของเดิมปิดแค่ใบที่ยังไม่อนุมัติ ⇒ ใบที่อนุมัติแล้วกด "ถอดสัญญาออกจากใบ" ได้จริง แล้วเสียสองต่อ:
+   ① ด่าน ① ของทุกนัดในใบบล็อกทันที และกดคืนไม่ได้ (ผูกกลับก็คือการ "ผูก" ที่ต้องปิดอยู่ดี)
+   ② เอกสาร signed ที่ถือเลข CT ลอยออกจากใบ — trigger ข้อ 7e ตามหาด้วยตัวชี้กลับแล้วก็จริง แต่ด่านนี้คือ
+      ชั้นที่ทำให้ไม่เกิดตั้งแต่แรก · ทางแก้ของใบที่อนุมัติแล้วมีทางเดียว: HISTORICAL_CORRECTION_PATH
+   ⚠️ ใบที่ไม่ได้ชี้เอกสารแทนสัญญาอยู่ยังผูกได้ — ทางกู้ทางเดียวที่เหลือของใบที่เคยถูกถอดไป */
+test('🔴 ใบย้อนหลังที่อนุมัติแล้ว: เอกสารแทนสัญญาของใบ ถอด/สับเปลี่ยนไม่ได้ทั้งคู่', () => {
+  const span = { effectiveDate: '2024-01-01', expiryDate: '2024-12-31' };
+  const substitute = signed({
+    id: 'CTR-H1', source: 'external', status: 'signed', contractNo: 'CT-SR-26090007-0',
+    metadata: { historicalSalesOrderId: 'SOR-1' }, ...span,
+  });
+  const owner = order({
+    origin: 'historical', orderDate: '2024-06-01', serviceContractId: 'CTR-H1', serviceContract: substitute,
+  });
+  const otherDoc = signed({ id: 'CTR-2', ...span });
+  // ข้อความต้องพูดถึงสิ่งที่คนกดจริง และบอกทางออกที่มีอยู่จริงทางเดียว
+  const unlink = serviceContractLinkError(owner, null, ok);
+  assert.match(unlink, /เอกสารแทนสัญญาเป็นของใบนี้ — ถอดสัญญาไม่ได้/);
+  assert.match(unlink, /AE Sup ยกเลิกใบ/, 'ต้องชี้ทาง HISTORICAL_CORRECTION_PATH');
+  assert.equal(serviceContractLinkError(owner, undefined, ok), unlink);
+  assert.match(serviceContractLinkError(owner, otherDoc, ok), /เอกสารแทนสัญญาเป็นของใบนี้ — ผูกสัญญาไม่ได้/);
+  // สิทธิ์มาก่อนล็อก · ใบที่ปิดไปแล้วยังได้คำเดิม
+  assert.match(serviceContractLinkError(owner, null, { canEdit: false }), /เฉพาะฝ่ายขาย/);
+  assert.match(serviceContractLinkError({ ...owner, status: 'cancelled' }, null, ok), /ปิดไปแล้ว/);
+  // สัญญาทั่วไป (ไม่ใช่เอกสารแทนสัญญา) ที่ใบย้อนหลังผูกไว้ ยังถอดได้ตามกติกาเดิม
+  const plain = order({
+    origin: 'historical', orderDate: '2024-06-01', serviceContractId: 'CTR-1', serviceContract: signed(span),
+  });
+  assert.equal(serviceContractLinkError(plain, null, ok), null);
+  // ใบที่ถูกถอดไปแล้ว (ไม่มีสัญญาชี้อยู่) ยังผูกกลับได้ — ทางกู้
+  assert.equal(serviceContractLinkError(order({ origin: 'historical', orderDate: '2024-06-01' }), otherDoc, ok), null);
+});
+
+/* 🔴 **ประตูที่สองของเรื่องเดียวกัน** — ด่านข้างบนดูแต่สัญญา *ปัจจุบัน* ของใบ ⇒ ใบย้อนหลังที่อนุมัติแล้ว
+   และไม่มีสัญญาชี้อยู่ (ทางกู้) เดินผ่านด่านนั้นแล้วไปหยิบ **เอกสารแทนสัญญาของใบอื่น** มาผูกได้
+   ⇒ จบที่ปลายทางเดียวกับที่ R1 กันไว้: ยกเลิกใบเจ้าของ trigger เว้นไว้ (NOT EXISTS — ถูกแล้ว)
+     ยกเลิกใบที่หยิบมาใช้ trigger ก็หาไม่เจอ (ตัวชี้กลับยังชี้ใบเดิม) ⇒ เอกสาร signed ถือเลข CT ลอยไร้เจ้าของ
+   ⇒ ตัดสินด้วย **ตัวชี้กลับ** ตัวเดียวกับที่ trigger ใช้ · ทางกู้ยังอยู่ (ผูกเอกสารของตัวเองกลับได้) */
+test('🔴 เอกสารแทนสัญญาของใบอื่นผูกเข้าใบนี้ไม่ได้ (ตัวชี้กลับ) — แต่ของตัวเองผูกกลับได้ (ทางกู้)', () => {
+  const span = { effectiveDate: '2024-01-01', expiryDate: '2024-12-31' };
+  const substitute = (orderId, extra = {}) => signed({
+    id: `CTR-${orderId}`, source: 'external', status: 'signed', contractNo: `CT-SR-2609000${orderId.at(-1)}-0`,
+    metadata: { historicalSalesOrderId: orderId }, ...span, ...extra,
+  });
+  // ใบย้อนหลังที่อนุมัติแล้วและถูกถอดสัญญาไปก่อนมีด่าน = ประตูเดียวที่เหลือ (order() ให้ id SOR-1)
+  const recovering = order({ origin: 'historical', orderDate: '2024-06-01' });
+
+  // ⭐ ทางกู้ต้องยังเดินได้ — เอกสารที่ชี้กลับมาใบนี้ ผูกกลับได้
+  assert.equal(serviceContractLinkError(recovering, substitute('SOR-1'), ok), null);
+
+  // 🔴 ของใบอื่น = ปิด (นี่คือสิ่งที่ด่านเดิมปล่อยผ่าน)
+  const stolen = serviceContractLinkError(recovering, substitute('SOR-2'), ok);
+  assert.match(stolen, /เป็นของใบสั่งขายย้อนหลังอีกใบ/);
+  assert.match(stolen, /ฟอร์มคีย์ใบ/, 'ต้องบอกด้วยว่าเอกสารของใบนี้เกิดจากที่ไหน');
+
+  // ใบปกติของดีลภาชนะเดียวกันก็เห็นเอกสารฉบับนี้ในตัวเลือก ⇒ ต้องปิดเหมือนกัน (ใบปกติไม่มีด่านช่วงมาช่วย)
+  assert.match(serviceContractLinkError(order({ id: 'SOR-9' }), substitute('SOR-2'), ok),
+    /เป็นของใบสั่งขายย้อนหลังอีกใบ/);
+
+  // ความเป็นเจ้าของมาก่อนด่านดีล/ช่วง — เหตุที่ตรงกว่าต้องขึ้นก่อน
+  assert.match(serviceContractLinkError(recovering, substitute('SOR-2', { dealId: 'DL-9' }), ok),
+    /เป็นของใบสั่งขายย้อนหลังอีกใบ/);
+
+  // ⚠️ ด่านนี้ตัดสินจาก "เอกสารแทนสัญญา" เท่านั้น — สัญญา external ธรรมดา (ไม่มีตัวชี้กลับ) ไม่โดน
+  assert.equal(serviceContractLinkError(recovering, signed({ source: 'external', ...span }), ok), null);
+  // และไม่แตะการถอด (ถอดของใบที่ไม่มีสัญญาชี้อยู่ ยังผ่านตามเดิม)
+  assert.equal(serviceContractLinkError(recovering, null, ok), null);
+});
+
+/* ⭐ ใบย้อนหลังที่ยังไม่อนุมัติ (มติ 22/09 · mig 0374) — สัญญาของใบคือเอกสารแทนสัญญาที่ฟอร์มคีย์ใบสร้าง
+   RPC อนุมัติออกเลข CT ให้ฉบับนั้นพร้อมใบ ⇒ ผูกฉบับอื่น/ถอดออก = อนุมัติไม่ได้ (contract_state_invalid)
+   ⇒ ปิดทั้งสองทางด้วยคำเดียว ชี้ไปที่ฟอร์มคีย์ใบ · ใบที่ปิดแล้วยังได้คำเดิม ("ปิดไปแล้ว") */
+test('⭐ ใบย้อนหลังที่ยังไม่อนุมัติ: ผูก/ถอดสัญญาที่นี่ไม่ได้ — แก้ที่ฟอร์มคีย์ใบ อนุมัติพร้อมใบ', () => {
+  for (const status of ['draft', 'pending_approval', 'rejected']) {
+    const pending = order({ origin: 'historical', status, orderDate: '2026-01-01' });
+    const covering = signed({ effectiveDate: '2026-01-01', expiryDate: '2026-12-31' });
+    assert.equal(serviceContractLinkError(pending, covering, ok), 'เอกสารแทนสัญญาของใบย้อนหลังแก้ที่ฟอร์มคีย์ใบ — อนุมัติพร้อมใบนี้', status);
+    assert.equal(serviceContractLinkError(pending, null, ok), 'เอกสารแทนสัญญาของใบย้อนหลังแก้ที่ฟอร์มคีย์ใบ — อนุมัติพร้อมใบนี้', `${status} ถอด`);
+  }
+  // สิทธิ์มาก่อนล็อก (คนไม่มีสิทธิ์ได้คำเรื่องสิทธิ์) · ใบยกเลิกได้คำ "ปิดไปแล้ว" ตามเดิม
+  assert.match(serviceContractLinkError(order({ origin: 'historical', status: 'draft' }), signed(), { canEdit: false }), /เฉพาะฝ่ายขาย/);
+  assert.match(serviceContractLinkError(order({ origin: 'historical', status: 'cancelled' }), null, ok), /ปิดไปแล้ว/);
+  // ใบ pipeline ร่างยังผูกได้ตามเดิม
+  assert.equal(serviceContractLinkError(order({ status: 'draft' }), signed(), ok), null);
 });

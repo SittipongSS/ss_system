@@ -1,8 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import {
-  canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope,
-} from '@/lib/salesPlanning';
+import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import {
   PRIVATE_EVIDENCE_BUCKET, privateEvidencePrefix,
@@ -14,22 +12,25 @@ import {
 import { notifyTaxInvoice } from '@/lib/sales/taxInvoiceNotify';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
-  installmentActionError, installmentReportOutcome, withLiveAmounts,
+  installmentActionError, installmentReportOutcome, openingCoverageEnd, withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
 import {
   ensureInstallments, loadInstallment, loadInstallments, updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
-import { businessDate } from '@/lib/businessDate';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
-import {
-  HISTORICAL_SCHEMA_MISSING_MESSAGE, canKeyHistoricalSalesOrder, historicalSchemaMissing, isHistoricalOrder,
-} from '@/lib/sales/historicalOrders';
-import { validateHistoricalInstallments } from '@/lib/sales/historicalOrderPlan';
+import { historicalInstallmentLock, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isDate = (v) => typeof v === 'string' && ISO_DATE.test(v) && !Number.isNaN(Date.parse(v));
+
+/* ยอดของงวดที่ส่งกลับให้จอ — งวดร่างของใบปกติเดินตามแผนของ QT สด ๆ (B-4 · write-on-read ไม่เขียนทับใน DB)
+   ⛔ **ใบย้อนหลังไม่ทับ** (0374) — ไม่มีใบเสนอราคา ⇒ แผนว่างกลายเป็น "ชำระเต็มจำนวน" 100% ทับงวดที่คีย์
+      และงวดของใบนี้ยังไม่หยุดยอดจน AE Sup อนุมัติ ⇒ ตัวทับจะเห็นทุกแถวเป็นร่าง (ตัวเดียวกับที่ loadOrder ของหน้าใบข้าม) */
+const installmentsForScreen = (order, rows) => (isHistoricalOrder(order)
+  ? rows
+  : withLiveAmounts(rows, order.quotation?.paymentPlan, order.totalAmount));
 
 /* สิทธิ์ **อ่าน** ของงวด = สิทธิ์อ่านใบสั่งขายใบนั้น (view-scope ของดีลเจ้าของ)
    ⚠️ ฝ่ายบัญชีถือ `salesplan:view` แบบ scope กว้าง จึงเห็นทุกใบตามที่ควรเป็น —
@@ -79,7 +80,30 @@ async function loadOrderForUser(supabase, user, id) {
     project = data || null;
   }
 
-  return { order: { ...order, quotation: quotation || null, deal, project, lines: lines || [] } };
+  /* ⭐ **เอกสารแทนสัญญาของใบย้อนหลัง (0374)** — ด่านช่วงครอบของงวดยกมาต้องรู้วันสิ้นสุดสัญญา
+     🐞 **review 23/09: ปุ่มกับ API เคยกั้นคนละวัน** — แผงงวดบนใบมีสัญญาติดมากับใบอยู่แล้ว
+       (route ของใบโหลดให้) แล้วส่ง `contractEnd` เข้าด่าน ส่วนที่นี่ไม่เคยโหลด ⇒ ด่านถอยไปอ่าน
+       จากงวดอื่นของใบ ซึ่งไม่เท่ากับสัญญาเมื่อบัญชีเคยหดช่วงของงวดปกติงวดสุดท้ายลงมาก่อน
+       ⇒ แถบบันทึกบนจอเงียบ ปุ่มเปิดให้กด แล้ว API ตีกลับด้วยวันคนละวัน
+     ⚠️ อ่านเฉพาะใบย้อนหลังที่ผูกสัญญาไว้จริง — อ่านด้วย PK คอลัมน์เดียว (ใบ pipeline ไม่ยิง query เพิ่มเลย)
+     ⚠️ **"ไม่พบแถว" กับ "ถามไม่สำเร็จ" คนละเรื่อง** — สัญญากำพร้า (ไม่พบ) = `null` แล้วปล่อยให้
+       `openingCoverageEnd` ถอยไปอ่านจากงวดอื่นของใบตามกติกาเดียวกับจอ · แต่ **อ่านพลาดต้องดัง**
+       (`throw` → 500) ห้ามกลืน ไม่งั้นด่านเงินเปลี่ยนวันที่กั้นเองเงียบ ๆ ตามความล้มเหลวของ query
+     ⚠️ ด่านสิทธิ์ของแถวนี้คือด่านของใบที่ผ่านไปแล้วข้างบน (ดีลเดียวกัน) — ratchet กฎ 6 ที่
+       systemRules.test.mjs มีบันทึกว่าทำไม `loadScoped` แทนตรงนี้ไม่ได้ */
+  let serviceContract = null;
+  if (isHistoricalOrder(order) && order.serviceContractId) {
+    const { data, error: contractError } = await supabase
+      .from('sales_contracts').select('id, "expiryDate"').eq('id', order.serviceContractId).maybeSingle();
+    if (contractError) throw contractError;
+    serviceContract = data || null;
+  }
+
+  return {
+    order: {
+      ...order, quotation: quotation || null, deal, project, lines: lines || [], serviceContract,
+    },
+  };
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -90,13 +114,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const { order, error } = await loadOrderForUser(supabase, user, id);
     if (error) return error;
     /* ยอดของงวดร่างมาจากแผนของ QT สด ๆ (B-4) — ที่เก็บไว้เป็นค่าตอนกด "เริ่มติดตาม"
-       ซึ่งอาจไม่ตรงกับแผนวันนี้ · ทับตอนอ่าน ไม่ใช่เขียนทับใน DB (write-on-read) */
-    return ok({
-      installments: withLiveAmounts(
-        await loadInstallments(supabase, order.id),
-        order.quotation?.paymentPlan, order.totalAmount,
-      ),
-    });
+       ซึ่งอาจไม่ตรงกับแผนวันนี้ · ทับตอนอ่าน ไม่ใช่เขียนทับใน DB (write-on-read) · ใบย้อนหลังไม่ทับ */
+    return ok({ installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)) });
   } catch (loadError) {
     return fail(loadError.message, 500);
   }
@@ -115,52 +134,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const { order, error } = await loadOrderForUser(supabase, user, id);
     if (error) return error;
 
-    /* ── คีย์งวดเพิ่มของใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 13 "คีย์เท่าที่รู้") ─────────────
-       ⭐ ใบย้อนหลังไม่มีแผนชำระจากใบเสนอราคาให้ยกมา — งวดเข้าทาง RPC เดียว ซึ่งล็อกหัวใบแล้วเทียบผลรวม
-         กับงวดเดิมทุกสถานะ (FOR UPDATE ⇒ สองแท็บกดพร้อมกันเกินยอดใบไม่ได้) · งวดเกิดเป็น 'pending'
-         + หยุดยอดทันที = เข้าทะเบียนบัญชี แจ้งชำระได้ บัญชียืนยันเอง
-       ⚠️ คีย์เฉพาะยอดที่ยังต้องเก็บ (คำตอบข้อ 2) — ตรวจรูปแบบที่นี่ให้ได้ข้อความรายงวด ฐานตรวจซ้ำ */
-    const body = await req.json().catch(() => ({}));
-    if (body?.action === 'append') {
-      if (!canKeyHistoricalSalesOrder(user) || !canEditSalesPlanning(user) || !inSalesEditScope(user, order.deal)) {
-        return forbidden('คีย์งวดเพิ่มของใบสั่งขายย้อนหลังได้เฉพาะ AE Supervisor หรือ Admin ที่ดูแลใบนี้');
-      }
-      if (!isHistoricalOrder(order)) {
-        return badRequest('คีย์งวดเพิ่มใช้ได้เฉพาะใบสั่งขายย้อนหลัง — ใบปกติงวดมาจากแผนชำระของใบเสนอราคา');
-      }
-      if (!Array.isArray(body.rows) || !body.rows.length) return badRequest('ต้องมีอย่างน้อย 1 งวด');
-      const checked = validateHistoricalInstallments(body.rows, { total: null, todayIso: businessDate() });
-      if (checked.errors.length) {
-        return Response.json({ error: checked.errors[0].message, errors: checked.errors }, { status: 400 });
-      }
-      const { data: result, error: rpcError } = await supabase.rpc('append_historical_installments', {
-        p_order_id: order.id,
-        p_actor_id: user.id,
-        p_actor_name: user.name || user.email || null,
-        p_actor_role: user.role || null,
-        p_rows: checked.installments,
-      });
-      if (rpcError) {
-        if (historicalSchemaMissing(rpcError)) return fail(HISTORICAL_SCHEMA_MISSING_MESSAGE, 503);
-        const mapped = documentWorkflowError(rpcError, { context: `historical installments append ${order.id}` });
-        return fail(mapped.message, mapped.status);
-      }
-      const appended = result?.installments || [];
-      await recordAudit({
-        user,
-        action: 'create',
-        entityType: 'sales_order_installments',
-        entityId: order.id,
-        after: appended,
-        summary: `คีย์งวดเพิ่มของใบสั่งขายย้อนหลัง ${order.orderNumber} — ${appended.length} งวด`,
-        request: req,
-      });
-      // งวดของใบย้อนหลังหยุดยอดตั้งแต่เกิด ⇒ ไม่ต้องทับยอดตามแผน (withLiveAmounts) ตอนตอบ
-      return ok({ installments: await loadInstallments(supabase, order.id), appended, warnings: checked.warnings }, 201);
-    }
-    // ⚠️ ของเดิมตกไปที่ "ใบเสนอราคาต้นทางไม่มีแผนการชำระให้ยกมา" ซึ่งพาไปหาใบเสนอราคาที่ไม่มีอยู่จริง
+    /* ⛔ ใบย้อนหลัง (0374): งวดทั้งชุดมาจากฟอร์มคีย์ใบ (แก้ได้ตอนร่าง/ตีกลับ · หยุดยอดตอน AE Sup อนุมัติ) — ไม่มีทางเพิ่มงวดทีหลัง
+       · ทาง "คีย์งวดเพิ่ม" (append · RPC append_historical_installments ของ 0360) ถูกถอดพร้อม DROP ใน 0374
+       · ⚠️ ของเดิมตกไปที่ "ใบเสนอราคาต้นทางไม่มีแผนการชำระให้ยกมา" ซึ่งพาไปหาใบเสนอราคาที่ไม่มีอยู่จริง */
     if (isHistoricalOrder(order)) {
-      return badRequest('ใบย้อนหลังเพิ่มงวดด้วยการคีย์งวด (append) — ไม่มีแผนจากใบเสนอราคาให้ยกมา');
+      return badRequest('งวดของใบย้อนหลังมาจากฟอร์มคีย์ใบ — แก้งวดในฟอร์มตอนใบยังเป็นร่างหรือถูกตีกลับ');
     }
 
     /* ⭐ **ด่าน "ต้องอนุมัติก่อน" ถูกถอดแล้ว** (B-4 · มติผู้ใช้ 2026-08-15) —
@@ -228,12 +206,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const coversFrom = body.coversFrom || null;
     const coversTo = body.coversTo || null;
     /* ⚠️ ต้องส่ง `serviceRounds` เสมอ — ด่านรับรองงวดใช้ตัดสินว่าต้องมีช่วงครอบก่อนไหม
-       (ไม่ส่ง = ไม่บล็อก ⇒ ใบบริการรับรองได้ทั้งที่ช่วงครอบว่าง ซึ่งคือกับดักเดิม) */
+       (ไม่ส่ง = ไม่บล็อก ⇒ ใบบริการรับรองได้ทั้งที่ช่วงครอบว่าง ซึ่งคือกับดักเดิม)
+       ⭐ ใบย้อนหลัง (0374) — สองตัวต้องส่งคู่กันเสมอ (ตัวเดียวกับที่แผงงวดบนจอส่ง ⇒ ปุ่มกับ API ตอบคำเดียวกัน):
+         · `orderLock` — ใบที่ยังไม่อนุมัติ/ยกเลิกแล้ว งวดขยับไม่ได้ทั้งใบ (PATCH นี้ไม่ตรวจสถานะใบเองเลย ·
+           งวดร่างของใบย้อนหลังยังไม่หยุดยอด ⇒ ถ้าไม่ล็อก ฝ่ายขายแจ้งชำระ/ตั้งวันได้ก่อน AE Sup อนุมัติ)
+         · `historical` — งวดยกมาตั้งวันครบกำหนด/ถอนไม่ได้ · ช่วงครอบแก้ได้เฉพาะฝ่ายบัญชี (ไม่งั้นชน CHECK
+           sales_order_installments_opening_shape เป็น 500 ดิบ หรือทำลายช่วงบริการต่อเนื่องที่ AE Sup รับรองไว้)
+         · `contractEnd` — ปลายช่วงที่งวดยกมาครอบได้ · **คิดด้วย `openingCoverageEnd` ตัวเดียวกับที่แผงงวด
+           บนใบเรียก** ด้วยสัญญาที่ `loadOrderForUser` โหลดมาให้ ⇒ ปุ่มกับ API กั้นด้วยวันเดียวกันเสมอ
+           (ด่านไม่มีทางถอยของตัวเองแล้ว — ไม่ส่งค่านี้ = ไม่กั้นเลย) */
     const gate = installmentActionError(row, action, user, {
       paidOn, reason, billingRequestId, coversFrom, coversTo,
       taxInvoiceNo, taxInvoiceDate,
       rows: siblings, orderTotal: order.totalAmount,
       serviceRounds: orderHasServiceRounds(order, order.lines),
+      orderLock: historicalInstallmentLock(order),
+      historical: isHistoricalOrder(order),
+      contractEnd: openingCoverageEnd(order, siblings),
     });
     if (gate) return badRequest(gate);
 
@@ -382,7 +371,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       patch = taxInvoiceClearPatch();
     }
 
-    const updated = await updateInstallment(supabase, installmentId, patch);
+    /* CHECK ของงวด (0245 · 0320 · 0374) ที่หลุดด่านข้างบนมา — แปลเป็นไทยผ่านตารางกลาง แทน 500 ภาษาอังกฤษของ Postgres
+       ⚠️ รหัสที่ตารางไม่รู้จักโยนต่อให้ catch ท้ายเราต์ตามเดิม (พฤติกรรมเดิมของ error อื่น) */
+    let updated;
+    try {
+      updated = await updateInstallment(supabase, installmentId, patch);
+    } catch (writeError) {
+      const mapped = documentWorkflowError(writeError, { context: `installment ${action} ${installmentId}` });
+      if (mapped.code) return fail(mapped.message, mapped.status);
+      throw writeError;
+    }
     /* สำเนาบนบรรทัดคำร้อง — เขียน **หลัง** ของหลักสำเร็จเสมอ และล้มเงียบได้
        (ของหลักเก็บแล้ว ถ้าโยน error ที่นี่ ผู้ใช้จะเห็น "บันทึกไม่สำเร็จ" ทั้งที่เก็บแล้ว) */
     if (action === 'tax-invoice' && patch.taxInvoiceItemId) {
@@ -420,10 +418,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     return ok({
       installment: updated,
-      installments: withLiveAmounts(
-        await loadInstallments(supabase, order.id),
-        order.quotation?.paymentPlan, order.totalAmount,
-      ),
+      installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)),
     });
   } catch (patchError) {
     return fail(patchError.message, 500);

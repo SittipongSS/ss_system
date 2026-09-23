@@ -1,0 +1,429 @@
+/* ฟอร์มคีย์ใบสั่งขายย้อนหลัง (หน้าเต็ม 4 ขั้น · มติเจ้าของ 22/09 · ม็อก mockups/legacy-so-service-flow)
+   ⚠️ ห้าม style={{…}} และห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — งบ audit:ui ของโมดูลขายเต็มเพดาน
+   สี/ระยะ/ความสูงบรรทัดมาจากตัวแปรกลางทั้งหมด */
+
+/* ── แถบท้ายฟอร์ม (.form-action-bar.is-page) ────────────────────────────────
+   ลูกคนแรกที่ไม่ใช่ปุ่มได้ margin-right:auto จาก globals ⇒ ยกเลิก + คำอธิบายอยู่ซ้าย ปุ่มเดินขั้นอยู่ขวา */
+.footLead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.footNote {
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.footNote[data-ok="yes"] { color: var(--green); }
+.footNote[data-blocked="yes"] { color: var(--amber); }
+
+/* ── ป้ายบนรางขั้น: ชื่อขั้น + หนึ่งบรรทัดสรุป (ม็อก Step1–Step4) ────────────────
+   🐞 ของเดิมเป็นเศษส่วน "1/1" ที่นับจากข้อผิดพลาดซึ่งยังไม่เคยถูกตรวจ ⇒ ขั้นที่ยังไม่ได้เริ่ม
+      อ่านว่าเสร็จแล้ว · บรรทัดสรุปพูดสิ่งที่ฟอร์มรู้จริง ("4 โซน · 17 แพ็ค")
+   ⚠️ ส่งเป็น node ของ `label` — ไม่เพิ่มช่องให้ SectionRail ซึ่งเป็น primitive ของทั้งระบบ */
+.railName { display: block; }
+
+.railSummary {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ขั้นที่แตะแล้วไปไม่ได้ — เหตุผลเต็มอยู่ใน title และก้อน error ของขั้นที่ยืนอยู่ */
+.railSummary[data-blocked="yes"] { color: var(--amber); }
+
+/* ป้าย "ย้อนหลัง" ข้างหัวแถบสรุป (ม็อก: badge เล็กในแถวเดียวกับหัว) */
+.asideBadge {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+
+/* ── ช่องของฟอร์ม ─────────────────────────────────────────────────────── */
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-bottom: var(--space-3);
+}
+
+.grid2 > .field,
+.grid3 > .field { margin-bottom: 0; }
+
+/* ⚠️ ดอกจันต้องอยู่ **ใน element เดียวกับป้าย** — .field เป็น flex column ⇒ text node
+   กับ <span>*</span> จะแตกเป็นคนละ flex item แล้วดอกจันตกคนละบรรทัด (form-design-rules §2) */
+.field > span {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.req { color: var(--red); }
+
+.field > small {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* ⭐ กฎของช่องที่ผิด **อยู่ใต้ช่องนั้น** ไม่ใช่แค่ในก้อนรวมหัวขั้น — ช่องวันสองช่องเคย
+   กลืนค่าที่พิมพ์เงียบ ๆ (ดูหัว WizardContractStep) คำอธิบายจึงต้องอยู่ตรงที่มือกำลังอยู่ */
+.field > small[data-bad="yes"] { color: var(--red); }
+
+/* ค่าที่ระบบรู้อยู่แล้ว = ช่องเส้นประอ่านอย่างเดียว ไม่ใช่ดรอปดาวน์ที่จางลง */
+.derived {
+  margin: 0;
+  min-height: var(--ctl-h);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.derived[data-empty="yes"] { color: var(--text-3); }
+
+.muted { color: var(--text-3); }
+
+.section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--fs-section-title);
+  line-height: var(--lh-thai);
+}
+
+.section:first-child { margin-top: 0; }
+
+.sectionKind {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+
+.hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.notice { margin-top: var(--space-3); }
+
+.warnList {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  line-height: var(--lh-thai);
+}
+
+.warnList > li + li { margin-top: var(--space-1); }
+
+.cellSub {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.addRow > span {
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+/* ── ขั้น ② ไซต์ โซน และแพ็ค ───────────────────────────────────────────────
+   การ์ดไซต์ = `ui/CollapsibleCard` ของกลาง (ลูกค้ารายใหญ่มี 26 ไซต์ — กางหมดคือจอที่
+   เลื่อนหาของไม่เจอ) ⇒ ไม่มีหัวการ์ดที่วาดเอง · ที่เหลือคือแถวปุ่มของแผงค้น/ลองใหม่ */
+.browseRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--ctl-h);
+  line-height: var(--lh-thai);
+}
+
+.sumBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  line-height: var(--lh-thai);
+}
+
+.sumItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  font-size: var(--fs-label);
+  color: var(--text-3);
+}
+
+.sumItem > b {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+
+.sumTotal { margin-left: auto; }
+
+/* ── ขั้น ③ งวดชำระ ───────────────────────────────────────────────────── */
+.carry {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.carryHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.carryHint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.carryHint > svg { flex: none; margin-top: 0.2em; color: var(--green); }
+
+.evidenceList {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.evidenceList > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.splitRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.checkLine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--green);
+  border-radius: var(--radius);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.checkLine > svg { flex: none; margin-top: 0.2em; color: var(--green); }
+.checkLine[data-bad="yes"] { border-color: var(--amber); }
+.checkLine[data-bad="yes"] > svg { color: var(--amber); }
+
+/* ── แถบช่วงบริการ (CoverageTimeline) — svg ล้วน ไม่มี style ฝังในแท็ก ───────── */
+.timeline {
+  display: block;
+  width: 100%;
+  height: var(--space-6);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.tlBase { fill: var(--panel-2); }
+.tlSeg { fill: var(--text-3); }
+.tlSeg[data-kind="paid"] { fill: var(--green); }
+.tlSeg[data-kind="due"] { fill: var(--amber); }
+.tlToday { fill: var(--red); }
+
+.tlAxis {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.tlLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.tlLegend > span { display: flex; align-items: center; gap: var(--space-1-5); }
+
+.tlDot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--text-3);
+}
+
+.tlDot[data-kind="paid"] { background: var(--green); }
+.tlDot[data-kind="due"] { background: var(--amber); }
+.tlDot[data-kind="today"] { background: var(--red); }
+
+/* ── ขั้น ④ ตรวจและส่งอนุมัติ ──────────────────────────────────────────── */
+.reviewGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.reviewCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.reviewHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.kv {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  line-height: var(--lh-thai);
+}
+
+.kv > dt { color: var(--text-3); font-size: var(--fs-label); }
+.kv > dd { margin: 0; overflow-wrap: anywhere; }
+
+.afterList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.afterList > li {
+  display: grid;
+  grid-template-columns: auto minmax(120px, auto) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  line-height: var(--lh-thai);
+}
+
+.afterList > li + li { border-top: 1px solid var(--border); }
+
+@media (max-width: 640px) {
+  .afterList > li { grid-template-columns: auto minmax(0, 1fr); }
+  .afterList > li > .lane { grid-column: 1 / -1; }
+}
+
+.lane {
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.afterNote {
+  display: block;
+  font-size: var(--fs-label);
+  color: var(--text-3);
+}
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.switchText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+  line-height: var(--lh-thai);
+}
+
+.switchText > small {
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}

@@ -39,16 +39,21 @@ import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
-  LEDGER_GROUP_OPTIONS, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
+  LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
   LEDGER_STATUS, LEDGER_STATUS_KEYS, groupAsOrder, groupLedgerBuckets, groupLedgerByOrder,
   groupNote, ledgerSortDir, pendingConfirmations, pendingTaxInvoices, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
+import StatusBadge from "@/components/ui/StatusBadge";
 import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConfirmDialog";
 import TaxInvoiceDialog from "@/components/salesPlanning/TaxInvoiceDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
+/* ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ตัดสินด้วยตัวกลางเท่านั้น (literal ของ origin มีบ้านเดียว) */
+import { isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalOrders";
+import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
+import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -339,11 +344,16 @@ export default function FinancePaymentsPage() {
           {note ? <span className="cell-sub">{note.label}</span> : null}
         </td>
         {/* ออกใบกำกับไปกี่งวดแล้ว — ค้างเมื่อไรเป็นตัวเลขเตือน เพราะทุกงวดที่จ่ายแล้ว
-            ต้องมีใบ (บริษัทเก็บ VAT · มติผู้ใช้ 2026-09-07) */}
+            ต้องมีใบ (บริษัทเก็บ VAT · มติผู้ใช้ 2026-09-07)
+            ⭐ งวดยกมาของใบย้อนหลังไม่อยู่ในตัวนับ (ใบกำกับออกในระบบเดิมแล้ว · มติ 22/09) — บอกแยกเป็นบรรทัดรอง
+            แทนที่จะขึ้น "ค้าง" ซึ่งชวนให้ออกใบซ้ำ */}
         <td className={`num mono ${group.invoicePending ? "cell-num-bad" : ""}`.trim()}>
-          {group.invoiced}/{group.count}
+          {group.invoiced}/{group.count - group.openingCount}
           {group.invoicePending
             ? <span className="cell-sub">ค้าง {group.invoicePending} งวด</span>
+            : null}
+          {group.openingCount
+            ? <span className="cell-sub">ยกมา: {openingInvoiceNote}{group.historicalInvoiceRef ? ` · ${group.historicalInvoiceRef}` : ""}</span>
             : null}
         </td>
         <td>
@@ -445,10 +455,18 @@ export default function FinancePaymentsPage() {
                       </Link>
                       <span className={styles.qsep}>·</span>
                       <span>{row.label || `งวดที่ ${row.seq}`}</span>
+                      {/* ⭐ งวดยกมา = เงินที่เก็บก่อนเข้าระบบ รับรองครั้งเดียว (mock FnConfirm) — ต้องแยกจากงวดปกติด้วยตา */}
+                      {isOpeningInstallment(row) ? (
+                        <StatusBadge size="sm" tone="info" label="ยกมา" className={styles.qbadge}
+                          title="เงินที่เก็บก่อนเข้าระบบ — บัญชีรับรองครั้งเดียว" />
+                      ) : null}
                       {row.overdue ? <span className={styles.qlate}>เลยกำหนด</span> : null}
                     </div>
+                    {/* ช่วงครอบ = สิ่งที่คำรับรองนี้ปลดให้ TS ("จ่ายถึง") ⇒ ต้องเห็นตั้งแต่ในคิว ไม่ใช่เฉพาะในโมดัล */}
                     <span className="cell-sub">
                       {row.customerName}
+                      {isHistoricalOrder({ origin: row.origin }) ? ` · ${LEDGER_HISTORICAL_TAG}` : ""}
+                      {row.coversFrom && row.coversTo ? ` · ครอบ ${fmtDate(row.coversFrom)}–${fmtDate(row.coversTo)}` : ""}
                       {row.reportedByName ? ` · แจ้งโดย ${row.reportedByName}` : ""}
                       {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
                       {` · หลักฐาน ${row.evidenceCount} ไฟล์`}
@@ -707,10 +725,19 @@ export default function FinancePaymentsPage() {
           )}
         </ListPanel>
 
+        {/* ⭐ ใบย้อนหลัง = โหมดของโมดัลตัวเดิม (ผลลัพธ์ไม่มี Rev./Actual · อนุมัติใบ · เก็บแล้ว · หมายเหตุจาก SA)
+            ⚠️ ภาพหลังรับรอง (`confirmOutlook`) ประทับมาจาก API จากงวดทั้งใบก่อนกรอง — ห้ามคิดจาก `rows` ของจอ
+            (กรอง "รอบัญชีรับรอง" แล้วงวดถัดไป/งวดที่รับรองแล้วหลุด) */}
         <InstallmentConfirmDialog
           open={!!confirmFor}
           row={confirmFor}
-          order={confirmFor ? { id: confirmFor.orderId, orderNumber: confirmFor.orderNumber, customerName: confirmFor.customerName } : null}
+          order={confirmFor ? {
+            id: confirmFor.orderId, orderNumber: confirmFor.orderNumber, customerName: confirmFor.customerName,
+            totalAmount: confirmFor.orderTotal, approvedByName: confirmFor.orderApprovedByName,
+            approvedAt: confirmFor.orderApprovedAt, historicalInvoiceRef: confirmFor.historicalInvoiceRef,
+          } : null}
+          historical={isHistoricalOrder({ origin: confirmFor?.origin })}
+          outlook={confirmFor?.confirmOutlook || null}
           multi={Boolean(confirmFor && groups.find((g) => g.orderId === confirmFor.orderId)?.count > 1)}
           busy={acting}
           error={actionError}
@@ -736,11 +763,14 @@ export default function FinancePaymentsPage() {
           }}
         />
 
-        {/* ตีกลับใช้ ReasonDialog ตัวเดียวกับการ์ดบนใบ — เหตุผลบังคับชุดเดียวกัน */}
+        {/* ตีกลับใช้ ReasonDialog ตัวเดียวกับการ์ดบนใบ — เหตุผลบังคับชุดเดียวกัน
+            ⭐ งวดยกมา: ตีกลับแก้ได้แค่หลักฐาน/วันรับเงิน — ยอดหรือช่วงที่ AE Sup อนุมัติไปผิดต้องยกเลิกใบแล้วคีย์ใหม่
+            ⇒ บอกทางออกทั้งสองแบบก่อนกด (historicalOpeningRejectNote) ไม่ใช่ให้ฝ่ายขายเดาเองทีหลัง */}
         <ReasonDialog
           open={!!rejectFor}
           title="ตีกลับการแจ้งชำระ"
           description="งวดนี้จะกลับไปให้ฝ่ายขายแก้แล้วแจ้งใหม่"
+          detail={rejectFor && isOpeningInstallment(rejectFor.row) ? historicalOpeningRejectNote : undefined}
           label="เหตุผลที่ตีกลับ"
           value={rejectFor?.reason || ""}
           onChange={(reason) => setRejectFor((f) => ({ ...f, reason }))}

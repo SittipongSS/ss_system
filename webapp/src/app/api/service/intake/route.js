@@ -30,14 +30,16 @@ export const GET = withUser(async ({ user, supabase }) => {
        🐞 **UAT 2026-09-01: `serviceContractId` เคยตกจาก select ตัวนี้** — `contractIds`
        ข้างล่างอ่านจากคอลัมน์นี้ ⇒ ไม่ดึงมา = ลิสต์ว่างเสมอ = ชิปบนคิวขึ้น
        "ยังไม่ผูกสัญญา" ทุกใบตลอดกาล แม้ฝ่ายขายจะผูกไปแล้ว (ไม่มี error ให้เห็น)
-       ⭐ ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 17 — TS ผูกโซนให้ใบย้อนหลังในคิวนี้): `origin` + เลขเอกสารเดิม
-       ขึ้นป้าย "ย้อนหลัง" และเรียงต่อท้ายใบปกติ · `paymentGateExemptAt` ทำชิป "ยกเว้นด่านเงิน" ให้ตรงกับ visitGate
-       🔴 คอลัมน์ของ 0360 — `check:columns` แดงและ route นี้ตอบ 500 จนกว่าจะรัน migration (merge หลังรันเท่านั้น)
+       ⭐ ใบสั่งขายย้อนหลัง (mig 0360/0374): `origin` + เลขเอกสารเดิม ขึ้นป้าย "ย้อนหลัง" · มติ 22/09 ใบย้อนหลังเลือกโซน
+       จากทะเบียนตอนคีย์ และรอบขายเกิดตอน AE Sup อนุมัติ ⇒ ไม่ผ่านถังผูกโซนแล้ว มาเข้าถัง "รอตั้งรอบ" ตรง ๆ
+       ⭐ `totalAmount` — ใช้ตัดสิน "ใบยอด 0 ไม่มีงวดให้เก็บ" (`paymentNotRequired` ตัวเดียวกับ visitGate ข้อ②)
+          🔄 แทน `paymentGateExemptAt` (สวิตช์ยกเว้นด่านเงินของ 0360 — ถอดแล้ว)
+          🔒 ยอดไม่ออกไปกับ response — แถวคิวพกแค่ธง `paymentNotRequired` (ฝ่ายบริการไม่เห็นราคาโดยตั้งใจ · หัวไฟล์)
        🪤 **คอมเมนต์อยู่เหนือคำสั่ง ไม่แทรกระหว่าง `.from()` กับ `.select()`** — `check:columns` มองหา select
           ไม่เกิน 200 ตัวอักษรหลัง `.from()` · คอมเมนต์ที่เคยคั่นตรงนั้น (261 ตัวอักษร) ทำให้ select นี้หลุดจากด่านมาตลอด */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "paymentGateExemptAt"')
+      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('approvedAt', { ascending: false })
@@ -55,11 +57,11 @@ export const GET = withUser(async ({ user, supabase }) => {
          ⚠️ ไม่ดึงราคา/ส่วนลด — ฝ่ายบริการไม่ต้องใช้ และยิ่งดึงมามาก ยิ่งมีของหลุดออกทาง response โดยไม่ตั้งใจ
          "serviceRounds" = ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326) — TS ใช้ตอนวางรอบ
          "installationPoint" = จุดติดตั้งตามชีตของใบย้อนหลัง (mig 0360) — fgSummary แยกกลุ่มตามจุด
-         ธงจุด 9 ช่อง (mig 0362) = จุดที่ TS แจ้งว่าไม่พบหน้างาน + ผลตัดสินของฝ่ายขาย — `lineNeedsAllocation`
-         ตัดจุดที่ติดธงออกจากคิว และวิซาร์ดเอารายการนี้ไปทำแผง "ถอนการแจ้ง" ⇒ ต้องครบทั้ง 9 ช่อง
+         🚫 ธงจุด 9 ช่อง (mig 0362) ถอดออกจาก select แล้ว (มติ 22/09) — ทางแจ้ง "ไม่พบจุดนี้หน้างาน"
+         หายทั้งเส้นพร้อมแผง "ถอนการแจ้ง" · บรรทัดของใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ใบ ⇒ ไม่เข้าถังนี้อีก
          🪤 คอมเมนต์อยู่เหนือคำสั่ง — แทรกระหว่าง `.from()` กับ `.select()` แล้ว check:columns มองไม่เห็น select นี้ */
       fetchAllInChunks(orderIds, (chunk) => supabase.from('sales_order_lines')
-          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds", "installationPoint", "siteNotFoundAt", "siteNotFoundById", "siteNotFoundByName", "siteNotFoundReason", "siteNotFoundNote", "siteClosedAt", "siteClosedById", "siteClosedByName", "siteClosedNote"')
+          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds", "installationPoint"')
           .in('salesOrderId', chunk)
           .order('salesOrderId', { ascending: true })
           .order('sortOrder', { ascending: true })
@@ -111,8 +113,9 @@ export const GET = withUser(async ({ user, supabase }) => {
     });
     // ⚠️ term ชี้บรรทัดด้วย salesOrderLineId — ส่ง Map เข้าไปเพื่อให้คิววางรอบตอบ
     // "ขายไว้กี่รอบ" ได้ (ไม่ส่ง = ตอบ null ซึ่งอ่านว่า "ยังไม่ระบุ" ไม่ใช่ศูนย์)
+    // ⭐ งวดชุดเดียวกับชิปของถังผูกโซน ⇒ แถวรอตั้งรอบบอก "เงินครอบถึง" ได้ (มติ 22/09 · ม็อก TsIntake)
     const linesById = new Map((lines || []).map((row) => [row.id, row]));
-    const plan = planQueue({ zones, terms, plans, sites, ordersById, linesById, todayIso });
+    const plan = planQueue({ zones, terms, plans, sites, ordersById, linesById, installmentsByOrderId, todayIso });
     const visit = visitQueue({ plans, visits, sites, ordersById, isLive: isLiveVisit, todayIso });
 
     return ok({

@@ -15,8 +15,11 @@
 import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
+import { installmentConfirmOutlook } from '@/lib/sales/salesOrderPayments';
 import { taxInvoicePending } from '@/lib/sales/taxInvoice';
-import { ORIGIN_PIPELINE, historicalRefsOf } from '@/lib/sales/historicalOrders';
+import {
+  OPENING_INSTALLMENT_LABEL, ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder, isOpeningInstallment,
+} from '@/lib/sales/historicalOrders';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -27,6 +30,9 @@ export const LEDGER_STATUS = {
 };
 
 export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
+
+/* ป้ายของใบสั่งขายย้อนหลังบนแถวคิว/ทะเบียน (มติ 22/09) — จอกับชุดค้นใช้ค่าเดียวกัน (ตาเห็น = ต้องค้นเจอ) */
+export const LEDGER_HISTORICAL_TAG = 'ใบย้อนหลัง';
 
 /**
  * แถวเดียวของทะเบียน — แบนราบพอที่ทั้งตารางและ Excel ใช้ได้โดยไม่ต้องไล่ join ต่อ
@@ -57,6 +63,13 @@ export function ledgerRow({
        เก็บถึงไหนแล้ว") · ตารางรายการ SO ค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017
        แล้ว ทะเบียนนี้เพิ่งมี ⇒ ฝ่ายบัญชีเคยเป็นฝ่ายเดียวที่ค้นด้วยเลข PO ไม่ได้ */
     referenceDoc: order.referenceDoc || '',
+    /* ⭐ ข้อมูลระดับใบที่โมดัลรับรองของใบย้อนหลังต้องโชว์ (mock FnConfirm · REVISION 2) —
+       "ยอดที่เก็บแล้ว X จาก <ยอดใบ>" · "อนุมัติใบ: <AE Sup> · <วัน> · ไม่นับ Actual" · เลขใบกำกับเดิม (Express)
+       ⚠️ ยอดใบ **ไม่รู้ = null** ไม่ใช่ 0 (ตัวตัดสินใบ ฿0 แยกสองกรณีนี้ — paymentNotRequired) */
+    orderTotal: order.totalAmount === null || order.totalAmount === undefined ? null : Number(order.totalAmount),
+    orderApprovedByName: order.approvedByName || '',
+    orderApprovedAt: order.approvedAt || null,
+    historicalInvoiceRef: order.historicalInvoiceRef || '',
     customerName: customer?.name || order.customerName || '',
     customerCode: customer?.arCode || '',
     /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
@@ -75,6 +88,12 @@ export function ledgerRow({
     label: installment.label || '',
     percent: Number(installment.percent) || 0,
     amount: Number(installment.amount) || 0,
+    /* ── งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374 · มติ 22/09) ─────────────────────────────
+       ⚠️ ต้องอยู่ในรายชื่อนี้ — `taxInvoicePending` ตัดงวดยกมาด้วย `kind` ⇒ ลืมเติม = งวดยกมาโผล่ในคิว
+       "ยังไม่ออกใบกำกับ" ของบัญชีตลอดกาล (ใบกำกับของเงินก้อนนั้นออกในระบบเดิมแล้ว) · ค่าว่างของฐาน = งวดปกติ
+       `note` = หมายเหตุที่ฝ่ายขายคีย์มากับงวด — โมดัลรับรองของบัญชีโชว์ "หมายเหตุจาก SA" */
+    kind: installment.kind || 'regular',
+    note: installment.note || '',
 
     dueDate: due,
     /* ── ช่วงบริการที่งวดนี้ครอบ (mig 0320 · มติผู้ใช้ 2026-08-30) ────────────
@@ -258,6 +277,31 @@ export function stampOrderPaidThrough(rows = []) {
   return list;
 }
 
+/**
+ * ภาพหลังรับรอง (`installmentConfirmOutlook`) ของงวดที่ **รอบัญชีรับรอง** — ประทับจากงวดทั้งใบก่อนกรอง
+ *
+ * ⭐ เหตุผลเดียวกับ `stampOrderPaidThrough`: โมดัลรับรองเปิดจากคิวบนหน้านี้ ซึ่งเห็นแค่แถวที่ผ่านตัวกรอง ⇒
+ *   กดการ์ด "รอบัญชีรับรอง" (กรองสถานะ = reported) เมื่อไร งวดถัดไป (ยังไม่จ่าย) กับงวดที่รับรองแล้วหลุดทั้งหมด
+ *   แล้วโมดัลจะบอก "จ่ายถึง" / "เก็บแล้ว" / "งวดถัดไป" ผิดตามตัวกรองที่ไม่เกี่ยวกัน
+ * ⚠️ ประทับเฉพาะงวด `reported` (งวดเดียวที่กดรับรองได้) — แถวอื่นไม่ต้องพกก้อนนี้ข้าม API
+ */
+export function stampConfirmOutlook(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const byOrder = new Map();
+  for (const row of list) {
+    if (!row?.orderId) continue;
+    const group = byOrder.get(row.orderId) || [];
+    group.push(row);
+    byOrder.set(row.orderId, group);
+  }
+  for (const [, group] of byOrder) {
+    for (const row of group) {
+      if (row.status === 'reported') row.confirmOutlook = installmentConfirmOutlook(row, group);
+    }
+  }
+  return list;
+}
+
 export function orderStateIndex(rows = []) {
   const tally = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -319,8 +363,10 @@ export function filterLedger(rows = [], {
          (IS-26080017): คำถามที่เข้ามาจริงคือ "PO เลขนี้ใบไหน เก็บถึงไหนแล้ว" */
       /* ⚠️ `taxInvoiceNo` อยู่ในชุดค้นด้วย — กฎ "ตาเห็นบนแถว = ต้องค้นเจอ" และคำถาม
          จริงของบัญชีคือ "ใบกำกับเลขนี้เป็นของงวดไหน" (เหมือนที่ถามด้วยเลข PO) */
+      /* ⚠️ ป้าย "ใบย้อนหลัง" / "งวดยกมา" ที่คิวโชว์บนแถวต้องค้นเจอด้วย (มติ 22/09 · ตาเห็น = ต้องค้นเจอ) */
       const hay = [r.orderNumber, r.quoteNumber, r.referenceDoc, r.customerName, r.customerCode,
-        r.label, r.taxInvoiceNo, r.historicalRefs]
+        r.label, r.taxInvoiceNo, r.historicalRefs,
+        isHistoricalOrder(r) ? LEDGER_HISTORICAL_TAG : '', isOpeningInstallment(r) ? OPENING_INSTALLMENT_LABEL : '']
         .join(' ').toLowerCase();
       if (!hay.includes(needle)) return false;
     }
@@ -423,6 +469,8 @@ export function groupLedgerByOrder(rows = []) {
         team: row.team || null,
         // ใบนี้เข้าเกณฑ์ "มีรอบบริการ" ไหม — ค่าของทั้งใบ ทุกงวดพกค่าเดียวกันมา
         serviceRounds: Boolean(row.serviceRounds),
+        // เลขใบกำกับเดิม (Express) ของใบย้อนหลัง — คอลัมน์ใบกำกับบอกว่างวดยกมาออกใบที่ไหน
+        historicalInvoiceRef: row.historicalInvoiceRef || '',
         rows: [],
       });
     }
@@ -446,7 +494,11 @@ export function groupLedgerByOrder(rows = []) {
         /* ใบกำกับที่ออกแล้ว / ที่ยังค้าง — คิดจากงวดใน **ก้อนที่ผ่านตัวกรองแล้ว** ต่างจาก
            `orderPaidThrough` เพราะนี่เป็นตัวเลขของ *แถวที่ตาเห็นอยู่* ไม่ใช่ค่าระดับใบ
            ที่ต้องนิ่งไม่ว่ากรองอะไร (กรอง "ยังไม่มีใบกำกับ" แล้วเห็น 0/2 คือคำตอบที่ถูก) */
-        invoiced: rowsInOrder.filter((r) => String(r.taxInvoiceNo || '').trim()).length,
+        /* ⭐ งวดยกมาของใบย้อนหลัง **ไม่อยู่ในตัวนับใบกำกับทั้งตัวตั้งและตัวหาร** (มติ 22/09 · กติกาเดียวกับ
+           `taxInvoicePending`) — ใบกำกับของเงินก้อนนั้นออกในระบบเดิมแล้ว ⇒ นับเมื่อไรใบนั้นขึ้น "0/2" ตลอดกาล
+           ทั้งที่ออกใบในระบบนี้ครบแล้ว · จอบอกแยกด้วย `openingCount` */
+        openingCount: rowsInOrder.filter(isOpeningInstallment).length,
+        invoiced: rowsInOrder.filter((r) => !isOpeningInstallment(r) && String(r.taxInvoiceNo || '').trim()).length,
         invoicePending: rowsInOrder.filter(taxInvoicePending).length,
         rejected: rowsInOrder.filter((r) => r.status === 'rejected').length,
         complete: rowsInOrder.length > 0 && rowsInOrder.every((r) => r.status === 'confirmed'),

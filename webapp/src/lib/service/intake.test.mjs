@@ -331,11 +331,65 @@ test('⭐ ใบปกติขึ้นก่อนใบย้อนหลั�
   assert.deepEqual(q.rows.map((r) => r.orderId), ['SO1', 'SOH', 'SOH2']);
 });
 
-test('ชิปความพร้อม: "ยกเว้นด่านเงิน" เฉพาะใบย้อนหลังที่มีร่องรอยยกเว้น — ตัวตัดสินเดียวกับ visitGate', () => {
+/* ── ใบยอด 0 ไม่มีงวดให้เก็บ (มติ 22/09 · mig 0374) ──────────────────────────────────────
+   ⭐ ชิปต้องพูดเรื่องเดียวกับ visitGate ข้อ② — ใบยอด 0 ผ่านด่านเงินเอง ⇒ ป้าย "ยังไม่มีงวดที่รับรอง"
+      จะส่ง TS ไปทวงเงินที่ไม่มีให้เก็บ · ตัวตัดสินเดียวกับงวดชำระ (`paymentNotRequired`)
+   🔄 แทนชิป "ยกเว้นด่านเงิน" ของใบย้อนหลัง (มติข้อ 13 · 0360) ที่ถอดแล้ว */
+test('ชิปความพร้อม: ใบยอด 0 = ไม่มีงวดให้เก็บ — ทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง · ไม่รู้ยอด ≠ ยอด 0', () => {
+  assert.equal(orderReadiness(so({ totalAmount: 0 }), {}).paymentNotRequired, true);
+  assert.equal(orderReadiness(hso({ totalAmount: 0 }), {}).paymentNotRequired, true);
+  assert.equal(orderReadiness(hso({ totalAmount: 261936 }), {}).paymentNotRequired, false);
+  assert.equal(orderReadiness(so(), {}).paymentNotRequired, false, 'ไม่ได้ select ยอดมา = ไม่รู้ ≠ ยอด 0');
+  // ร่องรอยยกเว้นของ 0360 ไม่มีใครอ่านแล้ว — ชิปไม่มีธงนั้นอีก
   const at = '2026-09-15T03:00:00.000Z';
-  assert.equal(orderReadiness(hso({ paymentGateExemptAt: at }), {}).paymentGateExempt, true);
-  assert.equal(orderReadiness(hso(), {}).paymentGateExempt, false);
-  assert.equal(orderReadiness(so({ paymentGateExemptAt: at }), {}).paymentGateExempt, false, 'ใบ pipeline ร่องรอยปลอมไม่นับ');
+  const r = orderReadiness(hso({ paymentGateExemptAt: at, totalAmount: 144000 }), {});
+  assert.equal(r.paymentNotRequired, false);
+  assert.equal('paymentGateExempt' in r, false);
+});
+
+/* ── ถังตั้งรอบพก "เงินครอบถึง" (มติ 22/09 · ม็อก TsIntake) ──────────────────────────────
+   ⭐ ใบย้อนหลังข้ามถังผูกโซน (รอบขายเกิดตอน AE Sup อนุมัติ) ⇒ ถังนี้คือจุดแรกที่ TS เห็นใบ
+      และ "เงินครอบถึงวันไหน" คือสิ่งที่บอกว่านัดถึงวันไหนขึ้นตารางได้เลย */
+test('⭐ แถวรอตั้งรอบพก paidThrough ของใบ — นับเฉพาะงวดที่บัญชีรับรอง · ใบย้อนหลังพก origin', () => {
+  const opening = { status: 'confirmed', kind: 'opening', coversFrom: '2026-01-01', coversTo: '2026-09-30', dueDate: null };
+  const nextRow = { status: 'pending', coversFrom: '2026-10-01', coversTo: '2026-12-31', dueDate: '2026-10-01' };
+  const q = planQueue({
+    zones, sites,
+    terms: [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SOH' }],
+    plans: [],
+    ordersById: new Map([['SOH', hso({ totalAmount: 261936 })]]),
+    installmentsByOrderId: new Map([['SOH', [opening, nextRow]]]),
+    todayIso: '2026-09-23',
+  });
+  assert.equal(q.length, 1);
+  assert.equal(q[0].origin, ORIGIN_HISTORICAL);
+  assert.equal(q[0].paidThrough, '2026-09-30');
+  assert.equal(q[0].coveredToday, true);
+  assert.equal(q[0].paymentNotRequired, false);
+  // งวดยกมายังรอบัญชี (reported) = ยังไม่ครอบ — "แจ้งแล้ว" ไม่นับ
+  const waiting = planQueue({
+    zones, sites, terms: [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SOH' }], plans: [],
+    ordersById: new Map([['SOH', hso({ totalAmount: 261936 })]]),
+    installmentsByOrderId: { SOH: [{ ...opening, status: 'reported' }] },
+    todayIso: '2026-09-23',
+  });
+  assert.equal(waiting[0].paidThrough, null);
+  assert.equal(waiting[0].coveredToday, false);
+});
+
+test('แถวรอตั้งรอบที่ไม่ได้ส่งงวดมา (ตัวนับบนเมนู) = ยังไม่ครอบ ไม่ระเบิด · ใบยอด 0 = ไม่มีงวดให้เก็บ', () => {
+  const q = planQueue({
+    zones, sites,
+    terms: [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1' }, { id: 'T2', zoneId: 'Z2', salesOrderId: 'SO2' }],
+    plans: [],
+    ordersById: new Map([['SO1', so()], ['SO2', { ...so2(), totalAmount: 0 }]]),
+    todayIso: '2026-08-28',
+  });
+  const bySo = Object.fromEntries(q.map((r) => [r.salesOrderId, r]));
+  assert.equal(bySo.SO1.paidThrough, null);
+  assert.equal(bySo.SO1.paymentNotRequired, false);
+  assert.equal(bySo.SO1.origin, ORIGIN_PIPELINE, 'ไม่ส่ง origin มา = pipeline');
+  assert.equal(bySo.SO2.paymentNotRequired, true);
 });
 
 test('🔴 ด่านปลายทางของการผูก: ไซต์ลูกค้าคนอื่น · ไม่ใช่ไซต์ลูกค้า · ไซต์/โซนปิดใช้งาน = ตีกลับพร้อมชื่อของ', () => {
@@ -351,70 +405,4 @@ test('🔴 ด่านปลายทางของการผูก: ไซ�
   assert.match(bindTargetError({ order, zone, site: null, lineLabel }), /ไม่พบไซต์ของโซน ล็อบบี้/);
   assert.match(bindTargetError({ order, zone: null, site, lineLabel }), /ไม่พบโซน/);
   assert.match(bindTargetError({ order: { id: 'X' }, zone, site }), /ลูกค้ารายอื่น/, 'ใบไม่มีลูกค้า = ไม่เดาว่าตรง');
-});
-
-/* ── จุดที่ TS หาไม่เจอหน้างาน (มติ 16/09/2026 ข้อ 23 · mig 0362) ────────────────
-   ⭐ `lineNeedsAllocation` คือจุดคอขวดเดียวของทั้งแท็บและป้ายเมนู ⇒ เทสต์ชุดนี้พิสูจน์ว่า
-      "หลุดจากคิว" กับ "หลุดจากป้าย" เป็นผลของการตัดสินครั้งเดียวกัน ไม่ใช่สองที่ที่บังเอิญตรงกัน */
-const FLAG = {
-  siteNotFoundAt: '2026-09-18T03:00:00.000Z',
-  siteNotFoundById: 'U-TS',
-  siteNotFoundByName: 'สมชาย',
-  siteNotFoundReason: 'name_mismatch',
-};
-
-test('⭐ 0362: จุดที่แจ้งว่าไม่พบหลุดจากคิวทันที · จุดอื่นของใบเดียวกันผูกต่อได้', () => {
-  const q = bindQueue({
-    orders: [hso()],
-    lines: [{ ...hLines[0] }, { ...hLines[1], ...FLAG }],
-    terms: [],
-    ...ctx,
-  });
-  assert.equal(q.rows.length, 1, 'ใบยังอยู่ในคิวเพราะยังมีจุดอื่นค้าง');
-  const [row] = q.rows;
-  assert.deepEqual(row.installationPoints, ['Empire Tower · ล็อบบี้']);
-  assert.equal(row.fgKinds, 1);
-  assert.equal(row.remainingQty, 2, 'จำนวนของจุดที่แจ้งไปแล้วต้องไม่ถูกนับ');
-  assert.equal(row.awaitingSiteDecision, 1);
-  assert.deepEqual(row.siteNotFoundLines.map((l) => l.id), ['HL2']);
-});
-
-test('⭐ 0362: แจ้งครบทุกจุด = ใบหลุดจากแท็บและป้ายพร้อมกัน (ตัวนับอ่าน rows ชุดเดียวกัน)', () => {
-  const q = bindQueue({
-    orders: [hso()],
-    lines: hLines.map((l) => ({ ...l, ...FLAG })),
-    terms: [],
-    ...ctx,
-  });
-  assert.equal(q.rows.length, 0);
-  assert.equal(q.unknownLine.length, 0);
-  assert.equal(intakeCounts({ bind: q }).bind, 0);
-});
-
-test('0362: จุดที่ฝ่ายขายปิดแล้วไม่กลับเข้าคิว และไม่นับเป็น "รอฝ่ายขายตัดสิน"', () => {
-  const closed = { ...FLAG, siteClosedAt: '2026-09-19T03:00:00.000Z', siteClosedById: 'U-AE' };
-  const q = bindQueue({
-    orders: [hso()],
-    lines: [{ ...hLines[0] }, { ...hLines[1], ...closed }],
-    terms: [],
-    ...ctx,
-  });
-  assert.equal(q.rows[0].fgKinds, 1);
-  assert.equal(q.rows[0].awaitingSiteDecision, 0, 'ตัดสินแล้วไม่ต้องรออะไรอีก');
-  assert.equal(q.rows[0].siteNotFoundLines.length, 1, 'แต่ยังโชว์ให้เห็นว่าจุดนี้จบแล้ว');
-});
-
-test('0362: ฝ่ายขายแก้ชื่อจุดแล้วส่งกลับ (ล้างธง) = บรรทัดกลับเข้าคิวเอง ไม่ต้องมีทางคืนแยก', () => {
-  const back = { ...hLines[1], installationPoint: 'Empire Tower · ชั้น 5' };
-  const q = bindQueue({ orders: [hso()], lines: [hLines[0], back], terms: [], ...ctx });
-  assert.equal(q.rows[0].fgKinds, 2);
-  assert.equal(q.rows[0].awaitingSiteDecision, 0);
-  assert.deepEqual(q.rows[0].installationPoints, ['Empire Tower · ล็อบบี้', 'Empire Tower · ชั้น 5']);
-});
-
-test('🔒 0362: ใบ pipeline ไม่ขยับ — บรรทัดที่ไม่มีคอลัมน์ธงยังเข้าคิวเหมือนเดิม', () => {
-  const q = bindQueue({ orders: [so({ projectId: 'PJ-S' })], lines, terms: [], ...ctx });
-  assert.ok(q.rows[0].pendingLines > 0);
-  assert.equal(q.rows[0].awaitingSiteDecision, 0);
-  assert.deepEqual(q.rows[0].siteNotFoundLines, []);
 });

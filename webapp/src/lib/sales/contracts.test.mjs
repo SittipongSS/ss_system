@@ -774,8 +774,10 @@ test('⭐ หน้าใบสั่งขายออกสัญญาได�
     page.indexOf('label: "ออกสัญญาจากใบนี้"') < page.indexOf('activeTab === "contract"'),
     'ปุ่มต้องประกาศในชุด action ของการ์ดจัดการ ไม่ใช่ในเนื้อแท็บสัญญา',
   );
-  // ใบที่ตายแล้วไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
-  assert.match(page, /visible: canEdit && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\)/);
+  /* ใบที่ตายแล้วไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
+     ⚠️ 0374 เพิ่มใบย้อนหลังเข้ามาอีกกรณี: สัญญาของใบคือ "เอกสารแทนสัญญา" ที่ฟอร์มคีย์ใบสร้างและอนุมัติ
+     พร้อมใบ ⇒ ฉบับที่สองที่ออกจากที่นี่ผูกกับใบไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่) */
+  assert.match(page, /visible: canEdit && !historical && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\)/);
 });
 
 /* ── เลขที่สัญญามีอักษรย่อชนิด (มติผู้ใช้ 2026-08-31) ─────────────────────────
@@ -1096,4 +1098,227 @@ test('ดีลภาชนะของใบย้อนหลัง: ออก
   const pipeline = contractEligibility({ kind: 'service', deal: { ...container, origin: 'pipeline' }, quotations: [] });
   assert.equal(pipeline.ok, false);
   assert.match(pipeline.reason, /ออกสัญญาได้หลังใบเสนอราคา/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (มติ 22/09/2026 · mig 0374)
+   RPC คีย์ใบสร้างร่าง external ที่ชี้กลับใบสั่งขาย (`metadata.historicalSalesOrderId`) แล้ว AE Sup อนุมัติ
+   พร้อมใบที่หน้าใบสั่งขาย · หน้าสัญญาต้องไม่มีทางอ้อม (แก้ · ลบ · ยกเลิก · อนุมัติแยก) ระหว่างใบยังไม่อนุมัติ
+   ═══════════════════════════════════════════════════════════════════════ */
+const readSrc = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+const SO_ID = 'SOR-H0123456789abcdef';
+const substitute = (extra = {}) => ext({
+  id: 'CTR-H1', kind: 'service', ownerId: OWNER.id, createdBy: OWNER.id,
+  metadata: { historicalSalesOrderId: SO_ID, dealCode: 'D-1' }, ...extra,
+});
+const linkedSo = (status, extra = {}) => ({ id: SO_ID, orderNumber: 'SO-26090001', status, origin: 'historical', ...extra });
+
+test('ชนิดเอกสาร "ใบเสนอราคาที่ลูกค้าเซ็น" — ลำดับและสมาชิกตรงกับ CHECK ของ 0374', async () => {
+  const { EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS, externalDocKindLabel } = await import('./contracts.js');
+  assert.ok(EXTERNAL_DOC_KINDS.includes('signed_quotation'));
+  assert.equal(externalDocKindLabel('signed_quotation'), 'ใบเสนอราคาที่ลูกค้าเซ็น');
+  for (const kind of EXTERNAL_DOC_KINDS) assert.ok(EXTERNAL_DOC_KIND_LABELS[kind], `ชนิด ${kind} ไม่มีป้าย`);
+  const sql = readSrc('../../../supabase/migrations/0374_historical_so_approval_flow.sql');
+  const check = sql.match(/ADD CONSTRAINT sales_contracts_external_kind CHECK \([\s\S]*?"externalDocKind" IN \(([^)]*)\)/);
+  assert.ok(check, 'หา CHECK sales_contracts_external_kind ใน 0374 ไม่เจอ');
+  const sqlKinds = [...check[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  assert.deepEqual([...EXTERNAL_DOC_KINDS], sqlKinds, 'JS กับฐานต้องรับชนิดชุดเดียวกัน ไม่งั้นจอเสนอค่าที่ฐานตีกลับ 23514');
+});
+
+test('isSubstituteContract = ใบ external ที่ชี้กลับใบสั่งขายย้อนหลัง เท่านั้น', async () => {
+  const { isSubstituteContract } = await import('./contracts.js');
+  assert.equal(isSubstituteContract(substitute()), true);
+  assert.equal(isSubstituteContract(ext()), false, 'ใบ external ทั่วไปไม่ใช่');
+  assert.equal(isSubstituteContract(ext({ metadata: {} })), false);
+  // ใบที่ระบบเจนไม่มีทางเป็นเอกสารแทนสัญญา แม้ metadata จะมีคีย์นี้ (ข้อมูลปลอม)
+  assert.equal(isSubstituteContract({ status: 'draft', source: 'generated', metadata: { historicalSalesOrderId: SO_ID } }), false);
+  assert.equal(isSubstituteContract(null), false);
+});
+
+test('⭐ ล็อกเฉพาะร่างที่ใบสั่งขายย้อนหลังของมันยังไม่อนุมัติ (ร่าง · รออนุมัติ · ตีกลับ)', async () => {
+  const { historicalContractLockReason } = await import('./contracts.js');
+  for (const status of ['draft', 'pending_approval', 'rejected']) {
+    const reason = historicalContractLockReason(substitute(), linkedSo(status));
+    assert.match(reason || '', /SO-26090001/, `${status} ต้องล็อก`);
+    assert.match(reason, /ฟอร์มคีย์ใบ/);
+    assert.match(reason, /อนุมัติพร้อมใบที่หน้าใบสั่งขาย/);
+  }
+  // เลขใบยังไม่มี (ไม่ควรเกิด) — ยังต้องบอกได้ว่าใบไหน
+  assert.match(historicalContractLockReason(substitute(), linkedSo('draft', { orderNumber: null })), new RegExp(SO_ID));
+});
+
+test('🪤 ใบกำพร้าไม่มีวันติดล็อก — ใบสั่งขายหาย/ยกเลิก/อนุมัติแล้ว/คนละใบ = ไม่ล็อก', async () => {
+  const { historicalContractLockReason } = await import('./contracts.js');
+  assert.equal(historicalContractLockReason(substitute(), null), null, 'ใบสั่งขายถูกลบแล้ว');
+  assert.equal(historicalContractLockReason(substitute(), undefined), null);
+  assert.equal(historicalContractLockReason(substitute(), linkedSo('cancelled')), null, 'ใบสั่งขายยกเลิกแล้ว');
+  assert.equal(historicalContractLockReason(substitute(), linkedSo('approved')), null);
+  assert.equal(historicalContractLockReason(substitute(), linkedSo('draft', { id: 'SOR-HOTHER' })), null,
+    'ใบสั่งขายที่ส่งมาต้องเป็นใบที่สัญญาชี้กลับจริง');
+  assert.equal(historicalContractLockReason(substitute(), linkedSo('draft', { origin: 'pipeline' })), null);
+  // ใบสัญญาที่ออกเลข/ยกเลิกไปแล้วไม่ใช่ร่างที่ต้องกัน
+  assert.equal(historicalContractLockReason(substitute({ status: 'signed' }), linkedSo('pending_approval')), null);
+  assert.equal(historicalContractLockReason(substitute({ status: 'cancelled' }), linkedSo('draft')), null);
+  // ใบ external ทั่วไปไม่เคยล็อก
+  assert.equal(historicalContractLockReason(ext(), linkedSo('draft')), null);
+});
+
+test('⭐ ไฟล์ตรึงเฉพาะช่วงรอ AE Sup อนุมัติ — ร่าง/ตีกลับยังแนบได้ (ฟอร์มคีย์ใบอัปไฟล์ก่อนส่ง)', async () => {
+  const { historicalContractFilesFrozen, HISTORICAL_CONTRACT_FILES_FROZEN_MESSAGE } = await import('./contracts.js');
+  assert.equal(historicalContractFilesFrozen(substitute(), linkedSo('pending_approval')), true);
+  for (const status of ['draft', 'rejected', 'approved', 'cancelled']) {
+    assert.equal(historicalContractFilesFrozen(substitute(), linkedSo(status)), false, status);
+  }
+  assert.equal(historicalContractFilesFrozen(substitute(), null), false);
+  assert.equal(historicalContractFilesFrozen(ext(), linkedSo('pending_approval')), false, 'ใบ external ทั่วไป');
+  assert.match(HISTORICAL_CONTRACT_FILES_FROZEN_MESSAGE, /ดึงกลับ/);
+});
+
+test('🔴 ด่านอนุมัติเอกสารแทนสัญญา: ล็อกมาก่อนทุกด่าน · ปุ่มซ่อน · ใบ external ทั่วไปเหมือนเดิม', async () => {
+  const { historicalContractLockReason } = await import('./contracts.js');
+  const pending = linkedSo('pending_approval');
+  const lock = historicalContractLockReason(substitute(), pending);
+  // ส่งผ่าน payload หรือแนบมากับใบ (GET ของหน้าสัญญา) ได้ผลเดียวกัน
+  assert.equal(externalApproveOpenError(substitute(), AE_SUP, { signedFileId: 'A', linkedOrder: pending }), lock);
+  assert.equal(externalApproveOpenError(substitute({ linkedHistoricalOrder: pending }), AE_SUP, { signedFileId: 'A' }), lock);
+  assert.equal(externalApproveError(substitute(), AE_SUP, { ...OKAY, linkedOrder: pending }), lock, 'ด่านยืนยันต้องได้เหตุเดียวกัน');
+  // ล็อกมาก่อนด่านสิทธิ์ — AE ต้องได้เหตุจริง ไม่ใช่ "เฉพาะ AE Supervisor"
+  assert.equal(externalApproveOpenError(substitute(), AE, { signedFileId: 'A', linkedOrder: pending }), lock);
+  assert.equal(showExternalApprove(substitute({ linkedHistoricalOrder: pending }), AE_SUP), false);
+  assert.equal(showExternalApprove(substitute(), AE_SUP, pending), false);
+  // ใบสั่งขายยกเลิกแล้ว (trigger ยกเลิกใบนี้ตามอยู่แล้ว) — ถ้ายังเป็นร่าง ต้องเดินด่านเดิมได้ ไม่ติดค้าง
+  assert.equal(externalApproveOpenError(substitute({ linkedHistoricalOrder: linkedSo('cancelled') }), AE_SUP, { signedFileId: 'A' }), null);
+  assert.equal(showExternalApprove(substitute({ linkedHistoricalOrder: null }), AE_SUP), true);
+  // ใบ external ทั่วไปไม่เปลี่ยนอะไร
+  assert.equal(externalApproveOpenError(ext(), AE_SUP, { signedFileId: 'A' }), null);
+  assert.equal(showExternalApprove(ext(), AE_SUP), true);
+});
+
+test('⭐ เลนรอมือฉันของสัญญาตัดเอกสารแทนสัญญาที่ยังเป็นร่าง — เป็นงานของคิวใบสั่งขาย', () => {
+  // AE Sup: แนบไฟล์แล้วก็ไม่นับ (อนุมัติพร้อมใบสั่งขาย · ป้ายใบสั่งขายนับให้แล้ว)
+  assert.equal(isContractWaitingOnMe(substitute(), { user: AE_SUP, externalDocReady: true }), false);
+  // เจ้าของใบ: ร่างนี้ไม่ใช่งานที่ต้องไปทำที่หน้าสัญญา
+  assert.equal(isContractWaitingOnMe(substitute(), { userId: OWNER.id, user: OWNER }), false);
+  assert.equal(isContractWaitingOnMe(substitute(), { userId: OWNER.id, user: OWNER, externalDocReady: true }), false);
+  // ใบ external ทั่วไปยังสลับเลนตามไฟล์เหมือนเดิม
+  assert.equal(isContractWaitingOnMe(mineExt(), { user: AE_SUP, externalDocReady: true }), true);
+  assert.equal(isContractWaitingOnMe(mineExt(), { userId: OWNER.id, user: OWNER }), true);
+});
+
+test('🔴 ตัวหาใบที่แนบเอกสารแล้วไม่ยิงฐานเพื่อเอกสารแทนสัญญา — ไม่มีเลนไหนใช้คำตอบ', async () => {
+  const { externalDocReadyIds } = await import('./contractExternalDocs.js');
+  const touched = [];
+  const spy = { from(table) { touched.push(table); throw new Error('ห้ามแตะฐาน'); } };
+  assert.equal((await externalDocReadyIds(spy, [substitute()], AE_SUP)).size, 0);
+  assert.deepEqual(touched, []);
+});
+
+test('รางของเอกสารแทนสัญญา: หมุดเดียวกับสาย external · คำใบ้พาไปใบสั่งขาย · สองหน้าตรงกัน', async () => {
+  const { SUBSTITUTE_STEPS, EXTERNAL_STEPS } = await import('./contractLifecycle.js');
+  const { contractListTrack } = await import('./contractListTrack.js');
+  assert.deepEqual(SUBSTITUTE_STEPS.map((s) => s.label), EXTERNAL_STEPS.map((s) => s.label));
+  assert.equal(SUBSTITUTE_STEPS.find((s) => s.id === 'done').hint, 'อนุมัติพร้อมใบสั่งขายย้อนหลัง');
+
+  const lifecycle = buildContractLifecycle({ canEdit: true, external: true, substitute: true });
+  assert.deepEqual(lifecycle.railSteps(substitute()).map((s) => s.label), ['ร่าง', 'อนุมัติใช้แทนสัญญาแล้ว']);
+
+  const track = contractListTrack(substitute());
+  assert.deepEqual(track.steps.map((s) => s.label), SUBSTITUTE_STEPS.map((s) => s.label));
+  assert.equal(track.steps[1].note, 'อนุมัติพร้อมใบสั่งขายย้อนหลัง');
+  assert.equal(track.steps[0].note, SUBSTITUTE_STEPS[0].hint);
+  // ใบ external ทั่วไปยังได้คำเดิม
+  assert.equal(contractListTrack(ext()).steps[1].note, 'รอ AE Supervisor อนุมัติ');
+});
+
+test('🔴 การ์ดจัดการ: ใบที่ล็อกไม่มีปุ่มยกเลิก · ไม่ล็อก (ใบสั่งขายยกเลิกแล้ว) ยกเลิกได้ตามเดิม', () => {
+  const ids = (options, record) => buildContractLifecycle({ canEdit: true, external: true, substitute: true, ...options })
+    .available(record, AE_SUP).map((entry) => entry.id);
+  assert.ok(!ids({ locked: true }, substitute()).includes('cancel'), 'ยกเลิกที่ใบสั่งขาย ไม่ใช่ที่หน้าสัญญา');
+  assert.ok(ids({ locked: false }, substitute()).includes('cancel'));
+  assert.ok(buildContractLifecycle({ canEdit: true, external: true }).available(ext(), AE_SUP)
+    .map((entry) => entry.id).includes('cancel'), 'ใบ external ทั่วไปยังยกเลิกได้');
+});
+
+/* ── ยามของ route: ด่านล็อกต้องมาก่อนด่านเดิมทุกเส้นที่ขยับร่าง ─────────────────────────────── */
+test('🔴 route ของสัญญา: แก้ · ลบ · ยกเลิก · อนุมัติเอกสารแทนสัญญา ถามล็อกก่อนด่านเดิม', () => {
+  const detail = readSrc('../../app/api/sales-planning/contracts/[id]/route.js');
+  const patch = detail.slice(detail.indexOf('export const PATCH'), detail.indexOf('export const DELETE'));
+  assert.ok(patch.indexOf('historicalContractLockGate(supabase, before)') > 0, 'PATCH ต้องถามล็อก');
+  assert.ok(patch.indexOf('historicalContractLockGate(supabase, before)') < patch.indexOf('isContractEditable(before)'));
+  const del = detail.slice(detail.indexOf('export const DELETE'));
+  assert.ok(del.indexOf('historicalContractLockGate(supabase, row)') > 0, 'DELETE ต้องถามล็อก');
+  assert.ok(del.indexOf('historicalContractLockGate(supabase, row)') < del.indexOf('canDeleteContract(row)'));
+  assert.ok(del.indexOf('historicalContractLockGate(supabase, row)') < del.indexOf('purgeAttachments('),
+    'ต้องตีกลับก่อนกวาดไฟล์แนบทิ้ง');
+  // GET แนบใบสั่งขายที่ชี้กลับมาให้จอ (จอถามล็อกด้วยตัวตัดสินเดียวกัน) และอ่านพัง = 500 ไม่ใช่ "ไม่ล็อก"
+  const get = detail.slice(detail.indexOf('export const GET'), detail.indexOf('export const PATCH'));
+  assert.match(get, /linkedHistoricalOrder: linked\.order/);
+  assert.match(get, /if \(linked\.error\) return fail\(/);
+
+  const cancel = readSrc('../../app/api/sales-planning/contracts/[id]/cancel/route.js');
+  assert.ok(cancel.indexOf('historicalContractLockGate(supabase, before)') > 0);
+  assert.ok(cancel.indexOf('historicalContractLockGate(supabase, before)') < cancel.indexOf('canCancelContract(before)'));
+
+  const approve = readSrc('../../app/api/sales-planning/contracts/[id]/approve-external/route.js');
+  assert.ok(approve.indexOf('historicalContractLockGate(supabase, before)') > 0);
+  assert.ok(approve.indexOf('historicalContractLockGate(supabase, before)') < approve.indexOf('externalApproveError(before'));
+  assert.ok(approve.indexOf('historicalContractLockGate(supabase, before)') < approve.indexOf("rpc('approve_external_sales_contract'"));
+});
+
+test('ตัวโหลดใบสั่งขายที่ชี้กลับ: ใบทั่วไปไม่แตะฐาน · อ่านพัง = 500 · ล็อก = 409 · ใบกำพร้าผ่าน', async () => {
+  const {
+    historicalContractFilesFrozenGate, historicalContractLockGate, loadLinkedHistoricalOrder,
+  } = await import('./historicalContractLock.js');
+  const touched = [];
+  const spy = { from(table) { touched.push(table); throw new Error('ห้ามแตะฐาน'); } };
+  assert.deepEqual(await loadLinkedHistoricalOrder(spy, ext()), { order: null, error: null });
+  assert.equal(await historicalContractLockGate(spy, { status: 'draft', source: 'generated' }), null);
+  assert.equal(await historicalContractFilesFrozenGate(spy, ext()), null);
+  assert.deepEqual(touched, [], 'สัญญาที่ไม่ใช่เอกสารแทนสัญญาต้องไม่ทำให้เกิดคิวรี');
+
+  const stub = (result) => {
+    const calls = [];
+    return {
+      calls,
+      from(table) {
+        calls.push(table);
+        const q = {
+          select: (cols) => { calls.push(`select ${cols}`); return q; },
+          eq: (col, val) => { calls.push(`${col}=${val}`); return q; },
+          maybeSingle: async () => result,
+        };
+        return q;
+      },
+    };
+  };
+  const pending = stub({ data: linkedSo('pending_approval'), error: null });
+  const lock = await historicalContractLockGate(pending, substitute());
+  assert.equal(lock.status, 409);
+  assert.match(lock.message, /SO-26090001/);
+  assert.deepEqual(pending.calls.slice(0, 1), ['sales_orders']);
+  assert.ok(pending.calls.includes(`id=${SO_ID}`), 'ต้องอ่านใบเดียวด้วย id ที่ใบสัญญาชี้กลับ');
+  assert.ok(pending.calls.some((c) => /origin/.test(c)), 'ต้อง select origin — ตัวตัดสินถามว่าเป็นใบย้อนหลังจริงไหม');
+  const frozen = await historicalContractFilesFrozenGate(stub({ data: linkedSo('pending_approval'), error: null }), substitute());
+  assert.equal(frozen.status, 409);
+  assert.equal(await historicalContractFilesFrozenGate(stub({ data: linkedSo('draft'), error: null }), substitute()), null);
+
+  const broken = await historicalContractLockGate(stub({ data: null, error: { message: 'timeout' } }), substitute());
+  assert.equal(broken.status, 500, 'อ่านไม่สำเร็จต้องไม่กลายเป็น "ไม่ล็อก"');
+  assert.match(broken.message, /timeout/);
+  const brokenFiles = await historicalContractFilesFrozenGate(stub({ data: null, error: { message: 'timeout' } }), substitute());
+  assert.equal(brokenFiles.status, 500);
+
+  assert.equal(await historicalContractLockGate(stub({ data: null, error: null }), substitute()), null, 'ใบสั่งขายถูกลบแล้ว');
+  assert.equal(await historicalContractLockGate(stub({ data: linkedSo('cancelled'), error: null }), substitute()), null);
+});
+
+test('หน้าสัญญา: ใบที่ล็อกซ่อนปุ่มแก้/ลบ + ประกาศพร้อมลิงก์ใบสั่งขาย · ไฟล์ตรึงช่วงรออนุมัติ', () => {
+  const page = readSrc('../../app/sales-planning/contracts/[id]/page.js');
+  assert.match(page, /historicalContractLockReason\(contract, linkedOrder\)/);
+  assert.match(page, /historicalContractFilesFrozen\(contract, linkedOrder\)/);
+  assert.match(page, /buildContractLifecycle\(\{ canEdit, external, substitute, locked: !!lockReason \}\)/);
+  assert.match(page, /visible: canEdit && isContractEditable\(contract\) && !lockReason/);
+  assert.match(page, /visible: canEdit && canDeleteContract\(contract\) && !lockReason/);
+  assert.match(page, /href=\{`\/sa\/sales-orders\/\$\{linkedOrder\.id\}`\}/);
+  assert.match(page, /canEdit=\{canEdit && !filesFrozen\}/);
 });

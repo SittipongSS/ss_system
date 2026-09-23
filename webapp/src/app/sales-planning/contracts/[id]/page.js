@@ -29,8 +29,10 @@ import { fmtDate, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import {
   CONTRACT_SOURCE_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
+  HISTORICAL_CONTRACT_FILES_FROZEN_MESSAGE,
   canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
   externalApproveError, externalApproveOpenError, externalDocKindLabel, isExternalContract,
+  historicalContractFilesFrozen, historicalContractLockReason, isSubstituteContract,
   showExternalApprove,
   showSignedApprove, signedApproveError,
   SIGNATURE_LATE_DAYS,
@@ -111,7 +113,18 @@ export default function ContractDetailPage() {
     () => (external ? [] : contractTemplateFields(contract?.kind)),
     [external, contract?.kind],
   );
-  const lifecycle = useMemo(() => buildContractLifecycle({ canEdit, external }), [canEdit, external]);
+  /* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ฟอร์มคีย์ใบสร้างและแก้ AE Sup อนุมัติพร้อม
+     ใบสั่งขาย ⇒ ระหว่างใบสั่งขายยังไม่อนุมัติ ปุ่มแก้/ลบ/ยกเลิก/อนุมัติของหน้านี้ **ซ่อน** แล้วขึ้นประกาศพร้อมลิงก์ไป
+     ใบสั่งขายแทน · ตัวตัดสินตัวเดียวกับที่ API ตีกลับ 409 (`linkedHistoricalOrder` มากับ GET)
+     ไฟล์ตรึงเฉพาะช่วงรออนุมัติ — AE Sup เลือกไฟล์ที่จะเป็นไฟล์ลงนามจากชุดที่เห็น */
+  const substitute = isSubstituteContract(contract);
+  const linkedOrder = contract?.linkedHistoricalOrder || null;
+  const lockReason = historicalContractLockReason(contract, linkedOrder);
+  const filesFrozen = historicalContractFilesFrozen(contract, linkedOrder);
+  const lifecycle = useMemo(
+    () => buildContractLifecycle({ canEdit, external, substitute, locked: !!lockReason }),
+    [canEdit, external, substitute, lockReason],
+  );
 
   // ช่องบังคับที่ยังว่าง — บอกตั้งแต่ก่อนกดออกสัญญา ไม่ใช่ให้ API ตอบ 400 ทีหลัง
   const missing = useMemo(
@@ -439,7 +452,7 @@ export default function ContractDetailPage() {
                   kind: "edit",
                   icon: editing ? X : Pencil,
                   slot: "secondary",
-                  visible: canEdit && isContractEditable(contract),
+                  visible: canEdit && isContractEditable(contract) && !lockReason,
                   onClick: () => setEditing((on) => !on),
                 },
                 /* ⭐ ลบได้เฉพาะร่างที่ยังไม่ออกเลข (มติผู้ใช้ 2026-08-21) — ออกเลขแล้ว
@@ -450,7 +463,7 @@ export default function ContractDetailPage() {
                   kind: "delete",
                   icon: Trash2,
                   slot: "danger",
-                  visible: canEdit && canDeleteContract(contract),
+                  visible: canEdit && canDeleteContract(contract) && !lockReason,
                   onClick: () => setDeleteOpen(true),
                 },
               ]}
@@ -483,6 +496,21 @@ export default function ContractDetailPage() {
           </>
         )}
       >
+        {/* ⭐ ล็อกของเอกสารแทนสัญญา — ปุ่มที่ซ่อนไปต้องมีคำตอบว่า "ไปทำที่ไหน" ไม่ใช่หายเงียบ ๆ */}
+        {lockReason && (
+          <StatusNotice
+            tone="info"
+            title="อนุมัติพร้อมใบสั่งขายย้อนหลัง"
+            action={(
+              <Button as={Link} prefetch={false} href={`/sa/sales-orders/${linkedOrder.id}`} size="sm">
+                เปิดใบสั่งขาย {linkedOrder.orderNumber || ""}
+              </Button>
+            )}
+          >
+            {lockReason}
+          </StatusNotice>
+        )}
+
         {/* ข้อความเต็มของเรื่องใบเสนอราคา — ป้ายบนการ์ดจัดการบอกได้แค่หัวข้อ
             แต่คนอ่านต้องรู้ว่า *ต้องทำอะไรต่อ* ซึ่งต่างกันตามสถานะของสัญญา */}
         {contract.quotationNotice && (
@@ -591,7 +619,8 @@ export default function ContractDetailPage() {
           <AttachmentsPanel
             entityType="contract"
             entityId={contract.id}
-            canEdit={canEdit}
+            /* ตรึงระหว่างรอ AE Sup อนุมัติใบสั่งขายย้อนหลัง — ด่านเดียวกับ /api/attachments (ตีกลับ 409) */
+            canEdit={canEdit && !filesFrozen}
             title="ไฟล์แนบสัญญา"
             /* 🔴 **โน้ตต้องเดินตามที่มาของใบ** — ของเดิมเป็นถ้อยคำของสายที่ระบบเจน
                แต่ขึ้นบนใบ external ด้วย ⇒ คนแนบ PO เข้ามาแล้วอ่านตามก็เลือก
@@ -599,8 +628,14 @@ export default function ContractDetailPage() {
                อนุมัติหรือยัง ⇒ เลือกผิดชนิด = ใบไม่เข้าคิวของคนที่ต้องกด ทั้งที่ไฟล์ครบ
                (เกิดขึ้นจริงแล้ว: ไฟล์แนบของสัญญาภายนอกใบเดียวบน production ถูกตั้งเป็น
                `signed_contract`) */
+            /* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (ย่อยของสาย external) ไม่เข้าคิวสัญญาของ AE Sup — อนุมัติพร้อม
+               ใบสั่งขาย ⇒ คำแนะนำของสาย external ทั่วไป ("จะเห็นใบนี้ในคิว") จะโกหก · ช่วงรออนุมัติบอกเหตุที่ไฟล์ล็อก */
             note={external
-              ? "เอกสารที่ลูกค้าส่งมา (PO · อีเมล · สัญญากระดาษ) ให้เลือกชนิด “เอกสารที่ใช้แทนสัญญา” — AE Supervisor จะเห็นใบนี้ในคิวเมื่อแนบชนิดนี้แล้ว"
+              ? (filesFrozen
+                ? HISTORICAL_CONTRACT_FILES_FROZEN_MESSAGE
+                : substitute
+                  ? "ไฟล์ของเอกสารแทนสัญญาให้เลือกชนิด “เอกสารที่ใช้แทนสัญญา” — AE Supervisor ตรวจไฟล์นี้ตอนอนุมัติใบสั่งขายย้อนหลัง"
+                  : "เอกสารที่ลูกค้าส่งมา (PO · อีเมล · สัญญากระดาษ) ให้เลือกชนิด “เอกสารที่ใช้แทนสัญญา” — AE Supervisor จะเห็นใบนี้ในคิวเมื่อแนบชนิดนี้แล้ว")
               : "ฉบับที่ลงนามแล้วให้เลือกชนิด “สัญญาที่ลงนามแล้ว”"}
             /* 🔴 **แคบตัวเลือกด้วย ไม่ใช่แก้แต่คำแนะนำ** — #1581 แก้ข้อความอย่างเดียว
                แล้วปล่อยชนิด "สัญญาที่ลงนามแล้ว" ให้เลือกได้ต่อบนใบ external ทั้งที่ใบแบบนี้

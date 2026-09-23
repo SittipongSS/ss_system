@@ -40,6 +40,10 @@ const ALLOWED_CALLERS = {
     'รูปหน้างาน/ลายเซ็นผู้รับงาน — ref ลงคอลัมน์ของ `service_visits`',
   'components/salesPlanning/TaxInvoiceDialog.js':
     'ไฟล์ใบกำกับภาษีของงวด — ref ลงคอลัมน์ `sales_order_installments.taxInvoiceFile` (mig 0348)',
+  'lib/sales/historicalWizardUploads.js':
+    'หลักฐานงวดยกมาของใบย้อนหลัง — ref ลง `sales_order_installments.evidence[]` ผ่าน RPC แก้ใบ (0374) '
+    + 'ตั้งใจไม่ผ่านตาราง attachments เหมือนหลักฐานการชำระทั้งระบบ · ไฟล์เอกสารแทนสัญญาในไฟล์เดียวกัน '
+    + 'ใช้ `uploadAttachment` ตามปกติ',
   'components/issues/ReportIssueModal.js':
     'ไฟล์แนบเรื่องแจ้งปัญหา — ลงเธรด /api/updates ตั้งใจไม่ผ่านตาราง attachments',
 };

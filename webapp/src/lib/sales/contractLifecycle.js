@@ -55,7 +55,17 @@ export const EXTERNAL_STEPS = [
   { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "AE Supervisor รับรองเอกสาร", statuses: ["signed"] },
 ];
 
-export function buildContractLifecycle({ canEdit = false, external = false } = {}) {
+/* ⭐ **เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง** (มติ 22/09/2026 · mig 0374) — หมุดเดียวกับ EXTERNAL_STEPS ทุกคำ
+   (ทะเบียนล็อกคำบนหมุดคู่กับชุดนั้น) ต่างแค่คำใบ้: ใบนี้ไม่มีขั้นอนุมัติบนหน้าสัญญา — ฟอร์มคีย์ใบสร้างและแก้
+   แล้ว AE Sup อนุมัติพร้อมใบสั่งขาย ⇒ "AE Supervisor รับรองเอกสาร" พาคนไปหาปุ่มที่ถูกซ่อนไว้ */
+export const SUBSTITUTE_STEPS = [
+  { id: "draft", label: "ร่าง", hint: "แก้ที่ฟอร์มคีย์ใบสั่งขายย้อนหลัง", statuses: ["draft"] },
+  { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "อนุมัติพร้อมใบสั่งขายย้อนหลัง", statuses: ["signed"] },
+];
+
+/* `substitute` = เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (isSubstituteContract) · `locked` = ล็อกเพราะใบสั่งขาย
+   ยังไม่อนุมัติ (historicalContractLockReason) ⇒ ซ่อนปุ่มยกเลิก — ยกเลิกที่ใบสั่งขาย แล้ว trigger ยกเลิกใบนี้ตาม */
+export function buildContractLifecycle({ canEdit = false, external = false, substitute = false, locked = false } = {}) {
   return defineLifecycle({
     entity: "contract",
     noun: "สัญญา",
@@ -63,7 +73,7 @@ export function buildContractLifecycle({ canEdit = false, external = false } = {
       key,
       { label, tone: STATUS_TONE[key], description: STATUS_DESCRIPTION[key] },
     ])),
-    steps: external ? EXTERNAL_STEPS : STEPS,
+    steps: substitute ? SUBSTITUTE_STEPS : (external ? EXTERNAL_STEPS : STEPS),
     cancelledStatuses: ["cancelled", "revised"],
     transitions: [
       {
@@ -124,7 +134,7 @@ export function buildContractLifecycle({ canEdit = false, external = false } = {
         from: ["draft", "awaiting_signature", "awaiting_approval"],
         to: "cancelled",
         reason: "required",
-        visible: () => canEdit,
+        visible: () => canEdit && !locked,
         allow: (contract) => (canCancelContract(contract) ? true : "ใบที่ลงนามแล้วยกเลิกที่นี่ไม่ได้"),
         confirm: {
           title: "ยกเลิกสัญญาใบนี้",

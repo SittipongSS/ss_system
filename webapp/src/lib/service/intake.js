@@ -16,8 +16,8 @@ import { isBusinessLine } from '@/lib/master/businessLines';
 import { allocatedByLine, fgSummary, lineNeedsAllocation, termIsActive } from './terms';
 import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
 import { coversDate, paidThrough } from '@/lib/sales/paymentCoverage';
-import { ORIGIN_PIPELINE, historicalGateExempt, historicalRefsOf, isHistoricalOrder } from '@/lib/sales/historicalOrders';
-import { awaitingSiteDecisionCount, lineSiteNotFound } from '@/lib/sales/siteNotFound';
+import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+import { ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 export const INTAKE_TABS = ['bind', 'plan', 'visit'];
 
@@ -94,18 +94,29 @@ export function bindTargetError({ order, zone, site, lineLabel = '' } = {}) {
    "ใบนี้มีสัญญายัง" กับ "จ่ายถึงเมื่อไร"
    ⚠️ **ไม่ใช่ด่าน** — ด่านจริงคือ `visitGate` ตอนนัดจะขึ้นตาราง · ที่นี่แค่บอกล่วงหน้า
       ให้ TS ทวงได้ตั้งแต่ยังไม่เสียเวลาจัดสรร */
+const pickFrom = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
+
+/* ความพร้อมเรื่องเงินของใบ — ชิป "จ่ายถึง / เงินครอบถึง" ของทั้งถังผูกโซนและถังตั้งรอบอ่านจากตัวนี้ตัวเดียว
+   ⭐ `paymentNotRequired` — ใบยอด 0 ไม่มีงวดให้เก็บ และผ่านด่านเข้าไซต์ข้อ② เอง (มติ 22/09 · mig 0374)
+      ⇒ ชิปต้องพูดเรื่องเดียวกับ visitGate ข้อ② ไม่งั้นป้าย "ยังไม่มีงวดที่รับรอง" ส่ง TS ไปทวงเงินที่ไม่มีให้เก็บ
+      🔄 แทนธงยกเว้นด่านเงินรายใบของใบย้อนหลัง (มติข้อ 13 · 0360) ที่ถอดแล้ว
+   ⚠️ ผู้เรียกต้อง select `totalAmount` มาด้วย — ไม่ส่งมา = ไม่รู้ยอด ≠ ยอด 0 (ตอบ false · ชิปเดินตามงวด)
+   ⚠️ คืนแค่ธง/วันที่ — ยอดเงินของใบไม่ออกไปกับแถวคิว (ฝ่ายบริการไม่เห็นราคาโดยตั้งใจ · หัวไฟล์ route คิว) */
+function moneyReadiness(order, rows, todayIso) {
+  return {
+    paidThrough: paidThrough(rows),
+    coveredToday: coversDate(rows, todayIso),
+    paymentNotRequired: paymentNotRequired(order?.totalAmount),
+  };
+}
+
 export function orderReadiness(order, { contractsById = new Map(), installmentsByOrderId = new Map(), todayIso = businessDate() } = {}) {
-  const pick = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
-  const contract = order?.serviceContractId ? pick(contractsById, order.serviceContractId) : null;
-  const rows = pick(installmentsByOrderId, order?.id) || [];
+  const contract = order?.serviceContractId ? pickFrom(contractsById, order.serviceContractId) : null;
+  const rows = pickFrom(installmentsByOrderId, order?.id) || [];
   return {
     contractNo: contract && contract.status === 'signed' ? (contract.contractNo || null) : null,
     hasContract: !!(contract && contract.status === 'signed'),
-    paidThrough: paidThrough(rows),
-    coveredToday: coversDate(rows, todayIso),
-    /* ⭐ ใบย้อนหลังที่ยกเว้นด่านเงินรายใบ (มติข้อ 13) — ชิปต้องพูดเรื่องเดียวกับ visitGate ข้อ②
-       ไม่งั้นป้าย "ยังไม่มีงวดที่รับรอง" ส่ง TS ไปทวงเงินที่ไม่ต้องเก็บ (ตัวตัดสินตัวเดียวกัน) */
-    paymentGateExempt: historicalGateExempt(order),
+    ...moneyReadiness(order, rows, todayIso),
   };
 }
 
@@ -128,9 +139,7 @@ export function bindQueue({
     if (!orderReceivable(order)) continue;
     const orderLines = linesByOrder.get(order.id) || [];
     const pending = orderLines.filter((l) => lineNeedsAllocation(l, allocated));
-    /* ⭐ ใบที่ไม่เหลืออะไรให้ผูกหลุดจากแท็บและป้ายทันที — รวมกรณี "ทุกจุดถูกแจ้งว่าไม่พบ"
-       (`lineNeedsAllocation` ตัดจุดที่ติดธงให้แล้ว · มติข้อ 23) ⇒ ชิป "รอฝ่ายขายตัดสิน"
-       จึงเห็นได้เฉพาะใบที่ยังมีจุดอื่นค้างอยู่ ซึ่งตรงกับม็อก */
+    // ใบที่ไม่เหลืออะไรให้ผูกหลุดจากแท็บและป้ายทันที
     if (!pending.length) continue;
     const fg = fgSummary(pending, allocated);
 
@@ -158,13 +167,6 @@ export function bindQueue({
       remainingQty: fg.reduce((sum, g) => sum + g.remaining, 0),
       fg,
       lines: pending,
-      /* ⭐ จุดที่ TS แจ้งว่าไม่พบและยังรอฝ่ายขายตัดสิน (มติข้อ 23 · mig 0362) — นับจาก
-         **ทุกบรรทัดของใบ** ไม่ใช่เฉพาะ pending เพราะจุดที่ติดธงถูกตัดออกจาก pending ไปแล้ว
-         ⚠️ จุดที่ฝ่ายขายปิดแล้วไม่นับ — เรื่องจบแล้ว ไม่มีอะไรให้ TS รอ */
-      awaitingSiteDecision: awaitingSiteDecisionCount(orderLines),
-      /* จุดที่ติดธงอยู่ (รอตัดสิน + ปิดแล้ว) — วิซาร์ดเอาไปทำแผง "ถอนการแจ้ง" และบอกว่าจุดไหนจบแล้ว
-         ⚠️ ไม่อยู่ใน `lines`/`fg` โดยตั้งใจ: สองตัวนั้นคือ "ของที่ยังต้องผูก" ซึ่งจุดพวกนี้ไม่ใช่แล้ว */
-      siteNotFoundLines: orderLines.filter(lineSiteNotFound),
       /* ⭐ ขายไว้กี่รอบ (mig 0326) — TS ต้องเห็นข้อผูกพันตั้งแต่ตอนรับงาน ไม่ใช่ไปรู้
          ตอนวางรอบแล้วพบว่าความถี่ที่ตั้งไว้ให้จำนวนนัดไม่ตรงกับที่ขาย
          ⚠️ นับจาก **ทุกบรรทัดของใบ** ไม่ใช่เฉพาะบรรทัดที่ยังไม่จัดสรร — ข้อผูกพัน
@@ -194,8 +196,12 @@ export function bindQueue({
    ⚠️ รอบ (service_plans) ผูกกับ **ไซต์** ไม่ใช่โซน (mig 0188) — เจ้าหน้าที่เข้าไซต์ทีเดียว
    ทำทุกโซน · คิวนี้จึงเป็น "ไซต์ที่มีโซนขายแล้วแต่ไม่มีรอบ" ไม่ใช่รายโซน */
 /* ⚠️ `linesById` ไม่บังคับ — ไม่ส่งมา = แถวตอบ roundsSold: null (ยังไม่ระบุ)
-   ไม่ใช่ 0 · ผู้เรียกที่มีบรรทัดอยู่แล้วส่งเข้ามาเพื่อให้จอบอก "ขายไว้กี่รอบ" ได้ */
-export function planQueue({ zones = [], terms = [], plans = [], sites = [], ordersById = new Map(), linesById = new Map(), todayIso = businessDate() } = {}) {
+   ไม่ใช่ 0 · ผู้เรียกที่มีบรรทัดอยู่แล้วส่งเข้ามาเพื่อให้จอบอก "ขายไว้กี่รอบ" ได้
+   ⭐ `installmentsByOrderId` (มติ 22/09 · mig 0374) — แถวพก "เงินครอบถึง" (`paidThrough`) ให้ TS รู้ตั้งแต่ตอนตั้งรอบ
+      ว่านัดถึงวันไหนจะขึ้นตารางได้เลย · ใบสั่งขายย้อนหลังข้ามถังผูกโซนมาเข้าถังนี้ตรง ๆ (รอบขายเกิดตอน AE Sup
+      อนุมัติ) ⇒ ถังนี้คือจุดแรกที่ TS เห็นใบนั้น และเงินครอบถึงคือคำถามแรกของมัน (ม็อก TsIntake)
+   ⚠️ ไม่ส่งมา = `paidThrough: null` ("ยังไม่มีงวดที่รับรอง") — ตัวนับบนเมนูอ่านแค่จำนวนแถวจึงไม่ต้องส่ง */
+export function planQueue({ zones = [], terms = [], plans = [], sites = [], ordersById = new Map(), linesById = new Map(), installmentsByOrderId = new Map(), todayIso = businessDate() } = {}) {
   /* ── หน่วยของคิวนี้คือ (ไซต์, ใบสั่งขาย) ไม่ใช่ "ไซต์" ────────────────────
      🔴 **ของเดิมเป็น Set ของ `siteId`** ⇒ ไซต์ที่มีรอบของใบ A อยู่แล้ว **หลุดจากคิว
        ตลอดกาล** แม้ใบ B จะขายรอบใหม่ที่ไซต์เดิม · TS ไม่มีทางรู้ว่ามีงานใหม่เข้ามา
@@ -236,6 +242,10 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
       site: sitesById.get(zone.siteId) || null,
       salesOrderId: term.salesOrderId || null,
       orderNumber: order?.orderNumber || null,
+      /* ป้าย "ย้อนหลัง" + โน้ต "โซนผูกจากฝ่ายขายตอนคีย์ใบแล้ว" บนแท็บนี้ · ไม่ส่ง origin มา = pipeline */
+      origin: order?.origin || ORIGIN_PIPELINE,
+      /* ชื่อช่องชุดเดียวกับ `readiness` ของถังผูกโซน ⇒ จอใช้ชิปตัวเดียวกันได้ */
+      ...moneyReadiness(order, pickFrom(installmentsByOrderId, term.salesOrderId) || [], todayIso),
       unboundPlans: unboundBySite.get(zone.siteId) || 0,
       zones: [],
       terms: [],

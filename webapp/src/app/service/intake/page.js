@@ -13,7 +13,7 @@
 //   จะไหลเข้าคิวบริการ หรือใบบริการจะหายเงียบ ทั้งสองทางแย่พอกัน
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownToLine, Building2, CalendarPlus, LayoutGrid, MapPin } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, Building2, CalendarPlus, LayoutGrid, Link2, MapPin } from "lucide-react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -32,7 +32,6 @@ import IntakeWizard from "@/components/service/IntakeWizard";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS } from "@/lib/service/intake";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
-import { siteDecisionChipLabel } from "@/lib/sales/siteNotFound";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
@@ -91,13 +90,17 @@ function ContractBadge({ readiness }) {
   );
 }
 
-function PaidBadge({ readiness }) {
-  /* ⭐ ใบย้อนหลังที่ยกเว้นด่านเงินรายใบ (mig 0360) — ตัวตัดสินเดียวกับ visitGate ข้อ②
-     (ป้าย "ยังไม่มีงวดที่รับรอง" จะส่ง TS ไปทวงเงินที่ไม่ต้องเก็บ) */
-  if (readiness?.paymentGateExempt) return <StatusBadge tone="info" label="ยกเว้นด่านเงิน" />;
+/* ชิปเงินของใบ — ถังผูกโซนส่ง `row.readiness` · ถังตั้งรอบส่งแถวเอง (ชื่อช่องชุดเดียวกัน · lib/service/intake.js)
+   `label` = คำนำหน้าวัน: ถังผูกโซน "จ่ายถึง" (หัวคอลัมน์เดิม) · ถังตั้งรอบ "เงินครอบถึง" (ม็อก TsIntake 22/09) */
+function PaidBadge({ readiness, label = "จ่ายถึง" }) {
+  /* ⭐ ใบยอด 0 ไม่มีงวดให้เก็บ (มติ 22/09 · mig 0374) — ตัวตัดสินเดียวกับ visitGate ข้อ② (ผ่านด่านเงินเอง)
+     ป้าย "ยังไม่มีงวดที่รับรอง" จะส่ง TS ไปทวงเงินที่ไม่มีให้เก็บ · 🔄 แทนชิป "ยกเว้นด่านเงิน" ของ 0360 ที่ถอดแล้ว */
+  if (readiness?.paymentNotRequired) return <StatusBadge tone="neutral" label="ไม่มีงวดให้เก็บ" />;
+  /* ⚠️ "ยังไม่มีงวดที่รับรอง" ไม่ใช่ "ยังไม่มีเงินเข้า" — ใบย้อนหลังที่เพิ่งอนุมัติมีงวดยกมาที่เก็บเงินแล้ว
+     แต่บัญชียังไม่รับรอง ⇒ บอกว่าเงินไม่เข้าคือส่ง TS ไปถามลูกค้าผิดเรื่อง */
   return (
     <span className={`ui-badge ${readiness?.coveredToday ? "success" : "warning"}`}>
-      {readiness?.paidThrough ? `จ่ายถึง ${fmtDate(readiness.paidThrough)}` : "ยังไม่มีงวดที่รับรอง"}
+      {readiness?.paidThrough ? `${label} ${fmtDate(readiness.paidThrough)}` : "ยังไม่มีงวดที่รับรอง"}
     </span>
   );
 }
@@ -121,6 +124,8 @@ export default function ServiceIntakePage() {
   const startRun = useLatestRun();
   // ของที่โหลดสำเร็จล่าสุด — ให้รอบเบื้องหลังรู้ว่ามีของเดิมยืนอยู่บนจอไหม (อ่านใน callback เท่านั้น)
   const dataRef = useRef(null);
+  // เลือกแท็บตั้งต้นจากของจริงไปแล้วหรือยัง (ครั้งเดียว — ดูใน load)
+  const autoTabDone = useRef(false);
   const load = useCallback(async (opts) => {
     const isLatest = startRun();
     if (!opts?.background) setLoading(true);
@@ -135,6 +140,16 @@ export default function ServiceIntakePage() {
       dataRef.current = body;
       setData(body);
       setLoadError("");
+      /* ⭐ เปิดที่แท็บแรกที่มีงาน — **ครั้งเดียวหลังโหลดสำเร็จครั้งแรก** (มติ 22/09 · mig 0374)
+         ป้าย "งานเข้าใหม่" บนเมนูนับทั้งถังผูกโซนและถังตั้งรอบแล้ว · ใบย้อนหลังข้ามถังผูกโซนมาเข้าถังตั้งรอบตรง ๆ
+         ⇒ เปิดหน้ามาเจอแท็บแรกว่างทั้งที่ป้ายบอกว่ามีงาน = อ่านว่าป้ายโกหก
+         ⚠️ ไม่สลับตอนโหลดเบื้องหลัง/รอบถัดไป — คนเลือกแท็บเองแล้วต้องไม่ถูกดึงกลับ · เลือกไปก่อนโหลดเสร็จก็ไม่ทับ */
+      if (!autoTabDone.current) {
+        autoTabDone.current = true;
+        if (!(body?.bind || []).length && (body?.plan || []).length) {
+          setTab((current) => (current === "bind" ? "plan" : current));
+        }
+      }
     } catch (e) {
       /* ⚠️ ห้ามกลืน error เป็นคิวว่าง — "โหลดพัง" กับ "ไม่มีงานค้าง" หน้าตาเหมือนกัน
          จนแยกไม่ออก แล้วฝ่าย TS จะเชื่อว่าไม่มีอะไรต้องทำ ซึ่งคือรูเดิมที่หน้านี้มาปิด
@@ -229,32 +244,12 @@ export default function ServiceIntakePage() {
     await load({ background: true });
   };
 
-  /* ⭐ TS แจ้ง/ถอนการแจ้ง "ไม่พบจุดนี้หน้างาน" (มติข้อ 23 · mig 0362)
-     ⚠️ ห้าม `retry: true` — ส่งซ้ำตอนต่อไม่ติดจะได้ 409 "ถูกแจ้งไว้แล้ว" แล้วจอบอกว่าล้มเหลว
-        ทั้งที่ธงลงไปเรียบร้อย (กติกา apiFetch: เมธอดเขียนข้อมูลต้องขอ retry เอง)
-     ⚠️ โหลดคิวใหม่แล้ว **อัปเดตใบที่เปิดวิซาร์ดค้างไว้ด้วย** — ไม่งั้นแผงยังโชว์จุดที่เพิ่งแจ้งไป */
-  const siteNotFound = async (payload) => {
-    const res = await apiFetch("/api/service/intake/site-not-found", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
-    const count = body?.lines?.length || 0;
-    setToast({
-      kind: "success",
-      msg: payload.action === "withdraw"
-        ? `ถอนการแจ้งแล้ว ${count} จุด — กลับเข้าคิวให้ผูกโซนต่อได้`
-        : `ส่งกลับฝ่ายขายแล้ว ${count} จุด — ยอดเงินและงวดในใบไม่เปลี่ยน`,
-    });
-    await load({ background: true });
-  };
-
   const counts = data?.counts || { bind: 0, plan: 0, visit: 0, unknownLine: 0 };
 
   /* ⚠️ วิซาร์ดต้องอ่านแถวของรอบโหลดล่าสุดเสมอ — `wizardOrder` เป็นภาพนิ่งตอนกดเปิด
-     พอ TS แจ้ง "ไม่พบจุดนี้" แล้วคิวโหลดใหม่ ภาพนิ่งจะยังมีจุดนั้นอยู่ ⇒ แจ้งซ้ำได้จนได้ 409
-     ⚠️ ใบที่หลุดจากคิวไปแล้ว (แจ้งครบทุกจุด) ไม่มีแถวใหม่ให้หา — ใช้ภาพนิ่งเดิมไว้ก่อน
-        แล้วให้ TS ปิดวิซาร์ดเอง ดีกว่าจอว่างเปล่ากลางคัน */
+     คิวโหลดใหม่เบื้องหลังได้ระหว่างเปิดค้าง (คนอื่นผูกจุดนั้นไปก่อน) ⇒ ภาพนิ่งจะชวนผูกของที่ไม่เหลือแล้ว
+     ⚠️ ใบที่หลุดจากคิวไปแล้วไม่มีแถวใหม่ให้หา — ใช้ภาพนิ่งเดิมไว้ก่อน แล้วให้ TS ปิดวิซาร์ดเอง
+        ดีกว่าจอว่างเปล่ากลางคัน */
   const liveWizardOrder = useMemo(() => {
     if (!wizardOrder) return null;
     const rows = [...(data?.bind || []), ...(data?.unknownLine || [])];
@@ -292,6 +287,11 @@ export default function ServiceIntakePage() {
   }, [setPageSize]);
   // โหลดพัง = ไม่รู้ตัวเลข ⇒ ไม่โชว์ตัวเลขเก่าหรือศูนย์บนแท็บ/ถังใบไม่ระบุสาย
   const showCounts = Boolean(data) && !loadError;
+  /* ใบสั่งขายย้อนหลังในถังตั้งรอบ — เลขที่ใบ (ไม่ซ้ำ) สำหรับโน้ต "โซนผูกจากฝ่ายขายแล้ว" */
+  const historicalPlanOrders = useMemo(
+    () => [...new Set((data?.plan || []).filter(isHistoricalOrder).map((row) => row.orderNumber || row.salesOrderId))],
+    [data],
+  );
 
   return (
     <Workspace
@@ -333,6 +333,17 @@ export default function ServiceIntakePage() {
             ))}
           </ul>
         </section>
+      )}
+
+      {/* ⭐ ใบสั่งขายย้อนหลังไม่ผ่านถัง "รอตั้งไซต์/โซน" (มติ 22/09 · mig 0374) — ฝ่ายขายเลือกโซนจากทะเบียน
+          ตอนคีย์ และรอบขายเกิดตอน AE Sup อนุมัติ ⇒ TS เห็นใบนี้ครั้งแรกที่แท็บนี้ · บอกไว้ ไม่งั้น TS ไปหาใบ
+          ในแท็บผูกโซนแล้วไม่เจอ (ม็อก TsIntake) · ขึ้นเฉพาะตอนมีใบย้อนหลังในแท็บนี้จริง */}
+      {showCounts && tab === "plan" && historicalPlanOrders.length > 0 && (
+        <StatusNotice tone="info" icon={Link2}
+          title="โซนผูกจากฝ่ายขายตอนคีย์ใบแล้ว — ใบย้อนหลังไม่ต้องผ่าน “รอตั้งไซต์/โซน”">
+          {`${historicalPlanOrders.join(" · ")} เลือกโซนจากทะเบียนไซต์ตอนคีย์ใบ · ฝ่าย TS ตั้งรอบอย่างเดียว ไม่ต้องผูกซ้ำ`
+            + " · นัดที่เลยวัน “เงินครอบถึง” จะเป็นร่างรอบัญชีรับรองงวดถัดไปในหน้าจัดคิว"}
+        </StatusNotice>
       )}
 
       {/* ⭐ รายการ = ListPanel ใบเดียว ชื่อ · คำอธิบาย · จำนวน เดินตามแท็บ (มติผู้ใช้ 2026-09-15)
@@ -387,11 +398,6 @@ export default function ServiceIntakePage() {
                         <p className={styles.cardSub}>
                           <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
                           {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
-                          {/* ⭐ จุดที่ TS แจ้งว่าไม่พบและยังรอฝ่ายขายตัดสิน (มติข้อ 23 · mig 0362) —
-                              จุดพวกนี้หลุดจาก "ของที่ต้องจัดสรร" ไปแล้ว ชิปจึงเป็นที่เดียวที่บอกว่ายังมีเรื่องค้าง */}
-                          {row.awaitingSiteDecision > 0 && (
-                            <> <StatusBadge tone="warning" size="sm" label={siteDecisionChipLabel(row.awaitingSiteDecision)} /></>
-                          )}
                         </p>
                       )}
                       <p className={styles.cardMeta}>
@@ -446,9 +452,6 @@ export default function ServiceIntakePage() {
                               <span className="cell-sub">
                                 <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
                                 {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
-                                {row.awaitingSiteDecision > 0 && (
-                                  <> <StatusBadge tone="warning" size="sm" label={siteDecisionChipLabel(row.awaitingSiteDecision)} /></>
-                                )}
                               </span>
                             )}
                           </th>
@@ -517,9 +520,13 @@ export default function ServiceIntakePage() {
                       )}
                       <p className={styles.cardMeta}>
                         <span className="mono">{naText(row.orderNumber)}</span>
+                        {/* ใบย้อนหลัง — ป้ายชุดเดียวกับถังผูกโซน (มติ 22/09 · ม็อก TsIntake) */}
+                        {isHistoricalOrder(row) && <> <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /></>}
                         {" · "}ขายไว้ {row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}
                       </p>
                       <p className={styles.cardMeta}>โซน: {row.zones.map((z) => z.name).join(" · ")}</p>
+                      {/* ⭐ เงินครอบถึง (มติ 22/09 · ม็อก TsIntake) — นัดหลังวันนั้นจะจอดเป็นร่างรอบัญชีรับรองงวดถัดไป */}
+                      <p className={styles.cardMeta}><PaidBadge readiness={row} label="เงินครอบถึง" /></p>
                       <Link href={`/database/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
                         ตั้งรอบที่หน้าไซต์
                       </Link>
@@ -531,7 +538,8 @@ export default function ServiceIntakePage() {
                     หลายแถวเมื่อมีหลายใบ (ขายเพิ่ม/ออก Rev.) ⇒ ต้องมีคอลัมน์ใบ ไม่งั้น
                     สองแถวพิมพ์ข้อความเหมือนกันเป๊ะ · และคีย์ต้องเป็น `row.key`
                     (เดิมเป็น `row.siteId` ซึ่งซ้ำทันทีที่มีสองใบ) */
-                <TableScroll family="list" minWidth={860} cells="stacked">
+                /* 🔄 +คอลัมน์ "เงินครอบถึง" (มติ 22/09 · ม็อก TsIntake) — ป้ายวันที่ nowrap ~150px ⇒ minWidth 860 → 1000 */
+                <TableScroll family="list" minWidth={1000} cells="stacked">
                   <table>
                     <thead>
                       <tr>
@@ -540,6 +548,7 @@ export default function ServiceIntakePage() {
                         <th scope="col">ใบสั่งขาย</th>
                         <th scope="col">โซนที่ขายแล้ว</th>
                         <th scope="col">ขายไว้</th>
+                        <th scope="col">เงินครอบถึง</th>
                         <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
                       </tr>
                     </thead>
@@ -557,9 +566,17 @@ export default function ServiceIntakePage() {
                             )}
                           </th>
                           <td>{naText(row.site?.customerName)}</td>
-                          <td className="mono">{naText(row.orderNumber)}</td>
+                          <td>
+                            <span className="mono">{naText(row.orderNumber)}</span>
+                            {/* ใบย้อนหลัง — ป้ายชุดเดียวกับถังผูกโซน (มติ 22/09 · ม็อก TsIntake) */}
+                            {isHistoricalOrder(row) && (
+                              <span className="cell-sub"><StatusBadge tone="info" size="sm" label="ย้อนหลัง" /></span>
+                            )}
+                          </td>
                           <td>{row.zones.map((z) => z.name).join(" · ")}</td>
                           <td>{row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}</td>
+                          {/* ⭐ เงินครอบถึง — นัดหลังวันนั้นจอดเป็นร่าง "SA → FN" จนบัญชีรับรองงวดถัดไป (visitGate ข้อ②) */}
+                          <td className="ui-badge-cell ui-badge-w-paid"><PaidBadge readiness={row} label="เงินครอบถึง" /></td>
                           <td className={styles.actionCell}>
                             <div className={styles.rowAction}>
                               <Link href={`/database/sites/${row.siteId}`} className="linklike">
@@ -664,7 +681,6 @@ export default function ServiceIntakePage() {
         onClose={() => setWizardOrder(null)}
         onDone={bindOrder}
         onReloadRegistry={registryActions}
-        onSiteNotFound={siteNotFound}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />

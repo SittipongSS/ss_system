@@ -14,16 +14,21 @@ import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
+import { notifyToast } from "@/lib/feedback";
 import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
 import TaxInvoiceDialog from "./TaxInvoiceDialog";
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
-  installmentActionError, installmentDisplayStatus, installmentPlanDrift, installmentPrepaid,
-  installmentReportOutcome, paymentNotRequired, paymentRollup, previewInstallments,
+  installmentActionError, installmentConfirmOutlook, installmentDisplayStatus, installmentPlanDrift,
+  installmentPrepaid, installmentReportOutcome, openingCoverageEnd, paymentNotRequired, paymentRollup,
+  previewInstallments,
 } from "@/lib/sales/salesOrderPayments";
 import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
 import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
+import { historicalInstallmentLock, isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalOrders";
+import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
+import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
 import styles from "./SalesOrderPaymentPanel.module.css";
 
 /* การ์ด "การชำระ" ของใบสั่งขาย (mig 0245/0246) — **แบบ ข** (มติผู้ใช้ 2026-08-13)
@@ -56,8 +61,16 @@ export default function SalesOrderPaymentPanel({
   const [coverDrafts, setCoverDrafts] = useState({});
   const [savingCover, setSavingCover] = useState(false);
 
+  /* ⭐ **ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374)** — งวดมาจากฟอร์มคีย์ใบทั้งชุด (งวดยกมา + ที่ยังต้องเก็บ)
+     ไม่มีใบเสนอราคาให้คำนวณแผน ⇒ ไม่มี preview · ไม่มี "แผนเปลี่ยน" · ไม่มีปุ่มเริ่มติดตาม
+     ⚠️ ต่อ preview ให้ใบนี้เมื่อไร `paymentScheduleRows(null)` คืน "ชำระเต็มจำนวน 100%" ปลอมหนึ่งแถว
+     · ล็อกทั้งใบ (`historicalInstallmentLock`) = ตัวเดียวกับที่ route PATCH ใช้ ⇒ ปุ่มกับ API ตอบคำเดียวกัน */
+  const historical = isHistoricalOrder(order);
+  const orderLock = historicalInstallmentLock(order);
   const saved = Array.isArray(installments) ? installments : [];
-  const rows = saved.length ? saved : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount);
+  const rows = saved.length
+    ? saved
+    : (historical ? [] : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount));
   const isPreview = !saved.length;
   const single = rows.length === 1;
   const rollup = paymentRollup(saved, todayIso);
@@ -68,7 +81,7 @@ export default function SalesOrderPaymentPanel({
      แต่กดได้คนละอย่าง จึงต้องแยกชื่อให้ชัดตั้งแต่ตัวแปร */
   const draftRows = saved.filter((r) => !r.frozenAt);
   const isDraftPlan = saved.length > 0 && draftRows.length === saved.length;
-  const drift = installmentPlanDrift(saved, order?.quotation?.paymentPlan, order?.totalAmount);
+  const drift = historical ? null : installmentPlanDrift(saved, order?.quotation?.paymentPlan, order?.totalAmount);
   // มีเงินบันทึกไว้แล้ว = freeze จะไม่ตั้งงวดใหม่ทับ (ดู `freezeInstallments`) ⇒ คำเตือนคนละใจความ
   const hasPrepaid = saved.some(installmentPrepaid);
   // ใบที่ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม — ด่านเดียวกับที่ route ของงวดใช้
@@ -115,8 +128,17 @@ export default function SalesOrderPaymentPanel({
 
   /* ⚠️ `serviceRounds` ต้องส่งเสมอ — ด่านรับรองงวดใช้ตัดสินว่าต้องมีช่วงครอบก่อนไหม
      (ไม่ส่ง = ไม่บล็อก ⇒ ใบบริการจะรับรองได้ทั้งที่ช่วงครอบว่าง ซึ่งคือกับดักเดิม) */
+  /* ⚠️ `orderLock` + `historical` ต้องส่งทุกครั้งเหมือน route — ล็อกทั้งใบชนะทุกคำสั่ง · งวดยกมาไม่มีกำหนดชำระ/
+     ถอนไม่ได้ · ช่วงครอบของใบย้อนหลังแก้ได้เฉพาะบัญชี ⇒ เมนู/ช่องที่ทำไม่ได้หายเองผ่านตัวนี้ตัวเดียว
+     ⭐ `contractEnd` = ปลายช่วงที่งวดยกมาครอบได้ — ด่านใช้กันไม่ให้บัญชีเลื่อนปลายช่วงเลยอายุสัญญา
+       ⇒ "จ่ายถึง" ไม่เปิดให้รอบที่ไม่มีใครจ่าย
+       🔴 **คิดด้วย `openingCoverageEnd` เท่านั้น ห้ามอ่าน `serviceContract.expiryDate` เองที่นี่** —
+         route ของงวดเรียกตัวเดียวกันนี้ด้วยสัญญาที่มันโหลดมา ⇒ ปุ่มกับ API ได้วันเดียวกันเสมอ
+         (เขียนสูตรเองที่จอเมื่อไร = แถบบันทึกเงียบ แล้ว API ตีกลับด้วยวันคนละวัน — review 23/09) */
+  const contractEnd = openingCoverageEnd(order, rows);
   const gate = (row, action, options) => installmentActionError(row, action, user, {
     ...options, rows, orderTotal: order?.totalAmount, serviceRounds: hasServiceRounds,
+    orderLock, historical, contractEnd,
   });
   /* งวดร่าง = บันทึกเก็บไว้ ยังไม่ส่งให้บัญชี (มติผู้ใช้ 2026-08-19)
      ⚠️ ตัดสินจากฟังก์ชันเดียวกับที่ route ใช้เขียนสถานะจริง — เขียนเงื่อนไข
@@ -124,7 +146,9 @@ export default function SalesOrderPaymentPanel({
   const prepayMode = (row) => installmentReportOutcome(user, row) === "pending";
 
   const headline = isPreview
-    ? `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`
+    ? (historical ? "ยังไม่มีงวด" : `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`)
+    : historical && isDraftPlan
+      ? `งวดของใบย้อนหลัง${single ? "" : ` · ${rows.length} งวด`} — ${order?.status === "cancelled" ? "ใบยกเลิกแล้ว" : "ขึ้นคิวบัญชีหลัง AE Sup อนุมัติ"}`
     : isDraftPlan
       ? `ร่างกำหนดชำระ${single ? "" : ` · ${rows.length} งวด`} — ยอดยืนยันตอนใบอนุมัติ`
       : rollup.complete
@@ -175,10 +199,32 @@ export default function SalesOrderPaymentPanel({
     return out;
   });
   const coverDirty = Object.keys(coverDrafts).length;
-  /* ช่วงกลับหัวห้ามส่งขึ้น API — ด่านจะตีกลับอยู่แล้ว แต่บอกตั้งแต่บนจอเร็วกว่า
-     (ช่อง "ถึง" มี min อยู่แล้ว เคสนี้เกิดได้เฉพาะตอนแก้ช่อง "ตั้งแต่" ให้เลยวันจบ) */
-  const coverInvalid = Object.values(coverDrafts)
-    .some((d) => d.coversFrom && d.coversTo && d.coversFrom > d.coversTo);
+  /* ร่างที่ API จะตีกลับ ห้ามส่งขึ้นไป — ด่านตีกลับอยู่แล้ว แต่บอกตั้งแต่บนจอเร็วกว่า
+     ⭐ **ถามด่านตัวเดียวกับที่จะยิงจริง ด้วยค่าที่จะส่งจริง** (`|| null` เหมือน `saveCoverDrafts`)
+       ⇒ เหตุผลบนแถบกับเหตุผลของ API เป็นประโยคเดียวกันเสมอ · เดิมเขียนเงื่อนไข "ช่วงกลับหัว" ซ้ำเอง
+       ที่นี่ ซึ่งครอบไม่ถึงข้ออื่นของงวดยกมา (ล้างวันสิ้นสุด · เลยอายุสัญญา) = ปุ่มเปิดให้กดแล้ว API ตีกลับ
+     ⚠️ ตรวจ "ค่าที่ร่างไว้" ที่นี่ที่เดียว — **ห้ามย้ายไปถามตอนวาดเซลล์** ไม่งั้นพิมพ์ผิดกลางคันแล้ว
+       ช่องกรอกหายไปทั้งเซลล์ คนแก้ค่าผิดของตัวเองไม่ได้ (เหลือแต่ปุ่ม "ยกเลิกที่แก้")
+     ⭐ **เก็บเป็นรายงวด ไม่ใช่ข้อแรกข้อเดียว** — เซลล์ต้องบอกเหตุ *ตรงที่คนกำลังพิมพ์* ได้
+       (เดิมเซลล์กันด้วย `min`/`max` ของ `DateInput` ซึ่งกลืนค่าที่พิมพ์เงียบ ๆ — ดูคอมเมนต์ที่เซลล์)
+       แถบบันทึกยังพูดข้อเดียวเหมือนเดิม เพราะมันเป็นสรุปของทั้งตาราง ไม่ใช่ที่อ่านรายช่อง */
+  const coverDraftErrors = Object.entries(coverDrafts).reduce((map, [rowId, draft]) => {
+    const row = saved.find((r) => r.id === rowId);
+    if (!row) return map;
+    const why = gate(row, "coverage", {
+      coversFrom: draft.coversFrom || null, coversTo: draft.coversTo || null,
+    });
+    if (why) map[rowId] = why;
+    return map;
+  }, {});
+  const coverDraftError = (() => {
+    const [rowId] = Object.keys(coverDraftErrors);
+    if (!rowId) return "";
+    const why = coverDraftErrors[rowId];
+    const row = saved.find((r) => r.id === rowId);
+    return single ? why : `งวดที่ ${row?.seq}: ${why}`;
+  })();
+  const coverInvalid = Boolean(coverDraftError);
 
   const saveCoverDrafts = async () => {
     const entries = Object.entries(coverDrafts);
@@ -233,8 +279,9 @@ export default function SalesOrderPaymentPanel({
         </div>
       ) : null}
 
-      {/* เอกสารยืนยันคำสั่งซื้อ — แถวเดียว */}
-      <div className={styles.won}>
+      {/* เอกสารยืนยันคำสั่งซื้อ — แถวเดียว
+          ⚠️ ใบย้อนหลังไม่มีขั้นยืนยันคำสั่งซื้อ (เอกสารแทนสัญญาทำหน้าที่นี้ · อยู่แท็บสัญญา) — แถว "ยืนยันด้วย —" อ่านเหมือนขาดของ */}
+      {historical ? null : <div className={styles.won}>
         <span className={styles.wonLabel}>ยืนยันด้วย</span>
         <span className={styles.wonValue}>
           {CONFIRM_DOC_TYPE_LABELS[confirmation?.docType] || naText(confirmation?.docType)}
@@ -252,7 +299,7 @@ export default function SalesOrderPaymentPanel({
             <span className="cell-ellipsis">{att.fileName || `ไฟล์ ${i + 1}`}</span>
           </a>
         ))}
-      </div>
+      </div>}
 
       {/* ⭐ ใบยอด 0 ที่ออกก่อนมติ 2026-08-18 ยังมีงวดค้างอยู่ — **ไม่ลบประวัติทิ้ง**
           แต่ปุ่มทุกตัวถูกปิดที่ `installmentActionError` แล้ว ⇒ ต้องบอกว่าทำไมกดอะไรไม่ได้
@@ -296,7 +343,16 @@ export default function SalesOrderPaymentPanel({
 
       {/* ⭐ บอกให้ตรงว่างวดร่างทำอะไรได้/ไม่ได้ — ไม่งั้นคนจะหาปุ่ม "แจ้งลูกค้าจ่ายแล้ว"
           ที่หายไปแล้วสรุปเองว่าระบบพัง (ด่านที่ไม่บอกเหตุผลคือด่านที่คนหาทางอ้อม) */}
-      {isDraftPlan ? (
+      {/* ⭐ ใบย้อนหลังที่ยังไม่อนุมัติ/ยกเลิกแล้ว: ทุกปุ่มของแผงถูกปิดที่ `gate` ⇒ บอกเหตุผลตัวเดียวกับที่ API ตอบ
+          (ล็อกดีกว่าซ่อนเงียบ ๆ) · ⚠️ ข้อความของงวดร่างใบปกติ (กรอกกำหนด/บันทึกเงินได้) ไม่จริงกับใบนี้ จึงไม่ขึ้น */}
+      {orderLock ? (
+        <StatusNotice tone="info">
+          {orderLock}
+          {order?.status === "cancelled" ? "" : " — ยอด ช่วงครอบ และหลักฐานงวดยกมาแก้ที่ฟอร์มคีย์ใบ"}
+        </StatusNotice>
+      ) : null}
+
+      {isDraftPlan && !historical ? (
         <StatusNotice tone="info">
           กรอกกำหนดชำระและบันทึกเงินที่ลูกค้าจ่ายมาแล้วได้เลยตั้งแต่ตอนนี้ —
           ยอดต่องวดยังเดินตามใบเสนอราคาและจะถูกยืนยันตอนใบสั่งขายอนุมัติ ·
@@ -315,7 +371,11 @@ export default function SalesOrderPaymentPanel({
       ) : null}
 
       {!rows.length ? (
-        <p className="form-note">ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ — ไม่มีงวดให้ติดตาม</p>
+        <p className="form-note">
+          {historical
+            ? "ใบนี้ยังไม่มีงวด — งวดของใบย้อนหลังมาจากฟอร์มคีย์ใบ"
+            : "ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ — ไม่มีงวดให้ติดตาม"}
+        </p>
       ) : (
         /* surface="auto" = ตารางมีขอบ/มุมมน/พื้นของตัวเอง (ตัวแปรกลางใน Table.module.css)
            เดิมใช้ "embedded" ซึ่งไม่มีขอบ ⇒ ตารางลอยอยู่ในการ์ดโดยไม่มีกรอบ (ผู้ใช้ขอเพิ่มขอบ)
@@ -438,6 +498,10 @@ export default function SalesOrderPaymentPanel({
                     {single ? null : <td className={styles.seqCol}>{row.seq}</td>}
                     <td>
                       <strong>{row.label}</strong>
+                      {/* งวดยกมา = เงินที่เก็บก่อนเข้าระบบ บัญชีรับรองครั้งเดียว — ป้ายเดียวกับคิวของบัญชี */}
+                      {isOpeningInstallment(row) ? (
+                        <StatusBadge size="sm" tone="info" label="ยกมา" title="เงินที่เก็บก่อนเข้าระบบ — บัญชีรับรองครั้งเดียว" />
+                      ) : null}
                       {single ? null : <small>{fmtPercent(row.percent)}</small>}
                       {/* ⭐ คำร้องขอเอกสารที่ครอบงวดนี้ (B-5) — โชว์ **เลขที่เอกสารที่บัญชี
                           ออกให้จริง** ไม่ใช่แค่เลขคำร้อง เพราะสิ่งที่ SA เอาไปคุยกับลูกค้า
@@ -478,30 +542,81 @@ export default function SalesOrderPaymentPanel({
                          ตารางไทม์ไลน์ของดีล: `DateInput compact` ในเซลล์ + ร่าง + ปุ่มบันทึกรวม
                          ⚠️ **ด่านเดียวกับ API** (`gate(row,"coverage")`) ⇒ งวดที่บัญชีรับรองแล้ว
                          ฝ่ายขายจะเห็นเป็นข้อความล็อกพร้อมเหตุ ไม่ใช่ช่องหาย (ล็อกดีกว่าซ่อน)
-                         ⚠️ `min` ของช่อง "ถึง" กันช่วงกลับหัวตั้งแต่บนจอ ไม่ต้องรอด่านตอบ */
+                         🔴 **ถามด่านแบบไม่ส่งค่า โดยเจตนา** — คำถามตรงนี้คือ "ใครแก้เซลล์นี้ได้"
+                         ไม่ใช่ "ค่านี้ผ่านไหม" · ส่งค่าเข้าไปเมื่อไร (ค่าจากฐานหรือค่าร่างก็ตาม) เซลล์จะ
+                         ยุบเป็นข้อความทันทีที่ค่าไม่ผ่านสักข้อ = คนแก้ค่าที่ผิดของตัวเองไม่ได้ · ค่าที่ร่างไว้
+                         ถูกตรวจที่ `coverDraftErrors` ก่อนบันทึก (ด่านตัวเดียวกัน ค่าชุดเดียวกับที่ยิงขึ้น API)
+                         🐞 **ห้ามใส่ `min`/`max` ให้ `DateInput` ที่นี่อีก** (review 23/09) — `update()` ของ
+                           `DateInput` **ไม่เรียก `onChange` เลย** เมื่อค่าที่พิมพ์หลุดขอบ แล้ว `onBlur` เด้ง
+                           กลับค่าเดิม **โดยไม่มีข้อความสักบรรทัด** ⇒ บัญชีพิมพ์วันแล้วมันหายไปเฉย ๆ
+                           (อาการเดียวกับที่เพิ่งถอดออกจากฟอร์มคีย์ใบย้อนหลังทั้งห้าช่อง)
+                           ⇒ **กฎอยู่ใต้เซลล์ ไม่ใช่ที่ขอบของช่อง** · ค่าที่พิมพ์เข้าร่างได้เสมอ แล้วด่านตัวเดียวกับ
+                             API เป็นคนบอกเหตุ (`coverDraftErrors[row.id]`) ทั้งใต้เซลล์และบนแถบบันทึก */
                       const lock = row.preview ? "ยังไม่เริ่มติดตามการชำระ" : gate(row, "coverage");
                       const draft = row.preview ? { coversFrom: "", coversTo: "" } : coverOf(row);
                       const edited = !row.preview && !!coverDrafts[row.id];
+                      /* งวดยกมา: วันเริ่มล็อกที่วันเริ่มสัญญาจริง ๆ ⇒ วาดเป็นช่องกรอกไม่ได้ ไม่งั้นบัญชี
+                         พิมพ์วันใหม่ได้แล้วไปเด้งตอนกดบันทึก (ทางตันเดิมย้ายไปอยู่หลังปุ่มแทน)
+                         ⭐ **เหตุผลมาจากด่านเอง** — ถามด้วยค่าหลอกว่า "ถ้าขยับวันเริ่มจะเกิดอะไร"
+                           (แพตเทิร์นเดียวกับ `link`/`tax-invoice` ข้างบน) ⇒ คำบนจอกับคำที่ API
+                           ตอบเป็นประโยคเดียวกันเสมอ ไม่ต้องเขียนคำซ้ำไว้ที่จอ */
+                      const startLock = !row.preview && isOpeningInstallment(row)
+                        ? gate(row, "coverage", { coversFrom: "", coversTo: row.coversTo || "" })
+                        : "";
+                      /* บรรทัดใต้เซลล์ = เหตุจากด่าน (ถ้าร่างไม่ผ่าน) ไม่งั้นเป็น **กฎที่เดาจากจอไม่ได้**
+                         ⭐ เหลือข้อเดียวที่เข้าเกณฑ์นั้น: เพดานอายุสัญญาของงวดยกมา — วันมาจากสัญญา
+                           (หรือจากงวดอื่นของใบ) ซึ่งไม่ได้อยู่บนแถวนี้เลย ⇒ ไม่บอกก็ไม่มีทางรู้
+                         ⚠️ "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม" **ไม่ต้องเขียนกำกับ** — อ่านออกจากสองช่องที่อยู่
+                           ติดกัน และด่านพูดเองตอนร่างผิด · เขียนไว้ทุกแถวของทุกใบ = บรรทัดที่ทุกคนข้าม
+                         ⚠️ `startLock` เป็นตัวชี้ "แถวนี้คืองวดยกมาของใบย้อนหลัง" (ด่านตอบเรื่องวันเริ่มที่
+                           ล็อกไว้) — เงื่อนไขเดียวกับที่ด่านใช้กั้นเพดาน ⇒ คำบนจอกับด่านไม่แยกกันเดิน */
+                      const coverNote = coverDraftErrors[row.id]
+                        || (startLock && contractEnd
+                          ? `ครอบได้ถึง ${fmtDate(contractEnd)} (วันสิ้นสุดสัญญา)`
+                          : "");
                       return (
                         <td className={edited ? styles.coverEdited : undefined}>
                           {lock ? (
-                            <span className={row.status === "confirmed" && !row.coversTo ? styles.overdue : styles.none}
-                              title={lock}>
-                              {row.coversFrom || row.coversTo
-                                ? `${row.coversFrom ? fmtDate(row.coversFrom) : "…"} – ${row.coversTo ? fmtDate(row.coversTo) : "…"}`
-                                : row.status === "confirmed" ? "ยังไม่ระบุ" : NA}
+                            /* ⚠️ **ล็อกต้องบอกเหตุตอนกด ไม่ใช่เซลล์ตาย** (กติกาเดียวกับ `GatedAction`) —
+                               tooltip อย่างเดียวมือถืออ่านไม่ได้ และเซลล์ที่กดแล้วเงียบอ่านเหมือนระบบพัง
+                               ⚠️ สีอยู่ที่ `<span>` ครอบ ไม่ใช่ที่ปุ่ม — `td > * > .text-action` บังคับ
+                               `color: inherit` ทับคลาสของเซลล์ (globals.css) ⇒ ใส่ที่ปุ่มแล้วสีแดงหาย */
+                            <span className={row.status === "confirmed" && !row.coversTo ? styles.overdue : styles.none}>
+                              <button type="button" className={`text-action ${styles.coverLocked}`} title={lock}
+                                aria-label={`ช่วงครอบบริการ งวดที่ ${row.seq} — ${lock}`}
+                                onClick={() => notifyToast.info(lock)}>
+                                {row.coversFrom || row.coversTo
+                                  ? `${row.coversFrom ? fmtDate(row.coversFrom) : "…"} – ${row.coversTo ? fmtDate(row.coversTo) : "…"}`
+                                  : row.status === "confirmed" ? "ยังไม่ระบุ" : NA}
+                              </button>
                             </span>
                           ) : (
                             <span className={styles.coverCell}>
-                              <DateInput compact value={draft.coversFrom} className={styles.coverDate}
-                                ariaLabel={`ครอบบริการตั้งแต่ · งวดที่ ${row.seq}`}
-                                disabled={!!busy || savingCover}
-                                onChange={(iso) => setCover(row, { coversFrom: iso })} />
+                              {startLock ? (
+                                <button type="button" className={`text-action ${styles.coverDate} ${styles.coverLocked}`} title={startLock}
+                                  aria-label={`ครอบบริการตั้งแต่ · งวดที่ ${row.seq} — ${startLock}`}
+                                  onClick={() => notifyToast.info(startLock)}>
+                                  {draft.coversFrom ? fmtDate(draft.coversFrom) : NA}
+                                </button>
+                              ) : (
+                                <DateInput compact value={draft.coversFrom} className={styles.coverDate}
+                                  ariaLabel={`ครอบบริการตั้งแต่ · งวดที่ ${row.seq}`}
+                                  disabled={!!busy || savingCover}
+                                  onChange={(iso) => setCover(row, { coversFrom: iso })} />
+                              )}
                               <DateInput compact value={draft.coversTo} className={styles.coverDate}
-                                min={draft.coversFrom || undefined}
                                 ariaLabel={`ครอบบริการถึง · งวดที่ ${row.seq}`}
                                 disabled={!!busy || savingCover}
                                 onChange={(iso) => setCover(row, { coversTo: iso })} />
+                              {/* กฎ/เหตุของเซลล์ — กินทั้งบรรทัดใต้สองช่อง (`.coverNote` ใน module css)
+                                  ⚠️ `role="alert"` เฉพาะตอนเป็นเหตุจริง ไม่ใช่ตอนเป็นกฎที่ขึ้นค้างอยู่แล้ว */}
+                              {coverNote ? (
+                                <small className={styles.coverNote}
+                                  data-bad={coverDraftErrors[row.id] ? "yes" : undefined}
+                                  role={coverDraftErrors[row.id] ? "alert" : undefined}>
+                                  {coverNote}
+                                </small>
+                              ) : null}
                             </span>
                           )}
                         </td>
@@ -541,6 +656,12 @@ export default function SalesOrderPaymentPanel({
                             </a>
                           ) : null}
                         </>
+                      ) : isOpeningInstallment(row) ? (
+                        /* งวดยกมา: ใบกำกับออกในระบบเดิมแล้ว (taxInvoicePending ไม่นับ) — "ยังไม่ออกใบ" สีแดงชวนให้ออกซ้ำ */
+                        <span className={styles.none}>
+                          {openingInvoiceNote}
+                          {order?.historicalInvoiceRef ? <small className="mono">{order.historicalInvoiceRef}</small> : null}
+                        </span>
                       ) : (
                         /* งวดที่เงินเข้าแล้วแต่ยังไม่มีใบ = ของค้างจริง (บริษัทเก็บ VAT)
                            ⇒ ต้องเห็นว่าค้าง ไม่ใช่ขีดเงียบ ๆ เหมือนช่องที่ไม่เกี่ยว */
@@ -601,7 +722,7 @@ export default function SalesOrderPaymentPanel({
         <div className={styles.coverBar}>
           <span>
             แก้ช่วงครอบบริการค้างไว้ {coverDirty} งวด
-            {coverInvalid ? " — มีงวดที่วันเริ่มเลยวันสิ้นสุด" : ""}
+            {coverDraftError ? ` — ${coverDraftError}` : ""}
           </span>
           <Button variant="ghost" size="sm" disabled={savingCover || !!busy}
             onClick={() => setCoverDrafts({})}>ยกเลิกที่แก้</Button>
@@ -618,7 +739,8 @@ export default function SalesOrderPaymentPanel({
           ใบเก่าที่อนุมัติไปก่อน B-4 · QT ที่ยังไม่มีแผนชำระตอนออกใบแล้วมาเพิ่มทีหลัง ·
           และตอนออกใบสร้างไม่สำเร็จ (ตรงนั้นกลืน error ไว้ไม่ให้ล้มทั้งการออกใบ)
           ⚠️ ใบที่ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม — ด่านเดียวกับที่ route ใช้ */}
-      {isPreview && canStart && canTrackPayments ? (
+      {/* ⚠️ ใบย้อนหลังไม่มีทางกู้นี้ — งวดมาจากฟอร์มคีย์ใบเท่านั้น (route POST ของงวดตีกลับอยู่แล้ว) */}
+      {isPreview && canStart && canTrackPayments && !historical ? (
         <>
           <Button tone="accent" size="sm" className={styles.start} onClick={onStart} disabled={!!busy}>
             {busy === "start-payments" ? "กำลังสร้าง…" : "เริ่มติดตามการชำระ"}
@@ -739,6 +861,9 @@ export default function SalesOrderPaymentPanel({
         row={confirmFor?.row}
         order={order}
         multi={rows.length > 1}
+        /* ใบย้อนหลัง = โหมดของโมดัลตัวเดิม · ภาพหลังรับรองคิดจากงวดทั้งใบ (แผงนี้ถือครบอยู่แล้ว) */
+        historical={historical}
+        outlook={confirmFor ? installmentConfirmOutlook(confirmFor.row, saved) : null}
         busy={!!busy}
         error={error}
         onClose={() => setConfirmFor(null)}
@@ -793,6 +918,8 @@ export default function SalesOrderPaymentPanel({
         open={!!rejectFor}
         title="ตีกลับการแจ้งชำระ"
         description="งวดนี้จะกลับไปให้ฝ่ายขายแก้แล้วแจ้งใหม่"
+        /* งวดยกมา: บอกทางออกทั้งสองแบบก่อนกด — ตัวเดียวกับคิวบนทะเบียนการชำระ */
+        detail={rejectFor && isOpeningInstallment(rejectFor.row) ? historicalOpeningRejectNote : undefined}
         label="เหตุผลที่ตีกลับ"
         value={rejectFor?.reason || ""}
         onChange={(reason) => setRejectFor((f) => ({ ...f, reason }))}

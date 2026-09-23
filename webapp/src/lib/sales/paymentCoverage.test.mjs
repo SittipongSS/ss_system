@@ -7,6 +7,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addDays,
+  coverageContinuityErrors,
+  coverageIsContinuous,
   coverageRollup,
   coverageWarnings,
   coversDate,
@@ -158,6 +160,116 @@ test('กรอกมาข้างเดียว และงวดรับ�
 
   const blind = coverageWarnings([row({ seq: 1, status: 'confirmed' })]);
   assert.equal(blind[0].kind, 'confirmed_without_coverage');
+});
+
+/* ── ช่วงครอบต่อเนื่องเต็มสัญญา — ด่านของใบย้อนหลัง (mig 0374) ─────────────────── */
+
+const CONTRACT_2026 = { start: '2026-01-01', end: '2026-12-31' };
+const span = (from, to, extra = {}) => ({ coversFrom: from, coversTo: to, ...extra });
+const kinds = (errors) => errors.map((e) => e.kind);
+
+test('⭐ ม็อก: ยกมา ม.ค.–ก.ย. + งวด ต.ค.–ธ.ค. = ครอบต่อเนื่องเต็มสัญญา 2026', () => {
+  const rows = [span('2026-01-01', '2026-09-30'), span('2026-10-01', '2026-12-31')];
+  assert.deepEqual(coverageContinuityErrors(rows, CONTRACT_2026), []);
+  assert.equal(coverageIsContinuous(rows, CONTRACT_2026), true);
+});
+
+test('งวดเดียวครอบทั้งสัญญา = ต่อเนื่อง · ลำดับในอาเรย์ไม่สำคัญ (เรียงตามวันเริ่มครอบเหมือนฐาน)', () => {
+  assert.equal(coverageIsContinuous([span('2026-01-01', '2026-12-31')], CONTRACT_2026), true);
+  const shuffled = [span('2026-10-01', '2026-12-31'), span('2026-01-01', '2026-03-31'), span('2026-04-01', '2026-09-30')];
+  assert.equal(coverageIsContinuous(shuffled, CONTRACT_2026), true);
+});
+
+test('ช่องโหว่ระหว่างงวด: บอกช่วงวันที่ขาดจริง + ชี้งวดที่เริ่มช้า', () => {
+  const errors = coverageContinuityErrors(
+    [span('2026-01-01', '2026-09-30'), span('2026-10-15', '2026-12-31', { seq: 2 })], CONTRACT_2026,
+  );
+  assert.deepEqual(errors, [{ kind: 'gap', seq: 2, index: 1, since: '2026-10-01', until: '2026-10-14' }]);
+});
+
+test('ช่วงซ้อน: บอกช่วงวันที่ซ้อน · งวดที่ซ้อนอยู่ข้างในงวดก่อนไม่ทำให้เกิดช่องโหว่ปลอมถัดไป', () => {
+  const errors = coverageContinuityErrors([span('2026-01-01', '2026-09-30'), span('2026-09-01', '2026-12-31')], CONTRACT_2026);
+  assert.deepEqual(errors, [{ kind: 'overlap', seq: null, index: 1, since: '2026-09-01', until: '2026-09-30' }]);
+  const inside = coverageContinuityErrors(
+    [span('2026-01-01', '2026-09-30'), span('2026-03-01', '2026-03-31'), span('2026-10-01', '2026-12-31')], CONTRACT_2026,
+  );
+  assert.deepEqual(kinds(inside), ['overlap'], 'ไม่มี gap ปลอมตามหลังงวดที่ซ้อน');
+  assert.deepEqual([inside[0].since, inside[0].until], ['2026-03-01', '2026-03-31']);
+});
+
+test('เริ่มช้ากว่าวันเริ่มสัญญา / เริ่มก่อนสัญญา = start พร้อมช่วงวัน', () => {
+  const late = coverageContinuityErrors([span('2026-02-01', '2026-12-31')], CONTRACT_2026);
+  assert.deepEqual(late, [{ kind: 'start', seq: null, index: 0, since: '2026-01-01', until: '2026-01-31' }]);
+  const early = coverageContinuityErrors([span('2025-12-01', '2026-12-31')], CONTRACT_2026);
+  assert.deepEqual(early, [{ kind: 'start', seq: null, index: 0, since: '2025-12-01', until: '2025-12-31' }]);
+});
+
+test('จบก่อนวันสิ้นสุดสัญญา / เกินวันสิ้นสุด = end พร้อมช่วงวัน ชี้งวดสุดท้าย', () => {
+  const short = coverageContinuityErrors([span('2026-01-01', '2026-09-30'), span('2026-10-01', '2026-11-30')], CONTRACT_2026);
+  assert.deepEqual(short, [{ kind: 'end', seq: null, index: 1, since: '2026-12-01', until: '2026-12-31' }]);
+  const over = coverageContinuityErrors([span('2026-01-01', '2027-01-15')], CONTRACT_2026);
+  assert.deepEqual(over, [{ kind: 'end', seq: null, index: 0, since: '2027-01-01', until: '2027-01-15' }]);
+});
+
+test('งวดที่ไม่มีช่วงครอบที่ใช้ได้ = missing (ไม่กรอก · วันไม่มีจริง · เริ่มหลังสิ้นสุด) และไม่ไล่ต่อ', () => {
+  const errors = coverageContinuityErrors([
+    span('2026-01-01', '2026-09-30'),
+    span('2026-10-01', null, { seq: 2 }),
+    span('2026-02-30', '2026-12-31'),
+    span('2026-12-31', '2026-10-01'),
+  ], CONTRACT_2026);
+  assert.deepEqual(errors.map((e) => [e.kind, e.index]), [['missing', 1], ['missing', 2], ['missing', 3]]);
+  assert.equal(errors[0].seq, 2);
+});
+
+test('ไม่มีงวดเลย หรือช่วงสัญญาใช้ไม่ได้ = ไม่ครอบ (fail-closed) — ใบ ฿0 ผู้เรียกตัดสินเองก่อน', () => {
+  assert.deepEqual(coverageContinuityErrors([], CONTRACT_2026), [
+    { kind: 'missing', seq: null, index: null, since: '2026-01-01', until: '2026-12-31' },
+  ]);
+  assert.equal(coverageIsContinuous(null, CONTRACT_2026), false);
+  assert.equal(coverageIsContinuous([span('2026-01-01', '2026-12-31')], { start: '2026-12-31', end: '2026-01-01' }), false);
+  assert.equal(coverageIsContinuous([span('2026-01-01', '2026-12-31')], {}), false);
+});
+
+/* ⭐ ยามข้อ "ตัดสินเท่าฐานเป๊ะ" — แปลงลูปของ historical_so_check_installments มาตรง ๆ แล้วเทียบกับตัวจริง
+   หลายพันชุดที่สุ่มแบบกำหนดเมล็ด (ทุกงวดมีช่วงที่ใช้ได้ — งวดที่ไม่มีช่วง ฐานตีกลับตั้งแต่ตรวจรายงวด) */
+function sqlLoopPasses(rows, start, end) {
+  const sorted = [...rows].sort((a, b) => (a.coversFrom === b.coversFrom
+    ? (a.coversTo < b.coversTo ? -1 : a.coversTo > b.coversTo ? 1 : 0)
+    : (a.coversFrom < b.coversFrom ? -1 : 1)));
+  let expect = start;
+  for (const row of sorted) {
+    if (row.coversFrom !== expect) return false;
+    expect = addDays(row.coversTo, 1);
+  }
+  return addDays(expect, -1) === end;
+}
+
+test('⭐ ผ่าน/ไม่ผ่าน เท่ากับลูปของฐานทุกชุด (สุ่ม 5,000 ชุด · เมล็ดตายตัว)', () => {
+  let seed = 20260922;
+  const rand = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  const start = '2026-01-01';
+  const end = '2026-03-31';
+  let passes = 0;
+  for (let round = 0; round < 5000; round += 1) {
+    const count = 1 + rand(4);
+    const rows = [];
+    let cursor = addDays(start, rand(3) - 1);           // บางชุดเริ่มก่อน/ตรง/หลังวันเริ่มสัญญา
+    for (let i = 0; i < count; i += 1) {
+      const from = addDays(cursor, rand(5) === 0 ? rand(5) - 2 : 0); // ส่วนใหญ่ต่อสนิท บางงวดเว้น/ซ้อน
+      const to = addDays(from, rand(60));
+      rows.push(span(from, to));
+      cursor = addDays(to, 1);
+    }
+    if (rand(2)) rows.push(span(start, addDays(start, rand(90)))); // บางชุดมีงวดซ้อนที่ต้นสัญญาเพิ่ม
+    if (rand(3) === 0) rows[rows.length - 1].coversTo = end;      // บางชุดจบวันสิ้นสุดพอดี
+    const valid = rows.every((r) => r.coversFrom <= r.coversTo);
+    if (!valid) continue;
+    const expected = sqlLoopPasses(rows, start, end);
+    if (expected) passes += 1;
+    assert.equal(coverageIsContinuous(rows, { start, end }), expected, JSON.stringify(rows));
+  }
+  assert.ok(passes > 20, `ชุดที่ผ่านต้องมีพอให้เทสต์มีความหมาย (ได้ ${passes})`);
 });
 
 /* ── เลขคณิตปฏิทิน ─────────────────────────────────────────────────────── */

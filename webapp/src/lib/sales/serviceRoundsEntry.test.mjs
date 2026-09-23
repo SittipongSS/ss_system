@@ -45,6 +45,18 @@ test('ใบที่ตายแล้วและคนที่ไม่ม�
   assert.match(serviceRoundsEditError(null, { canEdit: true }) || '', /ไม่พบ/);
 });
 
+/* ⭐ ใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ (มติ 22/09 · mig 0374) — จำนวนรอบอยู่ในบรรทัดโซนที่ฟอร์มคีย์ใบเขียนใหม่
+   ทั้งชุดทุกครั้งที่บันทึก และ AE Sup กำลังตรวจตัวเลขชุดนั้น ⇒ แก้ตรงนี้ = ถูกทับ/เปลี่ยนของที่ผู้อนุมัติเห็น */
+test('ใบย้อนหลังที่ยังไม่อนุมัติ: จำนวนรอบแก้ที่ฟอร์มคีย์ใบ · อนุมัติแล้วแก้ได้ตามเดิม', () => {
+  for (const status of ['draft', 'pending_approval', 'rejected']) {
+    assert.match(serviceRoundsEditError({ status, origin: 'historical' }, { canEdit: true }) || '', /ฟอร์มคีย์ใบ/, status);
+  }
+  assert.equal(serviceRoundsEditError({ status: 'approved', origin: 'historical' }, { canEdit: true }), null);
+  assert.match(serviceRoundsEditError({ status: 'cancelled', origin: 'historical' }, { canEdit: true }) || '', /ปิดไปแล้ว/);
+  // ใบ pipeline ร่าง/รออนุมัติยังแก้ได้เหมือนเดิม
+  assert.equal(serviceRoundsEditError({ status: 'draft', origin: 'pipeline' }, { canEdit: true }), null);
+});
+
 test('ก้อนที่จอส่งมาต้องเป็นบรรทัดของใบนี้และเป็นหมวดบริการจริง', () => {
   const lines = [svc(), other()];
   // ⚠️ จอส่ง id อะไรมาก็ได้ — ปล่อยผ่าน = เขียนทับบรรทัดของใบอื่น
