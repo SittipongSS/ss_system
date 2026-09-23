@@ -16,9 +16,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Hourglass, Plus, Search, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Hourglass, Search, X } from "lucide-react";
 import Button from "@/components/ui/Button";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import GatedAction from "@/components/ui/GatedAction";
 import Pager from "@/components/ui/Pager";
@@ -29,6 +29,11 @@ import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import ServiceVisitModal from "@/components/service/ServiceVisitModal";
 import ScheduleQueueCard from "@/components/service/ScheduleQueueCard";
+/* ⭐ คำร้องรอลงคิว (มติเจ้าของ 23/09) — โมดัลลงคิวตัวเดียวกับหน้าใบ + ข้อความกล่องรับเรื่องชุดเดียวกัน */
+import CommitDueDialog from "@/components/requests/CommitDueDialog";
+import { acknowledgeConfirmCopy } from "@/lib/requests/acknowledgeConfirm";
+import { commitDueLabels } from "@/lib/requests/commitDue";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { canAnswerServiceRequests, canBeServiceAssignee, canEditService, isFieldCrewRole } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -43,6 +48,8 @@ import {
   routeZoneSplit,
 } from "@/lib/service/rounds";
 import { gateBlocker } from "@/lib/service/visitGate";
+/* ⭐ ลบนัดนอกรอบ (มติเจ้าของ 24/09) — ด่าน + กล่องยืนยันตัวเดียวกับที่ API ใช้ตีกลับ */
+import { visitDeleteBlocker, visitDeletePrompt } from "@/lib/service/visitDelete";
 import { mergeGateContext, gateContextForSite } from "@/lib/service/gateContext";
 import { isDraftVisit, isLiveVisit, isOpenVisit } from "@/lib/service/visitStatus";
 import {
@@ -62,18 +69,21 @@ import {
   QUEUE_RANGES,
   QUEUE_RANGE_LABELS,
   addDaysIso,
+  crewLoadPeople,
   freeCrewOn,
   queueBucketOf,
   queueWindow,
   staffLoadOn,
 } from "@/lib/service/scheduleQueue";
-import { buildScheduleQueue, dayText, draftsInRange, weekChipText } from "@/lib/service/scheduleQueueView";
+import {
+  INTAKE_UPSTREAM_LABEL, buildScheduleQueue, dayText, draftsInRange, weekChipText,
+} from "@/lib/service/scheduleQueueView";
 import { usePagination } from "@/lib/usePagination";
 import { navCountFor, useNavCountsState } from "@/lib/nav/useNavCounts";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtMonthShort, fmtNumber, naText } from "@/lib/format";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const UNASSIGNED = "__unassigned__";
@@ -147,6 +157,10 @@ export default function ServiceSchedulePage() {
   const [formVisit, setFormVisit] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [formDefaults, setFormDefaults] = useState(null);
   const [formFocus, setFormFocus] = useState(null);
+  /* ── คำร้องรอลงคิว (มติเจ้าของ 23/09) — การ์ดที่กำลังรับเรื่อง / กำลังลงคิว (null = ปิด) ── */
+  const [ackRow, setAckRow] = useState(null);
+  const [dueRow, setDueRow] = useState(null);
+  const [dueBusy, setDueBusy] = useState(false);
   const [toast, setToast] = useState(null);
   /* ⭐ ทีมเจ้าหน้าที่บริการ (mig 0310 · T-4) — โหลดทะเบียนทีมของฝ่าย TS มาใช้ **เป็นมุมมอง**
      ⚠️ ไม่ใช่ด่านสิทธิ์: กรองแล้วยังกดดูทีมอื่นได้เสมอ ตัวกั้นจริงยังเป็น canEditService */
@@ -209,7 +223,11 @@ export default function ServiceSchedulePage() {
 
   /* ── รายการงานข้ามสัปดาห์ (มติ 2026-09-22) — ร่างทุกวัน + นัดที่ยังเปิด + ปิดใน 14 วัน
      ⚠️ ตัวโหลดแยกจากตาราง: เลื่อนสัปดาห์แล้วรายการต้องไม่กะพริบ และพังคนละที่ต้องบอกคนละที่ */
-  const [queue, setQueue] = useState({ visits: [], sites: [], workload: {}, gateContext: {} });
+  /* `surveyRequests` = การ์ดคำร้องรอลงคิว (มติเจ้าของ 23/09) — null = ไม่มีสิทธิ์ตอบคำร้อง/โหลดไม่ได้
+     · `surveyRequestsError` แยกจาก error ของนัด (API พังแยกกัน — รายการงานไม่ว่างตามคำร้อง) */
+  const [queue, setQueue] = useState({
+    visits: [], sites: [], workload: {}, gateContext: {}, surveyRequests: null, surveyRequestsError: "",
+  });
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState("");
   /* ภาระในตัวเลือกเจ้าหน้าที่ต้องรอรายการงานโหลดสำเร็จอย่างน้อยครั้งแรก — ก่อนนั้นเลขศูนย์คือ "ไม่รู้" ไม่ใช่ "ว่าง" */
@@ -229,6 +247,9 @@ export default function ServiceSchedulePage() {
         sites: arrayOf(data?.sites),
         workload: objectOf(data?.workload),
         gateContext: objectOf(data?.gateContext),
+        /* ⚠️ null ≠ [] — null = ไม่ได้ส่งมา (ไม่มีสิทธิ์/พัง) · [] = ไม่มีใบรอลงคิวจริง */
+        surveyRequests: Array.isArray(data?.surveyRequests) ? data.surveyRequests : null,
+        surveyRequestsError: data?.surveyRequestsError || "",
       });
       setQueueError("");
       setQueueLoadedOnce(true);
@@ -260,24 +281,33 @@ export default function ServiceSchedulePage() {
     })();
   }, []);
 
-  // รายชื่อเจ้าหน้าที่บริการ + ไซต์ทั้งหมด โหลดเมื่อจะ "เลือก" เท่านั้น
+  /* รายชื่อเจ้าหน้าที่บริการโหลดเมื่อจะ "เลือก" เท่านั้น — โมดัลนัด **หรือโมดัลลงคิวคำร้อง**
+     (มติเจ้าของ 23/09: ลงคิวจากการ์ดคำร้องเลือกคนด้วยตัวเลือกเดียวกับโมดัลนัด)
+     ⚠️ `techStatus` แยก "กำลังโหลด" / "โหลดพัง" ออกจาก "ไม่มีใครเลย" — โมดัลบอกคนละข้อความ */
+  const pickingPeople = formVisit !== undefined || !!dueRow;
+  const [techStatus, setTechStatus] = useState("idle");   // idle · loading · ok · error
+  useEffect(() => {
+    if (!pickingPeople || technicians.length) return;
+    (async () => {
+      setTechStatus("loading");
+      try {
+        const res = await apiFetch("/api/pm/assignable-users");
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ");
+        // คนที่รับงานเข้าไซต์ได้ = ฝ่ายบริการ TS (ดู canBeServiceAssignee)
+        // 🐞 เดิมกรองเฉพาะ TS แต่ prod ยังไม่มีบัญชี TS สักคน → ช่องนี้ว่างเปล่า
+        // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานวันนี้" ของเจ้าหน้าที่ก็ว่างตลอดกาล
+        setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
+        setTechStatus("ok");
+      } catch (e) {
+        setTechStatus("error");
+        setToast({ kind: "error", msg: e.message });
+      }
+    })();
+  }, [pickingPeople, technicians.length]);
+  // ไซต์ทั้งหมด — เฉพาะโมดัลนัด (ช่องเลือกไซต์) · การ์ดคำร้องมีไซต์ของใบมากับรายการงานแล้ว
   useEffect(() => {
     if (formVisit === undefined) return;
-    if (!technicians.length) {
-      (async () => {
-        try {
-          const res = await apiFetch("/api/pm/assignable-users");
-          const data = await res.json().catch(() => null);
-          if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ");
-          // คนที่รับงานเข้าไซต์ได้ = ฝ่ายบริการ TS หรือทีมขาย SV (ดู canBeServiceAssignee)
-          // 🐞 เดิมกรองเฉพาะ TS แต่ prod ยังไม่มีบัญชี TS สักคน → ช่องนี้ว่างเปล่า
-          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานวันนี้" ของเจ้าหน้าที่ก็ว่างตลอดกาล
-          setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
-        } catch (e) {
-          setToast({ kind: "error", msg: e.message });
-        }
-      })();
-    }
     (async () => {
       try {
         const res = await apiFetch("/api/service/sites?includeInactive=0");
@@ -292,7 +322,7 @@ export default function ServiceSchedulePage() {
         setToast({ kind: "error", msg: e.message });
       }
     })();
-  }, [formVisit, technicians.length]);
+  }, [formVisit]);
 
   /* ไซต์/ภาระ/บริบทด่านของสองตัวโหลดรวมกัน — โมดัลเปิดนัดข้ามสัปดาห์ได้ (ร่างเดือนหน้า)
      ⚠️ ไม่รวมบริบทด่าน ⇒ ร่างนอกสัปดาห์เปิดโมดัลแล้วขึ้นว่าติดทุกข้อ */
@@ -418,6 +448,14 @@ export default function ServiceSchedulePage() {
     () => crew.people.filter((p) => p?.id && isFieldCrewRole(p.role)).map((p) => ({ id: p.id, name: p.name || p.id })),
     [crew.people],
   );
+  /* คนที่มอบหมายงานเข้าไซต์ได้ทั้งฝ่าย — ชุดเดียวกับตัวเลือกในโมดัลลงคิว (`canBeServiceAssignee` = ฝ่าย TS)
+     ⇒ การ์ดคำร้องบอก "วันนั้นว่าง n จาก m คน" จากคนชุดเดียวกับที่โมดัลให้เลือก (UAT 24/09: 5 จาก 5 แต่เลือกได้ 8)
+     ⚠️ `crew.people` = คนฝ่าย TS ที่ยังใช้งาน (API ทีมกรองฝ่ายจาก metadata แล้ว) ⇒ ไม่กรองด้วย role ซ้ำ
+        (กรอง role จะตัดคนที่อยู่ฝ่าย TS แต่ role อื่น ซึ่งตัวเลือกในโมดัลยังให้เลือก) */
+  const assignablePeople = useMemo(
+    () => crew.people.filter((p) => p?.id).map((p) => ({ id: p.id, name: p.name || p.id })),
+    [crew.people],
+  );
   const teamNames = useMemo(() => new Map(crew.teams.map((t) => [t.code, t.name])), [crew.teams]);
 
   const queueView = useMemo(() => buildScheduleQueue({
@@ -429,13 +467,16 @@ export default function ServiceSchedulePage() {
     teamFilter,
     crewByUser,
     crewPeople,
+    assignablePeople,
     teamNames,
     bucket,
     range,
     search,
     farOn,
     within: bucket === "waiting" ? within : null,
-  }), [queue, sitesById, todayIso, teamFilter, crewByUser, crewPeople, teamNames, bucket, range, search, farOn, within]);
+    /* ⭐ การ์ดคำร้องรอลงคิว — อาร์เรย์เดียวกับที่ตัวเลขบนแถบต้นทางงานนับ (`requestCount`) */
+    surveyRequests: queue.surveyRequests || [],
+  }), [queue, sitesById, todayIso, teamFilter, crewByUser, crewPeople, assignablePeople, teamNames, bucket, range, search, farOn, within]);
 
   /* 🐞 กลุ่มที่พับไว้ต้อง **ไม่กินที่ในหน้า** — เดิมแบ่งหน้าจากทุกแถวแล้วซ่อนตอนวาด ⇒ "รอฝ่ายอื่น" 30 ใบ
      ทำให้หน้า 2–4 เหลือแต่หัวกลุ่มเปล่า ๆ · กลุ่มที่พับเป็นหนึ่งรายการ (หัวกลุ่ม) · ค้นหาอยู่ = ไม่พับ */
@@ -489,12 +530,15 @@ export default function ServiceSchedulePage() {
     count: queueReady ? queueView.rangeCounts[key] : null,
   }));
   const queueSubtitle = queueError ? null : {
-    waiting: "ร่างที่ยังไม่ขึ้นตาราง — ไม่นับภาระ และยังไม่โผล่ในงานวันนี้ของใคร",
+    waiting: canSeeRequests
+      ? "คำร้องประเมินพื้นที่ที่ยังไม่มีนัด + ร่างที่ยังไม่ขึ้นตาราง — ร่างไม่นับภาระ และยังไม่โผล่ในงานวันนี้ของใคร"
+      : "ร่างที่ยังไม่ขึ้นตาราง — ไม่นับภาระ และยังไม่โผล่ในงานวันนี้ของใคร",
     overdue: "นัดที่เลยวันแล้วยังไม่ปิดงาน",
     scheduled: "นัดที่ขึ้นตารางแล้ว ตั้งแต่วันนี้ไป — เรียงตามวัน",
     closed: "ปิดงานใน 14 วันที่ผ่านมา — ทำไม่ครบ/ทำไม่ได้อยู่บนสุด",
   }[bucket];
-  const queueColdStart = queueReady && !queue.visits.length;
+  /* ไม่มีทั้งนัดและคำร้องรอลงคิว = ยังไม่มีงานให้วางจริง · มีคำร้องแต่ไม่มีนัด ≠ ว่าง (การ์ดคำร้องรออยู่) */
+  const queueColdStart = queueReady && !queue.visits.length && !(queue.surveyRequests || []).length;
   const draftsThisWeek = useMemo(
     () => draftsInRange(queue.visits, range7, teamFilter, crewByUser),
     [queue.visits, range7, teamFilter, crewByUser],
@@ -517,23 +561,10 @@ export default function ServiceSchedulePage() {
     /* นัดที่กำลังแก้ไม่นับภาระของตัวเอง — ทุกแถวอ่านว่า "ถ้าไม่มีนัดนี้ คนนี้มีงานเท่าไร" */
     const editingId = formVisit?.id;
     const others = editingId ? liveForLoad.filter((v) => v.id !== editingId) : liveForLoad;
-    const load = staffLoadOn(others, dateIso, workloadAll);
-    const people = technicians.map((tech) => {
-      const row = load.get(tech.id) || { visits: 0, assets: 0, packs: 0, assisting: 0 };
-      const teamCode = crewByUser.get(tech.id);
-      const notes = [];
-      if (row.assisting > 0) notes.push(`ไปช่วย ${row.assisting} นัด`);
-      if (row.assets > MAX_ASSETS_PER_DAY) notes.push(`เกินภาระ ${MAX_ASSETS_PER_DAY} จุด`);
-      return {
-        id: tech.id,
-        name: tech.name,
-        team: teamCode && teamCode !== NO_TEAM ? teamNames.get(teamCode) || "" : "",
-        visits: row.visits,
-        assets: row.assets,
-        packs: row.packs,
-        assisting: row.assisting,
-        note: notes.join(" · "),
-      };
+    /* ⭐ แถวรายคนมาจาก `crewLoadPeople` — สูตรเดียวกับโมดัลลงคิวบนหน้าใบคำร้อง (`useCrewLoad`)
+       ⇒ ภาระของคนเดียวกันวันเดียวกันเท่ากันไม่ว่าจะเปิดโมดัลจากหน้าไหน (มติเจ้าของ 23/09) */
+    const people = crewLoadPeople({
+      visits: others, dateIso, workload: workloadAll, technicians, crewByUser, teamNames,
     });
     return { state: "ok", people };
   }, [queueError, queueLoadedOnce, range7.from, range7.to, todayIso, formVisit, liveForLoad, workloadAll, technicians, crewByUser, teamNames]);
@@ -764,11 +795,142 @@ export default function ServiceSchedulePage() {
     if (visitParam) setQuery({ visit: null });
   };
 
-  /* ── ต้นทางของงาน (ลิงก์ + ตัวเลขเดียวกับป้ายเมนู) ──
-     ⚠️ อ่านจาก context ที่ AppLayout โหลดอยู่แล้ว — เรียก useNavCounts() ตรง ๆ = ยิงซ้ำอีกชุด */
+  /* ── ลบนัดนอกรอบ (มติเจ้าของ 24/09 "ไม่มีปุ่มลบรอบนอกรอบด้วย") — จากการ์ดรายการงานและโมดัลแก้นัด ──
+     ⭐ ปุ่มโชว์/บอกเหตุด้วยด่านตัวเดียวกับ API (`lib/service/visitDelete.js`): ลบได้เฉพาะงานนอกรอบที่ยังไม่มีใคร
+        ไปถึงไซต์ · นัดถอนจากเรื่องไม่ต่อสัญญา = ปุ่มโชว์แต่บอกเหตุ (ให้ยกเลิกแทน)
+     ⭐ ยืนยันก่อนเสมอ ด้วย `confirmAction(approvalPrompt…irreversible)` — บอกใบไหน (รหัส · ไซต์ · วัน) ·
+        หายจากตาราง/รายการงาน · ย้อนไม่ได้
+     ⚠️ ไม่ส่ง `?force=1` — เส้นข้ามด่านเป็นของแอดมินที่หน้าไซต์ ไม่ใช่ปุ่มนี้
+     ⚠️ error ขึ้นเป็น toast ของหน้า (ชั้น `--z-toast` เหนือ `--z-modal`) ⇒ เห็นแม้โมดัลนัดยังเปิดอยู่
+     ⚠️ สำเร็จหรือพลาดก็โหลดตาราง + รายการงานใหม่ (ท่าเดียวกับหลังบันทึก/ปล่อย) — พลาดเกือบทุกครั้งแปลว่า
+        ใบเปลี่ยนไปแล้ว (มีคนเริ่มงาน/ปิดงาน) จอต้องตามให้ทัน */
+  const [deletingId, setDeletingId] = useState(null);
+  /* 🪤 กดซ้ำระหว่างกล่องยืนยันเปิดอยู่ = `confirmAction` ใบที่สองทับใบแรก (ConfirmProvider ถือคำขอเดียว ใบแรกค้างไม่ถูก
+     resolve) ⇒ กันด้วย ref ตั้งแต่ก่อนถาม ไม่ใช่รอ `deletingId` ซึ่งตั้งหลังตอบ "ลบนัด" แล้ว */
+  const deleteAsking = useRef(false);
+  const deleteVisit = async (visit) => {
+    if (!visit?.id || deleteAsking.current) return false;
+    const blocker = visitDeleteBlocker(visit);
+    if (blocker) {
+      setToast({ kind: "error", msg: blocker });
+      return false;
+    }
+    deleteAsking.current = true;
+    let deleted = false;
+    try {
+      const day = dayText(visit.scheduledDate);
+      const when = [day, visitTimeText(visit)].filter(Boolean).join(" ");
+      const ok = await confirmAction(visitDeletePrompt(visit, { siteName: sitesById.get(visit.siteId)?.name, when, day }));
+      if (!ok) return false;
+      setDeletingId(visit.id);
+      await apiJson(`/api/service/visits/${encodeURIComponent(visit.id)}`, {
+        method: "DELETE", fallbackError: "ลบนัดไม่สำเร็จ",
+      });
+      deleted = true;
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      deleteAsking.current = false;
+      setDeletingId(null);
+    }
+    if (deleted) {
+      if (formVisit?.id === visit.id) closeModal();
+      if (focus?.visitId === visit.id) setFocus(null);
+      setToast({ kind: "success", msg: `ลบนัด ${visit.code || visit.id} แล้ว — ออกจากตารางและรายการงาน` });
+    }
+    await Promise.all([load({ background: true, keep: true }), loadQueue({ background: true, keep: true })]);
+    return deleted;
+  };
+
+  /* ── ต้นทางของงาน ──
+     · งานเข้าใหม่: ตัวเลขเดียวกับป้ายเมนู (อ่านจาก context ที่ AppLayout โหลดอยู่แล้ว — เรียก
+       useNavCounts() ตรง ๆ = ยิงซ้ำอีกชุด) · ตัวเลขนั้นนับ **สองแท็บ** ⇒ ป้าย `INTAKE_UPSTREAM_LABEL`
+     · คำร้อง: **จำนวนการ์ดคำร้องรอลงคิว** (`queueView.requestCount` · มติเจ้าของ 23/09) — อาร์เรย์
+       เดียวกับการ์ด ⇒ เท่ากันเสมอ
+       🐞 เดิมใช้ป้ายเมนู "รอ TS ตอบ" ซึ่งนับผิดชุดสำหรับหน้านี้: รวมใบที่ลงคิวแล้ว (มีการ์ดนัดอยู่แล้ว =
+          นับซ้ำ) · คำร้องสอบถามข้อมูล · ใบที่รอ TS กดปิด และทำใบรอลงคิวหลุดเมื่อ TS โพสต์ล่าสุดในเธรด
+       ⚠️ ป้ายเมนูเองไม่เปลี่ยน — มันพูดถึงแท็บ "รอ TS ตอบ" ของหน้าคิวคำร้องทั้งแท็บ ซึ่งถูกต้องแล้ว */
   const navState = useNavCountsState();
   const intakeCount = navCountFor(navState?.counts, "/service/intake");
-  const requestsCount = navCountFor(navState?.counts, "/service/requests");
+
+  /* ── คำร้องรอลงคิว: รับเรื่อง / ลงคิว จากการ์ด (มติเจ้าของ 23/09) ──
+     ⭐ ยิง PATCH ตัวเดียวกับปุ่มบนหน้าใบ (`/api/sa/requests/[id]`) — ด่านฝั่ง server (`canAnswerRequest` ·
+        `acknowledgeRequestError` · ด่านลงคิว) ตรวจซ้ำจากแถวสดทุกครั้ง · หน้านี้ไม่มีทางเขียนของตัวเอง
+     ⚠️ สำเร็จหรือพลาด = โหลดรายการงาน + ตารางใหม่เสมอ — พลาดเกือบทุกครั้งแปลว่ามีคนเดินใบไปก่อน
+        (จอเก่า) · ลงคิวสำเร็จ = นัดใหม่อาจขึ้นกริดสัปดาห์นี้ · ป้ายเมนูดึงใหม่ด้วย (ใบย้ายขั้น) */
+  const reloadAfterRequest = () => Promise.all([
+    load({ background: true, keep: true }),
+    loadQueue({ background: true, keep: true }),
+  ]).finally(() => navState?.reload?.());
+  const requestUrl = (row) => `/api/sa/requests/${encodeURIComponent(row.id)}`;
+  const confirmAcknowledge = async () => {
+    const row = ackRow;
+    if (!row) return;
+    let data;
+    try {
+      data = await apiJson(requestUrl(row), {
+        method: "PATCH", json: { action: "acknowledge" }, fallbackError: "รับเรื่องไม่สำเร็จ",
+      });
+    } catch (e) {
+      reloadAfterRequest();
+      throw e;   // ConfirmDialog โชว์เหตุในกล่องเอง แล้วค้างกล่องไว้ (ไม่ปิดทั้งที่ยังไม่สำเร็จ)
+    }
+    setAckRow(null);
+    const warning = responseWarningText(data);
+    setToast(warning
+      ? { kind: "warning", msg: warning, duration: RESPONSE_WARNING_TOAST.duration }
+      : { kind: "success", msg: `รับเรื่อง ${row.code} แล้ว — การ์ดเปลี่ยนเป็น “${commitDueLabels(row.request).action}”` });
+    await reloadAfterRequest();
+  };
+  const submitCommitDue = async (payload) => {
+    const row = dueRow;
+    if (!row) return;
+    const labels = commitDueLabels(row.request, { requeue: row.step === "requeue" });
+    setDueBusy(true);
+    try {
+      const data = await apiJson(requestUrl(row), {
+        method: "PATCH", json: payload, fallbackError: "ลงคิวไม่สำเร็จ",
+      });
+      setDueRow(null);
+      /* ⚠️ สำเร็จครึ่งเดียว (ใบได้วันแต่นัดเป็นร่าง/สร้างไม่ได้) ต้องไม่ขึ้นเขียว — server ส่ง `_warning` */
+      const warning = responseWarningText(data);
+      setToast(warning
+        ? { kind: "warning", msg: warning, duration: RESPONSE_WARNING_TOAST.duration }
+        : { kind: "success", msg: labels.okMsg });
+    } catch (e) {
+      // ค้างโมดัลไว้ — ค่าที่กรอกยังอยู่ แก้แล้วกดใหม่ได้เลย
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setDueBusy(false);
+    }
+    await reloadAfterRequest();
+  };
+
+  /* ตัวเลขคำร้องบนแถบ → แท็บรอจัด แล้วเลื่อนไปกลุ่ม "คำร้องรอลงคิว" (ล้างตัวกรองที่อาจซ่อนการ์ด)
+     ⚠️ จำเป้าไว้ใน ref แล้วเลื่อนเมื่อกลุ่มอยู่บนจอจริง — สองทาง:
+        · อยู่แท็บอื่น: URL เปลี่ยนแบบ async ⇒ effect ข้างล่างเลื่อนหลังจอวาดแท็บรอจัดเสร็จ
+        · อยู่แท็บรอจัดอยู่แล้ว: อาจไม่มีอะไรเปลี่ยนเลย (ไม่มีรอบวาดใหม่ให้ effect) ⇒ เลื่อนในเฟรมถัดไป
+     🐞 <section> ของกลุ่มต้องติด `.scroll-anchor` — ไม่งั้นหัวกลุ่มจอดใต้แถบเมนูที่ปักไว้ (UAT 390px 24/09) */
+  const revealGroup = useRef(null);
+  const revealPending = useCallback(() => {
+    if (!revealGroup.current) return;
+    const group = document.getElementById(`queue-group-${revealGroup.current}`);
+    if (!group) return;
+    revealGroup.current = null;
+    group.scrollIntoView({ block: "start" });
+    group.querySelector("[data-queue-code]")?.focus({ preventScroll: true });
+  }, []);
+  const showRequestCards = () => {
+    revealGroup.current = "requests";
+    setWithin(null);
+    setSearch("");
+    pagination.setPage(1);
+    setQuery({ tab: null, range: null });
+    if (bucket === "waiting") window.requestAnimationFrame(revealPending);
+  };
+  useEffect(() => {
+    if (bucket === "waiting" && !queueLoading) revealPending();
+  }, [bucket, pageGroups, queueLoading, revealPending]);
 
   const weekLabel = `${days[0].date.getDate()} ${fmtMonthShort(days[0].date)} – ${days[6].date.getDate()} ${fmtMonthShort(days[6].date)} ${days[6].date.getFullYear()}`;
   /* 🐞 ข้อความว่างเคยเขียน "สัปดาห์นี้" ตายตัว — เลื่อนไปสัปดาห์หน้าแล้วยังบอกว่าสัปดาห์นี้
@@ -806,7 +968,12 @@ export default function ServiceSchedulePage() {
     if (bucket === "waiting") {
       return queueView.farCount
         ? { title: `ไม่มีร่างที่ต้องจัดใน 14 วันข้างหน้า${teamNote}` }
-        : { title: `ไม่มีร่างรอจัด${teamNote}`, hint: "นัดที่ผ่านด่านตั้งแต่เกิดขึ้นตารางเองแล้ว · ร่างจะมาที่นี่เมื่อรอบยังไม่มีเจ้าหน้าที่ประจำ งานนอกรอบติดด่าน หรือมีงานถอนเครื่อง" };
+        : {
+          title: canSeeRequests ? `ไม่มีร่างหรือคำร้องรอจัด${teamNote}` : `ไม่มีร่างรอจัด${teamNote}`,
+          /* ⛔ ถอด "งานนอกรอบติดด่าน" ออกตอนปิดปุ่มงานนอกรอบ (มติ 24/09) — หน้านี้สร้างงานนอกรอบไม่ได้แล้ว */
+          hint: "นัดที่ผ่านด่านตั้งแต่เกิดขึ้นตารางเองแล้ว · ร่างจะมาที่นี่เมื่อรอบยังไม่มีเจ้าหน้าที่ประจำ นัดติดด่าน หรือมีงานถอนเครื่อง"
+            + (canSeeRequests ? " · คำร้องประเมินพื้นที่ที่ยังไม่มีนัดก็ขึ้นที่นี่ ให้รับเรื่องและลงคิวได้จากการ์ด" : ""),
+        };
     }
     if (bucket === "overdue") return { title: `ไม่มีนัดค้าง — นัดที่เลยวันปิดงานครบแล้ว${teamNote}` };
     if (bucket === "scheduled") {
@@ -817,21 +984,24 @@ export default function ServiceSchedulePage() {
     return { title: `14 วันที่ผ่านมายังไม่มีนัดที่ปิดงาน${teamNote}` };
   })();
 
-  /* ⚠️ ปุ่มบนหัวหน้านี้เป็น **ปุ่มรอง** โดยเจตนา (มติผู้ใช้ 2026-08-28):
-     *TS ไม่ใช่ต้นทางของงาน* — นัดเกิดจากรอบบริการของไซต์ หรือจากงานนอกรอบที่มี
-     ต้นเรื่อง (ลูกค้าแจ้งเสีย · ติดตั้งตามใบสั่งขาย) แล้วทุกใบต้องผ่านด่านก่อน
-     ขึ้นตาราง · หน้านี้ทำหน้าที่ **วาง** งานที่มีอยู่แล้ว ไม่ใช่ **สร้าง** งาน
-     จึงไม่มีปุ่มสีแบรนด์ (สีแบรนด์ = เริ่มของใหม่ หน้าละหนึ่งปุ่ม) */
+  /* ⭐ หน้านี้ **วาง** งานที่มีอยู่แล้ว ไม่ใช่ **สร้าง** งาน (มติผู้ใช้ 2026-08-28: *TS ไม่ใช่ต้นทางของงาน*) —
+     นัดเกิดจากรอบบริการของไซต์ · ใบคำร้องประเมินพื้นที่ · หรืองานถอนเครื่องเมื่อลูกค้าไม่ต่อสัญญา แล้วทุกใบ
+     ต้องผ่านด่านก่อนขึ้นตาราง ⇒ ไม่มีปุ่มสีแบรนด์ (สีแบรนด์ = เริ่มของใหม่ หน้าละหนึ่งปุ่ม)
+
+     ⛔ **ปิดปุ่ม "+ งานนอกรอบ" บนหัวหน้า — ทุกคน ทุก role** (มติเจ้าของ 24/09/2569 หลังดูหน้าจัดคิว:
+        *"ไม่ปิดปุ่ม นอกรอบหรอ"*) ต่อจากมติ 23/09 ที่พักเรื่องงานนอกรอบไว้รอประชุมรื้อ
+        (*"ต้องรื้อเรื่องนี้ ขอไปประชุมรวมอีกที"*) ⇒ ระหว่างพัก ไม่มีทางสร้างนัดนอกรอบจากหน้านี้
+        · ที่ยังทำงาน: "ตั้งนัดรอบถัดไป" หลังปิดงาน (`openNew(pendingSuggestion)` — มี `planId` = นัดของรอบ
+          ไม่ใช่นอกรอบ) · ปุ่ม "ลบนัด" ของงานนอกรอบที่มีอยู่แล้ว · API `POST /api/service/visits` ไม่ได้แตะ
+        ↩️ **เปิดคืน** (เมื่อประชุมสรุปแล้ว): ใส่ `headerRight` กลับเป็นปุ่ม tone neutral ไอคอน Plus ป้าย "งานนอกรอบ"
+           ที่เรียก `openNew({ scheduledDate: todayIso })` เฉพาะ `canEdit` · แก้ยาม "ปิดปุ่มงานนอกรอบ" ใน
+           `schedulePageGuards.test.mjs` · และคืนคำที่ถอดออกตอนปิด (แถบ "วาง ไม่ได้สร้าง" · ข้อความว่างของ
+           แท็บรอจัด · toast "รอบถัดไป" ของหน้างานวันนี้) */
   return (
     <Workspace
       icon={<CalendarDays size={20} aria-hidden="true" />}
       title="จัดคิวเจ้าหน้าที่"
       subtitle="วางงานที่รออยู่ลงตารางเจ้าหน้าที่ · รายการงานข้ามสัปดาห์คู่กับตารางรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามเขต และนัดนอกช่วงที่ไซต์ให้เข้า"
-      headerRight={canEdit ? (
-        <Button tone="neutral" onClick={() => openNew({ scheduledDate: todayIso })} icon={<Plus size={15} aria-hidden="true" />}>
-          งานนอกรอบ
-        </Button>
-      ) : null}
     >
       {/* ⭐ ทีม = ขอบเขตของหน้า คุมรายการงาน ตาราง และภาระรายทีม · งานที่ยังไม่มีเจ้าหน้าที่ขึ้นให้
           ทุกทีมเห็นทั้งสองแผง · สัปดาห์ = ของตารางเท่านั้น (ลูกศรอยู่ในแถบของแผงตาราง) เพราะ
@@ -888,23 +1058,39 @@ export default function ServiceSchedulePage() {
       )}
 
       {/* ⭐ กติกาที่ตัดสินไปแล้วต้องอ่านได้จากบนจอ ไม่ใช่อยู่แต่ในคอมเมนต์โค้ด
-          (มติผู้ใช้ 2026-08-28: TS ไม่ใช่ต้นทางของงาน) · บรรทัดสองพาไปคิวต้นทาง (ไม่ก๊อปมาไว้ที่นี่ —
-          หนึ่งงานหนึ่งคิวของฝ่าย · SO-centric) */}
+          (มติผู้ใช้ 2026-08-28: TS ไม่ใช่ต้นทางของงาน) · บรรทัดสองพาไปคิวต้นทาง
+          ⭐ **มติเจ้าของ 23/09 แทนประโยค "ไม่ก๊อปมาไว้ที่นี่"** — คำร้องประเมินพื้นที่ที่ยังไม่มีนัดขึ้นเป็น
+             การ์ดในแท็บรอจัดของหน้านี้ด้วย (รับเรื่อง/ลงคิวได้จากการ์ด) · คิวคำร้องยังเป็นบ้านของใบ
+             (ตีกลับ · เธรด · ใบที่ลงคิวแล้ว) ⇒ ลิงก์ยังอยู่ และตัวเลขข้างลิงก์ = จำนวนการ์ดบนหน้านี้ */}
       <div className={styles.placeNote}>
+        {/* ⛔ ถอด "หรือจากงานนอกรอบที่มีต้นเรื่อง" ตอนปิดปุ่มงานนอกรอบ (มติ 24/09) — ประโยคต้องไม่ชี้ไปหาปุ่มที่ไม่มีแล้ว */}
         <p>
           หน้านี้ <b>“วาง”</b> งาน ไม่ได้ <b>“สร้าง”</b> งาน — นัดเกิดจากรอบบริการของไซต์
-          หรือจากงานนอกรอบที่มีต้นเรื่อง และขึ้นตารางไม่ได้จนกว่าจะผ่านด่าน
+          หรืองานถอนเครื่องเมื่อลูกค้าไม่ต่อสัญญา และขึ้นตารางไม่ได้จนกว่าจะผ่านด่าน
+          {canSeeRequests && " · คำร้องประเมินพื้นที่ที่ TS ลงคิวจากการ์ดในแท็บรอจัด ก็เกิดเป็นนัดแบบเดียวกัน"}
         </p>
         <p className={styles.upstream}>
           <span className={styles.upstreamLabel}>ต้นทางของงาน:</span>
           <span>
-            <Link href="/service/intake" className="linklike">งานเข้าใหม่</Link> · รอตั้งไซต์/โซน
+            <Link href="/service/intake" className="linklike">งานเข้าใหม่</Link> · {INTAKE_UPSTREAM_LABEL}
             {intakeCount != null && <span className={styles.upCount}>{fmtNumber(intakeCount)}</span>}
           </span>
           {canSeeRequests && (
             <span>
-              <Link href="/service/requests" className="linklike">คิวคำร้อง</Link> · รอฝ่าย TS
-              {requestsCount != null && <span className={styles.upCount}>{fmtNumber(requestsCount)}</span>}
+              <Link href="/service/requests" className="linklike">คิวคำร้อง</Link> · ประเมินพื้นที่รอลงคิว
+              {/* ⚠️ นับไม่ได้ ≠ ศูนย์ — โหลดคำร้องพังต้องบอกว่าพัง ไม่ใช่หายเงียบเหมือนไม่มีใบรอ */}
+              {queue.surveyRequestsError ? (
+                <span className={styles.upError}>นับไม่สำเร็จ</span>
+              ) : queueReady && queueView.requestCount > 0 ? (
+                <button
+                  type="button"
+                  className={`${styles.upCount} ${styles.upJump}`}
+                  onClick={showRequestCards}
+                  aria-label={`ดูคำร้องรอลงคิว ${fmtNumber(queueView.requestCount)} ใบ ในรายการงาน`}
+                >
+                  {fmtNumber(queueView.requestCount)}
+                </button>
+              ) : null}
             </span>
           )}
         </p>
@@ -953,7 +1139,9 @@ export default function ServiceSchedulePage() {
                     type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="ค้นหา รหัสนัด ไซต์ ลูกค้า เจ้าหน้าที่ เหตุที่ติด"
+                    placeholder={canSeeRequests
+                      ? "ค้นหา รหัสนัด เลขคำร้อง ไซต์ ลูกค้า ผู้ขอ เจ้าหน้าที่ เหตุที่ติด"
+                      : "ค้นหา รหัสนัด ไซต์ ลูกค้า เจ้าหน้าที่ เหตุที่ติด"}
                     aria-label="ค้นหารายการงาน"
                     autoComplete="off"
                   />
@@ -965,6 +1153,15 @@ export default function ServiceSchedulePage() {
               <StatusNotice tone="error" title="โหลดรายการงานไม่สำเร็จ"
                 action={<Button size="sm" variant="ghost" onClick={() => loadQueue()}>ลองใหม่</Button>}>
                 {queueError} — ยังไม่รู้ว่ามีงานรอจัดหรือค้างอยู่เท่าไร ไม่ได้แปลว่าคิวว่าง
+              </StatusNotice>
+            )}
+
+            {/* 🔴 คำร้องพังแยกจากนัด (API ส่ง error แยกช่อง) — นัดข้างล่างยังเป็นของจริง แต่ต้องบอกว่า
+                "ไม่มีการ์ดคำร้อง" ตอนนี้แปลว่า **ไม่รู้** ไม่ใช่ไม่มีใบรอ */}
+            {!queueError && queue.surveyRequestsError && bucket === "waiting" && (
+              <StatusNotice tone="warning" title="โหลดคำร้องรอลงคิวไม่สำเร็จ"
+                action={<Button size="sm" variant="ghost" onClick={() => loadQueue()}>ลองใหม่</Button>}>
+                {queue.surveyRequestsError} — การ์ดคำร้องยังไม่ขึ้น ไม่ได้แปลว่าไม่มีใบรอลงคิว · นัดในรายการยังเป็นของจริง
               </StatusNotice>
             )}
 
@@ -985,7 +1182,7 @@ export default function ServiceSchedulePage() {
                 {pageGroups.map((group) => {
                   const folded = group.folded;
                   return (
-                    <section key={group.key} className={styles.group} data-tone={group.tone || undefined} aria-label={group.label}>
+                    <section key={group.key} id={`queue-group-${group.key}`} className={`${styles.group} scroll-anchor`} data-tone={group.tone || undefined} aria-label={group.label}>
                       <div className={styles.groupHead}>
                         {/* พับได้เฉพาะกลุ่มที่ตั้งใจให้พับ ("รอฝ่ายอื่น") — หัวกลุ่มอื่นเป็นป้ายเฉย ๆ ไม่ใช่ปุ่มที่กดแล้วไม่มีอะไร */}
                         {group.collapsible ? (
@@ -1013,10 +1210,15 @@ export default function ServiceSchedulePage() {
                               key={row.id}
                               row={row}
                               canEdit={canEdit}
+                              canAnswer={canSeeRequests}
                               releasing={releaseBusy && releaseRow?.id === row.id}
+                              deleting={deletingId === row.id}
                               onOpen={openVisit}
                               onRelease={askRelease}
                               onCalendar={showOnCalendar}
+                              onAcknowledge={setAckRow}
+                              onCommitDue={setDueRow}
+                              onDelete={deleteVisit}
                             />
                           ))}
                         </ul>
@@ -1367,6 +1569,10 @@ export default function ServiceSchedulePage() {
         gateContext={gateContextForSite(gateContextAll, formVisit?.siteId || formDefaults?.siteId)}
         onClose={closeModal}
         onSave={saveVisit}
+        /* ⭐ ปุ่ม "ลบนัด" ของงานนอกรอบ (มติ 24/09) — เฉพาะคนที่แก้งานบริการได้ · ไม่ส่ง = ไม่มีปุ่ม
+           (ชิปบนตารางเปิดโมดัลนี้ได้ทุกคน จึงต้องกั้นสิทธิ์ที่นี่ ไม่ใช่พึ่งว่าเปิดมาจากการ์ด) */
+        onDelete={canEdit ? deleteVisit : null}
+        deleting={!!formVisit && deletingId === formVisit.id}
       />
 
       {/* ⭐ ปล่อยจากการ์ด = ยืนยันก่อนเสมอ บอก "ลงช่องไหน" และ "ใครจะเห็น" (มติ #1223:
@@ -1391,6 +1597,33 @@ export default function ServiceSchedulePage() {
           </StatusNotice>
         )}
       </ConfirmDialog>
+
+      {/* ⭐ รับเรื่องจากการ์ดคำร้อง — กล่องยืนยันชุดข้อความเดียวกับหน้าใบ (`acknowledgeConfirmCopy`)
+          บอกว่ากดแล้วใบ **ยังไม่มีวัน** ต้องกด "ลงคิวเข้าพื้นที่" อีกก้าว (มติ #1223 · ไม่มีคลิกเดียวข้ามสองก้าว)
+          ⚠️ ตีกลับ (ทำได้เฉพาะก่อนรับเรื่อง) อยู่ที่หน้าใบ — รหัสบนการ์ดพาไป */}
+      <ConfirmDialog
+        open={!!ackRow}
+        {...(ackRow ? acknowledgeConfirmCopy(ackRow.request) : {})}
+        busyLabel="กำลังรับเรื่อง…"
+        onConfirm={confirmAcknowledge}
+        onClose={() => setAckRow(null)}
+      />
+
+      {/* ⭐ ลงคิวจากการ์ดคำร้อง — โมดัลตัวเดียวกับหน้าใบ (`CommitDueDialog`) · ตัวเลือกคนใช้ภาระชุดเดียวกับ
+          ตารางข้าง ๆ (`staffLoadFor`) ⇒ โมดัลไม่ยิงโหลดภาระเอง */}
+      <CommitDueDialog
+        open={!!dueRow}
+        request={dueRow?.request}
+        subtitle={dueRow ? [dueRow.code, dueRow.siteName, dueRow.customer].filter(Boolean).join(" · ") : ""}
+        technicians={pickerTechnicians}
+        techniciansLoading={!technicians.length && (techStatus === "idle" || techStatus === "loading")}
+        techniciansError={!technicians.length && techStatus === "error"}
+        staffLoadFor={staffLoadFor}
+        today={todayIso}
+        busy={dueBusy}
+        onClose={() => { if (!dueBusy) setDueRow(null); }}
+        onSubmit={submitCommitDue}
+      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

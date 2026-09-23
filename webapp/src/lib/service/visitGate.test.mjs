@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import {
   GATE_EXEMPT_KINDS,
   GATE_OWNERS,
+  NO_ZONE_SITE_REASON,
+  UNALLOCATED_ZONE_REASON,
   evaluateVisitGate,
   gateBlockedItems,
   gateBlocker,
@@ -20,6 +22,7 @@ import {
 } from './visitGate.js';
 import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
 import { installmentActionError, installmentReportOutcome } from '../sales/salesOrderPayments.js';
+import { waitingGroupOf } from './scheduleQueue.js';
 
 // ไซต์เข้าได้ จ–ศ 09:00–17:00
 const site = {
@@ -406,5 +409,137 @@ test('งานสำรวจ/ถอนเครื่องที่ขาด�
     const items = evaluateVisitGate({ ...ok, kind, assigneeId: '' }, { site });
     assert.equal(gatePassed(items), false, kind);
     assert.equal(gateNeedsOthers(items), false, kind);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   "ยังไม่จัดสรรโซน" เป็นงานของ TS (มติเจ้าของ 23/09 · แผนหน้าจัดคิว §7)
+   ⭐ คนผูกใบสั่งขายเข้าโซนคือ TS ที่หน้า "งานเข้าใหม่" — ป้ายเดิม "SA · ฝ่ายขายต้อง…" ส่งเรื่อง
+      ไปหาคนที่แก้ไม่ได้ และทำให้ร่างจมกลุ่ม "รอฝ่ายอื่น" ที่พับไว้
+   🔴 เปลี่ยน **เจ้าของ** เท่านั้น — ผ่าน/ไม่ผ่านของทุกข้อต้องเท่าเดิมทุกบริบท
+   ═══════════════════════════════════════════════════════════════════════ */
+test('⭐ โซนที่ยังไม่จัดสรรจากใบสั่งขาย = ติดข้อสัญญา เจ้าของ TS · บอกหน้าที่ไปแก้', () => {
+  const items = evaluateVisitGate(ok, { ...full, terms: [] });
+  const c = items.find((i) => i.key === 'contract');
+  assert.equal(c.state, 'blocked');
+  assert.equal(c.owner, GATE_OWNERS.TS);
+  assert.equal(c.detail, UNALLOCATED_ZONE_REASON);
+  assert.equal(UNALLOCATED_ZONE_REASON, 'โซนนี้ยังไม่ถูกจัดสรรจากใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน');
+  assert.doesNotMatch(c.detail, /ฝ่ายขาย/);
+  assert.equal(c.fix ?? null, null, 'ไม่มีช่องในโมดัลนัดให้แก้ — การ์ดโชว์เหตุเต็มประโยค');
+  assert.deepEqual(items.zoneGates.map((z) => [z.zoneId, z.owner, z.gate]), [['Z1', GATE_OWNERS.TS, 'contract']]);
+  assert.equal(gatePassed(items), false);
+  assert.equal(gateNeedsOthers(items), false, 'ติดแค่ข้อของ TS ⇒ กลุ่ม "ฝ่าย TS แก้ได้เอง"');
+});
+
+test('⭐ ไซต์ที่ไม่มีโซนเลย = ติดข้อสัญญา เจ้าของ TS (ยังติดเหมือนเดิม ไม่ใช่ผ่าน)', () => {
+  const items = evaluateVisitGate(ok, { site });
+  const c = items.find((i) => i.key === 'contract');
+  assert.equal(c.state, 'blocked');
+  assert.equal(c.owner, GATE_OWNERS.TS);
+  assert.equal(c.detail, NO_ZONE_SITE_REASON);
+  assert.equal(NO_ZONE_SITE_REASON, 'ไซต์นี้ยังไม่มีโซนที่ผูกกับใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน');
+  assert.equal(gatePassed(items), false);
+  assert.equal(gateNeedsOthers(items), false);
+});
+
+test('เหตุฝั่งสัญญาอื่นยังเป็นของ SA · เงินยังเป็น SA → FN · ผ่านแล้วป้ายข้อสัญญาเป็น SA ตามเดิม', () => {
+  const ownerOf = (ctx, visit = ok) => evaluateVisitGate(visit, ctx).find((i) => i.key === 'contract').owner;
+  assert.equal(ownerOf({ ...full, ordersById: { SO1: { id: 'SO1', status: 'approved' } } }), GATE_OWNERS.SA, 'ยังไม่ผูกสัญญา');
+  assert.equal(ownerOf(withContract({ effectiveDate: '2026-01-01', expiryDate: '2026-08-01' })), GATE_OWNERS.SA, 'หมดอายุ');
+  assert.equal(ownerOf({ ...full, ordersById: { SO1: { ...ordersById.SO1, supersededById: 'SO2' } } }), GATE_OWNERS.SA,
+    'รอบขายไม่มีผล ณ วันนัด — ยังเป็นของ SA (ใบถูก Rev./หมดช่วง)');
+  assert.equal(ownerOf(full), GATE_OWNERS.SA);
+  const money = evaluateVisitGate({ ...ok, scheduledDate: '2026-11-10' }, full).find((i) => i.key === 'payment');
+  assert.equal(money.state, 'blocked');
+  assert.equal(money.owner, GATE_OWNERS.FN);
+});
+
+test('ปน: โซนหนึ่งยังไม่จัดสรร + อีกโซนติดเงิน = ติดสองข้อ · ข้อเงินเป็นของฝ่ายอื่น ⇒ รอฝ่ายอื่น', () => {
+  const items = evaluateVisitGate({ ...ok, scheduledDate: '2026-11-10' }, { ...full, zones: [{ id: 'Z0', name: 'ใหม่' }, ...zones] });
+  const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+  assert.equal(byKey.contract.state, 'blocked');
+  assert.equal(byKey.contract.owner, GATE_OWNERS.TS);
+  assert.equal(byKey.payment.state, 'blocked');
+  assert.equal(byKey.payment.owner, GATE_OWNERS.FN);
+  assert.equal(gateNeedsOthers(items), true);
+});
+
+/* 🔴 ตารางผลผ่าน/ไม่ผ่านรายข้อ × 9 บริบท × 2 ชนิดงาน — ค่าที่คาดไว้ **รันจากโค้ดก่อนแก้** (origin/main
+   f2162535) แล้วลอกมาทั้งชุด ⇒ การเปลี่ยนเจ้าของต้องไม่ขยับผลของข้อไหนเลย
+   (เคยเสี่ยง: `blockedBy` เลือกโซนด้วยสตริงเจ้าของ — เปลี่ยนเจ้าของอย่างเดียวแล้วไซต์ที่ทุกโซน
+   ยังไม่จัดสรรจะหาเหตุฝั่งสัญญาไม่เจอ แล้ว **ผ่านด่าน**) */
+test('🔴 ผลผ่าน/ไม่ผ่านของทุกข้อเท่าเดิมทุกบริบท (ตารางจากโค้ดก่อนแก้)', () => {
+  const contexts = {
+    full: [ok, full],
+    noZones: [ok, { site }],
+    unallocated: [ok, { ...full, terms: [] }],
+    deadTerm: [ok, { ...full, ordersById: { SO1: { ...ordersById.SO1, supersededById: 'SO2' } } }],
+    unlinked: [ok, { ...full, ordersById: { SO1: { id: 'SO1', status: 'approved' } } }],
+    expired: [ok, withContract({ effectiveDate: '2026-01-01', expiryDate: '2026-08-01' })],
+    unpaid: [{ ...ok, scheduledDate: '2026-11-10' }, full],
+    mixed: [{ ...ok, scheduledDate: '2026-11-10' }, { ...full, zones: [{ id: 'Z0', name: 'ใหม่' }, ...zones] }],
+    partial: [ok, { ...full, zones: [...zones, { id: 'Z2', name: 'B' }] }],
+  };
+  const blockedBefore = {
+    full: [], noZones: ['contract'], unallocated: ['contract'], deadTerm: ['contract'], unlinked: ['contract'],
+    expired: ['contract'], unpaid: ['payment'], mixed: ['contract', 'payment'], partial: [],
+  };
+  for (const [name, [visit, ctx]] of Object.entries(contexts)) {
+    const items = evaluateVisitGate(visit, ctx);
+    assert.deepEqual(items.map((i) => i.key), ['contract', 'payment', 'assignee', 'access'], name);
+    assert.deepEqual(items.filter((i) => i.state === 'blocked').map((i) => i.key), blockedBefore[name], name);
+    assert.equal(initialVisitStatus(visit, ctx), blockedBefore[name].length ? 'draft' : 'scheduled', name);
+    // งานที่ข้ามด่าน ①② ผ่านทุกบริบท (มีคน · วันธรรมดาในช่วงเวลาเข้า)
+    assert.deepEqual(gateReasons(evaluateVisitGate({ ...visit, kind: 'survey' }, ctx)), [], `${name} survey`);
+  }
+});
+
+/* 🐞 รีวิวรอบสอง (24/09): เจ้าของข้อสัญญาเคยมาจาก **โซนแรกที่ติดตามลำดับโซน** ⇒ ไซต์ที่ทุกโซนติด
+   โดยโซนหนึ่งยังไม่จัดสรร (TS) อีกโซนติดเหตุของ SA (ใบสั่งขายยังไม่ผูกสัญญา) ได้เจ้าของ/กลุ่ม
+   พลิกตามลำดับ id ในฐานข้อมูล: [ยังไม่จัดสรร, ไม่ผูกสัญญา] = TS · กลุ่ม "TS แก้ได้เอง" (ปัญหาของ SA
+   หายจากการ์ด) · สลับลำดับ = SA · กลุ่ม "รอฝ่ายอื่น"
+   ⭐ กติกา: มีเหตุของ SA ปนอยู่แม้โซนเดียว = เจ้าของ SA (ต้องรอฝ่ายอื่น) · TS เฉพาะเมื่อทุกโซนที่ติด
+      ข้อสัญญาเป็นของ TS · เหตุบอกทั้งสองฝ่าย ไม่ทิ้งเรื่องที่ TS ทำได้ */
+test('🐞 ข้อสัญญาปน TS+SA: เจ้าของ/กลุ่ม/เหตุไม่พลิกตามลำดับโซน', () => {
+  const za = { id: 'ZA', name: 'ใหม่' };
+  const zb = { id: 'ZB', name: 'ล็อบบี้' };
+  const ctxOf = (order) => ({
+    site,
+    zones: order,
+    terms: [{ id: 'TB', zoneId: 'ZB', salesOrderId: 'SO9', startDate: '2026-01-01', endDate: '2027-12-31' }],
+    ordersById: { SO9: { id: 'SO9', status: 'approved' } },
+    contractsById: {},
+    installmentsByOrderId: {},
+  });
+  const results = [[za, zb], [zb, za]].map((order) => {
+    const items = evaluateVisitGate(ok, ctxOf(order));
+    const c = items.find((i) => i.key === 'contract');
+    return {
+      state: c.state, owner: c.owner, detail: c.detail,
+      needsOthers: gateNeedsOthers(items), passed: gatePassed(items),
+      group: waitingGroupOf(items, { ...ok, status: 'draft' }, { todayIso: '2026-08-20', soonUntil: '2026-09-30' }),
+    };
+  });
+  assert.deepEqual(results[0], results[1], 'ลำดับโซนต้องไม่ขยับอะไรเลย');
+  const [r] = results;
+  assert.equal(r.state, 'blocked');
+  assert.equal(r.passed, false);
+  assert.equal(r.owner, GATE_OWNERS.SA, 'มีเหตุของ SA ปน ⇒ TS ปลดเองคนเดียวไม่ได้แน่นอน');
+  assert.equal(r.needsOthers, true);
+  assert.equal(r.group, 'others');
+  assert.match(r.detail, /ใบสั่งขายที่ครอบโซนนี้ยังไม่ผูกสัญญาที่มีผล/, 'เหตุของ SA ต้องขึ้นบนการ์ด');
+  assert.match(r.detail, /อีก 1 โซนยังไม่ถูกจัดสรร/, 'เรื่องที่ TS ทำได้ต้องไม่หายไปด้วย');
+  assert.match(r.detail, /งานเข้าใหม่/);
+});
+
+test('ข้อสัญญาที่ทุกโซนติดเพราะยังไม่จัดสรร = TS ทุกลำดับ · ไม่มีหมายเหตุ "อีก N โซน"', () => {
+  const zs = [{ id: 'ZA', name: 'ก' }, { id: 'ZB', name: 'ข' }];
+  for (const order of [zs, [...zs].reverse()]) {
+    const items = evaluateVisitGate(ok, { site, zones: order, terms: [], ordersById: {}, contractsById: {}, installmentsByOrderId: {} });
+    const c = items.find((i) => i.key === 'contract');
+    assert.equal(c.owner, GATE_OWNERS.TS);
+    assert.equal(c.detail, UNALLOCATED_ZONE_REASON);
+    assert.equal(gateNeedsOthers(items), false);
   }
 });

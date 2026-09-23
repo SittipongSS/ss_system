@@ -13,8 +13,18 @@ import { VISIT_KIND_LABELS, VISIT_STATUS_LABELS, overlappingVisitIds, visitTimeT
 import { evaluateVisitGate, gateBlockedItems, GATE_OWNERS, visitSkipsContractGates } from './visitGate';
 import { gateContextForSite } from './gateContext';
 import { isDraftVisit, isLiveVisit, isShortfallVisit } from './visitStatus';
+import { isRenewalRetrieveVisit, visitDeleteButton } from './visitDelete';
 import { NO_TEAM } from './crewTeams';
 import { MAX_ASSETS_PER_DAY } from './visitLoad';
+import { toHHMM } from './sites';
+import { INTAKE_TAB_LABELS } from './intake';
+import {
+  SURVEY_QUEUE_STEPS, SURVEY_QUEUE_STEP_LABELS, liveSurveyVisitsByRequest, surveyQueueStep,
+} from './surveyQueue';
+import { requestStatusView } from '@/lib/requests/statuses';
+import { acknowledgeRequestError } from '@/lib/requests/stages';
+import { commitDueLabels } from '@/lib/requests/commitDue';
+import { businessDate } from '@/lib/businessDate';
 import {
   QUEUE_BUCKETS,
   WAITING_GROUPS,
@@ -66,13 +76,186 @@ export function ownerTone(owner) {
   return 'neutral';
 }
 
-/* ต้นเรื่องของนัด — คนจัดคิวต้องรู้ว่าร่างมาจากไหน (มติ 2026-08-28: TS ไม่ใช่ต้นทางของงาน) */
+/* ต้นเรื่องของนัด — คนจัดคิวต้องรู้ว่าร่างมาจากไหน (มติ 2026-08-28: TS ไม่ใช่ต้นทางของงาน)
+   ⚠️ "ถอนเครื่อง · ลูกค้าไม่ต่อสัญญา" อ่านนิยามจาก `isRenewalRetrieveVisit` ตัวเดียวกับด่านลบนัด (visitDelete.js)
+      — ป้ายที่บอกว่าใบนี้มาจากเรื่องไม่ต่อสัญญา กับเหตุที่ปุ่ม "ลบนัด" ปฏิเสธ ต้องชี้ใบชุดเดียวกัน */
 export function originText(visit) {
   if (visit?.requestId) return 'จากคำร้องประเมินพื้นที่';
   if (visit?.planId) return 'จากรอบบริการ';
-  if (visit?.kind === 'remove') return 'ถอนเครื่อง · ลูกค้าไม่ต่อสัญญา';
+  if (isRenewalRetrieveVisit(visit)) return 'ถอนเครื่อง · ลูกค้าไม่ต่อสัญญา';
   return 'งานนอกรอบ';
 }
+
+/* ป้ายตัวเลข "งานเข้าใหม่" บนแถบต้นทางงาน — ตัวเลขนั้นนับ **สองแท็บรวมกัน** (รอตั้งไซต์/โซน +
+   รอตั้งรอบ · `api/nav/counts` ส่ง `bind.rows.length + plan.length`) ⇒ ป้ายต้องบอกทั้งสองแท็บ
+   🐞 ของเดิมป้ายบอกแค่แท็บแรก ⇒ ตัวเลขอ่านว่า "รอตั้งไซต์ 12" ทั้งที่ 9 ใบในนั้นคือรอตั้งรอบ
+   ⚠️ แท็บ "ครบรอบยังไม่มีนัด" ไม่อยู่ในตัวเลขนั้น จึงไม่อยู่ในป้าย */
+export const INTAKE_UPSTREAM_LABEL = `${INTAKE_TAB_LABELS.bind} + ${INTAKE_TAB_LABELS.plan}`;
+
+/* ── การ์ด "คำร้องรอลงคิว" (มติเจ้าของ 23/09) ───────────────────────────────
+   ⭐ ใช้การ์ดตัวเดียวกับนัด (`ScheduleQueueCard`) ลำดับช่องเดิม: รหัส · ไซต์ · วัน · คน · ภาระ ·
+      สิ่งที่ต้องทำ · ปุ่ม — คนจัดคิวสลับไปมาทั้งวัน ตำแหน่งของข้อมูลต้องไม่ย้ายตามชนิดการ์ด
+   ⚠️ ขั้นของใบมาจาก `surveyQueueStep` ตัวเดียว (ตัวเดียวกับตัวโหลดฝั่ง server) — ห้ามคิดเงื่อนไขเอง */
+const REQUEST_STAGE_BADGES = Object.freeze({
+  acknowledge: { label: 'ขั้น 1/2', tone: 'warning' },
+  queue: { label: 'ขั้น 2/2', tone: 'info' },
+  requeue: { label: 'ลงคิวใหม่', tone: 'warning' },
+});
+export const REQUEST_ORIGIN_TEXT = 'คำร้องประเมินพื้นที่ · ยังไม่มีนัด';
+
+/* วันไทยของจุดเวลา — ค่าเสีย = '' (ไม่ระเบิดทั้งแผงเพราะแถวเดียว) · ⚠️ ห้ามตัดสตริง ISO เอง (check:thaitime) */
+const thaiDayOf = (timestamp) => {
+  if (!timestamp) return '';
+  try { return businessDate(timestamp); } catch { return ''; }
+};
+
+/* "อีก 3 วัน" / "วันนี้" / "เลย…" ของวันที่ใบอ้างถึง */
+function requestRelText(date, todayIso, pastLabel) {
+  if (!date) return { text: '', tone: '' };
+  const n = daysBetween(todayIso, date);
+  if (n < 0) return { text: `${pastLabel} ${-n} วัน`, tone: 'warn' };
+  if (n === 0) return { text: 'วันนี้', tone: '' };
+  if (n === 1) return { text: 'พรุ่งนี้', tone: '' };
+  return { text: `อีก ${n} วัน`, tone: '' };
+}
+
+/**
+ * แถวการ์ดของคำร้องหนึ่งใบ — `null` ถ้าใบนี้ไม่ใช่ของกลุ่มนี้แล้ว (`surveyQueueStep` ตอบ null)
+ *
+ * @param todayIso     วันนี้ของหน้าต่าง (วันไทย)
+ * @param live         นัดที่อยู่บนตาราง (นับ "วันนั้นว่างกี่คน")
+ * @param peopleInView เจ้าหน้าที่ในมุมมองตอนนี้ (กรองทีมแล้ว)
+ */
+export function surveyRequestRow(request, { todayIso, sitesById = new Map(), live = [], peopleInView = [] } = {}) {
+  const step = surveyQueueStep(request);
+  if (!step) return null;
+  const requeue = step === 'requeue';
+  const site = sitesById.get(request.siteId) || null;
+  const labels = commitDueLabels(request, { requeue });
+  const statusView = requestStatusView(request);
+  /* ⭐ ป้ายมุมใช้ **คำของขั้น** (`SURVEY_QUEUE_STEP_LABELS`) ชุดเดียวกับบรรทัดย่อยของกลุ่ม
+     🐞 รีวิว 24/09: เคยใช้คำสถานะของใบ ⇒ การ์ดเขียน "รอกำหนดส่ง" ใต้หัวกลุ่มที่นับใบเดียวกันว่า
+        "รอลงคิว 1" (จอเดียวสองคำ) และค้นคำที่บรรทัดย่อยโชว์ไม่เจอ · คำสถานะของใบยังอยู่ใน haystack
+        เป็นคำพ้อง (หน้าใบกับคิวคำร้องเรียกแบบนั้น) */
+  const tag = { tone: requeue ? 'warning' : statusView.tone, label: SURVEY_QUEUE_STEP_LABELS[step] };
+
+  // ── วัน: ใบที่ยังไม่มีนัดบอก "วันที่ผู้ขอต้องการ" · ใบที่นัดหลุดบอกวันที่เคยรับปาก ──
+  const date = requeue ? request.committedDueDate : request.requestedDueDate;
+  const time = toHHMM(requeue ? request.committedDueTime : request.requestedDueTime);
+  const dateLine = requeue
+    ? `นัดเดิม ${dayText(request.committedDueDate)}`
+    : (date ? `ต้องการเข้า ${dayText(date)}` : 'ผู้ขอไม่ระบุวันที่ต้องการ');
+  const timeLine = time ? `${requeue ? 'เวลา' : 'ช่วง'} ${time}` : '';
+  const rel = requestRelText(date, todayIso, requeue ? 'วันนัดเดิมผ่านไปแล้ว' : 'เลยวันที่ต้องการ');
+
+  // ── คน: ยังไม่มีเจ้าหน้าที่ ⇒ ช่องนี้บอกผู้ขอ + ค้างมากี่วัน (นับจากวันไทยที่ส่ง) ──
+  const submittedOn = thaiDayOf(request.submittedAt);
+  const age = submittedOn ? Math.max(0, daysBetween(submittedOn, todayIso)) : null;
+  const who = {
+    text: `ผู้ขอ ${request.requestedByName || '—'}`,
+    tone: '',
+    sub: [
+      submittedOn ? `ส่งเมื่อ ${dayText(submittedOn)}` : '',
+      age ? `ค้างมา ${age} วัน` : '',
+      request.assigneeName ? `มอบหมายไว้ ${request.assigneeName}` : '',
+    ].filter(Boolean).join(' · '),
+    linkId: null,
+  };
+
+  // ── ภาระ: วันส่งผลที่ผู้ขอต้องการ + วันนั้นว่างกี่คน (เฉพาะวันนี้เป็นต้นไป) ──
+  const resultDate = requeue
+    ? (request.committedResultDate || request.requestedResultDate)
+    : request.requestedResultDate;
+  const siteLoadText = resultDate
+    ? `${requeue && request.committedResultDate ? 'รับปากส่งผล' : 'ต้องการผล'} ${dayText(resultDate)}`
+    : '';
+  let dayLoad = null;
+  if (date && date >= todayIso && peopleInView.length) {
+    const { free, total } = freeCrewOn(live, date, peopleInView);
+    dayLoad = { text: `วันนั้นว่าง ${free.length} จาก ${total} คน`, tone: free.length ? 'ok' : 'warn', free };
+  }
+
+  // ── สิ่งที่ต้องทำ ──
+  const previous = request.surveyVisit;
+  const instruction = step === 'acknowledge'
+    ? 'ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่'
+    : step === 'queue'
+      ? `รับเรื่องแล้ว${request.acknowledgedByName ? ` โดย ${request.acknowledgedByName}` : ''} — เลือกวัน เวลา เจ้าหน้าที่ และวันส่งผล`
+      : (previous
+        ? `นัดเดิม ${previous.code || previous.id} ${VISIT_STATUS_LABELS[previous.status] || previous.status} — ลงคิวใหม่`
+        : 'นัดเดิมไม่อยู่บนตาราง (สร้างไม่สำเร็จหรือถูกลบ) — ลงคิวใหม่');
+  const badge = REQUEST_STAGE_BADGES[step];
+  const status = { label: badge.label, tone: badge.tone, text: instruction };
+  const actionLabel = step === 'acknowledge' ? 'รับเรื่อง' : labels.action;
+
+  const row = {
+    type: 'request',
+    id: request.id,
+    request,
+    visit: null,
+    site,
+    bucket: 'waiting',
+    group: 'requests',
+    step,
+    gate: null,
+    ready: false,
+    stale: false,
+    tag,
+    readyText: '',
+    code: request.docNo || request.id,
+    href: `/requests/${encodeURIComponent(request.id)}`,
+    kind: 'survey',
+    kindLabel: VISIT_KIND_LABELS.survey,
+    siteCode: [site?.code, site?.routeZone].filter(Boolean).join(' · '),
+    siteName: site?.name || request.siteId || '',
+    customer: site?.customerName || request.customerName || '',
+    dateLine,
+    timeLine,
+    rel,
+    who,
+    siteLoadText,
+    dayLoad,
+    gateItems: [],
+    status,
+    title: request.title || '',
+    warns: [],
+    origin: REQUEST_ORIGIN_TEXT,
+    actionLabel,
+    actionHint: step === 'acknowledge' ? '' : (labels.hint || ''),
+    /* ⚠️ ด่านของปุ่มรับเรื่อง = ตัวเดียวกับที่ server ใช้ตีกลับ (GatedAction · โชว์เสมอ บอกเหตุตอนกด) */
+    ackBlocker: step === 'acknowledge' ? (acknowledgeRequestError(request) || '') : '',
+    deleteBlocker: '',
+    actions: {
+      acknowledge: step === 'acknowledge',
+      commitDue: step !== 'acknowledge',
+      release: false,
+      open: false,
+      assign: false,
+      report: false,
+      calendar: false,
+      delete: false,
+    },
+  };
+  row.haystack = queueHaystack([
+    row.code, row.kindLabel, tag.label, statusView.label, row.siteCode, row.siteName, row.customer,
+    dateLine, timeLine, rel.text, who.text, who.sub, siteLoadText, dayLoad?.text,
+    status.label, status.text, row.title, row.origin, actionLabel, row.actionHint,
+  ]);
+  return row;
+}
+
+/* ลำดับในกลุ่มคำร้อง: นัดหลุด → รอรับเรื่อง → รอลงคิว · แล้ววันที่ต้องการ (ว่างไว้ท้าย) · แล้ววันส่ง */
+const requestSortKey = (row) => [
+  SURVEY_QUEUE_STEPS.indexOf(row.step),
+  String((row.step === 'requeue' ? row.request.committedDueDate : row.request.requestedDueDate) || '9999-99-99'),
+  String(row.request.submittedAt || ''),
+  String(row.code),
+];
+const byRequestOrder = (a, b) => {
+  const ka = requestSortKey(a);
+  const kb = requestSortKey(b);
+  return (ka[0] - kb[0]) || ka[1].localeCompare(kb[1]) || ka[2].localeCompare(kb[2]) || ka[3].localeCompare(kb[3]);
+};
 
 function relativeText(visit, bucket, win) {
   const date = visit?.scheduledDate;
@@ -139,11 +322,18 @@ function statusOf(visit, bucket) {
  * @param workload     { [siteId]: { assets, packs } }
  * @param crewPeople   เจ้าหน้าที่หน้างาน [{ id, name }] — ใช้นับ "วันนั้นว่างกี่คน"
  * @param teamNames    Map teamCode → ชื่อทีม
+ * @param assignablePeople คนที่มอบหมายงานเข้าไซต์ได้ทั้งฝ่าย [{ id, name }] (`canBeServiceAssignee`) — ใช้นับ
+ *                     "วันนั้นว่างกี่คน" บน **การ์ดคำร้อง** ให้ตรงกับตัวเลือกในโมดัลลงคิว · null = ใช้ crewPeople
+ * @param surveyRequests คำร้องประเมินพื้นที่ที่รอลงคิว (จาก API ตัวเดียวกัน · null = ไม่มีสิทธิ์/โหลดไม่ได้)
+ *                     ⭐ ขึ้นเป็นกลุ่ม "คำร้องรอลงคิว" บนสุดของถังรอจัด (มติเจ้าของ 23/09)
+ * @returns `requestCount` = จำนวนการ์ดคำร้อง (หลังกรองทีม ก่อนค้นหา — กติกาเดียวกับเม็ดถัง)
+ *          ⇒ ตัวเลขบนแถบต้นทางงานอ่านจากตัวนี้ **จึงเท่าจำนวนการ์ดเสมอ** (อาร์เรย์เดียวกัน)
  */
 export function buildScheduleQueue({
   visits = [], sitesById = new Map(), gateContext = {}, workload = {},
   todayIso, teamFilter, crewByUser = new Map(), crewPeople = [], teamNames = new Map(),
   bucket = 'waiting', range = 'all', search = '', farOn = false, within = null,
+  surveyRequests = [], assignablePeople = null,
 } = {}) {
   const win = queueWindow(todayIso);
   const needle = String(search || '').trim().toLowerCase();
@@ -162,7 +352,12 @@ export function buildScheduleQueue({
     if (!code || code === NO_TEAM) return '';
     return teamNames.get(code) || '';
   };
-  const peopleInView = crewPeople.filter((p) => teamViewVisit({ assigneeId: p.id }, teamFilter, crewByUser));
+  const inTeamView = (p) => teamViewVisit({ assigneeId: p.id }, teamFilter, crewByUser);
+  const peopleInView = crewPeople.filter(inTeamView);
+  /* ⭐ การ์ดคำร้องนับคนว่างจาก **คนที่มอบหมายได้** — ชุดเดียวกับตัวเลือกในโมดัลลงคิวที่การ์ดเปิด
+     🐞 UAT 24/09: เคยนับแค่คนหน้างาน ⇒ การ์ด "ว่าง 5 จาก 5 คน" แต่โมดัลให้เลือก 8 คน (งานประเมินมักไปที่หัวหน้า)
+     ⚠️ ไม่ส่งมา = ถอยไปคนหน้างาน (ของเดิม) · แถวร่างของนัดยังนับคนหน้างานตามเดิม */
+  const requestPeopleInView = Array.isArray(assignablePeople) ? assignablePeople.filter(inTeamView) : peopleInView;
 
   const rows = [];
   for (const visit of visits) {
@@ -202,11 +397,13 @@ export function buildScheduleQueue({
       if (visit.assigneeId) {
         const load = loadOn(date).get(visit.assigneeId) || { visits: 0, assets: 0, packs: 0 };
         const total = draft ? load.assets + assets : load.assets;
-        const name = firstName(visit.assigneeName);
+        /* 🐞 (รีวิว 24/09) ชื่อติดคำไทยไม่มีวรรค ⇒ ชื่ออังกฤษอ่านเป็น "วันนั้นVeerachaiรวม 2/12 จุด"
+           ⇒ วรรคหน้า-หลังชื่อเสมอ · ไม่มีชื่อ (มี id แต่ชื่อหาย) = "เจ้าหน้าที่" แทนช่องว่างสองช่อง */
+        const name = firstName(visit.assigneeName) || 'เจ้าหน้าที่';
         dayLoad = {
           text: draft
-            ? `ถ้าปล่อย วันนั้น${name}รวม ${total}/${MAX_ASSETS_PER_DAY} จุด`
-            : `วันนั้นของ${name} ${total}/${MAX_ASSETS_PER_DAY} จุด`,
+            ? `ถ้าปล่อย วันนั้น ${name} รวม ${total}/${MAX_ASSETS_PER_DAY} จุด`
+            : `วันนั้นของ ${name} ${total}/${MAX_ASSETS_PER_DAY} จุด`,
           tone: total > MAX_ASSETS_PER_DAY ? 'warn' : '',
           projected: total,
         };
@@ -233,6 +430,8 @@ export function buildScheduleQueue({
     const origin = originText(visit);
     const ready = group === 'ready';
     const stale = draft && isStaleDraft(visit, win);
+    /* ⭐ ปุ่ม "ลบนัด" (มติเจ้าของ 24/09) — เฉพาะงานนอกรอบที่ยังไม่ปิด · เหตุตอนกดมาจากด่านตัวเดียวกับ API */
+    const deleteAction = visitDeleteButton(visit);
     /* ป้ายหัวการ์ด (เฉพาะรอจัด) + บรรทัดผ่านด่าน — ประกอบที่นี่เพื่อให้ **ค้นเจอทุกอย่างที่ตาเห็น** */
     const tag = !draft ? null
       : stale ? { tone: 'warning', label: 'วันเสนอผ่านแล้ว' }
@@ -242,6 +441,7 @@ export function buildScheduleQueue({
       ? (visitSkipsContractGates(visit) ? 'ผ่านด่าน · งานนี้ไม่ต้องตรวจสัญญา/เงิน' : 'ผ่านด่านครบ')
       : '';
     const row = {
+      type: 'visit',
       id: visit.id,
       visit,
       site,
@@ -268,11 +468,13 @@ export function buildScheduleQueue({
       status,
       warns,
       origin,
+      deleteBlocker: deleteAction?.blocker || '',
       actions: {
         release: draft,
         open: b === 'overdue',
         assign: b === 'scheduled' && !visit.assigneeId,
         report: b === 'closed',
+        delete: !!deleteAction,
       },
     };
     row.haystack = queueHaystack([
@@ -282,6 +484,20 @@ export function buildScheduleQueue({
       dayLoad?.text, row.siteLoadText, tag?.label, readyText,
     ]);
     rows.push(row);
+  }
+
+  /* ── การ์ดคำร้องรอลงคิว (มติเจ้าของ 23/09) ──
+     ⭐ **ตัวกรองทีมไม่ซ่อน** — ใบยังไม่มีเจ้าหน้าที่ (กติกาเดียวกับนัดที่ยังไม่มอบหมาย: ทุกทีมหยิบได้)
+     ⚠️ ใบที่มีนัดที่ยังมีชีวิตในชุดนัดนี้แล้วไม่ขึ้นซ้ำ — ตัวโหลดกรองให้แล้ว แต่ถามซ้ำด้วยนัดชุดที่
+        จอกำลังวาดจริง ⇒ ใบเดียวกันไม่มีทางเป็นสองการ์ด (การ์ดคำร้อง + การ์ดนัด) */
+  const queuedRequests = liveSurveyVisitsByRequest(visits);
+  let requestCount = 0;
+  for (const request of Array.isArray(surveyRequests) ? surveyRequests : []) {
+    if (!request?.id || queuedRequests.has(request.id)) continue;
+    const row = surveyRequestRow(request, { todayIso: win.todayIso, sitesById, live, peopleInView: requestPeopleInView });
+    if (!row) continue;
+    rows.push(row);
+    requestCount += 1;
   }
 
   // ── ตัวเลขบนเม็ดถัง — หลังกรองทีม ก่อนค้นหา · ร่างไกลที่ยังติดด่านไม่นับ (เลขต้องลงถึง 0 ได้) ──
@@ -297,7 +513,10 @@ export function buildScheduleQueue({
   }
 
   // ── แถวของถังที่เปิดอยู่ ──
-  const inWithin = (row) => !within || (row.visit.scheduledDate >= within.from && row.visit.scheduledDate <= within.to);
+  /* ⚠️ ชิปสัปดาห์นับเฉพาะ **ร่าง** ที่เสนอวันในสัปดาห์นั้น (ตัวเลขบนชิปมาจาก `draftsInRange`)
+     ⇒ การ์ดคำร้องซ่อนเมื่อเปิดชิป ไม่งั้นรายการที่ขึ้นมากกว่าตัวเลขบนชิปที่คนเพิ่งกด */
+  const inWithin = (row) => !within || (row.type !== 'request'
+    && row.visit.scheduledDate >= within.from && row.visit.scheduledDate <= within.to);
   const showFar = farOn || !!needle || !!within;
   const listed = rows.filter((row) => {
     if (row.bucket !== bucket) return false;
@@ -319,11 +538,27 @@ export function buildScheduleQueue({
     const tallyKeys = (items, key) => items.filter((r) => r.gateItems.some((g) => g.key === key)).length;
     for (const key of WAITING_GROUPS) {
       const items = listed.filter((r) => r.group === key)
-        .sort((a, b) => (Number(b.stale) - Number(a.stale)) || byDateThenTime(a, b));
+        .sort(key === 'requests'
+          ? byRequestOrder
+          : (a, b) => (Number(b.stale) - Number(a.stale)) || byDateThenTime(a, b));
       if (!items.length) continue;
       let sub = '';
+      if (key === 'requests') {
+        // ลำดับคำบนบรรทัดย่อยเดินตามขั้นของใบ (รับเรื่อง → ลงคิว) แล้วค่อยใบที่นัดหลุด
+        sub = ['acknowledge', 'queue', 'requeue']
+          .map((step) => [SURVEY_QUEUE_STEP_LABELS[step], items.filter((r) => r.step === step).length])
+          .filter(([, n]) => n > 0)
+          .map(([label, n]) => `${label} ${n}`)
+          .join(' · ');
+      }
       if (key === 'ready') sub = 'ผ่านด่านครบ — ปล่อยขึ้นตารางได้เลย';
-      if (key === 'ts') sub = `ขาดเจ้าหน้าที่ ${tallyKeys(items, 'assignee')} · นอกช่วงเข้าไซต์ ${tallyKeys(items, 'access')}`;
+      if (key === 'ts') {
+        /* ⭐ โซนที่ยังไม่จัดสรรจากใบสั่งขาย = งานของ TS ที่หน้า "งานเข้าใหม่" (ข้อสัญญาเจ้าของ TS)
+           ⇒ ในกลุ่มนี้ข้อ `contract` ที่ติดมีได้แค่เหตุนั้น (ข้อสัญญาเหตุอื่นเป็นของ SA ไปอยู่ "รอฝ่ายอื่น") */
+        const unallocated = tallyKeys(items, 'contract');
+        sub = `ขาดเจ้าหน้าที่ ${tallyKeys(items, 'assignee')} · นอกช่วงเข้าไซต์ ${tallyKeys(items, 'access')}`
+          + (unallocated ? ` · ยังไม่จัดสรรโซน ${unallocated}` : '');
+      }
       if (key === 'others') {
         const owners = new Map();
         for (const r of items) for (const g of r.gateItems) if (g.owner && g.owner !== GATE_OWNERS.TS) owners.set(g.owner, (owners.get(g.owner) || 0) + 1);
@@ -332,7 +567,7 @@ export function buildScheduleQueue({
       if (key === 'far') sub = 'รอบบริการสร้างร่างล่วงหน้า 90 วัน ยังไม่ต้องรีบ';
       groups.push({
         key, label: WAITING_GROUP_LABELS[key], sub,
-        tone: key === 'ready' ? 'ok' : key === 'ts' ? 'warn' : 'quiet',
+        tone: key === 'ready' ? 'ok' : (key === 'ts' || key === 'requests') ? 'warn' : 'quiet',
         total: `${items.length} ใบ`, collapsible: key === 'others' || key === 'far', rows: items,
       });
     }
@@ -385,7 +620,7 @@ export function buildScheduleQueue({
   }
 
   const flat = groups.flatMap((g) => g.rows);
-  return { win, counts, rangeCounts, farCount, groups, listedCount: flat.length, rows };
+  return { win, counts, rangeCounts, farCount, requestCount, groups, listedCount: flat.length, rows };
 }
 
 /** ร่างของสัปดาห์ที่ตารางเปิดอยู่ (ไม่ขึ้นกริด — ตารางบอกเป็นข้อความเท่านั้น) */

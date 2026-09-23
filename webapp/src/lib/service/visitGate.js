@@ -36,6 +36,12 @@ export const GATE_STATES = ['ok', 'blocked', 'parked'];
       แล้วสะกดต่างไปตัวเดียว ร่างที่ TS แก้ได้จะไปจมในกลุ่มรอฝ่ายอื่นที่พับไว้ */
 export const GATE_OWNERS = Object.freeze({ SA: 'SA', FN: 'SA → FN', TS: 'TS' });
 
+/* เหตุของข้อสัญญาที่ **TS แก้เองได้** ที่หน้า "งานเข้าใหม่" (มติเจ้าของ 23/09) — ประกาศเป็นค่าคงที่
+   เพราะหน้าที่พาไปแก้ต้องชื่อตรงกับเมนูจริง · `fix` ยังเป็น null (ไม่มีช่องในโมดัลนัดให้แก้)
+   ⇒ การ์ดโชว์เหตุเต็มประโยค ไม่ตัดครึ่งหลังทิ้ง */
+export const UNALLOCATED_ZONE_REASON = 'โซนนี้ยังไม่ถูกจัดสรรจากใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน';
+export const NO_ZONE_SITE_REASON = 'ไซต์นี้ยังไม่มีโซนที่ผูกกับใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน';
+
 /* ⭐ **ปลดด่าน ①② แล้ว 2026-08-31 (PR-C)** — ค่าคงที่ `CONTRACT_PHASE_READY` ถูกถอดทิ้ง
    ทั้งสองข้อตรวจจากข้อมูลจริงแล้ว ไม่มีสถานะ `parked` เหลืออยู่ในสองข้อนี้อีก
 
@@ -90,12 +96,23 @@ export function evaluateVisitGate(visit, {
     const live = zoneTerms.filter((t) => termIsActive(t, pick(ordersById, t.salesOrderId), visitDate));
 
     if (!live.length) {
-      return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.SA,
-        reason: zoneTerms.length
-          ? 'รอบขายของโซนนี้ไม่มีผล ณ วันนัด — ตรวจใบสั่งขายและช่วงวันของรอบ'
-          : 'โซนนี้ยังไม่ถูกจัดสรรจากใบสั่งขาย — ฝ่ายขายต้องผูกงานเข้าโซนก่อน',
-      };
+      /* ⭐ **"ยังไม่จัดสรร" เป็นงานของ TS** (มติเจ้าของ 23/09 · แผนหน้าจัดคิว §7) — คนผูกใบสั่งขาย
+         เข้าโซนคือ TS ที่หน้า "งานเข้าใหม่" (`api/service/intake/bind` = `requireService edit`)
+         🐞 ของเดิมป้ายเป็น SA + "ฝ่ายขายต้อง…" ⇒ ร่างพวกนี้ไปจมกลุ่ม "รอฝ่ายอื่น" ที่พับไว้
+            ทั้งที่คนเดียวที่แก้ได้คือคนที่กำลังจัดคิวอยู่
+         ⚠️ "รอบขายไม่มีผล ณ วันนัด" ยังเป็นของ SA (ใบถูก Rev./หมดช่วง = เรื่องของฝ่ายขาย)
+         ⚠️ `gate` บอกว่าโซนนี้ติดที่ **ข้อไหน** (ข้อสัญญา) แยกจากเจ้าของ — `contractStopOf`/`blockedBy`
+            เลือกโซนด้วยข้อ ไม่ใช่ด้วยสตริงเจ้าของ (ไม่งั้นเปลี่ยนเจ้าของแล้วไซต์ที่ทุกโซนยังไม่จัดสรร
+            จะหาเหตุฝั่งสัญญาไม่เจอ แล้ว **ผ่านด่าน** เงียบ ๆ) */
+      return zoneTerms.length
+        ? {
+          zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
+          reason: 'รอบขายของโซนนี้ไม่มีผล ณ วันนัด — ตรวจใบสั่งขายและช่วงวันของรอบ',
+        }
+        : {
+          zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.TS,
+          reason: UNALLOCATED_ZONE_REASON,
+        };
     }
 
     /* ── ข้อ① สัญญา — ใบแม่ของ term ต้องผูกสัญญาที่มีผลแล้ว ────────────
@@ -109,7 +126,7 @@ export function evaluateVisitGate(visit, {
     const linked = live.filter((t) => contractInForce(contractOf(t)));
     if (!linked.length) {
       return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.SA,
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
         reason: 'ใบสั่งขายที่ครอบโซนนี้ยังไม่ผูกสัญญาที่มีผล — ผูกที่หน้าใบสั่งขาย',
       };
     }
@@ -131,7 +148,7 @@ export function evaluateVisitGate(visit, {
     if (!covered.length) {
       const notYet = spans.includes('before');
       return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.SA,
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
         reason: notYet
           ? 'สัญญาที่ครอบโซนนี้ยังไม่ถึงวันเริ่มมีผล ณ วันนัด — เลื่อนนัด หรือแก้วันเริ่มที่หน้าสัญญา'
           : 'สัญญาที่ครอบโซนนี้หมดอายุก่อนวันนัด — ต่อสัญญาก่อนจึงจะส่งเจ้าหน้าที่ไปได้',
@@ -158,7 +175,7 @@ export function evaluateVisitGate(visit, {
     });
     if (!paid.length) {
       return {
-        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: GATE_OWNERS.FN,
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'payment', owner: GATE_OWNERS.FN,
         reason: moneyStopReason(covered, installmentsByOrderId, visitDate),
       };
     }
@@ -181,20 +198,25 @@ export function evaluateVisitGate(visit, {
      เมื่อทุกโซนติด ผลคือนัดที่ติดเพราะ *เงิน* ขึ้นว่าติด *สัญญา* ด้วย ⇒ SA เปิดไปดู
      สัญญาแล้วไม่เจออะไรผิด · เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย
      ⚠️ บล็อกเฉพาะตอน **ทุกโซนติด** — ติดบางโซนแปลว่านัดยังไปได้ (ตัดโซนนั้นบนใบส่งงาน) */
-  const blockedBy = (owner) => (allBlocked ? blockedZones.find((z) => z.owner === owner) : null);
-  const moneyStop = exempt ? null : blockedBy(GATE_OWNERS.FN);
+  /* ⚠️ เลือกด้วย **ข้อ** (`gate`) ไม่ใช่เจ้าของ — ข้อสัญญามีเจ้าของได้สองฝ่ายแล้ว (SA · TS ของโซนที่ยัง
+     ไม่จัดสรร) ⇒ ผลผ่าน/ไม่ผ่านไม่ขยับ · ข้อสัญญาเลือกเหตุผ่าน `contractStopOf` (เจ้าของไม่พลิกตามลำดับโซน) */
+  const blockedBy = (gate) => (allBlocked ? blockedZones.find((z) => z.gate === gate) : null);
+  const moneyStop = exempt ? null : blockedBy('payment');
   /* 🔴 **ไซต์ที่ไม่มีโซนเลย = ติด ไม่ใช่ผ่าน** — ไม่มีโซนแปลว่าไม่มีอะไรที่ได้รับอนุญาต
      ให้ไปทำ · เคยเขียนพลาดให้ตกไปเป็น "ผ่าน" เพราะ `blockedZones` ว่างพร้อมกัน
      ⇒ นัดที่ไม่มีบริบทอะไรเลยจะหลุดด่านทั้งหมด ซึ่งคือรูที่ด่านนี้เกิดมาเพื่ออุด */
   /* ⚠️ ลำดับสำคัญ: หาเหตุฝั่งสัญญาก่อน · ถ้าไม่มีโซนติดเลยแต่ก็ไม่มีโซนผ่าน แปลว่า
      **ไม่มีโซนอยู่เลย** ⇒ ติดที่ข้อสัญญา · ถ้ามีแต่โซนที่ติดเรื่องเงิน ข้อสัญญาต้อง `ok`
      (เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย) */
-  const contractStop = exempt ? null : (blockedBy(GATE_OWNERS.SA) || (allBlocked && !blockedZones.length ? {
-    reason: 'ไซต์นี้ยังไม่มีโซนที่ผูกกับใบสั่งขาย — ฝ่ายขายต้องจัดสรรงานลงโซนก่อน',
+  /* ⭐ ไซต์ที่ไม่มีโซนเลย = งานของ TS เหมือนโซนที่ยังไม่จัดสรร (โซนเกิดตอนผูกใบสั่งขายที่หน้า "งานเข้าใหม่") */
+  const contractStop = exempt ? null : (contractStopOf(allBlocked ? blockedZones : []) || (allBlocked && !blockedZones.length ? {
+    owner: GATE_OWNERS.TS,
+    reason: NO_ZONE_SITE_REASON,
   } : null));
 
   items.push({
-    key: 'contract', state: contractStop ? 'blocked' : 'ok', owner: GATE_OWNERS.SA,
+    /* เจ้าของตามเหตุที่ติดจริง · ผ่าน = SA ตามเดิม (ป้ายของข้อ) */
+    key: 'contract', state: contractStop ? 'blocked' : 'ok', owner: contractStop?.owner || GATE_OWNERS.SA,
     label: 'ไซต์ผูกสัญญาที่ยังมีผล ณ วันนัด',
     detail: exempt
       ? 'งานสำรวจ/ถอนเครื่องไม่ต้องมีสัญญา (มติผู้ใช้ 2026-08-31)'
@@ -238,6 +260,27 @@ export function evaluateVisitGate(visit, {
   });
 
   return items;
+}
+
+/* เหตุของข้อสัญญาเมื่อทุกโซนติด — **เจ้าของไม่ขึ้นกับลำดับโซน**
+   🐞 รีวิว 24/09: เคยหยิบโซนแรกที่ติดข้อสัญญาตามลำดับโซน (= ลำดับ id ในฐานข้อมูล) ⇒ ไซต์ที่โซนหนึ่ง
+      ยังไม่จัดสรร (TS) อีกโซนติดเหตุของ SA ได้เจ้าของ TS หรือ SA แล้วแต่ลำดับ ⇒ ร่างย้ายกลุ่ม
+      "TS แก้ได้เอง" ↔ "รอฝ่ายอื่น" เอง และปัญหาของฝ่ายที่ไม่ได้ถูกหยิบหายจากการ์ด
+   ⭐ มีเหตุของฝ่ายอื่นปนแม้โซนเดียว = เจ้าของฝ่ายนั้น (TS ปลดเองคนเดียวไม่ได้แน่นอน ⇒ `gateNeedsOthers`
+      ต้องเป็น true) · TS เฉพาะเมื่อทุกโซนที่ติดข้อสัญญาเป็นของ TS
+   ⭐ ปนกัน ⇒ เหตุบอกทั้งสองฝ่าย — เรื่องที่ TS ทำเองได้ (จัดสรรโซนที่เหลือ) ต่อท้าย ไม่ทิ้ง
+   ⚠️ เลือกด้วยข้อ (`gate`) ไม่ใช่เจ้าของ — โซนที่ติดเงินไม่เกี่ยวกับข้อนี้ */
+function contractStopOf(blockedZones) {
+  const contractZones = blockedZones.filter((z) => z.gate === 'contract');
+  if (!contractZones.length) return null;
+  const others = contractZones.find((z) => z.owner !== GATE_OWNERS.TS);
+  if (!others) return contractZones[0];
+  const tsCount = contractZones.filter((z) => z.owner === GATE_OWNERS.TS).length;
+  if (!tsCount) return others;
+  return {
+    ...others,
+    reason: `${others.reason} · อีก ${tsCount} โซนยังไม่ถูกจัดสรร (TS ผูกใบสั่งขายที่หน้า "งานเข้าใหม่")`,
+  };
 }
 
 /* ผ่านด่านไหม — **`parked` ไม่บล็อก** เพราะระบบยังตรวจให้ไม่ได้

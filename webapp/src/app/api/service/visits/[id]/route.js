@@ -1,14 +1,16 @@
 // ── API นัดรายใบ (mig 0188) ──────────────────────────────────────────────
 // PATCH  : แก้นัด · ปิดงาน (status=done) จะ **เสนอ** นัดรอบถัดไปกลับไปให้ผู้ใช้ยืนยัน
-// DELETE : ลบนัด — ใช้ได้เฉพาะนัดที่ยังไม่เกิดขึ้น (ปิดงานแล้วคือประวัติ ห้ามลบ)
+// DELETE : ลบนัด — ใช้ได้เฉพาะ **งานนอกรอบที่ยังไม่มีใครไปถึงไซต์** (มติเจ้าของ 24/09 · กติกาเดียวกับปุ่ม
+//          "ลบนัด" บนจอ → `lib/service/visitDelete.js`) · แอดมินข้ามได้ด้วย ?force=1
 import { recordAudit } from '@/lib/audit';
 import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, conflict, forbidden } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import {
-  VISIT_STATUS_LABELS, canDeleteVisit, holdsRequestSlot, isClosedVisit, isLiveVisit,
+  VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit, isLiveVisit,
 } from '@/lib/service/visitStatus';
+import { VISIT_DELETE_BLOCK_LABELS, VISIT_DELETE_CREW_ERROR, visitDeleteBlock } from '@/lib/service/visitDelete';
 import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
 import {
@@ -16,7 +18,7 @@ import {
 } from '@/lib/service/survey';
 import { loadSurveyFieldState, loadSurveySendBackState } from '@/lib/service/surveyRepo';
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
-import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
+import { findPlan, loadVisitItems, requireVisit, visitFieldRecordCount } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
@@ -560,10 +562,20 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
           ลูกหายตามเอง · แอดมินที่ต้องล้างนัดทดสอบ/นัดที่บันทึกผิดจึงติดอยู่ตรงนี้ที่เดียว
        ⚠️ ยังไม่ใช่การเปิดฟรี — ต้องเป็น admin **และ** ส่ง ?force=1 มาโดยตั้งใจ
           (จอถามยืนยันก่อนเสมอ · ปุ่มปกติไม่ส่งธงนี้) */
+    /* ⭐ **เจ้าหน้าที่หน้างานลบไม่ได้** แม้เป็นงานของตัวเอง — `requireVisit(edit)` ปล่อย Operation เข้ามาเพื่อ
+       ปิดงานของตัวเอง (`ownWorkOnly`) แต่การเอางานออกจากตารางเป็นเรื่องของแผน (มติ 2026-08-30)
+       ⇒ ลบได้เฉพาะคนที่แก้งานบริการได้ทั้งฝ่าย (`canEditService`) ชุดเดียวกับที่จอโชว์ปุ่ม */
+    if (access.ownWorkOnly) return forbidden(VISIT_DELETE_CREW_ERROR);
     const force = isForceRequest(req) && canForceDelete(user);
-    if (!canDeleteVisit(before) && !force) {
-      return conflict('นัดที่เจ้าหน้าที่ไปถึงไซต์แล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
-    }
+    /* ⭐ **กติกาเดียวกับปุ่ม "ลบนัด"** (มติเจ้าของ 24/09 · `visitDeleteBlock`) — ลบได้เฉพาะงานนอกรอบที่ยังไม่มี
+       ใครไปถึงไซต์ · นัดของรอบ/ใบคำร้อง/นัดถอนจากเรื่องไม่ต่อสัญญา/นัดที่ไปแล้ว ⇒ 409 พร้อมทางที่ถูก (ยกเลิกนัด)
+       ⚠️ ห้ามเขียนเงื่อนไขซ้ำที่นี่ — ปุ่มกับ API ต้องพูดเรื่องเดียวกันเสมอ */
+    /* ⭐ ร่องรอยการไปที่อยู่นอกแถวนัด (ผลรายเครื่อง · ของที่ใช้) — จอไม่รู้ route จึงนับให้ด่านตัวเดียวกัน
+       🐞 (รีวิว 24/09) ใบที่ปิดแล้วถูกเปิดกลับ (ทำไม่ได้ → ยกเลิก) เคยลบได้ แล้ว CASCADE กวาดผลรายเครื่องไปด้วย */
+    const fieldRecords = await visitFieldRecordCount(supabase, id);
+    if (fieldRecords.error) return fail(fieldRecords.error.message, 500);
+    const block = visitDeleteBlock(before, { fieldRecords: fieldRecords.count });
+    if (block && !force) return conflict(block.message);
 
     const { error } = await supabase.from('service_visits').delete().eq('id', id);
     if (error) return fail(error.message, 500);
@@ -576,7 +588,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'delete', entityType: 'service_visit', entityId: id, before,
       // ⚠️ ต้องอ่านออกจาก audit ว่าใบไหนถูกลบด้วยสิทธิ์พิเศษ — ไม่งั้นประวัติที่หายไป
       //    จะดูเหมือนการลบตามปกติทั้งที่ข้ามด่านมา
-      summary: `ลบนัดเข้าบริการ ${before.code || id} · ${before.scheduledDate}${force && !canDeleteVisit(before) ? ' (แอดมินข้ามด่านประวัติ)' : ''}`,
+      summary: `ลบนัดเข้าบริการ ${before.code || id} · ${before.scheduledDate}${force && block ? ` (แอดมินข้ามด่าน${VISIT_DELETE_BLOCK_LABELS[block.code]})` : ''}`,
       request: req,
     });
     return ok({ ok: true });

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SURVEY_VISIT_KIND, createSurveyVisit, moveSurveyVisit,
-  surveyScheduleError, surveyVisitInsertError,
+  surveyScheduleError, surveyScheduleGaps, surveyVisitInsertError,
 } from './surveyVisit.js';
 import { REQUEST_SLOT_VISIT_STATES } from './visitStatus.js';
 import { VISIT_KINDS, VISIT_KINDS_MANUAL, VISIT_KIND_LABELS, normalizeVisitInput } from './rounds.js';
@@ -50,6 +50,37 @@ test('เวลาไม่บังคับ — "ไปทั้งวัน" 
 
 test('🔴 ใบที่ไม่มีสถานที่ ลงคิวไม่ได้ — นัดต้องรู้ว่าไปที่ไหน', () => {
   assert.match(surveyScheduleError(schedule, { id: 'DR-1' }), /ไม่มีสถานที่/);
+});
+
+/* ⭐ **ทุกข้อที่ขาดในครั้งเดียว** (มติเจ้าของ 23/09 · โมดัลลงคิวกลางของสองหน้า) — ปุ่มลงคิวบอกครบ
+   ไม่ใช่ทีละข้อ · แต่ server ยังตอบข้อแรกข้อเดียว **ข้อความและลำดับเดิมเป๊ะ** */
+test('⭐ surveyScheduleGaps คืนทุกข้อที่ขาด · surveyScheduleError = ข้อแรกของลิสต์เดียวกัน', () => {
+  assert.deepEqual(surveyScheduleGaps({}, { id: 'DR-1' }), [
+    'ใบนี้ไม่มีสถานที่ — ลงคิวไม่ได้',
+    'ต้องระบุวันนัดเข้าพื้นที่',
+    'ต้องเลือกเจ้าหน้าที่ผู้รับผิดชอบ',
+    'ต้องระบุวันที่จะส่งผลประเมิน',
+  ]);
+  assert.deepEqual(surveyScheduleGaps({ committedDueDate: '2026-09-08', committedDueTime: '99:99', committedResultDate: '2026-09-07' }, request), [
+    'ต้องเลือกเจ้าหน้าที่ผู้รับผิดชอบ',
+    'เวลานัดไม่ถูกต้อง',
+    'วันที่จะส่งผลประเมินต้องไม่มาก่อนวันนัดเข้าพื้นที่',
+  ]);
+  assert.deepEqual(surveyScheduleGaps(schedule, request), []);
+  assert.deepEqual(surveyScheduleGaps(null, request).length, 3, 'body ว่างไม่ระเบิด');
+  /* ข้อความแรกที่ server ตอบ = ของเดิมทุกกรณี (ลำดับ: สถานที่ → วัน → คน → เวลา → วันส่งผล) */
+  const cases = [
+    [{}, { id: 'DR-1' }, 'ใบนี้ไม่มีสถานที่ — ลงคิวไม่ได้'],
+    [{}, request, 'ต้องระบุวันนัดเข้าพื้นที่'],
+    [{ committedDueDate: '2026-09-08' }, request, 'ต้องเลือกเจ้าหน้าที่ผู้รับผิดชอบ'],
+    [{ ...schedule, committedDueTime: '99:99', committedResultDate: '' }, request, 'เวลานัดไม่ถูกต้อง'],
+    [{ ...schedule, committedResultDate: '' }, request, 'ต้องระบุวันที่จะส่งผลประเมิน'],
+    [schedule, request, null],
+  ];
+  for (const [body, req, first] of cases) {
+    assert.equal(surveyScheduleError(body, req), first, JSON.stringify(body));
+    assert.equal(surveyScheduleGaps(body, req)[0] ?? null, first);
+  }
 });
 
 /* ตัวปลอมของ "สร้างนัด" — ต้องตอบได้ทั้งการ *ถามหานัดเปิดเดิม* (from/select/…)

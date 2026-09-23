@@ -404,7 +404,8 @@
 
 .scopeNote { color: var(--text-3); font-size: var(--fs-5); }
 
-/* ต้นทางของงาน — ลิงก์ไปคิวของหน้าอื่น + เลขเดียวกับป้ายเมนู (ไม่ก๊อปคิวมาไว้ที่นี่) */
+/* ต้นทางของงาน — ลิงก์ไปคิวของหน้าอื่น · งานเข้าใหม่ = เลขเดียวกับป้ายเมนู · คำร้อง = จำนวนการ์ดคำร้อง
+   บนหน้านี้ (มติเจ้าของ 23/09 — คำร้องรอลงคิวขึ้นเป็นการ์ดในแท็บรอจัดด้วย) */
 .upstream {
   display: flex;
   flex-wrap: wrap;
@@ -426,6 +427,26 @@
   font-weight: var(--fw-bold);
   line-height: var(--lh-thai);
   font-variant-numeric: tabular-nums;
+}
+
+/* ตัวเลขคำร้องรอลงคิวเป็นปุ่ม — กดแล้วพาไปกลุ่มการ์ดบนหน้านี้ (หน้าตาเม็ดเลขเดิม) */
+.upJump {
+  /* เป้ากดขั้นต่ำ 24px (WCAG 2.2 · 2.5.8) — เม็ดเลขเดิมสูงแค่ความสูงบรรทัดตัวเล็ก */
+  min-width: var(--space-6);
+  min-height: var(--space-6);
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.upJump:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+/* นับไม่ได้ ≠ ศูนย์ — คำเตือนแทนเม็ดเลข */
+.upError {
+  margin-inline-start: var(--space-1);
+  color: var(--amber);
+  font-size: var(--fs-5);
 }
 
 .noticeActions {
