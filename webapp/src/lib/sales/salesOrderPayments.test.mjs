@@ -1123,6 +1123,49 @@ test('ล็อกของใบยกเลิกผ่านด่านเ�
   assert.match(installmentActionError(pending, 'report', FN_STAFF, { ...opts('report'), paidOn: '2026-09-23' }), /ใบยกเลิกแล้ว/);
 });
 
+// ── ร่างที่ QT ถูกถอด Won แล้ว (ร่างที่ถูกกู้คืนจากการยกเลิก) ─────────────────────────────────
+/* 🐞 SO-26080039-0 (18/08): ยกเลิก → ถอด Won ของ QT-26080037-4 → ออก QT-5 → admin กู้คืนใบเดิมเป็นร่าง → ออก SO-26080043-0
+   จาก QT-5 · งวดของร่างที่กู้คืนตรึงยอดมาตั้งแต่ตอนเคยอนุมัติ ⇒ บัญชีรับรองสลิปเดียวกันได้บนสองใบ
+   ⭐ ร่างแบบนี้ยื่นอนุมัติไม่ได้อยู่แล้ว (ด่านยื่นบังคับ QT = accepted) ⇒ งวดของมันเหลือแค่ทางเก็บกวาดของบัญชี */
+const DEAD_QT = (status, extra = {}) => PIPE(status, { quotation: { quoteNumber: 'QT-26080037-4', status: 'revised' }, ...extra });
+
+test('ร่าง/รออนุมัติ/ตีกลับ ที่ QT ไม่ใช่ Won แล้ว: เหลือถอนคำรับรอง/ตีกลับ/ดึงกลับ/ล้างใบกำกับ · ที่เหลือบล็อกพร้อมบอกเลข QT', () => {
+  for (const status of ['draft', 'pending_approval', 'rejected']) {
+    for (const action of ['reject', 'unconfirm', 'withdraw', 'tax-invoice-clear']) {
+      assert.equal(pipelineInstallmentLock(DEAD_QT(status), action), null, `${status}/${action}`);
+    }
+    for (const action of ['report', 'confirm', 'schedule', 'coverage', 'link', 'unlink', 'tax-invoice', 'refund', 'carry', 'ไม่รู้จัก', undefined]) {
+      assert.equal(pipelineInstallmentLock(DEAD_QT(status), action),
+        'QT-26080037-4 ไม่ได้เป็น Won แล้ว — ใบนี้เป็นร่างที่ใช้ต่อไม่ได้ งวดเหลือให้บัญชีถอนคำรับรอง/ตีกลับ และผู้แจ้งดึงกลับการแจ้งเท่านั้น',
+        `${status}/${action}`);
+    }
+  }
+  // QT ยัง Won (ร่างปกติ · ร่าง Rev. ตามมติ D3) = ไม่ล็อก
+  for (const status of ['draft', 'pending_approval', 'rejected']) {
+    assert.equal(pipelineInstallmentLock(PIPE(status, { quotation: { quoteNumber: 'QT-1', status: 'accepted' } }), 'report'), null, status);
+  }
+  // ใบที่อนุมัติแล้ว/ย้อนการอนุมัติ ไม่ถูกตัดสินด้วย QT (QT ของใบที่ยังมีชีวิตถอด Won ไม่ได้อยู่แล้ว)
+  for (const status of ['approved', 'approval_revoked']) {
+    assert.equal(pipelineInstallmentLock(DEAD_QT(status), 'report'), null, status);
+  }
+  // ใบยกเลิกยังใช้กติกาของใบยกเลิก (ไม่ถูกคำนี้ทับ)
+  assert.match(pipelineInstallmentLock(DEAD_QT('cancelled'), 'report') || '', /^ใบยกเลิกแล้ว/);
+  assert.equal(pipelineInstallmentLock(DEAD_QT('cancelled'), 'confirm'), null);
+  // ใบย้อนหลังไม่ผ่านตัวนี้
+  assert.equal(pipelineInstallmentLock({ origin: 'historical', status: 'draft', quotation: { status: 'revised' } }, 'report'), null);
+});
+
+test('ร่างที่ QT ไม่ใช่ Won: บัญชีรับรองเงินบนร่างนี้ไม่ได้ แต่ถอนคำรับรองที่รับรองไปแล้วได้ (ทางเก็บกวาด SO-26080039-0)', () => {
+  const order = DEAD_QT('draft');
+  const reported = frozen({ id: 'r', seq: 1, status: 'reported', amount: 100 });
+  const confirmed = frozen({ id: 'c', seq: 2, status: 'confirmed', amount: 100, confirmedAt: '2026-08-18T06:53:36Z' });
+  const rows = [reported, confirmed];
+  const opts = (action) => ({ rows, orderTotal: 200, orderLock: pipelineInstallmentLock(order, action) });
+  assert.match(installmentActionError(reported, 'confirm', FN_STAFF, opts('confirm')), /ไม่ได้เป็น Won แล้ว/);
+  assert.equal(installmentActionError(reported, 'reject', FN_STAFF, { ...opts('reject'), reason: 'ซ้ำกับ SO-26080043-0 งวด 1' }), null);
+  assert.equal(installmentActionError(confirmed, 'unconfirm', FN_STAFF, { ...opts('unconfirm'), reason: 'ซ้ำกับ SO-26080043-0 งวด 1' }), null);
+});
+
 // ── POST เริ่มติดตาม: ใบที่ถูกแทน/ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม ─────────────────────────────────
 test('installmentStartBlock: ใบ revised ถูกปฏิเสธด้วยคำของตัวเอง · ยกเลิก/ตีกลับคงคำเดิม · ใบที่ยังเดินได้ผ่าน', () => {
   assert.equal(installmentStartBlock({ status: 'revised' }), 'งวดของใบนี้ย้ายไปใบ Rev. แล้ว');
@@ -1132,6 +1175,9 @@ test('installmentStartBlock: ใบ revised ถูกปฏิเสธด้ว
   for (const status of ['draft', 'pending_approval', 'approved', 'approval_revoked']) {
     assert.equal(installmentStartBlock({ status }), null, status);
   }
+  // ร่างที่ QT ถูกถอด Won แล้ว — สร้างงวดชุดใหม่ให้ใบที่ใช้ต่อไม่ได้ = ของผี
+  assert.equal(installmentStartBlock(DEAD_QT('draft')), 'QT-26080037-4 ไม่ได้เป็น Won แล้ว — ใบนี้เป็นร่างที่ใช้ต่อไม่ได้');
+  assert.equal(installmentStartBlock(PIPE('draft', { quotation: { status: 'accepted' } })), null);
 });
 
 // ── optimistic lock ของ PATCH งวด ────────────────────────────────────────────────────────

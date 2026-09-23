@@ -41,7 +41,7 @@ import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
   LEDGER_CANCELLED_TAG, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
   LEDGER_STATUS, LEDGER_STATUS_KEYS, LEDGER_STRANDED_TITLE, groupAsOrder, groupLedgerBuckets, groupLedgerByOrder,
-  groupNote, ledgerSortDir, pendingConfirmations, pendingStranded, pendingTaxInvoices, sortLedgerGroups,
+  groupNote, ledgerRowLock, ledgerSortDir, pendingConfirmations, pendingStranded, pendingTaxInvoices, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
@@ -469,7 +469,9 @@ export default function FinancePaymentsPage() {
           >
             {actionError ? <StatusNotice tone="error" role="alert">{actionError}</StatusNotice> : null}
             <div className={styles.queue}>
-              {queueShown.map((row) => (
+              {queueShown.map((row) => {
+                const confirmLock = ledgerRowLock(row, "confirm");
+                return (
                 <div key={row.id} className={`${styles.qrow} ${row.overdue ? styles.qrowLate : ""}`.trim()}>
                   <div className={styles.qmain}>
                     <div>
@@ -505,7 +507,7 @@ export default function FinancePaymentsPage() {
                     </span>
                   </div>
                   <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
-                  <Button size="sm" tone="primary" disabled={acting} onClick={() => setConfirmFor(row)}>
+                  <Button size="sm" tone="primary" disabled={acting || !!confirmLock} title={confirmLock || undefined} onClick={() => setConfirmFor(row)}>
                     ยืนยันว่าเงินเข้า
                   </Button>
                   {/* ตีกลับเป็นการถอย ไม่ใช่ก้าวถัดไป ⇒ ปุ่มรอง ไม่ใช่ปุ่มเด่น */}
@@ -513,7 +515,8 @@ export default function FinancePaymentsPage() {
                     ตีกลับ
                   </Button>
                 </div>
-              ))}
+                );
+              })}
               {queue.length > QUEUE_PREVIEW && (
                 <div className={styles.qmore}>
                   <Button size="sm" variant="quiet" onClick={() => setQueueOpen((v) => !v)}>
@@ -536,7 +539,9 @@ export default function FinancePaymentsPage() {
             subtitle="เงินเข้าแล้วแต่ยังไม่ได้บันทึกใบกำกับภาษี — บันทึกเลขที่ วันที่ และแนบไฟล์ได้จากที่นี่"
           >
             <div className={styles.queue}>
-              {invoiceShown.map((row) => (
+              {invoiceShown.map((row) => {
+                const invoiceLock = ledgerRowLock(row, "tax-invoice");
+                return (
                 <div key={row.id} className={styles.qrow}>
                   <div className={styles.qmain}>
                     <div>
@@ -560,11 +565,12 @@ export default function FinancePaymentsPage() {
                     </span>
                   </div>
                   <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
-                  <Button size="sm" tone="primary" disabled={acting} onClick={() => setInvoiceFor(row)}>
+                  <Button size="sm" tone="primary" disabled={acting || !!invoiceLock} title={invoiceLock || undefined} onClick={() => setInvoiceFor(row)}>
                     บันทึกใบกำกับ
                   </Button>
                 </div>
-              ))}
+                );
+              })}
               {invoiceQueue.length > QUEUE_PREVIEW && (
                 <div className={styles.qmore}>
                   <Button size="sm" variant="quiet" onClick={() => setInvoiceQueueOpen((v) => !v)}>

@@ -67,6 +67,7 @@ import {
   cancelReasonLabel,
   isCustomerCancelReason,
   salesOrderAmountKind,
+  salesOrderRestoreBlock,
 } from "@/lib/sales/salesOrderWorkflow";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { currentMonth, formatMonthLabel } from "@/lib/datePeriods";
@@ -936,6 +937,8 @@ export default function SalesOrderDetailPage() {
   const hasServiceRounds = orderHasServiceRounds(order, order?.lines);
   /* ใบที่ยกเลิกแล้วเงินยกไป/คืนลูกค้าแล้ว = กู้คืนไม่ได้ (PR3 · mig 0378) — ตัวเดียวกับที่ route ใช้ปฏิเสธ (คำใบ้ของปุ่ม) */
   const restoreMoneyBlock = cancelledMoneyRestoreBlock(installments, order?.carriedAway);
+  /* QT ต้องยัง Won (ตัวเดียวกับที่ route ใช้ · ใบพี่น้องของ QT เดียวกัน route อ่านสดเอง — หน้าไม่มีรายการนั้น) */
+  const restoreBlock = restoreMoneyBlock || salesOrderRestoreBlock(order);
   /* 🔑 **เส้นบริการ — กว้างกว่า และตั้งใจให้กว้าง** (ดูเหตุผลเต็มที่ `orderOnServiceLine`)
      วัดจริง 08/09: ใบบนเส้นบริการ 30 ใบ แต่เข้าเกณฑ์แคบแค่ 8 ⇒ อีก 22 ใบเปิดแท็บสัญญา
      ไม่ได้เลย ทั้งที่เป็นงานบริการจริง และสัญญาคือด่านแรกของทั้งเส้น */
@@ -1307,8 +1310,8 @@ export default function SalesOrderDetailPage() {
     /* ⛔ PR3 (mig 0378): เงินของใบยกไปใบใหม่/คืนลูกค้าแล้ว = กู้คืนไม่ได้ — ปุ่มโชว์แล้วบอกเหตุ (ตัวเดียวกับที่ API ปฏิเสธ)
        ⚠️ คำใบ้จากข้อมูลที่หน้าโหลดมา · route อ่านสดแบบโยน error อีกชั้น */
     { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin" && !isHistoricalOrder(order),
-      disabled: !!restoreMoneyBlock,
-      disabledReason: restoreMoneyBlock || undefined,
+      disabled: !!restoreBlock,
+      disabledReason: restoreBlock || undefined,
       onClick: () => requestAction("restore") },
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
     /* ── ขั้นบัญชีตรวจใบ (mig 0250) ────────────────────────────────────────
