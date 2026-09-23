@@ -455,10 +455,10 @@ export default function QuotationEditorPage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
   const doAccept = () => setWonOpen(true);
-  // ย้อนการรับ = เครื่องมือ supervisor/แอดมินกรณีรับใบผิดก่อนมี SO — มี SO ที่ยังไม่
-  // ยกเลิกอยู่ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ); เหตุผลบังคับ 10–500 ตัวอักษร
+  // ย้อนการรับ = เครื่องมือ supervisor/แอดมินกรณีรับใบผิดก่อนมี SO — มี SO ที่ยังมีชีวิต (ไม่ยกเลิก ·
+  // ไม่ถูกแทนด้วย Rev.) ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ · 0380); เหตุผลบังคับ 10–500 ตัวอักษร
   const canUnaccept = quote?.status === "accepted" && canUnacceptQuotation(role)
-    && !quote.hasNonCancelledSalesOrder;
+    && !quote.hasLiveSalesOrder;
   const unacceptReasonValidation = unacceptForm ? unacceptReasonError(unacceptForm.reason) : "";
   const doUnaccept = async () => {
     if (unacceptReasonValidation) return;

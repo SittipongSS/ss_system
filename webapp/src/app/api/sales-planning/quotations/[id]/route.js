@@ -70,10 +70,10 @@ async function loadQuote(supabase, id) {
     if (salesOrderError) throw salesOrderError;
     const rows = salesOrders || [];
     data.salesOrder = rows.find(isLiveSalesOrder) || rows[0] || null;
-    // ด่าน "ย้อนการรับ" ต้องดู **ทุกใบ** กติกาเดียวกับ RPC unaccept (0138/0170: มีใบที่ไม่ใช่
-    // cancelled สักใบ = บล็อก) — ดูแค่ใบที่เลือกโชว์ไม่พอ: สาย Rev. ที่ฉบับใหม่ถูกยกเลิก ใบที่
-    // เลือกโชว์คือใบยกเลิก แต่ใบต้นทาง 'revised' ยังค้าง ⇒ ปุ่มขึ้นแล้วกดไปโดน 409 ทุกครั้ง
-    data.hasNonCancelledSalesOrder = rows.some((row) => row.status !== 'cancelled');
+    // ด่าน "ย้อนการรับ" ต้องดู **ทุกใบ** กติกาเดียวกับ RPC unaccept — มีใบที่ยังมีชีวิตสักใบ = บล็อก
+    // ⭐ 0380: "ยังมีชีวิต" = ไม่ cancelled และไม่ถูกแทน (isLiveSalesOrder) — เดิมนับใบต้นทาง 'revised'
+    //   ด้วย ⇒ สาย Rev. ที่ฉบับใหม่ถูกยกเลิกโดยไม่ถอยดีล = ดีลติด Won ตลอดไป (เจอตอน UAT 24/09)
+    data.hasLiveSalesOrder = rows.some(isLiveSalesOrder);
   }
   return data;
 }
