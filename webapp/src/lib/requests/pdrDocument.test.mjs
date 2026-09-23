@@ -330,3 +330,32 @@ test('สินค้ายิ่งมาก หน้ายิ่งเพิ�
   const many = sheets(render({ request: { ...NPD, targets: Array.from({ length: 8 }, () => TARGET) } }));
   assert.ok(many > one, `8 สินค้าต้องใช้หน้ามากกว่า 1 สินค้า (${many} vs ${one})`);
 });
+
+// 🐞 ม-151 · #1791 ต่อไทย/ต่างชาติเข้า 1.8 ผ่าน `pdrFieldText` แต่เอกสารวาดช่องเลือกเป็นกล่องติ๊กเอง
+//    ⇒ จอสรุปขึ้น "ลูกค้าเก่า · ลูกค้าไทย" แต่กระดาษไม่มีไทย/ต่างชาติเลย (ผู้ใช้ทักจาก RQ-FD-26090194)
+test('1.8 บนกระดาษ: กล่องติ๊กใหม่/เก่า + ไทย/ต่างชาติ ติ๊กตามทะเบียนลูกค้า', () => {
+  const tick = (html, label) => {
+    const m = html.match(new RegExp(`<li( class="on")?>[^<]*${label}</li>`));
+    assert.ok(m, `ไม่เจอตัวเลือก ${label}`);
+    return !!m[1];
+  };
+  const foreign = render({
+    request: { kind: 'scent_dev', docNo: 'SB-1', customerName: 'X', status: 'pending', pdrCustomerKind: 'existing',
+      pdrContext: { customerOrigin: 'foreign' } },
+  });
+  assert.equal(tick(foreign, 'ลูกค้าเก่า'), true);
+  assert.equal(tick(foreign, 'ลูกค้าใหม่'), false);
+  assert.equal(tick(foreign, 'ลูกค้าต่างชาติ'), true);
+  assert.equal(tick(foreign, 'ลูกค้าไทย'), false);
+  const thai = render({
+    request: { kind: 'formula_dev', variant: 'npd', docNo: 'RQ-FD-1', customerName: 'X', status: 'pending',
+      pdrCustomerKind: 'existing', pdrContext: { customerOrigin: 'thai' } },
+  });
+  assert.equal(tick(thai, 'ลูกค้าไทย'), true);
+  assert.equal(tick(thai, 'ลูกค้าต่างชาติ'), false);
+  // ใบที่ยังไม่รู้ลูกค้า = กล่องว่างทั้งคู่ (ไม่เดาว่าเป็นไทย)
+  const unknown = render();
+  assert.equal(tick(unknown, 'ลูกค้าไทย'), false);
+  assert.equal(tick(unknown, 'ลูกค้าต่างชาติ'), false);
+});
+

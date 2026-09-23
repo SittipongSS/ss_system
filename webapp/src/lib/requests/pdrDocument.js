@@ -205,10 +205,18 @@ const notedOptionCost = (field, request) => {
   return COST.option * lines;
 };
 
+/* ⭐ ช่องเลือกที่ต่อท้ายด้วยค่าจากทะเบียน (`withContext` · 1.8 ใหม่/เก่า + ไทย/ต่างชาติ · ม-151)
+   🐞 **เอกสารวาดช่องเลือกเป็นกล่องติ๊กเอง ไม่ผ่าน `pdrFieldText`** ⇒ #1791 ขึ้นไทย/ต่างชาติบนจอสรุป/ฟอร์ม
+      แต่กระดาษ PDR ไม่มีเลย (ผู้ใช้ทักจาก RQ-FD-26090194) · วาดเป็นกล่องติ๊กชุดที่สองต่อท้าย ค่าติ๊กตามทะเบียน */
+function contextOptionList(field, context) {
+  if (!field.withContext) return '';
+  return optionList(field.withContext.options || [], context?.[field.withContext.key]);
+}
+
 function fieldValueHtml(field, request, context) {
   if (field.type === 'multi' && NOTES_OF[field.key]) return notedOptionList(field, request);
   if (field.type === 'select' || field.type === 'multi') {
-    return optionList(field.options || [], request[field.column]);
+    return optionList(field.options || [], request[field.column]) + contextOptionList(field, context);
   }
   const text = pdrFieldText(field, request, context);
   if (field.type === 'tick') return tickLine(field, text);
@@ -218,7 +226,7 @@ function fieldValueHtml(field, request, context) {
 function fieldValueCost(field, request, context) {
   if (field.type === 'multi' && NOTES_OF[field.key]) return notedOptionCost(field, request);
   if (field.type === 'select' || field.type === 'multi') {
-    return COST.option * (field.options || []).length;
+    return COST.option * ((field.options || []).length + (field.withContext?.options || []).length);
   }
   if (field.type === 'tick') return COST.tick + wrapCost(pdrFieldText(field, request, context));
   return COST.row + (field.hint ? COST.note : 0) + wrapCost(pdrFieldText(field, request, context));
