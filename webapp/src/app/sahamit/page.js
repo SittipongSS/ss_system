@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LayoutDashboard, LineChart, ShoppingCart, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Tags, Ruler, Package, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
+import EmptyState from "@/components/ui/EmptyState";
+import Button from "@/components/ui/Button";
 import KpiCard from "@/components/ui/KpiCard";
 import Tabs from "@/components/ui/Tabs";
 import DetailRow from "@/components/ui/DetailRow";
@@ -53,10 +56,51 @@ function UnitToggle({ unit, onChange }) {
 
 export default function SahamitOverview() {
   const router = useRouter();
-  const { data: rounds, loading: l1 } = useApiList("/api/sahamit/forecast/rounds");
-  const { data: pos, loading: l2 } = useApiList("/api/sahamit/po");
-  const { data: coverages, loading: l3 } = useApiList("/api/sahamit/coverage");
-  const { data: products, loading: l4 } = useApiList("/api/sahamit/products");
+  const { data: rounds, loading: l1, error: e1, staleError: s1, loaded: ld1, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: pos, loading: l2, error: e2, staleError: s2, loaded: ld2, reload: reloadPos } = useApiList("/api/sahamit/po");
+  const { data: coverages, loading: l3, error: e3, staleError: s3, loaded: ld3, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
+  const { data: products, loading: l4, error: e4, staleError: s4, loaded: ld4, reload: reloadProducts } = useApiList("/api/sahamit/products");
+
+  /* ── โหลดพัง = ทั้งจอไม่ครบ ไม่ใช่แค่แผงใดแผงหนึ่ง ────────────────────────────
+     ⭐ **ป้ายเดียวคลุมทั้งจอ ไม่แยกรายแผง** — ต่างจากหน้ารายการที่หนึ่งแผงมีหนึ่งตาราง
+     จอนี้ทุกตัวเลข (KPI · ป้ายสถานะ · กราฟ · ทั้งห้าแท็บ) ออกจาก `dashboardKpis` /
+     `buildReconMatrix` ก้อนเดียวที่กินทั้งสี่ลิสต์พร้อมกัน ⇒ ไม่มีแผงไหนเป็นของลิสต์ใด
+     ลิสต์หนึ่ง ป้ายรายแผงจึงตอบไม่ได้ว่าตัวเลขไหนยังเชื่อได้
+
+     และเพราะมันฟิวส์กัน ขาดก้อนเดียวก็ **เพี้ยนพร้อมกันทั้งจอแบบดูไม่ออก** — เช่น
+     coverage หาย ช่องที่ "ชดเชยข้ามเดือน" จะกลายเป็น "รอ PO" ⇒ "จุดที่ต้องตาม" พองขึ้น
+     เป็นตัวเลขที่ดูสมเหตุสมผลทุกประการ · จึงซ่อนเนื้อทั้งก้อนแทนการโชว์ 0 / % ที่ผิด
+
+     ⚠️ **สองคำถามคนละข้อ** (กติกาเดียวกับ /tax และ /tax/filings) —
+       1. **ขึ้นป้ายไหม** = มี `error` ก็ขึ้น · `apiCache` อยู่ระดับโมดูล อายุเท่าแท็บ
+          ⇒ เดินไป /sahamit/po แล้วกดกลับ จอวาดตัวเลขเก่าจากแคชได้ครบทั้งใบก่อน
+          แล้วรอบใหม่ค่อยล้ม · ถ้าผูกป้ายไว้กับ "ว่างด้วย" จอจะยืนยันยอดของเมื่อวาน
+          เป็นตัวหนา ๆ โดยไม่มีอะไรบอกเลย = บั๊กตัวเดิมที่งานนี้ตั้งใจฆ่า
+       2. **ซ่อนเนื้อไหม** = error **คู่กับ** ไม่มีของในมือ (`blocked`) · ลิสต์ที่ว่างเพราะ
+          ยังไม่มีข้อมูลจริง (coverage ของระบบที่เพิ่งเริ่ม) ต้องอ่านว่าว่างตามเดิม */
+  /* 🪤 `empty` = **ไม่มีของในมือ** (`loaded` ของ useApiList) ไม่ใช่ `!list.length` —
+     บน prod `/api/sahamit/coverage` ตอบ `200 []` อยู่แล้วตามปกติ ⇒ วัดด้วยความยาวลิสต์
+     เมื่อไร "ชดเชยข้ามเดือนตอบ 500" กับ "ชดเชยข้ามเดือนว่างตามจริง" จะแยกไม่ออก แล้ว
+     ทั้งแดชบอร์ดหายทั้งใบ ทั้งที่ตัวเลขชุดเดียวกันเป๊ะถูกวาดเต็มใบตอนมันตอบ [] · และแคช
+     ระดับโมดูลทำให้เดินกลับเข้าจอนี้แล้วยังมีของครบในมือ — รอบใหม่ล้มก็แค่บอกว่าเก่า
+     `staleError` = รอบเบื้องหลังล้ม ⇒ ขึ้นป้ายเหมือนกัน แต่ไม่ใช่เหตุให้ซ่อนของที่มีอยู่ */
+  const sources = [
+    { label: "รอบ FC", error: e1 || s1, empty: !ld1, reload: reloadRounds },
+    { label: "PO", error: e2 || s2, empty: !ld2, reload: reloadPos },
+    { label: "การชดเชยข้ามเดือน", error: e3 || s3, empty: !ld3, reload: reloadCoverages },
+    { label: "สินค้า", error: e4 || s4, empty: !ld4, reload: reloadProducts },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — สี่ลิสต์ล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${blocked.length
+      ? "ตัวเลขทุกตัวบนหน้านี้คำนวณจากข้อมูลทุกก้อนพร้อมกัน จึงยังแสดงไม่ได้"
+      : "ตัวเลขที่เห็นอยู่เป็นข้อมูลรอบก่อน ไม่ใช่ล่าสุด"} · ${causes}`
+    : null;
+  // กด "ลองใหม่" = รอบหน้าบ้าน ⇒ `l1..l4` เป็น true ⇒ `Workspace loading` (ด้านล่าง)
+  // สลับเนื้อเป็น skeleton ให้เองระหว่างรอ — ไม่ต้องมีสถานะปุ่มซ้อนอีกชั้น
 
   const [tab, setTab] = useState("overview");
   const [unit, setUnit] = useState("qty"); // 'qty' | 'value'
@@ -121,6 +165,22 @@ export default function SahamitOverview() {
       }
     >
       <div className="flex flex-col gap-5">
+        {loadError && (
+          <StatusNotice
+            tone="error"
+            action={<Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())}>ลองใหม่</Button>}
+          >
+            {loadError}
+          </StatusNotice>
+        )}
+        {/* ทั้งก้อนหายไปพร้อมกันตอนไม่มีของในมือเลย — ท่าเดียวกับ /tax/filings ที่ซ่อนตารางทิ้ง
+            เหลือแต่ข้อความ · มีแคชเก่าอยู่ = วาดต่อ ป้ายด้านบนบอกเองว่าเป็นของรอบก่อน
+            ว่างเพราะยังไม่มีข้อมูลจริงยังขึ้นสถานะว่างของตัวเองตามเดิม
+            🪤 ต้องวางบรรทัดแทนที่ ไม่ปล่อยให้เหลือแถบแจ้งลอยอยู่เหนือที่ว่างครึ่งจอ ซึ่งอ่าน
+            เป็น "จอเรนเดอร์ไม่ครบ" ไม่ใช่ "ตั้งใจซ่อน" (กติกาเดียวกับสองสายของ /tax) */}
+        {blocked.length ? (
+          <EmptyState icon={AlertCircle}>ตัวเลขทั้งหน้ายังแสดงไม่ได้ — ดูข้อความด้านบนแล้วกด “ลองใหม่”</EmptyState>
+        ) : (<>
         {/* KPI row (unit-aware) */}
         <section>
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
@@ -257,6 +317,7 @@ export default function SahamitOverview() {
         {tab === "match" && <PoVsFcView rounds={fRounds} pos={fPos} coverages={coverages} products={products} unit={unit} years={years} />}
 
         {tab === "growth" && <GrowthView pos={fPos} products={products} unit={unit} years={years} />}
+        </>)}
       </div>
     </Workspace>
   );
