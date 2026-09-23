@@ -403,7 +403,7 @@ export const PDR_SECTIONS = [
     // คอลัมน์นั้นไม่มีใครเขียนอีก แถวเลยพิมพ์ `N/A` ค้างทุกใบและกรอกไม่ได้เลย
     // ⇒ ระบบรู้จริงเหลือแถวเดียว: AE (คนเปิดใบ) · ที่เหลือเป็นชื่อบนกระดาษทั้งหมด
     //
-    // ⚠️ **ลำดับในอาร์เรย์นี้คือลำดับแถวบนกระดาษ** — `SIGN_ROWS` ใน pdrDocument.js
+    // ⚠️ **ลำดับในอาร์เรย์นี้คือลำดับช่องลงนามบนกระดาษ** (ภายในแถวของฝ่าย `paperRow`) — `SIGN_SEATS` ใน pdrDocument.js
     // ต่อท้าย AE ด้วยชุดนี้ตรง ๆ ⇒ สลับที่นี่แล้วกระดาษสลับตาม
     //
     // ⚠️ **ไม่มีช่องไหนบังคับ และไม่บล็อกการปิดเรื่อง** — ใครยังไม่เซ็นก็เว้นไว้
@@ -416,7 +416,7 @@ export const PDR_SECTIONS = [
     // 🐞 เดิมรางขึ้น "0/6" เหมือนหมวดที่กรอกไม่ครบ ทั้งที่ตั้งใจให้เว้นว่างได้ ⇒ อ่านเป็น
     // หนี้ค้างที่ไม่มีวันเคลียร์ และจุดสีไม่มีวันเขียว
     optional: true,
-    note: 'ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
+    note: 'ชื่อที่จะพิมพ์ในช่องลงนามของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
     /* ⭐ **`roles` = ตำแหน่งในระบบที่คู่กับช่องนี้** (มติผู้ใช้ 2026-09-01) — ช่องจะได้
        เสนอรายชื่อคนที่ถือตำแหน่งนั้นให้เลือก แทนพิมพ์ชื่อมือทุกใบ
        ⚠️ **ยังเก็บเป็น "ชื่อ" ไม่ใช่ id** — นี่คือชื่อที่จะถูก *พิมพ์ลงกระดาษ* ตอนที่ใบ
@@ -424,14 +424,20 @@ export const PDR_SECTIONS = [
        ชื่อบนเอกสารทั้งระบบ) · และเลือกจากรายชื่อไม่ได้ก็ยังพิมพ์เองได้ ⇒ คนเซ็นที่
        ไม่มีบัญชี (Sale & Marketing Manager) ไม่ถูกกั้น
        ⚠️ ชื่อ role ต้องมีจริงในทะเบียน — มีเทสต์คุม (`pdrFields.test.mjs`) */
+    /* ⭐ `paperTeam` = หัวช่องลงนามบนกระดาษ (ภาษาไทย) — ช่องลงนามแบบ QT/SO/FM-SA-04 (มติ 23/09) พิมพ์
+       "หน่วยงาน <ตำแหน่งอังกฤษ>" แบบ "ฝ่ายขาย / Account Executive" ของ 04 · `label` (ตำแหน่งอังกฤษ) ยังเป็นป้าย
+       ของฟอร์มกับบรรทัดตำแหน่งบนกระดาษเหมือนเดิม — ไม่ใช่คำใหม่ของจอ
+       ⭐ `paperRow` = แถวของช่องลงนามบนกระดาษ **แยกตามฝ่าย** (มติผู้ใช้ 23/09 "final review แบ่งสองบรรทัดตามฝ่าย
+       แล้วขยายให้กว้างพอดีกระดาษ") — 'sales' แถวบน (AE + สองช่องนี้ = 3 ช่อง) · 'rd' แถวล่าง (4 ช่อง) ·
+       แต่ละแถวแบ่งความกว้างกระดาษเท่ากันตามจำนวนช่องของแถวตัวเอง */
     fields: [
-      { key: 'signAeSupervisor', column: 'pdrSignAeSupervisor', max: 200, label: 'Account Executive Supervisor', type: 'text', roles: ['ae_supervisor'] },
+      { key: 'signAeSupervisor', column: 'pdrSignAeSupervisor', max: 200, label: 'Account Executive Supervisor', paperTeam: 'ผู้จัดการฝ่ายขาย', paperRow: 'sales', type: 'text', roles: ['ae_supervisor'] },
       // ไม่มี role นี้ในระบบ — ตำแหน่งบนกระดาษล้วน ⇒ พิมพ์เองอย่างเดียว
-      { key: 'signSalesManager', column: 'pdrSignSalesManager', max: 200, label: 'Sale & Marketing Manager', type: 'text' },
-      { key: 'signPerfumer', column: 'pdrSignPerfumer', max: 200, label: 'Perfumer', type: 'text', roles: ['rd_perfumer'] },
-      { key: 'signChemist', column: 'pdrSignChemist', max: 200, label: 'Product Development Chemist', type: 'text', roles: ['rd_chemist'] },
-      { key: 'signCoordinator', column: 'pdrSignCoordinator', max: 200, label: 'Project Coordinator', type: 'text', roles: ['rd_coordinator'] },
-      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', max: 200, label: 'Final Approval (RD Supervisor)', type: 'text', roles: ['rd_supervisor'] },
+      { key: 'signSalesManager', column: 'pdrSignSalesManager', max: 200, label: 'Sale & Marketing Manager', paperTeam: 'ฝ่ายขายและการตลาด', paperRow: 'sales', type: 'text' },
+      { key: 'signPerfumer', column: 'pdrSignPerfumer', max: 200, label: 'Perfumer', paperTeam: 'ฝ่ายวิจัยและพัฒนา', paperRow: 'rd', type: 'text', roles: ['rd_perfumer'] },
+      { key: 'signChemist', column: 'pdrSignChemist', max: 200, label: 'Product Development Chemist', paperTeam: 'ฝ่ายวิจัยและพัฒนา', paperRow: 'rd', type: 'text', roles: ['rd_chemist'] },
+      { key: 'signCoordinator', column: 'pdrSignCoordinator', max: 200, label: 'Project Coordinator', paperTeam: 'ฝ่ายวิจัยและพัฒนา', paperRow: 'rd', type: 'text', roles: ['rd_coordinator'] },
+      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', max: 200, label: 'Final Approval (RD Supervisor)', paperTeam: 'ผู้อนุมัติ', paperRow: 'rd', type: 'text', roles: ['rd_supervisor'] },
     ],
   },
 ];
