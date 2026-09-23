@@ -88,8 +88,10 @@ export default function TaxDashboard() {
   const goReg = (status) => router.push(`/tax/registrations?status=${status}`);
   const goFil = (status) => router.push(`/tax/filings?status=${status}`);
 
-  // อายุของแถวในคิวงาน — ทะเบียนคิดจากจุดที่สถานะปัจจุบันเริ่ม · ใบยื่นยังไม่มี
-  // จุดเวลาแยกรายสถานะ จึงใช้ updatedAt/createdAt เท่าที่มี
+  // อายุของแถวในคิวงาน — ทะเบียนคิดจากจุดที่สถานะปัจจุบันเริ่ม · **ใบยื่น (`orders`)
+  // มีแต่ `createdAt`** เพราะตารางนั้นไม่มีคอลัมน์ `updatedAt` เลย (ดูหัว
+  // api/orders/route.js — เคยใส่ไว้ใน select แล้วทำให้คิวนี้ว่างเงียบ 26 วัน)
+  // ⇒ `ageAnchor` ตกมาที่ทางถอย `createdAt` เสมอสำหรับใบยื่น ไม่ใช่ "เท่าที่มี"
   const ageOf = (row) => registrationAge(row, todayIso);
   const ageChip = (days) => {
     if (!Number.isFinite(days)) return null;
