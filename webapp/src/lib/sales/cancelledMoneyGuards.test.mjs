@@ -190,8 +190,10 @@ test('หน้าใบ: ยกเงินผ่าน PATCH action carry (api
   assert.match(page, /const cancelMoneyLines = salesOrderMoneyOutcome\(order, installments, "cancel"\);/);
   assert.match(page, /\.\.\.salesOrderMoneyOutcome\(order, installments, "approve", \{ strandedSources: order\.carrySources \}\),/);
   const restore = slice(page, '{ id: "restore",', 'onClick: () => requestAction("restore") },');
-  assert.match(restore, /disabled: !!restoreMoneyBlock,/);
+  // ด่านเงินยังเป็นข้อแรกของคำใบ้ปุ่มกู้คืน — ต่อด้วยด่าน QT ยัง Won (salesOrderRestoreBlock · SO-26080039-0)
+  assert.match(restore, /disabled: !!restoreBlock,/);
   assert.match(page, /const restoreMoneyBlock = cancelledMoneyRestoreBlock\(installments, order\?\.carriedAway\);/);
+  assert.match(page, /const restoreBlock = restoreMoneyBlock \|\| salesOrderRestoreBlock\(order\);/);
 });
 
 // ── 9. บัญชี: คิวเงินค้าง + ตัวนับบนภาพรวม ─────────────────────────────────────────────────────────────

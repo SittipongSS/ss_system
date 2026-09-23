@@ -133,7 +133,7 @@ test('หน้าใบ: onReplan ยิง PATCH action replan ผ่าน ap
 // ── 4. ทะเบียนบัญชี (D5) ─────────────────────────────────────────────────────────────────────
 test('ทะเบียนบัญชี: อ่านแผนของ QT มาด้วย · ประทับป้ายก่อนกรอง · หน้าขึ้นป้าย "ปรับแผนหลังอนุมัติ"', () => {
   const route = code(LEDGER_ROUTE);
-  assert.match(route, /\.from\('quotations'\)\.select\('id, "quoteNumber", "paymentPlan"'\)/);
+  assert.match(route, /\.from\('quotations'\)\.select\('id, "quoteNumber", "paymentPlan", status'\)/); // status = ล็อกของร่างที่ QT ตาย (ledgerRowLock)
   const load = slice(route, 'async function loadLedger(', '\nconst listParam');
   assert.match(load, /stampOrderReplanned\(ledger, planByQuotation\);\s*return ledger;/,
     'ค่าระดับใบต้องประทับจากชุดก่อนกรอง (ใน loadLedger — ตัวกรองของ GET ทำงานทีหลัง)');

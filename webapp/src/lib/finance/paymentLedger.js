@@ -16,7 +16,7 @@ import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import {
-  installmentConfirmOutlook, installmentRefunded, installmentVoid, strandedInstallment,
+  installmentConfirmOutlook, installmentRefunded, installmentVoid, pipelineInstallmentLock, strandedInstallment,
 } from '@/lib/sales/salesOrderPayments';
 import { installmentsReplanned } from '@/lib/sales/installmentReplan';
 import { taxInvoicePending } from '@/lib/sales/taxInvoice';
@@ -106,6 +106,8 @@ export function ledgerRow({
     /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
+    /* สถานะ QT — ร่างที่ QT ถูกถอด Won แล้ว (ร่างที่กู้คืน · SO-26080039-0) รับรอง/บันทึกใบกำกับไม่ได้ (`ledgerRowLock`) */
+    quotationStatus: quotation?.status || null,
     financeStatus: order.financeStatus || null,
     /* ใบยกเลิก/ถูกออก Rev. ทับ (PR0) — แถวที่เหลือของใบแบบนี้คือเงินที่เข้าแล้วหรือรอบัญชีตรวจเท่านั้น */
     orderDead: isLedgerDeadOrder(order),
@@ -812,4 +814,20 @@ export function groupLedgerBuckets(groups = [], groupBy = 'none') {
 
     return { key, label, sub, missing, weight: group.summary?.outstandingAmount || 0 };
   });
+}
+
+/**
+ * ล็อกทั้งใบของแถวในทะเบียน — ถามตัวเดียวกับ route PATCH ของงวด (`pipelineInstallmentLock`) จากข้อมูลที่แถวพกมา
+ * 🐞 review G1: ทะเบียนโชว์ "ยืนยันว่าเงินเข้า" / "บันทึกใบกำกับ" ให้งวดของร่างที่ QT ถูกถอด Won แล้ว ทั้งที่ API ปฏิเสธ
+ *   (บันทึกใบกำกับอัปไฟล์ก่อนแล้วค่อยโดนปฏิเสธ = ไฟล์กำพร้าใน bucket) ⇒ ปุ่มต้องรู้ก่อนกด
+ * ⚠️ ใบยกเลิก/ถูกแทน ทะเบียนมีกติกาของตัวเองอยู่แล้ว (ป้าย · คิวเงินค้าง) — ตัวนี้ส่งสถานะใบไปครบ ผลจึงตรงกับ API ทุกกรณี
+ * ⚠️ แถวที่ไม่มีสถานะ QT = ไม่ตัดสิน (route ต้องโหลดมาเสมอ — ยามต้นทางใน installmentPipelineGuards)
+ */
+export function ledgerRowLock(row, action) {
+  if (!row) return null;
+  return pipelineInstallmentLock({
+    origin: row.origin,
+    status: row.orderStatus,
+    quotation: row.quotationStatus ? { quoteNumber: row.quoteNumber, status: row.quotationStatus } : null,
+  }, action);
 }

@@ -6,7 +6,7 @@ import {
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir, ledgerVoidInstallment,
   ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
   sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
-  pendingStranded, LEDGER_STRANDED_TITLE, LEDGER_ORDER_STATES, LEDGER_CANCELLED_TAG,
+  pendingStranded, LEDGER_STRANDED_TITLE, LEDGER_ORDER_STATES, LEDGER_CANCELLED_TAG, ledgerRowLock,
 } from './paymentLedger.js';
 import { installmentVoid } from '@/lib/sales/salesOrderPayments';
 
@@ -1057,4 +1057,27 @@ test('ป้าย "ใบยกเลิกแล้ว" ของแถวค�
   for (const status of ['cancelled', 'revised', 'approved', 'approval_revoked']) {
     assert.equal(ledgerVoidInstallment(pending, { status }), installmentVoid(pending, { status }), status);
   }
+});
+
+// ── ร่างที่ QT ไม่ใช่ Won แล้ว (SO-26080039-0 · review G1) ─────────────────────────────────────
+/* ทะเบียนเคยโชว์ปุ่ม "ยืนยันว่าเงินเข้า" / "บันทึกใบกำกับ" ให้งวดของร่างที่ QT ถูกถอด Won แล้ว ทั้งที่ API ปฏิเสธ
+   (บันทึกใบกำกับยังอัปไฟล์ก่อนแล้วโดนปฏิเสธ = ไฟล์กำพร้า) ⇒ แถวต้องพกสถานะ QT และถามล็อกตัวเดียวกับ API */
+test('ledgerRow พกสถานะ QT · ledgerRowLock ถามล็อกตัวเดียวกับ route งวด (ร่างที่ QT ตาย = รับรอง/ใบกำกับไม่ได้ · ตีกลับได้)', () => {
+  const dead = ledgerRow({
+    installment: { id: 'SOI-39', seq: 1, amount: 7639.8, status: 'reported', evidence: [] },
+    order: { id: 'SOR-39', orderNumber: 'SO-26080039-0', quotationId: 'QT-4', status: 'draft', origin: 'pipeline' },
+    quotation: { id: 'QT-4', quoteNumber: 'QT-26080037-4', status: 'revised' },
+    customer: { name: 'ซารางแฮร์' }, todayIso: TODAY,
+  });
+  assert.equal(dead.quotationStatus, 'revised');
+  assert.match(ledgerRowLock(dead, 'confirm') || '', /^QT-26080037-4 ไม่ได้เป็น Won แล้ว/);
+  assert.match(ledgerRowLock(dead, 'tax-invoice') || '', /ไม่ได้เป็น Won แล้ว/);
+  assert.equal(ledgerRowLock(dead, 'reject'), null);
+  // ใบปกติ (QT ยัง Won) · ใบยกเลิก (กติกาของใบยกเลิกปล่อยรับรอง) · ใบย้อนหลัง = ไม่ล็อก
+  const live = { ...dead, orderStatus: 'approved', quotationStatus: 'accepted' };
+  assert.equal(ledgerRowLock(live, 'confirm'), null);
+  assert.equal(ledgerRowLock({ ...dead, orderStatus: 'cancelled' }, 'confirm'), null);
+  assert.equal(ledgerRowLock({ ...dead, origin: 'historical' }, 'confirm'), null);
+  // แถวเก่าที่ไม่มีสถานะ QT = ไม่ตัดสิน (route ต้องโหลดมาเสมอ — ยามต้นทาง)
+  assert.equal(ledgerRowLock({ ...dead, quotationStatus: null }, 'confirm'), null);
 });

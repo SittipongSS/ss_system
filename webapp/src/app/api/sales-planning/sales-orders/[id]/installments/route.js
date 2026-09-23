@@ -63,7 +63,7 @@ async function loadOrderForUser(supabase, user, id) {
 
   const { data: quotation, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, paymentPlan, wonDocType, wonDocDate, wonAttachments')
+    .select('id, quoteNumber, status, paymentPlan, wonDocType, wonDocDate, wonAttachments')
     .eq('id', order.quotationId)
     .maybeSingle();
   if (quoteError) throw quoteError;

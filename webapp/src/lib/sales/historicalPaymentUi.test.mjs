@@ -90,7 +90,7 @@ test('โมดัลตีกลับงวดยกมาบอกทาง�
 // ── 4. คิวบนทะเบียน: ป้าย "ยกมา" · ใบย้อนหลัง · ช่วงครอบ ────────────────────────────────────────
 test('แถวคิวรับรองโชว์ป้าย "ยกมา" + ป้ายใบย้อนหลัง + ช่วงครอบ · คอลัมน์ใบกำกับไม่นับงวดยกมา', () => {
   const page = code(PAGE);
-  const queue = slice(page, '{queueShown.map((row) => (', '{queue.length > QUEUE_PREVIEW');
+  const queue = slice(page, '{queueShown.map((row) => {', '{queue.length > QUEUE_PREVIEW');
   assert.match(queue, /\{isOpeningInstallment\(row\) \? \(\s*<StatusBadge size="sm" tone="info" label="ยกมา"/);
   assert.match(queue, /isHistoricalOrder\(\{ origin: row\.origin \}\) \? ` · \$\{LEDGER_HISTORICAL_TAG\}`/);
   assert.match(queue, /` · ครอบ \$\{fmtDate\(row\.coversFrom\)\}–\$\{fmtDate\(row\.coversTo\)\}`/);

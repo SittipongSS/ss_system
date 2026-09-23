@@ -491,7 +491,32 @@ export function pipelineInstallmentLock(order, action) {
   if (order.status === 'cancelled') {
     return action && PIPELINE_CANCELLED_ACTIONS.includes(action) ? null : PIPELINE_CANCELLED_LOCK;
   }
+  const deadQuote = deadQuotationDraftLabel(order);
+  if (deadQuote) {
+    return action && PIPELINE_DEAD_QT_ACTIONS.includes(action) ? null
+      : `${deadQuote} — ใบนี้เป็นร่างที่ใช้ต่อไม่ได้ งวดเหลือให้บัญชีถอนคำรับรอง/ตีกลับ และผู้แจ้งดึงกลับการแจ้งเท่านั้น`;
+  }
   return null;
+}
+
+/* ── ร่างที่ QT ถูกถอด Won แล้ว (ร่างที่ถูกกู้คืนจากการยกเลิก) ─────────────────────────────────────────
+   🐞 SO-26080039-0 (18/08): ยกเลิก → ถอด Won ของ QT-26080037-4 → ออก QT-5 → admin กู้คืนใบเดิมเป็นร่าง → ออก SO-26080043-0
+     จาก QT-5 · งวดของร่างที่กู้คืนตรึงยอดมาตั้งแต่ตอนเคยอนุมัติ ⇒ บัญชีรับรองสลิปเดียวกันบนสองใบ (ทะเบียนนับเงินซ้ำ)
+   ⭐ ร่างแบบนี้ยื่นอนุมัติไม่ได้อยู่แล้ว (ด่านยื่นบังคับ QT = accepted) ⇒ งวดของมันเหลือแค่ทางเก็บกวาด:
+     บัญชีถอนคำรับรอง/ตีกลับ/ล้างใบกำกับ · ผู้แจ้งดึงกลับ — รับรองหรือแจ้งเงินก้อนใหม่ = เงินลงใบที่ไม่มีวันอนุมัติ
+   ⭐ ถามเฉพาะใบที่ยังไม่อนุมัติ (ร่าง/รออนุมัติ/ตีกลับ) — ใบที่ยังมีชีวิตทำให้ QT ถอด Won ไม่ได้อยู่แล้ว
+     (quotations unaccept → sales_order_exists) · ร่าง Rev. (มติ D3) ใช้ QT เดิมที่ยัง accepted ⇒ ไม่โดนตัวนี้
+   ⚠️ ต้องมี `order.quotation.status` — route ของงวดกับหน้าใบโหลดมาทั้งคู่ (ยามต้นทางใน installmentPipelineGuards)
+     ไม่มีค่า = ไม่ตัดสิน (ไม่เดาว่า QT ตาย) */
+const PIPELINE_DEAD_QT_ACTIONS = Object.freeze(['reject', 'unconfirm', 'withdraw', 'tax-invoice-clear']);
+
+function deadQuotationDraftLabel(order) {
+  if (!order || isHistoricalOrder(order)) return null;
+  if (!['draft', 'pending_approval', 'rejected'].includes(order.status)) return null;
+  const status = order.quotation?.status;
+  if (!status || status === 'accepted') return null;
+  const number = String(order.quotation?.quoteNumber || '').trim() || 'ใบเสนอราคาของใบนี้';
+  return `${number} ไม่ได้เป็น Won แล้ว`;
 }
 
 /* ── แผงงวดของใบที่ถูกออก Rev. ทับ (PR1 · mig 0376) ─────────────────────────────────────────────
@@ -509,6 +534,9 @@ export function revisedInstallmentsNote(order) {
 export function installmentStartBlock(order) {
   if (order?.status === 'revised') return 'งวดของใบนี้ย้ายไปใบ Rev. แล้ว';
   if (['cancelled', 'rejected'].includes(order?.status)) return 'ใบสั่งขายนี้ถูกยกเลิก/ตีกลับแล้ว — ไม่มีอะไรให้ติดตาม';
+  // ร่างที่ QT ถูกถอด Won แล้ว (ร่างที่ถูกกู้คืน) — สร้างงวดชุดใหม่ให้ใบที่ใช้ต่อไม่ได้ = ของผี
+  const deadQuote = deadQuotationDraftLabel(order);
+  if (deadQuote) return `${deadQuote} — ใบนี้เป็นร่างที่ใช้ต่อไม่ได้`;
   return null;
 }
 

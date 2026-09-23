@@ -354,3 +354,31 @@ export function salesOrderCancelNeedsReviewer(order, installments = []) {
   if (['pending_approval', 'approved'].includes(order?.status)) return true;
   return (Array.isArray(installments) ? installments : []).some((r) => ['confirmed', 'reported'].includes(r?.status));
 }
+
+/**
+ * กู้คืนใบสั่งขายที่ยกเลิกแล้วได้ไหม (admin) — route ปฏิเสธด้วยตัวนี้ · ปุ่มใช้ตัวเดียวกันเป็นคำใบ้ (ไม่มีรายการใบพี่น้อง = ตรวจแค่ QT)
+ * 🐞 SO-26080039-0 (17–18/08): ยกเลิก → ถอด Won QT-26080037-4 → ออก QT-5 → admin กู้คืนใบเดิมเป็นร่าง → SO-26080043-0 ออกจาก QT-5
+ *   ⇒ ดีลเดียวมี SO สองใบ และบัญชีรับรองสลิปเดียวกันบนทั้งสองใบ · ด่านกันสร้างซ้ำ (create_sales_order_draft) ดูแค่ QT ใบเดียวกัน
+ *   ⇒ มองไม่เห็นใบที่ถูกกู้คืนบน QT ฉบับเก่า
+ * ⭐ ① QT ของใบต้องยัง Won (accepted) — QT ที่ถอด Won/ออก Rev. แล้ว = ร่างที่ยื่นไม่ได้ตลอดไป (ด่านยื่นบังคับ accepted)
+ * ⭐ ② ไม่มีใบอื่นจาก QT เดียวกันที่ยังใช้งาน (ไม่ยกเลิก · ไม่ถูกแทน) — นิยามเดียวกับด่านของ create_sales_order_draft
+ * ⚠️ ไม่มีใบเสนอราคาให้ตรวจ = ปฏิเสธ (ใบ pipeline มี QT เสมอ · ใบย้อนหลังถูกตีกลับก่อนถึงตัวนี้)
+ *
+ * @param order         ใบที่จะกู้คืน (ต้องมี `quotation.status` / `quotation.quoteNumber`)
+ * @param liveSiblings  ใบสั่งขายอื่นของ QT เดียวกัน (route อ่านสด) — ตัวนี้กรองสถานะเอง
+ */
+export function salesOrderRestoreBlock(order, liveSiblings = []) {
+  if (!order) return null;
+  const quote = order.quotation;
+  if (!quote) return 'ไม่พบใบเสนอราคาของใบนี้ — กู้คืนไม่ได้';
+  if (quote.status !== 'accepted') {
+    const number = String(quote.quoteNumber || '').trim() || 'ใบเสนอราคาของใบนี้';
+    return `${number} ไม่ได้เป็น Won แล้ว (ถูกถอด Won หรือออก Rev. ไปแล้ว) — กู้คืนใบนี้ไม่ได้ ให้ออกใบสั่งขายจากใบเสนอราคาฉบับล่าสุดแทน`;
+  }
+  const sibling = (Array.isArray(liveSiblings) ? liveSiblings : []).find((s) => s && s.id !== order.id
+    && s.status !== 'cancelled' && !s.supersededById);
+  if (sibling) {
+    return `${sibling.orderNumber || 'ใบสั่งขายอีกใบ'} ออกจากใบเสนอราคาเดียวกันและยังใช้งานอยู่ — กู้คืนใบนี้ไม่ได้ (งานเดียวจะมีใบสั่งขายสองใบ)`;
+  }
+  return null;
+}

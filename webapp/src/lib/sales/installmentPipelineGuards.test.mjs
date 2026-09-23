@@ -25,6 +25,7 @@ function slice(text, from, to) {
 const ROUTE = 'app/api/sales-planning/sales-orders/[id]/installments/route.js';
 const PANEL = 'components/salesPlanning/SalesOrderPaymentPanel.js';
 const SO_PAGE = 'app/sales-planning/sales-orders/[id]/page.js';
+const SO_ROUTE = 'app/api/sales-planning/sales-orders/[id]/route.js';
 const FN_PAGE = 'app/finance/payments/page.js';
 const LEDGER_ROUTE = 'app/api/finance/payments/route.js';
 
@@ -140,4 +141,41 @@ test('แผงงวด: ใบยกเลิก/ถูกออก Rev. ท�
     'SO-26090204-0 (ยกเลิก): แถบขึ้น "ทั้งใบ ฿0.00" ข้างยอดใบ ฿250,380');
   assert.ok(panel.includes('{showCoverage && !isPreview && !deadPipeline ? ('),
     'SO-26090204-0 (ยกเลิก): เตือนว่านัดบริการลงคิวไม่ได้ทั้งที่ใบยกเลิกแล้ว');
+});
+
+// ── ร่างที่ QT ถูกถอด Won + ด่านกู้คืน (SO-26080039-0) ───────────────────────────────────────────
+test('route งวด: โหลดสถานะ QT มาให้ล็อกของร่างที่ QT ไม่ใช่ Won ตัดสินได้ (ไม่มีค่า = ไม่ตัดสิน)', () => {
+  const load = slice(code(ROUTE), 'async function loadOrderForUser', 'export const GET');
+  const select = slice(load, ".from('quotations')", '.maybeSingle()');
+  assert.match(select, /\.select\('[^']*\bstatus\b[^']*'\)/, 'route งวดไม่โหลด quotations.status ⇒ ร่างที่กู้คืนรับรองเงินได้ต่อ');
+});
+
+test('กู้คืนใบที่ยกเลิก: route ตรวจ QT ยัง Won + ใบพี่น้องที่ยังใช้งาน (อ่านสดแบบเช็ก error) · ปุ่มใช้ตัวเดียวกันเป็นคำใบ้', () => {
+  const route = code(SO_ROUTE);
+  const restore = slice(route, "if (action === 'restore') {", "return badRequest('คำสั่งไม่ถูกต้อง');");
+  assert.match(restore, /\.from\('sales_orders'\)[\s\S]*?\.eq\('quotationId', before\.quotationId\)/,
+    'ต้องอ่านใบอื่นของ QT เดียวกันสด ๆ');
+  assert.match(restore, /if \(siblingError\) return fail\(/, 'อ่านไม่ขึ้น ≠ ไม่มีใบพี่น้อง');
+  assert.match(restore, /const restoreBlock = salesOrderRestoreBlock\(before, siblings\);/);
+  assert.match(restore, /if \(restoreBlock\) return fail\(restoreBlock, 409\);/);
+  assert.ok(restore.indexOf('salesOrderRestoreBlock(') < restore.indexOf(".update(patch)"), 'ด่านต้องมาก่อนเขียน');
+  const page = code(SO_PAGE);
+  assert.match(page, /const restoreBlock = restoreMoneyBlock \|\| salesOrderRestoreBlock\(order\);/);
+  assert.match(slice(page, 'id: "restore"', 'onClick'), /disabled: !!restoreBlock,[\s\S]*disabledReason: restoreBlock \|\| undefined,/);
+});
+
+test('ทะเบียนบัญชี: route โหลดสถานะ QT · ปุ่มรับรอง/บันทึกใบกำกับถาม ledgerRowLock แล้วปิดพร้อมเหตุ (review G1)', () => {
+  const ledger = code(LEDGER_ROUTE);
+  assert.match(slice(ledger, ".from('quotations')", '.in('), /\.select\('[^']*\bstatus\b[^']*'\)/);
+  const page = code(FN_PAGE);
+  assert.match(page, /const confirmLock = ledgerRowLock\(row, "confirm"\);/);
+  assert.match(page, /disabled=\{acting \|\| !!confirmLock\} title=\{confirmLock \|\| undefined\} onClick=\{\(\) => setConfirmFor\(row\)\}/);
+  assert.match(page, /const invoiceLock = ledgerRowLock\(row, "tax-invoice"\);/);
+  assert.match(page, /disabled=\{acting \|\| !!invoiceLock\} title=\{invoiceLock \|\| undefined\} onClick=\{\(\) => setInvoiceFor\(row\)\}/);
+});
+
+test('loadOrder ไม่กลืน error ของการอ่าน QT — อ่านไม่ขึ้น ≠ "ไม่พบใบเสนอราคา" (review R1 · ด่านกู้คืน/ยื่นพึ่งสถานะ QT)', () => {
+  const load = slice(code(SO_ROUTE), 'async function loadOrder(', 'const { data: revisionHistory');
+  assert.match(load, /\{ data: quotation, error: quotationError \}/);
+  assert.match(load, /if \(quotationError\) throw quotationError;/);
 });

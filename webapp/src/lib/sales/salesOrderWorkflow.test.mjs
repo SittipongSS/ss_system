@@ -26,6 +26,7 @@ import {
   isValidCancelReasonCode,
   isValidReversalTarget,
   salesOrderActual,
+  salesOrderRestoreBlock,
   salesOrderRevisionChainDeleteBlock,
   salesOrderActionNeedsEditScope,
   salesOrderAmountKind,
@@ -450,4 +451,34 @@ test('canSubmitHistoricalSalesOrder: ฝ่ายขายทุกตำแห�
 
 test('ใบย้อนหลังไม่เข้าขั้นบัญชีปิดใบ — financeStatus ว่าง ⇒ ด่านตอบ "ยังไม่เข้าคิว" (finance_approve ไปไม่ถึง)', () => {
   assert.equal(financeStepOwnerError(HISTORICAL_APPROVED, { role: 'admin' }), 'ใบนี้ยังไม่เข้าคิวปิดใบของบัญชี');
+});
+
+// ── กู้คืนใบที่ยกเลิก: QT ต้องยัง Won และไม่มีใบอื่นของ QT เดียวกันที่ยังใช้งาน ─────────────────────────────
+/* 🐞 SO-26080039-0: ยกเลิก 17/08 18:43 → ถอด Won QT-26080037-4 → ออก QT-5 → admin กู้คืน 18/08 02:09 → SO-26080043-0 ออกจาก QT-5
+   ⇒ ดีลเดียวมี SO สองใบ และบัญชีรับรองสลิปเดียวกันทั้งสองใบ · ด่านกันสร้างซ้ำดูแค่ QT ใบเดียวกัน เลยมองไม่เห็นใบที่กู้คืน */
+test('salesOrderRestoreBlock: QT ถูกถอด Won/ออก Rev. แล้ว = กู้คืนไม่ได้ พร้อมบอกเลข QT', () => {
+  const order = { id: 'SOR-39', orderNumber: 'SO-26080039-0', status: 'cancelled', quotation: { quoteNumber: 'QT-26080037-4', status: 'revised' } };
+  assert.equal(salesOrderRestoreBlock(order),
+    'QT-26080037-4 ไม่ได้เป็น Won แล้ว (ถูกถอด Won หรือออก Rev. ไปแล้ว) — กู้คืนใบนี้ไม่ได้ ให้ออกใบสั่งขายจากใบเสนอราคาฉบับล่าสุดแทน');
+  for (const status of ['draft', 'sent', 'rejected', 'expired']) {
+    assert.match(salesOrderRestoreBlock({ ...order, quotation: { quoteNumber: 'QT-9', status } }) || '', /^QT-9 ไม่ได้เป็น Won แล้ว/, status);
+  }
+});
+
+test('salesOrderRestoreBlock: มีใบอื่นจาก QT เดียวกันที่ยังใช้งาน = กู้คืนไม่ได้ (ใบที่ยกเลิก/ถูกแทนไม่นับ)', () => {
+  const order = { id: 'SOR-A', orderNumber: 'SO-A', status: 'cancelled', quotation: { quoteNumber: 'QT-1', status: 'accepted' } };
+  assert.equal(salesOrderRestoreBlock(order, [{ id: 'SOR-B', orderNumber: 'SO-B', status: 'approved', supersededById: null }]),
+    'SO-B ออกจากใบเสนอราคาเดียวกันและยังใช้งานอยู่ — กู้คืนใบนี้ไม่ได้ (งานเดียวจะมีใบสั่งขายสองใบ)');
+  assert.equal(salesOrderRestoreBlock(order, [
+    { id: 'SOR-C', orderNumber: 'SO-C', status: 'cancelled', supersededById: null },
+    { id: 'SOR-D', orderNumber: 'SO-D', status: 'revised', supersededById: 'SOR-E' },
+    { id: 'SOR-A', orderNumber: 'SO-A', status: 'cancelled', supersededById: null },
+  ]), null);
+  assert.equal(salesOrderRestoreBlock(order), null);
+  assert.equal(salesOrderRestoreBlock(order, []), null);
+});
+
+test('salesOrderRestoreBlock: ไม่มีใบเสนอราคาให้ตรวจ = กู้คืนไม่ได้ (ไม่เดาว่าปลอดภัย)', () => {
+  assert.match(salesOrderRestoreBlock({ id: 'SOR-A', status: 'cancelled', quotation: null }) || '', /ไม่พบใบเสนอราคา/);
+  assert.equal(salesOrderRestoreBlock(null), null);
 });
