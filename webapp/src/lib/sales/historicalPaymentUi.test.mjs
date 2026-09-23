@@ -103,7 +103,9 @@ test('แผงงวด: ใบย้อนหลังไม่มี preview/
   const panel = code(PANEL);
   assert.match(panel, /const historical = isHistoricalOrder\(order\);/);
   assert.match(panel, /const orderLock = historicalInstallmentLock\(order\);/);
-  assert.match(panel, /: \(historical \? \[\] : previewInstallments\(/);
+  /* ⚠️ แก้ยามโดยตั้งใจใน PR1 (mig 0376): ใบ revised ที่งวดย้ายไปใบ Rev. แล้วก็ไม่วาด preview (`movedAway`) —
+     ใบย้อนหลังยังเป็นเงื่อนไขแรกของ `[]` ตามเดิม */
+  assert.match(panel, /: \(historical \|\| movedAway \? \[\] : previewInstallments\(/);
   assert.match(panel, /const drift = historical \? null : installmentPlanDrift\(/);
   assert.match(panel, /\{isPreview && canStart && canTrackPayments && !historical \? \(/);
   // ⚠️ ทุกจุดที่เรียกด่านต้องผ่าน `gate` ตัวเดียว (ซึ่งส่ง orderLock + historical เสมอ)

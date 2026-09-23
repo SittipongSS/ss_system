@@ -75,7 +75,9 @@ test('แผงงวด: gate ส่งล็อกใบ pipeline รายค
   const gate = slice(panel, 'const gate = (row, action, options) => installmentActionError(', '});');
   assert.match(gate, /orderLock: orderLock \|\| pipelineInstallmentLock\(order, action\), historical, contractEnd,/);
   assert.match(panel, /const pipelineLock = pipelineInstallmentLock\(order\);/);
-  assert.match(panel, /\{pipelineLock \? <StatusNotice tone="info">\{pipelineLock\}<\/StatusNotice> : null\}/);
+  /* ⚠️ แก้ยามโดยตั้งใจใน PR1 (mig 0376): ใบ revised ที่งวดย้ายไปแล้วขึ้น "งวดชำระทั้งหมดย้ายไป …" แทนข้อความล็อก
+     (ข้อความเดียว ไม่ซ้อนสองข้อความเรื่องเดียวกัน) — ข้อความล็อกของ PR0 ยังขึ้นกับใบยกเลิก/ใบ revised ที่ยังถือแถว */
+  assert.match(panel, /: pipelineLock \? <StatusNotice tone="info">\{pipelineLock\}<\/StatusNotice> : null\}/);
   assert.match(panel, /\{isDraftPlan && !historical && !pipelineLock \? \(/);
 });
 

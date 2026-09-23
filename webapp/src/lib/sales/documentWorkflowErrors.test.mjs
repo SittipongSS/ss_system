@@ -214,3 +214,12 @@ test('ข้อความ "มีดีลของ AE คนนั้นอ�
   assert.equal(workflowErrorMessage('historical_so_container_deal_race'), 'มีการย้ายเจ้าของดีลของลูกค้านี้พร้อมกัน กดบันทึกอีกครั้ง');
   assert.match(workflowErrorMessage('no_such_code'), /ผู้ดูแลระบบ/);
 });
+
+/* PR1 (mig 0376): RPC ออก Rev. ย้ายงวดทั้งแถว — Σ งวด ≠ ยอดใบ = RAISE ⇒ ต้องเป็นข้อความไทยที่บอกทางออก ไม่ใช่ 500 กลาง */
+test('Σ งวด ≠ ยอดใบตอนออก Rev. (0376) แปลเป็นไทยพร้อมทางออก', () => {
+  assert.deepEqual(documentWorkflowError({ message: 'P0001: sales_order_revision_installments_mismatch' }), {
+    code: 'sales_order_revision_installments_mismatch',
+    message: 'งวดชำระรวมไม่เท่ายอดใบ — ออก Rev. ไม่ได้ ให้แอดมินตรวจงวดก่อน',
+    status: 409,
+  });
+});

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureInstallments, freezeInstallments, updateInstallment } from './salesOrderInstallmentsStore.js';
+import {
+  INSTALLMENT_MOVE_SCHEMA_MISSING, ensureInstallments, freezeInstallments, installmentMoveColumnError, updateInstallment,
+} from './salesOrderInstallmentsStore.js';
 
 /* สัญญาที่ "งวดเกิดพร้อมใบ" (มติผู้ใช้ 2026-08-19) พิงอยู่ — POST ของการออกใบสั่งขาย
    เรียก `ensureInstallments` โดย **ไม่ส่ง `frozenAt`** ⇒ ต้องได้งวดร่างล้วนเสมอ
@@ -482,4 +484,39 @@ test('updateInstallment: expectedUpdatedAt ไม่ตรง = คืน null �
   const legacy = lockDb(base);
   assert.equal((await updateInstallment(legacy, 'SOI-1', { dueDate: '2026-10-01' })).dueDate, '2026-10-01');
   assert.deepEqual(legacy.state.filters, [['id', 'SOI-1']], 'ผู้เรียกเดิม (ออกใบ) ไม่ถูกบังคับล็อก');
+});
+
+/* ── ด่านลำดับ deploy ของ PR1 (mig 0376) ──────────────────────────────────────────────────────
+   🛑 โค้ด PR1 ปลดด่าน "มีเงินรับแล้ว" ออกจากการย้อนการอนุมัติ — ถ้าฐานยังเป็น RPC ออก Rev. ตัวก๊อป (ก่อน 0376)
+     เงินที่รับแล้วจะถูกก๊อปเป็นงวดค้างรับบนใบ Rev. ⇒ route ย้อนการอนุมัติถามคอลัมน์ movedFrom ก่อน (limit 0 · ไม่ดึงแถว) */
+const probeSupabase = (result) => {
+  const calls = [];
+  return {
+    calls,
+    from(table) {
+      calls.push(['from', table]);
+      return {
+        select(columns) {
+          calls.push(['select', columns]);
+          return { limit: async (n) => { calls.push(['limit', n]); return result; } };
+        },
+      };
+    },
+  };
+};
+
+test('installmentMoveColumnError: มีคอลัมน์ = null · ไม่มีคอลัมน์ (42703) = บอกให้รัน 0376 · อ่านพลาดอย่างอื่น = บอกตามจริง', async () => {
+  const ok = probeSupabase({ data: [], error: null });
+  assert.equal(await installmentMoveColumnError(ok), null);
+  assert.deepEqual(ok.calls, [['from', TABLE], ['select', '"movedFrom"'], ['limit', 0]]);
+
+  const missing = probeSupabase({ data: null, error: { code: '42703', message: 'column sales_order_installments.movedFrom does not exist' } });
+  assert.equal(await installmentMoveColumnError(missing), INSTALLMENT_MOVE_SCHEMA_MISSING);
+  assert.match(INSTALLMENT_MOVE_SCHEMA_MISSING, /0376/);
+  assert.match(INSTALLMENT_MOVE_SCHEMA_MISSING, /ย้อนการอนุมัติไม่ได้/);
+
+  const down = probeSupabase({ data: null, error: { code: '08006', message: 'connection reset' } });
+  const why = await installmentMoveColumnError(down);
+  assert.match(why, /connection reset/);
+  assert.doesNotMatch(why, /0376/, 'เน็ตสะดุดห้ามโทษ migration — คนจะไปรันซ้ำผิดเรื่อง');
 });

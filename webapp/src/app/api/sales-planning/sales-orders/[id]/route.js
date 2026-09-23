@@ -31,9 +31,11 @@ import {
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
-import { freezeInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
+import { freezeInstallments, installmentMoveColumnError, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
-import { paymentLockReason, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+import {
+  installmentsTotalMismatch, paymentLockReason, paymentNotRequired, revisionAuditSummary,
+} from '@/lib/sales/salesOrderPayments';
 import { financeActionError } from '@/lib/sales/salesOrderFinanceApproval';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
@@ -722,10 +724,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
       return forbidden('ย้อนการอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
-    // ⚠️ เงินที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง — ถอยใบทับมันเงียบ ๆ ไม่ได้
-    // (กติกาเดียวกับที่ใบยื่นสรรพสามิตบล็อกปุ่มนี้อยู่แล้ว)
-    const paymentBlock = paymentLockReason(before.installments);
-    if (paymentBlock) return badRequest(paymentBlock);
+    /* ⭐ **งวดที่บัญชีรับรองแล้วไม่ล็อกขั้นนี้อีก** (PR1 · mig 0376 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09)
+       เดิมถาม paymentLockReason ที่นี่ เพราะ RPC ออก Rev. ก๊อปงวดเป็นแถวค้างรับ (เงินก้อนเดียวสองแถว) ⇒ ใบที่รับเงินแล้ว
+       แก้เอกสารไม่ได้เลย · 0376 ย้ายแถวไปใบ Rev. ทั้งแถว (สถานะ · หลักฐาน · ใบกำกับคงเดิม) ⇒ ไม่มีเงินให้ถอยทับอีก
+       · มติ D2: ใบที่บัญชีปิดแล้ว (financeStatus = approved) ย้อนได้ — ใบ Rev. เกิดเป็น NULL แล้วเข้าคิวปิดใหม่ตอนอนุมัติ
+       🛑 **ลำดับ deploy** — ฐานยังเป็น RPC ตัวก๊อป (ยังไม่รัน 0376) = ย้อนไม่ได้ (503) ไม่งั้นเงินถูกก๊อปซ้ำเงียบ ๆ
+       ⚠️ อ่านงวดสดแบบโยน error — `before.installments` ของ loadOrder กลืนการอ่านพังเป็น [] (ด่านเปิดเงียบ)
+       ⚠️ Σ งวด ≠ ยอดใบ = RPC ออก Rev. RAISE ⇒ ต้องกันตั้งแต่ขั้นนี้ ไม่งั้นใบค้างที่ approval_revoked (ทางตัน) */
+    const moveSchemaError = await installmentMoveColumnError(supabase);
+    if (moveSchemaError) return fail(moveSchemaError, 503);
+    let liveInstallments;
+    try { liveInstallments = await loadInstallments(supabase, id); }
+    catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
+    const totalMismatch = installmentsTotalMismatch(liveInstallments, before.totalAmount);
+    if (totalMismatch) return fail(totalMismatch, 409);
     const reason = String(body.reason || '').trim();
     const expected = resolveExpectedUpdatedAt(body);
     if (!expected.ok) return badRequest(expected.error);
@@ -790,15 +802,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ⚠️ ลงเธรดของ **ใบเดิม** ไม่ใช่ใบ Rev. ใหม่ (คนละ id) ไม่งั้นใบเดิมจบห้วน ๆ
     await logThread('revise', { reason, toRevisionNo: revision?.revisionNo ?? null });
 
-    /* ⭐ **แผนงวดชำระถูกก๊อปไปใบใหม่แล้ว (mig 0346)** — ต้องบอกในสรุปว่าไปกี่งวด
-       🐞 ก่อน 0346 ใบ Rev. เกิดมาไม่มีงวดสักแถว ⇒ `paidThrough` เป็น null ⇒ ด่านเงิน
-         บล็อกนัดช่างทั้งไซต์ โดยไม่มีอะไรบนจอหรือใน audit บอกว่าเกิดอะไรขึ้น
-       ⚠️ นับจากของจริงที่ลงฐานแล้ว ไม่ใช่นับจากใบเดิม — ถ้า RPC เก่ายังอยู่ (ยังไม่รัน
-         migration) ตัวเลขจะเป็น 0 แล้วสรุปจะบอกความจริงว่ายังไม่ได้ก๊อป */
-    const carried = revision?.id
-      ? await loadInstallments(supabase, revision.id).catch(() => [])
-      : [];
-    const covered = carried.filter((row) => row.coversFrom && row.coversTo).length;
+    /* ⭐ **งวดชำระย้ายไปใบ Rev. ทั้งแถว (mig 0376)** — RPC บอกผลการย้ายมาใน `moved` (นับจากแถวบนใบ Rev. จริง)
+       ⇒ สรุป audit บอกว่าย้ายกี่งวด รับแล้วเท่าไร รอบัญชีตรวจกี่งวด (revisionAuditSummary)
+       🛑 ไม่มี `moved` = ฐานยังเป็น RPC ตัวก๊อป (ยังไม่รัน 0376) ⇒ งวดถูกก๊อปเป็นแถวค้างรับ — ใส่ warning ในคำตอบ
+         (ปกติมาไม่ถึง: ขั้นย้อนการอนุมัติถามคอลัมน์ของ 0376 ก่อนแล้ว · เหลือเฉพาะใบที่ย้อนไว้ก่อน deploy) */
+    const { summary: reviseSummary, warning: moveWarning } = revisionAuditSummary({
+      fromNumber: before.orderNumber, toNumber: revision?.orderNumber || revisionId, reason, moved: result?.moved,
+    });
+    if (moveWarning) console.error(`[sales order revise ${id}] ${moveWarning} — RPC ไม่คืน moved`);
 
     await recordAudit({
       user,
@@ -807,17 +818,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: revision?.id || revisionId,
       before,
       after: revision,
-      summary: `ออก Rev. ${before.orderNumber} → ${revision?.orderNumber || revisionId}: ${reason}`
-        + (carried.length
-          ? ` · ยกแผนงวดชำระไป ${carried.length} งวด${covered ? ` (มีช่วงครอบบริการ ${covered})` : ''}`
-          : ''),
+      summary: reviseSummary,
       request: req,
     });
     // FM-SA-04 (mig 0370): เอกสารใบสเปคย้ายไปผูกใบ Rev. ใหม่ เลขที่เดิม · ล้ม = SO ยังสำเร็จ + warning
     const specWarning = revision?.id
       ? await moveSpecDocumentsAfterRevise({ supabase, user, req, oldOrder: before, newOrder: revision })
       : null;
-    return ok(specWarning ? { ...revision, warning: specWarning } : revision, 201);
+    const warning = [moveWarning, specWarning].filter(Boolean).join(' · ') || null;
+    return ok(warning ? { ...revision, warning } : revision, 201);
   }
 
   if (action === 'save') {

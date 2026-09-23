@@ -10,6 +10,23 @@ import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 
 const TABLE = 'sales_order_installments';
 
+/* ── ด่านลำดับ deploy ของ PR1 (mig 0376 · แผน so-payment-unlock-replan) ─────────────────────────────
+   🛑 โค้ด PR1 ปลดด่าน "มีงวดที่บัญชีรับรองแล้ว" ออกจากการย้อนการอนุมัติ เพราะ RPC ออก Rev. ของ 0376 **ย้าย** งวด
+     ไปใบ Rev. ทั้งแถว · ถ้าฐานยังเป็นตัวก๊อป (0363) เงินที่รับแล้วจะถูกก๊อปเป็นงวดค้างรับบนใบ Rev. (นับซ้ำ + ยืมสลิปซ้ำ)
+   ⇒ route ย้อนการอนุมัติถามคอลัมน์ที่ 0376 เพิ่ม **ก่อน** เรียก RPC — ไม่มี = ไม่ย้อนให้ (แพตเทิร์น zoneSurveyOwnerColumnError)
+   ⭐ limit 0 = ถามสคีมาอย่างเดียว ไม่ดึงแถว · select ที่เอ่ยชื่อคอลัมน์ ⇒ CI check:columns แดงจนกว่าจะรันมิก
+   ⚠️ 42703 = ไม่มีคอลัมน์จริง · อย่างอื่น (เน็ต/สิทธิ์) ห้ามโทษ migration — คนจะไปรันซ้ำผิดเรื่อง */
+export const INSTALLMENT_MOVE_SCHEMA_MISSING = 'ฐานข้อมูลยังไม่ได้รัน migration 0376 (ออก Rev. ย้ายงวดชำระไปใบใหม่)'
+  + ' — ย้อนการอนุมัติไม่ได้จนกว่าจะรัน · แจ้งผู้ดูแลระบบ';
+
+export async function installmentMoveColumnError(supabase) {
+  const { error } = await supabase.from(TABLE).select('"movedFrom"').limit(0);
+  if (!error) return null;
+  return error.code === '42703'
+    ? INSTALLMENT_MOVE_SCHEMA_MISSING
+    : `ตรวจความพร้อมของงวดชำระไม่สำเร็จ — ${error.message} · ยังไม่ได้ย้อนการอนุมัติ ลองใหม่อีกครั้ง`;
+}
+
 export async function loadInstallments(supabase, salesOrderId) {
   const { data, error } = await supabase
     .from(TABLE)

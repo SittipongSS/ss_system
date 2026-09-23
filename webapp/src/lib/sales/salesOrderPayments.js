@@ -17,7 +17,7 @@
 // ที่รวมเข้าดีลฟังเฉพาะ `status/actualAmount/orderDate/dealId` ของ `sales_orders`
 // ⇒ ตารางงวดอยู่คนละแกน **ห้ามมีโค้ดไหนเอายอดที่เก็บได้ไปหัก Actual**
 // ไฟล์นี้จึงไม่ export อะไรที่ชื่อ `actual*` เลย และมีเทสต์ล็อกไว้
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtMoney } from '@/lib/format';
 import { canConfirmPayment, canUser } from '@/lib/permissions';
 import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
@@ -350,7 +350,8 @@ export function installmentSequenceError(row, rows) {
    ⭐ **งวดร่างจอดที่ `pending` เสมอ ไม่ว่าใครกด** (มติผู้ใช้ 2026-08-19) — งานจะถึงมือ
    บัญชีต่อเมื่อ **AE Supervisor อนุมัติใบแล้ว** เท่านั้น (ดู `installmentPrepaid`)
    แม้แต่บัญชีกดเองก็ยังไม่ `confirmed`: ใบที่ยังไม่ผ่านด่านอนุมัติไม่ควรมีเงินรับรอง
-   แขวนอยู่ ไม่งั้นคำรับรองจะล็อกใบไม่ให้ย้อน/ออก Rev. ตั้งแต่ยังไม่มีใครอนุมัติสักคน
+   แขวนอยู่ ไม่งั้นเงินถึงทะเบียนบัญชีก่อนที่ AE Sup จะได้ตรวจใบสักคน (มติเดิม 2026-08-19 · PR1 ถอดเหตุผลเดิม
+   ที่ว่า "คำรับรองล็อกการย้อน/ออก Rev." ออกแล้ว — ตั้งแต่ 0376 งวดที่รับรองแล้วย้ายไปกับใบ Rev.)
    ⇒ `freezeInstallments` เลื่อนให้เป็น `reported` ตอนอนุมัติ แล้วบัญชีค่อยกดรับรอง
    ⚠️ ไม่ส่ง `row` มา = ตัดสินแบบเดิม (ผู้เรียกที่ถามแค่ "คนนี้กดแล้วได้อะไร") */
 export function installmentReportOutcome(user, row = null) {
@@ -420,6 +421,15 @@ export function pipelineInstallmentLock(order, action) {
     return action && PIPELINE_CANCELLED_ACTIONS.includes(action) ? null : PIPELINE_CANCELLED_LOCK;
   }
   return null;
+}
+
+/* ── แผงงวดของใบที่ถูกออก Rev. ทับ (PR1 · mig 0376) ─────────────────────────────────────────────
+   ⭐ ตั้งแต่ 0376 งวด **ย้ายทั้งแถว** ไปใบ Rev. ⇒ ใบ revised เหลือ 0 แถว — แผงต้องบอกว่าเงินไปอยู่ไหน
+     ไม่ใช่ถอยไปวาดแผนจาก QT ("ยังไม่เริ่มติดตาม" ปลอม) · เลขใบมาจากตัวเดียวกับข้อความล็อก (`supersedingOrderLabel`)
+   ⚠️ ใบย้อนหลังออก Rev. ไม่ได้ (CHECK ของ 0374) ⇒ null เสมอ */
+export function revisedInstallmentsNote(order) {
+  if (!order || isHistoricalOrder(order) || order.status !== 'revised') return null;
+  return `งวดชำระทั้งหมดย้ายไป${supersedingOrderLabel(order)} แล้ว`;
 }
 
 /* ด่านของ POST "เริ่มติดตามการชำระ" — ปุ่มบนแผงกับ route ถามตัวเดียวกัน
@@ -649,7 +659,7 @@ export function installmentActionError(row, action, user, options = {}) {
 
      ⚠️ **ของบัญชีเท่านั้น** — คนที่รับรองว่าเงินเข้าคือคนเดียวที่ถอนคำนั้นได้
      ⚠️ **ต้องมีเหตุผล** เท่ากับตอนตีกลับ: นี่คือการกลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว
-        และมันปลดล็อกใบให้ย้อนการอนุมัติ/ออก Rev. ได้ด้วย (ดู `paymentLockReason`)
+        และมันปลดล็อกการยกเลิกใบด้วย (ดู `paymentLockReason` — ย้อนการอนุมัติ/ออก Rev. ไม่ถามตัวนั้นแล้วตั้งแต่ PR1)
         ⇒ ต้องมีร่องรอยว่าทำไม ไม่ใช่กดแล้วหายไปเฉย ๆ */
   if (action === 'unconfirm') {
     if (!canConfirmPayment(user)) return 'ถอนคำรับรองได้เฉพาะฝ่ายบัญชี';
@@ -718,14 +728,130 @@ export function installmentActionError(row, action, user, options = {}) {
 }
 
 /**
- * ย้อนการอนุมัติ / ออก Rev. ได้ไหมเมื่อใบนี้มีงวดที่บัญชีรับรองแล้ว
- * ⚠️ เงินที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง — ถอยใบทับมันเงียบ ๆ ไม่ได้
- * (กติกาเดียวกับที่ใบยื่นสรรพสามิตบล็อกปุ่มย้อนการอนุมัติอยู่แล้ว)
+ * **ยกเลิกใบ** ได้ไหมเมื่อใบนี้มีงวดที่บัญชีรับรองแล้ว
+ * ⚠️ เงินที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง — ยกเลิกใบทิ้งทับมันเงียบ ๆ ไม่ได้
+ * ⭐ PR1 (mig 0376 · แผน so-payment-unlock-replan): **ย้อนการอนุมัติ/ออก Rev. ไม่ถามตัวนี้แล้ว** — งวดย้ายไป
+ *   ใบ Rev. ทั้งแถว (เงิน · หลักฐาน · ใบกำกับ คงเดิม) ⇒ ไม่มีเงินให้ "ถอยทับ" อีกต่อไป
+ * ⏭ PR3: ใบ pipeline เลิกถามตัวนี้ตอนยกเลิกด้วย (มีทางยกเงิน/คืนเงิน) — เหลือเป็นด่านของใบย้อนหลังเท่านั้น
  */
 export function paymentLockReason(rows = []) {
   const confirmed = (Array.isArray(rows) ? rows : []).filter((r) => r.status === 'confirmed');
   if (!confirmed.length) return null;
   return `มีงวดที่บัญชีคอนเฟิร์มแล้ว ${confirmed.length} งวด — ต้องให้บัญชีจัดการก่อน`;
+}
+
+/* ══ PR1 · ย้อนการอนุมัติ + ออก Rev. ย้ายงวดทั้งแถว (mig 0376 · มติเจ้าของ 23/09) ═════════════════════════
+   หลักการ "เงินหนึ่งก้อน = งวดหนึ่งแถว" — ข้อความทุกบรรทัดข้างล่างพูดตามสิ่งที่ RPC 0376 ทำจริง */
+
+/* Σ งวด ≠ ยอดใบ (เกณฑ์เดียวกับ RPC: |Σ − ยอด| ≥ 0.005) — คืนข้อความไทย หรือ null
+   ⭐ route ถามตัวนี้ **ก่อนย้อนการอนุมัติ** ด้วยงวดที่อ่านสด: RPC ออก Rev. ของ 0376 จะ RAISE เมื่อยอดไม่ตรง
+     ⇒ ถ้าปล่อยให้ย้อนก่อน ใบค้างที่ approval_revoked (ออก Rev. ไม่ได้ · ยกเลิกไม่ได้ถ้ามีเงินรับแล้ว) = ทางตัน
+   ⚠️ ไม่มีงวด = ไม่ตัดสิน (ใบก่อน 0245 ย้ายศูนย์แถวได้) */
+export function installmentsTotalMismatch(rows = [], total = 0) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return null;
+  const sum = list.reduce((acc, r) => acc + (Number(r?.amount) || 0), 0);
+  const orderTotal = Number(total) || 0;
+  if (Math.abs(sum - orderTotal) < 0.005) return null;
+  return `งวดชำระรวม ${fmtMoney(money(sum))} ไม่เท่ายอดใบ ${fmtMoney(orderTotal)} — ย้อนการอนุมัติแล้วจะออก Rev. ไม่ได้ ให้แอดมินตรวจงวดก่อน`;
+}
+
+const sumOf = (rows, pick) => money(rows.filter(pick).reduce((acc, r) => acc + (Number(r.amount) || 0), 0));
+
+/**
+ * บรรทัดเรื่องเงินของโมดัลบนหน้าใบสั่งขาย — คืน `string[]` (ว่าง = ไม่มีเรื่องเงินให้บอก)
+ *
+ * @param action 'revoke' (ReasonDialog ย้อนการอนุมัติ) · 'revise' (โมดัลออก Rev.) · 'approve' (สองบรรทัดเรื่องงวด/บัญชีของโมดัลอนุมัติ)
+ * @param serviceRounds ใบมีรอบบริการ (`orderHasServiceRounds`) — ด่านเงินของนัดช่างผูกกับใบที่อนุมัติอยู่เท่านั้น
+ *
+ * ⭐ ใช้คำว่า "ย้อนการอนุมัติ" เท่านั้น (workflowVocabulary)
+ * ⏭ PR3 เพิ่ม 'cancel' (เงินค้างจากใบที่ยกเลิก) ในตัวเดียวกัน
+ */
+export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds = false } = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  const confirmed = list.filter((r) => r.status === 'confirmed');
+  const reported = list.filter((r) => r.status === 'reported');
+  if (action === 'revoke') {
+    return [
+      confirmed.length
+        ? `เงินที่บัญชีรับรองแล้ว ${confirmed.length} งวด ${fmtMoney(sumOf(confirmed, () => true))} ยังนับว่ารับแล้ว ไม่ต้องถอนคำรับรอง`
+          + ` — ตอนออก Rev. งวดทั้ง ${list.length} งวด (สลิป · ใบกำกับภาษี · ช่วงครอบ) ย้ายไปอยู่กับใบ Rev. บัญชีไม่ต้องรับรองซ้ำ`
+        : null,
+      reported.length ? `สลิปรอบัญชีตรวจ ${reported.length} งวดยังอยู่ในคิวบัญชีตามปกติ` : null,
+      /* มติ D2: ใบที่บัญชีปิดแล้วย้อนได้ · ใบ Rev. ไม่สืบสถานะปิดจากใบเดิม (financeStatus เกิดเป็น NULL) */
+      order?.financeStatus === 'approved' ? 'บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่' : null,
+      /* รอบขายของโซนนับเฉพาะใบ approved ที่ยังไม่ถูกแทน (lib/service/terms.js) */
+      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ ด่านเงินของนัดช่างปิด และต้องผูกโซนกับใบ Rev. ใหม่' : null,
+      /* ⏭ ชั่วคราวจนกว่า PR3 ปลดล็อกการยกเลิกใบที่มีเงินรับแล้ว (paymentLockReason ยังคุมการยกเลิก) */
+      confirmed.length ? 'ใบที่มีเงินรับแล้วไปต่อได้ทางออก Rev. — การยกเลิกเปิดในรอบถัดไป' : null,
+    ].filter(Boolean);
+  }
+  if (action === 'revise') {
+    if (!list.length) return [];
+    const open = sumOf(list, (r) => r.status === 'pending' || r.status === 'rejected');
+    return [
+      `งวดชำระ ${list.length} งวดย้ายไปใบ Rev. ทั้งชุด (รับแล้ว ${fmtMoney(sumOf(confirmed, () => true))}`
+        + ` · รอบัญชีตรวจ ${fmtMoney(sumOf(reported, () => true))} · รอชำระ ${fmtMoney(open)})`
+        + ' — ยอดต่องวดคงตามที่ใช้อยู่ รวมที่ปรับหลังอนุมัติ ไม่คำนวณใหม่จาก QT · ใบนี้จะไม่เหลืองวด',
+    ];
+  }
+  if (action === 'approve') {
+    /* ⭐ แถวที่ตรึงยอดแล้วบนใบที่ยังไม่อนุมัติ = งวดที่ยกมากับใบ Rev. (0376) ⇒ freezeInstallments ไม่สร้างใหม่ (PR0) */
+    const carried = list.length && list.some(isInstallmentFrozen);
+    const revisedFrom = String(order?.metadata?.revisedFrom || '').trim();
+    const from = revisedFrom ? ` ${revisedFrom}` : 'ใบเดิม';
+    const complete = list.length > 0 && confirmed.length === list.length;
+    return [
+      carried
+        ? `ใช้งวดชำระ ${list.length} งวดที่ยกมาจาก${from} (รับแล้ว ${confirmed.length}/${list.length}) — ไม่สร้างใหม่จาก QT`
+        : 'สร้างงวดชำระตามแผนการชำระที่ระบุไว้ใน QT',
+      complete
+        ? 'เก็บเงินครบแล้ว — ใบเข้าคิวปิดใบของบัญชีทันที'
+        : 'เปิดขั้นของบัญชีบนใบนี้ — บัญชีปิดใบได้เมื่อเก็บเงินครบทุกงวด',
+    ];
+  }
+  throw new Error(`salesOrderMoneyOutcome: ไม่รู้จัก action ${action}`);
+}
+
+/* คำอธิบายของโมดัล "ถอนคำรับรองการชำระ" — ผลที่ตรวจได้ ไม่ใช่คำปลอบ
+   🐞 คำเดิมสัญญาว่า "ใบนี้จะย้อนการอนุมัติ/ออก Rev. ได้อีกครั้ง" — ตั้งแต่ PR1 งวดที่รับรองแล้วไม่ล็อกสองทางนั้นอีก
+   ⭐ ใบบริการ: "จ่ายถึง" คิดด้วย `paidThrough` ตัวเดียวของระบบ (สมมติว่างวดนี้กลับเป็นรอตรวจ) — ขยับเมื่อไรต้องบอก
+     เพราะนัดบริการหลังวันนั้นจะลงคิวไม่ได้ทันที · ไม่ขยับ = ไม่พูด */
+export function installmentUnconfirmOutcome(row, rows = [], { serviceRounds = false } = {}) {
+  const parts = [
+    'งวดนี้จะกลับไปเป็น “รอบัญชีตรวจ” — หลักฐานยังอยู่ครบ',
+    `ยอดเก็บแล้วของใบลดลง ${fmtMoney(row?.amount)}`,
+  ];
+  if (serviceRounds && row) {
+    const list = Array.isArray(rows) ? rows : [];
+    const before = paidThrough(list);
+    const after = paidThrough(list.map((r) => (r?.id === row.id ? { ...r, status: 'reported' } : r)));
+    if (before !== after) {
+      parts.push(after
+        ? `“จ่ายถึง” ถอยเป็น ${fmtDate(after)}`
+        : '“จ่ายถึง” ว่าง — ยังไม่มีงวดที่รับรองแล้วครอบบริการ');
+    }
+  }
+  return parts.join(' · ');
+}
+
+/* สรุป audit ของการออก Rev. จากผล `moved` ของ RPC 0376 — คืน `{ summary, warning }`
+   🛑 ไม่มี `moved` = ฐานยังเป็น RPC ตัวก๊อป (ยังไม่รัน 0376) ⇒ งวดถูกก๊อปเป็นแถวค้างรับบนใบ Rev. — ต้องดัง
+     (route ใส่ warning ในคำตอบ + audit) · ปกติมาไม่ถึงเพราะ route ย้อนการอนุมัติถามคอลัมน์ movedFrom ก่อนแล้ว */
+export const REVISION_MOVE_SCHEMA_MISSING = 'ฐานยังไม่ได้รัน 0376 — แจ้งผู้ดูแลระบบ';
+
+export function revisionAuditSummary({ fromNumber, toNumber, reason, moved } = {}) {
+  const base = `ออก Rev. ${fromNumber} → ${toNumber}: ${reason}`;
+  if (!moved || typeof moved !== 'object') {
+    return { summary: `${base} · ⚠️ ${REVISION_MOVE_SCHEMA_MISSING}`, warning: REVISION_MOVE_SCHEMA_MISSING };
+  }
+  const count = Number(moved.count) || 0;
+  if (!count) return { summary: `${base} · ไม่มีงวดชำระให้ย้าย`, warning: null };
+  return {
+    summary: `${base} · ย้ายงวดชำระ ${count} งวด (รับแล้ว ${Number(moved.confirmedCount) || 0} งวด`
+      + ` ${fmtMoney(moved.confirmedAmount)} · รอบัญชีตรวจ ${Number(moved.reportedCount) || 0} งวด)`,
+    warning: null,
+  };
 }
 
 /**
@@ -736,9 +862,12 @@ export function paymentLockReason(rows = []) {
  * ⚠️ `tracked:false` = ตัวเลขมาจากแผน ไม่ใช่ของจริง — หน้าเว็บต้องแยกให้ตาเห็น
  * ⚠️ คืนค่าเบา ๆ เท่าที่ตารางใช้ ไม่ใช่ rollup ทั้งก้อน (ลิสต์มีได้หลายร้อยแถว)
  */
-export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, orderTotal = undefined) {
+export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, orderTotal = undefined, orderStatus = undefined) {
   // ใบยอด 0 ไม่มีอะไรให้เก็บ — คอลัมน์ว่างดีกว่าขึ้น `0/1` ที่อ่านเหมือนค้างเก็บเงิน
   if (orderTotal !== undefined && paymentNotRequired(orderTotal)) return null;
+  /* ใบที่ถูกออก Rev. ทับ (PR1 · mig 0376) — งวดย้ายไปใบ Rev. ทั้งแถวแล้ว ⇒ ถอยไปอ่านแผน QT = "ยังไม่เริ่มติดตาม" ปลอม
+     ⚠️ ผู้เรียก (ลิสต์ SO) ต้องส่ง `status` ของใบมา · ไม่ส่ง = พฤติกรรมเดิม */
+  if (orderStatus === 'revised') return null;
   const list = Array.isArray(rows) ? rows : [];
   if (list.length) {
     const paid = list.filter((r) => r.status === 'confirmed').length;

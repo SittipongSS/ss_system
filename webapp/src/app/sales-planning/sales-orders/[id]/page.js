@@ -102,7 +102,7 @@ import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
-import { installmentReportDoneMessage, paymentRollup } from "@/lib/sales/salesOrderPayments";
+import { installmentReportDoneMessage, paymentRollup, salesOrderMoneyOutcome } from "@/lib/sales/salesOrderPayments";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
@@ -539,8 +539,9 @@ export default function SalesOrderDetailPage() {
           subject: `ใบสั่งขาย ${order.orderNumber}`,
           effects: [
             `ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`,
-            "สร้างงวดชำระตามแผนการชำระที่ระบุไว้ใน QT",
-            "เปิดขั้นของบัญชีบนใบนี้ — บัญชีปิดใบได้เมื่อเก็บเงินครบทุกงวด",
+            /* งวด + ขั้นบัญชี (PR1 · mig 0376): ใบ Rev. ที่ยกงวดมา = ใช้งวดเดิม ไม่สร้างจาก QT (freeze ไม่แตะแถวที่ตรึงแล้ว)
+               · เก็บครบแล้ว = เข้าคิวปิดใบของบัญชีทันที (financeStatus ของใบ Rev. เกิดเป็น NULL → pending · มติ D2) */
+            ...salesOrderMoneyOutcome(order, installments, "approve"),
             "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
           ],
           confirmLabel: "อนุมัติและนับ Actual",
@@ -1167,11 +1168,15 @@ export default function SalesOrderDetailPage() {
              ⇒ คนที่กดเพราะคิดว่าจะแก้จำนวนได้ จะไปเจอใบใหม่ที่แก้อะไรไม่ได้
              ยอดต้องแก้ที่ต้นทางคือใบเสนอราคา (บรรทัด SO ผูก `quotationLineId` ไว้) */
           detail: [
-            "รายการและยอดจะถูกคัดลอกมาทั้งหมด — แก้จำนวน/ราคาในฉบับ Rev. ไม่ได้",
-            "ถ้าต้องแก้ยอด ให้ออก Rev. ที่ใบเสนอราคาแล้วออกใบสั่งขายใหม่แทน",
-            specDocEffect,
-            order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
-          ].filter(Boolean).join(" · "),
+            [
+              "รายการและยอดจะถูกคัดลอกมาทั้งหมด — แก้จำนวน/ราคาในฉบับ Rev. ไม่ได้",
+              "ถ้าต้องแก้ยอด ให้ออก Rev. ที่ใบเสนอราคาแล้วออกใบสั่งขายใหม่แทน",
+              specDocEffect,
+              order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
+            ].filter(Boolean).join(" · "),
+            /* ⭐ งวดชำระ **ย้ายไปใบ Rev. ทั้งชุด** (mig 0376) — บรรทัดของตัวเอง (detail เป็น pre-line) · ใบไม่มีงวด = ไม่พูด */
+            ...salesOrderMoneyOutcome(order, installments, "revise"),
+          ].join("\n"),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
           /* 🐞 ออก Rev. ไม่ผ่านต้องอ่านได้ในโมดัล — ด่านกันแท็บค้าง (`expectedUpdatedAt`) ของ
              `revise_approved_sales_order_atomic` ตีกลับเมื่อมีคนออก Rev. ไปก่อน ⇒ ถ้าเงียบ
@@ -1235,7 +1240,9 @@ export default function SalesOrderDetailPage() {
       disabled: !!financeGate("finance_approve"),
       disabledReason: financeGate("finance_approve") || undefined,
       /* ⚠️ ขั้นบัญชีเป็นปลายทาง — อนุมัติแล้วบัญชีตีกลับเองไม่ได้ และ AE Sup ส่งตรวจใหม่
-         ก็ไม่ได้ (ทั้งสองทาง API ตอบ "บัญชีอนุมัติใบนี้ไปแล้ว") ⇒ ต้องบอกว่าย้อนไม่ได้ */
+         ก็ไม่ได้ (ทั้งสองทาง API ตอบ "บัญชีอนุมัติใบนี้ไปแล้ว") ⇒ ต้องบอกว่าบัญชีย้อนเองไม่ได้
+         ⭐ มติ D2 (23/09 · PR1): AE Sup **ย้อนการอนุมัติ/ออก Rev. ใบที่บัญชีปิดแล้วได้** — ใบ Rev. กลับเข้าคิวให้บัญชี
+           ปิดใหม่ (ไม่สืบสถานะปิดจากใบเดิม) ⇒ คำเดิมที่สัญญาว่าใบจบถาวรเป็นเท็จ ต้องบอกทางนั้นแทน */
       onClick: () => {
         // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
         setError("");
@@ -1247,7 +1254,7 @@ export default function SalesOrderDetailPage() {
             checklist: FINANCE_REVIEW_POINTS,
             effects: [
               "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
-              "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ ไม่มีการตีกลับหลังจากนี้",
+              "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ · ถ้า AE Sup ย้อนการอนุมัติภายหลัง ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่",
               "ยอด Actual ไม่เปลี่ยนจากการกดนี้ (ยอดเข้าตั้งแต่ AE Supervisor อนุมัติ)",
             ],
             confirmLabel: "ยืนยันปิดใบ",
@@ -1762,7 +1769,12 @@ export default function SalesOrderDetailPage() {
         /* ดึงกลับ = ใบออกจากกอง "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) — บอกยอดที่หายไป
            จากภาพรวม/ดีล/โครงการ ให้คนกดรู้ก่อน ไม่ต้องไปงงทีหลังว่ายอดหายไปไหน */
         detail={{
-          revoke: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
+          /* ⭐ เรื่องเงินของการย้อน (PR1 · mig 0376): เงินที่รับแล้วยังนับว่ารับแล้ว + ย้ายไปใบ Rev. ทั้งชุดตอนออก Rev. ·
+             สลิปรอตรวจยังอยู่ในคิว · ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง/ผูกโซนใหม่) — บรรทัดละข้อ (pre-line) */
+          revoke: [
+            `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
+            ...salesOrderMoneyOutcome(order, installments, "revoke", { serviceRounds: hasServiceRounds }),
+          ].join("\n"),
         }[workflowForm?.action]
           /* ใบย้อนหลังไม่มียอดในกอง "รออนุมัติ" และไม่มีลายเซ็นให้ยื่นใหม่ — พูดเรื่องนั้นคือพูดของที่ไม่มี */
           || (historical ? historicalWithdrawDetail(order)

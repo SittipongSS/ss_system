@@ -21,8 +21,8 @@ import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderC
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   installmentActionError, installmentConfirmOutlook, installmentDisplayStatus, installmentPlanDrift,
-  installmentPrepaid, installmentReportOutcome, installmentStartBlock, openingCoverageEnd, paymentNotRequired,
-  paymentRollup, pipelineInstallmentLock, previewInstallments,
+  installmentPrepaid, installmentReportOutcome, installmentStartBlock, installmentUnconfirmOutcome, openingCoverageEnd,
+  paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments, revisedInstallmentsNote,
 } from "@/lib/sales/salesOrderPayments";
 import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
 import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
@@ -75,9 +75,13 @@ export default function SalesOrderPaymentPanel({
      PATCH งวดส่ง `updatedAt` ของแถวที่ตาเห็น ⇒ ได้ 409 แล้วหน้าดึงข้อมูลสดมา โมดัลต้องวาดของสดและส่งตัวล็อกใหม่
      ไม่งั้นกดใหม่ในโมดัลเดิม = 409 ซ้ำไม่รู้จบ (ส่ง updatedAt เก่าของสำเนาเดิมทุกรอบ) */
   const live = (row) => (row ? saved.find((r) => r.id === row.id) || row : row);
+  /* ⭐ ใบที่ถูกออก Rev. ทับ (PR1 · mig 0376) — งวด **ย้ายไปใบ Rev. ทั้งแถว** ⇒ ใบนี้เหลือ 0 แถว
+     ต้องบอกว่าเงินไปอยู่ใบไหน · ห้ามถอยไปวาดแผนจาก QT (อ่านเหมือน "ยังไม่เริ่มติดตาม" ทั้งที่รับเงินไปแล้ว)
+     ⚠️ ขึ้นเฉพาะตอนไม่มีแถวจริง — ใบ revised ที่ยังถือแถว (ออก Rev. ก่อน 0376) ใช้ข้อความล็อกของ PR0 ตามเดิม */
+  const movedAway = saved.length ? null : revisedInstallmentsNote(order);
   const rows = saved.length
     ? saved
-    : (historical ? [] : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount));
+    : (historical || movedAway ? [] : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount));
   const isPreview = !saved.length;
   const single = rows.length === 1;
   const rollup = paymentRollup(saved, todayIso);
@@ -165,7 +169,8 @@ export default function SalesOrderPaymentPanel({
     : null);
 
   const headline = isPreview
-    ? (historical ? "ยังไม่มีงวด" : `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`)
+    ? (movedAway ? "งวดย้ายไปใบ Rev. แล้ว"
+      : historical ? "ยังไม่มีงวด" : `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`)
     : historical && isDraftPlan
       ? `งวดของใบย้อนหลัง${single ? "" : ` · ${rows.length} งวด`} — ${order?.status === "cancelled" ? "ใบยกเลิกแล้ว" : "ขึ้นคิวบัญชีหลัง AE Sup อนุมัติ"}`
     : isDraftPlan
@@ -372,8 +377,10 @@ export default function SalesOrderPaymentPanel({
       ) : null}
 
       {/* ⭐ ใบ pipeline ที่ยกเลิก/ถูกออก Rev. ทับ (PR0): ปุ่มที่หายไปถูกปิดที่ `gate` — บอกเหตุตัวเดียวกับที่ API ตอบ
-          ⚠️ ข้อความงวดร่างข้างล่าง ("บันทึกเงินได้เลย") ไม่จริงกับใบนี้ จึงไม่ขึ้นคู่กัน */}
-      {pipelineLock ? <StatusNotice tone="info">{pipelineLock}</StatusNotice> : null}
+          ⚠️ ข้อความงวดร่างข้างล่าง ("บันทึกเงินได้เลย") ไม่จริงกับใบนี้ จึงไม่ขึ้นคู่กัน
+          ⭐ ใบ revised ที่งวดย้ายไปแล้ว (PR1 · 0376) บอกว่าไปอยู่ใบไหนแทน — ไม่ขึ้นสองข้อความที่พูดเรื่องเดียวกัน */}
+      {movedAway ? <StatusNotice tone="info">{movedAway}</StatusNotice>
+        : pipelineLock ? <StatusNotice tone="info">{pipelineLock}</StatusNotice> : null}
 
       {isDraftPlan && !historical && !pipelineLock ? (
         <StatusNotice tone="info">
@@ -393,13 +400,13 @@ export default function SalesOrderPaymentPanel({
         </StatusNotice>
       ) : null}
 
-      {!rows.length ? (
+      {!rows.length ? (movedAway ? null : (
         <p className="form-note">
           {historical
             ? "ใบนี้ยังไม่มีงวด — งวดของใบย้อนหลังมาจากฟอร์มคีย์ใบ"
             : "ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ — ไม่มีงวดให้ติดตาม"}
         </p>
-      ) : (
+      )) : (
         /* surface="auto" = ตารางมีขอบ/มุมมน/พื้นของตัวเอง (ตัวแปรกลางใน Table.module.css)
            เดิมใช้ "embedded" ซึ่งไม่มีขอบ ⇒ ตารางลอยอยู่ในการ์ดโดยไม่มีกรอบ (ผู้ใช้ขอเพิ่มขอบ)
            ⚠️ ใช้ตัวแปรของ primitive ไม่เขียน border ทับเองในโมดูลนี้ — ไม่งั้นได้ทรงที่สอง */
@@ -453,7 +460,8 @@ export default function SalesOrderPaymentPanel({
                     ? {
                       label: "บัญชีคอนเฟิร์ม",
                       /* ⚠️ ถอยได้ทางเดียวคือบัญชี "ถอนคำรับรอง" พร้อมเหตุผล (action `unconfirm` · มติผู้ใช้ 2026-08-13)
-                         และงวดที่คอนเฟิร์มแล้วยังล็อกใบไม่ให้ย้อนการอนุมัติ/ออก Rev. (ดู paymentLockReason)
+                         · ย้อนการอนุมัติ/ออก Rev. ไม่ถูกล็อกด้วยงวดที่คอนเฟิร์มแล้วอีก (PR1 · mig 0376 — งวดย้ายไปกับใบ Rev.)
+                           แต่การยกเลิกใบยังล็อกอยู่ (paymentLockReason · จนถึง PR3)
                          ⇒ ต้องถามก่อนเสมอ (มติผู้ใช้ 2026-08-13) */
                       /* ⭐ โมดัลตัวเดียวกับคิวบนทะเบียนการชำระ (มติผู้ใช้ 2026-08-13) —
                          และมัน **โชว์หลักฐานก่อนกด** ซึ่งของเดิมไม่มี ทั้งที่หน้านี้เป็น
@@ -888,8 +896,8 @@ export default function SalesOrderPaymentPanel({
         </Modal>
       ) : null}
 
-      {/* ⚠️ ถอนคำรับรอง = กลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว และปลดล็อกใบให้ยกเลิก
-          อนุมัติ/ออก Rev. ได้ด้วย ⇒ ต้องมีเหตุผลเท่ากับตอนตีกลับ ไม่ใช่กดแล้วจบ */}
+      {/* ⚠️ ถอนคำรับรอง = กลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว (ยอดเก็บแล้วลด · "จ่ายถึง" อาจถอย) และปลดล็อก
+          การยกเลิกใบ (paymentLockReason) ⇒ ต้องมีเหตุผลเท่ากับตอนตีกลับ ไม่ใช่กดแล้วจบ */}
       <InstallmentConfirmDialog
         open={!!confirmFor}
         row={live(confirmFor?.row)}
@@ -930,7 +938,9 @@ export default function SalesOrderPaymentPanel({
       <ReasonDialog
         open={!!unconfirmFor}
         title="ถอนคำรับรองการชำระ"
-        description="งวดนี้จะกลับไปเป็น “รอบัญชีตรวจ” — หลักฐานและคำแจ้งของฝ่ายขายยังอยู่ครบ และใบนี้จะย้อนการอนุมัติ/ออก Rev. ได้อีกครั้ง"
+        /* ผลที่ตรวจได้ (PR1): ยอดเก็บแล้วของใบที่ลด · ใบบริการบอก "จ่ายถึง" ที่ถอย — ตัวเดียวกับ paidThrough ของด่านนัด
+           🐞 คำเดิมสัญญาว่าถอนแล้วใบจะกลับมาย้อนการอนุมัติได้ — ตั้งแต่ 0376 ด่านนั้นไม่ถามงวดที่รับรองแล้ว (เป็นเท็จ) */
+        description={unconfirmFor ? installmentUnconfirmOutcome(live(unconfirmFor.row), saved, { serviceRounds: showCoverage }) : ""}
         label="เหตุผลที่ถอนคำรับรอง"
         value={unconfirmFor?.reason || ""}
         onChange={(reason) => setUnconfirmFor((f) => ({ ...f, reason }))}

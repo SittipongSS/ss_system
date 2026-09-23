@@ -204,6 +204,8 @@ export const GET = withUser(async ({ user, supabase }) => {
         quoteById.get(row.quotationId)?.paymentPlan,
         todayIso,
         row.totalAmount,
+        // ใบ revised (mig 0376: งวดย้ายไปใบ Rev. ทั้งแถว) = ไม่มีคอลัมน์งวด — ไม่ใช่ "ยังไม่เริ่มติดตาม" จากแผน QT
+        row.status,
       ),
       /* ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
          ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน

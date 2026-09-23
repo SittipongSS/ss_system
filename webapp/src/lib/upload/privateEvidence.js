@@ -218,6 +218,34 @@ export function isSalesOrderEvidencePath(storagePath, orderId = null) {
 
 export { SALES_ORDER_EVIDENCE_FOLDERS };
 
+/* ── เจ้าของไฟล์หลักฐานของงวดหนึ่งแถว (PR1 · mig 0376 · แผน so-payment-unlock-replan) ─────────────────
+ *
+ * ⭐ ตั้งแต่ 0376 การออก Rev. **ย้ายแถวงวดไปใบ Rev. ทั้งแถว** — สลิป/ใบกำกับที่แนบไว้ก่อนย้ายยังอยู่ใต้โฟลเดอร์
+ *   ของ **ใบเดิม** (และเอกสารยืนยันคำสั่งซื้อที่งวดแรกยืมมาอยู่ใต้ QT ของใบเดิม) ⇒ ด่านอ่านที่ผูกแค่ id ของใบที่ถืองวด
+ *   อยู่ตอนนี้จะตอบ "ไม่พบไฟล์แนบ" กับทุกไฟล์ของงวดที่ย้ายมา (โรคเดียวกับ #1391 ที่ด่านอ่านตกโฟลเดอร์ที่สาม)
+ * ⭐ เจ้าของ = ใบที่ถืองวดอยู่ + ทุกใบ/QT ที่แถว **เคยอยู่จริง** ตาม `movedFrom` (ต่อท้ายทุกทอด) — ไม่เปิดกว้างทั้ง bucket
+ * 🔴 **id ว่าง/ไม่ใช่สตริงต้องถูกทิ้ง** — ตัวตรวจ path ถอยเป็นตัวจับทุกใบเมื่อไม่ได้ส่ง id (ใบย้อนหลังไม่มี QT ·
+ *   รายการ movedFrom ที่เพี้ยน) ⇒ ห้ามส่งค่าว่างเข้า `isSalesOrderEvidencePath`/`isQuotationEvidencePath` ทางนี้เด็ดขาด
+ */
+const ownerId = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+export function installmentEvidenceOwners(row, order) {
+  const moved = Array.isArray(row?.movedFrom) ? row.movedFrom : [];
+  const entries = moved.filter((m) => m && typeof m === 'object');
+  const uniq = (values) => [...new Set(values.map(ownerId).filter(Boolean))];
+  return {
+    salesOrderIds: uniq([order?.id, ...entries.map((m) => m.salesOrderId)]),
+    quotationIds: uniq([order?.quotationId, ...entries.map((m) => m.quotationId)]),
+  };
+}
+
+/** path นี้เป็นไฟล์หลักฐานของงวดแถวนี้ไหม — ใต้ใบสั่งขายหรือ QT ที่แถวเคยอยู่ (ด่านอ่านของ payment-file) */
+export function isInstallmentEvidencePath(storagePath, row, order) {
+  const { salesOrderIds, quotationIds } = installmentEvidenceOwners(row, order);
+  return salesOrderIds.some((id) => isSalesOrderEvidencePath(storagePath, id))
+    || quotationIds.some((id) => isQuotationEvidencePath(storagePath, id));
+}
+
 /**
  * ด่าน **สถานะเอกสาร** ของ entityType นั้น — คืนข้อความผิดพลาด หรือ null เมื่อผ่าน
  *
