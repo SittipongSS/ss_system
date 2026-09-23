@@ -117,17 +117,12 @@ export const GET = withUser(async ({ user, supabase }) => {
      ⚠️ ดึงแค่ 3 คอลัมน์ที่ใช้จริง ไม่เอา evidence/เหตุผลมาทั้งก้อน
      (`orderIds` ประกาศไว้ข้างบนแล้วตอนดึงบรรทัดของใบ)
      ⭐ `kind` (mig 0374) — งวดยกมาของใบย้อนหลังไม่นับเป็น "ต้องมีใบกำกับ" (ออกในระบบเดิมแล้ว · salesOrderPaymentCell)
+     ⭐ `refundedAt` (mig 0378) — งวดที่บัญชีบันทึกคืนเงินแล้วไม่นับ "เก็บแล้ว"/"ต้องมีใบกำกับ" (review UI-2 · salesOrderPaymentCell)
+       ⚠️ ก่อนรัน 0378 ไม่มีคอลัมน์ (42703) ⇒ ถอยไปอ่านชุดเดิม (ไม่มีงวดคืนเงินอยู่แล้ว) — PR3 สัญญาว่าทะเบียน/แผงไม่พังก่อนรันมิก
      ⚠️ คอมเมนต์ใหม่วางเหนือ `.from()` — ด่าน check:columns มองหา `.select(` ไม่เกิน 200 ตัวอักษรหลัง `.from(` */
   const installmentsByOrder = new Map();
   if (orderIds.length) {
-    const { data: rows, error: installmentError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
-      .from('sales_order_installments')
-      /* `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" ในคอลัมน์งวดชำระ (mig 0348)
-         ⚠️ เอาแค่คอลัมน์นี้ ไม่ลากไฟล์/ผู้บันทึกมาทั้งก้อน — ตารางต้องการแค่ "มีหรือยัง" */
-      .select('salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo"')
-      .in('salesOrderId', chunk)
-      .order('salesOrderId', { ascending: true })
-      .order('id', { ascending: true })));
+    const { data: rows, error: installmentError } = await loadListInstallments(supabase, orderIds);
     // ตารางยังไม่ถูกสร้าง (ยังไม่รัน mig 0245) ต้องไม่ทำให้ทั้งหน้าพัง — คอลัมน์ว่างแทน
     if (installmentError) console.error('[sales-orders] โหลดงวดชำระไม่สำเร็จ:', installmentError.message);
     for (const row of rows || []) {
@@ -371,6 +366,24 @@ export const POST = withUser(async ({ user, supabase, req }) => {
  * `paidOn` + `evidence` บนแถว pending = "งวดร่างที่บันทึกเงินไว้" (installmentPrepaid)
  * ซึ่งจะกลายเป็นคำแจ้งให้บัญชีเองตอนใบอนุมัติ (freezeInstallments)
  */
+/* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·
+   `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว) */
+async function loadListInstallments(supabase, orderIds) {
+  const withRefund = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_installments')
+    .select('salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt"')
+    .in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true })
+    .order('id', { ascending: true })));
+  if (withRefund.error?.code !== '42703') return withRefund;
+  return fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_installments')
+    .select('salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo"')
+    .in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true })
+    .order('id', { ascending: true })));
+}
+
 async function applyCreateFormPayments(supabase, { orderId, dues, firstPaidOn, firstEvidence }) {
   const rows = await loadInstallments(supabase, orderId);
   if (!rows.length) return;

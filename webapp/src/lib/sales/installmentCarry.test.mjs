@@ -299,3 +299,71 @@ test('carriedAwayGroups: ลิงก์ "ยกไป {SO}" บนใบที�
   ]), [{ salesOrderId: 'N', orderNumber: 'SO-N', count: 2, amount: 30000 }]);
   assert.deepEqual(carriedAwayGroups(null), []);
 });
+
+// ── 6. review MONEY-1: เงินก้อนเดียวนับสองครั้ง (บทเรียน SO-26080039-0 / -043-0 ผ่านทางที่จอแนะนำ) ─────────────────
+/* 🐞 ใบใหม่ของดีลเดียวกันถูกตั้งงวดแรกด้วยมัดจำก้อนเดิมอยู่แล้ว (freeze ยืมสลิปจากเอกสารยืนยันคำสั่งซื้อ · เงินงวดแรกที่
+     กรอกตอนสร้างใบ) แล้วโมดัลอนุมัติบอกให้กด "ยกเงินจากใบที่ยกเลิก" ⇒ ยกมัดจำเดิมเข้ามาอีกแถว = เก็บ 64,200 จากมัดจำ 32,100
+     ด่านยกเกินยอดใบจับไม่ได้ (32,100 + 32,100 ≤ 107,000) ⇒ ต้องเทียบแถวที่ยกกับงวดที่มีเงินของใบใหม่ตรง ๆ
+   ⭐ ซ้ำ = งวดของใบนี้ที่แจ้ง/รับรองแล้ว (ยังไม่คืนเงิน) ที่ **วันจ่าย + ยอดตรงกัน** หรือ **สลิปไฟล์เดียวกัน** (storagePath)
+     ⇒ ยกไม่ได้ · บอกทาง: บัญชีตีกลับ/ถอนคำรับรองงวดที่ซ้ำบนใบนี้ก่อน (RPC 0378 ตรวจเกณฑ์เดียวกัน — installment_carry_duplicate)
+   ⭐ ชื่อไฟล์ตรงกันอย่างเดียว = เตือน (ไม่บล็อก) — ชื่อสลิปจากมือถือซ้ำกันได้ ("image.jpg") บล็อกแล้วเงินคนละก้อนเป็นทางตัน */
+const DEP = row({
+  id: 'D1', seq: 1, label: 'มัดจำ', percent: 20, amount: 20000, status: 'reported', paidOn: '2026-08-20',
+  reportedAt: 'y', evidence: [{ fileName: 'deposit.jpg', storagePath: 'sales-orders/SOR-N/payments/deposit.jpg' }],
+  note: 'หลักฐานจากเอกสารยืนยันคำสั่งซื้อ (สลิปโอนเงิน) — ระบบยกมาให้ รอบัญชีตรวจ',
+});
+const REST = row({ id: 'D2', seq: 2, label: 'งวดที่ 2', percent: 80, amount: 80000 });
+
+test('🔴 applyCarryIn: ใบใหม่มีงวดแจ้ง/รับรองแล้วที่วันจ่าย+ยอดตรงกับงวดที่ยก = ยกไม่ได้ (ยกเกินยอดใบจับไม่ได้)', () => {
+  for (const status of ['reported', 'confirmed']) {
+    const built = applyCarryIn(TARGET, [{ ...DEP, status }, REST], [S1]);
+    assert.ok(built.error, `${status}: ต้องบล็อก`);
+    assert.match(built.error, /งวดที่ 1 ของใบนี้ \((รอบัญชีตรวจ|รับเงินแล้ว)\) เป็นเงินก้อนเดียวกับงวดที่ 1 ของใบที่ยกเลิก/);
+    assert.match(built.error, /วันจ่าย .* ยอด ฿20,000\.00 ตรงกัน/);
+    assert.match(built.error, /ให้บัญชีตีกลับ\/ถอนคำรับรองงวดที่ซ้ำบนใบนี้ก่อน แล้วจึงยก/);
+    assert.doesNotMatch(built.error, /เกินยอดใบ/, 'ยอดไม่เกิน — ด่านนี้คือด่านใหม่ ไม่ใช่ด่านยกเกิน');
+  }
+});
+
+test('🔴 applyCarryIn: สลิปไฟล์เดียวกัน (storagePath) = ยกไม่ได้ แม้วันจ่าย/ยอดต่างกัน', () => {
+  const shared = { fileName: 'slip.jpg', storagePath: 'quotations/QT-C/order-confirmation/slip.jpg' };
+  const built = applyCarryIn(TARGET, [
+    { ...DEP, paidOn: '2026-08-22', amount: 25000, percent: 25, evidence: [{ ...shared, fileName: 'อีกชื่อ.jpg' }] },
+    { ...REST, amount: 75000, percent: 75 },
+  ], [{ ...S1, evidence: [shared] }]);
+  assert.ok(built.error);
+  assert.match(built.error, /สลิปไฟล์เดียวกัน/);
+});
+
+test('applyCarryIn: บัญชีตีกลับงวดที่ซ้ำแล้ว = ยกได้ และงวดนั้นเป็นงวดเปิดที่ถูกหักก่อน · คืนเงินแล้ว/รอชำระไม่นับว่าซ้ำ', () => {
+  const rejected = applyCarryIn(TARGET, [{ ...DEP, status: 'rejected', rejectedReason: 'ซ้ำกับ SO เดิม' }, REST], [S1]);
+  assert.equal(rejected.error, null);
+  assert.deepEqual(rejected.removed.map((r) => r.id), ['D1'], 'งวดที่ตีกลับถูกหักจนหมด — เงินที่ยกมาครอบแทน');
+  const pending = applyCarryIn(TARGET, [{ ...DEP, status: 'pending', paidOn: null, evidence: [] }, REST], [S1]);
+  assert.equal(pending.error, null);
+  // เงินคนละก้อนจริง (วันจ่ายต่าง · ไฟล์ต่าง) ยกได้ตามปกติ
+  const other = applyCarryIn(TARGET, [{ ...DEP, paidOn: '2026-09-01' }, REST], [S1]);
+  assert.equal(other.error, null);
+});
+
+test('applyCarryIn: ชื่อไฟล์สลิปตรงกันอย่างเดียว = คำเตือน (ไม่บล็อก — ชื่อไฟล์จากมือถือซ้ำกันได้)', () => {
+  const built = applyCarryIn(TARGET, [{ ...DEP, paidOn: '2026-09-01', evidence: [{ fileName: 'SLIP.JPG', storagePath: 'x/other.jpg' }] }, REST], [S1]);
+  assert.equal(built.error, null);
+  assert.equal(built.warnings.length, 1);
+  assert.match(built.warnings[0], /งวดที่ 1 ของใบนี้แนบสลิปชื่อเดียวกับงวดที่ 1 ของใบที่ยกเลิก \(slip\.jpg\) — ตรวจว่าไม่ใช่เงินก้อนเดียวกันก่อนยก/);
+  assert.deepEqual(applyCarryIn(TARGET, [T1, T2], [S1]).warnings, []);
+  // คำเตือนต้องถึงโมดัลยืนยันด้วย (ไม่ใช่เห็นแต่ในตาราง)
+  const facts = carryPromptFacts(TARGET, SOURCE, [DEP, REST], [S1], built, { sourceRows: [S1] });
+  assert.deepEqual(facts.warnings, built.warnings);
+});
+
+// ── 7. review UI-5: ยกเกินยอดใบ — ข้อความต้องชี้ทางที่มีอยู่จริง (คืนเงินได้ทั้งงวดเท่านั้น · ไม่มีคืนบางส่วน) ──────────
+test('applyCarryIn: ยกเกินยอดใบบอกทางที่ทำได้จริง — เลือกยกน้อยลง หรือบัญชีบันทึกคืนเงินทั้งงวด (ไม่มีคืนบางส่วน)', () => {
+  const L1 = row({ id: 'L1', seq: 1, label: 'มัดจำ', percent: 90, amount: 90000, status: 'confirmed', paidOn: '2026-07-01' });
+  const O2 = row({ id: 'O2', seq: 2, label: 'งวดที่ 2', percent: 10, amount: 10000 });
+  const error = applyCarryIn(TARGET, [L1, O2], [S1]).error;
+  assert.doesNotMatch(error, /ส่วนที่เกิน/, 'คืนบางส่วนไม่มีในระบบ (refund = ทั้งแถว)');
+  assert.match(error, /ถ้ายกหลายงวดให้เลือกยกน้อยลง/);
+  assert.match(error, /คืนบางส่วนไม่ได้/);
+  assert.match(error, /บัญชีบันทึกคืนเงินทั้งงวดที่ใบที่ยกเลิก แล้วเก็บเงินของใบนี้ตามงวดปกติ/);
+});

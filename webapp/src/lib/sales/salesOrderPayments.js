@@ -24,6 +24,8 @@ import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
 // งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import { OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
+// เอกสารยืนยันคำสั่งซื้อของใบ (อ่านสองบ้าน) — ไฟล์นั้นไม่มี import (ไม่มีวงวน)
+import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 
 export const INSTALLMENT_STATUSES = ['pending', 'reported', 'confirmed', 'rejected'];
 
@@ -165,6 +167,17 @@ export function strandedInstallment(row, order) {
   return ['confirmed', 'reported'].includes(row.status) && !installmentRefunded(row);
 }
 
+/* ── งวดโมฆะของใบที่ตายแล้ว (PR0 · review UI-3) ──────────────────────────────────────────────────────────────
+   ใบยกเลิก/ถูกออก Rev. ทับ = ไม่มีงานให้เก็บเงินต่อ ⇒ งวดที่ยังไม่มีเงิน (pending/rejected) **ไม่ใช่ยอดค้างรับ ไม่ใช่เลยกำหนด**
+   ⭐ ตัวตัดสินเดียวของทั้งระบบ — ทะเบียนบัญชี (`ledgerVoidInstallment`) · แผงงวด · ตารางรายการ SO ถามตัวนี้
+     🐞 เดิมมีแต่ทะเบียนที่ตัด ⇒ โมดัลยกเลิกสัญญา "หลุดจากยอดค้างรับทันที" แต่แผงของใบเดียวกันยังขึ้น "ค้างรับ · เลยกำหนด"
+   ⚠️ reported/confirmed ไม่ใช่โมฆะ — เงินเข้าแล้ว/รอบัญชีตรวจ (เงินค้างจากใบที่ยกเลิก · strandedInstallment) */
+const DEAD_ORDER_STATUSES = Object.freeze(['cancelled', 'revised']);
+export function installmentVoid(row, order) {
+  if (!row || !DEAD_ORDER_STATUSES.includes(order?.status)) return false;
+  return ['pending', 'rejected'].includes(row.status || 'pending');
+}
+
 /** เลขที่ใบลดหนี้ยาวได้เท่าเลขใบกำกับ (ช่องเดียวกันใน Express) */
 export const MAX_REFUND_CREDIT_NOTE_NO = 40;
 export const MAX_REFUND_REASON = 500;
@@ -276,13 +289,17 @@ export function buildInstallmentsForOrder(plan, total, { confirmation = null, ac
 export function paymentRollup(rows = [], todayIso = null) {
   const list = Array.isArray(rows) ? rows : [];
   const count = list.length;
-  const confirmed = list.filter((r) => r.status === 'confirmed');
+  /* ⭐ งวดที่บัญชีบันทึกคืนเงินแล้ว (PR3 · 0378) ค่าในฐานยังเป็น confirmed — **ไม่ใช่เงินที่เก็บได้** และไม่ใช่ยอดค้างรับ
+     (review UI-2: เดิมแผงขึ้น "เก็บครบแล้ว" ทั้งที่คืนลูกค้าไปหมดแล้ว — ขัดกับทะเบียนบัญชีและโมดัลคืนเงิน) */
+  const refunded = list.filter(installmentRefunded);
+  const confirmed = list.filter((r) => r.status === 'confirmed' && !installmentRefunded(r));
   const reported = list.filter((r) => r.status === 'reported');
   const rejected = list.filter((r) => r.status === 'rejected');
   const open = list.filter((r) => r.status !== 'confirmed');
 
   const totalAmount = money(list.reduce((sum, r) => sum + (Number(r.amount) || 0), 0));
   const confirmedAmount = money(confirmed.reduce((sum, r) => sum + (Number(r.amount) || 0), 0));
+  const refundedAmount = money(refunded.reduce((sum, r) => sum + (Number(r.amount) || 0), 0));
 
   // เลยกำหนด = ยังไม่ confirmed และวันครบกำหนดผ่านไปแล้ว
   // ⚠️ `reported` ก็นับว่าเลยกำหนดได้ — แจ้งแล้วแต่บัญชียังไม่รับรอง เงินยังไม่เข้าจริง
@@ -305,7 +322,10 @@ export function paymentRollup(rows = [], todayIso = null) {
     openCount: open.length,
     totalAmount,
     confirmedAmount,
-    outstandingAmount: money(totalAmount - confirmedAmount),
+    refundedCount: refunded.length,
+    refundedAmount,
+    // ค้างรับ = งวดที่ยังไม่ confirmed (ยอดรวม − เก็บได้ − คืนแล้ว) · ไม่มีงวดคืนเงิน = ค่าเดิมทุกตัว
+    outstandingAmount: money(totalAmount - confirmedAmount - refundedAmount),
     overdueCount: overdue.length,
     nextDue: upcoming[0] || null,
     complete,
@@ -658,9 +678,13 @@ export function installmentActionError(row, action, user, options = {}) {
      โดยตั้งใจ — บล็อกทุกใบเมื่อผู้เรียกลืมส่ง = หยุดรับเงินทั้งบริษัท)
      ⚠️ ฝ่ายขายแจ้ง (ปลายทาง `reported`/`pending`) ไม่ติด — ยังไม่ใช่จังหวะที่เงินนับ
      ⚠️ ตีกลับ/ดึงกลับไม่ติด — งวดที่ข้อมูลไม่ครบยิ่งต้องถอยได้ */
+  /* ⭐ ใบ pipeline ที่ยกเลิกแล้ว (`options.orderCancelled`) ไม่ติดข้อนี้ (review 23/09 · ทางตันคืนเงิน) — ไม่มีนัดช่างไหน
+     อ่านใบที่ยกเลิก (ด่านเงินของนัดนับเฉพาะใบ approved) ⇒ ช่วงครอบไม่มีอะไรให้กันแล้ว · แต่เซลล์ช่วงครอบของใบยกเลิกถูกล็อก
+     (PIPELINE_CANCELLED_LOCK) และคืนเงินรับเฉพาะงวด confirmed ⇒ ถ้ายังบังคับ งวด reported ที่ไม่มีช่วงครอบรับรองไม่ได้
+     และคืนเงินไม่ได้เลย เหลือทางเดียวคือตีกลับ = บันทึกว่าเงินไม่เคยเข้า ทั้งที่เข้าแล้วและกำลังคืน */
   const landsConfirmed = action === 'confirm'
     || (action === 'report' && installmentReportOutcome(user, row) === 'confirmed');
-  if (landsConfirmed && options.serviceRounds) {
+  if (landsConfirmed && options.serviceRounds && !options.orderCancelled) {
     const coversFrom = options.coversFrom ?? row.coversFrom;
     const coversTo = options.coversTo ?? row.coversTo;
     if (!coversFrom || !coversTo) {
@@ -906,6 +930,13 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
     const from = revisedFrom ? ` ${revisedFrom}` : 'ใบเดิม';
     const complete = list.length > 0 && confirmed.length === list.length;
     const stranded = (Array.isArray(strandedSources) ? strandedSources : []).filter((src) => src && Number(src.amount) > 0);
+    /* 🐞 review MONEY-1: ดีลมีเงินค้าง ⇒ freeze ไม่ยืมสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรก (borrowConfirmation — route)
+       สลิปนั้นมักเป็นมัดจำก้อนเดียวกับเงินค้าง ยืมแล้วยกเงินซ้ำ = นับสองครั้ง ⇒ บอกผลนั้นและทาง "ยกแทนการแจ้ง" ก่อนกด
+       · เงินที่ฝ่ายขายบันทึกไว้เองตอนร่าง (prepaid) ยังเข้าคิวบัญชีตามเดิม (เป็นของที่คนบันทึก ไม่ใช่ระบบเดา) — ด่านยกซ้ำ
+         (carryDuplicates · RPC 0378 installment_carry_duplicate) บังคับให้บัญชีตีกลับงวดที่ซ้ำก่อนยก */
+    const confirmation = orderConfirmationOf(order, order?.quotation);
+    const slipSkipped = stranded.length > 0 && !carried && confirmation?.docType === 'payment_slip';
+    const prepaid = stranded.length ? list.filter(installmentPrepaid) : [];
     return [
       carried
         ? `ใช้งวดชำระ ${list.length} งวดที่ยกมาจาก${from} (รับแล้ว ${confirmed.length}/${list.length}) — ไม่สร้างใหม่จาก QT`
@@ -917,6 +948,14 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
       stranded.length
         ? `ดีลนี้มีเงินค้างจากใบที่ยกเลิก ${stranded.map((src) => `${src.orderNumber} ${fmtMoney(src.amount)}`).join(' · ')}`
           + ' — หลังอนุมัติกด ‘ยกเงินจากใบที่ยกเลิก’ ที่แท็บการชำระ'
+        : null,
+      slipSkipped
+        ? 'ระบบไม่ยกสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งเป็นงวดแรกให้ (ดีลนี้มีเงินค้าง — กันมัดจำก้อนเดียวนับสองใบ)'
+          + ' — ถ้าสลิปนั้นคือเงินค้างก้อนเดียวกัน ให้ยกเงินแทนการแจ้งชำระ · ถ้าเป็นเงินใหม่ ฝ่ายขายแจ้งชำระงวดแรกเองหลังอนุมัติ'
+        : null,
+      prepaid.length
+        ? `งวดที่บันทึกการจ่ายไว้ตอนร่าง ${prepaid.length} งวด ${fmtMoney(sumOf(prepaid, () => true))} เข้าคิวบัญชีตามเดิม`
+          + ' — ถ้าเป็นสลิปเดียวกับเงินค้าง ให้บัญชีตีกลับงวดนั้นก่อนแล้วจึงยกเงิน (ระบบไม่ยอมให้ยกซ้ำกับงวดที่แจ้งไว้)'
         : null,
     ].filter(Boolean);
   }
@@ -964,12 +1003,13 @@ export function cancelledMoneyRestoreBlock(rows = [], movedOut = []) {
   return `เงินของใบนี้${parts} — คืนสถานะไม่ได้ ให้ออกใบใหม่`;
 }
 
-export function movedOutDeleteBlock(movedOut = []) {
+/* @param subject ใบที่กำลังจะถูกลบ (ค่าตั้งต้น "ใบนี้" = ใบสั่งขาย) — ลบใบเสนอราคาส่ง "ใบสั่งขายของใบเสนอราคานี้" (ใบลูกหายตาม) */
+export function movedOutDeleteBlock(movedOut = [], { subject = 'ใบนี้' } = {}) {
   const list = (Array.isArray(movedOut) ? movedOut : []).filter(Boolean);
   if (!list.length) return null;
   const holders = [...new Set(list.map((m) => String(m.orderNumber || '').trim() || 'ใบอื่น'))];
-  return `ลบถาวรไม่ได้: งวดชำระ ${list.length} งวดของ ${holders.join(', ')} ย้ายไปจากใบนี้ (ออก Rev./ยกเงิน)`
-    + ' และยังใช้หลักฐาน (สลิป · ใบกำกับ) ในโฟลเดอร์ของใบนี้ — ใบนี้เป็นประวัติของเงินก้อนนั้น';
+  return `ลบถาวรไม่ได้: งวดชำระ ${list.length} งวดของ ${holders.join(', ')} ย้ายไปจาก${subject} (ออก Rev./ยกเงิน)`
+    + ` และยังใช้หลักฐาน (สลิป · ใบกำกับ) ในโฟลเดอร์ของ${subject} — ${subject}เป็นประวัติของเงินก้อนนั้น`;
 }
 
 /* สรุป audit ของการออก Rev. จากผล `moved` ของ RPC 0376 — คืน `{ summary, warning }`
@@ -1005,9 +1045,16 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
   /* ใบที่ถูกออก Rev. ทับ (PR1 · mig 0376) — งวดย้ายไปใบ Rev. ทั้งแถวแล้ว ⇒ ถอยไปอ่านแผน QT = "ยังไม่เริ่มติดตาม" ปลอม
      ⚠️ ผู้เรียก (ลิสต์ SO) ต้องส่ง `status` ของใบมา · ไม่ส่ง = พฤติกรรมเดิม */
   if (orderStatus === 'revised') return null;
-  const list = Array.isArray(rows) ? rows : [];
+  /* ใบที่ยกเลิก (review UI-3/UI-4): งวดโมฆะ (pending/rejected) ไม่ใช่ค้างรับ/เลยกำหนด — ตัดด้วยตัวตัดสินเดียวกับทะเบียนบัญชี
+     · ไม่เหลืองวดจริง (ยกเงินออกไปหมด · มีแต่งวดโมฆะ) = ไม่มีคอลัมน์งวด — ถอยไปอ่านแผน QT = "ยังไม่เริ่มติดตาม" ปลอม */
+  const dead = orderStatus === 'cancelled';
+  const list = (Array.isArray(rows) ? rows : []).filter((r) => !installmentVoid(r, { status: orderStatus }));
+  if (dead && !list.length) return null;
   if (list.length) {
-    const paid = list.filter((r) => r.status === 'confirmed').length;
+    /* งวดที่คืนเงินแล้ว (0378) ไม่ใช่ "เก็บแล้ว" และไม่ต้องมีใบกำกับ (review UI-2 — ⚠️ ผู้เรียกต้องเลือก `refundedAt` มาด้วย) */
+    const paid = list.filter((r) => r.status === 'confirmed' && !installmentRefunded(r)).length;
+    const refunded = list.filter(installmentRefunded).length;
+    const stranded = dead ? list.filter((r) => strandedInstallment(r, { status: orderStatus })).length : 0;
     const overdue = list.filter(
       (r) => r.status !== 'confirmed' && r.dueDate && todayIso && String(r.dueDate) < String(todayIso),
     ).length;
@@ -1017,7 +1064,8 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
        ⚠️ ต้องมี `taxInvoiceNo` ใน `.select()` ของผู้เรียก ไม่งั้นได้ 0 ทุกใบเงียบ ๆ
        ⭐ งวดยกมาของใบย้อนหลังไม่นับ — ใบกำกับของเงินก้อนนั้นออกในระบบเดิมแล้ว (กติกาเดียวกับ `taxInvoicePending`)
          ⚠️ ผู้เรียกต้องเลือก `kind` มาด้วย ไม่งั้นงวดยกมาถูกนับเป็น "ค้างใบกำกับ" ตลอดกาล */
-    const needsInvoice = list.filter((r) => ['reported', 'confirmed'].includes(r.status) && !isOpeningInstallment(r));
+    const needsInvoice = list.filter((r) => ['reported', 'confirmed'].includes(r.status) && !isOpeningInstallment(r)
+      && !installmentRefunded(r));
     const invoiced = needsInvoice.filter((r) => String(r.taxInvoiceNo || '').trim()).length;
     return {
       tracked: true,
@@ -1029,6 +1077,8 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
       rejected: list.filter((r) => r.status === 'rejected').length,
       invoiceNeeded: needsInvoice.length,
       invoiced,
+      stranded,
+      refunded,
     };
   }
   const planned = paymentScheduleRows(plan).length;
@@ -1058,6 +1108,9 @@ export function salesOrderPaymentNote(payment) {
   if (!payment) return null;
   // ยังไม่เริ่มติดตาม = ตัวเลขที่เห็นมาจาก **แผนใน QT** ไม่ใช่ของจริง ต้องบอกให้รู้
   if (!payment.tracked) return { label: 'ยังไม่เริ่มติดตาม', tone: 'idle' };
+  /* ใบที่ยกเลิก (PR3 · review UI-2): เรื่องเดียวที่ต้องตามคือเงินค้าง · คืนลูกค้าครบแล้ว ≠ "เก็บครบแล้ว" (กติกาเดียวกับ groupNote ของทะเบียน) */
+  if (payment.stranded) return { label: `เงินค้าง ${payment.stranded} งวด`, tone: 'warning' };
+  if (payment.refunded && payment.refunded === payment.count) return { label: 'คืนเงินแล้ว', tone: 'idle' };
   if (payment.overdue) return { label: `เลยกำหนด ${payment.overdue} งวด`, tone: 'danger' };
   if (payment.rejected) return { label: `บัญชีตีกลับ ${payment.rejected} งวด`, tone: 'danger' };
   if (payment.reviewing) return { label: `รอบัญชีรับรอง ${payment.reviewing} งวด`, tone: 'warning' };

@@ -20,14 +20,19 @@ const safeId = (value) => String(value).replace(/[^a-zA-Z0-9_-]+/g, '_');
    (`sales_orders_status_check` ของ 0166: draft · pending_approval · approved ·
    rejected · cancelled · revised · approval_revoked)
    ⚠️ `approval_revoked` **ไม่อยู่ในนี้** — ใบที่ย้อนการอนุมัติยังเป็นใบเดิมและงวดยัง
-   อยู่ครบ คนที่กำลังตามเก็บเงินไม่ควรถูกตัดมือระหว่างที่ใบรอออก Rev. */
-export const SO_PAYMENT_EVIDENCE_CLOSED = ['cancelled', 'rejected', 'revised'];
+   อยู่ครบ คนที่กำลังตามเก็บเงินไม่ควรถูกตัดมือระหว่างที่ใบรอออก Rev.
+   ⚠️ `rejected` **ไม่อยู่ในนี้แล้ว** (review 23/09 · มติ D3) — ใบที่ AE Sup ตีกลับคือใบที่กลับเข้ารอบแก้ ไม่ใช่ใบที่ตาย
+     · ตั้งแต่ 0376 ใบ Rev. ถืองวดเงินที่ย้ายมา (ตรึงยอดแล้ว) — Rev. ที่ถูกตีกลับยังต้องรับแจ้งชำระงวดถัดไปได้
+     · `pipelineInstallmentLock` ปล่อย report บนใบ rejected อยู่แล้ว ⇒ ด่านไฟล์ปิดไว้ = ปุ่มขึ้นแต่อัปสลิปไม่ได้ (คลาส IS-26080026)
+     ⇒ ยามความสัมพันธ์ไล่ทุกสถานะของ CHECK 0166 (privateEvidenceGate.test) */
+export const SO_PAYMENT_EVIDENCE_CLOSED = ['cancelled', 'revised'];
 /* ใบกำกับภาษีของงวด — **ใบยกเลิกยังแนบได้** (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09)
    ใบ pipeline ที่ยกเลิกแล้ว บัญชียังรับรอง/บันทึกใบกำกับของเงินที่เข้าแล้วได้ (`pipelineInstallmentLock` ปล่อย
    `tax-invoice`) ⇒ ด่านไฟล์ต้องไม่แคบกว่าด่านคำสั่ง (ยาม: privateEvidenceGate.test "ล็อกทั้งใบของใบ pipeline")
    ⚠️ ใบย้อนหลังที่ยกเลิก: คำสั่งยังถูก `historicalInstallmentLock` ปิดทั้งใบ — ด่านไฟล์กว้างกว่าได้ (ไม่มีปุ่มให้ถึง)
-   ⚠️ สลิปการชำระ (`SO_PAYMENT_EVIDENCE_CLOSED`) ยังปิดใบยกเลิก — แจ้งชำระงวดใหม่บนใบยกเลิกถูกบล็อกเหมือนกัน */
-export const SO_TAX_INVOICE_CLOSED = ['rejected', 'revised'];
+   ⚠️ สลิปการชำระ (`SO_PAYMENT_EVIDENCE_CLOSED`) ยังปิดใบยกเลิก — แจ้งชำระงวดใหม่บนใบยกเลิกถูกบล็อกเหมือนกัน
+   ⚠️ `rejected` เปิดแล้ว (review 23/09 · มติ D3) — ใบ Rev. ที่ถูกตีกลับถืองวดที่รับเงินแล้ว (0376) บัญชียังบันทึกใบกำกับได้ */
+export const SO_TAX_INVOICE_CLOSED = ['revised'];
 
 const TARGETS = {
   // หลักฐาน Won แนบได้เฉพาะตอนใบยังเปิดอยู่ — หลัง accept ใบกลายเป็นแหล่งของ Actual
@@ -62,14 +67,14 @@ const TARGETS = {
    * `/api/upload/session` ทุกครั้ง · ฟีเจอร์ไม่เคยทำงานเลยตั้งแต่วันที่ merge
    *
    * ⭐ **ด่านของไฟล์ต้องไม่แคบกว่าด่านของคำสั่ง** — คนตัดสินว่างวดไหนแจ้งได้คือ
-   * `installmentActionError` ซึ่งไม่ดูสถานะใบเลย · ที่นี่จึงเหลือแค่ตัดใบที่ไม่มีเงิน
-   * ให้เก็บอีกแล้ว: ยกเลิก/ตีกลับ (ชุดเดียวกับที่ POST /installments ปฏิเสธ) และใบที่
-   * ถูกออก Rev. ทับไปแล้ว ซึ่งหลักฐานต้องไปแขวนบนใบใหม่ ไม่ใช่ใบที่ตายไปแล้ว */
+   * `installmentActionError` (+ `pipelineInstallmentLock`) · ที่นี่จึงเหลือแค่ตัดใบที่ไม่มีเงิน
+   * ให้เก็บอีกแล้ว: ยกเลิก และใบที่ถูกออก Rev. ทับไปแล้ว ซึ่งหลักฐานต้องไปแขวนบนใบใหม่
+   * ไม่ใช่ใบที่ตายไปแล้ว · ใบที่ถูกตีกลับยังรับเงินได้ (มติ D3 — ดู SO_PAYMENT_EVIDENCE_CLOSED) */
   sales_order_payment_evidence: {
     table: 'sales_orders',
     notFound: 'ไม่พบใบสั่งขาย',
     gate: (row) => (SO_PAYMENT_EVIDENCE_CLOSED.includes(row.status)
-      ? 'ใบสั่งขายนี้ยกเลิก/ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบหลักฐานการชำระไม่ได้'
+      ? 'ใบสั่งขายนี้ยกเลิก/ถูกออก Rev. ทับแล้ว — แนบหลักฐานการชำระไม่ได้'
       : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/payments/`,
   },
@@ -82,13 +87,13 @@ const TARGETS = {
    * 🔴 ถ้าปล่อยให้ตกไปใช้ด่านตั้งต้น ปุ่มจะขึ้นให้ FN กดตามปกติแล้วตายที่ 403 ของ
    * `/api/upload/session` โดย error ไปโผล่ **ใต้โมดัล** มองไม่เห็น (อาการเดียวกับ
    * IS-26080026 ที่ด่านไฟล์แคบกว่าด่านปุ่ม)
-   * ⚠️ ด่าน **สถานะ** = `SO_TAX_INVOICE_CLOSED` — ใบที่ตีกลับ/ถูกออก Rev. ทับแล้ว ไม่มีใบกำกับให้แนบอีก
+   * ⚠️ ด่าน **สถานะ** = `SO_TAX_INVOICE_CLOSED` — ใบที่ถูกออก Rev. ทับแล้ว ไม่มีใบกำกับให้แนบอีก (ใบที่ตีกลับแนบได้ — มติ D3)
    * · ใบยกเลิกยังแนบได้ตั้งแต่ PR0 (เงินที่เข้าแล้วยังต้องมีใบกำกับ — ดูคอมเมนต์ที่ค่าคงที่) */
   sales_order_tax_invoice: {
     table: 'sales_orders',
     notFound: 'ไม่พบใบสั่งขาย',
     gate: (row) => (SO_TAX_INVOICE_CLOSED.includes(row.status)
-      ? 'ใบสั่งขายนี้ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบใบกำกับภาษีไม่ได้'
+      ? 'ใบสั่งขายนี้ถูกออก Rev. ทับแล้ว — แนบใบกำกับภาษีไม่ได้'
       : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/tax-invoices/`,
     allow: (user) => canConfirmPayment(user),

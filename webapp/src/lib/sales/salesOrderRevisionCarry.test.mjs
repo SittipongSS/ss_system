@@ -43,9 +43,25 @@ const parts = (text) => {
   };
 };
 
+/* ⚠️ นับเฉพาะ **นิยาม** (CREATE [OR REPLACE] FUNCTION) หลังตัดคอมเมนต์ — review F3: สแกนแบบ includes('FUNCTION public.…')
+   ติด REVOKE/GRANT/COMMENT ON FUNCTION ด้วย ⇒ migration ที่แค่ถอนสิทธิ์ anon (งานค้าง "anon เรียก RPC ได้") ทำยามนี้แดง
+   แล้วถ้าย้าย LATEST ตามคำบอก fnText หานิยามไม่เจอ (ไฟล์นั้นไม่มีนิยาม) */
+const definesFunction = (sqlText, fn) => new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`, 'i')
+  .test(sqlText.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, ''));
+
+test('ตัวสแกนเจ้าของนิยามนับเฉพาะ CREATE FUNCTION — ไม่ติด COMMENT/REVOKE/GRANT ON FUNCTION หรือคอมเมนต์', () => {
+  const fn = 'revise_approved_sales_order_atomic';
+  assert.equal(definesFunction(`CREATE OR REPLACE FUNCTION public.${fn}(p text)`, fn), true);
+  assert.equal(definesFunction(`create function public.${fn} (p text)`, fn), true);
+  assert.equal(definesFunction(`COMMENT ON FUNCTION public.${fn}(text) IS 'x';`, fn), false);
+  assert.equal(definesFunction(`REVOKE ALL ON FUNCTION public.${fn}(text) FROM anon;`, fn), false);
+  assert.equal(definesFunction(`GRANT EXECUTE ON FUNCTION public.${fn}(text) TO service_role;`, fn), false);
+  assert.equal(definesFunction(`-- CREATE OR REPLACE FUNCTION public.${fn}(`, fn), false);
+});
+
 test('LATEST คือไฟล์สุดท้ายที่เขียน revise_approved_sales_order_atomic ทับ (ยามไม่ตรวจไฟล์เก่า)', () => {
   const owners = readdirSync(MIGRATIONS).filter((name) => name.endsWith('.sql')).sort()
-    .filter((name) => mig(name).includes('FUNCTION public.revise_approved_sales_order_atomic'));
+    .filter((name) => definesFunction(mig(name), 'revise_approved_sales_order_atomic'));
   assert.equal(owners[owners.length - 1], LATEST);
 });
 

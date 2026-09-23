@@ -317,3 +317,47 @@ test('paymentRefundClearPrompt: งวดกลับเป็นเงินค
   assert.match(p.detail, /· ล้างวันที่คืน เหตุผล และเลขใบลดหนี้ CN-0001 ของงวดนี้ — ร่องรอยอยู่ในประวัติการแก้ไข/);
   assert.match(p.detail, /· ยอดเก็บได้ในทะเบียนบัญชีเพิ่มกลับ ฿20,000\.00/);
 });
+
+/* ══ review UI-1 / F2: โมดัลรับรองเงินต้องพูดตามสถานะใบ (PR0/PR3 เปิดให้บัญชีรับรองบนใบยกเลิก · D3 บนใบที่ย้อนการอนุมัติ/Rev. ร่าง) ══
+   🐞 เดิมทุกใบได้สองบรรทัดของใบที่อนุมัติอยู่: "ถ้าใบนี้ถูกย้อนการอนุมัติ/ออก Rev. …" + "Actual … เป็นยอดเต็มตั้งแต่ใบอนุมัติแล้ว"
+     ⇒ ใบยกเลิก (ไม่นับ Actual · ออก Rev. ไม่ได้) และใบที่ย้อนการอนุมัติ (Actual ถูกถอนแล้ว) ได้คำเท็จ และไม่รู้ว่ารับรองแล้ว
+       เงินไปเป็น "เงินค้างจากใบที่ยกเลิก" */
+test('🔴 คอนเฟิร์มงวดของใบที่ยกเลิก: บอกว่าเป็นเงินค้าง (ยกเข้าใบใหม่/บันทึกคืนเงิน) · ไม่นับ Actual · ไม่มีบรรทัด Rev./Actual ของใบที่อนุมัติ', () => {
+  const p = paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00', orderStatus: 'cancelled' });
+  assert.match(p.detail, /บันทึกว่าเงินงวดนี้เข้าบัญชีบริษัทแล้วจริง/);
+  assert.match(p.detail, /ใบนี้ยกเลิกแล้ว — งวดนี้เป็น “เงินค้างจากใบที่ยกเลิก”: ยกเข้าใบใหม่ของดีลเดียวกัน/);
+  assert.match(p.detail, /บัญชีบันทึกคืนเงิน/);
+  assert.match(p.detail, /ใบที่ยกเลิกไม่นับ Actual/);
+  assert.doesNotMatch(p.detail, /ถ้าใบนี้ถูกย้อนการอนุมัติ/);
+  assert.doesNotMatch(p.detail, /ยอดเต็มตั้งแต่ใบอนุมัติแล้ว/);
+  assert.match(p.detail, new RegExp(IRREVERSIBLE_NOTE));
+});
+
+test('🔴 คอนเฟิร์มงวดของใบที่ย้อนการอนุมัติ / ใบ Rev. ที่ยังไม่อนุมัติ: เงินย้ายไปกับใบ Rev. · Actual นับเมื่อใบอนุมัติ (ไม่ใช่ "ยอดเต็มตั้งแต่อนุมัติ")', () => {
+  const revoked = paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00', orderStatus: 'approval_revoked' });
+  assert.match(revoked.detail, /ใบนี้ถูกย้อนการอนุมัติ — ตอนออก Rev\. เงินงวดนี้ย้ายไปกับใบ Rev\. บัญชีไม่ต้องรับรองซ้ำ/);
+  assert.match(revoked.detail, /Actual นับเมื่อใบ Rev\. อนุมัติ/);
+  assert.doesNotMatch(revoked.detail, /ยอดเต็มตั้งแต่ใบอนุมัติแล้ว/);
+  for (const orderStatus of ['draft', 'pending_approval', 'rejected']) {
+    const p = paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00', orderStatus });
+    assert.match(p.detail, /ใบนี้ยังไม่อนุมัติ — Actual นับเมื่อ AE Sup อนุมัติใบ/, orderStatus);
+    assert.doesNotMatch(p.detail, /ยอดเต็มตั้งแต่ใบอนุมัติแล้ว/, orderStatus);
+    assert.doesNotMatch(p.detail, /ถ้าใบนี้ถูกย้อนการอนุมัติ/, `${orderStatus}: ใบที่ยังไม่อนุมัติย้อนการอนุมัติไม่ได้`);
+  }
+  // ใบที่อนุมัติอยู่ / ไม่รู้สถานะ = ภาพนิ่งเดิมทุกตัวอักษร
+  assert.deepEqual(paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00', orderStatus: 'approved' }),
+    paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00' }));
+  // ใบย้อนหลังพูดชุดของตัวเองเสมอ (สถานะใบไม่เปลี่ยนคำ)
+  assert.deepEqual(paymentConfirmPrompt({ label: 'ก', amount: '฿1.00', historical: true, orderStatus: 'cancelled' }),
+    paymentConfirmPrompt({ label: 'ก', amount: '฿1.00', historical: true }));
+});
+
+/* review MONEY-1: คำเตือนสลิปชื่อซ้ำ (carryDuplicates) ต้องถึงโมดัลยืนยันการยกเงิน */
+test('paymentCarryPrompt: คำเตือนสลิปชื่อซ้ำกับงวดของใบนี้ขึ้นในโมดัลยืนยัน', () => {
+  const p = paymentCarryPrompt({
+    orderNumber: 'SO-N', sourceNumber: 'SO-C', count: 1, amountLabel: '฿1.00', totalLabel: '฿10.00',
+    actualAmountLabel: '฿9.35', actualMonthLabel: 'ก.ย. 2026',
+    warnings: ['งวดที่ 1 ของใบนี้แนบสลิปชื่อเดียวกับงวดที่ 1 ของใบที่ยกเลิก (slip.jpg) — ตรวจว่าไม่ใช่เงินก้อนเดียวกันก่อนยก'],
+  });
+  assert.match(p.detail, /⚠ งวดที่ 1 ของใบนี้แนบสลิปชื่อเดียวกับงวดที่ 1 ของใบที่ยกเลิก \(slip\.jpg\)/);
+});

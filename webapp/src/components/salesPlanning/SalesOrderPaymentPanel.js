@@ -38,9 +38,9 @@ import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderC
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   installmentActionError, installmentConfirmOutlook, installmentDisplayStatus, installmentPlanDrift,
-  installmentPrepaid, installmentReportOutcome, installmentStartBlock, installmentUnconfirmOutcome, openingCoverageEnd,
-  paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments, revisedInstallmentsNote,
-  strandedInstallment,
+  installmentPrepaid, installmentRefunded, installmentReportOutcome, installmentStartBlock, installmentUnconfirmOutcome,
+  installmentVoid, openingCoverageEnd, paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments,
+  revisedInstallmentsNote, strandedInstallment,
 } from "@/lib/sales/salesOrderPayments";
 import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
 import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
@@ -109,12 +109,18 @@ export default function SalesOrderPaymentPanel({
      ต้องบอกว่าเงินไปอยู่ใบไหน · ห้ามถอยไปวาดแผนจาก QT (อ่านเหมือน "ยังไม่เริ่มติดตาม" ทั้งที่รับเงินไปแล้ว)
      ⚠️ ขึ้นเฉพาะตอนไม่มีแถวจริง — ใบ revised ที่ยังถือแถว (ออก Rev. ก่อน 0376) ใช้ข้อความล็อกของ PR0 ตามเดิม */
   const movedAway = saved.length ? null : revisedInstallmentsNote(order);
+  /* ⭐ ใบ pipeline ที่ยกเลิก (review UI-4) — ไม่มีงวด (ยกเงินออกไปหมดแล้ว · ไม่เคยมีงวด) = ห้ามถอยไปวาดแผนจาก QT
+     (คลาสเดียวกับใบ revised ข้างบน: แถว "ยังไม่เริ่มติดตาม" ปลอมใต้ลิงก์ "ยกไป {SO}") */
+  const cancelledPipeline = !historical && order?.status === "cancelled";
   const rows = saved.length
     ? saved
-    : (historical || movedAway ? [] : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount));
+    : (historical || movedAway || cancelledPipeline ? [] : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount));
   const isPreview = !saved.length;
   const single = rows.length === 1;
-  const rollup = paymentRollup(saved, todayIso);
+  /* ⭐ ยอด/เตือนนับจากงวดที่ไม่โมฆะ (review UI-3) — งวดที่ยังไม่ชำระของใบยกเลิก/ถูกแทน = โมฆะ (installmentVoid ตัวเดียวกับทะเบียนบัญชี)
+     🐞 เดิมใบที่ยกเลิกขึ้น "ค้างรับ ฿… · เลยกำหนด n งวด" ทั้งที่โมดัลยกเลิกสัญญาว่า "หลุดจากยอดค้างรับทันที" และทะเบียนตัดทิ้งแล้ว */
+  const liveRows = saved.filter((r) => !installmentVoid(r, order));
+  const rollup = paymentRollup(liveRows, todayIso);
   /* ⭐ **งวดร่าง** (B-4) — มีตัวตนจริง กรอกกำหนดชำระได้ และ **บันทึกเงินที่ลูกค้าจ่าย
      มาแล้วได้** (มติผู้ใช้ 2026-08-19) ⇒ สิ่งเดียวที่ยังทำไม่ได้คือส่งให้บัญชีตรวจ
      เพราะงานถึงบัญชีต่อเมื่อ AE Supervisor อนุมัติใบแล้วเท่านั้น
@@ -238,7 +244,14 @@ export default function SalesOrderPaymentPanel({
   const carrySource = carry ? carry.sources.find((src) => src.id === carry.sourceId) || null : null;
   const carryRows = carrySource ? carrySource.rows.filter((r) => carry.ids.includes(r.id)) : [];
   const carryBuild = carry ? applyCarryIn(order, carry.base, carryRows, { requestById }) : null;
-  const carryBaseStale = carry ? replanStale(saved, replanExpected(carry.base)) : false;
+  /* ⭐ ข้อมูลเก่า = งวดของใบนี้ **หรือแถวของใบที่ยกเลิก** เปลี่ยนจากตอนเปิดโมดัล (review carry-modal-stale-source-409-loop)
+     🐞 เดิมเทียบแค่งวดของใบนี้ ทั้งที่ expected ที่ส่งขึ้น RPC รวม updatedAt ของแถวต้นทางด้วย ⇒ บัญชีรับรองแถวต้นทางจากอีกหน้าต่าง
+       = 409 ทุกครั้งที่กดซ้ำ (หน้าดึง carrySources ใหม่แล้ว แต่โมดัลถือสำเนาเดิม) โดยไม่มีป้ายบอกและปุ่มไม่ดับ */
+  const freshCarrySource = carry ? carrySources.find((src) => src.id === carry.sourceId) || null : null;
+  const carryBaseStale = carry
+    ? replanStale(saved, replanExpected(carry.base))
+      || replanStale((freshCarrySource?.rows || []).filter((r) => carry.ids.includes(r.id)), replanExpected(carryRows))
+    : false;
   const carryReasonProblem = carry ? replanReasonError(carry.reason) : null;
   const openCarry = () => {
     onClearError?.();
@@ -249,6 +262,19 @@ export default function SalesOrderPaymentPanel({
     });
   };
   const patchCarry = (patch) => setCarry((current) => (current ? { ...current, ...patch } : current));
+  /* เริ่มใหม่จากข้อมูลล่าสุด — งวดของใบนี้ + ต้นทางชุดสด · คงใบ/งวดที่เลือกไว้เท่าที่ยังเป็นเงินค้างอยู่ (ห้ามแอบเปลี่ยน expected ใต้มือ) */
+  const resetCarry = () => {
+    onClearError?.();
+    setCarry((current) => {
+      if (!current) return current;
+      const src = carrySources.find((candidate) => candidate.id === current.sourceId) || carrySources[0] || null;
+      const stillThere = (src?.rows || []).map((r) => r.id).filter((rowId) => current.ids.includes(rowId));
+      return {
+        ...current, base: saved, sources: carrySources, sourceId: src?.id || null,
+        ids: stillThere.length ? stillThere : (src?.rows || []).map((r) => r.id),
+      };
+    });
+  };
   const pickCarrySource = (sourceId) => {
     const src = carry?.sources.find((s) => s.id === sourceId);
     patchCarry({ sourceId, ids: (src?.rows || []).map((r) => r.id) });
@@ -307,13 +333,19 @@ export default function SalesOrderPaymentPanel({
   const confirmsNow = (row) => installmentReportOutcome(user, row) === "confirmed";
   const reportPrompt = (row) => (confirmsNow(row)
     ? installmentConfirmPrompt({
-      row, multi: rows.length > 1, historical, outlook: installmentConfirmOutlook(row, saved),
+      row, multi: rows.length > 1, historical, outlook: installmentConfirmOutlook(row, saved), orderStatus: order?.status,
     })
     : null);
 
+  const refundedAmount = rollup.refundedAmount;
   const headline = isPreview
     ? (movedAway ? "งวดย้ายไปใบ Rev. แล้ว"
+      : cancelledPipeline ? (carriedAway.length ? "งวดยกไปใบใหม่แล้ว" : "ใบยกเลิกแล้ว — ไม่มีงวด")
       : historical ? "ยังไม่มีงวด" : `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`)
+    /* ใบ pipeline ที่ยกเลิก (review UI-3): ไม่มีอะไรให้ตามเก็บ — เรื่องเดียวที่เหลือคือเงินค้าง/คืนเงินแล้ว (ไม่ใช่ "ค้างรับ") */
+    : cancelledPipeline
+      ? (strandedRows.length ? `ใบยกเลิกแล้ว · เงินค้าง ${fmtMoney(strandedAmount)}`
+        : refundedAmount > 0 ? `ใบยกเลิกแล้ว · คืนเงินแล้ว ${fmtMoney(refundedAmount)}` : "ใบยกเลิกแล้ว — ไม่มีเงินค้าง")
     : historical && isDraftPlan
       ? `งวดของใบย้อนหลัง${single ? "" : ` · ${rows.length} งวด`} — ${order?.status === "cancelled" ? "ใบยกเลิกแล้ว" : "ขึ้นคิวบัญชีหลัง AE Sup อนุมัติ"}`
     : isDraftPlan
@@ -325,7 +357,7 @@ export default function SalesOrderPaymentPanel({
         : `เก็บแล้ว ${rollup.confirmedCount}/${rollup.count} งวด · ค้างรับ ${fmtMoney(rollup.outstandingAmount)}`;
 
   // เตือนเฉพาะตอนมีเรื่อง — สถานะปกติอ่านจากป้ายในตารางได้อยู่แล้ว
-  const rejectedCount = saved.filter((r) => r.status === "rejected").length;
+  const rejectedCount = liveRows.filter((r) => r.status === "rejected").length;
   const alert = !isPreview && (rollup.overdueCount || rejectedCount)
     ? [
       rollup.overdueCount ? `เลยกำหนดแล้ว ${rollup.overdueCount} งวด` : null,
@@ -567,11 +599,13 @@ export default function SalesOrderPaymentPanel({
         </StatusNotice>
       ) : null}
 
-      {!rows.length ? (movedAway ? null : (
+      {!rows.length ? (movedAway || (cancelledPipeline && carriedAway.length) ? null : (
         <p className="form-note">
           {historical
             ? "ใบนี้ยังไม่มีงวด — งวดของใบย้อนหลังมาจากฟอร์มคีย์ใบ"
-            : "ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ — ไม่มีงวดให้ติดตาม"}
+            : cancelledPipeline
+              ? "ใบนี้ยกเลิกแล้ว — ไม่มีงวดให้ติดตาม"
+              : "ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ — ไม่มีงวดให้ติดตาม"}
         </p>
       )) : (
         /* surface="auto" = ตารางมีขอบ/มุมมน/พื้นของตัวเอง (ตัวแปรกลางใน Table.module.css)
@@ -596,7 +630,8 @@ export default function SalesOrderPaymentPanel({
             </thead>
             <tbody>
               {rows.map((row) => {
-                const overdue = row.status !== "confirmed" && row.dueDate && String(row.dueDate) < String(todayIso);
+                // งวดโมฆะของใบยกเลิก/ถูกแทน ไม่ใช่ "เลยกำหนด" (review UI-3 · installmentVoid)
+                const overdue = !installmentVoid(row, order) && row.status !== "confirmed" && row.dueDate && String(row.dueDate) < String(todayIso);
                 const evidence = Array.isArray(row.evidence) ? row.evidence : [];
 
                 /* ⭐ **ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…"** (มติผู้ใช้ 2026-08-01 · RowActionMenu)
@@ -734,7 +769,14 @@ export default function SalesOrderPaymentPanel({
                           คือเลขใบวางบิล · ตามกลับไม่เจอ = คำร้องถูกลบ ต้องบอกตรง ๆ */}
                       {row.billingRequestId ? (() => {
                         const linked = requestById.get(row.billingRequestId);
-                        if (!linked) return <small className={styles.overdue}>คำร้องขอเอกสารถูกลบไปแล้ว</small>;
+                        /* อ่านคำร้องไม่ขึ้น ≠ ถูกลบ (review F3) — บอกตามจริง ไม่ชวนออกคำร้องซ้ำ */
+                        if (!linked) {
+                          return (
+                            <small className={styles.overdue}>
+                              {order?.billingRequestsError ? "อ่านคำร้องขอเอกสารไม่สำเร็จ" : "คำร้องขอเอกสารถูกลบไปแล้ว"}
+                            </small>
+                          );
+                        }
                         const issued = (linked.items || [])
                           .map((it) => it.docNumber).filter(Boolean);
                         return (
@@ -891,7 +933,8 @@ export default function SalesOrderPaymentPanel({
                       ) : (
                         /* งวดที่เงินเข้าแล้วแต่ยังไม่มีใบ = ของค้างจริง (บริษัทเก็บ VAT)
                            ⇒ ต้องเห็นว่าค้าง ไม่ใช่ขีดเงียบ ๆ เหมือนช่องที่ไม่เกี่ยว */
-                        ["reported", "confirmed"].includes(row.status)
+                        /* งวดที่คืนเงินแล้ว (0378) ไม่ใช่ของค้างเอกสาร (review UI-2 · กติกาเดียวกับทะเบียนบัญชี) */
+                        ["reported", "confirmed"].includes(row.status) && !installmentRefunded(row)
                           ? <span className={styles.overdue}>ยังไม่ออกใบ</span>
                           : <span className={styles.none}>{NA}</span>
                       )}
@@ -905,6 +948,8 @@ export default function SalesOrderPaymentPanel({
                         tone={row.preview ? "neutral" : (INSTALLMENT_STATUS_TONES[rowStatus] || "neutral")}
                         label={row.preview ? "ยังไม่เริ่มติดตาม" : (INSTALLMENT_STATUS_LABELS[rowStatus] || rowStatus)}
                       />
+                      {/* งวดโมฆะของใบที่ยกเลิก/ถูกแทน (review UI-3) — ป้าย "รอชำระ" ต้องไม่อ่านว่ายังต้องตามเก็บ */}
+                      {!row.preview && installmentVoid(row, order) ? <small>โมฆะ — ใบนี้ไม่ต้องตามเก็บแล้ว</small> : null}
                       {/* คืนเงินแล้ว (0378) — วันคืน + ใบลดหนี้ต้องเห็นบนแถว (บัญชีถูกถามด้วยเลขนี้) */}
                       {rowStatus === "refunded" ? (
                         <small>
@@ -1178,7 +1223,8 @@ export default function SalesOrderPaymentPanel({
             {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
             {carryBaseStale ? (
               <StatusNotice tone="warning">
-                งวดของใบนี้เพิ่งถูกแก้จากอีกหน้าต่าง — ปิดแล้วเปิดใหม่เพื่อดูแผนล่าสุด
+                งวดของใบนี้หรือใบที่ยกเลิกเพิ่งถูกแก้จากอีกหน้าต่าง — แผนที่เห็นอิงข้อมูลเก่า{" "}
+                <Button size="sm" variant="quiet" onClick={resetCarry}>เริ่มใหม่จากงวดล่าสุด</Button>
               </StatusNotice>
             ) : null}
             <p className="form-note">
@@ -1246,6 +1292,8 @@ export default function SalesOrderPaymentPanel({
               </TableScroll>
             ) : null}
             {carryBuild?.error ? <StatusNotice tone="warning">{carryBuild.error}</StatusNotice> : null}
+            {/* สลิปชื่อซ้ำกับงวดของใบนี้ (review MONEY-1 · carryDuplicates) — ไม่บล็อก แต่ต้องเห็นก่อนกด */}
+            {carryBuild?.warnings?.length ? <StatusNotice tone="info">{carryBuild.warnings.join(" · ")}</StatusNotice> : null}
             <label className={styles.field}>
               <span>เหตุผลที่ยกเงิน *</span>
               <Textarea rows={3} value={carry.reason} maxLength={REPLAN_MAX_REASON} disabled={!!busy || carry.confirming}

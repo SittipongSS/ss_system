@@ -171,8 +171,37 @@ export function historicalApprovalPrompt({ subject, checklist = [], effects, ove
  * @param paidThroughLabel    "จ่ายถึง" หลังรับรอง (ข้อความจัดรูปมาแล้ว) — ปกติ = ปลายช่วงครอบของงวดนี้
  * @param nextInstallmentLabel งวดที่ต้องเก็บถัดไป (ข้อความจัดรูปมาแล้ว) · ไม่มี = ไม่พูด
  */
+/* สองบรรทัดของใบ pipeline ตามสถานะใบ (review UI-1 / F2) — PR0/PR3 เปิดให้บัญชีรับรองงวดบนใบยกเลิก · มติ D3 บนใบที่ย้อนการอนุมัติ
+   และใบ Rev. ที่ยังไม่อนุมัติ ⇒ คำของใบที่อนุมัติอยู่ ("ถ้าถูกย้อน… ย้ายไปกับใบ Rev." · "Actual เต็มตั้งแต่ใบอนุมัติ") เป็นเท็จกับใบเหล่านั้น
+   ⚠️ ไม่รู้สถานะ (ผู้เรียกไม่ส่ง) / approved = คำเดิมทุกตัวอักษร (ภาพนิ่งตรึงไว้) · Actual นับเฉพาะใบ approved (salesOrderAmountKind) */
+function pipelineConfirmEffects(orderStatus) {
+  if (orderStatus === 'cancelled') {
+    return [
+      'ใบนี้ยกเลิกแล้ว — งวดนี้เป็น “เงินค้างจากใบที่ยกเลิก”: ยกเข้าใบใหม่ของดีลเดียวกัน (ปุ่ม “ยกเงินจากใบที่ยกเลิก” ที่ใบใหม่)'
+        + ' หรือบัญชีบันทึกคืนเงินให้ลูกค้า',
+      'ยอด Actual ไม่เปลี่ยน — ใบที่ยกเลิกไม่นับ Actual',
+    ];
+  }
+  if (orderStatus === 'approval_revoked') {
+    return [
+      'ใบนี้ถูกย้อนการอนุมัติ — ตอนออก Rev. เงินงวดนี้ย้ายไปกับใบ Rev. บัญชีไม่ต้องรับรองซ้ำ',
+      'ยอด Actual ไม่เปลี่ยน — ระหว่างรอ Rev. ใบนี้ไม่นับ Actual · Actual นับเมื่อใบ Rev. อนุมัติ',
+    ];
+  }
+  if (orderStatus && orderStatus !== 'approved') {
+    return [
+      'ใบนี้ยังไม่อนุมัติ — Actual นับเมื่อ AE Sup อนุมัติใบ · งวดที่รับรองแล้วอยู่กับใบนี้ต่อ ไม่ต้องรับรองซ้ำ',
+    ];
+  }
+  return [
+    'ถ้าใบนี้ถูกย้อนการอนุมัติ/ออก Rev. เงินงวดนี้ย้ายไปกับใบ Rev. — บัญชีไม่ต้องรับรองซ้ำ',
+    'ยอด Actual ของฝ่ายขายไม่เปลี่ยน — เป็นยอดเต็มตั้งแต่ใบอนุมัติแล้ว',
+  ];
+}
+
 export function paymentConfirmPrompt({
   label, amount, historical = false, opening = false, paidThroughLabel = null, nextInstallmentLabel = null,
+  orderStatus = null,
 } = {}) {
   if (historical) {
     const through = String(paidThroughLabel || '').trim();
@@ -202,8 +231,7 @@ export function paymentConfirmPrompt({
     irreversible: true,
     effects: [
       'บันทึกว่าเงินงวดนี้เข้าบัญชีบริษัทแล้วจริง',
-      'ถ้าใบนี้ถูกย้อนการอนุมัติ/ออก Rev. เงินงวดนี้ย้ายไปกับใบ Rev. — บัญชีไม่ต้องรับรองซ้ำ',
-      'ยอด Actual ของฝ่ายขายไม่เปลี่ยน — เป็นยอดเต็มตั้งแต่ใบอนุมัติแล้ว',
+      ...pipelineConfirmEffects(orderStatus),
     ],
     confirmLabel: 'ยืนยันว่าเงินเข้าแล้ว',
   });
@@ -273,7 +301,7 @@ export function paymentPlanEditPrompt({
 export function paymentCarryPrompt({
   orderNumber = '', sourceNumber = '', count = 0, amountLabel = '', reportedCount = 0, reportedAmountLabel = '',
   invoiceNos = [], carriedLines = [], changes = [], totalLabel = '', actualAmountLabel = '', actualMonthLabel = '',
-  quotationNumber = '', remainingCount = 0, remainingAmountLabel = '', complete = false,
+  quotationNumber = '', remainingCount = 0, remainingAmountLabel = '', complete = false, warnings = [],
 } = {}) {
   if (!(Number(count) > 0)) throw new Error('paymentCarryPrompt: ต้องยกอย่างน้อย 1 งวด');
   const actual = String(actualAmountLabel || '').trim();
@@ -300,6 +328,8 @@ export function paymentCarryPrompt({
         : `${sourceNumber} ไม่เหลือเงินค้าง — ออกจากหัวข้อ “เงินค้างจากใบที่ยกเลิก” ของบัญชี`,
       `ใบสั่งขายฉบับพิมพ์ยังแสดงแผนตามใบเสนอราคา${quote ? ` ${quote}` : ''} — งวดที่ต่างจากแผนขึ้นป้าย “ปรับแผนหลังอนุมัติ”`,
       complete ? 'ทุกงวดรับเงินครบ — ใบเข้าคิวปิดใบของบัญชี' : null,
+      /* คำเตือนสลิปชื่อซ้ำกับงวดของใบนี้ (carryDuplicates · review MONEY-1) — ชื่อไฟล์ตรงอย่างเดียวไม่บล็อก แต่ต้องเห็นก่อนกด */
+      ...(Array.isArray(warnings) ? warnings : []).map((w) => String(w || '').trim()).filter(Boolean).map((w) => `⚠ ${w}`),
     ],
     confirmLabel: 'ยืนยันยกเงิน',
   });

@@ -64,7 +64,9 @@ export async function loadInstallments(supabase, salesOrderId) {
  * ⇒ ส่ง `frozenAt` มาด้วยเมื่อไร ถึงจะยืมหลักฐานได้ · ไม่งั้นได้แถว pending ล้วน
  * แล้ว `freezeInstallments` ไปยืมให้ทีหลังตอนอนุมัติ (เจตนาเดิมของมติ 2026-08-13 คงอยู่)
  */
-export async function ensureInstallments(supabase, { order, user, now = null, frozenAt = null }) {
+export async function ensureInstallments(supabase, {
+  order, user, now = null, frozenAt = null, borrowConfirmation = true,
+}) {
   const existing = await loadInstallments(supabase, order.id);
   if (existing.length) return { rows: existing, created: false };
 
@@ -74,7 +76,8 @@ export async function ensureInstallments(supabase, { order, user, now = null, fr
     {
       // เอกสารยืนยันคำสั่งซื้อของใบ (ใบเก่าถอยไปอ่านหลักฐาน Won ของ QT ต้นทาง) —
       // ยืมมาตั้งงวดแรกเมื่อยืนยันด้วยสลิปโอนเงิน
-      confirmation: frozenAt ? orderConfirmationOf(order, order.quotation) : null,
+      /* ⚠️ `borrowConfirmation: false` = ดีลมีเงินค้างจากใบที่ยกเลิก (review MONEY-1 · ดู freezeInstallments) */
+      confirmation: frozenAt && borrowConfirmation ? orderConfirmationOf(order, order.quotation) : null,
       actor: { id: user?.id || null, name: user?.name || user?.email || null },
       now,
     },
@@ -149,8 +152,14 @@ export async function ensureInstallments(supabase, { order, user, now = null, fr
  *     ไม่มีใครตรวจ
  *
  * ⚠️ **idempotent** — อนุมัติซ้ำ/กู้ธงที่ล้ม เรียกซ้ำได้ แถวที่ freeze แล้วไม่ถูกแตะ
+ *
+ * 🛑 **`borrowConfirmation: false` = ห้ามยืมสลิปจากเอกสารยืนยันคำสั่งซื้อ** (review MONEY-1) — route อนุมัติส่งเมื่อดีลนี้มี
+ *   "เงินค้างจากใบที่ยกเลิก" (หรืออ่านไม่ขึ้น): สลิปนั้นมักเป็นมัดจำก้อนเดียวกับเงินค้าง ยืมมาตั้งงวดแรกแล้วมีคนกดยกเงินค้างเข้ามาอีก
+ *   = เงินก้อนเดียวนับสองครั้ง (บทเรียน SO-26080039-0 / -043-0) ⇒ งวดแรกคง pending ให้คนตัดสิน (แจ้งเงินใหม่ หรือยกเงินค้าง)
+ *   ⚠️ เงินที่ฝ่ายขายบันทึกไว้เองตอนร่าง (prepaid) ยังเลื่อนเป็น reported ตามเดิม — ของที่คนบันทึก ไม่ใช่ระบบเดา · ถ้าซ้ำกับเงินค้าง
+ *     ด่านยกซ้ำ (carryDuplicates · RPC installment_carry_duplicate) บังคับให้บัญชีตีกลับงวดนั้นก่อนยก
  */
-export async function freezeInstallments(supabase, { order, user, now = null }) {
+export async function freezeInstallments(supabase, { order, user, now = null, borrowConfirmation = true }) {
   const existing = await loadInstallments(supabase, order.id);
   const stamp = now || new Date().toISOString();
 
@@ -199,7 +208,7 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
 
     const { error } = await supabase.from(TABLE).delete().in('id', draft.map((r) => r.id));
     if (error) throw error;
-    const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp });
+    const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp, borrowConfirmation });
 
     /* เขียนค่าที่อุ้มไว้กลับทีละงวด — ทำ **หลัง** สร้างสำเร็จเสมอ
        ⚠️ ล้มตรงนี้ต้องไม่ลากการอนุมัติล้มตาม: งวดถูกตั้งใหม่ครบแล้ว ของที่หายคือค่าที่คน
@@ -217,7 +226,7 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
 
   // ยังไม่เคยกด "เริ่มติดตาม" — สร้างให้ตอนอนุมัติเหมือนพฤติกรรมเดิมของ 0245
   if (!existing.length) {
-    const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp });
+    const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp, borrowConfirmation });
     return { rows: seeded.rows, frozen: !!seeded.rows.length };
   }
 
@@ -250,7 +259,7 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
      ปิด Won เหมือนใบที่ไม่เคยกด ไม่งั้นการกดปุ่มเร็วกลายเป็นการเสียสิทธิ์ */
   const bySeq = new Map(plan.map((row) => [row.seq, row]));
   const seeded = buildInstallmentsForOrder(order.quotation?.paymentPlan, order.totalAmount, {
-    confirmation: orderConfirmationOf(order, order.quotation),
+    confirmation: borrowConfirmation ? orderConfirmationOf(order, order.quotation) : null,
     actor: { id: user?.id || null, name: user?.name || user?.email || null },
     now: stamp,
   });
@@ -418,6 +427,26 @@ export async function loadMovedOut(supabase, orderId, { reason = null } = {}) {
       movedAt: entry.movedAt || null,
     };
   });
+}
+
+/**
+ * แถวงวดที่ย้ายไปจาก **ใบชุดหนึ่ง** และยังอยู่กับใบนอกชุดนั้น — ด่านลบใบเสนอราคา (ลบใบสั่งขายลูกทุกใบพร้อมกัน)
+ * ⭐ งวดที่ใบลูกอีกใบของชุดถืออยู่ (สายโซ่ Rev. ของใบเสนอราคาเดียวกัน) หายไปพร้อมกันอยู่แล้ว — ไม่นับ
+ *   (ไม่งั้นใบเสนอราคาที่มี Rev. ลบไม่ได้ตลอดกาล) · แถวเดียวอ้างหลายใบของชุดได้ (ย้ายต่อกัน) ⇒ ไม่ซ้ำแถว
+ * ⚠️ อ่านพลาด = โยน (loadMovedOut) — ด่านลบต้องหยุด ไม่ใช่ถือว่าไม่มีงวดย้ายออก
+ * 🐞 review qt-force-delete-bypasses-movedout: เดิมด่านนี้มีแต่ DELETE ของใบสั่งขาย ⇒ บังคับลบใบเสนอราคาต้นทาง = force_delete_sales_order
+ *   ของใบลูก + purgePrivateEvidence กวาดโฟลเดอร์ใบลูกและ order-confirmation ใต้ใบเสนอราคา ⇒ หลักฐานของเงินที่ยกไปใบอื่นหาย
+ */
+export async function loadMovedOutOfOrders(supabase, orderIds = []) {
+  const ids = [...new Set((Array.isArray(orderIds) ? orderIds : []).filter(Boolean))];
+  const doomed = new Set(ids);
+  const byId = new Map();
+  for (const id of ids) {
+    for (const m of await loadMovedOut(supabase, id)) {
+      if (!doomed.has(m.salesOrderId) && !byId.has(m.id)) byId.set(m.id, m);
+    }
+  }
+  return [...byId.values()];
 }
 
 /**

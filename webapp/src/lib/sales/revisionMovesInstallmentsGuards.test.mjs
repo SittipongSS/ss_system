@@ -88,7 +88,8 @@ test('ลิสต์ SO ส่งสถานะใบเข้า salesOrderPa
 test('แผงงวดของใบ revised: บอกว่างวดย้ายไปใบ Rev. ไหน · ไม่วาดแผน QT · ไม่มีปุ่มเริ่มติดตาม', () => {
   const panel = code(PANEL);
   assert.match(panel, /const movedAway = saved\.length \? null : revisedInstallmentsNote\(order\);/);
-  assert.match(panel, /: \(historical \|\| movedAway \? \[\] : previewInstallments\(/, 'ใบ revised ห้ามถอยไปวาดแผนจาก QT');
+  // ⚠️ แก้โดยตั้งใจ (review UI-4): เงื่อนไขเดียวกันครอบใบ pipeline ที่ยกเลิกด้วย (`cancelledPipeline`)
+  assert.match(panel, /: \(historical \|\| movedAway \|\| cancelledPipeline \? \[\] : previewInstallments\(/, 'ใบ revised ห้ามถอยไปวาดแผนจาก QT');
   assert.match(panel, /\{movedAway \? <StatusNotice tone="info">\{movedAway\}<\/StatusNotice>\s*: pipelineLock \? <StatusNotice tone="info">\{pipelineLock\}<\/StatusNotice> : null\}/);
   assert.match(panel, /isPreview && canStart && canTrackPayments && !historical/, 'ปุ่มเริ่มติดตามยังถาม installmentStartBlock (revised = ซ่อน)');
 });

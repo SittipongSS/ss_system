@@ -27,6 +27,7 @@ import {
   isValidCancelReasonCode,
   isValidReversalTarget,
   salesOrderActionNeedsEditScope,
+  salesOrderCancelNeedsReviewer,
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
@@ -75,6 +76,7 @@ import {
   voidedContractLabel,
 } from '@/lib/sales/historicalOrderWorkflow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 import {
   activeDocumentsForOrder, moveDocumentsToRevisedOrder, voidDocumentsByIds, voidDocumentsForOrder,
 } from '@/lib/sales/productSpecStore';
@@ -289,6 +291,29 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   const installmentRows = await loadInstallments(supabase, order.id)
     .catch((error) => { installmentsError = error; return []; });
 
+  /* ⭐ คำร้องวางบิลที่งวดผูกอยู่ แต่เป็นของ **ใบเสนอราคาอื่น** (review F3) — งวดที่ยกมาจากใบที่ยกเลิก (0378) พก billingRequestId
+     ของใบเดิมมาด้วย และใบใหม่ของดีลเดียวกันมาจาก QT คนละใบเสมอ (sales_orders.quotationId UNIQUE) ⇒ ค้นด้วย QT ของใบนี้ไม่เจอ
+     แผงจึงขึ้น "คำร้องขอเอกสารถูกลบไปแล้ว" ทั้งที่คำร้องยังอยู่ = ชวนออกคำร้องซ้ำให้เงินที่วางบิล/เก็บไปแล้ว
+     ⇒ อ่านเพิ่มด้วย id (แบ่งก้อน · เงื่อนไขชุดเดียวกับข้างบน) · อ่านพลาด = บอกบนแผง (`billingRequestsError`) ไม่ใช่ "ถูกลบ" */
+  let billingRequestsError = null;
+  const knownRequestIds = new Set(billingRequests.map((r) => r.id));
+  const linkedRequestIds = [...new Set(installmentRows.map((r) => r?.billingRequestId)
+    .filter((requestId) => requestId && !knownRequestIds.has(requestId)))];
+  if (linkedRequestIds.length) {
+    const { data: linkedRows, error: linkedError } = await fetchInChunks(linkedRequestIds, (chunk) => fetchAllResult(() => supabase
+      .from('dept_requests')
+      .select('id, docNo, status, title, "billAmount", "billPercent", "quotationId", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
+      .in('id', chunk).eq('kind', 'billing_doc')
+      .neq('status', 'cancelled')
+      .order('id', { ascending: true })));
+    if (linkedError) {
+      console.error('[sales-order] โหลดคำร้องวางบิลของงวดที่ยกมาไม่สำเร็จ:', id, linkedError);
+      billingRequestsError = `อ่านคำร้องขอเอกสารของงวดไม่สำเร็จ: ${linkedError.message || linkedError}`;
+    } else {
+      billingRequests = [...billingRequests, ...(linkedRows || [])];
+    }
+  }
+
   /* ── เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) ────────────────────────────────────────────────
      · ใบ pipeline ที่ยังเดินอยู่: ใบที่ยกเลิกของดีลเดียวกันที่มีเงินค้าง — ปุ่ม "ยกเงินจากใบที่ยกเลิก" + คำเตือนในโมดัลอนุมัติ
      · ใบที่ยกเลิก: แถวที่ยกออกไปแล้ว (movedFrom reason carry) — ลิงก์ "ยกไป {SO}" + เหตุที่ปุ่มกู้คืนปิด
@@ -330,6 +355,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   return {
     ...order,
     billingRequests,
+    billingRequestsError,
     ...(historicalExtras || {}),
     serviceContract: historicalExtras?.serviceContract || serviceContract,
     contractChoices,
@@ -1057,10 +1083,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        · ใบที่ไม่เคยกด "เริ่มติดตาม" ยังได้งวดสร้างให้ตรงนี้เหมือนพฤติกรรมเดิม
        ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว งวดล้มต้องไม่ roll back
        กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" + อนุมัติซ้ำ (freezeInstallments idempotent) */
+    /* 🛑 review MONEY-1: ดีลนี้มี "เงินค้างจากใบที่ยกเลิก" ⇒ ห้ามยืมสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรก — สลิปนั้นมักเป็น
+       มัดจำก้อนเดียวกับเงินค้าง ยืมแล้วโมดัลก็บอกให้กด "ยกเงินจากใบที่ยกเลิก" = เงินก้อนเดียวนับสองครั้ง (SO-26080039-0 / -043-0)
+       ⚠️ อ่านไม่ขึ้น = ไม่ยืม (ทางที่ปลอดภัย — ฝ่ายขายแจ้งชำระงวดแรกเองได้เสมอ) · โมดัลอนุมัติบอกผลนี้แล้ว (salesOrderMoneyOutcome) */
+    let borrowConfirmation = true;
+    try {
+      borrowConfirmation = !(await loadCarrySources(supabase, before)).length;
+    } catch (strandedError) {
+      borrowConfirmation = false;
+      console.error('sales order approve: อ่านเงินค้างของดีลไม่สำเร็จ — ไม่ยืมสลิปมาตั้งงวดแรก', id, strandedError);
+    }
     try {
       await freezeInstallments(supabase, {
         order: { ...before, ...data, quotation: before.quotation },
         user,
+        borrowConfirmation,
       });
     } catch (installmentError) {
       console.error('sales order installment freeze failed', id, installmentError);
@@ -1140,6 +1177,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         // ใบย้อนหลังไม่นับ Actual — สิ่งที่ถอนคือเอกสารแทนสัญญาและรอบขายของโซน (ทางแก้หลังอนุมัติ = ยกเลิกแล้วคีย์ใหม่)
         ? 'ยกเลิกใบย้อนหลังที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (เอกสารแทนสัญญาถูกยกเลิกตาม)'
         : 'ยกเลิก SO ที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (ถอนยอด Actual)');
+    }
+    /* ⛔ review MONEY-2: ใบที่ถือเงิน (งวด confirmed/reported) ยกเลิกได้เฉพาะผู้ตรวจสอบ — **ทุกสถานะ** ไม่ใช่แค่รออนุมัติ/อนุมัติแล้ว
+       🐞 PR3 ถอด paymentLockReason ออกจากใบ pipeline ⇒ ใบที่ย้อนการอนุมัติ (D3 รับเงินต่อได้) และใบ Rev. ร่างที่งวดเงินย้ายมา (0376)
+         เหลือด่านแค่สิทธิ์แก้งานขาย = AE เจ้าของดีลคนเดียวทำให้เงินที่รับรองแล้วค้างอยู่กับใบที่ยกเลิกได้ (ปรับแผน/ยกเงินเป็นของ
+         AE Sup/admin/บัญชีทั้งนั้น) · ปุ่มถามตัวเดียวกัน (canCancelSalesOrder → salesOrderCancelNeedsReviewer)
+       ⚠️ อ่านงวดสดแบบโยน error — อ่านไม่ขึ้น ≠ ไม่มีเงิน · ใบย้อนหลังมีด่านของตัวเองข้างล่าง (กติกาเดิมทุกข้อ) */
+    if (!reviewer && !isHistoricalOrder(before)) {
+      let moneyRows;
+      try { moneyRows = await loadInstallments(supabase, id); }
+      catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message} — ยังไม่ได้ยกเลิก`, 500); }
+      if (salesOrderCancelNeedsReviewer(before, moneyRows)) {
+        return forbidden('ใบนี้มีเงินรับแล้ว/รอบัญชีตรวจ — ยกเลิกต้องให้ AE Supervisor ดำเนินการ (เงินจะค้างอยู่กับใบที่ยกเลิก)');
+      }
     }
     /* ⛔ ใบย้อนหลังที่มีงวดที่บัญชีรับรองแล้ว (paymentLockReason) หรือมีงวดรอบัญชีรับรอง (งวดยกมาที่ขั้นอนุมัติดันขึ้นคิว ฯลฯ)
        ยกเลิกไม่ได้ — ยกเลิกแล้วล็อกงวดของใบตอบ "ใบยกเลิกแล้ว" กับทุกคำสั่งรวมรับรอง/ตีกลับ แต่คิวบัญชีกับป้ายเมนูยังนับ
@@ -1366,8 +1416,17 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!before) return notFound('ไม่พบ ใบสั่งขาย');
 
   // ?dryRun=1 = พรีวิวว่าจะทำลายอะไร (หลักฐาน/ฉบับตรึง) — ใช้เส้นทางเดียวกับตอนลบจริง
+  /* ⭐ พรีวิวบอกด่านที่ break-glass ข้ามไม่ได้ตั้งแต่พรีวิว (review UI-6) — สายโซ่ Rev. · งวดที่ย้ายไปจากใบนี้ (อ่านสด)
+     🐞 เดิมพรีวิวลิสต์ "สิ่งที่จะถูกทำลาย" ของใบที่ลบไม่ได้จริง แล้ว 409 โผล่หลังกด "ยืนยันบังคับลบ" · อ่านไม่ขึ้น = blocked (ไม่ใช่ลบได้) */
   if (isDryRun(req)) {
-    const preview = await salesOrderForcePreview(supabase, before);
+    const chain = salesOrderRevisionChainDeleteBlock(before);
+    if (chain) return ok({ dryRun: true, cascade: [], notes: [chain], blocked: true });
+    let movedOutPreview;
+    try { movedOutPreview = await loadMovedOut(supabase, id); }
+    catch (error) {
+      return ok({ dryRun: true, cascade: [], notes: [`ตรวจงวดที่ย้ายไปจากใบนี้ไม่สำเร็จ: ${error.message}`], blocked: true });
+    }
+    const preview = await salesOrderForcePreview(supabase, before, { movedOut: movedOutPreview });
     return ok({ dryRun: true, ...preview });
   }
   // ?force=1 = break-glass ผู้ดูแลระบบ (mig 0152) ลบใบที่มีหลักฐาน/ฉบับตรึงได้ — มติผู้ใช้

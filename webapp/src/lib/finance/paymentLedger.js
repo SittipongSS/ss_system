@@ -15,7 +15,9 @@
 import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
-import { installmentConfirmOutlook, installmentRefunded, strandedInstallment } from '@/lib/sales/salesOrderPayments';
+import {
+  installmentConfirmOutlook, installmentRefunded, installmentVoid, strandedInstallment,
+} from '@/lib/sales/salesOrderPayments';
 import { installmentsReplanned } from '@/lib/sales/installmentReplan';
 import { taxInvoicePending } from '@/lib/sales/taxInvoice';
 import {
@@ -34,6 +36,9 @@ export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
 
 /* ป้ายของใบสั่งขายย้อนหลังบนแถวคิว/ทะเบียน (มติ 22/09) — จอกับชุดค้นใช้ค่าเดียวกัน (ตาเห็น = ต้องค้นเจอ) */
 export const LEDGER_HISTORICAL_TAG = 'ใบย้อนหลัง';
+/* ป้ายของแถวคิวรับรองที่มาจากใบที่ยกเลิก (review UI-1) — บัญชีต้องรู้ก่อนกดว่ารับรองแล้วเงินเป็น "เงินค้าง" ไม่ใช่เงินของใบที่เดินอยู่
+   ⚠️ อยู่ในชุดค้นด้วย (ตาเห็น = ต้องค้นเจอ) */
+export const LEDGER_CANCELLED_TAG = 'ใบยกเลิกแล้ว';
 
 /* ── เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติเจ้าของ 23/09 D4) ──────────────────────────────────────────
    ยกเลิกใบที่มีเงินรับแล้วได้ — งวด confirmed/reported ที่ยังไม่คืนเงินของใบนั้น = "เงินค้าง" (strandedInstallment)
@@ -55,9 +60,9 @@ const ledgerInvoicePending = (r) => !r.refunded && taxInvoicePending(r);
 const LEDGER_DEAD_ORDER_STATUSES = Object.freeze(['cancelled', 'revised']);
 const isLedgerDeadOrder = (order) => LEDGER_DEAD_ORDER_STATUSES.includes(order?.status);
 
+/* ⭐ ตัวตัดสินอยู่ที่ `installmentVoid` (salesOrderPayments) — แผงงวดบนใบ · ตารางรายการ SO · ทะเบียนนี้ ถามตัวเดียวกัน (review UI-3) */
 export function ledgerVoidInstallment(installment, order) {
-  if (!installment || !isLedgerDeadOrder(order)) return false;
-  return ['pending', 'rejected'].includes(installment.status || 'pending');
+  return installmentVoid(installment, order);
 }
 
 /**
@@ -303,10 +308,15 @@ export function ledgerSummary(rows = []) {
    ทันที และตัวเลขสรุปด้านบนก็จะนับของที่ตาไม่เห็น */
 export const ORDER_STATE_OPEN = 'open';
 export const ORDER_STATE_DONE = 'done';
+/* ใบที่ยกเลิก/ถูกออก Rev. ทับ (review F2) — ไม่มีงานเก็บเงินต่อ · แถวที่เหลือคือเงินค้าง/คืนเงินแล้ว/รอบัญชีตรวจ
+   🐞 เดิมงวดโมฆะถูกตัดก่อนทำดัชนี (PR0) แล้วที่เหลือเป็น confirmed ล้วน ⇒ ใบยกเลิกถูกจัดเป็น "เก็บครบแล้ว"
+     (ขัดกับป้ายของก้อนที่บอก "เงินค้าง"/"คืนเงินแล้ว") · ถอดออกจากดัชนีเฉย ๆ ก็ถอยไป "ยังเก็บไม่ครบ" = ผิดอีกทาง */
+export const ORDER_STATE_DEAD = 'dead';
 
 export const LEDGER_ORDER_STATES = {
   [ORDER_STATE_OPEN]: 'ยังเก็บไม่ครบ',
   [ORDER_STATE_DONE]: 'เก็บครบแล้ว',
+  [ORDER_STATE_DEAD]: 'ใบยกเลิก/ถูกแทนแล้ว',
 };
 
 /**
@@ -401,14 +411,17 @@ export function orderStateIndex(rows = []) {
   const tally = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row?.orderId) continue;
-    const current = tally.get(row.orderId) || { total: 0, confirmed: 0 };
+    const current = tally.get(row.orderId) || { total: 0, confirmed: 0, dead: false };
     current.total += 1;
-    if (row.status === 'confirmed') current.confirmed += 1;
+    // เก็บได้ = confirmed ที่ยังไม่คืนเงิน (กติกาเดียวกับ collectedRow) · ใบที่ตายแล้ว = สถานะของตัวเอง (review F2)
+    if (collectedRow(row)) current.confirmed += 1;
+    if (row.orderDead) current.dead = true;
     tally.set(row.orderId, current);
   }
   const states = new Map();
-  for (const [orderId, { total, confirmed }] of tally) {
-    states.set(orderId, total > 0 && confirmed === total ? ORDER_STATE_DONE : ORDER_STATE_OPEN);
+  for (const [orderId, { total, confirmed, dead }] of tally) {
+    states.set(orderId, dead ? ORDER_STATE_DEAD
+      : total > 0 && confirmed === total ? ORDER_STATE_DONE : ORDER_STATE_OPEN);
   }
   return states;
 }
@@ -443,7 +456,8 @@ export function filterLedger(rows = [], {
     /* ใบกำกับภาษี: 'missing' = เงินเข้า/แจ้งแล้วแต่ยังไม่มีเลข · 'issued' = มีแล้ว
        ⚠️ ว่าง = ไม่กรอง (ค่าที่ไม่รู้จักก็ไม่กรอง — ตัวกรองที่พิมพ์ผิดใน URL ต้องไม่
        ทำให้ทะเบียนว่างเปล่าโดยไม่มีคำอธิบาย) */
-    if (taxInvoice === 'missing' && !taxInvoicePending(r)) return false;
+    // ⚠️ เกณฑ์เดียวกับตัวนับ (ledgerSummary · คิว) — งวดที่คืนเงินแล้วไม่ใช่ของค้างเอกสาร (review F1)
+    if (taxInvoice === 'missing' && !ledgerInvoicePending(r)) return false;
     if (taxInvoice === 'issued' && !String(r.taxInvoiceNo || '').trim()) return false;
     /* ⚠️ **งวดที่ยังไม่มีกำหนดชำระถูกตัดออกเมื่อกรองช่วงวัน** — และนั่นถูกต้องตาม
        ความหมายของตัวกรอง ("ครบกำหนดในช่วงนี้") แต่มัน **เงียบ** ไม่ได้: `ledgerSummary`
@@ -461,7 +475,8 @@ export function filterLedger(rows = [], {
       /* ⚠️ ป้าย "ใบย้อนหลัง" / "งวดยกมา" ที่คิวโชว์บนแถวต้องค้นเจอด้วย (มติ 22/09 · ตาเห็น = ต้องค้นเจอ) */
       const hay = [r.orderNumber, r.quoteNumber, r.referenceDoc, r.customerName, r.customerCode,
         r.label, r.taxInvoiceNo, r.historicalRefs,
-        isHistoricalOrder(r) ? LEDGER_HISTORICAL_TAG : '', isOpeningInstallment(r) ? OPENING_INSTALLMENT_LABEL : '']
+        isHistoricalOrder(r) ? LEDGER_HISTORICAL_TAG : '', isOpeningInstallment(r) ? OPENING_INSTALLMENT_LABEL : '',
+        r.orderStatus === 'cancelled' ? LEDGER_CANCELLED_TAG : '']
         .join(' ').toLowerCase();
       if (!hay.includes(needle)) return false;
     }
@@ -584,7 +599,8 @@ export function groupLedgerByOrder(rows = []) {
         // (ต่างจากลำดับของก้อนซึ่งเรียงตามความด่วน)
         rows: [...rowsInOrder].sort((a, b) => (a.seq || 0) - (b.seq || 0)),
         summary,
-        paidCount: rowsInOrder.filter((r) => r.status === 'confirmed').length,
+        // งวดที่คืนเงินแล้ว (0378) ไม่ใช่ "เก็บแล้ว" — ค่าในฐานยังเป็น confirmed (review UI-2 · collectedRow)
+        paidCount: rowsInOrder.filter(collectedRow).length,
         count: rowsInOrder.length,
         overdue: rowsInOrder.some((r) => r.overdue),
         awaiting: rowsInOrder.filter((r) => r.status === 'reported').length,
@@ -602,7 +618,7 @@ export function groupLedgerByOrder(rows = []) {
         strandedAmount: summary.strandedAmount,
         refunded: rowsInOrder.filter((r) => r.refunded).length,
         rejected: rowsInOrder.filter((r) => r.status === 'rejected').length,
-        complete: rowsInOrder.length > 0 && rowsInOrder.every((r) => r.status === 'confirmed'),
+        complete: rowsInOrder.length > 0 && rowsInOrder.every(collectedRow),
         // งวดที่ด่วนที่สุด — ใช้ทั้งจัดลำดับก้อนและโชว์บนแถวที่ยุบอยู่
         lead: rowsInOrder[0] || null,
         /* กำหนดชำระที่ต้องตามต่อไป = งวดที่ **ยังเก็บไม่ได้** และมีวันใกล้ที่สุด
@@ -747,6 +763,8 @@ export const LEDGER_GROUP_OPTIONS = [
 
 /** ป้ายของกลุ่ม "สถานะการเก็บ" — ชุดเดียวกับ `groupNote` ย่อให้เหลือ 5 หมวด */
 const STATE_BUCKETS = [
+  // ใบยกเลิก/ถูกแทน (review F2) — ถังของตัวเองก่อนเรื่องอื่น (กติกาเดียวกับ groupNote ที่พูดเรื่องเงินค้างก่อน)
+  { key: ORDER_STATE_DEAD, label: LEDGER_ORDER_STATES[ORDER_STATE_DEAD], match: (g) => ['cancelled', 'revised'].includes(g.orderStatus) },
   { key: 'overdue', label: 'เลยกำหนด', match: (g) => g.overdue },
   { key: 'rejected', label: 'มีงวดถูกตีกลับ', match: (g) => g.rejected > 0 },
   { key: 'awaiting', label: 'รอบัญชีรับรอง', match: (g) => g.awaiting > 0 },

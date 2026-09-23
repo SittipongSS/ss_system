@@ -38,9 +38,10 @@ import styles from "./InstallmentConfirmDialog.module.css";
  * @param multi      true = ใบนี้แบ่งหลายงวด ⇒ ชื่องวดเป็น "งวดที่ n"
  * @param historical งวดของใบสั่งขายย้อนหลัง · @param opening งวดยกมา (ตั้งต้นอ่านจากแถว)
  * @param outlook    ภาพหลังรับรองจาก `installmentConfirmOutlook` (ไม่ส่ง = ถอยไปใช้ช่วงครอบของแถวนี้)
+ * @param orderStatus สถานะใบ — ไม่ส่ง = คำของใบที่อนุมัติอยู่ (ภาพนิ่งเดิม) · ผู้เรียกทุกทางส่ง (แผงงวด · คิวบนทะเบียน)
  */
 export function installmentConfirmPrompt({
-  row, multi = false, historical = false, opening = isOpeningInstallment(row), outlook = null,
+  row, multi = false, historical = false, opening = isOpeningInstallment(row), outlook = null, orderStatus = null,
 } = {}) {
   const label = opening ? OPENING_INSTALLMENT_LABEL : multi ? `งวดที่ ${row?.seq}` : (row?.label || "ชำระเต็มจำนวน");
   /* "จ่ายถึง" หลังรับรอง — ไม่มีภาพจากงวดทั้งใบก็ถอยไปปลายช่วงครอบของงวดนี้ (ค่าปกติของมันอยู่แล้ว) */
@@ -55,6 +56,8 @@ export function installmentConfirmPrompt({
     nextInstallmentLabel: next
       ? [next.label, fmtMoney(next.amount), next.dueDate ? `ครบกำหนด ${fmtDate(next.dueDate)}` : ""].filter(Boolean).join(" ")
       : null,
+    /* สถานะใบ (review UI-1) — ใบยกเลิก/ย้อนการอนุมัติ/Rev. ที่ยังไม่อนุมัติ พูดผลคนละชุดกับใบที่อนุมัติอยู่ (เงินค้าง · Actual) */
+    orderStatus,
   });
 }
 
@@ -74,7 +77,7 @@ export default function InstallmentConfirmDialog({
   historical = false, opening = isOpeningInstallment(row), outlook = null,
 }) {
   if (!open || !row) return null;
-  const prompt = installmentConfirmPrompt({ row, multi, historical, opening, outlook });
+  const prompt = installmentConfirmPrompt({ row, multi, historical, opening, outlook, orderStatus: order?.status ?? row.orderStatus ?? null });
   const orderTotal = order?.totalAmount ?? row.orderTotal ?? null;
   const collected = outlook ? outlook.collected : Number(row.amount) || 0;
   const invoiceRef = String(order?.historicalInvoiceRef || row.historicalInvoiceRef || "").trim();

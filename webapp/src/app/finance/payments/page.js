@@ -39,7 +39,7 @@ import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
-  LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
+  LEDGER_CANCELLED_TAG, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
   LEDGER_STATUS, LEDGER_STATUS_KEYS, LEDGER_STRANDED_TITLE, groupAsOrder, groupLedgerBuckets, groupLedgerByOrder,
   groupNote, ledgerSortDir, pendingConfirmations, pendingStranded, pendingTaxInvoices, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
@@ -496,6 +496,8 @@ export default function FinancePaymentsPage() {
                     <span className="cell-sub">
                       {row.customerName}
                       {isHistoricalOrder({ origin: row.origin }) ? ` · ${LEDGER_HISTORICAL_TAG}` : ""}
+                      {/* ใบที่ยกเลิก (review UI-1) — รับรองแล้วเงินเป็น "เงินค้างจากใบที่ยกเลิก" ไม่ใช่เงินของใบที่เดินอยู่ */}
+                      {row.orderStatus === "cancelled" ? ` · ${LEDGER_CANCELLED_TAG}` : ""}
                       {row.coversFrom && row.coversTo ? ` · ครอบ ${fmtDate(row.coversFrom)}–${fmtDate(row.coversTo)}` : ""}
                       {row.reportedByName ? ` · แจ้งโดย ${row.reportedByName}` : ""}
                       {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
@@ -819,6 +821,7 @@ export default function FinancePaymentsPage() {
             id: confirmFor.orderId, orderNumber: confirmFor.orderNumber, customerName: confirmFor.customerName,
             totalAmount: confirmFor.orderTotal, approvedByName: confirmFor.orderApprovedByName,
             approvedAt: confirmFor.orderApprovedAt, historicalInvoiceRef: confirmFor.historicalInvoiceRef,
+            status: confirmFor.orderStatus,
           } : null}
           historical={isHistoricalOrder({ origin: confirmFor?.origin })}
           outlook={confirmRow?.confirmOutlook || null}

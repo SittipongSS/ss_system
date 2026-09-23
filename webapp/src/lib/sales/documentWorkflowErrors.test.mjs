@@ -223,3 +223,18 @@ test('Σ งวด ≠ ยอดใบตอนออก Rev. (0376) แปล�
     status: 409,
   });
 });
+
+/* review MONEY-1 / UI-5 (mig 0378): ด่านเงินของการยกเงินต้องบอกทางที่มีอยู่จริง — คืนเงินได้ทั้งงวดเท่านั้น (ไม่มีคืนบางส่วน)
+   และยกซ้ำกับงวดที่แจ้ง/รับรองแล้วบนใบใหม่ = เงินก้อนเดียวนับสองครั้ง ⇒ ข้อความเดียวกับที่จอ (applyCarryIn) บอก */
+test('ยกเงินเกินยอดใบ / ยกซ้ำกับงวดที่มีเงินของใบใหม่ (0378) แปลเป็นไทยพร้อมทางออกที่มีจริง', async () => {
+  const { CARRY_DUPLICATE_WAY_OUT, CARRY_OVERPAID_WAY_OUT } = await import('./installmentCarry.js');
+  const over = documentWorkflowError({ message: 'P0001: installment_carry_overpaid' });
+  assert.equal(over.status, 400);
+  assert.doesNotMatch(over.message, /ส่วนที่เกิน/, 'คืนบางส่วนไม่มีในระบบ');
+  assert.ok(over.message.endsWith(CARRY_OVERPAID_WAY_OUT), over.message);
+  const dup = documentWorkflowError({ message: 'P0001: installment_carry_duplicate' });
+  assert.equal(dup.code, 'installment_carry_duplicate');
+  assert.equal(dup.status, 409);
+  assert.match(dup.message, /เงินก้อนเดียวกัน/);
+  assert.ok(dup.message.endsWith(CARRY_DUPLICATE_WAY_OUT), dup.message);
+});

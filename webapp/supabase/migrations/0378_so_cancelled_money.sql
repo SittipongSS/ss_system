@@ -25,6 +25,7 @@
 --       บัญชียังไม่ปิดใบ · dealId เดียวกัน · เหตุผล 10–500
 --     · แถวที่ยก: ของใบต้นทาง · confirmed/reported · ยังไม่คืนเงิน · p_expected ครบทุกแถว (ปลายทาง + แถวที่ยก)
 --     · ยกเกิน (แถวล็อกของปลายทาง + แถวที่ยก > ยอดใบ) = installment_carry_overpaid
+--     · ยกซ้ำ (ปลายทางมีงวดแจ้ง/รับรองแล้วที่วันจ่าย+ยอดตรงกัน หรือสลิปไฟล์เดียวกัน) = installment_carry_duplicate (review MONEY-1)
 --     · ① แถวเปิดของปลายทางหลบเลขไป +1000 → ② UPDATE แถวเงินเข้าใบปลายทาง (เลขงวด/ป้าย/สัดส่วนจาก p_target_rows ·
 --       ต่อท้าย movedFrom reason 'carry') → ③ แกน _so_installments_write_plan ของ 0377 เขียนแผนทั้งใบ
 --       (แถวล็อก — รวมแถวที่ยกมา — ต้องครบและไม่เปลี่ยน · ลบ/แก้แถวเปิด · Σ = ยอดใบ · Σ% = 100 · 1–12 งวด)
@@ -174,6 +175,7 @@ DECLARE
   v_ids text[];
   v_stale boolean;
   v_bad boolean;
+  v_dup boolean;
   v_locked numeric;
   v_carried numeric;
   v_moved integer;
@@ -287,6 +289,31 @@ BEGIN
     FROM public.sales_order_installments i WHERE i.id = ANY (v_ids);
   IF v_locked + v_carried - v_target."totalAmount" >= 0.005 THEN
     RAISE EXCEPTION 'installment_carry_overpaid';
+  END IF;
+
+  /* เงินก้อนเดียวนับสองครั้ง (review MONEY-1 · เกณฑ์เดียวกับ lib carryDuplicates) — ใบปลายทางมีงวดแจ้ง/รับรองแล้ว (ยังไม่คืน)
+     ที่เป็นเงินก้อนเดียวกับแถวที่ยก: วันจ่าย + ยอดตรงกัน หรือแนบสลิปไฟล์เดียวกัน (storagePath)
+     🐞 ใบใหม่ของดีลเดียวกันถูกตั้งงวดแรกด้วยมัดจำก้อนเดิมอยู่แล้ว (ยืมสลิปตอนอนุมัติ · เงินงวดแรกจากฟอร์มสร้างใบ) ⇒ ยกซ้ำ
+        แล้วแผนที่เหลือถูกหักอีกรอบ = ลูกค้าไม่ถูกเก็บเงินส่วนนั้น — ด่านยกเกินยอดใบข้างบนจับไม่ได้
+     ⇒ บัญชีต้องตีกลับ/ถอนคำรับรองงวดที่ซ้ำบนใบปลายทางก่อน (งวดที่ตีกลับเป็นงวดเปิด — แผนหักงวดนั้นก่อน) */
+  v_dup := EXISTS (
+    SELECT 1
+      FROM public.sales_order_installments c
+      JOIN public.sales_order_installments t
+        ON t."salesOrderId" = v_target.id
+       AND t.status IN ('confirmed', 'reported')
+       AND t."refundedAt" IS NULL
+     WHERE c.id = ANY (v_ids)
+       AND ((c."paidOn" IS NOT NULL AND c."paidOn" = t."paidOn" AND c.amount = t.amount)
+         OR EXISTS (
+           SELECT 1
+             FROM jsonb_array_elements(c.evidence) ce(f)
+             JOIN jsonb_array_elements(t.evidence) te(f)
+               ON NULLIF(btrim(COALESCE(ce.f->>'storagePath', '')), '') = btrim(COALESCE(te.f->>'storagePath', ''))
+         ))
+  );
+  IF v_dup THEN
+    RAISE EXCEPTION 'installment_carry_duplicate';
   END IF;
 
   /* รูปของ p_target_rows ส่วนที่เป็นแถวที่ยก — แกนของ 0377 ตรวจทั้งชุดอีกรอบหลังย้าย แต่ถึงตอนนั้น UPDATE ของเราชน

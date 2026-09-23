@@ -6,8 +6,9 @@ import {
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir, ledgerVoidInstallment,
   ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
   sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
-  pendingStranded, LEDGER_STRANDED_TITLE,
+  pendingStranded, LEDGER_STRANDED_TITLE, LEDGER_ORDER_STATES, LEDGER_CANCELLED_TAG,
 } from './paymentLedger.js';
+import { installmentVoid } from '@/lib/sales/salesOrderPayments';
 
 const TODAY = '2026-08-13';
 
@@ -997,4 +998,63 @@ test('ก้อนของใบที่ยกเลิก: นับเงิ
   assert.deepEqual(groupNote(group), { label: 'เงินค้าง 1 งวด', tone: 'warning' });
   const [allRefunded] = groupLedgerByOrder([rows[1]]);
   assert.deepEqual(groupNote(allRefunded), { label: 'คืนเงินแล้ว', tone: 'neutral' });
+});
+
+
+/* ══ review รอบ PR0–PR3 (แผน so-payment-unlock-replan) ══════════════════════════════════════════════════════════ */
+
+/* 🐞 F1 (tests): ตัวนับ "ยังไม่ออกใบกำกับ" (ledgerSummary · คิว) ตัดงวดที่คืนเงินแล้ว แต่ตัวกรอง taxInvoice=missing ยังใช้
+   taxInvoicePending ตัวเดิม ⇒ การ์ดบอก 0 งวด กดเข้าไปเจอแถว "คืนเงินแล้ว" + ไฟล์ Excel ก็ติดไปด้วย */
+test('🔴 ตัวกรอง "ยังไม่ออกใบกำกับ" ใช้เกณฑ์เดียวกับตัวนับ — งวดที่คืนเงินแล้วไม่อยู่ในรายการ', () => {
+  const refunded = make({ id: 'r1', seq: 1, status: 'confirmed', amount: 30000, ...refundOf({ refundCreditNoteNo: null }) }, DEAD);
+  const stranded = make({ id: 's2', seq: 2, status: 'confirmed', amount: 7000 }, DEAD);
+  const listed = filterLedger([refunded, stranded], { taxInvoice: 'missing' });
+  assert.deepEqual(listed.map((r) => r.id), ['s2']);
+  assert.equal(ledgerSummary([refunded, stranded]).missingInvoiceCount, listed.length, 'ตัวเลขบนการ์ด = จำนวนแถวที่กรองได้');
+});
+
+/* 🐞 F2 (tests): ใบที่ยกเลิกที่เหลือแต่เงินค้าง/คืนเงินแล้ว (งวดโมฆะถูกตัดตั้งแต่ PR0) ถูกจัดเป็น "เก็บครบแล้ว" */
+test('🔴 สถานะระดับใบ: ใบที่ยกเลิก/ถูกแทน = สถานะของตัวเอง (ไม่ใช่ "เก็บครบแล้ว") · งวดที่คืนเงินแล้วไม่นับว่าเก็บได้', () => {
+  const cancelled = { id: 'SOR-C', orderNumber: 'SO-C', status: 'cancelled' };
+  const strandedOnly = [make({ id: 'c1', seq: 1, status: 'confirmed', amount: 30000 }, cancelled)];
+  const refundedOnly = [make({ id: 'c2', seq: 1, status: 'confirmed', amount: 30000, ...refundOf() }, cancelled)];
+  const dead = Object.keys(LEDGER_ORDER_STATES).find((k) => !['open', 'done'].includes(k));
+  assert.ok(dead, 'ต้องมีสถานะของใบที่ยกเลิก/ถูกแทนแยกจาก เก็บครบ/ยังไม่ครบ');
+  assert.equal(orderStateIndex(strandedOnly).get('SOR-C'), dead);
+  assert.equal(orderStateIndex(refundedOnly).get('SOR-C'), dead);
+  assert.deepEqual(filterLedger(strandedOnly, { orderState: ['done'], orderStates: orderStateIndex(strandedOnly) }), [],
+    'ตัวกรอง "เก็บครบแล้ว" ต้องไม่มีใบที่ยกเลิก');
+  assert.equal(filterLedger(strandedOnly, { orderState: [dead], orderStates: orderStateIndex(strandedOnly) }).length, 1);
+  // ใบที่ยังเดิน: เดิมทุกข้อ
+  assert.equal(orderStateIndex([make({ seq: 1, status: 'confirmed' })]).get('SOR-1'), 'done');
+  // จัดกลุ่ม "สถานะการเก็บ" ใช้ถังเดียวกับตัวกรอง — ใบยกเลิกไม่ตกถัง "เก็บครบแล้ว"/"รอลูกค้าชำระ"
+  const [bucket] = groupLedgerBuckets(groupLedgerByOrder(refundedOnly), 'state');
+  assert.equal(bucket.label, LEDGER_ORDER_STATES[dead]);
+});
+
+/* 🐞 UI-2: งวดที่คืนเงินแล้วยังเป็น confirmed ในฐาน — ก้อนของใบนับเป็น "เก็บครบ" ทั้งที่ยอดเก็บได้เป็น 0 */
+test('🔴 ก้อนของใบ: งวดที่คืนเงินแล้วไม่นับ "เก็บแล้ว x/y" และใบที่คืนครบไม่ใช่ "เก็บครบ"', () => {
+  const cancelled = { id: 'SOR-X', orderNumber: 'SO-X', status: 'cancelled' };
+  const rows = [
+    make({ id: 'x1', seq: 1, status: 'confirmed', amount: 500, ...refundOf() }, cancelled),
+    make({ id: 'x2', seq: 2, status: 'confirmed', amount: 500, ...refundOf() }, cancelled),
+  ];
+  const [group] = groupLedgerByOrder(rows);
+  assert.equal(group.paidCount, 0);
+  assert.equal(group.complete, false);
+  assert.equal(group.summary.collectedAmount, 0);
+  assert.deepEqual(groupNote(group), { label: 'คืนเงินแล้ว', tone: 'neutral' });
+  assert.equal(groupAsOrder(group).payment.complete, false);
+});
+
+/* ⭐ UI-1: แถวคิวรับรองของใบที่ยกเลิกต้องบอกว่า "ใบยกเลิกแล้ว" — ตาเห็นบนแถว = ต้องค้นเจอ (กติกา search haystack) */
+test('ป้าย "ใบยกเลิกแล้ว" ของแถวคิว ค้นเจอ · ทะเบียนตัดงวดโมฆะด้วยตัวตัดสินเดียวกับแผงงวด (installmentVoid)', () => {
+  const cancelled = { id: 'SOR-Z', orderNumber: 'SO-Z', status: 'cancelled' };
+  const rows = [make({ id: 'z1', seq: 1, status: 'reported' }, cancelled), make({ id: 'live', seq: 1, status: 'reported' })];
+  assert.equal(LEDGER_CANCELLED_TAG, 'ใบยกเลิกแล้ว');
+  assert.deepEqual(filterLedger(rows, { q: LEDGER_CANCELLED_TAG }).map((r) => r.id), ['z1']);
+  const pending = { id: 'p', status: 'pending' };
+  for (const status of ['cancelled', 'revised', 'approved', 'approval_revoked']) {
+    assert.equal(ledgerVoidInstallment(pending, { status }), installmentVoid(pending, { status }), status);
+  }
 });

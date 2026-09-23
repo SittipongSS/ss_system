@@ -32,8 +32,9 @@ const RPC = fnBody('replan_sales_order_installments');
 const BODIES = [LOCKED, CORE, RPC];
 
 test('0377 เป็นไฟล์สุดท้ายที่นิยาม replan_sales_order_installments / แกนเขียนแผน (ยามไม่ตรวจไฟล์เก่า)', () => {
+  /* ⚠️ นับเฉพาะนิยาม (CREATE [OR REPLACE] FUNCTION) หลังตัดคอมเมนต์ — review F3: REVOKE/GRANT/COMMENT ON FUNCTION ไม่ใช่นิยาม */
   const owners = (fn) => readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()
-    .filter((n) => mig(n).includes(`FUNCTION public.${fn}(`));
+    .filter((n) => new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`, 'i').test(stripComments(mig(n))));
   for (const fn of ['replan_sales_order_installments', '_so_installments_write_plan', '_so_installment_replan_locked']) {
     const files = owners(fn);
     assert.equal(files[files.length - 1], FILE, `${fn} ถูกเขียนทับในไฟล์ใหม่ — ย้ายยามนี้ตามไป`);

@@ -103,7 +103,7 @@ import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import {
-  cancelledMoneyRestoreBlock, installmentReportDoneMessage, paymentRollup, salesOrderMoneyOutcome,
+  cancelledMoneyRestoreBlock, installmentReportDoneMessage, installmentVoid, paymentRollup, salesOrderMoneyOutcome,
 } from "@/lib/sales/salesOrderPayments";
 import { REPLAN_DONE_MESSAGE } from "@/lib/sales/installmentReplan";
 import { CARRY_DONE_MESSAGE } from "@/lib/sales/installmentCarry";
@@ -754,6 +754,11 @@ export default function SalesOrderDetailPage() {
       .then((r) => r.json()).catch(() => null);
     setBusy("");
     if (!preview) { setError("ขอพรีวิวการลบไม่สำเร็จ"); return; }
+    /* ด่านที่บังคับลบก็ข้ามไม่ได้ (สายโซ่ Rev. · งวดที่ย้ายไปจากใบนี้ · ใบยื่นภาษี) — บอกเหตุ ไม่เปิดโมดัลยืนยันที่ลบไม่ได้จริง (review UI-6) */
+    if (preview.blocked) {
+      setError(preview.notes?.[0] || "บังคับลบใบนี้ไม่ได้");
+      return;
+    }
     const lines = (preview.cascade || []).map((c) => `· ${c.label}: ${c.count}`).join("\n");
     const notes = (preview.notes || []).join("\n");
     // ใบย้อนหลัง: เอกสารแทนสัญญาถูกยกเลิกตามใบด้วย (trigger ของ 0374) — ไม่ได้อยู่ในรายการ cascade ของพรีวิว
@@ -917,9 +922,11 @@ export default function SalesOrderDetailPage() {
     label: "ส่วนลดท้ายใบ",
     value: Number(order?.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : NA,
   }), [order?.discountAmount]);
+  /* ตัวเลข "เก็บเงินแล้ว x/y" ของภาพรวม/หัวแท็บ — กติกาเดียวกับแผงงวด (review UI-2/UI-3): งวดโมฆะของใบยกเลิกไม่ใช่งวดที่ต้องเก็บ
+     · งวดที่คืนเงินแล้วไม่ใช่เงินที่เก็บได้ (paymentRollup) */
   const paymentSummary = useMemo(
-    () => paymentRollup(installments, todayIso),
-    [installments, todayIso],
+    () => paymentRollup(installments.filter((row) => !installmentVoid(row, { status: order?.status })), todayIso),
+    [installments, todayIso, order?.status],
   );
 
   /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับด่านเงิน (สาย SERVICE + บรรทัดหมวด 02-001)
@@ -1362,7 +1369,8 @@ export default function SalesOrderDetailPage() {
       label: "ยกเลิก SO",
       // ปุ่มพูดเรื่องเดียวกับ API แล้ว (มติผู้ใช้ 2026-08-18) — เดิม `approved && reviewer`
       // ทำให้ใบที่ถอนอนุมัติแล้ว/ใบร่าง/ใบตีกลับ ไม่มีทางยกเลิกจากหน้าจอเลย
-      visible: canCancelSalesOrder(order, { reviewer, canEdit }),
+      /* ใบที่ถือเงิน (งวดรับรองแล้ว/รอตรวจ) ยกเลิกได้เฉพาะผู้ตรวจสอบ ทุกสถานะ — ตัวเดียวกับ route (review MONEY-2) */
+      visible: canCancelSalesOrder(order, { reviewer, canEdit, installments }),
       disabled: !!filingState.filing || !!historicalCancelBlocked,
       disabledReason: filingState.filing
         ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน"

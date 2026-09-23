@@ -40,6 +40,7 @@ import {
   strandedInstallment,
   cancelledMoneyRestoreBlock,
   movedOutDeleteBlock,
+  installmentVoid,
   MAX_REFUND_CREDIT_NOTE_NO,
   MIN_REJECT_REASON,
 } from './salesOrderPayments.js';
@@ -1468,4 +1469,125 @@ test('ลบถาวร: มีงวดที่ไหนอ้างใบน
   ]);
   assert.equal(why, 'ลบถาวรไม่ได้: งวดชำระ 3 งวดของ SO-26090002-0, SO-26090001-1 ย้ายไปจากใบนี้ (ออก Rev./ยกเงิน)'
     + ' และยังใช้หลักฐาน (สลิป · ใบกำกับ) ในโฟลเดอร์ของใบนี้ — ใบนี้เป็นประวัติของเงินก้อนนั้น');
+});
+
+
+/* ══ review รอบ PR0–PR3 (แผน so-payment-unlock-replan) ══════════════════════════════════════════════════════════ */
+
+/* 🐞 cancelled-service-so-refund-deadend: ใบบริการที่ยกเลิก — งวด reported ที่ไม่มีช่วงครอบ รับรองไม่ได้ (ด่านช่วงครอบ)
+   แต่เซลล์ช่วงครอบของใบยกเลิกถูกล็อก (PIPELINE_CANCELLED_LOCK) และคืนเงินรับเฉพาะ confirmed ⇒ คืนเงินไม่ได้เลย (ทางตัน)
+   ⭐ ไม่มีนัดช่างไหนอ่านใบที่ยกเลิก ⇒ ด่าน "ต้องมีช่วงครอบก่อนรับรอง" ไม่มีอะไรให้กัน — ข้ามเมื่อใบยกเลิกแล้ว */
+test('🔴 ใบบริการที่ยกเลิก: บัญชีรับรองงวด reported ที่ไม่มีช่วงครอบได้ แล้วบันทึกคืนเงินต่อได้ (ไม่ใช่ทางตัน)', () => {
+  const reported = frozen({ id: 'SV-1', seq: 1, status: 'reported', amount: 10000, reportedAt: 'x', coversFrom: null, coversTo: null });
+  const cancelledOpts = (action, extra = {}) => ({
+    rows: [reported], orderTotal: 10000, serviceRounds: true,
+    orderLock: pipelineInstallmentLock(CANCELLED_SO, action), orderCancelled: true, ...extra,
+  });
+  assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, cancelledOpts('confirm')), null,
+    'ใบยกเลิก — ด่านช่วงครอบไม่มีนัดช่างให้กันแล้ว');
+  const confirmed = { ...reported, status: 'confirmed', confirmedAt: 'y' };
+  assert.equal(installmentActionError(confirmed, 'refund', FN_STAFF, cancelledOpts('refund', { ...REFUND_OK, rows: [confirmed] })), null);
+  // ใบบริการที่ยังเดินอยู่: ด่านเดิมทุกข้อ
+  assert.match(installmentActionError(reported, 'confirm', FN_STAFF, {
+    rows: [reported], orderTotal: 10000, serviceRounds: true,
+    orderLock: pipelineInstallmentLock(APPROVED_SO, 'confirm'), orderCancelled: false,
+  }), /ต้องระบุช่วงครอบบริการของงวดก่อน/);
+});
+
+/* 🐞 UI-2: งวดที่คืนเงินแล้วยังเป็น confirmed ในฐาน — แผง/ตารางรายการ SO นับเป็นเงินที่เก็บได้ ("เก็บครบแล้ว") */
+test('🔴 paymentRollup: งวดที่คืนเงินแล้วไม่นับเป็นเงินที่เก็บได้ · ไม่ใช่ค้างรับ · ใบที่คืนครบไม่ใช่ "เก็บครบ"', () => {
+  const r1 = frozen({ id: 'R1', seq: 1, status: 'confirmed', amount: 500, refundedAt: '2026-09-21T00:00:00Z' });
+  const r2 = frozen({ id: 'R2', seq: 2, status: 'confirmed', amount: 500, refundedAt: '2026-09-21T00:00:00Z' });
+  const all = paymentRollup([r1, r2], '2026-09-23');
+  assert.equal(all.complete, false);
+  assert.equal(all.confirmedCount, 0);
+  assert.equal(all.confirmedAmount, 0);
+  assert.equal(all.refundedCount, 2);
+  assert.equal(all.refundedAmount, 1000);
+  assert.equal(all.outstandingAmount, 0, 'เงินที่คืนไปแล้วไม่ใช่ยอดที่ต้องตามเก็บ');
+  const mixed = paymentRollup([r1, frozen({ id: 'C2', seq: 2, status: 'confirmed', amount: 500 })], '2026-09-23');
+  assert.equal(mixed.confirmedAmount, 500);
+  assert.equal(mixed.complete, false);
+  // ไม่มีงวดคืนเงิน = ผลเดิมทุกตัว
+  const plain = paymentRollup(MONEY_ROWS, '2026-09-23');
+  assert.equal(plain.confirmedAmount, 53500);
+  assert.equal(plain.outstandingAmount, 53500);
+  assert.equal(plain.refundedCount, 0);
+});
+
+test('🔴 salesOrderPaymentCell: งวดที่คืนเงินแล้วไม่นับ "เก็บแล้ว"/"ต้องมีใบกำกับ" · ป้ายบอก "คืนเงินแล้ว" · ใบยกเลิกที่มีเงินค้างบอก "เงินค้าง"', () => {
+  const refunded = (id, seq) => ({ id, seq, status: 'confirmed', amount: 500, refundedAt: '2026-09-21T00:00:00Z', taxInvoiceNo: null });
+  const cell = salesOrderPaymentCell([refunded('a', 1), refunded('b', 2)], null, '2026-09-23', 1000, 'cancelled');
+  assert.equal(cell.paid, 0);
+  assert.equal(cell.complete, false);
+  assert.equal(cell.invoiceNeeded, 0);
+  assert.equal(cell.refunded, 2);
+  assert.deepEqual(salesOrderPaymentNote(cell), { label: 'คืนเงินแล้ว', tone: 'idle' });
+  assert.equal(salesOrderTaxInvoiceNote(cell), null, 'ไม่ขึ้น "ใบกำกับ 0/2" ของเงินที่คืนไปแล้ว');
+  // ใบยกเลิกที่ยังมีเงินรับแล้วอยู่ = เงินค้าง (ไม่ใช่ "เก็บครบแล้ว")
+  const stranded = salesOrderPaymentCell([{ id: 's', seq: 1, status: 'confirmed', amount: 500, taxInvoiceNo: 'IV-1' }],
+    null, '2026-09-23', 500, 'cancelled');
+  assert.equal(stranded.stranded, 1);
+  assert.deepEqual(salesOrderPaymentNote(stranded), { label: 'เงินค้าง 1 งวด', tone: 'warning' });
+});
+
+/* 🐞 UI-3: ใบ pipeline ที่ยกเลิก — งวดที่ยังไม่ชำระ (pending/rejected) เป็นโมฆะ (ทะเบียนตัดทิ้งตั้งแต่ PR0 · โมดัลยกเลิกสัญญา
+   "หลุดจากยอดค้างรับทันที") แต่แผง/ตารางยังนับเป็นค้างรับ/เลยกำหนด */
+test('🔴 installmentVoid: งวดที่ยังไม่ชำระของใบที่ยกเลิก/ถูกแทน = โมฆะ (กติกาเดียวกับทะเบียนบัญชี)', () => {
+  const pending = { id: 'p', seq: 3, status: 'pending', amount: 500, dueDate: '2026-09-01' };
+  const rejected = { ...pending, status: 'rejected' };
+  for (const status of ['cancelled', 'revised']) {
+    assert.equal(installmentVoid(pending, { status }), true, status);
+    assert.equal(installmentVoid(rejected, { status }), true, status);
+    assert.equal(installmentVoid({ ...pending, status: 'reported' }, { status }), false);
+    assert.equal(installmentVoid({ ...pending, status: 'confirmed' }, { status }), false);
+  }
+  for (const status of ['approved', 'approval_revoked', 'draft', 'rejected']) {
+    assert.equal(installmentVoid(pending, { status }), false, status);
+  }
+  assert.equal(installmentVoid(null, { status: 'cancelled' }), false);
+});
+
+test('🔴 salesOrderPaymentCell ของใบที่ยกเลิก: งวดโมฆะไม่นับ (ไม่ขึ้น "เลยกำหนด") · ไม่เหลืองวดจริง = ไม่มีคอลัมน์งวด (ไม่ใช่แผน QT)', () => {
+  const plan = { type: 'installment', installments: [{ label: 'ก', percent: 50 }, { label: 'ข', percent: 50 }] };
+  const rows = [
+    { id: 'c', seq: 1, status: 'confirmed', amount: 500, taxInvoiceNo: 'IV-1' },
+    { id: 'p', seq: 2, status: 'pending', amount: 500, dueDate: '2026-09-01' },
+  ];
+  const cell = salesOrderPaymentCell(rows, plan, '2026-09-23', 1000, 'cancelled');
+  assert.equal(cell.overdue, 0, 'งวดโมฆะไม่ใช่ "เลยกำหนด"');
+  assert.equal(cell.count, 1);
+  assert.equal(cell.paid, 1);
+  // ใบเดิมที่ยังเดิน: เลยกำหนดตามเดิม
+  assert.equal(salesOrderPaymentCell(rows, plan, '2026-09-23', 1000, 'approved').overdue, 1);
+  // UI-4: ยกเงินออกไปหมดแล้ว (0 แถว) / เหลือแต่งวดโมฆะ = ไม่มีคอลัมน์งวด — ไม่ถอยไปวาด "ยังไม่เริ่มติดตาม" จากแผน QT
+  assert.equal(salesOrderPaymentCell([], plan, '2026-09-23', 1000, 'cancelled'), null);
+  assert.equal(salesOrderPaymentCell([rows[1]], plan, '2026-09-23', 1000, 'cancelled'), null);
+});
+
+/* 🐞 MONEY-1: ดีลมีเงินค้าง — ตอนอนุมัติระบบไม่ยกสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรกให้ (freeze · borrowConfirmation)
+   ⇒ โมดัลอนุมัติต้องบอกผลนั้น + ทาง "ยกแทนการแจ้ง" ก่อนกด */
+test('🔴 โมดัลอนุมัติ: ดีลมีเงินค้าง + ยืนยันด้วยสลิป = บอกว่าไม่ยกสลิปมาตั้งงวดแรก · มีเงินที่บันทึกไว้ตอนร่าง = บอกว่าเข้าคิวบัญชีตามเดิม', () => {
+  const draft = {
+    ...APPROVED_SO, status: 'pending_approval',
+    confirmDocType: 'payment_slip', confirmDocDate: '2026-08-20', confirmAttachments: [{ fileName: 'slip.jpg' }],
+  };
+  const sources = [{ id: 'SOR-X', orderNumber: 'SO-26080039-0', amount: 32100 }];
+  const rows = [
+    { id: 'd1', seq: 1, status: 'pending', amount: 32100 },
+    { id: 'd2', seq: 2, status: 'pending', amount: 74900 },
+  ];
+  const lines = salesOrderMoneyOutcome(draft, rows, 'approve', { strandedSources: sources });
+  assert.ok(lines.some((l) => /^ดีลนี้มีเงินค้างจากใบที่ยกเลิก SO-26080039-0 ฿32,100\.00/.test(l)));
+  const slip = lines.find((l) => l.startsWith('ระบบไม่ยกสลิป'));
+  assert.ok(slip, lines.join('\n'));
+  assert.match(slip, /ถ้าสลิปนั้นคือเงินค้างก้อนเดียวกัน ให้ยกเงินแทนการแจ้งชำระ/);
+  // ไม่มีเงินค้าง = ระบบยืมสลิปตามปกติ ⇒ ไม่มีบรรทัดนี้
+  assert.ok(!salesOrderMoneyOutcome(draft, rows, 'approve').some((l) => l.startsWith('ระบบไม่ยกสลิป')));
+  // เงินที่ SA บันทึกไว้ตอนร่าง (prepaid) ยังเข้าคิวบัญชี — ต้องบอกทางถ้าเป็นสลิปเดียวกับเงินค้าง
+  const prepaid = [{ ...rows[0], paidOn: '2026-08-20', evidence: [{ fileName: 's.jpg' }] }, rows[1]];
+  const withPrepaid = salesOrderMoneyOutcome({ ...draft, confirmDocType: 'po' }, prepaid, 'approve', { strandedSources: sources });
+  const line = withPrepaid.find((l) => l.startsWith('งวดที่บันทึกการจ่ายไว้ตอนร่าง'));
+  assert.ok(line, withPrepaid.join('\n'));
+  assert.match(line, /1 งวด ฿32,100\.00 เข้าคิวบัญชีตามเดิม — ถ้าเป็นสลิปเดียวกับเงินค้าง ให้บัญชีตีกลับงวดนั้นก่อนแล้วจึงยกเงิน/);
 });

@@ -25,8 +25,9 @@ import { installmentActionError, pipelineInstallmentLock } from '@/lib/sales/sal
 const DRAFT_ROW = { id: 'SOI-1', seq: 1, status: 'pending', evidence: [] };
 const SA = { id: 'U-1', role: 'ae', permissions: null };
 
-test('ด่านอัปหลักฐานการชำระ: ใบที่ยังไม่อนุมัติแนบได้ (งวดร่างบันทึกเงินได้ตั้งแต่ B-4)', () => {
-  for (const status of ['draft', 'pending_approval', 'approved', 'approval_revoked']) {
+/* ⚠️ แก้โดยตั้งใจ (review 23/09 · มติ D3): 'rejected' แนบได้แล้ว — ใบที่ถูกตีกลับกลับเข้ารอบแก้ และใบ Rev. ที่ถูกตีกลับถืองวดเงิน (0376) */
+test('ด่านอัปหลักฐานการชำระ: ใบที่ยังไม่อนุมัติ/ถูกตีกลับแนบได้ (งวดร่างบันทึกเงินได้ตั้งแต่ B-4 · D3)', () => {
+  for (const status of ['draft', 'pending_approval', 'approved', 'approval_revoked', 'rejected']) {
     assert.equal(
       privateEvidenceStatusError('sales_order_payment_evidence', { status }),
       null,
@@ -35,7 +36,8 @@ test('ด่านอัปหลักฐานการชำระ: ใบท
   }
 });
 
-test('ด่านอัปหลักฐานการชำระ: ใบที่ยกเลิก/ตีกลับ/ถูกออก Rev. ทับ แนบไม่ได้', () => {
+test('ด่านอัปหลักฐานการชำระ: ใบที่ยกเลิก/ถูกออก Rev. ทับ แนบไม่ได้', () => {
+  assert.deepEqual([...SO_PAYMENT_EVIDENCE_CLOSED].sort(), ['cancelled', 'revised']);
   for (const status of SO_PAYMENT_EVIDENCE_CLOSED) {
     const error = privateEvidenceStatusError('sales_order_payment_evidence', { status });
     assert.ok(error, `สถานะ ${status} ต้องถูกปฏิเสธ`);
@@ -81,8 +83,10 @@ test('🔴 ใบกำกับภาษี: FN อัปได้เฉพา�
 /* ⚠️ แก้โดยตั้งใจ (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09): ใบ pipeline ที่ยกเลิกแล้ว บัญชียัง
    บันทึกใบกำกับของเงินที่เข้าแล้วได้ (`pipelineInstallmentLock` ปล่อย `tax-invoice`) ⇒ ไฟล์ใบกำกับต้องอัปได้ด้วย
    (ด่านของไฟล์ต้องไม่แคบกว่าด่านของคำสั่ง — ยามความสัมพันธ์อยู่ข้างล่าง) · ตีกลับ/ถูกออก Rev. ทับยังปิดเหมือนเดิม */
-test('ใบกำกับภาษี: ใบที่ตีกลับ/ถูกออก Rev. ทับ แนบไม่ได้ · ใบยกเลิกแนบได้ (บัญชียังบันทึกใบกำกับของเงินที่เข้าแล้ว)', () => {
-  assert.deepEqual([...SO_TAX_INVOICE_CLOSED].sort(), ['rejected', 'revised']);
+/* ⚠️ แก้โดยตั้งใจรอบสอง (review 23/09 · มติ D3): ใบที่ถูกตีกลับแนบใบกำกับได้ — ใบ Rev. ที่ถูกตีกลับถืองวดที่รับเงินแล้ว (0376) */
+test('ใบกำกับภาษี: ใบที่ถูกออก Rev. ทับ แนบไม่ได้ · ใบยกเลิก/ตีกลับแนบได้ (บัญชียังบันทึกใบกำกับของเงินที่เข้าแล้ว)', () => {
+  assert.deepEqual([...SO_TAX_INVOICE_CLOSED].sort(), ['revised']);
+  assert.equal(privateEvidenceStatusError('sales_order_tax_invoice', { status: 'rejected' }), null);
   for (const status of SO_TAX_INVOICE_CLOSED) {
     const error = privateEvidenceStatusError('sales_order_tax_invoice', { status });
     assert.ok(error, `สถานะ ${status} ต้องถูกปฏิเสธ`);
@@ -92,10 +96,13 @@ test('ใบกำกับภาษี: ใบที่ตีกลับ/ถ�
 });
 
 /* 🔴 ความสัมพันธ์ "คำสั่งผ่าน ⇒ ไฟล์ต้องอัปได้" ของล็อกทั้งใบ (PR0) — คิดจากตัวตัดสินตัวเดียวกับ route/ปุ่ม
-   ไม่ใช่รายชื่อสถานะที่เขียนซ้ำ ⇒ ใครขยับล็อกฝั่งไหนก่อน อีกฝั่งแดงทันที */
-test('🔴 ล็อกทั้งใบของใบ pipeline: คำสั่งที่ล็อกปล่อย ไฟล์ของคำสั่งนั้นต้องอัปได้', () => {
+   ไม่ใช่รายชื่อสถานะที่เขียนซ้ำ ⇒ ใครขยับล็อกฝั่งไหนก่อน อีกฝั่งแดงทันที
+   🐞 review (rejected-so-button-upload-mismatch / F1): รายชื่อสถานะของยามนี้เคยข้าม 'rejected' — สถานะเดียวที่สองด่านขัดกัน
+     (ใบ Rev. ที่ AE Sup ตีกลับถืองวดเงินที่ย้ายมา · มติ D3 รับเงินต่อ) ⇒ ไล่ **ทุกสถานะของ CHECK 0166** ไม่ใช่รายชื่อที่เลือกเอง */
+const ALL_SO_STATUSES = ['draft', 'pending_approval', 'approved', 'rejected', 'cancelled', 'revised', 'approval_revoked'];
+test('🔴 ล็อกทั้งใบของใบ pipeline: คำสั่งที่ล็อกปล่อย ไฟล์ของคำสั่งนั้นต้องอัปได้ (ทุกสถานะของใบ)', () => {
   const FOLDER = { report: 'sales_order_payment_evidence', 'tax-invoice': 'sales_order_tax_invoice' };
-  for (const status of ['draft', 'pending_approval', 'approved', 'approval_revoked', 'cancelled', 'revised']) {
+  for (const status of ALL_SO_STATUSES) {
     for (const [action, folder] of Object.entries(FOLDER)) {
       const order = { origin: 'pipeline', status };
       if (pipelineInstallmentLock(order, action)) continue;

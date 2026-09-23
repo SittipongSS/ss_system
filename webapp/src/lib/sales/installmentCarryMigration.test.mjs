@@ -30,8 +30,9 @@ const fnBody = (name) => {
 const RPC = fnBody('carry_sales_order_installments');
 
 test('0378 เป็นไฟล์สุดท้ายที่นิยาม carry_sales_order_installments · ลายเซ็นตามแผน', () => {
+  /* ⚠️ นับเฉพาะนิยาม (CREATE [OR REPLACE] FUNCTION) หลังตัดคอมเมนต์ — review F3: REVOKE/GRANT/COMMENT ON FUNCTION ไม่ใช่นิยาม */
   const owners = readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()
-    .filter((n) => mig(n).includes('FUNCTION public.carry_sales_order_installments('));
+    .filter((n) => /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.carry_sales_order_installments\s*\(/i.test(stripComments(mig(n))));
   assert.equal(owners[owners.length - 1], FILE, 'ถูกเขียนทับในไฟล์ใหม่ — ย้ายยามนี้ตามไป');
   assert.match(code, /CREATE OR REPLACE FUNCTION public\.carry_sales_order_installments\(\s*p_source_order_id text,\s*p_target_order_id text,\s*p_installment_ids text\[\],\s*p_target_rows jsonb,\s*p_expected jsonb,\s*p_reason text,\s*p_actor_id text,\s*p_actor_name text,\s*p_actor_role text\s*\)\s*RETURNS jsonb/);
   // 0378 ไม่เขียนทับแกนของ 0377 — ใช้ตัวเดียวกับปรับแผน
@@ -90,6 +91,23 @@ test('ยกเกินยอดใบ (แถวล็อกของปลา
   assert.match(RPC, /v_locked \+ v_carried - v_target\."totalAmount" >= 0\.005/);
   assert.match(RPC, /public\._so_installment_replan_locked\(i\.status, i\."taxInvoiceNo", i\."billingRequestId",\s+i\.kind, i\.evidence, i\."paidOn"\)/,
     'แถวล็อกของปลายทางตัดสินด้วยตัวเดียวกับปรับแผน (0377)');
+});
+
+/* 🔴 review MONEY-1: เงินก้อนเดียวนับสองครั้ง — ใบปลายทางมีงวดแจ้ง/รับรองแล้ว (ยังไม่คืน) ที่เป็นเงินก้อนเดียวกับแถวที่ยก
+   (วันจ่าย + ยอดตรงกัน · หรือสลิปไฟล์เดียวกัน) ⇒ RAISE installment_carry_duplicate ก่อนแตะแถวใด (เกณฑ์เดียวกับ applyCarryIn) */
+test('🔴 ยกซ้ำกับงวดที่แจ้ง/รับรองแล้วของใบปลายทาง (วันจ่าย+ยอด · สลิปไฟล์เดียวกัน) = installment_carry_duplicate ก่อนย้าย', () => {
+  const dup = RPC.indexOf("RAISE EXCEPTION 'installment_carry_duplicate'");
+  assert.ok(dup > 0 && dup < RPC.indexOf('SET seq = i.seq + 1000') && dup < RPC.indexOf('SET "salesOrderId" = v_target.id'),
+    'ตรวจก่อนหลบเลข/ย้าย');
+  assert.ok(dup > RPC.indexOf('FOR UPDATE;', RPC.indexOf('PERFORM 1 FROM public.sales_order_installments i')), 'ตรวจใต้ล็อกแถว');
+  const block = RPC.slice(RPC.lastIndexOf('v_dup :=', dup), dup);
+  assert.match(block, /t\."salesOrderId" = v_target\.id/);
+  assert.match(block, /t\.status IN \('confirmed', 'reported'\)/);
+  assert.match(block, /t\."refundedAt" IS NULL/);
+  assert.match(block, /c\.id = ANY \(v_ids\)/);
+  assert.match(block, /c\."paidOn" IS NOT NULL AND c\."paidOn" = t\."paidOn" AND c\.amount = t\.amount/, 'วันจ่าย + ยอดตรงกัน');
+  assert.match(block, /->>'storagePath'/, 'สลิปไฟล์เดียวกัน');
+  assert.ok(WORKFLOW_ERROR_CODES.includes('installment_carry_duplicate'));
 });
 
 test('🔴 ย้ายแถวเงินด้วย UPDATE (id เดิม · ช่องเงินคงเดิม) + ต่อท้าย movedFrom reason carry · ห้าม INSERT/DELETE งวดใน RPC', () => {

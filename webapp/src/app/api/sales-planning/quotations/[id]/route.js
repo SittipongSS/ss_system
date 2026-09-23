@@ -5,10 +5,12 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isSuperuser } from '@/lib/permissions';
 import {
   isForceRequest, isDryRun, canForceDelete,
-  quotationForcePreview, cleanupQuotationOrphans,
+  quotationForcePreview, cleanupQuotationOrphans, QUOTATION_CHILD_ORDERS,
   exciseFilingBlockMessage, exciseFilingsOfQuotation,
   contractsOfQuotation, contractBlockMessage,
 } from '@/lib/forceDelete';
+import { loadMovedOutOfOrders } from '@/lib/sales/salesOrderInstallmentsStore';
+import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
 import { canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
@@ -426,6 +428,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   return ok(after);
 });
 
+/* id ของใบสั่งขายลูกของใบเสนอราคา — ใบเดียวมี SO ไม่กี่ใบ แต่ยังต้องผ่าน fetchAllResult ตามด่าน check:rowcap
+   (จุดอ่านที่ไม่มีเพดานห้ามเพิ่มใหม่ ไม่ว่าจะมั่นใจแค่ไหนว่าแถวน้อย)
+   🔴 ทิ้ง error = เก็บ id ของ SO ลูกไม่ได้ ⇒ ด่านงวดย้ายออกเปิดเงียบ + ไฟล์แนบของใบลูกกลายเป็นกำพร้า ([[evidence-file-purge]])
+   ⇒ โยนออกไปให้ผู้เรียกตัดสิน */
+async function quotationChildOrderIds(supabase, quotationId) {
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('sales_orders').select('id')
+    .eq('quotationId', quotationId)
+    .order('id', { ascending: true }));
+  if (error) throw error;
+  return (data || []).map((row) => row.id);
+}
+
 // DELETE — คนทั่วไปลบได้เฉพาะ draft. Superuser ลบสถานะอื่นได้ ยกเว้น accepted:
 // accepted quotation เป็น canonical Actual source จึงห้าม hard-delete — เส้นทางย้อน
 // ที่ถูกต้องคือ "ย้อนการรับ" (mig 0138 — ยังไม่มี SO) หรือย้อน Won ผ่านยกเลิก SO (0116).
@@ -441,11 +456,30 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // dryRun = พรีวิว Sale Order ที่จะ cascade หายตาม (admin เท่านั้น).
   const force = isForceRequest(req) && canForceDelete(user);
   const dryRun = isDryRun(req);
+  if (dryRun && !canForceDelete(user)) return forbidden();
+
+  /* ⛔ งวดชำระที่ย้ายไปจากใบสั่งขายลูก (ออก Rev. 0376 · ยกเงิน 0378) แล้วยังอยู่กับใบอื่น (review qt-force-delete-bypasses-movedout)
+     🐞 ด่านนี้เคยมีแต่ DELETE ของใบสั่งขาย — ลบ/บังคับลบใบเสนอราคา = force_delete_sales_order ของใบลูกทุกใบ แล้ว purgePrivateEvidence
+       กวาดโฟลเดอร์ของใบลูก (sales-orders/<id>/…) และของใบนี้ (quotations/<id>/order-confirmation/…) ⇒ สลิป/ใบกำกับของเงินที่ยกไป
+       ใบใหม่หายถาวร (payment-file ของใบใหม่ตอบ 502) — บทเรียน SO-26080125-0 ซ้ำผ่านอีกประตู
+     ⭐ มาก่อนทุกเส้นลบ (ปกติ/บังคับ) และบอกตั้งแต่พรีวิว · อ่านไม่ขึ้น = หยุด (ไม่ใช่ถือว่าไม่มีงวดย้ายออก)
+     ⚠️ งวดที่ใบลูกอีกใบถืออยู่ (สายโซ่ Rev. ของใบนี้) หายไปพร้อมกัน — loadMovedOutOfOrders ไม่นับ */
+  let childOrderIds;
+  let movedOut;
+  try {
+    childOrderIds = await quotationChildOrderIds(supabase, id);
+    movedOut = await loadMovedOutOfOrders(supabase, childOrderIds);
+  } catch (movedError) {
+    const message = `ตรวจงวดชำระที่ย้ายไปจากใบสั่งขายของใบนี้ไม่สำเร็จ: ${movedError.message}`;
+    if (dryRun) return ok({ dryRun: true, cascade: [], notes: [message], blocked: true });
+    return fail(`${message} — ยังไม่ได้ลบใบ`, 500);
+  }
   if (dryRun) {
-    if (!canForceDelete(user)) return forbidden();
-    const preview = await quotationForcePreview(supabase, before);
+    const preview = await quotationForcePreview(supabase, before, { movedOut });
     return ok({ dryRun: true, ...preview });
   }
+  const movedBlock = movedOutDeleteBlock(movedOut, { subject: QUOTATION_CHILD_ORDERS });
+  if (movedBlock) return fail(movedBlock, 409);
 
   // ใบยื่นภาษีของ SO ลูก: FK RESTRICT ที่ break-glass ก็ข้ามไม่ได้ (force_delete_quotation
   // ลบ SO ลูกก่อนเสมอ → ชน orders.salesOrderId แล้ว error ดิบจาก Postgres หลุดออกหน้าเว็บ
@@ -513,20 +547,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
      ไฟล์ไหนเป็นของใบนี้ (path มี snapshotId ที่หายไปพร้อมแถว) */
   /* ⚠️ **SO ลูกที่ cascade หายไปพร้อมใบ ต้องกวาดโฟลเดอร์ของมันด้วย** — หลักฐาน
      การชำระอยู่ใต้ `sales-orders/<id>/payments/` ซึ่งไม่ได้อยู่ใต้โฟลเดอร์ของใบ
-     เสนอราคา · เส้นนี้ไม่ได้เดินผ่าน DELETE ของใบสั่งขาย จึงต้องเก็บ id ไว้ก่อนลบ */
-  const childOrderIds = await (async () => {
-    // ใบเดียวมี SO ไม่กี่ใบ แต่ยังต้องผ่าน fetchAllResult ตามด่าน check:rowcap —
-    // จุดอ่านที่ไม่มีเพดานห้ามเพิ่มใหม่ ไม่ว่าจะมั่นใจแค่ไหนว่าแถวน้อย
-    /* 🔴 ทิ้ง error ที่นี่ = เก็บ id ของ SO ลูกไม่ได้ แล้ว **ไฟล์แนบของใบพวกนั้น
-       กลายเป็นกำพร้าค้างใน bucket** โดยไม่มีอะไรฟ้อง (โรคเดียวกับ [[evidence-file-purge]])
-       ⇒ โยนออกไปให้ผู้เรียกตัดสิน ดีกว่าลบใบสำเร็จแล้วทิ้งขยะไว้เงียบ ๆ */
-    const { data, error } = await fetchAllResult(() => supabase
-      .from('sales_orders').select('id')
-      .eq('quotationId', id)
-      .order('id', { ascending: true }));
-    if (error) throw error;
-    return (data || []).map((row) => row.id);
-  })();
+     เสนอราคา · เส้นนี้ไม่ได้เดินผ่าน DELETE ของใบสั่งขาย จึงเก็บ id ไว้ก่อนลบ
+     (`childOrderIds` อ่านไว้แล้วข้างบน — ตัวเดียวกับที่ด่านงวดย้ายออกใช้ · quotationChildOrderIds) */
 
   /* เหตุผลเดียวกับ childOrderIds ข้างบน — อ่านไม่ได้ = ไฟล์ PDF ฉบับตรึงกลายเป็น
      กำพร้าถาวร (path มี snapshotId ที่หายไปพร้อมแถว) ⇒ ต้องหยุดก่อนลบ ไม่ใช่ลบไปเงียบ ๆ */

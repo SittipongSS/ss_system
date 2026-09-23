@@ -332,10 +332,25 @@ export function salesOrderActionNeedsEditScope(action) {
  *   — ใบ pipeline ที่มีเงินรับแล้วยกเลิกได้ตั้งแต่ PR3 (mig 0378 · เงินค้างอยู่กับใบ → ยกเข้าใบใหม่/บันทึกคืนเงิน) —
  * ที่นี่ตอบแค่ "ปุ่มควรโผล่ไหม" ไม่ใช่ "กดแล้วจะผ่านไหม"
  */
-export function canCancelSalesOrder(order, { reviewer = false, canEdit = false } = {}) {
+export function canCancelSalesOrder(order, { reviewer = false, canEdit = false, installments = [] } = {}) {
   const status = order?.status;
   if (!order || !canEdit) return false;
   if (['cancelled', 'revised'].includes(status)) return false;
-  if (['pending_approval', 'approved'].includes(status)) return reviewer;
+  if (salesOrderCancelNeedsReviewer(order, installments)) return reviewer;
   return true;
+}
+
+/**
+ * ยกเลิกใบนี้ต้องเป็นผู้ตรวจสอบ (AE Sup/admin) ไหม — ปุ่ม (`canCancelSalesOrder`) กับ route ยกเลิกถามตัวเดียวกัน
+ * ⭐ รออนุมัติ/อนุมัติแล้ว (มติ 2026-07-16 — ถอนยอด Actual ต้องสมมาตรกับตอนอนุมัติ)
+ * ⭐ **ใบที่ถือเงิน** — มีงวด confirmed/reported ในสถานะใดก็ตาม (review MONEY-2)
+ *   🐞 PR3 ปลดด่าน "มีงวดที่บัญชีรับรองแล้ว" ของใบ pipeline ⇒ ใบที่ย้อนการอนุมัติ (มติ D3 รับเงินต่อได้) และใบ Rev. ร่างที่งวดเงิน
+ *     ย้ายมา (0376) เหลือด่านแค่สิทธิ์แก้งานขาย — AE เจ้าของดีลคนเดียวยกเลิกได้ แล้วเงินที่รับรองแล้วกลายเป็นเงินค้างจากใบที่ยกเลิก
+ *     โดยไม่มี AE Sup เกี่ยว (ทั้งที่ปรับแผน/ยกเงินเป็นของ AE Sup/admin/บัญชี)
+ *   ⚠️ route ส่งงวดที่อ่านสดแบบโยน error (อ่านไม่ขึ้น = ไม่ยกเลิก) · ปุ่มใช้งวดของหน้า (loadOrder กลืน error — ปุ่มผิดได้ API ไม่ผิด)
+ *   ⚠️ งวดร่างที่บันทึกการจ่ายไว้ (pending + สลิป) ไม่ใช่ "เงิน" ที่นี่ — ยังไม่ถึงบัญชี (ยกเลิกแล้วเป็นโมฆะ · โมดัลบอก)
+ */
+export function salesOrderCancelNeedsReviewer(order, installments = []) {
+  if (['pending_approval', 'approved'].includes(order?.status)) return true;
+  return (Array.isArray(installments) ? installments : []).some((r) => ['confirmed', 'reported'].includes(r?.status));
 }

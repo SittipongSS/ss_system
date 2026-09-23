@@ -73,7 +73,9 @@ test('ลบถาวร: แถวที่ย้ายไปจากใบน
   assert.ok(chain > 0 && read1 > chain && block > read1 && rpc > block && purge > block);
   assert.match(del, /if \(movedBlock\) return fail\(movedBlock, 409\);/);
   assert.match(del, /catch \(error\) \{ return fail\(`ตรวจงวดที่ย้ายไปจากใบนี้ไม่สำเร็จ: \$\{error\.message\} — ยังไม่ได้ลบใบ`, 500\); \}/);
-  assert.ok(del.indexOf('if (isDryRun(req))') < read1, 'พรีวิวยังดูได้ (ด่านอยู่ที่ตอนลบจริง)');
+  /* ⚠️ แก้โดยตั้งใจ (review UI-6): พรีวิวไม่ใช่ "ดูได้เสมอ" แล้ว — มันถามงวดย้ายออกของตัวเองแล้วตอบ blocked (เทสต์ UI-6 ข้างล่าง)
+     ที่นี่ตรึงแค่ว่าพรีวิวอยู่ก่อนด่านของตอนลบจริง (ลำดับเดิม) */
+  assert.ok(del.indexOf('if (isDryRun(req))') < read1, 'พรีวิวอยู่ก่อนด่านของตอนลบจริง');
 });
 
 // ── 4. หน้าใบ: โหลดเงินค้างของดีล + แถวที่ยกออก (อ่านไม่ขึ้นต้องบอก ไม่กลืน) ─────────────────────────────────
@@ -201,4 +203,111 @@ test('บัญชี: คิว "เงินค้างจากใบที�
   const home = code(FN_HOME);
   assert.match(home, /label=\{LEDGER_STRANDED_TITLE\} value=\{`\$\{summary\?\.strandedCount \?\? 0\} งวด`\}/);
   assert.match(home, /note=\{fmtMoney\(summary\?\.strandedAmount \?\? 0\)\}/);
+});
+
+/* ══ review รอบ PR0–PR3 — ยามต่อสาย (ตรรกะจริงมีเทสต์ตรงอยู่ที่ lib แล้ว) ═══════════════════════════════════════════ */
+const QT_ROUTE = 'app/api/sales-planning/quotations/[id]/route.js';
+const LIST_ROUTE = 'app/api/sales-planning/sales-orders/route.js';
+const CONFIRM_DIALOG = 'components/salesPlanning/InstallmentConfirmDialog.js';
+
+// ── MONEY-2: ยกเลิกใบที่ถือเงินต้องเป็นผู้ตรวจสอบ — ทุกสถานะ (อ่านงวดสด · อ่านไม่ขึ้น = ไม่ยกเลิก) ────────────────────────
+test('🔴 ยกเลิกใบ pipeline ที่ถือเงิน (ย้อนการอนุมัติแล้ว/ใบ Rev. ร่าง): ไม่ใช่ผู้ตรวจสอบ = 403 ก่อนแตะใบ · ปุ่มถามตัวเดียวกัน', () => {
+  const cancel = slice(code(SO_ROUTE), "if (action === 'cancel')", "if (action === 'finance_approve')");
+  const read1 = cancel.indexOf('try { moneyRows = await loadInstallments(supabase, id); }');
+  const gate = cancel.indexOf('if (salesOrderCancelNeedsReviewer(before, moneyRows)) {');
+  const rpc = cancel.indexOf("supabase.rpc('cancel_sales_order_with_reversal_atomic'");
+  assert.ok(read1 > 0 && gate > read1 && rpc > gate, 'อ่านงวดสด → ด่านผู้ตรวจสอบ → ก่อนเขียนใบ');
+  assert.match(cancel, /if \(!reviewer && !isHistoricalOrder\(before\)\) \{/);
+  assert.match(cancel, /catch \(error\) \{ return fail\(`อ่านงวดชำระของใบไม่สำเร็จ: \$\{error\.message\} — ยังไม่ได้ยกเลิก`, 500\); \}/,
+    'อ่านไม่ขึ้น ≠ ไม่มีเงิน — หยุด ไม่ใช่เปิดด่าน');
+  assert.match(code(SO_PAGE), /visible: canCancelSalesOrder\(order, \{ reviewer, canEdit, installments \}\),/);
+});
+
+// ── qt-force-delete-bypasses-movedout: ลบใบเสนอราคา (ปกติ/บังคับ) ห้ามกวาดหลักฐานของเงินที่ย้ายไปใบอื่น ──────────────────
+test('🔴 ลบใบเสนอราคา: งวดที่ย้ายไปจากใบสั่งขายลูก (movedFrom) บล็อกก่อน force_delete_quotation/purge · พรีวิวบอก blocked', () => {
+  const del = slice(code(QT_ROUTE), 'export const DELETE');
+  const read1 = del.indexOf('movedOut = await loadMovedOutOfOrders(supabase, childOrderIds);');
+  const children = del.indexOf('childOrderIds = await quotationChildOrderIds(supabase, id);');
+  const preview = del.indexOf('await quotationForcePreview(supabase, before, { movedOut })');
+  const block = del.indexOf('const movedBlock = movedOutDeleteBlock(movedOut, { subject: QUOTATION_CHILD_ORDERS });');
+  const orphans = del.indexOf('await cleanupQuotationOrphans(supabase, before);');
+  const rpc = del.indexOf("supabase.rpc('force_delete_quotation'");
+  const purge = del.indexOf("purgePrivateEvidence(supabase, 'quotations', id)");
+  assert.ok(children > 0 && read1 > children, 'รู้ id ของใบลูกก่อน แล้วถามงวดที่ย้ายออก');
+  assert.ok(preview > read1, 'พรีวิวรู้ด้วยว่าลบไม่ได้ (ไม่ใช่รู้หลังกดยืนยัน)');
+  assert.ok(block > preview && orphans > block && rpc > block && purge > block, 'ด่านมาก่อนทุกการลบ (ทั้งปกติและบังคับ)');
+  assert.match(del, /if \(movedBlock\) return fail\(movedBlock, 409\);/);
+  assert.match(del, /blocked: true/, 'อ่านไม่ขึ้นตอนพรีวิว = บอก blocked ไม่ใช่พรีวิวที่ลบได้');
+});
+
+// ── UI-6: พรีวิวบังคับลบใบสั่งขายบอกด่านที่ break-glass ข้ามไม่ได้ (สายโซ่ Rev. · งวดที่ย้ายออก) · หน้าไม่เสนอปุ่มยืนยัน ────────
+test('🔴 พรีวิวบังคับลบใบสั่งขาย: ด่านสายโซ่ Rev. + งวดที่ย้ายออก ตอบ blocked ในพรีวิว · หน้าใบไม่เปิดโมดัลยืนยันเมื่อ blocked', () => {
+  const del = slice(code(SO_ROUTE), 'export const DELETE');
+  const dry = slice(del, 'if (isDryRun(req)) {', "const force = isForceRequest(req);");
+  assert.match(dry, /const chain = salesOrderRevisionChainDeleteBlock\(before\);\s*if \(chain\) return ok\(\{ dryRun: true, cascade: \[\], notes: \[chain\], blocked: true \}\);/);
+  assert.match(dry, /movedOutPreview = await loadMovedOut\(supabase, id\);/);
+  assert.match(dry, /const preview = await salesOrderForcePreview\(supabase, before, \{ movedOut: movedOutPreview \}\);/);
+  const force = slice(code(SO_PAGE), 'async function forceRemove() {', 'async function printDocument()');
+  const blocked = force.indexOf('if (preview.blocked) {');
+  const confirm = force.indexOf('setConfirmState({');
+  assert.ok(blocked > 0 && confirm > blocked, 'พรีวิวที่ blocked = บอกเหตุ ไม่เปิดโมดัลยืนยันที่ลบไม่ได้จริง');
+});
+
+// ── UI-1 / F2: โมดัลรับรองเงินได้สถานะใบ (ทั้งแผงงวดและคิวบนทะเบียน) · แถวคิวของใบที่ยกเลิกติดป้าย ─────────────────────────
+test('🔴 โมดัลรับรอง/บันทึกการรับชำระ ส่งสถานะใบเข้า paymentConfirmPrompt · คิวรับรองบนทะเบียนติดป้าย "ใบยกเลิกแล้ว"', () => {
+  const dialog = code(CONFIRM_DIALOG);
+  assert.match(dialog, /row, multi = false, historical = false, opening = isOpeningInstallment\(row\), outlook = null, orderStatus = null,/);
+  assert.match(dialog, /orderStatus,\s*\}\);/);
+  assert.match(dialog, /installmentConfirmPrompt\(\{ row, multi, historical, opening, outlook, orderStatus: order\?\.status \?\? row\.orderStatus \?\? null \}\)/);
+  assert.match(code(PANEL), /row, multi: rows\.length > 1, historical, outlook: installmentConfirmOutlook\(row, saved\), orderStatus: order\?\.status,/);
+  const fn = code(FN_PAGE);
+  assert.match(fn, /approvedAt: confirmFor\.orderApprovedAt, historicalInvoiceRef: confirmFor\.historicalInvoiceRef,\s*status: confirmFor\.orderStatus,/);
+  assert.match(fn, /\{row\.orderStatus === "cancelled" \? ` · \$\{LEDGER_CANCELLED_TAG\}` : ""\}/);
+});
+
+// ── carry-modal-stale-source-409-loop: โมดัลยกเงินรู้ว่าแถวของใบที่ยกเลิกเปลี่ยนแล้ว (ไม่ใช่ 409 วนไม่รู้จบ) ─────────────────
+test('🔴 โมดัลยกเงิน: ตัวตรวจข้อมูลเก่ารวมแถวของใบต้นทาง (ตัวล็อกที่ส่งขึ้น RPC รวมแถวนั้นด้วย) · มีปุ่มเริ่มใหม่จากข้อมูลล่าสุด', () => {
+  const panel = code(PANEL);
+  assert.match(panel, /const freshCarrySource = carry \? carrySources\.find\(\(src\) => src\.id === carry\.sourceId\) \|\| null : null;/);
+  assert.match(panel, /replanStale\(\(freshCarrySource\?\.rows \|\| \[\]\)\.filter\(\(r\) => carry\.ids\.includes\(r\.id\)\), replanExpected\(carryRows\)\)/);
+  assert.match(panel, /onClick=\{resetCarry\}>เริ่มใหม่จากงวดล่าสุด<\/Button>/);
+});
+
+// ── UI-2/3/4: แผงงวดของใบที่ยกเลิก — งวดโมฆะไม่ใช่ค้างรับ/เลยกำหนด · คืนเงินแล้วไม่ใช่ "ยังไม่ออกใบ" · ไม่มีงวด = ไม่วาดแผน QT ──
+test('🔴 แผงงวด: ยอด/เตือนนับจากงวดที่ไม่โมฆะ (installmentVoid) · ธงเลยกำหนดรายแถวเว้นงวดโมฆะ · ใบยกเลิกไม่วาดแผนจาก QT', () => {
+  const panel = code(PANEL);
+  assert.match(panel, /const liveRows = saved\.filter\(\(r\) => !installmentVoid\(r, order\)\);/);
+  assert.match(panel, /const rollup = paymentRollup\(liveRows, todayIso\);/);
+  assert.match(panel, /const rejectedCount = liveRows\.filter\(\(r\) => r\.status === "rejected"\)\.length;/);
+  assert.match(panel, /const overdue = !installmentVoid\(row, order\) && row\.status !== "confirmed" && row\.dueDate && String\(row\.dueDate\) < String\(todayIso\);/);
+  assert.match(panel, /\(historical \|\| movedAway \|\| cancelledPipeline \? \[\] : previewInstallments\(/);
+  assert.match(panel, /\["reported", "confirmed"\]\.includes\(row\.status\) && !installmentRefunded\(row\)/);
+});
+
+// ── MONEY-1: อนุมัติใบของดีลที่มีเงินค้าง — ไม่ยืมสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรก (อ่านไม่ขึ้น = ไม่ยืม) ─────────────
+test('🔴 อนุมัติใบ: ถามเงินค้างของดีลก่อน freeze แล้วส่ง borrowConfirmation (อ่านพลาด = ไม่ยืม)', () => {
+  const approve = slice(code(SO_ROUTE), "if (action === 'approve') {", "if (action === 'reject') {");
+  const ask = approve.indexOf('borrowConfirmation = !(await loadCarrySources(supabase, before)).length;');
+  const freeze = approve.indexOf('await freezeInstallments(supabase, {');
+  assert.ok(ask > 0 && freeze > ask);
+  assert.match(approve, /catch \(strandedError\) \{\s*borrowConfirmation = false;/);
+  assert.match(slice(approve, 'await freezeInstallments(supabase, {', '});'), /borrowConfirmation,/);
+});
+
+// ── UI-2: ตารางรายการ SO ต้องได้ refundedAt (ไม่งั้นงวดที่คืนเงินแล้วนับเป็น "เก็บแล้ว" เงียบ ๆ) ─────────────────────────
+test('ตารางรายการ SO: เลือก refundedAt ของงวดมาด้วย (salesOrderPaymentCell ตัดงวดที่คืนเงินแล้ว) · ก่อนรัน 0378 ถอยไปชุดเดิม', () => {
+  const list = code(LIST_ROUTE);
+  assert.match(list, /\.select\('salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt"'\)/);
+  assert.match(list, /if \(withRefund\.error\?\.code !== '42703'\) return withRefund;/, 'ไม่มีคอลัมน์ ≠ คอลัมน์งวดว่างทั้งหน้า');
+  assert.match(list, /await loadListInstallments\(supabase, orderIds\);/);
+});
+
+// ── F3: งวดที่ยกมาจากใบอื่น (QT คนละใบ) ยังเห็นคำร้องวางบิลของตัวเอง — ไม่ใช่ "คำร้องขอเอกสารถูกลบไปแล้ว" ───────────────────
+test('🔴 หน้าใบ: โหลดคำร้องวางบิลที่งวดผูกอยู่ด้วย id (แบ่งก้อน) แม้เป็นของใบเสนอราคาอื่น · อ่านพลาดบอกบนแผง ไม่ใช่ "ถูกลบ"', () => {
+  const load = slice(code(SO_ROUTE), 'async function loadOrder(', '\n}\n');
+  assert.match(load, /const linkedRequestIds = \[\.\.\.new Set\(installmentRows\.map\(\(r\) => r\?\.billingRequestId\)/);
+  assert.match(load, /fetchInChunks\(linkedRequestIds, \(chunk\) => fetchAllResult\(\(\) => supabase\s*\.from\('dept_requests'\)/);
+  assert.match(load, /\.in\('id', chunk\)/);
+  assert.match(load, /billingRequestsError,/);
+  assert.match(code(PANEL), /order\?\.billingRequestsError \? "อ่านคำร้องขอเอกสารไม่สำเร็จ" : "คำร้องขอเอกสารถูกลบไปแล้ว"/);
 });

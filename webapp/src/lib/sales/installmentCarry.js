@@ -7,7 +7,7 @@
 //   แถวที่มีเงิน/เอกสารผูกของใบใหม่ไม่ถูกแตะ (installmentReplanLock ตัวเดียวกับปรับแผน) · Σ = ยอดใบ (รวม VAT) ถึงสตางค์
 // ⭐ ไฟล์นี้คำนวณ "ชุดสุดท้ายทั้งใบ" ให้ทั้งโมดัล (พรีวิวก่อน/หลัง) และ route (payload ของ RPC) — RPC 0378 + แกน 0377 เป็นยาม
 // 🔴 ไม่มีอะไรในไฟล์นี้แตะยอด Actual — ผลลัพธ์เป็นแถวงวดล้วน · RPC ไม่เขียน sales_orders (ใบที่ยกเลิกหลุด Actual ไปตั้งแต่ยกเลิก)
-import { fmtMoney } from '@/lib/format';
+import { fmtDate, fmtMoney } from '@/lib/format';
 import { canConfirmPayment } from '@/lib/permissions';
 import { MAX_INSTALLMENTS } from '@/lib/sales/paymentPlan';
 import { installmentRefunded, paymentNotRequired, strandedInstallment } from '@/lib/sales/salesOrderPayments';
@@ -23,6 +23,11 @@ export const CARRY_FORBIDDEN = 'ยกเงินจากใบที่ยก
 export const CARRY_STALE_MESSAGE = 'งวดของใบนี้หรือใบที่ยกเลิกเพิ่งถูกแก้จากอีกหน้าต่าง — โหลดใหม่แล้วยกอีกครั้ง';
 /* RPC 0378 ยังไม่มีบนฐาน (PGRST202) — ห้ามถอยไปย้ายแถวเองทีละแถว (ข้ามด่านดีลเดียวกัน/ยกเกิน/Σ/ข้อมูลเก่า) */
 export const INSTALLMENT_CARRY_SCHEMA_MISSING = 'ฐานยังไม่ได้รัน 0378 (ยกเงินจากใบที่ยกเลิก) — แจ้งผู้ดูแลระบบ';
+/* ทางออกของสองด่านเงิน — ประโยคเดียวกับข้อความของ RPC (documentWorkflowErrors: installment_carry_overpaid/_duplicate) */
+export const CARRY_OVERPAID_WAY_OUT = 'ถ้ายกหลายงวดให้เลือกยกน้อยลง · ถ้าเหลืองวดเดียว (คืนบางส่วนไม่ได้)'
+  + ' ให้บัญชีบันทึกคืนเงินทั้งงวดที่ใบที่ยกเลิก แล้วเก็บเงินของใบนี้ตามงวดปกติ';
+export const CARRY_DUPLICATE_WAY_OUT = 'ให้บัญชีตีกลับ/ถอนคำรับรองงวดที่ซ้ำบนใบนี้ก่อน แล้วจึงยก'
+  + ' (ถ้าเป็นเงินคนละก้อนจริง ให้บัญชีบันทึกคืนเงินงวดของใบที่ยกเลิกแทน)';
 
 const text = (v) => String(v ?? '').trim();
 const toCents = (v) => Math.round((Number(v) || 0) * 100);
@@ -103,6 +108,44 @@ export function carryBlocker(order, rows = [], user = null, sources = []) {
   return { visible: true, blocker: null };
 }
 
+/* ── เงินก้อนเดียวนับสองครั้ง (review MONEY-1) ───────────────────────────────────────────────────────────────
+   🐞 บทเรียน SO-26080039-0 / -043-0 ซ้ำผ่านทางที่จอแนะนำ: ใบใหม่ของดีลเดียวกันถูกตั้งงวดแรกด้วยมัดจำก้อนเดิมอยู่แล้ว
+     (freeze ยืมสลิปจากเอกสารยืนยันคำสั่งซื้อ · เงินงวดแรกที่กรอกตอนสร้างใบ) แล้วโมดัลอนุมัติบอกให้กด "ยกเงินจากใบที่ยกเลิก"
+     ⇒ ยกมัดจำเดิมเข้ามาอีกแถว — ด่านยกเกินยอดใบจับไม่ได้ (ยอดล็อก + ยอดที่ยก ยังไม่เกินยอดใบ) แล้วลูกค้าไม่ถูกเก็บเงินส่วนนั้นอีกเลย
+   ⭐ ซ้ำ = งวดของใบนี้ที่ **แจ้ง/รับรองแล้ว ยังไม่คืนเงิน** ที่ (ก) แนบสลิปไฟล์เดียวกัน (storagePath) หรือ (ข) วันจ่าย + ยอดตรงกัน
+     ⇒ ยกไม่ได้ · ทางออก: บัญชีตีกลับ (รอตรวจ) / ถอนคำรับรองแล้วตีกลับ (รับแล้ว) งวดที่ซ้ำบนใบนี้ก่อน — งวดที่ตีกลับเป็นงวดเปิด
+       ที่ถูกหักก่อนตอนยก · RPC 0378 ตรวจเกณฑ์เดียวกันใต้ล็อก (installment_carry_duplicate)
+   ⭐ ชื่อไฟล์ตรงกันอย่างเดียว = **คำเตือน** ไม่บล็อก — ชื่อสลิปจากมือถือซ้ำกันได้ ("image.jpg") บล็อกแล้วเงินคนละก้อนจริงเป็นทางตัน */
+const toKey = (v) => text(v).toLowerCase();
+const evidenceOf = (r) => (Array.isArray(r?.evidence) ? r.evidence.filter((f) => f && typeof f === 'object') : []);
+const moneyRecordRow = (r) => ['confirmed', 'reported'].includes(r?.status) && !installmentRefunded(r);
+
+/**
+ * งวดของใบปลายทางที่ดูเป็นเงินก้อนเดียวกับแถวที่ยก — `[{ target, source, strong, why }]`
+ * · strong = บล็อก (สลิปไฟล์เดียวกัน · วันจ่าย + ยอดตรงกัน) · ไม่ strong = เตือน (ชื่อไฟล์ตรงกันอย่างเดียว)
+ */
+export function carryDuplicates(targetRows = [], carried = []) {
+  const out = [];
+  for (const t of sortedRows(targetRows).filter(moneyRecordRow)) {
+    const tPaths = new Set(evidenceOf(t).map((f) => text(f.storagePath)).filter(Boolean));
+    const tNames = new Set(evidenceOf(t).map((f) => toKey(f.fileName)).filter(Boolean));
+    for (const c of sortedRows(carried)) {
+      const samePath = evidenceOf(c).some((f) => text(f.storagePath) && tPaths.has(text(f.storagePath)));
+      const sameDay = Boolean(text(c.paidOn)) && text(c.paidOn) === text(t.paidOn) && toCents(c.amount) === toCents(t.amount);
+      if (samePath || sameDay) {
+        out.push({
+          target: t, source: c, strong: true,
+          why: samePath ? 'สลิปไฟล์เดียวกัน' : `วันจ่าย ${fmtDate(c.paidOn)} ยอด ${fmtMoney(c.amount)} ตรงกัน`,
+        });
+        continue;
+      }
+      const name = evidenceOf(c).map((f) => toKey(f.fileName)).find((n) => n && tNames.has(n));
+      if (name) out.push({ target: t, source: c, strong: false, why: name });
+    }
+  }
+  return out;
+}
+
 /** ใบต้นทางของคำขอยก (route) — ใบ pipeline ที่ยกเลิก · ดีลเดียวกัน (D4) · ไม่ใช่ใบเดียวกัน */
 export function carrySourceError(target, source) {
   if (!source) return 'ไม่พบใบที่ยกเลิก — โหลดหน้าใหม่แล้วเลือกอีกครั้ง';
@@ -149,9 +192,23 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
   if (current.length && totalC > 0 && lockedC + openC !== totalC) {
     errors.push(`งวดชำระของใบนี้รวม ${fmtMoney((lockedC + openC) / 100)} ไม่เท่ายอดใบ ${fmtMoney(totalC / 100)} — ให้แอดมินตรวจงวดก่อน`);
   }
+  /* ⚠️ ทางออกต้องมีอยู่จริง (review UI-5) — คืนเงินได้ทั้งงวดเท่านั้น (refundValueError/CHECK ไม่มียอด) · งวดที่ยกเหลืองวดเดียว
+     ชิปเลือกงวดถอดไม่ได้ ⇒ "คืนเงินส่วนที่เกิน" คือทางที่ไม่มี · ข้อความเดียวกับ installment_carry_overpaid ของ RPC */
   if (totalC > 0 && lockedC + carriedC > totalC) {
     errors.push(`ยอดที่ยกมา ${fmtMoney(carriedC / 100)} รวมกับงวดที่มีเงินอยู่แล้ว ${fmtMoney(lockedC / 100)} เกินยอดใบ`
-      + ` ${fmtMoney(totalC / 100)} — เลือกงวดที่ยกให้น้อยลง หรือให้บัญชีบันทึกคืนเงินส่วนที่เกิน`);
+      + ` ${fmtMoney(totalC / 100)} — ${CARRY_OVERPAID_WAY_OUT}`);
+  }
+  /* เงินก้อนเดียวนับสองครั้ง (review MONEY-1 · carryDuplicates) — บล็อกเฉพาะที่ชัด · ชื่อไฟล์ตรงอย่างเดียวเป็นคำเตือน */
+  const warnings = [];
+  for (const dup of carryDuplicates(current, moving)) {
+    if (dup.strong) {
+      errors.push(`งวดที่ ${dup.target.seq} ของใบนี้ (${CARRY_STATUS_LABEL[dup.target.status] || dup.target.status})`
+        + ` เป็นเงินก้อนเดียวกับงวดที่ ${dup.source.seq} ของใบที่ยกเลิก (${dup.why}) — ยกซ้ำ = นับเงินสองครั้ง`
+        + ` · ${CARRY_DUPLICATE_WAY_OUT}`);
+    } else {
+      warnings.push(`งวดที่ ${dup.target.seq} ของใบนี้แนบสลิปชื่อเดียวกับงวดที่ ${dup.source.seq} ของใบที่ยกเลิก (${dup.why})`
+        + ' — ตรวจว่าไม่ใช่เงินก้อนเดียวกันก่อนยก');
+    }
   }
 
   // ── หักงวดเปิดแรก ๆ ก่อน ──
@@ -231,6 +288,7 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
     removed: removed.map((r) => ({ id: r.id, seq: Number(r.seq), label: text(r.label), amount: Number(r.amount) || 0 })),
     errors,
     error: errors.length ? errors.join(' · ') : null,
+    warnings,
     totals: {
       total: totalC / 100,
       carried: carriedC / 100,
@@ -285,6 +343,8 @@ export function carryPromptFacts(order, source, before = [], carried = [], built
     quotationNumber: text(order?.quotation?.quoteNumber),
     remainingCount: remaining.length,
     remainingAmountLabel: fmtMoney(sumOf(remaining)),
+    /* คำเตือนสลิปชื่อซ้ำ (carryDuplicates · review MONEY-1) — ต้องถึงโมดัลยืนยันด้วย ไม่ใช่เห็นแต่ในตาราง */
+    warnings: Array.isArray(built?.warnings) ? built.warnings : [],
     complete: finalRows.length > 0 && finalRows.every((r) => statusOf.get(r.id) === 'confirmed'),
   };
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   INSTALLMENT_MOVE_SCHEMA_MISSING, ensureInstallments, freezeInstallments, installmentMoveColumnError, replanInstallments,
   updateInstallment, carryInstallments, loadMovedOut, loadCarrySources, INSTALLMENT_REFUND_SCHEMA_MISSING,
+  loadMovedOutOfOrders,
   installmentRefundSchemaError,
 } from './salesOrderInstallmentsStore.js';
 import { INSTALLMENT_REPLAN_SCHEMA_MISSING } from './installmentReplan.js';
@@ -698,4 +699,59 @@ test('installmentRefundSchemaError: ฐานยังไม่มีคอล�
   assert.equal(installmentRefundSchemaError({ code: '08006', message: 'connection reset' }), null);
   assert.equal(installmentRefundSchemaError(null), null);
   assert.match(INSTALLMENT_REFUND_SCHEMA_MISSING, /0378/);
+});
+
+
+/* 🐞 review MONEY-1: ดีลมีเงินค้างจากใบที่ยกเลิก — สลิปของเอกสารยืนยันคำสั่งซื้อมักเป็นมัดจำก้อนเดียวกับเงินค้าง
+   ⇒ อนุมัติแล้วยืมมาตั้งงวดแรก (reported) + ยกเงินค้างเข้ามาอีกแถว = เงินก้อนเดียวนับสองครั้ง
+   ⭐ `borrowConfirmation: false` (route ส่งเมื่อดีลมีเงินค้าง/อ่านไม่ขึ้น) — งวดแรกคง pending ให้คนตัดสินเอง (แจ้งเงินใหม่ หรือยกเงินค้าง)
+   ⚠️ เงินที่ฝ่ายขายบันทึกไว้เองตอนร่าง (prepaid) ยังเข้าคิวบัญชีตามเดิม — ไม่ใช่การยืม (ด่านยกซ้ำกันอีกชั้น) */
+test('🔴 อนุมัติใบ (จำนวนตรงแผน) + borrowConfirmation:false: ไม่ยืมสลิปจากเอกสารยืนยันคำสั่งซื้อ — งวดแรกคง pending', async () => {
+  const db = fakeDb([draftRow(), draftRow({ id: 'SOI-2', seq: 2, label: 'ก่อนส่งของ' })]);
+  await freezeInstallments(db, { order: slipOrder(), user, now: '2026-09-23T03:00:00.000Z', borrowConfirmation: false });
+  const [first, second] = db.rows();
+  assert.equal(first.status, 'pending');
+  assert.equal(first.paidOn ?? null, null);
+  assert.deepEqual(first.evidence, []);
+  assert.ok([first, second].every((r) => r.frozenAt === '2026-09-23T03:00:00.000Z'), 'ยังตรึงยอดตามปกติ');
+  // ค่าตั้งต้น = ยืมตามเดิม (มติผู้ใช้ 2026-08-13)
+  const plain = fakeDb([draftRow(), draftRow({ id: 'SOI-2', seq: 2, label: 'ก่อนส่งของ' })]);
+  await freezeInstallments(plain, { order: slipOrder(), user, now: '2026-09-23T03:00:00.000Z' });
+  assert.equal(plain.rows()[0].status, 'reported');
+});
+
+test('🔴 อนุมัติใบที่ยังไม่มีงวด + borrowConfirmation:false: สร้างงวดแรกเป็น pending (ไม่ยืมสลิป)', async () => {
+  const supabase = fakeSupabase([]);
+  await freezeInstallments(supabase, { order: slipOrder(), user, now: '2026-09-23T03:00:00.000Z', borrowConfirmation: false });
+  assert.ok(supabase.calls.inserted?.length, 'ต้องสร้างงวดตามแผน');
+  assert.ok(supabase.calls.inserted.every((r) => r.status === 'pending' && !r.paidOn && !(r.evidence || []).length));
+  assert.ok(supabase.calls.inserted.every((r) => r.frozenAt === '2026-09-23T03:00:00.000Z'));
+});
+
+test('อนุมัติใบ + borrowConfirmation:false: เงินที่ฝ่ายขายบันทึกไว้เองตอนร่าง ยังเข้าคิวบัญชีตามเดิม (ไม่ใช่การยืม)', async () => {
+  const db = fakeDb([
+    draftRow({ paidOn: '2026-08-18', evidence: [{ name: 'slip.pdf' }], reportedAt: '2026-08-18T04:00:00.000Z' }),
+    draftRow({ id: 'SOI-2', seq: 2, label: 'ก่อนส่งของ' }),
+  ]);
+  await freezeInstallments(db, { order: slipOrder(), user, now: '2026-09-23T03:00:00.000Z', borrowConfirmation: false });
+  assert.equal(db.rows()[0].status, 'reported');
+  assert.deepEqual(db.rows()[0].evidence, [{ name: 'slip.pdf' }]);
+});
+
+
+/* review qt-force-delete-bypasses-movedout: ลบใบเสนอราคา = ลบใบสั่งขายลูกทุกใบ ⇒ ถามงวดที่ย้ายออกของทุกใบลูก
+   ⭐ งวดที่ใบลูกอีกใบถืออยู่ (สายโซ่ Rev. ของใบเสนอราคาเดียวกัน) หายไปพร้อมกันอยู่แล้ว — ไม่นับ (ไม่งั้นลบใบที่มี Rev. ไม่ได้ตลอดกาล) */
+test('loadMovedOutOfOrders: งวดที่ย้ายไปจากใบชุดนี้ และยังอยู่กับใบนอกชุด (ไม่ซ้ำแถว) · อ่านพลาด = โยน', async () => {
+  const supabase = queryFake({
+    sales_order_installments: { data: [
+      { id: 'R1', salesOrderId: 'SOR-A1', seq: 1, amount: 1, status: 'confirmed', movedFrom: [{ salesOrderId: 'SOR-A', reason: 'revision' }] },
+      { id: 'C1', salesOrderId: 'SOR-B', seq: 1, amount: 2, status: 'confirmed', movedFrom: [{ salesOrderId: 'SOR-A1', reason: 'carry' }] },
+    ], error: null },
+    sales_orders: { data: [{ id: 'SOR-B', orderNumber: 'SO-B' }, { id: 'SOR-A1', orderNumber: 'SO-A-1' }], error: null },
+  });
+  const out = await loadMovedOutOfOrders(supabase, ['SOR-A', 'SOR-A1']);
+  assert.deepEqual(out.map((m) => [m.id, m.salesOrderId, m.orderNumber]), [['C1', 'SOR-B', 'SO-B']]);
+  assert.deepEqual(await loadMovedOutOfOrders(queryFake({}), []), [], 'ไม่มีใบลูก = ไม่ยิง query');
+  const down = queryFake({ sales_order_installments: { data: null, error: { message: 'boom' } } });
+  await assert.rejects(() => loadMovedOutOfOrders(down, ['SOR-A']), { message: 'boom' });
 });
