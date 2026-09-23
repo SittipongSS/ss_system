@@ -5,8 +5,9 @@ import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2, Search } from "lucide-react";
+import { LineChart, Plus, Trash2, Pencil, Download, Send, X, CheckCircle2, Search } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Tabs from "@/components/ui/Tabs";
 import Modal from "@/components/Modal";
@@ -35,7 +36,7 @@ const nfBaht = (n) => fmtMoney(n);
 const thisMonth = () => businessDate().slice(0, 7);
 
 function ForecastPageInner() {
-  const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: rounds, loading, error, errorDetail, reload } = useApiList("/api/sahamit/forecast/rounds");
   const { data: products } = useApiList("/api/sahamit/products");
   const { data: assignables } = useApiList("/api/pm/assignable-users");
   // forecast line ที่ถูกสร้างเป็นโครงการไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
@@ -277,9 +278,9 @@ function ForecastPageInner() {
       }
     >
       {error && (
-        <div className="glass-panel" style={{ padding: "14px", borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: "8px", alignItems: "center", marginBottom: 16 }}>
-          <AlertCircle size={18} /> {error}
-        </div>
+        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
+        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
       )}
 
       {loading ? (

@@ -11,8 +11,10 @@ import {
   DOC_ACTION_KEYS, DOC_REASON_MAX, DOC_REASON_MIN, DOC_REVISION_STATUSES, DOC_REVISION_STATUS_LABELS,
   DOC_STATUS_LABELS, DOC_STEPS, OPEN_REVISION_STATUSES,
   canAeApproveProductSpecDocument, canIssueProductSpecDocument, canSupApproveProductSpecDocument,
-  docReasonError, docRevisionSteps, documentActions, documentCreateGate, draftDeleteBlock, formatRevLabel,
-  isDeletableDraft, isRevisionOpen, lineDocumentState, rejectStageOf, revisionPatch, salesOrderApprovedBlock,
+  DRAFT_EXIT_MISMATCH, FRESH_DRAFT_VOID_BLOCK, SUBMIT_TRACE_FIELDS,
+  docReasonError, docRevisionSteps, documentActions, documentCreateGate, documentExitKey, draftDeleteBlock,
+  formatRevLabel, isDeletableDraft, isRevisionOpen, lineDocumentState, lineRemovedBlock, rejectStageOf,
+  revisionPatch, salesOrderApprovedBlock,
 } from './productSpecDocWorkflow.js';
 
 /* ── ตัวละคร ───────────────────────────────────────────────────────── */
@@ -67,15 +69,16 @@ const run = (status, user, over = {}) => summarize(documentActions({
 
 /* ⭐ เมทริกซ์หลัก (SO อนุมัติอยู่ · บรรทัดยังอยู่ · ผู้ยื่นคือ U.ac) */
 const MATRIX = {
-  /* ⭐ ร่างที่ยังไม่เคยยื่น = สถานะเดียวที่มีปุ่ม "ลบร่าง" (มติ 23/09/2569 · mig 0375) */
+  /* ⭐ ร่างที่ยังไม่เคยยื่น = สถานะเดียวที่มีปุ่ม "ลบร่าง" (มติ 23/09/2569 · mig 0375)
+     และ **ไม่มีปุ่มยกเลิก** (มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง") — ปุ่มปลายทางทีละตัว */
   draft: {
-    ac: { submit: 'ok', void: 'ok', remove: 'ok' },
-    ac2: { submit: 'ok', void: 'ok', remove: 'ok' },
+    ac: { submit: 'ok', remove: 'ok' },
+    ac2: { submit: 'ok', remove: 'ok' },
     owner: { aeApprove: 'blocked', reject: 'blocked' },
     ae2: {},
     senior: {},
     sup: { supApprove: 'blocked', reject: 'blocked' },
-    admin: { submit: 'ok', aeApprove: 'blocked', supApprove: 'blocked', reject: 'blocked', void: 'ok', remove: 'ok' },
+    admin: { submit: 'ok', aeApprove: 'blocked', supApprove: 'blocked', reject: 'blocked', remove: 'ok' },
     rd: {},
   },
   pending_ae: {
@@ -120,10 +123,15 @@ const MATRIX = {
   },
 };
 /* ตีกลับ = งานกลับไปอยู่ที่ AC · ปุ่มเหมือนร่างทุกช่อง (ยื่นใหม่ได้ใน Rev เดิม)
-   ⚠️ **ยกเว้น "ลบร่าง"** — ใบที่ถูกตีกลับผ่านตาผู้อนุมัติมาแล้ว ลบไม่ได้ (มติ 23/09 · ทางออกคือยกเลิก) */
-MATRIX.rejected = Object.fromEntries(Object.entries(MATRIX.draft).map(([who, buttons]) => [
-  who, Object.fromEntries(Object.entries(buttons).filter(([key]) => key !== 'remove')),
-]));
+   ⚠️ **ยกเว้นปุ่มปลายทาง** — ใบที่ถูกตีกลับผ่านตาผู้อนุมัติมาแล้ว ลบไม่ได้ (มติ 23/09 · ทางออกคือยกเลิก)
+      ⇒ ทุกคนที่เห็น "ลบร่าง" บนร่าง ได้ "ยกเลิกเอกสาร" แทนที่ตรงนี้ (ปุ่มปลายทางคู่สลับ — ไม่หายทั้งคู่) */
+const exitSwapped = (buttons) => Object.fromEntries(Object.entries(buttons).map(([key, value]) => (
+  key === 'remove' ? ['void', value] : [key, value]
+)));
+MATRIX.rejected = Object.fromEntries(Object.entries(MATRIX.draft).map(([who, buttons]) => [who, exitSwapped(buttons)]));
+/* ⭐ ร่างที่ "เคยยื่นแล้วดึงกลับ" (Rev กลับเป็น draft แต่มี `firstSubmittedAt`) — ปุ่มเหมือนร่างทุกช่อง
+   ยกเว้นปุ่มปลายทาง: **ยกเลิกกลับมาเหมือนเดิม** ลบหาย (มติ 23/09/2569 — เคยยื่นแล้วแม้ครั้งเดียว = void) */
+const WITHDRAWN_DRAFT = Object.fromEntries(Object.entries(MATRIX.draft).map(([who, buttons]) => [who, exitSwapped(buttons)]));
 
 test('เมทริกซ์ครบทุกสถานะของ Rev', () => {
   assert.deepEqual(Object.keys(MATRIX).sort(), [...DOC_REVISION_STATUSES].sort());
@@ -135,6 +143,14 @@ for (const [status, byUser] of Object.entries(MATRIX)) {
       assert.deepEqual(run(status, U[who]), expected);
     });
   }
+}
+
+for (const [who, expected] of Object.entries(WITHDRAWN_DRAFT)) {
+  test(`ปุ่มของ ${who} บนร่างที่เคยยื่นแล้วดึงกลับ — ยกเลิกกลับมา ลบหาย`, () => {
+    assert.deepEqual(run('draft', U[who], {
+      latest: rev('draft', { submittedBy: null, firstSubmittedAt: '2026-09-23T02:00:00.000Z' }),
+    }), expected);
+  });
 }
 
 /* ── ขั้น AE เป็นของเจ้าของดีลเท่านั้น ────────────────────────────────── */
@@ -237,18 +253,53 @@ test('ไม่พบ SO ต้นเรื่อง = ติดด่านเ�
   assert.match(actions.submit.reason, /ไม่พบใบสั่งขาย/);
 });
 
-test('บรรทัด SO ถูกถอด: เดินหน้าไม่ได้ ทางออกคือยกเลิกเอกสาร', () => {
+test('บรรทัด SO ถูกถอด: เดินหน้าไม่ได้ ทางออกคือปุ่มปลายทางที่ใบนั้นมีจริง', () => {
   const orphan = { ...doc, salesOrderLineId: null };
   const actions = documentActions({
     document: orphan, latest: rev('approved'), salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U.ac,
   });
   assert.match(actions.revise.reason, /ถูกถอด/);
-  assert.equal(actions.void.visible, true);
-  assert.equal(actions.void.reason, null);
+  assert.match(actions.revise.reason, /ยกเลิกเอกสาร/);
+  assert.deepEqual(actions.void, { visible: true, reason: null });
+  assert.equal(actions.remove.visible, false);
+
+  /* ⭐ ร่างที่ไม่เคยยื่น: ปุ่มยกเลิกถูกซ่อน (มติ 23/09) ⇒ เหตุบนปุ่มยื่นต้องชี้ "ลบร่าง" ไม่ใช่ปุ่มที่ไม่มีอยู่ */
   const draftOrphan = documentActions({
     document: orphan, latest: rev('draft'), salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U.ac,
   });
-  assert.match(draftOrphan.submit.reason, /ยกเลิกเอกสาร/);
+  assert.match(draftOrphan.submit.reason, /ถูกถอด/);
+  assert.match(draftOrphan.submit.reason, /ลบร่าง/);
+  assert.doesNotMatch(draftOrphan.submit.reason, /ยกเลิก/);
+  assert.equal(draftOrphan.void.visible, false);
+  assert.deepEqual(draftOrphan.remove, { visible: true, reason: null });
+
+  // ร่างที่เคยยื่นแล้วดึงกลับ = กลับไปชี้ "ยกเลิก" (ปุ่มนั้นกลับมาแล้ว)
+  const withdrawnOrphan = documentActions({
+    document: orphan,
+    latest: rev('draft', { submittedBy: null, firstSubmittedAt: '2026-09-23T02:00:00.000Z' }),
+    salesOrder: approvedOrder,
+    dealOwnerId: OWNER_ID,
+    user: U.ac,
+  });
+  assert.match(withdrawnOrphan.submit.reason, /ยกเลิกเอกสาร/);
+  assert.deepEqual(withdrawnOrphan.void, { visible: true, reason: null });
+  assert.equal(withdrawnOrphan.remove.visible, false);
+});
+
+test('lineRemovedBlock ชี้ปุ่มเดียวกับ documentExitKey ทุกกรณี', () => {
+  const orphan = { ...doc, salesOrderLineId: null };
+  for (const status of DOC_REVISION_STATUSES) {
+    for (const trace of [{}, { firstSubmittedAt: '2026-09-23T02:00:00.000Z' }]) {
+      const latest = rev(status, { submittedBy: null, ...trace });
+      const text = lineRemovedBlock(orphan, latest);
+      if (documentExitKey(orphan, latest) === 'remove') {
+        assert.match(text, /ลบร่าง/, status);
+        assert.doesNotMatch(text, /ยกเลิก/, status);
+      } else {
+        assert.match(text, /ยกเลิกเอกสาร/, status);
+      }
+    }
+  }
 });
 
 /* ── void / ไม่มี Rev ──────────────────────────────────────────────── */
@@ -357,6 +408,96 @@ test('draftDeleteBlock ทนกับก้อนที่ไม่ครบ �
   assert.ok(draftDeleteBlock(null, draftRev()));
   assert.ok(draftDeleteBlock(doc, null));
   assert.equal(isDeletableDraft(undefined, undefined), false);
+});
+
+/* ── ปุ่มปลายทาง: "ซ่อนปุ่มยกเลิกช่วงร่าง" (มติเจ้าของ 23/09/2569) ─────────────────
+ *
+ * 🔴 ข้อที่ห้ามพังที่สุดของมติข้อนี้คือ **ทางตัน** — ซ่อนยกเลิกบนใบที่ลบไม่ได้ = ใบค้างตลอดกาล
+ *    ⇒ เดินทุกสถานะ × ทุกรอยการยื่น × ใบปกติ/บรรทัดถูกถอด × SO อนุมัติ/ถูกย้อน/หาย × ทุกคน
+ *    แล้วบังคับว่า AC/admin ได้ปุ่มปลายทาง **หนึ่งตัวพอดี** (ไม่ใช่ศูนย์ ไม่ใช่สอง) ส่วนคนอื่นไม่ได้เลย
+ */
+test('🔴 ไม่มีทางตัน: ใบ active ทุกใบ AC/admin ได้ยกเลิกหรือลบ ตัวใดตัวหนึ่งพอดี', () => {
+  const traces = [{}, ...SUBMIT_TRACE_FIELDS.map((field) => ({ [field]: '2026-09-23T02:00:00.000Z' }))];
+  const documents = [
+    doc, { ...doc, salesOrderLineId: null }, { ...doc, currentRevNo: 0 },
+  ];
+  let checked = 0;
+  for (const document of documents) {
+    for (const status of DOC_REVISION_STATUSES) {
+      for (const revNo of [0, 1]) {
+        for (const trace of traces) {
+          for (const salesOrder of [approvedOrder, revokedOrder, null]) {
+            for (const [who, user] of Object.entries(U)) {
+              const latest = rev(status, { revNo, submittedBy: null, ...trace });
+              const actions = documentActions({ document, latest, salesOrder, dealOwnerId: OWNER_ID, user });
+              const exits = [actions.void.visible, actions.remove.visible].filter(Boolean).length;
+              const where = `${who} · ${status} · Rev.${revNo} · ${Object.keys(trace)[0] || 'ไม่มีรอย'} · ${salesOrder?.status || 'ไม่มี SO'}`;
+              if (canIssueProductSpecDocument(user.role)) {
+                assert.equal(exits, 1, `${where}: ต้องมีปุ่มปลายทางหนึ่งตัวพอดี`);
+                const key = documentExitKey(document, latest);
+                assert.equal(actions[key].visible, true, `${where}: ปุ่มที่โชว์ต้องตรงกับ documentExitKey`);
+                // ปุ่มปลายทางไม่เคยติดด่าน — ถอย ไม่ใช่เดินหน้า
+                assert.equal(actions[key].reason, null, where);
+              } else {
+                assert.equal(exits, 0, `${where}: คนที่ไม่ใช่ AC/admin ต้องไม่เห็นทั้งสองปุ่ม`);
+              }
+              checked += 1;
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.ok(checked > 2000, `ต้องเดินครบทั้งตาราง (เดินไป ${checked})`);
+});
+
+test('ยกเลิกถูกซ่อนเฉพาะร่างที่ลบได้จริง — ตัวตัดสินเดียวกับปุ่มลบ (isDeletableDraft)', () => {
+  const fresh = draftRev();
+  assert.equal(documentExitKey(doc, fresh), 'remove');
+  for (const field of SUBMIT_TRACE_FIELDS) {
+    assert.equal(documentExitKey(doc, draftRev({ [field]: '2026-09-23T02:00:00.000Z' })), 'void', field);
+  }
+  assert.equal(documentExitKey({ ...doc, currentRevNo: 0 }, fresh), 'void');
+  assert.equal(documentExitKey(doc, draftRev({ revNo: 1 })), 'void');
+  assert.equal(documentExitKey({ ...doc, status: 'void' }, fresh), null, 'ใบที่ void แล้วไม่มีปุ่มปลายทาง');
+  assert.equal(documentExitKey(doc, null), null);
+  assert.equal(documentExitKey(null, fresh), null);
+});
+
+test('ข้อความตอบ void บนร่างที่ไม่เคยยื่น บอกทางที่ใช้ได้จริง (ไม่ใช่ "สถานะเปลี่ยนแล้ว")', () => {
+  assert.match(FRESH_DRAFT_VOID_BLOCK, /ลบร่างเอกสารถาวร/);
+  assert.doesNotMatch(FRESH_DRAFT_VOID_BLOCK, /สถานะเปลี่ยนแล้ว/);
+});
+
+test('ตัวตัดสินกับ RPC เห็นไม่ตรงกัน: ข้อความชี้ผู้ดูแลระบบ ไม่ชี้ปุ่มยกเลิก/ลบ (ไม่ส่งคนวน)', () => {
+  assert.match(DRAFT_EXIT_MISMATCH, /แจ้งผู้ดูแลระบบ/);
+  assert.doesNotMatch(DRAFT_EXIT_MISMATCH, /ใช้ยกเลิกเอกสารแทน|ใช้ "ลบร่าง/);
+});
+
+/* 🔴 ตัวตัดสินอ่านรอยการยื่นจาก `latest` — ชุดคอลัมน์ Rev ที่ขาดช่องไหน ช่องนั้นเป็น undefined = "ไม่เคยยื่น"
+   ⇒ การ์ดหน้า SO (ชุดย่อ) จะเสนอ "ลบ" บนใบที่ยื่นแล้วดึงกลับ **และซ่อน "ยกเลิก" ที่เป็นทางออกจริง** = ทางตัน */
+test('🔴 ชุดคอลัมน์ Rev ทั้งสองชุดมีรอยการยื่นครบ (ทุกทางที่ประกอบ latest)', () => {
+  const store = readFileSync(new URL('./productSpecStore.js', import.meta.url), 'utf8');
+  for (const name of ['REVISION_COLUMNS', 'REVISION_SUMMARY_COLUMNS']) {
+    const start = store.indexOf(`const ${name} = [`);
+    assert.ok(start !== -1, `ไม่พบ ${name}`);
+    const block = store.slice(start, store.indexOf('].join', start));
+    for (const field of SUBMIT_TRACE_FIELDS) {
+      assert.match(block, new RegExp(`'${field}'`), `${name} ขาด ${field}`);
+    }
+  }
+});
+
+/* มติ 23/09 "ซ่อนปุ่มยกเลิกช่วงร่าง": ใบที่ถูกย้ายไป SO ใบใหม่แบบไม่มีบรรทัดอาจเป็นร่างที่ไม่เคยยื่น (ปุ่ม = ลบ)
+   ⇒ คำเตือนตอน SO ออก Rev ห้ามสัญญาปุ่ม "ยกเลิก" ตายตัว — ชี้ที่ที่ปุ่มอยู่แทน */
+test('คำเตือนย้ายเอกสารแบบไม่มีบรรทัด ไม่ชี้ปุ่มยกเลิกตายตัว', () => {
+  const store = readFileSync(new URL('./productSpecStore.js', import.meta.url), 'utf8');
+  const start = store.indexOf('export async function moveDocumentsToRevisedOrder');
+  const body = store.slice(start, store.indexOf('\n}\n', start));
+  const line = body.match(/warn\(doc, `ไม่พบบรรทัดเดียวกัน[^`]*`\)/);
+  assert.ok(line, 'ไม่พบคำเตือนบรรทัดหาย');
+  assert.doesNotMatch(line[0], /ยกเลิกได้ที่/);
+  assert.match(line[0], /ลบร่าง\/ยกเลิก/);
 });
 
 /* ── ด่านออกเอกสารจากบรรทัด SO ─────────────────────────────────────── */

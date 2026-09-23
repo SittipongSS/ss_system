@@ -13,6 +13,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import { useCan } from "@/lib/roleContext";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import KpiCard from "@/components/ui/KpiCard";
 import WorkQueue from "@/components/excise/WorkQueue";
 import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDashboardCharts";
@@ -33,8 +34,8 @@ export default function TaxDashboard() {
 
   // โหมด slim: จอนี้ใช้แค่สถานะ/ตัวเลขสรุป/ชื่อในคิวงาน — ไม่ต้องดาวน์โหลด
   // order_items + master product เต็มแถว (ลด traffic ต่อการเปิดหลายเท่า)
-  const { data: rawRegs, loading: l1, error: regsError, staleError: regsStale, loaded: regsLoaded, reload: reloadRegs } = useApiList("/api/excise-registrations?slim=1");
-  const { data: rawOrders, loading: l2, error: ordersError, staleError: ordersStale, loaded: ordersLoaded, reload: reloadOrders } = useApiList("/api/orders?slim=1");
+  const { data: rawRegs, loading: l1, error: regsError, staleError: regsStale, errorDetail: regsDetail, loaded: regsLoaded, reload: reloadRegs } = useApiList("/api/excise-registrations?slim=1");
+  const { data: rawOrders, loading: l2, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, loaded: ordersLoaded, reload: reloadOrders } = useApiList("/api/orders?slim=1");
 
   /* ── โหลดพัง ≠ ไม่มีของ ─────────────────────────────────────────────────────
      🐞 26 วัน: `/api/orders?slim=1` ตอบ 500 (ORDER_SELECT_SLIM เลือกคอลัมน์ที่ไม่มีจริง)
@@ -58,8 +59,8 @@ export default function TaxDashboard() {
      (ดู `loaded` ใน useApiList) · และ `staleError` = รอบเบื้องหลังล้มทั้งที่มีของอยู่
      ⇒ ต้องขึ้นป้ายเหมือนกัน ไม่งั้นแท็บที่เปิดค้างทั้งวันยืนยันตัวเลขเมื่อวานเงียบ ๆ */
   const sources = [
-    { label: "การขึ้นทะเบียน", error: regsError || regsStale, empty: !regsLoaded, reload: reloadRegs },
-    { label: "การยื่นชำระภาษี", error: ordersError || ordersStale, empty: !ordersLoaded, reload: reloadOrders },
+    { label: "การขึ้นทะเบียน", error: regsError || regsStale, empty: !regsLoaded, detail: regsDetail, reload: reloadRegs },
+    { label: "การยื่นชำระภาษี", error: ordersError || ordersStale, empty: !ordersLoaded, detail: ordersDetail, reload: reloadOrders },
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
@@ -67,7 +68,9 @@ export default function TaxDashboard() {
   const ordersFailed = !!(ordersError || ordersStale) && !ordersLoaded;
   /* 🪤 พ่วง **ทุก** ข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ (สายหนึ่ง SQL ผิด
      อีกสายหมดเวลา/สิทธิ์) และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้ — คดี 26 วันนั้นแก้ได้
-     เพราะสตริง `column orders.updatedAt does not exist` เท่านั้น */
+     เพราะสตริง `column orders.updatedAt does not exist` เท่านั้น
+     ⭐ `s.error` เป็นประโยคไทยแล้ว (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก") — สตริงดิบของทุกสาย
+     ย้ายไปบรรทัดรองของกล่อง (`loadErrorDetail` ⇒ `StatusNotice detail`) ไม่ได้หายไปไหน */
   const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
   /* สำนวนเดียวกับสามจอสหมิตร: ชื่อสายอยู่หลัง "ดึงข้อมูลไม่ได้:" — ถ้าแทรกไว้กลาง
      "ดึงข้อมูล…ไม่ได้" จุดคั่นสองสายจะไปตกกลางกริยา แล้วต้องอ่านซ้ำถึงจะแยกออก */
@@ -77,6 +80,7 @@ export default function TaxDashboard() {
       blocked.length < failing.length ? "ตัวเลขที่ยังเห็นอยู่เป็นข้อมูลรอบก่อน ไม่ใช่ล่าสุด" : null,
     ].filter(Boolean).join(" · ")} · ${causes}`
     : null;
+  const loadErrorDetail = sourcesFailureDetail(failing);
   // กด "ลองใหม่" = รอบหน้าบ้าน ⇒ `l1/l2` เป็น true ⇒ `Workspace loading` สลับเนื้อเป็น
   // skeleton ให้เองระหว่างรอ (ไม่ต้องมีสถานะปุ่มซ้อนอีกชั้น)
   const retryLoad = () => failing.forEach((s) => s.reload());
@@ -207,6 +211,7 @@ export default function TaxDashboard() {
         {loadError && (
           <StatusNotice
             tone="error"
+            detail={loadErrorDetail}
             action={<Button size="sm" variant="ghost" onClick={retryLoad}>ลองใหม่</Button>}
           >
             {loadError}

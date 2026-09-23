@@ -7,6 +7,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import ForecastForm from "@/components/sahamit/ForecastForm";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { apiCache } from "@/lib/apiCache";
 import { useCan } from "@/lib/roleContext";
 
@@ -16,8 +17,8 @@ export default function ForecastEditPage() {
   const router = useRouter();
   const id = params.id;
   const canEdit = useCan("sahamit:edit");
-  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
-  const { data: rounds, loading, error: roundsError, staleError: roundsStale, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
+  const { data: rounds, loading, error: roundsError, staleError: roundsStale, errorDetail: roundsDetail, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
   const round = useMemo(() => rounds.find((r) => r.id === id) || null, [rounds, id]);
 
   /* ── โหลดพัง = ห้ามเปิดฟอร์ม และต้องไม่ตอบว่า "ไม่พบรอบ" ────────────────────
@@ -47,11 +48,11 @@ export default function ForecastEditPage() {
      ตัวที่ล้มคือรายการสินค้า ⇒ ตอบคำถามที่ไม่มีใครถาม แถมกลบสาเหตุจริง */
   const sources = [
     {
-      label: "รอบ FC", error: roundsError || roundsStale, empty: !round, reload: reloadRounds,
+      label: "รอบ FC", error: roundsError || roundsStale, empty: !round, detail: roundsDetail, reload: reloadRounds,
       blockedNote: "ยังแก้รอบ FC ไม่ได้ (ไม่ได้แปลว่ารอบนี้ถูกลบไปแล้ว)",
     },
     {
-      label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, reload: reloadProducts,
+      label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts,
       blockedNote: "ยังแก้ไม่ได้เพราะไม่มีรายการสินค้าให้ตรวจรหัส/หน่วย",
     },
   ];
@@ -64,6 +65,8 @@ export default function ForecastEditPage() {
       ? blocked.map((s) => s.blockedNote).join(" · ")
       : "ฟอร์มกำลังใช้ข้อมูลรอบก่อน ไม่ใช่ล่าสุด"} · ${causes}`
     : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
   // หน้านี้ไม่ได้ส่ง `loading` ให้ Workspace (ฟอร์มหายกลางคันไม่ได้) ⇒ ปุ่มต้องบอกเอง
   // ว่ากำลังลองอยู่ ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ
   const retrying = loading || lProducts;
@@ -71,6 +74,7 @@ export default function ForecastEditPage() {
     <StatusNotice
       tone="error"
       className="mb-4"
+      detail={loadErrorDetail}
       action={(
         <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
           {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}

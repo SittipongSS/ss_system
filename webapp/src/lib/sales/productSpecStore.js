@@ -56,14 +56,17 @@ const REVISION_COLUMNS = [
 ].join(', ');
 
 /* Rev แบบย่อสำหรับรายการเอกสาร (หน้าสเปค · การ์ดบนหน้า SO) — ไม่ลากภาพนิ่งมาด้วย
-   🔴 `firstSubmittedAt` อยู่ในชุดนี้ด้วยทั้งที่ยังไม่มีจอไหน *แสดง* มัน เพราะแถวชุดนี้
-      **ถูกส่งเข้า `documentActions` จริงแล้ว** — api/sales-planning/sales-orders/[id]/spec-documents
-      ส่ง `doc.latest` ของใบกำพร้าเข้าไปเอา `.void` · ตัวคิดเดียวกันนั้นคิด `.remove` ไปด้วยเสมอ
-      ⇒ ถอดคอลัมน์นี้ออกเมื่อไร ค่าจะเป็น undefined = "ไม่เคยยื่น" (fail-open) และวันที่ใครอ่าน
-      `.remove` จากที่นั่น ปุ่มลบจะโผล่บนใบที่ยื่นแล้วดึงกลับ โดยไม่มีอะไรเตือน */
+   🔴 **รอยการยื่นครบทุกช่อง** (`SUBMIT_TRACE_FIELDS` ของ productSpecDocWorkflow: `firstSubmittedAt`
+      `submittedAt` `aeApprovedAt` `supApprovedAt` `rejectedAt` `frozenAt`) อยู่ในชุดนี้ด้วย ทั้งที่ยังไม่มีจอไหน
+      *แสดง* มัน เพราะแถวชุดนี้ **ถูกส่งเข้า `documentActions` จริง** — api/sales-planning/sales-orders/[id]/spec-documents
+      ส่ง `doc.latest` ของใบที่บรรทัดถูกถอดเข้าไปเอาทั้ง `.void` และ `.remove` · สองปุ่มนี้เป็นคู่สลับกัน
+      (มติ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง" — ร่างที่ไม่เคยยื่น = ลบ · นอกนั้น = ยกเลิก)
+      ⇒ ช่องไหนตกหล่น ค่าจะเป็น undefined = "ไม่เคยยื่น" (fail-open) ⇒ การ์ดเสนอ "ลบร่าง" บนใบที่ยื่นแล้วดึงกลับ
+      และ **ซ่อน "ยกเลิก" ที่เป็นทางออกจริงของมัน** (RPC ปฏิเสธการลบ = ทางตัน) · ยามอยู่ใน
+      productSpecDocWorkflow.test.mjs ("ชุดคอลัมน์ Rev ทั้งสองชุดมีรอยการยื่นครบ") */
 const REVISION_SUMMARY_COLUMNS = [
   'id', 'documentId', 'revNo', 'status', 'submittedBy', 'submittedAt', 'firstSubmittedAt',
-  'aeApprovedAt', 'supApprovedAt', 'rejectedStage', 'updatedAt',
+  'aeApprovedAt', 'supApprovedAt', 'rejectedAt', 'frozenAt', 'rejectedStage', 'updatedAt',
 ].join(', ');
 
 /* SO ต้นเรื่องของเอกสาร — เฉพาะช่องที่ด่าน (สถานะ · origin · ดีล) กับภาพนิ่ง (เลขที่ · ใบเสนอราคา ·
@@ -1093,8 +1096,11 @@ export async function moveDocumentsToRevisedOrder(supabase, {
     }
     moved += 1;
 
+    /* ⚠️ ไม่ชี้ปุ่มใดปุ่มหนึ่ง — ใบกำพร้ามีปุ่มปลายทางตามสภาพของมัน (มติ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง":
+       ร่างที่ไม่เคยยื่น = ลบร่าง · นอกนั้น = ยกเลิก · `documentExitKey`) และคำเตือนนี้ออกก่อนอ่าน Rev ล่าสุด
+       ⇒ บอกที่ที่ปุ่มอยู่ (แถว "บรรทัดถูกถอด" บนการ์ดเอกสารต่อเนื่อง) ไม่ใช่ชื่อปุ่ม */
     if (!lineFound) {
-      warn(doc, `ไม่พบบรรทัดเดียวกันในใบสั่งขาย ${newNumber} — ย้ายเอกสารไปแบบไม่มีบรรทัด ยกเลิกได้ที่หน้าใบสั่งขาย`);
+      warn(doc, `ไม่พบบรรทัดเดียวกันในใบสั่งขาย ${newNumber} — ย้ายเอกสารไปแบบไม่มีบรรทัด จัดการต่อ (ลบร่าง/ยกเลิก) ได้ที่การ์ดเอกสารต่อเนื่องบนหน้าใบสั่งขาย`);
     }
 
     const latestRes = await supabase.from('product_spec_document_revisions')

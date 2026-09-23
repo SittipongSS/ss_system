@@ -1,12 +1,14 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState, useEffect } from "react";
-import { ClipboardCheck, AlertCircle, Download, Search, Maximize2, Minimize2 } from "lucide-react";
+import { ClipboardCheck, Download, Search, Maximize2, Minimize2 } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Select from "@/components/ui/Select";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { buildReconMatrix, posByRound } from "@/lib/sahamit/reconcileClient";
 import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
 import { deliveryMonthOf } from "@/lib/sahamit/po";
@@ -39,8 +41,8 @@ const nfBaht = (n) => fmtMoney(n);
 const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
 export default function ReconcilePage() {
-  const { data: rounds, loading: l1, error: e1 } = useApiList("/api/sahamit/forecast/rounds");
-  const { data: pos, loading: l2, error: e2 } = useApiList("/api/sahamit/po");
+  const { data: rounds, loading: l1, error: e1, errorDetail: d1 } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: pos, loading: l2, error: e2, errorDetail: d2 } = useApiList("/api/sahamit/po");
   const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
   const { data: products } = useApiList("/api/sahamit/products");
   const { data: flags } = useApiList("/api/sahamit/flags");
@@ -79,6 +81,11 @@ export default function ReconcilePage() {
 
   const loading = l1 || l2;
   const error = e1 || e2;
+  // ข้อความดิบของทุกแหล่งที่ล้ม — บรรทัดรองของกล่องแจ้ง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const errorDetail = sourcesFailureDetail([
+    { label: "รอบ FC", detail: e1 ? d1 : null },
+    { label: "PO", detail: e2 ? d2 : null },
+  ]);
 
   // ★ กระทบยอด = มุมมอง "สะสม" ชุดเดียวเสมอ (แหล่งความจริง): FC = peak − ยืนยันตัด/เลื่อน,
   // PO = ทั้งหมด. ไม่ re-scope ตามรอบ เพราะ FC/PO คาสเคดข้ามรอบ การกระทบรายรอบจะเพี้ยน
@@ -340,9 +347,9 @@ export default function ReconcilePage() {
         </div>
       )}
       {error && (
-        <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <AlertCircle size={18} /> {error}
-        </div>
+        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
+        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
       )}
 
       {loading ? (

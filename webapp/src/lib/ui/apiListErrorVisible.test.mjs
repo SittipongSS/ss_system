@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /* ── จอที่อ่านลิสต์ผ่าน `useApiList` ต้องทำให้ "โหลดไม่สำเร็จ" มองเห็นได้ ──────────
@@ -224,4 +224,120 @@ test("แก้รอบ FC: เหตุผลที่ยังแก้ไม
     "ทุกสายต้องมี blockedNote ของตัวเอง");
   assert.ok(block.includes("ไม่ได้แปลว่ารอบนี้ถูกลบไปแล้ว"),
     "ประโยค '(ไม่ได้แปลว่ารอบนี้ถูกลบไปแล้ว)' ต้องอยู่กับสายรอบ FC เท่านั้น");
+});
+
+/* ── มติเจ้าของ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก" ─────────────────────────────────────
+ *
+ * 🐞 กล่องแจ้งของจอเหล่านี้เคยขึ้นข้อความดิบของเซิร์ฟเวอร์เป็นตัวเนื้อ (`column orders.updatedAt does
+ *    not exist`) — คนหน้างานอ่านไม่ออก · แต่ **สตริงนั้นคือสิ่งที่ไขคดี orders.updatedAt ได้ในไม่กี่นาที**
+ * ⭐ ทำที่เดียว: `useApiList` แยก `error` (ประโยคไทย) กับ `errorDetail` (ข้อความดิบ) ด้วย lib/ui/loadFailure
+ *    และ `StatusNotice` มีบรรทัดรอง `detail` ที่ขึ้นป้าย "รายละเอียดสำหรับแจ้งปัญหา:" ให้เอง
+ * 🔴 ช่องโหว่ที่ต้องปิด: `error` เป็นไทยแล้ว ⇒ จอไหนแสดง `error` โดยไม่ส่ง `detail` = **ข้อความดิบหายเงียบ**
+ *    ⇒ ทะเบียนข้างล่างคือ "ทุกจอที่แสดงความล้มของ useApiList" และเทสต์ความครบบังคับให้จอใหม่ต้องเข้าทะเบียน
+ * ⚠️ ทะเบียนนี้เพิ่มได้อย่างเดียว — จอที่หลุดออกไปแปลว่ามีคนถอดบรรทัดรองทิ้ง
+ */
+const DETAIL_SCREENS = [
+  ...SCREENS,
+  ...ALREADY_REPORTING,
+  // สหมิตร: เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบ (ไม่มีประโยคไทยเลย) — ย้ายมาใช้กล่องกลาง
+  "app/sahamit/forecast/page.js",
+  "app/sahamit/material/page.js",
+  "app/sahamit/po/page.js",
+  "app/sahamit/po/[id]/page.js",
+  "app/sahamit/reconcile/page.js",
+  "app/sahamit/review/page.js",
+];
+
+const hookSource = () => read("lib/excise/useApiList.js").replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
+
+test("useApiList: error/staleError เป็นประโยคไทยจาก loadFailure · ข้อความดิบออกทาง errorDetail เท่านั้น", () => {
+  const hook = hookSource();
+  assert.match(hook, /import \{ httpLoadFailure, thrownLoadFailure \} from "@\/lib\/ui\/loadFailure"/);
+  assert.match(hook, /httpLoadFailure\(r\.status,/, "คำตอบไม่ ok ต้องผ่านตัวแยกไทย/ดิบ");
+  assert.match(hook, /thrownLoadFailure\(e\)/, "ของที่ถูกโยน (เน็ตหลุด/อ่าน body ไม่ได้) ต้องผ่านตัวแยกเหมือนกัน");
+  // 🐞 ทรงเดิมที่ต้องไม่กลับมา: เอา `body.error` ดิบ ๆ ยัดเป็นข้อความของ Error แล้วส่งขึ้นจอเป็นตัวเนื้อ
+  assert.doesNotMatch(hook, /throw new Error\([^)]*\?\.error/, "ข้อความดิบห้ามกลับไปเป็นตัวเนื้อของ error");
+  assert.match(hook, /error: failure\?\.message \?\? null/);
+  assert.match(hook, /staleError: staleFailure\?\.message \?\? null/);
+  // ⭐ บรรทัด "ของรอบก่อน" ของ #1796 ได้บรรทัดรองด้วย — detail ตามตัวที่ `error || staleError` ชี้
+  assert.match(hook, /const shown = failure \|\| staleFailure/);
+  assert.match(hook, /errorDetail: shown\?\.detail \?\? null/);
+  assert.match(hook, /if \(opts\?\.background\) setStaleFailure\(fault\); else setFailure\(fault\);/);
+});
+
+test("StatusNotice: บรรทัดรอง detail มีป้ายกลาง ใช้คลาสของโมดูล ไม่มี inline style", () => {
+  const notice = read("components/ui/StatusNotice.js");
+  assert.match(notice, /detailLabel = LOAD_FAILURE_DETAIL_LABEL/, "ป้ายมาจากที่เดียว — ผู้เรียกไม่ประกอบป้ายเอง");
+  assert.match(notice, /\{detail \? \(\s*<p className=\{styles\.detail\}>/);
+  assert.match(notice, /<span className=\{styles\.detailLabel\}>\{detailLabel\}:<\/span>/);
+  assert.match(notice, /translate="no"/, "ข้อความดิบห้ามถูกตัวแปลของเบราว์เซอร์แก้ — คนก๊อปไปค้นในโค้ดต้องเจอ");
+  assert.doesNotMatch(notice, /style=\{\{/);
+  const css = read("components/ui/StatusNotice.module.css");
+  assert.match(css, /\.detail \{[^}]*font-size: var\(--fs-5\)/, "บรรทัดรองต้องเล็กกว่าข้อความ (--fs-7) — 'บรรทัดเล็ก'");
+  assert.match(css, /\.detail \{[^}]*color: var\(--text-2\)/, "--text-3 บนพื้นแดงอ่อนต่ำกว่า AA");
+  /* StatusNotice ดึงป้ายจาก loadFailure.js ⇒ ไฟล์นั้นต้องไม่ import อะไร ไม่งั้นทุกผู้เรียกกล่องกลางพ่วงของนั้นไปด้วย
+     (รอบแรกพ่วง apiFetch มาเพื่อ instanceof ตัวเดียว — primitive ของจอไม่ควรขึ้นกับตัวห่อเครือข่าย) */
+  assert.doesNotMatch(code("lib/ui/loadFailure.js"), /^\s*import\b/m, "loadFailure.js ต้องไม่มี import");
+});
+
+test("ทุกจอในทะเบียนส่งข้อความดิบให้ StatusNotice ทางบรรทัดรอง (detail=) — ไม่มีจอไหนทิ้งมัน", () => {
+  for (const rel of DETAIL_SCREENS) {
+    const text = code(rel);
+    assert.match(text, /import StatusNotice from "@\/components\/ui\/StatusNotice"/, `${rel}: ต้องใช้กล่องกลาง`);
+    assert.match(text, /errorDetail/, `${rel}: ไม่ได้แกะ errorDetail จาก useApiList ⇒ ข้อความดิบหายจากจอ`);
+    assert.match(text, /<StatusNotice[^>]*?\bdetail=\{/, `${rel}: กล่องแจ้งโหลดพังต้องมี detail= (บรรทัดรอง)`);
+    // กล่อง glass-panel สีแดงแบบเดิมต้องไม่กลับมา — มันขึ้นแต่ข้อความดิบ ไม่มีประโยคไทย ไม่มีบรรทัดรอง
+    assert.doesNotMatch(text, /<AlertCircle[^>]*\/>\s*\{error\}/, `${rel}: กล่องแจ้งประกอบเองแบบเดิมยังอยู่`);
+  }
+});
+
+test("จอที่อ่านหลายแหล่ง: ทุกแหล่งพก detail · บรรทัดรองมาจาก sourcesFailureDetail(failing) (ทุกสายที่ล้ม)", () => {
+  for (const rel of SCREENS) {
+    const block = sourcesBlock(rel);
+    const labels = (block.match(/label:/g) || []).length;
+    assert.equal((block.match(/\bdetail:/g) || []).length, labels, `${rel}: ทุกสายต้องพก detail ของตัวเอง`);
+    const text = code(rel);
+    assert.match(text, /const loadErrorDetail = sourcesFailureDetail\(failing\)/,
+      `${rel}: บรรทัดรองต้องพ่วงทุกสายที่ล้ม (ตัวที่ไขคดีมักอยู่ก้อนหลัง) ไม่ใช่ประกอบเองรายจอ`);
+    assert.match(text, /detail=\{loadErrorDetail\}/);
+  }
+});
+
+/* ความครบของทะเบียน — จอใหม่ที่แกะ `error` ออกจาก useApiList แล้ววาดมัน ต้องเข้าทะเบียนข้างบน
+   (และจึงโดนบังคับให้ส่ง detail) · จอที่แกะแค่ data/loading (ลิสต์ของ picker) ไม่เกี่ยว
+   ⚠️ ความล้มออกจากฮุกได้สองช่อง (`error` · `staleError`) และสองทรง (แกะ `{ … }` · เก็บทั้งก้อนแล้วอ่าน `list.error`)
+      — ตัวสแกนต้องเห็นครบทั้งสี่แบบ: `\berror\b` ไม่ติดคำว่า `staleError` และจอที่ไม่แกะก็ไม่มี `{ … }` ให้จับเลย
+      ⇒ หลุดแบบใดแบบหนึ่ง = จอขึ้นประโยคไทยแต่ข้อความดิบหายเงียบ โดยด่านนี้ยังเขียว */
+const takesFailure = (text) => {
+  const destructured = [...text.matchAll(/const\s*\{([^}]*)\}\s*=\s*useApiList\(/g)]
+    .some(([, bindings]) => /\b(error|staleError)\b/.test(bindings));
+  const whole = [...text.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*useApiList\(/g)]
+    .some(([, name]) => new RegExp(`\\b${name.replace(/\$/g, "\\$")}\\s*\\??\\.\\s*(?:error|staleError)\\b`).test(text));
+  return destructured || whole;
+};
+
+test("ตัวสแกนความครบเห็นทั้ง staleError และจอที่ไม่แกะ useApiList", () => {
+  assert.equal(takesFailure("const { data, error } = useApiList(url);"), true);
+  assert.equal(takesFailure("const { data, error: loadError } = useApiList(url);"), true);
+  assert.equal(takesFailure("const { data, staleError } = useApiList(url);"), true, "แกะแค่ staleError ก็คือแสดงความล้ม");
+  assert.equal(takesFailure("const list = useApiList(url);\nreturn list.error ? 1 : 0;"), true, "อ่าน list.error โดยไม่แกะ");
+  assert.equal(takesFailure("const list = useApiList(url);\nreturn list?.staleError;"), true);
+  assert.equal(takesFailure("const { data, errorDetail } = useApiList(url);"), false, "errorDetail อย่างเดียวไม่ใช่การแสดงความล้ม");
+  assert.equal(takesFailure("const { data: products } = useApiList(url);"), false, "ลิสต์ของ picker ไม่เกี่ยว");
+  assert.equal(takesFailure("const list = useApiList(url);\nreturn list.data;"), false);
+});
+
+test("ทะเบียนครบ: ทุกไฟล์ที่แกะ error จาก useApiList อยู่ใน DETAIL_SCREENS", () => {
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return walk(full);
+    return /\.js$/.test(entry.name) && !/\.test\./.test(entry.name) ? [full] : [];
+  });
+  const offenders = [];
+  for (const file of [...walk(join(src, "app")), ...walk(join(src, "components"))]) {
+    const text = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
+    const rel = relative(src, file).split(sep).join("/");
+    if (takesFailure(text) && !DETAIL_SCREENS.includes(rel)) offenders.push(rel);
+  }
+  assert.deepEqual(offenders, [], "จอเหล่านี้แสดงความล้มของ useApiList แต่ไม่อยู่ในทะเบียนบรรทัดรอง");
 });
