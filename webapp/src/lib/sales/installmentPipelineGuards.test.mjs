@@ -131,3 +131,13 @@ test('ทะเบียนการชำระตัดงวดโมฆะ (
   // select ของใบต้องมี status (ตัวตัดสินอ่านจากตรงนั้น) — ลืม = ไม่มีใบไหนตายเลยเงียบ ๆ
   assert.match(route, /\.select\('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status,/);
 });
+
+// ── UAT 23/09: ใบที่ตายแล้วไม่โชว์แถบ "เก็บแล้ว/ทั้งใบ" และประกาศ "จ่ายถึง" ──────────────────────────
+test('แผงงวด: ใบยกเลิก/ถูกออก Rev. ทับ ไม่วาดแถบสัดส่วนเงินและประกาศ “จ่ายถึง” ของนัดบริการ', () => {
+  const panel = code(PANEL);
+  assert.match(panel, /const deadPipeline = cancelledPipeline \|\| \(!historical && order\?\.status === "revised"\);/);
+  assert.ok(panel.includes('{!isPreview && !single && !deadPipeline ? (\n        <div className={styles.progress}>'),
+    'SO-26090204-0 (ยกเลิก): แถบขึ้น "ทั้งใบ ฿0.00" ข้างยอดใบ ฿250,380');
+  assert.ok(panel.includes('{showCoverage && !isPreview && !deadPipeline ? ('),
+    'SO-26090204-0 (ยกเลิก): เตือนว่านัดบริการลงคิวไม่ได้ทั้งที่ใบยกเลิกแล้ว');
+});
