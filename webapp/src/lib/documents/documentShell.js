@@ -101,6 +101,9 @@ const DEFAULT_HEADER_LABELS = Object.freeze({
 // rows = [{ label, value }] — แต่ละชนิดเอกสารส่งแถวของตัวเอง (ใบเสนอราคาใช้ เลขที่/
 // วันที่/ยืนราคาถึง · ใบภาษีใช้ เลขที่/วันที่เอกสาร/กำหนดส่งมอบ)
 // titleEn เว้นได้ — เอกสารภาษาเดียวมีชื่อบรรทัดเดียว ไม่ต้องมีบรรทัดรองว่างเป็น '-'
+// ⭐ ค่าในหัวใบ **ไม่ตัดบรรทัด** เป็นค่าตั้งต้น (ผู้ใช้ขอ 23/09: "ไม่ให้ตกบรรทัดทุกเอกสาร")
+//    — ค่าแถวหัวใบคือเลขที่/วันที่ · เลขที่ถูกตัดกลาง ("CT-SD-" / "26080001-0") อ่านเป็น
+//    คนละใบได้ · แถวที่เป็นข้อความอิสระยาวได้ (ชื่อลูกค้าในหัวรายงาน) ส่ง `wrap: true`
 /* ⭐ มติผู้ใช้ 2026-08-21: หัวเอกสารโชว์ **ภาษาเดียว ทีละภาษา** — ชื่อเอกสารและ
    ชื่อบริษัทใช้ภาษาของใบนั้นอย่างเดียว ไม่มีบรรทัดรองอีกภาษา
    (กลับกติกาเดิมที่ใบไทยพิมพ์ชื่ออังกฤษเป็นบรรทัดรอง และใบอังกฤษพิมพ์ชื่อไทยเป็น
@@ -137,7 +140,7 @@ export function documentHeader({
         ${formLine ? `<div class="formLine">${val(formLine)}</div>` : ''}
         <h1>${val(title)}</h1>
         <dl>
-          ${rows.filter(Boolean).map((r) => `<div><dt>${esc(r.label)}</dt><dd>${val(r.value)}</dd></div>`).join(ROW_GAP)}
+          ${rows.filter(Boolean).map((r) => `<div><dt>${esc(r.label)}</dt><dd${r.wrap ? ' class="wrap"' : ''}>${val(r.value)}</dd></div>`).join(ROW_GAP)}
         </dl>
       </div>
     </header>`;
@@ -378,7 +381,8 @@ export function documentShellCss(orientation = 'portrait') {
   .identityBlock dl { margin: 2.5mm 0 0; }
   .identityBlock dl div { display: grid; grid-template-columns: 22mm 1fr; gap: 2mm; padding-top: .8mm; }
   .identityBlock dt { color: var(--doc-muted); font-size: 8pt; }
-  .identityBlock dd { margin: 0; color: var(--doc-text); font-weight: 600; }
+  .identityBlock dd { margin: 0; color: var(--doc-text); font-weight: 600; white-space: nowrap; }
+  .identityBlock dd.wrap { white-space: normal; }
   .partyGrid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 3mm; margin-top: 4mm; }
   .partyGrid > div { min-width: 0; padding: 3mm 3.5mm; background: var(--doc-neutral-soft); border-left: 1.5px solid var(--doc-line-strong); }
   .partyGrid h2, .installmentSection h2, .termsGrid h2 { margin: 0 0 1.5mm; color: var(--doc-navy); font-size: 8.7pt; text-transform: none; }

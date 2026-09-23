@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { buildContractHTML, fillTokens, thaiContractDate } from './contractDocument';
+import { buildContractHTML, fillTokens, thaiContractDate, withCurrentHeaderRows } from './contractDocument';
 
 const COMPANY = {
   legalNameTh: 'บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด',
@@ -153,6 +154,45 @@ test('ป้ายกับค่าในหัวใบเรียงตร�
   assert.match(html, /\.contract \.documentHeader \{ grid-template-columns: minmax\(0, 1\.5fr\) minmax\(66mm/);
   // ชื่อเอกสารถูกย้ายไปกลางหน้า ⇒ ฝั่งขวาต้องถูกดันลงไปจบระดับเดียวกับบล็อกบริษัท
   assert.match(html, /\.contract \.identityBlock dl \{ margin-top: auto/);
+});
+
+/* 🐞 ผู้ใช้ส่งภาพ CT-SD-26080001-0 มา 23/09 — เลขที่ยังตกบรรทัดทั้งที่เทสต์ข้างบนเขียว
+   เพราะใบนั้นออกก่อนแก้ (#1596 · 03/09) ⇒ เสิร์ฟ `issuedHtml` ที่ฝัง CSS รุ่น 36mm ไว้
+   ⇒ route ต้องเติมกติกาแถวหัวใบรุ่นปัจจุบันให้ใบที่ตรึงไว้ตอนเปิด */
+const FROZEN_BEFORE_1596 = `<!doctype html><html><head><style>
+  .contract .identityBlock dl div { grid-template-columns: 36mm minmax(0, 1fr); }
+  .contract .identityBlock dd { text-align: right; }
+</style></head><body><dd>CT-SD-26080001-0</dd></body></html>`;
+
+test('ใบที่ตรึงก่อนแก้หัวใบได้กติกาแถวเลขที่รุ่นปัจจุบันตอนเปิด — เนื้อเดิมไม่ถูกแตะ', () => {
+  const patched = withCurrentHeaderRows(FROZEN_BEFORE_1596);
+  const head = patched.slice(0, patched.indexOf('</head>'));
+  assert.match(head, /\.contract \.identityBlock dl \{ display: grid; grid-template-columns: max-content/);
+  assert.match(head, /\.contract \.identityBlock dl div \{ display: contents/);
+  assert.match(head, /\.contract \.identityBlock dd \{ text-align: right; white-space: nowrap/);
+  // ก้อนใหม่ต้องมาหลัง CSS เดิม (ลำดับชนะกันเมื่อ specificity เท่ากัน)
+  assert.ok(head.indexOf('36mm') < head.indexOf('max-content'));
+  // เติมอย่างเดียว — ตัดก้อนที่เติมออกแล้วต้องได้ฉบับตรึงเดิมทุกไบต์
+  assert.equal(patched.replace(/<style>[^<]*max-content[^<]*<\/style>\n/, ''), FROZEN_BEFORE_1596);
+});
+
+test('ใบที่มีกติกาแถวหัวใบรุ่นปัจจุบันอยู่แล้วคืนตามเดิม ไม่เติมซ้ำ', () => {
+  const current = buildContractHTML(CONTRACT, { company: COMPANY });
+  assert.equal(withCurrentHeaderRows(current), current);
+  const once = withCurrentHeaderRows(FROZEN_BEFORE_1596);
+  assert.equal(withCurrentHeaderRows(once), once);
+  assert.equal(withCurrentHeaderRows(null), null);
+  assert.equal(withCurrentHeaderRows('ไม่ใช่กระดาษ'), 'ไม่ใช่กระดาษ');
+});
+
+test('route พิมพ์สัญญาส่งฉบับตรึงผ่านตัวเติมกติกาหัวใบก่อนเสิร์ฟ', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/document/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /withCurrentHeaderRows\(contract\.issuedHtml\)/);
+  // ไม่เขียนกลับลงฐาน — ฉบับตรึงในฐานต้องเป็นของเดิม
+  assert.doesNotMatch(route, /issuedHtml: withCurrentHeaderRows/);
 });
 
 test('ย่อหน้าปิดท้ายต้องอยู่แผ่นเดียวกับช่องลงนามเสมอ', () => {
