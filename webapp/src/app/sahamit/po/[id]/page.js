@@ -215,7 +215,7 @@ export default function PoDetailPage() {
   const canSettle = useCan("salesplan:edit");
   const canEdit = useCan("sahamit:edit");
   const id = params.id;
-  const { data: pos, loading, error, reload } = useApiList("/api/sahamit/po");
+  const { data: pos, loading, error, errorDetail, reload } = useApiList("/api/sahamit/po");
   const { data: material } = useApiList("/api/sahamit/material");
   const { data: products } = useApiList("/api/sahamit/products");
   const prodIdx = useMemo(() => indexProducts(products), [products]);
@@ -524,7 +524,8 @@ export default function PoDetailPage() {
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
       {error && (
-        <StatusNotice tone="error">{error}</StatusNotice>
+        // ไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569) — errorDetail มาจาก useApiList
+        <StatusNotice tone="error" detail={errorDetail}>{error}</StatusNotice>
       )}
 
       {loading ? (

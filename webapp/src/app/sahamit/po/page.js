@@ -4,8 +4,9 @@ import DetailRow from "@/components/ui/DetailRow";
 import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ShoppingCart, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
+import { ShoppingCart, Plus, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Select from "@/components/ui/Select";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -96,7 +97,7 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
 }
 
 export default function PoPage() {
-  const { data: pos, loading, error } = useApiList("/api/sahamit/po");
+  const { data: pos, loading, error, errorDetail } = useApiList("/api/sahamit/po");
   const { data: material, reload: reloadMaterial } = useApiList("/api/sahamit/material");
   const { data: products } = useApiList("/api/sahamit/products");
   const [openPo, setOpenPo] = useState({});
@@ -203,9 +204,9 @@ export default function PoPage() {
       }
     >
       {error && (
-        <div className="glass-panel" style={{ padding: 14, borderLeft: "3px solid var(--red)", color: "var(--red)", display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-          <AlertCircle size={18} /> {error}
-        </div>
+        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
+        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
       )}
 
       {loading ? (

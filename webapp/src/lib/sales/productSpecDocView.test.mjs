@@ -14,7 +14,8 @@ import {
   DOC_DELETE_KEY, DOC_REASON_ACTIONS, SPEC_DOC_NEW_FOOTER, docActionDoneMessage, docApiAction,
   docConfirmPrompt, docContentSource,
   docContentSummary, docControlActions, docHeadline, docPrintHref, docRailSteps, docReasonPrompt,
-  docRevisionRows, docRevisionTone, followUpLineView, liveIllustrationNote, liveSpecDocumentCount, productSpecPageHref,
+  docRevisionRows, docRevisionTone, followUpLineView, lineRemovedNotice, liveIllustrationNote, liveSpecDocumentCount,
+  orphanRemoveFailureOutcome, productSpecPageHref,
   salesOrderHref, salesOrderSpecDocEffect, specDocCreateApiPath, specDocDraftPreviewHref, specDocNewApiPath,
   specDocNewLoadProblem, specDocNewOrderFacts, specDocNewView, specDocNextNumberText, specDocSavedMessage,
   specDocumentHref, specDocumentNewHref,
@@ -260,7 +261,7 @@ test('อนุมัติขั้นสุดท้าย: ถอนไม่
 
 /* ── ลบร่างที่ยังไม่เคยยื่น (มติเจ้าของ 23/09/2569 · mig 0375) ──────────────── */
 
-test('⭐ ปุ่ม "ลบร่างเอกสารถาวร" อยู่ช่องอันตรายของการ์ด เฉพาะร่างที่ยังไม่เคยยื่น · ยื่นแล้วเหลือแต่ "ยกเลิกเอกสาร"', () => {
+test('⭐ ปุ่ม "ลบร่างเอกสารถาวร" อยู่ช่องอันตรายของการ์ด เฉพาะร่างที่ยังไม่เคยยื่น · ยื่นแล้ว "ยกเลิกเอกสาร" กลับมาแทน', () => {
   const fresh = rev('draft', { submittedBy: null });
   const card = docControlActions({
     actions: documentActions({ document: doc, latest: fresh, salesOrder: order, dealOwnerId: owner.id, user: U.ac }),
@@ -268,14 +269,18 @@ test('⭐ ปุ่ม "ลบร่างเอกสารถาวร" อย
   });
   const remove = card.dangerActions.find((button) => button.id === DOC_DELETE_KEY);
   assert.ok(remove, 'ปุ่มลบร่างต้องอยู่ช่องอันตราย');
-  /* ⚠️ ป้ายต้องบอกทั้งของและความถาวร — ปุ่มนี้ยืนติดกับ "ยกเลิกเอกสาร" ซึ่งในภาษาพูดแปลว่า
+  /* ⚠️ ป้ายต้องบอกทั้งของและความถาวร — ปุ่มนี้ยืนที่เดียวกับที่ "ยกเลิกเอกสาร" เคยยืน ซึ่งในภาษาพูดแปลว่า
      "เอาออก" เหมือนกัน (ทรงเดียวกับ "ลบฉบับร่างถาวร" ของหน้าใบสั่งขาย) */
   assert.equal(remove.label, 'ลบร่างเอกสารถาวร');
   assert.match(remove.label, /ถาวร/, 'ปุ่มลบถาวรต้องบอกความถาวรบนตัวปุ่ม ไม่ใช่เฉพาะในโมดัล');
   assert.equal(remove.kind, 'delete');
   assert.equal(remove.disabled, false);
-  // ยกเลิกเอกสารกับลบร่างยืนคู่กันได้ในช่วงร่าง — และลบอยู่ท้ายสุด (ปุ่มที่ทำให้แถวหายจริง)
-  assert.deepEqual(card.dangerActions.map((button) => button.id), ['void', DOC_DELETE_KEY]);
+  /* ⭐ มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง" — ร่างที่ยังไม่เคยยื่นโชว์ **แค่** ลบร่าง
+     (เดิมยืนคู่กับ "ยกเลิกเอกสาร" ให้คนต้องเลือกระหว่างสองคำที่แปลว่า "เอาออก" เหมือนกัน) */
+  assert.deepEqual(card.dangerActions.map((button) => button.id), [DOC_DELETE_KEY]);
+  const everyLabel = [card.primaryAction, ...card.secondaryActions, ...card.dangerActions]
+    .filter(Boolean).map((button) => button.label);
+  assert.ok(!everyLabel.includes('ยกเลิกเอกสาร'), 'ร่างที่ไม่เคยยื่นต้องไม่มีปุ่มยกเลิกที่ไหนบนการ์ดเลย');
 
   const submitted = rev('pending_ae', { firstSubmittedAt: '2026-09-23T02:00:00.000Z' });
   const afterSubmit = docControlActions({
@@ -283,6 +288,14 @@ test('⭐ ปุ่ม "ลบร่างเอกสารถาวร" อย
     document: doc, latest: submitted,
   });
   assert.deepEqual(afterSubmit.dangerActions.map((button) => button.id), ['void']);
+
+  // ยื่นแล้วดึงกลับ = กลับเป็นร่างหน้าตาเดิมทุกช่อง แต่เคยผ่านตาผู้อนุมัติแล้ว ⇒ ยกเลิกกลับมา ลบหาย
+  const withdrawn = rev('draft', { submittedBy: null, firstSubmittedAt: '2026-09-23T02:00:00.000Z' });
+  const afterWithdraw = docControlActions({
+    actions: documentActions({ document: doc, latest: withdrawn, salesOrder: order, dealOwnerId: owner.id, user: U.ac }),
+    document: doc, latest: withdrawn,
+  });
+  assert.deepEqual(afterWithdraw.dangerActions.map((button) => button.id), ['void']);
 });
 
 test('🔴 โมดัลลบร่างบอกสามเรื่องที่คนเข้าใจผิด: กู้ไม่ได้ · เลขที่ถูกเผาถาวร · ใบใหม่ได้เลขใหม่', () => {
@@ -313,6 +326,88 @@ test('ลบร่างไม่ใช่ action ของ PATCH — docApiActi
   assert.equal(docApiAction(DOC_DELETE_KEY), null);
   assert.equal(Object.values(DOC_ACTION_KEYS).includes(DOC_DELETE_KEY), false);
   assert.match(docActionDoneMessage(DOC_DELETE_KEY), /เลขที่เดิมไม่นำกลับมาใช้/);
+});
+
+test('toast หลังลบร่างของใบที่บรรทัดถูกถอด ไม่ชวนออกใบใหม่บนบรรทัดที่ไม่มีแล้ว (เรื่องเดียวกับโมดัล)', () => {
+  assert.match(docActionDoneMessage(DOC_DELETE_KEY), /ออกใบใหม่บนบรรทัดนี้ได้/);
+  const orphan = docActionDoneMessage(DOC_DELETE_KEY, { orphan: true });
+  assert.match(orphan, /เลขที่เดิมไม่นำกลับมาใช้/);
+  assert.doesNotMatch(orphan, /ออกใบใหม่/);
+});
+
+/* ⭐ แถบ "บรรทัดถูกถอด" บนหน้าเอกสารเคยพูดตายตัวว่า "ยกเลิกเอกสารใบนี้แทน" — หลังมติ 23/09 ร่างที่ไม่เคยยื่น
+   ไม่มีปุ่มยกเลิกแล้ว ⇒ แถบต้องชี้ปุ่มที่ใบนั้นมีจริง ไม่ส่งคนไปหาปุ่มที่ไม่มีอยู่ */
+test('แถบเตือนบรรทัดถูกถอดชี้ปุ่มปลายทางที่มีจริง (ลบร่าง หรือ ยกเลิก)', () => {
+  const orphanDoc = { ...doc, salesOrderLineId: null };
+  const fresh = lineRemovedNotice({ document: orphanDoc, latest: rev('draft', { submittedBy: null }) });
+  assert.match(fresh.title, /ถูกถอดแล้ว/);
+  assert.match(fresh.body, /ลบร่าง/);
+  assert.doesNotMatch(fresh.body, /ยกเลิก/);
+  for (const latest of [rev('approved'), rev('rejected'), rev('draft', { firstSubmittedAt: '2026-09-23T02:00:00.000Z' })]) {
+    assert.match(lineRemovedNotice({ document: orphanDoc, latest }).body, /ยกเลิกเอกสารใบนี้/, latest.status);
+  }
+  assert.equal(lineRemovedNotice({ document: { ...orphanDoc, status: 'void' }, latest: rev('draft') }), null);
+});
+
+/* หน้าเอกสารเปิดได้ทุกคนที่เห็น SO แต่ปุ่มปลายทางมีแค่ AC/admin ⇒ คนอื่นต้องได้ "รอ AC …" ไม่ใช่คำสั่งให้กดปุ่มที่ไม่มี */
+test('แถบบรรทัดถูกถอด: คนที่ไม่มีปุ่มปลายทางได้ประโยค "รอ AC" · AC/admin ได้ประโยคให้ลงมือ', () => {
+  const orphanDoc = { ...doc, salesOrderLineId: null };
+  const shapes = [
+    ['remove', rev('draft', { submittedBy: null }), /ลบร่าง/],
+    ['void', rev('pending_ae'), /ยกเลิกเอกสารใบนี้/],
+    ['void', rev('draft', { firstSubmittedAt: '2026-09-23T02:00:00.000Z' }), /ยกเลิกเอกสารใบนี้/],
+  ];
+  for (const [exit, latest, verb] of shapes) {
+    for (const user of Object.values(U)) {
+      const actions = documentActions({
+        document: orphanDoc, latest, salesOrder: order, dealOwnerId: owner.id, user,
+      });
+      const notice = lineRemovedNotice({ document: orphanDoc, latest, actions });
+      const mine = actions.remove.visible || actions.void.visible;
+      assert.match(notice.body, verb, `${exit} · ${user.role}`);
+      if (mine) assert.doesNotMatch(notice.body, /รอ AC/, `${exit} · ${user.role} กดเองได้`);
+      else assert.match(notice.body, /รอ AC/, `${exit} · ${user.role} ไม่มีปุ่ม`);
+      assert.equal(mine, ['ac', 'admin'].includes(user.role), `${exit} · ${user.role}`);
+    }
+  }
+  // ไม่ส่ง actions = ไม่รู้ว่าใครดู ⇒ ทรงเดิม (ประโยคของคนกด)
+  assert.doesNotMatch(lineRemovedNotice({ document: orphanDoc, latest: rev('pending_ae') }).body, /รอ AC/);
+});
+
+/* 🐞 UAT 23/09: ลบร่างจากการ์ดหน้า SO สำเร็จแต่คำตอบหายกลางทาง ⇒ การ์ดเคยขึ้น "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ลองอีกครั้ง"
+   ทั้งที่แถวหายไปต่อหน้า · ตัวตัดสินอ่านการ์ดชุดใหม่ และเชื่อคำตอบของเซิร์ฟเวอร์ก่อน "แถวหาย" เสมอ */
+test('ลบร่างจากการ์ดแล้วไม่ได้คำตอบว่าสำเร็จ: done / moved / retry ตัดสินจากการ์ดชุดใหม่', () => {
+  const network = Object.assign(new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'), { name: 'ApiNetworkError' });
+  const gateway = Object.assign(new Error('HTTP 504'), { status: 504 });
+  const conflict = Object.assign(new Error('ลบร่างไม่ได้ — เคยยื่นแล้ว'), { status: 409 });
+  const gone = Object.assign(new Error('ไม่พบเอกสารนี้'), { status: 404 });
+  const others = { rows: [], orphans: [{ documentId: 'OTHER', removeAction: { visible: true } }] };
+  const stillDeletable = { rows: [], orphans: [{ documentId: 'PSD1', removeAction: { visible: true }, voidAction: { visible: false } }] };
+  const nowVoidOnly = { rows: [], orphans: [{ documentId: 'PSD1', removeAction: { visible: false }, voidAction: { visible: true } }] };
+  const outcome = (failure, next) => orphanRemoveFailureOutcome({ failure, next, documentId: 'PSD1' });
+
+  // ใบหายจากการ์ด + ไม่มีคำตอบให้เชื่อ (เน็ตหลุด/เกตเวย์) = เซิร์ฟเวอร์ลบไปแล้ว คำตอบแค่หาย
+  assert.equal(outcome(network, others), 'done');
+  assert.equal(outcome(gateway, others), 'done');
+  // มีคำตอบของเซิร์ฟเวอร์ = เชื่อคำตอบ (404 มีคนลบไปก่อน · 409 ใบเปลี่ยนสภาพ) ⇒ ปิดโมดัล เหตุขึ้นแถบ
+  assert.equal(outcome(gone, others), 'moved');
+  assert.equal(outcome(conflict, others), 'moved');
+  assert.equal(outcome(conflict, nowVoidOnly), 'moved');
+  assert.equal(outcome(network, nowVoidOnly), 'moved');
+  // ยังลบได้ = คำขอไม่ถึง/ล้มจริง ⇒ คงโมดัลให้กดใหม่ · โหลดการ์ดไม่ขึ้น = ไม่รู้ความจริง ห้ามเดา
+  assert.equal(outcome(network, stillDeletable), 'retry');
+  assert.equal(outcome(gateway, stillDeletable), 'retry');
+  assert.equal(outcome(network, null), 'retry');
+  assert.equal(outcome(conflict, null), 'retry');
+});
+
+test('หน้าเอกสาร: แถบบรรทัดถูกถอดมาจาก lineRemovedNotice · toast ลบรู้ว่าบรรทัดหายแล้ว', () => {
+  const page = readFileSync(PAGE, 'utf8');
+  assert.match(page, /lineRemovedNotice\(\{ document: specDoc, latest, actions: data\?\.actions \}\)/);
+  // บรรทัดถูกถอด = ยื่นไม่ได้แล้ว ⇒ แถบ "แก้ที่หน้าสินค้าแล้วกลับมายื่น" ต้องไม่ขึ้นคู่กับแถบให้ลบ/ยกเลิก
+  assert.match(page, /\{liveDraft && !lineRemoved \? \(\s*<StatusNotice\s+tone="info"/);
+  assert.doesNotMatch(page, /ยกเลิกเอกสารใบนี้แทนการเดินด่าน/, 'ข้อความตายตัวแบบเดิมต้องไม่กลับมา');
+  assert.match(page, /docActionDoneMessage\(DOC_DELETE_KEY, \{ orphan: lineRemoved \}\)/);
 });
 
 /* 🪤 กับดักที่เทสต์ข้างบนเปิดไว้: `docApiAction('remove')` เป็น `null` ⇒ ถ้าหน้าเอกสารส่งปุ่มลบ

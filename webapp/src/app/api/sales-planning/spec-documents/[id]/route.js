@@ -21,9 +21,9 @@ import { notifyUsers } from '@/lib/notifications';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
 import {
-  DOC_ACTION_KEYS, canAeApproveProductSpecDocument, canIssueProductSpecDocument,
-  canSupApproveProductSpecDocument, docReasonError, documentActions, draftDeleteBlock, formatRevLabel,
-  rejectStageOf, revisionPatch,
+  DOC_ACTION_KEYS, DRAFT_EXIT_MISMATCH, FRESH_DRAFT_VOID_BLOCK, canAeApproveProductSpecDocument, canIssueProductSpecDocument,
+  canSupApproveProductSpecDocument, docReasonError, documentActions, documentExitKey, draftDeleteBlock,
+  formatRevLabel, lineRemovedBlock, rejectStageOf, revisionPatch,
 } from '@/lib/sales/productSpecDocWorkflow';
 import {
   applyFinalApproval, buildDocumentSnapshot, deleteDraftDocument, loadSpecDocument,
@@ -138,6 +138,13 @@ const ACTION_FORBIDDEN = {
 function hiddenActionResponse(action, { document, latest, user, dealOwnerId }) {
   if (document.status === 'void') return conflict('เอกสารนี้ถูกยกเลิกแล้ว — ทำรายการต่อไม่ได้');
   if (!latest) return fail('เอกสารนี้ไม่มี Rev. — แจ้งผู้ดูแลระบบ', 500);
+  /* ⭐ มติ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง" — ร่างที่ยังไม่เคยยื่นมีแค่ "ลบร่าง" (`documentExitKey`)
+     ⇒ AC ที่ยิง void มาจากแท็บค้าง/ยิงตรงต้องได้ทางที่ใช้ได้จริง ไม่ใช่ "สถานะเปลี่ยนแล้ว"
+     (ใบไม่ได้ขยับเลย โหลดใหม่กี่รอบก็ยกเลิกไม่ได้) */
+  if (action === 'void' && canIssueProductSpecDocument(user?.role)
+    && documentExitKey(document, latest) === 'remove') {
+    return conflict(FRESH_DRAFT_VOID_BLOCK);
+  }
   if (ACTION_ROLE[action]({ user, latest, dealOwnerId })) return conflict(STALE);
   return forbidden(ACTION_FORBIDDEN[action]);
 }
@@ -223,14 +230,15 @@ function notifyLater(supabase, action, context) {
 /* บรรทัด SO ที่เอกสารอ้าง — ใช้ถ่ายภาพนิ่งตอนยื่น (จำนวน · หน่วย · คำบรรยาย · บรรทัดใบเสนอราคาต้นทาง
    ที่เป็นค่าสำรองของ "จำนวนผลิต")
    ⚠️ ต้องเป็นบรรทัดของ SO เดียวกับเอกสาร — เช็คเอง ไม่เชื่อ id ลอย ๆ */
-async function loadDocumentLine(supabase, document) {
+async function loadDocumentLine(supabase, document, latest) {
   const { data, error } = await supabase.from('sales_order_lines')
     .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder')
     .eq('id', document.salesOrderLineId)
     .maybeSingle();
   if (error) return { error: `อ่านบรรทัดใบสั่งขายไม่สำเร็จ: ${error.message}` };
   if (!data || data.salesOrderId !== document.salesOrderId) {
-    return { error: 'บรรทัดของใบสั่งขายที่เอกสารนี้อ้างถูกถอดแล้ว — ยกเลิกเอกสารใบนี้แทน', status: 400 };
+    // ⚠️ ชี้ปุ่มปลายทางที่ใบนี้มีจริง (ร่างที่ไม่เคยยื่น = ลบร่าง · นอกนั้น = ยกเลิก) — มติ 23/09/2569
+    return { error: lineRemovedBlock(document, latest), status: 400 };
   }
   return { line: data };
 }
@@ -262,7 +270,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   /* ยื่น: ถ่ายภาพนิ่งใหม่ทุกครั้ง (ยื่นใหม่หลังตีกลับก็ถ่ายใหม่) — สเปค + checklist + สินค้า +
      บรรทัด SO + รูป · อนุมัติของที่ไม่มีภาพนิ่ง = ลายเซ็นที่ไม่รู้ว่ารับรองอะไร */
   if (action === 'submit') {
-    const lineRes = await loadDocumentLine(supabase, document);
+    const lineRes = await loadDocumentLine(supabase, document, latest);
     if (lineRes.error) return fail(lineRes.error, lineRes.status || 500);
     const snap = await buildDocumentSnapshot(supabase, {
       productId: document.productId, order: salesOrder, line: lineRes.line, dealOwner, now,
@@ -443,6 +451,16 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       summary: `delete ${document.docNo} ${revLabel} ไม่สำเร็จ — แถวยังอยู่: ${removed.error}`,
       request: req,
     });
+    /* 🔴 ไม่ให้เกิดทางตัน (มติ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง" ถอดปุ่มยกเลิกที่เคยเป็นทางหนีของร่าง)
+       RPC ปฏิเสธ = ปกติคือมีคนยื่นแทรก ⇒ อ่านใบใหม่แล้วปุ่มกลายเป็น "ยกเลิก" ข้อความของ RPC ("ใช้ยกเลิกเอกสารแทน") ถูก
+       · แต่ถ้าอ่านใหม่แล้ว **ยังเป็นร่างที่ลบได้ในสายตาแอป** = ตัวตัดสินกับ RPC เห็นไม่ตรงกัน ⇒ ส่งต่อข้อความของ RPC
+         คือส่งคนไปหาปุ่มยกเลิกที่ไม่มี (และ PATCH void จะตอบกลับว่า "ใช้ลบร่าง") ⇒ ตอบให้แจ้งผู้ดูแลแทน */
+    if (removed.conflict) {
+      const again = await loadVisibleDocument(supabase, id, user, 'edit');
+      if (!again.response && documentExitKey(again.document, again.latest) === 'remove') {
+        return conflict(DRAFT_EXIT_MISMATCH);
+      }
+    }
     return fail(removed.error, removed.status || 500);
   }
 

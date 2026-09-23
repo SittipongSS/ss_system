@@ -29,7 +29,7 @@ export default function FilingsPage() {
   const router = useRouter();
   const canAct = useCan("sales:act");       // SA: create / receive / edit
 
-  const { data: orders, loading, error: loadError, reload } = useApiList("/api/orders");
+  const { data: orders, loading, error: loadError, errorDetail: loadErrorDetail, reload } = useApiList("/api/orders");
 
   /* เลนของผู้ใช้ (SA / RA) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
      AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
@@ -232,6 +232,7 @@ export default function FilingsPage() {
         <StatusNotice
           tone="error"
           className="mb-4"
+          detail={loadErrorDetail}
           action={<Button size="sm" variant="ghost" onClick={() => reload()}>ลองใหม่</Button>}
         >
           {loadError}
