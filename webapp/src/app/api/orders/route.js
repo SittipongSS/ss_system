@@ -14,10 +14,18 @@ export const dynamic = 'force-dynamic';
 // command center): เลือกเฉพาะคอลัมน์ที่ใช้จริง + นับจำนวนรายการแทนการฝัง
 // order_items ทั้งแถวพร้อม master product เต็มตัว และไม่ join registrations เลย.
 // โหมดเต็ม (ไม่ส่ง param) พฤติกรรมเดิมทุกประการ.
-// ⚠️ `updatedAt` อยู่ในชุดนี้เพราะคิวงานบนหน้าภาพรวมคิด "ค้างมากี่วัน" จากจุดที่
-// สถานะปัจจุบันเริ่ม ไม่ใช่วันเปิดใบ (ใบที่แก้แล้วส่งกลับต้องนับรอบล่าสุด)
+// 🐞 **ห้ามใส่ `updatedAt` กลับมา — `orders` ไม่มีคอลัมน์นี้** (ไม่เคยมี ไม่มี migration ไหนเพิ่ม)
+// #1486 (28/08) ใส่ไว้เพราะคิวงานอยากคิด "ค้างมากี่วัน" จากจุดที่สถานะปัจจุบันเริ่ม แต่ผลคือ
+// PostgREST ตอบ 42703 **ทั้ง query** ⇒ route นี้ตอบ 500 ⇒ `useApiList` เก็บข้อความไว้ใน
+// `error` แล้วคง `data` เป็น `[]` ตามค่าตั้งต้น ⇒ **`/tax` ไม่ได้อ่าน `error` เลยสักบรรทัด**
+// ⇒ คิวใบยื่นว่างเปล่าอยู่ 26 วันโดยไม่มีอะไรบอกผู้ใช้ว่าโหลดไม่สำเร็จ
+// (จอไหนที่ทิ้ง `error` ของ `useApiList` ก็เป็นแบบนี้ได้ทั้งนั้น — ไม่ใช่เรื่องของ route นี้เอง)
+// ⇒ อายุของใบยื่นจึงนับจาก `createdAt` (ทางถอยของ `ageAnchor` ใน lib/tax/registrationQueue)
+// จะนับรอบล่าสุดได้ต้องมีคอลัมน์จริงก่อน — เรื่องของ migration ไม่ใช่ของ select
+// ตั้งแต่ 2026-09-23 ด่าน `npm run check:columns` แกะค่าคงที่แบบนี้ได้แล้ว ⇒ ใส่กลับมา
+// เมื่อไรด่านแดงทันที ไม่ต้องรอให้ใครไปเปิดหน้า /tax แล้วเห็นคิวว่าง
 const ORDER_SELECT_SLIM =
-  'id, status, createdAt, updatedAt, totalTax, quotationRef, customerName, rejectionReason, team, items:order_items(count)';
+  'id, status, createdAt, totalTax, quotationRef, customerName, rejectionReason, team, items:order_items(count)';
 
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
