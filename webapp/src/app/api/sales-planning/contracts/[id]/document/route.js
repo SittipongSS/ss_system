@@ -2,7 +2,7 @@ import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { loadScoped } from '@/lib/scopedRow';
 import { withUser, fail, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
-import { buildContractHTML } from '@/lib/sales/contractDocument';
+import { buildContractHTML, withCurrentHeaderRows } from '@/lib/sales/contractDocument';
 import { EXTERNAL_NO_DOCUMENT_NOTE, isExternalContract } from '@/lib/sales/contracts';
 import { hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
 import { loadContractQuotation } from '@/lib/sales/contractQuotationSource';
@@ -32,7 +32,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (isExternalContract(contract)) return fail(EXTERNAL_NO_DOCUMENT_NOTE, 409);
   if (!hasContractTemplate(contract.kind)) return fail(MISSING_TEMPLATE_NOTE, 409);
 
-  let html = contract.issuedHtml || null;
+  // ใบที่ตรึงก่อนแก้หัวใบได้กติกาแถวเลขที่รุ่นปัจจุบันเติมตอนเสิร์ฟ (ไม่เขียนกลับ — ดูที่ฟังก์ชัน)
+  let html = withCurrentHeaderRows(contract.issuedHtml) || null;
   if (!html) {
     const company = await getPublishedCompanyProfile(supabase);
     /* 🐞 **ร่างเคยพิมพ์คนละเนื้อกับฉบับจริง** — ที่นี่ส่งแค่ `{ quoteNumber }` ⇒ ตาราง

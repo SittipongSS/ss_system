@@ -126,7 +126,8 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
     // คือคนละใบ ต้องอ่านออกจากหัวใบว่าใบที่ถืออยู่กรองอะไรมา
     rows: [
       meta.from || meta.to ? { label: 'ช่วงวันที่', value: `${meta.from || '...'} – ${meta.to || '...'}` } : null,
-      meta.customerName ? { label: 'ลูกค้า', value: meta.customerName } : null,
+      // ชื่อลูกค้ายาวได้เกินคอลัมน์ ⇒ แถวเดียวของหัวใบที่ยอมให้ตัดบรรทัด (ไม่ใช่เลขที่)
+      meta.customerName ? { label: 'ลูกค้า', value: meta.customerName, wrap: true } : null,
       { label: 'พิมพ์เมื่อ', value: printedAt },
     ],
   });

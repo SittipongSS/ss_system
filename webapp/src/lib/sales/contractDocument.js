@@ -226,6 +226,38 @@ function signatureGrid(template, values) {
           <section class="signGrid" aria-label="ส่วนลงนาม">${template.signatures.map(box).join('')}</section>`;
 }
 
+/* ป้ายในหัวใบยาวกว่าคอลัมน์ 22mm ของเปลือก ("อ้างอิงใบเสนอราคา") ⇒ ล้นไปดันค่า
+   ให้เยื้องกันคนละแถว · กว้างพอให้ป้ายอยู่บรรทัดเดียว แล้วค่าชิดขวาตรงกันทุกแถว
+   🐞 **เคยตั้งตายเป็น 36mm แล้วเลขที่สัญญาตกบรรทัด** (ผู้ใช้ส่งภาพมา 2026-09-03:
+      "CT-SD-" ค้างบรรทัดบน "26090003-0" ตกลงไปบรรทัดล่าง) — เลขยาวขึ้นตอนแทรก
+      อักษรย่อชนิดสัญญา (CT-YYMMXXXX-R → CT-SD-YYMMXXXX-R) แต่คอลัมน์ป้ายยัง
+      กินที่ 36mm ทั้งที่ป้ายที่ยาวที่สุดใช้จริงแค่ 19.3mm ⇒ เหลือให้ค่า 21mm
+      ซึ่งไม่พอกับเลข 26mm
+   ⇒ ป้ายกินเท่าที่ใช้จริง (max-content) แล้วที่เหลือเป็นของค่าเสมอ
+   ⚠️ nowrap ทั้งสองฝั่ง — เลขที่เอกสารที่ถูกตัดกลางคืออ่านผิดได้ (คนละใบ)
+   ⚠️ กริดต้องอยู่ที่ dl ไม่ใช่รายแถว — รายแถวต่างคนต่างวัด ป้ายจะกว้างไม่เท่ากัน
+   แล้วขอบขวาของป้ายเป็นขั้นบันได · display: contents ยกให้ dt/dd เป็นลูกของ dl ตรง ๆ
+   ⇒ คอลัมน์ป้ายเป็นตัวเดียวกันทุกแถว กว้างเท่าป้ายที่ยาวที่สุด
+   ⭐ แยกเป็นก้อนของตัวเองเพราะใบที่ออกก่อนแก้ต้องได้ก้อนนี้ตอนเปิดด้วย
+      (ดู withCurrentHeaderRows) */
+const CONTRACT_HEADER_ROWS_CSS = `
+  .contract .identityBlock dl { display: grid; grid-template-columns: max-content minmax(0, 1fr);
+    gap: .8mm 2mm; }
+  .contract .identityBlock dl div { display: contents; }
+  .contract .identityBlock dt { white-space: nowrap; }
+  .contract .identityBlock dd { text-align: right; white-space: nowrap; }`;
+
+/* 🐞 **ใบที่ออกก่อน 03/09/2569 (#1596) เลขที่ยังตกบรรทัด** (ผู้ใช้ส่งภาพ CT-SD-26080001-0
+   มา 23/09) — ใบที่ออกเลขแล้วเสิร์ฟ `issuedHtml` ที่ตรึงไว้ตอนออก ซึ่งฝัง CSS รุ่นคอลัมน์
+   ป้าย 36mm มาด้วย · แก้ CSS ต้นทางจึงไม่ถึงใบเหล่านี้ (ตอนนั้น 4 ใบ)
+   ⇒ เติมกติกาแถวหัวใบรุ่นปัจจุบันต่อท้าย <head> ตอนเสิร์ฟ — ถ้อยคำที่ตรึงไว้ไม่ถูกแตะ
+      แตะแค่การจัดวางแถวเลขที่/วันที่ · ไม่เขียนกลับลงฐาน (ฉบับตรึงยังเป็นของเดิมทุกไบต์)
+   ใบที่มีก้อนนี้อยู่แล้วคืนตามเดิม · ไม่มี </head> = ไม่ใช่กระดาษจากเปลือก คืนตามเดิม */
+export function withCurrentHeaderRows(html) {
+  if (!html || html.includes(CONTRACT_HEADER_ROWS_CSS) || !html.includes('</head>')) return html;
+  return html.replace('</head>', `<style>${CONTRACT_HEADER_ROWS_CSS}\n</style>\n</head>`);
+}
+
 export const CONTRACT_CSS = `
   /* ── สายเนื้อหาก่อนถูกตัดหน้า ────────────────────────────────────────
      เห็นครบทั้งฉบับแม้สคริปต์ไม่ทำงาน (แผ่นยืดตามเนื้อ ไม่ครอบตัด) */
@@ -256,23 +288,7 @@ export const CONTRACT_CSS = `
   .contract .brandBlock span { display: none; }
   /* ชื่อเอกสารอยู่กลางหน้าเนื้อหาแทน — ซ่อนของเปลือกทิ้ง (เปลือกพิมพ์ช่องนี้เสมอ) */
   .contract .identityBlock h1, .contract .englishTitle { display: none; }
-  /* ป้ายในหัวใบยาวกว่าคอลัมน์ 22mm ของเปลือก ("อ้างอิงใบเสนอราคา") ⇒ ล้นไปดันค่า
-     ให้เยื้องกันคนละแถว · กว้างพอให้ป้ายอยู่บรรทัดเดียว แล้วค่าชิดขวาตรงกันทุกแถว
-     🐞 **เคยตั้งตายเป็น 36mm แล้วเลขที่สัญญาตกบรรทัด** (ผู้ใช้ส่งภาพมา 2026-09-03:
-        "CT-SD-" ค้างบรรทัดบน "26090003-0" ตกลงไปบรรทัดล่าง) — เลขยาวขึ้นตอนแทรก
-        อักษรย่อชนิดสัญญา (CT-YYMMXXXX-R → CT-SD-YYMMXXXX-R) แต่คอลัมน์ป้ายยัง
-        กินที่ 36mm ทั้งที่ป้ายที่ยาวที่สุดใช้จริงแค่ 19.3mm ⇒ เหลือให้ค่า 21mm
-        ซึ่งไม่พอกับเลข 26mm
-     ⇒ ป้ายกินเท่าที่ใช้จริง (max-content) แล้วที่เหลือเป็นของค่าเสมอ
-     ⚠️ nowrap ทั้งสองฝั่ง — เลขที่เอกสารที่ถูกตัดกลางคืออ่านผิดได้ (คนละใบ) */
-  /* ⚠️ กริดต้องอยู่ที่ dl ไม่ใช่รายแถว — รายแถวต่างคนต่างวัด ป้ายจะกว้างไม่เท่ากัน
-     แล้วขอบขวาของป้ายเป็นขั้นบันได · display: contents ยกให้ dt/dd เป็นลูกของ dl ตรง ๆ
-     ⇒ คอลัมน์ป้ายเป็นตัวเดียวกันทุกแถว กว้างเท่าป้ายที่ยาวที่สุด */
-  .contract .identityBlock dl { display: grid; grid-template-columns: max-content minmax(0, 1fr);
-    gap: .8mm 2mm; }
-  .contract .identityBlock dl div { display: contents; }
-  .contract .identityBlock dt { white-space: nowrap; }
-  .contract .identityBlock dd { text-align: right; white-space: nowrap; }
+  ${CONTRACT_HEADER_ROWS_CSS}
   /* เลขที่สัญญา = ตัวชี้ใบนี้ ⇒ ใช้สี accent ให้กวาดตาเจอก่อนอย่างอื่นบนหัวใบ
      (แถวแรกเสมอ — ลำดับแถวประกาศอยู่ที่ rows ของ documentHeader ด้านล่าง) */
   .contract .identityBlock dl div:first-child dd { color: var(--doc-accent); }
