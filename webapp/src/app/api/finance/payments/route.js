@@ -120,7 +120,7 @@ async function loadLedger(supabase, todayIso) {
   const quoteById = new Map();
   if (quoteIds.length) {
     const { data: quotes, error: quoteError } = await fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
-      .from('quotations').select('id, "quoteNumber", "paymentPlan"').in('id', chunk).order('id', { ascending: true })));
+      .from('quotations').select('id, "quoteNumber", "paymentPlan", status').in('id', chunk).order('id', { ascending: true })));
     if (quoteError) throw quoteError;
     (quotes || []).forEach((q) => quoteById.set(q.id, q));
   }

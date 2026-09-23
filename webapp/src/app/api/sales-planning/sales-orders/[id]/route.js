@@ -28,6 +28,7 @@ import {
   isValidReversalTarget,
   salesOrderActionNeedsEditScope,
   salesOrderCancelNeedsReviewer,
+  salesOrderRestoreBlock,
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
@@ -201,7 +202,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   if (error) throw error;
   if (!order) return null;
 
-  const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }, { data: customer }] = await Promise.all([
+  const [{ data: deal }, { data: quotation, error: quotationError }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }, { data: customer }] = await Promise.all([
     /* `line` = สายธุรกิจ (PRODUCT|SERVICE|null) — หน้าใบใช้ตัดสินว่าเป็น "ใบมีรอบบริการ"
        ไหม (มติ 2026-08-30: สาย SERVICE + มีบรรทัดหมวด 02-001 ≥1) ผ่าน `orderHasServiceRounds`
        ⚠️ ตัวจริงของค่าอยู่ที่โครงการ ดีลเป็นสำเนาที่ใช้ตอนยังไม่มีโครงการ — ต้องดึงทั้งคู่
@@ -240,6 +241,9 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
       : Promise.resolve({ data: null }),
   ]);
   if (signatureEvidenceError) throw signatureEvidenceError;
+  /* ⚠️ อ่าน QT พลาด ≠ ใบไม่มี QT (review R1) — เดิมกลืน error ⇒ quotation = null แล้วด่านที่พึ่งสถานะ QT
+     (ยื่นอนุมัติ · กู้คืน `salesOrderRestoreBlock` · ล็อกงวดของร่างที่ QT ตาย) ตอบผิดเหตุ ฟังเหมือนถาวร */
+  if (quotationError) throw quotationError;
   const { data: revisionHistory, error: revisionHistoryError } = await supabase
     .from('sales_orders')
     .select('id, orderNumber, revisionNo, status, orderDate, createdAt')
@@ -1385,6 +1389,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     } catch (error) { return fail(`ตรวจเงินของใบไม่สำเร็จ: ${error.message} — ยังไม่ได้คืนสถานะ`, 500); }
     const moneyBlock = cancelledMoneyRestoreBlock(moneyRows, carriedAway);
     if (moneyBlock) return fail(moneyBlock, 409);
+    /* ⛔ QT ต้องยัง Won และไม่มีใบอื่นของ QT เดียวกันที่ยังใช้งาน (`salesOrderRestoreBlock`)
+       🐞 SO-26080039-0: กู้คืนหลัง QT-26080037-4 ถูกถอด Won/ออก QT-5 แล้ว ⇒ ร่างที่ยื่นไม่ได้ตลอดไปแต่ยังรับรองเงินได้
+         แล้ว SO-26080043-0 ออกจาก QT-5 ⇒ ดีลเดียวสอง SO · สลิปเดียวรับรองสองใบ
+       ⚠️ อ่านใบพี่น้องสด + เช็ก error (อ่านไม่ขึ้น ≠ ไม่มีใบซ้ำ) · limit กันแถวไม่จำกัด (ของจริงมีได้ไม่กี่ใบต่อ QT) */
+    const { data: siblings, error: siblingError } = await supabase.from('sales_orders')
+      .select('id, "orderNumber", status, "supersededById"')
+      .eq('quotationId', before.quotationId)
+      .neq('id', id)
+      .limit(50);
+    if (siblingError) return fail(`ตรวจใบสั่งขายอื่นของใบเสนอราคานี้ไม่สำเร็จ: ${siblingError.message} — ยังไม่ได้คืนสถานะ`, 500);
+    // `before.quotation` มาจาก loadOrder ซึ่งโยน error เมื่ออ่าน QT พลาด (review R1) ⇒ null ตรงนี้ = ไม่มี QT จริง
+    const restoreBlock = salesOrderRestoreBlock(before, siblings);
+    if (restoreBlock) return fail(restoreBlock, 409);
     // คืนเป็น draft สะอาด: ล้างทั้งฟิลด์ยกเลิก/อนุมัติ และ submitted*/rejected* ที่ค้าง
     // (เดิมเหลือ rejectionReason → หน้ารายละเอียดโชว์ป้าย "ตีกลับ" บน draft ใหม่)
     const patch = {
