@@ -6,13 +6,16 @@
 //
 // ⭐ **หนึ่งโมดัล สองทางเรียก** ตามกฎของโปรเจกต์ (AGENTS.md "ปุ่มแก้ไขต้องเปิดฟอร์ม
 // ตัวเดียวกับตอนสร้าง") — เขียนสองชุดเมื่อไรมันเพี้ยนหากันเสมอ และที่นี่เจ็บเป็นพิเศษ
-// เพราะเป็นการรับรองว่า **เงินเข้าจริง** ซึ่งถอนคืนไม่ได้
+// เพราะเป็นการรับรองว่า **เงินเข้าจริง** — ถอยได้ทางเดียวคือบัญชี "ถอนคำรับรอง" พร้อมเหตุผล
+// (action `unconfirm` · มติผู้ใช้ 2026-08-13) ไม่ใช่กดผิดแล้วแก้เองได้
 //
 // ⭐ **โชว์หลักฐานก่อนให้กด** — ความเสี่ยงที่ยกไว้ตอนตัดสินใจย้ายคิวขึ้นมาคือ
 // *"คนกดคอนเฟิร์มจะมองไม่เห็นหลักฐานที่แนบมากับงวดซึ่งอยู่บนใบ"* · โมดัลนี้คือคำตอบ
 // ⇒ การ์ดบนใบ SO ก็ได้ประโยชน์ด้วย เดิมมันถามยืนยันโดยไม่โชว์อะไรเลย
 //
 // ⚠️ ข้อความ/คำเตือนมาจาก `paymentConfirmPrompt` ตัวเดียวกับทั้งระบบ — ห้ามเขียนคำเอง
+//    ประกอบผ่าน `installmentConfirmPrompt` (export ข้างล่าง) — โมดัลแจ้งชำระของแผงงวดเรียกตัวเดียวกัน
+//    ตอนบัญชีกด "บันทึกการรับชำระ" (แจ้ง+รับรองในก้าวเดียว) ⇒ ผลลัพธ์ที่บอกก่อนกดเป็นชุดเดียวกันทั้งสองทาง
 //
 // ⭐ **ใบสั่งขายย้อนหลัง (มติ 22/09 · mock FnConfirm + REVISION 2)** — โมดัลตัวเดิม ไม่ใช่โมดัลที่สอง
 //   ต่างแค่ "โหมด" ผ่าน props: ผลลัพธ์ชุดของใบย้อนหลัง (ไม่มีบรรทัด Rev./Actual · จ่ายถึง · งวดถัดไป) และแถวที่
@@ -30,6 +33,32 @@ import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
 import styles from "./InstallmentConfirmDialog.module.css";
 
 /**
+ * ข้อความของการรับรองงวดนี้ — ตัวเดียวที่ทั้งโมดัลรับรองและโมดัล "บันทึกการรับชำระ" ของบัญชี (แผงงวด) ใช้
+ * @param row        งวดที่จะรับรอง (`seq` · `label` · `amount` · `coversTo`)
+ * @param multi      true = ใบนี้แบ่งหลายงวด ⇒ ชื่องวดเป็น "งวดที่ n"
+ * @param historical งวดของใบสั่งขายย้อนหลัง · @param opening งวดยกมา (ตั้งต้นอ่านจากแถว)
+ * @param outlook    ภาพหลังรับรองจาก `installmentConfirmOutlook` (ไม่ส่ง = ถอยไปใช้ช่วงครอบของแถวนี้)
+ */
+export function installmentConfirmPrompt({
+  row, multi = false, historical = false, opening = isOpeningInstallment(row), outlook = null,
+} = {}) {
+  const label = opening ? OPENING_INSTALLMENT_LABEL : multi ? `งวดที่ ${row?.seq}` : (row?.label || "ชำระเต็มจำนวน");
+  /* "จ่ายถึง" หลังรับรอง — ไม่มีภาพจากงวดทั้งใบก็ถอยไปปลายช่วงครอบของงวดนี้ (ค่าปกติของมันอยู่แล้ว) */
+  const through = outlook?.paidThrough || row?.coversTo || null;
+  const next = outlook?.next || null;
+  return paymentConfirmPrompt({
+    label,
+    amount: fmtMoney(row?.amount),
+    historical,
+    opening,
+    paidThroughLabel: through ? fmtDate(through) : null,
+    nextInstallmentLabel: next
+      ? [next.label, fmtMoney(next.amount), next.dueDate ? `ครบกำหนด ${fmtDate(next.dueDate)}` : ""].filter(Boolean).join(" ")
+      : null,
+  });
+}
+
+/**
  * @param row        งวดที่จะรับรอง — ต้องมี `id` · `seq` · `label` · `amount` และควรมี
  *                   `paidOn` · `reportedByName` · `evidence[{index,fileName}]` · `kind` · `note`
  * @param order      ใบต้นทางเท่าที่มี — `id` (ใช้ทำลิงก์ไฟล์) · `orderNumber` · `customerName`
@@ -45,20 +74,7 @@ export default function InstallmentConfirmDialog({
   historical = false, opening = isOpeningInstallment(row), outlook = null,
 }) {
   if (!open || !row) return null;
-  const label = opening ? OPENING_INSTALLMENT_LABEL : multi ? `งวดที่ ${row.seq}` : (row.label || "ชำระเต็มจำนวน");
-  /* "จ่ายถึง" หลังรับรอง — ไม่มีภาพจากงวดทั้งใบก็ถอยไปปลายช่วงครอบของงวดนี้ (ค่าปกติของมันอยู่แล้ว) */
-  const through = outlook?.paidThrough || row.coversTo || null;
-  const next = outlook?.next || null;
-  const prompt = paymentConfirmPrompt({
-    label,
-    amount: fmtMoney(row.amount),
-    historical,
-    opening,
-    paidThroughLabel: through ? fmtDate(through) : null,
-    nextInstallmentLabel: next
-      ? [next.label, fmtMoney(next.amount), next.dueDate ? `ครบกำหนด ${fmtDate(next.dueDate)}` : ""].filter(Boolean).join(" ")
-      : null,
-  });
+  const prompt = installmentConfirmPrompt({ row, multi, historical, opening, outlook });
   const orderTotal = order?.totalAmount ?? row.orderTotal ?? null;
   const collected = outlook ? outlook.collected : Number(row.amount) || 0;
   const invoiceRef = String(order?.historicalInvoiceRef || row.historicalInvoiceRef || "").trim();
@@ -125,8 +141,8 @@ export default function InstallmentConfirmDialog({
           <dt>ผู้แจ้ง</dt>
           <dd>{row.reportedByName || <span className="cell-quiet">{NA}</span>}</dd>
           {/* ⭐ ใบกำกับภาษี (mig 0348) — **อ่านอย่างเดียว ไม่มีช่องกรอก** (มติผู้ใช้ 2026-09-07)
-              บันทึกใบกำกับเป็นคนละคำสั่งกับการรับรองเงิน เพราะ `confirm` ถอนคืนยาก
-              ส่วนเลขพิมพ์ผิดได้ทุกวัน · ที่โชว์ตรงนี้เพราะคนกดควรรู้ว่างวดนี้ออกใบไปหรือยัง */}
+              บันทึกใบกำกับเป็นคนละคำสั่งกับการรับรองเงิน เพราะ `confirm` ถอยได้ทางเดียวคือบัญชีถอนคำรับรอง
+              พร้อมเหตุผล ส่วนเลขพิมพ์ผิดได้ทุกวัน · ที่โชว์ตรงนี้เพราะคนกดควรรู้ว่างวดนี้ออกใบไปหรือยัง */}
           <dt>ใบกำกับภาษี</dt>
           <dd>
             {/* งวดยกมา: ใบกำกับของเงินก้อนนี้ออกในระบบเดิมแล้ว — "ยังไม่ออกใบ" คือคำที่ชวนให้ออกซ้ำ (taxInvoicePending) */}

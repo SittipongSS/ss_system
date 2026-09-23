@@ -34,6 +34,21 @@ export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
 /* ป้ายของใบสั่งขายย้อนหลังบนแถวคิว/ทะเบียน (มติ 22/09) — จอกับชุดค้นใช้ค่าเดียวกัน (ตาเห็น = ต้องค้นเจอ) */
 export const LEDGER_HISTORICAL_TAG = 'ใบย้อนหลัง';
 
+/* ── ใบที่ตายแล้ว (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ────────────────────────────
+   ยกเลิก = ไม่มีงานให้เก็บเงินต่อ · ถูกออก Rev. ทับ = งวดเป็นของใบ Rev. แล้ว
+   🐞 ทะเบียนเคยไม่ดูสถานะใบเลย ⇒ วันที่ตรวจ (23/09) นับ "ค้างรับ" เทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว
+   ⭐ **งวดที่ยังไม่มีเงิน (pending/rejected) ของใบที่ตายแล้ว = โมฆะ** — ไม่ใช่ยอดค้างรับ ไม่ใช่เลยกำหนด
+   ⚠️ reported ยังอยู่ (บัญชีรับรอง/ตีกลับได้ — `pipelineInstallmentLock`) · confirmed ยังนับเป็นเงินที่เก็บได้
+     ⏭ PR3 แยกกลุ่ม "เงินค้างจากใบที่ยกเลิก" (stranded) + คืนเงิน/ยกเงินเข้าใบใหม่
+   ⚠️ ตัดที่ผู้เรียก (route) ก่อน `ledgerRow` — `ledgerRow` เป็นตัวจัดรูปแถว ไม่ใช่ตัวตัดสินว่าแถวไหนเข้าทะเบียน */
+const LEDGER_DEAD_ORDER_STATUSES = Object.freeze(['cancelled', 'revised']);
+const isLedgerDeadOrder = (order) => LEDGER_DEAD_ORDER_STATUSES.includes(order?.status);
+
+export function ledgerVoidInstallment(installment, order) {
+  if (!installment || !isLedgerDeadOrder(order)) return false;
+  return ['pending', 'rejected'].includes(installment.status || 'pending');
+}
+
 /**
  * แถวเดียวของทะเบียน — แบนราบพอที่ทั้งตารางและ Excel ใช้ได้โดยไม่ต้องไล่ join ต่อ
  *
@@ -76,6 +91,8 @@ export function ledgerRow({
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
     financeStatus: order.financeStatus || null,
+    /* ใบยกเลิก/ถูกออก Rev. ทับ (PR0) — แถวที่เหลือของใบแบบนี้คือเงินที่เข้าแล้วหรือรอบัญชีตรวจเท่านั้น */
+    orderDead: isLedgerDeadOrder(order),
     /* ⚠️ **ผู้ดูแล (AE) กับทีม อยู่ที่ "ดีล" ไม่ใช่ที่ใบ** — `sales_orders` ไม่มี
        สองคอลัมน์นี้ (เคยใส่ใน select แล้วได้ 500 ทั้งหน้า) ⇒ ต้อง join ดีลมาส่งเป็น
        `deal` · รับจากใบไว้ด้วยเผื่อผู้เรียกที่ประกอบ order มาเองแล้ว */
@@ -132,6 +149,9 @@ export function ledgerRow({
     taxInvoiceDate: installment.taxInvoiceDate || null,
     taxInvoiceFileName: installment.taxInvoiceFile?.fileName || '',
     hasTaxInvoiceFile: Boolean(installment.taxInvoiceFile?.storagePath),
+    /* ⭐ ตัวล็อกของ PATCH งวด (optimistic lock · PR0) — คิวบนทะเบียนส่งค่านี้ของแถวที่ตาเห็นกลับไปทุกคำสั่ง
+       ⚠️ whitelist: ลืมเติม = คำสั่งจากทะเบียนไม่มีตัวล็อก (เขียนทับงานของอีกหน้าต่างได้เงียบ ๆ) */
+    updatedAt: installment.updatedAt || null,
   };
 }
 

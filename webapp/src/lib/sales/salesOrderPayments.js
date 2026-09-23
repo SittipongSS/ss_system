@@ -152,13 +152,17 @@ export function installmentDisplayStatus(row) {
  * เกิดครั้งเดียวตอนอนุมัติ (`freezeInstallments`) ⇒ ไม่มี write-on-read
  *
  * ⚠️ จับคู่ด้วย `seq` — `dueDate`/`note`/สถานะเป็นของ SA ต้องรอดจากการทับเสมอ
+ *
+ * 🛑 **มีแถวตรึงยอดแล้วอย่างน้อยหนึ่งแถว = คืนรายการเดิมทั้งชุด** (PR0 · แผน so-payment-unlock-replan)
+ *   ชุดแบบนี้คือแผนจริงของใบแล้ว (งวดที่ยกมากับใบ Rev. · แผนที่ปรับหลังอนุมัติ) ไม่ใช่ร่างที่รอแผนของ QT
+ *   ⇒ ทับแถวร่างที่เหลือด้วยสัดส่วนของ QT เมื่อไร ยอดรวมทุกงวดไม่เท่ายอดใบทันที (จอโกหก ทั้งที่ฐานถูก)
+ *   ⚠️ กติกาเดียวกับ `freezeInstallments` ที่ไม่ทับยอดจาก QT เมื่อชุดนั้นมีแถวตรึงแล้ว
  */
 export function withLiveAmounts(rows = [], plan = null, total = 0) {
   const list = Array.isArray(rows) ? rows : [];
-  if (!list.length) return list;
+  if (!list.length || list.some(isInstallmentFrozen)) return list;
   const live = new Map(installmentsFromPaymentPlan(plan, total).map((r) => [r.seq, r]));
   return list.map((row) => {
-    if (isInstallmentFrozen(row)) return row;
     const fresh = live.get(row.seq);
     if (!fresh) return row;
     return { ...row, percent: fresh.percent, amount: fresh.amount, label: fresh.label };
@@ -383,9 +387,82 @@ export function openingCoverageEnd(order, rows) {
   return contractEnd || lastDayCoveredByOthers(rows) || null;
 }
 
+/* ── ล็อกทั้งใบของใบ pipeline (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ────────────────
+   🐞 **ที่มา: PATCH งวดของใบ pipeline ไม่เคยดูสถานะใบเลย** — SO-26080039-0 (ร่างที่ถูกกู้คืน) มีงวด 1 ถูก
+     รับรองด้วยสลิปใบเดียวกับ SO-26080043-0 ⇒ ทะเบียนบัญชีนับเงินก้อนเดียวสองครั้ง
+   ⭐ **ใบยกเลิก** — งวดที่ยังค้างอยู่เหลือแต่ทางของบัญชี (รับรอง/ตีกลับ/ถอนคำรับรอง/ใบกำกับของเงินที่เข้าแล้ว)
+     กับการดึงกลับของผู้แจ้ง · แจ้งงวดใหม่ · ตั้งวัน · ช่วงครอบ · ผูกคำร้อง = งานของใบที่ยังเดินอยู่ ⇒ บล็อก
+     ⚠️ allowlist ไม่ใช่ blocklist — คำสั่งใหม่ที่จะเพิ่มวันหน้าต้องถูกตัดสินใหม่ว่าใช้กับใบยกเลิกได้ไหม
+     ⏭ PR3 เพิ่ม refund/refund-clear/carry ในรายการนี้ (ยกเงินเข้าใบใหม่ · บันทึกคืนเงิน)
+   ⭐ **ใบที่ถูกออก Rev. ทับ** — งวดเป็นของใบ Rev. แล้ว ⇒ ทุกคำสั่งบล็อก พร้อมบอกเลขใบที่ต้องไปทำต่อ
+   ⭐ **สถานะอื่นคืน null** — รวม `approval_revoked` ระหว่างรอ Rev. (มติ D3: ไม่หยุดรับเงินเพราะกำลังแก้เอกสาร)
+   ⚠️ ใบย้อนหลังคืน null เสมอ — `historicalInstallmentLock` เป็นเจ้าของ (กติกาเดิมทุกข้อ)
+   ⚠️ ผู้เรียกสองฝั่งต้องต่อด้วยรูปเดียวกัน: `historicalInstallmentLock(order) || pipelineInstallmentLock(order, action)`
+     (route PATCH ของงวด · `gate` ของแผงงวด) ⇒ ปุ่มกับ API ตอบคำเดียวกัน
+   ⚠️ ไม่ส่ง `action` = ถามระดับใบ ("ใบนี้มีล็อกไหม") — แผงงวดใช้ขึ้นข้อความบอกเหตุที่ปุ่มหาย */
+const PIPELINE_CANCELLED_ACTIONS = Object.freeze(['confirm', 'reject', 'unconfirm', 'withdraw', 'tax-invoice', 'tax-invoice-clear']);
+export const PIPELINE_CANCELLED_LOCK = 'ใบยกเลิกแล้ว — งวดของใบนี้เหลือให้บัญชีรับรอง/ตีกลับ/ถอนคำรับรอง และผู้แจ้งดึงกลับการแจ้งเท่านั้น';
+
+/* เลขของใบ Rev. ที่มาแทน — อ่านจาก `revisionHistory` (ใบทั้งสายโซ่ของเลขฐานเดียวกัน) ที่ทั้ง route ของหน้าใบ
+   และ route ของงวดโหลดมารูปเดียวกัน ⇒ แผงกับ API ได้เลขเดียวกัน · หาไม่เจอ = คำกลาง (ห้ามหลุดเป็น "undefined") */
+function supersedingOrderLabel(order) {
+  const id = order?.supersededById;
+  const number = id && Array.isArray(order?.revisionHistory)
+    ? String(order.revisionHistory.find((r) => r?.id === id)?.orderNumber || '').trim()
+    : '';
+  return number ? ` ${number}` : 'ใบ Rev.';
+}
+
+export function pipelineInstallmentLock(order, action) {
+  if (!order || isHistoricalOrder(order)) return null;
+  if (order.status === 'revised') return `งวดของใบนี้ย้ายไป${supersedingOrderLabel(order)} แล้ว`;
+  if (order.status === 'cancelled') {
+    return action && PIPELINE_CANCELLED_ACTIONS.includes(action) ? null : PIPELINE_CANCELLED_LOCK;
+  }
+  return null;
+}
+
+/* ด่านของ POST "เริ่มติดตามการชำระ" — ปุ่มบนแผงกับ route ถามตัวเดียวกัน
+   ⭐ ใบ `revised` (PR0) — งวดของใบนี้ไปอยู่กับใบ Rev. แล้ว สร้างงวดชุดที่สองให้ใบเก่า = เงินก้อนเดียวมีสองแถว
+   ⚠️ ใบย้อนหลังถูกตีกลับก่อนถึงตัวนี้ (route) — งวดของมันมาจากฟอร์มคีย์ใบเท่านั้น */
+export function installmentStartBlock(order) {
+  if (order?.status === 'revised') return 'งวดของใบนี้ย้ายไปใบ Rev. แล้ว';
+  if (['cancelled', 'rejected'].includes(order?.status)) return 'ใบสั่งขายนี้ถูกยกเลิก/ตีกลับแล้ว — ไม่มีอะไรให้ติดตาม';
+  return null;
+}
+
+/* ── optimistic lock ของ PATCH งวด (PR0) ────────────────────────────────────────────────────
+   🐞 เดิม `updateInstallment` เขียนโดยไม่มีเงื่อนไข ⇒ สองหน้าต่างเขียนแถวเดียวกันพร้อมกัน ตัวที่มาทีหลังชนะเงียบ ๆ
+     (แจ้งชำระที่มาช้าเขียนทับแถวที่บัญชีเพิ่งตีกลับ · ถอนคำรับรองซ้อนการแก้ช่วงครอบ)
+   ⭐ จอส่ง `updatedAt` ของแถวที่ **ตาเห็น** มาด้วย ⇒ ต่างจากแถวสดตอน route อ่าน = 409 ก่อนแตะอะไร
+     แล้ว route ยังเขียนแบบมีเงื่อนไข `updatedAt` ของแถวที่อ่านมาอีกชั้น (กันช่วงระหว่างด่านกับการเขียน)
+   ⚠️ ไม่ส่งค่ามา (แท็บเก่าก่อน deploy) = ไม่ตัดสินข้อนี้ — ชั้นที่สองยังกันอยู่
+   ⚠️ เทียบสตริงก่อน แล้วค่อยเทียบเป็นเวลา — รูปแบบต่างกันแต่เวลาเดียวกันไม่ใช่ "เก่า" */
+export const INSTALLMENT_STALE_MESSAGE = 'งวดนี้เพิ่งถูกแก้จากอีกหน้าต่าง — โหลดใหม่';
+
+export function installmentStale(row, expectedUpdatedAt) {
+  const expected = String(expectedUpdatedAt ?? '').trim();
+  if (!expected) return false;
+  const actual = String(row?.updatedAt ?? '').trim();
+  if (expected === actual) return false;
+  const a = Date.parse(expected);
+  const b = Date.parse(actual);
+  return !(Number.isFinite(a) && Number.isFinite(b) && a === b);
+}
+
+/* คำบน toast หลัง "แจ้ง/บันทึกการชำระ" — ตามปลายทางจริงของแถว (installmentReportOutcome) ไม่ใช่ชื่อคำสั่ง
+   🐞 เดิมขึ้น "ส่งให้บัญชีตรวจแล้ว" ทุกครั้ง ทั้งที่บัญชีบันทึกเองจบที่ "ชำระแล้ว" และงวดร่างยังไม่ถึงบัญชีเลย */
+export function installmentReportDoneMessage(status) {
+  if (status === 'confirmed') return 'บันทึกการรับชำระแล้ว — งวดนี้ขึ้น “ชำระแล้ว” ทันที';
+  if (status === 'pending') return 'บันทึกการจ่ายไว้แล้ว — จะส่งให้บัญชีตรวจเองเมื่อใบสั่งขายอนุมัติ';
+  return 'ส่งให้บัญชีตรวจแล้ว';
+}
+
 export function installmentActionError(row, action, user, options = {}) {
-  /* ── ล็อกทั้งใบ (ผู้เรียกคำนวณมา · ตอนนี้ = historicalInstallmentLock) — ชนะทุกคำสั่ง ─────────
+  /* ── ล็อกทั้งใบ (ผู้เรียกคำนวณมา = `historicalInstallmentLock(order) || pipelineInstallmentLock(order, action)`)
+     — ชนะทุกคำสั่ง ─────────
      ใบสั่งขายย้อนหลังที่ยังไม่อนุมัติ: งวดยังไม่หยุดยอด บัญชียังไม่เห็น และทั้งชุดแก้ที่ฟอร์มคีย์ใบ
+     ใบ pipeline ที่ยกเลิก/ถูกออก Rev. ทับ (PR0): เหลือทางของบัญชี / บล็อกทุกคำสั่ง — รายคำสั่ง
      ⇒ ปุ่มบนแผงงวดกับ API ต้องตอบคำเดียวกันก่อนดูอะไรในแถว (ไม่งั้นได้ "ยังไม่มีการแจ้งชำระ" ที่ชี้ทางผิด) */
   if (options.orderLock) return options.orderLock;
   if (!row) return 'ไม่พบงวดที่ระบุ';

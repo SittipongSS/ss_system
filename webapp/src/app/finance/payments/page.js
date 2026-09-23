@@ -242,17 +242,26 @@ export default function FinancePaymentsPage() {
   const [actionError, setActionError] = useState("");
 
   /* ⭐ เรียก **API ตัวเดิมของใบ** — ด่านจริงคือ `installmentActionError` ใน route นั้น
-     ไม่สร้างเส้นเขียนที่สองให้ทะเบียน (ดูหัวไฟล์) */
+     ไม่สร้างเส้นเขียนที่สองให้ทะเบียน (ดูหัวไฟล์)
+     ⭐ optimistic lock (PR0) — ส่ง `updatedAt` ของแถวที่ตาเห็น · แถวถูกแก้จากอีกหน้าต่าง = 409 แล้วดึงทะเบียนสด
+       (โหมดเบื้องหลัง — ตารางไม่หายแล้วโผล่ใหม่) ⇒ โมดัลวาดแถวล่าสุด (`liveRow`) แล้วกดใหม่ได้ */
   const runAction = useCallback(async (row, action, extra = {}) => {
     setActing(true); setActionError("");
     try {
       const res = await apiFetch(`/api/sales-planning/sales-orders/${row.orderId}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ installmentId: row.id, action, ...extra }),
+        body: JSON.stringify({
+          installmentId: row.id, action, ...extra,
+          expectedUpdatedAt: row.updatedAt || undefined,
+        }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) { setActionError(body.error || "ดำเนินการไม่สำเร็จ"); return false; }
+      if (!res.ok) {
+        if (res.status === 409) load({ background: true });
+        setActionError(body.error || "ดำเนินการไม่สำเร็จ");
+        return false;
+      }
       await load();
       return true;
     } catch (runError) {
@@ -262,6 +271,12 @@ export default function FinancePaymentsPage() {
       setActing(false);
     }
   }, [load]);
+
+  /* แถวล่าสุดของทะเบียน — โมดัลจำแถวไว้ตอนเปิด แต่ต้องวาดและส่งแถวล่าสุดเสมอ (ตัวล็อกคือ updatedAt ของแถวที่ตาเห็น)
+     ⚠️ หาไม่เจอ (ตัวกรองตัดแถวนั้นออกหลังดึงสด) = ใช้สำเนาเดิม — API ตอบ 409 เองถ้ามันเก่า */
+  const liveRow = (row) => (row ? rows.find((r) => r.id === row.id) || row : null);
+  const confirmRow = liveRow(confirmFor);
+  const invoiceRow = liveRow(invoiceFor);
 
   const QUEUE_PREVIEW = 3;
   const queueShown = queueOpen ? queue : queue.slice(0, QUEUE_PREVIEW);
@@ -730,14 +745,14 @@ export default function FinancePaymentsPage() {
             (กรอง "รอบัญชีรับรอง" แล้วงวดถัดไป/งวดที่รับรองแล้วหลุด) */}
         <InstallmentConfirmDialog
           open={!!confirmFor}
-          row={confirmFor}
+          row={confirmRow}
           order={confirmFor ? {
             id: confirmFor.orderId, orderNumber: confirmFor.orderNumber, customerName: confirmFor.customerName,
             totalAmount: confirmFor.orderTotal, approvedByName: confirmFor.orderApprovedByName,
             approvedAt: confirmFor.orderApprovedAt, historicalInvoiceRef: confirmFor.historicalInvoiceRef,
           } : null}
           historical={isHistoricalOrder({ origin: confirmFor?.origin })}
-          outlook={confirmFor?.confirmOutlook || null}
+          outlook={confirmRow?.confirmOutlook || null}
           multi={Boolean(confirmFor && groups.find((g) => g.orderId === confirmFor.orderId)?.count > 1)}
           busy={acting}
           error={actionError}
@@ -749,17 +764,17 @@ export default function FinancePaymentsPage() {
             ⚠️ **แยกจากโมดัลรับรอง** โดยตั้งใจ (ดูหัวไฟล์ TaxInvoiceDialog) */}
         <TaxInvoiceDialog
           open={!!invoiceFor}
-          row={invoiceFor}
+          row={invoiceRow}
           order={invoiceFor ? { id: invoiceFor.orderId, orderNumber: invoiceFor.orderNumber, customerName: invoiceFor.customerName } : null}
           todayIso={todayIso}
           busy={acting}
           error={actionError}
           onClose={() => { setInvoiceFor(null); setActionError(""); }}
           onSubmit={async (values) => {
-            if (await runAction(invoiceFor, "tax-invoice", values)) setInvoiceFor(null);
+            if (await runAction(invoiceRow, "tax-invoice", values)) setInvoiceFor(null);
           }}
           onClear={async () => {
-            if (await runAction(invoiceFor, "tax-invoice-clear")) setInvoiceFor(null);
+            if (await runAction(invoiceRow, "tax-invoice-clear")) setInvoiceFor(null);
           }}
         />
 
@@ -776,7 +791,7 @@ export default function FinancePaymentsPage() {
           onChange={(reason) => setRejectFor((f) => ({ ...f, reason }))}
           onClose={() => { setRejectFor(null); setActionError(""); }}
           onConfirm={async () => {
-            if (await runAction(rejectFor.row, "reject", { reason: rejectFor.reason })) setRejectFor(null);
+            if (await runAction(liveRow(rejectFor.row), "reject", { reason: rejectFor.reason })) setRejectFor(null);
           }}
           confirmLabel="ยืนยันตีกลับ"
           placeholder={`ระบุเหตุผลอย่างน้อย ${MIN_REJECT_REASON} ตัวอักษร`}

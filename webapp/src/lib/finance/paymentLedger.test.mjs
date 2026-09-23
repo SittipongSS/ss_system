@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
-  groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir,
+  groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir, ledgerVoidInstallment,
   ledgerSummary, orderStateIndex, pendingConfirmations, pendingTaxInvoices, sortLedger,
   sortLedgerGroups, stampConfirmOutlook, stampOrderPaidThrough, undatedHiddenBy
 } from './paymentLedger.js';
@@ -830,4 +830,58 @@ test('⭐ ภาพหลังรับรองประทับจากง�
   assert.equal(all[1].confirmOutlook, undefined);
   assert.equal(all[2].confirmOutlook.collected, 15000);
   assert.equal(all[2].confirmOutlook.next, null);
+});
+
+/* ══ PR0 · งวดที่ยังไม่มีเงินของใบที่ตายแล้ว = โมฆะ ไม่ใช่ยอดค้างรับ (แผน so-payment-unlock-replan) ══════
+   🐞 ทะเบียนเคยไม่ดูสถานะใบเลย ⇒ วันที่ตรวจ (23/09) นับยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว
+   ⭐ ตัดเฉพาะ pending/rejected ของใบ cancelled/revised — reported ยังอยู่ในคิวบัญชี (บัญชีรับรอง/ตีกลับได้ ·
+     pipelineInstallmentLock) · confirmed ยังนับเป็นเงินที่เก็บได้ (PR3 จะแยกเป็น "เงินค้างจากใบที่ยกเลิก") */
+test('ledgerVoidInstallment: pending/rejected ของใบยกเลิก/ถูกออก Rev. = โมฆะ · สถานะอื่นหรือใบที่ยังเดินไม่ตัด', () => {
+  for (const status of ['cancelled', 'revised']) {
+    for (const row of ['pending', 'rejected', undefined]) {
+      assert.equal(ledgerVoidInstallment({ status: row }, { status }), true, `${status}/${row}`);
+    }
+    for (const row of ['reported', 'confirmed']) {
+      assert.equal(ledgerVoidInstallment({ status: row }, { status }), false, `${status}/${row}`);
+    }
+  }
+  for (const status of ['approved', 'approval_revoked', 'draft', 'pending_approval', 'rejected']) {
+    for (const row of ['pending', 'rejected', 'reported', 'confirmed']) {
+      assert.equal(ledgerVoidInstallment({ status: row }, { status }), false, `${status}/${row}`);
+    }
+  }
+  assert.equal(ledgerVoidInstallment(null, { status: 'cancelled' }), false);
+  assert.equal(ledgerVoidInstallment({ status: 'pending' }, null), false);
+});
+
+test('แถว pending/rejected ของใบยกเลิก/ถูกออก Rev. ไม่นับในยอดค้างรับและเลยกำหนด · แถวที่มีเงินยังอยู่', () => {
+  const PAST = '2026-08-01';
+  const raw = [
+    [{ id: 'd1', seq: 1, amount: 100, status: 'pending', dueDate: PAST }, { id: 'SOR-D', status: 'cancelled' }],
+    [{ id: 'd2', seq: 2, amount: 200, status: 'rejected', dueDate: PAST }, { id: 'SOR-D', status: 'cancelled' }],
+    [{ id: 'd3', seq: 1, amount: 300, status: 'pending', dueDate: PAST }, { id: 'SOR-R', status: 'revised' }],
+    [{ id: 'd4', seq: 3, amount: 400, status: 'reported', dueDate: PAST }, { id: 'SOR-D', status: 'cancelled' }],
+    [{ id: 'live', seq: 1, amount: 1000, status: 'pending', dueDate: PAST }, { id: 'SOR-A', status: 'approved' }],
+  ];
+  const rows = raw
+    .filter(([installment, order]) => !ledgerVoidInstallment(installment, order))
+    .map(([installment, order]) => ledgerRow({ installment, order, todayIso: TODAY }));
+  assert.deepEqual(rows.map((r) => r.id), ['d4', 'live']);
+  const summary = ledgerSummary(rows);
+  assert.equal(summary.outstandingAmount, 1400, 'เหลือแค่เงินที่รอบัญชีตรวจของใบยกเลิก + งวดของใบที่ยังเดิน');
+  assert.equal(summary.overdueAmount, 1400);
+  assert.equal(summary.awaitingAmount, 400, 'สลิปรอบัญชีตรวจของใบยกเลิกยังอยู่ในคิว');
+  // ธงระดับใบบนแถว — จอ/Excel แยกใบที่ตายแล้วออกได้โดยไม่ต้องเดา literal ของสถานะ
+  assert.equal(rows[0].orderDead, true);
+  assert.equal(rows[1].orderDead, false);
+  assert.equal(ledgerRow({ installment: { id: 'x' }, order: { id: 'o', status: 'revised' } }).orderDead, true);
+  assert.equal(ledgerRow({ installment: { id: 'x' }, order: { id: 'o', status: 'approval_revoked' } }).orderDead, false);
+});
+
+/* ⭐ PATCH งวดเป็น optimistic lock แล้ว (PR0) — คิวบนทะเบียนต้องส่ง updatedAt ของแถวที่ตาเห็นกลับไป
+   ⚠️ ledgerRow เป็น whitelist — ลืมเติมที่นี่ = ทุกคำสั่งจากทะเบียนไม่มีตัวล็อก (หรือ 409 ตลอดถ้าบังคับ) */
+test('ledgerRow พก updatedAt ของงวดมาด้วย (ตัวล็อกของ PATCH จากคิวบัญชี)', () => {
+  const r = ledgerRow({ installment: { id: 'i', updatedAt: '2026-09-23T03:00:00.123456+00:00' }, order: { id: 'o' } });
+  assert.equal(r.updatedAt, '2026-09-23T03:00:00.123456+00:00');
+  assert.equal(ledgerRow({ installment: { id: 'i' }, order: { id: 'o' } }).updatedAt, null);
 });

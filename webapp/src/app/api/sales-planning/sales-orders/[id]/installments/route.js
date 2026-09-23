@@ -12,13 +12,15 @@ import {
 import { notifyTaxInvoice } from '@/lib/sales/taxInvoiceNotify';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
-  installmentActionError, installmentReportOutcome, openingCoverageEnd, withLiveAmounts,
+  INSTALLMENT_STALE_MESSAGE, installmentActionError, installmentReportOutcome, installmentStale,
+  installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock, withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
 import {
   ensureInstallments, loadInstallment, loadInstallments, updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { historicalInstallmentLock, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,9 +101,23 @@ async function loadOrderForUser(supabase, user, id) {
     serviceContract = data || null;
   }
 
+  /* ⭐ ใบที่ถูกออก Rev. ทับ (PR0) — ล็อกทั้งใบต้องบอกเลขใบ Rev. ที่งวดย้ายไป ด้วยประโยคเดียวกับแผงงวดบนใบ
+     ⇒ อ่าน `revisionHistory` **รูปเดียวกับที่ route ของหน้าใบโหลดให้แผง** (ใบทั้งสายโซ่ของเลขฐานเดียวกัน)
+       แล้ว `pipelineInstallmentLock` หาเลขจากชุดนั้นทั้งสองฝั่ง · ยิงเฉพาะใบ revised (ใบอื่นไม่มี query เพิ่ม)
+     ⚠️ อ่านพลาดต้องดัง (supabase ไม่ throw เอง) — กลืนแล้วข้อความล็อกแค่ขาดเลข แต่ห้ามปิดเงียบเป็นนิสัย */
+  let revisionHistory = [];
+  if (order.status === 'revised' && order.supersededById) {
+    const { data, error: historyError } = await fetchAllResult(() => supabase
+      .from('sales_orders').select('id, "orderNumber"')
+      .eq('baseNumber', order.baseNumber || order.orderNumber)
+      .order('id', { ascending: true }));
+    if (historyError) throw historyError;
+    revisionHistory = data || [];
+  }
+
   return {
     order: {
-      ...order, quotation: quotation || null, deal, project, lines: lines || [], serviceContract,
+      ...order, quotation: quotation || null, deal, project, lines: lines || [], serviceContract, revisionHistory,
     },
   };
 }
@@ -146,10 +162,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
        ทับครั้งสุดท้ายตอนอนุมัติ · แถวที่สร้างตอนนี้ยังไม่ freeze ⇒ ยังแจ้งชำระไม่ได้
        และยังไม่เข้าทะเบียนของบัญชี · สิ่งที่ได้คือ **ช่องกำหนดชำระให้ SA กรอกตอนที่
        กำลังคุยเงื่อนไขกับลูกค้าอยู่พอดี** แทนที่จะต้องรอใบผ่านอนุมัติแล้วย้อนกลับมา
-       ⚠️ ใบที่ยกเลิกแล้วไม่ต้องมีอะไรให้ติดตาม */
-    if (['cancelled', 'rejected'].includes(order.status)) {
-      return badRequest('ใบสั่งขายนี้ถูกยกเลิก/ตีกลับแล้ว — ไม่มีอะไรให้ติดตาม');
-    }
+       ⚠️ ใบที่ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม · ใบที่ถูกออก Rev. ทับ (PR0) งวดไปอยู่กับใบ Rev. แล้ว —
+         สร้างชุดใหม่ให้ใบเก่า = เงินก้อนเดียวมีสองแถว · ปุ่มบนแผงถามตัวเดียวกัน (`installmentStartBlock`) */
+    const startBlock = installmentStartBlock(order);
+    if (startBlock) return badRequest(startBlock);
 
     const { rows, created } = await ensureInstallments(supabase, { order, user });
     if (!rows.length) return badRequest('ใบเสนอราคาต้นทางไม่มีแผนการชำระให้ยกมา');
@@ -190,6 +206,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     const row = await loadInstallment(supabase, installmentId);
     if (!row || row.salesOrderId !== order.id) return notFound('ไม่พบงวดในใบสั่งขายนี้');
+    /* ⭐ optimistic lock ชั้นแรก (PR0) — จอส่ง `updatedAt` ของแถวที่ **ตาเห็น** มา · ต่างจากแถวสด = คนกดตัดสินจาก
+       ของเก่า ⇒ 409 ก่อนด่าน (ด่านข้างล่างตัดสินจากแถวสด ซึ่งคนกดไม่เคยเห็น) · ไม่ส่งมา = ข้ามชั้นนี้ */
+    if (installmentStale(row, body.expectedUpdatedAt)) return fail(INSTALLMENT_STALE_MESSAGE, 409);
 
     const paidOn = body.paidOn || null;
     if (paidOn && !isDate(paidOn)) return badRequest('รูปแบบวันที่ชำระไม่ถูกต้อง');
@@ -214,13 +233,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
            sales_order_installments_opening_shape เป็น 500 ดิบ หรือทำลายช่วงบริการต่อเนื่องที่ AE Sup รับรองไว้)
          · `contractEnd` — ปลายช่วงที่งวดยกมาครอบได้ · **คิดด้วย `openingCoverageEnd` ตัวเดียวกับที่แผงงวด
            บนใบเรียก** ด้วยสัญญาที่ `loadOrderForUser` โหลดมาให้ ⇒ ปุ่มกับ API กั้นด้วยวันเดียวกันเสมอ
-           (ด่านไม่มีทางถอยของตัวเองแล้ว — ไม่ส่งค่านี้ = ไม่กั้นเลย) */
+           (ด่านไม่มีทางถอยของตัวเองแล้ว — ไม่ส่งค่านี้ = ไม่กั้นเลย)
+       ⭐ **ใบ pipeline (PR0)** — `orderLock` ต่อด้วย `pipelineInstallmentLock(order, action)` (รายคำสั่ง):
+         ใบยกเลิกเหลือทางของบัญชี + ดึงกลับ · ใบที่ถูกออก Rev. ทับบล็อกทุกคำสั่ง · สถานะอื่นไม่ล็อก (มติ D3)
+         🐞 SO-26080039-0: PATCH นี้เคยไม่ดูสถานะใบ pipeline เลย ⇒ เงินก้อนเดียวถูกรับรองบนสองใบ */
     const gate = installmentActionError(row, action, user, {
       paidOn, reason, billingRequestId, coversFrom, coversTo,
       taxInvoiceNo, taxInvoiceDate,
       rows: siblings, orderTotal: order.totalAmount,
       serviceRounds: orderHasServiceRounds(order, order.lines),
-      orderLock: historicalInstallmentLock(order),
+      orderLock: historicalInstallmentLock(order) || pipelineInstallmentLock(order, action),
       historical: isHistoricalOrder(order),
       contractEnd: openingCoverageEnd(order, siblings),
     });
@@ -372,15 +394,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     /* CHECK ของงวด (0245 · 0320 · 0374) ที่หลุดด่านข้างบนมา — แปลเป็นไทยผ่านตารางกลาง แทน 500 ภาษาอังกฤษของ Postgres
-       ⚠️ รหัสที่ตารางไม่รู้จักโยนต่อให้ catch ท้ายเราต์ตามเดิม (พฤติกรรมเดิมของ error อื่น) */
+       ⚠️ รหัสที่ตารางไม่รู้จักโยนต่อให้ catch ท้ายเราต์ตามเดิม (พฤติกรรมเดิมของ error อื่น)
+       ⭐ optimistic lock ชั้นสอง (PR0) — เขียนเฉพาะเมื่อแถวยังเป็นรุ่นที่ด่านข้างบนเพิ่งตัดสิน (`row.updatedAt`)
+         ⇒ อีกหน้าต่างเขียนแทรกระหว่างด่านกับการเขียน = ไม่มีแถวโดน = 409 (ไม่ลง audit · ไม่ยิงกระดิ่ง) */
     let updated;
     try {
-      updated = await updateInstallment(supabase, installmentId, patch);
+      updated = await updateInstallment(supabase, installmentId, patch, { expectedUpdatedAt: row.updatedAt });
     } catch (writeError) {
       const mapped = documentWorkflowError(writeError, { context: `installment ${action} ${installmentId}` });
       if (mapped.code) return fail(mapped.message, mapped.status);
       throw writeError;
     }
+    if (!updated) return fail(INSTALLMENT_STALE_MESSAGE, 409);
     /* สำเนาบนบรรทัดคำร้อง — เขียน **หลัง** ของหลักสำเร็จเสมอ และล้มเงียบได้
        (ของหลักเก็บแล้ว ถ้าโยน error ที่นี่ ผู้ใช้จะเห็น "บันทึกไม่สำเร็จ" ทั้งที่เก็บแล้ว) */
     if (action === 'tax-invoice' && patch.taxInvoiceItemId) {

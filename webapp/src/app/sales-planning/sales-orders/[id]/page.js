@@ -102,7 +102,7 @@ import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
-import { paymentRollup } from "@/lib/sales/salesOrderPayments";
+import { installmentReportDoneMessage, paymentRollup } from "@/lib/sales/salesOrderPayments";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
@@ -462,7 +462,9 @@ export default function SalesOrderDetailPage() {
   }
 
   /* ด่านของแต่ละคำสั่งอยู่ที่ `installmentActionError` ซึ่งการ์ดใช้ซ่อนปุ่มและ API ใช้ปฏิเสธ
-     ที่นี่จึงเหลือแค่ "อัปไฟล์ (ถ้ามี) แล้วยิง" — ไม่ตัดสินสิทธิ์ซ้ำ */
+     ที่นี่จึงเหลือแค่ "อัปไฟล์ (ถ้ามี) แล้วยิง" — ไม่ตัดสินสิทธิ์ซ้ำ
+     ⭐ optimistic lock (PR0) — ส่ง `updatedAt` ของแถวที่ตาเห็น (แผงส่งแถวล่าสุดของตารางมาเสมอ)
+       ⇒ แถวถูกแก้จากอีกหน้าต่าง = 409 แล้วดึงใบสดมา (`refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง) ให้กดใหม่ได้ */
   async function runInstallmentAction(row, action, options = {}) {
     setBusy(`installment-${action}`);
     setError("");
@@ -476,15 +478,23 @@ export default function SalesOrderDetailPage() {
       const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ installmentId: row.id, action, ...options, files: undefined, evidence }),
+        body: JSON.stringify({
+          installmentId: row.id, action, ...options, files: undefined, evidence,
+          expectedUpdatedAt: row.updatedAt || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setError(data.error || "อัปเดตงวดชำระไม่สำเร็จ"); return false; }
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "อัปเดตงวดชำระไม่สำเร็จ");
+        return false;
+      }
       setOrder((current) => ({ ...current, installments: data.installments || [] }));
       setToast({
         kind: action === "reject" ? "info" : "success",
         msg: {
-          report: "ส่งให้บัญชีตรวจแล้ว",
+          // ตามปลายทางจริงของแถว — บัญชีบันทึกเองจบที่ "ชำระแล้ว" · งวดร่างยังไม่ถึงบัญชี
+          report: installmentReportDoneMessage(data.installment?.status),
           withdraw: "ดึงกลับแล้ว",
           confirm: "บัญชีรับรองการชำระแล้ว",
           reject: "ตีกลับให้ฝ่ายขายแก้แล้ว",

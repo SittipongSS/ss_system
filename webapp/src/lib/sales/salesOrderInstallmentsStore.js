@@ -109,11 +109,21 @@ export async function ensureInstallments(supabase, { order, user, now = null, fr
  * ⇒ ใบที่มีงวดบันทึกเงินไว้ freeze ของเดิมตามที่เป็น แล้วปล่อยให้ธงเตือนแผนไม่ตรง
  * ค้างอยู่บนจอ ให้คนแก้เอง — ผิดแบบเห็นได้ ดีกว่าถูกแบบลบหลักฐานเงียบ ๆ
  *
- * ⚠️ **เส้นนี้แทบไปไม่ถึงอยู่แล้ว** — QT ที่ออก SO แล้วแก้ไม่ได้ (`accepted` ไม่อยู่ใน
- * `EDITABLE_STATUSES`) · `unaccept` ติด `sales_order_exists` ของ 0138 · SO ร่างแก้ได้แค่
- * `referenceDoc`/`notes` ⇒ เหลือทางเดียวคือ ยกเลิก SO → unaccept → แก้แผน → รับใบใหม่
- * → admin กด restore ใบที่ยกเลิก · เก็บด่านนี้ไว้เพราะราคาเท่ากับ `filter` หนึ่งบรรทัด
+ * ⚠️ **เส้น "จำนวนไม่ตรงแผน" แทบไปไม่ถึงอยู่แล้ว** — QT ที่ออก SO แล้วแก้ไม่ได้ (`accepted`
+ * ไม่อยู่ใน `EDITABLE_STATUSES`) · `unaccept` ติด `sales_order_exists` ของ 0138 · SO ร่างแก้ได้แค่
+ * `referenceDoc`/`notes`/เอกสารยืนยัน/กำหนดส่ง ⇒ เหลือทางเดียวคือ ยกเลิก SO → unaccept → แก้แผน
+ * → รับใบใหม่ → admin กด restore ใบที่ยกเลิก · เก็บด่านนี้ไว้เพราะราคาเท่ากับ `filter` หนึ่งบรรทัด
  * แต่ราคาของการพลาดคือหลักฐานการเงินของลูกค้าหายไปทั้งแถว
+ *
+ * 🛑 **ชุดที่มีแถวตรึงยอดแล้วอย่างน้อยหนึ่งแถว = แผนจริงของใบ ไม่ใช่ร่าง** (PR0 · แผน
+ *   so-payment-unlock-replan · มติเจ้าของ 23/09) — งวดที่ยกมากับใบ Rev. (PR1 ย้ายแถวไปทั้งแถว) และแผนที่
+ *   AE Sup ปรับหลังอนุมัติ (PR2) ตรึงยอดแล้วทั้งแถว ⇒ ตอนอนุมัติใบ:
+ *   · ห้ามเข้าเส้น "ลบแล้วตั้งใหม่" · ห้ามทับยอด/สัดส่วน/ป้ายจาก QT (หลักการ "Σ งวด = ยอดใบ" ถือโดยแผนนั้นเอง)
+ *   · ห้ามยืมสลิปของตอนยืนยันคำสั่งซื้อ — สลิปนั้นอยู่ในงวดที่ยกมาแล้ว ยืมซ้ำ = เงินก้อนเดียวสองแถว
+ *   · ประทับ `frozenAt` ให้แถวที่ยังไม่ตรึงเท่านั้น (งวดร่างที่บันทึกเงินไว้เองยังเข้าคิวบัญชีตามเดิม —
+ *     เป็นเงินของแถวนั้น ไม่ใช่การยืม)
+ *   · ยอดรวมไม่เท่ายอดใบ = `console.error` ดัง ๆ แต่ **ไม่แก้เอง** — ตัวเลขเงินที่ระบบเดาแก้ให้คือของที่
+ *     ไม่มีใครตรวจ
  *
  * ⚠️ **idempotent** — อนุมัติซ้ำ/กู้ธงที่ล้ม เรียกซ้ำได้ แถวที่ freeze แล้วไม่ถูกแตะ
  */
@@ -138,8 +148,10 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
      ⚠️ ต้องเป็น predicate แยก **ห้ามขยาย `installmentPrepaid`** — ตัวนั้นคุมสถานะบนจอ
      (`prepaid`) และตัวกรองลำดับงวดด้วย · งวดที่มีใบกำกับแต่ยังไม่มีวันจ่ายไม่ใช่ "จ่ายแล้ว" */
   const invoicedDraft = draft.filter((row) => !!row.taxInvoiceNo);
+  /* มีแถวตรึงแล้ว = แผนจริงของใบ (ดูหัวฟังก์ชัน) ⇒ ไม่มีวันเข้าเส้นตั้งใหม่ และไม่ทับอะไรจาก QT */
+  const anchored = existing.some(isInstallmentFrozen);
   if (draft.length && plan.length && draft.length !== plan.length
-    && !prepaidDraft.length && !invoicedDraft.length) {
+    && !prepaidDraft.length && !invoicedDraft.length && !anchored) {
     /* 🔴 **อุ้มของที่คนกรอกเองข้ามการตั้งใหม่** (แก้ 07/09/2026)
        🐞 เดิมลบแล้วสร้างจากแผนเปล่า ⇒ `coversFrom`/`coversTo` หายไปด้วย
          ⇒ `paidThrough` คืน null ⇒ ด่านเงินของ `visitGate` **บล็อกนัดช่างทุกโซนของไซต์**
@@ -186,6 +198,29 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
     return { rows: seeded.rows, frozen: !!seeded.rows.length };
   }
 
+  /* ชุดที่มีแถวตรึงแล้ว — ประทับ frozenAt ให้แถวที่ยังไม่ตรึง ไม่ทับยอด/ป้ายจาก QT ไม่ยืมสลิป (หัวฟังก์ชัน)
+     ⚠️ งวดร่างที่บันทึกเงินไว้เอง (`installmentPrepaid`) ยังเลื่อนเป็น `reported` ตามมติ 2026-08-19 —
+       เป็นเงินของแถวนั้นเอง · `reportedAt` ต้องมีค่า (CHECK `..._state_sane` ของ 0245) */
+  if (anchored) {
+    for (const row of draft) {
+      const prepaid = installmentPrepaid(row);
+      const { error } = await supabase.from(TABLE).update({
+        ...(prepaid ? { status: 'reported', reportedAt: row.reportedAt || stamp } : {}),
+        frozenAt: stamp,
+        updatedAt: stamp,
+      }).eq('id', row.id);
+      if (error) throw error;
+    }
+    const rows = await loadInstallments(supabase, order.id);
+    const sum = Math.round(rows.reduce((acc, r) => acc + (Number(r.amount) || 0), 0) * 100) / 100;
+    const total = Math.round((Number(order.totalAmount) || 0) * 100) / 100;
+    if (Math.abs(sum - total) >= 0.005) {
+      console.error('[freezeInstallments] ยอดรวมงวดไม่เท่ายอดใบ — ไม่แก้เอง ให้แอดมินตรวจ',
+        order.id, order.orderNumber || '', `งวดรวม ${sum}`, `ยอดใบ ${total}`);
+    }
+    return { rows, frozen: draft.length > 0 };
+  }
+
   /* จำนวนตรงกัน — ทับยอด/สัดส่วน/ป้ายรายแถว แล้วประทับ frozenAt
      ⭐ **ยืมเอกสารยืนยันคำสั่งซื้อตรงนี้ด้วย** — งวดร่างเป็น `pending` ล้วนเสมอ (CHECK ของ 0259)
      ⇒ ใบที่ SA กด "เริ่มติดตาม" ไว้ก่อน ต้องได้งวดแรกเป็น `reported` พร้อมสลิปจากตอน
@@ -229,14 +264,21 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
   return { rows: await loadInstallments(supabase, order.id), frozen: draft.length > 0 };
 }
 
-/** อัปเดตงวดเดียว — คืนแถวหลังอัปเดต */
-export async function updateInstallment(supabase, id, patch) {
-  const { data, error } = await supabase
+/**
+ * อัปเดตงวดเดียว — คืนแถวหลังอัปเดต
+ *
+ * ⭐ `expectedUpdatedAt` = optimistic lock (PR0) — เขียนเฉพาะเมื่อแถวยังเป็นรุ่นที่ผู้เรียกอ่านมา
+ *   ⇒ ไม่ตรง = **คืน `null` และไม่เขียนอะไร** (ผู้เรียกตอบ 409 `INSTALLMENT_STALE_MESSAGE`)
+ *   🐞 เดิมเขียนโดยไม่มีเงื่อนไข ⇒ สองหน้าต่างเขียนแถวเดียวกันพร้อมกัน ตัวที่มาทีหลังชนะเงียบ ๆ
+ * ⚠️ ไม่ส่ง = เขียนแบบเดิม (ผู้เรียกตอนออกใบที่เพิ่งสร้างแถวเอง ไม่มีใครแย่งเขียน)
+ */
+export async function updateInstallment(supabase, id, patch, { expectedUpdatedAt = null } = {}) {
+  let query = supabase
     .from(TABLE)
     .update({ ...patch, updatedAt: new Date().toISOString() })
-    .eq('id', id)
-    .select('*')
-    .maybeSingle();
+    .eq('id', id);
+  if (expectedUpdatedAt) query = query.eq('updatedAt', expectedUpdatedAt);
+  const { data, error } = await query.select('*').maybeSingle();
   if (error) throw error;
   return data;
 }

@@ -12,12 +12,17 @@ import {
   installmentDisplayStatus,
   installmentPlanDrift,
   installmentPrepaid,
+  installmentReportDoneMessage,
   installmentReportOutcome,
+  installmentStale,
+  installmentStartBlock,
   installmentsFromPaymentPlan,
+  INSTALLMENT_STALE_MESSAGE,
   isInstallmentFrozen,
   openingCoverageEnd,
   paymentNotRequired,
   paymentLockReason,
+  pipelineInstallmentLock,
   paymentRollup,
   salesOrderPaymentCell,
   salesOrderPaymentNote,
@@ -1013,4 +1018,120 @@ test('ภาพหลังรับรอง: งวดที่รับรอ
   // ไม่มีช่วงครอบเลย = จ่ายถึงยังว่าง (ไม่ใช่เดาเอง) · ไม่มีแถว = ค่าว่างที่ปลอดภัย
   assert.equal(installmentConfirmOutlook({ id: 'x', seq: 1, amount: 50 }, []).paidThrough, null);
   assert.deepEqual(installmentConfirmOutlook(null, rows), { paidThrough: null, collected: 0, next: null });
+});
+
+/* ══ PR0 · วางพื้นกันพัง (แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ══════════════════════
+   หลักการ "เงินหนึ่งก้อน = งวดหนึ่งแถว" — ก่อนปลดล็อกย้อน/Rev./ยกเลิก (PR1–PR3) ต้องมีพื้นสี่ข้อนี้:
+   ตัวทับยอดตามแผนไม่แตะชุดที่ตรึงแล้ว · ใบยกเลิก/ถูกออก Rev. ขยับงวดไม่ได้ (ยกเว้นทางของบัญชี) ·
+   POST ไม่สร้างงวดให้ใบที่ถูกแทนแล้ว · PATCH ไม่เขียนทับแถวที่เพิ่งถูกแก้จากอีกหน้าต่าง */
+
+// ── withLiveAmounts: ชุดที่มีแถวตรึงแล้วคือแผนจริง ไม่ใช่ร่าง ─────────────────────────────────
+test('withLiveAmounts: มีแถวตรึงยอดแล้วอย่างน้อยหนึ่งแถว = คืนรายการเดิมทั้งชุด (แถวร่างไม่ถูกทับยอดตาม QT)', () => {
+  const stored = [
+    frozen({ id: 'a', seq: 1, label: 'มัดจำ (ยกมา)', percent: 25, amount: 5000 }),
+    { id: 'b', seq: 2, label: 'งวดกลาง', percent: 75, amount: 15000 },
+  ];
+  const live = withLiveAmounts(stored, DRAFT_PLAN, 20000);
+  assert.equal(live, stored, 'คืนรายการเดิม ไม่ใช่สำเนาที่ถูกทับ');
+  assert.deepEqual(live.map((r) => r.amount), [5000, 15000], 'แผน QT 30/70 ต้องไม่ทับแถวร่างของชุดที่ตรึงแล้ว');
+  assert.equal(live[1].label, 'งวดกลาง');
+  // ไม่มีแถวตรึงเลย = งวดร่างเดินตามแผนของ QT เหมือนเดิม
+  const drafts = [{ id: 'a', seq: 1, amount: 1 }, { id: 'b', seq: 2, amount: 1 }];
+  assert.deepEqual(withLiveAmounts(drafts, DRAFT_PLAN, 20000).map((r) => r.amount), [6000, 14000]);
+});
+
+// ── pipelineInstallmentLock: ล็อกทั้งใบของใบ pipeline ────────────────────────────────────────
+const ALL_ACTIONS = ['report', 'confirm', 'reject', 'withdraw', 'unconfirm', 'schedule', 'coverage', 'link', 'unlink',
+  'tax-invoice', 'tax-invoice-clear'];
+const PIPE = (status, extra = {}) => ({ id: 'SOR-P', origin: 'pipeline', status, orderNumber: 'SO-26090001-0', ...extra });
+
+test('ใบ pipeline ยกเลิกแล้ว: บล็อกแจ้ง/ตั้งวัน/ช่วงครอบ/ผูกคำร้อง · ปล่อยทางของบัญชีและการดึงกลับของผู้แจ้ง', () => {
+  const order = PIPE('cancelled');
+  for (const action of ['report', 'schedule', 'coverage', 'link', 'unlink']) {
+    assert.match(pipelineInstallmentLock(order, action) || '', /^ใบยกเลิกแล้ว — งวดของใบนี้เหลือให้/, action);
+  }
+  for (const action of ['confirm', 'reject', 'unconfirm', 'withdraw', 'tax-invoice', 'tax-invoice-clear']) {
+    assert.equal(pipelineInstallmentLock(order, action), null, action);
+  }
+  // คำสั่งที่ไม่รู้จักไม่ถูกปล่อยผ่านด่านใบ (allowlist ไม่ใช่ blocklist)
+  assert.ok(pipelineInstallmentLock(order, 'ไม่รู้จัก'));
+  // ไม่ส่ง action = ถามระดับใบ (ข้อความบนแผงงวด) ⇒ ได้ข้อความล็อก
+  assert.match(pipelineInstallmentLock(order) || '', /ใบยกเลิกแล้ว/);
+});
+
+test('ใบ pipeline ถูกออก Rev. ทับแล้ว: บล็อกทุกคำสั่ง · บอกเลข Rev. ที่งวดย้ายไป (ปุ่มกับ API ได้ประโยคเดียวกัน)', () => {
+  // route ของหน้าใบและ route ของงวดโหลด revisionHistory รูปเดียวกัน (สายโซ่ของเลขฐาน) ⇒ เลขเดียวกันทั้งสองฝั่ง
+  const order = PIPE('revised', {
+    supersededById: 'SOR-R1',
+    revisionHistory: [{ id: 'SOR-R1', orderNumber: 'SO-26090001-1' }, { id: 'SOR-P', orderNumber: 'SO-26090001-0' }],
+  });
+  for (const action of [...ALL_ACTIONS, undefined]) {
+    assert.equal(pipelineInstallmentLock(order, action), 'งวดของใบนี้ย้ายไป SO-26090001-1 แล้ว', String(action));
+  }
+  // หาเลขไม่เจอ = ยังล็อก พร้อมคำกลาง ไม่ใช่ "undefined"
+  assert.equal(pipelineInstallmentLock(PIPE('revised'), 'confirm'), 'งวดของใบนี้ย้ายไปใบ Rev. แล้ว');
+  assert.equal(pipelineInstallmentLock(PIPE('revised', { supersededById: 'SOR-X', revisionHistory: [] }), 'report'),
+    'งวดของใบนี้ย้ายไปใบ Rev. แล้ว');
+});
+
+test('ใบ pipeline สถานะอื่น (รวม approval_revoked ระหว่างรอ Rev. — มติ D3) ไม่ล็อกที่ระดับใบ', () => {
+  for (const status of ['draft', 'pending_approval', 'approved', 'approval_revoked', 'rejected']) {
+    for (const action of [...ALL_ACTIONS, undefined]) {
+      assert.equal(pipelineInstallmentLock(PIPE(status), action), null, `${status}/${action}`);
+    }
+  }
+  assert.equal(pipelineInstallmentLock(null, 'report'), null);
+});
+
+test('ใบย้อนหลังไม่ผ่านตัวนี้ — historicalInstallmentLock เป็นเจ้าของ (กติกาเดิมทุกข้อ)', () => {
+  for (const status of ['cancelled', 'approved', 'draft']) {
+    for (const action of [...ALL_ACTIONS, undefined]) {
+      assert.equal(pipelineInstallmentLock({ origin: 'historical', status }, action), null, `${status}/${action}`);
+    }
+  }
+});
+
+test('ล็อกของใบยกเลิกผ่านด่านเดียวกับปุ่ม: บัญชีรับรองงวดที่แจ้งไว้ได้ · ฝ่ายขายแจ้งงวดใหม่ไม่ได้', () => {
+  const order = PIPE('cancelled');
+  const reported = frozen({ id: 'r', seq: 1, status: 'reported', amount: 100 });
+  const pending = frozen({ id: 'p', seq: 2, status: 'pending', amount: 100 });
+  const rows = [reported, pending];
+  const opts = (action) => ({ rows, orderTotal: 200, orderLock: pipelineInstallmentLock(order, action) });
+  assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, opts('confirm')), null);
+  assert.equal(installmentActionError(reported, 'reject', FN_STAFF, { ...opts('reject'), reason: 'สลิปไม่ตรงยอดของงวด' }), null);
+  assert.match(installmentActionError(pending, 'report', SA, { ...opts('report'), paidOn: '2026-09-23' }), /ใบยกเลิกแล้ว/);
+  assert.match(installmentActionError(pending, 'report', FN_STAFF, { ...opts('report'), paidOn: '2026-09-23' }), /ใบยกเลิกแล้ว/);
+});
+
+// ── POST เริ่มติดตาม: ใบที่ถูกแทน/ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม ─────────────────────────────────
+test('installmentStartBlock: ใบ revised ถูกปฏิเสธด้วยคำของตัวเอง · ยกเลิก/ตีกลับคงคำเดิม · ใบที่ยังเดินได้ผ่าน', () => {
+  assert.equal(installmentStartBlock({ status: 'revised' }), 'งวดของใบนี้ย้ายไปใบ Rev. แล้ว');
+  for (const status of ['cancelled', 'rejected']) {
+    assert.equal(installmentStartBlock({ status }), 'ใบสั่งขายนี้ถูกยกเลิก/ตีกลับแล้ว — ไม่มีอะไรให้ติดตาม');
+  }
+  for (const status of ['draft', 'pending_approval', 'approved', 'approval_revoked']) {
+    assert.equal(installmentStartBlock({ status }), null, status);
+  }
+});
+
+// ── optimistic lock ของ PATCH งวด ────────────────────────────────────────────────────────
+test('installmentStale: ไม่ส่งค่ามา = ไม่ตัดสิน · ตรงกัน = สด · ต่างกัน = เก่า (409)', () => {
+  const row = { id: 'i', updatedAt: '2026-09-23T03:12:45.123456+00:00' };
+  assert.equal(installmentStale(row, undefined), false);
+  assert.equal(installmentStale(row, ''), false);
+  assert.equal(installmentStale(row, '2026-09-23T03:12:45.123456+00:00'), false);
+  assert.equal(installmentStale(row, '2026-09-23T03:12:44.000000+00:00'), true);
+  assert.equal(installmentStale(row, 'ไม่ใช่วันที่'), true);
+  // รูปแบบต่างกันแต่เป็นเวลาเดียวกัน (ms) ไม่นับว่าเก่า — ตัวกันจริงคือเงื่อนไข updatedAt ตอนเขียน
+  assert.equal(installmentStale({ updatedAt: '2026-09-23T03:12:45.123+00:00' }, '2026-09-23T03:12:45.123Z'), false);
+  assert.equal(INSTALLMENT_STALE_MESSAGE, 'งวดนี้เพิ่งถูกแก้จากอีกหน้าต่าง — โหลดใหม่');
+});
+
+// ── คำบน toast หลังแจ้ง/บันทึกการชำระต้องตรงปลายทางจริง ────────────────────────────────────────
+test('installmentReportDoneMessage: บัญชีบันทึกเอง = ชำระแล้วทันที · งวดร่าง = เก็บไว้ · ฝ่ายขาย = ส่งให้บัญชีตรวจ', () => {
+  assert.match(installmentReportDoneMessage('confirmed'), /ชำระแล้ว/);
+  assert.doesNotMatch(installmentReportDoneMessage('confirmed'), /ส่งให้บัญชีตรวจ/);
+  assert.match(installmentReportDoneMessage('pending'), /เมื่อใบสั่งขายอนุมัติ/);
+  assert.equal(installmentReportDoneMessage('reported'), 'ส่งให้บัญชีตรวจแล้ว');
+  assert.equal(installmentReportDoneMessage(undefined), 'ส่งให้บัญชีตรวจแล้ว');
 });

@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 
 import {
   SO_PAYMENT_EVIDENCE_CLOSED,
+  SO_TAX_INVOICE_CLOSED,
   isSalesOrderEvidencePath,
   privateEvidenceAllows,
   privateEvidenceStatusError,
 } from '@/lib/upload/privateEvidence';
-import { installmentActionError } from '@/lib/sales/salesOrderPayments';
+import { installmentActionError, pipelineInstallmentLock } from '@/lib/sales/salesOrderPayments';
 
 /* ── ด่านของไฟล์ต้องไม่แคบกว่าด่านของคำสั่ง ────────────────────────────────
  *
@@ -77,12 +78,30 @@ test('🔴 ใบกำกับภาษี: FN อัปได้เฉพา�
   assert.equal(privateEvidenceAllows('sales_order_payment_evidence', FN, { deal: DEAL }), false);
 });
 
-test('ใบกำกับภาษี: ใบที่ยกเลิก/ตีกลับ/ถูกออก Rev. ทับ แนบไม่ได้', () => {
-  for (const status of SO_PAYMENT_EVIDENCE_CLOSED) {
+/* ⚠️ แก้โดยตั้งใจ (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09): ใบ pipeline ที่ยกเลิกแล้ว บัญชียัง
+   บันทึกใบกำกับของเงินที่เข้าแล้วได้ (`pipelineInstallmentLock` ปล่อย `tax-invoice`) ⇒ ไฟล์ใบกำกับต้องอัปได้ด้วย
+   (ด่านของไฟล์ต้องไม่แคบกว่าด่านของคำสั่ง — ยามความสัมพันธ์อยู่ข้างล่าง) · ตีกลับ/ถูกออก Rev. ทับยังปิดเหมือนเดิม */
+test('ใบกำกับภาษี: ใบที่ตีกลับ/ถูกออก Rev. ทับ แนบไม่ได้ · ใบยกเลิกแนบได้ (บัญชียังบันทึกใบกำกับของเงินที่เข้าแล้ว)', () => {
+  assert.deepEqual([...SO_TAX_INVOICE_CLOSED].sort(), ['rejected', 'revised']);
+  for (const status of SO_TAX_INVOICE_CLOSED) {
     const error = privateEvidenceStatusError('sales_order_tax_invoice', { status });
     assert.ok(error, `สถานะ ${status} ต้องถูกปฏิเสธ`);
   }
+  assert.equal(privateEvidenceStatusError('sales_order_tax_invoice', { status: 'cancelled' }), null);
   assert.equal(privateEvidenceStatusError('sales_order_tax_invoice', { status: 'approved' }), null);
+});
+
+/* 🔴 ความสัมพันธ์ "คำสั่งผ่าน ⇒ ไฟล์ต้องอัปได้" ของล็อกทั้งใบ (PR0) — คิดจากตัวตัดสินตัวเดียวกับ route/ปุ่ม
+   ไม่ใช่รายชื่อสถานะที่เขียนซ้ำ ⇒ ใครขยับล็อกฝั่งไหนก่อน อีกฝั่งแดงทันที */
+test('🔴 ล็อกทั้งใบของใบ pipeline: คำสั่งที่ล็อกปล่อย ไฟล์ของคำสั่งนั้นต้องอัปได้', () => {
+  const FOLDER = { report: 'sales_order_payment_evidence', 'tax-invoice': 'sales_order_tax_invoice' };
+  for (const status of ['draft', 'pending_approval', 'approved', 'approval_revoked', 'cancelled', 'revised']) {
+    for (const [action, folder] of Object.entries(FOLDER)) {
+      const order = { origin: 'pipeline', status };
+      if (pipelineInstallmentLock(order, action)) continue;
+      assert.equal(privateEvidenceStatusError(folder, order), null, `${status}/${action} — ปุ่มเปิดแต่ไฟล์ขึ้นไม่ได้`);
+    }
+  }
 });
 
 /* 🐞 #1391 ซ้ำ: เพิ่มโฟลเดอร์ใหม่แล้วลืมด่าน **อ่าน** ⇒ อัปสำเร็จแต่กดดูได้ 404

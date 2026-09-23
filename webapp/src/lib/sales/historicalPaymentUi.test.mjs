@@ -64,7 +64,10 @@ test('ทะเบียนการชำระส่งโหมดใบย�
   assert.doesNotMatch(page, /['"`]historical['"`]/, 'literal ของ origin มีบ้านเดียว (historicalOrders.js)');
   const dialog = slice(page, '<InstallmentConfirmDialog', '/>');
   assert.match(dialog, /historical=\{isHistoricalOrder\(\{ origin: confirmFor\?\.origin \}\)\}/);
-  assert.match(dialog, /outlook=\{confirmFor\?\.confirmOutlook \|\| null\}/);
+  /* ⚠️ แก้โดยตั้งใจ (PR0 · optimistic lock): โมดัลวาดแถวล่าสุดของทะเบียน (`confirmRow = liveRow(confirmFor)`)
+     — ภาพหลังรับรองต้องมาจากแถวเดียวกับที่ส่งตัวล็อกขึ้น API (ยังเป็นค่าที่ API ประทับมาเหมือนเดิม) */
+  assert.match(dialog, /row=\{confirmRow\}/);
+  assert.match(dialog, /outlook=\{confirmRow\?\.confirmOutlook \|\| null\}/);
   for (const key of ['totalAmount: confirmFor.orderTotal', 'approvedByName: confirmFor.orderApprovedByName',
     'approvedAt: confirmFor.orderApprovedAt', 'historicalInvoiceRef: confirmFor.historicalInvoiceRef']) {
     assert.ok(dialog.includes(key), `โมดัลต้องได้ ${key}`);
@@ -107,11 +110,13 @@ test('แผงงวด: ใบย้อนหลังไม่มี preview/
   const calls = panel.match(/installmentActionError\(/g) || [];
   assert.equal(calls.length, 1, 'เรียก installmentActionError ตรง ๆ ได้ที่เดียว — ใน gate');
   const gate = slice(panel, 'const gate = (row, action, options) => installmentActionError(', '});');
-  assert.match(gate, /orderLock, historical,/);
+  /* ⚠️ แก้โดยตั้งใจ (PR0): ล็อกทั้งใบต่อด้วยล็อกของใบ pipeline รายคำสั่ง — รูปเดียวกับ route PATCH */
+  assert.match(gate, /orderLock: orderLock \|\| pipelineInstallmentLock\(order, action\), historical,/);
   assert.match(gate, /serviceRounds: hasServiceRounds/, 'ด่านเงินเดิมต้องยังอยู่ (serviceOrderScope.test)');
   // ล็อกบอกเหตุผลเป็น StatusNotice (ล็อกดีกว่าซ่อน) · ข้อความงวดร่างของใบปกติไม่ขึ้นกับใบนี้
   assert.match(panel, /\{orderLock \? \(\s*<StatusNotice tone="info">\s*\{orderLock\}/);
-  assert.match(panel, /\{isDraftPlan && !historical \? \(/);
+  // ⚠️ แก้โดยตั้งใจ (PR0): ใบ pipeline ที่ล็อกทั้งใบ (ยกเลิก/ถูกออก Rev.) ก็ไม่ขึ้นข้อความ "บันทึกเงินได้เลย"
+  assert.match(panel, /\{isDraftPlan && !historical && !pipelineLock \? \(/);
 });
 
 /* ── 5ก. เซลล์ "ครอบบริการ" ของแผงงวด — ถามสิทธิ์กับตรวจค่าเป็นคนละคำถาม ────────────────────────
@@ -144,7 +149,7 @@ test('เซลล์ช่วงครอบ: ถามด่านแบบไ
   assert.match(cell, /\{startLock \? \(\s*<button type="button"/, 'วันเริ่มของงวดยกมาไม่ใช่ DateInput');
   // ช่วงสัญญาต้องถึงด่านทุกครั้ง (ตัวเดียวกับ orderLock/historical)
   const gate = slice(panel, 'const gate = (row, action, options) => installmentActionError(', '});');
-  assert.match(gate, /orderLock, historical, contractEnd,/);
+  assert.match(gate, /orderLock: orderLock \|\| pipelineInstallmentLock\(order, action\), historical, contractEnd,/);
 });
 
 /* ── 5ค. ขอบของช่องวัน **กลืนค่าที่พิมพ์** — กฎต้องอยู่ใต้เซลล์ ไม่ใช่ที่ขอบ (review 23/09) ────────────
@@ -232,6 +237,7 @@ test('แผงงวด: งวดยกมามีป้าย "ยกมา"
   assert.match(panel, /\) : isOpeningInstallment\(row\) \? \(\s*<span className=\{styles\.none\}>\s*\{openingInvoiceNote\}/);
   const dialog = slice(panel, '<InstallmentConfirmDialog', '/>');
   assert.match(dialog, /historical=\{historical\}/);
-  assert.match(dialog, /outlook=\{confirmFor \? installmentConfirmOutlook\(confirmFor\.row, saved\) : null\}/,
+  // ⚠️ แก้โดยตั้งใจ (PR0): แถวล่าสุดของตาราง (`live`) — ตัวเดียวกับที่โมดัลวาดและส่งตัวล็อกขึ้น API
+  assert.match(dialog, /outlook=\{confirmFor \? installmentConfirmOutlook\(live\(confirmFor\.row\), saved\) : null\}/,
     'ภาพหลังรับรองคิดจากงวดทั้งใบ (saved) ไม่ใช่ rows ที่อาจเป็น preview');
 });

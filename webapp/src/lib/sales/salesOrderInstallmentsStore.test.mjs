@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureInstallments, freezeInstallments } from './salesOrderInstallmentsStore.js';
+import { ensureInstallments, freezeInstallments, updateInstallment } from './salesOrderInstallmentsStore.js';
 
 /* สัญญาที่ "งวดเกิดพร้อมใบ" (มติผู้ใช้ 2026-08-19) พิงอยู่ — POST ของการออกใบสั่งขาย
    เรียก `ensureInstallments` โดย **ไม่ส่ง `frozenAt`** ⇒ ต้องได้งวดร่างล้วนเสมอ
@@ -120,7 +120,7 @@ test('ใบยอด 0 ไม่มีงวดให้สร้าง', async
 // stub supabase แบบมีสถานะ — รองรับ select / update / delete / insert ที่ freeze ใช้
 const fakeDb = (seed = []) => {
   const store = new Map(seed.map((r) => [r.id, { ...r }]));
-  const calls = { deleted: [], insertCount: 0 };
+  const calls = { deleted: [], insertCount: 0, updates: [] };
   return {
     store,
     calls,
@@ -142,6 +142,7 @@ const fakeDb = (seed = []) => {
         update: (patch) => ({
           eq: (_col, id) => {
             const apply = () => {
+              calls.updates.push({ id, patch });
               store.set(id, { ...store.get(id), ...patch });
               return store.get(id);
             };
@@ -326,4 +327,159 @@ test('🔴 งวดร่างที่มีใบกำกับภาษี
   const rows = db.rows();
   assert.equal(rows.length, 3, 'จำนวนงวดต้องคงเดิม ให้คนไปแก้เอง');
   assert.equal(rows[0].taxInvoiceNo, 'IV-6809001');
+});
+
+/* ══ PR0 · ชุดที่มีแถวตรึงยอดแล้ว = แผนจริงของใบ (แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ══════
+   หลักการ "เงินหนึ่งก้อน = งวดหนึ่งแถว": งวดที่ยกมากับใบ Rev. (PR1) และแผนที่ปรับหลังอนุมัติ (PR2) ตรึงยอดแล้วทั้งแถว
+   ⇒ ตอนอนุมัติใบ (freeze) ห้ามตั้งใหม่ · ห้ามทับยอดจาก QT · ห้ามยืมสลิปของตอนยืนยันคำสั่งซื้อซ้ำ
+   (สลิปนั้นอยู่ในงวดที่ยกมาแล้ว — ยืมอีกรอบ = เงินก้อนเดียวถูกแจ้งสองแถว) */
+const slipOrder = (over = {}) => order({
+  quotation: {
+    ...order().quotation,
+    wonDocType: 'payment_slip',
+    wonDocDate: '2026-08-01',
+    wonAttachments: [{ name: 'slip-ตอนปิด-Won.pdf' }],
+  },
+  ...over,
+});
+const FROZE = '2026-08-10T03:00:00.000Z';
+
+test('🔴 ใบ Rev. ที่ทุกแถวตรึงยอดแล้ว + ยืนยันคำสั่งซื้อด้วยสลิป: freeze ไม่เขียนอะไรเลย และไม่ยืมสลิปซ้ำ', async () => {
+  const db = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, amount: 500, status: 'confirmed', frozenAt: FROZE, evidence: [{ name: 'slip-เดิม.pdf' }] }),
+    draftRow({ id: 'SOI-2', seq: 2, amount: 500, status: 'pending', frozenAt: FROZE, label: 'ก่อนส่งของ' }),
+  ]);
+  const result = await freezeInstallments(db, { order: slipOrder(), user, now: '2026-09-23T03:00:00.000Z' });
+
+  assert.equal(result.frozen, false);
+  assert.deepEqual(db.calls.updates, [], 'ห้ามเขียนแถวใดเลย');
+  assert.deepEqual(db.calls.deleted, []);
+  assert.equal(db.calls.insertCount, 0);
+  assert.equal(db.rows()[1].status, 'pending', 'สลิปตอนปิด Won ต้องไม่ถูกยืมมาแปะงวดที่ยกมา');
+  assert.ok(db.rows().every((r) => r.frozenAt === FROZE), 'ยอดที่ตรึงไว้ห้ามถูกประทับใหม่');
+});
+
+test('🔴 ชุดที่ปนแถวตรึงแล้วกับแถวร่าง (จำนวนตรงแผน): ห้ามทับยอด/ป้ายจาก QT · ห้ามยืมสลิป · ประทับ frozenAt อย่างเดียว', async () => {
+  const db = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, label: 'มัดจำ (ปรับ)', percent: 30, amount: 300, status: 'confirmed', frozenAt: FROZE }),
+    draftRow({ id: 'SOI-2', seq: 2, label: 'งวดกลาง', percent: 20, amount: 200 }),
+    draftRow({ id: 'SOI-3', seq: 3, label: 'งวดท้าย', percent: 50, amount: 500 }),
+  ]); // แผนของ QT = 2 งวด 50/50 · แถวร่าง 2 แถว ⇒ ทางเดิมจะทับงวด 2 เป็น 500 (Σ = 1,300)
+  const result = await freezeInstallments(db, { order: slipOrder(), user, now: '2026-09-23T03:00:00.000Z' });
+
+  const rows = db.rows();
+  assert.equal(result.frozen, true);
+  assert.deepEqual(db.calls.deleted, []);
+  assert.deepEqual(rows.map((r) => r.amount), [300, 200, 500], 'ยอดทุกแถวคงเดิม');
+  assert.deepEqual(rows.map((r) => r.label), ['มัดจำ (ปรับ)', 'งวดกลาง', 'งวดท้าย']);
+  assert.deepEqual(rows.map((r) => r.percent), [30, 20, 50]);
+  assert.deepEqual(rows.map((r) => r.status), ['confirmed', 'pending', 'pending'], 'ห้ามยืมสลิปตอนปิด Won มาแปะ');
+  assert.equal(rows[0].frozenAt, FROZE, 'แถวที่ตรึงแล้วห้ามถูกประทับใหม่');
+  assert.equal(rows[1].frozenAt, '2026-09-23T03:00:00.000Z');
+  assert.equal(rows[2].frozenAt, '2026-09-23T03:00:00.000Z');
+  assert.ok(db.calls.updates.every((u) => u.id !== 'SOI-1'), 'ไม่แตะแถวที่ตรึงแล้ว');
+  for (const { patch } of db.calls.updates) {
+    assert.deepEqual(Object.keys(patch).sort(), ['frozenAt', 'updatedAt'], 'ประทับ frozenAt อย่างเดียว');
+  }
+});
+
+test('🔴 ชุดที่ปนแถวตรึงแล้ว (จำนวนไม่ตรงแผน): ห้ามเข้าเส้น "ลบแล้วตั้งใหม่"', async () => {
+  const db = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, amount: 300, status: 'confirmed', frozenAt: FROZE }),
+    draftRow({ id: 'SOI-2', seq: 2, amount: 700 }),
+  ]); // แผน 3 งวด vs แถวร่าง 1 แถว ⇒ ทางเดิมลบงวด 2 แล้วสร้าง 3 งวดใหม่ต่อท้ายงวดที่มีเงิน
+  const threePlan = slipOrder({
+    quotation: { paymentPlan: { type: 'installment', installments: [{ percent: 30 }, { percent: 30 }, { percent: 40 }] } },
+  });
+  await freezeInstallments(db, { order: threePlan, user, now: '2026-09-23T03:00:00.000Z' });
+
+  assert.deepEqual(db.calls.deleted, []);
+  assert.equal(db.calls.insertCount, 0);
+  assert.deepEqual(db.rows().map((r) => r.amount), [300, 700]);
+  assert.ok(db.rows().every((r) => r.frozenAt));
+});
+
+test('ชุดที่ปนแถวตรึงแล้ว: งวดร่างที่บันทึกเงินไว้เองยังเข้าคิวบัญชีตามเดิม (เงินของแถวนั้นเอง ไม่ใช่การยืม)', async () => {
+  const db = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, amount: 500, status: 'confirmed', frozenAt: FROZE }),
+    draftRow({ id: 'SOI-2', seq: 2, amount: 500, paidOn: '2026-09-20', evidence: [{ name: 'slip-งวด2.pdf' }] }),
+  ]);
+  await freezeInstallments(db, { order: order(), user, now: '2026-09-23T03:00:00.000Z' });
+  const second = db.rows()[1];
+  assert.equal(second.status, 'reported');
+  assert.equal(second.reportedAt, '2026-09-23T03:00:00.000Z', 'reported ต้องมี reportedAt (CHECK ของ 0245)');
+  assert.equal(second.amount, 500);
+});
+
+test('ชุดที่ปนแถวตรึงแล้ว: ยอดรวมไม่เท่ายอดใบ = console.error ดัง ๆ (ไม่แก้เอง) · เท่ากัน = เงียบ', async (t) => {
+  const errors = [];
+  t.mock.method(console, 'error', (...args) => { errors.push(args.join(' ')); });
+
+  const off = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, amount: 300, status: 'confirmed', frozenAt: FROZE }),
+    draftRow({ id: 'SOI-2', seq: 2, amount: 200 }),
+  ]); // Σ 500 vs ยอดใบ 1,000
+  await freezeInstallments(off, { order: order(), user, now: '2026-09-23T03:00:00.000Z' });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /SOR-1/);
+  assert.deepEqual(off.rows().map((r) => r.amount), [300, 200], 'ห้ามแก้ยอดเอง');
+
+  errors.length = 0;
+  const even = fakeDb([
+    draftRow({ id: 'SOI-1', seq: 1, amount: 300, status: 'confirmed', frozenAt: FROZE }),
+    draftRow({ id: 'SOI-2', seq: 2, amount: 700 }),
+  ]);
+  await freezeInstallments(even, { order: order(), user, now: '2026-09-23T03:00:00.000Z' });
+  assert.equal(errors.length, 0);
+});
+
+/* ── updateInstallment: optimistic lock (PR0) ───────────────────────────────────────────
+   🐞 เดิมอัปเดตโดยไม่มีเงื่อนไข ⇒ สองหน้าต่างเขียนแถวเดียวกันพร้อมกัน ตัวที่มาทีหลังชนะเงียบ ๆ */
+const lockDb = (row) => {
+  const state = { row: { ...row }, filters: [] };
+  return {
+    state,
+    from(table) {
+      assert.equal(table, TABLE);
+      return {
+        update(patch) {
+          const filters = [];
+          const chain = {
+            eq(col, value) { filters.push([col, value]); return chain; },
+            select() {
+              return {
+                maybeSingle: async () => {
+                  state.filters = filters;
+                  const hit = filters.every(([col, value]) => state.row[col] === value);
+                  if (!hit) return { data: null, error: null };
+                  state.row = { ...state.row, ...patch };
+                  return { data: state.row, error: null };
+                },
+              };
+            },
+          };
+          return chain;
+        },
+      };
+    },
+  };
+};
+
+test('updateInstallment: expectedUpdatedAt ไม่ตรง = คืน null และไม่เขียน · ตรง = เขียน · ไม่ส่ง = เขียนแบบเดิม', async () => {
+  const base = { id: 'SOI-1', status: 'reported', updatedAt: '2026-09-23T03:00:00.123456+00:00' };
+
+  const stale = lockDb(base);
+  const none = await updateInstallment(stale, 'SOI-1', { status: 'confirmed' }, { expectedUpdatedAt: '2026-09-22T00:00:00+00:00' });
+  assert.equal(none, null);
+  assert.equal(stale.state.row.status, 'reported', 'แถวต้องไม่ถูกแตะ');
+  assert.deepEqual(stale.state.filters, [['id', 'SOI-1'], ['updatedAt', '2026-09-22T00:00:00+00:00']]);
+
+  const fresh = lockDb(base);
+  const done = await updateInstallment(fresh, 'SOI-1', { status: 'confirmed' }, { expectedUpdatedAt: base.updatedAt });
+  assert.equal(done.status, 'confirmed');
+  assert.notEqual(done.updatedAt, base.updatedAt, 'เขียนแล้วต้องได้ updatedAt ใหม่ (ตัวล็อกของรอบถัดไป)');
+
+  const legacy = lockDb(base);
+  assert.equal((await updateInstallment(legacy, 'SOI-1', { dueDate: '2026-10-01' })).dueDate, '2026-10-01');
+  assert.deepEqual(legacy.state.filters, [['id', 'SOI-1']], 'ผู้เรียกเดิม (ออกใบ) ไม่ถูกบังคับล็อก');
 });

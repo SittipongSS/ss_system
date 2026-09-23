@@ -22,6 +22,12 @@ const safeId = (value) => String(value).replace(/[^a-zA-Z0-9_-]+/g, '_');
    ⚠️ `approval_revoked` **ไม่อยู่ในนี้** — ใบที่ย้อนการอนุมัติยังเป็นใบเดิมและงวดยัง
    อยู่ครบ คนที่กำลังตามเก็บเงินไม่ควรถูกตัดมือระหว่างที่ใบรอออก Rev. */
 export const SO_PAYMENT_EVIDENCE_CLOSED = ['cancelled', 'rejected', 'revised'];
+/* ใบกำกับภาษีของงวด — **ใบยกเลิกยังแนบได้** (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09)
+   ใบ pipeline ที่ยกเลิกแล้ว บัญชียังรับรอง/บันทึกใบกำกับของเงินที่เข้าแล้วได้ (`pipelineInstallmentLock` ปล่อย
+   `tax-invoice`) ⇒ ด่านไฟล์ต้องไม่แคบกว่าด่านคำสั่ง (ยาม: privateEvidenceGate.test "ล็อกทั้งใบของใบ pipeline")
+   ⚠️ ใบย้อนหลังที่ยกเลิก: คำสั่งยังถูก `historicalInstallmentLock` ปิดทั้งใบ — ด่านไฟล์กว้างกว่าได้ (ไม่มีปุ่มให้ถึง)
+   ⚠️ สลิปการชำระ (`SO_PAYMENT_EVIDENCE_CLOSED`) ยังปิดใบยกเลิก — แจ้งชำระงวดใหม่บนใบยกเลิกถูกบล็อกเหมือนกัน */
+export const SO_TAX_INVOICE_CLOSED = ['rejected', 'revised'];
 
 const TARGETS = {
   // หลักฐาน Won แนบได้เฉพาะตอนใบยังเปิดอยู่ — หลัง accept ใบกลายเป็นแหล่งของ Actual
@@ -76,13 +82,13 @@ const TARGETS = {
    * 🔴 ถ้าปล่อยให้ตกไปใช้ด่านตั้งต้น ปุ่มจะขึ้นให้ FN กดตามปกติแล้วตายที่ 403 ของ
    * `/api/upload/session` โดย error ไปโผล่ **ใต้โมดัล** มองไม่เห็น (อาการเดียวกับ
    * IS-26080026 ที่ด่านไฟล์แคบกว่าด่านปุ่ม)
-   * ⚠️ ด่าน **สถานะ** ใช้ชุดเดียวกับหลักฐานการชำระ — ใบที่ยกเลิก/ตีกลับ/ถูกออก Rev.
-   * ทับแล้ว ไม่มีใบกำกับให้แนบอีก */
+   * ⚠️ ด่าน **สถานะ** = `SO_TAX_INVOICE_CLOSED` — ใบที่ตีกลับ/ถูกออก Rev. ทับแล้ว ไม่มีใบกำกับให้แนบอีก
+   * · ใบยกเลิกยังแนบได้ตั้งแต่ PR0 (เงินที่เข้าแล้วยังต้องมีใบกำกับ — ดูคอมเมนต์ที่ค่าคงที่) */
   sales_order_tax_invoice: {
     table: 'sales_orders',
     notFound: 'ไม่พบใบสั่งขาย',
-    gate: (row) => (SO_PAYMENT_EVIDENCE_CLOSED.includes(row.status)
-      ? 'ใบสั่งขายนี้ยกเลิก/ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบใบกำกับภาษีไม่ได้'
+    gate: (row) => (SO_TAX_INVOICE_CLOSED.includes(row.status)
+      ? 'ใบสั่งขายนี้ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบใบกำกับภาษีไม่ได้'
       : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/tax-invoices/`,
     allow: (user) => canConfirmPayment(user),
