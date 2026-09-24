@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
+import { after } from 'next/server';
 import { genId } from '@/lib/id';
 import { renderQuotationPdf, QUOTATION_PDF_GENERATOR_VERSION } from '@/lib/sales/quotationPdf';
 
@@ -74,6 +75,25 @@ export async function captureIssuedQuotationPdf(supabase, { quotationId, snapsho
   // จะไหลไปเป็น "ไม่มีไฟล์ PDF" ที่ปลายทางแทนที่จะบอกว่าอ่านไม่ได้
   if (rowError) throw rowError;
   return { row, reused: true };
+}
+
+/* ── สร้าง PDF **หลังตอบหน้าจอแล้ว** (`after`) — ผู้กดอนุมัติ/เปลี่ยนภาษาไม่ต้องรอ chromium ──────────
+   🐞 เดิม route อนุมัติ await ขั้นนี้ก่อนตอบ ⇒ วัดจาก prod 24/09 (ใบเสนอราคา 38 ใบล่าสุด): ขั้น PDF ใช้ค่ากลาง
+      4.8 วิ (2.1–6.0) จากทั้งคำขอ ~5.3 วิ — ส่วนลายเซ็น + เข้ารหัส + ตรึง HTML ใช้แค่ ~0.34 วิ
+      (ลายเซ็นอยู่ Supabase Storage ไม่ใช่ Drive) · ใบสั่งขายไม่มีขั้นนี้ อนุมัติเสร็จ ~0.8 วิ
+   ⚠️ ยัง best-effort + idempotent เหมือนเดิม — ยังไม่เสร็จ/พลาด แล้วมีคนกดดาวน์โหลด เส้น `issued/pdf` สร้างจาก
+      HTML ที่ตรึงเอง และสองทางแข่งกันได้ (แถว upsert ignoreDuplicates · ไฟล์ upload upsert:false = ตัวแรกชนะ)
+   ⚠️ พลาดต้อง log เสมอ — ไม่มีใครรออยู่ปลายทางแล้ว ถ้ากลืนเงียบจะไม่มีใครรู้ว่าใบนั้นไม่มี PDF ถาวร */
+export function captureIssuedQuotationPdfLater(supabase, { quotationId, snapshotId, html }, { logLabel } = {}) {
+  if (!snapshotId || !html) return;
+  const run = () => captureIssuedQuotationPdf(supabase, { quotationId, snapshotId, html })
+    .catch((error) => console.error(logLabel || 'issued quotation pdf capture failed', quotationId, error));
+  try {
+    after(run);
+  } catch {
+    // นอกบริบท request ของ Next (script/เทสต์) — ยิงตรงแทน (ทรงเดียวกับ notifyLater ของใบสเปค)
+    run();
+  }
 }
 
 // โหลดไบต์ PDF จาก bucket ตามแถว metadata (คืน Buffer) — ใช้ตอนเสิร์ฟดาวน์โหลด
