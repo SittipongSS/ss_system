@@ -21,6 +21,10 @@ const FILES = [
   'src/app/api/sales-planning/quotations/[id]/revise/route.js',
   'src/app/api/sales-planning/quotations/[id]/withdraw/route.js',
   'src/app/api/sales-planning/quotations/[id]/reject/route.js',
+  // ยกเลิกใบของผู้อนุมัติ (มติ 24/09) — "ยกเลิก" = ใบตายถาวร ห้ามไปปนกับ "ย้อนการอนุมัติ"
+  'src/app/api/sales-planning/quotations/[id]/cancel/route.js',
+  'src/lib/sales/quotationCancel.js',
+  'src/lib/sales/quotationCancelRepo.js',
   'src/app/api/sales-planning/sales-orders/[id]/route.js',
   // B5 (2026-07-28): "ดึงกลับ" ขยายมาที่ใบขอราคาผลิต — โมดูลใหม่คือช่องทางหลักที่คำเก่า
   // จะกลับมา เพราะคนลอกแพตเทิร์นจากไฟล์เก่ากว่า

@@ -39,7 +39,9 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
-    const access = await requireVisit({ user, supabase, id });
+    /* ⭐ `report: true` — GET นี้คือ **ใบส่งงาน** ⇒ ฝ่ายขายอ่านได้ด้วย (มติผู้ใช้ 2026-09-24)
+       เส้นเขียนทุกตัวในไฟล์นี้ (PATCH/DELETE) ยังเรียก requireVisit แบบเดิม ไม่ได้รับทางนี้ */
+    const access = await requireVisit({ user, supabase, id, report: true });
     if (access.response) return access.response;
     /* ⭐ ส่งอุปกรณ์ + โซนของไซต์มาด้วย — ฟอร์มปิดงานรายเครื่องต้องรู้ว่าที่ไซต์นี้มี
        อะไรให้ทำบ้าง · ของเดิมหน้าปิดงานได้แค่ `visit` + `site` จาก /my-visits ซึ่ง

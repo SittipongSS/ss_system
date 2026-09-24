@@ -14,6 +14,7 @@ import {
   eligibleForecastQuotations,
   forecastSourceView,
   isForecastEligibleQuotation,
+  previewForecastSource,
   resolveForecastSource,
 } from './forecastSource.js';
 
@@ -109,6 +110,96 @@ test('ระหว่างรอฉบับแก้อนุมัติ FC �
   assert.equal(resolved.quotationId, 'QT1');
   assert.equal(resolved.reason, 'awaiting_revision');
   assert.equal(resolved.changed, false);
+});
+
+/* 🐞 ยกเลิกฉบับแก้ที่ยังไม่อนุมัติ (มติ 24/09 เปิดปุ่มยกเลิกใบให้ผู้อนุมัติ) — FC ชี้ Rev.0 ที่พลิกเป็น
+   'revised' ไปแล้ว ส่วน Rev.1 ถูกยกเลิก ⇒ ของเดิมนับ Rev.1 เป็น "ฉบับแก้ที่ยังเดินอยู่" ตลอดกาล
+   (awaiting_revision · changed=false) ⇒ FC ค้างยอดของเลขที่ที่ตายไปแล้ว และไม่ขึ้นคิวด้วย = เงียบสองทาง */
+test('ฉบับแก้ที่รออยู่ถูกยกเลิก = เลขที่นั้นจบแล้ว FC ต้องไม่ค้างรอ', () => {
+  const followed = deal({
+    forecastSource: 'quotation', forecastQuotationId: 'QT1', projectValue: 1000000,
+  });
+  for (const status of ['cancelled', 'closed']) {
+    const deadRev = quote({
+      id: 'QT1R1', revisionNo: 1, status, approvalStatus: 'pending',
+    });
+    const resolved = resolveForecastSource(followed, [quote({ status: 'revised' }), deadRev]);
+    assert.equal(resolved.reason, 'pointer_gone', status);
+    assert.equal(resolved.source, 'manual', status);
+    assert.equal(resolved.value, 500000, status);
+    assert.equal(resolved.changed, true, `${status}: ต้องเขียนจริง ไม่ค้าง awaiting_revision`);
+  }
+  // ฉบับแก้ที่ยังเดินอยู่ (ร่าง/รออนุมัติ) ยังต้องค้างยอดเดิมเหมือนเดิม
+  const liveRev = quote({ id: 'QT1R1', revisionNo: 1, status: 'draft', approvalStatus: 'pending' });
+  assert.equal(resolveForecastSource(followed, [quote({ status: 'revised' }), liveRev]).reason, 'awaiting_revision');
+});
+
+/* 🐞 ปักใบไว้แล้วใบนั้นหลุดสิทธิ์โดยไม่มีใบอื่นเหลือ — ทาง pointer_gone คืนก่อนถึงบล็อกปัก ⇒ ไม่เคย
+   ปลดปัก ⇒ ดีลกลายเป็น "ปัก manual" ถาวร และใบที่อนุมัติทีหลังจะไม่ขยับ FC อีกเลย (pinned manual) */
+test('ปักใบไว้แล้วใบนั้นหลุดสิทธิ์ (ไม่มีใบอื่น) = ถอย manual พร้อมปลดปัก', () => {
+  const pinned = deal({
+    forecastSource: 'quotation', forecastQuotationId: 'QT1', projectValue: 1000000,
+    forecastPinnedAt: '2026-09-02T03:00:00.000Z',
+  });
+  const resolved = resolveForecastSource(pinned, [quote({ status: 'cancelled' })]);
+  assert.equal(resolved.reason, 'pointer_gone');
+  assert.equal(resolved.source, 'manual');
+  assert.equal(resolved.pinCleared, true);
+  // ปัก manual ไว้เอง (ไม่ได้ชี้ใบ) = ไม่มีอะไรหลุด ห้ามปลดการตัดสินใจของคน
+  const pinnedManual = deal({ forecastPinnedAt: '2026-09-02T03:00:00.000Z' });
+  assert.notEqual(resolveForecastSource(pinnedManual, []).pinCleared, true);
+  // ไม่ได้ปัก = ไม่มีธง (writeForecastSource จะได้ไม่แตะคอลัมน์ปัก)
+  const loose = deal({ forecastSource: 'quotation', forecastQuotationId: 'QT1', projectValue: 1000000 });
+  assert.notEqual(resolveForecastSource(loose, [quote({ status: 'cancelled' })]).pinCleared, true);
+});
+
+/* ⭐ พรีวิวในโมดัล = คำตอบเดียวกับตอนเขียนจริง — ตัวตัดสินรวม "ขึ้นบันได" ไว้ที่เดียว
+   (เดิมกติกา CLAIMING_CAUSES อยู่ใน forecastSourceRepo ⇒ พรีวิวที่เรียก resolver ตรง ๆ จะบอก
+   "FC → ใบ X" ทั้งที่ตอนกดจริงได้ needs_user_choice แล้วไม่ขยับ) */
+test('previewForecastSource: ขึ้นบันไดได้เฉพาะเหตุ "ใบอนุมัติ" · Won แช่แข็ง · ไม่เปลี่ยน = ไม่เขียน', () => {
+  const manualDeal = deal();
+  const approved = [quote()];
+  // ใบอนุมัติ = ขึ้นบันไดได้
+  const claim = previewForecastSource(manualDeal, approved, { cause: 'quotation_approved' });
+  assert.equal(claim.changed, true);
+  assert.equal(claim.value, 1000000);
+  assert.equal(claim.previousValue, 500000);
+  assert.equal(claim.resolved.quotationId, 'QT1');
+  // เหตุอื่น (ยกเลิก/ลบ/ย้อนรับ) ห้ามลากดีล manual ขึ้นบันได — คำตอบต้องตรงกับ applyForecastSource
+  for (const cause of ['quotation_cancelled', 'quotation_deleted', 'unaccept', undefined]) {
+    const held = previewForecastSource(manualDeal, approved, { cause });
+    assert.equal(held.changed, false, String(cause));
+    assert.equal(held.reason, 'needs_user_choice', String(cause));
+    assert.equal(held.pendingValue, 1000000, String(cause));
+    assert.equal(held.value, 500000, `${cause}: ยอดหลังกด = ยอดเดิม`);
+  }
+  // Won แช่แข็ง
+  const won = previewForecastSource(deal({ stage: 'won', projectValue: 1200000 }), approved, { cause: 'quotation_cancelled' });
+  assert.deepEqual({ changed: won.changed, reason: won.reason, value: won.value }, { changed: false, reason: 'won_frozen', value: 1200000 });
+  // ไม่มีอะไรเปลี่ยน
+  const same = previewForecastSource(
+    deal({ forecastSource: 'quotation', forecastQuotationId: 'QT1', projectValue: 1000000 }),
+    approved,
+    { cause: 'quotation_cancelled' },
+  );
+  assert.equal(same.changed, false);
+  assert.equal(same.reason, 'single');
+  // ถอย manual พร้อมปลดปัก — ธงต้องเดินทางถึงตัวเขียน
+  const gone = previewForecastSource(
+    deal({ forecastSource: 'quotation', forecastQuotationId: 'QT1', projectValue: 1000000, forecastPinnedAt: '2026-09-02T03:00:00.000Z' }),
+    [quote({ status: 'cancelled' })],
+    { cause: 'quotation_cancelled' },
+  );
+  assert.equal(gone.changed, true);
+  assert.equal(gone.value, 500000);
+  assert.equal(gone.previousValue, 1000000);
+  assert.equal(gone.resolved.pinCleared, true);
+});
+
+test('applyForecastSource ใช้ตัวตัดสินเดียวกับพรีวิว — ห้ามมีกติกาขึ้นบันไดชุดที่สอง', () => {
+  const repo = read('src/lib/sales/forecastSourceRepo.js');
+  assert.match(repo, /previewForecastSource\(/);
+  assert.doesNotMatch(repo, /CLAIMING_CAUSES\s*=/, 'ชุดเหตุที่ขึ้นบันไดได้ต้องอยู่ที่ forecastSource.js ที่เดียว');
 });
 
 test('ใบที่ชี้อยู่ถูกยกเลิกทิ้ง (ไม่มีฉบับแก้ตามมา) = ถอย manual จริง ๆ', () => {

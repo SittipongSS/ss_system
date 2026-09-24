@@ -51,8 +51,10 @@ import {
   canWithdrawQuotationSubmission,
   isEditableQuotation,
   isQuotationAwaitingApproval,
+  quotationCancelRecord,
   quotationRejectionNotice,
 } from "@/lib/sales/quotationWorkflow";
+import { quotationCancelPromptDetail, quotationCancelToast } from "@/lib/sales/quotationCancel";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
@@ -98,6 +100,8 @@ export default function QuotationEditorPage() {
   const [wonOpen, setWonOpen] = useState(false);
   // ย้อนการรับ (มติ 2026-07-21): null = ปิด; { reason } = เปิดฟอร์มเหตุผลบังคับ
   const [unacceptForm, setUnacceptForm] = useState(null);
+  // ยกเลิกใบของผู้อนุมัติ (มติ 24/09): null = ปิด; { reason, preview } = เปิดโมดัลพร้อมผลกระทบจาก ?dryRun=1
+  const [cancelForm, setCancelForm] = useState(null);
   const [products, setProducts] = useState([]);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [], presetVersionId: null });
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
@@ -201,8 +205,13 @@ export default function QuotationEditorPage() {
   // สองขั้นแยกกัน (mig 0155): needsSubmit = ร่างที่ผู้จัดทำยังไม่กดยื่น ·
   // awaitingApproval = ยื่นแล้วรอเจ้าของดีล. ทั้งคู่บล็อกปุ่มส่ง/Won เหมือนกัน แต่ปุ่มที่
   // ต้องกดต่อคนละตัว — เดิมมีสถานะเดียว (pending) ทำให้อนุมัติใบที่ยังกรอกไม่เสร็จได้
-  const needsSubmit = !!quote && quote.approvalStatus === "not_submitted";
-  const awaitingApproval = !!quote && quote.approvalStatus === "pending";
+  /* ⚠️ **status มาก่อน approvalStatus** (มติ 24/09 เปิดปุ่มยกเลิกใบ) — ใบที่รออนุมัติแล้วถูกยกเลิกยังถือ
+     approvalStatus='pending' ไว้เป็นประวัติ ⇒ ถ้าอ่านแกนอนุมัติก่อน รางกับป้ายจะบอก "รอเจ้าของดีลอนุมัติ"
+     บนใบที่ตายแล้ว · ทุกกิ่งข้างล่างที่อ่าน approvalStatus ต้องผ่านสองตัวนี้หรือเช็ค isCancelled เอง */
+  const isCancelled = quote?.status === "cancelled";
+  const cancelRecord = quotationCancelRecord(quote);
+  const needsSubmit = !!quote && !isCancelled && quote.approvalStatus === "not_submitted";
+  const awaitingApproval = !!quote && !isCancelled && quote.approvalStatus === "pending";
   // ใบ grandfather (not_required) และใบที่อนุมัติแล้ว (approved) ไม่บล็อก
   const needsApproval = needsSubmit || awaitingApproval;
   // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
@@ -230,7 +239,11 @@ export default function QuotationEditorPage() {
   // ลบ: draft ทุกคนที่แก้ได้ / แอดมิน (superuser) ลบได้ทุกสถานะ (มติผู้ใช้ 2026-07-15)
   // ใบที่รออนุมัติลบไม่ได้ — ต้องดึงกลับหรือให้ผู้อนุมัติตีกลับก่อน (มติผู้ใช้ 2026-08-05)
   // admin ยังเห็นปุ่มไว้ใช้ทาง break-glass (deleteWithForce) ที่ยืนยันซ้ำอีกชั้น
+  /* ⭐ ใบที่มีหลักฐานลายเซ็น (hasSignatureEvidence จาก GET — นิยามเดียวกับด่าน DELETE) ลบไม่ได้สำหรับทุกคน
+     ยกเว้นแอดมิน (DELETE ตอบ 409 เสมอ) ⇒ ซ่อนปุ่มที่กดแล้วชนกำแพงแน่ ๆ — ไม่ได้ถอนสิทธิ์ใคร · ทางทิ้งใบของ
+     ผู้อนุมัติคือ "ยกเลิกใบ" (มติ 24/09) · `null` = อ่านหลักฐานไม่ขึ้น ⇒ คงปุ่มไว้ตามเดิม ให้ server ตัดสิน */
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap
+    && quote.hasSignatureEvidence !== true
     && !isQuotationAwaitingApproval(quote)
     && quote.status !== "accepted"
     && (quote.status === "draft" || isSalesManager(role))));
@@ -488,6 +501,34 @@ export default function QuotationEditorPage() {
      แล้วออกใบทีเดียว — เลขที่ใบใช้ซ้ำไม่ได้ (0241) จึงห้ามสร้างใบเปล่ารอไว้ก่อน */
   const salesOrderFormHref = `/sa/sales-orders/new?quotationId=${id}&returnTo=${encodeURIComponent(`/sa/quotations/${id}`)}`;
 
+  /* ── ยกเลิกใบ = สิทธิ์ของผู้อนุมัติ (มติเจ้าของ 24/09 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ") ──
+     ⭐ ปุ่มโชว์ตามธง `canCancel` ที่ server คิด (canCancelQuotation ตัวเดียวกับ POST /cancel) — ไม่มีสิทธิ์ = ไม่เห็น
+     ⭐ โมดัลต้องบอกผลลัพธ์ก่อนกด (#1223) ⇒ ถามพรีวิว ?dryRun=1 ก่อนเปิด: FC ฿A → ฿B · ร่างสัญญาที่ปิดตาม ·
+       สัญญาที่ออกเลขแล้วที่ยังมีผล · คำร้องการเงินพร้อมเลขเอกสารที่ออกแล้ว (เตือน ไม่บล็อก)
+     ⚠️ ติดด่าน (มี SO ที่ยังใช้อยู่) = แถบ error บอกเหตุ ไม่เปิดโมดัลที่กดยืนยันไม่ได้ */
+  const openCancel = async () => {
+    setError("");
+    const preview = await act("cancel-preview", `/api/sales-planning/quotations/${id}/cancel?dryRun=1`, { method: "POST" });
+    if (!preview) return;
+    if (preview.blocked) { setError(preview.blocked); return; }
+    setCancelForm({ reason: "", preview });
+  };
+  const cancelReasonValidation = cancelForm ? unacceptReasonError(cancelForm.reason) : "";
+  const doCancel = async () => {
+    if (cancelReasonValidation) return;
+    const data = await act("cancel", `/api/sales-planning/quotations/${id}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // ⚠️ updatedAt ดิบจาก GET — ห้าม normalize (documentConcurrency.js: ไมโครวินาทีหายแล้วไม่มีวันตรง)
+      body: JSON.stringify({ reason: normalizeUnacceptReason(cancelForm.reason), expectedUpdatedAt: quote.updatedAt }),
+    });
+    if (data) {
+      setCancelForm(null);
+      await load();
+      setToast({ kind: data.forecast?.warning ? "warning" : "success", msg: quotationCancelToast(quote.quoteNumber, data.forecast) });
+    }
+  };
+
   const doDelete = () => {
     const elevatedDelete = quote.status !== "draft";
     setConfirmState({
@@ -605,16 +646,19 @@ export default function QuotationEditorPage() {
     : awaitingApproval
       ? 1
       : 0;
+  // ใบยกเลิก = รางจางทั้งเส้น (แพตเทิร์นเดียวกับใบสั่งขาย/คำร้อง) — ไม่บอก "รออนุมัติ" บนใบที่ตายแล้ว
   const approvalWorkflowSteps = quote?.approvalStatus === "not_required"
-    ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ออกก่อนระบบอนุมัติ — แก้ไขผ่าน Rev.", state: "done" }]
+    ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ออกก่อนระบบอนุมัติ — แก้ไขผ่าน Rev.", state: isCancelled ? "cancelled" : "done" }]
     : workflowStepsFromIndex([
         // รางนี้คือที่เดียวที่บอกว่า "ใครทำอะไรกับใบนี้" — ใบไม่มีบล็อกผู้รับผิดชอบแล้ว
         // (มติผู้ใช้ 2026-08-18) · ผู้จัดทำ = คนที่กดยื่น = ขั้นถัดไป ไม่ใช่คนเปิดร่าง
         { id: "prepare", label: "เปิดร่าง", hint: quote?.createdByName || "ผู้เปิดร่าง" },
         { id: "submit", label: "ผู้จัดทำยื่นอนุมัติ", hint: quote?.approvalRequestedByName || "รอผู้จัดทำ" },
         { id: "approve", label: "เจ้าของดีลอนุมัติ", hint: quote?.approvedByName || "รออนุมัติ" },
-      ], approvalWorkflowIndex);
-  const controlDescription = needsSubmit
+      ], approvalWorkflowIndex, isCancelled);
+  const controlDescription = isCancelled
+    ? "ยกเลิกแล้ว — ใช้อ้างอิงและพิมพ์ซ้ำ (ลายน้ำ “ยกเลิก”) เท่านั้น · จะเสนอใหม่ให้สร้างใบเสนอราคาใหม่จากดีล"
+    : needsSubmit
     ? "บันทึกข้อมูลให้เรียบร้อย แล้วจึงยื่นอนุมัติ"
     : awaitingApproval
       ? "ยื่นอนุมัติแล้ว เอกสารถูกล็อกจนกว่าจะดึงกลับหรือได้รับอนุมัติ"
@@ -713,7 +757,8 @@ export default function QuotationEditorPage() {
       kind: "goto",
       label: "ออกสัญญาจากใบนี้",
       variant: "outline",
-      visible: quote?.approvalStatus === "approved" && !editMode && canEditCap,
+      // ใบยกเลิกออกสัญญาไม่ได้ (contracts.js ตัด 'cancelled' อยู่แล้ว) — ซ่อนแทนการชวนเข้าทางตัน
+      visible: quote?.approvalStatus === "approved" && !isCancelled && !editMode && canEditCap,
       onClick: () => setContractOpen(true),
     },
     {
@@ -722,7 +767,8 @@ export default function QuotationEditorPage() {
       label: "ดาวน์โหลด PDF",
       variant: "ghost",
       // !editMode เหมือนปุ่มอื่นทั้งลิสต์ — เดิมตกหล่นปุ่มเดียว เข้าโหมดแก้ไขแล้วเหลือปุ่มนี้ลอย
-      visible: quote?.approvalStatus === "approved" && !editMode,
+      // ใบยกเลิก: PDF ฉบับตรึงล่าสุดตอบ 409 (ไม่มีลายน้ำ) ⇒ ซ่อน · "ออกเอกสาร" ยังพิมพ์สดพร้อมลายน้ำ "ยกเลิก"
+      visible: quote?.approvalStatus === "approved" && !isCancelled && !editMode,
       href: quote ? `/api/sales-planning/quotations/${quote.id}/issued/pdf?render=latest` : undefined,
       external: true,
     },
@@ -744,6 +790,14 @@ export default function QuotationEditorPage() {
       disabledReason: unacceptBlockedReason || undefined,
       title: "ย้อนการรับใบเสนอราคา (เจ้าของดีล/AE Supervisor)",
       onClick: () => { setError(""); setUnacceptForm({ reason: "" }); },
+    },
+    {
+      id: "cancel",
+      kind: "cancel",
+      label: "ยกเลิกใบ",
+      visible: !!quote?.canCancel && !editMode,
+      title: "ยกเลิกใบเสนอราคาถาวร (ผู้อนุมัติของใบ)",
+      onClick: openCancel,
     },
   ];
 
@@ -768,6 +822,17 @@ export default function QuotationEditorPage() {
           <strong>ตีกลับโดย {rejectionNotice.byName}</strong>
           {rejectionNotice.at ? ` · ${fmtDate(rejectionNotice.at)}` : ""}
           <div style={{ marginTop: 4 }}>{rejectionNotice.reason}</div>
+        </StatusNotice>
+      )}
+
+      {/* ใบยกเลิก (มติ 24/09) — ใคร เมื่อไร ทำไม จาก metadata.cancel · ใบที่ยกเลิกผ่านการย้อน Won ของ SO
+          (0116) ไม่มีรายละเอียด ⇒ บอกแค่ว่ายกเลิกแล้ว ไม่เดาชื่อคน */}
+      {cancelRecord && (
+        <StatusNotice
+          tone="neutral"
+          title={`${cancelRecord.byName ? `ยกเลิกถาวรโดย ${cancelRecord.byName}` : "ใบนี้ถูกยกเลิกถาวร"}${cancelRecord.at ? ` · ${fmtDate(cancelRecord.at)}` : ""}`}
+        >
+          {`${cancelRecord.reason ? `เหตุผล: ${cancelRecord.reason} · ` : ""}แก้ไข ออก Rev. หรือปิด Won จากใบนี้ไม่ได้ — จะเสนอใหม่ให้สร้างใบเสนอราคาใหม่จากดีล`}
         </StatusNotice>
       )}
 
@@ -1059,7 +1124,7 @@ export default function QuotationEditorPage() {
                         {revision.quoteNumber}
                         {revision.id === quote.id ? " · ฉบับนี้" : ""}
                         <small style={{ display: "block", color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>
-                          {fmtDate(revision.quoteDate)} · {revision.status === "revised" ? "ฉบับเก่า" : "ฉบับล่าสุด"}
+                          {fmtDate(revision.quoteDate)} · {revision.status === "revised" ? "ฉบับเก่า" : revision.status === "cancelled" ? "ยกเลิก" : "ฉบับล่าสุด"}
                         </small>
                       </span>
                       <span>→</span>
@@ -1101,6 +1166,28 @@ export default function QuotationEditorPage() {
         maxLength={UNACCEPT_REASON_MAX}
         submitError={unacceptForm ? error : ""}
         busy={busy === "unaccept"}
+      />
+
+      {/* ยกเลิกใบ (มติ 24/09) — กล่องผลลัพธ์มาจากพรีวิวของ server (quotationCancelPromptDetail) ไม่ใช่ข้อความตายตัว */}
+      <ReasonDialog
+        open={!!cancelForm}
+        title="ยกเลิกใบเสนอราคา"
+        description={`ใบ ${naText(quote?.quoteNumber)} จะเปลี่ยนเป็น “ยกเลิก” ถาวร — แก้ไข ออก Rev. ปิด Won ออกสัญญา และขอเอกสารการเงินจากใบนี้ไม่ได้อีก · ถ้าจะเสนอใหม่ให้สร้างใบเสนอราคาใหม่`}
+        detail={cancelForm ? quotationCancelPromptDetail(cancelForm.preview) : ""}
+        label="เหตุผลที่ยกเลิก"
+        value={cancelForm?.reason || ""}
+        onChange={(reason) => setCancelForm((form) => (form ? { ...form, reason } : form))}
+        onClose={() => setCancelForm(null)}
+        onConfirm={doCancel}
+        confirmLabel="ยืนยันยกเลิกใบ"
+        placeholder="เช่น ลูกค้าเปลี่ยนสเปคทั้งหมด จะเสนอใบใหม่แทน"
+        helpText={`บังคับอย่างน้อย 10 ตัวอักษร · ${cancelForm?.reason.length || 0}/${UNACCEPT_REASON_MAX}`}
+        error={cancelForm?.reason ? cancelReasonValidation : ""}
+        minLength={10}
+        maxLength={UNACCEPT_REASON_MAX}
+        tone="danger"
+        submitError={cancelForm ? error : ""}
+        busy={busy === "cancel"}
       />
 
       <ReasonDialog

@@ -224,3 +224,102 @@ test('⭐ ใบที่ฉันสร้างแล้วถูกตีก�
   // ใบที่คนอื่นสร้างถูกตีกลับ ไม่ใช่ของค้างของเรา
   assert.equal(isQuotationWaitingOnMe(rejected, { userId: 'USR-OTHER' }), false);
 });
+
+// ── ยกเลิกใบ = สิทธิ์ของผู้อนุมัติ (มติเจ้าของ 24/09 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ") ──
+//
+// ⭐ ช่องใหม่ ไม่ใช่การย้ายสิทธิ์ — ก่อนมีปุ่มนี้ ใบที่เคยยื่น/อนุมัติ (มีหลักฐานลายเซ็น) ทิ้งไม่ได้เลย
+//   นอกจากแอดมินบังคับลบ · ลบ/ดึงกลับ/ตีกลับ/ออก Rev. ของเดิมอยู่ครบทุกตัว
+test('⭐ ยกเลิกใบได้เมื่อใบยังเดินอยู่และเคยผ่านสายตาผู้อนุมัติ (ยื่นแล้ว · อนุมัติแล้ว · มีหลักฐานลายเซ็น)', async () => {
+  const { isCancellableQuotation } = await import('./quotationWorkflow.js');
+  for (const status of ['draft', 'sent', 'rejected']) {
+    for (const approvalStatus of ['pending', 'approved', 'not_required']) {
+      assert.equal(isCancellableQuotation({ status, approvalStatus }), true, `${status}/${approvalStatus}`);
+    }
+  }
+  // ร่างที่ไม่เคยยื่น = "ลบ" ตามเดิม ไม่ใช่ยกเลิก (ยังไม่มีหลักฐานอะไรให้เก็บ)
+  assert.equal(isCancellableQuotation({ status: 'draft', approvalStatus: 'not_submitted' }), false);
+  // ⭐ ร่างที่ถูกดึงกลับ/ตีกลับหลังยื่น — มีหลักฐานลายเซ็นผู้เสนอค้างอยู่ ลบไม่ได้ (409) ⇒ ยกเลิกได้
+  assert.equal(
+    isCancellableQuotation({ status: 'draft', approvalStatus: 'not_submitted' }, { hasSignatureEvidence: true }),
+    true,
+  );
+  // จบไปแล้ว = ไม่มีอะไรให้ยกเลิก · Won ต้องใช้ "ย้อนการรับ" ก่อน · ยกเลิกแล้วคือจบถาวร
+  for (const status of ['accepted', 'closed', 'revised', 'cancelled']) {
+    assert.equal(
+      isCancellableQuotation({ status, approvalStatus: 'approved' }, { hasSignatureEvidence: true }),
+      false,
+      status,
+    );
+  }
+  assert.equal(isCancellableQuotation(null), false);
+});
+
+test('⭐ ด่านเต็มของยกเลิกใบ = ผู้อนุมัติ × สิทธิ์แก้ × ขอบเขตทีม × ตัวเอกสาร', async () => {
+  const { canCancelQuotation } = await import('./quotationWorkflow.js');
+  const approved = { status: 'sent', approvalStatus: 'approved' };
+  const full = { approver: true, canEdit: true, inScope: true };
+  assert.equal(canCancelQuotation(approved, full), true);
+  // คนในทีมที่ไม่ใช่ผู้อนุมัติ (canApproveQuotation = เจ้าของดีล + CD/CM/AE Sup/admin) — ไม่เห็นปุ่มเลย
+  assert.equal(canCancelQuotation(approved, { ...full, approver: false }), false);
+  // เจ้าของดีลที่ถูกย้ายไปตำแหน่งดูอย่างเดียว — ยังเป็น ownerId แต่ไม่มี salesplan:edit
+  assert.equal(canCancelQuotation(approved, { ...full, canEdit: false }), false);
+  assert.equal(canCancelQuotation(approved, { ...full, inScope: false }), false);
+  assert.equal(canCancelQuotation({ status: 'accepted', approvalStatus: 'approved' }, full), false);
+  // ใบที่รอฉันอนุมัติอยู่ — ยกเลิกตรงได้เลย ไม่ต้องตีกลับก่อน (มติ 24/09)
+  assert.equal(canCancelQuotation({ status: 'draft', approvalStatus: 'pending' }, full), true);
+});
+
+/* 🐞 รายการ-vs-ป้าย (บทเรียน ม-102/112): ใบที่เคยถูกตีกลับแล้วถูกยกเลิก ยังถือ rejectionReason ค้าง
+   (trigger 0164 ล้างเฉพาะตอน approvalStatus ≠ not_submitted) ⇒ ถ้าไม่กั้นด้วย status แถบเหตุผล
+   "ตีกลับโดย…" ยังขึ้นบนใบที่ตายแล้ว และหน้าทะเบียนนับเป็น "รอฉัน" ทั้งที่ป้ายบนเมนูไม่นับ */
+test('ใบที่ยกเลิกแล้วไม่มีแถบตีกลับ และไม่นับเป็นงานรอฉัน', async () => {
+  const { isQuotationWaitingOnMe } = await import('./quotationWorkflow.js');
+  const returned = {
+    status: 'draft', approvalStatus: 'not_submitted', createdBy: 'USR-MAKER',
+    rejectionReason: 'ราคาบรรทัดที่ 3 ไม่ตรงกับที่ตกลงกับลูกค้า', rejectedByName: 'หัวหน้า',
+  };
+  assert.ok(quotationRejectionNotice(returned));
+  const cancelled = { ...returned, status: 'cancelled' };
+  assert.equal(quotationRejectionNotice(cancelled), null);
+  assert.equal(isQuotationWaitingOnMe(cancelled, { userId: 'USR-MAKER' }), false);
+  // ใบที่ปิด/ออก Rev. ไปแล้วก็ไม่ใช่งานที่ต้องแก้แล้วยื่นใหม่
+  for (const status of ['closed', 'revised', 'accepted']) {
+    assert.equal(quotationRejectionNotice({ ...returned, status }), null, status);
+  }
+});
+
+test('บันทึกการยกเลิกบนใบ — อ่านจาก metadata.cancel · ใบที่ยกเลิกทางอื่น (ย้อน Won ผ่าน SO) ไม่มีรายละเอียด', async () => {
+  const { quotationCancelRecord } = await import('./quotationWorkflow.js');
+  const cancelled = {
+    status: 'cancelled',
+    metadata: {
+      cancel: {
+        reason: 'ลูกค้าเปลี่ยนสเปคทั้งหมด เสนอใบใหม่แทน', byName: 'คุณเอ', at: '2026-09-24T03:00:00.000Z',
+        fromStatus: 'sent', fromApprovalStatus: 'approved',
+      },
+    },
+  };
+  assert.deepEqual(quotationCancelRecord(cancelled), {
+    reason: 'ลูกค้าเปลี่ยนสเปคทั้งหมด เสนอใบใหม่แทน',
+    byName: 'คุณเอ',
+    at: '2026-09-24T03:00:00.000Z',
+    fromApprovalStatus: 'approved',
+  });
+  // cancel_sales_order_with_reversal_atomic (0116/0170) ตั้ง status ตรง ๆ ไม่มี metadata
+  assert.deepEqual(quotationCancelRecord({ status: 'cancelled', metadata: {} }), {
+    reason: '', byName: '', at: null, fromApprovalStatus: null,
+  });
+  assert.equal(quotationCancelRecord({ status: 'sent', metadata: cancelled.metadata }), null);
+  assert.equal(quotationCancelRecord(null), null);
+});
+
+/* ⭐ ฉบับตรึงล่าสุดเสิร์ฟไม่ได้เมื่อใบถูกยกเลิก — ปุ่มพิมพ์ตกไปเรนเดอร์สดซึ่งมีลายน้ำ "ยกเลิก"
+   (quotePrint.js ถอยเองเมื่อไม่ OK) · ฉบับระบุ seq ยังเปิดดูประวัติได้ */
+test('ฉบับตรึงล่าสุด: ใบยกเลิก/ใบหลุดอนุมัติ ตอบ 409 พร้อมเหตุผลคนละคำ · ใบอนุมัติปกติผ่าน', async () => {
+  const { issuedLatestRenderBlock } = await import('./quotationWorkflow.js');
+  assert.equal(issuedLatestRenderBlock({ status: 'sent', approvalStatus: 'approved' }), null);
+  assert.match(issuedLatestRenderBlock({ status: 'cancelled', approvalStatus: 'approved' }), /ถูกยกเลิก/);
+  // ใบที่ SO ย้อน Won แล้วยกเลิก (0116) ก็เคยพิมพ์ฉบับสะอาดได้ — ตอนนี้ต้องไม่ได้แล้วเช่นกัน
+  assert.match(issuedLatestRenderBlock({ status: 'cancelled', approvalStatus: 'pending' }), /ถูกยกเลิก/);
+  assert.match(issuedLatestRenderBlock({ status: 'draft', approvalStatus: 'pending' }), /ต้องอนุมัติใหม่/);
+});

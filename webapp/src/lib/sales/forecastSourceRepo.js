@@ -19,7 +19,7 @@ import { isWonStage } from '@/lib/salesPlanning';
 import {
   eligibleForecastQuotations,
   forecastValueOfQuotation,
-  resolveForecastSource,
+  previewForecastSource,
 } from '@/lib/sales/forecastSource';
 
 export const FORECAST_DEAL_COLUMNS = 'id,stage,"projectValue","forecastManualValue","forecastSource","forecastQuotationId","forecastPinnedAt","forecastPinnedBy"';
@@ -40,17 +40,10 @@ export async function loadDealQuotations(supabase, dealId) {
   return data || [];
 }
 
-/* เหตุที่เรียก — ตัดสินว่าอนุญาตให้ FC "ขึ้นบันได" (manual → quotation) ได้ไหม
- *
- * ⭐ มีเหตุเดียวที่ขึ้นได้เอง: **ใบถูกอนุมัติ** ซึ่งเป็นการกระทำที่มีคนกดและมีหัวหน้า
- *    รับรอง (มติผู้ใช้ 2026-09-02: "FC ขยับตอนใบอนุมัติแล้ว")
- * ⭐ เหตุอื่น (ลบใบ · ออก Rev.) แค่ **ดูแลตัวชี้ที่มีอยู่** — ดีลที่ยังเป็น manual อยู่
- *    ต้องไม่ถูกลากขึ้นบันไดเพราะมีใครไปลบใบอื่นทิ้ง ไม่งั้นคิวที่ให้ AE กดรับก็ไร้ค่า
- */
-const CLAIMING_CAUSES = new Set(['quotation_approved']);
-
 /* คิดใหม่แล้วเขียนถ้าเปลี่ยน — คืน { changed, source, value, reason, warning }
- * ปลอดภัยเมื่อกดซ้ำเสมอ (คิดจากสถานะปัจจุบันทั้งหมด ไม่ใช่ส่วนต่าง) */
+ * ปลอดภัยเมื่อกดซ้ำเสมอ (คิดจากสถานะปัจจุบันทั้งหมด ไม่ใช่ส่วนต่าง)
+ * ⭐ กติกา "ขึ้นบันไดได้เฉพาะเหตุใบอนุมัติ" (CLAIMING_CAUSES) อยู่ใน `previewForecastSource` ที่เดียว
+ *    (ย้ายไป forecastSource.js มติ 24/09) — พรีวิวของโมดัลยกเลิกใบถามตัวเดียวกัน จึงไม่มีวันบอกคนละคำกับตอนเขียน */
 export async function applyForecastSource(supabase, dealId, { cause } = {}) {
   const { data: deal, error: dealError } = await supabase
     .from('sales_deals').select(FORECAST_DEAL_COLUMNS).eq('id', dealId).maybeSingle();
@@ -65,14 +58,15 @@ export async function applyForecastSource(supabase, dealId, { cause } = {}) {
     return { changed: false, warning: error.message };
   }
 
-  const resolved = resolveForecastSource(deal, quotations);
-  const claiming = resolved.source === 'quotation' && deal.forecastSource !== 'quotation';
-  if (claiming && !CLAIMING_CAUSES.has(cause)) {
-    return { changed: false, reason: 'needs_user_choice', pendingValue: resolved.value };
+  const plan = previewForecastSource(deal, quotations, { cause });
+  if (!plan.changed) {
+    // รูปผลลัพธ์เดิมทุกตัวอักษร — ผู้เรียก (อนุมัติ · ลบ · ย้อนรับ · ยกเลิก) อ่าน reason/pendingValue
+    return plan.reason === 'needs_user_choice'
+      ? { changed: false, reason: plan.reason, pendingValue: plan.pendingValue }
+      : { changed: false, reason: plan.reason };
   }
-  if (!resolved.changed) return { changed: false, reason: resolved.reason };
 
-  return writeForecastSource(supabase, deal, resolved, { clearPin: resolved.pinCleared });
+  return writeForecastSource(supabase, deal, plan.resolved, { clearPin: plan.resolved.pinCleared });
 }
 
 /* เขียนสถานะที่ resolver ตัดสินแล้วลงแถวดีล
