@@ -106,8 +106,16 @@ export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
   return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order);
 }
 
-export function canIssueSalesOrderRevision(order, { reviewer = false } = {}) {
-  return Boolean(order) && reviewer && order.status === 'approval_revoked' && !isHistoricalOrder(order);
+/* ออก Rev. = ขั้นที่ 2 · **AE เจ้าของดีล + ผู้รีวิว** (มติ 24/09) — ขั้นนี้ไม่ขยับ Actual แล้ว (หลุดไปตั้งแต่ย้อนอนุมัติ)
+   🐞 เดิมผู้รีวิวคนเดียว: สิทธิ์ติดมาจากยุคปุ่มเดียว (0161) ตอนแยกสองขั้น (0166) ไม่มีใครตัดสินใหม่
+     ⇒ prod 24/09 SO-26080138-0 ค้าง: AE ไม่มีปุ่ม · แก้/ยกเลิกเองไม่ได้ (งวดรับรองแล้ว) · ถ้า AE Sup กดเอง
+       ใบ Rev. จะมีเธอเป็นผู้สร้าง แล้วเธออนุมัติใบนั้นเองไม่ได้ (แบ่งแยกหน้าที่)
+   ⭐ เจ้าของดีล *ปัจจุบัน* (`deal.ownerId`) ไม่ใช่ผู้สร้างใบ — กติกาเดียวกับ canSubmitSalesOrder / ใบเสนอราคา (0165)
+   ⚠️ ฐานเช็คซ้ำที่ revise_approved_sales_order_atomic (mig 0385) · route คูณ salesplan:edit + ขอบเขตดีลไว้แล้ว */
+export function canIssueSalesOrderRevision(order, { reviewer = false, userId = '', deal = null } = {}) {
+  if (!order || order.status !== 'approval_revoked' || isHistoricalOrder(order)) return false;
+  if (reviewer) return true;
+  return Boolean(userId) && userId === deal?.ownerId;
 }
 
 // Hard delete is only cleanup for a draft that has never entered the signed
@@ -266,12 +274,12 @@ export function dealActualFromSalesOrders(deal) {
   return Math.max(0, Number(deal?.wonValue) || 0);
 }
 
-export function canSalesOrderTransition(status, action, { reviewer = false, admin = false } = {}) {
+export function canSalesOrderTransition(status, action, { reviewer = false, admin = false, dealOwner = false } = {}) {
   if (action === 'save' || action === 'submit') return status === 'draft' || status === 'rejected';
   if (action === 'approve' || action === 'reject') return reviewer && status === 'pending_approval';
   if (action === 'withdraw') return status === 'pending_approval';
   if (action === 'revoke') return reviewer && status === 'approved';
-  if (action === 'revise') return reviewer && status === 'approval_revoked';
+  if (action === 'revise') return (reviewer || dealOwner) && status === 'approval_revoked';
   if (action === 'cancel') return status !== 'cancelled' && (status !== 'pending_approval' || reviewer);
   if (action === 'restore') return admin && status === 'cancelled';
   return false;

@@ -152,7 +152,7 @@ const STATUS = {
   },
   approved: { label: "อนุมัติแล้ว", color: "var(--green)", description: "ยอดถูกนับเป็น Actual แล้ว" },
   rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)", description: "แก้ไขตามเหตุผลแล้วส่งอนุมัติใหม่" },
-  approval_revoked: { label: "ย้อนการอนุมัติแล้ว", color: "var(--red)", description: "ยอดหลุดจาก Actual แล้ว · แก้ฉบับเดิมไม่ได้ ต้องออก Rev." },
+  approval_revoked: { label: "ย้อนการอนุมัติแล้ว", color: "var(--red)", description: "ยอดหลุดจาก Actual แล้ว · แก้ฉบับเดิมไม่ได้ ต้องออก Rev. (AE เจ้าของดีลหรือ AE Supervisor กดได้)" },
   revised: { label: "ออก Rev. แล้ว", color: "var(--amber)", description: "เก็บเป็นประวัติและมีฉบับแก้ไขใหม่แล้ว" },
   cancelled: { label: "ยกเลิก", color: "var(--red)", description: "เอกสารนี้ไม่ถูกนับเป็น Actual" },
 };
@@ -1036,7 +1036,14 @@ export default function SalesOrderDetailPage() {
   const canWithdraw = canWithdrawSalesOrderSubmission(order, { userId: order.meId });
   // สองขั้น (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
   const canRevoke = canRevokeSalesOrderApproval(order, { reviewer });
-  const canRevise = canIssueSalesOrderRevision(order, { reviewer });
+  /* ⭐ ออก Rev. = AE เจ้าของดีล + ผู้รีวิว (มติ 24/09) · คนอื่นที่แก้ใบนี้ได้ (เช่น AC ผู้สร้าง) เห็นปุ่มจาง
+     พร้อมชื่อคนที่ต้องกด — แพตเทิร์นเดียวกับปุ่ม "ยื่นอนุมัติ" (ติดด่าน = โชว์แล้วบอกเหตุ)
+     🐞 เดิมผู้รีวิวคนเดียวและไม่โชว์อะไรเลย ⇒ AE เปิดใบที่ถูกย้อนอนุมัติแล้วไม่มีทางไปต่อ (SO-26080138-0) */
+  const canRevise = canEdit && canIssueSalesOrderRevision(order, { reviewer, userId: order.meId, deal: order.deal });
+  const reviseBlocked = !canRevise && canEdit && !historical && order.status === "approval_revoked";
+  /* ผู้รีวิวที่ไม่ใช่เจ้าของดีลกดเอง ⇒ ใบ Rev. มีเขาเป็นผู้สร้าง แล้วเขาอนุมัติใบนั้นเองไม่ได้ (แบ่งแยกหน้าที่ ·
+     admin ข้ามได้ด้วย Admin Override) — บอกในโมดัลก่อนกด ไม่ใช่ไปเจอตอนจะอนุมัติ */
+  const reviseMakesMeCreator = canRevise && role !== "admin" && order.meId !== order.deal?.ownerId;
   /* ใบสั่งขายย้อนหลัง (mig 0374) พูดคนละเรื่องกับใบปกติทุกสถานะ — ของใบปกติบอกผลต่อ Actual ทุกบรรทัด
      ⇒ ป้าย/คำอธิบายมาจาก `historicalStatusCopy` ที่เดียว (พร้อมเทสต์ว่าไม่มีประโยคไหนบอกว่า "นับ Actual") */
   const historicalCopy = historical ? historicalStatusCopy(order.status) : null;
@@ -1236,8 +1243,15 @@ export default function SalesOrderDetailPage() {
     : canReviewThis && order.status === "pending_approval"
       ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
     // สถานะกลางหลังย้อนการอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก
-    : canRevise
-      ? { id: "revise", kind: "revise", label: "ออก Rev.", onClick: async () => {
+    : canRevise || reviseBlocked
+      ? { id: "revise", kind: "revise", label: "ออก Rev.",
+        disabled: reviseBlocked,
+        disabledReason: reviseBlocked
+          ? (dealOwnerName
+            ? `ออก Rev. ได้เฉพาะ AE เจ้าของดีลหรือ AE Supervisor — ส่งต่อให้ ${dealOwnerName} กดออก Rev.`
+            : "ออก Rev. ได้เฉพาะ AE เจ้าของดีลหรือ AE Supervisor — ส่งต่อให้เจ้าของดีลกดออก Rev.")
+          : undefined,
+        onClick: async () => {
         // เอกสาร FM-SA-04 ย้ายตามใบ Rev. ใหม่ (hook ใน API) — นับก่อนเปิดโมดัลให้บอกผลได้ครบ
         const specDocEffect = salesOrderSpecDocEffect("revise", await loadSpecDocCount());
         // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
@@ -1257,9 +1271,12 @@ export default function SalesOrderDetailPage() {
               specDocEffect,
               order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
             ].filter(Boolean).join(" · "),
+            reviseMakesMeCreator
+              ? `ใบ Rev. จะมีคุณเป็นผู้สร้าง — คุณอนุมัติใบนั้นเองไม่ได้ ต้องให้ AE Supervisor คนอื่นอนุมัติ · ถ้าจะอนุมัติเอง ให้ ${dealOwnerName || "AE เจ้าของดีล"} กดออก Rev. แทน`
+              : null,
             /* ⭐ งวดชำระ **ย้ายไปใบ Rev. ทั้งชุด** (mig 0376) — บรรทัดของตัวเอง (detail เป็น pre-line) · ใบไม่มีงวด = ไม่พูด */
             ...salesOrderMoneyOutcome(order, installments, "revise"),
-          ].join("\n"),
+          ].filter(Boolean).join("\n"),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
           /* 🐞 ออก Rev. ไม่ผ่านต้องอ่านได้ในโมดัล — ด่านกันแท็บค้าง (`expectedUpdatedAt`) ของ
              `revise_approved_sales_order_atomic` ตีกลับเมื่อมีคนออก Rev. ไปก่อน ⇒ ถ้าเงียบ

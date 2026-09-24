@@ -12,7 +12,8 @@ const WORKFLOW_ERRORS = Object.freeze({
   sales_order_not_found: ['ไม่พบ ใบสั่งขาย', 404],
   sales_order_withdraw_state_invalid: ['ดึงกลับได้เฉพาะ ใบสั่งขายที่กำลังรออนุมัติ', 409],
   sales_order_withdraw_forbidden: ['ดึงกลับได้เฉพาะผู้ยื่นเอกสารเอง', 403],
-  sales_order_revision_forbidden: ['ย้อนการอนุมัติและออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin', 403],
+  // ⚠️ รหัสเดียวใช้สองขั้น: ย้อนการอนุมัติ (ผู้รีวิวเท่านั้น · 0166) กับออก Rev. (+ AE เจ้าของดีล · 0385)
+  sales_order_revision_forbidden: ['ย้อนการอนุมัติได้เฉพาะ AE Supervisor · ออก Rev. ได้เฉพาะ AE เจ้าของดีลหรือ AE Supervisor', 403],
   sales_order_revoke_state_invalid: ['ย้อนการอนุมัติได้เฉพาะ ใบสั่งขายที่อนุมัติแล้ว', 409],
   sales_order_revision_state_invalid: ['ออก Rev. ได้เฉพาะ ใบสั่งขายที่ย้อนการอนุมัติแล้ว — กด "ย้อนการอนุมัติ" ก่อน', 409],
   sales_order_revision_exists: ['ใบสั่งขายนี้มี Rev. ถัดไปแล้ว กรุณาโหลดใหม่', 409],

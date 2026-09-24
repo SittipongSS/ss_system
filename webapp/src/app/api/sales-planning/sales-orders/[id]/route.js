@@ -831,10 +831,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. ใบสั่งขายไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
       : null;
     if (closedProject) return badRequest(closedProject);
-    if (!canIssueSalesOrderRevision(before, { reviewer })) {
+    // ⭐ AE เจ้าของดีลออก Rev. เองได้ (มติ 24/09) — ฐานเช็คเจ้าของดีลซ้ำที่ RPC (mig 0385)
+    if (!canIssueSalesOrderRevision(before, { reviewer, userId: user.id, deal: before.deal })) {
       return forbidden(before.status === 'approved'
         ? 'ต้องกด "ย้อนการอนุมัติ" ก่อนจึงจะออก Rev. ได้'
-        : 'ออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin บน SO ที่ย้อนการอนุมัติแล้ว');
+        : 'ออก Rev. ได้เฉพาะ AE เจ้าของดีลหรือ AE Supervisor บน SO ที่ย้อนการอนุมัติแล้ว');
     }
     const reason = String(body.reason || '').trim() || before.revisionReason || '';
     const expected = resolveExpectedUpdatedAt(body);
