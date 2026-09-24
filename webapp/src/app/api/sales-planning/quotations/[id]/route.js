@@ -34,12 +34,14 @@ import { fillCustomerSnapshotFromMaster, refreshCustomerNameForDisplay } from '@
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
 import { loadSignatureImageDataUri, reissueQuotationDocumentForLanguage } from '@/lib/sales/issuedQuotationSnapshot';
-import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
+import { captureIssuedQuotationPdfLater } from '@/lib/sales/issuedQuotationPdf';
 import { purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+// PDF ของฉบับเปลี่ยนภาษาสร้างใน `after` ซึ่งกินเพดานเวลาของ route นี้ — เผื่อ cold start ของ chromium
+export const maxDuration = 60;
 
 const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId, project:projects(id, code, name))';
 
@@ -431,11 +433,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         user,
         company,
       });
-      const snapshotId = snap?.snapshot?.id;
-      const html = snap?.artifact?.content;
-      if (snapshotId && html) {
-        await captureIssuedQuotationPdf(supabase, { quotationId: id, snapshotId, html });
-      }
+      // PDF ฉบับภาษาใหม่สร้างหลังตอบหน้าจอ (chromium ~5 วิ) — เหตุผลเดียวกับตอนอนุมัติ
+      captureIssuedQuotationPdfLater(supabase, {
+        quotationId: id, snapshotId: snap?.snapshot?.id, html: snap?.artifact?.content,
+      }, { logLabel: 'reissue quotation pdf for language failed' });
     } catch (reissueError) {
       console.error('reissue quotation for language failed', id, reissueError);
     }

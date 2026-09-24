@@ -6,6 +6,10 @@
 //   · Rev.00 เริ่มที่การออก · แก้ก่อนอนุมัติขั้นสุดท้าย = Rev เดิม · อนุมัติแล้วกด
 //     "แก้ไขเอกสาร" = Rev+1 **เลขที่เดิม** เดินด่านครบสามขั้นใหม่
 //   · ทุกการยื่น/อนุมัติ/แก้ไข ต้องเช็คว่า SO **ยังอนุมัติอยู่** (ถูกย้อนการอนุมัติ = ติดด่าน บอกเหตุ)
+// ⭐ **มติเจ้าของ 24/09/2569 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ"** — เพิ่มสิทธิ์ ไม่ถอดของใคร
+//   · ผู้อนุมัติทั้งสองขั้น (AE เจ้าของดีล · CD/CM/AE Sup) + admin กด "แก้ไขเอกสาร" (Rev+1) และ "ยกเลิกเอกสาร"
+//     บนใบที่ **อนุมัติครบมาแล้วอย่างน้อยหนึ่งฉบับ** ได้ · สาย AC คงทุกสิทธิ์เดิม
+//   · ใบที่ยังไม่เคยอนุมัติ ผู้อนุมัติใช้ "ตีกลับ" ไม่ใช่ยกเลิก · ยื่น/ลบร่างยังเป็นของสาย AC
 //
 // 🔴 **"admin" = `role === 'admin'` เท่านั้น — ห้ามใช้ `isSuperuser`** เพราะ `ae_supervisor`
 //    นับเป็น superuser แล้วจะกดขั้น AE ข้ามเจ้าของดีลได้ (ขั้น AE คือลายเซ็นของเจ้าของดีล)
@@ -79,6 +83,50 @@ export const canAeApproveProductSpecDocument = (user, dealOwnerId) => isAdmin(us
 /** ขั้น AE Sup — ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) หรือ admin
  *  ⚠️ ถามลิสต์ SALES_MANAGER_ROLES ตรง ๆ ไม่ใช่ `isSuperuser` — AC Supervisor ไม่อนุมัติ (มติ 2026-09-24) */
 export const canSupApproveProductSpecDocument = (user) => isAdmin(user) || SALES_MANAGER_ROLES.includes(user?.role);
+
+/* ── ย้อน/ยกเลิกโดยผู้อนุมัติ (มติเจ้าของ 24/09/2569) ─────────────────────────────
+ *
+ * ⭐ "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" — ผู้ที่เซ็นเอกสารได้ต้องถอนสิ่งที่ตัวเองรับรองได้เอง
+ *   ไม่ต้องตามหา AC · **เพิ่ม** สิทธิ์ให้ผู้อนุมัติ ไม่ถอดของสาย AC (`canIssueProductSpecDocument` ไม่ขยับ —
+ *   มันยังคุมออก/ยื่น/ลบร่าง/กระดาษร่าง)
+ * ⚠️ ประกอบจากตัวตัดสินขั้นอนุมัติสองตัวข้างบนเท่านั้น — ห้ามเขียนชื่อตำแหน่ง/`isSuperuser` เอง
+ *    (ขั้น AE เป็นของเจ้าของดีล · AC Supervisor ไม่อนุมัติ ⇒ ไม่ได้สิทธิ์นี้ผ่านทางผู้อนุมัติ)
+ * 🪤 "ย้อน" ของใบที่อนุมัติแล้ว = เปิด Rev+1 (ยามของ 0370 ห้าม approved → draft) — ไม่มีสถานะใหม่
+ */
+
+/** ผู้อนุมัติของเอกสารใบนี้ = ขั้น AE (เจ้าของดีลปัจจุบัน) หรือขั้น AE Sup (CD · CM · AE Sup) หรือ admin
+ *  ⚠️ เจ้าของดีลนับตาม `sales_deals.ownerId` ปัจจุบัน — ย้ายเจ้าของดีล สิทธิ์ย้ายตาม (เหมือนปุ่มอนุมัติ) */
+export const isProductSpecDocumentApprover = (user, dealOwnerId) => canAeApproveProductSpecDocument(user, dealOwnerId)
+  || canSupApproveProductSpecDocument(user);
+
+/**
+ * เอกสารนี้อนุมัติครบมาแล้วอย่างน้อยหนึ่งฉบับไหม
+ *
+ * ⚠️ สามทางเพราะแต่ละทางพลาดได้คนละแบบ:
+ *   · `currentRevNo` มีค่า = ทางปกติหลังอนุมัติขั้นสุดท้าย
+ *   · Rev ล่าสุด approved/superseded = อนุมัติแล้วแต่ `applyFinalApproval` ล้ม (currentRevNo ยังว่าง)
+ *   · Rev>0 = เกิดได้จาก Rev ที่ approved เท่านั้น (PATCH revise ต้อง `approved` · hook ออก Rev ของ SO
+ *     เปิด Rev+1 เฉพาะเมื่อ Rev ล่าสุด approved) ⇒ จับกรณีปิดการอนุมัติล้ม **แล้ว** มี Rev ใหม่เปิดทับ
+ * 🔴 จริงเมื่อไร `draftDeleteBlock` ไม่ว่างเสมอ ⇒ ปุ่มปลายทางของใบคือ "ยกเลิก" ไม่ใช่ "ลบร่าง"
+ */
+export const hasApprovedRevision = (document, latest) => (
+  (document?.currentRevNo !== null && document?.currentRevNo !== undefined)
+  || ['approved', 'superseded'].includes(latest?.status)
+  || Number(latest?.revNo) > 0
+);
+
+/** "แก้ไขเอกสาร" (Rev+1) — สาย AC + admin (เดิม) หรือผู้อนุมัติของใบนี้ (มติ 24/09)
+ *  ⚠️ ถามสิทธิ์ของคนเท่านั้น — สถานะ (Rev ล่าสุดต้อง approved) อยู่ที่ `documentActions` */
+export const canReviseProductSpecDocument = (user, dealOwnerId) => canIssueProductSpecDocument(user?.role)
+  || isProductSpecDocumentApprover(user, dealOwnerId);
+
+/** "ยกเลิกเอกสาร" — สาย AC + admin ทุกใบ (เดิม) · ผู้อนุมัติเฉพาะใบที่ **เคยอนุมัติแล้ว** (มติ 24/09)
+ *  ⚠️ ใบที่ยังไม่เคยอนุมัติ ผู้อนุมัติใช้ "ตีกลับ" — ยกเลิกคือปิดเลขที่ถาวร ไม่ใช่ส่งคืนให้แก้
+ *  ⚠️ Rev+1 ที่เปิดค้างบนฉบับที่อนุมัติแล้ว = ยังยกเลิกได้ (ฉบับที่อนุมัติยังเป็นฉบับที่ใช้) */
+export const canVoidProductSpecDocument = ({
+  user, dealOwnerId, document, latest,
+} = {}) => canIssueProductSpecDocument(user?.role)
+  || (isProductSpecDocumentApprover(user, dealOwnerId) && hasApprovedRevision(document, latest));
 
 /**
  * เหตุผลของการตีกลับ/แก้ไขเอกสาร/ยกเลิก — `null` = ใช้ได้
@@ -182,7 +230,8 @@ export const isDeletableDraft = (document, latest) => draftDeleteBlock(document,
  * 🔴 **ไม่มีทางตัน** — ใบ active ทุกใบมีปุ่มปลายทาง **หนึ่งตัวพอดี** (ตัวใดตัวหนึ่งจากฟังก์ชันนี้)
  *   ทุกจอที่เคยโชว์ "ยกเลิก" ต้องโชว์ตัวที่ฟังก์ชันนี้เลือก ไม่ใช่ยึด `void` ตายตัว
  *   (การ์ดหน้า SO แถว "บรรทัดถูกถอด" ก็เดินตามนี้ — ดู `SalesOrderFollowUpDocs`)
- * ⚠️ ไม่ดูสิทธิ์ของคน — AC/admin เท่านั้นที่เห็นปุ่มจริง (`documentActions`)
+ * ⚠️ ไม่ดูสิทธิ์ของคน — คนที่เห็นปุ่มจริงตัดสินที่ `documentActions`: AC/admin ทุกใบ · ผู้อนุมัติได้เฉพาะ
+ *    "ยกเลิก" บนใบที่เคยอนุมัติแล้ว (มติ 24/09 — ใบแบบนั้นไม่เคยเป็น 'remove' จึงยังเป็นปุ่มเดียวพอดี)
  * 🪤 ตอนนี้ "จอว่าลบได้แต่ RPC ปฏิเสธ" ไม่ใช่แค่ปุ่มที่กดแล้วได้ 409 อีกแล้ว — มันคือใบที่ไม่มีปุ่มยกเลิกให้
  *    ถอย ⇒ ตัวตัดสินฝั่งจอ **ต้องไม่หลวมกว่า RPC** · ช่องเดียวที่ต่างคือ `frozenAt` แทน `frozenHtml` และมันไปไม่ถึง
  *    กรณีจริง: กระดาษถูกตรึงตอน `sup_approve` เท่านั้น ซึ่ง Rev ต้องผ่าน `pending_ae` มาก่อน (trigger ของ 0375
@@ -298,18 +347,24 @@ export function documentActions({
       : null);
   const reject = rejectable ? shown(rejectReason) : hidden();
 
-  // แก้ไขเอกสาร (Rev+1): เฉพาะเมื่อ Rev ล่าสุดอนุมัติแล้ว · มี Rev ค้างอยู่ = กำลังแก้อยู่ ซ่อน
-  const revise = mayIssue && status === 'approved' ? shown(forward) : hidden();
+  /* แก้ไขเอกสาร (Rev+1): เฉพาะเมื่อ Rev ล่าสุดอนุมัติแล้ว · มี Rev ค้างอยู่ = กำลังแก้อยู่ ซ่อน
+     ⭐ มติ 24/09/2569: ผู้อนุมัติของใบนี้กดได้ด้วย (สาย AC เหมือนเดิม) — Rev ที่เปิดแล้วยังให้สาย AC ยื่น
+        (ปุ่ม "ยื่น" ข้างบนไม่ขยับ) และเราต์แจ้งเตือน AC ให้ เพราะ AC ไม่มีคิวงานของเอกสาร */
+  const revise = canReviseProductSpecDocument(user, dealOwnerId) && status === 'approved' ? shown(forward) : hidden();
 
   /* ปุ่มปลายทาง — AC/admin ได้ **หนึ่งตัวพอดี** ตลอดอายุที่ยัง active (`documentExitKey`)
      · ยกเลิกเอกสาร: ใบที่เคยยื่นแล้ว (รวมดึงกลับ/ตีกลับ) · ร่างที่ไม่เคยยื่น = **ซ่อน**
        (มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง")
+       ⭐ มติ 24/09/2569: ผู้อนุมัติได้ด้วย **เฉพาะใบที่เคยอนุมัติแล้ว** (`canVoidProductSpecDocument`)
+          — ใบแบบนั้น `exit` เป็น 'void' เสมอ ⇒ ผู้อนุมัติได้ยกเลิกหนึ่งตัวพอดี ไม่มีวันเห็นลบร่าง
      · ลบร่าง (mig 0375): เฉพาะใบที่ยังไม่เคยยื่นให้ใครดู — ใบที่ยื่น/ถูกตีกลับ/อนุมัติแล้ว
-       **ไม่มีของให้ลบ** จึงซ่อน (กติกาเดียวกับปุ่ม "ยื่น" ที่หายเมื่อยื่นไปแล้ว)
+       **ไม่มีของให้ลบ** จึงซ่อน (กติกาเดียวกับปุ่ม "ยื่น" ที่หายเมื่อยื่นไปแล้ว) · ยังเป็นของ AC/admin เท่านั้น
      ⚠️ ทั้งคู่ไม่เช็ค SO — ถอย ไม่ใช่เดินหน้า (เหมือนดึงกลับ) · SO ที่ถูกย้อนการอนุมัติยิ่งต้อง
         เก็บกวาดร่างที่ออกค้างไว้ได้ */
   const exit = documentExitKey(document, latest);
-  const voidAction = mayIssue && exit === 'void' ? shown(null) : hidden();
+  const voidAction = canVoidProductSpecDocument({
+    user, dealOwnerId, document, latest,
+  }) && exit === 'void' ? shown(null) : hidden();
   const remove = mayIssue && exit === 'remove' ? shown(null) : hidden();
 
   return {

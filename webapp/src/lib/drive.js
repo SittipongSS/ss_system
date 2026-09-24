@@ -714,13 +714,8 @@ export async function getFileMeta(fileId, fields = 'id, name, mimeType, webViewL
   return res.data;
 }
 
-// แยก fileId จาก Drive URL (รองรับ /d/<id>/, ?id=<id>, /document|spreadsheet/d/<id>).
-export function parseDriveId(url) {
-  if (!url) return null;
-  const s = String(url);
-  const m = s.match(/\/d\/([a-zA-Z0-9_-]{10,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
-  return m ? m[1] : null;
-}
+// แยก fileId จาก Drive URL — ตัวจริงอยู่ lib/driveId.js (ฟังก์ชันล้วน เทสต์ได้โดยไม่ลาก googleapis)
+export { parseDriveId } from '@/lib/driveId';
 
 // map mimeType → kind ('gdoc' | 'gsheet' | null สำหรับชนิดอื่น).
 export function kindFromMime(mimeType) {

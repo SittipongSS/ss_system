@@ -63,7 +63,7 @@ Admin Center, ลายเซ็นอิเล็กทรอนิกส์, D
   ไม่เป็น dead code แล้ว (ไม่มี migration ใช้ `quotations.metadata` เดิม)
 - PDF artifact ถาวร (D-7C-1) โค้ดเสร็จแล้ว (2026-07-22): ตัดสินใจทิศ A —
   puppeteer-core + @sparticuz/chromium เรนเดอร์จาก HTML ที่ตรึง, เก็บใน private bucket
-  `issued-quotation-pdf` (mig 0139), สร้างตอนอนุมัติแบบ best-effort + ดาวน์โหลด fallback
+  `issued-quotation-pdf` (mig 0139), สร้างหลังตอบการอนุมัติ (`after` · 2026-09-24) แบบ best-effort + ดาวน์โหลด fallback
   สร้างเอง; route `GET /api/sales-planning/quotations/[id]/issued/pdf` + ปุ่มดาวน์โหลดบน
   หน้าใบที่อนุมัติแล้ว. **7C โค้ดครบทั้ง 2 ข้อแล้ว เหลือ UAT ใบจริงบน prod + รัน mig 0139**
 

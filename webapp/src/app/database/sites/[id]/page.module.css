@@ -92,6 +92,18 @@
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
+/* สรุปจำนวนตามรุ่น/สีของไซต์ (เหนือตารางอุปกรณ์) — ไหลต่อบรรทัดได้ แต่ชิ้น "รุ่น สี จำนวน" ห้ามแตกกลาง
+   (แต่ละชิ้นเป็น .nowrap) */
+.modelSummary {
+  margin: 0 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+.modelSummary strong {
+  color: var(--text-1);
+  font-weight: var(--fw-semibold);
+}
 .serial { color: var(--text-3); }
 .inactive td { opacity: var(--op-muted); }
 
