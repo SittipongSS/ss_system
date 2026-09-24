@@ -17,7 +17,7 @@
 //    (กติกาเดียวกับ `quotationDealBlocker` ที่ GatedAction เขียนไว้)
 import { accessConflict } from './sites';
 import { termIsActive } from './terms';
-import { isClosedVisit } from './visitStatus';
+import { visitClosedAtKey } from './visitStatus';
 import { coversDate, hasOverdueUnconfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { contractCancelDate } from '@/lib/sales/contracts';
 import { contractCoverageOn } from '@/lib/sales/serviceContractLink';
@@ -126,11 +126,13 @@ export function evaluateVisitGate(visit, {
       return order?.serviceContractId ? pick(contractsById, order.serviceContractId) : null;
     };
     /* ⭐ **สัญญาที่ถูกยกเลิกหลังลงนามยังนับเป็น "ผูกแล้ว"** (มติเจ้าของ 24/09/2026) — ครอบวันก่อนวันยกเลิก
-       (+ นัดวันนั้นที่ปิดงานแล้ว) แล้วติดตั้งแต่วันยกเลิกด้วยเหตุของตัวเองข้างล่าง · ตัดทิ้งตรงนี้เหมือนใบที่ไม่เคยมีผล
+       (+ นัดวันนั้นที่ปิดงาน **ก่อนเวลากดยกเลิก**) แล้วติดตั้งแต่วันยกเลิกด้วยเหตุของตัวเองข้างล่าง · ตัดทิ้งตรงนี้เหมือนใบที่ไม่เคยมีผล
        = ใบส่งงานที่ปิดไปแล้วทุกใบของใบสั่งขายกลายเป็น "งดบริการ" ย้อนหลัง (ด่านนี้คำนวณสดทุกครั้งที่เปิดใบ)
+       🔴 ส่งเวลาปิดงานจริง ไม่ใช่ธง "ปิดแล้ว" (รีวิว 25/09) — นัดที่ปิดหลังยกเลิกต้องติดเหมือนตอนที่ยังเปิดอยู่
+          ⇒ ผู้เรียกที่ตรวจ "การเปลี่ยนแปลง" (ร่าง → ขึ้นตาราง · ใบใหม่) ส่งสถานะก่อนแก้ผ่าน `gateVisitBeforeChange`
        ⚠️ ร่าง/รอลงนาม/รอรับรอง/ยกเลิกก่อนมีผล ยัง `'none'` = ไม่ผูก เหมือน `contractInForce` เดิมทุกกรณี */
-    const finished = isClosedVisit(visit);
-    const coverage = (t) => contractCoverageOn(contractOf(t), visitDate, { finished });
+    const closedAt = visitClosedAtKey(visit);
+    const coverage = (t) => contractCoverageOn(contractOf(t), visitDate, { closedAt });
     const linked = live.filter((t) => coverage(t) !== 'none');
     if (!linked.length) {
       return {
@@ -350,7 +352,19 @@ export const gateSummary = (items = []) => ({
    ไม่ต้องให้คนมากดปล่อยทีละใบ · ที่ไม่ผ่านจะจอดเป็นร่างรอคนจัดการ
    ⚠️ นี่คือจุดที่ทำให้กติกา "TS ไม่ใช่ต้นทางของงาน" ไม่กลายเป็นแรงเสียดทานรายวัน */
 export function initialVisitStatus(visit, ctx = {}) {
-  return gatePassed(evaluateVisitGate(visit, ctx)) ? 'scheduled' : 'draft';
+  return gatePassed(evaluateVisitGate(gateVisitBeforeChange(null, visit), ctx)) ? 'scheduled' : 'draft';
+}
+
+/** นัดที่ด่านตรวจตอน **เปลี่ยนแปลง** (ร่าง → ขึ้นตาราง · ใบที่เพิ่งเกิด) — ค่าหลังแก้ทุกช่อง ยกเว้น **สถานะ = ก่อนแก้**
+ *  (ไม่มีแถวเดิม = ใบใหม่ = `draft`)
+ *  🔴 รีวิว 25/09: สถานะเป็นช่องเดียวที่ด่านอ่านเพื่อ "ปิดงานก่อนสัญญาถูกยกเลิกไหม" (`visitClosedAtKey`) — ตรวจด้วย
+ *     สถานะหลังแก้ = ร่างวันยกเลิกที่ยิงตรงเป็น "เข้าแล้ว"/`closeFromAssets` หรือเลือก "ทำไม่ได้" (มีในตัวเลือกของร่าง)
+ *     พร้อมเวลาจบที่พิมพ์ย้อนไว้ก่อนเวลายกเลิก **ผ่านด่านได้โดยไม่ต้องข้ามด่าน**
+ *  ⭐ ร่างไม่เคยอยู่บนตาราง และใบใหม่ยังไม่เคยมีใครไป ⇒ ไม่มีทางปิดงานก่อนสัญญาถูกยกเลิก — สถานะก่อนแก้ตอบถูกเสมอ
+ *  ⚠️ ช่องอื่นต้องเป็นค่าหลังแก้ตามเดิม — เลือกเจ้าหน้าที่พร้อมกดปล่อยขึ้นตารางในคำขอเดียวกันได้ (route PATCH)
+ *  ⚠️ ใช้ตัวนี้ทุกที่ที่ตรวจการเปลี่ยนแปลง (route PATCH · โมดัลนัด · `initialVisitStatus`) — ปุ่มกับด่านต้องพูดเรื่องเดียวกัน */
+export function gateVisitBeforeChange(saved, next = {}) {
+  return { ...(saved || {}), ...(next || {}), status: saved?.status || 'draft' };
 }
 
 /* ── ทำไมเงินถึงไม่ผ่าน — สามเหตุที่แก้คนละทาง ────────────────────────────

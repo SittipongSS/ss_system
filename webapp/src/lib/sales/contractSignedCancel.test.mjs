@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import {
   canCancelContract,
   contractCancelDate,
+  contractCancelMoment,
   contractCancelledAfterSigning,
   contractEndDate,
   contractInForce,
@@ -99,6 +100,11 @@ test('ยกเลิกหลังลงนาม = approvedAt + cancelledAt �
   // ⚠️ ยังไม่ "มีผล" และยังผูกกับใบใหม่ไม่ได้
   assert.equal(contractInForce(cancelled), false);
   assert.equal(contractLinkable(cancelled), false);
+  // จุดเวลาที่ยกเลิก (ไว้เทียบกับเวลาปิดงานของนัดวันยกเลิก) — วันกับเวลามาจากนาฬิกาไทยทั้งคู่
+  assert.equal(contractCancelMoment(cancelled), '2026-09-25 01:30');
+  assert.equal(contractCancelMoment(signed({ status: 'cancelled', cancelledAt: '2026-09-25T03:05:40Z' })), '2026-09-25 10:05');
+  assert.equal(contractCancelMoment(signed()), null);
+  assert.equal(contractCancelMoment(signed({ status: 'cancelled', approvedAt: null, cancelledAt: '2026-09-24T03:00:00Z' })), null);
 });
 
 test('วันจบ = วันที่ยกเลิก หรือวันหมดอายุถ้ามาก่อน · ใบอื่นเป็นวันหมดอายุตามเดิม', () => {
@@ -266,6 +272,22 @@ test('🔴 ลงนามบันทึกเพิ่มเติมได้
   assert.match(route, /loadScoped\(supabase, 'sales_contracts', before\.contractId, user, 'view'\)/);
   assert.match(route, /parent\.status !== 'signed'/);
   assert.ok(route.indexOf("parent.status !== 'signed'") < route.indexOf("status: 'signed'"));
+});
+
+/* 🔴 รีวิว 25/09: ตรวจก่อนเขียน = ช่องว่างระหว่างสองจังหวะ — ผู้อนุมัติยกเลิกสัญญาแม่ (บันทึกถูกยกเลิกตาม) หลังด่านผ่าน
+   แต่ก่อนคำสั่งเขียน ⇒ คำสั่งที่กรองแค่ id เขียน "ลงนามแล้ว" ทับ "ยกเลิก" = บันทึกลงนามใต้สัญญาที่ยกเลิกแล้ว
+   ⇒ คำสั่งเขียนต้องกรองสถานะที่ด่านตรวจไว้ด้วย · ไม่เจอแถว = 409 (ไม่ใช่ 500 ของ `.single()`) */
+test('🔴 ลงนาม/ออกบันทึกเพิ่มเติม: คำสั่งเขียนกรองสถานะที่ด่านตรวจไว้ — ยกเลิกตามสัญญาแม่ระหว่างนั้นไม่ถูกเขียนทับ', () => {
+  const sign = stripComments(readSrc('../../app/api/sales-planning/addenda/[id]/sign/route.js'));
+  const signWrite = sign.slice(sign.indexOf("from('sales_contract_addenda').update("));
+  assert.match(signWrite, /^[\s\S]*?\.eq\('id', id\)\.eq\('status', 'awaiting_signature'\)\s*\.select\(\)\.maybeSingle\(\)/);
+  assert.doesNotMatch(signWrite, /\.single\(\)/);
+  assert.match(signWrite, /if \(!data\) return fail\('[^']*', 409\)/);
+  assert.ok(signWrite.indexOf('if (!data)') < signWrite.indexOf('recordAudit('), '409 ก่อน audit — ไม่บันทึกประวัติของสิ่งที่ไม่เกิด');
+
+  const issue = stripComments(readSrc('../../app/api/sales-planning/addenda/[id]/issue/route.js'));
+  assert.match(issue, /\.eq\('id', id\)\.eq\('status', 'draft'\)\.is\('docNo', null\)/);
+  assert.match(issue, /if \(!data\) return fail\('[^']*', 409\)/);
 });
 
 test('พิมพ์ซ้ำใบที่ยกเลิกแล้วมีลายน้ำ "ยกเลิก" ทั้งสัญญาและบันทึกเพิ่มเติม — ประทับตอนเสิร์ฟ ไม่เขียนกลับ', () => {

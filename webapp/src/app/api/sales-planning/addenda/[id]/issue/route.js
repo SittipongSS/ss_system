@@ -52,7 +52,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   /* เขียนทีเดียวพร้อมเนื้อที่ตรึง — ต่างจากสัญญาที่ต้องออกเลขจาก RPC ก่อน เพราะเลขของ
      บันทึกคำนวณได้เองจากสัญญาแม่ ⇒ ไม่มีจังหวะที่ใบมีเลขแต่ยังไม่มีเนื้อ
-     ⚠️ กันกดซ้ำด้วย `.is('docNo', null)` — คำสั่งที่สองจะไม่เจอแถวแล้วตอบ 409 */
+     ⚠️ กันกดซ้ำด้วย `.is('docNo', null)` — คำสั่งที่สองจะไม่เจอแถวแล้วตอบ 409
+     ⚠️ + กรองสถานะร่าง (รีวิว 25/09) — ร่างที่ถูกยกเลิกตามสัญญาแม่ (มติ 24/09) หลังด่านข้างบนผ่านยังไม่มีเลข ⇒ กรองแค่
+        `docNo` จะออกเลขทับใบที่ยกเลิกแล้วกลับเป็น "รอลงนาม" */
   const { data, error } = await supabase.from('sales_contract_addenda')
     .update({
       docNo,
@@ -64,10 +66,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       templateVersion: ADDENDUM_TEMPLATE.version,
       updatedAt: now,
     })
-    .eq('id', id).is('docNo', null)
+    .eq('id', id).eq('status', 'draft').is('docNo', null)
     .select().maybeSingle();
   if (error) return fail(error.message, 500);
-  if (!data) return fail('บันทึกนี้ออกเลขไปแล้ว', 409);
+  if (!data) return fail('บันทึกนี้ออกเลขไปแล้ว หรือถูกยกเลิกระหว่างนั้น — โหลดหน้าใหม่แล้วตรวจอีกครั้ง', 409);
 
   await recordAudit({
     user, action: 'update', entityType: 'sales_contract_addendum', entityId: id,

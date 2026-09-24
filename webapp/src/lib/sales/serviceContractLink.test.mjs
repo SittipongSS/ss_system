@@ -314,13 +314,19 @@ test('contractCoverageOn: ใบลงนามแล้วตอบเหมื
   assert.equal(contractCoverageOn(null, '2026-10-01'), 'none');
 });
 
-test('contractCoverageOn: ยกเลิกหลังลงนาม — ก่อนวันยกเลิกครอบ · วันยกเลิกครอบเฉพาะนัดที่ปิดงานแล้ว · หลังจากนั้นไม่ครอบ', async () => {
+test('contractCoverageOn: ยกเลิกหลังลงนาม — ก่อนวันยกเลิกครอบ · วันยกเลิกครอบเฉพาะนัดที่ปิดงานก่อนเวลายกเลิก · หลังจากนั้นไม่ครอบ', async () => {
   const { contractCoverageOn } = await import('./serviceContractLink.js');
+  // ยกเลิก 05/10/2026 10:00 เวลาไทย
   const c = signed({ status: 'cancelled', approvedAt: '2026-09-01T03:00:00Z', cancelledAt: '2026-10-05T03:00:00Z' });
   assert.equal(contractCoverageOn(c, '2026-10-04'), 'in');
   assert.equal(contractCoverageOn(c, '2026-10-05'), 'cancelled');
-  assert.equal(contractCoverageOn(c, '2026-10-05', { finished: true }), 'in');
-  assert.equal(contractCoverageOn(c, '2026-10-06', { finished: true }), 'cancelled');
+  assert.equal(contractCoverageOn(c, '2026-10-05', { closedAt: '2026-10-05 09:30' }), 'in', 'ปิดงานก่อนกดยกเลิก');
+  /* 🔴 รีวิว 25/09: ถาม "ปิดงานแล้ว **ก่อน** ยกเลิกไหม" ไม่ใช่ "ปิดแล้วตอนนี้ไหม" — นัดที่ยังเปิดอยู่ตอนยกเลิก
+     แล้วมาปิดทีหลัง ต้องติดเหมือนเดิม ไม่งั้นใบส่งงานของนัดเดียวกันพลิกจาก "งดบริการ" เป็นให้บริการครบ */
+  assert.equal(contractCoverageOn(c, '2026-10-05', { closedAt: '2026-10-05 11:00' }), 'cancelled', 'ปิดงานหลังยกเลิก');
+  assert.equal(contractCoverageOn(c, '2026-10-05', { closedAt: '2026-10-05 10:00' }), 'cancelled', 'นาทีเดียวกัน = พิสูจน์ไม่ได้ว่าก่อน');
+  assert.equal(contractCoverageOn(c, '2026-10-05', { finished: true }), 'cancelled', 'ธง "ปิดแล้ว" เปล่า ๆ ปลดไม่ได้');
+  assert.equal(contractCoverageOn(c, '2026-10-06', { closedAt: '2026-10-05 09:30' }), 'cancelled');
   assert.equal(contractCoverageOn(c, '2026-08-31'), 'before');
   assert.equal(contractCoverageOn({ ...c, expiryDate: '2026-09-30' }, '2026-10-02'), 'after');
   // ไม่มีช่วงวันก็ยังมีวันยกเลิกเป็นขอบ

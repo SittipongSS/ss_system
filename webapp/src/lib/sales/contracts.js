@@ -13,6 +13,7 @@
 import { isSalesManager } from '@/lib/permissions';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import { businessDate } from '@/lib/businessDate';
+import { businessTimeKey } from '@/lib/datePeriods';
 import {
   HISTORICAL_CORRECTION_PATH, HISTORICAL_UNAPPROVED_STATUSES, isHistoricalDeal, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
@@ -365,6 +366,14 @@ export function contractCancelledAfterSigning(contract) {
  *  ⚠️ ห้ามตัด `slice(0, 10)` จาก timestamptz เอง — ยกเลิกช่วงตี 0–7 จะได้วันที่ของเมื่อวาน */
 export const contractCancelDate = (contract) =>
   (contractCancelledAfterSigning(contract) ? businessDate(contract.cancelledAt) : null);
+
+/** จุดเวลาที่ยกเลิก `'YYYY-MM-DD HH:MM'` ตามนาฬิกาไทย — ไว้เทียบกับเวลาปิดงานจริงของนัด (`visitClosedAtKey`)
+ *  ⭐ นัดวันยกเลิกผ่านด่านได้เฉพาะที่ **ปิดงานก่อนจุดนี้** (รีวิว 25/09 · มติเจ้าของ 24/09 "วันยกเลิกคือวันจบจริง")
+ *  ⚠️ วันกับเวลาต้องมาจากนาฬิกาไทยทั้งคู่ — ตารางนัดเก็บ date + time เป็นเวลาไทยล้วน (mig 0187/0188) */
+export function contractCancelMoment(contract) {
+  const date = contractCancelDate(contract);
+  return date ? `${date} ${businessTimeKey(contract.cancelledAt)}` : null;
+}
 
 /** วันจบจริงของสัญญา — วันหมดอายุ หรือวันที่ยกเลิกถ้ามาก่อน (ทะเบียนต่อสัญญานับถอยหลังจากตัวนี้)
  *  ⚠️ ใบอื่นทุกสถานะคืนวันหมดอายุเหมือนที่ทะเบียนอ่านมาตลอด — เปลี่ยนเฉพาะใบที่ยกเลิกหลังลงนาม */
