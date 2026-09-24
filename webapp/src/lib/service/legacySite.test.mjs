@@ -104,13 +104,13 @@ test('จุดติดตั้ง: id ชั่วคราวของจอ
 });
 
 test('🔴 ชื่อโซนซ้ำ — กับโซนที่ไซต์มีอยู่แล้ว และกันเองในฟอร์ม (บอกแถว ไม่ใช่ 23505 กลางทาง)', () => {
-  const existing = [{ id: 'Z0', code: 'ZN-1005-GF-10001', name: 'ห้องน้ำ' }];
+  const existing = [{ id: 'Z0', code: 'ZN-1005-10001', name: 'ห้องน้ำ' }];
   const { errors, zones } = planLegacyZones(
     [zone({ key: 'a', name: 'ห้อง น้ำ' }), zone({ key: 'b', name: 'ล็อบบี้' }), zone({ key: 'c', name: 'ล็อบบี้ ' })],
     { existingZones: existing, siteCode: 'ST-0231-01-BKK-1005' },
   );
   assert.equal(errors.length, 2, errors.join(' | '));
-  assert.match(errors[0], /มีอยู่แล้วในไซต์ \(ZN-1005-GF-10001\)/);
+  assert.match(errors[0], /มีอยู่แล้วในไซต์ \(ZN-1005-10001\)/);
   assert.match(errors[1], /อยู่ในฟอร์มนี้แล้ว \(แถวที่ 2\)/);
   assert.deepEqual(zones.map((z) => z.key), ['b']);
 });

@@ -130,11 +130,11 @@ export async function applyImportPlan(supabase, rows, { user, now = new Date(), 
       continue;
     }
 
-    // ชั้นในรูปมาตรฐาน (04 · GF · B1) — ค่าเดียวกับที่ไปอยู่ในรหัสและในคอลัมน์ `floor`
+    // ชั้นในรูปมาตรฐาน (04 · GF · B1) — ค่าที่ลงคอลัมน์ `floor` (ไม่อยู่ในรหัสแล้วตั้งแต่ mig 0384)
     const floor = normalizeFloor(row.zone.floor);
     const { prefix, error: codeError } = floor.error
       ? { prefix: null, error: floor.error }
-      : zoneCodePrefix({ siteCode: await siteCodeOf(siteId), floor: floor.value });
+      : zoneCodePrefix({ siteCode: await siteCodeOf(siteId) });
     if (codeError) {
       errors.push(`แถว ${row.rowNumber} · โซน "${row.zone.name}": ${codeError}`);
       continue;

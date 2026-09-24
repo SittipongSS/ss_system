@@ -188,7 +188,7 @@ export default function ServiceZonePage({ params }) {
                 { label: "รหัสไซต์", value: site?.code },
                 { label: "เขตวิ่งงาน", value: site?.routeZone },
                 { label: "รหัสโซน", value: zone.code },
-                // ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสในรูปย่อ (GF/04) บรรทัดนี้อ่านออก
+                // ชั้น/อาคาร (mig 0315) — ชั้นไม่อยู่ในรหัสแล้ว (mig 0384) บรรทัดนี้คือที่บอกชั้น
                 { label: "ชั้น", value: floorLabel(zone.floor) },
                 { label: "อาคาร", value: zone.building },
               ]}

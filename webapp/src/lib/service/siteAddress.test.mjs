@@ -182,7 +182,6 @@ test('🔴 ค่าที่ normalizeFloor คืน ผ่าน CHECK ขอ
     const { value } = normalizeFloor(input);
     assert.ok(value, input);
     assert.ok(DB_FLOOR(value), `${input} → ${value} ไม่ผ่าน CHECK`);
-    assert.ok(ZONE_CODE_RE.test(`ZN-1001-${value}-10001`), `${value} ประกอบเป็นรหัสไม่ได้`);
   }
   for (const special of SPECIAL_FLOORS) assert.ok(DB_FLOOR(special.value), special.value);
   const sql = read('../supabase/migrations/0384_site_address_parts_custom_floor.sql');
@@ -191,13 +190,20 @@ test('🔴 ค่าที่ normalizeFloor คืน ผ่าน CHECK ขอ
   assert.ok(CUSTOM_FLOOR_RE.test('LG') && !CUSTOM_FLOOR_RE.test('44') && !CUSTOM_FLOOR_RE.test('ABCD'));
 });
 
-test('รหัสโซนที่ชั้นพิมพ์เอง — ประกอบและแกะกลับได้', () => {
-  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: 'lg' }).prefix, 'ZN-1001-LG-');
-  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: '12a' }).prefix, 'ZN-1001-12A-');
-  assert.deepEqual(parseZoneCode('ZN-1001-12A-10007'), { site: '1001', floor: '12A', run: '10007' });
-  assert.ok(!ZONE_CODE_RE.test('ZN-1001-123-10001'));
-  assert.ok(!ZONE_CODE_RE.test('ZN-1001-ABCD-10001'));
-  assert.ok(!ZONE_CODE_RE.test('ZN-1001-A-10001'));
+test('⭐ ชั้นที่พิมพ์เองไม่กระทบรหัสโซน — รหัสไม่มีท่อนชั้นแล้ว (มติ 2026-09-24)', () => {
+  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: 'lg' }).prefix, 'ZN-1001-');
+  assert.ok(ZONE_CODE_RE.test('ZN-1001-10001'));
+  assert.deepEqual(parseZoneCode('ZN-1001-12A-10007'), { site: '1001', run: '10007' });
+});
+
+test('🔴 mig 0384 เขียนรหัสเดิมเป็นรูปใหม่ด้วยกติกาเดียวกับตัวอ่าน — ตัดท่อนที่ 3 · มีร่องรอยก่อนเขียน', () => {
+  const sql = read('../supabase/migrations/0384_site_address_parts_custom_floor.sql');
+  // ตัวเลือกแถว = รูปมีชั้นของช่วง 29/08–24/09 (ตัวเดียวกับ FLOORED_ZONE_CODE_RE)
+  assert.match(sql, /code ~ '\^ZN-\\d\{4\}-\[0-9A-Z\]\{2,3\}-\\d\{5\}\$'/);
+  assert.match(sql, /split_part\(code, '-', 2\) \|\| '-' \|\| split_part\(code, '-', 4\)/);
+  assert.match(sql, /INSERT INTO public\.audit_logs[\s\S]*'service_zone'/);
+  assert.ok(sql.indexOf('INSERT INTO public.audit_logs') < sql.indexOf('UPDATE public.service_zones'),
+    'ร่องรอยต้องเขียนก่อนแก้รหัส — กู้ได้จาก audit_logs.before เท่านั้น');
 });
 
 test('ป้ายชั้นที่พิมพ์เองอ่านว่า "ชั้น …"', () => {

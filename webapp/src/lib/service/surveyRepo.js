@@ -155,13 +155,13 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
   const ownerColumnError = await zoneSurveyOwnerColumnError(supabase);
   if (ownerColumnError) return { created: 0, error: ownerColumnError };
 
-  /* ⚠️ **ยิงทีละแถว ไม่ใช่ทั้งชุด** (mig 0315) — รหัสโซนมีชั้นอยู่ในท่อนหน้าเลขรัน
-     ⇒ พื้นที่คนละชั้นใช้ prefix คนละตัว และ RPC รับ prefix เดียวต่อหนึ่งคำสั่ง
+  /* ⚠️ **ยิงทีละแถว ไม่ใช่ทั้งชุด** — แต่ละแถวต้องได้ `zoneId` กลับมาผูกกับแถวของใบ
+     (ตั้งแต่ mig 0384 รหัสไม่มีชั้นแล้ว prefix จึงเป็นตัวเดียวทั้งไซต์ แต่การผูกรายแถวยังต้องทีละแถว)
      ⭐ ล้มกลางทางไม่เป็นไร: แถวที่สำเร็จได้ `zoneId` แล้ว รอบถัดไปข้ามให้เอง
         (ตัวนี้ออกแบบให้รันซ้ำได้อยู่แล้ว — ดูหัวฟังก์ชัน) */
   let created = 0;
   for (const row of toCreate) {
-    const { prefix, error: codeError } = zoneCodePrefix({ siteCode: site.code, floor: row.floor });
+    const { prefix, error: codeError } = zoneCodePrefix({ siteCode: site.code });
     if (codeError) return { created, error: `พื้นที่ "${row.zoneName}": ${codeError}` };
 
     const zoneRow = {

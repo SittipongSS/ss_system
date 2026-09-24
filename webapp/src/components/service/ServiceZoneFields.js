@@ -193,13 +193,12 @@ function ZoneSpotsEditor({ spots, onChange }) {
  * ช่องทั้งหมดของโซน
  *
  * @param form / setForm ค่าในฟอร์ม (`ZONE_FORM_EMPTY` / `zoneFormFromRow`)
- * @param editing        โหมดแก้ = มีช่องสถานะ · รหัสเดิมไม่เปลี่ยนตามชั้น
- * @param zoneCode       รหัสที่ออกไปแล้ว (โหมดแก้)
- * @param floorHint      ข้อความใต้ช่องชั้นในโหมดสร้าง (ผู้เรียกที่รู้รหัสไซต์โชว์รหัสโซนเต็มได้)
+ * @param editing        โหมดแก้ = มีช่องสถานะ
+ * @param floorHint      ข้อความใต้ช่องชั้นในโหมดสร้าง (ผู้เรียกที่รู้รหัสไซต์โชว์รหัสโซนที่จะออกได้)
  * @param knownFloors    ชั้นของโซนอื่นในไซต์เดียวกัน — ขึ้นเป็นชิปลัดต่อจากชั้นพิเศษ
  */
 export default function ServiceZoneFields({
-  form, setForm, editing = false, zoneCode = null, floorHint = null, knownFloors = [],
+  form, setForm, editing = false, floorHint = null, knownFloors = [],
 }) {
   const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
   const floor = normalizeFloor(form.floor);
@@ -215,13 +214,13 @@ export default function ServiceZoneFields({
       </label>
 
       {/* ── ชั้น (mig 0315 · 0384) ────────────────────────────────────────
-          ⭐ **ชั้นเป็นท่อนหนึ่งของรหัสโซน** `ZN-CCCC-FF-DDDDD` ⇒ บังคับกรอก
+          ⭐ **บังคับกรอก** — ช่างใช้หาโซนหน้างาน · ไม่อยู่ในรหัสโซนแล้ว (มติ 2026-09-24 "ตัด FF ชั้นออก")
+             ⇒ แก้ทีหลังได้ตลอดโดยรหัสไม่เกี่ยว
           ⭐ ช่องพิมพ์ + ชิปลัด (กติกา "ค่าอิสระที่มีคำตอบซ้ำ ๆ ให้ชิปลัด") — ชั้นตัวเลขพิมพ์เอง
              (มี 99 ค่า) · ชั้นพิเศษที่เจอบ่อยเป็นชิป · **ชั้นที่ไม่อยู่ในรายการพิมพ์เองได้**
              (LG · UG · P1 · 12A — มติผู้ใช้ 2026-09-24 "เพิ่มชั้นเองได้ เผื่อตัวเลือกไม่มี")
           🐞 เดิมชั้นพิเศษเป็นไทล์ใหญ่ห้าแผ่นซ้อนกันสูงเกือบครึ่งโมดัล และช่องพิมพ์รับแค่ตัวเลข
-             ⇒ ชั้นที่ไม่อยู่ในห้าแผ่นนั้นบันทึกไม่ได้เลย
-          ⚠️ แก้ชั้นทีหลัง **ไม่เปลี่ยนรหัสที่ออกไปแล้ว** */}
+             ⇒ ชั้นที่ไม่อยู่ในห้าแผ่นนั้นบันทึกไม่ได้เลย */}
       <div className={styles.field}>
         <label className={styles.field}>
           <span>ชั้น *</span>
@@ -248,13 +247,8 @@ export default function ServiceZoneFields({
             ? floor.error
             : "ไม่มีในชิป? พิมพ์เองได้ — อังกฤษ/ตัวเลข 2–3 ตัว เช่น LG · UG · P1 · 12A"}
         </small>
-        <small className={styles.hint}>
-          {editing
-            ? `รหัสโซนที่ออกไปแล้วไม่เปลี่ยนตามชั้นที่แก้ — ${zoneCode || "รหัสเดิม"} ยังเป็นตัวเดิม`
-            /* ⚠️ โชว์ **ค่าที่จะลงรหัสจริง** (`normalizeFloor`) ไม่ใช่ป้ายที่คนอ่าน
-               (`floorLabel`) — พิมพ์ "4" แล้วรหัสได้ `04` · พิมพ์ "G" แล้วได้ `GF` */
-            : floorHint || `จะเข้าไปอยู่ในรหัสโซนเป็น ${floor.value || "FF"}`}
-        </small>
+        {/* บรรทัดที่สอง = ของที่ผู้เรียกอยากบอก (รหัสโซนที่จะออก) · ไม่ส่งมา = ไม่มีบรรทัด */}
+        {!editing && floorHint && <small className={styles.hint}>{floorHint}</small>}
       </div>
 
       <label className={styles.field}>

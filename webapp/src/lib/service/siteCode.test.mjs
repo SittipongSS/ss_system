@@ -82,28 +82,31 @@ test('ป้ายชั้นที่คนอ่าน', () => {
   assert.equal(floorLabel(''), null);
 });
 
-test('ประกอบ prefix ของรหัสโซนจากรหัสไซต์ + ชั้น', () => {
-  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: 'G' }).prefix, 'ZN-1001-GF-');
-  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: 4 }).prefix, 'ZN-1001-04-');
+/* ⭐ มติผู้ใช้ 2026-09-24 "รหัสโซน ตัด FF ชั้นออกเลยดีกว่า" — รหัสเหลือ `ZN-CCCC-DDDDD`
+   ชั้นเป็นแค่คอลัมน์ของโซน (ยังบังคับกรอกที่ normalizeZoneInput) */
+test('ประกอบ prefix ของรหัสโซนจากรหัสไซต์อย่างเดียว — ชั้นไม่อยู่ในรหัส', () => {
+  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001' }).prefix, 'ZN-1001-');
+  // ผู้เรียกเก่าที่ยังส่งชั้นมา = ไม่มีผล (ชั้นว่าง/ผิดรูปไม่ทำให้ออกรหัสไม่ได้อีกแล้ว)
+  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: 'LG' }).prefix, 'ZN-1001-');
+  assert.equal(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: '' }).error, null);
 });
 
 test('🔴 ไซต์ที่ยังเป็นรหัสเดิมเพิ่มโซนไม่ได้ — ต้องบอกให้ไปออกรหัสไซต์ใหม่ก่อน', () => {
-  const legacy = zoneCodePrefix({ siteCode: 'SS-26080005', floor: '4' });
+  const legacy = zoneCodePrefix({ siteCode: 'SS-26080005' });
   assert.equal(legacy.prefix, null);
   assert.match(legacy.error, /ST-XXXX-AA-BBB-CCCC/);
-  // ชั้นผิดต้องได้ข้อความของชั้น ไม่ใช่ข้อความของไซต์
-  assert.match(zoneCodePrefix({ siteCode: 'ST-0121-01-BKK-1001', floor: '' }).error, /ต้องระบุชั้น/);
 });
 
 test('รูปแบบรหัสโซน + การแกะส่วน', () => {
-  assert.ok(ZONE_CODE_RE.test('ZN-1001-04-10001'));
-  assert.ok(ZONE_CODE_RE.test('ZN-1001-GF-10012'));
-  assert.ok(ZONE_CODE_RE.test('ZN-1001-B2-99999'));
-  assert.ok(!ZONE_CODE_RE.test('ZN-1001-00-10001'));   // ชั้น 00 ไม่มี
-  assert.ok(!ZONE_CODE_RE.test('ZN-10001-04-10001')); // เลขไซต์ต้อง 4 หลัก
-  assert.ok(!ZONE_CODE_RE.test('ZN-1001-04-001'));    // เลขรันต้อง 5 หลัก
+  assert.ok(ZONE_CODE_RE.test('ZN-1001-10001'));
+  assert.ok(ZONE_CODE_RE.test('ZN-1001-99999'));
+  assert.ok(!ZONE_CODE_RE.test('ZN-1001-GF-10012'));  // รูปมีชั้น (29/08–24/09) ไม่ใช่รูปที่ออกใหม่แล้ว
+  assert.ok(!ZONE_CODE_RE.test('ZN-10001-10001'));    // เลขไซต์ต้อง 4 หลัก
+  assert.ok(!ZONE_CODE_RE.test('ZN-1001-001'));       // เลขรันต้อง 5 หลัก
 
-  assert.deepEqual(parseZoneCode('ZN-1001-GF-10007'), { site: '1001', floor: 'GF', run: '10007' });
+  assert.deepEqual(parseZoneCode('ZN-1001-10007'), { site: '1001', run: '10007' });
+  // รูปมีชั้นของช่วงก่อน mig 0384 ยังอ่านได้ — ท่อนชั้นทิ้งไป (ชั้นจริงอยู่ที่คอลัมน์ floor)
+  assert.deepEqual(parseZoneCode('ZN-1001-GF-10007'), { site: '1001', run: '10007' });
   assert.equal(parseZoneCode('ZN-26080005'), null);
 });
 

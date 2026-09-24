@@ -42,9 +42,7 @@ export default function ServiceZoneModal({ open, zone = null, knownFloors = [], 
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? `แก้ไขโซน ${zone.name}` : "เพิ่มโซน"} size="md">
-      <ServiceZoneFields
-        form={form} setForm={setForm} editing={editing} zoneCode={zone?.code || null} knownFloors={knownFloors}
-      />
+      <ServiceZoneFields form={form} setForm={setForm} editing={editing} knownFloors={knownFloors} />
 
       {error && <p className="form-error" role="alert">{error}</p>}
 
