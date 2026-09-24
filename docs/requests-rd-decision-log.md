@@ -4268,6 +4268,9 @@ role `staff`) แล้วแทนทุกจุด · **มีด่าน ra
 - **PostgREST embed `!inner` ใช้ไม่ได้** — `check:columns` ใน CI แกะ embed ด้วย regex
   ที่ต้องการ `(` ติดกับชื่อตาราง ⇒ `!inner(` ทำให้มันอ่านเป็นคอลัมน์ชื่อ `request`
   แล้วตีตกทั้ง route (และ embed ยังทำให้จุดอ่านหลบด่าน rowcap ไปเลย)
+  · *อัปเดต 2026-09-24:* ข้อจำกัดฝั่ง `check:columns` หมดแล้ว — ด่านอ่าน `!inner`/`!left`/`!hint`
+    และตรวจคอลัมน์ใน embed กับตารางปลายทางทุกชั้น (`checkSelectText` ใน `scripts/selectExpression.mjs`)
+    · เรื่อง rowcap ยังไม่ได้ตรวจซ้ำ — ใช้ `!inner` เมื่อไร ดูด่านนั้นอีกรอบ
 
 
 ## 12. รูปแบบงานในหัวข้อเดียว — พัฒนาสูตร standard | NPD (2026-09-09)
