@@ -21,6 +21,7 @@ import {
   normalizeAssetResult, pendingAssets,
 } from "@/lib/service/visitAssets";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
+import { savedVisitFileHref } from "@/lib/service/visitFiles";
 import styles from "./CloseVisitSheet.module.css";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { fmtNumber, naText } from "@/lib/format";
@@ -52,9 +53,20 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
   const [unable, setUnable] = useState(false);
   const [unableReason, setUnableReason] = useState("");
   const fileRef = useRef(null);
+  /* ⭐ **ลิงก์ดูรูป/ลายเซ็น ห้ามเป็นลิงก์ Drive ในแถว** — ไฟล์อยู่ใน Shared Drive ที่พนักงานเปิดตรงไม่ได้
+     (หัวไฟล์ lib/service/visitFiles.js) ⇒ ไฟล์ที่ **บันทึกแล้ว** เปิดผ่าน `/api/service/visits/[id]/file`
+     ตามแถวล่าสุดจาก server (`savedFiles`) · ไฟล์ที่ **เพิ่งอัปรอบนี้** server ยังไม่รู้จัก (ยังไม่ได้กดบันทึก)
+     ⇒ เปิดจากไบต์ที่อยู่ในเครื่องแทน (`localPreviews` = object URL · คืนหน่วยความจำทุกครั้งที่แผ่นเปิด/ปิด/เปลี่ยนใบ) */
+  const [savedFiles, setSavedFiles] = useState(null);
+  const [localPreviews, setLocalPreviews] = useState({});
+  const previewUrls = useRef([]);
 
   useEffect(() => {
+    // แก้ในที่ (splice) ไม่ใช่ตั้งอาร์เรย์ใหม่ — ตัวคืนตอน unmount ข้างล่างถืออาร์เรย์ตัวเดียวกันนี้อยู่
+    previewUrls.current.splice(0).forEach((url) => URL.revokeObjectURL(url));
+    setLocalPreviews({});
     if (!open || !visit) return;
+    setSavedFiles(null);
     setError("");
     setDraftItem({ label: "", qty: "", unit: "", assetId: "" });
     /* 🐞 **ชิป "ไปแล้วเข้าไม่ได้" กับเหตุผลไม่เคยถูกล้าง** — แผ่นเดียวถูกใช้ซ้ำทุกใบ
@@ -65,6 +77,11 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     setUnableReason("");
     setForm(closeFormDefaults(visit));
   }, [open, visit]);
+
+  useEffect(() => {
+    const urls = previewUrls.current;
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, []);
 
   /* ⚠️ **แยกการโหลดข้อมูลออกจากการล้างฟอร์ม** — หลังบันทึกผลรายเครื่องสำเร็จแต่ปิดใบล้ม
      (เน็ตหลุด) ต้องโหลดใหม่ ให้เครื่องที่ server เพิ่งแช่แข็ง (ถูกเปลี่ยนออก) กลายเป็นแถว
@@ -83,6 +100,10 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         setAssets(Array.isArray(data?.assets) ? data.assets : []);
         setResultAssets(Array.isArray(data?.resultAssets) ? data.resultAssets : []);
         setSeededIds(new Set((data?.results || []).map((row) => row.assetId)));
+        setSavedFiles({
+          attachments: Array.isArray(data?.visit?.attachments) ? data.visit.attachments : [],
+          customerSignatureUrl: data?.visit?.customerSignatureUrl || null,
+        });
         const seed = {};
         for (const row of data?.results || []) {
           seed[row.assetId] = {
@@ -160,6 +181,17 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     return ref.url || null;
   };
 
+  // จำไบต์ของไฟล์ที่เพิ่งอัปไว้เปิดดู (ดูคอมเมนต์ของ `localPreviews`)
+  const rememberPreview = (url, blob) => {
+    if (!url || !blob) return;
+    const local = URL.createObjectURL(blob);
+    previewUrls.current.push(local);
+    setLocalPreviews((prev) => ({ ...prev, [url]: local }));
+  };
+  // ลิงก์ดูไฟล์ในฟอร์ม: ไบต์ในเครื่องก่อน (เพิ่งอัป) · ไม่งั้นแถวที่บันทึกแล้ว (ยังโหลดไม่เสร็จ = แถวที่เปิดแผ่นมา)
+  // · ไม่เจอทั้งคู่ = null ⇒ จอแสดงเป็นป้ายเฉย ๆ ไม่ใช่ลิงก์เสีย
+  const fileHref = (url) => localPreviews[url] || savedVisitFileHref(visit.id, savedFiles || visit, url);
+
   const addPhoto = async (file) => {
     if (!file) return;
     setUploading(true);
@@ -167,6 +199,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     try {
       const url = await uploadBlob(file, file.name || "photo.jpg");
       if (!url) throw new Error("อัปโหลดสำเร็จแต่ไม่ได้ลิงก์กลับมา");
+      rememberPreview(url, file);
       // รูปแรก = "ก่อน" · รูปถัดไป = "หลัง" (แก้ชนิดทีหลังได้ที่หน้ารายละเอียด)
       const kind = form.attachments.length === 0 ? "before" : "after";
       setForm((prev) => ({
@@ -185,6 +218,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     setError("");
     try {
       const url = await uploadBlob(blob, `signature-${visit.code || visit.id}.png`);
+      rememberPreview(url, blob);
       setForm((prev) => ({ ...prev, customerSignatureUrl: url }));
     } catch (e) {
       setError(e.message);
@@ -192,6 +226,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
       setSigning(false);
     }
   };
+  const signatureHref = form.customerSignatureUrl ? fileHref(form.customerSignatureUrl) : null;
 
   const removing = visit.kind === REMOVE_VISIT_KIND;
   /* 🔴 แก้ผลของนัดถอนที่ปิดแล้ว = ถามเฉพาะเครื่องที่ **อยู่ที่ไซต์ตอนวันที่ของนัด** — เครื่องที่
@@ -538,11 +573,17 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         {/* ลากรูปมาวาง หรือ Ctrl+V ได้ด้วย — เจ้าหน้าที่ที่ปิดงานจากโน้ตบุ๊กมีภาพอยู่ใน
             คลิปบอร์ดอยู่แล้ว ไม่ได้ถ่ายสดจากมือถือทุกครั้ง (IS-26080013) */}
         <div className={styles.photoRow} {...intake.zoneProps}>
-          {form.attachments.map((att) => (
-            <a key={att.url} href={att.url} target="_blank" rel="noreferrer noopener" className={styles.photo}>
-              {ATTACHMENT_KIND_LABELS[att.kind] || "รูป"}
-            </a>
-          ))}
+          {form.attachments.map((att) => {
+            const label = ATTACHMENT_KIND_LABELS[att.kind] || "รูป";
+            const href = fileHref(att.url);
+            return href ? (
+              <a key={att.url} href={href} target="_blank" rel="noreferrer noopener" className={styles.photo}>
+                {label}
+              </a>
+            ) : (
+              <span key={att.url} className={styles.photo}>{label}</span>
+            );
+          })}
           {/* capture="environment" = เปิดกล้องหลังตรง ๆ บนมือถือ ไม่ต้องเลือกจากอัลบั้ม */}
           <input ref={fileRef} type="file" accept="image/*" capture="environment"
             onChange={(event) => { const f = event.target.files?.[0]; event.target.value = ""; addPhoto(f); }}
@@ -558,7 +599,9 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         <h3 className={styles.blockTitle}>ลายเซ็นผู้รับงาน</h3>
         {form.customerSignatureUrl ? (
           <div className={styles.row}>
-            <a href={form.customerSignatureUrl} target="_blank" rel="noreferrer noopener">ดูลายเซ็นที่เซ็นไว้</a>
+            {signatureHref
+              ? <a href={signatureHref} target="_blank" rel="noreferrer noopener">ดูลายเซ็นที่เซ็นไว้</a>
+              : <span>เซ็นแล้ว</span>}
             <Button tone="neutral" variant="quiet" size="sm"
               onClick={() => setForm((p) => ({ ...p, customerSignatureUrl: null }))}>เซ็นใหม่</Button>
           </div>

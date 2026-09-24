@@ -38,7 +38,7 @@ import {
 import { visitDeleteBlocker, visitDeleteButton } from "@/lib/service/visitDelete";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canBeServiceAssignee, canEditService, canViewService } from "@/lib/permissions";
+import { canBeServiceAssignee, canEditService, canViewVisitReport } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
@@ -53,9 +53,9 @@ export default function ServiceSiteDetailPage({ params }) {
   const department = useDepartment();
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
   /* ⭐ หน้านี้เป็นของ **ทะเบียน** (ทุกคนที่เข้าฐานข้อมูลได้เปิดอ่าน · มติผู้ใช้ 2026-09-24) แต่ใบส่งงาน
-     (`/service/visits/[id]`) ยังเป็นหน้าทำงานของฝ่ายบริการ ⇒ ลิงก์ไปใบส่งงานโชว์เฉพาะคนที่เปิดได้จริง
-     (กติกา "ไม่มีสิทธิ์ = ไม่โชว์" — ลิงก์ที่กดแล้ว Forbidden คือทางตัน) */
-  const canOpenVisit = useMemo(() => canViewService({ role, team, teams, department }), [role, team, teams, department]);
+     (`/service/visits/[id]`) เปิดได้เฉพาะฝ่ายบริการ + ฝ่ายขาย (`canViewVisitReport` · มติเดียวกัน)
+     ⇒ ลิงก์ไปใบส่งงานโชว์เฉพาะคนที่เปิดได้จริง (กติกา "ไม่มีสิทธิ์ = ไม่โชว์" — ลิงก์ที่กดแล้ว Forbidden คือทางตัน) */
+  const canOpenVisit = useMemo(() => canViewVisitReport({ role, team, teams, department }), [role, team, teams, department]);
   /* ⚠️ ตรงกับ `canForceDelete` ที่ server (role === 'admin') เป๊ะ — สองฝั่งไม่ตรงกัน
      เมื่อไร จอจะโชว์ปุ่มที่กดแล้วเด้ง หรือซ่อนปุ่มที่จริง ๆ กดได้ */
   const isAdmin = role === "admin";

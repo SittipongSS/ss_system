@@ -6,9 +6,12 @@
 // จำนวนเครื่องแยกรุ่นแยกสี · ตำแหน่ง · ค่าตั้ง · ช่วงเวลาที่เข้าได้)
 // ⇒ ระบบประกอบใบให้เอง เจ้าหน้าที่เขียนแค่ **สรุปงาน** กับ **เหตุผลของสิ่งที่ผิดปกติ**
 //
-// ⚠️ หน้านี้ยัง**ไม่ใช่ลิงก์สาธารณะ** — คนที่เปิดได้คือคนที่ผ่าน canViewService
+// ⚠️ หน้านี้ยัง**ไม่ใช่ลิงก์สาธารณะ** — คนที่เปิดได้คือคนที่ผ่าน `canViewVisitReport`
+// = ฝ่ายบริการ + **ฝ่ายขาย** (มติผู้ใช้ 2026-09-24 "ใบส่งงานเปิดให้ฝ่ายขายดูได้ด้วย")
 // (การแชร์ให้ลูกค้าต้องมีโทเคน = migration ซึ่งอยู่นอกขอบเขต F-5) · ปุ่มพิมพ์ใช้
 // หน้าต่างพิมพ์ของเบราว์เซอร์ เพราะใบนี้เป็นเอกสารภายใน ไม่ใช่เอกสารที่ต้องตรึงเลข
+// ⭐ หน้านี้ **อ่านอย่างเดียวอยู่แล้ว** (ปุ่มเดียวคือพิมพ์) — ฝ่ายขายไม่ต้องมีโหมดพิเศษ
+//    ต่างกันแค่ทางออก: ย้อนกลับ + ลิงก์ใบประเมิน ชี้หน้าที่เขาเปิดได้จริง
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useLatestRun from "@/lib/ui/useLatestRun";
@@ -23,9 +26,10 @@ import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { buildVisitReport } from "@/lib/service/visitReport";
+import { visitFileHref } from "@/lib/service/visitFiles";
 import { isClosedVisit, isDraftVisit, isOpenVisit } from "@/lib/service/visitStatus";
 import { SURVEY_VISIT_KIND } from "@/lib/service/surveyVisit";
-import { canDoFieldWork, canEditService } from "@/lib/permissions";
+import { canDoFieldWork, canEditService, canViewService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
@@ -84,13 +88,23 @@ export default function VisitReportPage({ params }) {
   }) : null), [data, site]);
 
   /* ย้อนกลับไปเมนูที่คนดูมีจริง — เจ้าหน้าที่หน้างาน (ไม่มีเมนูจัดคิว) กลับ "งานวันนี้"
-     ซึ่งเป็นที่ที่เขากดปุ่ม "ใบส่งงาน" มา · คนอื่นกลับหน้าจัดคิวเหมือนเดิม */
+     ซึ่งเป็นที่ที่เขากดปุ่ม "ใบส่งงาน" มา · คนอื่นกลับหน้าจัดคิวเหมือนเดิม
+     ⭐ ฝ่ายขาย (อ่านใบอย่างเดียว · มติ 2026-09-24) ไม่มีโมดูลบริการ — กลับหน้าไซต์ในฐานข้อมูล
+        ซึ่งเป็นที่ที่เขากดลิงก์ใบส่งงานมา (หน้าจัดคิวเปิดไม่ได้ = ปุ่มย้อนกลับที่พาไปเจอ Forbidden) */
+  const serviceViewer = useMemo(
+    () => canViewService({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
+  const siteIdForBack = data?.visit?.siteId || null;
   const back = useMemo(() => {
     const user = { role, team, teams, department };
+    if (!serviceViewer) {
+      return { href: siteIdForBack ? `/database/sites/${siteIdForBack}` : "/database/sites", label: "ไซต์บริการ" };
+    }
     return canDoFieldWork(user) && !canEditService(user)
       ? { href: "/service/today", label: "งานวันนี้" }
       : { href: "/service/schedule", label: "จัดคิวเจ้าหน้าที่" };
-  }, [role, team, teams, department]);
+  }, [role, team, teams, department, serviceViewer, siteIdForBack]);
 
   /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ — ทรงเดียวกันทั้งสี่หน้า
      (เครื่อง · ไซต์ · โซน · ใบส่งงาน) · ลำดับ: ไม่พบ (404) มาก่อนโหลดพัง
@@ -179,9 +193,10 @@ export default function VisitReportPage({ params }) {
         aside={(
           <>
             {/* นัดประเมินพื้นที่ — ผลหน้างานจริงบันทึกที่ใบประเมิน (ใบคำร้อง) ต้องไปถึงได้จากใบนี้ */}
+            {/* ⚠️ จอประเมินหน้างาน (`/service/surveys`) เป็นของ TS — ฝ่ายขายไปที่ใบคำร้องซึ่งเขาเปิดเองได้ */}
             {isSurvey && visit.requestId && (
               <ContextCard
-                href={`/service/surveys/${visit.requestId}`}
+                href={serviceViewer ? `/service/surveys/${visit.requestId}` : `/requests/${visit.requestId}`}
                 icon={MessageCircleQuestion} eyebrow="ประเมินพื้นที่" title="ผลบันทึกหน้างาน"
                 subtitle={visit.note || undefined}
               />
@@ -280,13 +295,18 @@ export default function VisitReportPage({ params }) {
               ? "รูปและลายเซ็นไม่บังคับ — แนบได้ตอนปิดงาน"
               : "รูปและลายเซ็นไม่บังคับ"}>
           <div className={styles.photos}>
-            {report.attachments.map((att) => (
-              <a key={att.url} href={att.url} target="_blank" rel="noreferrer noopener" className={styles.photo}>
+            {/* ⭐ ลิงก์ของระบบ (`visitFileHref`) ไม่ใช่ `webViewLink` ของ Drive ที่อยู่ในแถว — ไฟล์อยู่ใน
+                Shared Drive ที่พนักงานเปิดตรงไม่ได้ (หัวไฟล์ lib/service/visitFiles.js) · `index` = ลำดับในแถว
+                (buildVisitReport ส่งต่อ attachments ทั้งแถว ไม่กรอง ไม่เรียง — เทสต์ปักไว้) */}
+            {report.attachments.map((att, index) => (
+              <a key={att.url} href={visitFileHref(visit.id, { index })} target="_blank" rel="noreferrer noopener"
+                className={styles.photo}>
                 {att.kind === "before" ? "ก่อน" : att.kind === "after" ? "หลัง" : "รูป"}
               </a>
             ))}
             {report.signatureUrl && (
-              <a href={report.signatureUrl} target="_blank" rel="noreferrer noopener" className={styles.photo}>
+              <a href={visitFileHref(visit.id, { signature: true })} target="_blank" rel="noreferrer noopener"
+                className={styles.photo}>
                 ลายเซ็น
               </a>
             )}
