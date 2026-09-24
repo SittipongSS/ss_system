@@ -17,6 +17,7 @@ import { VISIT_STATUS_LABELS } from './visitStatus';
 import { assetOutcomeLabel } from './visitAssets';
 import { ASSET_KIND_LABELS } from './assetKinds';
 import { accessWindowText } from './sites';
+import { fmtDate } from '@/lib/format';
 
 /* ป้าย "ต้องดู" — เรียงตามที่หัวหน้าต้องรีบอ่านก่อน
    แต่ละอันมี `kind` ให้ฝั่งแจ้งเตือนเอาไปตัดสินว่าจะดันหรือไม่ โดยไม่ต้องอ่านข้อความ */
@@ -107,9 +108,13 @@ export function buildVisitReport({
   );
   const resultByAsset = new Map(results.map((r) => [r.assetId, r]));
 
-  const timeText = [visit.actualStartTime, visit.actualEndTime]
-    .map((t) => (t ? String(t).slice(0, 5) : null))
-    .filter(Boolean).join(' – ');
+  /* ⭐ งานที่จบคนละวันกับวันเข้า (mig 0386) — ปลายช่วงต้องบอกวันด้วย ไม่งั้น "14:00 – 09:00"
+     อ่านเหมือนเวลากลับหัว · วันเดียวกัน (`actualEndDate` ว่าง) หน้าตาเดิมทุกอย่าง */
+  const endDate = visit.actualEndDate && visit.actualEndTime ? fmtDate(visit.actualEndDate) : null;
+  const timeText = [
+    visit.actualStartTime ? String(visit.actualStartTime).slice(0, 5) : null,
+    visit.actualEndTime ? [endDate, String(visit.actualEndTime).slice(0, 5)].filter(Boolean).join(' ') : null,
+  ].filter(Boolean).join(' – ');
 
   const head = [
     { label: 'วันที่', value: visit.actualDate || visit.scheduledDate },

@@ -7,7 +7,7 @@
 // ⚠️ ไม่มีกติกาใหม่ของข้อมูล — ด่านมาจาก `visitGate` (ตัวเดียวกับ server) · ภาระจาก `crewLoadPeople` ·
 //    เวลาทับจาก `windowsOverlap` · ช่วงเข้าไซต์จาก `accessConflict` · คำจากการ์ดรายการงาน
 // ⚠️ ขอบเขต "UI อย่างเดียว" — ไม่มีฟังก์ชันไหนในไฟล์นี้ประกอบก้อนที่ส่ง API
-import { NA, fmtTime } from '@/lib/format';
+import { NA, fmtDate, fmtTime } from '@/lib/format';
 import { quoteView } from '@/lib/master/updateQuote';
 import { commitDueMode } from '@/lib/requests/commitDue';
 import { MAX_ASSETS_PER_DAY, assigneeOverloaded, overloaded, projectedDayLoad, workloadText } from './visitLoad';
@@ -743,4 +743,35 @@ export function visitModalView({
   }
 
   return { sections, secondary, primary, outcome };
+}
+
+/* ═══ ผลการเข้าจริงของงานที่จบคนละวัน (mig 0386 · มติเจ้าของ 24/09 ข้อ 4) ═══════════════════════════
+   ⭐ ฟอร์มนี้ **ไม่มีช่องวันที่เสร็จจริง** (ช่องแก้ได้ยกไว้ทีหลัง) — ค่ามาจากปุ่มส่งงาน/ปิดงานที่ประทับข้ามวัน
+      แล้ว server เก็บค่าเดิมไว้เองเสมอ (PATCH ตรวจ `{...before, ...body}`) ⇒ สองข้อข้างล่างคือสิ่งที่จอต้องทำ */
+
+/**
+ * ค่าที่ **ตัวตรวจฝั่งจอ** (`normalizeVisitInput`) ต้องเห็น = ค่าที่ server จะตรวจจริง
+ * 🐞 ไม่เติมวันที่เสร็จจริงของแถวเดิม ⇒ นัดที่ส่งงานข้ามวัน (เริ่ม 24/09 14:00 · เสร็จ 25/09 09:00) บันทึกจาก
+ *    โมดัลนี้ไม่ได้อีกเลยสักช่อง — ตัวตรวจฝั่งจอเทียบ 14:00 กับ 09:00 เหมือนวันเดียวกันแล้วตีกลับก่อนยิง API
+ *    ทั้งที่ server รับ (มันเห็นวันที่เสร็จจริงของแถวเดิม) · ทางตันแบบ "จอตีกลับ แต่ server รับ"
+ * ⚠️ ใช้ตรวจเท่านั้น — ก้อนที่ส่ง API ยังเป็น `form` เดิม (server เติมจากแถวเดิมเอง)
+ * ⚠️ ฐานที่ยังไม่รัน 0386 ไม่มีคีย์นี้บนแถว ⇒ ไม่เติม = พฤติกรรมเดิมทุกอย่าง
+ */
+export function visitFormCheckInput(payload = {}, visit = null) {
+  if (!visit || !Object.prototype.hasOwnProperty.call(visit, 'actualEndDate')) return payload;
+  return { ...payload, actualEndDate: visit.actualEndDate ?? null };
+}
+
+/**
+ * บรรทัดบอก "เสร็จวันไหน" ใต้ช่องเวลาเข้าจริง — null = จบวันเดียวกับวันเข้า (หรือยังไม่มีเวลาเสร็จ)
+ * ⭐ ไม่บอก = "เริ่ม 14:00 · เสร็จ 09:00" อ่านเหมือนเวลากลับหัว แล้วคนแก้ "ให้ถูก" จนชั่วโมงงานเพี้ยน
+ * ⚠️ ถามจาก **วันเข้าที่กำลังกรอก** — แก้วันเข้าให้ถึง/เลยวันเสร็จแล้ว บรรทัดนี้ต้องหาย (server ยุบเป็นวันเดียวกัน
+ *    หรือตีกลับ "วันที่เสร็จจริงต้องไม่ก่อนวันที่เข้าจริง" ซึ่งขึ้นที่บรรทัดผลลัพธ์อยู่แล้ว)
+ */
+export function visitEndDateNote(visit = null, form = {}) {
+  const end = String(visit?.actualEndDate || '').slice(0, 10);
+  const start = String(form?.actualDate || '').slice(0, 10);
+  const endTime = toHHMM(form?.actualEndTime);
+  if (!end || !start || !endTime || end <= start) return null;
+  return `เสร็จวันที่ ${fmtDate(end)} เวลา ${endTime} น. — ส่งงานข้ามวัน เวลาเสร็จเป็นของวันนั้น`;
 }

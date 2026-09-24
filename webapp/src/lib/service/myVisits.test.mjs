@@ -63,14 +63,22 @@ test('ในวันเดียวกันเรียงตามเวล�
 test('⭐ ฟอร์มปิดงานเติมวันที่เข้าจริงเป็น "วันนี้" ไม่ใช่วันที่นัด — คนปิดงานตอนทำเสร็จจริง', () => {
   const form = closeFormDefaults(v({ scheduledDate: '2026-07-27', startTime: '10:00:00', endTime: '11:00:00' }), { todayIso: TODAY });
   assert.equal(form.actualDate, TODAY);
-  assert.equal(form.actualStartTime, '10:00');
-  assert.equal(form.actualEndTime, '11:00');
 });
 
-test('นัดที่ไม่ระบุเวลา → เวลาจบเติมจาก "ตอนนี้" ถ้ามี', () => {
-  const form = closeFormDefaults(v(), { todayIso: TODAY, nowHHMM: '15:42' });
-  assert.equal(form.actualStartTime, '');
-  assert.equal(form.actualEndTime, '15:42');
+/* 🐞 รีวิว 24/09 — ฟอร์มเคยเติมเวลานัดเริ่ม/จบเป็น "เวลาเข้าจริง" (ยุคที่ยังเป็นช่องกรอก) แล้วส่งไปกับคำขอปิดงาน
+   ⇒ นัด 08:00–10:00 ที่เริ่มจริง 14:00 ปิดไม่ได้ (400 เวลาเริ่มหลังเวลาสิ้นสุด) · นัดที่ไม่เคยกดเริ่มได้เวลาเริ่มปลอม
+   ⇒ เวลาเข้าจริงบนฟอร์ม = เวลาที่ประทับไว้เท่านั้น · ยังไม่ประทับ = ว่าง (server ประทับตอนกดปิดงาน) */
+test('🔴 ฟอร์มปิดงานไม่เติมเวลานัด/นาฬิกาเครื่องเป็นเวลาเข้าจริง — มีแต่เวลาที่ประทับไว้แล้ว', () => {
+  const scheduled = closeFormDefaults(v({ startTime: '10:00:00', endTime: '11:00:00' }), { todayIso: TODAY, nowHHMM: '15:42' });
+  assert.equal(scheduled.actualStartTime, '');
+  assert.equal(scheduled.actualEndTime, '');
+  const started = closeFormDefaults(v({
+    status: 'in_progress', startTime: '08:00:00', endTime: '10:00:00', actualStartTime: '14:05:00',
+  }), { todayIso: TODAY });
+  assert.equal(started.actualStartTime, '14:05', 'เวลาเริ่มที่ช่างกดไว้');
+  assert.equal(started.actualEndTime, '', 'เวลานัดจบ 10:00 ไม่ใช่เวลาจบจริง');
+  const closed = closeFormDefaults(v({ status: 'done', actualStartTime: '09:00:00', actualEndTime: '09:40:00' }));
+  assert.deepEqual([closed.actualStartTime, closed.actualEndTime], ['09:00', '09:40'], 'นัดที่ปิดแล้ว = ค่าที่บันทึกไว้');
 });
 
 test('⭐ รูปและลายเซ็นไม่บังคับ แต่ต้องบอกว่าขาด — ไม่ใช่เงียบ (มติผู้ใช้ 2026-07-30)', () => {

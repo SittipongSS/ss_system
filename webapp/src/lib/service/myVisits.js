@@ -104,15 +104,18 @@ export function waitingOnMeVisitCount(visits = [], todayIso = businessDate()) {
 }
 
 // ── ค่าตั้งต้นของฟอร์มปิดงาน ─────────────────────────────────────────────
-// ⭐ เติมให้ครบที่สุดเท่าที่รู้ — เจ้าหน้าที่ที่ยืนอยู่หน้างานจะไม่พิมพ์เวลาเอง
-//   วันที่เข้าจริง  = วันนี้ (ไม่ใช่วันที่นัด — คนปิดงานตอนที่ทำเสร็จจริง)
-//   เวลาเริ่ม/จบ    = เวลาที่นัดไว้ ถ้ามี · ไม่มีก็เว้นไว้ให้กดปุ่ม "ตอนนี้"
-export function closeFormDefaults(visit, { todayIso = businessDate(), nowHHMM = null } = {}) {
+// ⭐ วันที่เข้าจริง = วันนี้ (ไม่ใช่วันที่นัด — คนปิดงานตอนที่ทำเสร็จจริง)
+// 🔴 **เวลาเข้าจริงคือเวลาที่ประทับไว้เท่านั้น ห้ามเติมจากเวลานัด/นาฬิกาเครื่อง** (มติ 2026-08-02 ข้อ 5)
+//   แผ่นนี้แสดงเวลาอย่างเดียว · server ประทับเริ่ม/จบเองจากนาฬิกาไทย (`stampVisitTimes`)
+//   🐞 เดิมเติมเวลานัดเริ่ม/จบ (ของยุคที่ยังเป็นช่องกรอก) ⇒ ส่งเวลานัดจบไปกับคำขอปิดงาน ⇒ นัด 08:00–10:00
+//     ที่เริ่มจริง 14:00 ปิดไม่ได้ (400 "เวลาเริ่มต้องไม่หลังเวลาสิ้นสุด") · และนัดที่ไม่เคยกดเริ่ม
+//     ถูกบันทึกเวลาเริ่มจริงเป็นเวลานัด ทั้งที่ไม่มีใครอยู่หน้างานตอนนั้น
+export function closeFormDefaults(visit, { todayIso = businessDate() } = {}) {
   const hhmm = (value) => (value ? String(value).slice(0, 5) : '');
   return {
     actualDate: visit?.actualDate || todayIso,
-    actualStartTime: hhmm(visit?.actualStartTime) || hhmm(visit?.startTime),
-    actualEndTime: hhmm(visit?.actualEndTime) || hhmm(visit?.endTime) || nowHHMM || '',
+    actualStartTime: hhmm(visit?.actualStartTime),
+    actualEndTime: hhmm(visit?.actualEndTime),
     summary: visit?.summary || '',
     attachments: Array.isArray(visit?.attachments) ? visit.attachments : [],
     customerSignatureUrl: visit?.customerSignatureUrl || null,

@@ -2,22 +2,34 @@
 //
 // ⭐ **"ส่งผล" = "ตอบคำร้อง"** — ใบประเมินเป็นคำร้องหัวข้อหนึ่ง ไม่ใช่เอกสารพันธุ์ใหม่
 //   ⇒ การกดส่งผลคือการกด `answeredAt` ของใบ และเข้ากติกา **ปิดสองฝั่ง** เดิมทุกอย่าง
-//     (ใบจบก็ต่อเมื่อ SA กด "ปิดเรื่อง" ด้วย · กดก่อน/หลังกันได้ทั้งคู่)
+//     (ใบจบก็ต่อเมื่อ SA กด "ปิดเรื่อง" ด้วย · ปิดเรื่องได้หลังส่งผลเท่านั้น — มติเจ้าของ 24/09 ข้อ 3)
 //
-// 🔴 **ทำไมไม่ใช้ `PATCH /api/sa/requests/[id]` action=answer ตรง ๆ** — เส้นนั้นไม่รู้จัก
-//   ด่านหกข้อของใบประเมิน (ขนาด · รูป · จุด · แพ็คเกจ) ซึ่งอยู่ในตารางลูก
-//   ⇒ กดจากที่นั่นได้แปลว่าส่งใบที่ยังไม่มีขนาดออกไปหา SA ได้จริง
+// 🔴 **ทางเดียวที่ใบประเมินเป็น "ตอบแล้ว"** (มติเจ้าของ 24/09 ข้อ 1) — `PATCH /api/sa/requests/[id]`
+//   action=answer ไม่รู้จักด่านหกข้อของใบประเมิน (ขนาด · รูป · จุด · แพ็คเกจ) ซึ่งอยู่ในตารางลูก
+//   ⇒ เส้นนั้นปฏิเสธหัวข้อนี้แล้ว (`genericAnswerError` · lib/requests/answerVia.js) และหน้าคำร้องพามาที่นี่แทน
 //   ⚠️ แต่ **กติกาการเปลี่ยนสถานะยังใช้ของกลางตัวเดิม** (`answerRequestError` ·
 //     `closureStatus`) — เขียนกติกาซ้ำเมื่อไร สองเส้นจะเพี้ยนหากันแน่
+//
+// ⭐ **ส่งผลปิดนัดประเมินที่ยังเปิดอยู่ให้ด้วย** (มติเจ้าของ 24/09 ข้อ 2 — แทนมติ 16/09 "ส่งผลไม่ปิดนัด")
+//   🐞 ส่งผลตอนช่างยังไม่กดส่งงาน ⇒ ใบล็อก แถบส่งงานหาย ⇒ นัดค้าง "กำลังทำ" ปิดจากจอไหนก็ไม่ได้
+//   🔑 ด่านของการปิดคือด่านส่งผลหกข้อตัวเดียวกัน — ครอบด่านส่งงานของช่างทั้งหมด (ดู `surveySendError`)
+//   🔑 **ลำดับคือความปลอดภัย**: ปิดนัดก่อน → ตอบใบทีหลัง · ล้มกลางทางเหลือได้แค่ "นัดปิดแล้ว ใบยังไม่ตอบ"
+//      ซึ่งเท่ากับหลังช่างกดส่งงานตามปกติ และกดส่งผลซ้ำก็จบ · สภาพ "ตอบแล้วแต่นัดยังเปิด" ไปไม่ถึงอีกแล้ว
+//   ⚠️ ไม่ทำเป็น RPC: ด่านต้องอ่านไฟล์ใน JS อยู่ดี (`listAttachments`) · RPC จะห่อแค่ UPDATE สองคำสั่ง
+//      แต่ต้องเขียน `closureStatus` ซ้ำใน SQL และเพิ่ม RPC ที่ anon เรียกได้อีกตัว
 import { recordAudit } from '@/lib/audit';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
+import { appendUpdate } from '@/lib/master/updates';
 import { withUser, ok, fail, forbidden, notFound, conflict } from '@/lib/http';
 import { canSendSurveyResult } from '@/lib/permissions';
 import { canAnswerRequest } from '@/lib/requests/access';
 import { closureStatus } from '@/lib/requests/closure';
 import { answerRequestError } from '@/lib/requests/stages';
 import { listAttachments } from '@/lib/master/attachments';
+import { businessDate } from '@/lib/businessDate';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
+import { findSurveyVisit } from '@/lib/service/surveyVisit';
+import { surveySendCloseBody, surveySendWrites } from '@/lib/service/surveySendClose';
 import {
   surveyChangeCounts, surveyChangeText, surveySendError, surveyTotals, surveyTotalsDiff,
 } from '@/lib/service/survey';
@@ -49,20 +61,47 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const gate = surveySendError(zones, filesByZone, { canSend: true });
     if (gate) return conflict(gate);
 
+    const body = await req.json().catch(() => ({}));
     const nowIso = new Date().toISOString();
     const patch = {
       answeredAt: nowIso,
       answeredById: user?.id ?? null,
       answeredByName: user?.name ?? null,
-      /* ⭐ สถานะมาจากตัวตัดสินกลาง ไม่ใช่เขียน `'answered'` เอง — ใบที่ SA กดปิดไปก่อน
-         จะกลายเป็น `closed` ทันทีตรงนี้ (ปิดสองฝั่ง กดก่อน/หลังกันได้) */
+      /* ⭐ สถานะมาจากตัวตัดสินกลาง ไม่ใช่เขียน `'answered'` เอง — ใบที่ SA กดปิดไปก่อน (ใบเก่าก่อนมติ
+         24/09 ข้อ 3) จะกลายเป็น `closed` ทันทีตรงนี้ */
       status: closureStatus({ status: request.status, answeredAt: nowIso, closedAt: request.closedAt }),
       updatedAt: nowIso,
     };
 
-    const { data, error } = await supabase
-      .from('dept_requests').update(patch).eq('id', id).select().single();
-    if (error) return fail(error.message, 500);
+    /* ── ปิดนัดที่ยังเปิด (มติ 24/09 ข้อ 2) → ตอบใบ · ลำดับอยู่ใน `surveySendWrites` ที่เดียว ──────────
+       ⭐ นัดที่ส่งผลจะปิด = นัดที่ยังกินสิทธิ์ของใบ (ร่าง = ตีกลับพร้อมทางออก) · ต้องตรงกับที่โมดัลบอกผู้ใช้
+          (`closeVisitId` · ไม่ตรง = 409 ให้โหลดใหม่) */
+    const open = await findSurveyVisit(supabase, id, { openOnly: true });
+    const written = await surveySendWrites(supabase, {
+      requestId: id,
+      open,
+      closeVisitId: body?.closeVisitId ?? null,
+      answerPatch: patch,
+      today: businessDate(nowIso),
+      nowIso,
+      /* ⭐ ปิดทางนี้ต้องอ่านออกจากเธรดของนัด — ไม่งั้นนัดที่ไม่มีเวลาจบดูเหมือนระบบทำหาย
+         ⚠️ ไม่ยิงกระดิ่ง "ช่างส่งงานแล้ว" — คนกดคือหัวหน้าเอง · ไม่ซิงก์วันกลับใบ — นัดที่ปิดไม่กินสิทธิ์ใบแล้ว
+         ⚠️ `appendUpdate`/`recordAudit` กลืน error เอง — เขียนประวัติพลาดต้องไม่ลากการส่งผลล้มตาม */
+      onVisitClosed: async (closedVisit, beforeVisit) => {
+        await appendUpdate(supabase, {
+          entityType: 'service_visit', entityId: closedVisit.id, kind: 'done',
+          body: surveySendCloseBody(closedVisit, user), user,
+        });
+        await recordAudit({
+          user, action: 'update', entityType: 'service_visit', entityId: closedVisit.id,
+          before: beforeVisit, after: closedVisit,
+          summary: `ปิดนัดประเมิน ${closedVisit.code || closedVisit.id} พร้อมส่งผล ${request.docNo || id}`,
+          request: req,
+        });
+      },
+    });
+    if (written.error) return fail(written.error, written.status || 500);
+    const { request: data, closedVisit } = written;
 
     /* สรุปที่เขียนลง audit ต้องบอก **ตัวเลขที่ส่งออกไป** ไม่ใช่แค่ "ส่งผลแล้ว" —
        ใบนี้คือของที่ SA เอาไปตั้งราคา ⇒ ต้องย้อนได้ว่าตอนส่งบอกไปเท่าไร */
@@ -118,10 +157,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       summary: `ส่งผลประเมิน ${request.docNo || id} — ${totals.zones} พื้นที่ · `
         + `${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
         + (change.cut || change.added ? ` · ${surveyChangeText(change, { actor: 'TS' })}` : '')
-        + (data.status === 'closed' ? ' · ปิดครบสองฝั่ง' : ''),
+        + (data.status === 'closed' ? ' · ปิดครบสองฝั่ง' : '')
+        + (closedVisit ? ` · ปิดนัด ${closedVisit.code || closedVisit.id}` : ''),
       request: req,
     });
-    return ok({ request: data, totals });
+    // จอบอกผลที่เกิดกับนัดด้วย — "ส่งผลแล้ว" เฉย ๆ ไม่บอกว่านัดบนตารางช่างปิดแล้ว
+    return ok({ request: data, totals, closedVisit: closedVisit || null });
   } catch (e) {
     return fail(e.message, 500);
   }

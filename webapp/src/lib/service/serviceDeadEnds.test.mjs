@@ -44,6 +44,15 @@ test('ด่าน 409 ของ route ต้องไม่ถูกถอด',
   assert.match(route, /body\.stamp && isClosedVisit\(before\)/);
 });
 
+/* 🐞 ส่งงาน/ปิดงานข้ามวันชน CHECK ที่เทียบแค่เวลา (มติเจ้าของ 24/09 ข้อ 4) — ตัวประทับมีที่เดียว
+   (`stampVisitTimes`) และต้องรู้ว่าฐานมีคอลัมน์วันที่เสร็จหรือยัง (โค้ดขึ้นก่อน mig 0386 ได้) */
+test('🔴 route ประทับเวลาผ่าน stampVisitTimes ที่เดียว และบอกว่าแถวมีคอลัมน์ actualEndDate ไหม', () => {
+  const route = code('../../app/api/service/visits/[id]/route.js');
+  assert.match(route, /stampVisitTimes\(patch, \{/);
+  assert.match(route, /hasEndDateColumn: 'actualEndDate' in before/);
+  assert.doesNotMatch(route, /businessTimeKey\(nowIso\)/, 'ประทับเองในไฟล์ route = สองที่ที่เพี้ยนหากันได้');
+});
+
 /* ══ C — ชิป "เข้าไม่ได้" ค้างข้ามใบ ══════════════════════════════════ */
 
 /* 🐞 แผ่นเดียวใช้ซ้ำทุกใบ ⇒ ปิดใบถัดไปเป็น unable ด้วยเหตุผลของใบก่อน เงียบ ๆ

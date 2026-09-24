@@ -35,7 +35,8 @@ import {
   normalizeVisitInput,
 } from "@/lib/service/rounds";
 import {
-  accessLine, gatePanelView, threadDigest, visitHeaderView, visitJobRows, visitModalView,
+  accessLine, gatePanelView, threadDigest, visitEndDateNote, visitFormCheckInput, visitHeaderView, visitJobRows,
+  visitModalView,
 } from "@/lib/service/scheduleModal";
 import UpdateThread from "@/components/updates/UpdateThread";
 import CrewLoadPicker from "./CrewLoadPicker";
@@ -233,9 +234,11 @@ export default function ServiceVisitModal({
        ส่ง `existingKind` ให้อยู่แล้ว แต่จอไม่ส่ง ⇒ ตายที่ด่านฝั่ง client ก่อนยิง API ด้วยซ้ำ
        ⇒ ร่างนัดประเมินที่ติดด่าน ปล่อยเข้าคิวไม่ได้ตลอดกาล และโมดัลนี้เป็นที่เดียว
          ในระบบที่ปล่อยร่างเข้าคิวได้
-       ⚠️ ถามด้วย **อาร์กิวเมนต์ชุดเดียวกับ server** ไม่ใช่ผ่อนด่านฝั่งจอ */
+       ⚠️ ถามด้วย **อาร์กิวเมนต์ชุดเดียวกับ server** ไม่ใช่ผ่อนด่านฝั่งจอ
+       🐞 **และค่าชุดเดียวกับ server** — ฟอร์มไม่มีช่องวันที่เสร็จจริง (mig 0386) แต่ server ตรวจด้วยค่าของแถวเดิม
+          ⇒ นัดที่ส่งงานข้ามวันเคยบันทึกจากโมดัลนี้ไม่ได้อีกเลย (`visitFormCheckInput` · ก้อนที่ส่งไม่เปลี่ยน) */
     const { error: invalid } = normalizeVisitInput(
-      payload,
+      visitFormCheckInput(payload, editing ? visit : null),
       editing && visit?.kind ? { existingKind: visit.kind } : {},
     );
     if (invalid) { setError(invalid); return; }
@@ -521,6 +524,7 @@ export default function ServiceVisitModal({
   );
 
   /* ── ซ้ายล่าง: ผลการเข้าจริง · หมายเหตุ · ความเคลื่อนไหว ── */
+  const endDateNote = editing ? visitEndDateNote(visit, form) : null;
   const actualFields = (
     <div className={styles.actual}>
       <p className={styles.hint}>
@@ -537,6 +541,9 @@ export default function ServiceVisitModal({
           <TimeInput ariaLabel="เวลาที่เสร็จจริง" value={form.actualEndTime} onChange={(value) => setForm((prev) => ({ ...prev, actualEndTime: value }))} />
         </ModalField>
       </div>
+      {/* ⭐ งานที่จบคนละวันกับวันเข้า (mig 0386) — บอกวันเสร็จแบบอ่านอย่างเดียว ไม่งั้น "14:00 → 09:00" อ่านเหมือน
+          เวลากลับหัว · ช่องแก้วันเสร็จยังไม่มี (ยกไว้ทีหลัง) — ค่ามาจากปุ่มส่งงาน/ปิดงานที่ประทับข้ามวัน */}
+      {endDateNote ? <p className={styles.hint} role="note">{endDateNote}</p> : null}
       <ModalField label="สรุปงานที่ทำ" htmlFor={summaryId}>
         <Textarea id={summaryId} rows={2} value={form.summary} onChange={change("summary")} maxLength={2000} />
       </ModalField>

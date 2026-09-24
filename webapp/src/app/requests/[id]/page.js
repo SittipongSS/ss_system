@@ -65,6 +65,7 @@ import {
   requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { assignBriefPerfumerError } from "@/lib/requests/briefPerfumer";
+import { answerViaBlockedReason, genericAnswerError, requestAnswerVia } from "@/lib/requests/answerVia";
 import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
@@ -523,8 +524,31 @@ export default function RequestDetailPage() {
   // ⚠️ + สินค้าในแบบฟอร์ม NPD ที่ยังไม่มีแถวงาน = ยังไม่ครบ (ด่านเดียวกับ server · รีวิวรอบ 4)
   const rowsAllDone = (req.items || []).length > 0 && progress.complete
     && !npdUncoveredPairs(req, req.items || []).length;
+  /* 🔴 **หัวข้อที่ "ตอบแล้ว" ได้ทางเดียวผ่านจอของตัวเอง ไม่มีปุ่มกลาง** (มติเจ้าของ 24/09 ข้อ 1 · ใบประเมินพื้นที่)
+     — ปุ่มกลางไม่รู้จักด่านของใบประเมิน (ขนาด · รูป · แพ็คเกจ) และไม่ปิดนัด · server ปฏิเสธด้วยประโยคเดียวกัน
+     (`genericAnswerError`) ⇒ ตัดทั้งปุ่มหลักและเมนูรองที่ถามตัวนี้ แล้วแทนด้วยลิงก์ `answerViaAction` ข้างล่าง */
   const canMarkAnswered = ((!hasItems && !requestUsesDeliveredRows(req)) || rowsAllDone)
-    && owner && !answerRequestError(req) && !closure.deptDone;
+    && owner && !answerRequestError(req) && !closure.deptDone && !genericAnswerError(req);
+  /* ⭐ **ลิงก์ไปจอตอบของหัวข้อ** (ใบประเมิน → การ์ดส่งผลบนแท็บสรุปส่งผล) — แทนปุ่ม "ตอบแล้ว" ที่ถูกตัดข้างบน
+     ⚠️ ไม่มีสิทธิ์กดส่งผล (Planner · หัวหน้าขาย) = **ไม่โชว์** (กติกา ui-visibility) — ลิงก์ที่พาไปเจอปุ่มที่
+        ตัวเองกดไม่ได้คือทางตัน · ด่านชุดเดียวกับปุ่มกลางเดิม (ฝ่ายเจ้าของ · ใบยังเดิน · ฝ่ายยังไม่ตอบ) */
+  const answerVia = requestAnswerVia(req);
+  /* 🐞 **ผู้ขอปิดฝั่งตัวเองไปก่อนได้ผล** (ใบก่อนมติ 24/09 ข้อ 3) — ใบประเมินล็อกทั้งใบ ไม่มีปุ่มส่งผลให้ไปเจอ
+     ⇒ ลิงก์จางพร้อมเหตุที่ชี้ "ยังไม่จบ" (ปุ่มที่เปิดใบกลับได้จริง) ไม่ใช่ลิงก์สดที่พาไปทางตัน */
+  const answerViaBlocker = answerViaBlockedReason(req);
+  const answerViaAction = answerVia?.href && answerVia.canUse(me)
+    && owner && !answerRequestError(req) && !closure.deptDone
+    ? {
+      id: "answer-via",
+      label: answerVia.label,
+      title: answerVia.hint,
+      kind: "open",
+      icon: Send,
+      ...(answerViaBlocker
+        ? { disabled: true, disabledReason: answerViaBlocker, onClick: () => {} }
+        : { href: answerVia.href }),
+    }
+    : null;
   // เหตุที่ปุ่ม "ตอบแล้ว" ของใบ NPD กดไม่ได้ทั้งที่แถวครบ — ข้อความตัวเดียวกับด่านของ server
   const npdAnswerBlocker = owner && !closure.deptDone && !answerRequestError(req)
     && (req.items || []).length > 0 && progress.complete
@@ -1045,6 +1069,10 @@ export default function RequestDetailPage() {
          ต้องมาเลือกบรีฟในโมดัลอีกทีทั้งที่เพิ่งอ่านตารางอยู่แท้ ๆ
          ⇒ Control Panel เหลือ **ปุ่มปลายทาง** (ปิดเรื่อง) ที่จางพร้อมเหตุผลจนครบทุกขั้น
          ⚠️ ย้าย ไม่ก๊อป — ห้ามเอากลับมาที่นี่ */
+      /* ⭐ หัวข้อที่ตอบผ่านจอของตัวเอง (ใบประเมินพื้นที่ → "ส่งผลให้ฝ่ายขาย") — ปุ่มหลักเป็นลิงก์ไปที่นั่น
+         ⚠️ อยู่ **ตำแหน่งเดียวกับ "ตอบแล้ว"** ที่มันแทน (หลังลงคิว/แจ้งกำหนดส่ง) ไม่ใช่ปุ่มใหม่อีกขั้น */
+      : answerViaAction
+        ? answerViaAction
       // ชนิดที่ไม่มีบรรทัด: ผู้ตอบกด "ตอบแล้ว" ก่อน แล้วผู้ขอค่อยปิดเรื่อง
       // (ระบบนับคำตอบเองไม่ได้ — ไม่มีบรรทัดให้นับ)
       : canMarkAnswered
@@ -1205,6 +1233,12 @@ export default function RequestDetailPage() {
         disabled: !canMarkAnswered && !!npdAnswerBlocker,
         disabledReason: !canMarkAnswered ? npdAnswerBlocker : null,
         visible: (canMarkAnswered || !!npdAnswerBlocker) && primaryAction?.id === "commit-due",
+      },
+      /* ⭐ คู่ของเมนู "ตอบแล้ว" ข้างบนสำหรับหัวข้อที่ตอบผ่านจอของตัวเอง (มติเจ้าของ 24/09 ข้อ 1) — ปุ่มหลักเป็น
+         "ลงคิวใหม่"/"แจ้งกำหนดส่ง" อยู่ ลิงก์ไปส่งผลต้องยังมีให้กด (กติกาเดียวกับเมนูข้างบน: กำหนดการไม่กั้นการตอบ) */
+      {
+        ...(answerViaAction || { id: "answer-via" }),
+        visible: !!answerViaAction && primaryAction?.id === "commit-due",
       },
       /* ⚠️ **"ส่งงานหลายรายการ" ย้ายไปหัวการ์ดตารางสรุปทั้งใบแล้ว** (มติผู้ใช้
          2026-08-18) — ปุ่มส่งงานทุกแบบอยู่กับตาราง Control Panel เหลือปุ่มปลายทาง */

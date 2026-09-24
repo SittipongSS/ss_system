@@ -408,3 +408,58 @@ test('🔴 ส่งผลรอบใหม่ต้องหยิบตัว
   assert.match(send, /surveyTotalsDiff\(/);
   assert.match(send, /\.eq\('kind', 'recall'\)/, 'ต้องอ่านแถวดึงกลับล่าสุด');
 });
+
+/* ══ ส่งผลปิดนัดให้ด้วย (มติเจ้าของ 24/09 ข้อ 2) ═══════════════════════════
+ * เจ้าของ: "ส่งผลแล้วปิดนัดให้ด้วย แต่ต้องมีด่าน งานที่ต้องส่งด้วย เช่น ขนาด พื้นที่ รูป แพ็ค ที่ตกลงไว้"
+ * 🔑 ด่านของการปิดทางนี้คือด่านส่งผลตัวเดียว — มันต้อง **ครอบ** ด่านส่งงานของช่างทุกกรณี
+ *   ไม่งั้นส่งผลจะปิดนัดเป็น "เข้าแล้ว" ทั้งที่ของช่างยังไม่ครบ (สิ่งที่ช่างเองทำไม่ได้) */
+test('🔑 ด่านส่งผลปฏิเสธทุกกรณีที่ด่านส่งงานของช่างปฏิเสธ — ไม่ต้องมีด่านที่สองตอนส่งผลปิดนัด', () => {
+  const decided = (over = {}) => zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], packageQty: 1, ...over });
+  const zoneVariants = [
+    decided(),
+    decided({ parts: [] }),
+    decided({ parts: [{ widthM: 5, lengthM: 5 }] }),
+    decided({ spots: [] }),
+    { id: 'SVZ1', zoneName: 'ห้องน้ำ', status: 'cut', cutReason: 'ลูกค้าไม่เอา', parts: [], spots: [] },
+  ];
+  const fileVariants = [[], [wide], [plan], [wide, plan]];
+  let fieldRefusals = 0;
+  for (const a of zoneVariants) {
+    for (const b of [null, ...zoneVariants]) {
+      const rows = b ? [a, { ...b, id: 'SVZ2', zoneName: 'แพนทรี' }] : [a];
+      for (const fa of fileVariants) {
+        for (const fb of fileVariants) {
+          const files = { SVZ1: fa, SVZ2: fb };
+          if (!surveyFieldSubmitError(rows, files)) continue;
+          fieldRefusals += 1;
+          assert.ok(surveySendError(rows, files, { canSend: true }),
+            `ช่างส่งงานไม่ได้ แต่ส่งผลผ่าน: ${JSON.stringify({ rows: rows.map((r) => r.status || 'ok'), fa, fb })}`);
+        }
+      }
+    }
+  }
+  assert.ok(fieldRefusals > 50, 'ชุดทดสอบต้องมีกรณีที่ช่างส่งไม่ได้จริงจำนวนมาก');
+  // ใบว่าง: ช่างส่งไม่ได้ ส่งผลก็ไม่ได้ · ตัดออกหมด: ช่างส่งได้ แต่ส่งผลไม่ได้ (เข้มกว่า)
+  assert.ok(surveyFieldSubmitError([], {}) && surveySendError([], {}, { canSend: true }));
+  const allCut = [{ id: 'C', zoneName: 'x', status: 'cut', cutReason: 'ลูกค้าไม่เอา' }];
+  assert.equal(surveyFieldSubmitError(allCut, {}), null);
+  assert.match(surveySendError(allCut, {}, { canSend: true }), /ไม่มีพื้นที่/);
+  // "แพ็คที่ตกลงไว้" — ยังไม่เคาะ หรือทับสูตรโดยไม่มีเหตุผล = ส่งผลไม่ได้
+  assert.match(surveySendError([decided({ packageQty: null })], { SVZ1: [wide, plan] }, { canSend: true }), /แพ็คเกจ/);
+  assert.match(surveySendError([decided({ packageQty: 3 })], { SVZ1: [wide, plan] }, { canSend: true }), /เหตุผล/);
+});
+
+test('🐞 route ส่งผล: หานัดที่ค้าง · ปิดก่อนตอบใบ ผ่านลำดับกลางตัวเดียว · ผูกนัดกับโมดัล', () => {
+  const route = readFileSync(new URL('../../app/api/service/surveys/[id]/send/route.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(route, /findSurveyVisit\(supabase, id, \{ openOnly: true \}\)/, 'นัดที่ปิดคือนัดที่ยังกินสิทธิ์ใบ');
+  assert.match(route, /surveySendWrites\(supabase, \{/, 'ลำดับปิดนัด → ตอบใบอยู่ที่ lib ตัวเดียว (เทสต์ลำดับอยู่ที่ surveySendClose.test)');
+  assert.match(route, /closeVisitId: body\?\.closeVisitId \?\? null/, 'ต้องส่งรหัสนัดที่โมดัลบอกผู้ใช้ไปยืนยัน');
+  assert.match(route, /today: businessDate\(nowIso\)/, 'วันเข้าจริงของนัดที่ไม่เคยเริ่มคิดจากวันไทย');
+  assert.doesNotMatch(route, /from\('dept_requests'\)\.update\(/,
+    'route ห้ามตอบใบเอง — ต้องผ่านลำดับกลาง ไม่งั้นตอบใบได้ก่อนปิดนัด');
+  // ⭐ ปิดทางนี้ต้องลงเธรดของนัด (ไม่งั้นนัดที่ไม่มีเวลาจบดูเหมือนระบบทำหาย) — และลงก่อนตอบใบ (ใน onVisitClosed)
+  assert.match(route, /onVisitClosed: async/);
+  assert.match(route, /surveySendCloseBody\(closedVisit, user\)/);
+  assert.match(route, /closedVisit: closedVisit \|\| null/, 'จอต้องรู้ว่านัดไหนถูกปิด');
+});

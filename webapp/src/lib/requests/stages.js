@@ -3,8 +3,8 @@
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
 import {
-  requestCancelBeforeAckOnly, requestCloseNeedsSoConfirm, requestPdrRowsPickScent, requestUsesDeliveredRows,
-  requestUsesItems, requestUsesPdr,
+  requestCancelBeforeAckOnly, requestCloseNeedsAnswer, requestCloseNeedsSoConfirm, requestPdrRowsPickScent,
+  requestUsesDeliveredRows, requestUsesItems, requestUsesPdr,
 } from '@/lib/master/requestTypes';
 import { pdrTargetsSubmitError } from '@/lib/requests/pdrTargets';
 import { npdUncoveredError, npdUncoveredPairs } from '@/lib/requests/npdPairs';
@@ -245,6 +245,23 @@ export function answerRequestError(request) {
   return null;
 }
 
+/**
+ * เหตุที่ผู้ขอยังปิดเรื่องไม่ได้ของหัวข้อ `closeNeedsAnswer` (ฝ่ายยังไม่ตอบ) พร้อม **ทางออกที่มีจริง**
+ *
+ * 🐞 (รีวิว 24/09) เดิมประโยคเขียนคำของใบประเมินตายตัว ("ยังไม่ได้ส่งผลประเมิน" + ปุ่ม “ปิดใบโดยไม่ได้ประเมิน”)
+ *   ทั้งที่ธงเป็นของกลางรายหัวข้อ ⇒ หัวข้ออื่นที่เปิดธงจะบอกฝ่ายขายถึงผลประเมินและปุ่มที่หัวข้อนั้นไม่มี
+ * ⭐ คำกลาง "ยังไม่ได้ตอบ" (คำเดียวกับราง "รอ … ตอบ" → "ตอบแล้ว") · ทางออกแยกตามประตูที่หัวข้อเปิดไว้จริง:
+ *   - `unassessedExit` (หัวข้อ `cancelBeforeAckOnly` — ยกเลิกหลังรับเรื่องไม่ได้) ⇒ ฝ่ายกด "ปิดใบโดยไม่ได้ประเมิน"
+ *     (`closeUnassessedError` มีเฉพาะหัวข้อพวกนี้)
+ *   - อื่น ๆ ⇒ ยกเลิกใบ (`cancelRequestError` ปล่อยใบที่รับเรื่องแล้วแต่ยังไม่ตอบ)
+ */
+export function closeBeforeAnswerReason(request, { unassessedExit = false } = {}) {
+  const exit = unassessedExit
+    ? `ถ้าไม่ต้องการผลแล้ว ให้ ${request?.dept || 'ฝ่ายที่รับเรื่อง'} กด “ปิดใบโดยไม่ได้ประเมิน” พร้อมเหตุผล`
+    : 'ถ้าไม่ต้องการคำตอบแล้ว ให้ยกเลิกใบแทน';
+  return `${requestSideText(request, 'dept', 'ยังไม่ได้ตอบ')} — ปิดเรื่องได้หลังได้รับคำตอบ · ${exit}`;
+}
+
 export function closeRequestError(request, items = []) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'closed') return 'คำร้องนี้ปิดแล้ว';
@@ -278,6 +295,14 @@ export function closeRequestError(request, items = []) {
   }
   if (!rows.length && request.status === 'pending') {
     return 'ยังไม่มีใครรับเรื่องเลย — ยกเลิกแทนการปิด';
+  }
+  /* ⭐ **ปิดเรื่องได้หลังได้ผลเท่านั้น** (มติเจ้าของ 24/09 ข้อ 3 · ธง `closeNeedsAnswer` — ใบประเมินพื้นที่)
+     🐞 ฝ่ายขายกดปิดได้ทันทีที่ TS รับเรื่อง ก่อนมีผลสักตัว ⇒ `closedAt` ล็อกจอประเมินทั้งใบ
+       ช่างกรอกไม่ได้ ปุ่มส่งงาน/ส่งผลหายหมด ทางออกเดียวคือ "ยังไม่จบ"
+     ⚠️ อยู่ **หลัง** ด่าน `pending` — ใบที่ยังไม่มีใครรับยังต้องบอก "ยกเลิกแทนการปิด" (ยกเลิกได้จริงตอนนั้น)
+     ⚠️ ไม่ใช่ทางตัน: ประโยคชี้ทางออกที่หัวข้อนั้นมีจริง (`closeBeforeAnswerReason`) */
+  if (requestCloseNeedsAnswer(request.kind) && !request.answeredAt) {
+    return closeBeforeAnswerReason(request, { unassessedExit: requestCancelBeforeAckOnly(request.kind) });
   }
   /* ⭐ NPD (ม-144 · รีวิวรอบ 4): สินค้าในแบบฟอร์ม PDR ที่ยังไม่มีแถวงาน (งอกไม่สำเร็จ) = งานค้าง · ปิดแล้ว
      แก้แบบฟอร์มไม่ได้อีก ⇒ สินค้านั้นไม่มีวันได้งาน · ข้อความบอกทางซ่อม (บันทึกแบบฟอร์มซ้ำ) */

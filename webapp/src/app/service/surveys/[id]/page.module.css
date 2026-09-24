@@ -72,3 +72,28 @@
   font-size: var(--fs-4);
   line-height: var(--lh-thai);
 }
+
+/* ⭐ "กดแล้วเกิดขึ้นทันที" ในโมดัลส่งผล (มติเจ้าของ 24/09 ข้อ 2) — รายการข้อ ๆ อ่านได้เร็ว ไม่ใช่ย่อหน้าเดียวยาว
+   ⚠️ ข้อ "ปิดนัด SV-…" ยาวสองบรรทัดบนมือถือ — ปล่อยตัดบรรทัดตามปกติ (ห้าม nowrap: 390px ล้นแนวนอน) */
+.effects {
+  display: grid;
+  gap: var(--space-1-5);
+}
+.effectsTitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.effectList {
+  margin: 0;
+  /* จุดหน้าข้อต้องเห็น — reset กลางถอด list-style ของ ul ทิ้ง ⇒ บนมือถือข้อยาวสองสามบรรทัดไหลติดกันจนนับข้อไม่ออก */
+  list-style: disc;
+  padding-inline-start: var(--space-5);
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  line-height: var(--lh-thai);
+}
