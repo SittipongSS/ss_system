@@ -34,7 +34,8 @@ pin เวอร์ชันจาก metadata แทน hardcode null. เห�
 
 ### 1. PDF Artifact ของใบเสนอราคาที่ออกจริง
 
-- เมื่อเกิด issued snapshot (ตอนอนุมัติ) ให้ generate PDF จาก snapshot
+- เมื่อเกิด issued snapshot (ตอนอนุมัติ) ให้ generate PDF จาก snapshot — **หลังตอบหน้าจอแล้ว**
+  (`after` · ตั้งแต่ 2026-09-24 ผู้อนุมัติไม่ต้องรอ chromium ~5 วิ)
   และเก็บใน storage bucket แบบ private ตาม contract ของ Phase 7B
   (path/sha256/size/mime + generator version)
 - Reprint/ดาวน์โหลด ให้เสิร์ฟ PDF ที่เก็บไว้ ไม่ render ใหม่; ถ้า artifact
@@ -86,6 +87,11 @@ pin เวอร์ชันจาก metadata แทน hardcode null. เห�
 - [x] PDF artifact เกิดตอนอนุมัติ (best-effort) + immutable (guard เดิม) + เก็บ path/sha256/
   size/mime/generatorVersion; ดาวน์โหลด fallback สร้างจาก snapshot ถ้ายังไม่มี (idempotent).
   build ผ่าน (route `/issued/pdf` registered) · 524/524 tests · eslint clean
+- [x] **ย้ายการสร้าง PDF ไปหลังตอบหน้าจอ (2026-09-24)** — `captureIssuedQuotationPdfLater` (Next `after`)
+  ทั้งตอนอนุมัติและตอนเปลี่ยนภาษาใบที่อนุมัติแล้ว · 🐞 ผู้ใช้แจ้ง "กดอนุมัติแล้วโหลดนาน" → วัดจาก prod
+  (38 ใบล่าสุด): chromium ใช้ค่ากลาง 4.8 วิ (2.1–6.0) จากทั้งคำขอ ~5.3 วิ · ลายเซ็น + ตรึง HTML ~0.34 วิ
+  · ทุกใบในชุดนั้นมีแถว `issued_document_pdf_artifacts` ครบ (ขั้นสร้าง PDF บน prod ทำงานจริง)
+  · ยาม `lib/sales/issuedQuotationPdfLater.test.mjs`
 - [ ] **UAT ใบจริง (บน prod):** อนุมัติ QT → เกิดแถว `issued_document_pdf_artifacts` + ไฟล์
   ใน bucket, ดาวน์โหลด PDF ตรงกับ HTML reprint, fingerprint ตรง
 - [ ] อัปเดต Permission action inventory
