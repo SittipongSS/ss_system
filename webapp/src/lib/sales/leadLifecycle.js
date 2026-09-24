@@ -15,7 +15,7 @@
 // เรื่อง "สิทธิ์ตาม role/ทีม" ไม่ใช่ "ยังไม่ถึงเวลา"
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
-import { hasTeam, isSuperuser, userTeams, TEAMS } from "@/lib/permissions";
+import { hasTeam, hasTeamScope, isSuperuser, userTeams, TEAMS } from "@/lib/permissions";
 /* ⚠️ โมดูลนี้เรียก hook ไม่ได้ — อ่านสแนปช็อตทะเบียนที่ `AppLayout` โหลดไว้
    (`useSalesTeams()` ที่เปลือก) · ยังไม่โหลด = ขึ้นรหัสทีม ไม่ใช่ชื่อเก่าจากค่าคงที่ */
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
@@ -74,7 +74,7 @@ const STEPS = [
 ];
 
 const inTeamOf = (user, lead) =>
-  (user?.role === "senior_ae" || user?.role === "ac") && hasTeam(user, lead?.team);
+  hasTeamScope(user?.role) && hasTeam(user, lead?.team);
 
 /* "ขั้นกำกับดูแล" (ตีกลับ/ไม่ไปต่อ) — ทีมเจ้าของงาน + ผู้ดูแล
    ต่างจาก "ขั้นทำงาน" (ติดต่อ/นัด) ที่ใช้ canWorkLead: มติผู้ใช้ 2026-07-21 ว่า

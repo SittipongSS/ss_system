@@ -23,18 +23,19 @@
  *    `dealLeadLinkRepo.js` · ข้อความ blocker ที่จอโชว์ต้องมาจากฟังก์ชันในไฟล์นี้ตัวเดียว
  *    กับที่ server ใช้ปฏิเสธ (กติกา GatedAction)
  */
-import { hasTeam } from '@/lib/permissions';
+import { hasTeam, isTeamLead, DEAL_HOLDER_ROLES, SALES_MANAGER_ROLES } from '@/lib/permissions';
 import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
 import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
 
 /** ใครผูก/ถอดลีดกับดีลได้ — `canCreateDealFromLead` + AE Supervisor (มติ 2026-09-22)
  *  ⚠️ **ไม่แก้ `canCreateDealFromLead`** — ปุ่ม "เปิดดีลจากลีดนี้" ของ AE Supervisor ยังปิดตาม
  *     มติ 2026-07-21 (งานของหัวหน้าจบที่คัดกรอง) · ผูกย้อนหลังคือ "แก้ของลูกทีม" คนละเรื่อง
- *  ⚠️ AC ไม่อยู่ในลิสต์ — AC เปิดดีลจากลีดไม่ได้มาตั้งแต่ต้น (มติผู้ใช้) */
-export const LEAD_LINK_ROLES = ['admin', 'ae', 'senior_ae', 'ae_supervisor'];
+ *  ⚠️ AC ไม่อยู่ในลิสต์ — AC เปิดดีลจากลีดไม่ได้มาตั้งแต่ต้น (มติผู้ใช้) · สาย AC ทุกระดับก็เช่นกัน
+ *  ⭐ ผังตำแหน่ง 2026-09-24: "AE Supervisor" = ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) */
+export const LEAD_LINK_ROLES = ['admin', ...DEAL_HOLDER_ROLES, ...SALES_MANAGER_ROLES];
 export const canLinkLeadRole = (role) => LEAD_LINK_ROLES.includes(role);
 
-const LEAD_LINK_SUPERVISORS = ['admin', 'ae_supervisor'];
+const LEAD_LINK_SUPERVISORS = ['admin', ...SALES_MANAGER_ROLES];
 
 /** สถานะที่ผูกได้ทุกคนที่ผ่านด่านสิทธิ์ — "กระจายแล้ว" ขึ้นไป รวม "ไม่ไปต่อ" */
 export const LEAD_LINK_STATUSES = ['assigned', 'contacted', 'meeting', 'qualified', 'disqualified'];
@@ -50,7 +51,8 @@ export function leadLinkScopeOk(user, lead) {
   const role = user?.role;
   if (!lead || !canLinkLeadRole(role)) return false;
   if (LEAD_LINK_SUPERVISORS.includes(role)) return true;
-  if (role === 'senior_ae') return hasTeam(user, lead.team);
+  // หัวหน้าทีมในลิสต์นี้มีแค่ Senior AE (สาย AC ไม่ผ่าน canLinkLeadRole ข้างบน)
+  if (isTeamLead(role)) return hasTeam(user, lead.team);
   if (role === 'ae') return !!user?.id && lead.assigneeId === user.id;
   return false;
 }

@@ -34,7 +34,7 @@ import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/comp
 import { CONFIRM_DOC_TYPE_LABELS } from "@/lib/sales/orderConfirmationDocs";
 import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
 import { useCan, useRole } from "@/lib/roleContext";
-import { isSuperuser } from "@/lib/permissions";
+import { isSalesManager } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
@@ -233,7 +233,7 @@ export default function QuotationEditorPage() {
   const canDeleteDocument = !!quote && (role === "admin" || (canEditCap
     && !isQuotationAwaitingApproval(quote)
     && quote.status !== "accepted"
-    && (quote.status === "draft" || isSuperuser(role))));
+    && (quote.status === "draft" || isSalesManager(role))));
   // เท่ากับ `editMode` แล้วตั้งแต่ `editMode` คูณ `canEditDocument` เข้าไป — คงชื่อไว้
   // เพราะ JSX ทั้งหน้าอ่านว่า "ช่องนี้แก้ได้ไหม" ไม่ใช่ "อยู่ในโหมดไหน"
   const editable = editMode;

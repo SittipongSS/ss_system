@@ -17,7 +17,7 @@ import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
-import { isSuperuser } from "@/lib/permissions";
+import { isSalesManager } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
@@ -299,7 +299,7 @@ export default function QuotationsPage() {
                         </Link>
                       )}
                       {/* ลบ: draft ทุกคนที่แก้ได้ / superuser ลบสถานะอื่น / admin บังคับลบได้ทุกสถานะ (รวม accepted) */}
-                      {(role === "admin" || (canEdit && r.status !== "accepted" && (r.status === "draft" || isSuperuser(role)))) && (
+                      {(role === "admin" || (canEdit && r.status !== "accepted" && (r.status === "draft" || isSalesManager(role)))) && (
                         <button type="button" className="btn-icon danger" title={r.status === "draft" ? "ลบฉบับร่าง" : "ลบ (สิทธิ์ผู้ดูแลระบบ)"} aria-label={`ลบ ${r.quoteNumber}`}
                           onClick={() => deleteQuote(r)}>
                           <Trash2 size={15} aria-hidden="true" />

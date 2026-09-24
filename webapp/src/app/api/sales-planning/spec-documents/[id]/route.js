@@ -19,6 +19,7 @@ import { recordAudit } from '@/lib/audit';
 import { loadScoped } from '@/lib/scopedRow';
 import { notifyUsers } from '@/lib/notifications';
 import { loadUserDirectory } from '@/lib/usersRepo';
+import { SALES_BELL_ROLES } from '@/lib/permissions';
 import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
 import {
   DOC_ACTION_KEYS, DRAFT_EXIT_MISMATCH, FRESH_DRAFT_VOID_BLOCK, canAeApproveProductSpecDocument, canIssueProductSpecDocument,
@@ -150,7 +151,8 @@ function hiddenActionResponse(action, { document, latest, user, dealOwnerId }) {
 }
 
 /* ── แจ้งเตือน (`notifyUsers`) ตามตารางในเอกสารมติ ───────────────────────────
-   ยื่น ⇒ AE เจ้าของดีล · AE อนุมัติ ⇒ `ae_supervisor` ทุกคนที่ active · ตีกลับ ⇒ ผู้ยื่น ·
+   ยื่น ⇒ AE เจ้าของดีล · AE อนุมัติ ⇒ AE Supervisor ทุกคนที่ active (`SALES_BELL_ROLES` — CD/CM อนุมัติขั้นนี้ได้
+   แต่ไม่รับกระดิ่ง · มติ 2026-09-24 ข้อ 6) · ตีกลับ ⇒ ผู้ยื่น ·
    อนุมัติขั้นสุดท้าย ⇒ ผู้ยื่น + AE เจ้าของดีล
    ⚠️ ไม่แจ้งตัวเอง (admin กดแทนเจ้าของดีล/ผู้ยื่นกดเองก็ไม่ต้องเด้งหาตัวเอง)
    ⚠️ fire-and-forget หลังตอบ — การอนุมัติบันทึกไปแล้ว แจ้งเตือนพลาดต้องไม่ทำให้ตอบ error
@@ -172,7 +174,7 @@ async function recipientsFor(supabase, action, { latest, dealOwner }) {
   if (action === 'ae_approve') {
     const directory = await loadUserDirectory(supabase);
     return [...directory.values()]
-      .filter((u) => u && !u.disabled && u.role === 'ae_supervisor')
+      .filter((u) => u && !u.disabled && SALES_BELL_ROLES.includes(u.role))
       .map((u) => u.id);
   }
   if (action === 'reject') return [latest?.submittedBy];

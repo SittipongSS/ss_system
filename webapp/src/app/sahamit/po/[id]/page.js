@@ -28,6 +28,7 @@ import { DestinationToggle, destinationLabel } from "@/components/sahamit/destin
 import { useCan } from "@/lib/roleContext";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { PROJECT_PEOPLE_ROLES } from "@/lib/pm/projectPeople";
 import { createClient } from "@/lib/supabaseBrowser";
 import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
@@ -249,9 +250,9 @@ export default function PoDetailPage() {
      เขียนผู้ประสานงาน/ผู้ตรวจสอบเป็นค่าว่างตายตัว ⇒ โครงการจาก PO ไม่มีสองฝ่ายนี้เลย
      รายชื่อกรองด้วย role เดียวกับที่ server ตรวจ (resolveProjectAcOwner / Supervisor) */
   const directory = usePeopleDirectory();
-  const acUsers = useMemo(() => directory.filter((u) => u.role === "ac" && !u.disabled), [directory]);
+  const acUsers = useMemo(() => directory.filter((u) => PROJECT_PEOPLE_ROLES.preparedBy.includes(u.role) && !u.disabled), [directory]);
   const supervisorUsers = useMemo(
-    () => directory.filter((u) => u.role === "ae_supervisor" && !u.disabled),
+    () => directory.filter((u) => PROJECT_PEOPLE_ROLES.aeSupervisor.includes(u.role) && !u.disabled),
     [directory],
   );
   const [projectAcId, setProjectAcId] = useState("");

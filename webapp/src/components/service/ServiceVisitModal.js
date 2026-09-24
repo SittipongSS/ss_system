@@ -19,7 +19,7 @@ import TimeInput from "@/components/ui/TimeInput";
 import { accessWindowText } from "@/lib/service/sites";
 import { evaluateVisitGate, gateBlocker, gatePassed, gateReasons, gateSummary } from "@/lib/service/visitGate";
 import { visitDeleteButton } from "@/lib/service/visitDelete";
-import { isSuperuser } from "@/lib/permissions";
+import { canOverrideServiceGate } from "@/lib/permissions";
 import { useRole } from "@/lib/roleContext";
 import {
   TIME_PRESETS,
@@ -169,7 +169,7 @@ export default function ServiceVisitModal({
   const gateCount = useMemo(() => gateSummary(gate), [gate]);
   /* ข้ามด่านเป็นสิทธิ์ของหัวหน้า ไม่ใช่ของทุกคนที่แก้งานบริการได้ — ด่านฝั่ง server
      ปฏิเสธอยู่แล้ว (route PATCH) ที่นี่แค่ไม่โชว์ปุ่มที่กดยังไงก็ไม่ผ่าน */
-  const canOverride = isSuperuser(role);
+  const canOverride = canOverrideServiceGate({ role });
 
   const applyPreset = (preset) =>
     setForm((prev) => ({ ...prev, startTime: preset.startTime, endTime: preset.endTime }));

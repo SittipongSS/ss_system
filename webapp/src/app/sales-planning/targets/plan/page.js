@@ -11,7 +11,7 @@ import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp }
 import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole } from "@/lib/roleContext";
-import { userTeams } from "@/lib/permissions";
+import { isSuperuser, isTeamLead, userTeams } from "@/lib/permissions";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import { MONTH_LABELS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 /* ⚠️ รายชื่อทีมมาจากทะเบียนจริง (มติ 2026-09-07) · **สองลิสต์คนละหน้าที่**
@@ -49,7 +49,7 @@ export default function SalesTargetPlanPage() {
   const router = useRouter();
   const canTarget = useCan("salesplan:target");
   const role = useRole();
-  const isSuper = role === "admin" || role === "ae_supervisor";
+  const isSuper = isSuperuser(role);
 
   const teamRegistry = useSalesTeams();
   /* ⚠️ ต้อง memo — `activeSalesTeams(...).map(...)` สร้างอาเรย์ใหม่ทุกเรนเดอร์
@@ -843,7 +843,7 @@ function Step4PersonSeason({ targetYear, teamMembers, teamTargets, personTargets
                   {members.map((m) => (
                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: "var(--fs-7)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {m.name}{m.role === "senior_ae" && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-3)" }}> · หัวหน้า</span>}
+                        {m.name}{isTeamLead(m.role) && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-3)" }}> · หัวหน้า</span>}
                       </span>
                       <div style={{ width: 142 }}>
                         {personMode === "amount" ? (

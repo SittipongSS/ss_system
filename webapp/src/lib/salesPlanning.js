@@ -1,4 +1,4 @@
-import { can, hasTeam, inScope, isReadOnlyObserver, isRdRole, isSuperuser, primaryTeam, TEAMS } from '@/lib/permissions';
+import { can, hasTeam, hasTeamScope, inScope, isReadOnlyObserver, isRdRole, isSalesManager, isSuperuser, primaryTeam, TEAMS, TEAM_ROLES } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 import { businessMonthKey } from '@/lib/businessDate';
 import { documentNumberSlots, publishedNumberingPattern } from '@/lib/documentStandards';
@@ -125,7 +125,7 @@ export function salesPlanningViewScope(role) {
      ⚠️ อ่านอย่างเดียวเหมือน rd/viewer/finance — `salesPlanningEditScope` ยัง `'none'`
      เพราะไม่มี `salesplan:edit` */
   if (SERVICE_VIEW_ROLES.has(role)) return 'all';
-  if (role === 'senior_ae' || role === 'ac') return 'team';
+  if (hasTeamScope(role)) return 'team';
   if (role === 'ae') return 'own';
   return 'none';
 }
@@ -134,7 +134,7 @@ export function salesPlanningEditScope(role) {
   // Commercial deals follow the generic editScope, NOT PM's team-collaborative
   // model: AE edits only its OWN deals; ac / senior_ae edit the whole team.
   if (isSuperuser(role)) return 'all';
-  if (role === 'senior_ae' || role === 'ac') return 'team';
+  if (hasTeamScope(role)) return 'team';
   if (role === 'ae') return 'own';
   return 'none';
 }
@@ -154,7 +154,7 @@ export function canEditSalesPlanning(user) {
 // ⚠️ AC เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน ⇒ ฟอร์มสร้างต้องมีช่อง "ผู้รับผิดชอบ (AE)"
 // และ server ต้องตรวจว่าคนที่ถูกเลือกอยู่ทีมเดียวกันจริง (lib/sales/dealOwner.js)
 export function canCreateDeal(user) {
-  return !!user && (user.role === 'ae' || user.role === 'senior_ae' || user.role === 'ac' || isSuperuser(user.role));
+  return !!user && (TEAM_ROLES.includes(user.role) || isSuperuser(user.role));
 }
 
 /**
@@ -209,10 +209,12 @@ export function canReviewSalesForecast(user) {
 // อนุมัติใบเสนอราคา = การเซ็นรับรองโดย "เจ้าของดีล" (มติผู้ใช้ 2026-07-18 —
 // ผู้อนุมัติบน FM-SA-01 = AE เจ้าของโครงการ/ลูกค้า). ผู้สร้างใบ (AC/AE/Senior) อาจไม่ใช่
 // เจ้าของ → เจ้าของต้องอนุมัติก่อนส่ง; ถ้าเจ้าของสร้างเอง = เซ็นเองได้ (creator === owner).
-// superuser (admin/หัวหน้าขาย) อนุมัติได้ในฐานะกำกับดูแล. deal ต้องมาพร้อม ownerId.
+// ผู้มีอำนาจตัดสิน (admin · CD · CM · AE Sup) อนุมัติได้ในฐานะกำกับดูแล. deal ต้องมาพร้อม ownerId.
+// ⚠️ `isSalesManager` ไม่ใช่ `isSuperuser` — AC Supervisor เห็นทุกทีมแต่ไม่อนุมัติ (มติ 2026-09-24)
+//    และต้องตรงกับ approve_quotation_with_signature_evidence_atomic (mig 0382)
 export function canApproveQuotation(user, deal) {
   if (!user || !deal) return false;
-  if (isSuperuser(user.role)) return true;
+  if (isSalesManager(user.role)) return true;
   return !!user.id && user.id === deal.ownerId;
 }
 
