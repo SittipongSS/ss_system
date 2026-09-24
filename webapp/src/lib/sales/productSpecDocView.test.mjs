@@ -374,6 +374,25 @@ test('แถบบรรทัดถูกถอด: คนที่ไม่ม
   assert.doesNotMatch(lineRemovedNotice({ document: orphanDoc, latest: rev('pending_ae') }).body, /รอ AC/);
 });
 
+/* ⭐ มติ 24/09/2569 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" — ใบที่เคยอนุมัติแล้ว ผู้อนุมัติ (AE เจ้าของดีล · AE Sup)
+   มีปุ่มยกเลิกของตัวเอง ⇒ แถบต้องบอกให้ลงมือ ไม่ใช่ "รอ AC" · ใบที่ไม่เคยอนุมัติยังเป็น "รอ AC" (ผู้อนุมัติใช้ตีกลับ) */
+test('แถบบรรทัดถูกถอดบนใบที่เคยอนุมัติ: ผู้อนุมัติได้ประโยคให้ลงมือ (มีปุ่มยกเลิกของตัวเองแล้ว)', () => {
+  const orphanDoc = { ...doc, salesOrderLineId: null, currentRevNo: 0 };
+  for (const latest of [rev('approved'), rev('draft', { revNo: 1, submittedBy: null })]) {
+    for (const user of Object.values(U)) {
+      const actions = documentActions({
+        document: orphanDoc, latest, salesOrder: order, dealOwnerId: owner.id, user,
+      });
+      const notice = lineRemovedNotice({ document: orphanDoc, latest, actions });
+      const mine = ['ac', 'admin', 'ae', 'ae_supervisor'].includes(user.role);
+      assert.equal(actions.void.visible, mine, `${latest.status} · ${user.role}`);
+      assert.match(notice.body, /ยกเลิกเอกสารใบนี้/, `${latest.status} · ${user.role}`);
+      if (mine) assert.doesNotMatch(notice.body, /รอ AC/, `${latest.status} · ${user.role} กดเองได้`);
+      else assert.match(notice.body, /รอ AC/, `${latest.status} · ${user.role} ไม่มีปุ่ม`);
+    }
+  }
+});
+
 /* 🐞 UAT 23/09: ลบร่างจากการ์ดหน้า SO สำเร็จแต่คำตอบหายกลางทาง ⇒ การ์ดเคยขึ้น "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ลองอีกครั้ง"
    ทั้งที่แถวหายไปต่อหน้า · ตัวตัดสินอ่านการ์ดชุดใหม่ และเชื่อคำตอบของเซิร์ฟเวอร์ก่อน "แถวหาย" เสมอ */
 test('ลบร่างจากการ์ดแล้วไม่ได้คำตอบว่าสำเร็จ: done / moved / retry ตัดสินจากการ์ดชุดใหม่', () => {
@@ -474,6 +493,34 @@ test('โมดัลเหตุผลใช้ความยาวเดี�
   assert.match(orphanWithRev.description, /ยกเลิก 220969-001-02 หรือไม่/);
   assert.match(orphanWithRev.detail, /เลขที่ 220969-001 ถูกปิดถาวร/, 'ยกเลิก = เลขที่ทั้งใบ (ทุก Rev) ไม่มี RR');
   assert.equal(docReasonPrompt('submit', { document: doc }), null);
+});
+
+/* ⭐ มติ 24/09/2569: ผู้อนุมัติกด "แก้ไขเอกสาร"/"ยกเลิกเอกสาร" ได้ด้วย ⇒ ข้อความต้องจริงสำหรับทั้ง AC และผู้อนุมัติ
+   (ไม่มีช่อง canIssue ใน payload — พูดกลาง ๆ ว่าใครทำอะไรต่อ) และบอกว่ามีการแจ้งเตือนใคร */
+test('โมดัลแก้ไขเอกสาร: Rev ใหม่ AC เป็นคนแก้และยื่น · แจ้งเตือน AC · เปิดแล้วลบทิ้งไม่ได้', () => {
+  const revise = docReasonPrompt('revise', { document: { ...doc, currentRevNo: 1 }, latest: rev('approved', { revNo: 1 }) });
+  assert.match(revise.detail, /AC แก้สเปคที่หน้าสินค้าแล้วยื่น Rev\.02/);
+  assert.match(revise.detail, /แจ้งเตือน AC/);
+  assert.match(revise.detail, /Rev\.02 ที่เปิดแล้วลบทิ้งไม่ได้/);
+  assert.match(revise.detail, /สิ่งที่จะเกิดขึ้นทันที/);
+  assert.match(docActionDoneMessage('revise'), /AC ยื่นอนุมัติ/);
+});
+
+test('โมดัลยกเลิกเอกสาร: บอกว่าแจ้งเตือนใคร · ฉบับที่อนุมัติแล้วใช้ไม่ได้อีก (เฉพาะเมื่อรู้ currentRevNo)', () => {
+  const approvedDoc = { ...doc, currentRevNo: 1 };
+  const voidIt = docReasonPrompt('void', { document: approvedDoc, latest: rev('draft', { revNo: 2 }) });
+  assert.match(voidIt.detail, /ย้อนกลับเองไม่ได้/);
+  assert.match(voidIt.detail, /แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีล/);
+  assert.match(voidIt.detail, /ฉบับ Rev\.01 ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+  // ใบที่ยังไม่เคยอนุมัติ = ไม่มีฉบับที่ใช้ให้พูดถึง
+  const neverApproved = docReasonPrompt('void', { document: doc, latest: rev('pending_ae') });
+  assert.doesNotMatch(neverApproved.detail, /ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+  assert.match(neverApproved.detail, /แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีล/);
+  // 🪤 การ์ดหน้า SO ส่งแค่ `{ docNo }` (ไม่มี currentRevNo) ⇒ ห้ามเดาว่ามีฉบับที่อนุมัติ
+  const card = docReasonPrompt('void', { document: { docNo: doc.docNo }, latest: { revNo: 2 }, orphan: true });
+  assert.doesNotMatch(card.detail, /ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+  assert.doesNotMatch(card.detail, /Rev\.—/);
+  assert.match(docActionDoneMessage('void'), /แจ้งเตือน/);
 });
 
 test('ประวัติ Rev: ใหม่ก่อน · ตราประทับทุกขั้น · ทุกแถวพิมพ์ได้', () => {

@@ -144,12 +144,20 @@ test('แจ้งเตือนตามตารางมติ: ยื่น
   assert.deepEqual(SALES_BELL_ROLES, ['ae_supervisor']);
   assert.match(fn, /action === 'reject'\) return \[latest\?\.submittedBy\]/);
   assert.match(fn, /action === 'sup_approve'\) return \[latest\?\.submittedBy, dealOwner\?\.id\]/);
+  /* ⭐ มติ 24/09/2569: ผู้อนุมัติเปิด Rev ใหม่ได้แต่ยื่นไม่ได้ และสาย AC ไม่มีคิวงานของเอกสาร ⇒ แก้ไขเอกสาร
+     ต้องเด้งหา AC (ผู้ยื่นฉบับที่อนุมัติ + ผู้ออกเอกสาร) ไม่งั้น Rev ที่ผู้อนุมัติเปิดค้างเงียบ ·
+     ยกเลิก ⇒ AC ผู้ยื่น (Rev ล่าสุด + ฉบับที่อนุมัติ) + ผู้ออกเอกสาร + AE เจ้าของดีล */
+  assert.match(fn, /action === 'revise'\) return \[latest\?\.submittedBy, document\?\.createdBy\]/);
+  assert.match(fn, /action === 'void'\) return \[latest\?\.submittedBy, approved\?\.submittedBy, document\?\.createdBy, dealOwner\?\.id\]/);
+  // ตัวเลือกผู้รับต้องได้ document + approved จากบริบทที่ notifyLater ส่งมา
+  assert.match(fn, /async function recipientsFor\(supabase, action, \{ latest, approved, document, dealOwner \}\)/);
+  assert.match(source, /notifyLater\(supabase, action, \{\s*document, revision: revisionAfter, latest, approved, product, salesOrder, dealOwner, user, reason,\s*\}\)/);
   assert.match(source, /entityType: 'product_spec_document'/);
   // ห้ามแจ้งตัวเอง
   assert.match(source, /filter\(\(uid\) => uid !== actorId\)/);
 });
 
-test('หัวแจ้งเตือน = "…รายละเอียดผลิตภัณฑ์ · DDMMYY-XXX-RR" ทั้งสี่การกระทำ — ไม่ใช่เลขที่ดิบ + "Rev."', () => {
+test('หัวแจ้งเตือน = "…รายละเอียดผลิตภัณฑ์ · DDMMYY-XXX-RR" ทุกการกระทำที่แจ้ง — ไม่ใช่เลขที่ดิบ + "Rev."', () => {
   /* เราต์ส่งออกฟังก์ชันอื่นนอกจาก handler ไม่ได้ (ข้อจำกัดของไฟล์ route) ⇒ ดึง `describe` + `noticeText` จากซอร์ส
      มารันจริง (ไม่ใช่แค่จับข้อความ) · 🐞 ผลตรวจรอบสอง: ไม่มีเทสต์ตรึงหัวแจ้งเตือน ถอยกลับเป็นรูปเก่าก็ยังเขียว */
   const source = code(DOC_ROUTE);
@@ -169,6 +177,9 @@ test('หัวแจ้งเตือน = "…รายละเอียด�
     ae_approve: 'รอ AE Supervisor อนุมัติรายละเอียดผลิตภัณฑ์ · 220969-001-01',
     reject: 'รายละเอียดผลิตภัณฑ์ถูกตีกลับ · 220969-001-01',
     sup_approve: 'รายละเอียดผลิตภัณฑ์อนุมัติแล้ว · 220969-001-01',
+    // มติ 24/09: แก้ไขเอกสาร/ยกเลิก (ผู้อนุมัติกดได้แล้ว) ต้องเด้งหา AC — หัวรูปเดียวกัน
+    revise: 'เปิดฉบับแก้ไขรายละเอียดผลิตภัณฑ์ — รอ AC แก้สเปคและยื่น · 220969-001-01',
+    void: 'รายละเอียดผลิตภัณฑ์ถูกยกเลิก · 220969-001-01',
   };
   for (const [action, title] of Object.entries(titles)) {
     const text = noticeText(action, { head, body, reason: 'แก้ฝา' });
@@ -176,6 +187,10 @@ test('หัวแจ้งเตือน = "…รายละเอียด�
     assert.doesNotMatch(text.title, /FM-SA-04-220969-001|Rev\./, `${action}: ห้ามเลขที่ดิบ/"Rev." ในหัว`);
   }
   assert.match(noticeText('reject', { head, body, reason: 'แก้ฝา' }).body, /^แก้ฝา — /);
+  assert.match(noticeText('revise', { head, body, reason: 'แก้ฝา' }).body, /^แก้ฝา — FG-1/);
+  assert.match(noticeText('void', { head, body, reason: 'แก้ฝา' }).body, /^แก้ฝา — FG-1/);
+  assert.equal(noticeText('revise', { head, body, reason: 'แก้ฝา' }).kind, 'product_spec_doc_revise');
+  assert.equal(noticeText('void', { head, body, reason: 'แก้ฝา' }).kind, 'product_spec_doc_void');
 });
 
 test('GET ของเอกสาร: ขอบเขตมาจาก SO ที่ผูก (loadScoped view) · ไม่มี SO แล้ว = ฝ่ายขายเท่านั้น', () => {
@@ -385,6 +400,21 @@ test('🔴 RPC ปฏิเสธการลบแต่อ่านใหม�
   assert.match(branch, /loadVisibleDocument\(supabase, id, user, 'edit'\)/, 'ต้องอ่านใบใหม่ — มีคนยื่นแทรกคือกรณีปกติ');
   assert.match(branch, /documentExitKey\(again\.document, again\.latest\) === 'remove'/);
   assert.match(branch, /return conflict\(DRAFT_EXIT_MISMATCH\)/);
+});
+
+/* ⭐ มติ 24/09/2569: แก้ไขเอกสาร/ยกเลิก ไม่ใช่ของ AC ล้วนแล้ว — ตัวแยก 403/409 ต้องถามตัวตัดสินชุดเดียวกับ
+   `documentActions` (ไม่ใช่ canIssue) และต้องได้ `document` ด้วย: ไม่งั้นผู้อนุมัติที่กดจากแท็บค้างได้ 403
+   "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (เหตุจริงคือสถานะเปลี่ยน) */
+test('⭐ ปุ่มที่ถูกซ่อน: แก้ไข/ยกเลิกถามตัวตัดสินของผู้อนุมัติ และส่ง document ให้ ACTION_ROLE', () => {
+  const source = code(DOC_ROUTE);
+  const table = source.slice(source.indexOf('const ACTION_ROLE = {'), source.indexOf('};', source.indexOf('const ACTION_ROLE = {')));
+  assert.match(table, /revise: \(\{ user, dealOwnerId \}\) => canReviseProductSpecDocument\(user, dealOwnerId\)/);
+  assert.match(table, /void: \(\{\s*user, dealOwnerId, document, latest,?\s*\}\) => canVoidProductSpecDocument\(\{\s*user, dealOwnerId, document, latest,?\s*\}\)/);
+  assert.match(source, /ACTION_ROLE\[action\]\(\{ user, latest, dealOwnerId, document \}\)/);
+  // ร่างที่ไม่เคยยื่นยังตอบ FRESH_DRAFT_VOID_BLOCK เฉพาะสาย AC (ผู้อนุมัติตกไป 403 — ไม่มีปุ่มลบให้ชี้)
+  assert.match(source, /action === 'void' && canIssueProductSpecDocument\(user\?\.role\)/);
+  // ลบร่าง (DELETE) ยังเป็นของ AC/admin — มติ 24/09 เพิ่มแค่ย้อน/ยกเลิก
+  assert.match(deleteBranch(source), /if \(!canIssueProductSpecDocument\(user\?\.role\)\) return forbidden\('ลบร่างเอกสารได้เฉพาะ AC'\)/);
 });
 
 test('⭐ ยกเลิกร่างที่ไม่เคยยื่น (ปุ่มถูกซ่อนตามมติ 23/09) = 409 พร้อมทางที่ใช้ได้จริง ไม่ใช่ "สถานะเปลี่ยนแล้ว"', () => {

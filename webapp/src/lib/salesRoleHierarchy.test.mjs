@@ -26,7 +26,9 @@ import {
 import { POSITION_TITLES, positionTitle } from './documents/positionTitles.js';
 import { canApproveQuotation, canCreateDeal, salesPlanningEditScope, salesPlanningViewScope } from './salesPlanning.js';
 import { canSubmitSalesOrder, isSalesOrderReviewer } from './sales/salesOrderWorkflow.js';
-import { canIssueProductSpecDocument, canSupApproveProductSpecDocument } from './sales/productSpecDocWorkflow.js';
+import {
+  canIssueProductSpecDocument, canReviseProductSpecDocument, canSupApproveProductSpecDocument, canVoidProductSpecDocument,
+} from './sales/productSpecDocWorkflow.js';
 import { canApproveExternalContract } from './sales/contracts.js';
 import { canApproveProjectClose } from './pm/projectClose.js';
 import { canKeyHistoricalSalesOrder, canMoveHistoricalDealOwner } from './sales/historicalOrders.js';
@@ -180,6 +182,20 @@ test('อนุมัติ/ตัดสิน: CD · CM · AE Sup (+ admin) เ
 
 test('สาย AC ออกเอกสาร FM-SA-04 ได้ทุกระดับ · ฝ่ายขายทุกตำแหน่งแก้สเปค/คีย์ SO ย้อนหลังได้', () => {
   assert.deepEqual(ROLES.filter(canIssueProductSpecDocument), ['admin', 'ac_supervisor', 'senior_ac', 'ac']);
+  /* ⭐ มติเจ้าของ 24/09/2569 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" — แก้ไขเอกสาร (Rev+1) = สาย AC + ผู้อนุมัติ
+     ขั้น AE Sup (CD/CM/AE Sup) + เจ้าของดีล (ตำแหน่งไหนก็ได้ที่ถือดีลนั้น) · ตำแหน่งใหม่ที่ตกหล่นจะเสียสิทธิ์เงียบ ๆ */
+  const approvedDoc = { document: { status: 'active', currentRevNo: 0 }, latest: { revNo: 0, status: 'approved' } };
+  const pendingDoc = { document: { status: 'active', currentRevNo: null }, latest: { revNo: 0, status: 'pending_ae' } };
+  const reviseRoles = ROLES.filter((role) => canReviseProductSpecDocument({ id: 'x', role }, 'owner'));
+  assert.deepEqual(reviseRoles, ['admin', 'commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ac', 'ac']);
+  assert.deepEqual(ROLES.filter((role) => canVoidProductSpecDocument({ user: { id: 'x', role }, dealOwnerId: 'owner', ...approvedDoc })), reviseRoles);
+  // ใบที่ไม่เคยอนุมัติ: ผู้อนุมัติใช้ตีกลับ — ยกเลิกยังเป็นของสาย AC + admin
+  assert.deepEqual(ROLES.filter((role) => canVoidProductSpecDocument({ user: { id: 'x', role }, dealOwnerId: 'owner', ...pendingDoc })),
+    ['admin', 'ac_supervisor', 'senior_ac', 'ac']);
+  for (const role of DEAL_HOLDER_ROLES) {
+    assert.equal(canReviseProductSpecDocument({ id: 'owner', role }, 'owner'), true, `${role} เจ้าของดีล`);
+    assert.equal(canVoidProductSpecDocument({ user: { id: 'owner', role }, dealOwnerId: 'owner', ...approvedDoc }), true, `${role} เจ้าของดีล`);
+  }
   for (const role of SALES_ROLES) {
     assert.equal(canEditProductSpec(role), true, role);
     assert.equal(canKeyHistoricalSalesOrder({ role }), true, role);

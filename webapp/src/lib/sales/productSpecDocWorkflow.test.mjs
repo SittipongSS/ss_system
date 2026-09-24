@@ -10,7 +10,8 @@ import { readFileSync } from 'node:fs';
 import {
   DOC_ACTION_KEYS, DOC_REASON_MAX, DOC_REASON_MIN, DOC_REVISION_STATUSES, DOC_REVISION_STATUS_LABELS,
   DOC_STATUS_LABELS, DOC_STEPS, OPEN_REVISION_STATUSES,
-  canAeApproveProductSpecDocument, canIssueProductSpecDocument, canSupApproveProductSpecDocument,
+  canAeApproveProductSpecDocument, canIssueProductSpecDocument, canReviseProductSpecDocument,
+  canSupApproveProductSpecDocument, canVoidProductSpecDocument, hasApprovedRevision, isProductSpecDocumentApprover,
   DRAFT_EXIT_MISMATCH, FRESH_DRAFT_VOID_BLOCK, SUBMIT_TRACE_FIELDS,
   docReasonError, docRevisionSteps, documentActions, documentCreateGate, documentExitKey, draftDeleteBlock,
   formatRevLabel, isDeletableDraft, isRevisionOpen, lineDocumentState, lineRemovedBlock, rejectStageOf,
@@ -26,6 +27,9 @@ const U = {
   ae2: { id: 'U-AE2', role: 'ae', name: 'เอกี คนอื่น' },
   senior: { id: 'U-SR', role: 'senior_ae', name: 'ซีเนียร์' },
   sup: { id: 'U-SUP', role: 'ae_supervisor', name: 'หัวหน้าฝ่ายขาย' },
+  // CD/CM อนุมัติขั้น AE Sup ได้เท่า AE Sup (ผังตำแหน่ง 24/09) ⇒ ได้สิทธิ์ย้อน/ยกเลิกชุดเดียวกัน
+  cd: { id: 'U-CD', role: 'commercial_director', name: 'ซีดี' },
+  cm: { id: 'U-CM', role: 'commercial_manager', name: 'ซีเอ็ม' },
   admin: { id: 'U-ADM', role: 'admin', name: 'แอดมิน' },
   rd: { id: 'U-RD', role: 'rd', name: 'อาร์ดี' },
 };
@@ -78,6 +82,8 @@ const MATRIX = {
     ae2: {},
     senior: {},
     sup: { supApprove: 'blocked', reject: 'blocked' },
+    cd: { supApprove: 'blocked', reject: 'blocked' },
+    cm: { supApprove: 'blocked', reject: 'blocked' },
     admin: { submit: 'ok', aeApprove: 'blocked', supApprove: 'blocked', reject: 'blocked', remove: 'ok' },
     rd: {},
   },
@@ -88,6 +94,8 @@ const MATRIX = {
     ae2: {},
     senior: {},
     sup: { supApprove: 'blocked', reject: 'blocked' },
+    cd: { supApprove: 'blocked', reject: 'blocked' },
+    cm: { supApprove: 'blocked', reject: 'blocked' },
     admin: { withdraw: 'ok', aeApprove: 'ok', supApprove: 'blocked', reject: 'ok', void: 'ok' },
     rd: {},
   },
@@ -98,26 +106,35 @@ const MATRIX = {
     ae2: {},
     senior: {},
     sup: { supApprove: 'ok', reject: 'ok' },
+    cd: { supApprove: 'ok', reject: 'ok' },
+    cm: { supApprove: 'ok', reject: 'ok' },
     admin: { withdraw: 'ok', supApprove: 'ok', reject: 'ok', void: 'ok' },
     rd: {},
   },
+  /* ⭐ มติเจ้าของ 24/09/2569 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" — ผู้อนุมัติทั้งสองขั้น
+     (AE เจ้าของดีล · CD/CM/AE Sup) ได้ "แก้ไขเอกสาร" + "ยกเลิกเอกสาร" บนใบที่อนุมัติแล้ว เพิ่มจากสาย AC
+     ⚠️ AE คนอื่น/Senior AE ที่ไม่ใช่เจ้าของดีล · RD ยังไม่ได้อะไร */
   approved: {
     ac: { revise: 'ok', void: 'ok' },
     ac2: { revise: 'ok', void: 'ok' },
-    owner: {},
+    owner: { revise: 'ok', void: 'ok' },
     ae2: {},
     senior: {},
-    sup: {},
+    sup: { revise: 'ok', void: 'ok' },
+    cd: { revise: 'ok', void: 'ok' },
+    cm: { revise: 'ok', void: 'ok' },
     admin: { revise: 'ok', void: 'ok' },
     rd: {},
   },
   superseded: {
     ac: { void: 'ok' },
     ac2: { void: 'ok' },
-    owner: {},
+    owner: { void: 'ok' },
     ae2: {},
     senior: {},
-    sup: {},
+    sup: { void: 'ok' },
+    cd: { void: 'ok' },
+    cm: { void: 'ok' },
     admin: { void: 'ok' },
     rd: {},
   },
@@ -207,9 +224,9 @@ test('แอดมินกดแทนได้ทุกขั้น', () => {
   assert.equal(run('pending_ae_supervisor', U.admin).withdraw, 'ok', 'ดึงกลับแทนผู้ยื่นได้');
 });
 
-test('ออกเอกสาร/ยื่น/แก้ไข/ยกเลิก เป็นของ AC (+ admin) เท่านั้น', () => {
+test('ออกเอกสาร/ยื่น/ลบร่าง เป็นของ AC (+ admin) เท่านั้น — แก้ไข/ยกเลิกเพิ่มผู้อนุมัติ (มติ 24/09)', () => {
   assert.equal(canIssueProductSpecDocument('ac'), true);
-  for (const role of ['ae', 'senior_ae', 'ae_supervisor', 'rd', 'viewer', undefined]) {
+  for (const role of ['ae', 'senior_ae', 'ae_supervisor', 'commercial_director', 'commercial_manager', 'rd', 'viewer', undefined]) {
     assert.equal(canIssueProductSpecDocument(role), false, role);
   }
 });
@@ -300,6 +317,145 @@ test('lineRemovedBlock ชี้ปุ่มเดียวกับ documentExi
       }
     }
   }
+});
+
+/* ── ย้อน/ยกเลิกโดยผู้อนุมัติ (มติเจ้าของ 24/09/2569) ─────────────────────────────
+ *
+ * ⭐ "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" — **เพิ่ม** สิทธิ์ ไม่ถอดของใคร
+ *   · ผู้อนุมัติทั้งสองขั้น (AE เจ้าของดีล · CD/CM/AE Sup) + admin: "แก้ไขเอกสาร" (Rev+1) และ "ยกเลิกเอกสาร"
+ *     บนใบที่ **อนุมัติครบมาแล้วอย่างน้อยหนึ่งฉบับ** · สาย AC คงทุกสิทธิ์เดิม
+ *   · ใบที่ไม่เคยอนุมัติ: ผู้อนุมัติใช้ "ตีกลับ" ไม่ใช่ยกเลิก
+ *   · Rev+1 เปิดค้างอยู่บนฉบับที่อนุมัติแล้ว = ยังยกเลิกได้ (ฉบับที่อนุมัติยังเป็นฉบับที่ใช้)
+ *   · Rev ที่ผู้อนุมัติเปิด สาย AC ยังเป็นคนยื่น (ปุ่มยื่นไม่ขยับ)
+ */
+const APPROVERS = ['owner', 'sup', 'cd', 'cm'];
+
+test('ผู้อนุมัติ = ขั้น AE (เจ้าของดีล) หรือขั้น AE Sup (CD/CM/AE Sup) หรือ admin — ถามตัวตัดสินเดิมสองตัว', () => {
+  for (const who of [...APPROVERS, 'admin']) {
+    assert.equal(isProductSpecDocumentApprover(U[who], OWNER_ID), true, who);
+  }
+  for (const who of ['ac', 'ac2', 'ae2', 'senior', 'rd']) {
+    assert.equal(isProductSpecDocumentApprover(U[who], OWNER_ID), false, who);
+  }
+  // เจ้าของดีลนับตาม `sales_deals.ownerId` ปัจจุบัน — เปลี่ยนเจ้าของ = สิทธิ์ย้ายตาม (เหมือนขั้นอนุมัติ)
+  assert.equal(isProductSpecDocumentApprover(U.owner, U.ae2.id), false);
+  assert.equal(isProductSpecDocumentApprover(U.ae2, U.ae2.id), true);
+  assert.equal(isProductSpecDocumentApprover(U.owner, null), false);
+});
+
+test('เคยอนุมัติแล้ว = currentRevNo มีค่า · Rev ล่าสุด approved/superseded · หรือมี Rev>0 (เกิดจากฉบับอนุมัติเท่านั้น)', () => {
+  assert.equal(hasApprovedRevision(doc, rev('approved')), true);
+  assert.equal(hasApprovedRevision(doc, rev('superseded')), true);
+  assert.equal(hasApprovedRevision({ ...doc, currentRevNo: 0 }, rev('draft', { revNo: 1 })), true);
+  // 🪤 อนุมัติขั้นสุดท้ายแล้วแต่ `applyFinalApproval` ล้ม (currentRevNo ยังว่าง) แล้วมี Rev.01 เปิดต่อ
+  assert.equal(hasApprovedRevision({ ...doc, currentRevNo: null }, rev('pending_ae', { revNo: 1 })), true);
+  for (const status of ['draft', 'pending_ae', 'pending_ae_supervisor', 'rejected']) {
+    assert.equal(hasApprovedRevision(doc, rev(status)), false, status);
+    assert.equal(hasApprovedRevision({ ...doc, currentRevNo: null }, rev(status)), false, status);
+  }
+  assert.equal(hasApprovedRevision(null, null), false);
+});
+
+test('ตัวตัดสินแก้ไข/ยกเลิก: สาย AC ได้ทุกกรณีเหมือนเดิม · ผู้อนุมัติยกเลิกได้เฉพาะใบที่เคยอนุมัติ', () => {
+  const approvedLatest = rev('approved');
+  const pendingLatest = rev('pending_ae');
+  for (const who of ['ac', 'ac2', 'admin']) {
+    assert.equal(canReviseProductSpecDocument(U[who], OWNER_ID), true, who);
+    for (const latest of [approvedLatest, pendingLatest]) {
+      assert.equal(canVoidProductSpecDocument({ user: U[who], dealOwnerId: OWNER_ID, document: doc, latest }), true, who);
+    }
+  }
+  for (const who of APPROVERS) {
+    assert.equal(canReviseProductSpecDocument(U[who], OWNER_ID), true, who);
+    assert.equal(canVoidProductSpecDocument({ user: U[who], dealOwnerId: OWNER_ID, document: doc, latest: approvedLatest }), true, who);
+    assert.equal(canVoidProductSpecDocument({ user: U[who], dealOwnerId: OWNER_ID, document: doc, latest: pendingLatest }), false, who);
+  }
+  for (const who of ['ae2', 'senior', 'rd']) {
+    assert.equal(canReviseProductSpecDocument(U[who], OWNER_ID), false, who);
+    assert.equal(canVoidProductSpecDocument({ user: U[who], dealOwnerId: OWNER_ID, document: doc, latest: approvedLatest }), false, who);
+  }
+  assert.equal(canVoidProductSpecDocument({}), false);
+});
+
+/* Rev.01 ที่เปิดค้างอยู่บนฉบับที่อนุมัติแล้ว — ผู้อนุมัติได้ยกเลิกเพิ่มจากปุ่มอนุมัติ/ตีกลับเดิม
+   ปุ่มปลายทางของใบนี้คือยกเลิก (Rev>0 ลบไม่ได้) ⇒ ไม่มีใครเห็น "ลบร่าง" */
+for (const currentRevNo of [0, null]) {
+  for (const status of ['draft', 'pending_ae', 'pending_ae_supervisor', 'rejected']) {
+    for (const [who, user] of Object.entries(U)) {
+      const label = currentRevNo === null ? 'currentRevNo ว่าง (ปิดการอนุมัติไม่สำเร็จ)' : `currentRevNo ${currentRevNo}`;
+      test(`ปุ่มของ ${who} เมื่อ Rev.01 เป็น ${status} บนฉบับที่อนุมัติแล้ว · ${label}`, () => {
+        const expected = {
+          ...exitSwapped(MATRIX[status][who]),
+          ...(APPROVERS.includes(who) ? { void: 'ok' } : {}),
+        };
+        const actual = run(status, user, {
+          document: { ...doc, currentRevNo },
+          latest: rev(status, { revNo: 1 }),
+        });
+        assert.deepEqual(actual, expected);
+        assert.equal(actual.remove, undefined, 'Rev.01 ลบไม่ได้ — ปุ่มปลายทางคือยกเลิก');
+      });
+    }
+  }
+}
+
+test('🔴 ผู้อนุมัติยกเลิกใบที่ไม่เคยอนุมัติไม่ได้ — ใบที่รออนุมัติใช้ "ตีกลับ" (มติ 24/09)', () => {
+  const traces = [{}, { firstSubmittedAt: '2026-09-23T02:00:00.000Z' }];
+  for (const status of ['draft', 'pending_ae', 'pending_ae_supervisor', 'rejected']) {
+    for (const trace of traces) {
+      for (const who of APPROVERS) {
+        const actions = documentActions({
+          document: doc, latest: rev(status, trace), salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U[who],
+        });
+        assert.equal(actions.void.visible, false, `${who}@${status}`);
+        assert.equal(actions.revise.visible, false, `${who}@${status}`);
+        assert.equal(actions.remove.visible, false, `${who}@${status}`);
+      }
+    }
+  }
+});
+
+test('ผู้อนุมัติ: SO ถูกย้อนการอนุมัติ = แก้ไขเอกสารติดด่านพร้อมเหตุ · ยกเลิกยังทำได้ (ถอย ไม่ใช่เดินหน้า)', () => {
+  for (const who of APPROVERS) {
+    const actions = documentActions({
+      document: doc, latest: rev('approved'), salesOrder: revokedOrder, dealOwnerId: OWNER_ID, user: U[who],
+    });
+    assert.equal(actions.revise.visible, true, who);
+    assert.match(actions.revise.reason, /ย้อนการอนุมัติ/, who);
+    assert.deepEqual(actions.void, { visible: true, reason: null }, who);
+  }
+});
+
+test('ผู้อนุมัติ: บรรทัด SO ถูกถอดบนใบที่อนุมัติแล้ว = แก้ไขติดด่าน ชี้ "ยกเลิก" ซึ่งเป็นปุ่มที่ตัวเองมีจริง', () => {
+  const orphan = { ...doc, salesOrderLineId: null, currentRevNo: 0 };
+  for (const who of APPROVERS) {
+    const actions = documentActions({
+      document: orphan, latest: rev('approved'), salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U[who],
+    });
+    assert.match(actions.revise.reason, /ถูกถอด/, who);
+    assert.match(actions.revise.reason, /ยกเลิกเอกสาร/, who);
+    assert.deepEqual(actions.void, { visible: true, reason: null }, who);
+  }
+});
+
+test('ผู้อนุมัติที่เปิด Rev+1 แล้ว ยื่นเองไม่ได้ — ยื่นยังเป็นของสาย AC', () => {
+  for (const who of APPROVERS) {
+    const actions = documentActions({
+      document: { ...doc, currentRevNo: 0 }, latest: rev('draft', { revNo: 1, submittedBy: null, createdBy: U[who].id }),
+      salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U[who],
+    });
+    assert.equal(actions.submit.visible, false, who);
+    assert.equal(actions.revise.visible, false, `${who}: มี Rev ค้างอยู่แล้ว เปิดซ้ำไม่ได้`);
+  }
+  assert.equal(documentActions({
+    document: { ...doc, currentRevNo: 0 }, latest: rev('draft', { revNo: 1, submittedBy: null }),
+    salesOrder: approvedOrder, dealOwnerId: OWNER_ID, user: U.ac,
+  }).submit.visible, true);
+});
+
+test('SO ไม่ผูกดีล (ไม่มีเจ้าของ): เหลือผู้อนุมัติขั้น AE Sup + admin ที่แก้ไข/ยกเลิกใบที่อนุมัติแล้วได้', () => {
+  assert.deepEqual(run('approved', U.owner, { dealOwnerId: null }), {});
+  assert.deepEqual(run('approved', U.sup, { dealOwnerId: null }), { revise: 'ok', void: 'ok' });
 });
 
 /* ── void / ไม่มี Rev ──────────────────────────────────────────────── */
@@ -415,8 +571,10 @@ test('draftDeleteBlock ทนกับก้อนที่ไม่ครบ �
  * 🔴 ข้อที่ห้ามพังที่สุดของมติข้อนี้คือ **ทางตัน** — ซ่อนยกเลิกบนใบที่ลบไม่ได้ = ใบค้างตลอดกาล
  *    ⇒ เดินทุกสถานะ × ทุกรอยการยื่น × ใบปกติ/บรรทัดถูกถอด × SO อนุมัติ/ถูกย้อน/หาย × ทุกคน
  *    แล้วบังคับว่า AC/admin ได้ปุ่มปลายทาง **หนึ่งตัวพอดี** (ไม่ใช่ศูนย์ ไม่ใช่สอง) ส่วนคนอื่นไม่ได้เลย
+ * ⭐ มติ 24/09/2569: ผู้อนุมัติ (เจ้าของดีล · CD/CM/AE Sup) ได้ "ยกเลิก" หนึ่งตัวพอดีบนใบที่เคยอนุมัติแล้ว
+ *    และไม่เคยได้ "ลบร่าง" · คนที่ไม่ใช่ทั้งสองกลุ่มยังได้ศูนย์ตัว
  */
-test('🔴 ไม่มีทางตัน: ใบ active ทุกใบ AC/admin ได้ยกเลิกหรือลบ ตัวใดตัวหนึ่งพอดี', () => {
+test('🔴 ไม่มีทางตัน: ใบ active ทุกใบ AC/admin ได้ยกเลิกหรือลบ ตัวใดตัวหนึ่งพอดี · ผู้อนุมัติได้ยกเลิกเฉพาะใบที่เคยอนุมัติ', () => {
   const traces = [{}, ...SUBMIT_TRACE_FIELDS.map((field) => ({ [field]: '2026-09-23T02:00:00.000Z' }))];
   const documents = [
     doc, { ...doc, salesOrderLineId: null }, { ...doc, currentRevNo: 0 },
@@ -438,8 +596,18 @@ test('🔴 ไม่มีทางตัน: ใบ active ทุกใบ AC/a
                 assert.equal(actions[key].visible, true, `${where}: ปุ่มที่โชว์ต้องตรงกับ documentExitKey`);
                 // ปุ่มปลายทางไม่เคยติดด่าน — ถอย ไม่ใช่เดินหน้า
                 assert.equal(actions[key].reason, null, where);
+              } else if (isProductSpecDocumentApprover(user, OWNER_ID) && hasApprovedRevision(document, latest)) {
+                /* ⭐ มติ 24/09: ผู้อนุมัติได้ "ยกเลิก" บนใบที่เคยอนุมัติแล้ว — ใบแบบนี้ลบไม่ได้เสมอ
+                   (`hasApprovedRevision` ⇒ `draftDeleteBlock` ไม่ว่าง) ⇒ ปุ่มปลายทางหนึ่งตัวพอดีคือยกเลิก */
+                assert.equal(exits, 1, `${where}: ผู้อนุมัติบนใบที่เคยอนุมัติต้องมียกเลิกหนึ่งตัวพอดี`);
+                assert.equal(documentExitKey(document, latest), 'void', where);
+                assert.deepEqual(actions.void, { visible: true, reason: null }, where);
               } else {
-                assert.equal(exits, 0, `${where}: คนที่ไม่ใช่ AC/admin ต้องไม่เห็นทั้งสองปุ่ม`);
+                assert.equal(exits, 0, `${where}: คนที่ไม่ใช่ AC/admin (และผู้อนุมัติบนใบที่ไม่เคยอนุมัติ) ต้องไม่เห็นทั้งสองปุ่ม`);
+              }
+              // 🔴 ลบร่างเป็นของสาย AC/admin เท่านั้น — ผู้อนุมัติไม่เคยเห็นปุ่มลบ
+              if (!canIssueProductSpecDocument(user.role)) {
+                assert.equal(actions.remove.visible, false, `${where}: ลบร่างต้องไม่โผล่ให้คนนอกสาย AC`);
               }
               checked += 1;
             }
