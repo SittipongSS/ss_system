@@ -44,9 +44,18 @@ test('ยกเลิกใบ: ไม่มี paymentLockReason แล้ว �
   const cancel = slice(route, "if (action === 'cancel')", "if (action === 'finance_approve')");
   const hist = slice(cancel, 'if (isHistoricalOrder(before)) {\n      try { liveInstallments = await loadInstallments(supabase, id); }', '\n    }\n');
   const block = hist.indexOf('const moneyBlock = historicalCancelBlock(before, liveInstallments);');
-  const note = hist.indexOf('const noteError = historicalCancelNoteError(before, liveInstallments, note);');
   const opening = hist.indexOf('voidingOpening = historicalCancelOpening(before, liveInstallments);');
-  assert.ok(block > 0 && note > block && opening > note, 'อ่านงวดสดก่อน แล้วด่านเงิน → หมายเหตุ → งวดยกมาที่จะเป็นโมฆะ');
+  const note = hist.indexOf('const noteError = historicalCancelNoteError(before, liveInstallments, note);');
+  /* 🐞 review 25/09 (fail closed): งวดยกมาที่มีเงินปล่อยให้ trigger ของ 0387 จัดการได้ก็ต่อเมื่อฐานยืนยันว่า trigger อยู่ —
+     โค้ดขึ้นก่อนรันมิก = งวดยกมาค้าง "รอตรวจ" บนใบที่ยกเลิกถาวร (รันมิกทีหลังไม่ซ่อม) ⇒ ถามฐานก่อนเขียน · ถามไม่ได้ = หยุด */
+  const ready = hist.indexOf('const settle = await historicalCancelSettleReady(supabase);');
+  const settleGate = hist.indexOf('const settleBlock = historicalCancelSettleBlock(voidingOpening, settle.ready);');
+  assert.ok(block > 0 && opening > block && ready > opening && settleGate > ready && note > settleGate,
+    'อ่านงวดสดก่อน แล้วด่านเงิน → งวดยกมาที่จะเป็นโมฆะ → ถามความพร้อมของฐาน → หมายเหตุ');
+  assert.match(hist, /if \(voidingOpening\) \{\s*const settle = await historicalCancelSettleReady\(supabase\);/,
+    'ถามฐานเฉพาะเมื่องวดยกมามีเงิน — ใบอื่นคงสิทธิ์เดิม ไม่เพิ่มรอบถามฐาน');
+  assert.match(hist, /if \(settle\.error\) return fail\(`ตรวจความพร้อมของฐานไม่สำเร็จ: \$\{settle\.error\}[^`]*`, 500\);/);
+  assert.match(hist, /if \(settleBlock\) return fail\(settleBlock, 503\);/);
   assert.match(hist, /if \(moneyBlock\) return badRequest\(moneyBlock\);/);
   assert.match(hist, /if \(noteError\) return badRequest\(noteError\);/);
   assert.doesNotMatch(cancel, /loadInstallments\([^)]*\)\s*\.catch/);
@@ -59,12 +68,18 @@ test('ยกเลิกใบย้อนหลัง: audit ของใบพ
   const write = cancel.indexOf('.update(patch)');
   const tail = cancel.slice(write);
   assert.match(tail, /before: liveInstallments \? \{ \.\.\.before, installments: liveInstallments \} : before,/);
-  assert.match(tail, /historicalOpeningVoidSummary\(voidingOpening\)/);
+  /* 🐞 review 25/09: สรุปงวดยกมาเคยใช้สถานะที่อ่านก่อน UPDATE — บัญชีรับรองแทรกระหว่างทาง = audit บอก "รอรับรอง" ทั้งที่เงินรับรองแล้ว
+     ⇒ อ่านงวดหลังยกเลิกก่อน แล้วสรุป audit ของใบ/ของงวด + คำตอบจากค่าหลังยกเลิก (historicalOpeningSettled) */
+  const settled = tail.indexOf('settledOpening = historicalOpeningSettled(voidingOpening, afterRows);');
+  const summary = tail.indexOf('const openingSummary = historicalOpeningVoidSummary(settledOpening);');
+  const orderAudit = tail.indexOf("entityType: 'sales_order', entityId: id,");
+  assert.ok(settled > 0 && summary > settled && orderAudit > summary, 'อ่านหลังยกเลิก → สรุป → audit ของใบ');
+  assert.doesNotMatch(tail, /historicalOpeningVoidSummary\(voidingOpening\)/);
   assert.match(tail, /entityType: 'sales_order_installments', entityId: id,/);
-  assert.match(tail, /openingVoided: voidingOpening\?\.status \|\| null/);
+  assert.match(tail, /openingVoided: settledOpening\?\.status \|\| null/);
   assert.match(tail, /contractVoidedLabel: voidedContract \? voidedContractLabel\(voidedContract\) : ''/);
-  // ฐานยังไม่รัน 0387 (โค้ดขึ้นก่อน) = งวดยกมาค้าง reported บนใบที่ยกเลิก — ต้องเตือนในคำตอบ ไม่ใช่เงียบ
-  assert.match(tail, /if \(voidingOpening\.status === 'reported' && afterOpening\?\.status === 'reported'\) \{\s*settleWarning = HISTORICAL_CANCEL_SETTLE_SCHEMA_MISSING;/);
+  // งวดยกมายังค้าง "รอตรวจ" หลังยกเลิก (trigger ไม่ทำงานทั้งที่ถามแล้วว่าพร้อม) — ต้องเตือนในคำตอบ ไม่ใช่เงียบ
+  assert.match(tail, /const settleWarning = settledOpening\?\.stuck \? HISTORICAL_CANCEL_SETTLE_STUCK : null;/);
   assert.match(tail, /settleWarning,\s*\]\.filter\(Boolean\)\.join\(' · '\);/);
 });
 

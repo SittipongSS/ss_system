@@ -12,7 +12,8 @@
 --    · **งวดยกมาเป็นโมฆะตามใบ** — รอบัญชีรับรอง: ฐานตีกลับให้ในทรานแซกชันเดียวกับการยกเลิก (เหตุบอกว่าเป็นการยกเลิก
 --      ไม่ใช่บัญชีตัดสิน) · รับรองแล้ว: คงแถวไว้เป็นประวัติการรับรอง (ฝั่ง JS ถือว่าโมฆะตาม kind — ไม่ใช่เงินค้าง)
 --    · **งวดปกติที่รับเงินในระบบหลังอนุมัติ (รับรองแล้ว/รอตรวจ) ยังบล็อก** — ใบย้อนหลังไม่มีทางยก/คืนเงิน (0378 เปิดเฉพาะ
---      ใบ pipeline) ⇒ บัญชีถอนคำรับรอง/ตีกลับก่อน (ใบยังอนุมัติอยู่ ทำได้ตามปกติ — ไม่ใช่ทางตัน)
+--      ใบ pipeline) ⇒ บัญชีตีกลับก่อน — ที่รับรองแล้ว ถอนคำรับรองแล้วตีกลับ (ถอนอย่างเดียวแถวกลับเป็น reported ซึ่งยังบล็อก)
+--      · ใบยังอนุมัติอยู่ ทำได้ตามปกติ — ไม่ใช่ทางตัน
 --
 --  ── ทำอะไร ─────────────────────────────────────────────────────────────
 --  1) historical_so_cancel_settle() + trigger sales_orders_historical_cancel_settle
@@ -20,6 +21,9 @@
 --       a) ล็อกงวดทุกแถวของใบ (FOR UPDATE) — การรับรอง/แจ้งของบัญชีที่เริ่มก่อนต้องจบก่อน แล้วค่อยตัดสิน
 --       b) งวดปกติ (รวมแถวเก่าที่ไม่มี kind) ที่ confirmed/reported → RAISE historical_so_cancel_money_held
 --          (route ตรวจงวดสดก่อนแล้ว — ตัวนี้คือกรณีแข่งกันพอดี · ทั้งคำสั่งถอย รวมการยกเลิกเอกสารแทนสัญญาของ 0374)
+--       b2) งวดยกมาที่ confirmed + หมายเหตุยกเลิก (cancelReason) สั้นกว่า 10 ตัวอักษร → RAISE historical_so_cancel_note_required
+--          🐞 review 25/09: หมายเหตุบังคับ (มติ 24/09) เคยตัดสินฝั่ง JS จากงวดที่อ่านก่อน UPDATE — บัญชีรับรองแทรกระหว่างอ่านกับเขียน
+--             = เงินที่รับรองแล้วโมฆะโดยไม่มีเหตุ ⇒ ตัดสินซ้ำที่นี่หลังล็อกงวด (ค่าที่ commit ล่าสุด) · นับ length() = charLength ฝั่ง JS
 --       c) งวดยกมาที่ reported → rejected พร้อมเหตุ "ยกเลิกตามใบ… ไม่ใช่การตีกลับของบัญชี"
 --          ⇒ ออกจากคิว "รอคุณรับรอง" และป้ายเมนูของบัญชี (ตัวนับอ่าน status='reported' ดิบ) ในทรานแซกชันเดียวกัน
 --          ⛔ ห้ามทำฝั่ง JS: พลิกก่อน/หลัง UPDATE แล้วล้มกลางทาง = ใบอนุมัติอยู่แต่งวดยกมาถูกตีกลับ (หรือกลับกัน)
@@ -35,17 +39,22 @@
 --     · ใบ pipeline ไม่แตะ — บัญชีรับรอง/ตีกลับงวดของใบ pipeline ที่ยกเลิกได้ตามปกติ (PR0/PR3 · เงินค้าง)
 --  3) สิทธิ์: ฟังก์ชัน trigger ทั้งสองถูกเรียกจาก trigger เท่านั้น ⇒ REVOKE ทุก role (แพตเทิร์น 0374)
 --     · SECURITY DEFINER — ผู้ยกเลิก/ผู้แก้งวดอาจเป็น client ที่ติด RLS · ต้องอ่าน/เขียนงวดและอ่านใบได้ครบเสมอ
+--  4) historical_so_cancel_settle_ready() — ตัวถามความพร้อม (อ่านอย่างเดียว · review 25/09 fail closed)
+--     ตอบ true เมื่อ trigger สองตัวของไฟล์นี้อยู่ **และเปิดอยู่** (tgenabled O/A) · GRANT service_role (route) อย่างเดียว
+--     🐞 route ปล่อยงวดยกมาที่มีเงินให้ข้อ 1 จัดการ — ถ้าโค้ดขึ้นก่อนไฟล์นี้ (deploy อัตโนมัติวันละ 3 รอบไม่ถามมิก) ยกเลิกผ่านโดยไม่มี
+--        ใครตีกลับ = งวดยกมาค้าง reported บนใบที่ยกเลิกถาวร (ล็อกทั้งใบปิดปุ่มบัญชี · ป้ายเมนูบัญชี +1) และรันไฟล์นี้ทีหลังไม่ซ่อม
+--        (trigger ข้อ 1 ยิงตอนเปลี่ยนสถานะเท่านั้น) ⇒ route ถามตัวนี้ก่อนเขียน: ไม่มีฟังก์ชัน/ตอบ false = บล็อกแบบก่อนมติ 24/09
 --
 --  ⛔ ไม่แตะ: CHECK/enum (origin_shape ยอมใบย้อนหลัง cancelled ที่มี approvedAt อยู่แล้ว · state_sane ของงวดผ่าน: rejected มี
 --     rejectedAt + เหตุ ≥ 10 ตัวอักษร) · RPC ใด ๆ · trigger ของ 0374 · ยอด/Actual (ใบย้อนหลังไม่นับอยู่แล้ว)
---  ⛔ ไม่ backfill — ใบย้อนหลังที่ยกเลิกก่อนไฟล์นี้ไม่มีงวดที่มีเงิน (route เดิมบล็อกทั้ง reported และ confirmed)
---     ⇒ ตรวจด้วยคำสั่งข้อ ③ ข้างล่าง (คาด 0 แถว)
+--  ⛔ ไม่ backfill — ไม่มีทางไหนสร้างงวดที่มีเงินบนใบย้อนหลังที่ยกเลิกได้: route ก่อนมติบล็อกทั้ง reported และ confirmed · route หลังมติ
+--     ปล่อยงวดยกมาที่มีเงินเฉพาะเมื่อข้อ 4 ตอบ true (= trigger ข้อ 1 อยู่แล้ว) ⇒ ตรวจด้วยคำสั่งข้อ ③ ข้างล่าง (คาด 0 แถว)
 --
 --  ✅ รันซ้ำได้ (CREATE OR REPLACE FUNCTION · DROP TRIGGER IF EXISTS แล้วสร้างใหม่ · REVOKE ซ้ำได้)
---  ⚠️ DDL — รันมือบน Supabase SQL Editor · รันก่อนหรือหลัง deploy โค้ดก็ได้:
+--  ⚠️ DDL — รันมือบน Supabase SQL Editor · รันก่อนหรือหลัง deploy โค้ดก็ได้ (route ถามข้อ 4 ก่อนเขียน = fail closed):
 --     · รันก่อน: โค้ดเดิมตอบ 400 ก่อนถึง UPDATE ทุกใบที่งวดมีเงิน/รอตรวจ ⇒ ข้อ 1 ไม่มีอะไรให้ทำ · ข้อ 2 ปิดแค่ race
---     · deploy ก่อน: ผู้จัดการยกเลิกใบที่งวดยกมารอตรวจได้ แต่งวดค้าง reported บนใบที่ยกเลิก (คิว/ป้ายบัญชี) จนกว่าจะรัน
---       ⇒ **แนะนำรันก่อน deploy**
+--     · deploy ก่อน: route ถามข้อ 4 ไม่เจอ (PGRST202) ⇒ ยกเลิกใบที่งวดยกมามีเงินยังไม่ได้ (503 "ยังไม่ได้รัน migration 0387" +
+--       ทางออกเดิม: บัญชีตีกลับงวดยกมาก่อน) · ใบอื่นยกเลิกได้ตามเดิม · ไม่มีงวดค้าง — รันไฟล์นี้แล้วสิทธิ์ใหม่เปิดเอง
 --
 --  ── ตรวจผลหลังรัน (อ่านอย่างเดียว) ─────────────────────────────────────
 --  ① trigger สองตัว (คาด 2 แถว · tgenabled = 'O')
@@ -63,6 +72,14 @@
 --    WHERE n.nspname = 'public'
 --      AND p.proname IN ('historical_so_cancel_settle', 'historical_so_installment_order_live')
 --    ORDER BY p.proname;
+--  ④ ตัวถามความพร้อมที่ route ใช้ (คาด true) · สิทธิ์: service_role เรียกได้ · anon/authenticated ไม่ได้ · ไม่ใช่ SECURITY DEFINER
+--   SELECT public.historical_so_cancel_settle_ready();
+--   SELECT p.prosecdef,
+--          has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+--          has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,
+--          has_function_privilege('service_role', p.oid, 'EXECUTE') AS service
+--     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--    WHERE n.nspname = 'public' AND p.proname = 'historical_so_cancel_settle_ready';     -- คาด f · f · f · t
 --  ③ ใบย้อนหลังที่ยกเลิกแล้วแต่ยังมีงวดที่มีเงิน/รอตรวจ (คาด 0 แถว — ถ้ามี ให้บัญชี/แอดมินดูเป็นรายใบ)
 --     ⚠️ งวดยกมาที่ confirmed บนใบที่ยกเลิกหลังไฟล์นี้ = ประวัติการรับรองที่เป็นโมฆะตามใบ (ถูกต้อง) — ตัดออกจากคำถาม
 --   SELECT o."orderNumber", i.seq, i.kind, i.status, i.amount
@@ -85,6 +102,7 @@
 --   UPDATE public.sales_order_installments SET status = 'reported', "reportedAt" = now()
 --    WHERE "salesOrderId" = '<soId>' AND kind = 'regular' AND status = 'pending';      -- คาด ERROR historical_so_installment_order_cancelled
 --   ROLLBACK;
+--  (ใบที่งวดยกมารับรองแล้ว: ตั้ง "cancelReason" = 'สั้น' ใน UPDATE แรก → คาด ERROR historical_so_cancel_note_required)
 -- ============================================================
 
 BEGIN;
@@ -105,7 +123,7 @@ BEGIN
     WHERE i."salesOrderId" = NEW.id
       FOR UPDATE;
 
-  -- b) งวดปกติที่รับเงินในระบบหลังอนุมัติ = บล็อก (บัญชีถอนคำรับรอง/ตีกลับก่อน) · แถวเก่าที่ไม่มี kind = งวดปกติ
+  -- b) งวดปกติที่รับเงินในระบบหลังอนุมัติ = บล็อก (บัญชีตีกลับก่อน · ที่รับรองแล้วถอนคำรับรองแล้วตีกลับ) · แถวเก่าที่ไม่มี kind = งวดปกติ
   SELECT count(*)::int INTO v_held
     FROM public.sales_order_installments i
    WHERE i."salesOrderId" = NEW.id
@@ -113,6 +131,17 @@ BEGIN
      AND i.status IN ('confirmed', 'reported');
   IF v_held > 0 THEN
     RAISE EXCEPTION 'historical_so_cancel_money_held: % (% งวด)', NEW."orderNumber", v_held;
+  END IF;
+
+  -- b2) งวดยกมาที่รับรองแล้ว = หมายเหตุบังคับ ≥ 10 ตัวอักษร (มติ 24/09) — ตัวตัดสินจริง: route ตรวจจากงวดที่อ่านก่อน UPDATE
+  --     บัญชีรับรองแทรกระหว่างอ่านกับเขียน = เงินที่รับรองแล้วโมฆะโดยไม่มีเหตุ · นับ length() แบบเดียวกับ charLength ฝั่ง JS
+  IF EXISTS (SELECT 1
+               FROM public.sales_order_installments i
+              WHERE i."salesOrderId" = NEW.id
+                AND i.kind = 'opening'
+                AND i.status = 'confirmed')
+     AND length(btrim(COALESCE(NEW."cancelReason", ''))) < 10 THEN
+    RAISE EXCEPTION 'historical_so_cancel_note_required: %', NEW."orderNumber";
   END IF;
 
   -- c) งวดยกมาที่รอบัญชีรับรอง → ตีกลับตามใบ (เหตุ ≥ 10 ตัวอักษร ผ่าน CHECK state_sane) · ที่รับรองแล้วคงไว้เป็นประวัติ
@@ -174,5 +203,30 @@ EXECUTE FUNCTION public.historical_so_installment_order_live();
 -- ── 3) สิทธิ์: เรียกจาก trigger เท่านั้น ─────────────────────────────────────────────────────────────
 REVOKE ALL ON FUNCTION public.historical_so_cancel_settle() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.historical_so_installment_order_live() FROM PUBLIC, anon, authenticated, service_role;
+
+-- ── 4) ตัวถามความพร้อมของ route (fail closed · review 25/09): trigger สองตัวข้างบนอยู่และเปิดอยู่ ─────────────────────
+--    ⚠️ tgenabled 'O'/'A' เท่านั้นที่ยิงในโหมดปกติ ('D' ปิด · 'R' ยิงเฉพาะโหมด replica) · อ่านแค็ตตาล็อก ไม่แตะข้อมูล
+CREATE OR REPLACE FUNCTION public.historical_so_cancel_settle_ready()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = pg_catalog, public
+AS $$
+  SELECT EXISTS (SELECT 1
+                   FROM pg_catalog.pg_trigger t
+                  WHERE t.tgrelid = 'public.sales_orders'::regclass
+                    AND t.tgname = 'sales_orders_historical_cancel_settle'
+                    AND NOT t.tgisinternal
+                    AND t.tgenabled IN ('O', 'A'))
+     AND EXISTS (SELECT 1
+                   FROM pg_catalog.pg_trigger t
+                  WHERE t.tgrelid = 'public.sales_order_installments'::regclass
+                    AND t.tgname = 'sales_order_installments_historical_cancelled_guard'
+                    AND NOT t.tgisinternal
+                    AND t.tgenabled IN ('O', 'A'));
+$$;
+
+REVOKE ALL ON FUNCTION public.historical_so_cancel_settle_ready() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.historical_so_cancel_settle_ready() TO service_role;
 
 COMMIT;

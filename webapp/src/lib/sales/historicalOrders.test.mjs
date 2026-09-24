@@ -10,9 +10,9 @@ import {
   HISTORICAL_REF_MAX, HISTORICAL_SCHEMA_MISSING_MESSAGE, HISTORICAL_UNAPPROVED_STATUSES, INSTALLATION_POINT_MAX,
   INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_KIND, OPENING_INSTALLMENT_LABEL, ORIGIN_HISTORICAL,
   ORIGIN_PIPELINE,
-  HISTORICAL_CANCEL_NOTE_MIN,
+  HISTORICAL_CANCEL_NOTE_MIN, HISTORICAL_CANCEL_SETTLE_STUCK,
   canKeyHistoricalSalesOrder, canMoveHistoricalDealOwner, charLength, historicalCancelBlock, historicalCancelNoteError,
-  historicalCancelOpening, historicalDealPatchError, historicalDeleteBlock, historicalEditPath, historicalInstallmentLock,
+  historicalCancelOpening, historicalCancelSettleBlock, historicalOpeningSettled, historicalDealPatchError, historicalDeleteBlock, historicalEditPath, historicalInstallmentLock,
   historicalOrderEditable, historicalOrderIdOf, historicalOwnerTakenMessage, historicalRefsOf, historicalRowsOnly,
   historicalSchemaMissing, isHistoricalDeal, isHistoricalOrder, isKpiDeal, isOpeningInstallment, pipelineRowsOnly,
 } from './historicalOrders.js';
@@ -131,10 +131,10 @@ test('ล็อกงวดของใบย้อนหลัง: ขยับ
 
 /* ⭐ มติเจ้าของ 24/09 ("ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" · mig 0387): ผู้จัดการฝ่ายขายยกเลิกใบย้อนหลังที่อนุมัติแล้วได้
    แม้งวดยกมารอบัญชีรับรอง/รับรองแล้ว — งวดยกมาเป็นโมฆะตามใบ (ฐานตีกลับงวดที่รอตรวจให้ในทรานแซกชันเดียวกัน)
-   ⛔ งวดปกติที่รับเงินในระบบแล้ว (confirmed) หรือรอบัญชีตรวจ (reported) ยังบล็อก — บัญชีถอนคำรับรอง/ตีกลับก่อน
+   ⛔ งวดปกติที่รับเงินในระบบแล้ว (confirmed) หรือรอบัญชีตรวจ (reported) ยังบล็อก — บัญชีตีกลับก่อน (ที่รับรองแล้ว: ถอนคำรับรองแล้วตีกลับ)
    ⚠️ **เทสต์นี้พิสูจน์แค่ตัวฟังก์ชัน** — "ปุ่มยกเลิกกับ API ถามตัวเดียวกัน" มียามของมันเองที่ `historicalDetailUi.test.mjs` §6A
       และ trigger ของฐาน (historical_so_cancel_money_held) มียามที่ historicalCancelSettleMigration.test.mjs + PGlite */
-test('ด่านยกเลิกใบย้อนหลัง (มติ 24/09): งวดยกมาไม่บล็อกแล้ว · งวดปกติที่มีเงิน/รอตรวจยังบล็อก · บอกให้บัญชีถอนคำรับรอง/ตีกลับก่อน', () => {
+test('ด่านยกเลิกใบย้อนหลัง (มติ 24/09): งวดยกมาไม่บล็อกแล้ว · งวดปกติที่มีเงิน/รอตรวจยังบล็อก · บอกขั้นของบัญชีครบ (ถอนคำรับรองแล้วตีกลับ)', () => {
   const order = { origin: 'historical', status: 'approved' };
   const opening = { id: 'SOI-1', kind: 'opening', status: 'reported' };
   const regular = { id: 'SOI-2', kind: 'regular', status: 'reported' };
@@ -144,13 +144,21 @@ test('ด่านยกเลิกใบย้อนหลัง (มติ 24
   }
   assert.equal(historicalCancelBlock(order, [regular]),
     'มีงวดที่รับเงินในระบบหลังอนุมัติ (รอบัญชีตรวจ 1 งวด) — ให้บัญชีตีกลับก่อน แล้วค่อยยกเลิกใบ');
+  /* 🐞 review 25/09: คำเดิม "ให้บัญชีถอนคำรับรองก่อน แล้วค่อยยกเลิกใบ" ขาดขั้นที่สอง — ถอนคำรับรองพาแถวกลับไป "รอตรวจ"
+     (installments route · unconfirm → reported) ซึ่งยังบล็อก ⇒ ผู้จัดการติดด่านรอบสองแล้วต้องวนกลับไปหาบัญชีอีกรอบ
+     ⇒ งวดที่รับรองแล้วต้องบอกครบสองขั้น "ถอนคำรับรองแล้วตีกลับ" (ตีกลับรับเฉพาะแถวที่รอตรวจ · salesOrderPayments reject) */
   assert.equal(historicalCancelBlock(order, [{ ...regular, status: 'confirmed' }]),
-    'มีงวดที่รับเงินในระบบหลังอนุมัติ (บัญชีรับรองแล้ว 1 งวด) — ให้บัญชีถอนคำรับรองก่อน แล้วค่อยยกเลิกใบ');
+    'มีงวดที่รับเงินในระบบหลังอนุมัติ (บัญชีรับรองแล้ว 1 งวด) — ให้บัญชีถอนคำรับรองแล้วตีกลับก่อน แล้วค่อยยกเลิกใบ');
   assert.equal(
     historicalCancelBlock(order, [{ ...opening, status: 'confirmed' }, { ...regular, status: 'confirmed' }, regular,
       { ...regular, id: 'SOI-3' }]),
-    'มีงวดที่รับเงินในระบบหลังอนุมัติ (บัญชีรับรองแล้ว 1 งวด · รอบัญชีตรวจ 2 งวด) — ให้บัญชีถอนคำรับรอง/ตีกลับก่อน แล้วค่อยยกเลิกใบ',
+    'มีงวดที่รับเงินในระบบหลังอนุมัติ (บัญชีรับรองแล้ว 1 งวด · รอบัญชีตรวจ 2 งวด)'
+      + ' — ให้บัญชีถอนคำรับรองแล้วตีกลับงวดที่รับรองแล้ว และตีกลับงวดที่รอตรวจก่อน แล้วค่อยยกเลิกใบ',
   );
+  // ทุกกรณีที่มีงวดรับรองแล้ว ต้องมีทั้งสองขั้น — ไม่มีคำไหนบอกแค่ "ถอนคำรับรอง" แล้วจบ
+  for (const rows of [[{ ...regular, status: 'confirmed' }], [{ ...regular, status: 'confirmed' }, regular]]) {
+    assert.match(historicalCancelBlock(order, rows), /ถอนคำรับรองแล้วตีกลับ/);
+  }
   // แถวเก่าที่ไม่มี kind (ก่อน 0374) = งวดปกติ — ไม่ใช่ช่องหลบด่าน
   assert.match(historicalCancelBlock(order, [{ id: 'x', status: 'confirmed' }]), /บัญชีรับรองแล้ว 1 งวด/);
   for (const status of ['pending', 'rejected', undefined]) {
@@ -191,6 +199,57 @@ test('หมายเหตุบังคับ ≥ 10 ตัวอักษร
   assert.equal(historicalCancelNoteError(order, [{ ...confirmed[0], status: 'reported' }], ''), null);
   assert.equal(historicalCancelNoteError(order, [], ''), null);
   assert.equal(historicalCancelNoteError({ origin: 'pipeline', status: 'approved' }, confirmed, ''), null);
+});
+
+/* 🐞 review 25/09 (fail closed): route ปล่อยงวดยกมาที่มีเงินให้ trigger ของ 0387 จัดการ — ถ้าโค้ดขึ้นก่อนรันมิก (deploy อัตโนมัติ
+   วันละ 3 รอบไม่ถามมิก) UPDATE ผ่านโดยไม่มีใครตีกลับ ⇒ งวดยกมาค้าง "รอตรวจ" บนใบที่ยกเลิกถาวร (ล็อกทั้งใบปิดปุ่มบัญชี · ทะเบียนบัญชี
+   ตัดทิ้ง · ป้ายเมนูบัญชี +1) และรันมิกทีหลังก็ไม่ซ่อม ⇒ ฐานยังไม่ยืนยันว่าพร้อม = บล็อกแบบเดิม (ก่อนมติ 24/09) พร้อมบอกทางออก */
+test('ด่านความพร้อมของฐาน (0387): งวดยกมามีเงิน + ฐานไม่ยืนยัน = บล็อกพร้อมทางออก · ฐานพร้อม/ไม่มีงวดยกมาที่มีเงิน = ผ่าน', () => {
+  const reported = { row: { id: 'SOI-1', kind: 'opening', status: 'reported' }, status: 'reported', amount: 600 };
+  const confirmed = { row: { id: 'SOI-1', kind: 'opening', status: 'confirmed' }, status: 'confirmed', amount: 600 };
+  assert.equal(historicalCancelSettleBlock(reported, true), null);
+  assert.equal(historicalCancelSettleBlock(confirmed, true), null);
+  assert.equal(historicalCancelSettleBlock(null, false), null, 'ไม่มีงวดยกมาที่มีเงิน = สิทธิ์เดิมก่อนมติ ห้ามถอด');
+  assert.equal(historicalCancelSettleBlock(undefined, false), null);
+  assert.equal(
+    historicalCancelSettleBlock(reported, false),
+    'ฐานข้อมูลยังไม่ได้รัน migration 0387 — ยกเลิกใบที่งวดยกมารอบัญชีรับรองยังไม่ได้ (งวดจะค้างคิวบัญชีบนใบที่ยกเลิก)'
+      + ' · แจ้งผู้ดูแลระบบ หรือให้บัญชีตีกลับงวดยกมาก่อน แล้วค่อยยกเลิกใบ',
+  );
+  assert.equal(
+    historicalCancelSettleBlock(confirmed, false),
+    'ฐานข้อมูลยังไม่ได้รัน migration 0387 — ยกเลิกใบที่งวดยกมารับรองแล้วยังไม่ได้'
+      + ' · แจ้งผู้ดูแลระบบ หรือให้บัญชีถอนคำรับรองแล้วตีกลับงวดยกมาก่อน แล้วค่อยยกเลิกใบ',
+  );
+  // ค่าที่ไม่ใช่ true ตรง ๆ (undefined · 'true' · 1) = ไม่ยืนยัน ⇒ บล็อก
+  for (const ready of [undefined, null, 'true', 1, {}]) {
+    assert.ok(historicalCancelSettleBlock(reported, ready), `ready=${JSON.stringify(ready)} ต้องบล็อก`);
+  }
+});
+
+/* 🐞 review 25/09: สรุป audit ของงวดยกมาเคยใช้สถานะที่อ่าน**ก่อน** UPDATE — บัญชีรับรองแทรกระหว่างอ่านกับเขียน = audit เขียนว่า
+   "รอรับรอง — ออกจากคิวบัญชี" ทั้งที่เงินรับรองแล้วโมฆะ ⇒ ตัดสินจากแถวที่อ่าน**หลัง**ยกเลิก (ค่าที่ trigger ทิ้งไว้จริง) */
+test('งวดยกมาหลังยกเลิก: ตัดสินจากแถวหลังยกเลิก · ค้าง "รอตรวจ" = trigger ไม่ทำงาน (stuck) · อ่านไม่ขึ้น = ใช้ค่าก่อนเขียน', () => {
+  const before = { id: 'SOI-1', kind: 'opening', status: 'reported', amount: 600 };
+  const opening = { row: before, status: 'reported', amount: 600 };
+  // ปกติ: trigger ตีกลับงวดที่รอตรวจ
+  const rejected = { ...before, status: 'rejected', rejectedReason: 'ยกเลิกตามใบสั่งขายย้อนหลัง SO-1 — งวดยกมาเป็นโมฆะ ไม่ใช่การตีกลับของบัญชี' };
+  assert.deepEqual(historicalOpeningSettled(opening, [{ id: 'SOI-2', kind: 'regular', status: 'pending' }, rejected]),
+    { row: rejected, status: 'reported', amount: 600, stuck: false });
+  // race: บัญชีรับรองแทรก → trigger ปล่อยผ่าน (หมายเหตุครบ) · audit ต้องบอกว่ารับรองแล้ว โดยใคร
+  const certified = { ...before, status: 'confirmed', confirmedByName: 'บัญชี ข', amount: '600.00' };
+  assert.deepEqual(historicalOpeningSettled(opening, [certified]),
+    { row: certified, status: 'confirmed', amount: 600, stuck: false });
+  // ค้าง "รอตรวจ" หลังยกเลิก = trigger ของ 0387 ไม่ได้ทำงาน — ต้องดัง
+  assert.deepEqual(historicalOpeningSettled(opening, [before]), { row: before, status: 'reported', amount: 600, stuck: true });
+  assert.match(HISTORICAL_CANCEL_SETTLE_STUCK, /0387/);
+  // อ่านหลังยกเลิกไม่ขึ้น/หาแถวไม่เจอ = ใช้ค่าก่อนเขียน ไม่เดาว่าค้าง
+  for (const after of [null, undefined, [], [{ id: 'other', kind: 'opening', status: 'reported' }]]) {
+    assert.deepEqual(historicalOpeningSettled(opening, after), { row: before, status: 'reported', amount: 600, stuck: false });
+  }
+  const confirmedBefore = { row: { ...before, status: 'confirmed' }, status: 'confirmed', amount: 600 };
+  assert.equal(historicalOpeningSettled(confirmedBefore, [{ ...before, status: 'confirmed' }]).status, 'confirmed');
+  assert.equal(historicalOpeningSettled(null, [before]), null);
 });
 
 test('ทางฟอร์มคีย์ใบ: หน้าใหม่ · หน้าแก้ต่อใบ (เข้ารหัส id) · ข้อความ schema ของ 0374 แยกจาก 0360', () => {

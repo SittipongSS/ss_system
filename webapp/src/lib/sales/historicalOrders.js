@@ -55,9 +55,10 @@ export const HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE = 'ฐานข้อมู�
 export const HISTORICAL_CORRECTION_PATH = 'ข้อมูลที่อนุมัติแล้วผิด → ผู้จัดการฝ่ายขายยกเลิกใบ แล้วฝ่ายขายคีย์ใหม่'
   + ' (เอกสารแทนสัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ บัญชีรับรองใหม่ที่ใบใหม่)';
 
-/* route ยกเลิกอ่านงวดหลังยกเลิกแล้วพบงวดยกมายัง "รอบัญชีรับรอง" = ฐานยังไม่มี trigger ของ 0387 (โค้ดขึ้นก่อนรันมิก)
+/* route ยกเลิกอ่านงวดหลังยกเลิกแล้วพบงวดยกมายัง "รอบัญชีรับรอง" = trigger ของ 0387 ไม่ได้ทำงาน ทั้งที่ถามฐานก่อนเขียนแล้วว่าพร้อม
+   (historicalCancelSettleBlock · review 25/09 fail closed) ⇒ เกิดได้แค่ trigger ถูกปิด/แก้ระหว่างถามกับเขียน
    ⇒ งวดค้างคิว/ป้ายเมนูบัญชีบนใบที่ยกเลิก และล็อกทั้งใบปิดปุ่มตีกลับ — ต้องดัง (warning ในคำตอบ + audit) ไม่ใช่เงียบ */
-export const HISTORICAL_CANCEL_SETTLE_SCHEMA_MISSING = 'ฐานข้อมูลยังไม่ได้รัน migration 0387 — งวดยกมาของใบนี้ยังค้างคิวบัญชี แจ้งผู้ดูแลระบบ';
+export const HISTORICAL_CANCEL_SETTLE_STUCK = 'งวดยกมาของใบนี้ยังค้างคิวบัญชีหลังยกเลิก (trigger ของ migration 0387 ไม่ทำงาน) — แจ้งผู้ดูแลระบบ';
 
 /* ฟอร์มคีย์ใบย้อนหลัง (หน้าเต็ม · สร้าง = แก้ เป็น component ตัวเดียว) — ลิงก์ทุกที่ใช้สองตัวนี้ */
 export const HISTORICAL_NEW_PATH = '/sa/sales-orders/historical/new';
@@ -129,7 +130,9 @@ export function historicalInstallmentLock(order) {
       · รับรองแล้ว → คงแถวไว้เป็นประวัติ · ตัวตัดสินงวดโมฆะ (installmentVoid) ตัดออกจากทะเบียน/ยอดเก็บแล้ว · route บังคับหมายเหตุ
    ⛔ **งวดปกติที่รับรองแล้ว/รอบัญชีตรวจยังบล็อก** — เงินที่รับในระบบหลังอนุมัติ · ใบย้อนหลังไม่มีทางยก/คืนเงิน (0378 เปิดเฉพาะ
       ใบ pipeline) และล็อกทั้งใบ (historicalInstallmentLock) ปิดทุกคำสั่งของใบที่ยกเลิก ⇒ ยกเลิกทับ = เงินค้างถาวร
-      · ไม่ใช่ทางตัน: ใบยังอนุมัติอยู่ บัญชีถอนคำรับรอง/ตีกลับได้ตามปกติ แล้วค่อยยกเลิก
+      · ไม่ใช่ทางตัน: ใบยังอนุมัติอยู่ บัญชีตีกลับได้ตามปกติ แล้วค่อยยกเลิก
+      🐞 review 25/09: งวดที่รับรองแล้วต้องบอก **สองขั้น** "ถอนคำรับรองแล้วตีกลับ" — ถอนคำรับรองพาแถวกลับไป "รอตรวจ" (unconfirm →
+         reported) ซึ่งยังบล็อก และตีกลับรับเฉพาะแถวที่รอตรวจ ⇒ คำเดิม "ถอนคำรับรองก่อน แล้วค่อยยกเลิก" พาผู้จัดการติดด่านรอบสอง
    ⚠️ **ฝั่งจอเป็นคำใบ้ ไม่ใช่ตัวตัดสิน** — งวดของจอมาจาก `order.installments` ซึ่ง loadOrder กลืนการอ่านพัง
       เป็นรายการว่าง (= ด่านเปิดเงียบ) ส่วน route อ่านงวดสดแบบโยน error ⇒ ห้ามเอาค่าฝั่งจอไปแทนการตรวจที่ route
       และโมดัลยกเลิกต้องโชว์ error ของคำขอเองเสมอ (จอที่เปิดค้างไว้/บัญชีขยับงวดระหว่างนั้น)
@@ -143,7 +146,9 @@ export function historicalCancelBlock(order, installments = []) {
   const reported = held.length - confirmed;
   const counts = [confirmed ? `บัญชีรับรองแล้ว ${confirmed} งวด` : null, reported ? `รอบัญชีตรวจ ${reported} งวด` : null]
     .filter(Boolean).join(' · ');
-  const fix = [confirmed ? 'ถอนคำรับรอง' : null, reported ? 'ตีกลับ' : null].filter(Boolean).join('/');
+  const fix = !confirmed ? 'ตีกลับ'
+    : !reported ? 'ถอนคำรับรองแล้วตีกลับ'
+      : 'ถอนคำรับรองแล้วตีกลับงวดที่รับรองแล้ว และตีกลับงวดที่รอตรวจ';
   return `มีงวดที่รับเงินในระบบหลังอนุมัติ (${counts}) — ให้บัญชี${fix}ก่อน แล้วค่อยยกเลิกใบ`;
 }
 
@@ -156,6 +161,44 @@ export function historicalCancelOpening(order, installments = []) {
   const row = (Array.isArray(installments) ? installments : [])
     .find((item) => isOpeningInstallment(item) && ['confirmed', 'reported'].includes(item?.status));
   return row ? { row, status: row.status, amount: Number(row.amount) || 0 } : null;
+}
+
+/* ด่านความพร้อมของฐานก่อนยกเลิกทับงวดยกมาที่มีเงิน (review 25/09 · fail closed) — คืนข้อความไทย หรือ null
+   🐞 route ปล่อยงวดยกมาที่รอตรวจให้ trigger ของ 0387 ตีกลับ · โค้ดขึ้น prod ก่อนรันมิกได้ (deploy อัตโนมัติวันละ 3 รอบไม่ถามมิก)
+      ⇒ UPDATE ผ่านโดยไม่มีใครตีกลับ = งวดค้าง "รอตรวจ" บนใบที่ยกเลิกถาวร: ล็อกทั้งใบปิดปุ่มตีกลับของบัญชี · ทะเบียนบัญชีตัดแถวทิ้ง
+      (installmentVoid) · ป้ายเมนูบัญชีนับ reported ดิบ +1 ตลอดไป · รันมิกทีหลังก็ไม่ซ่อม (trigger ยิงตอนเปลี่ยนสถานะเท่านั้น)
+   ⇒ route ถาม RPC historical_so_cancel_settle_ready() ของ 0387 ก่อนเขียน — ฐานไม่ยืนยัน (`ready !== true`) = กติกาเดิมก่อนมติ 24/09
+      (งวดยกมาที่มีเงินบล็อก) พร้อมบอกทางออกของบัญชี · งวดยกมาที่รับรองแล้วก็บล็อกด้วย: ด่านหมายเหตุของฐาน + ด่านแข่งกับบัญชี
+      อยู่ใน trigger ตัวเดียวกัน — ไม่มี trigger = ไม่มีด่านพวกนั้น
+   ⚠️ ไม่มีงวดยกมาที่มีเงิน (opening = null) = ผ่านเสมอ — สิทธิ์ยกเลิกเดิมก่อนมติ ห้ามถอด (มติ 24/09 "เพิ่ม ไม่ถอด")
+   @param opening ผลของ historicalCancelOpening · @param ready ต้องเป็น true ตรง ๆ เท่านั้นถึงผ่าน */
+export function historicalCancelSettleBlock(opening, ready) {
+  if (!opening || ready === true) return null;
+  const head = 'ฐานข้อมูลยังไม่ได้รัน migration 0387';
+  return opening.status === 'confirmed'
+    ? `${head} — ยกเลิกใบที่${OPENING_INSTALLMENT_LABEL}รับรองแล้วยังไม่ได้`
+      + ` · แจ้งผู้ดูแลระบบ หรือให้บัญชีถอนคำรับรองแล้วตีกลับ${OPENING_INSTALLMENT_LABEL}ก่อน แล้วค่อยยกเลิกใบ`
+    : `${head} — ยกเลิกใบที่${OPENING_INSTALLMENT_LABEL}รอบัญชีรับรองยังไม่ได้ (งวดจะค้างคิวบัญชีบนใบที่ยกเลิก)`
+      + ` · แจ้งผู้ดูแลระบบ หรือให้บัญชีตีกลับ${OPENING_INSTALLMENT_LABEL}ก่อน แล้วค่อยยกเลิกใบ`;
+}
+
+/* งวดยกมาหลังยกเลิกจริง (review 25/09) — `{ row, status, amount, stuck }` หรือ null · route ใช้สรุป audit + คำตอบ (openingVoided)
+   🐞 เดิมสรุปจากงวดที่อ่าน**ก่อน** UPDATE — บัญชีรับรองแทรกระหว่างอ่านกับเขียน = audit เขียน "รอรับรอง — ออกจากคิวบัญชี" ทั้งที่
+      เงินที่รับรองแล้วโมฆะ ⇒ ตัดสินจากแถวที่อ่าน**หลัง**ยกเลิก (ค่าที่ trigger ของ 0387 ทิ้งไว้จริง):
+      · confirmed → 'confirmed' (รับรองแล้ว — คงเป็นประวัติ · ผู้รับรองจากแถวหลัง) · rejected → 'reported' (อยู่คิวบัญชีตอนยกเลิก แล้วถูกตีกลับตามใบ)
+      · ยัง reported → 'reported' + stuck (trigger ไม่ทำงาน — route เตือนดัง)
+      · อ่านหลังยกเลิกไม่ขึ้น/หาแถวไม่เจอ → ค่าก่อนเขียน (ไม่เดาว่าค้าง)
+   @param opening ผลของ historicalCancelOpening (อ่านก่อนเขียน) · @param afterRows งวดทั้งใบที่อ่านหลังยกเลิก (หรือ null) */
+export function historicalOpeningSettled(opening, afterRows) {
+  if (!opening) return null;
+  const after = (Array.isArray(afterRows) ? afterRows : []).find((row) => row?.id === opening.row?.id) || null;
+  if (!after) return { row: opening.row, status: opening.status, amount: opening.amount, stuck: false };
+  const amount = Number(after.amount) || 0;
+  if (after.status === 'confirmed') return { row: after, status: 'confirmed', amount, stuck: false };
+  if (['rejected', 'reported'].includes(after.status)) {
+    return { row: after, status: 'reported', amount, stuck: after.status === 'reported' };
+  }
+  return { row: after, status: opening.status, amount, stuck: false };
 }
 
 /* หมายเหตุบังคับเมื่อยกเลิกใบที่งวดยกมารับรองแล้ว (มติ 24/09) — เงินที่บัญชีรับรองออกจากทะเบียนบัญชีโดยไม่มีกระดิ่ง

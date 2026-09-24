@@ -12,7 +12,7 @@ import { INSTALLMENT_REPLAN_SCHEMA_MISSING } from '@/lib/sales/installmentReplan
 import { INSTALLMENT_CARRY_SCHEMA_MISSING, carrySourcesFrom } from '@/lib/sales/installmentCarry';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import { historicalSchemaMissing, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 const TABLE = 'sales_order_installments';
 
@@ -31,6 +31,19 @@ export async function installmentMoveColumnError(supabase) {
   return error.code === '42703'
     ? INSTALLMENT_MOVE_SCHEMA_MISSING
     : `ตรวจความพร้อมของงวดชำระไม่สำเร็จ — ${error.message} · ยังไม่ได้ย้อนการอนุมัติ ลองใหม่อีกครั้ง`;
+}
+
+/* ── ด่านลำดับ deploy ของ 0387 (มติเจ้าของ 24/09 · review 25/09 fail closed) ───────────────────────────────
+   route ยกเลิกใบย้อนหลังปล่อยงวดยกมาที่มีเงินให้ trigger ของ 0387 จัดการ (ตีกลับงวดที่รอตรวจ · ด่านหมายเหตุ · ด่านแข่งกับบัญชี)
+   🐞 โค้ดขึ้น prod ก่อนรันมิกได้ (deploy อัตโนมัติวันละ 3 รอบ ไม่ถามมิก) ⇒ ยกเลิกผ่านโดยไม่มีใครตีกลับ = งวดยกมาค้าง "รอตรวจ"
+      บนใบที่ยกเลิกถาวร และรันมิกทีหลังก็ไม่ซ่อม ⇒ **ถามฐานก่อนเขียน** ว่า trigger สองตัวของ 0387 อยู่และเปิดอยู่
+   · `{ ready: true }` เมื่อ RPC ตอบ true ตรง ๆ เท่านั้น · ไม่มีฟังก์ชัน (ยังไม่รันมิก) / ตอบอย่างอื่น = `{ ready: false }`
+   · อ่านไม่ขึ้นด้วยเหตุอื่น (เน็ต/สิทธิ์) = `{ error }` — ห้ามถือว่าพร้อม และห้ามโทษ migration (คนจะไปรันซ้ำผิดเรื่อง)
+   ⚠️ supabase ไม่ throw — อ่าน `error` เอง */
+export async function historicalCancelSettleReady(supabase) {
+  const { data, error } = await supabase.rpc('historical_so_cancel_settle_ready');
+  if (error) return historicalSchemaMissing(error) ? { ready: false } : { error: error.message || String(error.code || 'unknown') };
+  return { ready: data === true };
 }
 
 export async function loadInstallments(supabase, salesOrderId) {

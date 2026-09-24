@@ -27,6 +27,7 @@ const fnBody = (name) => {
 };
 const SETTLE = fnBody('historical_so_cancel_settle');
 const GUARD = fnBody('historical_so_installment_order_live');
+const READY = fnBody('historical_so_cancel_settle_ready');
 
 test('0387 ห่อด้วย BEGIN/COMMIT · มีคำสั่งตรวจผลแบบอ่านอย่างเดียวในหัวไฟล์ · รันซ้ำได้', () => {
   assert.match(code, /^\s*BEGIN;/);
@@ -57,6 +58,14 @@ test('ตัวจัดงวด: SECURITY DEFINER · ล็อกงวดข�
   assert.match(SETTLE.slice(0, lock + 10), /FROM public\.sales_order_installments i\s+WHERE i\."salesOrderId" = NEW\.id\s+FOR UPDATE/);
   // งวดปกติ (รวมแถวเก่าที่ไม่มี kind) ที่รับเงินแล้ว/รอบัญชีตรวจ
   assert.match(SETTLE, /COALESCE\(i\.kind, 'regular'\) <> 'opening'\s+AND i\.status IN \('confirmed', 'reported'\)/);
+  /* 🐞 review 25/09: หมายเหตุบังคับของงวดยกมาที่รับรองแล้ว (≥ 10 ตัวอักษร · มติ 24/09) เคยอยู่ฝั่ง JS อย่างเดียว — ตัดสินจากงวดที่อ่าน
+     ก่อน UPDATE ⇒ บัญชีรับรองแทรกระหว่างอ่านกับเขียน = เงินที่รับรองแล้วโมฆะโดยไม่มีเหตุ ⇒ ฐานตัดสินซ้ำหลังล็อกงวด ก่อนพลิกงวดยกมา */
+  const note = SETTLE.indexOf("RAISE EXCEPTION 'historical_so_cancel_note_required");
+  assert.ok(note > held && note < flip, 'ล็อก → ด่านเงิน → หมายเหตุ → พลิกงวดยกมา');
+  const noteGate = SETTLE.slice(held, note);
+  assert.match(noteGate, /i\."salesOrderId" = NEW\.id\s+AND i\.kind = 'opening'\s+AND i\.status = 'confirmed'/);
+  // นับแบบ length() = charLength ฝั่ง JS · ตัดช่องว่างก่อนนับ · ว่าง/NULL = 0
+  assert.match(noteGate, /length\(btrim\(COALESCE\(NEW\."cancelReason", ''\)\)\) < 10/);
   const update = SETTLE.slice(flip);
   assert.match(update, /SET status = 'rejected'/);
   assert.match(update, /"rejectedAt" = now\(\)/);
@@ -64,7 +73,9 @@ test('ตัวจัดงวด: SECURITY DEFINER · ล็อกงวดข�
   assert.match(update, /"rejectedReason" = left\('ยกเลิกตามใบสั่งขายย้อนหลัง ' \|\| NEW\."orderNumber"\s*\|\| ' — งวดยกมาเป็นโมฆะ ไม่ใช่การตีกลับของบัญชี', 500\)/);
   assert.match(update, /WHERE i\."salesOrderId" = NEW\.id\s+AND i\.kind = 'opening'\s+AND i\.status = 'reported'/);
   // งวดยกมาที่รับรองแล้วคงไว้เป็นประวัติ (โมฆะตามกติกาฝั่ง JS) · ไม่แตะใบ/ยอด
-  assert.doesNotMatch(SETTLE, /status = 'confirmed'|SET status = 'pending'/);
+  // (ด่านหมายเหตุอ่าน i.status = 'confirmed' ได้ — ห้ามแค่ "เขียน" สถานะอื่น · UPDATE มีตัวเดียวคือพลิกงวดยกมาที่รอตรวจ)
+  assert.doesNotMatch(SETTLE, /SET status = '(confirmed|pending)'/);
+  assert.equal((SETTLE.match(/\bUPDATE\s/g) || []).length, 1);
   assert.doesNotMatch(SETTLE, /(UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+public\.(sales_orders|sales_deals|quotations|sales_contracts)\b/i);
 });
 
@@ -87,16 +98,45 @@ test('สิทธิ์: ฟังก์ชัน trigger ทั้งสอง
   for (const name of ['historical_so_cancel_settle', 'historical_so_installment_order_live']) {
     assert.match(code, new RegExp(`REVOKE ALL ON FUNCTION public\\.${name}\\(\\) FROM PUBLIC, anon, authenticated, service_role;`));
   }
-  assert.doesNotMatch(code, /GRANT /);
+  // GRANT ตัวเดียวของไฟล์ = ตัวถามความพร้อม ให้ service_role (route) — ข้างล่าง
+  assert.deepEqual(code.match(/GRANT [^;]*;/g), ['GRANT EXECUTE ON FUNCTION public.historical_so_cancel_settle_ready() TO service_role;']);
+});
+
+/* 🐞 review 25/09 (fail closed): โค้ดขึ้น prod ก่อนรันมิกได้ (deploy อัตโนมัติวันละ 3 รอบ ไม่ถามมิก) — route ที่ปล่อยงวดยกมาให้ trigger
+   ตีกลับจะยกเลิกผ่านโดยไม่มีใครตีกลับ ⇒ งวดค้าง "รอตรวจ" บนใบที่ยกเลิกถาวร · รันมิกทีหลังไม่ซ่อม (trigger ยิงตอนเปลี่ยนสถานะเท่านั้น)
+   ⇒ route ถามตัวนี้ก่อนเขียน: ตอบ true เมื่อ trigger สองตัวของไฟล์นี้อยู่ **และเปิดอยู่** เท่านั้น (ไม่มีฟังก์ชัน = ยังไม่รัน = บล็อกแบบเดิม) */
+test('ตัวถามความพร้อม: อ่านอย่างเดียว · trigger ทั้งสองตัวต้องอยู่และเปิด (O/A) · service_role เรียกได้ ตัวอื่นไม่ได้', () => {
+  assert.match(READY, /RETURNS boolean\s+LANGUAGE sql\s+STABLE\s+SET search_path = pg_catalog, public/);
+  assert.doesNotMatch(READY, /SECURITY DEFINER/, 'แค็ตตาล็อกอ่านได้อยู่แล้ว — ไม่ต้องยกสิทธิ์');
+  assert.doesNotMatch(READY, /(UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s/i);
+  for (const [table, trigger] of [
+    ['public.sales_orders', 'sales_orders_historical_cancel_settle'],
+    ['public.sales_order_installments', 'sales_order_installments_historical_cancelled_guard'],
+  ]) {
+    assert.match(READY, new RegExp(`t\\.tgrelid = '${table.replace('.', '\\.')}'::regclass\\s+AND t\\.tgname = '${trigger}'`
+      + `\\s+AND NOT t\\.tgisinternal\\s+AND t\\.tgenabled IN \\('O', 'A'\\)`));
+  }
+  assert.match(code, /REVOKE ALL ON FUNCTION public\.historical_so_cancel_settle_ready\(\) FROM PUBLIC, anon, authenticated;/);
+  // หัวไฟล์: ไม่มีคำเก่าที่บอกว่า deploy ก่อนแล้วงวดค้างได้ · มีคำสั่งตรวจตัวถามความพร้อม
+  const header = sql.slice(0, sql.indexOf('BEGIN;'));
+  assert.doesNotMatch(header, /ค้าง reported บนใบที่ยกเลิก \(คิว\/ป้ายบัญชี\) จนกว่าจะรัน/);
+  assert.match(header, /SELECT public\.historical_so_cancel_settle_ready\(\);/);
 });
 
 test('รหัสที่ 0387 โยนมีในตารางแปล · สถานะ 409 (ใบ/งวดขยับระหว่างทาง — ไม่ใช่ข้อมูลผิด)', () => {
   const raised = new Set([...code.matchAll(/RAISE EXCEPTION '([a-z0-9_]+)/g)].map((m) => m[1]));
-  assert.deepEqual([...raised].sort(), ['historical_so_cancel_money_held', 'historical_so_installment_order_cancelled']);
+  assert.deepEqual([...raised].sort(),
+    ['historical_so_cancel_money_held', 'historical_so_cancel_note_required', 'historical_so_installment_order_cancelled']);
   for (const c of raised) assert.ok(WORKFLOW_ERROR_CODES.includes(c), `${c} ยังไม่มีข้อความไทย`);
   const held = documentWorkflowError({ message: 'historical_so_cancel_money_held: SO-26090010-0 (1 งวด)' });
   assert.equal(held.status, 409);
-  assert.match(held.message, /ถอนคำรับรอง\/ตีกลับก่อน แล้วค่อยยกเลิกใบ/);
+  // review 25/09: ถอนคำรับรองพาแถวกลับไป "รอตรวจ" ซึ่งยังบล็อก ⇒ ต้องบอกครบสองขั้น
+  assert.match(held.message, /ถอนคำรับรองแล้วตีกลับ/);
+  assert.match(held.message, /แล้วค่อยยกเลิกใบ/);
+  const note = documentWorkflowError({ message: 'historical_so_cancel_note_required: SO-26090010-0' });
+  assert.equal(note.status, 409);
+  assert.match(note.message, /รับรองแล้ว/);
+  assert.match(note.message, /อย่างน้อย 10 ตัวอักษร/);
   const cancelled = documentWorkflowError({ message: 'historical_so_installment_order_cancelled: SO-26090010-0' });
   assert.equal(cancelled.status, 409);
   assert.match(cancelled.message, /ถูกยกเลิกแล้ว/);

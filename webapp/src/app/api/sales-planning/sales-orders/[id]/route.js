@@ -34,7 +34,7 @@ import {
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import {
-  freezeInstallments, installmentMoveColumnError, loadCarrySources, loadInstallments, loadMovedOut,
+  freezeInstallments, historicalCancelSettleReady, installmentMoveColumnError, loadCarrySources, loadInstallments, loadMovedOut,
 } from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
 import {
@@ -70,8 +70,8 @@ import { loadScoped } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
-  HISTORICAL_CANCEL_SETTLE_SCHEMA_MISSING, HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalCancelNoteError,
-  historicalCancelOpening, historicalDeleteBlock, isHistoricalOrder,
+  HISTORICAL_CANCEL_SETTLE_STUCK, HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalCancelNoteError,
+  historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 import { historicalOpeningVoidSummary } from '@/lib/sales/historicalOrderCopy';
 import {
@@ -1206,7 +1206,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          การยกเลิก ไม่ใช่บัญชีตีกลับ) ⇒ ไม่ค้างคิว/ป้ายเมนูของบัญชี · ⛔ ห้ามพลิกงวดฝั่ง JS (ครึ่งทาง = ใบอนุมัติอยู่แต่งวดถูกตีกลับ)
        · รับรองแล้ว → แถวคงเป็นประวัติ (installmentVoid ตัดออกจากทะเบียน/ยอด) · หมายเหตุบังคับ ≥ 10 ตัวอักษร (บัญชีเห็นในประวัติ)
        ⛔ งวดปกติที่รับเงินในระบบแล้ว/รอบัญชีตรวจยังบล็อก (historicalCancelBlock) — ใบย้อนหลังไม่มีทางยก/คืนเงิน และล็อกทั้งใบ
-          ปิดทุกคำสั่งของใบที่ยกเลิก ⇒ บัญชีถอนคำรับรอง/ตีกลับก่อน · trigger ของ 0387 กันซ้ำตอนแข่งกัน (409)
+          ปิดทุกคำสั่งของใบที่ยกเลิก ⇒ บัญชีตีกลับก่อน (ที่รับรองแล้ว: ถอนคำรับรองแล้วตีกลับ) · trigger ของ 0387 กันซ้ำตอนแข่งกัน (409)
+       🛑 fail closed (review 25/09): งวดยกมาที่มีเงินปล่อยให้ trigger จัดการได้ก็ต่อเมื่อ**ฐานยืนยัน**ว่า trigger ของ 0387 อยู่และเปิดอยู่
+          (historicalCancelSettleReady) — โค้ดขึ้น prod ก่อนรันมิกได้ (deploy อัตโนมัติวันละ 3 รอบไม่ถามมิก) แล้วงวดยกมาจะค้าง
+          "รอตรวจ" บนใบที่ยกเลิกถาวร (ล็อกทั้งใบปิดปุ่มบัญชี · ป้ายเมนูบัญชี +1 · รันมิกทีหลังไม่ซ่อม) ⇒ ไม่ยืนยัน = กติกาก่อนมติ (503)
+          · ถามเฉพาะเมื่องวดยกมามีเงิน — ใบอื่นคงสิทธิ์เดิมทุกตัวอักษร · ถามไม่ขึ้น (เน็ต/สิทธิ์) = หยุด ไม่ถือว่าพร้อม
+       · หมายเหตุบังคับถามหลังด่านฐาน — ฐานไม่พร้อมอย่าให้คนพิมพ์หมายเหตุแล้วค่อยบอกว่าทำไม่ได้ · trigger ตัดสินซ้ำ (บัญชีรับรองแทรก)
        ⚠️ อ่านงวดสดแบบโยน error — `before.installments` ของ loadOrder กลืนการอ่านพังเป็นรายการว่าง = ด่านเปิดเงียบ */
     let liveInstallments = null;
     let voidingOpening = null;
@@ -1215,9 +1220,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
       const moneyBlock = historicalCancelBlock(before, liveInstallments);
       if (moneyBlock) return badRequest(moneyBlock);
+      voidingOpening = historicalCancelOpening(before, liveInstallments);
+      if (voidingOpening) {
+        const settle = await historicalCancelSettleReady(supabase);
+        if (settle.error) return fail(`ตรวจความพร้อมของฐานไม่สำเร็จ: ${settle.error} — ยังไม่ได้ยกเลิก ลองใหม่อีกครั้ง`, 500);
+        const settleBlock = historicalCancelSettleBlock(voidingOpening, settle.ready);
+        if (settleBlock) return fail(settleBlock, 503);
+      }
       const noteError = historicalCancelNoteError(before, liveInstallments, note);
       if (noteError) return badRequest(noteError);
-      voidingOpening = historicalCancelOpening(before, liveInstallments);
     }
 
     // ย้อน Won พร้อมยกเลิก SO (มติ 2026-07-18): เมื่อลูกค้าหลุด (เหตุฝั่งลูกค้า) ให้ถอย
@@ -1285,8 +1296,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     /* ⭐ ใบย้อนหลัง: เอกสารแทนสัญญาถูกยกเลิกตามใบ **ในทรานแซกชันเดียวกัน** (trigger sales_orders_historical_void_contract_upd
        ของ 0374) — ที่นี่แค่อ่านผลมาบอกบนจอ/ใน audit · ⛔ ห้ามมีตัวยกเลิกสัญญาฝั่ง JS ซ้ำ (ครึ่งทาง = สัญญาค้างล็อก) */
     const voidedContract = await historicalContractVoided(supabase, before);
+    /* ⭐ งวดยกมาหลังยกเลิกจริง (review 25/09) — สรุป audit ของใบ/ของงวด + คำตอบ ตัดสินจากแถวที่อ่าน**หลัง**ยกเลิก
+       (historicalOpeningSettled) ไม่ใช่ค่าที่อ่านก่อน UPDATE: บัญชีรับรองแทรกระหว่างทาง = เดิม audit บอก "รอรับรอง" ทั้งที่เงินรับรองแล้ว
+       ⚠️ อ่านแบบไม่ขวาง — การยกเลิกสำเร็จไปแล้ว อ่านไม่ขึ้น = ใช้ค่าก่อนเขียน ไม่ใช่ตอบ error ทับ
+       🛑 งวดยกมายังค้าง "รอตรวจ" หลังยกเลิก = trigger ของ 0387 ไม่ทำงานทั้งที่ถามแล้วว่าพร้อม ⇒ เตือนดัง ไม่เงียบ */
+    let afterOpening = null;
+    let settledOpening = null;
+    if (voidingOpening) {
+      let afterRows = null;
+      try { afterRows = await loadInstallments(supabase, id); } catch { afterRows = null; }
+      afterOpening = afterRows?.find((row) => row.id === voidingOpening.row.id) || null;
+      settledOpening = historicalOpeningSettled(voidingOpening, afterRows);
+    }
+    const settleWarning = settledOpening?.stuck ? HISTORICAL_CANCEL_SETTLE_STUCK : null;
     const summaryReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
-    const openingSummary = historicalOpeningVoidSummary(voidingOpening);
+    const openingSummary = historicalOpeningVoidSummary(settledOpening);
     await logThread('cancel', { reason: summaryReason });
     await recordAudit({
       user, action: 'update', entityType: 'sales_order', entityId: id,
@@ -1300,16 +1324,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     });
     /* ⭐ แถว audit ของงวดยกมาที่โมฆะ (มติ 24/09) — ประวัติงวดที่บัญชีเปิดดูต้องเห็นว่าเงินที่รับรองไว้หายไปเพราะใบถูกยกเลิก
        (ไม่มีกระดิ่งถึงบัญชี — กระดิ่งมีแค่คำร้อง/แจ้งปัญหา/มอบหมายงาน) · entityId = ใบ แบบเดียวกับ "เริ่มติดตามการชำระ"
-       ⚠️ อ่านแถวหลังยกเลิกแบบไม่ขวาง — การยกเลิกสำเร็จไปแล้ว อ่านไม่ขึ้น = after ว่าง ไม่ใช่ตอบ error ทับ
-       🛑 งวดยกมาที่รอตรวจยังเป็น reported หลังยกเลิก = ฐานยังไม่รัน 0387 (โค้ดขึ้นก่อน) ⇒ เตือนดัง ไม่เงียบ */
-    let settleWarning = null;
+       · before = แถวที่อ่านก่อนเขียน · after = แถวที่อ่านหลังยกเลิก (อ่านไม่ขึ้น = ว่าง) */
     if (voidingOpening) {
-      let afterRows = null;
-      try { afterRows = await loadInstallments(supabase, id); } catch { afterRows = null; }
-      const afterOpening = afterRows?.find((row) => row.id === voidingOpening.row.id) || null;
-      if (voidingOpening.status === 'reported' && afterOpening?.status === 'reported') {
-        settleWarning = HISTORICAL_CANCEL_SETTLE_SCHEMA_MISSING;
-      }
       await recordAudit({
         user, action: 'update', entityType: 'sales_order_installments', entityId: id,
         before: voidingOpening.row,
@@ -1329,7 +1345,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         ...data,
         contractVoided: Boolean(voidedContract),
         contractVoidedLabel: voidedContract ? voidedContractLabel(voidedContract) : '',
-        openingVoided: voidingOpening?.status || null,
+        openingVoided: settledOpening?.status || null,
       }
       : data;
     return ok(specWarning ? { ...result, warning: specWarning } : result);
