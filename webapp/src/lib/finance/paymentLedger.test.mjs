@@ -856,6 +856,21 @@ test('ledgerVoidInstallment: pending/rejected ของใบยกเลิก/
   assert.equal(ledgerVoidInstallment({ status: 'pending' }, null), false);
 });
 
+/* ⭐ มติเจ้าของ 24/09 (mig 0387): ผู้จัดการฝ่ายขายยกเลิกใบย้อนหลังได้แม้งวดยกมารับรองแล้ว — งวดยกมาของใบที่ยกเลิก = โมฆะทุกสถานะ
+   ⇒ ออกจากทะเบียน (ไม่นับเก็บได้ · ไม่ใช่ "เงินค้าง" ที่ต้องยก/คืน) · ใบที่คีย์ใหม่มีงวดยกมาของตัวเองให้บัญชีรับรองอีกครั้ง
+   ⚠️ route ทะเบียนส่งแถวจาก select('*') (มี kind) · ใบที่ยังอนุมัติอยู่ = กติกาเดิม */
+test('งวดยกมาของใบย้อนหลังที่ยกเลิก: โมฆะทุกสถานะ (ตัดออกจากทะเบียน) · ไม่ใช่เงินค้าง · ใบที่ยังอนุมัติอยู่ไม่ตัด', () => {
+  const cancelled = { id: 'SOR-H1', origin: 'historical', status: 'cancelled' };
+  for (const status of ['confirmed', 'reported', 'rejected', 'pending']) {
+    const opening = { id: 'SOI-H1', seq: 1, kind: 'opening', amount: 196452, status, coversFrom: '2026-01-01', coversTo: '2026-09-30' };
+    assert.equal(ledgerVoidInstallment(opening, cancelled), true, status);
+    assert.equal(ledgerVoidInstallment(opening, { ...cancelled, status: 'approved' }), false, `approved/${status}`);
+    assert.equal(ledgerRow({ installment: opening, order: cancelled, todayIso: TODAY }).stranded, false, `stranded/${status}`);
+  }
+  // งวดปกติที่มีเงินบนใบย้อนหลังที่ยกเลิก (ด่านยกเลิกกันไม่ให้เกิด) = กติกาเดิม ไม่ถูกกลืนเป็นโมฆะเงียบ ๆ
+  assert.equal(ledgerVoidInstallment({ kind: 'regular', status: 'confirmed' }, cancelled), false);
+});
+
 test('แถว pending/rejected ของใบยกเลิก/ถูกออก Rev. ไม่นับในยอดค้างรับและเลยกำหนด · แถวที่มีเงินยังอยู่', () => {
   const PAST = '2026-08-01';
   const raw = [

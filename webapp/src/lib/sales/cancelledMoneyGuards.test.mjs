@@ -2,8 +2,8 @@
 // ⭐ ตรรกะจริงมีเทสต์เรียกตรงแล้ว (salesOrderPayments.test · installmentCarry.test · paymentLedger.test ·
 //    salesOrderInstallmentsStore.test · approvalPrompt.test · installmentCarryMigration.test + PGlite ใน scratch)
 //    ไฟล์นี้ตรึงว่า **ผู้เรียกทุกทางต่อสายครบ** ซึ่งพังเงียบได้ทั้งหมด:
-//    · route ยกเลิกยังถาม paymentLockReason กับใบ pipeline = ใบที่รับเงินแล้วยกเลิกไม่ได้เหมือนเดิม (คำขอ A ไม่เกิด)
-//    · route ยกเลิกเลิกถามกับใบย้อนหลังด้วย = ใบย้อนหลังเปลี่ยนกติกาเงียบ ๆ (ต้องคงเดิมทุกข้อ)
+//    · route ยกเลิกกลับไปล็อกใบ pipeline ด้วยเงินรับแล้ว = ใบที่รับเงินแล้วยกเลิกไม่ได้เหมือนเดิม (คำขอ A ไม่เกิด)
+//    · route ยกเลิกเลิกถามด่านเงินของใบย้อนหลัง (historicalCancelBlock · มติ 24/09) = งวดปกติที่มีเงินค้างบนใบที่ยกเลิกโดยไม่มีทางออก
 //    · กู้คืน/ลบถาวรไม่ถาม movedFrom = เงินที่ยกไปแล้วกลับมาสองที่ · ไฟล์หลักฐานของงวดที่ย้ายไปถูกกวาดทิ้ง
 //    · FN กดยกเงินไม่ได้เพราะ proxy ปล่อยแค่ PATCH ของ /installments
 // ⚠️ ยามอ่าน source เป็นสตริง (ตัดคอมเมนต์ก่อน) ⇒ พิสูจน์แค่ "โค้ดนี้ยังอยู่ตรงนี้"
@@ -34,18 +34,38 @@ const FN_PAGE = 'app/finance/payments/page.js';
 const FN_HOME = 'app/finance/page.js';
 const PROXY = 'proxy.js';
 
-// ── 1. ยกเลิก: paymentLockReason เหลือเป็นด่านของใบย้อนหลังเท่านั้น ─────────────────────────────────────
-test('ยกเลิกใบ: ใบ pipeline ไม่ถาม paymentLockReason แล้ว · ใบย้อนหลังยังถาม (งวดสดแบบโยน error) คู่กับ historicalCancelBlock', () => {
-  const cancel = slice(code(SO_ROUTE), "if (action === 'cancel')", "if (action === 'finance_approve')");
-  assert.doesNotMatch(cancel, /paymentLockReason\(before\.installments\)/, 'before.installments ของ loadOrder กลืน error = ด่านเปิดเงียบ');
-  const hist = slice(cancel, 'if (isHistoricalOrder(before)) {\n      let liveInstallments;', '\n    }\n');
-  const live = hist.indexOf('try { liveInstallments = await loadInstallments(supabase, id); }');
-  const lock = hist.indexOf('const cancelPaymentBlock = paymentLockReason(liveInstallments);');
-  const waiting = hist.indexOf('const waitingBlock = historicalCancelBlock(before, liveInstallments);');
-  assert.ok(live > 0 && lock > live && waiting > live, 'อ่านงวดสดก่อน แล้วถามทั้งสองด่านของใบย้อนหลัง');
-  assert.match(hist, /if \(cancelPaymentBlock\) return badRequest\(cancelPaymentBlock\);/);
+// ── 1. ยกเลิก: ด่านเงินของใบย้อนหลังอยู่ที่ historicalCancelBlock ตัวเดียว (มติเจ้าของ 24/09 · mig 0387) ─────────────
+/* ⚠️ แก้ยามโดยตั้งใจ 24/09: `paymentLockReason` (งวดรับรองแล้วห้ามยกเลิก — ทุกงวด) ถูกถอดทั้งฟังก์ชัน — ผู้จัดการฝ่ายขายยกเลิก
+   ใบย้อนหลังที่อนุมัติแล้วได้แม้งวดยกมารับรองแล้ว (งวดยกมาเป็นโมฆะตามใบ) · งวดปกติที่มีเงิน/รอตรวจยังบล็อกผ่าน
+   historicalCancelBlock · trigger ของ 0387 กันซ้ำที่ฐาน */
+test('ยกเลิกใบ: ไม่มี paymentLockReason แล้ว · ใบย้อนหลังอ่านงวดสดแบบโยน error → historicalCancelBlock → หมายเหตุบังคับ ก่อนเขียน', () => {
+  const route = code(SO_ROUTE);
+  assert.doesNotMatch(route, /paymentLockReason/, 'ถอดทั้งไฟล์ — ไม่มีผู้เรียกอื่นแล้ว');
+  const cancel = slice(route, "if (action === 'cancel')", "if (action === 'finance_approve')");
+  const hist = slice(cancel, 'if (isHistoricalOrder(before)) {\n      try { liveInstallments = await loadInstallments(supabase, id); }', '\n    }\n');
+  const block = hist.indexOf('const moneyBlock = historicalCancelBlock(before, liveInstallments);');
+  const note = hist.indexOf('const noteError = historicalCancelNoteError(before, liveInstallments, note);');
+  const opening = hist.indexOf('voidingOpening = historicalCancelOpening(before, liveInstallments);');
+  assert.ok(block > 0 && note > block && opening > note, 'อ่านงวดสดก่อน แล้วด่านเงิน → หมายเหตุ → งวดยกมาที่จะเป็นโมฆะ');
+  assert.match(hist, /if \(moneyBlock\) return badRequest\(moneyBlock\);/);
+  assert.match(hist, /if \(noteError\) return badRequest\(noteError\);/);
   assert.doesNotMatch(cancel, /loadInstallments\([^)]*\)\s*\.catch/);
-  assert.equal((cancel.match(/paymentLockReason\(/g) || []).length, 1, 'เรียกที่เดียว — ในบล็อกใบย้อนหลัง');
+  assert.ok(cancel.indexOf(hist) < cancel.indexOf(".update(patch)"), 'ด่านมาก่อนเขียน');
+});
+
+/* ⭐ ร่องรอยของเงินที่ออกจากทะเบียนบัญชี: audit ของใบพกงวดสด · แถว audit ของงวด (ประวัติที่บัญชีเปิดดู) · คำตอบบอกผลให้จอ */
+test('ยกเลิกใบย้อนหลัง: audit ของใบพกงวดสด · งวดยกมาที่โมฆะลง audit ของงวดอีกแถว · คำตอบมี contractVoided/openingVoided', () => {
+  const cancel = slice(code(SO_ROUTE), "if (action === 'cancel')", "if (action === 'finance_approve')");
+  const write = cancel.indexOf('.update(patch)');
+  const tail = cancel.slice(write);
+  assert.match(tail, /before: liveInstallments \? \{ \.\.\.before, installments: liveInstallments \} : before,/);
+  assert.match(tail, /historicalOpeningVoidSummary\(voidingOpening\)/);
+  assert.match(tail, /entityType: 'sales_order_installments', entityId: id,/);
+  assert.match(tail, /openingVoided: voidingOpening\?\.status \|\| null/);
+  assert.match(tail, /contractVoidedLabel: voidedContract \? voidedContractLabel\(voidedContract\) : ''/);
+  // ฐานยังไม่รัน 0387 (โค้ดขึ้นก่อน) = งวดยกมาค้าง reported บนใบที่ยกเลิก — ต้องเตือนในคำตอบ ไม่ใช่เงียบ
+  assert.match(tail, /if \(voidingOpening\.status === 'reported' && afterOpening\?\.status === 'reported'\) \{\s*settleWarning = HISTORICAL_CANCEL_SETTLE_SCHEMA_MISSING;/);
+  assert.match(tail, /settleWarning,\s*\]\.filter\(Boolean\)\.join\(' · '\);/);
 });
 
 // ── 2. กู้คืน: เงินยกไปแล้ว/คืนลูกค้าแล้ว = คืนสถานะไม่ได้ ─────────────────────────────────────────────────
@@ -187,7 +207,8 @@ test('หน้าใบ: ยกเงินผ่าน PATCH action carry (api
   assert.match(page, /onCarry=\{runInstallmentCarry\}/);
   const modal = slice(page, '{cancelForm && (', '</Modal>');
   assert.match(modal, /\{cancelMoneyLines\.length \? \(\s*<StatusNotice tone="warning" title="เงินของใบนี้">/);
-  assert.match(page, /const cancelMoneyLines = salesOrderMoneyOutcome\(order, installments, "cancel"\);/);
+  /* ใบย้อนหลังอ่านจาก historicalCancelPrompt(...).money ซึ่งเรียก salesOrderMoneyOutcome(..., 'cancel') ตัวเดียวกัน (มติ 24/09) */
+  assert.match(page, /const cancelMoneyLines = historicalCancel\s*\? historicalCancel\.money\s*: salesOrderMoneyOutcome\(order, installments, "cancel"\);/);
   assert.match(page, /\.\.\.salesOrderMoneyOutcome\(order, installments, "approve", \{ strandedSources: order\.carrySources \}\),/);
   const restore = slice(page, '{ id: "restore",', 'onClick: () => requestAction("restore") },');
   // ด่านเงินยังเป็นข้อแรกของคำใบ้ปุ่มกู้คืน — ต่อด้วยด่าน QT ยัง Won (salesOrderRestoreBlock · SO-26080039-0)
