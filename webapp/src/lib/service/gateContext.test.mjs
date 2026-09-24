@@ -67,3 +67,21 @@ test('รับ Map ได้ · คืน object ธรรมดาเสมอ
   assert.deepEqual(Object.keys(merged.ordersById).sort(), ['SO1', 'SO3']);
   assert.deepEqual(Object.keys(weekCtx.ordersById), ['SO1'], 'ก้อนต้นทางต้องไม่ถูกเขียนทับ');
 });
+
+/* ⭐ สัญญาที่ถูกยกเลิกหลังลงนาม (มติเจ้าของ 24/09/2026) — ด่านแยก "เคยมีผล" ด้วย `approvedAt` และหาวันจบจาก
+   `cancelledAt` ⇒ **ตัวโหลดบริบทด่านกับทะเบียนต่อสัญญาต้องดึงสองคอลัมน์นี้ และชุดคอลัมน์ต้องเท่ากัน**
+   🪤 ลืมที่ใดที่หนึ่ง = ด่านถือว่า "ไม่เคยมีผล" ⇒ ใบส่งงานที่ปิดไปแล้วกลายเป็น "งดบริการ" ย้อนหลังเงียบ ๆ */
+test('ตัวโหลดสัญญาของด่านเข้าไซต์กับทะเบียนต่อสัญญาดึงคอลัมน์ชุดเดียวกัน รวม approvedAt/cancelledAt', async () => {
+  const { readFileSync } = await import('node:fs');
+  const select = (rel) => {
+    const code = readFileSync(new URL(rel, import.meta.url), 'utf8');
+    const at = code.indexOf("from('sales_contracts')");
+    assert.ok(at > 0, rel);
+    return code.slice(at).match(/\.select\('([^']+)'\)/)[1];
+  };
+  const gate = select('./gateContext.js');
+  const renewals = select('../../app/api/sales-planning/renewals/route.js');
+  assert.equal(gate, renewals);
+  assert.match(gate, /"approvedAt"/);
+  assert.match(gate, /"cancelledAt"/);
+});

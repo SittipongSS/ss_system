@@ -8,7 +8,8 @@
 // ⚠️ ไฟล์นี้ถูก import ทั้งฝั่งจอและฝั่ง API — ห้าม import อะไรที่เป็น server-only
 //   **ด่านต้องเป็นตัวเดียวกันสองที่** (กติกาเดียวกับ `contracts.js`)
 import {
-  contractInForce, contractKindLabel, contractStatusLabel, isSubstituteContract,
+  contractCancelDate, contractCancelMoment, contractCancelledAfterSigning, contractInForce, contractKindLabel,
+  contractStatusLabel, isSubstituteContract,
 } from '@/lib/sales/contracts';
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate } from '@/lib/format';
@@ -40,6 +41,31 @@ export function contractSpanAt(contract, today = businessDate()) {
   if (!from && !to) return null;
   if (from && String(today) < from) return 'before';
   if (to && String(today) > to) return 'after';
+  return 'in';
+}
+
+/** สัญญาครอบงานของวันหนึ่งไหม — **รวมสัญญาที่ถูกยกเลิกหลังลงนาม** (มติเจ้าของ 24/09/2026)
+ *  คืน `'in' | 'before' | 'after' | null` เหมือน `contractSpanAt` · `'cancelled'` = ถูกยกเลิกแล้ว ณ วันนั้น ·
+ *  `'none'` = ไม่เคยมีผล (ร่าง/รอลงนาม/รอรับรอง/ยกเลิกก่อนมีผล/ไม่มีสัญญา)
+ *
+ * ⭐ **วันยกเลิกคือวันแรกที่งานหยุด** (เจ้าของเลือกเอง ทับคำแนะนำ "ผ่านถึงสิ้นวัน") — นัดวันนั้นผ่านเฉพาะที่
+ *   **ปิดงานก่อนเวลากดยกเลิก** (`closedAt` = เวลาปิดงานจริงตามนาฬิกาไทย · ผู้เรียกถาม `visitClosedAtKey`) เพราะงานนั้น
+ *   เกิดขึ้นจริงตอนสัญญายังมีผล ใบส่งงานต้องไม่กลับไปเป็น "งดบริการ" · นัดก่อนวันยกเลิกยังครอบ (ด่านคำนวณสดทุกครั้ง
+ *   ⇒ ตัดทุกวันเหมือนใบที่ไม่เคยมีผล = ใบส่งงานเก่าทั้งหมดของใบสั่งขายเปลี่ยนเป็นงดบริการย้อนหลัง)
+ * 🔴 **ถาม "ปิดก่อนยกเลิกไหม" ไม่ใช่ "ตอนนี้ปิดแล้วไหม"** (รีวิว 25/09) — ของเดิมรับธง `finished` จาก `isClosedVisit`
+ *    ⇒ นัดที่ยังเปิดอยู่ตอนยกเลิกแล้วช่างมาปิดทีหลัง ด่านพลิกเป็นผ่าน ใบส่งงานเดียวกันพูดคนละเรื่องก่อน/หลังปิดงาน
+ *    ⚠️ ไม่รู้เวลาปิด / นาทีเดียวกับที่ยกเลิก = พิสูจน์ไม่ได้ว่าก่อน ⇒ ติด (ด่านที่เดาว่าผ่านคือด่านที่โกหกว่าตรวจแล้ว)
+ * ⚠️ `contractInForce` ไม่เปลี่ยน (ยัง signed เท่านั้น) — ตัวนี้ตอบ "ครอบวันนี้ไหม" ไม่ใช่ "ผูกกับใบได้ไหม"
+ *    ⇒ สัญญาที่ยกเลิกแล้วผูกกับใบใหม่ไม่ได้ (`contractLinkable`) แต่ยังตอบเรื่องวันในอดีตได้ */
+export function contractCoverageOn(contract, day, { closedAt = null } = {}) {
+  if (contractInForce(contract)) return contractSpanAt(contract, day);
+  if (!contractCancelledAfterSigning(contract)) return 'none';
+  const span = contractSpanAt(contract, day);
+  if (span === 'before' || span === 'after') return span;
+  const cancelled = contractCancelDate(contract);
+  const date = String(day || '');
+  if (!date || date > cancelled) return 'cancelled';
+  if (date === cancelled && !(closedAt && String(closedAt) < contractCancelMoment(contract))) return 'cancelled';
   return 'in';
 }
 

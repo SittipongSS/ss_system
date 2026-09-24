@@ -66,6 +66,19 @@ export const isClosedVisit = (visit) => (
       วันหน้าจะตกกลุ่ม "ต้องตาม" เองโดยไม่ต้องแก้ที่นี่ (เงียบแบบปลอดภัยกว่าหายไปเงียบ ๆ) */
 export const isShortfallVisit = (visit) => isClosedVisit(visit) && visit?.status !== 'done';
 
+/* "ปิดงานจริงเมื่อไร" — `'YYYY-MM-DD HH:MM'` ตามนาฬิกาไทย · null = ยังไม่ปิด หรือไม่รู้เวลาปิด
+   ⭐ ด่านเข้าไซต์เทียบกับเวลายกเลิกสัญญา (`contractCancelMoment`) — นัดวันยกเลิกผ่านได้เฉพาะที่ปิดงาน **ก่อน** กดยกเลิก
+      (รีวิว 25/09 · มติเจ้าของ 24/09 "วันยกเลิกคือวันจบจริง") · ถาม `isClosedVisit` สด ๆ = นัดที่มาปิดทีหลังพลิกเป็นผ่าน
+   ⚠️ วันของเวลาจบคือ `actualEndDate` (งานข้ามวัน · mig 0386 · NULL = วันเดียวกับวันเข้า) ไม่งั้น `actualDate`
+   ⚠️ ไม่มีวันเข้า/เวลาจบ (ปิดจากฟอร์มโดยไม่กรอกเวลา) = null — ผู้เรียกถือว่าพิสูจน์ไม่ได้ ไม่ใช่ "ปิดตั้งแต่เช้า" */
+export function visitClosedAtKey(visit) {
+  if (!isClosedVisit(visit)) return null;
+  const date = String(visit.actualEndDate || visit.actualDate || '').slice(0, 10);
+  const time = String(visit.actualEndTime || '').slice(0, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return null;
+  return `${date} ${time}`;
+}
+
 /* "ยังรอให้ลงมือ" — ตัวเลขหัวจอและคิวต้องจัดการนับจากชุดนี้
    ร่างไม่นับ (ยังไม่ใช่งาน) · ปิด/ยกเลิก/เลื่อนไม่นับ (จบแล้ว) */
 export const isOpenVisit = (visit) => (

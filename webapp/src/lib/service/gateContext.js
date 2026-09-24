@@ -70,10 +70,13 @@ export async function loadVisitGateContext(supabase, siteIds = []) {
     if (installmentError) throw installmentError;
     for (const r of rows || []) (installmentsByOrderId[r.salesOrderId] ||= []).push(r);
 
+    /* ⭐ `approvedAt` + `cancelledAt` (มติ 24/09/2026) — สัญญาที่ถูกยกเลิกหลังลงนามยังครอบนัดก่อนวันยกเลิก
+       (`contractCoverageOn`) · ไม่ดึงมา = ด่านเห็นเป็นใบที่ไม่เคยมีผล ⇒ ใบส่งงานเก่ากลายเป็น "งดบริการ" ย้อนหลังเงียบ ๆ
+       ⚠️ ชุดคอลัมน์ต้องเท่ากับของทะเบียนต่อสัญญา (renewals/route.js) — gateContext.test ล็อกไว้ */
     const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
     if (contractIds.length) {
       const { data: contracts, error: contractError } = await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase.from('sales_contracts')
-        .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate"').in('id', chunk).order('id', { ascending: true })));
+        .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate", "approvedAt", "cancelledAt"').in('id', chunk).order('id', { ascending: true })));
       if (contractError) throw contractError;
       for (const c of contracts || []) contractsById[c.id] = c;
     }

@@ -12,9 +12,11 @@
 //    วันที่ได้แต่แนบไฟล์ไม่ได้ ทั้งที่ไฟล์คือเงื่อนไขจริงของขั้นนั้น
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
+import { approvalPrompt } from "@/lib/approvalPrompt";
 import {
   CONTRACT_STATUS_LABELS, canCancelContract, canIssueContract, canReviseContract,
-  contractReviseBlockReason, isExternalContract,
+  contractKindLabel, contractReviseBlockReason, isExternalContract, showSignedCancel, signedCancelEffects,
+  signedCancelError,
 } from "@/lib/sales/contracts";
 
 const STATUS_TONE = {
@@ -63,9 +65,35 @@ export const SUBSTITUTE_STEPS = [
   { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "อนุมัติพร้อมใบสั่งขายย้อนหลัง", statuses: ["signed"] },
 ];
 
+/* ── โมดัลยกเลิกสัญญาที่ลงนามแล้ว (มติเจ้าของ 24/09/2026) ──────────────────────────────────────
+   ⭐ ข้อความประกอบตอนสร้าง lifecycle (หน้าสัญญาสร้างใหม่เมื่อใบเปลี่ยน) — TransitionDialog อ่าน `confirm`/
+      `reasonPolicy` เป็นค่านิ่ง ไม่ใช่ฟังก์ชันของ record · รูปข้อความผ่าน `approvalPrompt` ตัวเดียวกับทุกการอนุมัติ
+      (บรรทัดเตือน "ย้อนกลับเองไม่ได้" + "สิ่งที่จะเกิดขึ้นทันที:") */
+export function signedCancelDialog({ contract = null, linkedOrder, signedCancel = null } = {}) {
+  return approvalPrompt({
+    title: "ยกเลิกสัญญาที่ลงนามแล้ว",
+    verb: "ยกเลิก",
+    subject: [contractKindLabel(contract?.kind), contract?.contractNo].filter(Boolean).join(" "),
+    irreversible: true,
+    effects: signedCancelEffects({
+      contract,
+      linkedOrder,
+      linkedServiceOrders: signedCancel?.linkedServiceOrders || [],
+      liveAddenda: signedCancel?.liveAddenda || 0,
+    }),
+    confirmLabel: "ยกเลิกสัญญา",
+  });
+}
+
 /* `substitute` = เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (isSubstituteContract) · `locked` = ล็อกเพราะใบสั่งขาย
-   ยังไม่อนุมัติ (historicalContractLockReason) ⇒ ซ่อนปุ่มยกเลิก — ยกเลิกที่ใบสั่งขาย แล้ว trigger ยกเลิกใบนี้ตาม */
-export function buildContractLifecycle({ canEdit = false, external = false, substitute = false, locked = false } = {}) {
+   ยังไม่อนุมัติ (historicalContractLockReason) ⇒ ซ่อนปุ่มยกเลิก — ยกเลิกที่ใบสั่งขาย แล้ว trigger ยกเลิกใบนี้ตาม
+   `contract` · `linkedOrder` · `signedCancel` (= `signedCancelContext` จาก GET: ใบสั่งขายที่ผูก + จำนวนบันทึกเพิ่มเติม)
+   ใช้ประกอบโมดัลยกเลิกสัญญาที่ลงนามแล้วเท่านั้น (มติ 24/09/2026) */
+export function buildContractLifecycle({
+  canEdit = false, external = false, substitute = false, locked = false,
+  contract = null, linkedOrder, signedCancel = null,
+} = {}) {
+  const signedCancelPrompt = signedCancelDialog({ contract, linkedOrder, signedCancel });
   return defineLifecycle({
     entity: "contract",
     noun: "สัญญา",
@@ -135,12 +163,49 @@ export function buildContractLifecycle({ canEdit = false, external = false, subs
         to: "cancelled",
         reason: "required",
         visible: () => canEdit && !locked,
-        allow: (contract) => (canCancelContract(contract) ? true : "ใบที่ลงนามแล้วยกเลิกที่นี่ไม่ได้"),
+        // ใบที่ลงนามแล้วไม่เข้าทางนี้ (`from` กรองไว้) — เป็นปุ่ม "ยกเลิกสัญญาที่ลงนามแล้ว" ของผู้อนุมัติข้างล่าง
+        allow: (contract) => (canCancelContract(contract) ? true : "ใบที่ลงนามแล้วให้ AE Supervisor ยกเลิกที่ปุ่ม “ยกเลิกสัญญาที่ลงนามแล้ว”"),
         confirm: {
           title: "ยกเลิกสัญญาใบนี้",
           message: "ใบจะถูกปิดพร้อมเหตุผลที่บันทึกไว้ และพิมพ์ออกมาพร้อมลายน้ำ “ยกเลิก” "
             + "· เลขที่ที่ออกไปแล้วจะไม่ถูกนำกลับมาใช้ซ้ำ",
           confirmLabel: "ยกเลิกสัญญา",
+        },
+      },
+      {
+        /* ⭐ **ยกเลิกสัญญาที่ลงนามแล้ว — สิทธิ์ของผู้อนุมัติ** (มติเจ้าของ 24/09/2026: "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่
+           สามารถกดอนุมัติ") · ทุกชนิดสัญญา · เพิ่มสิทธิ์อย่างเดียว ปุ่มยกเลิกเดิมข้างบนไม่ขยับ
+           ⚠️ `visible` = สิทธิ์ (ผู้อนุมัติ + แก้ใบได้) ⇒ คนอื่นไม่เห็นปุ่ม · `allow` = ด่านที่ติดได้ (เอกสารแทนสัญญาของใบ
+              สั่งขายย้อนหลังที่ยังมีชีวิต · ยังโหลดใบสั่งขายที่ผูกไม่ครบ) ⇒ โชว์จางพร้อมเหตุ
+           🔴 **โหลดใบสั่งขายที่ผูกไม่ครบ = กดไม่ได้** — โมดัลพิมพ์รายชื่อใบเป็นข้อเท็จจริงของการกระทำที่ย้อนไม่ได้
+              ลิสต์ที่ไม่ครบจะอ่านว่า "ไม่มีใบไหนได้รับผล" */
+        id: "cancel-signed",
+        label: "ยกเลิกสัญญาที่ลงนามแล้ว",
+        rowLabel: "ยกเลิก",
+        rowTone: "red",
+        kind: "cancel",
+        slot: "danger",
+        from: ["signed"],
+        to: "cancelled",
+        reason: "required",
+        visible: (contract, user) => canEdit && showSignedCancel(contract, user),
+        allow: (contract, user) => {
+          const gate = signedCancelError(contract, user, { linkedOrder });
+          if (gate) return gate;
+          if (!Array.isArray(signedCancel?.linkedServiceOrders)) {
+            return "ยังโหลดใบสั่งขายที่ผูกสัญญานี้ไม่ครบ — เปิดหน้าใหม่แล้วลองอีกครั้ง";
+          }
+          return true;
+        },
+        confirm: {
+          title: signedCancelPrompt.title,
+          message: signedCancelPrompt.description,
+          confirmLabel: signedCancelPrompt.confirmLabel,
+        },
+        reasonPolicy: {
+          detail: signedCancelPrompt.detail,
+          confirmLabel: signedCancelPrompt.confirmLabel,
+          placeholder: "เช่น ลูกค้าแจ้งเลิกจ้างตามหนังสือลงวันที่ … / ลงนามผิดฉบับ ต้องออกฉบับใหม่",
         },
       },
     ],
