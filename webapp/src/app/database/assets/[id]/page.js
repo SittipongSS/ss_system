@@ -25,7 +25,7 @@ import AssetMoveModal from "@/components/service/AssetMoveModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canEditService, canViewService } from "@/lib/permissions";
+import { canEditService, canViewVisitReport } from "@/lib/permissions";
 import {
   ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isWarehouseSite,
 } from "@/lib/service/sites";
@@ -66,9 +66,9 @@ export default function ServiceAssetPage({ params }) {
     [role, team, teams, department],
   );
   /* หน้านี้เป็นของ **ทะเบียน** (เปิดอ่านได้ทุกคนที่เข้าฐานข้อมูล · มติผู้ใช้ 2026-09-24) แต่ใบส่งงาน
-     ยังเป็นหน้าทำงานของฝ่ายบริการ ⇒ ลิงก์ "ใบส่งงาน" โชว์เฉพาะคนที่เปิดได้จริง (ไม่งั้นกดแล้ว Forbidden) */
+     เปิดได้เฉพาะฝ่ายบริการ + ฝ่ายขาย ⇒ ลิงก์ "ใบส่งงาน" โชว์เฉพาะคนที่เปิดได้จริง (ไม่งั้นกดแล้ว Forbidden) */
   const canOpenVisit = useMemo(
-    () => canViewService({ role, team, teams, department }),
+    () => canViewVisitReport({ role, team, teams, department }),
     [role, team, teams, department],
   );
 

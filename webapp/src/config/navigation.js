@@ -1,5 +1,5 @@
 import { SYSTEM_ORDER } from './systems.js';
-import { homeSystemForUser } from '@/lib/permissions';
+import { canViewService, homeSystemForUser } from '@/lib/permissions';
 
 export { SYSTEM_ORDER };
 
@@ -121,6 +121,8 @@ export function sortSystems(groups) {
   return [...groups].sort((a, b) => SYSTEM_ORDER.indexOf(a.system) - SYSTEM_ORDER.indexOf(b.system));
 }
 
+const VISIT_REPORT_PATH = /^\/service\/visits\/[^/]+\/?$/;
+
 export function systemForPathname(pathname, user) {
   if (isSettingsPathname(pathname)) return 'settings';
   // ⭐ กล่องแจ้งเตือนไม่ใช่ของระบบไหน — มันรวมของทุกระบบไว้ในกองเดียว
@@ -155,6 +157,11 @@ export function systemForPathname(pathname, user) {
   // ⚠️ ต้องอยู่ก่อนกฎ salesplan: โมดูลผลิตเป็นระบบของตัวเอง ไม่ใช่ของฝ่ายขาย
   // (เส้นทางจึงไม่ได้อยู่ใต้ /pm ซึ่งเป็นของ project management ฝั่งขาย)
   if (pathname.startsWith('/production')) return 'production';
+  /* ⭐ ใบส่งงาน `/service/visits/<id>` — ฝ่ายขายเปิดอ่านได้ (มติผู้ใช้ 2026-09-24) แต่ไม่มีระบบบริการ
+     ⇒ คืน `null` = **คงเปลือกของระบบที่เขายืนอยู่** (ทะเบียนไซต์ในฐานข้อมูล · ใบสั่งขาย) แทนการสวม
+     เปลือกบริการที่เขาไม่มีกลุ่มเมนู = แถบว่าง (บั๊กเดียวกับที่ RD/FN เคยเจอ · กฎข้อ 9)
+     ⚠️ ไม่ส่ง `user` มา = พฤติกรรมเดิม (เทสต์เดิมทั้งชุดยังถูก) */
+  if (user && VISIT_REPORT_PATH.test(pathname) && !canViewService(user)) return null;
   if (pathname.startsWith('/service')) return 'service';
   // ⚠️ ต้องอยู่ก่อนกฎ salesplan ด้วยเหตุผลเดียวกับ /production — RD เป็นระบบของตัวเอง
   // (มติ ม-29) · เส้น `/rd` ไม่ทับ `/requests` แต่วางเรียงกันไว้ให้อ่านออกว่าทั้งสอง
