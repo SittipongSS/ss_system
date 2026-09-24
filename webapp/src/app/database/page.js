@@ -3,13 +3,16 @@ import { ChartCanvas } from "@/components/ui/ChartCard";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Package, Building2, ChevronRight, TrendingUp, BarChart3, PieChart as PieChartIcon, Hourglass, CalendarRange, Users } from "lucide-react";
+import { LayoutDashboard, Package, Building2, ChevronRight, TrendingUp, BarChart3, PieChart as PieChartIcon, Hourglass, CalendarRange, Users, AlertCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ActionQueue from "@/components/ui/ActionQueue";
 import FilterPopover from "@/components/ui/FilterPopover";
 import KpiCard from "@/components/ui/KpiCard";
 import EmptyState from "@/components/ui/EmptyState";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
@@ -17,7 +20,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
-import { naText } from "@/lib/format";
+import { NA, naText } from "@/lib/format";
 
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
@@ -30,8 +33,54 @@ export default function DatabaseOverview() {
   const role = useRole();
   const myTeam = useTeam();
   const myTeams = useTeams();
-  const { data: rawProducts, loading: l1 } = useApiList("/api/master/products?manage=1");
-  const { data: rawCustomers, loading: l2 } = useApiList("/api/master/customers?manage=1");
+  const { data: rawProducts, loading: l1, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/master/products?manage=1");
+  const { data: rawCustomers, loading: l2, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList("/api/master/customers?manage=1");
+
+  /* ── โหลดพัง ≠ ทะเบียนว่าง ─────────────────────────────────────────────────
+     🐞 ของเดิมแกะแค่ `{ data, loading }` ⇒ API ตอบ 500 เมื่อไร `rawProducts`/`rawCustomers`
+     ค้างที่ `[]` แล้วจอนี้ขึ้น "สินค้าทั้งหมด 0 · ลูกค้าทั้งหมด 0" + "ไม่มีรายการรออนุมัติตอนนี้ 🎉"
+     ซึ่งอ่านได้ว่าทะเบียนว่าง/อนุมัติหมดแล้ว ไม่ใช่ระบบพัง — ทรงเดียวกับที่ซ่อน /tax ไว้ 26 วัน (#1795)
+
+     ⭐ **ป้ายเดียวที่หัวจอ ไม่ใช่ป้ายประจำแผง** — จอนี้ไม่ใช่ "แผงสินค้า" คู่กับ "แผงลูกค้า":
+       · แถว KPI สี่ใบอยู่แถวเดียว สลับสายกัน (สินค้า · ลูกค้า · สินค้า · ลูกค้า)
+       · กราฟแนวโน้มวาดสองสายบนแกนเดียว
+       · คิวรออนุมัติผสมแถวสินค้ากับลูกค้าไว้ในกองเดียว
+     ⇒ ป้ายรายแผงต้องไปแปะซ้ำในห้าแผง และแผงที่ผสมสองสายก็ยังตอบไม่ได้ว่าครึ่งไหนหาย
+     ⇒ ป้ายเดียวบอกชื่อสายที่ล้ม (ท่าเดียวกับ /tax) · แต่ละแผงแค่เลิกพูดตัวเลขของสายที่ไม่มีในมือ
+       แล้วชี้ขึ้นไปที่ป้าย
+
+     ⚠️ **สองคำถามคนละข้อ ห้ามยุบเป็นตัวเดียว** (กติกาเดียวกับ /tax · /sahamit) —
+       1. **ขึ้นป้ายไหม** = มี `error` (หรือรอบเบื้องหลังล้ม `staleError`) ก็ขึ้น · `apiCache` อยู่ระดับ
+          โมดูล อายุเท่าแท็บ ⇒ เดินไป /database/products แล้วกดกลับ จอวาดของเก่าจากแคชได้ครบก่อน
+          แล้วรอบใหม่ค่อยล้ม · ผูกป้ายไว้กับ "ว่างด้วย" = ตัวเลขเมื่อวานยืนยันตัวเองเงียบ ๆ
+       2. **เลิกโชว์ตัวเลขไหม** = error **คู่กับ** ไม่มีของในมือ (`…Failed`) เท่านั้น — และบล็อกเฉพาะ
+          ของที่กินสายนั้น: สินค้าล้ม ⇒ ไทล์สินค้า + กราฟสามใบ (ทุกใบกินสินค้า) · ลูกค้าล้ม ⇒ ไทล์ลูกค้า
+          + กราฟแนวโน้ม · คิวรออนุมัติไม่ซ่อน แต่บอกว่ายังไม่ครบ
+     🪤 `empty` = **ไม่เคยโหลดสำเร็จ** (`loaded`) ไม่ใช่ `!list.length` — ทะเบียนที่ตอบ `200 []`
+        (เช่นตัวกรองทีมที่ไม่มีของ หรือระบบที่เพิ่งเริ่ม) คือคำตอบที่ถูก ต้องยังอ่านว่าว่าง */
+  const sources = [
+    { label: "สินค้า", error: productsError || productsStale, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts },
+    { label: "ลูกค้า", error: customersError || customersStale, empty: !customersLoaded, detail: customersDetail, reload: reloadCustomers },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const productsFailed = !!(productsError || productsStale) && !productsLoaded;
+  const customersFailed = !!(customersError || customersStale) && !customersLoaded;
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      blocked.length ? "ตัวเลขและกราฟของสายที่ดึงไม่ได้จึงยังไม่แสดง และรายการรออนุมัติยังไม่ครบ" : null,
+      blocked.length < failing.length ? "ตัวเลขที่ยังเห็นอยู่เป็นข้อมูลรอบก่อน ไม่ใช่ล่าสุด" : null,
+    ].filter(Boolean).join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  // กด "ลองใหม่" = รอบหน้าบ้าน ⇒ `l1/l2` เป็น true ⇒ `Workspace loading` สลับเนื้อเป็น skeleton ให้เองระหว่างรอ
+  const retryLoad = () => failing.forEach((s) => s.reload());
+  /* คิวรออนุมัติกินทั้งสองสาย — สายไหนไม่มีของในมือ แถวของสายนั้นหายไปเงียบ ๆ ⇒ ป้ายจำนวน
+     ต้องไม่อ้างยอดเต็ม และช่องว่างต้องไม่ยินดีว่าอนุมัติหมดแล้ว (ท่าเดียวกับ WorkQueue ของ /tax) */
+  const queueIncomplete = productsFailed || customersFailed;
 
   const canApprove = canApproveMasterData(role);
 
@@ -186,12 +235,26 @@ export default function DatabaseOverview() {
     >
       <div className="flex flex-col gap-6" style={{ paddingBottom: 40 }}>
 
-        {/* KPIs */}
+        {loadError && (
+          <StatusNotice
+            tone="error"
+            detail={loadErrorDetail}
+            action={<Button size="sm" variant="ghost" onClick={retryLoad}>ลองใหม่</Button>}
+          >
+            {loadError}
+          </StatusNotice>
+        )}
+
+        {/* KPIs
+            ⭐ สายที่ไม่มีของในมือ = **ขีด** (`NA` = "—" ค่าว่างกลางของระบบ) ไม่ใช่ 0 และไม่ใช่ซ่อนการ์ด
+            — /tax ซ่อนทั้งแถวได้เพราะหนึ่งแถว = หนึ่งสาย · ที่นี่สี่ใบอยู่แถวเดียวสลับสายกัน ซ่อนเฉพาะ
+            ใบของสายที่ล้ม = การ์ดสายที่ยังดีเลื่อนที่ แถวแหว่ง อ่านเป็น "จอเรนเดอร์ไม่ครบ" ไม่ใช่ "ไม่รู้ค่า"
+            ⇒ คงการ์ดไว้ที่เดิม ค่าเป็นขีด และบรรทัดใต้ค่าชี้ขึ้นไปที่ป้าย */}
         <div className="kpi-grid" style={{ marginBottom: 0 }}>
-          <KpiCard label="สินค้าทั้งหมด" value={pStats.total} icon={Package} tone="accent" onClick={() => router.push("/database/products")} />
-          <KpiCard label="ลูกค้าทั้งหมด" value={cStats.total} icon={Building2} tone="info" onClick={() => router.push("/database/customers")} />
-          <KpiCard label="สินค้ารออนุมัติ" value={pStats.pending} icon={Hourglass} tone="warning" onClick={() => router.push("/database/products")} />
-          <KpiCard label="ลูกค้ารออนุมัติ" value={cStats.pending} icon={Hourglass} tone="danger" onClick={() => router.push("/database/customers")} />
+          <KpiCard label="สินค้าทั้งหมด" value={productsFailed ? NA : pStats.total} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Package} tone="accent" onClick={() => router.push("/database/products")} />
+          <KpiCard label="ลูกค้าทั้งหมด" value={customersFailed ? NA : cStats.total} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Building2} tone="info" onClick={() => router.push("/database/customers")} />
+          <KpiCard label="สินค้ารออนุมัติ" value={productsFailed ? NA : pStats.pending} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="warning" onClick={() => router.push("/database/products")} />
+          <KpiCard label="ลูกค้ารออนุมัติ" value={customersFailed ? NA : cStats.pending} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="danger" onClick={() => router.push("/database/customers")} />
         </div>
 
         {/* Charts Section 1 */}
@@ -201,6 +264,13 @@ export default function DatabaseOverview() {
               <h3 className="flex items-center gap-2"><TrendingUp size={16} color="var(--accent)" /> แนวโน้มการขึ้นทะเบียน (ต่อเดือน)</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
+              {/* กราฟนี้กินทั้งสองสาย ⇒ สายไหนไม่มีของในมือก็ **ซ่อนทั้งกราฟ** วางบรรทัดแทน
+                  — `trendData` ตั้งทั้งสองคีย์เป็น 0 ทุกเดือน ⇒ ถ้าวาดต่อ เส้นของสายที่ล้มจะนอนที่ 0
+                  ตลอดแกน (0 ที่มาจากความไม่รู้) · และไม่วาดเส้นเดียวแทน เพราะงานของกราฟนี้คือเทียบ
+                  สองเส้น เส้นเดียวที่ legend ไม่บอกว่าอีกเส้นหายไปไหน อ่านเป็น "ไม่มีลูกค้าใหม่" ได้ */}
+              {productsFailed || customersFailed ? (
+                <EmptyState icon={AlertCircle} plain className="h-full">กราฟแนวโน้มยังแสดงไม่ได้ — ดูข้อความด้านบน</EmptyState>
+              ) : (
               <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
@@ -224,6 +294,7 @@ export default function DatabaseOverview() {
                   <Area type={CHART_LINE_TYPE} dataKey="ลูกค้า" stroke={CHART_CATEGORICAL[0]} strokeWidth={2} fillOpacity={1} fill="url(#colorCust)" />
                 </AreaChart>
               </ResponsiveContainer></ChartCanvas>
+              )}
             </div>
           </div>
 
@@ -232,6 +303,11 @@ export default function DatabaseOverview() {
               <h3 className="flex items-center gap-2"><BarChart3 size={16} color="var(--green)" /> Top 5 ลูกค้าที่มีสินค้ามากที่สุด</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
+              {/* นับจากทะเบียนสินค้าล้วน (ชื่อลูกค้าบนแถวสินค้า) ⇒ ขึ้นกับสายสินค้าสายเดียว
+                  — ลูกค้าล้มไม่เกี่ยว กราฟนี้ยังถูกอยู่ */}
+              {productsFailed ? (
+                <EmptyState icon={AlertCircle} plain className="h-full">กราฟนี้ต้องใช้ข้อมูลสินค้า ซึ่งยังดึงไม่ได้ — ดูข้อความด้านบน</EmptyState>
+              ) : (
               <ChartCanvas><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={topCustomersData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
@@ -245,6 +321,7 @@ export default function DatabaseOverview() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer></ChartCanvas>
+              )}
             </div>
           </div>
         </div>
@@ -257,7 +334,11 @@ export default function DatabaseOverview() {
               <h3 className="flex items-center gap-2"><PieChartIcon size={16} color="var(--violet)" /> สัดส่วนสินค้าแบ่งตามหมวดหมู่</h3>
             </div>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              {categoryData.length === 0 ? (
+              {/* ลำดับสำคัญ: พังก่อน ว่างทีหลัง — สินค้าที่ไม่เคยโหลดสำเร็จทำให้ `categoryData` ว่าง
+                  แล้วตกไปที่ "ไม่มีข้อมูลสินค้าตามตัวกรองนี้" ซึ่งโทษตัวกรองแทนระบบ */}
+              {productsFailed ? (
+                <EmptyState icon={AlertCircle} plain className="h-full">กราฟนี้ต้องใช้ข้อมูลสินค้า ซึ่งยังดึงไม่ได้ — ดูข้อความด้านบน</EmptyState>
+              ) : categoryData.length === 0 ? (
                 <EmptyState icon={Package} plain className="h-full">ไม่มีข้อมูลสินค้าตามตัวกรองนี้</EmptyState>
               ) : (
                 <ChartCanvas><ResponsiveContainer width="100%" height="100%">
@@ -292,7 +373,8 @@ export default function DatabaseOverview() {
           <div className="glass-panel chart-card flex flex-col" style={{ minHeight: 350 }}>
             <div className="chart-header">
               <h3 className="flex items-center gap-2">
-                {canApprove ? "รออนุมัติจากคุณ" : "รายการรออนุมัติ"} {queue.length > 0 && <span className="ui-badge warning">{queue.length}</span>}
+                {/* คิวไม่ครบ = บอก "อย่างน้อย n" ไม่อ้างยอดเต็ม (กติกาเดียวกับป้ายจำนวนของ WorkQueue) */}
+                {canApprove ? "รออนุมัติจากคุณ" : "รายการรออนุมัติ"} {queue.length > 0 && <span className="ui-badge warning">{queueIncomplete ? `อย่างน้อย ${queue.length}` : queue.length}</span>}
               </h3>
               <div className="flex items-center gap-3 text-sm">
                 <Link href="/database/products" className="text-[var(--accent)] hover:underline flex items-center">เปิดหน้าสินค้า <ChevronRight size={14} /></Link>
@@ -300,7 +382,7 @@ export default function DatabaseOverview() {
               </div>
             </div>
             <div style={{ flex: 1, maxHeight: 290, overflowY: "auto", paddingRight: 4 }}>
-              <ActionQueue items={queue} empty="ไม่มีรายการรออนุมัติตอนนี้ 🎉" />
+              <ActionQueue items={queue} incomplete={queueIncomplete} empty="ไม่มีรายการรออนุมัติตอนนี้ 🎉" />
             </div>
           </div>
         </div>

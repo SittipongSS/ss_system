@@ -21,10 +21,18 @@ const TONE_ICON = {
   neutral: Inbox,
 };
 
-export default function ActionQueue({ items = [], empty = "ไม่มีงานค้างที่ต้องทำตอนนี้ 🎉" }) {
+/* ⭐ `incomplete` = แหล่งข้อมูลที่ป้อนคิวนี้โหลดไม่สำเร็จอย่างน้อยหนึ่งก้อน — จอที่เรียกเป็นคนบอก
+   และเป็นคนขึ้น StatusNotice อธิบายเอง (ท่าเดียวกับ `incomplete` ของ excise/WorkQueue)
+   ⇒ ที่นี่แค่เลิกยินดีกับคิวว่าง: ช่องว่างเปลี่ยนจาก `empty` ("…ตอนนี้ 🎉") เป็นคำบอกว่าคิวยังไม่ครบ
+   🐞 ของจริง: /database เคยขึ้น "ไม่มีรายการรออนุมัติตอนนี้ 🎉" ตอนดึงทะเบียนไม่ขึ้น — 0 ที่มาจาก
+      ความไม่รู้อ่านได้ว่าอนุมัติหมดแล้ว · ป้ายจำนวน (ถ้ามี) อยู่ที่หัวการ์ดของจอ ⇒ จอเป็นคนเปลี่ยนเป็น "อย่างน้อย n" */
+export default function ActionQueue({ items = [], empty = "ไม่มีงานค้างที่ต้องทำตอนนี้ 🎉", incomplete = false }) {
   if (!items.length) {
     /* `plain` — คิวนี้วางอยู่ในการ์ด/section เสมอ (ภาพรวมบริการ · ฐานข้อมูล · ผลิต)
        🐞 เดิมวาดกล่องมีกรอบซ้อนในการ์ดอีกชั้น */
+    if (incomplete) {
+      return <EmptyState icon={AlertCircle} plain>คิวยังไม่ครบเพราะโหลดข้อมูลไม่สำเร็จ — ดูข้อความด้านบนแล้วกด “ลองใหม่”</EmptyState>;
+    }
     return <EmptyState icon={CheckCircle2} plain>{empty}</EmptyState>;
   }
   return (
