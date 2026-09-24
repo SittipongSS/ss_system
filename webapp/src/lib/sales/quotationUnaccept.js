@@ -22,8 +22,16 @@ export function unacceptReasonError(value) {
   return '';
 }
 
-// ผู้สั่งย้อน = ชุดผู้ตรวจสอบเดียวกับการอนุมัติ/ย้อน SO (admin + ผู้มีอำนาจตัดสิน CD · CM · AE Sup) —
-// การถอยดีลออกจาก Won ต้องไม่อยู่ในมือ AE ฝ่ายเดียว
-export function canUnacceptQuotation(role) {
-  return isSalesOrderReviewer(role);
+// ผู้สั่งย้อน = **เจ้าของดีลปัจจุบัน** + ผู้มีอำนาจตัดสิน (admin · CD · CM · AE Sup) — มติผู้ใช้ 2026-09-24
+// ⭐ ขาเข้า Won เจ้าของดีลกดเองอยู่แล้ว (อนุมัติใบเอง 07-18 · รับใบเอง 08-24) ⇒ ขาออกไม่ต้องรอหัวหน้า
+//    prod: ย้อนการรับ 16 ครั้งเป็นการแก้ใบแล้วกดรับใหม่ทุกครั้ง (ค่ากลาง 27 นาที) · ไม่มีครั้งไหนเป็นเสียลูกค้า
+// ⭐ ไม่แตะ Actual — RPC ปฏิเสธเมื่อมี SO ที่ยังใช้อยู่ (0380) · SO อนุมัติแล้วยังต้องให้ผู้มีอำนาจตัดสินย้อน/ยกเลิก
+//    ก่อนเสมอ (มติ 16/07 แบ่งแยกหน้าที่ถอนยอด — ไม่เปลี่ยน)
+// ⚠️ ยึด deal.ownerId ไม่ใช่ขอบเขตทีม (inSalesEditScope) — senior_ae/ac/senior_ac แก้ดีลของเพื่อนร่วมทีมได้
+//    แต่ย้อน Won แทนเจ้าของไม่ได้ · กติกาเดียวกับ canApproveQuotation / canIssueSalesOrderRevision
+// 🐞 ข้อความเดิม "การถอยดีลออกจาก Won ต้องไม่อยู่ในมือ AE ฝ่ายเดียว" เป็นคำอธิบายของคนเขียน ไม่ใช่มติ (21/07 สั่งแค่
+//    "เครื่องมือฉุกเฉิน + เหตุผลบังคับ")
+export function canUnacceptQuotation(user, deal) {
+  if (isSalesOrderReviewer(user?.role)) return true;
+  return Boolean(user?.id) && user.id === deal?.ownerId;
 }

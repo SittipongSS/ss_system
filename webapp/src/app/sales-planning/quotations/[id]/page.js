@@ -455,10 +455,21 @@ export default function QuotationEditorPage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
   const doAccept = () => setWonOpen(true);
-  // ย้อนการรับ = เครื่องมือ supervisor/แอดมินกรณีรับใบผิดก่อนมี SO — มี SO ที่ยังมีชีวิต (ไม่ยกเลิก ·
-  // ไม่ถูกแทนด้วย Rev.) ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ · 0380); เหตุผลบังคับ 10–500 ตัวอักษร
-  const canUnaccept = quote?.status === "accepted" && canUnacceptQuotation(role)
+  // ย้อนการรับ = เจ้าของดีลปัจจุบัน + ผู้มีอำนาจตัดสิน (มติ 24/09) กรณีรับใบผิดก่อนมี SO — มี SO ที่ยังมีชีวิต
+  // (ไม่ยกเลิก · ไม่ถูกแทนด้วย Rev.) ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ · 0380); เหตุผลบังคับ 10–500 ตัวอักษร
+  /* ⚠️ คูณ canEditCap — เจ้าของดีล Won ที่ถูกย้ายไปตำแหน่งดูอย่างเดียว (โอนงานไม่ย้ายดีล Won) ยังเป็น ownerId
+     ถ้าไม่คูณ ปุ่มจะกดได้แล้วโดน 403 ทุกครั้ง (ผู้จัดการมี salesplan:edit ครบอยู่แล้ว — ช่องนี้เพิ่งเกิดจากกิ่งเจ้าของดีล) */
+  const unacceptAllowed = canEditCap && canUnacceptQuotation({ id: quote?.meId, role }, quote?.deal);
+  const canUnaccept = quote?.status === "accepted" && unacceptAllowed
     && !quote.hasLiveSalesOrder;
+  /* ติดด่าน = โชว์ปุ่มจางแล้วบอกเหตุ (กติกา "ปุ่มกดไม่ได้ = โชว์เสมอ") — ไม่งั้นเจ้าของดีลที่มี SO ค้างอยู่
+     จะคิดว่าปุ่มหายหรือระบบพัง · คนในทีมที่ไม่ใช่เจ้าของดีลได้ชื่อคนที่ต้องส่งต่อ (แบบปุ่ม "ยื่นอนุมัติ" ของ SO) */
+  const unacceptBlockedReason = quote?.status !== "accepted" || canUnaccept || !canEditCap ? ""
+    : !unacceptAllowed
+      ? `ย้อนการรับได้เฉพาะเจ้าของดีลหรือ AE Supervisor — ส่งต่อให้ ${quote.deal?.ownerName || "เจ้าของดีล"}`
+      /* ⚠️ ไม่ระบุว่าใครยกเลิก SO ได้ — ขึ้นกับสถานะ SO + งวดที่มีเงิน (salesOrderCancelNeedsReviewer) ซึ่งหน้านี้ไม่ได้โหลด
+         พูดแค่ข้อเท็จจริงที่ถูกทุกกรณี: ต้องยกเลิกก่อน · ใบที่ยื่น/อนุมัติแล้วหรือมีเงินรับแล้วเป็นงานของผู้จัดการ */
+      : "มีใบสั่งขายที่ยังใช้อยู่ — ต้องยกเลิก SO ก่อนจึงจะย้อนการรับได้ · SO ที่ยื่นหรืออนุมัติแล้ว หรือมีเงินรับแล้ว ต้องให้ AE Supervisor ยกเลิก";
   const unacceptReasonValidation = unacceptForm ? unacceptReasonError(unacceptForm.reason) : "";
   const doUnaccept = async () => {
     if (unacceptReasonValidation) return;
@@ -728,8 +739,10 @@ export default function QuotationEditorPage() {
       id: "unaccept",
       kind: "reject",
       label: "ย้อนการรับ",
-      visible: canUnaccept && !editMode,
-      title: "ย้อนการรับใบเสนอราคา (หัวหน้าทีม/แอดมิน)",
+      visible: (canUnaccept || !!unacceptBlockedReason) && !editMode,
+      disabled: !canUnaccept,
+      disabledReason: unacceptBlockedReason || undefined,
+      title: "ย้อนการรับใบเสนอราคา (เจ้าของดีล/AE Supervisor)",
       onClick: () => { setError(""); setUnacceptForm({ reason: "" }); },
     },
   ];
