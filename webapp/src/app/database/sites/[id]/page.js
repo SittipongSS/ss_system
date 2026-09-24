@@ -6,15 +6,17 @@ import { useRouter } from "next/navigation";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { use } from "react";
-import { AirVent, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AirVent, Boxes, CalendarClock, History, Layers, MapPin, Navigation, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
+import FilterPopover from "@/components/ui/FilterPopover";
 import GatedAction from "@/components/ui/GatedAction";
-import SkeletonRows from "@/components/ui/Skeleton";
+import Pager from "@/components/ui/Pager";
+import Segmented from "@/components/ui/Segmented";
 import { TableScroll } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
@@ -30,6 +32,18 @@ import {
 } from "@/lib/service/sites";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { refillStatus } from "@/lib/service/refill";
+import {
+  ALL_BUILDINGS,
+  assetBuildingKey,
+  assetModelSummary,
+  buildingChipOptions,
+  filterSiteAssets,
+  filterZones,
+  sortSiteAssets,
+  sortZones,
+  zoneBuildingKey,
+} from "@/lib/service/siteDetailLists";
+import { usePagination } from "@/lib/usePagination";
 import {
   VISIT_KIND_LABELS,
   VISIT_STATUS_LABELS,
@@ -190,7 +204,7 @@ export default function ServiceSiteDetailPage({ params }) {
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
-    setToast({ kind: "success", msg: editing ? `บันทึกเครื่อง ${data.label} แล้ว` : `เพิ่มเครื่อง ${data.label} แล้ว` });
+    setToast({ kind: "success", msg: editing ? `บันทึกเครื่อง ${data.code || data.label} แล้ว` : `เพิ่มเครื่อง ${data.code || data.label} แล้ว` });
     await load();
   };
 
@@ -230,7 +244,7 @@ export default function ServiceSiteDetailPage({ params }) {
     try {
       const result = await deleteWithForce(`/api/service/sites/${id}/assets/${pendingDelete.row.id}`, { isAdmin });
       if (result.cancelled) return;
-      setToast({ kind: "success", msg: `ลบเครื่อง ${pendingDelete.row.label} แล้ว` });
+      setToast({ kind: "success", msg: `ลบเครื่อง ${pendingDelete.row.code || pendingDelete.row.label} แล้ว` });
       setPendingDelete(null);
       await load();
     } catch (e) {
@@ -340,6 +354,78 @@ export default function ServiceSiteDetailPage({ params }) {
     [assets],
   );
 
+  /* ── ตารางโซน/อุปกรณ์ — ค้นหา · ชิปอาคาร · แบ่งหน้า (ผู้ใช้ทัก "มันยาวไปมั้ย" 25/09/2026) ──────────
+     🐞 The Empire ลงจาก Excel แล้วมี 247 โซน · 292 เครื่อง ⇒ สองตารางยาวต่อกัน 539 แถวไม่มีเครื่องมือเลย
+     ⭐ ตัวคิดอยู่ lib/service/siteDetailLists.js (เทสต์ได้) · ไซต์เล็กหน้าตาแทบเท่าเดิม: ไม่ถึงหน้า Pager ไม่ขึ้น ·
+        อาคารเดียว ชิปไม่ขึ้น
+     ⚠️ เลขบนชิปอาคาร = จำนวนที่จะเห็นถ้ากด (กรองคำค้น/รุ่น/สถานะแล้ว ยกเว้นอาคาร) · ชิปที่เลือกไว้หายไป
+        (แก้ชื่ออาคาร) ⇒ กลับเป็น "ทุกอาคาร" ไม่ใช่ค้างตัวกรองที่มองไม่เห็น */
+  const [zoneQuery, setZoneQuery] = useState("");
+  const [zoneBuilding, setZoneBuilding] = useState(ALL_BUILDINGS);
+  const [assetQuery, setAssetQuery] = useState("");
+  const [assetBuilding, setAssetBuilding] = useState(ALL_BUILDINGS);
+  const [assetModels, setAssetModels] = useState([]);
+  const [assetStatuses, setAssetStatuses] = useState([]);
+
+  const buildingNames = useMemo(() => zones.map((z) => z.building), [zones]);
+  // นับเครื่องต่อโซนครั้งเดียว — เดิม filter ทั้งกองต่อแถว (247 โซน × 292 เครื่องทุกเรนเดอร์)
+  const assetCountByZone = useMemo(() => {
+    const counts = new Map();
+    for (const a of assets) {
+      if (a.zoneId && a.status !== "removed") counts.set(a.zoneId, (counts.get(a.zoneId) || 0) + 1);
+    }
+    return counts;
+  }, [assets]);
+  const zonesByQuery = useMemo(() => filterZones(sortZones(zones), { query: zoneQuery }), [zones, zoneQuery]);
+  const zoneBuildingOptions = useMemo(
+    () => buildingChipOptions(zonesByQuery.map(zoneBuildingKey), buildingNames),
+    [zonesByQuery, buildingNames],
+  );
+  const zoneBuildingShown = zoneBuildingOptions.some((o) => o.value === zoneBuilding) ? zoneBuilding : ALL_BUILDINGS;
+  const shownZones = useMemo(
+    () => filterZones(zonesByQuery, { building: zoneBuildingShown }),
+    [zonesByQuery, zoneBuildingShown],
+  );
+  const zonePaging = usePagination(shownZones, { resetKey: `${zoneQuery}|${zoneBuildingShown}` });
+
+  const modelSummary = useMemo(() => assetModelSummary(assets), [assets]);
+  const assetStatusOptions = useMemo(
+    () => [...new Set(assets.map((a) => a.status))].map((value) => ({ value, label: ASSET_STATUS_LABELS[value] || value })),
+    [assets],
+  );
+  const assetsByFilters = useMemo(
+    () => filterSiteAssets(sortSiteAssets(assets, zones), zonesById, { query: assetQuery, models: assetModels, statuses: assetStatuses }),
+    [assets, zones, zonesById, assetQuery, assetModels, assetStatuses],
+  );
+  const assetBuildingOptions = useMemo(
+    () => buildingChipOptions(
+      assetsByFilters.map((a) => assetBuildingKey(a, zonesById)),
+      // เครื่องที่ยังไม่อยู่ในโซนไหนเป็นกลุ่ม "ไม่ระบุอาคาร" ด้วย (null → กลุ่มนั้น)
+      [...buildingNames, ...(assets.some((a) => !a.zoneId) ? [null] : [])],
+    ),
+    [assetsByFilters, zonesById, buildingNames, assets],
+  );
+  const assetBuildingShown = assetBuildingOptions.some((o) => o.value === assetBuilding) ? assetBuilding : ALL_BUILDINGS;
+  const shownAssets = useMemo(
+    () => filterSiteAssets(assetsByFilters, zonesById, { building: assetBuildingShown }),
+    [assetsByFilters, zonesById, assetBuildingShown],
+  );
+  const assetPaging = usePagination(shownAssets, {
+    resetKey: JSON.stringify([assetQuery, assetBuildingShown, assetModels, assetStatuses]),
+  });
+  // รุ่น/สถานะมีตัวเลือกเดียว = ไม่มีอะไรให้กรอง ⇒ ไม่วาดกลุ่มนั้น (ทั้งปุ่มหายเมื่อไม่เหลือกลุ่มไหน)
+  const assetFilterGroups = [
+    ...(modelSummary.length > 1 ? [{
+      key: "model", label: "รุ่น", icon: Boxes,
+      options: modelSummary.map((s) => ({ value: s.key, label: s.label })),
+      selected: assetModels, onChange: setAssetModels,
+    }] : []),
+    ...(assetStatusOptions.length > 1 ? [{
+      key: "status", label: "สถานะ", icon: Navigation,
+      options: assetStatusOptions, selected: assetStatuses, onChange: setAssetStatuses,
+    }] : []),
+  ];
+
   // นัดที่จะถึง / ประวัติ — แยกกันเพราะคนละคำถาม ("เจ้าหน้าที่จะมาเมื่อไหร่" กับ "ที่ผ่านมาทำอะไรบ้าง")
   const todayIso = businessDate();
   const upcoming = useMemo(
@@ -367,7 +453,22 @@ export default function ServiceSiteDetailPage({ params }) {
       {body}
     </Workspace>
   );
-  if (loading) return shell(<SkeletonRows rows={5} />);
+  /* ⭐ โครงโหลดเฉพาะ **ครั้งแรก** (ยังไม่มีไซต์ในมือ) · โหลดซ้ำหลังบันทึกค้างหน้าเดิมไว้จนข้อมูลใหม่มา
+     ⚠️ ห้ามกลับไปเป็น `if (loading) return <SkeletonRows/>` — หน้านี้มี ListPanel ที่มีช่องค้นหา ⇒ ถอดทั้งหน้า
+        ทุกครั้งที่บันทึก = ช่องค้นหาหลุดโฟกัส/ตารางวูบ (ด่าน LIST_PANEL_SHAPE LP6) · โครงโหลดจึงเป็น
+        ListPanel loading แบบเดียวกับหน้าโครงการ */
+  // ⚠️ ไซต์ในมือเป็นคนละใบกับ URL (กดลิงก์ข้ามไซต์) = ยังไม่มีของใบนี้ ⇒ โครงโหลด ไม่ใช่ข้อมูลใบเก่าค้าง
+  if (loading && (!site || site.id !== id)) {
+    return shell(
+      <ListPanel
+        icon={<MapPin size={17} aria-hidden="true" />}
+        title="ไซต์บริการ"
+        subtitle="กำลังโหลดข้อมูลไซต์ โซน และอุปกรณ์"
+        count={null}
+        loading
+      />,
+    );
+  }
   if (notFound || (!loadError && !site)) {
     return shell(
       <EmptyState icon={MapPin}>
@@ -415,7 +516,7 @@ export default function ServiceSiteDetailPage({ params }) {
     },
     asset: {
       title: "ลบอุปกรณ์ออกจากไซต์",
-      message: (row) => `ลบ ${row.label} ออกจากไซต์นี้?`,
+      message: (row) => `ลบ ${row.code || row.label} ออกจากไซต์นี้?`,
       detail: "ถ้าอุปกรณ์ถูกถอดออกจริง ให้ใช้คำสั่ง 'ถอดออกจากไซต์' หรือ 'ปลดระวาง' บนหน้าเครื่องแทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย",
       confirmLabel: "ลบอุปกรณ์",
       onConfirm: removeAsset,
@@ -529,30 +630,47 @@ export default function ServiceSiteDetailPage({ params }) {
         </dl>
       </DetailCard>
 
-      <DetailCard
-        icon={Layers}
-        eyebrow="Zones"
+      {/* แผงรายการ (มติผู้ใช้ 2026-09-15: รายการที่มีช่องค้นหาของตัวเองในหน้ารายละเอียด = ListPanel)
+          ป้ายจำนวน = จำนวนหลังค้นหา/กรอง (เท่ายอดของ Pager) */}
+      <ListPanel
+        icon={<Layers size={17} aria-hidden="true" />}
         title="โซนในไซต์"
-        meta="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
+        subtitle="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
+        count={`${fmtNumber(shownZones.length)} โซน`}
         actions={canEdit ? (
           /* ปุ่มเพิ่มระดับการ์ด = สีกลาง — primary สงวนให้การยืนยัน (Page contract §8) */
           <Button tone="neutral" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มโซน
           </Button>
         ) : null}
+        toolbar={zones.length ? (
+          <>
+            <div className="search-glass">
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input autoComplete="off" value={zoneQuery} onChange={(e) => setZoneQuery(e.target.value)}
+                placeholder="ค้นหารหัสโซน ชื่อ อาคาร ชั้น หรือจุด" aria-label="ค้นหาโซนในไซต์" />
+            </div>
+            {zoneBuildingOptions.length > 0 && (
+              <Segmented ariaLabel="กรองโซนตามอาคาร" value={zoneBuildingShown} onChange={setZoneBuilding} options={zoneBuildingOptions} />
+            )}
+          </>
+        ) : null}
       >
         {zones.length === 0 ? (
           <EmptyState icon={Layers} dashed={canEdit} onClick={canEdit ? () => setFormZone(null) : undefined} plain>
             {canEdit ? "ยังไม่มีโซนในไซต์นี้ — เช่น Lobby · Reception · ห้องน้ำชั้น 2" : "ยังไม่มีโซนในไซต์นี้"}
           </EmptyState>
+        ) : shownZones.length === 0 ? (
+          <EmptyState icon={Layers} plain>ไม่พบโซนที่ตรงกับคำค้นหรืออาคารที่เลือก</EmptyState>
         ) : (
-          /* ⚠️ ในการ์ดใช้ TableScroll ตรง ๆ + minWidth (ทุกตารางในหน้านี้)
+          <>
+          {/* ⚠️ ในการ์ดใช้ TableScroll ตรง ๆ + minWidth (ทุกตารางในหน้านี้)
              🐞 เดิมเป็น TableShell = กรอบซ้อนสามชั้น กินที่ 36px บนมือถือ และไม่มี minWidth
                 ⇒ ตารางบีบจนรหัสโซนตัดทีละท่อน ป้ายสถานะแตกสองบรรทัด ปุ่มลบหลุดขอบขวา
              📏 minWidth ต้อง ≤ กล่องที่แคบสุดตอนรางข้างยังอยู่ (612px ที่จอ 1051) ไม่ใช่แค่กล่องแท็บเล็ต
                 🐞 เคยตั้ง 680 ⇒ จอ 1051–1119 ประวัติเลื่อนข้างเงียบ ๆ ปุ่มลบของแอดมินหลุดขอบ
              📱 จอ ≤ 680 ตารางโซนไม่ใช้ minWidth นี้ — พับเหลือ โซน · ปุ่ม (ดู .foldTable ใน page.module.css)
-                🐞 560 ในกล่อง 326px ⇒ ป้ายสถานะกับปุ่มแก้/ลบอยู่พ้นขอบขวาทั้งชุด ไม่มีอะไรบอกว่าเลื่อนได้ */
+                🐞 560 ในกล่อง 326px ⇒ ป้ายสถานะกับปุ่มแก้/ลบอยู่พ้นขอบขวาทั้งชุด ไม่มีอะไรบอกว่าเลื่อนได้ */}
           <TableScroll family="list" cells="stacked" minWidth={560}>
             <table className={styles.foldTable}>
               <thead>
@@ -566,8 +684,8 @@ export default function ServiceSiteDetailPage({ params }) {
                 </tr>
               </thead>
               <tbody>
-                {zones.map((zone) => {
-                  const zoneAssets = assets.filter((a) => a.zoneId === zone.id && a.status !== "removed");
+                {zonePaging.pageRows.map((zone) => {
+                  const zoneAssetCount = assetCountByZone.get(zone.id) || 0;
                   const spotCount = Array.isArray(zone.spots) ? zone.spots.length : 0;
                   // ชั้น/อาคาร (mig 0315) — ชั้นไม่อยู่ในรหัสแล้ว (mig 0384) บรรทัดล่างจึงเป็นที่เดียวที่บอกชั้น
                   const zoneSub = [zone.code ? zone.name : null, zone.building, floorLabel(zone.floor), zone.note]
@@ -596,12 +714,12 @@ export default function ServiceSiteDetailPage({ params }) {
                             {/* ตัวเลขกับหน่วยห้ามแยกบรรทัด ("0 / เครื่อง" ที่จอ 320) */}
                             <span className={styles.nowrap}>{fmtNumber(spotCount)} จุด</span>
                             {" · "}
-                            <span className={styles.nowrap}>{fmtNumber(zoneAssets.length)} เครื่อง</span>
+                            <span className={styles.nowrap}>{fmtNumber(zoneAssetCount)} เครื่อง</span>
                           </span>
                         </div>
                       </td>
                       <td className={`num ${styles.numCol} ${styles.wideCol}`}>{spotCount}</td>
-                      <td className={`num ${styles.numCol} ${styles.wideCol}`}>{zoneAssets.length}</td>
+                      <td className={`num ${styles.numCol} ${styles.wideCol}`}>{zoneAssetCount}</td>
                       <td className={styles.wideCol}>{statusBadge}</td>
                       {canEdit && (
                         <td>
@@ -617,27 +735,49 @@ export default function ServiceSiteDetailPage({ params }) {
               </tbody>
             </table>
           </TableScroll>
+          <Pager page={zonePaging.page} pageCount={zonePaging.pageCount} total={zonePaging.total}
+            onPage={zonePaging.setPage} pageSize={zonePaging.pageSize} onPageSize={zonePaging.setPageSize} itemLabel="โซน" />
+          </>
         )}
-      </DetailCard>
+      </ListPanel>
 
-      <DetailCard
+      <ListPanel
         /* ไอคอนเครื่อง = AirVent ตามเมนู "ทะเบียนเครื่อง" (Boxes สงวนให้วัสดุ) */
-        icon={AirVent}
-        eyebrow="Assets"
+        icon={<AirVent size={17} aria-hidden="true" />}
         title="อุปกรณ์ในไซต์"
         /* ⚠️ ต้องครบทุกกอง ไม่งั้นตัวเลขไม่รวมกันเป็น total แล้วคนอ่านเห็นเป็นบั๊ก
            (mig 0332 เพิ่ม in_stock เข้ามา) · กองที่เป็นศูนย์ตัดทิ้งเพื่อไม่ให้แถวยาวเปล่า ๆ */
-        meta={[
+        subtitle={[
           `ใช้งาน ${rollup.active}`,
           rollup.inStock ? `อยู่ในคลัง ${rollup.inStock}` : null,
           `ส่งซ่อม ${rollup.repair}`,
           rollup.removed ? `ปลดระวาง ${rollup.removed}` : null,
           rollup.broken ? `ชำรุด ${rollup.broken}` : null,
         ].filter(Boolean).join(" · ")}
+        count={`${fmtNumber(shownAssets.length)} เครื่อง`}
         actions={canEdit ? (
           <Button tone="neutral" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มอุปกรณ์
           </Button>
+        ) : null}
+        toolbar={assets.length ? (
+          <>
+            <div className="search-glass">
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input autoComplete="off" value={assetQuery} onChange={(e) => setAssetQuery(e.target.value)}
+                placeholder="ค้นหารหัสเครื่อง รุ่น สี โซน หรือจุด" aria-label="ค้นหาอุปกรณ์ในไซต์" />
+            </div>
+            {assetBuildingOptions.length > 0 && (
+              <Segmented ariaLabel="กรองอุปกรณ์ตามอาคาร" value={assetBuildingShown} onChange={setAssetBuilding} options={assetBuildingOptions} />
+            )}
+            {assetFilterGroups.length > 0 && (
+              <FilterPopover
+                groups={assetFilterGroups}
+                count={assetModels.length + assetStatuses.length}
+                onClear={() => { setAssetModels([]); setAssetStatuses([]); }}
+              />
+            )}
+          </>
         ) : null}
       >
         {/* แถบ backfill — อุปกรณ์เก่าเกิดก่อนมีโซน (mig 0298) ต้องมีคนไล่จัดเข้าโซน
@@ -648,13 +788,27 @@ export default function ServiceSiteDetailPage({ params }) {
             แล้วการใช้ต่อรอบจะเริ่มนับเป็นของโซนนั้น
           </p>
         )}
+        {/* สรุปตามรุ่น/สีทั้งไซต์ (ไม่นับปลดระวาง · ไม่ขยับตามตัวกรอง) — ตอบ "ไซต์นี้มีอะไรกี่ตัว"
+            โดยไม่ต้องไล่ทุกหน้า · ตัวเลขชิ้นเดียวกับตัวเลือก "รุ่น" ในตัวกรอง */}
+        {modelSummary.length > 0 && (
+          <p className={styles.modelSummary}>
+            {modelSummary.map((item, index) => (
+              <span key={item.key} className={styles.nowrap}>
+                {index > 0 ? " · " : ""}{item.label} <strong>{fmtNumber(item.count)}</strong>
+              </span>
+            ))}
+          </p>
+        )}
         {assets.length === 0 ? (
           <EmptyState icon={AirVent} dashed={canEdit} onClick={canEdit ? () => setFormAsset(null) : undefined} plain>
             {canEdit ? "ยังไม่มีอุปกรณ์ในไซต์นี้ — กดเพื่อเพิ่มรายการแรก" : "ยังไม่มีอุปกรณ์ในไซต์นี้"}
           </EmptyState>
+        ) : shownAssets.length === 0 ? (
+          <EmptyState icon={AirVent} plain>ไม่พบอุปกรณ์ที่ตรงกับคำค้นหรือตัวกรอง</EmptyState>
         ) : (
-          /* 640 ≈ เนื้อ 8 คอลัมน์ที่บีบสุดแล้วยังไม่ตัดกลางคำ (วัดได้ 638) · จอ ≥ 1200 หน้าตาเท่า 960
-             🐞 960 เดิมบังคับเลื่อนข้างทุกจอ 1051–1399 (โน้ตบุ๊ก 1280/1366) และแท็บเล็ต ปุ่มแก้/ลบหลุดขอบ */
+          <>
+          {/* 640 ≈ เนื้อ 8 คอลัมน์ที่บีบสุดแล้วยังไม่ตัดกลางคำ (วัดได้ 638) · จอ ≥ 1200 หน้าตาเท่า 960
+             🐞 960 เดิมบังคับเลื่อนข้างทุกจอ 1051–1399 (โน้ตบุ๊ก 1280/1366) และแท็บเล็ต ปุ่มแก้/ลบหลุดขอบ */}
           <TableScroll family="list" cells="stacked" minWidth={640}>
             <table>
               <thead>
@@ -670,7 +824,7 @@ export default function ServiceSiteDetailPage({ params }) {
                 </tr>
               </thead>
               <tbody>
-                {assets.map((asset) => {
+                {assetPaging.pageRows.map((asset) => {
                   const refill = refillStatus(asset, {
                     lastSiteRefillDate: schedule.lastRefillDate,
                     nextVisitDate: schedule.nextVisitDate,
@@ -678,17 +832,26 @@ export default function ServiceSiteDetailPage({ params }) {
                   /* 🔄 เคยต่อท้ายด้วย "· N จุด" สำหรับชนิดแถวรวม — ถอดออกแล้ว
                      (มติผู้ใช้ 2026-09-03: ทุกชนิดนับรายตัว ไม่มีแถวรวมทั้งชุด) */
                   const kindText = ASSET_KIND_LABELS[asset.kind] || asset.kind || "";
+                  // ⭐ รหัสบน · ชื่อล่าง — ชื่อ (`label`) ของเครื่องที่เพิ่มจากทะเบียนคือชื่อรุ่น ⇒ ไซต์ที่มีรุ่นเดียว
+                  //    242 ตัวเคยขึ้น "M240" ซ้ำทุกแถว แยกไม่ออกว่าแถวไหนเครื่องไหน · เครื่องเก่าที่ไม่มีรหัสใช้ชื่อแทน
+                  const assetName = asset.code || asset.label;
+                  const subLine = [asset.code ? asset.label : null, kindText].filter(Boolean).join(" · ");
                   return (
                     <tr key={asset.id} className={asset.status === "removed" ? styles.inactive : undefined}>
                       <td>
-                        {/* ชื่อเครื่องกดเข้าหน้าอุปกรณ์ — ค่าตั้งเครื่องกับประวัติรายตัว
+                        {/* กดเข้าหน้าอุปกรณ์ — ค่าตั้งเครื่องกับประวัติรายตัว
                             (ติดตั้ง · ถูกเปลี่ยน · เอาไปแทนตัวอื่น) อยู่ที่นั่น */}
-                        <Link href={`/database/assets/${asset.id}`} className="table-row-link">
-                          {asset.label}
+                        {/* รหัสห้ามตัดกลาง ("MC-SMV1-" / "260900083" ที่จอ 375) — ตารางนี้เลื่อนข้างในกล่องของมันอยู่แล้ว */}
+                        <Link href={`/database/assets/${asset.id}`} className={`table-row-link${asset.code ? ` mono ${styles.nowrap}` : ""}`}>
+                          {assetName}
                         </Link>
-                        {kindText ? <div className={styles.muted}>{kindText}</div> : null}
+                        {subLine ? <div className={styles.muted}>{subLine}</div> : null}
                       </td>
-                      <td>{asset.zoneId ? naText(zonesById.get(asset.zoneId)?.name) : <span className={styles.muted}>ยังไม่ระบุ</span>}</td>
+                      <td>
+                        {asset.zoneId ? naText(zonesById.get(asset.zoneId)?.name) : <span className={styles.muted}>ยังไม่ระบุ</span>}
+                        {/* จุดติดตั้งของเครื่อง (ข้อความ) — ห้องน้ำชาย/หญิงของชั้นเดียวกันแยกกันได้ด้วยบรรทัดนี้ */}
+                        {asset.spot ? <div className={styles.muted}>{asset.spot}</div> : null}
+                      </td>
                       <td>
                         {naText(asset.model)}
                         {asset.colour ? ` (${asset.colour})` : ""}
@@ -705,12 +868,13 @@ export default function ServiceSiteDetailPage({ params }) {
                           ? <span className={styles.muted}>{refill.label}</span>
                           : refill.label}
                       </td>
-                      <td><span className="ui-badge">{ASSET_STATUS_LABELS[asset.status] || asset.status}</span></td>
+                      {/* 🐞 คอลัมน์แรกเป็นรหัส MC (ยาวกว่าชื่อรุ่น) ⇒ ตารางบีบจนป้าย "ใช้งานอยู่" แตกสองบรรทัดที่จอ 1366 */}
+                      <td className={styles.nowrap}><span className="ui-badge">{ASSET_STATUS_LABELS[asset.status] || asset.status}</span></td>
                       {canEdit && (
                         <td>
                           <div className={styles.rowActions}>
-                            <Button iconOnly tone="neutral" variant="quiet" aria-label={`แก้ไขเครื่อง ${asset.label}`} onClick={() => setFormAsset(asset)} icon={<Pencil size={14} aria-hidden="true" />} />
-                            <Button iconOnly tone="danger" variant="quiet" aria-label={`ลบเครื่อง ${asset.label}`} onClick={() => setPendingDelete({ type: "asset", row: asset })} icon={<Trash2 size={14} aria-hidden="true" />} />
+                            <Button iconOnly tone="neutral" variant="quiet" aria-label={`แก้ไขเครื่อง ${assetName}`} onClick={() => setFormAsset(asset)} icon={<Pencil size={14} aria-hidden="true" />} />
+                            <Button iconOnly tone="danger" variant="quiet" aria-label={`ลบเครื่อง ${assetName}`} onClick={() => setPendingDelete({ type: "asset", row: asset })} icon={<Trash2 size={14} aria-hidden="true" />} />
                           </div>
                         </td>
                       )}
@@ -720,8 +884,11 @@ export default function ServiceSiteDetailPage({ params }) {
               </tbody>
             </table>
           </TableScroll>
+          <Pager page={assetPaging.page} pageCount={assetPaging.pageCount} total={assetPaging.total}
+            onPage={assetPaging.setPage} pageSize={assetPaging.pageSize} onPageSize={assetPaging.setPageSize} itemLabel="เครื่อง" />
+          </>
         )}
-      </DetailCard>
+      </ListPanel>
 
       <DetailCard
         icon={RefreshCw}
