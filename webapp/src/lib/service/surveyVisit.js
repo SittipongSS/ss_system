@@ -77,6 +77,9 @@ export async function findSurveyVisit(supabase, requestId, { openOnly = false } 
  * ⚠️ **สถานะมาจากด่าน ไม่ใช่จากผู้เรียก** (`initialVisitStatus`) — นัดที่ผ่านด่าน
  *    ขึ้นตารางเลย · ไม่ผ่าน (เช่นวันอยู่นอกช่วงที่ไซต์ให้เข้า) จอดเป็นร่างให้คนจัดการ
  *    ซึ่งเป็นกติกาเดียวกับนัดทุกชนิดในโมดูลนี้
+ * 🪤 **ช่วงเข้าไซต์ต้องมากับ `site`** — route `commit-due` ส่งไซต์จาก `loadSurveySite` ซึ่ง select แค่
+ *    id/code/name/customerId ⇒ ด่าน ④ ไม่เห็นช่วงเวลา นัดประเมินลงตารางเสมอ (รีวิว UAT 24/09 · รอมติเจ้าของว่า
+ *    จะให้จอดร่างจริงไหม) · โมดัลลงคิวพูดตามพฤติกรรมจริงนี้ — ยาม surveyVisit.test.mjs แดงเมื่อ select เปลี่ยน
  */
 /**
  * แปลง error ของ index `service_visits_survey_open_request_uk` (mig 0316) เป็นภาษาคน
@@ -94,6 +97,27 @@ export function surveyVisitInsertError(error) {
   return raw;
 }
 
+/**
+ * แถวนัดประเมินที่ "ลงคิว" จะสร้าง (ยังไม่มีสถานะ · ยังไม่มี id) — **ตัวเดียวของ server กับจอ**
+ *
+ * ⭐ `createSurveyVisit` ประกอบแถวที่จะบันทึกจากตัวนี้ และโมดัลลงคิวส่งตัวนี้เข้า `evaluateVisitGate`
+ *    (แผงด่าน) และบรรทัดผลลัพธ์ใต้ปุ่ม ⇒ จอกับ server ประเมินแถวรูปเดียวกันเป๊ะ (มติ 24/09 แบบ A)
+ * ⚠️ ห้ามเติม/ตัดช่องที่นี่เพื่อจอฝ่ายเดียว — สองฝั่งจะพูดไม่ตรงกันทันที
+ */
+export function surveyVisitDraft({ request, date, time, assigneeId, assigneeName } = {}) {
+  return {
+    siteId: request?.siteId,
+    requestId: request?.id,
+    kind: SURVEY_VISIT_KIND,
+    scheduledDate: date,
+    startTime: time ? toHHMM(time) : null,
+    assigneeId: assigneeId || null,
+    assigneeName: assigneeName || null,
+    // ⭐ โน้ตของนัดชี้กลับไปที่ใบ — เจ้าหน้าที่ที่เปิดจากตารางต้องรู้ว่ามาจากเรื่องอะไร
+    note: `ประเมินพื้นที่ตามคำร้อง ${request?.docNo || request?.id}`.slice(0, 1000),
+  };
+}
+
 export async function createSurveyVisit(supabase, {
   request, site, date, time, assigneeId, assigneeName, user,
 }) {
@@ -108,17 +132,7 @@ export async function createSurveyVisit(supabase, {
       error: `ใบนี้มีนัดที่ยังไม่ปิดอยู่แล้ว (${open.code || open.id}) — ใช้ปุ่มเลื่อนวันนัดแทนการลงคิวใหม่`,
     };
   }
-  const draft = {
-    siteId: request.siteId,
-    requestId: request.id,
-    kind: SURVEY_VISIT_KIND,
-    scheduledDate: date,
-    startTime: time ? toHHMM(time) : null,
-    assigneeId: assigneeId || null,
-    assigneeName: assigneeName || null,
-    // ⭐ โน้ตของนัดชี้กลับไปที่ใบ — เจ้าหน้าที่ที่เปิดจากตารางต้องรู้ว่ามาจากเรื่องอะไร
-    note: `ประเมินพื้นที่ตามคำร้อง ${request.docNo || request.id}`.slice(0, 1000),
-  };
+  const draft = surveyVisitDraft({ request, date, time, assigneeId, assigneeName });
   const row = {
     id: genId('SVV'),
     ...draft,

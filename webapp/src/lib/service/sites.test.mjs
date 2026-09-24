@@ -7,6 +7,7 @@ import {
   ASSET_STATUSES,
   ASSET_STATUS_LABELS,
   accessConflict,
+  accessTimeText,
   accessWindowText,
   assetRollup,
   minutesOf,
@@ -152,6 +153,18 @@ test('ข้อความสรุปช่วงเวลาอ่านร�
   assert.equal(accessWindowText(site({ accessFrom: '10:00:00', accessTo: '11:00:00' })), '10:00–11:00');
   assert.equal(accessWindowText(site({ accessDays: [1, 2, 3, 4, 5], accessFrom: '09:00' })), 'จ. อ. พ. พฤ. ศ. · ตั้งแต่ 09:00');
   assert.equal(accessWindowText(site()), '');
+});
+
+/* ⭐ ท่อนเวลาของช่วงเข้าแยกออกมา (มติ 24/09 แบบ A) — ด่าน ④ ในโมดัลจัดคิวพูดแค่เวลา
+   ("10:30–12:00 อยู่ในช่วง 10:00–16:00") ⇒ ต้องเป็นท่อนเดียวกับที่ accessWindowText ใช้ */
+test('accessTimeText = ท่อนเวลาของ accessWindowText (ไม่มีวัน)', () => {
+  assert.equal(accessTimeText(site({ accessDays: [1, 2, 3, 4, 5], accessFrom: '10:00:00', accessTo: '16:00:00' })), '10:00–16:00');
+  assert.equal(accessTimeText(site({ accessFrom: '09:00' })), 'ตั้งแต่ 09:00');
+  assert.equal(accessTimeText(site({ accessTo: '17:00' })), 'ถึง 17:00');
+  assert.equal(accessTimeText(site({ accessDays: [1] })), '');
+  assert.equal(accessTimeText(null), '');
+  const s = site({ accessDays: [1, 2, 3, 4, 5], accessFrom: '10:00', accessTo: '16:00' });
+  assert.ok(accessWindowText(s).endsWith(accessTimeText(s)));
 });
 
 test('⭐ นัดที่ยังไม่ระบุเวลา ต้องไม่ถูกฟ้องว่าผิด — ไม่รู้เวลา ไม่ใช่ ผิด', () => {

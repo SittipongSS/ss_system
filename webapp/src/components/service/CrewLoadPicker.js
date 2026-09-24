@@ -1,60 +1,32 @@
 "use client";
-// ── เลือกเจ้าหน้าที่ผู้รับผิดชอบนัด โดยเห็นภาระของ "วันนั้น" พร้อมกัน (มติ 2026-09-22) ──
+// ── เลือกเจ้าหน้าที่ผู้รับผิดชอบนัด โดยเห็นภาระของ "วันนั้น" พร้อมกัน (มติ 2026-09-22 · แบบ A 24/09) ──
 //
-// ⭐ คำถามของช่องนี้ไม่ใช่แค่ *ใคร* แต่คือ **"วันนั้นใครยังรับไหว"** — ตอบไม่ได้ถ้าตัวเลข
-// ถูกพับอยู่ในดรอปดาวน์ที่ต้องกดเปิดทีละครั้ง จึงกางเป็นหนึ่งคนหนึ่งแถว ตัวเลขชิดขวา
-// ป้ายคอลัมน์ครั้งเดียวข้างบน (ทรงเดียวกับ `ui/PersonLoadSelect` ของกล่องมอบหมายลีด)
-//
+// ⭐ คำถามของช่องนี้ไม่ใช่แค่ *ใคร* แต่คือ **"วันนั้นใครยังรับไหว"**
+//    แบบ A (มติเจ้าของ 24/09) แยกสองกลุ่มให้ตอบได้โดยไม่ต้องไล่ตาทีละแถว (pain 3 · 15):
+//    · **ว่างทั้งวัน** — แผ่นเล็กสองคอลัมน์ (ไม่มีแถว 0/0/0 ซ้ำ ๆ) + "ถ้าเลือก 1 นัด · x/12 จุด" ครั้งเดียวที่หัวกลุ่ม
+//    · **มีงานแล้ว** — แถวละคน: ตอนนี้กี่นัด/จุด/แพ็ค · แถบภาระ (เส้นเพดาน 12 จุด) · "ถ้าเลือก n นัด · x/12 จุด"
+//      · ป้ายเกินภาระ / ไปช่วย / **เวลาทับ SV-… 10:30–12:30** (เตือนเท่านั้น ไม่ห้าม)
+//    · ผู้รับผิดชอบเดิมที่หลุดรายชื่อ (แถวค้าง) · "ยังไม่มอบหมาย" (เฉพาะงานที่ยอมให้ไม่มีคน)
 // ⚠️ **ทำไมไม่ใช้ PersonLoadSelect ตรง ๆ** — ตัวนั้นผูกกับตัวเลขของลีด (WORKLOAD_FIELDS ·
-//    ชื่อจาก personFullName · ทีมจากทะเบียนทีมขาย) ส่วนงานบริการนับคนละหน่วย
-//    (นัด · จุด · แพ็ค) และทีมคือทีมช่าง · ไปแก้ตัวกลางให้รับสองโลก = เสี่ยงกล่องลีด
-//    ที่ใช้อยู่ทุกวัน จึงเป็นของโมดูลบริการเอง
-// ⚠️ **ตัวเลขไม่นับร่าง** — ร่างยังไม่ถึงมือเจ้าหน้าที่ (ไม่อยู่ในงานวันนี้ของใคร)
-//    หัวกล่องจึงพูดไว้ตรง ๆ ว่า "ไม่นับร่าง" กันคนเข้าใจว่า 0 = ไม่มีอะไรรออยู่เลย
-// ⚠️ **state 'unknown' = ขีด ไม่ใช่ 0** — ศูนย์ที่เดาเอาเองอ่านว่า "ว่าง" แล้วงานจะถูก
-//    ยัดให้คนที่เต็มอยู่แล้ว · บอกตรง ๆ ว่ายังโหลดไม่ได้ ดีกว่าให้ตัวเลขโกหก
-import { Fragment, useId } from "react";
-import { Check } from "lucide-react";
-import { NA, fmtDayMonth } from "@/lib/format";
-import { WEEKDAY_LABELS } from "@/lib/service/sites";
+//    ชื่อจาก personFullName · ทีมจากทะเบียนทีมขาย) ส่วนงานบริการนับคนละหน่วย (นัด · จุด · แพ็ค)
+//    และทีมคือทีมช่าง · ไปแก้ตัวกลางให้รับสองโลก = เสี่ยงกล่องลีดที่ใช้อยู่ทุกวัน
+// ⚠️ **ตัวเลขไม่นับร่าง** — หัวกล่องพูดไว้ตรง ๆ ว่า "ไม่นับร่าง"
+// ⚠️ **ไม่รู้ = ไม่มีตัวเลข ไม่ใช่ 0** — โหลดภาระไม่ได้/ยังไม่มีวัน ⇒ แผ่นล้วน + คำเตือน
+//    (ศูนย์ที่เดาเองอ่านว่า "ว่าง" แล้วงานจะถูกยัดให้คนที่เต็มอยู่แล้ว)
+// ⭐ **radio จริงของเบราว์เซอร์ ชื่อกลุ่มเดียว** — ลูกศรเดินผ่านแผ่นและแถวตามลำดับบนจอ · Tab เข้าออกทีเดียว
+//    และโมดัลพาโฟกัสมาที่ `input:checked` ได้ (ปุ่ม "เลือกเจ้าหน้าที่" บนการ์ด)
+// ⚠️ ตรรกะทั้งหมดอยู่ที่ `crewPickerView` (lib/service/scheduleModal.js) — ตัวนี้วาดอย่างเดียว
+import { useId } from "react";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { crewPickerView } from "@/lib/service/scheduleModal";
 import styles from "./CrewLoadPicker.module.css";
-
-/* ป้ายคอลัมน์ + หน่วยที่อ่านออกเสียง — ชุดเดียวกัน ป้ายบนหัวกับหน่วยในแถวจะได้ไม่หลุดกัน */
-const LOAD_COLUMNS = [
-  { key: "visits", label: "นัด" },
-  { key: "assets", label: "จุด" },
-  { key: "packs", label: "แพ็ค" },
-];
-
-/* "พ. 23 ก.ย." จากวันที่ล้วน — คิดวันในสัปดาห์แบบ UTC เพราะสตริงนี้เป็น *วันที่* ไม่ใช่เวลา
-   (new Date('2026-09-23') ในเครื่องโซนลบจะถอยไปเป็นวันก่อน) */
-function dayLabel(iso) {
-  const [y, m, d] = String(iso || "").slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return String(iso || "");
-  return `${WEEKDAY_LABELS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${fmtDayMonth(iso)}`;
-}
-
-/* บรรทัดเล็กใต้ชื่อ — สิ่งที่ต้องชั่งก่อน (เวลาทับ/เกินภาระ/ไปช่วย) ขึ้นก่อนชื่อทีม
-   เพราะคนไล่ตาหาเหตุที่ *ไม่ควร* เลือก ไม่ใช่หาว่าใครอยู่ทีมไหน */
-function metaOf(row, known) {
-  const parts = [];
-  if (known && !row.visits && !row.assisting && !row.note) {
-    parts.push({ key: "free", text: "ว่างทั้งวัน", tone: "free" });
-  }
-  if (known && row.assisting > 0) {
-    parts.push({ key: "assist", text: `ไปช่วย ${row.assisting} นัด` });
-  }
-  if (row.note) parts.push({ key: "note", text: row.note, tone: "warn" });
-  if (row.team) parts.push({ key: "team", text: row.team });
-  return parts;
-}
 
 export default function CrewLoadPicker({
   value = "",
   onChange,
   technicians = [],
   /* ผลของ staffLoadFor(date): { state: 'ok'|'unknown', people: [{ id, name, team, visits,
-     assets, packs, assisting, note }] } — `note` คือคำเตือนรายคน (เวลาทับ · เกินภาระ) */
+     assets, packs, assisting, dayVisits }] } (`crewLoadPeople`) */
   load = null,
   dateIso = "",
   labelledBy,
@@ -65,108 +37,130 @@ export default function CrewLoadPicker({
      · โมดัลลงคิวคำร้อง (false) — เจ้าหน้าที่ **บังคับ** (`surveyScheduleGaps` ตัวเดียวกับ server)
        ⇒ ปล่อยแถวนี้ไว้ = ให้เลือกคำตอบที่กดแล้วโดนตีกลับแน่นอน */
   allowUnassigned = true,
+  /* `{ assets, packs }` ของไซต์ที่กำลังนัด — "ถ้าเลือก … x/12 จุด" · ไม่ส่ง = พูดแค่จำนวนนัด (ไม่เดาจุด) */
+  siteLoad = null,
+  /* `{ startTime, endTime }` ที่กำลังกรอก — เตือน "เวลาทับ" (ไม่ส่ง = ไม่เตือน) */
+  timeWindow = null,
+  /* รายชื่อเอง: 'loading' | 'error' | 'ready' — ไม่ส่ง = พร้อม (ว่างเปล่า = "ยังไม่มีบัญชี…") */
+  rosterState = "ready",
 }) {
   const group = useId();
   const headId = useId();
-  /* ยังไม่มีวันที่ = ยังไม่รู้ว่าจะดูภาระวันไหน — บอกให้เลือกวันก่อน ไม่ใช่ขึ้น "โหลดไม่ได้" */
-  const dated = !!dateIso;
-  const known = dated && load?.state === "ok";
-  const byId = new Map((load?.people || []).map((person) => [person.id, person]));
+  const view = crewPickerView({
+    technicians, load, dateIso, value, currentName, allowUnassigned, siteLoad, timeWindow, rosterState,
+  });
 
-  /* ทีมเอาจากผลภาระก่อน แล้วค่อยจากรายชื่อ — โหลดภาระไม่ได้ (people ว่าง) ชื่อทีมจะได้ไม่หายไปด้วย */
-  const rowOf = (id, name, { team = "", note = "" } = {}) => {
-    const person = byId.get(id) || {};
-    return {
-      id,
-      name: name || person.name || "",
-      team: person.team || team || "",
-      visits: Number(person.visits) || 0,
-      assets: Number(person.assets) || 0,
-      packs: Number(person.packs) || 0,
-      assisting: Number(person.assisting) || 0,
-      note: note || person.note || "",
-    };
-  };
-
-  const rows = technicians.map((tech) => rowOf(tech.id, tech.name, { team: tech.team }));
-  /* 🐞 กันแถวที่เลือกอยู่ "หายไปเฉย ๆ" — ผู้รับผิดชอบเดิมที่ไม่อยู่ในรายชื่อเจ้าหน้าที่แล้ว
-     ถ้าไม่มีแถวของเขา กลุ่มปุ่มจะไม่มีอะไรถูกเลือก แล้วอ่านเหมือน "ยังไม่มอบหมาย"
-     ทั้งที่ใบยังผูกคนเดิมอยู่ ⇒ ใส่แถวค้างไว้ให้เห็น และเลือกคนอื่นแทนได้ตามปกติ */
-  if (value && !rows.some((row) => row.id === value)) {
-    rows.unshift(rowOf(value, currentName, { note: "ไม่อยู่ในรายชื่อเจ้าหน้าที่บริการแล้ว" }));
+  /* รายชื่อยังไม่พร้อม — กำลังโหลด / โหลดพัง / ไม่มีใครเลย (สามข้อความ ไม่ใช่ข้อความเดียว) */
+  if (view.roster.state !== "ready") {
+    return (
+      <p className={styles.roster} role={view.roster.state === "error" ? "alert" : undefined}>
+        {view.roster.text}
+      </p>
+    );
   }
 
-  const numberCells = (row) =>
-    LOAD_COLUMNS.map((col) => (
-      <span key={col.key} className={styles.num}>
-        {known ? row[col.key] : NA}
-        <span className={styles.srOnly}> {col.label}</span>
-      </span>
-    ));
+  const radio = (id, checked) => (
+    <input
+      type="radio" name={group} value={id} className={styles.srOnly}
+      checked={checked} onChange={() => onChange?.(id)}
+    />
+  );
+  const tile = (person) => (
+    <label key={person.id} className={styles.tile} data-on={person.selected ? "1" : undefined}>
+      {radio(person.id, person.selected)}
+      <span className={styles.dot} aria-hidden="true" />
+      <span className={styles.name}>{person.name}</span>
+      {person.team ? <span className={styles.team}>{person.team}</span> : null}
+    </label>
+  );
 
+  /* ⭐ ช่องบังคับที่ยังไม่มีใคร (ลงคิว — `view.invalid`) ⇒ กรอบสีเตือน + aria-invalid ที่ตัวกลุ่ม (รีวิว UAT 24/09 · แบบ A)
+     เดิมบอกแค่บรรทัดท้ายโมดัลกับข้อ ③ — ตัวช่องเองดูเหมือนไม่มีอะไรขาด */
   return (
-    <div className={styles.picker}>
+    <div className={styles.picker} data-invalid={view.invalid ? "1" : undefined}>
       <div className={styles.head} id={headId}>
-        {dated ? <>ภาระวันที่ {dayLabel(dateIso)} — ไม่นับร่าง</> : "ภาระของแต่ละคน — เลือกวันก่อนจึงจะเห็นตัวเลข"}
+        <span>{view.head.text}</span>
+        {view.head.aside ? (
+          <span className={styles.headAside} data-tone={view.head.asideTone || undefined}>{view.head.aside}</span>
+        ) : null}
       </div>
-      {dated && !known && (
-        <p className={styles.unknown}>ยังโหลดภาระไม่ได้ — ตัวเลขว่างไม่ได้แปลว่าว่าง</p>
-      )}
-      {/* ป้ายคอลัมน์ครั้งเดียว ไม่ซ้ำทุกแถว · aria-hidden เพราะแต่ละตัวเลขมีหน่วยอ่านออกเสียงในตัว */}
-      <div className={`${styles.row} ${styles.cols}`} aria-hidden="true">
-        <span>เจ้าหน้าที่</span>
-        {LOAD_COLUMNS.map((col) => <span key={col.key} className={styles.num}>{col.label}</span>)}
-      </div>
-      {/* ⭐ radio จริงของเบราว์เซอร์ — ลูกศรขึ้นลงเลื่อนคน · Tab เข้าออกกลุ่มทีเดียว
-          ได้ฟรีโดยไม่ต้องเขียนคีย์บอร์ดเอง (ปุ่มซ่อนตา แต่ยังอยู่ในลำดับโฟกัส) */}
+      {view.notice ? <p className={styles.notice}>{view.notice}</p> : null}
       <div
-        className={styles.list} role="radiogroup"
+        className={styles.list}
+        role="radiogroup"
         aria-labelledby={[labelledBy, headId].filter(Boolean).join(" ")}
         aria-required={allowUnassigned ? undefined : "true"}
+        aria-invalid={view.invalid ? "true" : undefined}
       >
-        {allowUnassigned && (
-          <label className={`${styles.row} ${styles.option}`} data-on={!value ? "1" : undefined}>
-            <input
-              type="radio" name={group} value="" className={styles.srOnly}
-              checked={!value} onChange={() => onChange?.("")}
-            />
+        {view.free ? (
+          <div className={styles.section}>
+            <p className={styles.groupHead}>
+              <span>{view.free.label}</span>
+              <span className={styles.groupProjection}>{view.free.projection}</span>
+            </p>
+            {view.free.people.length ? <div className={styles.grid}>{view.free.people.map(tile)}</div> : null}
+          </div>
+        ) : null}
+
+        {view.plain.length ? (
+          <div className={styles.section}>
+            <div className={styles.grid}>{view.plain.map(tile)}</div>
+          </div>
+        ) : null}
+
+        {view.busy.map((row) => (
+          <label key={row.id} className={styles.row} data-on={row.selected ? "1" : undefined}>
+            {radio(row.id, row.selected)}
+            <span className={styles.dot} aria-hidden="true" />
             <span className={styles.who}>
-              <span className={`${styles.name} ${styles.unassigned}`}>
-                ยังไม่มอบหมาย
-                {!value && <Check size={14} aria-hidden="true" className={styles.tick} />}
+              <span className={styles.line}>
+                <span className={styles.name}>{row.name}</span>
+                {row.team ? <span className={styles.team}>{row.team}</span> : null}
+                {row.tags.map((tag) => (
+                  <StatusBadge key={tag.key} size="sm" tone={tag.tone} label={tag.text} />
+                ))}
+              </span>
+              <span className={`${styles.line} ${styles.now}`}>
+                <span>{row.nowText}</span>
+                {row.overlaps.map((tag) => (
+                  <StatusBadge key={tag.key} size="sm" tone={tag.tone} label={tag.text} />
+                ))}
+              </span>
+            </span>
+            <span className={styles.load}>
+              <span className={styles.bar} data-over={row.bar.over ? "1" : undefined} aria-hidden="true">
+                {row.bar.cells.map((cell, index) => (
+                  <i key={index} data-fill={cell.fill || undefined} data-cap={cell.cap ? "1" : undefined} />
+                ))}
+              </span>
+              <span className={styles.projection} data-over={row.projection.over ? "1" : undefined}>
+                {row.projection.text}
               </span>
             </span>
           </label>
-        )}
-        {rows.map((row) => {
-          const on = row.id === value;
-          const meta = metaOf(row, known);
-          return (
-            <label key={row.id} className={`${styles.row} ${styles.option}`} data-on={on ? "1" : undefined}>
-              <input
-                type="radio" name={group} value={row.id} className={styles.srOnly}
-                checked={on} onChange={() => onChange?.(row.id)}
-              />
-              <span className={styles.who}>
-                <span className={styles.name}>
-                  {row.name}
-                  {on && <Check size={14} aria-hidden="true" className={styles.tick} />}
-                </span>
-                {meta.length > 0 && (
-                  <small className={styles.meta}>
-                    {meta.map((part, index) => (
-                      <Fragment key={part.key}>
-                        {index > 0 && " · "}
-                        <span data-tone={part.tone}>{part.text}</span>
-                      </Fragment>
-                    ))}
-                  </small>
-                )}
-              </span>
-              {numberCells(row)}
-            </label>
-          );
-        })}
+        ))}
+
+        {/* 🐞 กันแถวที่เลือกอยู่ "หายไปเฉย ๆ" — ผู้รับผิดชอบเดิมที่ไม่อยู่ในรายชื่อเจ้าหน้าที่แล้ว
+            ถ้าไม่มีแถวของเขา กลุ่มปุ่มจะไม่มีอะไรถูกเลือก แล้วอ่านเหมือน "ยังไม่มอบหมาย" ทั้งที่ใบยังผูกคนเดิม */}
+        {view.pinned ? (
+          <label className={styles.row} data-on="1">
+            {radio(view.pinned.id, true)}
+            <span className={styles.dot} aria-hidden="true" />
+            <span className={styles.who}>
+              <span className={styles.line}><span className={styles.name}>{view.pinned.name}</span></span>
+              <span className={`${styles.line} ${styles.gone}`}>{view.pinned.note}</span>
+            </span>
+          </label>
+        ) : null}
+
+        {view.unassigned ? (
+          <label className={styles.none} data-on={view.unassigned.selected ? "1" : undefined}>
+            {radio("", view.unassigned.selected)}
+            <span className={styles.dot} aria-hidden="true" />
+            <span>{view.unassigned.label}</span>
+            <span className={styles.noneSub}>· {view.unassigned.sub}</span>
+          </label>
+        ) : null}
       </div>
     </div>
   );

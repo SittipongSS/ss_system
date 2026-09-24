@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { BUDDHIST_YEAR_OFFSET, displayDateToIso, isoDateToDisplay } from "@/lib/format";
+import { BUDDHIST_YEAR_OFFSET, dateFieldText, displayDateToIso } from "@/lib/format";
 
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 // สัปดาห์เริ่มวันอาทิตย์ (อา-ส) — มติผู้ใช้ 2026-07-15 ให้ตรงกับปฏิทินหน้าวันหยุด/mgmt
@@ -38,11 +38,15 @@ function formatTypedDate(value) {
    ISO ค.ศ. เหมือนเดิมทุกประการ ⇒ ผู้เรียกไม่ต้องแปลงอะไร และไม่มีทางที่ พ.ศ.
    จะรั่วลงฐาน · ค่าตั้งต้นคือ "CE" ทั้งระบบยังเป็น ค.ศ. เหมือนเดิม
    ⚠️ ปีในสถานะ `view` ยัง**เป็น ค.ศ. เสมอ** เพราะใช้คำนวณวันจริง — แปลงเฉพาะ
-   ตอนเอาไปแสดงเท่านั้น (หัวปฏิทิน · aria-label · ตัวอักษรในช่อง) */
-export default function DateInput({ value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title, compact = false, era = "CE" }) {
+   ตอนเอาไปแสดงเท่านั้น (หัวปฏิทิน · aria-label · ตัวอักษรในช่อง)
+   `weekday` (opt-in · โมดัลจัดคิวแบบ A — pain 10) — ตอนไม่ได้พิมพ์ช่องโชว์ "พฤ. 1 ต.ค. 2026"
+   โฟกัสแล้วเป็นตัวเลขให้พิมพ์ต่อ · ข้อความทุกจังหวะมาจาก `dateFieldText` ตัวเดียว (lib/format.js)
+   ⚠️ ไม่ส่ง = ตัวเลขเหมือนเดิมทุกหน้า */
+export default function DateInput({ value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title, compact = false, era = "CE", weekday = false }) {
   const yearLabel = (ceYear) => (era === "BE" ? ceYear + BUDDHIST_YEAR_OFFSET : ceYear);
   const placeholder = era === "BE" ? "DD/MM/พ.ศ." : "DD/MM/YYYY";
-  const [text, setText] = useState(() => isoDateToDisplay(value, { era }));
+  const shown = (iso, typing = false) => dateFieldText(iso, { era, weekday, typing });
+  const [text, setText] = useState(() => shown(value));
   const [focused, setFocused] = useState(false);
   const [open, setOpen] = useState(false);
   const initial = String(value || "").match(/^(\d{4})-(\d{2})-/);
@@ -57,8 +61,8 @@ export default function DateInput({ value = "", onChange, className = "", style,
   const todayIso = isoFromParts(today.getFullYear(), today.getMonth(), today.getDate());
 
   useEffect(() => {
-    if (!focused) setText(isoDateToDisplay(value, { era }));
-  }, [value, focused, era]);
+    if (!focused) setText(dateFieldText(value, { era, weekday }));
+  }, [value, focused, era, weekday]);
 
   useEffect(() => {
     if (!open) return;
@@ -117,7 +121,7 @@ export default function DateInput({ value = "", onChange, className = "", style,
   const choose = (iso) => {
     if ((min && iso < min) || (max && iso > max)) return;
     onChange?.(iso);
-    setText(isoDateToDisplay(iso, { era }));
+    setText(shown(iso));
     setOpen(false);
   };
 
@@ -183,12 +187,15 @@ export default function DateInput({ value = "", onChange, className = "", style,
         title={title}
         disabled={disabled}
         required={required}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          setText(shown(value, true));
+        }}
         onChange={(event) => update(event.target.value)}
         onBlur={() => {
           setFocused(false);
           const iso = displayDateToIso(text, { era });
-          setText(iso ? isoDateToDisplay(iso, { era }) : isoDateToDisplay(value, { era }));
+          setText(iso ? shown(iso) : shown(value));
         }}
       />
       <button type="button" className="date-input-picker" disabled={disabled} aria-label="เปิดปฏิทิน รูปแบบวัน/เดือน/ปี" aria-expanded={open} onClick={openCalendar}>

@@ -4,10 +4,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SURVEY_VISIT_KIND, createSurveyVisit, moveSurveyVisit,
-  surveyScheduleError, surveyScheduleGaps, surveyVisitInsertError,
+  surveyScheduleError, surveyScheduleGaps, surveyVisitDraft, surveyVisitInsertError,
 } from './surveyVisit.js';
 import { REQUEST_SLOT_VISIT_STATES } from './visitStatus.js';
 import { VISIT_KINDS, VISIT_KINDS_MANUAL, VISIT_KIND_LABELS, normalizeVisitInput } from './rounds.js';
+import { initialVisitStatus } from './visitGate.js';
+import { commitDueOutcome } from '../requests/commitDue.js';
+import { loadSurveySite } from './surveyRepo.js';
 
 const request = { id: 'DR-1', docNo: 'AS-26080002', siteId: 'SVS-1' };
 const site = { id: 'SVS-1', name: 'สาขาสีลม', accessDays: [], accessFrom: null, accessTo: null };
@@ -121,6 +124,68 @@ test('สร้างนัด: ชนิด survey · ผูกกลับใ�
   assert.match(row.note, /AS-26080002/);
   // สถานะมาจากด่าน ไม่ใช่จากผู้เรียก
   assert.ok(['scheduled', 'draft'].includes(row.status));
+});
+
+/* ⭐ มติ 24/09 แบบ A — โมดัลลงคิวบอก "จะขึ้นตาราง" / "จะจอดเป็นร่าง" ก่อนกด ⇒ ต้องตัดสินจากแถว
+   **รูปเดียวกับที่ server บันทึก** · แถวนั้นประกอบที่ `surveyVisitDraft` ที่เดียว */
+test('⭐ createSurveyVisit ประกอบแถวจาก surveyVisitDraft (ตัวเดียวกับที่โมดัลลงคิวใช้ทายผล)', async () => {
+  const calls = [];
+  const fake = fakeCreateDb({ calls, rpcResult: { data: [{ id: 'SVV-1' }], error: null } });
+  const args = { request, date: '2026-09-08', time: '13:30:00', assigneeId: 'U1', assigneeName: 'เจ้าหน้าที่เอ' };
+  await createSurveyVisit(fake, { ...args, site, user: { id: 'U9', name: 'หัวหน้า' } });
+  const row = calls[0].p_rows[0];
+  const draft = surveyVisitDraft(args);
+  for (const [key, value] of Object.entries(draft)) assert.deepEqual(row[key], value, key);
+  assert.equal(row.status, initialVisitStatus(draft, { site }), 'สถานะมาจากด่านของแถวเดียวกัน');
+  assert.deepEqual(Object.keys(draft).sort(), [
+    'assigneeId', 'assigneeName', 'kind', 'note', 'requestId', 'scheduledDate', 'siteId', 'startTime',
+  ]);
+  assert.equal(draft.startTime, '13:30');
+  assert.equal(surveyVisitDraft({ request, date: '2026-09-08', time: '' }).startTime, null, 'ไม่ระบุเวลา = ไปทั้งวัน');
+  assert.equal(surveyVisitDraft({ request, date: '2026-09-08' }).assigneeId, null);
+});
+
+/* ⭐ บรรทัดผลลัพธ์ของโมดัลลงคิว ต้องตรงกับสถานะที่ server ตั้งจริง — ทดสอบกับไซต์ **รูปที่ `loadSurveySite` คืน**
+   (route `commit-due` ส่งไซต์ตัวนั้นเข้า `createSurveyVisit` → `initialVisitStatus`) ไม่ใช่ไซต์ที่เทสต์ประกอบเอง
+   🐞 รีวิว UAT 24/09 (high): เทสต์เดิมส่งไซต์ที่มีช่วงเวลาให้ด่าน ⇒ ผ่านทั้งที่ของจริง `loadSurveySite` select แค่
+      id/code/name/customerId ⇒ ด่าน ④ ไม่เห็นช่วงเวลา นัดลงตารางช่างเสมอ แต่โมดัลเคยบอก "จะจอดเป็นร่าง"
+   ⚠️ ถ้าวันหนึ่งเพิ่มช่วงเวลาเข้า select ของ `loadSurveySite` (= server เริ่มจอดร่างจริง) เทสต์นี้จะแดง ⇒ แก้โมดัล
+      (`commitDueOutcome` · แผงด่าน `commitDueGateView`) ให้ทายตาม — นั่นคือการเปลี่ยนพฤติกรรม ต้องได้มติเจ้าของก่อน */
+function siteRowDb(fullRow) {
+  const state = { columns: null };
+  const api = {
+    from() { return api; },
+    select(columns) { state.columns = columns.split(',').map((c) => c.trim()); return api; },
+    eq() { return api; },
+    maybeSingle() {
+      const row = Object.fromEntries(state.columns.filter((c) => c in fullRow).map((c) => [c, fullRow[c]]));
+      return Promise.resolve({ data: row, error: null });
+    },
+    _state: state,
+  };
+  return api;
+}
+
+test('⭐ บรรทัดผลลัพธ์ของโมดัลลงคิว = สถานะที่ server ตั้งจริง (ไซต์รูปที่ loadSurveySite คืน) — ในช่วง/นอกช่วง/ไม่ระบุเวลา/วันปิด', async () => {
+  // BRIEF C2: หอม คุ้กกิ้ง โฮสเทล ให้เข้าทุกวัน 10:00–20:00 (แถวเต็มที่หน้าจัดคิวมีในมือ)
+  const hostel = { id: 'SVS-1', code: 'ST-1011-01-BKK-1162', name: 'หอม คุ้กกิ้ง โฮสเทล', customerId: 'C1', accessDays: [1, 2, 3, 4, 5], accessFrom: '10:00', accessTo: '20:00' };
+  const db = siteRowDb(hostel);
+  const { site: serverSite } = await loadSurveySite(db, 'SVS-1', null);
+  const survey = { ...request, kind: 'site_survey', status: 'acknowledged', acknowledgedAt: '2026-09-23T02:00:00Z' };
+  const technicians = [{ id: 'U1', name: 'Peera Khantawee' }];
+  // พฤ. 1 ต.ค. 11:00 · 21:00 · ไม่ระบุ · ส. 3 ต.ค. (ไซต์ไม่เปิด)
+  for (const [date, time] of [['2026-10-01', '11:00'], ['2026-10-01', '21:00'], ['2026-10-01', ''], ['2026-10-03', '11:00']]) {
+    const form = { date, time, resultDate: '2026-10-09', assigneeId: 'U1', reason: '' };
+    const server = initialVisitStatus(
+      surveyVisitDraft({ request: survey, date, time, assigneeId: 'U1', assigneeName: 'Peera Khantawee' }),
+      { site: serverSite },
+    );
+    const label = `${date} ${time || 'ไม่ระบุเวลา'}`;
+    // โมดัลบนหน้าจัดคิวมีแถวเต็ม (accessKnown) · หน้าใบไม่มี — สองหน้าต้องทายเท่ากับ server
+    assert.equal(commitDueOutcome(survey, form, { site: hostel, accessKnown: true, technicians }).lands, server, `หน้าจัดคิว ${label}`);
+    assert.equal(commitDueOutcome(survey, form, { site: serverSite, accessKnown: false, technicians }).lands, server, `หน้าใบ ${label}`);
+  }
+  assert.deepEqual(Object.keys(serverSite).sort(), db._state.columns.slice().sort(), 'ไซต์ที่ route ได้ = คอลัมน์ที่ select เท่านั้น');
 });
 
 test('เวลาที่ส่งมาถูกทำให้เป็น HH:MM ก่อนลงนัด', async () => {

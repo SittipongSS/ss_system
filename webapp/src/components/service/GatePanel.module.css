@@ -1,0 +1,121 @@
+/* แผง "ด่านก่อนขึ้นตาราง" (แบบ A) — สี่แถว · ไอคอนสถานะ · ป้ายเจ้าของ · ลิงก์แก้
+   ⚠️ โทเคนล้วน · แถวที่ไม่ผ่านย้อมอำพันอ่อนทั้งแถว (หาข้อที่ต้องแก้ได้ตั้งแต่กวาดตา) */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+.titleIcon { flex: none; color: var(--text-3); }
+.count { margin-left: auto; flex: none; }
+
+.caption {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  overflow: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--space-5) minmax(0, 1fr);
+  column-gap: var(--space-2-5);
+  padding: var(--space-1-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: 0; }
+.row[data-state="fail"],
+.row[data-state="warn"] { background: color-mix(in srgb, var(--amber) 7%, var(--panel-solid)); }
+
+.mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  margin-top: var(--space-0-5);
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+  color: var(--text-3);
+}
+.row[data-state="pass"] .mark { background: var(--green-soft); color: var(--green); }
+.row[data-state="fail"] .mark { background: var(--amber-soft); color: var(--amber); }
+.row[data-state="warn"] .mark { background: var(--amber-soft); color: var(--amber); }
+.row[data-state="unknown"] .mark { background: var(--blue-soft); color: var(--blue); }
+
+.text { min-width: 0; }
+
+.label {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-0-5) var(--space-1-5);
+  margin: var(--space-0-5) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* เหตุกินที่ที่เหลือข้างป้ายเจ้าของ แล้วตัดบรรทัดข้างในตัวเอง */
+.reason { flex: 1 1 0; min-width: 0; }
+
+/* ป้ายเจ้าของกว้างเท่ากันทุกแถว — "SA → FN" ยาวสุด ให้ "TS"/"SA" ไม่ทำให้เหตุขยับ (ทรงเดียวกับการ์ด) */
+.owner { flex: none; min-width: var(--space-9); justify-content: center; }
+
+/* ลิงก์แก้ ("เลือกเจ้าหน้าที่" · "แก้วัน/เวลา") = เป้านิ้ว 44px โดยไม่ดันบรรทัด
+   🐞 รีวิว UAT 24/09: วัดได้ 71×20 / 57×20 — ต่ำกว่ากติกา 44px ของ repo
+   ⭐ กล่องสูง 44 (min-block-size) แต่ margin ติดลบคืนส่วนเกินให้บรรทัด ⇒ กินที่บรรทัดเท่าตัวอักษร (1lh) เท่าเดิม */
+.fix {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--ctl-h-touch);
+  margin-block: calc((var(--ctl-h-touch) - 1lh) / -2);
+  vertical-align: middle;
+}
+
+.row[data-state="fail"] .fix,
+.row[data-state="warn"] .fix {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

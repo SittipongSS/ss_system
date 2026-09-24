@@ -21,6 +21,7 @@ import {
   crewLoadPeople,
   freeCrewOn,
   inQueueRange,
+  isFreeRow,
   isStaleDraft,
   overdueDaysOf,
   queueBucketOf,
@@ -301,7 +302,9 @@ test('สองใบที่ไซต์เดียวกันวันเ�
 
 /* ⭐ สูตรเดียวของตัวเลือกเจ้าหน้าที่ (มติเจ้าของ 23/09) — ยกมาจาก `staffLoadFor` ของหน้าจัดคิว
    ให้โมดัลลงคิวคำร้องใช้ร่วม · ค่าที่คาดไว้ = ผลของสูตรเดิมบนข้อมูลชุดนี้ */
-test('⭐ crewLoadPeople — ภาระรายคน + ทีม + หมายเหตุ "ไปช่วย"/"เกินภาระ" ตามลำดับรายชื่อเดิม', () => {
+/* 🐞 รีวิว UAT 24/09: แถวเคยมี `note` ("ไปช่วย n นัด · เกินภาระ 12 จุด") ที่ไม่มีใครอ่านแล้ว — ตัวเลือกคนประกอบป้าย
+   เองจากตัวเลข (`crewPickerView` · `overloaded`) ⇒ กติกาเดียวกันสองชุด ⇒ ถอด `note` ทิ้ง เหลือตัวเลขล้วน */
+test('⭐ crewLoadPeople — ภาระรายคน + ทีม ตามลำดับรายชื่อเดิม (ไม่มีหมายเหตุสำเร็จรูป — ป้ายประกอบที่ตัวเลือกคน)', () => {
   const visits = [
     { id: 'a', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', assistantIds: ['U2'] },
     { id: 'b', status: 'done', scheduledDate: TODAY, siteId: 'BIG', assigneeId: 'U1' },
@@ -316,15 +319,59 @@ test('⭐ crewLoadPeople — ภาระรายคน + ทีม + หมา
     teamNames: new Map([['TS-A', 'ทีมเหนือ'], ['TS-B', 'ทีมใต้']]),
   });
   assert.deepEqual(people, [
-    { id: 'U3', name: 'อนุชา', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, note: '' },
-    { id: 'U1', name: 'สมชาย', team: 'ทีมเหนือ', visits: 2, assets: 46, packs: 11, assisting: 0, note: 'เกินภาระ 12 จุด' },
-    { id: 'U2', name: 'วิชัย', team: 'ทีมใต้', visits: 0, assets: 0, packs: 0, assisting: 1, note: 'ไปช่วย 1 นัด' },
-    { id: 'U9', name: 'ไร้ทีม', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, note: '' },
+    { id: 'U3', name: 'อนุชา', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, dayVisits: [] },
+    {
+      id: 'U1', name: 'สมชาย', team: 'ทีมเหนือ', visits: 2, assets: 46, packs: 11, assisting: 0,
+      dayVisits: [
+        { id: 'a', code: 'a', startTime: null, endTime: null },
+        { id: 'b', code: 'b', startTime: null, endTime: null },
+      ],
+    },
+    { id: 'U2', name: 'วิชัย', team: 'ทีมใต้', visits: 0, assets: 0, packs: 0, assisting: 1, dayVisits: [] },
+    { id: 'U9', name: 'ไร้ทีม', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, dayVisits: [] },
   ]);
   // object แทน Map ก็ได้ · ไม่มีรายชื่อ = []
   const viaObject = crewLoadPeople({ visits, dateIso: TODAY, workload, technicians: [{ id: 'U1', name: 'สมชาย' }], crewByUser: { U1: 'TS-A' }, teamNames: { 'TS-A': 'ทีมเหนือ' } });
   assert.equal(viaObject[0].team, 'ทีมเหนือ');
+  assert.ok(people.every((row) => !('note' in row)), 'ไม่มีหมายเหตุสำเร็จรูปในแถว');
   assert.deepEqual(crewLoadPeople({ visits, dateIso: TODAY }), []);
+});
+
+/* ⭐ มติ 24/09 แบบ A — ตัวเลือกเจ้าหน้าที่เตือน "เวลาทับ SV-… 10:30–12:30" ต้องรู้ว่าคนนั้นเป็นเจ้าของ
+   นัดไหนบ้างวันนั้น (รหัส + เวลา) · ชุดนัดเดียวกับตัวนับภาระ: ร่าง/ยกเลิกไม่นับ · id ซ้ำนับครั้งเดียว */
+test('⭐ crewLoadPeople.dayVisits — นัดที่เป็นเจ้าของวันนั้น เรียงตามเวลา · ร่างไม่นับ · ซ้ำ id นับครั้งเดียว · ผู้ช่วยไม่ใช่เจ้าของ', () => {
+  const visits = [
+    { id: 'v29', code: 'SV-26090029', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', startTime: '10:30:00', endTime: '12:30:00', assistantIds: ['U2'] },
+    { id: 'v28', code: 'SV-26090028', status: 'in_progress', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', startTime: '08:30', endTime: '10:00' },
+    { id: 'v29', code: 'SV-26090029', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', startTime: '10:30', endTime: '12:30' },
+    { id: 'vx', code: 'SV-26090040', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1' },
+    { id: 'vd', code: 'SV-26090041', status: 'draft', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', startTime: '13:00', endTime: '14:00' },
+    { id: 'vc', code: 'SV-26090042', status: 'cancelled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', startTime: '15:00', endTime: '16:00' },
+    { id: 'vf', code: 'SV-26090043', status: 'scheduled', scheduledDate: FUTURE, siteId: 'S1', assigneeId: 'U1', startTime: '09:00', endTime: '10:00' },
+  ];
+  const [u1, u2] = crewLoadPeople({ visits, dateIso: TODAY, workload, technicians: [{ id: 'U1', name: 'ก' }, { id: 'U2', name: 'ข' }] });
+  assert.deepEqual(u1.dayVisits, [
+    { id: 'v28', code: 'SV-26090028', startTime: '08:30', endTime: '10:00' },
+    { id: 'v29', code: 'SV-26090029', startTime: '10:30', endTime: '12:30' },
+    { id: 'vx', code: 'SV-26090040', startTime: null, endTime: null },
+  ]);
+  assert.equal(u1.visits, 3, 'ตัวนับกับรายการนัดเป็นชุดเดียวกัน');
+  assert.deepEqual(u2.dayVisits, [], 'ผู้ช่วยไม่ใช่เจ้าของเวลาของนัด (กติกาเดียวกับ overlaps ของตาราง)');
+  assert.equal(u2.assisting, 1);
+});
+
+test('⭐ isFreeRow = นิยามเดียวกับ freeCrewOn (ไปช่วยก็คือไม่ว่าง)', () => {
+  const visits = [
+    { id: 'a', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', assistantIds: ['U2'] },
+    { id: 'b', status: 'draft', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U3' },
+  ];
+  const technicians = [{ id: 'U1', name: 'ก' }, { id: 'U2', name: 'ข' }, { id: 'U3', name: 'ค' }, { id: 'U4', name: 'ง' }];
+  const rows = crewLoadPeople({ visits, dateIso: TODAY, workload, technicians });
+  assert.deepEqual(rows.filter(isFreeRow).map((r) => r.id), freeCrewOn(visits, TODAY, technicians).free.map((p) => p.id));
+  assert.deepEqual(rows.filter(isFreeRow).map((r) => r.id), ['U3', 'U4']);
+  assert.equal(isFreeRow({ visits: 0, assisting: 0 }), true);
+  assert.equal(isFreeRow({ visits: 0, assisting: 1 }), false);
+  assert.equal(isFreeRow(null), true, 'ไม่มีแถวภาระ = ไม่มีนัด (ตัวเลือกไม่เรียกแบบนี้ตอนไม่รู้ภาระ)');
 });
 
 test('⭐ คนว่างวันนั้น — ไปช่วยก็คือไม่ว่าง · ร่างไม่ทำให้ใครไม่ว่าง', () => {

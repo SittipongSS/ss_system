@@ -1,124 +1,275 @@
-/* ตัวเลือกเจ้าหน้าที่พร้อมภาระรายวัน (CrewLoadPicker) — กล่องเดียว หัว · ป้ายคอลัมน์ · รายชื่อ
-   ⚠️ โทเคนล้วน (audit:ui เพดานเลขดิบเต็มทุกช่อง ขึ้นไม่ได้แม้แต่ 1) */
+/* ตัวเลือกเจ้าหน้าที่พร้อมภาระรายวัน (CrewLoadPicker · แบบ A 24/09)
+   หัว (วัน · ว่างกี่คน) → กลุ่มว่าง (แผ่นสองคอลัมน์) → แถวคนที่มีงาน (แถบภาระ) → แถวค้าง → ยังไม่มอบหมาย
+   ⚠️ โทเคนล้วน (audit:ui เพดานเลขดิบเต็มทุกช่อง ขึ้นไม่ได้แม้แต่ 1)
+   ⚠️ ไม่มี scroll ของตัวเอง — เนื้อโมดัลเลื่อนชั้นเดียว (pain 3: เดิม max-height 50vh ซ้อนใน scroll ของโมดัล) */
 
 .picker {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
+  min-width: 0;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  background: var(--panel);
+  background: var(--panel-solid);
   /* มุมมนของกล่องต้องตัดพื้นแถวที่ถูกเลือกด้วย ไม่งั้นพื้นส้มทะลุมุม */
   overflow: hidden;
 }
 
+/* ช่องบังคับที่ยังไม่มีใคร (ลงคิวเข้าพื้นที่) — สีเดียวกับช่องกรอกผิดของระบบ (`.premium-input.is-invalid`) */
+.picker[data-invalid] {
+  border-color: var(--red);
+}
+
 .head {
-  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-0-5) var(--space-2);
+  padding: var(--space-1-5) var(--space-3);
   border-bottom: 1px solid var(--border);
   background: var(--panel-2);
   color: var(--text-2);
-  font-size: var(--fs-label);
+  font-size: var(--fs-5);
   line-height: var(--lh-thai);
 }
+.headAside { font-weight: var(--fw-semibold); }
+.headAside[data-tone="ok"] { color: var(--green); }
+.headAside[data-tone="warn"] { color: var(--amber); }
 
-/* โหลดภาระไม่ได้ — เตือน ไม่บล็อก (ยังมอบหมายได้ แค่ต้องรู้ว่าตัวเลขไม่มีจริง) */
-.unknown {
+/* โหลดภาระไม่ได้ / ยังไม่มีวัน — เตือน ไม่บล็อก (ยังมอบหมายได้ แค่ต้องรู้ว่าตัวเลขไม่มีจริง) */
+.notice {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
   background: var(--amber-soft);
   color: var(--amber);
-  font-size: var(--fs-label);
+  font-size: var(--fs-5);
   line-height: var(--lh-thai);
 }
 
-/* แถวเดียวกันทั้งป้ายคอลัมน์และรายชื่อ — กริดชุดเดียว ตัวเลขจึงตรงหลักกันทุกแถว
-   ⚠️ position: relative = ที่ยึดของ .srOnly (radio ที่ซ่อนตา + หน่วยที่อ่านออกเสียง) */
-.row {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, var(--space-9));
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  /* ไทยกินความสูง 1.582em — กล่องที่ห่อข้อความไทยต้อง line-height >= 1.65 */
+.roster {
+  margin: 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-size: var(--fs-6);
   line-height: var(--lh-thai);
 }
 
-.cols {
-  border-bottom: 1px solid var(--border);
-  color: var(--text-3);
-  font-size: var(--fs-2);
-  font-weight: var(--fw-semibold);
-}
-
-/* รายชื่อยาว (หลายทีม) เลื่อนในกล่องตัวเอง ไม่ดันปุ่มท้ายโมดัลตกจอ */
 .list {
   display: flex;
   flex-direction: column;
-  max-height: 50vh;
-  overflow-y: auto;
+  min-width: 0;
 }
 
-.option {
-  flex: none;
+/* ── กลุ่ม "ว่างทั้งวัน" (หรือแผ่นล้วนตอนไม่รู้ภาระ) ─────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-3) var(--space-2-5);
+}
+.section + .row,
+.section + .none,
+.row + .row,
+.row + .none {
+  border-top: 1px solid var(--border);
+}
+
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-0-5) var(--space-2);
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+.groupProjection {
   color: var(--text-2);
-  cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
-.option + .option { border-top: 1px solid var(--border); }
-.option:hover { background: var(--panel-2); }
-.option[data-on] { background: var(--accent-soft); }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1-5);
+}
 
-/* วงโฟกัสอยู่ **ในแถว** (offset ลบ) เพราะ .list ตัดขอบ · วางบนพื้นแถว ⇒ --accent-ink */
-.option:has(input:focus-visible) {
+/* ── ตัวเลือกทุกแบบ: แผ่น · แถว · ยังไม่มอบหมาย ─────────────────────────────── */
+/* ⚠️ position: relative = ที่ยึดของ .srOnly (radio ที่ซ่อนตา) */
+.tile,
+.row,
+.none {
+  position: relative;
+  min-width: 0;
+  min-height: var(--ctl-h-touch);
+  color: var(--text);
+  line-height: var(--lh-thai);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+}
+
+.tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--space-4) minmax(0, 1fr) minmax(0, 150px);
+  align-items: center;
+  column-gap: var(--space-2-5);
+  padding: var(--space-2) var(--space-3);
+}
+
+.none {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  padding: 0 var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+}
+.noneSub { color: var(--text-3); font-size: var(--fs-5); }
+
+.tile:hover,
+.row:hover,
+.none:hover { background: var(--panel-2); }
+
+/* ⭐ ตัวที่เลือกอยู่ต้องเห็นชัด (pain 3: เดิมแค่พื้นจาง ๆ + ติ๊ก 14px) — พื้นส้มอ่อน + ขอบ + จุดทึบ */
+.tile[data-on] {
+  background: var(--accent-soft);
+  border-color: var(--accent-ink);
+}
+.row[data-on],
+.none[data-on] { background: var(--accent-soft); }
+.tile[data-on] .team { color: var(--accent-ink); }
+
+/* วงโฟกัสอยู่ **ในตัวเลือก** (offset ลบ) เพราะกล่องตัดขอบ · บนพื้นส้ม ⇒ --accent-ink */
+.tile:has(input:focus-visible),
+.row:has(input:focus-visible),
+.none:has(input:focus-visible) {
   outline: 2px solid var(--accent-ink);
   outline-offset: -2px;
 }
 
-.who {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+/* จุด radio ที่ตาเห็น (radio จริงซ่อนอยู่ข้างใน) */
+.dot {
+  flex: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--panel-solid);
+}
+[data-on] > .dot {
+  border-color: var(--accent-ink);
+  background: radial-gradient(circle, var(--accent-ink) 0 40%, var(--panel-solid) 45%);
 }
 
 .name {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
   min-width: 0;
-  color: var(--text-1);
-  font-size: var(--fs-7);
+  overflow: hidden;
+  font-size: var(--fs-6);
   font-weight: var(--fw-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.unassigned {
-  color: var(--text-3);
-  font-weight: var(--fw-medium);
-}
-
-.tick {
+.team {
   flex: none;
-  color: var(--accent-ink);
-}
-
-.meta {
   color: var(--text-3);
   font-size: var(--fs-3);
 }
+.tile .team { margin-left: auto; }
 
-.meta [data-tone="free"] { color: var(--green); }
-/* คำเตือนรายคน (เวลาทับ · เกินภาระ · หลุดรายชื่อ) — เตือน ไม่ห้าม จึงเป็นอำพัน ไม่ใช่แดง */
-.meta [data-tone="warn"] { color: var(--amber); font-weight: var(--fw-semibold); }
+/* ── แถวคนที่มีงานแล้ว ──────────────────────────────────────────────────────── */
+.who {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
 
-.num {
-  text-align: right;
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-0-5) var(--space-1-5);
+  min-width: 0;
+}
+
+.now {
+  color: var(--text-3);
+  font-size: var(--fs-5);
   font-variant-numeric: tabular-nums;
 }
 
-.option .num {
-  color: var(--text-1);
-  font-size: var(--fs-7);
+.gone {
+  color: var(--amber);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+.load {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+/* แถบภาระ — ขีดละหนึ่งจุด เต็มแถบ 18 จุด · เส้นเพดานหลังขีดที่ 12 (ไม่มี style={{width}}) */
+.bar {
+  display: flex;
+  height: var(--space-1-5);
+  margin-top: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+}
+.bar > i {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.bar > i:first-child { border-radius: var(--radius-full) 0 0 var(--radius-full); }
+.bar > i[data-fill="now"] { background: var(--blue); }
+.bar > i[data-fill="add"] { background: color-mix(in srgb, var(--blue) 35%, transparent); }
+.bar[data-over] > i[data-fill="now"] { background: var(--amber); }
+.bar[data-over] > i[data-fill="add"] { background: color-mix(in srgb, var(--amber) 40%, transparent); }
+.bar > i[data-cap]::after {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--space-1));
+  right: calc(-1 * var(--space-0-5) / 2);
+  bottom: calc(-1 * var(--space-1));
+  width: var(--space-0-5);
+  border-radius: var(--radius-full);
+  background: var(--text-2);
+}
+
+.projection {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* เกินเพดาน = อำพัน (เตือน ไม่ห้าม · มีแต่ด่าน ①–④ ที่บล็อก) */
+.projection[data-over] {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
 }
 
 .srOnly {
@@ -128,4 +279,19 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* ── มือถือ: แผ่นว่างเรียงคอลัมน์เดียว · แถบภาระลงแถวที่สองของแถว ─────────────────── */
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .row {
+    grid-template-columns: var(--space-4) minmax(0, 1fr);
+    align-items: start;
+    row-gap: var(--space-1-5);
+  }
+  .row > .dot { margin-top: var(--space-1); }
+  .load { grid-column: 2; }
+  .projection { text-align: left; white-space: normal; }
 }

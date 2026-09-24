@@ -88,6 +88,32 @@ export const isoDateToDisplay = (value, { era = "CE" } = {}) => {
   return era === "BE" ? shiftDisplayYear(display, BUDDHIST_YEAR_OFFSET) : display;
 };
 
+/* "พฤ. 1 ต.ค. 2026" จากวันที่ล้วน 'YYYY-MM-DD' — ช่องวันที่ของโมดัลจัดคิวแสดงแบบนี้ตอนไม่ได้พิมพ์
+   (`DateInput weekday` · pain 10 ของแบบ A: ตัวเลข 01/10/2026 ไม่บอกว่าวันอะไร)
+   ⚠️ วันในสัปดาห์คิดจากปฏิทินล้วน (UTC เที่ยงคืน) — สตริงวันที่ไม่ใช่จุดเวลา ไม่มีโซนเวลาเกี่ยว
+   ⚠️ ค่าเสีย/วันที่ไม่มีจริง = '' ⇒ ผู้เรียกถอยไปแบบตัวเลขเอง (ไม่เดา) */
+const WEEKDAYS_TH_SHORT = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
+export const isoDateToWeekdayText = (value, { era = "CE" } = {}) => {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return "";
+  const shownYear = era === "BE" ? year + BUDDHIST_YEAR_OFFSET : year;
+  return `${WEEKDAYS_TH_SHORT[date.getUTCDay()]} ${day} ${TH_MONTHS_SHORT[month - 1]} ${shownYear}`;
+};
+
+/* ข้อความในช่องวันที่ (`DateInput`) — **ตัวเดียวที่ตัดสินว่าช่องโชว์อะไร**
+   · ค่าตั้งต้น = ตัวเลข "01/10/2026" (ทุกหน้าเดิมไม่ขยับ)
+   · `weekday` = "พฤ. 1 ต.ค. 2026" ตอนไม่ได้พิมพ์ · `typing` (โฟกัสอยู่) = ตัวเลขเสมอ เพราะคนพิมพ์เป็นตัวเลข */
+export const dateFieldText = (value, { era = "CE", weekday = false, typing = false } = {}) => {
+  if (weekday && !typing) {
+    const text = isoDateToWeekdayText(value, { era });
+    if (text) return text;
+  }
+  return isoDateToDisplay(value, { era });
+};
+
 export const displayDateToIso = (value, { era = "CE" } = {}) => {
   // แปลงปีกลับเป็น ค.ศ. ก่อนตรวจความถูกต้อง — ไม่งั้น 29/02/2567 (ปีอธิกสุรทิน
   // ในปฏิทิน พ.ศ. คือ ค.ศ. 2024) จะถูกตัดทิ้งเพราะ 2567 ไม่ใช่ปีอธิกสุรทิน

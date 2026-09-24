@@ -19,12 +19,13 @@ import { MAX_ASSETS_PER_DAY } from './visitLoad';
 import { toHHMM } from './sites';
 import { INTAKE_TAB_LABELS } from './intake';
 import {
-  SURVEY_QUEUE_STEPS, SURVEY_QUEUE_STEP_LABELS, liveSurveyVisitsByRequest, surveyQueueStep,
+  SURVEY_QUEUE_STEPS, SURVEY_QUEUE_STEP_BADGES, SURVEY_QUEUE_STEP_LABELS, acknowledgedText,
+  liveSurveyVisitsByRequest, previousVisitText, surveyQueueStep,
 } from './surveyQueue';
 import { requestStatusView } from '@/lib/requests/statuses';
 import { acknowledgeRequestError } from '@/lib/requests/stages';
 import { commitDueLabels } from '@/lib/requests/commitDue';
-import { businessDate } from '@/lib/businessDate';
+import { dayText, daysBetween, relDayText, requestAgeText, siteLoadText } from './queueWords';
 import {
   QUEUE_BUCKETS,
   WAITING_GROUPS,
@@ -43,27 +44,32 @@ import {
 } from './scheduleQueue';
 import { fmtMonthShort } from '@/lib/format';
 
-const DAY_LABELS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 /* ป้ายผลของนัดที่ปิดแล้ว — ตารางสีแบบเดียวกับ VISIT_STATUS_LABELS (ไม่ใช่ชุดสถานะใหม่) */
 const CLOSED_TONES = { done: 'success', partial: 'warning', unable: 'danger' };
 
-/** "อ. 22 ก.ย." จากวันที่ล้วน — ไม่เลื่อนโซนเวลา (สตริงวันที่ไม่ใช่เวลา) */
-export function dayText(iso) {
-  if (!iso) return '';
-  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
-  if (!y || !m || !d) return String(iso);
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${DAY_LABELS[weekday]} ${d} ${fmtMonthShort(iso)}`;
-}
+/* ⭐ คำกลาง (วัน · ระยะห่าง · ภาระไซต์) อยู่ที่ `queueWords.js` — ส่งต่อจากที่นี่ให้ผู้เรียกเดิม
+   (หน้าจัดคิว · เทสต์) ไม่ต้องแก้ import · โมดัลจัดคิวอ่านชุดเดียวกัน (คำบนการ์ด = คำในโมดัล) */
+export { dayText, relDayText, siteLoadText };
 
-/* จำนวนวันระหว่างสองวันที่ (b − a) — ใช้บอก "อีก 3 วัน" */
-const daysBetween = (a, b) => {
-  const toUtc = (iso) => {
-    const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
-    return Date.UTC(y, m - 1, d);
+/* ข้อที่ TS แก้เองได้ของด่าน → ป้ายของลิงก์แก้ + ช่องที่พาโฟกัสไป — ชุดเดียวของการ์ดและโมดัล
+   (`fix` ของ `evaluateVisitGate` มีสองค่า: 'assignee' · 'schedule') */
+export const GATE_FIX = Object.freeze({
+  assignee: Object.freeze({ label: 'เลือกเจ้าหน้าที่', field: 'assignee' }),
+  schedule: Object.freeze({ label: 'แก้วัน/เวลา', field: 'scheduledDate' }),
+});
+
+/**
+ * ข้อที่ติดของด่านหนึ่งข้อ (จาก `gateBlockedItems`) → ของที่การ์ด/โมดัลวาด
+ * ⭐ ข้อที่แก้ได้บนจอมีลิงก์แก้ต่อท้ายอยู่แล้ว ⇒ ตัดครึ่งหลังของเหตุที่เป็นคำสั่งซ้ำทิ้ง
+ *    ("ยังไม่มอบหมาย — เลือกเจ้าหน้าที่…" + ลิงก์ "เลือกเจ้าหน้าที่" = พูดสองครั้ง)
+ */
+export function gateItemView(item) {
+  return {
+    key: item.key, owner: item.owner, ownerTone: ownerTone(item.owner),
+    reason: item.fix ? String(item.reason).split(' — ')[0] : item.reason,
+    fix: item.fix || null,
   };
-  return Math.round((toUtc(b) - toUtc(a)) / 86400000);
-};
+}
 
 const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 
@@ -96,28 +102,9 @@ export const INTAKE_UPSTREAM_LABEL = `${INTAKE_TAB_LABELS.bind} + ${INTAKE_TAB_L
    ⭐ ใช้การ์ดตัวเดียวกับนัด (`ScheduleQueueCard`) ลำดับช่องเดิม: รหัส · ไซต์ · วัน · คน · ภาระ ·
       สิ่งที่ต้องทำ · ปุ่ม — คนจัดคิวสลับไปมาทั้งวัน ตำแหน่งของข้อมูลต้องไม่ย้ายตามชนิดการ์ด
    ⚠️ ขั้นของใบมาจาก `surveyQueueStep` ตัวเดียว (ตัวเดียวกับตัวโหลดฝั่ง server) — ห้ามคิดเงื่อนไขเอง */
-const REQUEST_STAGE_BADGES = Object.freeze({
-  acknowledge: { label: 'ขั้น 1/2', tone: 'warning' },
-  queue: { label: 'ขั้น 2/2', tone: 'info' },
-  requeue: { label: 'ลงคิวใหม่', tone: 'warning' },
-});
+/* ป้ายขั้นของการ์ด ("ขั้น 2/2") อยู่ที่ `SURVEY_QUEUE_STEP_BADGES` (surveyQueue.js) — ชุดเดียวกับ
+   แถว "ที่มา" ในโมดัลลงคิว */
 export const REQUEST_ORIGIN_TEXT = 'คำร้องประเมินพื้นที่ · ยังไม่มีนัด';
-
-/* วันไทยของจุดเวลา — ค่าเสีย = '' (ไม่ระเบิดทั้งแผงเพราะแถวเดียว) · ⚠️ ห้ามตัดสตริง ISO เอง (check:thaitime) */
-const thaiDayOf = (timestamp) => {
-  if (!timestamp) return '';
-  try { return businessDate(timestamp); } catch { return ''; }
-};
-
-/* "อีก 3 วัน" / "วันนี้" / "เลย…" ของวันที่ใบอ้างถึง */
-function requestRelText(date, todayIso, pastLabel) {
-  if (!date) return { text: '', tone: '' };
-  const n = daysBetween(todayIso, date);
-  if (n < 0) return { text: `${pastLabel} ${-n} วัน`, tone: 'warn' };
-  if (n === 0) return { text: 'วันนี้', tone: '' };
-  if (n === 1) return { text: 'พรุ่งนี้', tone: '' };
-  return { text: `อีก ${n} วัน`, tone: '' };
-}
 
 /**
  * แถวการ์ดของคำร้องหนึ่งใบ — `null` ถ้าใบนี้ไม่ใช่ของกลุ่มนี้แล้ว (`surveyQueueStep` ตอบ null)
@@ -146,17 +133,14 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
     ? `นัดเดิม ${dayText(request.committedDueDate)}`
     : (date ? `ต้องการเข้า ${dayText(date)}` : 'ผู้ขอไม่ระบุวันที่ต้องการ');
   const timeLine = time ? `${requeue ? 'เวลา' : 'ช่วง'} ${time}` : '';
-  const rel = requestRelText(date, todayIso, requeue ? 'วันนัดเดิมผ่านไปแล้ว' : 'เลยวันที่ต้องการ');
+  const rel = relDayText(date, todayIso, requeue ? 'วันนัดเดิมผ่านไปแล้ว' : 'เลยวันที่ต้องการ');
 
   // ── คน: ยังไม่มีเจ้าหน้าที่ ⇒ ช่องนี้บอกผู้ขอ + ค้างมากี่วัน (นับจากวันไทยที่ส่ง) ──
-  const submittedOn = thaiDayOf(request.submittedAt);
-  const age = submittedOn ? Math.max(0, daysBetween(submittedOn, todayIso)) : null;
   const who = {
     text: `ผู้ขอ ${request.requestedByName || '—'}`,
     tone: '',
     sub: [
-      submittedOn ? `ส่งเมื่อ ${dayText(submittedOn)}` : '',
-      age ? `ค้างมา ${age} วัน` : '',
+      requestAgeText(request, todayIso),
       request.assigneeName ? `มอบหมายไว้ ${request.assigneeName}` : '',
     ].filter(Boolean).join(' · '),
     linkId: null,
@@ -180,11 +164,9 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
   const instruction = step === 'acknowledge'
     ? 'ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่'
     : step === 'queue'
-      ? `รับเรื่องแล้ว${request.acknowledgedByName ? ` โดย ${request.acknowledgedByName}` : ''} — เลือกวัน เวลา เจ้าหน้าที่ และวันส่งผล`
-      : (previous
-        ? `นัดเดิม ${previous.code || previous.id} ${VISIT_STATUS_LABELS[previous.status] || previous.status} — ลงคิวใหม่`
-        : 'นัดเดิมไม่อยู่บนตาราง (สร้างไม่สำเร็จหรือถูกลบ) — ลงคิวใหม่');
-  const badge = REQUEST_STAGE_BADGES[step];
+      ? `${acknowledgedText(request)} — เลือกวัน เวลา เจ้าหน้าที่ และวันส่งผล`
+      : `${previousVisitText(previous)} — ลงคิวใหม่`;
+  const badge = SURVEY_QUEUE_STEP_BADGES[step];
   const status = { label: badge.label, tone: badge.tone, text: instruction };
   const actionLabel = step === 'acknowledge' ? 'รับเรื่อง' : labels.action;
 
@@ -373,7 +355,6 @@ export function buildScheduleQueue({
     const blocked = draft ? gateBlockedItems(gate) : [];
     const siteLoad = workload[visit.siteId] || null;
     const assets = siteLoad?.assets || 0;
-    const packs = siteLoad?.packs || 0;
     const rel = relativeText(visit, b, win);
 
     // ── เจ้าหน้าที่ ──
@@ -419,11 +400,7 @@ export function buildScheduleQueue({
       : [];
     /* ข้อที่แก้ได้บนการ์ดมีลิงก์แก้ต่อท้ายอยู่แล้ว ⇒ ตัดครึ่งหลังของเหตุที่เป็นคำสั่งซ้ำทิ้ง
        ("ยังไม่มอบหมาย — เลือกเจ้าหน้าที่…" + ลิงก์ "เลือกเจ้าหน้าที่" = พูดสองครั้ง) */
-    const gateItems = blocked.map((item) => ({
-      key: item.key, owner: item.owner, ownerTone: ownerTone(item.owner),
-      reason: item.fix ? String(item.reason).split(' — ')[0] : item.reason,
-      fix: item.fix || null,
-    }));
+    const gateItems = blocked.map(gateItemView);
     const kindLabel = VISIT_KIND_LABELS[visit.kind] || visit.kind;
     const dateLine = b === 'closed' ? `เข้า ${dayText(visit.actualDate || date)}` : dayText(date);
     const timeLine = b === 'closed' ? (visit.actualDate && visit.actualDate !== date ? `นัด ${dayText(date)}` : '') : visitTimeText(visit);
@@ -462,7 +439,7 @@ export function buildScheduleQueue({
       timeLine,
       rel,
       who,
-      siteLoadText: assets || packs ? `${assets} จุด · ${packs} แพ็ค` : '',
+      siteLoadText: siteLoadText(siteLoad),
       dayLoad,
       gateItems,
       status,

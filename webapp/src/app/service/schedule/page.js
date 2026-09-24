@@ -52,6 +52,7 @@ import { gateBlocker } from "@/lib/service/visitGate";
 import { visitDeleteBlocker, visitDeletePrompt } from "@/lib/service/visitDelete";
 import { mergeGateContext, gateContextForSite } from "@/lib/service/gateContext";
 import { isDraftVisit, isLiveVisit, isOpenVisit } from "@/lib/service/visitStatus";
+import { releaseSlotText, releasedToastText } from "@/lib/service/scheduleModal";
 import {
   ALL_TEAMS,
   NO_TEAM,
@@ -305,6 +306,9 @@ export default function ServiceSchedulePage() {
       }
     })();
   }, [pickingPeople, technicians.length]);
+  const rosterState = technicians.length ? "ready"
+    : techStatus === "error" ? "error"
+      : techStatus === "idle" || techStatus === "loading" ? "loading" : "ready";
   // ไซต์ทั้งหมด — เฉพาะโมดัลนัด (ช่องเลือกไซต์) · การ์ดคำร้องมีไซต์ของใบมากับรายการงานแล้ว
   useEffect(() => {
     if (formVisit === undefined) return;
@@ -612,6 +616,15 @@ export default function ServiceSchedulePage() {
         after: form.actualDate || formVisit?.scheduledDate || todayIso,
       });
       setToast({ kind: "success", msg: "ปิดงานแล้ว" });
+    } else if (editing && isDraftVisit(formVisit) && form.status === "scheduled") {
+      /* ⭐ ปล่อยร่างจากโมดัล = คำเดียวกับปล่อยจากการ์ด (BRIEF C1) — บอกว่าขึ้นช่องใคร วันไหน
+         ⚠️ อ่านชื่อ/วันจาก **ค่าที่เพิ่งส่ง** (ฟอร์ม) ไม่ใช่ใบก่อนแก้ — ปล่อยพร้อมเลือกคนในกดเดียว */
+      setToast({
+        kind: "success",
+        msg: releasedToastText({
+          id: formVisit.id, code: formVisit.code, assigneeName: form.assigneeName, scheduledDate: form.scheduledDate,
+        }),
+      });
     } else {
       setToast({ kind: "success", msg: editing ? "บันทึกนัดแล้ว" : "สร้างนัดแล้ว" });
     }
@@ -660,10 +673,7 @@ export default function ServiceSchedulePage() {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "ปล่อยขึ้นตารางไม่สำเร็จ");
       setReleaseRow(null);
-      setToast({
-        kind: "success",
-        msg: `ปล่อย ${row.code} ขึ้นตารางแล้ว — ${row.visit.assigneeName || "ยังไม่มอบหมาย"} · ${dayText(row.visit.scheduledDate)}`,
-      });
+      setToast({ kind: "success", msg: releasedToastText({ ...row.visit, code: row.code }) });
       if (focus?.visitId === row.visit.id) setFocus((prev) => ({ ...prev, released: true }));
       await Promise.all([load({ background: true, keep: true }), loadQueue({ background: true, keep: true })]);
     } finally {
@@ -1563,6 +1573,11 @@ export default function ServiceSchedulePage() {
         /* ⚠️ ส่งภาระเมื่อรายชื่อเจ้าหน้าที่โหลดแล้วเท่านั้น — ก่อนนั้นตัวเลือกจะเข้าใจว่าคนที่ตั้งไว้
            "ไม่อยู่ในรายชื่อแล้ว" และโชว์ศูนย์เหมือนว่างจริง (ยังเป็นดรอปดาวน์เดิมจนกว่าจะโหลดเสร็จ) */
         staffLoadFor={technicians.length ? staffLoadFor : null}
+        /* รายชื่อกำลังโหลด / โหลดพัง ≠ "ไม่มีใครเลย" — ตัวเลือกคนบอกคนละข้อความ */
+        rosterState={rosterState}
+        /* ภาระของไซต์ชุดเดียวกับตาราง — "งาน · 3 จุด · 2 แพ็ค" และ "ถ้าเลือก … x/12 จุด" */
+        workload={workloadAll}
+        todayIso={todayIso}
         /* ⭐ บริบทด่าน ①② หั่นตามไซต์ของนัดที่กำลังแก้ — โมดัลประเมินสดตอนคนเปลี่ยน
            วัน/ผู้รับผิดชอบ ด้วยตัวประเมินตัวเดียวกับ server · รวมบริบทของรายการงานด้วย
            (ร่างเดือนหน้าไม่อยู่ในบริบทของสัปดาห์ที่เปิด) */
@@ -1580,11 +1595,8 @@ export default function ServiceSchedulePage() {
       <ConfirmDialog
         open={!!releaseRow}
         title={releaseRow ? `ปล่อย ${releaseRow.code} ขึ้นตาราง?` : ""}
-        message={releaseRow
-          ? (releaseRow.visit.assigneeId
-            ? `จะขึ้นช่อง ${releaseRow.visit.assigneeName} · ${dayText(releaseRow.visit.scheduledDate)} ${visitTimeText(releaseRow.visit)} บนตาราง และโผล่ในงานวันนี้ของ${(releaseRow.visit.assigneeName || "").split(/\s+/)[0]}วันนั้น`
-            : `จะขึ้นแถว “ยังไม่มอบหมาย” · ${dayText(releaseRow.visit.scheduledDate)}`)
-          : ""}
+        /* ⭐ ประโยคเดียวกับบรรทัดผลลัพธ์ใต้ปุ่ม "ปล่อยขึ้นตาราง" ในโมดัล (`releaseSlotText`) */
+        message={releaseRow ? releaseSlotText(releaseRow.visit) : ""}
         confirmLabel="ปล่อยขึ้นตาราง"
         busy={releaseBusy}
         busyLabel="กำลังปล่อย…"
@@ -1614,7 +1626,11 @@ export default function ServiceSchedulePage() {
       <CommitDueDialog
         open={!!dueRow}
         request={dueRow?.request}
-        subtitle={dueRow ? [dueRow.code, dueRow.siteName, dueRow.customer].filter(Boolean).join(" · ") : ""}
+        /* ⭐ ไซต์เต็มแถวของรายการงาน (มีช่วงเวลาที่ให้เข้า) ⇒ โมดัลเตือนได้ก่อนกดว่านัดอยู่นอกช่วงเข้าไซต์
+           (ข้อ ④ เตือนเท่านั้น — server ลงตารางนัดประเมินเสมอ · ดู `commitDueOutcome`) · ไซต์ไม่อยู่ในมือ = ไม่รู้ ไม่เดาว่าผ่าน */
+        site={dueRow?.site || null}
+        accessKnown={!!dueRow?.site}
+        siteLoad={dueRow ? workloadAll[dueRow.request.siteId] || null : null}
         technicians={pickerTechnicians}
         techniciansLoading={!technicians.length && (techStatus === "idle" || techStatus === "loading")}
         techniciansError={!technicians.length && techStatus === "error"}

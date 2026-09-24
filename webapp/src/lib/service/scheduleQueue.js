@@ -11,9 +11,9 @@
 //    ⇒ เทสต์ตรึงวันได้ และจอกับ API ใช้วันอ้างอิงเดียวกันได้ (`asOf` ของ response)
 import { ALL_TEAMS, NO_TEAM } from './crewTeams';
 import { overdueDays } from './myVisits';
-import { MAX_ASSETS_PER_DAY } from './visitLoad';
 import { gateNeedsOthers, gatePassed } from './visitGate';
 import { isClosedVisit, isDraftVisit, isLiveVisit, isOpenVisit } from './visitStatus';
+import { minutesOf, toHHMM } from './sites';
 
 // ── ถังของรายการงาน ────────────────────────────────────────────────────────
 export const QUEUE_BUCKETS = Object.freeze(['waiting', 'overdue', 'scheduled', 'closed']);
@@ -253,7 +253,28 @@ export function staffLoadOn(visits, date, workload = {}) {
   return map;
 }
 
-/** แถวของตัวเลือกเจ้าหน้าที่ (`CrewLoadPicker`) ของวันหนึ่ง — ภาระ + ทีม + หมายเหตุรายคน
+/* นัดที่แต่ละคน **เป็นผู้รับผิดชอบหลัก** ในวันนั้น — Map<personId, [{ id, code, startTime, endTime }]>
+   เรียงตามเวลาเริ่ม (ไม่ระบุเวลาไปท้าย) · ใช้บอก "เวลาทับ SV-… 10:30–12:30" ในตัวเลือกเจ้าหน้าที่
+   ⚠️ นับเฉพาะผู้รับผิดชอบหลัก — กติกาเดียวกับ `overlaps()` ของตาราง (ผู้ช่วยไม่เป็นเจ้าของเวลาของนัด)
+   ⚠️ ชุดนัดเดียวกับ `staffLoadOn` (`liveVisitsOn` · ซ้ำ id นับครั้งเดียว · ร่างไม่นับ) */
+function dayVisitsByAssignee(visits, date) {
+  const map = new Map();
+  for (const visit of liveVisitsOn(visits, date)) {
+    if (!visit.assigneeId) continue;
+    if (!map.has(visit.assigneeId)) map.set(visit.assigneeId, []);
+    map.get(visit.assigneeId).push({
+      id: visit.id ?? null,
+      code: visit.code || visit.id || '',
+      startTime: toHHMM(visit.startTime) || null,
+      endTime: toHHMM(visit.endTime) || null,
+    });
+  }
+  const at = (v) => minutesOf(v.startTime) ?? Number.MAX_SAFE_INTEGER;
+  for (const list of map.values()) list.sort((a, b) => at(a) - at(b));
+  return map;
+}
+
+/** แถวของตัวเลือกเจ้าหน้าที่ (`CrewLoadPicker`) ของวันหนึ่ง — ภาระ + ทีม (ตัวเลขล้วน)
  *
  *  ⭐ **สูตรเดียวของสองจอ** (มติเจ้าของ 23/09) — โมดัลนัดบนหน้าจัดคิว กับโมดัลลงคิวคำร้อง
  *     (หน้าจัดคิวและหน้าคำร้อง) เลือกคนจากตัวเลขชุดเดียวกัน · เดิมสูตรนี้เขียนอยู่ในหน้าจัดคิว
@@ -261,17 +282,18 @@ export function staffLoadOn(visits, date, workload = {}) {
  *  @param visits      นัดที่นับภาระ (ตัวนี้กรอง `isLiveVisit` เองผ่าน `staffLoadOn`)
  *  @param technicians รายชื่อที่จะโชว์ [{ id, name }] — ลำดับเดิม
  *  @param crewByUser  Map/object userId → teamCode · teamNames Map/object teamCode → ชื่อทีม
- *  ⚠️ คนที่ไม่อยู่ทีมไหน (NO_TEAM) = ทีมว่าง ไม่ใช่คำว่า "ไม่มีทีม" */
+ *  @returns แถวละคน + `dayVisits` = นัดที่คนนั้นเป็นผู้รับผิดชอบหลักวันนั้น (ใช้เตือนเวลาทับ · มติ 24/09 แบบ A)
+ *  ⚠️ คนที่ไม่อยู่ทีมไหน (NO_TEAM) = ทีมว่าง ไม่ใช่คำว่า "ไม่มีทีม"
+ *  ⚠️ **ไม่มีหมายเหตุสำเร็จรูป** (รีวิว UAT 24/09) — เดิมมี `note` ("ไปช่วย n นัด · เกินภาระ 12 จุด") ที่ไม่มีใครอ่าน
+ *     แล้ว ขณะที่ตัวเลือกคนประกอบป้ายเองจากตัวเลข (`crewPickerView` · `overloaded`) = กติกาเดียวสองชุด ⇒ ถอดทิ้ง */
 export function crewLoadPeople({
   visits = [], dateIso, workload = {}, technicians = [], crewByUser = new Map(), teamNames = new Map(),
 } = {}) {
   const load = staffLoadOn(visits, dateIso, workload);
+  const dayVisits = dayVisitsByAssignee(visits, dateIso);
   return (technicians || []).map((tech) => {
     const row = load.get(tech.id) || { visits: 0, assets: 0, packs: 0, assisting: 0 };
     const teamCode = pick(crewByUser, tech.id);
-    const notes = [];
-    if (row.assisting > 0) notes.push(`ไปช่วย ${row.assisting} นัด`);
-    if (row.assets > MAX_ASSETS_PER_DAY) notes.push(`เกินภาระ ${MAX_ASSETS_PER_DAY} จุด`);
     return {
       id: tech.id,
       name: tech.name,
@@ -280,10 +302,15 @@ export function crewLoadPeople({
       assets: row.assets,
       packs: row.packs,
       assisting: row.assisting,
-      note: notes.join(' · '),
+      dayVisits: dayVisits.get(tech.id) || [],
     };
   });
 }
+
+/** แถวภาระนี้ "ว่างทั้งวัน" ไหม — ไม่มีนัดของตัวเอง **และ** ไม่ได้ไปช่วยใคร
+ *  ⚠️ นิยามเดียวกับ `freeCrewOn` (ไปช่วยก็คือไม่ว่าง) — ตัวเลือกเจ้าหน้าที่แยกกลุ่ม "ว่างทั้งวัน"
+ *     ด้วยตัวนี้ ⇒ ตัวเลข "วันนั้นว่าง n จาก m คน" บนการ์ดกับกลุ่มในโมดัลต้องเป็นคนชุดเดียวกัน */
+export const isFreeRow = (row) => !Number(row?.visits) && !Number(row?.assisting);
 
 /** ใครว่างในวันนั้น — "วันนั้นว่าง 7 จาก 8 คน" บนแถวร่างที่ยังไม่มีเจ้าหน้าที่
  *  @param people รายชื่อที่อยู่ในมุมมองตอนนี้ [{ id, name }] (กรองทีมมาแล้ว)

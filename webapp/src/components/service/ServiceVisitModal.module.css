@@ -1,0 +1,117 @@
+/* โมดัลนัดเข้าบริการ (แบบ A · มติเจ้าของ 24/09) — ของเฉพาะงานนี้ในเปลือกจัดคิว
+   (ช่องแก้ไซต์/ชนิดงาน · ชิปสถานะ · แผ่นข้ามด่าน · ผลการเข้าจริง · ผู้ไปด้วย)
+   ⚠️ โทเคนล้วน · ของที่กดได้สูงเท่าเป้านิ้ว (--ctl-h-touch) · โครงสองคอลัมน์/ปุ่มท้ายเป็นของเปลือก */
+
+/* ── แก้ไซต์/ชนิดงาน (กางจากกล่อง "งานนี้") ─────────────────────────────────── */
+.whatToggle {
+  align-self: flex-start;
+  min-height: var(--ctl-h-touch);
+  font-size: var(--fs-6);
+}
+
+.what {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+/* ค่าที่ฟอร์มนี้แก้ไม่ได้ (ชนิดงานของนัดที่เกิดจากใบคำร้อง) — ข้อความ ไม่ใช่ช่องกรอกที่ disabled
+   (ช่องเทาอ่านว่า "แก้ได้แต่ตอนนี้ยังไม่ให้แก้" ส่วนของจริงคือ "ค่านี้ไม่ได้เป็นของฟอร์มนี้") */
+.readonly {
+  margin: 0;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ชิปของกลางสูง 30px — ในโมดัลนี้ (เปิดบนมือถือของหัวหน้าช่างด้วย) ต้องเป็นเป้านิ้ว */
+.chips :global(.choice-chip) {
+  min-height: var(--ctl-h-touch);
+  padding-inline: var(--space-3);
+}
+
+/* ── แผ่นข้ามด่าน (แอดมิน) ใต้รายการด่าน ────────────────────────────────────── */
+.override {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+}
+
+.overrideTitle {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.overrideList {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  list-style: disc;
+}
+
+/* ── ผลการเข้าจริง ────────────────────────────────────────────────────────── */
+.actualSet {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+.legend {
+  padding-inline: var(--space-1);
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.actual {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* วันที่เข้าจริงเต็มแถว · เริ่ม | เสร็จ คู่กันแถวล่าง — คอลัมน์ซ้ายแคบ (376px) สามช่องแถวเดียวบีบเวลาจนอ่านไม่ออก */
+.actualRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.actualRow > :first-child { grid-column: 1 / -1; }
+
+.hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* ── ผู้ไปด้วย: ป้าย + ชิป + ปุ่มเพิ่ม บนแถวเดียว (ตัดบรรทัดได้) ───────────────────── */
+.helpers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.helpersLabel {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}

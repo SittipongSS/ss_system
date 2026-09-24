@@ -35,16 +35,25 @@ const FOCUSABLE_SELECTOR = [
 // · `toolbar` = แถบใต้หัว (แท็บหลายใบ ฯลฯ) — ของโครง ไม่ใช่แถวแรกของฟอร์ม
 // · `footer` = แถบปุ่มท้ายเป็นโซนจริง แทน sticky hack `.form-action-bar`
 //   ผู้เรียกที่ยังไม่ย้ายมาใช้ `footer` ยังทำงานได้ผ่านชั้นเข้ากันได้ใน globals
+//
+// สามตัวเลือกของโมดัลจัดคิวแบบ A (มติเจ้าของ 24/09 · `service/ScheduleModalShell`) — ไม่ส่ง = หน้าตาเดิมเป๊ะ
+// · `titleAside` = ของที่วางต่อท้ายชื่อในแถวเดียวกัน (ชิปชนิดงาน · สถานะ · ที่มา) ใน `.drawer-title-row`
+//   ⚠️ `aria-labelledby` ยังชี้ที่ `<h3>` ตัวเดียว — ชิปไม่ใช่ส่วนของชื่อที่โปรแกรมอ่านจอประกาศ
+// · `className` = ต่อท้ายคลาสของ `.drawer` (ให้เปลือกที่ประกอบจากโมดัลนี้จัดโซนข้างในเองได้)
+// · `sheetOnPhone` = จอ ≤640px กลายเป็นแผ่นเต็มจอ (หัวนิ่ง · เนื้อเลื่อน · ปุ่มนิ่งชิดขอบล่าง)
 export default function Modal({
   open,
   onClose,
   title,
+  titleAside,
   subtitle,
   toolbar,
   footer,
   children,
   size = "md",
   side,
+  className = "",
+  sheetOnPhone = false,
   dismissible = true,
   closeOnOverlay = false,
   initialFocusRef,
@@ -127,11 +136,13 @@ export default function Modal({
      ยังไหลลงมาจาก DOM parent** ที่มันไปเกิดอยู่ เจอจริง 2026-08-01: กล่อง transition ของ
      แถวตารางเกิดใน `<td className="num">` ซึ่งมี `text-align: right` → ป้ายชื่อช่องทุกอัน
      ในกล่องชิดขวาหมด · portal ยังกันชั้นซ้อนพังจาก ancestor ที่มี transform/filter ด้วย */
+  const sheet = sheetOnPhone && !isSide ? " phone-sheet" : "";
+  const heading = <h3 id={titleId} className="drawer-title">{title}</h3>;
   return createPortal((
-    <div className={`overlay${isSide ? " to-right" : ""}`} onClick={overlayClose}>
+    <div className={`overlay${isSide ? " to-right" : ""}${sheet}`} onClick={overlayClose}>
       <div
         ref={dialogRef}
-        className={`drawer ${size}${isSide ? " side-right" : ""}`}
+        className={`drawer ${size}${isSide ? " side-right" : ""}${sheet}${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -141,7 +152,12 @@ export default function Modal({
       >
         <div className="drawer-header">
           <div>
-            <h3 id={titleId} className="drawer-title">{title}</h3>
+            {titleAside ? (
+              <div className="drawer-title-row">
+                {heading}
+                {titleAside}
+              </div>
+            ) : heading}
             {subtitle ? <div className="drawer-subtitle">{thaiText(subtitle)}</div> : null}
           </div>
           {dismissible && (
