@@ -1,13 +1,14 @@
 // ── ผังตำแหน่งฝ่ายขาย (มติผู้ใช้ 2026-09-24) ─────────────────────────────────────────
-//   CCO → Commercial Manager → AE Supervisor / AC Supervisor → Senior AE / Senior AC → AE / AC
+//   Commercial Director (CD) → Commercial Manager (CM) → AE Supervisor / AC Supervisor → Senior AE / Senior AC → AE / AC
+//   (ร่างแรกเรียกชั้นบนสุดว่า CCO · เปลี่ยนเป็น Commercial Director ก่อนขึ้นระบบ — role `commercial_director`)
 //
 // มติที่เทสต์นี้ตรึง (ผู้ใช้ตอบ "ตามที่แนะนำ" ทุกข้อ):
 //   1. AC Supervisor เห็น/ทำงานทุกทีม แต่ **ไม่อนุมัติ** ขั้น AE Sup
 //   2. Senior AC = สิทธิ์ AC + สิทธิ์หัวหน้าทีม · ไม่ถือดีล
-//   3. CCO กับ CM สิทธิ์เท่ากัน (= AE Sup + MKT + TS manager) ต่างแค่ป้าย
+//   3. CD กับ CM สิทธิ์เท่ากัน (= AE Sup + MKT + TS manager) ต่างแค่ป้าย
 //   4. ลำดับชั้นมีผลแค่ลำดับบนจอ ไม่เพิ่มขั้นอนุมัติต่อชั้น
 //   5. กระดาษพิมพ์ตำแหน่งคนเซ็นจริง (positionTitle ของ role)
-//   6. กระดิ่งขั้น AE Sup ไม่ส่งถึง CCO/CM
+//   6. กระดิ่งขั้น AE Sup ไม่ส่งถึง CD/CM
 //
 // 🐞 กับดักหลักที่เทสต์นี้กัน: ตำแหน่งใหม่ที่ตกหล่นจาก helper ตัวใดตัวหนึ่ง **เสียสิทธิ์เงียบ ๆ** ไม่ใช่ error
 //    (ขอบเขตตกจาก 'all' เหลือ 'team' แล้วทุกตารางว่าง) — บทเรียนเดียวกับฝ่าย RD
@@ -36,7 +37,7 @@ import { canExportLeadReport } from './sales/leadReport.js';
 import { canEditProductSpec } from './sales/productSpecWorkflow.js';
 import { PROJECT_PEOPLE_ROLES } from './pm/projectPeople.js';
 
-const NEW_ROLES = ['cco', 'commercial_manager', 'ac_supervisor', 'senior_ac'];
+const NEW_ROLES = ['commercial_director', 'commercial_manager', 'ac_supervisor', 'senior_ac'];
 const sorted = (xs) => [...xs].sort();
 
 /* ── ทะเบียน ────────────────────────────────────────────────────────────── */
@@ -48,18 +49,18 @@ test('ทะเบียนครบทุกชั้น — ROLES · ป้า
     assert.equal(departmentFor(role), 'SA', role);
     assert.ok(POSITION_TITLES[role], `${role} ไม่มีตำแหน่งบนกระดาษ`);
   }
-  assert.equal(ROLE_LABELS.cco, 'Chief Commercial Officer (CCO)');
+  assert.equal(ROLE_LABELS.commercial_director, 'Commercial Director (CD)');
   assert.equal(ROLE_LABELS.commercial_manager, 'Commercial Manager (CM)');
   // มติข้อ 5: กระดาษพิมพ์ตำแหน่งเต็มของคนที่เซ็นจริง
-  assert.equal(positionTitle('cco'), 'Chief Commercial Officer');
+  assert.equal(positionTitle('commercial_director'), 'Commercial Director');
   assert.equal(positionTitle('commercial_manager'), 'Commercial Manager');
   assert.equal(positionTitle('ac_supervisor'), 'Account Coordinator Supervisor');
   assert.equal(positionTitle('senior_ac'), 'Senior Account Coordinator');
 });
 
-test('ดรอปดาวน์ฝ่ายขายเรียงตามผัง แต่ค่าตั้งต้นเป็น AE (ไม่ใช่ CCO ตัวแรกของลิสต์)', () => {
+test('ดรอปดาวน์ฝ่ายขายเรียงตามผัง แต่ค่าตั้งต้นเป็น AE (ไม่ใช่ CD ตัวแรกของลิสต์)', () => {
   assert.deepEqual(rolesForDepartment('SA'), [
-    'cco', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac',
+    'commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac',
   ]);
   assert.deepEqual(rolesForDepartment('SA'), [...SALES_ROLES]);
   assert.equal(defaultRoleForDepartment('SA'), 'ae');
@@ -70,11 +71,11 @@ test('ดรอปดาวน์ฝ่ายขายเรียงตาม�
   assert.equal(defaultRoleForDepartment('NOPE'), null);
 });
 
-test('ทีม: Senior AC ต้องผูกทีม · CCO/CM/AC Sup ไม่มีทีม (เหมือน AE Sup)', () => {
+test('ทีม: Senior AC ต้องผูกทีม · CD/CM/AC Sup ไม่มีทีม (เหมือน AE Sup)', () => {
   assert.deepEqual(sorted(TEAM_ROLES), ['ac', 'ae', 'senior_ac', 'senior_ae']);
   assert.equal(validateIdentity('senior_ac', ['ODM'], 'SA'), null);
   assert.equal(validateIdentity('senior_ac', [], 'SA'), null, 'ยังไม่จัดทีม = ผ่าน (จัดที่ /sa/teams)');
-  for (const role of ['cco', 'commercial_manager', 'ac_supervisor']) {
+  for (const role of ['commercial_director', 'commercial_manager', 'ac_supervisor']) {
     assert.equal(validateIdentity(role, [], 'SA'), null, role);
     assert.equal(validateIdentity(role, ['ODM'], 'SA'), 'ตำแหน่งนี้ไม่ต้องระบุทีม', role);
     assert.equal(validateIdentity(role, [], 'TS'), 'ฝ่าย (department) ไม่ตรงกับตำแหน่ง', role);
@@ -83,9 +84,9 @@ test('ทีม: Senior AC ต้องผูกทีม · CCO/CM/AC Sup ไ�
 
 /* ── cap ────────────────────────────────────────────────────────────────── */
 
-test('cap: CCO = CM = AE Sup · Senior AC = AC Sup = Senior AE — ไม่มีใครได้สิทธิ์ระบบ', () => {
+test('cap: CD = CM = AE Sup · Senior AC = AC Sup = Senior AE — ไม่มีใครได้สิทธิ์ระบบ', () => {
   const head = sorted(capsFor('ae_supervisor'));
-  assert.deepEqual(sorted(capsFor('cco')), head);
+  assert.deepEqual(sorted(capsFor('commercial_director')), head);
   assert.deepEqual(sorted(capsFor('commercial_manager')), head);
   const lead = sorted(capsFor('senior_ae'));
   assert.deepEqual(sorted(capsFor('senior_ac')), lead);
@@ -103,8 +104,8 @@ test('cap: CCO = CM = AE Sup · Senior AC = AC Sup = Senior AE — ไม่ม�
 
 /* ── ขอบเขตข้อมูล ────────────────────────────────────────────────────────── */
 
-test('ขอบเขต: หัวหน้าทุกคน (CCO · CM · AE Sup · AC Sup) เห็น/แก้ทุกทีม', () => {
-  assert.deepEqual(sorted(SALES_SUPERVISOR_ROLES), ['ac_supervisor', 'ae_supervisor', 'cco', 'commercial_manager']);
+test('ขอบเขต: หัวหน้าทุกคน (CD · CM · AE Sup · AC Sup) เห็น/แก้ทุกทีม', () => {
+  assert.deepEqual(sorted(SALES_SUPERVISOR_ROLES), ['ac_supervisor', 'ae_supervisor', 'commercial_director', 'commercial_manager']);
   for (const role of SALES_SUPERVISOR_ROLES) {
     assert.equal(isSuperuser(role), true, role);
     assert.equal(viewScope(role), 'all', role);
@@ -155,8 +156,8 @@ test('ขอบเขต: Senior AC = ระดับทีมเหมือน
 
 /* ── อำนาจตัดสิน (ขั้น AE Sup) ──────────────────────────────────────────── */
 
-test('อนุมัติ/ตัดสิน: CCO · CM · AE Sup (+ admin) เท่านั้น — AC Sup ไม่ได้ (มติข้อ 1)', () => {
-  assert.deepEqual(sorted(SALES_MANAGER_ROLES), ['ae_supervisor', 'cco', 'commercial_manager']);
+test('อนุมัติ/ตัดสิน: CD · CM · AE Sup (+ admin) เท่านั้น — AC Sup ไม่ได้ (มติข้อ 1)', () => {
+  assert.deepEqual(sorted(SALES_MANAGER_ROLES), ['ae_supervisor', 'commercial_director', 'commercial_manager']);
   const deal = { ownerId: 'someone-else' };
   const gates = {
     isSalesManager: (role) => isSalesManager(role),
@@ -173,7 +174,7 @@ test('อนุมัติ/ตัดสิน: CCO · CM · AE Sup (+ admin) �
     canManageCommercialPresets: (role) => canManageCommercialPresets(role),
   };
   for (const [name, gate] of Object.entries(gates)) {
-    assert.deepEqual(ROLES.filter(gate), ['admin', 'cco', 'commercial_manager', 'ae_supervisor'], name);
+    assert.deepEqual(ROLES.filter(gate), ['admin', 'commercial_director', 'commercial_manager', 'ae_supervisor'], name);
   }
 });
 
@@ -188,11 +189,11 @@ test('สาย AC ออกเอกสาร FM-SA-04 ได้ทุกระ
   assert.deepEqual(PROJECT_PEOPLE_ROLES.aeOwner, [...DEAL_HOLDER_ROLES]);
 });
 
-/* ── MKT + TS manager ของ CCO/CM ─────────────────────────────────────────── */
+/* ── MKT + TS manager ของ CD/CM ─────────────────────────────────────────── */
 
-test('CCO/CM ถือสิทธิ์ MKT: ดาวน์โหลด Excel รายงานลีด · กรอก/แก้/ลบลีดได้ผ่านสิทธิ์หัวหน้า', () => {
-  assert.deepEqual(sorted(MARKETING_OVERSEER_ROLES), ['cco', 'commercial_manager']);
-  for (const role of ['cco', 'commercial_manager']) {
+test('CD/CM ถือสิทธิ์ MKT: ดาวน์โหลด Excel รายงานลีด · กรอก/แก้/ลบลีดได้ผ่านสิทธิ์หัวหน้า', () => {
+  assert.deepEqual(sorted(MARKETING_OVERSEER_ROLES), ['commercial_director', 'commercial_manager']);
+  for (const role of ['commercial_director', 'commercial_manager']) {
     assert.equal(canExportLeadReport(role), true, role);
     assert.equal(canCreateLead(role), true, role);
     assert.equal(canEditLead({ role, id: 'u' }, { status: 'new', createdBy: 'mkt' }), true, role);
@@ -200,9 +201,9 @@ test('CCO/CM ถือสิทธิ์ MKT: ดาวน์โหลด Excel 
   for (const role of ['ae_supervisor', 'ac_supervisor']) assert.equal(canExportLeadReport(role), false, role);
 });
 
-test('CCO/CM ถือสิทธิ์หัวหน้าฝ่าย TS ในโมดูลบริการ ทั้งที่อยู่ฝ่าย SA · AE Sup/AC Sup ยังไม่ได้', () => {
-  assert.deepEqual(sorted(SERVICE_OVERSEER_ROLES), ['cco', 'commercial_manager']);
-  for (const role of ['cco', 'commercial_manager']) {
+test('CD/CM ถือสิทธิ์หัวหน้าฝ่าย TS ในโมดูลบริการ ทั้งที่อยู่ฝ่าย SA · AE Sup/AC Sup ยังไม่ได้', () => {
+  assert.deepEqual(sorted(SERVICE_OVERSEER_ROLES), ['commercial_director', 'commercial_manager']);
+  for (const role of ['commercial_director', 'commercial_manager']) {
     const me = { role, id: `u-${role}`, department: 'SA' };
     assert.equal(canViewService(me), true, role);
     assert.equal(canEditService(me), true, role);

@@ -16,9 +16,9 @@
 //                   all teams, plus account/master/audit management. Sits above
 //                   ae_supervisor and carries no sales org position.
 //   ── ฝ่ายขาย: ผังตำแหน่ง (มติผู้ใช้ 2026-09-24) — ดูกลุ่มตำแหน่งที่ SALES_ROLES ──
-//   cco           — Chief Commercial Officer. สิทธิ์ ae_supervisor + ดาวน์โหลด Excel ลีด
+//   commercial_director — Commercial Director (CD · ร่างแรกของผังเรียก CCO). สิทธิ์ ae_supervisor + ดาวน์โหลด Excel ลีด
 //                   (ของ MKT) + สิทธิ์หัวหน้าฝ่าย TS ในโมดูลบริการ (SERVICE_OVERSEER_ROLES)
-//   commercial_manager — Commercial Manager (CM). สิทธิ์เท่า cco (ต่างแค่ป้าย)
+//   commercial_manager — Commercial Manager (CM). สิทธิ์เท่า commercial_director (ต่างแค่ป้าย)
 //   ae_supervisor — Sales dept head. Controls ALL teams' sales/PM work (data
 //                   scope 'all', like admin) and can VIEW tax status, but is NOT
 //                   a system admin (no users:manage / master:manage / audit:view)
@@ -155,11 +155,11 @@ export function normalizeDepartment(department) {
 const DEPARTMENT_ROLES = {
   AD: ['admin'],
   SEC: ['secretary'],
-  /* ⭐ **เรียงตามผังตำแหน่ง** (มติผู้ใช้ 2026-09-24): CCO → CM → AE/AC Supervisor →
+  /* ⭐ **เรียงตามผังตำแหน่ง** (มติผู้ใช้ 2026-09-24): CD → CM → AE/AC Supervisor →
      Senior AE/AC → AE/AC — ดรอปดาวน์ตำแหน่งในหน้า /users โชว์ตามลำดับนี้
      🔴 **ตัวแรกของลิสต์ไม่ใช่ค่าตั้งต้นของฝ่ายนี้** — ถ้าใช้ตัวแรก สลับฝ่ายเป็น SA แล้ว
-        ฟอร์มจะเลือก CCO ให้เอง ⇒ ค่าตั้งต้นอยู่ที่ `DEPARTMENT_DEFAULT_ROLE` */
-  SA: ['cco', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac'],
+        ฟอร์มจะเลือก CD ให้เอง ⇒ ค่าตั้งต้นอยู่ที่ `DEPARTMENT_DEFAULT_ROLE` */
+  SA: ['commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac'],
   // MK = ฝ่ายการตลาด (เฟส C มติ #2): กรอกลีดรายวัน — เห็นเฉพาะเมนูลีด
   MK: ['marketing'],
   RA: ['ra'],
@@ -208,7 +208,7 @@ const DEPARTMENT_ROLES = {
 const ROLE_DEFAULT_DEPARTMENT = {
   admin: 'AD',
   secretary: 'SEC',
-  cco: 'SA', commercial_manager: 'SA',
+  commercial_director: 'SA', commercial_manager: 'SA',
   ae_supervisor: 'SA', ac_supervisor: 'SA',
   senior_ae: 'SA', senior_ac: 'SA',
   ac: 'SA', ae: 'SA',
@@ -230,7 +230,7 @@ export function rolesForDepartment(department) {
 }
 
 /* ตำแหน่งที่ฟอร์ม /users เลือกให้เองเมื่อสลับฝ่าย — ฝ่ายที่ไม่อยู่ในนี้ใช้ตัวแรกของลิสต์
-   ⭐ ฝ่ายขายเรียงลิสต์ตามผังตำแหน่ง (ตัวแรก = CCO) ⇒ ต้องชี้ค่าตั้งต้นไปที่ตำแหน่งที่
+   ⭐ ฝ่ายขายเรียงลิสต์ตามผังตำแหน่ง (ตัวแรก = CD) ⇒ ต้องชี้ค่าตั้งต้นไปที่ตำแหน่งที่
       รับเข้าบ่อยที่สุดและสิทธิ์น้อยที่สุดของฝ่าย ไม่ใช่ตำแหน่งสูงสุด (มติผู้ใช้ 2026-09-24) */
 const DEPARTMENT_DEFAULT_ROLE = { SA: 'ae' };
 
@@ -263,7 +263,7 @@ export const TEAMS = ['KA', 'ODM', 'SV'];
    แล้ว deploy ทุกครั้ง */
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'cco', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ac', 'ae', 'marketing', 'ra', 'rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];
+export const ROLES = ['admin', 'secretary', 'commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ac', 'ae', 'marketing', 'ra', 'rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];
 
 /* ── role ของฝ่ายปฏิบัติการ (ไม่ใช่ฝ่ายขาย ไม่ใช่ผู้สังเกตการณ์) ──────────────
    ⭐ แทน role `staff` ตัวเดียวที่ห้าฝ่ายเคยใช้ร่วมกัน (มติผู้ใช้ 2026-08-28)
@@ -331,14 +331,14 @@ export const isFieldCrewRole = (role) => FIELD_CREW_ROLES.includes(normalizeRole
  *    ตัวเลขแพ็คเกจกับจุดติดตั้งที่ SA จะเอาไปเสนอราคานั้นถูกต้อง เป็นการตัดสินใจ
  *    เชิงพาณิชย์ ไม่ใช่การรายงานข้อเท็จจริงหน้างาน
  *  ⚠️ แอดมินผ่าน — เก็บกวาด/แก้ให้ตอนหัวหน้าไม่อยู่
- *  ⭐ CCO/CM ผ่านด้วย (SERVICE_OVERSEER_ROLES · มติ 2026-09-24 "สิทธิ์ TS manager") */
+ *  ⭐ CD/CM ผ่านด้วย (SERVICE_OVERSEER_ROLES · มติ 2026-09-24 "สิทธิ์ TS manager") */
 export const canSendSurveyResult = (user) => user?.role === 'admin'
   || SERVICE_HEAD_ROLES.includes(normalizeRole(user?.role))
   || isServiceOverseer(normalizeRole(user?.role));
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
-  cco: 'Chief Commercial Officer (CCO)',
+  commercial_director: 'Commercial Director (CD)',
   commercial_manager: 'Commercial Manager (CM)',
   ae_supervisor: 'AE Supervisor',
   ac_supervisor: 'AC Supervisor',
@@ -372,15 +372,16 @@ export const ROLE_LABELS = {
 };
 
 /* ── ผังตำแหน่งฝ่ายขาย (มติผู้ใช้ 2026-09-24) ─────────────────────────────────
-   CCO → Commercial Manager → AE Supervisor / AC Supervisor → Senior AE / Senior AC → AE / AC
+   Commercial Director (CD) → Commercial Manager (CM) → AE Supervisor / AC Supervisor → Senior AE / Senior AC → AE / AC
+   (ร่างแรกของผังเรียกชั้นบนสุดว่า CCO · ผู้ใช้เปลี่ยนเป็น Commercial Director วันเดียวกันก่อนขึ้นระบบ — mig 0383)
 
    ⭐ **ทุกด่านถาม "กลุ่ม" ข้างล่าง ห้ามเทียบชื่อตำแหน่งตรง ๆ** — ตอนมีสี่ตำแหน่ง โค้ดเทียบ
       `role === 'ae_supervisor'` / `'senior_ae' || 'ac'` ไว้ราว 65 ไฟล์ · เพิ่มตำแหน่งแล้วไล่เติม
       ทีละจุดคือโรคเดียวกับที่ฝ่าย RD เจอ (16 จุด คนตำแหน่งใหม่เสียสิทธิ์เงียบ ๆ ไม่มี error)
       ⇒ ด่านกันถอยหลังอยู่ที่ `salesRoleRatchet.test.mjs`
    ⚠️ **ลำดับชั้นมีผลแค่ลำดับบนจอ/ป้าย** (มติข้อ 4) — ไม่มีขั้นอนุมัติต่อชั้น เอกสารไม่ต้อง
-      ผ่าน CM แล้วต่อ CCO · ใครอยู่ในกลุ่มผู้อนุมัติก็อนุมัติได้เท่ากัน */
-export const SALES_ROLES = ['cco', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac'];
+      ผ่าน CM แล้วต่อ CD · ใครอยู่ในกลุ่มผู้อนุมัติก็อนุมัติได้เท่ากัน */
+export const SALES_ROLES = ['commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac'];
 
 /* **ผู้มีอำนาจตัดสินของฝ่ายขาย** — ขั้น "AE Sup อนุมัติ" ของทุกเอกสาร (ใบเสนอราคา · ใบสั่งขาย ·
    FM-SA-04 · SO ย้อนหลัง · สัญญาภายนอก · ถอน/ย้อน/ออกฉบับแก้/แก้งวด) · อนุมัติข้อมูลหลัก ·
@@ -389,7 +390,7 @@ export const SALES_ROLES = ['cco', 'commercial_manager', 'ae_supervisor', 'ac_su
       ในฐานเช็คตำแหน่งซ้ำอีกชั้น · สองฝั่งไม่ตรงกัน = จอให้กด แต่ฐานตอบ forbidden
       (`salesRoleSqlParity.test.mjs` คุม)
    ⚠️ AC Supervisor **ไม่อยู่** (มติข้อ 1) — เห็นทุกทีมแต่ไม่อนุมัติ */
-export const SALES_MANAGER_ROLES = ['cco', 'commercial_manager', 'ae_supervisor'];
+export const SALES_MANAGER_ROLES = ['commercial_director', 'commercial_manager', 'ae_supervisor'];
 
 /* **หัวหน้าที่เห็น/ทำงานได้ทุกทีม** — ขอบเขตข้อมูล 'all' เท่า admin (ตัวเดียวกับ `isSuperuser`)
    = ผู้มีอำนาจตัดสินทั้งหมด + AC Supervisor */
@@ -415,23 +416,23 @@ export const AC_TRACK_ROLES = ['ac', 'senior_ac', 'ac_supervisor'];
 export const DEAL_HOLDER_ROLES = ['ae', 'senior_ae'];
 
 /* **ผู้กำกับงานบริการ** — สิทธิ์หัวหน้าฝ่าย TS ในโมดูลบริการ โดยไม่ต้องอยู่ฝ่าย TS
-   (มติผู้ใช้ 2026-09-24: CCO/CM = AE Sup + MKT + TS manager)
+   (มติผู้ใช้ 2026-09-24: CD/CM = AE Sup + MKT + TS manager)
    ⚠️ ได้แค่ด่าน "คนในโมดูล" + จัดทีมของฝ่าย TS + ส่งผลประเมินพื้นที่ — **ไม่ใช่ช่างหน้างาน**
       (`canWorkOwnVisit` / `canBeServiceAssignee` ยังเป็นของฝ่าย TS เท่านั้น) */
-export const SERVICE_OVERSEER_ROLES = ['cco', 'commercial_manager'];
+export const SERVICE_OVERSEER_ROLES = ['commercial_director', 'commercial_manager'];
 
 /* **ผู้รับกระดิ่งของขั้น AE Supervisor** — ลีดใหม่รอคัดกรอง · ลีดเด้งกลับคิวกลาง ·
    FM-SA-04 รอ AE Sup อนุมัติ
-   ⭐ มติผู้ใช้ 2026-09-24 ข้อ 6: CCO/CM อนุมัติ/คัดกรองได้ แต่ **ไม่รับกระดิ่ง** (เข้าไปดูคิวเอง)
+   ⭐ มติผู้ใช้ 2026-09-24 ข้อ 6: CD/CM อนุมัติ/คัดกรองได้ แต่ **ไม่รับกระดิ่ง** (เข้าไปดูคิวเอง)
    ⚠️ แคบกว่า SALES_MANAGER_ROLES โดยตั้งใจ — วันไหนไม่มีบัญชี AE Sup ที่เปิดอยู่เลย กระดิ่งเหล่านี้
       ไม่มีคนรับ (คิวคัดกรองลีดถอยไปหา admin ให้ที่ leadNotify.js) */
 export const SALES_BELL_ROLES = ['ae_supervisor'];
 
-/* **ตำแหน่งฝ่ายขายที่ถือสิทธิ์ของ MKT** (มติผู้ใช้ 2026-09-24: CCO/CM = AE Sup + MKT + TS manager) —
+/* **ตำแหน่งฝ่ายขายที่ถือสิทธิ์ของ MKT** (มติผู้ใช้ 2026-09-24: CD/CM = AE Sup + MKT + TS manager) —
    สิทธิ์ของ MKT ส่วนใหญ่ AE Sup มีอยู่แล้ว (เห็น/กรอก/แก้/ลบลีด ผ่าน isSuperuser) · ที่เหลือข้อเดียวคือ
    ดาวน์โหลด Excel รายงานลีด (`canExportLeadReport` · มีชื่อ/เบอร์ลูกค้า — มติ 2026-08-27 เปิดเฉพาะ MKT + admin)
    ⚠️ คนละเรื่องกับ SERVICE_OVERSEER_ROLES แม้วันนี้สมาชิกตรงกัน — ห้ามยุบรวม */
-export const MARKETING_OVERSEER_ROLES = ['cco', 'commercial_manager'];
+export const MARKETING_OVERSEER_ROLES = ['commercial_director', 'commercial_manager'];
 
 export const isSalesRole = (role) => SALES_ROLES.includes(role);
 export const isTeamLead = (role) => TEAM_LEAD_ROLES.includes(role);
@@ -648,12 +649,12 @@ const ROLE_CAPS = {
   secretary: ['mgmt:view', 'mgmt:edit', 'products:view'],
   // ae_supervisor: sales head — all-team data scope, but not a system admin.
   ae_supervisor: SALES_HEAD_CAPS,
-  /* ⭐ CCO / CM = สิทธิ์ ae_supervisor ทั้งชุด (มติผู้ใช้ 2026-09-24) — ส่วนที่เกินจาก AE Sup
+  /* ⭐ CD / CM = สิทธิ์ ae_supervisor ทั้งชุด (มติผู้ใช้ 2026-09-24) — ส่วนที่เกินจาก AE Sup
      ไม่ได้มาจาก cap: Excel ลีดอยู่ที่ `canExportLeadReport` · งานหัวหน้า TS อยู่ที่ด่านฝ่าย
      (`isServiceInsider` · `canManageTeams` · `canSendSurveyResult`) — cap บริการกับ team:manage
      มีใน SALES_HEAD_CAPS อยู่แล้ว ที่เคยกั้นคือ "ต้องอยู่ฝ่าย TS"
      ⚠️ ชี้ไปที่ชุดเดียวกัน ไม่ก๊อป — วันแก้ cap ของหัวหน้าฝ่ายขาย สามตำแหน่งขยับตามกัน */
-  cco: SALES_HEAD_CAPS,
+  commercial_director: SALES_HEAD_CAPS,
   commercial_manager: SALES_HEAD_CAPS,
   // team lead: ops + may delete orders (scoped to own team via deleteScope).
   // Target planning is reserved for the sales head and admin.
@@ -902,13 +903,13 @@ export function canDeleteRegistryAnyStatus(user) {
 // This is about SCOPE, not capabilities — `admin` and `ae_supervisor` both see
 // and edit every team's records, but only `admin` holds the admin-system caps
 // (users:manage / master:manage / audit:view). Use `can(role, …)` to gate those.
-// ⭐ ฝ่ายขาย = SALES_SUPERVISOR_ROLES (CCO · CM · AE Sup · AC Sup) — ขอบเขตกับการกำกับดูแล
+// ⭐ ฝ่ายขาย = SALES_SUPERVISOR_ROLES (CD · CM · AE Sup · AC Sup) — ขอบเขตกับการกำกับดูแล
 // 🔴 **อนุมัติ/ตัดสินเชิงพาณิชย์ห้ามถามตัวนี้** — ใช้ `isSalesManager` (AC Sup ไม่อนุมัติ)
 export function isSuperuser(role) {
   return role === 'admin' || SALES_SUPERVISOR_ROLES.includes(role);
 }
 
-/** ผู้มีอำนาจตัดสินของฝ่ายขาย (admin · CCO · CM · AE Sup) — ดู SALES_MANAGER_ROLES */
+/** ผู้มีอำนาจตัดสินของฝ่ายขาย (admin · CD · CM · AE Sup) — ดู SALES_MANAGER_ROLES */
 export function isSalesManager(role) {
   return role === 'admin' || SALES_MANAGER_ROLES.includes(role);
 }
@@ -1077,7 +1078,7 @@ export function canManageTeams(user, department = null) {
   const mine = departmentOf(user);
   const target = String(department ?? '').trim();
   if (!mine || !target) return false;
-  /* ⭐ CCO/CM ถือสิทธิ์หัวหน้าฝ่าย TS (มติ 2026-09-24) ⇒ จัดทีมเจ้าหน้าที่บริการได้ด้วย
+  /* ⭐ CD/CM ถือสิทธิ์หัวหน้าฝ่าย TS (มติ 2026-09-24) ⇒ จัดทีมเจ้าหน้าที่บริการได้ด้วย
      ⚠️ ข้อยกเว้นนี้ชี้ฝ่าย TS ฝ่ายเดียว — ฝ่ายอื่นยังเป็นกติกา "ฝ่ายของตัวเอง" เหมือนเดิม */
   if (target === SERVICE_DEPARTMENT && isServiceOverseer(user?.role)) return true;
   return mine === target;
@@ -1103,7 +1104,7 @@ export function canViewService(user) {
       จึงเทียบ `role === 'admin'` ตรง ๆ ไม่ใช่ `isSuperuser` ซึ่งรวม ae_supervisor ด้วย
    ⚠️ ฝ่ายขายยัง **สร้างสถานที่จากในใบคำร้อง** ได้เหมือนเดิม (ดู `canCreateServiceSite`
       และ `canPickServiceSite`) — นั่นเป็นทางของ *ใบคำร้อง* ไม่ใช่ทางของโมดูล
-   ⭐ **CCO/CM เข้าได้** (SERVICE_OVERSEER_ROLES · มติผู้ใช้ 2026-09-24 "สิทธิ์ TS manager") —
+   ⭐ **CD/CM เข้าได้** (SERVICE_OVERSEER_ROLES · มติผู้ใช้ 2026-09-24 "สิทธิ์ TS manager") —
       ยังอยู่ฝ่าย SA · ข้อยกเว้นเป็นรายตำแหน่ง ไม่ใช่ `isSuperuser` (AE Sup/AC Sup ยังไม่ได้) */
 export function isServiceInsider(user) {
   return user?.role === 'admin'
@@ -1114,7 +1115,7 @@ export function isServiceInsider(user) {
 /* ข้ามด่านลงคิวเข้าพื้นที่ (ด่าน ①–④ ของนัด) — **แอดมินคนเดียว** (มติผู้ใช้ 2026-09-23 ข้อ 4 "ข้ามด่านได้
    เฉพาะแอดมินเหมือนเดิม")
    🐞 เดิมกั้นด้วย `isSuperuser` ซึ่งได้ผลเป็นแอดมินคนเดียวเพราะ AE Sup เข้าโมดูลบริการไม่ได้ · ผังตำแหน่ง
-      2026-09-24 ให้ CCO/CM ผ่านด่านคนในโมดูล (SERVICE_OVERSEER_ROLES) ⇒ ถ้ายังใช้ isSuperuser สองตำแหน่งนี้
+      2026-09-24 ให้ CD/CM ผ่านด่านคนในโมดูล (SERVICE_OVERSEER_ROLES) ⇒ ถ้ายังใช้ isSuperuser สองตำแหน่งนี้
       จะข้ามด่านได้เงียบ ๆ ทั้งที่หัวหน้า TS ตัวจริงยังข้ามไม่ได้ · ตัวเดียวที่ route PATCH และโมดัลนัดถาม */
 export function canOverrideServiceGate(user) {
   return user?.role === 'admin';
@@ -1256,7 +1257,7 @@ export function canApproveCosting(user) {
 // ข้อมูลหลักรวมศูนย์ที่ AE Supervisor คนเดียว. ผลพลอยได้คือ Senior AE ที่สร้าง
 // ลูกค้า/สินค้าเองจะไม่ auto-approve อีก ต้องรอ Supervisor เหมือน AE/AC
 // ⭐ ผังตำแหน่งใหม่ (มติผู้ใช้ 2026-09-24): ผู้อนุมัติ = ผู้มีอำนาจตัดสินของฝ่ายขาย
-// (CCO · CM · AE Sup) — **ไม่ใช่ isSuperuser** ซึ่งรวม AC Supervisor ที่ไม่อนุมัติ (มติข้อ 1)
+// (CD · CM · AE Sup) — **ไม่ใช่ isSuperuser** ซึ่งรวม AC Supervisor ที่ไม่อนุมัติ (มติข้อ 1)
 export function canApproveMasterData(role) {
   return isSalesManager(role);
 }
@@ -1280,7 +1281,7 @@ export function canEditIssuedMasterCode(role) {
 // Keep this separate from `master:manage`: that capability also controls
 // system-level configuration (for example holidays) and remains admin-only
 // until the final permission-redesign phase.
-// "Sales head" = ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup — SALES_MANAGER_ROLES)
+// "Sales head" = ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup — SALES_MANAGER_ROLES)
 export function canManageProductCategories(role) {
   return isSalesManager(role);
 }
@@ -1653,7 +1654,7 @@ export function departmentOf(user) {
 // Authority to ASSIGN a task to someone (Sales Task Management / งานมอบหมาย).
 // ── กติกาหลัก: มอบหมายได้เฉพาะ "คนในฝ่ายเดียวกัน" (มติผู้ใช้ 2026-07-17) ──
 //   admin                          → ทุกคน (บัญชีดูแลระบบ — ทางออกฉุกเฉิน ไม่ใช่คนทำงานขาย)
-//   CCO · CM · AE/AC Supervisor    → ทั้งฝ่าย SA (ข้ามทีมได้ แต่ข้ามฝ่ายไม่ได้)
+//   CD · CM · AE/AC Supervisor    → ทั้งฝ่าย SA (ข้ามทีมได้ แต่ข้ามฝ่ายไม่ได้)
 //   TEAM_ROLES (Senior AE/AC · AE · AC) → เฉพาะ "ทีมเดียวกัน" (ODM/KA/SV) ซึ่งแคบกว่าฝ่าย
 //                                     (มติผู้ใช้: คงไว้เท่าเดิม ไม่ขยายเป็นทั้งฝ่าย)
 //   rd                             → เฉพาะฝ่าย RD (2 คนไม่มีหัวหน้าฝ่ายในระบบ — สลับงานกันเอง)

@@ -24,7 +24,7 @@ export const PROJECT_CLOSE_STATUS_LABELS = {
 
 // อนุมัติ/ตีกลับ/เปิดใหม่ = AE Supervisor + admin (superuser). ผู้ขอปิด (ผู้ดูแลโครงการ)
 // อนุมัติของตัวเองไม่ได้ — ตรวจ requester ≠ approver ใน handler (เหมือน SO).
-// ⭐ ผังตำแหน่ง 2026-09-24: ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) — AC Supervisor เห็นทุกทีมแต่ไม่อนุมัติ
+// ⭐ ผังตำแหน่ง 2026-09-24: ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) — AC Supervisor เห็นทุกทีมแต่ไม่อนุมัติ
 export function canApproveProjectClose(user) {
   return !!user && isSalesManager(user.role);
 }

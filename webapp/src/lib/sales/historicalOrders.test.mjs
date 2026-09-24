@@ -55,7 +55,7 @@ test('ตัวกรอง query ต่อ .eq("origin", …) ตัวเด�
 
 test('HISTORICAL_KEYER_ROLES = ฝ่ายขายทุกตำแหน่ง + Admin (มติ 22/09 · ผังตำแหน่ง 2026-09-24)', () => {
   assert.deepEqual([...HISTORICAL_KEYER_ROLES], [
-    'cco', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac', 'admin',
+    'commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac', 'admin',
   ]);
   assert.ok(Object.isFrozen(HISTORICAL_KEYER_ROLES), 'ชุด role ต้องแก้ทับตอนรันไม่ได้');
   for (const role of HISTORICAL_KEYER_ROLES) assert.equal(canKeyHistoricalSalesOrder({ role }), true, role);
@@ -71,8 +71,8 @@ test('HISTORICAL_KEYER_ROLES = ฝ่ายขายทุกตำแหน่�
   }
 });
 
-test('ย้ายเจ้าของดีลภาชนะ = ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) / Admin เท่านั้น — แคบกว่าผู้คีย์โดยเจตนา', () => {
-  for (const role of ['cco', 'commercial_manager', 'ae_supervisor', 'admin']) assert.equal(canMoveHistoricalDealOwner({ role }), true, role);
+test('ย้ายเจ้าของดีลภาชนะ = ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) / Admin เท่านั้น — แคบกว่าผู้คีย์โดยเจตนา', () => {
+  for (const role of ['commercial_director', 'commercial_manager', 'ae_supervisor', 'admin']) assert.equal(canMoveHistoricalDealOwner({ role }), true, role);
   // AC Supervisor เห็นทุกทีมแต่ไม่ตัดสิน (ผังตำแหน่ง 2026-09-24 มติข้อ 1)
   for (const role of ['ac_supervisor', 'senior_ac', 'ae', 'ac', 'senior_ae', 'finance', 'ts', undefined]) {
     assert.equal(canMoveHistoricalDealOwner({ role }), false, String(role));

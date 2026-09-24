@@ -174,22 +174,22 @@ test('ผังตำแหน่ง 2026-09-24: ช่องผู้รับ�
   assert.equal(projectPeopleFieldForRole('senior_ac'), 'acOwner');
   assert.equal(projectPeopleFieldForRole('ac_supervisor'), 'acOwner');
   // ผู้มีอำนาจตัดสินเป็นผู้ตรวจสอบ
-  for (const role of ['cco', 'commercial_manager', 'ae_supervisor']) assert.equal(projectPeopleFieldForRole(role), 'aeSupervisor', role);
+  for (const role of ['commercial_director', 'commercial_manager', 'ae_supervisor']) assert.equal(projectPeopleFieldForRole(role), 'aeSupervisor', role);
   assert.equal(projectPeopleFieldForRole('admin'), null);
   assert.equal(projectPeopleFieldForRole('rd'), null);
 });
 
-test('ผังตำแหน่ง 2026-09-24: ผู้ตรวจสอบ = CCO/CM/AE Sup · ผู้ประสานงาน = สาย AC (ตรวจฝั่ง server)', async () => {
-  const cco = { id: 'U-CCO', email: 'cco@x', user_metadata: { name: 'ซีซีโอ' }, app_metadata: { role: 'cco' } };
+test('ผังตำแหน่ง 2026-09-24: ผู้ตรวจสอบ = CD/CM/AE Sup · ผู้ประสานงาน = สาย AC (ตรวจฝั่ง server)', async () => {
+  const cd = { id: 'U-CD', email: 'cd@x', user_metadata: { name: 'ผอ.ฝ่ายขาย' }, app_metadata: { role: 'commercial_director' } };
   const acSup = { id: 'U-ACS', email: 'acs@x', user_metadata: { name: 'หัวหน้าเอซี' }, app_metadata: { role: 'ac_supervisor' } };
   const seniorAc = { id: 'U-SAC', email: 'sac@x', user_metadata: { name: 'ซีเนียร์เอซี' }, app_metadata: { role: 'senior_ac', team: 'ODM', teams: ['ODM'] } };
-  const stub = ownerStub({ 'U-CCO': cco, 'U-ACS': acSup, 'U-SAC': seniorAc });
-  assert.equal((await resolveProjectSupervisor(stub, 'U-CCO')).ok, true, 'CCO เป็นผู้ตรวจสอบได้');
+  const stub = ownerStub({ 'U-CD': cd, 'U-ACS': acSup, 'U-SAC': seniorAc });
+  assert.equal((await resolveProjectSupervisor(stub, 'U-CD')).ok, true, 'Commercial Director เป็นผู้ตรวจสอบได้');
   assert.equal((await resolveProjectSupervisor(stub, 'U-ACS')).ok, false, 'AC Supervisor ไม่ใช่ผู้ตรวจสอบ (ไม่อนุมัติ)');
   assert.equal((await resolveProjectAcOwner(stub, 'U-ACS', 'ODM')).ok, true, 'AC Supervisor ไม่มีทีม = ข้ามด่านทีม');
   assert.equal((await resolveProjectAcOwner(stub, 'U-SAC', 'ODM')).ok, true);
   assert.equal((await resolveProjectAcOwner(stub, 'U-SAC', 'KA')).ok, false, 'Senior AC คนละทีมกับงาน = ตีกลับ');
-  assert.equal((await resolveProjectAcOwner(stub, 'U-CCO', 'ODM')).ok, false, 'CCO ไม่ใช่สาย AC');
+  assert.equal((await resolveProjectAcOwner(stub, 'U-CD', 'ODM')).ok, false, 'Commercial Director ไม่ใช่สาย AC');
 });
 
 /* mig 0255 ย้ายผู้ประสานงานที่เคยไปกองใน preparedBy กลับเข้า acOwner/acOwnerId

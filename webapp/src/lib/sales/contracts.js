@@ -455,7 +455,7 @@ export function daysAwaitingSignature(contract, now = new Date()) {
 
    ⚠️ ไม่ใช้ `isSuperuser` เดี่ยว ๆ เป็นด่าน (บทเรียน `canConfirmPayment`) — admin ผ่าน
    เพราะเป็น superuser ของทั้งระบบ (#1501) ไม่ใช่เพราะเป็น "หัวหน้าฝ่ายขายอีกคน"
-   ⭐ ผังตำแหน่ง 2026-09-24: "AE Supervisor" = ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) ·
+   ⭐ ผังตำแหน่ง 2026-09-24: "AE Supervisor" = ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) ·
       AC Supervisor ไม่ได้ (เห็นทุกทีมแต่ไม่อนุมัติ) */
 export const canApproveExternalContract = (user) => isSalesManager(user?.role);
 

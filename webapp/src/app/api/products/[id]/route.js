@@ -174,7 +174,7 @@ export async function PATCH(request, { params }) {
     return Response.json(decided);
   }
 
-  // เปลี่ยนสถานะพัก/เปิดใช้ (isActive) สงวนสิทธิ์เฉพาะ admin / ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) —
+  // เปลี่ยนสถานะพัก/เปิดใช้ (isActive) สงวนสิทธิ์เฉพาะ admin / ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) —
   // SA (senior_ae/ac/ae) แก้สเปค/ราคาได้ปกติแต่ห้ามพักใช้สินค้าเอง (ต้องขอผู้บริหาร).
   if (body.isActive !== undefined && !isSalesManager(user?.role)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });

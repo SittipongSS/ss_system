@@ -24,7 +24,7 @@ import { teamNameOf } from '@/lib/master/teams';
 /* ตำแหน่งที่ "คัดกรอง" ได้ — คิวกลางเป็นของหัวหน้าฝ่ายขาย
    admin เป็น **ตัวสำรอง** ใช้เมื่อไม่มี ae_supervisor ในระบบเลย: ไม่มีใครรับแจ้งเตือน
    คือความล้มเหลวเงียบแบบเดียวกับที่ไฟล์นี้เกิดมาแก้
-   ⭐ CCO/CM คัดกรองได้แต่ไม่รับกระดิ่ง (มติ 2026-09-24 ข้อ 6 — ดู SALES_BELL_ROLES) */
+   ⭐ CD/CM คัดกรองได้แต่ไม่รับกระดิ่ง (มติ 2026-09-24 ข้อ 6 — ดู SALES_BELL_ROLES) */
 const SCREENERS = SALES_BELL_ROLES;
 const SCREENER_FALLBACK = ['admin'];
 /* ตำแหน่งที่ "กระจายลีดของทีม" ได้ — ตรงกับด่าน inTeam ของ handler (senior_ae/ac)

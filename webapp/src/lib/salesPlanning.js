@@ -209,7 +209,7 @@ export function canReviewSalesForecast(user) {
 // อนุมัติใบเสนอราคา = การเซ็นรับรองโดย "เจ้าของดีล" (มติผู้ใช้ 2026-07-18 —
 // ผู้อนุมัติบน FM-SA-01 = AE เจ้าของโครงการ/ลูกค้า). ผู้สร้างใบ (AC/AE/Senior) อาจไม่ใช่
 // เจ้าของ → เจ้าของต้องอนุมัติก่อนส่ง; ถ้าเจ้าของสร้างเอง = เซ็นเองได้ (creator === owner).
-// ผู้มีอำนาจตัดสิน (admin · CCO · CM · AE Sup) อนุมัติได้ในฐานะกำกับดูแล. deal ต้องมาพร้อม ownerId.
+// ผู้มีอำนาจตัดสิน (admin · CD · CM · AE Sup) อนุมัติได้ในฐานะกำกับดูแล. deal ต้องมาพร้อม ownerId.
 // ⚠️ `isSalesManager` ไม่ใช่ `isSuperuser` — AC Supervisor เห็นทุกทีมแต่ไม่อนุมัติ (มติ 2026-09-24)
 //    และต้องตรงกับ approve_quotation_with_signature_evidence_atomic (mig 0382)
 export function canApproveQuotation(user, deal) {

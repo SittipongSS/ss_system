@@ -194,7 +194,7 @@ export async function GET(request) {
   const notice = escalationNotice(plan.escalate);
   if (notice) {
     const screeners = [...directory.values()]
-      // AE Supervisor + admin — CCO/CM ไม่รับกระดิ่ง (มติ 2026-09-24 ข้อ 6 · SALES_BELL_ROLES)
+      // AE Supervisor + admin — CD/CM ไม่รับกระดิ่ง (มติ 2026-09-24 ข้อ 6 · SALES_BELL_ROLES)
       .filter((u) => u && !u.disabled && (SALES_BELL_ROLES.includes(u.role) || u.role === 'admin'))
       .map((u) => u.id);
     if (screeners.length) {

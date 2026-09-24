@@ -1,6 +1,6 @@
 // ── ด่านกันถอยหลัง: ห้ามเทียบ/ลิสต์ชื่อตำแหน่งฝ่ายขายตรง ๆ นอก permissions.js ──────────
 //
-// ⭐ ผังตำแหน่งฝ่ายขาย (มติผู้ใช้ 2026-09-24): CCO → CM → AE/AC Supervisor → Senior AE/AC → AE/AC
+// ⭐ ผังตำแหน่งฝ่ายขาย (มติผู้ใช้ 2026-09-24): CD → CM → AE/AC Supervisor → Senior AE/AC → AE/AC
 //    ตอนมีสี่ตำแหน่ง โค้ดเทียบ `role === 'ae_supervisor'` · `role === 'senior_ae' || role === 'ac'` ·
 //    `['ae', 'ac', 'senior_ae', 'ae_supervisor']` ไว้ราว 65 ไฟล์ — ต้องไล่เปลี่ยนเป็นกลุ่มตำแหน่ง
 //    (SALES_MANAGER_ROLES · SALES_SUPERVISOR_ROLES · TEAM_SCOPE_ROLES · TEAM_LEAD_ROLES · AC_TRACK_ROLES ·

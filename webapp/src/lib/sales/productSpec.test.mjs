@@ -143,7 +143,7 @@ test('เหตุผลที่ไม่มีใบเป็นข้อค�
 test('แก้สเปคได้: AC + ฝ่ายขายทุกระดับ + admin · ฝ่ายอื่นไม่ได้', () => {
   // ผังตำแหน่ง 2026-09-24: ฝ่ายขายทุกตำแหน่ง (SALES_ROLES) + admin
   assert.deepEqual([...SPEC_EDIT_ROLES].sort(), [
-    'ac', 'ac_supervisor', 'admin', 'ae', 'ae_supervisor', 'cco', 'commercial_manager', 'senior_ac', 'senior_ae',
+    'ac', 'ac_supervisor', 'admin', 'ae', 'ae_supervisor', 'commercial_director', 'commercial_manager', 'senior_ac', 'senior_ae',
   ]);
   for (const role of SPEC_EDIT_ROLES) assert.equal(canEditProductSpec(role), true, role);
   for (const role of ['rd', 'ra', 'finance', 'viewer', 'pd', undefined]) {

@@ -17,7 +17,7 @@ export const SALES_ORDER_STATUS_LABELS = {
   cancelled: 'ยกเลิก',
 };
 
-/* ผู้ตรวจ/อนุมัติใบสั่งขาย = ผู้มีอำนาจตัดสินของฝ่ายขาย (admin · CCO · CM · AE Sup)
+/* ผู้ตรวจ/อนุมัติใบสั่งขาย = ผู้มีอำนาจตัดสินของฝ่ายขาย (admin · CD · CM · AE Sup)
    ⚠️ ต้องตรงกับ `public.is_sales_manager_role()` ที่ฟังก์ชันอนุมัติ/ถอน/ย้อน/แก้งวดในฐานเช็คซ้ำ (mig 0382) */
 export function isSalesOrderReviewer(role) {
   return isSalesManager(role);

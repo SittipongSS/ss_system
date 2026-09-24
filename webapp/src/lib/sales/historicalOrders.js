@@ -67,7 +67,7 @@ export const historicalRowsOnly = (query) => query.eq('origin', ORIGIN_HISTORICA
 
 /* ── ใครทำอะไรกับใบย้อนหลัง (มติ 22/09 · mig 0374) ─────────────────────────────────────
    ⭐ **ผู้คีย์ ≠ ผู้อนุมัติ** — คีย์ = ฝ่ายขายทุกตำแหน่ง + Admin · อนุมัติ = isSalesOrderReviewer
-      (ผู้มีอำนาจตัดสิน: CCO · CM · AE Sup · Admin)
+      (ผู้มีอำนาจตัดสิน: CD · CM · AE Sup · Admin)
    ⚠️ ถามลิสต์ตำแหน่ง ไม่ใช่ isSuperuser (แพตเทิร์น canApproveExternalContract)
    !! สมาชิกต้องตรงกับ `public.is_sales_keyer_role()` ของ 0382 ที่ RPC สร้าง/แก้/ส่ง เรียก (เดิมเป็น literal
       ใน 0374 · 0382 เปลี่ยนเป็นฟังก์ชันกลางตอนเพิ่มผังตำแหน่ง 2026-09-24) — salesRoleSqlParity.test เทียบไฟล์ SQL
@@ -75,7 +75,7 @@ export const historicalRowsOnly = (query) => query.eq('origin', ORIGIN_HISTORICA
 export const HISTORICAL_KEYER_ROLES = Object.freeze([...SALES_ROLES, 'admin']);
 export const canKeyHistoricalSalesOrder = (user) => HISTORICAL_KEYER_ROLES.includes(user?.role);
 
-/* ย้ายเจ้าของดีลภาชนะ = ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) หรือ Admin เท่านั้น (คำตอบข้อ 4) — ดีลภาชนะ
+/* ย้ายเจ้าของดีลภาชนะ = ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) หรือ Admin เท่านั้น (คำตอบข้อ 4) — ดีลภาชนะ
    ถือใบย้อนหลังทุกใบของคู่ (ลูกค้า × AE) ⇒ แคบกว่าผู้คีย์โดยเจตนา · แยกตัวออกมาตอนผู้คีย์ขยายเป็นฝ่ายขายทุกตำแหน่ง */
 export const canMoveHistoricalDealOwner = (user) => isSalesManager(user?.role);
 

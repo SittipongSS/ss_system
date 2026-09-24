@@ -599,8 +599,8 @@ function UserFields({ form, setForm, requirePassword, edit, user = null }) {
       return { ...f, extraCaps: cur.includes(cap) ? cur.filter((c) => c !== cap) : [...cur, cap] };
     });
 
-  // สลับฝ่าย = ตั้งตำแหน่งเป็นค่าตั้งต้นของฝ่ายนั้น — ฝ่ายขายเรียงลิสต์ตามผังตำแหน่ง (ตัวแรก = CCO)
-  // ⇒ ห้ามใช้ตัวแรกของลิสต์ ไม่งั้นเปิดบัญชีขายใหม่แล้วได้ CCO เงียบ ๆ (ดู DEPARTMENT_DEFAULT_ROLE)
+  // สลับฝ่าย = ตั้งตำแหน่งเป็นค่าตั้งต้นของฝ่ายนั้น — ฝ่ายขายเรียงลิสต์ตามผังตำแหน่ง (ตัวแรก = CD)
+  // ⇒ ห้ามใช้ตัวแรกของลิสต์ ไม่งั้นเปิดบัญชีขายใหม่แล้วได้ CD เงียบ ๆ (ดู DEPARTMENT_DEFAULT_ROLE)
   const setDepartment = (dep) =>
     setForm((f) => ({ ...f, department: dep, role: defaultRoleForDepartment(dep) }));
 

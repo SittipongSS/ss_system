@@ -186,7 +186,7 @@ export default function SalesOrderDetailPage() {
   // RD/PC ผ่านด่านนั้นทางสาขา "รับคำร้องของฝ่ายตนได้" ซึ่งไม่ใช่งานของหน้า SO
   const canOpenRequest = useCan("costing:edit");
   const role = useRole();
-  // ผู้ตรวจ/อนุมัติ = ตัวเดียวกับ route และ RPC (admin · CCO · CM · AE Sup)
+  // ผู้ตรวจ/อนุมัติ = ตัวเดียวกับ route และ RPC (admin · CD · CM · AE Sup)
   const reviewer = isSalesOrderReviewer(role);
   const [order, setOrder] = useState(null);
   const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน

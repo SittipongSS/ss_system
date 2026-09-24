@@ -35,7 +35,7 @@ test('deals route: ขอบเขตรายแถวยังบังคั�
 test('ทุก role ที่เห็นแท็บ แต่ขอบเขตแคบกว่าบริษัท ต้องได้ข้อความบอกในลิ้นชัก', () => {
   // ตรวจกับทะเบียน role จริง ไม่ใช่ชื่อที่แต่งเอง (ชื่อที่ไม่มีอยู่จริงทำให้ยามผ่านฟรี)
   const narrow = ROLES.filter((r) => ['team', 'own'].includes(salesPlanningViewScope(r)));
-  // ผังตำแหน่ง 2026-09-24: Senior AC เห็นระดับทีมเหมือน AC/Senior AE · AC Supervisor/CCO/CM เห็นทั้งบริษัท
+  // ผังตำแหน่ง 2026-09-24: Senior AC เห็นระดับทีมเหมือน AC/Senior AE · AC Supervisor/CD/CM เห็นทั้งบริษัท
   assert.deepEqual(narrow.sort(), ['ac', 'ae', 'senior_ac', 'senior_ae'], 'สี่ role นี้คือคนที่รายการจะไม่ตรงกับตัวเลข');
   assert.equal(salesPlanningViewScope('admin'), 'all');
   assert.equal(salesPlanningViewScope('viewer'), 'all');

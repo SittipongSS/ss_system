@@ -262,7 +262,7 @@ export async function DELETE(request, { params }) {
   if (!canDeleteRecord(user, 'orders', order)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
-  // Tax-locked orders: admin + ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) — AC Supervisor ไม่ได้ (ผังตำแหน่ง 2026-09-24)
+  // Tax-locked orders: admin + ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) — AC Supervisor ไม่ได้ (ผังตำแหน่ง 2026-09-24)
   const locked = order.receiptNumber || order.clearedAt || ['complete', 'delivered'].includes(order.status);
   if (locked && !isSalesManager(user?.role)) {
     return Response.json(

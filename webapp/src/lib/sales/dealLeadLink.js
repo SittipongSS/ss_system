@@ -31,7 +31,7 @@ import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
  *  ⚠️ **ไม่แก้ `canCreateDealFromLead`** — ปุ่ม "เปิดดีลจากลีดนี้" ของ AE Supervisor ยังปิดตาม
  *     มติ 2026-07-21 (งานของหัวหน้าจบที่คัดกรอง) · ผูกย้อนหลังคือ "แก้ของลูกทีม" คนละเรื่อง
  *  ⚠️ AC ไม่อยู่ในลิสต์ — AC เปิดดีลจากลีดไม่ได้มาตั้งแต่ต้น (มติผู้ใช้) · สาย AC ทุกระดับก็เช่นกัน
- *  ⭐ ผังตำแหน่ง 2026-09-24: "AE Supervisor" = ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) */
+ *  ⭐ ผังตำแหน่ง 2026-09-24: "AE Supervisor" = ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) */
 export const LEAD_LINK_ROLES = ['admin', ...DEAL_HOLDER_ROLES, ...SALES_MANAGER_ROLES];
 export const canLinkLeadRole = (role) => LEAD_LINK_ROLES.includes(role);
 

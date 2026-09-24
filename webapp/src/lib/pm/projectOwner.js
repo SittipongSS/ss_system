@@ -115,9 +115,9 @@ export async function resolveProjectSupervisor(supabase, supervisorId, { require
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้ตรวจสอบคนอื่น' };
 
-  // ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) — ผังตำแหน่ง 2026-09-24 · กลุ่มเดียวกับรายชื่อบนฟอร์ม
+  // ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) — ผังตำแหน่ง 2026-09-24 · กลุ่มเดียวกับรายชื่อบนฟอร์ม
   if (!PROJECT_PEOPLE_ROLES.aeSupervisor.includes(user.app_metadata?.role || null)) {
-    return { ok: false, error: 'ผู้ตรวจสอบโครงการต้องเป็นตำแหน่งหัวหน้าฝ่ายขาย (CCO · CM · AE Supervisor)' };
+    return { ok: false, error: 'ผู้ตรวจสอบโครงการต้องเป็นตำแหน่งหัวหน้าฝ่ายขาย (CD · CM · AE Supervisor)' };
   }
 
   const name = projectOwnerName(user);

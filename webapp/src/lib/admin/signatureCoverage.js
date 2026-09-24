@@ -30,7 +30,7 @@ export function canViewSignatureCoverage(user) {
 }
 
 // role ที่อนุมัติได้เสมอไม่ว่าจะถือดีลหรือไม่ — ขาดลายเซ็นเมื่อไหร่คือความเสี่ยงทันที
-// = ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) + admin
+// = ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) + admin
 const ALWAYS_APPROVER_ROLES = ['admin', ...SALES_MANAGER_ROLES];
 
 export function isSignatureCohortRole(role) {

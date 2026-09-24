@@ -70,7 +70,7 @@ export default function ProductDetails() {
   const id = params.id;
   const canEditProducts = useCan("products:edit");
   const canDeleteProducts = useCan("products:delete");
-  // พักใช้/เปิดใช้อีกครั้งสงวนสิทธิ์ให้ admin + ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) เท่านั้น — SA
+  // พักใช้/เปิดใช้อีกครั้งสงวนสิทธิ์ให้ admin + ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) เท่านั้น — SA
   // (senior_ae/ac/ae) แก้สเปค/ราคาได้ปกติแต่ห้ามพักใช้สินค้าเอง (บังคับที่ server ด้วย).
   const role = useRole();
   const canToggleActive = isSalesManager(role);

@@ -4,7 +4,7 @@
 //    (หรือกลับกัน: ฐานยอมตำแหน่งที่จอกันไว้ ใครยิง API ตรงก็ผ่าน)
 // ⚠️ เทสต์นี้อ่าน **ตัวหนังสือ SQL** · พฤติกรรมจริงของ 0382 ลองบนฮาร์เนส PGlite แล้ว (ตั้ง 13 ฟังก์ชันจากนิยามล่าสุด
 //    ด้วย check_function_bodies = on → รัน 0382 สองรอบ → ทุกตัวเหลือเงื่อนไขใหม่หนึ่งจุด เนื้อส่วนอื่นเท่าเดิมทุกตัวอักษร ·
-//    ฟังก์ชันหายหนึ่งตัว = ระเบิดทั้งไฟล์ไม่ทิ้งอะไรไว้ · เรียกจริงแล้ว CCO/CM/AE Sup ผ่าน AC Sup ตก)
+//    ฟังก์ชันหายหนึ่งตัว = ระเบิดทั้งไฟล์ไม่ทิ้งอะไรไว้ · เรียกจริงแล้ว CD/CM/AE Sup ผ่าน AC Sup ตก)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -20,13 +20,17 @@ const stripComments = (sql) => sql.replace(/--[^\n]*/g, '');
 const SQL = read(FILE);
 const CODE = stripComments(SQL);
 
-/* ชุดตำแหน่งในฟังก์ชันกลาง — `COALESCE(p_role, '') IN (...)` */
+/* ชุดตำแหน่งในฟังก์ชันกลาง — `COALESCE(p_role, '') IN (...)` ของ **นิยามล่าสุด** (ไฟล์ท้ายสุดที่สร้างตัวนั้น)
+   ⭐ 0382 สร้าง · 0383 เปลี่ยน `cco` เป็น `commercial_director` ⇒ ฐานจริงใช้ชุดของไฟล์ท้ายสุดเสมอ */
 function helperRoles(name) {
-  const from = CODE.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(p_role text)`);
-  assert.ok(from >= 0, `0382 ต้องสร้าง ${name}`);
-  const body = CODE.slice(from, CODE.indexOf('$$;', CODE.indexOf('AS $$', from)));
+  const marker = `CREATE OR REPLACE FUNCTION public.${name}(p_role text)`;
+  const owner = files.filter((f) => stripComments(read(f)).includes(marker)).pop();
+  assert.ok(owner, `ต้องมี migration ที่สร้าง ${name}`);
+  const code = stripComments(read(owner));
+  const from = code.indexOf(marker);
+  const body = code.slice(from, code.indexOf('$$;', code.indexOf('AS $$', from)));
   const m = /COALESCE\(p_role, ''\) IN \(([^)]*)\)/.exec(body);
-  assert.ok(m, `${name}: หาเงื่อนไข IN ไม่เจอ`);
+  assert.ok(m, `${name} (${owner}): หาเงื่อนไข IN ไม่เจอ`);
   return [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
 }
 
@@ -99,9 +103,23 @@ test('ไม่มีฟังก์ชันไหนที่เขียน�
 
 test('🔒 migration หลัง 0382 ห้ามเขียนรายชื่อตำแหน่งฝ่ายขายเองในด่าน p_actor_role — เรียกฟังก์ชันกลาง', () => {
   const later = files.filter((f) => f > FILE);
-  const offenders = later.filter((f) => /p_actor_role[^;]*(?:NOT\s+)?IN\s*\([^)]*'(?:ae_supervisor|ac_supervisor|senior_ae|senior_ac|cco|commercial_manager)'/
+  const offenders = later.filter((f) => /p_actor_role[^;]*(?:NOT\s+)?IN\s*\([^)]*'(?:ae_supervisor|ac_supervisor|senior_ae|senior_ac|commercial_director|commercial_manager)'/
     .test(stripComments(read(f))));
   assert.deepEqual(offenders, [], 'ใช้ public.is_sales_manager_role() / is_sales_keyer_role() แทน');
+});
+
+test('0383 (CCO → Commercial Director): แก้แค่ฟังก์ชันกลางสองตัว · ไม่มี cco เหลือ · ไม่แตะ 13 ฟังก์ชันอนุมัติ', () => {
+  const code = stripComments(read('0383_sales_role_commercial_director.sql'));
+  assert.match(code, /^\s*BEGIN;/m);
+  assert.match(code, /COMMIT;\s*$/);
+  assert.equal(count(code, 'CREATE OR REPLACE FUNCTION'), 2);
+  for (const name of ['is_sales_manager_role', 'is_sales_keyer_role']) {
+    assert.ok(code.includes(`CREATE OR REPLACE FUNCTION public.${name}(p_role text)`), name);
+    assert.ok(code.includes(`GRANT EXECUTE ON FUNCTION public.${name}(text) TO service_role;`), name);
+    assert.ok(helperRoles(name).includes('commercial_director'), name);
+    assert.equal(helperRoles(name).includes('cco'), false, `${name}: cco ต้องถูกถอดแล้ว`);
+  }
+  assert.doesNotMatch(code, /pg_get_functiondef|DO \$/, 'ไม่ปะฟังก์ชันอนุมัติซ้ำ — เรียกตัวกลางอยู่แล้ว');
 });
 
 test('0382: ทำในทรานแซกชันเดียว · ตรวจท้ายว่าไม่เหลือ · สิทธิ์ของฟังก์ชันกลางแบบ 0336', () => {

@@ -5,7 +5,7 @@
 //
 //   ผู้ดูแล (aeOwner)        = ผู้ถือดีล (AE / Senior AE)
 //   ผู้ประสานงาน (preparedBy) = สาย AC (AC / Senior AC / AC Supervisor)  ← ชื่อ field ตามสคีมาเดิมของ projects
-//   ผู้ตรวจสอบ (aeSupervisor) = ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO / CM / AE Supervisor)
+//   ผู้ตรวจสอบ (aeSupervisor) = ผู้มีอำนาจตัดสินของฝ่ายขาย (CD / CM / AE Supervisor)
 // ⭐ ผังตำแหน่ง 2026-09-24 — ถามกลุ่มจาก lib/permissions.js ไม่พิมพ์ชื่อตำแหน่งซ้ำ
 //
 // 📌 ตารางนี้เคยอยู่ที่ `lib/sales/quotationPeople.js` เพราะใบเสนอราคาก๊อปผู้รับผิดชอบ

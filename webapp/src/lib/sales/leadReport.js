@@ -20,7 +20,7 @@ import {
    เฉพาะ Marketing กับ Admin) ⇒ ผู้สังเกตการณ์/ผู้บริหารที่เห็นแท็บ KPI **ไม่ได้ไฟล์นี้**
    ⚠️ `ae_supervisor` ก็ไม่ได้ ทั้งที่เป็น superuser ในด่านอื่น — จึงห้ามเขียนเป็น
    `isSuperuser(role) || role === 'marketing'` ที่จะกว้างกว่าที่ตกลงไว้เงียบ ๆ
-   ⭐ **CCO/CM ได้ด้วย** (มติผู้ใช้ 2026-09-24: สองตำแหน่งนี้ถือสิทธิ์ของ MKT · MARKETING_OVERSEER_ROLES) —
+   ⭐ **CD/CM ได้ด้วย** (มติผู้ใช้ 2026-09-24: สองตำแหน่งนี้ถือสิทธิ์ของ MKT · MARKETING_OVERSEER_ROLES) —
       ห้ามเปลี่ยนเป็น `isSalesManager` ซึ่งรวม AE Sup */
 export function canExportLeadReport(role) {
   return role === 'admin' || role === 'marketing' || MARKETING_OVERSEER_ROLES.includes(role);

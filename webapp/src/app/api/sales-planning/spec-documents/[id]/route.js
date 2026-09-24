@@ -151,7 +151,7 @@ function hiddenActionResponse(action, { document, latest, user, dealOwnerId }) {
 }
 
 /* ── แจ้งเตือน (`notifyUsers`) ตามตารางในเอกสารมติ ───────────────────────────
-   ยื่น ⇒ AE เจ้าของดีล · AE อนุมัติ ⇒ AE Supervisor ทุกคนที่ active (`SALES_BELL_ROLES` — CCO/CM อนุมัติขั้นนี้ได้
+   ยื่น ⇒ AE เจ้าของดีล · AE อนุมัติ ⇒ AE Supervisor ทุกคนที่ active (`SALES_BELL_ROLES` — CD/CM อนุมัติขั้นนี้ได้
    แต่ไม่รับกระดิ่ง · มติ 2026-09-24 ข้อ 6) · ตีกลับ ⇒ ผู้ยื่น ·
    อนุมัติขั้นสุดท้าย ⇒ ผู้ยื่น + AE เจ้าของดีล
    ⚠️ ไม่แจ้งตัวเอง (admin กดแทนเจ้าของดีล/ผู้ยื่นกดเองก็ไม่ต้องเด้งหาตัวเอง)

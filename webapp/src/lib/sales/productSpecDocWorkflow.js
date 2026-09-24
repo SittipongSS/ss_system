@@ -76,7 +76,7 @@ export const canIssueProductSpecDocument = (role) => isAcTrack(role) || role ===
 export const canAeApproveProductSpecDocument = (user, dealOwnerId) => isAdmin(user)
   || (Boolean(user?.id) && Boolean(dealOwnerId) && user.id === dealOwnerId);
 
-/** ขั้น AE Sup — ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) หรือ admin
+/** ขั้น AE Sup — ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) หรือ admin
  *  ⚠️ ถามลิสต์ SALES_MANAGER_ROLES ตรง ๆ ไม่ใช่ `isSuperuser` — AC Supervisor ไม่อนุมัติ (มติ 2026-09-24) */
 export const canSupApproveProductSpecDocument = (user) => isAdmin(user) || SALES_MANAGER_ROLES.includes(user?.role);
 

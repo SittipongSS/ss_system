@@ -531,7 +531,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (before.status === 'accepted') {
       return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ” ที่หน้า SO; ถ้ายังไม่มี SO ให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
     }
-    // ลบใบที่ไม่ใช่ร่าง = อำนาจของผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) — AC Supervisor ไม่ได้ (ผังตำแหน่ง 2026-09-24)
+    // ลบใบที่ไม่ใช่ร่าง = อำนาจของผู้มีอำนาจตัดสิน (CD · CM · AE Sup) — AC Supervisor ไม่ได้ (ผังตำแหน่ง 2026-09-24)
     const elevated = isSalesManager(user.role);
     if (!elevated) {
       if (before.status === 'closed') {
