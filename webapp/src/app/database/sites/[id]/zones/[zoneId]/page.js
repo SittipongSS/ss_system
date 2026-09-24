@@ -223,9 +223,11 @@ export default function ServiceZonePage({ params }) {
             {zoneAssets.length > 0 && (
               <ContextCard
                 icon={AirVent} eyebrow="อุปกรณ์ในโซน" title={`${fmtNumber(zoneAssets.length)} ตัว`}
+                /* ⭐ รหัสเครื่องเป็นป้าย (ตัวตน) — ชื่อของเครื่องที่เพิ่มจากทะเบียนคือชื่อรุ่น ⇒ ป้ายชื่อซ้ำกันทุกตัว
+                   ในโซนเดียวกัน · จุดติดตั้งบอกว่าตัวไหนอยู่ตรงไหน · เครื่องเก่าที่ไม่มีรหัสใช้ชื่อแทน */
                 facts={zoneAssets.slice(0, 6).map((a) => ({
-                  label: a.label,
-                  value: [ASSET_KIND_LABELS[a.kind] || a.kind, a.serial].filter(Boolean).join(" · "),
+                  label: a.code || a.label,
+                  value: [a.code ? a.label : null, ASSET_KIND_LABELS[a.kind] || a.kind, a.spot, a.serial].filter(Boolean).join(" · "),
                 }))}
               />
             )}
