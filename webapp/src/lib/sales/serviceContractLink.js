@@ -8,7 +8,8 @@
 // ⚠️ ไฟล์นี้ถูก import ทั้งฝั่งจอและฝั่ง API — ห้าม import อะไรที่เป็น server-only
 //   **ด่านต้องเป็นตัวเดียวกันสองที่** (กติกาเดียวกับ `contracts.js`)
 import {
-  contractInForce, contractKindLabel, contractStatusLabel, isSubstituteContract,
+  contractCancelDate, contractCancelledAfterSigning, contractInForce, contractKindLabel, contractStatusLabel,
+  isSubstituteContract,
 } from '@/lib/sales/contracts';
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate } from '@/lib/format';
@@ -40,6 +41,27 @@ export function contractSpanAt(contract, today = businessDate()) {
   if (!from && !to) return null;
   if (from && String(today) < from) return 'before';
   if (to && String(today) > to) return 'after';
+  return 'in';
+}
+
+/** สัญญาครอบงานของวันหนึ่งไหม — **รวมสัญญาที่ถูกยกเลิกหลังลงนาม** (มติเจ้าของ 24/09/2026)
+ *  คืน `'in' | 'before' | 'after' | null` เหมือน `contractSpanAt` · `'cancelled'` = ถูกยกเลิกแล้ว ณ วันนั้น ·
+ *  `'none'` = ไม่เคยมีผล (ร่าง/รอลงนาม/รอรับรอง/ยกเลิกก่อนมีผล/ไม่มีสัญญา)
+ *
+ * ⭐ **วันยกเลิกคือวันแรกที่งานหยุด** (เจ้าของเลือกเอง ทับคำแนะนำ "ผ่านถึงสิ้นวัน") — นัดวันนั้นผ่านเฉพาะที่
+ *   **ปิดงานแล้ว** (`finished` · ผู้เรียกถาม `isClosedVisit`) เพราะงานนั้นเกิดขึ้นจริงแล้ว ใบส่งงานต้องไม่กลับไปเป็น
+ *   "งดบริการ" · นัดก่อนวันยกเลิกยังครอบ (ด่านคำนวณสดทุกครั้ง ⇒ ตัดทุกวันเหมือนใบที่ไม่เคยมีผล = ใบส่งงานเก่า
+ *   ทั้งหมดของใบสั่งขายเปลี่ยนเป็นงดบริการย้อนหลัง)
+ * ⚠️ `contractInForce` ไม่เปลี่ยน (ยัง signed เท่านั้น) — ตัวนี้ตอบ "ครอบวันนี้ไหม" ไม่ใช่ "ผูกกับใบได้ไหม"
+ *    ⇒ สัญญาที่ยกเลิกแล้วผูกกับใบใหม่ไม่ได้ (`contractLinkable`) แต่ยังตอบเรื่องวันในอดีตได้ */
+export function contractCoverageOn(contract, day, { finished = false } = {}) {
+  if (contractInForce(contract)) return contractSpanAt(contract, day);
+  if (!contractCancelledAfterSigning(contract)) return 'none';
+  const span = contractSpanAt(contract, day);
+  if (span === 'before' || span === 'after') return span;
+  const cancelled = contractCancelDate(contract);
+  const date = String(day || '');
+  if (!date || date > cancelled || (date === cancelled && !finished)) return 'cancelled';
   return 'in';
 }
 

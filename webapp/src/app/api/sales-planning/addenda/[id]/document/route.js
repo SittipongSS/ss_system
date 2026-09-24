@@ -3,6 +3,7 @@ import { loadScoped } from '@/lib/scopedRow';
 import { withUser, fail, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { buildAddendumHTML } from '@/lib/sales/addendumDocument';
+import { stampWatermark } from '@/lib/documents/documentShell';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,6 +27,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // ใบที่ออกเลขแล้วเท่านั้นที่เก็บเนื้อไว้ — ร่างต้องเรนเดอร์สดทุกครั้ง
     if (addendum.docNo) await supabase.from('sales_contract_addenda').update({ issuedHtml: html }).eq('id', id);
   }
+
+  /* ⭐ บันทึกที่ถูกยกเลิกหลังตรึงเนื้อ (รวมที่ยกเลิกตามสัญญาแม่ — มติ 24/09/2026) พิมพ์ซ้ำพร้อมลายน้ำ "ยกเลิก" ·
+     ประทับตอนเสิร์ฟ ไม่เขียนกลับ (กติกาเดียวกับสัญญา) */
+  html = stampWatermark(html, addendum.status === 'cancelled' ? 'ยกเลิก' : null);
 
   return new Response(html, {
     status: 200,

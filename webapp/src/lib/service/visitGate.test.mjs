@@ -543,3 +543,78 @@ test('ข้อสัญญาที่ทุกโซนติดเพรา�
     assert.equal(gateNeedsOthers(items), false);
   }
 });
+
+/* ── สัญญาที่ถูกยกเลิกหลังลงนาม (มติเจ้าของ 24/09/2026) ─────────────────────────────────────────
+   ⭐ **งานหยุดตั้งแต่วันที่ยกเลิก** — นัดวันนั้นที่ยังไม่ปิดงานติดด่านด้วย (เจ้าของเลือกเอง ทับคำแนะนำ "ผ่านถึงสิ้นวัน")
+   ⭐ นัดก่อนวันยกเลิก และนัดวันนั้นที่ปิดงานไปแล้ว **ผ่านตามเดิม** — ด่านคำนวณสดทุกครั้งที่เปิดใบส่งงาน
+      ⇒ ถ้าตัดทุกวันเหมือนสัญญาที่ไม่เคยมีผล ใบส่งงานที่ปิดไปแล้วจะกลายเป็น "งดบริการ" ย้อนหลังทั้งใบ
+   ⚠️ ยกเลิกโดยไม่เคยมีผล (ไม่มี approvedAt) ยังติดทุกวันเหมือนเดิม (เทสต์ "สัญญาที่ยังไม่ผ่านการรับรอง") */
+const cancelledOn = (cancelledAt, extra = {}) => ({
+  ...full,
+  contractsById: {
+    CT1: {
+      id: 'CT1', contractNo: 'CT-SR-26010001-0', status: 'cancelled', approvedAt: '2026-01-02T03:00:00Z',
+      cancelledAt, effectiveDate: '2026-01-01', expiryDate: '2026-12-31', ...extra,
+    },
+  },
+});
+// ยกเลิก 27/08/2026 10:00 เวลาไทย · วันนัดของ `ok` = 27/08/2026 (พฤหัส)
+const CANCELLED_ON_VISIT_DAY = '2026-08-27T03:00:00Z';
+
+test('⭐ ยกเลิกหลังลงนาม: นัดก่อนวันยกเลิกยังผ่าน — ใบส่งงานเก่าไม่กลายเป็น "งดบริการ" ย้อนหลัง', () => {
+  const day26 = { ...ok, scheduledDate: '2026-08-26', status: 'done' };
+  assert.equal(contractItem(day26, cancelledOn(CANCELLED_ON_VISIT_DAY)).state, 'ok');
+  assert.equal(contractItem({ ...day26, status: 'scheduled' }, cancelledOn(CANCELLED_ON_VISIT_DAY)).state, 'ok');
+  const items = evaluateVisitGate(day26, cancelledOn(CANCELLED_ON_VISIT_DAY));
+  assert.equal(items.zoneGates[0].state, 'ok');
+});
+
+test('🔴 ยกเลิกหลังลงนาม: นัดวันยกเลิกที่ยังไม่ปิดงานติดด่าน (มติเจ้าของ) · ปิดงานแล้วผ่าน', () => {
+  for (const status of ['draft', 'scheduled', 'in_progress', undefined]) {
+    const c = contractItem({ ...ok, status }, cancelledOn(CANCELLED_ON_VISIT_DAY));
+    assert.equal(c.state, 'blocked', String(status));
+    assert.equal(c.owner, GATE_OWNERS.SA);
+    assert.match(c.detail, /CT-SR-26010001-0 ถูกยกเลิกเมื่อ 27\/08\/2026/);
+    assert.match(c.detail, /ผูกสัญญาฉบับใหม่ที่หน้าใบสั่งขาย/);
+  }
+  for (const status of ['done', 'partial', 'unable']) {
+    assert.equal(contractItem({ ...ok, status }, cancelledOn(CANCELLED_ON_VISIT_DAY)).state, 'ok', status);
+  }
+  // ⚠️ วันยกเลิกนับตามนาฬิกาไทย — 26/08 20:00Z = 27/08 03:00 เวลาไทย
+  assert.equal(contractItem({ ...ok, status: 'scheduled' }, cancelledOn('2026-08-26T20:00:00Z')).state, 'blocked');
+  assert.equal(contractItem({ ...ok, status: 'scheduled' }, cancelledOn('2026-08-27T17:30:00Z')).state, 'ok', '28/08 00:30 เวลาไทย');
+});
+
+test('ยกเลิกหลังลงนาม: นัดหลังวันยกเลิกติดทุกสถานะ · ร่างที่เกิดใหม่จอดเป็นร่าง · ถอนเครื่อง/สำรวจยังไปได้', () => {
+  const later = { ...ok, scheduledDate: '2026-09-03' };
+  for (const status of ['draft', 'scheduled', 'done']) {
+    assert.equal(contractItem({ ...later, status }, cancelledOn(CANCELLED_ON_VISIT_DAY)).state, 'blocked', status);
+  }
+  assert.equal(initialVisitStatus(later, cancelledOn(CANCELLED_ON_VISIT_DAY)), 'draft');
+  const items = evaluateVisitGate(later, cancelledOn(CANCELLED_ON_VISIT_DAY));
+  assert.equal(items.zoneGates[0].state, 'blocked', 'ใบส่งงานตัดโซนเป็นงดบริการ');
+  assert.notEqual(items.find((i) => i.key === 'payment').state, 'blocked', 'เหตุไม่ลามไปข้อเงิน');
+  for (const kind of ['survey', 'remove']) {
+    assert.notEqual(contractItem({ ...later, kind }, cancelledOn(CANCELLED_ON_VISIT_DAY)).state, 'blocked', kind);
+  }
+});
+
+test('ยกเลิกหลังลงนาม: หมดอายุก่อนวันยกเลิก = เหตุหมดอายุ · ยังไม่ถึงวันเริ่ม = เหตุยังไม่เริ่ม', () => {
+  const expired = contractItem({ ...ok, scheduledDate: '2026-08-20' }, cancelledOn(CANCELLED_ON_VISIT_DAY, { expiryDate: '2026-08-10' }));
+  assert.equal(expired.state, 'blocked');
+  assert.match(expired.detail, /หมดอายุก่อนวันนัด/);
+  const notYet = contractItem({ ...ok, scheduledDate: '2026-08-20' }, cancelledOn(CANCELLED_ON_VISIT_DAY, { effectiveDate: '2026-08-25' }));
+  assert.match(notYet.detail, /ยังไม่ถึงวันเริ่มมีผล/);
+});
+
+test('ไซต์ที่อีกใบสั่งขายยังผูกสัญญาที่มีผล ไม่ได้รับผลจากการยกเลิกสัญญาของใบแรก', () => {
+  const ctx = cancelledOn(CANCELLED_ON_VISIT_DAY);
+  const both = {
+    ...ctx,
+    terms: [...terms, { id: 'T2', zoneId: 'Z1', salesOrderId: 'SO2', startDate: '2026-01-01', endDate: '2027-12-31' }],
+    ordersById: { ...ctx.ordersById, SO2: { id: 'SO2', status: 'approved', serviceContractId: 'CT2' } },
+    contractsById: { ...ctx.contractsById, CT2: { id: 'CT2', status: 'signed' } },
+    installmentsByOrderId: { ...installmentsByOrderId, SO2: installmentsByOrderId.SO1 },
+  };
+  assert.equal(contractItem({ ...ok, scheduledDate: '2026-09-03' }, both).state, 'ok');
+});

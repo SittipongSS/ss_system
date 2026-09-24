@@ -190,6 +190,32 @@ export function watermarkBlock(text) {
   return text ? `<div class="watermark">${esc(text)}</div>` : '';
 }
 
+/* ── ลายน้ำทับกระดาษที่เรนเดอร์แล้ว (ส่วนใหญ่คือฉบับที่ตรึงไว้) ────────────────────────────────
+   วางต่อจากแท็กเปิดของทุกแผ่น (`<article class="sheet…">`) — เนื้อที่ตรึงไว้ไม่ถูกแตะ
+   ⭐ ย้ายมาจากทางถอยของ `applyProductSpecWatermark` (กระดาษ PSD ที่ไม่มีช่องลายน้ำ) ให้สัญญา/บันทึกเพิ่มเติมใช้ตัวเดียวกัน
+      (มติ 24/09/2026 — ยกเลิกสัญญาที่ลงนามแล้วต้องพิมพ์ซ้ำพร้อมลายน้ำ "ยกเลิก")
+   ⚠️ สัญญาเป็นแผ่นสายเนื้อหาแผ่นเดียว แล้วสคริปต์ตัดหน้าคัดลอก `.watermark` ตัวแรกไปทุกแผ่นเอง ⇒ วางที่แผ่นนั้นพอ */
+const SHEET_OPEN = /(<article class="sheet[^"]*"[^>]*>)/g;
+
+/** วางลายน้ำหลังแท็กเปิดของทุกแผ่น — ไม่ดูว่ามีลายน้ำอยู่แล้วหรือไม่ (ผู้เรียกที่ต้องการกันซ้อนใช้ `stampWatermark`) */
+export function watermarkSheets(html, text) {
+  const source = String(html ?? '');
+  if (!text) return source;
+  return source.replace(SHEET_OPEN, `$1${watermarkBlock(text)}`);
+}
+
+/**
+ * ประทับลายน้ำตอนเสิร์ฟกระดาษที่ตรึงแล้ว — **ไม่เขียนกลับ** (กระดาษที่ลูกค้าเซ็นต้องเป็นของเดิมทุกไบต์ในฐาน)
+ * ⚠️ มีลายน้ำอยู่แล้ว (ตรึงตอนใบถูกยกเลิกไปแล้ว — ตัวเรนเดอร์ใส่ให้เอง) = คืนตามเดิม ไม่ซ้อนสองชั้น
+ * 🪤 ดูที่ตัว `<div class="watermark">` ไม่ใช่คำว่า `.watermark` — CSS ของเปลือกกับสคริปต์ตัดหน้าของสัญญามีคำนี้ทุกใบ
+ * ไม่มีข้อความ/ไม่มีกระดาษ = คืนค่าเดิมตามที่ส่งมา (รวม null)
+ */
+export function stampWatermark(html, text) {
+  if (!html || !text) return html;
+  if (String(html).includes('<div class="watermark">')) return html;
+  return watermarkSheets(html, text);
+}
+
 /* ── ช่องลงนาม — ตัวเดียวของใบเสนอราคา · ใบสั่งขาย · FM-SA-04 ────────────────────────
    ⭐ มติผู้ใช้ 2026-09-22 "final review ต้องปรับให้เหมือน QT และ SO" — ย้ายมาจาก
       `quotationMasterDocument.js` (signBox/signatures เดิมทุกตัวอักษร) ให้สามเอกสารใช้ markup + CSS

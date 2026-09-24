@@ -190,3 +190,24 @@ test('ค่าที่เขียนลงฐาน: ปิดเรื่อ
   const declined = followupPatch({ status: 'declined', declineReason: '  ลูกค้าปิดสาขา  ' }, TODAY);
   assert.equal(declined.declineReason, 'ลูกค้าปิดสาขา');
 });
+
+/* ⭐ สัญญาที่ถูกยกเลิกหลังลงนาม (มติเจ้าของ 24/09/2026) — **วันยกเลิกคือวันจบจริง** ⇒ ทะเบียนต่อสัญญา
+   ถือว่ารอบจบวันนั้น (หรือวันหมดอายุถ้ามาก่อน) · ไซต์ขึ้นให้ตามต่อ/ถอนเครื่องทันที ไม่ต้องรอถึงวันหมดอายุเดิม */
+test('รอบที่สัญญาถูกยกเลิกหลังลงนาม: วันจบ = วันยกเลิก (เวลาไทย) หรือวันหมดอายุถ้ามาก่อน', async () => {
+  const { termEndDate } = await import('./renewals.js');
+  const ordersById = new Map([['SO1', { id: 'SO1', status: 'approved', serviceContractId: 'CT1' }]]);
+  const at = (contract) => termEndDate(term('T1', 'Z1'), ordersById, new Map([['CT1', { id: 'CT1', ...contract }]]));
+  const cancelled = { status: 'cancelled', approvedAt: '2026-01-02T03:00:00Z', expiryDate: '2026-12-31' };
+  assert.equal(at({ ...cancelled, cancelledAt: '2026-08-31T18:00:00Z' }), '2026-09-01');
+  assert.equal(at({ ...cancelled, cancelledAt: '2026-08-31T03:00:00Z', expiryDate: '2026-08-15' }), '2026-08-15');
+  assert.equal(at({ status: 'signed', expiryDate: '2026-12-31' }), '2026-12-31');
+
+  const { ordersById: orders, contractsById } = withContracts({ SO1: '2026-12-31' });
+  contractsById.set('CT-SO1', { ...contractsById.get('CT-SO1'), ...cancelled, cancelledAt: '2026-08-31T03:00:00Z' });
+  const rows = renewalRows({
+    sites: [site('S1', 'ไซต์')], zones: [zone('Z1', 'S1')], terms: [term('T1', 'Z1')],
+    ordersById: orders, contractsById, todayIso: TODAY,
+  });
+  assert.equal(rows.length, 1, 'สัญญาปีหน้าที่ถูกยกเลิกวันนี้ต้องขึ้นทะเบียนทันที');
+  assert.equal(rows[0].endDate, TODAY);
+});

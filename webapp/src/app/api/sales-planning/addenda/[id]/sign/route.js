@@ -20,6 +20,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { row: before, response } = await loadScoped(supabase, 'sales_contract_addenda', id, user, 'edit');
   if (response) return response;
   if (!canSignAddendum(before)) return fail('บันทึกการลงนามได้เฉพาะฉบับที่รอลงนามอยู่', 409);
+  /* ⭐ สัญญาแม่ต้องยัง "ลงนามแล้ว" ณ ตอนลงนามบันทึก (มติ 24/09/2026 — ผู้อนุมัติยกเลิกสัญญาที่ลงนามแล้วได้) —
+     การยกเลิกสัญญาแม่ยกเลิกบันทึกที่ค้างตามในคำสั่งถัดไป (คำขอเดียวกันแต่ไม่ใช่ทรานแซกชันเดียว) ⇒ ด่านนี้ปิดช่องว่างระหว่างสองจังหวะ
+     ไม่ให้บันทึกกลายเป็น "ลงนามแล้ว" ใต้สัญญาที่ยกเลิกไปแล้ว (กติกาเดียวกับด่านของ /issue)
+     ⚠️ โหลดผ่าน `loadScoped` แบบ view — คนลงนามบันทึกอยู่บนหน้าสัญญาแม่อยู่แล้ว (การ์ดบันทึกอยู่ที่นั่น) */
+  const { row: parent, response: parentResponse } = await loadScoped(supabase, 'sales_contracts', before.contractId, user, 'view');
+  if (parentResponse) return parentResponse;
+  if (parent.status !== 'signed') {
+    return fail('สัญญาแม่ไม่ได้อยู่ในสถานะลงนามแล้ว — บันทึกนี้ลงนามต่อไม่ได้ ตรวจสัญญาก่อน', 409);
+  }
 
   const body = await req.json();
   const signedDate = String(body?.signedDate || '').trim();

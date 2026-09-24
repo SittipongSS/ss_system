@@ -17,9 +17,11 @@
 //    (กติกาเดียวกับ `quotationDealBlocker` ที่ GatedAction เขียนไว้)
 import { accessConflict } from './sites';
 import { termIsActive } from './terms';
+import { isClosedVisit } from './visitStatus';
 import { coversDate, hasOverdueUnconfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
-import { contractInForce } from '@/lib/sales/contracts';
-import { contractSpanAt } from '@/lib/sales/serviceContractLink';
+import { contractCancelDate } from '@/lib/sales/contracts';
+import { contractCoverageOn } from '@/lib/sales/serviceContractLink';
+import { fmtDate } from '@/lib/format';
 // ใบยอด 0 ไม่มีงวดให้เก็บ — ตัวตัดสินเดียวกับงวดชำระ (ไฟล์ logic ล้วน ฝั่ง client ใช้ได้)
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 
@@ -123,7 +125,13 @@ export function evaluateVisitGate(visit, {
       const order = pick(ordersById, t.salesOrderId);
       return order?.serviceContractId ? pick(contractsById, order.serviceContractId) : null;
     };
-    const linked = live.filter((t) => contractInForce(contractOf(t)));
+    /* ⭐ **สัญญาที่ถูกยกเลิกหลังลงนามยังนับเป็น "ผูกแล้ว"** (มติเจ้าของ 24/09/2026) — ครอบวันก่อนวันยกเลิก
+       (+ นัดวันนั้นที่ปิดงานแล้ว) แล้วติดตั้งแต่วันยกเลิกด้วยเหตุของตัวเองข้างล่าง · ตัดทิ้งตรงนี้เหมือนใบที่ไม่เคยมีผล
+       = ใบส่งงานที่ปิดไปแล้วทุกใบของใบสั่งขายกลายเป็น "งดบริการ" ย้อนหลัง (ด่านนี้คำนวณสดทุกครั้งที่เปิดใบ)
+       ⚠️ ร่าง/รอลงนาม/รอรับรอง/ยกเลิกก่อนมีผล ยัง `'none'` = ไม่ผูก เหมือน `contractInForce` เดิมทุกกรณี */
+    const finished = isClosedVisit(visit);
+    const coverage = (t) => contractCoverageOn(contractOf(t), visitDate, { finished });
+    const linked = live.filter((t) => coverage(t) !== 'none');
     if (!linked.length) {
       return {
         zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
@@ -138,20 +146,29 @@ export function evaluateVisitGate(visit, {
        ⇒ ตรงกับตัวเลขที่ทำให้ด่านนี้เกิด: ส่งเจ้าหน้าที่ไปที่ที่ **หมดสัญญา 25 จุด**
      ⚠️ **`contractInForce` ยังต้องอยู่ และห้ามยุบรวมกับตัวนี้** — มันตอบคนละคำถาม:
         "เอกสารผูกพันแล้วหรือยัง" (ผูกกับใบล่วงหน้าได้) vs "ครอบวันนัดไหม"
+        ⭐ 24/09/2026: คำถามหลังย้ายไปอยู่ใน `contractCoverageOn` (ห่อ `contractSpanAt` + วันยกเลิก) — ใบ signed
+           ตอบเหมือนเดิมทุกกรณี
      ⚠️ **ไม่ระบุช่วงวัน = ไม่บล็อก** — `contractSpanAt` คืน `null` แปลว่า "ไม่รู้"
         กติกาเดียวกับ `termInWindow` ("ไม่ระบุวัน = ยังไม่รู้ ไม่ใช่หมดอายุ") ·
         ของจริงกรอกวันทีหลังเสมอ ⇒ บล็อกไว้ก่อนคือหยุดงานที่ทำได้
      ⚠️ เหตุต้องแยก **ยังไม่เริ่ม** ออกจาก **หมดอายุ** — คนละทางแก้กันคนละเรื่อง
         (เลื่อนนัด vs ต่อสัญญา) และไฟล์นี้เขียนกฎไว้เองว่าเหตุที่บอกผิดแย่กว่าไม่บอก */
-    const spans = linked.map((t) => contractSpanAt(contractOf(t), visitDate));
-    const covered = linked.filter((t, i) => spans[i] !== 'before' && spans[i] !== 'after');
+    const spans = linked.map(coverage);
+    const covered = linked.filter((t, i) => spans[i] === 'in' || spans[i] === null);
     if (!covered.length) {
       const notYet = spans.includes('before');
+      /* เหตุที่สาม (มติ 24/09/2026): สัญญาถูกยกเลิก — ทางแก้คือผูกฉบับใหม่ ไม่ใช่ต่อสัญญาหรือเลื่อนนัด
+         ⚠️ ลำดับ: "ยังไม่เริ่ม" มาก่อนตามเดิม แล้วค่อย "ยกเลิก" ก่อน "หมดอายุ" (เหตุที่บอกผิดทางแก้แย่กว่าไม่บอก) */
+      const cancelledTerm = linked.find((t, i) => spans[i] === 'cancelled');
+      const cancelledContract = cancelledTerm ? contractOf(cancelledTerm) : null;
       return {
         zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
         reason: notYet
           ? 'สัญญาที่ครอบโซนนี้ยังไม่ถึงวันเริ่มมีผล ณ วันนัด — เลื่อนนัด หรือแก้วันเริ่มที่หน้าสัญญา'
-          : 'สัญญาที่ครอบโซนนี้หมดอายุก่อนวันนัด — ต่อสัญญาก่อนจึงจะส่งเจ้าหน้าที่ไปได้',
+          : cancelledContract
+            ? `สัญญา ${cancelledContract.contractNo || 'ที่ครอบโซนนี้'} ถูกยกเลิกเมื่อ `
+              + `${fmtDate(contractCancelDate(cancelledContract))} — ผูกสัญญาฉบับใหม่ที่หน้าใบสั่งขาย`
+            : 'สัญญาที่ครอบโซนนี้หมดอายุก่อนวันนัด — ต่อสัญญาก่อนจึงจะส่งเจ้าหน้าที่ไปได้',
       };
     }
 

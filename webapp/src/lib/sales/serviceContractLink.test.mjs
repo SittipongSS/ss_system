@@ -298,3 +298,32 @@ test('⭐ ใบย้อนหลังที่ยังไม่อนุม�
   // ใบ pipeline ร่างยังผูกได้ตามเดิม
   assert.equal(serviceContractLinkError(order({ status: 'draft' }), signed(), ok), null);
 });
+
+/* ── ความครอบคลุม ณ วันหนึ่ง — รวมสัญญาที่ถูกยกเลิกหลังลงนาม (มติเจ้าของ 24/09/2026) ────────────────── */
+test('contractCoverageOn: ใบลงนามแล้วตอบเหมือน contractSpanAt · ใบที่ไม่เคยมีผล = none', async () => {
+  const { contractCoverageOn } = await import('./serviceContractLink.js');
+  assert.equal(contractCoverageOn(signed(), '2026-10-01'), 'in');
+  assert.equal(contractCoverageOn(signed(), '2026-08-31'), 'before');
+  assert.equal(contractCoverageOn(signed(), '2027-09-01'), 'after');
+  assert.equal(contractCoverageOn(signed({ effectiveDate: null, expiryDate: null }), '2026-10-01'), null);
+  for (const status of ['draft', 'awaiting_signature', 'awaiting_approval', 'revised']) {
+    assert.equal(contractCoverageOn(signed({ status }), '2026-10-01'), 'none', status);
+  }
+  assert.equal(contractCoverageOn(signed({ status: 'cancelled', cancelledAt: '2026-10-05T03:00:00Z' }), '2026-10-01'), 'none',
+    'ยกเลิกโดยไม่เคยมีผล (ไม่มี approvedAt) ไม่ครอบวันไหนเลย');
+  assert.equal(contractCoverageOn(null, '2026-10-01'), 'none');
+});
+
+test('contractCoverageOn: ยกเลิกหลังลงนาม — ก่อนวันยกเลิกครอบ · วันยกเลิกครอบเฉพาะนัดที่ปิดงานแล้ว · หลังจากนั้นไม่ครอบ', async () => {
+  const { contractCoverageOn } = await import('./serviceContractLink.js');
+  const c = signed({ status: 'cancelled', approvedAt: '2026-09-01T03:00:00Z', cancelledAt: '2026-10-05T03:00:00Z' });
+  assert.equal(contractCoverageOn(c, '2026-10-04'), 'in');
+  assert.equal(contractCoverageOn(c, '2026-10-05'), 'cancelled');
+  assert.equal(contractCoverageOn(c, '2026-10-05', { finished: true }), 'in');
+  assert.equal(contractCoverageOn(c, '2026-10-06', { finished: true }), 'cancelled');
+  assert.equal(contractCoverageOn(c, '2026-08-31'), 'before');
+  assert.equal(contractCoverageOn({ ...c, expiryDate: '2026-09-30' }, '2026-10-02'), 'after');
+  // ไม่มีช่วงวันก็ยังมีวันยกเลิกเป็นขอบ
+  assert.equal(contractCoverageOn({ ...c, effectiveDate: null, expiryDate: null }, '2026-10-04'), 'in');
+  assert.equal(contractCoverageOn({ ...c, effectiveDate: null, expiryDate: null }, '2026-10-05'), 'cancelled');
+});

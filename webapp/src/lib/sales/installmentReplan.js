@@ -18,6 +18,7 @@ import {
   MIN_REJECT_REASON, installmentStale, installmentsFromPaymentPlan, paymentNotRequired,
 } from '@/lib/sales/salesOrderPayments';
 import { OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
+import { contractInForce } from '@/lib/sales/contracts';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 
 /** ป้ายบนแผงงวดและทะเบียนบัญชี (มติ D5 — ฉบับพิมพ์ยังแสดงแผนตาม QT) */
@@ -473,7 +474,11 @@ export function replanPromptFacts(order, before = [], after = [], { serviceRound
       gap: 'มีช่วงบริการที่ไม่มีงวดไหนครอบ — นัดช่วงนั้นจะลงคิวไม่ได้',
       half_range: 'มีงวดที่กรอกช่วงครอบมาข้างเดียว',
     })[w.kind]).filter(Boolean))],
-    contractNumber: order?.serviceContractId ? (text(order?.serviceContract?.contractNo) || 'ที่ผูกกับใบนี้') : null,
+    /* สัญญาที่ถูกยกเลิกแล้ว (มติ 24/09/2026 — ผู้อนุมัติยกเลิกสัญญาที่ลงนามแล้วได้) ไม่มี "ข้อ 3" ให้ทำบันทึกเพิ่มเติมอีก
+       ⚠️ ตัดเฉพาะเมื่อ **รู้สถานะ** และไม่มีผลแล้ว — โหลดสัญญาไม่ขึ้น (ไม่รู้) ยังเตือนตามเดิม */
+    contractNumber: order?.serviceContractId
+      && !(order?.serviceContract?.status && !contractInForce(order.serviceContract))
+      ? (text(order?.serviceContract?.contractNo) || 'ที่ผูกกับใบนี้') : null,
     complete: next.length > 0 && next.every((r) => r.id && statusById.get(r.id) === 'confirmed'),
   };
 }
