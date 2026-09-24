@@ -667,7 +667,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       .eq('dealId', id).eq('status', 'accepted');
     if (acceptedError) return fail(acceptedError.message, 500);
     if ((acceptedCount || 0) > 0) {
-      return conflict('ดีลนี้มีใบเสนอราคาที่รับแล้ว (Won) — ลบไม่ได้ เพราะเป็นหลักฐานยอด Actual: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ”; ถ้ายังไม่มี SO ให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
+      return conflict('ดีลนี้มีใบเสนอราคาที่รับแล้ว (Won) — ลบไม่ได้ เพราะเป็นหลักฐานยอด Actual: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ”; ถ้ายังไม่มี SO ให้เจ้าของดีลหรือ AE Supervisor ใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
     }
     if (before.metadata?.sahamitPoId) {
       return conflict('โครงการนี้มาจาก PO สหมิตร — ลบไม่ได้ (จัดการที่เอกสาร PO แทน)');

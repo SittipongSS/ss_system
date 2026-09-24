@@ -11,21 +11,22 @@ const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, st
 
 // ย้อนการรับใบเสนอราคา (มติผู้ใช้ 2026-07-21): inverse ของ accept สำหรับกรณีรับใบผิด
 // ที่ยังไม่มี Sale Order — มี SO อนุมัติแล้วต้องไปทาง "ยกเลิกใบสั่งขายพร้อมย้อนสถานะ"
-// (mig 0116) เพราะต้องถอนยอด Actual พร้อมกัน. ผู้สั่ง = ชุดผู้ตรวจสอบเดียวกับงาน SO
-// (admin / ae_supervisor) + เหตุผลบังคับ 10–500 ตัวอักษร. งานจริงทั้งหมด atomic ใน
-// RPC unaccept_quotation_atomic (mig 0138).
+// (mig 0116) เพราะต้องถอนยอด Actual พร้อมกัน. ผู้สั่ง = เจ้าของดีลปัจจุบัน + ผู้มีอำนาจตัดสิน
+// (มติ 24/09 · canUnacceptQuotation) + เหตุผลบังคับ 10–500 ตัวอักษร. งานจริงทั้งหมด atomic ใน
+// RPC unaccept_quotation_atomic (mig 0138 → 0380 · ในฐานไม่มีด่านตำแหน่ง — ด่านอยู่ที่นี่ที่เดียว).
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
-  if (!canUnacceptQuotation(user.role)) {
-    return forbidden('เฉพาะ AE Supervisor หรือผู้ดูแลระบบที่ย้อนการรับใบเสนอราคาได้');
-  }
 
   const { id } = await ctx.params;
   const { data: before, error } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   if (error) return fail(error.message, 500);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
   if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  // ⭐ ด่านเจ้าของดีลต้องรู้ดีลก่อน ⇒ ย้ายมาหลังโหลดใบ (เดิมเช็คตำแหน่งอย่างเดียวก่อนโหลด)
+  if (!canUnacceptQuotation(user, before.deal)) {
+    return forbidden('ย้อนการรับได้เฉพาะเจ้าของดีลหรือ AE Supervisor');
+  }
   if (before.status !== 'accepted') return badRequest('ใบเสนอราคานี้ไม่ได้อยู่ในสถานะรับแล้ว (Won)');
 
   const body = await req.json().catch(() => ({}));
