@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "@babel/parser";
+import traverseModule from "@babel/traverse";
+
+// @babel/traverse เป็น CJS — ใต้ ESM ตัวฟังก์ชันอยู่ที่ .default
+const traverse = traverseModule.default ?? traverseModule;
 
 /* ── จอที่อ่านลิสต์ผ่าน `useApiList` ต้องทำให้ "โหลดไม่สำเร็จ" มองเห็นได้ ──────────
  *
@@ -32,11 +37,16 @@ const SCREENS = [
   "app/sahamit/page.js",
   "app/sahamit/forecast/new/page.js",
   "app/sahamit/forecast/[id]/edit/page.js",
+  /* ภาพรวมฐานข้อมูล — ทิ้ง error ทั้งสองสายอยู่หลัง #1796 โดยด่านนี้เขียวตลอด เพราะตัวสแกนความครบ
+     เดิมจับเฉพาะไฟล์ที่ **แกะ** error แล้วลืมเข้าทะเบียน (ดูตัวสแกนรายการเรียกท้ายไฟล์) */
+  "app/database/page.js",
 ];
 
-/* จอที่แจ้ง error อยู่แล้วและต้องแจ้งต่อไป — ไม่เข้ากฎ "ทุก useApiList ต้องแกะ error"
-   เพราะมีลิสต์ของ picker ที่โหลดตอนกางตัวกรอง (`pickerReady ? url : null`) ปนอยู่ด้วย
-   ลิสต์พวกนั้นล้มแล้วผลคือ "ตัวเลือกในตัวกรองว่าง" ไม่ใช่ตารางทั้งใบหาย */
+/* จอที่แจ้ง error ของลิสต์หลักอยู่แล้วและต้องแจ้งต่อไป — อยู่ทะเบียนนี้แทน SCREENS เพราะกติกา
+   **รายไฟล์** ของ SCREENS (ทุก useApiList ในไฟล์แกะ error · ก้อน sources · staleError) ยังไม่ตรงกับจอพวกนี้:
+   มีลิสต์ของ picker ที่โหลดตอนกางตัวกรอง (`pickerReady ? url : null`) ปนอยู่ด้วย
+   ⚠️ ไม่ใช่ใบอนุญาตให้ลิสต์ของ picker เงียบ — รายการเรียกพวกนั้นเป็น **หนี้** ในบัญชี KNOWN_SILENT
+      ของด่านรายการเรียกท้ายไฟล์ (ล้มแล้ว "ตัวเลือกว่าง" โดยไม่มีอะไรบอก = ยังต้องแก้) */
 const ALREADY_REPORTING = [
   "app/tax/filings/page.js",
   "app/tax/registrations/page.js",
@@ -53,7 +63,7 @@ const sourcesBlock = (rel) => {
   const text = code(rel);
   const start = text.indexOf("const sources = [");
   const end = text.indexOf("\n  ];", start);
-  assert.ok(start !== -1 && end !== -1, `${rel}: ไม่พบก้อน sources — ทั้งสี่จอต้องประกาศแหล่งข้อมูลเป็นลิสต์เดียวกัน`);
+  assert.ok(start !== -1 && end !== -1, `${rel}: ไม่พบก้อน sources — ทุกจอในทะเบียนต้องประกาศแหล่งข้อมูลเป็นลิสต์เดียวกัน`);
   return text.slice(start, end);
 };
 
@@ -87,8 +97,8 @@ test("โหลดพังต้องขึ้น StatusNotice โทน error
  * ไม่ใช่รอบเบื้องหลัง ⇒ เดินออกจากหน้าแล้วกดกลับเข้ามา จอวาดของเก่าจากแคชได้ครบ
  * แล้วรอบใหม่ค่อยล้ม · ถ้าเอา "ว่างด้วย" มาเป็นเงื่อนไขของ **ป้าย** ป้ายจะเงียบสนิท
  * ทั้งที่ตัวเลขบนจอเป็นของเมื่อวาน = บั๊กตัวเดิมที่งานนี้ตั้งใจฆ่า กลับมาทางประตูหลัง
- * ⇒ ทั้งสี่จอต้องใช้สำนวนเดียวกันเป๊ะ เพื่อให้ "พัง" มีนิยามเดียวทั้งชุด */
-test("ทั้งสี่จอต้องแยก 'ขึ้นป้าย' (error เดี่ยว) ออกจาก 'ซ่อนเนื้อ' (error + ว่าง)", () => {
+ * ⇒ ทุกจอในทะเบียนต้องใช้สำนวนเดียวกันเป๊ะ เพื่อให้ "พัง" มีนิยามเดียวทั้งชุด */
+test("ทุกจอในทะเบียนต้องแยก 'ขึ้นป้าย' (error เดี่ยว) ออกจาก 'ซ่อนเนื้อ' (error + ว่าง)", () => {
   for (const rel of SCREENS) {
     const text = code(rel);
     assert.match(text, /const failing = sources\.filter\(\s*\(s\)\s*=>\s*s\.error\s*\)/,
@@ -162,6 +172,77 @@ test("ลงรอบ FC ใหม่: ลิสต์ไม่ครบ ต้�
     "ฟอร์มต้องอยู่หลังทางแยก — ฟอร์มที่ขาดสินค้า/รอบเดิม บันทึกได้แต่ได้ข้อมูลผิดเงียบ ๆ");
 });
 
+/* นับ `<tag …>` (หรือข้อความ JSX ที่มี `text`) ในไฟล์ และตัวที่ **ไม่** อยู่ในกิ่ง else (`alternate`)
+   ของ `guard ? … : …` ตัวไหนเลย — ไล่ขึ้นทุกชั้น ⇒ ทางแยกซ้อน (`พัง ? … : ว่าง ? … : กราฟ`) นับว่าผ่าน */
+const guardedBy = (rel, match, guard) => {
+  const source = read(rel);
+  const ast = parse(source, { sourceType: "module", plugins: ["jsx"] });
+  const textOf = (node) => source.slice(node.start, node.end).replace(/\s+/g, " ");
+  const hits = [];
+  traverse(ast, {
+    JSXOpeningElement(path) {
+      if (match.tag && path.node.name.type === "JSXIdentifier" && path.node.name.name === match.tag) hits.push(path);
+    },
+    JSXText(path) {
+      if (match.text && path.node.value.includes(match.text)) hits.push(path);
+    },
+  });
+  const unguarded = hits.filter((path) => !path.findParent((p) => p.key === "alternate"
+    && p.parentPath?.isConditionalExpression() && textOf(p.parentPath.node.test) === guard));
+  return { hits: hits.length, unguarded: unguarded.length };
+};
+
+/* /database — สองสายสลับกันอยู่บนแผงเดียวกัน (ไทล์แถวเดียว · กราฟแนวโน้ม · คิวรออนุมัติ)
+   ⇒ ตัวเลขที่ต้องเลิกพูดตอนพังคนละชิ้นกับ /tax: ไทล์เป็นขีดรายใบตามสายของมัน ไม่ใช่ซ่อนทั้งแถว */
+test("/database: สายที่ไม่มีของในมือห้ามขึ้นเลข 0 — ไทล์เป็นขีดตามสายของตัวเอง กราฟวางบรรทัดแทน คิวบอกว่าไม่ครบ", () => {
+  const rel = "app/database/page.js";
+  const text = code(rel);
+  // ไทล์แต่ละใบต้องผูกกับ **สายของตัวเอง** — ไทล์ลูกค้าที่ถามแต่ productsFailed ยังขึ้น 0 ตอนลูกค้าล้ม
+  for (const [label, flag] of [
+    ["สินค้าทั้งหมด", "productsFailed"], ["สินค้ารออนุมัติ", "productsFailed"],
+    ["ลูกค้าทั้งหมด", "customersFailed"], ["ลูกค้ารออนุมัติ", "customersFailed"],
+  ]) {
+    assert.match(text, new RegExp(`<KpiCard label="${label}" value=\\{${flag} \\? NA :`),
+      `ไทล์ "${label}" ต้องเป็นขีด (NA) เมื่อ ${flag} — 0 ที่มาจากความไม่รู้คือคำตอบผิด`);
+  }
+  assert.match(text, /productsFailed = !!\(productsError \|\| productsStale\) && !productsLoaded/,
+    "สายสินค้า 'ไม่มีของในมือ' = ล้ม และไม่เคยโหลดสำเร็จ (loaded) — ไม่ใช่ความยาวลิสต์");
+  assert.match(text, /customersFailed = !!\(customersError \|\| customersStale\) && !customersLoaded/);
+  /* กราฟต้องอยู่ **ในกิ่ง else** ของทางแยก ไม่ใช่แค่ "อยู่หลังทางแยก"
+     🐞 ตัวตรวจรุ่นแรกเทียบตำแหน่งตัวอักษร ⇒ เขียนทางแยกเป็น `? (…) : null}` แล้ววาดกราฟต่อข้างล่างทุกกรณี
+        ก็ผ่าน ทั้งที่เส้นของสายที่ล้มนอนที่ 0 ตลอดแกน ⇒ ตรวจจากโครงสร้าง (AST) ว่าทุกตัวอยู่ใต้ `alternate` */
+  for (const [what, match, guard] of [
+    // กินสองสาย — ทางแยกต้องถามทั้งสอง ไม่งั้นเส้นของสายที่ล้มนอนที่ 0
+    ["กราฟแนวโน้ม", { tag: "AreaChart" }, "productsFailed || customersFailed"],
+    // นับจากแถวสินค้าล้วน — ลูกค้าล้มไม่เกี่ยว
+    ["Top 5 ลูกค้า (นับจากแถวสินค้า)", { tag: "BarChart" }, "productsFailed"],
+    ["กราฟวงกลมหมวดสินค้า", { tag: "PieChart" }, "productsFailed"],
+    // 🐞 ทรงที่ต้องไม่กลับมา: สินค้าไม่เคยโหลดขึ้น ⇒ categoryData ว่าง ⇒ "ไม่มีข้อมูลสินค้าตามตัวกรองนี้" (โทษตัวกรอง)
+    ["ข้อความ 'ไม่มีข้อมูลสินค้าตามตัวกรองนี้'", { text: "ไม่มีข้อมูลสินค้าตามตัวกรองนี้" }, "productsFailed"],
+  ]) {
+    const { hits, unguarded } = guardedBy(rel, match, guard);
+    assert.ok(hits > 0, `${what}: หาไม่เจอในไฟล์ — ตัวตรวจล้าสมัย?`);
+    assert.equal(unguarded, 0,
+      `${what}: ทุกตัวต้องอยู่ในกิ่ง else ของ \`{${guard} ? … : …}\` — สายที่ไม่มีของในมือต้องได้บรรทัดแทน ไม่ใช่กราฟที่นอนที่ 0`);
+  }
+  // คิวรออนุมัติผสมสองสาย — ไม่ซ่อน แต่ต้องไม่อ้างยอดเต็มและไม่ยินดีกับคิวว่าง
+  assert.match(text, /queueIncomplete = productsFailed \|\| customersFailed/);
+  assert.match(text, /<ActionQueue[^>]*\bincomplete=\{queueIncomplete\}/,
+    "คิวที่ขาดสายหนึ่งไปต้องไม่ขึ้น 'ไม่มีรายการรออนุมัติตอนนี้ 🎉'");
+  assert.match(text, /queueIncomplete \? `อย่างน้อย \$\{queue\.length\}`/,
+    "ป้ายจำนวนของคิวที่ไม่ครบต้องเป็น 'อย่างน้อย n' ไม่ใช่ยอดเต็ม");
+});
+
+test("ActionQueue: คิวไม่ครบ ต้องไม่ยินดีกับช่องว่าง", () => {
+  const text = code("components/ui/ActionQueue.js");
+  assert.match(text, /incomplete = false/, "ActionQueue ต้องรู้ว่าแหล่งข้อมูลของคิวไม่ครบ (ค่าตั้งต้น = ครบ ⇒ ผู้เรียกเดิมไม่ขยับ)");
+  assert.match(text, /if \(incomplete\) \{[\s\S]{0,200}?icon=\{AlertCircle\}[\s\S]{0,120}?คิวยังไม่ครบ/,
+    "ช่องว่างตอนคิวไม่ครบต้องเป็นคำบอกว่ายังไม่ครบ (ไอคอนเตือน) ไม่ใช่เครื่องหมายถูก + 🎉");
+  const incompleteBranch = text.indexOf("if (incomplete)");
+  assert.ok(incompleteBranch !== -1 && incompleteBranch < text.indexOf("{empty}</EmptyState>"),
+    "ต้องตัดสิน 'ไม่ครบ' ก่อนข้อความว่างของผู้เรียก");
+});
+
 /* ── "ไม่มีของในมือ" ≠ "ลิสต์ยาวศูนย์" ────────────────────────────────────────
  * 🐞 ของจริงบน prod: `/api/sahamit/coverage` ตอบ `200 []` ทุกวัน ⇒ ตอนวัดความว่างด้วย
  * `!list.length` แดชบอร์ดสหมิตร **หายทั้งใบ** ทันทีที่มันตอบ 500 — ทั้งที่ตัวเลขชุดเดียว
@@ -200,10 +281,10 @@ test("ทุกแหล่งต้องนับรอบเบื้อง�
   }
 });
 
-/* ทั้งสี่จอพูดประโยคเดียวกัน: ชื่อสายอยู่ **หลัง** "ดึงข้อมูลไม่ได้:" — แบบที่แทรกชื่อไว้
+/* ทุกจอในทะเบียนพูดประโยคเดียวกัน: ชื่อสายอยู่ **หลัง** "ดึงข้อมูลไม่ได้:" — แบบที่แทรกชื่อไว้
    กลาง "ดึงข้อมูล…ไม่ได้" ทำให้จุดคั่นสองสายตกกลางกริยา ("การขึ้นทะเบียน · การยื่นชำระ
    ภาษีไม่ได้") แล้วต้องอ่านซ้ำถึงจะแยกออกว่าอะไรคือชื่อสาย อะไรคือกริยา */
-test("ทั้งสี่จอใช้สำนวนเดียวกัน — ชื่อสายอยู่หลัง 'ดึงข้อมูลไม่ได้:'", () => {
+test("ทุกจอในทะเบียนใช้สำนวนเดียวกัน — ชื่อสายอยู่หลัง 'ดึงข้อมูลไม่ได้:'", () => {
   for (const rel of SCREENS) {
     assert.match(code(rel), /`ดึงข้อมูลไม่ได้: \$\{failing\.map\(\(s\) => s\.label\)\.join\(" · "\)\}/,
       `${rel}: ข้อความป้ายไม่ตรงสำนวนกลาง`);
@@ -340,4 +421,223 @@ test("ทะเบียนครบ: ทุกไฟล์ที่แกะ er
     if (takesFailure(text) && !DETAIL_SCREENS.includes(rel)) offenders.push(rel);
   }
   assert.deepEqual(offenders, [], "จอเหล่านี้แสดงความล้มของ useApiList แต่ไม่อยู่ในทะเบียนบรรทัดรอง");
+});
+
+/* ── ความครบรายการเรียก: ทุก `useApiList(…)` ใน src ต้องรับความล้ม ────────────────────────────
+ *
+ * 🐞 ช่องที่ปล่อย /database หลุดมาหลัง #1796: ด่าน "ทะเบียนครบ" ข้างบนจับเฉพาะไฟล์ที่ **แกะ** error
+ *    แล้วลืมเข้าทะเบียน — จอที่ **ไม่แกะเลย** (ทรงเดียวกับ /tax ก่อน #1796 · คือทรงที่อันตรายที่สุด)
+ *    ผ่านด่านนั้นได้สบาย ⇒ /database ขึ้น "สินค้าทั้งหมด 0 · ไม่มีรายการรออนุมัติ 🎉" ตอน API ล้มได้ทุกวัน
+ *    โดยด่านเขียว
+ * ⇒ ด่านนี้นับ **รายการเรียก** ไม่ใช่รายไฟล์ (ไฟล์ที่แกะ error ของลิสต์แรกแล้วทิ้งของลิสต์ที่สอง ก็คือ
+ *    ลิสต์ที่สองเงียบ) · รายการเรียกต้องแกะ `error` หรือ `staleError` **แล้วอ่านมันจริง** (หรือเก็บทั้งก้อน
+ *    แล้วอ่าน `.error`) — แกะมาทิ้งไว้เฉย ๆ (`error: _ignored`) ก็คือเงียบ
+ *
+ * ⚠️ อ่านด้วย @babel/parser + @babel/traverse ไม่ใช่ regex — regex ตัดคอมเมนต์ด้วย `/*` ในสตริงแล้ว
+ *    กลืนรายการเรียกทิ้งได้เงียบ ๆ (= ศูนย์ปลอม) · "อ่านจริง" ตัดสินด้วย scope ของ babel ⇒ `catch (error)`
+ *    ที่อื่นในไฟล์ไม่นับแทน `error` ของฮุก
+ * ⚠️ พาร์สไม่ผ่าน / ทรงที่ไม่รู้จัก = **แดง** ไม่ใช่ข้าม — ด่านที่ข้ามสิ่งที่อ่านไม่ออกคือด่านที่ปิดตัวเองได้:
+ *    ไม่ได้อยู่ใน `const … = useApiList(…)` · import ด้วยชื่ออื่น (`useApiList as useList`) หรือทั้งโมดูล
+ *    (`import * as H`) · เรียกผ่าน member (`H.useApiList(…)`) · ส่งฮุกไปเป็นค่า (`const f = useApiList`)
+ *    — ทุกทรงนี้พาการเรียกหนีตัวสแกนที่ตามชื่อ `useApiList` ได้
+ */
+const ALL_EXT = /\.(m?js|jsx)$/;
+const walkSrc = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+  const full = join(dir, entry.name);
+  if (entry.isDirectory()) return entry.name === "node_modules" ? [] : walkSrc(full);
+  return ALL_EXT.test(entry.name) && !/\.test\./.test(entry.name) ? [full] : [];
+});
+
+const HOOK = "useApiList";
+const HOOK_MODULE = /(^|\/)useApiList(\.js)?$/;
+const FAILURE_KEY = /^(error|staleError)$/;
+const keyName = (node) => (node?.type === "Identifier" ? node.name : node?.type === "StringLiteral" ? node.value : null);
+const memberKey = (node) => (node.computed ? (node.property.type === "StringLiteral" ? node.property.value : null) : node.property.name);
+
+/* ทุกรายการเรียกในซอร์สหนึ่งไฟล์ ⇒ `{ call: "<ไฟล์> :: <อาร์กิวเมนต์>", surfaces, problem }`
+   กุญแจเป็น **อาร์กิวเมนต์ตามตัวอักษร** (URL / นิพจน์) ไม่ใช่ชื่อตัวแปร — ผูกกับการใช้งาน ไม่ใช่ชื่อที่เปลี่ยนหนีได้ */
+function apiListCalls(source, rel) {
+  let ast;
+  try {
+    ast = parse(source, { sourceType: "module", plugins: ["jsx"] });
+  } catch (e) {
+    return [{ call: `${rel} :: (พาร์สไม่ผ่าน)`, surfaces: false, problem: `พาร์สไม่ผ่าน: ${e.message}` }];
+  }
+  const textOf = (node) => source.slice(node.start, node.end).replace(/\s+/g, " ");
+  const out = [];
+  const odd = (path, why) => out.push({ call: `${rel} :: (บรรทัด ${path.node.loc.start.line})`, surfaces: false, problem: why });
+  // ก้อนทั้งก้อน (`list` / `...rest`) ถูกอ่าน `.error` / `?.staleError` ที่ไหนสักแห่ง — ตาม binding ไม่ใช่ตามชื่อ
+  const readsFailure = (binding) => !!binding?.referencePaths.some((ref) =>
+    (ref.parentPath.isMemberExpression() || ref.parentPath.isOptionalMemberExpression())
+    && ref.parentPath.node.object === ref.node && FAILURE_KEY.test(memberKey(ref.parentPath.node) ?? ""));
+
+  const analyse = (callPath) => {
+    const node = callPath.node;
+    const call = `${rel} :: ${node.arguments[0] ? textOf(node.arguments[0]) : "(ไม่มีอาร์กิวเมนต์)"}`;
+    const decl = callPath.parentPath;
+    if (!decl.isVariableDeclarator() || decl.node.init !== node) {
+      return { call, surfaces: false, problem: `ทรงที่ตัวสแกนไม่รู้จัก (${decl.node.type}) — ต้องเป็น const { … } = useApiList(…) หรือ const x = useApiList(…)` };
+    }
+    const id = decl.node.id;
+    const bindingOf = (name) => decl.scope.getBinding(name);
+    if (id.type === "Identifier") return { call, surfaces: readsFailure(bindingOf(id.name)) };
+    if (id.type === "ObjectPattern") {
+      const surfaces = id.properties.some((p) => {
+        if (p.type === "RestElement") return p.argument.type === "Identifier" && readsFailure(bindingOf(p.argument.name));
+        if (p.computed || !FAILURE_KEY.test(keyName(p.key) ?? "")) return false;
+        const local = p.value.type === "AssignmentPattern" ? p.value.left : p.value;
+        // 🪤 แกะแล้วไม่อ่าน = เงียบเท่ากับไม่แกะ
+        return local.type === "Identifier" && (bindingOf(local.name)?.referencePaths.length ?? 0) > 0;
+      });
+      return { call, surfaces };
+    }
+    return { call, surfaces: false, problem: `ทรงที่ตัวสแกนไม่รู้จัก (${id.type})` };
+  };
+
+  try {
+    traverse(ast, {
+      ImportDeclaration(path) {
+        if (!HOOK_MODULE.test(path.node.source.value)) return;
+        for (const s of path.node.specifiers) {
+          if (s.type === "ImportSpecifier" && keyName(s.imported) !== HOOK) continue; // ชื่ออื่นจากโมดูลเดียวกัน
+          if (s.type === "ImportSpecifier" && s.local.name === HOOK) continue;
+          odd(path, `import ฮุกด้วยชื่ออื่นหรือทั้งโมดูล (${textOf(s)}) — ตัวสแกนตามชื่อ ${HOOK} ⇒ ต้อง import { ${HOOK} } ตรง ๆ`);
+        }
+      },
+      "MemberExpression|OptionalMemberExpression"(path) {
+        if (memberKey(path.node) === HOOK) odd(path, `เรียกฮุกผ่าน member (${textOf(path.node)}) — ต้องเรียก ${HOOK}(…) ตรง ๆ`);
+      },
+      Identifier(path) {
+        if (path.node.name !== HOOK || !path.isReferencedIdentifier()) return;
+        const parent = path.parentPath;
+        if (parent.isCallExpression() && parent.node.callee === path.node) out.push(analyse(parent));
+        else odd(path, `ใช้ ${HOOK} เป็นค่า (${textOf(parent.node)}) ไม่ใช่เรียกตรง ๆ — ตัวสแกนตามไปไม่ได้`);
+      },
+    });
+  } catch (e) {
+    return [{ call: `${rel} :: (สแกนไม่ผ่าน)`, surfaces: false, problem: `สแกนไม่ผ่าน: ${e.message}` }];
+  }
+  return out;
+}
+
+test("ตัวสแกนรายการเรียกเห็นทุกทรง — และจับทรงที่ /database เคยเป็น", () => {
+  const scan = (s) => apiListCalls(s, "x.js").map(({ surfaces, problem }) => problem ? "problem" : surfaces);
+  // 🐞 ทรงของ /database ก่อนงานนี้ — ตัวสแกนความครบรุ่นเดิม (takesFailure) ตอบ false ⇒ ไม่มีใครถูกฟ้อง
+  assert.deepEqual(scan('const { data: rawProducts, loading: l1 } = useApiList("/api/master/products?manage=1");'), [false]);
+  assert.equal(takesFailure('const { data: rawProducts, loading: l1 } = useApiList("/api/master/products?manage=1");'), false,
+    "หลักฐานว่าตัวสแกนรุ่นเดิมมองไม่เห็น /database — มันถามแค่ 'ไฟล์ที่แกะ error อยู่ในทะเบียนไหม'");
+  assert.deepEqual(scan("const { data, error } = useApiList(u);\nf(error);"), [true]);
+  assert.deepEqual(scan("const { data, error: loadError } = useApiList(u);\nf(loadError);"), [true]);
+  assert.deepEqual(scan("const { data, staleError } = useApiList(u);\nf(staleError);"), [true]);
+  assert.deepEqual(scan("const { data, error = null } = useApiList(u);\nf(error);"), [true]);
+  assert.deepEqual(scan("const { data, errorDetail } = useApiList(u);\nf(errorDetail);"), [false], "errorDetail อย่างเดียวไม่ใช่การรับความล้ม");
+  assert.deepEqual(scan("const { data: error } = useApiList(u);\nf(error);"), [false], "ตัวแปรชื่อ error ที่จริงคือ data ไม่นับ");
+  // 🪤 แกะแล้วไม่อ่าน = เงียบ · และ "อ่าน" ต้องเป็นตัวเดียวกันตาม scope ไม่ใช่ชื่อซ้ำที่อื่นในไฟล์
+  assert.deepEqual(scan("const { data, error: _ignored } = useApiList(u);"), [false], "แกะ error มาทิ้งไว้ ไม่ใช่การรับความล้ม");
+  assert.deepEqual(scan("const { data, error } = useApiList(u);"), [false]);
+  assert.deepEqual(scan("const { data, error } = useApiList(u);\ntry { g(); } catch (error) { f(error); }"), [false],
+    "`catch (error)` เป็นคนละตัว — อ่านมันไม่ได้แปลว่าอ่าน error ของฮุก");
+  assert.deepEqual(scan("const list = useApiList(u);\nconst x = list.error;"), [true]);
+  assert.deepEqual(scan("const list = useApiList(u);\nconst x = list?.staleError;"), [true]);
+  assert.deepEqual(scan("const list = useApiList(u);\nconst x = list.data;"), [false]);
+  assert.deepEqual(scan("const list = useApiList(u);\nfunction g(list) { return list.error; }"), [false], "list ของพารามิเตอร์เป็นคนละตัว");
+  assert.deepEqual(scan("const { data, ...rest } = useApiList(u);\nf(rest.error);"), [true]);
+  // สองรายการในไฟล์เดียว: ตัวแรกรับ ตัวที่สองทิ้ง — รายไฟล์จะผ่าน รายการเรียกต้องจับได้
+  assert.deepEqual(scan("const { data, error } = useApiList(a);\nf(error);\nconst { data: b } = useApiList(b);"), [true, false]);
+  // ทรงที่อ่านไม่ออก = แดง ไม่ใช่ข้าม
+  assert.deepEqual(scan("const rows = useApiList(u).data;"), ["problem"]);
+  assert.deepEqual(scan("function useX() { return useApiList(u); }"), ["problem"]);
+  assert.deepEqual(scan("const { data } = useApiList(u"), ["problem"], "พาร์สไม่ผ่าน = แดง");
+  // ทางหนีตัวสแกนที่ตามชื่อ — alias / ทั้งโมดูล / member / ส่งเป็นค่า = แดงทุกทรง
+  const flagged = (s) => apiListCalls(s, "x.js").some((c) => c.problem);
+  assert.ok(flagged('import { useApiList as useList } from "@/lib/excise/useApiList";\nconst { data: x } = useList(u);'), "import ด้วยชื่ออื่น");
+  assert.ok(flagged('import * as H from "@/lib/excise/useApiList";\nconst { data: x } = H.useApiList(u);'), "import ทั้งโมดูล");
+  assert.ok(flagged("const { data: x } = api.useApiList(u);"), "เรียกผ่าน member");
+  assert.ok(flagged('const { data: x } = api["useApiList"](u);'), "เรียกผ่าน member แบบ computed");
+  assert.ok(flagged("const f = useApiList;\nconst { data: x } = f(u);"), "ส่งฮุกไปเป็นค่า");
+  assert.equal(flagged('import { useApiList } from "@/lib/excise/useApiList";\nconst { data, error } = useApiList(u);\nf(error);'), false,
+    "import ตรงชื่อ = ทรงปกติ ไม่แดง");
+  assert.equal(flagged("export function useApiList(url) { return url; }"), false, "ตัวประกาศฮุกเองไม่ใช่การเรียก");
+  // 🪤 `/*` ในสตริงเคยพาตัวตัดคอมเมนต์แบบ regex กลืนรายการเรียกทิ้ง — AST ไม่โดน
+  assert.deepEqual(scan('const g = "src/**/*.js";\nconst { data } = useApiList(u);\nconst h = "*/";'), [false]);
+  assert.equal(apiListCalls('const { data } = useApiList(ready ? "/api/x" : null);', "f.js")[0].call, 'f.js :: ready ? "/api/x" : null');
+});
+
+/* ⭐ **บัญชีหนี้ — ลดได้อย่างเดียว** · รายการเรียกที่ยังทิ้งความล้มอยู่ ณ วันที่ด่านนี้เกิด (25/09/2569)
+   ไม่ใช่ข้อยกเว้นตามกติกา: ไม่มีทรงไหน "ได้รับอนุญาต" ให้เงียบ (แม้แต่ลิสต์ของ picker `ready ? url : null`
+   — ถ้าปล่อยเป็นกติกา ใครก็ห่อ URL ด้วย ternary แล้วหลุดด่านได้) · ทุกบรรทัดคือของที่ **ต้องแก้**
+   ⚠️ แก้รายการไหนแล้ว **ต้องลบบรรทัดนั้นทิ้ง และลดเพดาน KNOWN_SILENT_CAP ลงตาม** — ด่านแดงถ้าบรรทัดในบัญชี
+      ไม่เงียบแล้ว (บัญชีหมดอายุเงียบ = สวิตช์ปิด)
+   ⚠️ ห้ามเพิ่มบรรทัด — รายการเรียกใหม่ต้องรับ error ตั้งแต่เกิด */
+const KNOWN_SILENT = [
+  // 🔴 ลิสต์หลักของหน้ารายละเอียด — ล้มแล้วหาใบไม่เจอ ⇒ จอโกหกว่า "ไม่พบ…" (ทรงเดียวกับ "ไม่พบรอบ FC นี้" ที่ #1796 แก้)
+  'app/tax/filings/[id]/page.js :: "/api/orders"', //            → "ไม่พบรายการ · ใบยื่นนี้อาจถูกลบไปแล้ว"
+  'app/sahamit/po/[id]/edit/page.js :: "/api/sahamit/po"', //    → "ไม่พบ PO นี้"
+  // ลิสต์รองที่ป้อนการคำนวณ/ล็อกของจอ — ล้มแล้วค่าเพี้ยนเงียบ ไม่ใช่แค่ตัวเลือกว่าง
+  'app/sahamit/po/[id]/edit/page.js :: "/api/sahamit/material"', // ล็อกบรรทัดที่มีวัตถุดิบหาย (เซิร์ฟเวอร์ยังกันซ้ำ)
+  'app/sahamit/po/[id]/edit/page.js :: "/api/sahamit/products"',
+  'app/sahamit/po/[id]/page.js :: "/api/sahamit/material"',
+  'app/sahamit/po/[id]/page.js :: "/api/sahamit/products"',
+  'app/sahamit/po/page.js :: "/api/sahamit/material"',
+  'app/sahamit/po/page.js :: "/api/sahamit/products"',
+  'app/sahamit/po/new/page.js :: "/api/sahamit/products"',
+  'app/sahamit/reconcile/page.js :: "/api/sahamit/coverage"',
+  'app/sahamit/reconcile/page.js :: "/api/sahamit/products"',
+  'app/sahamit/reconcile/page.js :: "/api/sahamit/flags"',
+  'app/sahamit/forecast/page.js :: "/api/sahamit/products"',
+  'app/sahamit/forecast/page.js :: "/api/pm/assignable-users"',
+  'app/sahamit/forecast/page.js :: "/api/sahamit/forecast/mapped-lines"',
+  'app/sahamit/material/page.js :: "/api/sahamit/products"',
+  'app/tax/filings/[id]/page.js :: "/api/excise-registrations"',
+  'app/tax/filings/[id]/page.js :: "/api/customers"',
+  'app/tax/filings/[id]/page.js :: "/api/products"',
+  // ลิสต์ของ picker ที่โหลดตอนกางตัวกรอง/เปิดโมดัล — ล้มแล้ว "ตัวเลือกว่าง" โดยไม่มีอะไรบอก
+  'app/tax/filings/page.js :: customersReady ? "/api/customers" : null',
+  'app/tax/registrations/page.js :: pickerReady ? "/api/products" : null',
+  'app/tax/registrations/page.js :: pickerReady ? "/api/customers" : null',
+  'app/tax/registrations/[id]/page.js :: pickerReady ? "/api/products" : null',
+  'app/tax/registrations/[id]/page.js :: pickerReady ? "/api/customers" : null',
+  'app/tax/registrations/[id]/page.js :: pickerReady ? "/api/excise-registrations" : null',
+];
+
+/* เพดานของบัญชีหนี้ — เทียบสองทางแบบเพดานของ audit-ui.mjs
+   🐞 เดิมบัญชีบังคับแค่ขาลง (บรรทัดที่แก้แล้วต้องลบ) ⇒ เติมบรรทัดเดียวในลิสต์ รายการเรียกเงียบตัวใหม่ก็ผ่านด่าน
+      โดยดิฟดูเหมือนงานทำบัญชีธรรมดา · เลขนี้ทำให้การเพิ่มต้องขึ้นเพดานให้เห็นในรีวิว
+   ⇒ แก้หนี้แล้ว: ลบบรรทัด + **ลด** เลขนี้ · ห้ามขึ้นเลขนี้ */
+const KNOWN_SILENT_CAP = 25;
+
+test("บัญชีหนี้ KNOWN_SILENT มีเพดาน — เพิ่มบรรทัดไม่ได้โดยไม่ขึ้นเลขให้เห็น", () => {
+  assert.equal(KNOWN_SILENT.length, KNOWN_SILENT_CAP,
+    KNOWN_SILENT.length > KNOWN_SILENT_CAP
+      ? "บัญชีหนี้ยาวกว่าเพดาน — ห้ามเพิ่มรายการเรียกเงียบ: แกะ error/staleError/errorDetail/loaded แล้วขึ้น StatusNotice แทน"
+      : "บัญชีหนี้สั้นลงแล้ว (ดีมาก) — ลด KNOWN_SILENT_CAP ลงให้ตรง ไม่งั้นเพดานเหลือที่ว่างให้เติมรายการเงียบกลับเข้ามาได้");
+});
+
+test("ทุก useApiList ใน src รับความล้ม — ยกเว้นบัญชีหนี้ KNOWN_SILENT ที่ลดได้อย่างเดียว", () => {
+  const found = walkSrc(src).flatMap((file) => {
+    const text = readFileSync(file, "utf8");
+    if (!text.includes("useApiList")) return [];
+    return apiListCalls(text, relative(src, file).split(sep).join("/"));
+  });
+  /* กันตัวสแกนตาบอด: ตัวเดินไฟล์/ตัวพาร์สพังแล้วหาไม่เจออะไรเลย = ด่านเขียวเพราะไม่ได้ดูอะไร
+     ⚠️ ผูกกับจอในทะเบียน ไม่ใช่เพดานจำนวน — จำนวนรายการเรียกลดลงได้ตามงานปกติ (รื้อสหมิตรทั้งเส้นอยู่ในแผน) */
+  const scannedFiles = new Set(found.map((c) => c.call.split(" :: ")[0]));
+  const unseen = DETAIL_SCREENS.filter((rel) => !scannedFiles.has(rel));
+  assert.deepEqual(unseen, [], "จอในทะเบียนที่ตัวสแกนรายการเรียกมองไม่เห็น — ตัวเดินไฟล์/ตัวพาร์สพังหรือเปล่า");
+  const problems = found.filter((c) => c.problem).map((c) => `${c.call} — ${c.problem}`);
+  assert.deepEqual(problems, [], "รายการเรียกที่ตัวสแกนอ่านไม่ออก = แดง (ไม่ข้าม)");
+  /* เทียบแบบนับซ้ำ (multiset) ไม่ใช่ `includes` — 🐞 กุญแจคือ ไฟล์ + อาร์กิวเมนต์ ⇒ รายการเรียกเงียบตัวที่สอง
+     ที่ URL ซ้ำกับบรรทัดในบัญชี (เช่น `useApiList("/api/orders")` อีกตัวใน tax/filings/[id]) เคยผ่านเงียบ */
+  const silent = found.filter((c) => !c.surfaces).map((c) => c.call);
+  const tally = (list) => list.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map());
+  const have = tally(silent);
+  const owed = tally(KNOWN_SILENT);
+  const newlySilent = [...have].filter(([k, n]) => n > (owed.get(k) ?? 0))
+    .map(([k, n]) => (owed.has(k) ? `${k} (เงียบ ${n} รายการ · บัญชีมี ${owed.get(k)})` : k));
+  assert.deepEqual(newlySilent, [],
+    "รายการเรียกเหล่านี้ทิ้ง error ของ useApiList ⇒ API ล้มเมื่อไร จอจะวาดลิสต์ว่างเป็นคำตอบ — แกะ error/staleError/errorDetail/loaded แล้วขึ้น StatusNotice (ดู app/tax/page.js) · ห้ามเพิ่มเข้า KNOWN_SILENT");
+  const paidOff = [...owed].filter(([k, n]) => n > (have.get(k) ?? 0)).map(([k]) => k);
+  assert.deepEqual(paidOff, [],
+    "บรรทัดเหล่านี้ในบัญชีหนี้ไม่เงียบแล้ว (แก้แล้ว/ย้าย/ลบ) — ลบออกจาก KNOWN_SILENT และลด KNOWN_SILENT_CAP ให้บัญชีตรงของจริง");
+  assert.equal(new Set(KNOWN_SILENT).size, KNOWN_SILENT.length, "บัญชีหนี้ห้ามมีบรรทัดซ้ำ");
 });
