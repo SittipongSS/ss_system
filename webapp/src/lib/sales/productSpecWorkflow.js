@@ -10,6 +10,7 @@
 //    ค่าคงที่ที่จอต้องใช้ (`SPEC_CONTENT_FIELDS` ฯลฯ) จึงต้องอยู่ที่นี่ ไม่ใช่ที่ store
 // ⚠️ ตัวตัดสินคืน **เหตุผลเป็นข้อความ** ไม่ใช่ boolean เปล่า เพราะจอต้องบอกเหตุตอนกด
 //    (กฎ ui-visibility-rule) · `null` = ทำได้
+import { SALES_ROLES } from '@/lib/permissions';
 import {
   PRODUCT_SPEC_CERTIFICATIONS, PRODUCT_SPEC_CERT_STATUSES, productSpecChecklistLabel,
 } from '@/lib/sales/productSpecChecklist';
@@ -59,10 +60,10 @@ export const SPEC_CERT_EXTRA_MAX = 20;
 export const SPEC_CERT_LABEL_MAX = 200;
 export const SPEC_CERT_NOTE_MAX = 500;
 
-/* ใครแก้สเปคได้ — AC กับฝ่ายขายทุกระดับ + admin
-   ⚠️ เทียบ role ตรง ๆ ไม่ใช้ `isSuperuser` (ซึ่งรวม ae_supervisor อยู่แล้ว แต่สิ่งที่ตั้งใจ
-      คือ "ฝ่ายขาย" ไม่ใช่ "ผู้ดูแลทุกทีม") · ลิสต์เดียวให้ทั้งจอและ API ถาม */
-export const SPEC_EDIT_ROLES = Object.freeze(['ac', 'ae', 'senior_ae', 'ae_supervisor', 'admin']);
+/* ใครแก้สเปคได้ — ฝ่ายขายทุกตำแหน่ง (SALES_ROLES · ผังตำแหน่ง 2026-09-24) + admin
+   ⚠️ ถามลิสต์ตำแหน่งฝ่ายขาย ไม่ใช้ `isSuperuser` (สิ่งที่ตั้งใจคือ "ฝ่ายขาย" ไม่ใช่
+      "ผู้ดูแลทุกทีม") · ลิสต์เดียวให้ทั้งจอและ API ถาม */
+export const SPEC_EDIT_ROLES = Object.freeze([...SALES_ROLES, 'admin']);
 
 export const canEditProductSpec = (role) => SPEC_EDIT_ROLES.includes(role);
 

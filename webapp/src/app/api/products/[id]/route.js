@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSalesManager } from '@/lib/permissions';
 import {
   PRODUCT_DOC_NOTE_FIELDS,
   changedFieldsAgainst, normalizeRejectionReason, rejectionReasonError, resetApprovalOnEdit,
@@ -174,9 +174,9 @@ export async function PATCH(request, { params }) {
     return Response.json(decided);
   }
 
-  // เปลี่ยนสถานะพัก/เปิดใช้ (isActive) สงวนสิทธิ์เฉพาะ admin / ae_supervisor —
+  // เปลี่ยนสถานะพัก/เปิดใช้ (isActive) สงวนสิทธิ์เฉพาะ admin / ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) —
   // SA (senior_ae/ac/ae) แก้สเปค/ราคาได้ปกติแต่ห้ามพักใช้สินค้าเอง (ต้องขอผู้บริหาร).
-  if (body.isActive !== undefined && !isSuperuser(user?.role)) {
+  if (body.isActive !== undefined && !isSalesManager(user?.role)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 

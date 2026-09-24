@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSuperuser } from '@/lib/permissions';
+import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSalesManager } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
@@ -262,9 +262,9 @@ export async function DELETE(request, { params }) {
   if (!canDeleteRecord(user, 'orders', order)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
-  // Tax-locked orders: superuser only.
+  // Tax-locked orders: admin + ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) — AC Supervisor ไม่ได้ (ผังตำแหน่ง 2026-09-24)
   const locked = order.receiptNumber || order.clearedAt || ['complete', 'delivered'].includes(order.status);
-  if (locked && !isSuperuser(user?.role)) {
+  if (locked && !isSalesManager(user?.role)) {
     return Response.json(
       { error: 'รายการนี้เข้าสู่ขั้นตอนภาษีแล้ว ต้องเป็นผู้ดูแลระบบจึงจะลบได้' },
       { status: 403 }

@@ -55,10 +55,15 @@ test('คนผูกได้ = คนเปิดดีลจากลีด�
   }
   assert.ok(canLinkLeadRole('ae_supervisor'), 'หัวหน้าแก้ของลูกทีมได้');
   assert.ok(!canCreateDealFromLead('ae_supervisor'), 'แต่ปุ่มเปิดดีลจากลีดของหัวหน้ายังปิดตามมติ 2026-07-21');
-  for (const role of ['ac', 'marketing', 'viewer', 'executive', 'rd', 'finance']) {
+  // ผังตำแหน่ง 2026-09-24: สาย AC ทุกระดับห้ามผูก · CCO/CM ผูกได้เท่า AE Sup (ผู้มีอำนาจตัดสิน)
+  for (const role of ['ac', 'senior_ac', 'ac_supervisor', 'marketing', 'viewer', 'executive', 'rd', 'finance']) {
     assert.ok(!canLinkLeadRole(role), `${role} ห้ามผูก`);
   }
-  assert.deepEqual([...LEAD_LINK_ROLES].sort(), ['admin', 'ae', 'ae_supervisor', 'senior_ae']);
+  for (const role of ['cco', 'commercial_manager']) {
+    assert.ok(canLinkLeadRole(role), `${role} ผูกได้เท่า AE Sup`);
+    assert.ok(leadLinkScopeOk({ role, id: `u-${role}` }, lead({ team: null, assigneeId: null })), `${role} เห็นทุกใบเหมือน AE Sup`);
+  }
+  assert.deepEqual([...LEAD_LINK_ROLES].sort(), ['admin', 'ae', 'ae_supervisor', 'cco', 'commercial_manager', 'senior_ae']);
 });
 
 test('ขอบเขตลีด: AE ผู้รับมอบเท่านั้น · Senior ทีมเดียวกัน · หัวหน้า/แอดมินทุกใบ', () => {

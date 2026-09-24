@@ -1,6 +1,6 @@
 # ยกเลิก role `staff` — ทุกฝ่ายมี role ของตัวเอง
 
-สถานะ: **เสร็จสมบูรณ์** · เขียน 2026-08-28 · ถอดตัวแปลงช่วงเปลี่ยนผ่าน 2026-08-29
+สถานะ: **รอตรวจ** · เขียน 2026-08-28 · ถอดตัวแปลงช่วงเปลี่ยนผ่าน 2026-08-29 · §1–6 เสร็จแล้ว · §7 ผังตำแหน่งฝ่ายขาย (2026-09-24) รอรัน mig 0382 + deploy
 
 มติผู้ใช้ 2026-08-28: *"จะไม่มีตำแหน่ง staff แล้วทุกฝ่าย"*
 
@@ -126,7 +126,8 @@ node scripts/migrate-staff-role-to-department-role.mjs
 **จุดที่ต้องแตะเมื่อเพิ่ม role ของฝ่ายใดฝ่ายหนึ่งอีกในอนาคต** (ลำดับนี้สำคัญ):
 1. `ROLES` — ไม่มี = ไม่มีอยู่จริงในระบบ
 2. `ROLE_LABELS` — ไม่มีป้าย = ดรอปดาวน์ตำแหน่งขึ้นตัวเลือกว่าง
-3. `DEPARTMENT_ROLES[dept]` — ไม่มี = แอดมินเลือกไม่ได้เลย (และ **ตัวแรกคือค่าตั้งต้น**)
+3. `DEPARTMENT_ROLES[dept]` — ไม่มี = แอดมินเลือกไม่ได้เลย (และ **ตัวแรกคือค่าตั้งต้น** เว้นแต่ฝ่ายนั้นมีใน
+   `DEPARTMENT_DEFAULT_ROLE` — ฝ่ายขายเรียงตามผังตำแหน่ง ค่าตั้งต้นจึงชี้ `ae` แทน CCO · ดู §7)
 4. `ROLE_DEFAULT_DEPARTMENT` — ไม่มี = `departmentOf` คืน null แล้วด่านฝ่ายตกหมด
 5. `ROLE_CAPS` — ไม่มี = ตกไป `DEFAULT_CAPS` ⇒ **เมนูหายทั้งแถบโดยไม่มี error**
 6. `OPS_ROLES` (ถ้าเป็นฝ่ายปฏิบัติการ) — ไม่มี = ขอบเขตข้อมูลตกเป็น `team` ทั้งที่ฝ่ายไม่มีทีม
@@ -188,3 +189,67 @@ node scripts/migrate-staff-role-to-department-role.mjs
 ไซต์ของลูกค้าและพื้นที่เดิมของไซต์นั้นให้เลือก ⇒ มี `canPickServiceSite`
 (= `canViewService || canCreateServiceSite`) และ route อ่านสองเส้นนั้นรับ
 `forRequestForm: true` · **อ่านอย่างเดียว** การแก้ทะเบียนยังเป็นของฝ่าย TS
+
+---
+
+## 7. ผังตำแหน่งฝ่ายขาย (2026-09-24)
+
+มติผู้ใช้ 2026-09-24 — ฝ่ายขาย (SA) มีแปดตำแหน่งเรียงตามผัง:
+
+**CCO → Commercial Manager → AE Supervisor / AC Supervisor → Senior AE / Senior AC → AE / AC**
+
+| role | ป้ายบนจอ | ตำแหน่งบนกระดาษ | ขอบเขต | อนุมัติขั้น AE Sup | ถือดีล/เป้า | งานสาย AC | หัวหน้าทีม | งานบริการแบบหัวหน้า TS | Excel ลีด |
+|---|---|---|---|---|---|---|---|---|---|
+| `cco` | Chief Commercial Officer (CCO) | Chief Commercial Officer | ทุกทีม | ✓ | – | – | – | ✓ | ✓ |
+| `commercial_manager` | Commercial Manager (CM) | Commercial Manager | ทุกทีม | ✓ | – | – | – | ✓ | ✓ |
+| `ae_supervisor` | AE Supervisor | Account Executive Supervisor | ทุกทีม | ✓ | – | – | – | – | – |
+| `ac_supervisor` | AC Supervisor | Account Coordinator Supervisor | ทุกทีม | – | – | ✓ | ✓ (ทุกทีม) | – | – |
+| `senior_ae` | Senior AE | Senior Account Executive | ทีม | – | ✓ | – | ✓ | – | – |
+| `senior_ac` | Senior AC | Senior Account Coordinator | ทีม | – | – | ✓ | ✓ | – | – |
+| `ae` | Account Executive | Account Executive | ของตัวเอง | – | ✓ | – | – | – | – |
+| `ac` | Account Coordinate | Account Coordinator | ทีม | – | – | ✓ | – | – | – |
+
+มติรายข้อ (ผู้ใช้ตอบ "ตามที่แนะนำ" ทุกข้อ):
+
+1. AC Supervisor เห็นและทำงานได้ทุกทีม แต่ **ไม่อนุมัติ** ขั้น AE Sup
+2. Senior AC = สิทธิ์ AC + สิทธิ์หัวหน้าทีม (ลบใบสั่ง/โครงการในทีม · KPI งานของทีม · ดาวน์โหลดรายงานพยากรณ์) · ไม่ถือดีล
+3. CCO กับ CM สิทธิ์เท่ากันไปก่อน (= AE Sup + MKT + TS manager) ต่างแค่ป้าย
+4. ลำดับชั้นมีผลแค่ลำดับบนจอ ไม่มีขั้นอนุมัติต่อชั้น (เอกสารไม่ต้องผ่าน CM แล้วต่อ CCO)
+5. กระดาษ QT/SO/FM-SA-04 พิมพ์ตำแหน่งของคนที่เซ็นจริง — ทำอยู่แล้วทั้งสามใบ (`positionTitle` ของ `signerRole`) เหลือแค่เติมตำแหน่งใหม่
+6. กระดิ่งขั้น AE Sup (ลีดรอคัดกรอง · ลีดเด้งกลับ · FM-SA-04 รออนุมัติ) ยังไป AE Sup อย่างเดียว (`SALES_BELL_ROLES`)
+7. ช่อง "Sale & Marketing Manager" ของ PDR ยังพิมพ์มือตามเดิม (ไม่ได้ผูกกับ CM)
+
+### ท่าทำ: กลุ่มตำแหน่งที่เดียว ไม่เทียบชื่อตรง ๆ
+
+ตอนมีสี่ตำแหน่ง โค้ดเทียบ `role === 'ae_supervisor'` · `role === 'senior_ae' || role === 'ac'` และลิสต์ที่พิมพ์มือไว้
+ราว 65 ไฟล์ · เพิ่มตำแหน่งแล้วไล่เติมทีละจุดเป็นโรคเดียวกับฝ่าย RD ในข้อ 3 (จุดที่ลืม = เสียสิทธิ์เงียบ ๆ) ⇒ ทุกด่านถามกลุ่มใน
+`lib/permissions.js`:
+
+| กลุ่ม | สมาชิก | ใช้ตอบคำถาม |
+|---|---|---|
+| `SALES_ROLES` | ทั้งแปด | "เป็นฝ่ายขายไหม" (แก้สเปค · คีย์ SO ย้อนหลัง · กลุ่มลายเซ็น · ฝ่ายของเลนภาษี) |
+| `SALES_MANAGER_ROLES` → `isSalesManager` | CCO · CM · AE Sup | อนุมัติทุกเอกสาร · อนุมัติข้อมูลหลัก · ลงนามแทนเจ้าของดีล · ตั้งค่าหมวด/มาตรฐานเอกสาร/เงื่อนไขการค้า |
+| `SALES_SUPERVISOR_ROLES` → `isSuperuser` | ผู้มีอำนาจตัดสิน + AC Sup | ขอบเขตทุกทีม + การกำกับดูแล |
+| `TEAM_SCOPE_ROLES` → `hasTeamScope` | Senior AE · Senior AC · AC | เห็น/แก้ระดับทีม |
+| `TEAM_LEAD_ROLES` → `isTeamLead` | Senior AE · Senior AC | สิทธิ์หัวหน้าทีม |
+| `AC_TRACK_ROLES` → `isAcTrack` | AC · Senior AC · AC Sup | ออก FM-SA-04 · ผู้ประสานงานโครงการ |
+| `DEAL_HOLDER_ROLES` → `isDealHolder` | AE · Senior AE | ถือดีล/ลีด/เป้า |
+| `SERVICE_OVERSEER_ROLES` | CCO · CM | ผ่านด่าน "คนในโมดูลบริการ" · จัดทีมฝ่าย TS · ส่งผลประเมินพื้นที่ |
+| `MARKETING_OVERSEER_ROLES` | CCO · CM | ดาวน์โหลด Excel รายงานลีด |
+
+🔒 ด่านกันถอยหลัง: `salesRoleRatchet.test.mjs` (ห้ามเทียบ/ลิสต์ชื่อตำแหน่งตรง ๆ นอก permissions.js) ·
+`salesRoleHierarchy.test.mjs` (ตรึงมติทั้งเจ็ดข้อ) · `salesRoleSqlParity.test.mjs` (JS ↔ SQL)
+
+### ฐานข้อมูล: mig 0382
+
+ฟังก์ชันอนุมัติในฐาน 13 ตัวเช็คตำแหน่งซ้ำด้วยรายชื่อที่เขียนตรง ๆ ⇒ 0382 สร้างฟังก์ชันกลาง
+`public.is_sales_manager_role()` / `public.is_sales_keyer_role()` แล้ว **ปะ 13 ตัวจากนิยามที่รันอยู่จริง**
+(`pg_get_functiondef` + แทนเฉพาะเงื่อนไขตำแหน่ง · เจอไม่ครบหรือเกิน = ถอยทั้งไฟล์) · ลองบน PGlite แล้ว
+
+### ลำดับขึ้นระบบ
+
+1. รัน 0382 บน SQL Editor (รันก่อน/หลัง deploy ได้ — ยังไม่มีใครถือตำแหน่งใหม่)
+2. deploy โค้ด
+3. แอดมินย้ายบัญชีผ่านหน้า /users — **ต้องหลังข้อ 1 และ 2** (โค้ดเก่าไม่รู้จัก role ใหม่ = อ่านได้อย่างเดียว ·
+   ฐานที่ยังไม่รัน 0382 = CCO/CM กดอนุมัติแล้วเจอ forbidden)
+4. ตำแหน่งเดิมทั้งสี่ไม่เปลี่ยน — บัญชีที่มีอยู่ไม่ต้องย้าย

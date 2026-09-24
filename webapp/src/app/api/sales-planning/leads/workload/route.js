@@ -1,6 +1,6 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { isSuperuser, userTeams } from '@/lib/permissions';
+import { hasTeamScope, isSuperuser, userTeams } from '@/lib/permissions';
 import { businessDayKey } from '@/lib/datePeriods';
 import { LEAD_WORKLOAD_STATUSES, leadWorkloadFrom } from '@/lib/sales/leadWorkload';
 
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
  *  (superuser = admin/ae_supervisor · senior_ae/ac = เฉพาะทีมตัวเอง)
  *  คนอื่นไม่ต้องรู้ภาระของเพื่อนร่วมทีม เพราะไม่ได้เป็นคนตัดสินใจว่าใบไปหาใคร */
 const canReadWorkload = (user) =>
-  isSuperuser(user?.role) || user?.role === 'senior_ae' || user?.role === 'ac';
+  isSuperuser(user?.role) || hasTeamScope(user?.role);
 
 /** ภาระงานของ AE ณ ตอนนี้ รายคน — ใช้ตอนเลือกผู้รับผิดชอบ
  *

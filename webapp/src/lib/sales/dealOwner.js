@@ -16,7 +16,7 @@
 //
 // แพตเทิร์นเดียวกับ `validateLeadAssignee` — ตรวจด้วย id แล้ว **คืนชื่อจาก server**
 // ให้ผู้เรียกเขียนลงแถว ไม่รับชื่อจาก client อีก
-import { attributionTeam, hasTeam, normalizeRole, userTeams, ROLES } from '@/lib/permissions';
+import { attributionTeam, hasTeam, isDealHolder, normalizeRole, userTeams, ROLES, DEAL_HOLDER_ROLES } from '@/lib/permissions';
 import { salesPlanningEditScope } from '@/lib/salesPlanning';
 
 /* role ที่มี edit scope กับดีล (ไม่ใช่ 'none') — คำนวณจากของจริง ไม่พิมพ์รายชื่อทิ้งไว้ */
@@ -25,8 +25,9 @@ export const DEAL_OWNER_ROLES = ROLES.filter((role) => salesPlanningEditScope(ro
 /* role ที่ "ถือดีลได้" (มติผู้ใช้ 2026-08-08: ดีลเป็นหน้าที่ความรับผิดชอบของ
    AE / Senior AE เท่านั้น) — แคบกว่า DEAL_OWNER_ROLES โดยเจตนา: ac/ae_supervisor/
    admin แก้ดีลได้แต่**ถือ**ไม่ได้ ดีลที่ตกไปอยู่กับผู้ประสาน/ผู้กำกับจะไม่มี AE
-   คนไหนเห็นในคิว "ของฉัน" · ทั้งรายชื่อในดรอปดาวน์และด่าน validate ใช้ตัวนี้ */
-export const DEAL_HOLDER_ROLES = ['ae', 'senior_ae'];
+   คนไหนเห็นในคิว "ของฉัน" · ทั้งรายชื่อในดรอปดาวน์และด่าน validate ใช้ตัวนี้
+   ⚠️ ประกาศจริงอยู่ lib/permissions.js (ผังตำแหน่งฝ่ายขาย 2026-09-24) — ส่งออกซ้ำที่นี่ให้ผู้เรียกเดิม */
+export { DEAL_HOLDER_ROLES };
 
 /* role ที่ "มอบดีลให้คนอื่นได้" — ต้องมองเห็นทั้งทีมขึ้นไป
    AE มี scope 'own' ⇒ ยกดีลให้คนอื่นไม่ได้อยู่แล้ว (inSalesEditScope จะตีกลับ)
@@ -42,7 +43,7 @@ export function canAssignDealOwner(role) {
    default ตัวเอง — admin ไม่ใช่เจ้าของดีล ดีลที่ตกเป็นของ admin เงียบ ๆ ไม่มี AE
    คนไหนเห็นในคิว "ของฉัน" เหมือนกรณี AC ทุกประการ) */
 export function ownerLockedToSelf(role) {
-  return role === 'ae' || role === 'senior_ae';
+  return isDealHolder(role);
 }
 
 /**

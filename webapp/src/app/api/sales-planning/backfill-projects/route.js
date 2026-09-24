@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { isSuperuser } from '@/lib/permissions';
+import { isSalesManager } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEFAULT_PROBABILITY_BY_STAGE } from '@/lib/salesPlanning';
 
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 // Idempotent: ข้ามโครงการที่ผูกดีลแล้ว → รันซ้ำได้ปลอดภัย.
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!isSuperuser(user.role)) return forbidden('เฉพาะผู้ดูแลระบบเท่านั้น');
+  if (!isSalesManager(user.role)) return forbidden('เฉพาะผู้ดูแลระบบหรือหัวหน้าฝ่ายขาย (CCO · CM · AE Supervisor) เท่านั้น');
 
   const { data: projects, error: projErr } = await supabase
     .from('projects')

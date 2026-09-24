@@ -15,7 +15,7 @@
  *    แดชบอร์ดโดยไม่มีอะไรบอก ซึ่งเป็นความผิดพลาดชนิดที่หาไม่เจอ
  */
 
-import { isSuperuser } from '@/lib/permissions';
+import { isSuperuser, isTeamLead } from '@/lib/permissions';
 
 export const UNCATEGORIZED = 'ไม่ระบุหมวด';
 
@@ -32,10 +32,10 @@ export const UNCATEGORIZED = 'ไม่ระบุหมวด';
  *    ราคาต่อหน่วย · `ae`/`ac` ที่บนจอเห็นดีลของตัวเอง/ทีม ยังไม่ได้ไฟล์ เพราะ
  *    "ดูตัวเลขบนจอ" กับ "โหลดรายการออกไป" เป็นคนละสิทธิ์ (บทเรียนจาก
  *    `canExportLeadReport` ที่แม้แต่ ae_supervisor ก็ยังโหลดไม่ได้)
- * ⚠️ ไฟล์ของ senior_ae **ต้องประทับบนหัวว่าเป็นของทีมไหน** ไม่งั้นถูกส่งต่อแล้วอ่าน
+ * ⚠️ ไฟล์ของหัวหน้าทีม (Senior AE/AC) **ต้องประทับบนหัวว่าเป็นของทีมไหน** ไม่งั้นถูกส่งต่อแล้วอ่าน
  *    เป็นยอดทั้งบริษัท (ดู `scopeLabel` ใน forecastReportWorkbook)
  */
-export const canExportForecastReport = (role) => isSuperuser(role) || role === 'senior_ae';
+export const canExportForecastReport = (role) => isSuperuser(role) || isTeamLead(role);
 
 /* ── เดือนของดีลบนรายงานนี้ = เดือนที่ลูกค้าจะรับของ ─────────────────────────
  *

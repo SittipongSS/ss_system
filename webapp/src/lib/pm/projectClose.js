@@ -3,7 +3,7 @@
 // AE Supervisor อนุมัติ. ปิดแล้วเปิดใหม่ได้ (Supervisor/admin) เพื่อรองรับ RE-ORDER
 // (ดีลใหม่ในโครงการเดิม). คนละเรื่องกับ status free text (New/On Hold/Dropped) เดิม —
 // closeStatus เป็นชั้น "เซ็นรับรอง" ทางการที่แยกออกมา.
-import { isSuperuser } from '@/lib/permissions';
+import { isSalesManager } from '@/lib/permissions';
 
 export const PROJECT_CLOSE_STATUSES = ['open', 'pending_close', 'closed'];
 
@@ -24,8 +24,9 @@ export const PROJECT_CLOSE_STATUS_LABELS = {
 
 // อนุมัติ/ตีกลับ/เปิดใหม่ = AE Supervisor + admin (superuser). ผู้ขอปิด (ผู้ดูแลโครงการ)
 // อนุมัติของตัวเองไม่ได้ — ตรวจ requester ≠ approver ใน handler (เหมือน SO).
+// ⭐ ผังตำแหน่ง 2026-09-24: ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) — AC Supervisor เห็นทุกทีมแต่ไม่อนุมัติ
 export function canApproveProjectClose(user) {
-  return !!user && isSuperuser(user.role);
+  return !!user && isSalesManager(user.role);
 }
 
 /* "รอฉันลงมือ" ของโครงการ = คำขอปิดที่รอ **ฉัน** เซ็น — ไม่ใช่จำนวนโครงการที่เปิดอยู่

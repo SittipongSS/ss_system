@@ -17,6 +17,8 @@
 //    ใช้ `pipelineRowsOnly` / `historicalRowsOnly` / `isHistoricalOrder` / `isHistoricalDeal` เท่านั้น
 //    (สะกดผิดที่เดียว = ตัวกรองว่างเงียบ ๆ แล้วยอดย้อนหลังไหลเข้า KPI)
 
+import { isSalesManager, SALES_ROLES } from '@/lib/permissions';
+
 export const ORIGIN_PIPELINE = 'pipeline';
 export const ORIGIN_HISTORICAL = 'historical';
 
@@ -64,17 +66,18 @@ export const pipelineRowsOnly = (query) => query.eq('origin', ORIGIN_PIPELINE);
 export const historicalRowsOnly = (query) => query.eq('origin', ORIGIN_HISTORICAL);
 
 /* ── ใครทำอะไรกับใบย้อนหลัง (มติ 22/09 · mig 0374) ─────────────────────────────────────
-   ⭐ **ผู้คีย์ ≠ ผู้อนุมัติ** — คีย์ = ฝ่ายขายทุกตำแหน่ง + Admin · อนุมัติ = isSalesOrderReviewer (AE Sup/Admin)
-   ⚠️ เทียบ role ตรง ๆ ไม่ใช่ isSuperuser (แพตเทิร์น canApproveExternalContract)
-   !! ลำดับและสมาชิกต้องตรงกับ literal ใน RPC สร้าง/แก้/ส่ง ของ 0374
-      (`p_actor_role NOT IN ('ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin')`) — historicalOrders.test เทียบไฟล์ SQL
+   ⭐ **ผู้คีย์ ≠ ผู้อนุมัติ** — คีย์ = ฝ่ายขายทุกตำแหน่ง + Admin · อนุมัติ = isSalesOrderReviewer
+      (ผู้มีอำนาจตัดสิน: CCO · CM · AE Sup · Admin)
+   ⚠️ ถามลิสต์ตำแหน่ง ไม่ใช่ isSuperuser (แพตเทิร์น canApproveExternalContract)
+   !! สมาชิกต้องตรงกับ `public.is_sales_keyer_role()` ของ 0382 ที่ RPC สร้าง/แก้/ส่ง เรียก (เดิมเป็น literal
+      ใน 0374 · 0382 เปลี่ยนเป็นฟังก์ชันกลางตอนเพิ่มผังตำแหน่ง 2026-09-24) — salesRoleSqlParity.test เทียบไฟล์ SQL
    ⚠️ สิทธิ์ต่อใบ (AE/Senior AE คีย์ได้เฉพาะของตัวเอง · ทีมของดีลภาชนะ) ตัดสินที่ planHistoricalServiceOrder */
-export const HISTORICAL_KEYER_ROLES = Object.freeze(['ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin']);
+export const HISTORICAL_KEYER_ROLES = Object.freeze([...SALES_ROLES, 'admin']);
 export const canKeyHistoricalSalesOrder = (user) => HISTORICAL_KEYER_ROLES.includes(user?.role);
 
-/* ย้ายเจ้าของดีลภาชนะ = AE Supervisor หรือ Admin เท่านั้น (คำตอบข้อ 4) — ดีลภาชนะถือใบย้อนหลังทุกใบของคู่
-   (ลูกค้า × AE) ⇒ แคบกว่าผู้คีย์โดยเจตนา · แยกตัวออกมาตอนผู้คีย์ขยายเป็นฝ่ายขายทุกตำแหน่ง */
-export const canMoveHistoricalDealOwner = (user) => user?.role === 'ae_supervisor' || user?.role === 'admin';
+/* ย้ายเจ้าของดีลภาชนะ = ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) หรือ Admin เท่านั้น (คำตอบข้อ 4) — ดีลภาชนะ
+   ถือใบย้อนหลังทุกใบของคู่ (ลูกค้า × AE) ⇒ แคบกว่าผู้คีย์โดยเจตนา · แยกตัวออกมาตอนผู้คีย์ขยายเป็นฝ่ายขายทุกตำแหน่ง */
+export const canMoveHistoricalDealOwner = (user) => isSalesManager(user?.role);
 
 /* สถานะของใบย้อนหลัง (CHECK sales_orders_origin_shape ของ 0374):
    ร่าง → รออนุมัติ → อนุมัติ · รออนุมัติ → ตีกลับ/ร่าง (ดึงกลับ) · ทุกสถานะ → ยกเลิก

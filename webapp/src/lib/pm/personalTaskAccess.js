@@ -1,4 +1,4 @@
-import { can, hasTeam, isReadOnlyObserver, isRdRole, isSuperuser, normalizeDepartment, userTeams, TEAM_ROLES } from '@/lib/permissions';
+import { can, hasTeam, isReadOnlyObserver, isRdRole, isSuperuser, isTeamLead, normalizeDepartment, userTeams, TEAM_ROLES } from '@/lib/permissions';
 
 // `team` = ทุกทีมของคนคนนั้น (อาร์เรย์) — คนที่รับผิดชอบงานก็อยู่หลายทีมได้ ผู้เรียก
 // ทุกรายส่งค่านี้เข้า hasTeam ซึ่งรับทั้งค่าเดียวและอาร์เรย์
@@ -40,7 +40,7 @@ export async function canManagePersonalTask(supabase, task, user) {
   // จัดการงานของ "คนอื่น" ยังสงวนให้สายบังคับบัญชาฝ่ายขาย (pm:edit) เหมือนเดิม
   if (!can(user.role, 'pm:edit')) return false;
   if (isSuperuser(user.role)) return true;
-  if (user.role !== 'senior_ae' || !userTeams(user).length) return false;
+  if (!isTeamLead(user.role) || !userTeams(user).length) return false;
 
   // อยู่หลายทีมได้ ⇒ "ทีมเดียวกัน" = มีทีมร่วมกันอย่างน้อยหนึ่งทีม
   const responsibleTeam = await personalTaskResponsibleTeam(supabase, task);

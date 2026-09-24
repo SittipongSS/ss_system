@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { DOC_ACTION_KEYS } from '@/lib/sales/productSpecDocWorkflow';
 import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
+import { SALES_BELL_ROLES } from '@/lib/permissions';
 
 const API = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const stripComments = (s) => s
@@ -138,7 +139,9 @@ test('แจ้งเตือนตามตารางมติ: ยื่น
   const source = code(DOC_ROUTE);
   const fn = source.slice(source.indexOf('async function recipientsFor'), source.indexOf('function noticeText'));
   assert.match(fn, /action === 'submit'\) return \[dealOwner\?\.id\]/);
-  assert.match(fn, /!u\.disabled && u\.role === 'ae_supervisor'/);
+  // ผังตำแหน่ง 2026-09-24 ข้อ 6: CCO/CM อนุมัติขั้นนี้ได้แต่ไม่รับกระดิ่ง ⇒ ผู้รับยังเป็น AE Sup อย่างเดียว
+  assert.match(fn, /!u\.disabled && SALES_BELL_ROLES\.includes\(u\.role\)/);
+  assert.deepEqual(SALES_BELL_ROLES, ['ae_supervisor']);
   assert.match(fn, /action === 'reject'\) return \[latest\?\.submittedBy\]/);
   assert.match(fn, /action === 'sup_approve'\) return \[latest\?\.submittedBy, dealOwner\?\.id\]/);
   assert.match(source, /entityType: 'product_spec_document'/);

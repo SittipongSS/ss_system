@@ -18,7 +18,7 @@
 // ให้เรียกผ่าน action `tax-invoice` ของ route งวดชำระ ไม่ใช่ `.update()` ตรง ๆ
 // (คลาสเดียวกับชื่อลูกค้าที่ก๊อปไป 5 ตาราง แล้วต้องมีทะเบียนกลางตามเก็บทีหลัง)
 import { canConfirmPayment } from '@/lib/permissions';
-// งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+// งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import { isOpeningInstallment } from '@/lib/sales/historicalOrders';
 
 /** ยาวสุดของเลขที่ใบกำกับ — ต้องตรงกับ CHECK `sales_order_installments_tax_invoice_sane` */

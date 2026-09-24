@@ -17,6 +17,7 @@ import {
   DEPARTMENTS,
   DEPARTMENT_LABELS,
   DEPARTMENT_NAMES_TH,
+  defaultRoleForDepartment,
   departmentFor,
   rolesForDepartment,
   userTeams,
@@ -598,9 +599,10 @@ function UserFields({ form, setForm, requirePassword, edit, user = null }) {
       return { ...f, extraCaps: cur.includes(cap) ? cur.filter((c) => c !== cap) : [...cur, cap] };
     });
 
-  // Switching department resets role to the first role of that department.
+  // สลับฝ่าย = ตั้งตำแหน่งเป็นค่าตั้งต้นของฝ่ายนั้น — ฝ่ายขายเรียงลิสต์ตามผังตำแหน่ง (ตัวแรก = CCO)
+  // ⇒ ห้ามใช้ตัวแรกของลิสต์ ไม่งั้นเปิดบัญชีขายใหม่แล้วได้ CCO เงียบ ๆ (ดู DEPARTMENT_DEFAULT_ROLE)
   const setDepartment = (dep) =>
-    setForm((f) => ({ ...f, department: dep, role: rolesForDepartment(dep)[0] }));
+    setForm((f) => ({ ...f, department: dep, role: defaultRoleForDepartment(dep) }));
 
   return (
     <div className="form-grid cols-2" style={{ columnGap: "18px", rowGap: "16px" }}>

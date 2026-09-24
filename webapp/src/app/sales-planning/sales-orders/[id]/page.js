@@ -68,6 +68,7 @@ import {
   isCustomerCancelReason,
   salesOrderAmountKind,
   salesOrderRestoreBlock,
+  isSalesOrderReviewer,
 } from "@/lib/sales/salesOrderWorkflow";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { currentMonth, formatMonthLabel } from "@/lib/datePeriods";
@@ -185,7 +186,8 @@ export default function SalesOrderDetailPage() {
   // RD/PC ผ่านด่านนั้นทางสาขา "รับคำร้องของฝ่ายตนได้" ซึ่งไม่ใช่งานของหน้า SO
   const canOpenRequest = useCan("costing:edit");
   const role = useRole();
-  const reviewer = ["admin", "ae_supervisor"].includes(role);
+  // ผู้ตรวจ/อนุมัติ = ตัวเดียวกับ route และ RPC (admin · CCO · CM · AE Sup)
+  const reviewer = isSalesOrderReviewer(role);
   const [order, setOrder] = useState(null);
   const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน
   /* แก้ได้เหลือสองช่อง (มติผู้ใช้ 2026-08-18) — วันที่ SO ล็อกเป็นวันที่สร้าง

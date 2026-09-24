@@ -18,6 +18,7 @@
 // ส่วนงาน PM วัดด้วย `pmEditScope` ซึ่ง AE = 'team' (PM เป็นงานร่วมทั้งทีม) ⇒ ใช้ตัวของ
 // ดีลจะปล่อยให้ AE ยกโครงการข้ามทีมได้เงียบ ๆ แล้วตัวเองมองไม่เห็นอีกเลย
 import { attributionTeam, normalizeRole, pmEditScope, userTeams } from '@/lib/permissions';
+import { PROJECT_PEOPLE_ROLES } from '@/lib/pm/projectPeople';
 import { DEAL_HOLDER_ROLES } from '@/lib/sales/dealOwner';
 
 /* ผู้ดูแลโครงการ = AE / Senior AE — ชุดเดียวกับ "คนถือดีล" (มติผู้ใช้ 2026-08-08)
@@ -114,8 +115,9 @@ export async function resolveProjectSupervisor(supabase, supervisorId, { require
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้ตรวจสอบคนอื่น' };
 
-  if ((user.app_metadata?.role || null) !== 'ae_supervisor') {
-    return { ok: false, error: 'ผู้ตรวจสอบโครงการต้องเป็นตำแหน่งหัวหน้าฝ่ายขาย (AE Supervisor)' };
+  // ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) — ผังตำแหน่ง 2026-09-24 · กลุ่มเดียวกับรายชื่อบนฟอร์ม
+  if (!PROJECT_PEOPLE_ROLES.aeSupervisor.includes(user.app_metadata?.role || null)) {
+    return { ok: false, error: 'ผู้ตรวจสอบโครงการต้องเป็นตำแหน่งหัวหน้าฝ่ายขาย (CCO · CM · AE Supervisor)' };
   }
 
   const name = projectOwnerName(user);
@@ -150,8 +152,9 @@ export async function resolveProjectAcOwner(supabase, acOwnerId, projectTeam = n
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้ประสานงานคนอื่น' };
 
-  if ((user.app_metadata?.role || null) !== 'ac') {
-    return { ok: false, error: 'ผู้ประสานงานโครงการต้องเป็นตำแหน่ง AC (Account Coordinate)' };
+  // สาย AC (AC · Senior AC · AC Supervisor) — ผังตำแหน่ง 2026-09-24 · กลุ่มเดียวกับรายชื่อบนฟอร์ม
+  if (!PROJECT_PEOPLE_ROLES.preparedBy.includes(user.app_metadata?.role || null)) {
+    return { ok: false, error: 'ผู้ประสานงานโครงการต้องเป็นตำแหน่งสาย AC (AC · Senior AC · AC Supervisor)' };
   }
 
   const acTeams = userTeams(user.app_metadata);

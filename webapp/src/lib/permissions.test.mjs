@@ -922,8 +922,10 @@ test('🔴 ชุด role ที่สร้างไซต์บริการ
     ROLES.filter((role) => canCreateServiceSite({ role })),
     /* ⚠️ `ae_supervisor` หลุดออกไปตั้งแต่โมดูลเป็นของฝ่าย TS เท่านั้น (2026-08-30) —
        หัวหน้าฝ่ายขายไม่ได้อยู่ในสายงานบริการ และไม่ได้เป็น role ที่มีทีม (TEAM_ROLES)
-       จึงไม่เหลือทางไหนให้ผ่าน · คนขายที่เปิดใบจริง (senior_ae/ac/ae) ยังสร้างได้ */
-    ['admin', 'senior_ae', 'ac', 'ae', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
+       จึงไม่เหลือทางไหนให้ผ่าน · คนขายที่เปิดใบจริง (senior_ae/ac/ae) ยังสร้างได้
+       ⭐ ผังตำแหน่ง 2026-09-24: CCO/CM ผ่านทาง `canEditService` (ถือสิทธิ์หัวหน้า TS · มติ) ·
+          Senior AC ผ่านทาง TEAM_ROLES · AC Supervisor ไม่ผ่านเหมือน AE Sup (ไม่มีทีม · ไม่อยู่ในโมดูล) */
+    ['admin', 'cco', 'commercial_manager', 'senior_ae', 'senior_ac', 'ac', 'ae', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
   );
 })
 

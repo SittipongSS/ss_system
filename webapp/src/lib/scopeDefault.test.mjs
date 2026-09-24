@@ -106,13 +106,12 @@ test('คนไม่มีทีมต้องไม่ถูกตั้ง�
   }
 });
 
-/* รายชื่อ "คนถือดีล" ถูกประกาศสองที่ (permissions.js ประกาศเองเพื่อไม่ให้ import
-   วนกับ dealOwner.js) — ต้องตรงกันเสมอ ไม่งั้นค่าตั้งต้นกับด่านเจ้าของดีลเพี้ยนกัน */
+/* รายชื่อ "คนถือดีล" มีบ้านเดียวแล้ว (ผังตำแหน่ง 2026-09-24): ประกาศที่ permissions.js ·
+   dealOwner.js ส่งออกซ้ำ · SALES_ROW_HOLDER_ROLES ชี้ตัวเดียวกัน — เดิมประกาศสองที่แล้วต้องมีเทสต์คุมให้ตรงกัน */
 test('SALES_ROW_HOLDER_ROLES ต้องตรงกับ DEAL_HOLDER_ROLES', () => {
   const src = readFileSync(join(ROOT, 'src/lib/permissions.js'), 'utf8');
-  const m = src.match(/const SALES_ROW_HOLDER_ROLES = (\[[^\]]*\]);/);
-  assert.ok(m, 'หา SALES_ROW_HOLDER_ROLES ไม่เจอ');
-  assert.deepEqual(JSON.parse(m[1].replace(/'/g, '"')), DEAL_HOLDER_ROLES);
+  assert.match(src, /const SALES_ROW_HOLDER_ROLES = DEAL_HOLDER_ROLES;/, 'ต้องชี้ลิสต์กลาง ไม่พิมพ์รายชื่อซ้ำ');
+  assert.deepEqual([...DEAL_HOLDER_ROLES], ['ae', 'senior_ae']);
 });
 
 test('สี่จอใช้ตัวกลางตัวเดียวกัน ไม่คำนวณค่าตั้งต้นเอง', () => {

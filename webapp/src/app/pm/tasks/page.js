@@ -28,7 +28,7 @@ import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import { isSuperuser, isRdRole, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, defaultScope, pmTaskScopes, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
+import { isSuperuser, isRdRole, isTeamLead, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, defaultScope, pmTaskScopes, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate, naText, NA } from "@/lib/format";
@@ -283,7 +283,7 @@ export default function TasksPage() {
     if (!canEdit && !isRdRole(me.role)) return false; // rd manages its own operational tasks
     if (t.ownerId === me.id || t.assigneeId === me.id) return true;
     if (isSuperuser(me.role)) return true;
-    if (me.role === "senior_ae" && userTeams(me).length) {
+    if (isTeamLead(me.role) && userTeams(me).length) {
       if (hasTeam(me, userTeamOf(t.assigneeId || t.ownerId))) return true;
       if (hasTeam(me, resolveProj(t.projectId)?.team)) return true;
     }
@@ -897,7 +897,7 @@ export default function TasksPage() {
     <SaWorkspace
       icon={<ListTodo size={22} />}
       title="งาน (Tasks)"
-      subtitle={`มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้${me && (me.role === "senior_ae" ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}`}
+      subtitle={`มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้${me && (isTeamLead(me.role) ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}`}
       headerRight={(canEdit || isRdRole(role)) && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
     >
       <div className="flex flex-col gap-4">

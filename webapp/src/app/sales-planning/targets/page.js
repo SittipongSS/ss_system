@@ -12,7 +12,7 @@ import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-rea
 import Workspace from "@/components/ui/Workspace";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeams } from "@/lib/roleContext";
-import { userTeams } from "@/lib/permissions";
+import { isSuperuser, isTeamLead, userTeams } from "@/lib/permissions";
 import { MONTH_LABELS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 /* ⚠️ รายชื่อทีมมาจาก **ทะเบียนจริง** ไม่ใช่ค่าคงที่ (มติ 2026-09-07) — ค่าคงที่มีแค่สามทีม
    ที่ seed มาแต่แรก ⇒ ทีมขายที่สร้างใหม่จะไม่มีแถวให้ตั้งเป้า และยอดรวมจะขาดไปเงียบ ๆ */
@@ -32,7 +32,7 @@ export default function SalesPlanningTargetsPage() {
   const canTarget = useCan("salesplan:target");
   const role = useRole();
   const myTeams = useTeams();
-  const isSuper = role === "admin" || role === "ae_supervisor";
+  const isSuper = isSuperuser(role);
 
   const [year, setYear] = useState(thisYear());
   const [targets, setTargets] = useState([]);
@@ -427,7 +427,7 @@ export default function SalesPlanningTargetsPage() {
           <div className={`${styles.rowLabel} ${extra.bold ? styles.rowLabelBold : ""}`.trim()}>{extra.label ?? labelOf(node)}</div>
         </div>
         {extra.gap && <GapNote target={node.annual} allocated={node.allocated} allocLabel={extra.allocLabel} />}
-        {node.role === "senior_ae" && <div className={styles.subNote}>หัวหน้าทีม</div>}
+        {isTeamLead(node.role) && <div className={styles.subNote}>หัวหน้าทีม</div>}
         {node.ghost && <div className={styles.ghostNote}>{node.ghost} — เป้ายังนับเข้ายอดทีม เกลี่ยออก/ปรับเป็น 0 ได้</div>}
       </td>
       {node.monthAmounts.map((amt, i) => (

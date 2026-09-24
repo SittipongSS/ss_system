@@ -22,7 +22,7 @@ import { findPlan, loadVisitItems, requireVisit, visitFieldRecordCount } from '@
 import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
-import { isSuperuser } from '@/lib/permissions';
+import { canOverrideServiceGate } from '@/lib/permissions';
 import { PLANNING_FIELD_ERROR, planningFieldsIn } from '@/lib/service/visitAccess';
 import { REMOVE_VISIT_KIND, deriveVisitStatus } from '@/lib/service/visitAssets';
 import {
@@ -200,7 +200,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         /* ข้ามด่านเป็นสิทธิ์ของหัวหน้า ไม่ใช่ของทุกคนที่แก้งานบริการได้ —
            ของจริงมี 25 จุดที่วิ่งอยู่ทั้งที่หมดสัญญา ถ้าบล็อกแข็งวันแรกงานหยุดทันที
            แต่ถ้าใครก็ข้ามได้ ด่านก็ไม่มีความหมายตั้งแต่วันแรกเหมือนกัน */
-        if (!isSuperuser(user?.role)) {
+        if (!canOverrideServiceGate(user)) {
           return badRequest('ข้ามด่านได้เฉพาะหัวหน้า — ให้หัวหน้าเป็นคนกด หรือแก้ให้ครบก่อน');
         }
         if (override.length < 10) {

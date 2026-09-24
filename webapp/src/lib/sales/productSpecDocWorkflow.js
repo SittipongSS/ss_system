@@ -14,6 +14,7 @@
 //    (กฎ ui-visibility-rule) · ทำไปแล้ว/ไม่มีของให้ทำ = ซ่อนได้ (เช่นยื่นซ้ำ · เอกสารที่ void)
 // ⚠️ ไฟล์นี้ไม่แตะฐาน — จอ (client) กับ API ถามตัวเดียวกัน คิดซ้ำที่ไหนเมื่อไร ปุ่มจะบอก
 //    อย่างหนึ่งแล้วเซิร์ฟเวอร์ทำอีกอย่าง
+import { isAcTrack, SALES_MANAGER_ROLES } from '@/lib/permissions';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { SALES_ORDER_STATUS_LABELS } from '@/lib/sales/salesOrderWorkflow';
 import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
@@ -67,15 +68,17 @@ export const isRevisionOpen = (rev) => Boolean(rev) && OPEN_REVISION_STATUSES.in
 
 const isAdmin = (user) => user?.role === 'admin';
 
-/** ใครออกเอกสารได้ — AC เท่านั้น (+ admin) · ฝ่ายขายอื่นแก้สเปคได้แต่ไม่ออกเลขที่ */
-export const canIssueProductSpecDocument = (role) => role === 'ac' || role === 'admin';
+/** ใครออกเอกสารได้ — สาย AC (AC · Senior AC · AC Supervisor · มติ 2026-09-24) + admin
+ *  ฝ่ายขายอื่นแก้สเปคได้แต่ไม่ออกเลขที่ */
+export const canIssueProductSpecDocument = (role) => isAcTrack(role) || role === 'admin';
 
 /** ขั้น AE — เจ้าของดีลของ SO (`sales_deals.ownerId`) หรือ admin */
 export const canAeApproveProductSpecDocument = (user, dealOwnerId) => isAdmin(user)
   || (Boolean(user?.id) && Boolean(dealOwnerId) && user.id === dealOwnerId);
 
-/** ขั้น AE Sup — `ae_supervisor` หรือ admin */
-export const canSupApproveProductSpecDocument = (user) => isAdmin(user) || user?.role === 'ae_supervisor';
+/** ขั้น AE Sup — ผู้มีอำนาจตัดสินของฝ่ายขาย (CCO · CM · AE Sup) หรือ admin
+ *  ⚠️ ถามลิสต์ SALES_MANAGER_ROLES ตรง ๆ ไม่ใช่ `isSuperuser` — AC Supervisor ไม่อนุมัติ (มติ 2026-09-24) */
+export const canSupApproveProductSpecDocument = (user) => isAdmin(user) || SALES_MANAGER_ROLES.includes(user?.role);
 
 /**
  * เหตุผลของการตีกลับ/แก้ไขเอกสาร/ยกเลิก — `null` = ใช้ได้

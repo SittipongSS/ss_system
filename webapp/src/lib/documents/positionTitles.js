@@ -21,8 +21,14 @@ export const POSITION_TITLES = Object.freeze({
   admin: 'Administrator',
   secretary: 'Secretary',
   executive: 'Executive',
+  /* ผังตำแหน่งฝ่ายขาย (มติผู้ใช้ 2026-09-24) — กระดาษใช้ "Coordinator" ตามที่พิมพ์อยู่เดิม
+     (ป้ายบนจอเป็น "Account Coordinate" ตามคำที่ผู้ใช้เขียน · ROLE_LABELS) */
+  cco: 'Chief Commercial Officer',
+  commercial_manager: 'Commercial Manager',
   ae_supervisor: 'Account Executive Supervisor',
+  ac_supervisor: 'Account Coordinator Supervisor',
   senior_ae: 'Senior Account Executive',
+  senior_ac: 'Senior Account Coordinator',
   ae: 'Account Executive',
   ac: 'Account Coordinator',
   marketing: 'Marketing Officer',

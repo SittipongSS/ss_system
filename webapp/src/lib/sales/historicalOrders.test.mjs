@@ -53,24 +53,28 @@ test('ตัวกรอง query ต่อ .eq("origin", …) ตัวเด�
   assert.deepEqual(seen, [['origin', 'pipeline'], ['origin', 'historical']]);
 });
 
-test('HISTORICAL_KEYER_ROLES = literal ผู้คีย์ใน RPC สร้าง/แก้/ส่ง ของ 0374 (ฝ่ายขายทุกตำแหน่ง + Admin · มติ 22/09)', () => {
-  assert.deepEqual([...HISTORICAL_KEYER_ROLES], ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin']);
+test('HISTORICAL_KEYER_ROLES = ฝ่ายขายทุกตำแหน่ง + Admin (มติ 22/09 · ผังตำแหน่ง 2026-09-24)', () => {
+  assert.deepEqual([...HISTORICAL_KEYER_ROLES], [
+    'cco', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac', 'admin',
+  ]);
   assert.ok(Object.isFrozen(HISTORICAL_KEYER_ROLES), 'ชุด role ต้องแก้ทับตอนรันไม่ได้');
   for (const role of HISTORICAL_KEYER_ROLES) assert.equal(canKeyHistoricalSalesOrder({ role }), true, role);
-  for (const role of ['finance', 'ts', 'ts_manager', 'rd', 'executive', 'viewer', 'AE', '', undefined]) {
+  for (const role of ['finance', 'ts', 'ts_manager', 'rd', 'executive', 'viewer', 'marketing', 'AE', '', undefined]) {
     assert.equal(canKeyHistoricalSalesOrder({ role }), false, String(role));
   }
   assert.equal(canKeyHistoricalSalesOrder(null), false);
-  // literal ในฐานสร้างจากค่าคงที่ตัวเดียวกัน — ลำดับต้องตรงด้วย (เพิ่ม/ถอด role ต้องแก้สองฝั่งพร้อมกัน)
-  const literal = `COALESCE(p_actor_role, '') NOT IN (${HISTORICAL_KEYER_ROLES.map((r) => `'${r}'`).join(', ')})`;
+  /* ฝั่งฐาน: RPC สร้าง/แก้/ส่งของ 0374 เรียก `public.is_sales_keyer_role()` หลัง 0382 ปะ — ชุดในฟังก์ชันกลาง
+     เทียบกับค่าคงที่นี้ที่ salesRoleSqlParity.test.mjs (เพิ่ม/ถอดตำแหน่งต้องแก้สองฝั่งพร้อมกัน) */
   for (const name of ['create_historical_sales_order', 'update_historical_sales_order', 'submit_historical_sales_order']) {
-    assert.ok(fn0374(name).includes(literal), `${name} ต้องใช้ชุด role เดียวกับ HISTORICAL_KEYER_ROLES`);
+    assert.ok(fn0374(name).includes("NOT IN ('ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin')"),
+      `${name}: ข้อความของ 0374 ต้องคงเดิม — 0382 ปะด้วยการเทียบตัวอักษร`);
   }
 });
 
-test('ย้ายเจ้าของดีลภาชนะ = AE Supervisor / Admin เท่านั้น — แคบกว่าผู้คีย์โดยเจตนา', () => {
-  for (const role of ['ae_supervisor', 'admin']) assert.equal(canMoveHistoricalDealOwner({ role }), true, role);
-  for (const role of ['ae', 'ac', 'senior_ae', 'finance', 'ts', undefined]) {
+test('ย้ายเจ้าของดีลภาชนะ = ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) / Admin เท่านั้น — แคบกว่าผู้คีย์โดยเจตนา', () => {
+  for (const role of ['cco', 'commercial_manager', 'ae_supervisor', 'admin']) assert.equal(canMoveHistoricalDealOwner({ role }), true, role);
+  // AC Supervisor เห็นทุกทีมแต่ไม่ตัดสิน (ผังตำแหน่ง 2026-09-24 มติข้อ 1)
+  for (const role of ['ac_supervisor', 'senior_ac', 'ae', 'ac', 'senior_ae', 'finance', 'ts', undefined]) {
     assert.equal(canMoveHistoricalDealOwner({ role }), false, String(role));
   }
   assert.equal(canMoveHistoricalDealOwner(null), false);

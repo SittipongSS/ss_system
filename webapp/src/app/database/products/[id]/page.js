@@ -7,7 +7,7 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
-import { isSuperuser } from "@/lib/permissions";
+import { isSalesManager } from "@/lib/permissions";
 import { DEFAULT_SALE_UNIT, formatVolume, hasPackagingFields } from "@/lib/master/units";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
@@ -70,10 +70,10 @@ export default function ProductDetails() {
   const id = params.id;
   const canEditProducts = useCan("products:edit");
   const canDeleteProducts = useCan("products:delete");
-  // พักใช้/เปิดใช้อีกครั้งสงวนสิทธิ์ให้ admin + ae_supervisor เท่านั้น — SA
+  // พักใช้/เปิดใช้อีกครั้งสงวนสิทธิ์ให้ admin + ผู้มีอำนาจตัดสิน (CCO · CM · AE Sup) เท่านั้น — SA
   // (senior_ae/ac/ae) แก้สเปค/ราคาได้ปกติแต่ห้ามพักใช้สินค้าเอง (บังคับที่ server ด้วย).
   const role = useRole();
-  const canToggleActive = isSuperuser(role);
+  const canToggleActive = isSalesManager(role);
   // Factory cost data is confidential to the tax system. Two tiers (mirrors the
   // server-side redaction): costPrice is visible to SA + RA + admin + FN; the cost
   // breakdown + profit is RA + admin only. Other departments see neither.

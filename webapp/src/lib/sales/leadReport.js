@@ -8,6 +8,7 @@
 // เป็นกติกาของรายงาน ส่วนการวาดชีตเป็นเรื่องของเครื่องมือ แยกกันแล้วเทสต์ได้โดยไม่ต้อง
 // สร้างไฟล์จริง (ท่าเดียวกับ productCategoryWorkbook ที่แยก import จาก workbook)
 
+import { MARKETING_OVERSEER_ROLES } from '@/lib/permissions';
 import { businessDate } from '@/lib/businessDate';
 import { teamNameOf } from '@/lib/master/teams';
 import {
@@ -18,9 +19,11 @@ import {
    "ดูตัวเลขรวมได้" กับ "โหลดรายชื่อลูกค้าออกไปได้" เป็นคนละสิทธิ์ (มติผู้ใช้ 2026-08-27:
    เฉพาะ Marketing กับ Admin) ⇒ ผู้สังเกตการณ์/ผู้บริหารที่เห็นแท็บ KPI **ไม่ได้ไฟล์นี้**
    ⚠️ `ae_supervisor` ก็ไม่ได้ ทั้งที่เป็น superuser ในด่านอื่น — จึงห้ามเขียนเป็น
-   `isSuperuser(role) || role === 'marketing'` ที่จะกว้างกว่าที่ตกลงไว้เงียบ ๆ */
+   `isSuperuser(role) || role === 'marketing'` ที่จะกว้างกว่าที่ตกลงไว้เงียบ ๆ
+   ⭐ **CCO/CM ได้ด้วย** (มติผู้ใช้ 2026-09-24: สองตำแหน่งนี้ถือสิทธิ์ของ MKT · MARKETING_OVERSEER_ROLES) —
+      ห้ามเปลี่ยนเป็น `isSalesManager` ซึ่งรวม AE Sup */
 export function canExportLeadReport(role) {
-  return role === 'admin' || role === 'marketing';
+  return role === 'admin' || role === 'marketing' || MARKETING_OVERSEER_ROLES.includes(role);
 }
 
 /* วันที่ในไฟล์เป็นสตริง `YYYY-MM-DD` **ของวันไทย** ไม่ใช่ค่าวันที่ของ Excel

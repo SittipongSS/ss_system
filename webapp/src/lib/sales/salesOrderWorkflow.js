@@ -1,6 +1,6 @@
 // กติกาสถานะ/สิทธิ์ของใบสั่งขาย — ใช้ร่วมกันทั้งหน้าเว็บและ route (pure, ไม่แตะ DB)
-import { isSuperuser } from '@/lib/permissions';
-// ใบสั่งขายย้อนหลัง (mig 0360 → 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import { isSalesManager } from '@/lib/permissions';
+// ใบสั่งขายย้อนหลัง (mig 0360 → 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import {
   HISTORICAL_UNAPPROVED_STATUSES, canKeyHistoricalSalesOrder, historicalOrderEditable, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
@@ -17,8 +17,10 @@ export const SALES_ORDER_STATUS_LABELS = {
   cancelled: 'ยกเลิก',
 };
 
+/* ผู้ตรวจ/อนุมัติใบสั่งขาย = ผู้มีอำนาจตัดสินของฝ่ายขาย (admin · CCO · CM · AE Sup)
+   ⚠️ ต้องตรงกับ `public.is_sales_manager_role()` ที่ฟังก์ชันอนุมัติ/ถอน/ย้อน/แก้งวดในฐานเช็คซ้ำ (mig 0382) */
 export function isSalesOrderReviewer(role) {
-  return role === 'ae_supervisor' || role === 'admin';
+  return isSalesManager(role);
 }
 
 /* การยื่น = การลงนามช่อง "ฝ่ายขาย" บนใบ (mig 0153 ตรึงหลักฐานตอนยื่น) และช่องนั้นเป็น
@@ -27,7 +29,9 @@ export function isSalesOrderReviewer(role) {
    กติกาเดียวกับ canApproveQuotation ของใบเสนอราคา — ยึด ownerId ไม่ยึดชื่อ */
 export function canSubmitSalesOrder(user, deal) {
   if (!user || !deal) return false;
-  if (isSuperuser(user?.role)) return true;
+  // ลงนามช่อง "ฝ่ายขาย" แทนเจ้าของดีล = อำนาจของผู้มีอำนาจตัดสินเท่านั้น (AC Supervisor เป็นสาย AC
+  // ซึ่งต้องส่งต่อให้เจ้าของดีลกดยื่นเองเหมือน AC — มติ 2026-09-24)
+  if (isSalesManager(user?.role)) return true;
   return !!user.id && user.id === deal.ownerId;
 }
 
