@@ -179,10 +179,22 @@ export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
   const status = body.status ?? 'scheduled';
   if (!VISIT_STATUSES.includes(status)) return { value: null, error: 'สถานะนัดไม่ถูกต้อง' };
 
-  for (const [field, label] of [['scheduledDate', 'วันที่นัด'], ['actualDate', 'วันที่เข้าจริง']]) {
+  for (const [field, label] of [
+    ['scheduledDate', 'วันที่นัด'], ['actualDate', 'วันที่เข้าจริง'], ['actualEndDate', 'วันที่เสร็จจริง'],
+  ]) {
     const err = dateError(body[field], label);
     if (err) return { value: null, error: err };
   }
+
+  // ⚠️ ปิดงานต้องรู้ว่าเข้าจริงวันไหน — `nextAfterDone` นับรอบถัดไปจากวันที่ทำจริง
+  // ถ้าปล่อยว่างได้ รอบถัดไปจะเงียบ ๆ กลับไปอิงวันนัดเดิม แล้วตารางเลื่อนสะสมทั้งปี
+  // 🐞 ของเดิมบังคับเฉพาะ `done` ⇒ partial/unable บันทึกได้โดยไม่มีวันที่เข้าจริง ทั้งที่
+  // เจ้าหน้าที่ไปถึงไซต์แล้ว · ประวัติจะมีแถวที่ไม่รู้ว่าไปวันไหน และจอแสดงว่า "ยังไม่ปิดงาน"
+  // ให้ใบที่ปิดไปแล้วจริง ๆ (DB มี CHECK คู่กันที่ mig 0300)
+  // ⚠️ อยู่ **ก่อน** ตรวจช่วงเวลา — วันที่เสร็จจริง (ข้างล่าง) ต้องรู้วันเข้าจริงก่อนจึงจะเทียบเวลาได้
+  const visited = isClosedVisit({ status });
+  const actualDate = visited ? (body.actualDate || body.scheduledDate) : (body.actualDate || null);
+  if (visited && !actualDate) return { value: null, error: 'ปิดงานต้องระบุวันที่เข้าจริง' };
 
   const times = {};
   for (const [field, label] of [
@@ -194,14 +206,27 @@ export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
     if (minutesOf(raw) === null) return { value: null, error: `${label}ไม่ถูกต้อง` };
     times[field] = toHHMM(raw);
   }
+  /* ⭐ **วันที่เสร็จจริง** (mig 0386 · มติเจ้าของ 24/09 ข้อ 4) — งานที่เริ่มวันหนึ่งแล้วส่งงาน/ปิดงาน
+     อีกวัน · NULL = เสร็จวันเดียวกับวันเข้า (แถวเดิมทุกแถว) · มีค่า = วันหลังวันเข้าเสมอ (CHECK คู่กัน)
+     ⚠️ เก็บแบบเดียวต่อความหมายเดียว: ไม่มีวันเข้า/ไม่มีเวลาจบ = ไม่มีวันเสร็จ · วันเดียวกับวันเข้า = NULL
+        (สองแบบแทนค่าเดียวกัน = ฐานตีกลับ และคนอ่านไม่รู้ว่าอันไหนจริง) */
+  let actualEndDate = String(body.actualEndDate ?? '').trim().slice(0, 10) || null;
+  const actualDay = actualDate ? String(actualDate).slice(0, 10) : null;
+  if (!actualDay || !times.actualEndTime || actualEndDate === actualDay) actualEndDate = null;
+  if (actualEndDate && actualEndDate < actualDay) {
+    return { value: null, error: 'วันที่เสร็จจริงต้องไม่ก่อนวันที่เข้าจริง' };
+  }
+
   for (const [from, to, label] of [
     ['startTime', 'endTime', 'เวลานัด'],
     ['actualStartTime', 'actualEndTime', 'เวลาที่เข้าจริง'],
   ]) {
     /* ⚠️ เวลา "ที่นัดไว้" ยังบังคับเริ่ม < สิ้นสุด (คนกรอกเอง ช่วงศูนย์นาทีไม่มีความหมาย)
        แต่เวลา "ที่เข้าจริง" ยอมให้เท่ากันได้ (mig 0300) — เมื่อเวลามาจากการประทับจริง
-       งานที่เริ่มและจบในนาทีเดียวกันมีจริง (เปลี่ยนก้าน reed จุดเดียว · เข้าไปดูแล้วออก) */
+       งานที่เริ่มและจบในนาทีเดียวกันมีจริง (เปลี่ยนก้าน reed จุดเดียว · เข้าไปดูแล้วออก)
+       ⚠️ เวลาที่เข้าจริงเทียบกันเฉพาะงานที่จบวันเดียวกัน — จบวันหลัง เวลาจบเช้ากว่าเวลาเริ่มได้ */
     const strict = from === 'startTime';
+    if (!strict && actualEndDate) continue;
     const bad = strict
       ? minutesOf(times[from]) >= minutesOf(times[to])
       : minutesOf(times[from]) > minutesOf(times[to]);
@@ -209,15 +234,6 @@ export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
       return { value: null, error: `${label}: เวลาเริ่มต้องไม่หลังเวลาสิ้นสุด` };
     }
   }
-
-  // ⚠️ ปิดงานต้องรู้ว่าเข้าจริงวันไหน — `nextAfterDone` นับรอบถัดไปจากวันที่ทำจริง
-  // ถ้าปล่อยว่างได้ รอบถัดไปจะเงียบ ๆ กลับไปอิงวันนัดเดิม แล้วตารางเลื่อนสะสมทั้งปี
-  // 🐞 ของเดิมบังคับเฉพาะ `done` ⇒ partial/unable บันทึกได้โดยไม่มีวันที่เข้าจริง ทั้งที่
-  // เจ้าหน้าที่ไปถึงไซต์แล้ว · ประวัติจะมีแถวที่ไม่รู้ว่าไปวันไหน และจอแสดงว่า "ยังไม่ปิดงาน"
-  // ให้ใบที่ปิดไปแล้วจริง ๆ (DB มี CHECK คู่กันที่ mig 0300)
-  const visited = isClosedVisit({ status });
-  const actualDate = visited ? (body.actualDate || body.scheduledDate) : (body.actualDate || null);
-  if (visited && !actualDate) return { value: null, error: 'ปิดงานต้องระบุวันที่เข้าจริง' };
 
   // "ไปแล้วทำไม่ได้" ต้องอธิบายได้เสมอ — ใบที่ไม่มีเหตุผลคือใบที่ตอบลูกค้าไม่ได้
   const unableReason = String(body.unableReason ?? '').trim();
@@ -271,6 +287,9 @@ export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
       actualDate,
       actualStartTime: times.actualStartTime,
       actualEndTime: times.actualEndTime,
+      /* ⚠️ ใส่คีย์เฉพาะเมื่อผู้เรียกส่งมา — PATCH ส่ง `{...before, ...body}` ⇒ แถวจากฐานที่รัน 0386 แล้ว
+         มีคีย์นี้เสมอ · สร้างนัดใหม่ / ฐานที่ยังไม่รัน 0386 ไม่มีคีย์ ⇒ ไม่ส่งคอลัมน์ที่ไม่มีอยู่ไปให้ฐาน */
+      ...('actualEndDate' in body ? { actualEndDate } : {}),
       unableReason: unableReason || null,
       summary: summary || null,
       note: note || null,

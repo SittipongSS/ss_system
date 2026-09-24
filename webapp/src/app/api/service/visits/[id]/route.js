@@ -31,9 +31,8 @@ import {
 } from '@/lib/service/visitRetrieval';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { commitAssetMove } from '@/lib/service/assetMoveCommit';
-import { businessDate } from '@/lib/businessDate';
 import { fmtDate } from '@/lib/format';
-import { businessTimeKey } from '@/lib/datePeriods';
+import { stampVisitInput, stampVisitTimes } from '@/lib/service/visitStamp';
 
 export const dynamic = 'force-dynamic';
 
@@ -135,7 +134,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (body.stamp === 'start' && !isClosedVisit(before)) body.status = 'in_progress';
 
     // ⚠️ `existingKind` = นี่คือการ *แก้* ของเดิม ไม่ใช่การสร้าง (ดูคอมเมนต์ในตัวด่าน)
-    const { value, error } = normalizeVisitInput({ ...before, ...body }, { existingKind: before.kind });
+    /* 🐞 ปุ่มจับเวลา: เวลาเข้าจริงที่จอส่งมาถูกเขียนทับอยู่แล้ว ⇒ ตรวจจากค่าในฐาน (`stampVisitInput`) ไม่ใช่ค่าบนฟอร์ม
+       — แผ่นปิดงานเคยส่งเวลานัดจบมา แล้วนัดที่เริ่มช้ากว่านั้นปิดไม่ได้เลย (400 เวลาเริ่มหลังเวลาสิ้นสุด) */
+    const { value, error } = normalizeVisitInput(stampVisitInput(before, body), { existingKind: before.kind });
     if (error) return badRequest(error);
 
     /* 🔴 **ช่างเลื่อนวันที่เข้าจริงของนัดถอนที่ปิดแล้วไม่ได้** — วันนี้คือตัวตัดสินว่าเครื่องไหน
@@ -163,6 +164,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           ยิง API ตรง) · 🐞 เดิมปิดเป็น "เสร็จ" ได้ทั้งที่ยังไม่ได้วัดสักพื้นที่
        ⚠️ `unable` (ไปแล้วเข้าไม่ได้) ไม่ถามด่านนี้ · ใบที่ล็อกแล้ว (ส่งผล/ยกเลิก/ปิด) ก็ไม่ถาม
           — ช่างแก้ผลวัดไม่ได้แล้ว บล็อกไว้ = นัดค้างเปิดตลอดกาล
+          ⭐ ตั้งแต่มติ 24/09 ข้อ 2 ปุ่ม "ส่งผล" ปิดนัดที่ยังเปิดให้เอง (ด่านหกข้อครอบด่านนี้อยู่แล้ว ·
+             `surveySendWrites`) ⇒ ทางนี้เหลือไว้ให้นัดที่ค้างมาก่อนมติ และใบที่ถูกปิด/ยกเลิกระหว่างนัดยังเปิด
        ⚠️ อ่านผลวัดจาก **ฐาน** ไม่ใช่จากจอ (จอที่โหลดค้างบอกผิดได้ทั้งสองทาง) */
     let surveyField = null;
     if (before.kind === SURVEY_VISIT_KIND && before.requestId
@@ -238,21 +241,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ⚠️ ต้องเป็น **นาฬิกาไทย** (businessDate/businessTimeKey) — ตารางนี้เก็บ date+time
        แยกกันเป็นเวลาไทยล้วนตามการตัดสินใจของ mig 0187/0188 ไม่ใช่ timestamptz
        ⚠️ `stamp: false` (ค่าตั้งต้น) = คำขอนี้มาจากฟอร์มแก้ ⇒ เวลาที่ส่งมาคือค่าที่คนพิมพ์
-       ถ้าต่างจากของเดิมให้ติดธง actualTimeEdited ไว้ ไม่ใช่กลืนเงียบ */
+       ถ้าต่างจากของเดิมให้ติดธง actualTimeEdited ไว้ ไม่ใช่กลืนเงียบ
+       🐞 **ส่งงาน/ปิดงานข้ามวัน** (มติเจ้าของ 24/09 ข้อ 4 · นัดทุกชนิด) — เริ่มวันหนึ่ง จบอีกวัน เคยชน CHECK
+          ที่เทียบแค่เวลา ⇒ ตัวประทับเก็บ **วันที่เสร็จจริง** (`actualEndDate` · mig 0386) ให้ด้วย
+          ⚠️ ส่ง `hasEndDateColumn` จากแถวจริง — ฐานที่ยังไม่รัน 0386 ไม่มีคอลัมน์ ⇒ ไม่ใส่คีย์ = พฤติกรรมเดิม */
     const nowIso = new Date().toISOString();
-    const patch = { ...value };
+    let patch = { ...value };
     if (gateTrail) {
       const { skipped, ...cols } = gateTrail;
       Object.assign(patch, cols);
     }
-    if (body.stamp === 'start') {
-      patch.actualDate = patch.actualDate || businessDate(nowIso);
-      patch.actualStartTime = businessTimeKey(nowIso);
-    } else if (body.stamp === 'end') {
-      patch.actualDate = patch.actualDate || businessDate(nowIso);
-      patch.actualEndTime = businessTimeKey(nowIso);
-      // เผลอปิดงานโดยไม่เคยกดเริ่ม — ยังต้องมีเวลาเริ่มไว้คิดชั่วโมงงาน
-      if (!patch.actualStartTime) patch.actualStartTime = businessTimeKey(nowIso);
+    if (body.stamp === 'start' || body.stamp === 'end') {
+      patch = stampVisitTimes(patch, {
+        stamp: body.stamp, nowIso, hasEndDateColumn: 'actualEndDate' in before,
+      });
     } else {
       const touched = ['actualStartTime', 'actualEndTime']
         .some((k) => String(patch[k] ?? '') !== String(before[k] ?? '').slice(0, 5));

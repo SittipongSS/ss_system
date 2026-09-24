@@ -15,7 +15,10 @@
 // ⚠️ **`closed` เป็นปลายทางถาวร** (มติผู้ใช้ 2026-08-20) — ครบสองฝั่งแล้วเปิดกลับไม่ได้
 // อยากคุยต่อคือเปิดใบใหม่ · การ "คืนสถานะ" ทำได้เฉพาะตอนที่ยังมีตราไม่ครบ
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { requestSideLabel, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
+import {
+  requestIsThreadOnly, requestSideLabel, requestSideText, requestWaitLabel,
+} from '@/lib/requests/replyTurn';
+import { requestAnswerViaKey } from '@/lib/master/requestTypes';
 import { fmtDate } from '@/lib/format';
 
 /** ตราปิดของแต่ละฝั่ง + เหลือใคร — ก้อนเดียวที่ทุกจอถาม */
@@ -195,6 +198,22 @@ export function replyClearsClosure(request, { side, threadOnly }) {
   if (side === 'requester' && deptDone) return 'dept';
   if (side === 'dept' && requesterDone) return 'requester';
   return null;
+}
+
+/**
+ * ใบนี้ "เธรดคือตัวงาน" ไหม — ค่า `threadOnly` ที่ส่งให้ `replyClearsClosure` ตอนมีคนโพสต์ข้อความ
+ *
+ * ⭐ ไม่มีแถวตั้งแต่เปิดใบ · ฝ่ายไม่ได้สร้างแถวตอนส่งงาน · ใบนี้ไม่มีแถวติดมาจริง ๆ
+ * 🔴 **และหัวข้อต้องไม่มีจอตอบของตัวเอง** (`answerVia` · มติเจ้าของ 24/09 ข้อ 1 · ใบประเมินพื้นที่)
+ *   ใบประเมินไม่มีแถวของคำร้องก็จริง แต่ตัวงานคือ **ใบประเมิน** (ขนาด · รูป · แพ็คเกจ) ไม่ใช่เธรด
+ *   🐞 เดิมนับเป็นใบเธรดล้วน ⇒ ฝ่ายขายพิมพ์ "ขอบคุณครับ" ในเธรด = ถอน "ตอบแล้ว" ของ TS เงียบ ๆ ·
+ *     ใบประเมินปลดล็อก (ไม่มีแถว "ดึงผลกลับ" ⇒ ส่งรอบหน้าไม่มีส่วนต่างให้ดู) · แล้วด่านปิดเรื่อง
+ *     (`closeNeedsAnswer`) ตีกลับฝ่ายขายเองว่า "TS ยังไม่ได้ตอบ" ทั้งที่ส่งผลไปแล้ว
+ *   ⇒ ทางถอนของหัวข้อนี้มีแต่ปุ่มที่คนกดรู้ตัว: "ยังไม่จบ" · "ดึงผลกลับมาแก้"
+ */
+export function threadIsTheWork(request) {
+  if (!request) return false;
+  return requestIsThreadOnly(request) && !(request.items || []).length && !requestAnswerViaKey(request.kind);
 }
 
 /* ── ตราหลุดตามข้อความต้องมีบรรทัดในเธรด (ม-145 · มติผู้ใช้ 2026-09-11) ─────

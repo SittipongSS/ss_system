@@ -50,6 +50,16 @@ test('⭐ ใบเอาเฉพาะเครื่องที่นัด�
   assert.ok(!r.lines.some((l) => l.assetId === 'X9'));
 });
 
+/* 🐞 ปิดงานข้ามวัน (mig 0386) — "14:00 – 09:00" เฉย ๆ อ่านเหมือนเวลากลับหัว ⇒ ปลายช่วงต้องบอกวันด้วย */
+test('⭐ งานที่จบวันหลัง: ช่วงเวลาบอกวันที่เสร็จด้วย · วันเดียวกันหน้าตาเดิม', () => {
+  const cross = Object.fromEntries(build({
+    visit: { actualDate: '2026-09-24', actualStartTime: '14:00:00', actualEndTime: '09:00:00', actualEndDate: '2026-09-25' },
+  }).head.map((h) => [h.label, h.value]));
+  assert.equal(cross['เวลา'], '14:00 – 25/09/2026 09:00');
+  const same = Object.fromEntries(build({ visit: { actualEndDate: null } }).head.map((h) => [h.label, h.value]));
+  assert.equal(same['เวลา'], '09:12 – 10:41');
+});
+
 test('⭐ ทุกบรรทัดที่ระบบดึงเองต้องมาครบ — นี่คือ 90% ที่เจ้าหน้าที่เคยพิมพ์ซ้ำทุกใบ', () => {
   const head = Object.fromEntries(build().head.map((h) => [h.label, h.value]));
   assert.equal(head['วันที่'], '2026-08-27');

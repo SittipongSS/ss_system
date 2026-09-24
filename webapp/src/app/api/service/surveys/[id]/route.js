@@ -45,6 +45,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
           ⚠️ ยิงรายพื้นที่ **ขนานกัน** — ใบหนึ่งมีสิบพื้นที่ ยิงเรียงกันคือรอสิบรอบ
           ⚠️ ใบที่ยังไม่มีพื้นที่เลย = `[]` ไม่ใช่ error (ร่างที่เพิ่งเปิด)
        ② นัดของใบ — ที่เดียวที่บอกว่า "ใครไป" ⇒ ด่านเขียนของช่างอ่านจากตัวนี้
+          ⭐ `preferOpen` — นัดที่ยังค้างมาก่อนใบล่าสุด: โมดัลส่งผลบอกว่าจะปิดนัดไหน และ route ส่งผลปิด
+             **นัดที่ค้าง** (มติ 24/09) ⇒ จอต้องถือนัดตัวเดียวกัน ไม่งั้นส่งผลโดน 409 "นัดเปลี่ยนไป" ทุกครั้ง
        ③ ของประกอบใบที่การ์ดควบคุมและหัวใบต้องใช้ (PR2):
           ไซต์ (รหัส/ชื่อ/ที่อยู่/ผู้ติดต่อ) · รหัส ZN ของแต่ละพื้นที่ · รหัส AR ของลูกค้า ·
           แถว "ดึงผลกลับ" ล่าสุด
@@ -61,7 +63,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
           (ตั้งใจ: มันเป็นด่านตัดสิน `canWrite` — เดาแทนไม่ได้ ต้อง fail-closed) */
     const [files, visit, context] = await Promise.all([
       Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase))),
-      findSurveyVisit(supabase, id),
+      findSurveyVisit(supabase, id, { preferOpen: true }),
       loadSurveySheetContext(supabase, request, zones),
     ]);
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));

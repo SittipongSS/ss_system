@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  SURVEY_VISIT_KIND, createSurveyVisit, moveSurveyVisit,
+  SURVEY_VISIT_KIND, createSurveyVisit, findSurveyVisit, moveSurveyVisit,
   surveyScheduleError, surveyScheduleGaps, surveyVisitDraft, surveyVisitInsertError,
 } from './surveyVisit.js';
 import { REQUEST_SLOT_VISIT_STATES } from './visitStatus.js';
@@ -350,4 +350,44 @@ test('🐞 นัดที่ยังมีชีวิตอาจเป็น
   assert.equal(needsNew, false);
   assert.equal(visit.scheduledDate, '2026-09-20');
   assert.equal(db._state.patch.scheduledDate, '2026-09-20');
+});
+
+/* ── จอประเมินต้องถือนัดตัวเดียวกับที่ปุ่มส่งผลจะปิด (มติเจ้าของ 24/09 ข้อ 2) ─────────
+   🐞 "ใบล่าสุด" ตาม createdAt ไม่ใช่นัดที่ยังเปิดเสมอ — นัดเก่าที่ถูกเปิดกลับมาหลบอยู่หลังนัดใหม่ที่ปิดแล้ว
+   ⇒ โมดัลบอกว่าไม่มีนัดต้องปิด แต่ route ส่งผลเจอนัดค้างแล้วตีกลับ 409 ทุกครั้ง */
+function fakeVisitsDb(rows) {
+  return {
+    from() {
+      const state = { statuses: null };
+      const api = {
+        select() { return api; },
+        eq() { return api; },
+        in(col, values) { if (col === 'status') state.statuses = values; return api; },
+        order() { return api; },
+        limit() {
+          const kept = rows
+            .filter((r) => !state.statuses || state.statuses.includes(r.status))
+            .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+          return Promise.resolve({ data: kept.slice(0, 1), error: null });
+        },
+      };
+      return api;
+    },
+  };
+}
+
+test('⭐ preferOpen: นัดที่ยังเปิดมาก่อนนัดล่าสุด · ไม่มีนัดเปิด = นัดล่าสุดตามเดิม', async () => {
+  const reopened = { id: 'SVV-OLD', status: 'in_progress', createdAt: '2026-09-10T00:00:00Z' };
+  const newerClosed = { id: 'SVV-NEW', status: 'unable', createdAt: '2026-09-20T00:00:00Z' };
+  const db = fakeVisitsDb([reopened, newerClosed]);
+  assert.equal((await findSurveyVisit(db, 'DR-1')).id, 'SVV-NEW', 'ค่าตั้งต้นยังเป็นใบล่าสุด');
+  assert.equal((await findSurveyVisit(db, 'DR-1', { preferOpen: true })).id, 'SVV-OLD');
+  const closedOnly = fakeVisitsDb([newerClosed, { id: 'SVV-X', status: 'done', createdAt: '2026-09-01T00:00:00Z' }]);
+  assert.equal((await findSurveyVisit(closedOnly, 'DR-1', { preferOpen: true })).id, 'SVV-NEW');
+  assert.equal(await findSurveyVisit(fakeVisitsDb([]), 'DR-1', { preferOpen: true }), null);
+});
+
+test('🔴 GET ของจอประเมินใช้ preferOpen — นัดบนจอ = นัดที่ส่งผลจะปิด', () => {
+  const route = readFileSync(new URL('../../app/api/service/surveys/[id]/route.js', import.meta.url), 'utf8');
+  assert.match(route, /findSurveyVisit\(supabase, id, \{ preferOpen: true \}\)/);
 });

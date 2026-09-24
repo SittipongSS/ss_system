@@ -60,8 +60,15 @@ export function surveyScheduleError(body = {}, request = {}) {
  *    ใบที่ไปแล้วเข้าไม่ได้ (`unable`) หรือยกเลิกไป มีประวัตินัดอยู่ แต่ไม่มีนัดค้าง
  *    ⇒ ต้องลงคิวใหม่ได้ · ตัวที่ตัดสินคือชุดเดียวกับ index ของ mig 0316
  * ⚠️ ไม่ใช้ `.eq('status', ...)` หลายรอบ — PostgREST ต้องการ `not.in.(a,b)` ก้อนเดียว
+ * ⭐ `preferOpen` = "นัดที่ยังค้างถ้ามี ไม่มีก็ใบล่าสุด" — จอประเมินต้องเห็น **นัดตัวเดียวกับที่ปุ่มส่งผลจะปิด**
+ *    (มติ 24/09 ส่งผลปิดนัด) · 🐞 ใบล่าสุดตาม `createdAt` ไม่ใช่นัดที่เปิดอยู่เสมอ: นัดเก่าที่ถูกเปิดกลับมา
+ *    หลบอยู่หลังนัดใหม่ที่ปิดแล้ว ⇒ โมดัลบอกว่าไม่มีนัดต้องปิด แต่ route เจอนัดค้างแล้วตีกลับทุกครั้ง
  */
-export async function findSurveyVisit(supabase, requestId, { openOnly = false } = {}) {
+export async function findSurveyVisit(supabase, requestId, { openOnly = false, preferOpen = false } = {}) {
+  if (preferOpen && !openOnly) {
+    const open = await findSurveyVisit(supabase, requestId, { openOnly: true });
+    if (open) return open;
+  }
   let query = supabase
     .from('service_visits').select('*')
     .eq('requestId', requestId);

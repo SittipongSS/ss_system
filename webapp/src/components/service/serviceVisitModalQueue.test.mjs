@@ -73,7 +73,9 @@ test('🔒 ก้อนที่ส่งเท่าของเดิมทุ
     '{ status: "scheduled", gateOverrideReason: overrideReason.trim() }',
   ]);
   // ตัวตรวจฝั่งจอถามด้วยอาร์กิวเมนต์ชุดเดียวกับ server (existingKind) · เลื่อนวันต้องมีเหตุผล — เหมือนเดิม
-  assert.match(live, /normalizeVisitInput\(\s*payload,\s*editing && visit\?\.kind \? \{ existingKind: visit\.kind \} : \{\},\s*\)/);
+  /* 🔄 มติเจ้าของ 24/09 ข้อ 4 (mig 0386): ค่าที่ **ตรวจ** เติมวันที่เสร็จจริงของแถวเดิม (`visitFormCheckInput` —
+     server ตรวจ `{...before, ...body}`) ไม่งั้นนัดที่ส่งงานข้ามวันแก้จากโมดัลไม่ได้ · ก้อนที่ **ส่ง** ยังเป็น `payload` เดิม */
+  assert.match(live, /normalizeVisitInput\(\s*visitFormCheckInput\(payload, editing \? visit : null\),\s*editing && visit\?\.kind \? \{ existingKind: visit\.kind \} : \{\},\s*\)/);
   assert.match(live, /if \(rescheduling && !form\.rescheduleReason\.trim\(\)\) \{/);
   // จอแม่ยิงก้อนที่ได้ตรง ๆ (POST สร้าง · PATCH แก้) — ไม่แตะก้อน
   const page = read('../../app/service/schedule/page.js');

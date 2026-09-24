@@ -44,7 +44,15 @@ const VALID_LINE_SHAPES = ['product_dev', 'document', 'billing_doc'];
    ⚠️ `hasPdr` เพิ่งเข้าลิสต์ 2026-09-10 — มันอยู่บน `scent_dev` มาตั้งแต่ mig 0213
    โดย **ไม่เคยถูกตรวจชนิดเลย** ⇒ พิมพ์เป็น `hasPDR` เมื่อไรก็ผ่านด่านนี้เงียบ ๆ แล้ว
    ฟอร์ม PDR หายทั้งหัวข้อโดยไม่มี error ให้ใครเห็น (โรคเดียวกับที่คอมเมนต์ข้างล่างกัน) */
-const BOOLEAN_FLAGS = ['hasItems', 'deliversRows', 'cancelBeforeAckOnly', 'hasPdr', 'closeNeedsSoConfirm'];
+const BOOLEAN_FLAGS = [
+  'hasItems', 'deliversRows', 'cancelBeforeAckOnly', 'hasPdr', 'closeNeedsSoConfirm', 'closeNeedsAnswer',
+];
+
+/* ⭐ **ทางตอบเฉพาะของหัวข้อ** (มติเจ้าของ 24/09 · ใบประเมินพื้นที่) — หัวข้อที่ประกาศ `answerVia`
+   เป็น "ตอบแล้ว" ผ่านปุ่ม "ตอบแล้ว" กลางของหน้าคำร้องไม่ได้ ต้องไปตอบที่จอของมันเอง
+   ⚠️ ค่าที่รับได้ต้องตรงกับคีย์ของ `ANSWER_VIA` (lib/requests/answerVia.js · เทสต์ตรึงไว้) —
+      ค่าที่ไม่มีทางพาไป = ปุ่มกลางหาย แต่ไม่มีลิงก์ขึ้นแทน ⇒ ใบตอบไม่ได้เลย */
+export const VALID_ANSWER_VIA = ['survey_send'];
 
 /* ⭐ **คีย์ระดับบนสุดที่ทะเบียนรู้จัก** (2026-09-10) — เดิมไม่มี whitelist เลย
    คอมเมนต์ข้างล่างในฟังก์ชันเขียนกับดักนี้ไว้เองแล้ว ("พิมพ์ชื่อธงผิดหนึ่งตัวจะผ่าน
@@ -54,7 +62,7 @@ const KIND_KEYS = [
   'key', 'label', 'dept', 'scope', 'legacy', 'needs', 'optionalRefs',
   'hasItems', 'lineShape', 'lineKind', 'lineNoun', 'deliversRows', 'hasPdr',
   'cancelBeforeAckOnly', 'closeNeedsSoConfirm', 'stepKey', 'dealType', 'form', 'summary', 'hint',
-  'variants', 'defaultVariant', 'pdrScents',
+  'variants', 'defaultVariant', 'pdrScents', 'answerVia', 'closeNeedsAnswer',
 ];
 
 /* ⭐ **รูปแบบงานในหัวข้อเดียว** (มติผู้ใช้ 2026-09-09 · พัฒนาสูตร standard | NPD) —
@@ -101,6 +109,9 @@ export function assertKind(kind, seen = new Set()) {
     if (flag in kind && typeof kind[flag] !== 'boolean') {
       throw new Error(`${at}: ธง "${flag}" ต้องเป็น true/false`);
     }
+  }
+  if (kind.answerVia != null && !VALID_ANSWER_VIA.includes(kind.answerVia)) {
+    throw new Error(`${at}: answerVia "${kind.answerVia}" ไม่รู้จัก — ต้องเป็นหนึ่งใน ${VALID_ANSWER_VIA.join(', ')}`);
   }
   for (const ref of kind.optionalRefs || []) {
     if (!VALID_OPTIONAL_REFS.includes(ref)) {

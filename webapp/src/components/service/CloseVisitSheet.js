@@ -340,8 +340,14 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         </p>
         <dl className={styles.stamp}>
           <div><dt>วันที่</dt><dd>{naText(form.actualDate)}</dd></div>
-          <div><dt>เริ่ม</dt><dd>{naText(String(form.actualStartTime || "").slice(0, 5))}</dd></div>
-          <div><dt>เสร็จ</dt><dd>{visit?.actualEndTime ? String(visit.actualEndTime).slice(0, 5) : "จะจับตอนกดปิดงาน"}</dd></div>
+          {/* ใบที่ยังไม่ปิด: ยังไม่เคยกดเริ่ม = server จับเวลาเริ่มพร้อมเวลาเสร็จ · เวลาเสร็จจับตอนกดเสมอ
+              (เวลาเสร็จเก่าของนัดที่ถูกเปิดกลับจะถูกทับ — ห้ามโชว์ราวกับเป็นค่าที่จะบันทึก) */}
+          <div><dt>เริ่ม</dt><dd>{form.actualStartTime
+            ? String(form.actualStartTime).slice(0, 5)
+            : isClosedVisit(visit) ? naText("") : "จะจับตอนกดปิดงาน"}</dd></div>
+          <div><dt>เสร็จ</dt><dd>{isClosedVisit(visit)
+            ? naText(String(visit?.actualEndTime || "").slice(0, 5))
+            : "จะจับตอนกดปิดงาน"}</dd></div>
         </dl>
       </section>
 

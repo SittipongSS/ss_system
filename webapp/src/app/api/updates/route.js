@@ -15,8 +15,7 @@ import {
 import { quoteTargetError } from '@/lib/master/updateQuote';
 import { sanitizeMentions } from '@/lib/master/mentions';
 import { appendUpdate, findUpdate, listUpdates } from '@/lib/master/updates';
-import { closureClearedUpdate, replyClearsClosure } from '@/lib/requests/closure';
-import { requestIsThreadOnly } from '@/lib/requests/replyTurn';
+import { closureClearedUpdate, replyClearsClosure, threadIsTheWork } from '@/lib/requests/closure';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -138,10 +137,10 @@ export async function POST(request) {
       /* ⭐ **ถูกถามกลับ = ตราปิดของอีกฝั่งหลุดเอง** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง)
          *"แล้วถ้าตอบ แต่ต้องถามกลับล่ะ แบบโต้ตอบไปมา"* — ใบสอบถามไม่มีแถว เธรดคือ
          ตัวงาน ⇒ ข้อความจากอีกฝั่งคือหลักฐานว่ายังไม่จบ ไม่ต้องให้ใครไปกด "ยังไม่จบ"
-         ⚠️ ใบที่มีแถวไม่หลุดตามข้อความ — ตัวงานคือแถว ถามกันระหว่างทางเป็นเรื่องปกติ */
-      const clears = replyClearsClosure(parent, {
-        side, threadOnly: requestIsThreadOnly(parent) && !(parent?.items || []).length,
-      });
+         ⚠️ ใบที่มีแถวไม่หลุดตามข้อความ — ตัวงานคือแถว ถามกันระหว่างทางเป็นเรื่องปกติ
+         🔴 หัวข้อที่ตอบผ่านจอของตัวเอง (ใบประเมินพื้นที่) ก็ไม่หลุด — ตัวงานคือใบประเมิน ไม่ใช่เธรด
+            (ตัวตัดสินอยู่ที่ `threadIsTheWork` · มติเจ้าของ 24/09) */
+      const clears = replyClearsClosure(parent, { side, threadOnly: threadIsTheWork(parent) });
       if (clears === 'dept') Object.assign(turnPatch, { answeredAt: null, answeredById: null, answeredByName: null, status: 'acknowledged' });
       if (clears === 'requester') Object.assign(turnPatch, { closedAt: null, closedById: null, closedByName: null, status: 'acknowledged' });
 

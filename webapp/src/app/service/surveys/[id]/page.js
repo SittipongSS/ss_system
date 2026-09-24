@@ -28,6 +28,7 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarClock, ChevronsDownUp, ChevronsUpDown, Flag, MapPin, MapPinPlus, Search } from "lucide-react";
+import thaiText from "@/components/ThaiText";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import SurveyControlCard from "@/components/service/SurveyControlCard";
@@ -51,6 +52,7 @@ import {
   surveySendBackDoneError, surveySendBackError, surveyTotals,
 } from "@/lib/service/survey";
 import { surveyControlView } from "@/lib/service/surveyControl";
+import { surveySendConfirm, surveySendDoneText } from "@/lib/service/surveySendClose";
 import { surveyPendingDecisions } from "@/lib/service/surveyDecision";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
 import { isClosedVisit } from "@/lib/service/visitStatus";
@@ -230,18 +232,24 @@ export default function SurveySheetPage({ params }) {
     await load({ background: true });
   };
 
+  /* ⭐ **ส่งผล = ตอบใบ + ปิดนัดที่ยังเปิด** (มติเจ้าของ 24/09 ข้อ 2) — ส่ง `closeVisitId` = นัดที่โมดัลบอก
+     ผู้ใช้ว่าจะปิด (`view.send.closesVisit`) ให้ route ยืนยันว่าเป็นนัดตัวเดียวกัน · ไม่ตรง = 409 "โหลดหน้าใหม่"
+     🔑 ล้ม = **โยน error กลับให้โมดัลบอกตรงนั้น** แล้วอ่านใบใหม่ทันที ⇒ โมดัลที่ยังเปิดอยู่เปลี่ยนเป็นนัด/ด่าน
+        ล่าสุดให้อ่านก่อนกดซ้ำ (🐞 เดิมเป็น toast 3.6 วิ แล้วปิดโมดัล — ข้อความ 409 ยาว ๆ หายก่อนอ่านจบ) */
   const send = async () => {
     setSendBusy(true);
     try {
-      await apiJson(`/api/service/surveys/${id}/send`, {
-        method: "POST", fallbackError: "ส่งผลไม่สำเร็จ",
+      const res = await apiJson(`/api/service/surveys/${id}/send`, {
+        method: "POST",
+        json: { closeVisitId: view.send.closesVisit?.id ?? null },
+        fallbackError: "ส่งผลไม่สำเร็จ",
       });
       setSending(false);
-      setToast({ kind: "success", msg: "ส่งผลให้ฝ่ายขายแล้ว" });
+      setToast({ kind: "success", msg: surveySendDoneText(res?.closedVisit) });
       await load({ background: true });
     } catch (e) {
-      setToast({ kind: "error", msg: e.message });
-      setSending(false);
+      await load({ background: true });
+      throw e;
     } finally {
       setSendBusy(false);
     }
@@ -384,6 +392,8 @@ export default function SurveySheetPage({ params }) {
   }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab]);
 
   const canDecide = data?.canDecide === true;
+  /* ⭐ ข้อความโมดัลส่งผล — ผลทุกข้อของการกด รวม "ปิดนัด SV-… ไปพร้อมกัน" (มติเจ้าของ 24/09 ข้อ 2) */
+  const sendConfirm = surveySendConfirm({ docNo: data?.request?.docNo, closesVisit: view.send.closesVisit });
   /* 🔑 ด่านตัวเดียวกับ server — ปุ่มในโมดัลปิดตามนี้ และเหตุขึ้นเป็นตัวหนังสือ
      ⚠️ รายชื่อช่างมาจาก **นัด** ไม่ใช่จากใบ — ตัวตัดสินอ่านให้แล้ว (`zoneGaps.crewIds`) */
   const sendBackGate = surveySendBackError(data?.request, {
@@ -556,8 +566,11 @@ export default function SurveySheetPage({ params }) {
   const req = data?.request || {};
   const site = data?.site || null;
   const visit = data?.visit || null;
-  /* ⭐ ป้ายนัดบนหัวใบ (มติเจ้าของ 2026-09-16: **กดส่งผลไม่ได้ปิดนัด**) — ใบที่ส่งผล
-     ไปแล้วแต่นัดยังไม่ถูกปิด ต้องบอกไว้บนหัว ไม่งั้นนัดค้างอยู่ในคิวโดยไม่มีใครเห็น
+  /* ⭐ ป้ายนัดบนหัวใบ — ใบที่ส่งผลไปแล้วแต่นัดยังไม่ถูกปิด ต้องบอกไว้บนหัว ไม่งั้นนัดค้าง
+     อยู่ในคิวโดยไม่มีใครเห็น
+     🔄 มติเจ้าของ 24/09 ข้อ 2 แทนมติ 16/09 ("กดส่งผลไม่ได้ปิดนัด") — ส่งผลตอนนี้ **ปิดนัดที่ยังเปิดให้เอง**
+        ⇒ ป้าย "นัดยังไม่ปิด" เหลือไว้ให้ใบที่ส่งผลไปก่อนมติ (นัดค้างมาตั้งแต่ตอนนั้น) · ถอดเมื่อไร ใบเก่าพวกนั้น
+          จะไม่มีอะไรบอกเลยว่านัดยังเปิด · ทางแก้บนจอของใบพวกนั้น = ดึงผลกลับแล้วส่งผลใหม่ (ส่งรอบใหม่ปิดนัดให้)
      🐞 เดิมเงื่อนไขไม่เคยถาม `sent` เลย — นัดที่เพิ่งตั้งไว้บนใบที่ยังไม่มีใครแตะ
        ก็ขึ้นคำเตือนสีอำพัน "นัดยังไม่ปิด" ทันทีที่เปิดจอ ⇒ สีเตือนที่ขึ้นตลอดเวลา
        คือสีที่คนเลิกอ่าน · ป้ายนี้มีความหมายก็ต่อเมื่อ **ส่งผลไปแล้ว** เท่านั้น */
@@ -861,21 +874,36 @@ export default function SurveySheetPage({ params }) {
         onClose={() => !removeBusy && setRemoving(null)}
       />
 
+      {/* ⭐ **โมดัลบอกผลทุกข้อของการกดครั้งเดียว** (กติกาโมดัลบอกผลลัพธ์ · มติเจ้าของ 24/09 ข้อ 2) —
+          ใบเป็น "ตอบแล้ว" · ผลล็อก · **ปิดนัด SV-… ไปพร้อมกัน** (เวลาไหนเหลือ/ไม่มี) · ใบจบเมื่อฝ่ายขายปิดเรื่อง
+          ⚠️ รายการข้อมาจาก `surveySendConfirm` ซึ่งอ่าน `view.send.closesVisit` — ตัวตัดสินเดียวกับที่ route
+             ใช้ปิดนัดจริง ⇒ โมดัลสัญญาอย่างหนึ่งแล้ว server ทำอีกอย่างไม่ได้
+          ⚠️ ส่งไม่ผ่าน (ด่าน/นัดเปลี่ยน) = error ขึ้นในกล่องนี้ และกล่องวาดใหม่จากใบที่เพิ่งอ่าน (`send()`) */}
       <ConfirmDialog
         open={sending}
         title="ส่งผลประเมินให้ฝ่ายขาย"
         /* 🔑 เหตุผลเต็มของด่าน server — ไม่ใช่บรรทัดย่อของราง (บรรทัดย่อมีไว้ให้ราง
            กว้าง 330px อ่านได้ ไม่ได้มีไว้แทนเหตุผล) */
-        message={view.send.reason?.detail || view.send.reason?.text
+        /* ⚠️ ใบถูกล็อกระหว่างที่กล่องเปิด (หัวหน้าอีกคนส่งไปก่อน) = บอกสถานะล่าสุด ไม่ใช่ตัวเลขชวนส่ง */
+        message={!view.send.show ? `${view.status.headline} — ${view.status.sub}`
+          : view.send.reason?.detail || view.send.reason?.text
           || `ส่งผล ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`}
-        detail={view.send.allowed
-          ? "ฝ่ายขายจะเห็นผลทันที และเอาไปตั้งราคาได้ · ใบจะปิดเมื่อฝ่ายขายกดรับผล"
-          : undefined}
-        confirmLabel="ส่งผล"
+        /* ส่งไม่ได้แล้ว = ปุ่มเดียว "ปิด" — ปุ่มที่เขียนว่า "ส่งผล" แต่กดแล้วแค่ปิดกล่อง คือปุ่มที่โกหก */
+        confirmLabel={view.send.allowed ? sendConfirm.confirmLabel : "ปิด"}
+        hideCancel={!view.send.allowed}
         busy={sendBusy}
         onConfirm={view.send.allowed ? send : undefined}
         onClose={() => !sendBusy && setSending(false)}
-      />
+      >
+        {view.send.allowed ? (
+          <div className={styles.effects}>
+            <p className={styles.effectsTitle}>กดแล้วเกิดขึ้นทันที</p>
+            <ul className={styles.effectList}>
+              {sendConfirm.effects.map((line) => <li key={line}>{thaiText(line)}</li>)}
+            </ul>
+          </div>
+        ) : null}
+      </ConfirmDialog>
       {/* ⭐ **โมดัลต้องบอกว่าใครจะได้รับ ไม่ใช่แค่ถามว่าจะส่งไหม** — กระดิ่งของใบคำร้อง
           ไปหาผู้ขอ (SA) เท่านั้น · ตัวที่ไปถึงช่างคือกระดิ่งอีกใบที่ยิงจากนัด
           ⚠️ ไม่มีช่างที่ถูกมอบหมาย = server ตีกลับพร้อมเหตุ (ด่านตัวเดียวกับที่นี่) */}

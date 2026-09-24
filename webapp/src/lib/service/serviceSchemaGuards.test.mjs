@@ -83,3 +83,25 @@ test('⭐ service_visit_assets ห้ามมี qty / productId — ปริ�
     assert.ok(!/productId/i.test(statement), `${file}: service_visit_assets ห้ามมี productId`);
   }
 });
+
+/* 🐞 **ส่งงาน/ปิดงานข้ามวัน** (มติเจ้าของ 24/09 ข้อ 4 · mig 0386) — CHECK ของ 0300 เทียบเวลาอย่างเดียว
+   ⇒ เริ่ม 14:00 จบวันถัดไป 09:00 ถูกตีกลับ · 0386 เพิ่มวันที่เสร็จจริง และให้ CHECK เวลาเทียบเฉพาะงานที่จบวันเดียวกัน
+   ⚠️ ตรวจ **นิยามล่าสุด** ของ CHECK เวลา (ไฟล์เลขมากสุดที่ ADD มัน) — migration ใหม่ที่สร้างมันซ้ำแบบเดิม
+      จะพาบั๊กกลับมาเงียบ ๆ ทั้งที่ 0386 ยังอยู่ในโฟลเดอร์ */
+test('🔴 CHECK เวลาเข้าจริงตัวล่าสุดต้องยกเว้นงานที่จบวันหลัง (actualEndDate) · วันเสร็จต้องหลังวันเข้า', () => {
+  const adds = statementsTouching('service_visits')
+    .filter(({ statement }) => /CONSTRAINT\s+service_visits_actual_time_window\s+CHECK/i.test(statement));
+  assert.ok(adds.length >= 3, 'ต้องเห็นนิยามของ 0188 · 0300 · 0386');
+  const latest = adds.sort((a, b) => a.file.localeCompare(b.file)).at(-1);
+  assert.match(latest.file, /^0386_/);
+  assert.match(latest.statement, /"actualEndDate"\s+IS\s+NOT\s+NULL/i);
+  assert.match(latest.statement, /"actualStartTime"\s*<=\s*"actualEndTime"/, 'วันเดียวกันยังเทียบเวลาเหมือนเดิม');
+
+  const sql = stripSqlComments(readFileSync(join(MIGRATIONS_DIR, '0386_service_visit_actual_end_date.sql'), 'utf8'));
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "actualEndDate" date/);
+  assert.match(sql, /service_visits_actual_end_date_after/);
+  assert.match(sql, /"actualEndDate" IS NULL\s+OR \("actualDate" IS NOT NULL\s+AND "actualEndDate" > "actualDate"/);
+  // รันซ้ำได้ — CHECK ใหม่ถูกข้ามเมื่อมีแล้ว · CHECK เวลาถอดก่อนสร้างใหม่
+  assert.match(sql, /IF NOT EXISTS \(\s*SELECT 1 FROM pg_constraint/);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS service_visits_actual_time_window/);
+});
