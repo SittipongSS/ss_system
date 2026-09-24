@@ -1,8 +1,9 @@
 -- ============================================================
---  Migration 0383: ที่อยู่ไซต์แบบแยกช่อง + ชั้นที่พิมพ์เองได้ (มติผู้ใช้ 2026-09-24)
+--  Migration 0384: ที่อยู่ไซต์แบบแยกช่อง + ชั้นที่พิมพ์เองได้ (มติผู้ใช้ 2026-09-24)
 --
---  ⚠️ **เลข 0382 ถูกจองแล้ว** — `0382_sales_role_hierarchy.sql` (worktree ss_system-salesroles
---  ยังไม่ commit) ⇒ ไฟล์นี้ข้ามไป 0383 ตามบทเรียน "เลข migration ชนข้าม worktree" (#1702)
+--  ⚠️ **เคยตั้งเลข 0383 แล้วเปลี่ยนเป็น 0384 ก่อนเคยรัน** — 0382 กับ 0383 เป็นของสาย
+--  `claude/sales-role-hierarchy` (`0382_sales_role_hierarchy` · `0383_sales_role_commercial_director`
+--  · PR #1807) ⇒ บทเรียนเดิม "เลข migration ชนข้าม worktree" (#1702) ต้องสแกนซ้ำก่อน push ไม่ใช่แค่ตอนจอง
 --
 --  ── 1) ที่อยู่ของไซต์บริการแยกช่องแบบทะเบียนลูกค้า ────────────────────────────
 --  *"การพิมพ์ไซต์อื่น อยากให้ฟอร์มเหมือนที่อยู่ของฐานข้อมูล"* — ไซต์ที่ไม่ได้ตั้งจากที่อยู่
@@ -60,7 +61,7 @@ ALTER TABLE public.service_sites
   );
 
 COMMENT ON COLUMN public.service_sites.line1 IS
-  'บ้านเลขที่/อาคาร/ถนน ของที่อยู่หน้างาน (mig 0383) — ฟิลด์ย่อยประกอบ address ที่ server (siteAddressText)';
+  'บ้านเลขที่/อาคาร/ถนน ของที่อยู่หน้างาน (mig 0384) — ฟิลด์ย่อยประกอบ address ที่ server (siteAddressText)';
 COMMENT ON COLUMN public.service_sites."addressOverride" IS
   'true = address เป็นข้อความที่พิมพ์เองทั้งก้อน ไม่ประกอบจากฟิลด์ย่อย (ที่อยู่ที่ไม่เข้าแบบฟอร์ม)';
 
@@ -73,7 +74,7 @@ ALTER TABLE public.service_zones
          OR (floor ~ '^[A-Z0-9]{2,3}$' AND floor ~ '[A-Z]'));
 
 COMMENT ON COLUMN public.service_zones.floor IS
-  'ชั้น 01–99 · GF/MZ/RF/B1–B9 หรือชั้นที่พิมพ์เอง (อังกฤษ/ตัวเลข 2–3 ตัว มีตัวอักษร เช่น LG P1 12A · mig 0383) — ท่อน FF ของรหัส ZN (lib/service/zoneCode.js)';
+  'ชั้น 01–99 · GF/MZ/RF/B1–B9 หรือชั้นที่พิมพ์เอง (อังกฤษ/ตัวเลข 2–3 ตัว มีตัวอักษร เช่น LG P1 12A · mig 0384) — ท่อน FF ของรหัส ZN (lib/service/zoneCode.js)';
 
 ALTER TABLE public.service_survey_zones
   DROP CONSTRAINT IF EXISTS service_survey_zones_new_zone_needs_floor;

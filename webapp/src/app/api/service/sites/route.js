@@ -130,7 +130,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     });
     if (codeError) return badRequest(codeError);
 
-    // ที่อยู่แยกช่อง (mig 0383) — ตัวออกรหัสทิ้งคอลัมน์ที่ไม่มีเงียบ ๆ ⇒ ถามก่อนกินเลขรัน
+    // ที่อยู่แยกช่อง (mig 0384) — ตัวออกรหัสทิ้งคอลัมน์ที่ไม่มีเงียบ ๆ ⇒ ถามก่อนกินเลขรัน
     const schemaError = await siteAddressColumnsError(supabase);
     if (schemaError) return fail(schemaError, 503);
 

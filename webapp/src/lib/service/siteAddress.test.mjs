@@ -1,4 +1,4 @@
-// ── ที่อยู่ไซต์แบบแยกช่อง + ชั้นที่พิมพ์เองได้ (มติผู้ใช้ 2026-09-24 · mig 0383) ──────────
+// ── ที่อยู่ไซต์แบบแยกช่อง + ชั้นที่พิมพ์เองได้ (มติผู้ใช้ 2026-09-24 · mig 0384) ──────────
 //
 // *"การพิมพ์ไซต์อื่น อยากให้ฟอร์มเหมือนที่อยู่ของฐานข้อมูล"* · *"ส่วนโซน ชั้น อยากให้เพิ่มชั้นเองได้
 // เผื่อตัวเลือกไม่มี"*
@@ -172,7 +172,7 @@ test('🔴 ชั้นที่พิมพ์เองต้องมีตั
   assert.match(normalizeFloor('LOBBY').error, /LG/, 'ข้อความต้องบอกว่าพิมพ์ชั้นเองแบบไหนได้');
 });
 
-/* 🔴 ทุกค่าที่ตัวตรวจคืน ต้องผ่าน CHECK ของฐาน (mig 0383) — ไม่งั้นจอบอกผ่านแต่บันทึกล้ม */
+/* 🔴 ทุกค่าที่ตัวตรวจคืน ต้องผ่าน CHECK ของฐาน (mig 0384) — ไม่งั้นจอบอกผ่านแต่บันทึกล้ม */
 const DB_FLOOR = (floor) => /^(0[1-9]|[1-9][0-9])$/.test(floor) || (/^[A-Z0-9]{2,3}$/.test(floor) && /[A-Z]/.test(floor));
 
 test('🔴 ค่าที่ normalizeFloor คืน ผ่าน CHECK ของฐานทุกค่า — และ CHECK ในไฟล์ migration ตรงกับที่นี่', () => {
@@ -185,7 +185,7 @@ test('🔴 ค่าที่ normalizeFloor คืน ผ่าน CHECK ขอ
     assert.ok(ZONE_CODE_RE.test(`ZN-1001-${value}-10001`), `${value} ประกอบเป็นรหัสไม่ได้`);
   }
   for (const special of SPECIAL_FLOORS) assert.ok(DB_FLOOR(special.value), special.value);
-  const sql = read('../supabase/migrations/0383_site_address_parts_custom_floor.sql');
+  const sql = read('../supabase/migrations/0384_site_address_parts_custom_floor.sql');
   assert.match(sql, /floor ~ '\^\(0\[1-9\]\|\[1-9\]\[0-9\]\)\$'/);
   assert.match(sql, /floor ~ '\^\[A-Z0-9\]\{2,3\}\$' AND floor ~ '\[A-Z\]'/);
   assert.ok(CUSTOM_FLOOR_RE.test('LG') && !CUSTOM_FLOOR_RE.test('44') && !CUSTOM_FLOOR_RE.test('ABCD'));

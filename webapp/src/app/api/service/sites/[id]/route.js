@@ -129,7 +129,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const refError = await checkSiteReferences(supabase, value, customer);
     if (refError) return badRequest(refError);
 
-    // ที่อยู่แยกช่อง (mig 0383) — ยังไม่รัน = update ทั้งแถวล้มด้วยข้อความอังกฤษ ⇒ บอกเป็นไทยก่อน
+    // ที่อยู่แยกช่อง (mig 0384) — ยังไม่รัน = update ทั้งแถวล้มด้วยข้อความอังกฤษ ⇒ บอกเป็นไทยก่อน
     const schemaError = await siteAddressColumnsError(supabase);
     if (schemaError) return fail(schemaError, 503);
 

@@ -106,7 +106,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       const schemaError = await zoneSpotsColumnError(supabase);
       if (schemaError) return fail(schemaError, 503);
     }
-    // ไซต์ใหม่ = เขียนที่อยู่แยกช่อง (mig 0383) — กติกาเดียวกัน: ตรวจตั้งแต่พรีวิว ไม่ใช่เจอตอนบันทึก
+    // ไซต์ใหม่ = เขียนที่อยู่แยกช่อง (mig 0384) — กติกาเดียวกัน: ตรวจตั้งแต่พรีวิว ไม่ใช่เจอตอนบันทึก
     if (!target) {
       const schemaError = await siteAddressColumnsError(supabase);
       if (schemaError) return fail(schemaError, 503);
