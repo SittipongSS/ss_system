@@ -17,7 +17,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { docReasonError } from "@/lib/sales/productSpecDocWorkflow";
 import {
   DOC_DELETE_KEY, docActionDoneMessage, docConfirmPrompt, docReasonPrompt, followUpLineView,
-  orphanRemoveFailureOutcome, specDocumentHref,
+  orphanDocPromptInput, orphanRemoveFailureOutcome, specDocumentHref,
 } from "@/lib/sales/productSpecDocView";
 import styles from "./SalesOrderFollowUpDocs.module.css";
 
@@ -107,7 +107,9 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
         fallbackError: "ยกเลิกเอกสารไม่สำเร็จ",
       });
       setVoiding(null);
-      notifyToast.success(`ยกเลิก ${voiding.docNoText || voiding.docNo || "เอกสาร"} แล้ว`);
+      /* ⭐ ข้อความกลางชุดเดียวกับหน้าเอกสาร — บอกว่าแจ้งเตือนใครแล้ว (ผลตรวจ 25/09: toast ที่เขียนเองบนการ์ด
+         ไม่บอก ทั้งที่ผู้อนุมัติกดยกเลิกจากตรงนี้ได้ตามมติ 24/09) · ส่งเลขที่ไปด้วยเพราะการ์ดมีหลายแถว */
+      notifyToast.success(docActionDoneMessage("void", { docNoText: voiding.docNoText || voiding.docNo }));
       await load({ background: true });
       onChanged?.();
     } catch (voidFailure) {
@@ -164,23 +166,13 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
   // ไม่มีบรรทัดในขอบเขตและไม่มีเอกสารค้าง (ใบที่ขายแต่ค่าออกแบบ/รายได้อื่น) = ไม่มีการ์ดนี้ทั้งใบ
   if (!inScope.length && !orphans.length && !problem) return null;
 
-  const voidPrompt = voiding
-    /* ⭐ ส่ง Rev ของเอกสารไปด้วย — ไม่งั้นโมดัลพูด "ยกเลิก 220969-001" ขณะที่แถว/toast พูด "220969-001-02"
-       (ผลตรวจรอบสอง: เลขเดียวกันสองหน้าตาในโฟลว์เดียว) */
-    ? docReasonPrompt("void", {
-      document: { docNo: voiding.docNo },
-      latest: voiding.revNo === null || voiding.revNo === undefined ? null : { revNo: voiding.revNo },
-      orphan: true,
-    })
-    : null;
-  // ⭐ ข้อความชุดเดียวกับโมดัลลบของหน้าเอกสาร — `orphan: true` = ไม่สัญญาว่าออกใบใหม่บนบรรทัดนี้ได้
-  const removePrompt = removing
-    ? docConfirmPrompt(DOC_DELETE_KEY, {
-      document: { docNo: removing.docNo },
-      latest: removing.revNo === null || removing.revNo === undefined ? null : { revNo: removing.revNo },
-      orphan: true,
-    })
-    : null;
+  /* ⭐ ก้อนโมดัลแปลงจากแถวทั้งแถวด้วย `orphanDocPromptInput` — รูปเดียวกับที่หน้าเอกสารส่ง ⇒ พูดเท่ากันทุกตัวอักษร
+     · Rev ดิบ: ไม่งั้นโมดัลพูด "ยกเลิก 220969-001" ขณะที่แถว/toast พูด "220969-001-02" (ผลตรวจรอบสอง)
+     · `currentRevNo`: ผู้อนุมัติยกเลิกใบที่อนุมัติแล้วจากการ์ดได้ (มติ 24/09) ⇒ โมดัลต้องบอกว่าฉบับที่ใช้อยู่ตายตาม
+       (ผลตรวจ 25/09: เดิมการ์ดประกอบเองแค่ `{ docNo }` บรรทัดนั้นจึงหายไปเฉพาะบนการ์ด)
+     · `orphan: true` = ไม่สัญญาว่าออกใบใหม่บนบรรทัดนี้ได้ (ข้อความชุดเดียวกับโมดัลลบของหน้าเอกสาร) */
+  const voidPrompt = voiding ? docReasonPrompt("void", orphanDocPromptInput(voiding)) : null;
+  const removePrompt = removing ? docConfirmPrompt(DOC_DELETE_KEY, orphanDocPromptInput(removing)) : null;
 
   return (
     <DetailCard

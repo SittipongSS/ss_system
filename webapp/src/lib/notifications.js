@@ -187,6 +187,9 @@ export const PRODUCT_SPEC_DOC_BELL_KINDS = Object.freeze([
   'product_spec_doc_ae_approve',  // AE อนุมัติ → AE Supervisor ทุกคนที่ active
   'product_spec_doc_reject',      // ตีกลับ → ผู้ยื่น
   'product_spec_doc_approve',     // AE Sup อนุมัติขั้นสุดท้าย → ผู้ยื่น + AE เจ้าของดีล
+  // มติ 24/09/2569 ผู้อนุมัติย้อน/ยกเลิกได้ — AC ไม่มีคิวงานของเอกสาร กระดิ่งคือทางเดียวที่ AC รู้ว่ามี Rev ใหม่รอยื่น
+  'product_spec_doc_revise',      // แก้ไขเอกสาร (Rev+1) → ผู้ยื่นฉบับที่อนุมัติ + ผู้ออกเอกสาร (สาย AC)
+  'product_spec_doc_void',        // ยกเลิกเอกสาร → ผู้ยื่น + ผู้ออกเอกสาร + AE เจ้าของดีล
 ]);
 
 export const NOTIFICATION_BOXES = {

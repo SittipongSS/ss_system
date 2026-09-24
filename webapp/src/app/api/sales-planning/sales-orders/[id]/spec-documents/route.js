@@ -19,16 +19,15 @@ import { recordAudit } from '@/lib/audit';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
 import {
-  DOC_REVISION_STATUS_LABELS, canIssueProductSpecDocument, documentActions, documentCreateGate,
-  formatRevLabel, lineDocumentState,
+  canIssueProductSpecDocument, documentActions, documentCreateGate, lineDocumentState,
 } from '@/lib/sales/productSpecDocWorkflow';
+import { specDocOrphanRow } from '@/lib/sales/productSpecDocView';
 import {
   loadSpecDocOrder, specDocLineScopeReason, specDocLineView,
 } from '@/lib/sales/productSpecDocOrder';
 import {
   createSpecDocument, loadDocumentsForOrder, loadLiveDocumentForLine, loadSpecRecord,
 } from '@/lib/sales/productSpecStore';
-import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,7 +88,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
      แต่เลขที่ยังออกไปแล้ว ⇒ ต้องโผล่บนการ์ดพร้อมปุ่มปลายทาง ไม่งั้นค้างอยู่เงียบ ๆ ตลอดกาล
      🔴 **ส่งทั้ง `voidAction` และ `removeAction`** (มติเจ้าของ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง") —
         ร่างที่ยังไม่เคยยื่นไม่มีปุ่มยกเลิกแล้ว ถ้าส่งแต่ `void` แถวของร่างแบบนั้นจะไม่มีปุ่มอะไรเลย
-        (ทางตันบนการ์ด) · สองตัวมาจาก `documentActions` ก้อนเดียว ⇒ AC/admin ได้ตัวใดตัวหนึ่งพอดี */
+        (ทางตันบนการ์ด) · สองตัวมาจาก `documentActions` ก้อนเดียว ⇒ AC/admin ได้ตัวใดตัวหนึ่งพอดี
+     ⭐ แถวประกอบที่ `specDocOrphanRow` (lib) ตัวเดียว — ผลตรวจ 25/09: แถวที่ประกอบในไฟล์นี้เคยขาด `currentRevNo`
+        ⇒ ผู้อนุมัติที่ได้ปุ่มยกเลิกใบที่อนุมัติแล้ว (มติ 24/09) ได้โมดัลบนการ์ดที่ไม่บอกว่าฉบับที่ใช้อยู่ตายตาม */
   const lineIds = new Set(lines.map((line) => line.id));
   const orphans = documents
     .filter((doc) => doc.status === 'active' && (!doc.salesOrderLineId || !lineIds.has(doc.salesOrderLineId)))
@@ -97,18 +98,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       const actions = documentActions({
         document: doc, latest: doc.latest, salesOrder: order, dealOwnerId, user,
       });
-      return {
-        documentId: doc.id,
-        docNo: doc.docNo,
-        // เลขที่ที่คนอ่าน DDMMYY-XXX-RR (มติ 22/09) — ตัวเดียวกับกระดาษ/แถวที่ออกแล้ว
-        docNoText: formatSpecDocNo(doc.docNo, doc.latest?.revNo),
-        // Rev ดิบให้โมดัลยกเลิก/ลบประกอบเลขรูปเดียวกับแถว (docReasonPrompt/docConfirmPrompt ต้องได้ latest.revNo)
-        revNo: doc.latest ? doc.latest.revNo : null,
-        revLabel: doc.latest ? formatRevLabel(doc.latest.revNo) : null,
-        statusLabel: doc.latest ? (DOC_REVISION_STATUS_LABELS[doc.latest.status] || doc.latest.status) : null,
-        voidAction: actions.void,
-        removeAction: actions.remove,
-      };
+      return specDocOrphanRow({ document: doc, actions });
     });
 
   return ok({ orderStatus: order.status, rows, orphans });

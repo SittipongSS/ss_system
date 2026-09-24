@@ -15,12 +15,14 @@ import {
   docConfirmPrompt, docContentSource,
   docContentSummary, docControlActions, docHeadline, docPrintHref, docRailSteps, docReasonPrompt,
   docRevisionRows, docRevisionTone, followUpLineView, lineRemovedNotice, liveIllustrationNote, liveSpecDocumentCount,
-  orphanRemoveFailureOutcome, productSpecPageHref,
+  orphanDocPromptInput, orphanRemoveFailureOutcome, productSpecPageHref,
   salesOrderHref, salesOrderSpecDocEffect, specDocCreateApiPath, specDocDraftPreviewHref, specDocNewApiPath,
   specDocNewLoadProblem, specDocNewOrderFacts, specDocNewView, specDocNextNumberText, specDocSavedMessage,
-  specDocumentHref, specDocumentNewHref,
+  specDocOrphanRow, specDocumentHref, specDocumentNewHref,
 } from './productSpecDocView.js';
-import { DOC_ACTION_KEYS, DOC_REASON_MIN, documentActions, documentCreateGate } from './productSpecDocWorkflow.js';
+import {
+  DOC_ACTION_KEYS, DOC_REASON_MIN, DOC_REVISION_STATUS_LABELS, documentActions, documentCreateGate,
+} from './productSpecDocWorkflow.js';
 
 const doc = {
   id: 'PSD1', docNo: 'FM-SA-04-220969-001', status: 'active',
@@ -374,6 +376,25 @@ test('แถบบรรทัดถูกถอด: คนที่ไม่ม
   assert.doesNotMatch(lineRemovedNotice({ document: orphanDoc, latest: rev('pending_ae') }).body, /รอ AC/);
 });
 
+/* ⭐ มติ 24/09/2569 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" — ใบที่เคยอนุมัติแล้ว ผู้อนุมัติ (AE เจ้าของดีล · AE Sup)
+   มีปุ่มยกเลิกของตัวเอง ⇒ แถบต้องบอกให้ลงมือ ไม่ใช่ "รอ AC" · ใบที่ไม่เคยอนุมัติยังเป็น "รอ AC" (ผู้อนุมัติใช้ตีกลับ) */
+test('แถบบรรทัดถูกถอดบนใบที่เคยอนุมัติ: ผู้อนุมัติได้ประโยคให้ลงมือ (มีปุ่มยกเลิกของตัวเองแล้ว)', () => {
+  const orphanDoc = { ...doc, salesOrderLineId: null, currentRevNo: 0 };
+  for (const latest of [rev('approved'), rev('draft', { revNo: 1, submittedBy: null })]) {
+    for (const user of Object.values(U)) {
+      const actions = documentActions({
+        document: orphanDoc, latest, salesOrder: order, dealOwnerId: owner.id, user,
+      });
+      const notice = lineRemovedNotice({ document: orphanDoc, latest, actions });
+      const mine = ['ac', 'admin', 'ae', 'ae_supervisor'].includes(user.role);
+      assert.equal(actions.void.visible, mine, `${latest.status} · ${user.role}`);
+      assert.match(notice.body, /ยกเลิกเอกสารใบนี้/, `${latest.status} · ${user.role}`);
+      if (mine) assert.doesNotMatch(notice.body, /รอ AC/, `${latest.status} · ${user.role} กดเองได้`);
+      else assert.match(notice.body, /รอ AC/, `${latest.status} · ${user.role} ไม่มีปุ่ม`);
+    }
+  }
+});
+
 /* 🐞 UAT 23/09: ลบร่างจากการ์ดหน้า SO สำเร็จแต่คำตอบหายกลางทาง ⇒ การ์ดเคยขึ้น "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ลองอีกครั้ง"
    ทั้งที่แถวหายไปต่อหน้า · ตัวตัดสินอ่านการ์ดชุดใหม่ และเชื่อคำตอบของเซิร์ฟเวอร์ก่อน "แถวหาย" เสมอ */
 test('ลบร่างจากการ์ดแล้วไม่ได้คำตอบว่าสำเร็จ: done / moved / retry ตัดสินจากการ์ดชุดใหม่', () => {
@@ -474,6 +495,128 @@ test('โมดัลเหตุผลใช้ความยาวเดี�
   assert.match(orphanWithRev.description, /ยกเลิก 220969-001-02 หรือไม่/);
   assert.match(orphanWithRev.detail, /เลขที่ 220969-001 ถูกปิดถาวร/, 'ยกเลิก = เลขที่ทั้งใบ (ทุก Rev) ไม่มี RR');
   assert.equal(docReasonPrompt('submit', { document: doc }), null);
+});
+
+/* ⭐ มติ 24/09/2569: ผู้อนุมัติกด "แก้ไขเอกสาร"/"ยกเลิกเอกสาร" ได้ด้วย ⇒ ข้อความต้องจริงสำหรับทั้ง AC และผู้อนุมัติ
+   (ไม่มีช่อง canIssue ใน payload — พูดกลาง ๆ ว่าใครทำอะไรต่อ) และบอกว่ามีการแจ้งเตือนใคร */
+test('โมดัลแก้ไขเอกสาร: Rev ใหม่ AC เป็นคนแก้และยื่น · แจ้งเตือน AC · เปิดแล้วลบทิ้งไม่ได้', () => {
+  const revise = docReasonPrompt('revise', { document: { ...doc, currentRevNo: 1 }, latest: rev('approved', { revNo: 1 }) });
+  assert.match(revise.detail, /AC แก้สเปคที่หน้าสินค้าแล้วยื่น Rev\.02/);
+  assert.match(revise.detail, /แจ้งเตือน AC/);
+  assert.match(revise.detail, /Rev\.02 ที่เปิดแล้วลบทิ้งไม่ได้/);
+  assert.match(revise.detail, /สิ่งที่จะเกิดขึ้นทันที/);
+  assert.match(docActionDoneMessage('revise'), /AC ยื่นอนุมัติ/);
+});
+
+test('โมดัลยกเลิกเอกสาร: บอกว่าแจ้งเตือนใคร · ฉบับที่อนุมัติแล้วใช้ไม่ได้อีก (เฉพาะเมื่อรู้ currentRevNo)', () => {
+  const approvedDoc = { ...doc, currentRevNo: 1 };
+  const voidIt = docReasonPrompt('void', { document: approvedDoc, latest: rev('draft', { revNo: 2 }) });
+  assert.match(voidIt.detail, /ย้อนกลับเองไม่ได้/);
+  assert.match(voidIt.detail, /แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีล/);
+  assert.match(voidIt.detail, /ฉบับ Rev\.01 ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+  // ใบที่ยังไม่เคยอนุมัติ = ไม่มีฉบับที่ใช้ให้พูดถึง
+  const neverApproved = docReasonPrompt('void', { document: doc, latest: rev('pending_ae') });
+  assert.doesNotMatch(neverApproved.detail, /ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+  assert.match(neverApproved.detail, /แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีล/);
+  // 🪤 การ์ดหน้า SO ส่งแค่ `{ docNo }` (ไม่มี currentRevNo) ⇒ ห้ามเดาว่ามีฉบับที่อนุมัติ
+  const card = docReasonPrompt('void', { document: { docNo: doc.docNo }, latest: { revNo: 2 }, orphan: true });
+  assert.doesNotMatch(card.detail, /ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+  assert.doesNotMatch(card.detail, /Rev\.—/);
+  assert.match(docActionDoneMessage('void'), /แจ้งเตือน/);
+});
+
+/* ── แถว "บรรทัดถูกถอด" บนการ์ดหน้า SO (ผลตรวจ 25/09 ของงานมติ 24/09) ─────────────────────────
+ * 🐞 เดิม API ส่งแถวโดยไม่มี `currentRevNo` และการ์ดประกอบก้อนโมดัลเองแค่ `{ docNo }` ⇒ ผู้อนุมัติที่กด
+ *    "ยกเลิกเอกสาร" บนใบที่อนุมัติแล้วจากการ์ด ไม่เห็นบรรทัด "ฉบับ Rev.00 ที่อนุมัติแล้วใช้ไม่ได้อีก"
+ *    ที่หน้าเอกสารบอก + toast ของการ์ดไม่บอกว่าแจ้งเตือนใคร — การกระทำเดียวกัน คำบอกผลอ่อนกว่าอีกจอ
+ * ⇒ แถวประกอบที่ lib ตัวเดียว (`specDocOrphanRow` — API ใช้) · การ์ดแปลงแถวเป็นก้อนโมดัลด้วย
+ *    `orphanDocPromptInput` · เทียบกับก้อนที่หน้าเอกสารส่ง **ทุกตัวอักษร** ไม่ใช่แค่หาคำ */
+const orphanDoc = { ...doc, salesOrderLineId: null };
+const ORPHAN_CASES = [
+  ['อนุมัติแล้ว Rev.00', { ...orphanDoc, currentRevNo: 0 }, rev('approved')],
+  ['Rev.01 เปิดค้างบน Rev.00 ที่อนุมัติ', { ...orphanDoc, currentRevNo: 0 }, rev('pending_ae', { revNo: 1 })],
+  ['อนุมัติแล้วแต่ปิดการอนุมัติไม่สำเร็จ (currentRevNo ว่าง)', { ...orphanDoc, currentRevNo: null }, rev('approved')],
+  ['ยื่นแล้วยังไม่อนุมัติ', orphanDoc, rev('pending_ae')],
+  ['ร่างที่ไม่เคยยื่น', orphanDoc, rev('draft', { submittedBy: null })],
+];
+
+test('🐞 แถวบรรทัดถูกถอด: โมดัลยกเลิก/ลบบนการ์ดพูดเท่าหน้าเอกสารทุกตัวอักษร (มติ 24/09 · ผลตรวจ 25/09)', () => {
+  for (const [label, document, latest] of ORPHAN_CASES) {
+    const actions = documentActions({ document, latest, salesOrder: order, dealOwnerId: owner.id, user: U.owner });
+    const card = orphanDocPromptInput(specDocOrphanRow({ document: { ...document, latest }, actions }));
+    // หน้าเอกสารของใบที่บรรทัดถูกถอดส่ง `{ document, latest, orphan: lineRemoved }` (page.js)
+    const page = { document, latest, orphan: true };
+    assert.deepEqual(docReasonPrompt('void', card), docReasonPrompt('void', page), label);
+    assert.deepEqual(docConfirmPrompt(DOC_DELETE_KEY, card), docConfirmPrompt(DOC_DELETE_KEY, page), label);
+  }
+  // ตรงจุดที่ผลตรวจจับได้: เจ้าของดีลกดยกเลิกใบที่อนุมัติแล้วจากการ์ด ต้องเห็นว่าฉบับที่ใช้อยู่ตายตาม
+  const [, approved, approvedLatest] = ORPHAN_CASES[0];
+  const actions = documentActions({
+    document: approved, latest: approvedLatest, salesOrder: order, dealOwnerId: owner.id, user: U.owner,
+  });
+  assert.deepEqual(actions.void, { visible: true, reason: null }, 'เจ้าของดีลได้ปุ่มยกเลิกบนใบที่อนุมัติแล้ว');
+  const prompt = docReasonPrompt('void', orphanDocPromptInput(specDocOrphanRow({
+    document: { ...approved, latest: approvedLatest }, actions,
+  })));
+  assert.match(prompt.detail, /ฉบับ Rev\.00 ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+  assert.match(prompt.detail, /แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีล/);
+  assert.match(prompt.detail, /ถูกถอดจากใบสั่งขายแล้ว/);
+  // ใบที่ไม่เคยอนุมัติ = ไม่มีฉบับที่ใช้ให้พูดถึง (ไม่เดา)
+  const [, pending, pendingLatest] = ORPHAN_CASES[3];
+  const neverApproved = docReasonPrompt('void', orphanDocPromptInput(specDocOrphanRow({
+    document: { ...pending, latest: pendingLatest }, actions: {},
+  })));
+  assert.doesNotMatch(neverApproved.detail, /ที่อนุมัติแล้วใช้ไม่ได้อีก/);
+});
+
+test('แถวบรรทัดถูกถอดที่ API ส่ง: เลขที่รูปเดียวกับแถว · Rev ดิบ · ฉบับที่อนุมัติ (0 ไม่หาย) · ปุ่มปลายทางจาก documentActions ก้อนเดียว', () => {
+  const document = { ...orphanDoc, currentRevNo: 0 };
+  const latest = rev('pending_ae', { revNo: 1 });
+  const actions = documentActions({ document, latest, salesOrder: order, dealOwnerId: owner.id, user: U.owner });
+  assert.deepEqual(specDocOrphanRow({ document: { ...document, latest }, actions }), {
+    documentId: 'PSD1',
+    docNo: 'FM-SA-04-220969-001',
+    docNoText: '220969-001-01',
+    revNo: 1,
+    currentRevNo: 0,
+    revLabel: 'Rev.01',
+    statusLabel: DOC_REVISION_STATUS_LABELS.pending_ae,
+    voidAction: actions.void,
+    removeAction: actions.remove,
+  });
+  // ร่างที่ไม่เคยยื่นของ AC = ปุ่มลบ (ไม่ใช่ยกเลิก) — สองตัวมาจากก้อนเดียว ไม่มีแถวที่ไม่มีปุ่ม
+  const draft = rev('draft', { submittedBy: null });
+  const acActions = documentActions({ document: orphanDoc, latest: draft, salesOrder: order, dealOwnerId: owner.id, user: U.ac });
+  const acRow = specDocOrphanRow({ document: { ...orphanDoc, latest: draft }, actions: acActions });
+  assert.equal(acRow.removeAction.visible, true);
+  assert.equal(acRow.voidAction.visible, false);
+  assert.equal(acRow.currentRevNo, null, 'ไม่มี currentRevNo = null ไม่ใช่ undefined (JSON ต้องมีช่องนี้)');
+  // ไม่มี Rev (ข้อมูลเสีย) — ไม่ประดิษฐ์ Rev/สถานะขึ้นมา
+  const bare = specDocOrphanRow({ document: { ...orphanDoc }, actions: acActions });
+  assert.equal(bare.revNo, null);
+  assert.equal(bare.revLabel, null);
+  assert.equal(bare.statusLabel, null);
+  assert.equal(bare.docNoText, '220969-001');
+});
+
+test('ก้อนโมดัลของแถวบรรทัดถูกถอด: orphan เสมอ · Rev/ฉบับที่อนุมัติที่ไม่รู้ = ไม่ส่ง (ไม่เดา) · Rev.00 ไม่หาย', () => {
+  assert.deepEqual(orphanDocPromptInput({ docNo: doc.docNo, revNo: 0, currentRevNo: 0 }), {
+    document: { docNo: doc.docNo, currentRevNo: 0 }, latest: { revNo: 0 }, orphan: true,
+  });
+  assert.deepEqual(orphanDocPromptInput({ docNo: doc.docNo, revNo: null }), {
+    document: { docNo: doc.docNo, currentRevNo: null }, latest: null, orphan: true,
+  });
+  assert.deepEqual(orphanDocPromptInput(null), {
+    document: { docNo: null, currentRevNo: null }, latest: null, orphan: true,
+  });
+});
+
+test('toast หลังยกเลิก: บอกเลขที่ (เมื่อรู้) และบอกว่าแจ้งเตือนใคร — การ์ดกับหน้าเอกสารใช้ข้อความชุดเดียว', () => {
+  assert.equal(docActionDoneMessage('void'), 'ยกเลิกเอกสารแล้ว — แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีลแล้ว');
+  assert.equal(
+    docActionDoneMessage('void', { docNoText: '220969-001-01' }),
+    'ยกเลิก 220969-001-01 แล้ว — แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีลแล้ว',
+  );
 });
 
 test('ประวัติ Rev: ใหม่ก่อน · ตราประทับทุกขั้น · ทุกแถวพิมพ์ได้', () => {

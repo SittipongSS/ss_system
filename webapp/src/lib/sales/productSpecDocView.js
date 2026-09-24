@@ -406,6 +406,9 @@ export function docReasonPrompt(key, {
     const current = formatRevLabel(latest?.revNo);
     const nextRevNo = (Number(latest?.revNo) || 0) + 1;
     const next = formatRevLabel(nextRevNo);
+    /* ⭐ มติ 24/09/2569: ผู้อนุมัติกดปุ่มนี้ได้ด้วย แต่ยื่นยังเป็นของสาย AC ⇒ ข้อความพูดกลาง ๆ ว่าใครทำต่อ
+       (จริงทั้งกับ AC และผู้อนุมัติ — ไม่ต้องมีช่องบอกบทบาทใน payload) · บอกด้วยว่า Rev ที่เปิดแล้ว **ทิ้งไม่ได้**
+       (ไม่มีทางลบ/ปิด Rev · ดึงกลับ/ตีกลับใช้กับร่างไม่ได้) — ทางออกมีแค่ยื่นให้ครบหรือยกเลิกทั้งใบ */
     return {
       ...base,
       title: `แก้ไขเอกสาร — ออก ${next}`,
@@ -413,7 +416,9 @@ export function docReasonPrompt(key, {
       detail: bullets([
         `ได้ ${next} เป็นฉบับร่าง เลขที่เดิม ${docNo}${document?.docNo ? ` (พิมพ์เป็น ${formatSpecDocNo(document.docNo, nextRevNo)})` : ''}`,
         `${current} ยังเป็นฉบับที่ใช้ จนกว่า ${next} จะอนุมัติครบ`,
+        `AC แก้สเปคที่หน้าสินค้าแล้วยื่น ${next} — ระบบแจ้งเตือน AC ผู้ยื่นฉบับก่อนและผู้ออกเอกสาร`,
         `${next} ต้องยื่นและผ่าน AE เจ้าของดีลกับ AE Supervisor ใหม่ทั้งหมด`,
+        `${next} ที่เปิดแล้วลบทิ้งไม่ได้ — ต้องยื่นจนอนุมัติ หรือยกเลิกทั้งเอกสาร`,
         'เหตุผลนี้ขึ้นในประวัติ Rev ของเอกสาร',
       ]),
       label: 'เหตุผลที่แก้ไข',
@@ -423,17 +428,24 @@ export function docReasonPrompt(key, {
     };
   }
   if (key === 'void') {
+    /* ⭐ มติ 24/09/2569: ผู้อนุมัติยกเลิกใบที่เคยอนุมัติได้ ⇒ บอกด้วยว่าฉบับที่ใช้อยู่ตายตาม และระบบแจ้งใคร
+       🪤 ฉบับที่อนุมัติพูดถึงเฉพาะเมื่อรู้ `currentRevNo` — การ์ดหน้า SO ส่งมาแค่ `{ docNo }` ห้ามเดา */
+    const current = document?.currentRevNo !== null && document?.currentRevNo !== undefined
+      ? formatRevLabel(document.currentRevNo)
+      : null;
     return {
       ...base,
       title: 'ยกเลิกเอกสาร',
       description: `ยกเลิก ${subject} หรือไม่`,
       detail: bullets([
         `เลขที่ ${docNo} ถูกปิดถาวร — นำกลับมาใช้ไม่ได้`,
+        ...(current ? [`ฉบับ ${current} ที่อนุมัติแล้วใช้ไม่ได้อีก`] : []),
         'ทุกปุ่มของเอกสารใบนี้ปิด Rev ที่ค้างอยู่หยุดเดินด่าน',
         'กระดาษทุก Rev ขึ้นลายน้ำ "ยกเลิก"',
         orphan
           ? 'บรรทัดที่เอกสารอ้างถูกถอดจากใบสั่งขายแล้ว — ไม่มีสินค้าให้รับรองต่อ'
           : 'บรรทัดใบสั่งขายนี้ออกเอกสารใบใหม่ได้ (ได้เลขที่ใหม่)',
+        'ระบบแจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีล',
       ], { irreversible: true }),
       label: 'เหตุผลที่ยกเลิก',
       placeholder: 'เช่น ลูกค้ายกเลิกสินค้ารายการนี้',
@@ -448,8 +460,9 @@ export function docReasonPrompt(key, {
  * ข้อความหลังทำสำเร็จ — บอกว่าเอกสารไปอยู่ที่ใครต่อ ไม่ใช่แค่ "สำเร็จ"
  * @param orphan true = บรรทัด SO ที่เอกสารอ้างถูกถอดแล้ว — toast ของการลบต้องไม่ชวน "ออกใบใหม่บนบรรทัดนี้"
  *               (ไม่มีบรรทัดแล้ว · ข้อความเดียวกับโมดัลลบที่เพิ่งกดผ่านมา)
+ * @param docNoText เลขที่ DDMMYY-XXX-RR ของใบที่ยกเลิก — การ์ดหน้า SO ส่ง (มีหลายแถว) · หน้าเอกสารไม่ต้องส่ง
  */
-export function docActionDoneMessage(key, { dealOwner, orphan = false } = {}) {
+export function docActionDoneMessage(key, { dealOwner, orphan = false, docNoText = null } = {}) {
   const owner = ownerNameOf(dealOwner);
   return {
     submit: `ยื่นแล้ว — รอ ${owner || 'AE เจ้าของดีล'} อนุมัติ`,
@@ -457,8 +470,11 @@ export function docActionDoneMessage(key, { dealOwner, orphan = false } = {}) {
     aeApprove: 'อนุมัติขั้น AE แล้ว — รอ AE Supervisor',
     supApprove: 'อนุมัติขั้นสุดท้ายแล้ว — ฉบับนี้เป็นฉบับที่ใช้',
     reject: 'ตีกลับให้ AC แก้ไขแล้ว',
-    revise: 'เปิด Rev ใหม่เป็นฉบับร่างแล้ว — แก้สเปคที่หน้าสินค้าแล้วยื่นอนุมัติ',
-    void: 'ยกเลิกเอกสารแล้ว',
+    // ⭐ มติ 24/09: ผู้อนุมัติเปิด Rev ได้แต่ยื่นไม่ได้ ⇒ บอกว่าใครยื่นต่อ · ยกเลิกบอกว่าแจ้งใครแล้ว
+    revise: 'เปิด Rev ใหม่เป็นฉบับร่างแล้ว — แก้สเปคที่หน้าสินค้า แล้ว AC ยื่นอนุมัติ',
+    /* `docNoText` = การ์ดหน้า SO ที่มีหลายแถว ต้องบอกว่ายกเลิกใบไหน (ผลตรวจ 25/09: การ์ดเคยเขียน toast เอง
+       `ยกเลิก X แล้ว` ที่ไม่บอกว่าแจ้งเตือนใคร) — ส่วนที่บอกผู้รับแจ้งเตือนมาจากบรรทัดนี้บรรทัดเดียว */
+    void: `${docNoText ? `ยกเลิก ${docNoText} แล้ว` : 'ยกเลิกเอกสารแล้ว'} — แจ้งเตือน AC ผู้ยื่นและ AE เจ้าของดีลแล้ว`,
     // ⭐ บอกด้วยว่าเลขที่ไม่กลับมา ไม่งั้นคนจะรอให้ใบใหม่ได้เลขเดิม (มติ 23/09)
     [DOC_DELETE_KEY]: orphan
       ? 'ลบร่างแล้ว — เลขที่เดิมไม่นำกลับมาใช้'
@@ -471,6 +487,7 @@ export function docActionDoneMessage(key, { dealOwner, orphan = false } = {}) {
  * ⭐ มติ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง": ร่างที่ไม่เคยยื่นไม่มีปุ่มยกเลิก ⇒ แถบที่บอก "ยกเลิกเอกสารใบนี้แทน"
  *    บนร่างแบบนั้นคือการส่งคนไปหาปุ่มที่ไม่มีอยู่ · ตัดสินด้วย `documentExitKey` ตัวเดียวกับที่ API ใช้ซ่อนปุ่ม
  * ⚠️ หน้านี้เปิดได้ทุกคนที่เห็น SO (AE · AE Sup · RD · FN …) แต่ปุ่มปลายทางมีแค่ AC/admin
+ *    + ผู้อนุมัติบนใบที่เคยอนุมัติแล้ว (มติ 24/09/2569 — `documentActions().void`)
  *    ⇒ คนที่ `actions` ไม่มีปุ่มปลายทางให้ ได้ประโยค "รอ AC …" แทนคำสั่งให้ไปกดปุ่มที่ตัวเองไม่มี
  * @param actions `documentActions` ของคนดู (จาก API) · ไม่ส่ง = ไม่รู้ ⇒ ใช้ประโยคของคนกด (ทรงเดิม)
  * @returns {{ title: string, body: string } | null} null = ใบนี้ไม่มีปุ่มปลายทาง (void แล้ว/ไม่มี Rev)
@@ -515,6 +532,52 @@ export function orphanRemoveFailureOutcome({ failure, next, documentId } = {}) {
   const noVerdict = failure?.name === 'ApiNetworkError' || Number(failure?.status) >= 500;
   if (!fresh && noVerdict) return 'done';
   return 'moved';
+}
+
+/**
+ * แถว "บรรทัดถูกถอด" ที่ `GET /api/sales-planning/sales-orders/[id]/spec-documents` ส่งให้การ์ดหน้า SO
+ *
+ * ⭐ ประกอบที่นี่ที่เดียว (ผลตรวจ 25/09 ของงานมติ 24/09) — เดิมเราต์ประกอบเองโดยไม่มี `currentRevNo`
+ *    ⇒ ผู้อนุมัติ (ได้ปุ่มยกเลิกใบที่อนุมัติแล้วตามมติ 24/09) กดยกเลิกจากการ์ดแล้วโมดัลไม่บอกว่า
+ *    ฉบับที่อนุมัติแล้วใช้ไม่ได้อีก ทั้งที่หน้าเอกสารบอก · ช่องไหนที่โมดัลต้องใช้ต้องมาพร้อมแถวเสมอ
+ * 🔴 ส่งทั้ง `voidAction` และ `removeAction` จาก `documentActions` ก้อนเดียว (มติ 23/09 "ซ่อนปุ่มยกเลิกช่วงร่าง")
+ *    — ส่งแต่ตัวใดตัวหนึ่ง = แถวที่ไม่มีปุ่มอะไรเลย (ทางตันบนการ์ด)
+ * @param document แถว `product_spec_documents` (ทุกคอลัมน์) + `latest` ที่ตัวโหลดเติมไว้
+ * @param actions `documentActions` ของคนดู
+ */
+export function specDocOrphanRow({ document, actions } = {}) {
+  const latest = document?.latest || null;
+  const hidden = { visible: false, reason: null };
+  return {
+    documentId: document?.id ?? null,
+    docNo: document?.docNo ?? null,
+    // เลขที่ที่คนอ่าน DDMMYY-XXX-RR (มติ 22/09) — ตัวเดียวกับกระดาษ/แถวที่ออกแล้ว
+    docNoText: formatSpecDocNo(document?.docNo, latest?.revNo),
+    // Rev ดิบให้โมดัลยกเลิก/ลบประกอบเลขรูปเดียวกับแถว
+    revNo: latest?.revNo ?? null,
+    // ฉบับที่ใช้อยู่ — โมดัลยกเลิกบอก "ฉบับ Rev.XX ที่อนุมัติแล้วใช้ไม่ได้อีก" ⚠️ 0 คือ Rev.00 ⇒ `??` ไม่ใช่ `||`
+    currentRevNo: document?.currentRevNo ?? null,
+    revLabel: latest ? formatRevLabel(latest.revNo) : null,
+    statusLabel: latest ? (DOC_REVISION_STATUS_LABELS[latest.status] || latest.status) : null,
+    voidAction: actions?.void || hidden,
+    removeAction: actions?.remove || hidden,
+  };
+}
+
+/**
+ * ก้อนที่โมดัลยกเลิก/ลบ (`docReasonPrompt` / `docConfirmPrompt`) ต้องได้ — แปลงจากแถว `specDocOrphanRow`
+ *
+ * ⭐ รูปเดียวกับที่หน้าเอกสารส่ง (`{ document, latest, orphan }`) ⇒ การกระทำเดียวกันบนสองจอพูดเท่ากันทุกตัวอักษร
+ *    (เทสต์เทียบตรง ๆ ที่ productSpecDocView.test.mjs) · `orphan: true` เสมอ — แถวนี้มีแต่ใบที่บรรทัดถูกถอด
+ * ⚠️ ไม่รู้ Rev / ฉบับที่ใช้ = ส่ง `null` (โมดัลไม่เดาว่ามีฉบับที่อนุมัติ) ไม่ใช่ประดิษฐ์ค่าขึ้นมา
+ */
+export function orphanDocPromptInput(orphan) {
+  const revNo = orphan?.revNo ?? null;
+  return {
+    document: { docNo: orphan?.docNo ?? null, currentRevNo: orphan?.currentRevNo ?? null },
+    latest: revNo === null ? null : { revNo },
+    orphan: true,
+  };
 }
 
 /* ── ประวัติ Rev ────────────────────────────────────────────────────────── */
