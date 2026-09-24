@@ -955,6 +955,7 @@ export default function ServiceSiteDetailPage({ params }) {
       <ServiceZoneModal
         open={formZone !== undefined}
         zone={formZone}
+        knownFloors={zones.map((z) => z.floor)}
         onClose={() => setFormZone(undefined)}
         onSave={saveZone}
       />

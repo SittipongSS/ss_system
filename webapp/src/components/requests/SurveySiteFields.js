@@ -448,7 +448,8 @@ export default function SurveySiteFields({
               <Input
                 value={draft.floor}
                 disabled={disabled}
-                placeholder="ชั้น เช่น 4 หรือ G"
+                /* ชั้นที่ไม่อยู่ในชุดมาตรฐานพิมพ์เองได้ (LG · P1 · 12A — มติผู้ใช้ 2026-09-24 · mig 0383) */
+                placeholder="ชั้น เช่น 4 · G · LG · P1"
                 aria-label="ชั้นของพื้นที่"
                 invalid={!!draft.floor && !!draftFloor.error}
                 onChange={(e) => setDraft((d) => ({ ...d, floor: e.target.value }))}

@@ -578,6 +578,12 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
                   form={activeZone}
                   setForm={setActiveZoneForm}
                   floorHint={`รหัสโซน ${zoneCodePreview(target?.code, activeZone.floor)} · แก้ทีหลังรหัสไม่เปลี่ยน · โซนที่คร่อมหลายชั้นให้แยกโซนละชั้น`}
+                  /* ชั้นที่โซนอื่นในไซต์นี้ใช้แล้ว (ร่างที่กำลังคีย์ + โซนเดิมของไซต์ปลายทาง) — พิมพ์ LG
+                     ครั้งเดียว โซนถัดไปกดชิปได้เลย */
+                  knownFloors={[
+                    ...zones.filter((z) => z.key !== activeZone.key).map((z) => z.floor),
+                    ...existingZones.map((z) => z.floor),
+                  ]}
                 />
               </>
             ) : (

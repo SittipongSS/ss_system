@@ -28,7 +28,7 @@ import {
   legacyPlanCounts, legacyPlanMessage, planLegacySiteRow, planLegacyZones,
 } from '@/lib/service/legacySite';
 import {
-  findCustomer, findSite, loadSites, loadZones, requireService, zoneSpotsColumnError,
+  findCustomer, findSite, loadSites, loadZones, requireService, siteAddressColumnsError, zoneSpotsColumnError,
 } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
@@ -104,6 +104,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
        ตรวจตั้งแต่พรีวิว: จอขั้น ③ ต้องไม่บอก "ผ่านทุกด่าน" ในเมื่อบันทึกจริงจะเสียของ */
     if (counts.spots > 0) {
       const schemaError = await zoneSpotsColumnError(supabase);
+      if (schemaError) return fail(schemaError, 503);
+    }
+    // ไซต์ใหม่ = เขียนที่อยู่แยกช่อง (mig 0383) — กติกาเดียวกัน: ตรวจตั้งแต่พรีวิว ไม่ใช่เจอตอนบันทึก
+    if (!target) {
+      const schemaError = await siteAddressColumnsError(supabase);
       if (schemaError) return fail(schemaError, 503);
     }
 

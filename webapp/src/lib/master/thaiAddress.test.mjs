@@ -5,6 +5,7 @@ import {
   branchLabel, composeThaiAddress, hasStructuredParts, normalizeBranchCode,
   normalizePostcode, parseThaiAddress,
   matchSubdistrict, isBranchCodeValid, isHeadOfficeBranch, composeEnglishAddress, branchValue,
+  autoSplitAddressPatch, districtPickPatch, provincePickPatch, subdistrictPickPatch,
 } from './thaiAddress.js';
 import { buildThaiAdminIndex, provincesWithDistricts, resolveAddressParts, subdistrictsOf } from './thaiAdmin.js';
 
@@ -295,4 +296,51 @@ test('branchValue = เลขล้วนสำหรับช่องที่
   assert.equal(branchLabel('00000'), 'สำนักงานใหญ่');
   // ชื่อสาขาที่คนกรอกเป็นข้อความ พิมพ์ตามเดิมทั้งคู่ ไม่เติมคำนำหน้าเลข
   assert.equal(branchValue('แจ้งวัฒนะ'), 'แจ้งวัฒนะ');
+});
+
+// ── ตัวเลือกจังหวัด/อำเภอ/ตำบล ของฟอร์มที่อยู่ทุกตัว (ลูกค้า · ไซต์ — 2026-09-24) ─────────
+test('🔴 เลือกจังหวัดใหม่ = ล้างอำเภอ/ตำบล/ไปรษณีย์เดิม (ไม่งั้นได้อำเภอข้ามจังหวัด)', () => {
+  const provinces = provincesWithDistricts();
+  const patch = provincePickPatch(provinces, '50');
+  assert.equal(patch.province, 'เชียงใหม่');
+  assert.ok(patch.provinceEn);
+  for (const field of ['districtCode', 'district', 'subdistrictCode', 'subdistrict', 'postcode']) {
+    assert.equal(patch[field], '', field);
+  }
+  // เลือก "— จังหวัด —" = ล้างทั้งชุด
+  assert.equal(provincePickPatch(provinces, '').provinceCode, '');
+});
+
+test('เลือกอำเภอล้างตำบล · เลือกตำบลเติมไปรษณีย์ให้', () => {
+  const provinces = provincesWithDistricts();
+  const district = districtPickPatch(provinces, '10', '1004');
+  assert.equal(district.district, 'บางรัก');
+  assert.equal(district.subdistrictCode, '');
+  const subs = subdistrictsOf('1004');
+  const sub = subdistrictPickPatch(subs, subs[0].code);
+  assert.equal(sub.subdistrict, subs[0].th);
+  assert.equal(sub.postcode, subs[0].zip);
+});
+
+test('⭐ แยกที่อยู่อัตโนมัติ: จับได้ครบ = จังหวัด/อำเภอ/ตำบล/ไปรษณีย์ + บ้านเลขที่ที่ตัดหางแล้ว', async () => {
+  const patch = await autoSplitAddressPatch(
+    '35 ซอย พิพัฒน์ 2 แขวงสีลม เขตบางรัก กรุงเทพมหานคร 10500',
+    provincesWithDistricts(),
+    async (code) => subdistrictsOf(code),
+  );
+  assert.equal(patch.provinceCode, '10');
+  assert.equal(patch.district, 'บางรัก');
+  assert.equal(patch.subdistrict, 'สีลม');
+  assert.equal(patch.postcode, '10500');
+  assert.equal(patch.addressOverride, false);
+  assert.doesNotMatch(patch.line1, /บางรัก|10500/);
+});
+
+test('🔴 แยกไม่ออก = ไม่แตะจังหวัดเดิม (ไซต์ถือจังหวัดเป็นตัวตนของรหัส) · ข้อความไปอยู่ช่องบ้านเลขที่', async () => {
+  const patch = await autoSplitAddressPatch('Unit 5, Some Tower, Rama 9 Road', provincesWithDistricts(), null);
+  assert.ok(patch, 'ต้องคืนค่า — ไม่งั้นฟอร์มติดโหมดข้อความก้อนเดียวตลอดไป');
+  assert.equal('provinceCode' in patch, false);
+  assert.equal('province' in patch, false);
+  assert.equal(patch.line1, 'Unit 5, Some Tower, Rama 9 Road');
+  assert.equal(await autoSplitAddressPatch('', provincesWithDistricts(), null), null);
 });

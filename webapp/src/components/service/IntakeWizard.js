@@ -413,6 +413,7 @@ export default function IntakeWizard({
       <ServiceZoneModal
         open={!!zoneModalFor}
         zone={null}
+        knownFloors={zones.map((z) => z.floor)}
         onClose={() => setZoneModalFor(null)}
         onSave={async (form) => {
           const created = await onReloadRegistry.createZone(siteId, form);

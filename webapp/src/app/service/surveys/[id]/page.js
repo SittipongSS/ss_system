@@ -828,7 +828,8 @@ export default function SurveySheetPage({ params }) {
         <Input
           value={draft.floor} disabled={addBusy} maxLength={10} autoComplete="off"
           invalid={!!draft.floor && !!draftFloor.error}
-          placeholder="ชั้น เช่น 4 หรือ G"
+          /* ชั้นที่ไม่อยู่ในชุดมาตรฐานพิมพ์เองได้ (LG · P1 · 12A — มติผู้ใช้ 2026-09-24 · mig 0383) */
+          placeholder="ชั้น เช่น 4 · G · LG · P1"
           aria-label="ชั้นของพื้นที่"
           onChange={(e) => setDraft((d) => ({ ...d, floor: e.target.value }))}
         />

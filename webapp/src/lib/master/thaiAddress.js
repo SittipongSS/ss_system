@@ -427,3 +427,90 @@ export function matchSubdistrict(rest, subdistricts) {
     line1: stripDanglingPrefixes(cutSpans(source, [found])),
   };
 }
+
+// ── เลือกจังหวัด / อำเภอ / ตำบล → ค่าที่ต้องเขียนลงแถว ─────────────────────
+// ⭐ ฟอร์มที่อยู่ทุกตัวใช้ชุดนี้ (ทะเบียนลูกค้า · ไซต์บริการ — มติผู้ใช้ 2026-09-24
+//   "การพิมพ์ไซต์อื่น อยากให้ฟอร์มเหมือนที่อยู่ของฐานข้อมูล") ⇒ กติกาการล้างระดับล่าง
+//   กับการเก็บชื่ออังกฤษอยู่ที่นี่ที่เดียว ไม่ใช่เขียนซ้ำในแต่ละจอ
+// ⚠️ **ล้างระดับล่างเสมอ** — อำเภอของจังหวัดเดิมค้างอยู่ = ที่อยู่ข้ามจังหวัดที่ไม่มีอยู่จริง
+//   แล้วไปโผล่บนใบกำกับภาษี / ใบงานของช่าง
+// ⭐ เก็บ **ชื่ออังกฤษของทะเบียนลงแถวด้วย** (mig 0283) — เหตุผลเดียวกับที่เก็บชื่อไทย:
+//   เอกสาร/หน้าจอต้องประกอบข้อความได้เองโดยไม่ต้องเปิดตารางอ้างอิง (ทะเบียน 650KB
+//   เป็น server-only) · ผู้ใช้ที่ไม่มีช่องอังกฤษ (ไซต์) ได้คีย์เกินมาเฉย ๆ ตัวตรวจฝั่ง server ทิ้งเอง
+const EMPTY_DISTRICT = { districtCode: '', district: '', districtEn: '' };
+const EMPTY_SUBDISTRICT = { subdistrictCode: '', subdistrict: '', subdistrictEn: '', postcode: '' };
+
+export function provincePickPatch(provinces = [], code) {
+  const province = (provinces || []).find((p) => p.code === code);
+  return {
+    provinceCode: province?.code || '', province: province?.th || '', provinceEn: province?.en || '',
+    ...EMPTY_DISTRICT, ...EMPTY_SUBDISTRICT,
+  };
+}
+
+export function districtPickPatch(provinces = [], provinceCode, code) {
+  const province = (provinces || []).find((p) => p.code === provinceCode);
+  const district = province?.districts?.find((d) => d.code === code);
+  return {
+    districtCode: district?.code || '', district: district?.th || '', districtEn: district?.en || '',
+    ...EMPTY_SUBDISTRICT,
+  };
+}
+
+// รหัสไปรษณีย์เติมให้จากตำบล — ช่องอ่านอย่างเดียว (มติผู้ใช้ 2026-08-06) พิมพ์เองได้เมื่อไหร่
+// ก็มีทางที่รหัสไม่ตรงกับตำบลบนเอกสารใบเดียวกัน
+export function subdistrictPickPatch(subdistricts = [], code) {
+  const sub = (subdistricts || []).find((s) => s.code === code);
+  return {
+    subdistrictCode: sub?.code || '', subdistrict: sub?.th || '', subdistrictEn: sub?.en || '',
+    postcode: sub?.zip || '',
+  };
+}
+
+/**
+ * แยกข้อความที่อยู่ก้อนเดียว → ฟิลด์ย่อย (ปุ่ม "แยกที่อยู่อัตโนมัติ")
+ *
+ * สองเฟสเพราะชุดที่ฟอร์มโหลดมามีแค่จังหวัด+อำเภอ — เฟสแรกได้จังหวัด/อำเภอ
+ * แล้วค่อยโหลดตำบลของอำเภอนั้นมาแมตช์ต่อ (`loadSubdistricts(districtCode)` คืนลิสต์ตำบล)
+ *
+ * คืน `null` เมื่อไม่มีอะไรให้แยก (ข้อความว่าง / ทะเบียนยังโหลดไม่เสร็จ)
+ * ⭐ **แยกจังหวัดไม่ออกก็ยังคืนค่า** — ข้อความทั้งก้อนไปอยู่ที่ `line1` ให้คนเลือกจังหวัด/อำเภอ/
+ *   ตำบลต่อเอง (ฟอร์มไม่ติดสถานะ "ข้อความยุคเก่า" ที่ช่องเลือกล็อกอยู่ตลอดไป)
+ * ⚠️ **จับจังหวัดไม่ได้ = ไม่แตะจังหวัดเดิม** — ไซต์บริการถือจังหวัดเป็นท่อนหนึ่งของรหัส
+ *   ถ้าคืนจังหวัดว่างไปทับ กดปุ่มเดียวจังหวัดของไซต์หาย (แถวที่อยู่ลูกค้ายุคเก่าไม่มีจังหวัด
+ *   อยู่แล้ว ⇒ ผลเท่าเดิม)
+ */
+export async function autoSplitAddressPatch(raw, provinces = [], loadSubdistricts = null) {
+  const { parts } = parseThaiAddress(raw, buildAddressIndex(provinces));
+  if (!parts) return null;
+  // ชื่ออังกฤษของระดับที่แยกได้ — parseThaiAddress คืนเฉพาะชื่อไทย/รหัส
+  const provinceHit = (provinces || []).find((p) => p.code === parts.provinceCode);
+  const districtHit = provinceHit?.districts?.find((d) => d.code === parts.districtCode);
+  let patch = {
+    ...parts,
+    addressOverride: false,
+    provinceEn: provinceHit?.en || '',
+    districtEn: districtHit?.en || '',
+    subdistrictEn: '',
+  };
+  if (!parts.provinceCode) {
+    delete patch.province;
+    delete patch.provinceCode;
+    delete patch.provinceEn;
+  }
+  if (parts.districtCode && typeof loadSubdistricts === 'function') {
+    const subs = await loadSubdistricts(parts.districtCode);
+    const { subdistrict, line1 } = matchSubdistrict(parts.line1, subs || []);
+    if (subdistrict) {
+      patch = {
+        ...patch,
+        subdistrictCode: subdistrict.code,
+        subdistrict: subdistrict.th,
+        subdistrictEn: subdistrict.en || '',
+        postcode: parts.postcode || subdistrict.zip,
+        line1,
+      };
+    }
+  }
+  return patch;
+}
