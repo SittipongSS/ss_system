@@ -239,49 +239,307 @@ export function initializerAt(src, eq) {
   return null;
 }
 
-/** ชิ้นที่เป็น embed `alias:table(...)` / `table(...)` — คนละตาราง ด่านไม่ตรวจ */
-const EMBED = /\w+\s*(?::\s*\w+\s*)?\([^)]*\)/g;
+/* ── embed: `alias:table!hint(cols)` — คอลัมน์ของ **ตารางอื่น** ที่ต้องตรวจกับตารางนั้น ──
+ *
+ * 🐞 **จุดบอดที่เหลือของ #1795 (ปิด 2026-09-24):** ของเดิมตัด embed ทิ้งด้วยเรกซ์เอ็กซ์
+ *    `\w+(:\w+)?\([^)]*\)` แล้วแค่นับว่าตัดไปกี่ชื่อ (148 ชื่อ จาก 22 จุด) ⇒ ชื่อผิดใน
+ *    `deal:sales_deals(${DEAL_COLUMNS})` ทำให้ PostgREST ตอบ 42703 **ทั้ง query** (จอว่าง
+ *    "ไม่มีข้อมูล") แต่ด่านเขียว — รูปเดียวกับที่ซ่อน /tax ไว้ 26 วัน
+ *    · เรกซ์เอ็กซ์เดิมยังตัด embed ซ้อนผิดอีกชั้น: `[^)]*` หยุดที่ `)` ตัวแรก ⇒
+ *      `deal:sales_deals(id, project:projects(id))` ถูกตัดถึงวงเล็บของ `projects` แล้ว
+ *      `)` ตัวนอกหลุดมาเป็นชิ้นเปล่า ๆ ซึ่งกฎ "อักขระแปลก = ข้าม" กลืนไปเงียบ ๆ
+ *
+ * ⚠️ **ยังไม่ใช่ parser** — ความรู้เรื่องโครงสร้างที่ยอมเพิ่มมีชิ้นเดียว: จุลภาคที่อยู่ใน
+ *    วงเล็บไม่ใช่ตัวคั่นชั้นบน (`selectPieces`) · ชิ้นไหนมีวงเล็บก็จับรูป embed ด้วยเรกซ์เอ็กซ์
+ *    บรรทัดเดียว แล้วส่ง **ข้างใน** กลับเข้ากฎชุดเดิมของชั้นบนสุด (`columnName`) ซ้ำ ๆ ตามชั้น
+ *    ⇒ alias · cast · JSON path · `*` · `count` ตัดสินที่เดียว ไม่มีกฎชุดที่สองให้เพี้ยนหากัน
+ * ⚠️ ชื่อตารางถูกต้องยังไม่พอ — แม่กับปลายทางต้องมี FK เชื่อมแบบไม่กำกวม (`linkVerdict`)
+ *    ไม่งั้นฐานตอบ PGRST200/201 ทั้ง query เหมือนกัน (รอบรีวิวจับได้ว่ารอบแรกปล่อยผ่าน)
+ */
 
-/** ชื่อคอลัมน์ชั้นบนสุดที่อ่านได้จากข้อความของ select
- *  ⚠️ `alias:table(...)` / `table(...)` = ตารางอื่น (embed) — ด่านไม่รู้จักคอลัมน์ของมัน จึงตัดทิ้ง
- *     (ตัดไปเท่าไรนับได้ที่ `embeddedNames` — ต้องโชว์ในสรุป ไม่งั้นคนอ่านนึกว่าตรวจครบ)
- *  ⚠️ ชิ้นที่มีอักขระนอก [A-Za-z0-9_] (เช่น `metadata->>projectType`) ข้าม — เดาไม่ได้ ไม่เดา
- *  ⚠️ ชิ้นว่างข้าม — ตัวคั่นของ `.join(', ')` ที่ปนเข้ามาจะตกตรงนี้เอง */
-export function columnNamesOf(text) {
-  const flat = String(text).replace(EMBED, '');
-  const out = [];
-  for (const piece of flat.split(',')) {
-    // `col::text` = cast ไม่ใช่ alias — ตัดชนิดทิ้งก่อนแยกโคลอน
-    let name = piece.trim().replace(/^["']|["']$/g, '').split('::')[0];
-    // 🐞 `alias:column` ชั้นบนสุด = เปลี่ยนชื่อที่โผล่ใน JSON — **คอลัมน์จริงอยู่หลังโคลอน**
-    //    ของเดิมหยิบตัวหน้า (ชื่อ alias) ไปเทียบกับสคีมา ⇒ query ที่ถูกต้องกลับแดง
-    //    ตอนที่ด่านอ่านแต่สตริงสั้น ๆ ยังไม่เคยระเบิด แต่พอแกะค่าคงที่ชุดใหญ่ได้แล้ว
-    //    (ชุดพวกนั้นเปลี่ยนชื่อคอลัมน์กันเป็นเรื่องปกติ) มันเป็นแค่เรื่องของเวลา —
-    //    และด่านที่แดงทั้งที่โค้ดถูก คือด่านที่กำลังจะโดนปิดทิ้ง
-    const colon = name.indexOf(':');
-    if (colon >= 0) name = name.slice(colon + 1);
-    name = name.split('!')[0].trim().replace(/^["']|["']$/g, '');
-    if (!name || name === '*' || /[^A-Za-z0-9_]/.test(name)) continue;
-    out.push(name);
+/** ตัดข้อความ select เป็นชิ้นชั้นบนสุด — จุลภาคในวงเล็บของ embed ไม่ใช่ตัวคั่น
+ *  @returns { pieces, unbalanced } — `unbalanced` = วงเล็บไม่ครบคู่ (ต้องรายงาน ไม่ใช่เดา) */
+export function selectPieces(text) {
+  const s = String(text);
+  const pieces = [];
+  let depth = 0;
+  let start = 0;
+  let unbalanced = false;
+  for (let i = 0; i < s.length; i += 1) {
+    const ch = s[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth < 0) { unbalanced = true; depth = 0; }
+    } else if (ch === ',' && depth === 0) {
+      pieces.push(s.slice(start, i));
+      start = i + 1;
+    }
   }
-  return out;
+  pieces.push(s.slice(start));
+  return { pieces, unbalanced: unbalanced || depth !== 0 };
 }
 
-/** ชื่อที่ถูก **ตัดทิ้ง** เพราะอยู่ใน embed — ไม่ได้ถูกตรวจกับตารางไหนเลย
- *  ⚠️ มีไว้เพื่อ "นับความไม่รู้" ให้เป็นตัวเลข: จุดที่แกะค่าคงที่ได้แล้วแต่ชื่อทั้งชุด
- *     ไปตกอยู่ใน embed (เช่น `` `${LIST},deal:sales_deals(${DEAL_COLUMNS})` ``) ยังนับว่า
- *     "แกะค่าได้" อยู่ดี ⇒ ถ้าไม่พิมพ์จำนวนชื่อที่ตัดทิ้งไว้ข้าง ๆ คนอ่านสรุปจะเข้าใจว่า
- *     คอลัมน์ทั้งชุดถูกตรวจแล้ว ทั้งที่ไม่มีสักชื่อ */
-export function embeddedNames(text) {
-  const out = [];
-  for (const m of String(text).match(EMBED) || []) {
-    const inner = m.slice(m.indexOf('(') + 1, -1);
-    for (const piece of inner.split(',')) {
-      const name = piece.trim().replace(/^["']|["']$/g, '').split(/[:!]/).pop().trim();
-      // `count` เป็น aggregate ของ PostgREST ไม่ใช่คอลัมน์ — นับรวมแล้วตัวเลขจะเวอร์
-      if (!name || name === '*' || name === 'count' || /[^A-Za-z0-9_]/.test(name)) continue;
-      out.push(name);
+/** ชื่อคอลัมน์ของชิ้นเดียว (ชิ้นที่ไม่มีวงเล็บ)
+ *  @returns { name } = คอลัมน์ให้ตรวจ · { broken } = อ่านไม่ออก ต้องรายงาน · null = ไม่มีชื่อให้ตรวจ (`*` · ชิ้นว่าง)
+ *  ⚠️ ชิ้นว่างข้าม — ตัวคั่นของ `.join(', ')` ที่ปนเข้ามาจะตกตรงนี้เอง */
+function columnName(piece) {
+  // `col::text` = cast ไม่ใช่ alias — ตัดชนิดทิ้งก่อนแยกโคลอน
+  let name = piece.trim().replace(/^["']|["']$/g, '').split('::')[0];
+  // 🐞 `alias:column` ชั้นบนสุด = เปลี่ยนชื่อที่โผล่ใน JSON — **คอลัมน์จริงอยู่หลังโคลอน**
+  //    ของเดิมหยิบตัวหน้า (ชื่อ alias) ไปเทียบกับสคีมา ⇒ query ที่ถูกต้องกลับแดง
+  //    ตอนที่ด่านอ่านแต่สตริงสั้น ๆ ยังไม่เคยระเบิด แต่พอแกะค่าคงที่ชุดใหญ่ได้แล้ว
+  //    (ชุดพวกนั้นเปลี่ยนชื่อคอลัมน์กันเป็นเรื่องปกติ) มันเป็นแค่เรื่องของเวลา —
+  //    และด่านที่แดงทั้งที่โค้ดถูก คือด่านที่กำลังจะโดนปิดทิ้ง
+  const colon = name.indexOf(':');
+  if (colon >= 0) name = name.slice(colon + 1);
+  // 🐞 JSON path `metadata->>projectType` — ของเดิมทิ้งทั้งชิ้นเพราะมีอักขระแปลก **รวมตัว
+  //    `metadata` ที่เป็นคอลัมน์จริงไปด้วย** ⇒ `metdata->>x` ผ่านเขียวทั้งที่ฐานตอบ 42703
+  //    ทั้ง query (ยิงจริง 24/09 ทั้งชั้นบนสุดและใน embed) · ส่วนหลัง `->` เป็นคีย์ใน JSON
+  //    ไม่มีสคีมาให้เทียบ — แต่ตัวหน้า `->` ตัวแรกคือคอลัมน์ธรรมดา ต้องตรวจเหมือนคอลัมน์อื่น
+  const jsonPath = name.includes('->');
+  name = name.split('->')[0];
+  name = name.split('!')[0].trim().replace(/^["']|["']$/g, '');
+  if (!name) {
+    return jsonPath ? { broken: `\`${shortPiece(piece)}\` — JSON path ที่ไม่มีชื่อคอลัมน์นำหน้า (ฐานตอบ PGRST100)` } : null;
+  }
+  if (name === '*') return null;
+  // ⚠️ เหลืออักขระนอก [A-Za-z0-9_] หลังตัด alias/cast/JSON path แล้ว = อ่านเป็นชื่อไม่ออก
+  //    ของเดิมคืน null เงียบ ๆ (กฎ "อักขระแปลก = ข้าม") — ตอนนี้ต้องดัง เพราะฐานไม่ข้ามให้:
+  //    `id name` (ลืมจุลภาค) ได้ 42703 "column quotations.id name does not exist" ทั้ง query
+  if (/[^A-Za-z0-9_]/.test(name)) return { broken: `\`${shortPiece(piece)}\` — อ่านเป็นชื่อคอลัมน์ไม่ออก (ลืมจุลภาค/อักขระแปลก?)` };
+  return { name };
+}
+
+/* รูปของชิ้นที่มีวงเล็บ — จับด้วยเรกซ์เอ็กซ์บรรทัดเดียว ไม่ไล่ไวยากรณ์
+ *   embed:     `...`? `alias:`? ชื่อปลายทาง `!ตัวขยาย`* `(ข้างใน)`
+ *   aggregate: `alias:`? (`col.`)? count|sum|avg|min|max `()` `::ชนิด`?  (PostgREST 12)
+ * ⚠️ aggregate ต้องจับก่อน embed — `count()` หน้าตาเหมือน embed ของตารางชื่อ `count`
+ *    ที่ข้างในว่าง ถ้าปล่อยให้ตก embed จะได้เหตุผลผิดเรื่อง ("ตาราง count ไม่มีในสคีมา")
+ * 🐞 **โปรเจกต์นี้ปิด aggregate ของ PostgREST** (`db-aggregates-enabled` ค่าตั้งต้น = ปิด) —
+ *    ยิงจริง 24/09: `count()` · `n:count()` · `totalTax.sum()` · `order_items(count())` ได้
+ *    400 PGRST123 ทั้ง query ทุกตัว ⇒ ชิ้นแบบนี้ต้อง **แดง** ไม่ใช่ข้าม (รอบแรกของงานนี้ข้าม
+ *    แล้วเขียนคอมเมนต์ว่า "query ถูก" — ผิด) · วันไหนเปิด aggregate ที่ Supabase ค่อยมาแก้กฎนี้
+ *    (รีโปมีรูปนี้ 0 จุดวันนี้) */
+const EMBED_PIECE = /^\s*(\.\.\.)?\s*(?:"?([A-Za-z_]\w*)"?\s*:\s*)?"?([A-Za-z_]\w*)"?((?:\s*!\s*[A-Za-z_]\w*)*)\s*\(([\s\S]*)\)\s*$/;
+const AGGREGATE_PIECE = /^\s*(?:"?[A-Za-z_]\w*"?\s*:\s*)?(?:"?([A-Za-z_]\w*)"?\s*\.\s*)?(?:count|sum|avg|min|max)\s*\(\s*\)\s*(?:::\s*\w+)?\s*$/;
+/** `!inner` / `!left` = ชนิดของ join ไม่ใช่ชื่อ FK — ที่เหลือหลัง `!` คือ hint */
+const JOIN_MODIFIERS = new Set(['inner', 'left']);
+const shortPiece = (s) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > 60 ? `${t.slice(0, 57)}…` : t; };
+
+/** แยกข้อความ select ชั้นเดียว: คอลัมน์ · embed (ข้างในยังไม่แตะ) · ชิ้นที่อ่านไม่ออก
+ *  @returns { columns: string[], embeds: Embed[], broken: string[], items: number }
+ *  Embed = { piece, alias, target, spread, join, hints, inner } — PostgREST ใช้ `hints[0]` ตัวเดียว
+ *  `items` = จำนวนชิ้น (ไม่ซ้ำ ไม่นับชิ้นว่าง) ของชั้นนี้ — กฎ `count` เปล่า ๆ ต้องรู้ว่ามันอยู่คนเดียวไหม */
+export function parseSelect(text) {
+  const { pieces, unbalanced } = selectPieces(text);
+  const columns = [];
+  const embeds = [];
+  const broken = [];
+  // ⚠️ นับแบบไม่ซ้ำ — ternary แกะค่าคงที่ตัวเดียวกันทั้งสองขา ⇒ `count` ขาละตัวยังนับเป็นหนึ่งชิ้น
+  const items = new Set(pieces.map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean)).size;
+  // วงเล็บไม่ครบคู่ = ตัดชิ้นผิดตั้งแต่จุดนั้น ⇒ รายงานบรรทัดเดียวพอ ไม่ต้องไล่บ่นทีละชิ้นที่พังตามกัน
+  //   (รายการ ⚠ ที่ยาวเกินจริงทำให้คนเลิกอ่าน — บทเรียนเดียวกับ `buildCols(u)` ข้างบน)
+  if (unbalanced) broken.push(`\`${shortPiece(text)}\` — วงเล็บของ embed ไม่ครบคู่ ตัดชิ้นไม่ได้ ชื่อหลังจุดนั้นไม่มีใครตรวจ`);
+  for (const piece of pieces) {
+    if (!/[()]/.test(piece)) {
+      const c = columnName(piece);
+      if (c?.broken && !unbalanced) broken.push(c.broken);
+      else if (c?.name) columns.push(c.name);
+      continue;
     }
+    const agg = AGGREGATE_PIECE.exec(piece);
+    if (agg) {
+      broken.push(`\`${shortPiece(piece)}\` — aggregate ของ PostgREST ถูกปิดบนโปรเจกต์นี้ ⇒ ฐานตอบ PGRST123 ทั้ง query`);
+      if (agg[1]) columns.push(agg[1]); // `amount.sum()` — `amount` ยังเป็นคอลัมน์ของตารางนี้ ผิดก็ต้องแดงอีกบรรทัด
+      continue;
+    }
+    const e = EMBED_PIECE.exec(piece);
+    if (!e) {
+      // ⚠️ ห้ามข้ามเงียบ — ของเดิมกลืนชิ้นแบบนี้ด้วยกฎ "อักขระแปลก = ข้าม" (ดูหัวบล็อก)
+      if (!unbalanced) broken.push(`\`${shortPiece(piece)}\` — มีวงเล็บแต่อ่านเป็น embed ไม่ออก`);
+      continue;
+    }
+    const mods = e[4].split('!').map((m) => m.trim()).filter(Boolean);
+    embeds.push({
+      piece: piece.trim(),
+      alias: e[2] || null,
+      target: e[3],
+      spread: Boolean(e[1]),
+      join: mods.find((m) => JOIN_MODIFIERS.has(m)) || null,
+      hints: mods.filter((m) => !JOIN_MODIFIERS.has(m)),
+      inner: e[5],
+    });
+  }
+  return { columns, embeds, broken, items };
+}
+
+/** ชื่อคอลัมน์ชั้นบนสุดที่อ่านได้จากข้อความของ select (embed ไม่รวม — ตรวจแยกที่ `checkSelectText`) */
+export function columnNamesOf(text) {
+  return parseSelect(text).columns;
+}
+
+/** สคีมาจาก `definitions` ของ OpenAPI ที่ PostgREST คืนมา — ตาราง + วิวใน schema ที่เปิดไว้
+ *  FK อ่านจากคำอธิบายคอลัมน์ `<fk table='customers' column='id'/>` ที่ PostgREST เขียนให้เอง
+ *  (ใช้แปล embed แบบ "คอลัมน์ FK เป็นปลายทาง" `customer:customerId(name)`)
+ *  ⚠️ สิ่งที่ spec นี้ **ไม่มี**: ชื่อ constraint ของ FK · computed relationship (ฟังก์ชัน) ·
+ *     ตารางนอก schema ที่เปิด ⇒ embed ที่ชี้ไปของพวกนี้แกะไม่ได้ และต้องถูกรายงาน ไม่ใช่ข้าม */
+export function schemaFromDefinitions(definitions = {}) {
+  const columns = new Map();
+  const fks = new Map();
+  for (const [table, def] of Object.entries(definitions)) {
+    columns.set(table, new Set(Object.keys(def.properties || {})));
+    const list = [];
+    for (const [col, prop] of Object.entries(def.properties || {})) {
+      const fk = /<fk table='([^']+)' column='([^']+)'\/>/.exec(prop?.description || '');
+      if (fk) list.push({ column: col, target: fk[1], targetColumn: fk[2] });
+    }
+    fks.set(table, list);
+  }
+  return {
+    columnsOf: (table) => columns.get(table) || null,
+    fkTargetOf: (table, column) => fks.get(table)?.find((f) => f.column === column)?.target || null,
+    /** FK ทุกเส้นที่ตารางนี้ถือ — `{ column, target, targetColumn }` (ใช้พิสูจน์ว่า embed มีเส้นเชื่อมจริง) */
+    fksOf: (table) => fks.get(table) || [],
+  };
+}
+
+/* ── เส้นเชื่อมระหว่างตารางแม่กับ embed (PGRST200 / PGRST201) ──────────────────────
+ *
+ * 🐞 รอบแรกของงานนี้ดูแค่ว่า "ชื่อปลายทางเป็นตาราง" ⇒ `quotations → formulas(id)` (ไม่มี FK)
+ *    กับ `quotations → document_signature_evidence(id)` (มี FK 3 เส้น) ผ่านเขียว และถูกนับว่า
+ *    "ตรวจแล้ว" ทั้งที่ฐานตอบ PGRST200 / PGRST201 **ทั้ง query** — จอว่างแบบเดียวกับ 42703
+ *    ข้อมูลที่ต้องใช้อยู่ในมือตั้งแต่แรก: OpenAPI เขียน `<fk table=… column=…/>` ให้ทุกคอลัมน์ FK
+ *
+ * กติกาที่ยิงยืนยันกับฐานจริงแล้ว (24/09 · GET limit=0):
+ *   · นับ FK ตรงทั้งสองทิศ (แม่ถือ FK ไปปลายทาง + ปลายทางถือ FK กลับมาที่แม่) · 0 เส้น = PGRST200 ·
+ *     เกิน 1 เส้นโดยไม่มี hint = PGRST201
+ *   · self-reference นับเส้นละครั้ง — `quotations → quotations(id)` (FK เดียว) 200 ·
+ *     `sales_orders → sales_orders(id)` (revisedFromId + supersededById) PGRST201
+ *   · hint ตรงกับเส้นเมื่อเป็น คอลัมน์ FK · คอลัมน์ที่ถูกอ้าง (`!id` ตรงทุกเส้นที่ชี้ `id` ⇒ PGRST201) ·
+ *     หรือชื่อ constraint · PostgREST ใช้ hint **ตัวแรก** ตัวเดียว (`!dealId!title` 200 · `!title!dealId` PGRST200)
+ *   · hint ที่เป็นคอลัมน์ของสองตารางนี้แต่ไม่ใช่เส้นเชื่อม (`!title` · `!customerId`) = PGRST200
+ * ⚠️ ชื่อ constraint: OpenAPI ไม่มี ⇒ เทียบได้แค่ชื่อตั้งต้นของ Postgres `<ตาราง>_<คอลัมน์>_fkey`
+ *    ชื่อที่ตั้งเอง (หรือชื่อเก่าที่ค้างหลัง rename คอลัมน์ — รีโปนี้เคย rename askId → requestId)
+ *    **พิสูจน์ไม่ได้ทั้งถูกและผิด** ⇒ ไม่แดง แต่ต้องนับขึ้นบรรทัดสรุปทุกรอบ (`hintsUnverifiable`)
+ *    ห้ามเดาแบบไม่สนตัวพิมพ์: constraint ที่ตั้งชื่อไม่ใส่ `"…"` ถูก Postgres พับเป็นตัวเล็กจริง
+ * ⚠️ many-to-many ผ่านตารางกลาง / computed relationship — OpenAPI ไม่บอก ⇒ ออกมาเป็น "0 เส้น" แล้ว
+ *    แดง (วันนี้ฐานไม่มีตารางกลางที่ FK สองตัวอยู่ใน PK เลย และรีโปไม่มี embed แบบนี้) · ถ้าวันหนึ่ง
+ *    แดงเพราะเรื่องนี้ ให้สอนด่านรู้จักตารางกลาง ไม่ใช่ข้ามเส้นนั้น */
+const defaultFkName = (l) => `${l.owner}_${l.column}_fkey`;
+
+/** FK ตรงระหว่างสองตาราง ทั้งสองทิศ — `{ owner, column, target, targetColumn }` */
+function linksBetween(schema, parent, target) {
+  const links = schema.fksOf(parent).filter((f) => f.target === target).map((f) => ({ owner: parent, ...f }));
+  if (target !== parent) {
+    for (const f of schema.fksOf(target)) if (f.target === parent) links.push({ owner: target, ...f });
+  }
+  return links;
+}
+
+/** ตัดสินเส้นเชื่อมของ embed หนึ่งก้อน
+ *  @returns { why } = ฐานจะไม่รับ/พิสูจน์ไม่ได้ (รายงาน) · { hint: 'checked'|'unverifiable'|null } = ผ่าน */
+function linkVerdict(schema, parent, target, hint) {
+  const links = linksBetween(schema, parent, target);
+  const list = (ls) => ls.map((l) => `${l.owner}.${l.column}`).join(' · ');
+  if (!links.length) {
+    return {
+      why: `ไม่มี FK เชื่อม ${parent} ↔ ${target} ในสคีมา ⇒ ฐานตอบ PGRST200 ทั้ง query`
+        + ' (ถ้าตั้งใจเชื่อมผ่านตารางกลาง many-to-many หรือ computed relationship — ด่านยังไม่รู้จัก ต้องสอนเพิ่ม)',
+    };
+  }
+  if (!hint) {
+    if (links.length === 1) return { hint: null };
+    return { why: `${parent} ↔ ${target} มี FK ${links.length} เส้น (${list(links)}) ⇒ ฐานตอบ PGRST201 ทั้ง query — ใส่ \`!คอลัมน์FK\` เลือกเส้น` };
+  }
+  const matched = links.filter((l) => hint === l.column || hint === l.targetColumn || hint === defaultFkName(l));
+  if (matched.length === 1) return { hint: 'checked' };
+  if (matched.length > 1) return { why: `\`!${hint}\` ยังตรงกับ FK ${matched.length} เส้น (${list(matched)}) ⇒ ฐานตอบ PGRST201 — ใช้ชื่อคอลัมน์ FK แทน` };
+  if (schema.columnsOf(parent)?.has(hint) || schema.columnsOf(target)?.has(hint)) {
+    return { why: `\`!${hint}\` เป็นคอลัมน์ที่ไม่ใช่ FK ระหว่าง ${parent} ↔ ${target} (เส้นที่มี: ${list(links)}) ⇒ ฐานตอบ PGRST200 ทั้ง query` };
+  }
+  return { hint: 'unverifiable' };
+}
+
+/**
+ * ตรวจข้อความ select หนึ่งจุดกับสคีมา — ชั้นบนสุดกับ `table` แล้วไล่ลงทุก embed ทุกชั้น
+ * โดยเทียบคอลัมน์ข้างในกับ **ตารางปลายทางของ embed** (ไม่ใช่ alias และไม่ใช่ตารางแม่)
+ *
+ * ตารางปลายทาง = ชื่อหลัง `:` ก่อน `!`/`(` ถ้าเป็นตาราง/วิวในสคีมา · ถ้าไม่ใช่แต่เป็นคอลัมน์
+ * FK ของตารางแม่ (`customer:customerId(name)`) ก็ตาม FK ไป · นอกนั้น **แกะไม่ได้ = รายงาน**
+ * แล้วต้องมี FK เชื่อมแม่กับปลายทางแบบไม่กำกวม (`linkVerdict` ข้างบน) — ไม่งั้นก็รายงาน
+ *
+ * ⚠️ `!hint` ไม่ใช่คอลัมน์ของตารางปลายทาง — เป็นตัวเลือกเส้น FK · ตรวจกับเส้นที่มีจริงได้เมื่อเป็น
+ *    ชื่อคอลัมน์หรือชื่อ constraint ตั้งต้น (`hintsChecked`) · ชื่อ constraint ตั้งเองพิสูจน์ไม่ได้
+ *    ⇒ ไม่แดงแต่ **นับไว้** (`hintsUnverifiable`)
+ * ⚠️ `count` เปล่า ๆ (หรือ `n:count`) = จำนวนแถวแบบเก่าของ PostgREST ไม่ใช่คอลัมน์ — ใช้ได้
+ *    **เฉพาะเมื่ออยู่คนเดียวในชั้นนั้น** ทั้งชั้นบนสุดและใน embed (ยิงจริง 24/09:
+ *    `quotations?select=count` 200 · `order_items(count)` 200 · แต่ `id,count` · `*,count` ·
+ *    `order_items(id,count)` · `count,deal:sales_deals(id)` ได้ 400 42803 ทั้ง query)
+ *    ⚠️ ternary ที่ขาหนึ่งเป็น `count` เดี่ยว ๆ จะถูกรวมกับอีกขาแล้วแดงผิด (รีโปไม่มีรูปนี้วันนี้)
+ *
+ * @param schema `schemaFromDefinitions(…)` — `{ columnsOf, fkTargetOf, fksOf }`
+ * @returns { missing: [{ table, name, via }], unresolved: [{ via, why }],
+ *            embeds, names, hintsChecked, hintsUnverifiable } — `via` = เส้นทาง embed (ว่าง = ชั้นบนสุด)
+ *            `embeds` = ก้อนที่ผ่านครบ (ปลายทาง + เส้นเชื่อม) · ก้อนที่ติดเส้นเชื่อมยังถูกไล่คอลัมน์ข้างใน
+ */
+export function checkSelectText(text, table, schema, via = '') {
+  const out = { missing: [], unresolved: [], embeds: 0, names: 0, hintsChecked: 0, hintsUnverifiable: 0 };
+  const { columns, embeds, broken, items } = parseSelect(text);
+  for (const why of broken) out.unresolved.push({ via, why });
+
+  const cols = schema.columnsOf(table) || new Set();
+  // ⚠️ นับชื่อซ้ำครั้งเดียวต่อชั้น — ternary แกะค่าคงที่ตัวเดียวกันทั้งสองขา (ดู check-select-columns)
+  for (const name of new Set(columns)) {
+    if (name === 'count' && !cols.has('count')) {
+      if (items > 1) {
+        out.unresolved.push({
+          via,
+          why: `\`count\` ปนกับชิ้นอื่นใน select ชั้นเดียวกัน (${shortPiece(text)}) ⇒ ฐานตอบ 42803 (GROUP BY) ทั้ง query`
+            + ' — `count` เปล่า ๆ ใช้ได้เฉพาะตอนอยู่คนเดียว เช่น `items:order_items(count)`',
+        });
+      }
+      continue;
+    }
+    if (via) out.names += 1;
+    if (!cols.has(name)) out.missing.push({ table, name, via });
+  }
+
+  const seen = new Set();
+  for (const e of embeds) {
+    if (seen.has(e.piece)) continue; // ขาทั้งสองของ ternary ให้ embed ชิ้นเดิมซ้ำ — ตรวจครั้งเดียว
+    seen.add(e.piece);
+    const label = `${e.spread ? '...' : ''}${e.alias ? `${e.alias}:` : ''}${e.target}${e.hints.concat(e.join || []).map((h) => `!${h}`).join('')}`;
+    const path = via ? `${via} › ${label}` : label;
+    let target = schema.columnsOf(e.target) ? e.target : null;
+    // `customer:customerId(...)` — คอลัมน์ FK ของแม่เป็นปลายทาง ⇒ เส้นเชื่อมคือคอลัมน์นั้นเอง ไม่ต้องพิสูจน์ซ้ำ
+    const viaFkColumn = !target && Boolean(schema.fkTargetOf(table, e.target));
+    if (viaFkColumn) target = schema.fkTargetOf(table, e.target);
+    if (!target || !schema.columnsOf(target)) {
+      out.unresolved.push({
+        via: path,
+        why: `\`${e.target}\` ไม่ใช่ตาราง/วิวในสคีมาที่ด่านโหลด และไม่ใช่คอลัมน์ FK ของ ${table}`
+          + ' — พิมพ์ผิด (ฐานตอบ PGRST200) หรือเป็นชื่อ constraint/computed relationship ที่ OpenAPI ไม่บอก'
+          + ' (PostgREST รับ `ชื่อ_fkey(...)` เป็นปลายทางได้ แต่ด่านตรวจไม่ได้ ⇒ เขียน `ตาราง!ชื่อ_fkey(...)` แทน)'
+          + ` ⇒ คอลัมน์ข้างใน (${shortPiece(e.inner) || 'ว่าง'}) ไม่มีใครตรวจ`,
+      });
+      continue;
+    }
+    const link = viaFkColumn ? { hint: null } : linkVerdict(schema, table, target, e.hints[0]);
+    if (link.why) out.unresolved.push({ via: path, why: link.why });
+    else {
+      out.embeds += 1;
+      if (link.hint === 'checked') out.hintsChecked += 1;
+      if (link.hint === 'unverifiable') out.hintsUnverifiable += 1;
+    }
+    // เส้นเชื่อมพังก็ยังไล่คอลัมน์ข้างในต่อ — ตารางปลายทางรู้แล้ว ชื่อผิดในนั้นต้องขึ้นมาพร้อมกันในรอบเดียว
+    const inner = checkSelectText(e.inner, target, schema, path);
+    out.missing.push(...inner.missing);
+    out.unresolved.push(...inner.unresolved);
+    out.embeds += inner.embeds;
+    out.names += inner.names;
+    out.hintsChecked += inner.hintsChecked;
+    out.hintsUnverifiable += inner.hintsUnverifiable;
   }
   return out;
 }
