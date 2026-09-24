@@ -11,7 +11,8 @@ import {
 } from '@/lib/forceDelete';
 import { loadMovedOutOfOrders } from '@/lib/sales/salesOrderInstallmentsStore';
 import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
-import { canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
+import { canCancelQuotation, canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
+import { quotationSignatureEvidence } from '@/lib/sales/quotationCancelRepo';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import { isLiveSalesOrder } from '@/lib/sales/handoffQueue';
@@ -140,12 +141,28 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     try { proposerSignature = await loadProposerSignature(supabase, filledQuote); }
     catch { proposerSignature = null; }
   }
+  /* ⭐ หลักฐานลายเซ็น (นิยามเดียวกับด่าน DELETE — quotationSignatureEvidence) + ธงยกเลิกใบ (มติ 24/09)
+     ⚠️ ธง `canCancel` คิดที่นี่ด้วย `canCancelQuotation` ตัวเดียวกับ POST /cancel — จอไม่คิดเอง
+        (บทเรียน IS-26080011) · ขอบเขตแก้ของทีม (`inSalesEditScope`) จอไม่รู้ จึงต้องคูณที่ server
+     ⚠️ อ่านหลักฐานไม่ขึ้น = `null` (ไม่รู้) ไม่ใช่ false — จอคงปุ่มลบไว้ตามเดิม ส่วนด่านจริงของทั้งลบและ
+        ยกเลิกยังตรวจซ้ำที่ server ทุกครั้ง ⇒ หน้าไม่ล้มทั้งหน้าเพราะธงตัวเดียว */
+  const evidence = await quotationSignatureEvidence(supabase, filledQuote);
+  if (evidence.error) console.error('[quotation] ตรวจหลักฐานลายเซ็นไม่สำเร็จ:', evidence.error.message);
+  const hasSignatureEvidence = evidence.error ? null : evidence.hasEvidence;
+  const canApprove = canApproveQuotation(user, filledQuote.deal);
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
   return ok({
     ...filledQuote,
     revisionHistory: revisionHistory || [],
     meId: user.id,
-    canApprove: canApproveQuotation(user, filledQuote.deal),
+    canApprove,
+    hasSignatureEvidence,
+    canCancel: canCancelQuotation(filledQuote, {
+      approver: canApprove,
+      canEdit: canEditSalesPlanning(user),
+      inScope: inSalesEditScope(user, filledQuote.deal),
+      hasSignatureEvidence: Boolean(hasSignatureEvidence),
+    }),
     proposerSignature,
   });
 });
@@ -508,17 +525,24 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // "ยกเลิก" ไม่ให้ raw FK error หลุด — บล็อกทั้ง path ปกติและ ?force=1 (break-glass
   // ก็ทำลายหลักฐานไม่ได้). เช็ก evidence table ตรง ๆ ไม่พึ่ง signatureEvidenceId บนใบ
   // เพราะ pointer ถูกล้างเมื่อออกจากสถานะ approved แต่แถวหลักฐานยังอยู่.
-  const { data: evidence, error: evidenceError } = await supabase
-    .from('document_signature_evidence')
-    .select('id')
-    .eq('quotationId', id)
-    .limit(1)
-    .maybeSingle();
-  if (evidenceError) return fail(evidenceError.message, 500);
-  const hasEvidence = Boolean(evidence?.id || before.signatureEvidenceId);
+  // ⭐ นิยามเดียวกับธงของ GET และด่านยกเลิกใบ (quotationSignatureEvidence — มติ 24/09 ยกออกมาเป็นของกลาง)
+  const evidence = await quotationSignatureEvidence(supabase, before);
+  if (evidence.error) return fail(evidence.error.message, 500);
+  const hasEvidence = evidence.hasEvidence;
   // path ปกติยังห้ามลบเด็ดขาด (แปลง FK RESTRICT เป็นข้อความแนะนำ ไม่ให้ raw error หลุด);
   // ?force=1 ของผู้ดูแลระบบผ่านได้แล้ว (mig 0152 break-glass) — มติผู้ใช้ 2026-07-25
   if (hasEvidence && !force) {
+    /* ⭐ ผู้อนุมัติของใบที่ยังเดินอยู่มีทางทิ้งใบแล้ว = "ยกเลิกใบ" (มติ 24/09) — ชี้ไปทางนั้นแทนการชวน
+       ออก Rev. ซึ่งไม่ใช่สิ่งที่คนกดลบต้องการ · คนอื่นได้ข้อความเดิมทุกตัวอักษร */
+    const cancellable = canCancelQuotation(before, {
+      approver: canApproveQuotation(user, before.deal),
+      canEdit: true,
+      inScope: true,
+      hasSignatureEvidence: true,
+    });
+    if (cancellable) {
+      return fail('ลบถาวรไม่ได้: ใบเสนอราคานี้มีหลักฐานลายเซ็นและต้องเก็บเป็นหลักฐาน — ถ้าจะทิ้งใบนี้ให้ใช้ “ยกเลิกใบ” (ใบเปลี่ยนเป็นยกเลิกถาวร หลักฐานอยู่ครบ)', 409);
+    }
     return fail('ลบถาวรไม่ได้: ใบเสนอราคานี้มีหลักฐานลายเซ็นและต้องเก็บเป็นหลักฐาน — ออก Rev. แทน; ใบที่รับ (Won) แล้วให้เจ้าของดีลหรือ AE Supervisor ใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา', 409);
   }
 
