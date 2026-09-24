@@ -20,6 +20,30 @@
 //   · ของจริงที่หลุดออกไปทั้งสองรู: `orders.updatedAt` ใน `ORDER_SELECT_SLIM` (#1486)
 //     ⇒ `/api/orders?slim=1` ตาย 42703 ทั้งเส้น คิวใบยื่นของหน้า /tax ว่างอยู่ 26 วัน
 //
+// 2026-09-24 — ปิดจุดบอด embed: เดิมคอลัมน์ใน `alias:table(...)` ถูก **ตัดทิ้งแล้วแค่นับ**
+//   (148 ชื่อ จาก 22 จุด) ⇒ ชื่อผิดใน `deal:sales_deals(${DEAL_COLUMNS})` = 42703 ทั้ง query
+//   แต่ด่านเขียว · ตอนนี้ไล่ทุก embed ทุกชั้นแล้วเทียบกับ **ตารางปลายทาง** ของมัน
+//   (`checkSelectText` ใน scripts/selectExpression.mjs) · ตารางปลายทางแกะไม่ได้ = แดง
+//   · รอบรีวิววันเดียวกันจับได้อีกสี่รูที่เขียวทั้งที่ฐานตอบ error ทั้ง query — ปิดแล้วทั้งหมด:
+//     embed ที่ไม่มี FK เชื่อม (PGRST200) / มีหลายเส้น (PGRST201) · ตัวหน้า JSON path
+//     (`metdata->>x` = 42703) · aggregate `count()`/`col.sum()` (โปรเจกต์นี้ปิด = PGRST123) ·
+//     `count` ที่ปนกับชิ้นอื่น (42803) · ตารางแม่ที่ไม่อยู่ในสคีมา (PGRST205) เคยแค่ถูกพิมพ์ว่า "ข้าม"
+//   · ตรวจกับฐานจริง 24/09 (GET limit=0): embed ทุกแบบในรีโปตอบ 200 (ไม่มีจอไหนพังอยู่) ·
+//     ทุกกฎข้างบนยิงยืนยันทั้งขาถูก (200) และขาผิด (รหัส error ตามที่เขียน) — เคสอยู่ในคอมเมนต์
+//     ของแต่ละกฎใน selectExpression.mjs และในเทสต์ src/lib/selectExpression.test.mjs
+//
+// ⚠️ **สิ่งที่ด่านนี้ยังมองไม่เห็น** (ข้อที่มีตัวเลข พิมพ์ท้ายผลทุกรอบ):
+//   · `supabase.from(<ตัวแปร>)` — ไม่รู้ว่าตารางไหน จึงไม่รู้จะเทียบกับอะไร
+//   · `.rpc()` — ชื่อฟังก์ชันกับอาร์กิวเมนต์ ไม่ได้ตรวจ
+//   · `!hint` ที่เป็นชื่อ constraint ตั้งเอง — OpenAPI ไม่มีชื่อ constraint ⇒ เทียบได้แค่ชื่อตั้งต้น
+//     `<ตาราง>_<คอลัมน์>_fkey` กับชื่อคอลัมน์ · ชื่ออื่น (รวมที่พิมพ์ผิด) ผ่านแต่ถูกนับว่า "ตรวจไม่ได้"
+//   · many-to-many ผ่านตารางกลาง · computed relationship · ชื่อ constraint เป็นปลายทาง
+//     `ชื่อ_fkey(...)` — OpenAPI ไม่บอก ⇒ ด่าน **แดง** ทั้งที่ฐานอาจรับ (ทางเลี่ยงของตัวหลัง:
+//     `ตาราง!ชื่อ_fkey(...)`) · วันนี้รีโปมี 0 จุดทั้งสามแบบ
+//   · ternary ที่ขาหนึ่งเป็น `count` เดี่ยว ๆ — ตัวแกะรวมสองขาเป็นข้อความเดียว ⇒ แดงผิด (0 จุด)
+//   · คอลัมน์ในตัวกรอง/เรียงลำดับ `.eq('col')` · `.order('col')` · `.or('…')` — พิมพ์ผิดก็
+//     42703 ทั้ง query เหมือนกัน แต่ด่านอ่านแค่ `.select()` กับ payload ของการเขียน
+//
 // วิธีใช้:  node scripts/check-select-columns.mjs
 //   ต้องมี .env.local (SUPABASE_URL + SERVICE_ROLE_KEY) — อ่าน schema จาก OpenAPI
 //   spec ของ PostgREST ซึ่งสะท้อนฐานจริง ไม่ใช่ไฟล์ migration ที่อาจยังไม่ได้รัน
@@ -34,7 +58,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchSchema } from './schemaFetch.mjs';
-import { columnNamesOf, createSelectResolver, embeddedNames, firstArg } from './selectExpression.mjs';
+import { checkSelectText, createSelectResolver, firstArg, schemaFromDefinitions } from './selectExpression.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
@@ -67,6 +91,8 @@ const spec = await fetchSchema({ url, key, label: 'อ่านสคีมา�
 const tables = Object.fromEntries(
   Object.entries(spec.definitions || {}).map(([name, def]) => [name, new Set(Object.keys(def.properties || {}))]),
 );
+// ตัวเดียวกันในรูปที่ตัวไล่ embed ใช้ — มี FK ของแต่ละคอลัมน์ด้วย (embed แบบ `alias:fkColumn(...)`)
+const schema = schemaFromDefinitions(spec.definitions);
 
 const files = [];
 (function walk(dir) {
@@ -99,9 +125,12 @@ const resolveSelect = createSelectResolver({
 });
 
 const problems = [];
-const skippedTables = new Set();
 const unresolved = [];
 let resolvedConstants = 0;
+// `unresolved` มีหลายชนิด ⇒ แยกนับให้บรรทัดสรุปไม่ปนกัน (รอบแรกนับชิ้นพังชั้นบนสุดรวมเป็น "embed")
+let unresolvedConstants = 0;
+let unresolvedTables = 0;
+let unresolvedPieces = 0;
 // นับรูปที่ด่านนี้ยังมองไม่เห็นเลย — ตัวเลขจริงดีกว่าคำว่า "ยังมีบ้าง" เพราะบอกได้ว่าคุ้มจะไล่ต่อไหม
 // ⚠️ ต้องนับเฉพาะ `supabase.from(<ตัวแปร>)` เท่านั้น: `Array.from` · `Buffer.from` ·
 //    `Readable.from` เป็น built-in ของ JS ที่ไม่เคยแตะ PostgREST และ `storage.from(<ถัง>)`
@@ -110,14 +139,41 @@ let resolvedConstants = 0;
 // จับ "ตัวที่อยู่ติดหน้า `.from(`" — `supabase.storage.from(x)` ต้องได้ `storage` ไม่ใช่ `supabase`
 const FROM_IDENT = /([A-Za-z_$][\w$]*)\s*\.\s*from\(\s*(?!['"`])[A-Za-z_$]/g;
 const JS_BUILTIN_FROM = new Set(['Array', 'Buffer', 'Readable', 'Uint8Array', 'Object']);
+
+/** ชื่อที่อยู่ติดหน้า `.from(` ที่ตำแหน่ง dot (`supabase` · `storage` · `Array`) — null = ไม่ใช่ชื่อ (`x().from(`) */
+function receiverBefore(src, dot) {
+  const m = /([A-Za-z_$][\w$]*)\s*$/.exec(src.slice(Math.max(0, dot - 80), dot));
+  return m ? m[1] : null;
+}
+/** `.from(` ของ **query ถัดไป** — ข้าม `Array.from(` · `Buffer.from(` ที่อยู่กลาง chain
+ *  🐞 ของเดิมใช้ `indexOf('.from(')` ดิบ ⇒ `.update({ tags: Array.from(set) }).select('…')`
+ *     ถูกนับว่า "query ถัดไปมาก่อน select" แล้วทั้ง select (รวม embed) ไม่ถูกอ่านเลยแบบเงียบ ๆ
+ *     (รีโปมี 0 จุดวันนี้ — แต่รูปเดียวกับที่ FROM_IDENT ข้างบนเคยพลาดมาแล้ว) */
+function nextQueryFrom(src, from, until = src.length) {
+  for (let i = src.indexOf('.from(', from); i >= 0 && i < until; i = src.indexOf('.from(', i + 1)) {
+    if (!JS_BUILTIN_FROM.has(receiverBefore(src, i))) return i;
+  }
+  return -1;
+}
+/** `.from('<ชื่อ>')` ที่ไม่ใช่ตารางของ PostgREST — ถังไฟล์ (`storage.from('b')`) กับ built-in ของ JS */
+const notATable = (src, dot) => {
+  const r = receiverBefore(src, dot);
+  return r === 'storage' || JS_BUILTIN_FROM.has(r);
+};
 let fromVariable = 0;
 let storageBuckets = 0;
 let rpcCalls = 0;
 // `.select()` เปล่า = ทั้งแถว ไม่มีชื่อให้ตรวจ — ไม่ใช่จุดบอด แต่ต้องมีตัวเลขเหมือนรูปอื่น
 let selectAll = 0;
-// ชื่อที่ถูกตัดทิ้งเพราะอยู่ใน embed `alias:table(...)` — คนละตาราง ด่านไม่ได้ตรวจสักชื่อ
-let embeddedDropped = 0;
-const embeddedSites = new Set();
+// embed `alias:table(...)` — ตรวจกับตารางปลายทางแล้ว (2026-09-24) · ตัวเลขพิมพ์ในสรุปทุกรอบ
+// เพราะบรรทัดเดิม "ตัดทิ้ง 148 ชื่อ" คือสิ่งเดียวที่บอกว่าชุดนั้นไม่มีใครตรวจ — แทนด้วยตัวเลข
+// ที่ตรวจจริง ไม่ใช่ลบทิ้งเฉย ๆ
+let embedsChecked = 0;
+let embedNamesChecked = 0;
+let embedHintsChecked = 0;
+let embedHintsUnverifiable = 0;
+let embedUnresolved = 0;
+const embedSites = new Set();
 
 for (const file of files) {
   const src = readSource(file);
@@ -139,14 +195,21 @@ for (const file of files) {
   const re = /\.from\(\s*['"`](\w+)['"`]\s*\)/g;
   let m;
   while ((m = re.exec(src)) !== null) {
+    if (notATable(src, m.index)) continue; // `storage.from('ถัง')` · `Array.from('abc')` — ไม่มีคอลัมน์ให้ตรวจ
     const table = m[1];
     const after = m.index + m[0].length;
-    const nextFrom = src.indexOf('.from(', after);
     const selectAt = src.indexOf('.select(', after);
     if (selectAt < 0) continue;
-    if (nextFrom >= 0 && nextFrom < selectAt) continue; // query ถัดไปมาก่อน = อันนี้ไม่มี select
-    if (!tables[table]) { skippedTables.add(table); continue; }
+    if (nextQueryFrom(src, after, selectAt) >= 0) continue; // query ถัดไปมาก่อน = อันนี้ไม่มี select
     const line = src.slice(0, m.index).split(/\r?\n/).length;
+    // 🐞 ของเดิม: ตารางที่ไม่อยู่ในสคีมาถูก "ข้าม" แล้วพิมพ์ในวงเล็บท้ายรันที่เขียว ⇒ ทั้ง select
+    //    (รวม embed) ไม่มีใครตรวจ ทั้งที่ฐานตอบ PGRST205 ทั้ง query (ยิงจริง 24/09) — รูปเดียวกับ
+    //    "เห็นแล้วไม่พูด" ที่หัวไฟล์นี้เล่าไว้ ⇒ เข้าเพดานเดียวกับของที่แกะไม่ได้
+    if (!tables[table]) {
+      unresolved.push({ file: relSrc(file), line, table, why: `ตาราง \`${table}\` ไม่อยู่ในสคีมาที่ด่านโหลด ⇒ ฐานตอบ PGRST205 ทั้ง query · ทั้ง select นี้ (รวม embed) ไม่มีใครตรวจ` });
+      unresolvedTables += 1;
+      continue;
+    }
     const arg = firstArg(src, selectAt + '.select('.length - 1);
     // ⚠️ อ่าน argument ไม่ออก **ต้องดัง** — `continue` เงียบ ๆ ตรงนี้คือรูปเดียวกับบั๊กที่
     //    ทำให้ด่านนี้ต้องถูกรื้อ: จุดที่ด่านเห็นแล้ว อ่านไม่ออก แล้วไม่บอกใครสักคำ
@@ -159,18 +222,30 @@ for (const file of files) {
 
     const { text, blocked, viaName } = resolveSelect(expr, { file, src, at: m.index });
     if (viaName) {
-      if (blocked.length) unresolved.push({ file: relSrc(file), line, table, why: blocked.join(' · ') });
-      else resolvedConstants += 1;
+      if (blocked.length) {
+        unresolved.push({ file: relSrc(file), line, table, why: blocked.join(' · ') });
+        unresolvedConstants += 1;
+      } else resolvedConstants += 1;
     }
-    const dropped = embeddedNames(text).length;
-    if (dropped) { embeddedDropped += dropped; embeddedSites.add(`${relSrc(file)}:${line}`); }
-
     // ⚠️ นับชื่อซ้ำครั้งเดียวต่อจุด — `cond ? `${COLS}, x` : COLS` แกะค่าคงที่ตัวเดียวกัน
     //    ทั้งสองขา ⇒ ชื่อผิดชื่อเดียวเคยถูกรายงานสองครั้ง แล้วเลข "พบ N จุด" ก็เกินจริง
-    //    ซึ่งเป็นเลขที่คนใช้ตัดสินว่ารันที่แดงนี้หนักแค่ไหน
-    for (const name of new Set(columnNamesOf(text))) {
-      if (!tables[table].has(name)) problems.push({ file: relSrc(file), line, table, name });
+    //    ซึ่งเป็นเลขที่คนใช้ตัดสินว่ารันที่แดงนี้หนักแค่ไหน (ตัวไล่ embed ตัดซ้ำให้ทุกชั้นแล้ว)
+    // ⚠️ embed ต้องเทียบกับ **ตารางปลายทาง** ของมัน ไม่ใช่ `table` — เหตุผลเต็มอยู่หัว
+    //    `checkSelectText` ใน scripts/selectExpression.mjs
+    const r = checkSelectText(text, table, schema);
+    for (const p of r.missing) problems.push({ file: relSrc(file), line, table: p.table, name: p.name, via: p.via });
+    // embed ที่แกะตารางปลายทาง/เส้นเชื่อมไม่ได้ และชิ้นที่ฐานไม่รับ = เข้ารายการเดียวกับค่าคงที่
+    //    ที่แกะไม่ได้ และโดนเพดานเดียวกัน (0) — ห้ามแยกเป็นบรรทัดเตือนที่รันยังเขียว
+    for (const u of r.unresolved) {
+      unresolved.push({ file: relSrc(file), line, table, why: u.via ? `embed ${u.via} — ${u.why}` : u.why });
+      if (u.via) embedUnresolved += 1;
+      else unresolvedPieces += 1; // ชิ้นชั้นบนสุด (วงเล็บพัง · aggregate · อ่านไม่ออก) ไม่ใช่ embed
     }
+    embedsChecked += r.embeds;
+    embedNamesChecked += r.names;
+    embedHintsChecked += r.hintsChecked;
+    embedHintsUnverifiable += r.hintsUnverifiable;
+    if (r.embeds) embedSites.add(`${relSrc(file)}:${line}`);
   }
 }
 
@@ -240,10 +315,15 @@ for (const file of files) {
   const re = /\.from\(\s*['"`](\w+)['"`]\s*\)([\s\S]{0,200}?)\.(update|insert|upsert)\(\s*\[?\s*(\{|[A-Za-z_$][\w$]*)/g;
   let m;
   while ((m = re.exec(src)) !== null) {
-    const [, table, between, , head] = m;
-    if (between.includes('.from(')) continue;
-    if (!tables[table]) { skippedTables.add(table); continue; }
+    const [, table, between, op, head] = m;
+    if (notATable(src, m.index)) continue; // `storage.from('ถัง').update(path, file)` ไม่ใช่ตาราง
+    if (nextQueryFrom(between, 0) >= 0) continue; // `Array.from(` กลาง chain ไม่ใช่ query ใหม่
     const line = src.slice(0, m.index).split(/\r?\n/).length;
+    if (!tables[table]) { // เหตุผลเดียวกับรอบอ่าน — ตารางที่ไม่มีจริงห้ามแค่ "ข้าม"
+      unresolved.push({ file: relSrc(file), line, table, op, why: `ตาราง \`${table}\` ไม่อยู่ในสคีมาที่ด่านโหลด ⇒ ฐานตอบ PGRST205 ทั้งคำสั่ง · คีย์ที่เขียนไม่มีใครตรวจ` });
+      unresolvedTables += 1;
+      continue;
+    }
     const names = new Set();
     if (head === '{') {
       const open = m.index + m[0].length - 1;
@@ -265,24 +345,31 @@ for (const file of files) {
 
 /** รายชื่อที่แกะไม่ได้ — พิมพ์ก่อนเสมอ ทั้งตอนผ่านและตอนแดง เพราะอยู่เงียบ ๆ ไม่ได้อีกแล้ว */
 function reportUnresolved() {
-  console.log(`select ที่เขียนด้วยชื่อตัวแปร: แกะค่าได้ ${resolvedConstants} จุด · แกะไม่ได้ ${unresolved.length} จุด`);
   if (!unresolved.length) return;
+  console.log(`แกะไม่ได้/ฐานไม่รับ ${unresolved.length} รายการ (ค่าคงที่ ${unresolvedConstants} · ตาราง ${unresolvedTables}`
+    + ` · embed ${embedUnresolved} · ชิ้นใน select ${unresolvedPieces}):`);
   for (const u of unresolved) {
-    console.log(`  ⚠ src/${u.file}:${u.line}  ${u.table}.select(…) — ${u.why}`);
+    console.log(`  ⚠ src/${u.file}:${u.line}  ${u.table}.${u.op || 'select'}(…) — ${u.why}`);
   }
-  console.log('  ชื่อที่แกะไม่ได้ = ชุดคอลัมน์นั้นไม่มีใครตรวจ ต้องไล่ด้วยตาเมื่อแตะ query นั้น');
+  console.log('  ชื่อที่แกะไม่ได้ = ชุดคอลัมน์นั้นไม่มีใครตรวจ · ชิ้นที่ฐานไม่รับ = query นั้นพังทั้งก้อน');
 }
 
+console.log(`select ที่เขียนด้วยชื่อตัวแปร: แกะค่าได้ ${resolvedConstants} จุด · แกะไม่ได้ ${unresolvedConstants} จุด`);
+// ⚠️ "ตรวจครบ" = ปลายทางเป็นตารางจริง + มี FK เชื่อมแบบไม่กำกวม — ก้อนที่ติดเส้นเชื่อมไปอยู่ใน "ติดปัญหา"
+//    (รอบแรกนับก้อนที่ฐานตอบ PGRST200/201 ว่า "ตรวจแล้ว" ด้วย ⇒ ตัวเลขเคยสวยกว่าความจริง)
+console.log(`embed \`alias:table(...)\`: ตรวจครบ (ตารางปลายทาง + FK เชื่อม + คอลัมน์) ${embedsChecked} ก้อน`
+  + ` จาก ${embedSites.size} จุด · ชื่อคอลัมน์ในนั้น ${embedNamesChecked} ชื่อ · ติดปัญหา ${embedUnresolved} รายการ`
+  + ` · \`!hint\` ตรวจกับ FK แล้ว ${embedHintsChecked} ตัว · ชื่อ constraint ที่ตรวจไม่ได้ ${embedHintsUnverifiable} ตัว`
+  + ' (OpenAPI ไม่มีชื่อ constraint — เทียบได้แค่ชื่อคอลัมน์กับชื่อตั้งต้น `<ตาราง>_<คอลัมน์>_fkey`)');
 reportUnresolved();
-console.log(`ชื่อที่ตัดทิ้งเพราะอยู่ใน embed \`alias:table(...)\`: ${embeddedDropped} ชื่อ`
-  + ` จาก ${embeddedSites.size} จุด (คนละตาราง ด่านนี้ไม่ตรวจ — แม้จุดนั้นจะนับว่า "แกะค่าได้")`);
 console.log(`รูปที่ยังมองไม่เห็นเลย: supabase.from(<ตัวแปร>) ${fromVariable} จุด · .rpc() ${rpcCalls} จุด`
   + ` (ไม่นับ: storage.from(<ถัง>) ${storageBuckets} จุด = ถังไฟล์ ไม่มีคอลัมน์ · \`.select()\` ว่าง ${selectAll} จุด = ทั้งแถว)`);
 
 if (problems.length) {
   console.error(`พบคอลัมน์ที่ไม่มีจริงใน schema ${problems.length} จุด:`);
   for (const p of problems) {
-    console.error(`  ✗ src/${p.file}:${p.line}  ${p.table}.${p.name}${p.write ? '  (เขียน)' : ''}`);
+    const where = p.write ? '  (เขียน)' : p.via ? `  (ใน embed ${p.via})` : '';
+    console.error(`  ✗ src/${p.file}:${p.line}  ${p.table}.${p.name}${where}`);
   }
   console.error('\nอ่านผิด = PostgREST ตอบ 42703 ทั้ง query · ที่ไหนอ่าน `.data || []` จะกลายเป็น "ไม่มีข้อมูล" เงียบ ๆ');
   console.error('เขียนผิด = PGRST204 ทั้งคำสั่ง ⇒ ปุ่มนั้นกดไม่ผ่านเลย (หรือเงียบ ถ้าโค้ดกลืน error)');
@@ -298,18 +385,20 @@ if (problems.length) {
  * ตัวเลขจะไต่จาก 0 เป็น N โดยไม่มีอะไรแดง
  *
  * 2026-09-23 — ตั้งครั้งแรกที่ 0 ตอนเพิ่มตัวแกะค่าคงที่ (ทั้งรีโปแกะได้ครบ 65/65 จุด)
+ * 2026-09-24 — embed ที่แกะตารางปลายทางไม่ได้เข้าเพดานเดียวกัน (ทั้งรีโปแกะได้ครบ 58/58 ก้อน)
+ *   ⇒ ทางเคลียร์ของ embed คือเขียนชื่อตาราง/วิวจริงหลัง `:` (หรือคอลัมน์ FK ของตารางแม่)
+ *      ถ้าต้องใช้ชื่อ FK ให้ใส่เป็น `!hint` ตามหลังชื่อตาราง ไม่ใช่แทนชื่อตาราง
+ *   · วันเดียวกัน เส้นเชื่อม PGRST200/201 · aggregate · `count` ปน · ตารางแม่ที่ไม่มีจริง
+ *     เข้าเพดานเดียวกัน (ทั้งรีโป 0 รายการ) ⇒ ทางเคลียร์ของ PGRST201 คือ `!คอลัมน์FK`
  *
  * ⚠️ **ทางเคลียร์คือทำให้ชุดคอลัมน์นั้นอ่านออก ไม่ใช่ดันเพดานขึ้น** — ย้ายมันไปเป็น
  *    `const X = [...].join(', ')` ระดับโมดูล แล้วส่งชื่อนั้นเข้า `.select()` ตรง ๆ
  *    ชุดคอลัมน์ที่ประกอบตอนรัน (`buildCols(user)`) คือชุดที่ไม่มีใครตรวจได้เลยทั้งชีวิต */
 const UNRESOLVED_CAP = 0;
 if (unresolved.length > UNRESOLVED_CAP) {
-  console.error(`\nselect ที่แกะค่าไม่ได้ ${unresolved.length} จุด (เพดาน ${UNRESOLVED_CAP}) — ดูรายการ ⚠ ข้างบน`);
+  console.error(`\nselect/embed ที่แกะไม่ได้ ${unresolved.length} รายการ (เพดาน ${UNRESOLVED_CAP}) — ดูรายการ ⚠ ข้างบน`);
   console.error('ชุดคอลัมน์ที่แกะไม่ได้ = ไม่มีใครเทียบกับฐานให้เลย ⇒ พิมพ์ผิดเมื่อไรจอนั้นว่างเงียบ ๆ');
   process.exit(1);
 }
 
 console.log(`select/write column check ผ่าน — ตรวจ ${files.length} ไฟล์ เทียบกับ ${Object.keys(tables).length} ตารางบนฐานจริง`);
-if (skippedTables.size) {
-  console.log(`(ข้ามตารางที่ไม่อยู่ใน schema: ${[...skippedTables].join(', ')})`);
-}
