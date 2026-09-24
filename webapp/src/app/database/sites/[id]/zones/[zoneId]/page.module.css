@@ -57,6 +57,8 @@
 }
 
 .historyLink:hover { border-color: var(--text-3); }
+/* แถวที่ไม่ใช่ลิงก์ (คนดูเปิดใบส่งงานไม่ได้) — ไม่มีสัญญาณว่ากดได้ */
+.historyStatic:hover { border-color: var(--border); }
 
 .used {
   grid-column: 1 / -1;

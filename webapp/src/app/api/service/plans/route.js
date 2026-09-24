@@ -1,5 +1,5 @@
 // ── API รอบบริการ (mig 0188) ─────────────────────────────────────────────
-// GET  ?siteId= : รอบของไซต์
+// GET  ?siteId= : รอบของไซต์ (ระบุไซต์ = อ่านแบบทะเบียน — ดูด่านใน GET)
 // POST : สร้างรอบ + gen นัดล่วงหน้าตาม horizon (ค่าตั้งต้น 90 วัน)
 import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -8,18 +8,25 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { generateVisitsForPlan } from '@/lib/service/planGen';
 import { normalizePlanInput } from '@/lib/service/rounds';
-import { findSite, requireService } from '@/lib/service/sitesRepo';
+import { findSite, requireService, requireSite } from '@/lib/service/sitesRepo';
 import { loadPlans } from '@/lib/service/visitsRepo';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = withUser(async ({ user, supabase, req }) => {
-  const access = requireService({ user });
-  if (access.response) return access.response;
+  const url = new URL(req.url);
+  const siteId = url.searchParams.get('siteId');
+  /* ⭐ **รอบของไซต์เดียว = ส่วนหนึ่งของหน้าทะเบียนไซต์** (มติผู้ใช้ 2026-09-24: "ฐานข้อมูล ไซต์
+     เครื่อง เปิดให้ผู้ใช้ที่เข้าระบบฐานข้อมูลได้เห็นได้เลย") — หน้า `/database/sites/[id]` โหลดเส้นนี้
+     พร้อมตัวไซต์ ⇒ ด่านเดิม (ฝ่าย TS) ทำให้ทุกคนนอก TS เปิดหน้าไซต์แล้วเจอ Forbidden ทั้งหน้า
+     ⚠️ เปิดเฉพาะ **อ่านแบบระบุไซต์** — รายการรอบทั้งระบบ (ไม่ส่ง siteId) ยังเป็นงานจัดคิวของ TS */
   try {
-    const url = new URL(req.url);
+    const access = siteId
+      ? await requireSite({ user, supabase, id: siteId, registry: true })
+      : requireService({ user });
+    if (access.response) return access.response;
     const plans = await loadPlans(supabase, {
-      siteId: url.searchParams.get('siteId'),
+      siteId,
       activeOnly: url.searchParams.get('activeOnly') === '1',
     });
     /* ⭐ **แนบเลขที่ใบมาด้วย** — รอบเป็นข้อผูกพันของใบสั่งขาย และไซต์เดียวถือรอบของ

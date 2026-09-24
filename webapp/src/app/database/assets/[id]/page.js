@@ -25,7 +25,7 @@ import AssetMoveModal from "@/components/service/AssetMoveModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canEditService } from "@/lib/permissions";
+import { canEditService, canViewService } from "@/lib/permissions";
 import {
   ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isWarehouseSite,
 } from "@/lib/service/sites";
@@ -63,6 +63,12 @@ export default function ServiceAssetPage({ params }) {
   const department = useDepartment();
   const canEdit = useMemo(
     () => canEditService({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
+  /* หน้านี้เป็นของ **ทะเบียน** (เปิดอ่านได้ทุกคนที่เข้าฐานข้อมูล · มติผู้ใช้ 2026-09-24) แต่ใบส่งงาน
+     ยังเป็นหน้าทำงานของฝ่ายบริการ ⇒ ลิงก์ "ใบส่งงาน" โชว์เฉพาะคนที่เปิดได้จริง (ไม่งั้นกดแล้ว Forbidden) */
+  const canOpenVisit = useMemo(
+    () => canViewService({ role, team, teams, department }),
     [role, team, teams, department],
   );
 
@@ -404,7 +410,7 @@ export default function ServiceAssetPage({ params }) {
                         จากหน้างานได้แล้ว (ข้อ H) หัวหน้าต้องรู้ว่าถามใครต่อ */}
                     {row.by && <span className={styles.reason}>โดย {row.by}</span>}
                   </span>
-                  {row.visitId && (
+                  {row.visitId && canOpenVisit && (
                     <Link href={`/service/visits/${row.visitId}`} className={styles.visitLink}>ใบส่งงาน</Link>
                   )}
                 </li>

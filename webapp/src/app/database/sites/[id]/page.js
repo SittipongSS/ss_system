@@ -38,7 +38,7 @@ import {
 import { visitDeleteBlocker, visitDeleteButton } from "@/lib/service/visitDelete";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
+import { canBeServiceAssignee, canEditService, canViewService } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
@@ -52,6 +52,10 @@ export default function ServiceSiteDetailPage({ params }) {
   const teams = useTeams();
   const department = useDepartment();
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
+  /* ⭐ หน้านี้เป็นของ **ทะเบียน** (ทุกคนที่เข้าฐานข้อมูลได้เปิดอ่าน · มติผู้ใช้ 2026-09-24) แต่ใบส่งงาน
+     (`/service/visits/[id]`) ยังเป็นหน้าทำงานของฝ่ายบริการ ⇒ ลิงก์ไปใบส่งงานโชว์เฉพาะคนที่เปิดได้จริง
+     (กติกา "ไม่มีสิทธิ์ = ไม่โชว์" — ลิงก์ที่กดแล้ว Forbidden คือทางตัน) */
+  const canOpenVisit = useMemo(() => canViewService({ role, team, teams, department }), [role, team, teams, department]);
   /* ⚠️ ตรงกับ `canForceDelete` ที่ server (role === 'admin') เป๊ะ — สองฝั่งไม่ตรงกัน
      เมื่อไร จอจะโชว์ปุ่มที่กดแล้วเด้ง หรือซ่อนปุ่มที่จริง ๆ กดได้ */
   const isAdmin = role === "admin";
@@ -82,6 +86,11 @@ export default function ServiceSiteDetailPage({ params }) {
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  /* รอบบริการ/นัด พังได้แยกจากตัวไซต์ — ของรองโหลดไม่ได้ห้ามลากทั้งหน้าล่ม
+     🐞 เดิม `throw` รวมกับตัวไซต์ ⇒ คนนอกฝ่ายบริการ (เส้นนัด/รอบยังเป็นของ TS) เปิดหน้าไซต์แล้วเจอ
+        Forbidden ทั้งหน้า ทั้งที่ข้อมูลไซต์ · โซน · เครื่อง อ่านได้ครบ (ผู้ใช้แจ้ง 2026-09-24) */
+  const [planError, setPlanError] = useState("");
+  const [visitError, setVisitError] = useState("");
   // 404 ≠ โหลดพัง — ไซต์ที่ถูกลบต้องไม่อ่านเป็นเน็ตสะดุดที่กดลองใหม่แล้วจะหาย · ทรงเดียวกับหน้าเครื่อง
   const [notFound, setNotFound] = useState(false);
   const [editingSite, setEditingSite] = useState(false);
@@ -95,6 +104,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError("");
+    setPlanError("");
+    setVisitError("");
     try {
       const [siteRes, planRes, visitRes] = await Promise.all([
         apiFetch(`/api/service/sites/${id}`),
@@ -112,12 +123,12 @@ export default function ServiceSiteDetailPage({ params }) {
       setSiteOrders(siteData?.salesOrders || []);
 
       const planData = await planRes.json().catch(() => null);
-      if (!planRes.ok) throw new Error(planData?.error || "โหลดรอบบริการไม่สำเร็จ");
-      setPlans(Array.isArray(planData) ? planData : []);
+      setPlans(planRes.ok && Array.isArray(planData) ? planData : []);
+      if (!planRes.ok) setPlanError(planData?.error || "โหลดรอบบริการไม่สำเร็จ");
 
       const visitData = await visitRes.json().catch(() => null);
-      if (!visitRes.ok) throw new Error(visitData?.error || "โหลดประวัติการเข้าไม่สำเร็จ");
-      setVisits(Array.isArray(visitData?.visits) ? visitData.visits : []);
+      setVisits(visitRes.ok && Array.isArray(visitData?.visits) ? visitData.visits : []);
+      if (!visitRes.ok) setVisitError(visitData?.error || "โหลดนัดและประวัติการเข้าไม่สำเร็จ");
     } catch (e) {
       setLoadError(e.message || "โหลดข้อมูลไซต์ไม่สำเร็จ");
     } finally {
@@ -723,7 +734,12 @@ export default function ServiceSiteDetailPage({ params }) {
           </Button>
         ) : null}
       >
-        {plans.length === 0 ? (
+        {planError ? (
+          <StatusNotice tone="warning" title="โหลดรอบบริการไม่สำเร็จ"
+            action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+            {planError}
+          </StatusNotice>
+        ) : plans.length === 0 ? (
           <EmptyState icon={RefreshCw} dashed={canEdit} onClick={canEdit ? () => setFormPlan(null) : undefined} plain>
             {canEdit
               ? "ยังไม่มีรอบบริการ — สร้างรอบแล้วระบบจะวางนัดให้เอง"
@@ -776,7 +792,12 @@ export default function ServiceSiteDetailPage({ params }) {
       </DetailCard>
 
       <DetailCard icon={CalendarClock} eyebrow="Upcoming visits" title="นัดที่จะถึง" meta={`${upcoming.length} นัด`}>
-        {upcoming.length === 0 ? (
+        {visitError ? (
+          <StatusNotice tone="warning" title="โหลดนัดไม่สำเร็จ"
+            action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+            {visitError}
+          </StatusNotice>
+        ) : upcoming.length === 0 ? (
           <EmptyState icon={CalendarClock} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
         ) : (
           /* 📱 จอ ≤ 680 (กล่อง < 600) พับเหลือ วันที่ · ปุ่มลบ — เวลา/งาน/ใบสั่งขาย/เจ้าหน้าที่/รหัส
@@ -851,7 +872,12 @@ export default function ServiceSiteDetailPage({ params }) {
       </DetailCard>
 
       <DetailCard icon={History} eyebrow="Visit history" title="ประวัติการเข้า" meta="20 ครั้งล่าสุด">
-        {history.length === 0 ? (
+        {visitError ? (
+          <StatusNotice tone="warning" title="โหลดประวัติการเข้าไม่สำเร็จ"
+            action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
+            {visitError}
+          </StatusNotice>
+        ) : history.length === 0 ? (
           <EmptyState icon={History} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
         ) : (
           /* 📱 จอ ≤ 680 (กล่อง < 600) พับเหลือ นัด · ใบส่งงาน · ปุ่มลบ — ป้ายสถานะขึ้นข้างวันที่
@@ -861,7 +887,8 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableScroll family="list" cells="stacked" minWidth={600}>
             <table className={styles.foldTable}>
               <thead>
-                <tr><th>วันที่นัด</th><th className={styles.wideCol}>เข้าจริง</th><th className={styles.wideCol}>งาน</th><th className={styles.wideCol}>เจ้าหน้าที่</th><th className={styles.wideCol}>สถานะ</th><th className={styles.wideCol}>สรุปงาน</th><th aria-label="ใบส่งงาน" />
+                <tr><th>วันที่นัด</th><th className={styles.wideCol}>เข้าจริง</th><th className={styles.wideCol}>งาน</th><th className={styles.wideCol}>เจ้าหน้าที่</th><th className={styles.wideCol}>สถานะ</th><th className={styles.wideCol}>สรุปงาน</th>
+                  {canOpenVisit && <th aria-label="ใบส่งงาน" />}
                   {isAdmin && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
@@ -898,7 +925,9 @@ export default function ServiceSiteDetailPage({ params }) {
                     <td className={styles.wideCol}>{summary || naText(visit.summary)}</td>
                     {/* ประวัติต้องกดเข้าใบได้ — ไม่งั้นคอลัมน์ "สรุปงาน" ที่ตัดสั้น
                         คือทั้งหมดที่คนอ่านย้อนหลังได้ */}
-                    <td className={styles.nowrap}><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
+                    {canOpenVisit && (
+                      <td className={styles.nowrap}><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
+                    )}
                     {/* ⭐ **เฉพาะแอดมิน** — นัดที่ปิดงานแล้วคือประวัติการเข้าไซต์
                         กติกาปกติห้ามลบ · แอดมินข้ามได้ด้วย ?force=1 ตามมติ #1501
                         ("ขอสิทธิ์ทุกอย่างให้แอดมิน รวมลบด้วย") ซึ่งเส้นนัดตกหล่นมาตลอด

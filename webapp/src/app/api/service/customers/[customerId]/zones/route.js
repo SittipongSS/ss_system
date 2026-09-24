@@ -5,16 +5,17 @@
 //   ⇒ สองจอต้องเห็นตัวเลขชุดเดียวกัน · แยกเส้นเมื่อไรก็มีวันที่แท็บบอก 8 พื้นที่
 //     แต่ฟอร์มให้ติ๊กได้ 6 แล้วไม่มีใครรู้ว่าอันไหนถูก
 //
-// ⚠️ **ด่านเดียวกับที่ฟอร์มใบประเมินใช้** (`forRequestForm: true` → `canPickServiceSite`)
-//   ฝ่ายขายไม่ได้เข้าโมดูลบริการแล้ว (มติ 2026-08-30) แต่ทะเบียนนี้ทำมาเพื่อเขา —
-//   *"AE คนไหนเปิดดีลใหม่ให้ลูกค้ารายนี้ ก็เห็นของเดิมทันทีโดยไม่ต้องรู้จักโมดูลบริการ"*
-//   ⇒ ปิดด้วย `canViewService` เมื่อไร แท็บจะหายไปจากสายตาคนที่มันทำมาให้พอดี
+// ⚠️ **ด่าน = อ่านทะเบียน** (`registry` → `canViewServiceRegistry` · มติผู้ใช้ 2026-09-24
+//   "ฐานข้อมูล ไซต์ เครื่อง เปิดให้ผู้ใช้ที่เข้าระบบฐานข้อมูลได้เห็นได้เลย") — เดิมเป็นด่านของฟอร์ม
+//   ใบประเมิน (`canPickServiceSite` = TS + ฝ่ายขาย) ⇒ คนอื่นที่เข้าฐานข้อมูลได้ไม่เห็นแท็บนี้บนหน้าลูกค้า
+//   ⭐ ตัวนี้ **กว้างกว่า** ด่านเดิมเสมอ (`canViewServiceRegistry` ครอบ `canPickServiceSite`) ⇒ ฟอร์ม
+//   ใบประเมินที่ยิงเส้นนี้ไม่เสียอะไร · ฝ่ายขายยังเห็นของเดิมทันทีเหมือนเดิม
 //
 // ⚠️ **อ่านอย่างเดียว ไม่มี POST/PATCH** — /database เป็นของกลาง การแก้ทะเบียนยัง
 //   เป็นของฝ่าย TS ที่ /service ตามกฎ module-ownership
 import { withUser, ok, fail } from '@/lib/http';
 import { businessDate } from '@/lib/businessDate';
-import { canViewService } from '@/lib/permissions';
+import { canViewServiceRegistry } from '@/lib/permissions';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks, byColumns } from '@/lib/supabaseInChunks';
 import { loadSites, requireService } from '@/lib/service/sitesRepo';
@@ -25,12 +26,13 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { customerId } = await ctx.params;
   try {
-    const access = requireService({ user, forRequestForm: true });
+    const access = requireService({ user, registry: true });
     if (access.response) return access.response;
-    /* 🔑 ปลายทางของลิงก์ต้องเป็นที่ที่คนกดเปิดได้จริง — `/database/sites/[id]` อ่านด้วย
-       `canViewService` (TS/แอดมิน) ⇒ AE กดแล้วเจอ "โหลดข้อมูลไซต์ไม่สำเร็จ"
+    /* 🔑 ปลายทางของลิงก์ต้องเป็นที่ที่คนกดเปิดได้จริง — `/database/sites/[id]` อ่านด้วยด่านทะเบียน
+       ตั้งแต่ย้ายเข้าฐานข้อมูล (17/09) และหน้านั้นไม่ล่มทั้งหน้าเพราะรอบ/นัดอีกแล้ว (24/09)
+       🐞 เดิมเทียบ `canViewService` (TS/แอดมิน) ที่ค้างมาจากก่อนย้าย ⇒ AE เห็นรายการไซต์แต่กดเข้าไม่ได้
        ⚠️ server เป็นคนตอบ ไม่ให้จอเดา (จอไม่รู้ cap ของตัวเองครบ) */
-    const canOpenSiteRegistry = canViewService(user);
+    const canOpenSiteRegistry = canViewServiceRegistry(user);
     if (!customerId) return ok({ ...customerZoneRegistry({}), canOpenSiteRegistry });
 
     /* ⚠️ `includeInactive: true` — สาขาที่ปิดไปแล้วยังต้องเห็น พร้อมป้ายว่าปิด
