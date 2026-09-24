@@ -321,6 +321,21 @@ test('🐞 ส่งแล้วและฝ่ายขายปิดเรื
   assert.equal(v.recallAction.show, true, 'ดึงกลับได้แม้ฝ่ายขายปิดไปแล้ว (§5E ④)');
 });
 
+/* 🐞 รีวิว 24/09 — ฝ่ายขายกด "ปิดเรื่อง" ไปก่อนมติข้อ 3 (closedAt มี · ใบยัง acknowledged) = เปิดกลับได้ด้วย "ยังไม่จบ"
+   การ์ดเคยบอก "เปิดใบใหม่" (คำของใบที่ปิดโดยไม่ได้ประเมิน ซึ่งเปิดกลับไม่ได้จริง) ⇒ คนวัดซ้ำทั้งใบโดยไม่จำเป็น */
+test('🔴 ฝ่ายขายปิดไปก่อนได้ผล — ล็อก · บอกทาง "ยังไม่จบ" ไม่ใช่ "เปิดใบใหม่"', () => {
+  const zones = [measuredZone('z1', 'Studio 01')];
+  const v = surveyControlView({
+    request: request({ status: 'acknowledged', closedAt: '2026-09-19T02:00:00.000Z' }),
+    zones, filesByZone: { z1: measuredFiles }, viewer: HEAD,
+  });
+  assert.equal(v.flags.locked, true);
+  assert.equal(v.send.show, false);
+  assert.equal(v.status.headline, 'ฝ่ายขายปิดเรื่องไปก่อนได้ผล');
+  assert.match(v.status.sub, /“ยังไม่จบ”/);
+  assert.doesNotMatch(v.status.sub, /เปิดใบใหม่/);
+});
+
 test('ใบที่ปิดโดยไม่ได้ส่งผล (§5E ③) — ต้องเป็นสถานะของตัวเอง และบอกทางที่เหลือจริง', () => {
   const zones = [measuredZone('z1', 'Studio 01')];
   const v = surveyControlView({
@@ -848,4 +863,91 @@ test('🐞 หัวใบจอประเมินพื้นที่เร
         `pageHeaderFlat.test.mjs` ซึ่งคุมหัวทุกตัวของระบบ ไม่ใช่จอเดียว */
   const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
   assert.doesNotMatch(page, /^\s+flat$/m, 'ไม่มี prop flat แล้ว — หัวใบเรียบเป็นค่าตั้งต้น');
+});
+
+// ── ส่งผลปิดนัดที่ยังเปิดให้ด้วย (มติเจ้าของ 24/09 ข้อ 2) ─────────────────────
+/* ⭐ โมดัลยืนยันต้องบอกผลก่อนกด ("ปิดนัด SV-… เป็น “เข้าแล้ว” ไปพร้อมกัน") ⇒ การ์ดส่ง `send.closesVisit`
+   จากตัวตัดสินตัวเดียวกับที่ route ใช้ปิดจริง · จอส่ง `id` กลับไปให้ route ยืนยันว่าเป็นนัดเดียวกัน */
+const readyHead = (visit, extra = {}) => surveyControlView({
+  request: request(), zones: [readyZone('z1', 'Studio 01')], filesByZone: { z1: readyFiles },
+  visit, viewer: HEAD, today: '2026-09-24', ...extra,
+});
+
+test('⭐ นัดกำลังทำ: ส่งผลได้ และบอกว่าจะปิดนัดไหน · เก็บเวลาเริ่มที่ช่างกด · ไม่มีเวลาจบ', () => {
+  const v = readyHead({
+    id: 'SVV-1', code: 'SV-2609001', status: 'in_progress', scheduledDate: '2026-09-22',
+    actualDate: '2026-09-22', actualStartTime: '14:05:00',
+  });
+  assert.equal(v.send.allowed, true, 'การส่งผลไม่รอช่างกดส่งงาน');
+  assert.deepEqual(v.send.closesVisit, {
+    id: 'SVV-1', code: 'SV-2609001', status: 'in_progress', statusLabel: 'กำลังทำ',
+    actualDate: '2026-09-22', startTime: '14:05',
+  });
+});
+
+test('นัดยังนัดไว้ (ไม่เคยกดเริ่ม): บอกวันเข้าที่จะบันทึก และไม่มีเวลาเข้าจริง', () => {
+  const v = readyHead({ id: 'SVV-1', code: 'SV-2609001', status: 'scheduled', scheduledDate: '2026-09-23' });
+  assert.equal(v.send.allowed, true);
+  assert.equal(v.send.closesVisit.status, 'scheduled');
+  assert.equal(v.send.closesVisit.statusLabel, 'นัดไว้');
+  assert.equal(v.send.closesVisit.actualDate, '2026-09-23');
+  assert.equal(v.send.closesVisit.startTime, null);
+});
+
+test('นัดปิดไปแล้ว / ทำไม่ได้ / ไม่มีนัด = ส่งผลไม่แตะนัด (`closesVisit` ว่าง)', () => {
+  for (const status of ['done', 'unable', 'cancelled']) {
+    const v = readyHead({ id: 'SVV-1', status, scheduledDate: '2026-09-22', actualDate: '2026-09-22' });
+    assert.equal(v.send.closesVisit, null, status);
+    assert.equal(v.send.allowed, true, status);
+  }
+  assert.equal(readyHead(null).send.closesVisit, null);
+});
+
+test('🔴 นัดยังเป็นร่าง: ปุ่มส่งผลโชว์แต่กดไม่ได้ พร้อมเหตุผลเดียวกับที่ server ตอบ', () => {
+  const v = readyHead({ id: 'SVV-1', code: 'SV-2609001', status: 'draft', scheduledDate: '2026-09-26' });
+  assert.equal(v.send.show, true, 'ติดด่าน = โชว์แล้วบอกเหตุ');
+  assert.equal(v.send.allowed, false);
+  assert.equal(v.send.reason.key, 'visit-draft');
+  assert.match(v.send.reason.text, /SV-2609001 ยังเป็นร่าง/);
+  assert.equal(v.send.reason.detail, v.send.reason.text);
+  assert.equal(v.send.closesVisit, null);
+});
+
+test('ด่านหกข้อยังพูดก่อนเรื่องร่าง — ของที่ต้องไปแก้หน้างานสำคัญกว่า', () => {
+  const v = surveyControlView({
+    request: request(), zones: [measuredZone('z1', 'Studio 01')], filesByZone: { z1: measuredFiles },
+    visit: { id: 'SVV-1', status: 'draft', scheduledDate: '2026-09-26' }, viewer: HEAD, today: '2026-09-24',
+  });
+  assert.equal(v.send.allowed, false);
+  assert.notEqual(v.send.reason.key, 'visit-draft');
+});
+
+// ── จอประเมิน: ส่งผล = ตอบใบ + ปิดนัด (มติเจ้าของ 24/09 ข้อ 2) — ต่อสายจากตัวตัดสินถึงโมดัลและคำขอ ─────────
+/* 🐞 route ส่งผลตีกลับ 409 ทุกครั้งที่มีนัดค้างแต่จอไม่ส่ง `closeVisitId` ⇒ จอต้องส่งรหัสนัด **ตัวที่โมดัลบอก**
+   และโมดัลต้องวาดผลทุกข้อจาก `surveySendConfirm` (อ่าน `send.closesVisit` ตัวเดียวกับที่ route ใช้ปิดจริง) */
+const surveyPageCode = () => readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+test('⭐ ปุ่มส่งผลส่งรหัสนัดที่โมดัลบอก · toast บอกผลกับนัด · ล้มแล้วโยนกลับให้โมดัลบอก (ไม่ใช่ toast ที่หาย)', () => {
+  const page = surveyPageCode();
+  const send = page.slice(page.indexOf('const send = async'), page.indexOf('const recall = async'));
+  assert.match(send, /json: \{ closeVisitId: view\.send\.closesVisit\?\.id \?\? null \}/,
+    'รหัสนัดต้องมาจาก `send.closesVisit` ตัวเดียวกับที่โมดัลวาด');
+  assert.match(send, /surveySendDoneText\(res\?\.closedVisit\)/);
+  assert.match(send, /catch \(e\) \{\s*await load\(\{ background: true \}\);\s*throw e;/,
+    'ล้ม = อ่านใบใหม่ (โมดัลวาดนัด/ด่านล่าสุด) แล้วโยน error ให้กล่องบอกตรงนั้น');
+  assert.doesNotMatch(send, /kind: "error"/, 'error 409 ยาว ๆ เคยหายไปกับ toast 3.6 วิ');
+});
+
+test('⭐ โมดัลส่งผลวาดผลทุกข้อจาก `surveySendConfirm` · ป้ายปุ่มพูดตามผล · ส่งไม่ได้แล้ว = ปุ่มเดียว "ปิด"', () => {
+  const page = surveyPageCode();
+  assert.match(page, /surveySendConfirm\(\{ docNo: data\?\.request\?\.docNo, closesVisit: view\.send\.closesVisit \}\)/);
+  const at = page.indexOf('title="ส่งผลประเมินให้ฝ่ายขาย"');
+  const dialog = page.slice(at, page.indexOf('</ConfirmDialog>', at));
+  assert.match(dialog, /confirmLabel=\{view\.send\.allowed \? sendConfirm\.confirmLabel : "ปิด"\}/);
+  assert.match(dialog, /hideCancel=\{!view\.send\.allowed\}/);
+  assert.match(dialog, /sendConfirm\.effects\.map\(\(line\) => <li key=\{line\}>\{thaiText\(line\)\}<\/li>\)/);
+  assert.match(dialog, /!view\.send\.show \? `\$\{view\.status\.headline\} — \$\{view\.status\.sub\}`/,
+    'ใบถูกล็อกระหว่างที่กล่องเปิด = บอกสถานะล่าสุด ไม่ใช่ตัวเลขชวนส่ง');
+  assert.doesNotMatch(dialog, /ใบจะปิดเมื่อฝ่ายขายกดรับผล/, 'ข้อความเดิมไม่บอกเรื่องนัดเลย');
 });

@@ -234,6 +234,11 @@ test('🔴 ปิดใบแล้ว จอผลประเมินต้�
   const closed = surveyEditLockError({ ...base, closedAt: '2026-09-10T00:00:00Z', status: 'closed' });
   assert.match(closed, /ปิดไปแล้ว/);
   assert.match(closed, /เปิดใบใหม่/, 'ไม่มีทางกลับ — ห้ามชี้ไปปุ่ม "ยังไม่จบ" ที่หายไปแล้ว');
+  /* 🐞 รีวิว 24/09 — ฝ่ายขายปิดฝั่งตัวเองไปก่อนได้ผล (ใบยังไม่ `closed`) เปิดกลับได้ด้วย "ยังไม่จบ" ⇒ ห้ามบอกเปิดใบใหม่ */
+  const early = surveyEditLockError({ ...base, closedAt: '2026-09-10T00:00:00Z', status: 'acknowledged' });
+  assert.match(early, /ฝ่ายขายปิดเรื่องไปก่อนได้ผล/);
+  assert.match(early, /“ยังไม่จบ”/);
+  assert.doesNotMatch(early, /เปิดใบใหม่/);
   // ทางปิดปกติล็อกด้วย answeredAt ไปก่อนแล้ว — บรรทัดใหม่ต้องไม่เปลี่ยนข้อความของเส้นเดิม
   assert.match(
     surveyEditLockError({ ...base, answeredAt: 'x', closedAt: 'y', status: 'closed' }),

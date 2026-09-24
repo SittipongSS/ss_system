@@ -5,14 +5,17 @@
 // ⚠️ คอมโพเนนต์เป็น JSX (import ใต้ raw node ไม่ได้) ⇒ กติกาทุกข้ออยู่ใน `scheduleModal.js` และเทสต์ที่นี่
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ACCESS_UNKNOWN_TEXT, CREW_GONE_NOTE, CREW_NODATE_TEXT, CREW_ROSTER_TEXT, CREW_UNKNOWN_TEXT, DRAFT_STATUS_OPTIONS,
   GATE_CAPTIONS, HELPER_GONE_TEXT, HELPER_LOADING_TEXT, LOAD_BAR_SCALE, OVERRIDE_TRACE_TEXT, STAMPED_STATUS_HINT,
   ZONE_SKIPPED_TAG,
   accessLine, applyTimePreset, commitDueGateView, crewPickerView, gatePanelView, gateShortReasons, helperChipsView,
   keepTogetherRuns, loadBarCells, orderHelperIds, pickTimePreset, releaseSlotText,
-  releasedToastText, threadDigest, timePresetOf, timePresetOptions, visitHeaderView, visitJobRows, visitModalView,
+  releasedToastText, threadDigest, timePresetOf, timePresetOptions, visitEndDateNote, visitFormCheckInput, visitHeaderView,
+  visitJobRows, visitModalView,
 } from './scheduleModal.js';
+import { normalizeVisitInput } from './rounds.js';
 import { accessWarnText } from './queueWords.js';
 import { projectedDayLoad } from './visitLoad.js';
 import { commitDueOutcome } from '../requests/commitDue.js';
@@ -837,4 +840,66 @@ test('🐞 สถานะของร่างพับไว้ใต้ "ป�
   const sched = visitOf('scheduled', 'round');
   assert.equal(visitModalView({ visit: sched, form: formOf(sched), todayIso: TODAY, gate: passedGate }).sections.statusFold, 'none');
   assert.equal(visitModalView({ visit: null, form: form21(), todayIso: TODAY, gate: passedGate }).sections.statusFold, 'none');
+});
+
+/* ══ นัดที่ส่งงาน/ปิดงานข้ามวัน (mig 0386 · มติเจ้าของ 24/09 ข้อ 4) — โมดัลแก้นัดต้องไม่เป็นทางตัน ══════════
+   🐞 ฟอร์มไม่มีช่องวันที่เสร็จจริง ⇒ ตัวตรวจฝั่งจอ (`normalizeVisitInput(form)`) เทียบ 14:00 กับ 09:00 เหมือนวันเดียวกัน
+      แล้วตีกลับ **ก่อนยิง API** ทั้งที่ server รับ (มันตรวจ `{...before, ...body}` ซึ่งมีวันที่เสร็จจริงของแถวเดิม)
+      ⇒ นัดข้ามวันแก้อะไรจากโมดัลไม่ได้อีกเลย แม้แค่หมายเหตุ */
+const crossDay = {
+  id: 'SVV-9', code: 'SV-2609009', kind: 'refill', siteId: 'S1', status: 'done',
+  scheduledDate: '2026-09-24', startTime: '13:00', endTime: '16:00',
+  actualDate: '2026-09-24', actualStartTime: '14:00:00', actualEndTime: '09:00:00', actualEndDate: '2026-09-25',
+};
+const crossForm = (visit, over = {}) => ({
+  siteId: visit.siteId, kind: visit.kind, scheduledDate: visit.scheduledDate, startTime: visit.startTime,
+  endTime: visit.endTime, assigneeId: '', assigneeName: '', assistantIds: [], status: visit.status,
+  actualDate: visit.actualDate, actualStartTime: '14:00', actualEndTime: '09:00', summary: '', note: 'แก้หมายเหตุ',
+  rescheduleReason: '', unableReason: '', ...over,
+});
+
+test('🐞 นัดที่จบวันถัดไป: ตัวตรวจฝั่งจอเห็นวันที่เสร็จจริงของแถวเดิม ⇒ บันทึกจากโมดัลได้ (ตรงกับ server)', () => {
+  const form = crossForm(crossDay);
+  // ของเดิม: ตรวจด้วยฟอร์มเปล่า ⇒ ตีกลับทั้งที่ server รับ
+  assert.match(normalizeVisitInput(form).error || '', /เวลาที่เข้าจริง/);
+  // ของใหม่: ค่าชุดเดียวกับที่ server ตรวจ (`{...before, ...body}`)
+  assert.equal(normalizeVisitInput(visitFormCheckInput(form, crossDay)).error, null);
+  assert.equal(normalizeVisitInput({ ...crossDay, ...form }).error, null, 'server เห็นแบบเดียวกัน');
+  // ก้อนที่ส่ง API ไม่ถูกแตะ — ใช้ตรวจเท่านั้น
+  assert.equal('actualEndDate' in form, false);
+});
+
+test('ตัวตรวจฝั่งจอยังจับของผิดได้เหมือน server — วันเข้าเลยวันเสร็จ / วันเดียวกันแต่เวลากลับหัว', () => {
+  const later = crossForm(crossDay, { actualDate: '2026-09-26' });
+  assert.equal(normalizeVisitInput(visitFormCheckInput(later, crossDay)).error, 'วันที่เสร็จจริงต้องไม่ก่อนวันที่เข้าจริง');
+  const sameDay = crossForm(crossDay, { actualDate: '2026-09-25' });
+  assert.match(normalizeVisitInput(visitFormCheckInput(sameDay, crossDay)).error || '', /เวลาที่เข้าจริง/,
+    'วันเข้า = วันเสร็จ ⇒ วันเดียวกัน ⇒ 14:00 → 09:00 ผิดจริง');
+});
+
+test('นัดที่ไม่มีคอลัมน์วันที่เสร็จ (ฐานยังไม่รัน 0386) / นัดใหม่ = ตรวจด้วยฟอร์มเดิมทุกอย่าง', () => {
+  const { actualEndDate, ...legacy } = crossDay;
+  const form = crossForm(legacy);
+  assert.equal(visitFormCheckInput(form, legacy), form);
+  assert.equal(visitFormCheckInput(form, null), form);
+  assert.equal(actualEndDate, '2026-09-25');
+});
+
+test('บรรทัด "เสร็จวันที่ …" ขึ้นเฉพาะงานที่จบคนละวันกับวันเข้าที่กำลังกรอก', () => {
+  assert.equal(
+    visitEndDateNote(crossDay, crossForm(crossDay)),
+    'เสร็จวันที่ 25/09/2026 เวลา 09:00 น. — ส่งงานข้ามวัน เวลาเสร็จเป็นของวันนั้น',
+  );
+  assert.equal(visitEndDateNote({ ...crossDay, actualEndDate: null }, crossForm(crossDay)), null, 'จบวันเดียวกัน');
+  assert.equal(visitEndDateNote(crossDay, crossForm(crossDay, { actualEndTime: '' })), null, 'ล้างเวลาเสร็จ = ไม่มีวันเสร็จ');
+  assert.equal(visitEndDateNote(crossDay, crossForm(crossDay, { actualDate: '2026-09-25' })), null, 'แก้วันเข้าให้ถึงวันเสร็จ');
+  assert.equal(visitEndDateNote(null, {}), null);
+});
+
+test('โมดัลแก้นัดตรวจด้วย `visitFormCheckInput` และวาดบรรทัดวันเสร็จ — ก้อนที่ส่งยังเป็นฟอร์มเดิม', () => {
+  const src = readFileSync(new URL('../../components/service/ServiceVisitModal.js', import.meta.url), 'utf8');
+  assert.match(src, /normalizeVisitInput\(\s*visitFormCheckInput\(payload, editing \? visit : null\),/);
+  assert.match(src, /await onSave\(payload\);/, 'ก้อนที่ส่ง API ไม่เปลี่ยน');
+  assert.match(src, /visitEndDateNote\(visit, form\)/);
+  assert.match(src, /\{endDateNote \? <p className=\{styles\.hint\} role="note">\{endDateNote\}<\/p> : null\}/);
 });

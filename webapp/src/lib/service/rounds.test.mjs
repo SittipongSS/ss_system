@@ -55,6 +55,47 @@ test('เวลาเริ่มต้องก่อนเวลาสิ้�
   assert.match(normalizeVisitInput({ ...base, actualStartTime: '15:00', actualEndTime: '10:00' }).error, /เวลาที่เข้าจริง/);
 });
 
+/* 🐞 **ส่งงาน/ปิดงานข้ามวัน** (มติเจ้าของ 24/09 ข้อ 4 · mig 0386) — เวลาเทียบกันได้เฉพาะงานที่จบวันเดียวกัน
+   · PATCH ส่ง `{...before, ...body}` เข้ามา ⇒ แถวที่ปิดข้ามวันไปแล้วต้องแก้ช่องอื่นต่อได้ ไม่ติดด่านเวลา */
+test('🔴 จบวันหลังวันเข้า: เวลาจบเช้ากว่าเวลาเริ่มได้ · วันเดียวกัน/ก่อนวันเข้า ยังโดนด่าน', () => {
+  const base = {
+    siteId: 'S1', kind: 'survey', scheduledDate: '2026-09-24', status: 'done',
+    actualDate: '2026-09-24', actualStartTime: '14:00:00', actualEndTime: '09:00:00',
+  };
+  const cross = normalizeVisitInput({ ...base, actualEndDate: '2026-09-25' }, { existingKind: 'survey' });
+  assert.equal(cross.error, null);
+  assert.equal(cross.value.actualEndDate, '2026-09-25');
+  assert.equal(cross.value.actualStartTime, '14:00');
+  assert.equal(cross.value.actualEndTime, '09:00');
+
+  // วันที่เสร็จ = วันเข้า ⇒ เก็บเป็น NULL (แบบเดียวต่อความหมายเดียว) แล้วเทียบเวลาตามเดิม
+  const same = normalizeVisitInput({ ...base, actualEndDate: '2026-09-24' }, { existingKind: 'survey' });
+  assert.match(same.error, /เวลาที่เข้าจริง/);
+  const sameOk = normalizeVisitInput({ ...base, actualEndTime: '16:00', actualEndDate: '2026-09-24' }, { existingKind: 'survey' });
+  assert.equal(sameOk.value.actualEndDate, null);
+
+  assert.match(
+    normalizeVisitInput({ ...base, actualEndDate: '2026-09-23' }, { existingKind: 'survey' }).error,
+    /วันที่เสร็จจริงต้องไม่ก่อนวันที่เข้าจริง/,
+  );
+  assert.match(normalizeVisitInput({ ...base, actualEndDate: '25/09/2026' }, { existingKind: 'survey' }).error, /วันที่เสร็จจริง/);
+});
+
+test('วันที่เสร็จไม่มีความหมายเมื่อไม่มีเวลาจบหรือไม่มีวันเข้า ⇒ ล้างเป็น NULL', () => {
+  const base = { siteId: 'S1', kind: 'refill', scheduledDate: '2026-09-24', status: 'in_progress', actualEndDate: '2026-09-25' };
+  const noEnd = normalizeVisitInput({ ...base, actualDate: '2026-09-24', actualStartTime: '14:00', actualEndTime: null });
+  assert.equal(noEnd.value.actualEndDate, null);
+  const noDate = normalizeVisitInput({ ...base, status: 'scheduled', actualDate: null, actualEndTime: '09:00' });
+  assert.equal(noDate.value.actualEndDate, null);
+});
+
+test('⚠️ ไม่ส่ง `actualEndDate` มา (สร้างนัดใหม่ · ฐานที่ยังไม่รัน 0386) = ไม่มีคีย์นี้ในผลลัพธ์', () => {
+  const { value } = normalizeVisitInput({ siteId: 'S1', kind: 'refill', scheduledDate: '2026-09-24' });
+  assert.ok(!('actualEndDate' in value), 'ส่งคอลัมน์ที่ฐานไม่มี = PostgREST ตีกลับทั้งคำขอ');
+  const withKey = normalizeVisitInput({ siteId: 'S1', kind: 'refill', scheduledDate: '2026-09-24', actualEndDate: null });
+  assert.ok('actualEndDate' in withKey.value);
+});
+
 test('⭐ ปิดงานโดยไม่ระบุวันเข้าจริง → เติมวันนัดให้ (nextAfterDone ต้องมี anchor เสมอ)', () => {
   const { value } = normalizeVisitInput({ siteId: 'S1', kind: 'refill', scheduledDate: '2026-08-03', status: 'done' });
   assert.equal(value.actualDate, '2026-08-03');

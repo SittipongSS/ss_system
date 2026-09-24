@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { KINDS_BY_OWNER, REQUEST_KINDS, assertKind } from './registry.js';
+import { KINDS_BY_OWNER, REQUEST_KINDS, VALID_ANSWER_VIA, assertKind } from './registry.js';
 import {
   REQUEST_DEPTS, REQUEST_KIND_LIST, kindsForDept, requestKindFamily,
 } from '../../master/requestTypes.js';
@@ -186,4 +186,23 @@ test('ตัวอ่านรูปทรงต้องได้ "ทั้ง
     });
   }
   assert.deepEqual(hits, []);
+});
+
+/* ⭐ ทางตอบเฉพาะของหัวข้อ + ปิดเรื่องหลังได้ผล (มติเจ้าของ 24/09 ข้อ 1 · 3) — ธงของหัวข้อ ไม่ใช่เทียบชื่อหัวข้อ */
+test('ด่านทะเบียนตรวจ answerVia / closeNeedsAnswer — ค่าที่ไม่รู้จักหรือผิดชนิด = build พัง', () => {
+  assert.doesNotThrow(() => assertKind({ ...OK, answerVia: 'survey_send', closeNeedsAnswer: true }));
+  assert.throws(() => assertKind({ ...OK, answerVia: 'survey_sent' }), /answerVia/,
+    'คีย์ที่ไม่มีทางพาไป = ปุ่มกลางหายแต่ไม่มีลิงก์ขึ้นแทน ⇒ ใบตอบไม่ได้เลย');
+  assert.throws(() => assertKind({ ...OK, closeNeedsAnswer: 'yes' }), /closeNeedsAnswer/);
+  assert.deepEqual(VALID_ANSWER_VIA, ['survey_send']);
+});
+
+test('ใบประเมินพื้นที่ประกาศทั้งสองธง · หัวข้ออื่นไม่มีสักตัว', () => {
+  assert.equal(REQUEST_KINDS.site_survey.answerVia, 'survey_send');
+  assert.equal(REQUEST_KINDS.site_survey.closeNeedsAnswer, true);
+  for (const [key, kind] of Object.entries(REQUEST_KINDS)) {
+    if (key === 'site_survey') continue;
+    assert.equal(kind.answerVia, undefined, key);
+    assert.equal(kind.closeNeedsAnswer, undefined, key);
+  }
 });

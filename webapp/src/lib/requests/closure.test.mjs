@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  closureStatus, replyClearsClosure, reopenRequestError, requestClosure,
+  closureStatus, replyClearsClosure, reopenRequestError, requestClosure, threadIsTheWork,
 } from './closure.js';
 import { requestRowsClosurePatch } from './stages.js';
 import { requestNextStep } from './queueBoard.js';
@@ -83,6 +83,29 @@ test('⭐ ถูกถามกลับ = ตราของอีกฝั่�
     replyClearsClosure(ask({ status: 'closed', answeredAt: NOW, closedAt: NOW }), { side: 'requester', threadOnly: true }),
     null,
   );
+});
+
+/* 🐞 ใบประเมินพื้นที่ (รีวิว 24/09) — ไม่มีแถวของคำร้อง จึงเคยนับเป็น "ใบเธรดล้วน" ⇒ ฝ่ายขายพิมพ์อะไรก็ได้ในเธรด
+   = ถอน "ตอบแล้ว" ของ TS เงียบ ๆ · ใบประเมินปลดล็อก (ไม่มีแถวดึงผลกลับ) · ด่านปิดเรื่องหลังได้ผลตีกลับฝ่ายขายเอง */
+test('🔴 ใบประเมินพื้นที่: ผู้ขอพิมพ์ในเธรดหลัง TS ส่งผล ไม่ถอน "ตอบแล้ว" — ตัวงานคือใบประเมิน ไม่ใช่เธรด', () => {
+  const answered = ask({
+    kind: 'site_survey', dept: 'TS', status: 'answered', acknowledgedAt: NOW, answeredAt: NOW,
+  });
+  assert.equal(threadIsTheWork(answered), false);
+  assert.equal(replyClearsClosure(answered, { side: 'requester', threadOnly: threadIsTheWork(answered) }), null);
+  // ⚠️ ใบสอบถามข้อมูลยังหลุดตามเดิม (มติ 2026-08-20) · ใบที่มีแถว/หัวข้อที่ฝ่ายสร้างแถว ไม่หลุดตามเดิม
+  const info = ask({ status: 'answered', answeredAt: NOW });
+  assert.equal(threadIsTheWork(info), true);
+  assert.equal(replyClearsClosure(info, { side: 'requester', threadOnly: threadIsTheWork(info) }), 'dept');
+  assert.equal(threadIsTheWork(ask({ items: [{ id: 'L-1' }] })), false);
+  assert.equal(threadIsTheWork(ask({ kind: 'scent_dev' })), false);
+  assert.equal(threadIsTheWork(null), false);
+});
+
+test('route โพสต์เธรดถามตัวตัดสิน `threadIsTheWork` ตัวเดียว — ไม่ประกอบเงื่อนไข "ใบเธรดล้วน" เอง', () => {
+  const route = readFileSync(new URL('../../app/api/updates/route.js', import.meta.url), 'utf8');
+  assert.match(route, /replyClearsClosure\(parent, \{ side, threadOnly: threadIsTheWork\(parent\) \}\)/);
+  assert.doesNotMatch(route, /requestIsThreadOnly/, 'เงื่อนไขที่ประกอบเองข้ามธง answerVia ของหัวข้อ');
 });
 
 test('ปุ่ม "ยังไม่จบ" — ต้องมีตราอยู่ก่อน · บังคับเหตุผล · ใบที่ปิดครบแล้วห้ามเปิด', () => {

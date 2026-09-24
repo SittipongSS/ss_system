@@ -30,6 +30,7 @@ import {
   submitRequestError,
 } from './deptRequests.js';
 import { followUpRowFrom } from './requests/hops.js';
+import { closeBeforeAnswerReason } from './requests/stages.js';
 import { queueTabRows, requestNextStep, waitingOnMeRows } from './requests/queueBoard.js';
 import { OUTCOME_REGISTRY_BY_KIND } from './requests/outcomes.js';
 import { requestFormBlocker, requestPayload } from './master/requestCreate.js';
@@ -1188,4 +1189,62 @@ test('⭐ รับเรื่องใบ NPD ที่ไม่มีสิ�
   assert.equal(acknowledgeRequestError(npd([{ scentId: 'SC-1' }])), null);
   // หัวข้ออื่นไม่ถูกกระทบ
   assert.equal(acknowledgeRequestError(req({ kind: 'scent_dev', status: 'pending', targets: [] })), null);
+});
+
+/* ══ ใบประเมินพื้นที่: ฝ่ายขายปิดเรื่องได้หลังได้ผลเท่านั้น (มติเจ้าของ 24/09 ข้อ 3) ══════════
+   🐞 เดิมกด "ปิดเรื่อง" ได้ทันทีที่ TS รับเรื่อง ก่อนมีผลสักตัว ⇒ `closedAt` ล็อกจอประเมินทั้งใบ
+     ช่างกรอกไม่ได้ ปุ่มส่งงาน/ส่งผลหายหมด ทางออกเดียวคือ "ยังไม่จบ" */
+test('🔴 ใบประเมินที่ยังไม่ส่งผล ปิดเรื่องไม่ได้ — บอกเหตุและทางออก (ปิดใบโดยไม่ได้ประเมิน)', () => {
+  const waiting = req({ kind: 'site_survey', dept: 'TS', status: 'acknowledged', acknowledgedAt: '2026-09-20T00:00:00Z' });
+  const err = closeRequestError(waiting, []);
+  assert.equal(err, 'TS ยังไม่ได้ตอบ — ปิดเรื่องได้หลังได้รับคำตอบ'
+    + ' · ถ้าไม่ต้องการผลแล้ว ให้ TS กด “ปิดใบโดยไม่ได้ประเมิน” พร้อมเหตุผล');
+  // ทางออกที่ข้อความชี้ไปต้องเปิดอยู่จริง · และยกเลิกยังปิดอยู่ (ธงเดิมของหัวข้อ)
+  assert.equal(closeUnassessedError(waiting, { reason: 'ลูกค้าเลื่อนโครงการไปปีหน้า' }), null);
+  assert.match(cancelRequestError(waiting, []), /ปิดใบโดยไม่ได้ประเมิน/);
+
+  const answered = req({
+    kind: 'site_survey', dept: 'TS', status: 'answered',
+    acknowledgedAt: '2026-09-20T00:00:00Z', answeredAt: '2026-09-23T00:00:00Z',
+  });
+  assert.equal(closeRequestError(answered, []), null, 'ส่งผลแล้ว = ฝ่ายขายปิดเรื่องได้');
+  assert.match(cancelRequestError(answered, []), /ปิดเรื่องแทนการยกเลิก/);
+});
+
+/* 🐞 รีวิว 24/09 — ธง `closeNeedsAnswer` เป็นของกลางรายหัวข้อ แต่ประโยคเคยเขียนคำของใบประเมินตายตัว
+   ("ยังไม่ได้ส่งผลประเมิน" + ปุ่ม “ปิดใบโดยไม่ได้ประเมิน” ที่มีเฉพาะหัวข้อ cancelBeforeAckOnly)
+   ⇒ หัวข้ออื่นที่เปิดธงจะบอกฝ่ายขายถึงผลประเมินและปุ่มที่ไม่มีอยู่จริง */
+test('🔴 เหตุปิดเรื่องก่อนได้คำตอบใช้คำกลาง · ทางออกชี้ประตูที่หัวข้อนั้นเปิดไว้จริง', () => {
+  const waiting = (kind) => req({ kind, dept: 'RD', status: 'acknowledged', acknowledgedAt: '2026-09-20T00:00:00Z' });
+  // หัวข้อที่ยกเลิกหลังรับเรื่องได้ตามปกติ — ห้ามพูดถึงผลประเมิน/ปุ่มปิดโดยไม่ได้ประเมิน · ชี้ "ยกเลิก" ที่เปิดอยู่จริง
+  const plain = closeBeforeAnswerReason(waiting('info'), { unassessedExit: false });
+  assert.equal(plain, 'RD ยังไม่ได้ตอบ — ปิดเรื่องได้หลังได้รับคำตอบ · ถ้าไม่ต้องการคำตอบแล้ว ให้ยกเลิกใบแทน');
+  assert.doesNotMatch(plain, /ประเมิน/);
+  assert.equal(cancelRequestError(waiting('info'), []), null, 'ประตูที่ประโยคชี้ต้องเปิดอยู่จริง');
+  // หัวข้อที่ปิดประตูยกเลิกหลังรับเรื่อง — ชี้ปุ่มของฝ่ายที่มีจริงเฉพาะหัวข้อพวกนี้
+  const survey = closeBeforeAnswerReason(waiting('site_survey'), { unassessedExit: true });
+  assert.match(survey, /^RD ยังไม่ได้ตอบ — ปิดเรื่องได้หลังได้รับคำตอบ · ถ้าไม่ต้องการผลแล้ว ให้ RD กด “ปิดใบโดยไม่ได้ประเมิน”/);
+  assert.equal(closeUnassessedError(waiting('site_survey'), { reason: 'ลูกค้าเลื่อนโครงการไปปีหน้า' }), null);
+  assert.match(closeUnassessedError(waiting('info'), { reason: 'ลูกค้าเลื่อนโครงการไปปีหน้า' }), /ไม่มีขั้น/,
+    'หัวข้ออื่นไม่มีปุ่มนี้ — ประโยคของหัวข้อพวกนั้นจึงต้องไม่ชี้ไปหามัน');
+});
+
+test('ใบประเมินที่ยังไม่มีใครรับ ยังบอก "ยกเลิกแทนการปิด" (ยกเลิกได้จริงตอนนั้น) · หัวข้ออื่นไม่โดนด่านนี้', () => {
+  assert.match(closeRequestError(req({ kind: 'site_survey', dept: 'TS', status: 'pending' }), []), /ยกเลิกแทนการปิด/);
+  assert.equal(cancelRequestError(req({ kind: 'site_survey', dept: 'TS', status: 'pending' }), []), null);
+  // สอบถามข้อมูล = ผู้ขอตัดสินเองว่าพอแล้ว (ธงรายหัวข้อ ไม่ใช่กฎกลาง)
+  assert.equal(closeRequestError(req({ kind: 'info', status: 'acknowledged', answeredAt: null }), []), null);
+});
+
+test('⭐ หน้าคำร้อง: ฝ่ายขายเห็น "ปิดเรื่อง" จางพร้อมเหตุผลของด่านนี้ ก่อน TS ส่งผล (ไม่ใช่ปุ่มหาย · ไม่ใช่กดแล้ว 409)', () => {
+  /* ⚠️ จอไม่ได้เขียนด่านใหม่ — สาขา "ปิดเรื่องจาง" เดิมถาม `closeRequestError` ตัวเดียวกับ server อยู่แล้ว
+     เทสต์นี้ตรึงว่าใบประเมินที่รับเรื่องแล้วตกสาขานั้นจริง (สถานะอยู่ในชุดที่สาขาถาม + ด่านตอบประโยค) */
+  const waiting = req({ kind: 'site_survey', dept: 'TS', status: 'acknowledged', acknowledgedAt: '2026-09-20T00:00:00Z' });
+  assert.ok(REQUEST_OPEN_STATUSES.concat('answered').includes(waiting.status));
+  assert.ok(closeRequestError(waiting, []));
+  const page = readFileSync(new URL('../app/requests/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(page, /const closeBlocker = closeRequestError\(req, req\.items \|\| \[\]\);/);
+  assert.match(page, /const canClose = !closeBlocker && req\._mine && !closure\.requesterDone;/);
+  assert.match(page,
+    /req\._mine && REQUEST_OPEN_STATUSES\.concat\("answered"\)\.includes\(req\.status\) && closeBlocker\s*\?\s*\{\s*id: "close",\s*label: "ปิดเรื่อง",[\s\S]{0,120}disabled: true,\s*disabledReason: closeBlocker,/);
 });

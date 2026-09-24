@@ -30,6 +30,8 @@ import {
   surveyTotals,
   surveyZoneSize,
 } from '@/lib/service/survey';
+import { surveySendVisitStep } from '@/lib/service/surveySendClose';
+import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
 
 /** ค่าที่จอต้องเขียนเมื่ออ่านข้อมูลชิ้นนั้นไม่สำเร็จ — ไม่ใช่ขีด ไม่ใช่ 0 */
 export const SURVEY_UNKNOWN_TEXT = 'ไม่ทราบ';
@@ -373,6 +375,13 @@ export function surveyControlView({
       key: 'cancelled', tone: 'neutral', headline: 'คำร้องถูกยกเลิก',
       sub: stamp ? `${stamp} — แก้ผลและส่งไม่ได้` : 'แก้ผลและส่งไม่ได้',
     };
+  } else if (closedWithoutAnswer && request?.status !== 'closed') {
+    /* 🐞 **ฝ่ายขายปิดฝั่งตัวเองไปก่อนได้ผล** (ใบก่อนมติ 24/09 ข้อ 3) — `closedAt` มีแต่ใบยังไม่ `closed`
+       ⇒ **เปิดกลับได้** ด้วย "ยังไม่จบ" · ห้ามบอก "เปิดใบใหม่" (ผลวัดบนใบนี้ยังอยู่ครบ) */
+    status = {
+      key: 'closed', tone: 'neutral', headline: 'ฝ่ายขายปิดเรื่องไปก่อนได้ผล',
+      sub: 'แก้ผลและส่งไม่ได้ · กด “ยังไม่จบ” ที่ใบคำร้องเพื่อเปิดใบกลับ แล้วค่อยแก้/ส่งผล',
+    };
   } else if (closedWithoutAnswer) {
     /* 🔴 ใบที่ **ปิดโดยไม่ได้ส่งผล** (§5E ③) — สภาพที่ไม่มีทางกลับ (`reopenRequestError`
        ตัด `closed` ไว้) ⇒ ข้อความต้องชี้ทางที่เหลือจริง คือเปิดใบใหม่ */
@@ -412,7 +421,8 @@ export function surveyControlView({
   } else if (visitNotStarted && allGates.some((g) => !g.ok)) {
     /* ยังไม่กดเริ่มงาน = ยังไม่มีใครไปหน้างาน **ไม่ว่าจะกรอกล่วงหน้าไปแล้วเท่าไร** · 🐞 เดิมขึ้น
        "กำลังวัดหน้างาน"/"กด ส่งงาน" ข้างแถบที่มีแค่ปุ่ม "เริ่มงาน" บนจอเดียวกัน
-       ⚠️ ใบที่ผ่านครบหกข้อแล้ว (หัวหน้าเคาะแล้ว) ยังขึ้น "พร้อมส่งผล" — การส่งผลไม่รอนัด (มติ 16/09) */
+       ⚠️ ใบที่ผ่านครบหกข้อแล้ว (หัวหน้าเคาะแล้ว) ยังขึ้น "พร้อมส่งผล" — การส่งผลไม่รอนัด และส่งแล้ว
+          **ปิดนัดที่ยังเปิดให้ด้วย** (มติเจ้าของ 24/09 ข้อ 2 · แทนมติ 16/09 · ดู `send.closesVisit`) */
     /* ⚠️ บรรทัดรองใช้คำ "วัดแล้ว" ชุดเดียวกับหัวลิสต์ · ป้ายการ์ด · รางขั้นตอน — เคยเขียน
        "กรอกล่วงหน้าแล้ว" แล้วรางเถียงกับตัวเองบนจอเดียว */
     status = { key: 'not-started', tone: 'neutral', headline: 'ยังไม่เริ่มงานหน้างาน', sub: measuredSub };
@@ -499,6 +509,9 @@ export function surveyControlView({
   /* 🔑 ด่านตัวเดียวกับ server เป็นตัวตัดสิน `allowed` เสมอ · สองข้อแรกเป็นของที่ server
      มองไม่เห็น (ค่าที่ยังอยู่บนจอ) ⇒ มันเพิ่มด่านได้ แต่ **ลดไม่ได้** */
   const serverSendReason = surveySendError(rows, files, { canSend: canDecide });
+  /* ⭐ **ส่งผลแล้วนัดจะเป็นยังไง** — ตัวตัดสินตัวเดียวกับที่ route ส่งผลใช้ปิดนัดจริง (มติ 24/09 ข้อ 2)
+     ⚠️ `visit` ต้องเป็นนัดที่ยังค้างถ้ามี (GET ใช้ `preferOpen`) — ไม่งั้นโมดัลบอกคนละนัดกับที่ปิดจริง */
+  const visitStep = surveySendVisitStep(visit, { today });
   let sendReason = null;
   if (!locked) {
     /* 🐞 **ไม่มีสิทธิ์ส่ง = เหตุผลเดียว ห้ามประกอบบรรทัดด่านหกข้อทับ** — ของเดิมเขียน
@@ -546,14 +559,31 @@ export function surveyControlView({
           ? { ...stuckTarget, label: 'ไปเคาะที่แท็บสรุปส่งผล' }
           : stuckTarget),
       };
+    } else if (visitStep.action === 'block') {
+      /* นัดยังเป็นร่าง — route ตีกลับด้วยประโยคเดียวกัน · ทางออกอยู่ที่หน้าจัดคิว ไม่ใช่บนจอนี้ */
+      sendReason = { key: 'visit-draft', text: visitStep.error, detail: visitStep.error, target: null };
     }
   }
+  /* ⭐ **นัดที่ส่งผลจะปิดให้** — โมดัลยืนยันต้องบอกผลนี้ก่อนกด (กติกาโมดัลบอกผลลัพธ์) และจอต้องส่ง `id`
+     กลับไปกับคำขอ (`closeVisitId`) ให้ route ยืนยันว่าเป็นนัดตัวเดียวกับที่ผู้ใช้เห็น
+     ⚠️ ไม่มีเวลาจบเสมอ — ส่งผลไม่ประทับเวลาจบให้ (วันส่งผล ≠ วันเข้าพื้นที่) */
+  const closesVisit = visitStep.action === 'close'
+    ? {
+      id: visitStep.visit.id,
+      code: visitStep.visit.code || visitStep.visit.id,
+      status: visitStep.visit.status,
+      statusLabel: VISIT_STATUS_LABELS[visitStep.visit.status] || visitStep.visit.status,
+      actualDate: visitStep.patch.actualDate,
+      startTime: visitStep.visit.actualStartTime ? String(visitStep.visit.actualStartTime).slice(0, 5) : null,
+    }
+    : null;
   const send = {
     // ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · ติดด่าน = โชว์แล้วบอกเหตุ (กติกา ui-visibility)
     show: canDecide && !locked,
     label: recallPending ? 'ส่งผลให้ฝ่ายขายอีกครั้ง' : 'ส่งผลให้ฝ่ายขาย',
-    allowed: canDecide && !locked && !serverSendReason && !sendReason,
+    allowed: canDecide && !locked && !serverSendReason && !sendReason && visitStep.action !== 'block',
     reason: sendReason,
+    closesVisit,
   };
 
   /* ⚠️ เหตุผลของการดึงกลับยังไม่ถูกพิมพ์ตอนนี้ (อยู่ในโมดัล) ⇒ ยิงค่ายาวพอผ่านด่าน

@@ -55,6 +55,7 @@ import {
 } from '@/lib/master/requestTypes';
 import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
+import { genericAnswerError } from '@/lib/requests/answerVia';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import {
   requestEditVariant, requestVariantSideLock, requestVariantSwitchError,
@@ -1143,6 +1144,11 @@ export async function PATCH(request, { params }) {
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `ตอบได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
       }
+      /* 🔴 **หัวข้อที่ตอบได้ทางเดียวผ่านจอของมันเอง** (มติเจ้าของ 24/09 ข้อ 1 · ใบประเมินพื้นที่ = "ส่งผล")
+         ปุ่มกลางไม่รู้จักด่านหกข้อและไม่ปิดนัดให้ ⇒ ใบที่ยังไม่มีขนาดสักพื้นที่เคยเป็น "ตอบแล้ว" ได้จากที่นี่
+         ⚠️ ตัวตัดสินเดียวกับที่หน้าคำร้องใช้ซ่อนปุ่ม (`genericAnswerError`) — จอกับ server พูดเรื่องเดียวกัน */
+      const viaError = genericAnswerError(before);
+      if (viaError) return Response.json({ error: viaError }, { status: 409 });
       const err = answerRequestError(before);
       if (err) return Response.json({ error: err }, { status: 409 });
       /* ⭐ **ปุ่มนี้คือตราปิดของฝั่งฝ่าย** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — ใบจบ
