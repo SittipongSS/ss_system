@@ -29,6 +29,7 @@ import {
   cancelForecastSkip,
   quotationCancelBlock,
   quotationCancelMetadata,
+  quotationCancelRequestNote,
   requestsToNotifyOnCancel,
 } from '@/lib/sales/quotationCancel';
 
@@ -80,19 +81,38 @@ export async function quotationSignatureEvidence(supabase, quote) {
  *   (ตัวชี้ถูกล้างเมื่อออกจาก approved แต่แถวหลักฐานยังอยู่ · FK RESTRICT) ⇒ ร่างที่ถูกดึงกลับ/ตีกลับหลังยื่น
  *   ลบไม่ได้ (409) จึงต้องยกเลิกได้
  * ⚠️ ชื่อตาราง dept_requests / dept_request_items (0225 · 0258): คำร้องอ้างใบด้วย `quotationId` ไม่มี FK
+ * ⭐ คำร้องหาจาก **ทุกฉบับของเลขเดียวกัน** (มติ 24/09 · รอบแก้หลังรีวิว) — คำร้องผูกอยู่กับฉบับที่ยื่นตอนนั้น
+ *   (route ออก Rev. ไม่ย้ายคำร้องตาม · PATCH คำร้องเปลี่ยน quotationId ไม่ได้) และยกเลิกได้เฉพาะฉบับที่ยังเดิน
+ *   (ฉบับเก่าเป็น 'revised' — ยกเลิกเอง/ออก Rev. ต่อไม่ได้) ⇒ ยกเลิกฉบับล่าสุด = ทั้งเลขที่ตาย
+ *   🐞 เดิมหาด้วย id ของใบที่กดอย่างเดียว: IV ที่ FN ออกจากคำร้องบน Rev.0 หลุดจากโมดัล และไม่มีใครได้กระดิ่ง
+ * ⚠️ สัญญา/SO ยังหาด้วยใบนี้ใบเดียวเหมือนเดิม — สัญญาย้ายตามฉบับ Rev. อยู่แล้ว (syncContractsForQuotation)
+ *    และ SO ออกได้เฉพาะใบที่รับแล้ว ซึ่งออก Rev. ไม่ได้
  */
 export async function loadQuotationCancelContext(supabase, quote) {
   const id = quote.id;
   const evidence = await quotationSignatureEvidence(supabase, quote);
   if (evidence.error) throw new Error(`ตรวจหลักฐานลายเซ็นของใบเสนอราคาไม่สำเร็จ: ${evidence.error.message}`);
+  // เลขฐานเดียวกับที่ route ออก Rev. ใช้หาเลข R ถัดไป (baseNumber NOT NULL ตั้งแต่ 0092 — ถอยไปเลขที่ใบกันแถวแปลก)
+  const base = quote.baseNumber || quote.quoteNumber;
+  const chain = base
+    ? await must(fetchAllResult(() => supabase
+      .from('quotations').select('id, "quoteNumber", "revisionNo"')
+      .eq('baseNumber', base)
+      .order('id', { ascending: true })), 'ฉบับอื่นของเลขที่เดียวกัน')
+    : [];
+  // ใบตัวเองต้องอยู่ในสายเสมอ แม้แถวในฐานจะยังไม่เห็น (เลขฐานแปลก/ว่าง)
+  const revisions = chain.some((row) => row.id === id)
+    ? chain
+    : [...chain, { id, quoteNumber: quote.quoteNumber || null, revisionNo: quote.revisionNo ?? null }];
   const contracts = await must(fetchAllResult(() => supabase
     .from('sales_contracts').select('id, "contractNo", status')
     .eq('quotationId', id)
     .order('id', { ascending: true })), 'สัญญา');
   const requests = await must(fetchAllResult(() => supabase
     .from('dept_requests')
-    .select('id, "docNo", kind, status, title, "dealId", "requestedById", "assigneeId", "assigneeName", "acknowledgedById", "acknowledgedByName"')
-    .eq('quotationId', id)
+    .select('id, "docNo", kind, status, title, "quotationId", "dealId", "requestedById", "assigneeId", "assigneeName", "acknowledgedById", "acknowledgedByName"')
+    // ฉบับของเลขเดียวมีไม่กี่ใบ ⇒ ลิสต์ id ของ .in() ไม่มีทางชนเพดาน URL 16 KB
+    .in('quotationId', revisions.map((row) => row.id))
     .order('id', { ascending: true })), 'คำร้อง (dept_requests)');
   // คำร้องที่อ้างใบเดียวมีไม่กี่ใบ ⇒ ลิสต์ id ของ .in() ไม่มีทางชนเพดาน URL 16 KB
   const items = requests.length
@@ -107,6 +127,7 @@ export async function loadQuotationCancelContext(supabase, quote) {
     .order('id', { ascending: true })), 'ใบสั่งขาย');
   return {
     hasSignatureEvidence: evidence.hasEvidence,
+    revisions,
     contracts,
     requests,
     items,
@@ -140,16 +161,9 @@ export async function previewQuotationCancel(supabase, quote, { context = null, 
     forecast,
     quotations,
     contracts: ctx.contracts,
-    requests: requestsToNotifyOnCancel(ctx.requests, ctx.items, { actorId: user?.id }),
+    requests: requestsToNotifyOnCancel(ctx.requests, ctx.items, { actorId: user?.id, revisions: ctx.revisions }),
     orders: ctx.orders,
   });
-}
-
-function requestThreadBody(quote, request, reason) {
-  const issued = request.docNumbers.length
-    ? ` · เอกสารการเงินที่ออกแล้ว ${request.docNumbers.join(', ')} ระบบไม่ยกเลิกให้ — ตรวจแล้วจัดการใน Express เอง`
-    : '';
-  return `ใบเสนอราคา ${quote.quoteNumber} ที่คำร้องนี้อ้างถูกยกเลิก — ${reason}${issued}`;
 }
 
 /**
@@ -214,18 +228,27 @@ export async function cancelQuotation(supabase, {
     request: req,
   });
 
-  /* ⭐ คำร้องที่อ้างใบนี้ (มติ 24/09: เตือน + แจ้ง ไม่บล็อก) — แถวเธรด (quiet) ให้ประวัติคำร้องเล่าครบ
-     + กระดิ่งถึงผู้ขอและผู้รับผิดชอบ (FN ที่ถือใบ) ครั้งเดียวต่อใบ (dedupeKey) */
-  const notices = requestsToNotifyOnCancel(context?.requests, context?.items, { actorId: user?.id });
+  /* ⭐ คำร้องที่อ้างใบนี้หรือฉบับก่อนหน้าของเลขเดียวกัน (มติ 24/09: เตือน + แจ้ง ไม่บล็อก) — แถวเธรด (quiet)
+     ให้ประวัติคำร้องเล่าครบ + กระดิ่งถึงผู้ขอและผู้รับผิดชอบ (FN ที่ถือใบ) ครั้งเดียวต่อใบ (dedupeKey) */
+  const notices = requestsToNotifyOnCancel(context?.requests, context?.items, {
+    actorId: user?.id, revisions: context?.revisions,
+  });
   for (const request of notices) {
-    const body = requestThreadBody(quote, request, reason);
+    const body = quotationCancelRequestNote(quote, request, reason);
     try {
       await appendThread(supabase, {
         entityType: 'dept_request',
         entityId: request.id,
         kind: 'quotation_cancelled',
         body,
-        meta: { quotationId: quote.id, quoteNumber: quote.quoteNumber, docNumbers: request.docNumbers },
+        meta: {
+          quotationId: quote.id,
+          quoteNumber: quote.quoteNumber,
+          // ฉบับที่คำร้องอ้างจริง — ต่างจาก quotationId เมื่อคำร้องยื่นบนฉบับก่อนหน้า
+          requestQuotationId: request.quotationId,
+          requestQuoteNumber: request.quoteNumber,
+          docNumbers: request.docNumbers,
+        },
         user,
       });
       await notify(supabase, {

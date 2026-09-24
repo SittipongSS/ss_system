@@ -243,3 +243,59 @@ test('พรีวิว FC ใช้ตัวตัดสินเดียว�
   assert.equal(lost.forecast.skipped, 'lost');
   assert.equal(lost.forecast.changed, false);
 });
+
+/* ⭐ คำร้องผูกอยู่กับฉบับที่ยื่น (route ออก Rev. ไม่ย้ายคำร้องตาม) — Rev.0 อนุมัติ → ยื่นคำร้องมัดจำ → FN ออก IV
+   → ออก Rev.1 (Rev.0 = revised) → ยกเลิก Rev.1 = ทั้งเลขที่ตาย แต่ IV อ้าง Rev.0 อยู่
+   🐞 เดิมหาคำร้องด้วย id ของใบที่กดยกเลิกอย่างเดียว ⇒ โมดัลไม่เห็นเลข IV · FN/ผู้ขอไม่ได้กระดิ่ง */
+test('⭐ คำร้องบนฉบับก่อนหน้าของเลขเดียวกัน: เข้าบริบท · พรีวิวบอกเลข IV · แจ้งผู้ขอ + FN', async () => {
+  const rev1 = quote({ id: 'QT1b', quoteNumber: 'QT-26090001-1', revisionNo: 1 });
+  const db = fakeDb(seed({
+    quotations: [
+      { ...quote({ status: 'revised' }), id: 'QT0', quoteNumber: 'QT-26090001-0', deal: undefined },
+      { ...rev1, deal: undefined },
+      { ...quote({ id: 'QT9', quoteNumber: 'QT-26090009-0', baseNumber: 'QT-26090009' }), deal: undefined },
+    ],
+    dept_requests: [
+      { id: 'RQ-0', docNo: 'RQ-26090000', kind: 'billing_doc', status: 'closed', quotationId: 'QT0', requestedById: 'u-ae', assigneeId: 'u-fn' },
+      { id: 'RQ-9', docNo: 'RQ-26090009', kind: 'billing_doc', status: 'pending', quotationId: 'QT9', requestedById: 'u-ae' },
+    ],
+    dept_request_items: [{ id: 'IT-1', requestId: 'RQ-0', docNumber: 'IV-6809-001' }],
+  }));
+  const context = await loadQuotationCancelContext(db, rev1);
+  assert.deepEqual(context.requests.map((row) => row.id), ['RQ-0'], 'ฉบับก่อนหน้าเข้า · ใบเลขอื่นไม่เข้า');
+  assert.deepEqual(context.revisions.map((row) => row.id).sort(), ['QT0', 'QT1b']);
+
+  const preview = await previewQuotationCancel(db, rev1, { context, user: USER });
+  assert.deepEqual(preview.requests, [
+    { id: 'RQ-0', docNo: 'RQ-26090000', status: 'closed', docNumbers: ['IV-6809-001'], quoteNumber: 'QT-26090001-0' },
+  ]);
+
+  const { calls, deps } = spyDeps();
+  const res = await cancelQuotation(db, { quote: rev1, context, user: USER, reason: REASON, expectedUpdatedAt: UPDATED_AT, deps });
+  assert.equal(res.error, undefined, res.error);
+  assert.equal(res.data.notifiedRequests, 1);
+  assert.equal(calls.appendThread.length, 1);
+  const [, row] = calls.appendThread[0];
+  assert.equal(row.entityId, 'RQ-0');
+  assert.match(row.body, /QT-26090001-0/);
+  assert.match(row.body, /QT-26090001-1/);
+  assert.match(row.body, /IV-6809-001/);
+  assert.equal(row.meta.quotationId, 'QT1b');
+  assert.equal(row.meta.requestQuotationId, 'QT0');
+  assert.equal(calls.notify.length, 1);
+  assert.deepEqual(calls.notify[0][1].userIds, ['u-ae', 'u-fn']);
+  assert.equal(calls.notify[0][1].dedupeKey, 'QTCANCEL-QT1b-RQ-0');
+});
+
+test('context: สายฉบับหาด้วยเลขฐาน (ใบไม่มี baseNumber ถอยไปเลขที่ใบ) · ใบตัวเองอยู่ในสายเสมอ · อ่านสายไม่ขึ้น = โยน', async () => {
+  const bare = quote({ baseNumber: null });
+  const db = fakeDb(seed({
+    quotations: [],
+    dept_requests: [{ id: 'RQ-1', docNo: 'RQ-26090001', kind: 'billing_doc', status: 'pending', quotationId: 'QT1', requestedById: 'u-ae' }],
+  }));
+  const context = await loadQuotationCancelContext(db, bare);
+  assert.deepEqual(context.revisions.map((row) => row.id), ['QT1'], 'แถวในฐานยังไม่เห็นก็ต้องมีใบตัวเอง');
+  assert.deepEqual(context.requests.map((row) => row.id), ['RQ-1']);
+  const broken = fakeDb(seed(), { failRead: { quotations: true } });
+  await assert.rejects(() => loadQuotationCancelContext(broken, quote()), /ฉบับ/);
+});

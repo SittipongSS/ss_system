@@ -80,9 +80,15 @@ const uniqueText = (values) => [...new Set((values || [])
      แม้คำร้องจะปิดไปแล้วก็ตาม
    ⭐ ผู้รับ = ผู้ขอ + ผู้รับผิดชอบ (`requestAssignee` — มอบหมายแล้ว หรือคนที่กดรับเรื่อง) · ไม่แจ้ง "ทั้งฝ่าย"
      (มติ 14) · ไม่เด้งใส่คนกดยกเลิกเอง
-   ⚠️ ใบที่ยังไม่มีใครรับเรื่องมีแค่ผู้ขอ — FN จะเห็นแถวในเธรดเมื่อเปิดใบ */
-export function requestsToNotifyOnCancel(requests = [], items = [], { actorId = null } = {}) {
+   ⚠️ ใบที่ยังไม่มีใครรับเรื่องมีแค่ผู้ขอ — FN จะเห็นแถวในเธรดเมื่อเปิดใบ
+   ⭐ `revisions` = ทุกฉบับของเลขเดียวกัน (มติ 24/09 · รอบแก้หลังรีวิว) — คำร้องผูกอยู่กับฉบับที่ยื่นตอนนั้น
+     (ออก Rev. ไม่ย้ายคำร้องตาม) ⇒ แต่ละแถวบอกเลขที่ฉบับที่คำร้องอ้าง ให้โมดัล/เธรดบอกได้ว่า IV ที่ออกแล้ว
+     อ้าง -0 ทั้งที่กดยกเลิก -1 */
+export function requestsToNotifyOnCancel(requests = [], items = [], { actorId = null, revisions = [] } = {}) {
   const actor = actorId ? String(actorId) : null;
+  const numberByQuotation = new Map((revisions || [])
+    .filter((row) => row?.id)
+    .map((row) => [row.id, row.quoteNumber || null]));
   const numbersByRequest = new Map();
   for (const item of items || []) {
     if (!item?.requestId) continue;
@@ -99,6 +105,8 @@ export function requestsToNotifyOnCancel(requests = [], items = [], { actorId = 
       kind: request.kind || null,
       status: request.status || null,
       title: request.title || null,
+      quotationId: request.quotationId || null,
+      quoteNumber: numberByQuotation.get(request.quotationId) || null,
       docNumbers,
       recipientIds: uniqueText([request.requestedById, requestAssignee(request).id])
         .filter((id) => id !== actor),
@@ -140,6 +148,7 @@ export function buildQuotationCancelPreview({
     },
     requests: (requests || []).map((row) => ({
       id: row.id, docNo: row.docNo || null, status: row.status || null, docNumbers: row.docNumbers || [],
+      quoteNumber: row.quoteNumber || null,
     })),
     cancelledOrders: (orders || [])
       .filter((row) => row?.status === 'cancelled')
@@ -179,7 +188,12 @@ export function quotationCancelPromptDetail(preview) {
   if (requests.length) {
     const numbers = [...new Set(requests.flatMap((row) => row.docNumbers || []))];
     const issued = numbers.length ? ` (เลขที่ ${numbers.join(', ')} ออกแล้ว)` : '';
-    lines.push(`คำร้อง ${requests.length} ใบอ้างใบนี้${issued} — ระบบแจ้งผู้ขอและผู้รับผิดชอบให้ตรวจ ไม่ยกเลิกเอกสารให้`);
+    // ยกเลิกฉบับล่าสุด = ทั้งเลขที่ตาย ⇒ คำร้องบนฉบับก่อนหน้านับด้วย และต้องบอกว่าฉบับไหน (มติ 24/09)
+    const earlier = uniqueText(requests
+      .map((row) => row.quoteNumber)
+      .filter((number) => number && number !== preview?.quoteNumber));
+    const scope = earlier.length ? ` รวมฉบับก่อนหน้า (${earlier.join(', ')})` : '';
+    lines.push(`คำร้อง ${requests.length} ใบอ้างใบนี้${scope}${issued} — ระบบแจ้งผู้ขอและผู้รับผิดชอบให้ตรวจ ไม่ยกเลิกเอกสารให้`);
   }
   const orders = preview?.cancelledOrders || [];
   if (orders.length) {
@@ -187,6 +201,23 @@ export function quotationCancelPromptDetail(preview) {
   }
   lines.push('สถานะดีลไม่เปลี่ยน · เลขที่ใบไม่นำกลับมาใช้ · พิมพ์ซ้ำได้พร้อมลายน้ำ “ยกเลิก”');
   return [`⚠️ ${IRREVERSIBLE_NOTE}`, '', 'สิ่งที่จะเกิดขึ้นทันที:', ...lines.map((line) => `· ${line}`)].join('\n');
+}
+
+/* ข้อความแถวเธรด (quiet) + กระดิ่งของคำร้องที่อ้างใบ — คนอ่านคือผู้ขอ/FN ที่ถือคำร้อง ไม่ใช่คนกดยกเลิก
+   ⭐ คำร้องบนฉบับก่อนหน้า (มติ 24/09 · รอบแก้หลังรีวิว) ต้องบอกทั้งฉบับที่คำร้องอ้างและฉบับที่ถูกยกเลิก —
+     "ใบ -1 ถูกยกเลิก" บนคำร้องที่อ้าง -0 อ่านแล้วนึกว่าไม่เกี่ยว ทั้งที่ -0 ออก Rev./ใช้ต่อไม่ได้แล้ว
+   ⚠️ ไม่รู้เลขที่ฉบับ (ไม่ได้ส่ง revisions) = ถือว่าอ้างใบนี้ */
+export function quotationCancelRequestNote(quote, request, reason) {
+  const docNumbers = request?.docNumbers || [];
+  const issued = docNumbers.length
+    ? ` · เอกสารการเงินที่ออกแล้ว ${docNumbers.join(', ')} ระบบไม่ยกเลิกให้ — ตรวจแล้วจัดการใน Express เอง`
+    : '';
+  const cancelled = quote?.quoteNumber || '';
+  const referenced = request?.quoteNumber || null;
+  const head = referenced && referenced !== cancelled
+    ? `คำร้องนี้อ้าง ${referenced} — ฉบับล่าสุดของเลขเดียวกัน (${cancelled}) ถูกยกเลิก ใช้เลขที่นี้ต่อไม่ได้แล้ว`
+    : `ใบเสนอราคา ${cancelled} ที่คำร้องนี้อ้างถูกยกเลิก`;
+  return `${head} — ${reason}${issued}`;
 }
 
 /* toast หลังกด — บอกยอด FC ที่ขยับ **จริง** (ผลของการเขียน ไม่ใช่พรีวิว) · FC เขียนไม่ผ่านต้องไม่เงียบ */

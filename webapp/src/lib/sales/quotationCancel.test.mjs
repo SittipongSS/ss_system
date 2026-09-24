@@ -11,6 +11,7 @@ import {
   quotationCancelBlock,
   quotationCancelMetadata,
   quotationCancelPromptDetail,
+  quotationCancelRequestNote,
   quotationCancelStateError,
   quotationCancelToast,
   requestsToNotifyOnCancel,
@@ -89,6 +90,64 @@ test('คำร้องที่ต้องแจ้ง = ยังเดิ�
   assert.deepEqual(other[0].recipientIds, ['u-ae', 'u-fn']);
 });
 
+/* ⭐ คำร้องผูกอยู่กับฉบับที่ยื่นตอนนั้น (ออก Rev. ไม่ย้ายคำร้องตาม) — ยกเลิกฉบับล่าสุด = ทั้งเลขที่ตาย
+   (ฉบับเก่าเป็น 'revised' ยกเลิกเอง/ออก Rev. ต่อไม่ได้) ⇒ คำร้องบนฉบับก่อนหน้าต้องถูกเตือน + แจ้งด้วย
+   และต้องบอกว่าอ้างฉบับไหน ไม่งั้น FN เห็น "ใบ -1 ถูกยกเลิก" บนคำร้องที่อ้างใบ -0 แล้วงง */
+test('คำร้องบนฉบับก่อนหน้าของเลขเดียวกัน: บอกเลขที่ฉบับที่คำร้องอ้าง', () => {
+  const requests = [
+    { id: 'RQ-0', docNo: 'RQ-26090000', status: 'closed', quotationId: 'QT0', requestedById: 'u-ae', assigneeId: 'u-fn' },
+    { id: 'RQ-1', docNo: 'RQ-26090001', status: 'pending', quotationId: 'QT1', requestedById: 'u-ae' },
+    { id: 'RQ-Z', docNo: 'RQ-26090099', status: 'pending', requestedById: 'u-ae' },
+  ];
+  const items = [{ requestId: 'RQ-0', docNumber: 'IV-6809-001' }];
+  const revisions = [
+    { id: 'QT0', quoteNumber: 'QT-26090001-0' },
+    { id: 'QT1', quoteNumber: 'QT-26090001-1' },
+  ];
+  const got = requestsToNotifyOnCancel(requests, items, { actorId: 'u-sup', revisions });
+  assert.deepEqual(got.map((r) => [r.id, r.quotationId, r.quoteNumber]), [
+    ['RQ-0', 'QT0', 'QT-26090001-0'],
+    ['RQ-1', 'QT1', 'QT-26090001-1'],
+    ['RQ-Z', null, null],
+  ]);
+  assert.deepEqual(got[0].docNumbers, ['IV-6809-001']);
+  assert.deepEqual(got[0].recipientIds, ['u-ae', 'u-fn']);
+  // ไม่ส่ง revisions มา = รูปเดิม (ไม่มีเลขที่ฉบับ) ไม่พัง
+  assert.equal(requestsToNotifyOnCancel(requests, items)[0].quoteNumber, null);
+});
+
+test('โมดัล: คำร้องบนฉบับก่อนหน้าบอกเลขที่ฉบับนั้น + เลขเอกสารการเงินที่ออกแล้ว', () => {
+  const preview = buildQuotationCancelPreview({
+    quote: quote({ id: 'QT1', quoteNumber: 'QT-26090001-1' }),
+    deal: { ...followingDeal, stage: 'lost' },
+    requests: [
+      { id: 'RQ-0', docNo: 'RQ-26090000', status: 'closed', docNumbers: ['IV-6809-001'], quoteNumber: 'QT-26090001-0' },
+      { id: 'RQ-1', docNo: 'RQ-26090001', status: 'pending', docNumbers: [], quoteNumber: 'QT-26090001-1' },
+    ],
+  });
+  assert.deepEqual(preview.requests.map((r) => r.quoteNumber), ['QT-26090001-0', 'QT-26090001-1']);
+  const detail = quotationCancelPromptDetail(preview);
+  assert.match(detail, /คำร้อง 2 ใบอ้างใบนี้ รวมฉบับก่อนหน้า \(QT-26090001-0\)/);
+  assert.match(detail, /IV-6809-001/);
+  // คำร้องอ้างใบนี้อย่างเดียว = ไม่มีวงเล็บฉบับก่อนหน้า
+  const only = quotationCancelPromptDetail({ ...preview, requests: [preview.requests[1]] });
+  assert.match(only, /คำร้อง 1 ใบอ้างใบนี้ —/);
+  assert.doesNotMatch(only, /ฉบับก่อนหน้า/);
+});
+
+test('ข้อความแถวเธรด/กระดิ่งของคำร้อง: อ้างฉบับไหน · ฉบับไหนถูกยกเลิก · เลขเอกสารที่ออกแล้ว', () => {
+  const cancelled = { quoteNumber: 'QT-26090001-1' };
+  const reason = 'ลูกค้าเปลี่ยนสเปคทั้งหมด เสนอใบใหม่แทน';
+  const same = quotationCancelRequestNote(cancelled, { quoteNumber: 'QT-26090001-1', docNumbers: [] }, reason);
+  assert.equal(same, `ใบเสนอราคา QT-26090001-1 ที่คำร้องนี้อ้างถูกยกเลิก — ${reason}`);
+  const legacy = quotationCancelRequestNote(cancelled, { docNumbers: [] }, reason);
+  assert.equal(legacy, same, 'ไม่รู้เลขที่ฉบับ = ถือว่าอ้างใบนี้');
+  const earlier = quotationCancelRequestNote(cancelled, { quoteNumber: 'QT-26090001-0', docNumbers: ['IV-6809-001'] }, reason);
+  assert.match(earlier, /^คำร้องนี้อ้าง QT-26090001-0 — ฉบับล่าสุดของเลขเดียวกัน \(QT-26090001-1\) ถูกยกเลิก/);
+  assert.match(earlier, new RegExp(reason));
+  assert.match(earlier, /IV-6809-001 ระบบไม่ยกเลิกให้/);
+});
+
 const followingDeal = { id: 'DEAL-1', stage: 'quotation', projectValue: 1000000, forecastSource: 'quotation', forecastQuotationId: 'QT1' };
 
 test('พรีวิว: FC ขยับ · ร่างสัญญาปิดตาม · สัญญาที่ออกเลขแล้วอยู่ต่อ · คำร้องการเงินพร้อมเลขเอกสาร', () => {
@@ -111,7 +170,7 @@ test('พรีวิว: FC ขยับ · ร่างสัญญาปิ�
     skipped: null, changed: true, before: 1000000, after: 500000, reason: 'pointer_gone', pinCleared: false, followQuoteNumber: null,
   });
   assert.deepEqual(preview.contracts, { drafts: 1, kept: [{ id: 'CT-S', contractNo: 'CT-SD-26090001-0', status: 'signed' }] });
-  assert.deepEqual(preview.requests, [{ id: 'RQ-1', docNo: 'RQ-26090001', status: 'acknowledged', docNumbers: ['IV-6909-001'] }]);
+  assert.deepEqual(preview.requests, [{ id: 'RQ-1', docNo: 'RQ-26090001', status: 'acknowledged', docNumbers: ['IV-6909-001'], quoteNumber: null }]);
   assert.deepEqual(preview.cancelledOrders, [{ id: 'SO-1', orderNumber: 'SO-26090001-0' }]);
 
   const detail = quotationCancelPromptDetail(preview);
