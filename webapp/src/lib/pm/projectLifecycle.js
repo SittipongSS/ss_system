@@ -16,7 +16,7 @@
 // ⚠️ ด่านจริงอยู่ที่ API เสมอ — ที่นี่คือ "ปุ่มควรโผล่ไหม" ห้ามหลวมกว่า handler
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
-import { can } from "@/lib/permissions";
+import { can, isSuperuser, isTeamLead } from "@/lib/permissions";
 import { PROJECT_CLOSE_TYPES, PROJECT_CLOSE_TYPE_LABELS } from "@/lib/pm/projectClose";
 
 /* สถานะงานที่เก็บได้จริง — ตรงกับ CHECK constraint ของตาราง (mig 0008)
@@ -94,10 +94,10 @@ export function createProjectLifecycle() {
         from: ["On Hold"],
         to: "In Progress",
         visible: (project, user) => canWork(project, user)
-          && (isSuperuserRole(user?.role) || isAeOwner(project, user)),
+          && (isSuperuser(user?.role) || isAeOwner(project, user)),
       },
       {
-        /* ดึงกลับจากยกเลิก — สิทธิ์**แคบกว่า**การดึงกลับจากระงับ (senior_ae ขึ้นไป)
+        /* ดึงกลับจากยกเลิก — สิทธิ์**แคบกว่า**การดึงกลับจากระงับ (หัวหน้าทีมขึ้นไป: Senior AE/AC + หัวหน้าที่เห็นทุกทีม)
            มติเดิมห้ามยุบสองอันนี้เป็นกติกาเดียว จึงเป็นคนละ transition
            ⚠️ ใช้ kind `resume` ไม่ใช่ `revert` โดยตั้งใจ — `revert` อยู่ใน BACKWARD_KINDS
            ซึ่งจะบังคับกรอกเหตุผล แต่ของเดิมเป็นแค่กล่องยืนยัน ไม่เปลี่ยนพฤติกรรมผู้ใช้ */
@@ -110,7 +110,7 @@ export function createProjectLifecycle() {
         from: ["Dropped"],
         to: "In Progress",
         visible: (project, user) => canWork(project, user)
-          && (isSuperuserRole(user?.role) || user?.role === "senior_ae"),
+          && (isSuperuser(user?.role) || isTeamLead(user?.role)),
         confirm: {
           title: "ดึงโครงการที่ยกเลิกกลับมา",
           message: "โครงการจะกลับไปสถานะดำเนินการ",
@@ -254,10 +254,6 @@ export function createProjectLifecycle() {
   });
 }
 
-/* แยกไว้ท้ายไฟล์เพื่อไม่ให้ import วนกับ permissions — ใช้แค่ชื่อ role */
-function isSuperuserRole(role) {
-  return role === "admin" || role === "ae_supervisor";
-}
 /* ⭐ ตัวตนอยู่ที่ `aeOwnerId` (mig 0190) — เทียบ id ก่อนเสมอ ไม่งั้น "เปลี่ยนชื่อ
    ตัวเอง = ไม่ใช่เจ้าของโครงการตัวเองอีกต่อไป"
    ⚠️ ยังต้องเทียบชื่อต่อเป็นทางถอย เพราะใบเก่าบน prod ส่วนใหญ่ (11/14) `aeOwnerId`

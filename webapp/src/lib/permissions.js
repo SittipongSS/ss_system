@@ -15,12 +15,20 @@
 //   admin         — System administrator (ฝ่าย AD). Superuser: every capability,
 //                   all teams, plus account/master/audit management. Sits above
 //                   ae_supervisor and carries no sales org position.
+//   ── ฝ่ายขาย: ผังตำแหน่ง (มติผู้ใช้ 2026-09-24) — ดูกลุ่มตำแหน่งที่ SALES_ROLES ──
+//   commercial_director — Commercial Director (CD · ร่างแรกของผังเรียก CCO). สิทธิ์ ae_supervisor + ดาวน์โหลด Excel ลีด
+//                   (ของ MKT) + สิทธิ์หัวหน้าฝ่าย TS ในโมดูลบริการ (SERVICE_OVERSEER_ROLES)
+//   commercial_manager — Commercial Manager (CM). สิทธิ์เท่า commercial_director (ต่างแค่ป้าย)
 //   ae_supervisor — Sales dept head. Controls ALL teams' sales/PM work (data
 //                   scope 'all', like admin) and can VIEW tax status, but is NOT
 //                   a system admin (no users:manage / master:manage / audit:view)
 //                   and cannot approve tax (ra:approve is the RA role's).
 //                   During the phased rollout sees only the PM hub card.
+//   ac_supervisor — หัวหน้าสาย AC: เห็น/ทำงานทุกทีมเหมือนหัวหน้า (isSuperuser) และทำงาน
+//                   ของ AC ได้ แต่ **ไม่อนุมัติ/ไม่ตัดสินเชิงพาณิชย์** (ไม่อยู่ใน
+//                   SALES_MANAGER_ROLES)
 //   senior_ae     — team lead (team = ODM | KA | SV). Edits whole team.
+//   senior_ac     — หัวหน้าทีมสาย AC: สิทธิ์ AC + สิทธิ์หัวหน้าทีม (TEAM_LEAD_ROLES) · ไม่ถือดีล
 //   ac            — Account Coordinate (back-office). Edits whole team, no delete.
 //   ae            — Account Executive (front-office). Edits only own records.
 //   RA         — Legal dept. Views all teams; approves / files tax. No edits.
@@ -147,7 +155,11 @@ export function normalizeDepartment(department) {
 const DEPARTMENT_ROLES = {
   AD: ['admin'],
   SEC: ['secretary'],
-  SA: ['ae_supervisor', 'senior_ae', 'ac', 'ae'],
+  /* ⭐ **เรียงตามผังตำแหน่ง** (มติผู้ใช้ 2026-09-24): CD → CM → AE/AC Supervisor →
+     Senior AE/AC → AE/AC — ดรอปดาวน์ตำแหน่งในหน้า /users โชว์ตามลำดับนี้
+     🔴 **ตัวแรกของลิสต์ไม่ใช่ค่าตั้งต้นของฝ่ายนี้** — ถ้าใช้ตัวแรก สลับฝ่ายเป็น SA แล้ว
+        ฟอร์มจะเลือก CD ให้เอง ⇒ ค่าตั้งต้นอยู่ที่ `DEPARTMENT_DEFAULT_ROLE` */
+  SA: ['commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac'],
   // MK = ฝ่ายการตลาด (เฟส C มติ #2): กรอกลีดรายวัน — เห็นเฉพาะเมนูลีด
   MK: ['marketing'],
   RA: ['ra'],
@@ -196,7 +208,10 @@ const DEPARTMENT_ROLES = {
 const ROLE_DEFAULT_DEPARTMENT = {
   admin: 'AD',
   secretary: 'SEC',
-  ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
+  commercial_director: 'SA', commercial_manager: 'SA',
+  ae_supervisor: 'SA', ac_supervisor: 'SA',
+  senior_ae: 'SA', senior_ac: 'SA',
+  ac: 'SA', ae: 'SA',
   marketing: 'MK',
   ra: 'RA', executive: 'EX', viewer: 'Viewer',
   rd: 'RD', rd_perfumer: 'RD', rd_chemist: 'RD', rd_coordinator: 'RD', rd_supervisor: 'RD',
@@ -212,6 +227,16 @@ export function departmentFor(role) {
 // Roles belonging to a department (for dependent dropdowns).
 export function rolesForDepartment(department) {
   return DEPARTMENT_ROLES[normalizeDepartment(department)] || [];
+}
+
+/* ตำแหน่งที่ฟอร์ม /users เลือกให้เองเมื่อสลับฝ่าย — ฝ่ายที่ไม่อยู่ในนี้ใช้ตัวแรกของลิสต์
+   ⭐ ฝ่ายขายเรียงลิสต์ตามผังตำแหน่ง (ตัวแรก = CD) ⇒ ต้องชี้ค่าตั้งต้นไปที่ตำแหน่งที่
+      รับเข้าบ่อยที่สุดและสิทธิ์น้อยที่สุดของฝ่าย ไม่ใช่ตำแหน่งสูงสุด (มติผู้ใช้ 2026-09-24) */
+const DEPARTMENT_DEFAULT_ROLE = { SA: 'ae' };
+
+export function defaultRoleForDepartment(department) {
+  const dep = normalizeDepartment(department);
+  return DEPARTMENT_DEFAULT_ROLE[dep] || rolesForDepartment(dep)[0] || null;
 }
 
 /* ⭐ **ลำดับเดียวของทั้งระบบ: KA → ODM → SV** (งวด T-5 · 2026-08-28)
@@ -238,7 +263,7 @@ export const TEAMS = ['KA', 'ODM', 'SV'];
    แล้ว deploy ทุกครั้ง */
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];
+export const ROLES = ['admin', 'secretary', 'commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ac', 'ae', 'marketing', 'ra', 'rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];
 
 /* ── role ของฝ่ายปฏิบัติการ (ไม่ใช่ฝ่ายขาย ไม่ใช่ผู้สังเกตการณ์) ──────────────
    ⭐ แทน role `staff` ตัวเดียวที่ห้าฝ่ายเคยใช้ร่วมกัน (มติผู้ใช้ 2026-08-28)
@@ -305,14 +330,20 @@ export const isFieldCrewRole = (role) => FIELD_CREW_ROLES.includes(normalizeRole
  *  🔴 **ไม่ใช่ `canEditService`** ซึ่งช่างทุกคนผ่าน — การกดส่งผลคือการรับรองว่า
  *    ตัวเลขแพ็คเกจกับจุดติดตั้งที่ SA จะเอาไปเสนอราคานั้นถูกต้อง เป็นการตัดสินใจ
  *    เชิงพาณิชย์ ไม่ใช่การรายงานข้อเท็จจริงหน้างาน
- *  ⚠️ แอดมินผ่าน — เก็บกวาด/แก้ให้ตอนหัวหน้าไม่อยู่ */
+ *  ⚠️ แอดมินผ่าน — เก็บกวาด/แก้ให้ตอนหัวหน้าไม่อยู่
+ *  ⭐ CD/CM ผ่านด้วย (SERVICE_OVERSEER_ROLES · มติ 2026-09-24 "สิทธิ์ TS manager") */
 export const canSendSurveyResult = (user) => user?.role === 'admin'
-  || SERVICE_HEAD_ROLES.includes(normalizeRole(user?.role));
+  || SERVICE_HEAD_ROLES.includes(normalizeRole(user?.role))
+  || isServiceOverseer(normalizeRole(user?.role));
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
+  commercial_director: 'Commercial Director (CD)',
+  commercial_manager: 'Commercial Manager (CM)',
   ae_supervisor: 'AE Supervisor',
+  ac_supervisor: 'AC Supervisor',
   senior_ae: 'Senior AE',
+  senior_ac: 'Senior AC',
   ac: 'Account Coordinate',
   ae: 'Account Executive',
   marketing: 'การตลาด (Marketing)',
@@ -340,8 +371,75 @@ export const ROLE_LABELS = {
   ts_manager: 'ผู้ช่วยผู้จัดการเทคนิคบริการ',
 };
 
+/* ── ผังตำแหน่งฝ่ายขาย (มติผู้ใช้ 2026-09-24) ─────────────────────────────────
+   Commercial Director (CD) → Commercial Manager (CM) → AE Supervisor / AC Supervisor → Senior AE / Senior AC → AE / AC
+   (ร่างแรกของผังเรียกชั้นบนสุดว่า CCO · ผู้ใช้เปลี่ยนเป็น Commercial Director วันเดียวกันก่อนขึ้นระบบ — mig 0383)
+
+   ⭐ **ทุกด่านถาม "กลุ่ม" ข้างล่าง ห้ามเทียบชื่อตำแหน่งตรง ๆ** — ตอนมีสี่ตำแหน่ง โค้ดเทียบ
+      `role === 'ae_supervisor'` / `'senior_ae' || 'ac'` ไว้ราว 65 ไฟล์ · เพิ่มตำแหน่งแล้วไล่เติม
+      ทีละจุดคือโรคเดียวกับที่ฝ่าย RD เจอ (16 จุด คนตำแหน่งใหม่เสียสิทธิ์เงียบ ๆ ไม่มี error)
+      ⇒ ด่านกันถอยหลังอยู่ที่ `salesRoleRatchet.test.mjs`
+   ⚠️ **ลำดับชั้นมีผลแค่ลำดับบนจอ/ป้าย** (มติข้อ 4) — ไม่มีขั้นอนุมัติต่อชั้น เอกสารไม่ต้อง
+      ผ่าน CM แล้วต่อ CD · ใครอยู่ในกลุ่มผู้อนุมัติก็อนุมัติได้เท่ากัน */
+export const SALES_ROLES = ['commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac'];
+
+/* **ผู้มีอำนาจตัดสินของฝ่ายขาย** — ขั้น "AE Sup อนุมัติ" ของทุกเอกสาร (ใบเสนอราคา · ใบสั่งขาย ·
+   FM-SA-04 · SO ย้อนหลัง · สัญญาภายนอก · ถอน/ย้อน/ออกฉบับแก้/แก้งวด) · อนุมัติข้อมูลหลัก ·
+   ลงนามแทนเจ้าของดีล · ลบเอกสารที่ผูกยอดแล้ว · ตั้งค่าหมวด/มาตรฐานเอกสาร/เงื่อนไขการค้า
+   🔴 **ต้องตรงกับ `public.is_sales_manager_role()` ในฐานข้อมูล** (mig 0382) — ฟังก์ชันอนุมัติ
+      ในฐานเช็คตำแหน่งซ้ำอีกชั้น · สองฝั่งไม่ตรงกัน = จอให้กด แต่ฐานตอบ forbidden
+      (`salesRoleSqlParity.test.mjs` คุม)
+   ⚠️ AC Supervisor **ไม่อยู่** (มติข้อ 1) — เห็นทุกทีมแต่ไม่อนุมัติ */
+export const SALES_MANAGER_ROLES = ['commercial_director', 'commercial_manager', 'ae_supervisor'];
+
+/* **หัวหน้าที่เห็น/ทำงานได้ทุกทีม** — ขอบเขตข้อมูล 'all' เท่า admin (ตัวเดียวกับ `isSuperuser`)
+   = ผู้มีอำนาจตัดสินทั้งหมด + AC Supervisor */
+export const SALES_SUPERVISOR_ROLES = [...SALES_MANAGER_ROLES, 'ac_supervisor'];
+
 // Roles that operate inside a team (at least one team is required for them).
-export const TEAM_ROLES = ['senior_ae', 'ac', 'ae'];
+export const TEAM_ROLES = ['senior_ae', 'senior_ac', 'ac', 'ae'];
+
+/* ตำแหน่งที่เห็น/แก้ **ระดับทีม** (ต่างจาก AE ที่แก้ได้เฉพาะของตัวเอง) */
+export const TEAM_SCOPE_ROLES = ['senior_ae', 'senior_ac', 'ac'];
+
+/* **หัวหน้าทีม** — ลบใบสั่ง/โครงการในทีม · KPI งานของทีม · ดูงานส่วนตัวของลูกทีม ·
+   ดาวน์โหลดรายงานพยากรณ์ · กู้โครงการที่ถูกยกเลิก (Senior AC = AC + สิทธิ์ชุดนี้ · มติข้อ 2) */
+export const TEAM_LEAD_ROLES = ['senior_ae', 'senior_ac'];
+
+/* **สายผู้ประสาน (AC)** — ออกเอกสาร FM-SA-04 · ช่อง "AC ผู้ดูแล"/ผู้จัดทำของโครงการ
+   ⚠️ ไม่ถือดีลและไม่เป็นเจ้าของเป้า — สายนั้นคือ `DEAL_HOLDER_ROLES` (ae · senior_ae) */
+export const AC_TRACK_ROLES = ['ac', 'senior_ac', 'ac_supervisor'];
+
+/* **ผู้ถือดีล/ลีด/เป้า** (มติผู้ใช้ 2026-08-08: ดีลเป็นหน้าที่ความรับผิดชอบของ AE / Senior AE
+   เท่านั้น) — ผู้ประสาน (สาย AC) กับผู้กำกับ (Supervisor ขึ้นไป) แก้ดีลได้แต่ **ถือ** ไม่ได้
+   ⚠️ ย้ายมาจาก lib/sales/dealOwner.js (ยังส่งออกซ้ำที่นั่น) ให้ด่านใน lib นี้ถามได้โดยไม่วน import */
+export const DEAL_HOLDER_ROLES = ['ae', 'senior_ae'];
+
+/* **ผู้กำกับงานบริการ** — สิทธิ์หัวหน้าฝ่าย TS ในโมดูลบริการ โดยไม่ต้องอยู่ฝ่าย TS
+   (มติผู้ใช้ 2026-09-24: CD/CM = AE Sup + MKT + TS manager)
+   ⚠️ ได้แค่ด่าน "คนในโมดูล" + จัดทีมของฝ่าย TS + ส่งผลประเมินพื้นที่ — **ไม่ใช่ช่างหน้างาน**
+      (`canWorkOwnVisit` / `canBeServiceAssignee` ยังเป็นของฝ่าย TS เท่านั้น) */
+export const SERVICE_OVERSEER_ROLES = ['commercial_director', 'commercial_manager'];
+
+/* **ผู้รับกระดิ่งของขั้น AE Supervisor** — ลีดใหม่รอคัดกรอง · ลีดเด้งกลับคิวกลาง ·
+   FM-SA-04 รอ AE Sup อนุมัติ
+   ⭐ มติผู้ใช้ 2026-09-24 ข้อ 6: CD/CM อนุมัติ/คัดกรองได้ แต่ **ไม่รับกระดิ่ง** (เข้าไปดูคิวเอง)
+   ⚠️ แคบกว่า SALES_MANAGER_ROLES โดยตั้งใจ — วันไหนไม่มีบัญชี AE Sup ที่เปิดอยู่เลย กระดิ่งเหล่านี้
+      ไม่มีคนรับ (คิวคัดกรองลีดถอยไปหา admin ให้ที่ leadNotify.js) */
+export const SALES_BELL_ROLES = ['ae_supervisor'];
+
+/* **ตำแหน่งฝ่ายขายที่ถือสิทธิ์ของ MKT** (มติผู้ใช้ 2026-09-24: CD/CM = AE Sup + MKT + TS manager) —
+   สิทธิ์ของ MKT ส่วนใหญ่ AE Sup มีอยู่แล้ว (เห็น/กรอก/แก้/ลบลีด ผ่าน isSuperuser) · ที่เหลือข้อเดียวคือ
+   ดาวน์โหลด Excel รายงานลีด (`canExportLeadReport` · มีชื่อ/เบอร์ลูกค้า — มติ 2026-08-27 เปิดเฉพาะ MKT + admin)
+   ⚠️ คนละเรื่องกับ SERVICE_OVERSEER_ROLES แม้วันนี้สมาชิกตรงกัน — ห้ามยุบรวม */
+export const MARKETING_OVERSEER_ROLES = ['commercial_director', 'commercial_manager'];
+
+export const isSalesRole = (role) => SALES_ROLES.includes(role);
+export const isTeamLead = (role) => TEAM_LEAD_ROLES.includes(role);
+export const hasTeamScope = (role) => TEAM_SCOPE_ROLES.includes(role);
+export const isAcTrack = (role) => AC_TRACK_ROLES.includes(role);
+export const isDealHolder = (role) => DEAL_HOLDER_ROLES.includes(role);
+export const isServiceOverseer = (role) => SERVICE_OVERSEER_ROLES.includes(role);
 
 // ── ผู้ใช้อยู่ได้หลายทีม ───────────────────────────────────────────────
 // มติผู้ใช้ 2026-08-11: "ฝ่ายขาย Account Executive อยู่ ODM กับ Service" — คนขาย
@@ -551,9 +649,23 @@ const ROLE_CAPS = {
   secretary: ['mgmt:view', 'mgmt:edit', 'products:view'],
   // ae_supervisor: sales head — all-team data scope, but not a system admin.
   ae_supervisor: SALES_HEAD_CAPS,
+  /* ⭐ CD / CM = สิทธิ์ ae_supervisor ทั้งชุด (มติผู้ใช้ 2026-09-24) — ส่วนที่เกินจาก AE Sup
+     ไม่ได้มาจาก cap: Excel ลีดอยู่ที่ `canExportLeadReport` · งานหัวหน้า TS อยู่ที่ด่านฝ่าย
+     (`isServiceInsider` · `canManageTeams` · `canSendSurveyResult`) — cap บริการกับ team:manage
+     มีใน SALES_HEAD_CAPS อยู่แล้ว ที่เคยกั้นคือ "ต้องอยู่ฝ่าย TS"
+     ⚠️ ชี้ไปที่ชุดเดียวกัน ไม่ก๊อป — วันแก้ cap ของหัวหน้าฝ่ายขาย สามตำแหน่งขยับตามกัน */
+  commercial_director: SALES_HEAD_CAPS,
+  commercial_manager: SALES_HEAD_CAPS,
   // team lead: ops + may delete orders (scoped to own team via deleteScope).
   // Target planning is reserved for the sales head and admin.
   senior_ae: [...SALES_OPS, 'sales:delete'],
+  /* Senior AC = AC + สิทธิ์หัวหน้าทีม (มติข้อ 2) — cap ชุดเดียวกับ Senior AE · ต่างกันที่
+     ไม่ถือดีล/เป้า (DEAL_HOLDER_ROLES) ไม่ใช่ที่ cap */
+  senior_ac: [...SALES_OPS, 'sales:delete'],
+  /* AC Supervisor = งานของ AC ทุกทีม (ขอบเขต 'all' ผ่าน isSuperuser) + สิทธิ์หัวหน้าทีม
+     ⚠️ **ไม่ใช่ SALES_HEAD_CAPS** — ไม่ตั้งเป้า (salesplan:target/review) · ไม่ลบลูกค้า/สินค้า ·
+        ไม่จัดทีม · ไม่เห็นสถานะภาษี (ra:view) — ส่วนนั้นเป็นของผู้มีอำนาจตัดสิน (มติข้อ 1) */
+  ac_supervisor: [...SALES_OPS, 'sales:delete'],
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
@@ -791,8 +903,15 @@ export function canDeleteRegistryAnyStatus(user) {
 // This is about SCOPE, not capabilities — `admin` and `ae_supervisor` both see
 // and edit every team's records, but only `admin` holds the admin-system caps
 // (users:manage / master:manage / audit:view). Use `can(role, …)` to gate those.
+// ⭐ ฝ่ายขาย = SALES_SUPERVISOR_ROLES (CD · CM · AE Sup · AC Sup) — ขอบเขตกับการกำกับดูแล
+// 🔴 **อนุมัติ/ตัดสินเชิงพาณิชย์ห้ามถามตัวนี้** — ใช้ `isSalesManager` (AC Sup ไม่อนุมัติ)
 export function isSuperuser(role) {
-  return role === 'admin' || role === 'ae_supervisor';
+  return role === 'admin' || SALES_SUPERVISOR_ROLES.includes(role);
+}
+
+/** ผู้มีอำนาจตัดสินของฝ่ายขาย (admin · CD · CM · AE Sup) — ดู SALES_MANAGER_ROLES */
+export function isSalesManager(role) {
+  return role === 'admin' || SALES_MANAGER_ROLES.includes(role);
 }
 
 // Whole-system READ-ONLY observers: `viewer` and `executive`. They see every
@@ -959,6 +1078,9 @@ export function canManageTeams(user, department = null) {
   const mine = departmentOf(user);
   const target = String(department ?? '').trim();
   if (!mine || !target) return false;
+  /* ⭐ CD/CM ถือสิทธิ์หัวหน้าฝ่าย TS (มติ 2026-09-24) ⇒ จัดทีมเจ้าหน้าที่บริการได้ด้วย
+     ⚠️ ข้อยกเว้นนี้ชี้ฝ่าย TS ฝ่ายเดียว — ฝ่ายอื่นยังเป็นกติกา "ฝ่ายของตัวเอง" เหมือนเดิม */
+  if (target === SERVICE_DEPARTMENT && isServiceOverseer(user?.role)) return true;
   return mine === target;
 }
 
@@ -981,9 +1103,22 @@ export function canViewService(user) {
    ⚠️ **แอดมินยังเข้าได้** (มติ "admin ทำได้ทุกอย่าง") แต่ **หัวหน้าฝ่ายขายไม่ได้** —
       จึงเทียบ `role === 'admin'` ตรง ๆ ไม่ใช่ `isSuperuser` ซึ่งรวม ae_supervisor ด้วย
    ⚠️ ฝ่ายขายยัง **สร้างสถานที่จากในใบคำร้อง** ได้เหมือนเดิม (ดู `canCreateServiceSite`
-      และ `canPickServiceSite`) — นั่นเป็นทางของ *ใบคำร้อง* ไม่ใช่ทางของโมดูล */
+      และ `canPickServiceSite`) — นั่นเป็นทางของ *ใบคำร้อง* ไม่ใช่ทางของโมดูล
+   ⭐ **CD/CM เข้าได้** (SERVICE_OVERSEER_ROLES · มติผู้ใช้ 2026-09-24 "สิทธิ์ TS manager") —
+      ยังอยู่ฝ่าย SA · ข้อยกเว้นเป็นรายตำแหน่ง ไม่ใช่ `isSuperuser` (AE Sup/AC Sup ยังไม่ได้) */
 export function isServiceInsider(user) {
-  return user?.role === 'admin' || departmentOf(user) === SERVICE_DEPARTMENT;
+  return user?.role === 'admin'
+    || departmentOf(user) === SERVICE_DEPARTMENT
+    || isServiceOverseer(user?.role);
+}
+
+/* ข้ามด่านลงคิวเข้าพื้นที่ (ด่าน ①–④ ของนัด) — **แอดมินคนเดียว** (มติผู้ใช้ 2026-09-23 ข้อ 4 "ข้ามด่านได้
+   เฉพาะแอดมินเหมือนเดิม")
+   🐞 เดิมกั้นด้วย `isSuperuser` ซึ่งได้ผลเป็นแอดมินคนเดียวเพราะ AE Sup เข้าโมดูลบริการไม่ได้ · ผังตำแหน่ง
+      2026-09-24 ให้ CD/CM ผ่านด่านคนในโมดูล (SERVICE_OVERSEER_ROLES) ⇒ ถ้ายังใช้ isSuperuser สองตำแหน่งนี้
+      จะข้ามด่านได้เงียบ ๆ ทั้งที่หัวหน้า TS ตัวจริงยังข้ามไม่ได้ · ตัวเดียวที่ route PATCH และโมดัลนัดถาม */
+export function canOverrideServiceGate(user) {
+  return user?.role === 'admin';
 }
 
 // แก้ไซต์/เครื่อง/รอบ/นัด — ฝ่าย TS (ทุกตำแหน่งที่ถือ service:edit) หรือแอดมิน
@@ -1042,7 +1177,7 @@ export function canCreateServiceSite(user) {
      `customers:view && salesplan:view` แล้วพบว่า **rd และ finance ผ่านด้วย**
      (สองฝ่ายนั้นถือ cap ทั้งคู่ไว้อ่านดีลตอนตอบคำร้อง) · viewer/executive ก็ผ่าน
      ทั้งที่เป็นสิทธิ์อ่านล้วน ⇒ cap ตอบคำถาม "เห็นอะไรได้" ไม่ได้ตอบ "เป็นใคร"
-     ⭐ `TEAM_ROLES` = ตำแหน่งขายที่มีทีม (senior_ae · ac · ae) ซึ่งตรงกับคำว่า
+     ⭐ `TEAM_ROLES` = ตำแหน่งขายที่มีทีม (senior_ae · senior_ac · ac · ae) ซึ่งตรงกับคำว่า
      "ฝ่ายขาย" ในมติผู้ใช้เป๊ะ ๆ */
   return TEAM_ROLES.includes(user?.role);
 }
@@ -1121,9 +1256,10 @@ export function canApproveCosting(user) {
 // เดิม senior_ae อนุมัติของทีมตัวเองได้ — ตัดออกตามมติผู้ใช้ 2026-07-17: การอนุมัติ
 // ข้อมูลหลักรวมศูนย์ที่ AE Supervisor คนเดียว. ผลพลอยได้คือ Senior AE ที่สร้าง
 // ลูกค้า/สินค้าเองจะไม่ auto-approve อีก ต้องรอ Supervisor เหมือน AE/AC
-// (isSuperuser = admin || ae_supervisor — ครอบทั้งสอง role ที่เหลือพอดี)
+// ⭐ ผังตำแหน่งใหม่ (มติผู้ใช้ 2026-09-24): ผู้อนุมัติ = ผู้มีอำนาจตัดสินของฝ่ายขาย
+// (CD · CM · AE Sup) — **ไม่ใช่ isSuperuser** ซึ่งรวม AC Supervisor ที่ไม่อนุมัติ (มติข้อ 1)
 export function canApproveMasterData(role) {
-  return isSuperuser(role);
+  return isSalesManager(role);
 }
 
 // ── แก้รหัสลูกค้าที่ระบบออกให้ (AR-AAAA) ──────────────────────────────────
@@ -1145,8 +1281,9 @@ export function canEditIssuedMasterCode(role) {
 // Keep this separate from `master:manage`: that capability also controls
 // system-level configuration (for example holidays) and remains admin-only
 // until the final permission-redesign phase.
+// "Sales head" = ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup — SALES_MANAGER_ROLES)
 export function canManageProductCategories(role) {
-  return role === 'admin' || role === 'ae_supervisor';
+  return isSalesManager(role);
 }
 
 // Controlled document identity is business-owned by the Sales head, while the
@@ -1154,13 +1291,13 @@ export function canManageProductCategories(role) {
 // `master:manage`: granting that capability would also expose system-only
 // configuration such as Company Data and Workflow Template management.
 export function canManageDocumentStandards(role) {
-  return role === 'admin' || role === 'ae_supervisor';
+  return isSalesManager(role);
 }
 
 // Commercial terms are business-owned by the Sales head. Keep this separate
 // from system-wide `master:manage` until the permission redesign in Phase 8–9.
 export function canManageCommercialPresets(role) {
-  return role === 'admin' || role === 'ae_supervisor';
+  return isSalesManager(role);
 }
 
 // ── SAHAMIT module access ─────────────────────────────────────────────
@@ -1289,7 +1426,7 @@ export function homeSystemForUser(user) {
 
 export function viewScope(role) {
   if (isSuperuser(role) || role === 'ra' || isReadOnlyObserver(role) || OPS_ROLES.includes(role) || isRdRole(role)) return 'all';
-  return 'team'; // senior_ae, ac, ae, and unknown viewer
+  return 'team'; // TEAM_ROLES (senior_ae · senior_ac · ac · ae) and unknown viewer
 }
 
 // User-aware view scope: a per-user grant of ra:view (an SA acting as RA)
@@ -1304,7 +1441,7 @@ export function viewScopeUser(user) {
 
 export function editScope(role) {
   if (isSuperuser(role)) return 'all';
-  if (role === 'senior_ae' || role === 'ac') return 'team';
+  if (hasTeamScope(role)) return 'team';
   if (role === 'ae') return 'own';
   return 'none'; // RA (acts via approval only) + viewer
 }
@@ -1317,7 +1454,7 @@ export function editScope(role) {
 // Row-level team scope is still enforced via inScope().
 export function pmEditScope(role) {
   if (isSuperuser(role)) return 'all';
-  if (role === 'senior_ae' || role === 'ac' || role === 'ae') return 'team';
+  if (TEAM_ROLES.includes(role)) return 'team';
   return 'none'; // RA / viewer; staff edits assigned tasks via the
                  // 'workflow' tier in pmTaskEditTier, not the project plan.
 }
@@ -1340,8 +1477,8 @@ export function inPmProjectScope(user, project) {
 //     ไม่หลุดเข้ามาในเส้นทางลบ หน้าที่ RA คือตรวจอนุมัติ/ตีกลับ ไม่ใช่ลบงานฝ่ายขาย.
 export function deleteScope(role, resource) {
   if (isSuperuser(role)) return 'all';
-  if ((resource === 'orders' || resource === 'projects') && role === 'senior_ae') return 'team';
-  if (resource === 'registrations' && ['senior_ae', 'ac', 'ae'].includes(role)) return 'team';
+  if ((resource === 'orders' || resource === 'projects') && isTeamLead(role)) return 'team';
+  if (resource === 'registrations' && TEAM_ROLES.includes(role)) return 'team';
   return 'none';
 }
 
@@ -1484,7 +1621,7 @@ export function canDeleteRecord(user, resource, record) {
 //   viewer                         → all teams (whole-system read-only monitor)
 // Single source of truth so the client toggle and the server guard never drift.
 export function canSeeTaskKpi(role) {
-  return isSuperuser(role) || role === 'senior_ae' || isReadOnlyObserver(role);
+  return isSuperuser(role) || isTeamLead(role) || isReadOnlyObserver(role);
 }
 
 export function canSeeLeadKpi(role) {
@@ -1503,7 +1640,7 @@ export function pmTaskScopes(role) {
   if (isRdRole(role)) return ['mine', 'team'];
   // AE manages the whole team's projects in PM (see pmEditScope) → may also
   // browse the team's tasks in My Work, alongside Senior AE / AC.
-  if (role === 'senior_ae' || role === 'ac' || role === 'ae') return ['mine', 'team'];
+  if (TEAM_ROLES.includes(role)) return ['mine', 'team'];
   return ['mine'];
 }
 
@@ -1517,8 +1654,8 @@ export function departmentOf(user) {
 // Authority to ASSIGN a task to someone (Sales Task Management / งานมอบหมาย).
 // ── กติกาหลัก: มอบหมายได้เฉพาะ "คนในฝ่ายเดียวกัน" (มติผู้ใช้ 2026-07-17) ──
 //   admin                          → ทุกคน (บัญชีดูแลระบบ — ทางออกฉุกเฉิน ไม่ใช่คนทำงานขาย)
-//   ae_supervisor                  → ทั้งฝ่าย SA (ข้ามทีมได้ แต่ข้ามฝ่ายไม่ได้)
-//   senior_ae / ac / ae            → เฉพาะ "ทีมเดียวกัน" (ODM/KA/SV) ซึ่งแคบกว่าฝ่าย
+//   CD · CM · AE/AC Supervisor    → ทั้งฝ่าย SA (ข้ามทีมได้ แต่ข้ามฝ่ายไม่ได้)
+//   TEAM_ROLES (Senior AE/AC · AE · AC) → เฉพาะ "ทีมเดียวกัน" (ODM/KA/SV) ซึ่งแคบกว่าฝ่าย
 //                                     (มติผู้ใช้: คงไว้เท่าเดิม ไม่ขยายเป็นทั้งฝ่าย)
 //   rd                             → เฉพาะฝ่าย RD (2 คนไม่มีหัวหน้าฝ่ายในระบบ — สลับงานกันเอง)
 //   everyone else                  → ตัวเองเท่านั้น
@@ -1531,7 +1668,7 @@ export function canAssignTask(assigner, assignee) {
   // ด่านฝ่าย มาก่อนทุกกติกา — รวม ae_supervisor
   const dept = departmentOf(assigner);
   if (!dept || dept !== departmentOf(assignee)) return false;
-  if (isSuperuser(assigner.role)) return true; // ae_supervisor: ทั้งฝ่าย SA
+  if (isSuperuser(assigner.role)) return true; // หัวหน้าที่เห็นทุกทีม (SALES_SUPERVISOR_ROLES): ทั้งฝ่าย SA
   // Any team member (Senior AE / AE / AC) may hand work to any teammate —
   // peer-to-peer within the team, not just top-down. Uses the canonical
   // TEAM_ROLES list so server + client + this rule never drift apart.
@@ -1762,8 +1899,7 @@ export function canSeeDealKpi(role) {
   // "ทุกที่ที่เคยเทียบ role === 'viewer' ต้องเปลี่ยนมาใช้ตัวนี้" → `executive`
   // (ผู้บริหาร) เห็น KPI ลีด / KPI งาน / KPI ฝ่าย RD ได้หมด **แต่ไม่เห็น KPI ดีล**
   // ซึ่งเป็นตัวที่ตำแหน่งนี้ต้องดูที่สุด — หลุดเงียบเพราะเป็นการ "ขาด" ไม่ใช่ "เกิน"
-  return isSuperuser(role) || role === 'senior_ae' || role === 'ae' || role === 'ac'
-    || isReadOnlyObserver(role);
+  return isSuperuser(role) || TEAM_ROLES.includes(role) || isReadOnlyObserver(role);
 }
 
 /* ตัวสลับขอบเขตบนคิวลีด — "ของฉัน / ทีม / ทั้งหมด"
@@ -1779,7 +1915,7 @@ export function canSeeDealKpi(role) {
 export function leadScopes(role) {
   if (isReadOnlyObserver(role)) return ['all'];
   if (isSuperuser(role) || role === 'marketing') return ['mine', 'all'];
-  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
+  if (hasTeamScope(role)) return ['mine', 'team'];
   if (role === 'ae') return ['mine'];
   return [];
 }
@@ -1791,7 +1927,7 @@ export function salesDealScopes(role) {
   if (isSuperuser(role)) return ['mine', 'team', 'all'];
   if (isReadOnlyObserver(role)) return ['all'];
   // ac มี view scope ระดับทีมเหมือน senior_ae → ให้สลับดู KPI ระดับทีมได้
-  if (role === 'senior_ae' || role === 'ac') return ['mine', 'team'];
+  if (hasTeamScope(role)) return ['mine', 'team'];
   return ['mine'];
 }
 
@@ -1821,12 +1957,13 @@ export const SCOPE_ORDER = ['mine', 'team', 'all'];
                 ยกเว้นผู้กำกับ/ผู้สังเกตการณ์ ซึ่งไม่ได้เปิดใบเองเป็นงานประจำ
    ⚠️ ac อยู่ในสายขาย (deals/leads/calendar) ไม่ได้ — เป็นหลังบ้านของทีม งานถูกปั๊ม
    เป็นชื่อ AE ที่ถูกเลือกเสมอ ⇒ "ของฉัน" ของ AC บนสามคิวนั้นว่างโดยโครงสร้าง */
-const SALES_ROW_HOLDER_ROLES = ['ae', 'senior_ae'];
+const SALES_ROW_HOLDER_ROLES = DEAL_HOLDER_ROLES;
 const SCOPE_OWNS_MINE = {
   deals: (role) => SALES_ROW_HOLDER_ROLES.includes(role),
   calendar: (role) => SALES_ROW_HOLDER_ROLES.includes(role),
   leads: (role) => SALES_ROW_HOLDER_ROLES.includes(role) || role === 'marketing',
-  requests: (role) => !isSuperuser(role) && !isReadOnlyObserver(role),
+  /* ⭐ AC Supervisor อยู่ใน isSuperuser แต่ **เปิดคำร้องเองเป็นงานประจำ** (งานของสาย AC) ⇒ นับว่ามี "ของฉัน" · หัวหน้าที่เหลือเป็นผู้กำกับ ไม่ได้เปิดใบเอง */
+  requests: (role) => !isReadOnlyObserver(role) && (!isSuperuser(role) || isAcTrack(role)),
   /* tasks — `mine` = เจ้าของ ∪ ผู้รับมอบ ∪ คนดึงมาทำแทน ∪ **คนที่มอบหมายให้คนอื่น**
      ⇒ แอดมิน/หัวหน้าฝ่ายมีงานของตัวเองจริงบนหน้านี้ (ต่างจากคิวคำร้อง) และหน้านี้
      ชื่อ "งานของฉัน" อยู่แล้ว · เหลือแต่ผู้สังเกตการณ์ที่ไม่มีงานเลย */

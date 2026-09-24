@@ -22,7 +22,7 @@ export function unacceptReasonError(value) {
   return '';
 }
 
-// ผู้สั่งย้อน = ชุดผู้ตรวจสอบเดียวกับการอนุมัติ/ย้อน SO (admin + ae_supervisor) —
+// ผู้สั่งย้อน = ชุดผู้ตรวจสอบเดียวกับการอนุมัติ/ย้อน SO (admin + ผู้มีอำนาจตัดสิน CD · CM · AE Sup) —
 // การถอยดีลออกจาก Won ต้องไม่อยู่ในมือ AE ฝ่ายเดียว
 export function canUnacceptQuotation(role) {
   return isSalesOrderReviewer(role);

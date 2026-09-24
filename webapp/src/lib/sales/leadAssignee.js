@@ -28,9 +28,10 @@
 // ต่างกันที่ลีดผูกด้วย **id** ซึ่งแข็งแรงกว่าชื่อ จึงตรวจด้วย id แล้ว *คืนชื่อจาก
 // server* ให้ผู้เรียกเขียนลงแถว (ไม่รับชื่อจาก client อีกต่อไป)
 
-import { normalizeRole, userTeams } from '@/lib/permissions';
+import { normalizeRole, userTeams, DEAL_HOLDER_ROLES } from '@/lib/permissions';
 
-export const LEAD_ASSIGNEE_ROLES = ['admin', 'senior_ae', 'ae'];
+// = admin + ผู้ถือดีล (AE · Senior AE) — สาย AC ทุกระดับไม่รับลีด (มติ 2026-08-08 ข้างบน)
+export const LEAD_ASSIGNEE_ROLES = ['admin', ...DEAL_HOLDER_ROLES];
 
 // ชื่อที่แสดง — กติกาเดียวกับ /api/pm/assignable-users (name → email)
 // ไม่งั้น dropdown กับค่าที่บันทึกจะเป็นคนละสตริงสำหรับคนเดียวกัน

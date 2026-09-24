@@ -312,16 +312,20 @@ test('🔐 ตัวตรวจกลาง + ฟังก์ชัน trigger:
    รายการที่ตรึงไว้ที่นี่ทุกตัวและทุกลำดับ แล้วฐานต้องใช้ชุดเดียวกัน */
 const KEYER_ROLES_0374 = ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin'];
 
-test('role ผู้คีย์ใน RPC สร้าง/แก้/ส่ง = HISTORICAL_KEYER_ROLES ฝั่ง JS', () => {
+test('role ผู้คีย์ใน RPC สร้าง/แก้/ส่ง: 0374 เขียน literal ไว้ · 0382 ปะเป็นฟังก์ชันกลาง (ผังตำแหน่ง 2026-09-24)', () => {
   const expected = historicalOrders.HISTORICAL_KEYER_ROLES;
   assert.ok(Array.isArray(expected), 'historicalOrders.js ต้อง export HISTORICAL_KEYER_ROLES');
-  assert.deepEqual([...expected], KEYER_ROLES_0374);
-  const literal = `COALESCE(p_actor_role, '') NOT IN (${expected.map((r) => `'${r}'`).join(', ')})`;
+  /* ⭐ 0374 เป็นประวัติ — ข้อความในไฟล์ต้องคงเดิมทุกตัวอักษร เพราะ 0382 หาเงื่อนไขนี้ด้วยการเทียบตัวอักษรแล้วแทนด้วย
+     `public.is_sales_keyer_role(p_actor_role)` · ชุดผู้คีย์ปัจจุบันอยู่ที่ฟังก์ชันกลาง (เทียบกับ JS ที่
+     salesRoleSqlParity.test.mjs) */
+  const literal = `COALESCE(p_actor_role, '') NOT IN (${KEYER_ROLES_0374.map((r) => `'${r}'`).join(', ')})`;
   for (const name of ['create_historical_sales_order', 'update_historical_sales_order', 'submit_historical_sales_order']) {
     const body = fn(name);
-    assert.ok(body.includes(literal), `${name}: role ผู้คีย์ต้องเป็นชุดเดียวกับ JS`);
+    assert.ok(body.includes(literal), `${name}: ข้อความเงื่อนไขของ 0374 ต้องคงเดิม (0382 ปะด้วยการเทียบตัวอักษร)`);
     assert.ok(body.indexOf(literal) < body.indexOf('FOR UPDATE') || !body.includes('FOR UPDATE'), `${name}: ตรวจสิทธิ์ก่อนล็อก/อ่าน`);
   }
+  // ผังตำแหน่งใหม่ขยายผู้คีย์ ไม่ได้ตัดใครออก — ทุกตำแหน่งที่คีย์ได้ตั้งแต่ 0374 ต้องยังคีย์ได้
+  for (const role of KEYER_ROLES_0374) assert.ok(expected.includes(role), role);
 });
 
 test('role ผู้อนุมัติใน RPC อนุมัติ = isSalesOrderReviewer (AE Supervisor / Admin)', () => {

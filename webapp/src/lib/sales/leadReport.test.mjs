@@ -11,10 +11,11 @@ import { ROLES } from '../permissions.js';
    ผู้สังเกตการณ์/ผู้บริหารเห็นแท็บ KPI ได้ แต่ **ต้องไม่ได้ไฟล์นี้**
    ⚠️ `ae_supervisor` เป็น superuser ในด่านอื่น แต่ที่นี่ไม่ได้ — เขียนด่านเป็น
    `isSuperuser(role) || ...` เมื่อไร สิทธิ์จะกว้างกว่าที่ตกลงไว้โดยไม่มีใครสังเกต */
-test('ดาวน์โหลดได้เฉพาะ marketing กับ admin', () => {
+test('ดาวน์โหลดได้เฉพาะ marketing กับ admin + CD/CM (สองตำแหน่งนี้ถือสิทธิ์ของ MKT · มติ 2026-09-24)', () => {
   const allowed = ROLES.filter((r) => canExportLeadReport(r));
-  assert.deepEqual(allowed.sort(), ['admin', 'marketing']);
-  for (const role of ['ae_supervisor', 'senior_ae', 'ae', 'ac', 'viewer', 'executive']) {
+  assert.deepEqual(allowed.sort(), ['admin', 'commercial_director', 'commercial_manager', 'marketing']);
+  // AE Sup / AC Sup ยังไม่ได้ — ถึงจะเป็นหัวหน้าที่เห็นทุกทีมก็ตาม
+  for (const role of ['ae_supervisor', 'ac_supervisor', 'senior_ae', 'senior_ac', 'ae', 'ac', 'viewer', 'executive']) {
     assert.equal(canExportLeadReport(role), false, `${role} ต้องโหลดไฟล์นี้ไม่ได้`);
   }
   assert.equal(canExportLeadReport(undefined), false);

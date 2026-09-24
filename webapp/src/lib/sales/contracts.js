@@ -10,6 +10,7 @@
 //    ⇒ ห้าม import อะไรที่เป็น server-only · **ด่านต้องเป็นตัวเดียวกันสองที่**
 //    บทเรียนจากโมดูลบัญชี: ด่านที่แยกสองชุดจะเพี้ยนหากันแล้วได้ปุ่มที่กดแล้ว 403 เงียบ ๆ
 
+import { isSalesManager } from '@/lib/permissions';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import {
   HISTORICAL_UNAPPROVED_STATUSES, isHistoricalDeal, isHistoricalOrder,
@@ -453,9 +454,10 @@ export function daysAwaitingSignature(contract, now = new Date()) {
    เพราะไม่มีเทสต์ไหนล็อกด่านของ route นี้ไว้ (มีแล้วในไฟล์เทสต์ของโมดูลนี้)
 
    ⚠️ ไม่ใช้ `isSuperuser` เดี่ยว ๆ เป็นด่าน (บทเรียน `canConfirmPayment`) — admin ผ่าน
-   เพราะเป็น superuser ของทั้งระบบ (#1501) ไม่ใช่เพราะเป็น "หัวหน้าฝ่ายขายอีกคน" */
-export const canApproveExternalContract = (user) =>
-  user?.role === 'ae_supervisor' || user?.role === 'admin';
+   เพราะเป็น superuser ของทั้งระบบ (#1501) ไม่ใช่เพราะเป็น "หัวหน้าฝ่ายขายอีกคน"
+   ⭐ ผังตำแหน่ง 2026-09-24: "AE Supervisor" = ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) ·
+      AC Supervisor ไม่ได้ (เห็นทุกทีมแต่ไม่อนุมัติ) */
+export const canApproveExternalContract = (user) => isSalesManager(user?.role);
 
 /** ด่านเดียวที่ทั้งปุ่มบนจอและ API ใช้ร่วมกัน — คืนข้อความไทยเมื่อทำไม่ได้ หรือ null เมื่อผ่าน
  *

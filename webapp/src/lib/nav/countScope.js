@@ -12,7 +12,7 @@
 // กติกาของ `'mine'`: เป็นของฉันได้ก็ต่อเมื่อ **ทุกเลน** ที่ตัวนับรวมให้คนนี้เป็นงานส่วนตัว
 import {
   can, canApproveMasterData, canConfirmPayment, canDoFieldWork, canEditProduction,
-  canEditService, canUser, canViewRequests, isReadOnlyObserver, isSuperuser,
+  canEditService, canUser, canViewRequests, hasTeamScope, isReadOnlyObserver, isSuperuser,
 } from '@/lib/permissions';
 import { NAV_COUNT_KEYS } from '@/lib/nav/useNavCounts';
 import { DEPT_QUEUE_COUNT_KEYS } from '@/lib/nav/navCounts';
@@ -53,7 +53,7 @@ const SCOPE_RULES = {
     const role = user?.role;
     // ตรงกับ applyLeadScope ทีละสาขา (lib/sales/leads.js)
     if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return 'company';
-    if (role === 'senior_ae' || role === 'ac') return 'dept';
+    if (hasTeamScope(role)) return 'dept';
     if (role === 'ae') return 'mine';
     return null;   // สาขาสุดท้ายของ applyLeadScope กรองทิ้งทั้งหมด = ไม่มีเลขให้ดู
   },

@@ -8,7 +8,7 @@ import { Home, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, KeyRound,
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { devBypassUser } from '@/lib/devBypass';
-import { departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS } from '@/lib/permissions';
+import { departmentFor, isSuperuser, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_ROLES } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -704,7 +704,7 @@ export default function AppLayout({ children }) {
               roleLabel={teams.length
                 ? `${ROLE_LABELS[role] || role} · ${teams.map((t) => salesTeamLabel(teamRegistry, t)).join(' + ')}`
                 : (ROLE_LABELS[role] || role)}
-              roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'ra' || role === 'secretary' || role === 'executive' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
+              roleTone={isSuperuser(role) || role === 'ra' || role === 'secretary' || role === 'executive' ? 'admin' : TEAM_ROLES.includes(role) ? 'editor' : 'viewer'}
               isDark={isDark}
               canChangePassword={SUPABASE_CONFIGURED}
               onToggleTheme={toggleTheme}

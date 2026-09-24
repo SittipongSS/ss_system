@@ -6,7 +6,7 @@
 // และหาวันด้วย businessDayKey (เวลาไทย) ตัวเดียวเท่านั้น — ดูเหตุผลที่ slaBusinessDays
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
 import { businessDayKey } from '@/lib/datePeriods';
-import { can, hasTeam, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { can, hasTeam, hasTeamScope, isDealHolder, isReadOnlyObserver, isSuperuser, isTeamLead } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 // ⚠️ ทางเดียว: leadAutoBounce.js ไม่ import ไฟล์นี้กลับ (ไม่มี cycle)
 import { AUTO_BOUNCE_MAX_ROUNDS } from '@/lib/sales/leadAutoBounce';
@@ -351,7 +351,7 @@ export function applyLeadScope(query, user) {
   const role = user?.role;
   // supervisor sees all leads (to screen them)
   if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return query;
-  if (role === 'senior_ae' || role === 'ac') {
+  if (hasTeamScope(role)) {
     // Senior/AC only see leads that have been screened to their team.
     // อยู่หลายทีมได้ ⇒ เห็นคิวของทุกทีมที่สังกัด (in ไม่ใช่ eq)
     return whereTeamIn(query, user);
@@ -366,7 +366,7 @@ export function applyLeadScope(query, user) {
 export function inLeadScope(user, lead) {
   const role = user?.role;
   if (isSuperuser(role) || isReadOnlyObserver(role) || role === 'marketing') return true;
-  if (role === 'senior_ae' || role === 'ac') return hasTeam(user, lead.team);
+  if (hasTeamScope(role)) return hasTeam(user, lead.team);
   if (role === 'ae') return lead.assigneeId === user?.id || lead.createdBy === user?.id;
   return false;
 }
@@ -391,7 +391,7 @@ export function canCreateLead(role) {
 // อยู่ในระบบ** → can() คืน false เสมอ → ปุ่ม "เปิดดีลจากลีดนี้" ไม่เคยโผล่ให้ใครเห็นเลย
 // สิทธิ์ที่สะกดผิดไม่ระเบิด มันแค่เงียบ — จึงย้ายมาเป็นฟังก์ชันที่เทสต์จับได้
 export function canCreateDealFromLead(role) {
-  return role === 'admin' || role === 'ae' || role === 'senior_ae';
+  return role === 'admin' || isDealHolder(role);
 }
 
 // นโยบาย **แก้** ลีด — จุดเดียวให้ API route และหน้า list ใช้ร่วมกัน (ห้ามเขียนซ้ำ)
@@ -412,7 +412,8 @@ export function canEditLead(user, lead) {
   if (LEAD_EDIT_LOCKED_STATUSES.includes(lead.status)) return false;
   if (isSuperuser(role)) return true;
   if (role === 'marketing') return !!user?.id && lead.createdBy === user.id;
-  if (role === 'senior_ae') return !lead.team || hasTeam(user, lead.team);
+  // หัวหน้าทีม **สาย AE** เท่านั้น — Senior AC ตามกติกาของ AC (หลังบ้าน ไม่ใช่เจ้าของข้อมูลลีด)
+  if (isTeamLead(role) && isDealHolder(role)) return !lead.team || hasTeam(user, lead.team);
   if (role === 'ae') return (!!user?.id && (lead.assigneeId === user.id || lead.createdBy === user.id));
   return false;
 }
@@ -424,7 +425,7 @@ export function canEditLead(user, lead) {
 export function canWorkLead(user, lead) {
   const role = user?.role;
   if (role === 'admin') return true;
-  if ((role === 'senior_ae' || role === 'ac') && hasTeam(user, lead.team)) return true;
+  if (hasTeamScope(role) && hasTeam(user, lead.team)) return true;
   if (role === 'ae' && !!user?.id && lead.assigneeId === user.id) return true;
   return false;
 }

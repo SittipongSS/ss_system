@@ -13,9 +13,10 @@
 // เดิมตัด ac ออกเพราะด่านลายเซ็นมีแค่ตอนอนุมัติ — เจตนานั้นหมดอายุเมื่อการกดยื่นกลายเป็น
 // explicit signing action; AC เป็นกลุ่มที่ยื่น SO บ่อยสุด ถ้าไม่อยู่ในรายงานจะถูกบล็อกเงียบ
 
-import { can, canUser } from '@/lib/permissions';
+import { can, canUser, SALES_MANAGER_ROLES, SALES_ROLES } from '@/lib/permissions';
 
-export const SIGNATURE_COHORT_ROLES = ['admin', 'ae_supervisor', 'senior_ae', 'ae', 'ac'];
+// = admin + ฝ่ายขายทุกตำแหน่ง (ผังตำแหน่ง 2026-09-24) — ทุกตำแหน่งยื่นหรืออนุมัติเอกสารได้อย่างน้อยหนึ่งทาง
+export const SIGNATURE_COHORT_ROLES = ['admin', ...SALES_ROLES];
 
 // ใครเปิดรายงานนี้ได้ — กติกาเดียวกับ GET /api/users: ผู้ดูแลระบบ (role cap users:manage)
 // หรือผู้ได้รับ grant users:view รายคน
@@ -29,7 +30,8 @@ export function canViewSignatureCoverage(user) {
 }
 
 // role ที่อนุมัติได้เสมอไม่ว่าจะถือดีลหรือไม่ — ขาดลายเซ็นเมื่อไหร่คือความเสี่ยงทันที
-const ALWAYS_APPROVER_ROLES = ['admin', 'ae_supervisor'];
+// = ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) + admin
+const ALWAYS_APPROVER_ROLES = ['admin', ...SALES_MANAGER_ROLES];
 
 export function isSignatureCohortRole(role) {
   return SIGNATURE_COHORT_ROLES.includes(role);

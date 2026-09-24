@@ -12,6 +12,8 @@
 // `tone` maps to the .status-pill CSS modifiers (success / warning / danger /
 // info). `icon` names a lucide-react component resolved by StatusBadge.
 
+import { isSalesRole } from "@/lib/permissions";
+
 export const STATUS = {
   // Track 1
   draft: { label: "ฉบับร่าง", tone: "neutral", icon: "FileEdit", track: null },
@@ -65,7 +67,7 @@ export const TRACKS = {
 //   SA = sales lane, RA = regulatory lane, AD = admin (sees both, owns nothing)
 export function deptOf(role) {
   if (role === "ra") return "RA";
-  if (["ae_supervisor", "senior_ae", "ac", "ae"].includes(role)) return "SA";
+  if (isSalesRole(role)) return "SA";   // ฝ่ายขายทุกตำแหน่ง (SALES_ROLES · ผังตำแหน่ง 2026-09-24)
   if (role === "admin") return "AD";
   return null;
 }

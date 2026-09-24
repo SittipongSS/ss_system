@@ -15,7 +15,7 @@
 // กติกาเดียวกับ daily-digest / close-resolved-issues
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can } from '@/lib/permissions';
+import { can, SALES_BELL_ROLES } from '@/lib/permissions';
 import { genId } from '@/lib/id';
 import { holidaySet } from '@/lib/master/holidays';
 import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
@@ -194,7 +194,8 @@ export async function GET(request) {
   const notice = escalationNotice(plan.escalate);
   if (notice) {
     const screeners = [...directory.values()]
-      .filter((u) => u && !u.disabled && (u.role === 'ae_supervisor' || u.role === 'admin'))
+      // AE Supervisor + admin — CD/CM ไม่รับกระดิ่ง (มติ 2026-09-24 ข้อ 6 · SALES_BELL_ROLES)
+      .filter((u) => u && !u.disabled && (SALES_BELL_ROLES.includes(u.role) || u.role === 'admin'))
       .map((u) => u.id);
     if (screeners.length) {
       await notifyUsers(supabase, {

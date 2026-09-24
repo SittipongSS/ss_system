@@ -2,7 +2,7 @@ import { recordAudit } from '@/lib/audit';
 import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
 import { purgeUpdates } from '@/lib/master/updates';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { isSuperuser } from '@/lib/permissions';
+import { isSalesManager } from '@/lib/permissions';
 import {
   isForceRequest, isDryRun, canForceDelete,
   quotationForcePreview, cleanupQuotationOrphans, QUOTATION_CHILD_ORDERS,
@@ -531,7 +531,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (before.status === 'accepted') {
       return badRequest('ใบเสนอราคานี้เป็นแหล่งยอด Actual ของดีล — ลบไม่ได้: ถ้ามี SO อนุมัติแล้วใช้ “ยกเลิกใบสั่งขายพร้อมย้อนสถานะ” ที่หน้า SO; ถ้ายังไม่มี SO ให้หัวหน้าทีม/แอดมินใช้ “ย้อนการรับ” บนหน้าใบเสนอราคา');
     }
-    const elevated = isSuperuser(user.role);
+    // ลบใบที่ไม่ใช่ร่าง = อำนาจของผู้มีอำนาจตัดสิน (CD · CM · AE Sup) — AC Supervisor ไม่ได้ (ผังตำแหน่ง 2026-09-24)
+    const elevated = isSalesManager(user.role);
     if (!elevated) {
       if (before.status === 'closed') {
         return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — ลบไม่ได้');
@@ -614,7 +615,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   await removeEvidenceRefs(supabase, issuedPdfRefs);
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`
-    : (isSuperuser(user.role) && before.status !== 'draft'
+    : (isSalesManager(user.role) && before.status !== 'draft'
       ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — สิทธิ์ผู้ดูแลระบบ)`
       : `ลบใบเสนอราคา (ร่าง) ${before.quoteNumber}`);
   await recordAudit({

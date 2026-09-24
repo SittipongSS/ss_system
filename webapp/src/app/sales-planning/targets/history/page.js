@@ -11,6 +11,7 @@ import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useCan, useRole } from "@/lib/roleContext";
+import { isSuperuser } from "@/lib/permissions";
 import { MONTH_LABELS, TARGET_OWNER_ROLES } from "@/components/salesPlanning/ui";
 /* ⚠️ รายชื่อทีมมาจากทะเบียนจริง (มติ 2026-09-07) — ค่าคงที่มีแค่สามทีมที่ seed มาแต่แรก */
 import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
@@ -38,7 +39,7 @@ const emptyValue = () => ({ months: Array(12).fill(""), yearOverride: null });
 export default function SalesHistoryMonthlyPage() {
   const canTarget = useCan("salesplan:target");
   const role = useRole();
-  const isSuper = role === "admin" || role === "ae_supervisor";
+  const isSuper = isSuperuser(role);
 
   const now = useMemo(() => new Date(), []);
   const yearOptions = useMemo(() => historyYearOptions(now), [now]);

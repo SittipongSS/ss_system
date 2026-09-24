@@ -23,6 +23,7 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import PersonSelect, { personIdByName } from "@/components/ui/PersonSelect";
 import { personFullName } from "@/lib/ui/personName";
+import { PROJECT_PEOPLE_ROLES, projectPeopleFieldForRole } from "@/lib/pm/projectPeople";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { categoryFlags } from "@/lib/master/categoryOf";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
@@ -80,11 +81,8 @@ export default function SalesProjectCreateModal({
      ไปกองที่คอลัมน์ "ผู้จัดทำ" ของหัว ISO ส่วน `acOwner`/`acOwnerId` ที่ PDR
      (pdrFields → coordinator) และระบบแจ้งเตือน (updateAccess) อ่านจริง ว่างทั้ง 90 ใบ
      ⇒ ช่องผู้ประสานงานบนใบ PDR ว่างตลอดกาล ไม่ใช่เพราะไม่มีคนกรอก แต่กรอกไปคนละช่อง */
-  const lockPeopleField = (!editingId && myName)
-    ? ((role === "ae" || role === "senior_ae") ? "aeOwner"
-      : role === "ac" ? "acOwner"
-      : role === "ae_supervisor" ? "aeSupervisor" : null)
-    : null;
+  // ช่องที่ตรงกับตำแหน่งของคนกด (ผู้ถือดีล → ผู้ดูแล · สาย AC → ผู้ประสานงาน · ผู้มีอำนาจตัดสิน → ผู้ตรวจสอบ)
+  const lockPeopleField = (!editingId && myName) ? projectPeopleFieldForRole(role) : null;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -129,7 +127,7 @@ export default function SalesProjectCreateModal({
      ต้องยังเห็นค่าตัวเองตอนแก้ ไม่ใช่ช่องว่างเงียบ ๆ จึงคงคนที่เป็นค่าปัจจุบันไว้ในลิสต์ */
   const currentOwner = lockPeopleField === "aeOwner" ? myName : form.aeOwner;
   const ownerUsers = useMemo(
-    () => users.filter((u) => ["ae", "senior_ae"].includes(u.role) || (currentOwner && personFullName(u) === currentOwner)),
+    () => users.filter((u) => PROJECT_PEOPLE_ROLES.aeOwner.includes(u.role) || (currentOwner && personFullName(u) === currentOwner)),
     [users, currentOwner],
   );
 
@@ -291,11 +289,11 @@ export default function SalesProjectCreateModal({
             <label>ผู้ประสานงานโครงการ (AC){!editingId && <span className="required-mark">*</span>}{lockPeopleField === "acOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
             {/* เขียนลง acOwner + acOwnerId — คู่เดียวกับผู้ดูแล (mig 0190) ที่ PDR และ
                 ระบบแจ้งเตือนอ่าน · ไม่ใช่ preparedBy ซึ่งเป็น "ผู้จัดทำ" ของหัว ISO */}
-            <PersonSelect by="name" users={users.filter((u) => u.role === "ac")} value={lockPeopleField === "acOwner" ? myName : form.acOwner} disabled={lockPeopleField === "acOwner"} ariaLabel="ผู้ประสานงานโครงการ (AC)" onChange={(acOwner) => setForm((f) => ({ ...f, acOwner }))} />
+            <PersonSelect by="name" users={users.filter((u) => PROJECT_PEOPLE_ROLES.preparedBy.includes(u.role))} value={lockPeopleField === "acOwner" ? myName : form.acOwner} disabled={lockPeopleField === "acOwner"} ariaLabel="ผู้ประสานงานโครงการ (AC)" onChange={(acOwner) => setForm((f) => ({ ...f, acOwner }))} />
           </div>
           <div className="form-group">
             <label>ผู้ตรวจสอบ (AE Supervisor){!editingId && <span className="required-mark">*</span>}{lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label>
-            <PersonSelect by="name" users={users.filter((u) => u.role === "ae_supervisor")} value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" onChange={(aeSupervisor) => setForm((f) => ({ ...f, aeSupervisor }))} />
+            <PersonSelect by="name" users={users.filter((u) => PROJECT_PEOPLE_ROLES.aeSupervisor.includes(u.role))} value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" onChange={(aeSupervisor) => setForm((f) => ({ ...f, aeSupervisor }))} />
           </div>
           </div>
         </div>

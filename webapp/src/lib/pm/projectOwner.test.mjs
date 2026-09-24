@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import {
   PROJECT_OWNER_ROLES, resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor,
 } from './projectOwner.js';
+import { projectPeopleFieldForRole } from '@/lib/pm/projectPeople';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 // assertion แบบ "ต้องไม่มี" ต้องดูเฉพาะโค้ดจริง — คอมเมนต์ที่เล่าบั๊กเดิมต้องพูดถึง
@@ -157,11 +158,38 @@ test('AC: บัญชีที่ถูกระงับ / ไม่มีต�
 
 test('ฟอร์มเขียนผู้ประสานงานลง acOwner/acOwnerId ไม่ใช่ preparedBy', () => {
   const modal = codeOnly(read('../../components/pm/SalesProjectCreateModal.js'));
-  assert.match(modal, /role === "ac" \? "acOwner"/, 'AC สร้างโครงการ = ล็อกเป็นผู้ประสานงาน');
+  // ช่องที่ล็อกเป็นตัวเองมาจากตารางกลาง (ผังตำแหน่ง 2026-09-24) — ไม่เทียบชื่อตำแหน่งในฟอร์ม
+  assert.match(modal, /lockPeopleField = \(!editingId && myName\) \? projectPeopleFieldForRole\(role\)/);
+  assert.equal(projectPeopleFieldForRole('ac'), 'acOwner', 'AC สร้างโครงการ = ล็อกเป็นผู้ประสานงาน');
   assert.match(modal, /onChange=\{\(acOwner\) => setForm/);
   assert.match(modal, /acOwnerId: \(lockPeopleField === "acOwner" \? myName : form\.acOwner\)/);
   // preparedBy = "ผู้จัดทำ" ของหัว ISO — server ตั้งเป็นผู้สร้าง ฟอร์มไม่ยุ่งอีก
   assert.doesNotMatch(modal, /form\.preparedBy/, 'ช่อง AC ห้ามกลับไปเขียน preparedBy');
+});
+
+test('ผังตำแหน่ง 2026-09-24: ช่องผู้รับผิดชอบของโครงการรับตำแหน่งตามกลุ่ม · ช่องที่ล็อกเป็นตัวเองตามตำแหน่งคนกด', () => {
+  assert.equal(projectPeopleFieldForRole('ae'), 'aeOwner');
+  assert.equal(projectPeopleFieldForRole('senior_ae'), 'aeOwner');
+  // สาย AC ทุกระดับเป็นผู้ประสานงาน
+  assert.equal(projectPeopleFieldForRole('senior_ac'), 'acOwner');
+  assert.equal(projectPeopleFieldForRole('ac_supervisor'), 'acOwner');
+  // ผู้มีอำนาจตัดสินเป็นผู้ตรวจสอบ
+  for (const role of ['commercial_director', 'commercial_manager', 'ae_supervisor']) assert.equal(projectPeopleFieldForRole(role), 'aeSupervisor', role);
+  assert.equal(projectPeopleFieldForRole('admin'), null);
+  assert.equal(projectPeopleFieldForRole('rd'), null);
+});
+
+test('ผังตำแหน่ง 2026-09-24: ผู้ตรวจสอบ = CD/CM/AE Sup · ผู้ประสานงาน = สาย AC (ตรวจฝั่ง server)', async () => {
+  const cd = { id: 'U-CD', email: 'cd@x', user_metadata: { name: 'ผอ.ฝ่ายขาย' }, app_metadata: { role: 'commercial_director' } };
+  const acSup = { id: 'U-ACS', email: 'acs@x', user_metadata: { name: 'หัวหน้าเอซี' }, app_metadata: { role: 'ac_supervisor' } };
+  const seniorAc = { id: 'U-SAC', email: 'sac@x', user_metadata: { name: 'ซีเนียร์เอซี' }, app_metadata: { role: 'senior_ac', team: 'ODM', teams: ['ODM'] } };
+  const stub = ownerStub({ 'U-CD': cd, 'U-ACS': acSup, 'U-SAC': seniorAc });
+  assert.equal((await resolveProjectSupervisor(stub, 'U-CD')).ok, true, 'Commercial Director เป็นผู้ตรวจสอบได้');
+  assert.equal((await resolveProjectSupervisor(stub, 'U-ACS')).ok, false, 'AC Supervisor ไม่ใช่ผู้ตรวจสอบ (ไม่อนุมัติ)');
+  assert.equal((await resolveProjectAcOwner(stub, 'U-ACS', 'ODM')).ok, true, 'AC Supervisor ไม่มีทีม = ข้ามด่านทีม');
+  assert.equal((await resolveProjectAcOwner(stub, 'U-SAC', 'ODM')).ok, true);
+  assert.equal((await resolveProjectAcOwner(stub, 'U-SAC', 'KA')).ok, false, 'Senior AC คนละทีมกับงาน = ตีกลับ');
+  assert.equal((await resolveProjectAcOwner(stub, 'U-CD', 'ODM')).ok, false, 'Commercial Director ไม่ใช่สาย AC');
 });
 
 /* mig 0255 ย้ายผู้ประสานงานที่เคยไปกองใน preparedBy กลับเข้า acOwner/acOwnerId

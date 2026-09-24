@@ -1,5 +1,5 @@
 import { withUser, ok, fail, unauthorized, forbidden } from '@/lib/http';
-import { can, canSeeTaskKpi, hasTeam, primaryTeam, userTeams } from '@/lib/permissions';
+import { can, canSeeTaskKpi, hasTeam, isTeamLead, primaryTeam, userTeams, SALES_ROLES } from '@/lib/permissions';
 import { loadUserDirectory, teamUserIds } from '@/lib/usersRepo';
 import { businessDate } from '@/lib/businessDate';
 import {
@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 
 // KPI งานของฝ่ายขาย — ตัวคิดคะแนนกลางอยู่ที่ lib/pm/taskKpi.js
 // (เคยแชร์กับ /api/sales-planning/rd-kpi ซึ่งถูกลบพร้อมแท็บแดชบอร์ด RD 2026-08-11)
-const SALES_ROLES = new Set(['ae', 'ac', 'senior_ae', 'ae_supervisor']);
+// ฝ่ายขายทุกตำแหน่ง (ผังตำแหน่ง 2026-09-24) — ถามลิสต์กลาง ไม่พิมพ์ชื่อตำแหน่งซ้ำ
+const SALES_ROLE_SET = new Set(SALES_ROLES);
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -21,7 +22,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const period = clampPeriod(url.searchParams.get('from'), url.searchParams.get('to'));
   const requestedTeam = (url.searchParams.get('team') || '').trim();
   const directory = await loadUserDirectory(supabase);
-  const users = Array.from(directory.values()).filter((u) => SALES_ROLES.has(u.role));
+  const users = Array.from(directory.values()).filter((u) => SALES_ROLE_SET.has(u.role));
   // คนหนึ่งคนอยู่ได้หลายทีม ⇒ โผล่ในตัวเลือกทีมทุกทีมที่สังกัด
   const availableTeams = Array.from(new Set(users.flatMap((u) => userTeams(u)))).sort();
 
@@ -29,7 +30,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // ไม่เลือก (หรือเลือกทีมที่ไม่ได้สังกัด) = ทีมหลัก
   let team = requestedTeam;
   let targetIds = null;
-  if (user.role === 'senior_ae') {
+  if (isTeamLead(user.role)) {
     team = hasTeam(user, requestedTeam) ? requestedTeam : (primaryTeam(user) || '');
     targetIds = await teamUserIds(supabase, team);
   } else if (team) {
@@ -73,7 +74,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     from: period.from,
     to: period.to,
     team: team || '',
-    scope: user.role === 'senior_ae' ? 'team' : 'all',
+    scope: isTeamLead(user.role) ? 'team' : 'all',
     weights: TASK_KPI_WEIGHTS,
     availableTeams,
     summary,

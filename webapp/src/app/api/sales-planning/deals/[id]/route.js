@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { caretakerTeamsOf, hasTeam, isSuperuser, userTeams, viewScopeUser } from '@/lib/permissions';
+import { caretakerTeamsOf, hasTeam, isSalesManager, userTeams, viewScopeUser } from '@/lib/permissions';
 import { emptyProjectAfterDealDelete, loadProject } from '@/lib/pm/projectsRepo';
 import {
   isForceRequest, isDryRun, canForceDelete,
@@ -653,7 +653,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // หรือมาจาก PO สหมิตร (settle เข้ายอดแล้ว) — ให้ยกเลิกด้วยวิธีอื่นแทนการลบ.
   // force (admin) ข้ามด่านเหล่านี้ทั้งหมด แล้วรับผิดชอบ cascade เอง.
   if (!force) {
-    if (isWonStage(before.stage) && !isSuperuser(user.role)) {
+    // ลบโครงการที่ปิด Won = อำนาจของผู้มีอำนาจตัดสิน (AC Supervisor ไม่ได้ · ผังตำแหน่ง 2026-09-24)
+    if (isWonStage(before.stage) && !isSalesManager(user.role)) {
       return conflict('โครงการนี้ปิดการขาย (Won) แล้ว — ลบไม่ได้ เพราะถูกนับเป็นยอดขาย (ต้องการสิทธิ์แอดมิน)');
     }
     // ใบเสนอราคา accepted = แหล่งยอด Actual — ห้ามลบแม้ superuser (กติกาเดียวกับ

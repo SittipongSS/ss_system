@@ -14,7 +14,7 @@
 //
 // ⚠️ ไฟล์นี้ถูก import ทั้งฝั่งจอและฝั่ง API — ห้าม import อะไรที่เป็น server-only
 import { lineIsServicePackage } from '@/lib/sales/serviceOrders';
-// ใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสินไม่มี import (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+// ใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 /** บรรทัดไหนกรอกรอบได้ — เกณฑ์เดียวกับที่ใช้ตัดสินว่าใบไหนมีรอบบริการ */
