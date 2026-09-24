@@ -31,13 +31,29 @@ import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtNumber, naText } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { currentMonth } from "@/lib/datePeriods";
+import { canViewService } from "@/lib/permissions";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 
 const SPOT_PREVIEW = 12;
 import { apiFetch } from "@/lib/apiFetch";
 
+/* แถวประวัติการเข้า — ลิงก์ไปใบส่งงานเมื่อคนดูเปิดใบได้ · ไม่ได้ = กล่องหน้าตาเดียวกันที่กดไม่ได้
+   (ข้อมูลในแถวเท่ากันทุกคน ต่างกันแค่มีทางไปต่อหรือไม่) */
+function VisitRow({ href, children }) {
+  if (href) return <Link href={href} className={styles.historyLink}>{children}</Link>;
+  return <div className={`${styles.historyLink} ${styles.historyStatic}`}>{children}</div>;
+}
+
 export default function ServiceZonePage({ params }) {
   const { id, zoneId } = use(params);
+  /* หน้านี้เป็นของ **ทะเบียน** (เปิดอ่านได้ทุกคนที่เข้าฐานข้อมูล) · ใบส่งงานยังเป็นหน้าทำงานของฝ่ายบริการ
+     ⇒ แถวประวัติเป็นลิงก์เฉพาะคนที่เปิดใบได้จริง — คนอื่นเห็นข้อมูลเท่ากัน แต่ไม่มีทางกดไปเจอ Forbidden */
+  const role = useRole();
+  const team = useTeam();
+  const teams = useTeams();
+  const department = useDepartment();
+  const canOpenVisit = useMemo(() => canViewService({ role, team, teams, department }), [role, team, teams, department]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -322,14 +338,14 @@ export default function ServiceZonePage({ params }) {
             <ul className={styles.history}>
               {zoneVisits.slice(0, 20).map((visit) => (
                 <li key={visit.id}>
-                  <Link href={`/service/visits/${visit.id}`} className={styles.historyLink}>
+                  <VisitRow href={canOpenVisit ? `/service/visits/${visit.id}` : null}>
                     <b>{naText(visit.actualDate)}</b>
                     <span>{VISIT_KIND_LABELS[visit.kind] || visit.kind} · {VISIT_STATUS_LABELS[visit.status]}</span>
                     <span>{naText(visit.assigneeName)}</span>
                     <span className={styles.used}>
                       {itemsOfVisit(visit.id).map((i) => `${i.label}${i.qty != null ? ` ${fmtNumber(i.qty)}${i.unit ? ` ${i.unit}` : ""}` : ""}`).join(" · ") || naText(null)}
                     </span>
-                  </Link>
+                  </VisitRow>
                 </li>
               ))}
             </ul>

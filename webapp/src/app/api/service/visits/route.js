@@ -1,5 +1,6 @@
 // ── API ตารางนัดเข้าบริการ (mig 0188) ────────────────────────────────────
 // GET  ?from=&to=&siteId=&assigneeId= : นัดในช่วง + ไซต์ที่เกี่ยวข้อง (ปฏิทินใช้ทั้งคู่)
+//        ระบุไซต์ = อ่านแบบทะเบียน (หน้า /database/sites/[id]) — ดูด่านใน GET
 // POST : สร้างนัด (นอกรอบก็ได้ — งานซ่อมด่วนไม่ได้มาจากรอบไหน)
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
@@ -8,23 +9,34 @@ import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { normalizeVisitInput } from '@/lib/service/rounds';
 import { initialVisitStatus } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
-import { findSite, requireService } from '@/lib/service/sitesRepo';
+import { findSite, requireService, requireSite } from '@/lib/service/sitesRepo';
+import { canViewService } from '@/lib/permissions';
 import { findPlan, loadVisits } from '@/lib/service/visitsRepo';
 import { visitBundle } from '@/lib/service/visitBundle';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = withUser(async ({ user, supabase, req }) => {
-  const access = requireService({ user });
-  if (access.response) return access.response;
   const url = new URL(req.url);
+  const siteId = url.searchParams.get('siteId');
   try {
+    /* ⭐ **นัดของไซต์เดียว = ประวัติการเข้าบนหน้าทะเบียนไซต์** (มติผู้ใช้ 2026-09-24: "ฐานข้อมูล
+       ไซต์ เครื่อง เปิดให้ผู้ใช้ที่เข้าระบบฐานข้อมูลได้เห็นได้เลย") — ด่านเดิม (ฝ่าย TS) ทำให้คนนอก TS
+       เปิดหน้าไซต์แล้วเจอ Forbidden ทั้งหน้า · หน้าโซนก็อ่านนัดของไซต์ผ่านเส้นทะเบียนอยู่แล้ว
+       ⚠️ ปฏิทิน/คิวทั้งระบบ (ไม่ระบุไซต์) ยังเป็นงานของ TS */
+    const access = siteId
+      ? await requireSite({ user, supabase, id: siteId, registry: true })
+      : requireService({ user });
+    if (access.response) return access.response;
     const visits = await loadVisits(supabase, {
       from: url.searchParams.get('from'),
       to: url.searchParams.get('to'),
-      siteId: url.searchParams.get('siteId'),
+      siteId,
       assigneeId: url.searchParams.get('assigneeId'),
     });
+    /* คนอ่านทะเบียนที่ไม่ใช่ฝ่ายบริการได้ **ตัวนัดอย่างเดียว** — ภาระงานกับบริบทด่าน (จ่ายถึง ·
+       สัญญา) เป็นเครื่องมือจัดคิวของ TS ไม่ใช่ข้อมูลหลัก ⇒ ไม่คำนวณ ไม่ส่ง */
+    if (!canViewService(user)) return ok({ visits, sites: access.site ? [access.site] : [] });
     /* ไซต์ · ภาระ (จุด + แพ็ค) · บริบทด่าน ①② — ประกอบที่ visitBundle ที่เดียว
        (รายการงาน `visits/queue` ใช้ตัวเดียวกัน ⇒ สองคอลัมน์ของหน้าจัดตารางนับภาระสูตรเดียว) */
     const { sites, workload, gateContext } = await visitBundle(supabase, visits);

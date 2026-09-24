@@ -266,7 +266,10 @@ test('🔴 route รายการงานใช้ด่านอ่านต
   assert.match(route, /requireService\(\{ user \}\)/);
   assert.doesNotMatch(route, /edit:\s*true/, 'ด่านแก้ = เจ้าหน้าที่หน้างานเห็นปฏิทินแต่รายการงานขึ้น 403');
   assert.doesNotMatch(route, /export const (POST|PATCH|PUT|DELETE)\b/, 'เส้นนี้อ่านอย่างเดียว');
-  assert.match(code(WEEK_ROUTE), /export const GET = withUser\(async \(\{ user, supabase, req \}\) => \{\s*const access = requireService\(\{ user \}\);/);
+  /* ตารางสัปดาห์ (ไม่ระบุไซต์) = ด่านอ่านของฝ่ายบริการตัวเดียวกัน · ระบุไซต์เดียว = อ่านแบบทะเบียน
+     (มติผู้ใช้ 2026-09-24 — ประวัติการเข้าบนหน้าไซต์ในฐานข้อมูลต้องเปิดได้ทุกคนที่เข้าฐานข้อมูล) */
+  assert.match(code(WEEK_ROUTE),
+    /siteId\s*\?\s*await requireSite\(\{ user, supabase, id: siteId, registry: true \}\)\s*:\s*requireService\(\{ user \}\)/);
 });
 
 test('🔴 ไม่มีสตริงสถานะเขียนมือใน route และตัวโหลด — ใช้ตัวช่วยของ visitStatus.js', () => {
