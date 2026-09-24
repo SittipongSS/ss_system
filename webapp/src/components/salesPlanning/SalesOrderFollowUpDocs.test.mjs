@@ -72,9 +72,24 @@ test('ลบร่างจากการ์ด: DELETE เส้นเดี�
   // ใบชุดใหม่ลบไม่ได้แล้ว = ปิดโมดัล ย้ายเหตุขึ้นแถบของการ์ด (ท่าเดียวกับ removeDraft ของหน้าเอกสาร)
   assert.match(body, /outcome === "moved"\) \{\s*setRemoving\(null\);\s*setWarning\(removeFailure\.message/);
   assert.match(body, /throw removeFailure/);
-  assert.match(source, /docConfirmPrompt\(DOC_DELETE_KEY, \{[\s\S]{0,200}?orphan: true,/);
+  // ก้อนโมดัลประกอบจากแถวด้วย `orphanDocPromptInput` (ตั้ง `orphan: true` เสมอ — เทสต์ที่ productSpecDocView.test.mjs)
+  assert.match(source, /docConfirmPrompt\(DOC_DELETE_KEY, orphanDocPromptInput\(removing\)\)/);
   // ตัวโหลดต้องคืนคำตอบชุดใหม่ ไม่งั้นทางล้มอ่านได้แค่ undefined
   const loader = source.slice(source.indexOf('const load = useCallback'), source.indexOf('useEffect(() => { load(); }'));
   assert.match(loader, /return next;/);
   assert.match(loader, /return null;/);
+});
+
+/* ── ผลตรวจ 25/09 ของงานมติ 24/09 ("ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ") ───────────────────────
+ * 🐞 ผู้อนุมัติเห็นปุ่ม "ยกเลิกเอกสาร" บนแถวบรรทัดถูกถอดของใบที่อนุมัติแล้ว แต่การ์ดประกอบก้อนโมดัลเองแค่ `{ docNo }`
+ *    ⇒ โมดัลไม่บอกว่าฉบับที่อนุมัติแล้วใช้ไม่ได้อีก · toast `ยกเลิก X แล้ว` ไม่บอกว่าแจ้งเตือนใคร
+ *    — การกระทำเดียวกับหน้าเอกสาร แต่คำบอกผลอ่อนกว่า ⇒ ใช้ตัวประกอบกลางชุดเดียวกับหน้าเอกสาร */
+test('🐞 โมดัล/toast ยกเลิกบนการ์ดใช้ตัวประกอบกลาง — พูดเท่าหน้าเอกสาร (ฉบับที่อนุมัติ · แจ้งเตือนใคร)', () => {
+  assert.match(source, /docReasonPrompt\("void", orphanDocPromptInput\(voiding\)\)/,
+    'ก้อนโมดัลยกเลิกต้องมาจากแถวทั้งแถว (มี currentRevNo) ไม่ใช่ประกอบเองแค่ docNo');
+  assert.doesNotMatch(source, /document: \{ docNo: (voiding|removing)\.docNo \}/, 'ห้ามประกอบก้อนเอกสารเองบนการ์ด');
+  const confirm = source.slice(source.indexOf('const confirmVoid'), source.indexOf('const removeDone'));
+  assert.match(confirm, /notifyToast\.success\(docActionDoneMessage\("void", \{ docNoText: voiding\.docNoText \|\| voiding\.docNo \}\)\)/,
+    'toast ยกเลิกต้องเป็นข้อความกลาง (บอกว่าแจ้งเตือนใคร)');
+  assert.doesNotMatch(confirm, /notifyToast\.success\(`/, 'ห้ามเขียน toast ยกเลิกเองบนการ์ด');
 });

@@ -307,12 +307,17 @@ test('GET ของการ์ดบนหน้า SO: สถานะรา�
   assert.match(source, /state: lineDocumentState\(\{/);
   assert.match(source, /doc\.status === 'active' && \(!doc\.salesOrderLineId \|\| !lineIds\.has\(doc\.salesOrderLineId\)\)/);
   /* 🔴 ทั้งคู่ต้องมาจาก `documentActions` ก้อนเดียวกัน (มติ 23/09 "ซ่อนปุ่มยกเลิกช่วงร่าง") — ส่งแต่ `.void`
-     = แถวของร่างที่ไม่เคยยื่นไม่มีปุ่มอะไรเลยบนการ์ด (ทางตัน) */
-  assert.match(source, /voidAction: actions\.void,/, 'ปุ่มยกเลิกของแถวที่บรรทัดถูกถอดต้องมาจาก documentActions().void');
-  assert.match(source, /removeAction: actions\.remove,/, 'ปุ่มลบร่างของแถวที่บรรทัดถูกถอดต้องมาจาก documentActions().remove');
-  // โมดัลยกเลิกต้องประกอบเลขรูปเดียวกับแถว (DDMMYY-XXX-RR) ⇒ ต้องได้ Rev ดิบ (ผลตรวจรอบสอง)
-  assert.match(source, /revNo: doc\.latest \? doc\.latest\.revNo : null/);
+     = แถวของร่างที่ไม่เคยยื่นไม่มีปุ่มอะไรเลยบนการ์ด (ทางตัน)
+     ⭐ แถวประกอบที่ `specDocOrphanRow` ตัวเดียว (ผลตรวจ 25/09: แถวที่ประกอบในเราต์เคยขาด `currentRevNo`
+        ⇒ โมดัลยกเลิกบนการ์ดไม่บอกว่าฉบับที่อนุมัติแล้วตายตาม) — ช่องของแถว + voidAction/removeAction
+        เทสต์เป็นหน่วยที่ productSpecDocView.test.mjs ⇒ ที่นี่ล็อกแค่ว่าเราต์ส่งก้อน documentActions ทั้งก้อนเข้าไป */
+  assert.match(source, /const actions = documentActions\(\{\s*document: doc, latest: doc\.latest, salesOrder: order, dealOwnerId, user,\s*\}\);\s*return specDocOrphanRow\(\{ document: doc, actions \}\);/,
+    'แถวที่บรรทัดถูกถอดต้องประกอบด้วย specDocOrphanRow จาก documentActions ก้อนเดียว');
+  assert.doesNotMatch(source, /voidAction:|removeAction:|revNo: doc\.latest/, 'ห้ามประกอบแถวซ้ำในเราต์ — ช่องจะหลุดจาก lib อีก');
   assert.match(source, /return ok\(\{ orderStatus: order\.status, rows, orphans \}\)/);
+  // ⚠️ `specDocOrphanRow` อ่าน `currentRevNo` จากแถวเอกสาร ⇒ ตัวโหลดต้องดึงทุกคอลัมน์ของเอกสาร
+  const store = libCode('sales/productSpecStore.js');
+  assert.match(store, /\.from\('product_spec_documents'\)\.select\('\*'\)\.eq\(column, value\)/);
 });
 
 test('สเปคของสินค้า: ทุกทางเขียนถาม canEditProductSpec · ลบถาม productSpecDeleteBlock · audit ถือแถวเต็ม', () => {

@@ -356,6 +356,27 @@ test('เคยอนุมัติแล้ว = currentRevNo มีค่า 
   assert.equal(hasApprovedRevision(null, null), false);
 });
 
+/* 🔴 "เคยอนุมัติ" = อนุมัติ **ครบสองขั้น** เท่านั้น (ผลตรวจ 25/09) — รอยการยื่น/อนุมัติขั้นแรกบน Rev.00
+   ที่ยังไม่อนุมัติครบ ไม่นับ · เดิมเทสต์ของตัวนี้ใช้ Rev ที่ไม่มีรอยอะไรเลย ⇒ ถ้าวันหนึ่งมีคนเติม
+   `|| latest.aeApprovedAt` (นับขั้น AE เป็นอนุมัติแล้ว) ทุกเทสต์ยังเขียว แต่ผู้อนุมัติจะได้ปุ่มยกเลิก
+   บนใบที่ยังไม่เคยอนุมัติ ซึ่งมติ 24/09 ให้ใช้ "ตีกลับ" */
+test('🔴 รอยการยื่น/อนุมัติขั้นแรกบน Rev.00 ที่ยังไม่อนุมัติครบ ไม่นับเป็น "เคยอนุมัติ"', () => {
+  const at = '2026-09-23T02:00:00.000Z';
+  const traces = [
+    ...SUBMIT_TRACE_FIELDS.map((field) => ({ [field]: at })),
+    Object.fromEntries(SUBMIT_TRACE_FIELDS.map((field) => [field, at])),
+    { aeApprovedAt: at, aeApprovedBy: U.owner.id, aeApprovedByName: U.owner.name },
+  ];
+  for (const status of ['draft', 'pending_ae', 'pending_ae_supervisor', 'rejected']) {
+    for (const trace of traces) {
+      for (const document of [doc, { ...doc, currentRevNo: null }, { ...doc, salesOrderLineId: null }]) {
+        const where = `${status} · ${Object.keys(trace).join('+')} · currentRevNo=${document.currentRevNo}`;
+        assert.equal(hasApprovedRevision(document, rev(status, trace)), false, where);
+      }
+    }
+  }
+});
+
 test('ตัวตัดสินแก้ไข/ยกเลิก: สาย AC ได้ทุกกรณีเหมือนเดิม · ผู้อนุมัติยกเลิกได้เฉพาะใบที่เคยอนุมัติ', () => {
   const approvedLatest = rev('approved');
   const pendingLatest = rev('pending_ae');
@@ -400,7 +421,8 @@ for (const currentRevNo of [0, null]) {
 }
 
 test('🔴 ผู้อนุมัติยกเลิกใบที่ไม่เคยอนุมัติไม่ได้ — ใบที่รออนุมัติใช้ "ตีกลับ" (มติ 24/09)', () => {
-  const traces = [{}, { firstSubmittedAt: '2026-09-23T02:00:00.000Z' }];
+  // ⚠️ ทุกรอย รวม `aeApprovedAt` — ผ่านขั้น AE แล้วรอ AE Sup ยังเป็น "ไม่เคยอนุมัติ" (ผลตรวจ 25/09)
+  const traces = [{}, ...SUBMIT_TRACE_FIELDS.map((field) => ({ [field]: '2026-09-23T02:00:00.000Z' }))];
   for (const status of ['draft', 'pending_ae', 'pending_ae_supervisor', 'rejected']) {
     for (const trace of traces) {
       for (const who of APPROVERS) {
@@ -574,39 +596,58 @@ test('draftDeleteBlock ทนกับก้อนที่ไม่ครบ �
  * ⭐ มติ 24/09/2569: ผู้อนุมัติ (เจ้าของดีล · CD/CM/AE Sup) ได้ "ยกเลิก" หนึ่งตัวพอดีบนใบที่เคยอนุมัติแล้ว
  *    และไม่เคยได้ "ลบร่าง" · คนที่ไม่ใช่ทั้งสองกลุ่มยังได้ศูนย์ตัว
  */
+/* ⚠️ **คำตอบที่คาดไว้คิดจากโจทย์ของตารางตรง ๆ — ห้ามถามตัวตัดสินของจริง** (ผลตรวจ 25/09)
+   เดิมตารางนี้ถาม `isProductSpecDocumentApprover` / `hasApprovedRevision` / `canIssueProductSpecDocument` /
+   `documentExitKey` เพื่อเลือกคำตอบ ⇒ สำหรับผู้อนุมัติมันพิสูจน์ได้แค่ว่า `documentActions` เห็นด้วยกับตัวเอง
+   (ลองเติม `|| latest.aeApprovedAt` ให้ hasApprovedRevision แล้วทั้งตารางยังเขียว ทั้งที่มติ 24/09 ห้าม)
+   ⇒ ใครอยู่สายไหนเขียนเป็นรายชื่อ (`APPROVERS` ข้างบน + สาย AC ข้างล่าง) · "เคยอนุมัติครบ" / "ร่างที่ลบได้" เขียนจากมิติของตารางเอง */
+const AC_TRACK = ['ac', 'ac2', 'admin'];
 test('🔴 ไม่มีทางตัน: ใบ active ทุกใบ AC/admin ได้ยกเลิกหรือลบ ตัวใดตัวหนึ่งพอดี · ผู้อนุมัติได้ยกเลิกเฉพาะใบที่เคยอนุมัติ', () => {
   const traces = [{}, ...SUBMIT_TRACE_FIELDS.map((field) => ({ [field]: '2026-09-23T02:00:00.000Z' }))];
+  // `approvedBefore` = เอกสารถือ currentRevNo (อนุมัติครบมาแล้ว) — เขียนกำกับเอง ไม่อ่านจากตัวตัดสิน
   const documents = [
-    doc, { ...doc, salesOrderLineId: null }, { ...doc, currentRevNo: 0 },
+    { document: doc, approvedBefore: false },
+    { document: { ...doc, salesOrderLineId: null }, approvedBefore: false },
+    { document: { ...doc, currentRevNo: null }, approvedBefore: false },
+    { document: { ...doc, currentRevNo: 0 }, approvedBefore: true },
+    { document: { ...doc, salesOrderLineId: null, currentRevNo: 0 }, approvedBefore: true },
   ];
   let checked = 0;
-  for (const document of documents) {
+  let approverVoids = 0;
+  for (const { document, approvedBefore } of documents) {
     for (const status of DOC_REVISION_STATUSES) {
       for (const revNo of [0, 1]) {
         for (const trace of traces) {
+          /* เคยอนุมัติครบ = เอกสารมีฉบับที่ใช้ · Rev ล่าสุดคือฉบับที่อนุมัติ/ถูกแทน · หรือเป็น Rev.01
+             (Rev ใหม่เปิดได้จากฉบับที่อนุมัติเท่านั้น) — รอยการยื่น/ขั้น AE บน Rev.00 **ไม่นับ** */
+          const everApproved = approvedBefore || status === 'approved' || status === 'superseded' || revNo === 1;
+          // ร่างที่ลบได้ = ร่าง Rev.00 ที่ไม่มีรอยการยื่นใด ๆ บนเอกสารที่ไม่เคยอนุมัติ (มติ 23/09 · mig 0375)
+          const freshDraft = !approvedBefore && status === 'draft' && revNo === 0 && !Object.keys(trace).length;
+          const exitKey = freshDraft ? 'remove' : 'void';
           for (const salesOrder of [approvedOrder, revokedOrder, null]) {
             for (const [who, user] of Object.entries(U)) {
               const latest = rev(status, { revNo, submittedBy: null, ...trace });
               const actions = documentActions({ document, latest, salesOrder, dealOwnerId: OWNER_ID, user });
               const exits = [actions.void.visible, actions.remove.visible].filter(Boolean).length;
-              const where = `${who} · ${status} · Rev.${revNo} · ${Object.keys(trace)[0] || 'ไม่มีรอย'} · ${salesOrder?.status || 'ไม่มี SO'}`;
-              if (canIssueProductSpecDocument(user.role)) {
+              const where = `${who} · ${status} · Rev.${revNo} · ${Object.keys(trace)[0] || 'ไม่มีรอย'} · `
+                + `${approvedBefore ? 'มี currentRevNo' : 'ไม่มี currentRevNo'} · ${salesOrder?.status || 'ไม่มี SO'}`;
+              if (AC_TRACK.includes(who)) {
                 assert.equal(exits, 1, `${where}: ต้องมีปุ่มปลายทางหนึ่งตัวพอดี`);
-                const key = documentExitKey(document, latest);
-                assert.equal(actions[key].visible, true, `${where}: ปุ่มที่โชว์ต้องตรงกับ documentExitKey`);
+                assert.equal(actions[exitKey].visible, true, `${where}: ปุ่มปลายทางต้องเป็น ${exitKey}`);
                 // ปุ่มปลายทางไม่เคยติดด่าน — ถอย ไม่ใช่เดินหน้า
-                assert.equal(actions[key].reason, null, where);
-              } else if (isProductSpecDocumentApprover(user, OWNER_ID) && hasApprovedRevision(document, latest)) {
+                assert.equal(actions[exitKey].reason, null, where);
+              } else if (APPROVERS.includes(who) && everApproved) {
                 /* ⭐ มติ 24/09: ผู้อนุมัติได้ "ยกเลิก" บนใบที่เคยอนุมัติแล้ว — ใบแบบนี้ลบไม่ได้เสมอ
-                   (`hasApprovedRevision` ⇒ `draftDeleteBlock` ไม่ว่าง) ⇒ ปุ่มปลายทางหนึ่งตัวพอดีคือยกเลิก */
+                   ⇒ ปุ่มปลายทางหนึ่งตัวพอดีคือยกเลิก */
+                assert.equal(exitKey, 'void', `${where}: ใบที่เคยอนุมัติต้องไม่ใช่ร่างที่ลบได้ (โจทย์ของตารางเอง)`);
                 assert.equal(exits, 1, `${where}: ผู้อนุมัติบนใบที่เคยอนุมัติต้องมียกเลิกหนึ่งตัวพอดี`);
-                assert.equal(documentExitKey(document, latest), 'void', where);
                 assert.deepEqual(actions.void, { visible: true, reason: null }, where);
+                approverVoids += 1;
               } else {
                 assert.equal(exits, 0, `${where}: คนที่ไม่ใช่ AC/admin (และผู้อนุมัติบนใบที่ไม่เคยอนุมัติ) ต้องไม่เห็นทั้งสองปุ่ม`);
               }
               // 🔴 ลบร่างเป็นของสาย AC/admin เท่านั้น — ผู้อนุมัติไม่เคยเห็นปุ่มลบ
-              if (!canIssueProductSpecDocument(user.role)) {
+              if (!AC_TRACK.includes(who)) {
                 assert.equal(actions.remove.visible, false, `${where}: ลบร่างต้องไม่โผล่ให้คนนอกสาย AC`);
               }
               checked += 1;
@@ -617,6 +658,8 @@ test('🔴 ไม่มีทางตัน: ใบ active ทุกใบ AC/a
     }
   }
   assert.ok(checked > 2000, `ต้องเดินครบทั้งตาราง (เดินไป ${checked})`);
+  // ทั้งสองฝั่งของมติ 24/09 ต้องถูกเดินจริง — ไม่ใช่ตารางที่ไม่มีเคสผู้อนุมัติได้ยกเลิกเลย
+  assert.ok(approverVoids > 100, `ต้องมีเคสที่ผู้อนุมัติได้ยกเลิก (ได้ ${approverVoids})`);
 });
 
 test('ยกเลิกถูกซ่อนเฉพาะร่างที่ลบได้จริง — ตัวตัดสินเดียวกับปุ่มลบ (isDeletableDraft)', () => {
