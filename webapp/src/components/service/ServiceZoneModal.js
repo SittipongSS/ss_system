@@ -11,7 +11,9 @@ import Button from "@/components/ui/Button";
 import ServiceZoneFields, { ZONE_FORM_EMPTY, zoneFormFromRow } from "./ServiceZoneFields";
 import { normalizeZoneInput } from "@/lib/service/zones";
 
-export default function ServiceZoneModal({ open, zone = null, onClose, onSave }) {
+/* `knownFloors` = ชั้นของโซนอื่นในไซต์เดียวกัน — ขึ้นเป็นชิปลัดในช่องชั้น (ชั้นที่พิมพ์เองครั้งแรก
+   กดซ้ำได้ในโซนถัดไป · มติผู้ใช้ 2026-09-24) */
+export default function ServiceZoneModal({ open, zone = null, knownFloors = [], onClose, onSave }) {
   const editing = !!zone;
   const [form, setForm] = useState(ZONE_FORM_EMPTY);
   const [error, setError] = useState("");
@@ -40,7 +42,7 @@ export default function ServiceZoneModal({ open, zone = null, onClose, onSave })
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? `แก้ไขโซน ${zone.name}` : "เพิ่มโซน"} size="md">
-      <ServiceZoneFields form={form} setForm={setForm} editing={editing} zoneCode={zone?.code || null} />
+      <ServiceZoneFields form={form} setForm={setForm} editing={editing} knownFloors={knownFloors} />
 
       {error && <p className="form-error" role="alert">{error}</p>}
 

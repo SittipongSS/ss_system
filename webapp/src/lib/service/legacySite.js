@@ -129,7 +129,7 @@ export function planLegacyZones(zones = [], { existingZones = [], siteCode = nul
     /* โหมดเติมต่อ: ไซต์ปลายทางต้องออกรหัสโซนได้ (ไซต์รหัสรูปเดิมออกไม่ได้) ·
        โหมดสร้าง: ไซต์ยังไม่มีรหัส — ชั้นถูกตรวจรูปแล้วใน normalizeZoneInput ก็พอ */
     if (siteCode) {
-      const code = zoneCodePrefix({ siteCode, floor: value.floor });
+      const code = zoneCodePrefix({ siteCode });
       if (code.error) { errors.push(`${label}: ${code.error}`); return; }
     }
     // โซนใหม่เริ่มที่ "ใช้งาน" เสมอ — ไม่มีช่องสถานะในโหมดสร้าง (กฎ AGENTS.md)

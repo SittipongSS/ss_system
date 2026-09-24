@@ -5,7 +5,8 @@
 //
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ฟอร์ม/ปฏิทิน) และ server (validate ก่อน insert)
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
-import { addressText } from '@/lib/master/addresses';
+import { addressText, asAddressRow } from '@/lib/master/addresses';
+import { composeThaiAddress, normalizePostcode } from '@/lib/master/thaiAddress';
 import { ASSET_KINDS, normalizeAssetSettings } from './assetKinds';
 
 /* ── สถานะเครื่อง = "อยู่ขั้นไหนของวงจร" (mig 0332) ────────────────────────
@@ -95,44 +96,128 @@ function normalizeAccessDays(value) {
   return { value: days.sort((a, b) => a - b), error: null };
 }
 
-/* ── สี่ช่องที่ก๊อปได้จาก `customers.addresses[]` มาตั้งต้นไซต์ (mig 0313) ────
-   นอกจากสี่ช่องนี้ ไซต์กับที่อยู่ทางภาษีไม่มีอะไรตรงกันเลย — เขตวิ่งงาน · เวลาเข้า ·
-   ผู้ดูแล เป็นของไซต์ล้วน · เลขสาขา/ตำบล-อำเภอ เป็นของใบกำกับล้วน
-
-   ⚠️ **ก๊อปครั้งเดียวตอนคนกด ไม่ใช่ผูกให้เปลี่ยนตามกัน** — ห้างแก้ที่อยู่จดทะเบียน
-      ไม่ได้แปลว่าเครื่องย้ายชั้น (โรคเดียวกับกระจกชื่อลูกค้าบนเอกสาร) */
-export const SITE_ADDRESS_FIELDS = [
-  ['address', 'ที่อยู่', (row) => addressText(row)],
-  ['mapUrl', 'ลิงก์แผนที่', (row) => row?.mapUrl || ''],
-  ['contactName', 'ผู้ติดต่อหน้างาน', (row) => row?.contactName || ''],
-  ['contactPhone', 'เบอร์ผู้ติดต่อ', (row) => row?.contactPhone || ''],
+/* ── ที่อยู่ของไซต์แบบมีโครงสร้าง (มติผู้ใช้ 2026-09-24 · mig 0384) ─────────────────
+   *"การพิมพ์ไซต์อื่น อยากให้ฟอร์มเหมือนที่อยู่ของฐานข้อมูล"* ⇒ ไซต์เก็บ บ้านเลขที่/ถนน ·
+   ตำบล · อำเภอ · รหัสไปรษณีย์ แยกช่องแบบเดียวกับ `customers.addresses[]` (จังหวัดมีอยู่แล้ว
+   ตั้งแต่ mig 0315 และเป็นช่องเดียวกัน — จังหวัดของที่อยู่ = จังหวัดในรหัสไซต์)
+   ⭐ `address` (ข้อความเต็ม) **ยังเป็นสิ่งที่ทุกจอ/ใบงานอ่าน** — ฟิลด์ย่อยเป็นตัวประกอบข้อความ
+      ไม่ใช่ตัวแทน (กติกาเดียวกับที่อยู่ลูกค้า thaiAddress.js) ⇒ ปลายทางทุกตัวไม่ต้องแก้
+   ⚠️ **ต่างจากที่อยู่ลูกค้าหนึ่งข้อ: จังหวัดอย่างเดียวไม่ใช่ที่อยู่** — ไซต์มีจังหวัดทุกใบ
+      (ตัวตนของรหัส) ถ้านับจังหวัดเป็น "แถวมีโครงสร้าง" แบบลูกค้า ไซต์ใหม่ที่ยังไม่กรอก
+      อะไรเลยจะได้ที่อยู่ว่า "กรุงเทพมหานคร" แล้วผ่านด่าน "ต้องมีที่อยู่" ไปเฉย ๆ */
+export const SITE_ADDRESS_PART_FIELDS = [
+  'line1', 'subdistrict', 'subdistrictCode', 'district', 'districtCode', 'postcode',
 ];
 
 const trimmed = (value) => String(value ?? '').trim();
 
-/* ค่าที่ควรถูกก๊อปลงไซต์เมื่อกด "ดึงใหม่" — **ทะเบียนว่าง = ไม่แตะ**
+/** ไซต์นี้กรอกที่อยู่แบบแยกช่องไหม (บ้านเลขที่ หรือเลือกอำเภอ/ตำบลแล้ว) */
+export const siteAddressStructured = (site = {}) => ['line1', 'district', 'districtCode', 'subdistrict', 'subdistrictCode']
+  .some((field) => trimmed(site?.[field]) !== '');
+
+/** ข้อความก้อนเดียวยุคก่อนแยกช่อง (ไซต์ ~160 แห่งที่คีย์ก่อน mig 0384) — ฟอร์มโชว์ข้อความเดิมครบ
+    แล้วเสนอปุ่ม "แยกที่อยู่อัตโนมัติ" · ช่องอำเภอ/ตำบลล็อกไว้จนกว่าจะแยก (กติกาเดียวกับทะเบียนลูกค้า) */
+export const siteAddressLegacy = (site = {}) => !site?.addressOverride
+  && !siteAddressStructured(site) && trimmed(site?.address) !== '';
+
+/**
+ * ข้อความที่อยู่เต็มของไซต์ — ตัวเดียวทั้งฟอร์ม (พรีวิว) และ server (ค่าที่ลง `address`)
+ *   พิมพ์ข้อความเอง (`addressOverride`) → ตามที่พิมพ์ · ยังไม่แยกช่อง → ข้อความเดิม ·
+ *   แยกช่องแล้ว → ประกอบจากฟิลด์ย่อย (หางซ้ำถูกกันใน composeThaiAddress)
+ */
+export function siteAddressText(site = {}) {
+  const typed = trimmed(site?.address);
+  if (site?.addressOverride) return typed;
+  if (!siteAddressStructured(site)) return typed;
+  return composeThaiAddress(site);
+}
+
+/* ── ช่องที่ก๊อปได้จาก `customers.addresses[]` มาตั้งต้นไซต์ (mig 0313 · 0384) ────
+   นอกจากช่องพวกนี้ ไซต์กับที่อยู่ทางภาษีไม่มีอะไรตรงกันเลย — เขตวิ่งงาน · เวลาเข้า ·
+   ผู้ดูแล เป็นของไซต์ล้วน · เลขสาขา เป็นของใบกำกับล้วน
+
+   ⚠️ **ก๊อปครั้งเดียวตอนคนกด ไม่ใช่ผูกให้เปลี่ยนตามกัน** — ห้างแก้ที่อยู่จดทะเบียน
+      ไม่ได้แปลว่าเครื่องย้ายชั้น (โรคเดียวกับกระจกชื่อลูกค้าบนเอกสาร) */
+export const SITE_ADDRESS_FIELDS = [
+  ['address', 'ที่อยู่', (row) => addressText(row), (site) => siteAddressText(site)],
+  ['mapUrl', 'ลิงก์แผนที่', (row) => row?.mapUrl || '', (site) => site?.mapUrl],
+  ['contactName', 'ผู้ติดต่อหน้างาน', (row) => row?.contactName || '', (site) => site?.contactName],
+  ['contactPhone', 'เบอร์ผู้ติดต่อ', (row) => row?.contactPhone || '', (site) => site?.contactPhone],
+];
+
+const NO_ADDRESS_PARTS = Object.fromEntries(SITE_ADDRESS_PART_FIELDS.map((field) => [field, '']));
+
+/* ค่าที่ควรถูกก๊อปลงไซต์เมื่อกดไทล์ / "ดึงใหม่" — **ทะเบียนว่าง = ไม่แตะ**
    ⚠️ ไซต์จริงใบแรกบน production มี `mapUrl` แต่ไม่มี `address` ⇒ ถ้าดึงใหม่แล้วเอา
-      ค่าว่างจากทะเบียนไปทับ หมุดแผนที่ที่เจ้าหน้าที่ใช้จริงหายทันที */
-export function siteAddressCarry(site = {}, row) {
+      ค่าว่างจากทะเบียนไปทับ หมุดแผนที่ที่เจ้าหน้าที่ใช้จริงหายทันที
+   ⭐ **ที่อยู่ก๊อปทั้งชุดฟิลด์ย่อย** (mig 0384) — แถวทะเบียนที่แยกช่องแล้วได้ฟอร์มแยกช่องที่เลือก
+      อำเภอ/ตำบลไว้ให้ · แถวยุคเก่า (ข้อความก้อนเดียว) ได้ข้อความก้อนเดียว + ล้างฟิลด์ย่อยเดิมทิ้ง
+      (ไม่ล้าง = ข้อความใหม่ถูกประกอบทับด้วยบ้านเลขที่ของที่อยู่เก่า)
+   ⚠️ **จังหวัดไม่อยู่ในนี้** — เป็นตัวตนของรหัสไซต์ ผู้เรียกตัดสินเอง (ตั้งได้เฉพาะโหมดสร้าง)
+      ⇒ ถ้าจังหวัดของทะเบียนไม่ตรงกับของไซต์ (`keepProvinceCode`) ห้ามก๊อปอำเภอ/ตำบล
+      ไม่งั้นได้ "อำเภอของจังหวัดหนึ่งในอีกจังหวัด" · ก๊อปเป็นข้อความก้อนเดียวแทน */
+export function siteAddressCarry(site = {}, row, { keepProvinceCode = null } = {}) {
   const next = {};
   if (!row) return next;
   for (const [field, , pick] of SITE_ADDRESS_FIELDS) {
+    if (field === 'address') continue;
     next[field] = pick(row) || site[field] || '';
   }
-  return next;
+  const source = asAddressRow(row);
+  const text = addressText(source).trim();
+  if (!text) return next;                              // ทะเบียนไม่มีที่อยู่ = ไม่แตะของเดิม
+  const structured = !!(source.line1.trim() || source.districtCode || source.subdistrictCode);
+  const sameProvince = !keepProvinceCode || !source.provinceCode
+    || String(source.provinceCode) === String(keepProvinceCode);
+  if (structured && sameProvince) {
+    return {
+      ...next,
+      address: text,
+      addressOverride: source.addressOverride === true,
+      line1: source.line1,
+      subdistrict: source.subdistrict,
+      subdistrictCode: source.subdistrictCode,
+      district: source.district,
+      districtCode: source.districtCode,
+      postcode: normalizePostcode(source.postcode),
+    };
+  }
+  return { ...next, ...NO_ADDRESS_PARTS, address: text, addressOverride: false };
+}
+
+/* กด "ที่อยู่อื่น — กรอกเอง" **หลังจากเพิ่งกดไทล์ทะเบียน** (โหมดสร้าง) → ถอดค่าที่ไทล์นั้นเติมให้
+   ⭐ คนที่กดไทล์นี้กำลังบอกว่า "ไซต์อยู่คนละที่กับที่อยู่ในทะเบียน" ⇒ การ์ดต้องว่างให้กรอก
+      ไม่ใช่ค้างที่อยู่สำนักงานใหญ่ไว้ให้ลบเองทีละช่อง (ข้อความ + จังหวัด/อำเภอ/ตำบลสามช่อง)
+   ⚠️ ถอด **เฉพาะค่าที่ยังเท่ากับของทะเบียน** — ช่องที่คนแก้ต่อไปแล้ว (เช่นพิมพ์เบอร์หน้างานเอง)
+      คืองานของเขา ห้ามล้าง */
+export function siteAddressUncarry(site = {}, row) {
+  if (!row) return {};
+  const source = asAddressRow(row);
+  const patch = {};
+  const same = (a, b) => trimmed(a) !== '' && trimmed(a) === trimmed(b);
+  if (same(siteAddressText(site), addressText(source))) {
+    Object.assign(patch, NO_ADDRESS_PARTS, { address: '', addressOverride: false });
+    if (same(site.provinceCode, source.provinceCode)) Object.assign(patch, { provinceCode: '', province: '' });
+  }
+  for (const field of ['mapUrl', 'contactName', 'contactPhone']) {
+    if (same(site[field], source[field])) patch[field] = '';
+  }
+  return patch;
 }
 
 /* ช่องที่ **ทะเบียนมีค่า และไม่ตรงกับที่เก็บไว้บนไซต์** → [{ field, label }]
    ⚠️ ต้องนับเฉพาะช่องที่ `siteAddressCarry` เปลี่ยนได้จริง ไม่งั้นจอจะขึ้นปุ่ม
       "ดึงใหม่" แล้วกดไปไม่มีอะไรขยับ ซึ่งอ่านว่าปุ่มเสีย
+   ⚠️ ที่อยู่เทียบ **ข้อความเต็มที่ประกอบแล้ว** ทั้งสองฝั่ง — ฟอร์มที่แยกช่องไม่ได้อัปเดต
+      `address` ระหว่างพิมพ์ (ประกอบตอนบันทึก) ⇒ เทียบช่องดิบเมื่อไรจะเตือนทั้งที่ตรงกัน
    ⚠️ ไม่ใช่ error — ที่อยู่หน้างานต่างจากที่อยู่จดทะเบียนเป็นเรื่องปกติ (ล็อบบี้ห้าง ·
       พื้นที่เช่า) หน้าที่ของค่านี้คือ "บอกว่าต่าง" แล้วให้คนตัดสิน */
 export function siteAddressDrift(site = {}, row) {
   if (!row) return [];
   return SITE_ADDRESS_FIELDS
-    .filter(([field, , pick]) => {
+    .filter(([, , pick, current]) => {
       const source = trimmed(pick(row));
-      return !!source && source !== trimmed(site[field]);
+      return !!source && source !== trimmed(current(site));
     })
     .map(([field, label]) => ({ field, label }));
 }
@@ -166,7 +251,14 @@ export const isWarehouseSite = (site) => site?.kind === 'warehouse';
 export function siteCreateMissing(value = {}) {
   const has = (field) => String(value?.[field] ?? '').trim() !== '';
   if (!has('provinceCode')) return 'ต้องเลือกจังหวัดของไซต์ — รหัสไซต์ประกอบจากภาคและจังหวัด';
-  if (!has('address')) return 'ไซต์ใหม่ต้องมีที่อยู่ — ช่างต้องรู้ว่าไปที่ไหน';
+  /* ⚠️ ถามจาก **ข้อความที่ประกอบแล้ว** ไม่ใช่ช่อง `address` ดิบ — ฟอร์มแยกช่องไม่ได้เขียน
+     `address` ระหว่างพิมพ์ (ประกอบตอนบันทึก) ⇒ ถามช่องดิบ = คนกรอกครบแต่โดนตีกลับ */
+  if (!siteAddressText(value)) return 'ไซต์ใหม่ต้องมีที่อยู่ — ช่างต้องรู้ว่าไปที่ไหน';
+  /* เลือกอำเภอ/ตำบลแล้วแต่ไม่มีบ้านเลขที่ = ที่อยู่ที่พาไปได้แค่ระดับแขวง (มติ 2026-09-24) —
+     พิมพ์ข้อความเอง (ที่อยู่ที่ไม่เข้าแบบ) ไม่ต้องมีช่องนี้ */
+  if (!value?.addressOverride && siteAddressStructured(value) && !has('line1')) {
+    return 'ใส่บ้านเลขที่ / อาคาร / ถนนของไซต์ด้วย — ตำบลกับอำเภออย่างเดียวช่างหาหน้างานไม่เจอ';
+  }
   if (!has('mapUrl')) return 'ไซต์ใหม่ต้องมีลิงก์แผนที่ — ที่อยู่อย่างเดียวพาไปถึงหน้างานไม่ได้ทุกที่';
   if (!has('contactName')) return 'ไซต์ใหม่ต้องมีชื่อผู้ติดต่อหน้างาน';
   if (!has('contactPhone')) return 'ไซต์ใหม่ต้องมีเบอร์ผู้ติดต่อหน้างาน';
@@ -197,6 +289,10 @@ export function normalizeSiteInput(body = {}) {
   for (const [field, label, max] of [
     ['routeZone', 'เขตวิ่งงาน', 50],
     ['address', 'ที่อยู่', 500],
+    // ฟิลด์ย่อยของที่อยู่ (mig 0384) — ชื่อมาจากทะเบียนกรมการปกครองที่ฟอร์มเลือก
+    ['line1', 'บ้านเลขที่ / ถนน', 400],
+    ['subdistrict', 'ตำบล/แขวง', 100],
+    ['district', 'อำเภอ/เขต', 100],
     ['mapUrl', 'ลิงก์แผนที่', 500],
     ['contactName', 'ชื่อผู้ติดต่อ', 100],
     ['contactPhone', 'เบอร์ผู้ติดต่อ', 50],
@@ -220,6 +316,17 @@ export function normalizeSiteInput(body = {}) {
 
   const days = normalizeAccessDays(body.accessDays);
   if (days.error) return { value: null, error: days.error };
+
+  /* ── ที่อยู่แบบแยกช่อง (mig 0384) ──────────────────────────────────────
+     รหัสอำเภอ/ตำบลเป็นตัวเลขของกรมการปกครองล้วน · รหัสไปรษณีย์ไม่ครบ 5 หลัก = ยังไม่ได้กรอก
+     (กติกาเดียวกับที่อยู่ลูกค้า — ช่องนี้เติมจากตำบลที่เลือก ไม่ได้ให้พิมพ์) */
+  for (const [field, label] of [['districtCode', 'รหัสอำเภอ'], ['subdistrictCode', 'รหัสตำบล']]) {
+    const code = String(body[field] ?? '').trim();
+    if (code && !/^\d{2,10}$/.test(code)) return { value: null, error: `${label}ไม่ถูกต้อง` };
+    fields[field] = code || null;
+  }
+  fields.postcode = normalizePostcode(body.postcode) || null;
+  fields.addressOverride = body.addressOverride === true;
 
   /* ── จังหวัด (mig 0315) — **ไม่ใช่ที่อยู่ แต่เป็นตัวตน** ────────────────
      รหัสไซต์ `ST-XXXX-AA-BBB-CCCC` ประกอบจากภาค/จังหวัด ⇒ ขาดไม่ได้ตอนสร้าง
@@ -252,6 +359,17 @@ export function normalizeSiteInput(body = {}) {
     fields[field] = res.value;
   }
 
+  // ชื่อจังหวัดเก็บคู่รหัสเสมอ — จอ/รายงานประกอบข้อความได้โดยไม่ต้องเปิดทะเบียน
+  // 650KB ฝั่ง client (แพตเทิร์นเดียวกับที่อยู่ลูกค้า mig 0217)
+  const province = String(body.province ?? '').trim().slice(0, 100) || null;
+
+  /* ⭐ **ข้อความเต็มประกอบที่นี่เสมอ** (ไม่เชื่อ `address` ที่ฟอร์มส่งมาเมื่อแยกช่องแล้ว) —
+     ฟอร์มไม่ได้อัปเดตข้อความระหว่างพิมพ์บ้านเลขที่ ⇒ ค่าที่ส่งมาอาจเป็นข้อความเก่าก่อนแยกช่อง
+     ⚠️ เพดาน 500 ตรวจกับ **ข้อความที่ประกอบแล้ว** (CHECK ของ mig 0187) ไม่ใช่ท่อนที่พิมพ์ */
+  const composed = siteAddressText({ ...fields, province, provinceCode });
+  if (composed.length > 500) return { value: null, error: 'ที่อยู่ยาวเกิน 500 ตัวอักษร' };
+  fields.address = composed || null;
+
   return {
     value: {
       customerId,
@@ -262,9 +380,7 @@ export function normalizeSiteInput(body = {}) {
       accessTo: accessTo ? toHHMM(accessTo) : null,
       accessDays: days.value,
       provinceCode: provinceCode || null,
-      // ชื่อจังหวัดเก็บคู่รหัสเสมอ — จอ/รายงานประกอบข้อความได้โดยไม่ต้องเปิดทะเบียน
-      // 650KB ฝั่ง client (แพตเทิร์นเดียวกับที่อยู่ลูกค้า mig 0217)
-      province: String(body.province ?? '').trim().slice(0, 100) || null,
+      province,
       kind,
       isActive: body.isActive === undefined ? true : !!body.isActive,
       ownerId: body.ownerId || null,

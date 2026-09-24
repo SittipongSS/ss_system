@@ -88,7 +88,7 @@ export default function SurveySheetPage({ params }) {
   const [recallReason, setRecallReason] = useState("");
   const [recallBusy, setRecallBusy] = useState(false);
   /* ช่างเพิ่มพื้นที่ที่เจอหน้างาน (มติข้อ 6) — ฟอร์มย่อของ "เพิ่มพื้นที่ใหม่" ฝั่ง SA
-     ⚠️ ชั้นบังคับเหมือนกัน เพราะมันเป็นท่อน FF ของรหัส ZN (mig 0315) */
+     ⚠️ ชั้นบังคับเหมือนกัน (ช่างใช้หาโซน · ไม่อยู่ในรหัส ZN แล้วตั้งแต่ mig 0384) */
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: "", floor: "", note: "" });
   const [addBusy, setAddBusy] = useState(false);
@@ -824,11 +824,12 @@ export default function SurveySheetPage({ params }) {
           aria-label="ชื่อพื้นที่"
           onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
         />
-        {/* ⚠️ ชั้นบังคับ — เป็นท่อน FF ของรหัสโซน ไม่มีชั้นก็ออกรหัสไม่ได้ (mig 0315) */}
+        {/* ⚠️ ชั้นบังคับ (mig 0315) — ไม่อยู่ในรหัสโซนแล้ว (mig 0384) แต่ยังเป็นช่องบังคับของโซน */}
         <Input
           value={draft.floor} disabled={addBusy} maxLength={10} autoComplete="off"
           invalid={!!draft.floor && !!draftFloor.error}
-          placeholder="ชั้น เช่น 4 หรือ G"
+          /* ชั้นที่ไม่อยู่ในชุดมาตรฐานพิมพ์เองได้ (LG · P1 · 12A — มติผู้ใช้ 2026-09-24 · mig 0384) */
+          placeholder="ชั้น เช่น 4 · G · LG · P1"
           aria-label="ชั้นของพื้นที่"
           onChange={(e) => setDraft((d) => ({ ...d, floor: e.target.value }))}
         />

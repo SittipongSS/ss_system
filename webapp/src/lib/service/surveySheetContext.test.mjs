@@ -60,7 +60,7 @@ function captureErrors(run) {
 test('ทางปกติ — ได้ไซต์ · รหัส AR · แถวดึงกลับล่าสุด และเติมรหัส ZN ลงแถวพื้นที่', async () => {
   const supabase = fakeSupabase({
     service_sites: { data: SITE, error: null },
-    service_zones: { data: [{ id: 'SZN-1', code: 'ZN-1019-02-10022' }, { id: 'SZN-2', code: 'ZN-1019-02-10023' }], error: null },
+    service_zones: { data: [{ id: 'SZN-1', code: 'ZN-1019-10022' }, { id: 'SZN-2', code: 'ZN-1019-10023' }], error: null },
     customers: { data: CUSTOMER, error: null },
     entity_updates: { data: [RECALL], error: null },
   });
@@ -72,7 +72,7 @@ test('ทางปกติ — ได้ไซต์ · รหัส AR · แ�
   assert.equal(ctx.recall.reason, 'กรอกแพ็คเกจผิด');
   assert.deepEqual(ctx.recall.totals, { zones: 2, areaSqm: 40, packageQty: 2 });
   assert.deepEqual(ctx.unknown, {});
-  assert.deepEqual(rows.map((r) => r.zoneCode), ['ZN-1019-02-10022', 'ZN-1019-02-10023', null]);
+  assert.deepEqual(rows.map((r) => r.zoneCode), ['ZN-1019-10022', 'ZN-1019-10023', null]);
   assert.equal(rows.some((r) => r.zoneCodeUnknown), false);
 });
 
@@ -120,7 +120,7 @@ test('ไม่มีชื่อสักภาษา = null (ปลายท�
 test('🔴 อ่านไซต์ไม่สำเร็จ = unknown.site ไม่ใช่ "ใบนี้ไม่มีไซต์" · ชิ้นอื่นยังมาครบ', async () => {
   const supabase = fakeSupabase({
     service_sites: { data: null, error: { message: 'fetch failed' } },
-    service_zones: { data: [{ id: 'SZN-1', code: 'ZN-1019-02-10022' }], error: null },
+    service_zones: { data: [{ id: 'SZN-1', code: 'ZN-1019-10022' }], error: null },
     customers: { data: CUSTOMER, error: null },
     entity_updates: { data: [], error: null },
   });

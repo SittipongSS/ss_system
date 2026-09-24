@@ -9,6 +9,10 @@
 //   useServiceSiteForm(...) — state + กติกาของฟอร์ม (ไทล์ที่อยู่ · จังหวัด · ย้ายลูกค้า)
 //   <ServiceSiteFields ctl={...} /> — วาดช่องอย่างเดียว
 // ⇒ ผู้เรียกถือ state เอง (โมดัลหลายขั้นซ่อนขั้นนี้ไว้แล้วกลับมา ค่าต้องอยู่ครบ)
+//
+// ⭐ **ที่อยู่หน้างานเป็นช่องแยกแบบทะเบียนลูกค้า** (มติผู้ใช้ 2026-09-24 · mig 0384 — *"การพิมพ์
+//   ไซต์อื่น อยากให้ฟอร์มเหมือนที่อยู่ของฐานข้อมูล"*) — ใช้ `master/ThaiAddressFields` ตัวเดียวกับ
+//   `database/AddressesEditor` ไม่ใช่ก๊อปหน้าตา · จังหวัดของที่อยู่ = จังหวัดในรหัสไซต์ (ช่องเดียว)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -16,13 +20,14 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import TimeInput from "@/components/ui/TimeInput";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import ThaiAddressFields, { useThaiAddressRegistry } from "@/components/master/ThaiAddressFields";
 import { RefreshCw } from "lucide-react";
 import {
-  WEEKDAY_LABELS, WEEKDAYS, siteAddressCarry, siteAddressDrift, toHHMM,
+  WEEKDAY_LABELS, WEEKDAYS, siteAddressCarry, siteAddressDrift, siteAddressLegacy, siteAddressText,
+  siteAddressUncarry, toHHMM,
 } from "@/lib/service/sites";
 import { ADDRESS_USE_LABELS, addressText, addressUse } from "@/lib/master/addresses";
 import { provinceFromText } from "@/lib/master/thaiProvinces";
-import { cachedFetchJson } from "@/lib/apiCache";
 import { SITE_CODE_HINT } from "@/lib/service/siteCode";
 import styles from "./ServiceSiteModal.module.css";
 import { apiFetch } from "@/lib/apiFetch";
@@ -53,7 +58,10 @@ function customerAddressRows(customer) {
 
 export const SITE_FORM_EMPTY = {
   customerId: "", name: "", routeZone: "", address: "", mapUrl: "",
-  // จังหวัด (mig 0315) — ไม่ใช่ที่อยู่ แต่เป็นท่อนหนึ่งของ **รหัสไซต์**
+  // ที่อยู่แยกช่อง (mig 0384) — ชุดเดียวกับที่อยู่ลูกค้า · `address` ประกอบตอนบันทึก
+  line1: "", subdistrict: "", subdistrictCode: "", district: "", districtCode: "", postcode: "",
+  addressOverride: false,
+  // จังหวัด (mig 0315) — ท่อนหนึ่งของ **รหัสไซต์** และเป็นจังหวัดของที่อยู่ด้วย (ช่องเดียว)
   provinceCode: "", province: "",
   contactName: "", contactPhone: "",
   accessFrom: "", accessTo: "", accessDays: [], accessNote: "",
@@ -80,6 +88,13 @@ function formFromSite(site) {
     isActive: site.isActive !== false,
     provinceCode: site.provinceCode || "",
     province: site.province || "",
+    line1: site.line1 || "",
+    subdistrict: site.subdistrict || "",
+    subdistrictCode: site.subdistrictCode || "",
+    district: site.district || "",
+    districtCode: site.districtCode || "",
+    postcode: site.postcode || "",
+    addressOverride: site.addressOverride === true,
     customerAddressId: site.customerAddressId || null,
   };
 }
@@ -103,9 +118,6 @@ export function useServiceSiteForm({
      ไม่ส่งก็ดึงเองเมื่อผู้ใช้เลือกลูกค้าในฟอร์ม ⇒ ทุกทางเข้าได้ไทล์เหมือนกัน
      ไม่ใช่ฟีเจอร์ที่มีเฉพาะบางหน้า (โรคเดียวกับฟอร์มสร้าง/แก้ที่เพี้ยนหากัน) */
   const [fetchedAddresses, setFetchedAddresses] = useState([]);
-  // ทะเบียนจังหวัด (~60KB) — แคชไว้ 24 ชม. แบบเดียวกับฟอร์มที่อยู่ลูกค้า
-  const [provinces, setProvinces] = useState([]);
-  const [provinceError, setProvinceError] = useState("");
 
   /* ตั้งค่าใหม่ทั้งฟอร์ม — เปิดโมดัล หรือผู้เรียกขอเริ่มใบใหม่ (เช่น "เพิ่มอีกแห่ง") */
   const reset = useCallback((nextDefaults = null) => {
@@ -121,20 +133,12 @@ export function useServiceSiteForm({
     reset(defaults);
   }, [open, reset, defaults, resetOnOpen]);
 
-  /* ทะเบียนจังหวัดโหลดครั้งเดียวตอนเปิดโมดัล — ห้าม import ทะเบียน 650KB ตรง ๆ
-     (server-only) · โหลดไม่ได้ = ช่องว่างแล้วบันทึกไม่ผ่านด่าน ซึ่งบอกเหตุอยู่แล้ว */
-  useEffect(() => {
-    if (!open) return undefined;
-    let alive = true;
-    setProvinceError("");
-    cachedFetchJson("/api/master/thai-address", 24 * 60 * 60 * 1000)
-      .then((d) => { if (alive) setProvinces(d?.provinces || []); })
-      /* 🐞 โหลดทะเบียนจังหวัดไม่ได้ = **สร้างไซต์ไม่ได้ทั้งระบบ** (จังหวัดบังคับ) ·
-         ของเดิมกลืน error เงียบ ⇒ ช่องจังหวัดว่าง ป้ายบอก "เลือกจังหวัด" แล้วกดบันทึก
-         เจอ "ต้องเลือกจังหวัด" วนไม่จบ โดยไม่มีอะไรบอกว่าโหลดพลาด */
-      .catch(() => { if (alive) setProvinceError("โหลดทะเบียนจังหวัดไม่สำเร็จ — รีเฟรชหน้าแล้วลองใหม่"); });
-    return () => { alive = false; };
-  }, [open]);
+  /* ทะเบียนจังหวัด/อำเภอ (แคช 24 ชม.) + ตำบลของอำเภอที่เลือกไว้ — โหลดตอนเปิดโมดัล
+     ห้าม import ทะเบียน 650KB ตรง ๆ (server-only)
+     🐞 โหลดทะเบียนจังหวัดไม่ได้ = **สร้างไซต์ไม่ได้ทั้งระบบ** (จังหวัดบังคับ) · ของเดิมกลืน
+        error เงียบ ⇒ กดบันทึกเจอ "ต้องเลือกจังหวัด" วนไม่จบ ⇒ ใต้การ์ดที่อยู่บอก `provinceError` */
+  const registry = useThaiAddressRegistry({ enabled: open, districtCodes: [form.districtCode] });
+  const { provinces, provinceError } = registry;
 
   const addressOptions = customerAddresses.length ? customerAddresses : fetchedAddresses;
   const sourceAddress = pickedAddressId && pickedAddressId !== OWN_ADDRESS
@@ -148,9 +152,18 @@ export function useServiceSiteForm({
         ใบแรกบน production มี mapUrl แต่ไม่มี address ⇒ ดึงใหม่แล้วหมุดหายไม่ได้)
      ⭐ เก็บ id ที่มาลงแถวไซต์ด้วย (mig 0313) — ปุ่ม "ดึงใหม่" ในโหมดแก้อาศัยค่านี้ */
   const applyCustomerAddress = (id) => {
+    const previous = pickedAddressId && pickedAddressId !== OWN_ADDRESS
+      ? addressOptions.find((a) => a.id === pickedAddressId) || null
+      : null;
     setPickedAddressId(id);
     if (id === OWN_ADDRESS) {
-      setForm((prev) => ({ ...prev, customerAddressId: null }));
+      /* ⭐ โหมดสร้าง: เพิ่งกดไทล์ทะเบียนแล้วเปลี่ยนใจ = การ์ดว่างให้กรอกที่อยู่อื่น (มติ 2026-09-24)
+         ⚠️ โหมดแก้ไม่ถอด — ไซต์มีที่อยู่ของมันอยู่แล้ว ไทล์นี้แค่บอกว่า "ไม่ได้มาจากทะเบียน" */
+      setForm((prev) => ({
+        ...prev,
+        customerAddressId: null,
+        ...(editing ? {} : siteAddressUncarry(prev, previous)),
+      }));
       return;
     }
     const row = addressOptions.find((a) => a.id === id);
@@ -172,8 +185,14 @@ export function useServiceSiteForm({
        `addresses[]` ⇒ `checkSiteReferences` ตีกลับ "ไม่พบที่อยู่ต้นทาง" ทุกครั้ง = ลูกค้าที่
        ยังไม่มีแถวที่อยู่ สร้างไซต์ด้วยไทล์นั้นไม่ได้เลย · ก๊อปข้อความได้ แต่ที่มา = ไม่รู้ (null) */
     const sourceId = SYNTHETIC_ADDRESS_IDS.has(id) ? null : id;
+    /* ⭐ ก๊อป **ทั้งชุดฟิลด์ย่อย** (mig 0384) — แถวที่แยกช่องแล้วได้อำเภอ/ตำบลที่เลือกไว้ให้
+       ⚠️ โหมดแก้ส่ง `keepProvinceCode` — จังหวัดของไซต์ตรึงอยู่ในรหัส ถ้าทะเบียนเป็นคนละจังหวัด
+          อำเภอ/ตำบลของทะเบียนใช้กับจังหวัดของไซต์ไม่ได้ ⇒ ได้ข้อความก้อนเดียวแทน */
     setForm((prev) => ({
-      ...prev, customerAddressId: sourceId, ...siteAddressCarry(prev, row), ...carried,
+      ...prev,
+      customerAddressId: sourceId,
+      ...siteAddressCarry(prev, row, { keepProvinceCode: editing ? prev.provinceCode : null }),
+      ...carried,
     }));
   };
 
@@ -225,14 +244,12 @@ export function useServiceSiteForm({
     });
   };
 
-  const pickProvince = (code) => {
-    const row = provinces.find((p) => p.code === code);
-    setForm((prev) => ({ ...prev, provinceCode: code, province: row?.th || "" }));
-  };
+  /* ช่องที่อยู่แยกช่อง — ชุดเดียวกับทะเบียนลูกค้า (เลือกจังหวัดล้างอำเภอ/ตำบลให้เอง) */
+  const patchAddress = (patch) => setForm((prev) => ({ ...prev, ...patch }));
 
   return {
-    editing, form, setForm, reset, change, toggleDay, pickProvince,
-    provinces, provinceError, addressOptions, pickedAddressId, applyCustomerAddress,
+    editing, form, setForm, reset, change, toggleDay, patchAddress,
+    registry, provinces, provinceError, addressOptions, pickedAddressId, applyCustomerAddress,
     changeCustomer, stale,
   };
 }
@@ -240,25 +257,27 @@ export function useServiceSiteForm({
 /**
  * ช่องทั้งหมดของไซต์ — วาดอย่างเดียว state อยู่ที่ `useServiceSiteForm`
  *
+ * ลำดับบนจอ (มติ 2026-08-30 "ดึงจากฐานข้อมูลลูกค้าก่อน ถ้านอกเหนือค่อยเพิ่มเอง" + 2026-09-24):
+ *   ลูกค้า → ไทล์ที่อยู่ในทะเบียน → การ์ดที่อยู่หน้างาน (ไทล์เติมให้ · "ที่อยู่อื่น" กรอกเองในการ์ดเดียวกัน)
+ *   → ชื่อไซต์ · เขตวิ่งงาน → ของที่ผู้เรียกแทรก (รหัสที่จะออก — จังหวัดเลือกแล้วจากการ์ด) → เวลาเข้า
+ *
  * @param ctl         ผลของ `useServiceSiteForm`
  * @param customers   รายชื่อลูกค้าสำหรับ dropdown
- * @param identityExtra ของที่ผู้เรียกแทรกต่อจากช่องตัวตน (ลูกค้า · ชื่อ · จังหวัด) — เช่น
+ * @param identityExtra ของที่ผู้เรียกแทรกต่อจากช่องตัวตน (ชื่อ · เขตวิ่งงาน) — เช่น
  *                    รหัสที่จะออก + ไซต์ที่ลูกค้ามีอยู่แล้วของโมดัลย้อนหลัง
- * @param provinceHint ข้อความใต้ช่องจังหวัดในโหมดสร้าง (ผู้เรียกที่โชว์รหัสเองไม่ต้องพูดซ้ำ)
+ * @param provinceHint ข้อความใต้การ์ดที่อยู่เรื่องจังหวัดในโหมดสร้าง (ผู้เรียกที่โชว์รหัสเองไม่ต้องพูดซ้ำ)
  */
 export default function ServiceSiteFields({ ctl, customers = [], identityExtra = null, provinceHint = null }) {
   const {
-    editing, form, change, toggleDay, pickProvince, provinces, provinceError, addressOptions,
+    editing, form, change, toggleDay, patchAddress, registry, provinceError, addressOptions,
     pickedAddressId, applyCustomerAddress, changeCustomer, stale, setForm,
   } = ctl;
 
   /* ป้าย/ลำดับ/ชุดค้นของ dropdown ลูกค้ามาจากที่เดียวทั้งระบบ — ประกอบเองแล้วลูกค้าที่มี
      แต่ชื่ออังกฤษได้ป้าย " (AR-630)" ชื่อหาย และพิมพ์ชื่ออังกฤษหาไม่เจอ */
   const customerOptions = useMemo(() => customerSelectOptions(customers), [customers]);
-  const provinceOptions = useMemo(
-    () => provinces.map((p) => ({ value: p.code, label: p.th, search: `${p.th} ${p.en}` })),
-    [provinces],
-  );
+  // ช่องที่บังคับเฉพาะไซต์ใหม่ (`siteCreateMissing`) — ดอกจันบอกตั้งแต่ก่อนกด ไม่ใช่รู้ตอนโดนตีกลับ
+  const req = editing ? "" : " *";
 
   return (
     <div className={styles.grid}>
@@ -275,7 +294,7 @@ export default function ServiceSiteFields({ ctl, customers = [], identityExtra =
       </label>
 
       {/* ⭐ **ตั้งจากที่อยู่ในทะเบียนลูกค้า** (มติ 2026-08-28) — เลิกพิมพ์ที่อยู่
-          ซ้ำสองที่ · กดไทล์แล้วชื่อ/จังหวัด/ที่อยู่ถูกเติมให้ แล้วแก้ต่อได้เอง
+          ซ้ำสองที่ · กดไทล์แล้วจังหวัด/ที่อยู่ถูกเติมลงการ์ดข้างล่าง แล้วแก้ต่อได้เอง
           ⚠️ **ก๊อปมาตั้งต้นเท่านั้น ไม่ผูกให้เปลี่ยนตามกัน** — ที่อยู่ทางภาษีกับ
           ที่อยู่หน้างานเป็นคนละความจริง เครื่องย้ายชั้นไม่ได้แปลว่าบริษัทย้าย
           ⚠️ ที่นี่ **เลือกได้อย่างเดียว** เพิ่มที่อยู่ต้องไปทะเบียนลูกค้า — ไม่งั้น
@@ -284,7 +303,8 @@ export default function ServiceSiteFields({ ctl, customers = [], identityExtra =
           เข้าทะเบียนทีหลังได้ · ไทล์ที่ติดอยู่คือที่มาที่บันทึกไว้ (mig 0313)
           ⭐ **อยู่เหนือช่องกรอกทุกช่องตั้งแต่ 2026-08-30** (มติผู้ใช้: "ต้องดึงมาจาก
           ฐานข้อมูลลูกค้าก่อน ถ้านอกเหนือค่อยเพิ่มเอง") — ลำดับบนจอคือลำดับที่อยากให้คิด:
-          หาที่อยู่ที่ลูกค้ามีอยู่แล้วก่อน แล้วค่อยตกลงมาที่ "ที่อยู่อื่น — พิมพ์เอง" */}
+          หาที่อยู่ที่ลูกค้ามีอยู่แล้วก่อน แล้วค่อยตกลงมาที่ "ที่อยู่อื่น — กรอกเอง"
+          ⭐ การ์ดที่อยู่อยู่ **ติดใต้ไทล์** (2026-09-24) — กดไทล์แล้วเห็นผลทันทีตรงนั้น */}
       {addressOptions.length > 0 && (
         <div className={`${styles.field} ${styles.wide}`}>
           <span>{editing ? "ที่อยู่ต้นทางจากทะเบียนลูกค้า" : "ตั้งจากที่อยู่ในทะเบียนลูกค้า"}</span>
@@ -299,49 +319,14 @@ export default function ServiceSiteFields({ ctl, customers = [], identityExtra =
                 description: [ADDRESS_USE_LABELS[addressUse(row)], addressText(row)]
                   .filter(Boolean).join(" · ").slice(0, 120),
               })),
-              { value: OWN_ADDRESS, label: "ที่อยู่อื่น — พิมพ์เอง", description: "ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี เช่น ล็อบบี้ห้างที่เช่าพื้นที่" },
+              { value: OWN_ADDRESS, label: "ที่อยู่อื่น — กรอกเอง", description: "ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี เช่น ล็อบบี้ห้างที่เช่าพื้นที่ — กรอกในการ์ดข้างล่าง" },
             ]}
           />
           {editing && !pickedAddressId && (
-            <small>ยังไม่รู้ที่มา — เลือกไทล์เพื่อผูกกับทะเบียน หรือปล่อยไว้ถ้าที่อยู่นี้พิมพ์เอง</small>
+            <small>ยังไม่รู้ที่มา — เลือกไทล์เพื่อผูกกับทะเบียน หรือปล่อยไว้ถ้าที่อยู่นี้กรอกเอง</small>
           )}
         </div>
       )}
-
-      <label className={styles.field}>
-        <span>ชื่อไซต์ *</span>
-        <Input value={form.name} onChange={change("name")} placeholder="สาขาเอ็มควอเทียร์ ชั้น 3" maxLength={150} />
-      </label>
-
-      {/* ── จังหวัด (mig 0315) ────────────────────────────────────────────
-          ⭐ **ไม่ใช่ช่องที่อยู่ แต่เป็นตัวตน** — รหัสไซต์ `ST-XXXX-AA-BBB-CCCC`
-             ประกอบจากภาคและจังหวัด ⇒ ขาดไม่ได้ตอนสร้าง
-          ⚠️ **แก้ทีหลังไม่เปลี่ยนรหัสที่ออกไปแล้ว** — บอกไว้ใต้ช่องในโหมดแก้
-             ไม่งั้นคนจะคาดหวังว่าแก้จังหวัดแล้วรหัสตามไปด้วย */}
-      <label className={styles.field}>
-        <span>จังหวัด {editing ? "" : "*"}</span>
-        <SearchableSelect
-          value={form.provinceCode}
-          onChange={pickProvince}
-          options={provinceOptions}
-          placeholder="เลือกจังหวัด"
-          ariaLabel="จังหวัดของไซต์"
-        />
-        <small>
-          {provinceError
-            || (editing
-              ? "แก้ได้ แต่รหัสไซต์ที่ออกไปแล้วไม่เปลี่ยนตาม — รหัสคือตัวตน ไม่ใช่สรุปที่อยู่ปัจจุบัน"
-              : provinceHint || `ใช้ประกอบรหัสไซต์ ${SITE_CODE_HINT} — เลือกแล้วเปลี่ยนภายหลังได้ แต่รหัสจะไม่เปลี่ยนตาม`)}
-        </small>
-      </label>
-
-      {identityExtra}
-
-      <label className={styles.field}>
-        <span>เขตวิ่งงาน</span>
-        <Input value={form.routeZone} onChange={change("routeZone")} placeholder="BKK-E / ปริมณฑล" maxLength={50} />
-        <small>ใช้จัดรอบวิ่งให้เจ้าหน้าที่ไม่ต้องข้ามเมืองในวันเดียว</small>
-      </label>
 
       {/* ── ทะเบียนขยับหลังไซต์ถูกสร้าง ────────────────────────────────
           ไม่อัปเดตให้เอง (ที่อยู่ทางภาษี ≠ ที่อยู่หน้างาน) แต่ต้อง **บอกว่าต่าง**
@@ -357,28 +342,67 @@ export default function ServiceSiteFields({ ctl, customers = [], identityExtra =
         </div>
       )}
 
-      <label className={`${styles.field} ${styles.wide}`}>
-        <span>ที่อยู่</span>
-        <Input as="textarea" rows={2} value={form.address} onChange={change("address")} maxLength={500} />
-        {pickedAddressId && pickedAddressId !== OWN_ADDRESS && (
-          <small>ก๊อปมาจากทะเบียนลูกค้าเป็นค่าตั้งต้น — แก้ต่อได้ ไม่กระทบทะเบียน</small>
-        )}
+      {/* ── ที่อยู่หน้างาน — การ์ดแบบเดียวกับที่อยู่ในทะเบียนลูกค้า (mig 0384) ───────────
+          ⭐ `ThaiAddressFields` ตัวเดียวกับ `AddressesEditor` — บ้านเลขที่ · จังหวัด/อำเภอ/ตำบล ·
+             ไปรษณีย์เติมจากตำบล · "พิมพ์ข้อความเอง" สำหรับที่อยู่ที่ไม่เข้าแบบ
+          ⭐ **จังหวัดในการ์ด = จังหวัดของรหัสไซต์** (mig 0315) ช่องเดียว ไม่ใช่สองช่องที่ขัดกันได้
+             ⇒ เลือกได้เสมอแม้ที่อยู่ยังเป็นข้อความก้อนเดียว (บังคับกรอกตอนสร้าง)
+          ⚠️ แก้จังหวัดทีหลัง **ไม่เปลี่ยนรหัสที่ออกไปแล้ว** — บอกไว้ใต้การ์ดในโหมดแก้
+          ⚠️ ไซต์ยุคก่อน (ข้อความก้อนเดียว ~160 แห่ง) โชว์ข้อความเดิมครบ + ปุ่ม "แยกที่อยู่อัตโนมัติ" */}
+      <div className={`${styles.field} ${styles.wide}`}>
+        <span>ที่อยู่หน้างาน{req}</span>
+        <div className={styles.addressCard}>
+          <ThaiAddressFields
+            value={form}
+            onChange={patchAddress}
+            registry={registry}
+            english={false}
+            legacy={siteAddressLegacy(form)}
+            lockProvinceWhenLegacy={false}
+            previewText={siteAddressText(form)}
+            previewLabel="ที่อยู่ที่ช่างจะเห็น"
+            provinceWarning={null}
+            line1Placeholder="บ้านเลขที่ / อาคาร / ชั้น / ซอย / ถนน…"
+          >
+            <div className={styles.addressContacts}>
+              <label className={styles.field}>
+                <span>ลิงก์แผนที่{req}</span>
+                <Input value={form.mapUrl} onChange={change("mapUrl")} placeholder="https://maps.app.goo.gl/..." maxLength={500} />
+              </label>
+              <label className={styles.field}>
+                <span>ผู้ติดต่อหน้างาน{req}</span>
+                <Input value={form.contactName} onChange={change("contactName")} maxLength={100} />
+              </label>
+              <label className={styles.field}>
+                <span>เบอร์ผู้ติดต่อ{req}</span>
+                <Input value={form.contactPhone} onChange={change("contactPhone")} maxLength={50} />
+              </label>
+            </div>
+          </ThaiAddressFields>
+        </div>
+        <small>
+          {provinceError
+            || (editing
+              ? "แก้จังหวัดได้ แต่รหัสไซต์ที่ออกไปแล้วไม่เปลี่ยนตาม — รหัสคือตัวตน ไม่ใช่สรุปที่อยู่ปัจจุบัน"
+              : provinceHint || `จังหวัดใช้ประกอบรหัสไซต์ ${SITE_CODE_HINT} — เลือกแล้วเปลี่ยนภายหลังได้ แต่รหัสจะไม่เปลี่ยนตาม`)}
+          {pickedAddressId && pickedAddressId !== OWN_ADDRESS
+            ? " · ก๊อปมาจากทะเบียนลูกค้าเป็นค่าตั้งต้น แก้ต่อได้ ไม่กระทบทะเบียน"
+            : ""}
+        </small>
+      </div>
+
+      <label className={styles.field}>
+        <span>ชื่อไซต์ *</span>
+        <Input value={form.name} onChange={change("name")} placeholder="สาขาเอ็มควอเทียร์ ชั้น 3" maxLength={150} />
       </label>
 
       <label className={styles.field}>
-        <span>ลิงก์แผนที่</span>
-        <Input value={form.mapUrl} onChange={change("mapUrl")} placeholder="https://maps.app.goo.gl/..." maxLength={500} />
+        <span>เขตวิ่งงาน</span>
+        <Input value={form.routeZone} onChange={change("routeZone")} placeholder="BKK-E / ปริมณฑล" maxLength={50} />
+        <small>ใช้จัดรอบวิ่งให้เจ้าหน้าที่ไม่ต้องข้ามเมืองในวันเดียว</small>
       </label>
 
-      <label className={styles.field}>
-        <span>ผู้ติดต่อหน้างาน</span>
-        <Input value={form.contactName} onChange={change("contactName")} maxLength={100} />
-      </label>
-
-      <label className={styles.field}>
-        <span>เบอร์ผู้ติดต่อ</span>
-        <Input value={form.contactPhone} onChange={change("contactPhone")} maxLength={50} />
-      </label>
+      {identityExtra}
 
       {/* ── ช่วงเวลาที่ไซต์ยอมให้เข้า ─────────────────────────────────── */}
       <fieldset className={`${styles.field} ${styles.wide} ${styles.fieldset}`}>

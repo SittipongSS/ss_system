@@ -172,6 +172,22 @@ export async function zoneSpotsColumnError(supabase) {
     : `ตรวจความพร้อมของจุดติดตั้งไม่สำเร็จ — ${error.message} · ยังไม่ได้บันทึกอะไร ลองใหม่อีกครั้ง`;
 }
 
+/* ── คอลัมน์ที่อยู่แยกช่องของไซต์พร้อมหรือยัง (mig 0384) — ตรวจก่อนเขียนไซต์ ─────────────
+   🐞 ตัวออกรหัสทิ้งคีย์ที่ไม่มีคอลัมน์เงียบ ๆ (บทเรียนเดียวกับ `zoneSpotsColumnError`) ⇒ deploy
+      ก่อนรัน mig = ไซต์ใหม่เกิดแต่ บ้านเลขที่/ตำบล/อำเภอ หาย · ทางแก้ (PATCH) ได้ 500 ภาษาอังกฤษ
+   ⚠️ select เขียนชื่อคอลัมน์ตรง ๆ (ไม่ผ่านค่าคงที่) — ด่าน check:columns ต้องมองเห็น
+      ⇒ CI แดงจนกว่าจะรัน mig ซึ่งคือลำดับที่ถูก */
+export async function siteAddressColumnsError(supabase) {
+  const { error } = await supabase
+    .from('service_sites')
+    .select('line1, subdistrict, "subdistrictCode", district, "districtCode", postcode, "addressOverride"')
+    .limit(0);
+  if (!error) return null;
+  return error.code === '42703'
+    ? 'ระบบยังไม่พร้อมเก็บที่อยู่แบบแยกช่อง (ยังไม่ได้รัน migration 0384) — แจ้งผู้ดูแลระบบ · ยังไม่ได้บันทึกอะไร'
+    : `ตรวจความพร้อมของช่องที่อยู่ไม่สำเร็จ — ${error.message} · ยังไม่ได้บันทึกอะไร ลองใหม่อีกครั้ง`;
+}
+
 export async function loadZones(supabase, siteId) {
   const { data, error } = await supabase
     .from('service_zones').select('*').eq('siteId', siteId)

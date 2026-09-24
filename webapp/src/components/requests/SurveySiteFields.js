@@ -197,7 +197,7 @@ export default function SurveySiteFields({
 
   const draftName = draft.name.trim().replace(/\s+/g, " ");
   const draftClash = !!draftName && takenNames.has(zoneNameKey(draftName));
-  // ชั้นของพื้นที่ใหม่ (mig 0315) — เป็นท่อนหนึ่งของรหัสโซนที่จะออกตอนกดส่ง
+  // ชั้นของพื้นที่ใหม่ (mig 0315) — ช่องบังคับของโซนที่จะออกตอนกดส่ง (ไม่อยู่ในรหัสแล้ว · mig 0384)
   const draftFloor = normalizeFloor(draft.floor);
 
   /* ⚠️ **`defaults` ต้องเป็นตัวเดิมข้ามเรนเดอร์** — `ServiceSiteModal` มีมันอยู่ใน deps
@@ -444,11 +444,12 @@ export default function SurveySiteFields({
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitDraft(); } }}
               />
-              {/* ⚠️ ชั้นบังคับ — เป็นท่อน FF ของรหัสโซน (ไม่มีชั้นก็ออกรหัสไม่ได้ตอนกดส่ง) */}
+              {/* ⚠️ ชั้นบังคับ — ช่องบังคับของโซนที่จะเกิดตอนกดส่ง (ไม่อยู่ในรหัสโซนแล้ว · mig 0384) */}
               <Input
                 value={draft.floor}
                 disabled={disabled}
-                placeholder="ชั้น เช่น 4 หรือ G"
+                /* ชั้นที่ไม่อยู่ในชุดมาตรฐานพิมพ์เองได้ (LG · P1 · 12A — มติผู้ใช้ 2026-09-24 · mig 0384) */
+                placeholder="ชั้น เช่น 4 · G · LG · P1"
                 aria-label="ชั้นของพื้นที่"
                 invalid={!!draft.floor && !!draftFloor.error}
                 onChange={(e) => setDraft((d) => ({ ...d, floor: e.target.value }))}

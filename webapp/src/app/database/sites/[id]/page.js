@@ -558,7 +558,7 @@ export default function ServiceSiteDetailPage({ params }) {
                 {zones.map((zone) => {
                   const zoneAssets = assets.filter((a) => a.zoneId === zone.id && a.status !== "removed");
                   const spotCount = Array.isArray(zone.spots) ? zone.spots.length : 0;
-                  // ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสแต่ในรูปย่อ (GF/04) บรรทัดล่างอ่านออกโดยไม่ต้องแกะรหัส
+                  // ชั้น/อาคาร (mig 0315) — ชั้นไม่อยู่ในรหัสแล้ว (mig 0384) บรรทัดล่างจึงเป็นที่เดียวที่บอกชั้น
                   const zoneSub = [zone.code ? zone.name : null, zone.building, floorLabel(zone.floor), zone.note]
                     .filter(Boolean).join(" · ");
                   const statusBadge = (
@@ -955,6 +955,7 @@ export default function ServiceSiteDetailPage({ params }) {
       <ServiceZoneModal
         open={formZone !== undefined}
         zone={formZone}
+        knownFloors={zones.map((z) => z.floor)}
         onClose={() => setFormZone(undefined)}
         onSave={saveZone}
       />

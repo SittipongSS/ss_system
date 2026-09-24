@@ -38,13 +38,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       if (schemaError) return fail(schemaError, 503);
     }
 
-    /* รหัส `ZN-CCCC-FF-DDDDD` (mig 0315) — CCCC มาจากรหัสไซต์แม่ · FF คือชั้นที่เพิ่งกรอก
+    /* รหัส `ZN-CCCC-DDDDD` (mig 0315 · ตัดท่อนชั้นออก mig 0384) — CCCC มาจากรหัสไซต์แม่
        ⚠️ ประกอบก่อน insert: ไซต์ที่ยังเป็นรหัสรูปเดิมต้องถูกตีกลับพร้อมเหตุผล
           ไม่ใช่ได้โซนที่รหัสอ่านไม่ออก */
-    const { prefix, error: codeError } = zoneCodePrefix({
-      siteCode: access.site.code,
-      floor: value.floor,
-    });
+    const { prefix, error: codeError } = zoneCodePrefix({ siteCode: access.site.code });
     if (codeError) return badRequest(codeError);
 
     const { data, error: insertError } = await insertRowWithComposedCode(

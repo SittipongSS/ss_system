@@ -28,7 +28,7 @@ import {
   legacyPlanCounts, legacyPlanMessage, planLegacySiteRow, planLegacyZones,
 } from '@/lib/service/legacySite';
 import {
-  findCustomer, findSite, loadSites, loadZones, requireService, zoneSpotsColumnError,
+  findCustomer, findSite, loadSites, loadZones, requireService, siteAddressColumnsError, zoneSpotsColumnError,
 } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
@@ -106,6 +106,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       const schemaError = await zoneSpotsColumnError(supabase);
       if (schemaError) return fail(schemaError, 503);
     }
+    // ไซต์ใหม่ = เขียนที่อยู่แยกช่อง (mig 0384) — กติกาเดียวกัน: ตรวจตั้งแต่พรีวิว ไม่ใช่เจอตอนบันทึก
+    if (!target) {
+      const schemaError = await siteAddressColumnsError(supabase);
+      if (schemaError) return fail(schemaError, 503);
+    }
 
     /* ── 2) พรีวิว — ไม่เขียนอะไร ────────────────────────────────────────── */
     if (preview) {
@@ -117,7 +122,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
         /* รหัสโซนเต็มท่อนหน้าได้เฉพาะโหมดเติมต่อ — โหมดสร้าง ไซต์ยังไม่มีเลขรัน (ออกตอนบันทึก) */
         zones: planned.zones.map((z) => ({
           key: z.key, name: z.value.name, floor: z.value.floor,
-          codePrefix: target ? zoneCodePrefix({ siteCode: target.code, floor: z.value.floor }).prefix : null,
+          codePrefix: target ? zoneCodePrefix({ siteCode: target.code }).prefix : null,
           spotCount: z.value.spots.length, spots: z.value.spots.map((s) => s.label),
         })),
         counts,
@@ -157,7 +162,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
           โซนไหนสร้างแล้ว/ยังไม่สร้าง แล้วให้จอส่งส่วนที่เหลือซ้ำด้วยโหมดเติมต่อ */
     const zoneResults = [];
     for (const zone of planned.zones) {
-      const { prefix, error: codeError } = zoneCodePrefix({ siteCode: siteRow.code, floor: zone.value.floor });
+      const { prefix, error: codeError } = zoneCodePrefix({ siteCode: siteRow.code });
       if (codeError) { zoneResults.push({ key: zone.key, name: zone.value.name, error: codeError }); continue; }
       const { data, error: insertError } = await insertRowWithComposedCode(
         supabase,

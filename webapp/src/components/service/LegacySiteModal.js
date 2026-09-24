@@ -57,11 +57,9 @@ const newZone = () => {
   return { key: `zone-${zoneSeq}`, ...ZONE_FORM_EMPTY, spots: [] };
 };
 
-/** รหัสโซนที่จะออก — รู้ท่อนไซต์ได้เฉพาะเมื่อไซต์มีรหัสแล้ว (โหมดเติมต่อ) */
-const zoneCodePreview = (siteCode, floor) => {
-  const run = siteRunOf(siteCode) || "····";
-  return `ZN-${run}-${normalizeFloor(floor).value || "FF"}-·····`;
-};
+/** รหัสโซนที่จะออก `ZN-CCCC-DDDDD` — รู้ท่อนไซต์ได้เฉพาะเมื่อไซต์มีรหัสแล้ว (โหมดเติมต่อ)
+    ⭐ ชั้นไม่อยู่ในรหัสแล้ว (มติผู้ใช้ 2026-09-24 · mig 0384) */
+const zoneCodePreview = (siteCode) => `ZN-${siteRunOf(siteCode) || "····"}-·····`;
 
 export default function LegacySiteModal({ open, onClose, onSaved }) {
   /* ⭐ **ร่างอยู่ข้ามการปิด/เปิด** — กด Esc/กากบาทกลางทางแล้วของที่คีย์ไว้ (ไซต์ + โซนหลายสิบจุด)
@@ -577,7 +575,13 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
                 <ServiceZoneFields
                   form={activeZone}
                   setForm={setActiveZoneForm}
-                  floorHint={`รหัสโซน ${zoneCodePreview(target?.code, activeZone.floor)} · แก้ทีหลังรหัสไม่เปลี่ยน · โซนที่คร่อมหลายชั้นให้แยกโซนละชั้น`}
+                  floorHint={`รหัสโซน ${zoneCodePreview(target?.code)} · ชั้นไม่อยู่ในรหัส แก้ทีหลังได้ตลอด`}
+                  /* ชั้นที่โซนอื่นในไซต์นี้ใช้แล้ว (ร่างที่กำลังคีย์ + โซนเดิมของไซต์ปลายทาง) — พิมพ์ LG
+                     ครั้งเดียว โซนถัดไปกดชิปได้เลย */
+                  knownFloors={[
+                    ...zones.filter((z) => z.key !== activeZone.key).map((z) => z.floor),
+                    ...existingZones.map((z) => z.floor),
+                  ]}
                 />
               </>
             ) : (
@@ -632,7 +636,7 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
           )}
           {(preview.zones || []).map((z) => (
             <li key={z.key} className={styles.planZone}>
-              <span className={styles.planCode}>{z.codePrefix ? `${z.codePrefix}·····` : zoneCodePreview(null, z.floor)}</span>
+              <span className={styles.planCode}>{z.codePrefix ? `${z.codePrefix}·····` : zoneCodePreview(null)}</span>
               <span className={styles.planText}>
                 โซน {z.name}
                 {z.spots?.length ? <small className={styles.planSpots}>{z.spots.join(" · ")}</small> : null}
@@ -644,13 +648,18 @@ export default function LegacySiteModal({ open, onClose, onSaved }) {
         {!preview.zones?.length && <p className={styles.hint}>ไม่มีโซน — บันทึกไซต์อย่างเดียว เติมโซนทีหลังได้ที่หน้าไซต์</p>}
         <p className={styles.hint}>เลขท้ายของรหัสออกตอนบันทึก — ตัวนับรวมทั้งบริษัท พรีวิวเลขไว้ก่อนแล้วมีคนบันทึกพร้อมกัน เลขจะไม่ตรง</p>
 
-        <h4 className={styles.section}>ถูกตรึงในรหัสตลอดไป</h4>
-        <div className={styles.frozen}>
-          {!target && customer?.arCode && <span><Lock size={13} aria-hidden="true" /> ลูกค้า {customer.arCode}</span>}
-          {!target && form.province && <span><Lock size={13} aria-hidden="true" /> จังหวัด {form.province}</span>}
-          {preview.zones?.length > 0 && <span><Lock size={13} aria-hidden="true" /> ชั้นของแต่ละโซน</span>}
-        </div>
-        <p className={styles.hint}>ชื่อไซต์ · ชื่อโซน · ชื่อและจำนวนจุด แก้ทีหลังได้ทั้งหมด</p>
+        {/* ตั้งแต่ mig 0384 ชั้นไม่อยู่ในรหัสโซน ⇒ ของที่ตรึงมีแค่ของไซต์ใหม่ (ลูกค้า · จังหวัด)
+            โหมดเติมต่อไม่มีอะไรตรึงเพิ่ม — หัวข้อเปล่าอ่านเหมือนลืมแสดงข้อมูล จึงไม่วาดเลย */}
+        {!target && (
+          <>
+            <h4 className={styles.section}>ถูกตรึงในรหัสตลอดไป</h4>
+            <div className={styles.frozen}>
+              {customer?.arCode && <span><Lock size={13} aria-hidden="true" /> ลูกค้า {customer.arCode}</span>}
+              {form.province && <span><Lock size={13} aria-hidden="true" /> จังหวัด {form.province}</span>}
+            </div>
+          </>
+        )}
+        <p className={styles.hint}>ชื่อไซต์ · ชื่อโซน · ชั้น · ชื่อและจำนวนจุด แก้ทีหลังได้ทั้งหมด</p>
 
         <h4 className={styles.section}>รอบนี้ยังไม่เชื่อม</h4>
         <ul className={styles.checklist}>

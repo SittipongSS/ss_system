@@ -11,9 +11,9 @@ import { useState } from "react";
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { naText } from "@/lib/format";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
-import OptionTiles from "@/components/ui/OptionTiles";
-import { SPECIAL_FLOORS, normalizeFloor } from "@/lib/service/zoneCode";
+import { floorChipOptions, normalizeFloor } from "@/lib/service/zoneCode";
 import {
   ZONE_SPOT_LABEL_MAX, ZONE_SPOT_MAX, ZONE_SPOT_NOTE_MAX, spotBatchLabels, spotBatchStart,
 } from "@/lib/service/zones";
@@ -193,12 +193,17 @@ function ZoneSpotsEditor({ spots, onChange }) {
  * ช่องทั้งหมดของโซน
  *
  * @param form / setForm ค่าในฟอร์ม (`ZONE_FORM_EMPTY` / `zoneFormFromRow`)
- * @param editing        โหมดแก้ = มีช่องสถานะ · รหัสเดิมไม่เปลี่ยนตามชั้น
- * @param zoneCode       รหัสที่ออกไปแล้ว (โหมดแก้)
- * @param floorHint      ข้อความใต้ช่องชั้นในโหมดสร้าง (ผู้เรียกที่รู้รหัสไซต์โชว์รหัสโซนเต็มได้)
+ * @param editing        โหมดแก้ = มีช่องสถานะ
+ * @param floorHint      ข้อความใต้ช่องชั้นในโหมดสร้าง (ผู้เรียกที่รู้รหัสไซต์โชว์รหัสโซนที่จะออกได้)
+ * @param knownFloors    ชั้นของโซนอื่นในไซต์เดียวกัน — ขึ้นเป็นชิปลัดต่อจากชั้นพิเศษ
  */
-export default function ServiceZoneFields({ form, setForm, editing = false, zoneCode = null, floorHint = null }) {
+export default function ServiceZoneFields({
+  form, setForm, editing = false, floorHint = null, knownFloors = [],
+}) {
   const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  const floor = normalizeFloor(form.floor);
+  const floorChips = floorChipOptions(knownFloors);
+  const floorTyped = String(form.floor || "").trim() !== "";
 
   return (
     <div className={styles.grid}>
@@ -208,28 +213,43 @@ export default function ServiceZoneFields({ form, setForm, editing = false, zone
         <small>พื้นที่ย่อยในไซต์ที่ติดตามการใช้/รอบบริการแยกกัน — ไม่ใช่เขตวิ่งงานของเจ้าหน้าที่</small>
       </label>
 
-      {/* ── ชั้น (mig 0315) ───────────────────────────────────────────────
-          ⭐ **ชั้นเป็นท่อนหนึ่งของรหัสโซน** `ZN-CCCC-FF-DDDDD` ⇒ บังคับกรอก
-          ⭐ ชั้นตัวเลขพิมพ์เอง (มี 99 ค่า) · ชั้นพิเศษเป็นชิปให้กด (มี 5 ค่าตายตัว)
-             — กติกา "ชุดเล็กกางให้เห็น ชุดยาวค่อยเป็นช่องพิมพ์"
-          ⚠️ แก้ชั้นทีหลัง **ไม่เปลี่ยนรหัสที่ออกไปแล้ว** */}
-      <label className={styles.field}>
-        <span>ชั้น *</span>
-        <Input value={form.floor} onChange={set("floor")} placeholder="4" maxLength={10} />
-        <OptionTiles
-          options={SPECIAL_FLOORS}
-          value={SPECIAL_FLOORS.some((f) => f.value === form.floor) ? form.floor : ""}
+      {/* ── ชั้น (mig 0315 · 0384) ────────────────────────────────────────
+          ⭐ **บังคับกรอก** — ช่างใช้หาโซนหน้างาน · ไม่อยู่ในรหัสโซนแล้ว (มติ 2026-09-24 "ตัด FF ชั้นออก")
+             ⇒ แก้ทีหลังได้ตลอดโดยรหัสไม่เกี่ยว
+          ⭐ ช่องพิมพ์ + ชิปลัด (กติกา "ค่าอิสระที่มีคำตอบซ้ำ ๆ ให้ชิปลัด") — ชั้นตัวเลขพิมพ์เอง
+             (มี 99 ค่า) · ชั้นพิเศษที่เจอบ่อยเป็นชิป · **ชั้นที่ไม่อยู่ในรายการพิมพ์เองได้**
+             (LG · UG · P1 · 12A — มติผู้ใช้ 2026-09-24 "เพิ่มชั้นเองได้ เผื่อตัวเลือกไม่มี")
+          🐞 เดิมชั้นพิเศษเป็นไทล์ใหญ่ห้าแผ่นซ้อนกันสูงเกือบครึ่งโมดัล และช่องพิมพ์รับแค่ตัวเลข
+             ⇒ ชั้นที่ไม่อยู่ในห้าแผ่นนั้นบันทึกไม่ได้เลย */}
+      <div className={styles.field}>
+        <label className={styles.field}>
+          <span>ชั้น *</span>
+          <Input
+            value={form.floor}
+            onChange={set("floor")}
+            placeholder="พิมพ์ชั้น เช่น 4 · LG · P1"
+            maxLength={10}
+            autoComplete="off"
+            invalid={floorTyped && !!floor.error}
+          />
+        </label>
+        <ChoiceChips
+          options={floorChips}
+          value={floor.value || ""}
           onChange={(value) => setForm((prev) => ({ ...prev, floor: value }))}
-          ariaLabel="ชั้นพิเศษ"
+          ariaLabel="ชั้นที่เลือกได้เลย"
         />
-        <small>
-          {editing
-            ? `รหัสโซนที่ออกไปแล้วไม่เปลี่ยนตามชั้นที่แก้ — ${zoneCode || "รหัสเดิม"} ยังเป็นตัวเดิม`
-            /* ⚠️ โชว์ **ค่าที่จะลงรหัสจริง** (`normalizeFloor`) ไม่ใช่ป้ายที่คนอ่าน
-               (`floorLabel`) — พิมพ์ "4" แล้วรหัสได้ `04` · พิมพ์ "G" แล้วได้ `GF` */
-            : floorHint || `ตัวเลข 1–99 หรือกดเลือกชั้นพิเศษ — จะเข้าไปอยู่ในรหัสโซนเป็น ${normalizeFloor(form.floor).value || "FF"}`}
+        {/* บรรทัดแรก = ทางออกเมื่อชั้นไม่อยู่ในชิป (หรือเหตุที่พิมพ์ไม่ผ่าน) — ขึ้น **ทุกโหมดทุกผู้เรียก**
+            ⚠️ ห้ามให้ `floorHint` ของผู้เรียกทับบรรทัดนี้ — โมดัลย้อนหลังส่ง floorHint เสมอ
+               ถ้าทับกัน คนคีย์ของเก่า (ผู้ใช้หลักของทางนี้) จะไม่มีวันรู้ว่าพิมพ์ชั้นเองได้ */}
+        <small className={styles.hint} role={floorTyped && floor.error ? "alert" : undefined}>
+          {floorTyped && floor.error
+            ? floor.error
+            : "ไม่มีในชิป? พิมพ์เองได้ — อังกฤษ/ตัวเลข 2–3 ตัว เช่น LG · UG · P1 · 12A"}
         </small>
-      </label>
+        {/* บรรทัดที่สอง = ของที่ผู้เรียกอยากบอก (รหัสโซนที่จะออก) · ไม่ส่งมา = ไม่มีบรรทัด */}
+        {!editing && floorHint && <small className={styles.hint}>{floorHint}</small>}
+      </div>
 
       <label className={styles.field}>
         <span>อาคาร</span>

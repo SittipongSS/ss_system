@@ -9,7 +9,9 @@ import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { checkSiteReferences } from '@/lib/service/siteReferences';
-import { findCustomer, loadAssets, loadZones, requireSite } from '@/lib/service/sitesRepo';
+import {
+  findCustomer, loadAssets, loadZones, requireSite, siteAddressColumnsError,
+} from '@/lib/service/sitesRepo';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
@@ -126,6 +128,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     const refError = await checkSiteReferences(supabase, value, customer);
     if (refError) return badRequest(refError);
+
+    // ที่อยู่แยกช่อง (mig 0384) — ยังไม่รัน = update ทั้งแถวล้มด้วยข้อความอังกฤษ ⇒ บอกเป็นไทยก่อน
+    const schemaError = await siteAddressColumnsError(supabase);
+    if (schemaError) return fail(schemaError, 503);
 
     const { data, error: updateError } = await supabase
       .from('service_sites')

@@ -13,7 +13,8 @@ import { normalizeSiteInput, siteCreateMissing } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
 import { checkSiteReferences } from '@/lib/service/siteReferences';
 import {
-  assetCountsBySite, customerArCodesById, findCustomer, loadSites, requireService, zoneStatsBySite,
+  assetCountsBySite, customerArCodesById, findCustomer, loadSites, requireService, siteAddressColumnsError,
+  zoneStatsBySite,
 } from '@/lib/service/sitesRepo';
 import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
@@ -128,6 +129,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       provinceCode: value.provinceCode,
     });
     if (codeError) return badRequest(codeError);
+
+    // ที่อยู่แยกช่อง (mig 0384) — ตัวออกรหัสทิ้งคอลัมน์ที่ไม่มีเงียบ ๆ ⇒ ถามก่อนกินเลขรัน
+    const schemaError = await siteAddressColumnsError(supabase);
+    if (schemaError) return fail(schemaError, 503);
 
     // รหัสออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     // ชื่อสำเนา: ไทยก่อน ตกไปอังกฤษ — ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้ null ทั้งคอลัมน์
