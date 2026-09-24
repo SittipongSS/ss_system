@@ -2966,6 +2966,27 @@ h1, h2, h3, h4, h5, h6 {
   .overlay.to-right > .drawer.side-right { max-width: 100%; }
 }
 
+/* Modal `sheetOnPhone` — จอแคบกลายเป็นแผ่นเต็มจอ (โมดัลจัดคิวแบบ A · มติเจ้าของ 24/09):
+   หัวนิ่ง · เนื้อเลื่อน · ปุ่มนิ่งชิดขอบล่าง · มุมมนเฉพาะด้านบน
+   ⚠️ ชนะ `.overlay`/`.drawer` ของจอ ≤480 ด้วยน้ำหนักสองคลาส ไม่ใช่ด้วยลำดับในไฟล์
+   ⚠️ ปุ่มท้ายเผื่อแถบโฮม/ขอบจอโค้ง (safe-area) — ปุ่มหลักต้องกดได้เต็มนิ้ว */
+@media (max-width: 640px) {
+  .overlay.phone-sheet {
+    padding: 0;
+    align-items: stretch;
+  }
+  .drawer.phone-sheet {
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-bottom: 0;
+  }
+  .drawer.phone-sheet .drawer-footer {
+    padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  }
+}
+
 @keyframes modalIn {
   from { opacity: 0; transform: translateY(8px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -2990,6 +3011,15 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--fs-9);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
+}
+
+/* แถวชื่อ + ของต่อท้าย (Modal `titleAside`: ชิปชนิดงาน · สถานะ · ที่มา) — ตัดบรรทัดได้บนจอแคบ */
+.drawer-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2);
+  min-width: 0;
 }
 
 /* บรรทัดบริบทใต้ชื่อ (เช่น "ลีด: …" ของฟอร์มสร้างดีล) — อยู่ในหัวที่นิ่ง

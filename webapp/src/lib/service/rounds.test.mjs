@@ -16,6 +16,7 @@ import {
   visitTimeText,
   visitWarnings,
   routeZoneSplit,
+  windowsOverlap,
 } from './rounds.js';
 
 const plan = (over = {}) => ({
@@ -189,6 +190,36 @@ test('⭐ นัดที่ไม่ระบุเวลา หรือยั
     visit({ id: 'V2', assigneeId: null, siteId: 'S2', startTime: '10:00', endTime: '12:00' }),
   ];
   assert.deepEqual(overlaps(noOwner), []);
+});
+
+/* ⭐ ตัวตัดสิน "เวลาทับ" ตัวเดียว (มติ 24/09 แบบ A) — ตัวเลือกเจ้าหน้าที่ในโมดัลจัดคิวเตือนด้วยตัวนี้
+   รวมนัดที่รู้แค่เวลาเริ่ม (นัดประเมิน "11:00") · ตารางยังจับคู่เฉพาะช่วงครบเหมือนเดิม */
+test('⭐ windowsOverlap: ช่วง×ช่วง ติดกันพอดีไม่ทับ · จุดในช่วงทับ · จุด×จุดไม่ทับ · ไม่มีเวลาไม่ทับ', () => {
+  const range = (startTime, endTime) => ({ startTime, endTime });
+  assert.equal(windowsOverlap(range('10:30', '12:00'), range('10:30:00', '12:30:00')), true);
+  assert.equal(windowsOverlap(range('08:30', '10:00'), range('10:30', '12:00')), false);
+  assert.equal(windowsOverlap(range('10:00', '11:00'), range('11:00', '12:00')), false, 'ติดกันพอดี');
+  assert.equal(windowsOverlap(range('11:00', '12:00'), range('10:00', '11:00')), false, 'ติดกันพอดี (สลับข้าง)');
+  // จุดเวลา (รู้แค่เวลาเริ่ม) — อยู่ใน [เริ่ม, จบ) ของอีกฝั่ง
+  assert.equal(windowsOverlap({ startTime: '11:00' }, range('10:30', '12:30')), true, 'BRIEF C2: 11:00 ทับ 10:30–12:30');
+  assert.equal(windowsOverlap(range('10:30', '12:30'), { startTime: '11:00', endTime: '' }), true, 'สลับข้างได้');
+  assert.equal(windowsOverlap({ startTime: '10:30' }, range('10:30', '12:30')), true, 'จุดตรงเวลาเริ่ม = ทับ');
+  assert.equal(windowsOverlap({ startTime: '12:30' }, range('10:30', '12:30')), false, 'จุดตรงเวลาจบ = ติดกันพอดี');
+  assert.equal(windowsOverlap({ startTime: '11:00' }, range('09:00', '10:00')), false);
+  assert.equal(windowsOverlap({ startTime: '11:00' }, { startTime: '11:00' }), false, 'จุด×จุด ไม่รู้ว่ากินเวลาเท่าไร');
+  assert.equal(windowsOverlap({}, range('10:00', '12:00')), false);
+  assert.equal(windowsOverlap(range('10:00', '12:00'), null), false);
+  assert.equal(windowsOverlap({ endTime: '12:00' }, range('10:00', '12:00')), false, 'ไม่มีเวลาเริ่ม = ไม่รู้');
+});
+
+test('⭐ ตารางยังไม่จับคู่นัดที่รู้แค่เวลาเริ่ม (ป้ายบนชิปไม่เปลี่ยน) แม้ windowsOverlap จะรู้จักจุดเวลาแล้ว', () => {
+  const visits = [
+    visit({ id: 'V1', startTime: '10:30', endTime: '12:30' }),
+    visit({ id: 'V2', siteId: 'S2', startTime: '11:00' }),
+  ];
+  assert.equal(windowsOverlap(visits[1], visits[0]), true);
+  assert.deepEqual(overlaps(visits), []);
+  assert.equal(overlappingVisitIds(visits).size, 0);
 });
 
 // ── ข้ามเขตวิ่งงาน ───────────────────────────────────────────────────────

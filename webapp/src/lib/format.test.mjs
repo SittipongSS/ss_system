@@ -1,12 +1,36 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayDateToIso, fmtDateNumeric, fmtDateTime, fmtDayTime, fmtDayMonth, fmtDayMonthYear, fmtMonthYear, fmtYearMonth, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput, isBlank, naText, fmtMoneyOrDash, NA } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtDateTime, fmtDayTime, fmtDayMonth, fmtDayMonthYear, fmtMonthYear, fmtYearMonth, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, dateFieldText, isoDateToDisplay, isoDateToWeekdayText, normalizeTime, parseNumberInput, isBlank, naText, fmtMoneyOrDash, NA } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
   assert.equal(formatMoneyInput("1000000"), "1,000,000.00");
   assert.equal(formatMoneyInputWhileTyping("1000000"), "1,000,000");
   assert.equal(formatMoneyInputWhileTyping("1000000.5"), "1,000,000.5");
+});
+
+/* ⭐ รีวิว UAT 24/09 (pain 10 · หลักข้อ 5/9 ของโมดัลจัดคิวแบบ A): ช่องวันแสดง "พฤ. 1 ต.ค. 2026" ตอนไม่ได้พิมพ์
+   — วันในสัปดาห์คิดจากวันที่ล้วน (UTC เที่ยงคืน) ไม่ขึ้นกับโซนเวลาของเครื่อง · ค่าเสีย = '' (ช่องถอยไปแบบตัวเลข) */
+test("isoDateToWeekdayText: วันไทยมีวันในสัปดาห์ · พ.ศ. ตาม era · ค่าเสียคืนว่าง", () => {
+  assert.equal(isoDateToWeekdayText("2026-10-01"), "พฤ. 1 ต.ค. 2026");
+  assert.equal(isoDateToWeekdayText("2026-10-09"), "ศ. 9 ต.ค. 2026");
+  assert.equal(isoDateToWeekdayText("2026-09-27"), "อา. 27 ก.ย. 2026");
+  assert.equal(isoDateToWeekdayText("2026-10-01", { era: "BE" }), "พฤ. 1 ต.ค. 2569");
+  assert.equal(isoDateToWeekdayText(""), "");
+  assert.equal(isoDateToWeekdayText("2026-02-31"), "", "วันที่ไม่มีจริง");
+  assert.equal(isoDateToWeekdayText("01/10/2026"), "", "รับแต่ ISO");
+});
+
+/* ช่องวันที่ (`DateInput`): โหมดวันในสัปดาห์เป็น opt-in — ไม่ส่ง = ตัวเลขเหมือนเดิมทุกหน้า ·
+   กำลังพิมพ์ = ตัวเลขเสมอ (พิมพ์ "พฤ." ลงช่องไม่ได้) · ค่าเสีย = ตัวเลข/ว่างตามของเดิม */
+test("dateFieldText: ค่าตั้งต้นเป็นตัวเลขเหมือนเดิม · weekday แสดงวันไทยตอนไม่ได้พิมพ์ · พิมพ์อยู่ = ตัวเลข", () => {
+  assert.equal(dateFieldText("2026-10-01"), "01/10/2026");
+  assert.equal(dateFieldText("2026-10-01", { weekday: true }), "พฤ. 1 ต.ค. 2026");
+  assert.equal(dateFieldText("2026-10-01", { weekday: true, typing: true }), "01/10/2026");
+  assert.equal(dateFieldText("2026-10-01", { weekday: true, era: "BE" }), "พฤ. 1 ต.ค. 2569");
+  assert.equal(dateFieldText("2026-10-01", { era: "BE", typing: true, weekday: true }), "01/10/2569");
+  assert.equal(dateFieldText("", { weekday: true }), "");
+  assert.equal(dateFieldText("2026-02-31", { weekday: true }), "31/02/2026", "วันเสียถอยไปแบบตัวเลข (ของเดิม)");
 });
 
 test("date input converts display format and ISO payload without timezone", () => {

@@ -10,10 +10,19 @@
 //    และผู้เรียกส่งโหมดเองไม่ได้ ⇒ ส่งผิดโหมดไม่ได้
 import { requestKindMeta, requestNeedsRef } from '@/lib/master/requestTypes';
 import { dueIsStale } from '@/lib/requests/dueRound';
-import { fmtDate } from '@/lib/format';
+import { NA, fmtDate } from '@/lib/format';
 import { businessDate } from '@/lib/businessDate';
-import { surveyScheduleGaps } from '@/lib/service/surveyVisit';
+import { SURVEY_VISIT_KIND, surveyScheduleGaps, surveyVisitDraft } from '@/lib/service/surveyVisit';
 import { toHHMM } from '@/lib/service/sites';
+import { MAX_ASSETS_PER_DAY, assigneeOverloaded } from '@/lib/service/visitLoad';
+import { VISIT_KIND_LABELS, visitTimeText } from '@/lib/service/rounds';
+import {
+  SURVEY_QUEUE_STEP_BADGES, acknowledgedText, previousVisitText, surveyQueueStep,
+} from '@/lib/service/surveyQueue';
+/* ⚠️ คำกลางมาจากไฟล์ใบ `queueWords` ไม่ใช่ `scheduleQueueView` — ตัวนั้นนำเข้าไฟล์นี้อยู่แล้ว (กัน import วน) */
+import {
+  accessWarnText, dayText, requestAgeText, siteLoadText, siteWhereText, withWarnings,
+} from '@/lib/service/queueWords';
 
 /* ความยาวหมายเหตุสูงสุด — ตัวเดียวกับที่ route ตีกลับ (`เหตุผลยาวเกิน 500 ตัวอักษร`) */
 export const COMMIT_DUE_REASON_MAX = 500;
@@ -51,22 +60,29 @@ export function commitDueLabels(request, { requeue = false } = {}) {
     // ── ช่องในโมดัล ──
     dateLabel: form.committedDueLabel || 'วันกำหนดส่ง',
     /* วันที่ผู้ขอต้องการเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง (คนละช่อง คนละเจ้าของ)
-       ⚠️ รอบแก้ต้องเห็นวันของรอบก่อน — ไม่งั้นคนกรอกไม่รู้ว่ากำลังแทนที่อะไร */
-    dateHint: `เป็นวันที่ ${dept} แจ้ง และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง`
-      + (stale ? ` · รอบก่อนแจ้งไว้ ${fmtDate(request.committedDueDate)}` : '')
-      + (request?.requestedDueDate ? ` · ผู้ขอต้องการรับงาน ${fmtDate(request.requestedDueDate)}` : ''),
-    /* ⚠️ Postgres คืน time เป็น '11:00:00' — ตัดวินาทีด้วยตัวเดียวกับการ์ดบนหน้าจัดคิว (`toHHMM`)
-       🐞 UAT 24/09: คำใบ้พิมพ์ "11:00:00" ข้างการ์ดที่พิมพ์ "ช่วง 11:00" */
-    timeHint: 'เว้นว่าง = ไปทั้งวัน'
-      + (toHHMM(request?.requestedDueTime) ? ` · ผู้ขอต้องการช่วง ${toHHMM(request.requestedDueTime)}` : ''),
+       ⚠️ รอบแก้ต้องเห็นวันของรอบก่อน — ไม่งั้นคนกรอกไม่รู้ว่ากำลังแทนที่อะไร
+       ⭐ **ลงคิวเข้าพื้นที่ไม่มีประโยคอธิบายระบบแล้ว** (มติ 24/09 แบบ A · pain 19) — "เป็นวันที่ TS แจ้ง
+          และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง" เป็นคำของคนทำระบบ ไม่ใช่ของคนจัดคิว · วันที่ผู้ขอต้องการ
+          ย้ายไปเป็นชิปข้างช่อง (`commitDueWishes`) ⇒ เหลือแค่วันของรอบก่อน (ถ้ามี) ในรูปวันไทย
+       ⚠️ แจ้งกำหนดส่ง (หัวข้ออื่น) คงประโยคเดิม — โมดัลนั้นไม่มีชิปผู้ขอ */
+    dateHint: site
+      ? (stale ? `รอบก่อนแจ้งไว้ ${dayText(request.committedDueDate)}` : '')
+      : `เป็นวันที่ ${dept} แจ้ง และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง`
+        + (stale ? ` · รอบก่อนแจ้งไว้ ${fmtDate(request.committedDueDate)}` : '')
+        + (request?.requestedDueDate ? ` · ผู้ขอต้องการรับงาน ${fmtDate(request.requestedDueDate)}` : ''),
+    /* ⭐ เวลา/วันส่งผลที่ผู้ขอต้องการ **ไม่อยู่ในคำใบ้แล้ว** (มติ 24/09 แบบ A · pain 14) — เป็นชิปข้างช่อง
+       (`commitDueWishes` · "ตรงกัน" / "ใช้ตามผู้ขอ") · "เว้นว่าง = ไปทั้งวัน" คือแผ่น "ไม่ระบุเวลา" ของช่องเวลา
+       ⇒ คำใบ้ของวันส่งผลเหลือแค่กติกาลำดับวัน (ตัวเดียวกับที่ด่าน server ตรวจ) */
     resultLabel: form.committedResultLabel || 'วันที่จะส่งผล',
-    resultHint: 'ต้องไม่มาก่อนวันนัดเข้าพื้นที่'
-      + (request?.requestedResultDate ? ` · ผู้ขอต้องการผลวันที่ ${fmtDate(request.requestedResultDate)}` : ''),
-    /* คำใบ้ใต้ตัวเลือกคน — **บอกเงื่อนไข ไม่ใช่สัญญา**
-       🐞 รีวิว 24/09: เคยเขียน "นัดจะขึ้นตารางและงานวันนี้ของคนนี้" ตายตัว ⇒ ผิดทุกครั้งที่ด่าน ④ (ช่วงเวลาที่
-          ไซต์ให้เข้า) ไม่ผ่าน — `createSurveyVisit` จอดนัดเป็นร่างที่ไม่อยู่บนตารางของใคร (งานสำรวจข้ามด่าน ①②
-          และบังคับเลือกคนแล้ว ⇒ ข้อ ④ คือทางเดียวที่นัดเป็นร่าง) · โมดัลไม่รู้ช่วงเข้าของไซต์ จึงบอกทั้งสองทาง */
-    assigneeHint: site ? 'นัดขึ้นตารางของคนนี้เมื่อวัน/เวลาอยู่ในช่วงที่ไซต์ให้เข้า · นอกช่วง = จอดเป็นร่างในแท็บรอจัด' : '',
+    resultHint: 'ต้องไม่มาก่อนวันนัดเข้าพื้นที่',
+    /* ⚠️ ไม่มีคำใบ้ใต้ตัวเลือกคนแล้ว (`assigneeHint` ถอดทิ้ง) — 🐞 รีวิว UAT 24/09 (high): คำใบ้ "…นอกช่วง = จอดเป็นร่าง
+       ในแท็บรอจัด" ทายผิด: server สร้างนัดจากไซต์ที่ `loadSurveySite` select แค่ id/code/name/customerId ⇒ ด่าน ④
+       ไม่เห็นช่วงเวลา นัดลงตารางช่างเสมอ · ผลของการกดอยู่ที่บรรทัดผลลัพธ์ (`commitDueOutcome`) ที่เดียว */
+    /* ตัวอย่างในช่องหมายเหตุ — **ตามงาน** (pain 17): ของเดิมทั้งสองโหมดใช้ประโยคของ "แจ้งกำหนดส่ง"
+       ("รอวัตถุดิบเข้า…") ซึ่งไม่ใช่เรื่องของการนัดเข้าไซต์ */
+    notePlaceholder: site
+      ? 'เช่น นัดผู้จัดการไซต์ก่อนเข้า · แลกบัตรที่ รปภ.'
+      : 'เช่น รอวัตถุดิบเข้าวันที่ 25 — ส่งได้หลังจากนั้น',
   };
 }
 
@@ -141,4 +157,136 @@ export function commitDueGaps(request, form) {
 /** ข้อความของปุ่มส่งที่กดไม่ได้ (`GatedAction.blocker`) — ผ่าน = '' */
 export function commitDueBlocker(request, form) {
   return commitDueGaps(request, form).join(' · ');
+}
+
+/* ═══ ของโมดัลจัดคิวแบบ A "สองคอลัมน์" (มติเจ้าของ 24/09) ═══════════════════════════════
+   ⭐ หัว · "งานนี้" · ชิปความต้องการของผู้ขอ · บรรทัดผลลัพธ์ใต้ปุ่ม — **ตรรกะล้วน** ให้โมดัลวาดอย่างเดียว
+   ⚠️ ไม่มีกติกาใหม่: ทุกข้อความ/การตัดสินอ่านจากของเดิม (`commitDueGaps` · `evaluateVisitGate` ·
+      `surveyVisitDraft` · คำของการ์ด) — โมดัลกับ server ต้องพูดเรื่องเดียวกันเสมอ */
+
+/** ข้อความของชิปผู้ขอ — "ตรงกัน" เมื่อค่าที่กรอกเท่ากับที่ผู้ขอต้องการ · ไม่ตรง = ปุ่มกดใช้ค่าของผู้ขอ */
+export const WISH_SAME_TEXT = 'ตรงกัน';
+export const WISH_APPLY_TEXT = 'ใช้ตามผู้ขอ';
+
+/**
+ * หัวโมดัล — `{ title, kind, status, origin, context }` รูปเดียวกับหัวของโมดัลนัด
+ * · ลงคิวเข้าพื้นที่: ชิปชนิดงาน "ประเมินพื้นที่" · ที่มา "RQ-… · ผู้ขอ …" · บรรทัดไซต์ "รหัส · ชื่อ · ลูกค้า"
+ * · แจ้งกำหนดส่ง (หัวข้ออื่น): ไม่มีชิป ไม่มีไซต์
+ * @param site ไซต์ของใบ (หน้าจัดคิว: แถวไซต์เต็ม · หน้าใบ: `req.surveySite`) — ไม่มี = ไม่มีบรรทัดไซต์
+ */
+export function commitDueHeader(request, { site = null } = {}) {
+  const siteMode = commitDueMode(request) === 'site';
+  const req = request || {};
+  return {
+    title: commitDueLabels(request).title,
+    kind: siteMode ? { key: SURVEY_VISIT_KIND, label: VISIT_KIND_LABELS[SURVEY_VISIT_KIND] } : null,
+    status: null,
+    origin: [req.docNo || req.id, req.requestedByName ? `ผู้ขอ ${req.requestedByName}` : '']
+      .filter(Boolean).join(' · '),
+    context: siteMode && site
+      ? { code: site.code || '', name: site.name || '', customer: site.customerName || req.customerName || '' }
+      : null,
+  };
+}
+
+/**
+ * แถว "งานนี้" (คอลัมน์ซ้าย) — `[{ key, label, value, sub?, kind?, extra?, badge? }]` · แจ้งกำหนดส่ง = []
+ * ⭐ คำชุดเดียวกับการ์ดคำร้องบนหน้าจัดคิว (`surveyRequestRow`): อายุคำร้อง (`requestAgeText`) ·
+ *    ป้ายขั้น (`SURVEY_QUEUE_STEP_BADGES`) · "รับเรื่องแล้ว โดย …" (`acknowledgedText`) · นัดเดิม (`previousVisitText`)
+ * @param siteLoad `{ assets, packs }` ของไซต์ (หน้าจัดคิว) · null = ไม่รู้ (หน้าใบ) ⇒ ไม่มีตัวเลขต่อท้ายชนิดงาน
+ * @param todayIso วันนี้แบบไทย — นับ "ค้างมา n วัน"
+ */
+export function commitDueJobRows(request, { site = null, todayIso, siteLoad = null } = {}) {
+  if (commitDueMode(request) !== 'site') return [];
+  const req = request || {};
+  const step = surveyQueueStep(req);
+  const wantTime = toHHMM(req.requestedDueTime);
+  return [
+    {
+      key: 'kind', label: 'งาน', value: VISIT_KIND_LABELS[SURVEY_VISIT_KIND], kind: SURVEY_VISIT_KIND,
+      extra: siteLoadText(siteLoad, { showZero: true }),
+    },
+    req.title ? { key: 'title', label: 'เรื่อง', value: req.title } : null,
+    { key: 'where', label: 'ที่ไหน', value: siteWhereText(site) || NA },
+    { key: 'requester', label: 'ผู้ขอ', value: req.requestedByName || NA, sub: requestAgeText(req, todayIso) },
+    {
+      key: 'wants', label: 'ต้องการ',
+      value: req.requestedDueDate
+        ? `เข้า ${dayText(req.requestedDueDate)}${wantTime ? ` · ช่วง ${wantTime}` : ''}`
+        : 'ผู้ขอไม่ระบุวันที่ต้องการ',
+      sub: req.requestedResultDate ? `ผล ${dayText(req.requestedResultDate)}` : '',
+    },
+    {
+      key: 'origin', label: 'ที่มา', value: 'คำร้องประเมินพื้นที่',
+      badge: step ? SURVEY_QUEUE_STEP_BADGES[step] : null,
+      sub: step === 'requeue' ? previousVisitText(req.surveyVisit) : step === 'queue' ? acknowledgedText(req) : '',
+    },
+  ].filter(Boolean);
+}
+
+/**
+ * ชิปความต้องการของผู้ขอข้างช่องวัน/เวลา และข้างช่องวันส่งผล (pain 14: เดิมซ่อนในประโยคคำใบ้)
+ * @returns `{ visit, result }` — แต่ละตัว `{ key, lead, value, same, patch }` หรือ null (ผู้ขอไม่ได้ระบุ)
+ *   · `same` = ค่าที่กรอกตรงกับที่ผู้ขอต้องการ ⇒ ชิปขึ้น "ตรงกัน" (`WISH_SAME_TEXT`)
+ *   · ไม่ตรง ⇒ ปุ่ม "ใช้ตามผู้ขอ" (`WISH_APPLY_TEXT`) ที่เอา `patch` ไปทับฟอร์ม
+ * ⚠️ ผู้ขอไม่ระบุเวลา = วันตรงก็ถือว่าตรง (เวลาอะไรก็ได้) และปุ่มใช้ตามผู้ขอไม่ล้างเวลาที่กรอกไว้
+ * ⚠️ แจ้งกำหนดส่ง (หัวข้ออื่น) ไม่มีชิป — วันที่ผู้ขอต้องการยังอยู่ในคำใบ้ของโหมดนั้น
+ */
+export function commitDueWishes(request, form) {
+  if (commitDueMode(request) !== 'site') return { visit: null, result: null };
+  const req = request || {};
+  const f = form || {};
+  const wantDate = req.requestedDueDate || '';
+  const wantTime = toHHMM(req.requestedDueTime);
+  const wantResult = req.requestedResultDate || '';
+  return {
+    visit: wantDate ? {
+      key: 'visit',
+      lead: 'ผู้ขอต้องการ',
+      value: [dayText(wantDate), wantTime].filter(Boolean).join(' · '),
+      same: f.date === wantDate && (!wantTime || toHHMM(f.time) === wantTime),
+      patch: wantTime ? { date: wantDate, time: wantTime } : { date: wantDate },
+    } : null,
+    result: wantResult ? {
+      key: 'result',
+      lead: 'ผู้ขอต้องการผล',
+      value: dayText(wantResult),
+      same: f.resultDate === wantResult,
+      patch: { resultDate: wantResult },
+    } : null,
+  };
+}
+
+/**
+ * บรรทัดผลลัพธ์ใต้ปุ่มหลัก — กดแล้วจะเกิดอะไร (pain 16) · `{ tone: 'ok'|'warn'|'info', lands, text }`
+ *
+ * · ยังขาดช่อง ⇒ "ยังลงคิวไม่ได้ — …" (`commitDueGaps` ตัวเดียวกับปุ่ม)
+ * · ครบ ⇒ **นัดขึ้นตารางเสมอ** (`lands: 'scheduled'`) "จะขึ้นตารางของ {ชื่อ} · {วัน} {เวลา} · ส่งผลภายใน {วัน}"
+ *   ⭐ ทำไมแน่นอน: server สร้างนัดด้วย `initialVisitStatus` บนไซต์จาก `loadSurveySite` ซึ่ง select แค่
+ *      id/code/name/customerId ⇒ ①② ข้าม (งานสำรวจ) · ③ บังคับแล้ว (ช่องที่ขาด) · ④ ไม่เห็นช่วงเวลา ⇒ ผ่านทุกข้อ
+ *   🐞 รีวิว UAT 24/09 (high): เคยทาย "จะจอดเป็นร่าง…" เมื่อเวลานอกช่วงของไซต์ (หน้าจัดคิว) และตอบกั๊กสองทาง
+ *      (หน้าใบ) — ทั้งสองผิด · ยาม: surveyVisit.test.mjs เทียบกับไซต์รูปที่ `loadSurveySite` คืนจริง ⇒ วันที่ server
+ *      เริ่มเห็นช่วงเวลา ยามแดง แล้วต้องกลับมาแก้ตัวนี้ (= เปลี่ยนพฤติกรรม ต้องได้มติเจ้าของก่อน)
+ *   · เตือน (ไม่บล็อก · อำพัน): นอกช่วงที่ไซต์ให้เข้า (รู้เมื่อจอมีแถวไซต์เต็ม — หน้าจัดคิว) · คนที่เลือกเกินภาระ
+ * · แจ้งกำหนดส่ง (หัวข้ออื่น) ⇒ บอกวันที่จะแจ้งผู้ขอ
+ * @param load/siteLoad ภาระของวันนั้น + ของไซต์ — ตัวเดียวกับตัวเลือกคน ("ถ้าเลือก … x/12 จุด")
+ */
+export function commitDueOutcome(request, form, {
+  site = null, accessKnown = true, technicians = [], load = null, siteLoad = null,
+} = {}) {
+  const f = form || {};
+  const siteMode = commitDueMode(request) === 'site';
+  const gaps = commitDueGaps(request, f);
+  if (gaps.length) {
+    return { tone: 'warn', lands: null, text: `${siteMode ? 'ยังลงคิวไม่ได้' : 'ยังแจ้งกำหนดส่งไม่ได้'} — ${gaps.join(' · ')}` };
+  }
+  if (!siteMode) return { tone: 'info', lands: null, text: `จะแจ้งผู้ขอว่ากำหนดส่ง ${dayText(f.date)}` };
+  const name = (technicians || []).find((t) => t.id === f.assigneeId)?.name || request?.assigneeName || '';
+  const draft = surveyVisitDraft({ request, date: f.date, time: f.time, assigneeId: f.assigneeId, assigneeName: name });
+  const warnings = [
+    accessKnown && site ? accessWarnText(site, { date: draft.scheduledDate, startTime: draft.startTime }) : '',
+    assigneeOverloaded({ load, assigneeId: f.assigneeId, siteLoad }) ? `เกินภาระ ${MAX_ASSETS_PER_DAY} จุด` : '',
+  ].filter(Boolean);
+  const text = `จะขึ้นตารางของ ${name || 'เจ้าหน้าที่ที่เลือก'} · ${dayText(f.date)} ${visitTimeText(draft)} · ส่งผลภายใน ${dayText(f.resultDate)}`;
+  return { tone: warnings.length ? 'warn' : 'ok', lands: 'scheduled', text: withWarnings(text, warnings) };
 }

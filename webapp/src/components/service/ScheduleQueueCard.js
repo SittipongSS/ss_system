@@ -22,6 +22,7 @@ import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { gateBlocker } from "@/lib/service/visitGate";
+import { GATE_FIX } from "@/lib/service/scheduleQueueView";
 import { naText } from "@/lib/format";
 import styles from "./ScheduleQueueCard.module.css";
 
@@ -46,8 +47,6 @@ export default function ScheduleQueueCard({
   /* ป้ายหัวการ์ด (เฉพาะรอจัด) กับบรรทัดผ่านด่านประกอบมาจาก scheduleQueueView — ให้คำค้นเห็นคำเดียวกัน */
   const tag = row.tag;
   const toneOf = (tone) => (TONE_CLASS[tone] ? styles[TONE_CLASS[tone]] : "");
-  const fixLabel = (fix) => (fix === "assignee" ? "เลือกเจ้าหน้าที่" : "แก้วัน/เวลา");
-  const fixField = (fix) => (fix === "assignee" ? "assignee" : "scheduledDate");
 
   return (
     <li className={styles.card} id={`queue-row-${row.id}`} data-stale={row.stale ? "yes" : undefined}>
@@ -108,11 +107,12 @@ export default function ScheduleQueueCard({
             <StatusBadge size="sm" tone={item.ownerTone} label={item.owner || naText(null)} className={styles.owner} />
             <span>
               {item.reason}
-              {canEdit && item.fix && (
+              {/* ป้าย/ช่องของลิงก์แก้มาจาก `GATE_FIX` ชุดเดียวกับแผงด่านในโมดัลจัดคิว */}
+              {canEdit && GATE_FIX[item.fix] && (
                 <>
                   {" — "}
-                  <button type="button" className="text-action" onClick={() => onOpen?.(row.visit, fixField(item.fix))}>
-                    {fixLabel(item.fix)}
+                  <button type="button" className="text-action" onClick={() => onOpen?.(row.visit, GATE_FIX[item.fix].field)}>
+                    {GATE_FIX[item.fix].label}
                   </button>
                 </>
               )}

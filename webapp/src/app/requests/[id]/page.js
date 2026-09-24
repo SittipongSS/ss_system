@@ -2054,6 +2054,11 @@ export default function RequestDetailPage() {
       <CommitDueDialog
         open={dueDialogOpen}
         request={req}
+        /* ไซต์ของใบ (หัว · "ที่ไหน") — `surveySite` ไม่ได้ select ช่วงเวลาที่ให้เข้ามา ⇒ ไม่ส่ง `accessKnown`
+           โมดัลจึงบอกด่าน ④ ว่า "หน้านี้ไม่เห็นช่วงเข้าไซต์" แทนการเดาว่าผ่าน (D2 ของแบบ A) · ผลของการกดยังบอกแน่นอน
+           (server ไม่ได้ตรวจช่วงเวลาของงานสำรวจ — ดู `commitDueOutcome`)
+           ⚠️ ข้อจำกัดที่รู้แล้ว (รีวิว UAT 24/09): ช่วงเวลา/ภาระของไซต์บนหน้านี้ = เปลี่ยนการอ่าน API ⇒ รอมติเจ้าของ */
+        site={req.surveySite || null}
         technicians={technicians}
         techniciansLoading={!technicians.length && directoryLoading}
         techniciansError={!technicians.length && directoryError}

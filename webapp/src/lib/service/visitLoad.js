@@ -71,6 +71,32 @@ export function overloaded(row, { maxAssets = MAX_ASSETS_PER_DAY } = {}) {
   return (row.assets || 0) > maxAssets;
 }
 
+/**
+ * ภาระของคนหนึ่งวันนั้น **ถ้าเลือกเขาไปงานนี้** — `{ visits, assets, known, over }`
+ * ⭐ ตัวเดียวของ "ถ้าเลือก n นัด · x/12 จุด" ในตัวเลือกคน และคำเตือนเกินภาระบนบรรทัดผลลัพธ์ใต้ปุ่ม
+ *    (รีวิว UAT 24/09: บรรทัดผลลัพธ์เคยเขียวทั้งที่แถวของคนที่เลือกบอก "เกินภาระ 12 จุด")
+ * @param row      แถวภาระของคนนั้น (`crewLoadPeople`)
+ * @param siteLoad `{ assets }` ของไซต์ที่กำลังนัด · null = ไม่รู้ ⇒ ไม่บวกจุด (`known: false`) ·
+ *                 เกินหรือไม่ดูจากที่มีอยู่แล้ว (ไม่เดาภาระของไซต์)
+ * ⚠️ เตือน ไม่ห้าม — ผู้เรียกห้ามเอา `over` ไปบล็อกปุ่ม
+ */
+export function projectedDayLoad(row, siteLoad) {
+  const visits = (Number(row?.visits) || 0) + 1;
+  if (!siteLoad) return { visits, assets: Number(row?.assets) || 0, known: false, over: overloaded(row) };
+  const assets = (Number(row?.assets) || 0) + (Number(siteLoad.assets) || 0);
+  return { visits, assets, known: true, over: assets > MAX_ASSETS_PER_DAY };
+}
+
+/**
+ * คนที่เลือก **ถ้าไปงานนี้** จะเกินภาระวันนั้นไหม — ตัวเดียวของบรรทัดผลลัพธ์สองโมดัลจัดคิว (ปล่อยร่าง · ลงคิว)
+ * @param load `{ state, people }` ของวันนั้น (`staffLoadFor` · `useCrewLoad`) · ไม่รู้ ⇒ false (ไม่เดา)
+ */
+export function assigneeOverloaded({ load = null, assigneeId = '', siteLoad = null } = {}) {
+  if (!assigneeId || load?.state !== 'ok') return false;
+  const row = (load.people || []).find((person) => person.id === assigneeId);
+  return row ? projectedDayLoad(row, siteLoad).over : false;
+}
+
 /* ข้อความภาระสำหรับช่องในกริด — "3 นัด · 11 เครื่อง · 6 แพ็ค"
    ⚠️ ไม่ตัดหน่วยที่เป็น 0 ทิ้งทั้งหมด: ถ้าไม่มีเครื่องเลยต้องอ่านออกว่า **ไม่มีข้อมูล
    เครื่อง** ไม่ใช่ "งานเบา" ⇒ ไซต์ที่ยังไม่ลงทะเบียนเครื่องจะโชว์แค่จำนวนนัด */

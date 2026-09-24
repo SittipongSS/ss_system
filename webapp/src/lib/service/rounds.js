@@ -436,8 +436,33 @@ export function dayLoad(visits = [], { perPersonPerDay = 5 } = {}) {
   }));
 }
 
+// ── สองช่วงเวลาทับกันไหม ────────────────────────────────────────────────
+/**
+ * ⭐ ตัวตัดสินเดียวของ "เวลาทับ" — ตารางใช้กับคู่นัดที่มีช่วงครบ (`overlaps`) · ตัวเลือกเจ้าหน้าที่
+ *    ในโมดัลจัดคิวใช้เตือนว่าคนนั้นมีนัดชนกับเวลาที่กำลังกรอกไหม (รวมนัดที่รู้แค่เวลาเริ่ม)
+ * @param a,b `{ startTime, endTime }` — มีแค่ `startTime` = **จุดเวลา** (เช่นนัดประเมิน "11:00")
+ * · ช่วง × ช่วง — ทับเมื่อ `a.start < b.end && b.start < a.end` · ติดกันพอดี (11:00 จบ / 11:00 เริ่ม) ไม่ทับ
+ * · จุด × ช่วง — ทับเมื่อจุดอยู่ใน `[start, end)` (จุดที่ตรงเวลาจบพอดีไม่ทับ — กติกาเดียวกับติดกันพอดี)
+ * · จุด × จุด — **ไม่ทับ** · ไม่รู้ว่ากินเวลาเท่าไร จะเดาว่าชนก็ไม่ได้
+ * · ฝั่งไหนไม่มีเวลาเริ่ม — ไม่ทับ (ไม่รู้เวลา ไม่ใช่ ทับกัน)
+ * ⚠️ **เตือนอย่างเดียว** — ไม่มีด่านไหนบล็อกด้วยตัวนี้
+ */
+export function windowsOverlap(a, b) {
+  const aStart = minutesOf(a?.startTime);
+  const bStart = minutesOf(b?.startTime);
+  if (aStart === null || bStart === null) return false;
+  const aEnd = minutesOf(a?.endTime);
+  const bEnd = minutesOf(b?.endTime);
+  if (aEnd !== null && bEnd !== null) return aStart < bEnd && bStart < aEnd;
+  if (aEnd !== null) return bStart >= aStart && bStart < aEnd;
+  if (bEnd !== null) return aStart >= bStart && aStart < bEnd;
+  return false;
+}
+
 // ── นัดของเจ้าหน้าที่คนเดียวกันที่เวลาทับกัน ────────────────────────────────────
 // ⚠️ นัดที่ **ไม่ระบุเวลา** ชนกับใครไม่ได้ — ไม่รู้เวลา ไม่ใช่ ทับกัน
+// ⚠️ นัดที่ **รู้แค่เวลาเริ่ม** ก็ไม่เข้าคู่บนตาราง (ชิปวาดเป็นจุด ไม่ใช่ช่วง) — `windowsOverlap`
+//    รู้จักจุดเวลาแล้ว แต่ตารางยังจับคู่เฉพาะช่วงครบเหมือนเดิม (ป้ายบนชิปไม่เปลี่ยน)
 // ⚠️ เจ้าหน้าที่คนละคนไม่นับว่าทับ แม้เวลาเดียวกันเป๊ะ (คนละคันรถ คนละไซต์)
 // ⚠️ นัดที่ยังไม่มอบหมายคนก็ไม่นับ — ยังไม่รู้ว่าใครไป จะทับใครก็ยังไม่รู้
 export function overlaps(visits = []) {
@@ -459,8 +484,8 @@ export function overlaps(visits = []) {
     for (let i = 1; i < rows.length; i += 1) {
       const prev = rows[i - 1];
       const cur = rows[i];
-      // ติดกันพอดี (11:00 จบ / 11:00 เริ่ม) ไม่ถือว่าทับ — ใช้ `<` ไม่ใช่ `<=`
-      if (cur.start < prev.end) {
+      // ติดกันพอดี (11:00 จบ / 11:00 เริ่ม) ไม่ถือว่าทับ — กติกาอยู่ที่ `windowsOverlap`
+      if (windowsOverlap(prev.visit, cur.visit)) {
         pairs.push({
           assigneeId: cur.visit.assigneeId,
           assigneeName: cur.visit.assigneeName || null,

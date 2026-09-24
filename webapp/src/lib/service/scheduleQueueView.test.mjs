@@ -10,9 +10,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  INTAKE_UPSTREAM_LABEL, REQUEST_ORIGIN_TEXT, buildScheduleQueue, dayText, draftsInRange, originText, ownerTone,
-  surveyRequestRow, weekChipText,
+  GATE_FIX, INTAKE_UPSTREAM_LABEL, REQUEST_ORIGIN_TEXT, buildScheduleQueue, dayText, draftsInRange, gateItemView,
+  originText, ownerTone, relDayText, siteLoadText, surveyRequestRow, weekChipText,
 } from './scheduleQueueView.js';
+import * as queueWords from './queueWords.js';
+import { evaluateVisitGate, gateBlockedItems } from './visitGate.js';
 import { ALL_TEAMS } from './crewTeams.js';
 import { acknowledgeRequestError } from '../requests/stages.js';
 
@@ -165,6 +167,61 @@ test('ชิปสัปดาห์กรองเฉพาะร่างท�
   assert.deepEqual(view.rows.filter((r) => r.bucket === 'waiting').length, 4, 'rows ยังเก็บทั้งหมด');
   assert.equal(view.listedCount, 2, 'แสดงแค่ SV-01 กับ SV-02');
   assert.equal(draftsInRange(visits, { from: '2026-09-21', to: '2026-09-27' }, ALL_TEAMS, crewByUser), 2);
+});
+
+/* ⭐ มติ 24/09 แบบ A — โมดัลจัดคิวอ่านคำชุดเดียวกับการ์ด ⇒ ยกตัวช่วยออกมาเป็น export โดย **ผลเท่าของเดิมเป๊ะ** */
+test('⭐ gateItemView = แถวด่านที่การ์ดวาดมาตลอด · GATE_FIX = ป้ายลิงก์แก้ + ช่องที่พาโฟกัสไป', () => {
+  const items = gateBlockedItems(evaluateVisitGate({ kind: 'remove', scheduledDate: '2026-09-23', startTime: '07:00' }, {
+    site: { id: 'S1', accessFrom: '09:00', accessTo: '17:00' },
+  }));
+  assert.deepEqual(items.map(gateItemView), [
+    { key: 'assignee', owner: 'TS', ownerTone: 'info', reason: 'ยังไม่มอบหมาย', fix: 'assignee' },
+    { key: 'access', owner: 'TS', ownerTone: 'info', reason: 'เข้าก่อนเวลาที่ไซต์อนุญาต (09:00–17:00)', fix: 'schedule' },
+  ]);
+  // ข้อที่ไม่มีลิงก์แก้ คงเหตุเต็มประโยค (ไม่ตัดท่อนหลังทิ้ง)
+  assert.deepEqual(gateItemView({ key: 'contract', owner: 'SA', reason: 'ก — ข', fix: null }),
+    { key: 'contract', owner: 'SA', ownerTone: 'accent', reason: 'ก — ข', fix: null });
+  assert.deepEqual(GATE_FIX.assignee, { label: 'เลือกเจ้าหน้าที่', field: 'assignee' });
+  assert.deepEqual(GATE_FIX.schedule, { label: 'แก้วัน/เวลา', field: 'scheduledDate' });
+  assert.ok(Object.isFrozen(GATE_FIX));
+  // การ์ดบนหน้าจัดคิวใช้ตัวเดียวกัน (ไม่มีแมปปิ้งชุดที่สอง)
+  const ts = build({ bucket: 'waiting' }).groups.find((g) => g.key === 'ts');
+  assert.deepEqual(ts.rows[0].gateItems[0], gateItemView(gateBlockedItems(ts.rows[0].gate)[0]));
+});
+
+test('⭐ siteLoadText = ช่องภาระบนการ์ด (ศูนย์ = ว่าง ให้การ์ดเขียนขีด) · showZero สำหรับโมดัล', () => {
+  assert.equal(siteLoadText({ assets: 3, packs: 2 }), '3 จุด · 2 แพ็ค');
+  assert.equal(siteLoadText({ assets: 0, packs: 1 }), '0 จุด · 1 แพ็ค');
+  assert.equal(siteLoadText({ assets: 0, packs: 0 }), '');
+  assert.equal(siteLoadText(null), '');
+  assert.equal(siteLoadText({ assets: 0, packs: 0 }, { showZero: true }), '0 จุด · 0 แพ็ค');
+  const row = build({ bucket: 'scheduled' }).rows.find((r) => r.id === 'S-a');
+  assert.equal(row.siteLoadText, siteLoadText(workload.S1));
+  assert.equal(row.siteLoadText, '6 จุด · 2 แพ็ค');
+});
+
+test('คำกลางย้ายไป queueWords แล้วส่งต่อจากที่นี่ — ตัวเดียวกัน ไม่ใช่สำเนา', () => {
+  assert.equal(dayText, queueWords.dayText);
+  assert.equal(relDayText, queueWords.relDayText);
+  assert.equal(siteLoadText, queueWords.siteLoadText);
+  assert.deepEqual(relDayText('2026-10-01', '2026-09-24', 'เลยวันที่ต้องการ'), { text: 'อีก 7 วัน', tone: '' });
+  assert.deepEqual(relDayText('2026-09-25', '2026-09-24', 'x'), { text: 'พรุ่งนี้', tone: '' });
+  assert.deepEqual(relDayText('2026-09-24', '2026-09-24', 'x'), { text: 'วันนี้', tone: '' });
+  assert.deepEqual(relDayText('2026-09-21', '2026-09-24', 'เลยวันที่ต้องการ'), { text: 'เลยวันที่ต้องการ 3 วัน', tone: 'warn' });
+  assert.deepEqual(relDayText('', '2026-09-24', 'x'), { text: '', tone: '' });
+});
+
+test('queueWords: "ที่ไหน" ของไซต์ · อายุคำร้อง', () => {
+  assert.equal(queueWords.siteWhereText({ routeZone: 'BKK', accessNote: 'เข้าทางลานจอด B1 แลกบัตรที่ รปภ.' }),
+    'เขต BKK · เข้าทางลานจอด B1 แลกบัตรที่ รปภ.');
+  assert.equal(queueWords.siteWhereText({ routeZone: 'BKK' }), 'เขต BKK');
+  assert.equal(queueWords.siteWhereText({ address: '12 ถ.สุขุมวิท' }), '12 ถ.สุขุมวิท');
+  assert.equal(queueWords.siteWhereText(null), '');
+  // ส่ง 10:00 น. เวลาไทยของวันที่ 23 · วันนี้ 24 ⇒ ค้างมา 1 วัน
+  assert.equal(queueWords.requestAgeText({ submittedAt: '2026-09-23T03:00:00.000Z' }, '2026-09-24'), 'ส่งเมื่อ พ. 23 ก.ย. · ค้างมา 1 วัน');
+  // ⚠️ ส่งตี 1 เวลาไทย (ยังเป็นวันก่อนตามนาฬิกา UTC) = วันไทย ไม่ใช่วัน UTC
+  assert.equal(queueWords.requestAgeText({ submittedAt: '2026-09-23T18:30:00.000Z' }, '2026-09-24'), 'ส่งเมื่อ พฤ. 24 ก.ย.');
+  assert.equal(queueWords.requestAgeText({}, '2026-09-24'), '');
 });
 
 test('ข้อความช่วย: วัน · ต้นเรื่อง · โทนเจ้าของด่าน · ชิปสัปดาห์', () => {

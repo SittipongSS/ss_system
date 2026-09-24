@@ -1,0 +1,197 @@
+/* ช่อง "วัน + เวลา" ของโมดัลจัดคิว (แบบ A) — วัน | เวลาเริ่ม–จบ · แผ่นเวลา · บรรทัดช่วงเข้าไซต์
+   ⚠️ โทเคนล้วน · แผ่นทุกแผ่นสูงเท่าเป้านิ้ว (--ctl-h-touch) */
+
+.field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.when {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.date,
+.time {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.req { color: var(--red); }
+
+.aside {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+.aside[data-tone="warn"] { color: var(--amber); font-weight: var(--fw-semibold); }
+
+.pair {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+/* ช่องเวลากว้างพอสำหรับ "10:30" + ไอคอนนาฬิกา — ไม่ยืดตามคอลัมน์ (เวลาไม่ใช่ข้อความยาว) */
+.timeInput {
+  display: block;
+  width: 7rem;
+  min-width: 0;
+}
+
+/* ช่องเวลาจบของลงคิวเข้าพื้นที่ — จางตามแบบ A ("ไม่ระบุ") · ไม่ใช่ช่องกรอก (เก็บได้แค่เวลาเริ่ม · D1) */
+.endNone {
+  display: flex;
+  align-items: center;
+  min-height: var(--ctl-h);
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+/* ขีดคั่นเวลาเริ่ม–จบ (en dash · เขียนเป็นรหัส เพราะด่าน audit:ui อ่านขีดในเครื่องหมายคำพูดเป็นค่าว่าง) */
+.dash::before {
+  content: "\2013";
+  color: var(--text-3);
+}
+
+/* ── แผ่นเวลา: ห้าแผ่นแถวเดียว (สี่แผ่นเมื่อเก็บได้แค่เวลาเริ่ม) ──────────────────── */
+.presets {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--space-1-5);
+}
+
+.tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: var(--ctl-h-touch);
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+}
+.tile:hover { background: var(--panel-2); }
+.tile:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+.tile:disabled { cursor: default; opacity: var(--op-disabled); }
+
+/* ⭐ แผ่นที่เลือกอยู่ต้องเห็นจากระยะไกล (pain 8) — พื้น + ขอบ + สีตัวอักษร ไม่ใช่แค่ขีดเล็ก ๆ */
+.tile[data-on] {
+  background: var(--accent-soft);
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+.tileSub {
+  color: var(--text-3);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+.tile[data-on] .tileSub { color: var(--accent-ink); }
+
+/* ── บรรทัดช่วงเข้าไซต์ (+ ชิปผู้ขอ) ─────────────────────────────────────────── */
+.constraints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1-5) var(--space-3);
+}
+
+.access {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.access b { color: var(--text); font-weight: var(--fw-semibold); }
+.accessIcon { flex: none; margin-top: var(--space-1); color: var(--green); }
+.access[data-state="ok"] .accessResult { color: var(--green); font-weight: var(--fw-semibold); }
+.access[data-state="conflict"],
+.access[data-state="conflict"] b,
+.access[data-state="conflict"] .accessIcon { color: var(--amber); }
+.access[data-state="conflict"] .accessResult { font-weight: var(--fw-semibold); }
+.access[data-state="unknown"] .accessIcon,
+.access[data-state="open"] .accessIcon,
+.access[data-state="untimed"] .accessIcon { color: var(--text-3); }
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── มือถือ: วัน/เวลาเรียงบน-ล่าง · แผ่นห้าแผ่นเป็น 3 + 2 ────────────────────────── */
+@media (max-width: 640px) {
+  .when {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .timeInput {
+    flex: 1 1 0;
+    width: auto;
+  }
+  .presets[data-tiles="5"] {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .presets[data-tiles="5"] > .tile:nth-child(-n + 3) { grid-column: span 2; }
+  .presets[data-tiles="5"] > .tile:nth-child(n + 4) { grid-column: span 3; }
+  /* สี่แผ่น (ลงคิวเข้าพื้นที่) = 2 + 2 */
+  .presets[data-tiles="4"] {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* วันอย่างเดียว (แจ้งกำหนดส่งของหัวข้ออื่น — `withTime={false}`) — ช่องวันกินเต็มแถว */
+.when[data-with-time="no"] {
+  grid-template-columns: minmax(0, 1fr);
+}

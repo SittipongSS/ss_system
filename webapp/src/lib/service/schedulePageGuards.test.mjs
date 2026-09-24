@@ -199,10 +199,15 @@ test('⭐ การ์ดรายการงาน: ปุ่ม "ลบนั
 test('⭐ โมดัลแก้นัด: ปุ่ม "ลบนัด" จาก visitDeleteButton ของใบที่บันทึกไว้ · จอแม่ส่งตัวลบเฉพาะคนแก้ได้', () => {
   const src = live(modalSrc);
   assert.match(src, /const deleteAction = editing && onDelete \? visitDeleteButton\(visit\) : null;/);
-  assert.match(src, /\{deleteAction && \(\s*<GatedAction\s+tone="danger" variant="outline"\s+blocker=\{deleteAction\.blocker\}\s+onClick=\{remove\}/);
   assert.match(src, /await onDelete\(visit\);/);
-  // ปุ่มลบอยู่นอกกลุ่มยกเลิก/บันทึก (กดพลาดจากปุ่มบันทึกไม่ได้)
-  assert.ok(src.indexOf('{deleteAction && (') < src.indexOf('<div className="form-actions-buttons">'));
+  // ⭐ แบบ A: ปุ่มลบเป็นปุ่มรองของเปลือก (ซ้ายล่าง · แดงเส้นขอบ · GatedAction บอกเหตุตอนกด) — ห่างจากปุ่มหลักขวา
+  assert.match(src, /visitModalView\(\{\s*visit, form, todayIso, gate, canOverride, deleteAction,/);
+  assert.match(src, /delete: remove,/);
+  assert.match(src, /icon: action\.key === "delete" \? <Trash2 /);
+  const lib = live(readFileSync(new URL('./scheduleModal.js', import.meta.url), 'utf8'));
+  assert.match(lib, /key: 'delete', label: deleting \? 'กำลังลบ…' : 'ลบนัด', tone: 'danger', variant: 'outline',\s*blocker: deleteAction\.blocker \|\| '',/);
+  // ปุ่มลบมาก่อนทุกปุ่มรอง (ซ้ายสุด) — กดพลาดจากปุ่มหลักไม่ได้
+  assert.ok(lib.indexOf("key: 'delete'") < lib.indexOf("{ key: 'cancel'"));
   // ชิปบนตารางเปิดโมดัลนี้ได้ทุกคน ⇒ กั้นสิทธิ์ที่จอแม่
   assert.match(live(page), /onDelete=\{canEdit \? deleteVisit : null\}/);
   // "กำลังลบ…" มาจากคำขอที่วิ่งจริง (จอแม่ถือ) ไม่ใช่ตั้งแต่กล่องยืนยันยังเปิดอยู่
@@ -247,29 +252,52 @@ test('⭐ หน้าไซต์ถามด่านลบตัวเดี�
   assert.match(src, /detail: typeof copy\.detail === "function" \? copy\.detail\(pendingDelete\.row\) : copy\.detail/);
 });
 
-/* ═══ รีวิว 24/09 ─ แถบปุ่มท้ายโมดัลนัดบนจอแคบ ══════════════════════════════════════════════════
+/* ═══ รีวิว 24/09 ─ แถบปุ่มท้ายโมดัลนัด (ตอนนี้เป็นแถบของเปลือกจัดคิวแบบ A) ═══════════════════════════════
    🐞 ≤680px: กลุ่มขวาไม่ตัดบรรทัด (ร่าง+หัวหน้า = สี่ปุ่มไทยยาวใน ~300px) · ปุ่มลบสูง 40 ข้างปุ่ม 44
-   🐞 ระหว่างคำขอลบวิ่ง "ปล่อยขึ้นตาราง"/"ข้ามด่าน (หัวหน้า)" ยังกดได้ = ยิง PATCH ชนกับ DELETE */
+   🐞 ระหว่างคำขอลบวิ่ง "ปล่อยขึ้นตาราง"/"ข้ามด่าน" ยังกดได้ = ยิง PATCH ชนกับ DELETE
+   ⭐ แบบ A: แถบท้ายเป็นของ `ScheduleModalShell` — ปุ่มหลักปุ่มเดียว · ทุกปุ่มสูงเท่าเป้านิ้ว · มือถือปุ่มหลักกินที่ที่เหลือ */
+const shellSrc = readFileSync(new URL('../../components/service/ScheduleModalShell.js', import.meta.url), 'utf8');
+const shellCss = readFileSync(new URL('../../components/service/ScheduleModalShell.module.css', import.meta.url), 'utf8');
 const modalCss = readFileSync(new URL('../../components/service/ServiceSiteModal.module.css', import.meta.url), 'utf8');
 
-test('📱 แถบปุ่มโมดัลนัด ≤680: กลุ่มขวาตัดบรรทัดสองคอลัมน์ · ปุ่มลบสูงเท่าปุ่มนิ้วแตะ', () => {
-  const src = live(modalSrc);
-  assert.match(src, /<div className=\{`form-actions \$\{styles\.visitFooter\}`\}>\s*\{deleteAction && \(/,
-    'แถบหลักของโมดัล (ที่มีปุ่มลบ) ต้องติดคลาส visitFooter');
-  const block = modalCss.match(/@media \(max-width: 680px\) \{\s*\.visitFooter[\s\S]*?\n\}/)?.[0];
-  assert.ok(block, 'หา @media ≤680 ของ .visitFooter ไม่เจอ');
-  assert.match(block, /\.visitFooter > :global\(\.btn\) \{ min-height: var\(--ctl-h-touch\); \}/);
-  assert.match(block, /\.visitFooter :global\(\.form-actions-buttons\) \{ flex-wrap: wrap; \}/);
-  assert.match(block, /\.visitFooter :global\(\.form-actions-buttons > \.btn\) \{ flex: 1 1 calc\(50% - var\(--space-2\)\); \}/);
+test('📱 แถบปุ่มโมดัลนัด: ทุกปุ่มสูงเท่าเป้านิ้ว · จอแคบปุ่มรองตัดบรรทัดได้ · ปุ่มหลักกินที่ที่เหลือ', () => {
+  const src = live(shellSrc);
+  const buttons = src.match(/<GatedAction[\s\S]*?>/g) || [];
+  assert.equal(buttons.length, 2);
+  for (const button of buttons) assert.match(button, /className=\{`?\$?\{?styles\.touch/, button);
+  assert.match(shellCss, /\.touch \{\s*min-height: var\(--ctl-h-touch\);/);
+  assert.match(shellCss, /\.secondary \{[^}]*flex-wrap: wrap;/);
+  assert.match(shellCss, /@media \(max-width: 640px\) \{[\s\S]*?\.primary \{\s*flex: 1 1 auto;/);
+  // CSS ของแถบลอยแบบเก่า (.visitFooter) ถูกลบไปพร้อมโมดัลเดิม — ไม่มีใครอ้างแล้ว
+  assert.doesNotMatch(modalCss, /visitFooter|warnList|overrideSheet|gateSummary/);
 });
 
-test('⭐ ระหว่างลบ ปุ่มที่เขียนใบเดียวกันดับทุกตัว (ยกเลิก · ข้ามด่าน · ปล่อยขึ้นตาราง · บันทึก)', () => {
-  const src = live(modalSrc);
-  const start = src.indexOf('<div className="form-actions-buttons">');
-  const end = src.indexOf('{overriding && (');
-  assert.ok(start > 0 && end > start, 'หาแถบปุ่มท้ายโมดัลไม่เจอ');
-  const footer = src.slice(start, end);
-  const disabled = footer.match(/disabled=\{[^}]*\}/g) || [];
-  assert.equal(disabled.length, 4, `ปุ่มในกลุ่มขวา: ${disabled.join(' · ')}`);
-  for (const prop of disabled) assert.match(prop, /deleting/, `${prop} ต้องดับตอนกำลังลบด้วย`);
+test('⭐ ระหว่างลบ ปุ่มที่เขียนใบเดียวกันดับทุกตัว (ยกเลิก · ข้ามด่าน · บันทึกร่าง · ปล่อยขึ้นตาราง · บันทึก)', () => {
+  // โมดัลส่ง busy = บันทึก || ลบ ⇒ เปลือกดับทุกปุ่มท้ายด้วย `disabled={busy || …}`
+  assert.match(live(modalSrc), /busy=\{saving \|\| deleting\}/);
+  const buttons = live(shellSrc).match(/<GatedAction[\s\S]*?>/g) || [];
+  for (const button of buttons) assert.match(button, /disabled=\{busy \|\| /, button);
+  // ระหว่างลบ ปุ่มหลักไม่ขึ้น "กำลังบันทึก…" (ป้ายไม่โกหก) — ป้ายกำลังทำเฉพาะตอนบันทึกจริง
+  assert.match(live(modalSrc), /busyLabel: saving \? view\.primary\.busyLabel : "",/);
+});
+
+/* ⭐ แบบ A — ประโยคของการปล่อยชุดเดียวทั้งกล่องยืนยันบนการ์ด · บรรทัดผลลัพธ์ในโมดัล · toast ของสองทาง (BRIEF C1) */
+test('⭐ ปล่อยขึ้นตาราง: กล่องยืนยันใช้ releaseSlotText · toast ของการ์ดและโมดัลใช้ releasedToastText', () => {
+  const src = live(page);
+  assert.match(src, /message=\{releaseRow \? releaseSlotText\(releaseRow\.visit\) : ""\}/);
+  assert.match(src, /setToast\(\{ kind: "success", msg: releasedToastText\(\{ \.\.\.row\.visit, code: row\.code \}\) \}\);/);
+  const save = src.match(/const saveVisit = async \(form\) => \{[\s\S]*?\n {2}\};/)[0];
+  assert.match(save, /\} else if \(editing && isDraftVisit\(formVisit\) && form\.status === "scheduled"\) \{/);
+  assert.match(save, /msg: releasedToastText\(\{\s*id: formVisit\.id, code: formVisit\.code, assigneeName: form\.assigneeName, scheduledDate: form\.scheduledDate,\s*\}\),/);
+  // ไม่มีประโยคของการปล่อยที่หน้าเขียนเองเหลือ
+  assert.doesNotMatch(src, /`จะขึ้นช่อง \$\{/);
+  assert.doesNotMatch(src, /`ปล่อย \$\{row\.code\} ขึ้นตารางแล้ว/);
+});
+
+test('⭐ หน้าจัดคิวส่งของที่โมดัลนัดต้องใช้: วันนี้แบบไทย · ภาระของไซต์ · สถานะรายชื่อ', () => {
+  const tag = live(page).match(/<ServiceVisitModal[\s\S]*?\/>/)[0];
+  assert.match(tag, /todayIso=\{todayIso\}/);
+  assert.match(tag, /workload=\{workloadAll\}/);
+  assert.match(tag, /rosterState=\{rosterState\}/);
+  assert.match(live(page), /const rosterState = technicians\.length \? "ready"\s*: techStatus === "error" \? "error"\s*: techStatus === "idle" \|\| techStatus === "loading" \? "loading" : "ready";/);
 });

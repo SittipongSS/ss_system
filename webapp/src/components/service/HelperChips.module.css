@@ -1,0 +1,98 @@
+/* ชิป "เจ้าหน้าที่ที่ไปด้วย" + ปุ่มเพิ่ม (แบบ A) — ชิปและปุ่มสูงเท่าเป้านิ้ว */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2);
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  min-width: 0;
+  max-width: 100%;
+  /* ความสูงมาจากปุ่มนำออก (44px) — ไม่ตั้ง min-height ซ้อน ไม่งั้นขอบ 1px ดันปุ่มล้นชิป */
+  padding-left: var(--space-3-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--panel-solid);
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ปุ่มนำออก = วงกลมเต็มความสูงชิป (44px) — กดโดนง่ายบนจอสัมผัส */
+.remove {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.remove:hover { background: var(--panel-2); color: var(--text); }
+.remove:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+.add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex: none;
+  min-height: var(--ctl-h-touch);
+  padding: 0 var(--space-3-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+.add:hover { background: var(--panel-2); color: var(--text); }
+.add:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.add:disabled,
+.remove:disabled { cursor: default; opacity: var(--op-disabled); }
+
+/* ช่องค้น + ปุ่ม × ยกเลิก (รีวิว UAT 24/09: เปิดแล้วถอยไม่ได้ถ้าไม่เลือกใคร) */
+.adding {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.picker {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* คนที่ไม่อยู่ในรายชื่อ (หลุดจาก TS / รายชื่อยังโหลด) — ชื่อจาง ไม่ใช่รหัสดิบ */
+.chip[data-known="no"] .name {
+  color: var(--text-3);
+  font-weight: var(--fw-medium);
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}

@@ -492,16 +492,25 @@ export function normalizeAssetInput(body = {}) {
 }
 
 // ── ช่วงเวลาที่ไซต์ให้เข้า — ข้อความสรุปสำหรับหน้าจอ ─────────────────────
+/* ท่อน "เวลา" ของช่วงเข้า ("10:00–16:00" · "ตั้งแต่ 10:00" · "ถึง 16:00") — ไม่มีเวลา = ''
+   ⭐ แยกออกมาเพราะด่าน ④ ในโมดัลจัดคิวต้องพูดแค่เวลา ("10:30–12:00 อยู่ในช่วง 10:00–16:00")
+      ขณะที่บรรทัดช่วงเข้าพูดทั้งวันและเวลา — ท่อนเวลาต้องเป็นตัวเดียวกัน ไม่ใช่เขียนสองที่ */
+export function accessTimeText(site) {
+  const from = toHHMM(site?.accessFrom);
+  const to = toHHMM(site?.accessTo);
+  if (from && to) return `${from}–${to}`;
+  if (from) return `ตั้งแต่ ${from}`;
+  if (to) return `ถึง ${to}`;
+  return '';
+}
+
 export function accessWindowText(site) {
   if (!site) return '';
-  const from = toHHMM(site.accessFrom);
-  const to = toHHMM(site.accessTo);
   const days = Array.isArray(site.accessDays) ? site.accessDays : [];
   const parts = [];
   if (days.length && days.length < 7) parts.push(days.map((d) => WEEKDAY_LABELS[d]).join(' '));
-  if (from && to) parts.push(`${from}–${to}`);
-  else if (from) parts.push(`ตั้งแต่ ${from}`);
-  else if (to) parts.push(`ถึง ${to}`);
+  const time = accessTimeText(site);
+  if (time) parts.push(time);
   return parts.join(' · ');
 }
 

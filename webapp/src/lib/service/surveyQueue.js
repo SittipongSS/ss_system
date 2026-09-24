@@ -13,7 +13,7 @@
 //    — กติกา ม-34 ของทั้งระบบคำร้อง
 import { REQUEST_KIND_LIST, requestNeedsRef } from '@/lib/master/requestTypes';
 import { requestAwaitingDue } from '@/lib/requests/statuses';
-import { holdsRequestSlot, isClosedVisit } from './visitStatus';
+import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 /** หัวข้อคำร้องที่กลายเป็นนัดเข้าไซต์ได้ (ประกาศ `needs: ['site']` ในทะเบียน) */
 export const SITE_REQUEST_KINDS = Object.freeze(REQUEST_KIND_LIST.filter((kind) => requestNeedsRef(kind, 'site')));
@@ -25,6 +25,24 @@ export const SURVEY_QUEUE_STEP_LABELS = Object.freeze({
   queue: 'รอลงคิว',
   requeue: 'ไม่มีนัดบนตาราง',
 });
+
+/** ป้ายขั้น ("ขั้น 2/2") ของการ์ดคำร้องบนหน้าจัดคิว และแถว "ที่มา" ในโมดัลลงคิว — ชุดเดียวของสองจอ
+ *  (ย้ายมาจาก `scheduleQueueView` · ⚠️ คนละชุดกับ `SURVEY_QUEUE_STEP_LABELS` ซึ่งเป็นคำของกลุ่ม) */
+export const SURVEY_QUEUE_STEP_BADGES = Object.freeze({
+  acknowledge: Object.freeze({ label: 'ขั้น 1/2', tone: 'warning' }),
+  queue: Object.freeze({ label: 'ขั้น 2/2', tone: 'info' }),
+  requeue: Object.freeze({ label: 'ลงคิวใหม่', tone: 'warning' }),
+});
+
+/** "รับเรื่องแล้ว โดย {ชื่อ}" — บรรทัดของขั้นลงคิวบนการ์ด และแถว "ที่มา" ในโมดัลลงคิว (ชุดคำเดียว) */
+export const acknowledgedText = (request) =>
+  `รับเรื่องแล้ว${request?.acknowledgedByName ? ` โดย ${request.acknowledgedByName}` : ''}`;
+
+/** นัดเดิมของใบที่ต้อง "ลงคิวใหม่" — "นัดเดิม SV-… ทำไม่ได้" · ไม่มีแถว = บอกว่านัดหายจากตาราง
+ *  (การ์ดต่อท้ายด้วย " — ลงคิวใหม่" · โมดัลใช้เป็นบรรทัดย่อยของ "ที่มา") */
+export const previousVisitText = (previous) => (previous
+  ? `นัดเดิม ${previous.code || previous.id} ${VISIT_STATUS_LABELS[previous.status] || previous.status}`
+  : 'นัดเดิมไม่อยู่บนตาราง (สร้างไม่สำเร็จหรือถูกลบ)');
 
 /** นัดใบนี้ "ไปถึงไซต์แล้ว" ไหม — เข้าแล้ว/ทำไม่ครบ = งานเดินหน้าไปรอผลประเมิน ไม่ใช่กลับไปลงคิว
  *  ⚠️ `unable` (ไปแล้วเข้าไม่ได้) **ไม่นับ** — ต้องลงคิวรอบใหม่ (กติกาเดียวกับ surveyStepBack.js)

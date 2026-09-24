@@ -1,0 +1,234 @@
+/* ชิ้นส่วนในเนื้อของโมดัลจัดคิว (แบบ A) — กล่อง "งานนี้" · ช่อง · ส่วนพับ · ชิปผู้ขอ
+   ⚠️ โทเคนล้วน · สีชนิดงานมาจากเปลือก (`ScheduleModalShell.module.css` ตั้ง `--kind` ตาม `data-kind`)
+   ⚠️ ของที่กดได้สูงเท่าเป้านิ้ว (--ctl-h-touch) — ปุ่มพับ · ปุ่ม "ใช้ตามผู้ขอ" */
+
+/* ── หัวส่วน ("งานนี้" · ไอคอนหมุด) ─────────────────────────────────────────── */
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+.sectionIcon { flex: none; color: var(--text-3); }
+
+/* ── คู่ป้าย–ค่า ──────────────────────────────────────────────────────────── */
+/* ตารางสองคอลัมน์ชุดเดียวทั้งกล่อง — ป้ายทุกแถวกว้างเท่าป้ายที่ยาวสุด (แถวละ div ไว้จับคู่ dt/dd) */
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.fact { display: contents; }
+.fact dt { color: var(--text-3); }
+.fact dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* ชนิดงาน = จุดสีตามชนิด (ชุดสีเดียวกับชิปในหัว) */
+.value[data-kind] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-weight: var(--fw-semibold);
+}
+.value[data-kind]::before {
+  content: "";
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--kind, var(--accent-ink));
+}
+
+.extra {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sub {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.inlineBadge { margin-left: var(--space-1-5); vertical-align: middle; }
+
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── ช่อง: ป้าย + ข้อความข้างป้าย / คอนโทรล / คำใบ้ ───────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.labelRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-2);
+  min-width: 0;
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.req { color: var(--red); }
+
+.aside {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.aside[data-tone="warn"] { color: var(--amber); font-weight: var(--fw-semibold); }
+
+.hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ── ส่วนพับ ─────────────────────────────────────────────────────────────── */
+.disclosure {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+.discButton {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2-5);
+  width: 100%;
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.discButton:hover { background: var(--panel-2); }
+.discButton:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+.discIcon {
+  flex: none;
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.disclosure[data-open] .discIcon { transform: rotate(90deg); }
+
+.discText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.discTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* บรรทัดย่อสองบรรทัดพอ — เธรดยาวอ่านเต็มตอนกาง */
+.discSummary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.discPanel {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+/* ── ชิปผู้ขอ ────────────────────────────────────────────────────────────── */
+.wish {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-1-5);
+  width: fit-content;
+  max-width: 100%;
+  min-height: var(--space-7);
+  padding: var(--space-0-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.wish b { color: var(--text); font-weight: var(--fw-semibold); }
+.wishIcon { flex: none; color: var(--text-3); }
+
+.wishSame {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--green);
+  font-weight: var(--fw-semibold);
+}
+
+/* ไม่ตรง = ปุ่ม — เป้านิ้วเต็ม · คำกระทำสีแบรนด์ */
+.wishApply {
+  min-height: var(--ctl-h-touch);
+  font: inherit;
+  font-size: var(--fs-5);
+  text-align: left;
+  cursor: pointer;
+}
+.wishApply:hover { border-color: var(--accent-ink); }
+.wishApply:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.wishAction {
+  color: var(--accent-ink);
+  font-weight: var(--fw-semibold);
+}
+
+/* ท่อนที่ห้ามหั่นกลางบรรทัด (ช่วงเวลา · วันไทย) — `KeepTogether` */
+.keep { white-space: nowrap; }
+
+/* ชิป "ตรงกัน" รับโฟกัสด้วยสคริปต์หลังกด "ใช้ตามผู้ขอ" (tabIndex -1) — วงโฟกัสเห็นได้เมื่อมาทางคีย์บอร์ด */
+.wish:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }

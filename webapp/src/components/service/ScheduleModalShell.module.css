@@ -1,0 +1,223 @@
+/* เปลือกโมดัลจัดคิว แบบ A "สองคอลัมน์" (มติเจ้าของ 24/09 · mockups/schedule-modal TwoCol-*)
+   ⚠️ โทเคนล้วน (audit:ui เพดานเลขดิบเต็มทุกช่อง) · ไม่มี style={{}} ในคอมโพเนนต์
+   ⚠️ `:global(.drawer-*)` แตะเฉพาะโซนของ Modal ที่เปลือกนี้ครอบเอง (className ต่อท้าย `.drawer`)
+      — เนื้อของเปลือกจัดระยะเองรายคอลัมน์ จึงต้องถอด padding ของ `.drawer-body` ออก */
+
+/* ── โซนของ Modal ─────────────────────────────────────────────────────────── */
+/* พื้นทึบ — `.drawer` กลางใช้ `--panel` (โปร่ง 6%) ⇒ ช่องว่างใต้คอลัมน์ขวาเห็นตารางข้างหลังทะลุ
+   (รีวิว UAT 24/09 · แบบ A ทึบ) · เฉพาะเปลือกนี้ โมดัลอื่นทั้งระบบไม่ขยับ
+   ⚠️ สองคลาส (`.drawer` + `.shell`) ให้ชนะ `.drawer` กลางโดยไม่ขึ้นกับลำดับไฟล์ CSS */
+:global(.drawer).shell {
+  background: var(--panel-solid);
+}
+
+/* เนื้อยังเลื่อนต่อได้ ⇒ เงาที่ขอบบนของแถบท้าย บอกว่ามีของอยู่ใต้แถบ (รีวิว UAT 24/09 — แถวสุดท้ายถูกตัดเงียบ ๆ) */
+.more :global(.drawer-footer) {
+  box-shadow: 0 calc(-1 * var(--space-2)) var(--space-3) calc(-1 * var(--space-2)) color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+.shell :global(.drawer-header) {
+  /* หัวสองบรรทัด (ชื่อ+ชิป / ไซต์) — กากบาทชิดบน ไม่ลอยกลาง */
+  align-items: flex-start;
+}
+
+/* ปุ่มปิดเป็นเป้านิ้ว ≥44px (ของกลางเป็น 28px) — โมดัลนี้เปิดบนมือถือของหัวหน้าช่างด้วย */
+.shell :global(.drawer-close) {
+  flex: none;
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2)) 0 0;
+}
+
+.shell :global(.drawer-body) {
+  padding: 0;
+}
+
+.shell :global(.drawer-footer) {
+  display: block;
+  padding: var(--space-3) var(--space-5);
+}
+
+/* ── หัว: ชิปชนิดงาน · สถานะ · ที่มา / บรรทัดไซต์ ──────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-height: var(--space-6);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+/* สีชนิดงาน — ตั้ง `--kind` ให้ **ทุกตัวในเปลือก** ที่ติด `data-kind` (ชิปในหัว · จุดหน้าชนิดงานในกล่อง "งานนี้")
+   ⇒ สองงานใช้ชุดสีเดียวโดยไม่ต้องก๊อปรายคอมโพเนนต์ (ชุดสีเดียวกับชิปบนตาราง · สำเนาที่สาม — ดู ScheduleQueueCard.module.css) */
+.shell [data-kind="install"] { --kind: var(--violet); }
+.shell [data-kind="refill"] { --kind: var(--accent-ink); }
+.shell [data-kind="maintenance"] { --kind: var(--blue); }
+.shell [data-kind="repair"] { --kind: var(--red); }
+.shell [data-kind="inspect"] { --kind: var(--teal); }
+.shell [data-kind="remove"] { --kind: var(--amber); }
+.shell [data-kind="survey"] { --kind: var(--green); }
+
+/* ชิปชนิดงาน = จุดสีตามชนิด */
+.chip[data-kind]::before {
+  content: "";
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--kind, var(--accent-ink));
+}
+
+/* ร่าง = เส้นประ — ยังไม่ใช่งานของใคร (ตรงกับป้าย "ร่าง" บนการ์ด) */
+.chip[data-draft="yes"] {
+  border-style: dashed;
+  background: transparent;
+}
+
+.origin {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.context {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+}
+.context b {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── เนื้อ: ซ้าย (งานนี้ · ด่าน / หมายเหตุ · ประวัติ) | ขวา (วัน · เวลา · คน) ──────── */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "aside" "main" "tail";
+  align-content: start;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.body[data-layout="split"] {
+  grid-template-columns: minmax(0, 376px) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "aside main" "tail main";
+}
+
+.aside,
+.main,
+.tail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+}
+
+.aside { grid-area: aside; }
+.main { grid-area: main; }
+.tail { grid-area: tail; }
+
+/* คอลัมน์ซ้ายเป็นพื้นรอง (--panel-2) ทั้งแท่ง — "งานนี้" อ่านอย่างเดียว ต่างจากช่องกรอกทางขวา */
+.body[data-layout="split"] .aside,
+.body[data-layout="split"] .tail {
+  background: var(--panel-2);
+  border-right: 1px solid var(--border);
+}
+.body[data-layout="split"] .aside { padding-bottom: 0; }
+
+/* ── ท้าย: ปุ่มรองซ้าย · ปุ่มหลักขวา · บรรทัดผลลัพธ์ใต้ปุ่ม ─────────────────────── */
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2);
+  width: 100%;
+}
+
+.secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-right: auto;
+}
+
+/* เป้านิ้ว ≥44px ทุกปุ่มท้าย (ของกลาง --ctl-h 40px) — คลาสบนตัวปุ่มเอง ไม่ใช่ selector ลูกหลาน */
+.touch {
+  min-height: var(--ctl-h-touch);
+}
+
+.primary {
+  flex: none;
+}
+
+.outcome {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  text-align: right;
+}
+.outcome:empty { display: none; }
+.outcomeIcon { flex: none; margin-top: var(--space-1); }
+.outcome[data-tone="ok"] .outcomeIcon { color: var(--green); }
+.outcome[data-tone="warn"],
+.outcome[data-tone="warn"] .outcomeIcon { color: var(--amber); }
+.outcome[data-tone="info"] .outcomeIcon { color: var(--blue); }
+.outcome[data-tone="error"] { color: var(--red); font-weight: var(--fw-semibold); }
+
+/* ── ≤900px: คอลัมน์เดียว (สองคอลัมน์บีบช่องกรอกจนตัวเลือกคนอ่านไม่ออก) ─────────── */
+@media (max-width: 900px) {
+  .body[data-layout="split"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: "aside" "main" "tail";
+  }
+  .body[data-layout="split"] .aside {
+    padding-bottom: var(--space-4);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .body[data-layout="split"] .tail {
+    border-right: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* ── มือถือ (แผ่นเต็มจอ · Modal `sheetOnPhone`) — ขอบ 16px · ปุ่มหลักกินที่ที่เหลือ ───── */
+@media (max-width: 640px) {
+  .shell :global(.drawer-footer) {
+    padding-inline: var(--space-4);
+  }
+  .aside,
+  .main,
+  .tail {
+    padding-inline: var(--space-4);
+  }
+  .secondary {
+    display: contents;
+  }
+  .primary {
+    flex: 1 1 auto;
+  }
+  .outcome {
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
