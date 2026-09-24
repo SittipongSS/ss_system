@@ -178,8 +178,9 @@ test('SO revision is two steps with a locked intermediate state between them', (
   assert.equal(canIssueSalesOrderRevision({ status: 'approval_revoked' }, reviewer), true);
   assert.equal(canRevokeSalesOrderApproval({ status: 'approval_revoked' }, reviewer), false);
 
-  // ทั้งสองขั้นเป็นของผู้รีวิวเท่านั้น
+  // ขั้นที่ 1 (ย้อนการอนุมัติ) เป็นของผู้รีวิวเท่านั้น — ยอดหลุดจาก Actual ที่ปุ่มนี้
   assert.equal(canRevokeSalesOrderApproval({ status: 'approved' }, { reviewer: false }), false);
+  // ขั้นที่ 2 ไม่ใช่ของผู้รีวิวอย่างเดียวแล้ว (มติ 24/09) — ดูเทสต์ถัดไป · คนที่ไม่ใช่ทั้งผู้รีวิวและเจ้าของดีลยังออกไม่ได้
   assert.equal(canIssueSalesOrderRevision({ status: 'approval_revoked' }, { reviewer: false }), false);
 
   // สถานะอื่นเข้าทั้งสองขั้นไม่ได้
@@ -187,6 +188,30 @@ test('SO revision is two steps with a locked intermediate state between them', (
     assert.equal(canRevokeSalesOrderApproval({ status }, reviewer), false);
     assert.equal(canIssueSalesOrderRevision({ status }, reviewer), false);
   }
+});
+
+/* 🐞 prod 24/09 (SO-26080138-0): AE Sup ย้อนการอนุมัติแล้ว AE เจ้าของดีลไม่มีปุ่มออก Rev. — แก้ใบไม่ได้
+   ยกเลิกก็ไม่ได้ (งวด 1 บัญชีรับรองแล้ว) ⇒ ใบค้างรอคนอื่นโดยไม่มีใครบอก
+   ⭐ มติ 24/09: **AE เจ้าของดีล + ผู้รีวิว** ออก Rev. ได้ · ย้อนการอนุมัติยังเป็นของผู้รีวิวคนเดียว
+   ⭐ ยึดเจ้าของดีล *ปัจจุบัน* (`deal.ownerId`) ไม่ใช่ผู้สร้างใบ — กติกาเดียวกับ canSubmitSalesOrder
+   ⭐ ใบ Rev. มีผู้กดเป็นผู้สร้าง ⇒ AE กดเอง = AE Sup คนที่ย้อนอนุมัติ อนุมัติใบ Rev. ได้ตามปกติ */
+test('ออก Rev. หลังย้อนการอนุมัติ: AE เจ้าของดีลกดได้ · คนอื่นที่ไม่ใช่ผู้รีวิวกดไม่ได้', () => {
+  const revoked = { status: 'approval_revoked' };
+  const deal = { ownerId: 'USR-AE' };
+  assert.equal(canIssueSalesOrderRevision(revoked, { userId: 'USR-AE', deal }), true);
+  assert.equal(canIssueSalesOrderRevision(revoked, { userId: 'USR-AC', deal }), false);
+  assert.equal(canIssueSalesOrderRevision(revoked, { userId: '', deal: { ownerId: '' } }), false);
+  assert.equal(canIssueSalesOrderRevision(revoked, { userId: 'USR-AE', deal: null }), false);
+  assert.equal(canIssueSalesOrderRevision(revoked, { reviewer: true, userId: 'USR-SUP', deal }), true);
+  // เจ้าของดีลก็ยังออก Rev. ได้เฉพาะจากสถานะกลาง · ใบย้อนหลังไม่มี Rev.
+  for (const status of ['approved', 'draft', 'pending_approval', 'rejected', 'revised', 'cancelled']) {
+    assert.equal(canIssueSalesOrderRevision({ status }, { userId: 'USR-AE', deal }), false, status);
+  }
+  assert.equal(canIssueSalesOrderRevision({ status: 'approval_revoked', origin: 'historical' }, { userId: 'USR-AE', deal }), false);
+  // ย้อนการอนุมัติไม่ได้เปิดให้เจ้าของดีล
+  assert.equal(canRevokeSalesOrderApproval({ status: 'approved' }, { reviewer: false, userId: 'USR-AE', deal }), false);
+  assert.equal(canSalesOrderTransition('approval_revoked', 'revise', { dealOwner: true }), true);
+  assert.equal(canSalesOrderTransition('approval_revoked', 'revise'), false);
 });
 
 // ⚠️ หัวใจของมติ: สถานะกลาง **ห้ามแก้เนื้อหาได้** ไม่งั้นกลายเป็นช่องแก้ทับใบที่เคยอนุมัติ
