@@ -727,3 +727,24 @@ test('model ของใบ: หมวดตามภาษาของใบ �
   assert.equal(buildQuotationMasterModelFromQuote(quote('en', { categoryName: 'น้ำหอม' })).lines[0].category, 'น้ำหอม');
   assert.equal(buildQuotationMasterModelFromQuote(quote('th', {})).lines[0].category, '');
 });
+
+/* ⭐ ใบที่ถูกยกเลิก (ปุ่มยกเลิกใบของผู้อนุมัติ มติ 24/09 · หรือ SO ย้อน Won ตาม 0116) พิมพ์ซ้ำได้
+   แต่ต้องมีลายน้ำ "ยกเลิก" เสมอ — ฉบับตรึงล่าสุดถูกตอบ 409 แล้วปุ่มพิมพ์ตกมาเรนเดอร์สดที่นี่
+   🐞 เดิมใบที่ยกเลิกหลังอนุมัติพิมพ์ออกมา **สะอาด** (ไม่มีลายน้ำ) เหมือนใบที่ใช้ได้ */
+test('ใบที่ยกเลิกแล้วพิมพ์สดมีลายน้ำ "ยกเลิก" ทุกสถานะอนุมัติ และตามภาษาของใบ', () => {
+  const base = {
+    quoteNumber: 'QT-26090001-0', lines: [], subtotal: 0, vatRate: 7, vatAmount: 0, totalAmount: 0,
+    paymentPlan: { type: 'full' }, status: 'cancelled',
+  };
+  for (const approvalStatus of ['approved', 'pending', 'not_submitted', 'not_required']) {
+    const model = buildQuotationMasterModelFromQuote({ ...base, approvalStatus });
+    assert.equal(model.watermark, 'ยกเลิก', approvalStatus);
+  }
+  assert.equal(
+    buildQuotationMasterModelFromQuote({ ...base, approvalStatus: 'approved', docLanguage: 'en' }).watermark,
+    'CANCELLED',
+  );
+  // ใบที่ยังใช้ได้ไม่เปลี่ยน
+  assert.equal(buildQuotationMasterModelFromQuote({ ...base, status: 'sent', approvalStatus: 'approved' }).watermark, '');
+  assert.equal(buildQuotationMasterModelFromQuote({ ...base, status: 'draft', approvalStatus: 'pending' }).watermark, 'ฉบับร่าง');
+});

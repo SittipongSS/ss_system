@@ -47,6 +47,9 @@ export const forecastValueOfQuotation = (quotation) => quotationWonAmount(quotat
 
 export const isForecastPinned = (deal) => Boolean(deal?.forecastPinnedAt);
 
+/* ฉบับแก้ที่จบไปแล้ว — ไม่นับเป็น "ฉบับแก้ที่ FC กำลังรอ" (ดู awaitingRevision ใน resolveForecastSource) */
+const DEAD_REVISION_STATUSES = ['cancelled', 'closed'];
+
 /* ใบที่แข่งกันเป็นแหล่ง FC — หนึ่งรายการต่อหนึ่งเลขที่ฐาน เอาฉบับแก้ล่าสุดเสมอ
  * (ลำดับที่แท้จริงอยู่ในตัวฟังก์ชันข้างล่าง — ยอดน้อยมาก่อน) */
 export function eligibleForecastQuotations(quotations = []) {
@@ -146,9 +149,13 @@ export function resolveForecastSource(deal, quotations = []) {
      ที่มีสิทธิ์เลยสักใบ · ถ้าปล่อยให้ตกกลับไปยอดที่ AE กรอก FC ทั้งบริษัทจะแกว่งทุกครั้ง
      ที่มีคนกดแก้ใบ แล้วเด้งกลับตอนอนุมัติ — งานธุรการไม่ควรขยับตัวเลขฝ่ายบริหาร
      ⇒ ค้างยอดเดิมไว้ตราบที่ฉบับแก้ของเลขที่เดียวกันยังเดินอยู่ในระบบ */
+  /* 🐞 ฉบับแก้ที่ **ตายไปแล้ว** ไม่ใช่ "ฉบับที่ยังเดินอยู่" (มติ 24/09 เปิดปุ่มยกเลิกใบให้ผู้อนุมัติ) —
+     ของเดิมนับทุกแถวที่ revisionNo สูงกว่า ⇒ Rev.1 ที่ถูกยกเลิก (หรือถูกปิดเพราะดีลจบด้วยใบอื่น)
+     ทำให้ดีลค้าง awaiting_revision + changed=false **ตลอดกาล** · ไม่เขียนและไม่ขึ้นคิวด้วย = เงียบสองทาง */
   const awaitingRevision = Boolean(pointed)
     && pointed.status === 'revised'
     && quotations.some((quotation) => quotation.id !== pointed.id
+      && !DEAD_REVISION_STATUSES.includes(quotation.status)
       && quotationBaseKey(quotation) === pointedBase
       && Number(quotation.revisionNo || 0) > Number(pointed.revisionNo || 0));
 
@@ -162,7 +169,11 @@ export function resolveForecastSource(deal, quotations = []) {
 
   if (!candidates.length) {
     const reason = current.source === 'quotation' ? 'pointer_gone' : 'no_eligible';
-    return result(deal, manual, reason, { candidates });
+    /* 🐞 ใบที่ปักไว้หลุดสิทธิ์โดยไม่มีใบอื่นเหลือ — ทางนี้คืนก่อนถึงบล็อกปักข้างล่าง ⇒ ของเดิมไม่เคย
+       ปลดปัก ⇒ ดีลกลายเป็น "ปัก manual" ถาวร แล้วใบที่อนุมัติทีหลังไม่ขยับ FC อีกเลย (ยกเลิก/ลบใบที่ปัก)
+       ⚠️ เฉพาะปักที่ชี้ใบ — ปัก manual คือคนตัดสินใจเองว่ากรอกยอดเอง ห้ามปลดแทน */
+    const extra = reason === 'pointer_gone' && isForecastPinned(deal) ? { pinCleared: true } : {};
+    return result(deal, manual, reason, { candidates, ...extra });
   }
 
   const follow = (quotation, reason, extra) => result(deal, {
@@ -234,5 +245,42 @@ export function forecastSourceView(deal, quotations = []) {
     pendingQuotationId: resolved.quotationId,
     pendingValue: resolved.value,
     reason: resolved.reason,
+  };
+}
+
+/* ── เหตุที่เรียก — ตัดสินว่าอนุญาตให้ FC "ขึ้นบันได" (manual → quotation) ได้ไหม ─────────────
+ *
+ * ⭐ มีเหตุเดียวที่ขึ้นได้เอง: **ใบถูกอนุมัติ** ซึ่งเป็นการกระทำที่มีคนกดและมีหัวหน้า
+ *    รับรอง (มติผู้ใช้ 2026-09-02: "FC ขยับตอนใบอนุมัติแล้ว")
+ * ⭐ เหตุอื่น (ลบใบ · ออก Rev. · ย้อนรับ · ยกเลิกใบ) แค่ **ดูแลตัวชี้ที่มีอยู่** — ดีลที่ยังเป็น manual
+ *    อยู่ต้องไม่ถูกลากขึ้นบันไดเพราะมีใครไปลบ/ยกเลิกใบอื่นทิ้ง ไม่งั้นคิวที่ให้ AE กดรับก็ไร้ค่า
+ * ⚠️ ย้ายมาจาก forecastSourceRepo.js (มติ 24/09) — พรีวิวในโมดัลยกเลิกใบต้องตอบคำเดียวกับตอนเขียนจริง
+ *    ชุดนี้อยู่สองที่เมื่อไร โมดัลจะบอก "FC → ใบ X" แล้วกดจริงได้ needs_user_choice ไม่ขยับ */
+const CLAIMING_CAUSES = new Set(['quotation_approved']);
+
+/* ── ตัวตัดสิน "ถ้ากดตอนนี้ FC จะเป็นอะไร" — ตัวเดียวของทั้งพรีวิวและ applyForecastSource ─────────
+ *
+ * คืนรูปเดียวกับผลของ applyForecastSource (ส่วนที่ไม่ใช่การเขียน):
+ *   { changed: false, reason, value }                         ไม่มีอะไรต้องเขียน
+ *   { changed: false, reason: 'needs_user_choice', pendingValue, value }   ห้ามขึ้นบันไดเอง
+ *   { changed: true, value, previousValue, reason, resolved }  ต้องเขียน `resolved` ลงดีล
+ * `value` = ยอด FC หลังกดเสมอ (ไม่เปลี่ยน = ยอดเดิม) ให้โมดัลพูด "฿A → ฿B" ได้โดยไม่ต้องแยกกรณี
+ */
+export function previewForecastSource(deal, quotations = [], { cause } = {}) {
+  const current = Number(deal?.projectValue ?? 0);
+  if (isWonStage(deal?.stage)) return { changed: false, reason: 'won_frozen', value: current };
+
+  const resolved = resolveForecastSource(deal, quotations);
+  const claiming = resolved.source === 'quotation' && deal?.forecastSource !== 'quotation';
+  if (claiming && !CLAIMING_CAUSES.has(cause)) {
+    return { changed: false, reason: 'needs_user_choice', pendingValue: resolved.value, value: current };
+  }
+  if (!resolved.changed) return { changed: false, reason: resolved.reason, value: current };
+  return {
+    changed: true,
+    value: resolved.value,
+    previousValue: current,
+    reason: resolved.reason,
+    resolved,
   };
 }
