@@ -34,11 +34,11 @@ import {
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import {
-  freezeInstallments, installmentMoveColumnError, loadCarrySources, loadInstallments, loadMovedOut,
+  freezeInstallments, historicalCancelSettleReady, installmentMoveColumnError, loadCarrySources, loadInstallments, loadMovedOut,
 } from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
 import {
-  cancelledMoneyRestoreBlock, installmentsTotalMismatch, movedOutDeleteBlock, paymentLockReason, paymentNotRequired,
+  cancelledMoneyRestoreBlock, installmentsTotalMismatch, movedOutDeleteBlock, paymentNotRequired,
   revisionAuditSummary,
 } from '@/lib/sales/salesOrderPayments';
 import { financeActionError } from '@/lib/sales/salesOrderFinanceApproval';
@@ -70,8 +70,10 @@ import { loadScoped } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
-  HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalDeleteBlock, isHistoricalOrder,
+  HISTORICAL_CANCEL_SETTLE_STUCK, HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalCancelNoteError,
+  historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
+import { historicalOpeningVoidSummary } from '@/lib/sales/historicalOrderCopy';
 import {
   approveHistoricalOrder, historicalContractVoided, loadHistoricalOrderExtras, submitHistoricalOrder,
   voidedContractLabel,
@@ -186,7 +188,8 @@ async function moveSpecDocumentsAfterRevise({ supabase, user, req, oldOrder, new
 }
 
 /* ใบสั่งขายย้อนหลัง (mig 0360 → 0374) — CHECK sales_orders_origin_shape ห้ามย้อนอนุมัติ/ออก Rev. อยู่แล้ว ตอบไทยก่อนถึงฐาน
-   ⭐ ทางแก้หลังอนุมัติมีทางเดียว (มติ 22/09): AE Sup ยกเลิกใบ แล้วฝ่ายขายคีย์ใหม่ — ประโยคกลางของทุกทางตัน */
+   ⭐ ทางแก้หลังอนุมัติมีทางเดียว (มติ 22/09 · ผู้ยกเลิกขยายเป็นผู้จัดการฝ่ายขายที่อนุมัติได้ มติ 24/09): ยกเลิกใบ แล้วฝ่ายขายคีย์ใหม่
+     — ประโยคกลางของทุกทางตัน */
 const HISTORICAL_NO_REVISION = `ใบสั่งขายย้อนหลังย้อนการอนุมัติ/ออก Rev. ไม่ได้ — ${HISTORICAL_CORRECTION_PATH}`;
 
 export const dynamic = 'force-dynamic';
@@ -1146,7 +1149,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'cancel') {
     /* ⭐ PR3 (mig 0378 · มติเจ้าของ 23/09 D4): **ใบ pipeline ที่มีเงินรับแล้วยกเลิกได้** — เงินอยู่กับใบนี้ต่อเป็น
        "เงินค้างจากใบที่ยกเลิก" (ไม่หาย · ไม่ต้องถอนคำรับรอง) แล้วออกทางยกเข้าใบใหม่ของดีลเดียวกัน หรือบัญชีบันทึกคืนเงิน
-       ⇒ ด่าน paymentLockReason ย้ายเข้าบล็อกใบย้อนหลังข้างล่าง (ใบย้อนหลังไม่มีทางยก/คืน — กติกาเดิมทุกข้อ)
+       ⇒ ด่าน "งวดรับรองแล้ว" ย้ายเข้าบล็อกใบย้อนหลังข้างล่าง (ใบย้อนหลังไม่มีทางยก/คืน) — มติ 24/09 เหลือเฉพาะงวดปกติ
        · RPC ย้อน Won (0170) และ UPDATE ยกเลิกธรรมดาไม่เปลี่ยน · StatusNotice ในโมดัลบอกผลเรื่องเงินก่อนกด (salesOrderMoneyOutcome) */
     // Once Tax owns a downstream filing, cancelling/reversing the source would
     // invalidate its immutable snapshot. Delete the eligible filing first.
@@ -1180,14 +1183,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (before.status === 'approved' && !reviewer) {
       return forbidden(isHistoricalOrder(before)
         // ใบย้อนหลังไม่นับ Actual — สิ่งที่ถอนคือเอกสารแทนสัญญาและรอบขายของโซน (ทางแก้หลังอนุมัติ = ยกเลิกแล้วคีย์ใหม่)
-        ? 'ยกเลิกใบย้อนหลังที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (เอกสารแทนสัญญาถูกยกเลิกตาม)'
+        // ผู้ยกเลิกได้ = ผู้อนุมัติได้ (isSalesOrderReviewer: CD · CM · AE Sup · Admin — มติ 24/09) ไม่ใช่ AE Sup คนเดียว
+        ? 'ยกเลิกใบย้อนหลังที่อนุมัติแล้วต้องให้ผู้จัดการฝ่ายขายดำเนินการ (เอกสารแทนสัญญาถูกยกเลิกตาม)'
         : 'ยกเลิก SO ที่อนุมัติแล้วต้องให้ AE Supervisor ดำเนินการ (ถอนยอด Actual)');
     }
     /* ⛔ review MONEY-2: ใบที่ถือเงิน (งวด confirmed/reported) ยกเลิกได้เฉพาะผู้ตรวจสอบ — **ทุกสถานะ** ไม่ใช่แค่รออนุมัติ/อนุมัติแล้ว
        🐞 PR3 ถอด paymentLockReason ออกจากใบ pipeline ⇒ ใบที่ย้อนการอนุมัติ (D3 รับเงินต่อได้) และใบ Rev. ร่างที่งวดเงินย้ายมา (0376)
          เหลือด่านแค่สิทธิ์แก้งานขาย = AE เจ้าของดีลคนเดียวทำให้เงินที่รับรองแล้วค้างอยู่กับใบที่ยกเลิกได้ (ปรับแผน/ยกเงินเป็นของ
          AE Sup/admin/บัญชีทั้งนั้น) · ปุ่มถามตัวเดียวกัน (canCancelSalesOrder → salesOrderCancelNeedsReviewer)
-       ⚠️ อ่านงวดสดแบบโยน error — อ่านไม่ขึ้น ≠ ไม่มีเงิน · ใบย้อนหลังมีด่านของตัวเองข้างล่าง (กติกาเดิมทุกข้อ) */
+       ⚠️ อ่านงวดสดแบบโยน error — อ่านไม่ขึ้น ≠ ไม่มีเงิน · ใบย้อนหลังมีด่านของตัวเองข้างล่าง (งวดปกติที่มีเงิน · มติ 24/09) */
     if (!reviewer && !isHistoricalOrder(before)) {
       let moneyRows;
       try { moneyRows = await loadInstallments(supabase, id); }
@@ -1196,19 +1200,35 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         return forbidden('ใบนี้มีเงินรับแล้ว/รอบัญชีตรวจ — ยกเลิกต้องให้ AE Supervisor ดำเนินการ (เงินจะค้างอยู่กับใบที่ยกเลิก)');
       }
     }
-    /* ⛔ ใบย้อนหลังที่มีงวดที่บัญชีรับรองแล้ว (paymentLockReason) หรือมีงวดรอบัญชีรับรอง (งวดยกมาที่ขั้นอนุมัติดันขึ้นคิว ฯลฯ)
-       ยกเลิกไม่ได้ — ยกเลิกแล้วล็อกงวดของใบตอบ "ใบยกเลิกแล้ว" กับทุกคำสั่งรวมรับรอง/ตีกลับ แต่คิวบัญชีกับป้ายเมนูยังนับ
-       แถวนั้น ⇒ ค้างถาวร (historicalCancelBlock)
+    /* ⭐ ใบย้อนหลัง (มติเจ้าของ 24/09 · mig 0387 — "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ"):
+       ผู้จัดการฝ่ายขายยกเลิกใบที่อนุมัติแล้วได้แม้งวดยกมารับรองแล้ว/รอตรวจ — งวดยกมาเป็นโมฆะตามใบ
+       · รอตรวจ → trigger sales_orders_historical_cancel_settle ตีกลับให้ในทรานแซกชันเดียวกับ UPDATE ข้างล่าง (เหตุบอกว่าเป็น
+         การยกเลิก ไม่ใช่บัญชีตีกลับ) ⇒ ไม่ค้างคิว/ป้ายเมนูของบัญชี · ⛔ ห้ามพลิกงวดฝั่ง JS (ครึ่งทาง = ใบอนุมัติอยู่แต่งวดถูกตีกลับ)
+       · รับรองแล้ว → แถวคงเป็นประวัติ (installmentVoid ตัดออกจากทะเบียน/ยอด) · หมายเหตุบังคับ ≥ 10 ตัวอักษร (บัญชีเห็นในประวัติ)
+       ⛔ งวดปกติที่รับเงินในระบบแล้ว/รอบัญชีตรวจยังบล็อก (historicalCancelBlock) — ใบย้อนหลังไม่มีทางยก/คืนเงิน และล็อกทั้งใบ
+          ปิดทุกคำสั่งของใบที่ยกเลิก ⇒ บัญชีตีกลับก่อน (ที่รับรองแล้ว: ถอนคำรับรองแล้วตีกลับ) · trigger ของ 0387 กันซ้ำตอนแข่งกัน (409)
+       🛑 fail closed (review 25/09): งวดยกมาที่มีเงินปล่อยให้ trigger จัดการได้ก็ต่อเมื่อ**ฐานยืนยัน**ว่า trigger ของ 0387 อยู่และเปิดอยู่
+          (historicalCancelSettleReady) — โค้ดขึ้น prod ก่อนรันมิกได้ (deploy อัตโนมัติวันละ 3 รอบไม่ถามมิก) แล้วงวดยกมาจะค้าง
+          "รอตรวจ" บนใบที่ยกเลิกถาวร (ล็อกทั้งใบปิดปุ่มบัญชี · ป้ายเมนูบัญชี +1 · รันมิกทีหลังไม่ซ่อม) ⇒ ไม่ยืนยัน = กติกาก่อนมติ (503)
+          · ถามเฉพาะเมื่องวดยกมามีเงิน — ใบอื่นคงสิทธิ์เดิมทุกตัวอักษร · ถามไม่ขึ้น (เน็ต/สิทธิ์) = หยุด ไม่ถือว่าพร้อม
+       · หมายเหตุบังคับถามหลังด่านฐาน — ฐานไม่พร้อมอย่าให้คนพิมพ์หมายเหตุแล้วค่อยบอกว่าทำไม่ได้ · trigger ตัดสินซ้ำ (บัญชีรับรองแทรก)
        ⚠️ อ่านงวดสดแบบโยน error — `before.installments` ของ loadOrder กลืนการอ่านพังเป็นรายการว่าง = ด่านเปิดเงียบ */
+    let liveInstallments = null;
+    let voidingOpening = null;
     if (isHistoricalOrder(before)) {
-      let liveInstallments;
       try { liveInstallments = await loadInstallments(supabase, id); }
       catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
-      /* งวดที่บัญชีรับรองแล้ว = เงินที่รับมาจริง · ใบย้อนหลังไม่มีทางยก/คืนเงิน ⇒ ยกเลิกทับเงียบ ๆ ไม่ได้ (กติกาเดิม) */
-      const cancelPaymentBlock = paymentLockReason(liveInstallments);
-      if (cancelPaymentBlock) return badRequest(cancelPaymentBlock);
-      const waitingBlock = historicalCancelBlock(before, liveInstallments);
-      if (waitingBlock) return badRequest(waitingBlock);
+      const moneyBlock = historicalCancelBlock(before, liveInstallments);
+      if (moneyBlock) return badRequest(moneyBlock);
+      voidingOpening = historicalCancelOpening(before, liveInstallments);
+      if (voidingOpening) {
+        const settle = await historicalCancelSettleReady(supabase);
+        if (settle.error) return fail(`ตรวจความพร้อมของฐานไม่สำเร็จ: ${settle.error} — ยังไม่ได้ยกเลิก ลองใหม่อีกครั้ง`, 500);
+        const settleBlock = historicalCancelSettleBlock(voidingOpening, settle.ready);
+        if (settleBlock) return fail(settleBlock, 503);
+      }
+      const noteError = historicalCancelNoteError(before, liveInstallments, note);
+      if (noteError) return badRequest(noteError);
     }
 
     // ย้อน Won พร้อมยกเลิก SO (มติ 2026-07-18): เมื่อลูกค้าหลุด (เหตุฝั่งลูกค้า) ให้ถอย
@@ -1276,17 +1296,58 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     /* ⭐ ใบย้อนหลัง: เอกสารแทนสัญญาถูกยกเลิกตามใบ **ในทรานแซกชันเดียวกัน** (trigger sales_orders_historical_void_contract_upd
        ของ 0374) — ที่นี่แค่อ่านผลมาบอกบนจอ/ใน audit · ⛔ ห้ามมีตัวยกเลิกสัญญาฝั่ง JS ซ้ำ (ครึ่งทาง = สัญญาค้างล็อก) */
     const voidedContract = await historicalContractVoided(supabase, before);
+    /* ⭐ งวดยกมาหลังยกเลิกจริง (review 25/09) — สรุป audit ของใบ/ของงวด + คำตอบ ตัดสินจากแถวที่อ่าน**หลัง**ยกเลิก
+       (historicalOpeningSettled) ไม่ใช่ค่าที่อ่านก่อน UPDATE: บัญชีรับรองแทรกระหว่างทาง = เดิม audit บอก "รอรับรอง" ทั้งที่เงินรับรองแล้ว
+       ⚠️ อ่านแบบไม่ขวาง — การยกเลิกสำเร็จไปแล้ว อ่านไม่ขึ้น = ใช้ค่าก่อนเขียน ไม่ใช่ตอบ error ทับ
+       🛑 งวดยกมายังค้าง "รอตรวจ" หลังยกเลิก = trigger ของ 0387 ไม่ทำงานทั้งที่ถามแล้วว่าพร้อม ⇒ เตือนดัง ไม่เงียบ */
+    let afterOpening = null;
+    let settledOpening = null;
+    if (voidingOpening) {
+      let afterRows = null;
+      try { afterRows = await loadInstallments(supabase, id); } catch { afterRows = null; }
+      afterOpening = afterRows?.find((row) => row.id === voidingOpening.row.id) || null;
+      settledOpening = historicalOpeningSettled(voidingOpening, afterRows);
+    }
+    const settleWarning = settledOpening?.stuck ? HISTORICAL_CANCEL_SETTLE_STUCK : null;
     const summaryReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
+    const openingSummary = historicalOpeningVoidSummary(settledOpening);
     await logThread('cancel', { reason: summaryReason });
     await recordAudit({
-      user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data,
+      user, action: 'update', entityType: 'sales_order', entityId: id,
+      // ใบย้อนหลัง: งวดที่อ่านสดตอนตัดสิน (รวมงวดยกมาที่เป็นโมฆะ + ผู้รับรอง) — ประวัติของเงินที่ออกจากทะเบียนบัญชี
+      before: liveInstallments ? { ...before, installments: liveInstallments } : before,
+      after: data,
       summary: `cancel ${before.orderNumber}: ${summaryReason}`
-        + (voidedContract ? ` · ${voidedContractLabel(voidedContract)} ถูกยกเลิกตามใบ` : ''),
+        + (voidedContract ? ` · ${voidedContractLabel(voidedContract)} ถูกยกเลิกตามใบ` : '')
+        + (openingSummary ? ` · ${openingSummary}` : ''),
       request: req,
     });
+    /* ⭐ แถว audit ของงวดยกมาที่โมฆะ (มติ 24/09) — ประวัติงวดที่บัญชีเปิดดูต้องเห็นว่าเงินที่รับรองไว้หายไปเพราะใบถูกยกเลิก
+       (ไม่มีกระดิ่งถึงบัญชี — กระดิ่งมีแค่คำร้อง/แจ้งปัญหา/มอบหมายงาน) · entityId = ใบ แบบเดียวกับ "เริ่มติดตามการชำระ"
+       · before = แถวที่อ่านก่อนเขียน · after = แถวที่อ่านหลังยกเลิก (อ่านไม่ขึ้น = ว่าง) */
+    if (voidingOpening) {
+      await recordAudit({
+        user, action: 'update', entityType: 'sales_order_installments', entityId: id,
+        before: voidingOpening.row,
+        after: afterOpening,
+        summary: `${openingSummary} — ยกเลิก ${before.orderNumber}: ${summaryReason}`
+          + (settleWarning ? ` · ⚠️ ${settleWarning}` : ''),
+        request: req,
+      });
+    }
     // FM-SA-04 (mig 0370): เอกสารใบสเปคของใบนี้เป็น void · ล้ม = SO ยังสำเร็จ + warning
-    const specWarning = await voidSpecDocumentsAfterCancel({ supabase, user, req, order: before });
-    const result = isHistoricalOrder(before) ? { ...data, contractVoided: Boolean(voidedContract) } : data;
+    const specWarning = [
+      await voidSpecDocumentsAfterCancel({ supabase, user, req, order: before }),
+      settleWarning,
+    ].filter(Boolean).join(' · ');
+    const result = isHistoricalOrder(before)
+      ? {
+        ...data,
+        contractVoided: Boolean(voidedContract),
+        contractVoidedLabel: voidedContract ? voidedContractLabel(voidedContract) : '',
+        openingVoided: settledOpening?.status || null,
+      }
+      : data;
     return ok(specWarning ? { ...result, warning: specWarning } : result);
   }
 

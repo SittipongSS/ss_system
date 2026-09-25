@@ -362,7 +362,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
            (ด่านไม่มีทางถอยของตัวเองแล้ว — ไม่ส่งค่านี้ = ไม่กั้นเลย)
        ⭐ **ใบ pipeline (PR0)** — `orderLock` ต่อด้วย `pipelineInstallmentLock(order, action)` (รายคำสั่ง):
          ใบยกเลิกเหลือทางของบัญชี + ดึงกลับ · ใบที่ถูกออก Rev. ทับบล็อกทุกคำสั่ง · สถานะอื่นไม่ล็อก (มติ D3)
-         🐞 SO-26080039-0: PATCH นี้เคยไม่ดูสถานะใบ pipeline เลย ⇒ เงินก้อนเดียวถูกรับรองบนสองใบ */
+         🐞 SO-26080039-0: PATCH นี้เคยไม่ดูสถานะใบ pipeline เลย ⇒ เงินก้อนเดียวถูกรับรองบนสองใบ
+       🛡️ ใบย้อนหลังที่ยกเลิก: ฐานกันซ้ำอีกชั้น (trigger sales_order_installments_historical_cancelled_guard · mig 0387 · มติ 24/09)
+         — `order` ข้างบนอ่านก่อนเขียน ถ้าผู้จัดการยกเลิกใบแทรกกลางทาง ล็อกนี้ไม่เห็น ฐานตอบ historical_so_installment_order_cancelled
+         (409 ไทย ผ่าน documentWorkflowError ตอนเขียนข้างล่าง) แทนที่จะปล่อยงวดที่มีเงินค้างบนใบที่ยกเลิกโดยไม่มีทางออก */
     const gate = installmentActionError(row, action, user, {
       paidOn, reason, billingRequestId, coversFrom, coversTo,
       taxInvoiceNo, taxInvoiceDate,

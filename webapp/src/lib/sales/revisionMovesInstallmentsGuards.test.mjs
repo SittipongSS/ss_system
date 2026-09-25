@@ -2,7 +2,7 @@
 // ⭐ ย้อนการอนุมัติ + ออก Rev. **ย้ายงวดทั้งแถว** — ตรรกะจริงมีเทสต์เรียกตรงแล้ว (salesOrderPayments.test ·
 //    installmentEvidenceOwners.test · salesOrderInstallmentsStore.test · salesOrderRevisionCarry.test + PGlite ใน scratch)
 //    ไฟล์นี้ตรึงว่า **ผู้เรียกทุกทางต่อสายครบ** ซึ่งพังเงียบได้ทั้งหมด:
-//    · route ย้อนการอนุมัติยังถาม paymentLockReason = ใบที่รับเงินแล้วแก้เอกสารไม่ได้เหมือนเดิม (คำขอ A ไม่เกิด)
+//    · route ย้อนการอนุมัติกลับไปล็อกด้วยงวดที่รับรองแล้ว = ใบที่รับเงินแล้วแก้เอกสารไม่ได้เหมือนเดิม (คำขอ A ไม่เกิด)
 //    · route ย้อนการอนุมัติไม่ถามคอลัมน์ 0376 = deploy ก่อนรันมิกแล้วเงินถูกก๊อปซ้ำเงียบ ๆ
 //    · payment-file ไม่รู้จัก movedFrom = สลิป/ใบกำกับของงวดที่ย้ายมาเปิดไม่ได้ทั้งหมด
 // ⚠️ ยามอ่าน source เป็นสตริง (ตัดคอมเมนต์ก่อน) ⇒ พิสูจน์แค่ "โค้ดนี้ยังอยู่ตรงนี้"
@@ -49,12 +49,13 @@ test('ย้อนการอนุมัติ: ไม่มี paymentLockRea
 });
 
 /* ⚠️ แก้ยามโดยตั้งใจใน PR3 (mig 0378 · มติ D4): ด่านนี้ย้ายเข้าบล็อกใบย้อนหลังแล้ว — ใบ pipeline ที่มีเงินรับแล้วยกเลิกได้
-   (เงินค้างอยู่กับใบ → ยกเข้าใบใหม่/บันทึกคืนเงิน) · รูปเต็มของเส้นยกเลิกตรึงที่ cancelledMoneyGuards.test.mjs */
-test('ยกเลิกใบ (PR3): paymentLockReason เหลือเป็นด่านของใบย้อนหลังเท่านั้น — ใบ pipeline ไม่ถูกล็อกด้วยเงินรับแล้ว', () => {
+   (เงินค้างอยู่กับใบ → ยกเข้าใบใหม่/บันทึกคืนเงิน) · มติ 24/09 (mig 0387) ถอด paymentLockReason ทั้งตัว — ใบย้อนหลังถาม
+   historicalCancelBlock ตัวเดียว · รูปเต็มของเส้นยกเลิกตรึงที่ cancelledMoneyGuards.test.mjs */
+test('ยกเลิกใบ (PR3 → มติ 24/09): ไม่มี paymentLockReason · ใบ pipeline ไม่ถูกล็อกด้วยเงินรับแล้ว', () => {
   const cancel = slice(code(SO_ROUTE), "if (action === 'cancel')", "if (action === 'finance_approve')");
-  assert.doesNotMatch(cancel, /paymentLockReason\(before\.installments\)/);
-  const hist = cancel.indexOf('if (isHistoricalOrder(before)) {\n      let liveInstallments;');
-  assert.ok(hist > 0 && cancel.indexOf('paymentLockReason(liveInstallments)') > hist);
+  assert.doesNotMatch(cancel, /paymentLockReason/);
+  const hist = cancel.indexOf('if (isHistoricalOrder(before)) {\n      try { liveInstallments = await loadInstallments(supabase, id); }');
+  assert.ok(hist > 0 && cancel.indexOf('historicalCancelBlock(before, liveInstallments)') > hist);
 });
 
 // ── 2. ออก Rev.: สรุป audit จาก result.moved · ไม่มี moved = warning ─────────────────────────────────────

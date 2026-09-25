@@ -133,12 +133,24 @@ test('สิทธิ์: REVOKE จาก PUBLIC/anon/authenticated · GRANT EX
 });
 
 /* ⭐ ด่านของงวดอยู่ใน RPC ที่ผู้เรียกเรียกเอง — trigger บนตารางงวดจะไปเขียนทับ/ปฏิเสธทุกทางเขียน (PATCH รายงวด · ย้าย Rev. ·
-   freeze ตอนอนุมัติ) โดยไม่มีใครเห็นจากโค้ด JS ⇒ ห้ามมีทั้งระบบ ไม่ใช่แค่ในไฟล์นี้ */
-test('ทุก migration: ไม่มี CREATE TRIGGER บน sales_order_installments', () => {
-  const offenders = readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql'))
-    .filter((n) => /CREATE\s+(OR\s+REPLACE\s+)?(CONSTRAINT\s+)?TRIGGER[\s\S]{0,300}?\bON\s+(public\.)?sales_order_installments\b/i
-      .test(stripComments(mig(n))));
-  assert.deepEqual(offenders, []);
+   freeze ตอนอนุมัติ) โดยไม่มีใครเห็นจากโค้ด JS ⇒ ห้ามมีทั้งระบบ ไม่ใช่แค่ในไฟล์นี้
+   ⚠️ แก้ยามโดยตั้งใจ 24/09 — **ข้อยกเว้นเดียว** ตามมติเจ้าของ ("เพิ่มด่านฝั่งงวดกัน race ของการยกเลิกใบย้อนหลังในไฟล์เดียวกัน" · mig 0387):
+     `sales_order_installments_historical_cancelled_guard` **ปฏิเสธอย่างเดียว ไม่เขียนทับแถว** และยิงเฉพาะแถวที่กำลังกลายเป็น
+     reported/confirmed บนใบย้อนหลังที่ยกเลิกแล้ว — ทาง JS ทุกทางปฏิเสธกรณีนั้นอยู่แล้ว (historicalInstallmentLock) ⇒ ยิงได้แค่ตอน
+     แข่งกับการยกเลิก (route งวดอ่านใบก่อนยกเลิก แล้วเขียนหลัง) · ยามรูปทรงของมันอยู่ที่ historicalCancelSettleMigration.test.mjs
+     · trigger ตัวอื่น/ไฟล์อื่นบนตารางงวดยังห้ามทั้งหมด (ชื่อ + ไฟล์ต้องตรงรายการนี้เป๊ะ) */
+const INSTALLMENT_TRIGGER_EXCEPTIONS = Object.freeze({
+  '0387_historical_so_cancel_settles_opening.sql': ['sales_order_installments_historical_cancelled_guard'],
+});
+test('ทุก migration: ไม่มี CREATE TRIGGER บน sales_order_installments (ยกเว้นด่านปฏิเสธตัวเดียวของ 0387)', () => {
+  const found = {};
+  for (const n of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))) {
+    const names = [...stripComments(mig(n))
+      .matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER\s+(\w+)[\s\S]{0,300}?\bON\s+(?:public\.)?sales_order_installments\b/gi)]
+      .map((m) => m[1]);
+    if (names.length) found[n] = names;
+  }
+  assert.deepEqual(found, INSTALLMENT_TRIGGER_EXCEPTIONS);
   assert.doesNotMatch(code, /CREATE\s+(OR\s+REPLACE\s+)?TRIGGER/i);
 });
 

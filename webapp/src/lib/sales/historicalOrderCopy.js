@@ -10,11 +10,11 @@
 import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import {
-  HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
-  isHistoricalOrder, isOpeningInstallment,
+  HISTORICAL_CANCEL_NOTE_MIN, HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
+  historicalCancelOpening, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import { addDays, coverageContinuityErrors, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
-import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+import { paymentNotRequired, salesOrderMoneyOutcome } from '@/lib/sales/salesOrderPayments';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const list = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
@@ -411,6 +411,68 @@ export function historicalCancelEffect(order, contract = null) {
   return contract.status === 'signed' && text(contract.contractNo)
     ? `${base} (เลข ${text(contract.contractNo)} ไม่คืน)`
     : base;
+}
+
+/* ── โมดัลยกเลิกใบย้อนหลัง (มติเจ้าของ 24/09 · mig 0387) ─────────────────────────────────────────────────
+   ⭐ "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ" — ผู้จัดการฝ่ายขาย (CD · CM · AE Sup · Admin) ยกเลิกใบที่อนุมัติแล้วได้
+     แม้งวดยกมารับรองแล้ว ⇒ คนกดต้องเห็นก่อนกดว่าอะไรหายไปพร้อมใบ:
+     · เอกสารแทนสัญญา (historicalCancelEffect — การ์ดแยกของจอ) · งวดยกมาเป็นโมฆะ ใครรับรองไว้ (money)
+     · รอบขายของโซนหยุด และด่านเงินของนัดช่างรอทั้งใบใหม่อนุมัติ **และ** บัญชีรับรองงวดยกมาของใบใหม่
+       (ด่านนับเฉพาะงวด confirmed — paymentCoverage.paidThrough · ขั้นอนุมัติดันงวดยกมาแค่ถึง "รอตรวจ")
+     · ทางคีย์ใหม่ (HISTORICAL_CORRECTION_PATH)
+   🐞 คำนำเดิมของโมดัลเป็นของใบปกติ ("ยอด Actual จะถูกนำออก" / "ออกจากรออนุมัติ") — ไม่จริงกับใบย้อนหลังทุกสถานะ
+   ⚠️ หมายเหตุบังคับของงวดยกมาที่รับรองแล้วถามตัวเดียวกับ route (historicalCancelNoteError) — ที่นี่แค่ติดป้ายช่อง
+   @param reasonCode รหัสเหตุผลที่เลือกอยู่ ('other' = หมายเหตุบังคับตามกติกาเดิมของทุกใบ) */
+export function historicalCancelPrompt(order, { installments = [], reasonCode = '' } = {}) {
+  if (!isHistoricalOrder(order)) return null;
+  const rows = list(installments);
+  const certified = historicalCancelOpening(order, rows)?.status === 'confirmed';
+  const zones = new Set(list(order?.lines).map((line) => text(line.serviceZoneId)).filter(Boolean)).size;
+  /* รอบขายของโซนเกิดตอนอนุมัติ (0374 ข้อ ④) ⇒ ใบที่ยังไม่อนุมัติไม่มีอะไรให้หยุด และยังแก้ในฟอร์มได้ (ไม่ต้องชี้ทางคีย์ใหม่) */
+  const notices = order?.status === 'approved' ? [
+    zones
+      ? `รอบขายของโซน ${fmtNumber(zones)} โซนหยุดมีผลทันที — นัดบริการของโซนเหล่านี้ติดด่านจนกว่าใบที่คีย์ใหม่จะอนุมัติ`
+        + ' และบัญชีรับรองงวดยกมาของใบใหม่'
+      : null,
+    HISTORICAL_CORRECTION_PATH,
+  ].filter(Boolean) : [];
+  const noteRequired = certified || reasonCode === 'other';
+  return {
+    title: 'ยกเลิกใบสั่งขายย้อนหลัง',
+    lead: `ใบ ${text(order?.orderNumber) || 'นี้'} จะเป็น “ยกเลิก” — ใบย้อนหลังไม่นับ Actual/รออนุมัติ ยอดจึงไม่ขยับ`,
+    money: salesOrderMoneyOutcome(order, rows, 'cancel'),
+    notices,
+    noteRequired,
+    noteLabel: certified
+      ? `หมายเหตุ (บังคับ อย่างน้อย ${HISTORICAL_CANCEL_NOTE_MIN} ตัวอักษร — บัญชีเห็นในประวัติ)`
+      : `หมายเหตุ (${noteRequired ? 'บังคับ' : 'ไม่บังคับ'})`,
+    confirmLabel: 'ยืนยันยกเลิกใบย้อนหลัง',
+  };
+}
+
+/* สรุปงวดยกมาที่โมฆะตามใบ — ท้ายสรุป audit ของใบ + หัวสรุป audit ของงวด (route ยกเลิก) · null = ไม่มีอะไรโมฆะ
+   @param opening ผลของ historicalCancelOpening (งวดที่อ่านสดก่อนยกเลิก) */
+export function historicalOpeningVoidSummary(opening) {
+  if (!opening) return null;
+  const by = text(opening.row?.confirmedByName);
+  const state = opening.status === 'confirmed'
+    ? `รับรองแล้ว${by ? ` โดย ${by}` : ''}`
+    : 'รอรับรอง — ออกจากคิวบัญชี';
+  return `${OPENING_INSTALLMENT_LABEL} ${fmtMoney(opening.amount)} (${state}) โมฆะตามใบ`;
+}
+
+/* toast หลังยกเลิกใบย้อนหลัง — บอกสิ่งที่เกิดจริงจากคำตอบของ route (`contractVoided` · `contractVoidedLabel` · `openingVoided`)
+   ⚠️ ของใบปกติพูดว่า "คำนวณ Actual ใหม่แล้ว" ซึ่งไม่จริงกับใบนี้สักตัวอักษร */
+const HISTORICAL_REKEY_HINT = 'คีย์ใบใหม่ได้ที่ ใบสั่งขาย › SO ย้อนหลัง';
+export function historicalCancelToast(result) {
+  const r = result && typeof result === 'object' ? result : {};
+  const label = text(r.contractVoidedLabel);
+  const parts = [
+    r.contractVoided ? `เอกสารแทนสัญญา${label ? ` ${label} ` : ''}ถูกยกเลิกตาม` : null,
+    r.openingVoided ? `${OPENING_INSTALLMENT_LABEL}เป็นโมฆะ` : null,
+    HISTORICAL_REKEY_HINT,
+  ].filter(Boolean);
+  return `ยกเลิกใบย้อนหลังแล้ว — ${parts.join(' · ')}`;
 }
 
 /* บัญชีตีกลับงวดยกมา — บอกทางออกทั้งสองแบบ (หลักฐานผิด = แจ้งใหม่ · ยอด/ช่วงที่อนุมัติไปผิด = ยกเลิกแล้วคีย์ใหม่) */
