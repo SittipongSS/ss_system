@@ -67,6 +67,9 @@ export const PARENT_TABLE = {
      ⚠️ สิทธิ์ของไฟล์ไหลตาม **ใบคำร้องแม่** ไม่ใช่ตามแถวผลวัด — ดูสาขาใน route ของไฟล์ */
   service_survey_zone: 'service_survey_zones',
   contract_addendum: 'sales_contract_addenda',
+  /* ใบสั่งขาย (แท็บ "เอกสาร" · มติ 25/09) — ⚠️ บรรทัดนี้คือจุดที่ทำให้ "แนบได้แต่เปิดดูไม่ได้สักไฟล์"
+     ถ้าลืม · สิทธิ์ไหลตาม **ดีลของใบ** ไม่ใช่แถวใบ (ดู lib/sales/salesOrderAttachmentAccess.js) */
+  sales_order: 'sales_orders',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 

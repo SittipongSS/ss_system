@@ -14,6 +14,7 @@ import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES, attachmentFileRuleError, doc
 import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
 
 import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
+import { SALES_ORDER_ATTACHMENT_TABLE, salesOrderAttachBlock } from '@/lib/sales/salesOrderAttachmentAccess';
 import { historicalContractFilesFrozenGate } from '@/lib/sales/historicalContractLock';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,8 @@ async function loadParent(supabase, entityType, entityId) {
   const table = PARENT_TABLE[entityType]
     || MGMT_TABLE[entityType]
     || COSTING_ATTACHMENT_TABLE[entityType]
-    || SALES_ATTACHMENT_TABLE[entityType];
+    || SALES_ATTACHMENT_TABLE[entityType]
+    || SALES_ORDER_ATTACHMENT_TABLE[entityType];
   if (!table) return null;
   const { data, error } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
   /* ⚠️ อ่านพังต้องโยน ไม่ใช่คืน null — null แปลว่า "ไม่มีระเบียนนี้" ⇒ GET ตอบ [] แล้ว
@@ -104,9 +106,12 @@ export async function GET(request) {
     // ปุ่ม "แก้ใน Google" เป็นลิงก์เปิดแท็บใหม่ ถ้ารอ Drive ตอบก่อนเปิดจะโดน
     // popup blocker กินไปทั้งคลิก · ทำตรงนี้แทน คลิกจึงเปิดได้ทันทีเสมอ
     // ⚠️ ยิง Drive เฉพาะคู่ (คน × ไฟล์) ที่ยังไม่เคยให้ — ครั้งต่อไปไม่มีต้นทุนเลย
+    /* ใบสั่งขายที่ยกเลิก/ถูก Rev. แทน = ไฟล์ตรึงแล้ว ⇒ เอกสาร Google ของใบนั้นให้แค่อ่าน (แอดมินยกเว้น — ด่านเดียวกับ POST)
+       ไม่งั้น "แนบ/ลบไม่ได้" บนจอ แต่เนื้อเอกสารยังแก้ได้ใน Drive */
+    const frozenOrder = entityType === 'sales_order' && user?.role !== 'admin' && !!salesOrderAttachBlock(parent);
     await ensureGoogleDocAccess(supabase, items, {
       email: await workspaceEmail(supabase, user?.id),
-      role: (await canEditAttachmentParent(supabase, entityType, parent, user)) ? 'writer' : 'reader',
+      role: !frozenOrder && (await canEditAttachmentParent(supabase, entityType, parent, user)) ? 'writer' : 'reader',
     });
 
     // no-store: รายการไฟล์แนบเปลี่ยนได้ตลอด — กันเบราว์เซอร์ cache คำตอบเก่า (เช่น []
@@ -181,6 +186,14 @@ export async function POST(request) {
   if (entityType === 'contract') {
     const frozen = await historicalContractFilesFrozenGate(supabase, parent);
     if (frozen) return Response.json({ error: frozen.message }, { status: frozen.status });
+  }
+
+  /* ใบสั่งขาย (แท็บ "เอกสาร" · มติ 25/09) — แนบได้ทุกสถานะ ยกเว้นใบยกเลิก/ฉบับที่ถูก Rev. แทน · 409 พร้อมเหตุ
+     ไม่ใช่ 403 เปล่า (คนนี้มีสิทธิ์ แค่ใบอยู่ในสถานะที่รับไม่ได้) · แอดมินข้ามได้ (เก็บกวาดไฟล์ที่แนบผิดใบ)
+     ⚠️ มาก่อน `buildGoogleAttachment` ด้วยเหตุผลเดียวกับด่านสัญญาข้างบน */
+  if (entityType === 'sales_order' && user?.role !== 'admin') {
+    const blocked = salesOrderAttachBlock(parent);
+    if (blocked) return Response.json({ error: blocked }, { status: 409 });
   }
 
   // docType ต้องเป็นชนิดที่รองรับของ entity นั้น — ที่ไม่รู้จักตกเป็น 'other'.
