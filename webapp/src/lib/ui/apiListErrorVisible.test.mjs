@@ -495,10 +495,11 @@ const astReader = (rel) => {
       path.traverse({ JSXExpressionContainer(p) { if (bindingOf(p.get("expression")) === binding) hit = true; } });
       return hit;
     },
-    // ปุ่ม `<Button …>` ตัวที่มีคำว่า "ลองใหม่" ใน `const notice = …` ⇒ { onClick, disabled, labelTest } เป็น path
-    retryButton() {
+    /* ปุ่ม `<Button …>` ตัวที่มีคำว่า "ลองใหม่" ใน `const notice = …` ⇒ { onClick, disabled, labelTest } เป็น path
+       · `name` = ป้ายอีกตัวของจอที่มีปุ่มลองใหม่ของตัวเอง (ทะเบียนรายละเอียด: `reqNotice` ของผลตรวจเอกสารบังคับ) */
+    retryButton(name = "notice") {
       let out = null;
-      declarator("notice")?.traverse({
+      declarator(name)?.traverse({
         JSXElement(path) {
           if (out || path.node.openingElement.name.name !== "Button" || !textOf(path.node).includes("ลองใหม่")) return;
           const attr = (name) => path.get("openingElement.attributes")
@@ -1219,6 +1220,239 @@ test("ขึ้นทะเบียน (รายละเอียด): โห
   assert.ok(gate && reads(ast, gate.attr("open"), "editReady") && reads(ast, gate.attr("open"), "editAvailable"),
     "โมดัลแทนต้องเปิดเฉพาะตอนมีปุ่มแก้ไขจริงและฟอร์มยังไม่พร้อม");
   assert.ok(ast.rendersIn(gate.path, ast.bindingNamed("notice")), "โมดัลแทนต้องวางป้ายตัวเดียวกัน (มีปุ่มลองใหม่)");
+});
+
+/* ── ขึ้นทะเบียน (รายละเอียด): ผลตรวจเอกสารบังคับ (`/requirements`) ─────────────────────────────────────────
+   ยิงด้วย apiFetch ตรง ๆ ไม่ผ่าน useApiList ⇒ ด่านรายฮุกข้างบนมองไม่เห็นมันเลย
+   🐞 ทรงเดิม (25/09 "แก้หน้าทะเบียนต่อ"): `.then((r) => (r.ok ? r.json() : null)) … .catch(() => {})` ⇒ 500/เน็ตหลุดเงียบสนิท
+      · แถว "เอกสารบังคับ" ค้าง "กำลังตรวจ" ตลอดไป — หรือเคยตรวจได้แล้ว ยืนยันผลรอบก่อนเหมือนเป็นผลล่าสุด
+      · ปุ่ม "ยื่นขึ้นทะเบียน" พักด้วยเหตุ `ต้องแนบ: ` ที่ว่างเปล่า (ลิสต์ที่ขาดมาจากผลที่ไม่มีอยู่)
+      · checklist ของฉบับร่างหายไปด้วย (`req &&`) = ความล้มลบคำอธิบายเดียวที่จอมีทิ้ง
+   ⚠️ ผ่านการกลายพันธุ์บนสำเนา src นอก worktree แล้ว (30 ทรง แดงครบ ด้วยข้อความของข้อที่ตั้งใจจับ):
+      · ทรงเดิม — คืน `.catch(() => {})` · คืนเหตุ `!req?.ready ? "ต้องแนบ: …"` · ถอด `if (!isLatest()) return;` หรือย้าย setState
+        ขึ้นไปก่อนมัน · ปุ่มลองใหม่ยิงเองไม่ผ่าน checkRequirements · แถวสรุปกลับเป็น `req ? … : "กำลังตรวจ"` · checklist กลับไปอ่าน `req` ·
+        ป้ายผูกกับ `s.status === "draft"` · ถอดตัวตรวจรูปผล · httpLoadFailure ไม่อ่าน body
+      · แยกแล้วไม่เก็บ (รีวิวรอบสองจับได้ — ด่านเดิมเขียว): `thrownLoadFailure(e);` · `void httpLoadFailure(…)` · `setReqFault(null)` ·
+        `fault = null` ก่อนด่านรอบ · `setReq(req)` · ถอด `verdict = body`
+      · ปุ่มยื่นหลวม (ด่านเดิมเขียว): เหตุของกิ่งไม่รู้ผลเป็น `null`/`""` · ทั้งกิ่ง `!reqCurrent ?` เป็น null · `disabled: !submitBlocker` ·
+        `disabledReason: undefined` · `!reqCurrent.ready ? null` · reqCurrent ไม่ดู/กลับด้าน reqChecking
+      · รอบใหม่ไม่ติดสถานะบิน (ด่านเดิมเขียว): ถอด `setReqChecking(true);` · ถอด attachItems/custItems จาก deps ของ effect ·
+        ถอด regId จาก deps ของ useCallback */
+test("ขึ้นทะเบียน (รายละเอียด): ตรวจเอกสารบังคับไม่ได้ต้องบอก — ไม่ค้าง 'กำลังตรวจ' · ไม่พัก 'ต้องแนบ: ' เปล่า · คำตอบเก่าไม่ทับรอบใหม่", () => {
+  const rel = "app/tax/registrations/[id]/page.js";
+  const source = read(rel);
+  const ast = astReader(rel);
+  const check = ast.initPath("checkRequirements");
+  assert.ok(check?.isCallExpression(), `${rel}: ไม่พบ \`const checkRequirements = useCallback(…)\` — ตัวตรวจล้าสมัย?`);
+  // state ที่แกะด้วย `const [x, setX] = useState(…)` — bindingNamed เห็นแต่ `const x = …` ⇒ หา binding จาก scope ของคอมโพเนนต์
+  const readsState = (path, name) => ast.rendersIn(path, check.scope.getBinding(name) ?? null);
+  // ข้อความที่จริงได้เฉพาะตอน `guard` เป็นจริง — ทุกตัวต้องอยู่กิ่ง then ของ `guard ? … :` (ทรงเดียวกับ thenOf แต่บอกเหตุของจอนี้)
+  const onlyWhen = (literal, guard, why) => {
+    const { hits, unguarded } = guardedBy(rel, { literal }, guard, "consequent");
+    assert.ok(hits > 0, `${rel}: หา '${literal}' ไม่เจอ — ตัวตรวจล้าสมัย?`);
+    assert.equal(unguarded, 0, `'${literal}' ต้องอยู่กิ่ง then ของ \`${guard} ? … :\` — ${why}`);
+  };
+
+  // ① ไม่มีที่กลืนความล้มทิ้งเงียบ ๆ ทั้งจอ — `.catch(() => {})` · `catch {}` ว่าง (ทรงที่ทำให้แถวสรุปค้าง "กำลังตรวจ")
+  const swallowed = [];
+  traverse(parse(source, { sourceType: "module", plugins: ["jsx"] }), {
+    CallExpression(p) {
+      const { callee, arguments: [cb] } = p.node;
+      if (callee.type === "MemberExpression" && !callee.computed && callee.property.name === "catch"
+        && (cb?.type === "ArrowFunctionExpression" || cb?.type === "FunctionExpression")
+        && cb.body.type === "BlockStatement" && !cb.body.body.length) swallowed.push(source.slice(p.node.start, p.node.end).slice(0, 60));
+    },
+    CatchClause(p) { if (!p.node.body.body.length) swallowed.push("catch {}"); },
+  });
+  assert.deepEqual(swallowed, [], `${rel}: มีจุดกลืนความล้มทิ้งเงียบ ๆ — ตรวจเอกสารบังคับไม่ได้ต้องถึงป้าย ไม่ใช่ค้าง "กำลังตรวจ"`);
+
+  // ② ยิงที่เดียว (checkRequirements) · ความล้มผ่านตัวแยกกลาง (ไทยนำ + ดิบเป็นบรรทัดรอง) · อ่าน body ของคำตอบที่ไม่ ok
+  const fetches = ast.calls("apiFetch").filter((c) => ast.textOf(c.node.arguments[0]).includes("/requirements"));
+  assert.ok(fetches.length === 1 && ast.within(fetches[0], "checkRequirements"),
+    "ผลตรวจเอกสารบังคับต้องยิงที่ checkRequirements ที่เดียว — ทางเข้าที่สอง (ลองใหม่/effect แยก) ไม่ผ่านตัวนับรอบ");
+  const inCheck = (name) => ast.calls(name).filter((c) => ast.within(c, "checkRequirements"));
+  const [http] = inCheck("httpLoadFailure");
+  let readsBody = false;
+  if (http?.node.arguments[1]) {
+    http.get("arguments.1").traverse({ CallExpression(c) { if (c.node.callee.property?.name === "json") readsBody = true; } });
+  }
+  assert.ok(readsBody, "คำตอบที่ไม่ ok ต้องผ่าน httpLoadFailure(status, <ช่อง error ของ body>) — ข้อความดิบของ server คือตัวไขคดี");
+  const thrown = inCheck("thrownLoadFailure");
+  assert.ok(thrown.length && thrown.every((c) => c.findParent((p) => p.isCatchClause())),
+    "ของที่ถูกโยน (เน็ตหลุด · body อ่านไม่ได้) ต้องผ่าน thrownLoadFailure ใน catch");
+  /* ความล้มที่แยกแล้วต้อง **ถูกเก็บ** — เรียกตัวแยกทิ้งเปล่า ๆ (`thrownLoadFailure(e);` · `void httpLoadFailure(…)`) ผ่านสองข้อบนได้
+     ทั้งที่ 500/เน็ตหลุดไม่ตั้งอะไรเลย ⇒ มีผลในมือ = ผลรอบก่อนกลับมาอ่านเป็นผลปัจจุบัน (บั๊กตัวเดิม) · ไม่มีผล = ปุ่มยื่นชี้ไปหาป้ายที่ไม่ขึ้น
+     ⇒ `let fault` ของตัวตรวจเขียนได้จากตัวแยกสองตัวนี้เท่านั้น และทุกการเรียกตัวแยกต้องเป็นฝั่งขวาของ `fault = …` */
+  const checkFn = check.get("arguments.0");
+  const faultBinding = checkFn.scope.getBinding("fault");
+  assert.ok(faultBinding?.kind === "let" && ast.within(faultBinding.path, "checkRequirements"),
+    "checkRequirements ต้องเก็บความล้มของรอบไว้ใน `let fault` ของตัวเอง — ตัวตรวจล้าสมัย?");
+  const classified = [http, ...thrown].filter(Boolean);
+  for (const c of classified) {
+    const assign = c.parentPath;
+    assert.ok(c.key === "right" && assign.isAssignmentExpression({ operator: "=" }) && assign.get("left").isIdentifier()
+      && assign.scope.getBinding(assign.node.left.name) === faultBinding,
+      `\`${ast.textOf(c.node).slice(0, 40)}…\` ต้องเป็น \`fault = …\` — แยกแล้วทิ้ง = ความล้มไม่ถึงป้าย`);
+  }
+  assert.ok(inCheck("httpLoadFailure").length === 1 && faultBinding.constantViolations.length === classified.length
+    && faultBinding.constantViolations.every((v) => classified.some((c) => c.parent === v.node)),
+    "`fault` เขียนได้จาก httpLoadFailure/thrownLoadFailure เท่านั้น — `fault = null` ตรงไหนก็ลบความล้มของรอบนี้ทิ้ง");
+  // ผลที่ ready ไม่ตรงกับลิสต์ที่ขาด (`{ ready: false, missing: [] }` ของใบที่หายระหว่างตรวจ) ห้ามผ่านเป็นผล
+  const usable = ast.initText("usable") ?? "";
+  assert.ok(usable.includes("body.ready === (body.missing.length === 0)"),
+    "ต้องตรวจรูปผลก่อนใช้: ready ต้องตรงกับลิสต์ที่ขาด — ไม่งั้น 'ต้องแนบ: ' เปล่ากลับมาอีกทาง");
+  let rejectsUnusable = false;
+  check.traverse({ IfStatement(p) { if (ast.textOf(p.node.test) === "!usable" && p.get("consequent").isThrowStatement()) rejectsUnusable = true; } });
+  assert.ok(rejectsUnusable, "ผลที่รูปไม่ครบต้องโยนเข้า catch (กลายเป็นความล้มที่ป้ายบอก) ไม่ใช่ข้ามเงียบ ๆ");
+
+  // ③ คำตอบเก่าห้ามทับรอบใหม่ — จองรอบกับตัวนับกลางก่อนยิง แล้วทิ้งคำตอบที่ไม่ใช่รอบล่าสุดก่อนทุก setState ของผล
+  assert.equal(ast.initText("startCheckRun"), "useLatestRun()", "ตัวนับรอบต้องเป็นของกลาง (useLatestRun) — ธง alive ของ effect ไม่คุ้มรอบลองใหม่");
+  const body = check.get("arguments.0.body");
+  assert.ok(body.isBlockStatement(), "checkRequirements ต้องเป็น useCallback(async () => { … }) — ตัวตรวจล้าสมัย?");
+  const stmts = body.get("body");
+  const reserveAt = stmts.findIndex((st) => ast.textOf(st.node) === "const isLatest = startCheckRun();");
+  const fetchAt = stmts.findIndex((st) => {
+    let hit = false;
+    st.traverse({ CallExpression(c) { if (c.get("callee").isIdentifier({ name: "apiFetch" })) hit = true; } });
+    return hit;
+  });
+  const guardAt = stmts.findIndex((st) => st.isIfStatement() && ast.textOf(st.node.test) === "!isLatest()"
+    && st.get("consequent").isReturnStatement());
+  assert.ok(reserveAt !== -1 && fetchAt !== -1 && reserveAt < fetchAt, "ต้องจองรอบ (`const isLatest = startCheckRun();`) ก่อนยิง");
+  assert.ok(guardAt > fetchAt, "ต้องมี `if (!isLatest()) return;` หลังได้คำตอบ");
+  /* ทุกรอบต้องติด "กำลังตรวจ" เองก่อนยิง — `useState(true)` ติดให้แค่รอบแรก ⇒ ถอดบรรทัดนี้ = ตรวจรอบใหม่ (หลังแนบ/ลบไฟล์ · กดลองใหม่)
+     ไม่มีสถานะบินเลย: ปุ่มลองใหม่ไม่พัก ไม่ขึ้น "กำลังลองใหม่…" และ reqCurrent ถือผลของไฟล์ชุดก่อนเป็นผลปัจจุบัน (ปุ่มยื่นเดินตามผลเก่า) */
+  const armAt = stmts.findIndex((st) => ast.textOf(st.node) === "setReqChecking(true);");
+  assert.ok(armAt > reserveAt && armAt < fetchAt,
+    "ต้องมี `setReqChecking(true);` ระดับบนสุดของตัวตรวจ ระหว่างจองรอบกับยิง — ไม่งั้นรอบที่สองเป็นต้นไปไม่มีสถานะ 'กำลังตรวจ'");
+  const settles = [];
+  check.traverse({
+    CallExpression(c) {
+      const name = c.node.callee.name;
+      if (name === "setReq" || name === "setReqFault"
+        || (name === "setReqChecking" && c.get("arguments.0").isBooleanLiteral({ value: false }))) settles.push(c);
+    },
+  });
+  assert.ok(new Set(settles.map((c) => c.node.callee.name)).size === 3, "หา setReq / setReqFault / setReqChecking(false) ไม่ครบ — ตัวตรวจล้าสมัย?");
+  for (const c of settles) {
+    const top = c.find((p) => p.parentPath?.node === body.node);
+    assert.ok(top && top.key > guardAt,
+      `\`${ast.textOf(c.node)}\` ต้องอยู่หลัง \`if (!isLatest()) return;\` — คำตอบที่มาช้าทับผลของรอบที่ใหม่กว่า (รวมรอบลองใหม่) หรือดับ "กำลังตรวจ" ของรอบที่ยังบินอยู่`);
+  }
+  // นอก checkRequirements เขียนผลได้แค่การล้าง (ใบเปลี่ยน) — เขียนผลจริงจากที่อื่น = ข้ามตัวนับรอบ
+  for (const name of ["setReq", "setReqFault"]) {
+    const outside = ast.calls(name).filter((c) => !ast.within(c, "checkRequirements"));
+    assert.ok(outside.every((c) => c.get("arguments.0").isNullLiteral()), `${name} นอก checkRequirements ต้องเป็นการล้าง (null) เท่านั้น`);
+  }
+  /* ของที่ส่งเข้า state ต้องเป็นผลของรอบนี้จริง — ด่านลำดับข้างบนดูแค่ "อยู่หลัง isLatest" ⇒ `setReqFault(null)` / `setReq(req)` ผ่านได้
+     ทั้งที่ทิ้งผลทิ้ง: 500 แล้วจอยืนยันผลรอบก่อนเป็นผลปัจจุบัน (บั๊กตัวเดิม) ⇒ ตัวละหนึ่งจุด และอาร์กิวเมนต์คือตัวแปรของรอบนี้ตรง ๆ */
+  const handsOver = (setter, name) => {
+    const calls = ast.calls(setter).filter((c) => ast.within(c, "checkRequirements"));
+    const arg = calls[0]?.get("arguments.0");
+    const binding = checkFn.scope.getBinding(name);
+    assert.ok(calls.length === 1 && arg?.isIdentifier() && binding && arg.scope.getBinding(arg.node.name) === binding,
+      `ตัวตรวจต้องเรียก \`${setter}(${name})\` ที่เดียว — ส่งอย่างอื่นเข้า state = ผลของรอบนี้ไม่ถึงจอ`);
+    return binding;
+  };
+  handsOver("setReqFault", "fault");
+  const verdictBinding = handsOver("setReq", "verdict");
+  assert.ok(verdictBinding.constantViolations.some((v) => v.isAssignmentExpression() && !v.get("right").isNullLiteral()),
+    "`verdict` ต้องได้ค่าจากคำตอบที่ ok — ไม่มีการเขียน = ตรวจผ่านแล้วจอไม่เคยได้ผล");
+  // ตรวจใหม่ทุกครั้งที่ไฟล์แนบเปลี่ยน — ถอด attachItems/custItems ออกจาก deps = checklist + ปุ่มยื่นยึดผลก่อนแนบ/ลบไฟล์ไว้จน F5
+  const runners = ast.calls("useEffect").filter((c) => {
+    let hit = false;
+    c.get("arguments.0").traverse({ CallExpression(p) { if (p.get("callee").isIdentifier({ name: "checkRequirements" })) hit = true; } });
+    return hit;
+  });
+  const depsOf = (call) => {
+    const deps = call?.get("arguments.1");
+    return deps?.isArrayExpression() ? deps.node.elements.map((e) => (e?.type === "Identifier" ? e.name : null)) : [];
+  };
+  assert.equal(runners.length, 1, "ต้องมี useEffect ตัวเดียวที่เรียก checkRequirements — ตัวตรวจล้าสมัย?");
+  for (const name of ["checkRequirements", "attachItems", "custItems"]) {
+    assert.ok(depsOf(runners[0]).includes(name), `useEffect ที่เรียก checkRequirements ต้องมี ${name} ใน deps — ไฟล์แนบเปลี่ยนแล้วผลตรวจต้องตามทัน`);
+  }
+  // ใบเปลี่ยน/ได้ใบมาช้ากว่ารอบแรก — useCallback ที่ไม่ผูก regId จำ `regId = null` ของ commit แรกไว้ตลอด ⇒ ไม่เคยยิง = ค้าง "กำลังตรวจ"
+  assert.ok(depsOf(check).includes("regId"), "checkRequirements ต้องมี regId ใน deps — ไม่งั้นตัวตรวจจำใบของ commit แรก (ยังไม่มีใบ) ไว้ตลอด");
+
+  // ④ แถว "เอกสารบังคับ": "กำลังตรวจ" เฉพาะตอนมีรอบบินอยู่ · ล้มแล้วไม่มีผล = "ตรวจไม่ได้" · ผลรอบก่อนบอกว่ารอบก่อน
+  const [docsRow] = ast.objectsWhere("id", "documents");
+  assert.equal(docsRow?.value, "reqSummary", "แถว 'เอกสารบังคับ' ต้องมาจาก reqSummary");
+  onlyWhen("กำลังตรวจ", "reqChecking", "ตรวจล้มแล้วยังขึ้น 'กำลังตรวจ' = ค้างตลอดไป (ทรงเดิม)");
+  onlyWhen("ตรวจไม่ได้", "reqFault", "ยังไม่ล้มแล้วขึ้น 'ตรวจไม่ได้' = ความล้มปลอม");
+  onlyWhen("ผลรอบก่อน", "reqFault", "ป้าย 'ผลรอบก่อน' ต้องมาจากรอบล่าสุดที่ล้ม");
+  assert.equal(ast.initText("reqStale"), "!!req && !!reqFault", "ผลรอบก่อน = มีผลในมือ + รอบล่าสุดล้ม");
+
+  // ⑤ ปุ่มยื่น: อยู่เสมอ พักด้วยเหตุจริง · "ต้องแนบ: …" พูดได้เฉพาะจากผลปัจจุบันที่ไม่ ready (มีรายการขาดเสมอ)
+  const [submit] = ast.objectsWhere("id", "submit");
+  // ทั้งสองช่องตรงตัว — `!submitBlocker` (กลับด้าน) = กดได้ตอนติด และพักแบบไม่มีเหตุตอนพร้อม · อ่านแค่ชื่อจับทรงนั้นไม่ได้
+  assert.equal(submit?.disabled, "!!submitBlocker", "ปุ่ม 'ยื่นขึ้นทะเบียน' ต้องพักเมื่อมีเหตุเท่านั้น (disabled: !!submitBlocker)");
+  assert.equal(submit?.disabledReason, "submitBlocker || undefined", "ปุ่มที่พักต้องบอกเหตุตัวเดียวกับที่ทำให้พัก (disabledReason: submitBlocker || undefined)");
+  /* ไม่รู้ผล (`!reqCurrent`) = พักพร้อมเหตุเสมอ — ทุกใบของกิ่งนี้ (รวมทางแยกซ้อน) ต้องเป็นประโยคที่ไม่ว่าง
+     🐞 `null`/`""` ตรงนี้ = ตรวจล้มแล้วปุ่มยื่น **กดได้** ไม่มีเหตุ (ด่านฝั่งจอหลวมกว่าเดิม) · กดได้ (null) มีทางเดียว: ผลปัจจุบันที่ ready */
+  const blocker = ast.initPath("submitBlocker");
+  assert.ok(blocker?.isConditionalExpression() && ast.textOf(blocker.node.test) === "!reqCurrent",
+    "ต้องมี `const submitBlocker = !reqCurrent ? <เหตุที่ไม่รู้ผล> : …` — ตัวตรวจล้าสมัย?");
+  const leavesOf = (p) => (p.isConditionalExpression() ? [...leavesOf(p.get("consequent")), ...leavesOf(p.get("alternate"))] : [p]);
+  const saysSomething = (p) => (p.isStringLiteral() && p.node.value.trim() !== "")
+    || (p.isTemplateLiteral() && p.node.quasis.some((q) => q.value.cooked.trim() !== ""));
+  const unknownLeaves = leavesOf(blocker.get("consequent"));
+  assert.ok(unknownLeaves.every(saysSomething),
+    `ไม่รู้ผลแล้วปุ่มยื่นต้องพักพร้อมประโยค — เจอ ${unknownLeaves.filter((p) => !saysSomething(p)).map((p) => ast.textOf(p.node)).join(", ")}`);
+  assert.ok(unknownLeaves.some((p) => p.isStringLiteral() && p.node.value.includes("ตรวจเอกสารบังคับไม่ได้")),
+    "ตรวจล้มแล้วไม่มีผล ปุ่มยื่นต้องบอกว่า 'ตรวจเอกสารบังคับไม่ได้' (พร้อมทางกลับ) ไม่ใช่เงียบ/เหตุอื่น");
+  {
+    const { hits, unguarded } = guardedBy(rel, { literal: "ตรวจเอกสารบังคับไม่ได้" }, "reqChecking");
+    assert.ok(hits > 0 && unguarded === 0, "'ตรวจเอกสารบังคับไม่ได้' ต้องอยู่กิ่ง else ของ `reqChecking ? … :` — รอบที่ยังบินอยู่ไม่ใช่รอบที่ล้ม");
+  }
+  const opens = leavesOf(blocker).filter((p) => !saysSomething(p));
+  assert.ok(opens.length === 1 && opens[0].isNullLiteral() && opens[0].key === "consequent"
+    && ast.textOf(opens[0].parentPath.node.test) === "reqCurrent.ready" && opens[0].parentPath.parent === blocker.node,
+    "ปุ่มยื่นกดได้ (submitBlocker = null) ทางเดียว: กิ่ง then ของ `reqCurrent.ready ?` ใต้กิ่ง else ของ `!reqCurrent ?`");
+  for (const guard of ["!reqCurrent", "reqCurrent.ready"]) {
+    const { hits, unguarded } = guardedBy(rel, { literal: "ต้องแนบ:" }, guard);
+    assert.ok(hits > 0, `${rel}: หา 'ต้องแนบ:' ไม่เจอ — ตัวตรวจล้าสมัย?`);
+    assert.equal(unguarded, 0, `'ต้องแนบ: …' ต้องอยู่กิ่ง else ของ \`${guard} ? … :\` — ไม่รู้ผลแล้วขึ้น "ต้องแนบ: " เปล่า`);
+  }
+  // นิยามทั้งก้อน ไม่ใช่แค่ "อ่านสองธง" — `… && reqChecking ? req : null` ก็อ่านครบแต่กลับด้าน
+  assert.equal(ast.initText("reqCurrent"), "req && !reqFault && !reqChecking ? req : null",
+    "ผลปัจจุบัน (reqCurrent) ต้องไม่ใช่ผลของรอบที่ล้ม และไม่ใช่ผลเดิมระหว่างตรวจรอบใหม่");
+
+  // ⑥ ป้ายผลตรวจ: โทน error · ข้อความดิบทางบรรทัดรอง · ลองใหม่ = checkRequirements (ตัวนับรอบเดียวกัน) พร้อมสถานะกำลังลอง
+  const reqNotice = ast.bindingNamed("reqNotice");
+  const noticeInit = ast.initPath("reqNotice");
+  assert.ok(reqNotice && noticeInit?.isConditionalExpression() && ast.textOf(noticeInit.node.test) === "reqFault",
+    "ต้องมี `const reqNotice = reqFault ? (…) : null`");
+  const [box] = ast.elements("StatusNotice", { where: { tone: "error" } }).filter((e) => ast.within(e.path, "reqNotice"));
+  assert.ok(box && readsState(box.attr("detail"), "reqFault"), "ป้ายผลตรวจต้องส่งข้อความดิบทางบรรทัดรอง (detail={reqFault.detail})");
+  onlyWhen("ผลตรวจที่มีอยู่", "reqStale", "ไม่มีผลในมือแล้วพูดถึง 'ผลที่มีอยู่' = อ้างผลที่ไม่มี");
+  const retry = ast.retryButton("reqNotice");
+  assert.ok(retry && reads(ast, retry.onClick, "checkRequirements"), "ปุ่มลองใหม่ต้องเรียก checkRequirements — ยิงเองนอกตัวนับรอบ = คำตอบเก่าทับได้");
+  assert.ok(readsState(retry.disabled, "reqChecking") && readsState(retry.labelTest, "reqChecking"),
+    "ปุ่มลองใหม่ต้องพัก + เปลี่ยนป้ายตาม reqChecking — กดแล้วป้ายนิ่ง = คนกดซ้ำรัว ๆ");
+  // วาดในทางปกติ และไม่ผูกกับสถานะใบ — แถวสรุป/รายการบนการ์ดจัดการอ่านผลนี้ทุกสถานะ
+  const slots = [];
+  ast.mainReturn()?.traverse({ JSXExpressionContainer(p) { if (p.get("expression").isIdentifier({ name: "reqNotice" })) slots.push(p); } });
+  assert.ok(slots.length > 0, "ทางปกติ (return สุดท้าย) ต้องมี {reqNotice}");
+  for (const slot of slots) {
+    const tests = [];
+    for (let p = slot; p.parentPath; p = p.parentPath) {
+      if (p.parentPath.isConditionalExpression() && p.key !== "test") tests.push(ast.textOf(p.parentPath.node.test));
+      if (p.parentPath.isLogicalExpression() && p.key === "right") tests.push(ast.textOf(p.parentPath.node.left));
+    }
+    assert.ok(!tests.some((t) => t.includes("status")), `{reqNotice} ถูกคุมด้วย \`${tests.join(" / ")}\` — ต้องขึ้นทุกสถานะ ไม่ใช่เฉพาะฉบับร่าง`);
+  }
+
+  // ⑦ checklist (ฉบับร่าง + การ์ดจัดการ) วาดจากผลที่ไม่ใช่ของรอบที่ล้ม — ผลรอบก่อนห้ามวาดเป็นรายการปัจจุบัน
+  assert.equal(ast.initText("reqShown"), "reqFault ? null : req", "checklist ต้องวาดจาก reqShown (ผลที่ไม่ใช่ของรอบที่ล้ม)");
+  for (const [match, what] of [[{ literal: "ยังขาดเอกสารที่จำเป็น" }, "checklist ของฉบับร่าง"], [{ tag: "DocumentReadinessList" }, "<DocumentReadinessList>"]]) {
+    const all = gatesBy(rel, match);
+    assert.ok(all.length > 0, `${rel}: ${what} หาไม่เจอ — ตัวตรวจล้าสมัย?`);
+    for (const names of all) {
+      assert.ok(names.has("reqShown") && !names.has("req"),
+        `${what} ต้องวาดจาก reqShown ไม่ใช่ req — ผลของรอบที่ล้มไปแล้ววาดเป็นรายการ = อ่านเป็นผลปัจจุบัน`);
+    }
+  }
 });
 
 /* ── "ไม่มีของในมือ" ≠ "ลิสต์ยาวศูนย์" ────────────────────────────────────────
