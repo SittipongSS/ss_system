@@ -78,6 +78,11 @@ export default function ContractDetailPage() {
   const [apDocDate, setApDocDate] = useState("");
   const [externalFileId, setExternalFileId] = useState("");
   const [externalDocs, setExternalDocs] = useState([]);
+  /* การ์ดไฟล์โหลดสำเร็จแล้วหรือยัง — ชุดแรกที่การ์ดส่งมาคือ `[]` ก่อนโหลดเสร็จ และโหลดพังก็ได้ `[]`
+     ⇒ รางต้องแยก "ยังไม่รู้" ออกจาก "ไม่มีไฟล์" (รีวิว 25/09 · ดูคำเตือนที่ prop `onItemsChange` ของ AttachmentsPanel) */
+  const [externalDocsKnown, setExternalDocsKnown] = useState(false);
+  // เปลี่ยนใบในหน้าเดิม (ลิงก์ฉบับแก้ไข) — ค่าที่รู้เป็นของใบก่อน ห้ามพามา
+  useEffect(() => { setExternalDocsKnown(false); setExternalDocs([]); }, [id]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,11 +133,14 @@ export default function ContractDetailPage() {
   const lifecycle = useMemo(
     () => buildContractLifecycle({
       canEdit, external, substitute, locked: !!lockReason,
+      /* ร่าง external ที่แนบเอกสารแล้ว = รางเดินไป "รอ AE Supervisor อนุมัติ" (ตรงกับทะเบียน/การ์ดบน SO · รีวิว 25/09)
+         การ์ดไฟล์โหลดแล้ว = เชื่อการ์ด (แนบ/ลบสด ๆ) · ยังไม่รู้ = ธงของเซิร์ฟเวอร์ตัวเดียวกับทะเบียน */
+      docAttached: externalDocsKnown ? externalDocs.length > 0 : !!contract?._externalDocReady,
       contract,
       linkedOrder,
       signedCancel: contract?.signedCancelContext || null,
     }),
-    [canEdit, external, substitute, lockReason, contract, linkedOrder],
+    [canEdit, external, substitute, lockReason, externalDocsKnown, externalDocs.length, contract, linkedOrder],
   );
 
   // ช่องบังคับที่ยังว่าง — บอกตั้งแต่ก่อนกดออกสัญญา ไม่ใช่ให้ API ตอบ 400 ทีหลัง
@@ -269,7 +277,11 @@ export default function ContractDetailPage() {
   /* ⚠️ ต้องเป็น callback ที่ identity คงที่ — `AttachmentsPanel` เรียก `onItemsChange`
      ใน effect ที่มี dependency เป็นตัวฟังก์ชัน ถ้าสร้างใหม่ทุกเรนเดอร์ effect จะยิงซ้ำ
      ทุกรอบ (รอดมาได้เพราะ setState ค่าเดิมไม่ทำให้เรนเดอร์ใหม่ — พึ่งความบังเอิญนั้นไม่ได้) */
-  const handleAttachments = useCallback((items) => {
+  const handleAttachments = useCallback((items, { loaded } = {}) => {
+    /* ⚠️ ชุดที่ยังไม่โหลด (การ์ดเพิ่ง mount · หน้าโหลดซ้ำหลังกดปุ่มแล้วการ์ด mount ใหม่ · โหลดพัง) คือ "ยังไม่รู้"
+       ไม่ใช่ "ไม่มีไฟล์" ⇒ ไม่ทับค่าที่เคยรู้ (รีวิว 25/09: เดิมทับด้วย `[]` ⇒ รางกะพริบกลับไป "แนบเอกสาร") */
+    if (!loaded) return;
+    setExternalDocsKnown(true);
     const signed = (items || []).find((item) => item.docType === SIGNED_CONTRACT_DOC_TYPE);
     setSignFileId(signed?.id || "");
     // เอกสารที่ใช้แทนสัญญาเป็นคีย์คนละตัว — ใบ external ไม่มี "สัญญาที่ลงนามแล้ว"

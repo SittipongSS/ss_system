@@ -1,5 +1,7 @@
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
+import { notifyUsers } from '@/lib/notifications';
+import { contractApprovedNotice } from '@/lib/sales/contractNotify';
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { contractKindLabel, signedApproveError } from '@/lib/sales/contracts';
@@ -57,6 +59,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `รับรองการลงนาม${contractKindLabel(data.kind)} ${data.contractNo} — สัญญาใช้งานได้แล้ว`,
     request: req,
   });
+
+  /* ⭐ เจ้าของใบต้องรู้ว่าผ่านแล้ว (2026-09-15) — ของเดิมเงียบ ต้องเปิดใบเองถึงจะเห็น
+     ⚠️ หลัง audit เสมอ — แจ้งเตือนพลาดต้องไม่ทำให้การอนุมัติที่สำเร็จแล้วตอบ error
+        (`notifyUsers` กลืน error เองแล้วคืน `{ sent: 0 }` ไม่ throw) */
+  const notice = contractApprovedNotice(data, user);
+  if (notice) await notifyUsers(supabase, { ...notice, entityType: 'sales_contract', actorName: user.name || null });
 
   const { issuedHtml, ...rest } = data;
   return ok(rest);

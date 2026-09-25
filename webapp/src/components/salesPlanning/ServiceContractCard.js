@@ -42,11 +42,22 @@ export default function ServiceContractCard({
   busy = false,
   onLink,          // (contractId | null) => Promise<void>
   onSaveRounds,    // ({ [lineId]: จำนวนรอบ }) => Promise<boolean>
+  /* การ์ด "สัญญา" ของดีลข้างล่างมีปุ่มออกสัญญาให้คนนี้จริงไหม (หน้า SO คำนวณ: `showDealContracts && canCreateContract`)
+     ⚠️ ข้อความว่างของการ์ดนี้ชี้ไปที่ปุ่มนั้น — ไม่มีปุ่มแล้วยังชี้ = พาคนไปหาของที่ไม่มี (รีวิว 25/09) */
+  canCreateBelow = false,
+  editMode = false,
 }) {
-  const choices = order?.contractChoices || [];
+  /* ⚠️ อ้างอิงคงที่ — `options` ข้างล่าง (และเอฟเฟกต์เลือกให้เมื่อมีตัวเลือกเดียว) พึ่งตัวนี้ · `|| []` เปล่า ๆ
+     ได้อาร์เรย์ใหม่ทุกเรนเดอร์ ⇒ memo ไม่เคยจำ (eslint react-hooks/exhaustive-deps) */
+  const choices = useMemo(() => order?.contractChoices || [], [order?.contractChoices]);
   const linked = order?.serviceContract || null;
   const options = useMemo(() => serviceContractOptions(choices), [choices]);
   const [picked, setPicked] = useState("");
+  /* มีสัญญาที่ผูกได้ใบเดียว = เลือกให้เลย (ไม่ใช่การเดา — มันคือตัวเลือกเดียวจริง ๆ
+     กติกาเดียวกับโมดัลออกสัญญาที่เลือกชนิดให้เมื่อออกได้ชนิดเดียว) · คนยังต้องกดผูกเอง */
+  useEffect(() => {
+    if (!linked && !picked && options.length === 1) setPicked(options[0].value);
+  }, [linked, picked, options]);
 
   /* ── เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) ───────────────────────────
      ⭐ ใบย้อนหลังไม่ได้ "ผูกสัญญาที่มีอยู่" — ฟอร์มคีย์ใบสร้างเอกสารแทนสัญญาเป็น **ร่าง** ให้พร้อมใบ
@@ -58,6 +69,28 @@ export default function ServiceContractCard({
   const substituteDraft = isHistoricalOrder(order) && isSubstituteContract(linked) && linked?.status === "draft";
   const historicalUnlinked = isHistoricalOrder(order) && order?.status !== "approved" && !linked;
   const contractFiles = order?.serviceContractFiles || [];
+
+  /* ขั้นถัดไปของข้อความ "ยังไม่มีสัญญาที่ผูกได้" — เรียงตามเหตุที่คนนี้ทำต่อไม่ได้ก่อน */
+  const noContractNext = canCreateBelow
+    ? "ออกสัญญา หรือใช้เอกสารภายนอก (PO · อีเมล · สัญญากระดาษ) แทนได้ที่การ์ด “สัญญา” ด้านล่าง · "
+      + "เอกสารแทนสัญญาต้องให้ AE Supervisor อนุมัติก่อน จึงกลับมาผูกกับใบนี้ได้"
+    : !canEdit
+      ? "ออกและผูกสัญญาได้เฉพาะฝ่ายขายที่ดูแลใบนี้"
+      : ["cancelled", "revised"].includes(order?.status)
+        ? "ใบนี้ปิดไปแล้ว ผูกสัญญาไม่ได้"
+        : isHistoricalOrder(order)
+          /* ใบย้อนหลังไม่มีการ์ดสัญญาของดีลในแท็บนี้ (ดีลภาชนะ) — ทางกู้ที่ใช้ได้จริงคือการ์ด "สัญญา" บนหน้าดีล
+             🐞 รีวิว 25/09: เดิมชี้เมนู "สัญญา" แต่โมดัลของทะเบียนเลือกได้เฉพาะดีลที่มีใบเสนอราคาอนุมัติ ซึ่งดีลภาชนะ
+                ไม่เคยมี ⇒ ทางตัน · หน้าดีลส่ง dealId เข้าโมดัลตรง ๆ (POST รับเอกสารภายนอกชนิดบริการของดีลภาชนะ) */
+          ? <>
+            ออกเอกสารแทนสัญญาที่{order?.dealId
+              ? <Link href={`/sa/deals/${order.dealId}?tab=quotations`} className="linklike">หน้าดีลของใบนี้</Link>
+              : "หน้าดีลของใบนี้"} (การ์ด “สัญญา” → ออกสัญญา / เอกสารแทน) แล้วให้ AE Supervisor อนุมัติก่อน
+            จึงกลับมาผูกกับใบนี้ได้
+          </>
+          : editMode
+            ? "ออกจากโหมดแก้ไขก่อน แล้วออกสัญญาที่การ์ด “สัญญา” ด้านล่าง"
+            : "ออกสัญญาที่เมนู “สัญญา” แล้วกลับมาผูกกับใบนี้";
 
   const target = choices.find((c) => c.id === picked) || null;
   const gate = serviceContractLinkError(order, target, { canEdit });
@@ -198,9 +231,11 @@ export default function ServiceContractCard({
               </div>
             </div>
           ) : (
+            /* 🐞 เดิมไล่คนไป "เมนู สัญญา" — ออกจากใบที่กำลังทำอยู่แล้วหวังว่าจะเดินกลับมาถูก
+               ⇒ ทางออกอยู่ในแท็บเดียวกันแล้ว (การ์ด "สัญญา" ของดีลข้างล่าง)
+               ⚠️ ชี้ไปการ์ดข้างล่างเฉพาะเมื่อมันมีปุ่มให้คนนี้จริง (`canCreateBelow`) — ไม่งั้นบอกเหตุที่แท้ */
             <StatusNotice tone="warning" title="ยังไม่มีสัญญาที่ผูกได้">
-              ดีลนี้ยังไม่มีสัญญาที่ลงนามและผ่านการรับรองแล้ว — ออกสัญญาที่เมนู “สัญญา”
-              หรือใช้เอกสารภายนอกแทนสัญญาแล้วให้ AE Supervisor อนุมัติก่อน
+              ดีลนี้ยังไม่มีสัญญาที่ลงนามและผ่านการรับรองแล้ว — {noContractNext}
             </StatusNotice>
           )}
         </>

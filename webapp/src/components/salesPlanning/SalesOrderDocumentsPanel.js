@@ -60,7 +60,7 @@ export function useSalesOrderDocuments(orderId, orderKey) {
  *
  * @param docs ผลของ `useSalesOrderDocuments` ที่หน้า SO ถือไว้
  * @param onOpenTab `(key) => void` — ปุ่ม "ไปแท็บ…" ของกลุ่มที่จัดการที่แท็บอื่น
- * @param tabKeys แท็บที่ใบนี้มีจริง (แท็บสัญญามีเฉพาะใบสายบริการ) — ไม่มีแท็บ = ไม่มีปุ่มพาไป
+ * @param tabKeys แท็บที่ใบนี้มีจริง (แท็บสัญญามีทุกใบยกเว้นใบย้อนหลังนอกเส้นบริการ · 25/09) — ไม่มีแท็บ = ไม่มีปุ่มพาไป
  */
 export default function SalesOrderDocumentsPanel({ orderId, docs, meId, isAdmin, onOpenTab, tabKeys = [] }) {
   const { data, error, reload, refreshIfStale } = docs;
