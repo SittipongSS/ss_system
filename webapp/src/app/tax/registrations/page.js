@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { ClipboardCheck, Plus } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
+import Modal from "@/components/Modal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, isTaxWaitingOnMe, ownedStages, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
 import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
 import ReportExportActions from "@/components/excise/ReportExportActions";
@@ -34,6 +36,8 @@ import styles from "./page.module.css";
 const registrationBrand = (r) => brandLabel(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName);
 const registrationProduct = (r) => productDisplayName(r);
 const taxText = (r) => (r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(r.taxPerUnit || 0));
+// ประโยคของสายที่ป้อนฟอร์มสร้างทะเบียน — ดูมติที่ก้อน sources
+const FORM_BLOCKED_NOTE = "ยังสร้างทะเบียนใหม่ไม่ได้ เพราะฟอร์มต้องใช้ข้อมูลชุดนี้เลือกลูกค้าและ FG ที่ยังไม่ขึ้นทะเบียน";
 /* ⭐ **คิวเล่าเรื่องเดียวกับรายงาน** (มติผู้ใช้ 2026-08-28) — เดิมต้องเปิด /tax/reports
    อีกหน้าเพื่อดู ขนาด · เลขผู้เสียภาษี · ราคาถอด VAT · ต้นทุน/กำไร ทั้งที่กำลังตัดสินใจ
    อยู่บนคิว · ตัวเลขทุกตัวคิดที่ server (`registrationProductFacts`) จอแค่วาด */
@@ -58,7 +62,7 @@ export default function RegistrationsPage() {
   const router = useRouter();
   const canEdit = useCan("products:edit");   // SA: create / edit / resubmit / delete
 
-  const { data: regs, loading, error: loadError, errorDetail: loadErrorDetail, reload } = useApiList("/api/excise-registrations?view=queue");
+  const { data: regs, loading, error: regsError, staleError: regsStale, errorDetail: regsDetail, loaded: regsLoaded, reload } = useApiList("/api/excise-registrations?view=queue");
 
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกา **ไทย** — ห้ามอ่านนาฬิกาตอนเรนเดอร์
      (ค่าจะขยับระหว่างเรนเดอร์ และเครื่องที่ตั้งโซนเวลาอื่นจะได้คนละวัน) */
@@ -96,9 +100,90 @@ export default function RegistrationsPage() {
   /* ลิสต์ลูกค้าโหลดเมื่อ **กางตัวกรอง** หรือเปิดโมดัลครั้งแรก — ไม่ใช่ตอนเปิดหน้า
      (508 แถว · เหตุผลเดียวกับ picker ของโมดัล) */
   const [pickerReady, setPickerReady] = useState(false);
-  const { data: products } = useApiList(pickerReady ? "/api/products" : null);
-  const { data: customers } = useApiList(pickerReady ? "/api/customers" : null);
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList(pickerReady ? "/api/products" : null);
+  const { data: customers, loading: lCustomers, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList(pickerReady ? "/api/customers" : null);
   const openForm = () => { setPickerReady(true); setFormOpen(true); };
+
+  /* ── โหลดพัง ≠ ไม่มีการขึ้นทะเบียน · picker ที่ดึงไม่ได้ ≠ "ไม่มีลูกค้า/สินค้าให้เลือก" ────────────────────
+     ป้ายเดียวของจอ (ท่าเดียวกับ /tax · /database) — ทุก useApiList ของหน้านี้อยู่ในก้อน sources ⇒ ได้ประโยคเดียวกัน
+     ปุ่มลองใหม่ตัวเดียวกัน และรอบเบื้องหลังที่ล้ม (`staleError`) ถึงป้ายทุกสาย
+
+     ⭐ **มติของจอนี้: สายไหนกระทบอะไร**
+        · การขึ้นทะเบียน (ลิสต์หลัก) — ไม่เคยโหลดสำเร็จ = ซ่อนตาราง เหลือป้าย ("ยังไม่มีการขึ้นทะเบียน" ใต้ป้าย
+          อ่านว่าระบบว่างจริง) · มีแคชอยู่ = ตารางยังอยู่ ป้ายบอกว่าเป็นของรอบก่อน
+          ⚠️ ฟอร์มสร้างทะเบียนก็กินลิสต์นี้ — ใช้ซ่อน FG ที่ขึ้นทะเบียนกับลูกค้ารายนั้นแล้ว (กันเลือกไปชน 409)
+             ลิสต์หายแล้วฟอร์มยังเปิด = ตัวเลือกเต็มไปด้วย FG ที่ server จะตีกลับ
+        · ทะเบียนสินค้า (picker ของฟอร์มอย่างเดียว) — ล้มแล้วช่อง FG ขึ้น "ลูกค้ารายนี้ยังไม่มี FG — สร้างที่ฐานข้อมูลก่อน"
+          = คำตอบผิดที่พาคนไปสร้างสินค้าซ้ำ · ⚠️ พูดเฉพาะคนที่มีปุ่มสร้าง (`canEdit`) — สายนี้ถูกโหลดตอนกางตัวกรองด้วย
+          (pickerReady ตัวเดียวกัน) ⇒ คนดูอย่างเดียวที่แค่กางตัวกรองต้องไม่เจอป้าย "ยังสร้างทะเบียนไม่ได้" ของปุ่มที่ตัวเองไม่มี
+        · รายชื่อลูกค้า (picker ของตัวกรอง + ฟอร์ม) — ล้มแล้วแผงตัวกรองขึ้น "ไม่มีตัวเลือก" และช่องลูกค้าในฟอร์มขึ้น
+          "ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน" ⇒ ป้ายบอกว่าตัวกรองลูกค้ายังใช้ไม่ได้ · หัวหมวดในแผงตัวกรองบอกสถานะเอง
+          (`customerGroupLabel` — แผงลอยทับป้ายตอนกางอยู่) · ตารางไม่ต้องหลบ (ภาษี/เอกสาร/ชื่อลูกค้าบนแถวคิดที่ server)
+     ⭐ **ฟอร์มไม่เปิดบนข้อมูลครึ่งเดียว** (ท่าเดียวกับหน้าแก้ PO / ลงรอบ FC ที่คืนป้ายแทนฟอร์ม) — ทั้งสามสายป้อน
+        RegistrationFormModal ⇒ เปิดฟอร์มจริงเมื่อทุกสายเคยโหลดสำเร็จแล้วเท่านั้น (`formReady`) · ระหว่างนั้นโมดัลหัวเดียวกัน
+        วางป้ายตัวเดียวกันพร้อมปุ่มลองใหม่ (ล้ม) หรือบรรทัด "กำลังโหลด…" (ยังมาไม่ครบ) แทนช่องเลือกที่ว่าง — ปุ่มบันทึกจึงไม่มี
+        ให้กดบนข้อมูลที่ขาด · 🐞 ทรงเดิมเปิดฟอร์มทันทีตอนกด แม้แต่ตอนโหลดปกติก็เห็น "ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน"
+        อยู่ครู่หนึ่ง · มีแคชอยู่ (รอบเบื้องหลังล้ม) = ฟอร์มเปิดได้ ป้ายหน้าจอบอกว่าเป็นของรอบก่อน (server ยังเป็นด่านจริง)
+     ⚠️ ป้ายกับการซ่อนคนละคำถาม: มี `error`/`staleError` = ขึ้นป้ายเสมอ · ซ่อน/พักเฉพาะตอนไม่เคยโหลดสำเร็จ (`loaded`)
+        — ห้ามวัดด้วย `!regs.length`: ลิสต์ที่ตอบ `200 []` คือรู้แล้วว่ายังไม่มีการขึ้นทะเบียน */
+  const sources = [
+    {
+      label: "การขึ้นทะเบียน", error: regsError || regsStale, empty: !regsLoaded, detail: regsDetail, reload, blocks: "list",
+      blockedNote: "รายการยังแสดงไม่ได้ (ไม่ได้แปลว่ายังไม่มีการขึ้นทะเบียน)",
+      staleNote: "รายการที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "ทะเบียนสินค้า", error: canEdit ? productsError || productsStale : null, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "form",
+      blockedNote: FORM_BLOCKED_NOTE,
+      staleNote: "รายการสินค้าเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "รายชื่อลูกค้า", error: customersError || customersStale, empty: !customersLoaded, detail: customersDetail, reload: reloadCustomers, blocks: "filter",
+      blockedNote: "ตัวกรองลูกค้ายังใช้ไม่ได้ (ไม่ได้แปลว่าไม่มีลูกค้าให้เลือก)",
+      staleNote: "รายชื่อลูกค้าเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const listBlocked = blocked.some((s) => s.blocks === "list");
+  const filterBlocked = blocked.some((s) => s.blocks === "filter");
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* ประโยคท้ายผูกกับสายที่ล้มทีละสาย (ไม่มีของในมือ = blockedNote · มีแคช = staleNote) · ทุกสายที่ถูกบล็อกป้อนฟอร์ม
+     สร้างทะเบียนด้วย ⇒ คนที่มีปุ่มสร้างได้ประโยค "ยังสร้างไม่ได้" ต่อท้ายครั้งเดียว (Set กันซ้ำกับ blockedNote ของสายสินค้า)
+     — ประโยคนี้คือเหตุผลที่โมดัลสร้างทะเบียนโชว์แทนฟอร์ม เพราะโมดัลวางป้ายตัวเดียวกันนี้ */
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      ...new Set([
+        ...failing.map((s) => (s.empty ? s.blockedNote : s.staleNote)),
+        canEdit && blocked.length ? FORM_BLOCKED_NOTE : null,
+      ].filter(Boolean)),
+    ].join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ลองสาย picker ไม่ได้พาแผงเข้า skeleton (ตารางยังอยู่ · และป้ายในโมดัลไม่มี skeleton เลย) ⇒ ปุ่มต้องบอกเอง
+     ว่ากำลังลองอยู่ ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const retrying = loading || lProducts || lCustomers;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
+  // ทุกสายป้อนฟอร์ม (ดูมติข้างบน) ⇒ ฟอร์มจริงเปิดเมื่อไม่มีสายไหน "ไม่เคยโหลดสำเร็จ" · มีแคช = ใช้ได้
+  const formReady = !sources.some((s) => s.empty);
+  /* หัวหมวดในแผงตัวกรอง — แผงวาด "ไม่มีตัวเลือก" เองเมื่อลิสต์ว่าง (FilterPopover ยังไม่มีช่องให้บอกเหตุ)
+     ⇒ ป้ายหมวดบอกแทนว่าว่างเพราะอะไร · ป้ายเต็มพร้อมปุ่มลองใหม่อยู่ใต้แถบเครื่องมือ */
+  const customerGroupLabel = customersLoaded ? "ลูกค้า" : filterBlocked ? "ลูกค้า (ดึงไม่ได้)" : "ลูกค้า (กำลังโหลด…)";
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -349,8 +434,9 @@ export default function RegistrationsPage() {
 
   /* ⭐ ป้ายจำนวนย้ายจากหัวหน้าเข้าหัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9)
      นับ **รายการที่เหลือหลังกรอง** = ยอดของ Pager · กำลังเลือกแถว = "เลือก x/y รายการ"
-     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด */
-  const noData = (loading || loadError) && !regs.length;
+     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด
+     ⚠️ "ยังไม่มีข้อมูล" = ไม่เคยโหลดสำเร็จ (`loaded`) ไม่ใช่ลิสต์ยาวศูนย์ — `200 []` คือรู้แล้วว่า 0 รายการ */
+  const noData = !regsLoaded;
   const count = noData ? null
     : selected.size ? `เลือก ${selected.size}/${rows.length} รายการ` : `${rows.length} รายการ`;
 
@@ -385,7 +471,7 @@ export default function RegistrationsPage() {
         title="รายการขึ้นทะเบียนสรรพสามิต"
         subtitle="ค้นหา กรอง และเปิดทะเบียนเพื่อตรวจหรือยื่นต่อ · เรียงจากค้างนานสุด"
         count={count}
-        loading={loading && !regs.length}
+        loading={loading && !regsLoaded}
         toolbar={(
         <FilterBar
           filters={filterOptions}
@@ -401,7 +487,7 @@ export default function RegistrationsPage() {
             onOpen={() => setPickerReady(true)}
             onClear={() => setCustomerIds([])}
             groups={[{
-              key: "customer", label: "ลูกค้า", icon: Building2,
+              key: "customer", label: customerGroupLabel, icon: Building2,
               /* ป้ายต้องผ่านกติกาสองภาษา — ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้ตัวเลือกว่างเปล่า
                  (ป้ายที่นี่เป็นชื่อเปล่า ไม่ใช่ "รหัส · ชื่อ" แบบ dropdown เลือกลูกค้า) */
               options: customers.map((c) => ({ value: c.id, label: customerNameIn(c) })),
@@ -422,18 +508,10 @@ export default function RegistrationsPage() {
         </FilterBar>
         )}
       >
-      {loadError && (
-        <StatusNotice
-          tone="error"
-          className="mb-4"
-          detail={loadErrorDetail}
-          action={<Button size="sm" variant="ghost" onClick={() => reload()}>ลองใหม่</Button>}
-        >
-          {loadError}
-        </StatusNotice>
-      )}
-      {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด ไม่ใช่ "ยังไม่มีการขึ้นทะเบียน" */}
-      {!(loadError && !regs.length) && (
+      {notice}
+      {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด ไม่ใช่ "ยังไม่มีการขึ้นทะเบียน"
+          ⚠️ ถามสายการขึ้นทะเบียนสายเดียว — picker ล้มไม่ได้ทำให้ตารางผิด (ดูมติที่ก้อน sources) */}
+      {!listBlocked && (
       <DataList
         columns={columns}
         rows={rows}
@@ -451,7 +529,7 @@ export default function RegistrationsPage() {
       {/* registrations = ชุดเต็ม (ไม่ใช่ rows ที่ผ่านตัวกรองจอ) — โมดัลใช้เช็คว่า
           FG ไหนขึ้นทะเบียนกับลูกค้าที่เลือกไปแล้ว จะได้ไม่ให้เลือกไปชน 409 */}
       <RegistrationFormModal
-        open={formOpen}
+        open={formOpen && formReady}
         onClose={() => setFormOpen(false)}
         onSaved={handleSaved}
         registration={null}
@@ -460,6 +538,16 @@ export default function RegistrationsPage() {
         registrations={regs}
         userName={userName}
       />
+      {/* ฟอร์มยังเปิดไม่ได้ (สายที่มันกินยังมาไม่ครบ/ล้ม) — โมดัลหัวเดียวกับฟอร์ม วางป้ายแทนช่องเลือกที่ว่าง
+          ⚠️ ป้ายตัวเดียวกับบนจอ (มีปุ่มลองใหม่) — ลองสำเร็จครบเมื่อไร `formReady` พลิก แล้วฟอร์มจริงเปิดแทนที่ตรงนี้เอง */}
+      <Modal
+        open={formOpen && !formReady}
+        onClose={() => setFormOpen(false)}
+        title="สร้างทะเบียน (ร่าง)"
+        footer={<Button onClick={() => setFormOpen(false)}>ปิด</Button>}
+      >
+        {blocked.length ? notice : <p className="muted">กำลังโหลดข้อมูลที่ฟอร์มต้องใช้ (รายชื่อลูกค้า · รายการสินค้า · ทะเบียนที่มีอยู่)…</p>}
+      </Modal>
     </Workspace>
   );
 }

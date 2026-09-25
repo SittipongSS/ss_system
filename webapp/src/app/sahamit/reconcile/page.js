@@ -1,9 +1,12 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState, useEffect } from "react";
-import { ClipboardCheck, Download, Search, Maximize2, Minimize2 } from "lucide-react";
+import { ClipboardCheck, Download, Search, Maximize2, Minimize2, AlertCircle, SlidersHorizontal } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
+import EmptyState from "@/components/ui/EmptyState";
+import Button from "@/components/ui/Button";
+import { notifyToast } from "@/components/ui/Toast";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Select from "@/components/ui/Select";
@@ -12,7 +15,7 @@ import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { buildReconMatrix, posByRound } from "@/lib/sahamit/reconcileClient";
 import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
 import { deliveryMonthOf } from "@/lib/sahamit/po";
-import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, NA } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 
 // token → CSS var
@@ -40,12 +43,95 @@ const nf = (n) => fmtNumber(n || 0);
 const nfBaht = (n) => fmtMoney(n);
 const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
+/* ประโยคเดียวของสี่สายที่ป้อนกริด — ใช้ร่วมกันเพราะของที่ได้รับผลคือชิ้นเดียวกัน (กริดทั้งใบ)
+   ⇒ สองสามสายล้มพร้อมกัน (เน็ตหลุด = ล้มทั้งห้าสาย) ป้ายพูดครั้งเดียว ไม่ใช่ซ้ำสี่รอบ */
+const GRID_BLOCKED_NOTE = "กริดกระทบยอดยังแสดงไม่ได้ เพราะทุกช่องคำนวณจากรอบ FC · PO · การชดเชยข้ามเดือน · ผลตรวจการเปลี่ยน FC พร้อมกัน ขาดก้อนเดียวสถานะจะเพี้ยนทั้งกริด";
+
 export default function ReconcilePage() {
-  const { data: rounds, loading: l1, error: e1, errorDetail: d1 } = useApiList("/api/sahamit/forecast/rounds");
-  const { data: pos, loading: l2, error: e2, errorDetail: d2 } = useApiList("/api/sahamit/po");
-  const { data: coverages, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
-  const { data: products } = useApiList("/api/sahamit/products");
-  const { data: flags } = useApiList("/api/sahamit/flags");
+  const { data: rounds, loading: l1, error: e1, staleError: s1, errorDetail: d1, loaded: ld1, reload: reloadRounds } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: pos, loading: l2, error: e2, staleError: s2, errorDetail: d2, loaded: ld2, reload: reloadPos } = useApiList("/api/sahamit/po");
+  const { data: coverages, loading: l3, error: e3, staleError: s3, errorDetail: d3, loaded: ld3, reload: reloadCoverages } = useApiList("/api/sahamit/coverage");
+  const { data: products, loading: l4, error: e4, staleError: s4, errorDetail: d4, loaded: ld4, reload: reloadProducts } = useApiList("/api/sahamit/products");
+  const { data: flags, loading: l5, error: e5, staleError: s5, errorDetail: d5, loaded: ld5, reload: reloadFlags } = useApiList("/api/sahamit/flags");
+
+  /* ── โหลดพัง = กริดเพี้ยนทั้งใบ หรือแค่ของประกอบหาย — แล้วแต่ว่าสายไหนล้ม ─────────────────
+     🐞 ของเดิมแกะ error แค่รอบ FC กับ PO · อีกสามสาย (`coverage` · `products` · `flags`) ล้มแล้วค้างที่ `[]`
+        โดยไม่มีอะไรบอก — ทรงเดียวกับที่ซ่อน /tax ไว้ 26 วัน (#1795) แต่ที่นี่หนักกว่า เพราะกริดยังวาดเต็มใบ
+        ด้วยสถานะที่ดูสมเหตุสมผลทุกช่อง:
+        · การชดเชยข้ามเดือนหาย ⇒ ช่องที่ชดเชยแล้วกลับเป็น "รอ PO" / "PO เกิน" (buildReconMatrix ย้าย FC ตามมัน)
+        · ผลตรวจการเปลี่ยน FC หาย ⇒ `confirmedCuts` ว่าง ยอด FC ที่ยืนยันตัด/เลื่อนแล้วกลับมานับเต็ม peak
+          และ `filledSet` ว่าง ช่องที่ PO มาเติมขึ้นเป็น "ยกเลิกแล้ว"
+        · รายการสินค้าหาย ⇒ แถวรวมมูลค่า ฿0.00 ทุกเดือน + "N SKU ไม่มีราคา" (ทั้งที่มีราคา) · ทุกแถวตกหมวด
+          "— ไม่ระบุหมวด —" · ตัวกรองแบรนด์/ปริมาตร/หมวดขึ้น "ไม่มีตัวเลือก" · กด "ลัง" แล้วกริดยังเป็นเลขชิ้น
+          (displayQty ถอยเป็นชิ้นเงียบ ๆ เมื่อไม่รู้ชิ้นต่อลัง) แต่ปุ่มบอกว่ากำลังดูเป็นลัง
+
+     ⭐ **สองชั้นของความเสียหาย ⇒ สองแบบของการบล็อก** (`blocks`)
+        · `"grid"` — รอบ FC · PO · การชดเชย · ผลตรวจ = วัตถุดิบของ `buildReconMatrix` ก้อนเดียว ขาดก้อนไหนก็เพี้ยน
+          พร้อมกันทั้งใบแบบดูไม่ออก (เหตุผลเดียวกับแดชบอร์ด /sahamit) ⇒ ไม่มีของในมือ = ซ่อนกริดทั้งใบ
+        · `"lookup"` — รายการสินค้าเป็นของประกอบ: จำนวนชิ้นกับสถานะทุกช่องไม่ได้อ่านจากมัน (ชื่อสินค้าบนแถวมาจาก
+          บรรทัด FC/PO เอง) ⇒ กริดอ่านต่อได้ เลิกพูดเฉพาะของที่ต้องใช้มัน: มูลค่าเป็นขีด · หมวดบอกว่ายังจัดไม่ได้ ·
+          ตัวกรองแบรนด์/ปริมาตร/หมวดพักพร้อมเหตุข้างปุ่ม · ปุ่ม "ลัง" พักพร้อมเหตุตอนกด (ทั้งสองท่าเดียวกับหน้า FC)
+     ⚠️ **สองคำถามคนละข้อ** (กติกาเดียวกับ /tax · /sahamit · /database) —
+       1. **ขึ้นป้ายไหม** = มี `error` หรือรอบเบื้องหลังล้ม (`staleError`) ก็ขึ้น · `apiCache` อายุเท่าแท็บ
+          ⇒ เดินไปหน้า PO แล้วกดกลับ กริดวาดจากแคชครบก่อนแล้วรอบใหม่ค่อยล้ม — ต้องบอกว่าเป็นของรอบก่อน
+       2. **บล็อกไหม** = error **คู่กับ** ไม่เคยโหลดสำเร็จ (`blocked`) เท่านั้น
+     🪤 `empty` = **ไม่มีของในมือ** (`loaded` ของ useApiList) ไม่ใช่ `!list.length` — `/api/sahamit/coverage`
+        บน prod ตอบ `200 []` ทุกวัน และระบบที่ยังไม่มีธงเลยก็ตอบ `[]` จาก `/api/sahamit/flags` · วัดด้วยความยาว
+        เมื่อไร "ไม่มีการชดเชย" กับ "ดึงการชดเชยไม่ได้" จะแยกไม่ออก แล้วกริดหายทั้งใบทุกวัน */
+  const sources = [
+    { label: "รอบ FC", error: e1 || s1, empty: !ld1, detail: d1, reload: reloadRounds, blocks: "grid", blockedNote: GRID_BLOCKED_NOTE },
+    { label: "PO", error: e2 || s2, empty: !ld2, detail: d2, reload: reloadPos, blocks: "grid", blockedNote: GRID_BLOCKED_NOTE },
+    { label: "การชดเชยข้ามเดือน", error: e3 || s3, empty: !ld3, detail: d3, reload: reloadCoverages, blocks: "grid", blockedNote: GRID_BLOCKED_NOTE },
+    { label: "ผลตรวจการเปลี่ยน FC", error: e5 || s5, empty: !ld5, detail: d5, reload: reloadFlags, blocks: "grid", blockedNote: GRID_BLOCKED_NOTE },
+    {
+      label: "รายการสินค้า", error: e4 || s4, empty: !ld4, detail: d4, reload: reloadProducts, blocks: "lookup",
+      blockedNote: "กริดยังอ่านได้ (จำนวนชิ้นและสถานะไม่ได้ใช้รายการสินค้า) แต่มูลค่า (ราคา) · หมวดสินค้า · ตัวกรองแบรนด์/ปริมาตร/หมวด และการแสดงเป็นลัง ยังใช้ไม่ได้",
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const gridBlocked = blocked.some((s) => s.blocks === "grid");
+  const productsBlocked = blocked.some((s) => s.blocks === "lookup");
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — ห้าสายล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* กริดหายทั้งใบแล้ว = ไม่ต้องพูดถึงของประกอบที่เพี้ยนตาม (มองไม่เห็นอยู่ดี และ "กริดยังอ่านได้"
+     จะขัดกับกริดที่ถูกซ่อน) · กริดยังอยู่ = บอกทีละสายว่าอะไรหาย + สายที่มีแคชอยู่เป็นของรอบก่อน */
+  const impact = gridBlocked
+    ? [GRID_BLOCKED_NOTE]
+    : [
+      ...new Set(blocked.map((s) => s.blockedNote)),
+      blocked.length < failing.length ? "ข้อมูลที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด" : null,
+    ].filter(Boolean);
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${impact.join(" · ")} · ${causes}`
+    : null;
+  // ⭐ ข้อความดิบของทุกแหล่งที่ล้ม — บรรทัดรองของกล่องแจ้ง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+
+  /* ⭐ กริดรอวัตถุดิบครบก่อนวาด — ไม่งั้นรอบแรกวาดจากรอบ FC + PO ล้วน (ช่องชดเชยเป็น "รอ PO") แล้วค่อยพลิก
+     · รอบ FC / PO คงท่าเดิม: รอบหน้าบ้านทุกครั้ง = สปินเนอร์
+     · การชดเชย / ผลตรวจ รอเฉพาะตอน **ยังไม่เคยมีของ** — 🪤 `onCoverageChanged={reloadCoverages}` ของโมดัลเป็น
+       รอบหน้าบ้าน ⇒ ถ้าผูกกับ `l3` เฉย ๆ กดชดเชยในโมดัลแล้วกริดข้างหลังกระพริบเป็นสปินเนอร์ทุกครั้ง
+     · รายการสินค้า รอเฉพาะรอบแรกที่ยังไม่เคยล้ม — เป็นของประกอบ: ล้มไปแล้วกด "ลองใหม่" กริดต้องอยู่ให้อ่านต่อ
+       (ปุ่มบอกเองว่ากำลังลอง) ไม่ใช่หายไปทั้งใบเพราะรอราคา */
+  const gridLoading = l1 || l2 || (l3 && !ld3) || (l5 && !ld5) || (l4 && !ld4 && !(e4 || s4));
+  // ปุ่ม "ลองใหม่" บอกสถานะเอง — ลองเฉพาะรายการสินค้า กริดไม่สลับเป็นสปินเนอร์ (ดูบรรทัดบน) จอจะนิ่งสนิท
+  const retrying = l1 || l2 || l3 || l4 || l5;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
+
   // (สินค้า||เดือน) ที่มีธง "เติมเต็มด้วย PO" (เสนอ po_filled หรือยืนยัน confirmed_filled)
   // — ใช้เปลี่ยนช่องที่จะขึ้น "ยกเลิกแล้ว" ให้เป็น "เติมเต็มด้วย PO" แทน
   const filledSet = useMemo(() => {
@@ -79,13 +165,16 @@ export default function ReconcilePage() {
   const [categories, setCategories] = useState([]);
   const q = search.trim().toLowerCase();
 
-  const loading = l1 || l2;
-  const error = e1 || e2;
-  // ข้อความดิบของทุกแหล่งที่ล้ม — บรรทัดรองของกล่องแจ้ง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
-  const errorDetail = sourcesFailureDetail([
-    { label: "รอบ FC", detail: e1 ? d1 : null },
-    { label: "PO", detail: e2 ? d2 : null },
-  ]);
+  /* ของที่อ่านจากรายการสินค้าเมื่อยังไม่มีมันในมือ — `null` = มีแล้ว ใช้ตามปกติ
+     ⚠️ วัดด้วย `ld4` ไม่ใช่ `products.length` (ลิสต์ที่ตอบ [] = รู้แล้วว่าไม่มี ไม่ใช่ไม่รู้) */
+  const productsGap = ld4 ? null : productsBlocked ? "ดึงรายการสินค้าไม่ได้" : "รายการสินค้ายังโหลดไม่เสร็จ";
+  /* ปุ่ม "ลัง" ติดด่าน = โชว์ต่อ บอกเหตุตอนกด (ท่าเดียวกับ GatedAction) · ไม่ `disabled` เปล่า ๆ เพราะ title ของปุ่มที่ปิดอยู่
+     คีย์บอร์ดโฟกัสไม่ถึง (คนใช้คีย์บอร์ดไม่มีทางรู้เหตุ) · หน่วยที่แสดงถอยเป็นชิ้นให้ตรงกับเลขที่อยู่ในกริดจริง
+     (displayQty ที่ไม่รู้ชิ้นต่อลังคืนเลขชิ้นโดยไม่บอก ⇒ ปล่อยปุ่มค้าง "ลัง" = ป้ายหน่วยโกหกทั้งกริด) */
+  const unitBlocker = productsGap ? `ยังแสดงเป็นลังไม่ได้ — ${productsGap} (ชิ้นต่อลังอยู่ในรายการสินค้า)` : null;
+  const shownUnit = unitBlocker ? "piece" : unit;
+  // กริดวาดได้จริง (ทางแยกเดียวกับตัวกริดด้านล่าง) — คุมแถบเครื่องมือและปุ่มเต็มจอ: ปุ่มเต็มจอบนกริดที่ถูกซ่อน = ล็อกสกรอลล์ทั้งหน้าเปล่า ๆ
+  const showGrid = !gridLoading && !gridBlocked;
 
   // ★ กระทบยอด = มุมมอง "สะสม" ชุดเดียวเสมอ (แหล่งความจริง): FC = peak − ยืนยันตัด/เลื่อน,
   // PO = ทั้งหมด. ไม่ re-scope ตามรอบ เพราะ FC/PO คาสเคดข้ามรอบ การกระทบรายรอบจะเพี้ยน
@@ -147,16 +236,19 @@ export default function ReconcilePage() {
 
   const filterCount = brands.length + volumes.length + categories.length;
 
-  // จัดกลุ่มแถวตามหมวดสินค้า (แสดงหัวหมวดคั่น)
+  /* จัดกลุ่มแถวตามหมวดสินค้า (แสดงหัวหมวดคั่น)
+     🪤 ไม่มีรายการสินค้าในมือ ⇒ ทุกแถวหาหมวดไม่เจอ · ถ้าตกหัว "— ไม่ระบุหมวด —" ก้อนเดียว จะอ่านว่าสินค้าทั้งหมด
+        ไม่ได้ตั้งหมวดไว้ (ข้อมูลผิด) ทั้งที่ความจริงคือยังไม่รู้หมวด ⇒ หัวก้อนบอกเหตุแทน */
+  const noCategoryLabel = productsGap ? `— ยังจัดหมวดไม่ได้: ${productsGap} —` : "— ไม่ระบุหมวด —";
   const catGroups = useMemo(() => {
     const m = new Map();
     for (const r of filteredRows) {
-      const cat = productByFg.get(String(r.fgCode).trim().toLowerCase())?.category || "— ไม่ระบุหมวด —";
+      const cat = productByFg.get(String(r.fgCode).trim().toLowerCase())?.category || noCategoryLabel;
       if (!m.has(cat)) m.set(cat, []);
       m.get(cat).push(r);
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [filteredRows, productByFg]);
+  }, [filteredRows, productByFg, noCategoryLabel]);
 
   // มูลค่ารายเดือน (ราคา×จำนวน) — คิดตามแถวที่แสดง (หลังกรอง). ราคา = ราคาผลิต
   // (costPrice) จาก products — SKU ที่ไม่มีราคาถูกข้าม + นับไว้เตือน.
@@ -179,6 +271,30 @@ export default function ReconcilePage() {
     }
     return { byMonth, gFc, gPo, unpriced };
   }, [matrix, productByFg, filteredRows]);
+  /* ราคามาจากรายการสินค้าอย่างเดียว ⇒ ไม่มีมันในมือ = ไม่รู้มูลค่า ไม่ใช่มูลค่าศูนย์
+     🐞 เดิมแถวนี้ขึ้น ฿0.00 ทุกเดือน + "N SKU ไม่มีราคา" (ทุก SKU ถูกนับว่าไม่มีราคา) = ตัวเลขที่มาจากความไม่รู้
+     ⇒ ค่าเป็นขีด (NA ค่าว่างกลาง) และหมายเหตุท้ายป้ายบอกเหตุแทน "ไม่มีราคา" */
+  const money = (n) => (productsGap ? NA : nfBaht(n));
+  const valueNote = productsGap
+    ? { text: `ยังคิดมูลค่าไม่ได้ — ${productsGap} (ราคาอยู่ในรายการสินค้า)`, title: undefined }
+    : valueSummary.unpriced > 0
+      ? { text: `${valueSummary.unpriced} SKU ไม่มีราคา`, title: "สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม" }
+      : null;
+
+  /* ── ลิ้นชักรายละเอียดช่อง: ปุ่มยืนยัน/ลบการชดเชยต้องรู้ว่ารายการชดเชยในมือเป็นของล่าสุด ─────────────────
+     🐞 ลิ้นชัก (CellDetailModal · Modal side="right") ทับป้ายหัวจอทั้งแผ่น · กด "ยืนยัน" ⇒ POST สำเร็จ ⇒ `reloadCoverages`
+        (รอบหน้าบ้าน) ล้ม ⇒ `coverages` ค้างของรอบก่อน ⇒ CoveragePanel ยังเสนอคำแนะนำเดิม (`alreadyIn` ไม่มีรายการที่เพิ่งสร้าง)
+        โดยไม่มีอะไรบอกในลิ้นชัก · กดซ้ำ = POST ใบที่สอง (id ใหม่ทุกครั้ง ตารางไม่มี unique) ⇒ FC ย้ายซ้ำสองรอบ กริดผิดเงียบ
+     ⇒ ลิ้นชักวางป้ายตัวเดียวกับหัวจอ (มีปุ่มลองใหม่) และ **พักปุ่มยืนยัน/ลบ** พร้อมเหตุ (ติดด่าน = โชว์แล้วบอกเหตุ) เมื่อ:
+        · สายการชดเชยล้ม (`e3` รอบหน้าบ้าน · `s3` รอบเบื้องหลัง) — ไม่รู้ว่ารายการไหนยืนยันไปแล้ว
+        · สายการชดเชยกำลังโหลดรอบหน้าบ้าน (`l3`) — ช่วงหลังกดยืนยันก่อนรอบใหม่มาถึง คำแนะนำเดิมยังค้างอยู่บนจอ
+          (onChanged ไม่ได้ await ⇒ `busy` ของแผงคืนก่อนรายการใหม่มา) · รอบเบื้องหลังไม่ตั้ง loading จึงไม่พักปุ่มเปล่า ๆ ตอนสลับแท็บ
+     ⚠️ พักเฉพาะสายการชดเชย — สายอื่นของกริดล้มแค่ทำให้ตัวเลขเป็นของรอบก่อน (ป้ายในลิ้นชักบอกแล้ว) ไม่ได้ทำให้ยิงซ้ำ */
+  const coveragePausedReason = e3 || s3
+    ? "ยังยืนยัน/ลบการชดเชยไม่ได้ — ดึงข้อมูลไม่ได้: การชดเชยข้ามเดือน (ดูข้อความด้านบน) · ยังไม่รู้ว่ารายการไหนยืนยันไปแล้ว กดซ้ำจะย้าย FC ซ้ำ"
+    : l3
+      ? "กำลังโหลดการชดเชยล่าสุด…"
+      : null;
 
   // Click a cell → open the detail modal (แทนการเด้งไปหน้าเต็ม).
   const openCell = (fg, m) => setCellSel({ fg, m });
@@ -220,7 +336,7 @@ export default function ReconcilePage() {
         <td key={m} style={{ padding: "5px 5px" }}>
           <button type="button" className={`grid-cell-box card-button ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84, ...hlStyle }}>
             {badges}{hlBadge}
-            <span className="cell-val fc" style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)" }}>{displayQty(val, ppc, unit, { dot: true })}</span>
+            <span className="cell-val fc" style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)" }}>{displayQty(val, ppc, shownUnit, { dot: true })}</span>
             <span className="cell-status-tag">{dispLabel}</span>
           </button>
         </td>
@@ -244,13 +360,13 @@ export default function ReconcilePage() {
           <span className="cell-value-line">
             <span className="cell-lbl">FC</span>
             <span className="cell-val fc">
-              {displayQty(cell.fcQty, ppc, unit)}
+              {displayQty(cell.fcQty, ppc, shownUnit)}
               {cell.originalFc != null && cell.originalFc !== cell.fcQty && (
-                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: "var(--fw-normal)", fontSize: "var(--fs-2)", marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
+                <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: "var(--fw-normal)", fontSize: "var(--fs-2)", marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, shownUnit)}</span>
               )}
             </span>
           </span>
-          <span className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{displayQty(cell.poQty, ppc, unit)}</span></span>
+          <span className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{displayQty(cell.poQty, ppc, shownUnit)}</span></span>
           <span className="cell-status-tag">{dispLabel}</span>
         </button>
       </td>
@@ -276,8 +392,15 @@ export default function ReconcilePage() {
         ))}
       </div>
       <div className="segmented" title="หน่วยแสดงผล">
-        <button className={unit === "piece" ? "active" : ""} onClick={() => setUnit("piece")}>ชิ้น</button>
-        <button className={unit === "case" ? "active" : ""} onClick={() => setUnit("case")}>ลัง</button>
+        <button className={shownUnit === "piece" ? "active" : ""} onClick={() => setUnit("piece")}>ชิ้น</button>
+        {/* ติดด่าน (ไม่รู้ชิ้นต่อลัง) = กดแล้วบอกเหตุ ไม่สลับ — ดู `unitBlocker` */}
+        <button
+          className={shownUnit === "case" ? "active" : ""}
+          onClick={() => (unitBlocker ? notifyToast.error(unitBlocker) : setUnit("case"))}
+          title={unitBlocker || undefined}
+        >
+          ลัง
+        </button>
       </div>
     </>
   );
@@ -290,7 +413,7 @@ export default function ReconcilePage() {
       headerRight={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {viewUnitControls}
-          {matrix.rows.length > 0 && (
+          {showGrid && matrix.rows.length > 0 && (
             <button className="btn ghost" onClick={() => setExpanded(true)} title="ขยายกริดเต็มจอ">
               <Maximize2 size={16} /> เต็มจอ
             </button>
@@ -307,22 +430,35 @@ export default function ReconcilePage() {
         </div>
       }
     >
+      {/* ⭐ ป้ายอยู่บนสุด เหนือแถบเครื่องมือ — ขึ้นทั้งตอนกริดถูกซ่อนและตอนกริดยังวาดจากแคช (ของรอบก่อน)
+          เดิมอยู่ใต้แถบเครื่องมือและขึ้นเฉพาะรอบ FC/PO */}
+      {notice}
       {/* ตัวกรองอยู่ในเนื้อหา (ไม่ใช่ในหัว) เพราะหัว premium-header เป็น overflow:hidden จะตัด dropdown */}
-      {!loading && !error && matrix.rows.length > 0 && (
+      {showGrid && matrix.rows.length > 0 && (
         <div className="toolbar">
           <div className="search-glass" style={{ width: 240 }}>
             <Search size={18} color="var(--text-3)" />
             <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
           </div>
-          <FilterPopover
-            count={filterCount}
-            onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}
-            groups={[
-              { key: "brand", label: "แบรนด์", options: filterOptions.brands, selected: brands, onChange: setBrands },
-              { key: "volume", label: "ปริมาตร", options: filterOptions.volumes, selected: volumes, onChange: setVolumes },
-              { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
-            ]}
-          />
+          {/* ตัวเลือกแบรนด์/ปริมาตร/หมวดมาจากรายการสินค้าทั้งสามกลุ่ม ⇒ ไม่มีมันในมือ แผงจะขึ้น "ไม่มีตัวเลือก"
+              ทุกกลุ่ม (อ่านว่าสินค้าไม่มีแบรนด์/หมวด) ⇒ พักปุ่มไว้ให้เห็น + บอกเหตุข้าง ๆ (ติดด่าน = โชว์แล้วบอกเหตุ)
+              ท่าเดียวกับตัวกรองหมวดของหน้า FC (sahamit/forecast) ที่เสียทะเบียนสินค้าก้อนเดียวกัน — สองจอพี่น้องต้องพูดแบบเดียวกัน */}
+          {productsGap ? (
+            <>
+              <Button disabled icon={<SlidersHorizontal size={14} />}>ตัวกรอง</Button>
+              <span className="form-note">{`กรองตามแบรนด์/ปริมาตร/หมวดยังไม่ได้ — ${productsGap}`}</span>
+            </>
+          ) : (
+            <FilterPopover
+              count={filterCount}
+              onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}
+              groups={[
+                { key: "brand", label: "แบรนด์", options: filterOptions.brands, selected: brands, onChange: setBrands },
+                { key: "volume", label: "ปริมาตร", options: filterOptions.volumes, selected: volumes, onChange: setVolumes },
+                { key: "category", label: "หมวดสินค้า", options: filterOptions.categories, selected: categories, onChange: setCategories },
+              ]}
+            />
+          )}
           {roundData.windows.length > 0 && (
             <Select
               value={roundSel}
@@ -346,15 +482,13 @@ export default function ReconcilePage() {
           {(filterCount > 0 || q) && <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {matrix.rows.length} สินค้า</span>}
         </div>
       )}
-      {error && (
-        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
-           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
-        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
-      )}
-
-      {loading ? (
+      {/* 🪤 กริดที่ถูกซ่อนต้องมีบรรทัดแทนที่ ไม่ปล่อยป้ายลอยเหนือที่ว่างครึ่งจอ (อ่านเป็น "จอเรนเดอร์ไม่ครบ")
+          และห้ามตก "ยังไม่มีข้อมูลให้กระทบยอด" — ดึงไม่ได้ ≠ ไม่มีข้อมูล */}
+      {gridLoading ? (
         <Spinner />
-      ) : error ? null : matrix.rows.length === 0 ? (
+      ) : gridBlocked ? (
+        <EmptyState icon={AlertCircle}>กริดกระทบยอดยังแสดงไม่ได้ — ดูข้อความด้านบนแล้วกด “ลองใหม่”</EmptyState>
+      ) : matrix.rows.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <ClipboardCheck size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มีข้อมูลให้กระทบยอด</div>
@@ -375,6 +509,10 @@ export default function ReconcilePage() {
               </div>
             </div>
           )}
+          {/* 🐞 `.recon-fs` เป็น fixed เต็มจอ ⇒ ป้ายหัวจอ (`{notice}` ข้างบน) ถูกแผ่นนี้บังทั้งอัน · เต็มจอเป็นมุมที่เปิดค้างนาน
+              และรอบ revalidate ตอนกลับมาที่แท็บเป็นรอบเบื้องหลัง ⇒ staleError ของสายไหนก็ตามเงียบสนิทจนกว่าจะกด "ย่อ"
+              ⇒ วางป้ายตัวเดียวกัน (ปุ่มลองใหม่ตัวเดียวกัน) ใต้แถบเต็มจอด้วย · ตอนไม่เต็มจอไม่ต้องวาดซ้ำ */}
+          {expanded && notice}
           {/* Legend */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 14, fontSize: "var(--fs-5)" }}>
             {LEGEND.map((x) => (
@@ -423,8 +561,8 @@ export default function ReconcilePage() {
                       </td>
                       {matrix.months.map((m) => renderCell(r.cells[m], r.fgCode, m))}
                       <td style={{ textAlign: "right", verticalAlign: "middle" }}>
-                        <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), unit)}{counterpartText(r.fcTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), unit)}` : ""}</div>
-                        <div style={{ fontWeight: "var(--fw-bold)" }}>PO {displayQty(r.poTotal, ppcOf(p), unit)}{counterpartText(r.poTotal, ppcOf(p), unit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), unit)}` : ""}</div>
+                        <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>FC {displayQty(r.fcTotal, ppcOf(p), shownUnit)}{counterpartText(r.fcTotal, ppcOf(p), shownUnit) ? ` · ${counterpartText(r.fcTotal, ppcOf(p), shownUnit)}` : ""}</div>
+                        <div style={{ fontWeight: "var(--fw-bold)" }}>PO {displayQty(r.poTotal, ppcOf(p), shownUnit)}{counterpartText(r.poTotal, ppcOf(p), shownUnit) ? ` · ${counterpartText(r.poTotal, ppcOf(p), shownUnit)}` : ""}</div>
                       </td>
                     </tr>
                   );
@@ -442,9 +580,9 @@ export default function ReconcilePage() {
               <tr className="recon-value-row">
                 <td>
                   รวมมูลค่า{view === "fc" ? " (FC)" : view === "po" ? " (PO)" : ""}
-                  {valueSummary.unpriced > 0 && (
-                    <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }} title="สินค้าที่ยังไม่มีราคาขายปลีกใน master ถูกข้าม">
-                      {" "}· {valueSummary.unpriced} SKU ไม่มีราคา
+                  {valueNote && (
+                    <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }} title={valueNote.title}>
+                      {" "}· {valueNote.text}
                     </span>
                   )}
                 </td>
@@ -452,14 +590,14 @@ export default function ReconcilePage() {
                   const v = valueSummary.byMonth[m] || { fc: 0, po: 0 };
                   return (
                     <td key={m} style={{ textAlign: "right" }}>
-                      {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(v.fc)}</div>}
-                      {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(v.po)}</div>}
+                      {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{money(v.fc)}</div>}
+                      {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{money(v.po)}</div>}
                     </td>
                   );
                 })}
                 <td style={{ textAlign: "right" }}>
-                  {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{nfBaht(valueSummary.gFc)}</div>}
-                  {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{nfBaht(valueSummary.gPo)}</div>}
+                  {view !== "po" && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{money(valueSummary.gFc)}</div>}
+                  {view !== "fc" && <div style={{ fontWeight: "var(--fw-bold)" }}>{money(valueSummary.gPo)}</div>}
                 </td>
               </tr>
             </tfoot>
@@ -479,6 +617,8 @@ export default function ReconcilePage() {
         product={cellSel ? productOf(cellSel.fg) : null}
         canEdit={canEdit}
         onCoverageChanged={reloadCoverages}
+        notice={notice}
+        coveragePausedReason={coveragePausedReason}
       />
     </Workspace>
   );

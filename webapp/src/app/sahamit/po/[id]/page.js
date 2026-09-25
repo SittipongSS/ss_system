@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
@@ -40,16 +41,22 @@ const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => fmtNumber(n || 0);
 
 // สถานะวัสดุ 1 ช่อง (อ่านอย่างเดียว): มาแล้ว / กำหนดถึง / — (แก้ที่เมนูวัสดุเท่านั้น)
+// ⚠️ ขีดในช่องนี้แปลว่า "ยังไม่มีกำหนด" — ใช้ได้เฉพาะตอนรู้สถานะวัสดุแล้วเท่านั้น (ไม่รู้ = TRACKING_UNKNOWN ข้างล่าง)
 function matCell(dueDate, arrivedAt) {
   if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
   if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
   return <span style={{ color: "var(--text-3)" }}>{NA}</span>;
 }
 
+/* ช่อง PM/RM ตอนสายสถานะวัสดุไม่มีของในมือ — ขีดจะอ่านว่า "ยังไม่มีกำหนดวัสดุ" ซึ่งเป็นคำตอบที่เราไม่รู้
+   ⇒ บอกตรง ๆ ว่าดึงไม่ได้ (เหตุและปุ่มลองใหม่อยู่ที่ป้ายหัวจอ) */
+const TRACKING_UNKNOWN = <span className="text-[var(--amber)]">ดึงไม่ได้</span>;
+
 // One PO line with an inline editor: reschedule (expected date + reason →
 // history), mark delivered, change qty/due/status/destination, split, delete.
 // PM/RM แสดงอย่างเดียว (แก้ที่เมนูวัสดุ).
-function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
+// `trackingUnknown` = สายสถานะวัสดุล้มและไม่เคยโหลดสำเร็จ — ช่อง PM/RM เลิกพูดเป็นคำตอบ (ดูก้อน sources ของ PoDetailPage)
+function PoLineRow({ line, tracking, trackingUnknown = false, product, onChanged, canEdit }) {
   const [open, setOpen] = useState(false);
   const [showHist, setShowHist] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -135,8 +142,8 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
             </button>
           )}
         </td>
-        <td>{matCell(tracking?.pmDueDate, tracking?.pmArrivedAt)}</td>
-        <td>{matCell(tracking?.rmDueDate, tracking?.rmArrivedAt)}</td>
+        <td>{trackingUnknown ? TRACKING_UNKNOWN : matCell(tracking?.pmDueDate, tracking?.pmArrivedAt)}</td>
+        <td>{trackingUnknown ? TRACKING_UNKNOWN : matCell(tracking?.rmDueDate, tracking?.rmArrivedAt)}</td>
         <td>{line.actualDeliveredDate ? fmtDate(line.actualDeliveredDate) : NA}</td>
         <td>{destinationLabel(line.destination) || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
         <td><span className="status-pill">{PO_STATUS_LABEL[line.status] || line.status}</span></td>
@@ -216,11 +223,87 @@ export default function PoDetailPage() {
   const canSettle = useCan("salesplan:edit");
   const canEdit = useCan("sahamit:edit");
   const id = params.id;
-  const { data: pos, loading, error, errorDetail, reload } = useApiList("/api/sahamit/po");
-  const { data: material } = useApiList("/api/sahamit/material");
-  const { data: products } = useApiList("/api/sahamit/products");
+  const { data: pos, loading, error: posError, staleError: posStale, errorDetail: posDetail, reload } = useApiList("/api/sahamit/po");
+  const { data: material, loading: lMaterial, error: materialError, staleError: materialStale, errorDetail: materialDetail, loaded: materialLoaded, reload: reloadMaterial } = useApiList("/api/sahamit/material");
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
   const prodIdx = useMemo(() => indexProducts(products), [products]);
   const po = useMemo(() => pos.find((p) => p.id === id) || null, [pos, id]);
+
+  /* ── โหลดพัง ≠ ไม่พบ PO · และสายรองล้มต้องไม่วาดความไม่รู้เป็นคำตอบ ─────────────────────────────
+     ท่าเดียวกับหน้าแก้ PO (sahamit/po/[id]/edit) และหน้าใบยื่นชำระ (tax/filings/[id])
+     🐞 PO ใบนี้มาจาก `pos.find(...)` ⇒ `/api/sahamit/po` ล้มเมื่อไร `pos` ค้างที่ `[]` แล้ว `po` เป็น null — ทรงเดิมรอดเพราะ
+        `error ? null` วาดที่ว่างใต้ป้าย แต่ก็ทิ้ง PO ที่อยู่ในแคชครบทั้งใบไปด้วย (สลับแท็บแล้วเน็ตสะดุด = หน้าหายทั้งหน้า)
+        ⇒ ทางแยกของสายนี้ตัดสิน **ก่อน** บรรทัด "ไม่พบ PO นี้" เสมอ · มีใบในมือ = วาดต่อ ป้ายบอกว่าเป็นของรอบก่อน
+     🪤 "มีของในมือ" ของสาย PO คือ **PO ใบนี้** (`!po`) ไม่ใช่ความยาวลิสต์ — แคชระดับโมดูลที่ถ่ายไว้ก่อนเพื่อนร่วมงานลง PO ใหม่
+        มี PO อื่นเต็มลิสต์แต่ไม่มีใบที่เปิดอยู่ · และนับเฉพาะรอบหน้าบ้านที่ล้ม (`posError`) ไม่ใช่ `staleError` — รอบเบื้องหลัง
+        ล้มได้ก็ต่อเมื่อรอบก่อนหน้าสำเร็จและตอบไปแล้วว่าไม่มีใบนี้ ⇒ "ไม่พบ PO นี้" ที่ยืนยันแล้วต้องไม่พลิกเพราะเน็ตสะดุด
+     ⭐ **สายไหนบล็อกอะไร** (หน้ารายละเอียดเป็นจออ่านเป็นหลัก — สองสายรองไม่ได้ป้อนปุ่มไหนบนหน้านี้เลย)
+        · PO (`"page"`) — ไม่มีใบในมือ = ไม่มีอะไรให้โชว์ ⇒ ทั้งหน้าเหลือป้าย
+        · สถานะวัสดุ (`"tracking"`) — กินแค่ช่อง PM/RM ของแต่ละบรรทัด ⇒ ช่องนั้นขึ้น "ดึงไม่ได้" แทนขีด (ขีด = ยังไม่มีกำหนด
+          ซึ่งเราไม่รู้) · ปุ่มแก้/ลบบรรทัด แบ่งส่ง ลบ PO ไม่ได้อ่านสายนี้ (เซิร์ฟเวอร์ตัดสินเองทุกตัว) จึงไม่ต้องพัก
+          — ฟอร์มแก้ PO ที่ต้องใช้สถานะวัสดุล็อกบรรทัดมีด่านของตัวเองที่หน้า /edit
+        · รายการสินค้า (`"value"`) — กินมูลค่ารวมบนการ์ดสรุป · ราคา/ชิ้นกับจำนวนลังรายบรรทัด ⇒ การ์ดสรุปขึ้นขีดพร้อมบอกว่า
+          ยังคำนวณไม่ได้ (ไม่ใช่ซ่อนยอดเงียบ ๆ ซึ่งอ่านเหมือน PO ที่ยังไม่ตั้งราคา) · ราคา/ลังรายบรรทัดหายไปเฉย ๆ ได้ (เป็นบรรทัดเสริม
+          ที่ไม่โชว์อยู่แล้วเมื่อไม่มีค่า — ไม่มีตัวเลขปลอมให้เห็น) · ยืนยันดีล/ออกใบเสนอราคาเซิร์ฟเวอร์คิดราคาจาก master เอง
+     ⚠️ ป้ายกับการบล็อกคนละคำถาม: มี `error` (หรือรอบเบื้องหลังล้ม `staleError`) = ขึ้นป้ายเสมอ · บล็อกเฉพาะตอนไม่มีของในมือ
+        (`!po` / `loaded`) · ประโยคท้ายป้ายผูกกับ **สายที่ล้มจริง** ทีละสาย — "(ไม่ได้แปลว่า PO นี้ถูกลบไปแล้ว)" เป็นของสาย PO เท่านั้น */
+  const sources = [
+    {
+      label: "PO", error: posError || posStale, empty: !po && !!posError, detail: posDetail, reload, blocks: "page",
+      blockedNote: "ยังเปิด PO นี้ไม่ได้ (ไม่ได้แปลว่า PO นี้ถูกลบไปแล้ว)",
+      staleNote: "ข้อมูล PO ที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "สถานะวัสดุ", error: materialError || materialStale, empty: !materialLoaded, detail: materialDetail, reload: reloadMaterial, blocks: "tracking",
+      pending: lMaterial && !materialLoaded,
+      blockedNote: "ช่อง PM/RM ของแต่ละรายการจึงยังแสดงไม่ได้",
+      staleNote: "สถานะ PM/RM ที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "value",
+      pending: lProducts && !productsLoaded,
+      blockedNote: "มูลค่า PO ราคา/ชิ้น และจำนวนลังจึงยังคำนวณไม่ได้",
+      staleNote: "ราคาและชิ้นต่อลังที่ใช้คำนวณเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const pageBlocked = blocked.some((s) => s.blocks === "page");
+  const trackingBlocked = blocked.some((s) => s.blocks === "tracking");
+  const valueBlocked = blocked.some((s) => s.blocks === "value");
+  /* ⭐ รอบแรกที่สายรองยังไม่มีของในมือ (`pending`) = ไม่รู้เท่ากับตอนล้ม ⇒ รอทุกสายก่อนวาดใบ (ท่าเดียวกับ /sahamit · /database
+     ที่ skeleton รอทุกสาย) ไม่งั้นช่อง PM/RM วาบเป็นขีด ("ยังไม่มีกำหนด") ก่อนสถานะวัสดุมาถึง และการ์ดสรุปวาบไม่มียอด
+     🪤 `!s.error` — รอบ "ลองใหม่" ของสายที่ล้มไม่นับ: error ของรอบก่อนค้างจนรอบใหม่ตอบ ⇒ ใบที่อ่านได้อยู่ไม่หายระหว่างลอง
+        (ปุ่มบอก "กำลังลองใหม่…" เอง) */
+  const firstLoad = loading || sources.some((s) => s.pending && !s.error);
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — ตัวที่ถูกทิ้งมักเป็นตัวที่บอกสาเหตุจริง
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  // เปิดใบไม่ได้ = พูดเรื่องนั้นเรื่องเดียว (ช่อง PM/RM · มูลค่า ไม่ได้อยู่บนจอให้เตือน) · ไม่งั้นพูดทุกสายที่ล้ม
+  const said = pageBlocked ? blocked.filter((s) => s.blocks === "page") : failing;
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      ...new Set(said.map((s) => (s.empty ? s.blockedNote : s.staleNote))),
+    ].join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ลองสาย PO = รอบหน้าบ้าน ⇒ เนื้อเป็น Spinner ระหว่างรอ · ลองสายรองไม่ได้พาเนื้อไปไหน (ใบยังอยู่ในมือ)
+     ⇒ ปุ่มต้องบอกเองว่ากำลังลองอยู่ ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const retrying = loading || lMaterial || lProducts;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
   const trackByLine = useMemo(() => {
     const m = new Map();
     for (const r of material) m.set(r.poLineId, r.tracking || null);
@@ -516,6 +599,21 @@ export default function PoDetailPage() {
         ? "var(--amber)"
         : "var(--blue)";
 
+  /* ⚠️ ต้องอยู่เหนือ "ไม่พบ PO นี้" — ดูเหตุผลที่ก้อน sources
+     ระหว่างกดลองใหม่ `error` ของรอบก่อนยังค้างจนรอบใหม่ตอบ ⇒ ป้ายยังอยู่ และปุ่มบอก "กำลังลองใหม่…" เอง (`retrying`) */
+  if (pageBlocked) {
+    return (
+      <Workspace
+        icon={<ShoppingCart size={22} />}
+        title="PO"
+        subtitle="รายละเอียดใบสั่งซื้อ (ลูกค้า AR-109)"
+        back={{ href: "/sahamit/po", label: "Purchase Orders" }}
+      >
+        {notice}
+      </Workspace>
+    );
+  }
+
   return (
     <Workspace
       icon={<ShoppingCart size={22} />}
@@ -524,14 +622,13 @@ export default function PoDetailPage() {
       back={{ href: "/sahamit/po", label: "Purchase Orders" }}
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
-      {error && (
-        // ไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569) — errorDetail มาจาก useApiList
-        <StatusNotice tone="error" detail={errorDetail}>{error}</StatusNotice>
-      )}
+      {/* ไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569) — ทุกสายของหน้าขึ้นที่ป้ายเดียวนี้
+          แคชอุ่นที่รอบใหม่ล้มมาถึงตรงนี้ (มีใบในมือ ไม่ถูกบล็อก) ⇒ ใบวาดต่อ ป้ายบอกว่าเป็นของรอบก่อน */}
+      {notice}
 
-      {loading ? (
+      {firstLoad ? (
         <Spinner />
-      ) : error ? null : !po ? (
+      ) : !po ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่พบ PO นี้</div>
@@ -541,9 +638,11 @@ export default function PoDetailPage() {
           asideLabel="สรุปและจัดการ Purchase Order"
           aside={(
             <>
+              {/* ไม่มีราคาในมือ = ขีดพร้อมเหตุ — ซ่อนยอดเงียบ ๆ จะอ่านเหมือน PO ที่ยังไม่ตั้งราคา (เหตุเต็มอยู่ที่ป้ายหัวจอ) */}
               <DocumentSummaryCard
                 title="สรุป Purchase Order"
-                total={poValueBeforeVat > 0 ? `฿${fmtNumber((poValueBeforeVat * 1.07), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined}
+                total={valueBlocked ? NA : poValueBeforeVat > 0 ? `฿${fmtNumber((poValueBeforeVat * 1.07), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined}
+                totalCaption={valueBlocked ? "ยังคำนวณมูลค่าไม่ได้ — ดึงรายการสินค้า (ราคา) ไม่ได้" : null}
                 rows={[
                   { id: "lines", label: "จำนวนรายการ", value: `${poLineCount(po)} รายการ` },
                   { id: "qty", label: "ยอดรวม", value: `${nf(poTotalQty(po))} ชิ้น` },
@@ -736,7 +835,7 @@ export default function PoDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={async () => { await reload(); apiCache.delete("/api/sahamit/po"); apiCache.delete("/api/sahamit/material"); }} canEdit={canEdit} />)}
+                {(po.lines || []).map((l) => <PoLineRow key={l.id} line={l} tracking={trackByLine.get(l.id)} trackingUnknown={trackingBlocked} product={prodIdx.get(String(l.fgCode).trim().toLowerCase())} onChanged={async () => { await reload(); apiCache.delete("/api/sahamit/po"); apiCache.delete("/api/sahamit/material"); }} canEdit={canEdit} />)}
               </tbody>
             </table>
           </TableScroll>

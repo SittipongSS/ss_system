@@ -4,12 +4,15 @@ import DetailRow from "@/components/ui/DetailRow";
 import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ShoppingCart, Plus, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
+import { ShoppingCart, Plus, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 import Select from "@/components/ui/Select";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
@@ -97,9 +100,85 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
 }
 
 export default function PoPage() {
-  const { data: pos, loading, error, errorDetail } = useApiList("/api/sahamit/po");
-  const { data: material, reload: reloadMaterial } = useApiList("/api/sahamit/material");
-  const { data: products } = useApiList("/api/sahamit/products");
+  const { data: pos, loading, error: posError, staleError: posStale, errorDetail: posDetail, loaded: posLoaded, reload: reloadPos } = useApiList("/api/sahamit/po");
+  const { data: material, loading: lMaterial, error: materialError, staleError: materialStale, errorDetail: materialDetail, loaded: materialLoaded, reload: reloadMaterial } = useApiList("/api/sahamit/material");
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
+
+  /* ── สามสายบนหน้าเดียว: สาย PO คือตัวรายการ · อีกสองสายเป็นของประกอบแถว ─────────────────────
+     🐞 ทรงเดิม: สายรองสองสายแกะแค่ `data` ⇒ ล้มเมื่อไรจอวาดความไม่รู้เป็นคำตอบ
+        · รายการสินค้าล้ม ⇒ คอลัมน์มูลค่าขึ้น "฿0.00 · รวม VAT ฿0.00" + "n รายการไม่มีราคา" ทุกใบ — 0 ที่มาจากความไม่รู้
+        · สถานะผลิต/วัสดุล้ม ⇒ ขยายแถวแล้วขึ้น "ไม่มีรายการที่ต้องติดตาม (อาจถูกยกเลิกทั้งหมด)" และปุ่มเดินสถานะ
+          (ผลิตเสร็จ / ส่งแล้ว / ปิดงาน) หายไปเงียบ ๆ
+        · สาย PO ล้มพร้อมแคชอุ่น ⇒ ตารางทั้งใบหาย (`error ? null`) ทั้งที่ของรอบก่อนอยู่ในมือครบ
+     ⭐ **สายไหนบล็อกอะไร** (`blocks`) — บล็อกเฉพาะชิ้นที่กินสายนั้นจริง ที่เหลือของหน้ายังอ่านได้
+        · PO (`"page"`) — ไม่มีรายการในมือ = ไม่มีอะไรให้โชว์ ⇒ เนื้อเหลือป้าย และ **ห้าม** ตกไปที่ "ยังไม่มี PO"
+          (อ่านว่ายังไม่เคยลง PO เลย ทั้งที่แค่โหลดไม่ขึ้น)
+        · สถานะผลิต/วัสดุ (`"status"`) — ป้ายสถานะของใบถอยไปใช้สถานะส่งของจากตัว PO เอง (รอส่ง/ส่งบางส่วน/ส่งครบ —
+          ข้อมูลจริงจากสาย PO ชุดเดียวกับที่ใบที่ไม่มีบรรทัดติดตามใช้อยู่แล้ว) · แถวที่ขยายบอกว่ายังดึงสถานะรายบรรทัดไม่ได้
+          ⇒ ปุ่มเดินสถานะรายบรรทัดไม่ขึ้นเพราะไม่มีบรรทัดให้วาด และมีบรรทัดบอกเหตุแทนที่ (ติดด่าน = โชว์แล้วบอกเหตุ)
+        · รายการสินค้า (`"value"`) — มูลค่าเป็นขีด (`NA`) ไม่ใช่ ฿0.00 และไม่ขึ้น "ไม่มีราคา" · ตารางรายบรรทัดขึ้นขีดอยู่แล้ว
+          (ราคาที่หาไม่เจอเป็น null) · ชื่อสินค้าที่ใช้ค้นหาอ่านจากบรรทัด PO ได้ด้วย (ดู filteredPos) ⇒ ค้นด้วยชื่อยังเจอ
+     ⚠️ ป้ายกับการบล็อกคนละคำถาม: มี `error` (หรือรอบเบื้องหลังล้ม `staleError`) = ขึ้นป้ายเสมอ · บล็อกเฉพาะตอน
+        ไม่เคยโหลดสำเร็จ (`loaded`) — แคชอุ่นก็วาดแถวต่อ ป้ายบอกว่าเป็นของรอบก่อน (`staleNote`)
+     🪤 `empty` = **ไม่มีของในมือ** (`!loaded`) ไม่ใช่ `!list.length` — ระบบที่ยังไม่มี PO เลยก็ตอบ `[]` สำเร็จ = "ยังไม่มี PO" จริง */
+  const sources = [
+    {
+      label: "PO", error: posError || posStale, empty: !posLoaded, detail: posDetail, reload: reloadPos, blocks: "page",
+      blockedNote: "ยังแสดงรายการ PO ไม่ได้ (ไม่ได้แปลว่ายังไม่มี PO)",
+      staleNote: "รายการ PO ที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "สถานะผลิต/วัสดุ", error: materialError || materialStale, empty: !materialLoaded, detail: materialDetail, reload: reloadMaterial, blocks: "status",
+      pending: lMaterial && !materialLoaded,
+      blockedNote: "สถานะของแต่ละใบจึงเหลือแค่สถานะส่งของ และยังขยายดู/เดินสถานะผลิตรายบรรทัดไม่ได้",
+      staleNote: "สถานะผลิต/วัสดุที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "value",
+      pending: lProducts && !productsLoaded,
+      blockedNote: "มูลค่า PO และราคา/ชิ้นยังคำนวณไม่ได้ จึงขึ้นเป็นขีด",
+      staleNote: "ราคาที่ใช้คิดมูลค่าเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const pageBlocked = blocked.some((s) => s.blocks === "page");
+  const statusBlocked = blocked.some((s) => s.blocks === "status");
+  const valueBlocked = blocked.some((s) => s.blocks === "value");
+  /* ⭐ รอบแรกที่สายรองยังไม่มีของในมือ (`pending`) = ไม่รู้เท่ากับตอนล้ม ⇒ รอทุกสายก่อนวาดแถว (ท่าเดียวกับ /sahamit · /database
+     ที่ skeleton รอทุกสาย) ไม่งั้นมูลค่าวาบเป็น "฿0.00 · n รายการไม่มีราคา" ก่อนรายการสินค้ามาถึง
+     🪤 `!s.error` — รอบ "ลองใหม่" ของสายที่ล้มไม่นับ: error ของรอบก่อนค้างจนรอบใหม่ตอบ ⇒ ตารางที่อ่านได้อยู่ไม่หายระหว่างลอง
+        (ปุ่มบอก "กำลังลองใหม่…" เอง) */
+  const firstLoad = loading || sources.some((s) => s.pending && !s.error);
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — สามสายล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* รายการ PO ไม่ขึ้น = พูดเรื่องนั้นเรื่องเดียว (คอลัมน์สถานะ/มูลค่าไม่ได้อยู่บนจอให้เตือน) · ไม่งั้นพูดทุกสายที่ล้ม —
+     สายที่บล็อกใช้ blockedNote สายที่ยังมีแคชใช้ staleNote (ท่าเดียวกับหน้าใบยื่นชำระ tax/filings/[id]) */
+  const said = pageBlocked ? blocked.filter((s) => s.blocks === "page") : failing;
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      ...new Set(said.map((s) => (s.empty ? s.blockedNote : s.staleNote))),
+    ].join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ลองสาย PO = รอบหน้าบ้าน ⇒ เนื้อเป็น Spinner ระหว่างรอ · แต่ลองสายรองไม่ได้พาเนื้อไปไหน (ตารางยังอยู่)
+     ⇒ ปุ่มต้องบอกเองว่ากำลังลองอยู่ ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const retrying = loading || lMaterial || lProducts;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
   const [openPo, setOpenPo] = useState({});
   const [search, setSearch] = useState("");
   const [statusSel, setStatusSel] = useState([]);  // poRollupStatus keys
@@ -146,10 +225,12 @@ export default function PoPage() {
       if (statusSel.length && !statusSel.includes(poRollupStatus(po))) return false;
       if (destSel.length && !destSel.includes(po.destination)) return false;
       if (q) {
+        /* ชื่อสินค้ามีสองแหล่ง: ชื่อที่บันทึกไว้กับบรรทัด PO (`l.productName` — มากับสาย PO เอง) และชื่อปัจจุบันจากรายการ
+           สินค้า · ต้องมีทั้งคู่ — รายการสินค้าล้มแล้วค้นด้วยชื่อเคยได้ "ไม่มี PO ตรงเงื่อนไข" (โทษคำค้น ทั้งที่ใบอยู่ครบ) */
         const hay = [
           po.poNumber,
           destinationLabel(po.destination),
-          ...(po.lines || []).flatMap((l) => [l.fgCode, prodIdx.get(String(l.fgCode).trim().toLowerCase())?.name]),
+          ...(po.lines || []).flatMap((l) => [l.fgCode, l.productName, prodIdx.get(String(l.fgCode).trim().toLowerCase())?.name]),
         ].filter(Boolean).join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
@@ -203,15 +284,18 @@ export default function PoPage() {
         </div>
       }
     >
-      {error && (
-        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
-           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
-        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
-      )}
+      {/* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+          ทุกสายของหน้าขึ้นที่ป้ายเดียวนี้ — ดูมติรายสายที่ก้อน sources */}
+      {notice}
 
-      {loading ? (
+      {/* ⚠️ `pageBlocked` ต้องตัดสินก่อน "ยังไม่มี PO" — รายการที่โหลดไม่ขึ้นไม่ใช่รายการว่าง
+          แคชอุ่นที่รอบใหม่ล้มไม่ถูกบล็อก (มีของในมือ) ⇒ ตารางวาดต่อ ป้ายบอกว่าเป็นของรอบก่อน
+          🪤 ตารางที่ถูกซ่อนต้องมีบรรทัดแทนที่ ไม่ปล่อยป้ายลอยเหนือที่ว่าง (ท่าเดียวกับหน้าวัสดุ/กระทบยอด/FC) */}
+      {firstLoad ? (
         <Spinner />
-      ) : error ? null : pos.length === 0 ? (
+      ) : pageBlocked ? (
+        <EmptyState icon={AlertCircle}>รายการ PO ยังแสดงไม่ได้ — ดูข้อความด้านบนแล้วกด “ลองใหม่”</EmptyState>
+      ) : pos.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มี PO</div>
@@ -284,7 +368,7 @@ export default function PoPage() {
                     <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่มี PO ตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
                   ) : (
                     grouped.pageRows.map((po) => (
-                      <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} canEdit={canEdit} />
+                      <PoGroup key={po.id} po={po} lines={matByPo.get(po.poNumber) || []} priceByFg={priceByFg} prodIdx={prodIdx} isOpen={!!openPo[po.id]} onToggle={() => toggle(po.id)} onSaved={reloadMaterial} canEdit={canEdit} statusBlocked={statusBlocked} valueBlocked={valueBlocked} />
                     ))
                   )}
                 </tbody>
@@ -302,7 +386,9 @@ export default function PoPage() {
   );
 }
 
-function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, canEdit }) {
+/* `statusBlocked` / `valueBlocked` = สายสถานะผลิต/วัสดุ · รายการสินค้า ไม่มีของในมือ (ล้มและไม่เคยโหลดสำเร็จ) — ดูมติที่ก้อน
+   sources ของ PoPage: ของที่กินสายนั้นเลิกพูดเป็นคำตอบ (ขีด / บรรทัดบอกเหตุ) ส่วนที่เหลือของแถวมาจากสาย PO อ่านได้ตามปกติ */
+function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, canEdit, statusBlocked = false, valueBlocked = false }) {
   let unpriced = 0;
   const exVat = (po.lines || []).reduce((s, l) => {
     if (l.status === "cancelled") return s;
@@ -318,6 +404,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
   const isSplit = (po.lines || []).some((l) => l.shippedQty != null);
 
   // สถานะหัว PO: รวมจากบรรทัด (ผ่านวัสดุ); ถ้าไม่มีบรรทัด active → สถานะเดิม
+  // ⚠️ สายวัสดุไม่มีของในมือ ⇒ `lines` ว่างทุกใบ ⇒ ตกมาที่สถานะส่งของของตัว PO (ข้อมูลจริงจากสาย PO) — ป้ายหัวจอบอกไว้แล้ว
   const hasLines = lines.length > 0;
   const poStage = hasLines ? poStageRollup(lines.map((r) => lineStage(r.status, !!r.tracking?.pmArrivedAt, !!r.tracking?.rmArrivedAt))) : null;
   const stageLabel = hasLines ? STAGE_LABEL[poStage] : PO_STATUS_LABEL[poRollupStatus(po)];
@@ -349,9 +436,14 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
           )}
         </td>
         <td style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: "var(--fw-semibold)" }}>{baht(exVat)}</div>
-          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
-          {unpriced > 0 && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>{unpriced} รายการไม่มีราคา</div>}
+          {/* ไม่มีราคาในมือ = ขีด — ฿0.00 กับ "n รายการไม่มีราคา" คือคำตอบผิดที่มาจากความไม่รู้ (เหตุอยู่ที่ป้ายหัวจอ) */}
+          {valueBlocked ? NA : (
+            <>
+              <div style={{ fontWeight: "var(--fw-semibold)" }}>{baht(exVat)}</div>
+              <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>รวม VAT {baht(incVat)}</div>
+              {unpriced > 0 && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>{unpriced} รายการไม่มีราคา</div>}
+            </>
+          )}
         </td>
         <td><span className="ui-badge" style={{ color: stageColor, borderColor: stageColor }}>{stageLabel}</span></td>
         <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
@@ -362,7 +454,13 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
         <tr>
           <td colSpan={11} style={{ background: "var(--panel-2)", padding: "8px 12px" }}>
             {lines.length === 0 ? (
-              <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)", padding: 8 }}>ไม่มีรายการที่ต้องติดตาม (อาจถูกยกเลิกทั้งหมด)</div>
+              /* สายวัสดุไม่มีของในมือ ⇒ `lines` ว่างเพราะไม่รู้ ไม่ใช่เพราะไม่มี — "ไม่มีรายการที่ต้องติดตาม" ตรงนี้คือคำโกหก
+                 และปุ่มเดินสถานะ (ผลิตเสร็จ / ส่งแล้ว / ปิดงาน) หายไปพร้อมกัน ⇒ บอกเหตุแทนที่ */
+              <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)", padding: 8 }}>
+                {statusBlocked
+                  ? "ยังดึงสถานะผลิต/วัสดุรายบรรทัดไม่ได้ จึงยังเดินสถานะผลิต/ส่งจากตรงนี้ไม่ได้ — กดลองใหม่ที่ป้ายด้านบน"
+                  : "ไม่มีรายการที่ต้องติดตาม (อาจถูกยกเลิกทั้งหมด)"}
+              </div>
             ) : (
               <TableScroll>
                 <table className="premium-table">

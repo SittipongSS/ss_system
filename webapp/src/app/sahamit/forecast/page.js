@@ -5,13 +5,16 @@ import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LineChart, Plus, Trash2, Pencil, Download, Send, X, CheckCircle2, Search } from "lucide-react";
+import { LineChart, Plus, Trash2, Pencil, Download, Send, X, CheckCircle2, Search, AlertCircle, SlidersHorizontal } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Tabs from "@/components/ui/Tabs";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { userTeams } from "@/lib/permissions";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoney, fmtNumber, NA } from "@/lib/format";
@@ -34,17 +37,133 @@ const nfBaht = (n) => fmtMoney(n);
 /* 🐞 เดิม `toISOString().slice(0,7)` = **เดือนแบบ UTC** — วันที่ 1 ตี 2 เวลาไทยยังเป็น
    สิ้นเดือนก่อนใน UTC ⇒ หน้าเปิดมาเลือกเดือนที่แล้วให้เอง โดยไม่มีอะไรบอก */
 const thisMonth = () => businessDate().slice(0, 7);
+// หมวดของ SKU ที่ทะเบียนสินค้าตอบแล้วว่าไม่มีหมวด ≠ หมวดที่ยังไม่รู้เพราะทะเบียนยังไม่มาถึงมือ (ดูก้อน sources)
+const NO_CATEGORY = "— ไม่ระบุหมวด —";
+const CATEGORY_UNKNOWN = "— ยังไม่รู้หมวด —";
 
 function ForecastPageInner() {
-  const { data: rounds, loading, error, errorDetail, reload } = useApiList("/api/sahamit/forecast/rounds");
-  const { data: products } = useApiList("/api/sahamit/products");
-  const { data: assignables } = useApiList("/api/pm/assignable-users");
+  const { data: rounds, loading, error: roundsError, staleError: roundsStale, errorDetail: roundsDetail, loaded: roundsLoaded, reload } = useApiList("/api/sahamit/forecast/rounds");
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
+  const { data: assignables, loading: lUsers, error: usersError, staleError: usersStale, errorDetail: usersDetail, loaded: usersLoaded, reload: reloadUsers } = useApiList("/api/pm/assignable-users");
   // forecast line ที่ถูกสร้างเป็นโครงการไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
-  const { data: mappedLineIds, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
+  const { data: mappedLineIds, loading: lMapped, error: mappedError, staleError: mappedStale, errorDetail: mappedDetail, loaded: mappedLoaded, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
   const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
   // ผู้ดูแลดีลสหมิตร = AE ทีม KA เท่านั้น (server เช็คซ้ำใน create-sales-deal)
   const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && userTeams(u).includes("KA")), [assignables]);
   const canEdit = useCan("sahamit:edit");
+
+  /* ── โหลดพัง ≠ ไม่มีรอบ · และลิสต์รองล้มต้องไม่กลายเป็น "ไม่มีหมวด / ฿0 / ยังไม่มีใครสร้างดีล / ไม่มี AE" ────────
+     🐞 เดิมจอนี้แกะ error ของลิสต์รอบอย่างเดียว อีกสามลิสต์ทิ้งความล้มเงียบ (บัญชีหนี้ KNOWN_SILENT) ⇒ ล้มเมื่อไร
+        ค่าตั้งต้น `[]` ถูกวาดเป็นคำตอบ: ทุกแถวตกหมวด "ไม่ระบุหมวด" · แถวรวมมูลค่าเป็น ฿0.00 พร้อม "n SKU ไม่มีราคา" ·
+        ป้าย "สร้างดีลแล้ว" หายหมดแล้วติ๊กเลือกได้ทุกแถว · ช่องผู้ดูแลขึ้น "— ไม่มี AE —" และปุ่มสร้างดับเงียบ
+        — ทุกอย่างอ่านเป็นข้อมูลจริง ไม่มีอะไรบอกว่าโหลดไม่ขึ้น (ทรงเดียวกับ /tax ที่เงียบ 26 วัน #1795)
+     ⭐ **ป้ายเดียวที่หัวจอ ครบทุกสาย** (ท่าเดียวกับ /tax · /sahamit · ใบยื่นชำระ) + ป้ายเดียวกันซ้ำในโมดัลสร้างแผน
+        เพราะโมดัลทับหัวจอ และเป็นที่เดียวที่ใช้รายชื่อ AE (picker ล้มต้องบอกตรงที่ใช้มัน พร้อมปุ่มลองใหม่)
+     ⚠️ ป้ายกับการบล็อกคนละคำถาม (กติกาเดียวกับทุกจอในทะเบียน): มี `error` หรือรอบเบื้องหลังล้ม (`staleError`)
+        = ขึ้นป้ายเสมอ · บล็อก/พักเฉพาะตอนไม่เคยโหลดสำเร็จ (`loaded`) ไม่ใช่ `!list.length` — mapped-lines ของรอบที่
+        ยังไม่มีใครสร้างดีลตอบ `200 []` ตามปกติ ⇒ วัดด้วยความยาว = ติ๊กเลือกไม่ได้ตลอดกาลทั้งที่ข้อมูลครบ
+
+     ⭐ **มติของจอนี้: สายไหนบล็อกอะไร**
+        · รอบ FC (`blocks: "page"`) — ทุกแท็บวาดจากลิสต์นี้ ไม่มีในมือ = ไม่มีอะไรให้โชว์ ⇒ เนื้อหาเหลือบรรทัดแทนที่
+          ไม่ใช่ "ยังไม่มีรอบ FC" (ซึ่งอ่านว่าลูกค้ายังไม่เคยส่ง FC)
+        · รายการสินค้า — **จอยังอ่านได้** (จำนวนชิ้นทุกช่องมาจากรอบ ชื่อสินค้าเป็น snapshot ในรอบเอง) แต่ของที่อ่านจาก
+          ทะเบียนสินค้าต้องเลิกพูดแทนที่จะพูดผิด: หมวดเป็น "ยังไม่รู้หมวด" (ไม่ใช่ "ไม่ระบุหมวด") · มูลค่าเป็นขีด
+          (ไม่ใช่ ฿0.00 + "n SKU ไม่มีราคา") · ปุ่ม "ลัง" พัก กดแล้วบอกเหตุ (ไม่รู้ชิ้นต่อลัง displayQty จะคืนเลขชิ้นใต้หัว "ลัง" = เลขผิดหน่วย)
+          · ตัวกรองหมวดพักพร้อมเหตุผล (FilterPopover ว่างขึ้น "ไม่มีตัวเลือก") · ค้นไม่เจอบอกว่าค้นชื่อจากทะเบียนไม่ได้
+          และ **พักการสร้างแผนการขาย** — โมดัลยืนยันมีหน้าที่บอกมูลค่าและ "n รายการไม่มีราคา (มูลค่า = 0)" ก่อนกด
+          ไม่รู้ราคา = ยืนยันดีลที่มองไม่เห็นว่าจะเข้า FC เป็น 0 กี่ใบ (server คิดราคาเองก็จริง แต่คนกดไม่ได้เห็น)
+        · รายการที่สร้างดีลแล้ว — ตัวล็อกของช่องติ๊ก: ไม่รู้ = ทุกแถวดูเลือกได้และป้าย "สร้างดีลแล้ว" หาย ⇒ **พักช่องติ๊ก**
+          พร้อมเหตุผลที่หัวตาราง (server กันซ้ำด้วย junction อยู่แล้ว แต่จอต้องไม่บอกว่ายังไม่มีใครสร้าง)
+        · รายชื่อ AE — picker ของโมดัลอย่างเดียว ⇒ ช่องเลือกบอกว่า "ดึงรายชื่อ AE ไม่ได้" (ไม่ใช่ "ไม่มี AE") และพักปุ่มสร้าง
+          · **พูดเฉพาะคนที่มีปุ่มสร้างแผน** (`canEdit`) — คนดูอย่างเดียวไม่มีโมดัลนี้ ป้ายแดงเรื่อง AE คือเหตุผลปลอมของสิ่งที่ไม่มีอยู่
+          (กติกาเดียวกับสายรองของใบยื่นชำระ `editAvailable`)
+     ⭐ `pending` = สายที่การสร้างแผนต้องใช้ ไม่เคยโหลดสำเร็จ และยังโหลดอยู่ — พักปุ่มแบบเดียวกับตอนล้ม
+        แต่เหตุผลเป็น "กำลังโหลด…" ไม่ใช่ป้ายแดง (ยังไม่มีอะไรล้ม) */
+  const sources = [
+    {
+      label: "รอบ FC", error: roundsError || roundsStale, empty: !roundsLoaded, detail: roundsDetail, reload, blocks: "page",
+      blockedNote: "รอบ FC ยังแสดงไม่ได้ (ไม่ได้แปลว่ายังไม่มีรอบ FC)",
+      staleNote: "รอบ FC ที่เห็นอยู่เป็นข้อมูลรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "deal",
+      pending: lProducts && !productsLoaded,
+      blockedNote: `หมวด มูลค่า จำนวนลัง และการค้นด้วยชื่อจากทะเบียนสินค้ายังใช้ไม่ได้ (ขึ้นเป็นขีด)${canEdit ? " · ยังสร้างแผนการขายไม่ได้" : ""}`,
+      staleNote: "หมวดและราคาสินค้าที่เห็นอยู่เป็นข้อมูลรอบก่อน",
+    },
+    {
+      label: "รายการที่สร้างดีลแล้ว", error: mappedError || mappedStale, empty: !mappedLoaded, detail: mappedDetail, reload: reloadMapped, blocks: "deal",
+      pending: lMapped && !mappedLoaded,
+      blockedNote: "ยังไม่รู้ว่ารายการไหนสร้างดีลไปแล้ว จึงยังติ๊กเลือกรายการไม่ได้",
+      staleNote: "ป้าย “สร้างดีลแล้ว” ที่เห็นอยู่เป็นข้อมูลรอบก่อน",
+    },
+    {
+      label: "รายชื่อ AE", error: canEdit ? usersError || usersStale : null, empty: !usersLoaded, detail: usersDetail, reload: reloadUsers, blocks: "deal",
+      pending: canEdit && lUsers && !usersLoaded,
+      blockedNote: "ยังเลือกผู้ดูแล (AE) ไม่ได้ จึงยังสร้างแผนการขายไม่ได้",
+      staleNote: "รายชื่อ AE ในช่องผู้ดูแลเป็นข้อมูลรอบก่อน",
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const pageBlocked = blocked.some((s) => s.blocks === "page");
+  const dealBlocked = blocked.filter((s) => s.blocks === "deal");
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — ตัวที่ถูกทิ้งมักเป็นตัวที่บอกสาเหตุจริง
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* เปิดรอบไม่ได้ = พูดเรื่องนั้นเรื่องเดียว (ไม่มีตาราง/โมดัลบนจอให้พัก) · ไม่งั้นพูดทุกสายที่ล้ม — สายที่ไม่เคยโหลด
+     สำเร็จใช้ blockedNote สายที่ยังมีแคชใช้ staleNote · Set กันประโยคซ้ำ */
+  const said = pageBlocked ? blocked.filter((s) => s.blocks === "page") : failing;
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      ...new Set(said.map((s) => (s.empty ? s.blockedNote : s.staleNote))),
+    ].join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ปุ่มลองใหม่ต้องบอกเองว่ากำลังลองอยู่ — ลองสายรองไม่ได้พาจอเข้า Spinner (รอบยังอยู่ในมือ)
+     ⇒ ไม่มีสถานะนี้ = กดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const retrying = loading || lProducts || lUsers || lMapped;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
+  // สายรองที่ "ไม่มีของในมือเพราะล้ม" (ไม่ใช่ยังโหลดอยู่) — ใช้เลือกประโยคเหตุผลตรงจุดที่ของนั้นหายไป
+  const productsFailed = !!(productsError || productsStale) && !productsLoaded;
+  const mappedFailed = !!(mappedError || mappedStale) && !mappedLoaded;
+  const usersFailed = !!(usersError || usersStale) && !usersLoaded;
+  // ข้อความแทนราคา/มูลค่าที่ยังไม่รู้ — ใช้ทั้งแถวรวมมูลค่า แถบที่เลือก และโมดัล (ประโยคเดียวกันทุกจุด)
+  const priceUnknownNote = productsFailed ? "ยังไม่รู้ราคา — ดึงรายการสินค้าไม่ได้" : "กำลังโหลดราคาสินค้า…";
+  /* ⭐ ยอดเงินทุกจุดของจอผ่านตัวนี้ตัวเดียว (แถวรวมท้าย Matrix · แถบที่เลือก · โมดัลสร้างแผน · มูลค่ารายบรรทัด)
+     — ราคามาจากทะเบียนสินค้าอย่างเดียว ⇒ ไม่มีทะเบียนในมือ = ขีด ไม่ใช่ ฿0.00 (ท่าเดียวกับ `money` ของหน้ากระทบยอด)
+     🐞 เดิมแต่ละจุดเขียนทางแยก `productsLoaded ? nfBaht(…) : NA` เอง ⇒ ถอดทางแยกจุดเดียวก็กลับไปเป็น ฿0.00 ข้างปุ่มสร้างดีล
+        โดยด่านเขียว · รวมเป็นตัวเดียวแล้วด่านตรึงได้ว่า nfBaht ถูกเรียกที่นี่ที่เดียว */
+  const money = (n) => (productsLoaded ? nfBaht(n) : NA);
+  /* ช่องติ๊กเลือกรายการ — พักจนกว่าจะรู้ว่ารายการไหนสร้างดีลแล้ว (ตัวล็อกของมัน) · null = ติ๊กได้ */
+  const selectPausedReason = mappedLoaded
+    ? null
+    : mappedFailed
+      ? "ยังติ๊กเลือกไม่ได้ — ดึงข้อมูลไม่ได้: รายการที่สร้างดีลแล้ว (ดูข้อความด้านบน)"
+      : "กำลังโหลดว่ารายการไหนสร้างดีลแล้ว…";
+  /* ปุ่ม "สร้าง n ดีล" ในโมดัล — พักพร้อมเหตุผล (ไม่ซ่อน) เมื่อสายที่การสร้างต้องใช้ไม่เคยโหลดสำเร็จ (ล้ม หรือยังโหลดอยู่)
+     ⚠️ ชื่อสายอยู่ **หลัง** "ดึงข้อมูลไม่ได้:" สำนวนเดียวกับป้าย */
+  const dealPending = sources.some((s) => s.blocks === "deal" && s.pending);
+  const dealPaused = dealBlocked.length > 0 || dealPending;
+  const dealPausedReason = dealBlocked.length
+    ? `ยังสร้างแผนการขายไม่ได้ — ดึงข้อมูลไม่ได้: ${dealBlocked.map((s) => s.label).join(" · ")} (ดูข้อความด้านบน)`
+    : dealPending ? "กำลังโหลดข้อมูลที่ใช้สร้างแผนการขาย…" : null;
+  // รายชื่อมาครบแล้วแต่ไม่มี AE ทีม KA สักคน = คำตอบจริง (ไม่ใช่ความล้ม) — ปุ่มยังพัก แต่ต้องบอกว่าเพราะอะไร
+  const submitPausedReason = dealPausedReason
+    || (usersLoaded && !aeList.length ? "ยังไม่มี AE ทีม KA ให้เลือกเป็นผู้ดูแล" : null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedNo, setSelectedNo] = useState(null);
@@ -53,6 +172,12 @@ function ForecastPageInner() {
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState([]); // หมวดสินค้าที่เลือกกรอง
   const q = search.trim().toLowerCase();
+  /* ค้นไม่เจอตอนทะเบียนสินค้ายังไม่มาถึง ≠ ไม่มีสินค้านั้น — passFg ค้นชื่อไทย/อังกฤษจากทะเบียนด้วย
+     ⇒ ไม่มีทะเบียน = ค้นได้แค่รหัสกับชื่อที่บันทึกในรอบ ต้องบอกแบบนั้น ไม่ใช่ "ไม่พบสินค้าตรงเงื่อนไข"
+     (ไม่มีคำค้น = ไม่เกี่ยวกับทะเบียน — ตัวกรองหมวดพักอยู่แล้วตอนทะเบียนไม่มา ⇒ ข้อความเดิม) */
+  const noMatchText = productsLoaded || !q
+    ? "ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง"
+    : `รหัส/ชื่อที่บันทึกในรอบไม่ตรงคำค้น — ชื่อจากทะเบียนสินค้ายังค้นไม่ได้ เพราะ${productsFailed ? "ดึงรายการสินค้าไม่ได้ (ดูข้อความด้านบน)" : "รายการสินค้ายังโหลดไม่เสร็จ"}`;
   // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 โครงการ" เข้าแผนการขาย
   const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
@@ -85,10 +210,22 @@ function ForecastPageInner() {
     for (const p of products) m.set(String(p.fgCode).trim().toLowerCase(), p);
     return m;
   }, [products]);
-  const catOf = (fg) => productByFg.get(String(fg).trim().toLowerCase())?.category || "— ไม่ระบุหมวด —";
+  /* ทะเบียนสินค้ายังไม่มาถึงมือ ⇒ "ยังไม่รู้หมวด" ไม่ใช่ "ไม่ระบุหมวด" — อย่างหลังคือคำตอบของทะเบียน
+     (SKU นี้ไม่มีหมวดจริง) ซึ่งตอนนี้ไม่มีใครตอบ (ดูก้อน sources) */
+  const missingCategory = productsLoaded ? NO_CATEGORY : CATEGORY_UNKNOWN;
+  const catOf = (fg) => productByFg.get(String(fg).trim().toLowerCase())?.category || missingCategory;
   // ชิ้นต่อลังของ SKU (null = ยังไม่ตั้ง) — ใช้โชว์ "ลัง" กำกับจำนวนชิ้นรายสินค้า
   const ppcFor = (fg) => ppcOf(productByFg.get(String(fg).trim().toLowerCase()));
   const casesSub = (fg, pieces) => casesText(pieces, ppcFor(fg));
+  /* หน่วยที่ตาราง Matrix ใช้จริง — ไม่รู้ชิ้นต่อลัง displayQty คืน **เลขชิ้น** ให้ทุกช่อง (กันช่องหาย)
+     ⇒ ทะเบียนสินค้าไม่มาทั้งลิสต์ + โหมด "ลัง" = ทั้งตารางเป็นเลขชิ้นใต้หัวที่บอกว่าลัง ⇒ บังคับชิ้นจนกว่าทะเบียนจะมา
+     ⭐ ปุ่ม "ลัง" ติดด่าน = โชว์ต่อ กดแล้วบอกเหตุ (ท่าเดียวกับ GatedAction และปุ่มเดียวกันของหน้ากระทบยอด
+        sahamit/reconcile — สองจอพี่น้องที่เสียทะเบียนสินค้าก้อนเดียวกันต้องพูดประโยคเดียวกัน) · ไม่ `disabled`
+        เพราะ title ของปุ่มที่ปิดอยู่ คีย์บอร์ดโฟกัสไม่ถึง = คนใช้คีย์บอร์ดไม่มีทางรู้เหตุ */
+  const unitBlocker = productsLoaded
+    ? null
+    : `ยังแสดงเป็นลังไม่ได้ — ${productsFailed ? "ดึงรายการสินค้าไม่ได้" : "รายการสินค้ายังโหลดไม่เสร็จ"} (ชิ้นต่อลังอยู่ในรายการสินค้า)`;
+  const unit = unitBlocker ? "piece" : matrixUnit;
 
   // ตัวเลือกหมวดสินค้าสำหรับตัวกรอง (จากสินค้าทั้งหมดใน master ของ AR-109)
   const categoryOptions = useMemo(() => {
@@ -123,7 +260,7 @@ function ForecastPageInner() {
     }
     return [...g.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrix, productByFg, q, catSel]);
+  }, [matrix, productByFg, missingCategory, q, catSel]);
 
   // แถวรวมมูลค่า (ราคาผลิต × จำนวน) ต่อเดือน + รวม — คิดตามแถวที่แสดง (หลังกรอง)
   const matrixValue = useMemo(() => {
@@ -179,7 +316,7 @@ function ForecastPageInner() {
         return {
           id: l.id, fgCode: l.fgCode, productName: l.productName, month: l.month, qty,
           price, amount: price == null ? null : qty * price,
-          category: p?.category || "— ไม่ระบุหมวด —",
+          category: p?.category || missingCategory,
           mapped: mappedSet.has(String(l.id)), // มีโครงการอยู่แล้ว
         };
       });
@@ -189,7 +326,7 @@ function ForecastPageInner() {
       String(a.month).localeCompare(String(b.month)));
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRound, productByFg, mappedSet, q, catSel]);
+  }, [selectedRound, productByFg, missingCategory, mappedSet, q, catSel]);
 
   const lineGroups = useMemo(() => {
     const g = new Map();
@@ -230,6 +367,8 @@ function ForecastPageInner() {
 
   const createDeal = async () => {
     if (!selectedRound || !selectedLines.size) return;
+    // ปุ่มพักอยู่แล้ว — ด่านซ้ำตรงนี้กันทางเข้าอื่น (Enter/คลิกค้างก่อนสายล้ม) ไม่ให้ยิงด้วยข้อมูลครึ่งเดียว
+    if (dealPaused) { notifyToast.error(dealPausedReason); return; }
     if (!dealOwnerId) { notifyToast.error("ต้องเลือกผู้ดูแล (AE)"); return; }
     setCreating(true);
     try {
@@ -277,15 +416,18 @@ function ForecastPageInner() {
         </div>
       }
     >
-      {error && (
-        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
-           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
-        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
-      )}
+      {/* ⭐ กล่องแจ้งกลาง ครบทุกสาย (ก้อน sources) — ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง
+          (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก") · เดิมพูดแค่สายรอบ FC อีกสามสายเงียบ */}
+      {notice}
 
+      {/* 🐞 เดิม `error ? null` — รอบใหม่ล้มแม้มีรอบของเมื่อครู่อยู่ในแคช ตารางที่อ่านอยู่หายทั้งใบ
+          ⇒ ซ่อนเฉพาะตอนไม่เคยโหลดสำเร็จ (`pageBlocked`) และวางบรรทัดแทนที่ ไม่ปล่อยป้ายลอยเหนือที่ว่าง
+          มีแคช = วาดต่อ ป้ายด้านบนบอกเองว่าเป็นของรอบก่อน · ว่างจริง (โหลดสำเร็จแล้วไม่มีรอบ) ยังขึ้น "ยังไม่มีรอบ FC" */}
       {loading ? (
         <Spinner />
-      ) : error ? null : rounds.length === 0 ? (
+      ) : pageBlocked ? (
+        <EmptyState icon={AlertCircle}>รอบ FC ยังแสดงไม่ได้ — ดูข้อความด้านบนแล้วกด “ลองใหม่”</EmptyState>
+      ) : rounds.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: "48px", textAlign: "center", color: "var(--text-3)" }}>
           <LineChart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มีรอบ FC</div>
@@ -307,11 +449,20 @@ function ForecastPageInner() {
                 <Search size={18} color="var(--text-3)" />
                 <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
               </div>
-              <FilterPopover
-                count={filterCount}
-                onClear={() => setCatSel([])}
-                groups={[{ key: "category", label: "หมวดสินค้า", options: categoryOptions, selected: catSel, onChange: setCatSel }]}
-              />
+              {/* ตัวเลือกหมวดมาจากทะเบียนสินค้า — ทะเบียนไม่มา FilterPopover จะกางออกมาเป็น "ไม่มีตัวเลือก"
+                  (อ่านว่าสินค้าไม่มีหมวด) ⇒ พักปุ่มไว้ให้เห็น + บอกเหตุข้าง ๆ (ติดด่าน = โชว์แล้วบอกเหตุ) */}
+              {productsLoaded ? (
+                <FilterPopover
+                  count={filterCount}
+                  onClear={() => setCatSel([])}
+                  groups={[{ key: "category", label: "หมวดสินค้า", options: categoryOptions, selected: catSel, onChange: setCatSel }]}
+                />
+              ) : (
+                <>
+                  <Button disabled icon={<SlidersHorizontal size={14} />}>ตัวกรอง</Button>
+                  <span className="form-note">{productsFailed ? "กรองตามหมวดยังไม่ได้ — ดึงรายการสินค้าไม่ได้" : "กำลังโหลดหมวดสินค้า…"}</span>
+                </>
+              )}
             </div>
           )}
 
@@ -330,7 +481,7 @@ function ForecastPageInner() {
                 </thead>
                 <tbody>
                   {overview.length === 0 && (
-                    <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</td></tr>
+                    <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--text-3)", padding: 28 }}>{noMatchText}</td></tr>
                   )}
                   {overview.map((s) => {
                     const meta = productMetaText(productByFg.get(String(s.fgCode).trim().toLowerCase()));
@@ -372,9 +523,16 @@ function ForecastPageInner() {
                 {matrix.rows.length > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
                     <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>หน่วย:</span>
+                    {/* ติ๊ก "ลัง" ต้องรู้ชิ้นต่อลังจากทะเบียนสินค้า — ติดด่าน = กดแล้วบอกเหตุ ไม่สลับ (ดู `unitBlocker`) */}
                     <div className="segmented">
-                      <button className={matrixUnit === "piece" ? "active" : ""} onClick={() => setMatrixUnit("piece")}>ชิ้น</button>
-                      <button className={matrixUnit === "case" ? "active" : ""} onClick={() => setMatrixUnit("case")}>ลัง</button>
+                      <button className={unit === "piece" ? "active" : ""} onClick={() => setMatrixUnit("piece")}>ชิ้น</button>
+                      <button
+                        className={unit === "case" ? "active" : ""}
+                        onClick={() => (unitBlocker ? notifyToast.error(unitBlocker) : setMatrixUnit("case"))}
+                        title={unitBlocker || undefined}
+                      >
+                        ลัง
+                      </button>
                     </div>
                   </div>
                 )}
@@ -383,7 +541,7 @@ function ForecastPageInner() {
               {matrix.rows.length === 0 ? (
                 <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>รอบนี้ยังไม่มีรายการ</div>
               ) : matrixGroups.length === 0 ? (
-                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง</div>
+                <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>{noMatchText}</div>
               ) : (
                 <TableScroll family="matrix" style={{ overflowX: "auto" }}>
                   <table className="premium-table sticky-col1">
@@ -412,11 +570,11 @@ function ForecastPageInner() {
                               {meta && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{meta}</div>}
                             </td>
                             {matrix.months.map((m) => (
-                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{displayQty(r.qty[m], ppcFor(r.fgCode), matrixUnit, { dot: true })}</td>
+                              <td key={m} style={{ textAlign: "right", color: r.qty[m] ? "inherit" : "var(--text-3)" }}>{displayQty(r.qty[m], ppcFor(r.fgCode), unit, { dot: true })}</td>
                             ))}
                             <td style={{ textAlign: "right", fontWeight: "var(--fw-bold)" }}>
-                              {displayQty(r.total, ppcFor(r.fgCode), matrixUnit)}
-                              {counterpartText(r.total, ppcFor(r.fgCode), matrixUnit) && <div style={{ fontSize: "var(--fs-2)", fontWeight: "var(--fw-normal)", color: "var(--text-3)" }}>{counterpartText(r.total, ppcFor(r.fgCode), matrixUnit)}</div>}
+                              {displayQty(r.total, ppcFor(r.fgCode), unit)}
+                              {counterpartText(r.total, ppcFor(r.fgCode), unit) && <div style={{ fontSize: "var(--fs-2)", fontWeight: "var(--fw-normal)", color: "var(--text-3)" }}>{counterpartText(r.total, ppcFor(r.fgCode), unit)}</div>}
                             </td>
                           </tr>
                           );
@@ -427,12 +585,14 @@ function ForecastPageInner() {
                       <tr>
                         <td colSpan={2} style={{ background: "var(--panel-2)", fontWeight: "var(--fw-semibold)", color: "var(--text-2)", borderTop: "2px solid var(--border)" }}>
                           รวมมูลค่า (฿)
-                          {matrixValue.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}> · {matrixValue.unpriced} SKU ไม่มีราคา</span>}
+                          {/* ราคามาจากทะเบียนสินค้า — ไม่มาทั้งลิสต์ ทุก SKU จะนับเป็น "ไม่มีราคา" และทุกช่องเป็น ฿0.00
+                              = ตัวเลขที่มาจากความไม่รู้ ⇒ ขีดทุกช่อง + บอกว่ายังไม่รู้ราคา (ไม่ใช่ "n SKU ไม่มีราคา") */}
+                          {(!productsLoaded || matrixValue.unpriced > 0) && <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}> · {productsLoaded ? `${matrixValue.unpriced} SKU ไม่มีราคา` : priceUnknownNote}</span>}
                         </td>
                         {matrix.months.map((m) => (
-                          <td key={m} style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.byMonth[m])}</td>
+                          <td key={m} style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>{money(matrixValue.byMonth[m])}</td>
                         ))}
-                        <td style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>{nfBaht(matrixValue.grand)}</td>
+                        <td style={{ textAlign: "right", background: "var(--panel-2)", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>{money(matrixValue.grand)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -451,9 +611,10 @@ function ForecastPageInner() {
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
                 </Select>
+                {/* ที่เดียวกับคำแนะนำการติ๊ก — ตอนช่องติ๊กพัก บรรทัดนี้คือเหตุผล (ติดด่าน = โชว์แล้วบอกเหตุ) */}
                 {lineList.length > 0 && (
-                  <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginLeft: "auto" }}>
-                    ติ๊กเลือกรายการ (สินค้า×เดือน) — 1 รายการ = 1 ดีล
+                  <span style={{ fontSize: "var(--fs-5)", color: mappedFailed ? "var(--amber)" : "var(--text-3)", marginLeft: "auto" }}>
+                    {selectPausedReason || "ติ๊กเลือกรายการ (สินค้า×เดือน) — 1 รายการ = 1 ดีล"}
                   </span>
                 )}
               </div>
@@ -462,8 +623,9 @@ function ForecastPageInner() {
               {selection.count > 0 && (
                 <div className="glass-panel" style={{ padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", borderLeft: "3px solid var(--accent, var(--blue))" }}>
                   <div style={{ fontSize: "var(--fs-7)" }}>
-                    เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> ชิ้น · <b>{nfBaht(selection.value)}</b>
-                    {selection.unpriced > 0 && <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)" }}> · {selection.unpriced} รายการไม่มีราคา</span>}
+                    {/* มูลค่าคิดจากราคาในทะเบียนสินค้า — ไม่มาทั้งลิสต์ = ขีด ไม่ใช่ ฿0.00 + "n รายการไม่มีราคา" */}
+                    เลือก <b>{selection.count}</b> รายการ · <b>{nf(selection.qty)}</b> ชิ้น · <b>{money(selection.value)}</b>
+                    {(!productsLoaded || selection.unpriced > 0) && <span style={{ color: "var(--amber)", fontSize: "var(--fs-3)" }}> · {productsLoaded ? `${selection.unpriced} รายการไม่มีราคา` : priceUnknownNote}</span>}
                   </div>
                   {canEdit && (
                     <button className="btn sm btn-primary" style={{ marginLeft: "auto" }} onClick={() => setDealModalOpen(true)}>
@@ -476,7 +638,7 @@ function ForecastPageInner() {
 
               {lineList.length === 0 ? (
                 <div className="empty-state dashed" style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: "var(--fs-7)" }}>
-                  {q || filterCount > 0 ? "ไม่พบสินค้าตรงเงื่อนไข — ปรับคำค้นหรือตัวกรอง" : "รอบนี้ยังไม่มีรายการ"}
+                  {q || filterCount > 0 ? noMatchText : "รอบนี้ยังไม่มีรายการ"}
                 </div>
               ) : (
                 <TableScroll family="matrix" style={{ overflowX: "auto" }}>
@@ -484,7 +646,7 @@ function ForecastPageInner() {
                     <thead>
                       <tr>
                         <th style={{ width: 34, textAlign: "center" }}>
-                          <input type="checkbox" checked={allLinesSelected} onChange={(e) => setLineGroup(lineList, e.target.checked)} title="เลือกทั้งหมด" />
+                          <input type="checkbox" checked={allLinesSelected} disabled={!!selectPausedReason} onChange={(e) => setLineGroup(lineList, e.target.checked)} title={selectPausedReason || "เลือกทั้งหมด"} />
                         </th>
                         <th style={{ minWidth: 120 }}>รหัสสินค้า</th>
                         <th style={{ minWidth: 160 }}>ชื่อสินค้า</th>
@@ -497,7 +659,7 @@ function ForecastPageInner() {
                       {lineGroups.flatMap(([cat, rows]) => [
                         <tr key={`cat-${cat}`}>
                           <td style={{ background: "var(--panel-2)", textAlign: "center", padding: "8px 10px" }}>
-                            <input type="checkbox" checked={rows.every((r) => selectedLines.has(r.id))} onChange={(e) => setLineGroup(rows, e.target.checked)} title={`เลือกหมวด ${cat}`} />
+                            <input type="checkbox" checked={rows.every((r) => selectedLines.has(r.id))} disabled={!!selectPausedReason} onChange={(e) => setLineGroup(rows, e.target.checked)} title={selectPausedReason || `เลือกหมวด ${cat}`} />
                           </td>
                           <td colSpan={5} style={{ background: "var(--panel-2)", fontWeight: "var(--fw-bold)", color: "var(--text-2)", padding: "8px 10px" }}>
                             {cat} <span style={{ fontWeight: "var(--fw-normal)", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>({rows.length})</span>
@@ -509,9 +671,10 @@ function ForecastPageInner() {
                               <input
                                 type="checkbox"
                                 checked={selectedLines.has(r.id)}
-                                disabled={r.mapped}
+                                /* ไม่รู้ว่ารายการไหนสร้างดีลแล้ว = ไม่รู้ว่าแถวไหนต้องล็อก ⇒ พักทุกแถว ไม่ใช่เปิดทุกแถว */
+                                disabled={r.mapped || !!selectPausedReason}
                                 onChange={() => toggleLine(r.id)}
-                                title={r.mapped ? "รายการนี้ถูกสร้างเป็นดีลแล้ว" : undefined}
+                                title={r.mapped ? "รายการนี้ถูกสร้างเป็นดีลแล้ว" : selectPausedReason || undefined}
                               />
                             </td>
                             <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{r.fgCode}</td>
@@ -528,7 +691,7 @@ function ForecastPageInner() {
                               {nf(r.qty)}
                               {casesSub(r.fgCode, r.qty) && <div style={{ fontSize: "var(--fs-2)", fontWeight: "var(--fw-normal)", color: "var(--text-3)" }}>{casesSub(r.fgCode, r.qty)}</div>}
                             </td>
-                            <td style={{ textAlign: "right", color: r.amount == null ? "var(--amber)" : "inherit" }}>{r.amount == null ? "—" : nfBaht(r.amount)}</td>
+                            <td style={{ textAlign: "right", color: r.amount == null ? "var(--amber)" : "inherit" }}>{r.amount == null ? NA : money(r.amount)}</td>
                           </tr>
                         )),
                       ])}
@@ -612,20 +775,24 @@ function ForecastPageInner() {
       {/* Modal ยืนยันสร้างแผนการขายจากรายการที่เลือก */}
       <Modal open={dealModalOpen} onClose={() => !creating && setDealModalOpen(false)} title="สร้างแผนการขายจาก Forecast" size="md">
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* ป้ายเดียวกับหัวจอ — โมดัลทับหัวจอไว้ และเป็นที่เดียวที่ใช้รายชื่อ AE ⇒ picker ล้มต้องบอก + ลองใหม่ได้ตรงนี้ */}
+          {notice}
           <div className="glass-panel" style={{ padding: "12px 14px", fontSize: "var(--fs-7)", lineHeight: 1.7 }}>
             เลือก <b>{selection.count}</b> รายการ (สินค้า×เดือน) → สร้าง <b>{selection.count}</b> ดีล
             <span style={{ color: "var(--text-3)" }}> (1 รายการ = 1 ดีล)</span>
             <br />
-            รวม <b>{nf(selection.qty)}</b> ชิ้น · มูลค่า <b>{nfBaht(selection.value)}</b>
-            {selection.unpriced > 0 && (
-              <span style={{ color: "var(--amber)", fontSize: "var(--fs-5)" }}> · {selection.unpriced} รายการไม่มีราคา (มูลค่า = 0)</span>
+            {/* ไม่รู้ราคา = ขีด ไม่ใช่ ฿0.00 — "(มูลค่า = 0)" คือคำเตือนของรายการที่ทะเบียนตอบแล้วว่าไม่มีราคา */}
+            รวม <b>{nf(selection.qty)}</b> ชิ้น · มูลค่า <b>{money(selection.value)}</b>
+            {(!productsLoaded || selection.unpriced > 0) && (
+              <span style={{ color: "var(--amber)", fontSize: "var(--fs-5)" }}> · {productsLoaded ? `${selection.unpriced} รายการไม่มีราคา (มูลค่า = 0)` : priceUnknownNote}</span>
             )}
           </div>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             ผู้ดูแล (AE)
             <Select className="premium-select" value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
-              {!aeList.length && <option value="">— ไม่มี AE —</option>}
+              {/* "ไม่มี AE" เป็นคำตอบได้เฉพาะตอนรายชื่อมาถึงแล้ว — ล้ม/ยังโหลดต้องพูดตามจริง */}
+              {!aeList.length && <option value="">{usersLoaded ? "— ไม่มี AE —" : usersFailed ? "— ดึงรายชื่อ AE ไม่ได้ —" : "กำลังโหลดรายชื่อ AE…"}</option>}
               {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
             </Select>
           </label>
@@ -637,9 +804,11 @@ function ForecastPageInner() {
             </Select>
           </label>
 
+          {/* ปุ่มสร้างพัก = บอกเหตุเสมอ (เดิมดับเงียบตอนไม่มี AE ให้เลือก) — สายที่ต้องใช้ไม่มาก่อน แล้วค่อยเรื่องผู้ดูแล */}
+          {submitPausedReason && <p className="form-note">{submitPausedReason}</p>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
             <button className="btn ghost" onClick={() => setDealModalOpen(false)} disabled={creating}>ยกเลิก</button>
-            <button className="btn btn-primary" onClick={createDeal} disabled={creating || !dealOwnerId || !selection.count}>
+            <button className="btn btn-primary" onClick={createDeal} disabled={creating || dealPaused || !dealOwnerId || !selection.count}>
               <Send size={14} /> {creating ? "กำลังสร้าง..." : `สร้าง ${selection.count} ดีล`}
             </button>
           </div>

@@ -9,6 +9,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, isTaxWaitingOnMe, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
 import { customerNameIn } from "@/lib/master/customerName";
 import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
@@ -29,7 +30,7 @@ export default function FilingsPage() {
   const router = useRouter();
   const canAct = useCan("sales:act");       // SA: create / receive / edit
 
-  const { data: orders, loading, error: loadError, errorDetail: loadErrorDetail, reload } = useApiList("/api/orders");
+  const { data: orders, loading, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, loaded: ordersLoaded, reload } = useApiList("/api/orders");
 
   /* เลนของผู้ใช้ (SA / RA) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
      AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
@@ -56,7 +57,68 @@ export default function FilingsPage() {
   const [selected, setSelected] = useState(() => new Set());
   // ลิสต์ลูกค้าโหลดตอนกางตัวกรองครั้งแรก ไม่ใช่ตอนเปิดหน้า (508 แถว)
   const [customersReady, setCustomersReady] = useState(false);
-  const { data: customers } = useApiList(customersReady ? "/api/customers" : null);
+  const { data: customers, loading: lCustomers, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList(customersReady ? "/api/customers" : null);
+
+  /* ── โหลดพัง ≠ ไม่มีใบยื่น · และรายชื่อลูกค้าที่ดึงไม่ได้ ≠ "ไม่มีลูกค้าให้เลือก" ─────────────────────
+     ป้ายเดียวของจอ (ท่าเดียวกับ /tax · /database) — ทุก useApiList ของหน้านี้อยู่ในก้อน sources ⇒ ได้ประโยคเดียวกัน
+     ปุ่มลองใหม่ตัวเดียวกัน และรอบเบื้องหลังที่ล้ม (`staleError`) ถึงป้ายทุกสาย
+
+     ⭐ **มติของจอนี้: สายไหนกระทบอะไร**
+        · ใบยื่นชำระ (ลิสต์หลัก · `blocks: "list"`) — ไม่เคยโหลดสำเร็จ = ซ่อนตาราง เหลือป้ายอย่างเดียว · สถานะว่าง "ยังไม่มีใบยื่นชำระ"
+          ใต้ป้ายอ่านได้ว่าระบบว่างจริง ซึ่งคนละเรื่องกับโหลดไม่ได้ · มีแคชอยู่ = ตารางยังอยู่ ป้ายบอกว่าเป็นของรอบก่อน
+        · รายชื่อลูกค้า (picker ของตัวกรอง · `blocks: "filter"` — โหลดตอนกางแผงครั้งแรก) — ของที่กินมันมีแค่ตัวกรองลูกค้า
+          (+ ชื่อลูกค้าบนหัวรายงานที่โหลดออก ซึ่งมาจากลูกค้าที่ติ๊กไว้ในตัวกรองตัวเดียวกัน) ⇒ **ตารางไม่ต้องหลบ**
+          🐞 ทรงเดิม: แผงตัวกรองขึ้น "ไม่มีตัวเลือก" เฉย ๆ = อ่านว่าไม่มีลูกค้าในระบบ ทั้งที่แค่ดึงไม่ขึ้น
+          ⇒ ป้ายเดียวกันนี้ (อยู่ใต้แถบเครื่องมือ = ติดกับปุ่มตัวกรอง) บอกว่าตัวกรองลูกค้ายังใช้ไม่ได้ พร้อมปุ่มลองใหม่
+          และหัวหมวดในแผงตัวกรองบอกสถานะเอง (`customerGroupLabel`) เพราะแผงลอยทับป้ายตอนกางอยู่
+     ⚠️ ป้ายกับการซ่อนคนละคำถาม: มี `error`/`staleError` = ขึ้นป้ายเสมอ · ซ่อนเฉพาะตอนไม่เคยโหลดสำเร็จ (`loaded`)
+        — ห้ามวัดด้วย `!orders.length`: ลิสต์ที่ตอบ `200 []` คือรู้แล้วว่าไม่มีใบ ต้องยังอ่านว่าว่าง */
+  const sources = [
+    {
+      label: "ใบยื่นชำระ", error: ordersError || ordersStale, empty: !ordersLoaded, detail: ordersDetail, reload, blocks: "list",
+      blockedNote: "รายการใบยื่นยังแสดงไม่ได้ (ไม่ได้แปลว่ายังไม่มีใบยื่นชำระ)",
+      staleNote: "รายการใบยื่นที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "รายชื่อลูกค้า", error: customersError || customersStale, empty: !customersLoaded, detail: customersDetail, reload: reloadCustomers, blocks: "filter",
+      blockedNote: "ตัวกรองลูกค้ายังใช้ไม่ได้ (ไม่ได้แปลว่าไม่มีลูกค้าให้เลือก)",
+      staleNote: "รายชื่อลูกค้าในตัวกรองเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const listBlocked = blocked.some((s) => s.blocks === "list");
+  const filterBlocked = blocked.some((s) => s.blocks === "filter");
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  // ประโยคท้ายผูกกับสายที่ล้มทีละสาย — สายที่ไม่มีของในมือพูด blockedNote · สายที่ยังมีแคชพูด staleNote
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      ...new Set(failing.map((s) => (s.empty ? s.blockedNote : s.staleNote))),
+    ].join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ลองสายลูกค้าไม่ได้พาแผงเข้า skeleton (ตารางยังอยู่) ⇒ ปุ่มต้องบอกเองว่ากำลังลองอยู่
+     ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ · ลองสายใบยื่นที่ไม่เคยโหลดสำเร็จ = แผงเป็น skeleton ให้เห็นเอง */
+  const retrying = loading || lCustomers;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
+  /* หัวหมวดในแผงตัวกรอง — แผงวาด "ไม่มีตัวเลือก" เองเมื่อลิสต์ว่าง (FilterPopover ยังไม่มีช่องให้บอกเหตุ)
+     ⇒ ป้ายหมวดบอกแทนว่าว่างเพราะอะไร · ป้ายเต็มพร้อมปุ่มลองใหม่อยู่ใต้แถบเครื่องมือ */
+  const customerGroupLabel = customersLoaded ? "ลูกค้า" : filterBlocked ? "ลูกค้า (ดึงไม่ได้)" : "ลูกค้า (กำลังโหลด…)";
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -155,8 +217,9 @@ export default function FilingsPage() {
 
   /* ⭐ ป้ายจำนวนย้ายจากหัวหน้าเข้าหัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9)
      นับ **ใบที่เหลือหลังกรอง** = ยอดของ Pager · กำลังเลือกแถว = "เลือก x/y ใบ"
-     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด — ไม่ใช่ "0 ใบ" ที่อ่านว่าไม่มีงาน */
-  const noData = (loading || loadError) && !orders.length;
+     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด — ไม่ใช่ "0 ใบ" ที่อ่านว่าไม่มีงาน
+     ⚠️ "ยังไม่มีข้อมูล" = ไม่เคยโหลดสำเร็จ (`loaded`) ไม่ใช่ลิสต์ยาวศูนย์ — `200 []` คือรู้แล้วว่า 0 ใบ */
+  const noData = !ordersLoaded;
   const count = noData ? null
     : selected.size ? `เลือก ${selected.size}/${rows.length} ใบ` : `${rows.length} ใบ`;
 
@@ -191,7 +254,7 @@ export default function FilingsPage() {
         title="รายการใบยื่นชำระภาษี"
         subtitle="ค้นหา กรอง และเปิดใบยื่นเพื่อดำเนินการต่อ"
         count={count}
-        loading={loading && !orders.length}
+        loading={loading && !ordersLoaded}
         toolbar={(
         <FilterBar
           filters={filterOptions}
@@ -207,7 +270,7 @@ export default function FilingsPage() {
             onOpen={() => setCustomersReady(true)}
             onClear={() => setCustomerIds([])}
             groups={[{
-              key: "customer", label: "ลูกค้า", icon: Building2,
+              key: "customer", label: customerGroupLabel, icon: Building2,
               /* ป้ายต้องผ่านกติกาสองภาษา — ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้ตัวเลือกว่างเปล่า
                  (ป้ายที่นี่เป็นชื่อเปล่า ไม่ใช่ "รหัส · ชื่อ" แบบ dropdown เลือกลูกค้า) */
               options: customers.map((c) => ({ value: c.id, label: customerNameIn(c) })),
@@ -228,19 +291,11 @@ export default function FilingsPage() {
         </FilterBar>
         )}
       >
-      {loadError && (
-        <StatusNotice
-          tone="error"
-          className="mb-4"
-          detail={loadErrorDetail}
-          action={<Button size="sm" variant="ghost" onClick={() => reload()}>ลองใหม่</Button>}
-        >
-          {loadError}
-        </StatusNotice>
-      )}
+      {notice}
       {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด — สถานะว่าง "ยังไม่มีใบยื่น"
-          ใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง ซึ่งคนละเรื่องกับโหลดไม่ได้ */}
-      {!(loadError && !orders.length) && (
+          ใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง ซึ่งคนละเรื่องกับโหลดไม่ได้
+          ⚠️ ถามสายใบยื่นสายเดียว — รายชื่อลูกค้าล้มไม่ได้ทำให้ตารางผิด (ดูมติที่ก้อน sources) */}
+      {!listBlocked && (
       <DataList
         columns={columns}
         rows={rows}
