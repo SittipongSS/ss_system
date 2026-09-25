@@ -14,6 +14,8 @@
 // ⭐ **ทางบังคับลบต้องเขียน audit ของคำร้องทีละใบก่อนลบ** — `audit_logs.before` คือทางกู้
 //    ทางเดียว (ระบบไม่มีถังขยะ) · อ่านไม่ขึ้น = หยุด ไม่ใช่ลบต่อโดยไม่มีร่องรอย
 
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+
 /** ร่างที่ยังไม่เคยส่ง — ตรงกับเงื่อนไขที่ trigger ยอมให้ลบตรง */
 export function isUnsentDraft(row) {
   return row?.status === 'draft' && !row?.submittedAt;
@@ -65,8 +67,10 @@ export function sentRequestsForceNote(rows) {
  * ⚠️ supabase ไม่ throw: นับไม่ขึ้น = ได้ [] = ด่านเปิดเอง แล้วคำร้องหายเงียบเหมือนเดิม
  */
 export async function requestsLinkedTo(supabase, column, value) {
-  const { data, error } = await supabase
-    .from('dept_requests').select('id, docNo, status, submittedAt').eq(column, value);
+  // ⚠️ ไล่ทีละหน้า — ตัดที่ 1,000 = ด่านมองไม่เห็นใบที่เกิน แล้วใบพวกนั้นหายพ่วงไปเงียบ ๆ
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('dept_requests').select('id, docNo, status, submittedAt').eq(column, value)
+    .order('id', { ascending: true }));
   if (error) throw new Error(`อ่านคำร้องที่ผูก${column === 'dealId' ? 'ดีล' : 'โครงการ'}ไม่สำเร็จ: ${error.message}`);
   return data || [];
 }
@@ -78,9 +82,13 @@ export async function requestsLinkedTo(supabase, column, value) {
 export async function snapshotRequestsForAudit(supabase, ids) {
   const list = (ids || []).filter(Boolean);
   if (!list.length) return [];
+  // ไล่ทีละหน้าทั้งคู่ — snapshot ที่ถูกตัดคือ audit ที่ขาดแถวไปเงียบ ๆ
   const [rows, thread] = await Promise.all([
-    supabase.from('dept_requests').select('*').in('id', list),
-    supabase.from('entity_updates').select('*').eq('entityType', 'dept_request').in('entityId', list),
+    fetchAllResult(() => supabase.from('dept_requests').select('*').in('id', list)
+      .order('id', { ascending: true })),
+    fetchAllResult(() => supabase.from('entity_updates').select('*')
+      .eq('entityType', 'dept_request').in('entityId', list)
+      .order('createdAt', { ascending: true }).order('id', { ascending: true })),
   ]);
   if (rows.error) throw new Error(`อ่านคำร้องก่อนลบไม่สำเร็จ: ${rows.error.message}`);
   if (thread.error) throw new Error(`อ่านเธรดคำร้องก่อนลบไม่สำเร็จ: ${thread.error.message}`);
