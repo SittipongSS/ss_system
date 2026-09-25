@@ -21,6 +21,17 @@ export async function GET(request, { params }) {
     return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
   }
 
-  const result = await registrationRequirements(supabase, id);
+  /* 🐞 เดิมไม่จับ — `registrationRequirements` ตั้งใจ throw เมื่อ query พัง ("query พังต้องดัง" ใน lib/tax/requirements)
+     แต่ถ้าหลุดออกจาก handler ไป Next ตอบ 500 เปล่า ๆ ไม่มี JSON ⇒ บรรทัด "รายละเอียดสำหรับแจ้งปัญหา"
+     บนหน้าทะเบียนเหลือแค่ "HTTP 500" · จับแล้วส่งข้อความจริงกลับไป (ยังเป็น 500 — ไม่ได้ทำให้ดูเหมือนผ่าน) */
+  let result;
+  try {
+    result = await registrationRequirements(supabase, id);
+  } catch (e) {
+    console.error('[excise-registrations/requirements]', id, e);
+    return Response.json({ error: e?.message || 'ตรวจเอกสารบังคับไม่สำเร็จ' }, { status: 500 });
+  }
+  // ทะเบียนหายไประหว่างตรวจ (ถูกลบพอดี) — ตอบ 404 แทน `{ ready: false, missing: [] }` ที่อ่านเป็น "ขาด 0 ฉบับ"
+  if (result?.notFound) return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
   return Response.json(result);
 }
