@@ -13,7 +13,9 @@ const nf = (n) => fmtNumber(n || 0);
 //  • เดือนนี้ "PO เกิน" (excess>0)  → เสนอ "ส่งไปชดเชย" เดือนที่ขาด (push out)
 // การจัดลำดับ/จำนวนเป็นไปตาม logic ใน predict.js (suggestCoverage / suggestCoverageTargets).
 // `matrix` = ผลจาก buildReconMatrix ที่หน้ากระทบยอดมีอยู่แล้ว.
-export default function CoveragePanel({ fgCode, month, coverages, matrix, piecesPerCase = null, canEdit = true, onChanged }) {
+// `pausedReason` = ไม่ใช่ null เมื่อรายการชดเชยในมือไม่ใช่ของล่าสุด (สายล้ม/กำลังโหลด) — ปุ่มยืนยัน/ลบพักพร้อมเหตุ
+//   ⚠️ คำแนะนำกรองรายการที่ยืนยันแล้วออกด้วย `coverages` (alreadyIn/alreadyOut) ⇒ รายการเก่า = เสนอซ้ำ = กดแล้วย้าย FC ซ้ำ
+export default function CoveragePanel({ fgCode, month, coverages, matrix, piecesPerCase = null, canEdit = true, onChanged, pausedReason = null }) {
   const [busy, setBusy] = useState(false);
   const caseSuffix = (n) => { const c = casesText(n, piecesPerCase); return c ? ` (${c})` : ""; };
   const related = (coverages || []).filter(
@@ -45,7 +47,9 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
 
   const suggestions = [...pullIn, ...pushOut];
 
+  // ด่านซ้ำในตัวฟังก์ชัน — ปุ่มพักอยู่แล้ว แต่คลิกที่ค้างมาก่อนสายล้ม/ก่อนรอบใหม่เริ่ม ต้องไม่ยิงบนรายการเก่า
   const applyCoverage = async (sourceMonth, targetMonth, useQty) => {
+    if (pausedReason) { notifyToast.error(pausedReason); return; }
     setBusy(true);
     try {
       await sahamitFetch("/api/sahamit/coverage", {
@@ -60,6 +64,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
     setBusy(false);
   };
   const remove = async (id) => {
+    if (pausedReason) { notifyToast.error(pausedReason); return; }
     try {
       await sahamitFetch(`/api/sahamit/coverage/${id}`, { method: "DELETE" });
       onChanged?.();
@@ -68,6 +73,8 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
 
   return (
     <div>
+      {/* ปุ่มพัก = บอกเหตุเหนือปุ่มทั้งสองกลุ่ม (ติดด่าน = โชว์แล้วบอกเหตุ) · ขึ้นเฉพาะคนที่มีปุ่ม และเฉพาะตอนมีปุ่มให้พัก */}
+      {canEdit && pausedReason && (suggestions.length > 0 || related.length > 0) && <p className="form-note mb-3">{pausedReason}</p>}
       {/* คำแนะนำจากระบบ: ดึงเข้า (เดือนนี้ขาด) หรือ ส่งออก (เดือนนี้ PO เกิน) */}
       {suggestions.length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -92,7 +99,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
                     </span>
                     <span style={{ color: "var(--text-2)" }}> ({nf(s.use)} ชิ้น{caseSuffix(s.use)})</span>
                   </div>
-                  {canEdit && <button className="btn btn-primary sm" disabled={busy} onClick={() => applyCoverage(s.sourceMonth, s.targetMonth, s.use)}>ยืนยัน</button>}
+                  {canEdit && <button className="btn btn-primary sm" disabled={busy || !!pausedReason} title={pausedReason || undefined} onClick={() => applyCoverage(s.sourceMonth, s.targetMonth, s.use)}>ยืนยัน</button>}
                 </div>
               );
             })}
@@ -137,7 +144,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
                 ) : (
                   <span className="ui-badge" style={{ color: "var(--amber)", borderColor: "var(--amber)" }}>ส่งออก</span>
                 )}
-                {canEdit && <button className="btn-icon" title="ลบ" onClick={() => remove(c.id)} style={{ marginLeft: "auto" }}>✕</button>}
+                {canEdit && <button className="btn-icon" title={pausedReason || "ลบ"} disabled={!!pausedReason} onClick={() => remove(c.id)} style={{ marginLeft: "auto" }}>✕</button>}
               </li>
             ))}
           </ul>

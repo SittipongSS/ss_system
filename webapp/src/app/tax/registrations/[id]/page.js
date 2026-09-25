@@ -25,6 +25,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Modal from "@/components/Modal";
 import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
@@ -43,6 +44,7 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import { httpLoadFailure, sourcesFailureDetail, thrownLoadFailure } from "@/lib/ui/loadFailure";
 
 // ภาษี/ชิ้น อ่านจากทะเบียนสินค้าเสมอ (ดูเหตุผลเต็มที่หน้ารายการทะเบียน) — ทะเบียน
 // สรรพสามิตตัดสินแค่ว่า "เสียภาษีไหม" ส่วนตัวเลขอัตรามาจากราคาขายปลีกของ FG
@@ -56,6 +58,10 @@ const pct = (rate) => {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
 };
 
+// ประโยคท้ายป้ายของสายที่ป้อนฟอร์มแก้ไขเท่านั้น (สินค้า · ลูกค้า · รายการขึ้นทะเบียน) — ดูมติที่ก้อน sources
+const EDIT_BLOCKED_NOTE = "ยังแก้ไขทะเบียนนี้ไม่ได้ เพราะฟอร์มแก้ไขต้องใช้ข้อมูลชุดนี้เลือกลูกค้าและ FG ที่ยังไม่ขึ้นทะเบียน";
+const EDIT_STALE_NOTE = "ฟอร์มแก้ไขจะใช้รายการรอบก่อน ไม่ใช่ล่าสุด";
+
 export default function RegistrationDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -67,19 +73,40 @@ export default function RegistrationDetailPage() {
      /api/customers (508 แถว) เต็มทั้งคู่ เพื่อใช้แถวเดียว */
   const [s, setS] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  /* ความล้มของใบนี้ = `{ message, detail }` จาก lib/ui/loadFailure ตัวเดียวกับที่ useApiList ใช้ (ไทยนำ + ดิบเป็นบรรทัดรอง)
+     แยกสองช่องแบบเดียวกับฮุก: รอบหน้าบ้านที่ล้ม (`recordFault`) · รอบเบื้องหลังที่ล้ม (`recordStaleFault` = ของบนจอเป็นรอบก่อน)
+     🐞 ทรงเดิม: รอบเบื้องหลังล้มเงียบสนิท (แท็บที่เปิดค้างยืนยันสถานะเมื่อวานต่อไป) · รอบหน้าบ้านล้ม (500/เน็ตหลุด) ได้หัว
+        "ไม่พบรายการ · ทะเบียนนี้อาจถูกลบไปแล้ว" + ข้อความดิบของเซิร์ฟเวอร์เป็นตัวเนื้อ = อ่านว่าทะเบียนถูกลบ ทั้งที่ใบยังอยู่ครบ
+     ⭐ 404 = ไม่มีใบนี้จริง (ไม่มีแถว หรือมองไม่เห็นตามสิทธิ์ — server ตอบเหมือนกันโดยเจตนา) ⇒ ไม่ใช่ความล้ม ไปทาง "ไม่พบรายการ"
+        · แต่ 404 ของรอบเบื้องหลัง (มีคนลบใบที่เปิดค้างอยู่) ไม่พลิกจอทิ้ง — ของบนจอยังอยู่ ป้ายบอก "ไม่พบทะเบียนนี้" ว่าเป็นรอบก่อน */
+  const [recordFault, setRecordFault] = useState(null);
+  const [recordStaleFault, setRecordStaleFault] = useState(null);
   const load = useCallback(async (opts) => {
     if (!opts?.background) setLoading(true);
+    let fault = null;
     try {
       const res = await apiFetch(`/api/excise-registrations/${id}?full=1`);
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "โหลดทะเบียนไม่สำเร็จ");
-      setS(await res.json());
-      setLoadError(null);
+      if (res.ok) {
+        setS(await res.json());
+        setRecordFault(null);
+        setRecordStaleFault(null);
+        return;
+      }
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 404 && !opts?.background) {
+        setS(null);
+        setRecordFault(null);
+        setRecordStaleFault(null);
+        return;
+      }
+      // มี response แต่ไม่ ok — ประโยคไทยตาม status · ข้อความดิบทั้งก้อนไปบรรทัดรอง (ตัวแยกเดียวกับ useApiList)
+      fault = httpLoadFailure(res.status, body?.error);
     } catch (e) {
-      if (!opts?.background) setLoadError(e?.message || "โหลดทะเบียนไม่สำเร็จ");
+      fault = thrownLoadFailure(e);
     } finally {
       if (!opts?.background) setLoading(false);
     }
+    if (opts?.background) setRecordStaleFault(fault); else setRecordFault(fault);
   }, [id]);
   useEffect(() => { load(); }, [load]);
   // ใบที่เปิดค้างไว้ต้องรู้เองว่าอีกฝั่งอนุมัติ/ตีกลับไปแล้ว — ไม่ต้องรอให้ผู้ใช้ F5
@@ -102,10 +129,93 @@ export default function RegistrationDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   // ลิสต์ของ picker โหลดตอนเปิดฟอร์มแก้ครั้งแรกเท่านั้น (ไม่ใช่ตอนเปิดหน้า)
   const [pickerReady, setPickerReady] = useState(false);
-  const { data: products } = useApiList(pickerReady ? "/api/products" : null);
-  const { data: customers } = useApiList(pickerReady ? "/api/customers" : null);
-  const { data: allRegs } = useApiList(pickerReady ? "/api/excise-registrations" : null);
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList(pickerReady ? "/api/products" : null);
+  const { data: customers, loading: lCustomers, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList(pickerReady ? "/api/customers" : null);
+  const { data: allRegs, loading: lRegs, error: regsError, staleError: regsStale, errorDetail: regsDetail, loaded: regsLoaded, reload: reloadRegs } = useApiList(pickerReady ? "/api/excise-registrations" : null);
   const openForm = () => { setPickerReady(true); setFormOpen(true); };
+
+  /* ── โหลดใบพัง ≠ ไม่พบทะเบียน · picker ที่ดึงไม่ได้ ≠ "ไม่มีลูกค้า/สินค้าให้เลือก" ─────────────────────────
+     ท่าเดียวกับหน้ารายละเอียดใบยื่นชำระ (tax/filings/[id]) — ป้ายเดียวของจอ ทุกแหล่งข้อมูลอยู่ในก้อน sources
+
+     ⭐ **มติของจอนี้: สายไหนบล็อกอะไร** (หน้ารายละเอียดเป็นจออ่านเป็นหลัก ไม่ใช่ฟอร์ม)
+        · ทะเบียนใบนี้ (`blocks: "page"` — อ่านด้วย apiFetch ไม่ใช่ useApiList แต่พูดสำนวนเดียวกัน) — ไม่มีใบในมือ = ไม่มีอะไรให้โชว์
+          ⇒ ทั้งหน้าเหลือป้าย และทางแยกนี้ต้องตัดสิน **ก่อน** บรรทัด "ไม่พบรายการ" เสมอ
+          🪤 `empty` = ไม่มีใบในมือ **และรอบหน้าบ้านล่าสุดล้ม** (`recordError`) ไม่ใช่รอบเบื้องหลัง — "ไม่พบ" ที่ยืนยันด้วย 404 แล้ว
+             ต้องไม่พลิกเป็น "(ไม่ได้แปลว่าทะเบียนนี้ถูกลบไปแล้ว)" เพราะสลับแท็บแล้วเน็ตสะดุด
+        · ทะเบียนสินค้า · รายชื่อลูกค้า · รายการขึ้นทะเบียนทั้งหมด (`blocks: "edit"` — picker โหลดตอนกดแก้ไขครั้งแรก)
+          เนื้อหน้าไม่ได้อ่านสามลิสต์นี้เลย (สินค้า/ลูกค้าของใบมากับ `?full=1`) ของที่กินมันมีชิ้นเดียวคือ **ฟอร์มแก้ไข**
+          (RegistrationFormModal): สินค้าหาย ⇒ ช่อง FG ขึ้น "ลูกค้ารายนี้ยังไม่มี FG — สร้างที่ฐานข้อมูลก่อน" · ลูกค้าหาย ⇒
+          "ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน" · รายการขึ้นทะเบียนหาย ⇒ FG ที่ขึ้นทะเบียนกับลูกค้ารายนั้นแล้วโผล่ให้เลือกไปชน 409
+          ⇒ **ไม่ซ่อนหน้า** แต่ฟอร์มไม่เปิดบนข้อมูลครึ่งเดียว: เปิดฟอร์มจริงเมื่อทุกสายของมันเคยโหลดสำเร็จ (`editReady`) ·
+          ระหว่างนั้นโมดัลหัวเดียวกันวางป้ายตัวเดียวกันพร้อมปุ่มลองใหม่ (ล้ม) หรือบรรทัด "กำลังโหลด…" (ยังมาไม่ครบ)
+          แทนช่องเลือกที่ว่าง ⇒ ปุ่มบันทึกไม่มีให้กดบนข้อมูลที่ขาด (ท่าเดียวกับหน้าแก้ PO ที่คืนป้ายแทนฟอร์ม)
+          🐞 ทรงเดิมเปิดฟอร์มทันทีตอนกด แม้แต่ตอนโหลดปกติก็เห็น "ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน" อยู่ครู่หนึ่ง
+     ⚠️ ป้ายกับการบล็อกคนละคำถาม: มี error หรือรอบเบื้องหลังล้ม = ขึ้นป้ายเสมอ · บล็อกเฉพาะตอนไม่เคยโหลดสำเร็จ
+        (`loaded` / `!s`) — มีแคชอยู่ก็ใช้ต่อได้ ป้ายบอกว่าเป็นของรอบก่อน (`staleNote`)
+     ⭐ **สายรองพูดเฉพาะตอนคนดูมีปุ่มแก้ไขจริง** (`editAvailable` — เงื่อนไขเดียวกับปุ่ม "แก้ไข" บนหัวจอ): picker ที่ล้มค้างไว้
+        แล้วใบถูกอนุมัติไประหว่างนั้น (ปุ่มแก้ไขหาย) ต้องไม่เหลือป้ายแดง "ยังแก้ไขทะเบียนนี้ไม่ได้ เพราะ…" ของปุ่มที่ไม่มีอยู่
+     ⚠️ `(s)` ในลูกศรของก้อนนี้คือ **สาย** ไม่ใช่ทะเบียน `s` ของหน้า — ชื่อเดียวกับทุกจอในทะเบียนของด่าน apiListErrorVisible */
+  const recordError = recordFault?.message ?? null;
+  const recordStale = recordStaleFault?.message ?? null;
+  const recordDetail = (recordFault || recordStaleFault)?.detail ?? null;
+  const editAvailable = canEdit && !!s && s.status !== "approved";
+  const sources = [
+    {
+      label: "ทะเบียนใบนี้", error: recordError || recordStale, empty: !s && !!recordError, detail: recordDetail, reload, blocks: "page",
+      blockedNote: "ยังเปิดทะเบียนนี้ไม่ได้ (ไม่ได้แปลว่าทะเบียนนี้ถูกลบไปแล้ว)",
+      staleNote: "ข้อมูลทะเบียนที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "ทะเบียนสินค้า", error: editAvailable ? productsError || productsStale : null, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "edit",
+      pending: lProducts && !productsLoaded, blockedNote: EDIT_BLOCKED_NOTE, staleNote: EDIT_STALE_NOTE,
+    },
+    {
+      label: "รายชื่อลูกค้า", error: editAvailable ? customersError || customersStale : null, empty: !customersLoaded, detail: customersDetail, reload: reloadCustomers, blocks: "edit",
+      pending: lCustomers && !customersLoaded, blockedNote: EDIT_BLOCKED_NOTE, staleNote: EDIT_STALE_NOTE,
+    },
+    {
+      label: "รายการขึ้นทะเบียนทั้งหมด", error: editAvailable ? regsError || regsStale : null, empty: !regsLoaded, detail: regsDetail, reload: reloadRegs, blocks: "edit",
+      pending: lRegs && !regsLoaded, blockedNote: EDIT_BLOCKED_NOTE, staleNote: EDIT_STALE_NOTE,
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const pageBlocked = blocked.some((s) => s.blocks === "page");
+  const editBlocked = blocked.filter((s) => s.blocks === "edit");
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — ตัวที่ถูกทิ้งมักเป็นตัวที่บอกสาเหตุจริง
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* เปิดใบไม่ได้ = พูดเรื่องนั้นเรื่องเดียว · ไม่งั้นพูดทุกสายที่ล้ม (บล็อก = blockedNote · มีแคช = staleNote) · Set กันประโยคซ้ำ
+     🪤 สายรองสายหนึ่งพักฟอร์มแล้ว ⇒ ตัด staleNote ของสายรองที่ยังมีแคชทิ้ง — "ยังแก้ไขไม่ได้" คู่กับ "ฟอร์มแก้ไขจะใช้
+        รายการรอบก่อน" ขัดกันเอง (ท่าเดียวกับ tax/filings/[id]) */
+  const said = pageBlocked
+    ? blocked.filter((s) => s.blocks === "page")
+    : failing.filter((s) => !(editBlocked.length && s.blocks === "edit" && !s.empty));
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      ...new Set(said.map((s) => (s.empty ? s.blockedNote : s.staleNote))),
+    ].join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ปุ่มลองใหม่ต้องบอกเองว่ากำลังลองอยู่ — ลองสายรองไม่ได้พาหน้าเข้า skeleton (ใบยังอยู่ในมือ) และป้ายในโมดัล
+     ไม่มี skeleton เลย ⇒ ไม่มีสถานะนี้ = กดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const retrying = loading || lProducts || lCustomers || lRegs;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
+  // ฟอร์มจริงเปิดเมื่อไม่มีสายของมัน "ไม่เคยโหลดสำเร็จ" (ล้ม หรือยังมาไม่ครบ) · มีแคช = ใช้ได้ ป้ายบอกว่าเป็นรอบก่อน
+  const editReady = !sources.some((s) => s.blocks === "edit" && s.empty);
 
   const [attachItems, setAttachItems] = useState([]);   // registration docs
   const [custItems, setCustItems] = useState([]);        // customer docs (shared)
@@ -148,10 +258,19 @@ export default function RegistrationDetailPage() {
 
   const back = { href: "/tax/registrations", label: "กลับไปหน้าทะเบียน" };
 
+  // ⚠️ ต้องอยู่เหนือ "ไม่พบรายการ" — ดูเหตุผลที่ก้อน sources · `loading` ⇒ กดลองใหม่แล้วเนื้อเป็น skeleton ระหว่างรอ
+  if (pageBlocked) {
+    return (
+      <Workspace icon={<ClipboardCheck size={22} />} title="ทะเบียนสรรพสามิต" back={back} loading={loading}>
+        {notice}
+      </Workspace>
+    );
+  }
+  // ถึงตรงนี้ได้ = server ตอบ 404 แล้วจริง (ไม่มีแถว/มองไม่เห็นตามสิทธิ์) — ไม่ใช่โหลดพัง
   if (!loading && !s) {
     return (
       <Workspace icon={<ClipboardCheck size={22} />} title="ไม่พบรายการ" subtitle="ทะเบียนนี้อาจถูกลบไปแล้ว" back={back}>
-        <div className="cell-quiet">{loadError || "ไม่พบทะเบียนที่ต้องการ"}</div>
+        <div className="cell-quiet">ไม่พบทะเบียนที่ต้องการ</div>
       </Workspace>
     );
   }
@@ -194,6 +313,7 @@ export default function RegistrationDetailPage() {
       ) : null}
       loading={loading && !s}
     >
+      {notice}
       {s && (
         <DetailPageLayout
           asideLabel="สรุปและจัดการทะเบียนสรรพสามิต"
@@ -461,7 +581,7 @@ export default function RegistrationDetailPage() {
       )}
 
       <RegistrationFormModal
-        open={formOpen}
+        open={formOpen && editReady}
         onClose={() => setFormOpen(false)}
         onSaved={reload}
         registration={s}
@@ -469,6 +589,17 @@ export default function RegistrationDetailPage() {
         customers={customers}
         registrations={allRegs}
       />
+      {/* ฟอร์มยังเปิดไม่ได้ (สายที่มันกินยังมาไม่ครบ/ล้ม) — โมดัลหัวเดียวกับฟอร์ม วางป้ายแทนช่องเลือกที่ว่าง
+          ⚠️ ป้ายตัวเดียวกับบนจอ (มีปุ่มลองใหม่) — ลองสำเร็จครบเมื่อไร `editReady` พลิก แล้วฟอร์มจริงเปิดแทนที่ตรงนี้เอง
+          · `editAvailable` กันโมดัลค้างเมื่อปุ่มแก้ไขหายไประหว่างรอ (ใบถูกอนุมัติ) — สายรองเงียบแล้ว จะเหลือแต่ "กำลังโหลด…" ที่ไม่จริง */}
+      <Modal
+        open={formOpen && editAvailable && !editReady}
+        onClose={() => setFormOpen(false)}
+        title="แก้ไขการขึ้นทะเบียน"
+        footer={<Button onClick={() => setFormOpen(false)}>ปิด</Button>}
+      >
+        {editBlocked.length ? notice : <p className="muted">กำลังโหลดข้อมูลที่ฟอร์มแก้ไขต้องใช้ (รายชื่อลูกค้า · รายการสินค้า · ทะเบียนที่มีอยู่)…</p>}
+      </Modal>
       <ApproveDialog open={approveOpen} onClose={() => setApproveOpen(false)} onDone={reload} registration={s} product={taxProduct} />
       <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={rejectReg} title="ตีกลับการขึ้นทะเบียน" entityLabel="ทะเบียนนี้" />
       <RejectDialog

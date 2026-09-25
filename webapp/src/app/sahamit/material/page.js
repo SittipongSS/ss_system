@@ -2,12 +2,15 @@
 import { TableScroll } from "@/components/ui/Table";
 import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState, useEffect } from "react";
-import { Boxes, ChevronRight, ChevronDown, Save, Download, Search } from "lucide-react";
+import { Boxes, ChevronRight, ChevronDown, Save, Download, Search, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
+import EmptyState from "@/components/ui/EmptyState";
+import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
@@ -129,10 +132,71 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
 const rowStage = (r) => lineStage(r.status, !!r.tracking?.pmArrivedAt, !!r.tracking?.rmArrivedAt);
 
 export default function MaterialPage() {
-  const { data: rows, loading, error, errorDetail, reload } = useApiList("/api/sahamit/material");
-  const { data: products } = useApiList("/api/sahamit/products");
+  const { data: rows, loading, error, staleError, errorDetail, loaded, reload } = useApiList("/api/sahamit/material");
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/sahamit/products");
   const prodIdx = useMemo(() => indexProducts(products), [products]);
   const canEdit = useCan("sahamit:edit");
+
+  /* ── โหลดพัง ≠ ไม่มีบรรทัด PO · รายการสินค้าพัง ≠ สินค้าไม่มีแบรนด์ ───────────────────────
+     🐞 ของเดิมแกะ error แค่ลิสต์หลัก และทิ้ง `/api/sahamit/products` เงียบ ⇒ รายการสินค้าล้มเมื่อไร ทุกแถวเสีย
+        บรรทัดแบรนด์/ปริมาตรใต้ชื่อ กับบรรทัด "N ลัง" ใต้จำนวนชิ้นพร้อมกัน โดยไม่มีอะไรบอก — อ่านได้ว่าสินค้า
+        ทั้งหมดไม่ได้ตั้งแบรนด์/ชิ้นต่อลังไว้ (ทรงเดียวกับที่ซ่อน /tax ไว้ 26 วัน #1795)
+     ⭐ **สายไหนบล็อกอะไร** (`blocks`)
+        · `"page"` — บรรทัด PO + สถานะวัสดุ คือเนื้อทั้งหน้า (ตาราง + การ์ดนับสี่ใบ) ⇒ ไม่มีของในมือ = ซ่อนทั้งก้อน
+          ไม่ใช่การ์ด "0 บรรทัด" คู่กับ "ยังไม่มีบรรทัด PO ให้ติดตาม" (0 ที่มาจากความไม่รู้)
+        · `"lookup"` — รายการสินค้าเป็นของประกอบ: ชื่อสินค้า เลข PO จำนวนชิ้น วันที่ และสถานะวัสดุมาจากลิสต์หลักล้วน
+          และปุ่มบันทึก PM/RM ไม่ได้อ่านรายการสินค้าเลย ⇒ ตารางอ่านต่อได้ แก้วัสดุต่อได้ · ของที่หายมีแค่บรรทัดประกอบ
+          (แบรนด์/ปริมาตร · จำนวนลัง) ซึ่งป้ายบอกไว้ว่าหายเพราะอะไร
+     ⚠️ **สองคำถามคนละข้อ** (กติกาเดียวกับ /tax · /sahamit) — ขึ้นป้าย = มี `error` หรือรอบเบื้องหลังล้ม
+        (`staleError`) · บล็อก = error **คู่กับ** ไม่เคยโหลดสำเร็จ (`blocked`) · แคชอายุเท่าแท็บ ⇒ ตารางที่วาดจากแคช
+        แล้วรอบใหม่ล้ม ต้องวาดต่อพร้อมบอกว่าเป็นของรอบก่อน (เดิม `error ? null` ซ่อนตารางที่มีอยู่ในมือทิ้ง)
+     🪤 `empty` = **ไม่มีของในมือ** (`loaded` ของ useApiList) ไม่ใช่ `!rows.length` — ระบบที่ยังไม่มี PO ตอบ `200 []`
+        ซึ่งต้องยังขึ้น "ยังไม่มีบรรทัด PO ให้ติดตาม" ตามจริง */
+  const sources = [
+    {
+      label: "บรรทัด PO และสถานะวัสดุ", error: error || staleError, empty: !loaded, detail: errorDetail, reload, blocks: "page",
+      blockedNote: "ตารางวัสดุ / lead time ยังแสดงไม่ได้",
+    },
+    {
+      label: "รายการสินค้า", error: productsError || productsStale, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "lookup",
+      blockedNote: "แบรนด์/ปริมาตรใต้ชื่อสินค้าและจำนวนลังใต้จำนวนชิ้นยังไม่แสดง (ไม่ได้แปลว่าสินค้าไม่มีข้อมูลเหล่านี้) — บรรทัด PO วันที่ และสถานะวัสดุยังใช้ได้ตามปกติ",
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const pageBlocked = blocked.some((s) => s.blocks === "page");
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* ตารางหายทั้งก้อนแล้ว = ไม่ต้องพูดถึงบรรทัดประกอบของมัน (ประโยค "บรรทัด PO ยังใช้ได้" จะขัดกับตารางที่ถูกซ่อน)
+     · ตารางยังอยู่ = บอกทีละสายว่าอะไรหาย + สายที่มีแคชอยู่เป็นของรอบก่อน */
+  const impact = pageBlocked
+    ? blocked.filter((s) => s.blocks === "page").map((s) => s.blockedNote)
+    : [
+      ...blocked.map((s) => s.blockedNote),
+      blocked.length < failing.length ? "ข้อมูลที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด" : null,
+    ].filter(Boolean);
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${impact.join(" · ")} · ${causes}`
+    : null;
+  // ⭐ ข้อความดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ลองเฉพาะรายการสินค้า = ตารางไม่สลับเป็นสปินเนอร์ (สปินเนอร์ผูกกับลิสต์หลักเท่านั้น) ⇒ ปุ่มต้องบอกเองว่ากำลังลอง
+     ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const retrying = loading || lProducts;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
 
   const [search, setSearch] = useState("");
   const [fcSel, setFcSel] = useState([]);     // "in" | "out"
@@ -190,13 +254,14 @@ export default function MaterialPage() {
         </button>
       }
     >
-      {error && (
-        /* ⭐ กล่องแจ้งกลาง: ประโยคไทยนำ + ข้อความดิบเป็นบรรทัดรอง (มติ 23/09/2569 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
-           เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบของเซิร์ฟเวอร์ */
-        <StatusNotice tone="error" className="mb-4" detail={errorDetail}>{error}</StatusNotice>
-      )}
+      {/* ⭐ ป้ายเดียวคลุมทุกสาย ขึ้นทั้งตอนตารางถูกซ่อนและตอนตารางยังวาดจากแคช (ของรอบก่อน) */}
+      {notice}
 
-      {loading ? <Spinner /> : error ? null : rows.length === 0 ? (
+      {/* 🪤 ตารางที่ถูกซ่อนต้องมีบรรทัดแทนที่ ไม่ปล่อยป้ายลอยเหนือที่ว่าง · และห้ามตก "ยังไม่มีบรรทัด PO ให้ติดตาม"
+          (ดึงไม่ได้ ≠ ไม่มีบรรทัด) */}
+      {loading ? <Spinner /> : pageBlocked ? (
+        <EmptyState icon={AlertCircle}>ตารางวัสดุยังแสดงไม่ได้ — ดูข้อความด้านบนแล้วกด “ลองใหม่”</EmptyState>
+      ) : rows.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
           <Boxes size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มีบรรทัด PO ให้ติดตาม</div>

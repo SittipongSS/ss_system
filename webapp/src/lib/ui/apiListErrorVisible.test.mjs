@@ -44,16 +44,22 @@ const SCREENS = [
      ทรงเดียวกับ "ไม่พบรอบ FC นี้" ที่ #1796 แก้ · เคยอยู่บัญชีหนี้ KNOWN_SILENT (7 รายการเรียก) */
   "app/tax/filings/[id]/page.js",
   "app/sahamit/po/[id]/edit/page.js",
-];
-
-/* จอที่แจ้ง error ของลิสต์หลักอยู่แล้วและต้องแจ้งต่อไป — อยู่ทะเบียนนี้แทน SCREENS เพราะกติกา
-   **รายไฟล์** ของ SCREENS (ทุก useApiList ในไฟล์แกะ error · ก้อน sources · staleError) ยังไม่ตรงกับจอพวกนี้:
-   มีลิสต์ของ picker ที่โหลดตอนกางตัวกรอง (`pickerReady ? url : null`) ปนอยู่ด้วย
-   ⚠️ ไม่ใช่ใบอนุญาตให้ลิสต์ของ picker เงียบ — รายการเรียกพวกนั้นเป็น **หนี้** ในบัญชี KNOWN_SILENT
-      ของด่านรายการเรียกท้ายไฟล์ (ล้มแล้ว "ตัวเลือกว่าง" โดยไม่มีอะไรบอก = ยังต้องแก้) */
-const ALREADY_REPORTING = [
+  /* ✅ 25/09 ("ทำอีก 18 จุดต่อ") — 18 รายการเรียกสุดท้ายในบัญชีหนี้ KNOWN_SILENT: ลิสต์รองที่ป้อนมูลค่า/ล็อก/สถานะ
+     (ล้มแล้วค่าเพี้ยนเงียบ) และลิสต์ของ picker (ล้มแล้ว "ตัวเลือกว่าง") · ทุกจอข้างล่างได้ก้อน sources ครบทุกสาย
+     (ลิสต์หลักด้วย) ⇒ กติการายไฟล์ของทะเบียนนี้ใช้ได้ทั้งหมด · มติรายสายอยู่ที่คอมเมนต์ก้อน sources ของแต่ละจอ
+     และเทสต์รายจอท้ายส่วน DETAIL_PAGES */
+  "app/sahamit/po/page.js",
+  "app/sahamit/po/new/page.js",
+  "app/sahamit/po/[id]/page.js",
+  "app/sahamit/reconcile/page.js",
+  "app/sahamit/material/page.js",
+  "app/sahamit/forecast/page.js",
+  /* สองหน้ารายการภาษีเคยอยู่ทะเบียนแยก (ALREADY_REPORTING) เพราะ picker ของตัวกรอง (`customersReady ? url : null` /
+     `pickerReady ? url : null`) ยังเงียบ — ตอนนี้ picker รับความล้มครบแล้ว จึงย้ายเข้ากติกาเต็มชุด แล้วลบทะเบียนแยกทิ้ง
+     ⚠️ อย่าสร้างทะเบียนผ่อนปรนขึ้นใหม่ — จอใหม่ที่ยังทำไม่ครบคือจอที่ยังไม่เสร็จ ไม่ใช่จอที่ได้กติกาอ่อนกว่า */
   "app/tax/filings/page.js",
   "app/tax/registrations/page.js",
+  "app/tax/registrations/[id]/page.js",
 ];
 
 const src = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -71,8 +77,8 @@ const sourcesBlock = (rel) => {
   return text.slice(start, end);
 };
 
-/* ทุกการเรียกในจอเหล่านี้เป็นข้อมูลที่จอวาดจริง (ไม่ใช่ลิสต์ของ picker ที่โหลดตอนกางเมนู)
-   ⇒ ต้องแกะ `error` ออกมาทุกตัว ไม่ใช่แค่ตัวแรก */
+/* ทุกการเรียกในจอเหล่านี้ต้องแกะ `error` ออกมาทุกตัว ไม่ใช่แค่ตัวแรก — รวมลิสต์ของ picker ที่โหลดตอนกางตัวกรอง/เปิดโมดัล
+   (`pickerReady ? url : null`) ด้วย: ล้มแล้ว "ตัวเลือกว่าง" อ่านว่าไม่มีลูกค้า/สินค้าให้เลือก = ทรงเงียบตัวเดียวกัน (ปิดครบ 25/09) */
 test("ทุก useApiList ในจอทะเบียนต้องแกะ error ออกมา", () => {
   for (const rel of SCREENS) {
     const text = code(rel);
@@ -85,7 +91,7 @@ test("ทุก useApiList ในจอทะเบียนต้องแก�
 });
 
 test("โหลดพังต้องขึ้น StatusNotice โทน error พร้อมปุ่มลองใหม่", () => {
-  for (const rel of [...SCREENS, ...ALREADY_REPORTING]) {
+  for (const rel of SCREENS) {
     const text = read(rel);
     assert.match(text, /import StatusNotice from "@\/components\/ui\/StatusNotice"/,
       `${rel}: ไม่ได้ import StatusNotice (กล่องแจ้งกลางของระบบ — ห้ามประกอบกล่องเอง)`);
@@ -176,14 +182,18 @@ test("ลงรอบ FC ใหม่: ลิสต์ไม่ครบ ต้�
     "ฟอร์มต้องอยู่หลังทางแยก — ฟอร์มที่ขาดสินค้า/รอบเดิม บันทึกได้แต่ได้ข้อมูลผิดเงียบ ๆ");
 });
 
-/* นับ `<tag …>` (หรือข้อความ JSX ที่มี `text`) ในไฟล์ และตัวที่ **ไม่มีทางแยก `guard` คุ้มอยู่** — คุ้มได้สองทรง:
+/* นับ `<tag …>` (หรือข้อความ JSX ที่มี `text` · หรือการเรียก `call(…)` ตรงชื่อ) ในไฟล์ และตัวที่ **ไม่มีทางแยก `guard` คุ้มอยู่** — คุ้มได้สองทรง:
      (1) อยู่ในกิ่ง else (`alternate`) ของ `guard ? … : …` — ไล่ขึ้นทุกชั้น ⇒ ทางแยกซ้อน (`พัง ? … : ว่าง ? … : กราฟ`) ผ่าน
      (2) อยู่หลัง `if (guard) return …;` ในฟังก์ชันเดียวกัน (บล็อกเดียวกันหรือบล็อกที่ครอบอยู่) — ทรงของหน้ารายละเอียด
          ที่ `return` ป้ายออกไปก่อนถึงบรรทัด "ไม่พบ…"
    🐞 ทำไมไม่เทียบตำแหน่งตัวอักษร (`indexOf(ทางแยก) < indexOf("ไม่พบ…")`): ทางแยกที่ **ไม่ return** (แค่วาดป้าย) ก็อยู่
       ก่อนได้ แล้วจอยังไหลลงไปตอบ "ไม่พบ…" ต่อ · ทางแยกที่ return อยู่ในฟังก์ชันอื่น (`const shell = …`) ก็อยู่ก่อนได้
-      ⇒ ถามโครงสร้างว่า **ถึงบรรทัดนั้นได้ก็ต่อเมื่อ guard เป็นเท็จ** · หยุดที่ขอบฟังก์ชัน: `if` ของฟังก์ชันอื่นคุ้มใครไม่ได้ */
-const guardedIn = (source, match, guard) => {
+      ⇒ ถามโครงสร้างว่า **ถึงบรรทัดนั้นได้ก็ต่อเมื่อ guard เป็นเท็จ** · หยุดที่ขอบฟังก์ชัน: `if` ของฟังก์ชันอื่นคุ้มใครไม่ได้
+   · `branch = "consequent"` = ถามกลับด้าน: **ถึงได้ก็ต่อเมื่อ guard เป็นจริง** (กิ่ง then ของ `guard ? … : …` เท่านั้น — early return
+     คุ้มกิ่งนี้ไม่ได้) · ใช้กับคำเตือนที่จริงได้แค่ตอนมีของในมือ เช่น "n SKU ไม่มีราคา" ต้องอยู่ใต้ `productsLoaded ? … :`
+     🐞 assertGates ตอบคำถามนี้ไม่ได้: `(!productsLoaded || unpriced) && "(มูลค่า = 0)"` อ่าน productsLoaded ก็จริง แต่กลับด้าน
+   · `match.literal` = สตริงลิเทอรัล/ท่อนของ template (คำเตือนที่ประกอบใน template ไม่ใช่ JSXText) */
+const guardedIn = (source, match, guard, branch = "alternate") => {
   const ast = parse(source, { sourceType: "module", plugins: ["jsx"] });
   const textOf = (node) => source.slice(node.start, node.end).replace(/\s+/g, " ");
   const hits = [];
@@ -194,8 +204,16 @@ const guardedIn = (source, match, guard) => {
     JSXText(path) {
       if (match.text && path.node.value.includes(match.text)) hits.push(path);
     },
+    /* ⭐ ของที่ "พูดเป็นคำตอบ" บางชิ้นเป็นฟังก์ชัน ไม่ใช่แท็ก/ข้อความ (`matCell(…)` ของ PO วาดขีด = "ยังไม่มีกำหนด")
+       ⇒ ตรวจที่จุดเรียก ไม่ใช่ที่ prop ของผู้เรียก — ส่ง prop ถูกแต่ตัวแถวไม่อ่านมัน ก็คือขีดเดิม */
+    CallExpression(path) {
+      if (match.call && path.get("callee").isIdentifier({ name: match.call })) hits.push(path);
+    },
+    StringLiteral(path) { if (match.literal && path.node.value.includes(match.literal)) hits.push(path); },
+    TemplateElement(path) { if (match.literal && path.node.value.cooked.includes(match.literal)) hits.push(path); },
   });
-  const inElse = (path) => !!path.findParent((p) => p.key === "alternate"
+  // `find` (นับตัวเองด้วย) ไม่ใช่ `findParent` — จุดเรียกที่ **เป็น** กิ่งนั้นเอง (`u ? U : cell()`) ไม่มีพ่อที่เป็นกิ่งนั้น
+  const inBranch = (path) => !!path.find((p) => p.key === branch
     && p.parentPath?.isConditionalExpression() && textOf(p.parentPath.node.test) === guard);
   // ออกจากฟังก์ชันแน่ ๆ — `return …;` เดี่ยว หรือบล็อกที่คำสั่งสุดท้ายคือ return
   const exits = (node) => node.type === "ReturnStatement"
@@ -207,10 +225,53 @@ const guardedIn = (source, match, guard) => {
     }
     return false;
   };
-  const unguarded = hits.filter((path) => !inElse(path) && !afterEarlyReturn(path));
+  const unguarded = hits.filter((path) => !inBranch(path) && !(branch === "alternate" && afterEarlyReturn(path)));
   return { hits: hits.length, unguarded: unguarded.length };
 };
-const guardedBy = (rel, match, guard) => guardedIn(read(rel), match, guard);
+const guardedBy = (rel, match, guard, branch) => guardedIn(read(rel), match, guard, branch);
+
+/* ทางแยก **ทุกชั้น** ที่ต้องผ่านก่อนถึงของชิ้นหนึ่ง ⇒ ชื่อตัวแปรที่ทางแยกเหล่านั้นอ่าน (หนึ่ง Set ต่อหนึ่งชิ้นที่เจอ)
+   นับทั้ง `test ? … : …` (ทั้งสองกิ่ง) · `test && …` / `test || …` (ฝั่งขวา) · `if (test)` ที่ครอบ · และ `if (test) return …;`
+   ที่อยู่ก่อนหน้าในบล็อกเดียวกันหรือบล็อกที่ครอบ (ทรงหน้ารายละเอียด)
+   ⭐ ใช้ตอบคำถามที่ guardedIn ตอบไม่ได้: "ตารางหลัก **ไม่** ถูกซ่อนด้วยธงของสายรอง" — ทุกทรงที่เอาธงไปคุมตาราง
+      (`flag ? null : <ตาราง/>` · `!flag && <ตาราง/>` · `if (flag) return …`) ทำให้ชื่อธงโผล่ใน Set
+   · `match.literal` = สตริงลิเทอรัล/ท่อนของ template (เช่นตัวเลือก `"— ไม่มี AE —"` ที่อยู่ในนิพจน์ ไม่ใช่ JSXText) */
+const gatesIn = (source, match) => {
+  const ast = parse(source, { sourceType: "module", plugins: ["jsx"] });
+  const hits = [];
+  traverse(ast, {
+    JSXOpeningElement(path) {
+      if (match.tag && path.node.name.type === "JSXIdentifier" && path.node.name.name === match.tag) hits.push(path);
+    },
+    JSXText(path) { if (match.text && path.node.value.includes(match.text)) hits.push(path); },
+    StringLiteral(path) { if (match.literal && path.node.value.includes(match.literal)) hits.push(path); },
+    TemplateElement(path) { if (match.literal && path.node.value.cooked.includes(match.literal)) hits.push(path); },
+  });
+  const namesIn = (p, into) => {
+    const visit = (q) => { if (q.isReferencedIdentifier()) into.add(q.node.name); };
+    if (p.isIdentifier()) visit(p);
+    p.traverse({ Identifier: visit });
+  };
+  const exits = (node) => node.type === "ReturnStatement"
+    || (node.type === "BlockStatement" && node.body.at(-1)?.type === "ReturnStatement");
+  return hits.map((hit) => {
+    const names = new Set();
+    for (let p = hit; p.parentPath; p = p.parentPath) {
+      const parent = p.parentPath;
+      if (parent.isConditionalExpression() && p.key !== "test") namesIn(parent.get("test"), names);
+      if (parent.isLogicalExpression() && p.key === "right") namesIn(parent.get("left"), names);
+      if (parent.isIfStatement() && p.key !== "test") namesIn(parent.get("test"), names);
+      if (p.inList && typeof p.key === "number") {
+        for (let i = 0; i < p.key; i += 1) {
+          const stmt = p.getSibling(i);
+          if (stmt.isIfStatement() && exits(stmt.node.consequent)) namesIn(stmt.get("test"), names);
+        }
+      }
+    }
+    return names;
+  });
+};
+const gatesBy = (rel, match) => gatesIn(read(rel), match);
 
 test("ตัวตรวจทางแยก (guardedIn) เห็นทั้งสองทรง — และไม่นับทางแยกที่ไม่ได้กันจริง", () => {
   const notFound = { text: "ไม่พบ" };
@@ -229,6 +290,29 @@ test("ตัวตรวจทางแยก (guardedIn) เห็นทั้�
   // ทรงเดิม (กิ่ง else ของ ternary) ยังทำงานเท่าเดิม
   assert.deepEqual(g("const x = blocked.length ? <N /> : <div>ไม่พบ</div>;"), { hits: 1, unguarded: 0 });
   assert.deepEqual(g("const x = blocked.length ? <div>ไม่พบ</div> : <N />;"), { hits: 1, unguarded: 1 });
+  // จุดเรียกฟังก์ชันที่วาดคำตอบ — ต้องอยู่กิ่ง else ของทางแยกทุกจุด ตัวประกาศฟังก์ชันไม่นับ
+  const c = (s) => guardedIn(s, { call: "cell" }, "unknown");
+  assert.deepEqual(c("function cell() {}\nconst x = <td>{unknown ? U : cell(1)}</td>;"), { hits: 1, unguarded: 0 });
+  assert.deepEqual(c("const x = <td>{false ? U : cell(1)}</td>;"), { hits: 1, unguarded: 1 }, "ทางแยกที่ไม่ได้ถาม unknown ไม่ได้คุ้ม");
+  assert.deepEqual(c("const x = unknown ? U : cell(1);\nconst y = cell(2);"), { hits: 2, unguarded: 1 });
+  // กิ่ง then — คำเตือนที่จริงได้แค่ตอนมีของ · ทางแยกกลับด้าน / เงื่อนไขรอบนอกที่อ่านธงตัวเดียวกัน ไม่นับ
+  const t = (s) => guardedIn(s, { literal: "ไม่มีราคา" }, "ok", "consequent");
+  assert.deepEqual(t("const x = ok ? `${n} ไม่มีราคา` : note;"), { hits: 1, unguarded: 0 });
+  assert.deepEqual(t("const x = ok ? note : `${n} ไม่มีราคา`;"), { hits: 1, unguarded: 1 }, "กิ่ง else ของ ok = ตอนไม่มีของ");
+  assert.deepEqual(t("const x = (!ok || n) && `${n} ไม่มีราคา`;"), { hits: 1, unguarded: 1 }, "อ่าน ok ก็จริง แต่ไม่ใช่กิ่ง then");
+  assert.deepEqual(t("function P() {\n  if (ok) return null;\n  return \"ไม่มีราคา\";\n}"), { hits: 1, unguarded: 1 }, "early return คุ้มกิ่ง then ไม่ได้");
+});
+
+test("ตัวอ่านทางแยก (gatesIn) เห็นธงทุกทรงที่คุมของชิ้นหนึ่ง — และไม่นับธงที่แค่ส่งเป็น prop", () => {
+  const gates = (s, match = { tag: "T" }) => gatesIn(s, match).map((set) => [...set].sort());
+  assert.deepEqual(gates("const x = a ? <N /> : b ? <M /> : <T />;"), [["a", "b"]], "ternary ซ้อน — ทุกชั้นที่ครอบ");
+  assert.deepEqual(gates("const x = <div>{!flag && <T />}</div>;"), [["flag"]], "`!flag && …` คือการซ่อนด้วยธง");
+  assert.deepEqual(gates("function P() {\n  if (flag) return null;\n  return <T />;\n}"), [["flag"]], "early return ก่อนหน้า");
+  assert.deepEqual(gates("function P() {\n  if (flag) log();\n  return <T />;\n}"), [[]], "`if` ที่ไม่ return ไม่ได้กันอะไร");
+  assert.deepEqual(gates("const x = page ? null : <T value={flag ? 1 : 2} />;"), [["page"]],
+    "ธงที่อยู่ **ใน** แอตทริบิวต์ของแท็กไม่ได้คุมว่าแท็กจะถูกวาดไหม");
+  assert.deepEqual(gates("const x = page ? null : rows.map((r) => <T key={r} />);"), [["page"]], "ทะลุ .map() ขึ้นไปหาทางแยกที่ครอบ");
+  assert.deepEqual(gates('const o = ok ? "— ไม่มี AE —" : "x";', { literal: "ไม่มี AE" }), [["ok"]], "สตริงลิเทอรัลในนิพจน์");
 });
 
 /* /database — สองสายสลับกันอยู่บนแผงเดียวกัน (ไทล์แถวเดียว · กราฟแนวโน้ม · คิวรออนุมัติ)
@@ -322,9 +406,12 @@ const astReader = (rel) => {
     return found;
   };
   const bindingNamed = (name) => { const d = declarator(name); return d ? d.scope.getBinding(name) : null; };
-  const component = () => {
+  /* คอมโพเนนต์ของจอ — ตั้งต้นคือ default export · ส่งชื่อมาเมื่อ default export เป็นแค่ตัวห่อ
+     (sahamit/forecast: `ForecastPage` = `<Suspense>` ห่อ `ForecastPageInner` ที่วาดจอจริง) */
+  const component = (name) => {
     let fn = null;
-    traverse(ast, { ExportDefaultDeclaration(path) { fn = path.get("declaration"); } });
+    if (name) traverse(ast, { FunctionDeclaration(path) { if (path.node.id?.name === name) fn = path; } });
+    else traverse(ast, { ExportDefaultDeclaration(path) { fn = path.get("declaration"); } });
     return fn;
   };
   // ออกจากฟังก์ชันแน่ ๆ — `return …;` เดี่ยว หรือบล็อกที่คำสั่งสุดท้ายคือ return ⇒ path ของค่าที่คืน
@@ -393,9 +480,9 @@ const astReader = (rel) => {
       });
       return found;
     },
-    // ค่าที่คืนจากคำสั่งสุดท้ายของคอมโพเนนต์ (default export) — ทางปกติของจอ
-    mainReturn() {
-      const last = component()?.get("body.body").at(-1);
+    // ค่าที่คืนจากคำสั่งสุดท้ายของคอมโพเนนต์ (default export หรือฟังก์ชันชื่อ `name`) — ทางปกติของจอ
+    mainReturn(name) {
+      const last = component(name)?.get("body.body").at(-1);
       return last?.isReturnStatement() ? last.get("argument") : null;
     },
     rendersIn(path, binding) {
@@ -472,6 +559,79 @@ const astReader = (rel) => {
       });
       return names;
     },
+    // ข้อความของ initializer ของ `const <name> = …` (ยุบช่องว่างแล้ว) — ใช้เทียบนิยามทั้งก้อน ไม่ใช่หาคำในไฟล์
+    initText(name) {
+      const init = declarator(name)?.node.init;
+      return init ? textOf(init) : null;
+    },
+    // path ของ initializer ของ `const <name> = …` — ใช้ถามโครงสร้างข้างใน (ทางแยก · if · การเรียก) ของตัวแปรตัวเดียว
+    initPath(name) {
+      const d = declarator(name);
+      return d?.node.init ? d.get("init") : null;
+    },
+    /* `const <name> = useMemo(() => …, deps)` ⇒ ชื่อที่ **ตัว callback** อ่าน (ไม่นับ deps)
+       🪤 readsIn นับ deps ด้วย ⇒ ถอดตัวแปรออกจากตัวคำนวณแต่ลืมถอดจาก deps = readsIn ยังเจอ ด่านเขียวทั้งที่ไม่ได้ใช้แล้ว */
+    memoReads(name) {
+      const names = new Set();
+      const init = this.initPath(name);
+      if (!init?.isCallExpression() || !init.node.arguments.length) return names;
+      init.get("arguments.0").traverse({ Identifier(p) { if (p.isReferencedIdentifier()) names.add(p.node.name); } });
+      return names;
+    },
+    // ชื่อ property ทุกตัวที่ถูกอ่านแบบ `x.prop` / `x?.prop` ใน initializer ของ `const <name> = …` (readsIn เห็นแต่ตัวแปร)
+    membersIn(name) {
+      const names = new Set();
+      this.initPath(name)?.traverse({
+        "MemberExpression|OptionalMemberExpression"(p) { if (!p.node.computed) names.add(p.node.property.name); },
+      });
+      return names;
+    },
+    // ทุกจุดเรียก `name(…)` ในไฟล์ (callee เป็นชื่อตรง ๆ)
+    calls(name) {
+      const out = [];
+      traverse(ast, { CallExpression(path) { if (path.get("callee").isIdentifier({ name })) out.push(path); } });
+      return out;
+    },
+    // path อยู่ใน initializer ของ `const <name> = …`
+    within: (path, name) => !!path.findParent((p) => p.isVariableDeclarator() && p.node.id.type === "Identifier" && p.node.id.name === name),
+    textOf,
+    // ทุก object literal ที่มี `<prop>: "<value>"` ⇒ entries (ทรงเดียวกับ actions(id) แต่เลือกคีย์เองได้)
+    objectsWhere(prop, value) {
+      const out = [];
+      traverse(ast, {
+        ObjectExpression(path) {
+          const entries = entriesOf(path);
+          if (entries[prop] === value) out.push(entries);
+        },
+      });
+      return out;
+    },
+    /* ทุก `<tag …>…</tag>` ที่ข้อความลูก (JSXText ต่อกัน ตัดช่องว่าง) เท่ากับ `text` (ไม่ส่ง = ทุกตัว)
+       หรือ (`where`) ที่แอตทริบิวต์หนึ่งเป็นสตริง/นิพจน์ตามที่ให้ ⇒ [{ path, attr(name) → path ของค่า | null }]
+       ⭐ ผูกด้วยโครงสร้าง (แท็ก + ข้อความ/แอตทริบิวต์) ไม่ใช่ตำแหน่ง — จัดบรรทัด/สลับลำดับแอตทริบิวต์ได้ไม่แดง */
+    elements(tag, { text, where } = {}) {
+      const out = [];
+      traverse(ast, {
+        JSXElement(path) {
+          const open = path.node.openingElement;
+          if (open.name.type !== "JSXIdentifier" || open.name.name !== tag) return;
+          const own = path.node.children.filter((c) => c.type === "JSXText").map((c) => c.value).join("").trim();
+          if (text !== undefined && own !== text) return;
+          const attr = (name) => {
+            const a = path.get("openingElement.attributes").find((x) => x.isJSXAttribute() && x.node.name.name === name);
+            if (!a) return null;
+            const v = a.get("value");
+            return v.isJSXExpressionContainer() ? v.get("expression") : v;
+          };
+          if (where && !Object.entries(where).every(([name, want]) => {
+            const v = attr(name);
+            return v && (v.isStringLiteral() ? v.node.value : textOf(v.node)) === want;
+          })) return;
+          out.push({ path, attr });
+        },
+      });
+      return out;
+    },
     // ชื่อตัวแปรทุกตัวที่ถูกอ่านในแอตทริบิวต์ JSX ชื่อนี้ (ทุกแท็ก)
     readsInAttr(attr) {
       const names = new Set();
@@ -498,10 +658,22 @@ const DETAIL_PAGES = [
   { rel: "app/sahamit/forecast/[id]/edit/page.js", blockedGuards: ["blocked.length"] },
   { rel: "app/tax/filings/[id]/page.js", blockedGuards: ["pageBlocked"] },
   { rel: "app/sahamit/po/[id]/edit/page.js", blockedGuards: ["pageBlocked", "blocked.length"] },
+  /* 25/09 "ทำอีก 18 จุดต่อ" — ทรงเดียวกันทั้งชุด (ป้ายตัวเดียว · ปุ่มลองใหม่ต่อสายครบ · ทุกฮุกมีสายของตัวเอง)
+     `blockedGuards: []` = จอที่ซ่อนเนื้อด้วย ternary ในตัว JSX ไม่ใช่ `if (…) return` — ทางแยกพวกนั้นตรวจรายจอข้างล่าง */
+  { rel: "app/sahamit/po/page.js", blockedGuards: [] },
+  { rel: "app/sahamit/po/new/page.js", blockedGuards: ["blocked.length"] },
+  { rel: "app/sahamit/po/[id]/page.js", blockedGuards: ["pageBlocked"] },
+  { rel: "app/sahamit/reconcile/page.js", blockedGuards: [] },
+  { rel: "app/sahamit/material/page.js", blockedGuards: [] },
+  // default export เป็นแค่ `<Suspense>` ห่อ — จอจริงคือ ForecastPageInner
+  { rel: "app/sahamit/forecast/page.js", blockedGuards: [], component: "ForecastPageInner" },
+  { rel: "app/tax/filings/page.js", blockedGuards: [] },
+  { rel: "app/tax/registrations/page.js", blockedGuards: [] },
+  { rel: "app/tax/registrations/[id]/page.js", blockedGuards: ["pageBlocked"] },
 ];
 
 test("หน้ารายละเอียด: ป้ายถูกวาดทั้งทางบล็อกและทางปกติ · ปุ่มลองใหม่เรียก reload ของทุกสายที่ล้ม · ทุกสายนับ staleError ของฮุกตัวเอง", () => {
-  for (const { rel, blockedGuards } of DETAIL_PAGES) {
+  for (const { rel, blockedGuards, component } of DETAIL_PAGES) {
     const ast = astReader(rel);
     const notice = ast.bindingNamed("notice");
     assert.ok(notice, `${rel}: ไม่พบ \`const notice = …\``);
@@ -511,7 +683,7 @@ test("หน้ารายละเอียด: ป้ายถูกวาด
       assert.ok(ast.rendersIn(returned, notice),
         `${rel}: \`if (${guard}) return …\` ต้องคืนป้าย (notice) — คืน null/ที่ว่าง = จอขาวที่ไม่บอกอะไร`);
     }
-    assert.ok(ast.rendersAsChild(ast.mainReturn(), notice),
+    assert.ok(ast.rendersAsChild(ast.mainReturn(component), notice),
       `${rel}: ทางปกติ (return สุดท้าย) ต้องมี {notice} — แคชอุ่นที่รอบใหม่ล้มต้องขึ้นว่า "ของรอบก่อน" ไม่ใช่เงียบ`);
 
     const button = ast.retryButton();
@@ -659,6 +831,396 @@ test("แก้ PO: โหลดลิสต์ไม่ขึ้นห้าม
   assert.ok(ast.readsIn("loadError").has("blocked"), "ประโยคท้ายป้ายต้องมาจากสายที่ถูกบล็อก");
 });
 
+/* ── 25/09 "ทำอีก 18 จุดต่อ" — มติรายจอของ 18 รายการเรียกสุดท้ายในบัญชีหนี้ ─────────────────────────────────
+ * สามคำถามเดียวกันทุกจอ ตรวจตามโครงสร้าง (AST · binding) ไม่ใช่ตำแหน่งตัวอักษร:
+ *   1. **สายรองล้ม ต้องไม่ซ่อนรายการหลัก** — ตารางหลักถูกคุมด้วยธงของสายหลักเท่านั้น (gatesIn) และนิยามธงนั้นกรอง
+ *      เฉพาะ `blocks` ของสายหลัก (initText) · 🪤 `const pageBlocked = blocked.length > 0` ดูเหมือนถูก แต่สายรองล้มแล้วตารางหาย
+ *   2. **ของที่จะทำงานบนข้อมูลครึ่งเดียว ต้องพักพร้อมเหตุ** — disabled / ด่านตอนกด อ่านตัวแปรเหตุผลตัวเดียวกับที่โชว์ให้เห็น
+ *   3. **picker ล้ม ต้องบอกตรงที่ใช้มัน** — ในโมดัล / ที่หัวหมวดของตัวกรอง ไม่ใช่ตัวเลือกว่างที่อ่านว่า "ไม่มี…"
+ * ⚠️ แต่ละข้อผ่านการกลายพันธุ์บนสำเนา src นอก worktree แล้ว (ถอดทางแยก/ถอด disabled/เปลี่ยนนิยามธง = แดง) */
+const hookFor = (ast, url) => ast.hooks().find((h) => h.url === url) ?? null;
+const sourceForUrl = (ast, url) => {
+  const h = hookFor(ast, url);
+  const s = h && ast.sourceFor(h);
+  assert.ok(s, `ไม่พบสาย ${url} ในก้อน sources — error ของมันไม่ถึงป้าย`);
+  return s;
+};
+// ทุกชิ้นที่เจอ: ธงที่คุมต้องมี `must` ครบ และห้ามมี `mustNot` สักตัว
+const assertGates = (rel, match, { must = [], mustNot = [] }, what) => {
+  const all = gatesBy(rel, match);
+  assert.ok(all.length > 0, `${rel}: ${what} หาไม่เจอ — ตัวตรวจล้าสมัย?`);
+  for (const names of all) {
+    for (const n of must) assert.ok(names.has(n), `${rel}: ${what} ต้องอยู่ใต้ทางแยกของ \`${n}\``);
+    for (const n of mustNot) {
+      assert.ok(!names.has(n), `${rel}: ${what} ถูกคุมด้วย \`${n}\` — สายรองล้มแล้วของที่อ่านได้อยู่หายไปด้วย`);
+    }
+  }
+};
+// ธงบล็อกของสายหนึ่งต้องกรองด้วย `blocks` ของสายนั้นเท่านั้น
+const assertFlag = (ast, name, blocks) => assert.equal(ast.initText(name), `blocked.some((s) => s.blocks === "${blocks}")`,
+  `${name} ต้องเป็น \`blocked.some((s) => s.blocks === "${blocks}")\` — นับสายอื่นปนเข้ามา = สายรองล้มแล้วซ่อน/พักของที่ไม่เกี่ยว`);
+const reads = (ast, path, name) => ast.rendersIn(path, ast.bindingNamed(name));
+const elseOf = (rel, text, guard) => {
+  const { hits, unguarded } = guardedBy(rel, { text }, guard);
+  assert.ok(hits > 0, `${rel}: หา '${text}' ไม่เจอ — ตัวตรวจล้าสมัย?`);
+  assert.equal(unguarded, 0, `${rel}: '${text}' ต้องอยู่หลังทางแยก \`${guard}\` — โหลดไม่ขึ้นแล้วจอตอบว่าไม่มี`);
+};
+// คำเตือนที่จริงได้แค่ตอนมีของในมือ ("n SKU ไม่มีราคา") — ทุกตัวต้องอยู่กิ่ง then ของ `guard ? … : …`
+const thenOf = (rel, literal, guard) => {
+  const { hits, unguarded } = guardedBy(rel, { literal }, guard, "consequent");
+  assert.ok(hits > 0, `${rel}: หา '${literal}' ไม่เจอ — ตัวตรวจล้าสมัย?`);
+  assert.equal(unguarded, 0, `${rel}: '${literal}' ต้องอยู่กิ่ง then ของ \`${guard} ? … :\` — ไม่มีของในมือแล้วขึ้นคำนี้ = คำเตือนปลอม`);
+};
+/* ปุ่ม "ลัง" (สหมิตร FC + กระทบยอด) — ไม่รู้ชิ้นต่อลัง displayQty คืนเลขชิ้นใต้หัว "ลัง" ⇒ ต้องพัก และบอกเหตุตอนกด
+   (ท่า GatedAction: ไม่ `disabled` — title ของปุ่มที่ปิดอยู่ คีย์บอร์ดโฟกัสไม่ถึง และตอนเต็มจอป้ายหัวจอถูกบัง) */
+const assertUnitGate = (ast, rel, unitVar) => {
+  const [caseBtn, ...extra] = ast.elements("button", { text: "ลัง" });
+  assert.ok(caseBtn && !extra.length, `${rel}: ปุ่ม "ลัง" ต้องมีตัวเดียว — ตัวตรวจล้าสมัย?`);
+  assert.ok(reads(ast, caseBtn.attr("onClick"), "unitBlocker"), `${rel}: ปุ่ม "ลัง" กดแล้วต้องบอกเหตุ (onClick อ่าน unitBlocker) ไม่ใช่สลับเงียบ ๆ`);
+  assert.ok(reads(ast, caseBtn.attr("title"), "unitBlocker"), `${rel}: ปุ่ม "ลัง" ต้องมีเหตุใน title ด้วย`);
+  // ⚠️ ถามเป็น boolean — ส่ง NodePath เข้า assert.equal แล้วแดง ตัวรายงานของ node:test จะพยายาม serialize ทั้ง AST จนโปรเซสลูกล้ม
+  assert.ok(!caseBtn.attr("disabled"), `${rel}: ปุ่ม "ลัง" ห้าม disabled — ปุ่มที่ปิดอยู่บอกเหตุไม่ได้ (ดู GatedAction)`);
+  assert.ok(ast.readsIn(unitVar).has("unitBlocker"), `${rel}: หน่วยที่ตารางใช้จริง (${unitVar}) ต้องถอยเป็นชิ้นเมื่อติดด่าน — ไม่งั้นหัวบอก "ลัง" แต่เลขเป็นชิ้น`);
+};
+
+test("PO (รายการ): สายรองล้มไม่ซ่อนรายการ PO · มูลค่า/สถานะเลิกพูดเป็นคำตอบ · 'ยังไม่มี PO' มาจากลิสต์ที่โหลดสำเร็จเท่านั้น", () => {
+  const rel = "app/sahamit/po/page.js";
+  const ast = astReader(rel);
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/po"'), "blocks"), "page");
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/material"'), "blocks"), "status");
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/products"'), "blocks"), "value");
+  assertFlag(ast, "pageBlocked", "page");
+  assertFlag(ast, "statusBlocked", "status");
+  assertFlag(ast, "valueBlocked", "value");
+  elseOf(rel, "ยังไม่มี PO", "pageBlocked");
+  for (const tag of ["PoGroup", "PoLinesTable"]) {
+    assertGates(rel, { tag }, { must: ["pageBlocked"], mustNot: ["statusBlocked", "valueBlocked"] }, `<${tag}>`);
+  }
+  // 🐞 ทรงเดิม: รายการสินค้าล้ม ⇒ "฿0.00 · n รายการไม่มีราคา" ทุกใบ · สถานะวัสดุล้ม ⇒ "ไม่มีรายการที่ต้องติดตาม"
+  elseOf(rel, "รายการไม่มีราคา", "valueBlocked");
+  assertGates(rel, { literal: "ไม่มีรายการที่ต้องติดตาม" }, { must: ["statusBlocked"] }, "'ไม่มีรายการที่ต้องติดตาม'");
+  const [group] = ast.elements("PoGroup");
+  assert.ok(reads(ast, group.attr("statusBlocked"), "statusBlocked") && reads(ast, group.attr("valueBlocked"), "valueBlocked"),
+    "PoGroup ต้องได้ธงของสายรองทั้งสอง — ไม่งั้นแถวยังพูด ฿0.00 / 'ไม่มีรายการที่ต้องติดตาม'");
+  // รอบแรกรอสายรองด้วย — `firstLoad = loading` เฉย ๆ = วาบ "฿0.00 · n รายการไม่มีราคา" ก่อนรายการสินค้ามาถึง
+  assert.ok(ast.readsIn("firstLoad").has("sources"), "firstLoad ต้องรอ pending ของทุกสาย (ก้อน sources) ไม่ใช่ loading ของสาย PO อย่างเดียว");
+  // ค้นด้วยชื่อสินค้าต้องอ่านชื่อที่บันทึกกับบรรทัด PO ด้วย — รายการสินค้าล้มแล้ว "ไม่มี PO ตรงเงื่อนไข" ทั้งที่ใบอยู่ครบ
+  assert.ok(ast.membersIn("filteredPos").has("productName"), "คำค้นของ filteredPos ต้องรวม productName ของบรรทัด PO (ไม่พึ่งรายการสินค้าอย่างเดียว)");
+});
+
+test("PO (ใหม่): รายการสินค้าไม่เคยโหลดขึ้น = ฟอร์มไม่เปิด (ป้ายแทนฟอร์ม) ไม่ใช่ picker ว่างที่อ่านว่าไม่มีสินค้า", () => {
+  const rel = "app/sahamit/po/new/page.js";
+  const ast = astReader(rel);
+  const products = sourceForUrl(ast, '"/api/sahamit/products"');
+  const h = hookFor(ast, '"/api/sahamit/products"');
+  assert.ok(ast.bindingsOf(products, "empty").has(h.b.loaded), "ความว่างของรายการสินค้าต้องมาจาก loaded");
+  const pending = ast.bindingsOf(products, "pending");
+  assert.ok(pending.has(h.b.loading) && pending.has(h.b.loaded), "pending ต้องมาจาก loading + !loaded — รอบแรกที่ยังไม่มา = ฟอร์มได้ ⚠ 'ไม่รู้จัก' ทุกแถวเหมือนตอนล้ม");
+  for (const guard of ["blocked.length", "formPending"]) {
+    const { hits, unguarded } = guardedBy(rel, { tag: "PoForm" }, guard);
+    assert.ok(hits > 0, "หา <PoForm> ไม่เจอ — ตัวตรวจล้าสมัย?");
+    assert.equal(unguarded, 0, `<PoForm> ต้องอยู่หลัง \`if (${guard}) return …\` — ป้ายลอยเหนือฟอร์มยังปล่อยให้กรอกแล้วบันทึกด้วย ⚠ 'ไม่รู้จัก' ปลอม`);
+  }
+});
+
+test("PO (รายละเอียด): โหลดใบไม่ขึ้นห้ามตอบ 'ไม่พบ PO นี้' · สถานะวัสดุ/ราคาล้มไม่ซ่อนบรรทัด แต่ช่องที่กินมันเลิกพูดเป็นคำตอบ", () => {
+  const rel = "app/sahamit/po/[id]/page.js";
+  const ast = astReader(rel);
+  elseOf(rel, "ไม่พบ PO นี้", "pageBlocked");
+  const posHook = hookFor(ast, '"/api/sahamit/po"');
+  const pos = sourceForUrl(ast, '"/api/sahamit/po"');
+  assert.equal(ast.field(pos, "blocks"), "page");
+  assert.ok(ast.field(pos, "empty").startsWith("!po &&"), "สาย PO ต้องวัดด้วยใบนี้ (`!po && …`) ไม่ใช่ความยาวลิสต์");
+  const posEmpty = ast.bindingsOf(pos, "empty");
+  assert.ok(posEmpty.has(posHook.b.error) && !posEmpty.has(posHook.b.staleError),
+    "ความว่างของสาย PO อ่าน error (รอบหน้าบ้าน) ไม่ใช่ staleError — 'ไม่พบ' ที่ยืนยันแล้วต้องไม่พลิกเพราะรอบเบื้องหลังสะดุด");
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/material"'), "blocks"), "tracking");
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/products"'), "blocks"), "value");
+  assertFlag(ast, "pageBlocked", "page");
+  assertFlag(ast, "trackingBlocked", "tracking");
+  assertFlag(ast, "valueBlocked", "value");
+  assertGates(rel, { tag: "PoLineRow" }, { mustNot: ["trackingBlocked", "valueBlocked"] }, "<PoLineRow>");
+  // ช่อง PM/RM: ขีด = "ยังไม่มีกำหนด" ⇒ ไม่รู้ต้องพูดว่าดึงไม่ได้
+  const [row] = ast.elements("PoLineRow");
+  assert.ok(reads(ast, row.attr("trackingUnknown"), "trackingBlocked"), "PoLineRow ต้องรู้ว่าสถานะวัสดุไม่มีในมือ (trackingUnknown)");
+  // …และตัวแถวต้อง **อ่าน** มันจริง — ทุกจุดที่วาดช่อง PM/RM (`matCell`) อยู่กิ่ง else ของ `trackingUnknown ? … : …`
+  const pmRm = guardedBy(rel, { call: "matCell" }, "trackingUnknown");
+  assert.ok(pmRm.hits >= 2, "หาจุดเรียก matCell (ช่อง PM · RM) ไม่ครบ — ตัวตรวจล้าสมัย?");
+  assert.equal(pmRm.unguarded, 0, "ช่อง PM/RM ทุกจุดต้องอยู่หลัง `trackingUnknown ? … :` — ขีดของ matCell อ่านว่า 'ยังไม่มีกำหนด'");
+  assert.ok(ast.readsIn("firstLoad").has("sources"), "firstLoad ต้องรอ pending ของทุกสาย — ไม่งั้น PM/RM วาบเป็นขีดก่อนสถานะวัสดุมาถึง");
+  // การ์ดสรุป: ไม่รู้ราคา = ขีดพร้อมเหตุ ไม่ใช่ซ่อนยอดเงียบ ๆ (อ่านเหมือน PO ที่ยังไม่ตั้งราคา)
+  const [summary] = ast.elements("DocumentSummaryCard");
+  assert.ok(summary && reads(ast, summary.attr("total"), "valueBlocked") && reads(ast, summary.attr("totalCaption"), "valueBlocked"),
+    "ยอดบนการ์ดสรุปต้องขึ้นขีด + เหตุ เมื่อไม่มีราคาในมือ");
+});
+
+test("กระทบยอด: สี่สายที่ป้อน buildReconMatrix บล็อกกริดทั้งใบ · รายการสินค้าล้มกริดยังอ่านได้ — มูลค่า/ตัวกรอง/ลัง พักพร้อมเหตุ", () => {
+  const rel = "app/sahamit/reconcile/page.js";
+  const ast = astReader(rel);
+  for (const url of ['"/api/sahamit/forecast/rounds"', '"/api/sahamit/po"', '"/api/sahamit/coverage"', '"/api/sahamit/flags"']) {
+    const s = sourceForUrl(ast, url);
+    assert.equal(ast.field(s, "blocks"), "grid", `${url}: วัตถุดิบของกริด — ขาดก้อนไหนก็เพี้ยนทั้งใบแบบดูไม่ออก`);
+    // 🐞 coverage ตอบ 200 [] ทุกวันบน prod — วัดด้วยความยาว = กริดหายทุกวัน
+    assert.ok(ast.bindingsOf(s, "empty").has(hookFor(ast, url).b.loaded), `${url}: ความว่างต้องมาจาก loaded`);
+  }
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/products"'), "blocks"), "lookup", "รายการสินค้าเป็นของประกอบ — ห้ามซ่อนกริด");
+  assertFlag(ast, "gridBlocked", "grid");
+  elseOf(rel, "ยังไม่มีข้อมูลให้กระทบยอด", "gridBlocked");
+  assertGates(rel, { tag: "TableScroll" }, { must: ["gridBlocked"], mustNot: ["productsBlocked", "productsGap"] }, "กริด (<TableScroll>)");
+  assert.ok(ast.readsIn("productsGap").has("ld4"), "ช่องว่างของรายการสินค้าต้องวัดด้วย loaded (ld4) ไม่ใช่ความยาวลิสต์");
+  // มูลค่า: ขีด ไม่ใช่ ฿0.00 + "N SKU ไม่มีราคา"
+  assert.ok(ast.readsIn("money").has("productsGap") && ast.readsIn("valueNote").has("productsGap"), "มูลค่า/หมายเหตุท้ายแถวต้องรู้ว่าไม่มีราคาในมือ");
+  assertUnitGate(ast, rel, "shownUnit");
+  // ตัวกรองแบรนด์/ปริมาตร/หมวด (ทุกกลุ่มมาจากรายการสินค้า) — พักให้เห็นพร้อมเหตุข้างปุ่ม ท่าเดียวกับหน้า FC
+  assertGates(rel, { tag: "FilterPopover" }, { must: ["productsGap"] }, "<FilterPopover>");
+  const [paused, ...more] = ast.elements("Button", { text: "ตัวกรอง" });
+  assert.ok(paused && !more.length && paused.attr("disabled"), "ตัวกรองที่พักต้องเป็นปุ่ม disabled ให้เห็น (ไม่ใช่หายไปเฉย ๆ)");
+  assertGates(rel, { literal: "กรองตามแบรนด์/ปริมาตร/หมวดยังไม่ได้" }, { must: ["productsGap"] }, "เหตุข้างตัวกรองที่พัก");
+  // หัวก้อนหมวดตอนไม่มีรายการสินค้า = "ยังจัดหมวดไม่ได้" ไม่ใช่ "ไม่ระบุหมวด" (อ่านว่าทะเบียนไม่ได้ตั้งหมวด)
+  assert.ok(ast.readsIn("noCategoryLabel").has("productsGap") && ast.memoReads("catGroups").has("noCategoryLabel"),
+    "หัวก้อนหมวดของแถวที่หาหมวดไม่เจอต้องมาจาก noCategoryLabel ที่รู้ว่ารายการสินค้าไม่มีในมือ (ตัว callback ของ useMemo ไม่ใช่ deps)");
+  // "N SKU ไม่มีราคา" (ทุก SKU ถูกนับว่าไม่มีราคาตอนรายการสินค้าไม่มา) ได้แค่กิ่ง else ของ productsGap
+  const skuNote = guardedBy(rel, { literal: "SKU ไม่มีราคา" }, "productsGap");
+  assert.ok(skuNote.hits > 0 && skuNote.unguarded === 0, "'N SKU ไม่มีราคา' ต้องอยู่หลัง `productsGap ? … :` — ไม่มีราคาในมือ ≠ ไม่มีราคา");
+  // สปินเนอร์รอบแรกรอวัตถุดิบครบ (ไม่งั้นช่องชดเชยวาบเป็น "รอ PO") แต่รอเฉพาะตอนยังไม่เคยมีของ (ไม่งั้นกดชดเชยแล้วกริดกระพริบ)
+  const waits = ast.readsIn("gridLoading");
+  for (const n of ["l3", "ld3", "l5", "ld5", "l4", "ld4"]) assert.ok(waits.has(n), `gridLoading ต้องอ่าน ${n} — รอบแรกรอการชดเชย/ผลตรวจ/รายการสินค้า เฉพาะตอนยังไม่เคยมีของ`);
+
+  /* 🐞 ลิ้นชักรายละเอียดช่องทับหัวจอทั้งแผ่น: กดยืนยันชดเชย ⇒ รอบโหลดการชดเชยล้ม ⇒ ลิ้นชักยังเสนอคำแนะนำเดิม โดยไม่มีป้าย
+        ⇒ กดซ้ำ = POST ใบที่สอง (ตารางไม่มี unique) FC ย้ายซ้ำ · ป้ายต้องตามเข้าไป และปุ่มยืนยัน/ลบพักพร้อมเหตุ */
+  const [drawer, ...moreDrawers] = ast.elements("CellDetailModal");
+  assert.ok(drawer && !moreDrawers.length, "หา <CellDetailModal> ไม่เจอ/เจอซ้ำ — ตัวตรวจล้าสมัย?");
+  assert.ok(reads(ast, drawer.attr("notice"), "notice"), "ลิ้นชักต้องได้ป้ายตัวเดียวกับหัวจอ (มีปุ่มลองใหม่) — ป้ายที่อยู่หลังลิ้นชักไม่มีใครเห็น");
+  assert.ok(reads(ast, drawer.attr("coveragePausedReason"), "coveragePausedReason"), "ลิ้นชักต้องได้เหตุที่ปุ่มยืนยัน/ลบการชดเชยพัก");
+  const pausedBy = ast.readsIn("coveragePausedReason");
+  for (const n of ["e3", "s3", "l3"]) {
+    assert.ok(pausedBy.has(n), `coveragePausedReason ต้องอ่าน ${n} — ล้มทั้งสองรอบ และช่วงรอรอบใหม่หลังกดยืนยัน = รายการชดเชยในมือเก่า`);
+  }
+  const drawerAst = astReader("components/sahamit/CellDetailModal.js");
+  const [sheet] = drawerAst.elements("Modal");
+  assert.ok(sheet && drawerAst.rendersAsChild(sheet.path, sheet.path.scope.getBinding("notice")), "CellDetailModal ต้องวาด {notice} ในลิ้นชัก");
+  const [panelEl] = drawerAst.elements("CoveragePanel");
+  assert.ok(panelEl && drawerAst.rendersIn(panelEl.attr("pausedReason"), sheet.path.scope.getBinding("coveragePausedReason")),
+    "CoveragePanel ต้องได้ coveragePausedReason ต่อจากลิ้นชัก");
+  const panelAst = astReader("components/sahamit/CoveragePanel.js");
+  const [confirmBtn] = panelAst.elements("button", { text: "ยืนยัน" });
+  const [removeBtn] = panelAst.elements("button", { text: "✕" });
+  assert.ok(confirmBtn && removeBtn, "หาปุ่มยืนยัน/ลบการชดเชยไม่เจอ — ตัวตรวจล้าสมัย?");
+  const pausedReason = confirmBtn.path.scope.getBinding("pausedReason");
+  for (const [what, btn] of [["ยืนยัน", confirmBtn], ["ลบ (✕)", removeBtn]]) {
+    assert.ok(panelAst.rendersIn(btn.attr("disabled"), pausedReason) && panelAst.rendersIn(btn.attr("title"), pausedReason),
+      `ปุ่ม${what}การชดเชยต้องพัก (disabled) และบอกเหตุ (title) จาก pausedReason`);
+  }
+  assert.ok(panelAst.rendersAsChild(panelAst.mainReturn(), pausedReason), "เหตุที่ปุ่มพักต้องมองเห็นในแผง ไม่ใช่แค่ title (ติดด่าน = โชว์แล้วบอกเหตุ)");
+  assert.ok(panelAst.readsIn("applyCoverage").has("pausedReason") && panelAst.readsIn("remove").has("pausedReason"),
+    "applyCoverage/remove ต้องมีด่านซ้ำ — คลิกที่ค้างมาก่อนสายล้มต้องไม่ยิงบนรายการเก่า");
+
+  // 🐞 โหมดเต็มจอ (`.recon-fs` fixed เต็มจอ) บังป้ายหัวจอ ⇒ staleError ระหว่างเต็มจอเงียบ — ป้ายต้องอยู่ในแผ่นเต็มจอด้วย
+  const [fs, ...moreFs] = ast.elements("div", { where: { className: 'expanded ? "recon-fs" : undefined' } });
+  assert.ok(fs && !moreFs.length, "หาแผ่นเต็มจอ (.recon-fs) ไม่เจอ — ตัวตรวจล้าสมัย?");
+  assert.ok(ast.rendersIn(fs.path, ast.bindingNamed("notice")), "แผ่นเต็มจอต้องวาดป้าย (notice) — ป้ายหัวจออยู่ใต้แผ่นนี้");
+});
+
+test("วัสดุ: รายการสินค้าล้มไม่ซ่อนตาราง/การ์ดนับ · บรรทัด PO ไม่เคยโหลดขึ้นห้ามตอบ 'ยังไม่มีบรรทัด PO'", () => {
+  const rel = "app/sahamit/material/page.js";
+  const ast = astReader(rel);
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/material"'), "blocks"), "page");
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/products"'), "blocks"), "lookup");
+  assertFlag(ast, "pageBlocked", "page");
+  elseOf(rel, "ยังไม่มีบรรทัด PO ให้ติดตาม", "pageBlocked");
+  // ตัวแปรทุกตัวของฮุกรายการสินค้า — ตาราง/การ์ดห้ามถูกคุมด้วยตัวไหนเลย (บันทึก PM/RM ไม่ได้อ่านรายการสินค้า)
+  const productNames = Object.values(hookFor(ast, '"/api/sahamit/products"').b).map((b) => b.identifier.name);
+  for (const tag of ["MaterialRow", "Stat"]) assertGates(rel, { tag }, { must: ["pageBlocked"], mustNot: productNames }, `<${tag}>`);
+});
+
+test("FC: รอบ FC ไม่ขึ้นห้ามตอบ 'ยังไม่มีรอบ' · สายรองล้มไม่ซ่อนแท็บ — ติ๊กเลือก/สร้างดีล/ลัง/ตัวกรอง พักพร้อมเหตุ · picker AE บอกในโมดัล", () => {
+  const rel = "app/sahamit/forecast/page.js";
+  const ast = astReader(rel);
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/sahamit/forecast/rounds"'), "blocks"), "page");
+  for (const url of ['"/api/sahamit/products"', '"/api/sahamit/forecast/mapped-lines"', '"/api/pm/assignable-users"']) {
+    assert.equal(ast.field(sourceForUrl(ast, url), "blocks"), "deal", `${url}: สายรอง — พักการสร้างดีล ไม่ใช่ซ่อนจอ`);
+  }
+  // คนดูอย่างเดียวไม่มีโมดัลสร้างแผน ⇒ ป้ายแดงเรื่อง AE = เหตุผลปลอมของสิ่งที่ไม่มีอยู่ (กติกาเดียวกับ editAvailable ของใบยื่นชำระ)
+  assert.equal(ast.failureOf(sourceForUrl(ast, '"/api/pm/assignable-users"')).gate, "canEdit");
+  assertFlag(ast, "pageBlocked", "page");
+  elseOf(rel, "ยังไม่มีรอบ FC", "pageBlocked");
+  assertGates(rel, { tag: "Tabs" }, {
+    must: ["pageBlocked"],
+    mustNot: ["productsFailed", "mappedFailed", "usersFailed", "dealBlocked", "dealPaused", "productsLoaded", "mappedLoaded", "usersLoaded"],
+  }, "<Tabs>");
+
+  // ช่องติ๊ก: ไม่รู้ว่ารายการไหนสร้างดีลแล้ว = ไม่รู้ว่าแถวไหนต้องล็อก ⇒ พักทุกแถว พร้อมเหตุ (หัวตาราง + title)
+  const boxes = ast.elements("input", { where: { type: "checkbox" } });
+  assert.equal(boxes.length, 3, "ช่องติ๊ก (ทั้งหมด · รายหมวด · รายแถว) — ตัวตรวจล้าสมัย?");
+  for (const box of boxes) {
+    assert.ok(reads(ast, box.attr("disabled"), "selectPausedReason") && reads(ast, box.attr("title"), "selectPausedReason"),
+      "ช่องติ๊กทุกตัวต้องพัก (disabled) และบอกเหตุ (title) จาก selectPausedReason ตัวเดียวกัน");
+  }
+  assert.ok(ast.readsIn("selectPausedReason").has("mappedLoaded"), "ช่องติ๊กพักตาม loaded ของรายการที่สร้างดีลแล้ว — ไม่ใช่ความยาวลิสต์");
+  /* null (= ติ๊กได้) ได้ทางเดียวคือ mappedLoaded — กิ่งอื่นทุกกิ่ง (ล้ม · ยังโหลด) ต้องเป็นเหตุจริง
+     🐞 กลายพันธุ์ที่ readsIn ข้างบนปล่อย: กิ่ง "ยังโหลด" คืน null ⇒ ช่องติ๊กเปิดก่อนรู้ว่าแถวไหนสร้างดีลแล้ว */
+  const sel = ast.initPath("selectPausedReason");
+  assert.ok(sel?.isConditionalExpression() && sel.get("test").isIdentifier({ name: "mappedLoaded" }) && sel.get("consequent").isNullLiteral(),
+    "selectPausedReason ต้องเป็น `mappedLoaded ? null : <เหตุ>`");
+  const leaves = (p) => (p.isConditionalExpression() ? [...leaves(p.get("consequent")), ...leaves(p.get("alternate"))] : [p]);
+  assert.ok(leaves(sel.get("alternate")).every((p) => (p.isStringLiteral() && p.node.value.trim()) || p.isTemplateLiteral()),
+    "ทุกกิ่งตอนยังไม่มีรายการที่สร้างดีลแล้วในมือ ต้องเป็นข้อความเหตุ — null/ว่าง = ช่องติ๊กเปิดบนตัวล็อกที่ไม่รู้");
+  assertGates(rel, { literal: "ติ๊กเลือกรายการ (สินค้า×เดือน)" }, { must: ["selectPausedReason"] }, "คำแนะนำการติ๊ก (ที่ของเหตุผลตอนพัก)");
+
+  // ปุ่มสร้างดีลในโมดัล: พัก (disabled) + เหตุที่มองเห็นในโมดัลเดียวกัน + ด่านซ้ำในตัวฟังก์ชัน
+  const [submit, ...extraSubmit] = ast.elements("button", { where: { onClick: "createDeal" } });
+  assert.ok(submit && !extraSubmit.length, "ปุ่มสร้างดีลต้องมีตัวเดียว — ตัวตรวจล้าสมัย?");
+  assert.ok(reads(ast, submit.attr("disabled"), "dealPaused"), "ปุ่มสร้างดีลต้องพักเมื่อสายที่ใช้สร้างไม่มีในมือ");
+  assert.ok(ast.readsIn("dealPaused").has("dealBlocked") && ast.readsIn("dealPaused").has("dealPending"), "พักทั้งตอนล้มและตอนยังโหลดไม่เสร็จ");
+  assert.ok(ast.readsIn("submitPausedReason").has("dealPausedReason"), "เหตุผลที่โชว์ต้องเป็นตัวเดียวกับที่พักปุ่ม");
+  assert.ok(ast.readsIn("createDeal").has("dealPaused"), "createDeal ต้องมีด่านซ้ำ — ทางเข้าอื่น (Enter) ต้องไม่ยิงด้วยข้อมูลครึ่งเดียว");
+  const [modal] = ast.elements("Modal", { where: { title: "สร้างแผนการขายจาก Forecast" } });
+  assert.ok(modal, "หาโมดัลสร้างแผนไม่เจอ — ตัวตรวจล้าสมัย?");
+  assert.ok(ast.rendersAsChild(modal.path, ast.bindingNamed("notice")),
+    "โมดัลทับป้ายหัวจอ และเป็นที่เดียวที่ใช้รายชื่อ AE ⇒ ป้าย (+ ปุ่มลองใหม่) ต้องอยู่ในโมดัลด้วย");
+  assert.ok(ast.rendersAsChild(modal.path, ast.bindingNamed("submitPausedReason")), "เหตุที่ปุ่มสร้างพักต้องมองเห็นในโมดัล");
+  // 🐞 ทรงเดิม: รายชื่อ AE ล้ม ⇒ "— ไม่มี AE —" (อ่านว่าไม่มีคนให้เลือก)
+  assertGates(rel, { literal: "— ไม่มี AE —" }, { must: ["usersLoaded"] }, "ตัวเลือก '— ไม่มี AE —'");
+
+  // ของที่อ่านจากทะเบียนสินค้า: มูลค่า/ไม่มีราคา · ลัง · ตัวกรองหมวด
+  /* แถวรวม + แถบที่เลือก + โมดัล — "(มูลค่า = 0)" ทุกแถวข้างปุ่มสร้างดีล คือคำเตือนปลอมเมื่อทะเบียนไม่มา
+     ⚠️ กิ่ง then ของ `productsLoaded ? … :` ไม่ใช่แค่ "มีทางแยกที่อ่าน productsLoaded" — ทุกตัวอยู่ใต้ `(!productsLoaded || …) &&`
+        ซึ่งอ่านธงตัวเดียวกันแต่กลับด้าน (กลายพันธุ์ "ขึ้นคำเตือนเสมอ" เคยเขียว) */
+  for (const literal of ["SKU ไม่มีราคา", "รายการไม่มีราคา", "(มูลค่า = 0)"]) thenOf(rel, literal, "productsLoaded");
+  /* ยอดเงินทุกจุดผ่าน `money` ตัวเดียว (ท่าเดียวกับหน้ากระทบยอด) — 🐞 ทางแยก `productsLoaded ? nfBaht(…) : NA` ที่เขียนซ้ำ
+     ห้าจุด ถอดจุดไหนก็กลับเป็น ฿0.00 โดยด่านเขียว ⇒ ตรึงว่า nfBaht ถูกเรียกใน money เท่านั้น */
+  assert.ok(ast.readsIn("money").has("productsLoaded"), "money ต้องเป็นขีดเมื่อไม่มีทะเบียนสินค้าในมือ");
+  const baht = ast.calls("nfBaht");
+  assert.ok(baht.length > 0, "หาจุดเรียก nfBaht ไม่เจอ — ตัวตรวจล้าสมัย?");
+  assert.deepEqual(baht.filter((c) => !ast.within(c, "money")).map((c) => ast.textOf(c.node)), [],
+    "ยอดเงินต้องผ่าน money(…) — nfBaht(…) ตรง ๆ = ฿0.00 ตอนทะเบียนสินค้าไม่มา");
+  // หมวด/คำค้นที่อ่านทะเบียนสินค้า — ไม่รู้ ≠ "ไม่ระบุหมวด" / "ไม่พบสินค้า"
+  assert.ok(ast.readsIn("missingCategory").has("productsLoaded"), "หมวดที่หาไม่เจอต้องรู้ว่าทะเบียนสินค้าไม่มีในมือ (ยังไม่รู้หมวด ≠ ไม่ระบุหมวด)");
+  // lineList เป็น useMemo — ถามตัว callback ไม่ใช่ deps (ชื่อใน deps ไม่ได้แปลว่าถูกใช้)
+  assert.ok(ast.readsIn("catOf").has("missingCategory") && ast.memoReads("lineList").has("missingCategory"),
+    'catOf / lineList ต้องตกหมวดผ่าน missingCategory ไม่ใช่ค่าคงที่ "ไม่ระบุหมวด"');
+  assert.ok(ast.readsIn("noMatchText").has("productsLoaded"), "ค้นไม่เจอตอนทะเบียนไม่มา ต้องบอกว่าค้นชื่อจากทะเบียนไม่ได้ ไม่ใช่ 'ไม่พบสินค้า'");
+  assertUnitGate(ast, rel, "unit");
+  assertGates(rel, { tag: "FilterPopover" }, { must: ["productsLoaded"] }, "<FilterPopover> (ตัวเลือกหมวดมาจากทะเบียนสินค้า)");
+  const [paused] = ast.elements("Button", { text: "ตัวกรอง" });
+  assert.ok(paused && paused.attr("disabled"), "ตัวกรองหมวดที่พักต้องเป็นปุ่ม disabled ให้เห็น พร้อมเหตุข้างปุ่ม");
+  assertGates(rel, { literal: "กรองตามหมวดยังไม่ได้" }, { must: ["productsLoaded"] }, "เหตุข้างตัวกรองที่พัก");
+});
+
+/* สองหน้ารายการภาษี — picker ลูกค้าโหลดตอนกางตัวกรอง (508 แถว) · ล้มแล้วแผงขึ้น "ไม่มีตัวเลือก" เอง
+   (FilterPopover ยังไม่มีช่องบอกเหตุรายกลุ่ม) ⇒ หัวหมวดต้องบอกสถานะแทน และตารางต้องไม่หลบเพราะ picker */
+const assertCustomerFilter = (ast, rel) => {
+  const [group, ...more] = ast.objectsWhere("key", "customer");
+  assert.ok(group && !more.length, `${rel}: หากลุ่มตัวกรองลูกค้าไม่เจอ — ตัวตรวจล้าสมัย?`);
+  assert.equal(group.label, "customerGroupLabel", `${rel}: หัวหมวดลูกค้าต้องบอกสถานะ (ดึงไม่ได้/กำลังโหลด) — แผงลอยทับป้ายตอนกาง`);
+  const label = ast.readsIn("customerGroupLabel");
+  assert.ok(label.has("customersLoaded") && label.has("filterBlocked"), `${rel}: หัวหมวดต้องอ่าน loaded + ธงของสาย picker`);
+};
+
+test("ใบยื่นชำระ (รายการ): picker ลูกค้าล้มไม่ซ่อนตาราง · หัวหมวดตัวกรองบอกเหตุ · จำนวนไม่อ้าง 0 ตอนไม่เคยโหลดขึ้น", () => {
+  const rel = "app/tax/filings/page.js";
+  const ast = astReader(rel);
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/orders"'), "blocks"), "list");
+  assert.equal(ast.field(sourceForUrl(ast, 'customersReady ? "/api/customers" : null'), "blocks"), "filter");
+  assertFlag(ast, "listBlocked", "list");
+  assertFlag(ast, "filterBlocked", "filter");
+  assertGates(rel, { tag: "DataList" }, { must: ["listBlocked"], mustNot: ["filterBlocked", "customersLoaded", "customersError", "customersStale"] }, "<DataList>");
+  assertCustomerFilter(ast, rel);
+  // ป้ายจำนวน: ขีด = ไม่เคยโหลดสำเร็จ · `200 []` = 0 ใบจริง ⇒ ห้ามกลับไปนับความยาวลิสต์
+  assert.ok(ast.readsIn("noData").has("ordersLoaded") && !ast.readsIn("noData").has("orders"), "noData ต้องมาจาก loaded ไม่ใช่ orders.length");
+});
+
+test("ขึ้นทะเบียน (รายการ): picker ล้มไม่ซ่อนตาราง · ฟอร์มสร้างไม่เปิดบนข้อมูลครึ่งเดียว — โมดัลหัวเดียวกันบอกเหตุ + ลองใหม่", () => {
+  const rel = "app/tax/registrations/page.js";
+  const ast = astReader(rel);
+  assert.equal(ast.field(sourceForUrl(ast, '"/api/excise-registrations?view=queue"'), "blocks"), "list");
+  const products = sourceForUrl(ast, 'pickerReady ? "/api/products" : null');
+  assert.equal(ast.field(products, "blocks"), "form");
+  // pickerReady ตัวเดียวกันเปิดตอนกางตัวกรอง ⇒ คนดูอย่างเดียวต้องไม่เจอ "ยังสร้างทะเบียนไม่ได้" ของปุ่มที่ตัวเองไม่มี
+  assert.equal(ast.failureOf(products).gate, "canEdit");
+  assert.equal(ast.field(sourceForUrl(ast, 'pickerReady ? "/api/customers" : null'), "blocks"), "filter");
+  assertFlag(ast, "listBlocked", "list");
+  assertFlag(ast, "filterBlocked", "filter");
+  assertGates(rel, { tag: "DataList" }, { must: ["listBlocked"], mustNot: ["filterBlocked", "formReady", "customersLoaded", "productsLoaded"] }, "<DataList>");
+  assertCustomerFilter(ast, rel);
+  assert.ok(ast.readsIn("noData").has("regsLoaded") && !ast.readsIn("noData").has("regs"), "noData ต้องมาจาก loaded ไม่ใช่ regs.length");
+  // ฟอร์มจริงเปิดเมื่อทุกสายที่มันกินเคยโหลดสำเร็จ · ระหว่างนั้นโมดัลหัวเดียวกันวางป้าย (ปุ่มบันทึกไม่มีให้กด)
+  /* ตรึงนิยามทั้งก้อน ไม่ใช่แค่ "อ่าน sources" — 🐞 กลายพันธุ์ที่ readsIn ปล่อย: `s.empty && s.error` (ฟอร์มเปิดระหว่าง picker
+     ยังโหลด = บั๊กเดิม "ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน") · `s.empty && s.blocks === "form"` (ลูกค้าล้มแล้วฟอร์มยังเปิด) */
+  assert.equal(ast.initText("formReady"), "!sources.some((s) => s.empty)",
+    "formReady = ไม่มีสายไหนไม่เคยโหลดสำเร็จ (ทั้งล้มและยังโหลด) — ทุกสายของจอนี้ป้อนฟอร์มสร้าง");
+  // บรรทัด "กำลังโหลด…" ของโมดัลแทนฟอร์ม ได้แค่กิ่ง else ของความล้ม — ล้มแล้วต้องเป็นป้าย (มีลองใหม่) ไม่ใช่ "กำลังโหลด" ตลอดกาล
+  elseOf(rel, "กำลังโหลดข้อมูลที่ฟอร์ม", "blocked.length");
+  const [form] = ast.elements("RegistrationFormModal");
+  assert.ok(form && reads(ast, form.attr("open"), "formReady"), "RegistrationFormModal ต้องเปิดเมื่อ formReady เท่านั้น — เดิมเปิดทันทีแล้วขึ้น 'ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน'");
+  const [gate] = ast.elements("Modal", { where: { title: "สร้างทะเบียน (ร่าง)" } });
+  assert.ok(gate && reads(ast, gate.attr("open"), "formReady"), "ต้องมีโมดัลหัวเดียวกับฟอร์มที่เปิดแทนตอนยังไม่ครบ");
+  assert.ok(ast.rendersIn(gate.path, ast.bindingNamed("notice")), "โมดัลแทนต้องวางป้ายตัวเดียวกัน (มีปุ่มลองใหม่) — picker ล้มต้องบอกตรงที่ใช้มัน");
+});
+
+test("ขึ้นทะเบียน (รายละเอียด): โหลดใบไม่ขึ้นห้ามตอบ 'ไม่พบ' · picker ล้มไม่ซ่อนหน้า แต่ฟอร์มแก้ไขไม่เปิดบนข้อมูลครึ่งเดียว", () => {
+  const rel = "app/tax/registrations/[id]/page.js";
+  const ast = astReader(rel);
+  // 🐞 ทรงเดิม: 500/เน็ตหลุด ⇒ "ไม่พบรายการ · ทะเบียนนี้อาจถูกลบไปแล้ว" + ข้อความดิบเป็นตัวเนื้อ
+  elseOf(rel, "ไม่พบทะเบียนที่ต้องการ", "pageBlocked");
+  const pages = ast.sourcePaths().filter((s) => ast.field(s, "blocks") === "page");
+  assert.equal(pages.length, 1, "สายที่บล็อกทั้งหน้ามีได้สายเดียว คือตัวใบเอง");
+  assert.ok(ast.field(pages[0], "empty").startsWith("!s &&"), "สายใบต้องวัดด้วยใบนี้ (`!s && …`)");
+  const recordEmpty = ast.bindingsOf(pages[0], "empty");
+  assert.ok(recordEmpty.has(ast.bindingNamed("recordError")) && !recordEmpty.has(ast.bindingNamed("recordStale")),
+    "ความว่างของสายใบอ่านรอบหน้าบ้าน (recordError) ไม่ใช่รอบเบื้องหลัง — 404 ที่ยืนยันแล้วต้องไม่พลิกเป็น 'ไม่ได้แปลว่าถูกลบ'");
+  /* ── ตัวโหลดใบ (`load` · apiFetch ไม่ใช่ useApiList) — ด่านรายฮุกของ DETAIL_PAGES มองไม่เห็นมัน
+     🐞 สามกลายพันธุ์ที่เคยเขียว: ถอดกิ่ง 404 (ใบที่ถูกลบจริงได้ "ไม่ได้แปลว่าถูกลบ" = เท็จ) · รอบเบื้องหลังล้มแล้วทิ้ง
+        (`if (!opts?.background) setRecordFault(fault)` = ทรงเงียบ 26 วันตัวเดิม) · `recordDetail = null` (ข้อความดิบหาย) */
+  const { left: recordLeft, right: recordRight } = ast.failureOf(pages[0]);
+  assert.ok(recordLeft === ast.bindingNamed("recordError") && recordRight === ast.bindingNamed("recordStale"),
+    "สายใบต้องเป็น `recordError || recordStale` — รอบเบื้องหลังที่ล้มต้องถึงป้าย");
+  assert.ok(ast.readsIn("recordError").has("recordFault") && ast.readsIn("recordStale").has("recordStaleFault"),
+    "recordError/recordStale ต้องมาจากสองช่องของตัวโหลด (รอบหน้าบ้าน · รอบเบื้องหลัง)");
+  const recordDetailReads = ast.readsIn("recordDetail");
+  assert.ok(recordDetailReads.has("recordFault") && recordDetailReads.has("recordStaleFault")
+    && ast.bindingsOf(pages[0], "detail").has(ast.bindingNamed("recordDetail")),
+    "บรรทัดรองของสายใบต้องมาจากความล้มทั้งสองช่อง — ข้อความดิบคือตัวไขคดี");
+  const loadIfs = [];
+  ast.initPath("load")?.traverse({ IfStatement(p) { loadIfs.push(p); } });
+  const gone = loadIfs.filter((p) => ast.textOf(p.node.test).includes("404"));
+  assert.equal(gone.length, 1, "ตัวโหลดต้องมีกิ่ง 404 กิ่งเดียว — 404 = ไม่มีใบนี้จริง ไม่ใช่ความล้ม");
+  assert.equal(ast.textOf(gone[0].node.test), "res.status === 404 && !opts?.background",
+    "404 ของรอบเบื้องหลัง (ใบถูกลบระหว่างเปิดค้าง) ต้องไม่พลิกจอทิ้ง — ของบนจอยังอยู่ ป้ายบอกว่าเป็นรอบก่อน");
+  const faultSets = [];
+  gone[0].get("consequent").traverse({
+    CallExpression(p) { if (/^setRecord(Stale)?Fault$/.test(p.node.callee.name ?? "")) faultSets.push(p); },
+  });
+  assert.ok(faultSets.length > 0 && faultSets.every((c) => c.get("arguments")[0]?.isNullLiteral()),
+    "กิ่ง 404 ต้องล้างความล้ม (null) ไม่ใช่ตั้ง — จอไปทาง 'ไม่พบรายการ' ไม่ใช่ป้ายแดง");
+  assert.ok(loadIfs.some((p) => ast.textOf(p.node.test) === "opts?.background"
+    && ast.textOf(p.node.consequent) === "setRecordStaleFault(fault);"
+    && p.node.alternate && ast.textOf(p.node.alternate) === "setRecordFault(fault);"),
+    "ความล้มต้องลงช่องตามรอบ: `if (opts?.background) setRecordStaleFault(fault); else setRecordFault(fault);` (ทรงเดียวกับ useApiList)");
+  for (const url of ['pickerReady ? "/api/products" : null', 'pickerReady ? "/api/customers" : null', 'pickerReady ? "/api/excise-registrations" : null']) {
+    const h = hookFor(ast, url);
+    const s = sourceForUrl(ast, url);
+    assert.equal(ast.field(s, "blocks"), "edit", `${url}: ป้อนแค่ฟอร์มแก้ไข — ซ่อนหน้าเพราะมันล้ม = เสียจอที่ยังถูกอยู่`);
+    assert.equal(ast.failureOf(s).gate, "editAvailable", `${url}: พูดเฉพาะตอนคนดูมีปุ่มแก้ไขจริง`);
+    const pending = ast.bindingsOf(s, "pending");
+    assert.ok(pending.has(h.b.loading) && pending.has(h.b.loaded), `${url}: pending ต้องมาจาก loading + !loaded ของฮุกตัวเอง`);
+  }
+  assertFlag(ast, "pageBlocked", "page");
+  assertGates(rel, { tag: "DetailPageLayout" }, { mustNot: ["editBlocked", "editReady", "editAvailable"] }, "<DetailPageLayout>");
+  assert.ok(ast.readsIn("editAvailable").has("canEdit") && ast.readsIn("editAvailable").has("s"), "editAvailable = สิทธิ์ + สถานะใบ (เงื่อนไขเดียวกับปุ่มแก้ไข)");
+  assert.ok(ast.readsIn("said").has("editBlocked"), "said ต้องตัด staleNote ของสายรองเมื่อมีสายรองพักฟอร์มแล้ว — 'ยังแก้ไม่ได้' คู่ 'จะใช้รอบก่อน' ขัดกันเอง");
+  const [form] = ast.elements("RegistrationFormModal");
+  assert.ok(form && reads(ast, form.attr("open"), "editReady"), "ฟอร์มแก้ไขต้องเปิดเมื่อ editReady เท่านั้น");
+  // ตรึงนิยามทั้งก้อน (เหตุผลเดียวกับ formReady ของหน้ารายการ) — `… && s.error` = ฟอร์มเปิดระหว่าง picker ยังโหลด
+  assert.equal(ast.initText("editReady"), '!sources.some((s) => s.blocks === "edit" && s.empty)',
+    "editReady = ไม่มีสาย picker ของฟอร์มแก้ไขที่ไม่เคยโหลดสำเร็จ (ทั้งล้มและยังโหลด)");
+  elseOf(rel, "กำลังโหลดข้อมูลที่ฟอร์ม", "editBlocked.length");
+  const [gate] = ast.elements("Modal", { where: { title: "แก้ไขการขึ้นทะเบียน" } });
+  assert.ok(gate && reads(ast, gate.attr("open"), "editReady") && reads(ast, gate.attr("open"), "editAvailable"),
+    "โมดัลแทนต้องเปิดเฉพาะตอนมีปุ่มแก้ไขจริงและฟอร์มยังไม่พร้อม");
+  assert.ok(ast.rendersIn(gate.path, ast.bindingNamed("notice")), "โมดัลแทนต้องวางป้ายตัวเดียวกัน (มีปุ่มลองใหม่)");
+});
+
 /* ── "ไม่มีของในมือ" ≠ "ลิสต์ยาวศูนย์" ────────────────────────────────────────
  * 🐞 ของจริงบน prod: `/api/sahamit/coverage` ตอบ `200 []` ทุกวัน ⇒ ตอนวัดความว่างด้วย
  * `!list.length` แดชบอร์ดสหมิตร **หายทั้งใบ** ทันทีที่มันตอบ 500 — ทั้งที่ตัวเลขชุดเดียว
@@ -735,13 +1297,8 @@ test("แก้รอบ FC: เหตุผลที่ยังแก้ไม
  */
 const DETAIL_SCREENS = [
   ...SCREENS,
-  ...ALREADY_REPORTING,
-  // สหมิตร: เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบ (ไม่มีประโยคไทยเลย) — ย้ายมาใช้กล่องกลาง
-  "app/sahamit/forecast/page.js",
-  "app/sahamit/material/page.js",
-  "app/sahamit/po/page.js",
-  "app/sahamit/po/[id]/page.js",
-  "app/sahamit/reconcile/page.js",
+  /* สหมิตร: เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบ (ไม่มีประโยคไทยเลย) — ย้ายมาใช้กล่องกลาง
+     (forecast · material · po · po/[id] · reconcile ย้ายขึ้นไปอยู่ใน SCREENS แล้วเมื่อ 25/09 — ยังอยู่ในทะเบียนนี้ผ่าน `...SCREENS`) */
   "app/sahamit/review/page.js",
 ];
 
@@ -987,34 +1544,18 @@ test("ตัวสแกนรายการเรียกเห็นทุ�
    ⚠️ ห้ามเพิ่มบรรทัด — รายการเรียกใหม่ต้องรับ error ตั้งแต่เกิด */
 const KNOWN_SILENT = [
   /* ✅ ปิดแล้ว (25/09): ลิสต์หลักของหน้ารายละเอียดที่ล้มแล้วจอโกหกว่า "ไม่พบ…" — tax/filings/[id] (4 รายการเรียก)
-     และ sahamit/po/[id]/edit (3 รายการเรียก) ย้ายเข้าทะเบียน SCREENS แล้ว · เพดาน 25 → 18 */
-  // ลิสต์รองที่ป้อนการคำนวณ/ล็อกของจอ — ล้มแล้วค่าเพี้ยนเงียบ ไม่ใช่แค่ตัวเลือกว่าง
-  'app/sahamit/po/[id]/page.js :: "/api/sahamit/material"',
-  'app/sahamit/po/[id]/page.js :: "/api/sahamit/products"',
-  'app/sahamit/po/page.js :: "/api/sahamit/material"',
-  'app/sahamit/po/page.js :: "/api/sahamit/products"',
-  'app/sahamit/po/new/page.js :: "/api/sahamit/products"',
-  'app/sahamit/reconcile/page.js :: "/api/sahamit/coverage"',
-  'app/sahamit/reconcile/page.js :: "/api/sahamit/products"',
-  'app/sahamit/reconcile/page.js :: "/api/sahamit/flags"',
-  'app/sahamit/forecast/page.js :: "/api/sahamit/products"',
-  'app/sahamit/forecast/page.js :: "/api/pm/assignable-users"',
-  'app/sahamit/forecast/page.js :: "/api/sahamit/forecast/mapped-lines"',
-  'app/sahamit/material/page.js :: "/api/sahamit/products"',
-  // ลิสต์ของ picker ที่โหลดตอนกางตัวกรอง/เปิดโมดัล — ล้มแล้ว "ตัวเลือกว่าง" โดยไม่มีอะไรบอก
-  'app/tax/filings/page.js :: customersReady ? "/api/customers" : null',
-  'app/tax/registrations/page.js :: pickerReady ? "/api/products" : null',
-  'app/tax/registrations/page.js :: pickerReady ? "/api/customers" : null',
-  'app/tax/registrations/[id]/page.js :: pickerReady ? "/api/products" : null',
-  'app/tax/registrations/[id]/page.js :: pickerReady ? "/api/customers" : null',
-  'app/tax/registrations/[id]/page.js :: pickerReady ? "/api/excise-registrations" : null',
+     และ sahamit/po/[id]/edit (3 รายการเรียก) ย้ายเข้าทะเบียน SCREENS แล้ว · เพดาน 25 → 18
+     ✅ ปิดครบ (25/09 "ทำอีก 18 จุดต่อ"): ลิสต์รองที่ป้อนการคำนวณ/ล็อกของจอ (po · po/[id] · po/new · reconcile ·
+     forecast · material — 12 รายการเรียก) และลิสต์ของ picker (tax/filings · tax/registrations · tax/registrations/[id]
+     — 6 รายการเรียก) ย้ายเข้าทะเบียน SCREENS ทั้งหมด · เพดาน 18 → 0
+     ⚠️ บัญชีว่างแล้วแต่ **กลไกยังอยู่**: รายการเรียกใหม่ที่ทิ้ง error จะแดงที่เทสต์ข้างล่างทันที (ไม่มีที่ให้เติม) */
 ];
 
 /* เพดานของบัญชีหนี้ — เทียบสองทางแบบเพดานของ audit-ui.mjs
    🐞 เดิมบัญชีบังคับแค่ขาลง (บรรทัดที่แก้แล้วต้องลบ) ⇒ เติมบรรทัดเดียวในลิสต์ รายการเรียกเงียบตัวใหม่ก็ผ่านด่าน
       โดยดิฟดูเหมือนงานทำบัญชีธรรมดา · เลขนี้ทำให้การเพิ่มต้องขึ้นเพดานให้เห็นในรีวิว
    ⇒ แก้หนี้แล้ว: ลบบรรทัด + **ลด** เลขนี้ · ห้ามขึ้นเลขนี้ */
-const KNOWN_SILENT_CAP = 18;
+const KNOWN_SILENT_CAP = 0;
 
 test("บัญชีหนี้ KNOWN_SILENT มีเพดาน — เพิ่มบรรทัดไม่ได้โดยไม่ขึ้นเลขให้เห็น", () => {
   assert.equal(KNOWN_SILENT.length, KNOWN_SILENT_CAP,

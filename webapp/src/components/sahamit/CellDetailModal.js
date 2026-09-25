@@ -24,7 +24,9 @@ const TABS = [
   { key: "coverage", label: "ชดเชยยอดข้ามเดือน" },
 ];
 
-export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, product, canEdit = true, onCoverageChanged }) {
+/* `notice` = ป้ายโหลดพังตัวเดียวกับหัวจอกระทบยอด (มีปุ่มลองใหม่) — ลิ้นชักทับหัวจอทั้งแผ่น ป้ายที่อยู่ข้างหลังไม่มีใครเห็น
+   `coveragePausedReason` = เหตุที่ปุ่มยืนยัน/ลบการชดเชยพัก (null = กดได้) — หน้ากระทบยอดตัดสินจากสายการชดเชย (ดู reconcile/page.js) */
+export default function CellDetailModal({ open, onClose, fgCode, month, matrix, rounds, pos, coverages, product, canEdit = true, onCoverageChanged, notice = null, coveragePausedReason = null }) {
   const [tab, setTab] = useState("overview");
 
   const row = useMemo(() => (matrix?.rows || []).find((r) => r.fgCode === fgCode), [matrix, fgCode]);
@@ -57,6 +59,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
 
   return (
     <Modal open={open} onClose={onClose} title={title} size="lg" side="right" closeOnOverlay>
+      {notice}
       {!cell ? (
         <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>ไม่พบข้อมูลช่องนี้</div>
       ) : (
@@ -153,7 +156,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
           )}
 
           {tab === "coverage" && (
-            <CoveragePanel fgCode={fgCode} month={month} coverages={coverages} matrix={matrix} piecesPerCase={ppc} canEdit={canEdit} onChanged={onCoverageChanged} />
+            <CoveragePanel fgCode={fgCode} month={month} coverages={coverages} matrix={matrix} piecesPerCase={ppc} canEdit={canEdit} onChanged={onCoverageChanged} pausedReason={coveragePausedReason} />
           )}
         </div>
       )}
