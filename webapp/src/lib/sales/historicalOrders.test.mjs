@@ -116,7 +116,7 @@ test('ล็อกงวดของใบย้อนหลัง: ขยับ
   const lock = (status) => historicalInstallmentLock({ origin: 'historical', status });
   assert.equal(lock('approved'), null);
   for (const status of ['draft', 'pending_approval', 'rejected']) {
-    assert.match(lock(status), /ขยับได้หลัง AE Sup อนุมัติ/, status);
+    assert.match(lock(status), /ขยับได้หลังผู้จัดการฝ่ายขายอนุมัติ/, status);
   }
   assert.match(lock('cancelled'), /ยกเลิกแล้ว/);
   // สถานะที่ CHECK ห้ามอยู่แล้ว (หรือข้อมูลเพี้ยน) ต้องไม่ถูกปล่อยผ่าน

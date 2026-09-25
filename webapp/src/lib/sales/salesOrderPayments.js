@@ -24,7 +24,7 @@ import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
 // งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import {
-  HISTORICAL_CORRECTION_PATH, OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment,
+  HISTORICAL_APPROVER_LABEL, HISTORICAL_CORRECTION_PATH, OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 // เอกสารยืนยันคำสั่งซื้อของใบ (อ่านสองบ้าน) — ไฟล์นั้นไม่มี import (ไม่มีวงวน)
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
@@ -629,7 +629,7 @@ export function installmentActionError(row, action, user, options = {}) {
       if (!canConfirmPayment(user)) {
         return opening
           ? `ช่วงครอบของ${OPENING_INSTALLMENT_LABEL}แก้ได้เฉพาะฝ่ายบัญชี`
-          : 'ช่วงครอบของใบย้อนหลังตรึงตอน AE Sup อนุมัติ — แก้ได้เฉพาะฝ่ายบัญชี';
+          : `ช่วงครอบของใบย้อนหลังตรึงตอน${HISTORICAL_APPROVER_LABEL}อนุมัติ — แก้ได้เฉพาะฝ่ายบัญชี`;
       }
       if (opening) {
         /* 🐞 **"ใครแก้ได้" กับ "ค่านี้ผ่านไหม" เป็นคนละคำถาม** (review 23/09) — เซลล์บนแผงงวด

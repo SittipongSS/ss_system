@@ -10,7 +10,7 @@
 import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import {
-  HISTORICAL_CANCEL_NOTE_MIN, HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
+  HISTORICAL_APPROVER_LABEL, HISTORICAL_APPROVER_ROLES_TEXT, HISTORICAL_CANCEL_NOTE_MIN, HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
   historicalCancelOpening, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import { addDays, coverageContinuityErrors, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
@@ -74,7 +74,7 @@ const HISTORICAL_STATUS_COPY = Object.freeze({
     description: 'ยังไม่ส่งอนุมัติ — แก้ต่อในฟอร์มคีย์ใบ แล้วกด "บันทึกและส่งอนุมัติ"',
   },
   pending_approval: {
-    label: 'รอ AE Supervisor อนุมัติ',
+    label: `รอ${HISTORICAL_APPROVER_LABEL}อนุมัติ`,
     tone: 'warning',
     description: 'อนุมัติแล้วเอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS — ใบย้อนหลังไม่นับ Actual / FC / เป้า',
   },
@@ -127,10 +127,10 @@ export function historicalWorkflowSteps(order, installments = [], terms = [], pl
   const override = order?.approvalMode === 'admin_override' ? ' · Admin Override' : '';
   const approveStep = {
     key: 'approve',
-    label: 'AE Sup อนุมัติ',
+    label: `${HISTORICAL_APPROVER_LABEL}อนุมัติ`,
     hint: everApproved
-      ? `${text(order?.approvedByName) || 'AE Sup'}${order?.approvedAt ? ` · ${fmtDate(order.approvedAt)}` : ''}${override}`
-      : status === 'rejected' ? 'ตีกลับแล้ว · ไม่นับ Actual' : 'รอ AE Sup · ไม่นับ Actual',
+      ? `${text(order?.approvedByName) || HISTORICAL_APPROVER_LABEL}${order?.approvedAt ? ` · ${fmtDate(order.approvedAt)}` : ''}${override}`
+      : status === 'rejected' ? 'ตีกลับแล้ว · ไม่นับ Actual' : `รอ${HISTORICAL_APPROVER_LABEL} · ไม่นับ Actual`,
   };
 
   // ── ขั้นบัญชี: งวดยกมา ถ้ามี · ไม่มีก็งวดแรกของใบ ──
@@ -146,7 +146,7 @@ export function historicalWorkflowSteps(order, installments = [], terms = [], pl
       hint: confirmed
         ? `${text(firstRow.confirmedByName) || 'ฝ่ายบัญชี'}${firstRow.confirmedAt ? ` · ${fmtDate(firstRow.confirmedAt)}` : ''}`
         : cancelled ? 'ใบยกเลิกแล้ว'
-        : !approved ? 'ขึ้นคิวบัญชีหลัง AE Sup อนุมัติ'
+        : !approved ? `ขึ้นคิวบัญชีหลัง${HISTORICAL_APPROVER_LABEL}อนุมัติ`
         : rowStatus === 'rejected' ? 'บัญชีตีกลับ — ฝ่ายขายแจ้งใหม่พร้อมหลักฐาน'
         : rowStatus === 'reported' || opening ? 'รอบัญชีรับรอง'
         : 'รอลูกค้าจ่าย แล้วฝ่ายขายแจ้งชำระ',
@@ -173,7 +173,7 @@ export function historicalWorkflowSteps(order, installments = [], terms = [], pl
     key: 'ts',
     label: 'TS ตั้งรอบ',
     hint: cancelled ? `ใบยกเลิกแล้ว · ${fmtNumber(zoneCount)} โซน`
-      : !approved ? `หลัง AE Sup อนุมัติ · ${fmtNumber(zoneCount)} โซน`
+      : !approved ? `หลัง${HISTORICAL_APPROVER_LABEL}อนุมัติ · ${fmtNumber(zoneCount)} โซน`
       : tsDone ? `ตั้งรอบครบ ${fmtNumber(zoneCount)} โซน`
       : plannedZones ? `ตั้งรอบแล้ว ${fmtNumber(plannedZones)}/${fmtNumber(zoneCount)} โซน`
       : `รอฝ่าย TS · ${fmtNumber(zoneCount)} โซน`,
@@ -226,7 +226,7 @@ export function historicalServiceProgress(summary, orderId = null) {
      = ไล่ฝ่ายขายไปตาม TS ทั้งที่ TS ทำไปแล้ว) */
 export function historicalZoneState(order, zone, { plannedSiteIds = null, loading = false } = {}) {
   if (order?.status === 'cancelled') return 'ใบยกเลิกแล้ว';
-  if (order?.status !== 'approved') return 'รอ AE Sup อนุมัติ';
+  if (order?.status !== 'approved') return `รอ${HISTORICAL_APPROVER_LABEL}อนุมัติ`;
   if (loading) return 'กำลังตรวจรอบบริการ…';
   if (!Array.isArray(plannedSiteIds)) return 'ตรวจรอบบริการไม่ขึ้น — ดูที่แท็บงานบริการ';
   return plannedSiteIds.includes(zone?.siteId) ? 'ตั้งรอบแล้ว' : 'ยังไม่ตั้งรอบ — รอฝ่าย TS';
@@ -261,6 +261,49 @@ export function historicalCoverageSegments(installments = [], { start = null, en
        discountAmount?, lineTotal? }]` (หนึ่งแถวต่อบรรทัด — ของเสริมจาก loadHistoricalOrderExtras)
      · liveTermWarnings: สตริง หรือ `{ zoneCode|zoneName, orderNumber, endDate }`
    @returns `{ subject, checklist, effects }` — effects ไม่รวม HISTORICAL_STATUS_NOTE (ตัวสร้างโมดัลเติมเอง) */
+/* ── ประโยคของข้อเท็จจริงที่ผู้อนุมัติตรวจ — **ตัวเดียว** ของหน้าต่างอนุมัติ (`historicalApprovalFacts`) และขั้น ④ ของฟอร์มคีย์ใบ
+   ⭐ มติเจ้าของ 25/09 (รื้อขั้น ④ "ตรวจแบบผู้อนุมัติ"): ผู้คีย์อ่านคำเดียวกับที่ผู้จัดการฝ่ายขายจะอ่าน ⇒ ถ้าตรงนี้ผิด ผิดทั้งสองที่พร้อมกัน
+     (ไม่ใช่สองชุดที่เพี้ยนหากัน) · ย้ายออกมาแบบไม่เปลี่ยนคำ — เทสต์ของโมดัลอนุมัติยืนยันว่าข้อความเท่าเดิมทุกตัวอักษร */
+/** "{ชนิด} {เลขที่} · {เริ่ม}–{สิ้นสุด}" */
+export function historicalContractFactText(docText, start, end) {
+  return `${text(docText) || '—'} · ${span(start, end)}`;
+}
+
+/** "N โซน — {ไซต์} n โซน · …" (โซนไม่รู้ไซต์ไม่ขึ้นชื่อ) · ไม่มีโซน = null */
+export function historicalZoneSitesText(zones = []) {
+  const rows = list(zones);
+  if (!rows.length) return null;
+  const bySite = new Map();
+  for (const zone of rows) {
+    const key = zone.siteId || zone.siteCode || zone.siteName || '';
+    const entry = bySite.get(key) || { name: [text(zone.siteCode), text(zone.siteName)].filter(Boolean).join(' '), count: 0 };
+    entry.count += 1;
+    bySite.set(key, entry);
+  }
+  const siteText = [...bySite.values()].filter((site) => site.name).map((site) => `${site.name} ${fmtNumber(site.count)} โซน`).join(' · ');
+  return `${fmtNumber(rows.length)} โซน${siteText ? ` — ${siteText}` : ''}`;
+}
+
+/** "฿X · ครอบบริการ {เริ่ม}–{ถึง} · รับเงิน {วัน} · หลักฐาน n ไฟล์" */
+export function historicalOpeningFactText(opening = {}, evidenceCount = 0) {
+  return `${fmtMoney(opening?.amount)} · ครอบบริการ ${span(opening?.coversFrom, opening?.coversTo)}`
+    + ` · รับเงิน ${day(opening?.paidOn)} · หลักฐาน ${fmtNumber(evidenceCount)} ไฟล์`;
+}
+
+/** งวดที่ยังต้องเก็บ — ≤ 3 งวดเรียงทีละงวด · มากกว่านั้นสรุปจำนวน/ยอด/งวดแรก · ไม่มี = null */
+export function historicalRemainingFactText(remaining = []) {
+  const rows = list(remaining);
+  if (!rows.length) return null;
+  if (rows.length <= 3) return rows.map((row) => `${text(row.label) || 'งวด'} ${fmtMoney(row.amount)} ครบกำหนด ${day(row.dueDate)}`).join(' · ');
+  const sum = rows.reduce((total, row) => total + (Number(row.amount) || 0), 0);
+  return `${fmtNumber(rows.length)} งวด รวม ${fmtMoney(sum)} · งวดแรกครบกำหนด ${day(rows[0].dueDate)}`;
+}
+
+/** บรรทัดผลตรวจของฐาน (coverageContinuityErrors ↔ historical_so_check_installments) ตอนผ่านทั้งสองข้อ */
+export function historicalCoverageVerdictText(start, end) {
+  return `ยอดงวดรวม = ยอดใบ · ช่วงบริการต่อเนื่อง ${span(start, end)} ไม่มีช่องโหว่`;
+}
+
 export function historicalApprovalFacts(order, {
   installments = [], contract = null, contractFiles = [], lineZones = [], liveTermWarnings = [], signedFile = null,
   extrasError = null,
@@ -283,7 +326,7 @@ export function historicalApprovalFacts(order, {
   const start = contract?.effectiveDate || contract?.contractDate || null;
   const end = contract?.expiryDate || null;
   if (contract) {
-    checklist.push(`เอกสารแทนสัญญา: ${contractDocText(contract) || '—'} · ${span(start, end)} — อนุมัติพร้อมใบนี้ ไม่ต้องอนุมัติสัญญาแยก`);
+    checklist.push(`เอกสารแทนสัญญา: ${historicalContractFactText(contractDocText(contract), start, end)} — อนุมัติพร้อมใบนี้ ไม่ต้องอนุมัติสัญญาแยก`);
   } else {
     checklist.push(`เอกสารแทนสัญญา: ${missing} — เปิดใบใหม่ก่อนอนุมัติ`);
   }
@@ -299,16 +342,8 @@ export function historicalApprovalFacts(order, {
   const zones = list(lineZones).length
     ? list(lineZones)
     : list(order?.lines).filter((l) => l.serviceZoneId).map((l) => ({ zoneId: l.serviceZoneId, siteName: null }));
-  const bySite = new Map();
-  for (const zone of zones) {
-    const key = zone.siteId || zone.siteCode || zone.siteName || '';
-    const entry = bySite.get(key) || { name: [text(zone.siteCode), text(zone.siteName)].filter(Boolean).join(' '), count: 0 };
-    entry.count += 1;
-    bySite.set(key, entry);
-  }
-  const siteText = [...bySite.values()].filter((s) => s.name).map((s) => `${s.name} ${fmtNumber(s.count)} โซน`).join(' · ');
   checklist.push(zones.length
-    ? `โซน: ${fmtNumber(zones.length)} โซน${siteText ? ` — ${siteText}` : ''}`
+    ? `โซน: ${historicalZoneSitesText(zones)}`
     : `โซน: ${missing} — ใบย้อนหลังต้องมีอย่างน้อย 1 โซน`);
   /* บรรทัดของใบ = ของจริงที่จะอนุมัติ · ไม่มี (ของเสริมโหลดไม่ขึ้นและใบไม่พกบรรทัดมา) ⇒ ถอยไปแถวโซน */
   const priced = list(order?.lines).filter((l) => l.serviceZoneId || l.productId);
@@ -333,24 +368,17 @@ export function historicalApprovalFacts(order, {
       + ` · ${vat > 0 ? `ภาษีมูลค่าเพิ่ม ${fmtMoney(vat)}` : 'รวม VAT แล้ว'}`);
   if (!zeroValue) {
     if (opening) {
-      const evidence = list(opening.evidence).length;
-      checklist.push(`${OPENING_INSTALLMENT_LABEL}: ${fmtMoney(opening.amount)} · ครอบบริการ ${span(opening.coversFrom, opening.coversTo)}`
-        + ` · รับเงิน ${day(opening.paidOn)} · หลักฐาน ${fmtNumber(evidence)} ไฟล์`);
+      checklist.push(`${OPENING_INSTALLMENT_LABEL}: ${historicalOpeningFactText(opening, list(opening.evidence).length)}`);
     } else {
       checklist.push(`${OPENING_INSTALLMENT_LABEL}: ไม่มี (ยังไม่เคยเก็บเงิน) — นัดบริการติดด่านเงินจนกว่าบัญชีรับรองงวดแรก`);
     }
-    if (remaining.length) {
-      const sum = remaining.reduce((total, row) => total + (Number(row.amount) || 0), 0);
-      checklist.push(remaining.length <= 3
-        ? `งวดที่ยังต้องเก็บ: ${remaining.map((row) => `${text(row.label) || 'งวด'} ${fmtMoney(row.amount)} ครบกำหนด ${day(row.dueDate)}`).join(' · ')}`
-        : `งวดที่ยังต้องเก็บ: ${fmtNumber(remaining.length)} งวด รวม ${fmtMoney(sum)} · งวดแรกครบกำหนด ${day(remaining[0].dueDate)}`);
-    }
+    if (remaining.length) checklist.push(`งวดที่ยังต้องเก็บ: ${historicalRemainingFactText(remaining)}`);
     // ⭐ ตัวเดียวกับที่ฐานตรวจ (coverageContinuityErrors ↔ historical_so_check_installments) — ฐานตรวจซ้ำตอนกด
     const rowSum = rows.reduce((total, row) => total + Math.round((Number(row.amount) || 0) * 100), 0);
     const sumOk = Math.abs(rowSum - Math.round((Number(order?.totalAmount) || 0) * 100)) <= 1;
     const continuous = start && end ? coverageContinuityErrors(rows, { start, end }).length === 0 : null;
     if (sumOk && continuous) {
-      checklist.push(`ยอดงวดรวม = ยอดใบ · ช่วงบริการต่อเนื่อง ${span(start, end)} ไม่มีช่องโหว่`);
+      checklist.push(historicalCoverageVerdictText(start, end));
     } else {
       if (!sumOk) checklist.push('⚠️ ยอดงวดรวมไม่เท่ายอดใบ — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์แก้');
       if (continuous === false) checklist.push('⚠️ ช่วงครอบของงวดไม่ต่อเนื่องเต็มสัญญา — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์แก้');
@@ -485,61 +513,71 @@ export const historicalOpeningRejectNote = `ถ้าแค่หลักฐา
 
 export const HISTORICAL_APPROVE_TOAST = 'อนุมัติใบย้อนหลังแล้ว (ไม่นับ Actual) — เอกสารแทนสัญญาออกเลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS';
 
-/* ── "หลังบันทึก จะเกิดอะไร" ของขั้น ④ ในฟอร์มคีย์ใบ (mock Step4 · REVISION 2) ─────────────────────────
-   ลำดับ AE Sup → FN → TS → SA · อ่านจากแผนของ planHistoricalServiceOrder (ตัวเดียวกับที่ส่งเข้า RPC)
-   ⭐ ผู้คีย์ที่เป็นผู้ตรวจเอง (AE Sup/Admin) อนุมัติใบตัวเองไม่ได้ ⇒ ต้องบอกตั้งแต่ก่อนกดว่าใบจะรอใคร
-   · ใบ ฿0 ไม่มีขั้นบัญชีและไม่มีงวดให้ฝ่ายขายตาม
-   @returns `[{ key, lane, text, note }]` */
-export function historicalAfterSaveSteps(plan, { keyerIsReviewer = false } = {}) {
+/* ── "หลังกดส่ง" ของขั้น ④ ในฟอร์มคีย์ใบ (มติเจ้าของ 25/09 — รื้อขั้น ④) ─────────────────────────────────
+   ⭐ รูปของ `WorkflowRail` (หน้าสร้างใบสั่งขายใช้รางเดียวกัน "คุณอยู่ตรงนี้ — เลขที่ใบออกตอนกดสร้าง") · ป้ายขั้นชุดเดียวกับรางบน
+     หน้าใบย้อนหลัง (`historicalWorkflowSteps`) ⇒ ผู้คีย์เห็นรางเดิมต่อหลังระบบพาไปหน้าใบ
+   🐞 ของเดิม: รายการมีรหัสฝ่าย + เส้นทางเมนูของ TS · บอกผู้คีย์ว่า "AE Sup" คนเดียวอนุมัติ ทั้งที่ CM/CD ก็อนุมัติได้
+     · กล่องเหลือง "ยังเข้าบริการไม่ได้จนกว่า…" ขึ้นทุกใบ ซึ่งไม่จริงกับใบ ฿0 · ลำดับจริงอยู่ในรางนี้แล้ว
+   · ใบ ฿0 ไม่มีขั้นบัญชีและขั้นตามเก็บงวด · นัดบริการได้ทันที
+   @param keyerMode 'keyer' (ผู้คีย์ทั่วไป) · 'manager' (ผู้จัดการฝ่ายขายที่ไม่ใช่ admin — อนุมัติใบตัวเองไม่ได้) ·
+     'admin' (อนุมัติเองได้แบบ Admin Override)
+   @param orderNumber เลขใบที่มีแล้ว (ใบร่าง/ถูกตีกลับ) — ส่งซ้ำใช้เลขเดิม
+   @returns `[{ id, label, hint, state? }]` */
+export function historicalAfterSendRail(plan, { keyerMode = 'keyer', orderNumber = null } = {}) {
   const zeroValue = Boolean(plan?.zeroValue);
   const opening = plan?.opening || null;
   const remaining = list(plan?.installments).slice()
     .sort((a, b) => text(a.coversFrom).localeCompare(text(b.coversFrom)) || text(a.dueDate).localeCompare(text(b.dueDate)));
-  const zoneCount = list(plan?.lines).length;
+  const zoneCount = new Set(list(plan?.lines).map((line) => line.zoneId || line.serviceZoneId).filter(Boolean)).size
+    || list(plan?.lines).length;
   const steps = [{
-    key: 'approve',
-    lane: 'AE Sup · หัวหน้าฝ่ายขาย',
-    text: keyerIsReviewer
-      ? 'AE Sup คนอื่นหรือ admin อนุมัติใบ — ผู้คีย์อนุมัติใบตัวเองไม่ได้'
-      : 'AE Sup อนุมัติใบ — ตรวจยอด โซน สัญญา',
-    note: 'ไม่นับ Actual / FC / เป้า · ตีกลับให้แก้ไขได้ ใบกลับมาที่ฟอร์มนี้',
+    id: 'keyed',
+    label: 'คีย์ใบ',
+    state: 'current',
+    hint: text(orderNumber)
+      ? `คุณอยู่ตรงนี้ — ส่ง ${text(orderNumber)} อีกครั้ง ใช้เลขเดิม`
+      : 'คุณอยู่ตรงนี้ — กดส่งแล้วได้เลข SO (เลขใช้แล้วไม่คืน) · ไฟล์เอกสารแทนสัญญาล็อกระหว่างรออนุมัติ',
   }];
+  steps.push({
+    id: 'approve',
+    label: `${HISTORICAL_APPROVER_LABEL}อนุมัติ`,
+    hint: keyerMode === 'admin'
+      ? `${HISTORICAL_APPROVER_LABEL} หรือคุณอนุมัติเองแบบ Admin Override ที่หน้าใบ (บันทึกไว้ว่าอนุมัติใบตัวเอง)`
+      : keyerMode === 'manager'
+        ? `${HISTORICAL_APPROVER_LABEL}คนอื่นเป็นผู้อนุมัติ — คุณคีย์/ส่งใบนี้เองจึงอนุมัติเองไม่ได้`
+        : `${HISTORICAL_APPROVER_ROLES_TEXT} ตรวจตามรายการข้างบน — ตีกลับได้ ใบกลับมาที่ฟอร์มนี้พร้อมเหตุผล`,
+  });
   if (!zeroValue) {
     steps.push(opening
       ? {
-        key: 'finance',
-        lane: 'FN · บัญชี',
-        text: `บัญชีรับรอง${OPENING_INSTALLMENT_LABEL} ${fmtMoney(opening.amount)} → เปิดบริการถึง ${day(opening.coversTo)}`,
-        note: 'ขึ้นคิวบัญชีหลัง AE Sup อนุมัติ',
+        id: 'finance',
+        label: `บัญชีรับรอง${OPENING_INSTALLMENT_LABEL}`,
+        hint: `${fmtMoney(opening.amount)} แจ้งชำระในชื่อคุณ — รับรองแล้วนัดบริการได้ถึง ${day(opening.coversTo)}`
+          + ` · ถ้าบัญชีตีกลับ แจ้ง${OPENING_INSTALLMENT_LABEL}ใหม่พร้อมหลักฐานที่หน้าใบ`,
       }
       : {
-        key: 'finance',
-        lane: 'FN · บัญชี',
-        text: 'บัญชีรับรองงวดแรกเมื่อลูกค้าจ่ายและฝ่ายขายแจ้งชำระ',
-        note: `ไม่มี${OPENING_INSTALLMENT_LABEL} — นัดบริการติดด่านเงินจนกว่าบัญชีรับรองงวดแรก`,
+        id: 'finance',
+        label: 'บัญชีรับรองงวดแรก',
+        hint: 'เมื่อลูกค้าจ่ายและฝ่ายขายแจ้งชำระ — ก่อนนั้นนัดบริการไม่ได้',
       });
   }
   steps.push({
-    key: 'ts',
-    lane: 'TS · ฝ่ายบริการ',
-    text: `ตั้งรอบของ ${fmtNumber(zoneCount)} โซน — โซนผูกให้แล้ว ไม่ต้องผูกซ้ำ`,
-    note: 'เห็นใน งานเข้าใหม่ › รอตั้งรอบ หลัง AE Sup อนุมัติ',
+    id: 'ts',
+    label: 'TS ตั้งรอบ',
+    hint: zeroValue
+      ? `${fmtNumber(zoneCount)} โซนขึ้นคิวฝ่ายบริการทันทีที่อนุมัติ — นัดได้ทันที ไม่มีด่านเงิน`
+      : `${fmtNumber(zoneCount)} โซนขึ้นคิวฝ่ายบริการทันทีที่อนุมัติ — ตั้งรอบได้ก่อนบัญชีรับรอง แต่นัดเข้าบริการรอด่านเงิน`,
   });
   if (!zeroValue) {
     const next = remaining[0] || null;
-    steps.push(next
-      ? {
-        key: 'sales',
-        lane: 'SA · ฝ่ายขาย',
-        text: `${text(next.label) || 'งวดถัดไป'} ${fmtMoney(next.amount)} ครบกำหนด ${day(next.dueDate)} — ลูกค้าจ่ายแล้วแจ้งชำระพร้อมหลักฐาน`,
-        note: remaining.length > 1 ? `อีก ${fmtNumber(remaining.length - 1)} งวดตามตาราง` : null,
-      }
-      : {
-        key: 'sales',
-        lane: 'SA · ฝ่ายขาย',
-        text: 'ไม่มีงวดที่ต้องเก็บต่อ — เก็บครบตั้งแต่ก่อนเข้าระบบ',
-        note: null,
-      });
+    steps.push({
+      id: 'collect',
+      label: 'ฝ่ายขายตามเก็บงวด',
+      hint: next
+        ? `${text(next.label) || 'งวดถัดไป'} ${fmtMoney(next.amount)} ครบกำหนด ${day(next.dueDate)}`
+          + `${remaining.length > 1 ? ` · อีก ${fmtNumber(remaining.length - 1)} งวดตามตาราง` : ''}`
+        : 'ไม่มีงวดที่ต้องเก็บต่อ — เก็บครบตั้งแต่ก่อนเข้าระบบ',
+    });
   }
   return steps;
 }

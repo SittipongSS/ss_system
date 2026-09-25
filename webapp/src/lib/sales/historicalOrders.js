@@ -48,6 +48,11 @@ export const HISTORICAL_SCHEMA_MISSING_MESSAGE = 'ฐานข้อมูลย
    ⚠️ แยกจากข้อความของ 0360: ฐานที่รัน 0360 แล้วแต่ยังไม่รัน 0374 ต้องบอกให้ถูกไฟล์ */
 export const HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE = 'ฐานข้อมูลยังไม่ได้รัน migration 0374 (ใบสั่งขายย้อนหลังแบบ AE Sup อนุมัติ) — แจ้งผู้ดูแลระบบ';
 
+/* ⭐ มติเจ้าของ 25/09 (รื้อขั้น ④): ผู้อนุมัติใบย้อนหลังเรียกว่า "ผู้จัดการฝ่ายขาย" — ผู้ที่อนุมัติได้จริงคือ AE Sup · CM ·
+   Commercial Director (+ Admin) ไม่ใช่ AE Sup คนเดียว (`isSalesOrderReviewer`) · เปลี่ยนเฉพาะคำของใบย้อนหลัง ใบปกติคงเดิม */
+export const HISTORICAL_APPROVER_LABEL = 'ผู้จัดการฝ่ายขาย';
+export const HISTORICAL_APPROVER_ROLES_TEXT = 'AE Sup · CM · Commercial Director';
+
 /* ทางแก้หลังอนุมัติ (ข้อมูลที่อนุมัติไปแล้วผิด — ยอด · ช่วงครอบ · โซน) — ทุกทางตันพูดประโยคนี้ประโยคเดียว
    (บัญชีตีกลับงวดยกมา · ถอนงวดยกมาไม่ได้ · ล็อกงวด · ถอดเอกสารแทนสัญญาไม่ได้) · ฐานยกเลิกเอกสารแทนสัญญาตามใบเอง (trigger ของ 0374)
    ⭐ มติ 24/09 (mig 0387): ผู้ยกเลิก = ผู้จัดการฝ่ายขายที่อนุมัติได้ (ไม่ใช่ AE Sup คนเดียว) · งวดยกมาเป็นโมฆะตามใบ ไม่ต้องให้บัญชี
@@ -116,7 +121,7 @@ export function historicalInstallmentLock(order) {
   if (!isHistoricalOrder(order)) return null;
   if (order?.status === 'approved') return null;
   if (order?.status === 'cancelled') return 'ใบยกเลิกแล้ว — งวดของใบนี้ขยับไม่ได้';
-  return 'งวดของใบย้อนหลังขยับได้หลัง AE Sup อนุมัติ';
+  return `งวดของใบย้อนหลังขยับได้หลัง${HISTORICAL_APPROVER_LABEL}อนุมัติ`;
 }
 
 /* ด่านยกเลิกใบย้อนหลังที่มี **เงินที่รับในระบบหลังอนุมัติ** — คืนข้อความไทย หรือ null

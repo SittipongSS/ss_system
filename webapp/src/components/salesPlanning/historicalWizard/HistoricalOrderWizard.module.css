@@ -474,15 +474,6 @@
   color: var(--text-2);
 }
 
-/* ปุ่มทางออกหลังบันทึกไม่ผ่าน (ใต้แถบท้าย) */
-.splitRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
-
 /* ปุ่มชิดขวาของหัวการ์ด (แบบหัวตารางรายการของขั้น ②) */
 .cardActions {
   display: flex;
@@ -667,74 +658,97 @@
 .tlDot[data-kind="overdue"] { background: var(--amber); }
 .tlDot[data-kind="today"] { background: var(--red); }
 
-/* ── ขั้น ④ ตรวจและส่งอนุมัติ ──────────────────────────────────────────── */
-.reviewGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--space-3);
-}
-
-.reviewCard {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-}
-
-.reviewHead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-thai);
-}
-
-.kv {
-  margin: 0;
-  display: grid;
-  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
-  gap: var(--space-1) var(--space-3);
-  line-height: var(--lh-thai);
-}
-
-.kv > dt { color: var(--text-3); font-size: var(--fs-label); }
-.kv > dd { margin: 0; overflow-wrap: anywhere; }
-
-.afterList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* ── ขั้น ④ ตรวจและส่งอนุมัติ (มติเจ้าของ 25/09 — "ตรวจแบบผู้อนุมัติ" · ม็อก Step4New/Step4Dup) ──────────────
+   การ์ด "สิ่งที่ผู้อนุมัติจะตรวจ": แถวละข้อ — หัวข้อ · ค่า (+ บรรทัดรอง + คำเตือนของข้อนั้น) · ปุ่ม "แก้ในขั้น …" ชิดขวา
+   ⚠️ ถอดของเดิม (.reviewGrid/.reviewCard/.reviewHead/.kv/.afterList/.lane/.afterNote) — การ์ด 3 ใบที่พูดซ้ำขั้น ①–③ ไม่มีแล้ว */
+.checkList {
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
-.afterList > li {
+.checkRow {
   display: grid;
-  grid-template-columns: auto minmax(120px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(120px, 176px) minmax(0, 1fr) auto;
   gap: var(--space-3);
   align-items: baseline;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
   line-height: var(--lh-thai);
 }
 
-.afterList > li + li { border-top: 1px solid var(--border); }
+.checkRow + .checkRow { border-top: 1px solid var(--border); }
 
-@media (max-width: 640px) {
-  .afterList > li { grid-template-columns: auto minmax(0, 1fr); }
-  .afterList > li > .lane { grid-column: 1 / -1; }
-}
-
-.lane {
-  font-size: var(--fs-label);
-  color: var(--text-2);
-  white-space: nowrap;
-}
-
-.afterNote {
-  display: block;
-  font-size: var(--fs-label);
+.checkLabel {
   color: var(--text-3);
+  font-size: var(--fs-label);
 }
+
+.checkValue {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.checkValue > svg { flex: none; align-self: center; }
+.checkValue[data-tone="ok"] > svg { color: var(--green); }
+.checkValue[data-tone="warn"] { color: var(--amber); }
+
+.checkValue small {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+}
+
+/* คำเตือนของข้อนั้น (รวมเป็นกลุ่มแล้ว — ไม่ขึ้นทีละบรรทัด) */
+.checkWarn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1);
+  color: var(--amber);
+  font-size: var(--fs-label);
+  font-style: normal;
+}
+
+.checkWarn > svg { flex: none; margin-top: 0.25em; }
+
+.checkAction { justify-self: end; }
+
+/* จอแคบ: หัวข้อกับปุ่ม "แก้ในขั้น" อยู่บรรทัดแรก · ค่า (+ บรรทัดรอง/คำเตือน) เต็มความกว้างข้างใต้ */
+@media (max-width: 640px) {
+  .checkRow { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-1); }
+  .checkLabel { grid-column: 1; grid-row: 1; }
+  .checkAction { grid-column: 2; grid-row: 1; }
+  .checkValue { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* เลขที่ใบในตารางใบที่อาจซ้ำ — เปิดแท็บใหม่ (ฟอร์มนี้ไม่หาย) */
+.dupLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+.dupLink:hover { text-decoration: underline; }
+
+/* ── แผงบันทึก (เหนือแถบท้าย · ขั้นไหนก็ได้) — ความคืบหน้าระหว่างบันทึก / ผลที่ล้มพร้อมทางออกไม่เกินหนึ่งปุ่ม ── */
+.savePanel {
+  margin-top: var(--space-4);
+  border-radius: var(--radius);
+}
+
+.savePanel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ปุ่มบันทึกที่ติดด่าน (aria-disabled — กดได้เพื่อพาไปหาเหตุ) · ดูจางแต่ไม่ดับ (กฎบ้าน: ติดด่าน = โชว์แล้วบอกเหตุ) */
+.gatedButton { opacity: var(--op-muted); }
+
+.footNote[data-busy="yes"] { color: var(--blue); }
 
 .switchRow {
   display: flex;
@@ -760,3 +774,5 @@
   line-height: var(--lh-thai);
   color: var(--text-3);
 }
+
+.switchText > small[data-blocked="yes"] { color: var(--amber); }

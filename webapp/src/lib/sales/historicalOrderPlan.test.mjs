@@ -789,6 +789,33 @@ test('v2 ใบที่อาจซ้ำ: วันเริ่มสัญญ
   assert.deepEqual(plan.duplicates.map((d) => d.id), ['SOR-A', 'SOR-B']);
   assert.equal(plan.acknowledgeDuplicates, true);
   assert.equal(planV2().acknowledgeDuplicates, false);
+  /* ⭐ มติ 25/09 (ขั้น ④): บอกว่าตรงกันที่ไหน — วันเริ่มสัญญา หรือเลขเอกสารเดิมตัวไหน (ค่าตามที่ใบนั้นเก็บ) */
+  assert.deepEqual(plan.duplicates.map((d) => d.matchedOn), [
+    [{ kind: 'startDate', value: '2026-01-01' }],
+    [{ kind: 'ref', value: 'iv-2601-0412' }],
+  ]);
+});
+
+test('⭐ 25/09 ขั้น ④: คำเตือนมีหัวข้อกำกับ (warningItems) · `warnings` สตริงเดิมทุกตัวอักษร ลำดับเดียวกัน · ไม่เข้าอาร์กิวเมนต์ RPC', () => {
+  const live = { id: 'SOR-X', orderNumber: 'SO-26050011-0', status: 'approved', supersededById: null };
+  const plan = planV2({ installments: [{ ...v2Input().installments[0], dueDate: '2026-09-01' }] },
+    { liveTermsByZone: new Map([['Z-1002-01', [{ term: { endDate: '2026-12-31' }, order: live }]]]) });
+  assert.deepEqual(plan.warningItems.map((item) => item.text), plan.warnings, 'สองรายการต้องพูดเรื่องเดียวกัน ลำดับเดียวกัน');
+  const byTopic = Object.fromEntries(plan.warningItems.map((item) => [item.topic, item]));
+  assert.deepEqual([byTopic.liveTerm.index, byTopic.liveTerm.orderNumber, byTopic.liveTerm.endDate], [0, 'SO-26050011-0', '2026-12-31']);
+  /* เลขงวดเดียวกับข้อความ ("งวดที่ 2") — งวดยกมาคืองวดที่ 1 ของใบ */
+  assert.deepEqual([byTopic.overdue.seq, byTopic.overdue.dueDate], [2, '2026-09-01']);
+  assert.match(byTopic.overdue.text, /^งวดที่ 2 /);
+  assert.match(byTopic.overdue.text, /หลังผู้จัดการฝ่ายขายอนุมัติ/, 'มติ 25/09 ข้อ 2: ผู้อนุมัติชื่อ "ผู้จัดการฝ่ายขาย" ไม่ใช่ AE Sup');
+  const noOpening = planV2({ opening: null, installments: [
+    { label: 'งวด 1', amount: 261936, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' },
+  ] });
+  assert.deepEqual(noOpening.warningItems.map((item) => item.topic), ['noOpening']);
+  const ended = planExpired({}, { editing: true, selfOrderId: 'SOR-HEDIT0000000001' });
+  assert.ok(ended.warningItems.some((item) => item.topic === 'contractEnded'));
+  /* ⚠️ หัวข้อเป็นของจอ — อาร์กิวเมนต์ของ RPC (และลายนิ้วมือของคำขอ) ต้องไม่รู้จักมัน */
+  assert.ok(!JSON.stringify(historicalServiceRpcArgs(plan, 'create')).includes('warningItems'));
+  assert.ok(!JSON.stringify(historicalServiceRpcArgs(plan, 'create')).includes('matchedOn'));
 });
 
 test('v2 โซนที่มีรอบขายของใบอื่นยังมีผล = คำเตือนพร้อมเลขใบและวันสิ้นสุด (ไม่บล็อก) · ใบนี้เอง/ใบไม่มีผลไม่นับ', () => {

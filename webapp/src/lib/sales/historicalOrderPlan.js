@@ -27,7 +27,7 @@ import { termIsActive } from '@/lib/service/terms';
 import { coverageContinuityErrors } from '@/lib/sales/paymentCoverage';
 import {
   DOC_DATE_MAX, DOC_DATE_MIN, HISTORICAL_DEAL_TITLE, HISTORICAL_REF_MAX, INSTALLATION_POINT_MAX,
-  INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_KIND, OPENING_INSTALLMENT_LABEL,
+  HISTORICAL_APPROVER_LABEL, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_KIND, OPENING_INSTALLMENT_LABEL,
   charLength, historicalRefsOf,
 } from '@/lib/sales/historicalOrders';
 
@@ -214,6 +214,11 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   } = ctx || {};
   const errors = [];
   const warnings = [];
+  /* ⭐ มติ 25/09 (รื้อขั้น ④): คำเตือนมีหัวข้อกำกับ (`warningItems`) ⇒ ขั้น ④ รวมเป็นกลุ่มในแถวของมันได้ (เคยขึ้นทีละบรรทัด 10 ข้อ)
+     โดยไม่ต้องแกะข้อความ · `warnings` (สตริงล้วน) คงเดิมทุกตัวอักษร — ผู้อ่านเดิม (หน้าใบ · commit) ไม่ขยับ
+     ⚠️ ไม่เข้าอาร์กิวเมนต์ของ RPC (historicalServiceRpcArgs เลือกทีละช่อง) ⇒ ลายนิ้วมือของคำขอไม่เปลี่ยน */
+  const warningItems = [];
+  const warn = (topic, message, data = {}) => { warnings.push(message); warningItems.push({ topic, text: message, ...data }); };
   const err = (field, message) => errors.push({ field, message });
   const today = isCalendarDate(todayIso) ? todayIso : null;
   // ไม่รู้วันนี้ = ตัดสินข้อ "ไม่เกินวันนี้" ไม่ได้ ⇒ ไม่ปล่อยผ่าน (ผู้เรียกลืมส่ง businessDate())
@@ -286,7 +291,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   /* มติข้อ 9 กันที่ "ประตูเข้า" ไม่ใช่ที่ใบที่เข้ามาแล้ว — ใบใหม่ตีกลับ · ใบที่มีอยู่แล้วเตือนอย่างเดียว
      (ทางตันที่กันอยู่: ใบร่าง/ตีกลับต้องผ่านฟอร์มคีย์ ซึ่ง PATCH ก่อนส่งเสมอ — ดูกฎข้อ 9 ที่หัว v2) */
   else if (today && endDate < today) {
-    if (editing) warnings.push(CONTRACT_DATE_MESSAGES.endBeforeTodayEditing);
+    if (editing) warn('contractEnded', CONTRACT_DATE_MESSAGES.endBeforeTodayEditing);
     else err('contract.endDate', CONTRACT_DATE_MESSAGES.endBeforeToday);
   }
   const contractOk = startOk && endOk && startDate <= endDate;
@@ -431,7 +436,8 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       const orderNumber = order.orderNumber || order.id;
       const until = term.endDate ? dateText(term.endDate) : 'ไม่ระบุวันสิ้นสุด';
       liveTerms.push({ zoneId, index, orderId: order.id, orderNumber, endDate: term.endDate || null });
-      warnings.push(`${label}: โซนนี้มีรอบขายของ ${orderNumber} อยู่แล้ว (ถึง ${until}) — ตรวจว่าไม่ซ้ำสัญญา`);
+      warn('liveTerm', `${label}: โซนนี้มีรอบขายของ ${orderNumber} อยู่แล้ว (ถึง ${until}) — ตรวจว่าไม่ซ้ำสัญญา`,
+        { index, orderNumber, endDate: term.endDate || null });
     }
 
     draftLines.push({
@@ -570,7 +576,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     const note = text(row.note) || null;
     if (note && charLength(note) > INSTALLMENT_NOTE_MAX) push('note', `หมายเหตุยาวเกิน ${INSTALLMENT_NOTE_MAX} ตัวอักษร`);
     if (today && isCalendarDate(dueDate) && dueDate < today) {
-      warnings.push(`งวดที่ ${n} (${label || '—'}) ครบกำหนดแล้ว (${dateText(dueDate)}) — หลัง AE Sup อนุมัติจะขึ้นเลยกำหนดในทะเบียนบัญชีทันที และนัดบริการติดด่านเงินจนกว่าบัญชีรับรอง`);
+      warn('overdue', `งวดที่ ${n} (${label || '—'}) ครบกำหนดแล้ว (${dateText(dueDate)}) — หลัง${HISTORICAL_APPROVER_LABEL}อนุมัติจะขึ้นเลยกำหนดในทะเบียนบัญชีทันที และนัดบริการติดด่านเงินจนกว่าบัญชีรับรอง`, { seq: n, dueDate });
     }
     installments.push({
       kind: 'regular',
@@ -640,18 +646,24 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
 
   // ── คำเตือนรวม ────────────────────────────────────────────────────────
   if (moneyOk && !zeroValue && !opening) {
-    warnings.push('ไม่มีงวดยกมา — TS ตั้งรอบได้ แต่นัดบริการติดด่านเงินจนกว่าบัญชีรับรองงวดแรก');
+    warn('noOpening', 'ไม่มีงวดยกมา — TS ตั้งรอบได้ แต่นัดบริการติดด่านเงินจนกว่าบัญชีรับรองงวดแรก');
   }
 
   // ── ใบที่อาจซ้ำ (ไม่ใช่ error — ต้องยืนยันก่อนบันทึก) · ไม่นับใบนี้เองและใบที่ยกเลิกแล้ว ─────────────
   const refSet = new Set(Object.values(refs).filter(Boolean).map(normRef));
+  /* ⭐ `matchedOn` (มติ 25/09 รื้อขั้น ④) — บอกว่าตรงกันที่ไหน (วันเริ่มสัญญา / เลขเอกสารเดิมตัวไหน) ผู้คีย์จะได้ไม่ต้องเดา */
   const duplicates = (existingHistorical || [])
     .filter((row) => row && row.id !== selfOrderId && row.status !== 'cancelled')
-    .filter((row) => (contract.startDate && row.orderDate === contract.startDate)
-      || historicalRefsOf(row).some((r) => refSet.has(normRef(r))))
-    .map((row) => ({
+    .map((row) => {
+      const sameStart = Boolean(contract.startDate && row.orderDate === contract.startDate);
+      const sameRefs = historicalRefsOf(row).filter((r) => refSet.has(normRef(r)));
+      return { row, sameStart, sameRefs };
+    })
+    .filter(({ sameStart, sameRefs }) => sameStart || sameRefs.length)
+    .map(({ row, sameStart, sameRefs }) => ({
       id: row.id, orderNumber: row.orderNumber || null, orderDate: row.orderDate || null,
       status: row.status || null, refs: historicalRefsOf(row),
+      matchedOn: [...(sameStart ? [{ kind: 'startDate', value: contract.startDate }] : []), ...sameRefs.map((ref) => ({ kind: 'ref', value: ref }))],
     }));
 
   return {
@@ -672,6 +684,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     },
     zeroValue,
     warnings,
+    warningItems,
     errors,
   };
 }
