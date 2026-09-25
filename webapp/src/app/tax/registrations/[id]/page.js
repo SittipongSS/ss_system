@@ -22,6 +22,7 @@ import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, naText } from "@/lib/format"
 import { businessDate } from "@/lib/businessDate";
 import { useApiList } from "@/lib/excise/useApiList";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -221,21 +222,107 @@ export default function RegistrationDetailPage() {
   const [custItems, setCustItems] = useState([]);        // customer docs (shared)
   useEffect(() => { setAttachItems([]); setCustItems([]); }, [id]);
 
-  // Completeness checklist comes from the server (single source of truth with the
-  // submit-gate). Refetch whenever attachments change so it stays live as the user
-  // uploads/removes docs. attachItems/custItems update via AttachmentsPanel.
+  /* ── ผลตรวจเอกสารบังคับ (checklist ก่อนยื่น) ─────────────────────────────────────────────────────────
+     กฎมาจาก server ชุดเดียวกับด่านตอนกดยื่น (lib/tax/requirements) · ตรวจใหม่ทุกครั้งที่ไฟล์แนบเปลี่ยน
+     (attachItems/custItems มาจาก AttachmentsPanel ทั้งสองแผง) ให้ checklist ตามทันตอนแนบ/ลบไฟล์
+     🐞 ทรงเดิม `.then((r) => (r.ok ? r.json() : null)) … .catch(() => {})` — 500/เน็ตหลุดเงียบสนิท:
+        · แถว "เอกสารบังคับ" ค้าง "กำลังตรวจ" ตลอดไป · หรือถ้าเคยตรวจผ่านมาแล้ว ยืนยันผลรอบก่อนเหมือนเป็นผลล่าสุด
+        · ปุ่ม "ยื่นขึ้นทะเบียน" พักด้วยเหตุ `ต้องแนบ: ` ที่ว่างเปล่า (ลิสต์ที่ขาดมาจากผลที่ไม่มีอยู่)
+        · ป้าย checklist ของฉบับร่างหายไปด้วย (`req &&`) = ความล้มลบคำอธิบายเดียวที่จอมีทิ้ง
+     ⇒ จำผลของทุกรอบด้วยสำนวนเดียวกับตัวโหลดใบ: ผลที่ได้ (`req`) · ความล้มของรอบล่าสุดที่จบแล้ว (`reqFault` =
+        `{ message, detail }` จาก lib/ui/loadFailure) · มีรอบบินอยู่ไหม (`reqChecking`)
+        · มีผลในมือ + รอบล่าสุดล้ม = **ผลของรอบก่อน** (`reqStale`) — ห้ามอ่านเป็นผลปัจจุบัน
+     🪤 **คำตอบที่มาช้าห้ามทับคำตอบที่ใหม่กว่า** — ตอนเปิดหน้า effect ยิงซ้ำถี่ (สองแผงไฟล์แนบรายงานรายการคนละจังหวะ)
+        และปุ่ม "ลองใหม่" ยิงนอก effect · ธง `alive` ใน cleanup ของทรงเดิมคุ้มได้แค่รอบของ effect ด้วยกัน — คำตอบเก่า
+        ของ effect ยังทับผลของรอบลองใหม่ได้ (และกลับกัน) ⇒ ทุกทางเข้าจองรอบกับตัวนับกลางตัวเดียว (useLatestRun)
+        แล้วทิ้งคำตอบที่ไม่ใช่รอบล่าสุด **ก่อนทุก setState** รวมถึงการดับ `reqChecking` */
+  const startCheckRun = useLatestRun();
   const [req, setReq] = useState(null);
-  useEffect(() => {
-    if (!s?.id) { setReq(null); return; }
-    let alive = true;
-    apiFetch(`/api/excise-registrations/${s.id}/requirements`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d) setReq(d); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [s?.id, attachItems, custItems]);
+  const [reqFault, setReqFault] = useState(null);
+  // เริ่มที่ "กำลังตรวจ" — commit แรกหลังได้ใบมา effect ยังไม่ทันยิง แต่ไม่ใช่ "ตรวจไม่ได้" แน่ ๆ
+  const [reqChecking, setReqChecking] = useState(true);
+  const regId = s?.id ?? null;
+  const checkRequirements = useCallback(async () => {
+    // จองรอบก่อนเสมอ — ใบหาย (regId เป็น null) ก็ต้องทิ้งคำตอบของใบเดิมที่ยังบินอยู่
+    const isLatest = startCheckRun();
+    if (!regId) return;
+    setReqChecking(true);
+    let verdict = null;
+    let fault = null;
+    try {
+      const res = await apiFetch(`/api/excise-registrations/${regId}/requirements`);
+      if (res.ok) {
+        const body = await res.json();
+        /* ⚠️ ผลที่ `ready` ไม่ตรงกับลิสต์ที่ขาด ใช้ตัดสินไม่ได้ — ใบถูกลบระหว่างตรวจ server ตอบ
+           `{ ready: false, missing: [], notFound: true }` ⇒ ปล่อยผ่าน = "ต้องแนบ: " เปล่ากลับมาอีกทาง
+           ⇒ นับเป็นคำตอบที่อ่านไม่ได้ (ตัวแยกกลางให้ประโยค "…รูปแบบที่อ่านไม่ได้" + ข้อความดิบไปบรรทัดรอง) */
+        const usable = Array.isArray(body?.missing) && body.ready === (body.missing.length === 0);
+        if (!usable) throw new SyntaxError(`unexpected requirements body: ${JSON.stringify(body)}`);
+        verdict = body;
+      } else {
+        // มี response แต่ไม่ ok — ประโยคไทยตาม status · ข้อความดิบของ body ไปบรรทัดรอง (ตัวแยกเดียวกับตัวโหลดใบ)
+        fault = httpLoadFailure(res.status, (await res.json().catch(() => ({})))?.error);
+      }
+    } catch (e) {
+      fault = thrownLoadFailure(e);
+    }
+    if (!isLatest()) return;
+    // ล้ม = เก็บผลเดิมไว้ (กลายเป็น "ผลรอบก่อน") ไม่ล้างทิ้ง — จอบอกเองว่าเป็นของรอบก่อน
+    if (verdict) setReq(verdict);
+    setReqFault(fault);
+    setReqChecking(false);
+  }, [regId, startCheckRun]);
+  // ใบเปลี่ยน = ผลที่ถืออยู่เป็นของใบอื่น ⇒ ล้างก่อน ไม่งั้นรอบแรกของใบใหม่ล้มแล้วจอเรียกผลของใบเดิมว่า "ผลรอบก่อน"
+  useEffect(() => { setReq(null); setReqFault(null); }, [regId]);
+  useEffect(() => { checkRequirements(); }, [checkRequirements, attachItems, custItems]);
   const missingDocs = (req?.missing || []).map((m) => m.label);
-  const warnings = req?.warnings || [];
+  const reqStale = !!req && !!reqFault;
+  /* ผลที่วาดเป็นรายการได้ — ผลของรอบที่ล้มไปแล้วไม่วาดเป็น checklist (ป้ายผลตรวจบอกแทน) ·
+     ระหว่างตรวจรอบใหม่ยังวาดผลเดิมไว้ ไม่ให้รายการกระพริบหายทุกครั้งที่แนบไฟล์ (ปุ่มยื่นพักรอผลใหม่อยู่แล้ว)
+     ⚖️ ยอมรับโดยเจตนา: ช่วงรอบใหม่บินอยู่ (ปกติไม่ถึงวินาที) checklist สองจุดยังพูดตามไฟล์ชุดก่อน — เช่นเพิ่งลบไฟล์บังคับ
+        ป้ายฉบับร่างยังขึ้น "ครบแล้ว — กด “ยื่นขึ้นทะเบียน”" ขณะที่แถวสรุปขึ้น "กำลังตรวจ" และปุ่มยื่นพัก "กำลังตรวจเอกสารบังคับ…"
+        · ไม่เติม "(กำลังตรวจใหม่…)" ต่อท้ายรายการ: เปิดหน้าหนึ่งครั้งตรวจ 3–5 รอบ (แผงไฟล์แนบสองแผงรายงานตอน mount
+          แล้วรายงานอีกรอบตอนโหลดรายการเสร็จ) ⇒ ข้อความ/โทนจะกระพริบทุกรอบ
+        · ของที่ตัดสินจริงไม่ได้อ่านรายการนี้: ปุ่มยื่นอ่าน reqCurrent (ผลของไฟล์ชุดปัจจุบันเท่านั้น) และด่าน PATCH ที่ server */
+  const reqShown = reqFault ? null : req;
+  // ผลที่ยืนยันได้ว่าเป็นของไฟล์แนบชุดปัจจุบัน — ตัวเดียวที่ปุ่ม "ยื่นขึ้นทะเบียน" ใช้ตัดสิน
+  const reqCurrent = req && !reqFault && !reqChecking ? req : null;
+  const warnings = reqShown?.warnings || [];
+  const verdictText = req ? (req.ready ? "ครบ" : `ขาด ${missingDocs.length}`) : null;
+  // แถว "เอกสารบังคับ" — "กำลังตรวจ" เฉพาะตอนมีรอบบินอยู่จริง · ล้มแล้วไม่มีผล = "ตรวจไม่ได้" · ผลรอบก่อนต้องบอกว่ารอบก่อน
+  const reqSummary = reqChecking
+    ? "กำลังตรวจ"
+    : reqFault
+      ? (verdictText ? `${verdictText} (ผลรอบก่อน)` : "ตรวจไม่ได้")
+      : verdictText;
+  /* เหตุที่ปุ่ม "ยื่นขึ้นทะเบียน" ยังกดไม่ได้ (null = กดได้) — ปุ่มอยู่เสมอ พักพร้อมเหตุ (ติดด่าน = โชว์แล้วบอกเหตุ)
+     ⭐ ไม่รู้ผล ≠ ขาดเอกสาร: "ต้องแนบ: …" พูดได้เฉพาะจากผลของไฟล์แนบชุดปัจจุบัน (`reqCurrent`) ซึ่ง `ready: false`
+        ⇒ มีรายการที่ขาดอย่างน้อยหนึ่งเสมอ (ตัวตรวจรูปผลข้างบน) · ไม่รู้ผล = บอกว่าตรวจอยู่/ตรวจไม่ได้ พร้อมทางกลับ
+     ⚠️ ปุ่มนี้แค่บอกล่วงหน้า — ด่านจริงคือ PATCH ที่ server (registrationRequirements ตัวเดียวกัน) ไม่ได้ผ่อนอะไร */
+  const submitBlocker = !reqCurrent
+    ? (reqChecking ? "กำลังตรวจเอกสารบังคับ…" : "ยังตรวจเอกสารบังคับไม่ได้ — กด “ลองใหม่” ที่ป้ายผลตรวจเอกสารบังคับ")
+    : reqCurrent.ready
+      ? null
+      : `ต้องแนบ: ${missingDocs.join(", ")}`;
+  /* ป้ายผลตรวจ — วางตรงที่ checklist ของฉบับร่างเคยอยู่ และขึ้นทุกสถานะ (แถวสรุป/รายการบนการ์ดจัดการอ่านผลนี้ทุกสถานะ)
+     ประโยคทรงเดียวกับป้ายของจอ ("ดึงข้อมูลไม่ได้: <สาย> — <ผลต่อจอ> · <ประโยคไทยของความล้ม>") · ข้อความดิบไปบรรทัดรอง
+     ⚠️ ปุ่มลองใหม่พัก + เปลี่ยนป้ายตาม `reqChecking` — ความล้มของรอบก่อนค้างอยู่จนรอบใหม่ตอบ (ท่าเดียวกับ useApiList)
+        ⇒ ไม่มีสถานะนี้ = กดแล้วป้ายนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const reqNotice = reqFault ? (
+    <StatusNotice
+      tone="error"
+      detail={reqFault.detail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => checkRequirements()} disabled={reqChecking}>
+          {reqChecking ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {`ดึงข้อมูลไม่ได้: ผลตรวจเอกสารบังคับ — ${reqStale
+        ? `ผลตรวจที่มีอยู่ (${verdictText}) เป็นของรอบก่อน ไม่ใช่ล่าสุด`
+        : "ยังไม่รู้ว่าเอกสารครบหรือยัง (ไม่ได้แปลว่าเอกสารขาด)"} · ${reqFault.message}`}
+    </StatusNotice>
+  ) : null;
 
   const patch = async (body, failMessage) => {
     const res = await apiFetch(`/api/excise-registrations/${s.id}`, {
@@ -328,7 +415,7 @@ export default function RegistrationDetailPage() {
                   // ไม่งั้นจอเดียวกันขัดกันเอง: หัวการ์ดเอกสารมีชื่อ แต่ช่อง "ลูกค้า" เป็นขีด
                   { id: "customer", label: "ลูกค้า", value: naText(s.customerName || customerLabel) },
                   { id: "approval", label: "เลขที่อนุมัติ", value: naText(s.approvalNumber) },
-                  { id: "documents", label: "เอกสารบังคับ", value: req ? (req.ready ? "ครบ" : `ขาด ${missingDocs.length}`) : "กำลังตรวจ" },
+                  { id: "documents", label: "เอกสารบังคับ", value: reqSummary },
                   // อายุงาน: ใบที่ค้างมานานต้องเห็นจากหน้าแรกของใบ ไม่ใช่ต้องไปเทียบวันที่เอง
                   { id: "age", label: "อยู่สถานะนี้มา", value: naText(ageLabel(ageDays)) },
                 ]}
@@ -340,11 +427,11 @@ export default function RegistrationDetailPage() {
                 statusColor={toneColor(status.tone)}
                 statusDescription="การดำเนินการระดับทะเบียน"
                 workflowSteps={workflowSteps}
-                notices={req ? (
+                notices={reqShown ? (
                   <DocumentReadinessList
-                    items={req.ready
+                    items={reqShown.ready
                       ? [{ id: "ready", label: "เอกสารที่จำเป็นครบแล้ว", ready: true }]
-                      : (req.missing || []).map((item) => ({
+                      : (reqShown.missing || []).map((item) => ({
                         id: `${item.entity}-${item.docType}`,
                         label: item.label,
                         detail: "ต้องแนบหรือเติมข้อมูลก่อนยื่น",
@@ -358,8 +445,8 @@ export default function RegistrationDetailPage() {
                     ? {
                       id: "submit", label: "ยื่นขึ้นทะเบียน", kind: "submit", icon: Send,
                       onClick: () => submitDraft().catch((error) => notifyToast.error(error.message)),
-                      disabled: !req?.ready,
-                      disabledReason: !req?.ready ? `ต้องแนบ: ${missingDocs.join(", ")}` : undefined,
+                      disabled: !!submitBlocker,
+                      disabledReason: submitBlocker || undefined,
                     }
                     : canEdit && s.status === "rejected"
                       ? {
@@ -475,12 +562,14 @@ export default function RegistrationDetailPage() {
             )}
           </DetailCard>
 
-          {s.status === "draft" && req && (
+          {/* ตรวจเอกสารบังคับไม่ได้ = ป้ายผลตรวจแทน checklist (ทุกสถานะ — ดูก้อน reqNotice) · checklist วาดจากผลที่ไม่ใช่ของรอบที่ล้ม */}
+          {reqNotice}
+          {s.status === "draft" && reqShown && (
             <div className="flex flex-col gap-2">
-              <StatusNotice tone={missingDocs.length ? "warning" : "success"}>
-                {missingDocs.length
-                  ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
-                  : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่าย RA ตรวจ"}
+              <StatusNotice tone={reqShown.ready ? "success" : "warning"}>
+                {reqShown.ready
+                  ? "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่าย RA ตรวจ"
+                  : `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`}
               </StatusNotice>
               {warnings.length > 0 && (
                 <StatusNotice tone="info">
