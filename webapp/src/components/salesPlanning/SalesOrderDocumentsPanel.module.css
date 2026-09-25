@@ -1,0 +1,45 @@
+/* แท็บเอกสารของใบสั่งขาย — geometry ล้วน สีมาจากโทเคนกลางทั้งหมด (ด่าน audit:ui) */
+.groups { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* กลุ่มคั่นด้วยเส้นบน ไม่ใช่กล่องซ้อนกล่อง — อยู่ใน DetailCard ที่มีกรอบแล้ว */
+.group + .group { padding-top: var(--space-4); border-top: 1px solid var(--border); }
+
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.groupCopy { min-width: 0; }
+.groupTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.count { font-size: var(--fs-4); font-weight: var(--fw-normal); color: var(--text-3); }
+.groupNote { margin: var(--space-0-5) 0 0; font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
+
+.notice { margin-bottom: var(--space-2); }
+.empty { margin: var(--space-1) 0 0; font-size: var(--fs-5); color: var(--text-3); line-height: var(--lh-thai); }
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.main { flex: 1; min-width: 0; }
+/* ชื่อไฟล์ยาวไม่มีช่องว่าง (สแกนจากเครื่อง) ต้องตัดได้ ไม่ดันปุ่มตกขอบ */
+.title { font-size: var(--fs-6); line-height: var(--lh-thai); overflow-wrap: anywhere; }
+.meta { margin-top: var(--space-0-5); font-size: var(--fs-3); color: var(--text-3); line-height: var(--lh-thai); }
+.row > :last-child { flex-shrink: 0; }

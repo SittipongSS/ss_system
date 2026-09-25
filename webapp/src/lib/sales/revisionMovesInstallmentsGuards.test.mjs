@@ -64,7 +64,8 @@ test('ออก Rev.: สรุป audit มาจาก result.moved ของ 
   assert.match(revise, /const \{ summary: reviseSummary, warning: moveWarning \} = revisionAuditSummary\(\{\s*fromNumber: before\.orderNumber, toNumber: revision\?\.orderNumber \|\| revisionId, reason, moved: result\?\.moved,\s*\}\);/);
   assert.match(revise, /summary: reviseSummary,/);
   assert.doesNotMatch(revise, /loadInstallments\(/, 'ไม่ต้องนับงวดของใบใหม่เองแล้ว — RPC บอกผลการย้ายมา');
-  assert.match(revise, /const warning = \[moveWarning, specWarning\]\.filter\(Boolean\)\.join\(' · '\) \|\| null;/);
+  // + fileWarning: ไฟล์ในแท็บ "เอกสาร" ย้ายตามใบ Rev. (มติ 25/09) — warning ต่อท้าย ไม่แทนของเดิม
+  assert.match(revise, /const warning = \[moveWarning, specWarning, fileWarning\]\.filter\(Boolean\)\.join\(' · '\) \|\| null;/);
   assert.match(revise, /return ok\(warning \? \{ \.\.\.revision, warning \} : revision, 201\);/);
 });
 

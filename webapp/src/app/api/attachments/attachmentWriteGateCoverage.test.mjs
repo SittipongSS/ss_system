@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { ATTACHMENT_ENTITY_TYPES } from '@/lib/master/attachmentTypes';
 import { COSTING_ATTACHMENT_TABLE } from '@/lib/master/costingAttachmentAccess';
 import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
+import { SALES_ORDER_ATTACHMENT_TABLE } from '@/lib/sales/salesOrderAttachmentAccess';
 
 const routeSource = readFileSync(
   fileURLToPath(new URL('./[id]/route.js', import.meta.url)),
@@ -41,6 +42,8 @@ test('⭐ ทุก entityType มีสาขาดักตอนลบ/แก
     ...localMapKeys('PARENT_TABLE'),
     ...Object.keys(COSTING_ATTACHMENT_TABLE),
     ...Object.keys(SALES_ATTACHMENT_TABLE),
+    // ใบสั่งขาย: สาขาของตัวเองก่อนบล็อก `if (table)` — ตำแหน่งตรวจใน salesOrderAttachmentAccess.test.mjs
+    ...Object.keys(SALES_ORDER_ATTACHMENT_TABLE),
     ...mgmtKeys(),
   ]);
   const uncovered = ATTACHMENT_ENTITY_TYPES.filter((type) => !covered.has(type));

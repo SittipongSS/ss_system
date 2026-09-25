@@ -1,6 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
+import { moveSalesOrderAttachments, purgeSalesOrderFiles } from '@/lib/sales/salesOrderAttachmentAccess';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
@@ -185,6 +186,29 @@ async function moveSpecDocumentsAfterRevise({ supabase, user, req, oldOrder, new
     summary: `⚠️ move FM-SA-04 documents ${label}: ${res.warnings.join(' · ')}`, request: req,
   });
   return `ออก Rev. ใบสั่งขายแล้ว แต่เอกสารใบสเปคสินค้าบางใบต้องตรวจ: ${res.warnings.join(' · ')}`;
+}
+
+/* ไฟล์แนบเพิ่มของใบ (แท็บ "เอกสาร") ย้ายไปฉบับ Rev. — ล้ม = Rev. ยังสำเร็จ + warning + audit
+   (Rev. commit ไปแล้วใน RPC · ย้อนไม่ได้ ⇒ บอกให้ชัดว่าไฟล์ค้างอยู่ใบไหน ผู้ดูแลย้ายตามได้) */
+async function moveAttachmentsAfterRevise({ supabase, user, req, oldOrder, newOrder }) {
+  const res = await moveSalesOrderAttachments(supabase, oldOrder.id, newOrder.id);
+  const label = `${oldOrder?.orderNumber || oldOrder.id} → ${newOrder?.orderNumber || newOrder.id}`;
+  if (res.error) {
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: newOrder.id,
+      before: null, after: { attachmentMoveError: res.error, fromOrderId: oldOrder.id },
+      summary: `⚠️ move attachments ${label} FAILED: ${res.error}`, request: req,
+    });
+    return `ออก Rev. ใบสั่งขายแล้ว แต่ย้ายไฟล์ในแท็บเอกสารไปใบใหม่ไม่สำเร็จ (ยังอยู่ที่ ${oldOrder?.orderNumber || oldOrder.id}): ${res.error} — แจ้งผู้ดูแลระบบ`;
+  }
+  if (res.moved) {
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: newOrder.id,
+      before: { attachmentsOn: oldOrder.id }, after: { attachmentsOn: newOrder.id, moved: res.moved },
+      summary: `move ${res.moved} attachment(s) with SO revise ${label}`, request: req,
+    });
+  }
+  return null;
 }
 
 /* ใบสั่งขายย้อนหลัง (mig 0360 → 0374) — CHECK sales_orders_origin_shape ห้ามย้อนอนุมัติ/ออก Rev. อยู่แล้ว ตอบไทยก่อนถึงฐาน
@@ -884,7 +908,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const specWarning = revision?.id
       ? await moveSpecDocumentsAfterRevise({ supabase, user, req, oldOrder: before, newOrder: revision })
       : null;
-    const warning = [moveWarning, specWarning].filter(Boolean).join(' · ') || null;
+    // แท็บ "เอกสาร" (มติ 25/09): ไฟล์ที่แนบเพิ่มย้ายตามไปฉบับ Rev. — ใบเดิมกลายเป็น revised = แนบ/ลบไม่ได้แล้ว
+    const fileWarning = revision?.id
+      ? await moveAttachmentsAfterRevise({ supabase, user, req, oldOrder: before, newOrder: revision })
+      : null;
+    const warning = [moveWarning, specWarning, fileWarning].filter(Boolean).join(' · ') || null;
     return ok(warning ? { ...revision, warning } : revision, 201);
   }
 
@@ -1592,6 +1620,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ใบไม่มีเธรดของตัวเองแล้ว (มติ 2026-08-04) แต่แถวเก่าก่อนหน้านั้นยังค้างในตาราง
   // กลาง (polymorphic ไม่มี FK) — กวาดตอนลบใบต่อไป ไม่งั้นค้างเป็นขยะถาวร
   await purgeUpdates(supabase, 'sales_order', id);
+  /* ไฟล์ในแท็บ "เอกสาร" (entity `sales_order` · polymorphic ไม่มี FK) — กวาด **หลัง** ลบใบสำเร็จ
+     (ลบใบล้ม = ไฟล์ต้องยังอยู่ครบ) · ตัวกวาดไม่ throw — พลาด = log แถวกำพร้า ไม่ล้มการลบ/audit ข้างล่าง */
+  await purgeSalesOrderFiles(supabase, [id]);
   /* ไฟล์หลักฐานใน bucket ไม่มี FK ให้ cascade — ต้องกวาดเอง ไม่งั้นกลายเป็นไฟล์
      กำพร้าถาวร (พบ 2026-08-30 · ดู purgePrivateEvidence)
      · หลักฐานการชำระอยู่ใต้โฟลเดอร์ของใบสั่งขายเอง ⇒ กวาดทั้งโฟลเดอร์
