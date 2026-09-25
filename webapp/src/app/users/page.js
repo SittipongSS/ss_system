@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Tag from "@/components/ui/Tag";
-import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff, TriangleAlert } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff, TriangleAlert, RefreshCw } from "lucide-react";
 import { nextMonthKey } from "@/lib/usersTransfer";
 import { useCan } from "@/lib/roleContext";
 import {
@@ -32,7 +32,9 @@ import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
+import Button from "@/components/ui/Button";
+import { FORCE_REFRESH_ISSUED_EVENT } from "@/lib/ui/forceRefresh";
 
 /* ── ทีมไม่ได้อยู่บนหน้านี้แล้ว (มติผู้ใช้ 2026-09-06) ────────────────────────
    ⭐ **จัดทีม = หน้า /sa/teams ที่เดียว** — หน้านี้ดูแล "คนคนนี้เป็นใคร ทำอะไรได้"
@@ -218,6 +220,32 @@ export default function UserManagement() {
 
   // ถอนสิทธิ์เอกสารร่วมบน Drive ของคนนี้ — ยืนยันก่อนเพราะเป็นของที่ถอนแล้วต้องให้ใหม่
   // (ระบบให้คืนเองตอนเขาเปิดเอกสารที่ยังมีสิทธิ์เห็น จึงไม่ใช่ของที่พังถาวร)
+  /* ── บังคับรีเฟรชทุกคน (มติเจ้าของ 25/09/2026 · lib/ui/forceRefresh.js) ─────────────────────────
+     ทุกแท็บที่เปิดระบบอยู่ขึ้นหน้าต่างรีเฟรชที่ปิดไม่ได้ ภายใน 1 นาที (หรือทันทีที่กลับมาดูหน้าจอ)
+     ⚠️ ถามก่อนเสมอ — งานที่คนอื่นพิมพ์ค้างและยังไม่บันทึกหายทั้งบริษัท */
+  const [forcingRefresh, setForcingRefresh] = useState(false);
+  const handleForceRefreshAll = async () => {
+    const go = await confirmAction({
+      title: "บังคับรีเฟรชทุกคน?",
+      description: "ทุกคนที่เปิดระบบอยู่จะขึ้นหน้าต่างให้รีเฟรช และใช้งานต่อไม่ได้จนกว่าจะกดรีเฟรช "
+        + "(ภายใน 1 นาที หรือทันทีที่กลับมาดูหน้าจอ) · งานที่พิมพ์ค้างและยังไม่บันทึกจะหาย",
+      confirmLabel: "บังคับรีเฟรช",
+      danger: true,
+    });
+    if (!go) return;
+    setForcingRefresh(true);
+    try {
+      const data = await apiJson("/api/users/force-refresh", { method: "POST", fallbackError: "สั่งรีเฟรชไม่สำเร็จ" });
+      // แท็บนี้ (คนกด) ไม่ต้องเด้งหน้าต่างใส่ตัวเอง — แท็บอื่นของแอดมินยังเด้งตามปกติ
+      window.dispatchEvent(new CustomEvent(FORCE_REFRESH_ISSUED_EVENT, { detail: { at: data?.at } }));
+      notifyToast.success("สั่งรีเฟรชแล้ว — หน้าจอที่เปิดอยู่จะขึ้นหน้าต่างรีเฟรชภายใน 1 นาที หรือทันทีที่กลับมาดูหน้าจอ");
+    } catch (e) {
+      notifyToast.error(e.message || "สั่งรีเฟรชไม่สำเร็จ");
+    } finally {
+      setForcingRefresh(false);
+    }
+  };
+
   const handleRevokeDocAccess = async (u) => {
     if (!(await confirmAction(
       `ถอนสิทธิ์เอกสารร่วมทั้งหมดของ ${personLabel(u)}?\n\nเขาจะเปิดเอกสาร Google ที่เคยเข้าถึงไม่ได้อีก จนกว่าจะเปิดจากในระบบใหม่ (ถ้ายังมีสิทธิ์เห็นใบนั้นอยู่)`,
@@ -311,6 +339,13 @@ export default function UserManagement() {
       icon={<Users size={22} />}
       title="จัดการผู้ใช้งาน"
       subtitle="เพิ่ม / แก้ไขตำแหน่ง ฝ่าย และสิทธิ์ของผู้ใช้ในระบบ — จัดทีมที่หน้าจัดทีม"
+      /* ปุ่มระดับหน้า (ไม่ใช่ของรายการผู้ใช้) — เฉพาะแอดมิน (users:manage) ตามด่านของ POST */
+      headerRight={canManage ? (
+        <Button tone="neutral" icon={<RefreshCw size={15} aria-hidden="true" />}
+          onClick={handleForceRefreshAll} disabled={forcingRefresh}>
+          {forcingRefresh ? "กำลังสั่ง…" : "บังคับรีเฟรชทุกคน"}
+        </Button>
+      ) : null}
     >
 
       {/* ⭐ แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — จำนวนคนอยู่ป้ายขวาสุด

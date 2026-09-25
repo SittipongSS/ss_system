@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { authOutcome } from '@/lib/authOutcome';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 import { DetailPinBar, DetailPinProvider } from "@/lib/ui/detailPin";
-import VersionWatcher from "@/components/VersionWatcher";
+import ForceRefreshWatcher from "@/components/ForceRefreshWatcher";
 
 /* 🪤 สองค่านี้ต้องเป็น "ตรงข้าม" ของจุดตัดใน globals.css เป๊ะ ๆ — CSS รู้เรื่องนี้
    เองไม่ได้เพราะมันคือ **พฤติกรรมของปุ่ม** ไม่ใช่หน้าตา:
@@ -840,9 +840,9 @@ export default function AppLayout({ children }) {
             {/* ที่แขวนแถบระบุตัวใบ — ต้องเป็น **ลูกตัวแรกของ .page** เหตุผลเต็มอยู่ที่
                 DetailPinBar ใน lib/ui/detailPin.js · สูง 0 จึงไม่ดันเนื้อหาลงเลย */}
             <DetailPinBar />
-            {/* แท็บที่เปิดค้างข้าม deploy รู้ตัวว่ามีเวอร์ชันใหม่ — แถบ + รีโหลดเต็มหน้าเมื่อเปลี่ยนหน้า
-                (เจ้าของสั่ง "บังคับรีเฟรชทุกแอคเค้า" 25/09 · กติกาใน lib/ui/versionWatch.js) */}
-            <VersionWatcher />
+            {/* ปุ่มแอดมิน "บังคับรีเฟรชทุกคน" (หน้า /users) — หน้าต่างบังคับรีเฟรชของทุกแท็บที่เปิดอยู่
+                (มติเจ้าของ 25/09: รีเฟรชเมื่อแอดมินกดเท่านั้น · กติกาใน lib/ui/forceRefresh.js) */}
+            <ForceRefreshWatcher />
             {/* ⭐ ตัวเลขชุดเดียวต่อหน้า — เปลือกดึงแล้วแจกต่อ หน้าไหนก็ห้ามยิงรอบที่สอง
                 ของตัวเอง (หน้าแรกของ ADR 0016 อ่านจากตรงนี้ · ป้ายบนเมนูใช้ก้อนเดียวกัน) */}
             <NavCountsContext.Provider value={navCountsState}>
