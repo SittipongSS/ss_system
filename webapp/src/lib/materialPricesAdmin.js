@@ -4,7 +4,7 @@ import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/
 import { requestRowSummary } from '@/lib/requests/rowStage';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
-import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
+import { pickSurveyVisit } from '@/lib/service/surveyQueue';
 import { randomUUID } from 'crypto';
 import {
   materialIdentityKey, normalizeMaterialInput, pickStampedMaterial, unitBasisForMaterialKind,
@@ -462,10 +462,16 @@ export async function findRequest(supabase, id) {
   const surveyZoneIds = [...new Set(surveyZones.map((z) => z.zoneId).filter(Boolean))];
   if (surveyZoneIds.length) {
     const { data: zoneRows, error: zoneError } = await supabase
-      .from('service_zones').select('id, code').in('id', surveyZoneIds);
+      .from('service_zones').select('id, code, floor').in('id', surveyZoneIds);
     if (zoneError) throw zoneError;
-    const codeById = new Map((zoneRows || []).map((z) => [z.id, z.code]));
-    for (const row of surveyZones) row.zoneCode = row.zoneId ? codeById.get(row.zoneId) || null : null;
+    const zoneById = new Map((zoneRows || []).map((z) => [z.id, z]));
+    for (const row of surveyZones) {
+      const zone = row.zoneId ? zoneById.get(row.zoneId) : null;
+      row.zoneCode = zone?.code || null;
+      /* ⭐ ชั้นของโซนในทะเบียน — แถวผลวัดเก็บ `floor` เฉพาะพื้นที่ที่ SA เพิ่มใหม่ (mig 0315)
+         ⇒ โซนที่เลือกจากทะเบียนต้องอ่านชั้นจากทะเบียน ไม่งั้นตารางหน้าคำร้องขึ้นขีดทุกแถว */
+      row.zoneFloor = zone?.floor || null;
+    }
   }
   /* ป้ายสถานที่ — จอโชว์ **รหัส SS · ชื่อ** ไม่ใช่ id (กติกา entity display)
      ⚠️ อ่านสดจากทะเบียน ไม่ประทับลงใบ — ไซต์ถูกเปลี่ยนชื่อแล้วใบต้องพาไปหาที่ถูก */
@@ -473,38 +479,36 @@ export async function findRequest(supabase, id) {
      หัวข้ออื่นไม่มีคอลัมน์นี้อยู่แล้ว แต่การถามชนิดทำให้อ่านออกว่าทำไมถึงโหลด */
   let surveySite = null;
   let surveyVisit = null;
+  let surveyVisits = [];
   if (row.kind === 'site_survey' && row.siteId) {
-    const { data } = await supabase
-      .from('service_sites').select('id, code, name, address, "contactName", "contactPhone"')
+    /* ⭐ **ช่วงเวลาที่ไซต์ให้เข้า + เขต** (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09) — โมดัลลงคิวบนหน้านี้
+       เคยบอกด่าน ④ ว่า "หน้านี้ไม่เห็นช่วงเข้าไซต์" เพราะ select ไม่มีสี่ช่องนี้ · ตอนนี้เห็นเท่าหน้าจัดคิว
+       ⚠️ อ่านพลาดต้องโยน ไม่ใช่กลืน — ของเดิม `const { data }` ทำให้ "อ่านไม่สำเร็จ" หน้าตาเหมือน "ไม่มีไซต์" */
+    const { data, error: siteError } = await supabase
+      .from('service_sites')
+      .select('id, code, name, address, "customerName", "routeZone", "mapUrl", "contactName", "contactPhone", "accessFrom", "accessTo", "accessDays", "accessNote"')
       .eq('id', row.siteId).maybeSingle();
+    if (siteError) throw siteError;
     surveySite = data || null;
-    /* ⭐ **นัดของเจ้าหน้าที่ที่ผูกกับใบนี้** (เฟส 2) — ใบต้องบอกได้เองว่าลงคิวไปแล้วหรือยัง
-       และนัดนั้นขึ้นตารางจริงไหม · ไม่งั้นคนเปิดใบต้องไปเปิดหน้าจัดคิวเจ้าหน้าที่อีกแท็บ
+    /* ⭐ **นัดของเจ้าหน้าที่ที่ผูกกับใบนี้ — ทุกรอบ** (เฟส 2 → หน้าคำร้องแบบไทม์ไลน์)
        ⚠️ หนึ่งใบมี **นัดที่ยังมีชีวิตได้ใบเดียว** (index mig 0316) แต่มีนัดที่จบไปแล้ว
-          กี่ใบก็ได้ (ไปแล้วเข้าไม่ได้ → นัดใหม่)
-       🐞 **เอาแถวล่าสุดเฉย ๆ ไม่พอ** — นัดที่ปิดแล้วถูกเปิดกลับมาได้จากโมดัลนัด ⇒ แถวที่
-          ยังมีชีวิตเป็นแถวเก่ากว่าแถวที่ปิดได้ · จอที่เห็นแถวที่ปิดจะโชว์ปุ่ม "ลงคิวใหม่"
-          ซึ่ง server ตีกลับ 409 ทุกครั้ง (มันเห็นนัดที่ยังเปิดอยู่) ⇒ ถามนัดที่ยังมีชีวิต
-          ก่อน ไม่มีค่อยเอาแถวล่าสุดมาโชว์เป็น *ประวัติ* */
-    /* ⚠️ **`unableReason` ต้องอยู่ในลิสต์** (§5E ②) — นัดที่ปิดเป็น "เข้าไม่ได้" ค้างไว้
-       ในประวัติเพื่อให้อ่านย้อนได้ว่าไปกี่รอบกว่าจะเข้าได้ · ไม่ดึงมา = หน้ารายละเอียด
-       โชว์ป้าย "เข้าไม่ได้" ลอย ๆ โดยไม่มีทางบอกได้เลยว่าเพราะอะไร */
-    const visitCols = 'id, code, "scheduledDate", "startTime", status, "assigneeName", "unableReason"';
-    const { data: liveRows } = await supabase
-      .from('service_visits').select(visitCols)
+          กี่ใบก็ได้ (ไปแล้วเข้าไม่ได้ → นัดใหม่) ⇒ อ่านทุกรอบครั้งเดียว แล้วเลือกตัวแทนด้วย
+          `pickSurveyVisit` — กติกาเดียวกับหน้าจัดคิวและ route ส่งผล (นัดที่ยังมีชีวิตก่อน)
+       🐞 เอาแถวล่าสุดเฉย ๆ ไม่พอ — นัดที่ปิดแล้วถูกเปิดกลับได้จากโมดัลนัด ⇒ แถวที่ยังมีชีวิต
+          เก่ากว่าแถวที่ปิดได้ · จอที่เห็นแถวที่ปิดจะโชว์ "ลงคิวใหม่" ซึ่ง server ตีกลับ 409
+       ⚠️ เวลาเริ่ม/ส่งงานจริง (`actual*`) + ผู้ช่วย อยู่บนนัดเท่านั้น — เธรดของใบไม่มีเหตุการณ์
+          "เริ่มงาน" และ SA อ่านเธรดของนัดไม่ได้ ⇒ ขั้น "เข้าพื้นที่" ต้องอ่านจากที่นี่
+       ⚠️ เพดาน 20 รอบ (ratchet check:rowcap) — ใบที่ไปแล้วเข้าไม่ได้ยี่สิบรอบคือใบที่ต้องปิด
+       ⚠️ อ่านพลาดต้องโยน — ของเดิมกลืน error แล้วใบที่มีนัดอ่านเป็น "ไม่มีนัด" = ปุ่ม "ลงคิวใหม่" โผล่ */
+    const { data: visitRows, error: visitError } = await supabase
+      .from('service_visits')
+      .select('id, code, status, "requestId", "scheduledDate", "startTime", "endTime", "assigneeId", "assigneeName", "assistantIds", "actualDate", "actualStartTime", "actualEndTime", "actualEndDate", "unableReason", "createdByName", "createdAt"')
       .eq('requestId', id)
-      .in('status', REQUEST_SLOT_VISIT_STATES)
       .order('createdAt', { ascending: false })
-      .limit(1);
-    surveyVisit = (liveRows || [])[0] || null;
-    if (!surveyVisit) {
-      const { data: lastRows } = await supabase
-        .from('service_visits').select(visitCols)
-        .eq('requestId', id)
-        .order('createdAt', { ascending: false })
-        .limit(1);
-      surveyVisit = (lastRows || [])[0] || null;
-    }
+      .limit(20);
+    if (visitError) throw visitError;
+    surveyVisits = visitRows || [];
+    surveyVisit = pickSurveyVisit(surveyVisits);
   }
   const withBriefs = {
     ...row,
@@ -513,6 +517,7 @@ export async function findRequest(supabase, id) {
     surveyZones,
     surveySite,
     surveyVisit,
+    surveyVisits,
   };
 
   // ⭐ ค่าที่แบบฟอร์ม PDR เติมให้เอง (ผู้ดูแล AE · ผู้ประสานงาน AC · ผู้ติดต่อลูกค้า)

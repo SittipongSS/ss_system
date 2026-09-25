@@ -137,3 +137,18 @@ test('🔴 การ์ดจัดการต้องขึ้นทุกห
   assert.match(code, /aside=\{\(/, 'คอลัมน์ขวาต้องไม่มีเงื่อนไข — ทุกหัวข้อได้การ์ดเท่ากัน');
   assert.ok(!/aside=\{\w+ \?/.test(code), 'คอลัมน์ขวาต้องไม่ผูกกับธงของหัวข้อ');
 });
+
+test('🔴 หน้าของหัวข้อ (viewForKind) ได้ปุ่มระดับใบชุดเดียวกับการ์ดจัดการ — ห้ามสร้างปุ่มเอง (มติเจ้าของ 25/09)', () => {
+  /* ⭐ ประเมินพื้นที่แบบ A วางปุ่มบนหัวใบกับแถบ "ตอนนี้" แทนการ์ดจัดการขวา — **ที่วางเปลี่ยน ของไม่เปลี่ยน**
+     ⇒ ก้อนปุ่มต้องเป็น `requestActions` ตัวเดียวกับที่การ์ดจัดการได้ และ view ห้ามยิง API เอง
+     (ปุ่มที่ view สร้างเอง = ด่านชุดที่สองที่ไม่มีใครดูแลให้ตรงกับ server) */
+  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.match(SRC, /export function viewForKind\(kind\)/);
+  assert.match(code, /const KindView = viewForKind\(req\.kind\)/);
+  const tag = code.slice(code.indexOf('<KindView'), code.indexOf('/>', code.indexOf('<KindView')));
+  assert.match(tag, /actions=\{requestActions\}/, 'หน้าของหัวข้อต้องรับ requestActions ตัวเดียว');
+  // โหมดแก้กลับไปโครงกลาง — ปุ่มบันทึก/ยกเลิกการแก้อยู่บนการ์ดจัดการ
+  assert.match(code, /const showKindView = !!KindView && !editing;/);
+  const view = readFileSync('src/components/requests/details/SurveyRequestView.js', 'utf8');
+  assert.ok(!/apiFetch|apiJson|method:\s*"(PATCH|POST|DELETE)"/.test(view), 'view ห้ามยิง API เอง');
+});

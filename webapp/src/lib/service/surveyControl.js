@@ -218,8 +218,10 @@ export function surveyFoldDefaults(zones = [], filesByZone = {}, viewer = {}) {
       สองชุดที่ชื่อไม่ตรงกันคือสองฝ่ายที่คุยกันคนละเรื่องทั้งที่ดูใบเดียวกัน
    ⚠️ ทับเฉพาะ **บรรทัดใต้ขั้นปัจจุบัน** ด้วยข้อเท็จจริงของใบประเมิน (วัดแล้วกี่พื้นที่ ·
       ดึงกลับเมื่อไร) ซึ่งรางกลางไม่รู้จัก — ชื่อขั้นไม่แตะ */
-function stepOf(request, { cancelled, recallPending, recall, progress }) {
-  const { steps, index } = requestRailSteps(request || {});
+function stepOf(request, { cancelled, recallPending, recall, progress, visit }) {
+  /* ⭐ ส่งนัดของการ์ดลงไปด้วย — รางหน้างานเดินตามนัด (`fieldRail`) · ไม่ส่ง = รางอ่าน `surveyVisit`
+     บนแถวคำร้อง ซึ่ง GET ของใบประเมินไม่ได้ติดมา ⇒ ใบที่ช่างวัดอยู่จะชี้ขั้น "ลงคิว" */
+  const { steps, index } = requestRailSteps(request || {}, { visit: visit || null });
   const current = steps[index] || steps[steps.length - 1] || null;
   let hint = current?.hint || null;
   if (cancelled) {
@@ -703,7 +705,7 @@ export function surveyControlView({
     /* ค่าพับตั้งต้นสำเร็จรูป — คิดจาก `canWrite` ที่ **หักลบด่านล็อกแล้ว** ⇒ จอเรียก
        `view.foldDefaults` ได้เลย ไม่ต้องรู้ว่าต้องหักอะไรก่อน (ที่เดียวที่พลาดได้) */
     foldDefaults: surveyFoldDefaults(rows, files, { canWrite, locked }),
-    step: stepOf(request, { cancelled, recallPending, recall, progress }),
+    step: stepOf(request, { cancelled, recallPending, recall, progress, visit }),
     /* ⭐ **กำหนดของจอนี้คือวันส่งผล ไม่ใช่วันเข้าพื้นที่** (มติผู้ใช้ 2026-09-21 · mig 0368)
        — ทั้งจอเป็นเรื่องการส่งตัวเลขให้ฝ่ายขาย · วันนัดเข้าพื้นที่มีแถวของตัวเองอยู่แล้ว
          ("นัดสำรวจ") ⇒ เอามาโชว์ซ้ำตรงนี้คือข้อมูลเดียวกันสองที่ที่นับถอยหลังผิดเรื่อง

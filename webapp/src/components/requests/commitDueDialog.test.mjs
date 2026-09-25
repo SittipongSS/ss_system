@@ -104,14 +104,15 @@ test('⭐ ภาระ: ผู้เรียกส่งมา = ใช้ข�
   const requestTag = code(requestPage).match(/<CommitDueDialog[\s\S]*?\/>/)[0];
   assert.match(scheduleTag, /staffLoadFor=\{staffLoadFor\}/);
   assert.doesNotMatch(requestTag, /staffLoadFor=/, 'หน้าใบไม่มีรายการงานในมือ — ส่ง null ไปจะได้ "ไม่รู้" ตลอด');
-  /* ⭐ หน้าจัดคิวมีไซต์เต็มแถว (ช่วงเวลาที่ให้เข้า) ⇒ เตือนข้อ ④ ก่อนกด · หน้าใบมีแค่ `surveySite`
-     (ไม่ได้ select ช่วงเวลา · D2) ⇒ ไม่ส่ง accessKnown = "หน้านี้ไม่เห็นช่วงเข้าไซต์" ไม่เดาว่าผ่าน
-     ⚠️ ข้อจำกัดที่รู้แล้ว (รีวิว UAT 24/09): ให้หน้าใบเห็นช่วงเวลา/ภาระไซต์ = เปลี่ยนการอ่าน API (รอมติเจ้าของ) */
+  /* ⭐ หน้าจัดคิวมีไซต์เต็มแถว (ช่วงเวลาที่ให้เข้า) ⇒ เตือนข้อ ④ ก่อนกด
+     ⭐ **หน้าใบเห็นเท่าหน้าจัดคิวแล้ว** (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09 ปิดข้อจำกัดจากรีวิว UAT 24/09) —
+        `surveySite` select ช่วงเวลาเข้าไซต์มาด้วย และ GET ติด `surveySiteLoad` จาก `visitBundle` สูตรเดียวกับหน้าจัดคิว */
   assert.match(scheduleTag, /site=\{dueRow\?\.site \|\| null\}/);
   assert.match(scheduleTag, /accessKnown=\{!!dueRow\?\.site\}/);
   assert.match(scheduleTag, /siteLoad=\{dueRow \? workloadAll\[dueRow\.request\.siteId\] \|\| null : null\}/);
   assert.match(requestTag, /site=\{req\.surveySite \|\| null\}/);
-  assert.doesNotMatch(requestTag, /accessKnown=|siteLoad=/);
+  assert.match(requestTag, /accessKnown=\{!!req\.surveySite\}/);
+  assert.match(requestTag, /siteLoad=\{req\.surveySiteLoad \|\| null\}/);
   assert.match(live, /accessKnown = false,/, 'ไม่ส่ง = ไม่รู้');
   // หัวมาจาก lib ทั้งสองหน้า — ไม่มีบรรทัดรองที่หน้าประกอบเอง
   for (const tag of [scheduleTag, requestTag]) assert.doesNotMatch(tag, /subtitle=/);

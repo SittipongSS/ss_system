@@ -242,12 +242,22 @@ export async function loadZoneSurveyLocks(supabase, zoneIds = []) {
 /* แถวเธรด "ส่งกลับให้ช่างแก้" / "ช่างแจ้งว่าแก้แล้ว" ล่าสุดของใบ — ใบหนึ่งวนได้หลายรอบ
    ⚠️ เพดาน 20 แถวพอเสมอ: ตัวตัดสินต้องการแค่แถวล่าสุดของแต่ละชนิด และใบที่ส่งกลับเกินสิบรอบ
       ก็ยังมีแถวล่าสุดของทั้งสองชนิดอยู่ในยี่สิบแถวบนสุด (สองชนิดสลับกันเป็นคู่) */
-function loadSendBackRows(supabase, requestId) {
+export function loadSendBackRows(supabase, requestId) {
   return supabase.from('entity_updates')
     .select('id, kind, body, meta, "authorId", "authorName", "createdAt"')
     .eq('entityType', 'dept_request').eq('entityId', String(requestId))
     .in('kind', [SEND_BACK_KIND, SEND_BACK_DONE_KIND])
     .order('createdAt', { ascending: false }).limit(20);
+}
+
+/* แถว "ดึงผลกลับมาแก้" ล่าสุด — ตรึงอยู่ในเธรดของใบ (`entity_updates` kind='recall')
+   ⚠️ เอา **แถวล่าสุดแถวเดียว** — ใบหนึ่งถูกดึงกลับได้หลายรอบ และของที่จอต้องบอกคือ
+      รอบล่าสุดเท่านั้น (รอบก่อน ๆ อ่านได้ในเธรดของใบคำร้อง) */
+export function loadRecallRows(supabase, requestId) {
+  return supabase.from('entity_updates')
+    .select('id, body, meta, "authorId", "authorName", "createdAt"')
+    .eq('entityType', 'dept_request').eq('entityId', String(requestId)).eq('kind', 'recall')
+    .order('createdAt', { ascending: false }).limit(1);
 }
 
 /** สภาพการส่งกลับของใบ สำหรับ route — อ่านไม่สำเร็จโยน error (ด่านเขียนต้อง fail-closed) */
@@ -293,12 +303,7 @@ export async function loadSurveySheetContext(supabase, request, zones = []) {
     /* แถว "ดึงผลกลับมาแก้" ล่าสุด — ตรึงอยู่ในเธรดของใบ (`entity_updates` kind='recall')
        ⚠️ เอา **แถวล่าสุดแถวเดียว** — ใบหนึ่งถูกดึงกลับได้หลายรอบ และของที่จอต้องบอกคือ
           รอบล่าสุดเท่านั้น (รอบก่อน ๆ อ่านได้ในเธรดของใบคำร้อง) */
-    request?.id
-      ? supabase.from('entity_updates')
-        .select('id, body, meta, "authorId", "authorName", "createdAt"')
-        .eq('entityType', 'dept_request').eq('entityId', String(request.id)).eq('kind', 'recall')
-        .order('createdAt', { ascending: false }).limit(1)
-      : Promise.resolve({ data: [], error: null }),
+    request?.id ? loadRecallRows(supabase, request.id) : Promise.resolve({ data: [], error: null }),
     /* การส่งกลับให้ช่างแก้ + การแจ้งว่าแก้แล้ว — ตัวตัดสินต้องการแค่แถวล่าสุดของแต่ละชนิด */
     request?.id ? loadSendBackRows(supabase, request.id) : Promise.resolve({ data: [], error: null }),
   ]);
@@ -330,3 +335,4 @@ export async function loadSurveySheetContext(supabase, request, zones = []) {
     unknown,
   };
 }
+

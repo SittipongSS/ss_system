@@ -82,6 +82,7 @@ import {
   normalizeSurveyCommittedResult, normalizeSurveyRequestedResult, normalizeSurveyTime,
 } from '@/lib/service/surveyRequest';
 import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
+import { loadSurveyRequestExtras } from '@/lib/service/surveyRequestExtras';
 import {
   createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
 } from '@/lib/service/surveyVisit';
@@ -183,11 +184,28 @@ export async function GET(request, { params }) {
         item.priceSlots = await rowPriceSlotsLive(getSupabaseAdmin(), item).catch(() => undefined);
       }));
     }
+    /* ⭐ **งานประเมินบนหน้าคำร้อง** (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09) — รูปรายพื้นที่ ·
+       การดึงกลับ · การส่งกลับให้ช่างแก้ · ภาระของไซต์ ⇒ จอเล่าได้ว่าวัดไปกี่พื้นที่ ขาดอะไร ใครถือตา
+       ⚠️ **หลังด่านอ่านรายแถว** เสมอ (คนที่ไม่ผ่านด่านไม่ต้องจ่ายค่าอ่าน) · เฉพาะหน้ารายละเอียด ไม่ใช่
+          ใน `findRequest` ซึ่งถูกเรียกทุกครั้งที่ PATCH (กติกาเดียวกับ `withRegistryLinks` ข้างบน)
+       ⚠️ อ่านพลาดไม่ล้มหน้า — ตัวโหลดปัก `surveyUnknown` ให้จอเขียน "ไม่ทราบ" */
+    let surveyExtras = null;
+    if (requestNeedsRef(row.kind, 'site')) {
+      const extras = await loadSurveyRequestExtras(getSupabaseAdmin(), row);
+      surveyExtras = {
+        surveyFilesByZone: extras.filesByZone,
+        surveyRecall: extras.recall,
+        surveySendBack: extras.sendBack,
+        surveySiteLoad: extras.siteLoad,
+        surveyUnknown: extras.unknown,
+      };
+    }
     // ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย) —
     // ติดธงมาจาก server ให้ปุ่มส่ง/ยกเลิกโผล่เฉพาะกับผู้เปิดคำร้องจริง ๆ
     return Response.json(
       {
         ...row,
+        ...surveyExtras,
         // ⚠️ **ที่นี่ `_mine` = "จัดการใบนี้ได้"** (เจ้าของใบ · เพื่อนร่วมทีม · admin)
         // ไม่ใช่ "ฉันเปิดเอง" — หน้ารายละเอียดใช้ธงนี้ตัดสินว่าจะโชว์ปุ่มไหน ส่วน
         // รายการใช้ชื่อเดียวกันแทน "ฉันเปิดเอง" (ดูคอมเมนต์ที่ route ของรายการ)
