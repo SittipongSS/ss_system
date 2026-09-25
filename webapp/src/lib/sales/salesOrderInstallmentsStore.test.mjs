@@ -4,7 +4,7 @@ import {
   INSTALLMENT_MOVE_SCHEMA_MISSING, ensureInstallments, freezeInstallments, installmentMoveColumnError, replanInstallments,
   updateInstallment, carryInstallments, loadMovedOut, loadCarrySources, INSTALLMENT_REFUND_SCHEMA_MISSING,
   loadMovedOutOfOrders,
-  installmentRefundSchemaError,
+  installmentRefundSchemaError, historicalCancelSettleReady,
 } from './salesOrderInstallmentsStore.js';
 import { INSTALLMENT_REPLAN_SCHEMA_MISSING } from './installmentReplan.js';
 import { INSTALLMENT_CARRY_SCHEMA_MISSING } from './installmentCarry.js';
@@ -754,4 +754,23 @@ test('loadMovedOutOfOrders: งวดที่ย้ายไปจากใบ�
   assert.deepEqual(await loadMovedOutOfOrders(queryFake({}), []), [], 'ไม่มีใบลูก = ไม่ยิง query');
   const down = queryFake({ sales_order_installments: { data: null, error: { message: 'boom' } } });
   await assert.rejects(() => loadMovedOutOfOrders(down, ['SOR-A']), { message: 'boom' });
+});
+
+/* 🐞 review 25/09 (fail closed · มติ 24/09 · mig 0387): route ยกเลิกใบย้อนหลังที่งวดยกมามีเงินได้ก็ต่อเมื่อฐานยืนยันว่า trigger ของ 0387
+   อยู่และเปิดอยู่ — ไม่งั้นงวดยกมาค้าง "รอตรวจ" บนใบที่ยกเลิกถาวร (รันมิกทีหลังไม่ซ่อม) ⇒ ตอบ "พร้อม" ได้ทางเดียวคือ RPC ตอบ true ตรง ๆ */
+test('historicalCancelSettleReady: RPC ตอบ true = พร้อม · false/ไม่มีฟังก์ชัน = ไม่พร้อม · อ่านไม่ขึ้น = error (ห้ามถือว่าพร้อม)', async () => {
+  const ready = rpcSupabase({ data: true, error: null });
+  assert.deepEqual(await historicalCancelSettleReady(ready), { ready: true });
+  assert.deepEqual(ready.calls, [['historical_so_cancel_settle_ready', undefined]], 'ไม่ส่งพารามิเตอร์ — ฟังก์ชันไม่มีอาร์กิวเมนต์');
+  assert.deepEqual(await historicalCancelSettleReady(rpcSupabase({ data: false, error: null })), { ready: false });
+  for (const data of [null, 'true', 1, {}]) {
+    assert.deepEqual(await historicalCancelSettleReady(rpcSupabase({ data, error: null })), { ready: false }, JSON.stringify(data));
+  }
+  // ยังไม่รัน 0387 (PostgREST หาฟังก์ชันไม่เจอ) = ไม่พร้อม — ไม่ใช่ error 500
+  const missing = { code: 'PGRST202', message: 'Could not find the function public.historical_so_cancel_settle_ready without parameters' };
+  assert.deepEqual(await historicalCancelSettleReady(rpcSupabase({ data: null, error: missing })), { ready: false });
+  // เน็ต/สิทธิ์/อื่น ๆ = ตอบไม่ได้ว่าพร้อม ⇒ error ให้ route หยุด (ไม่โทษ migration)
+  const down = await historicalCancelSettleReady(rpcSupabase({ data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } }));
+  assert.equal(down.ready, undefined);
+  assert.match(down.error, /statement timeout/);
 });

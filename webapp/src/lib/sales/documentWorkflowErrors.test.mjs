@@ -171,6 +171,19 @@ test('ทุกรหัสที่ 0374 โยนมีในตาราง�
   assert.equal(documentWorkflowError({ message: 'contract_monthly_sequence_exhausted: -' }).code, 'contract_monthly_sequence_exhausted');
 });
 
+/* 0387 (มติเจ้าของ 24/09 — ผู้จัดการฝ่ายขายยกเลิกใบย้อนหลังที่อนุมัติแล้ว · งวดยกมาเป็นโมฆะ) — trigger สองตัวโยนรหัสต่อท้ายเลขใบ
+   ⇒ ต้องได้ข้อความไทย + 409 (ใบ/งวดขยับระหว่างทาง) ไม่ใช่ 500 กลาง · route ยกเลิกแปลผ่านตารางนี้ (กิ่งใบย้อนหลัง) · route งวดก็เช่นกัน */
+test('ทุกรหัสที่ 0387 โยนมีในตารางแปล (อ่านไฟล์ migration ตรง ๆ)', () => {
+  const sql = readFileSync(new URL('../../../supabase/migrations/0387_historical_so_cancel_settles_opening.sql', import.meta.url), 'utf8')
+    .replace(/--[^\n]*/g, '');
+  const raised = new Set([...sql.matchAll(/RAISE EXCEPTION '([a-z0-9_]+)/g)].map((m) => m[1]));
+  assert.ok(raised.size >= 2, `ต้องหา RAISE ของ 0387 เจอ (เจอ ${raised.size})`);
+  for (const code of raised) {
+    assert.ok(WORKFLOW_ERROR_CODES.includes(code), `${code} ยังไม่มีข้อความไทย`);
+    assert.equal(documentWorkflowError({ message: `${code}: SO-26090010-0` }).status, 409, code);
+  }
+});
+
 /* 0379 (มติ 23/09 — บรรทัดโซนแบบใบเสนอราคา) เพิ่มรหัสสามตัว + รหัสด่านของไฟล์ — ทุกตัวต้องได้ข้อความไทย + สถานะที่ถูก */
 test('ทุกรหัสที่ 0379 โยนมีในตารางแปล · ราคาในทะเบียนเพิ่งเปลี่ยน = 409 ให้ตรวจใหม่', () => {
   const sql = readFileSync(new URL('../../../supabase/migrations/0379_historical_so_quote_lines.sql', import.meta.url), 'utf8')

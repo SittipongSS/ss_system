@@ -14,7 +14,9 @@
 //   5. การ์ด/ป้ายของใบปกติ (ยืนยันคำสั่งซื้อ · ชวนตั้งลายเซ็น · ออกสัญญาจากใบนี้) โผล่กับใบที่ไม่มีของพวกนั้น
 //   6. โมดัลยกเลิก/ลบไม่บอกว่าเอกสารแทนสัญญาถูกยกเลิกตามไปด้วย (trigger ของ 0374 · ย้อนไม่ได้)
 //   7. เหตุที่ API ตีกลับไปโผล่ใน **แถบ error ของหน้า ซึ่งอยู่ใต้โมดัล** ⇒ กดยืนยันแล้วโมดัลค้างเงียบ
-//      (ทางแก้หลังอนุมัติของ flow นี้คือ "AE Sup ยกเลิกใบ" ซึ่งติดด่านงวดยกมารอบัญชีรับรองเป็นค่าเริ่มต้น)
+//      (ทางแก้หลังอนุมัติของ flow นี้คือ "ผู้จัดการฝ่ายขายยกเลิกใบ" — งวดปกติที่มีเงินยังบล็อก · มติ 24/09)
+//   8. โมดัลยกเลิกของใบย้อนหลังพูดเรื่อง "ยอด Actual ถูกนำออก" ของใบปกติ ⇒ ผู้จัดการไม่รู้ว่างวดยกมาที่บัญชีรับรองไว้
+//      จะเป็นโมฆะ · หมายเหตุบังคับของงวดยกมาที่รับรองแล้วไม่ได้ถามก่อนส่ง (มติ 24/09 · mig 0387)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -181,18 +183,39 @@ test('ตีกลับ/ดึงกลับ ใช้ถ้อยคำขอ
 
 // ── 6A. ยกเลิกใบ: ปุ่มถามด่านเดียวกับ API · เหตุที่ตีกลับอ่านได้ในโมดัล ──────────────────────────
 //
-// 🐞 ทางแก้หลังอนุมัติ (HISTORICAL_CORRECTION_PATH) = AE Sup ยกเลิกใบแล้วคีย์ใหม่ — แต่ใบที่มีเงิน
-//    **ติดด่านเป็นค่าเริ่มต้น**: ขั้นอนุมัติดันงวดยกมาขึ้นเป็น "แจ้งชำระแล้ว" รอบัญชีรับรอง และ
-//    `historicalCancelBlock` ตอบ 400 จนกว่าบัญชีจะตีกลับ ⇒ ถ้าเหตุผลไม่ถึงคนกด ทางแก้ทั้งเส้นตัน
+// 🐞 ทางแก้หลังอนุมัติ (HISTORICAL_CORRECTION_PATH) = ผู้จัดการฝ่ายขายยกเลิกใบแล้วคีย์ใหม่ — เดิมใบที่มีเงิน
+//    **ติดด่านเป็นค่าเริ่มต้น** (ขั้นอนุมัติดันงวดยกมาขึ้นเป็น "แจ้งชำระแล้ว") จนกว่าบัญชีจะตีกลับ
+//    ⭐ มติ 24/09 (mig 0387): งวดยกมาไม่บล็อกแล้ว (โมฆะตามใบ) · งวดปกติที่รับเงินในระบบแล้ว/รอตรวจยังบล็อก
+//    ⇒ ถ้าเหตุผลไม่ถึงคนกด ผู้จัดการยังวนหาทางไม่เจอ
 
 test('🔴 ปุ่ม "ยกเลิก SO" ถามด่านตัวเดียวกับ API (historicalCancelBlock) ไม่ใช่ปล่อยให้กดแล้วได้ 400', () => {
   const page = code(PAGE);
-  // ตัวตัดสินมาจากบ้านเดียวของใบย้อนหลัง — ห้ามเขียนเงื่อนไข "งวดรอรับรอง" ขึ้นใหม่ที่จอ
-  assert.match(page, /historicalCancelBlock, historicalEditPath, historicalRefsOf, isHistoricalOrder,/);
+  // ตัวตัดสินมาจากบ้านเดียวของใบย้อนหลัง — ห้ามเขียนเงื่อนไข "งวดมีเงิน" ขึ้นใหม่ที่จอ
+  assert.match(page, /historicalCancelBlock, historicalCancelNoteError, historicalEditPath, historicalRefsOf, isHistoricalOrder,/);
   assert.match(page, /const historicalCancelBlocked = historicalCancelBlock\(order, installments\);/);
   const action = slice(page, 'id: "cancel",', 'onClick: openCancel');
   assert.match(action, /disabled: !!filingState\.filing \|\| !!historicalCancelBlocked,/);
   assert.match(action, /\(historicalCancelBlocked \|\| undefined\)/, 'เหตุต้องขึ้นบนปุ่มด้วย ไม่ใช่แค่ปิดปุ่ม');
+});
+
+/* ⭐ โมดัลยกเลิกของใบย้อนหลัง (มติ 24/09) — หัว · คำนำ · ผลลัพธ์ · ป้ายหมายเหตุ · ปุ่ม มาจาก historicalCancelPrompt ตัวเดียว
+   (ของจริงเทสต์ที่ historicalOrderCopy.test.mjs) · หมายเหตุบังคับถามตัวเดียวกับ route (historicalCancelNoteError) ก่อนส่ง */
+test('🔴 โมดัลยกเลิกใบย้อนหลัง: คำของใบย้อนหลังทั้งชุด (ไม่ใช่ "ยอด Actual ถูกนำออก") · หมายเหตุบังคับถามก่อนส่ง', () => {
+  const page = code(PAGE);
+  assert.match(page, /const historicalCancel = historical\s*\? historicalCancelPrompt\(order, \{ installments, reasonCode: cancelForm\?\.code \}\)\s*: null;/);
+  assert.match(page, /const cancelMoneyLines = historicalCancel\s*\? historicalCancel\.money\s*: salesOrderMoneyOutcome\(order, installments, "cancel"\);/);
+  const modal = slice(page, '{cancelForm && (', '</Modal>');
+  assert.match(modal, /title=\{historicalCancel\?\.title \|\| "ยกเลิก ใบสั่งขาย"\}/);
+  assert.match(modal, /\{historicalCancel\s*\? historicalCancel\.lead/);
+  assert.match(modal, /historicalCancel\?\.notices\?\.length/);
+  assert.match(modal, /historicalCancel \? historicalCancel\.noteLabel :/);
+  assert.match(modal, /\{historicalCancel\?\.confirmLabel \|\| "ยืนยันยกเลิก SO"\}/);
+  const submit = slice(page, 'async function doCancel() {', '\n  }');
+  const noteGate = submit.indexOf('historicalCancelNoteError(order, order?.installments, cancelForm.note)');
+  assert.ok(noteGate > 0 && noteGate < submit.indexOf('requestAction("cancel"'), 'ถามก่อนส่ง — ตัวเดียวกับ route');
+  // toast บอกสิ่งที่เกิดจริงของใบย้อนหลัง (ไม่ใช่ "คำนวณ Actual ใหม่แล้ว")
+  const request = slice(page, 'async function requestAction(action, payload = {}) {', '\n  }\n');
+  assert.match(request, /action === "cancel" && isHistoricalOrder\(order\)\s*\? historicalCancelToast\(data\)/);
 });
 
 test('🔴 โมดัลยกเลิก SO โชว์เหตุที่ API ตีกลับ **ในโมดัล** (แถบของหน้าอยู่ใต้โมดัล) · เปิด/ปิดล้างของรอบก่อน', () => {

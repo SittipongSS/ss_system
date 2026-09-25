@@ -27,7 +27,6 @@ import {
   isInstallmentFrozen,
   openingCoverageEnd,
   paymentNotRequired,
-  paymentLockReason,
   pipelineInstallmentLock,
   paymentRollup,
   salesOrderPaymentCell,
@@ -41,9 +40,12 @@ import {
   cancelledMoneyRestoreBlock,
   movedOutDeleteBlock,
   installmentVoid,
+  installmentVoidNote,
   MAX_REFUND_CREDIT_NOTE_NO,
   MIN_REJECT_REASON,
 } from './salesOrderPayments.js';
+import * as payments from './salesOrderPayments.js';
+import { HISTORICAL_CORRECTION_PATH } from './historicalOrders.js';
 
 /* ⭐ งวดที่ **ยอดหยุดแล้ว** (B-4 · mig 0259) — ทุกแถวที่เดินสายแจ้ง/คอนเฟิร์มได้
    ต้องผ่านจุดนี้มาก่อนเสมอ · fixture ที่ลืมใส่จะติดด่าน "ใบยังไม่อนุมัติ" ซึ่งถูกแล้ว */
@@ -422,12 +424,12 @@ test('ใบที่ยังไม่เก็บเงินได้สั�
   );
 });
 
-// ── ล็อกใบเมื่อบัญชีรับรองเงินแล้ว ──────────────────────────────────────
-/* ⭐ PR1 (mig 0376): ตัวนี้เหลือคุม **การยกเลิกใบ** (ใบ pipeline จนถึง PR3 · ใบย้อนหลังถาวร) — ย้อนการอนุมัติ/ออก Rev.
-   ไม่ถามแล้ว (งวดย้ายไปใบ Rev. ทั้งแถว) · ยามที่ route: revisionMovesInstallmentsGuards.test.mjs */
-test('มีงวดที่คอนเฟิร์มแล้ว = ล็อกการถอยใบ', () => {
-  assert.equal(paymentLockReason([{ status: 'pending' }, { status: 'reported' }]), null);
-  assert.match(paymentLockReason([{ status: 'confirmed' }]), /บัญชีคอนเฟิร์มแล้ว 1 งวด/);
+// ── ล็อกใบเมื่อบัญชีรับรองเงินแล้ว — ถอดแล้ว (มติ 24/09 · mig 0387) ─────────────────────────────
+/* 🚫 `paymentLockReason` ถูกถอด: ผู้เรียกคนสุดท้ายคือการยกเลิกใบย้อนหลัง ซึ่งตอนนี้ถาม `historicalCancelBlock` ตัวเดียว
+   (งวดยกมาเป็นโมฆะตามใบ · งวดปกติที่มีเงินยังบล็อก) · ย้อนการอนุมัติ/ออก Rev. ไม่ถามตั้งแต่ PR1 · ใบ pipeline ตั้งแต่ PR3
+   ⇒ ถ้าชื่อนี้กลับมา แปลว่ามีด่าน "งวดรับรองแล้วห้ามยกเลิก" ชุดที่สองโผล่ขึ้น (สองชุดเพี้ยนหากันแน่นอน) */
+test('ไม่มี paymentLockReason แล้ว — ด่านยกเลิกของใบย้อนหลังอยู่ที่ historicalCancelBlock ตัวเดียว', () => {
+  assert.equal(payments.paymentLockReason, undefined);
 });
 
 // ── ทะเบียนสถานะครบ ─────────────────────────────────────────────────────
@@ -533,12 +535,9 @@ test('ถอนได้เฉพาะงวดที่คอนเฟิร�
    ฝ่ายขายและหลักฐานยังอยู่ครบ สิ่งที่ถูกถอนคือคำรับรองของบัญชีเท่านั้น
    ถอยไป pending เมื่อไรเท่ากับลบงานของฝ่ายขายทิ้ง แล้วเขาต้องแนบหลักฐานใหม่
    ทั้งที่ไม่ได้ทำอะไรผิด */
-test('ถอนแล้วงวดกลับเข้าคิวตรวจของบัญชีเอง และใบปลดล็อก', () => {
-  // ก่อนถอน: ใบถูกล็อกเพราะมีงวดที่คอนเฟิร์มแล้ว
-  assert.match(paymentLockReason([confirmedRow()]), /คอนเฟิร์มแล้ว 1 งวด/);
-  // หลังถอน (สถานะที่ route เขียน): กลับเป็น reported ⇒ ไม่ล็อกแล้ว
+test('ถอนแล้วงวดกลับเข้าคิวตรวจของบัญชีเอง', () => {
+  // หลังถอน (สถานะที่ route เขียน): กลับเป็น reported
   const afterUnconfirm = confirmedRow({ status: 'reported', confirmedById: null, confirmedAt: null });
-  assert.equal(paymentLockReason([afterUnconfirm]), null);
   // และงวดกลับมาให้บัญชีคอนเฟิร์มใหม่ได้
   assert.equal(installmentActionError(afterUnconfirm, 'confirm', FN_USER), null);
   // ยอด "เก็บแล้ว" ต้องลดลงตาม — ไม่ค้างนับงวดที่ถอนไปแล้ว
@@ -799,7 +798,8 @@ test('งวดยกมา: ไม่มีกำหนดชำระ · ถ�
     assert.match(installmentActionError(OPENING, 'schedule', user, HIST), /งวดยกมาไม่มีกำหนดชำระ/);
     const withdraw = installmentActionError(OPENING, 'withdraw', user, HIST);
     assert.match(withdraw, /งวดยกมาถอนไม่ได้/);
-    assert.match(withdraw, /AE Sup ยกเลิกใบให้คีย์ใหม่/);
+    // มติ 24/09: ไม่ต้องให้บัญชีตีกลับก่อนแล้ว — ชี้ทางแก้ประโยคเดียวของทั้งระบบ
+    assert.equal(withdraw, `งวดยกมาถอนไม่ได้ — ${HISTORICAL_CORRECTION_PATH}`);
   }
 });
 
@@ -1473,8 +1473,81 @@ test('โมดัลยกเลิก (ใบ pipeline): เงินรับ
   assert.deepEqual(salesOrderMoneyOutcome(draft, draftRows, 'cancel'), [
     'บันทึกการจ่ายไว้ 1 งวด ฿1,000.00 (ยังไม่ถึงบัญชี) — ยกเลิกแล้วงวดเป็นโมฆะ ถ้าลูกค้าจ่ายจริงให้แจ้งใหม่ที่ใบใหม่ของดีลนี้',
   ]);
-  // ใบย้อนหลังคงกติกาเดิม (ยกเลิกได้เฉพาะตอนไม่มีเงินรับแล้ว) — โมดัลไม่มีบรรทัดชุดนี้
-  assert.deepEqual(salesOrderMoneyOutcome({ origin: 'historical', status: 'approved' }, MONEY_ROWS, 'cancel'), []);
+  // ใบย้อนหลังพูดคนละชุด (งวดยกมาเป็นโมฆะตามใบ) — ไม่มีคำว่าเงินค้าง/ยกเงิน/คืนเงินของใบ pipeline (เทสต์ของชุดนั้นอยู่ข้างล่าง)
+  const hist = salesOrderMoneyOutcome({ origin: 'historical', status: 'approved' }, MONEY_ROWS, 'cancel');
+  assert.doesNotMatch(hist.join('\n'), /เงินค้าง|ยกเงิน|บันทึกคืนเงิน/);
+});
+
+/* ══ มติเจ้าของ 24/09 · ยกเลิกใบย้อนหลังที่อนุมัติแล้ว = งวดยกมาเป็นโมฆะตามใบ (mig 0387) ═════════════════════════════
+   ⭐ งวดยกมามีบนใบย้อนหลังเท่านั้น (ผู้เขียนมีแค่ RPC ใบย้อนหลังของ 0374/0379 · ใบย้อนหลังออก Rev./รับงวดย้ายเข้าไม่ได้)
+     ⇒ ตัดสินจาก `kind` ของแถวล้วน ไม่ต้องส่ง origin ของใบมา — ผู้เรียกที่ส่งแค่ `{ status }` (ตารางรายการ SO · ยอดบนหน้าใบ)
+       ถูกไปด้วยทุกตัว
+   ⭐ งวดยกมาของใบที่ตายแล้ว = โมฆะทุกสถานะ (รับรองแล้วก็ตาม) — ไม่ใช่เงินค้าง ไม่ต้องยก/คืน · ใบที่คีย์ใหม่รับรองอีกครั้ง */
+const HIST_OPENING = frozen({
+  id: 'SOI-H1', seq: 1, kind: 'opening', status: 'confirmed', amount: 196452,
+  coversFrom: '2026-01-01', coversTo: '2026-09-30', paidOn: '2026-01-05',
+  confirmedByName: 'บัญชี ก', confirmedAt: '2026-09-23T03:00:00Z', reportedAt: '2026-09-22T03:00:00Z',
+});
+const HIST_REGULAR = frozen({
+  id: 'SOI-H2', seq: 2, kind: 'regular', status: 'pending', amount: 65484, dueDate: '2026-10-01',
+});
+const HIST_APPROVED = { id: 'SOR-H1', origin: 'historical', status: 'approved', orderNumber: 'SO-26090010-0', totalAmount: 261936 };
+
+test('🔴 งวดยกมาของใบที่ยกเลิก = โมฆะทุกสถานะ · ไม่ใช่เงินค้าง · ใบที่ยังเดิน/งวดปกติ = กติกาเดิม', () => {
+  for (const status of ['confirmed', 'reported', 'rejected', 'pending']) {
+    const row = { ...HIST_OPENING, status };
+    assert.equal(installmentVoid(row, { status: 'cancelled' }), true, `opening ${status} บนใบยกเลิก`);
+    assert.equal(strandedInstallment(row, { status: 'cancelled' }), false, `opening ${status} ไม่ใช่เงินค้าง`);
+    assert.equal(installmentVoid(row, { status: 'approved' }), false, `opening ${status} บนใบที่อนุมัติอยู่`);
+    // ผู้เรียกที่ส่งทั้งใบ (แผงงวด · ทะเบียนบัญชี) ได้คำตอบเดียวกับผู้เรียกที่ส่งแค่ { status }
+    assert.equal(installmentVoid(row, { ...HIST_APPROVED, status: 'cancelled' }), true);
+  }
+  // งวดปกติของใบย้อนหลังที่ยกเลิก: กติกาเดิม (pending/rejected โมฆะ · มีเงิน = ไม่โมฆะ — แต่ด่านยกเลิกกันไว้ไม่ให้เกิด)
+  assert.equal(installmentVoid(HIST_REGULAR, { status: 'cancelled' }), true);
+  assert.equal(installmentVoid({ ...HIST_REGULAR, status: 'confirmed' }, { status: 'cancelled' }), false);
+  assert.equal(strandedInstallment({ ...HIST_REGULAR, status: 'confirmed' }, { status: 'cancelled' }), true);
+});
+
+test('🔴 ตารางรายการ SO + ยอดบนหน้าใบ: ใบย้อนหลังที่ยกเลิกทั้งที่งวดยกมารับรองแล้ว — ไม่นับเก็บแล้ว · ไม่ขึ้นเงินค้าง', () => {
+  const rows = [HIST_OPENING, HIST_REGULAR];
+  assert.equal(salesOrderPaymentCell(rows, null, '2026-10-05', 261936, 'cancelled'), null,
+    'เหลือแต่งวดโมฆะ = ไม่มีคอลัมน์งวด');
+  // ใบเดียวกันตอนยังอนุมัติอยู่: งวดยกมายังนับว่าเก็บแล้ว
+  const live = salesOrderPaymentCell(rows, null, '2026-10-05', 261936, 'approved');
+  assert.equal(live.paid, 1);
+  assert.equal(live.count, 2);
+  // ยอดบนหน้าใบ (page.js กรองด้วย installmentVoid ก่อน paymentRollup)
+  const kept = rows.filter((row) => !installmentVoid(row, { status: 'cancelled' }));
+  assert.deepEqual(kept, []);
+});
+
+test('ป้ายโมฆะบนแถวงวด: งวดยกมาบอกว่าโมฆะตามใบ (+ วันที่บัญชีรับรองไว้) · งวดอื่นคำเดิม · ไม่โมฆะ = null', () => {
+  assert.equal(installmentVoidNote(HIST_OPENING, { status: 'cancelled' }),
+    'โมฆะตามใบ — ยกเลิกเพื่อคีย์ใหม่ (บัญชีรับรองไว้ 23/09/2026)');
+  assert.equal(installmentVoidNote({ ...HIST_OPENING, status: 'rejected', confirmedAt: null }, { status: 'cancelled' }),
+    'โมฆะตามใบ — ยกเลิกเพื่อคีย์ใหม่');
+  assert.equal(installmentVoidNote(HIST_REGULAR, { status: 'cancelled' }), 'โมฆะ — ใบนี้ไม่ต้องตามเก็บแล้ว');
+  assert.equal(installmentVoidNote(HIST_OPENING, { status: 'approved' }), null);
+  assert.equal(installmentVoidNote({ ...HIST_REGULAR, status: 'confirmed' }, { status: 'cancelled' }), null);
+});
+
+test('โมดัลยกเลิกใบย้อนหลัง: งวดยกมาที่รับรองแล้ว/รอรับรองเป็นโมฆะตามใบ (บอกผู้รับรอง · ไม่ใช่เงินค้าง) · งวดค้างรับหลุด', () => {
+  const approved = HIST_APPROVED;
+  assert.deepEqual(salesOrderMoneyOutcome(approved, [HIST_OPENING, HIST_REGULAR], 'cancel'), [
+    'งวดยกมา ฿196,452.00 ที่บัญชีรับรองแล้ว (บัญชี ก · 23/09/2026) เป็นโมฆะตามใบ — ไม่ใช่เงินค้าง ไม่ต้องคืน/ยก'
+      + ' · ใบที่คีย์ใหม่ต้องให้บัญชีรับรองงวดยกมาอีกครั้ง',
+    'งวดที่ยังไม่ชำระ 1 งวด ฿65,484.00 หลุดจากยอดค้างรับ',
+  ]);
+  const reported = { ...HIST_OPENING, status: 'reported', confirmedByName: null, confirmedAt: null };
+  assert.deepEqual(salesOrderMoneyOutcome(approved, [reported], 'cancel'), [
+    'งวดยกมา ฿196,452.00 ที่รอบัญชีรับรองออกจากคิวบัญชี (บันทึกว่ายกเลิกตามใบ ไม่ใช่บัญชีตีกลับ)',
+  ]);
+  // ใบร่าง/รออนุมัติ: งวดยังไม่ตรึงยอด ไม่อยู่ในทะเบียนบัญชี = ไม่มีเรื่องเงินให้บอก
+  const draftRows = [{ ...HIST_OPENING, status: 'pending', frozenAt: null }, { ...HIST_REGULAR, frozenAt: null }];
+  assert.deepEqual(salesOrderMoneyOutcome({ ...approved, status: 'pending_approval' }, draftRows, 'cancel'), []);
+  assert.deepEqual(salesOrderMoneyOutcome(approved, [], 'cancel'), []);
+  // ไม่มีคำว่า Actual ในโมดัลของใบย้อนหลัง
+  assert.doesNotMatch(salesOrderMoneyOutcome(approved, [HIST_OPENING, HIST_REGULAR], 'cancel').join('\n'), /Actual/);
 });
 
 test('โมดัลอนุมัติ: ดีลนี้มีเงินค้างจากใบที่ยกเลิก = เตือนให้กด "ยกเงินจากใบที่ยกเลิก" หลังอนุมัติ', () => {

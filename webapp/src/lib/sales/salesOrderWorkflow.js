@@ -100,7 +100,7 @@ export function canEditSalesOrderContent(
 // สองขั้นแยกกัน (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
 // เหตุผลกรอกครั้งเดียวที่ขั้นแรก เพราะเป็นเจตนาเดียวที่ถูกแบ่งเป็นสองคลิก
 // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ย้อนอนุมัติ/ออก Rev. ไม่ได้ — ไม่มีใบเสนอราคาให้ออกฉบับใหม่
-//    (CHECK sales_orders_origin_shape ตรึงที่ฐานอีกชั้น) · อนุมัติแล้วข้อมูลผิด = AE Sup ยกเลิกใบแล้วคีย์ใหม่
+//    (CHECK sales_orders_origin_shape ตรึงที่ฐานอีกชั้น) · อนุมัติแล้วข้อมูลผิด = ผู้จัดการฝ่ายขายยกเลิกใบแล้วคีย์ใหม่
 //    (HISTORICAL_CORRECTION_PATH · มติ 22/09 — ฐานยกเลิกเอกสารแทนสัญญาตามใบเอง)
 export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
   return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order);

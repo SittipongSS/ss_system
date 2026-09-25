@@ -39,7 +39,7 @@ import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   installmentActionError, installmentConfirmOutlook, installmentDisplayStatus, installmentPlanDrift,
   installmentPrepaid, installmentRefunded, installmentReportOutcome, installmentStartBlock, installmentUnconfirmOutcome,
-  installmentVoid, openingCoverageEnd, paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments,
+  installmentVoid, installmentVoidNote, openingCoverageEnd, paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments,
   revisedInstallmentsNote, strandedInstallment,
 } from "@/lib/sales/salesOrderPayments";
 import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
@@ -669,7 +669,7 @@ export default function SalesOrderPaymentPanel({
                       /* ⚠️ ถอยได้ทางเดียวคือบัญชี "ถอนคำรับรอง" พร้อมเหตุผล (action `unconfirm` · มติผู้ใช้ 2026-08-13)
                          · ย้อนการอนุมัติ/ออก Rev. ไม่ถูกล็อกด้วยงวดที่คอนเฟิร์มแล้วอีก (PR1 · mig 0376 — งวดย้ายไปกับใบ Rev.)
                            และยกเลิกใบ pipeline ได้ด้วย (PR3 · mig 0378 — เงินค้างอยู่กับใบ → ยกเข้าใบใหม่/คืนเงิน) ·
-                           ใบย้อนหลังยังล็อกการยกเลิกตามเดิม (paymentLockReason)
+                           ใบย้อนหลัง: งวดปกติที่รับรองแล้วล็อกการยกเลิก · งวดยกมาไม่ล็อก (โมฆะตามใบ — มติ 24/09 · historicalCancelBlock)
                          ⇒ ต้องถามก่อนเสมอ (มติผู้ใช้ 2026-08-13) */
                       /* ⭐ โมดัลตัวเดียวกับคิวบนทะเบียนการชำระ (มติผู้ใช้ 2026-08-13) —
                          และมัน **โชว์หลักฐานก่อนกด** ซึ่งของเดิมไม่มี ทั้งที่หน้านี้เป็น
@@ -951,8 +951,10 @@ export default function SalesOrderPaymentPanel({
                         tone={row.preview ? "neutral" : (INSTALLMENT_STATUS_TONES[rowStatus] || "neutral")}
                         label={row.preview ? "ยังไม่เริ่มติดตาม" : (INSTALLMENT_STATUS_LABELS[rowStatus] || rowStatus)}
                       />
-                      {/* งวดโมฆะของใบที่ยกเลิก/ถูกแทน (review UI-3) — ป้าย "รอชำระ" ต้องไม่อ่านว่ายังต้องตามเก็บ */}
-                      {!row.preview && installmentVoid(row, order) ? <small>โมฆะ — ใบนี้ไม่ต้องตามเก็บแล้ว</small> : null}
+                      {/* งวดโมฆะของใบที่ยกเลิก/ถูกแทน (review UI-3) — ป้าย "รอชำระ" ต้องไม่อ่านว่ายังต้องตามเก็บ
+                          · งวดยกมาของใบย้อนหลังที่ยกเลิก (มติ 24/09 · mig 0387): ป้าย "ชำระแล้ว"/"บัญชีตีกลับ" ตามค่าในฐาน
+                            ต้องบอกว่าโมฆะตามใบ ไม่งั้นอ่านว่าเงินยังนับอยู่ หรือบัญชีเป็นคนตีกลับ */}
+                      {!row.preview && installmentVoid(row, order) ? <small>{installmentVoidNote(row, order)}</small> : null}
                       {/* คืนเงินแล้ว (0378) — วันคืน + ใบลดหนี้ต้องเห็นบนแถว (บัญชีถูกถามด้วยเลขนี้) */}
                       {rowStatus === "refunded" ? (
                         <small>
@@ -1146,8 +1148,8 @@ export default function SalesOrderPaymentPanel({
         </Modal>
       ) : null}
 
-      {/* ⚠️ ถอนคำรับรอง = กลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว (ยอดเก็บแล้วลด · "จ่ายถึง" อาจถอย) และปลดล็อก
-          การยกเลิกของใบย้อนหลัง (paymentLockReason — ใบ pipeline ยกเลิกได้อยู่แล้วตั้งแต่ PR3)
+      {/* ⚠️ ถอนคำรับรอง = กลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว (ยอดเก็บแล้วลด · "จ่ายถึง" อาจถอย) และเป็นก้าวแรกของการปลดล็อก
+          การยกเลิกใบย้อนหลังที่งวดปกติรับรองแล้ว (historicalCancelBlock — ใบ pipeline ยกเลิกได้อยู่แล้วตั้งแต่ PR3)
           ⇒ ต้องมีเหตุผลเท่ากับตอนตีกลับ ไม่ใช่กดแล้วจบ */}
       <InstallmentConfirmDialog
         open={!!confirmFor}

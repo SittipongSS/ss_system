@@ -23,7 +23,9 @@ import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPla
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
 // งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
-import { OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
+import {
+  HISTORICAL_CORRECTION_PATH, OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment,
+} from '@/lib/sales/historicalOrders';
 // เอกสารยืนยันคำสั่งซื้อของใบ (อ่านสองบ้าน) — ไฟล์นั้นไม่มี import (ไม่มีวงวน)
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 
@@ -157,13 +159,16 @@ export function installmentDisplayStatus(row) {
 /* ── เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติเจ้าของ 23/09 D4) ─────────────────────────────────────────
    ⭐ ยกเลิกใบแล้ว งวดที่มีเงิน (confirmed/reported) **อยู่กับใบเดิม** — ไม่หาย ไม่ต้องถอนคำรับรอง ⇒ "เงินค้าง" จนกว่าจะ
      ยกเข้าใบใหม่ของดีลเดียวกัน (0378 carry) หรือบัญชีบันทึกคืนเงินเต็มจำนวน · งวด pending/rejected = โมฆะ (PR0)
-   ⚠️ ตัดสินจากสถานะใบล้วน (ไม่ดู origin) — ใบย้อนหลังยกเลิกได้เฉพาะตอนไม่มีเงินรับแล้ว (paymentLockReason +
-     historicalCancelBlock) จึงไม่มีเงินค้างอยู่แล้ว · ทางออกสองทาง (คืน/ยก) เปิดเฉพาะใบ pipeline
+   ⚠️ ตัดสินจากสถานะใบ + ชนิดงวด (ไม่ดู origin) — ใบย้อนหลังยกเลิกได้เฉพาะตอนงวดปกติไม่มีเงินรับแล้ว/ไม่มีงวดรอตรวจ
+     (historicalCancelBlock + trigger ของ 0387) จึงไม่มีเงินค้าง · ทางออกสองทาง (คืน/ยก) เปิดเฉพาะใบ pipeline
+   ⭐ มติ 24/09 (mig 0387): **งวดยกมาไม่ใช่เงินค้าง** — ผู้จัดการฝ่ายขายยกเลิกใบย้อนหลังได้แม้งวดยกมารับรองแล้ว งวดนั้นเป็นโมฆะตามใบ
+     (installmentVoid ข้างล่าง) · ใบที่คีย์ใหม่รับรองงวดยกมาอีกครั้ง ⇒ ไม่มีอะไรให้ยก/คืน
    ⚠️ `refundedAt` อ่านจาก `select('*')` — ก่อนรัน 0378 คอลัมน์ไม่มี (undefined) = ยังไม่คืน ⇒ จอ/ทะเบียนไม่พัง */
 export const installmentRefunded = (row) => Boolean(String(row?.refundedAt ?? '').trim());
 
 export function strandedInstallment(row, order) {
   if (!row || order?.status !== 'cancelled') return false;
+  if (isOpeningInstallment(row)) return false;
   return ['confirmed', 'reported'].includes(row.status) && !installmentRefunded(row);
 }
 
@@ -171,11 +176,28 @@ export function strandedInstallment(row, order) {
    ใบยกเลิก/ถูกออก Rev. ทับ = ไม่มีงานให้เก็บเงินต่อ ⇒ งวดที่ยังไม่มีเงิน (pending/rejected) **ไม่ใช่ยอดค้างรับ ไม่ใช่เลยกำหนด**
    ⭐ ตัวตัดสินเดียวของทั้งระบบ — ทะเบียนบัญชี (`ledgerVoidInstallment`) · แผงงวด · ตารางรายการ SO ถามตัวนี้
      🐞 เดิมมีแต่ทะเบียนที่ตัด ⇒ โมดัลยกเลิกสัญญา "หลุดจากยอดค้างรับทันที" แต่แผงของใบเดียวกันยังขึ้น "ค้างรับ · เลยกำหนด"
-   ⚠️ reported/confirmed ไม่ใช่โมฆะ — เงินเข้าแล้ว/รอบัญชีตรวจ (เงินค้างจากใบที่ยกเลิก · strandedInstallment) */
+   ⚠️ reported/confirmed ไม่ใช่โมฆะ — เงินเข้าแล้ว/รอบัญชีตรวจ (เงินค้างจากใบที่ยกเลิก · strandedInstallment)
+   ⭐ **ยกเว้นงวดยกมา: โมฆะทุกสถานะ** (มติเจ้าของ 24/09 · mig 0387) — ผู้จัดการฝ่ายขายยกเลิกใบย้อนหลังเพื่อคีย์ใหม่ได้แม้บัญชี
+     รับรองงวดยกมาแล้ว · แถวคงเป็น confirmed ในฐาน (ประวัติการรับรอง) แต่ไม่ใช่เงินของใบที่ตายแล้ว — ใบที่คีย์ใหม่มีงวดยกมาของตัวเอง
+     ⇒ นับที่นี่ = เงินก้อนเดียวนับสองใบ
+     · ตัดสินจาก `kind` ของแถวล้วน ไม่ถาม origin ของใบ — งวดยกมามีบนใบย้อนหลังเท่านั้น (ผู้เขียนมีแค่ RPC ของ 0374/0379 ·
+       ใบย้อนหลังออก Rev./รับงวดย้ายเข้าไม่ได้ · ยามที่ historicalCancelSettleMigration.test.mjs) ⇒ ผู้เรียกที่ส่งแค่ `{ status }`
+       (ตารางรายการ SO · ยอดบนหน้าใบ) ได้คำตอบเดียวกับผู้เรียกที่ส่งทั้งใบ (แผงงวด · ทะเบียนบัญชี) */
 const DEAD_ORDER_STATUSES = Object.freeze(['cancelled', 'revised']);
 export function installmentVoid(row, order) {
   if (!row || !DEAD_ORDER_STATUSES.includes(order?.status)) return false;
+  if (isOpeningInstallment(row)) return true;
   return ['pending', 'rejected'].includes(row.status || 'pending');
+}
+
+/* ป้ายใต้สถานะของแถวงวดที่โมฆะ (แผงงวดบนใบ) — คืนข้อความ หรือ null (ไม่โมฆะ)
+   ⭐ งวดยกมาบอกว่า "โมฆะตามใบ" — ป้ายสถานะยังเป็น "ชำระแล้ว"/"บัญชีตีกลับ" ตามค่าในฐาน ถ้าไม่บอก คนอ่านจะเข้าใจว่า
+     เงินยังนับอยู่ หรือบัญชีเป็นคนตีกลับ (ฐานตีกลับให้ตอนยกเลิก · มติ 24/09) · รับรองไว้แล้ว = บอกวันที่บัญชีรับรอง */
+export function installmentVoidNote(row, order) {
+  if (!installmentVoid(row, order)) return null;
+  if (!isOpeningInstallment(row)) return 'โมฆะ — ใบนี้ไม่ต้องตามเก็บแล้ว';
+  const certified = row.status === 'confirmed' && row.confirmedAt ? ` (บัญชีรับรองไว้ ${fmtDate(row.confirmedAt)})` : '';
+  return `โมฆะตามใบ — ยกเลิกเพื่อคีย์ใหม่${certified}`;
 }
 
 /** เลขที่ใบลดหนี้ยาวได้เท่าเลขใบกำกับ (ช่องเดียวกันใน Express) */
@@ -597,7 +619,8 @@ export function installmentActionError(row, action, user, options = {}) {
     const opening = isOpeningInstallment(row);
     if (opening && action === 'schedule') return `${OPENING_INSTALLMENT_LABEL}ไม่มีกำหนดชำระ`;
     if (opening && action === 'withdraw') {
-      return `${OPENING_INSTALLMENT_LABEL}ถอนไม่ได้ — ถ้าข้อมูลผิดให้บัญชีตีกลับ แล้ว AE Sup ยกเลิกใบให้คีย์ใหม่`;
+      /* มติ 24/09 (mig 0387): ไม่ต้องให้บัญชีตีกลับก่อนแล้ว — ผู้จัดการฝ่ายขายยกเลิกใบได้ งวดยกมาเป็นโมฆะตามใบ */
+      return `${OPENING_INSTALLMENT_LABEL}ถอนไม่ได้ — ${HISTORICAL_CORRECTION_PATH}`;
     }
     // แจ้งชำระที่พกช่วงครอบมาด้วย = แก้ช่วงครอบทางอ้อม (route เขียนช่วงลงแถวเมื่อส่งมา) ⇒ ด่านเดียวกัน
     const touchesCoverage = action === 'coverage'
@@ -769,8 +792,9 @@ export function installmentActionError(row, action, user, options = {}) {
 
      ⚠️ **ของบัญชีเท่านั้น** — คนที่รับรองว่าเงินเข้าคือคนเดียวที่ถอนคำนั้นได้
      ⚠️ **ต้องมีเหตุผล** เท่ากับตอนตีกลับ: นี่คือการกลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว
-        และมันปลดล็อกการยกเลิกของใบย้อนหลังด้วย (ดู `paymentLockReason` — ย้อนการอนุมัติ/ออก Rev. ไม่ถามตัวนั้นแล้วตั้งแต่ PR1 ·
-        ยกเลิกใบ pipeline ไม่ถามตั้งแต่ PR3) · งวดที่บัญชีบันทึกคืนเงินแล้วถอนไม่ได้ (ถอนการบันทึกคืนเงินก่อน)
+        และเป็นก้าวแรกของการปลดล็อกการยกเลิกใบย้อนหลังที่งวดปกติรับรองแล้ว (historicalCancelBlock — งวดกลับเป็นรอตรวจ
+        ยังบล็อก บัญชีตีกลับต่อ · งวดยกมาไม่ล็อกการยกเลิกแล้ว มติ 24/09) · ย้อนการอนุมัติ/ออก Rev. ไม่ล็อกด้วยงวดที่รับรองแล้ว
+        ตั้งแต่ PR1 · ยกเลิกใบ pipeline ตั้งแต่ PR3 · งวดที่บัญชีบันทึกคืนเงินแล้วถอนไม่ได้ (ถอนการบันทึกคืนเงินก่อน)
         ⇒ ต้องมีร่องรอยว่าทำไม ไม่ใช่กดแล้วหายไปเฉย ๆ */
   if (action === 'unconfirm') {
     if (!canConfirmPayment(user)) return 'ถอนคำรับรองได้เฉพาะฝ่ายบัญชี';
@@ -858,19 +882,10 @@ export function installmentActionError(row, action, user, options = {}) {
   return 'คำสั่งไม่ถูกต้อง';
 }
 
-/**
- * **ยกเลิกใบย้อนหลัง** ได้ไหมเมื่อใบนี้มีงวดที่บัญชีรับรองแล้ว — ด่านของใบย้อนหลังเท่านั้น (กติกาเดิมทุกข้อ)
- * ⚠️ เงินที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง — ใบย้อนหลังไม่มีทางยก/คืนเงิน ⇒ ยกเลิกทับเงียบ ๆ ไม่ได้
- * ⭐ PR1 (mig 0376 · แผน so-payment-unlock-replan): ย้อนการอนุมัติ/ออก Rev. ไม่ถามตัวนี้แล้ว — งวดย้ายไปใบ Rev. ทั้งแถว
- * ⭐ PR3 (mig 0378 · มติ D4): **ยกเลิกใบ pipeline ไม่ถามตัวนี้แล้ว** — เงินรับแล้วอยู่กับใบเดิมเป็น "เงินค้างจากใบที่ยกเลิก"
- *   แล้วออกทางยกเข้าใบใหม่ของดีลเดียวกัน หรือบัญชีบันทึกคืนเงิน · route เรียกตัวนี้เฉพาะในบล็อก isHistoricalOrder
- *   ด้วยงวดที่อ่านสดแบบโยน error
- */
-export function paymentLockReason(rows = []) {
-  const confirmed = (Array.isArray(rows) ? rows : []).filter((r) => r.status === 'confirmed');
-  if (!confirmed.length) return null;
-  return `มีงวดที่บัญชีคอนเฟิร์มแล้ว ${confirmed.length} งวด — ต้องให้บัญชีจัดการก่อน`;
-}
+/* 🚫 `paymentLockReason` (งวดรับรองแล้วห้ามยกเลิกใบ — ทุกงวด) ถูกถอดแล้ว (มติเจ้าของ 24/09 · mig 0387)
+   ผู้เรียกคนสุดท้ายคือการยกเลิกใบย้อนหลัง ซึ่งตอนนี้ถาม `historicalCancelBlock` ตัวเดียว (งวดยกมาโมฆะตามใบ · งวดปกติที่มีเงินยังบล็อก)
+   · ย้อนการอนุมัติ/ออก Rev. ไม่ถามตั้งแต่ PR1 (งวดย้ายไปใบ Rev.) · ยกเลิกใบ pipeline ไม่ถามตั้งแต่ PR3 (เงินค้างอยู่กับใบ)
+   ⚠️ อย่าเขียนด่าน "งวดรับรองแล้วห้าม…" ชุดใหม่ที่นี่ — สองชุดเพี้ยนหากันแน่นอน (ยามที่ salesOrderPayments.test.mjs) */
 
 /* ══ PR1 · ย้อนการอนุมัติ + ออก Rev. ย้ายงวดทั้งแถว (mig 0376 · มติเจ้าของ 23/09) ═════════════════════════
    หลักการ "เงินหนึ่งก้อน = งวดหนึ่งแถว" — ข้อความทุกบรรทัดข้างล่างพูดตามสิ่งที่ RPC 0376 ทำจริง */
@@ -889,6 +904,32 @@ export function installmentsTotalMismatch(rows = [], total = 0) {
 }
 
 const sumOf = (rows, pick) => money(rows.filter(pick).reduce((acc, r) => acc + (Number(r.amount) || 0), 0));
+
+/* บรรทัดเรื่องเงินของโมดัลยกเลิก **ใบย้อนหลัง** (มติเจ้าของ 24/09 · mig 0387) — ผลที่เกิดจริงในทรานแซกชันเดียวกับการยกเลิก
+   · งวดยกมารับรองแล้ว: แถวคงไว้ (ประวัติ) แต่โมฆะตามใบ (installmentVoid) — ไม่ใช่เงินค้าง ใบที่คีย์ใหม่รับรองอีกครั้ง · บอกผู้รับรอง
+   · งวดยกมารอตรวจ: trigger ของ 0387 ตีกลับให้ พร้อมเหตุว่าเป็นการยกเลิก (ออกจากคิว + ป้ายเมนูของบัญชี)
+   · งวดปกติที่ตรึงยอดแล้วแต่ยังไม่มีเงิน: หลุดจากยอดค้างรับ (กติกา PR0)
+   ⚠️ งวดปกติที่มีเงิน/รอตรวจไม่มีบรรทัด — ด่านยกเลิก (historicalCancelBlock) ปิดปุ่มไว้ก่อนเปิดโมดัลแล้ว
+   ⚠️ ห้ามมีคำว่าเงินค้าง/ยกเงิน/คืนเงิน — ทางออกชุดนั้นเปิดเฉพาะใบ pipeline (0378) */
+function historicalCancelMoneyLines(list) {
+  const opening = list.find((r) => isOpeningInstallment(r) && ['confirmed', 'reported'].includes(r.status));
+  const open = list.filter((r) => !isOpeningInstallment(r) && isInstallmentFrozen(r)
+    && (r.status === 'pending' || r.status === 'rejected'));
+  let openingLine = null;
+  if (opening?.status === 'confirmed') {
+    const by = [String(opening.confirmedByName || '').trim(), opening.confirmedAt ? fmtDate(opening.confirmedAt) : '']
+      .filter(Boolean).join(' · ');
+    openingLine = `${OPENING_INSTALLMENT_LABEL} ${fmtMoney(opening.amount)} ที่บัญชีรับรองแล้ว${by ? ` (${by})` : ''} เป็นโมฆะตามใบ`
+      + ' — ไม่ใช่เงินค้าง ไม่ต้องคืน/ยก · ใบที่คีย์ใหม่ต้องให้บัญชีรับรองงวดยกมาอีกครั้ง';
+  } else if (opening) {
+    openingLine = `${OPENING_INSTALLMENT_LABEL} ${fmtMoney(opening.amount)} ที่รอบัญชีรับรองออกจากคิวบัญชี`
+      + ' (บันทึกว่ายกเลิกตามใบ ไม่ใช่บัญชีตีกลับ)';
+  }
+  return [
+    openingLine,
+    open.length ? `งวดที่ยังไม่ชำระ ${open.length} งวด ${fmtMoney(sumOf(open, () => true))} หลุดจากยอดค้างรับ` : null,
+  ].filter(Boolean);
+}
 
 /**
  * บรรทัดเรื่องเงินของโมดัลบนหน้าใบสั่งขาย — คืน `string[]` (ว่าง = ไม่มีเรื่องเงินให้บอก)
@@ -920,9 +961,9 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
   if (action === 'cancel') {
     /* ⭐ PR3 (mig 0378 · มติ D4): ยกเลิกใบที่มีเงินรับแล้วได้ — เงินอยู่กับใบนี้ต่อ ("เงินค้างจากใบที่ยกเลิก") ไม่หาย
        ไม่ต้องถอนคำรับรอง · ทางออก: ยกเข้าใบใหม่ของดีลเดียวกัน (หลังใบใหม่อนุมัติ) หรือบัญชีบันทึกคืนเงิน
-       ⚠️ ใบย้อนหลังคงกติกาเดิม (ยกเลิกได้เฉพาะตอนไม่มีเงินรับแล้ว/ไม่มีงวดรอตรวจ) ⇒ ไม่มีบรรทัดชุดนี้
+       ⚠️ ใบย้อนหลังพูดคนละชุด (historicalCancelMoneyLines) — ไม่มีเงินค้าง/ยก/คืน · งวดยกมาเป็นโมฆะตามใบ (มติ 24/09)
        ⚠️ "หลุดจากยอดค้างรับ" นับเฉพาะงวดที่ตรึงยอดแล้ว — งวดร่างไม่อยู่ในทะเบียนบัญชีอยู่แล้ว (พูดแล้วเป็นเท็จ) */
-    if (isHistoricalOrder(order)) return [];
+    if (isHistoricalOrder(order)) return historicalCancelMoneyLines(list);
     const open = list.filter((r) => isInstallmentFrozen(r) && (r.status === 'pending' || r.status === 'rejected'));
     const prepaid = list.filter(installmentPrepaid);
     const invoices = [...new Set([...confirmed, ...reported]

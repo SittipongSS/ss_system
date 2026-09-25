@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ReceiptText, Pencil, Wallet, FileCheck, MessagesSquare, Printer, ExternalLink } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
 import DateInput from "@/components/ui/DateInput";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
@@ -16,6 +17,7 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { customerHeadline } from "@/lib/master/customerAr";
 import { useApiList } from "@/lib/excise/useApiList";
+import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -41,6 +43,9 @@ const amountToCollectText = (o) => ((o.totalTax || 0) === 0
   ? "ยกเว้นภาษี"
   : fmtMoney(orderAmountToCollect(o)));
 const ORDER = ["draft", "pending", "received", "filing", "complete", "delivered"];
+// ประโยคท้ายป้ายของสายที่ป้อนฟอร์มแก้ไขเท่านั้น (ทะเบียน · ลูกค้า · สินค้า) — ดูมติที่ก้อน sources
+const EDIT_BLOCKED_NOTE = "ยังแก้ไขใบยื่นนี้ไม่ได้ เพราะฟอร์มแก้ไขต้องใช้ข้อมูลชุดนี้เลือกสินค้าและคิดภาษี";
+const EDIT_STALE_NOTE = "ฟอร์มแก้ไขจะใช้รายการรอบก่อน ไม่ใช่ล่าสุด";
 
 export default function FilingDetailPage() {
   const { id } = useParams();
@@ -49,10 +54,10 @@ export default function FilingDetailPage() {
   const canApprove = useCan("ra:approve"); // RA: file / reject / due date
   const canDelete = useCan("sales:delete");  // Senior AE+ / admin: delete
 
-  const { data: orders, loading, reload } = useApiList("/api/orders");
-  const { data: registrations } = useApiList("/api/excise-registrations");
-  const { data: customers } = useApiList("/api/customers");
-  const { data: products } = useApiList("/api/products");
+  const { data: orders, loading, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, reload } = useApiList("/api/orders");
+  const { data: registrations, loading: lRegistrations, error: registrationsError, staleError: registrationsStale, errorDetail: registrationsDetail, loaded: registrationsLoaded, reload: reloadRegistrations } = useApiList("/api/excise-registrations");
+  const { data: customers, loading: lCustomers, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList("/api/customers");
+  const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/products");
 
   const o = useMemo(() => orders.find((x) => x.id === id) || null, [orders, id]);
   const isExempt = (o?.totalTax || 0) === 0;
@@ -60,6 +65,98 @@ export default function FilingDetailPage() {
   // ลิสต์ customers ข้างบนมีไว้ให้ picker ของ OrderFormModal — ลูกค้าของใบยื่นใบนี้
   // ต้องอ่านรายตัว ไม่ใช่ find จากลิสต์ที่กรองทีม (ดู lib/master/useCustomerRecord.js)
   const customer = useCustomerRecord(o?.customerId, customers.find((c) => c.id === o?.customerId));
+
+  /* ── โหลดพัง ≠ ไม่พบใบยื่น · และสายรองล้มต้องไม่ปล่อยให้เปิดฟอร์มแก้ไขที่ขาดข้อมูล ──────────
+     🐞 ใบยื่นใบนี้มาจาก `orders.find(...)` ⇒ `/api/orders` ล้มเมื่อไร `orders` ค้างที่ `[]` แล้ว `o` เป็น null
+        จอเดิมจึงขึ้นหัว "ไม่พบรายการ · ใบยื่นนี้อาจถูกลบไปแล้ว" — อ่านว่าใบถูกลบ ทั้งที่ใบยังอยู่ครบ แค่โหลดไม่ขึ้น
+        ⇒ ทางแยกของสายนี้ต้องตัดสิน **ก่อน** บรรทัด "ไม่พบรายการ" เสมอ (ท่าเดียวกับหน้าแก้รอบ FC)
+     🪤 "มีของในมือ" ของสายใบยื่นคือ **ใบนี้** (`!o`) ไม่ใช่ความยาวลิสต์ — แคชระดับโมดูลที่ถ่ายไว้ก่อนใบนี้เกิด
+        (เช่นเพิ่งออกใบจาก SO แล้วกดเข้ามา) มีใบอื่นเต็มลิสต์แต่ไม่มีใบนี้
+
+     ⭐ **มติของจอนี้: สายไหนบล็อกอะไร** (หน้ารายละเอียดเป็นจออ่านเป็นหลัก ไม่ใช่ฟอร์ม)
+        · ใบยื่นชำระ (`blocks: "page"`) — ไม่มีใบในมือ = ไม่มีอะไรให้โชว์เลย ⇒ ทั้งหน้าเหลือป้าย
+        · ทะเบียนสรรพสามิต · รายชื่อลูกค้า · ทะเบียนสินค้า (`blocks: "edit"`) — เนื้อหน้าไม่ได้อ่านสามลิสต์นี้เลย
+          (รายการสินค้า/ภาษีบนใบเป็น snapshot ในตัวใบเอง · ลูกค้าอ่านรายตัวผ่าน useCustomerRecord) ของที่กินมันมี
+          ชิ้นเดียวคือ **ฟอร์มแก้ไข** (OrderFormModal): ทะเบียนหาย ⇒ ช่องสินค้าขึ้น "ไม่มีสินค้าที่อนุมัติแล้วของลูกค้านี้"
+          · ลูกค้าหาย ⇒ ทะเบียนของใบลูกค้าอื่นในนิติบุคคลเดียวกันหายจากตัวเลือก · สินค้าหาย ⇒ ภาษีในฟอร์มคิดจากราคา 0
+          ⇒ **ไม่ซ่อนหน้า** แต่พักปุ่ม "แก้ไขข้อมูล" / "แก้ไขและส่งกลับ" (ยังโชว์ พร้อมบรรทัดเหตุผล — กติกา
+          "ติดด่าน = โชว์แล้วบอกเหตุ") และป้ายหัวจอบอกว่าพักเพราะสายไหน
+        · หัวจอ (รหัส AR หน้าชื่อลูกค้า) อ่านจาก `customer` รายตัว ไม่ใช่ลิสต์ — ลิสต์ลูกค้าล้มจึงไม่ทำให้หัวจอแหว่ง
+     ⚠️ ป้ายกับการบล็อกคนละคำถาม (กติกาเดียวกับ /tax · /sahamit): มี `error` หรือรอบเบื้องหลังล้ม (`staleError`)
+        = ขึ้นป้ายเสมอ · บล็อกเฉพาะตอนไม่เคยโหลดสำเร็จ (`loaded` / `!o`) — มีแคชอยู่ก็ทำงานต่อได้ ป้ายบอกว่าเป็น
+        ของรอบก่อน (`staleNote`) · ประโยคท้ายป้ายผูกกับ **สายที่ล้มจริง** ทีละสาย ไม่ใช่ประโยคเดียวคลุมทุกกรณี
+     🪤 `empty` ของสายใบยื่น = ไม่มีใบในมือ **และรอบหน้าบ้านล่าสุดล้ม** (`ordersError`) ไม่ใช่ `staleError` — รอบเบื้องหลัง
+        ล้มได้ก็ต่อเมื่อรอบหน้าบ้านก่อนหน้าสำเร็จแล้ว และรอบนั้นตอบไปแล้วว่าไม่มีใบนี้ ⇒ "ไม่พบรายการ" ที่ยืนยันแล้วต้องไม่พลิก
+        เป็น "(ไม่ได้แปลว่าใบยื่นนี้ถูกลบไปแล้ว)" เพราะสลับแท็บแล้วเน็ตสะดุด
+     ⭐ **สายรองพูดเฉพาะตอนคนดูมีปุ่มแก้ไขจริง** (`editAvailable` — เงื่อนไขเดียวกับปุ่ม "แก้ไขข้อมูล"/"แก้ไขและส่งกลับ"):
+        ฝ่าย RA · ใบที่รับเงินแล้ว/ยื่นแล้ว/ส่งเอกสารแล้ว ไม่มีทางเปิดฟอร์มแก้ไขเลย ⇒ ป้ายแดง "ยังแก้ไขใบยื่นนี้ไม่ได้ เพราะ…"
+        คือเหตุผลปลอมของสิ่งที่ไม่มีอยู่ (และผิดกติกา "ไม่มีสิทธิ์ = ไม่โชว์") · ของบนหน้าที่เหลือไม่ได้อ่านสามลิสต์นี้ ⇒ ไม่มีอะไรต้องเตือน
+     ⭐ `pending` = สายรองที่ไม่เคยโหลดสำเร็จและยังโหลดอยู่ — ฟอร์มที่เปิดตอนนี้ได้ตัวเลือกว่าง/ภาษีจากราคา 0 เหมือนตอนล้ม
+        ⇒ ปุ่มแก้ไขพักรอ พร้อมเหตุผล "กำลังโหลด…" (ไม่ใช่ป้ายแดง — ยังไม่มีอะไรล้ม) */
+  const editAvailable = canAct && ["pending", "rejected"].includes(o?.status);
+  const sources = [
+    {
+      label: "ใบยื่นชำระ", error: ordersError || ordersStale, empty: !o && !!ordersError, detail: ordersDetail, reload, blocks: "page",
+      blockedNote: "ยังเปิดใบยื่นนี้ไม่ได้ (ไม่ได้แปลว่าใบยื่นนี้ถูกลบไปแล้ว)",
+      staleNote: "ข้อมูลใบยื่นที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
+    {
+      label: "ทะเบียนสรรพสามิต", error: editAvailable ? registrationsError || registrationsStale : null, empty: !registrationsLoaded, detail: registrationsDetail, reload: reloadRegistrations, blocks: "edit",
+      pending: lRegistrations && !registrationsLoaded, blockedNote: EDIT_BLOCKED_NOTE, staleNote: EDIT_STALE_NOTE,
+    },
+    {
+      label: "รายชื่อลูกค้า", error: editAvailable ? customersError || customersStale : null, empty: !customersLoaded, detail: customersDetail, reload: reloadCustomers, blocks: "edit",
+      pending: lCustomers && !customersLoaded, blockedNote: EDIT_BLOCKED_NOTE, staleNote: EDIT_STALE_NOTE,
+    },
+    {
+      label: "ทะเบียนสินค้า", error: editAvailable ? productsError || productsStale : null, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "edit",
+      pending: lProducts && !productsLoaded, blockedNote: EDIT_BLOCKED_NOTE, staleNote: EDIT_STALE_NOTE,
+    },
+  ];
+  const failing = sources.filter((s) => s.error);
+  const blocked = failing.filter((s) => s.empty);
+  const pageBlocked = blocked.some((s) => s.blocks === "page");
+  const editBlocked = blocked.filter((s) => s.blocks === "edit");
+  // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — ตัวที่ถูกทิ้งมักเป็นตัวที่บอกสาเหตุจริง
+  const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
+  /* เปิดใบไม่ได้ = พูดเรื่องนั้นเรื่องเดียว (ปุ่มแก้ไขไม่ได้อยู่บนจอให้พัก) · ไม่งั้นพูดทุกสายที่ล้ม — สายที่บล็อก
+     ใช้ blockedNote สายที่ยังมีแคชใช้ staleNote · Set กันประโยคเดียวกันซ้ำเมื่อสายรองล้มพร้อมกันหลายสาย
+     🪤 สายรองสายหนึ่งพักฟอร์มแล้ว ⇒ ตัด staleNote ของสายรองที่ยังมีแคชทิ้ง — "ยังแก้ไขไม่ได้" คู่กับ "ฟอร์มแก้ไขจะใช้
+        รายการรอบก่อน" ขัดกันเอง (ฟอร์มเปิดไม่ได้อยู่แล้ว) */
+  const said = pageBlocked
+    ? blocked.filter((s) => s.blocks === "page")
+    : failing.filter((s) => !(editBlocked.length && s.blocks === "edit" && !s.empty));
+  const loadError = failing.length
+    ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
+      ...new Set(said.map((s) => (s.empty ? s.blockedNote : s.staleNote))),
+    ].join(" · ")} · ${causes}`
+    : null;
+  // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
+  const loadErrorDetail = sourcesFailureDetail(failing);
+  /* ปุ่มลองใหม่ต้องบอกเองว่ากำลังลองอยู่ — ลองสายรองไม่ได้พาหน้าเข้า skeleton (ใบยังอยู่ในมือ)
+     ⇒ ไม่มีสถานะนี้ = กดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ */
+  const retrying = loading || lRegistrations || lCustomers || lProducts;
+  const notice = loadError ? (
+    <StatusNotice
+      tone="error"
+      className="mb-4"
+      detail={loadErrorDetail}
+      action={(
+        <Button size="sm" variant="ghost" onClick={() => failing.forEach((s) => s.reload())} disabled={retrying}>
+          {retrying ? "กำลังลองใหม่…" : "ลองใหม่"}
+        </Button>
+      )}
+    >
+      {loadError}
+    </StatusNotice>
+  ) : null;
+  /* ปุ่มที่เปิดฟอร์มแก้ไข — พักไว้พร้อมเหตุผล (ไม่ซ่อน) เมื่อสายที่ฟอร์มต้องใช้ไม่เคยโหลดสำเร็จ (ล้ม หรือยังโหลดอยู่)
+     ⚠️ ชื่อสายอยู่ **หลัง** "ดึงข้อมูลไม่ได้:" สำนวนเดียวกับป้าย — แทรกกลาง "ดึง…ไม่สำเร็จ" แล้วจุดคั่นสองสายตกกลางกริยา */
+  const editPending = sources.some((s) => s.blocks === "edit" && s.pending);
+  const editPaused = editBlocked.length > 0 || editPending;
+  const editPausedReason = editBlocked.length
+    ? `ยังแก้ไขไม่ได้ — ดึงข้อมูลไม่ได้: ${editBlocked.map((s) => s.label).join(" · ")} (ดูข้อความด้านบน)`
+    : editPending ? "กำลังโหลดข้อมูลของฟอร์มแก้ไข…" : undefined;
 
   const [formOpen, setFormOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
@@ -95,6 +192,14 @@ export default function FilingDetailPage() {
 
   const back = { href: "/tax/filings", label: "กลับไปหน้าการยื่นชำระ" };
 
+  // ⚠️ ต้องอยู่เหนือ "ไม่พบรายการ" — ดูเหตุผลที่ก้อน sources · `loading` ⇒ กดลองใหม่แล้วเนื้อเป็น skeleton ระหว่างรอ
+  if (pageBlocked) {
+    return (
+      <Workspace icon={<ReceiptText size={22} />} title="ใบยื่นชำระภาษีสรรพสามิต" back={back} loading={loading}>
+        {notice}
+      </Workspace>
+    );
+  }
   if (!loading && !o) {
     return (
       <Workspace icon={<ReceiptText size={22} />} title="ไม่พบรายการ" subtitle="ใบยื่นนี้อาจถูกลบไปแล้ว" back={back}>
@@ -134,6 +239,7 @@ export default function FilingDetailPage() {
         ? {
           id: "resubmit", label: "แก้ไขและส่งกลับ",
           kind: "submit", icon: Pencil, onClick: () => setFormOpen(true),
+          disabled: editPaused, disabledReason: editPausedReason,
         }
         : canApprove && o?.status === "received"
           ? (isExempt
@@ -161,12 +267,15 @@ export default function FilingDetailPage() {
     <Workspace
       icon={<ReceiptText size={22} />}
       title={o?.taxNoticeNumber || o?.id || "..."}
-      /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — อ่านสดจากทะเบียนที่หน้านี้โหลดอยู่แล้ว */
-      subtitle={customerHeadline(o?.customerName, customers.find((customer) => customer.id === o?.customerId)?.arCode)}
+      /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — อ่านจาก `customer` รายตัว (useCustomerRecord:
+         GET /api/customers/[id] โดยมีแถวในลิสต์เป็นค่าระหว่างรอ) ไม่ใช่ find จากลิสต์ตรง ๆ ⇒ ลิสต์ลูกค้าล้ม
+         หรือกรองทีมจนไม่เห็นลูกค้ารายนี้ หัวจอก็ยังมีรหัส AR */
+      subtitle={customerHeadline(o?.customerName, customer.arCode)}
       headerRight={headerRight}
       back={back}
       loading={loading && !o}
     >
+      {notice}
       {o && (
         <DetailPageLayout
           asideLabel="สรุปและจัดการใบยื่นชำระสรรพสามิต"
@@ -196,6 +305,7 @@ export default function FilingDetailPage() {
                     id: "edit", label: "แก้ไขข้อมูล", kind: "edit", icon: Pencil,
                     onClick: () => setFormOpen(true),
                     visible: canAct && ["pending", "rejected"].includes(o.status),
+                    disabled: editPaused, disabledReason: editPausedReason,
                   },
                   {
                     id: "print-notice", label: "ออกใบแจ้งชำระค่าภาษี",

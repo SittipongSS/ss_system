@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   HISTORICAL_APPROVE_TOAST, historicalAfterSaveSteps, historicalApprovalFacts, historicalCancelEffect,
-  historicalCoverageSegments, historicalOpeningRejectNote, historicalOverrideNote, historicalRejectDetail,
+  historicalCancelPrompt, historicalCancelToast, historicalCoverageSegments, historicalOpeningVoidSummary, historicalOpeningRejectNote, historicalOverrideNote, historicalRejectDetail,
   historicalServiceProgress, historicalStatusCopy, historicalWithdrawDetail, historicalWorkflowSteps,
   historicalZoneState, quoteLineText,
 } from './historicalOrderCopy.js';
@@ -374,6 +374,69 @@ test('ยกเลิก/ลบใบ: บอกว่าเอกสารแ�
   // โหลดสัญญาไม่ขึ้นแต่ใบชี้สัญญาอยู่ = พูดแบบมีเงื่อนไข ไม่เงียบ
   assert.match(collect(historicalCancelEffect(ORDER, null)), /ถ้ายังเป็นร่างหรือลงนามแล้ว/);
   assert.equal(historicalCancelEffect({ ...ORDER, serviceContractId: null }, null), null);
+});
+
+/* ── โมดัลยกเลิกใบย้อนหลัง (มติเจ้าของ 24/09 · mig 0387) ─────────────────────────────────────────────
+   ⭐ ผู้จัดการฝ่ายขาย (CD · CM · AE Sup · Admin — คนเดียวกับผู้อนุมัติ) ยกเลิกใบที่อนุมัติแล้วได้แม้งวดยกมารับรองแล้ว
+     ⇒ โมดัลต้องบอกก่อนกด: สัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ (ใครรับรองไว้) · รอบขายของโซนหยุด + ด่านนัดช่างรอใบใหม่
+       อนุมัติ **และ** บัญชีรับรองงวดยกมาของใบใหม่ · ทางคีย์ใหม่
+   🐞 คำนำเดิมของโมดัลพูดเรื่อง "ยอด Actual ถูกนำออก" / "ออกจากรออนุมัติ" — ไม่จริงกับใบย้อนหลังทุกสถานะ */
+test('โมดัลยกเลิกใบย้อนหลังที่อนุมัติแล้ว: หัว/คำนำของใบย้อนหลัง · งวดยกมารับรองแล้ว = หมายเหตุบังคับ · โซนหยุด + ทางคีย์ใหม่', () => {
+  const p = collect(historicalCancelPrompt(APPROVED, { installments: [CONFIRMED_OPENING, { ...REGULAR, frozenAt: '2026-09-22T06:00:00.000Z' }] }));
+  assert.equal(p.title, 'ยกเลิกใบสั่งขายย้อนหลัง');
+  assert.equal(p.lead, 'ใบ SO-26090051-0 จะเป็น “ยกเลิก” — ใบย้อนหลังไม่นับ Actual/รออนุมัติ ยอดจึงไม่ขยับ');
+  assert.equal(p.confirmLabel, 'ยืนยันยกเลิกใบย้อนหลัง');
+  assert.equal(p.noteRequired, true, 'เงินที่บัญชีรับรองออกจากทะเบียน — ต้องมีเหตุผลให้บัญชีเห็น');
+  assert.equal(p.noteLabel, 'หมายเหตุ (บังคับ อย่างน้อย 10 ตัวอักษร — บัญชีเห็นในประวัติ)');
+  assert.deepEqual(p.money, [
+    'งวดยกมา ฿196,452.00 ที่บัญชีรับรองแล้ว (กนกวรรณ · 22/09/2026) เป็นโมฆะตามใบ — ไม่ใช่เงินค้าง ไม่ต้องคืน/ยก'
+      + ' · ใบที่คีย์ใหม่ต้องให้บัญชีรับรองงวดยกมาอีกครั้ง',
+    'งวดที่ยังไม่ชำระ 1 งวด ฿65,484.00 หลุดจากยอดค้างรับ',
+  ]);
+  assert.deepEqual(p.notices, [
+    'รอบขายของโซน 4 โซนหยุดมีผลทันที — นัดบริการของโซนเหล่านี้ติดด่านจนกว่าใบที่คีย์ใหม่จะอนุมัติ'
+      + ' และบัญชีรับรองงวดยกมาของใบใหม่',
+    HISTORICAL_CORRECTION_PATH,
+  ]);
+  assert.doesNotMatch(JSON.stringify(p), /Actual จะถูกนำออก|ออกจาก "รออนุมัติ"|AE Sup/);
+  // งวดยกมารอรับรอง = ออกจากคิวบัญชีเอง ไม่บังคับหมายเหตุ
+  const reported = historicalCancelPrompt(APPROVED, { installments: [{ ...CONFIRMED_OPENING, status: 'reported' }] });
+  assert.equal(reported.noteRequired, false);
+  assert.equal(reported.noteLabel, 'หมายเหตุ (ไม่บังคับ)');
+});
+
+test('โมดัลยกเลิกใบย้อนหลังที่ยังไม่อนุมัติ: ไม่มีรอบขายของโซน/ทางแก้หลังอนุมัติ · หมายเหตุตามรหัส "อื่น ๆ" · ใบ pipeline = null', () => {
+  const p = collect(historicalCancelPrompt(ORDER, { installments: [OPENING, REGULAR] }));
+  assert.equal(p.lead, 'ใบ SO-26090051-0 จะเป็น “ยกเลิก” — ใบย้อนหลังไม่นับ Actual/รออนุมัติ ยอดจึงไม่ขยับ');
+  assert.deepEqual(p.money, []);
+  assert.deepEqual(p.notices, []);
+  assert.equal(p.noteRequired, false);
+  assert.equal(historicalCancelPrompt(ORDER, { installments: [], reasonCode: 'other' }).noteRequired, true);
+  assert.equal(historicalCancelPrompt(ORDER, { installments: [], reasonCode: 'other' }).noteLabel, 'หมายเหตุ (บังคับ)');
+  assert.equal(historicalCancelPrompt({ ...ORDER, origin: 'pipeline' }, { installments: [] }), null);
+});
+
+test('toast หลังยกเลิกใบย้อนหลัง: บอกสิ่งที่เกิดจริง (สัญญา · งวดยกมา) + ทางคีย์ใบใหม่ · ไม่พูดเรื่อง Actual', () => {
+  assert.equal(
+    collect(historicalCancelToast({ contractVoided: true, contractVoidedLabel: 'ใบสั่งซื้อของลูกค้า (PO) PO-SPW-2026-0118 (CT-SR-26090007-0)', openingVoided: 'confirmed' })),
+    'ยกเลิกใบย้อนหลังแล้ว — เอกสารแทนสัญญา ใบสั่งซื้อของลูกค้า (PO) PO-SPW-2026-0118 (CT-SR-26090007-0) ถูกยกเลิกตาม'
+      + ' · งวดยกมาเป็นโมฆะ · คีย์ใบใหม่ได้ที่ ใบสั่งขาย › SO ย้อนหลัง',
+  );
+  assert.equal(historicalCancelToast({ contractVoided: true, contractVoidedLabel: '', openingVoided: null }),
+    'ยกเลิกใบย้อนหลังแล้ว — เอกสารแทนสัญญาถูกยกเลิกตาม · คีย์ใบใหม่ได้ที่ ใบสั่งขาย › SO ย้อนหลัง');
+  assert.equal(historicalCancelToast({}), 'ยกเลิกใบย้อนหลังแล้ว — คีย์ใบใหม่ได้ที่ ใบสั่งขาย › SO ย้อนหลัง');
+  assert.equal(historicalCancelToast(null), 'ยกเลิกใบย้อนหลังแล้ว — คีย์ใบใหม่ได้ที่ ใบสั่งขาย › SO ย้อนหลัง');
+});
+
+/* audit ของ route ยกเลิก: ท้ายสรุปของใบ + หัวสรุปแถว audit ของงวด (ประวัติที่บัญชีเปิดดู) — บอกยอด · สถานะก่อนยกเลิก · ผู้รับรอง */
+test('สรุป audit งวดยกมาที่โมฆะตามใบ: รับรองแล้ว (ใครรับรอง) / รอรับรอง (ออกจากคิวบัญชี) · ไม่มี = null', () => {
+  assert.equal(collect(historicalOpeningVoidSummary({ row: CONFIRMED_OPENING, status: 'confirmed', amount: 196452 })),
+    'งวดยกมา ฿196,452.00 (รับรองแล้ว โดย กนกวรรณ) โมฆะตามใบ');
+  assert.equal(historicalOpeningVoidSummary({ row: { ...OPENING, status: 'reported' }, status: 'reported', amount: 196452 }),
+    'งวดยกมา ฿196,452.00 (รอรับรอง — ออกจากคิวบัญชี) โมฆะตามใบ');
+  assert.equal(historicalOpeningVoidSummary({ row: { ...CONFIRMED_OPENING, confirmedByName: null }, status: 'confirmed', amount: 1 }),
+    'งวดยกมา ฿1.00 (รับรองแล้ว) โมฆะตามใบ');
+  assert.equal(historicalOpeningVoidSummary(null), null);
 });
 
 // ── ตีกลับ · ดึงกลับ · บัญชีตีกลับงวดยกมา · toast ────────────────────────────────────────────────

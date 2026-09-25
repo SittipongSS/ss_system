@@ -119,13 +119,13 @@ import {
 } from "@/lib/sales/salesOrderFinanceApproval";
 import {
   HISTORICAL_EDITABLE_STATUSES, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
-  historicalCancelBlock, historicalEditPath, historicalRefsOf, isHistoricalOrder,
+  historicalCancelBlock, historicalCancelNoteError, historicalEditPath, historicalRefsOf, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 /* ⭐ ถ้อยคำ/ตรรกะของใบย้อนหลังอยู่ที่ `historicalOrderCopy` ทั้งชุด — หน้านี้ยาว ~1,600 บรรทัด
    และใบย้อนหลังพูดคนละเรื่องกับใบปกติแทบทุกจุด ⇒ ที่นี่แตกกิ่ง JSX อย่างเดียว ไม่เขียนคำเอง */
 import {
-  HISTORICAL_APPROVE_TOAST, historicalApprovalFacts, historicalCancelEffect, historicalCoverageSegments,
-  historicalOverrideNote, historicalRejectDetail, historicalServiceProgress, historicalStatusCopy,
+  HISTORICAL_APPROVE_TOAST, historicalApprovalFacts, historicalCancelEffect, historicalCancelPrompt, historicalCancelToast,
+  historicalCoverageSegments, historicalOverrideNote, historicalRejectDetail, historicalServiceProgress, historicalStatusCopy,
   historicalWithdrawDetail, historicalWorkflowSteps,
 } from "@/lib/sales/historicalOrderCopy";
 import HistoricalZonesCard from "@/components/salesPlanning/HistoricalZonesCard";
@@ -365,10 +365,13 @@ export default function SalesOrderDetailPage() {
     setToast({
       kind: action === "withdraw" ? "info" : "success",
       /* ⚠️ ข้อความของใบปกติพูดว่า "อัปเดต Actual แล้ว" ซึ่งไม่จริงกับใบย้อนหลังสักตัวอักษร —
-         ของใบนี้บอกสิ่งที่เกิดจริง (เอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS) */
+         ของใบนี้บอกสิ่งที่เกิดจริง (อนุมัติ: เอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS ·
+         ยกเลิก: สัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ · ทางคีย์ใหม่ — จากคำตอบของ route · มติ 24/09) */
       msg: (action === "approve" && isHistoricalOrder(order)
         ? HISTORICAL_APPROVE_TOAST
-        : ACTION_MESSAGE[action]) || "อัปเดตเรียบร้อยแล้ว",
+        : action === "cancel" && isHistoricalOrder(order)
+          ? historicalCancelToast(data)
+          : ACTION_MESSAGE[action]) || "อัปเดตเรียบร้อยแล้ว",
     });
     if (action === "save") setSaveState("saved");
     return data || true;
@@ -709,6 +712,10 @@ export default function SalesOrderDetailPage() {
   async function doCancel() {
     if (!cancelForm?.code) { setError("กรุณาเลือกเหตุผลที่ยกเลิก"); return; }
     if (cancelForm.code === "other" && !cancelForm.note.trim()) { setError('เลือก "อื่น ๆ" ต้องระบุหมายเหตุ'); return; }
+    /* ใบย้อนหลังที่งวดยกมารับรองแล้ว: หมายเหตุบังคับ ≥ 10 ตัวอักษร (บัญชีเห็นในประวัติ · มติ 24/09) — ตัวเดียวกับ route
+       ⚠️ คำใบ้ก่อนส่ง ไม่ใช่ตัวตัดสิน — งวดของจออาจเก่า · route อ่านงวดสดแล้วถามซ้ำ (400 ขึ้นในโมดัล) */
+    const noteError = historicalCancelNoteError(order, order?.installments, cancelForm.note);
+    if (noteError) { setError(noteError); return; }
     const payload = { reasonCode: cancelForm.code, reason: cancelForm.note.trim() };
     if (showReversal && cancelForm.reverseTo) {
       if (cancelForm.reverseTo === "lost" && !cancelForm.lostReason.trim()) { setError('เลือก "Lost" ต้องระบุเหตุผล'); return; }
@@ -1373,14 +1380,24 @@ export default function SalesOrderDetailPage() {
       },
     },
   ];
-  /* ⛔ ด่านยกเลิกใบย้อนหลังที่มีงวดรอบัญชีรับรอง — **ตัวเดียวกับที่ API ใช้ปฏิเสธ** (historicalCancelBlock)
-     ⇒ ปุ่มกับ API ถามตัวเดียวกัน คนกดเห็นเหตุ (และลำดับ "ให้บัญชีตีกลับก่อน") ตั้งแต่ก่อนเปิดโมดัล
+  /* ⛔ ด่านยกเลิกใบย้อนหลังที่งวดปกติรับเงินแล้ว/รอตรวจ — **ตัวเดียวกับที่ API ใช้ปฏิเสธ** (historicalCancelBlock)
+     ⇒ ปุ่มกับ API ถามตัวเดียวกัน คนกดเห็นเหตุ (และขั้นของบัญชีครบ "ถอนคำรับรองแล้วตีกลับ" · review 25/09) ตั้งแต่ก่อนเปิดโมดัล
+     ⚠️ ด่านความพร้อมของฐาน (0387 · historicalCancelSettleBlock) ถามที่ route เท่านั้น — จอไม่รู้ว่ารันมิกแล้วหรือยัง (503 ขึ้นในโมดัล)
+     ⭐ มติ 24/09 (mig 0387): งวดยกมาไม่ปิดปุ่มแล้ว — เป็นโมฆะตามใบ (โมดัลบอกผลก่อนกด)
      ⚠️ ค่านี้เป็น **คำใบ้ ไม่ใช่ตัวตัดสิน** — `order.installments` มาจาก loadOrder ซึ่งกลืนการอ่านพังเป็น
         รายการว่าง (ด่านจริงที่ route อ่านงวดสดแบบโยน error) · จอที่เปิดค้างไว้ก็ยังได้ 400 ⇒ โมดัลยังต้อง
         โชว์ error ของคำขอเองอยู่ดี */
   const historicalCancelBlocked = historicalCancelBlock(order, installments);
-  /* ผลเรื่องเงินของการยกเลิก (PR3 · mig 0378) — StatusNotice ในโมดัลยกเลิก · ใบย้อนหลังได้ [] (กติกาเดิม) */
-  const cancelMoneyLines = salesOrderMoneyOutcome(order, installments, "cancel");
+  /* ⭐ โมดัลยกเลิกของใบย้อนหลัง (มติเจ้าของ 24/09 · mig 0387) — หัว · คำนำ · เงิน · ผลหลังยกเลิก · ป้ายหมายเหตุ · ปุ่ม
+     มาจาก historicalCancelPrompt ตัวเดียว (ผู้จัดการฝ่ายขายยกเลิกได้แม้งวดยกมารับรองแล้ว — ต้องเห็นก่อนกดว่าอะไรหายไปพร้อมใบ)
+     🐞 คำนำเดิมเป็นของใบปกติ ("ยอด Actual จะถูกนำออก") ซึ่งไม่จริงกับใบย้อนหลังทุกสถานะ · ใบ pipeline = null (โมดัลเดิมทุกตัวอักษร) */
+  const historicalCancel = historical
+    ? historicalCancelPrompt(order, { installments, reasonCode: cancelForm?.code })
+    : null;
+  /* ผลเรื่องเงินของการยกเลิก (PR3 · mig 0378) — StatusNotice ในโมดัลยกเลิก · ใบย้อนหลังพูดชุดของตัวเอง (งวดยกมาเป็นโมฆะ) */
+  const cancelMoneyLines = historicalCancel
+    ? historicalCancel.money
+    : salesOrderMoneyOutcome(order, installments, "cancel");
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
     { id: "delete", kind: "delete", icon: Trash2, label: "ลบฉบับร่างถาวร", visible: role === "admin" && canHardDeleteSalesOrder(order), onClick: remove },
@@ -1931,13 +1948,16 @@ export default function SalesOrderDetailPage() {
       />
 
       {cancelForm && (
-        <Modal open onClose={closeCancel} title="ยกเลิก ใบสั่งขาย" size="sm" dismissible={!busy}>
+        <Modal open onClose={closeCancel} title={historicalCancel?.title || "ยกเลิก ใบสั่งขาย"} size="sm" dismissible={!busy}>
           <div className="p-2" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* ใบรออนุมัติที่ผู้ตรวจยกเลิก = ยอดออกจากกอง "รออนุมัติ" ไม่ใช่จาก Actual (มติ 2026-09-11) */}
+            {/* ใบรออนุมัติที่ผู้ตรวจยกเลิก = ยอดออกจากกอง "รออนุมัติ" ไม่ใช่จาก Actual (มติ 2026-09-11)
+                · ใบย้อนหลังไม่เคยนับกองไหน — คำนำของตัวเองทุกสถานะ (มติ 24/09) */}
             <p style={{ color: "var(--text-2)", margin: 0 }}>
-              {amountKind === "pending_approval"
-                ? `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" ทันที — เลือกเหตุผลที่ยกเลิก`
-                : "หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก"}
+              {historicalCancel
+                ? historicalCancel.lead
+                : amountKind === "pending_approval"
+                  ? `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" ทันที — เลือกเหตุผลที่ยกเลิก`
+                  : "หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก"}
             </p>
             {/* เอกสาร FM-SA-04 ของใบนี้ถูก void ตามไปด้วย (ย้อนกลับไม่ได้) — ต้องบอกก่อนกด ไม่ใช่รู้ทีหลัง */}
             {cancelSpecDocEffect ? <StatusNotice tone="warning">{cancelSpecDocEffect}</StatusNotice> : null}
@@ -1951,6 +1971,12 @@ export default function SalesOrderDetailPage() {
                 <span className="pre-line">{cancelMoneyLines.join("\n")}</span>
               </StatusNotice>
             ) : null}
+            {/* ⭐ ใบย้อนหลังที่อนุมัติแล้ว (มติ 24/09): รอบขายของโซนหยุด — ด่านนัดช่างรอใบใหม่อนุมัติและบัญชีรับรองงวดยกมา · ทางคีย์ใหม่ */}
+            {historicalCancel?.notices?.length ? (
+              <StatusNotice tone="warning" title="หลังยกเลิก">
+                <span className="pre-line">{historicalCancel.notices.join("\n")}</span>
+              </StatusNotice>
+            ) : null}
             <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
               <span style={{ color: "var(--text-2)" }}>เหตุผล</span>
               <Select value={cancelForm.code} onChange={(e) => setCancelForm((f) => ({ ...f, code: e.target.value }))}>
@@ -1959,7 +1985,8 @@ export default function SalesOrderDetailPage() {
               </Select>
             </label>
             <label style={{ display: "block", fontSize: "var(--fs-7)" }}>
-              <span style={{ color: "var(--text-2)" }}>หมายเหตุ {cancelForm.code === "other" ? "(บังคับ)" : "(ไม่บังคับ)"}</span>
+              {/* ใบย้อนหลังที่งวดยกมารับรองแล้ว: บังคับ ≥ 10 ตัวอักษร (historicalCancelNoteError — ตัวเดียวกับ route) */}
+              <span style={{ color: "var(--text-2)" }}>{historicalCancel ? historicalCancel.noteLabel : `หมายเหตุ ${cancelForm.code === "other" ? "(บังคับ)" : "(ไม่บังคับ)"}`}</span>
               <Textarea rows={2} value={cancelForm.note} onChange={(e) => setCancelForm((f) => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
             </label>
             {showReversal && (
@@ -1980,13 +2007,13 @@ export default function SalesOrderDetailPage() {
               </div>
             )}
             {/* 🐞 เหตุที่ API ตีกลับต้องอ่านได้ **ในโมดัลที่ยังเปิดอยู่** — แถบ error ของหน้าอยู่ใต้โมดัล
-                (ใบย้อนหลัง: งวดยกมารอบัญชีรับรอง · งวดที่รับรองแล้ว — ใบ pipeline ไม่ติดข้อนี้แล้วตั้งแต่ PR3 ·
-                ใบยื่นสรรพสามิต · สิทธิ์ผู้ตรวจ)
+                (ใบย้อนหลัง: งวดปกติที่รับเงินแล้ว/รอตรวจ · หมายเหตุของงวดยกมาที่รับรองแล้ว · trigger 0387 ตอนแข่งกับบัญชี —
+                ใบ pipeline ไม่ติดเรื่องเงินแล้วตั้งแต่ PR3 · ใบยื่นสรรพสามิต · สิทธิ์ผู้ตรวจ)
                 ของเดิมกดแล้วโมดัลค้างเงียบ ปุ่มกลับมากดได้ โดยไม่มีอะไรบอกว่าทำไมไม่ผ่าน */}
             {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="btn ghost" onClick={closeCancel} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-danger" onClick={doCancel} disabled={!!busy || !cancelForm.code}><XCircle size={15} /> ยืนยันยกเลิก SO</button>
+              <button type="button" className="btn btn-danger" onClick={doCancel} disabled={!!busy || !cancelForm.code}><XCircle size={15} /> {historicalCancel?.confirmLabel || "ยืนยันยกเลิก SO"}</button>
             </div>
           </div>
         </Modal>

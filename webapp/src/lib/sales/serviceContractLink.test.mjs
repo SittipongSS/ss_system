@@ -231,7 +231,7 @@ test('🔴 ใบย้อนหลังที่อนุมัติแล้
   // ข้อความต้องพูดถึงสิ่งที่คนกดจริง และบอกทางออกที่มีอยู่จริงทางเดียว
   const unlink = serviceContractLinkError(owner, null, ok);
   assert.match(unlink, /เอกสารแทนสัญญาเป็นของใบนี้ — ถอดสัญญาไม่ได้/);
-  assert.match(unlink, /AE Sup ยกเลิกใบ/, 'ต้องชี้ทาง HISTORICAL_CORRECTION_PATH');
+  assert.match(unlink, /ผู้จัดการฝ่ายขายยกเลิกใบ/, 'ต้องชี้ทาง HISTORICAL_CORRECTION_PATH (ผู้ยกเลิก = ผู้อนุมัติได้ · มติ 24/09)');
   assert.equal(serviceContractLinkError(owner, undefined, ok), unlink);
   assert.match(serviceContractLinkError(owner, otherDoc, ok), /เอกสารแทนสัญญาเป็นของใบนี้ — ผูกสัญญาไม่ได้/);
   // สิทธิ์มาก่อนล็อก · ใบที่ปิดไปแล้วยังได้คำเดิม
