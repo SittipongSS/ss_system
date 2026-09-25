@@ -12,8 +12,10 @@
 
 import { isSalesManager } from '@/lib/permissions';
 import { dealTypeOf } from '@/lib/salesPlanning';
+import { businessDate } from '@/lib/businessDate';
+import { businessTimeKey } from '@/lib/datePeriods';
 import {
-  HISTORICAL_UNAPPROVED_STATUSES, isHistoricalDeal, isHistoricalOrder,
+  HISTORICAL_CORRECTION_PATH, HISTORICAL_UNAPPROVED_STATUSES, isHistoricalDeal, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 
 export const CONTRACT_KINDS = Object.freeze(['scent_design', 'manufacturing', 'service']);
@@ -336,8 +338,108 @@ export const showSignedApprove = (contract, user) =>
  *  มีตัวนี้ไว้เพื่อให้ **ความหมาย** อยู่ที่เดียว ถ้าวันหนึ่งเงื่อนไขซับซ้อนขึ้น */
 export const contractInForce = (contract) => contract?.status === 'signed';
 /* ⚠️ ยกเลิกได้ถึงขั้น "รอหัวหน้ารับรอง" ด้วย — ใบที่ลงนามผิดฉบับต้องมีทางออก
-   ก่อนที่มันจะกลายเป็นสัญญาที่ใช้งานได้ (ใบที่ signed แล้วต้องทำบันทึกเพิ่มเติมแทน) */
+   ก่อนที่มันจะกลายเป็นสัญญาที่ใช้งานได้
+   ⭐ ใบที่ signed แล้ว **ไม่ใช่ทางนี้** — เป็นสิทธิ์ของผู้อนุมัติ (`signedCancelError` ข้างล่าง · มติ 24/09/2026)
+      ตัวนี้คือสิทธิ์ของทุกคนที่แก้สัญญาได้ ⇒ ห้ามเติม 'signed' ลงลิสต์นี้ (AE/AC จะยกเลิกสัญญาที่มีผลแล้วได้) */
 export const canCancelContract = (contract) => ['draft', 'awaiting_signature', 'awaiting_approval'].includes(contract?.status);
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ยกเลิกสัญญาที่ลงนามแล้ว — สิทธิ์ของผู้อนุมัติ (มติเจ้าของ 24/09/2026)
+   ══════════════════════════════════════════════════════════════════════════
+   *"ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ"* ⇒ คนที่ทำให้สัญญาเป็น signed ได้ (`canApproveExternalContract`
+   = admin · CD · CM · AE Sup — ด่านเดียวกับรับรองการลงนาม/อนุมัติเอกสารแทนสัญญา) ยกเลิกใบที่ลงนามแล้วได้ **ทุกชนิด**
+   · เพิ่มสิทธิ์อย่างเดียว — ทางยกเลิกเดิมของร่าง/รอลงนาม/รอรับรอง (`canCancelContract`) ไม่ขยับ
+   · ต้องมีเหตุผล · บันทึกเพิ่มเติมที่ยังไม่ยกเลิกถูกยกเลิกตามด้วยเหตุ "สัญญาแม่ … ถูกยกเลิก"
+   · ⭐ **งานบริการหยุดตั้งแต่วันที่ยกเลิก** (มติเจ้าของ ทับคำแนะนำ "ผ่านถึงสิ้นวัน") — นัดวันนั้นที่ยังไม่ปิดงานติดด่านด้วย
+     (`contractCoverageOn` ใน serviceContractLink.js) · วันยกเลิกคือวันจบจริงของทะเบียนต่อสัญญา (`contractEndDate`)
+   ⚠️ `approvedAt` **ไม่ถูกล้างตอนยกเลิก** และ 0323 บังคับให้ทุกใบที่เคย signed มีค่า ⇒ `cancelled + approvedAt`
+      แปลว่า "เคยมีผล" ได้แน่นอน — ด่านเข้าไซต์ใช้แยกนัดที่อยู่ในช่วงมีผล (ใบส่งงานเก่าต้องไม่กลายเป็นงดบริการย้อนหลัง)
+      ออกจากใบที่ไม่เคยมีผลเลย (ยกเลิกตอนร่าง/รอลงนาม = ไม่ครอบวันไหนทั้งนั้น) */
+
+/** ใบนี้เคยมีผลแล้วถูกยกเลิก — ต้องมีทั้งคนรับรอง (`approvedAt`) และเวลายกเลิกที่อ่านออก */
+export function contractCancelledAfterSigning(contract) {
+  if (contract?.status !== 'cancelled' || !contract?.approvedAt || !contract?.cancelledAt) return false;
+  return !Number.isNaN(new Date(contract.cancelledAt).getTime());
+}
+
+/** วันที่ยกเลิก (YYYY-MM-DD) ตามนาฬิกาไทย — วันแรกที่งานบริการหยุด · ไม่ใช่ใบที่ยกเลิกหลังลงนาม = null
+ *  ⚠️ ห้ามตัด `slice(0, 10)` จาก timestamptz เอง — ยกเลิกช่วงตี 0–7 จะได้วันที่ของเมื่อวาน */
+export const contractCancelDate = (contract) =>
+  (contractCancelledAfterSigning(contract) ? businessDate(contract.cancelledAt) : null);
+
+/** จุดเวลาที่ยกเลิก `'YYYY-MM-DD HH:MM'` ตามนาฬิกาไทย — ไว้เทียบกับเวลาปิดงานจริงของนัด (`visitClosedAtKey`)
+ *  ⭐ นัดวันยกเลิกผ่านด่านได้เฉพาะที่ **ปิดงานก่อนจุดนี้** (รีวิว 25/09 · มติเจ้าของ 24/09 "วันยกเลิกคือวันจบจริง")
+ *  ⚠️ วันกับเวลาต้องมาจากนาฬิกาไทยทั้งคู่ — ตารางนัดเก็บ date + time เป็นเวลาไทยล้วน (mig 0187/0188) */
+export function contractCancelMoment(contract) {
+  const date = contractCancelDate(contract);
+  return date ? `${date} ${businessTimeKey(contract.cancelledAt)}` : null;
+}
+
+/** วันจบจริงของสัญญา — วันหมดอายุ หรือวันที่ยกเลิกถ้ามาก่อน (ทะเบียนต่อสัญญานับถอยหลังจากตัวนี้)
+ *  ⚠️ ใบอื่นทุกสถานะคืนวันหมดอายุเหมือนที่ทะเบียนอ่านมาตลอด — เปลี่ยนเฉพาะใบที่ยกเลิกหลังลงนาม */
+export function contractEndDate(contract) {
+  const raw = String(contract?.expiryDate || '').trim();
+  const expiry = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+  const cancelled = contractCancelDate(contract);
+  if (!cancelled) return expiry;
+  return expiry && expiry < cancelled ? expiry : cancelled;
+}
+
+/* เอกสารแทนสัญญาที่ใบสั่งขายย้อนหลังของมันยังมีชีวิต — ยกเลิกที่ใบสั่งขาย (trigger 0374 ยกเลิกเอกสารตามเอง)
+   ⚠️ ใบกำพร้า (ใบสั่งขายหาย/ยกเลิกแล้ว แต่ใบอื่นยังผูกอยู่เลยค้าง signed) ยกเลิกที่นี่ได้ */
+function substituteOwnerLive(contract, linkedOrder) {
+  if (!isSubstituteContract(contract)) return false;
+  if (!linkedOrder || linkedOrder.id !== contract.metadata.historicalSalesOrderId) return false;
+  return isHistoricalOrder(linkedOrder) && linkedOrder.status !== 'cancelled';
+}
+
+/** ปุ่ม "ยกเลิกสัญญาที่ลงนามแล้ว" ควรโผล่ไหม — ผู้อนุมัติเห็นเสมอบนใบที่ลงนามแล้ว แล้วบอกเหตุตอนกด */
+export const showSignedCancel = (contract, user) =>
+  contract?.status === 'signed' && canApproveExternalContract(user);
+
+/** ด่านเดียวที่ทั้งปุ่มบนจอและ API ใช้ — คืนข้อความไทยเมื่อทำไม่ได้ หรือ null เมื่อผ่าน
+ *  ⚠️ `linkedOrder` = ใบสั่งขายย้อนหลังที่เอกสารแทนสัญญาชี้กลับ · ไม่ส่งมาก็อ่าน `linkedHistoricalOrder` ที่ GET แนบมา */
+export function signedCancelError(contract, user, { linkedOrder } = {}) {
+  if (!contract) return 'ไม่พบสัญญา';
+  if (!canApproveExternalContract(user)) return 'ยกเลิกสัญญาที่ลงนามแล้วได้เฉพาะ AE Supervisor (ผู้อนุมัติสัญญา)';
+  if (contract.status !== 'signed') return 'ทางนี้ยกเลิกได้เฉพาะสัญญาที่ลงนามแล้ว';
+  const owner = linkedOrder === undefined ? contract.linkedHistoricalOrder : linkedOrder;
+  if (substituteOwnerLive(contract, owner)) {
+    return `เอกสารแทนสัญญาเป็นของใบสั่งขายย้อนหลัง ${owner.orderNumber || owner.id} — ${HISTORICAL_CORRECTION_PATH}`;
+  }
+  return null;
+}
+
+/** ผลที่ต้องบอกในโมดัลยืนยัน — **ข้อเท็จจริงของใบนี้** ไม่ใช่คำอธิบายปุ่ม (กติกา approval-confirm-modals)
+ *  @param linkedServiceOrders ใบสั่งขายที่ยังผูกสัญญานี้ (ไม่นับใบยกเลิก/ใบที่ถูก Rev. แทน) · @param liveAddenda จำนวนบันทึกเพิ่มเติมที่จะยกเลิกตาม */
+export function signedCancelEffects({ contract = null, linkedOrder, linkedServiceOrders = [], liveAddenda = 0 } = {}) {
+  const number = contract?.contractNo || 'ใบนี้';
+  const orders = Array.isArray(linkedServiceOrders) ? linkedServiceOrders : [];
+  const names = orders.map((order) => order.orderNumber || order.id).join(', ');
+  const owner = linkedOrder === undefined ? contract?.linkedHistoricalOrder : linkedOrder;
+  const orphanSubstitute = isSubstituteContract(contract) && !substituteOwnerLive(contract, owner);
+  return [
+    `สัญญา ${number} เปลี่ยนเป็น “ยกเลิก” วันนี้ และผูกกับใบสั่งขายไม่ได้อีก`,
+    orders.length
+      ? `ใบสั่งขายที่ผูกสัญญานี้ ${orders.length} ใบ (${names}): นัดบริการตั้งแต่วันนี้ที่ยังไม่ปิดงานติดด่านสัญญา — `
+        + 'รอบใหม่เกิดเป็นร่าง · ใบส่งงานของนัดที่ขึ้นตารางแล้วตัดโซนเป็น “งดบริการ” จนกว่าจะผูกสัญญาฉบับใหม่ที่หน้าใบสั่งขาย'
+      : 'ไม่มีใบสั่งขายผูกสัญญานี้อยู่ — ไม่มีนัดบริการได้รับผล',
+    orders.length ? 'นัดก่อนวันนี้และนัดที่ปิดงานแล้วไม่เปลี่ยน · ถอนเครื่อง/สำรวจพื้นที่ยังทำได้' : null,
+    orders.length
+      ? 'ใบสั่งขายไม่ถูกแก้ — สถานะ งวด เงิน และ Actual ไม่เปลี่ยน · ลูกค้าเลิกจ้างจริงให้ยกเลิกใบสั่งขายแยกที่หน้าใบสั่งขาย'
+      : null,
+    orders.length ? 'ทะเบียนต่อสัญญาถือว่าสัญญาจบวันนี้' : null,
+    liveAddenda > 0 ? `บันทึกเพิ่มเติม ${liveAddenda} ฉบับที่แนบท้ายสัญญานี้ถูกยกเลิกตาม` : null,
+    isExternalContract(contract)
+      ? 'ไฟล์เอกสารที่แนบยังเปิดดูได้ · เลขที่ไม่นำกลับมาใช้'
+      : 'เลขที่ไม่นำกลับมาใช้ · พิมพ์ซ้ำมีลายน้ำ “ยกเลิก”',
+    orphanSubstitute
+      ? 'เอกสารนี้แทนสัญญาของใบสั่งขายย้อนหลัง — ใบย้อนหลังที่ยังผูกอยู่แก้ได้ทางเดียวคือยกเลิกใบแล้วคีย์ใหม่'
+      : (isHistoricalDeal(contract?.deal)
+        ? 'ออกเอกสารแทนสัญญาบริการฉบับใหม่ที่ดีลเดิม แล้วผูกที่หน้าใบสั่งขาย'
+        : 'ออกสัญญาฉบับใหม่ได้เมื่อดีลมีใบเสนอราคาที่อนุมัติอยู่ แล้วผูกที่หน้าใบสั่งขาย'),
+  ].filter(Boolean);
+}
 /* ลบได้ตราบใดที่ยังเป็นร่าง (มติผู้ใช้ 2026-08-21: "ถ้าร่างให้ลบได้ จนกว่าจะกดออกสัญญา")
    ร่างไม่มีทางมีเลขที่อยู่แล้ว — เงื่อนไขเลขที่คงไว้เป็นเข็มขัดนิรภัยของข้อมูลเก่า */
 export const canDeleteContract = (contract) => contract?.status === 'draft' && !contract?.contractNo;
@@ -354,7 +456,10 @@ export const canReviseContract = (contract) => contract?.status === 'awaiting_si
 export function contractReviseBlockReason(contract) {
   if (canReviseContract(contract)) return null;
   if (contract?.status === 'draft') return 'ใบนี้ยังเป็นร่าง — แก้ในใบได้เลย ไม่ต้องออกฉบับแก้ไข';
-  if (contract?.status === 'signed') return 'สัญญาที่ลงนามแล้วต้องทำบันทึกเพิ่มเติมสัญญา ไม่ใช่ออกฉบับแก้ไข (ข้อ 3.2)';
+  /* เลิกทั้งฉบับ = ผู้อนุมัติกด "ยกเลิกสัญญาที่ลงนามแล้ว" (มติ 24/09/2026) — ยังไม่ใช่ออก Rev. ทับของเดิม */
+  if (contract?.status === 'signed') {
+    return 'สัญญาที่ลงนามแล้วต้องทำบันทึกเพิ่มเติมสัญญา ไม่ใช่ออกฉบับแก้ไข (ข้อ 3.2) · เลิกทั้งฉบับให้ AE Supervisor ยกเลิกสัญญา';
+  }
   if (contract?.status === 'revised') return 'ใบนี้ถูกแทนที่ด้วยฉบับแก้ไขแล้ว — ออก Rev. ต่อที่ฉบับล่าสุด';
   return 'ใบที่ยกเลิกแล้วออกฉบับแก้ไขไม่ได้';
 }

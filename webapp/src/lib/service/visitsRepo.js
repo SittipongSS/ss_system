@@ -1,7 +1,7 @@
 // ── Data access ของรอบบริการ + ตารางนัด (mig 0188) ───────────────────────
 import { forbidden, notFound } from '@/lib/http';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
-import { canDoFieldWork } from '@/lib/permissions';
+import { canDoFieldWork, canViewService, canViewVisitReport } from '@/lib/permissions';
 import { visitWriteAccess } from './visitAccess';
 import { VISIT_STATUSES, isClosedVisit, isDraftVisit, isOpenVisit } from './visitStatus';
 import { requireService } from './sitesRepo';
@@ -104,8 +104,16 @@ export async function visitFieldRecordCount(supabase, visitId) {
  *    นัดใบนี้เป็นของเขา · `ownWorkOnly: true` บอกผู้เรียกว่า **ต้องจำกัดช่องที่แก้ได้**
  *    (ดู `FIELD_WORK_FIELDS` ใน route ของนัด) เพราะคนกลุ่มนี้ไม่ได้แก้ตาราง
  * 🔴 อ่านแถวก่อนตัดสิน — ด่านนี้เป็นด่าน *รายใบ* ไม่ใช่ด่าน cap ล้วน
+ * ⭐ `report` = **อ่านใบส่งงาน** (GET ของใบเท่านั้น) — ฝ่ายขายเปิดได้ด้วย (มติผู้ใช้ 2026-09-24
+ *    "ใบส่งงานเปิดให้ฝ่ายขายดูได้ด้วย") · คืน `readOnly: true` · ⚠️ ไม่มีผลกับ `edit` เลย —
+ *    ส่ง edit มาด้วยเมื่อไร ทางนี้ถูกข้าม ด่านเขียนเดิมตัดสินทั้งหมด
  */
-export async function requireVisit({ user, supabase, id, edit = false }) {
+export async function requireVisit({ user, supabase, id, edit = false, report = false }) {
+  if (report && !edit && user && !canViewService(user) && canViewVisitReport(user)) {
+    const visit = await findVisit(supabase, id);
+    if (!visit) return { response: notFound('ไม่พบนัดเข้าบริการ') };
+    return { visit, ownWorkOnly: false, readOnly: true };
+  }
   const access = requireService({ user, edit });
   const blocked = !!access.response;
   // ตกด่านชั้นนอกด้วยเหตุอื่นที่ไม่ใช่ "แก้ไม่ได้" (ไม่ล็อกอิน · อ่านไม่ได้) = จบตรงนี้

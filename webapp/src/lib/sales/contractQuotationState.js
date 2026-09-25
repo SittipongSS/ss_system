@@ -52,7 +52,10 @@ export function contractQuotationNotice(contract, quotation, { newerApproved = n
       return {
         tone: 'warning',
         title: `${quoteNo} ${closure.label}`,
-        body: 'สัญญาฉบับนี้ลงนามแล้ว จึงยังมีผลตามเอกสาร — หากเงื่อนไขเปลี่ยนจริงให้ทำบันทึกเพิ่มเติมสัญญา',
+        /* ทางที่สอง (มติ 24/09/2026): เลิกทั้งฉบับ = ผู้อนุมัติยกเลิกสัญญาที่ลงนามแล้วที่หน้านี้ — สัญญาไม่ถูกยกเลิกตามใบ
+           เสนอราคาเอง (`contractFollowsQuotationClosure` เป็นของร่างเท่านั้น) */
+        body: 'สัญญาฉบับนี้ลงนามแล้ว จึงยังมีผลตามเอกสาร — หากเงื่อนไขเปลี่ยนจริงให้ทำบันทึกเพิ่มเติมสัญญา '
+          + 'หรือให้ AE Supervisor ยกเลิกสัญญาที่หน้านี้ถ้าเลิกทั้งฉบับ',
       };
     }
     if (contractFollowsQuotationClosure(contract)) {

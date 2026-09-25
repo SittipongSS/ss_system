@@ -3,6 +3,7 @@ import { loadScoped } from '@/lib/scopedRow';
 import { withUser, fail, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { buildContractHTML, withCurrentHeaderRows } from '@/lib/sales/contractDocument';
+import { stampWatermark } from '@/lib/documents/documentShell';
 import { EXTERNAL_NO_DOCUMENT_NOTE, isExternalContract } from '@/lib/sales/contracts';
 import { hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
 import { loadContractQuotation } from '@/lib/sales/contractQuotationSource';
@@ -64,6 +65,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       }
     }
   }
+
+  /* ⭐ ใบที่ยกเลิกหลังตรึงเนื้อ (รอลงนาม · ⭐ ลงนามแล้วที่ผู้อนุมัติยกเลิก — มติ 24/09/2026) ต้องพิมพ์ซ้ำพร้อมลายน้ำ
+     "ยกเลิก" · ลายน้ำของตัวเรนเดอร์ไม่เคยถึงฉบับตรึง (เรนเดอร์ครั้งเดียวตอนออกเลข) ⇒ ประทับตอนเสิร์ฟ **ไม่เขียนกลับ**
+     (ฉบับตรึงในฐานต้องเป็นกระดาษที่ลูกค้าเซ็นทุกไบต์) · มีลายน้ำอยู่แล้ว = ไม่ซ้อน */
+  html = stampWatermark(html, contract.status === 'cancelled' ? 'ยกเลิก' : null);
 
   return new Response(html, {
     status: 200,

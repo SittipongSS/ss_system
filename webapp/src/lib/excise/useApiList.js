@@ -28,7 +28,12 @@ import { httpLoadFailure, thrownLoadFailure } from "@/lib/ui/loadFailure";
 //     ที่ไขคดี orders.updatedAt ได้ในไม่กี่นาทีจะหายจากจอ (ยาม: lib/ui/apiListErrorVisible.test.mjs)
 export function useApiList(url) {
   const [data, setData] = useState(() => (url ? apiCache.get(url) : null) ?? []);
-  const [loading, setLoading] = useState(() => !!url && !apiCache.has(url));
+  /* ⭐ มี url = เริ่มที่ "กำลังโหลด" เสมอ แม้แคชมีของ — effect ตอน mount ยิงรอบหน้าบ้าน (`reload()` ไม่ใช่ background)
+     ทุกครั้ง ⇒ commit ถัดไป loading เป็น true อยู่ดี ค่าตั้งต้นแค่บอกความจริงนั้นเร็วขึ้นหนึ่ง commit (ข้อมูลยังวาดจากแคชเหมือนเดิม)
+     🐞 เดิม `!apiCache.has(url)` ⇒ commit แรกของแท็บที่มีแคช (ถ่ายไว้ก่อนใบนี้เกิด) ได้ loading=false + หาใบไม่เจอ + ไม่มี error
+        = หน้ารายละเอียด (tax/filings/[id] · sahamit/po/[id]/edit) วาด "ไม่พบรายการ · ใบยื่นนี้อาจถูกลบไปแล้ว" ให้เห็นก่อน effect
+        จะพาเข้า skeleton — การนำทางของ App Router เป็น transition ⇒ effect วิ่งหลังเบราว์เซอร์วาดเฟรมนั้นไปแล้ว */
+  const [loading, setLoading] = useState(() => !!url);
   // `{ message, detail }` ของรอบหน้าบ้านที่ล้ม — แตกเป็น `error`/`errorDetail` ตอนคืนค่า
   const [failure, setFailure] = useState(null);
   /* ⭐ **"มีของในมือ" ≠ "ลิสต์ยาวกว่าศูนย์"** — ลิสต์ที่เพิ่งตอบ `200 []` คือ *รู้แล้ว*

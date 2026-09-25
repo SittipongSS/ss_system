@@ -23,19 +23,22 @@
 //   เป็นตัวเรียง (ถ้าใช้วันที่ช้าที่สุด เรื่องจะโผล่ตอนสายไปแล้ว)
 import { businessDate } from '@/lib/businessDate';
 import { addDays, daysBetween } from '@/lib/sales/paymentCoverage';
+import { contractEndDate } from '@/lib/sales/contracts';
 import { termOrderActive } from './terms';
 
 /* วันหมดของรอบขายหนึ่ง — **ถามที่สัญญาของใบแม่** (mig 0324)
    ⚠️ ไม่มีสัญญาผูก = ไม่มีวันหมด = ไม่ใช่ของที่ต้องตาม (รอบปลายเปิด) ⇒ คืน null
      ไม่ใช่เดาว่าหมดวันนี้ · ใบที่ยังไม่ผูกสัญญาเป็นเรื่องของ SA คนละคิวกัน
-   ⚠️ อ่าน `expiryDate` ตรง ๆ ไม่ผ่าน `contractSpanAt` — ตัวนั้นตอบว่า "วันนี้อยู่ในช่วงไหม"
-     ส่วนที่นี่ต้องการ *ตัววัน* เพื่อเอาไปนับถอยหลัง คนละคำถาม */
+   ⚠️ อ่านวันหมดตรง ๆ ไม่ผ่าน `contractSpanAt` — ตัวนั้นตอบว่า "วันนี้อยู่ในช่วงไหม"
+     ส่วนที่นี่ต้องการ *ตัววัน* เพื่อเอาไปนับถอยหลัง คนละคำถาม
+   ⭐ 24/09/2026: สัญญาที่ถูกยกเลิกหลังลงนามจบ **วันที่ยกเลิก** (หรือวันหมดอายุถ้ามาก่อน · `contractEndDate`)
+     ⇒ ไซต์ขึ้นทะเบียนให้ตามต่อ/ถอนเครื่องทันที · ใบอื่นทุกสถานะยังเป็นวันหมดอายุเหมือนเดิม
+     🪤 เรื่องที่ปิดไปแล้วเทียบด้วยวันหมดเดิม (`coveredEndDate`) ⇒ ไซต์นั้นจะโผล่ใหม่หนึ่งครั้งด้วยวันจบใหม่ (ตั้งใจ) */
 export function termEndDate(term, ordersById, contractsById) {
   const at = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
   const order = at(ordersById, term?.salesOrderId);
   const contract = order?.serviceContractId ? at(contractsById, order.serviceContractId) : null;
-  const to = String(contract?.expiryDate || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
+  return contract ? contractEndDate(contract) : null;
 }
 
 /* หน้าต่างเตือน — 90 วันตามแผน §PR-E

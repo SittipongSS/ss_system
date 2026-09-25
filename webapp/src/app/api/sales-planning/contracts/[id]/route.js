@@ -10,6 +10,7 @@ import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { purgeNotificationsMany } from '@/lib/notifications';
 import { historicalContractLockGate, loadLinkedHistoricalOrder } from '@/lib/sales/historicalContractLock';
+import { loadSignedCancelContext } from '@/lib/sales/contractSignedCancel';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const linked = await loadLinkedHistoricalOrder(supabase, current);
   if (linked.error) return fail(linked.error.message, 500);
 
+  /* ⭐ บริบทของโมดัล "ยกเลิกสัญญาที่ลงนามแล้ว" (มติเจ้าของ 24/09/2026) — ใบสั่งขายที่ผูกอยู่ + บันทึกเพิ่มเติมที่จะ
+     ยกเลิกตาม · ยิงฐานเฉพาะใบ signed ที่คนดูเป็นผู้อนุมัติ (คนอื่นไม่มีปุ่มนี้)
+     ⚠️ อ่านไม่ได้ = 500 ไม่ใช่ลิสต์ว่าง — ลิสต์ว่างคือ "ไม่มีใบไหนได้รับผล" ที่โมดัลพิมพ์เป็นข้อเท็จจริง */
+  const signedCancel = await loadSignedCancelContext(supabase, current, user);
+  if (signedCancel.error) return fail(signedCancel.error.message, 500);
+
   const { issuedHtml, ...rest } = current;
   return ok({
     ...rest,
@@ -82,6 +89,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     quotationNotice: contractQuotationNotice(current, quotation, { newerApproved }),
     revisions: revisions || [],
     linkedHistoricalOrder: linked.order,
+    signedCancelContext: signedCancel.context,
     canEdit: inSalesEditScope(user, row.deal) && canEditSalesPlanning(user),
   });
 });

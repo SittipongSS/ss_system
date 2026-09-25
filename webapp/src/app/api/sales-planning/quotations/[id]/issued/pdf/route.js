@@ -2,6 +2,7 @@ import { documentFileName } from '@/lib/documents/documentShell';
 import { loadScoped } from '@/lib/scopedRow';
 import { withUser, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
+import { issuedLatestRenderBlock } from '@/lib/sales/quotationWorkflow';
 import {
   captureIssuedQuotationPdf,
   downloadIssuedQuotationPdf,
@@ -37,9 +38,9 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
 
   const render = new URL(req.url).searchParams.get('render') || 'latest';
   // เหมือน HTML reprint: latest เสิร์ฟได้เฉพาะเมื่อเนื้อหาปัจจุบันยังตรงฉบับอนุมัติ
-  if (render === 'latest' && quote.approvalStatus !== 'approved') {
-    return fail('ใบถูกแก้ไขหลังอนุมัติ — ฉบับตรึงล่าสุดไม่ตรงเนื้อหาปัจจุบัน ต้องอนุมัติใหม่ก่อน', 409);
-  }
+  // ⭐ และใบยังไม่ถูกยกเลิก (มติ 24/09) — PDF ฉบับตรึงไม่มีลายน้ำ ส่งต่อไปแล้วอ่านเหมือนใบที่ยังมีผล
+  const latestBlock = render === 'latest' ? issuedLatestRenderBlock(quote) : null;
+  if (latestBlock) return fail(latestBlock, 409);
   const target = render === 'latest'
     ? snapshots[0]
     : snapshots.find((row) => String(row.issueSequence) === String(render));

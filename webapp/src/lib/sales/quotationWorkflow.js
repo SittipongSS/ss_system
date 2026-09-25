@@ -108,8 +108,13 @@ export function isQuotationAwaitingApproval(quotation) {
 }
 
 // ใบที่เพิ่งถูกตีกลับ = ยังไม่ยื่น + มีเหตุผลค้างอยู่ (trigger ล้างให้เมื่อยื่นใหม่)
+/* 🐞 ต้องเป็นใบที่ยังเดินอยู่ด้วย (มติ 24/09 เปิดปุ่มยกเลิกใบ) — ใบที่ถูกตีกลับแล้วถูกยกเลิกยังถือ
+   `rejectionReason` ค้าง (trigger 0164 ล้างเฉพาะตอน approvalStatus ≠ not_submitted) ⇒ ของเดิมโชว์แถบ
+   "ตีกลับโดย…" บนใบที่ตายแล้ว และหน้าทะเบียนนับเป็น "รอฉัน" ขณะที่ป้ายบนเมนูกรองด้วยสถานะ
+   (QUOTATION_ACTIONABLE_STATUSES) ไม่นับ = รายการกับป้ายไม่ตรงกัน แบบเดียวกับที่ ม-102/112 ไล่ปิด */
 export function quotationRejectionNotice(quotation) {
   if (!quotation || quotation.approvalStatus !== 'not_submitted') return null;
+  if (!EDITABLE_QUOTATION_STATUSES.has(quotation.status)) return null;
   const reason = String(quotation.rejectionReason || '').trim();
   if (!reason) return null;
   return {
@@ -164,4 +169,64 @@ export function canReviseQuotation(
   { canEdit = false, inScope = false } = {},
 ) {
   return Boolean(canEdit) && Boolean(inScope) && isRevisableQuotation(quotation);
+}
+
+// ── ยกเลิกใบ = สิทธิ์ของผู้อนุมัติ (มติเจ้าของ 24/09 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ") ──
+//
+// ⭐ **ช่องใหม่ ไม่ได้ย้ายสิทธิ์ของใคร** — ก่อนมีปุ่มนี้ ใบที่เคยยื่น/อนุมัติแล้ว (มีหลักฐานลายเซ็น 0125
+//   ซึ่ง FK RESTRICT) ทิ้งไม่ได้เลยนอกจากแอดมินบังคับลบ · ลบร่าง · ดึงกลับ · ตีกลับ · ออก Rev. อยู่ครบ
+// ⭐ ผู้ยกเลิก = ผู้อนุมัติ (`canApproveQuotation` = เจ้าของดีลปัจจุบัน + CD/CM/AE Sup/admin) ×
+//   `canEditSalesPlanning` × ขอบเขตแก้ของทีม — ตัวสุดท้ายตรวจที่ server เท่านั้น (loadScoped 'edit')
+// ⭐ **ถาวร** (มติ 24/09) — ไม่มีกู้คืน ไม่มีออก Rev. จากใบยกเลิก ถ้าจะเสนอใหม่ให้สร้างใบใหม่
+//   (ด่านทุกตัวปลายน้ำตัด 'cancelled' อยู่แล้ว: PATCH · ยื่น · อนุมัติ · Rev. · รับใบ · FC · สัญญา · คำร้องการเงิน)
+//
+// ใบที่ยกเลิกได้ = ยังเดินอยู่ (draft/sent/rejected) **และ** เคยผ่านสายตาผู้อนุมัติ:
+//   · ยื่นแล้วรออนุมัติ (pending) — ผู้อนุมัติคือคนที่ใบรออยู่ ยกเลิกตรงได้ไม่ต้องตีกลับก่อน
+//   · อนุมัติแล้ว / ใบ grandfather (approved · not_required)
+//   · ร่างที่ถูกดึงกลับ/ตีกลับหลังยื่น — ยังมีหลักฐานลายเซ็นผู้เสนอค้างอยู่ ⇒ DELETE ตอบ 409 เสมอ
+// ⚠️ ร่างที่ไม่เคยยื่น = "ลบ" ตามเดิม (ไม่มีหลักฐานอะไรให้เก็บ) · Won ต้อง "ย้อนการรับ" ก่อน
+const CANCELLABLE_APPROVAL_STATUSES = new Set(['pending', 'approved', 'not_required']);
+
+export function isCancellableQuotation(quotation, { hasSignatureEvidence = false } = {}) {
+  if (!quotation || !EDITABLE_QUOTATION_STATUSES.has(quotation.status)) return false;
+  return CANCELLABLE_APPROVAL_STATUSES.has(quotation.approvalStatus) || Boolean(hasSignatureEvidence);
+}
+
+/* ⚠️ ตัวเดียวที่ทั้ง GET (ธง `canCancel` ของจอ) และ POST /cancel ถาม — จอไม่คิดเอง
+   (บทเรียน IS-26080011: กติกาเดียวกันเขียนสองที่ = ปุ่มโชว์บนใบที่ API ตีกลับ) */
+export function canCancelQuotation(
+  quotation,
+  { approver = false, canEdit = false, inScope = false, hasSignatureEvidence = false } = {},
+) {
+  return Boolean(approver) && Boolean(canEdit) && Boolean(inScope)
+    && isCancellableQuotation(quotation, { hasSignatureEvidence });
+}
+
+/* บันทึกการยกเลิกบนใบ — route ยกเลิกเขียน `metadata.cancel` (แพตเทิร์นเดียวกับ metadata.unaccept)
+   ⚠️ ใบที่ยกเลิกผ่าน "ยกเลิกใบสั่งขายพร้อมย้อนสถานะ" (0116/0170) ตั้ง status ตรง ๆ ไม่มี metadata
+   ⇒ คืนโครงเปล่า ให้จอบอกแค่ว่ายกเลิกแล้ว ไม่เดาว่าใคร/ทำไม */
+export function quotationCancelRecord(quotation) {
+  if (quotation?.status !== 'cancelled') return null;
+  const cancel = quotation.metadata?.cancel || {};
+  return {
+    reason: String(cancel.reason || '').trim(),
+    byName: String(cancel.byName || '').trim(),
+    at: cancel.at || null,
+    fromApprovalStatus: cancel.fromApprovalStatus || null,
+  };
+}
+
+/* ฉบับตรึง "ล่าสุด" เสิร์ฟได้ไหม — ด่านเดียวของ `issued` (HTML) และ `issued/pdf`
+   คืนข้อความ 409 หรือ null · ตอบไม่ OK แล้วปุ่มพิมพ์ถอยไปเรนเดอร์สดเอง (quotePrint.js)
+   ⭐ ใบยกเลิกมาก่อน (มติ 24/09) — ฉบับตรึงถูกตรึงตอนอนุมัติจึงไม่มีลายน้ำ พิมพ์ออกไปเหมือนใบที่ยังใช้ได้
+     🐞 ใบที่ SO ย้อน Won แล้วยกเลิก (0116) เป็นแบบนี้มาตลอด · เรนเดอร์สดใส่ลายน้ำ "ยกเลิก" ให้
+   ⚠️ ฉบับระบุ seq (`?render=<n>`) ยังเปิดได้เสมอ — ประวัติต้องอ่านย้อนได้ */
+export function issuedLatestRenderBlock(quotation) {
+  if (quotation?.status === 'cancelled') {
+    return 'ใบนี้ถูกยกเลิกแล้ว — ฉบับตรึงล่าสุดใช้แทนเอกสารที่ยังมีผลไม่ได้ พิมพ์ซ้ำได้พร้อมลายน้ำ “ยกเลิก”';
+  }
+  if (quotation?.approvalStatus !== 'approved') {
+    return 'ใบถูกแก้ไขหลังอนุมัติ — ฉบับตรึงล่าสุดไม่ตรงเนื้อหาปัจจุบัน ต้องอนุมัติใหม่ก่อน';
+  }
+  return null;
 }

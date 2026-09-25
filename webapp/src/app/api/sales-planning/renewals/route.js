@@ -71,11 +71,12 @@ async function loadRenewalContext(supabase, user) {
      🐞 ก่อน 06/09/2026 ทะเบียนอ่าน `service_zone_terms.endDate` ซึ่งไม่มีใครเขียนเลย
        ⇒ ตอบ `[]` เสมอ · กระดิ่งไม่ยิงสักใบ · แถบสรุปเป็น 0 ทั้งสี่ช่องถาวร
      ⚠️ อ่านเท่าที่ใบอ้างถึงเท่านั้น — ดึงทั้งตารางคือดึงสัญญาทั้งบริษัท
-     ⚠️ ชุดคอลัมน์เดียวกับที่ `gateContext` ใช้ ⇒ สองที่อ่านของชุดเดียวกัน */
+     ⚠️ ชุดคอลัมน์เดียวกับที่ `gateContext` ใช้ ⇒ สองที่อ่านของชุดเดียวกัน
+     ⭐ `approvedAt` + `cancelledAt` (มติ 24/09/2026) — สัญญาที่ถูกยกเลิกหลังลงนามจบวันที่ยกเลิก (`contractEndDate`) */
   const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
   const { data: contracts, error: contractError } = contractIds.length
     ? await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase.from('sales_contracts')
-      .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate"')
+      .select('id, "contractNo", kind, status, "effectiveDate", "expiryDate", "approvedAt", "cancelledAt"')
       .in('id', chunk).order('id', { ascending: true })))
     : { data: [], error: null };
   if (contractError) throw new Error(contractError.message);

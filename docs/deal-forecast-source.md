@@ -131,6 +131,12 @@ than one relationship was found"* ⇒ ทะเบียนใบเสนอร
 ⭐ **`awaiting_revision`** — วินาทีที่กดสร้าง Rev. แถวเดิมพลิกเป็น `revised` ทันทีส่วน
 ฉบับใหม่ยังเป็นร่าง ⇒ ชั่วขณะนั้นไม่มีใบมีสิทธิ์เลย · ถ้าปล่อยตกกลับ FC ทั้งบริษัทจะ
 แกว่งทุกครั้งที่มีคนกดแก้ใบแล้วเด้งกลับตอนอนุมัติ ⇒ **ค้างยอดเดิมไว้**
+🐞 (แก้ 2026-09-24 พร้อมปุ่มยกเลิกใบของผู้อนุมัติ) ฉบับแก้ที่ **ถูกยกเลิก/ถูกปิด** ไม่นับเป็นฉบับที่รออยู่ —
+ของเดิมนับทุกแถวที่ revisionNo สูงกว่า ⇒ Rev. ที่ถูกยกเลิกทำให้ดีลค้าง `awaiting_revision` ตลอดกาล
+(ไม่เขียน ไม่ขึ้นคิว) · ตอนนี้ถอยเป็น `pointer_gone` / ใบอื่นตามกติกาปกติ
+
+⭐ **`pointer_gone` + ปักไว้** (แก้ 2026-09-24) — ใบที่ปักหลุดสิทธิ์โดยไม่มีใบอื่นเหลือ ⇒ ถอย manual **และปลดปัก**
+(`pinCleared`) · ของเดิมคืนก่อนถึงบล็อกปัก ⇒ ดีลกลายเป็น "ปัก manual" ถาวร ใบที่อนุมัติทีหลังไม่ขยับ FC อีก
 
 ## ใครเรียก resolver ได้บ้าง (สำคัญ)
 
@@ -140,7 +146,13 @@ than one relationship was found"* ⇒ ทะเบียนใบเสนอร
 |---|---|
 | `quotation_approved` (อนุมัติใบ) | ✅ ได้ — เหตุเดียว |
 | `quotation_deleted` (ลบใบ) | ❌ ดูแลตัวชี้ที่มีอยู่เท่านั้น |
+| `quotation_cancelled` (ผู้อนุมัติยกเลิกใบ — มติ 2026-09-24) | ❌ ดูแลตัวชี้ที่มีอยู่เท่านั้น · **ดีล Lost ไม่คิดใหม่เลย** |
+| `unaccept` (ย้อนการรับ) | ❌ ดูแลตัวชี้ที่มีอยู่เท่านั้น |
 | AE เลือกเองที่หน้าดีล/คิว | ✅ ผ่าน `chooseForecastSource` + ปักให้ |
+
+⭐ ชุดเหตุที่ขึ้นบันไดได้ (`CLAIMING_CAUSES`) ย้ายไปอยู่ใน `forecastSource.js` คู่กับ `previewForecastSource`
+(2026-09-24) — ตัวตัดสินเดียวของทั้ง `applyForecastSource` และพรีวิวในโมดัลยกเลิกใบ ⇒ โมดัลบอก "฿A → ฿B"
+ตรงกับตอนเขียนจริงเสมอ (รวมกรณีดีล manual ที่ได้ `needs_user_choice` = "FC ไม่เปลี่ยน")
 
 นี่คือสิ่งที่ทำให้ "ไม่ backfill" เป็นจริง — ดีลเก่าไม่มีเหตุการณ์มาปลุก resolver
 
@@ -148,6 +160,7 @@ than one relationship was found"* ⇒ ทะเบียนใบเสนอร
 
 `lib/sales/forecastSource.js` (สูตร) · `forecastSourceRepo.js` (เขียนฐาน) ·
 `POST /api/sales-planning/quotations/[id]/approval` · `DELETE /api/sales-planning/quotations/[id]` ·
+`POST /api/sales-planning/quotations/[id]/cancel` (+ `lib/sales/quotationCancelRepo.js`) ·
 `POST /api/sales-planning/deals/[id]/forecast-source` · `PATCH /api/sales-planning/deals/[id]` ·
 `POST /api/sales-planning/deals` · `GET .../deals/[id]/overview` · `GET /api/sales-planning/forecast-review` ·
 `/sa/forecast-review` · `DealForecastSourceCard` · `api/nav/counts` + `NAV_COUNT_KEYS` ·

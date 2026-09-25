@@ -1,6 +1,7 @@
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadScoped } from '@/lib/scopedRow';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
+import { issuedLatestRenderBlock } from '@/lib/sales/quotationWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,9 +38,10 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   // snapshot เก่าไม่ถูกลบ (ประวัติต้องอยู่) — ถ้ายังเสิร์ฟ "latest" ต่อ ผู้ใช้จะพิมพ์ได้
   // ฉบับเก่าที่ไม่มีลายน้ำร่าง ทั้งที่เนื้อหาจริงเปลี่ยนไปแล้ว จึงตอบ 409 ให้ปุ่มพิมพ์
   // fallback ไปเรนเดอร์สด (มีลายน้ำรออนุมัติ); ฉบับระบุ seq ตรง ๆ ยังเปิดไว้ดูประวัติ
-  if (render === 'latest' && quote.approvalStatus !== 'approved') {
-    return fail('ใบถูกแก้ไขหลังอนุมัติ — ฉบับตรึงล่าสุดไม่ตรงเนื้อหาปัจจุบัน ต้องอนุมัติใหม่ก่อน', 409);
-  }
+  // ⭐ ใบที่ถูกยกเลิก (มติ 24/09) ก็ 409 เหมือนกัน — เรนเดอร์สดใส่ลายน้ำ "ยกเลิก" · ด่านอยู่ใน lib ที่เดียว
+  //   (issuedLatestRenderBlock) เพราะ HTML กับ PDF ต้องตอบคำเดียวกันเสมอ
+  const latestBlock = render === 'latest' ? issuedLatestRenderBlock(quote) : null;
+  if (latestBlock) return fail(latestBlock, 409);
 
   const target = render === 'latest'
     ? snapshots[0]

@@ -20,7 +20,7 @@ import { loadSurveyFieldState, loadSurveySendBackState } from '@/lib/service/sur
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
 import { findPlan, loadVisitItems, requireVisit, visitFieldRecordCount } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
-import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
+import { evaluateVisitGate, gateBlocker, gatePassed, gateVisitBeforeChange } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
 import { canOverrideServiceGate } from '@/lib/permissions';
 import { PLANNING_FIELD_ERROR, planningFieldsIn } from '@/lib/service/visitAccess';
@@ -39,7 +39,9 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
-    const access = await requireVisit({ user, supabase, id });
+    /* ⭐ `report: true` — GET นี้คือ **ใบส่งงาน** ⇒ ฝ่ายขายอ่านได้ด้วย (มติผู้ใช้ 2026-09-24)
+       เส้นเขียนทุกตัวในไฟล์นี้ (PATCH/DELETE) ยังเรียก requireVisit แบบเดิม ไม่ได้รับทางนี้ */
+    const access = await requireVisit({ user, supabase, id, report: true });
     if (access.response) return access.response;
     /* ⭐ ส่งอุปกรณ์ + โซนของไซต์มาด้วย — ฟอร์มปิดงานรายเครื่องต้องรู้ว่าที่ไซต์นี้มี
        อะไรให้ทำบ้าง · ของเดิมหน้าปิดงานได้แค่ `visit` + `site` จาก /my-visits ซึ่ง
@@ -192,8 +194,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ⚠️ โหลดผ่าน `loadVisitGateContext` ตัวเดียวกับที่จอใช้ — ประกอบเองแยกกันเมื่อไร
             ปุ่มกับด่านจะพูดคนละเรื่อง */
       const gateCtx = await loadVisitGateContext(supabase, [before.siteId]);
+      /* 🔴 **สถานะก่อนแก้** (`gateVisitBeforeChange` · รีวิว 25/09) — ช่องอื่นเป็นค่าหลังแก้ตามเดิม แต่ร่างที่ยิงตรงเป็น
+         "เข้าแล้ว"/`closeFromAssets`/"ทำไม่ได้" ต้องไม่ยืมข้อยกเว้น "ปิดงานก่อนสัญญาถูกยกเลิก" ของนัดวันยกเลิก
+         (ร่างไม่เคยอยู่บนตาราง = ไม่มีทางปิดงานก่อนยกเลิก) */
       const gate = evaluateVisitGate(
-        { ...before, ...value },
+        gateVisitBeforeChange(before, value),
         gateContextForSite(gateCtx, before.siteId, { site }),
       );
       const override = String(body.gateOverrideReason ?? '').trim();

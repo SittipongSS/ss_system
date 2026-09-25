@@ -30,7 +30,8 @@ import { notifyToast } from "@/lib/feedback";
 import {
   CONTRACT_SOURCE_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
   HISTORICAL_CONTRACT_FILES_FROZEN_MESSAGE,
-  canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
+  canDeleteContract, canSignContract, contractCancelledAfterSigning, contractKindLabel, daysAwaitingSignature,
+  isContractEditable,
   externalApproveError, externalApproveOpenError, externalDocKindLabel, isExternalContract,
   historicalContractFilesFrozen, historicalContractLockReason, isSubstituteContract,
   showExternalApprove,
@@ -121,9 +122,17 @@ export default function ContractDetailPage() {
   const linkedOrder = contract?.linkedHistoricalOrder || null;
   const lockReason = historicalContractLockReason(contract, linkedOrder);
   const filesFrozen = historicalContractFilesFrozen(contract, linkedOrder);
+  /* ⭐ ยกเลิกสัญญาที่ลงนามแล้ว (มติเจ้าของ 24/09/2026 — สิทธิ์ของผู้อนุมัติ) — โมดัลพิมพ์ใบสั่งขายที่ผูกอยู่และจำนวน
+     บันทึกเพิ่มเติมที่ยกเลิกตามจาก `signedCancelContext` ที่ GET แนบมา (มาเฉพาะใบ signed ที่คนดูเป็นผู้อนุมัติ)
+     ⚠️ lifecycle สร้างใหม่ตามใบ — ข้อความของโมดัลเป็นค่านิ่งตอนสร้าง ไม่ใช่ฟังก์ชันของ record */
   const lifecycle = useMemo(
-    () => buildContractLifecycle({ canEdit, external, substitute, locked: !!lockReason }),
-    [canEdit, external, substitute, lockReason],
+    () => buildContractLifecycle({
+      canEdit, external, substitute, locked: !!lockReason,
+      contract,
+      linkedOrder,
+      signedCancel: contract?.signedCancelContext || null,
+    }),
+    [canEdit, external, substitute, lockReason, contract, linkedOrder],
   );
 
   // ช่องบังคับที่ยังว่าง — บอกตั้งแต่ก่อนกดออกสัญญา ไม่ใช่ให้ API ตอบ 400 ทีหลัง
@@ -158,6 +167,8 @@ export default function ContractDetailPage() {
   const onTransition = async (transitionId, values = {}) => {
     if (transitionId === "issue") return act("/issue", {}, "ออกสัญญาแล้ว");
     if (transitionId === "cancel") return act("/cancel", { reason: values.reason }, "ยกเลิกสัญญาแล้ว");
+    // route เดียวกัน — ด่านแยกทางตามสถานะของใบที่ server (ลงนามแล้ว = ด่านผู้อนุมัติ)
+    if (transitionId === "cancel-signed") return act("/cancel", { reason: values.reason }, "ยกเลิกสัญญาแล้ว — ใบสั่งขายที่ผูกอยู่ต้องผูกสัญญาฉบับใหม่ก่อนนัดครั้งถัดไป");
     if (transitionId === "revise") return revise();
     return false;
   };
@@ -649,13 +660,24 @@ export default function ContractDetailPage() {
           />
         </DetailCard>
 
-        {contract.status === "signed" && (
+        {/* ⭐ ใบที่ผู้อนุมัติยกเลิกหลังลงนาม (มติ 24/09/2026) ยังต้องเห็นว่าเคยมีผลช่วงไหน + ใครยกเลิกเมื่อไร —
+            งานบริการก่อนวันยกเลิกอ้างสัญญาฉบับนี้อยู่ */}
+        {(contract.status === "signed" || contractCancelledAfterSigning(contract)) && (
           <DetailCard icon={FileSignature} title="การลงนาม">
             <dl className={styles.factList}>
               <div><dt>วันที่ลงนาม</dt><dd>{fmtDate(contract.signedDate)}</dd></div>
               <div><dt>เริ่มมีผล</dt><dd>{fmtDate(contract.effectiveDate)}</dd></div>
               <div><dt>สิ้นสุด</dt><dd>{contract.expiryDate ? fmtDate(contract.expiryDate) : NA}</dd></div>
               <div><dt>ไฟล์ฉบับลงนาม</dt><dd>{naText(contract.signedFile?.fileName)}</dd></div>
+              {contractCancelledAfterSigning(contract) ? (
+                <div>
+                  <dt>ยกเลิกเมื่อ</dt>
+                  <dd>
+                    {fmtDate(contract.cancelledAt)}
+                    {contract.metadata?.cancelledByName ? ` · ${contract.metadata.cancelledByName}` : ""}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </DetailCard>
         )}

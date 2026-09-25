@@ -31,7 +31,7 @@ import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtNumber, naText } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { currentMonth } from "@/lib/datePeriods";
-import { canViewService } from "@/lib/permissions";
+import { canViewVisitReport } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 
@@ -47,13 +47,13 @@ function VisitRow({ href, children }) {
 
 export default function ServiceZonePage({ params }) {
   const { id, zoneId } = use(params);
-  /* หน้านี้เป็นของ **ทะเบียน** (เปิดอ่านได้ทุกคนที่เข้าฐานข้อมูล) · ใบส่งงานยังเป็นหน้าทำงานของฝ่ายบริการ
+  /* หน้านี้เป็นของ **ทะเบียน** (เปิดอ่านได้ทุกคนที่เข้าฐานข้อมูล) · ใบส่งงานเปิดได้เฉพาะฝ่ายบริการ + ฝ่ายขาย
      ⇒ แถวประวัติเป็นลิงก์เฉพาะคนที่เปิดใบได้จริง — คนอื่นเห็นข้อมูลเท่ากัน แต่ไม่มีทางกดไปเจอ Forbidden */
   const role = useRole();
   const team = useTeam();
   const teams = useTeams();
   const department = useDepartment();
-  const canOpenVisit = useMemo(() => canViewService({ role, team, teams, department }), [role, team, teams, department]);
+  const canOpenVisit = useMemo(() => canViewVisitReport({ role, team, teams, department }), [role, team, teams, department]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -223,9 +223,11 @@ export default function ServiceZonePage({ params }) {
             {zoneAssets.length > 0 && (
               <ContextCard
                 icon={AirVent} eyebrow="อุปกรณ์ในโซน" title={`${fmtNumber(zoneAssets.length)} ตัว`}
+                /* ⭐ รหัสเครื่องเป็นป้าย (ตัวตน) — ชื่อของเครื่องที่เพิ่มจากทะเบียนคือชื่อรุ่น ⇒ ป้ายชื่อซ้ำกันทุกตัว
+                   ในโซนเดียวกัน · จุดติดตั้งบอกว่าตัวไหนอยู่ตรงไหน · เครื่องเก่าที่ไม่มีรหัสใช้ชื่อแทน */
                 facts={zoneAssets.slice(0, 6).map((a) => ({
-                  label: a.label,
-                  value: [ASSET_KIND_LABELS[a.kind] || a.kind, a.serial].filter(Boolean).join(" · "),
+                  label: a.code || a.label,
+                  value: [a.code ? a.label : null, ASSET_KIND_LABELS[a.kind] || a.kind, a.spot, a.serial].filter(Boolean).join(" · "),
                 }))}
               />
             )}

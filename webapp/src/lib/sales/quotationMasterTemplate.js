@@ -1319,8 +1319,12 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
 
   // ลายน้ำ: ฉบับร่าง = ยังไม่ยื่น (not_submitted, mig 0155) หรือยื่นแล้วรออนุมัติ (pending)
   // หรือ override ผ่าน options (เช่น "ยกเลิก"); อนุมัติแล้วไม่มีลายน้ำ
+  /* ⭐ ใบที่ถูกยกเลิก (ปุ่มยกเลิกใบของผู้อนุมัติ มติ 24/09 · หรือ SO ย้อน Won ตาม 0116) = "ยกเลิก" มาก่อน
+     สถานะอนุมัติเสมอ — ใบยกเลิกคง approvalStatus เดิมไว้เป็นประวัติ (อาจเป็น approved/pending)
+     🐞 เดิมใบที่ยกเลิกหลังอนุมัติพิมพ์ออกมาสะอาดเหมือนใบที่ใช้ได้ (ฉบับตรึงล่าสุดก็เสิร์ฟให้) */
   const preApproval = ['not_submitted', 'pending'].includes(quote.approvalStatus);
-  const watermark = options.watermark || (preApproval ? L.t('draft') : '');
+  const watermark = options.watermark
+    || (quote.status === 'cancelled' ? L.t('cancelled') : preApproval ? L.t('draft') : '');
   // ผู้อนุมัติ: แสดงบล็อกลายเซ็นเมื่อมีชื่อผู้อนุมัติจริง (ไม่ใช่ฉบับร่าง)
   /* ตำแหน่งผู้อนุมัติ = ตำแหน่งเต็มของคนที่เซ็นจริง (มติผู้ใช้ 2026-09-22 "ชื่อ ตำแหน่ง ขอเป็นชื่อเต็ม")
      จาก `document_signature_evidence.signerRole` ของหลักฐานการอนุมัติ — ตัวตรึง (captureIssuedQuotationSnapshot)

@@ -24,7 +24,7 @@ import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Textarea from "@/components/ui/Textarea";
 import TimeInput from "@/components/ui/TimeInput";
-import { evaluateVisitGate, gateReasons } from "@/lib/service/visitGate";
+import { evaluateVisitGate, gateReasons, gateVisitBeforeChange } from "@/lib/service/visitGate";
 import { visitDeleteButton } from "@/lib/service/visitDelete";
 import { canOverrideServiceGate } from "@/lib/permissions";
 import { useRole } from "@/lib/roleContext";
@@ -202,9 +202,11 @@ export default function ServiceVisitModal({
   // ⚠️ ตัวเดียวกับที่ server ใช้ปฏิเสธ (visitGate.js) — ห้ามคิดเงื่อนไขซ้ำตรงนี้
   /* ⚠️ **บริบทด่าน ①② มาจากผู้เรียก** (PR-C) — โมดัลไม่ยิงโหลดเอง เพราะจอแม่
      โหลดมาทั้งสัปดาห์แล้ว · ไม่ส่งมา = ด่านตอบว่าติด ซึ่งถูกกว่าเดาว่าผ่าน */
+  /* ⚠️ สถานะของด่าน = สถานะที่บันทึกไว้ (`gateVisitBeforeChange` · รีวิว 25/09) ชุดเดียวกับ route PATCH — ร่างที่เลือก
+     "ทำไม่ได้" ต้องไม่ขึ้นว่าผ่านข้อสัญญาบนจอ แล้วโดน server ตีกลับตอนกดบันทึก */
   const gate = useMemo(
-    () => evaluateVisitGate({ ...form, id: visit?.id }, { ...(gateContext || {}), site }),
-    [form, site, visit?.id, gateContext],
+    () => evaluateVisitGate(gateVisitBeforeChange(visit, { ...form, id: visit?.id }), { ...(gateContext || {}), site }),
+    [form, site, visit, gateContext],
   );
   /* ข้ามด่านเป็นสิทธิ์ของแอดมิน (`canOverrideServiceGate`) ไม่ใช่ของทุกคนที่แก้งานบริการได้ — ด่านฝั่ง server
      ปฏิเสธอยู่แล้ว (route PATCH) ที่นี่แค่ไม่โชว์ปุ่มที่กดยังไงก็ไม่ผ่าน (D9: ป้ายเดิม "หัวหน้า" ผิด) */

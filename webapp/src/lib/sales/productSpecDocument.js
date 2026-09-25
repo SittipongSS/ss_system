@@ -86,7 +86,7 @@
 //     ใบมาตรฐานแผ่นสองเหลือ 13.26 พิมพ์ / 13.46 จอ
 import {
   documentFileName, documentFooter, documentHeader, esc, headerText, partyGrid, renderDocumentHTML, signatureBoxText,
-  signatureSection, watermarkBlock,
+  signatureSection, watermarkBlock, watermarkSheets,
 } from '@/lib/documents/documentShell';
 import { positionTitle } from '@/lib/documents/positionTitles';
 import {
@@ -183,7 +183,6 @@ export function productSpecWatermark({
 const WATERMARK_OPEN = '<!--psd:watermark-->';
 const WATERMARK_CLOSE = '<!--/psd:watermark-->';
 const WATERMARK_SLOT = /<!--psd:watermark-->[\s\S]*?<!--\/psd:watermark-->/g;
-const SHEET_OPEN = /(<article class="sheet[^"]*"[^>]*>)/g;
 
 const watermarkSlot = (text) => `${WATERMARK_OPEN}${watermarkBlock(text)}${WATERMARK_CLOSE}`;
 
@@ -197,7 +196,8 @@ export function applyProductSpecWatermark(html, text) {
   const source = String(html ?? '');
   if (!text) return source;
   if (source.includes(WATERMARK_OPEN)) return source.replace(WATERMARK_SLOT, watermarkSlot(text));
-  return source.replace(SHEET_OPEN, `$1${watermarkBlock(text)}`);
+  // ทางถอยใช้ตัววางลายน้ำของเปลือก (ย้ายไปเป็นของกลาง 24/09/2026 ให้สัญญา/บันทึกเพิ่มเติมใช้ร่วม) — พฤติกรรมเดิมทุกไบต์
+  return watermarkSheets(source, text);
 }
 
 /**

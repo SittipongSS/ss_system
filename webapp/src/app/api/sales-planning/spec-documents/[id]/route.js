@@ -4,6 +4,9 @@
  *   AC ยื่น → **AE เจ้าของดีลของ SO** อนุมัติ → **AE Supervisor** อนุมัติ (admin กดแทนได้ทุกขั้น)
  *   · แก้ก่อนอนุมัติขั้นสุดท้าย = Rev เดิม · อนุมัติแล้วกด "แก้ไขเอกสาร" = Rev+1 เลขที่เดิม
  *   · ทุกการยื่น/อนุมัติ/แก้ไข ต้องเช็คว่า SO ยัง `approved` อยู่
+ * ⭐ **มติเจ้าของ 24/09/2569 "ย้อน/ยกเลิก ให้สิทธิกับผู้ที่สามารถกดอนุมัติ"** — ผู้อนุมัติทั้งสองขั้น
+ *   (AE เจ้าของดีล · CD/CM/AE Sup) กด "แก้ไขเอกสาร" และ "ยกเลิกเอกสาร" บนใบที่เคยอนุมัติแล้วได้ ·
+ *   สาย AC คงสิทธิ์เดิมทุกอย่าง · ยื่น/ลบร่างยังเป็นของสาย AC · แก้ไข ⇒ แจ้ง AC · ยกเลิก ⇒ แจ้ง AC + เจ้าของดีล
  *
  * ⚠️ **ด่านของทุกปุ่มคือ `documentActions` ตัวเดียวกับที่หน้าเอกสารใช้** — ที่นี่ไม่ตัดสินเอง
  *   ว่าใครกดอะไรได้ (คิดซ้ำเมื่อไร จอกับ API จะยอมคนละอย่าง) · ก้อนที่เขียนลง Rev มาจาก
@@ -23,8 +26,8 @@ import { SALES_BELL_ROLES } from '@/lib/permissions';
 import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
 import {
   DOC_ACTION_KEYS, DRAFT_EXIT_MISMATCH, FRESH_DRAFT_VOID_BLOCK, canAeApproveProductSpecDocument, canIssueProductSpecDocument,
-  canSupApproveProductSpecDocument, docReasonError, documentActions, documentExitKey, draftDeleteBlock,
-  formatRevLabel, lineRemovedBlock, rejectStageOf, revisionPatch,
+  canReviseProductSpecDocument, canSupApproveProductSpecDocument, canVoidProductSpecDocument, docReasonError,
+  documentActions, documentExitKey, draftDeleteBlock, formatRevLabel, lineRemovedBlock, rejectStageOf, revisionPatch,
 } from '@/lib/sales/productSpecDocWorkflow';
 import {
   applyFinalApproval, buildDocumentSnapshot, deleteDraftDocument, loadSpecDocument,
@@ -111,11 +114,17 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 /* ── ปุ่มที่ `documentActions` ซ่อน: ตอบ 403 หรือ 409 ─────────────────────────
    ⚠️ ที่นี่ **ไม่ใช่ด่าน** — ด่านจริงคือ `documentActions` ข้างบน ซึ่งซ่อนปุ่มทั้งเมื่อ "ไม่มีสิทธิ์"
    และเมื่อ "สถานะเลยขั้นนั้นไปแล้ว" · ที่นี่แค่แยกสองกรณีให้ข้อความตรงความจริง: คนมีสิทธิ์
-   ที่กดซ้ำ/กดจากแท็บค้างต้องได้ "โหลดใหม่" ไม่ใช่ "ไม่มีสิทธิ์" */
+   ที่กดซ้ำ/กดจากแท็บค้างต้องได้ "โหลดใหม่" ไม่ใช่ "ไม่มีสิทธิ์"
+   ⭐ มติ 24/09/2569: แก้ไข/ยกเลิก ถามตัวตัดสินชุดเดียวกับ `documentActions` (สาย AC + ผู้อนุมัติ) ไม่ใช่ canIssue
+      — ผู้อนุมัติที่กดแก้ไขซ้ำหลังมีคนเปิด Rev ไปแล้วต้องได้ "โหลดใหม่" ไม่ใช่ "ได้เฉพาะ AC" ที่ไม่จริงแล้ว */
 const ACTION_ROLE = {
   submit: ({ user }) => canIssueProductSpecDocument(user?.role),
-  revise: ({ user }) => canIssueProductSpecDocument(user?.role),
-  void: ({ user }) => canIssueProductSpecDocument(user?.role),
+  revise: ({ user, dealOwnerId }) => canReviseProductSpecDocument(user, dealOwnerId),
+  void: ({
+    user, dealOwnerId, document, latest,
+  }) => canVoidProductSpecDocument({
+    user, dealOwnerId, document, latest,
+  }),
   // ดึงกลับ = ผู้ยื่นของ Rev นี้ · Rev ที่ไม่ได้รออนุมัติแล้ว (ดึงกลับไปแล้ว) = AC ที่กดซ้ำ
   withdraw: ({ user, latest }) => user?.role === 'admin'
     || (Boolean(user?.id) && latest?.submittedBy === user.id)
@@ -128,8 +137,8 @@ const ACTION_ROLE = {
 
 const ACTION_FORBIDDEN = {
   submit: 'ยื่นเอกสารได้เฉพาะ AC',
-  revise: 'แก้ไขเอกสาร (ออก Rev. ใหม่) ได้เฉพาะ AC',
-  void: 'ยกเลิกเอกสารได้เฉพาะ AC',
+  revise: 'แก้ไขเอกสาร (ออก Rev. ใหม่) ได้เฉพาะ AC หรือผู้อนุมัติของเอกสารนี้ (AE เจ้าของดีล · ผู้จัดการฝ่ายขาย)',
+  void: 'ยกเลิกเอกสารได้เฉพาะ AC — ผู้อนุมัติยกเลิกได้เมื่อเอกสารเคยอนุมัติแล้ว (ใบที่รออนุมัติใช้ "ตีกลับ")',
   withdraw: 'ดึงกลับได้เฉพาะผู้ยื่นเอกสาร Rev. นี้',
   ae_approve: 'ขั้นนี้เป็นของ AE เจ้าของดีลของใบสั่งขายนี้',
   sup_approve: 'ขั้นนี้เป็นของ AE Supervisor',
@@ -141,12 +150,14 @@ function hiddenActionResponse(action, { document, latest, user, dealOwnerId }) {
   if (!latest) return fail('เอกสารนี้ไม่มี Rev. — แจ้งผู้ดูแลระบบ', 500);
   /* ⭐ มติ 23/09/2569 "ซ่อนปุ่มยกเลิกช่วงร่าง" — ร่างที่ยังไม่เคยยื่นมีแค่ "ลบร่าง" (`documentExitKey`)
      ⇒ AC ที่ยิง void มาจากแท็บค้าง/ยิงตรงต้องได้ทางที่ใช้ได้จริง ไม่ใช่ "สถานะเปลี่ยนแล้ว"
-     (ใบไม่ได้ขยับเลย โหลดใหม่กี่รอบก็ยกเลิกไม่ได้) */
+     (ใบไม่ได้ขยับเลย โหลดใหม่กี่รอบก็ยกเลิกไม่ได้)
+     ⚠️ เฉพาะสาย AC — ผู้อนุมัติไม่มีปุ่มลบให้ชี้ (ร่างที่ไม่เคยยื่นไม่เคยอนุมัติ ⇒ ตกไป 403 ข้างล่าง) */
   if (action === 'void' && canIssueProductSpecDocument(user?.role)
     && documentExitKey(document, latest) === 'remove') {
     return conflict(FRESH_DRAFT_VOID_BLOCK);
   }
-  if (ACTION_ROLE[action]({ user, latest, dealOwnerId })) return conflict(STALE);
+  // ⚠️ ส่ง `document` ด้วย — ยกเลิกของผู้อนุมัติขึ้นกับว่าใบเคยอนุมัติหรือยัง (`currentRevNo`)
+  if (ACTION_ROLE[action]({ user, latest, dealOwnerId, document })) return conflict(STALE);
   return forbidden(ACTION_FORBIDDEN[action]);
 }
 
@@ -154,6 +165,11 @@ function hiddenActionResponse(action, { document, latest, user, dealOwnerId }) {
    ยื่น ⇒ AE เจ้าของดีล · AE อนุมัติ ⇒ AE Supervisor ทุกคนที่ active (`SALES_BELL_ROLES` — CD/CM อนุมัติขั้นนี้ได้
    แต่ไม่รับกระดิ่ง · มติ 2026-09-24 ข้อ 6) · ตีกลับ ⇒ ผู้ยื่น ·
    อนุมัติขั้นสุดท้าย ⇒ ผู้ยื่น + AE เจ้าของดีล
+   ⭐ มติ 24/09/2569 (ผู้อนุมัติย้อน/ยกเลิกได้):
+     · แก้ไขเอกสาร ⇒ ผู้ยื่นฉบับที่อนุมัติ + ผู้ออกเอกสาร (สาย AC) — Rev ใหม่ต้องให้ AC ยื่น และ AC **ไม่มีคิวงาน**
+       ของเอกสาร ⇒ ไม่แจ้ง = Rev ที่ผู้อนุมัติเปิดค้างเงียบจนกว่าจะมีคนบังเอิญเปิดหน้า
+     · ยกเลิก ⇒ ผู้ยื่น (Rev ล่าสุด + ฉบับที่อนุมัติ — Rev ใหม่ที่ยังไม่ยื่นไม่มีผู้ยื่น) + ผู้ออกเอกสาร + AE เจ้าของดีล
+       (รวมยกเลิกที่ AC กดเอง ซึ่งเดิมไม่แจ้งใคร)
    ⚠️ ไม่แจ้งตัวเอง (admin กดแทนเจ้าของดีล/ผู้ยื่นกดเองก็ไม่ต้องเด้งหาตัวเอง)
    ⚠️ fire-and-forget หลังตอบ — การอนุมัติบันทึกไปแล้ว แจ้งเตือนพลาดต้องไม่ทำให้ตอบ error
       (`notifyUsers` กลืน error เองแล้ว · ไล่รายชื่อ ae_supervisor ต้องอ่านบัญชีทั้งระบบ
@@ -169,7 +185,7 @@ function describe({ document, revision, product, salesOrder }) {
   return { head, body };
 }
 
-async function recipientsFor(supabase, action, { latest, dealOwner }) {
+async function recipientsFor(supabase, action, { latest, approved, document, dealOwner }) {
   if (action === 'submit') return [dealOwner?.id];
   if (action === 'ae_approve') {
     const directory = await loadUserDirectory(supabase);
@@ -179,6 +195,8 @@ async function recipientsFor(supabase, action, { latest, dealOwner }) {
   }
   if (action === 'reject') return [latest?.submittedBy];
   if (action === 'sup_approve') return [latest?.submittedBy, dealOwner?.id];
+  if (action === 'revise') return [latest?.submittedBy, document?.createdBy];
+  if (action === 'void') return [latest?.submittedBy, approved?.submittedBy, document?.createdBy, dealOwner?.id];
   return [];
 }
 
@@ -198,6 +216,22 @@ function noticeText(action, { head, body, reason }) {
   }
   if (action === 'sup_approve') {
     return { kind: 'product_spec_doc_approve', title: `รายละเอียดผลิตภัณฑ์อนุมัติแล้ว · ${head}`, body };
+  }
+  /* ⚠️ สองตัวนี้ใช้แค่ head/body/reason — เทสต์ดึงก้อนนี้ไปรันใน `new Function` ที่รู้จักแค่ formatSpecDocNo
+     ⚠️ หัวไม่มีคำว่า "Rev." — Rev อยู่ในเลขแล้ว (head ของ revise = เลขของ Rev ใหม่) */
+  if (action === 'revise') {
+    return {
+      kind: 'product_spec_doc_revise',
+      title: `เปิดฉบับแก้ไขรายละเอียดผลิตภัณฑ์ — รอ AC แก้สเปคและยื่น · ${head}`,
+      body: [String(reason || '').trim().slice(0, 300), body].filter(Boolean).join(' — ') || null,
+    };
+  }
+  if (action === 'void') {
+    return {
+      kind: 'product_spec_doc_void',
+      title: `รายละเอียดผลิตภัณฑ์ถูกยกเลิก · ${head}`,
+      body: [String(reason || '').trim().slice(0, 300), body].filter(Boolean).join(' — ') || null,
+    };
   }
   return null;
 }
@@ -256,7 +290,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const loaded = await loadVisibleDocument(supabase, id, user, 'edit');
   if (loaded.response) return loaded.response;
-  const { document, latest, salesOrder, dealOwner, product } = loaded;
+  const { document, latest, approved, salesOrder, dealOwner, product } = loaded;
   const dealOwnerId = dealOwner?.id || null;
 
   const gate = documentActions({ document, latest, salesOrder, dealOwnerId, user })[key];
@@ -377,7 +411,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   });
 
   notifyLater(supabase, action, {
-    document, revision: revisionAfter, latest, product, salesOrder, dealOwner, user, reason,
+    document, revision: revisionAfter, latest, approved, product, salesOrder, dealOwner, user, reason,
   });
 
   const warning = warnings.length ? warnings.join(' · ') : null;

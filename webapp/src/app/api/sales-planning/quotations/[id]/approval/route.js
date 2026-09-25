@@ -9,11 +9,13 @@ import {
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
 import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnapshot';
-import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
+import { captureIssuedQuotationPdfLater } from '@/lib/sales/issuedQuotationPdf';
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
 
 export const dynamic = 'force-dynamic';
+// PDF สร้างใน `after` ซึ่งกินเพดานเวลาของ route นี้ — เผื่อ cold start ของ chromium เท่าเส้นดาวน์โหลด
+export const maxDuration = 60;
 
 // POST /api/sales-planning/quotations/[id]/approval — อนุมัติใบเสนอราคา (มติ 2026-07-18).
 // การเซ็นรับรองโดย "เจ้าของดีล" (ผู้อนุมัติบน FM-SA-01). เดิม route นี้เป็น stub ตอบ
@@ -99,18 +101,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     console.error('issued quotation snapshot capture failed', id, snapshotError);
   }
 
-  // Phase 7C (D-7C-1): สร้าง PDF ถาวรจาก HTML ที่ตรึง (best-effort, idempotent). แยก
-  // try จาก snapshot — chromium พลาด/ช้าต้องไม่กลบผลตรึง HTML และไม่กระทบการอนุมัติที่
-  // commit ไปแล้ว; ถ้าไม่เกิดตอนนี้ เส้นทางดาวน์โหลดจะ fallback สร้างเองภายหลัง
-  try {
-    const snapshotId = snap?.snapshot?.id;
-    const html = snap?.artifact?.content;
-    if (snapshotId && html) {
-      await captureIssuedQuotationPdf(supabase, { quotationId: id, snapshotId, html });
-    }
-  } catch (pdfError) {
-    console.error('issued quotation pdf capture failed', id, pdfError);
-  }
+  // Phase 7C (D-7C-1): สร้าง PDF ถาวรจาก HTML ที่ตรึง (best-effort, idempotent) — **หลังตอบหน้าจอแล้ว**
+  // chromium ช้า (~5 วิ) ต้องไม่ถ่วงปุ่มอนุมัติ และพลาดต้องไม่กระทบการอนุมัติที่ commit ไปแล้ว;
+  // ถ้าไม่เกิด/ยังไม่เสร็จ เส้นทางดาวน์โหลดจะ fallback สร้างเอง (ดู captureIssuedQuotationPdfLater)
+  captureIssuedQuotationPdfLater(supabase, {
+    quotationId: id, snapshotId: snap?.snapshot?.id, html: snap?.artifact?.content,
+  });
 
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
   await appendDocumentEvent(supabase, {

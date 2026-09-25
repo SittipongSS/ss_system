@@ -1316,7 +1316,8 @@ test('หน้าสัญญา: ใบที่ล็อกซ่อนปุ
   const page = readSrc('../../app/sales-planning/contracts/[id]/page.js');
   assert.match(page, /historicalContractLockReason\(contract, linkedOrder\)/);
   assert.match(page, /historicalContractFilesFrozen\(contract, linkedOrder\)/);
-  assert.match(page, /buildContractLifecycle\(\{ canEdit, external, substitute, locked: !!lockReason \}\)/);
+  // ⭐ 24/09/2026: ส่งบริบทของโมดัลยกเลิกสัญญาที่ลงนามแล้วต่อท้าย (contractSignedCancel.test ล็อกส่วนนั้น)
+  assert.match(page, /buildContractLifecycle\(\{\s*canEdit, external, substitute, locked: !!lockReason,/);
   assert.match(page, /visible: canEdit && isContractEditable\(contract\) && !lockReason/);
   assert.match(page, /visible: canEdit && canDeleteContract\(contract\) && !lockReason/);
   assert.match(page, /href=\{`\/sa\/sales-orders\/\$\{linkedOrder\.id\}`\}/);
