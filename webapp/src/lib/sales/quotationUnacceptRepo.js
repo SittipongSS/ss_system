@@ -8,10 +8,12 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { siblingsReopenedByUnaccept } from '@/lib/sales/quotationUnaccept';
 
 // ตราอ่านผ่าน JSON path — ไม่ลาก metadata ทั้งก้อนของทุกใบในดีลมาเพื่อคีย์เดียว
-const SIBLING_COLUMNS = 'id, quoteNumber, status, approvalStatus, acceptedAt, updatedAt, closedByAccept:metadata->closedByAccept';
+// updatedAt = เวลาที่ใบถูกปิด เทียบกับ acceptedAt ของ **ใบที่ย้อน** (แถว `quote` ที่ route โหลดแล้ว) — ใบรุ่นเก่าไม่มีตรา
+//   เปิดเฉพาะที่การรับใบนี้ปิด (รีวิว 25/09: ไม่อ่าน acceptedAt ของใบอื่นมาหาข้อยกเว้นอีก)
+const SIBLING_COLUMNS = 'id, quoteNumber, status, approvalStatus, updatedAt, closedByAccept:metadata->closedByAccept';
 
 /**
- * @param quote  ใบที่กำลังย้อน — แถวที่ route โหลดและผ่านด่านแล้ว (ต้องมี id · quoteNumber · dealId · deal.project?)
+ * @param quote  ใบที่กำลังย้อน — แถวที่ route โหลดและผ่านด่านแล้ว (ต้องมี id · quoteNumber · dealId · acceptedAt · deal.project?)
  * @returns { quoteNumber, reopen: [...], project: { id, code, name } | null }
  * ⚠️ อ่านไม่ขึ้น = throw — พรีวิวที่บอกว่า "ไม่มีใบให้เปิด" ทั้งที่อ่านไม่ได้ คือโมดัลโกหก
  */

@@ -14,8 +14,9 @@ function stub({ rows = [], error = null } = {}) {
   return { calls, supabase: { from: (table) => { calls.from = table; return chain; } } };
 }
 
+const AT_X = '2026-09-01T03:04:05.123456+00:00';
 const QUOTE = {
-  id: 'QT-X', quoteNumber: 'QT-26090001-0', dealId: 'DL-1',
+  id: 'QT-X', quoteNumber: 'QT-26090001-0', dealId: 'DL-1', acceptedAt: AT_X,
   deal: { id: 'DL-1', projectId: 'PJ-1', project: { id: 'PJ-1', code: 'PJ-26080001', name: 'บางนา' } },
 };
 
@@ -23,14 +24,17 @@ test('พรีวิว: อ่านใบของดีลนี้ดีล
   const { calls, supabase } = stub({ rows: [
     { id: 'QT-X', quoteNumber: 'QT-26090001-0', status: 'accepted', approvalStatus: 'approved' },
     { id: 'QT-A', quoteNumber: 'QT-A-0', status: 'closed', approvalStatus: 'approved', closedByAccept: { quotationId: 'QT-X', prevStatus: 'sent' } },
-    { id: 'QT-B', quoteNumber: 'QT-B-0', status: 'closed', approvalStatus: 'pending', closedByAccept: null },
+    { id: 'QT-B', quoteNumber: 'QT-B-0', status: 'closed', approvalStatus: 'pending', closedByAccept: null, updatedAt: AT_X },
+    // ใบรุ่นเก่าที่การรับใบอื่นปิด (ใบนั้นถูกลบไปแล้ว) — พิสูจน์ไม่ได้ว่าใบนี้ปิด ⇒ ไม่อยู่ในพรีวิว (มติข้อ 4)
+    { id: 'QT-D', quoteNumber: 'QT-D-0', status: 'closed', approvalStatus: 'approved', closedByAccept: null, updatedAt: '2026-08-10T00:00:00+00:00' },
     { id: 'QT-C', quoteNumber: 'QT-C-0', status: 'closed', approvalStatus: 'approved', closedByAccept: { quotationId: 'QT-OTHER', prevStatus: 'sent' } },
   ] });
   const preview = await previewQuotationUnaccept(supabase, QUOTE);
   assert.equal(calls.from, 'quotations');
   assert.match(calls.select, /closedByAccept:metadata->closedByAccept/);
-  assert.match(calls.select, /acceptedAt/);
+  // เวลาปิดของใบพี่น้อง เทียบกับ acceptedAt ของใบที่ย้อน (มากับ `quote`) — ไม่อ่าน acceptedAt ของใบอื่น (รีวิว 25/09)
   assert.match(calls.select, /updatedAt/);
+  assert.doesNotMatch(calls.select, /acceptedAt/);
   assert.deepEqual(calls.eq, [['dealId', 'DL-1']]);
   assert.deepEqual(calls.range, [[0, 999]], 'ไล่ทีละหน้า (fetchAll) — ไม่ใช่ select ไร้ขอบเขต');
   assert.equal(preview.quoteNumber, 'QT-26090001-0');

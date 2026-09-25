@@ -50,6 +50,8 @@ test('0388 มีอยู่ · ห่อ BEGIN/COMMIT · หัวไฟล์
   assert.match(SQL, /^COMMIT;$/m);
   assert.match(SQL, /ตรวจผลหลังรัน/);
   assert.match(SQL, /--\s+SELECT/);
+  // ใบรุ่นเก่าที่ไม่มีใบ accepted ไหนในดีลพิสูจน์ได้ว่าเป็นคนปิด = ย้อนการรับจะไม่เปิดมัน — ให้เจ้าของเห็นก่อน/หลังรัน (คาด 0)
+  assert.match(SQL, /AS legacy_unprovable/);
 });
 
 test('0388 ปะจากนิยามที่รันอยู่จริง (pg_get_functiondef) — ไม่เขียนสองฟังก์ชันทับทั้งตัว', () => {
@@ -89,9 +91,13 @@ test('ย้อนการรับ: จุดปะสองจุดเจอ
   assert.match(flat, /v_reopened jsonb := '\[\]'::jsonb;/);
   // ตราของใบนี้เท่านั้น — ตราของการรับใบอื่นไม่แตะ
   assert.match(flat, /s\.metadata->'closedByAccept'->>'quotationId' = v_quote\.id/);
-  // ใบรุ่นเก่า = ไม่มีตรา · เว้นใบที่พิสูจน์ได้ว่าปิดโดยการรับใบที่ถูกยกเลิกทางใบสั่งขาย (มติข้อ 4)
-  assert.match(flat, /jsonb_typeof\(s\.metadata->'closedByAccept'\) IS DISTINCT FROM 'object'/);
-  assert.match(flat, /o\.status = 'cancelled' AND o\."acceptedAt" = s\."updatedAt"/);
+  // ใบรุ่นเก่า = ไม่มีตรา · เปิดเฉพาะที่พิสูจน์ได้ว่า "การรับใบนี้" ปิด: updatedAt = acceptedAt ของใบที่ย้อน
+  //   (RPC รับใบเขียนสองช่องด้วย v_now ตัวเดียว) — อ่านจากใบที่ย้อนเองซึ่งล็อกอยู่ ไม่พึ่งแถวของใบอื่น
+  assert.match(flat, /jsonb_typeof\(s\.metadata->'closedByAccept'\) IS DISTINCT FROM 'object' AND s\."updatedAt" = v_quote\."acceptedAt"/);
+  // 🐞 รีวิว 25/09: กติกาเดิมเว้นด้วย NOT EXISTS ใบ cancelled ที่ acceptedAt ตรง — ใบนั้นถูกบังคับลบ/ลบทีหลัง
+  //   = หาไม่เจอ = ใบที่การรับใบอื่นปิดถูกเปิดตอนย้อนการรับใบนี้ (ขัดมติข้อ 4) ⇒ ห้ามกลับมา
+  assert.doesNotMatch(flat, /NOT EXISTS/, 'ใบรุ่นเก่าต้องพิสูจน์ว่าใบนี้ปิด ไม่ใช่ "หาใบอื่นที่ปิดไม่เจอ"');
+  assert.doesNotMatch(flat, /o\.status = 'cancelled'/);
   assert.match(flat, /WHERE q\.id = t\.id AND q\.status = 'closed'/);
   assert.match(flat, /- 'closedByAccept'/, 'เปิดแล้วต้องลบตราทิ้ง — Rev. ก๊อป metadata ต่อ');
   assert.match(flat, /'reopenedQuotations', v_reopened/);

@@ -13,13 +13,18 @@
 --  1) accept_quotation_atomic — ใบที่ถูกปิดพกตรา metadata.closedByAccept =
 --       { quotationId, quoteNumber, prevStatus, at }  (ใบไหนรับ · ก่อนปิดเป็นอะไร · เมื่อไร)
 --     ⭐ ปะแค่สิ่งที่ UPDATE เขียน — เงื่อนไขว่าใบไหนถูกปิดคงเดิมทุกตัวอักษร
---  2) unaccept_quotation_atomic — หลังถอยดีลแล้ว เปิดคืนใบพี่น้องในดีลเดียวกันที่สถานะ 'closed':
+--  2) unaccept_quotation_atomic — หลังถอยดีลแล้ว เปิดคืนใบพี่น้องในดีลเดียวกันที่สถานะ 'closed'
+--     **เฉพาะใบที่พิสูจน์ได้ว่า "การรับใบนี้" เป็นคนปิด**:
 --       · ตราชี้ใบนี้            → prevStatus ในตรา (ต้องเป็น draft/sent/rejected — เพี้ยน = ถอยไปเดา)
---       · ไม่มีตรา (ปิดก่อนไฟล์นี้) → เดาจากผลอนุมัติ: approved/not_required → 'sent' · ที่เหลือ → 'draft'
---         ⚠️ เว้นใบที่พิสูจน์ได้ว่าปิดโดยการรับของใบที่ถูกยกเลิกไปทางใบสั่งขายแล้ว
---            (ใบ cancelled ในดีลเดียวกันที่ acceptedAt = updatedAt ของใบที่ปิด — RPC รับใบเขียนสองค่านี้ด้วย v_now ตัวเดียว)
---            ⇒ คงปิด เท่ากับใบที่มีตราของการรับใบอื่น (ข้อ 4)
---       · ตราชี้ใบอื่น            → ไม่แตะ (การรับใบนั้นเป็นคนปิด ไม่ใช่ใบนี้)
+--       · ไม่มีตรา (ปิดก่อนไฟล์นี้) และ updatedAt = acceptedAt ของใบนี้
+--         (RPC รับใบทุกรุ่นตั้งแต่ 0102 เขียนสองค่านี้ด้วย v_now ตัวเดียว · ย้อนการรับไม่ล้าง acceptedAt · ใบ closed
+--          ไม่มีทางไหนแก้ต่อได้ ⇒ updatedAt ไม่ขยับหลังปิด)
+--         → เดาจากผลอนุมัติ: approved/not_required → 'sent' · ที่เหลือ → 'draft'
+--       · ตราชี้ใบอื่น / ไม่มีตราและเวลาไม่ตรง → ไม่แตะ (การรับใบอื่นเป็นคนปิด หรือพิสูจน์ไม่ได้)
+--     🐞 รีวิว 25/09: ร่างแรกกลับด้าน — "ใบรุ่นเก่าเปิดทุกใบ เว้นแต่เจอใบ cancelled ที่ acceptedAt ตรง"
+--        พึ่งแถวของใบอื่นที่ยังอยู่ ⇒ ใบที่ปิดไว้ถูกบังคับลบ (0381) / ใบ cancelled ถูกลบทีหลัง = หาไม่เจอ
+--        = ใบที่การรับใบอื่นปิดถูกเปิดตอนย้อนการรับใบนี้ (ขัดข้อ 4 · ต่างจากใบมีตราที่ชี้ใบที่ถูกลบ = คงปิด)
+--        ตอนนี้อ่านหลักฐานจากใบที่กำลังย้อนเอง (ล็อก FOR UPDATE อยู่ มีอยู่แน่) ⇒ ใบมีตรากับไม่มีตราตอบเหมือนกัน
 --     แล้วลบตราทิ้ง (ออก Rev. ก๊อป metadata ต่อ — ตราค้างบนใบเปิด = ข้อมูลโกหก) · คืนรายการใบที่เปิดใน
 --     `reopenedQuotations` ให้ route ลงเธรดดีล + audit ทีละใบ (route ไม่ต้องอ่านแถวซ้ำ — systemRules กฎ 6)
 --
@@ -29,8 +34,10 @@
 --     · force_delete_quotation → revert_deal_out_of_won (0381/0168 · บังคับลบของแอดมิน): เหมือนกัน
 --
 --  🔎 ข้อมูลจริงตอนเขียน (อ่านอย่างเดียว 25/09): ใบ closed 20 ใบ ไม่มีตราสักใบ (ยังไม่รัน) · ทุกใบอยู่บนดีล Won
---     และ updatedAt ตรงกับ acceptedAt ของใบที่รับอยู่ตอนนี้ทุกใบ ⇒ ใบรุ่นเก่าที่ถูกเว้นตามข้อ 4 วันนี้ = 0
---     ชุดใบรุ่นเก่าไม่มีวันโตอีก (ทุกการปิดหลังไฟล์นี้มีตรา)
+--     และ updatedAt ตรงกับ acceptedAt ของใบที่รับอยู่ตอนนี้ทุกใบ ⇒ ย้อนการรับใบนั้นเปิดคืนได้ครบ 20 ใบ
+--     (legacy_unprovable ข้างล่าง = 0) · ชุดใบรุ่นเก่าไม่มีวันโตอีก (ทุกการปิดหลังไฟล์นี้มีตรา)
+--     ⚠️ ใบรุ่นเก่าที่ legacy_unprovable นับ = ใบที่ย้อนการรับไม่มีวันเปิด (ใบที่ปิดมันถูกย้อน/ยกเลิก/ลบไปก่อนรันไฟล์นี้)
+--        — ไม่ใช่ความผิดของไฟล์นี้ แต่ต้องตามดูรายใบ ถ้าไม่ใช่ 0 ตอนรัน
 --
 --  ⭐ ปะจากนิยามที่รันอยู่จริง (pg_get_functiondef) แบบ 0382/0385 — ไม่ก๊อปเนื้อสองฟังก์ชัน (~250 บรรทัด)
 --     ⇒ ด่านอื่นทุกตัว (fingerprint · live SO 0380 · stage history · forecast) คงเดิมทุกตัวอักษร
@@ -43,7 +50,7 @@
 --
 --  ── ตรวจผลหลังรัน (อ่านอย่างเดียว) ─────────────────────────────────────
 --  คาด: accept_stamps = t · unaccept_reopens = t · anon_exec = f · auth_exec = f · service_exec = t ·
---       legacy_closed = 20 (หรือน้อยกว่าถ้ามีการย้อนการรับไปแล้ว — ไม่มีวันเพิ่ม)
+--       legacy_closed = 20 (หรือน้อยกว่าถ้ามีการย้อนการรับไปแล้ว — ไม่มีวันเพิ่ม) · legacy_unprovable = 0
 --
 --   SELECT
 --     (SELECT bool_and(strpos(p.prosrc, 'closedByAccept') > 0) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -54,7 +61,12 @@
 --     has_function_privilege('authenticated', 'public.unaccept_quotation_atomic(text,text,text,text,text)', 'EXECUTE') AS auth_exec,
 --     has_function_privilege('service_role', 'public.unaccept_quotation_atomic(text,text,text,text,text)', 'EXECUTE') AS service_exec,
 --     (SELECT count(*) FROM public.quotations
---       WHERE status = 'closed' AND jsonb_typeof(metadata->'closedByAccept') IS DISTINCT FROM 'object') AS legacy_closed;
+--       WHERE status = 'closed' AND jsonb_typeof(metadata->'closedByAccept') IS DISTINCT FROM 'object') AS legacy_closed,
+--     (SELECT count(*) FROM public.quotations s
+--       WHERE s.status = 'closed' AND jsonb_typeof(s.metadata->'closedByAccept') IS DISTINCT FROM 'object'
+--         AND NOT EXISTS (SELECT 1 FROM public.quotations o
+--                          WHERE o."dealId" = s."dealId" AND o.id <> s.id
+--                            AND o.status = 'accepted' AND o."acceptedAt" = s."updatedAt")) AS legacy_unprovable;
 -- ============================================================
 
 BEGIN;
@@ -79,9 +91,10 @@ DECLARE
   v_reopened jsonb := '[]'::jsonb;$un_decl_new$;
   v_un_ret_old constant text := $un_ret_old$RETURN jsonb_build_object('quotation', to_jsonb(v_updated_quote), 'deal', to_jsonb(v_updated_deal));$un_ret_old$;
   v_un_ret_new constant text := $un_ret_new$-- 8) ⬇ 0388 (มติ 25/09): ใบพี่น้องที่ "การรับใบนี้" ปิดไว้ → เปิดคืนสถานะเดิม · ลบตราทิ้ง
-  --    ตราชี้ใบนี้ = prevStatus · ไม่มีตรา (ปิดก่อน 0388) = เดาจากผลอนุมัติ · ตราชี้ใบอื่น = ไม่แตะ
-  --    ⛔ ใบไม่มีตราที่พิสูจน์ได้ว่าปิดโดยการรับของใบที่ถูกยกเลิกทางใบสั่งขาย (acceptedAt = updatedAt) คงปิด
-  --      — ทางยกเลิก SO พร้อมย้อน Won (0170) กับบังคับลบ ไม่เปิดใบพี่น้อง (มติข้อ 4)
+  --    ต้องพิสูจน์ได้ว่าการรับใบนี้เป็นคนปิด: ตราชี้ใบนี้ (→ prevStatus) หรือไม่มีตรา (ปิดก่อน 0388) และ
+  --    updatedAt = acceptedAt ของใบนี้ (RPC รับใบเขียนสองค่าด้วย v_now ตัวเดียว → เดาจากผลอนุมัติ)
+  --    ⛔ พิสูจน์ไม่ได้ = คงปิด — ใบที่การรับใบอื่นปิด (ใบนั้นถูกยกเลิกทาง SO 0170 / บังคับลบ 0381 / ลบทีหลัง)
+  --      ย้อนการรับใบนี้ไม่เปิด (มติข้อ 4) · หลักฐานอ่านจาก v_quote ที่ล็อกอยู่ ไม่พึ่งแถวของใบอื่น (รีวิว 25/09)
   WITH reopened AS (
     UPDATE public.quotations q SET
       status = CASE
@@ -99,11 +112,7 @@ DECLARE
            s.metadata->'closedByAccept'->>'quotationId' = v_quote.id
            OR (
              jsonb_typeof(s.metadata->'closedByAccept') IS DISTINCT FROM 'object'
-             AND NOT EXISTS (
-               SELECT 1 FROM public.quotations o
-                WHERE o."dealId" = s."dealId" AND o.id <> v_quote.id AND o.id <> s.id
-                  AND o.status = 'cancelled' AND o."acceptedAt" = s."updatedAt"
-             )
+             AND s."updatedAt" = v_quote."acceptedAt"
            )
          )
     ) t

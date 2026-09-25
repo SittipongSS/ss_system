@@ -44,10 +44,13 @@ export function canUnacceptQuotation(user, deal) {
  *   ทั้งที่โมดัลย้อนการรับชวนเองว่า "ดีลนี้ต้องปิดด้วยใบเสนอราคาอีกใบ" · ใบรออนุมัติที่ถูกปิดหลุดคิวผู้อนุมัติถาวร
  * ⭐ ตอนนี้ RPC รับใบประทับตรา metadata.closedByAccept = { quotationId, quoteNumber, prevStatus, at } ให้ทุกใบที่มันปิด
  *   และ RPC ย้อนการรับเปิดคืน **เฉพาะใบที่ตราชี้ใบนี้** กลับเป็น prevStatus แล้วลบตราทิ้ง (Rev. ก๊อป metadata ต่อ)
- * ⭐ ใบที่ปิดก่อน 0388 (ไม่มีตรา · prod 25/09 = 20 ใบ ทุกใบปิดโดยใบที่รับอยู่ตอนนี้) → เดาจากผลอนุมัติ:
+ * ⭐ ใบที่ปิดก่อน 0388 (ไม่มีตรา · prod 25/09 = 20 ใบ ทุกใบปิดโดยใบที่รับอยู่ตอนนี้) เปิดเมื่อ **พิสูจน์ได้ว่าการรับ
+ *   ใบนี้เป็นคนปิด**: updatedAt ของใบที่ปิด = acceptedAt ของใบที่ย้อน (RPC รับใบทุกรุ่นตั้งแต่ 0102 เขียนสองค่านี้ด้วย
+ *   v_now ตัวเดียว · ย้อนการรับไม่ล้าง acceptedAt · ใบ closed ไม่มีทางไหนแก้ต่อ) → เดาจากผลอนุมัติ:
  *   approved / not_required → 'sent' (= "อนุมัติแล้ว" บนจอ) · ที่เหลือ → 'draft'
- *   ⚠️ เว้นใบที่พิสูจน์ได้ว่าปิดโดยการรับของใบที่ถูกยกเลิกไปทางใบสั่งขายแล้ว (acceptedAt ของใบนั้น = updatedAt ของใบที่ปิด
- *     — RPC รับใบเขียนสองค่านี้ด้วย v_now ตัวเดียวกัน) ⇒ คงปิด ตรงกับใบที่มีตราของการรับใบอื่น (มติข้อ 4 ข้างล่าง)
+ *   🐞 รีวิว 25/09: ร่างแรกกลับด้าน — เปิดทุกใบ "เว้นแต่เจอใบ cancelled ที่ acceptedAt ตรง" ⇒ ใบที่ปิดไว้ถูกบังคับลบ /
+ *     ใบ cancelled ถูกลบทีหลัง = หาไม่เจอ = ใบที่การรับใบอื่นปิดถูกเปิด (ขัดมติข้อ 4 · ใบมีตราในสภาพเดียวกันคงปิด)
+ *     ตอนนี้หลักฐานมาจากใบที่ย้อนเองเท่านั้น (มีอยู่แน่ — กำลังถูกย้อน) ⇒ พิสูจน์ไม่ได้ = คงปิด เหมือนใบมีตราของใบอื่น
  * ⛔ มติข้อ 4: **ย้อนการรับเท่านั้น** ที่เปิดใบพี่น้อง — ยกเลิก SO พร้อมย้อน Won (0170) และบังคับลบใบ/ดีลของแอดมิน
  *   (0381 → revert_deal_out_of_won) ไม่เปิด: ทาง SO ตั้งใบที่รับเป็น 'cancelled' และดีลมักเสนอราคาใหม่ทั้งชุด ·
  *   ตราของใบพวกนั้นค้างอยู่เฉย ๆ ไม่มีใครเปิดตามมันอีก (ตราชี้ใบที่ไม่ใช่ 'accepted' แล้ว)
@@ -61,6 +64,29 @@ export function inferredReopenStatus(approvalStatus) {
   return approvalStatus === 'approved' || approvalStatus === 'not_required' ? 'sent' : 'draft';
 }
 
+/* จังหวะเวลาเดียวกันไหม ละเอียดถึงไมโครวินาที (timestamptz ของ Postgres) — ใช้แทน `===` ของสตริง เพราะสองฝั่งอาจมา
+   คนละรูป (Z กับ +00:00 · ศูนย์ท้ายถูกตัด · Date) · ค่าว่าง/อ่านไม่ออก = false (พิสูจน์ไม่ได้ = ไม่เปิด)
+   ไมโครวินาทีนับจาก epoch ≈ 1.8e15 < 2^53 ⇒ Number ยังเป็นจำนวนเต็มตรงตัว ไม่ต้องพึ่ง BigInt บนเบราว์เซอร์ */
+function instantMicros(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime() * 1000;
+  if (typeof value !== 'string' || !value) return null;
+  const match = value.match(/^(.*?[T ]\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}(?::?\d{2})?)?$/i);
+  if (!match) return null;
+  const [, base, fraction = '', zone = 'Z'] = match;
+  const offset = zone.toUpperCase() === 'Z' ? 'Z'
+    : zone.length === 3 ? `${zone}:00`
+      : zone.includes(':') ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`;
+  const seconds = Date.parse(`${base.replace(' ', 'T')}${offset}`);
+  if (Number.isNaN(seconds)) return null;
+  return seconds * 1000 + Number(fraction.padEnd(6, '0').slice(0, 6));
+}
+
+export function sameInstant(a, b) {
+  const left = instantMicros(a);
+  const right = instantMicros(b);
+  return left !== null && right !== null && left === right;
+}
+
 function closedByAcceptStamp(row) {
   const stamp = row?.closedByAccept !== undefined ? row.closedByAccept : row?.metadata?.closedByAccept;
   return stamp && typeof stamp === 'object' && !Array.isArray(stamp) ? stamp : null;
@@ -68,25 +94,21 @@ function closedByAcceptStamp(row) {
 
 /**
  * ใบไหนในดีลจะถูกเปิดคืนเมื่อย้อนการรับ `quote` และเปิดเป็นสถานะอะไร (กติกาเดียวกับ 0388)
- * @param quote    ใบที่กำลังย้อน ({ id })
- * @param rows     ใบทั้งหมดของดีล ({ id, quoteNumber, status, approvalStatus, acceptedAt, updatedAt,
+ * @param quote    ใบที่กำลังย้อน ({ id, acceptedAt }) — แถวเต็มที่ route โหลดแล้ว
+ * @param rows     ใบทั้งหมดของดีล ({ id, quoteNumber, status, approvalStatus, updatedAt,
  *                 closedByAccept | metadata.closedByAccept })
  * @returns [{ id, quoteNumber, status, approvalStatus, inferred }] เรียงตามเลขที่ใบ (ลำดับเดียวกับ RPC)
  */
 export function siblingsReopenedByUnaccept(quote, rows) {
   const list = Array.isArray(rows) ? rows : [];
   const quoteId = quote?.id;
-  // การรับของใบที่ถูกยกเลิกไปแล้ว (ทางใบสั่งขาย) — เวลาที่รับ = เวลาที่ใบพี่น้องถูกปิดในทรานแซกชันเดียวกัน
-  const cancelledAcceptTimes = new Set(list
-    .filter((row) => row?.id !== quoteId && row?.status === 'cancelled' && row?.acceptedAt)
-    .map((row) => String(row.acceptedAt)));
   return list
     .filter((row) => row?.id && row.id !== quoteId && row.status === 'closed')
     .map((row) => {
       const stamp = closedByAcceptStamp(row);
       if (stamp) {
         if (stamp.quotationId !== quoteId) return null;
-      } else if (row.updatedAt && cancelledAcceptTimes.has(String(row.updatedAt))) {
+      } else if (!sameInstant(row.updatedAt, quote?.acceptedAt)) {
         return null;
       }
       const stamped = Boolean(stamp) && REOPENABLE_QUOTATION_STATUSES.includes(stamp.prevStatus);
