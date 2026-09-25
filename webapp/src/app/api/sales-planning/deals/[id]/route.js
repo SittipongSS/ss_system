@@ -1,5 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
+import { requestsLinkedTo, sentRequestsBlockMessage } from '@/lib/requests/cascadeDelete';
+import { requestCascadeAuditor } from '@/lib/requests/cascadeAudit';
 import { caretakerTeamsOf, hasTeam, isSalesManager, userTeams, viewScopeUser } from '@/lib/permissions';
 import { emptyProjectAfterDealDelete, loadProject } from '@/lib/pm/projectsRepo';
 import {
@@ -673,6 +675,18 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (before.metadata?.sahamitPoId) {
       return conflict('โครงการนี้มาจาก PO สหมิตร — ลบไม่ได้ (จัดการที่เอกสาร PO แทน)');
     }
+    /* ⛔ คำร้องที่ส่งถึงฝ่ายอื่นแล้ว — ลบพ่วงไม่ได้ (กติกาเดียวกับ trigger guard_dept_request)
+       🐞 เดิม cleanupDealOrphans ลบทุกใบผ่าน RPC บังคับลบ ทั้งที่ผู้ลบเป็น AE ⇒ คำร้องหายเงียบ
+          11 ใบ (เช่น RQ-IQ-26090026 ที่ RD ตอบราคาแล้ว) · ดู lib/requests/cascadeDelete
+       ⚠️ อ่านไม่ขึ้นต้องหยุด ไม่ใช่ถือว่าไม่มีคำร้อง */
+    let linkedRequests;
+    try {
+      linkedRequests = await requestsLinkedTo(supabase, 'dealId', id);
+    } catch (requestError) {
+      return fail(`${requestError.message} — ยังไม่ได้ลบดีล`, 500);
+    }
+    const requestBlock = sentRequestsBlockMessage(linkedRequests, 'ดีล');
+    if (requestBlock) return conflict(requestBlock);
   }
 
   // ใบยื่นชำระภาษีของ SO ในดีล: FK RESTRICT ที่ break-glass ก็ข้ามไม่ได้ — ดักก่อน
@@ -719,7 +733,13 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ตามปกติทิ้งงานที่ผูกดีลค้างไว้ชี้ดีลที่ไม่มีอยู่แล้ว — เข้าถึงจากดีลไม่ได้อีกและ
   // ไม่มีเส้นทางไหนตามลบให้ (prod 2026-07-30 เจอค้าง 5 งานจากดีลที่ถูกลบไปแล้ว).
   try {
-    await cleanupDealOrphans(supabase, id);
+    // ร่างที่ยังไม่ส่ง (ทางปกติ) หรือทุกใบ (บังคับลบ) — จด audit ทีละใบก่อนลบเสมอ
+    await cleanupDealOrphans(supabase, id, {
+      auditRequests: requestCascadeAuditor({
+        user, request: req,
+        cause: `การลบดีล ${before.code || id}${force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : ''}`,
+      }),
+    });
   } catch (cleanupError) {
     return fail(`เก็บกวาดงาน/คำร้องที่ผูกดีลไม่สำเร็จ: ${cleanupError.message} — ยังไม่ได้ลบดีล`, 500);
   }
