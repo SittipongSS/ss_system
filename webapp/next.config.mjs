@@ -6,13 +6,6 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ['127.0.0.1'],
-  /* เลขคอมมิตของ build ฝังลงโค้ดฝั่งเบราว์เซอร์ — แท็บเทียบกับ /api/version (ของ deploy ที่กำลังรัน) เพื่อรู้ว่า
-     ตัวเองเปิดค้างข้าม deploy (components/VersionWatcher.js · lib/ui/versionWatch.js)
-     ⚠️ ค่าเดียวกับที่ /api/version อ่านตอน runtime (Vercel ตั้งให้ทั้งตอน build และ runtime ของ deploy เดียวกัน) ·
-        เครื่อง dev ไม่มีค่า = ตัวเช็กปิดเอง */
-  env: {
-    NEXT_PUBLIC_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA || '',
-  },
   /* 🔴 `experimental.turbopackFileSystemCacheForBuild` **ถอดออกแล้ว 2026-08-22** —
      คีย์นี้ (#1339) เปิดไว้เพื่อลด Build CPU Minutes ซึ่งเดือนก่อนกินไป 7,066 CPU-min
      = 87% ของบิล infra · คอมเมนต์เดิมเขียนทางหนีไฟไว้เองว่า "ถ้า output เพี้ยน
