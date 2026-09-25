@@ -32,7 +32,10 @@ import { SALES_ORDER_STATUS_LABELS, salesOrderAmountKind } from "@/lib/sales/sal
 import { isLiveSalesOrder } from "@/lib/sales/handoffQueue";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { CONFIRM_DOC_TYPE_LABELS } from "@/lib/sales/orderConfirmationDocs";
-import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
+import {
+  UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason,
+  quotationUnacceptPromptDetail, quotationUnacceptToast, unacceptReasonError,
+} from "@/lib/sales/quotationUnaccept";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSalesManager } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -98,7 +101,7 @@ export default function QuotationEditorPage() {
   const [contractOpen, setContractOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [wonOpen, setWonOpen] = useState(false);
-  // ย้อนการรับ (มติ 2026-07-21): null = ปิด; { reason } = เปิดฟอร์มเหตุผลบังคับ
+  // ย้อนการรับ (มติ 2026-07-21): null = ปิด; { reason, preview } = เปิดฟอร์มเหตุผลบังคับ + ผลจาก ?dryRun=1 (มติ 25/09)
   const [unacceptForm, setUnacceptForm] = useState(null);
   // ยกเลิกใบของผู้อนุมัติ (มติ 24/09): null = ปิด; { reason, preview } = เปิดโมดัลพร้อมผลกระทบจาก ?dryRun=1
   const [cancelForm, setCancelForm] = useState(null);
@@ -483,6 +486,15 @@ export default function QuotationEditorPage() {
       /* ⚠️ ไม่ระบุว่าใครยกเลิก SO ได้ — ขึ้นกับสถานะ SO + งวดที่มีเงิน (salesOrderCancelNeedsReviewer) ซึ่งหน้านี้ไม่ได้โหลด
          พูดแค่ข้อเท็จจริงที่ถูกทุกกรณี: ต้องยกเลิกก่อน · ใบที่ยื่น/อนุมัติแล้วหรือมีเงินรับแล้วเป็นงานของผู้จัดการ */
       : "มีใบสั่งขายที่ยังใช้อยู่ — ต้องยกเลิก SO ก่อนจึงจะย้อนการรับได้ · SO ที่ยื่นหรืออนุมัติแล้ว หรือมีเงินรับแล้ว ต้องให้ AE Supervisor ยกเลิก";
+  /* ⭐ โมดัลต้องบอกผลก่อนกด (#1223 · มติ 25/09) ⇒ ถามพรีวิว ?dryRun=1 ก่อนเปิด: ใบเสนอราคาฉบับอื่นที่การรับใบนี้ปิดไว้
+     เปิดกลับเป็นอะไร (mig 0388) + ดีลยังอยู่ในโครงการเดิม ย้ายได้ที่หน้าดีล — กติกาอยู่ที่ server/lib ไม่คิดเองบนจอ
+     ⚠️ พรีวิวอ่านไม่ขึ้น = แถบ error ไม่เปิดโมดัล (โมดัลที่บอกว่า "ไม่มีใบให้เปิด" ทั้งที่ไม่รู้ = โกหก) */
+  const openUnaccept = async () => {
+    setError("");
+    const preview = await act("unaccept-preview", `/api/sales-planning/quotations/${id}/unaccept?dryRun=1`, { method: "POST" });
+    if (!preview) return;
+    setUnacceptForm({ reason: "", preview });
+  };
   const unacceptReasonValidation = unacceptForm ? unacceptReasonError(unacceptForm.reason) : "";
   const doUnaccept = async () => {
     if (unacceptReasonValidation) return;
@@ -494,6 +506,8 @@ export default function QuotationEditorPage() {
     if (data) {
       setUnacceptForm(null);
       await load();
+      // ผลจริงจากฐาน (ใบที่ RPC เปิดคืน + FC ที่คิดใหม่) — ไม่ใช่พรีวิว
+      setToast({ kind: data.forecast?.warning ? "warning" : "success", msg: quotationUnacceptToast(quote.quoteNumber, data) });
     }
   };
   /* ⭐ ออกใบสั่งขาย = **ไปหน้าฟอร์ม** ไม่ใช่ยิงสร้างทันที (มติผู้ใช้ 2026-08-24)
@@ -789,7 +803,7 @@ export default function QuotationEditorPage() {
       disabled: !canUnaccept,
       disabledReason: unacceptBlockedReason || undefined,
       title: "ย้อนการรับใบเสนอราคา (เจ้าของดีล/AE Supervisor)",
-      onClick: () => { setError(""); setUnacceptForm({ reason: "" }); },
+      onClick: openUnaccept,
     },
     {
       id: "cancel",
@@ -1147,15 +1161,16 @@ export default function QuotationEditorPage() {
         onDone={async () => { setWonOpen(false); await load(); }}
       />
 
-      {/* ย้อนการรับ (มติ 2026-07-21) — ใช้ reason dialog กลาง แต่คง validation ของ QT */}
+      {/* ย้อนการรับ (มติ 2026-07-21) — ใช้ reason dialog กลาง แต่คง validation ของ QT
+          กล่องผลลัพธ์มาจากพรีวิวของ server (quotationUnacceptPromptDetail · มติ 25/09) ไม่ใช่ข้อความตายตัว */}
       <ReasonDialog
         open={!!unacceptForm}
         title="ย้อนการรับใบเสนอราคา"
-        description={`ใบ ${naText(quote?.quoteNumber)} จะกลับเป็น “อนุมัติแล้ว” และดีลถอยออกจาก Won`}
-        detail="ใช้สำหรับแก้กรณีรับใบผิดก่อนมีใบสั่งขายโดยหลักฐานการรับเดิมยังคงอยู่ในประวัติ"
+        description={`ใบ ${naText(quote?.quoteNumber)} จะกลับเป็น “อนุมัติแล้ว” และดีลถอยออกจาก Won — ใช้แก้กรณีรับใบผิดก่อนมีใบสั่งขาย`}
+        detail={unacceptForm ? quotationUnacceptPromptDetail(unacceptForm.preview) : ""}
         label="เหตุผลที่ย้อนการรับ"
         value={unacceptForm?.reason || ""}
-        onChange={(reason) => setUnacceptForm({ reason })}
+        onChange={(reason) => setUnacceptForm((form) => (form ? { ...form, reason } : form))}
         onClose={() => setUnacceptForm(null)}
         onConfirm={doUnaccept}
         confirmLabel="ยืนยันย้อนการรับ"

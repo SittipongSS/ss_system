@@ -20,7 +20,7 @@ const QUOTE = { id: 'QT-1', quoteNumber: 'QT-2569-001', revisionNo: 0 };
 const ORDER = { id: 'SO-1', orderNumber: 'SO-2569-001', revisionNo: 0 };
 
 // ชุด action ที่แต่ละใบยิงได้จริง (ตรงกับ route ที่เรียก appendDocumentEvent)
-const QUOTE_ACTIONS = ['submit', 'approve', 'reject', 'withdraw', 'revise', 'accept', 'unaccept'];
+const QUOTE_ACTIONS = ['submit', 'approve', 'reject', 'withdraw', 'revise', 'accept', 'unaccept', 'reopen'];
 const ORDER_ACTIONS = ['submit', 'approve', 'reject', 'withdraw', 'revoke', 'revise', 'cancel', 'restore'];
 
 const onQuote = (action, opts = {}) => dealDocumentUpdate('quotation', action, QUOTE, opts);
@@ -116,4 +116,23 @@ test('meta พกที่มาไว้ครบ — ย้อนได้ว�
     docType: 'quotation', docId: 'QT-1', docNumber: 'QT-2569-001', action: 'submit',
   });
   assert.equal(onOrder('cancel', { reason: 'x' }).meta.docNumber, 'SO-2569-001');
+});
+
+/* ⭐ ใบพี่น้องที่เปิดกลับตอนย้อนการรับ (มติ 25/09 · mig 0388) — หนึ่งใบหนึ่งแถว บอกว่าเปิดเป็นอะไร เพราะการย้อนใบไหน
+   ⚠️ ชนิด quiet: มาคู่กับแถว "ย้อนการรับ" ของใบหลักเสมอ ซึ่งเด้งแจ้งเตือนไปแล้ว — N ใบ = N กระดิ่งซ้ำเรื่องเดียว */
+test('เปิดใบพี่น้องกลับ: บอกสถานะปลายทาง + ใบที่ถูกย้อน · ชนิดเงียบ ไม่เด้งซ้ำ', async () => {
+  const event = onQuote('reopen', { toStatus: 'sent', byQuoteNumber: 'QT-2569-009' });
+  assert.equal(event.kind, 'doc_reopen');
+  assert.equal(event.body, 'ใบเสนอราคา QT-2569-001 เปิดกลับเป็น “อนุมัติแล้ว” — ย้อนการรับ QT-2569-009');
+  assert.deepEqual(event.meta, {
+    docType: 'quotation', docId: 'QT-1', docNumber: 'QT-2569-001', action: 'reopen',
+    toStatus: 'sent', byQuoteNumber: 'QT-2569-009', inferred: false,
+  });
+  const legacy = onQuote('reopen', { toStatus: 'draft', approvalStatus: 'pending', byQuoteNumber: 'QT-9', inferred: true });
+  assert.match(legacy.body, /เปิดกลับเป็น “รออนุมัติ” — ย้อนการรับ QT-9 \(ใบปิดก่อนระบบจำสถานะเดิม — อ่านจากผลอนุมัติ\)$/);
+  assert.equal(legacy.meta.inferred, true);
+  const { isQuietUpdateKind } = await import('@/lib/master/updateTypes');
+  assert.equal(isQuietUpdateKind('deal', 'doc_reopen'), true);
+  // ใบสั่งขายไม่มีเหตุการณ์นี้ — ทางยกเลิก SO พร้อมย้อน Won ไม่เปิดใบพี่น้อง (มติข้อ 4)
+  assert.equal(onOrder('reopen'), null);
 });

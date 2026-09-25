@@ -252,7 +252,20 @@ export async function PATCH(request, { params }) {
   // company map (address_map) on the CUSTOMER record (shared master data — the map
   // is attached once to the customer, never duplicated per registration).
   if (body.status === 'pending_legal' && (reg.status === 'draft' || reg.status === 'rejected') && can(user?.role, 'products:edit')) {
-    const { ready, missing } = await registrationRequirements(supabase, id);
+    /* ด่านจริงของการยื่น — query พังต้องไม่หลุดเป็น 500 เปล่า (ผู้ใช้เห็นแค่ "ยื่นไม่สำเร็จ") และทะเบียนที่หายไประหว่างทาง
+       ต้องไม่กลายเป็น "กรุณาแนบเอกสารให้ครบก่อนยื่น: " ที่ไม่มีชื่อเอกสารตามหลัง · ยังปฏิเสธการยื่นเหมือนเดิมทั้งสองกรณี */
+    let requirements;
+    try {
+      requirements = await registrationRequirements(supabase, id);
+    } catch (e) {
+      console.error('[excise-registrations PATCH submit-gate]', id, e);
+      return Response.json(
+        { error: `ตรวจเอกสารบังคับไม่สำเร็จ ยังยื่นไม่ได้ — ${e?.message || 'ระบบขัดข้อง'}` },
+        { status: 500 },
+      );
+    }
+    if (requirements.notFound) return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
+    const { ready, missing } = requirements;
     if (!ready) {
       return Response.json(
         { error: `กรุณาแนบเอกสารให้ครบก่อนยื่น: ${missing.map((m) => m.label).join(', ')}` },

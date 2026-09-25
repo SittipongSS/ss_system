@@ -1,19 +1,34 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
-import { canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
+import {
+  canUnacceptQuotation, normalizeUnacceptReason, quotationReopenAuditSummary, unacceptReasonError,
+} from '@/lib/sales/quotationUnaccept';
+import { previewQuotationUnaccept } from '@/lib/sales/quotationUnacceptRepo';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
+import { isDryRun } from '@/lib/forceDelete';
+import { settleProbabilityAfterUnaccept } from '@/lib/sales/dealProbability';
 
 export const dynamic = 'force-dynamic';
 
-const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId)';
+// โครงการของดีลมากับแถวเดียวกัน (พรีวิวบอกว่า "ดีลยังอยู่ในโครงการ X" — มติ 25/09 ข้อ 2) · ไม่โหลดแยก (กฎ 6)
+const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId, project:projects(id, code, name))';
 
 // ย้อนการรับใบเสนอราคา (มติผู้ใช้ 2026-07-21): inverse ของ accept สำหรับกรณีรับใบผิด
 // ที่ยังไม่มี Sale Order — มี SO อนุมัติแล้วต้องไปทาง "ยกเลิกใบสั่งขายพร้อมย้อนสถานะ"
 // (mig 0116) เพราะต้องถอนยอด Actual พร้อมกัน. ผู้สั่ง = เจ้าของดีลปัจจุบัน + ผู้มีอำนาจตัดสิน
 // (มติ 24/09 · canUnacceptQuotation) + เหตุผลบังคับ 10–500 ตัวอักษร. งานจริงทั้งหมด atomic ใน
 // RPC unaccept_quotation_atomic (mig 0138 → 0380 · ในฐานไม่มีด่านตำแหน่ง — ด่านอยู่ที่นี่ที่เดียว).
+//
+// ⭐ มติเจ้าของ 25/09 (mig 0388):
+//   1) ใบพี่น้องที่ "การรับใบนี้" ปิดไว้ เปิดคืนสถานะเดิมใน RPC เดียวกัน (ตรา metadata.closedByAccept · ใบรุ่นเก่า
+//      ที่ updatedAt = acceptedAt ของใบนี้ เดาจากผลอนุมัติ · พิสูจน์ไม่ได้ = คงปิด) — RPC คืนรายการที่เปิดจริงใน
+//      `reopenedQuotations` ⇒ ที่นี่ลงเธรดดีล + audit ทีละใบจากค่านั้น
+//      ไม่อ่านแถวซ้ำ (systemRules กฎ 6)
+//   2) โครงการที่ผูกไว้ (รวมที่ผูกตอนกดรับใบ) คงอยู่ — โมดัลบอกไว้ก่อนกด · ย้ายได้ที่หน้าดีล "ย้ายไปโครงการอื่น"
+//   4) **ทางนี้ทางเดียว** ที่เปิดใบพี่น้อง — ยกเลิก SO พร้อมย้อน Won (0170) กับบังคับลบ (0381) ไม่เปิด
+//   ?dryRun=1 → พรีวิวให้โมดัล (ใบไหนเปิดกลับเป็นอะไร · โครงการ) ผ่านด่านเดียวกับตอนกดจริง ไม่เขียนอะไร
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -28,6 +43,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden('ย้อนการรับได้เฉพาะเจ้าของดีลหรือ AE Supervisor');
   }
   if (before.status !== 'accepted') return badRequest('ใบเสนอราคานี้ไม่ได้อยู่ในสถานะรับแล้ว (Won)');
+
+  // พรีวิวอยู่หลังด่านสิทธิ์ + สถานะ — ใครกดจริงไม่ได้ ก็ไม่ได้เห็นผลกระทบ (แบบเดียวกับยกเลิกใบ)
+  if (isDryRun(req)) {
+    try {
+      const preview = await previewQuotationUnaccept(supabase, before);
+      return ok({ dryRun: true, ...preview });
+    } catch (previewError) {
+      return fail(previewError.message, 500);
+    }
+  }
 
   const body = await req.json().catch(() => ({}));
   const reasonProblem = unacceptReasonError(body.reason);
@@ -79,6 +104,37 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
 
+  /* ⭐ ใบพี่น้องที่ RPC เปิดคืน (มติ 25/09 · mig 0388) — ทีละใบ: แถวเธรดดีล (ชนิด quiet — แถว "ย้อนการรับ" ข้างบน
+     เด้งแจ้งเตือนไปแล้ว) + audit (ก่อน = closed + ตราที่ถูกลบ · หลัง = สถานะที่เปิด) · ไม่เช็ค error โดยเจตนา
+     (ย้อนการรับ commit ไปแล้ว — กติกาเดียวกับเธรด/audit ของใบหลัก)
+     ⚠️ อ่านจากผลของ RPC เท่านั้น ไม่ใช่จากพรีวิว — ระหว่างเปิดโมดัลกับกดยืนยัน ใบอาจเปลี่ยนไปแล้ว */
+  const reopened = Array.isArray(result?.reopenedQuotations) ? result.reopenedQuotations : [];
+  for (const sibling of reopened) {
+    await appendDocumentEvent(supabase, {
+      docType: 'quotation',
+      doc: sibling,
+      dealId: sibling.dealId || before.deal.id,
+      action: 'reopen',
+      opts: {
+        toStatus: sibling.status,
+        approvalStatus: sibling.approvalStatus,
+        byQuoteNumber: before.quoteNumber,
+        inferred: sibling.inferred,
+      },
+      user,
+    });
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'quotation',
+      entityId: sibling.id,
+      before: { status: 'closed', closedByAccept: sibling.closedByAccept || null },
+      after: { status: sibling.status, approvalStatus: sibling.approvalStatus },
+      summary: quotationReopenAuditSummary(sibling, before.quoteNumber),
+      request: req,
+    });
+  }
+
   /* ⭐ ยอดของดีลหลังย้อนรับใบ (มติผู้ใช้ 2026-09-16 · mig 0361) — ตอนรับใบ RPC ตั้งยอดดีล = ใบที่รับ และชี้ใบนั้น
      แต่ unaccept_quotation_atomic ไม่คืนสี่ช่องนั้น ⇒ ดีลที่กลับมาเปิดให้ตัวเลือกใบของดีลเปิดตัดสินใหม่
      best-effort: การย้อนรับใบ commit ไปแล้ว ห้ามพังเพราะยอดเขียนไม่ผ่าน แต่ก็ห้ามเงียบ —
@@ -91,9 +147,34 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     forecast = { changed: false, warning: forecastError.message };
   }
 
+  /* ⭐ FC% หลังย้อนการรับใบ (มติผู้ใช้ 2026-09-25 ข้อ 3) — RPC ตั้ง FC ของดีลเป็นค่าตั้งต้นของขั้น
+     (deal_probability_for_stage) ซึ่งผิดกับ NPD ที่โครงการยังมี SCENT Won ⇒ คิดใหม่ด้วยกติกา JS ตัวเดียว
+     (resolveProbability) · และถ้าโครงการไม่เหลือ SCENT ที่ Won แล้ว NPD พี่น้องที่ cascade ตอนรับใบดันขึ้น 80
+     กลับฐาน — เฉพาะดีลที่ไม่มีใครขยับ FC% หลัง cascade (ตัดสินจาก audit ดู lib/sales/dealProbability)
+     ⚠️ ขานี้มีเฉพาะทางย้อนการรับใบ — ยกเลิก SO พร้อมย้อนสถานะ (0170) กับแอดมินลบใบบังคับ (0381) ไม่ถอยให้
+        (มติ 25/09 ข้อ 4: ขอบเขตเดียวกับการเปิดใบพี่น้องคืน)
+     best-effort แบบเดียวกับ cascade ขาเข้า: ย้อนรับใบ commit ไปแล้ว ⇒ ไม่ throw · ทุกแถวที่ขยับลง audit
+     ⚠️ audit ลงผ่าน `record` ระหว่าง settle (หลังเขียนแต่ละแถว ก่อนขาอ่านตรวจซ้ำ) ไม่ใช่วนลงทีหลัง — คำขออื่นในโครงการ
+        เดียวกันตัดสินจาก audit ระหว่างทาง (เหตุผลเต็มที่ pickUnacceptRecheck · review 25/09) */
+  const probability = await settleProbabilityAfterUnaccept(supabase, result?.deal, {
+    quoteNumber: before.quoteNumber,
+    record: (row) => recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_deal',
+      entityId: row.id,
+      before: { probability: row.previousProbability },
+      after: { probability: row.probability },
+      summary: row.summary,
+      request: req,
+    }),
+  });
+  for (const warning of probability.warnings) console.error('probability after unaccept', before.deal.id, warning);
+
   const { data: after } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   /* ⚠️ `deal` ที่ส่งกลับเป็น snapshot ของ RPC = **ก่อน** คิดยอดใหม่ · ยอดจริงหลังคิดใหม่อยู่ใน `forecast`
      (`value` / `previousValue` / `changed`) — จอโหลดหน้าใหม่เองอยู่แล้ว จึงไม่อ่านแถวดีลซ้ำที่นี่
      (การอ่านแถวเองบนตารางที่มีทะเบียนขอบเขตถูกด่าน systemRules กฎ 6 รูดเพดานอยู่) */
-  return ok({ quotation: after || result?.quotation || null, deal: result?.deal || null, forecast });
+  // `reopened` = ใบพี่น้องที่เปิดคืนจริง (จอเอาไปขึ้น toast) · `forecast` คงไว้ท้ายสุดตามยาม dealValueFromDocuments.test
+  return ok({ quotation: after || result?.quotation || null, reopened, deal: result?.deal || null, forecast });
 });
