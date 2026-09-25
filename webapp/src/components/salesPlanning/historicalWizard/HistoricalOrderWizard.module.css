@@ -42,16 +42,79 @@
 /* ขั้นที่แตะแล้วไปไม่ได้ — เหตุผลเต็มอยู่ใน title และก้อน error ของขั้นที่ยืนอยู่ */
 .railSummary[data-blocked="yes"] { color: var(--amber); }
 
-/* ป้าย "ย้อนหลัง" ข้างหัวแถบสรุป (ม็อก: badge เล็กในแถวเดียวกับหัว) */
-.asideBadge {
-  margin-left: var(--space-2);
-  padding: 0 var(--space-1-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  font-size: var(--fs-3);
-  font-weight: var(--fw-normal);
-  color: var(--text-3);
+/* ── ขั้น ① (มติเจ้าของ 25/09): การ์ดตามเรื่องแบบหน้าสร้างใบเสนอราคา ─────────────────────
+   ค่าเดียวกับ `.card` / `.sectionHeading` ของ app/sales-planning/quotations/new/page.module.css
+   (ห้าม import ชีตของหน้านั้นข้ามโฟลเดอร์ — ด่าน audit:ui crossDirectory) */
+.cardStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
 }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3-5);
+  min-width: 0;
+  padding: var(--space-4-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--glass-shadow);
+}
+
+.card > .field { margin-bottom: 0; }
+.card > .notice { margin-top: 0; }
+
+.cardHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  color: var(--text-2);
+}
+
+.cardHeading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-10);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.cardHeading > span {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* จำนวนเดือนของสัญญา = ค่าที่ระบบคิดให้ ⇒ ป้ายเขียวเล็กใต้วันสิ้นสุด (ไม่ใช่คำอธิบายยาวอีกบรรทัด) */
+.monthsChip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* เหตุที่ลูกค้า/AE ล็อก — บรรทัดเดียวของทั้งการ์ด */
+.lockLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.lockLine > svg { flex: none; }
 
 /* ── ช่องของฟอร์ม ─────────────────────────────────────────────────────── */
 .grid2 {
@@ -168,82 +231,230 @@
   color: var(--red);
 }
 
-/* ── ขั้น ② ไซต์ โซน และรายการ ─────────────────────────────────────────────
-   การ์ดไซต์ = `ui/CollapsibleCard` ของกลาง (ลูกค้ารายใหญ่มี 26 ไซต์ — กางหมดคือจอที่
-   เลื่อนหาของไม่เจอ) ⇒ ไม่มีหัวการ์ดที่วาดเอง · ที่เหลือคือแถวปุ่มของแผงค้น/ลองใหม่
-   ⭐ การ์ดไซต์มีหน้าที่เดียวคือ "เลือกโซน" — ตารางรายการ (`QuoteLinesTable` ของใบเสนอราคา · สไตล์เป็นของชีต
-   ฝั่งนั้น) อยู่ **นอก** การ์ด ใต้การ์ดทุกใบ (มติเจ้าของ 23/09 · รีวิว 23/09: ซ้อนในการ์ดแล้วกล่องแคบกว่า 900
-   ทุกจอ = ตารางพับเป็นการ์ดต่อบรรทัดตลอด ต่างจากใบเสนอราคาที่จอเดียวกัน) */
-/* รายการโซนของไซต์ — ติ๊กได้หลายคอลัมน์ตามความกว้างการ์ด (43 โซนต่อลูกค้าเรียงแถวเดียวคือเลื่อนยาว) */
-.zonePicks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
-  gap: var(--space-1) var(--space-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+/* ── ขั้น ② ไซต์ โซน และรายการ (มติเจ้าของ 25/09: ตารางรายการของใบเสนอราคา + ช่อง "ไซต์ · โซน" ในบรรทัด) ──────
+   ตาราง/เซลล์/กล่องสรุปเป็นของ `QuoteLineCells` (สไตล์ของชีตใบเสนอราคา — ห้าม import ชีตนั้นข้ามโฟลเดอร์)
+   ที่นี่มีแค่ของเพิ่มสองอย่างของใบย้อนหลัง: หัวตารางที่มีปุ่มเพิ่ม · แถบผูกโซน/รอบใต้คำอธิบาย · หน้าต่างเพิ่มหลายโซน
+   🚫 ถอดแล้ว: การ์ดไซต์ + ติ๊กโซน (`zonePicks` · `zonePick`) · แถว "การแสดงผล" (`browseField` · `browseRow`) */
 
-/* ทั้งแถวเป็น <label> ⇒ แตะชื่อโซนก็ติ๊กได้ (เป้ากดใหญ่กว่าช่องติ๊กตัวเดียว)
-   baseline = ช่องติ๊กตรงกับบรรทัดชื่อโซน ไม่ใช่ขอบบนของก้อน (ชื่อ + รหัส + ป้ายเตือน) */
-.zonePick {
+/* หัวตาราง = หัวการ์ด "รายการสินค้า/บริการ" ของใบเสนอราคา: ชื่อซ้าย ปุ่มเพิ่มชิดขวา (พับลงบรรทัดใหม่ได้บนจอแคบ) */
+.linesHead {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: var(--space-1) 0;
-  line-height: var(--lh-thai);
-  cursor: pointer;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-4) 0 var(--space-2);
 }
 
-.zonePickText {
+.linesHead > .section { margin: 0; }
+
+.linesHeadActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* แถบผูกของบรรทัด — ไซต์ · โซน (กว้าง) + รอบบริการที่ขายไว้ (แคบ) ใต้คำอธิบาย FG · จอแคบพับเป็นสองแถว */
+.lineBind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel-solid));
+}
+
+.lineBindZone,
+.lineBindRounds {
   display: flex;
   flex-direction: column;
+  gap: var(--space-0-5);
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
-/* แถว "การแสดงผล" อยู่ใต้กริดสองช่อง (แพ็คเกจ · ค้นหา) — กริดไม่มีระยะล่างของตัวเอง */
-.browseField { margin-top: var(--space-3); }
+/* ช่องโซนกินที่ที่เหลือ · ช่องรอบกว้างเท่าเนื้อ — แคบกว่านี้แล้วพับรอบลงบรรทัดใหม่เอง */
+.lineBindZone { flex: 1 1 16rem; }
+.lineBindRounds { flex: 0 1 auto; }
 
-.browseRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--ctl-h);
-  line-height: var(--lh-thai);
-}
-
-/* ── ขั้น ③ งวดชำระ ───────────────────────────────────────────────────── */
-.carry {
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-}
-
-.carryHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-thai);
-}
-
-.carryHint {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
+.lineBindLabel {
   font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
   color: var(--text-2);
 }
 
-.carryHint > svg { flex: none; margin-top: 0.2em; color: var(--green); }
+/* แถวตัวเลือกในดรอปดาวน์ "ไซต์ · โซน" — ชื่อโซน · เหตุที่เลือกไม่ได้ · รหัสโซนชิดขวา */
+.zoneOption {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-2);
+  min-width: 0;
+  line-height: var(--lh-thai);
+}
+
+.zoneOptionName { overflow-wrap: anywhere; }
+
+.zoneOptionWhy { color: var(--text-3); font-size: var(--fs-label); }
+
+.zoneOptionCode {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* เหตุที่ยอดใบยังคิดไม่ได้ — ใต้กล่องสรุปชิดขวา (ตรงกับกล่อง) */
+.totalsReason {
+  margin: var(--space-2) 0 0;
+  text-align: right;
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  color: var(--amber);
+}
+
+/* ทะเบียนไซต์เป็นของ TS — บรรทัดเดียวท้ายขั้น (เดิมเป็นกล่องแจ้งเตือนใหญ่) */
+.registryLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.registryLine > svg { flex: none; }
+
+/* ── หน้าต่าง "เพิ่มหลายโซน" ── */
+.bulkFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.bulkFields > .field { margin-bottom: 0; }
+
+.bulkTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.bulkSearch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: min(100%, 22rem);
+  min-height: var(--ctl-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--text-3);
+}
+
+.bulkSearch > input {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+}
+
+.bulkCount { font-size: var(--fs-5); color: var(--text-3); }
+
+.bulkGrow { flex: 1; }
+
+.bulkList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+.bulkSite {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  align-items: start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.bulkSite + .bulkSite { border-top: 1px solid var(--border); }
+
+.bulkSiteName {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.bulkSiteName b { font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+
+.bulkZones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+/* ทั้งชิปเป็น <label> ⇒ แตะชื่อโซนก็ติ๊กได้ (เป้ากดใหญ่กว่าช่องติ๊กตัวเดียว) */
+.bulkZone {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-1-5);
+  min-height: var(--ctl-h);
+  padding: var(--space-1) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.bulkZone > small { color: var(--text-3); font-size: var(--fs-label); }
+
+.bulkZone[data-on="yes"] { border-color: var(--accent-ink); background: var(--accent-soft); }
+
+.bulkZone[data-off="yes"] { background: var(--panel-2); color: var(--text-3); cursor: not-allowed; }
+
+.bulkFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+  width: 100%;
+}
+
+.bulkConsequence {
+  flex: 1;
+  min-width: min(100%, 14rem);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.bulkConsequence[data-blocked="yes"] { color: var(--amber); }
+
+/* ── ขั้น ③ งวดชำระ (มติเจ้าของ 25/09 — การ์ด · ตารางห่วงโซ่ · หน้าต่างแบ่งงวด) ───────────────────── */
+.span2 { grid-column: span 2; }
+@media (max-width: 640px) { .span2 { grid-column: auto; } }
 
 .evidenceList {
   list-style: none;
@@ -263,6 +474,7 @@
   color: var(--text-2);
 }
 
+/* ปุ่มทางออกหลังบันทึกไม่ผ่าน (ใต้แถบท้าย) */
 .splitRow {
   display: flex;
   flex-wrap: wrap;
@@ -271,21 +483,137 @@
   margin-top: var(--space-3);
 }
 
-.checkLine {
+/* ปุ่มชิดขวาของหัวการ์ด (แบบหัวตารางรายการของขั้น ②) */
+.cardActions {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
-  margin: var(--space-3) 0 0;
-  padding: var(--space-2-5) var(--space-3);
-  border: 1px solid var(--green);
-  border-radius: var(--radius);
-  line-height: var(--lh-thai);
-  color: var(--text-2);
+  margin-left: auto;
 }
 
-.checkLine > svg { flex: none; margin-top: 0.2em; color: var(--green); }
-.checkLine[data-bad="yes"] { border-color: var(--amber); }
-.checkLine[data-bad="yes"] > svg { color: var(--amber); }
+.monthsChip[data-tone="muted"] { background: var(--panel-2); color: var(--text-2); }
+.hint[data-blocked="yes"] { color: var(--amber); }
+
+/* ตารางงวด — เลขงวด · รายละเอียด · จำนวนเงิน · ครบกำหนด · ครอบคลุมบริการ · ปุ่ม */
+.instTable td { vertical-align: top; }
+/* เลขงวดสูงเท่าช่องกรอก (line-height = ความสูงช่อง) ⇒ ตรงกลางแนวเดียวกับช่องในแถว */
+.instSeq { width: 3.5rem; color: var(--text-3); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; line-height: var(--ctl-h); }
+.instLabel { min-width: 13rem; }
+.instAmount { width: 10.5rem; }
+.instDue { width: 10.5rem; }
+.instCover { width: 17.5rem; }
+.instActions { width: 5.5rem; white-space: nowrap; }
+.instActions > button + button { margin-left: var(--space-1); }
+.instOpening > td { background: color-mix(in srgb, var(--green) 5%, transparent); color: var(--text-2); }
+.instLast > td { background: color-mix(in srgb, var(--blue) 4%, transparent); }
+.instTag {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-height: var(--ctl-h);
+  font-variant-numeric: tabular-nums;
+}
+.instTag > b { color: var(--text); font-weight: var(--fw-semibold); }
+.instMoney {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: var(--ctl-h);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+/* ค่าที่ห่วงโซ่คิดให้ (งวดสุดท้าย) — กล่องเส้นประแบบ `.derived` + กุญแจ ไม่ใช่ช่องที่พิมพ์ได้แล้วถูกเขียนทับ */
+.instLocked {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+  min-height: var(--ctl-h);
+  padding: 0 var(--space-2-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.instLocked > svg { flex: none; color: var(--text-3); }
+.instCoverLine .instLocked { flex: 1; justify-content: space-between; }
+.instSub {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+  text-align: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.instOverdue {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  font-weight: var(--fw-semibold);
+  color: var(--amber);
+}
+.instCoverLine { display: flex; align-items: center; gap: var(--space-2); }
+.instCoverLine > :last-child { flex: 1; min-width: 0; }
+.instFrom { flex: none; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.instNote { margin-top: var(--space-2); }
+.instEmpty { padding: var(--space-4); text-align: center; color: var(--text-3); }
+.instStatus {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+.instStatus[data-tone="ok"] { color: var(--green); font-weight: var(--fw-semibold); }
+.instStatus[data-tone="bad"] { color: var(--red); }
+.instStatus > svg { flex: none; }
+
+/* หน้าต่าง "แบ่งงวดอัตโนมัติ" */
+.splitBody { display: flex; flex-direction: column; gap: var(--space-4); }
+.splitBody > .field { margin-bottom: 0; }
+.splitDay { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: var(--space-2); }
+.splitDay > :first-child { width: 6rem; }
+.splitPreview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--panel-solid);
+}
+.splitPreview table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.splitPreview th {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-table-head);
+  font-weight: var(--fw-bold);
+  border-bottom: 1px solid var(--border);
+}
+.splitPreview td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
+.splitPreview tr:last-child td { border-bottom: 0; }
+.splitPreview table td[data-overdue="yes"] { color: var(--amber); font-weight: var(--fw-semibold); }
+.splitMore td { color: var(--text-3); }
+.splitWarn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  color: var(--amber);
+}
+.splitWarn > svg { flex: none; }
 
 /* ── แถบช่วงบริการ (CoverageTimeline) — svg ล้วน ไม่มี style ฝังในแท็ก ───────── */
 .timeline {
@@ -300,6 +628,8 @@
 .tlSeg { fill: var(--text-3); }
 .tlSeg[data-kind="paid"] { fill: var(--green); }
 .tlSeg[data-kind="due"] { fill: var(--amber); }
+.tlSeg[data-kind="planned"] { fill: var(--blue); }
+.tlSeg[data-kind="overdue"] { fill: var(--amber); }
 .tlToday { fill: var(--red); }
 
 .tlAxis {
@@ -333,6 +663,8 @@
 
 .tlDot[data-kind="paid"] { background: var(--green); }
 .tlDot[data-kind="due"] { background: var(--amber); }
+.tlDot[data-kind="planned"] { background: var(--blue); }
+.tlDot[data-kind="overdue"] { background: var(--amber); }
 .tlDot[data-kind="today"] { background: var(--red); }
 
 /* ── ขั้น ④ ตรวจและส่งอนุมัติ ──────────────────────────────────────────── */

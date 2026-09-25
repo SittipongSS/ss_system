@@ -4,6 +4,8 @@
 //   🐞 ก่อนมตินี้ขั้น ② ของใบย้อนหลังถาม "แพ็ค" + ยอดที่พิมพ์เอง + ปุ่มลัด ราคา × แพ็ค × เดือน ⇒ 1 ชุด × 12 เดือน
 //      ถูกคีย์สามแบบ (1 × 42,000 · 12 × 3,500 · ปุ่มเสนอ 504,000)
 //   ⇒ สองฟอร์มวาดหัวคอลัมน์ ช่องกรอก ตัวล็อกราคา/หน่วย และยอดเงินจากไฟล์เดียว · ยามนี้ตรึงว่า **ยังเป็นไฟล์เดียว**
+// ⭐ มติเจ้าของ 25/09: "ส่วนลด รายบรรทัด รายใบก็ควรครบ" — กล่องสรุปแบบแก้ได้ (หัก ส่วนลด ท้ายใบ + ภาษีมูลค่าเพิ่ม) ยกออกจาก
+//   ใบเสนอราคามาเป็น `QuoteLineTotalsEditor` ตัวเดียว · ขั้น ② ของใบย้อนหลังใช้ตัวเดียวกัน ต่างกันแค่โหมดผ่าน props
 //
 // 🔴 ส่วนใหญ่เป็นยาม source (ชุดเทสต์ของรีโปนี้ไม่มีตัวเรนเดอร์ React) — ส่วนที่เป็นตัวเลขเรียกฟังก์ชันจริง
 import test from 'node:test';
@@ -13,7 +15,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney, quoteLineNet } from '../../lib/salesPlanning.js';
-import { HISTORICAL_LINE_MESSAGES, emptyHistoricalZone, historicalZoneLineAmount } from '../../lib/sales/historicalIntakeForm.js';
+import {
+  HISTORICAL_LINE_MESSAGES, emptyHistoricalZone, historicalTotalsView, historicalZoneLineAmount,
+} from '../../lib/sales/historicalIntakeForm.js';
 import { quoteLineFromProduct, quoteLineLocks } from '../../lib/sales/quoteLines.js';
 import { DEFAULT_SALE_UNIT } from '../../lib/master/units.js';
 
@@ -28,11 +32,14 @@ const CELLS = 'components/salesPlanning/QuoteLineCells.js';
 const LINE_ITEMS = 'components/salesPlanning/QuotationLineItems.js';
 const ZONES = 'components/salesPlanning/historicalWizard/WizardZonesStep.js';
 
+/* 🪤 ตัวปิดท้ายที่หาไม่เจอเคยเงียบแล้วตัดถึงท้ายไฟล์ ⇒ ยามดูทั้งไฟล์แทนก้อนเดียว · ส่ง `to` มาแล้วไม่เจอ = แดง */
 function slice(text, from, to) {
   const start = text.indexOf(from);
   assert.ok(start >= 0, `หา "${from}" ไม่เจอใน source`);
-  const end = to ? text.indexOf(to, start + from.length) : -1;
-  return text.slice(start, end < 0 ? undefined : end);
+  if (!to) return text.slice(start);
+  const end = text.indexOf(to, start + from.length);
+  assert.ok(end >= 0, `หาตัวปิด "${to}" หลัง "${from}" ไม่เจอ — ยามจะกลายเป็นดูทั้งไฟล์`);
+  return text.slice(start, end);
 }
 
 test('⭐ หัวคอลัมน์ของบรรทัด = ของใบเสนอราคา เรียงตามลำดับเดิม (รายการ · จำนวน · ราคา/หน่วย · ส่วนลดรายการ · จำนวนเงิน)', () => {
@@ -105,9 +112,70 @@ test('⭐ ส่วนลดรายการ: ไม่ลด / % / บาท 
   assert.match(box, /clampQuoteDiscount\(line\.discountType, value\)/);
 });
 
-test('⭐ VAT ของใบเสนอราคาอ่านป้ายจาก QUOTE_VAT_OPTIONS — ชุดเดียวกับแผ่น VAT ของใบย้อนหลัง', () => {
-  assert.match(code(LINE_ITEMS), /QUOTE_VAT_OPTIONS\.map\(\(option\) => \(\s*\n\s*<option key=\{option\.value\} value=\{String\(option\.value\)\}>\{option\.label\}<\/option>/);
+/* ⭐ มติเจ้าของ 25/09: กล่องสรุปแบบแก้ได้ยกออกจาก QuotationLineItems มาเป็น `QuoteLineTotalsEditor` ตัวเดียว — ใบเสนอราคาและ
+   ขั้น ② ของใบย้อนหลังวาดกล่องเดียวกัน · ต่างกันได้แค่ **โหมดผ่าน props** (กฎ AGENTS.md: ห้ามก๊อปฟอร์มเป็นสองชุด)
+   🔴 ยามเดิม "VAT ของใบเสนอราคาอ่านป้ายจาก QUOTE_VAT_OPTIONS — ชุดเดียวกับแผ่น VAT ของใบย้อนหลัง" ถูกชี้ใหม่: แผ่น VAT ของขั้น ①
+      ถูกถอด (VAT ย้ายมากล่องนี้) ⇒ ตัวเลือกต้องอยู่ใน QuoteLineCells ที่เดียว และสองฟอร์มต้องไม่มีกล่อง/ตัวเลือกของตัวเอง */
+test('⭐ 25/09: กล่องสรุปแบบแก้ได้มีตัวเดียว (QuoteLineTotalsEditor) · ตัวเลือก VAT อ่านจาก QUOTE_VAT_OPTIONS ใน QuoteLineCells', () => {
+  const editor = slice(code(CELLS), 'export function QuoteLineTotalsEditor', '\n}\n');
+  assert.match(code(CELLS), /import \{ QUOTE_VAT_OPTIONS, quoteLineNet \} from "@\/lib\/salesPlanning"/);
+  assert.match(editor, /QUOTE_VAT_OPTIONS\.map\(\(option\) => \(\s*\n\s*<option key=\{option\.value\} value=\{String\(option\.value\)\}>\{option\.label\}<\/option>/);
   assert.deepEqual(QUOTE_VAT_OPTIONS.map((o) => [o.value, o.label]), [[0, 'รวม VAT แล้ว'], [7, '+ VAT 7% ท้ายใบ']]);
+  const editors = {
+    [LINE_ITEMS]: slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined),
+    [ZONES]: code(ZONES),
+  };
+  for (const [file, src] of Object.entries(editors)) {
+    assert.equal((src.match(/<QuoteLineTotalsEditor\b/g) || []).length, 1, `${file} ต้องวาดกล่องกลางหนึ่งกล่อง`);
+    assert.doesNotMatch(src, /QUOTE_VAT_OPTIONS|styles\.totalsPanel|styles\.totalLine|>หัก ส่วนลด<|>ภาษีมูลค่าเพิ่ม</,
+      `${file}: กล่อง/ตัวเลือกของตัวเอง = สองฟอร์มเพี้ยนจากกันอีกครั้ง`);
+  }
+  assert.doesNotMatch(code(LINE_ITEMS), /import Select |import MoneyInput /, 'ช่องของกล่องย้ายไป QuoteLineCells ทั้งหมด');
+
+  /* ส่วนลดท้ายใบ: ชนิดชุดเดียวกับส่วนลดรายการ (QUOTE_DISCOUNT_TYPES) · % ตัดที่ 100 · ไม่ลด = ช่องค่าปิด */
+  const discount = slice(editor, '<span>หัก ส่วนลด</span>', '</span>');
+  const options = [...discount.matchAll(/<option value="([^"]*)">([^<]+)<\/option>/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(options, [['', 'ไม่ลด'], ['percent', '%'], ['amount', 'บาท']]);
+  assert.deepEqual(options.slice(1).map((o) => o[0]), [...QUOTE_DISCOUNT_TYPES]);
+  assert.match(discount, /disabled=\{!editable \|\| !discountType\}/);
+  assert.match(discount, /clampQuoteDiscount\(discountType, value\)/);
+  /* ยังไม่รู้ยอด = ขีด (ไม่ใช่ 0.00) — ใบย้อนหลังที่ยังไม่เลือก VAT ส่ง null มา */
+  for (const key of ['subtotal', 'discount', 'vat', 'total']) {
+    assert.match(editor, new RegExp(`\\{naText\\(values\\.${key}\\)\\}`), `ช่อง ${key} ต้องพูดขีดเมื่อ null`);
+  }
+  /* 🪤 class ที่ไม่มีใน CSS module = undefined เงียบ ๆ (ไม่มี error) ⇒ ทุก class ที่กล่องใช้ต้องมีอยู่จริง */
+  const css = read('components/salesPlanning/QuotationLineItems.module.css');
+  for (const name of new Set([...editor.matchAll(/styles\.([A-Za-z]+)/g)].map((m) => m[1]))) {
+    assert.match(css, new RegExp(`\\.${name}\\b`), `QuotationLineItems.module.css ไม่มี .${name}`);
+  }
+});
+
+/* โหมดของกล่อง (props) — ใบเสนอราคา **เหมือนเดิมทุกตัวอักษร** · ใบย้อนหลัง: VAT ไม่มีค่าตั้งต้น (form-design-rules §2 —
+   ใบเก่ามีทั้งแบบรวม VAT และบวก 7% เดาผิด = ยอดไม่ตรงเงินที่เก็บจริง) + ข้อความใต้ช่อง + จุดยึดของช่องที่ติดด่าน */
+test('⭐ 25/09: โหมดของกล่องสรุปมาทาง props — ใบย้อนหลังส่ง vatPlaceholder · ใบเสนอราคาไม่ส่ง (ค่าว่าง = 0 และ payload เดิม)', () => {
+  const editor = slice(code(CELLS), 'export function QuoteLineTotalsEditor', '\n}\n');
+  assert.match(editor, /const vatValue = vatPlaceholder\s*\n\s*\? \(vatRate === null \|\| vatRate === undefined \|\| vatRate === "" \? "" : String\(vatRate\)\)\s*\n\s*: String\(vatRate \?\? 0\);/,
+    'ไม่ส่ง vatPlaceholder = String(vatRate ?? 0) ของใบเสนอราคาเดิม · ส่ง = ค่าว่างขึ้นป้ายรอเลือก');
+  assert.match(editor, /placeholder=\{vatPlaceholder \|\| undefined\}/);
+  assert.match(editor, /aria-invalid=\{vatInvalid \? "true" : undefined\}/);
+  assert.match(editor, /\{vatPlaceholder \? <b className=\{styles\.totalReq\} aria-hidden="true">\*<\/b> : null\}/,
+    'ช่องบังคับของใบย้อนหลังมีดอกจัน · ใบเสนอราคาไม่มี');
+  assert.match(editor, /<div className=\{styles\.totalLine\} id=\{discountId\}>/);
+  assert.match(editor, /<div className=\{styles\.totalLine\} id=\{vatId\}>/);
+  assert.match(editor, /\{discountNote \? <span className=\{styles\.totalNote\} data-tone="bad">\{discountNote\}<\/span> : null\}/);
+
+  const quote = slice(slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined), '<QuoteLineTotalsEditor', '/>');
+  assert.doesNotMatch(quote, /vatPlaceholder|vatInvalid|vatNote|discountNote|vatId|discountId/, 'ใบเสนอราคาไม่มีโหมดของใบย้อนหลัง');
+  assert.match(quote, /onDiscountChange=\{\(next\) => onDiscountChange\?\.\(\{ type: next\.type \|\| "", value: next\.type \? next\.value : 0 \}\)\}/,
+    'ใบเสนอราคาคง payload เดิมก่อนยกกล่องออกมา: ไม่ลด = type "" + value 0');
+  assert.match(quote, /onVatRateChange=\{onVatRateChange\}/);
+  /* ห้าช่องของ values ชุดเดียวกับที่ historicalTotalsView คืนให้ขั้น ② */
+  const keys = [...slice(quote, 'values={{', '}}').matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
+  assert.deepEqual(keys, Object.keys(historicalTotalsView({ ok: true, subtotal: 0, vatAmount: 0, totalAmount: 0 }, 0).values));
+
+  const zones = slice(code(ZONES), '<QuoteLineTotalsEditor', '/>');
+  assert.match(zones, /values=\{totals\.values\}/);
+  assert.match(zones, /vatPlaceholder="เลือก"/);
 });
 
 test('⭐ จำนวนเงินของเซลล์ = quoteLineNet (สูตรเดียวกับ server) · ใบย้อนหลังพูดขีดเมื่อยังคิดไม่ได้', () => {
@@ -197,7 +265,8 @@ test('⭐ ขั้น ② ส่ง registryPriceOnly + เหตุของ�
   const zones = code(ZONES);
   const cells = slice(zones, '<QuoteLineMoneyCells', '/>');
   assert.match(cells, /\n\s*registryPriceOnly\n/);
-  assert.match(cells, /qtyNote=\{amount\.qtyNote\}/);
+  assert.match(cells, /qtyNote=\{amount\.qtyNote \|\| bad\.qty \|\| null\}/,
+    'ใต้ช่องจำนวนมีที่เดียว: เหตุที่จอรู้เอง (1.5 / 0) ก่อน แล้วค่อยข้อที่แผนตีกลับรายช่อง (มติ 25/09 — เช่นยังว่าง)');
   assert.match(cells, /amountPending=\{!amount\.known\}/);
   assert.match(zones, /const amount = historicalZoneLineAmount\(row\);/);
   const quote = slice(code(LINE_ITEMS), '<QuoteLineMoneyCells', '/>');

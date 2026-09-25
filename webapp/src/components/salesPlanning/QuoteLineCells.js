@@ -29,7 +29,7 @@ import { productOwnerTag } from "@/components/master/productOption";
 import { fmtMoney, naText, NA } from "@/lib/format";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
-import { quoteLineNet } from "@/lib/salesPlanning";
+import { QUOTE_VAT_OPTIONS, quoteLineNet } from "@/lib/salesPlanning";
 import { masterPriceDrift, masterPriceState, quoteLineLocks } from "@/lib/sales/quoteLines";
 import styles from "./QuotationLineItems.module.css";
 
@@ -231,6 +231,67 @@ export function QuoteLineTotals({ rows = [], grandTotal, grandTotalLabel = "ย�
 // แต่ถ้าปล่อยให้พิมพ์ 150 ค้างบนจอ ตัวเลขที่เห็นจะไม่ตรงกับยอดที่คำนวณให้ทันที
 export const clampQuoteDiscount = (type, value) =>
   (type === "percent" && Number(value) > 100 ? 100 : value);
+
+/**
+ * กล่องสรุปท้ายตาราง (ฝั่งแก้) — "หัก ส่วนลด" ท้ายใบ + "ภาษีมูลค่าเพิ่ม" ของใบเสนอราคา
+ * ⭐ ตัวเดียวที่ใบเสนอราคา (`QuotationLineItems`) และฟอร์มคีย์ใบสั่งขายย้อนหลัง (ขั้น ②) ใช้ — มติเจ้าของ 25/09
+ *   ("ส่วนลดรายบรรทัด รายใบก็ควรครบ" · "ควรหน้าตาเหมือนใบเสนอราคา") ⇒ ยกออกจาก `QuotationLineItems` มาไว้ที่นี่
+ *   ของที่ต่างกันได้คือ **โหมดผ่าน props** เท่านั้น (กฎ AGENTS.md):
+ *   · `vatPlaceholder` — ส่ง = VAT **ไม่มีค่าตั้งต้น** (ใบย้อนหลัง · form-design-rules §2) ช่องขึ้นป้ายนี้จนกว่าจะเลือก
+ *     ไม่ส่ง = ใบเสนอราคา (ค่าว่างอ่านเป็น 0 เหมือนเดิมทุกตัวอักษร)
+ *   · `vatInvalid` / `vatNote` / `discountNote` — ข้อความใต้ช่องของฟอร์มที่ตรวจเอง · `vatId` / `discountId` = จุดยึดของช่อง
+ * @param values `{ subtotal, discount, afterDiscount, vat, total }` ข้อความพร้อมวาง — null = ขีด (ยังไม่รู้ยอด ≠ 0.00)
+ *   · `afterDiscount` ว่าง = ไม่มีแถว "ยอดหลังหักส่วนลด" (แบบเดียวกับใบเสนอราคาเมื่อไม่มีส่วนลด)
+ */
+export function QuoteLineTotalsEditor({
+  values = {}, discountType, discountValue, vatRate, onDiscountChange, onVatRateChange, editable = true,
+  vatPlaceholder = null, vatInvalid = false, vatNote = null, discountNote = null, vatId, discountId,
+}) {
+  const vatValue = vatPlaceholder
+    ? (vatRate === null || vatRate === undefined || vatRate === "" ? "" : String(vatRate))
+    : String(vatRate ?? 0);
+  return (
+    <div className={styles.totalsWrap}>
+      <div className={styles.totalsPanel}>
+        <div className={styles.totalLine}><span>ยอดรวมสินค้า/บริการ</span><strong className="mono">{naText(values.subtotal)}</strong></div>
+        <div className={styles.totalLine} id={discountId}>
+          {/* ป้ายต้องห่อ span — grid วาง anonymous text node เป็น item แต่ :nth-child
+              นับเฉพาะ element ทำให้กฎจัดคอลัมน์เพี้ยน (ช่องกรอกตกไปอีกบรรทัด) */}
+          <span className={styles.totalControls}>
+            <span>หัก ส่วนลด</span>
+            <Select className="premium-select" value={discountType || ""} disabled={!editable} aria-label="ชนิดส่วนลดท้ายใบ" onChange={(event) => onDiscountChange?.({ type: event.target.value || null, value: event.target.value ? (clampQuoteDiscount(event.target.value, discountValue) ?? "") : "" })}>
+              <option value="">ไม่ลด</option>
+              <option value="percent">%</option>
+              <option value="amount">บาท</option>
+            </Select>
+            <MoneyInput min="0" value={discountValue || ""} disabled={!editable || !discountType} onChange={(value) => onDiscountChange?.({ type: discountType, value: clampQuoteDiscount(discountType, value) ?? "" })} aria-label="ส่วนลดท้ายใบ" />
+          </span>
+          <strong className={`mono ${values.discount ? styles.discountMinus : ""}`.trim()}>{naText(values.discount)}</strong>
+        </div>
+        {discountNote ? <span className={styles.totalNote} data-tone="bad">{discountNote}</span> : null}
+        {values.afterDiscount ? (
+          <div className={styles.totalLine}><span>ยอดหลังหักส่วนลด</span><strong className="mono">{values.afterDiscount}</strong></div>
+        ) : null}
+        <div className={styles.totalLine} id={vatId}>
+          <span className={styles.totalControls}>
+            <span>ภาษีมูลค่าเพิ่ม{vatPlaceholder ? <b className={styles.totalReq} aria-hidden="true">*</b> : null}</span>
+            {/* ป้ายสองตัวเลือกมาจากค่าคงที่กลาง — ตัวเดียวกันทั้งใบเสนอราคาและใบสั่งขายย้อนหลัง (มติเจ้าของ 23/09) */}
+            <Select className="premium-select" value={vatValue} disabled={!editable} placeholder={vatPlaceholder || undefined} aria-label="ภาษีมูลค่าเพิ่ม" aria-invalid={vatInvalid ? "true" : undefined} onChange={(event) => onVatRateChange?.(Number(event.target.value))}>
+              {QUOTE_VAT_OPTIONS.map((option) => (
+                <option key={option.value} value={String(option.value)}>{option.label}</option>
+              ))}
+            </Select>
+          </span>
+          <strong className="mono">{naText(values.vat)}</strong>
+        </div>
+        {vatNote ? <span className={styles.totalNote} data-tone={vatInvalid ? "bad" : undefined}>{vatNote}</span> : null}
+        <div className={styles.totalGrand}>
+          <strong>ยอดรวมทั้งสิ้น</strong><strong className="mono">{naText(values.total)}</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * สี่เซลล์เงินของบรรทัด: จำนวน (+หน่วย) · ราคา/หน่วย · ส่วนลดรายการ · จำนวนเงิน

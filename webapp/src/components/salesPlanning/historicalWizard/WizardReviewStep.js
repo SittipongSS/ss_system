@@ -19,7 +19,9 @@ import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { externalDocKindLabel } from "@/lib/sales/contracts";
 import { HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL } from "@/lib/sales/historicalOrders";
 import { historicalAfterSaveSteps } from "@/lib/sales/historicalOrderCopy";
-import { contractSpan, historicalReviewStaleNotice, historicalTotalsView } from "@/lib/sales/historicalIntakeForm";
+import {
+  contractSpan, historicalLinesSummary, historicalReviewStaleNotice, historicalTotalsView,
+} from "@/lib/sales/historicalIntakeForm";
 import styles from "./HistoricalOrderWizard.module.css";
 
 function Card({ icon: Icon, title, children }) {
@@ -47,7 +49,7 @@ export default function WizardReviewStep({
   /* ⚠️ `months` = null เมื่อช่วงสัญญา **ไม่ลงตัวเป็นเดือน** ⇒ แผ่นตรวจต้องบอกเหตุคำเดียวกับ
      ขั้น ①–③ (`contractSpan().note`) ไม่ใช่พิมพ์จำนวนเดือนทั้งที่ขั้นอื่นบอกว่ายังไม่รู้ —
      ของเดิมเรียก `contractMonths` ตรง ๆ ซึ่งไม่มีช่องบอกเหตุ ⇒ สองที่พูดคนละเรื่องบนใบเดียวกัน */
-  const { months, note: spanNote } = contractSpan(contract?.startDate, contract?.endDate);
+  const { monthsText, note: spanNote } = contractSpan(contract?.startDate, contract?.endDate);
   /* ป้ายตัวเลือก VAT ของใบ — ชุดเดียวกับช่อง "ภาษีมูลค่าเพิ่ม" ท้ายตารางใบเสนอราคา */
   const vatLabel = QUOTE_VAT_OPTIONS.find((option) => option.value === Number(header.vatRate))?.label || null;
   /* กล่องสรุปท้ายตาราง — ตัวเดียวกับท้ายตารางรายการของขั้น ② (แผนมาถึงขั้นนี้ได้ = เงินผ่านด่านแล้ว ⇒ ok) */
@@ -65,7 +67,7 @@ export default function WizardReviewStep({
             <dt>เอกสาร</dt>
             <dd>{externalDocKindLabel(contract.docKind)} {naText(contract.ref)}</dd>
             <dt>ระยะสัญญา</dt>
-            <dd>{fmtDate(contract.startDate)} – {fmtDate(contract.endDate)}{months ? ` · ${fmtNumber(months)} เดือน` : (spanNote ? ` · ${spanNote}` : "")}</dd>
+            <dd>{fmtDate(contract.startDate)} – {fmtDate(contract.endDate)}{monthsText ? ` · ${monthsText}` : (spanNote ? ` · ${spanNote}` : "")}</dd>
             {/* ⚠️ `null` = ยังอ่านจำนวนไม่ได้ (ดู historicalContractFileCount) — ห้ามอ่านว่า
                 "ยังไม่แนบ" ซึ่งเป็นคำตอบที่อาจผิด แล้วผู้คีย์ไปแนบซ้ำโดยไม่จำเป็น */}
             <dt>ไฟล์</dt>
@@ -87,6 +89,13 @@ export default function WizardReviewStep({
                 ที่นี่เหลือยอดที่งวดชำระต้องรวมให้ได้ */}
             <dt>ยอดรวมทั้งสิ้น</dt><dd>{fmtMoney(header.totalAmount)}</dd>
             <dt>ภาษีมูลค่าเพิ่ม</dt><dd>{naText(vatLabel)}</dd>
+            {/* ส่วนลดท้ายใบ (มติ 25/09) — บอกเฉพาะใบที่ลดจริง · ยอดของมันอยู่ในกล่องสรุปท้ายตารางข้างล่างด้วย */}
+            {Number(header.discountAmount) > 0 ? (
+              <>
+                <dt>ส่วนลดท้ายใบ</dt>
+                <dd>{fmtMoney(header.discountAmount)}{header.discountType === "percent" ? ` (${fmtNumber(header.discountValue)}%)` : ""}</dd>
+              </>
+            ) : null}
             <dt>{OPENING_INSTALLMENT_LABEL}</dt>
             <dd>
               {opening
@@ -117,7 +126,7 @@ export default function WizardReviewStep({
 
       <h4 className={styles.section}>
         รายการ
-        <span className={styles.sectionKind}>{fmtNumber(lines.length)} โซน · หนึ่งโซนหนึ่งบรรทัด</span>
+        <span className={styles.sectionKind}>{historicalLinesSummary(lines)}</span>
       </h4>
       <QuotationReadOnlyLineItems
         lines={lines}

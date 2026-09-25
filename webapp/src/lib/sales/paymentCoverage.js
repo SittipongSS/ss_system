@@ -258,3 +258,96 @@ export function splitCoverageEvenly({ startDate, endDate, count } = {}) {
   }
   return out;
 }
+
+/* ── แบ่งช่วงตาม **เดือนปฏิทิน** (มติเจ้าของ 25/09 — รื้อขั้นงวดชำระของ SO ย้อนหลัง) ─────────────────
+   🐞 ของเดิม (`splitCoverageEvenly`) หารจำนวนวันเท่า ๆ กัน ⇒ สัญญา 1 ม.ค.–31 ธ.ค. แบ่ง 12 งวดได้ 01/01–30/01 ·
+      31/01–01/03 · 02/03–31/03 … ช่วงไม่ตรงเดือน วันครบกำหนดเลื่อนทุกงวด (SO-26090232-0 ลงฐานไปแบบนั้นแล้ว)
+      ทั้งที่ชีตจริงเก็บ "ทุกวันที่เดิมของเดือน" เสมอ
+   ⇒ ขอบของรอบที่ k = **วันที่เดียวกับวันเริ่ม ในเดือนที่ k ถัดไป** · เดือนที่ไม่มีวันที่นั้น (31 → เม.ย. · 29–31 → ก.พ.)
+     ขอบเลื่อนไปวันที่ 1 ของเดือนถัดไป = รอบนั้นจบ "สิ้นเดือน" (อ่านอย่างที่คนเขียนสัญญาอ่าน)
+   ⚠️ ไฟล์นี้ไม่ตัดสินว่าช่วงทั้งก้อน "ลงตัวเป็นเดือนไหม" — ผู้เรียกส่ง `months` ที่ตรวจแล้วมา
+     (กติกาของฟอร์มอยู่ที่ `serviceMonthSpan` ของ historicalIntakeForm) */
+const isoOfUtc = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+
+/** วันแรกของรอบที่ k (k เดือนหลังวันเริ่ม) — `monthEdge('2026-01-31', 1)` = '2026-03-01' (ก.พ. ไม่มีวันที่ 31) */
+export function monthEdge(startIso, k) {
+  const from = dateOf(startIso);
+  const n = Number(k);
+  if (!from || !Number.isInteger(n) || n < 0) return null;
+  if (n === 0) return from;
+  const [year, month, day] = from.split('-').map(Number);
+  const probe = new Date(Date.UTC(year, month - 1 + n, day));
+  if (probe.getUTCDate() === day) return isoOfUtc(probe);
+  return isoOfUtc(new Date(Date.UTC(year, month + n, 1)));
+}
+
+/** วันที่เดียวกับวันเริ่มในเดือนที่ k ถัดไป **ตัดที่สิ้นเดือน** (ไม่ล้นไปเดือนหน้า) — "เดือนประจำ" ของรอบที่ k
+ *  ใช้ตัดสินวันครบกำหนดแบบ "สิ้นเดือน" / "ทุกวันที่ n" ให้ได้เดือนละหนึ่งวัน
+ *  🐞 รีวิว 25/09: เคยใช้วันเริ่มของท่อน (ซึ่งล้นไปวันที่ 1 ของเดือนหน้าเมื่อเดือนนั้นไม่มีวันที่เริ่ม) ⇒ สัญญาเริ่มวันที่
+ *     29–31 ได้วันครบกำหนดซ้ำเดือนเดียวกันสองงวด และไม่มีงวดใน ก.พ./เม.ย./มิ.ย. … */
+export function monthAnchor(startIso, k) {
+  const from = dateOf(startIso);
+  const n = Number(k);
+  if (!from || !Number.isInteger(n) || n < 0) return null;
+  const [year, month, day] = from.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month - 1 + n + 1, 0)).getUTCDate();
+  return isoOfUtc(new Date(Date.UTC(year, month - 1 + n, Math.min(day, lastDay))));
+}
+
+/**
+ * ช่วง → ท่อนละ `stepMonths` เดือนปฏิทินบน **ตารางเดือนของ `gridStart`** ต่อกันสนิท · ท่อนสุดท้ายจบที่ `endDate` เสมอ
+ * (สัญญาที่จบตรงวันครบรอบ ท่อนสุดท้ายจึงยาวขึ้นหนึ่งวัน — มติเจ้าของ 25/09)
+ * @param months   จำนวนเดือนของช่วง (ผู้เรียกตรวจมาแล้ว) · หารด้วย stepMonths ไม่ลงตัว = [] (ผู้เรียกบอกเหตุเอง)
+ * @param gridStart วันเริ่มของตารางเดือน (วันเริ่มสัญญา) — ไม่ส่ง = `startDate` · 🐞 รีวิว 25/09: ช่วงที่เหลือหลังงวดยกมาของ
+ *   สัญญาเริ่มวันที่ 31 เริ่มวันที่ 1 (ขอบที่ล้น) ⇒ นับเดือนใหม่จากวันที่ 1 แล้ว "ไม่ลงตัว" ทั้งที่ตรงตารางของสัญญาเป๊ะ
+ * @param offset   ท่อนแรกเริ่มที่เดือนที่ `offset` ของตาราง (`monthEdge(gridStart, offset) === startDate`)
+ * @returns `[{ coversFrom, coversTo, anchor }]` — anchor = เดือนประจำของท่อน (`monthAnchor`)
+ */
+export function splitCoverageByMonths({ startDate, endDate, months, stepMonths, gridStart = null, offset = 0 } = {}) {
+  const from = dateOf(startDate);
+  const to = dateOf(endDate);
+  const grid = dateOf(gridStart) || from;
+  const skip = Number(offset) || 0;
+  const total = Number(months);
+  const step = Number(stepMonths);
+  if (!from || !to || !grid || to < from) return [];
+  if (!Number.isInteger(total) || total < 1 || !Number.isInteger(step) || step < 1 || total % step !== 0) return [];
+  if (monthEdge(grid, skip) !== from) return [];
+  const count = total / step;
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    const coversFrom = monthEdge(grid, skip + i * step);
+    const coversTo = i === count - 1 ? to : addDays(monthEdge(grid, skip + (i + 1) * step), -1);
+    if (!coversFrom || !coversTo || coversTo < coversFrom) return [];
+    out.push({ coversFrom, coversTo, anchor: monthAnchor(grid, skip + i * step) });
+  }
+  return out;
+}
+
+/**
+ * วันครบกำหนดของงวดหนึ่ง ตามกติกาที่ผู้คีย์เลือกในหน้าต่างแบ่งงวด (ชีตจริงใช้สามแบบ — ดู r3_research)
+ * @param rule 'start' (วันเริ่มของงวด) · 'monthEnd' (สิ้นเดือนของเดือนประจำงวด) · 'day' (ทุกวันที่ n —
+ *   วันแรกที่ตรง n นับจากวันเริ่มของงวด · เดือนที่ไม่มีวันที่ n ใช้สิ้นเดือน) · 'manual' (ว่าง — กรอกเองในตาราง)
+ * @returns สตริงวัน หรือ '' เมื่อไม่มีกติกา/ข้อมูลไม่พอ (ไม่เดาแทนผู้คีย์)
+ */
+export function dueDateByRule(coversFrom, rule, day = null, anchor = null) {
+  const start = dateOf(coversFrom);
+  if (!start) return '';
+  if (rule === 'start') return start;
+  /* "สิ้นเดือน" / "ทุกวันที่ n" คิดจากเดือนประจำของงวด (anchor) — ไม่ส่ง = วันเริ่มของงวด */
+  const from = dateOf(anchor) || start;
+  const [year, month, d] = from.split('-').map(Number);
+  const lastDay = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+  if (rule === 'monthEnd') return isoOfUtc(new Date(Date.UTC(year, month - 1, lastDay(year, month))));
+  if (rule === 'day') {
+    const n = Number(day);
+    if (!Number.isInteger(n) || n < 1 || n > 31) return '';
+    const inMonth = (y, m) => Math.min(n, lastDay(y, m));
+    if (inMonth(year, month) >= d) return isoOfUtc(new Date(Date.UTC(year, month - 1, inMonth(year, month))));
+    const next = new Date(Date.UTC(year, month, 1));
+    const ny = next.getUTCFullYear();
+    const nm = next.getUTCMonth() + 1;
+    return isoOfUtc(new Date(Date.UTC(ny, nm - 1, inMonth(ny, nm))));
+  }
+  return '';
+}

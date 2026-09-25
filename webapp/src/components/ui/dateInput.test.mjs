@@ -13,7 +13,9 @@ const code = readFileSync(new URL('./DateInput.js', import.meta.url), 'utf8')
   .replace(/^\s*\/\/.*$/gm, '');
 
 test('weekday เป็น opt-in (ค่าตั้งต้น false) — ทุกหน้าเดิมยังเห็นตัวเลข', () => {
-  assert.match(code, /era = "CE", weekday = false \}\)/);
+  assert.match(code, /era = "CE", weekday = false, invalid = false \}\)/);
+  /* `invalid` (ฟอร์มคีย์ใบย้อนหลัง 25/09) ก็ opt-in — ขอบแดงตกที่ช่องกรอกจริง ไม่ใช่กล่องห่อ */
+  assert.match(code, /className=\{`premium-input date-input-text\$\{invalid \? " is-invalid" : ""\}`\}/);
   assert.match(code, /import \{ BUDDHIST_YEAR_OFFSET, dateFieldText, displayDateToIso \} from "@\/lib\/format";/);
 });
 

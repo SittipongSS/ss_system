@@ -41,8 +41,10 @@ function formatTypedDate(value) {
    ตอนเอาไปแสดงเท่านั้น (หัวปฏิทิน · aria-label · ตัวอักษรในช่อง)
    `weekday` (opt-in · โมดัลจัดคิวแบบ A — pain 10) — ตอนไม่ได้พิมพ์ช่องโชว์ "พฤ. 1 ต.ค. 2026"
    โฟกัสแล้วเป็นตัวเลขให้พิมพ์ต่อ · ข้อความทุกจังหวะมาจาก `dateFieldText` ตัวเดียว (lib/format.js)
-   ⚠️ ไม่ส่ง = ตัวเลขเหมือนเดิมทุกหน้า */
-export default function DateInput({ value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title, compact = false, era = "CE", weekday = false }) {
+   ⚠️ ไม่ส่ง = ตัวเลขเหมือนเดิมทุกหน้า
+   `invalid` — ขอบแดงที่ **ช่องกรอกจริง** (`is-invalid` ของ premium-input) · `className` ตกที่กล่องห่อ ไม่ใช่ช่อง
+   ⇒ ส่ง is-invalid ผ่าน className ไม่ได้ผล · ไม่ส่ง = เหมือนเดิมทุกหน้า */
+export default function DateInput({ value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title, compact = false, era = "CE", weekday = false, invalid = false }) {
   const yearLabel = (ceYear) => (era === "BE" ? ceYear + BUDDHIST_YEAR_OFFSET : ceYear);
   const placeholder = era === "BE" ? "DD/MM/พ.ศ." : "DD/MM/YYYY";
   const shown = (iso, typing = false) => dateFieldText(iso, { era, weekday, typing });
@@ -180,7 +182,8 @@ export default function DateInput({ value = "", onChange, className = "", style,
         name={name}
         type="text"
         inputMode="numeric"
-        className="premium-input date-input-text"
+        className={`premium-input date-input-text${invalid ? " is-invalid" : ""}`}
+        aria-invalid={invalid ? "true" : undefined}
         value={text}
         placeholder={placeholder}
         aria-label={ariaLabel}

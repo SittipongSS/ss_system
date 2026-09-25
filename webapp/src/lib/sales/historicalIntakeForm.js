@@ -11,6 +11,7 @@
 //
 // ⚠️ ข้อยกเว้นเดียว — **ของที่ server มองไม่เห็นตอนพรีวิว** (`historicalWizardLocalIssues`):
 //      · VAT ของใบที่ยังไม่เลือก (กฎบ้าน "ไม่มีค่าตั้งต้นให้กับสิ่งที่เป็นการตัดสินใจ") — ตัวเลือกของใบเสนอราคา
+//        ⭐ มติเจ้าของ 25/09: ช่อง VAT ย้ายจากขั้น ① ลงกล่องสรุปท้ายตารางรายการ (ขั้น ②) แบบใบเสนอราคา ⇒ ข้อนี้สังกัดขั้น ②
 //      · ทีมของดีล เมื่อ **เลือกได้จริง** ตั้งแต่ 2 ทีม (`historicalTeamField`)
 //      · **ไฟล์ที่ยังอยู่ในเครื่อง** — เอกสารแทนสัญญาและหลักฐานงวดยกมาอัปได้หลังใบเกิดแล้ว
 //        ⇒ พรีวิวไม่มีทางรู้ว่าผู้คีย์แนบหรือยัง แต่ RPC ส่งอนุมัติตีกลับทั้งสองข้อ
@@ -31,27 +32,28 @@ import { NA, fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney } from '@/lib/salesPlanning';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
-import { splitCoverageEvenly } from '@/lib/sales/paymentCoverage';
+import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
 import {
   HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
   charLength, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import {
-  CONTRACT_DATE_MESSAGES, HISTORICAL_LINE_MESSAGES, HISTORICAL_VAT_RATES, historicalLinesMoney, historicalZonePoint,
+  CONTRACT_DATE_MESSAGES, HISTORICAL_DISCOUNT_MESSAGES, HISTORICAL_LINE_MESSAGES, HISTORICAL_REQUIRED_MESSAGES,
+  HISTORICAL_VAT_RATES, historicalLinesMoney, historicalZonePoint,
 } from '@/lib/sales/historicalOrderPlan';
 import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
 
 export {
   HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, HISTORICAL_VAT_RATES,
-  CONTRACT_DATE_MESSAGES, HISTORICAL_LINE_MESSAGES, charLength,
+  CONTRACT_DATE_MESSAGES, HISTORICAL_DISCOUNT_MESSAGES, HISTORICAL_LINE_MESSAGES, charLength,
 };
 
 /* ── ขั้นของฟอร์ม (ม็อก Step1–Step4 · REVISION 2) ────────────────────────────────────
    ⚠️ รางขั้นเป็น "ที่บอกตำแหน่ง" — ข้ามขั้นไม่ได้เพราะขั้นหลังต้องผ่านด่านของขั้นก่อน
    ⚠️ ป้ายขั้น ④ พูดถึงการส่งอนุมัติตรง ๆ: ปุ่มของขั้นนั้นคือ "บันทึกและส่งอนุมัติ" ไม่ใช่ "บันทึก" */
 export const HISTORICAL_WIZARD_STEPS = Object.freeze([
-  { key: 'contract', label: 'ลูกค้าและสัญญา', hint: 'ลูกค้า · เอกสาร · VAT' },
-  { key: 'zones', label: 'ไซต์ โซน และรายการ', hint: 'เลือกจากทะเบียนไซต์' },
+  { key: 'contract', label: 'ลูกค้าและสัญญา', hint: 'ลูกค้า · เอกสารแทนสัญญา' },
+  { key: 'zones', label: 'ไซต์ โซน และรายการ', hint: 'รายการแบบใบเสนอราคา + ไซต์ · โซน' },
   { key: 'money', label: 'งวดชำระ', hint: 'งวดยกมา + งวดที่ยังต้องเก็บ' },
   { key: 'review', label: 'ตรวจและส่งอนุมัติ', hint: 'ส่ง AE Sup อนุมัติ' },
 ]);
@@ -74,11 +76,13 @@ const nextKey = (prefix) => { seq += 1; return `${prefix}-${seq}`; };
  * แถวโซน = หนึ่งบรรทัดของใบ = **หนึ่งบรรทัดของใบเสนอราคา** (มติเจ้าของ 23/09)
  * ช่องเดียวกับตารางรายการของใบเสนอราคา: สินค้า (รหัส · คำอธิบาย · หน่วย · ราคา/หน่วยจากทะเบียน) ·
  * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่มสองอย่างเท่านั้น: โซนที่ผูก และรอบบริการที่ขายไว้
+ * ⭐ มติเจ้าของ 25/09: บรรทัดเกิดจากปุ่ม "เพิ่มรายการ" แบบใบเสนอราคา (ยังไม่มีโซน — เลือกในบรรทัด) หรือ
+ *   "เพิ่มหลายโซน" · **`key` คือตัวตนของแถว** ไม่ใช่ `zoneId` (แถวใหม่ยังไม่มีโซน และเปลี่ยนโซนในบรรทัดได้)
  * ⚠️ จำนวนเริ่มที่ **ว่าง** (ใบเสนอราคาเริ่มที่ 1) — จำนวนที่เดาให้คือบั๊กที่มติ 23/09 แก้ · ว่าง = แผนตีกลับ
  * ⚠️ `fgCode` · `description` · `unit` · `unitPrice` มีไว้ **โชว์** อย่างเดียว (มาจาก `quoteLineFromProduct`)
  *   ไม่ถูกส่งขึ้น API — server อ่านราคา/หน่วยจากทะเบียนเอง · `key` มีไว้ให้ React เท่านั้น
  * ⭐ `_lineKind: 'product'` + หน่วยตั้งต้น `DEFAULT_SALE_UNIT` = **บรรทัดสินค้าใหม่ของใบเสนอราคา** (`newProductLine`)
- *   🐞 รีวิว 23/09: แถวที่ติ๊กโซนแล้วแต่ยังไม่เลือกแพ็คเกจ (ทางปกติเมื่อ "ใช้แพ็คเกจเดียวกันทุกโซน" ยังว่าง)
+ *   🐞 รีวิว 23/09: แถวที่ติ๊กโซนแล้วแต่ยังไม่เลือกแพ็คเกจ (ทางปกติของบรรทัดใหม่ที่ยังไม่เลือกแพ็คเกจ)
  *      ไม่มี `_lineKind` ⇒ เซลล์เปิดดรอปดาวน์หน่วยให้เลือก ทั้งที่ใบเสนอราคาล็อกเป็น "หน่วย: ชิ้น" ตั้งแต่ยังไม่เลือก
  *      และหน่วยที่เลือก (เช่น "ชุด") ถูกแพ็คเกจทับทิ้งเงียบ ๆ · ไม่ถูกส่งขึ้น API (body เลือกช่องเอง)
  */
@@ -126,11 +130,15 @@ export function emptyHistoricalWizard(defaults = {}) {
     team: text(defaults.team),
     contract: { docKind: '', ref: '', startDate: '', endDate: '' },
     refs: { quote: '', express: '', invoice: '' },
-    vatRate: null,             // null = ยังไม่เลือก (ไม่ใช่ 0 — 0 คือ "รวม VAT แล้ว")
+    vatRate: null,             // null = ยังไม่เลือก (ไม่ใช่ 0 — 0 คือ "รวม VAT แล้ว") · ช่องอยู่ในกล่องสรุปของขั้น ②
+    discountType: null,        // ส่วนลดท้ายใบ (มติ 25/09) — null = ไม่ลด · 'percent' | 'amount'
+    discountValue: '',
     notes: '',
-    packageProductId: '',      // แพ็คเกจที่ใช้กับทุกโซน — แต่ละแถวเขียนทับได้
     zones: [],
     hasOpening: null,          // null = ยังไม่เลือก · true = เคยเก็บแล้ว · false = ยังไม่เคยเก็บ
+    /* ⭐ มติ 25/09 (รื้อขั้น ③): "จ่ายครบทั้งใบแล้ว" = งวดยกมาเท่ายอดใบ ครอบเต็มสัญญา ไม่มีงวดต้องเก็บ (3 ใน 4 ใบจริง)
+       ⇒ ธงนี้มีความหมายเฉพาะตอน hasOpening = true · ยอด/ช่วงคิดให้ตอนประกอบ body (`historicalInstallmentChain`) */
+    openingFull: false,
     opening: { amount: '', coversTo: '', paidOn: '', note: '' },
     openingEvidence: [],       // ref ของหลักฐานที่อยู่บนเซิร์ฟเวอร์แล้ว (โหมดแก้ใบ)
     installments: [],
@@ -170,6 +178,15 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
     rounds: line.serviceRounds,
   }));
   const legacyGrossVat = intake.amountsIncludeVat === true;
+  /* ส่วนลดท้ายใบ (มติ 25/09) — ชนิด/ค่าอยู่ใน `metadata.historicalIntake` (คอลัมน์เก็บแค่ยอด)
+     🪤 ใบที่มียอดส่วนลดแต่ไม่มีชนิดใน intake (คีย์ก่อนมีช่องนี้ — วันนี้ยังไม่มีสักใบ) = ถอยเป็น "บาท" เท่ายอดเดิม
+        ⇒ เปิดแก้แล้วยอดใบไม่ขยับเงียบ ๆ (ทิ้งยอดนั้น = ยอดใบโตขึ้นโดยไม่มีใครแก้) */
+  const intakeDiscountType = QUOTE_DISCOUNT_TYPES.includes(intake.discountType) ? intake.discountType : null;
+  const storedDiscount = Number(order?.discountAmount) || 0;
+  const discountType = intakeDiscountType || (storedDiscount > 0 ? 'amount' : null);
+  const discountValue = intakeDiscountType
+    ? text(intake.discountValue)
+    : (storedDiscount > 0 ? String(storedDiscount) : '');
 
   return {
     ...base,
@@ -195,10 +212,13 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
       invoice: text(order?.historicalInvoiceRef),
     },
     vatRate: !legacyGrossVat && HISTORICAL_VAT_RATES.includes(Number(intake.vatRate)) ? Number(intake.vatRate) : null,
+    discountType,
+    discountValue,
     notes: text(order?.notes),
-    packageProductId: text(zoneRows[0]?.productId),
     zones: zoneRows,
     hasOpening: rows.length ? Boolean(opening) : null,
+    /* งวดยกมาอย่างเดียวไม่มีงวดอื่น = ผลรวมเท่ายอดใบเอง (ตัวตรวจงวดของ 0374) ⇒ คือ "จ่ายครบทั้งใบแล้ว" เสมอ */
+    openingFull: Boolean(opening) && regular.length === 0,
     opening: opening
       ? {
         amount: text(opening.amount),
@@ -240,38 +260,40 @@ export function historicalDownstreamReset(state = {}, field = 'customer') {
   const zoneCount = list(state.zones).length;
   const installmentCount = list(state.installments).length;
   const openingAnswered = state.hasOpening === true || state.hasOpening === false;
-  const hasPackage = Boolean(text(state.packageProductId));
   /* งวดทั้งชุดกลับไปเป็น "ยังไม่ตัดสินใจ" ไม่ใช่ false — ไม่มีค่าตั้งต้นให้การตัดสินใจ */
-  const moneyPatch = { hasOpening: null, opening: emptyHistoricalWizard().opening, installments: [] };
+  const moneyPatch = { hasOpening: null, openingFull: false, opening: emptyHistoricalWizard().opening, installments: [] };
   const moneyClears = [
     ...(openingAnswered ? [`คำตอบและยอดของ${OPENING_INSTALLMENT_LABEL}`] : []),
     ...(installmentCount ? [`งวดที่ยังต้องเก็บ ${installmentCount} งวด`] : []),
   ];
 
   if (field === 'vat') {
-    const clears = moneyClears;
+    /* 🐞 รีวิว 25/09: VAT ย้ายมาขั้น ② แล้วไม่บล็อกการออกจากขั้น ① อีก ⇒ ใบใหม่ไปคีย์งวดที่ขั้น ③ ก่อนเลือก VAT ได้
+       (กดรางข้ามขั้น) · การเลือก VAT **ครั้งแรก** เคยถูกนับเป็น "เปลี่ยน VAT" ⇒ ถามล้างงวดที่เลี่ยงไม่ได้ (ยกเลิก = ไปต่อไม่ได้)
+       ⇒ ยังไม่เคยเลือก = ไม่มีอะไรให้คิดใหม่ (ยอดยังไม่เคยมี) ไม่ถาม ไม่ล้าง · โหมดรุ่นก่อนที่ถูกถอด (amountsIncludeVat) ยังถาม */
+    const hadVat = HISTORICAL_VAT_RATES.includes(state.vatRate) || state.amountsIncludeVat === true;
+    const clears = hadVat ? moneyClears : [];
     return {
       ask: clears.length > 0,
       clears,
-      patch: moneyPatch,
+      patch: hadVat ? moneyPatch : {},
       title: 'เปลี่ยน VAT แล้วงวดชำระจะถูกล้าง',
       description: `ยอดใบคิดใหม่จาก VAT ที่เลือก ⇒ งวดที่คีย์ไว้จะไม่ตรงยอดใบอีก · ระบบจะล้าง: ${clears.join(' · ')}`,
-      detail: 'รายการของทุกโซนยังอยู่ครบ — กดยกเลิกเพื่อคง VAT เดิมไว้',
+      detail: 'รายการทุกบรรทัดยังอยู่ครบ — กดยกเลิกเพื่อคง VAT เดิมไว้',
       confirmLabel: 'เปลี่ยน VAT และล้างงวด',
     };
   }
 
   const clears = [
-    ...(zoneCount ? [`โซนที่เลือกไว้ ${zoneCount} โซน`] : []),
-    ...(hasPackage ? ['แพ็คเกจที่ใช้กับทุกโซน'] : []),
+    ...(zoneCount ? [`รายการ ${zoneCount} บรรทัด (พร้อมโซนที่ผูก)`] : []),
     ...moneyClears,
   ];
   return {
     ask: clears.length > 0,
     clears,
-    patch: { zones: [], packageProductId: '', ...moneyPatch },
+    patch: { zones: [], ...moneyPatch },
     title: 'เปลี่ยนลูกค้าแล้วของขั้น ② และ ③ จะถูกล้าง',
-    description: `โซนมาจากทะเบียนไซต์ของลูกค้าเดิม และงวดชำระคิดจากยอดของโซนพวกนั้น ⇒ ระบบจะล้าง: ${clears.join(' · ')}`,
+    description: `รายการผูกโซนและแพ็คเกจของลูกค้าเดิม และงวดชำระคิดจากยอดของรายการพวกนั้น ⇒ ระบบจะล้าง: ${clears.join(' · ')}`,
     detail: 'กดยกเลิกเพื่อคงลูกค้าเดิมไว้ — คีย์ผิดลูกค้าทั้งใบให้เริ่มใบใหม่แทน',
     confirmLabel: 'เปลี่ยนลูกค้าและล้างข้อมูล',
   };
@@ -282,14 +304,18 @@ export function historicalDownstreamReset(state = {}, field = 'customer') {
  * (ช่วงครอบของทุกงวดต้องเต็มสัญญาพอดี ⇒ ขยับวันแล้วงวดเดิมยังใช้ได้ แค่ต้องแก้ช่วง)
  */
 export function historicalCoverageWarning(state = {}) {
-  const rows = list(state.installments).length;
+  const mode = historicalOpeningMode(state);
+  const rows = mode === 'full' ? 0 : list(state.installments).length;
   const opening = state.hasOpening === true;
   if (!rows && !opening) return null;
+  /* ⭐ มติ 25/09 (รื้อขั้น ③): ช่วงของงวดเป็นห่วงโซ่ — งวดแรกเริ่ม/งวดสุดท้ายจบตามสัญญาเอง · จ่ายครบทั้งใบครอบเต็มสัญญาเอง
+     ⇒ ที่ต้องกลับไปดูเหลือแค่ "ครอบถึง" ของงวดยกมาบางส่วน และ "ถึง" ของงวดกลางที่อาจเลยช่วงใหม่ (ขึ้นแดงใต้ช่องนั้นเอง) */
+  if (mode === 'full') return null;   // จ่ายครบทั้งใบ ครอบตามวันสัญญาเอง — ไม่มีอะไรต้องเตือน (กล่องเหลืองที่ไม่มีอะไรให้ทำ = เสียงรบกวน)
   const held = [
     ...(opening ? [OPENING_INSTALLMENT_LABEL] : []),
     ...(rows ? [`งวดที่ยังต้องเก็บ ${rows} งวด`] : []),
   ].join(' · ');
-  return `แก้วันสัญญาแล้ว ${held} ที่คีย์ไว้ในขั้น ③ ไม่ถูกล้าง — แต่ช่วงครอบบริการต้องเต็มสัญญาพอดี ⇒ กลับไปตรวจขั้น ③ ก่อนส่งอนุมัติ`;
+  return `แก้วันสัญญาแล้ว ${held} ที่คีย์ไว้ในขั้น ③ ไม่ถูกล้าง — งวดแรกเริ่มและงวดสุดท้ายจบตามสัญญาให้เอง · “ครอบถึง” ที่เลยช่วงใหม่จะขึ้นแดงใต้ช่องในขั้น ③`;
 }
 
 /**
@@ -308,9 +334,18 @@ export function historicalCoverageWarning(state = {}) {
 export function historicalWizardBody(state = {}, options = {}) {
   const {
     preview = false, intakeKey = null, expectedUpdatedAt = null, acknowledgeDuplicates = false,
-    openingEvidenceRefs = null,
+    openingEvidenceRefs = null, totalAmount,
   } = options;
   const evidence = openingEvidenceRefs === null ? list(state.openingEvidence) : list(openingEvidenceRefs);
+  /* ⭐ มติ 25/09 (รื้อขั้น ③): งวดส่งตาม **ห่วงโซ่** ไม่ใช่ค่าดิบของ state — ช่วงของแต่ละงวดต่อจากงวดก่อน · งวดสุดท้าย
+     รับยอดที่เหลือและจบวันสิ้นสุดสัญญา · "จ่ายครบทั้งใบแล้ว" = งวดยกมาเท่ายอดใบ ครอบเต็มสัญญา ⇒ สิ่งที่ตรวจ = สิ่งที่จอโชว์
+     ยอดใบ: ผู้เรียกส่งมา (มีแผนใช้แผน) · ไม่ส่ง = คิดจากฟอร์มด้วยสูตรเดียวกับ server (`historicalMoneyView`) */
+  const total = totalAmount === undefined ? historicalMoneyView(state, null).totalAmount : totalAmount;
+  const chain = historicalInstallmentChain(state, { totalAmount: total });
+  /* 🐞 รีวิว 25/09: ใบที่กลายเป็น ฿0 **หลัง** ตอบขั้น ③ ไปแล้ว (ส่วนลด 100% ที่ขั้น ②) — ขั้น ③ ซ่อนทุกช่องของใบ ฿0 แต่ body ยังส่ง
+     งวดยกมา/งวดเดิม ⇒ แผนตีกลับ "ใบยอด 0 บาทไม่มีงวด" แล้วพาไปขั้นที่ไม่มีอะไรให้แก้ = ทางตัน
+     ⇒ รู้ยอดใบแล้วเป็น 0 = ไม่มีงวดให้ส่ง (กติกาเดียวกับตัวตรวจงวดของ 0374) · ของที่คีย์ไว้ยังอยู่ใน state ถ้ายอดกลับมา */
+  const zeroTotal = total !== null && total !== undefined && Number.isFinite(Number(total)) && toSatang(total) === 0;
   const body = {
     preview,
     customerId: text(state.customerId) || null,
@@ -328,6 +363,9 @@ export function historicalWizardBody(state = {}, options = {}) {
       invoice: text(state.refs?.invoice) || null,
     },
     vatRate: state.vatRate,
+    /* ส่วนลดท้ายใบ (มติ 25/09) — ช่องเดียวกับ "หัก ส่วนลด" ของใบเสนอราคา · ไม่ลด = null ทั้งคู่ */
+    discountType: QUOTE_DISCOUNT_TYPES.includes(state.discountType) ? state.discountType : null,
+    discountValue: QUOTE_DISCOUNT_TYPES.includes(state.discountType) ? text(state.discountValue) : '',
     notes: text(state.notes) || null,
     /* บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · จำนวน · ส่วนลดรายการ (+ โซน · รอบ) — **ไม่ส่งราคา/ยอด**
        ราคา/หน่วยเป็นของทะเบียนสินค้า (server อ่านเอง) · ยอดบรรทัดเป็นของสูตร ไม่ใช่ของที่จอคิด */
@@ -339,22 +377,24 @@ export function historicalWizardBody(state = {}, options = {}) {
       discountValue: QUOTE_DISCOUNT_TYPES.includes(row?.discountType) ? text(row?.discountValue) : '',
       rounds: text(row?.rounds),
     })),
-    opening: state.hasOpening === true
+    opening: state.hasOpening === true && !zeroTotal
       ? {
-        amount: text(state.opening?.amount),
-        coversTo: text(state.opening?.coversTo) || null,
+        amount: chain.mode === 'full'
+          ? (chain.opening?.amount === null || chain.opening?.amount === undefined ? '' : moneyText(chain.opening.amount))
+          : text(state.opening?.amount),
+        coversTo: chain.mode === 'full' ? (chain.opening?.coversTo || null) : (text(state.opening?.coversTo) || null),
         paidOn: text(state.opening?.paidOn) || null,
         note: text(state.opening?.note) || null,
         evidence,
       }
       : null,
-    installments: list(state.installments).map((row) => ({
-      label: text(row?.label),
-      amount: text(row?.amount),
-      dueDate: text(row?.dueDate) || null,
-      coversFrom: text(row?.coversFrom) || null,
-      coversTo: text(row?.coversTo) || null,
-      note: text(row?.note) || null,
+    installments: (zeroTotal ? [] : chain.rows).map((row) => ({
+      label: text(row.label),
+      amount: row.amount === null ? text(row.amountText) : moneyText(row.amount),
+      dueDate: text(row.dueDate) || null,
+      coversFrom: row.coversFrom || null,
+      coversTo: row.coversTo || null,
+      note: text(row.note) || null,
     })),
   };
   /* รหัสการคีย์: บังคับเฉพาะตอนสร้างจริง แต่ส่งตั้งแต่พรีวิวด้วย — มันคือตัวที่ทำให้ใบของ
@@ -370,9 +410,10 @@ export function historicalWizardBody(state = {}, options = {}) {
    ของที่ไม่รู้จักตกที่ขั้นแรก เพราะขั้นแรกคือที่ที่ผู้คีย์เห็นข้อความได้แน่นอนที่สุด */
 const FIELD_STEP = new Map([
   ['customerId', 'contract'], ['ownerId', 'contract'], ['team', 'contract'], ['deal', 'contract'],
-  ['contract', 'contract'], ['refs', 'contract'], ['vatRate', 'contract'],
+  ['contract', 'contract'], ['refs', 'contract'],
   ['notes', 'contract'], ['todayIso', 'contract'],
-  ['zones', 'zones'],
+  /* ⭐ มติ 25/09: VAT กับส่วนลดท้ายใบอยู่ในกล่องสรุปท้ายตารางรายการ (ขั้น ②) แบบใบเสนอราคา */
+  ['zones', 'zones'], ['vatRate', 'zones'], ['discount', 'zones'],
   ['opening', 'money'], ['installments', 'money'],
 ]);
 
@@ -444,14 +485,15 @@ export function historicalContractDateIssues(state = {}, { todayIso = null, edit
   const today = isDateText(todayIso) ? text(todayIso) : null;
   const from = text(state?.contract?.startDate);
   const to = text(state?.contract?.endDate);
+  /* `live: true` = ข้อที่พูดถึง **ค่าที่ผู้คีย์เพิ่งพิมพ์** ⇒ ขึ้นใต้ช่องทันทีแม้ยังไม่กดไปต่อ (`historicalVisibleIssues`) */
   if (isDateText(from) && today && from > today) {
-    issues.push({ field: 'contract.startDate', message: CONTRACT_DATE_MESSAGES.startAfterToday });
+    issues.push({ field: 'contract.startDate', message: CONTRACT_DATE_MESSAGES.startAfterToday, live: true });
   }
   if (isDateText(to)) {
     if (isDateText(from) && to < from) {
-      issues.push({ field: 'contract.endDate', message: CONTRACT_DATE_MESSAGES.endBeforeStart });
+      issues.push({ field: 'contract.endDate', message: CONTRACT_DATE_MESSAGES.endBeforeStart, live: true });
     } else if (today && to < today && !editing) {
-      issues.push({ field: 'contract.endDate', message: CONTRACT_DATE_MESSAGES.endBeforeToday });
+      issues.push({ field: 'contract.endDate', message: CONTRACT_DATE_MESSAGES.endBeforeToday, live: true });
     }
   }
   return issues;
@@ -482,33 +524,34 @@ export function historicalContractDateWarnings(state = {}, { todayIso = null, ed
  */
 export function historicalWizardLocalIssues(state = {}, {
   role = null, userId = null, ownerTeams = [], sharedTeams = [], contractFileCount = 0, evidenceFileCount = 0,
-  zeroValue = false, todayIso = null,
+  zeroValue = false, todayIso = null, totalAmount,
 } = {}) {
   const issues = [];
   const add = (field, message) => issues.push({ field, message });
-  /* ⚠️ วันสัญญาอยู่ก่อนเพื่อน — มันคือช่องที่ผู้คีย์เพิ่งพิมพ์ค้างไว้บนจอ (ดูหัว
-     `historicalContractDateIssues`) · ขั้น ① หยิบข้อความชุดนี้ไปแปะใต้ช่องเอง
-     🔴 `editing` = ตัวแยกสร้าง/แก้ตัวเดียวกับที่ไฟล์นี้ใช้กับช่องทีม (`locked`) และตรงกับ
-        `ctx.editing` ของแผน ⇒ สัญญาที่สิ้นสุดไปแล้วบนใบที่มีอยู่แล้วเป็นคำเตือน ไม่ใช่ด่าน */
-  const editing = Boolean(state.orderId);
-  for (const issue of historicalContractDateIssues(state, { todayIso, editing })) issues.push(issue);
-
+  /* ⭐ รีวิว 25/09: ช่องบังคับของขั้น ① ตรวจที่จอด้วย (คำเดียวกับแผน — HISTORICAL_REQUIRED_MESSAGES) ⇒ กดถัดไปครั้งเดียวเห็นครบ
+     ไม่ใช่ไฟล์ก่อนแล้วค่อยเจอชนิดเอกสาร/วันรอบหน้า · เรียงตามลำดับบนจอ (ปุ่มที่ติดด่านพาไปที่ข้อแรกของขั้น) */
+  if (!text(state.customerId)) add('customerId', HISTORICAL_REQUIRED_MESSAGES.customerId);
+  if (!text(state.ownerId)) add('ownerId', HISTORICAL_REQUIRED_MESSAGES.ownerId);
   /* AE / Senior AE คีย์ได้เฉพาะของตัวเอง — ช่องบนจอล็อกเป็นตัวเองอยู่แล้ว (form-design-rules §2)
      ที่นี่กันกรณี state เพี้ยน (เช่น hydrate ใบของคนอื่นมาแก้) ก่อนยิงพรีวิวให้เปลือง */
   if (ownerLockedToSelf(role) && text(userId) && text(state.ownerId) && text(state.ownerId) !== text(userId)) {
     add('ownerId', 'AE / Senior AE คีย์ใบย้อนหลังได้เฉพาะของตัวเอง');
   }
-  if (!HISTORICAL_VAT_RATES.includes(state.vatRate)) add('vatRate', HISTORICAL_VAT_CHOICE_MESSAGE);
-  /* 🪤 โหมด "ราคารวม VAT แล้ว — ถอด VAT 7%" ถูกถอด (มติ 23/09) และ body ไม่ส่งมันแล้ว ⇒ state ที่ยังพกมันมา
-     จะกลายเป็น "+ VAT 7% ท้ายใบ" เงียบ ๆ = ยอดใบบวก VAT ซ้ำ ⇒ ต้องเลือกใหม่ ไม่ใช่เดา
-     ⚠️ ขั้น ① ไม่มีแผ่นที่ตั้งธงนี้แล้ว (แผ่น VAT = QUOTE_VAT_OPTIONS) · ด่านนี้เหลือไว้กัน state ที่มาจากทางอื่น */
-  else if (state.amountsIncludeVat === true) add('vatRate', `โหมด “ราคารวม VAT แล้ว — ถอด VAT” เลิกใช้แล้ว — ${HISTORICAL_VAT_CHOICE_MESSAGE}`);
-
   /* ⚠️ ถามจาก **ชุดตัวเลือกที่อยู่บนจอจริง** ไม่ใช่จากจำนวนทีมของ AE (ดูหัว `historicalTeamField`) */
   const teamField = historicalTeamField({ ownerTeams, sharedTeams, locked: Boolean(state.orderId) });
   if (teamField.ask && !teamField.options.includes(text(state.team))) {
     add('team', `AE คนนี้อยู่ ${teamField.options.length} ทีม — เลือกทีมที่ใบนี้เข้า (ทีมของดีลตามที่เลือก)`);
   }
+
+  if (!text(state.contract?.docKind)) add('contract.docKind', HISTORICAL_REQUIRED_MESSAGES.docKind);
+  if (!isDateText(state.contract?.startDate)) add('contract.startDate', HISTORICAL_REQUIRED_MESSAGES.startDate);
+  if (!isDateText(state.contract?.endDate)) add('contract.endDate', HISTORICAL_REQUIRED_MESSAGES.endDate);
+  /* ⚠️ กฎของวันสัญญาที่พิมพ์แล้ว — มันคือช่องที่ผู้คีย์เพิ่งพิมพ์ค้างไว้บนจอ (ดูหัว
+     `historicalContractDateIssues`) · ขั้น ① หยิบข้อความชุดนี้ไปแปะใต้ช่องเอง
+     🔴 `editing` = ตัวแยกสร้าง/แก้ตัวเดียวกับที่ไฟล์นี้ใช้กับช่องทีม (`locked`) และตรงกับ
+        `ctx.editing` ของแผน ⇒ สัญญาที่สิ้นสุดไปแล้วบนใบที่มีอยู่แล้วเป็นคำเตือน ไม่ใช่ด่าน */
+  const editing = Boolean(state.orderId);
+  for (const issue of historicalContractDateIssues(state, { todayIso, editing })) issues.push(issue);
 
   /* 🔴 ไฟล์ทั้งสองชุดอัปได้ **หลังใบเกิดแล้ว** (ต้องมีแถวก่อนถึงจะมีโฟลเดอร์ให้แนบ) ⇒ พรีวิวไม่เห็น
      แต่ขั้นส่งอนุมัติตีกลับทั้งคู่ · ถามที่นี่ = ผู้คีย์รู้ตั้งแต่ก่อนกด ไม่ใช่หลังใบร่างเกิดแล้ว */
@@ -519,18 +562,25 @@ export function historicalWizardLocalIssues(state = {}, {
   } else if (contractFileCount < 1) {
     add('contract.file', 'ต้องแนบไฟล์เอกสารที่ใช้แทนสัญญาอย่างน้อย 1 ไฟล์ — AE Sup อนุมัติจากไฟล์นี้');
   }
+  /* ขั้น ② — VAT อยู่กล่องสรุปใต้ตารางรายการ (A14) */
+  if (!HISTORICAL_VAT_RATES.includes(state.vatRate)) add('vatRate', HISTORICAL_VAT_CHOICE_MESSAGE);
+  /* 🪤 โหมด "ราคารวม VAT แล้ว — ถอด VAT 7%" ถูกถอด (มติ 23/09) และ body ไม่ส่งมันแล้ว ⇒ state ที่ยังพกมันมา
+     จะกลายเป็น "+ VAT 7% ท้ายใบ" เงียบ ๆ = ยอดใบบวก VAT ซ้ำ ⇒ ต้องเลือกใหม่ ไม่ใช่เดา
+     ⚠️ ขั้น ② (กล่องสรุป) ไม่มีแผ่นที่ตั้งธงนี้ (แผ่น VAT = QUOTE_VAT_OPTIONS) · ด่านนี้เหลือไว้กัน state ที่มาจากทางอื่น */
+  else if (state.amountsIncludeVat === true) add('vatRate', `โหมด “ราคารวม VAT แล้ว — ถอด VAT” เลิกใช้แล้ว — ${HISTORICAL_VAT_CHOICE_MESSAGE}`);
+
   /* 🪤 ใบยอด 0 บาท **ไม่มีงวดสักงวด** (ตัวตรวจงวดของแผน + CHECK ของ 0374) ⇒ ขั้น ③ ซ่อนทั้ง
      แผ่นเลือก ตารางงวด และช่องหลักฐาน · ถามต่อที่นี่ = ถามข้อที่ไม่มีช่องให้ตอบ แล้วปุ่มบันทึก
-     เด้งกลับขั้น ③ ทุกครั้งไม่รู้จบ ⇒ ธงตัวเดียวกับที่ขั้น ③ ใช้ซ่อนช่อง ต้องปิดคำถามคู่นี้ด้วย */
+     เด้งกลับขั้น ③ ทุกครั้งไม่รู้จบ ⇒ ธงตัวเดียวกับที่ขั้น ③ ใช้ซ่อนช่อง ต้องปิดคำถามคู่นี้ด้วย
+     ⭐ มติ 25/09 (รื้อขั้น ③): จอตรวจทุกช่องของขั้นนี้เอง (ข้อความเดียวกับแผนเมื่อมีคู่) ⇒ กด "ถัดไป" ครั้งเดียวเห็นครบ ·
+       ข้อ `live` = กฎของค่าที่เพิ่งพิมพ์ ขึ้นใต้ช่องทันที · ข้อ "ยังว่าง" รอจนกดไปต่อ (`historicalVisibleIssues`) */
   if (!zeroValue) {
-    if (state.hasOpening !== true && state.hasOpening !== false) {
-      add('opening', `เลือกว่าเคยเก็บเงินไปแล้วบางส่วนหรือยัง — เคยเก็บแล้ว = คีย์เป็น${OPENING_INSTALLMENT_LABEL} 1 งวด`);
-    }
-    if (state.hasOpening === true && evidenceFileCount < 1) {
-      add('opening.evidence', `${OPENING_INSTALLMENT_LABEL}ต้องมีหลักฐานการเก็บเงินอย่างน้อย 1 ไฟล์ (ใบกำกับ ใบเสร็จ หรือ statement)`);
-    }
+    for (const issue of historicalMoneyIssues(state, { evidenceFileCount, todayIso, totalAmount })) issues.push(issue);
   }
   return issues;
+}
+
+/* ── จำนวนไฟล์เอกสารแทนสัญญา  return issues;
 }
 
 /* ── จำนวนไฟล์เอกสารแทนสัญญา: "ภาพนิ่งตอน mount" ⇒ ทางตันปิดฟอร์ม (รีวิว R6) ─────────────
@@ -584,14 +634,29 @@ export function historicalContractFileCount({
 export const REGISTRY_LOAD_FAILED = 'โหลดทะเบียนไม่ขึ้น — กด “ลองอ่านทะเบียนอีกครั้ง” ที่ข้อความแดงด้านบน (ไม่ใช่ว่าทะเบียนไม่มีรายการ)';
 
 export const HISTORICAL_MONEY_UNKNOWN = Object.freeze({
-  vat: 'เลือก VAT ของใบในขั้น ① ก่อน ระบบจึงคิดยอดใบได้',
-  zones: 'เลือกโซนอย่างน้อย 1 โซนในขั้น ② ก่อน ระบบจึงคิดยอดใบได้',
-  lines: 'เลือกแพ็คเกจ / ใส่จำนวนของทุกโซนในขั้น ② ให้ครบก่อน ระบบจึงคิดยอดใบได้',
+  vat: 'เลือกภาษีมูลค่าเพิ่มในกล่องสรุปท้ายตารางรายการ (ขั้น ②) ก่อน ระบบจึงคิดยอดใบได้',
+  zones: 'เพิ่มรายการอย่างน้อย 1 บรรทัดในขั้น ② ก่อน ระบบจึงคิดยอดใบได้',
+  lines: 'เลือกแพ็คเกจ / ใส่จำนวนของทุกบรรทัดในขั้น ② ให้ครบก่อน ระบบจึงคิดยอดใบได้',
   /* 🐞 รีวิว 23/09: จำนวน 1.5 / 0 เคยได้เหตุ "lines" (ให้ไปใส่ให้ครบ) ทั้งที่แพ็คเกจกับจำนวนกรอกแล้วทั้งคู่ —
      เหตุจริงโผล่ตอนกด "ถัดไป" เท่านั้น ⇒ ข้อความเดียวกับที่แผนตีกลับ (HISTORICAL_LINE_MESSAGES.qty) */
-  qty: `${HISTORICAL_LINE_MESSAGES.qty} — แก้จำนวนของโซนนั้นในขั้น ② ก่อน ระบบจึงคิดยอดใบได้`,
-  price: 'แพ็คเกจของบางโซนยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน ระบบจึงคิดยอดใบได้',
+  qty: `${HISTORICAL_LINE_MESSAGES.qty} — แก้จำนวนของบรรทัดนั้นในขั้น ② ก่อน ระบบจึงคิดยอดใบได้`,
+  price: 'แพ็คเกจของบางบรรทัดยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน ระบบจึงคิดยอดใบได้',
+  discount: `${HISTORICAL_DISCOUNT_MESSAGES.value} — แก้ส่วนลดท้ายใบในกล่องสรุป (ขั้น ②) ก่อน ระบบจึงคิดยอดใบได้`,
+  discountPercent: `${HISTORICAL_DISCOUNT_MESSAGES.percent} — แก้ส่วนลดท้ายใบในกล่องสรุป (ขั้น ②) ก่อน ระบบจึงคิดยอดใบได้`,
 });
+
+/* ส่วนลดท้ายใบของฟอร์ม → ค่าที่ป้อนสูตรได้ · กระจกของด่านในแผน (ชนิด % / บาท · ค่า ≥ 0 · % ไม่เกิน 100 · ว่าง = 0)
+   @returns `{ discountType, discountValue }` หรือ `{ invalid: true, reason }` เมื่อแผนจะตีกลับ
+     (reason = คีย์ของ HISTORICAL_MONEY_UNKNOWN — % เกิน 100 เป็นคนละเหตุกับ "ไม่ใช่ตัวเลข/ติดลบ" ตรงกับข้อความของแผน) */
+function headerDiscountInput(state = {}) {
+  const type = QUOTE_DISCOUNT_TYPES.includes(state?.discountType) ? state.discountType : null;
+  if (!type) return { discountType: null, discountValue: 0 };
+  const raw = text(state?.discountValue);
+  const value = raw === '' ? 0 : Number(raw);
+  if (!Number.isFinite(value) || value < 0) return { invalid: true, reason: 'discount' };
+  if (type === 'percent' && value > 100) return { invalid: true, reason: 'discountPercent' };
+  return { discountType: type, discountValue: value };
+}
 
 /* ด่านของแถวโซนหนึ่งแถวก่อนคิดเงิน — **ตัวเดียว** ที่ยอดใบ (historicalMoneyView) และเซลล์ "จำนวนเงิน" ของ
    ขั้น ② (historicalZoneLineAmount) ถาม ⇒ แถวที่เซลล์พูดขีด คือแถวเดียวกับที่ทำให้ยอดใบยังคิดไม่ได้
@@ -671,6 +736,7 @@ export function historicalMoneyView(state = {}, plan = null, serverMoney = null)
       source: 'plan',
       reason: null,
       subtotal: plan.header.subtotal,
+      discountAmount: Number(plan.header.discountAmount) || 0,
       vatAmount: plan.header.vatAmount,
       totalAmount: plan.header.totalAmount,
     };
@@ -685,15 +751,17 @@ export function historicalMoneyView(state = {}, plan = null, serverMoney = null)
       source: 'server',
       reason: null,
       subtotal: serverMoney.subtotal,
+      discountAmount: Number(serverMoney.discountAmount) || 0,
       vatAmount: serverMoney.vatAmount,
       totalAmount: serverMoney.totalAmount,
     };
   }
-  const unknown = (reason) => ({
-    ok: false, source: 'local', reason, subtotal: null, vatAmount: null, totalAmount: null,
+  const unknown = (reason, partial = {}) => ({
+    ok: false, source: 'local', reason,
+    subtotal: null, discountAmount: null, vatAmount: null, totalAmount: null, ...partial,
   });
-  const vatRate = state.vatRate;
-  if (!HISTORICAL_VAT_RATES.includes(vatRate)) return unknown(HISTORICAL_MONEY_UNKNOWN.vat);
+  /* ⭐ ลำดับเหตุตามลำดับบนจอ (มติ 25/09): ตารางรายการอยู่บน กล่องสรุป (ส่วนลด · VAT) อยู่ล่าง
+     ⇒ ถามบรรทัดก่อน แล้วค่อยส่วนลดท้ายใบ แล้วค่อย VAT */
   const zones = list(state.zones);
   if (!zones.length) return unknown(HISTORICAL_MONEY_UNKNOWN.zones);
   const rows = [];
@@ -702,56 +770,68 @@ export function historicalMoneyView(state = {}, plan = null, serverMoney = null)
     if (!input) return unknown(HISTORICAL_MONEY_UNKNOWN[reason]);
     rows.push(input);
   }
-  const money = historicalLinesMoney(rows, vatRate);
+  const discount = headerDiscountInput(state);
+  if (discount.invalid) return unknown(HISTORICAL_MONEY_UNKNOWN[discount.reason] || HISTORICAL_MONEY_UNKNOWN.discount);
+  const vatRate = state.vatRate;
+  if (!HISTORICAL_VAT_RATES.includes(vatRate)) {
+    /* ⭐ ยังไม่เลือก VAT = ยอดทั้งสิ้นยังไม่รู้ แต่ **ยอดรวมสินค้า/บริการกับส่วนลดรู้แล้ว** — กล่องสรุปของขั้น ②
+       ต้องพูดสองแถวนั้นได้ตั้งแต่ก่อนเลือก VAT (ใบเสนอราคาพูดได้เสมอ) · `ok` ยังเท็จ ⇒ ขั้น ③/แถบสรุปไม่เชื่อยอดนี้ */
+    const partial = historicalLinesMoney(rows, 0, discount);
+    return unknown(HISTORICAL_MONEY_UNKNOWN.vat, { subtotal: partial.subtotal, discountAmount: partial.discountAmount });
+  }
+  const money = historicalLinesMoney(rows, vatRate, discount);
   return {
     ok: true,
     source: 'local',
     reason: null,
     subtotal: money.subtotal,
+    discountAmount: money.discountAmount,
     vatAmount: money.vatAmount,
     totalAmount: money.totalAmount,
   };
 }
 
 /**
- * กล่องสรุปท้ายตารางรายการ (ขั้น ② และ ④) — ป้ายของใบเสนอราคา: ยอดรวมสินค้า/บริการ · ภาษีมูลค่าเพิ่ม (ตัวเลือก VAT) ·
- * ยอดรวมทั้งสิ้น · ⭐ ตัวเดียวที่สองขั้นอ่าน ⇒ ป้ายไม่มีทางพูดคนละคำระหว่างขั้นคีย์กับขั้นตรวจ
- * ⚠️ ใบย้อนหลัง **ไม่มีส่วนลดท้ายใบ** (แผนคิดส่วนลดรายบรรทัดอย่างเดียว) ⇒ ไม่มีแถว "หัก ส่วนลด" ให้ตอบ
- * @param money   `{ ok, subtotal, vatAmount, totalAmount }` (ขั้น ②: historicalMoneyView · ขั้น ④: header ของแผน + ok)
+ * กล่องสรุปท้ายตารางรายการ (ขั้น ② และ ④) — ป้ายของใบเสนอราคา: ยอดรวมสินค้า/บริการ · หัก ส่วนลด ·
+ * ยอดหลังหักส่วนลด · ภาษีมูลค่าเพิ่ม (ตัวเลือก VAT) · ยอดรวมทั้งสิ้น
+ * ⭐ ตัวเดียวที่สองขั้นอ่าน ⇒ ป้ายไม่มีทางพูดคนละคำระหว่างขั้นคีย์ (กล่องแก้ได้) กับขั้นตรวจ (กล่องอ่านอย่างเดียว)
+ * ⭐ ส่วนลดท้ายใบ (มติ 25/09) — แถว "หัก ส่วนลด" / "ยอดหลังหักส่วนลด" ขึ้นเมื่อมีส่วนลดจริง (แบบกล่องของใบเสนอราคา)
+ * @param money   `{ ok, subtotal, discountAmount, vatAmount, totalAmount }` (ขั้น ②: historicalMoneyView · ขั้น ④: header ของแผน + ok)
+ *   ⚠️ `ok` เท็จแต่มี `subtotal` = ยังไม่เลือก VAT (ยอดรวมสินค้า/ส่วนลดรู้แล้ว) ⇒ พูดสองแถวนั้น ที่เหลือเป็นขีด
  * @param vatRate ตัวเลือก VAT ของใบ (0 = รวม VAT แล้ว ⇒ แถว VAT เป็นขีด เหมือนท้ายตารางใบเสนอราคา)
- * @returns `{ rows: [{ id, label, value }], grandTotal }` — ยังไม่รู้ยอด = ขีดทุกช่อง (ห้ามเป็น 0.00)
+ * @returns `{ rows: [{ id, label, value }], grandTotal, values }` — ยังไม่รู้ยอด = ขีด/null (ห้ามเป็น 0.00)
+ *   - values: `{ subtotal, discount, afterDiscount, vat, total }` เป็นข้อความพร้อมวาง (null = ขีด) ของกล่องแบบแก้ได้
  */
 export function historicalTotalsView(money = {}, vatRate = null) {
   const ok = Boolean(money?.ok);
   const vatLabel = HISTORICAL_VAT_RATES.includes(Number(vatRate)) && vatRate !== null ? vatLabelOf(Number(vatRate)) : null;
+  const known = (value) => value !== null && value !== undefined && Number.isFinite(Number(value));
+  const subtotalKnown = known(money?.subtotal);
+  const discountAmount = known(money?.discountAmount) ? Number(money.discountAmount) : 0;
+  const hasDiscount = subtotalKnown && discountAmount > 0;
+  const values = {
+    subtotal: subtotalKnown ? fmtMoney(money.subtotal) : null,
+    discount: hasDiscount ? `-${fmtMoney(discountAmount)}` : null,
+    afterDiscount: hasDiscount ? fmtMoney(Number(money.subtotal) - discountAmount) : null,
+    vat: ok && Number(vatRate) > 0 ? fmtMoney(money.vatAmount) : null,
+    total: ok ? fmtMoney(money.totalAmount) : null,
+  };
   return {
     rows: [
-      { id: 'subtotal', label: 'ยอดรวมสินค้า/บริการ', value: ok ? fmtMoney(money.subtotal) : null },
+      { id: 'subtotal', label: 'ยอดรวมสินค้า/บริการ', value: values.subtotal },
+      ...(hasDiscount ? [
+        { id: 'discount', label: 'หัก ส่วนลด', value: values.discount },
+        { id: 'afterDiscount', label: 'ยอดหลังหักส่วนลด', value: values.afterDiscount },
+      ] : []),
       {
         id: 'vat',
         label: vatLabel ? `ภาษีมูลค่าเพิ่ม (${vatLabel})` : 'ภาษีมูลค่าเพิ่ม',
-        value: ok && Number(vatRate) > 0 ? fmtMoney(money.vatAmount) : null,
+        value: values.vat,
       },
     ],
-    grandTotal: ok ? fmtMoney(money.totalAmount) : NA,
+    grandTotal: values.total || NA,
+    values,
   };
-}
-
-/**
- * ผลรวมงวดทั้งใบตามที่ฟอร์มถืออยู่ (สตางค์ล้วน) — **ตัวช่วยคิดของขั้น ③ ไม่ใช่ด่าน**
- * ด่านจริงคือ `plan.check` + CHECK ของ 0374 · ที่นี่มีไว้บอกผู้คีย์ว่ายังขาด/เกินเท่าไร
- * ตอนที่พรีวิวยังไม่ผ่าน (ซึ่งคือตอนที่เขาต้องการตัวเลขนี้ที่สุด — รีวิว R7)
- * @returns `{ sum, diff }` — `diff` = ยอดใบ − ผลรวมงวด (บวก = ยังขาด) · ไม่รู้ยอดใบ = null ทั้งคู่
- */
-export function historicalInstallmentSum(state = {}, totalAmount = null) {
-  const rows = list(state.installments);
-  let satang = state.hasOpening === true ? toSatang(state.opening?.amount) : 0;
-  for (const row of rows) satang += toSatang(row?.amount);
-  const sum = satang / 100;
-  if (totalAmount === null || totalAmount === undefined || !Number.isFinite(Number(totalAmount))) {
-    return { sum, diff: null };
-  }
-  return { sum, diff: (toSatang(totalAmount) - satang) / 100 };
 }
 
 /* ── เปลือกของฟอร์ม: ป้ายปุ่ม · จุดยึดของช่อง · ราง · แถบสรุป · ถ้อยคำของแถบท้าย ──────────
@@ -776,8 +856,73 @@ export const HISTORICAL_NEXT_BUTTON_LABEL = 'ถัดไป';
  * ⇒ สองขั้นนี้ยุบแถบสรุปออกให้ตารางได้ความกว้างเต็มคอลัมน์ (≈1140px ที่จอ 1440) · ของที่แถบสรุปบอก
  *   มีอยู่ในขั้นเองแล้ว (ขั้น ②: กล่องสรุปท้ายตาราง · ขั้น ④: การ์ดสรุปทั้งใบ) · ขั้น ① ③ ยังมีแถบสรุปตามม็อก
  */
-export const HISTORICAL_FULL_WIDTH_STEPS = Object.freeze(['zones', 'review']);
-export const historicalStepShowsAside = (step) => !HISTORICAL_FULL_WIDTH_STEPS.includes(step);
+/* ⭐ มติเจ้าของ 25/09 (รื้อขั้น ①): ขั้น ① ถอดแถบสรุปด้วย — ของที่ขั้น ① มีจริงขึ้นเป็นช่องสรุปบนหัวเอกสาร
+     (`historicalContractFacts`) · ⭐ มติเจ้าของ 25/09 (รื้อขั้น ③): ขั้น ③ ถอดด้วย — ยอดใบ · หักงวดยกมา · งวดที่ยังต้องเก็บ
+     อยู่ในกล่องสรุปท้ายตารางงวดแล้ว (ยอดใบขึ้นสองที่ = เสียงรบกวน) ⇒ **ไม่มีแถบสรุปข้างขวาในขั้นไหนแล้ว**
+     ⚠️ `historicalAsideRows` ยังอยู่ — เป็นแหล่งของช่องสรุปบนหัวขั้น ① (แถวชุดเดียว สองที่พูดคำเดียวกัน) */
+export const HISTORICAL_FULL_WIDTH_STEPS = Object.freeze([...HISTORICAL_WIZARD_STEP_ORDER]);
+
+/* ── ข้อที่ต้องแก้ขึ้นเมื่อไร (มติเจ้าของ 25/09 — "กล่องแดงขึ้นหลังกด ถัดไป เท่านั้น ใช้ทุกขั้น") ─────────
+ * 🐞 ของเดิม: เปิดฟอร์มเปล่ามาก็เจอก้อนแดง "ต้องแก้ 1 ข้อ" ทันที (ไฟล์สัญญายังไม่แนบ) · เปิดขั้น ② ก็เจอ "เลือก VAT"
+ *    ก่อนผู้คีย์จะได้แตะอะไร ⇒ เจ้าของบอกว่าจอรกและสับสนเป็นข้อแรก
+ * ⇒ กติกา: ขั้นที่ **ผู้คีย์ยังไม่เคยกดไปต่อ** (ถัดไป · แตะขั้นข้างหน้าบนราง · บันทึก) = ไม่มีก้อนแดง และไม่มีข้อความใต้ช่อง
+ *   ของช่องที่ "ยังว่าง" · ยกเว้น **ข้อที่พูดถึงค่าที่ผู้คีย์เพิ่งพิมพ์** (`HISTORICAL_LIVE_ISSUE_FIELDS`) — วันสัญญาที่พิมพ์
+ *   เกินวันนี้/ก่อนวันเริ่มต้องบอกตรงนั้นทันที (UAT 23/09: ช่องวันเคยกลืนค่าเงียบ ๆ)
+ * ⚠️ แค่ **ซ่อนการแสดง** — ด่านของปุ่มยังอ่านข้อครบทุกข้อ (`historicalNextBlock` / ด่านบันทึก) ⇒ กดแล้วติด = ขั้นนั้นถูก
+ *   "เปิดเผย" ทันที ก้อนแดง + ข้อความใต้ช่องขึ้นพร้อมกัน แล้วพาไปที่ช่องแรกที่ผิด
+ */
+/**
+ * ขั้นนี้มีของที่ผู้คีย์ใส่ไว้แล้วหรือยัง — ตัวตัดสินว่า error ที่ **พกมาถึง** ขั้นปลายทางควรเปิดเผยทันทีไหม
+ * 🐞 UAT 25/09: เดินจากขั้น ② มาขั้น ③ ของใบใหม่ = ก้อนแดง "ต้องมีงวดอย่างน้อย 1 งวด / เลือกว่าเคยเก็บเงินไหม"
+ *    รอต้อนรับทั้งที่ยังไม่ได้แตะอะไร (ข้อ "ยังว่าง" ของขั้นข้างหน้าติดมากับพรีวิวทุกครั้ง)
+ *    ⇒ เปิดเผยเฉพาะขั้นที่มีของอยู่แล้ว (ใบที่ถูกตีกลับ · กลับไปแก้ขั้นก่อนแล้วเดินมาใหม่) — ขั้นว่างรอกด "ถัดไป" ของมันเอง
+ */
+export function historicalStepHasInput(state = {}, step = 'contract') {
+  if (step === 'zones') return list(state.zones).length > 0;
+  if (step === 'money') {
+    return state.hasOpening === true || state.hasOpening === false || list(state.installments).length > 0;
+  }
+  if (step === 'contract') {
+    return Boolean(text(state.customerId) || text(state.ownerId) || text(state.contract?.docKind));
+  }
+  return true;
+}
+
+/**
+ * @param issues   ข้อของขั้นนั้นทั้งหมด (local + server)
+ * @param revealed ผู้คีย์เคยกดไปต่อจากขั้นนี้แล้วหรือยัง
+ * @returns `{ issues, summary }` — issues = ข้อที่วาดใต้ช่องได้ · summary = วาดก้อนแดงหัวขั้นไหม
+ * ⚠️ ก่อนเปิดเผย ผ่านได้เฉพาะข้อ `live: true` (กฎของค่าที่เพิ่งพิมพ์ — `historicalContractDateIssues`) ·
+ *    ข้อ "ยังไม่ได้กรอก" ของช่องเดียวกัน (HISTORICAL_REQUIRED_MESSAGES) ไม่ live ⇒ รอจนกดไปต่อ
+ */
+export function historicalVisibleIssues(issues = [], { revealed = false } = {}) {
+  const all = list(issues);
+  if (revealed) return { issues: all, summary: all.length > 0 };
+  return { issues: all.filter((issue) => issue?.live === true), summary: false };
+}
+
+/**
+ * ช่องสรุปบนหัวเอกสารของขั้น ① (มติ 25/09 — แทนแถบสรุปข้างขวา) — **แถวชุดเดียวกับแถบสรุป** (`historicalAsideRows`)
+ * ⇒ สองที่พูดคำเดียวกันเสมอ (ลูกค้า · AE · ช่วงสัญญา · ไฟล์) · ค่าว่าง = null (ผู้เรียกวาดเป็นขีด)
+ * @param rows ผลของ `historicalAsideRows`
+ * @returns `[{ key, label, value }]` ตามลำดับบนหัว
+ */
+export function historicalContractFacts(rows = []) {
+  const byId = new Map(list(rows).map((row) => [row?.id, row]));
+  return [
+    { key: 'customer', label: 'ลูกค้า' },
+    { key: 'owner', label: 'AE ผู้ดูแล' },
+    { key: 'span', label: 'ช่วงสัญญา' },
+    { key: 'files', label: 'ไฟล์เอกสาร' },
+  ].map((fact) => ({ ...fact, value: text(byId.get(fact.key)?.value) || null }));
+}
+
+/** ป้ายสถานะบนหัวเอกสารของขั้น ① — ใบที่ยังไม่เกิด / ร่าง / ถูกตีกลับ */
+export function historicalDocStatusLabel(state = {}) {
+  if (!text(state.orderId)) return 'ยังไม่ออกใบ';
+  if (text(state.status) === 'rejected') return 'ถูกตีกลับ — แก้แล้วส่งใหม่';
+  return 'ฉบับร่าง — ยังไม่ส่งอนุมัติ';
+}
 
 /* ── จุดยึดของช่องบน DOM ────────────────────────────────────────────────────────
  *
@@ -792,9 +937,14 @@ const FIELD_ANCHOR = new Map([
   ['customerId', 'customer'], ['ownerId', 'owner'], ['team', 'team'],
   ['contract.startDate', 'contract-start'], ['contract.endDate', 'contract-end'],
   ['contract.ref', 'contract-ref'], ['contract.file', 'contract-file'],
-  ['vatRate', 'vat'],
+  ['vatRate', 'vat'], ['discount', 'discount'],
   ['zones', 'zones'],
   ['opening', 'opening'], ['opening.evidence', 'opening-evidence'],
+  /* ⭐ มติ 25/09 (รื้อขั้น ③): ทุกช่องของงวดยกมามีจุดยึดของตัวเอง · งวดรายแถวใช้ชื่อช่องตรง ๆ
+     (`installments.<i>.<ช่อง>` → hist-f-installments-<i>-<ช่อง>) ซึ่งตารางงวดวาด id เดียวกันด้วยตัวนี้ */
+  ['opening.amount', 'opening-amount'], ['opening.coversTo', 'opening-covers-to'],
+  ['opening.paidOn', 'opening-paid-on'], ['opening.note', 'opening-note'],
+  ['installments', 'installments'],
 ]);
 
 /** id ของกล่องช่องบนจอ — ผู้เรียกใช้ทั้งตอนวาด (`id=`) และตอนพาไปหา (`getElementById`) */
@@ -842,7 +992,8 @@ const docKindText = (kind) => {
  * @param step ขั้นที่ยืนอยู่ — ใช้ตัดสินว่าขั้นข้างหน้า "แตะแล้วไปไม่ได้เพราะอะไร"
  */
 export function historicalWizardRail(state = {}, {
-  step = 'contract', localIssues = [], serverIssues = [], plan = null, customerLabel = null,
+  step = 'contract', localIssues = [], serverIssues = [], plan = null, customerLabel = null, revealedSteps = null,
+  zeroValue = null,
 } = {}) {
   const all = [...list(localIssues), ...list(serverIssues)];
   const block = historicalNextBlock(localIssues, step);
@@ -853,17 +1004,25 @@ export function historicalWizardRail(state = {}, {
 
   const summaries = {
     contract: [text(customerLabel), docKind].filter(Boolean).join(' · '),
-    zones: zones.length ? `${fmtNumber(zones.length)} โซน` : '',
-    money: plan?.zeroValue ? 'ใบยอด 0 บาท — ไม่มีงวด' : [
-      state.hasOpening === true ? 'ยกมา 1 งวด' : (state.hasOpening === false ? 'ไม่มีงวดยกมา' : ''),
-      installments.length ? `ต้องเก็บ ${fmtNumber(installments.length)} งวด` : '',
-    ].filter(Boolean).join(' · '),
+    zones: zones.length ? historicalLinesSummary(zones) : '',
+    /* ธงใบ ฿0 ตัวเดียวกับขั้น ③ (`historicalZeroValue`) — ไม่ส่ง = อ่านจากแผนแบบเดิม */
+    money: (zeroValue ?? plan?.zeroValue) ? 'ใบยอด 0 บาท — ไม่มีงวด' : (() => {
+      const mode = historicalOpeningMode(state);
+      if (mode === 'full') return 'จ่ายครบทั้งใบแล้ว · ไม่มีงวดต้องเก็บ';
+      return [
+        mode === 'part' ? 'ยกมา 1 งวด' : (mode === 'none' ? 'ไม่มีงวดยกมา' : ''),
+        installments.length ? `ต้องเก็บ ${fmtNumber(installments.length)} งวด` : '',
+      ].filter(Boolean).join(' · ');
+    })(),
     /* ขั้น ④ มีของให้สรุปก็ต่อเมื่อพรีวิวผ่านแล้วจริง ๆ — ไม่มีแผน = ยังไม่มีอะไรถูกตรวจ */
     review: plan ? 'ตรวจแล้ว — พร้อมส่ง AE Sup' : '',
   };
 
   return HISTORICAL_WIZARD_STEPS.map((item, index) => {
-    const issues = issuesForStep(all, item.key).length;
+    /* ⭐ มติ 25/09: จุด "มีข้อต้องแก้" บนรางเดินกติกาเดียวกับก้อนแดง — ขั้นที่ยังไม่เคยกดไปต่อไม่ขึ้นสีผิด
+       (`revealedSteps` ไม่ส่ง = นับทุกขั้นแบบเดิม) · ข้อความ "ยังไปขั้นนี้ไม่ได้" ของขั้นข้างหน้ายังอ่านข้อครบเสมอ */
+    const counted = !revealedSteps || revealedSteps.has(item.key);
+    const issues = counted ? issuesForStep(all, item.key).length : 0;
     const summary = text(summaries[item.key]);
     const blocked = index > here && block.blocked ? `ยังไปขั้นนี้ไม่ได้ — ${block.message}` : null;
     return {
@@ -903,7 +1062,7 @@ export function historicalAsideRows(state = {}, {
   const refs = [state.refs?.quote, state.refs?.express, state.refs?.invoice].map(text).filter(Boolean);
   const docKind = docKindText(state.contract?.docKind);
   const openingRows = plan?.opening || state.hasOpening === true ? 1 : 0;
-  const restRows = plan?.installments?.length ?? list(state.installments).length;
+  const restRows = plan?.installments?.length ?? (state.openingFull === true ? 0 : list(state.installments).length);
 
   const vat = HISTORICAL_VAT_RATES.includes(state.vatRate) ? vatLabelOf(state.vatRate) : null;
 
@@ -911,6 +1070,9 @@ export function historicalAsideRows(state = {}, {
     if (plan?.opening) return `${fmtMoney(plan.opening.amount)} · หลักฐาน ${fmtNumber(evidenceFileCount)} ไฟล์`;
     if (state.hasOpening === false) return 'ไม่มี — ยังไม่เคยเก็บเงิน';
     if (state.hasOpening !== true) return null;
+    if (state.openingFull === true) {
+      return money.ok ? `ครบทั้งใบ ${fmtMoney(money.totalAmount)} · หลักฐาน ${fmtNumber(evidenceFileCount)} ไฟล์` : 'ครบทั้งใบ';
+    }
     return text(state.opening?.amount)
       ? `${fmtMoney(state.opening.amount)} · หลักฐาน ${fmtNumber(evidenceFileCount)} ไฟล์`
       : 'เคยเก็บแล้ว — ยังไม่ใส่ยอด';
@@ -924,7 +1086,7 @@ export function historicalAsideRows(state = {}, {
       id: 'span',
       label: 'ช่วงสัญญา',
       value: span.dated
-        ? `${fmtDate(state.contract.startDate)} – ${fmtDate(state.contract.endDate)}${span.months ? ` · ${fmtNumber(span.months)} เดือน` : ''}`
+        ? `${fmtDate(state.contract.startDate)} – ${fmtDate(state.contract.endDate)}${span.monthsText ? ` · ${span.monthsText}` : ''}`
         : null,
     },
     /* `null` = ยังอ่านจำนวนไม่ได้ ⇒ ขีด (เหมือน "ยังไม่มีข้อมูล") · 0 = รู้แล้วว่ายังไม่แนบ */
@@ -937,8 +1099,12 @@ export function historicalAsideRows(state = {}, {
     },
     { id: 'refs', label: 'อ้างอิงเดิม', value: refs.join(' · ') || null },
     { id: 'tax', label: 'ภาษี', value: vat },
-    { id: 'zones', label: 'โซน', value: zones.length ? `${fmtNumber(zones.length)} โซน` : null },
+    { id: 'zones', label: 'รายการ', value: zones.length ? historicalLinesSummary(zones) : null },
     { id: 'subtotal', label: 'ยอดรวมสินค้า/บริการ', value: money.ok ? fmtMoney(money.subtotal) : null },
+    /* ส่วนลดท้ายใบ (มติ 25/09) — ขึ้นเฉพาะใบที่มีส่วนลดจริง (แถวขีดทุกใบ = เสียงรบกวน) */
+    ...(money.ok && Number(money.discountAmount) > 0
+      ? [{ id: 'discount', label: 'ส่วนลดท้ายใบ', value: `-${fmtMoney(money.discountAmount)}` }]
+      : []),
     { id: 'vat', label: 'ภาษีมูลค่าเพิ่ม', value: money.ok ? fmtMoney(money.vatAmount) : null },
     { id: 'opening', label: OPENING_INSTALLMENT_LABEL, value: openingValue },
     {
@@ -1044,61 +1210,75 @@ export function contractMonths(startDate, endDate) {
 export function contractSpan(startDate, endDate) {
   const from = text(startDate);
   const to = text(endDate);
-  const months = contractMonths(from, to);
+  const span = serviceMonthSpan(from, to);
+  const months = span ? span.months : null;
   const dated = isDateText(from) && isDateText(to) && to >= from;
   const partial = months === null && dated;
-  return { months, dated, partial, note: partial ? CONTRACT_PARTIAL_NOTE : null };
+  const anniversary = Boolean(span?.extraDay);
+  return {
+    months, dated, partial, anniversary,
+    /* ป้ายเดียวของทุกจอ (ขั้น ① ③ ④ · ช่องสรุปหัวขั้น ①) — รีวิว 25/09: สี่ที่เคยพิมพ์ "12 เดือน" เองแล้วลืมวันครบรอบ */
+    monthsText: months ? `${fmtNumber(months)} เดือน${anniversary ? ' · จบวันครบรอบ' : ''}` : null,
+    note: partial ? CONTRACT_PARTIAL_NOTE : null,
+  };
+}
+
+/**
+ * จำนวนเดือนที่ใช้ **แบ่งงวด** ของช่วงหนึ่ง — `contractMonths` + สัญญาที่จบตรงวันครบรอบ
+ * ⭐ มติเจ้าของ 25/09 ข้อ 3: สัญญา 25/09/2025–25/09/2026 (28 จาก 81 กลุ่มในชีต) นับเป็น 12 เดือน แบ่งทุกเดือน/3/6/รายปีได้
+ *   โดยงวดสุดท้ายยาวขึ้นหนึ่งวัน (`extraDay`) · ก่อนมตินี้ช่วงแบบนี้ "ไม่ลงตัวเป็นเดือน" แบ่งได้แค่ก้อนเดียว
+ * ⚠️ ไม่แก้ `contractMonths` — กติกาวันสิ้นเดือนของมันตรึงด้วยเทสต์ · ที่นี่แค่ลองอีกครั้งด้วยวันก่อนหน้าวันสุดท้าย
+ * @returns `{ months, extraDay }` หรือ null (ไม่ลงตัว — ผู้เรียกบอกเหตุ)
+ */
+export function serviceMonthSpan(startDate, endDate) {
+  const from = text(startDate);
+  const to = text(endDate);
+  if (!isDateText(from) || !isDateText(to) || to < from) return null;
+  const exact = contractMonths(from, to);
+  if (exact) return { months: exact, extraDay: false };
+  const dayBefore = addDays(to, -1);
+  const anniversary = dayBefore && dayBefore >= from ? contractMonths(from, dayBefore) : null;
+  return anniversary ? { months: anniversary, extraDay: true } : null;
 }
 
 /* 🚫 ปุ่มลัด "ใช้ราคาแพ็คเกจ × แพ็ค × เดือน" (`zoneAmountSuggestion` / `zoneAmountSuggestionNote`) ถูกถอดตามมติ 23/09
    🐞 มันคูณเดือนซ้ำบนจำนวนที่นับเดือนไปแล้ว — 1 ชุด × 12 เดือน คีย์เป็นจำนวน 12 แล้วปุ่มเสนอ 3,500 × 12 × 12 = 504,000
    ⇒ ยอดของโซนคือ จำนวน × ราคา/หน่วย − ส่วนลด ตามสูตรใบเสนอราคา (historicalLinesMoney) ไม่มีปุ่มเสนอยอดอีก */
 
-/* ── ตัวกางทะเบียนไซต์/โซนของขั้น ② ──────────────────────────────────────────────
+/* ── ทะเบียนไซต์/โซนของลูกค้า → ช่อง "ไซต์ · โซน" ในบรรทัด + หน้าต่าง "เพิ่มหลายโซน" ─────────────────
  *
- * 🐞 UAT 23/09 (ของจริงบนฐาน): AR-374 บริษัท เซ็นทรัล ฟู้ด รีเทล มี **26 ไซต์ 43 โซน**
- *   ⇒ ขั้น ② กางการ์ด 26 ใบรวด ไม่มีช่องค้น และไซต์เดียวที่โหลดโซนไม่สำเร็จทำให้ทั้งลิสต์ว่าง
- *   (Promise.all ตัวเดียวพังทั้งก้อน) · ตัวตัดสินสามข้อนี้จึงอยู่ที่นี่ ไม่ใช่ใน JSX:
- *     ① ค้นด้วยคำเดียว — รหัสไซต์ · ชื่อไซต์ · ชื่อโซน · รหัสโซน (**ทุกอย่างที่ตาเห็นบนแถว**
- *        ตามกฎบ้าน search haystack · เห็นแล้วค้นไม่เจอ = บั๊ก)
- *     ② ไซต์ที่ตรงชื่อ/รหัสกางทั้งใบ (ทุกโซนของมันคือคำตอบ) · ไซต์ที่ตรงเฉพาะบางโซน
- *        โชว์เฉพาะโซนนั้น · ไม่ตรงเลย = ซ่อน แล้วรายงานจำนวนที่ซ่อนไว้ให้เห็น — เลขนั้นคือ
- *        `siteTotal − rows.length` (จอพูดว่า "แสดง N จาก M ไซต์") ไม่ใช่คีย์ของตัวเองในผลลัพธ์
- *     ③ **โซนที่เลือกไว้แล้วแต่ถูกคำค้นซ่อน** ต้องถูกนับมาบอก — ยอดรวมท้ายจอนับมันอยู่
- *        ถ้าไม่บอก ผู้คีย์จะอ่านว่า "ยอดมาจากไหนไม่รู้"
- * ⚠️ ไซต์ที่โหลดโซนไม่สำเร็จ **โชว์เสมอ** แม้กำลังค้นอยู่ — ยังไม่รู้ว่าข้างในมีโซนที่ตรงไหม
- *   การซ่อนมันคือการตอบแทนข้อมูลที่ไม่มี (กฎบ้าน: บอกเหตุ ไม่ใช่เงียบ)
+ * ⭐ **มติเจ้าของ 25/09** ("มันควรจะหน้าตาเหมือนใบเสนอราคา แต่เพิ่มการเชื่อมไซต์ โซน รายรายการ"):
+ *   การ์ดไซต์ + ติ๊กโซน + ช่องค้น + ปุ่มย่อ/ขยาย + ช่อง "ใช้แพ็คเกจเดียวกันทุกโซน" ถูกถอดทั้งชุด ⇒ ขั้น ② เหลือ
+ *   **ตารางรายการของใบเสนอราคาตารางเดียว** (ปุ่ม "เพิ่มรายการ") · โซนเลือกใน **บรรทัด** (`historicalZonePickerOptions`)
+ *   · ลูกค้าโซนเยอะใช้ "เพิ่มหลายโซน" (ค้น → ติ๊ก → แพ็คเกจ/จำนวนครั้งเดียว → หนึ่งบรรทัดต่อโซน · `historicalBulkAddRows`)
+ *   🐞 ที่มา: ของเดิมกลับหัวกับใบเสนอราคา — ติ๊กโซนนอกตารางก่อนบรรทัดถึงเกิด · โซนในบรรทัดเป็นตัวหนังสือเปลี่ยนไม่ได้
+ *      · ถอนติ๊ก = บรรทัดหายพร้อมจำนวน/ส่วนลดไม่ถาม · error เดียวกันขึ้นสามที่ · ช่องแพ็คเกจทุกโซนเททับทุกบรรทัดเงียบ ๆ
+ *
+ * 🐞 UAT 23/09 (ของจริงบนฐาน): AR-374 บริษัท เซ็นทรัล ฟู้ด รีเทล มี **26 ไซต์ 43 โซน** — กติกาที่ยังใช้อยู่:
+ *     ① ค้นด้วยคำเดียว — รหัสไซต์ · ชื่อไซต์ · ชื่อโซน · รหัสโซน (**ทุกอย่างที่ตาเห็นบนแถว** ตามกฎบ้าน search haystack)
+ *     ② ไซต์ที่ตรงชื่อ/รหัสได้ทุกโซนของมัน · ไซต์ที่ตรงเฉพาะบางโซนได้เฉพาะโซนนั้น · ไม่ตรงเลย = ซ่อน
+ *     ③ โหลดโซนทีละไซต์แบบพังทีละใบ (จอ) · ไซต์ที่พัง **โชว์เสมอ** แม้กำลังค้น — ยังไม่รู้ว่าข้างในมีโซนที่ตรงไหม
  */
-export const ZONE_SITE_AUTO_OPEN_MAX = 4;
-
 const zoneHaystack = (...parts) => parts.map(text).filter(Boolean).join(' ').toLowerCase();
 
 /**
+ * ตัวกางทะเบียนของหน้าต่าง "เพิ่มหลายโซน" + ตัวตัดสินโซนกำพร้าของขั้น ②
  * @param sites        ไซต์จากทะเบียน (ตามลำดับที่ API คืนมา)
  * @param zonesBySite  `{ [siteId]: zone[] }` — ไซต์ที่ยังโหลดไม่สำเร็จไม่มีคีย์ของตัวเอง
  * @param siteErrors   `{ [siteId]: ข้อความ }` ของไซต์ที่โหลดโซนไม่สำเร็จ (โหลดทีละไซต์ ⇒ พังทีละใบ)
- * @param pickedZoneIds โซนที่ติ๊กไว้แล้ว — ใช้ตัดสินว่ากางใบไหนและนับใบที่คำค้นซ่อน
+ * @param pickedZoneIds โซนที่ถูกเลือกไว้ (หน้าต่าง: ที่ติ๊กในหน้าต่าง · ขั้น ②: โซนที่บรรทัดของใบผูกไว้)
  * @param ready        ทะเบียนโหลดเสร็จแล้วหรือยัง — เท็จ = ยังตัดสิน `orphans` ไม่ได้
  * @returns `{ rows, siteTotal, zoneTotal, shownZones, hiddenPicked, orphans, unresolved }`
- *   rows: `{ site, zones, picked, total, error, defaultOpen }`
- *   ⚠️ **ไม่มี `hiddenSites`** — ไซต์หนึ่งใบไม่ถูกใส่ใน `rows` ก็คือใบที่คำค้นซ่อน ⇒ จำนวนคือ
- *      `siteTotal − rows.length` เป๊ะ ๆ อยู่แล้ว · คีย์ที่ไม่มีใครอ่านคือของที่รอเพี้ยนจากจอ
+ *   rows: `{ site, zones, picked, total, error }`
+ *   ⚠️ **ไม่มี `hiddenSites`** — ไซต์หนึ่งใบไม่ถูกใส่ใน `rows` ก็คือใบที่คำค้นซ่อน ⇒ จำนวนคือ `siteTotal − rows.length`
  *
- * 🔴 `orphans` = โซนที่ใบผูกไว้แต่ **ไม่มีอยู่ในทะเบียนที่โหลดมาเลยสักไซต์** (รีวิว R10) —
- *    ไซต์ถูกปิดใช้งาน (`includeInactive=0`) · ไซต์ถูกโอนไปลูกค้ารายอื่น · โซนถูกลบโดยแอดมิน
- *    ⇒ แถวไม่ถูกเรนเดอร์สักแถว แต่ `state.zones` ยังนับมันอยู่ และตัวติ๊กคือทางเดียวที่ถอดออกได้
- *    ⇒ ทางตัน: แก้ใบให้ผ่านไม่ได้จนกว่าฝ่าย TS จะเปิดคืน · ต้องมีปุ่มถอดของตัวเองบนจอ
- *
- * 🔴 **N1 (รีวิวรอบสอง 23/09 — ของเดิมทำลายข้อมูล)**: `orphans` เคยสร้างจาก "ทุกไซต์" โดย
- *    **ไม่ดู `siteErrors` เลย** ⇒ ไซต์เดียวอ่านโซนไม่สำเร็จ (เน็ตกระตุก · 500 ชั่วคราว) =
- *    ทุกโซนของไซต์นั้นขึ้นก้อนแดงพร้อมปุ่ม "ถอดโซนนี้ออกจากใบ" ⇒ ผู้คีย์ทำตามที่จอสั่งแล้ว
- *    **ลบบรรทัดจริงของใบเพราะคำขอที่พังชั่วคราว** (ถอดแล้วยอดใบเปลี่ยน ไม่มีทางกู้นอกจากคีย์ใหม่)
- *    ⇒ กติกาใหม่: กำพร้าได้เฉพาะเมื่อ **อ่านทะเบียนครบทุกไซต์แล้ว** · ยังมีไซต์ที่อ่านไม่ได้
- *      = ตัดสินไม่ได้ ⇒ ไปกอง `unresolved` ซึ่งจอต้องวาดเป็น "ยังอ่านทะเบียนไม่ได้" พร้อม
- *      ปุ่มลองอ่านใหม่ของไซต์ **ห้ามมีปุ่มถอด**
- *    ⚠️ ทำไมต้องตัดสินทั้งกอง ไม่ใช่รายไซต์: โซนที่ติ๊กไว้มีแต่รหัสโซน · แถวที่ hydrate มากับใบ
- *      ไม่มี `siteId` ติดมาด้วย (`wizardStateFromOrder` อ่านจากบรรทัด SO ซึ่งมีแต่ `serviceZoneId`)
- *      ⇒ แมตช์ "โซนนี้อยู่ไซต์ไหน" เองไม่ได้เมื่อไซต์นั้นคือไซต์ที่อ่านไม่สำเร็จ
+ * 🔴 `orphans` = โซนที่ใบผูกไว้แต่ **ไม่มีอยู่ในทะเบียนที่โหลดมาเลยสักไซต์** (รีวิว R10) — ไซต์ถูกปิดใช้งาน
+ *    (`includeInactive=0`) · ไซต์ถูกโอนไปลูกค้ารายอื่น · โซนถูกลบ ⇒ บรรทัดยังอยู่ในตาราง (ปุ่มลบ/เปลี่ยนโซนใช้ได้)
+ *    แต่ช่อง "ไซต์ · โซน" ต้องบอกเหตุ ไม่ใช่เด้งเป็นช่องว่าง (`historicalZonePickerOptions` เติมตัวเลือกบอกเหตุให้)
+ * 🔴 **N1 (รีวิวรอบสอง 23/09 — ของเดิมทำลายข้อมูล)**: ไซต์เดียวอ่านโซนไม่สำเร็จ (เน็ตกระตุก) เคยทำให้ทุกโซนของ
+ *    ไซต์นั้นขึ้นปุ่ม "ถอดออกจากใบ" ⇒ ผู้คีย์ลบบรรทัดจริงเพราะคำขอที่พังชั่วคราว
+ *    ⇒ กำพร้าได้เฉพาะเมื่อ **อ่านทะเบียนครบทุกไซต์แล้ว** · ยังมีไซต์ที่อ่านไม่ได้ = ตัดสินไม่ได้ ⇒ กอง `unresolved`
+ *      (จอ: ปุ่มลองอ่านไซต์ที่พังใหม่ · ปุ่มลบของบรรทัดนั้นปิดพร้อมเหตุ — `historicalZoneLines().removable`)
  */
 export function historicalZoneBrowser({
   sites = [], zonesBySite = {}, siteErrors = {}, query = '', pickedZoneIds = [], ready = true,
@@ -1125,27 +1305,16 @@ export function historicalZoneBrowser({
     const shownIds = new Set(shown.map((zone) => text(zone?.id)));
     hiddenPicked += zones.filter((zone) => picked.has(text(zone?.id)) && !shownIds.has(text(zone?.id))).length;
     shownZones += shown.length;
-    rows.push({
-      site,
-      zones: shown,
-      picked: pickedHere,
-      total: zones.length,
-      error,
-      /* กางเองเมื่อ "มีเรื่องต้องทำในใบนี้" — พัง · ตรงคำค้น · มีโซนที่ติ๊กไว้ · หรือลูกค้ามีไซต์ไม่กี่ใบ
-         (ม็อกมี 2 ไซต์ ⇒ ของเดิมกางหมดคือถูกแล้วสำหรับลูกค้าทั่วไป · 26 ใบต่างหากที่ต้องพับ) */
-      defaultOpen: Boolean(error) || Boolean(q) || pickedHere > 0 || all.length <= ZONE_SITE_AUTO_OPEN_MAX,
-    });
+    rows.push({ site, zones: shown, picked: pickedHere, total: zones.length, error });
   }
 
-  /* โซนที่ทะเบียนไม่มีให้เห็นเลย — นับจาก **ทุกโซนของทุกไซต์** ไม่ใช่เฉพาะที่คำค้นโชว์
-     (คำค้นซ่อนของไว้เฉย ๆ ⇒ `hiddenPicked` เป็นคนบอก ไม่ใช่ `orphans`) */
+  /* โซนที่ทะเบียนไม่มีให้เห็นเลย — นับจาก **ทุกโซนของทุกไซต์** ไม่ใช่เฉพาะที่คำค้นโชว์ */
   const known = new Set();
   for (const site of all) for (const zone of list(zonesBySite?.[site?.id])) known.add(text(zone?.id));
   const missing = ready
     ? [...new Set(list(pickedZoneIds).map(text).filter(Boolean))].filter((id) => !known.has(id))
     : [];
-  /* 🔴 N1: ยังมีไซต์ที่อ่านโซนไม่สำเร็จ = **ยังไม่รู้** ว่าโซนที่หายไปอยู่ในไซต์นั้นหรือหายจริง
-     ⇒ ห้ามตอบ "กำพร้า" (ปุ่มถอด = ลบบรรทัดจริง) · ตอบ "ยังอ่านทะเบียนไม่ได้" แล้วรอปุ่มลองอีกครั้ง */
+  /* 🔴 N1: ยังมีไซต์ที่อ่านโซนไม่สำเร็จ = **ยังไม่รู้** ว่าโซนที่หายไปอยู่ในไซต์นั้นหรือหายจริง */
   const blind = all.some((site) => Boolean(text(siteErrors?.[site?.id])));
   const orphans = blind ? [] : missing;
   const unresolved = blind ? missing : [];
@@ -1154,20 +1323,20 @@ export function historicalZoneBrowser({
 }
 
 /**
- * บรรทัดของใบในขั้น ② — หนึ่งแถวโซนที่ติ๊กไว้ = หนึ่งบรรทัดของ **ตารางรายการแบบใบเสนอราคา** ใต้การ์ดไซต์
- * (มติเจ้าของ 23/09 · รีวิว 23/09: ตารางแยกจากการ์ดไซต์ ⇒ คอลัมน์ # · รายการ · … · ปุ่มลบ เท่าใบเสนอราคาเป๊ะ
- * และโซนที่ผูกกลายเป็นบรรทัด "ไซต์ · โซน" ใต้คำอธิบาย แบบเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย)
- *
+ * บรรทัดของใบในขั้น ② — หนึ่งแถว = หนึ่งบรรทัดของ **ตารางรายการแบบใบเสนอราคา** (มติ 23/09 · 25/09)
  * ต่อแถวคืน `{ row, index, zone, site, point, note, name, removable, removeTitle }`
- *   - point: ชื่อจุด (`historicalZonePoint` — สูตรเดียวกับที่แผนเขียนลงบรรทัด) · null เมื่อยังหาโซนไม่เจอ
- *   - note:  เหตุที่ยังไม่มีชื่อจุด (กำลังโหลด · ยังอ่านทะเบียนไม่ได้ · ไม่อยู่ในทะเบียน) — ขึ้นแทนชื่อ
- *   - name:  ชื่อบรรทัดของโปรแกรมอ่านหน้าจอ ("รายการของโซน <ชื่อโซน>" · หาโซนไม่เจอ = "รายการ N")
- *   - removable/removeTitle: ปุ่มลบท้ายแถว (= ถอนติ๊กโซน)
+ *   - point: ชื่อจุด (`historicalZonePoint` — สูตรเดียวกับที่แผนเขียนลงบรรทัด) · null เมื่อยังไม่เลือก/หาโซนไม่เจอ
+ *   - note:  เหตุที่ยังไม่มีชื่อจุด (กำลังโหลด · ยังอ่านทะเบียนไม่ได้ · ไม่อยู่ในทะเบียน) — แถวที่ **ยังไม่เลือกโซน** = null
+ *            (บรรทัดใหม่จากปุ่ม "เพิ่มรายการ" ไม่ใช่ของที่หาย · ช่องว่างของมันพูดเองว่า "เลือกไซต์ · โซน")
+ *   - name:  ชื่อบรรทัดของโปรแกรมอ่านหน้าจอ = "รายการ N" (คำเดียวกับใบเสนอราคา · เลขเดียวกับคอลัมน์ "#")
+ *   - removable/removeTitle: ปุ่มลบท้ายแถว
  * 🔴 N1: โซนที่ **ยังตัดสินไม่ได้** (มีไซต์ที่อ่านโซนไม่สำเร็จ) ลบไม่ได้ — ยังไม่รู้ว่ามันหายจริงหรือแค่อยู่ในไซต์
- *    ที่อ่านไม่ถึง (ปุ่มลบ = ลบบรรทัดจริง) · ระหว่างโหลดก็เช่นกัน · โซนกำพร้าจริง (อ่านครบแล้วไม่เจอ) ลบได้ (R10)
+ *    ที่อ่านไม่ถึง · ระหว่างโหลดก็เช่นกัน · โซนกำพร้าจริง (อ่านครบแล้วไม่เจอ) ลบได้ (R10)
+ * 🐞 รีวิว 25/09: **เส้นทะเบียนไซต์เองพัง** (`failed`) เคยถูกนับเป็น "กำลังโหลด" ตลอดกาล — บรรทัดพูด "กำลังโหลด…"
+ *    ทั้งที่ไม่ได้โหลดอะไรอยู่ · ⇒ แยกเหตุ: พัง = บอกว่าพังและชี้ปุ่มลองใหม่ (ยังลบไม่ได้ เหตุเดียวกับ N1)
  */
 export function historicalZoneLines({
-  zones = [], sites = [], zonesBySite = {}, siteErrors = {}, ready = true,
+  zones = [], sites = [], zonesBySite = {}, siteErrors = {}, ready = true, failed = false,
 } = {}) {
   const where = new Map();
   for (const site of list(sites)) {
@@ -1175,23 +1344,28 @@ export function historicalZoneLines({
   }
   const blind = list(sites).some((site) => Boolean(text(siteErrors?.[site?.id])));
   return list(zones).map((row, index) => {
-    const found = where.get(text(row?.zoneId)) || null;
+    const zoneId = text(row?.zoneId);
+    const found = zoneId ? where.get(zoneId) || null : null;
     const zone = found?.zone || null;
     const site = found?.site || null;
     let note = null;
     let removable = true;
     let removeTitle = null;
-    if (!found) {
-      if (!ready) {
+    if (zoneId && !found) {
+      if (failed) {
+        note = `${zoneId} — โหลดทะเบียนไซต์ไม่สำเร็จ`;
+        removable = false;
+        removeTitle = 'โหลดทะเบียนไซต์ไม่สำเร็จ — กด “ลองโหลดทะเบียนไซต์อีกครั้ง” ด้านบนก่อน จึงจะรู้ว่าโซนนี้ยังอยู่ไหม';
+      } else if (!ready) {
         note = 'กำลังโหลดทะเบียนไซต์…';
         removable = false;
         removeTitle = 'รอทะเบียนไซต์โหลดเสร็จก่อน';
       } else if (blind) {
-        note = `${text(row?.zoneId)} — ยังอ่านทะเบียนไม่ได้`;
+        note = `${zoneId} — ยังอ่านทะเบียนไม่ได้`;
         removable = false;
         removeTitle = 'ยังอ่านทะเบียนไซต์ไม่ครบ — กด “ลองอ่านไซต์ที่พังอีกครั้ง” ก่อน จึงจะรู้ว่าโซนนี้หายจริงไหม';
       } else {
-        note = `${text(row?.zoneId)} — ไม่อยู่ในทะเบียนที่โหลดมา`;
+        note = `${zoneId} — ไม่อยู่ในทะเบียนที่โหลดมา (ถูกปิดใช้งาน ย้ายไปลูกค้าอื่น หรือถูกลบ)`;
       }
     }
     return {
@@ -1201,7 +1375,7 @@ export function historicalZoneLines({
       site,
       point: zone && site ? historicalZonePoint(zone, site) : null,
       note,
-      name: zone ? `รายการของโซน ${text(zone.name) || text(zone.id)}` : `รายการ ${index + 1}`,
+      name: `รายการ ${index + 1}`,
       removable,
       removeTitle,
     };
@@ -1209,26 +1383,693 @@ export function historicalZoneLines({
 }
 
 /**
- * "แบ่งงวดที่เหลืออัตโนมัติ" — ช่วงต่อกันสนิทถึงวันสิ้นสุดสัญญา และยอดรวมเท่ายอดที่เหลือเป๊ะ
- * ⚠️ เศษสตางค์ลงงวดสุดท้าย (เหมือน `splitCoverageEvenly` ที่ให้งวดสุดท้ายกินเศษวัน) — ผลรวมต้องตรง
- *   ยอดใบเสมอ ไม่งั้นตัวตรวจงวดตีกลับ "ยอดงวดรวมไม่เท่ายอดใบ" ทันทีที่กดปุ่มนี้
+ * ตัวเลือกของช่อง "ไซต์ · โซน" ในบรรทัดหนึ่งบรรทัด — `SearchableSelect` (หัวกลุ่ม = ไซต์ · ตัวเลือก = โซน)
+ * ⭐ ค้นได้ทุกอย่างที่ตาเห็น: รหัส/ชื่อไซต์ + ชื่อ/รหัสโซน (`search` ของโซนพกชื่อไซต์ด้วย เพราะหัวกลุ่มไม่ถูกกรอง)
+ * ⭐ ป้ายของตัวเลือก = ชื่อจุด (`historicalZonePoint`) คำเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย
+ * 🔴 เลือกไม่ได้พร้อมเหตุ (กฎบ้าน: ตัวเลือกที่ติดด่านต้องเห็นว่ามีอยู่):
+ *    · โซนที่ **บรรทัดอื่น** ผูกไว้แล้ว — หนึ่งโซนหนึ่งบรรทัด (ด่านเดียวกับแผน `historical_so_zone_duplicate`)
+ *    · โซนที่ปิดใช้งานในทะเบียน — ยกเว้นโซนที่ **แถวนี้** ผูกอยู่แล้ว (R10: ถอนออกได้เสมอ ติ๊กใหม่ไม่ได้)
+ * 🔴 โซนที่แถวนี้ผูกไว้แต่ไม่อยู่ในตัวเลือก (กำลังโหลด · ไซต์ที่อ่านไม่ได้ · กำพร้า) ⇒ เติมตัวเลือกบอกเหตุไว้บนสุด
+ *    ไม่งั้นช่องเด้งเป็น "เลือกไซต์ · โซน" ทั้งที่ใบยังผูกโซนนั้นอยู่ (อ่านเป็นว่ายังไม่ได้เลือก)
+ * @param rowKey  `key` ของแถวที่ช่องนี้อยู่ · @param missingNote เหตุจาก `historicalZoneLines().note` ของแถวนั้น
+ * @returns `[{ value, label, group?, disabled?, why?, zoneName?, zoneCode?, missing?, search? }]`
  */
-export function splitRemaining({ startDate, endDate, count, amount, label = 'งวด' } = {}) {
-  const spans = splitCoverageEvenly({ startDate, endDate, count });
-  if (!spans.length) return [];
-  const total = toSatang(amount);
-  const each = Math.floor(total / spans.length);
-  return spans.map((span, index) => {
-    const last = index === spans.length - 1;
-    const satang = last ? total - each * (spans.length - 1) : each;
-    return emptyHistoricalInstallment({
-      label: spans.length === 1 ? label : `${label} ${index + 1}/${spans.length}`,
-      amount: String(satang / 100),
-      dueDate: span.coversFrom,
-      coversFrom: span.coversFrom,
-      coversTo: span.coversTo,
-    });
+export function historicalZonePickerOptions({
+  sites = [], zonesBySite = {}, rows = [], rowKey = null, missingNote = null,
+} = {}) {
+  const self = text(rowKey);
+  const usedBy = new Map();
+  list(rows).forEach((row, index) => {
+    const id = text(row?.zoneId);
+    if (id && text(row?.key) !== self && !usedBy.has(id)) usedBy.set(id, index + 1);
   });
+  const current = text(list(rows).find((row) => text(row?.key) === self)?.zoneId);
+  const options = [];
+  let found = false;
+  for (const site of list(sites)) {
+    const zones = list(zonesBySite?.[site?.id]);
+    if (!zones.length) continue;
+    options.push({
+      value: `site:${text(site?.id)}`,
+      label: [text(site?.code), text(site?.name)].filter(Boolean).join(' '),
+      group: true,
+    });
+    for (const zone of zones) {
+      const id = text(zone?.id);
+      const mine = id === current;
+      if (mine) found = true;
+      const inactive = zone?.isActive === false;
+      const line = usedBy.get(id) || null;
+      let why = null;
+      if (line) why = `อยู่ในรายการ ${line} แล้ว`;
+      else if (inactive) why = mine ? 'ปิดใช้งานในทะเบียน — เปลี่ยนเป็นโซนอื่น หรือให้ TS เปิดใช้งานคืน' : 'ปิดใช้งานในทะเบียน';
+      options.push({
+        value: id,
+        label: historicalZonePoint(zone, site),
+        zoneName: text(zone?.name) || id,
+        zoneCode: text(zone?.code) || null,
+        search: zoneHaystack(site?.code, site?.name, zone?.name, zone?.code),
+        disabled: !mine && Boolean(why),
+        why,
+      });
+    }
+  }
+  if (current && !found) {
+    options.unshift({
+      value: current,
+      label: text(missingNote) || `${current} — ไม่อยู่ในทะเบียนที่โหลดมา`,
+      zoneName: current,
+      zoneCode: null,
+      search: current.toLowerCase(),
+      disabled: true,
+      missing: true,
+      why: null,
+    });
+  }
+  return options;
+}
+
+/**
+ * ข้อความของ issue หนึ่งข้อในก้อนรวมหัวขั้น ② — ป้ายบรรทัดพูด **เลขบรรทัดปัจจุบัน**
+ * 🐞 รีวิว 25/09: ลบบรรทัดบนแล้ว ข้อของบรรทัดล่างที่ยังค้าง (ไม่ได้แก้ช่องนั้น) พูด "รายการ 3: …" ของตอนตรวจ
+ *    ถึงแถวที่ตอนนี้เป็น # 2 ⇒ ประกอบป้ายใหม่จาก `rowKey` + `detail` · ข้อที่ผูกแถวไม่ได้ใช้ข้อความของ server ตามเดิม
+ * @param lines ผลของ `historicalZoneLines` (ลำดับ = ลำดับบนจอ · มีโซนที่หาเจอแล้วสำหรับชื่อในวงเล็บ)
+ */
+export function historicalIssueText(issue = {}, lines = []) {
+  const key = text(issue?.rowKey);
+  if (!key || !text(issue?.detail)) return text(issue?.message);
+  const at = list(lines).findIndex((line) => text(line?.row?.key) === key);
+  if (at < 0) return text(issue?.message);
+  const zoneName = text(list(lines)[at]?.zone?.name);
+  return `รายการ ${at + 1}${zoneName ? ` (${zoneName})` : ''}: ${text(issue.detail)}`;
+}
+
+/** "N บรรทัด · M โซน" — บรรทัดใหม่ที่ยังไม่เลือกโซนไม่นับเป็นโซน (ราง · แถบสรุป · หัวตาราง ใช้คำนี้คำเดียว) */
+export function historicalLinesSummary(zones = []) {
+  const rows = list(zones);
+  const bound = new Set(rows.map((row) => text(row?.zoneId)).filter(Boolean)).size;
+  return `${fmtNumber(rows.length)} บรรทัด · ${fmtNumber(bound)} โซน`;
+}
+
+/* ── "เพิ่มหลายโซน" (มติ 25/09 — แทนช่อง "ใช้แพ็คเกจเดียวกันทุกโซน") ─────────────────────────────
+   ⭐ หนึ่งโซนที่ติ๊ก = หนึ่งบรรทัดใหม่ต่อท้ายตาราง · ลำดับตามทะเบียน (ไซต์ → โซน) ไม่ใช่ลำดับที่ติ๊ก
+   ⚠️ ข้ามเงียบไม่ได้: โซนที่อยู่ในใบแล้ว/ปิดใช้งาน ถูกปิดไว้ในหน้าต่างตั้งแต่ต้น (เห็นเหตุ) · ที่นี่กันซ้ำอีกชั้น
+   ⚠️ แพ็คเกจเติมที่จอด้วย `quoteLineFromProduct` ตัวเดียวกับช่องเลือกในบรรทัด (ไฟล์นี้ไม่ลากทะเบียนสินค้ามา) */
+export function historicalBulkAddRows({ zoneIds = [], sites = [], zonesBySite = {}, rows = [], qty = '' } = {}) {
+  const picked = new Set(list(zoneIds).map(text).filter(Boolean));
+  const taken = new Set(list(rows).map((row) => text(row?.zoneId)).filter(Boolean));
+  const out = [];
+  for (const site of list(sites)) {
+    for (const zone of list(zonesBySite?.[site?.id])) {
+      const id = text(zone?.id);
+      if (!picked.has(id) || taken.has(id) || zone?.isActive === false) continue;
+      taken.add(id);
+      out.push(emptyHistoricalZone({ zoneId: id, siteId: site?.id, qty: text(qty) }));
+    }
+  }
+  return out;
+}
+
+/** จำนวนต่อบรรทัดของหน้าต่าง "เพิ่มหลายโซน" — ว่างได้ (ใส่ทีละบรรทัดทีหลัง) · ใส่แล้วต้องเป็นจำนวนเต็ม > 0 (ด่านเดียวกับแผน) */
+export function historicalBulkQtyIssue(qty = '') {
+  const raw = text(qty);
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? null : HISTORICAL_LINE_MESSAGES.qty;
+}
+
+/** ผลของปุ่ม "เพิ่ม N บรรทัด" ก่อนกด (กฎบ้าน: บอกผลลัพธ์ก่อนคลิก) */
+export function historicalBulkConsequence({ count = 0, qty = '', unitPrice = null } = {}) {
+  if (!count) return 'ยังไม่ได้เลือกโซน';
+  const q = Number(text(qty));
+  const price = Number(unitPrice);
+  const qtyOk = text(qty) !== '' && Number.isInteger(q) && q > 0;
+  if (qtyOk && Number.isFinite(price) && price > 0) {
+    const each = quoteLineMoney({ qty: q, unitPrice: price }).lineTotal;
+    return `จะเพิ่ม ${fmtNumber(count)} บรรทัด · บรรทัดละ ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`;
+  }
+  /* 🐞 รีวิว 25/09: จำนวนใส่แล้วแต่แพ็คเกจยังไม่ตั้งราคา เคยพูด "จำนวนใส่ทีละบรรทัด" ทั้งที่ทุกบรรทัดได้จำนวนนั้นไปจริง
+     ⇒ บอกจำนวนที่แต่ละบรรทัดได้ + เหตุที่ยังไม่มียอด (แผนตีกลับแพ็คเกจที่ยังไม่ตั้งราคาอยู่แล้ว) */
+  if (qtyOk) return `จะเพิ่ม ${fmtNumber(count)} บรรทัด · บรรทัดละจำนวน ${fmtNumber(q)} — แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด`;
+  return `จะเพิ่ม ${fmtNumber(count)} บรรทัด — จำนวนใส่ทีละบรรทัดในตาราง`;
+}
+
+/* ── error รายช่องของบรรทัด → ใต้ช่องของแถวนั้น (มติ 25/09 — "error ขึ้นที่เดียว") ────────────────────
+   🐞 ของเดิม: ข้อความเดียวกันขึ้น 3–5 ที่ (ก้อนบน · ใต้ติ๊ก · ใต้บรรทัด · หัวการ์ด · ช่องเงิน) · **ค้างอยู่แม้แก้แล้ว**
+      จนกว่าจะกด "ถัดไป" อีกรอบ (`patch` ไม่เคยแตะ `issues`) · และจับคู่ข้อความกับแถวด้วย **ลำดับ** ⇒ ลบบรรทัดหนึ่ง
+      ข้อความของบรรทัดล่างทั้งหมดเลื่อนไปเกาะบรรทัดผิด
+   ⇒ แผนชี้ช่อง (`zones.<i>.<ช่อง>` + `detail` ไม่มีป้ายบรรทัด) · จอผูกข้อความกับ `key` ของแถว **ตอนได้คำตอบ**
+     (ลำดับของ body = ลำดับของ state ตอนส่ง — ช่องถูกปิดระหว่างตรวจ) · แก้ช่องไหน ข้อความของช่องนั้นหายทันที */
+const LINE_FIELD = /^zones\.(\d+)(?:\.([A-Za-z]+))?$/;
+const LINE_SLOT_KEYS = Object.freeze({
+  zoneId: ['zoneId'], productId: ['productId'], qty: ['qty'], rounds: ['rounds'],
+});
+const LINE_ALL_KEYS = ['zoneId', 'productId', 'qty', 'rounds', 'discountType', 'discountValue'];
+const INSTALLMENT_FIELD = /^installments\.(\d+)(?:\.([A-Za-z]+))?$/;
+
+/** issue ของ server → ผูก `rowKey` ของแถวที่มันชี้ (เรียกทันทีที่ได้คำตอบ ด้วย `state.zones` / `state.installments` ชุดที่ส่งไปตรวจ)
+ *  ⭐ มติ 25/09 (รื้อขั้น ③): งวดใช้กติกาเดียวกับบรรทัด — `installments.<i>.<ช่อง>` ผูกกับ key ของงวดนั้น */
+export function historicalIssuesWithRowKeys(issues = [], zones = [], installments = []) {
+  const rows = list(zones);
+  const insts = list(installments);
+  return list(issues).map((issue) => {
+    const field = text(issue?.field);
+    const line = LINE_FIELD.exec(field);
+    const inst = INSTALLMENT_FIELD.exec(field);
+    const key = line ? text(rows[Number(line[1])]?.key) : (inst ? text(insts[Number(inst[1])]?.key) : '');
+    return key ? { ...issue, rowKey: key } : issue;
+  });
+}
+
+/** ข้อความรายแถวสำหรับวาดใต้ช่อง — `Map<rowKey, { zoneId?, productId?, qty?, rounds?, row? }>` (ข้อแรกของแต่ละช่อง) */
+export function historicalLineIssues(issues = []) {
+  const byRow = new Map();
+  for (const issue of list(issues)) {
+    const match = LINE_FIELD.exec(text(issue?.field));
+    const key = text(issue?.rowKey);
+    if (!match || !key) continue;
+    const slot = LINE_SLOT_KEYS[match[2]] ? match[2] : 'row';
+    const entry = byRow.get(key) || {};
+    if (!entry[slot]) entry[slot] = text(issue?.detail) || text(issue?.message);
+    byRow.set(key, entry);
+  }
+  return byRow;
+}
+
+/**
+ * ฟอร์มถูกแก้ → ทิ้ง error ของ server ที่ **พูดถึงช่องที่เพิ่งเปลี่ยน** (ข้อที่เหลือยังจริงอยู่ ห้ามทิ้งเหมารวม)
+ * ⚠️ issue ของบรรทัดที่ไม่มี `rowKey` (ผูกแถวไม่ได้) ทิ้งทันทีที่ตารางเปลี่ยน — ลำดับอาจเลื่อนไปแล้ว พูดต่อ = เกาะผิดบรรทัด
+ * ⚠️ ด่านจริงยังเป็นพรีวิวของ server — ข้อที่ถูกทิ้งแต่ยังผิดอยู่ จะกลับมาตอนกด "ถัดไป" ครั้งหน้า
+ */
+export function historicalPruneIssues(issues = [], prev = {}, next = {}) {
+  const zonesChanged = prev?.zones !== next?.zones;
+  const prevRows = new Map(list(prev?.zones).map((row) => [text(row?.key), row]));
+  const nextRows = new Map(list(next?.zones).map((row) => [text(row?.key), row]));
+  const kept = list(issues).filter((issue) => {
+    const field = text(issue?.field);
+    if (field === 'vatRate') return prev?.vatRate === next?.vatRate;
+    if (field === 'discount') {
+      return prev?.discountType === next?.discountType && text(prev?.discountValue) === text(next?.discountValue);
+    }
+    if (field === 'zones') return list(next?.zones).length === 0;
+    /* ⭐ ขั้น ③ (มติ 25/09): ช่องของงวดยกมาดับเมื่อช่องนั้นเปลี่ยน · เปลี่ยนคำตอบ "จ่ายเงินมาแล้วหรือยัง" = ทั้งก้อนเป็นของเก่า */
+    if (field === 'opening' || field.startsWith('opening.')) {
+      if (prev?.hasOpening !== next?.hasOpening || prev?.openingFull !== next?.openingFull) return false;
+      const slot = field.split('.')[1];
+      if (!slot) return true;
+      if (slot === 'evidence') return true;
+      return text(prev?.opening?.[slot]) === text(next?.opening?.[slot]);
+    }
+    if (field === 'installments') return prev?.installments === next?.installments && prev?.hasOpening === next?.hasOpening;
+    const inst = INSTALLMENT_FIELD.exec(field);
+    if (inst) {
+      if (prev?.installments === next?.installments && prev?.opening === next?.opening
+        && prev?.contract === next?.contract) return true;
+      const key = text(issue?.rowKey);
+      if (!key) return false;
+      const before = list(prev?.installments).find((row) => text(row?.key) === key);
+      const after = list(next?.installments).find((row) => text(row?.key) === key);
+      if (!after) return false;
+      /* ช่วงครอบ/ยอดของงวดขึ้นกับงวดรอบข้าง (ห่วงโซ่) ⇒ ตารางเปลี่ยนตรงไหนก็ตาม ข้อของช่วง/ยอดเป็นของเก่าทั้งหมด */
+      if (['coverage', 'coversTo', 'amount', 'row'].includes(inst[2] || 'row')) return false;
+      return text(before?.[inst[2]]) === text(after?.[inst[2]]);
+    }
+    const match = LINE_FIELD.exec(field);
+    if (!match || !zonesChanged) return true;
+    const key = text(issue?.rowKey);
+    const after = key ? nextRows.get(key) : null;
+    if (!after) return false;
+    const before = prevRows.get(key);
+    const keys = LINE_SLOT_KEYS[match[2]] || LINE_ALL_KEYS;
+    return keys.every((name) => text(before?.[name]) === text(after?.[name]));
+  });
+  return kept.length === list(issues).length ? issues : kept;
+}
+
+/* ── ขั้น ③ งวดชำระ (มติเจ้าของ 25/09 — "ขอรื้อส่วนงวดชำระด้วย" · ม็อก Step3New/Step3Full/Step3Split) ─────────────
+ *
+ * 🐞 ของเดิม (UAT 25/09 + ข้อมูลจริง 4 ใบ):
+ *   · ปุ่ม "รายเดือน" หารจำนวนวันเท่า ๆ กัน ⇒ ช่วงไม่ตรงเดือน วันครบกำหนดเลื่อนทุกงวด (SO-26090232-0 ลงฐานไปแบบนั้น)
+ *     และหลังมีงวดยกมา มันยังแบ่งเป็น "จำนวนเดือนของทั้งสัญญา" ทั้งที่ช่วงเหลือสั้นกว่า
+ *   · ทุกงวดกรอก "ครอบบริการ ตั้งแต่–ถึง" เอง ⇒ ช่องโหว่/ซ้อนเกิดง่าย แล้วไปตายที่ตัวตรวจทั้งใบ
+ *   · ยอดงวดรวมต้องเท่ายอดใบ ±1 สตางค์ ⇒ ผู้คีย์ต้องหารเองให้ลงตัว
+ *   · 3 ใน 4 ใบที่คีย์จริงคือ "จ่ายครบทั้งใบ" แต่ต้องกรอกยอด/ช่วงเองทุกครั้ง
+ * ⇒ กติกาใหม่ (ไม่แก้ฐาน — RPC ได้ค่าชุดเดิมทุกช่อง):
+ *   ① คำถามสามทาง: จ่ายครบทั้งใบแล้ว (`openingFull`) · จ่ายมาแล้วบางส่วน · ยังไม่เคยจ่าย
+ *   ② **ห่วงโซ่**: งวดแรกเริ่มถัดจากงวดยกมา (หรือวันเริ่มสัญญา) · งวดถัดไปเริ่มถัดจาก "ถึง" ของงวดก่อน ⇒ กรอกแค่ "ถึง"
+ *   ③ **งวดสุดท้ายคิดให้** (มติข้อ 2): ยอด = ยอดที่ต้องเก็บ − งวดอื่น · ครอบถึงวันสิ้นสุดสัญญา
+ *   ④ แบ่งอัตโนมัติตามเดือนปฏิทิน + วันครบกำหนดสี่แบบ (หน้าต่างแบ่งงวด · ดูผลก่อนสร้าง)
+ * ⚠️ ห่วงโซ่คำนวณตอนอ่านเสมอ (จอ · body · ตัวตรวจ) — state เก็บเฉพาะค่าที่ผู้คีย์พิมพ์ ⇒ แก้วันสัญญา/งวดยกมาแล้วทั้งตารางขยับตาม
+ */
+const moneyText = (value) => (Math.round(Number(value) * 100) / 100).toFixed(2);
+const satangOrNull = (value) => {
+  const raw = text(value);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+};
+
+/** 'full' (จ่ายครบทั้งใบแล้ว) · 'part' (จ่ายมาแล้วบางส่วน) · 'none' (ยังไม่เคยจ่าย) · null (ยังไม่ตอบ) */
+export function historicalOpeningMode(state = {}) {
+  if (state.hasOpening === false) return 'none';
+  if (state.hasOpening === true) return state.openingFull === true ? 'full' : 'part';
+  return null;
+}
+
+/**
+ * ใบยอด 0 บาท — แผนรู้ก่อน (ตัวจริง) · ยังไม่มีแผนก็รู้จากยอดที่คิดได้บนฟอร์ม
+ * 🐞 ของเดิมอ่าน `plan?.zeroValue` อย่างเดียว ⇒ ก่อนพรีวิวผ่าน ใบ ฿0 ยังถูกถามว่าเคยเก็บเงินไหม แล้วปุ่มบันทึกวนกลับขั้น ③
+ */
+export function historicalZeroValue(plan = null, money = null) {
+  if (plan?.zeroValue) return true;
+  return Boolean(money?.ok) && Number(money?.totalAmount) === 0;
+}
+
+/**
+ * ห่วงโซ่ของงวด — ตัวเดียวที่จอ ตัวตรวจบนจอ และ body อ่าน
+ * @param totalAmount ยอดใบ (รวม VAT) หรือ null = ยังคิดไม่ได้
+ * @returns `{ mode, contractOk, opening, chainStart, startReason, remaining, rows, overflow, missingTo }`
+ *   - opening: `{ seq, amount, coversFrom, coversTo, derived }` หรือ null · derived = "จ่ายครบทั้งใบ" (คิดให้ทั้งก้อน)
+ *   - rows: `{ key, seq, index, last, label, amount, amountText, amountDerived, percent, dueDate, overdue,
+ *             coversFrom, coversTo, coversToText, coversToDerived, note }`
+ *   - remaining: ยอดที่งวดต้องเก็บรวมกัน (บาท) หรือ null · overflow: งวดอื่นรวมกันเกินยอดที่ต้องเก็บ
+ */
+export function historicalInstallmentChain(state = {}, { totalAmount = null, todayIso = null } = {}) {
+  const mode = historicalOpeningMode(state);
+  const start = text(state.contract?.startDate);
+  const end = text(state.contract?.endDate);
+  const contractOk = isDateText(start) && isDateText(end) && end >= start;
+  const totalSatang = totalAmount === null || totalAmount === undefined || !Number.isFinite(Number(totalAmount))
+    ? null : toSatang(totalAmount);
+  const today = isDateText(todayIso) ? text(todayIso) : null;
+  const pct = (satang) => (totalSatang && totalSatang > 0 && satang !== null
+    ? Math.round((satang / totalSatang) * 10000) / 100 : null);
+
+  let opening = null;
+  let chainStart = null;
+  let startReason = null;
+  let remainingSatang = null;
+  if (mode === 'full') {
+    opening = {
+      seq: 1, amount: totalSatang === null ? null : totalSatang / 100, percent: totalSatang ? 100 : null,
+      coversFrom: contractOk ? start : null, coversTo: contractOk ? end : null, derived: true,
+    };
+    remainingSatang = 0;
+  } else if (mode === 'part') {
+    const amount = satangOrNull(state.opening?.amount);
+    const to = text(state.opening?.coversTo);
+    opening = {
+      seq: 1, amount: amount === null ? null : amount / 100, percent: pct(amount),
+      coversFrom: contractOk ? start : null, coversTo: isDateText(to) ? to : null, derived: false,
+    };
+    remainingSatang = totalSatang === null || amount === null ? null : totalSatang - amount;
+    if (!contractOk) startReason = 'กรอกวันเริ่ม–วันสิ้นสุดสัญญาในขั้น ① ก่อน';
+    else if (!isDateText(to)) startReason = 'กรอก “ครอบบริการ ถึง” ของเงินที่เก็บแล้วก่อน — งวดที่เหลือเริ่มวันถัดจากนั้น';
+    else if (to < start || to > end) startReason = `“ครอบบริการ ถึง” ของเงินที่เก็บแล้วต้องอยู่ในช่วงสัญญา ${fmtDate(start)}–${fmtDate(end)}`;
+    else if (to === end) startReason = 'เงินที่เก็บแล้วครอบถึงวันสิ้นสุดสัญญาแล้ว — ไม่มีช่วงเหลือให้แบ่ง';
+    else chainStart = addDays(to, 1);
+  } else if (mode === 'none') {
+    remainingSatang = totalSatang;
+    if (!contractOk) startReason = 'กรอกวันเริ่ม–วันสิ้นสุดสัญญาในขั้น ① ก่อน';
+    else chainStart = start;
+  }
+
+  const raw = mode === 'part' || mode === 'none' ? list(state.installments) : [];
+  const seqBase = opening ? 2 : 1;
+  let cursor = chainStart;
+  let others = 0;
+  let missingTo = 0;
+  const rows = raw.map((row, index) => {
+    const last = index === raw.length - 1;
+    const coversFrom = cursor;
+    const typedTo = text(row?.coversTo);
+    const coversTo = last ? (contractOk ? end : null) : (isDateText(typedTo) ? typedTo : null);
+    if (!last && !coversTo) missingTo += 1;
+    let amountSatang;
+    if (last) {
+      amountSatang = remainingSatang === null ? null : remainingSatang - others;
+    } else {
+      amountSatang = satangOrNull(row?.amount);
+      if (amountSatang !== null) others += amountSatang;
+    }
+    cursor = coversTo && (!coversFrom || coversTo >= coversFrom) && coversTo < (contractOk ? end : '9999')
+      ? addDays(coversTo, 1) : null;
+    const dueDate = text(row?.dueDate);
+    return {
+      key: text(row?.key),
+      seq: seqBase + index,
+      index,
+      last,
+      label: text(row?.label),
+      amount: amountSatang === null ? null : amountSatang / 100,
+      amountText: text(row?.amount),
+      amountDerived: last,
+      percent: pct(amountSatang),
+      dueDate,
+      overdue: Boolean(today && isDateText(dueDate) && dueDate < today),
+      coversFrom: coversFrom || null,
+      coversTo: coversTo || null,
+      coversToText: typedTo,
+      coversToDerived: last,
+      note: text(row?.note),
+    };
+  });
+  const lastRow = rows[rows.length - 1] || null;
+  return {
+    mode,
+    contractOk,
+    opening,
+    chainStart,
+    startReason,
+    remaining: remainingSatang === null ? null : remainingSatang / 100,
+    rows,
+    overflow: Boolean(lastRow && lastRow.amount !== null && lastRow.amount < 0),
+    missingTo,
+  };
+}
+
+/**
+ * ข้อที่จอตรวจเองของขั้น ③ — **ข้อความเดียวกับแผน** เมื่อแผนมีคู่ (ข้อที่แผนไม่มี = กฎของห่วงโซ่ที่จอเป็นเจ้าของ)
+ * 🐞 ของเดิมจอถามแค่ "เคยเก็บเงินไหม" + หลักฐาน ⇒ ช่องอื่นไปรู้ตอนพรีวิวทีละรอบ
+ * ⚠️ แถวงวดพก `rowKey` + `detail` (ข้อความไม่มีป้ายงวด) — ตารางวาดใต้ช่องของแถวนั้น · ก้อนบนประกอบป้ายงวดปัจจุบัน
+ */
+export function historicalMoneyIssues(state = {}, { evidenceFileCount = 0, todayIso = null, totalAmount } = {}) {
+  const issues = [];
+  const add = (field, message, extra = {}) => issues.push({ field, message, ...extra });
+  const mode = historicalOpeningMode(state);
+  const total = totalAmount === undefined ? historicalMoneyView(state, null).totalAmount : totalAmount;
+  const chain = historicalInstallmentChain(state, { totalAmount: total, todayIso });
+  const start = text(state.contract?.startDate);
+  const end = text(state.contract?.endDate);
+  const today = isDateText(todayIso) ? text(todayIso) : null;
+
+  if (!mode) {
+    add('opening', 'เลือกว่าลูกค้าจ่ายเงินมาแล้วหรือยัง — จ่ายครบทั้งใบ · จ่ายมาแล้วบางส่วน · ยังไม่เคยจ่าย');
+    return issues;
+  }
+  if (mode === 'full' || mode === 'part') {
+    if (mode === 'part') {
+      const amount = satangOrNull(state.opening?.amount);
+      if (!text(state.opening?.amount)) add('opening.amount', 'ต้องกรอกยอดที่เก็บแล้ว');
+      else if (amount === null || amount <= 0) {
+        add('opening.amount', 'ยอดที่เก็บแล้วต้องมากกว่า 0 — ถ้ายังไม่เคยเก็บเงิน ไม่ต้องมีงวดยกมา', { live: true });
+      } else if (total !== null && total !== undefined && amount >= toSatang(total)) {
+        add('opening.amount', `ยอดที่เก็บแล้วเท่ายอดใบ ${fmtMoney(total)} หรือเกิน — ถ้าเก็บครบแล้วเลือก “จ่ายครบทั้งใบแล้ว”`, { live: true });
+      }
+      const to = text(state.opening?.coversTo);
+      if (!to) add('opening.coversTo', 'ต้องระบุว่าเงินที่เก็บแล้วครอบบริการถึงวันไหน');
+      else if (chain.contractOk && (to < start || to > end)) {
+        add('opening.coversTo', `ครอบบริการถึงต้องอยู่ในช่วงสัญญา ${fmtDate(start)}–${fmtDate(end)}`, { live: true });
+      } else if (chain.contractOk && to === end) {
+        add('opening.coversTo', 'ครอบถึงวันสิ้นสุดสัญญาแล้ว — ถ้าเก็บครบแล้วเลือก “จ่ายครบทั้งใบแล้ว”', { live: true });
+      }
+    }
+    const paidOn = text(state.opening?.paidOn);
+    if (!paidOn) add('opening.paidOn', 'ต้องระบุวันที่รับเงินงวดยกมา');
+    else if (today && paidOn > today) add('opening.paidOn', 'วันที่รับเงินงวดยกมาต้องไม่เกินวันนี้', { live: true });
+    if (charLength(state.opening?.note) > INSTALLMENT_NOTE_MAX) {
+      add('opening.note', `หมายเหตุงวดยกมายาวเกิน ${fmtNumber(INSTALLMENT_NOTE_MAX)} ตัวอักษร`, { live: true });
+    }
+    if (evidenceFileCount < 1) {
+      add('opening.evidence', `${OPENING_INSTALLMENT_LABEL}ต้องมีหลักฐานการเก็บเงินอย่างน้อย 1 ไฟล์ (ใบกำกับ ใบเสร็จ หรือ statement)`);
+    }
+  }
+  if (mode === 'part' || mode === 'none') {
+    if (!chain.rows.length) add('installments', 'ยังไม่มีงวด — กด “แบ่งงวดอัตโนมัติ” หรือ “เพิ่มงวด”');
+    for (const row of chain.rows) {
+      const slot = (name, detail, extra = {}) => add(`installments.${row.index}.${name}`, `งวดที่ ${row.seq}: ${detail}`, {
+        detail, rowKey: row.key, ...extra,
+      });
+      if (!row.label) slot('label', 'ต้องกรอกรายละเอียดงวด');
+      else if (charLength(row.label) > INSTALLMENT_LABEL_MAX) slot('label', `รายละเอียดยาวเกิน ${fmtNumber(INSTALLMENT_LABEL_MAX)} ตัวอักษร`, { live: true });
+      if (!row.last) {
+        if (!row.amountText) slot('amount', 'ต้องกรอกจำนวนเงิน');
+        else if (row.amount === null || row.amount < 0) slot('amount', 'ยอดต้องเป็นตัวเลขไม่ติดลบ', { live: true });
+      } else if (chain.overflow && chain.remaining !== null && chain.remaining >= 0) {
+        /* ยอดที่ต้องเก็บติดลบ (งวดยกมาเกินยอดใบ) = ข้อของช่องยอดที่เก็บแล้ว ไม่ใช่ความผิดของงวดอื่น (รีวิว 25/09) */
+        slot('amount', `งวดอื่นรวมกันเกินยอดที่ต้องเก็บ ${fmtMoney(chain.remaining)} อยู่ ${fmtMoney(Math.abs(row.amount))} — ลดยอดงวดก่อนหน้า`, { live: true });
+      }
+      if (!row.dueDate) slot('dueDate', 'ต้องระบุวันครบกำหนด');
+      if (!row.last) {
+        if (!row.coversToText) slot('coversTo', 'ต้องระบุวันสิ้นสุดของช่วงที่งวดนี้ครอบ — งวดถัดไปเริ่มวันถัดไปให้เอง');
+        else if (row.coversFrom && row.coversTo && row.coversTo < row.coversFrom) {
+          slot('coversTo', `ต้องไม่ก่อนวันเริ่มของงวดนี้ (${fmtDate(row.coversFrom)})`, { live: true });
+        } else if (chain.contractOk && row.coversTo && row.coversTo >= end) {
+          slot('coversTo', `ต้องจบก่อนวันสิ้นสุดสัญญา ${fmtDate(end)} — งวดสุดท้ายครอบถึงวันสิ้นสุดเอง`, { live: true });
+        }
+      }
+      if (charLength(row.note) > INSTALLMENT_NOTE_MAX) slot('note', `หมายเหตุยาวเกิน ${fmtNumber(INSTALLMENT_NOTE_MAX)} ตัวอักษร`, { live: true });
+    }
+  }
+  return issues;
+}
+
+/**
+ * ข้อที่จอตรวจเอง + ข้อของ server ที่ยังไม่ตรงกับช่องไหนของจอ — **ช่องเดียว = ข้อเดียว** (local ชนะ มันสดกว่า)
+ * 🐞 รีวิว 25/09: เทียบกันด้วยชื่อช่องดิบ ⇒ ลบงวดบนแล้ว ข้อของ server ที่ผูกแถว (`installments.2.label` ของตอนตรวจ) ไม่ชนกับข้อสด
+ *    (`installments.1.label` ของตอนนี้) ⇒ ข้อเดียวขึ้นสองบรรทัดในก้อนแดง ⇒ แถวที่ผูก key แล้วเทียบด้วย (key ของแถว, ช่อง)
+ */
+export function historicalMergeIssues(localIssues = [], serverIssues = []) {
+  const slotOf = (issue) => {
+    const field = text(issue?.field);
+    const key = text(issue?.rowKey);
+    if (!key) return field;
+    const row = INSTALLMENT_FIELD.exec(field) || LINE_FIELD.exec(field);
+    return row ? `${key}|${row[2] || 'row'}` : field;
+  };
+  const local = list(localIssues);
+  const taken = new Set(local.map(slotOf));
+  return [...local, ...list(serverIssues).filter((issue) => !taken.has(slotOf(issue)))];
+}
+
+/** ข้อความรายช่องของงวด — `Map<rowKey, { label?, amount?, dueDate?, coversTo?, coverage?, note?, row? }>` */
+export function historicalInstallmentIssues(issues = []) {
+  const byRow = new Map();
+  for (const issue of list(issues)) {
+    const match = INSTALLMENT_FIELD.exec(text(issue?.field));
+    const key = text(issue?.rowKey);
+    if (!match || !key) continue;
+    const slot = ['label', 'amount', 'dueDate', 'coversTo', 'coverage', 'note'].includes(match[2]) ? match[2] : 'row';
+    const entry = byRow.get(key) || {};
+    if (!entry[slot]) entry[slot] = text(issue?.detail) || text(issue?.message);
+    byRow.set(key, entry);
+  }
+  return byRow;
+}
+
+/** ป้ายของข้อในก้อนรวมหัวขั้น ③ — พูด **เลขงวดปัจจุบัน** (ลบงวดบนแล้วเลขเลื่อน) · งวดยกมาเป็นงวดที่ 1 เสมอเมื่อมี */
+export function historicalInstallmentIssueText(issue = {}, chain = null) {
+  const key = text(issue?.rowKey);
+  if (!key || !text(issue?.detail) || !chain) return text(issue?.message);
+  const row = list(chain.rows).find((item) => item.key === key);
+  return row ? `งวดที่ ${row.seq}: ${text(issue.detail)}` : text(issue?.message);
+}
+
+/**
+ * เปลี่ยนคำตอบ "ลูกค้าจ่ายเงินมาแล้วหรือยัง" — ของที่จะหายต้องถามก่อนเสมอ (กฎบ้าน: การกระทำที่ทำลายของที่พิมพ์ไว้มีโมดัลบอกผล)
+ * ⚠️ ตอบครั้งแรกไม่ถาม · จ่ายครบ → บางส่วน ไม่ถาม (ไม่มีอะไรหาย) · ไฟล์หลักฐานที่ยังไม่อัปล้างเมื่อเลือก "ยังไม่เคยจ่าย"
+ * ⚠️ ไม่แตะ `openingEvidence` (ref บนเซิร์ฟเวอร์) — เหตุผลเดียวกับ `historicalDownstreamReset`
+ * @param pendingEvidence ไฟล์หลักฐานในตะกร้าที่ยังไม่อัป
+ * @returns `{ ask, patch, clearsEvidence, title, description, confirmLabel }`
+ */
+export function historicalOpeningModeChange(state = {}, nextMode, { pendingEvidence = 0 } = {}) {
+  const current = historicalOpeningMode(state);
+  const rows = list(state.installments).length;
+  const base = { ask: false, patch: {}, clearsEvidence: false, title: '', description: '', confirmLabel: '' };
+  if (nextMode === current) return base;
+  if (nextMode === 'full') {
+    return {
+      ...base,
+      ask: current !== null && rows > 0,
+      patch: { hasOpening: true, openingFull: true, installments: [] },
+      title: `ลบงวดที่ยังต้องเก็บ ${fmtNumber(rows)} งวด`,
+      description: `“จ่ายครบทั้งใบแล้ว” = งวดยกมาเท่ายอดใบ ครอบเต็มสัญญา ⇒ งวดที่ยังต้องเก็บ ${fmtNumber(rows)} งวดที่คีย์ไว้จะถูกลบ`,
+      confirmLabel: 'ลบงวดและใช้จ่ายครบ',
+    };
+  }
+  if (nextMode === 'part') {
+    return { ...base, patch: { hasOpening: true, openingFull: false } };
+  }
+  if (nextMode === 'none') {
+    const opening = state.opening || {};
+    const clears = [
+      ...(text(opening.amount) ? [`ยอด ${fmtMoney(opening.amount)}`] : []),
+      ...(text(opening.coversTo) ? [`ครอบถึง ${fmtDate(opening.coversTo)}`] : []),
+      ...(text(opening.paidOn) ? [`วันที่รับเงิน ${fmtDate(opening.paidOn)}`] : []),
+      ...(text(opening.note) ? ['หมายเหตุถึงฝ่ายบัญชี'] : []),
+      ...(pendingEvidence > 0 ? [`ไฟล์หลักฐานที่ยังไม่อัป ${fmtNumber(pendingEvidence)} ไฟล์`] : []),
+      /* 🐞 รีวิว 25/09: หลักฐานที่อัปขึ้นไปแล้ว (ใบที่เปิดมาแก้) ไม่ผูกกับใบอีกเมื่อไม่มีงวดยกมา — ต้องบอกด้วย */
+      ...(list(state.openingEvidence).length
+        ? [`หลักฐานที่แนบไว้แล้ว ${fmtNumber(list(state.openingEvidence).length)} ไฟล์ (ไม่ผูกกับใบนี้อีก)`] : []),
+    ];
+    return {
+      ...base,
+      ask: current !== null && clears.length > 0,
+      patch: { hasOpening: false, openingFull: false, opening: emptyHistoricalWizard().opening },
+      clearsEvidence: true,
+      title: `ล้าง${OPENING_INSTALLMENT_LABEL}ที่กรอกไว้`,
+      description: `“ยังไม่เคยจ่าย” = ไม่มี${OPENING_INSTALLMENT_LABEL} ⇒ ระบบจะล้าง: ${clears.join(' · ')}`,
+      confirmLabel: `ล้าง${OPENING_INSTALLMENT_LABEL}`,
+    };
+  }
+  return base;
+}
+
+/**
+ * ปุ่ม "เพิ่มงวด" — ต่อท้ายหนึ่งงวด · งวดสุดท้ายเดิมเลิกเป็นงวดที่คิดให้ ⇒ **ยอดที่มันโชว์อยู่กลายเป็นค่าที่พิมพ์ไว้**
+ * (ไม่งั้นยอดที่เห็นหายไปเฉย ๆ) และช่อง "ถึง" ของมันว่างรอกรอก · งวดใหม่รับยอดที่เหลือ/ถึงวันสิ้นสุดสัญญาแทน
+ */
+export function historicalAddInstallment(state = {}, { totalAmount = null } = {}) {
+  const rows = list(state.installments);
+  if (!rows.length) return [emptyHistoricalInstallment()];
+  const chain = historicalInstallmentChain(state, { totalAmount });
+  const lastChain = chain.rows[chain.rows.length - 1];
+  const frozen = rows.map((row, index) => (index === rows.length - 1
+    ? { ...row, amount: lastChain?.amount === null || lastChain?.amount === undefined ? text(row.amount) : moneyText(lastChain.amount), coversTo: '' }
+    : row));
+  return [...frozen, emptyHistoricalInstallment()];
+}
+
+/* หน้าต่าง "แบ่งงวดอัตโนมัติ" — รอบการเก็บเงิน · วันครบกำหนด (ไม่มีค่าตั้งต้นทั้งคู่ — แผนชำระจริงไม่ได้เหมือนกันทุกใบ) */
+export const HISTORICAL_SPLIT_PERIODS = Object.freeze([
+  { value: 'once', label: 'ก้อนเดียว', months: null },
+  { value: '1', label: 'ทุกเดือน', months: 1 },
+  { value: '3', label: 'ทุก 3 เดือน', months: 3 },
+  { value: '6', label: 'ทุก 6 เดือน', months: 6 },
+  { value: '12', label: 'ทุกปี', months: 12 },
+]);
+export const HISTORICAL_DUE_RULES = Object.freeze([
+  { value: 'start', label: 'วันเริ่มของแต่ละงวด' },
+  { value: 'monthEnd', label: 'สิ้นเดือน' },
+  { value: 'day', label: 'ทุกวันที่ …' },
+  { value: 'manual', label: 'กรอกเองในตาราง' },
+]);
+
+/**
+ * ตัวเลือกรอบการเก็บเงินของช่วงที่เหลือ — ตัวที่ใช้ไม่ได้ **โชว์พร้อมเหตุ ไม่ซ่อน** (กฎบ้าน)
+ * @returns `{ span, options: [{ value, label, count, disabled, reason }], note }`
+ */
+export function historicalSplitOptions({ from = null, to = null, gridStart = null } = {}) {
+  const span = from && to ? historicalRemainingSpan({ from, to, gridStart }) : null;
+  const options = HISTORICAL_SPLIT_PERIODS.map((period) => {
+    if (!period.months) return { ...period, count: 1, disabled: false, reason: null };
+    if (!span) return { ...period, count: null, disabled: true, reason: 'ช่วงที่เหลือไม่ลงตัวเป็นเดือน' };
+    if (span.months % period.months !== 0) {
+      return { ...period, count: null, disabled: true, reason: `ช่วงที่เหลือ ${fmtNumber(span.months)} เดือน แบ่งไม่ลงตัว` };
+    }
+    return { ...period, count: span.months / period.months, disabled: false, reason: null };
+  });
+  const blocked = options.filter((option) => option.disabled);
+  let note = null;
+  if (from && to && !span) {
+    note = `ช่วงที่เหลือ ${fmtDate(from)}–${fmtDate(to)} ไม่ลงตัวเป็นเดือน — ใช้ “ก้อนเดียว” หรือกด “เพิ่มงวด” แล้วกำหนดช่วงเอง`;
+  } else if (blocked.length) {
+    note = `${blocked.map((option) => option.label).join(' · ')}: ${blocked[0].reason}`;
+  }
+  if (span?.extraDay) {
+    note = [note, 'ช่วงที่เหลือจบตรงวันครบรอบ — งวดสุดท้ายยาวขึ้น 1 วัน'].filter(Boolean).join(' · ');
+  }
+  return { span, options, note };
+}
+
+/**
+ * ผลของหน้าต่างแบ่งงวด **ก่อนกดสร้าง** — ตัวอย่าง · จำนวน · ยอดต่องวด · จำนวนงวดที่เลยกำหนดแล้ว
+ * ⚠️ ยอดหารเป็นสตางค์ เศษลงงวดสุดท้าย (และงวดสุดท้ายเป็นงวดที่ห่วงโซ่คิดให้อยู่แล้ว ⇒ ผลรวมเท่ายอดเป๊ะ)
+ * @returns `{ blocked, rows, count, each, lastAmount, overdue }` — `blocked` = เหตุที่ยังสร้างไม่ได้ (ข้อความพร้อมโชว์) หรือ null
+ */
+export function historicalSplitPreview({
+  from = null, to = null, amount = null, period = null, dueRule = null, dueDay = '', todayIso = null, gridStart = null,
+} = {}) {
+  const empty = { blocked: null, rows: [], count: 0, each: null, lastAmount: null, overdue: 0 };
+  if (!from || !to) return { ...empty, blocked: 'ยังไม่รู้ช่วงที่เหลือ' };
+  if (amount === null || amount === undefined || !Number.isFinite(Number(amount))) return { ...empty, blocked: 'ยังไม่รู้ยอดที่ต้องเก็บ' };
+  if (!(Number(amount) > 0)) return { ...empty, blocked: 'ยอดที่เหลือเป็น 0 — ไม่มีอะไรให้แบ่งเป็นงวด' };
+  if (!period) return { ...empty, blocked: 'เลือกรอบการเก็บเงินก่อน' };
+  if (!dueRule) return { ...empty, blocked: 'เลือกวันครบกำหนดก่อน' };
+  const dayNumber = Number(text(dueDay));
+  if (dueRule === 'day' && !(Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 31)) {
+    return { ...empty, blocked: 'ใส่วันที่ครบกำหนด 1–31' };
+  }
+  const { span, options } = historicalSplitOptions({ from, to, gridStart });
+  const option = options.find((item) => item.value === period);
+  if (!option || option.disabled) return { ...empty, blocked: option?.reason || 'รอบการเก็บเงินนี้ใช้กับช่วงที่เหลือไม่ได้' };
+  const spans = option.months
+    ? splitCoverageByMonths({
+      startDate: from, endDate: to, months: span.months, stepMonths: option.months, gridStart: span.gridStart, offset: span.offset,
+    })
+    : [{ coversFrom: from, coversTo: to, anchor: from }];
+  if (!spans.length) return { ...empty, blocked: 'แบ่งช่วงนี้ตามเดือนไม่ได้' };
+  const totalSatang = toSatang(amount);
+  const each = Math.floor(totalSatang / spans.length);
+  const today = isDateText(todayIso) ? text(todayIso) : null;
+  const rows = spans.map((item, index) => {
+    const last = index === spans.length - 1;
+    const satang = last ? totalSatang - each * (spans.length - 1) : each;
+    const dueDate = dueDateByRule(item.coversFrom, dueRule, dayNumber, item.anchor);
+    return {
+      label: spans.length === 1 ? 'ชำระครั้งเดียว' : `งวด ${index + 1}/${spans.length}`,
+      amount: satang / 100,
+      dueDate,
+      coversFrom: item.coversFrom,
+      coversTo: item.coversTo,
+      overdue: Boolean(today && dueDate && dueDate < today),
+    };
+  });
+  return {
+    blocked: null,
+    rows,
+    count: rows.length,
+    each: each / 100,
+    lastAmount: rows[rows.length - 1].amount,
+    overdue: rows.filter((row) => row.overdue).length,
+  };
+}
+
+/**
+ * จำนวนเดือนของช่วงที่เหลือ **บนตารางเดือนของสัญญา** — ช่วงที่เหลือเริ่มตรงขอบเดือนของสัญญา (หลังงวดยกมาที่ครบเดือน)
+ * = นับต่อจากตารางนั้น ไม่ใช่เริ่มนับใหม่จากวันที่ของช่วงที่เหลือ
+ * 🐞 รีวิว 25/09: สัญญา 31/03/2025–30/03/2026 จ่ายถึง 30/06/2025 ⇒ ช่วงที่เหลือเริ่ม 01/07 (ขอบที่ล้นของวันที่ 31) ·
+ *    นับใหม่จาก 01/07 ได้ "ไม่ลงตัวเป็นเดือน" ทั้งที่ป้ายบอก "ครบ 3 เดือนพอดี" และตารางของสัญญาแบ่งได้เป๊ะ
+ * @returns `{ months, extraDay, gridStart, offset }` หรือ null
+ */
+export function historicalRemainingSpan({ from = null, to = null, gridStart = null } = {}) {
+  const start = text(from);
+  const end = text(to);
+  const grid = text(gridStart);
+  if (isDateText(grid) && isDateText(start) && grid < start) {
+    const whole = serviceMonthSpan(grid, end);
+    if (whole) {
+      for (let k = 1; k < whole.months; k += 1) {
+        const edge = monthEdge(grid, k);
+        if (edge === start) return { months: whole.months - k, extraDay: whole.extraDay, gridStart: grid, offset: k };
+        if (!edge || edge > start) break;
+      }
+    }
+  }
+  const own = serviceMonthSpan(start, end);
+  return own ? { ...own, gridStart: start, offset: 0 } : null;
+}
+
+/** บรรทัดผลลัพธ์ข้างปุ่มสร้าง (กฎบ้าน: บอกผลก่อนกด) */
+export function historicalSplitConsequence(preview = {}, { replacing = 0 } = {}) {
+  if (preview.blocked) return `ยังสร้างไม่ได้ — ${preview.blocked}`;
+  const same = preview.count === 1 || toSatang(preview.lastAmount) === toSatang(preview.each);
+  const money = same
+    ? `งวดละ ${fmtMoney(preview.each)}`
+    : `งวดละ ${fmtMoney(preview.each)} · งวดสุดท้าย ${fmtMoney(preview.lastAmount)}`;
+  const replace = replacing ? ` · แทนที่งวดที่คีย์ไว้ ${fmtNumber(replacing)} งวด` : '';
+  return `จะสร้าง ${fmtNumber(preview.count)} งวด ${money}${replace}`;
+}
+
+/** งวดจากหน้าต่างแบ่งงวด → แถวของ state (ห่วงโซ่คิดช่วงเริ่ม/งวดสุดท้ายซ้ำเองอยู่แล้ว — ค่าที่เก็บตรงกับที่คิดได้) */
+export function historicalSplitRows(preview = {}) {
+  return list(preview.rows).map((row) => emptyHistoricalInstallment({
+    label: row.label,
+    amount: moneyText(row.amount),
+    dueDate: row.dueDate,
+    coversFrom: row.coversFrom,
+    coversTo: row.coversTo,
+  }));
 }
 
 /* ── ลำดับการบันทึก (มติ 22/09 · ปุ่มเดียวเดินหลายจังหวะ) ────────────────────────────────
@@ -1290,6 +2131,12 @@ const RACE_HINT = 'กดบันทึกอีกครั้งได้เ�
 /* รหัสที่ server ตั้งกฎไว้เอง: ส่งก้อนเดิมซ้ำติดเหมือนเดิมทุกครั้ง แต่แก้ฟอร์มแล้วบันทึกใหม่ได้ */
 const BLOCKED_HINT = 'บันทึกก้อนเดิมซ้ำจะติดเหมือนเดิมทุกครั้ง — แก้ข้อมูลตามข้อความข้างบนแล้วบันทึกใหม่';
 
+const HISTORICAL_MONEY_CODES = new Set([
+  'historical_so_opening_evidence_missing', 'historical_so_opening_invalid', 'historical_so_installment_invalid',
+  'historical_so_installment_sum_mismatch', 'historical_so_installments_total', 'historical_so_coverage_broken',
+  'historical_so_zero_value_has_installments', 'historical_so_check_installments',
+]);
+
 export function historicalSaveExit(error) {
   const status = Number(error?.status) || 0;
   const data = (error && typeof error.data === 'object' && error.data) || {};
@@ -1326,14 +2173,16 @@ export function historicalSaveExit(error) {
     const errors = data.errors;
     return { ...base, kind: 'invalid', errors, canEdit: true, goToStep: firstStepWithIssues(errors) };
   }
+  /* ⭐ รหัสของงวด/งวดยกมา/หลักฐาน (RPC ของ 0374) พาไปขั้น ③ ที่มีช่องให้แก้ — ของเดิมพาไปขั้น ①/④ ซึ่งไม่มีช่องนั้น */
+  const moneyStep = HISTORICAL_MONEY_CODES.has(code);
   /* 400 ที่ไม่มี `errors[]` (เช่น `historical_so_money_mismatch`) — ข้อความของ server คือเหตุผลเดียวที่มี
      ⇒ ต้องพกมันไปโชว์ที่ขั้นปลายทางด้วย ไม่งั้น "กลับไปแก้" = จอเปล่า */
-  if (status === 400) return { ...base, kind: 'invalid', canEdit: true, goToStep: 'contract' };
+  if (status === 400) return { ...base, kind: 'invalid', canEdit: true, goToStep: moneyStep ? 'money' : 'contract' };
   if (status === 403) return { ...base, kind: 'forbidden' };
   if (status === 503) return { ...base, kind: 'schema' };
   /* 🔴 รหัสอื่นที่มากับ 404/409/500 (`historical_so_edit_state_invalid` · `workflow_stale` …) — มาจากกฎ
      ฝั่ง server ที่ raise ข้างในทรานแซกชัน ⇒ **ห้ามเสนอ "บันทึกอีกครั้ง"** เพราะก้อนเดิมได้รหัสเดิมวนไม่รู้จบ */
-  if (code) return { ...base, kind: 'blocked', canEdit: true, goToStep: 'review', hint: BLOCKED_HINT };
+  if (code) return { ...base, kind: 'blocked', canEdit: true, goToStep: moneyStep ? 'money' : 'review', hint: BLOCKED_HINT };
   /* 5xx / เน็ตหลุด (ไม่มี response) = อาจลงฐานไปแล้ว — กดซ้ำได้ใบเดิมคืน (replayed) */
   if (!status || status >= 500) return { ...base, kind: 'unknown', canRetry: true, hint: RETRY_HINT };
   /* 4xx ที่ไม่มีทั้งรหัสและ `errors[]` — ไม่มีทางออกเฉพาะให้เดา */

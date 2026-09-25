@@ -12,13 +12,16 @@ import { fmtDate } from "@/lib/format";
 import { daysBetween } from "@/lib/sales/paymentCoverage";
 import styles from "./HistoricalOrderWizard.module.css";
 
-const LEGEND = { paid: "เก็บแล้ว", due: "ยังต้องเก็บ" };
+const LEGEND = { paid: "เก็บแล้ว", due: "ยังต้องเก็บ", planned: "ยังไม่ถึงกำหนด", overdue: "เลยกำหนด" };
 
 /**
- * @param segments `[{ key, kind: 'paid'|'due', from, to, label }]` — ช่วงที่ทับกันเองก็วาดได้ (ซ้อนตามลำดับ)
+ * @param segments `[{ key, kind: 'paid'|'due'|'planned'|'overdue', from, to, label }]` — ช่วงที่ทับกันเองก็วาดได้ (ซ้อนตามลำดับ)
+ *   ⭐ 'planned' / 'overdue' (ฟอร์มคีย์ใบย้อนหลังขั้น ③ · มติ 25/09) แยกงวดที่ยังไม่ถึงกำหนดออกจากงวดที่เลยกำหนดแล้ว
+ *   ⚠️ 'due' คงความหมายเดิม ("รอชำระ" ของหน้าใบสั่งขาย — `historicalCoverageSegments`) ไม่แตะสี/คำ
  * @param todayIso  วันไทยของผู้เรียก (businessDate) — ไม่ส่ง = ไม่มีเส้นวันนี้
+ * @param legend    `[{ kind, text }]` คำอธิบายที่ผู้เรียกประกอบเอง (ยอด/จำนวนงวด) · ไม่ส่ง = คำตามชนิด + ป้ายท่อนแรก (แบบเดิม)
  */
-export default function CoverageTimeline({ startDate, endDate, segments = [], todayIso = null, label = "ช่วงบริการตามสัญญา" }) {
+export default function CoverageTimeline({ startDate, endDate, segments = [], todayIso = null, label = "ช่วงบริการตามสัญญา", legend = null }) {
   const span = daysBetween(startDate, endDate);
   if (!Number.isFinite(span) || span < 0) return null;
   const total = span + 1;
@@ -65,7 +68,12 @@ export default function CoverageTimeline({ startDate, endDate, segments = [], to
         <span>{fmtDate(endDate)}</span>
       </div>
       <div className={styles.tlLegend}>
-        {kinds.map((kind) => (
+        {Array.isArray(legend) ? legend.map((item) => (
+          <span key={item.kind}>
+            <i className={styles.tlDot} data-kind={item.kind} aria-hidden="true" />
+            {item.text}
+          </span>
+        )) : kinds.map((kind) => (
           <span key={kind}>
             <i className={styles.tlDot} data-kind={kind} aria-hidden="true" />
             {LEGEND[kind] || kind}

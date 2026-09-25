@@ -236,6 +236,29 @@
   grid-column: 2 / 4;
 }
 
+.discountMinus {
+  color: var(--red);
+}
+
+/* ข้อความใต้ช่องของกล่องสรุป (ฟอร์มคีย์ใบย้อนหลัง — VAT ที่ยังไม่เลือก · ส่วนลดที่แผนตีกลับ) */
+.totalNote {
+  align-self: flex-end;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  text-align: right;
+}
+
+.totalNote[data-tone="bad"] {
+  color: var(--red);
+  font-weight: var(--fw-semibold);
+}
+
+.totalReq {
+  margin-left: var(--space-0-5);
+  color: var(--red);
+}
+
 .totalGrand {
   margin-top: var(--space-0-5);
   padding-top: var(--space-2-5);

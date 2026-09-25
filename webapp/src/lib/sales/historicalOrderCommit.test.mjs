@@ -247,10 +247,12 @@ test('⭐ ราคา/หน่วยอ่านจาก products."costPrice"
   assert.deepEqual(res.body.plan.lines.map((l) => [l.qty, l.unit, l.unitPrice, l.lineTotal]),
     [[72, 'แพ็คเกจ', 1200, 86400], [48, 'แพ็คเกจ', 1200, 57600]]);
   // แพ็คเกจยังไม่ตั้งราคาในทะเบียน = 400 พร้อมข้อความรายช่อง · ไม่เรียก RPC
+  //   มติ 25/09 (ตารางแบบใบเสนอราคา): ข้อความชี้ช่องแพ็คเกจของบรรทัด (ราคาเป็นของแพ็คเกจ — ตารางไม่มีช่องราคาให้แก้)
   const unpriced = fakeDb({ rpc: [created()], products: [{ ...PRODUCTS[0], costPrice: null }] });
   const bad = await run(unpriced);
   assert.equal(bad.status, 400);
-  assert.ok(bad.body.errors.some((e) => e.field === 'zones.0' && /ยังไม่ตั้งราคาในฐานข้อมูลสินค้า/.test(e.message)));
+  assert.ok(bad.body.errors.some((e) => e.field === 'zones.0.productId' && /ยังไม่ตั้งราคาในฐานข้อมูลสินค้า/.test(e.message)),
+    JSON.stringify(bad.body.errors));
   assert.equal(unpriced.calls.rpc.length, 0);
 });
 
@@ -299,11 +301,42 @@ test('R7: พรีวิวที่ "ยอดเองยังผิด" ต
   assert.equal(none.status, 400);
   assert.equal(none.body.money, null);
 
-  /* ยังไม่เลือก VAT = คิดยอดไม่ได้ (ตัวเดียวกับที่ฟอร์มบอกว่า "เลือก VAT ของใบในขั้น ① ก่อน") */
+  /* ยังไม่เลือก VAT = คิดยอดไม่ได้ (ตัวเดียวกับที่ฟอร์มบอกให้ "เลือกภาษีมูลค่าเพิ่มในกล่องสรุปท้ายตารางรายการ (ขั้น ②)" —
+     มติ 25/09 ย้าย VAT จากขั้น ① ไปกล่องสรุปแบบใบเสนอราคา) */
   const noVat = fakeDb({ rpc: [created()] });
   const vat = await run(noVat, { preview: true, intakeKey: undefined, vatRate: null });
   assert.equal(vat.status, 400);
   assert.equal(vat.body.money, null);
+
+  /* ส่วนลดท้ายใบที่แผนตีกลับ (% เกิน 100 · ติดลบ · ชนิดแปลก) = ยอดยังไม่รู้เหมือนยังไม่เลือก VAT
+     ⚠️ ห้ามตอบยอด "ไม่ลด" แทน — จอจะวาดแผ่นแบ่งงวดจากยอดที่ใหญ่กว่าที่ผู้คีย์ตั้งใจ */
+  for (const discount of [
+    { discountType: 'percent', discountValue: 150 },
+    { discountType: 'amount', discountValue: -1 },
+    { discountType: 'baht', discountValue: 1000 },
+  ]) {
+    const badDiscount = fakeDb({ rpc: [created()] });
+    const res = await run(badDiscount, { preview: true, intakeKey: undefined, ...discount });
+    assert.equal(res.status, 400, JSON.stringify(discount));
+    assert.ok(res.body.errors.some((e) => e.field === 'discount'), JSON.stringify(res.body.errors));
+    assert.equal(res.body.money, null, JSON.stringify(discount));
+  }
+});
+
+/* ⭐ มติ 25/09 ส่วนลดท้ายใบ — ยอดครึ่งเงินของพรีวิว 400 ต้องพกยอดส่วนลดมาด้วย (จอวาดกล่องสรุป + แผ่นแบ่งงวด
+   จากก้อนนี้ก้อนเดียว) · 144,000 − 1,000 = 143,000 → VAT 10,010 → รวม 153,010 */
+test('R7: ยอดของพรีวิว 400 พก discountAmount ของส่วนลดท้ายใบ · VAT คิดจากยอดหลังหัก', async () => {
+  for (const [discount, money] of [
+    [{ discountType: 'amount', discountValue: 1000 }, { subtotal: 144000, discountAmount: 1000, vatAmount: 10010, totalAmount: 153010 }],
+    [{ discountType: 'percent', discountValue: '10' }, { subtotal: 144000, discountAmount: 14400, vatAmount: 9072, totalAmount: 138672 }],
+  ]) {
+    const db = fakeDb({ rpc: [created()] });
+    const res = await run(db, { preview: true, intakeKey: undefined, opening: null, installments: [], ...discount });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.errors.some((e) => e.field === 'installments'), JSON.stringify(res.body.errors));
+    assert.deepEqual(res.body.money, money, JSON.stringify(discount));
+    assert.equal(db.calls.rpc.length, 0);
+  }
 });
 
 /* ใบยอด 0 บาทจริง (มติข้อ 12) ≠ "คิดยอดไม่ได้" — แผนบอกด้วย `zeroValue` ⇒ ยอดต้องไหลไปให้จอ */
@@ -430,7 +463,9 @@ test('สร้าง: RPC ครั้งเดียว · อาร์กิ�
     zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
     discountAmount: 0, lineTotal: 86400, serviceRounds: 12,
   });
-  assert.deepEqual(args.p_header.intake, { vatRate: 7 });
+  // intake = ของที่คอลัมน์เก็บไม่ได้แต่ฟอร์มแก้ต้องได้คืน: ตัวเลือก VAT + ชนิด/ค่าส่วนลดท้ายใบ (มติ 25/09 · ไม่ลด = null/0)
+  assert.deepEqual(args.p_header.intake, { vatRate: 7, discountType: null, discountValue: 0 });
+  assert.equal(args.p_header.discountAmount, 0);
   assert.deepEqual(args.p_installments.map((r) => r.kind), ['opening', 'regular']);
   assert.ok(args.p_installments.every((r) => !('evidence' in r)), 'ตอนสร้างยังไม่มีหลักฐาน (โฟลเดอร์ของใบยังไม่เกิด)');
   assert.equal(args.p_new_deal.ownerName, 'พิมพ์ชนก รัตนา');
@@ -449,6 +484,38 @@ test('สร้าง: RPC ครั้งเดียว · อาร์กิ�
   const changed = fakeDb({ rpc: [created()] });
   await run(changed, { notes: 'ต่างไปหนึ่งช่อง' });
   assert.notEqual(changed.calls.rpc[0].args.p_intake_hash, args.p_intake_hash);
+});
+
+/* ⭐ มติ 25/09 ส่วนลดท้ายใบ — JS ล้วน ไม่มี migration: ฐานเก็บยอดที่คอลัมน์ discountAmount และชนิด/ค่าใน
+   metadata.historicalIntake (0374 เขียน `p_header->'intake'` ทั้งก้อน) ⇒ ตัวเขียนต้องส่งทั้งสองทางครบ ไม่งั้น
+   ใบลงฐานได้ แต่เปิดแก้แล้วส่วนลดหาย (หรือสมการหัวใบของฐานตีกลับ historical_so_money_mismatch) */
+test('สร้าง: ส่วนลดท้ายใบไหลถึง RPC — p_header.discountAmount + intake ชนิด/ค่า · งวดเท่ายอดหลังหัก · ลายนิ้วมือต่างจากไม่ลด', async () => {
+  const discounted = {
+    discountType: 'amount', discountValue: 1000,
+    installments: [{ ...body().installments[0], amount: 37450 }],            // 115,560 + 37,450 = 153,010
+  };
+  const db = fakeDb({ rpc: [created()] });
+  const res = await run(db, discounted);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  const { args } = db.calls.rpc[0];
+  assert.deepEqual(
+    { subtotal: args.p_header.subtotal, discountAmount: args.p_header.discountAmount, vatAmount: args.p_header.vatAmount, totalAmount: args.p_header.totalAmount },
+    { subtotal: 144000, discountAmount: 1000, vatAmount: 10010, totalAmount: 153010 },
+  );
+  assert.deepEqual(args.p_header.intake, { vatRate: 7, discountType: 'amount', discountValue: 1000 });
+  // ส่วนลดท้ายใบไม่ถูกเกลี่ยลงบรรทัด — ฐาน (0374 ⑦) ตรวจ ผลรวมบรรทัด = subtotal
+  assert.deepEqual(args.p_lines.map((l) => [l.discountAmount, l.lineTotal]), [[0, 86400], [0, 57600]]);
+
+  const plain = fakeDb({ rpc: [created()] });
+  await run(plain, { ...discounted, discountType: null, discountValue: 0 });
+  assert.equal(plain.calls.rpc.length, 0, 'ไม่ลดแล้วงวดเกินยอด = 400 ก่อนถึง RPC');
+  const again = fakeDb({ rpc: [created()] });
+  await run(again, discounted);
+  assert.equal(again.calls.rpc[0].args.p_intake_hash, args.p_intake_hash, 'คำขอเดิม (รวมส่วนลด) = ลายนิ้วมือเดิม');
+  const other = fakeDb({ rpc: [created()] });
+  await run(other, { ...discounted, discountType: 'percent', discountValue: 10, installments: [{ ...body().installments[0], amount: 23112 }] });
+  assert.equal(other.calls.rpc.length, 1);
+  assert.notEqual(other.calls.rpc[0].args.p_intake_hash, args.p_intake_hash, 'ส่วนลดต่าง = คำขอคนละก้อน');
 });
 
 test('audit ของการสร้าง: ใบ + เอกสารแทนสัญญา + ดีลที่เพิ่งเกิด อย่างละครั้ง · ดีลเดิม = ไม่มี audit ดีล', async () => {

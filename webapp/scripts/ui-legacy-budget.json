@@ -4,7 +4,7 @@
     "sales": {
       "legacyTable": 31,
       "legacySurface": 60,
-      "inlineStyle": 808,
+      "inlineStyle": 807,
       "rawButtonClass": 152,
       "rawInputClass": 49
     },
@@ -48,7 +48,7 @@
       "legacySurface": 15,
       "inlineStyle": 172,
       "rawButtonClass": 35,
-      "rawInputClass": 15
+      "rawInputClass": 14
     }
   }
 }

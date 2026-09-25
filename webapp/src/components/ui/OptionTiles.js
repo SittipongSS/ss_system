@@ -16,6 +16,9 @@
 // ใช้กับชุดตายตัวที่ตอบได้มากกว่าหนึ่ง เช่น **ทีมที่ผู้ใช้สังกัด** (ODM/KA/SV) —
 // คนเดียวอยู่ได้หลายทีม (มติผู้ใช้ 2026-08-11) · โหมดนี้เป็น checkbox ไม่ใช่ radio
 // จึงคืนลำดับตาม `options` เสมอ ไม่ใช่ตามลำดับที่กด — ป้ายบนหน้าจอจะได้ไม่สลับที่
+//
+// `invalid` = คำถามบังคับที่ยังไม่ตอบหลังกดไปต่อ — ขอบแดงทั้งชุด (คู่กับ `is-invalid` ของช่องกรอก)
+// ⚠️ ไม่ส่ง = หน้าตาเดิมทุกหน้า
 export default function OptionTiles({
   value,
   onChange,
@@ -23,6 +26,7 @@ export default function OptionTiles({
   multiple = false,
   disabled = false,
   ariaLabel,
+  invalid = false,
 }) {
   const selected = multiple ? (Array.isArray(value) ? value : []) : null;
   const isOn = (option) => (multiple ? selected.includes(option.value) : value === option.value);
@@ -35,7 +39,8 @@ export default function OptionTiles({
   };
 
   return (
-    <div className="option-tiles" role={multiple ? "group" : "radiogroup"} aria-label={ariaLabel}>
+    <div className="option-tiles" role={multiple ? "group" : "radiogroup"} aria-label={ariaLabel}
+      aria-invalid={invalid ? "true" : undefined} data-invalid={invalid ? "1" : undefined}>
       {options.map((option) => (
         <button
           key={option.value}
