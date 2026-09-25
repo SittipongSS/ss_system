@@ -52,6 +52,12 @@ function stubCount(map) {
           // preview เดิมอ่านแต่ count; ตัวที่อ่านแถวจริง (ใบยื่นภาษี) อ่าน data
           resolve({ count: map[key] ?? 0, data: map[`${key}:rows`] ?? [] });
         },
+        // คำร้องที่ผูกดีลอ่านทีละหน้าด้วย fetchAll (`.order().range()`) — หน้าเดียวพอ
+        order() { return builder; },
+        range() {
+          const key = ctx.extra ? `${table}:${ctx.col}:extra` : `${table}:${ctx.col}`;
+          return Promise.resolve({ data: map[`${key}:rows`] ?? [], error: null });
+        },
       };
       return builder;
     },
@@ -520,4 +526,20 @@ test('🔴 quotationForcePreview / salesOrderForcePreview: มีงวดที
   // ไม่มีงวดย้ายออก = พรีวิวเดิม
   assert.equal((await quotationForcePreview(stubCount({}), { id: 'Q1', status: 'sent' }, { movedOut: [] })).blocked, false);
   assert.equal((await salesOrderForcePreview(stubCount({}), { id: 'SO1', status: 'cancelled' })).blocked, false);
+});
+
+// คำร้องที่ส่งแล้วต้องขึ้นเลขที่ในพรีวิวบังคับลบ — ตัวเลขใน cascade ไม่บอกว่ามีงานของฝ่ายอื่นอยู่
+// (ของจริง 2026-09-25: ลบดีลพาคำร้องที่ RD ตอบแล้ว/ยังทำอยู่หายไป 11 ใบ)
+test('dealForcePreview: คำร้องที่ส่งแล้วขึ้นเลขที่ใน note · ร่างไม่ขึ้น', async () => {
+  const supabase = stubCount({
+    'dept_requests:dealId': 2,
+    'dept_requests:dealId:rows': [
+      { id: 'DR-1', docNo: 'RQ-IQ-26090026', status: 'closed', submittedAt: '2026-09-03' },
+      { id: 'DR-2', status: 'draft', submittedAt: null },
+    ],
+  });
+  const { notes } = await dealForcePreview(supabase, { id: 'D1', stage: 'quotation' });
+  const note = notes.find((n) => n.includes('คำร้องที่ส่งถึงฝ่ายอื่นแล้ว'));
+  assert.ok(note, notes.join(' | '));
+  assert.match(note, /1 ใบ \(RQ-IQ-26090026\)/);
 });

@@ -4,6 +4,8 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
+import { requestsLinkedTo, sentRequestsBlockMessage } from '@/lib/requests/cascadeDelete';
+import { requestCascadeAuditor } from '@/lib/requests/cascadeAudit';
 import { resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor } from '@/lib/pm/projectOwner';
 import { isForceRequest, canForceDelete, forceDeleteProjectExcise } from '@/lib/forceDelete';
 import { genId } from '@/lib/id';
@@ -509,11 +511,25 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if ((linkedCount || 0) > 0) {
       return conflict('โครงการนี้ผูกกับดีลอยู่ — ลบดีลที่ผูกทั้งหมดที่หน้า "บริหารงานขาย" ก่อน แล้วจึงลบโครงการที่นี่ได้ (การลบดีลจะไม่ลบโครงการให้อัตโนมัติ)');
     }
+    // ⛔ คำร้องที่ส่งแล้วลบพ่วงไม่ได้ — กติกาเดียวกับทางลบดีล (lib/requests/cascadeDelete)
+    let linkedRequests;
+    try {
+      linkedRequests = await requestsLinkedTo(supabase, 'projectId', id);
+    } catch (requestError) {
+      return fail(`${requestError.message} — ยังไม่ได้ลบโครงการ`, 500);
+    }
+    const requestBlock = sentRequestsBlockMessage(linkedRequests, 'โครงการ');
+    if (requestBlock) return conflict(requestBlock);
   }
 
   try {
     if (force) await forceDeleteProjectExcise(supabase, id);
-    await deleteProjectDeep(supabase, id);
+    await deleteProjectDeep(supabase, id, {
+      auditRequests: requestCascadeAuditor({
+        user, request: req,
+        cause: `การลบโครงการ ${project.code || id}${force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : ''}`,
+      }),
+    });
   } catch (e) {
     return fail(e.message, 500);
   }
