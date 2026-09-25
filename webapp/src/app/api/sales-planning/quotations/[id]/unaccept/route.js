@@ -4,6 +4,7 @@ import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/sa
 import { canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
+import { settleProbabilityAfterUnaccept } from '@/lib/sales/dealProbability';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,6 +90,28 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } catch (forecastError) {
     console.error('forecast source apply failed', before.deal.id, forecastError);
     forecast = { changed: false, warning: forecastError.message };
+  }
+
+  /* ⭐ FC% หลังย้อนการรับใบ (มติผู้ใช้ 2026-09-25 ข้อ 3) — RPC ตั้ง FC ของดีลเป็นค่าตั้งต้นของขั้น
+     (deal_probability_for_stage) ซึ่งผิดกับ NPD ที่โครงการยังมี SCENT Won ⇒ คิดใหม่ด้วยกติกา JS ตัวเดียว
+     (resolveProbability) · และถ้าโครงการไม่เหลือ SCENT ที่ Won แล้ว NPD พี่น้องที่ cascade ตอนรับใบดันขึ้น 80
+     กลับฐาน — เฉพาะดีลที่ไม่มีใครขยับ FC% หลัง cascade (ตัดสินจาก audit ดู lib/sales/dealProbability)
+     ⚠️ ขานี้มีเฉพาะทางย้อนการรับใบ — ยกเลิก SO พร้อมย้อนสถานะ (0170) กับแอดมินลบใบบังคับ (0381) ไม่ถอยให้
+        (มติ 25/09 ข้อ 4: ขอบเขตเดียวกับการเปิดใบพี่น้องคืน)
+     best-effort แบบเดียวกับ cascade ขาเข้า: ย้อนรับใบ commit ไปแล้ว ⇒ ไม่ throw · ทุกแถวที่ขยับลง audit */
+  const probability = await settleProbabilityAfterUnaccept(supabase, result?.deal, { quoteNumber: before.quoteNumber });
+  for (const warning of probability.warnings) console.error('probability after unaccept', before.deal.id, warning);
+  for (const row of probability.touched) {
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_deal',
+      entityId: row.id,
+      before: { probability: row.previousProbability },
+      after: { probability: row.probability },
+      summary: row.summary,
+      request: req,
+    });
   }
 
   const { data: after } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
