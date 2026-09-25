@@ -610,6 +610,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ทุกการบังคับลบเดินผ่าน RPC เสมอ (ไม่ใช่แค่ใบที่มีหลักฐาน) เพราะ mig 0168 ให้ RPC
   // ถอยดีลออกจาก Won ในทรานแซกชันเดียวกับการลบ — ใบ accepted ที่ไม่มีหลักฐาน (ใบ
   // grandfather approvalStatus='not_required') ก็ต้องถอยดีลเหมือนกัน
+  // ⛔ มติ 25/09 ข้อ 4: บังคับลบใบที่รับแล้ว (revert_deal_out_of_won) ไม่เปิดใบพี่น้องที่ถูกปิดตอนรับใบ — มีแต่
+  //   "ย้อนการรับ" (unaccept · mig 0388) ที่เปิดคืน · ใบ closed คงปิด (ตราชี้ใบที่ถูกลบ ไม่มีใครเปิดตามมันอีก)
+  //   ใบรุ่นเก่าไม่มีตราก็คงปิดเหมือนกัน — ย้อนการรับใบอื่นเปิดใบรุ่นเก่าเฉพาะที่ updatedAt = acceptedAt ของใบที่ย้อน
+  //   (หลักฐานอยู่ที่ใบที่ย้อนเอง ไม่ใช่ที่ใบที่ถูกลบนี้ — รีวิว 25/09)
   const { data: forceResult, error } = hasEvidence || force
     ? await supabase.rpc('force_delete_quotation', {
       p_id: id,
