@@ -100,6 +100,7 @@ import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPayment
 import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
 import Tabs from "@/components/ui/Tabs";
 import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
+import SalesOrderDocumentsPanel, { installmentFilesKey, useSalesOrderDocuments } from "@/components/salesPlanning/SalesOrderDocumentsPanel";
 import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/lib/sales/serviceOrders";
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
@@ -970,7 +971,13 @@ export default function SalesOrderDetailPage() {
      ⇒ ต้องเปิดให้ใบบนเส้นบริการทุกใบ · ส่วน "งานบริการ" มีตารางกรอกจำนวนรอบที่ตีกลับ
      บรรทัดนอกหมวด 02-001 (`validateServiceRoundsPatch`) ⇒ เปิดกว้างจะได้แท็บที่เปิดได้
      แต่ไม่มีแถวให้กรอก */
-  const tabKeys = ["overview", ...(onServiceLine ? ["contract"] : []), "payment",
+  /* ⭐ แท็บ "เอกสาร" (มติเจ้าของ 25/09/2569) — ทุกใบมี · อยู่ถัดภาพรวม · ตัวเลขบนหัวแท็บ = ไฟล์ทุกบ้านของใบ
+     ⇒ ตัวโหลดอยู่ที่หน้า ไม่ใช่ในแผง (หัวแท็บต้องรู้ก่อนเปิดแท็บ) · โหลดใหม่เมื่อสถานะ/เวลาแก้ของใบขยับ */
+  const salesOrderDocs = useSalesOrderDocuments(
+    order?.id,
+    `${order?.status || ""}|${order?.updatedAt || ""}|${order?.serviceContractId || ""}|${installmentFilesKey(installments)}`,
+  );
+  const tabKeys = ["overview", "documents", ...(onServiceLine ? ["contract"] : []), "payment",
     ...(hasServiceRounds ? ["service"] : []), "history"];
   const urlTab = searchParams.get("tab");
   /* 🪤 `#payment` จากทะเบียนการชำระของฝ่ายบัญชี — ของเดิมเป็น anchor ไปการ์ดกลางหน้า
@@ -1588,6 +1595,7 @@ export default function SalesOrderDetailPage() {
             tabs={tabKeys.map((key) => ({
               key,
               label: key === "overview" ? "ภาพรวม"
+                : key === "documents" ? (salesOrderDocs.data?.total ? `เอกสาร ${salesOrderDocs.data.total}` : "เอกสาร")
                 : key === "contract" ? (order.serviceContract ? "สัญญา" : "สัญญา · ยังไม่ผูก")
                   : key === "payment" ? (paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ")
                     : key === "service" ? "งานบริการ"
@@ -1787,6 +1795,17 @@ export default function SalesOrderDetailPage() {
               ⚠️ วางเหนือการ์ดการชำระโดยตั้งใจ — สัญญามาก่อนเงิน ทั้งในลำดับงานจริง
                  และในด่าน "จ่ายก่อนบริการ" ที่อ่านทั้งสองอย่างประกอบกัน */}
           </>}
+
+          {activeTab === "documents" && (
+            <SalesOrderDocumentsPanel
+              orderId={order.id}
+              docs={salesOrderDocs}
+              meId={order.meId}
+              isAdmin={role === "admin"}
+              onOpenTab={selectTab}
+              tabKeys={tabKeys}
+            />
+          )}
 
           {activeTab === "contract" && (
             <ServiceContractCard

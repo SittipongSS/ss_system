@@ -14,6 +14,9 @@ import { isPersonalDoc } from '@/lib/master/attachmentTypes';
 import { canAttachToCosting, canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment } from '@/lib/sales/salesAttachmentAccess';
+import {
+  canAttachToSalesOrder, canViewSalesOrderAttachment, isSalesOrderAttachment,
+} from '@/lib/sales/salesOrderAttachmentAccess';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 
 // resource key ที่ส่งให้ helper สิทธิ์กลาง (ตรงกับ lib/permissions)
@@ -30,6 +33,8 @@ export async function canViewAttachmentParent(supabase, entityType, parent, user
   if (isCostingAttachment(entityType)) return canViewCostingAttachment(supabase, entityType, parent, user);
   // ดีล/โครงการคุมด้วยขอบเขตของสายงานขาย (ทีม/เจ้าของ) ไม่ใช่ทีมเจ้าของลูกค้า
   if (isSalesAttachment(entityType)) return canViewSalesAttachment(parent, user);
+  // ใบสั่งขายไม่มี `team` ของตัวเอง ⇒ ตัดสินด้วยขอบเขตของ **ดีลของใบ** (ต้องอ่านดีลเพิ่มหนึ่งครั้ง)
+  if (isSalesOrderAttachment(entityType)) return canViewSalesOrderAttachment(supabase, parent, user);
   return canViewRecord(user, RESOURCE[entityType], parent);
 }
 
@@ -65,6 +70,7 @@ export async function canEditAttachmentParent(supabase, entityType, parent, user
   if (isPersonalTaskAttachment(entityType)) return canAttachToPersonalTask(supabase, parent, user);
   if (isCostingAttachment(entityType)) return canAttachToCosting(supabase, entityType, parent, user);
   if (isSalesAttachment(entityType)) return canAttachToSalesEntity(parent, user);
+  if (isSalesOrderAttachment(entityType)) return canAttachToSalesOrder(supabase, parent, user);
   // product: ขอบเขตแก้ตามทีมผู้ดูแลของ **ลูกค้าเจ้าของสินค้า** (มติ 2026-07-20/21)
   // — resolve ให้ตรงกับหน้ารายละเอียดสินค้า
   return canEditRecord(

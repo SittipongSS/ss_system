@@ -38,6 +38,7 @@ import { captureIssuedQuotationPdfLater } from '@/lib/sales/issuedQuotationPdf';
 import { purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { purgeSalesOrderFiles } from '@/lib/sales/salesOrderAttachmentAccess';
 
 export const dynamic = 'force-dynamic';
 // PDF ของฉบับเปลี่ยนภาษาสร้างใน `after` ซึ่งกินเพดานเวลาของ route นี้ — เผื่อ cold start ของ chromium
@@ -641,6 +642,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
      เก็บกวาดแยกด้านล่าง เพราะต้องอ่านแถวก่อนที่ RPC จะลบทิ้ง */
   await purgePrivateEvidence(supabase, 'quotations', id);
   for (const orderId of childOrderIds) await purgePrivateEvidence(supabase, 'sales_orders', orderId);
+  // ไฟล์ในแท็บ "เอกสาร" ของ SO ลูกที่ cascade ไปกับใบ (polymorphic ไม่มี FK) — ตัวกวาดไม่ throw
+  await purgeSalesOrderFiles(supabase, childOrderIds);
   await removeEvidenceRefs(supabase, issuedPdfRefs);
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`

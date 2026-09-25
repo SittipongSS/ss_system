@@ -18,6 +18,10 @@ import {
   SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, isSalesAttachment,
 } from '@/lib/sales/salesAttachmentAccess';
 import { historicalContractFilesFrozenGate } from '@/lib/sales/historicalContractLock';
+import {
+  SALES_ORDER_ATTACHMENT_TABLE, canAttachToSalesOrder, canRemoveSalesOrderFile, isSalesOrderAttachment,
+  salesOrderAttachBlock,
+} from '@/lib/sales/salesOrderAttachmentAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,6 +78,25 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
       const frozen = await historicalContractFilesFrozenGate(supabase, deal);
       if (frozen) return Response.json({ error: frozen.message }, { status: frozen.status });
     }
+  }
+
+  /* ⚠️ ใบสั่งขาย: ไม่มี parent ใน PARENT_TABLE ของไฟล์นี้ — ไม่ดักตรงนี้ = บล็อก `if (table)` ข้างล่างถูกข้าม
+     ทั้งก้อน = **ใครก็ลบไฟล์แนบของใบสั่งขายได้**
+     กติกา (มติ 25/09): ลบ/แก้ได้เฉพาะ **คนแนบเอง ที่ยังแก้ใบได้** หรือแอดมิน · ใบยกเลิก/ถูก Rev. แทน = แตะไม่ได้
+     (แอดมินข้ามด่านสถานะได้) · ใบถูกลบไปแล้ว = เหลือด่านระบบ + คนแนบ/แอดมิน (เก็บกวาดไฟล์ค้าง) */
+  if (isSalesOrderAttachment(att.entityType)) {
+    const { data: order, error: orderError } = await supabase
+      .from(SALES_ORDER_ATTACHMENT_TABLE[att.entityType]).select('*').eq('id', att.entityId).maybeSingle();
+    if (orderError) return Response.json({ error: orderError.message }, { status: 500 });
+    const allowed = canRemoveSalesOrderFile(att, user)
+      && (order ? await canAttachToSalesOrder(supabase, order, user) : canViewSalesPlanning(user));
+    if (!allowed) {
+      return Response.json({
+        error: canRemoveSalesOrderFile(att, user) ? 'forbidden' : `${actionLabel}ได้เฉพาะคนที่แนบไฟล์นี้หรือแอดมิน`,
+      }, { status: 403 });
+    }
+    const blocked = order && user?.role !== 'admin' ? salesOrderAttachBlock(order) : null;
+    if (blocked) return Response.json({ error: blocked }, { status: 409 });
   }
 
   // สิทธิ์ลบ = สิทธิ์แก้ entity แม่ (team scope จาก canEditRecord).

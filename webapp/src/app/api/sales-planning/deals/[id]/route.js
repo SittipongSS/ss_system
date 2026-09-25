@@ -42,6 +42,7 @@ import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
 import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { purgeSalesOrderFiles, salesOrderIdsOfDeal } from '@/lib/sales/salesOrderAttachmentAccess';
 import { isDealFormSave, missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
 import { clientDealMetadataOnPatch } from '@/lib/sales/legacyDealSwitch';
 import { loadLeadForLink, releaseLeadAfterDealGone } from '@/lib/sales/dealLeadLinkRepo';
@@ -742,6 +743,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
+  /* ใบสั่งขายของดีลหายตาม cascade (FK dealId ON DELETE CASCADE · 0107) ⇒ จดรายชื่อไว้ก่อนลบ แล้วกวาดไฟล์ในแท็บ
+     "เอกสาร" ของใบพวกนั้นหลังลบสำเร็จ · ⚠️ อ่านไม่ขึ้น = หยุดก่อนลบ ไม่ใช่ถือว่าไม่มีใบ (ไฟล์จะกำพร้าเงียบ) */
+  const childOrders = await salesOrderIdsOfDeal(supabase, id);
+  if (childOrders.error) return fail(`ตรวจใบสั่งขายของดีลไม่สำเร็จ: ${childOrders.error} — ยังไม่ได้ลบดีล`, 500);
+
   // ไฟล์แนบของดีล (entityType `deal`) — polymorphic ไม่มี FK cascade ⇒ กวาดก่อนแถวหาย
   // (เธรดถูกกวาดอยู่แล้วด้วย purgeUpdates ข้างล่าง — ไฟล์แนบเคยตกหล่นข้างเดียว)
   await purgeAttachments('deal', id);
@@ -759,6 +765,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // sales_deal_activities มี ON DELETE CASCADE แต่ตารางกลางไม่มี ต้องกวาดเอง
   // ไม่งั้นเหลือเธรดของดีลที่ไม่มีอยู่แล้วค้างในฟีดรวมข้ามโมดูล
   await purgeUpdates(supabase, 'deal', id);
+  await purgeSalesOrderFiles(supabase, childOrders.ids);
 
   // ⚠️ เธรดของ**โครงการแม่**ต้องรู้ว่าดีลใบนี้หลุดไป — ความเคลื่อนไหวของมันที่เคย
   // ไหลเข้าหน้าโครงการหายไปทั้งชุดพร้อมกัน ถ้าไม่มีบรรทัดอธิบาย เส้นเรื่องจะเป็นรู

@@ -45,6 +45,10 @@ function jsFiles(dir, out = []) {
   return out;
 }
 
+/* ตัวกวาดที่นับได้ — `purgeAttachments` ตัวจริง + ตัวห่อที่ **ยืนยันด้วยเทสต์ข้างล่าง** ว่าเรียกตัวจริงข้างใน
+   `purgeSalesOrderFiles` (ใบสั่งขาย · แท็บ "เอกสาร") ห่อไว้เพราะเรียกหลังลบใบสำเร็จแล้ว ต้องไม่ throw */
+const PURGE_CALLS = ['purgeAttachments', 'purgeSalesOrderFiles'];
+
 const deleters = [];
 for (const file of jsFiles(SRC)) {
   if (/\.test\.mjs$/.test(file)) continue;
@@ -54,7 +58,7 @@ for (const file of jsFiles(SRC)) {
     deleters.push({
       file: path.relative(SRC, file),
       tables: hit,
-      purges: text.includes('purgeAttachments'),
+      purges: PURGE_CALLS.some((name) => text.includes(`${name}(`)),
     });
   }
 }
@@ -70,6 +74,12 @@ test('⭐ ทุกไฟล์ที่ลบระเบียนแม่ ต
     + 'เรียก purgeAttachments(entityType, id) ก่อนลบแถว — หรือถ้าเป็น rollback ของแถวที่เพิ่ง\n'
     + 'สร้างในคำขอเดียวกัน ให้เพิ่มลง ROLLBACK_ONLY พร้อมเหตุผล',
   );
+});
+
+test('ตัวห่อที่นับเป็นตัวกวาด ต้องเรียก purgeAttachments จริงข้างใน', () => {
+  const source = readFileSync(path.join(SRC, 'lib/sales/salesOrderAttachmentAccess.js'), 'utf8');
+  const body = source.slice(source.indexOf('export async function purgeSalesOrderFiles'));
+  assert.match(body.slice(0, body.indexOf('\n}\n')), /await purgeAttachments\(SALES_ORDER_ATTACHMENT, id, supabase\)/);
 });
 
 test('ลิสต์ rollback ต้องไม่มีของตายค้าง — ทุกรายการต้องยังลบตารางแม่อยู่จริง', () => {

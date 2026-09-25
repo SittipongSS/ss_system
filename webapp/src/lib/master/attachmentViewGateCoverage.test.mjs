@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { ATTACHMENT_ENTITY_TYPES } from './attachmentTypes.js';
 import { COSTING_ATTACHMENT_TABLE } from './costingAttachmentAccess.js';
 import { SALES_ATTACHMENT_TABLE } from '../sales/salesAttachmentAccess.js';
+import { SALES_ORDER_ATTACHMENT_TABLE } from '../sales/salesOrderAttachmentAccess.js';
 
 const accessSource = readFileSync(
   fileURLToPath(new URL('./attachmentAccess.js', import.meta.url)),
@@ -40,6 +41,8 @@ test('⭐ ทุก entityType มีสาขาในด่านอ่าน 
     ...mgmtEntities(),
     ...Object.keys(COSTING_ATTACHMENT_TABLE),
     ...Object.keys(SALES_ATTACHMENT_TABLE),
+    // ใบสั่งขาย: สาขาของตัวเอง (ตัดสินผ่านดีลของใบ · salesOrderAttachmentAccess.js) — ต้องเรียกจริงในไฟล์ด้วย (เทสต์ถัดไป)
+    ...Object.keys(SALES_ORDER_ATTACHMENT_TABLE),
     'personal_task', // มีสาขาของตัวเอง (canViewPersonalTask)
   ]);
   const uncovered = ATTACHMENT_ENTITY_TYPES.filter((type) => !covered.has(type));
@@ -54,7 +57,7 @@ test('⭐ ทุก entityType มีสาขาในด่านอ่าน 
 test('ด่านอ่านกับด่านเขียนต้องรู้จัก entity ชุดเดียวกัน', () => {
   /* ทั้งสองด่านอยู่ในไฟล์เดียวกันและใช้ตัวช่วยชุดเดียวกัน — ล็อกไว้ว่าใครแก้ข้างหนึ่ง
      แล้วลืมอีกข้างจะเห็นทันที (เช่นเพิ่มสาขาให้ canEdit แต่ไม่เพิ่มให้ canView) */
-  for (const helper of ['isMgmtAttachment', 'isPersonalTaskAttachment', 'isCostingAttachment', 'isSalesAttachment']) {
+  for (const helper of ['isMgmtAttachment', 'isPersonalTaskAttachment', 'isCostingAttachment', 'isSalesAttachment', 'isSalesOrderAttachment']) {
     const uses = accessSource.split(helper).length - 1;
     assert.ok(
       uses >= 2,

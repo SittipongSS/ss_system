@@ -138,8 +138,15 @@ export default function AttachmentsPanel({
        จากคลังไม่ได้ · ไม่ใส่ = มือถือถามให้เลือกระหว่างกล้องกับคลังรูปเอง
      ⚠️ คำใบ้ "ลากมาวาง · Ctrl+V" ซ่อนบนจอสัมผัส (ไม่มีทั้งเมาส์และคีย์บอร์ดให้ทำตาม) */
   photoCapture = false,
+  /* `(item) => boolean` — ลบ **ไฟล์ใบนี้** ได้ไหม (ด่านรายไฟล์ ต่อจาก `canEdit`) · ไม่ส่ง = ตาม `canEdit`
+     ⭐ ใบสั่งขาย (มติ 25/09): แนบได้ทั้งทีม แต่ลบได้เฉพาะคนแนบเอง+แอดมิน — API ปฏิเสธอยู่แล้ว
+       ที่นี่คือไม่ยื่นปุ่มที่กดแล้วจะเจอ 403 */
+  canDeleteItem,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
+  // แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย — คนที่เปิดดูไม่ได้ ไม่ควรทำลายหลักฐานได้
+  const mayDelete = (it) => canEdit && !it.restricted
+    && (typeof canDeleteItem === "function" ? canDeleteItem(it) : true);
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
   const detailed = metaFields.length > 0; // order = ฟอร์มรายละเอียด; อื่นๆ = การ์ด
 
@@ -496,9 +503,9 @@ export default function AttachmentsPanel({
             <Eye size={13} /> ดู
           </button>
         )}
-        {/* แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย — คนที่เปิดดูไม่ได้ ไม่ควรทำลายหลักฐานได้
-            (API ก็ปฏิเสธอยู่แล้วผ่าน canEditAttachmentParent · ที่นี่คือไม่ยื่นปุ่มให้กด) */}
-        {canEdit && !it.restricted && (
+        {/* แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย (ดู `mayDelete`) — API ก็ปฏิเสธอยู่แล้วผ่าน
+            canEditAttachmentParent · ที่นี่คือไม่ยื่นปุ่มให้กด */}
+        {mayDelete(it) && (
           <button
             type="button"
             onClick={() => handleDelete(it.id)}
@@ -574,7 +581,7 @@ export default function AttachmentsPanel({
           style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
         />
       </button>
-      {canEdit && (
+      {mayDelete(it) && (
         <button
           type="button"
           onClick={() => handleDelete(it.id)}
@@ -979,7 +986,7 @@ export default function AttachmentsPanel({
                       <a href={fileHref(it)} target="_blank" rel="noreferrer" className="btn px-2.5 py-1 text-[11px] flex items-center gap-1 border border-[var(--border)]">
                         <Download size={13} /> เปิด
                       </a>
-                      {canEdit && (
+                      {mayDelete(it) && (
                         <button type="button" onClick={() => handleDelete(it.id)} className="btn px-2.5 py-1 text-[11px] text-[var(--red)] flex items-center gap-1 border border-[var(--border)]">
                           <Trash2 size={13} /> ลบ
                         </button>

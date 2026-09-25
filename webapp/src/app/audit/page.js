@@ -22,9 +22,11 @@ import { apiFetch } from "@/lib/apiFetch";
 const ENTITY_LABELS = {
   customer: "ลูกค้า", product: "สินค้า", order: "ใบยื่น/ออเดอร์",
   registration: "ทะเบียนสรรพสามิต", project: "โครงการ", user: "ผู้ใช้งาน",
+  // ปุ่มแอดมิน "บังคับรีเฟรชทุกคน" (หน้า /users) บันทึกเป็น entityType system · entityId force-refresh
+  system: "ระบบ",
 };
-const ACTION_LABELS = { create: "สร้าง", update: "แก้ไข", delete: "ลบ" };
-const ACTION_CLASS = { create: "success", update: "warning", delete: "danger" };
+const ACTION_LABELS = { create: "สร้าง", update: "แก้ไข", delete: "ลบ", force_refresh: "บังคับรีเฟรชทุกคน" };
+const ACTION_CLASS = { create: "success", update: "warning", delete: "danger", force_refresh: "warning" };
 
 const MONTH_OPTS = [
   { v: "3", label: "3 เดือน" },
