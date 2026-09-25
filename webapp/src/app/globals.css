@@ -4828,6 +4828,8 @@ button.empty-state { width: 100%; font: inherit; }
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
 .option-tile:hover:not(:disabled) { border-color: var(--accent-ink); }
+/* คำถามบังคับที่ยังไม่ตอบหลังกดไปต่อ (OptionTiles `invalid`) — ขอบแดงทุกแผ่นแบบช่องกรอก is-invalid */
+.option-tiles[data-invalid] .option-tile:not([data-on]) { border-color: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 12%, transparent); }
 .option-tile:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .option-tile:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .option-tile-title { font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); }

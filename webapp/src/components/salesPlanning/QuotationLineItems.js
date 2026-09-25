@@ -8,10 +8,8 @@ import { TableScroll } from "@/components/ui/Table";
 // ⭐ เซลล์ของบรรทัด (หัวคอลัมน์ · FG · จำนวน/ราคา/ส่วนลด/จำนวนเงิน) และกล่องตารางอยู่ที่ QuoteLineCells —
 //   ชุดเดียวกับบรรทัดโซนของใบสั่งขายย้อนหลัง (มติเจ้าของ 23/09: สองฟอร์มต้องไม่ต่างกัน) · แก้ที่นั่นที่เดียว
 import { useMemo } from "react";
-import Select from "@/components/ui/Select";
-import MoneyInput from "@/components/ui/MoneyInput";
 import ReadableText from "@/components/ui/ReadableText";
-import { QUOTE_VAT_OPTIONS, quoteTotals } from "@/lib/salesPlanning";
+import { quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, naText, NA } from "@/lib/format";
 import { lineNoteEdit, quoteLineFromProduct } from "@/lib/sales/quoteLines";
 import { productCategoryName } from "@/lib/master/productIdentity";
@@ -23,7 +21,7 @@ import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
   QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
-  QuoteLineTotals, QuoteLinesEmptyRow, QuoteLinesTable, clampQuoteDiscount,
+  QuoteLineTotals, QuoteLineTotalsEditor, QuoteLinesEmptyRow, QuoteLinesTable,
 } from "./QuoteLineCells";
 
 export const newProductLine = () => ({
@@ -249,43 +247,22 @@ export default function QuotationLineItems({
         </tbody>
       </QuoteLinesTable>
 
-      <div className={styles.totalsWrap}>
-        <div className={styles.totalsPanel}>
-          <div className={styles.totalLine}><span>ยอดรวมสินค้า/บริการ</span><strong className="mono">{fmtMoney(totals.subtotal)}</strong></div>
-          <div className={styles.totalLine}>
-            {/* ป้ายต้องห่อ span — grid วาง anonymous text node เป็น item แต่ :nth-child
-                นับเฉพาะ element ทำให้กฎจัดคอลัมน์เพี้ยน (ช่องกรอกตกไปอีกบรรทัด) */}
-            <span className={styles.totalControls}>
-              <span>หัก ส่วนลด</span>
-              <Select className="premium-select" value={discountType || ""} disabled={!editable} onChange={(event) => onDiscountChange?.({ type: event.target.value, value: event.target.value ? discountValue : 0 })}>
-                <option value="">ไม่ลด</option>
-                <option value="percent">%</option>
-                <option value="amount">บาท</option>
-              </Select>
-              <MoneyInput min="0" value={discountValue || ""} disabled={!editable || !discountType} onChange={(value) => onDiscountChange?.({ type: discountType, value: clampQuoteDiscount(discountType, value) ?? "" })} aria-label="ส่วนลดท้ายใบ" />
-            </span>
-            <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : NA}</strong>
-          </div>
-          {totals.discountAmount > 0 && (
-            <div className={styles.totalLine}><span>ยอดหลังหักส่วนลด</span><strong className="mono">{fmtMoney(totals.subtotal - totals.discountAmount)}</strong></div>
-          )}
-          <div className={styles.totalLine}>
-            <span className={styles.totalControls}>
-              <span>ภาษีมูลค่าเพิ่ม</span>
-              {/* ป้ายสองตัวเลือกมาจากค่าคงที่กลาง — ตัวเดียวกับแผ่น VAT ของใบสั่งขายย้อนหลัง (มติเจ้าของ 23/09) */}
-              <Select className="premium-select" value={String(vatRate ?? 0)} disabled={!editable} onChange={(event) => onVatRateChange?.(Number(event.target.value))}>
-                {QUOTE_VAT_OPTIONS.map((option) => (
-                  <option key={option.value} value={String(option.value)}>{option.label}</option>
-                ))}
-              </Select>
-            </span>
-            <strong className="mono">{vatRate > 0 ? fmtMoney(totals.vatAmount) : NA}</strong>
-          </div>
-          <div className={styles.totalGrand}>
-            <strong>ยอดรวมทั้งสิ้น</strong><strong className="mono">{fmtMoney(totals.totalAmount)}</strong>
-          </div>
-        </div>
-      </div>
+      {/* กล่องสรุปแบบแก้ได้ = ตัวเดียวกับฟอร์มคีย์ใบสั่งขายย้อนหลัง (QuoteLineTotalsEditor · มติเจ้าของ 25/09) */}
+      <QuoteLineTotalsEditor
+        values={{
+          subtotal: fmtMoney(totals.subtotal),
+          discount: totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : null,
+          afterDiscount: totals.discountAmount > 0 ? fmtMoney(totals.subtotal - totals.discountAmount) : null,
+          vat: vatRate > 0 ? fmtMoney(totals.vatAmount) : null,
+          total: fmtMoney(totals.totalAmount),
+        }}
+        discountType={discountType}
+        discountValue={discountValue}
+        vatRate={vatRate}
+        editable={editable}
+        onDiscountChange={(next) => onDiscountChange?.({ type: next.type || "", value: next.type ? next.value : 0 })}
+        onVatRateChange={onVatRateChange}
+      />
     </>
   );
 }

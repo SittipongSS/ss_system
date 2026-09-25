@@ -1,87 +1,86 @@
 "use client";
-// ── ขั้น ② ไซต์ โซน และรายการ (ม็อก Step2) ─────────────────────────────────────────
+// ── ขั้น ② ไซต์ โซน และรายการ ─────────────────────────────────────────────────────────
 //
-// ⭐ **มติเจ้าของ 23/09: บรรทัดของโซน = บรรทัดของใบเสนอราคา** — "3500 x 1 ชุด x 12 เดือน · มันต้องไม่ควร
-//   แตกต่างจาก form ใบเสนอราคา เพื่อไม่ให้ USER สับสน" ⇒ แถวโซนที่ติ๊กวาดด้วยเซลล์ชุดเดียวกับตาราง
-//   รายการของใบเสนอราคา (`QuoteLineCells`): รายการ · จำนวน (+หน่วย) · ราคา/หน่วย · ส่วนลดรายการ · จำนวนเงิน
-//   · ราคา/หน่วยมาจากทะเบียนและล็อกทันทีที่เลือกแพ็คเกจ · หน่วยมาจากสินค้า · ยอดคิดด้วย `quoteLineNet`
-//   · 1 ชุด × 12 เดือน = จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000 — แบบเดียวกับที่ใบเสนอราคาคีย์
-//   · ของที่เพิ่มจากใบเสนอราคามีสองอย่างเท่านั้น: **โซนที่ผูก** และ **รอบบริการที่ขายไว้** — ทั้งคู่เป็นบรรทัด
-//     ใต้คำอธิบายในเซลล์ "รายการ" (ตรงเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย)
-//   🚫 ถอดแล้ว: "แพ็ค" · ยอดที่พิมพ์เอง · ปุ่มลัด "ราคาแพ็คเกจ × แพ็ค × เดือน" (มันคูณเดือนซ้ำ = 504,000) ·
-//      ช่องระยะสัญญา (ยอดไม่คิดจากเดือนแล้ว — แถบสรุปข้างฟอร์มยังบอกช่วงสัญญาอยู่)
-// ⭐ **ตารางรายการแยกจากการ์ดไซต์** (รีวิว/UAT 23/09) — การ์ดไซต์เหลือหน้าที่เดียวคือ "เลือกโซน" (ติ๊ก = เพิ่มบรรทัด)
-//   แล้วบรรทัดของใบทั้งหมดอยู่ในตารางเดียวใต้การ์ด: # · รายการ · จำนวน · ราคา/หน่วย · ส่วนลดรายการ · จำนวนเงิน · ปุ่มลบ
-//   = คอลัมน์ของใบเสนอราคาเป๊ะ · กล่องสรุปท้ายตารางก็เป็นกล่องเดียวกับท้ายตารางใบเสนอราคา (`QuoteLineTotals`)
-//   🐞 ของเดิมซ้อนตารางไว้ในการ์ดไซต์ แล้วเอาคอลัมน์ "โซน" (176px) มาแทน "#" ⇒ กล่องตารางกว้างแค่ 726px ที่จอ 1440
-//      และ 766px ที่จอ 1920/2560 (วัดด้วย puppeteer) — ต่ำกว่าจุดพับ 900 ตลอด ⇒ **การ์ดต่อบรรทัดเสมอบนเดสก์ท็อป**
-//      ขณะที่ใบเสนอราคาที่จอเดียวกันเป็นตาราง (964px) = ฟอร์มหน้าตาคนละแบบ ซึ่งคือสิ่งที่มติ 23/09 ห้าม
-//      (คอมเมนต์เดิมที่เขียนว่า "ราว 1270 ที่จอ 1920 (ตาราง)" ผิด · พื้น `ZONE_LINES_MIN_WIDTH` 1040 ไม่เคยมีผล)
-//   ⇒ ขั้นนี้กับขั้น ④ ยุบแถบสรุปข้างขวาออกด้วย (`historicalStepShowsAside`) ⇒ ตารางได้ความกว้างเต็มคอลัมน์เนื้อหา
-//      และใช้พื้น 900 ของใบเสนอราคาเอง (`QuoteLinesTable` ค่าตั้งต้น) เพราะคอลัมน์เท่ากันเป๊ะ
-// ⚠️ ข้อยกเว้นจากตารางใบเสนอราคา (เหตุผลด้านข้อมูล — **รอเจ้าของรับรอง**, รายการเต็มใน docs/historical-sales-orders.md §8A):
-//   ไม่มีหมายเหตุรายบรรทัด (หมายเหตุพิมพ์ลงใบเสนอราคาเท่านั้น — ใบย้อนหลังไม่พิมพ์ และ body ไม่มีช่องนี้) ·
-//   จำนวนเริ่มที่ว่าง (ใบเสนอราคาเริ่มที่ 1 — ว่าง = ตีกลับ ไม่ใช่นับเป็น 1) · จำนวนต้องเป็นจำนวนเต็ม (RPC 0379 +
-//   service_zone_terms.packageQty) · ราคา/หน่วยปิดตั้งแต่ยังไม่เลือกแพ็คเกจ (`registryPriceOnly` — ใบนี้ไม่ส่งราคาขึ้นไป
-//   ⇒ ช่องที่เปิดไว้คือช่องที่พิมพ์แล้วหาย) · ยังไม่ตั้งราคา = ตีกลับ ไม่ใช่คงราคาเดิม · ไม่มีส่วนลดท้ายใบ (แผน/RPC
-//   ไม่มีช่องนี้) · VAT เลือกที่ขั้น ① (ไม่มีค่าตั้งต้น) · เพิ่มบรรทัดด้วยการติ๊กโซน (ไม่มีปุ่ม "เพิ่มสินค้า") ·
-//   ช่อง "ใช้แพ็คเกจเดียวกันทุกโซน" (ลูกค้าจริงมี 43 โซน — เลือกทีละแถวคือ 43 ครั้ง)
+// ⭐ **มติเจ้าของ 25/09 — ขั้นนี้คือตารางรายการของใบเสนอราคา + ช่อง "ไซต์ · โซน" ในบรรทัด**
+//   ("หน้า SO ย้อนหลัง ใช้แล้ว สับสนยาก มันควรจะหน้าตาเหมือนใบเสนอราคา แต่เพิ่มการเชื่อม ไซท์ โซน รายรายการเข้าไป"
+//    · "ส่วนลด รายบรรทัด รายใบก็ควรครบ" · ม็อก https://claude.ai/artifact/Tu6RVhUfoQb9kTNooknhoH)
+//   · บรรทัดเกิดจากปุ่ม **"เพิ่มรายการ"** หัวตาราง (แบบใบเสนอราคา) — แพ็คเกจ · ไซต์ · โซน · รอบ เลือกในบรรทัดเอง
+//   · ลูกค้าโซนเยอะ (เซ็นทรัล ฟู้ด 26 ไซต์ 43 โซน · AWC 247 โซน) ใช้ **"เพิ่มหลายโซน"** — ค้น → ติ๊ก → แพ็คเกจ/จำนวน
+//     ครั้งเดียว → หนึ่งบรรทัดต่อโซน (`HistoricalBulkZonesModal`) · แทนช่อง "ใช้แพ็คเกจเดียวกันทุกโซน" ที่ถอดแล้ว
+//   · กล่องสรุปท้ายตาราง = กล่องแบบแก้ได้ของใบเสนอราคา (`QuoteLineTotalsEditor`): **หัก ส่วนลด** ท้ายใบ + **ภาษีมูลค่าเพิ่ม**
+//     (ย้ายมาจากขั้น ① · ไม่มีค่าตั้งต้น — ใบเก่ามีทั้งแบบรวม VAT และบวก 7% เดาผิด = ยอดไม่ตรงเงินที่เก็บจริง)
+//   · error **ขึ้นที่เดียว**: ก้อนบนลิสต์ทุกข้อ + ข้อความใต้ช่องที่ผิดช่องเดียว (`historicalLineIssues` — ผูกกับ `key`
+//     ของแถว ไม่ใช่ลำดับ ⇒ ลบบรรทัดแล้วข้อความไม่เลื่อนไปเกาะบรรทัดอื่น · แก้ช่องไหนข้อความช่องนั้นหาย)
+//   🐞 ของเดิม (ถอดแล้ว): การ์ดไซต์ + ติ๊กโซนนอกตาราง (ติ๊กก่อนบรรทัดถึงเกิด = กลับหัวกับใบเสนอราคา) · โซนในบรรทัด
+//      เป็นตัวหนังสือเปลี่ยนไม่ได้ · ถอนติ๊ก = บรรทัดหายพร้อมจำนวน/ส่วนลดไม่ถาม · error ข้อเดียวขึ้น 3–5 ที่ ·
+//      ช่องค้น + ปุ่มย่อ/ขยาย ("การแสดงผล") · ช่องแพ็คเกจทุกโซนที่เททับทุกบรรทัดเงียบ ๆ และไม่บันทึกอะไร
 //
-// ⭐ **โซนเลือกจากทะเบียน ไม่ใช่พิมพ์ชื่อเอง** (มติ 22/09 แทนข้อ 17 ของ 0360) — หนึ่งโซนที่ติ๊ก
-//   = หนึ่งบรรทัดของใบ = หนึ่งรอบขายของโซน (service_zone_terms) ที่เกิดตอน AE Sup อนุมัติ
-//   ⇒ TS ไม่ต้องผูกโซนอีก · ทะเบียนไซต์เป็นของฝ่าย TS ⇒ ไม่เจอไซต์/โซน = แจ้ง TS เพิ่มก่อน
+// ⭐ ของที่เพิ่มจากใบเสนอราคามีสองอย่างเท่านั้น (มติ 23/09): **ไซต์ · โซน** และ **รอบบริการที่ขายไว้**
+// ⚠️ ข้อยกเว้นจากตารางใบเสนอราคา (เหตุผลด้านข้อมูล — เจ้าของรับรองแล้ว 25/09):
+//   จำนวนเริ่มที่ว่าง (1 ชุด × 12 เดือน = 12 · ใส่ 1 ให้ = เดาผิดเกือบทุกใบ) · ไม่มีหมายเหตุรายบรรทัด (ใบย้อนหลังไม่พิมพ์) ·
+//   ไม่มีบรรทัดพิมพ์เอง (ทุกบรรทัดต้องเป็นแพ็คเกจ 02-001 ที่ผูกโซน) · ราคา/หน่วยปิดตั้งแต่ยังไม่เลือกแพ็คเกจ (ใบนี้ไม่ส่งราคา)
 //
-// ⚠️ ขอเฉพาะไซต์ที่ยังใช้งาน (`includeInactive=0` — เส้นนี้ตั้งต้นเป็น true) แต่ **โซนที่ปิดใช้งาน
-//   ยังไหลมากับไซต์** (loadZones คืนทุกโซน) ⇒ ต้องโชว์แบบกดไม่ได้พร้อมเหตุ ไม่ใช่ซ่อนทิ้ง
-//   (กฎบ้าน: ตัวเลือกที่ไม่มีสิทธิ์ต้องเห็นว่ามีอยู่ · ด่านจริงคือ bindTargetError ฝั่ง server)
+// ⭐ **โซนเลือกจากทะเบียน ไม่ใช่พิมพ์ชื่อเอง** (มติ 22/09 แทนข้อ 17 ของ 0360) — หนึ่งบรรทัด = หนึ่งโซน
+//   = หนึ่งรอบขายของโซน (service_zone_terms) ที่เกิดตอน AE Sup อนุมัติ ⇒ TS ไม่ต้องผูกโซนอีก
+//   ⇒ ทะเบียนไซต์เป็นของฝ่าย TS · ไม่เจอไซต์/โซน = แจ้ง TS เพิ่มก่อน
+//
+// ⚠️ ขอเฉพาะไซต์ที่ยังใช้งาน (`includeInactive=0`) แต่ **โซนที่ปิดใช้งานยังไหลมากับไซต์** ⇒ ในช่องเลือกขึ้นแบบกดไม่ได้
+//   พร้อมเหตุ ไม่ใช่ซ่อนทิ้ง · R10: บรรทัดที่ผูกโซนนั้นอยู่แล้ว **เปลี่ยนโซน/ลบบรรทัดได้เสมอ** (ด่านจริงคือ bindTargetError)
 // ⚠️ **ไม่มีตัวเลข "N จุด"** — payload ของโซนไม่มี `spots` มาด้วย ⇒ โชว์รหัสโซนแทน
-//   (เดาเลขจุดเองแล้วผิด = ผู้คีย์เลือกโซนผิดโดยที่ไม่มีอะไรบนจอฟ้อง)
 //
-// 🔴 **ของจริงบนฐานใหญ่กว่าม็อกมาก (UAT 23/09)** — AR-374 บริษัท เซ็นทรัล ฟู้ด รีเทล
-//   มี **26 ไซต์ 43 โซน** · ม็อกวาดไว้ 2 ไซต์ ⇒ ของเดิมพังสามทางพร้อมกัน:
-//     ① `Promise.all` ก้อนเดียว: ไซต์เดียวโหลดโซนไม่สำเร็จ = **ลิสต์ว่างทั้งจอ**
-//        ⇒ โหลดทีละไซต์แบบพังทีละใบ (`loadSiteZones` ไม่เคย reject) แล้วไซต์ที่พัง
-//          ได้บรรทัด "ลองอีกครั้ง" ของตัวเอง · ไซต์ที่เหลือใช้งานได้ตามปกติ
-//     ② ไม่มีช่องค้น ⇒ หาไซต์ในกอง 26 ใบด้วยตาอย่างเดียว
-//     ③ กางการ์ดทั้ง 26 ใบรวด ⇒ เลื่อนหาของไม่เจอ
-//   ⇒ ตัวตัดสินของ ② และ ③ อยู่ที่ `historicalZoneBrowser` (ทดสอบได้โดยไม่ต้องเรนเดอร์)
+// 🔴 **ของจริงบนฐานใหญ่กว่าม็อกมาก (UAT 23/09)** — โหลดโซน **ทีละไซต์แบบพังทีละใบ** (`loadSiteZones` ไม่เคย reject)
+//   ไซต์เดียวโหลดไม่สำเร็จต้องไม่ทำให้ทั้งทะเบียนว่าง · ไซต์ที่พังมีปุ่มลองอีกครั้ง · โซนที่ใบผูกไว้ในไซต์ที่อ่านไม่ได้
+//   **ลบไม่ได้** จนกว่าจะอ่านครบ (N1 — ลบเพราะเน็ตกระตุก = ลบบรรทัดจริง)
 //
-// 🪤 **ทำไมยังยิงรายไซต์ ไม่ใช่คำขอเดียว**: เส้นที่คืนโซนทั้งลูกค้าในคำขอเดียวมีอยู่จริง
-//   (`/api/service/customers/[customerId]/zones`) แต่ด่านของมันคือ `canPickServiceSite`
-//   ซึ่ง = `canViewService || canCreateServiceSite` ⇒ **ae_supervisor ตกด่าน** (ไม่ใช่คนใน
-//   ฝ่ายบริการ และไม่อยู่ใน TEAM_ROLES) ทั้งที่เป็นหนึ่งในคนที่คีย์ใบย้อนหลังได้
-//   · เส้นไซต์ที่ใช้อยู่นี้ใช้ `canViewServiceRegistry` ซึ่งกว้างกว่าโดยกติกา
-//   ⇒ ย้ายมาเส้นเดียวได้ต่อเมื่อเจ้าของโมดูลบริการเปิดด่านให้ก่อน — ห้ามแอบขยายสิทธิ์ที่นี่
+// 🪤 **ทำไมยังยิงรายไซต์ ไม่ใช่คำขอเดียว**: เส้นที่คืนโซนทั้งลูกค้าในคำขอเดียว (`/api/service/customers/[customerId]/zones`)
+//   พก survey/term/order/request มาด้วยทั้งก้อน และคืนไซต์ที่ปิดใช้งานด้วย · เส้นไซต์ + โซนรายไซต์ที่ใช้อยู่เบากว่าและ
+//   ผ่านด่าน `canViewServiceRegistry` ตัวเดียวกัน ⇒ ยังไม่มีเหตุให้ย้าย
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Building2, ChevronsDownUp, ChevronsUpDown, MapPin, RefreshCw } from "lucide-react";
+import { ListPlus, MapPin, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
-import CollapsibleCard from "@/components/ui/CollapsibleCard";
-import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { apiJson } from "@/lib/apiFetch";
 import { productSelectOptions } from "@/components/master/productOption";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
-  QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
-  QuoteLineServiceRounds, QuoteLineTotals, QuoteLinesEmptyRow, QuoteLinesTable,
+  QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
+  QuoteLineServiceRounds, QuoteLineTotalsEditor, QuoteLinesEmptyRow, QuoteLinesTable,
 } from "@/components/salesPlanning/QuoteLineCells";
-import { fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtNumber } from "@/lib/format";
 import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import { quoteLineFromProduct } from "@/lib/sales/quoteLines";
 import {
-  HISTORICAL_NEXT_BUTTON_LABEL, REGISTRY_LOAD_FAILED, emptyHistoricalZone,
-  historicalMoneyView, historicalTotalsView, historicalZoneBrowser, historicalZoneLineAmount, historicalZoneLines,
+  HISTORICAL_NEXT_BUTTON_LABEL, HISTORICAL_VAT_RATES, REGISTRY_LOAD_FAILED, emptyHistoricalZone,
+  historicalDownstreamReset, historicalFieldAnchorId, historicalIssueText, historicalLineIssues, historicalLinesSummary,
+  historicalMoneyView, historicalStepIssueNotice, historicalTotalsView, historicalZoneBrowser,
+  historicalZoneLineAmount, historicalZoneLines, historicalZonePickerOptions,
 } from "@/lib/sales/historicalIntakeForm";
+import HistoricalBulkZonesModal from "./HistoricalBulkZonesModal";
 import styles from "./HistoricalOrderWizard.module.css";
 
 const SITES_PATH = (customerId) => `/api/service/sites?customerId=${encodeURIComponent(customerId)}&includeInactive=0`;
 const ZONES_PATH = (siteId) => `/api/service/sites/${encodeURIComponent(siteId)}/zones`;
 
+/* ตัวเลือกของช่อง "ไซต์ · โซน" (ข้อมูลจาก `historicalZonePickerOptions`) → แถวที่วาดในดรอปดาวน์
+   ⭐ ชื่อโซนเด่น · เหตุที่เลือกไม่ได้ (อยู่ในรายการอื่นแล้ว / ปิดใช้งาน) · รหัสโซนชิดขวา — ป้ายบนช่องที่ปิดอยู่
+   ยังเป็นชื่อจุดเต็ม ("รหัสไซต์ ชื่อไซต์ · ชื่อโซน") คำเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย */
+const zoneSelectOption = (option) => (option.group ? option : {
+  ...option,
+  title: option.why || undefined,
+  render: (
+    <span className={styles.zoneOption}>
+      <span className={styles.zoneOptionName}>{option.missing ? option.label : option.zoneName}</span>
+      {option.why ? <small className={styles.zoneOptionWhy}>{option.why}</small> : null}
+      {option.zoneCode ? <small className={styles.zoneOptionCode}>{option.zoneCode}</small> : null}
+    </span>
+  ),
+});
+
 export default function WizardZonesStep({
-  state, onChange, issues = [], plan = null, money = null, products = [], productsError = "", busy = false,
+  state, onChange, issues = [], summary = true, plan = null, money = null, products = [], productsError = "", busy = false,
 }) {
   const [sites, setSites] = useState([]);
   const [zonesBySite, setZonesBySite] = useState({});
@@ -89,8 +88,10 @@ export default function WizardZonesStep({
   const [retrying, setRetrying] = useState({});
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState("");
-  const [openSites, setOpenSites] = useState({});
+  const [bulkOpen, setBulkOpen] = useState(false);
+  /* 🐞 รีวิว 25/09: เส้นทะเบียนไซต์พังแล้วไม่มีทางยิงใหม่ (เอฟเฟกต์ยิงเฉพาะตอนเปลี่ยนลูกค้า ซึ่งล้างทุกบรรทัด)
+     ⇒ ทางออกเดียวคือรีโหลดหน้า = ชนยาม useUnsavedChanges (ทางตันแบบ N4) · ตัวนับรอบนี้คือปุ่ม "ลองโหลดใหม่" */
+  const [sitesRound, setSitesRound] = useState(0);
   const customerId = state.customerId;
 
   /* โซนของไซต์เดียว — **ไม่ throw** คืนผลเป็นข้อมูลเสมอ (ไซต์ที่พังต้องไม่ลากไซต์อื่นลงไปด้วย) */
@@ -117,8 +118,8 @@ export default function WizardZonesStep({
         const rows = await apiJson(SITES_PATH(customerId), { fallbackError: "โหลดทะเบียนไซต์ไม่สำเร็จ" });
         const siteRows = Array.isArray(rows) ? rows : [];
         if (!alive) return;
-        /* ⚠️ ตั้งไซต์กับโซนพร้อมกัน — ตั้งไซต์ก่อนแล้วรอโซนคือจอที่ขึ้นการ์ด 26 ใบพร้อมคำว่า
-           "ไซต์นี้ยังไม่มีโซนในทะเบียน" อยู่ครู่หนึ่ง ซึ่งอ่านเป็นคำตอบที่ผิด */
+        /* ⚠️ ตั้งไซต์กับโซนพร้อมกัน — ตั้งไซต์ก่อนแล้วรอโซน = ช่องเลือกขึ้นไซต์ที่ "ไม่มีโซน" อยู่ครู่หนึ่ง
+           ซึ่งอ่านเป็นคำตอบที่ผิด */
         const results = await Promise.all(siteRows.map(loadSiteZones));
         if (!alive) return;
         setSites(siteRows);
@@ -132,7 +133,7 @@ export default function WizardZonesStep({
       }
     })();
     return () => { alive = false; };
-  }, [customerId, loadSiteZones]);
+  }, [customerId, loadSiteZones, sitesRound]);
 
   const retrySite = useCallback(async (site) => {
     setRetrying((current) => ({ ...current, [site.id]: true }));
@@ -150,287 +151,125 @@ export default function WizardZonesStep({
   const productsById = useMemo(() => new Map((products || []).map((p) => [p.id, p])), [products]);
 
   const rows = useMemo(() => state.zones || [], [state.zones]);
-  const rowByZone = useMemo(() => new Map(rows.map((row, index) => [row.zoneId, { row, index }])), [rows]);
+  const ready = !loading && !loadError;
   const liveTermByZone = useMemo(() => {
     const map = new Map();
     for (const term of plan?.liveTerms || []) if (!map.has(term.zoneId)) map.set(term.zoneId, term);
     return map;
   }, [plan]);
-  /* ข้อที่พรีวิวตีกลับรายแถว (`zones.<ลำดับ>…`) — ลำดับเดียวกับบรรทัดของตาราง (body ส่ง `state.zones` ตามลำดับนี้)
-     ⇒ ข้อความขึ้นใต้บรรทัดของมันเอง · ข้อที่ไม่ชี้แถว (`zones`) อยู่ในก้อนรวมหัวขั้นอย่างเดียว */
-  const issueByIndex = useMemo(() => {
-    const map = new Map();
-    for (const issue of issues) {
-      const index = Number(String(issue.field || "").split(".")[1]);
-      if (Number.isInteger(index) && !map.has(index)) map.set(index, issue.message);
-    }
-    return map;
-  }, [issues]);
-  const issueByZone = useMemo(() => new Map(
-    [...issueByIndex].map(([index, message]) => [rows[index]?.zoneId, message]).filter(([zoneId]) => zoneId),
-  ), [issueByIndex, rows]);
+  /* ⭐ ข้อความรายช่องของแต่ละแถว — ผูกกับ `key` ของแถว (ผู้เรียกผูกตอนได้คำตอบ · ดูหัว `historicalIssuesWithRowKeys`) */
+  const lineIssues = useMemo(() => historicalLineIssues(issues), [issues]);
+  const issueOf = (field) => issues.find((issue) => issue.field === field)?.message || null;
 
-  /* ค้น · ซ่อน · กาง · โซนกำพร้า — ตัวตัดสินอยู่ที่ lib (ดูหัวไฟล์ ③) จอแค่วาดตามที่มันตอบ
-     ⚠️ `ready` เท็จระหว่างโหลด/โหลดพัง — ไม่งั้นทุกโซนที่ใบผูกไว้ถูกอ่านว่า "กำพร้า" ชั่วครู่ */
-  const browser = useMemo(() => historicalZoneBrowser({
-    sites, zonesBySite, siteErrors, query, pickedZoneIds: rows.map((row) => row.zoneId),
-    ready: !loading && !loadError,
-  }), [sites, zonesBySite, siteErrors, query, rows, loading, loadError]);
-  /* บรรทัดของตาราง (ชื่อจุด "ไซต์ · โซน" · ชื่อบรรทัด · ปุ่มลบกดได้ไหม) — ตัวตัดสินตัวเดียวกับที่ตรึงด้วยเทสต์
-     ⚠️ ไม่ขึ้นกับคำค้น: คำค้นซ่อนแค่การ์ดไซต์ บรรทัดของใบยังอยู่ครบ (ยอดท้ายตารางนับทุกบรรทัด) */
+  /* กำพร้า/อ่านไม่ได้ (R10 · N1) — ตัวตัดสินอยู่ที่ lib · ⚠️ `ready` เท็จระหว่างโหลด = ยังตัดสินไม่ได้ */
+  const registry = useMemo(() => historicalZoneBrowser({
+    sites, zonesBySite, siteErrors, pickedZoneIds: rows.map((row) => row.zoneId), ready,
+  }), [sites, zonesBySite, siteErrors, rows, ready]);
   const lines = useMemo(() => historicalZoneLines({
-    zones: rows, sites, zonesBySite, siteErrors, ready: !loading && !loadError,
-  }), [rows, sites, zonesBySite, siteErrors, loading, loadError]);
-  /* ยอดใบ: มีแผนใช้แผน ไม่มีก็คิดจากบรรทัดโซน + VAT ด้วยสูตรใบเสนอราคาตัวเดียวกับ server (รีวิว R7) */
+    zones: rows, sites, zonesBySite, siteErrors, ready, failed: Boolean(loadError),
+  }), [rows, sites, zonesBySite, siteErrors, ready, loadError]);
+  /* ตัวเลือกของช่อง "ไซต์ · โซน" ต่อแถว — คิดใหม่เฉพาะตอน **การผูกโซน** ของใบเปลี่ยน (ไม่ใช่ทุกครั้งที่พิมพ์จำนวน)
+     ลูกค้า AWC มี 247 โซน × บรรทัดละช่อง = คิดทุกการกดแป้นคือหน่วงที่ไม่จำเป็น */
+  const zoneAssign = rows.map((row) => `${row.key}:${row.zoneId}`).join("|");
+  const zoneOptionsByRow = useMemo(() => {
+    const noteOf = new Map(lines.map((line) => [line.row.key, line.note]));
+    return new Map(rows.map((row) => [row.key, historicalZonePickerOptions({
+      sites, zonesBySite, rows, rowKey: row.key, missingNote: noteOf.get(row.key),
+    }).map(zoneSelectOption)]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `rows`/`lines` อ่านผ่าน zoneAssign (ส่วนที่ตัวเลือกใช้จริง)
+  }, [zoneAssign, sites, zonesBySite, siteErrors, ready]);
+  const siteOfZone = useMemo(() => {
+    const map = new Map();
+    for (const site of sites) for (const zone of zonesBySite[site.id] || []) map.set(zone.id, site);
+    return map;
+  }, [sites, zonesBySite]);
+
+  /* ยอดใบ: มีแผนใช้แผน ไม่มีก็คิดจากบรรทัด + ส่วนลดท้ายใบ + VAT ด้วยสูตรใบเสนอราคาตัวเดียวกับ server (รีวิว R7) */
   const moneyView = useMemo(() => money || historicalMoneyView(state, plan), [money, state, plan]);
   const totals = historicalTotalsView(moneyView, state.vatRate);
 
   const setRows = (next) => onChange({ zones: next });
-  const patchRow = (zoneId, patch) => setRows(rows.map((row) => (row.zoneId === zoneId ? { ...row, ...patch } : row)));
-  const removeRow = (zoneId) => setRows(rows.filter((row) => row.zoneId !== zoneId));
-  /* ⭐ ทุกทางที่ใส่แพ็คเกจให้แถว (ติ๊กโซน · ช่องรายแถว · "ใช้แพ็คเกจเดียวกันทุกโซน") ผ่าน `quoteLineFromProduct`
-     ตัวเดียวกับช่องเลือกสินค้าของใบเสนอราคา ⇒ หน่วย · ราคา/หน่วย (ล็อก) · ข้อมูล FG มาจากทะเบียนแบบเดียวกัน
+  const patchRow = (key, patch) => setRows(rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  const removeRow = (key) => setRows(rows.filter((row) => row.key !== key));
+  /* ⭐ ทุกทางที่ใส่แพ็คเกจให้แถว (ช่องในบรรทัด · หน้าต่างเพิ่มหลายโซน) ผ่าน `quoteLineFromProduct` ตัวเดียวกับช่องเลือก
+     สินค้าของใบเสนอราคา ⇒ หน่วย · ราคา/หน่วย (ล็อก) · ข้อมูล FG มาจากทะเบียนแบบเดียวกัน
      ⚠️ ทะเบียนสินค้าโหลดไม่ขึ้น = ไม่รู้จักสินค้า ⇒ ผูกรหัสไว้เฉย ๆ (แผนอ่านราคาจากทะเบียนเองตอนตรวจอยู่แล้ว) */
   const withPackage = (row, productId) => {
     const product = productId ? productsById.get(productId) || null : null;
     return product ? quoteLineFromProduct(row, product) : { ...row, productId: productId || "" };
   };
-  const toggleZone = (zone, site) => {
-    if (rowByZone.has(zone.id)) { removeRow(zone.id); return; }
-    setRows([...rows, withPackage(emptyHistoricalZone({ zoneId: zone.id, siteId: site.id }), state.packageProductId)]);
-  };
-  const pickRowPackage = (zoneId, productId) => setRows(rows.map((row) => (
-    row.zoneId === zoneId ? withPackage(row, productId) : row
-  )));
-  const applyPackage = (productId) => onChange({
-    packageProductId: productId,
-    zones: rows.map((row) => withPackage(row, productId)),
-  });
-  /* 🚫 ปุ่มลัด "ใช้ราคาแพ็คเกจ × แพ็ค × เดือน" ถูกถอดตามมติเจ้าของ 23/09 — มันคูณเดือนซ้ำบนจำนวนที่นับเดือน
-     ไปแล้ว (3,500 × 12 × 12 = 504,000) · ยอดของแถวคือสูตรของใบเสนอราคา ไม่มีปุ่มเสนอยอดอีก */
+  const pickRowPackage = (key, productId) => setRows(rows.map((row) => (row.key === key ? withPackage(row, productId) : row)));
+  /* เปลี่ยนโซนในบรรทัด = ย้ายการผูก **ไม่แตะแพ็คเกจ/จำนวน/ส่วนลด** (ของเดิมต้องถอนติ๊กแล้วคีย์บรรทัดใหม่ทั้งบรรทัด) */
+  const pickRowZone = (key, zoneId) => patchRow(key, { zoneId: zoneId || "", siteId: siteOfZone.get(zoneId)?.id || "" });
+  /* บรรทัดใหม่แบบใบเสนอราคา — ว่างทุกช่อง (ไม่มีค่าตั้งต้นให้การตัดสินใจ: แพ็คเกจ · โซน · จำนวน) */
+  const addLine = () => setRows([...rows, emptyHistoricalZone()]);
+  const addBulk = (newRows, productId) => setRows([...rows, ...newRows.map((row) => withPackage(row, productId))]);
 
-  const anySiteError = Object.values(siteErrors).some(Boolean);
+  /* VAT เปลี่ยน = ยอดใบคิดใหม่ ⇒ งวดที่คีย์ไว้ไม่ตรงยอดอีก — ถามแล้วล้างเป็นชุดเดียว (ตัวตัดสินเดียวกับตอนอยู่ขั้น ①) */
+  const changeVat = async (value) => {
+    if (!HISTORICAL_VAT_RATES.includes(value) || value === state.vatRate) return;
+    const reset = historicalDownstreamReset(state, "vat");
+    if (reset.ask) {
+      const go = await confirmAction({
+        title: reset.title,
+        description: reset.description,
+        detail: reset.detail,
+        confirmLabel: reset.confirmLabel,
+        tone: "danger",
+      });
+      if (!go) return;
+    }
+    onChange({ vatRate: value, ...reset.patch });
+  };
+  const changeDiscount = ({ type, value }) => onChange({ discountType: type || null, discountValue: type ? value ?? "" : "" });
+
+  const failedSites = sites.filter((site) => siteErrors[site.id]);
   const retryingAny = Object.values(retrying).some(Boolean);
   /* 🔴 N1: ทางออกเดียวของกอง "ยังอ่านทะเบียนไม่ได้" = อ่านไซต์ที่พังใหม่ทั้งหมด (ไม่รู้ว่าโซนอยู่ใบไหน)
      — `retrySite` ตั้ง state ด้วยตัวอัปเดตแบบฟังก์ชัน ⇒ ยิงพร้อมกันหลายใบไม่ทับกัน */
-  const retryFailedSites = () => {
-    for (const row of browser.rows) if (row.error) retrySite(row.site);
-  };
-  const allOpen = browser.rows.length > 0
-    && browser.rows.every((row) => openSites[row.site.id] ?? row.defaultOpen);
-  const toggleAll = () => setOpenSites(
-    Object.fromEntries(browser.rows.map((row) => [row.site.id, !allOpen])),
-  );
+  const retryFailedSites = () => { for (const site of failedSites) retrySite(site); };
+  /* ⭐ ป้ายบรรทัดในก้อนรวมพูด **เลขบรรทัดปัจจุบัน** (ลบบรรทัดบนแล้วเลขเลื่อน) — ตัวตัดสินอยู่ที่ lib */
+  const issueText = (issue) => historicalIssueText(issue, lines);
+  const vatIssue = issueOf("vatRate");
+  const discountIssue = issueOf("discount");
+  const notice = historicalStepIssueNotice(issues.length);
 
   return (
     <>
-      {issues.length > 0 && (
-        <StatusNotice tone="error" title={`โซนยังไม่ผ่าน ${issues.length} ข้อ`} className={styles.notice}>
+      {summary && issues.length > 0 && (
+        /* ⭐ ก้อนเดียวบอกทุกข้อ (หัวเดียวกับขั้น ①) · ข้อความใต้ช่องมีอีกที่เดียว — ไม่มีหัวการ์ด/ช่องติ๊กมาพูดซ้ำแล้ว
+           ขึ้นหลังกด "ถัดไป" เท่านั้น (มติ 25/09 · ผู้เรียกตัดสินผ่าน `summary`) */
+        <StatusNotice tone="error" title={notice.title} className={styles.notice}>
           <ul className={styles.warnList}>
-            {issues.map((issue) => <li key={`${issue.field}-${issue.message}`}>{issue.message}</li>)}
+            {issues.map((issue) => <li key={`${issue.field}-${issue.rowKey || ""}-${issue.message}`}>{issueText(issue)}</li>)}
           </ul>
         </StatusNotice>
       )}
-      {loadError ? <StatusNotice tone="error" title="โหลดทะเบียนไซต์ไม่สำเร็จ">{loadError}</StatusNotice> : null}
-
-      {/* ⭐ ช่องค้นหนึ่งช่องกินทั้ง **รหัสไซต์ · ชื่อไซต์ · ชื่อโซน · รหัสโซน** = ทุกอย่างที่ตาเห็น
-          บนแถว (กฎบ้าน search haystack) · autoComplete ปิดตามกฎช่องค้นทั้งระบบ */}
-      <div className={styles.grid2}>
-        <div className={styles.field}>
-          <span>ใช้แพ็คเกจเดียวกันทุกโซน</span>
-          <SearchableSelect
-            entity="product"
-            ariaLabel="แพ็คเกจบริการที่ใช้กับทุกโซน"
-            options={packageOptions}
-            value={state.packageProductId}
-            onChange={applyPackage}
-            disabled={busy}
-            placeholder="เลือกแพ็คเกจบริการ (หมวด 02-001)"
-            searchPlaceholder="ค้นหารหัส FG หรือชื่อแพ็คเกจ"
-            /* 🐞 รีวิว R9: ข้อความนี้เป็น **คำตอบ** ⇒ ตอนทะเบียนสินค้าโหลดไม่ขึ้นมันโกหก
-               แล้วผู้คีย์ไปไล่ทีมทะเบียนให้สร้างแพ็คเกจที่มีอยู่แล้ว */
-            emptyText={productsError
-              ? REGISTRY_LOAD_FAILED
-              : "ลูกค้ารายนี้ยังไม่มีสินค้าหมวด 02-001 ในทะเบียน — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ"}
-          />
-          <small>เลือกแล้วใส่ให้ทุกบรรทัดในตารางรายการ (ราคา/หน่วยและหน่วยมาจากทะเบียนสินค้า) · แต่ละบรรทัดเปลี่ยนเองได้</small>
-        </div>
-        <div className={styles.field}>
-          <span>ค้นหาไซต์หรือโซน</span>
-          <Input
-            autoComplete="off"
-            value={query}
-            disabled={busy || (!sites.length && !loading)}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="รหัสไซต์ ชื่อไซต์ ชื่อโซน หรือรหัสโซน"
-            aria-label="ค้นหาไซต์หรือโซนของลูกค้ารายนี้"
-          />
-          <small>
-            {query
-              ? `แสดง ${fmtNumber(browser.rows.length)} จาก ${fmtNumber(browser.siteTotal)} ไซต์ · ${fmtNumber(browser.shownZones)} โซนที่ตรงคำค้น`
-              : `ลูกค้ารายนี้มี ${fmtNumber(browser.siteTotal)} ไซต์ · ${fmtNumber(browser.zoneTotal)} โซนในทะเบียน`}
-          </small>
-        </div>
-      </div>
-
-      <div className={`${styles.field} ${styles.browseField}`}>
-        <span>การแสดงผล</span>
-        <div className={styles.browseRow}>
-          <Button
-            size="sm" variant="quiet"
-            disabled={busy || !browser.rows.length}
-            onClick={toggleAll}
-            icon={allOpen ? <ChevronsDownUp size={14} aria-hidden="true" /> : <ChevronsUpDown size={14} aria-hidden="true" />}
-          >
-            {allOpen ? "ย่อทุกไซต์" : "ขยายทุกไซต์"}
-          </Button>
-          {query ? (
-            <Button size="sm" variant="quiet" disabled={busy} onClick={() => setQuery("")}>ล้างคำค้น</Button>
-          ) : null}
-        </div>
-        <small>
-          ไซต์ที่เลือกโซนไว้แล้ว ไซต์ที่ตรงคำค้น และไซต์ที่โหลดไม่สำเร็จ กางให้เอง · ที่เหลือพับไว้
-        </small>
-      </div>
-
-      {/* คำค้นซ่อนแค่การ์ดไซต์ — บรรทัดของโซนที่ติ๊กไว้ยังอยู่ในตารางรายการครบ (ไม่บอก = ผู้คีย์คิดว่าโซนหายไป) */}
-      {browser.hiddenPicked > 0 ? (
-        <p className={styles.hint}>
-          คำค้นนี้ซ่อนโซนที่เลือกไว้แล้ว {fmtNumber(browser.hiddenPicked)} โซน — บรรทัดของโซนพวกนั้นยังอยู่ในตารางรายการด้านล่าง
-        </p>
-      ) : null}
-
-      {loading ? <p className={styles.hint}>กำลังโหลดทะเบียนไซต์…</p> : null}
-      {!loading && !sites.length && customerId && !loadError ? (
-        <p className={styles.hint}>ลูกค้ารายนี้ยังไม่มีไซต์ที่ใช้งานอยู่ในทะเบียน — แจ้งฝ่าย TS เพิ่มไซต์ก่อน</p>
-      ) : null}
-      {!loading && sites.length > 0 && !browser.rows.length ? (
-        <p className={styles.hint}>ไม่มีไซต์หรือโซนที่ตรงคำค้น “{query}” — ล้างคำค้นเพื่อดูทั้งหมด</p>
-      ) : null}
-
-      {browser.rows.map(({ site, zones, picked, total, error, defaultOpen }) => {
-        const open = openSites[site.id] ?? defaultOpen;
-        /* ยอดของไซต์ = Σ จำนวนเงินของบรรทัดที่เห็นในไซต์นี้ (ตัวเดียวกับเซลล์ "จำนวนเงิน") —
-           บรรทัดที่ยังคิดไม่ได้ (จำนวนว่าง/ยังไม่เลือกแพ็คเกจ) ไม่ถูกนับเป็น 0 เงียบ ๆ แต่บอกว่ายังขาดกี่โซน */
-        const siteAmounts = rows
-          .filter((row) => zones.some((zone) => zone.id === row.zoneId))
-          .map(historicalZoneLineAmount);
-        const siteTotal = siteAmounts.reduce((sum, amount) => sum + (amount.known ? amount.lineTotal : 0), 0);
-        const sitePending = siteAmounts.filter((amount) => !amount.known).length;
-        return (
-          <CollapsibleCard
-            key={site.id}
-            id={`historical-site-${site.id}`}
-            open={open}
-            onToggle={(next) => setOpenSites((current) => ({ ...current, [site.id]: next }))}
-            lead={<Building2 size={15} aria-hidden="true" />}
-            eyebrow={site.code}
-            title={site.name}
-            tone={error ? "danger" : (picked ? "success" : "neutral")}
-            alert={Boolean(error)}
-            summary={(
-              <>
-                <span>{fmtNumber(total)} โซน</span>
-                <span>
-                  {picked
-                    ? `${fmtMoney(siteTotal)}${sitePending ? ` · ยังคิดยอดไม่ได้ ${fmtNumber(sitePending)} โซน` : ""}`
-                    : "ยังไม่เลือกโซนในไซต์นี้"}
-                </span>
-              </>
-            )}
-            badges={(
-              <StatusBadge
-                tone={error ? "danger" : (picked ? "success" : "neutral")}
-                size="sm"
-                label={error ? "โหลดโซนไม่สำเร็จ" : `เลือก ${fmtNumber(picked)}/${fmtNumber(total)} โซน`}
-              />
-            )}
-          >
-            {error ? (
-              /* ไซต์ที่พังมีทางออกของตัวเอง — ไม่ต้องรีโหลดทั้งหน้าและไม่เสียงานที่คีย์ไว้ */
-              <div className={styles.browseRow}>
-                <span className={styles.muted}>{error}</span>
-                <Button
-                  size="sm" variant="quiet"
-                  disabled={busy || Boolean(retrying[site.id])}
-                  onClick={() => retrySite(site)}
-                  icon={<RefreshCw size={14} aria-hidden="true" />}
-                >
-                  {retrying[site.id] ? "กำลังโหลด…" : "ลองอีกครั้ง"}
-                </Button>
-              </div>
-            ) : (
-              /* การ์ดไซต์ = ที่เลือกโซนอย่างเดียว (ติ๊ก = เพิ่มบรรทัดในตารางรายการข้างล่าง) — ไม่มีช่องกรอกในการ์ด */
-              <ul className={styles.zonePicks}>
-                {zones.map((zone) => {
-                  const row = rowByZone.get(zone.id)?.row || null;
-                  const inactive = zone.isActive === false;
-                  const warn = liveTermByZone.get(zone.id) || null;
-                  const problem = issueByZone.get(zone.id) || null;
-                  return (
-                    <li key={zone.id}>
-                      <label className={styles.zonePick}>
-                        {/* 🐞 รีวิว R10: `disabled={busy || inactive}` ปิด **การถอนติ๊ก** ของแถว
-                            ที่ใบผูกไว้อยู่แล้วด้วย · ระหว่างนั้น `bindTargetError` ฝั่ง server
-                            ตีกลับโซนที่ปิดใช้งานเสมอ และตัวติ๊กคือทางเดียวที่ถอดแถวออกจากใบได้
-                            ⇒ ใบที่ถูกตีกลับแล้ว TS ปิดโซนระหว่างนั้น แก้ต่อไม่ได้เลย และ
-                              ข้อความ "หรือเลือกโซนอื่น" ทำตามไม่ได้เพราะสลับโซนต้องถอนติ๊กก่อน
-                            ⇒ **ถอนติ๊กได้เสมอ · ติ๊กใหม่ไม่ได้** (จอบริการ IntakeWizard ทำแบบนี้อยู่แล้ว)
-                            (ปุ่มลบท้ายบรรทัดในตารางรายการก็ถอดได้อีกทาง) */}
-                        <input
-                          type="checkbox"
-                          checked={Boolean(row)}
-                          disabled={busy || (inactive && !row)}
-                          onChange={() => toggleZone(zone, site)}
-                          aria-label={`เลือกโซน ${zone.name}`}
-                        />
-                        <span className={styles.zonePickText}>
-                          <span>{zone.name}</span>
-                          <span className={styles.cellSub}>{zone.code}</span>
-                          {inactive ? (
-                            <span className={styles.cellSub}>
-                              {row
-                                ? "ปิดใช้งานในทะเบียน — ถอนติ๊กออกได้ หรือให้ TS เปิดใช้งานคืน"
-                                : "ปิดใช้งานในทะเบียน — เลือกไม่ได้"}
-                            </span>
-                          ) : null}
-                          {warn ? (
-                            <span className={styles.cellSub}>
-                              ⚠️ มีรอบขายของ {warn.orderNumber} อยู่แล้ว{warn.endDate ? ` (ถึง ${warn.endDate})` : ""}
-                            </span>
-                          ) : null}
-                          {problem ? <span className={styles.cellBad}>{problem}</span> : null}
-                        </span>
-                      </label>
-                    </li>
-                  );
-                })}
-                {zones.length === 0 && (
-                  <li className={styles.muted}>
-                    {query ? "ไม่มีโซนที่ตรงคำค้นในไซต์นี้" : "ไซต์นี้ยังไม่มีโซนในทะเบียน"}
-                  </li>
-                )}
-              </ul>
-            )}
-          </CollapsibleCard>
-        );
-      })}
-
-      {anySiteError ? (
-        <StatusNotice tone="warning" title="บางไซต์ยังโหลดโซนไม่สำเร็จ" className={styles.notice}>
-          ไซต์ที่ขึ้นป้ายแดงมีปุ่ม “ลองอีกครั้ง” ของตัวเอง — ไซต์ที่เหลือเลือกต่อได้ตามปกติ
-          และของที่คีย์ไว้ไม่หาย
+      {loadError ? (
+        <StatusNotice
+          tone="error"
+          title="โหลดทะเบียนไซต์ไม่สำเร็จ"
+          className={styles.notice}
+          action={(
+            <Button
+              size="sm" variant="ghost"
+              disabled={busy || loading}
+              onClick={() => setSitesRound((round) => round + 1)}
+              icon={<RefreshCw size={14} aria-hidden="true" />}
+            >
+              {loading ? "กำลังโหลด…" : "ลองโหลดทะเบียนไซต์อีกครั้ง"}
+            </Button>
+          )}
+        >
+          {loadError} — บรรทัดที่ผูกโซนไว้ยังลบไม่ได้จนกว่าจะโหลดสำเร็จ (ยังไม่รู้ว่าโซนยังอยู่ไหม)
         </StatusNotice>
       ) : null}
-
-      {/* 🔴 **N1** — ยังมีไซต์ที่อ่านโซนไม่สำเร็จ ⇒ โซนที่ใบผูกไว้แต่หาไม่เจอ **ยังตัดสินไม่ได้**
-          ว่าหายจากทะเบียนจริงหรือแค่อยู่ในไซต์ที่อ่านไม่ถึง ⇒ ก้อนนี้มีแต่ปุ่มลองอ่านใหม่
-          **ห้ามมีปุ่มถอด** (ของเดิมโชว์ปุ่มถอด ⇒ ผู้คีย์ลบบรรทัดจริงเพราะเน็ตกระตุก) — ปุ่มลบท้ายบรรทัด
-          ของโซนพวกนี้ในตารางรายการก็ปิดด้วยเหตุเดียวกัน (`historicalZoneLines().removable`) */}
-      {browser.unresolved.length > 0 ? (
+      {failedSites.length > 0 ? (
+        /* 🔴 N1 — ไซต์ที่อ่านโซนไม่สำเร็จ: ตัวเลือกของไซต์นั้นยังไม่ขึ้นในช่อง "ไซต์ · โซน" และบรรทัดที่ผูกโซนของมันไว้
+           **ลบไม่ได้** จนกว่าจะอ่านครบ (ยังไม่รู้ว่าโซนหายจริงไหม) — ปุ่มนี้คือทางออกเดียว */
         <StatusNotice
           tone="warning"
-          title={`ยังอ่านทะเบียนไม่ได้ ${fmtNumber(browser.unresolved.length)} โซนที่ใบผูกไว้`}
+          title={`ยังโหลดโซนไม่สำเร็จ ${fmtNumber(failedSites.length)} ไซต์`}
           className={styles.notice}
           action={(
             <Button
@@ -443,59 +282,41 @@ export default function WizardZonesStep({
             </Button>
           )}
         >
-          <p className={styles.hint}>
-            ไซต์ที่ขึ้นป้ายแดงยังอ่านโซนไม่สำเร็จ ⇒ ยังบอกไม่ได้ว่าโซนพวกนี้หายไปจากทะเบียนจริง
-            หรือแค่อยู่ในไซต์ที่อ่านไม่ถึง — อ่านทะเบียนได้ครบก่อนจึงจะมีปุ่มถอดออกจากใบให้
-            (ยอดรวมท้ายตารางยังนับโซนพวกนี้อยู่)
-          </p>
           <ul className={styles.warnList}>
-            {browser.unresolved.map((zoneId) => (
-              <li key={zoneId}>
-                <span className={styles.muted}>{zoneId}</span>
-                {issueByZone.get(zoneId) ? ` — ${issueByZone.get(zoneId)}` : ""}
-              </li>
-            ))}
+            {failedSites.map((site) => <li key={site.id}>{[site.code, site.name].filter(Boolean).join(" ")} — {siteErrors[site.id]}</li>)}
           </ul>
+          {registry.unresolved.length ? (
+            <p className={styles.hint}>
+              บรรทัดที่ผูกโซนไว้ {fmtNumber(registry.unresolved.length)} บรรทัดยังอ่านชื่อจุดไม่ได้ — ลบไม่ได้จนกว่าจะอ่านทะเบียนครบ
+              (ยังบอกไม่ได้ว่าโซนหายจริงหรือแค่อยู่ในไซต์ที่อ่านไม่ถึง) · ยอดรวมท้ายตารางยังนับบรรทัดพวกนี้อยู่
+            </p>
+          ) : null}
         </StatusNotice>
       ) : null}
 
-      {/* 🔴 รีวิว R10: โซนที่ใบผูกไว้แต่ไม่มีอยู่ในทะเบียนที่โหลดมาเลย (ไซต์ถูกปิดใช้งาน · ไซต์ถูก
-          โอนไปลูกค้ารายอื่น · โซนถูกลบ) ไม่มีการ์ดไซต์ให้ถอนติ๊ก แต่ยังถูกนับในยอดรวมและยังทำให้
-          พรีวิวตีกลับ ⇒ ต้องบอกเหตุพร้อมปุ่มถอดของตัวเอง (บรรทัดในตารางรายการก็มีปุ่มลบเช่นกัน) */}
-      {browser.orphans.length > 0 ? (
-        <StatusNotice
-          tone="error"
-          title={`มี ${fmtNumber(browser.orphans.length)} โซนที่ใบผูกไว้แต่ไม่อยู่ในทะเบียนที่โหลดมา`}
-          className={styles.notice}
-        >
-          <p className={styles.hint}>
-            อาจถูกปิดใช้งาน ถูกย้ายไปลูกค้ารายอื่น หรือถูกลบ — ให้ฝ่าย TS เปิด/คืนโซนให้
-            หรือถอดออกจากใบนี้ (ยอดรวมท้ายตารางยังนับโซนพวกนี้อยู่)
-          </p>
-          <ul className={styles.warnList}>
-            {browser.orphans.map((zoneId) => (
-              <li key={zoneId}>
-                <span className={styles.muted}>{zoneId}</span>
-                {issueByZone.get(zoneId) ? ` — ${issueByZone.get(zoneId)}` : ""}
-                <Button
-                  size="sm" variant="quiet" disabled={busy}
-                  onClick={() => setRows(rows.filter((row) => row.zoneId !== zoneId))}
-                >
-                  ถอดโซนนี้ออกจากใบ
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </StatusNotice>
-      ) : null}
-
-      {/* ⭐ ตารางรายการของใบ = ตารางของใบเสนอราคา (มติเจ้าของ 23/09): กล่อง · หัวคอลัมน์ · เซลล์ · ปุ่มลบ
-          · กล่องสรุปท้ายตาราง มาจาก QuoteLineCells ทั้งหมด · หนึ่งโซนที่ติ๊ก = หนึ่งบรรทัด
-          ⚠️ อยู่นอกการ์ดไซต์โดยเจตนา — ซ้อนในการ์ดแล้วกล่องแคบกว่า 900 ทุกจอ = พับเป็นการ์ดต่อบรรทัด (หัวไฟล์) */}
-      <h4 className={styles.section}>
-        รายการ
-        <span className={styles.sectionKind}>{fmtNumber(rows.length)} โซน · หนึ่งโซนหนึ่งบรรทัด</span>
-      </h4>
+      {/* ⭐ หัวตาราง = หัวการ์ด "รายการสินค้า/บริการ" ของใบเสนอราคา: ชื่อ + ปุ่มเพิ่มชิดขวา */}
+      <div className={styles.linesHead} id={historicalFieldAnchorId("zones")}>
+        <h4 className={styles.section}>
+          รายการ
+          <span className={styles.sectionKind}>{rows.length ? historicalLinesSummary(rows) : "ยังไม่มีรายการ"}</span>
+        </h4>
+        <span className={styles.linesHeadActions}>
+          <Button
+            size="sm" tone="neutral" disabled={busy}
+            onClick={() => setBulkOpen(true)}
+            icon={<ListPlus size={14} aria-hidden="true" />}
+          >
+            เพิ่มหลายโซน
+          </Button>
+          <Button
+            size="sm" tone="neutral" disabled={busy}
+            onClick={addLine}
+            icon={<Plus size={14} aria-hidden="true" />}
+          >
+            เพิ่มรายการ
+          </Button>
+        </span>
+      </div>
       <QuoteLinesTable>
         <thead>
           <tr>
@@ -505,67 +326,94 @@ export default function WizardZonesStep({
           </tr>
         </thead>
         <tbody>
-          {lines.map(({ row, index, point, note, name, removable, removeTitle }) => {
+          {lines.map(({ row, index, zone, name, removable, removeTitle }) => {
             const product = row.productId ? productsById.get(row.productId) || null : null;
             const amount = historicalZoneLineAmount(row);
-            const warn = liveTermByZone.get(row.zoneId) || null;
-            const problem = issueByIndex.get(index) || null;
+            const warn = row.zoneId ? liveTermByZone.get(row.zoneId) || null : null;
+            const bad = lineIssues.get(row.key) || {};
             return (
-              <tr key={row.key || row.zoneId} className="premium-row">
+              <tr key={row.key} className="premium-row">
                 <QuoteLineIndexCell index={index} />
                 <QuoteLineItemCell>
                   <QuoteLineProductPicker
                     value={row.productId}
-                    onChange={(value) => pickRowPackage(row.zoneId, value)}
+                    onChange={(value) => pickRowPackage(row.key, value)}
                     name={name}
                     options={packageOptions}
                     disabled={busy}
-                    /* 🐞 รีวิว R9: ช่องนี้ไม่มี emptyText ⇒ ตกไปที่ "ไม่พบรายการ" ของตัวห่อ
-                       ซึ่งอ่านเป็นคำตอบ · และเมื่อทะเบียนโหลดไม่ขึ้น ค่าที่แถวถืออยู่จะเด้ง
-                       กลับเป็น placeholder ทั้งที่ใบยังผูกแพ็คเกจนั้นอยู่ ⇒ บอกทั้งสองอย่าง
-                       ⭐ placeholder/ช่องค้นเป็นค่าตั้งต้นของใบเสนอราคา (“เลือก FG / สินค้า...”) — รีวิว 23/09 */
-                    emptyText={productsError ? REGISTRY_LOAD_FAILED : undefined}
+                    /* 🐞 รีวิว R9: ทะเบียนโหลดไม่ขึ้นต้องพูดว่า "โหลดไม่ขึ้น" ไม่ใช่ "ไม่พบรายการ" (อ่านเป็นคำตอบ) */
+                    emptyText={productsError ? REGISTRY_LOAD_FAILED : "ลูกค้ารายนี้ยังไม่มีแพ็คเกจบริการ (หมวด 02-001) ในทะเบียนสินค้า"}
                   />
-                  {row.productId || row.fgCode ? (
-                    <QuoteLineFgInfo line={row} product={product} />
-                  ) : null}
+                  {bad.productId ? <span className={styles.cellBad}>{bad.productId}</span> : null}
+                  {row.productId || row.fgCode ? <QuoteLineFgInfo line={row} product={product} /> : null}
                   {productsError && row.productId && !product ? (
                     <span className={styles.cellSub}>
                       บรรทัดนี้ผูกแพ็คเกจไว้แล้ว ({row.productId}) — ชื่อไม่ขึ้นเพราะทะเบียนสินค้าโหลดไม่สำเร็จ
                     </span>
                   ) : null}
-                  {/* ของเพิ่มสองอย่างของใบย้อนหลัง ใต้คำอธิบาย (ตรงเดียวกับตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย):
-                      ① โซนที่ผูก ② รอบบริการที่ขายไว้ (ช่องของบรรทัดใบสั่งขาย — ใบเสนอราคาไม่มี) */}
-                  <QuoteLineInstallationPoint point={point} note={note} />
-                  <QuoteLineServiceRounds
-                    value={row.rounds}
-                    onChange={(value) => patchRow(row.zoneId, { rounds: value })}
-                    disabled={busy}
-                    name={name}
-                    note="เว้นว่างได้ · TS ตั้งวันนัดเอง"
-                  />
+                  {/* ⭐ ของเพิ่มสองอย่างของใบย้อนหลัง (มติ 23/09 · 25/09): ไซต์ · โซน (เลือกในบรรทัด) + รอบบริการที่ขายไว้ */}
+                  <div className={styles.lineBind}>
+                    <div className={styles.lineBindZone}>
+                      <span className={styles.lineBindLabel}>ไซต์ · โซน <b className={styles.req}>*</b></span>
+                      <SearchableSelect
+                        size="sm"
+                        className="w-full"
+                        value={row.zoneId}
+                        onChange={(value) => pickRowZone(row.key, value)}
+                        options={zoneOptionsByRow.get(row.key) || []}
+                        disabled={busy}
+                        ariaLabel={`ไซต์ · โซน ${name}`}
+                        placeholder={loading ? "กำลังโหลดทะเบียนไซต์…" : "เลือกไซต์ · โซน"}
+                        searchPlaceholder="ค้นหารหัส/ชื่อไซต์ หรือชื่อ/รหัสโซน"
+                        /* 🔴 R9: โหลดอยู่ / โหลดพัง / บางไซต์อ่านไม่ได้ ≠ "ไม่มีในทะเบียน" (รีวิว 25/09) — ถามสามข้อนั้นก่อนเสมอ */
+                        emptyText={(query) => {
+                          if (loading) return "กำลังโหลดทะเบียนไซต์…";
+                          if (loadError) return "โหลดทะเบียนไซต์ไม่สำเร็จ — ดูข้อความแดงด้านบน";
+                          if (failedSites.length) {
+                            return `ยังโหลดโซนไม่สำเร็จ ${fmtNumber(failedSites.length)} ไซต์ — กด “ลองอ่านไซต์ที่พังอีกครั้ง” ด้านบนก่อน (โซนที่หาอาจอยู่ในไซต์นั้น)`;
+                          }
+                          return query
+                            ? `ไม่มีไซต์หรือโซนที่ตรง “${query}” — ไม่เจอให้แจ้ง TS เพิ่มในทะเบียนไซต์`
+                            : "ลูกค้ารายนี้ยังไม่มีไซต์ที่ใช้งานอยู่ในทะเบียน — แจ้งฝ่าย TS เพิ่มไซต์ก่อน";
+                        }}
+                      />
+                      {zone?.code ? <small className={styles.cellSub}>{zone.code}</small> : null}
+                      {bad.zoneId ? <span className={styles.cellBad}>{bad.zoneId}</span> : null}
+                    </div>
+                    <div className={styles.lineBindRounds}>
+                      <QuoteLineServiceRounds
+                        value={row.rounds}
+                        onChange={(value) => patchRow(row.key, { rounds: value })}
+                        disabled={busy}
+                        name={name}
+                        note="เว้นว่างได้ · TS ตั้งวันนัดเอง"
+                      />
+                      {bad.rounds ? <span className={styles.cellBad}>{bad.rounds}</span> : null}
+                    </div>
+                  </div>
                   {warn ? (
                     <span className={styles.cellSub}>
                       ⚠️ โซนนี้มีรอบขายของ {warn.orderNumber} อยู่แล้ว{warn.endDate ? ` (ถึง ${warn.endDate})` : ""}
                     </span>
                   ) : null}
-                  {problem ? <span className={styles.cellBad}>{problem}</span> : null}
+                  {bad.row ? <span className={styles.cellBad}>{bad.row}</span> : null}
                 </QuoteLineItemCell>
                 <QuoteLineMoneyCells
                   line={row}
                   product={product}
                   editable={!busy}
-                  onPatch={(patch) => patchRow(row.zoneId, patch)}
+                  onPatch={(patch) => patchRow(row.key, patch)}
                   name={name}
                   driftNote={`ระบบคิดด้วยราคานี้ตอนกด “${HISTORICAL_NEXT_BUTTON_LABEL}”`}
                   amountPending={!amount.known}
                   registryPriceOnly
-                  qtyNote={amount.qtyNote}
+                  /* ⭐ ข้อความใต้ช่องจำนวนมีที่เดียว: เหตุที่จอรู้เอง (1.5 / 0) ก่อน แล้วค่อยข้อที่แผนตีกลับ (เช่นยังว่าง) */
+                  qtyNote={amount.qtyNote || bad.qty || null}
                 />
-                {/* ปุ่มลบ = ถอนติ๊กโซน · โซนที่ยังตัดสินไม่ได้ (ทะเบียนอ่านไม่ครบ/กำลังโหลด) ลบไม่ได้ พร้อมเหตุใน title */}
+                {/* ปุ่มลบ = ลบบรรทัด · โซนที่ยังตัดสินไม่ได้ (ทะเบียนอ่านไม่ครบ/กำลังโหลด) ลบไม่ได้ พร้อมเหตุใน title (N1) */}
                 <QuoteLineRemoveCell
                   name={name}
-                  onRemove={() => removeRow(row.zoneId)}
+                  onRemove={() => removeRow(row.key)}
                   disabled={busy || !removable}
                   title={removeTitle}
                 />
@@ -573,26 +421,50 @@ export default function WizardZonesStep({
             );
           })}
           {!lines.length && (
-            <QuoteLinesEmptyRow colSpan={7}>ยังไม่มีรายการ — ติ๊กโซนในการ์ดไซต์ด้านบน (หนึ่งโซนหนึ่งบรรทัด)</QuoteLinesEmptyRow>
+            <QuoteLinesEmptyRow colSpan={7}>ยังไม่มีรายการ — กด “เพิ่มรายการ” หรือ “เพิ่มหลายโซน”</QuoteLinesEmptyRow>
           )}
         </tbody>
       </QuoteLinesTable>
 
-      {/* ⭐ กล่องสรุปท้ายตาราง = กล่องของใบเสนอราคา · ป้ายมาจาก `historicalTotalsView` ตัวเดียวกับขั้น ④
-          ⚠️ ไม่มีแถว "หัก ส่วนลด" (ใบย้อนหลังไม่มีส่วนลดท้ายใบ) และ VAT เป็นป้ายของตัวเลือกที่ขั้น ① ไม่ใช่ดรอปดาวน์
-          ⭐ ยอดเคยขึ้นขีดตลอดรอบคีย์ (แผนคืนมาเฉพาะตอนไม่มี error) — รีวิว R7 ⇒ คิดจากบรรทัดตั้งแต่ก่อนมีแผน */}
-      <QuoteLineTotals rows={totals.rows} grandTotal={totals.grandTotal} />
-      {moneyView.ok ? null : <p className={styles.hint}>{moneyView.reason}</p>}
+      {/* ⭐ กล่องสรุปท้ายตาราง = กล่องแบบแก้ได้ของใบเสนอราคา (ส่วนลดท้ายใบ + VAT) — ตัวเดียวกับหน้าออกใบเสนอราคา
+          ⚠️ VAT ไม่มีค่าตั้งต้น (`vatPlaceholder`) · ป้ายยอดมาจาก `historicalTotalsView` ตัวเดียวกับขั้น ④ */}
+      <QuoteLineTotalsEditor
+        values={totals.values}
+        discountType={state.discountType}
+        discountValue={state.discountValue}
+        vatRate={HISTORICAL_VAT_RATES.includes(state.vatRate) ? state.vatRate : null}
+        editable={!busy}
+        onDiscountChange={changeDiscount}
+        onVatRateChange={changeVat}
+        vatPlaceholder="เลือก"
+        vatInvalid={Boolean(vatIssue)}
+        vatNote={vatIssue ? "ต้องเลือก — ไม่มีค่าตั้งต้น (ใบเก่ามีทั้งแบบรวม VAT แล้วและบวก 7% ท้ายใบ)" : null}
+        discountNote={discountIssue}
+        vatId={historicalFieldAnchorId("vatRate")}
+        discountId={historicalFieldAnchorId("discount")}
+      />
+      {moneyView.ok ? null : <p className={styles.totalsReason}>{moneyView.reason}</p>}
 
-      <StatusNotice
-        tone="info"
-        title="ไม่เจอไซต์/โซน?"
-        icon={MapPin}
-        className={styles.notice}
-        action={<Button as={Link} href="/database/sites" size="sm" variant="ghost">เปิดทะเบียนไซต์</Button>}
-      >
-        ทะเบียนไซต์เป็นของฝ่าย TS — แจ้ง TS เพิ่มไซต์/โซนก่อน แล้วกลับมาเลือก (ห้ามพิมพ์ชื่อจุดเอง)
-      </StatusNotice>
+      <p className={styles.registryLine}>
+        <MapPin size={14} aria-hidden="true" />
+        <span>ไม่เจอไซต์/โซนในช่อง “ไซต์ · โซน”? ทะเบียนไซต์เป็นของฝ่าย TS — แจ้ง TS เพิ่มก่อน แล้วกลับมาเลือก (ห้ามพิมพ์ชื่อจุดเอง)</span>
+        <Link href="/database/sites" className="linklike">เปิดทะเบียนไซต์</Link>
+      </p>
+
+      <HistoricalBulkZonesModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        sites={sites}
+        zonesBySite={zonesBySite}
+        siteErrors={siteErrors}
+        loading={loading}
+        loadError={loadError}
+        rows={rows}
+        packageOptions={packageOptions}
+        productsById={productsById}
+        productsError={productsError}
+        onAdd={(newRows, productId) => { addBulk(newRows, productId); setBulkOpen(false); }}
+      />
     </>
   );
 }

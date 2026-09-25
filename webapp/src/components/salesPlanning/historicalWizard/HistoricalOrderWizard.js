@@ -27,12 +27,10 @@ import SectionRail from "@/components/ui/SectionRail";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
-import { DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import { apiJson } from "@/lib/apiFetch";
 import { cachedFetchJson, dropCache } from "@/lib/apiCache";
 import { businessDate } from "@/lib/businessDate";
 import { notifyToast } from "@/lib/feedback";
-import { fmtMoney, NA } from "@/lib/format";
 import { useCan, useRole, useTeams } from "@/lib/roleContext";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import useDealOwners from "@/lib/sales/useDealOwners";
@@ -42,7 +40,7 @@ import { userTeams, ROLE_LABELS } from "@/lib/permissions";
 import { salesPlanningEditScope } from "@/lib/salesPlanning";
 import { isSalesOrderReviewer } from "@/lib/sales/salesOrderWorkflow";
 import {
-  HISTORICAL_EDITABLE_STATUSES, HISTORICAL_STATUS_NOTE,
+  HISTORICAL_EDITABLE_STATUSES,
   canKeyHistoricalSalesOrder, historicalEditPath, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import {
@@ -50,8 +48,9 @@ import {
   HISTORICAL_WIZARD_STEP_ORDER, emptyHistoricalWizard, emptySaveProgress,
   firstStepWithIssues, historicalAsideRows, historicalContractDateWarnings, historicalContractFileCount,
   historicalDuplicateGate, historicalExitActions,
-  historicalFieldAnchorId, historicalFootNote, historicalMoneyView, historicalNextBlock, historicalSaveExit,
-  historicalSaveFailureState, historicalStepShowsAside, historicalTeamField, historicalWizardBody,
+  historicalDocStatusLabel, historicalFieldAnchorId, historicalFootNote, historicalIssuesWithRowKeys, historicalMoneyView,
+  historicalMergeIssues, historicalNextBlock, historicalPruneIssues, historicalSaveExit, historicalSaveFailureState, historicalZeroValue,
+  historicalStepHasInput, historicalTeamField, historicalVisibleIssues, historicalWizardBody,
   historicalWizardLocalIssues, historicalWizardRail, historicalZonesWithPlanPrices, issuesForStep,
   newHistoricalIntakeKey, nextSaveStage, saveProgressAfter, wizardStateFromOrder,
 } from "@/lib/sales/historicalIntakeForm";
@@ -123,6 +122,13 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   /* ช่องที่ต้องพาไปหาหลังกดปุ่มที่ติดด่าน — เก็บเป็น state เพราะจอต้องวาดเครื่องหมาย "ผิด"
      ให้เสร็จก่อน แล้วค่อยเลื่อน/โฟกัส (อ่านชื่อช่องจาก `historicalNextBlock`) */
   const [focusField, setFocusField] = useState(null);
+  /* ⭐ มติเจ้าของ 25/09: ก้อนแดงขึ้นหลังกดไปต่อเท่านั้น ทุกขั้น — ขั้นที่ผู้คีย์เคยกด "ถัดไป"/แตะขั้นข้างหน้า/บันทึกจากมันแล้ว
+     (ดูหัว `historicalVisibleIssues`) · ด่านของปุ่มยังอ่านข้อครบเสมอ ซ่อนแค่การแสดงก่อนผู้คีย์พยายามไปต่อ */
+  const [revealedSteps, setRevealedSteps] = useState(() => new Set());
+  const reveal = useCallback((key) => {
+    if (!key) return;
+    setRevealedSteps((current) => (current.has(key) ? current : new Set([...current, key])));
+  }, []);
   const todayIso = businessDate();
 
   useEffect(() => {
@@ -270,13 +276,20 @@ export default function HistoricalOrderWizard({ orderId = null }) {
      🔴 ถ้าวันหนึ่งช่องนี้เปลี่ยนไปใช้ `AttachmentsPanel` เหมือนไฟล์สัญญา **ต้องย้ายมาใช้
         `historicalContractFileCount` แบบเดียวกัน** ไม่งั้นทางตัน R6 เกิดซ้ำที่ขั้น ③ */
   const evidenceFileCount = (state.openingEvidence?.length || 0) + evidenceFiles.length;
-  /* ⚠️ `zeroValue` มาจากแผนของ server ตัวเดียวกับที่ขั้น ③ ใช้ซ่อนช่อง — ใบยอด 0 บาทไม่มีงวดให้ตอบ */
+  /* ⚠️ `zeroValue` = ธงตัวเดียวกับที่ขั้น ③ ใช้ซ่อนช่อง (`historicalZeroValue`) — ใบยอด 0 บาทไม่มีงวดให้ตอบ */
   /* ⚠️ `todayIso` = นาฬิกาไทยของหน้า (businessDate) — ส่งลงไปให้ตัวตัดสิน ไม่ให้มันอ่านเวลาเอง
      (กติกา thai-time) · ไม่ส่ง = กฎ "วันเริ่มต้องไม่เกินวันนี้" เงียบจนกว่า server จะตีกลับ */
+  /* ⭐ ยอดใบที่จอใช้ได้ตั้งแต่ยังไม่มีแผน (รีวิว R7) — มีแผนใช้แผน ไม่มีก็คิดจากยอดโซน + โหมด VAT
+     ด้วย `splitHistoricalAmounts` ก้อนเดียวกับ server ⇒ ขั้น ③ ใช้งานได้ทั้งที่ฟอร์มยังมี error */
+  const money = useMemo(() => historicalMoneyView(state, plan, serverMoney), [state, plan, serverMoney]);
+  /* ⭐ มติ 25/09 (รื้อขั้น ③): ตัวตรวจขั้น ③ ใช้ห่วงโซ่ของงวด ⇒ ต้องรู้ยอดใบ (งวดสุดท้ายรับยอดที่เหลือ) ·
+     ใบ ฿0 รู้จากแผน หรือจากยอดที่คิดได้บนฟอร์มเมื่อยังไม่มีแผน (`historicalZeroValue`) */
+  const invoiceTotal = money.ok ? money.totalAmount : null;
+  const zeroValue = historicalZeroValue(plan, money);
   const localIssues = useMemo(() => historicalWizardLocalIssues(state, {
     role, userId: meId, ownerTeams, sharedTeams, contractFileCount, evidenceFileCount,
-    zeroValue: Boolean(plan?.zeroValue), todayIso,
-  }), [state, role, meId, ownerTeams, sharedTeams, contractFileCount, evidenceFileCount, plan, todayIso]);
+    zeroValue, todayIso, totalAmount: invoiceTotal,
+  }), [state, role, meId, ownerTeams, sharedTeams, contractFileCount, evidenceFileCount, zeroValue, todayIso, invoiceTotal]);
 
   /* ⚠️ คำเตือน **ไม่ใช่ issue** — ห้ามไหลเข้า `localIssues` (ทุกข้อในนั้นบล็อกปุ่ม)
      ใบที่มีอยู่แล้วซึ่งสัญญาสิ้นสุดไประหว่างทาง = เตือน ไม่ใช่ด่าน (มติข้อ 9 · ตรงกับ ctx.editing ของแผน) */
@@ -285,9 +298,6 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     [state, todayIso],
   );
 
-  /* ⭐ ยอดใบที่จอใช้ได้ตั้งแต่ยังไม่มีแผน (รีวิว R7) — มีแผนใช้แผน ไม่มีก็คิดจากยอดโซน + โหมด VAT
-     ด้วย `splitHistoricalAmounts` ก้อนเดียวกับ server ⇒ ขั้น ③ ใช้งานได้ทั้งที่ฟอร์มยังมี error */
-  const money = useMemo(() => historicalMoneyView(state, plan, serverMoney), [state, plan, serverMoney]);
 
   /* AE ที่ล็อกเป็นตัวเอง = เติมชื่อให้ตั้งแต่ต้น (ล็อกดีกว่าซ่อน — form-design-rules §2) */
   useEffect(() => {
@@ -308,9 +318,16 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   }, [teamField.lockedTeam, state.team]);
 
   /* แก้ฟอร์มเมื่อไร แผนที่ตรวจไว้หมดอายุทันที และรอบบันทึกที่ค้างอยู่ต้องเริ่มจากจังหวะแรกใหม่
-     (ของที่ลงฐานไปแล้วยังอยู่ — จังหวะแรกกลายเป็น "แก้ใบ" ไม่ใช่ "สร้างใหม่") */
+     (ของที่ลงฐานไปแล้วยังอยู่ — จังหวะแรกกลายเป็น "แก้ใบ" ไม่ใช่ "สร้างใหม่")
+     ⭐ มติ 25/09: error ของ server ที่พูดถึง **ช่องที่เพิ่งแก้** หายทันที (`historicalPruneIssues`)
+     🐞 ของเดิมไม่แตะ `issues` เลย ⇒ แก้จำนวนแล้ว "จำนวนต้องเป็นจำนวนเต็มมากกว่า 0" ยังค้างจนกว่าจะกด "ถัดไป" อีกรอบ
+     ⚠️ อ่าน state ก่อนแก้จาก ref (ไม่ทำ side effect ใน updater ของ setState — StrictMode เรียกซ้ำ) */
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
   const patch = useCallback((next) => {
     setDirty(true);
+    const before = stateRef.current;
+    setIssues((current) => historicalPruneIssues(current, before, { ...before, ...next }));
     setState((current) => ({ ...current, ...next }));
     setPlan(null);
     /* 🪤 แก้ฟอร์ม = ยอดที่ server ตอบมาเป็นของ payload เก่า ⇒ ทิ้งทันที ไม่งั้นยอดค้างในอดีต */
@@ -371,6 +388,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         preview: true,
         intakeKey: state.orderId ? null : intakeKey,
         openingEvidenceRefs: evidenceRefs(),
+        totalAmount: invoiceTotal,
       });
       const data = state.orderId
         ? await apiJson(`${HISTORICAL_PATH}/${state.orderId}`, { method: "PATCH", json: body, fallbackError: "ตรวจข้อมูลไม่สำเร็จ" })
@@ -410,7 +428,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     } finally {
       setBusy(false);
     }
-  }, [state, intakeKey, evidenceRefs]);
+  }, [state, intakeKey, evidenceRefs, invoiceTotal]);
 
   /**
    * เดินไปอีกขั้น — ถอยหลังเดินได้เลย · เดินหน้าต้องผ่านพรีวิวของขั้นที่ยืนอยู่ก่อน
@@ -425,18 +443,33 @@ export default function HistoricalOrderWizard({ orderId = null }) {
        🐞 UAT 23/09: ของเดิมเขียน `{ setIssues([]); return; }` = **ไม่เกิดอะไรขึ้นเลยบนจอ** ซ้ำยัง
           ล้าง error ของ server ที่ค้างอยู่ทิ้ง ⇒ ติดด่านต้อง **คาข้อความไว้แล้วพาไปที่ช่องแรกที่ผิด**
           (ก้อน error ของขั้นวาดจาก localIssues อยู่แล้ว — ห้ามแตะ `issues` ซึ่งเป็นของ server) */
+    /* กดไปต่อจากขั้นนี้แล้ว = ขั้นนี้ "เปิดเผย" ข้อที่ต้องแก้ได้ (ก้อนแดง + ใต้ช่อง) — ไม่ว่าจะติดด่านหรือผ่าน */
+    reveal(from);
     const block = historicalNextBlock(localIssues, from);
     if (block.blocked) { setFocusField(block.field); return; }
     const { ok, fieldErrors } = await runPreview();
     if (ok) { setIssues([]); setStep(to); return; }
     if (!fieldErrors) return;
     const first = firstStepWithIssues(fieldErrors);
-    if (first && index(first) <= index(from)) { setIssues(fieldErrors); setStep(first); return; }
+    /* ⭐ ผูก error รายบรรทัดกับ `key` ของแถว **ตอนนี้** (ลำดับของ body = ลำดับของ state ที่ส่งไปตรวจ · ช่องปิดระหว่างตรวจ)
+       ⇒ ลบ/เพิ่มบรรทัดทีหลังแล้วข้อความไม่เลื่อนไปเกาะบรรทัดผิด (บั๊กเดิม: จับคู่ด้วยลำดับตอนวาด) */
+    const keyed = historicalIssuesWithRowKeys(fieldErrors, state.zones, state.installments);
+    /* ⭐ พรีวิวไม่ผ่านแล้วพากลับไปขั้นที่ผิด = โฟกัสช่องแรกของขั้นนั้นด้วย (เหมือนด่านบนจอ) — ไม่งั้นผู้คีย์ต้องไล่หาเอง */
+    const focusOn = (key) => setFocusField(issuesForStep(keyed, key)[0]?.field || null);
+    if (first && index(first) <= index(from)) { reveal(first); setIssues(keyed); setStep(first); focusOn(first); return; }
     /* ขั้น ④ ต้องมีแผนจริงถึงจะโชว์อะไรได้ ⇒ ไม่ผ่าน = พาไปขั้นที่ช่องแรกอยู่ (ก้อนเดียวบอกทุกช่อง) */
-    if (to === "review") { setIssues(fieldErrors); setStep(first || from); return; }
-    setIssues(fieldErrors);
+    if (to === "review") { reveal(first || from); setIssues(keyed); setStep(first || from); focusOn(first || from); return; }
+    /* 🐞 UAT 25/09: เดินจากขั้น ① มาขั้น ② ที่ยังว่าง = ก้อนแดง "ต้องมีรายการอย่างน้อย 1 บรรทัด" รอต้อนรับ ทั้งที่ตารางว่าง
+       บอกอยู่แล้วและผู้คีย์ยังไม่ได้แตะอะไร (เจ้าของบ่นเรื่อง error รกเป็นข้อแรก) ⇒ ข้อ "ยังไม่มีบรรทัด" ไม่ถูกพกมา —
+       มันกลับมาเองตอนกด "ถัดไป" ของขั้นนี้ · ข้อของบรรทัดที่คีย์ไว้แล้ว (ใบที่ถูกตีกลับ ฯลฯ) ยังพกมาตามเดิม */
+    const carried = keyed.filter((issue) => issue.field !== "zones");
+    /* 🐞 รีวิว 25/09: ข้อของบรรทัดที่คีย์ไว้แล้ว (ใบที่ถูกตีกลับ · โซนถูกปิดระหว่างทาง ฯลฯ) ถูกพกมาแต่ขั้นปลายทางยังไม่ "เปิดเผย"
+       ⇒ ซ่อนไปหนึ่งรอบ ทั้งที่ server เพิ่งบอกว่าผิด · มีข้อของขั้นปลายทางติดมา **และขั้นนั้นมีของอยู่แล้ว** = เปิดเผยเลย
+       (ขั้นที่ยังว่าง — ② ไม่มีบรรทัด · ③ ยังไม่ตอบงวดยกมาและไม่มีงวด — ข้อที่ติดมาคือ "ยังว่าง" ล้วน ⇒ รอกดไปต่อ · UAT 25/09) */
+    if (issuesForStep(carried, to).length && historicalStepHasInput(state, to)) reveal(to);
+    setIssues(carried);
     setStep(to);
-  }, [step, runPreview, localIssues]);
+  }, [step, runPreview, localIssues, state, reveal]);
 
   /* ── บันทึกและส่งอนุมัติ: เดินทีละจังหวะจนจบ (nextSaveStage) ───────────────────────── */
   const runSave = useCallback(async () => {
@@ -447,10 +480,13 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     let updatedAt = state.updatedAt;
     let contractRowId = contractId;
     const pendingOf = (files, store) => files.filter((file) => !store.current.has(fileKey(file))).length;
+    /* 🐞 รีวิว 25/09: ใบที่ไม่มีงวดยกมาส่ง (ใบ ฿0 · ยังไม่เคยจ่าย) ไม่มีที่ให้หลักฐานไปผูก ⇒ ห้ามอัปไฟล์ในตะกร้าขึ้นไปเป็นไฟล์กำพร้า */
+    const sendsOpening = historicalWizardBody(state, { totalAmount: invoiceTotal }).opening !== null;
+    const evidenceToUpload = sendsOpening ? evidenceFiles : [];
     let progress = progressRef.current || emptySaveProgress({
       orderId: orderRowId,
       pendingContractFiles: pendingOf(contractFiles, uploadedContract),
-      pendingEvidence: pendingOf(evidenceFiles, uploadedEvidence),
+      pendingEvidence: pendingOf(evidenceToUpload, uploadedEvidence),
     });
 
     const persist = async () => {
@@ -459,6 +495,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         expectedUpdatedAt: orderRowId ? updatedAt : null,
         acknowledgeDuplicates: acknowledged,
         openingEvidenceRefs: evidenceRefs(),
+        totalAmount: invoiceTotal,
       });
       const data = orderRowId
         ? await apiJson(`${HISTORICAL_PATH}/${orderRowId}`, { method: "PATCH", json: body, fallbackError: SAVE_ERROR })
@@ -489,7 +526,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
           ...progress,
           orderId: orderRowId,
           pendingContractFiles: pendingOf(contractFiles, uploadedContract),
-          pendingEvidence: pendingOf(evidenceFiles, uploadedEvidence),
+          pendingEvidence: pendingOf(evidenceToUpload, uploadedEvidence),
         };
         const stage = nextSaveStage(progress);
         if (!stage) break;
@@ -511,7 +548,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         } else if (stage === "evidence") {
           await uploadOpeningEvidence({
             orderId: orderRowId,
-            files: evidenceFiles.map((file) => ({ file, ref: uploadedEvidence.current.get(fileKey(file)) || null })),
+            files: evidenceToUpload.map((file) => ({ file, ref: uploadedEvidence.current.get(fileKey(file)) || null })),
             onUploaded: (file, ref) => uploadedEvidence.current.set(fileKey(file), ref),
           });
         } else if (stage === "persistEvidence") {
@@ -542,14 +579,22 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       notifyToast.success("บันทึกและส่งให้ AE Sup อนุมัติแล้ว — ใบย้อนหลังไม่นับ Actual");
       router.push(ORDER_PATH(orderRowId));
     } catch (saveError) {
-      const next = historicalSaveFailureState(historicalSaveExit(saveError));
+      /* ⭐ ผูก error รายบรรทัดกับ `key` **ตอนนี้** ด้วยชุดบรรทัดที่ส่งไปบันทึกจริง (`state` ของรอบนี้) — ผูกตอนกด "กลับไปแก้"
+         = ใช้ชุดบรรทัดของตอนนั้น ซึ่งผู้คีย์อาจลบ/เพิ่มไปแล้ว ⇒ ข้อความเกาะบรรทัดผิด (รีวิว 25/09) */
+      const exitInfo = historicalSaveExit(saveError);
+      const keyedExit = Array.isArray(exitInfo.errors)
+        ? { ...exitInfo, errors: historicalIssuesWithRowKeys(exitInfo.errors, state.zones, state.installments) }
+        : exitInfo;
+      const next = historicalSaveFailureState(keyedExit);
+      /* บันทึกไม่ผ่าน = ผู้คีย์พยายามไปต่อแล้ว ⇒ ขั้นปลายทางเปิดเผยข้อที่ต้องแก้ */
+      reveal(next.step);
       setExit(next.exit);
       setError(next.error);
       if (next.duplicates) { setDuplicates(next.duplicates); setAcknowledged(false); }
       setStep(next.step);
       setBusy(false);
     }
-  }, [state, contractId, contractFiles, evidenceFiles, intakeKey, acknowledged, evidenceRefs, router]);
+  }, [state, contractId, contractFiles, evidenceFiles, intakeKey, acknowledged, evidenceRefs, router, reveal, invoiceTotal]);
 
   if (!canKey || !canEdit) {
     return (
@@ -593,7 +638,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
      🐞 UAT 23/09 สองข้อในก้อนเดียวกัน: รางนับเป็นเศษส่วน 1/1 ⇒ ขั้นที่ error มาจากพรีวิวอ่านว่า
         "ครบ" ตั้งแต่ฟอร์มยังเปล่า · แถบสรุปอ่าน `plan?.header` อย่างเดียว ⇒ เลือกลูกค้าแล้ว
         ยังขึ้นขีด ทั้งที่แถวช่วงสัญญาใต้มันขยับทันที (ดูหัว `historicalWizardRail`/`historicalAsideRows`) */
-  const rail = historicalWizardRail(state, { step, localIssues, serverIssues: issues, plan, customerLabel });
+  const rail = historicalWizardRail(state, { step, localIssues, serverIssues: issues, plan, customerLabel, revealedSteps, zeroValue });
   const sections = rail.map((item) => ({
     key: item.key,
     /* `label` ของ SectionRail รับ node อยู่แล้ว ⇒ บรรทัดสรุปไม่ต้องเพิ่มช่องให้ primitive กลาง */
@@ -607,27 +652,26 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     tone: item.tone,
   }));
 
-  const aside = (
-    <DocumentSummaryCard
-      title={<>สรุปใบ<span className={styles.asideBadge}>ย้อนหลัง</span></>}
-      total={money.ok ? fmtMoney(money.totalAmount) : NA}
-      totalCaption={state.orderNumber ? `เลขที่ใบ ${state.orderNumber}` : "เลข SO ออกให้ตอนบันทึก · เติมตามที่กรอก"}
-      rows={historicalAsideRows(state, { plan, serverMoney, customerLabel, ownerLabel, contractFileCount, evidenceFileCount })}
-      status={state.orderId ? "ฉบับร่าง — ยังไม่ส่งอนุมัติ" : "ยังไม่ออกใบ"}
-      statusLabel="สถานะเอกสาร"
-    >
-      <p className={styles.hint}>{HISTORICAL_STATUS_NOTE}</p>
-    </DocumentSummaryCard>
-  );
+  /* แถวสรุปชุดเดียว — ช่องสรุปบนหัวเอกสารของขั้น ① อ่านก้อนนี้ (`historicalContractFacts`)
+     ⭐ มติเจ้าของ 25/09: ไม่มีแถบสรุปข้างขวาในขั้นไหนแล้ว (ขั้น ③ ถอดด้วย — ยอดอยู่ในกล่องสรุปท้ายตารางงวด) */
+  const asideRows = historicalAsideRows(state, { plan, serverMoney, customerLabel, ownerLabel, contractFileCount, evidenceFileCount });
 
-  const stepIssues = (key) => issuesForStep([...localIssues, ...issues], key);
+  /* ⚠️ ข้อที่จอตรวจเองกับข้อของ server ช่องเดียวกัน (VAT ที่ยังไม่เลือก ฯลฯ) = **ข้อเดียว** — local ชนะ (มันสดกว่า
+     และดับทันทีที่แก้) · 🐞 UAT 25/09: VAT ย้ายมาขั้น ② แล้วขึ้นสองบรรทัดคำเกือบเดียวกันในก้อนแดง */
+  /* 🐞 รีวิว 25/09: แถวที่ผูก key แล้วเทียบด้วย (key ของแถว, ช่อง) ไม่ใช่ชื่อช่องดิบ — ลบงวดบนแล้วเลขในชื่อช่องเลื่อน */
+  const stepIssues = (key) => issuesForStep(historicalMergeIssues(localIssues, issues), key);
+  /* ⭐ ที่วาดได้จริงของขั้นนั้น (มติ 25/09 — ก้อนแดงหลังกดไปต่อเท่านั้น) · `summary` = วาดก้อนแดงหัวขั้นไหม */
+  const shownIssues = (key) => historicalVisibleIssues(stepIssues(key), { revealed: revealedSteps.has(key) });
   let body = null;
   if (step === "contract") {
     body = (
       <WizardContractStep
         state={state}
         onChange={patch}
-        issues={stepIssues("contract")}
+        issues={shownIssues("contract").issues}
+        summary={shownIssues("contract").summary}
+        facts={asideRows}
+        statusLabel={historicalDocStatusLabel(state)}
         warnings={contractWarnings}
         customerOptions={customerOptions}
         customersError={customersError}
@@ -649,7 +693,8 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       <WizardZonesStep
         state={state}
         onChange={patch}
-        issues={stepIssues("zones")}
+        issues={shownIssues("zones").issues}
+        summary={shownIssues("zones").summary}
         plan={plan}
         money={money}
         products={products}
@@ -662,7 +707,8 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       <WizardMoneyStep
         state={state}
         onChange={patch}
-        issues={stepIssues("money")}
+        issues={shownIssues("money").issues}
+        summary={shownIssues("money").summary}
         plan={plan}
         money={money}
         evidenceFiles={evidenceFiles}
@@ -727,9 +773,9 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       {exit?.hint ? <StatusNotice tone="info" title="ทำต่อยังไง">{exit.hint}</StatusNotice> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
-      {/* ⭐ ขั้น ② และ ④ ไม่มีแถบสรุปข้างขวา (`historicalStepShowsAside`) — ตารางรายการของใบเสนอราคาต้องการ
-          กล่อง ≥ 900px ไม่งั้นพับเป็นการ์ดต่อบรรทัด · มีแถบสรุป = เนื้อขั้นเหลือ 816–866px ทุกจอเดสก์ท็อป (วัด 23/09) */}
-      <DetailPageLayout asideLabel="สรุปใบสั่งขายย้อนหลัง" aside={historicalStepShowsAside(step) ? aside : null}>
+      {/* ⭐ ไม่มีแถบสรุปข้างขวาในขั้นไหนแล้ว (มติเจ้าของ 25/09 — ขั้น ① ย้ายขึ้นหัวเอกสาร · ขั้น ③ อยู่ในกล่องสรุปท้ายตารางงวด)
+          ตารางรายการของใบเสนอราคา (ขั้น ② ④) ต้องการกล่อง ≥ 900px — มีแถบสรุป = เนื้อขั้นเหลือ 816–866px (วัด 23/09) */}
+      <DetailPageLayout asideLabel="สรุปใบสั่งขายย้อนหลัง" aside={null}>
         <SectionRail
           sections={sections}
           value={step}
@@ -772,6 +818,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
                   /* ⚠️ ไม่ล้าง `issues` (ของ server) ทิ้ง — พาไปขั้นที่ยังขาด แล้วโฟกัสช่องแรกที่ผิด */
                   if (localIssues.length) {
                     const first = firstStepWithIssues(localIssues) || "contract";
+                    reveal(first);
                     setStep(first);
                     setFocusField(historicalNextBlock(localIssues, first).field);
                     return;
@@ -794,9 +841,11 @@ export default function HistoricalOrderWizard({ orderId = null }) {
               if (action.key === "edit") {
                 return (
                   <Button key="edit" tone="neutral" disabled={busy} onClick={() => {
+                    /* error ผูก `rowKey` ไว้แล้วตอนบันทึกไม่ผ่าน (ดู catch ของ runSave) */
                     setIssues(action.errors);
                     setError(action.carryMessage || "");
                     setExit(null);
+                    reveal(action.goToStep);
                     setStep(action.goToStep);
                   }}>{action.label}</Button>
                 );

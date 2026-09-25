@@ -23,11 +23,14 @@ export default function DetailOverview({
   facts = [],
   children,
   className = "",
+  /* `pin={false}` = ไม่ลงทะเบียนกับแถบหัวลอยของเปลือก — สำหรับฟอร์มที่มียามงานยังไม่บันทึก (ปุ่ม "กลับ" ของแถบ
+     เรียก history.back ซึ่งยาม useUnsavedChanges จับไม่ได้) · ค่าตั้งต้นเหมือนเดิมทุกหน้า */
+  pin: pinEnabled = true,
 }) {
   const extra = Children.toArray(children);
   const cardRef = useRef(null);
   const pin = useDetailPin();
-  const setRecord = pin?.setRecord;
+  const setRecord = pinEnabled ? pin?.setRecord : null;
 
   /* ── บอกเปลือกว่าใบนี้คือใบไหน และตอนนี้หัวใบยังอยู่ในสายตาหรือยัง ──────────
      ⚠️ ต้องเป็น IntersectionObserver ไม่ใช่ onScroll — หน้ารายละเอียดมีทั้งตาราง

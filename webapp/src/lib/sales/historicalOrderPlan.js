@@ -15,7 +15,9 @@ import { isQuotableCustomer } from '@/lib/sales/dealCustomerAdopt';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
 import { fmtDate, fmtMoney } from '@/lib/format';
-import { QUOTE_VAT_OPTIONS, inSalesEditScope, quoteLineMoney, quoteTotals, toMoney } from '@/lib/salesPlanning';
+import {
+  QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, inSalesEditScope, quoteLineMoney, quoteTotals, toMoney,
+} from '@/lib/salesPlanning';
 import { QUOTE_PRICE_FIELD } from '@/lib/sales/quoteLines';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { EXTERNAL_DOC_KINDS } from '@/lib/sales/contracts';
@@ -38,6 +40,17 @@ export const SERVICE_PACKAGE_CATEGORY = SERVICE_ROUND_CATEGORY;
 export const HISTORICAL_VAT_RATES = Object.freeze(QUOTE_VAT_OPTIONS.map((option) => option.value));
 const VAT_CHOICES_TEXT = QUOTE_VAT_OPTIONS.map((option) => `“${option.label}”`).join(' หรือ ');
 
+/* ข้อความของช่องบังคับขั้น ① — ก้อนเดียวที่แผนตีกลับ และฟอร์มสะท้อนคำต่อคำ (`historicalWizardLocalIssues`)
+   🐞 รีวิว 25/09: ช่องพวกนี้เคยมีแต่แผนตรวจ ⇒ ไฟล์สัญญา (ตรวจที่จอ) ตีกลับก่อน แล้วกดอีกรอบถึงเจอชนิดเอกสาร/วัน = เจอทีละข้อ
+      ซึ่ง form-design-rules §2 ห้าม ⇒ จอถามครบในรอบเดียวด้วยคำเดียวกับที่แผนจะตอบ */
+export const HISTORICAL_REQUIRED_MESSAGES = Object.freeze({
+  customerId: 'ต้องเลือกลูกค้า',
+  ownerId: 'ต้องเลือก AE ผู้รับผิดชอบ — ใบย้อนหลังต้องมี AE ที่ยังถือดีลได้เสมอ',
+  docKind: 'ต้องเลือกชนิดเอกสารที่ใช้แทนสัญญา',
+  startDate: 'ต้องระบุวันเริ่มสัญญา (ปี ค.ศ. 2000–2100)',
+  endDate: 'ต้องระบุวันสิ้นสุดสัญญา (ปี ค.ศ. 2000–2100)',
+});
+
 /* ข้อความรายช่องของบรรทัดโซน — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง */
 export const HISTORICAL_LINE_MESSAGES = Object.freeze({
   staleForm: 'ฟอร์มรุ่นก่อน (แพ็ค · ยอดที่พิมพ์เอง) — โหลดหน้าใหม่ แล้วคีย์โซนนี้เป็น จำนวน × ราคา/หน่วย แบบใบเสนอราคา',
@@ -50,20 +63,30 @@ export const HISTORICAL_LINE_MESSAGES = Object.freeze({
 /**
  * เงินของทั้งใบจากบรรทัดโซน — **สูตรของใบเสนอราคาทุกตัวอักษร** (quoteLineMoney ต่อบรรทัด · quoteTotals ทั้งใบ)
  * ⭐ ตัวเดียวที่แผน (server) และฟอร์ม (ยอดก่อนมีแผน) คิดเงิน ⇒ จอกับฐานพูดเลขเดียวกันโดยโครงสร้าง
- * ⚠️ ใบย้อนหลังไม่มีส่วนลดท้ายใบ (ส่วนลดอยู่รายบรรทัดเท่านั้น) · ผู้เรียกต้องตรวจจำนวน/ราคามาแล้ว
+ * ⭐ ส่วนลดท้ายใบ (มติเจ้าของ 25/09 — "ส่วนลดรายบรรทัด รายใบก็ควรครบ") = ช่อง "หัก ส่วนลด" ของใบเสนอราคา
+ *   คิดจากยอดรวมหลังส่วนลดรายบรรทัด แล้ว VAT คิดจากยอดหลังหักส่วนลด (quoteTotals) · ผู้เรียกต้องตรวจจำนวน/ราคามาแล้ว
  * @param rows `[{ qty, unitPrice, discountType, discountValue }]`
+ * @param discount `{ discountType, discountValue }` ของท้ายใบ — ไม่ส่ง = ไม่ลด
  * @returns `{ lines: [{ discountType, discountValue, gross, discountAmount, lineTotal }], subtotal, discountAmount, vatAmount, totalAmount }`
  */
-export function historicalLinesMoney(rows = [], vatRate = 0) {
+export function historicalLinesMoney(rows = [], vatRate = 0, discount = {}) {
   const lines = (rows || []).map((row) => quoteLineMoney(row || {}));
+  const discountType = QUOTE_DISCOUNT_TYPES.includes(discount?.discountType) ? discount.discountType : null;
   const totals = quoteTotals((rows || []).map((row, index) => ({
     qty: row?.qty,
     unitPrice: row?.unitPrice,
     discountType: lines[index].discountType,
     discountValue: lines[index].discountValue,
-  })), { vatRate });
+  })), { vatRate, discountType, discountValue: discountType ? discount.discountValue : 0 });
   return { lines, ...totals };
 }
+
+/* ข้อความของส่วนลดท้ายใบ — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง */
+export const HISTORICAL_DISCOUNT_MESSAGES = Object.freeze({
+  type: 'ชนิดส่วนลดท้ายใบต้องเป็น “%” หรือ “บาท”',
+  value: 'ส่วนลดท้ายใบต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป',
+  percent: 'ส่วนลดท้ายใบแบบ % ใส่ได้ไม่เกิน 100',
+});
 
 /* ── ข้อความของสองช่องวันสัญญา — **ก้อนเดียวที่ทั้งแผนและฟอร์มอ่าน** ────────────────
    🐞 UAT 23/09: ช่อง "วันเริ่มสัญญา" ส่ง `max={todayIso}` ให้ `DateInput` ⇒ พิมพ์วันอนาคต
@@ -161,7 +184,7 @@ const pick = (source, key) => (source instanceof Map ? source.get(key) : source?
 
 /**
  * @param input `{ customerId, ownerId, team, contract: { docKind, ref, startDate, endDate }, refs,
- *   vatRate, notes, zones: [{ zoneId, productId, qty, discountType, discountValue, rounds }],
+ *   vatRate, discountType, discountValue (ส่วนลดท้ายใบ), notes, zones: [{ zoneId, productId, qty, discountType, discountValue, rounds }],
  *   opening: null | { amount, coversTo, paidOn, note, evidence? },
  *   installments: [{ label, amount, dueDate, coversFrom, coversTo, note? }], acknowledgeDuplicates }`
  *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · รอบบริการที่ขายไว้
@@ -198,7 +221,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
 
   // ── ลูกค้า ───────────────────────────────────────────────────────────
   const customerId = text(body.customerId);
-  if (!customerId) err('customerId', 'ต้องเลือกลูกค้า');
+  if (!customerId) err('customerId', HISTORICAL_REQUIRED_MESSAGES.customerId);
   else if (!customer?.id) err('customerId', 'ไม่พบลูกค้า');
   else if (!isQuotableCustomer(customer)) err('customerId', 'ลูกค้ารายนี้ยังไม่อนุมัติหรือถูกพักใช้ — ออกใบไม่ได้');
   const customerName = customer?.id ? customerSnapshotName(customer) : null;
@@ -212,7 +235,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   if (!actorId) {
     err('ownerId', 'ตรวจสิทธิ์ผู้คีย์ไม่สำเร็จ — ลองใหม่อีกครั้ง');
   } else if (!ownerId) {
-    err('ownerId', 'ต้องเลือก AE ผู้รับผิดชอบ — ใบย้อนหลังต้องมี AE ที่ยังถือดีลได้เสมอ');
+    err('ownerId', HISTORICAL_REQUIRED_MESSAGES.ownerId);
   } else if (ownerLockedToSelf(actor?.role) && ownerId !== actorId) {
     // form-design-rules §2: AE / Senior AE เป็นเจ้าของงานของตัวเอง — ช่องนี้ล็อกเป็นตัวเองบนจอ
     err('ownerId', 'AE / Senior AE คีย์ใบย้อนหลังได้เฉพาะของตัวเอง — ใบของ AE คนอื่นให้ AC ของทีมหรือ AE Sup คีย์');
@@ -246,7 +269,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   // ── เอกสารแทนสัญญา (มติ 22/09 ข้อ 3 — กรอกในฟอร์ม) ────────────────────────────────
   const rawContract = isPlainObject(body.contract) ? body.contract : {};
   const docKind = text(rawContract.docKind) || null;
-  if (!docKind) err('contract.docKind', 'ต้องเลือกชนิดเอกสารที่ใช้แทนสัญญา');
+  if (!docKind) err('contract.docKind', HISTORICAL_REQUIRED_MESSAGES.docKind);
   else if (!EXTERNAL_DOC_KINDS.includes(docKind)) err('contract.docKind', 'ชนิดเอกสารแทนสัญญาไม่ถูกต้อง');
   const contractRef = text(rawContract.ref) || null;
   if (contractRef && charLength(contractRef) > HISTORICAL_REF_MAX) {
@@ -256,9 +279,9 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   const endDate = text(rawContract.endDate);
   const startOk = inDocRange(startDate);
   const endOk = inDocRange(endDate);
-  if (!startOk) err('contract.startDate', 'ต้องระบุวันเริ่มสัญญา (ปี ค.ศ. 2000–2100)');
+  if (!startOk) err('contract.startDate', HISTORICAL_REQUIRED_MESSAGES.startDate);
   else if (today && startDate > today) err('contract.startDate', CONTRACT_DATE_MESSAGES.startAfterToday);
-  if (!endOk) err('contract.endDate', 'ต้องระบุวันสิ้นสุดสัญญา (ปี ค.ศ. 2000–2100)');
+  if (!endOk) err('contract.endDate', HISTORICAL_REQUIRED_MESSAGES.endDate);
   else if (startOk && endDate < startDate) err('contract.endDate', CONTRACT_DATE_MESSAGES.endBeforeStart);
   /* มติข้อ 9 กันที่ "ประตูเข้า" ไม่ใช่ที่ใบที่เข้ามาแล้ว — ใบใหม่ตีกลับ · ใบที่มีอยู่แล้วเตือนอย่างเดียว
      (ทางตันที่กันอยู่: ใบร่าง/ตีกลับต้องผ่านฟอร์มคีย์ ซึ่ง PATCH ก่อนส่งเสมอ — ดูกฎข้อ 9 ที่หัว v2) */
@@ -292,12 +315,38 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   }
   const vatOk = vatRate !== null;
 
+  // ── ส่วนลดท้ายใบ — ช่อง "หัก ส่วนลด" ของกล่องสรุปใบเสนอราคา (มติเจ้าของ 25/09) ─────────────
+  //   ⚠️ ฐาน (0374) ตรวจแค่ว่ายอดหัวใบลงตัว (ยอดรวม − ส่วนลด + VAT = ยอดทั้งสิ้น) ไม่ได้ตรวจสูตร %/บาท
+  //      ⇒ ที่นี่คือด่านของสูตร · ชนิด/ค่าเก็บใน metadata.historicalIntake คู่กับ VAT (คอลัมน์มีแค่ discountAmount)
+  //   ⚠️ เลือกชนิดแล้วเว้นค่าว่าง = ไม่ลด (0) ไม่ใช่ error — ศูนย์ไม่ใช่การตัดสินใจที่ต้องบังคับให้พิมพ์
+  let discountType = null;
+  let discountValue = 0;
+  let discountOk = true;
+  const rawDiscountType = body.discountType;
+  if (rawDiscountType !== undefined && rawDiscountType !== null && rawDiscountType !== '') {
+    const rawValue = text(body.discountValue);
+    const value = rawValue === '' ? 0 : toNumber(rawValue);
+    if (!QUOTE_DISCOUNT_TYPES.includes(rawDiscountType)) {
+      err('discount', HISTORICAL_DISCOUNT_MESSAGES.type);
+      discountOk = false;
+    } else if (!Number.isFinite(value) || value < 0) {
+      err('discount', HISTORICAL_DISCOUNT_MESSAGES.value);
+      discountOk = false;
+    } else if (rawDiscountType === 'percent' && value > 100) {
+      err('discount', HISTORICAL_DISCOUNT_MESSAGES.percent);
+      discountOk = false;
+    } else {
+      discountType = rawDiscountType;
+      discountValue = round2(value);
+    }
+  }
+
   // ── โซนจากทะเบียน × แพ็คเกจ (มติ 22/09 ข้อ 1 — หนึ่งโซน = หนึ่งบรรทัด) ───────────────────
   const productsById = new Map((products || []).map((p) => [p?.id, p]));
   const zonesById = new Map((zones || []).map((z) => [z?.id, z]));
   const sitesById = new Map((sites || []).map((s) => [s?.id, s]));
   const rawZones = Array.isArray(body.zones) ? body.zones : [];
-  if (!rawZones.length) err('zones', 'ต้องเลือกอย่างน้อย 1 โซนจากทะเบียนไซต์ของลูกค้า');
+  if (!rawZones.length) err('zones', 'ต้องมีรายการอย่างน้อย 1 บรรทัด — กด “เพิ่มรายการ” หรือ “เพิ่มหลายโซน” แล้วเลือกไซต์ · โซนจากทะเบียนของลูกค้า');
   const seenZones = new Set();
   const draftLines = [];
   const liveTerms = [];
@@ -305,17 +354,24 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   rawZones.forEach((row, index) => {
     const n = index + 1;
     const field = `zones.${index}`;
-    if (!isPlainObject(row)) { err(field, `โซนที่ ${n}: รูปแบบไม่ถูกต้อง`); linesMoneyOk = false; return; }
+    if (!isPlainObject(row)) { err(field, `รายการ ${n}: รูปแบบไม่ถูกต้อง`); linesMoneyOk = false; return; }
     const zoneId = text(row.zoneId);
     const zone = zoneId ? zonesById.get(zoneId) || null : null;
     const site = zone ? sitesById.get(zone.siteId) || zone.site || null : null;
-    const label = zone ? `โซน ${text(zone.name) || zone.id}` : `โซนที่ ${n}`;
-    const push = (message) => err(field, `${label}: ${message}`);
+    /* ⭐ ป้ายของบรรทัด = เลขบรรทัดที่ตาเห็นในคอลัมน์ "#" ของตาราง (+ ชื่อโซนเมื่อรู้แล้ว) — มติ 25/09 ขั้น ② เป็นตาราง
+       แบบใบเสนอราคา ⇒ "โซน Lobby: …" หาไม่เจอบนจอที่เลือกโซนในบรรทัด · error ชี้ **ช่อง** ด้วย (`zones.<i>.<ช่อง>`)
+       ให้จอวางข้อความใต้ช่องนั้นช่องเดียว · `detail` = ข้อความไม่มีป้ายบรรทัด (ของใต้ช่อง — ป้ายซ้ำกับแถวที่มันอยู่) */
+    const label = zone ? `รายการ ${n} (${text(zone.name) || zone.id})` : `รายการ ${n}`;
+    const push = (message, sub = null) => errors.push({
+      field: sub ? `${field}.${sub}` : field,
+      message: `${label}: ${message}`,
+      detail: message,
+    });
 
     if (!zoneId) {
-      push('ต้องเลือกโซนจากทะเบียนไซต์ — ห้ามพิมพ์ชื่อจุดเอง');
+      push('ต้องเลือกไซต์ · โซนจากทะเบียนไซต์ของลูกค้า — ห้ามพิมพ์ชื่อจุดเอง', 'zoneId');
     } else {
-      if (seenZones.has(zoneId)) push('เลือกโซนนี้ซ้ำ — หนึ่งโซนเป็นหนึ่งบรรทัดของใบ');
+      if (seenZones.has(zoneId)) push('เลือกโซนนี้ซ้ำ — หนึ่งโซนเป็นหนึ่งบรรทัดของใบ', 'zoneId');
       seenZones.add(zoneId);
       if (customerId) {
         /* ด่านเดียวกับที่ TS ผูกโซน (bindTargetError) · ฐานต้องการ isActive = true จริง ⇒ ค่าที่ไม่ใช่ true
@@ -325,16 +381,16 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
           zone: zone ? { ...zone, isActive: zone.isActive === true } : null,
           site: site ? { ...site, isActive: site.isActive === true } : null,
         });
-        if (problem) push(problem);
+        if (problem) push(problem, 'zoneId');
       }
     }
 
     const productId = text(row.productId);
     const product = productId ? productsById.get(productId) || null : null;
-    if (!productId) push('ต้องเลือกแพ็คเกจบริการ');
-    else if (!product) push('ไม่พบแพ็คเกจที่เลือกในทะเบียนสินค้า');
+    if (!productId) push('ต้องเลือกแพ็คเกจบริการ', 'productId');
+    else if (!product) push('ไม่พบแพ็คเกจที่เลือกในทะเบียนสินค้า', 'productId');
     else if (!lineIsServicePackage(product)) {
-      push(`${product.fgCode || 'สินค้านี้'} ไม่ใช่แพ็คเกจบริการ (หมวด ${SERVICE_ROUND_CATEGORY}) — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ`);
+      push(`${product.fgCode || 'สินค้านี้'} ไม่ใช่แพ็คเกจบริการ (หมวด ${SERVICE_ROUND_CATEGORY}) — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ`, 'productId');
     }
 
     /* ── บรรทัดแบบใบเสนอราคา: จำนวน × ราคา/หน่วย (ทะเบียน) − ส่วนลดรายการ (มติเจ้าของ 23/09) ──
@@ -345,22 +401,22 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     /* จำนวนว่าง = ตีกลับ ไม่ใช่ 1 (ใบเสนอราคานับว่างเป็น 1) — การเดาจำนวนแทนผู้คีย์คือบั๊กที่มติ 23/09 แก้ */
     const qty = toNumber(row.qty);
     const qtyOk = Number.isInteger(qty) && qty > 0;
-    if (!staleForm && !qtyOk) { push(HISTORICAL_LINE_MESSAGES.qty); linesMoneyOk = false; }
+    if (!staleForm && !qtyOk) { push(HISTORICAL_LINE_MESSAGES.qty, 'qty'); linesMoneyOk = false; }
     /* ราคา/หน่วย = ราคาผลิตในทะเบียนเสมอ (QUOTE_PRICE_FIELD — ตัวเดียวกับใบเสนอราคา) · ค่าที่จอส่งมาไม่ถูกอ่าน
        ⚠️ ต่างจากใบเสนอราคาข้อเดียว: ใบนั้นคงราคาเดิมเมื่อทะเบียนยังไม่ตั้งราคา แล้วไปตีกลับตอนส่ง ·
           ใบนี้บันทึกกับส่งอนุมัติในจังหวะเดียว ⇒ ยังไม่ตั้งราคา = ตีกลับตั้งแต่ตอนนี้ (ฐานตีกลับด้วย — 0379) */
     let unitPrice = 0;
     let priceOk = false;
     if (product && lineIsServicePackage(product)) {
-      if (!has(product, QUOTE_PRICE_FIELD)) push(HISTORICAL_LINE_MESSAGES.priceUnknown);
-      else if (toMoney(product[QUOTE_PRICE_FIELD]) <= 0) push(HISTORICAL_LINE_MESSAGES.unpriced);
+      if (!has(product, QUOTE_PRICE_FIELD)) push(HISTORICAL_LINE_MESSAGES.priceUnknown, 'productId');
+      else if (toMoney(product[QUOTE_PRICE_FIELD]) <= 0) push(HISTORICAL_LINE_MESSAGES.unpriced, 'productId');
       else { unitPrice = toMoney(product[QUOTE_PRICE_FIELD]); priceOk = true; }
     }
     if (!priceOk) linesMoneyOk = false;
     let serviceRounds = null;
     if (text(row.rounds)) {
       const rounds = Number(row.rounds);
-      if (!Number.isInteger(rounds) || rounds <= 0 || rounds > MAX_INT4) push(HISTORICAL_LINE_MESSAGES.rounds);
+      if (!Number.isInteger(rounds) || rounds <= 0 || rounds > MAX_INT4) push(HISTORICAL_LINE_MESSAGES.rounds, 'rounds');
       else serviceRounds = rounds;
     }
 
@@ -399,12 +455,12 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     });
   });
 
-  // ── เงิน — สูตรใบเสนอราคา (historicalLinesMoney) · ใบย้อนหลังไม่มีส่วนลดท้ายใบ ─────────────────
-  const moneyOk = linesMoneyOk && vatOk && draftLines.length > 0;
+  // ── เงิน — สูตรใบเสนอราคา (historicalLinesMoney) · ส่วนลดรายบรรทัด + ส่วนลดท้ายใบ (มติ 25/09) ─────────
+  const moneyOk = linesMoneyOk && vatOk && discountOk && draftLines.length > 0;
   const money = moneyOk
     ? historicalLinesMoney(draftLines.map((line) => ({
       qty: line.qty, unitPrice: line.unitPrice, discountType: line.rawDiscountType, discountValue: line.rawDiscountValue,
-    })), vatRate)
+    })), vatRate, { discountType, discountValue })
     : null;
   const lines = draftLines.map(({ rawDiscountType, rawDiscountValue, ...line }, index) => {
     const m = money?.lines[index] || null;
@@ -432,9 +488,12 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     orderDate: contract.startDate,
     docLanguage: 'th',
     vatRate,
+    // ส่วนลดท้ายใบ (มติ 25/09) — ชนิด/ค่าไปอยู่ใน metadata.historicalIntake · คอลัมน์เก็บแค่ยอด (discountAmount)
+    discountType,
+    discountValue: discountType ? discountValue : 0,
     notes,
     subtotal,
-    // ใบย้อนหลังไม่มีส่วนลดท้ายใบ — ส่วนลดอยู่ในบรรทัด (ยอดบรรทัดหักแล้ว) · quoteTotals คืน 0 ให้เสมอ
+    // ยอดของส่วนลดท้ายใบ (ยอดบรรทัดหักส่วนลดรายบรรทัดไปแล้ว) — quoteTotals ตัวเดียวกับใบเสนอราคา
     discountAmount: money ? money.discountAmount : 0,
     vatAmount,
     totalAmount,
@@ -488,25 +547,28 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     err('installments', 'รูปแบบงวดชำระไม่ถูกต้อง');
   }
   const rawRows = Array.isArray(body.installments) ? body.installments : [];
+  /* ⭐ มติ 25/09 (รื้อขั้น ③): เลขงวดในข้อความ = **เลขงวดของใบ** (งวดยกมาเป็นงวดที่ 1 เมื่อมี — 0379 เรียงแบบนั้น) ⇒ ตรงกับ
+     คอลัมน์ "งวด" ของตารางบนจอและหน้าใบสั่งขาย · ข้อความรายช่องชี้ `installments.<i>.<ช่อง>` + `detail` (ไม่มีป้ายงวด)
+     แบบเดียวกับบรรทัดโซน ⇒ จอวาดใต้ช่องของแถวนั้นที่เดียว (ของเดิม `installments.<i>` ขึ้นเป็นก้อนเดียวไม่รู้ช่องไหน) */
+  const seqBase = body.opening !== undefined && body.opening !== null ? 2 : 1;
   rawRows.forEach((row, index) => {
-    const n = index + 1;
-    const field = `installments.${index}`;
-    const push = (message) => err(field, `งวดที่ ${n}: ${message}`);
-    if (!isPlainObject(row)) { push('รูปแบบไม่ถูกต้อง'); rowDatesOk = false; installments.push(null); return; }
+    const n = seqBase + index;
+    const push = (slot, detail) => errors.push({ field: `installments.${index}.${slot}`, message: `งวดที่ ${n}: ${detail}`, detail });
+    if (!isPlainObject(row)) { push('row', 'รูปแบบไม่ถูกต้อง'); rowDatesOk = false; installments.push(null); return; }
     const label = text(row.label);
-    if (charLength(label) < 1 || charLength(label) > INSTALLMENT_LABEL_MAX) push(`ชื่องวดต้องมี 1–${INSTALLMENT_LABEL_MAX} ตัวอักษร`);
+    if (charLength(label) < 1 || charLength(label) > INSTALLMENT_LABEL_MAX) push('label', `ชื่องวดต้องมี 1–${INSTALLMENT_LABEL_MAX} ตัวอักษร`);
     const amount = money2(row.amount);
-    if (!Number.isFinite(amount) || amount < 0) push('ยอดต้องเป็นตัวเลขไม่ติดลบ');
+    if (!Number.isFinite(amount) || amount < 0) push('amount', 'ยอดต้องเป็นตัวเลขไม่ติดลบ');
     const dueDate = text(row.dueDate);
-    if (!dueDate) push('ต้องระบุวันครบกำหนด');
-    else if (!inDocRange(dueDate)) push('วันครบกำหนดต้องเป็นวันที่ระหว่างปี ค.ศ. 2000–2100');
+    if (!dueDate) push('dueDate', 'ต้องระบุวันครบกำหนด');
+    else if (!inDocRange(dueDate)) push('dueDate', 'วันครบกำหนดต้องเป็นวันที่ระหว่างปี ค.ศ. 2000–2100');
     const coversFrom = text(row.coversFrom);
     const coversTo = text(row.coversTo);
-    if (!coversFrom || !coversTo) { push('ต้องระบุช่วงครอบบริการ ตั้งแต่–ถึง'); rowDatesOk = false; }
-    else if (!inDocRange(coversFrom) || !inDocRange(coversTo)) { push('ช่วงครอบบริการต้องเป็นวันที่ระหว่างปี ค.ศ. 2000–2100'); rowDatesOk = false; }
-    else if (coversFrom > coversTo) { push('วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด'); rowDatesOk = false; }
+    if (!coversFrom || !coversTo) { push('coversTo', 'ต้องระบุช่วงครอบบริการ ตั้งแต่–ถึง'); rowDatesOk = false; }
+    else if (!inDocRange(coversFrom) || !inDocRange(coversTo)) { push('coversTo', 'ช่วงครอบบริการต้องเป็นวันที่ระหว่างปี ค.ศ. 2000–2100'); rowDatesOk = false; }
+    else if (coversFrom > coversTo) { push('coversTo', 'วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด'); rowDatesOk = false; }
     const note = text(row.note) || null;
-    if (note && charLength(note) > INSTALLMENT_NOTE_MAX) push(`หมายเหตุยาวเกิน ${INSTALLMENT_NOTE_MAX} ตัวอักษร`);
+    if (note && charLength(note) > INSTALLMENT_NOTE_MAX) push('note', `หมายเหตุยาวเกิน ${INSTALLMENT_NOTE_MAX} ตัวอักษร`);
     if (today && isCalendarDate(dueDate) && dueDate < today) {
       warnings.push(`งวดที่ ${n} (${label || '—'}) ครบกำหนดแล้ว (${dateText(dueDate)}) — หลัง AE Sup อนุมัติจะขึ้นเลยกำหนดในทะเบียนบัญชีทันที และนัดบริการติดด่านเงินจนกว่าบัญชีรับรอง`);
     }
@@ -557,8 +619,8 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       const row = gap.index === null ? null : allRows[gap.index];
       const isOpening = row?.kind === OPENING_INSTALLMENT_KIND;
       const regularIndex = isOpening || !row ? -1 : installments.indexOf(row);
-      const field = isOpening ? 'opening.coversTo' : regularIndex >= 0 ? `installments.${regularIndex}` : 'installments';
-      const who = isOpening ? OPENING_INSTALLMENT_LABEL : regularIndex >= 0 ? `งวดที่ ${regularIndex + 1}` : 'งวด';
+      const field = isOpening ? 'opening.coversTo' : regularIndex >= 0 ? `installments.${regularIndex}.coverage` : 'installments';
+      const who = isOpening ? OPENING_INSTALLMENT_LABEL : regularIndex >= 0 ? `งวดที่ ${seqBase + regularIndex}` : 'งวด';
       const range = `${dateText(gap.since)}–${dateText(gap.until)}`;
       const message = {
         start: gap.since === startDate
@@ -570,7 +632,8 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
           ? `ช่วงครอบเกินวันสิ้นสุดสัญญา (${range})`
           : `ช่วงบริการยังไม่ถึงวันสิ้นสุดสัญญา ${dateText(endDate)} — ขาด ${range}`,
       }[gap.kind];
-      err(field, `${who}: ${message}`);
+      if (regularIndex >= 0) errors.push({ field, message: `${who}: ${message}`, detail: message });
+      else err(field, `${who}: ${message}`);
     }
   }
   const coverageContinuous = contractOk && rowDatesOk && allRows.length ? coverageErrors.length === 0 : null;
@@ -662,8 +725,9 @@ export function historicalServiceRpcArgs(plan, mode = 'create') {
       historicalQuoteRef: header.refs.quote,
       historicalExpressRef: header.refs.express,
       historicalInvoiceRef: header.refs.invoice,
-      // ของที่คอลัมน์เก็บไม่ได้ แต่ฟอร์มแก้ต้องได้คืน (ตัวเลือก VAT) → sales_orders.metadata.historicalIntake
-      intake: { vatRate: header.vatRate },
+      // ของที่คอลัมน์เก็บไม่ได้ แต่ฟอร์มแก้ต้องได้คืน (ตัวเลือก VAT · ชนิด/ค่าของส่วนลดท้ายใบ)
+      // → sales_orders.metadata.historicalIntake (0374 เขียน `p_header->'intake'` ทั้งก้อน — ไม่ต้องแก้ฐาน)
+      intake: { vatRate: header.vatRate, discountType: header.discountType, discountValue: header.discountValue },
     },
     p_lines: lines.map((line) => ({
       zoneId: line.zoneId,

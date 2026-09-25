@@ -323,9 +323,13 @@ export function historicalApprovalFacts(order, {
 
   // ── เงิน (ป้ายท้ายตารางของใบเสนอราคา) ──
   const vat = Number(order?.vatAmount) || 0;
+  /* ⭐ ส่วนลดท้ายใบ (มติ 25/09) — ของที่ AE Sup อนุมัติต้องบวกลบกันลงตัวบนจอ: ยอดรวมสินค้า/บริการ − ส่วนลด + VAT = ยอดรวมทั้งสิ้น
+     🐞 รีวิว 25/09: บรรทัดนี้เคยข้ามส่วนลด (ใบย้อนหลังไม่เคยมีมาก่อน) ⇒ 42,000 + 2,800 ≠ 42,800 และส่วนลดที่อนุมัติไม่ขึ้นเลย */
+  const discount = Number(order?.discountAmount) || 0;
   checklist.push(zeroValue
     ? `ยอดรวมทั้งสิ้น: ${fmtMoney(0)} — ไม่มีงวดให้เก็บ${text(order?.notes) ? ` · หมายเหตุ: ${text(order.notes)}` : ''}`
     : `ยอดรวมทั้งสิ้น: ${fmtMoney(order?.totalAmount)} — ยอดรวมสินค้า/บริการ ${fmtMoney(order?.subtotal)}`
+      + `${discount > 0 ? ` · หัก ส่วนลด ${fmtMoney(discount)}` : ''}`
       + ` · ${vat > 0 ? `ภาษีมูลค่าเพิ่ม ${fmtMoney(vat)}` : 'รวม VAT แล้ว'}`);
   if (!zeroValue) {
     if (opening) {

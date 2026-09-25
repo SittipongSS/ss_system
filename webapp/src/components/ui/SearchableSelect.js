@@ -50,8 +50,8 @@ export default function SearchableSelect({
     return { rows: pruned.slice(0, 200), hidden: Math.max(0, pruned.length - 200) };
   }, [options, search]);
   const filtered = rows;
-  // Enter = เลือกตัวแรกที่ "เลือกได้จริง" ไม่ใช่หัวกลุ่ม
-  const firstSelectable = filtered.find((option) => !option.group);
+  // Enter = เลือกตัวแรกที่ "เลือกได้จริง" — ไม่ใช่หัวกลุ่ม และไม่ใช่ตัวเลือกที่ติดด่าน (`option.disabled`)
+  const firstSelectable = filtered.find((option) => !option.group && !option.disabled);
 
   const placeMenu = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -94,6 +94,7 @@ export default function SearchableSelect({
   }, [open, disabled, searchEnabled]);
 
   const choose = (option) => {
+    if (option?.disabled) return;
     onChange?.(option.value);
     setSearch("");
     setOpen(false);
@@ -150,12 +151,17 @@ export default function SearchableSelect({
                 );
               }
               const isSelected = String(option.value) === String(value ?? "");
+              /* ⭐ `option.disabled` = ตัวเลือกที่ติดด่าน — **โชว์แต่กดไม่ได้** (กฎบ้าน: ติดด่าน = เห็นว่ามีอยู่ + บอกเหตุ)
+                 เหตุวาดเองใน `option.render` ของผู้เรียก · `title` ช่วยผู้ที่ชี้เมาส์ค้าง */
               return (
                 <button
                   key={String(option.value)}
                   type="button"
                   role="option"
                   aria-selected={isSelected}
+                  aria-disabled={option.disabled ? "true" : undefined}
+                  disabled={Boolean(option.disabled)}
+                  title={option.disabled && option.title ? option.title : undefined}
                   className={`ui-select-option ${isSelected ? "selected" : ""}`.trim()}
                   onClick={() => choose(option)}
                 >

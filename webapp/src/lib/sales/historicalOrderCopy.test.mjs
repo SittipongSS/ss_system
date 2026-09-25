@@ -547,3 +547,26 @@ test('ไฟล์ถ้อยคำ pure — ไม่อ่านนาฬิ�
     '@/lib/sales/salesOrderPayments',
   ]);
 });
+
+/* 🐞 รีวิว 25/09: ส่วนลดท้ายใบ (มติเจ้าของ 25/09) ไปถึงโมดัลอนุมัติได้แล้ว แต่บรรทัดเงินเคยข้ามมัน ⇒ 42,000 + 2,800 ≠ 42,800
+   และส่วนลดที่ AE Sup รับรองไม่ขึ้นบนจอเลย · กติกา: ยอดรวมสินค้า/บริการ − ส่วนลด + VAT = ยอดรวมทั้งสิ้น อ่านได้ครบในบรรทัดเดียว */
+test('โมดัลอนุมัติ: ใบที่มีส่วนลดท้ายใบ — บรรทัดเงินบอกส่วนลดคั่นระหว่างยอดรวมกับ VAT (บวกลบลงตัวบนจอ)', () => {
+  const withVat = collect(historicalApprovalFacts(
+    { ...ORDER, subtotal: 42000, discountAmount: 2000, vatAmount: 2800, totalAmount: 42800 },
+    { ...EXTRAS, installments: [] },
+  ));
+  assert.ok(withVat.checklist.includes(
+    'ยอดรวมทั้งสิ้น: ฿42,800.00 — ยอดรวมสินค้า/บริการ ฿42,000.00 · หัก ส่วนลด ฿2,000.00 · ภาษีมูลค่าเพิ่ม ฿2,800.00',
+  ), withVat.checklist.join('\n'));
+  const included = collect(historicalApprovalFacts(
+    { ...ORDER, subtotal: 42000, discountAmount: 4200, vatAmount: 0, totalAmount: 37800 },
+    { ...EXTRAS, installments: [] },
+  ));
+  assert.ok(included.checklist.includes(
+    'ยอดรวมทั้งสิ้น: ฿37,800.00 — ยอดรวมสินค้า/บริการ ฿42,000.00 · หัก ส่วนลด ฿4,200.00 · รวม VAT แล้ว',
+  ), included.checklist.join('\n'));
+  /* ไม่มีส่วนลด = บรรทัดเดิมทุกตัวอักษร (ใบที่คีย์ก่อน 25/09 ไม่เปลี่ยนหน้าตา) */
+  const none = collect(historicalApprovalFacts({ ...ORDER, discountAmount: 0 }, EXTRAS));
+  assert.ok(none.checklist.some((line) => line.startsWith('ยอดรวมทั้งสิ้น:') && !line.includes('หัก ส่วนลด')));
+});
+
