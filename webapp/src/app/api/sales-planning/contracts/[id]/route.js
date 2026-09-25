@@ -11,6 +11,7 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { purgeNotificationsMany } from '@/lib/notifications';
 import { historicalContractLockGate, loadLinkedHistoricalOrder } from '@/lib/sales/historicalContractLock';
 import { loadSignedCancelContext } from '@/lib/sales/contractSignedCancel';
+import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,10 +81,22 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const signedCancel = await loadSignedCancelContext(supabase, current, user);
   if (signedCancel.error) return fail(signedCancel.error.message, 500);
 
+  /* ⭐ ร่าง external แนบเอกสารแทนสัญญาแล้วหรือยัง — ธงเดียวกับที่ทะเบียนส่ง (`_externalDocReady`) ให้รางของหน้าใบ
+     ใช้ตอนการ์ดไฟล์ยังโหลดไม่เสร็จ/โหลดพัง (รีวิว 25/09: เดิมรางอ่านจากการ์ดอย่างเดียว ⇒ ทุกครั้งที่เปิด/โหลดซ้ำ
+     รางกะพริบกลับไป "แนบเอกสาร" ก่อน และค้างอย่างนั้นถ้าการ์ดโหลดพัง) · ใบที่ไม่ใช่ร่าง external ไม่แตะฐาน
+     ⚠️ อ่านไม่ได้ = 500 ไม่ใช่ false — false แปลว่า "ยังไม่แนบ" แล้วรางสั่งให้แนบซ้ำ */
+  let externalDocReady = false;
+  try {
+    externalDocReady = (await externalDocReadyIds(supabase, [current], user, { anyViewer: true, strict: true })).has(current.id);
+  } catch (error) {
+    return fail(error?.message || 'อ่านไฟล์แนบของสัญญาไม่สำเร็จ', 500);
+  }
+
   const { issuedHtml, ...rest } = current;
   return ok({
     ...rest,
     hasIssuedDocument: !!issuedHtml,
+    _externalDocReady: externalDocReady,
     signedFile: signedFile || null,
     quotation: quotation || null,
     quotationNotice: contractQuotationNotice(current, quotation, { newerApproved }),

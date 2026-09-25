@@ -32,27 +32,51 @@ const step = (key, label, state, note = null) => ({ key, label, state, note });
    ⚠️ **คำต้องตรงกับรางบนหน้ารายละเอียด** (`EXTERNAL_STEPS` ใน contractLifecycle.js) —
       คนคนเดียวกันเปิดสองหน้านี้ห่างกันคลิกเดียว · มีเทสต์ล็อกคู่คำไว้แล้ว */
 /* ⭐ เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (0374) — หมุดเดียวกัน คำใบ้ตาม `SUBSTITUTE_STEPS` ของหน้ารายละเอียด:
-   ฟอร์มคีย์ใบสร้าง/แก้ และ AE Sup อนุมัติพร้อมใบสั่งขาย ไม่ใช่ที่หน้าสัญญา */
-function externalTrack(status, substitute = false) {
-  const signed = status === 'signed';
+   ฟอร์มคีย์ใบสร้าง/แก้ และ AE Sup อนุมัติพร้อมใบสั่งขาย ไม่ใช่ที่หน้าสัญญา
+   ⭐ **ร่างที่แนบเอกสารแล้วต้องเดินหมุด** (2026-09-15) — ของเดิมร่างทุกใบค้างที่
+   "แนบเอกสารที่ใช้แทนสัญญา" ⇒ ใบที่แนบไปแล้วรอ AE Sup อยู่ 12 วัน (ของจริงบน production)
+   ยังบอกเจ้าของใบว่าให้ไปแนบ · ธง `_externalDocReady` มาจาก route ของทะเบียน
+   ⚠️ ไม่มีธง = ถือว่ายังไม่แนบ (พฤติกรรมเดิม) ไม่ใช่เดาว่าแนบแล้ว
+   ⚠️ ใบแทนของใบย้อนหลังไม่มีขั้นแนบแยก (ไฟล์มากับฟอร์มคีย์ใบ) ⇒ ไม่อ่านธงนี้ */
+function externalTrack(status, { substitute = false, docReady = false } = {}) {
+  if (status === 'signed') {
+    return {
+      closed: false,
+      steps: [step('draft', 'ร่าง', 'done'), step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'done')],
+    };
+  }
+  if (substitute) {
+    return {
+      closed: false,
+      steps: [
+        step('draft', 'ร่าง', 'now', 'แก้ที่ฟอร์มคีย์ใบสั่งขายย้อนหลัง'),
+        step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'todo', 'อนุมัติพร้อมใบสั่งขายย้อนหลัง'),
+      ],
+    };
+  }
   return {
     closed: false,
-    steps: [
-      signed
-        ? step('draft', 'ร่าง', 'done')
-        : step('draft', 'ร่าง', 'now', substitute ? 'แก้ที่ฟอร์มคีย์ใบสั่งขายย้อนหลัง' : 'แนบเอกสารที่ใช้แทนสัญญา'),
-      signed
-        ? step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'done')
-        : step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'todo',
-          substitute ? 'อนุมัติพร้อมใบสั่งขายย้อนหลัง' : 'รอ AE Supervisor อนุมัติ'),
-    ],
+    steps: docReady
+      ? [
+        step('draft', 'ร่าง', 'done'),
+        step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'now', 'รอ AE Supervisor อนุมัติ'),
+      ]
+      : [
+        step('draft', 'ร่าง', 'now', 'แนบเอกสารที่ใช้แทนสัญญา'),
+        step('done', 'อนุมัติใช้แทนสัญญาแล้ว', 'todo', 'รอ AE Supervisor อนุมัติ'),
+      ],
   };
 }
 
 export function contractListTrack(contract = {}) {
   const status = contract?.status || 'draft';
   if (status === 'cancelled' || status === 'revised') return { closed: true, steps: [] };
-  if (isExternalContract(contract)) return externalTrack(status, isSubstituteContract(contract));
+  if (isExternalContract(contract)) {
+    return externalTrack(status, {
+      substitute: isSubstituteContract(contract),
+      docReady: !!contract?._externalDocReady,
+    });
+  }
 
   /* ⭐ `awaiting_approval` เพิ่ม 2026-08-31 (mig 0323) — ใบที่ SA บันทึกลงนามแล้ว
      แต่ AE Sup ยังไม่รับรอง · ต้องนับว่า "ออกเลขแล้ว" ด้วย ไม่งั้นรางถอยกลับไปขั้นร่าง

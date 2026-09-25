@@ -57,6 +57,16 @@ export const EXTERNAL_STEPS = [
   { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "AE Supervisor รับรองเอกสาร", statuses: ["signed"] },
 ];
 
+/* ⭐ **ร่าง external ที่แนบเอกสารแล้ว** (รีวิว 25/09) — หมุดคำเดียวกับ EXTERNAL_STEPS ทุกตัว แต่ขั้นแรกผ่านแล้ว
+   และขั้นที่สองเป็นขั้นปัจจุบัน "รอ AE Supervisor อนุมัติ" · ตรงกับรางของทะเบียน/การ์ดสัญญาบน SO
+   (`contractListTrack` ธง `_externalDocReady`) — ของเดิมหน้านี้ยังสั่ง "แนบเอกสารที่ใช้แทนสัญญา" ทั้งที่แนบแล้ว
+   ขณะที่รางบนแถวเดียวกันในทะเบียนบอกว่ารอผู้อนุมัติ ⇒ สองหน้าห่างกันคลิกเดียวพูดคนละเรื่อง
+   ⚠️ `draft` อยู่ในหมุดที่สอง (ไม่ใช่หมุดแรก) คือกลไกที่ทำให้รางเดินหน้า — `railSteps` ใช้หมุดท้ายสุดที่ครอบสถานะ */
+export const EXTERNAL_ATTACHED_STEPS = [
+  { id: "draft", label: "ร่าง", hint: "แนบเอกสารที่ใช้แทนสัญญาแล้ว", statuses: [] },
+  { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "รอ AE Supervisor อนุมัติ", statuses: ["draft", "signed"] },
+];
+
 /* ⭐ **เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง** (มติ 22/09/2026 · mig 0374) — หมุดเดียวกับ EXTERNAL_STEPS ทุกคำ
    (ทะเบียนล็อกคำบนหมุดคู่กับชุดนั้น) ต่างแค่คำใบ้: ใบนี้ไม่มีขั้นอนุมัติบนหน้าสัญญา — ฟอร์มคีย์ใบสร้างและแก้
    แล้ว AE Sup อนุมัติพร้อมใบสั่งขาย ⇒ "AE Supervisor รับรองเอกสาร" พาคนไปหาปุ่มที่ถูกซ่อนไว้ */
@@ -89,8 +99,10 @@ export function signedCancelDialog({ contract = null, linkedOrder, signedCancel 
    ยังไม่อนุมัติ (historicalContractLockReason) ⇒ ซ่อนปุ่มยกเลิก — ยกเลิกที่ใบสั่งขาย แล้ว trigger ยกเลิกใบนี้ตาม
    `contract` · `linkedOrder` · `signedCancel` (= `signedCancelContext` จาก GET: ใบสั่งขายที่ผูก + จำนวนบันทึกเพิ่มเติม)
    ใช้ประกอบโมดัลยกเลิกสัญญาที่ลงนามแล้วเท่านั้น (มติ 24/09/2026) */
+/* `docAttached` = ใบ external นี้มีไฟล์ชนิด "เอกสารที่ใช้แทนสัญญา" แล้ว (หน้าใบรู้จากการ์ดไฟล์) — ใช้เลือกราง
+   ของร่างเท่านั้น · ใบย้อนหลังไม่อ่านธงนี้ (ไฟล์มากับฟอร์มคีย์ใบ รางของมันพาไปที่ใบสั่งขาย) */
 export function buildContractLifecycle({
-  canEdit = false, external = false, substitute = false, locked = false,
+  canEdit = false, external = false, substitute = false, locked = false, docAttached = false,
   contract = null, linkedOrder, signedCancel = null,
 } = {}) {
   const signedCancelPrompt = signedCancelDialog({ contract, linkedOrder, signedCancel });
@@ -101,7 +113,11 @@ export function buildContractLifecycle({
       key,
       { label, tone: STATUS_TONE[key], description: STATUS_DESCRIPTION[key] },
     ])),
-    steps: substitute ? SUBSTITUTE_STEPS : (external ? EXTERNAL_STEPS : STEPS),
+    steps: substitute
+      ? SUBSTITUTE_STEPS
+      : external
+        ? (docAttached && contract?.status === "draft" ? EXTERNAL_ATTACHED_STEPS : EXTERNAL_STEPS)
+        : STEPS,
     cancelledStatuses: ["cancelled", "revised"],
     transitions: [
       {

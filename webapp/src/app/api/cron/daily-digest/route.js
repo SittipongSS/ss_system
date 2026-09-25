@@ -1,10 +1,12 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can } from '@/lib/permissions';
+import { can, SALES_BELL_ROLES } from '@/lib/permissions';
 import { holidaySet } from '@/lib/master/holidays';
 import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
 import { overdueLeadNotices } from '@/lib/sales/leadNotify';
-import { overdueSignatureNotices } from '@/lib/sales/contractNotify';
+import { overdueSignatureNotices, pendingApprovalContracts, pendingApprovalNotices } from '@/lib/sales/contractNotify';
+import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { notifyUsers } from '@/lib/notifications';
 import { businessDayKey } from '@/lib/datePeriods';
 import { loadUserDirectory } from '@/lib/usersRepo';
@@ -13,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // GET /api/cron/daily-digest — ทวงงานค้างเข้ากล่องแจ้งเตือน **รายคน**
-// วันนี้มีสองเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์
+// วันนี้มีสามเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์ · สัญญารอ AE Sup อนุมัติ
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู webapp/vercel.json) ด้วย Authorization:
 // Bearer CRON_SECRET หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ
 //
@@ -114,6 +116,70 @@ async function notifyOverdueContracts(supabase) {
   return { sent, notices: notices.length };
 }
 
+/* ทวง AE Supervisor เรื่องสัญญาที่รอเขากด — เอกสารแทนสัญญาที่แนบแล้ว + ใบรอรับรองการลงนาม
+   กติกาอยู่ที่ `pendingApprovalNotices` (lib/sales/contractNotify.js)
+   ⭐ ผู้รับคือ AE Supervisor ที่ยังใช้งานอยู่ (`SALES_BELL_ROLES`) · ไม่มีสักคน ค่อยถอยไป admin —
+     คนที่กดได้ต้องมีสักคนรู้ ไม่งั้นใบค้างแบบเดิม (ของจริง: ค้าง 12 วัน)
+   ⚠️ CD/CM อนุมัติขั้นนี้ได้ (`canApproveExternalContract`) แต่ **ไม่รับกระดิ่ง** — มติ 2026-09-24 ข้อ 6
+      เหมือนคิวคัดกรองลีด/FM-SA-04 (เข้าไปดูคิวเอง)
+   ⚠️ ไม่ส่งหา admin ตอนมี AE Sup อยู่ — admin กดได้ทุกด่านก็จริง แต่ไม่ใช่เจ้าของขั้นนี้ */
+async function notifyPendingContractApprovals(supabase) {
+  /* 🔴 `metadata` ต้องมาด้วย (รีวิว 25/09) — เอกสารแทนสัญญาของใบสั่งขายย้อนหลัง (0374) เป็นร่าง external
+     ที่มีไฟล์แนบแล้ว แต่เป็นงานของคิวใบสั่งขาย · ขาดคอลัมน์นี้ = `isSubstituteContract` ตอบ false ⇒ AE Sup
+     ได้กระดิ่งของใบที่ `?waiting=1` ไม่แสดง (ตัวนับป้ายเลือกคอลัมน์ชุดเดียวกันด้วยเหตุผลเดียวกัน)
+     ⚠️ คอมเมนต์อยู่เหนือ `.from()` — check:columns มองหา `.select()` ในระยะ 200 ตัวอักษรหลัง `.from()` */
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('sales_contracts')
+    .select('id, "contractNo", status, source, metadata, "ownerId", "createdBy", "customerName", "createdAt"')
+    .in('status', ['draft', 'awaiting_approval'])
+    .order('id', { ascending: true }));
+  if (error) return { sent: 0, error: error.message };
+  const rows = data || [];
+  if (!rows.length) return { sent: 0, reason: 'ไม่มีใบรออนุมัติ' };
+
+  /* cron ไม่มีผู้ใช้ ⇒ ต้องเปิด anyViewer ไม่งั้นตัวหาคืนชุดว่างเสมอ (ด่านผู้อนุมัติ)
+     🔴 `strict` (รีวิว 25/09) — อ่านไฟล์แนบพังแล้วได้ชุดว่าง = ร่างที่แนบแล้วทุกใบหายจากกระดิ่ง และ cron รายงาน
+        "ไม่มีใบรออนุมัติ" ทั้งที่มี (ความเงียบแบบเดียวกับที่ฟีเจอร์นี้เกิดมาแก้) ⇒ โยนให้ GET บันทึกเป็น error แทน */
+  const [docReadyIds, directory] = await Promise.all([
+    externalDocReadyIds(supabase, rows, null, { anyViewer: true, strict: true }),
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
+  const pending = pendingApprovalContracts(rows, { docReadyIds });
+  if (!pending.length) return { sent: 0, reason: 'ไม่มีใบรออนุมัติ' };
+
+  const active = [...directory.values()].filter((u) => u && !u.disabled);
+  let approverIds = active.filter((u) => SALES_BELL_ROLES.includes(u.role)).map((u) => u.id);
+  if (!approverIds.length) approverIds = active.filter((u) => u.role === 'admin').map((u) => u.id);
+  /* ⚠️ มีใบรอแต่ไม่มีผู้รับ ≠ ไม่มีใบรอ — ทะเบียนผู้ใช้อ่านพัง (`loadUserDirectory` หยุดเงียบ ๆ) หรือไม่มีบัญชี
+     AE Sup/admin ที่เปิดอยู่เลย ⇒ รายงานเป็น error ให้คนที่เปิด cron เองเห็น */
+  if (!approverIds.length) {
+    return { sent: 0, pending: pending.length, error: `มีใบรออนุมัติ ${pending.length} ใบ แต่ไม่พบผู้รับกระดิ่ง (AE Supervisor/admin)` };
+  }
+
+  const now = new Date();
+  const notices = pendingApprovalNotices(rows, {
+    docReadyIds, approverIds, dayKey: businessDayKey(now.toISOString()),
+  });
+
+  let sent = 0;
+  for (const notice of notices) {
+    const result = await notifyUsers(supabase, {
+      userIds: notice.userIds,
+      entityType: 'sales_contract',
+      entityId: notice.entityId,
+      kind: notice.kind,
+      title: notice.title,
+      body: notice.body,
+      dedupeKey: notice.dedupeKey,
+      // ตัวกรอง ?waiting=1 ของทะเบียนใช้เลนผู้รับรองตัวเดียวกับป้ายบนเมนู
+      href: '/sa/contracts?waiting=1',
+      actorName: 'สรุปประจำวัน',
+    });
+    sent += result.sent || 0;
+  }
+  return { sent, notices: notices.length };
+}
+
 export async function GET(request) {
   // ผ่านได้ 2 ทาง: Vercel Cron (Bearer CRON_SECRET) หรือ admin กดทดสอบเองจากเบราว์เซอร์
   //
@@ -141,6 +207,11 @@ export async function GET(request) {
     results.contractOverdue = await notifyOverdueContracts(supabase);
   } catch (e) {
     results.contractOverdue = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.contractApproval = await notifyPendingContractApprovals(supabase);
+  } catch (e) {
+    results.contractApproval = { sent: 0, error: e?.message || String(e) };
   }
 
   return Response.json({ ok: true, at: new Date().toISOString(), results });

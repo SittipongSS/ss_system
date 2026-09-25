@@ -349,6 +349,57 @@ test('🪤 ทะเบียนสัญญา: ใบ external เดินร
   assert.equal(contractListTrack({ status: 'cancelled', source: 'external' }).closed, true);
 });
 
+/* 🐞 ของจริง 2026-09-15: เอกสารแทนสัญญาแนบไฟล์ครบตั้งแต่ 3 ก.ย. แต่รางยังสั่ง
+   "แนบเอกสารที่ใช้แทนสัญญา" อยู่ 12 วัน — คนดูใบคิดว่ายังไม่มีใครทำอะไร */
+test('⭐ ร่าง external ที่แนบเอกสารแล้ว รางเดินไปรอ AE Sup ไม่สั่งให้แนบซ้ำ', async () => {
+  const { contractListTrack } = await import('./contractListTrack.js');
+  const ready = contractListTrack({ status: 'draft', source: 'external', _externalDocReady: true });
+  assert.deepEqual(ready.steps.map((s) => s.state), ['done', 'now']);
+  assert.match(ready.steps[1].note, /AE Supervisor/);
+  // ไม่มีธง = ยังไม่แนบ (พฤติกรรมเดิม) ไม่ใช่เดาว่าแนบแล้ว
+  const bare = contractListTrack({ status: 'draft', source: 'external' });
+  assert.deepEqual(bare.steps.map((s) => s.state), ['now', 'todo']);
+  assert.match(bare.steps[0].note, /แนบเอกสาร/);
+  // อนุมัติแล้ว ธงไม่มีผลอะไร
+  const signed = contractListTrack({ status: 'signed', source: 'external', _externalDocReady: true });
+  assert.deepEqual(signed.steps.map((s) => s.state), ['done', 'done']);
+  // คำบนหมุดยังเป็นชุดเดียวกับหน้ารายละเอียด
+  const { EXTERNAL_STEPS } = await import('./contractLifecycle.js');
+  assert.deepEqual(ready.steps.map((s) => s.label), EXTERNAL_STEPS.map((s) => s.label));
+});
+
+/* 🔴 รีวิว 25/09: หน้ารายละเอียดต้องเดินหมุดเดียวกับทะเบียน/การ์ดบน SO — ของเดิมรางทะเบียนบอก
+   "รอ AE Supervisor อนุมัติ" แต่คลิกเข้าหน้าใบแล้วยังสั่ง "แนบเอกสารที่ใช้แทนสัญญา" (สถานะของหมุดไม่ตรงกัน
+   ทั้งที่คำบนหมุดตรง) ⇒ ล็อก **สถานะของหมุด** ไม่ใช่แค่คำ */
+test('🔴 หน้ารายละเอียด: ร่าง external ที่แนบแล้วเดินหมุดเดียวกับทะเบียน', async () => {
+  const { contractListTrack } = await import('./contractListTrack.js');
+  const { buildContractLifecycle } = await import('./contractLifecycle.js');
+  const detailStates = (docAttached, status = 'draft') => buildContractLifecycle({ external: true, docAttached, contract: { status } })
+    .railSteps({ status }).map((step) => step.state);
+  const listStates = (ready, status = 'draft') => contractListTrack({ status, source: 'external', _externalDocReady: ready })
+    .steps.map((step) => step.state);
+  const same = { done: 'done', now: 'current', todo: 'pending' };
+  // แนบแล้ว: ขั้นแรกผ่าน ขั้นที่สองเป็นปัจจุบัน — ทั้งสองหน้า
+  assert.deepEqual(detailStates(true), ['done', 'current']);
+  assert.deepEqual(listStates(true).map((s) => same[s]), detailStates(true));
+  // ยังไม่แนบ: พฤติกรรมเดิม — ทั้งสองหน้า
+  assert.deepEqual(detailStates(false), ['current', 'pending']);
+  assert.deepEqual(listStates(false).map((s) => same[s]), detailStates(false));
+  // ธงไม่มีผลกับใบที่อนุมัติแล้ว
+  assert.deepEqual(detailStates(true, 'signed'), detailStates(false, 'signed'));
+  // คำบนหมุดยังเป็นชุดเดียวกัน
+  const { EXTERNAL_ATTACHED_STEPS, EXTERNAL_STEPS } = await import('./contractLifecycle.js');
+  assert.deepEqual(EXTERNAL_ATTACHED_STEPS.map((s) => s.label), EXTERNAL_STEPS.map((s) => s.label));
+  /* หน้าใบ: การ์ดไฟล์โหลดแล้ว = เชื่อการ์ด · ยังไม่รู้ = ธงของเซิร์ฟเวอร์ (รีวิวรอบสอง 25/09 — เดิมอ่านการ์ดอย่างเดียว
+     ⇒ ชุดแรก `[]` ก่อนโหลดเสร็จ/โหลดพัง ทำให้รางกะพริบกลับไป "แนบเอกสาร") */
+  const page = readFileSync(new URL('../../app/sales-planning/contracts/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(page, /docAttached: externalDocsKnown \? externalDocs\.length > 0 : !!contract\?\._externalDocReady,/);
+  assert.match(page, /const handleAttachments = useCallback\(\(items, \{ loaded \} = \{\}\) => \{[\s\S]{0,400}?if \(!loaded\) return;/);
+  const route = readFileSync(new URL('../../app/api/sales-planning/contracts/[id]/route.js', import.meta.url), 'utf8');
+  assert.match(route, /externalDocReadyIds\(supabase, \[current\], user, \{ anyViewer: true, strict: true \}\)/);
+  assert.match(route, /_externalDocReady: externalDocReady,/);
+});
+
 test('ใบเสนอราคาถูกปิด: ร่างปิดตาม · ใบที่ออกเลขแล้วแค่เตือน', async () => {
   const {
     quotationClosure, contractFollowsQuotationClosure, contractQuotationNotice,
@@ -661,9 +712,10 @@ test('🔴 ตัวหาใบที่แนบเอกสารแล้ว
   const touched = [];
   const spy = { from(table) { touched.push(table); throw new Error('ห้ามแตะฐาน'); } };
 
-  // คนที่ไม่ใช่ผู้อนุมัติ — ไม่ยิงเลย
+  // คนที่ไม่ใช่ผู้อนุมัติ + ไม่ใช่ใบของตัวเอง — ไม่ยิงเลย (รีวิว 25/09: ใบของตัวเองถามได้ ดูเทสต์ถัดไป)
+  assert.equal((await externalDocReadyIds(spy, [ext({ id: 'C0', ownerId: 'U-OTHER', createdBy: 'U-OTHER' })], AE)).size, 0);
   assert.equal((await externalDocReadyIds(spy, [ext({ id: 'C0' })], AE)).size, 0);
-  assert.deepEqual(touched, [], 'คนที่กดอนุมัติไม่ได้ ต้องไม่ทำให้เกิดคิวรีเลย');
+  assert.deepEqual(touched, [], 'ใบของคนอื่นพลิกเลนของคนดูไม่ได้ ต้องไม่ทำให้เกิดคิวรีเลย');
   // ไม่มีใบ external ร่างในชุด — ไม่ยิงเลย
   assert.equal((await externalDocReadyIds(spy, [{ id: 'C1', status: 'draft' }], AE_SUP)).size, 0);
   assert.equal((await externalDocReadyIds(spy, [ext({ id: 'C2', status: 'signed' })], AE_SUP)).size, 0);
@@ -693,6 +745,80 @@ test('🔴 ตัวหาใบที่แนบเอกสารแล้ว
   assert.ok(calls.includes('attachments'));
   assert.ok(calls.includes('docType=external_doc'), `ถามด้วยคีย์ผิด: ${calls.join(' | ')}`);
   assert.ok(calls.some((c) => c.startsWith('entityId in ')));
+});
+
+/* ⭐ `anyViewer` — รางต้องรู้ว่าแนบแล้วไม่ว่าใครเปิด (เจ้าของใบคือคนที่ต้องเห็นมากที่สุด)
+   แต่ยังต้องไม่ยิงฐานถ้าไม่มีใบ external ร่างในชุด และไม่เปิดธง = ด่านผู้อนุมัติเหมือนเดิม */
+test('anyViewer: ถามให้คนที่ไม่ใช่ผู้อนุมัติได้ แต่ยังแคบเหมือนเดิม', async () => {
+  const { externalDocReadyIds } = await import('./contractExternalDocs.js');
+  const touched = [];
+  const spy = { from(table) { touched.push(table); throw new Error('ห้ามแตะฐาน'); } };
+  assert.equal((await externalDocReadyIds(spy, [{ id: 'C1', status: 'draft' }], AE, { anyViewer: true })).size, 0);
+  assert.deepEqual(touched, [], 'ไม่มีใบ external ร่าง ต้องไม่ถามฐานแม้เปิดธง');
+
+  const stub = {
+    from() {
+      const q = {
+        select: () => q, eq: () => q, in: () => q, order: () => q, range: () => q, limit: () => q,
+        then: (resolve) => resolve({ data: [{ entityId: 'C9' }], error: null }),
+      };
+      return q;
+    },
+  };
+  assert.deepEqual([...(await externalDocReadyIds(stub, [ext({ id: 'C9' })], AE, { anyViewer: true }))], ['C9']);
+  assert.equal((await externalDocReadyIds(stub, [ext({ id: 'C9' })], AE)).size, 0, 'ไม่เปิดธง + ไม่ใช่ใบของตัวเอง = ไม่ถาม');
+});
+
+/* 🔴 รีวิว 25/09: ร่างที่แนบเอกสารแล้วต้อง **หลุดเลน "ค้างอยู่กับคุณ" ของเจ้าของใบ** — รางบนแถวเดียวกัน
+   บอก "รอ AE Supervisor อนุมัติ" · ของเดิมถามให้ผู้อนุมัติอย่างเดียว ⇒ เจ้าของเห็นใบค้างในเลนตัวเอง
+   + ป้ายเมนู ทั้งที่ไม่มีอะไรให้ทำ · ตัวนับป้ายกับทะเบียนต้องได้ชุดเดียวกัน (`externalDocLaneIds`) */
+test('🔴 เจ้าของใบ: ร่าง external ที่แนบแล้วหลุดเลนตัวเอง — ป้ายเมนูกับทะเบียนได้ชุดเดียวกัน', async () => {
+  const { externalDocReadyIds, externalDocLaneIds } = await import('./contractExternalDocs.js');
+  // ไฟล์แนบมีจริงสองใบ · stub ตอบเฉพาะ id ที่ถูกถามใน `.in()` เหมือนฐานจริง
+  const withFile = new Set(['C-own', 'C-other']);
+  const stub = {
+    from() {
+      let asked = [];
+      const q = {
+        select: () => q, eq: () => q, order: () => q, range: () => q, limit: () => q,
+        in: (_col, ids) => { asked = ids; return q; },
+        then: (resolve) => resolve({ data: asked.filter((id) => withFile.has(id)).map((entityId) => ({ entityId })), error: null }),
+      };
+      return q;
+    },
+  };
+  const rows = [
+    ext({ id: 'C-own', ownerId: AE.id }),
+    ext({ id: 'C-other', ownerId: 'U-OTHER', createdBy: 'U-OTHER' }),
+    ext({ id: 'C-own-empty', ownerId: AE.id }),
+  ];
+  // ตัวนับป้าย (ไม่เปิดธง) — ถามเฉพาะใบของตัวเอง
+  const counter = await externalDocReadyIds(stub, rows, AE);
+  assert.deepEqual([...counter], ['C-own']);
+  // ทะเบียน (ถาม anyViewer ครั้งเดียว แล้วกรองด้วยกติกาเดียวกัน) — ต้องเท่ากับตัวนับเป๊ะ
+  const attached = await externalDocReadyIds(stub, rows, AE, { anyViewer: true });
+  assert.deepEqual([...externalDocLaneIds(rows, attached, AE)], [...counter]);
+  // ผู้อนุมัติได้ทุกใบ
+  assert.deepEqual([...externalDocLaneIds(rows, attached, AE_SUP)].sort(), ['C-other', 'C-own']);
+  // ผลที่เลน: ใบที่แนบแล้วไม่ใช่งานของเจ้าของ · ใบที่ยังไม่แนบยังเป็นงานของเจ้าของ
+  const lane = rows.filter((row) => isContractWaitingOnMe(row, {
+    userId: AE.id, user: AE, externalDocReady: counter.has(row.id),
+  })).map((row) => row.id);
+  assert.deepEqual(lane, ['C-own-empty']);
+});
+
+/* 🔴 **เลนคิวของทะเบียนต้องยังใช้ชุดที่ผ่านด่านผู้อนุมัติ** — ป้ายตัวเลขบนเมนูของเจ้าของใบ
+   คิดด้วยชุดว่าง (ตัวนับไม่เปิด anyViewer) ⇒ ถ้า route ของทะเบียนเอาชุด "แนบแล้ว" ไปตัดเลน
+   ป้ายกับรายการจะนับไม่ตรงกันทันที */
+test('🔴 route ทะเบียน: ธงแนบแล้วใช้กับราง ส่วนเลนคิวยังผ่านด่านผู้อนุมัติ', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/route.js', import.meta.url), 'utf8',
+  );
+  assert.match(route, /const docReady = externalDocLaneIds\(latest, docAttached, user\);/);
+  assert.match(route, /externalDocReady: docReady\.has\(row\.id\)/);
+  assert.match(route, /_externalDocReady: docAttached\.has\(row\.id\)/);
+  const counts = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(counts, /anyViewer/, 'ตัวนับป้ายยิงทุก 2 นาทีทุกคน ห้ามเปิดธงนี้');
 });
 
 /* กติกา GatedAction — เจ้าของขั้นเห็นปุ่มเสมอ คนอื่นไม่เห็น */
@@ -755,29 +881,63 @@ test('โมดัลสร้างสัญญากันแม่แบบ�
 
 /* ⭐ **ทางออกสัญญาจากใบสั่งขาย** — เดิมมีสี่ทาง (ดีล · โครงการ · ใบเสนอราคา · ทะเบียน)
    แต่ไม่มีทางจาก SO ทั้งที่การ์ดสัญญาบนใบนั้นเองบอกให้ *"ออกสัญญาที่เมนู สัญญา"*
-   🪤 **ต้องอยู่บนการ์ดจัดการ ไม่ใช่ในแท็บสัญญา** — แท็บนั้นขึ้นเฉพาะใบที่มีรอบบริการ
-      ⇒ ใบสายสินค้าที่ต้องออก "สัญญาจ้างผลิต" จะไม่มีปุ่มเลยและไม่มีทางรู้ว่ามันมีอยู่
+   ⭐ **25/09 ย้ายเข้าแท็บ "สัญญา" ซึ่งขึ้นทุกใบแล้ว** (มติเจ้าของ "เพิ่มสัญญาในหน้า SO" → "ทุกใบ")
+      ของเดิมปุ่มต้องอยู่การ์ดจัดการเพราะแท็บขึ้นเฉพาะใบที่มีรอบบริการ ⇒ ใบสายสินค้าไม่มีทางเข้า
+      ตอนนี้แท็บขึ้นทุกใบ ⇒ ปุ่มอยู่บนการ์ด "สัญญา" ของดีลในแท็บ · การ์ดจัดการไม่มีทางเข้าที่สอง
    🪤 **ต้องเป็นโมดัลตัวเดิม** — ก๊อปฟอร์มที่สองเมื่อไร สองฝั่งจะขาดคนละอย่างโดยไม่มีใครรู้
       (กฎ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ของ AGENTS.md) */
-test('⭐ หน้าใบสั่งขายออกสัญญาได้ ด้วยโมดัลตัวเดียวกับหน้าอื่น', () => {
+test('⭐ หน้าใบสั่งขายออกสัญญาได้ ด้วยโมดัลตัวเดียวกับหน้าอื่น — ผ่านการ์ดสัญญาของดีลในแท็บ', () => {
   const page = readFileSync(
     new URL('../../app/sales-planning/sales-orders/[id]/page.js', import.meta.url),
     'utf8',
   );
-  assert.match(page, /import ContractCreateModal from "@\/components\/salesPlanning\/ContractCreateModal";/);
-  // ส่งดีล+ใบเสนอราคาของใบไปให้ ⇒ ข้ามขั้นเลือกลูกค้า/ดีล
-  assert.match(page, /dealId=\{order\.dealId\}/);
-  assert.match(page, /quotationId=\{order\.quotationId\}/);
-  // ปุ่มอยู่ใน secondaryActions ของการ์ดจัดการ ไม่ใช่ในบล็อกของแท็บ
-  assert.match(page, /id: "contract",[\s\S]{0,200}?label: "ออกสัญญาจากใบนี้"/);
-  assert.ok(
-    page.indexOf('label: "ออกสัญญาจากใบนี้"') < page.indexOf('activeTab === "contract"'),
-    'ปุ่มต้องประกาศในชุด action ของการ์ดจัดการ ไม่ใช่ในเนื้อแท็บสัญญา',
+  const card = readFileSync(
+    new URL('../../components/salesPlanning/DealContractsCard.js', import.meta.url),
+    'utf8',
   );
-  /* ใบที่ตายแล้วไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
+  // การ์ดของดีลเปิดโมดัลตัวกลาง ส่งดีล+ใบเสนอราคาต่อ ⇒ ข้ามขั้นเลือกลูกค้า/ดีล
+  assert.match(card, /import ContractCreateModal from "@\/components\/salesPlanning\/ContractCreateModal";/);
+  assert.match(card, /<ContractCreateModal[\s\S]{0,120}?dealId=\{dealId\}[\s\S]{0,80}?quotationId=\{quotationId\}/);
+  // หน้าใบส่งดีล+ใบเสนอราคาของใบเข้าการ์ด และปุ่มผ่านด่านของหน้า
+  assert.match(page, /<DealContractsCard dealId=\{order\.dealId\} quotationId=\{order\.quotationId\} canEdit=\{canCreateContract\} \/>/);
+  assert.ok(
+    page.indexOf('<DealContractsCard') > page.indexOf('activeTab === "contract"'),
+    'การ์ดต้องอยู่ในเนื้อแท็บสัญญา',
+  );
+  // ไม่มีทางเข้าที่สองบนหน้าเดียวกัน — ไม่มีโมดัลของหน้าเอง และไม่มีปุ่มบนการ์ดจัดการ
+  assert.doesNotMatch(page, /import ContractCreateModal/);
+  assert.doesNotMatch(page, /label: "ออกสัญญาจากใบนี้"/);
+  /* ใบที่ตายแล้ว/โหมดแก้ไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
      ⚠️ 0374 เพิ่มใบย้อนหลังเข้ามาอีกกรณี: สัญญาของใบคือ "เอกสารแทนสัญญา" ที่ฟอร์มคีย์ใบสร้างและอนุมัติ
      พร้อมใบ ⇒ ฉบับที่สองที่ออกจากที่นี่ผูกกับใบไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่) */
-  assert.match(page, /visible: canEdit && !historical && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\)/);
+  assert.match(page, /const canCreateContract = canEdit && !historical && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\);/);
+});
+
+/* 🔴 รีวิว 25/09: ข้อความ "ยังไม่มีสัญญาที่ผูกได้" ของการ์ดผูกสัญญาบริการเคยชี้ "การ์ด สัญญา ด้านล่าง" ทุกกรณี
+   ทั้งที่การ์ดนั้นไม่มีปุ่มให้ (ดูอย่างเดียว · ใบปิดแล้ว · โหมดแก้) หรือไม่ถูกวาดเลย (ใบย้อนหลัง) */
+test('🔴 การ์ดผูกสัญญาชี้ "การ์ดด้านล่าง" เฉพาะเมื่อการ์ดนั้นมีปุ่มออกสัญญาให้คนนี้จริง', () => {
+  const card = readFileSync(new URL('../../components/salesPlanning/ServiceContractCard.js', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../../app/sales-planning/sales-orders/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(card, /const noContractNext = canCreateBelow\s*\n\s*\? "ออกสัญญา หรือใช้เอกสารภายนอก[^"]*การ์ด “สัญญา” ด้านล่าง/);
+  // ข้อความชี้การ์ดข้างล่างมีที่เดียว (สาขา canCreateBelow) + สาขาโหมดแก้ที่บอกให้ออกจากโหมดก่อน
+  assert.equal(card.match(/การ์ด “สัญญา” ด้านล่าง/g).length, 2);
+  /* ใบย้อนหลัง: ทางกู้ที่ใช้ได้จริงคือหน้าดีล (โมดัลของทะเบียนเลือกดีลภาชนะไม่ได้ — ไม่มีใบเสนอราคาอนุมัติ) */
+  assert.match(card, /: isHistoricalOrder\(order\)[\s\S]{0,700}?href=\{`\/sa\/deals\/\$\{order\.dealId\}\?tab=quotations`\}/);
+  assert.match(page, /canCreateBelow=\{showDealContracts && canCreateContract\}/);
+});
+
+/* 🔴 รีวิว 25/09: การ์ดสัญญาของดีลเป็นเนื้อหลักของแท็บ "สัญญา" บนทุก SO แล้ว — โหลดพังต้องไม่ขึ้น "0 ฉบับ ·
+   ยังไม่มีสัญญาของดีลนี้" (ว่างปลอม = ชวนออกร่างซ้ำ) · กติกาเดียวกับ `useApiList` (apiListErrorVisible) */
+test('🔴 การ์ดสัญญาของดีล: โหลดพังขึ้น error + ลองใหม่ ไม่ใช่ว่างปลอม', () => {
+  const card = readFileSync(new URL('../../components/salesPlanning/DealContractsCard.js', import.meta.url), 'utf8');
+  assert.match(card, /if \(!res\.ok\) \{\s*\n\s*setFailure\(httpLoadFailure\(res\.status, data\?\.error\)\);/);
+  assert.match(card, /<StatusNotice\s*\n\s*tone="error"[\s\S]{0,200}?action=\{<Button[^>]*onClick=\{load\}>ลองใหม่<\/Button>\}/);
+  // เลขจำนวน + ข้อความว่าง ขึ้นเฉพาะเมื่อรู้แล้ว (เคยโหลดสำเร็จ)
+  assert.match(card, /meta=\{loaded \? `\$\{rows\.length\} ฉบับ` : failed \? "—" : "กำลังโหลด…"\}/);
+  assert.match(card, /\{loaded && !rows\.length && \(\s*\n\s*<TableEmpty/);
+  assert.doesNotMatch(card, /setRows\(\[\]\)/, 'ห้ามแปลงความล้มเป็นลิสต์ว่าง');
+  // ปุ่มออกสัญญากดได้เมื่อรู้แล้วว่าดีลมีสัญญาอะไร
+  assert.match(card, /disabled=\{!loaded\}/);
 });
 
 /* ── เลขที่สัญญามีอักษรย่อชนิด (มติผู้ใช้ 2026-08-31) ─────────────────────────

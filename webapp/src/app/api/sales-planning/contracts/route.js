@@ -18,7 +18,7 @@ import {
 } from '@/lib/sales/contracts';
 import { contractFieldDefaults, hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
 import { quotationClosure } from '@/lib/sales/contractQuotationState';
-import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
+import { externalDocLaneIds, externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
 import { syncContractsAgainstQuotations } from '@/lib/sales/contractQuotationSync';
 import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
@@ -60,8 +60,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .map((row) => (cancelledIds.has(row.id) ? { ...row, status: 'cancelled' } : row))
     .filter((row) => !status || status === 'all' || row.status === status);
   /* ใบ external ร่างที่แนบเอกสารแล้ว = งานของ AE Sup ไม่ใช่ของเจ้าของใบอีกต่อไป
-     ⚠️ คิวรีนี้ไม่ยิงเลยถ้าคนดูไม่ใช่ผู้อนุมัติ หรือไม่มีใบ external ร่างในชุดนี้ */
-  const docReady = await externalDocReadyIds(supabase, latest, user);
+     ⭐ **ถามครั้งเดียว ใช้สองเรื่อง** (2026-09-15) — `docAttached` บอก *ทุกคน* ว่าใบแนบแล้ว
+       (รางขึ้น "รอ AE Supervisor อนุมัติ" แทน "แนบเอกสาร" ซึ่งเจ้าของใบเคยเห็นค้างไว้
+       ทั้งที่แนบไปแล้ว) ส่วน `docReady` ตัดสินเลนคิว
+     ⚠️ **เลนต้องเท่ากับป้ายเมนูเป๊ะ** — `externalDocLaneIds` ให้ผลเท่ากับที่ตัวนับป้ายถาม
+        (`externalDocReadyIds` แบบไม่เปิดธง: ผู้อนุมัติ = ทุกใบ · เจ้าของ/คนสร้าง = ใบของตัวเอง)
+        ⇒ ร่างที่แนบแล้วหลุดจากเลน "ค้างอยู่กับคุณ" ของเจ้าของใบทั้งสองที่พร้อมกัน (รีวิว 25/09)
+     ⚠️ ไม่ยิงเลยถ้าไม่มีใบ external ร่างในชุดนี้ (เงื่อนไขอยู่ในตัวหาเอง) */
+  const docAttached = await externalDocReadyIds(supabase, latest, user, { anyViewer: true });
+  const docReady = externalDocLaneIds(latest, docAttached, user);
 
   const rows = latest
     // เนื้อเอกสารที่ตรึงไว้หนักและไม่มีใครใช้ในลิสต์ — ตัดออกก่อนส่ง
@@ -72,6 +79,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       _waitingOnMe: isContractWaitingOnMe(row, {
         userId: user.id, user, externalDocReady: docReady.has(row.id),
       }),
+      // รางของใบ external อ่านธงนี้ — แนบแล้วคือรอผู้อนุมัติ ไม่ใช่รอเจ้าของไปแนบ
+      _externalDocReady: docAttached.has(row.id),
       // ป้าย "ใบเสนอราคาถูกปิด" บนทะเบียน — ใบที่ออกเลขแล้วไม่ถูกแตะ แต่ต้องเห็นว่ามีเรื่อง
       _quotationClosure: quotationClosure(quotationById.get(row.quotationId)) || null,
     }));
