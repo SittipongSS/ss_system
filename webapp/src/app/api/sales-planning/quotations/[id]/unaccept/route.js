@@ -98,11 +98,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      กลับฐาน — เฉพาะดีลที่ไม่มีใครขยับ FC% หลัง cascade (ตัดสินจาก audit ดู lib/sales/dealProbability)
      ⚠️ ขานี้มีเฉพาะทางย้อนการรับใบ — ยกเลิก SO พร้อมย้อนสถานะ (0170) กับแอดมินลบใบบังคับ (0381) ไม่ถอยให้
         (มติ 25/09 ข้อ 4: ขอบเขตเดียวกับการเปิดใบพี่น้องคืน)
-     best-effort แบบเดียวกับ cascade ขาเข้า: ย้อนรับใบ commit ไปแล้ว ⇒ ไม่ throw · ทุกแถวที่ขยับลง audit */
-  const probability = await settleProbabilityAfterUnaccept(supabase, result?.deal, { quoteNumber: before.quoteNumber });
-  for (const warning of probability.warnings) console.error('probability after unaccept', before.deal.id, warning);
-  for (const row of probability.touched) {
-    await recordAudit({
+     best-effort แบบเดียวกับ cascade ขาเข้า: ย้อนรับใบ commit ไปแล้ว ⇒ ไม่ throw · ทุกแถวที่ขยับลง audit
+     ⚠️ audit ลงผ่าน `record` ระหว่าง settle (หลังเขียนแต่ละแถว ก่อนขาอ่านตรวจซ้ำ) ไม่ใช่วนลงทีหลัง — คำขออื่นในโครงการ
+        เดียวกันตัดสินจาก audit ระหว่างทาง (เหตุผลเต็มที่ pickUnacceptRecheck · review 25/09) */
+  const probability = await settleProbabilityAfterUnaccept(supabase, result?.deal, {
+    quoteNumber: before.quoteNumber,
+    record: (row) => recordAudit({
       user,
       action: 'update',
       entityType: 'sales_deal',
@@ -111,8 +112,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       after: { probability: row.probability },
       summary: row.summary,
       request: req,
-    });
-  }
+    }),
+  });
+  for (const warning of probability.warnings) console.error('probability after unaccept', before.deal.id, warning);
 
   const { data: after } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   /* ⚠️ `deal` ที่ส่งกลับเป็น snapshot ของ RPC = **ก่อน** คิดยอดใหม่ · ยอดจริงหลังคิดใหม่อยู่ใน `forecast`

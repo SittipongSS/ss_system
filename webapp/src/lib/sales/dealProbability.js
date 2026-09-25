@@ -26,6 +26,7 @@
 //           · NPD พี่น้องที่ cascade ดันไว้ กลับฐาน **เฉพาะเมื่อ** โครงการไม่เหลือ SCENT ที่ Won
 //             **และ** audit ล่าสุดที่ขยับ FC% ของดีลนั้นยังเป็นของ cascade (ไม่มีใครแตะหลังจากนั้น)
 //             ⚠️ 80 เป็นระดับที่ AE เลือกเองได้ปกติ ⇒ ดูแค่ตัวเลขไม่พอ ต้องดูว่าใครตั้ง
+//           · เขียน → ลง audit → อ่านโครงการซ้ำ แก้ค่าของเราที่คำขออื่นพลิกเงื่อนไขระหว่างทาง (pickUnacceptRecheck)
 //   ⚠️ ขาออกมีเฉพาะทาง "ย้อนการรับใบ" — ยกเลิก SO พร้อมย้อนสถานะ (0170) กับแอดมินลบใบบังคับ
 //      (0381) ไม่ถอย 80 ให้ (มติ 25/09 ข้อ 4 ขอบเขตเดียวกับการเปิดใบพี่น้องคืน) ⇒ 80 ที่ค้างจาก
 //      สองทางนั้นจะถูกถอยในการย้อนรับใบครั้งถัดไปของโครงการเดียวกัน ถ้าเข้าเงื่อนไขครบ
@@ -197,6 +198,12 @@ export function unacceptProbabilityAuditSummary(row, quoteNumber, { byWonScentRu
     : `FC ${row.previousProbability}% → ${row.probability}% (ย้อนการรับใบ ${quoteNumber} — FC ตามกติกาของดีลเปิด)`;
 }
 
+/* ขาตรวจซ้ำคืน 80 ให้ NPD ที่เราเพิ่งถอย เพราะระหว่างทางมี SCENT ในโครงการปิด Won (ดู pickUnacceptRecheck)
+   = 80 ของกติกา ⇒ **ติดป้าย cascade** ให้ถอยได้อีกวันที่ SCENT ใบนั้นถูกย้อน */
+export function npdRecheckRestoreAuditSummary(row, quoteNumber) {
+  return `FC ${row.previousProbability}% → ${row.probability}% (${NPD_CASCADE_AUDIT_TAG} ระหว่างย้อนการรับใบ ${quoteNumber} — คืนค่าที่เพิ่งถอย)`;
+}
+
 /* ── ขาออก: ย้อนการรับใบ → NPD ที่ cascade ดันไว้กลับฐาน (มติ 25/09) ────────────── */
 
 /** audit ล่าสุดที่ขยับ FC% (changedKeys มี probability) ของแต่ละดีล
@@ -263,6 +270,8 @@ async function loadProbabilityAudits(supabase, dealIds) {
 /**
  * ถอย 80 ของ NPD ในโครงการ หลังย้อนการรับใบ
  * ⚠️ เขียนแบบมีด่านค่าเดิม (`.eq('probability', ค่าที่อ่าน)`) — AE ที่แก้ FC ระหว่างที่เราอ่านอยู่ชนะเสมอ
+ *    แต่ด่านนี้ไม่เห็นคำขออื่นที่ทำให้โครงการมี SCENT Won ขึ้นมาระหว่างทาง ⇒ ผู้เรียกต้องตรวจซ้ำหลังเขียน
+ *    (settleProbabilityAfterUnaccept ทำให้ · ดู pickUnacceptRecheck)
  * @returns {{ touched, warnings }} — เขียนไม่ผ่านรายแถวไม่ล้มแถวอื่น (ย้อนรับใบ commit ไปแล้ว)
  *          · อ่านไม่ผ่าน = throw (ยังไม่ได้เขียนอะไร และไม่เดาว่า 80 ไหนเป็นของ cascade)
  */
@@ -292,6 +301,66 @@ export async function decascadeNpdProbability(supabase, projectId, { exceptDealI
   return { touched, warnings };
 }
 
+/* ── ขาตรวจซ้ำ: อีกคำขอในโครงการเดียวกันพลิกเงื่อนไขระหว่างที่เราอ่าน-แล้ว-เขียน (review 25/09) ──────────
+ *
+ * ขาดีลตัวเองกับขาถอยตัดสินจากการอ่าน "โครงการมี SCENT Won ไหม" ครั้งเดียวแล้วค่อยเขียน · RPC ของคำขออื่น
+ * commit แทรกกลางได้ เพราะ RPC ล็อกแค่แถวใบกับแถวดีลของตัวเอง ไม่ได้ล็อกทั้งโครงการ · ด่าน `.eq('probability', …)`
+ * กันได้แค่ AE ที่แก้ช่องเดียวกัน ของจริงที่ทำซ้ำได้ (เทสต์ "แข่ง" ใน dealProbabilityCascade.test.mjs):
+ *   ① เราถอย N 80→50 ขณะที่ B รับใบ S2 · cascade ของ B อ่านตอน N ยัง 80 เลยไม่ทำอะไร ⇒ N ค้าง 50 ทั้งที่ S2 Won
+ *   ② เราให้ N (ดีลที่ถูกย้อน) 80 ขณะที่ B ย้อน S ใบสุดท้าย · ขาถอยของ B อ่านตอน N ยัง 50 ⇒ N ค้าง 80 ไม่มี SCENT Won
+ * ทางแก้แบบไม่ต้องมี migration: **เขียน → ลง audit → อ่านโครงการซ้ำหนึ่งครั้ง** แล้วแก้เฉพาะค่าที่เราเพิ่งเขียน
+ * เมื่อเงื่อนไขพลิกไปแล้ว · ปิดได้เพราะสองฝ่ายทำแบบเดียวกัน (Dekker): เราเขียนแล้วอ่าน ส่วนอีกฝ่าย commit RPC แล้วอ่าน
+ * ⇒ อย่างน้อยหนึ่งฝ่ายเห็นของอีกฝ่ายเสมอ แล้วฝ่ายนั้นเป็นคนแก้
+ *   ⚠️ audit ต้องลง **ก่อน** อ่านซ้ำ (ผ่าน `record`) เพราะขาถอยของอีกฝ่ายตัดสินจาก audit ไม่ใช่ค่าอย่างเดียว ⇒ ถ้าลงทีหลัง
+ *      กรณี ② ขาถอยของ B เห็น N = 80 แต่ยังไม่เห็นป้าย cascade ของเรา เลยถือว่า "AE ตั้งเอง" แล้วไม่ถอย
+ *   ⚠️ ที่ยังเหลือ: ค่าที่ขาตรวจซ้ำแก้เองไม่ถูกตรวจซ้ำอีกชั้น ⇒ ต้องมีคำขอที่สามในโครงการเดียวกันชนพอดีภายในหนึ่ง
+ *      round trip · ปิดสนิทต้องล็อกระดับโครงการในฐาน (advisory lock) ซึ่งงานชุดนี้ไม่มี migration
+ *      และ FC% เป็นน้ำหนักพยากรณ์ ไม่ใช่เงินหรือยอด Actual · AE แก้เองได้ */
+
+/**
+ * ค่าที่ต้องแก้หลังอ่านโครงการซ้ำ (บริสุทธิ์)
+ * @param deals     ดีลทุกใบของโครงการ อ่าน **หลัง** เขียนและลง audit แล้ว
+ * @param selfId    ดีลที่ถูกย้อน
+ * @param selfWrite ค่าที่ขาดีลตัวเองเขียน **จากกติกา SCENT Won** เท่านั้น ({ probability }) — ค่าอื่นไม่ได้อิงการอ่านโครงการ
+ * @param lowered   NPD ที่ขาถอยเพิ่งถอย ({ id, probability = ฐานที่เราเขียน })
+ * @returns [{ id, previousProbability, probability, onlyIf, kind }] — `onlyIf` = ค่าที่ต้องเป็นอยู่ตอนเขียน (ด่านในฐาน)
+ *
+ *   restore  มี SCENT Won แล้ว ⇒ NPD ที่เราถอยกลับเป็นค่ากติกา · onlyIf รวมค่ากติกาด้วย: ถ้า cascade ของอีกฝ่ายคืน 80
+ *            ให้ก่อนแล้ว เราก็ยังลงบรรทัดป้าย cascade ต่อท้าย audit ขาถอยของเราเอง ⇒ ร่องรอยล่าสุดไม่ค้างเป็น "ถอยแล้ว"
+ *            (ลำดับ audit ระหว่างคำขอคุมไม่ได้ — audit ของเขาอาจลงก่อนของเรา) · ค่าอื่น = มีคนตั้ง ไม่แตะ
+ *   revert   ไม่เหลือ SCENT Won (ไม่นับตัวเอง) ⇒ ดีลตัวเองที่เราให้ 80 ตามกติกา กลับฐาน · onlyIf = ค่าที่เราเขียนเท่านั้น
+ *            (ขาถอยของอีกฝ่ายถอยให้แล้ว = ไม่ลงซ้ำ)
+ */
+export function pickUnacceptRecheck(deals, { selfId = null, selfWrite = null, lowered = [] } = {}) {
+  const rows = deals || [];
+  const byId = new Map(rows.map((row) => [String(row.id), row]));
+  const picks = [];
+
+  if (selfWrite) {
+    const self = byId.get(String(selfId));
+    const wonScentElsewhere = rows.some((row) => String(row.id) !== String(selfId) && isWonScentDeal(row));
+    if (self && !wonScentElsewhere && npdWonScentRuleApplies(self)
+      && Number(self.probability) === Number(selfWrite.probability)) {
+      const base = autoProbability(self);
+      if (base !== Number(selfWrite.probability)) {
+        picks.push({ id: self.id, previousProbability: Number(selfWrite.probability), probability: base, onlyIf: [Number(selfWrite.probability)], kind: 'revert' });
+      }
+    }
+  }
+
+  if ((lowered || []).length && rows.some(isWonScentDeal)) {
+    for (const low of lowered) {
+      const row = byId.get(String(low.id));
+      if (!row || !npdWonScentRuleApplies(row)) continue;
+      const target = autoProbability(row, { wonScentInProject: true });
+      const onlyIf = [Number(low.probability), target];
+      if (!onlyIf.includes(Number(row.probability))) continue;
+      picks.push({ id: row.id, previousProbability: Number(low.probability), probability: target, onlyIf, kind: 'restore' });
+    }
+  }
+  return picks;
+}
+
 /**
  * FC% หลังย้อนการรับใบ — เรียกจาก route ย้อนรับใบ **หลัง** RPC สำเร็จ (มติ 25/09 ข้อ 3)
  *   1) ดีลที่ถูกย้อน: resolveProbability แทนค่าตั้งต้นของขั้นที่ RPC ตั้ง (deal_probability_for_stage)
@@ -299,16 +368,33 @@ export async function decascadeNpdProbability(supabase, projectId, { exceptDealI
  *      ⚠️ FC% ที่ AE เลือกไว้ก่อนรับใบไม่กลับมา — ไม่มีที่เก็บ และมติให้ใช้กติกา
  *      ⚠️ แถว 'reversal' ใน sales_deal_forecasts ที่ RPC เขียนยังถือค่าตั้งต้นของขั้น — ค่าจริงอยู่ที่ดีล + audit
  *   2) NPD พี่น้อง: decascadeNpdProbability (เงื่อนไขครบชุดอยู่ที่ pickNpdDecascade)
+ *   3) ตรวจซ้ำ (เฉพาะเมื่อ 1–2 เขียนอะไรที่อิงการอ่านโครงการ): อ่านโครงการซ้ำหนึ่งครั้งแล้วแก้ค่าของเราที่เงื่อนไขพลิก
+ *      (ดู pickUnacceptRecheck) · ไม่มีใครแข่ง = อ่านเพิ่มหนึ่งครั้ง ไม่เขียนเพิ่ม
+ *   ⚠️ ขา 1 กับ 2 อยู่คนละ try โดยตั้งใจ — ขาหนึ่งพังต้องไม่ข้ามอีกขา (เทสต์พังทีละขาล็อกไว้)
  *
  * @param deal แถวดีลที่ RPC คืนมา (`result.deal`) — ไม่อ่านแถวซ้ำ (systemRules กฎ 6)
+ * @param opts.record async (row) => void — ลง audit ของแถวที่ขยับ **ทันทีหลังเขียน ก่อนขาตรวจซ้ำ**
+ *   (route ส่ง recordAudit มา) · ห้ามให้ผู้เรียกวนลง audit จาก touched ทีหลัง: ขาถอยของคำขออื่นอ่าน audit ระหว่างทาง
+ *   record พัง = คำเตือน ค่าที่เขียนแล้วยังนับ (เขียนไปแล้วจริง)
  * @returns {{ touched: Array<{id, previousProbability, probability, summary}>, warnings: string[] }}
- *          ไม่ throw — ย้อนรับใบ commit ไปแล้ว ผู้เรียกลง audit ทุกแถวใน touched และ log warnings
+ *          ไม่ throw — ย้อนรับใบ commit ไปแล้ว · touched ตามลำดับที่เขียนจริง (แถวเดียวกันขึ้นสองครั้งได้เมื่อขาตรวจซ้ำแก้)
  */
-export async function settleProbabilityAfterUnaccept(supabase, deal, { quoteNumber = '' } = {}) {
+export async function settleProbabilityAfterUnaccept(supabase, deal, { quoteNumber = '', record = null } = {}) {
   const touched = [];
   const warnings = [];
   if (!deal?.id) return { touched, warnings };
 
+  const commit = async (row) => {
+    touched.push(row);
+    if (typeof record !== 'function') return;
+    try {
+      await record(row);
+    } catch (error) {
+      warnings.push(`ลง audit FC% ของดีล ${row.id} ไม่สำเร็จ: ${error?.message || error}`);
+    }
+  };
+
+  let selfWrite = null;
   try {
     const next = await resolveProbability(supabase, deal);
     if (next !== Number(deal.probability)) {
@@ -323,19 +409,51 @@ export async function settleProbabilityAfterUnaccept(supabase, deal, { quoteNumb
         const row = { id: deal.id, previousProbability: deal.probability, probability: next };
         // resolveProbability ต่างจากฐานของขั้นได้ทางเดียวคือกติกา SCENT Won ⇒ ต่างจากฐาน = กติกาตั้ง
         const byWonScentRule = next !== autoProbability(deal);
-        touched.push({ ...row, summary: unacceptProbabilityAuditSummary(row, quoteNumber, { byWonScentRule }) });
+        if (byWonScentRule) selfWrite = row;
+        await commit({ ...row, summary: unacceptProbabilityAuditSummary(row, quoteNumber, { byWonScentRule }) });
       }
     }
   } catch (error) {
     warnings.push(`FC% ของดีล ${deal.id}: ${error?.message || error}`);
   }
 
+  const lowered = [];
   try {
     const result = await decascadeNpdProbability(supabase, deal.projectId, { exceptDealId: deal.id });
-    for (const row of result.touched) touched.push({ ...row, summary: npdDecascadeAuditSummary(row, quoteNumber) });
     warnings.push(...result.warnings);
+    for (const row of result.touched) {
+      lowered.push(row);
+      await commit({ ...row, summary: npdDecascadeAuditSummary(row, quoteNumber) });
+    }
   } catch (error) {
     warnings.push(`ถอย FC% ของ NPD ในโครงการ ${deal.projectId}: ${error?.message || error}`);
+  }
+
+  if (!selfWrite && !lowered.length) return { touched, warnings };
+  try {
+    const deals = await loadProjectDeals(supabase, deal.projectId);
+    for (const pick of pickUnacceptRecheck(deals, { selfId: deal.id, selfWrite, lowered })) {
+      const { data, error } = await supabase
+        .from('sales_deals')
+        .update({ probability: pick.probability, updatedAt: new Date().toISOString() })
+        .eq('id', pick.id)
+        .in('probability', pick.onlyIf)
+        .select('id');
+      if (error) {
+        warnings.push(`ตรวจซ้ำ FC% ของดีล ${pick.id} ไม่สำเร็จ: ${error.message}`);
+        continue;
+      }
+      if (!data?.length) continue;
+      const row = { id: pick.id, previousProbability: pick.previousProbability, probability: pick.probability };
+      await commit({
+        ...row,
+        summary: pick.kind === 'restore'
+          ? npdRecheckRestoreAuditSummary(row, quoteNumber)
+          : npdDecascadeAuditSummary(row, quoteNumber),
+      });
+    }
+  } catch (error) {
+    warnings.push(`ตรวจซ้ำ FC% ในโครงการ ${deal.projectId}: ${error?.message || error}`);
   }
   return { touched, warnings };
 }
