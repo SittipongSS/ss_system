@@ -61,7 +61,7 @@ const CAPS = {
   project_tasks: 19,            // 4,653 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
   notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
   personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
-  sales_deals: 28,              // 353
+  sales_deals: 27,              // 353 · 28 → 27 (2026-09-25: cascade FC% ของ NPD อ่านดีลทั้งโครงการผ่าน fetchAll — lib/sales/dealProbability.js)
   products: 22,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ · 24 → 22 (ม-150: ด่าน 1 สูตร : 1 FG ถอดแล้ว + attachFormulaUsage ซอยก้อน)
   quotations: 6,                // 198
   customers: 7,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ
