@@ -162,5 +162,10 @@ test('🔒 ผู้เขียนงวดยกมามีแค่ใบย
   const jsFiles = walk(SRC)
     .filter((url) => /'opening'|OPENING_INSTALLMENT_KIND/.test(stripJsComments(readFileSync(url, 'utf8'))))
     .map((url) => url.pathname.slice(SRC.pathname.length)).sort();
-  assert.deepEqual(jsFiles, ['lib/sales/historicalIntakeForm.js', 'lib/sales/historicalOrderPlan.js', 'lib/sales/historicalOrders.js']);
+  assert.deepEqual(jsFiles, [
+    'lib/sales/historicalIntakeForm.js',
+    'lib/sales/historicalOrderPlan.js',
+    'lib/sales/historicalOrders.js',
+    'lib/sales/historicalReviewView.js', // ขั้น ④: 'opening' = คีย์แถว/ช่องบนจอ (อ่านแผนอย่างเดียว ไม่เขียนงวด)
+  ]);
 });

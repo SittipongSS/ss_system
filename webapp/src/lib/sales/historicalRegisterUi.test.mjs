@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import * as intakeForm from './historicalIntakeForm.js';
 import * as historicalOrders from './historicalOrders.js';
 import * as orderCopy from './historicalOrderCopy.js';
+import * as reviewView from './historicalReviewView.js';
 import { HISTORICAL_NEW_PATH } from './historicalOrders.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -175,14 +176,14 @@ test('⭐ รหัสการคีย์ออกใหม่จุดเด�
    · กดใหม่ต้องไม่อัปไฟล์ซ้ำ (retry-must-not-reupload) ⇒ ไฟล์ที่อัปแล้วถูกจำไว้ */
 test('⭐ การบันทึกเดินตาม nextSaveStage · เปลี่ยน URL ด้วย replaceState · ไม่อัปไฟล์ซ้ำ', () => {
   const src = code(WIZARD);
-  assert.match(src, /const stage = nextSaveStage\(progress\);/);
+  assert.match(src, /stage = nextSaveStage\(progress\);/);
   assert.match(src, /progress = saveProgressAfter\(progress, stage/);
   assert.match(src, /window\.history\.replaceState\(null, "", historicalEditPath\(orderRowId\)\)/);
   assert.match(src, /uploadedContract\.current\.set\(fileKey\(file\), ref\)/);
   assert.match(src, /uploadedEvidence\.current\.set\(fileKey\(file\), ref\)/);
   assert.match(src, /ref: uploadedContract\.current\.get\(fileKey\(file\)\) \|\| null/);
   assert.match(src, /ref: uploadedEvidence\.current\.get\(fileKey\(file\)\) \|\| null/);
-  assert.match(src, /notifyToast\.success\(/, 'ผลสำเร็จต้องเป็น toast ระดับแอป (อยู่รอดข้ามการเปลี่ยนหน้า)');
+  assert.match(src, /notifyToast\.success\(historicalSubmitToast\(orderNumber\)\)/, 'ผลสำเร็จต้องเป็น toast ระดับแอป (อยู่รอดข้ามการเปลี่ยนหน้า) · ถ้อยคำจากตัวตัดสิน');
   assert.match(src, /router\.push\(ORDER_PATH\(orderRowId\)\)/);
 });
 
@@ -204,7 +205,8 @@ test('⭐ รางขั้นเป็น ui/SectionRail · สรุปมา
   const src = code(WIZARD);
   assert.match(src, /import SectionRail from "@\/components\/ui\/SectionRail"/);
   assert.match(src, /<SectionRail/);
-  assert.match(src, /const rail = historicalWizardRail\(state, \{ step, localIssues, serverIssues: issues, plan, customerLabel, revealedSteps, zeroValue \}\);/);
+  assert.match(src, /const rail = historicalWizardRail\(state, \{\s*step, localIssues, serverIssues: issues, plan, customerLabel, revealedSteps, zeroValue,\s*duplicatesPending: duplicates\.length > 0 && !acknowledged,\s*\}\);/,
+    'ขั้น ④ ที่ยังไม่ยืนยันใบซ้ำต้องไม่ขึ้น "พร้อมส่ง" บนราง (รีวิวขั้น ④ 25/09)');
   const sections = slice(src, 'const sections = rail.map', '}));');
   for (const key of ['key:', 'label:', 'title:', 'tone:']) assert.ok(sections.includes(key), key);
   assert.ok(!sections.includes('count:'), 'เศษส่วนบนรางเคยบอกว่าเสร็จทั้งที่ยังไม่เริ่ม');
@@ -217,7 +219,7 @@ test('⭐ รางขั้นเป็น ui/SectionRail · สรุปมา
    บนจอเลย ซ้ำยังล้าง error ของ server ที่อยู่บนจอทิ้ง ⇒ กติกาใหม่: คาข้อความไว้ + พาไปที่ช่องแรกที่ผิด */
 test('⭐ ติดด่านแล้วต้องพาไปที่ช่อง ไม่ใช่ return เงียบ ๆ (และห้ามล้าง error ของ server)', () => {
   const src = code(WIZARD);
-  const goTo = slice(src, 'const goToStep = useCallback', '}, [step, runPreview, localIssues, state, reveal]);');
+  const goTo = slice(src, 'const goToStep = useCallback', '}, [step, runPreview, localIssues, reveal, applyPreviewErrors]);');
   assert.match(goTo, /const block = historicalNextBlock\(localIssues, from\);/);
   assert.match(goTo, /if \(block\.blocked\) \{ setFocusField\(block\.field\); return; \}/);
   assert.doesNotMatch(goTo, /issuesForStep\(localIssues, from\)\.length\) \{ setIssues\(\[\]\)/,
@@ -586,10 +588,12 @@ test('⭐ ช่องวันสัญญาไม่กลืนค่าท�
    ⭐ มติเจ้าของ 23/09: ขั้น ② **เลิกถามระยะสัญญา** — ยอดของโซนคือ จำนวน × ราคา/หน่วย แบบใบเสนอราคา
       (ช่อง "ระยะสัญญา" มีไว้ให้ปุ่มลัด × เดือน ซึ่งถูกถอด) ⇒ ขั้น ② ต้องไม่มีตัวเดือนสักตัว */
 test('⭐ ป้ายระยะสัญญาอ่านจาก contractSpan — ช่วงที่ไม่ลงตัวเป็นเดือนต้องบอกเหตุ', () => {
-  for (const file of [STEP_CONTRACT, STEP_MONEY, STEP_REVIEW, SPLIT]) {
+  /* ⭐ ขั้น ④ (มติ 25/09): ประโยคของแถวตรวจอยู่ที่ lib (`historicalReviewView`) — จอไม่คิดเดือนเองแล้ว */
+  const REVIEW_VIEW = 'lib/sales/historicalReviewView.js';
+  for (const file of [STEP_CONTRACT, STEP_MONEY, STEP_REVIEW, REVIEW_VIEW, SPLIT]) {
     const src = code(file);
     /* ⭐ 25/09: ขั้น ③ นับเดือนด้วย `serviceMonthSpan` (contractMonths + สัญญาที่จบตรงวันครบรอบ — มติข้อ 3) */
-    if (file !== SPLIT) assert.match(src, file === STEP_MONEY ? /serviceMonthSpan\(/ : /contractSpan\(/, file);
+    if (file !== SPLIT && file !== STEP_REVIEW) assert.match(src, file === STEP_MONEY ? /serviceMonthSpan\(/ : /contractSpan\(/, file);
     assert.doesNotMatch(src, /contractMonths\(/, `${file} ต้องไม่เรียกตัวเดือนดิบ (ไม่มีช่องบอกเหตุ)`);
   }
   assert.match(code(STEP_CONTRACT), /\(spanNote \? <small>\{spanNote\}<\/small> : null\)/,
@@ -601,19 +605,27 @@ test('⭐ ป้ายระยะสัญญาอ่านจาก contractS
     'ขั้น ② ไม่คิดอะไรจากเดือนแล้ว — ป้ายเดือนข้างช่องจำนวนชวนให้คูณเดือนซ้ำ (บั๊ก 504,000)');
   /* ช่วงที่เหลือไม่ลงตัวเป็นเดือน = หน้าต่างแบ่งงวดบอกเหตุที่ตัวเลือกกดไม่ได้ (`historicalSplitOptions().note`) */
   assert.match(code(SPLIT), /\{note \? <small>\{note\}<\/small> :/);
-  assert.match(code(STEP_REVIEW), /monthsText \? ` · \$\{monthsText\}` : \(spanNote \? ` · \$\{spanNote\}` : ""\)/,
+  assert.match(code(REVIEW_VIEW), /monthsText \? ` · \$\{monthsText\}` : \(spanNote \? ` · \$\{spanNote\}` : ''\)/,
     'ขั้น ④ ต้องพูดเหตุเดียวกัน ไม่ใช่เว้นว่างเมื่อช่วงไม่ลงตัวเป็นเดือน');
+  const odd = reviewView.historicalReviewChecklist({ contract: { startDate: '2026-01-15', endDate: '2026-03-01' }, header: {} })
+    .find((row) => row.key === 'contract');
+  assert.ok(odd.value.includes(intakeForm.contractSpan('2026-01-15', '2026-03-01').note), 'ช่วงไม่ลงตัวเป็นเดือน = บอกเหตุคำเดียวกับขั้น ①');
 });
 
 // ── 6. ด่านใบซ้ำ — ส่วนที่ยามแบบนี้เฝ้าได้ (ที่เหลืออยู่ใน historicalIntakeForm.test.mjs) ──
 
 test('⭐ ฟอร์มตัดสินด่านใบซ้ำและทางออกด้วยตัวตัดสินที่ตรึงไว้ ไม่ใช่เงื่อนไขในวงเล็บของ JSX', () => {
   const src = code(WIZARD);
-  assert.match(src, /const gate = historicalDuplicateGate\(\{ duplicates, acknowledged, warnings: plan\?\.warnings, localIssues \}\);/);
+  assert.match(src, /const gate = historicalDuplicateGate\(\{ duplicates, acknowledged, localIssues \}\);/);
   assert.match(src, /const exitInfo = historicalSaveExit\(saveError\);/);
-  assert.match(src, /const next = historicalSaveFailureState\(keyedExit\);/);
-  assert.match(src, /historicalExitActions\(exit\)\.map\(/,
+  assert.match(src, /historicalSaveResultView\(saveFailure\.exit, \{/,
     'ปุ่มทางออกต้องมาจากตัวตัดสิน ไม่ใช่ {exit.canX && (…)} ที่ถอดทีละอันได้เงียบ ๆ');
+  /* 🔴 409 ใบซ้ำ = กลับขั้น ④ พร้อมรายการใหม่ + สวิตช์ปิด (ไม่ใช่แผงผิดพลาด) */
+  const dup = slice(src, 'if (exit.kind === "duplicate") {', 'return;');
+  assert.match(dup, /setDuplicates\(/);
+  assert.match(dup, /setAcknowledged\(false\);/);
+  assert.match(dup, /setStep\("review"\);/);
+  assert.doesNotMatch(src, /historicalExitActions|historicalSaveFailureState/, 'ตัวตัดสินรุ่นที่มีปุ่ม "บันทึกอีกครั้ง" ข้ามด่าน ถูกถอดแล้ว');
 });
 
 /* กฎบ้าน "ติดด่าน = โชว์แล้วบอกเหตุ" จะจริงก็ต่อเมื่อ **เหตุอยู่ในสายตา** */
@@ -632,10 +644,12 @@ test('⭐ กดปุ่มที่ติดด่าน = พาไปหา�
    ที่ไม่เคยมี · แถบท้ายของขั้น ①–③ เคยบอกว่ากำลังจะส่งอนุมัติทั้งที่ปุ่มเดียวคือ "ถัดไป" */
 test('⭐ ถ้อยคำที่ชี้ปุ่มมาจากตัวตัดสิน ไม่ใช่สตริงที่พิมพ์ทิ้งไว้ใน JSX', () => {
   const src = code(WIZARD);
-  assert.match(src, /\{historicalFootNote\(\{ step, gate \}\)\}/);
+  assert.match(src, /\{ text: historicalFootNote\(\{ step \}\), tone: null \}/);
+  assert.match(src, /historicalReviewFootNote\(\{/, 'บรรทัดใต้ปุ่มของขั้น ④ มาจากตัวตัดสินของขั้น ④');
+  assert.match(src, /\{footNote\.text\}/);
   assert.doesNotMatch(src, /ส่งให้ AE Sup อนุมัติทันทีที่บันทึก/,
     'ประโยคของขั้นที่บันทึกจริง ห้ามยืนอยู่บนขั้นที่ยังไม่บันทึกอะไร');
-  assert.match(src, /label=\{busy \? "กำลังบันทึก…" : HISTORICAL_SAVE_BUTTON_LABEL\}/);
+  assert.match(src, /label=\{busy \? \(saveRun \? "กำลังบันทึก…" : "กำลังตรวจ…"\) : HISTORICAL_SAVE_BUTTON_LABEL\}/);
 
   const review = code(STEP_REVIEW);
   assert.doesNotMatch(review, /ตรวจอีกครั้ง/, 'ไม่มีปุ่มชื่อนี้อยู่บนจอเลย');
@@ -677,6 +691,7 @@ test('⭐ ทุกชื่อที่ขั้นต่าง ๆ import จ�
     '@/lib/sales/historicalIntakeForm': intakeForm,
     '@/lib/sales/historicalOrders': historicalOrders,
     '@/lib/sales/historicalOrderCopy': orderCopy,
+    '@/lib/sales/historicalReviewView': reviewView,
   };
   const missing = [];
   let checked = 0;
@@ -814,8 +829,8 @@ test('⭐ N1: ก้อน "ยังโหลดโซนไม่สำเร�
    "ออกจากหน้านี้ไหม" และถ้ากดออก **ของที่คีย์ไว้หายทั้งใบ** เพื่อแก้เรื่องที่แค่ยิงสองเส้นใหม่ก็จบ */
 test('⭐ N4: ทางออกของ "โหลดทะเบียนไม่สำเร็จ" คือยิงใหม่ที่เดิม ไม่ใช่รีโหลดหน้า', () => {
   const wizard = code(WIZARD);
-  assert.match(wizard, /useUnsavedChanges\(dirty && !busy\)/,
-    'ยามงานที่ยังไม่บันทึกถูกติดไว้จริง — นี่คือเหตุที่การรีโหลดหน้าเป็นทางตัน');
+  assert.match(wizard, /useUnsavedChanges\(dirty \|\| Boolean\(saveRun\),/,
+    'ยามงานที่ยังไม่บันทึกถูกติดไว้จริง (รวมตอนกำลังบันทึก) — นี่คือเหตุที่การรีโหลดหน้าเป็นทางตัน');
   assert.doesNotMatch(wizard, /window\.location\.reload/,
     'รีโหลดหน้าชนยามของฟอร์มเอง ⇒ ผู้คีย์เสี่ยงเสียของที่พิมพ์ไว้ทั้งใบ');
   assert.match(wizard, /const reloadRegistries = useCallback\(/);
@@ -847,16 +862,15 @@ test('⭐ N4: ทางออกของ "โหลดทะเบียนไ�
    ไม่ใช่ 0 · สาขา null ต้องมาก่อน ไม่งั้นขั้น ④ อ่าน null ว่า "ยังไม่แนบ" ซึ่งเป็นคำตอบที่อาจผิด
    แล้วผู้คีย์ไปแนบไฟล์ซ้ำ (ตัวตัดสินตรึงที่ historicalIntakeForm.test.mjs · ที่นี่เฝ้าแผ่นสรุป ④) */
 test('⭐ N3/R6: ขั้น ④ อ่าน null ว่า "ยังอ่านจำนวนไฟล์ไม่ได้" ไม่ใช่ "ยังไม่แนบ"', () => {
-  const review = code(STEP_REVIEW);
-  const filesCell = slice(review, '<dt>ไฟล์</dt>', '<dt>อ้างอิงเดิม</dt>');
-  assert.match(filesCell, /contractFileCount === null/, 'null ต้องเป็นสาขาของตัวเอง');
-  assert.ok(filesCell.includes('ยังไม่แนบ'), 'สาขา 0 (รู้แล้วว่าไม่มี) ต้องยังพูดว่ายังไม่แนบ');
-  assert.ok(
-    filesCell.indexOf('contractFileCount === null') < filesCell.indexOf('ยังไม่แนบ'),
-    'สาขา "ยังไม่รู้" ต้องมาก่อน ⇒ null ไม่ตกไปที่ "ยังไม่แนบ"',
-  );
-  assert.match(filesCell, /contractFileCount \? `แนบแล้ว/, '0 กับ null ต้องแยกกันจริง');
-  assert.match(code(WIZARD), /contractFileCount=\{contractFileCount\}/,
+  /* แถว "ไฟล์หลักฐานลงนาม" ย้ายไปอยู่ที่ตัวตัดสิน (`historicalReviewChecklist` · มติ 25/09) ⇒ ทดสอบพฤติกรรมตรง ๆ */
+  const plan = { contract: {}, header: {} };
+  const fileRow = (contractFiles) => reviewView.historicalReviewChecklist(plan, { contractFiles })
+    .find((row) => row.key === 'signedFile');
+  assert.match(fileRow({ count: null }).value, /ยังอ่านรายการไฟล์ไม่ได้/, 'null ต้องเป็นสาขาของตัวเอง');
+  assert.doesNotMatch(fileRow({ count: null }).value, /ยังไม่แนบ/);
+  assert.match(fileRow({ count: 0 }).value, /ยังไม่แนบ/, 'สาขา 0 (รู้แล้วว่าไม่มี) ต้องยังพูดว่ายังไม่แนบ');
+  assert.match(fileRow({ count: 2, names: ['PO.pdf', 'ใบเสนอ.pdf'] }).value, /^PO\.pdf \(จาก 2 ไฟล์ที่แนบ\)$/);
+  assert.match(code(WIZARD), /count: contractFileCount,/,
     'ค่าที่ส่งลงไปต้องเป็นค่าของตัวตัดสิน (null ได้) ไม่ใช่เลขที่ปลอบใจ');
   assert.equal(intakeForm.historicalContractFileCount({ contractId: 'CT-1' }), null,
     'ตัวตัดสินต้องตอบ null ได้จริง ไม่งั้นสาขาข้างบนเป็นโค้ดตาย');
@@ -1151,7 +1165,12 @@ test('⭐ 25/09: error ของ server ผูกกับ key ของแถ�
     'อ่าน state ก่อนแก้จาก ref — side effect ใน updater ของ setState ถูก StrictMode เรียกซ้ำ');
   assert.match(patchFn, /setIssues\(\(current\) => historicalPruneIssues\(current, before, \{ \.\.\.before, \.\.\.next \}\)\);/);
   assert.match(wizard, /useEffect\(\(\) => \{ stateRef\.current = state; \}, \[state\]\);/);
-  const goTo = slice(wizard, 'const goToStep = useCallback', '}, [step, runPreview, localIssues, state, reveal]);');
+  /* ⭐ รีวิวขั้น ④ 25/09: ตัวพาไปขั้นที่ผิดแยกเป็น `applyPreviewErrors` ตัวเดียว — "ถัดไป" กับปุ่มบันทึกตอนยังไม่มีแผนเรียกตัวเดียวกัน */
+  const goToFn = slice(wizard, 'const goToStep = useCallback', '}, [step, runPreview, localIssues, reveal, applyPreviewErrors]);');
+  assert.match(goToFn, /applyPreviewErrors\(fieldErrors, from, to\);/);
+  assert.match(wizard, /if \(fieldErrors\) applyPreviewErrors\(fieldErrors, "review", "review"\);/,
+    'ปุ่มบันทึกตอนไม่มีแผน: error รายช่องต้องพาไปขั้นที่ผิด (เคยทิ้งเงียบ)');
+  const goTo = slice(wizard, 'const applyPreviewErrors = useCallback', '}, [state, reveal]);');
   assert.match(goTo, /const keyed = historicalIssuesWithRowKeys\(fieldErrors, state\.zones, state\.installments\);/);
   /* ทุกทางที่พรีวิวไม่ผ่าน (ถอยไปขั้นที่ผิด · ไปขั้น ④ ไม่ได้ · เดินต่อพร้อมข้อความ) เก็บ error ที่ผูก key แล้วเท่านั้น
      (กรองต่อจาก keyed ได้ — เช่นไม่พกข้อ "ยังไม่มีบรรทัด" ไปต้อนรับขั้น ② ที่ยังว่าง) · ผ่าน = ล้าง */
@@ -1169,8 +1188,13 @@ test('⭐ 25/09: error ของ server ผูกกับ key ของแถ�
   assert.doesNotMatch(wizard, /setIssues\(fieldErrors\)/, 'error ที่ยังไม่ผูก key = เกาะแถวด้วยลำดับ (บั๊กเดิม)');
   /* ทาง "กลับไปแก้" หลังบันทึกไม่ผ่าน: ผูก key **ตอนบันทึกไม่ผ่าน** ด้วยบรรทัดชุดที่ส่งไปจริง (รีวิว 25/09) —
      ผูกตอนกดปุ่ม = ใช้บรรทัดของตอนนั้น ซึ่งอาจถูกลบ/เพิ่มไปแล้ว */
-  assert.match(wizard, /errors: historicalIssuesWithRowKeys\(exitInfo\.errors, state\.zones, state\.installments\)/);
+  assert.match(wizard, /\? historicalIssuesWithRowKeys\(exitInfo\.errors, state\.zones, state\.installments\) : null;/);
   assert.doesNotMatch(wizard, /historicalIssuesWithRowKeys\(action\.errors/);
+  /* ⭐ 400 ลงเครื่องหมายผิดทันทีใน catch (ของเดิมรอกด "กลับไปแก้") */
+  const fail = slice(wizard, 'if (exit.kind === "invalid") {', 'setSaveFailure({');
+  assert.match(fail, /reveal\(landed\);/);
+  assert.match(fail, /setIssues\(errors\);/);
+  assert.match(fail, /setStep\(landed\);/);
 
   const zones = code(STEP_ZONES);
   assert.match(zones, /const lineIssues = useMemo\(\(\) => historicalLineIssues\(issues\), \[issues\]\);/);
@@ -1419,12 +1443,13 @@ test('🐞 รีวิว 25/09: หัวขั้น ① ไม่ลงแ�
 test('⭐ 25/09: ก้อนแดงทุกขั้นขึ้นหลังกดไปต่อ — wizard เปิดเผยขั้นตอนกด ถัดไป/ราง/บันทึก · ทุกขั้นเคารพ summary', () => {
   const wizard = code(WIZARD);
   assert.match(wizard, /const \[revealedSteps, setRevealedSteps\] = useState\(\(\) => new Set\(\)\);/);
-  const goTo = slice(wizard, 'const goToStep = useCallback', '}, [step, runPreview, localIssues, state, reveal]);');
+  const goTo = slice(wizard, 'const goToStep = useCallback', '}, [step, runPreview, localIssues, reveal, applyPreviewErrors]);');
   assert.ok(goTo.indexOf('reveal(from);') >= 0 && goTo.indexOf('reveal(from);') < goTo.indexOf('if (block.blocked)'),
     'กดไปต่อ = เปิดเผยขั้นนี้ก่อนตรวจด่าน (ติดด่านแล้วต้องเห็นข้อความทันที)');
-  assert.match(goTo, /reveal\(first\); setIssues\(keyed\); setStep\(first\);/);
-  assert.match(wizard, /reveal\(next\.step\);/, 'บันทึกไม่ผ่าน = เปิดเผยขั้นปลายทาง');
-  assert.match(wizard, /reveal\(action\.goToStep\);/, 'กด "กลับไปแก้" = เปิดเผยขั้นปลายทาง');
+  assert.match(slice(wizard, 'const applyPreviewErrors = useCallback', '}, [state, reveal]);'),
+    /reveal\(first\); setIssues\(keyed\); setStep\(first\);/);
+  assert.match(wizard, /reveal\(landed\);/, 'บันทึกไม่ผ่าน (400) = เปิดเผยขั้นปลายทาง');
+  assert.match(wizard, /reveal\(action\.step\);/, 'กด "ไปแก้ที่ขั้น …" ในแผงบันทึก = เปิดเผยขั้นปลายทาง');
   assert.match(wizard, /const first = firstStepWithIssues\(localIssues\) \|\| "contract";\s*reveal\(first\);/,
     'ปุ่มบันทึกที่ติดด่านพากลับ = เปิดเผยขั้นนั้น');
   assert.match(wizard, /const shownIssues = \(key\) => historicalVisibleIssues\(stepIssues\(key\), \{ revealed: revealedSteps\.has\(key\) \}\);/);
@@ -1489,4 +1514,121 @@ test('⭐ 25/09 แถบช่วงบริการ: ชนิดใหม�
   const css = code('components/salesPlanning/historicalWizard/HistoricalOrderWizard.module.css');
   assert.match(css, /\.tlSeg\[data-kind="due"\] \{ fill: var\(--amber\); \}/, 'สี "รอชำระ" ของหน้าใบสั่งขายคงเดิม');
   assert.match(css, /\.tlSeg\[data-kind="planned"\] \{ fill: var\(--blue\); \}/);
+});
+
+// ── ขั้น ④ รื้อใหม่ (มติเจ้าของ 25/09 — "ตรวจแบบผู้อนุมัติ" · ม็อก Step4New/Step4Dup) ─────────────────────────
+//   ตรรกะอยู่ที่ historicalReviewView (ทดสอบที่ historicalReviewView.test.mjs) · ที่นี่เฝ้าว่าจอต่อสายครบ และความเสี่ยงของรีวิวไม่กลับมา
+
+test('⭐ 25/09 ขั้น ④: หัวเอกสารแบบขั้น ① → ใบที่อาจซ้ำ (บนสุด) → สิ่งที่ผู้อนุมัติจะตรวจ → รายการ → หลังกดส่ง', () => {
+  const review = code(STEP_REVIEW);
+  assert.match(review, /<DetailOverview\s+pin=\{false\}/, 'ฟอร์มที่มียามงานยังไม่บันทึกต้องไม่ลงทะเบียนแถบหัวลอย (ปุ่มกลับของแถบ = history.back)');
+  let at = -1;
+  for (const marker of ['<DetailOverview', 'id="hist-card-dup"', 'id="hist-card-check"', 'id="hist-card-lines"', 'id="hist-card-after"']) {
+    const next = review.indexOf(marker);
+    assert.ok(next > at, `ลำดับผิดที่ ${marker}`);
+    at = next;
+  }
+  assert.match(review, /historicalReviewChecklist\(plan, \{ contractFiles, evidenceFileCount, todayIso \}\)/);
+  assert.match(review, /historicalReviewFacts\(plan, \{ customerLabel, keyerName, orderNumber, vatLabel \}\)/);
+  assert.match(review, /<WorkflowRail steps=\{rail\}/);
+  assert.match(review, /historicalAfterSendRail\(plan, \{ keyerMode, orderNumber \}\)/);
+  /* ลิงก์ใบที่อาจซ้ำเปิดแท็บใหม่ — ยามงานยังไม่บันทึกข้ามลิงก์ target=_blank ⇒ ฟอร์มไม่หาย */
+  assert.match(review, /href=\{`\/sa\/sales-orders\/\$\{row\.id\}`\} target="_blank" rel="noreferrer"/);
+  assert.match(review, /matchedText\(row\)/, 'บอกว่าตรงกันที่ไหน (วันเริ่มสัญญา/เลขเอกสารเดิม)');
+  /* ทุกแถวที่แก้ได้มีปุ่มพากลับไปขั้น + ช่องนั้น */
+  assert.match(review, /onClick=\{\(\) => edit\(row\.step, row\.field\)\}/);
+  assert.match(code(WIZARD), /onEditStep=\{\(key, field\) => \{ setStep\(key\); setFocusField\(field \|\| null\); \}\}/);
+  /* 🚫 ของที่ถอด: "อนุมัติ: AE Sup" · ลำดับหลังบันทึกแบบรหัสฝ่าย · คำอธิบายจำนวน × เดือน (มติข้อ 4: บางรายการใช้ 2 แพ็คต่อเดือน) */
+  assert.doesNotMatch(review, /AE Sup|historicalAfterSaveSteps|keyerIsReviewer|แพ็ค|monthsChip/);
+});
+
+test('⭐ 25/09 ขั้น ④: ทุกช่องที่แถวตรวจชี้ ต้องมีจุดยึดวาดอยู่บนขั้นนั้นจริง', () => {
+  const plan = {
+    header: { refs: {}, notes: 'x' }, contract: {}, lines: [], zeroValue: false, opening: null,
+    installments: [{ label: 'ง', amount: 1, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' }],
+    check: { sumMatches: false }, warningItems: [],
+  };
+  const rows = [
+    ...reviewView.historicalReviewChecklist(plan, { contractFiles: { count: 0 } }),
+    ...reviewView.historicalReviewChecklist({ ...plan, zeroValue: true }),
+  ].filter((row) => row.field);
+  /* ⚠️ จุดยึดต้องอยู่ **ในไฟล์ของขั้นที่แถวชี้** (รีวิวขั้น ④: ของเดิมรวมสามไฟล์ ⇒ แถวใบ ฿0 ชี้ขั้น ③ ที่ไม่วาดจุดยึดนั้นก็ผ่าน) */
+  const fileOf = { contract: STEP_CONTRACT, zones: STEP_ZONES, money: STEP_MONEY };
+  assert.ok(rows.length >= 8);
+  for (const row of rows) {
+    assert.ok(code(fileOf[row.step]).includes(`historicalFieldAnchorId("${row.field}")`),
+      `${row.key} → ขั้น ${row.step} ช่อง ${row.field} ไม่มีจุดยึดบนขั้นนั้น (ปุ่ม "แก้ในขั้น" จะไม่ไปไหน)`);
+  }
+  /* ขั้น ③ ของใบ ฿0 วาดแค่กล่องแจ้ง — ไม่มีจุดยึด ⇒ แถวยอดใบ ฿0 ต้องชี้ขั้นอื่น */
+  const zeroRow = rows.find((row) => row.key === 'zero');
+  assert.notEqual(zeroRow.step, 'money');
+});
+
+test('🔴 25/09 ขั้น ④: ปุ่มหลักตัวเดียว — แผงบันทึกไม่มีปุ่มบันทึกตัวที่สอง (ของเดิม "บันทึกอีกครั้ง" ข้ามด่านใบซ้ำ)', () => {
+  const wizard = code(WIZARD);
+  const panel = slice(wizard, '{saving ? (', '<div className="form-action-bar is-page">');
+  /* 🪤 รีวิวขั้น ④: `onClick={runSave}` (ไม่มีวงเล็บ) หลบยามแบบนับ `runSave()` ได้ ⇒ นับทุกการอ้างชื่อ */
+  assert.doesNotMatch(panel, /\brunSave\b(?!Action)|tone="primary"|kind="submit"/);
+  assert.match(panel, /historicalSaveResultView|saveResult\.action/);
+  /* runSave: นิยาม 1 + เรียกจากปุ่ม "บันทึกและส่งอนุมัติ" ที่เดียว (หลังผ่านด่าน) */
+  assert.equal((wizard.match(/\brunSave\b(?!Action)/g) || []).length, 2);
+  const press = slice(wizard, '<ActionButton\n              kind="submit"', '/>');
+  /* 🪤 รีวิวขั้น ④: `indexOf` ที่หาไม่เจอได้ -1 ซึ่ง "น้อยกว่า" ทุกตำแหน่ง ⇒ ถอดด่านทิ้งแล้วยามยังผ่าน — ต้องเจอก้อนด่านที่ return จริง */
+  assert.match(press, /if \(gate\.gated\) \{[\s\S]*?dupSwitchRef\.current\?\.focus\(\);\s*return;\s*\}[\s\S]*runSave\(\);/,
+    'ด่านใบซ้ำต้องมาก่อนการบันทึก และต้อง return ก่อนถึง runSave');
+  assert.doesNotMatch(wizard, /historicalExitActions|setExit\(|styles\.splitRow/);
+  /* รางแนวนอนซ่อนบรรทัดรอง (เลข SO · k/n ไฟล์) ที่จอ ≤1100px ⇒ แผงบันทึกใช้รางแนวตั้ง */
+  assert.match(panel, /label="จังหวะของการบันทึก" \/>/);
+  assert.doesNotMatch(panel, /orientation="row"/);
+  /* ใต้สวิตช์ใบซ้ำพูดเรื่องใบซ้ำเท่านั้น — ข้อค้างของขั้นอื่นพาไปที่ช่องแทน */
+  const gated = slice(wizard, 'if (gate.gated) {', 'dupSwitchRef.current?.scrollIntoView');
+  assert.ok(gated.indexOf('setBlockedNote(gate.blockedNote)') > gated.indexOf('if (localIssues.length) {'));
+});
+
+test('🔴 25/09 ขั้น ④: "ออกจากฟอร์ม" — ว่าง = ลิงก์ (ยามถาม) · กำลังบันทึก = ปุ่มดับจริง ไม่ใช่ router.push · ยามคลุมตอนบันทึก', () => {
+  const wizard = code(WIZARD);
+  assert.match(wizard, /\{busy \? \(\s*<Button tone="neutral" variant="quiet" disabled>ออกจากฟอร์ม<\/Button>\s*\) : \(\s*<Button as=\{Link\} href=\{REGISTER_PATH\} tone="neutral" variant="quiet">ออกจากฟอร์ม<\/Button>\s*\)\}/);
+  assert.doesNotMatch(wizard, />ยกเลิก<\/Button>/, '"ยกเลิก" อ่านเหมือนยกเลิกใบ');
+  assert.equal((wizard.match(/router\.push\(/g) || []).length, 1, 'router.push ที่เดียวคือหลังส่งสำเร็จ (ยามจับ router.push ไม่ได้)');
+  /* ผูกกับรอบบันทึก ไม่ใช่ busy — พรีวิวไม่เขียนอะไร ห้ามถามว่า "ใบจะค้างเป็นร่าง" (รีวิวขั้น ④ 25/09) */
+  assert.match(wizard, /useUnsavedChanges\(dirty \|\| Boolean\(saveRun\), saveRun \? \{ message: "กำลังบันทึกอยู่ — ออกตอนนี้ใบจะค้างเป็นฉบับร่าง" \} : undefined\);/);
+  assert.doesNotMatch(wizard, /useUnsavedChanges\(dirty \|\| busy/);
+  /* 🐞 UAT 390px: แถบปุ่มแบบหน้า (sticky) ต้องยืนเหนือแถบเมนูล่างของมือถือ — ไม่งั้นปุ่มบันทึกถูกทับมองไม่เห็น */
+  assert.match(code('app/globals.css'),
+    /\.form-action-bar\.is-page \{\s*position: sticky;\s*bottom: calc\(12px \+ var\(--mobile-nav-h, 0px\) \+ env\(safe-area-inset-bottom\)\);/);
+});
+
+test('⭐ 25/09 ขั้น ④: ผู้คีย์ = ผู้ใช้ที่ล็อกอิน (ไม่ใช่ AE เจ้าของใบ) · ป้ายตีกลับไม่เรียก "AE Sup" · ชื่อไฟล์หลักฐานลงนามส่งลงไปครบ', () => {
+  const wizard = code(WIZARD);
+  assert.match(wizard, /keyerName=\{me\?\.name \|\| null\}/);
+  assert.match(wizard, /keyerMode=\{historicalKeyerMode\(role\)\}/);
+  assert.match(wizard, /title=\{`ตีกลับให้แก้ไข\$\{state\.rejection\.by \? ` — \$\{state\.rejection\.by\}` : ""\}`\}/);
+  assert.doesNotMatch(wizard, /AE Sup/);
+  const files = slice(wizard, 'const reviewContractFiles = {', '};');
+  assert.match(files, /count: contractFileCount,/);
+  assert.match(files, /panelContractItems \? panelContractItems\.map\(\(item\) => item\.fileName\) : \[\.\.\.hydratedContractNames, \.\.\.uploadedContractNames\.current\]/);
+  /* 🐞 รีวิวขั้น ④: ไฟล์ที่ 2 ล้มหลังไฟล์แรกขึ้น — นับ/จำชื่อทีละไฟล์ที่ขึ้นจริง ไม่ใช่ตั้งพื้นหลังอัปครบทั้งชุด */
+  const uploaded = slice(wizard, 'onUploaded: (file, ref) => {\n              uploadedContract', 'bump("contract");');
+  assert.match(uploaded, /uploadedContractNames\.current = \[\.\.\.uploadedContractNames\.current, file\.name\];/);
+  assert.match(uploaded, /setHydratedContractFiles\(\(current\) => \(current \|\| 0\) \+ 1\);/);
+  assert.match(uploaded, /setPanelContractItems\(\(items\) => \(items/);
+  /* ใบร่าง "ของรอบนี้" ลงฐานแล้วเท่านั้นที่ถูกเรียกว่าบันทึกแล้ว */
+  assert.match(wizard, /orderNumber: progress\.persisted \? orderNumber : null,/);
+  assert.match(wizard, /failed: saveFailure \? \{ orderNumber: saveFailure\.orderNumber, exit: saveFailure\.exit \} : null,/);
+  assert.match(files, /pending: pendingContractNames,/);
+  /* ไฟล์แรกที่แนบ = กติกาเดียวกับ server (createdAt ก่อน แล้ว id) */
+  assert.match(wizard, /localeCompare\(String\(b\.createdAt \|\| ""\)\)\s*\|\| String\(a\.id \|\| ""\)\.localeCompare\(String\(b\.id \|\| ""\)\)/);
+});
+
+test('⭐ 25/09 ขั้น ④: ไฟล์ที่อัปไม่ขึ้นเอาออกจากตะกร้าได้ · โหลดใบล่าสุดถามก่อน · แผงล้มเลื่อนมาให้เห็น', () => {
+  const wizard = code(WIZARD);
+  const action = slice(wizard, 'const runSaveAction = useCallback(', '}, [saveFailure, reveal, state.orderId, orderId]);');
+  assert.match(action, /const keep = \(file\) => fileKey\(file\) !== target\?\.key;/);
+  assert.match(action, /if \(!\(await confirmAction\(/);
+  assert.match(action, /flushSync\(\(\) => \{ setDirty\(false\); \}\);\s*window\.location\.assign\(path\);/);
+  assert.match(code('lib/sales/historicalWizardUploads.js'), /key: file \? `\$\{file\.name\}:\$\{file\.size\}:\$\{file\.lastModified\}` : ''/,
+    'คีย์ของไฟล์ที่ล้มต้องเป็นสูตรเดียวกับ fileKey ของฟอร์ม');
+  assert.match(wizard, /const fileKey = \(file\) => `\$\{file\.name\}:\$\{file\.size\}:\$\{file\.lastModified\}`;/);
+  assert.match(wizard, /node\?\.scrollIntoView\?\.\(\{ block: "center", behavior: "smooth" \}\);\s*node\?\.focus\?\.\(\{ preventScroll: true \}\);/);
+  assert.match(wizard, /setSaveFailure\(null\);\s*progressRef\.current = null;\s*\}, \[\]\);/, 'แก้ฟอร์ม = แผงผลเก่าหาย');
 });

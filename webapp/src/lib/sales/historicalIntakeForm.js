@@ -34,7 +34,7 @@ import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
 import {
-  HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
+  HISTORICAL_APPROVER_LABEL, HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
   charLength, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import {
@@ -55,7 +55,7 @@ export const HISTORICAL_WIZARD_STEPS = Object.freeze([
   { key: 'contract', label: 'ลูกค้าและสัญญา', hint: 'ลูกค้า · เอกสารแทนสัญญา' },
   { key: 'zones', label: 'ไซต์ โซน และรายการ', hint: 'รายการแบบใบเสนอราคา + ไซต์ · โซน' },
   { key: 'money', label: 'งวดชำระ', hint: 'งวดยกมา + งวดที่ยังต้องเก็บ' },
-  { key: 'review', label: 'ตรวจและส่งอนุมัติ', hint: 'ส่ง AE Sup อนุมัติ' },
+  { key: 'review', label: 'ตรวจและส่งอนุมัติ', hint: `ส่ง${HISTORICAL_APPROVER_LABEL}อนุมัติ` },
 ]);
 export const HISTORICAL_WIZARD_STEP_ORDER = Object.freeze(HISTORICAL_WIZARD_STEPS.map((s) => s.key));
 
@@ -194,7 +194,9 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
     status: order?.status || null,
     updatedAt: order?.updatedAt || null,
     orderNumber: order?.orderNumber || null,
-    rejection: order?.status === 'rejected'
+    /* 🐞 รีวิวขั้น ④ 25/09: RPC แก้ใบพลิกใบที่ถูกตีกลับเป็นร่าง (0374) แต่ล้างคอลัมน์ตีกลับเฉพาะตอนส่ง ⇒ ส่งไม่ผ่านแล้วเปิดใหม่
+       = เหตุผลที่ถูกตีกลับหายจากฟอร์ม ⇒ ร่างที่ยังพก `rejectedAt` คือใบที่ถูกตีกลับแล้วยังไม่ได้ส่งใหม่ */
+    rejection: order?.status === 'rejected' || (order?.status === 'draft' && order?.rejectedAt)
       ? { by: text(order?.rejectedByName) || null, at: order?.rejectedAt || null, reason: text(order?.rejectionReason) || null }
       : null,
     customerId: text(order?.customerId),
@@ -560,7 +562,7 @@ export function historicalWizardLocalIssues(state = {}, {
   if (contractFileCount === null) {
     add('contract.file', 'ยังอ่านจำนวนไฟล์เอกสารแทนสัญญาไม่ได้ — โหลดหน้านี้ใหม่แล้วลองอีกครั้ง');
   } else if (contractFileCount < 1) {
-    add('contract.file', 'ต้องแนบไฟล์เอกสารที่ใช้แทนสัญญาอย่างน้อย 1 ไฟล์ — AE Sup อนุมัติจากไฟล์นี้');
+    add('contract.file', `ต้องแนบไฟล์เอกสารที่ใช้แทนสัญญาอย่างน้อย 1 ไฟล์ — ${HISTORICAL_APPROVER_LABEL}อนุมัติจากไฟล์นี้`);
   }
   /* ขั้น ② — VAT อยู่กล่องสรุปใต้ตารางรายการ (A14) */
   if (!HISTORICAL_VAT_RATES.includes(state.vatRate)) add('vatRate', HISTORICAL_VAT_CHOICE_MESSAGE);
@@ -920,7 +922,9 @@ export function historicalContractFacts(rows = []) {
 /** ป้ายสถานะบนหัวเอกสารของขั้น ① — ใบที่ยังไม่เกิด / ร่าง / ถูกตีกลับ */
 export function historicalDocStatusLabel(state = {}) {
   if (!text(state.orderId)) return 'ยังไม่ออกใบ';
-  if (text(state.status) === 'rejected') return 'ถูกตีกลับ — แก้แล้วส่งใหม่';
+  /* ⭐ ใบที่ถูกตีกลับแล้วบันทึกแก้ = RPC พลิกเป็นร่าง แต่ยังเป็น "ส่งใหม่" จนกว่าจะส่ง — ป้ายเดินตามป้ายตีกลับ (`rejection` รอดการพลิก ·
+     รีวิวขั้น ④ 25/09: เคยขึ้นป้ายตีกลับคู่กับ "ฉบับร่าง") */
+  if (text(state.status) === 'rejected' || state.rejection) return 'ถูกตีกลับ — แก้แล้วส่งใหม่';
   return 'ฉบับร่าง — ยังไม่ส่งอนุมัติ';
 }
 
@@ -991,12 +995,15 @@ const docKindText = (kind) => {
  *
  * @param step ขั้นที่ยืนอยู่ — ใช้ตัดสินว่าขั้นข้างหน้า "แตะแล้วไปไม่ได้เพราะอะไร"
  */
+const STEP_MARKS = Object.freeze({ contract: '①', zones: '②', money: '③', review: '④' });
+
 export function historicalWizardRail(state = {}, {
   step = 'contract', localIssues = [], serverIssues = [], plan = null, customerLabel = null, revealedSteps = null,
-  zeroValue = null,
+  zeroValue = null, duplicatesPending = false,
 } = {}) {
   const all = [...list(localIssues), ...list(serverIssues)];
   const block = historicalNextBlock(localIssues, step);
+  const reviewLocal = plan ? firstStepWithIssues(list(localIssues)) : null;
   const here = HISTORICAL_WIZARD_STEP_ORDER.indexOf(step);
   const zones = list(state.zones);
   const installments = list(state.installments);
@@ -1015,8 +1022,14 @@ export function historicalWizardRail(state = {}, {
       ].filter(Boolean).join(' · ');
     })(),
     /* ขั้น ④ มีของให้สรุปก็ต่อเมื่อพรีวิวผ่านแล้วจริง ๆ — ไม่มีแผน = ยังไม่มีอะไรถูกตรวจ */
-    review: plan ? 'ตรวจแล้ว — พร้อมส่ง AE Sup' : '',
+    /* ⭐ 25/09 (รื้อขั้น ④): ใบที่อาจซ้ำยังไม่ยืนยัน = ยังไม่พร้อมส่ง — รางต้องไม่พูดว่า "พร้อมส่ง" (ของเดิมพูดทั้งที่ปุ่มติดด่าน) */
+    /* 🐞 รีวิวขั้น ④ 25/09: มีข้อที่จอตรวจเองค้าง (เช่นเอาไฟล์ที่อัปไม่ขึ้นออกจากตะกร้าแล้วไม่เหลือไฟล์) = ปุ่มติดด่าน ⇒ รางต้องบอกด้วย */
+    review: plan ? (reviewLocal
+      ? `ตรวจแล้ว — ขั้น ${STEP_MARKS[reviewLocal]} ต้องแก้ ${fmtNumber(issuesForStep(localIssues, reviewLocal).length)} ข้อ`
+      : (duplicatesPending ? 'ตรวจแล้ว — ต้องยืนยันใบที่อาจซ้ำ' : 'ตรวจแล้ว — พร้อมส่ง')) : '',
   };
+  /* ขั้น ④ ที่ปุ่มติดด่าน (ข้อค้าง/ใบซ้ำยังไม่ยืนยัน) = จุดสีเหลือง ไม่ใช่ "ครบ" */
+  const reviewGated = Boolean(plan) && (Boolean(reviewLocal) || duplicatesPending);
 
   return HISTORICAL_WIZARD_STEPS.map((item, index) => {
     /* ⭐ มติ 25/09: จุด "มีข้อต้องแก้" บนรางเดินกติกาเดียวกับก้อนแดง — ขั้นที่ยังไม่เคยกดไปต่อไม่ขึ้นสีผิด
@@ -1032,7 +1045,7 @@ export function historicalWizardRail(state = {}, {
       summary: summary || item.hint,
       filled: Boolean(summary),
       issues,
-      tone: issues ? 'some' : (summary ? 'full' : 'none'),
+      tone: issues || (item.key === 'review' && reviewGated) ? 'some' : (summary ? 'full' : 'none'),
       blocked,
       title: [item.hint, blocked].filter(Boolean).join(' · '),
     };
@@ -1120,9 +1133,10 @@ export function historicalAsideRows(state = {}, {
  * 🐞 UAT 23/09: ขั้น ①–③ ที่มีปุ่มเดียวคือ "ถัดไป" เขียนว่า "ส่งให้ AE Sup อนุมัติทันทีที่บันทึก"
  *    — ประโยคของขั้นที่บันทึกจริง ไปยืนอยู่บนขั้นที่ยังไม่บันทึกอะไรสักอย่าง
  */
-export function historicalFootNote({ step = 'contract', gate = null } = {}) {
-  if (step === 'review') return text(gate?.footNote);
-  return `ยังไม่บันทึกอะไร — “${HISTORICAL_NEXT_BUTTON_LABEL}” คือการตรวจข้อมูลของขั้นนี้ · ใบเกิดและถูกส่งให้ AE Sup ตอนกด “${HISTORICAL_SAVE_BUTTON_LABEL}” ในขั้นสุดท้าย`;
+export function historicalFootNote({ step = 'contract' } = {}) {
+  /* ขั้น ④ มีตัวตัดสินของตัวเอง (`historicalReviewFootNote` — lib/sales/historicalReviewView.js · มติ 25/09) */
+  if (step === 'review') return '';
+  return `ยังไม่บันทึกอะไร — “${HISTORICAL_NEXT_BUTTON_LABEL}” คือการตรวจข้อมูลของขั้นนี้ · ใบเกิดและถูกส่งให้${HISTORICAL_APPROVER_LABEL}ตอนกด “${HISTORICAL_SAVE_BUTTON_LABEL}” ในขั้นสุดท้าย`;
 }
 
 /**
@@ -1842,6 +1856,12 @@ export function historicalMergeIssues(localIssues = [], serverIssues = []) {
   return [...local, ...list(serverIssues).filter((issue) => !taken.has(slotOf(issue)))];
 }
 
+/** คำเตือนงวดที่ครบกำหนดแล้ว — **ประโยคเดียว** ของขั้น ③ (กล่องเหลืองเหนือตาราง) และขั้น ④ (ในแถวงวดที่ยังต้องเก็บ) */
+export function historicalOverdueWarningText(count = 0, todayIso = null) {
+  return `${fmtNumber(count)} งวดครบกำหนดก่อนวันนี้${isDateText(todayIso) ? ` (${fmtDate(todayIso)})` : ''}`
+    + ` — หลัง${HISTORICAL_APPROVER_LABEL}อนุมัติจะขึ้นเลยกำหนดทันที และนัดบริการรอจนบัญชีรับรอง`;
+}
+
 /** ข้อความรายช่องของงวด — `Map<rowKey, { label?, amount?, dueDate?, coversTo?, coverage?, note?, row? }>` */
 export function historicalInstallmentIssues(issues = []) {
   const byRow = new Map();
@@ -2124,12 +2144,26 @@ export function saveProgressAfter(progress = {}, stage, patch = {}) {
 /* ── ทางออกตอนบันทึกไม่สำเร็จ ───────────────────────────────────────────────
    ⚠️ ตัดสินจาก `data.code` ไม่ใช่ข้อความ · ข้อความไทยมาจาก server เสมอ (documentWorkflowErrors)
    ⚠️ 403 กับ 503 ของ route **ไม่มี code** — ต้องถอยไปดู status */
-const RETRY_HINT = 'กดบันทึกอีกครั้งด้วยข้อมูลชุดเดิม — ระบบจำใบที่สร้างไปแล้วและไฟล์ที่อัปแล้ว จะไม่เกิดใบซ้ำหรืออัปไฟล์ซ้ำ';
+const RETRY_HINT = `กด “${HISTORICAL_SAVE_BUTTON_LABEL}” อีกครั้งด้วยข้อมูลชุดเดิม — ระบบจำใบที่สร้างไปแล้วและไฟล์ที่อัปแล้ว จะไม่เกิดใบซ้ำหรืออัปไฟล์ซ้ำ`;
 /* 🔴 ชนการหาดีลภาชนะต่างจากเน็ตหลุดตรงข้อเท็จจริงเดียวที่ผู้คีย์ต้องรู้: RPC raise ข้างใน
    ทรานแซกชัน ⇒ **ยังไม่มีอะไรลงฐาน** · ใช้คำเดียวกับเน็ตหลุด = ผู้คีย์กลัวว่าใบลงไปแล้วแล้วทิ้งฟอร์ม */
-const RACE_HINT = 'กดบันทึกอีกครั้งได้เลย — ยังไม่มีอะไรลงฐาน ระบบหาดีลของคู่ลูกค้า × AE ใหม่เอง';
+const RACE_HINT = `กด “${HISTORICAL_SAVE_BUTTON_LABEL}” อีกครั้งได้เลย — ยังไม่มีอะไรลงฐาน ระบบหาดีลของคู่ลูกค้า × AE ใหม่เอง`;
 /* รหัสที่ server ตั้งกฎไว้เอง: ส่งก้อนเดิมซ้ำติดเหมือนเดิมทุกครั้ง แต่แก้ฟอร์มแล้วบันทึกใหม่ได้ */
-const BLOCKED_HINT = 'บันทึกก้อนเดิมซ้ำจะติดเหมือนเดิมทุกครั้ง — แก้ข้อมูลตามข้อความข้างบนแล้วบันทึกใหม่';
+const BLOCKED_HINT = 'ส่งก้อนเดิมซ้ำจะติดเหมือนเดิมทุกครั้ง — แก้ข้อมูลตามข้อความนี้แล้วกดส่งใหม่';
+
+/* ⭐ รีวิวขั้น ④ 25/09: รหัสของขั้น ① / ② พาไปขั้นที่มีช่องให้แก้ — ของเดิมทุกอย่างนอกขั้น ③ ตกขั้น ① (400) หรือค้างขั้น ④ */
+const HISTORICAL_CONTRACT_CODES = new Set([
+  'historical_so_contract_file_missing', 'historical_so_contract_invalid', 'historical_so_check_contract',
+  'historical_so_customer_required', 'historical_so_customer_not_found', 'historical_so_customer_inactive',
+  'historical_so_owner_required', 'historical_so_owner_locked', 'historical_so_team_required',
+  'historical_so_zero_value_note_required',
+]);
+const HISTORICAL_LINE_CODES = new Set([
+  'historical_so_money_mismatch', 'historical_so_money_invalid', 'historical_so_zone_duplicate', 'historical_so_zone_invalid',
+  'historical_so_line_invalid', 'historical_so_line_money_mismatch', 'historical_so_line_not_package',
+  'historical_so_line_price_not_registry', 'historical_so_line_unpriced', 'historical_so_lines_required',
+  'historical_so_check_lines', 'historical_so_header_invalid',
+]);
 
 const HISTORICAL_MONEY_CODES = new Set([
   'historical_so_opening_evidence_missing', 'historical_so_opening_invalid', 'historical_so_installment_invalid',
@@ -2175,70 +2209,25 @@ export function historicalSaveExit(error) {
   }
   /* ⭐ รหัสของงวด/งวดยกมา/หลักฐาน (RPC ของ 0374) พาไปขั้น ③ ที่มีช่องให้แก้ — ของเดิมพาไปขั้น ①/④ ซึ่งไม่มีช่องนั้น */
   const moneyStep = HISTORICAL_MONEY_CODES.has(code);
+  const codeStep = moneyStep ? 'money' : (HISTORICAL_CONTRACT_CODES.has(code) ? 'contract' : (HISTORICAL_LINE_CODES.has(code) ? 'zones' : null));
   /* 400 ที่ไม่มี `errors[]` (เช่น `historical_so_money_mismatch`) — ข้อความของ server คือเหตุผลเดียวที่มี
      ⇒ ต้องพกมันไปโชว์ที่ขั้นปลายทางด้วย ไม่งั้น "กลับไปแก้" = จอเปล่า */
-  if (status === 400) return { ...base, kind: 'invalid', canEdit: true, goToStep: moneyStep ? 'money' : 'contract' };
+  if (status === 400) return { ...base, kind: 'invalid', canEdit: true, goToStep: codeStep || 'contract' };
   if (status === 403) return { ...base, kind: 'forbidden' };
   if (status === 503) return { ...base, kind: 'schema' };
   /* 🔴 รหัสอื่นที่มากับ 404/409/500 (`historical_so_edit_state_invalid` · `workflow_stale` …) — มาจากกฎ
      ฝั่ง server ที่ raise ข้างในทรานแซกชัน ⇒ **ห้ามเสนอ "บันทึกอีกครั้ง"** เพราะก้อนเดิมได้รหัสเดิมวนไม่รู้จบ */
-  if (code) return { ...base, kind: 'blocked', canEdit: true, goToStep: moneyStep ? 'money' : 'review', hint: BLOCKED_HINT };
+  /* `unmapped` = รหัสที่ตารางรหัส → ขั้นไม่รู้จัก ⇒ แผงบันทึกให้แจ้งผู้ดูแลพร้อมรหัส (historicalSaveResultView) */
+  if (code) return { ...base, kind: 'blocked', canEdit: true, goToStep: codeStep || 'review', hint: BLOCKED_HINT, unmapped: !codeStep };
   /* 5xx / เน็ตหลุด (ไม่มี response) = อาจลงฐานไปแล้ว — กดซ้ำได้ใบเดิมคืน (replayed) */
   if (!status || status >= 500) return { ...base, kind: 'unknown', canRetry: true, hint: RETRY_HINT };
   /* 4xx ที่ไม่มีทั้งรหัสและ `errors[]` — ไม่มีทางออกเฉพาะให้เดา */
   return { ...base, kind: 'unknown' };
 }
 
-/* ── ทางออกที่เรนเดอร์จริงบนจอ ───────────────────────────────────────────────
-   🔴 แยกออกมาเป็นข้อมูลเพราะ JSX ที่เขียน `{exit.canX && (` ถอดออกทีละอันได้โดยชุดเทสต์ยังเขียว —
-   ตัวตัดสินถูกคุ้มอยู่แล้ว แต่ "ปุ่มที่ผู้ใช้เห็น" ไม่มีใครคุ้ม */
-const EXIT_ACTION_LABELS = Object.freeze({
-  edit: 'กลับไปแก้', open: 'เปิดใบที่สร้างไว้ในฟอร์มแก้ไข', retry: 'บันทึกอีกครั้ง',
-});
-
-export function historicalExitActions(exit) {
-  const actions = [];
-  if (exit?.canEdit) {
-    const errors = list(exit.errors);
-    actions.push({
-      key: 'edit',
-      label: EXIT_ACTION_LABELS.edit,
-      errors,
-      goToStep: exit.goToStep || firstStepWithIssues(errors) || 'contract',
-      /* ไม่มี error รายช่อง = ข้อความของ server คือสิ่งเดียวที่อธิบายได้ว่าทำไมถึงกลับมา */
-      carryMessage: errors.length ? null : (text(exit.message) || null),
-    });
-  }
-  if (exit?.canOpenExisting && exit?.existingOrderId) {
-    actions.push({ key: 'open', label: EXIT_ACTION_LABELS.open, orderId: exit.existingOrderId });
-  }
-  if (exit?.canRetry) actions.push({ key: 'retry', label: EXIT_ACTION_LABELS.retry });
-  return actions;
-}
-
-/**
- * จอไหนหลังบันทึกไม่สำเร็จ — **ใบซ้ำไม่ใช่จอผิดพลาด** แต่เป็นการกลับไปขั้น ④ พร้อมรายการใหม่
- * 🔴 ทางออกของรหัสใบซ้ำตั้ง `canRetry/canEdit/canOpenExisting` เป็นเท็จหมดโดยเจตนา — หลุดไปทางอื่น
- *    เมื่อไร ผู้คีย์จะไม่มีปุ่มที่พากลับไปติ๊กยืนยันเลย
- */
-export function historicalSaveFailureState(exit) {
-  if (exit?.kind === 'duplicate') {
-    return {
-      step: 'review',
-      exit: null,
-      duplicates: list(exit.duplicates),
-      acknowledged: false,
-      error: exit.message,
-    };
-  }
-  return {
-    step: exit?.goToStep || 'review',
-    exit: exit || null,
-    duplicates: null,
-    acknowledged: null,
-    error: exit?.message || '',
-  };
-}
+/* ⭐ ทางออกที่เรนเดอร์จริงบนจอ (ปุ่มในแผงบันทึก) ตัดสินที่ `historicalSaveResultView` (lib/sales/historicalReviewView.js ·
+   รีวิวขั้น ④ 25/09) — ของเดิม `historicalExitActions` มีปุ่มหลัก "บันทึกอีกครั้ง" ตัวที่สองที่เรียกบันทึกตรง **ข้ามด่านใบซ้ำ** ⇒ ถอดแล้ว
+   · ใบซ้ำ (409) ไม่ใช่จอผิดพลาด — ฟอร์มรีเฟรชการ์ดใบที่อาจซ้ำแล้วปิดสวิตช์ (ดู catch ของ `runSave`) */
 
 /**
  * ด่านใบซ้ำของขั้น ④ — ปุ่มบันทึก **โชว์แต่กดไม่ผ่าน** จนกว่าจะเปิดสวิตช์ (กฎบ้าน:
@@ -2246,9 +2235,8 @@ export function historicalSaveFailureState(exit) {
  * 🔴 ตัวด่านอยู่ที่นี่ไม่ใช่ใน JSX เพราะเงื่อนไขในวงเล็บของ JSX ลบทิ้งได้โดยไม่มีเทสต์ไหนแดง
  *    และการพลาดข้อนี้แปลว่าใบซ้ำลงฐานจริง (พรีวิวไม่ถือว่าใบซ้ำเป็น error)
  */
-export function historicalDuplicateGate({ duplicates = [], acknowledged = false, warnings = [], localIssues = [] } = {}) {
+export function historicalDuplicateGate({ duplicates = [], acknowledged = false, localIssues = [] } = {}) {
   const count = list(duplicates).length;
-  const warnCount = list(warnings).length;
   const missing = list(localIssues).length;
   const gated = (count > 0 && !acknowledged) || missing > 0;
   /* ⚠️ ไม่พูดว่า "ยังกรอกไม่ครบ N ข้อ" — N นับเฉพาะข้อที่จอตรวจเองได้ ไม่ใช่ทุกช่องที่บังคับ
@@ -2260,9 +2248,7 @@ export function historicalDuplicateGate({ duplicates = [], acknowledged = false,
     gated,
     blockedNote,
     buttonTitle: gated ? (missing > 0 ? 'ยังมีข้อที่ต้องแก้' : 'เปิด “ตรวจแล้ว ไม่ใช่ใบซ้ำ” ก่อน') : null,
-    footNote: gated
-      ? `ยังบันทึกไม่ได้ — ${blockedNote} · คำเตือน ${warnCount} ข้อ`
-      : `ไม่มีข้อผิดพลาด · คำเตือน ${warnCount} ข้อ`,
+    /* ⚠️ บรรทัดใต้ปุ่มของขั้น ④ ไม่อยู่ที่นี่แล้ว — `historicalReviewFootNote` นับคำเตือนเป็นกลุ่ม (ของเดิมนับบรรทัด: งวดเลยกำหนด 10 งวด = 10 ข้อ) */
   };
 }
 

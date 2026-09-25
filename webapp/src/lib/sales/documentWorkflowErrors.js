@@ -100,7 +100,8 @@ const WORKFLOW_ERRORS = Object.freeze({
   historical_so_team_required: ['AE ที่เลือกยังไม่มีทีม — ตั้งทีมก่อนจึงสร้างดีลของใบย้อนหลังได้', 400],
   historical_so_order_date_invalid: ['วันที่ใบต้องอยู่ระหว่าง 01/01/2000 ถึงวันนี้', 400],
   historical_so_money_invalid: ['ยอดเงินของใบต้องเป็นตัวเลขไม่ติดลบ', 400],
-  historical_so_money_mismatch: ['ยอดเงินของใบไม่สมดุล — โหลดพรีวิวใหม่แล้วบันทึกอีกครั้ง', 400],
+  /* ไม่มีปุ่ม "โหลดพรีวิว" บนจอ — ชี้ปุ่มที่มีจริง (รีวิวขั้น ④ 25/09) */
+  historical_so_money_mismatch: ['ยอดเงินของใบไม่สมดุล — กด “ถัดไป” ที่ขั้น ② เพื่อตรวจใหม่ แล้วกด “บันทึกและส่งอนุมัติ” อีกครั้ง', 400],
   historical_so_lines_required: ['ต้องเลือกอย่างน้อย 1 โซน', 400],
   /* 0379 ใช้รหัสนี้ด้วยเมื่อบรรทัดไม่พกส่วนลดมา = ฟอร์มรุ่นก่อน 23/09 ⇒ ข้อความต้องชี้ทางออก "โหลดหน้าใหม่" */
   historical_so_line_invalid: [
@@ -164,7 +165,7 @@ const WORKFLOW_ERRORS = Object.freeze({
   historical_so_edit_state_invalid: ['แก้ใบย้อนหลังได้เฉพาะตอนเป็นร่างหรือถูกตีกลับ — โหลดหน้าใหม่', 409],
   historical_so_owner_locked: ['เปลี่ยนลูกค้าหรือ AE ของใบย้อนหลังที่บันทึกแล้วไม่ได้ — ลบใบแล้วคีย์ใหม่', 409],
   historical_so_submit_state_invalid: ['ส่งอนุมัติได้เฉพาะใบย้อนหลังที่เป็นร่างหรือถูกตีกลับ — โหลดหน้าใหม่', 409],
-  historical_so_approve_forbidden: ['อนุมัติใบสั่งขายย้อนหลังได้เฉพาะ AE Supervisor หรือ Admin', 403],
+  historical_so_approve_forbidden: ['อนุมัติใบสั่งขายย้อนหลังได้เฉพาะผู้จัดการฝ่ายขาย (AE Sup · CM · Commercial Director) หรือ Admin', 403],
   historical_so_approve_state_invalid: ['อนุมัติได้เฉพาะใบย้อนหลังที่กำลังรออนุมัติ — โหลดหน้าใหม่', 409],
   historical_so_self_approval: [
     'ผู้คีย์หรือผู้ส่งใบนี้อนุมัติใบของตัวเองไม่ได้ — ให้ AE Supervisor คนอื่นหรือ Admin อนุมัติ', 403,

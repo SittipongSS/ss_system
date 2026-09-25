@@ -44,7 +44,7 @@ import TeamPickerField from "@/components/ui/TeamPickerField";
 import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { EXTERNAL_DOC_TYPE } from "@/lib/master/attachmentTypes";
 import { EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS } from "@/lib/sales/contracts";
-import { DOC_DATE_MAX, DOC_DATE_MIN, HISTORICAL_STATUS_NOTE } from "@/lib/sales/historicalOrders";
+import { DOC_DATE_MAX, DOC_DATE_MIN, HISTORICAL_APPROVER_LABEL, HISTORICAL_STATUS_NOTE } from "@/lib/sales/historicalOrders";
 import {
   HISTORICAL_REF_MAX, REGISTRY_LOAD_FAILED, charLength, contractSpan, historicalContractFacts, historicalCoverageWarning,
   historicalDownstreamReset, historicalFieldAnchorId, historicalStepIssueNotice,
@@ -238,7 +238,7 @@ export default function WizardContractStep({
         <CardHeading
           icon={FileCheck2}
           title={<span id="hist-card-contract">เอกสารแทนสัญญา</span>}
-          note="เอกสารที่ลูกค้าตกลงไว้ก่อนเข้าระบบ — ระบบออกสัญญาแทนให้ตอน AE Sup อนุมัติ"
+          note={`เอกสารที่ลูกค้าตกลงไว้ก่อนเข้าระบบ — ระบบออกสัญญาแทนให้ตอน${HISTORICAL_APPROVER_LABEL}อนุมัติ`}
         />
         <div className={styles.field} id={historicalFieldAnchorId("contract.docKind")}>
           <span>ชนิดเอกสาร <b className={styles.req}>*</b></span>
@@ -349,7 +349,7 @@ export default function WizardContractStep({
               docTypes={[{ key: EXTERNAL_DOC_TYPE, label: "เอกสารที่ใช้แทนสัญญา" }]}
               onItemsChange={onContractPanelItems}
               title="ไฟล์เอกสารแทนสัญญา"
-              note="AE Sup อนุมัติจากไฟล์ที่อยู่ในนี้ — ส่งอนุมัติแล้วไฟล์ถูกตรึง (ดึงกลับก่อนจึงแก้ได้)"
+              note={`${HISTORICAL_APPROVER_LABEL}อนุมัติจากไฟล์ที่อยู่ในนี้ — ส่งอนุมัติแล้วไฟล์ถูกตรึง (ดึงกลับก่อนจึงแก้ได้)`}
             />
           ) : (
             <PendingFiles
@@ -359,14 +359,14 @@ export default function WizardContractStep({
               invalid={has("contract.file")}
               onOversize={onOversize}
               label="แนบไฟล์"
-              hint="ลากมาวาง หรือ Ctrl+V ได้ · อัปขึ้นตอนกดบันทึก · AE Sup อนุมัติจากไฟล์นี้"
+              hint={`ลากมาวาง หรือ Ctrl+V ได้ · อัปขึ้นตอนกดบันทึก · ${HISTORICAL_APPROVER_LABEL}อนุมัติจากไฟล์นี้`}
             />
           )}
           {noteOf("contract.file") ? <small data-bad="yes">{noteOf("contract.file")}</small> : null}
         </div>
       </section>
 
-      <section className={styles.card} aria-labelledby="hist-card-refs">
+      <section className={styles.card} aria-labelledby="hist-card-refs" id={historicalFieldAnchorId("refs")}>
         <CardHeading
           icon={Link2}
           title={<span id="hist-card-refs">อ้างอิงเดิม</span>}
