@@ -19,6 +19,8 @@
 // ⚠️ ทุกฟังก์ชันต้องทนของไม่ครบ (คืน null) — ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จ
 // แล้ว การโยน error ตรงนั้นจะทำให้ action ที่สำเร็จแล้วตอบ 500
 
+import { LEGACY_REOPEN_NOTE, reopenStatusLabel } from '@/lib/sales/quotationUnaccept';
+
 const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 
 // คำศัพท์ล็อกตามมติผู้ใช้ (ดู [[qt-so-workflow-vocabulary]]): **ตีกลับ** = ผู้อนุมัติ
@@ -53,6 +55,8 @@ const DEAL_MIRROR_KIND = {
   unaccept: 'doc_cancel',
   withdraw: 'doc_withdraw',
   restore: 'doc_withdraw',
+  // ใบพี่น้องเปิดกลับตอนย้อนการรับ (มติ 25/09 · mig 0388) — ชนิด quiet: มาคู่กับแถว `unaccept` ของใบหลักเสมอ
+  reopen: 'doc_reopen',
 };
 const DOC_LABEL = { quotation: 'ใบเสนอราคา', sales_order: 'ใบสั่งขาย' };
 
@@ -60,10 +64,15 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
   const kind = DEAL_MIRROR_KIND[action];
   const label = DOC_LABEL[docType];
   if (!kind || !label || !doc) return null;
+  // ⛔ เปิดใบพี่น้องกลับมีแต่ฝั่งใบเสนอราคา — ยกเลิก SO พร้อมย้อน Won ไม่เปิดใบพี่น้อง (มติ 25/09 ข้อ 4)
+  if (action === 'reopen' && docType !== 'quotation') return null;
 
   const number = clip(doc.quoteNumber || doc.orderNumber) || '';
   const head = `${label}${number ? ` ${number}` : ''}`;
-  const { reason = null, note = null, overrideReason = null, toRevisionNo = null } = opts;
+  const {
+    reason = null, note = null, overrideReason = null, toRevisionNo = null,
+    toStatus = null, approvalStatus = null, byQuoteNumber = null, inferred = false,
+  } = opts;
   // ⚠️ `withdraw` อยู่ในชุดนี้ด้วย — เหตุผลตอนดึงกลับไม่มีที่เก็บอื่นแล้ว
   const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept', 'withdraw'].includes(action)
     ? REASON_SUFFIX(reason)
@@ -87,6 +96,10 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
     // กู้คืน = ล้าง rejectionReason/cancelReason ทิ้งทั้งชุด → **จุดที่เหตุผลรอบก่อน
     // หายถาวร** แถวนี้จึงเป็นรอยเดียวที่บอกว่าเคยมีของที่ถูกล้างไป
     restore: `${head} ถูกกู้คืนกลับเป็นร่าง`,
+    /* ⭐ บอกทั้งปลายทางและต้นเหตุ — คนเปิดดีลย้อนหลังเห็นใบ "ปิด" กลับมาเปิดเอง ต้องรู้ว่าเพราะย้อนการรับใบไหน
+       ใบรุ่นเก่า (ปิดก่อน 0388) สถานะเป็นค่าที่เดาจากผลอนุมัติ ⇒ ต่อท้ายให้รู้ว่าไม่ใช่ค่าที่จำไว้ */
+    reopen: `${head} เปิดกลับ${toStatus ? `เป็น “${reopenStatusLabel({ status: toStatus, approvalStatus })}”` : ''}`
+      + `${clip(byQuoteNumber) ? ` — ย้อนการรับ ${clip(byQuoteNumber)}` : ''}${inferred ? ` (${LEGACY_REOPEN_NOTE})` : ''}`,
   }[action];
 
   return {
@@ -99,6 +112,7 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
       action,
       // ธงอ่านด้วยเครื่องได้ ไม่ต้อง parse ข้อความ (รายงาน "อนุมัติแบบ override" ในอนาคต)
       ...(action === 'approve' ? { override: !!clip(overrideReason) } : {}),
+      ...(action === 'reopen' ? { toStatus, byQuoteNumber: clip(byQuoteNumber), inferred: !!inferred } : {}),
     },
   };
 }
