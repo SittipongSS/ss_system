@@ -36,7 +36,9 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
-import { canAnswerRequestsFor, canBeServiceAssignee, canDoFieldWork, canEditService } from "@/lib/permissions";
+import {
+  canAnswerRequestsFor, canBeServiceAssignee, canDoFieldWork, canEditService, canSendSurveyResult, canViewVisitReport,
+} from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
@@ -92,7 +94,7 @@ const deliveryPayload = (rows) => (rows || []).map((row) => {
   const { formula, ...rest } = stripFormKeys(row);
   return isDeliveredAsProduct(row.categoryCode) ? { ...rest, formula: stripFormKeys(formula) } : rest;
 });
-import { detailForKind, panelForKind } from "@/components/requests/details";
+import { detailForKind, panelForKind, viewForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   emptyDeliveryRow, reworkDeliveryRow,
@@ -477,6 +479,8 @@ export default function RequestDetailPage() {
   const KindDetail = detailForKind(req.kind);
   // การ์ด panel รายหัวข้อ (ม-94) — null = มีแค่การ์ด control กลาง + การ์ดบริบท
   const KindPanel = panelForKind(req.kind);
+  /* ⭐ หัวข้อที่มี "หน้าทั้งหน้า" ของตัวเอง (ประเมินพื้นที่ · แบบ A ไทม์ไลน์ · มติเจ้าของ 25/09) — null = โครงกลาง */
+  const KindView = viewForKind(req.kind);
   // ⭐ **แถบสรุปของใบ** (ม็อกอัพ ส่วน 06–07) — เปิดใบมาแล้วรู้สถานการณ์ทันที
   // โดยไม่ต้องไล่อ่านทีละแถว
   //
@@ -1362,7 +1366,8 @@ export default function RequestDetailPage() {
         // ⚠️ อยู่ในกลุ่ม secondary ไม่ใช่ปุ่มหลัก — ปุ่มหลักคือก้าวถัดไปของงาน
         // (ส่งกลิ่น/ตอบแล้ว) การเลื่อนวันเป็นการแก้คำสัญญา ไม่ใช่การเดินหน้า
         id: "reschedule",
-        label: "เลื่อนวันกำหนดส่ง",
+        /* 🐞 ปุ่มเขียน "เลื่อนวันกำหนดส่ง" แต่โมดัลที่เปิดเขียน "เลื่อนวันนัดเข้าพื้นที่" (บรีฟ B2 ข้อ 3) — คำเดียวกันทั้งคู่ */
+        label: isScheduling ? "เลื่อนวันนัดเข้าพื้นที่" : "เลื่อนวันกำหนดส่ง",
         kind: "edit",
         icon: CalendarClock,
         onClick: () => setReschedule({
@@ -1544,6 +1549,76 @@ export default function RequestDetailPage() {
     </DetailCard>
   ) : null;
 
+  /* การ์ดเธรด + ไฟล์แนบของใบ — ประกาศครั้งเดียว วางได้ทั้งโครงกลาง (คอลัมน์เนื้อ) และหน้าของหัวข้อ
+     (แบบ A ของประเมินพื้นที่วางคู่กันท้ายหน้า) ⇒ ของชุดเดียว ไม่ใช่สองสำเนา */
+  const threadBlock = (
+    <>
+      {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
+          ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของใบ
+          (ส่ง/รับเรื่อง/ตอบ/ปิด) ระบบเขียนลงสายเดียวกันให้เอง */}
+      <DetailCard icon={History} eyebrow="ACTIVITY" title="ความเคลื่อนไหวของคำร้อง">
+        {/* 🐞 เคยส่งชื่อชุดก่อน mig 0173 (ชื่อเก่าของคำร้อง/บรรทัดคำร้อง) — เธรดเลย
+            อ่านคนละคีย์กับที่ server เขียนเหตุการณ์ลงไป (`dept_request`) ผลคือ
+            **ไม่เห็นทั้งเหตุการณ์ของระบบและข้อความเก่า** และข้อความใหม่ตกไปอยู่คีย์
+            ที่ไม่มีใครอ่าน (ไฟล์แนบพลาดคู่กัน) · เทสต์กันไว้แล้วที่
+            lib/master/entityTypeUsage.test.mjs */}
+        {/* ⭐ **กล่องเดียว เรียงตามเวลา ตั้งต้นเห็นครบ** (มติผู้ใช้ 2026-08-18) —
+            ทับมติ 2026-08-17 ที่แยกเหตุการณ์ระบบไปการ์ด "ประวัติการทำรายการ" ต่างหาก
+            🐞 เหตุที่มติเดิมเกิด: การ์ดพาดหัวว่า "พูดคุยในคำร้องนี้" แต่เป็น log ล้วน
+            บน 16 ใบจาก 32 (นับจริง 132 แถว = ข้อความคน 33 · เหตุการณ์ระบบ 99)
+            🐞 เหตุที่มติเดิมถูกทับ: **พาดหัวคือปัญหา ไม่ใช่การเรียงรวม** · พอย้าย log
+            ลงมาคอลัมน์เดียวกับเธรด (2026-08-18) อาการโผล่ทันที — ใบ SB-26080010 ได้
+            การ์ด "พูดคุย" ว่างเปล่าวางติดการ์ด log ที่มี 3 แถว · และใบที่เลื่อนวันสองรอบ
+            (FD-26080006) เหตุการณ์อยู่กล่องหนึ่ง ข้อความที่คุยเรื่องเลื่อนอยู่อีกกล่อง
+            ⇒ ไล่เรื่องต่อกันไม่ได้ ทั้งที่ *ลำดับ* คือเนื้อหาของใบชนิดนี้
+            ⇒ กล่องเดียว **ชื่อกลาง ๆ ที่ไม่สัญญาว่าเป็นบทสนทนา** จึงไม่โกหกแม้ไม่มีใครพิมพ์
+            ⚠️ ตั้งต้น `hideSystem = false` (เห็นครบ) — คนที่ไม่อยากเห็นกดสวิตช์ในเธรดได้
+            และมันจำรายชนิดเอกสารให้เอง ไม่ต้องกดซ้ำทุกใบ */}
+        <UpdateThread
+          entityType="dept_request"
+          entityId={req.id}
+          /* ใบประเมินพื้นที่ไม่มีสเปก/MOQ ให้ต่อรอง — คุยเรื่องหน้างานกับผล */
+          placeholder={isScheduling ? "ถามข้อมูลหน้างาน / แจ้งความคืบหน้า / ถามเรื่องผลประเมิน..." : "ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."}
+          emptyText={isScheduling
+            ? "ยังไม่มีความเคลื่อนไหว — ถามข้อมูลหน้างานหรือเรื่องผลประเมินไว้ตรงนี้ได้ แนบรูปได้ด้วย"
+            : "ยังไม่มีความเคลื่อนไหว — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"}
+          composeHint={composeHint}
+          onPosted={load}
+        />
+      </DetailCard>
+    </>
+  );
+  const attachmentsBlock = (
+    <>
+      {/* ⭐ ไฟล์แนบของ **ทั้งใบ** — ย้ายลงมาจากท้ายราง (2026-08-18)
+          ⚠️ **ต้องอยู่ใต้เธรด ไม่ใช่ใต้การ์ดงาน** — ลองวางใต้การ์ดงานแล้ววัดจริงบน
+          SB-26080010: กล่องลากวางของ direction (ท้ายการ์ดงาน) กับกล่องลากวางของใบ
+          ห่างกัน 160px หน้าตาเหมือนกันเป๊ะ ⇒ อ่านไม่ออกว่าไฟล์จะไปลงใบหรือลง direction
+          · ของสองอันนี้คนละความหมาย (ของใบ vs ของ direction) ต้องไม่ติดกัน
+          ⚠️ ที่ 330px บนรางเดิม กล่องลากวางกว้างพอแค่ปุ่มเดียว — เต็มความกว้างของ
+          คอลัมน์เนื้อทำให้รายชื่อไฟล์อ่านได้จริงโดยไม่ตัดคำ */}
+      <DetailCard icon={Paperclip} eyebrow="ATTACHMENTS" title="ไฟล์แนบของคำร้อง">
+        <AttachmentsPanel
+          entityType="dept_request"
+          entityId={req.id}
+          canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+          inlineUpload
+        />
+      </DetailCard>
+    </>
+  );
+
+  const showKindView = !!KindView && !editing;
+  /* สิทธิ์ของคนดูที่หน้าของหัวข้อต้องรู้ — ลิงก์ที่เปิดไม่ได้ต้องไม่โชว์ (กติกา ui-visibility)
+     · ใบประเมิน: คนที่ทำงานหน้างาน/จัดคิวได้ · นัด: รายงานนัดเปิดให้ฝ่ายขายอ่านได้ (`canViewVisitReport`) */
+  const kindViewer = {
+    canDecide: canSendSurveyResult({ role, department }),
+    canWork: canDoFieldWork({ role, department }) || canEditService({ role, department }),
+    canOpenVisit: canViewVisitReport({ role, department }),
+    isOpener: !!req._opener,
+    isRequesterSide: !!req._mine,
+  };
+
   /* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะรายบรรทัด
      ของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิงมากที่สุดแนบไม่ได้เลย
      ต้องส่งกันทาง LINE) · ประกาศครั้งเดียวแล้ววางได้สองที่ตามโครงของหัวข้อ */
@@ -1566,7 +1641,7 @@ export default function RequestDetailPage() {
             · ไฟล์แนบของคำร้อง — แท็บ "กำหนดและไฟล์" ของฟอร์มชี้มาที่การ์ดนี้ตรง ๆ
             · ความเคลื่อนไหว — เหตุผลที่ถูกตีกลับอยู่ในเธรด (`appendRequestEvent`)
               ซึ่งเป็นสิ่งที่คนกดแก้หลังโดนตีกลับกำลังตามอ่านพอดี */}
-      {!editing && (
+      {!editing && !showKindView && (
       <SalesDetailOverview
         eyebrow={`${requestKindLabel(req.kind)} · ถึง ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
@@ -1719,7 +1794,7 @@ export default function RequestDetailPage() {
           ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า */}
       {/* ⚠️ โหมดแก้ไม่ต้องมี — แท็บ "งาน" ของฟอร์มโชว์ ลูกค้า/โครงการ/ดีล/ใบที่อ้าง
           ครบอยู่แล้ว (ช่องที่ถูกล็อก) ⇒ วางซ้ำคือของเดียวกันสองที่ในจอเดียว */}
-      {!editing
+      {!editing && !showKindView
         && (req.refCustomer || req.refProject || req.refDeal || req.quotationId || req.salesOrderId) && (
         <ContextGrid className={styles.contextRow}>
           {req.refCustomer && (
@@ -1788,6 +1863,22 @@ export default function RequestDetailPage() {
           การ์ดขวา DOCUMENT CONTROL ถือ สถานะ + รางแนวตั้ง + ปุ่มระดับใบ **ที่เดียว**
           (หัวใบ/ท้ายเธรดไม่มีปุ่ม — ย้าย ไม่ก๊อป · บทเรียนรางขวารุ่นแรกที่ถูกยุบเพราะ
           การ์ดพูดซ้ำหัวใบทุกบรรทัด) */}
+      {/* ⭐ **หน้าของหัวข้อ** (ประเมินพื้นที่ · แบบ A ไทม์ไลน์ · มติเจ้าของ 25/09) — หัวใบ · งานตอนนี้ · พื้นที่ ·
+          รายละเอียด · เธรด+ไฟล์ · ปุ่มระดับใบชุดเดียวกับการ์ดจัดการ (`requestActions`) แค่วางคนละที่
+          ⚠️ โหมดแก้กลับไปโครงกลาง — ปุ่ม "บันทึกการแก้ไข" อยู่บนการ์ดจัดการ */}
+      {showKindView ? (
+        <KindView
+          request={req}
+          today={today}
+          viewer={kindViewer}
+          people={directory}
+          peopleLoading={directoryLoading}
+          actions={requestActions}
+          busy={saving}
+          thread={threadBlock}
+          attachments={attachmentsBlock}
+        />
+      ) : (
       <DetailPageLayout
         className={styles.detailLayout}
         asideLabel="จัดการคำร้อง"
@@ -1930,36 +2021,7 @@ export default function RequestDetailPage() {
       />
       )}
 
-      {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
-          ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของใบ
-          (ส่ง/รับเรื่อง/ตอบ/ปิด) ระบบเขียนลงสายเดียวกันให้เอง */}
-      <DetailCard icon={History} eyebrow="ACTIVITY" title="ความเคลื่อนไหวของคำร้อง">
-        {/* 🐞 เคยส่งชื่อชุดก่อน mig 0173 (ชื่อเก่าของคำร้อง/บรรทัดคำร้อง) — เธรดเลย
-            อ่านคนละคีย์กับที่ server เขียนเหตุการณ์ลงไป (`dept_request`) ผลคือ
-            **ไม่เห็นทั้งเหตุการณ์ของระบบและข้อความเก่า** และข้อความใหม่ตกไปอยู่คีย์
-            ที่ไม่มีใครอ่าน (ไฟล์แนบพลาดคู่กัน) · เทสต์กันไว้แล้วที่
-            lib/master/entityTypeUsage.test.mjs */}
-        {/* ⭐ **กล่องเดียว เรียงตามเวลา ตั้งต้นเห็นครบ** (มติผู้ใช้ 2026-08-18) —
-            ทับมติ 2026-08-17 ที่แยกเหตุการณ์ระบบไปการ์ด "ประวัติการทำรายการ" ต่างหาก
-            🐞 เหตุที่มติเดิมเกิด: การ์ดพาดหัวว่า "พูดคุยในคำร้องนี้" แต่เป็น log ล้วน
-            บน 16 ใบจาก 32 (นับจริง 132 แถว = ข้อความคน 33 · เหตุการณ์ระบบ 99)
-            🐞 เหตุที่มติเดิมถูกทับ: **พาดหัวคือปัญหา ไม่ใช่การเรียงรวม** · พอย้าย log
-            ลงมาคอลัมน์เดียวกับเธรด (2026-08-18) อาการโผล่ทันที — ใบ SB-26080010 ได้
-            การ์ด "พูดคุย" ว่างเปล่าวางติดการ์ด log ที่มี 3 แถว · และใบที่เลื่อนวันสองรอบ
-            (FD-26080006) เหตุการณ์อยู่กล่องหนึ่ง ข้อความที่คุยเรื่องเลื่อนอยู่อีกกล่อง
-            ⇒ ไล่เรื่องต่อกันไม่ได้ ทั้งที่ *ลำดับ* คือเนื้อหาของใบชนิดนี้
-            ⇒ กล่องเดียว **ชื่อกลาง ๆ ที่ไม่สัญญาว่าเป็นบทสนทนา** จึงไม่โกหกแม้ไม่มีใครพิมพ์
-            ⚠️ ตั้งต้น `hideSystem = false` (เห็นครบ) — คนที่ไม่อยากเห็นกดสวิตช์ในเธรดได้
-            และมันจำรายชนิดเอกสารให้เอง ไม่ต้องกดซ้ำทุกใบ */}
-        <UpdateThread
-          entityType="dept_request"
-          entityId={req.id}
-          placeholder="ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."
-          emptyText="ยังไม่มีความเคลื่อนไหว — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
-          composeHint={composeHint}
-          onPosted={load}
-        />
-      </DetailCard>
+      {threadBlock}
 
       {/* ⭐ ก้าวถัดไปอยู่ **ท้ายเธรด** ไม่ใช่บนรางรายแถว (ม-36 ก) — เธรดเป็นแกน
           ของหน้า สถานะกับบทสนทนาอยู่สายเดียวกัน แล้วจบด้วย "ต้องทำอะไรต่อ"
@@ -1970,21 +2032,7 @@ export default function RequestDetailPage() {
           ⚠️ **ต้องอยู่นอก `DetailCard`** — `.card { overflow: hidden }` ตัด sticky ทิ้ง
           ทันที (พิสูจน์ในเบราว์เซอร์ 2026-08-08) · ตำแหน่งบนหน้ายังท้ายเธรดเหมือนเดิม */}
 
-      {/* ⭐ ไฟล์แนบของ **ทั้งใบ** — ย้ายลงมาจากท้ายราง (2026-08-18)
-          ⚠️ **ต้องอยู่ใต้เธรด ไม่ใช่ใต้การ์ดงาน** — ลองวางใต้การ์ดงานแล้ววัดจริงบน
-          SB-26080010: กล่องลากวางของ direction (ท้ายการ์ดงาน) กับกล่องลากวางของใบ
-          ห่างกัน 160px หน้าตาเหมือนกันเป๊ะ ⇒ อ่านไม่ออกว่าไฟล์จะไปลงใบหรือลง direction
-          · ของสองอันนี้คนละความหมาย (ของใบ vs ของ direction) ต้องไม่ติดกัน
-          ⚠️ ที่ 330px บนรางเดิม กล่องลากวางกว้างพอแค่ปุ่มเดียว — เต็มความกว้างของ
-          คอลัมน์เนื้อทำให้รายชื่อไฟล์อ่านได้จริงโดยไม่ตัดคำ */}
-      <DetailCard icon={Paperclip} eyebrow="ATTACHMENTS" title="ไฟล์แนบของคำร้อง">
-        <AttachmentsPanel
-          entityType="dept_request"
-          entityId={req.id}
-          canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-          inlineUpload
-        />
-      </DetailCard>
+      {attachmentsBlock}
 
       {/* ⚠️ **ไม่มีการ์ด `UpdateLog` แยกแล้ว** (มติผู้ใช้ 2026-08-18) — เหตุการณ์ระบบ
           กลับไปเรียงในสายเดียวกับข้อความคนที่การ์ด "ความเคลื่อนไหวของคำร้อง" ข้างบน
@@ -1992,6 +2040,7 @@ export default function RequestDetailPage() {
           เพราะแถวชุดเดียวกันจะโผล่สองกล่อง */}
         </div>
       </DetailPageLayout>
+      )}
 
       {/* ⭐ **ยังไม่จบ** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — ถอนตราปิดที่กดไปแล้ว
           ⚠️ บังคับเหตุผล: ใบเด้งกลับมาโดยไม่มีใครรู้ว่าติดอะไร คือใบที่จะวนอีกรอบ */}
@@ -2093,6 +2142,11 @@ export default function RequestDetailPage() {
            (server ไม่ได้ตรวจช่วงเวลาของงานสำรวจ — ดู `commitDueOutcome`)
            ⚠️ ข้อจำกัดที่รู้แล้ว (รีวิว UAT 24/09): ช่วงเวลา/ภาระของไซต์บนหน้านี้ = เปลี่ยนการอ่าน API ⇒ รอมติเจ้าของ */
         site={req.surveySite || null}
+        /* ⭐ ช่วงเวลาเข้าไซต์ + ภาระของไซต์ (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09) — GET ส่งมาครบแล้ว
+           ⇒ ด่าน ④ กับ "จุด · แพ็ค" บอกเท่าหน้าจัดคิว (ภาระมาจาก `visitBundle` สูตรเดียว) · เตือนเท่านั้น
+           server ไม่ได้ตรวจช่วงเวลาของงานสำรวจ (`commitDueOutcome`) ผลของการกดจึงไม่เปลี่ยน */
+        accessKnown={!!req.surveySite}
+        siteLoad={req.surveySiteLoad || null}
         technicians={technicians}
         techniciansLoading={!technicians.length && directoryLoading}
         techniciansError={!technicians.length && directoryError}

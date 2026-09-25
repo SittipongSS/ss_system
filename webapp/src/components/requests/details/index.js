@@ -18,6 +18,7 @@ import FormulaDevDetail from './FormulaDevDetail';
 import ScentDevDetail from './ScentDevDetail';
 import SurveyDetail from './SurveyDetail';
 import SharedRequestDetail from './SharedRequestDetail';
+import SurveyRequestView from './SurveyRequestView';
 
 const BY_KIND = {
   scent_dev: ScentDevDetail,
@@ -53,6 +54,18 @@ export function detailForKind(kind) {
 
 export function panelForKind(kind) {
   return PANEL_BY_KIND[kind] || null;
+}
+
+/* ⭐ **หน้าทั้งหน้าของหัวข้อ** (มติเจ้าของ 25/09 — ประเมินพื้นที่แบบ A "ไทม์ไลน์งาน") — หัวข้อที่ลงทะเบียน
+   ที่นี่ได้หัวใบ · ไทม์ไลน์ · แถบตอนนี้ ของตัวเอง แทนโครง "เนื้อซ้าย + การ์ดจัดการขวา" (ม-123)
+   ⚠️ ปุ่มระดับใบยังมาจาก `requestActions` ชุดเดียวของเปลือก — view แค่เลือกที่วาง ห้ามสร้างปุ่มเอง
+   ⚠️ โหมดแก้ใช้โครงเดิม (ฟอร์มตัวเดียวกับตอนสร้าง + การ์ดจัดการที่ถือปุ่มบันทึก) */
+const VIEW_BY_KIND = {
+  site_survey: SurveyRequestView,
+};
+
+export function viewForKind(kind) {
+  return VIEW_BY_KIND[kind] || null;
 }
 
 export { DocumentDetail, FormulaDevDetail, ScentDevDetail, SharedRequestDetail };

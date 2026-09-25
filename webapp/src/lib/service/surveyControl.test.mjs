@@ -663,14 +663,24 @@ test('ไม่มีสิทธิ์ส่ง = ไม่โชว์ปุ�
 
 // ══ ขั้นของใบ + กำหนดส่ง ═══════════════════════════════════════════════
 test('ขั้นของใบใช้ชุด 6 ขั้นเดียวกับหน้าคำร้อง — บรรทัดรองเล่าความคืบหน้าจริง', () => {
+  /* ⭐ รางหน้างาน (`fieldRail` · มติเจ้าของ 25/09) — ขั้นกลางเดินตามนัด ไม่ใช่ "รอ TS ตอบ" ในเธรด
+     ⚠️ ชื่อขั้นชุดเดียวกับไทม์ไลน์บนหน้าคำร้อง (ทั้งสองจออ่าน `requestRailSteps`) */
   const zones = [readyZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02')];
-  const v = surveyControlView({ request: request(), zones, filesByZone: { z1: readyFiles }, viewer: HEAD });
+  const visit = { id: 'v1', code: 'SV-1', status: 'in_progress', scheduledDate: '2026-09-14', actualStartTime: '10:12:00' };
+  const v = surveyControlView({ request: request(), zones, filesByZone: { z1: readyFiles }, viewer: HEAD, visit });
   assert.equal(v.step.total, 6);
   assert.equal(v.step.index, 3);
-  assert.equal(v.step.label, 'รอ TS ตอบ');
+  assert.equal(v.step.label, 'เข้าพื้นที่');
   assert.equal(v.step.hint, 'วัดแล้ว 1/2 พื้นที่');
   assert.deepEqual(v.step.steps.map((s) => s.label),
-    ['จัดทำคำร้อง', 'รอรับเรื่อง', 'ลงคิว', 'รอ TS ตอบ', 'ตอบแล้ว', 'ปิดเรื่อง']);
+    ['ส่งคำร้อง', 'รับเรื่อง', 'ลงคิว / นัด', 'เข้าพื้นที่', 'ส่งผล', 'ปิดเรื่อง']);
+
+  // ช่างส่งงานแล้ว (นัดปิด) = ขั้นส่งผล · ไม่มีนัดที่ใช้ได้ = ขั้นลงคิว
+  const done = surveyControlView({ request: request(), zones, filesByZone: { z1: readyFiles }, viewer: HEAD, visit: { ...visit, status: 'done' } });
+  assert.equal(done.step.label, 'ส่งผล');
+  const unable = surveyControlView({ request: request(), zones, viewer: HEAD, visit: { ...visit, status: 'unable' } });
+  assert.equal(unable.step.label, 'ลงคิว / นัด');
+  assert.match(unable.step.hint, /ทำไม่ได้/);
 });
 
 test('วันเลยกำหนดมาจาก "วันนี้" ที่ผู้เรียกส่งมา ไม่ใช่นาฬิกาในฟังก์ชัน', () => {

@@ -1,0 +1,793 @@
+/* หน้าคำร้องประเมินพื้นที่ — แบบ A "ไทม์ไลน์งาน" (มติเจ้าของ 25/09)
+   ⚠️ พื้นการ์ด · หัวการ์ด · ตาราง · ป้าย มาจากของกลางทั้งหมด (DetailCard · TableScroll · StatusBadge)
+      ที่นี่มีแค่ของเฉพาะหน้านี้: แถวอ้างอิงบนหัวใบ · ไทม์ไลน์หกขั้น · แถบ "ตอนนี้" · แถบไซต์ · การ์ดด่าน */
+
+/* ── หัวใบ ─────────────────────────────────────────────────────────────── */
+.subject {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+.refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5) var(--space-4);
+}
+
+.ref {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.ref > svg {
+  flex: none;
+  color: var(--text-3);
+}
+
+.refLabel {
+  color: var(--text-3);
+}
+
+.headActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* ── ปุ่ม ─────────────────────────────────────────────────────────────── */
+.action {
+  justify-content: center;
+}
+
+.action[data-blocked] {
+  opacity: var(--op-disabled);
+}
+
+.bandAction {
+  width: 100%;
+}
+
+/* ── การ์ดงานตอนนี้ ────────────────────────────────────────────────────── */
+.jobCard {
+  scroll-margin-top: var(--scroll-anchor-top);
+}
+
+.stepCount {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+/* เนื้อการ์ดงาน — ไทม์ไลน์แล้วแถบตอนนี้ · จอแคบสลับให้แถบตอนนี้ขึ้นก่อน (จอแรกต้องตอบว่าตอนนี้อะไร) */
+.jobBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ไทม์ไลน์หกขั้น — แถวเดียวบนจอกว้าง · รายการแนวตั้งบนจอแคบ */
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3) var(--space-3) var(--space-4);
+  border-top: 3px solid transparent;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+/* เส้นเชื่อมระหว่างหมุด — เขียวเมื่อผ่านแล้ว · เส้นประเมื่อยังไม่ถึง */
+.step::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--space-3) + 13px);
+  left: calc(var(--space-3) + 32px);
+  right: calc(var(--space-3) * -1 + var(--space-1));
+  border-top: 2px dashed var(--border-strong);
+}
+
+.step:last-child::after {
+  display: none;
+}
+
+.step[data-state="done"]::after {
+  border-top-style: solid;
+  border-top-color: var(--green);
+}
+
+.step[data-state="current"] {
+  border-top-color: var(--navy);
+  background: color-mix(in srgb, var(--navy) 6%, transparent);
+}
+
+.marker {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-bottom: var(--space-1);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--panel);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+}
+
+.step[data-state="done"] .marker {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.step[data-state="current"] .marker {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--navy-fg);
+}
+
+.step[data-state="skipped"] .marker,
+.step[data-state="cancelled"] .marker {
+  border-style: dashed;
+}
+
+.stepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.stepHead > b {
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.step[data-state="pending"] .stepHead > b {
+  color: var(--text-2);
+}
+
+.when {
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+}
+
+.step[data-state="pending"] .when {
+  color: var(--text-2);
+  font-weight: var(--fw-normal);
+}
+
+.people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-0-5);
+}
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-1);
+  font-weight: var(--fw-semibold);
+}
+
+.step[data-state="current"] .avatar:not([data-generic]) {
+  background: var(--navy);
+  color: var(--navy-fg);
+}
+
+.personName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.personName > small {
+  margin-right: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.stepLine {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.stepLine[data-tone="ok"] {
+  color: var(--green);
+}
+
+.stepLine[data-tone="late"] {
+  color: var(--red);
+  font-weight: var(--fw-medium);
+}
+
+/* ── แถบ "ตอนนี้" ───────────────────────────────────────────────────────── */
+.now {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(220px, 0.8fr);
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+
+.now[data-tone="danger"] {
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
+.nowMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.nowStep {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+.nowHeadline {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.now[data-tone="danger"] .nowHeadline {
+  color: var(--red);
+}
+
+.nowSub {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.nowNext {
+  display: flex;
+  gap: var(--space-3);
+  margin: var(--space-1-5) 0 0;
+  padding-top: var(--space-2-5);
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.nowNext > span {
+  flex: none;
+  color: var(--text-3);
+}
+
+/* แถบวัด — ขีดละหนึ่งพื้นที่ (ทรงเดียวกับการ์ดจัดการผลประเมินของ TS) */
+.meter {
+  display: flex;
+  gap: var(--space-0-5);
+  max-width: 320px;
+}
+
+.meter > i {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.meter > i[data-ok] {
+  background: var(--green);
+  box-shadow: none;
+}
+
+.nowFacts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.nowFacts > div > small,
+.siteStrip small {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+.turn,
+.due {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+  font-size: var(--fs-8);
+  line-height: var(--lh-thai);
+}
+
+.turn b,
+.due b {
+  font-weight: var(--fw-semibold);
+}
+
+.factNote {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.nowActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.blocked,
+.wait {
+  display: flex;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.blocked > svg {
+  flex: none;
+  margin-top: var(--space-0-5);
+  color: var(--amber);
+}
+
+/* ── พื้นที่และผล ─────────────────────────────────────────────────────────── */
+.zoneStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.summary {
+  margin: 0;
+}
+
+.siteStrip {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+.siteStrip p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+  font-size: var(--fs-7);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.siteStrip p > svg {
+  flex: none;
+  color: var(--text-3);
+}
+
+.zoneTable tr[data-cut] td {
+  color: var(--text-3);
+}
+
+.cellValue {
+  display: block;
+  min-width: 0;
+}
+
+.miss {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--amber);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.gates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.gateCard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2-5);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.gateIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+}
+
+.gateBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.gateBody > small {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.changeLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.changeLine[data-tone="ok"] {
+  color: var(--green);
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+/* ── รายละเอียดคำร้อง ─────────────────────────────────────────────────────── */
+.details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.facts > div {
+  padding: var(--space-2-5) var(--space-3);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.facts > div:nth-child(3n) {
+  border-right: 0;
+}
+
+.facts > div:nth-last-child(-n + 3) {
+  border-bottom: 0;
+}
+
+.facts dt {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+.facts dd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.facts dd > small {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.facts > div[data-tone="ok"] dd > small {
+  color: var(--green);
+}
+
+.facts > div[data-tone="late"] dd > small {
+  color: var(--red);
+}
+
+/* ── เธรด + ไฟล์แนบ ─────────────────────────────────────────────────────── */
+.bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.threadCol,
+.filesCol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* การ์ดจัดการท้ายหน้า — เฉพาะจอแคบ (หัวใบซ่อนปุ่มชุดเดียวกัน) */
+.manageCard {
+  display: none;
+}
+
+.manageActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+@media (max-width: 1100px) {
+  .now {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  /* ปุ่มเรียงเป็นกริดใต้ข้อเท็จจริง · บรรทัดเหตุผลกินเต็มแถว (ไม่ใช้ flex-basis — พลิกเป็นคอลัมน์แล้วกลายเป็นความสูง) */
+  .nowActions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .nowActions > .blocked,
+  .nowActions > .wait {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1000px) {
+  .details,
+  .bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* จอแคบ: ไทม์ไลน์เป็นรายการแนวตั้ง · ขั้นปัจจุบันยังเด่นเหมือนเดิม */
+@media (max-width: 900px) {
+  .timeline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    column-gap: var(--space-3);
+    row-gap: var(--space-0-5);
+    padding: var(--space-2-5) var(--space-3);
+    border-top: 0;
+    border-left: 3px solid transparent;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+
+  .step > :not(.marker) {
+    grid-column: 2;
+  }
+
+  .marker {
+    grid-row: 1 / span 6;
+    margin-bottom: 0;
+  }
+
+  .step::after {
+    top: calc(var(--space-2-5) + 28px);
+    bottom: 0;
+    left: calc(var(--space-3) + 12px);
+    right: auto;
+    border-top: 0;
+    border-left: 2px dashed var(--border-strong);
+  }
+
+  .step[data-state="done"]::after {
+    border-left-style: solid;
+    border-left-color: var(--green);
+  }
+
+  .step[data-state="current"] {
+    border-left-color: var(--navy);
+  }
+
+  .gates,
+  .siteStrip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .now {
+    order: -1;
+  }
+}
+
+@media (max-width: 680px) {
+  .headActions {
+    display: none;
+  }
+
+  .manageCard {
+    display: block;
+  }
+
+  .now {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-3);
+  }
+
+  .nowHeadline {
+    font-size: var(--fs-10);
+  }
+
+  .nowActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nowActions > .bandAction,
+  .manageActions > .bandAction {
+    width: 100%;
+    min-height: var(--ctl-h-touch);
+  }
+
+  /* ตารางพื้นที่เลิกเป็นตาราง → การ์ดรายพื้นที่ (ป้ายซ้าย ค่าขวา · ทรงเดียวกับตารางสรุปส่งผลของ TS)
+     ⚠️ ป้ายมาจาก `data-label` ของเซลล์ ⇒ หัวตารางซ่อนได้โดยไม่มีใครเดาว่าเลขไหนคืออะไร */
+  .zoneShell[data-surface][data-family] :global(table) {
+    display: block;
+    min-width: 0;
+  }
+
+  .zoneShell[data-surface][data-family] :global(thead) {
+    display: none;
+  }
+
+  .zoneShell[data-surface][data-family] :global(tbody),
+  .zoneShell[data-surface][data-family] :global(tfoot) {
+    display: block;
+  }
+
+  .zoneShell[data-surface][data-family] .zoneTable tr {
+    display: block;
+    padding: var(--space-3) var(--space-3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .zoneShell[data-surface][data-family] .zoneTable td,
+  .zoneShell[data-surface][data-family] .zoneTable td:global(.num) {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-2);
+    height: auto;
+    max-width: none;
+    overflow: visible;
+    padding: var(--space-0-5) 0;
+    min-height: 0;
+    border: 0;
+    line-height: var(--lh-thai);
+    text-align: left;
+    white-space: normal;
+  }
+
+  .zoneShell[data-surface][data-family] .zoneTable td::before {
+    content: attr(data-label);
+    color: var(--text-3);
+    font-size: var(--fs-4);
+  }
+
+  .zoneShell[data-surface][data-family] .zoneTable tr > td:first-child {
+    display: block;
+    padding-bottom: var(--space-1-5);
+  }
+
+  .zoneShell[data-surface][data-family] .zoneTable tr > td:first-child::before,
+  .zoneShell[data-surface][data-family] .zoneTable td:empty {
+    display: none;
+  }
+
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .facts > div:nth-child(3n) {
+    border-right: 1px solid var(--border);
+  }
+
+  .facts > div:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .facts > div:nth-last-child(-n + 3) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .facts > div:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}

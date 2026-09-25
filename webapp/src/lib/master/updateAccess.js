@@ -14,7 +14,7 @@
 import {
   canAccessSahamit, canApproveCosting, canChangeTaskStatus, canEditRecord, canUser,
   canEditService, canViewService, inPmProjectScope, inScope, viewScope,
-  canViewCosting, canViewRecord, isReadOnlyObserver, isSuperuser, userTeams,
+  canViewRecord, canViewRequests, isReadOnlyObserver, isSuperuser, userTeams,
 } from '@/lib/permissions';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canViewLeads, canWorkLead, inLeadScope } from '@/lib/sales/leads';
@@ -57,14 +57,18 @@ export const UPDATE_ENTITIES = {
   dept_request: {
     table: 'dept_requests',
     attachments: true,   // "ขวดหน้าตาแบบนี้" — รูปคือหัวใจของการคุยเรื่องวัสดุ
+    /* 🐞 **ด่านชั้นนอกเคยเป็น `canViewCosting` ขณะที่ GET ของใบใช้ `canViewRequests`** (พบ 25/09 ตอนรื้อ
+       หน้าคำร้องประเมินพื้นที่) — TS Planner/หัวหน้าไม่ถือ `costing:view` แต่ตอบคำร้องของ TS ได้ ⇒ เปิดใบได้
+       แต่เธรดว่างและไม่มีช่องพิมพ์ (`/api/updates` ตอบ 404 ซึ่ง `UpdateThread` กลืนเงียบ) = ผิดกฎข้างบนตรง ๆ
+       ⇒ ใช้ด่านตัวเดียวกับ GET · ด่านรายแถว (`canReadRequestRow`) ยังคุมเหมือนเดิม ใครเห็นใบไหนก็เห็นเธรดใบนั้น */
     async canView(supabase, parent, user) {
-      return canViewCosting(user) && canReadRequestRow(user, parent);
+      return canViewRequests(user) && canReadRequestRow(user, parent);
     },
     // โพสต์ = สองฝ่ายที่เกี่ยวกับเคสจริง (ผู้เปิดเคส ↔ ฝ่ายที่ต้องตอบ) และเฉพาะตอน
     // เคสยังเดินอยู่ — ปิด/ยกเลิกแล้วถือเป็นหลักฐาน กฎเดียวกับไฟล์แนบ
     // (canAttachToCosting) เพื่อไม่ให้เคสเดียวมีสองมาตรฐาน
     async canPost(supabase, parent, user) {
-      if (!canViewCosting(user)) return false;
+      if (!canViewRequests(user)) return false;
       if (['closed', 'cancelled'].includes(parent?.status)) return false;
       return canManageRequest(user, parent) || canAnswerRequest(user, parent);
     },

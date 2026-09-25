@@ -31,6 +31,8 @@ const DECIDERS = [
   'src/app/pm/tasks/page.js',
   // ม-145 — ตารางแจกงานผู้ปรุงตัดสิน "เลยกำหนด" รายกลิ่นเอง (รีวิวจับได้ว่าตกรายการ)
   'src/lib/rd/perfumerBoard.js',
+  // หน้าคำร้องประเมินพื้นที่แบบไทม์ไลน์ (25/09) — นับเลยวันนัด/เลยกำหนดส่งผล ต้องหยุดเมื่อใบปิด/ยกเลิก
+  'src/lib/service/surveyJob.js',
 ];
 
 // ตัดคอมเมนต์ออกก่อนเทียบ — คอมเมนต์ที่เล่าว่าเคยผิดยังไงต้องไม่ทำเทสต์แดง
@@ -92,6 +94,7 @@ const CLOSURE_AWARE = [
   'src/components/requests/requestUi.js',
   'src/app/api/sales-planning/my-schedule/route.js',
   'src/lib/rd/perfumerBoard.js',
+  'src/lib/service/surveyJob.js',
 ];
 
 test('🔴 ไฟล์ที่ตัดสินเรื่องวัน ต้องรู้ว่าใบที่มีฝั่งปิดแล้วไม่มีวันให้ทวง', () => {

@@ -12,7 +12,8 @@ import { dueIsStale } from '@/lib/requests/dueRound';
 import { requestReplyTurn, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { requestClosure } from '@/lib/requests/closure';
 import { requestRowSummary, rowStage } from '@/lib/requests/rowStage';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtTime } from '@/lib/format';
+import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from '@/lib/service/visitStatus';
 
 /**
  * บรรทัดใต้ชื่อขั้น = **หลักฐานว่าเกิดอะไรขึ้นแล้ว** ถ้ามี · ไม่มีค่อยบอกว่ารออะไร
@@ -114,6 +115,84 @@ function middleStep(request) {
   return { label: 'กำลังดำเนินการ', hint: requestSideText(request, 'dept', 'รับเรื่องแล้ว') };
 }
 
+
+/* ── รางของงานหน้างาน (`fieldRail` · ประเมินพื้นที่ · มติเจ้าของ 25/09) ───────────────
+   ⭐ ขั้นกลางเดินตาม **นัด** ไม่ใช่ตาใครพิมพ์ในเธรด: ยังไม่มีนัดที่ใช้ได้ = ลงคิว/นัด ·
+      นัดยังมีชีวิต = เข้าพื้นที่ · ช่างไปถึงไซต์แล้ว (เข้าแล้ว/ทำไม่ครบ) = ส่งผล
+   ⚠️ นัด "เข้าไม่ได้/ยกเลิก/เลื่อนแล้ว" = กลับไปขั้นลงคิว (ต้องลงคิวใหม่) — กติกาเดียวกับ `surveyQueueStep` */
+const visitReached = (visit) => isClosedVisit(visit) && visit?.status !== 'unable';
+
+function fieldIndex(request, visit) {
+  if (request.status === 'draft') return 0;
+  if (request.status === 'pending') return 1;
+  if (request.status === 'acknowledged') {
+    if (visitReached(visit)) return 4;
+    if (holdsRequestSlot(visit)) return 3;
+    return 2;
+  }
+  return 5;
+}
+
+const clock = (value) => (value ? fmtTime(value) : null);
+
+function fieldVisitHint(visit) {
+  if (!visit) return null;
+  if (visit.status === 'draft') return `${visit.code || 'นัด'} · ยังไม่ขึ้นตาราง`;
+  if (visit.status === 'scheduled') {
+    return evidence(visit.scheduledDate && `นัด ${fmtDate(visit.scheduledDate)}`, clock(visit.startTime));
+  }
+  if (visit.status === 'in_progress') {
+    return evidence('กำลังทำ', visit.actualStartTime && `เริ่ม ${clock(visit.actualStartTime)}`);
+  }
+  if (visitReached(visit)) {
+    return evidence(
+      visit.actualEndTime ? `ส่งงาน ${fmtDate(visit.actualEndDate || visit.actualDate || visit.scheduledDate)} ${clock(visit.actualEndTime)}` : VISIT_STATUS_LABELS[visit.status],
+    );
+  }
+  return null;
+}
+
+function fieldSteps(request, labels, visit, base) {
+  const index = fieldIndex(request, visit);
+  const live = holdsRequestSlot(visit) || visitReached(visit);
+  const requeue = request.status === 'acknowledged' && !!visit && !live;
+  const byId = Object.fromEntries(base.map((step) => [step.id, step]));
+  const queueHint = requeue
+    ? `${visit.code || 'นัดเดิม'} ${VISIT_STATUS_LABELS[visit.status] || visit.status} — ${requestWaitLabel(request, 'dept', 'ลงคิวใหม่')}`
+    : visit
+      ? evidence(visit.code, visit.scheduledDate && fmtDate(visit.scheduledDate))
+      : byId.commitDue.hint;
+  return {
+    index,
+    steps: [
+      { ...byId.draft, label: labels.draft },
+      { ...byId.pending, label: labels.pending },
+      {
+        id: 'commitDue',
+        label: labels.commitDue,
+        hint: queueHint,
+        /* ⚠️ ใบที่ปิดโดยไม่เคยลงคิว — ขั้นนี้ "ข้าม" ไม่ใช่ "ผ่าน" (กติกาเดียวกับรางกลาง) */
+        state: byId.commitDue.state === 'pending' && index !== 2 ? 'pending' : undefined,
+      },
+      {
+        id: 'acknowledged',
+        label: labels.acknowledged,
+        hint: fieldVisitHint(visit)
+          || (request.status === 'acknowledged' ? requestWaitLabel(request, 'dept', 'ลงคิว') : null),
+      },
+      {
+        id: 'answered',
+        label: labels.answered,
+        hint: evidence(
+          request.answeredByName && `ส่งโดย ${request.answeredByName}`,
+          request.answeredAt && fmtDate(request.answeredAt),
+        ) || `หัวหน้า ${request.dept || 'ฝ่าย'} ส่งผลที่ใบประเมิน`,
+      },
+      { ...byId.closed, label: labels.closed },
+    ],
+  };
+}
+
 /**
  * ขั้นตอนบนรางของใบ + ขั้นที่กำลังอยู่ — คืน { steps, index }
  *
@@ -121,7 +200,7 @@ function middleStep(request) {
  * พัฒนากลิ่นถูกถอดออกทั้งขั้น (มติผู้ใช้ 2026-08-16) ⇒ `index` เท่ากับลำดับของ
  * สถานะตรง ๆ ไม่มี offset ให้พลาดอีก (บั๊ก "จุดไฮไลต์ชี้ผิดขั้น" เกิดจากตรงนั้น)
  */
-export function requestRailSteps(request, { hasItems = false } = {}) {
+export function requestRailSteps(request, { hasItems = false, visit } = {}) {
   // ชื่อขั้น "กำหนดส่ง" ต่างตามหัวข้อ (ประเมินพื้นที่ = "ลงคิว") — อ่านจากทะเบียน
   const commitStepLabel = requestKindMeta(request.kind)?.form?.commitStepLabel || 'กำหนดส่ง';
 
@@ -224,5 +303,12 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
           ? 4
           : 5;
 
+  /* ⭐ หัวข้อที่ประกาศรางหน้างาน — ชื่อขั้นมาจากทะเบียน · ขั้นกลางอ่านนัด (ดู `fieldSteps`)
+     ⚠️ `visit` ไม่ส่งมา = อ่าน `request.surveyVisit` ที่ `findRequest` ติดมาให้ (หน้าคำร้อง) ·
+        การ์ดของใบประเมินส่งนัดของมันเองมา (`surveyControl.stepOf`) */
+  const fieldRail = requestKindMeta(request.kind)?.fieldRail;
+  if (fieldRail) {
+    return fieldSteps(request, fieldRail, visit !== undefined ? visit : (request.surveyVisit || null), steps);
+  }
   return { steps, index };
 }

@@ -62,8 +62,12 @@ const KIND_KEYS = [
   'key', 'label', 'dept', 'scope', 'legacy', 'needs', 'optionalRefs',
   'hasItems', 'lineShape', 'lineKind', 'lineNoun', 'deliversRows', 'hasPdr',
   'cancelBeforeAckOnly', 'closeNeedsSoConfirm', 'stepKey', 'dealType', 'form', 'summary', 'hint',
-  'variants', 'defaultVariant', 'pdrScents', 'answerVia', 'closeNeedsAnswer',
+  'variants', 'defaultVariant', 'pdrScents', 'answerVia', 'closeNeedsAnswer', 'fieldRail',
 ];
+
+/* ⭐ **รางของงานหน้างาน** (`fieldRail` · มติเจ้าของ 25/09) — ชื่อขั้นต้องครบทั้งหกขั้นของราง
+   ขาดขั้นเดียว = รางหน้าคำร้องมีชื่อสองชุดปนกัน (ชุดกลางกับชุดหน้างาน) โดยไม่มี error */
+const FIELD_RAIL_STEPS = ['draft', 'pending', 'commitDue', 'acknowledged', 'answered', 'closed'];
 
 /* ⭐ **รูปแบบงานในหัวข้อเดียว** (มติผู้ใช้ 2026-09-09 · พัฒนาสูตร standard | NPD) —
    ธงที่บอก "ใบหน้าตาแบบไหน" ย้ายจากระดับหัวข้อมาอยู่ในรูปแบบ เมื่อหัวข้อประกาศ
@@ -151,6 +155,16 @@ export function assertKind(kind, seen = new Set()) {
   }
   for (const key of Object.keys(kind)) {
     if (!KIND_KEYS.includes(key)) throw new Error(`${at}: คีย์ "${key}" ไม่ใช่คีย์ที่ทะเบียนรู้จัก`);
+  }
+  if (kind.fieldRail != null) {
+    const labels = kind.fieldRail;
+    const keys = Object.keys(labels);
+    const missing = FIELD_RAIL_STEPS.filter((step) => !String(labels[step] || '').trim());
+    const extra = keys.filter((step) => !FIELD_RAIL_STEPS.includes(step));
+    if (missing.length || extra.length) {
+      throw new Error(`${at}: fieldRail ต้องมีชื่อครบ ${FIELD_RAIL_STEPS.join(' · ')} พอดี`
+        + `${missing.length ? ` — ขาด ${missing.join(', ')}` : ''}${extra.length ? ` — เกิน ${extra.join(', ')}` : ''}`);
+    }
   }
   /* ⭐ **กฎรูปทรงชุดเดียว ใช้ทั้งหัวข้อที่ไม่มีรูปแบบและทุกรูปแบบของหัวข้อที่มี** —
      ถ้าเขียนแยกสองชุด รูปแบบใหม่จะหลุดกฎที่หัวข้อธรรมดาโดนอยู่ (เช่น hasItems

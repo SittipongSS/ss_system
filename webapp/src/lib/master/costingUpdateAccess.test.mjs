@@ -44,6 +44,23 @@ test('คำร้อง: อ่านเธรดได้เฉพาะคน
   assert.equal(await canPostUpdate(db, 'dept_request', a, OTHER_SALES), false);
 });
 
+test('🔴 คำร้องถึง TS: Planner/หัวหน้า TS อ่านและตอบในเธรดได้ — ด่านเดียวกับ GET ของใบ (พบ 25/09)', async () => {
+  // 🐞 เดิมชั้นนอกเป็น `canViewCosting` ⇒ TS ที่ไม่ถือ costing:view เปิดใบได้ (GET ใช้ `canViewRequests`)
+  //    แต่เธรดว่างและไม่มีช่องพิมพ์ — ผิดกฎ "เปิดใบได้เมื่อไร อ่านเธรดได้เมื่อนั้น" ข้างบน
+  const survey = ask({ dept: 'TS', kind: 'site_survey', status: 'acknowledged' });
+  for (const role of ['ts_planner', 'ts_manager', 'ts_audit', 'ts_senior']) {
+    const u = { id: `U-${role}`, role, department: 'TS' };
+    assert.equal(await canViewUpdates(db, 'dept_request', survey, u), true, `${role} ต้องอ่านเธรดใบของ TS ได้`);
+    assert.equal(await canPostUpdate(db, 'dept_request', survey, u), true, `${role} ต้องตอบในเธรดใบของ TS ได้`);
+  }
+  // ฝ่ายปฏิบัติการ (ts) เปิดใบไม่ได้ ⇒ เธรดก็ไม่ได้ (ด่านเดียวกัน ไม่กว้างกว่าหน้าจอ)
+  const op = { id: 'U-TS', role: 'ts', department: 'TS' };
+  assert.equal(await canViewUpdates(db, 'dept_request', survey, op), false);
+  // TS ไม่ได้อ่านใบของฝ่ายอื่นเพิ่มขึ้น — ด่านรายแถวยังคุม
+  const planner = { id: 'U-PL', role: 'ts_planner', department: 'TS' };
+  assert.equal(await canViewUpdates(db, 'dept_request', ask(), planner), false);
+});
+
 test('คำร้อง: เคสฝ่าย RD ต้องให้ RD ตอบ ไม่ใช่ PC', async () => {
   const a = ask({ dept: 'RD' });
   assert.equal(await canPostUpdate(db, 'dept_request', a, RD), true);
