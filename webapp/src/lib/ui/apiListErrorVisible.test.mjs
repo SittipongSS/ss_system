@@ -40,6 +40,10 @@ const SCREENS = [
   /* ภาพรวมฐานข้อมูล — ทิ้ง error ทั้งสองสายอยู่หลัง #1796 โดยด่านนี้เขียวตลอด เพราะตัวสแกนความครบ
      เดิมจับเฉพาะไฟล์ที่ **แกะ** error แล้วลืมเข้าทะเบียน (ดูตัวสแกนรายการเรียกท้ายไฟล์) */
   "app/database/page.js",
+  /* หน้ารายละเอียดที่หาใบของตัวเองด้วย `list.find(...)` — ลิสต์ล้มแล้วจอเคยตอบ "ไม่พบ…" (อ่านว่าถูกลบ)
+     ทรงเดียวกับ "ไม่พบรอบ FC นี้" ที่ #1796 แก้ · เคยอยู่บัญชีหนี้ KNOWN_SILENT (7 รายการเรียก) */
+  "app/tax/filings/[id]/page.js",
+  "app/sahamit/po/[id]/edit/page.js",
 ];
 
 /* จอที่แจ้ง error ของลิสต์หลักอยู่แล้วและต้องแจ้งต่อไป — อยู่ทะเบียนนี้แทน SCREENS เพราะกติกา
@@ -172,10 +176,14 @@ test("ลงรอบ FC ใหม่: ลิสต์ไม่ครบ ต้�
     "ฟอร์มต้องอยู่หลังทางแยก — ฟอร์มที่ขาดสินค้า/รอบเดิม บันทึกได้แต่ได้ข้อมูลผิดเงียบ ๆ");
 });
 
-/* นับ `<tag …>` (หรือข้อความ JSX ที่มี `text`) ในไฟล์ และตัวที่ **ไม่** อยู่ในกิ่ง else (`alternate`)
-   ของ `guard ? … : …` ตัวไหนเลย — ไล่ขึ้นทุกชั้น ⇒ ทางแยกซ้อน (`พัง ? … : ว่าง ? … : กราฟ`) นับว่าผ่าน */
-const guardedBy = (rel, match, guard) => {
-  const source = read(rel);
+/* นับ `<tag …>` (หรือข้อความ JSX ที่มี `text`) ในไฟล์ และตัวที่ **ไม่มีทางแยก `guard` คุ้มอยู่** — คุ้มได้สองทรง:
+     (1) อยู่ในกิ่ง else (`alternate`) ของ `guard ? … : …` — ไล่ขึ้นทุกชั้น ⇒ ทางแยกซ้อน (`พัง ? … : ว่าง ? … : กราฟ`) ผ่าน
+     (2) อยู่หลัง `if (guard) return …;` ในฟังก์ชันเดียวกัน (บล็อกเดียวกันหรือบล็อกที่ครอบอยู่) — ทรงของหน้ารายละเอียด
+         ที่ `return` ป้ายออกไปก่อนถึงบรรทัด "ไม่พบ…"
+   🐞 ทำไมไม่เทียบตำแหน่งตัวอักษร (`indexOf(ทางแยก) < indexOf("ไม่พบ…")`): ทางแยกที่ **ไม่ return** (แค่วาดป้าย) ก็อยู่
+      ก่อนได้ แล้วจอยังไหลลงไปตอบ "ไม่พบ…" ต่อ · ทางแยกที่ return อยู่ในฟังก์ชันอื่น (`const shell = …`) ก็อยู่ก่อนได้
+      ⇒ ถามโครงสร้างว่า **ถึงบรรทัดนั้นได้ก็ต่อเมื่อ guard เป็นเท็จ** · หยุดที่ขอบฟังก์ชัน: `if` ของฟังก์ชันอื่นคุ้มใครไม่ได้ */
+const guardedIn = (source, match, guard) => {
   const ast = parse(source, { sourceType: "module", plugins: ["jsx"] });
   const textOf = (node) => source.slice(node.start, node.end).replace(/\s+/g, " ");
   const hits = [];
@@ -187,10 +195,41 @@ const guardedBy = (rel, match, guard) => {
       if (match.text && path.node.value.includes(match.text)) hits.push(path);
     },
   });
-  const unguarded = hits.filter((path) => !path.findParent((p) => p.key === "alternate"
-    && p.parentPath?.isConditionalExpression() && textOf(p.parentPath.node.test) === guard));
+  const inElse = (path) => !!path.findParent((p) => p.key === "alternate"
+    && p.parentPath?.isConditionalExpression() && textOf(p.parentPath.node.test) === guard);
+  // ออกจากฟังก์ชันแน่ ๆ — `return …;` เดี่ยว หรือบล็อกที่คำสั่งสุดท้ายคือ return
+  const exits = (node) => node.type === "ReturnStatement"
+    || (node.type === "BlockStatement" && node.body.at(-1)?.type === "ReturnStatement");
+  const afterEarlyReturn = (path) => {
+    for (let p = path; p && !p.isFunction(); p = p.parentPath) {
+      if (p.inList && typeof p.key === "number" && p.container.slice(0, p.key).some((stmt) =>
+        stmt.type === "IfStatement" && textOf(stmt.test) === guard && exits(stmt.consequent))) return true;
+    }
+    return false;
+  };
+  const unguarded = hits.filter((path) => !inElse(path) && !afterEarlyReturn(path));
   return { hits: hits.length, unguarded: unguarded.length };
 };
+const guardedBy = (rel, match, guard) => guardedIn(read(rel), match, guard);
+
+test("ตัวตรวจทางแยก (guardedIn) เห็นทั้งสองทรง — และไม่นับทางแยกที่ไม่ได้กันจริง", () => {
+  const notFound = { text: "ไม่พบ" };
+  const g = (s) => guardedIn(s, notFound, "blocked.length");
+  // ทรง early return — ต้องอยู่ **ก่อน** และต้อง **return** จริง
+  assert.deepEqual(g("function P() {\n  if (blocked.length) return <N />;\n  if (!po) return <div>ไม่พบ</div>;\n}"), { hits: 1, unguarded: 0 });
+  assert.deepEqual(g("function P() {\n  if (blocked.length) { log(); return <N />; }\n  return <div>ไม่พบ</div>;\n}"), { hits: 1, unguarded: 0 });
+  assert.deepEqual(g("function P() {\n  if (!po) return <div>ไม่พบ</div>;\n  if (blocked.length) return <N />;\n}"), { hits: 1, unguarded: 1 },
+    "ทางแยกที่อยู่หลังบรรทัด 'ไม่พบ' = จอตอบ 'ไม่พบ' ไปก่อนแล้ว");
+  assert.deepEqual(g("function P() {\n  if (blocked.length) warn();\n  return <div>ไม่พบ</div>;\n}"), { hits: 1, unguarded: 1 },
+    "ทางแยกที่ไม่ return (แค่วาดป้าย) ไม่ได้กันบรรทัดข้างล่าง — ตัวเทียบตำแหน่งตัวอักษรเคยผ่านทรงนี้");
+  assert.deepEqual(g("function P() {\n  if (blocked.length) { log(); }\n  return <div>ไม่พบ</div>;\n}"), { hits: 1, unguarded: 1 });
+  assert.deepEqual(g("function P() {\n  if (!blocked.length) return <N />;\n  return <div>ไม่พบ</div>;\n}"), { hits: 1, unguarded: 1 }, "guard คนละตัว");
+  assert.deepEqual(g("const shell = () => { if (blocked.length) return null; };\nfunction P() {\n  return <div>ไม่พบ</div>;\n}"), { hits: 1, unguarded: 1 },
+    "`if` ในฟังก์ชันอื่นคุ้มใครไม่ได้");
+  // ทรงเดิม (กิ่ง else ของ ternary) ยังทำงานเท่าเดิม
+  assert.deepEqual(g("const x = blocked.length ? <N /> : <div>ไม่พบ</div>;"), { hits: 1, unguarded: 0 });
+  assert.deepEqual(g("const x = blocked.length ? <div>ไม่พบ</div> : <N />;"), { hits: 1, unguarded: 1 });
+});
 
 /* /database — สองสายสลับกันอยู่บนแผงเดียวกัน (ไทล์แถวเดียว · กราฟแนวโน้ม · คิวรออนุมัติ)
    ⇒ ตัวเลขที่ต้องเลิกพูดตอนพังคนละชิ้นกับ /tax: ไทล์เป็นขีดรายใบตามสายของมัน ไม่ใช่ซ่อนทั้งแถว */
@@ -241,6 +280,383 @@ test("ActionQueue: คิวไม่ครบ ต้องไม่ยินด
   const incompleteBranch = text.indexOf("if (incomplete)");
   assert.ok(incompleteBranch !== -1 && incompleteBranch < text.indexOf("{empty}</EmptyState>"),
     "ต้องตัดสิน 'ไม่ครบ' ก่อนข้อความว่างของผู้เรียก");
+});
+
+/* ── ตัวอ่าน AST สำหรับกติการายจอของหน้ารายละเอียด ─────────────────────────────────────────────
+   ถามโครงสร้าง ไม่ใช่ตัวอักษร: ค่าแต่ละช่องคืนเป็นข้อความของนิพจน์ (ยุบช่องว่างแล้ว) — สตริงคืนค่าจริง และชื่อตัวแปร
+   ที่ชี้ไปหา `const X = "…"` ถูกแกะเป็นค่าสตริงนั้น (ประโยคที่ใช้ร่วมหลายสายประกาศเป็นค่าคงที่ ต้องตรวจเนื้อได้)
+   ⭐ การผูกสาย ↔ ฮุก ตัดสินด้วย **binding** ของ babel (ตัวแปรที่แกะจาก `useApiList(url)` ตัวไหน) ไม่ใช่ชื่อหรือ regex
+      ⇒ `error: ordersError || null` · `error: ordersError || x` (x = ของฮุกอื่น) · ปุ่มลองใหม่ที่ไม่เรียก reload = แดงทุกทรง */
+const astReader = (rel) => {
+  const source = read(rel);
+  const ast = parse(source, { sourceType: "module", plugins: ["jsx"] });
+  const textOf = (node) => source.slice(node.start, node.end).replace(/\s+/g, " ");
+  const keyOf = (node) => (node.type === "Identifier" ? node.name : node.type === "StringLiteral" ? node.value : null);
+  const valueOf = (path) => {
+    if (path.isStringLiteral()) return path.node.value;
+    if (path.isIdentifier()) {
+      const init = path.scope.getBinding(path.node.name)?.path.node.init;
+      if (init?.type === "StringLiteral") return init.value;
+    }
+    return textOf(path.node);
+  };
+  const entriesOf = (objPath) => Object.fromEntries(objPath.get("properties")
+    .filter((p) => p.isObjectProperty() && !p.node.computed && keyOf(p.node.key))
+    .map((p) => [keyOf(p.node.key), valueOf(p.get("value"))]));
+  const propOf = (objPath, key) => objPath.get("properties")
+    .find((p) => p.isObjectProperty() && !p.node.computed && keyOf(p.node.key) === key)?.get("value") ?? null;
+  const bindingOf = (path) => (path?.isIdentifier() ? path.scope.getBinding(path.node.name) ?? null : null);
+  // binding ทุกตัวที่ถูกอ่านใน subtree (รวมตัวราก)
+  const bindingsIn = (path) => {
+    const out = new Set();
+    const visit = (p) => { if (p.isReferencedIdentifier()) { const b = p.scope.getBinding(p.node.name); if (b) out.add(b); } };
+    if (path.isIdentifier()) visit(path);
+    path.traverse({ Identifier: visit });
+    return out;
+  };
+  const declarator = (name) => {
+    let found = null;
+    traverse(ast, {
+      VariableDeclarator(path) { if (path.node.id.type === "Identifier" && path.node.id.name === name) found = path; },
+    });
+    return found;
+  };
+  const bindingNamed = (name) => { const d = declarator(name); return d ? d.scope.getBinding(name) : null; };
+  const component = () => {
+    let fn = null;
+    traverse(ast, { ExportDefaultDeclaration(path) { fn = path.get("declaration"); } });
+    return fn;
+  };
+  // ออกจากฟังก์ชันแน่ ๆ — `return …;` เดี่ยว หรือบล็อกที่คำสั่งสุดท้ายคือ return ⇒ path ของค่าที่คืน
+  const returnedBy = (stmt) => {
+    if (stmt.isReturnStatement()) return stmt.get("argument");
+    if (stmt.isBlockStatement()) { const last = stmt.get("body").at(-1); return last?.isReturnStatement() ? last.get("argument") : null; }
+    return null;
+  };
+  return {
+    // ทุกสายในก้อน `const sources = [ … ]` ⇒ [{ label, error, empty, blocks, blockedNote, … }]
+    sources() {
+      return this.sourcePaths().map(entriesOf);
+    },
+    sourcePaths() {
+      const out = [];
+      traverse(ast, {
+        VariableDeclarator(path) {
+          if (path.node.id.type !== "Identifier" || path.node.id.name !== "sources" || !path.get("init").isArrayExpression()) return;
+          for (const el of path.get("init.elements")) if (el.isObjectExpression()) out.push(el);
+        },
+      });
+      return out;
+    },
+    // ทุก `const { … } = useApiList(url)` ⇒ [{ url, b: { error, staleError, errorDetail, loading, loaded, reload } (Binding) }]
+    hooks() {
+      const out = [];
+      traverse(ast, {
+        CallExpression(path) {
+          if (!path.get("callee").isIdentifier({ name: "useApiList" })) return;
+          const decl = path.parentPath;
+          if (!decl.isVariableDeclarator() || decl.node.id.type !== "ObjectPattern") return;
+          const b = {};
+          for (const p of decl.node.id.properties) {
+            if (p.type !== "ObjectProperty" || p.computed) continue;
+            const local = p.value.type === "AssignmentPattern" ? p.value.left : p.value;
+            if (local.type === "Identifier") b[keyOf(p.key)] = decl.scope.getBinding(local.name);
+          }
+          out.push({ url: textOf(path.node.arguments[0]), b });
+        },
+      });
+      return out;
+    },
+    /* `error` ของสายหนึ่ง ⇒ { gate, left, right } เป็น Binding — แกะทางแยก `cond ? A || B : null` ออกก่อน
+       (สายที่พูดเฉพาะบางเงื่อนไข เช่นสายรองของใบยื่นที่พูดเฉพาะตอนคนดูมีปุ่มแก้ไข) */
+    failureOf(objPath) {
+      let p = propOf(objPath, "error");
+      if (!p) return { gate: null, left: null, right: null };
+      let gate = null;
+      if (p.isConditionalExpression() && p.get("alternate").isNullLiteral()) { gate = textOf(p.node.test); p = p.get("consequent"); }
+      if (!p.isLogicalExpression({ operator: "||" })) return { gate, left: null, right: null };
+      return { gate, left: bindingOf(p.get("left")), right: bindingOf(p.get("right")) };
+    },
+    // สายที่ `error` ของมันคือ error ของฮุกตัวนี้
+    sourceFor(hook) {
+      return this.sourcePaths().find((s) => this.failureOf(s).left === hook.b.error) ?? null;
+    },
+    prop: propOf,
+    field: (objPath, key) => { const p = propOf(objPath, key); return p ? valueOf(p) : undefined; },
+    bindingsOf: (objPath, key) => { const p = propOf(objPath, key); return p ? bindingsIn(p) : new Set(); },
+    bindingNamed,
+    // `if (<guard>) return <X>;` ตัวแรกของไฟล์ ⇒ path ของ X (null = ไม่มีทางแยกนี้ หรือไม่ได้ return)
+    earlyReturn(guard) {
+      let found = null;
+      traverse(ast, {
+        IfStatement(path) { if (!found && textOf(path.node.test) === guard) found = returnedBy(path.get("consequent")); },
+      });
+      return found;
+    },
+    // ค่าที่คืนจากคำสั่งสุดท้ายของคอมโพเนนต์ (default export) — ทางปกติของจอ
+    mainReturn() {
+      const last = component()?.get("body.body").at(-1);
+      return last?.isReturnStatement() ? last.get("argument") : null;
+    },
+    rendersIn(path, binding) {
+      return !!path && bindingsIn(path).has(binding);
+    },
+    // มี `{X}` (JSXExpressionContainer ที่เป็นตัวแปรนี้ตรง ๆ) อยู่ใน subtree
+    rendersAsChild(path, binding) {
+      if (!path) return false;
+      let hit = false;
+      path.traverse({ JSXExpressionContainer(p) { if (bindingOf(p.get("expression")) === binding) hit = true; } });
+      return hit;
+    },
+    // ปุ่ม `<Button …>` ตัวที่มีคำว่า "ลองใหม่" ใน `const notice = …` ⇒ { onClick, disabled, labelTest } เป็น path
+    retryButton() {
+      let out = null;
+      declarator("notice")?.traverse({
+        JSXElement(path) {
+          if (out || path.node.openingElement.name.name !== "Button" || !textOf(path.node).includes("ลองใหม่")) return;
+          const attr = (name) => path.get("openingElement.attributes")
+            .find((a) => a.isJSXAttribute() && a.node.name.name === name)?.get("value.expression") ?? null;
+          const cond = path.get("children").map((c) => (c.isJSXExpressionContainer() ? c.get("expression") : null))
+            .find((e) => e?.isConditionalExpression());
+          out = { onClick: attr("onClick"), disabled: attr("disabled"), labelTest: cond ? cond.get("test") : null };
+        },
+      });
+      return out;
+    },
+    /* onClick = `() => <failing>.forEach((s) => s.reload())` — เรียก reload ของ **สมาชิกของ failing** ทุกตัว
+       ⇒ `() => {}` · เรียก reload ตัวเดียว · วนลิสต์อื่น = false */
+    retriesEveryFailing(onClick, failingBinding) {
+      if (!onClick?.isArrowFunctionExpression()) return false;
+      const body = onClick.get("body");
+      if (!body.isCallExpression()) return false;
+      const callee = body.get("callee");
+      if (!callee.isMemberExpression() || bindingOf(callee.get("object")) !== failingBinding
+        || callee.node.property.name !== "forEach") return false;
+      const cb = body.get("arguments")[0];
+      if (!cb?.isArrowFunctionExpression() || cb.node.params.length !== 1 || cb.node.params[0].type !== "Identifier") return false;
+      const call = cb.get("body");
+      if (!call.isCallExpression()) return false;
+      const reloadCallee = call.get("callee");
+      return reloadCallee.isMemberExpression() && reloadCallee.node.property.name === "reload"
+        && bindingOf(reloadCallee.get("object"))?.identifier === cb.node.params[0];
+    },
+    // ข้อความคงที่ที่อยู่ **ตรงหน้า** นิพจน์ที่มี `needle` ใน template literal ของ `const <name> = …`
+    textBefore(name, needle) {
+      const out = [];
+      declarator(name)?.traverse({
+        TemplateLiteral(path) {
+          path.node.expressions.forEach((e, i) => { if (textOf(e).includes(needle)) out.push(path.node.quasis[i].value.cooked); });
+        },
+      });
+      return out;
+    },
+    // ปุ่มบน DocumentControlCard ประกาศเป็น object `{ id: "<id>", … }` ⇒ ทุกก้อนที่มี id นี้
+    actions(id) {
+      const out = [];
+      traverse(ast, {
+        ObjectExpression(path) {
+          const entries = entriesOf(path);
+          if (entries.id === id) out.push(entries);
+        },
+      });
+      return out;
+    },
+    // ชื่อตัวแปรทุกตัวที่ถูกอ่านใน initializer ของ `const <name> = …`
+    readsIn(name) {
+      const names = new Set();
+      traverse(ast, {
+        VariableDeclarator(path) {
+          if (path.node.id.type !== "Identifier" || path.node.id.name !== name) return;
+          path.get("init").traverse({ Identifier(p) { if (p.isReferencedIdentifier()) names.add(p.node.name); } });
+        },
+      });
+      return names;
+    },
+    // ชื่อตัวแปรทุกตัวที่ถูกอ่านในแอตทริบิวต์ JSX ชื่อนี้ (ทุกแท็ก)
+    readsInAttr(attr) {
+      const names = new Set();
+      traverse(ast, {
+        JSXAttribute(path) {
+          if (path.node.name.name !== attr) return;
+          path.traverse({ Identifier(p) { if (p.isReferencedIdentifier()) names.add(p.node.name); } });
+        },
+      });
+      return names;
+    },
+    bindingsIn,
+  };
+};
+
+/* ── ทรงร่วมของหน้ารายละเอียด: ป้ายต้อง **ถูกวาด** จริง และทางกลับต้องต่อสายจริง ─────────────────────────────
+   🐞 ช่องที่ด่านรุ่นก่อนปล่อย (ตรวจด้วยการกลายพันธุ์บนสำเนา): ถอด `{notice}` ออกจากทางปกติ · ทางบล็อกคืน `shell(null)` ·
+      onClick ของปุ่มลองใหม่เป็น `() => {}` · `error: ordersError || null` — ด่านเขียวหมดทุกทรง เพราะตรวจแค่ว่า "มีคำว่า reload
+      ในไฟล์" / "error มี `||`" ⇒ แคชอุ่นที่รอบใหม่ล้มกลับไปเงียบ (ของรอบก่อนไม่มีป้ายบอก) หรือปุ่มลองใหม่กดแล้วไม่มีอะไรเกิด
+   ⇒ ตรวจตาม binding: ทางบล็อกคืนค่าที่อ่าน `notice` · ทางปกติมี `{notice}` · ปุ่มเรียก `.reload()` ของสมาชิก `failing` ·
+      ทุกสายอ่าน error/staleError/errorDetail/reload ของ **ฮุกตัวเดียวกัน** และฮุกทุกตัวในไฟล์มีสายของตัวเองครบ */
+const DETAIL_PAGES = [
+  // ต้นแบบ (#1796/#1799) — ทรงเดียวกัน ด่านเดียวกัน
+  { rel: "app/sahamit/forecast/[id]/edit/page.js", blockedGuards: ["blocked.length"] },
+  { rel: "app/tax/filings/[id]/page.js", blockedGuards: ["pageBlocked"] },
+  { rel: "app/sahamit/po/[id]/edit/page.js", blockedGuards: ["pageBlocked", "blocked.length"] },
+];
+
+test("หน้ารายละเอียด: ป้ายถูกวาดทั้งทางบล็อกและทางปกติ · ปุ่มลองใหม่เรียก reload ของทุกสายที่ล้ม · ทุกสายนับ staleError ของฮุกตัวเอง", () => {
+  for (const { rel, blockedGuards } of DETAIL_PAGES) {
+    const ast = astReader(rel);
+    const notice = ast.bindingNamed("notice");
+    assert.ok(notice, `${rel}: ไม่พบ \`const notice = …\``);
+    for (const guard of blockedGuards) {
+      const returned = ast.earlyReturn(guard);
+      assert.ok(returned, `${rel}: ไม่พบ \`if (${guard}) return …\``);
+      assert.ok(ast.rendersIn(returned, notice),
+        `${rel}: \`if (${guard}) return …\` ต้องคืนป้าย (notice) — คืน null/ที่ว่าง = จอขาวที่ไม่บอกอะไร`);
+    }
+    assert.ok(ast.rendersAsChild(ast.mainReturn(), notice),
+      `${rel}: ทางปกติ (return สุดท้าย) ต้องมี {notice} — แคชอุ่นที่รอบใหม่ล้มต้องขึ้นว่า "ของรอบก่อน" ไม่ใช่เงียบ`);
+
+    const button = ast.retryButton();
+    assert.ok(button, `${rel}: ไม่พบปุ่ม "ลองใหม่" ในป้าย`);
+    assert.ok(ast.retriesEveryFailing(button.onClick, ast.bindingNamed("failing")),
+      `${rel}: onClick ของปุ่มลองใหม่ต้องเป็น \`() => failing.forEach((s) => s.reload())\` — ปุ่มที่ไม่ต่อสาย = กดแล้วไม่มีอะไรเกิด`);
+    const retrying = ast.bindingNamed("retrying");
+    assert.ok(retrying && ast.rendersIn(button.disabled, retrying) && ast.rendersIn(button.labelTest, retrying),
+      `${rel}: ปุ่มลองใหม่ต้องพัก (disabled) และเปลี่ยนป้ายตาม \`retrying\` — กดแล้วจอนิ่ง = คนกดซ้ำรัว ๆ`);
+
+    const hooks = ast.hooks();
+    assert.ok(hooks.length > 0, `${rel}: ไม่พบ useApiList — ตัวตรวจล้าสมัย?`);
+    const retryReads = ast.bindingsIn(retrying.path.get("init"));
+    for (const hook of hooks) {
+      const s = ast.sourceFor(hook);
+      assert.ok(s, `${rel}: ${hook.url} ไม่มีสายในก้อน sources (error ของมันไม่ถึงป้าย)`);
+      const { right } = ast.failureOf(s);
+      assert.equal(right, hook.b.staleError,
+        `${rel}: สาย ${hook.url} ต้องเป็น \`error || staleError\` ของฮุกตัวเดียวกัน — รอบเบื้องหลังที่ล้มต้องถึงป้าย`);
+      assert.ok(hook.b.errorDetail && ast.bindingsOf(s, "detail").has(hook.b.errorDetail),
+        `${rel}: สาย ${hook.url} ต้องพก errorDetail ของฮุกตัวเอง (บรรทัดรองของป้าย)`);
+      assert.ok(hook.b.reload && ast.bindingsOf(s, "reload").has(hook.b.reload),
+        `${rel}: สาย ${hook.url} ต้องพก reload ของฮุกตัวเอง — ลองใหม่แล้วยิงผิดลิสต์`);
+      assert.ok(hook.b.loading && retryReads.has(hook.b.loading),
+        `${rel}: \`retrying\` ต้องอ่าน loading ของ ${hook.url} — ลองสายนี้แล้วปุ่มไม่บอกว่ากำลังลอง`);
+    }
+  }
+});
+
+/* ใบยื่นชำระ — จออ่านเป็นหลัก: สายใบยื่นบล็อกทั้งหน้า · สามสายรองพักแค่ฟอร์มแก้ไข (มติในคอมเมนต์ก้อน sources ของจอ) */
+test("ใบยื่นชำระ: โหลดใบไม่ขึ้นห้ามตอบ 'ไม่พบรายการ' · สายรองล้มพักปุ่มแก้ไข ไม่ใช่ปล่อยฟอร์มขาดข้อมูล", () => {
+  const rel = "app/tax/filings/[id]/page.js";
+  const ast = astReader(rel);
+  // 🐞 ทรงเดิม: `/api/orders` ล้ม ⇒ `o` เป็น null ⇒ "ไม่พบรายการ · ใบยื่นนี้อาจถูกลบไปแล้ว"
+  const notFound = guardedBy(rel, { text: "ไม่พบใบยื่นที่ต้องการ" }, "pageBlocked");
+  assert.ok(notFound.hits > 0, "หาบรรทัด 'ไม่พบใบยื่นที่ต้องการ' ไม่เจอ — ตัวตรวจล้าสมัย?");
+  assert.equal(notFound.unguarded, 0,
+    "บรรทัด 'ไม่พบ…' ต้องอยู่หลัง `if (pageBlocked) return …` — โหลดใบไม่ขึ้นแล้วจอโกหกว่าใบถูกลบ");
+
+  const hook = (url) => ast.hooks().find((h) => h.url === url);
+  const sources = ast.sources();
+  const ordersHook = hook('"/api/orders"');
+  const ordersPath = ast.sourceFor(ordersHook);
+  assert.ok(ordersPath, "ไม่พบสายใบยื่น (/api/orders) ในก้อน sources");
+  const orders = { label: ast.field(ordersPath, "label"), blocks: ast.field(ordersPath, "blocks") };
+  assert.equal(orders.blocks, "page", "สายใบยื่นต้องบล็อกทั้งหน้า — ไม่มีใบในมือก็ไม่มีอะไรให้โชว์");
+  /* 🪤 "ไม่มีใบในมือ" = ใบนี้ (`!o` — แคชเก่าที่ถ่ายไว้ก่อนใบนี้เกิดมีใบอื่นเต็มลิสต์) **และรอบหน้าบ้านล่าสุดล้ม**
+     ⇒ รอบเบื้องหลังที่ล้มหลัง "ไม่พบ" ที่ยืนยันแล้ว ต้องไม่พลิกจอเป็น "(ไม่ได้แปลว่าใบยื่นนี้ถูกลบไปแล้ว)" */
+  const ordersEmpty = ast.prop(ordersPath, "empty");
+  assert.ok(ordersEmpty?.isLogicalExpression({ operator: "&&" }) && ast.field(ordersPath, "empty").startsWith("!o &&"),
+    "empty ของสายใบยื่นต้องเป็น `!o && <รอบหน้าบ้านล้ม>`");
+  const emptyReads = ast.bindingsOf(ordersPath, "empty");
+  assert.ok(emptyReads.has(ordersHook.b.error) && !emptyReads.has(ordersHook.b.staleError),
+    "ความว่างของสายใบยื่นต้องอ่าน error (รอบหน้าบ้าน) ไม่ใช่ staleError — รอบเบื้องหลังล้มได้หลังรอบที่ยืนยันว่าไม่มีใบนี้แล้วเท่านั้น");
+  // ทุกสายต้องประกาศว่าบล็อกอะไร — สายที่ไม่ประกาศ = ล้มแล้วไม่มีใครพักอะไร (ป้ายขึ้นแต่ของที่กินมันยังเปิดอยู่)
+  for (const s of sources) assert.ok(["page", "edit"].includes(s.blocks), `${s.label}: blocks ต้องเป็น "page" หรือ "edit"`);
+  assert.deepEqual(sources.filter((s) => s.blocks === "page").map((s) => s.label), [orders.label],
+    "สายที่บล็อกทั้งหน้ามีได้สายเดียว คือตัวใบเอง");
+  assert.ok(ast.readsIn("editAvailable").has("canAct") && ast.readsIn("editAvailable").has("o"),
+    "editAvailable ต้องมาจากสิทธิ์ (canAct) + สถานะใบ — เงื่อนไขเดียวกับปุ่มที่เปิดฟอร์มแก้ไข");
+  for (const url of ['"/api/excise-registrations"', '"/api/customers"', '"/api/products"']) {
+    const h = hook(url);
+    const s = h && ast.sourceFor(h);
+    assert.ok(s, `ไม่พบสาย ${url} ในก้อน sources`);
+    assert.equal(ast.field(s, "blocks"), "edit", `${url}: สายรองป้อนแค่ฟอร์มแก้ไข — ซ่อนทั้งหน้าเพราะมันล้ม = เสียจอที่ยังถูกอยู่`);
+    assert.ok(ast.bindingsOf(s, "empty").has(h.b.loaded) && ast.field(s, "empty").startsWith("!"), `${url}: ความว่างต้องมาจาก !loaded`);
+    /* 🐞 RA / ใบที่รับเงินแล้ว ไม่มีปุ่มแก้ไขเลย — ป้ายแดง "ยังแก้ไขใบยื่นนี้ไม่ได้ เพราะ…" คือเหตุผลปลอมของสิ่งที่ไม่มีอยู่
+       ⇒ สายรองพูดเฉพาะตอน editAvailable (ของบนหน้าที่เหลือไม่ได้อ่านสามลิสต์นี้) */
+    assert.equal(ast.failureOf(s).gate, "editAvailable",
+      `${url}: ความล้มของสายรองต้องพูดเฉพาะตอนคนดูมีปุ่มแก้ไข (\`editAvailable ? error || staleError : null\`)`);
+    // ยังโหลดอยู่ = ฟอร์มที่เปิดตอนนี้ขาดข้อมูลเท่าตอนล้ม ⇒ ปุ่มต้องพักรอ
+    const pending = ast.bindingsOf(s, "pending");
+    assert.ok(pending.has(h.b.loading) && pending.has(h.b.loaded), `${url}: pending ต้องมาจาก loading + !loaded ของฮุกตัวเอง`);
+  }
+  // ประโยค "(ไม่ได้แปลว่า…ถูกลบไปแล้ว)" เป็นของสายใบยื่นเท่านั้น — ทุกสายต้องมี blockedNote ของตัวเอง
+  for (const s of sources) assert.ok(s.blockedNote, `${s.label}: ไม่มี blockedNote`);
+  assert.deepEqual(sources.filter((s) => s.blockedNote.includes("ถูกลบ")).map((s) => s.label), [orders.label],
+    "ประโยค 'ไม่ได้แปลว่าถูกลบ' ต้องอยู่กับสายใบยื่นเท่านั้น — สายรองล้มแล้วพูดเรื่องใบถูกลบ = ตอบคำถามที่ไม่มีใครถาม");
+  assert.ok(ast.readsIn("pageBlocked").has("blocked") && ast.readsIn("editBlocked").has("blocked"),
+    "pageBlocked/editBlocked ต้องมาจาก blocked (error + ไม่มีของในมือ) ไม่ใช่ error เดี่ยว ๆ");
+  // "ยังแก้ไขไม่ได้" คู่กับ "ฟอร์มแก้ไขจะใช้รายการรอบก่อน" ขัดกันเอง ⇒ ตัวเลือกประโยคต้องรู้ว่ามีสายรองถูกบล็อก
+  assert.ok(ast.readsIn("said").has("editBlocked"), "said ต้องตัด staleNote ของสายรองทิ้งเมื่อมีสายรองพักฟอร์มไปแล้ว");
+
+  // ปุ่มที่เปิดฟอร์มแก้ไข: โชว์เสมอ แต่พักพร้อมเหตุผล (ติดด่าน = โชว์แล้วบอกเหตุ)
+  assert.ok(ast.readsIn("editPaused").has("editBlocked") && ast.readsIn("editPaused").has("editPending"),
+    "editPaused ต้องมาจากสายรองที่ถูกบล็อก **และ** สายรองที่ยังโหลดไม่เสร็จ");
+  // สำนวนเดียวกับป้าย: ชื่อสายอยู่หลัง "ดึงข้อมูลไม่ได้:" — แทรกกลาง "ดึง…ไม่สำเร็จ" จุดคั่นตกกลางกริยา
+  const before = ast.textBefore("editPausedReason", "editBlocked.map");
+  assert.ok(before.length > 0 && before.every((t) => t.endsWith("ดึงข้อมูลไม่ได้: ")),
+    `เหตุผลที่ปุ่มพักต้องขึ้นชื่อสายหลัง "ดึงข้อมูลไม่ได้: " (เจอ: ${JSON.stringify(before)})`);
+  for (const id of ["edit", "resubmit"]) {
+    const actions = ast.actions(id);
+    assert.equal(actions.length, 1, `ปุ่ม "${id}" หาไม่เจอ/เจอซ้ำ — ตัวตรวจล้าสมัย?`);
+    assert.equal(actions[0].disabled, "editPaused", `ปุ่ม "${id}" เปิดฟอร์มแก้ไข ⇒ ต้องพักเมื่อสายรองไม่มีของในมือ`);
+    assert.equal(actions[0].disabledReason, "editPausedReason", `ปุ่ม "${id}" พักแล้วต้องบอกเหตุ ไม่ใช่ดับเงียบ`);
+  }
+  // หัวจอ (รหัส AR) ต้องไม่อ่านลิสต์ลูกค้า — ลิสต์ล้มแล้วหัวจอแหว่งโดยไม่มีอะไรบอก
+  assert.ok(!ast.readsInAttr("subtitle").has("customers"), "subtitle อ่านจาก `customer` รายตัว ไม่ใช่ find จากลิสต์ `customers`");
+});
+
+test("แก้ PO: โหลดลิสต์ไม่ขึ้นห้ามตอบ 'ไม่พบ PO นี้' และห้ามเปิดฟอร์มที่ขาดสินค้า/สถานะวัสดุ", () => {
+  const rel = "app/sahamit/po/[id]/edit/page.js";
+  const ast = astReader(rel);
+  const notFound = { text: "ไม่พบ PO นี้" };
+  // 🐞 ทรงเดิม: `/api/sahamit/po` ล้ม ⇒ `po` เป็น null ⇒ "ไม่พบ PO นี้" ตัวแดง (อ่านว่าถูกลบ)
+  const byPage = guardedBy(rel, notFound, "pageBlocked");
+  assert.ok(byPage.hits > 0, "หาบรรทัด 'ไม่พบ PO นี้' ไม่เจอ — ตัวตรวจล้าสมัย?");
+  assert.equal(byPage.unguarded, 0, "บรรทัด 'ไม่พบ PO นี้' ต้องอยู่หลัง `if (pageBlocked) return …`");
+  /* …แต่ต้อง **ไม่** อยู่หลังทางแยกของสายรอง — ลิสต์ PO ตอบแล้วว่าไม่มีใบนี้ = ไม่มีจริง · ป้าย "ยังแก้ไม่ได้เพราะไม่มี
+     รายการสินค้า" ใต้หัว "แก้ไข PO" แทนที่ "ไม่พบ PO นี้" อ่านว่ามี PO ให้แก้ */
+  assert.equal(guardedBy(rel, notFound, "blocked.length").unguarded, byPage.hits,
+    "'ไม่พบ PO นี้' ต้องมาก่อน `if (blocked.length) return …` — สายรองล้มต้องไม่กลบคำตอบที่ลิสต์ PO ยืนยันแล้ว");
+  for (const guard of ["blocked.length", "formPending"]) {
+    // ฟอร์มที่ไม่มีสถานะวัสดุ = บรรทัดที่ต้องล็อกดูเหมือนแก้ได้ แล้วเซิร์ฟเวอร์ตีกลับ 409 ทั้งใบ — ล้มหรือยังโหลดอยู่ก็เท่ากัน
+    const { hits, unguarded } = guardedBy(rel, { tag: "PoForm" }, guard);
+    assert.ok(hits > 0, "ฟอร์ม PoForm: หาไม่เจอ — ตัวตรวจล้าสมัย?");
+    assert.equal(unguarded, 0, `ฟอร์ม PoForm: ต้องอยู่หลัง \`if (${guard}) return …\` — ป้ายที่ลอยเหนือฟอร์มไม่พอ`);
+  }
+  const hook = (url) => ast.hooks().find((h) => h.url === url);
+  const posHook = hook('"/api/sahamit/po"');
+  const pos = ast.sourceFor(posHook);
+  assert.ok(pos, "ไม่พบสาย PO ในก้อน sources");
+  assert.equal(ast.field(pos, "blocks"), "page", "สาย PO ตัดสินว่ามีใบนี้ไหม ⇒ บล็อกทั้งหน้า");
+  // 🪤 "มีของในมือ" ของสาย PO คือ PO ใบนี้ (แคชเก่ามี PO อื่นเต็มลิสต์) และนับเฉพาะรอบหน้าบ้านที่ล้ม
+  assert.ok(ast.field(pos, "empty").startsWith("!po &&"), "สาย PO ต้องวัดด้วยใบนี้ (`!po && …`) ไม่ใช่ความยาวลิสต์");
+  const posEmpty = ast.bindingsOf(pos, "empty");
+  assert.ok(posEmpty.has(posHook.b.error) && !posEmpty.has(posHook.b.staleError),
+    "ความว่างของสาย PO ต้องอ่าน error (รอบหน้าบ้าน) ไม่ใช่ staleError — 'ไม่พบ' ที่ยืนยันแล้วต้องไม่พลิกเพราะรอบเบื้องหลังสะดุด");
+  for (const url of ['"/api/sahamit/products"', '"/api/sahamit/material"']) {
+    const h = hook(url);
+    const s = h && ast.sourceFor(h);
+    assert.ok(s, `ไม่พบสาย ${url} ในก้อน sources`);
+    assert.equal(ast.field(s, "blocks"), "form", `${url}: สายรองพักแค่ฟอร์ม`);
+    assert.ok(ast.bindingsOf(s, "empty").has(h.b.loaded) && ast.field(s, "empty").startsWith("!"),
+      `${url}: ต้องบล็อกเมื่อไม่เคยโหลดสำเร็จ (!loaded) — สถานะวัสดุคือตัวล็อกบรรทัด`);
+    const pending = ast.bindingsOf(s, "pending");
+    assert.ok(pending.has(h.b.loading) && pending.has(h.b.loaded), `${url}: pending ต้องมาจาก loading + !loaded ของฮุกตัวเอง`);
+  }
+  assert.ok(ast.readsIn("pageBlocked").has("blocked"), "pageBlocked ต้องมาจาก blocked (error + ไม่มีของในมือ)");
+  assert.ok(ast.readsIn("formPending").has("sources"), "formPending ต้องมาจาก pending ของสายรอง");
+  const sources = ast.sources();
+  for (const s of sources) assert.ok(s.blockedNote, `${s.label}: ไม่มี blockedNote`);
+  assert.deepEqual(sources.filter((s) => s.blockedNote.includes("ถูกลบ")).map((s) => s.label), [ast.field(pos, "label")],
+    "ประโยค 'ไม่ได้แปลว่า PO นี้ถูกลบ' ต้องอยู่กับสาย PO เท่านั้น");
+  assert.ok(ast.readsIn("loadError").has("blocked"), "ประโยคท้ายป้ายต้องมาจากสายที่ถูกบล็อก");
 });
 
 /* ── "ไม่มีของในมือ" ≠ "ลิสต์ยาวศูนย์" ────────────────────────────────────────
@@ -570,12 +986,9 @@ test("ตัวสแกนรายการเรียกเห็นทุ�
       ไม่เงียบแล้ว (บัญชีหมดอายุเงียบ = สวิตช์ปิด)
    ⚠️ ห้ามเพิ่มบรรทัด — รายการเรียกใหม่ต้องรับ error ตั้งแต่เกิด */
 const KNOWN_SILENT = [
-  // 🔴 ลิสต์หลักของหน้ารายละเอียด — ล้มแล้วหาใบไม่เจอ ⇒ จอโกหกว่า "ไม่พบ…" (ทรงเดียวกับ "ไม่พบรอบ FC นี้" ที่ #1796 แก้)
-  'app/tax/filings/[id]/page.js :: "/api/orders"', //            → "ไม่พบรายการ · ใบยื่นนี้อาจถูกลบไปแล้ว"
-  'app/sahamit/po/[id]/edit/page.js :: "/api/sahamit/po"', //    → "ไม่พบ PO นี้"
+  /* ✅ ปิดแล้ว (25/09): ลิสต์หลักของหน้ารายละเอียดที่ล้มแล้วจอโกหกว่า "ไม่พบ…" — tax/filings/[id] (4 รายการเรียก)
+     และ sahamit/po/[id]/edit (3 รายการเรียก) ย้ายเข้าทะเบียน SCREENS แล้ว · เพดาน 25 → 18 */
   // ลิสต์รองที่ป้อนการคำนวณ/ล็อกของจอ — ล้มแล้วค่าเพี้ยนเงียบ ไม่ใช่แค่ตัวเลือกว่าง
-  'app/sahamit/po/[id]/edit/page.js :: "/api/sahamit/material"', // ล็อกบรรทัดที่มีวัตถุดิบหาย (เซิร์ฟเวอร์ยังกันซ้ำ)
-  'app/sahamit/po/[id]/edit/page.js :: "/api/sahamit/products"',
   'app/sahamit/po/[id]/page.js :: "/api/sahamit/material"',
   'app/sahamit/po/[id]/page.js :: "/api/sahamit/products"',
   'app/sahamit/po/page.js :: "/api/sahamit/material"',
@@ -588,9 +1001,6 @@ const KNOWN_SILENT = [
   'app/sahamit/forecast/page.js :: "/api/pm/assignable-users"',
   'app/sahamit/forecast/page.js :: "/api/sahamit/forecast/mapped-lines"',
   'app/sahamit/material/page.js :: "/api/sahamit/products"',
-  'app/tax/filings/[id]/page.js :: "/api/excise-registrations"',
-  'app/tax/filings/[id]/page.js :: "/api/customers"',
-  'app/tax/filings/[id]/page.js :: "/api/products"',
   // ลิสต์ของ picker ที่โหลดตอนกางตัวกรอง/เปิดโมดัล — ล้มแล้ว "ตัวเลือกว่าง" โดยไม่มีอะไรบอก
   'app/tax/filings/page.js :: customersReady ? "/api/customers" : null',
   'app/tax/registrations/page.js :: pickerReady ? "/api/products" : null',
@@ -604,7 +1014,7 @@ const KNOWN_SILENT = [
    🐞 เดิมบัญชีบังคับแค่ขาลง (บรรทัดที่แก้แล้วต้องลบ) ⇒ เติมบรรทัดเดียวในลิสต์ รายการเรียกเงียบตัวใหม่ก็ผ่านด่าน
       โดยดิฟดูเหมือนงานทำบัญชีธรรมดา · เลขนี้ทำให้การเพิ่มต้องขึ้นเพดานให้เห็นในรีวิว
    ⇒ แก้หนี้แล้ว: ลบบรรทัด + **ลด** เลขนี้ · ห้ามขึ้นเลขนี้ */
-const KNOWN_SILENT_CAP = 25;
+const KNOWN_SILENT_CAP = 18;
 
 test("บัญชีหนี้ KNOWN_SILENT มีเพดาน — เพิ่มบรรทัดไม่ได้โดยไม่ขึ้นเลขให้เห็น", () => {
   assert.equal(KNOWN_SILENT.length, KNOWN_SILENT_CAP,
