@@ -165,3 +165,18 @@ test('ลิสต์ทะเบียนโชว์แถวไร้ที�
     'คนที่ scope ทีมแต่ยังไม่มีทีม = ไม่กรอง (เหมือน /api/orders) ไม่ใช่ได้ลิสต์ว่าง');
   assert.doesNotMatch(codeOnly(listRoute), /whereTeamIn\(query, user\)/, 'ตัวกรองที่ตัดแถวไร้ทีมห้ามกลับมา');
 });
+
+/* 🐞 2026-09-25: `registrationRequirements` ตั้งใจ throw เมื่อ query พัง แต่ทั้งสอง route ไม่จับ ⇒ Next ตอบ 500 เปล่า
+   ไม่มี JSON · หน้าทะเบียนเหลือแค่ "HTTP 500" บนบรรทัดรายละเอียด และด่านยื่นตอบ "ยื่นไม่สำเร็จ" เฉย ๆ
+   ทะเบียนที่หายระหว่างตรวจเคยกลายเป็น `{ ready: false, missing: [] }` ⇒ "กรุณาแนบเอกสารให้ครบก่อนยื่น: " ว่างเปล่า */
+test('ตรวจเอกสารบังคับพัง = ตอบข้อความจริง ไม่ใช่ 500 เปล่า · ทะเบียนหาย = 404 ไม่ใช่รายการว่าง', () => {
+  const reqRoute = codeOnly(read('../../app/api/excise-registrations/[id]/requirements/route.js'));
+  for (const [name, code] of [['requirements route', reqRoute], ['PATCH submit-gate', detailCode]]) {
+    assert.match(code, /try\s*\{\s*\w+\s*=\s*await registrationRequirements\(supabase, id\);\s*\}\s*catch\s*\(e\)\s*\{/,
+      `${name}: registrationRequirements ต้องอยู่ใน try และ catch ต้องรับตัว error`);
+    assert.match(code, /catch\s*\(e\)\s*\{[\s\S]{0,200}?Response\.json\(\s*\{\s*error:[^}]*e\?\.message[\s\S]{0,120}?status:\s*500/,
+      `${name}: catch ต้องส่ง error.message กลับเป็น JSON (ยังเป็น 500)`);
+    assert.match(code, /\.notFound\)\s*return Response\.json\(\{ error: 'ไม่พบทะเบียนนี้' \}, \{ status: 404 \}\)/,
+      `${name}: notFound ต้องตอบ 404 ไม่ใช่ { ready:false, missing:[] }`);
+  }
+});

@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { cascadeNpdProbability } from '@/lib/sales/dealProbability';
+import { cascadeNpdProbability, npdCascadeAuditSummary } from '@/lib/sales/dealProbability';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can } from '@/lib/permissions';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope, isWonStage } from '@/lib/salesPlanning';
@@ -42,26 +42,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (dealRow.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถปิด Won ผ่านใบเสนอราคาได้');
   if (isWonStage(dealRow.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
 
-  /* ⭐ **ผูกโครงการให้ในคำขอเดียวกัน** (มติผู้ใช้ 2026-08-24) — ตั้งแต่ #1385 ด่าน
-     โครงการเหลือที่เดียวคือตรงนี้ ⇒ ดีลลอยที่พร้อมปิดต้องปลดด่านได้จากโมดัลเลย
-     ไม่ต้องออกไปหน้าดีลก่อนแล้วกลับมา
-     ⚠️ **ทำในคำขอเดียว ไม่ใช่ให้หน้าจอยิงสองครั้ง** — ยิงสองครั้งแล้วครั้งที่สองล้ม
-     = ดีลผูกโครงการไปแล้วโดยที่ยังไม่ Won ซึ่งไม่มีใครสั่งให้เกิด
-     ⚠️ ล้มที่ขั้นผูก = ยังไม่แตะสถานะใบเลย (ผูกก่อน accept โดยตั้งใจ: RPC ต้องเห็น
-     projectId แล้ว ไม่งั้นมันจะ raise deal_project_required) */
-  let deal = dealRow;
-  if (!deal.projectId) {
-    const projectId = String(body.projectId || '').trim();
-    if (!projectId) return badRequest('ดีลนี้ยังไม่ผูกโครงการ — เลือกโครงการในโมดัลปิด Won ก่อน');
-    if (!can(user.role, 'pm:edit')) return forbidden('ไม่มีสิทธิ์ผูกโครงการให้ดีล');
-    const linked = await linkDealToProject(supabase, { deal, projectId, user, req });
-    if (linked.error) return fail(linked.error, linked.status);
-    deal = linked.data.deal || { ...deal, projectId };
-  } else if (body.projectId && String(body.projectId) !== String(deal.projectId)) {
-    // ย้ายโครงการเป็นคนละเรื่องกับการปิดการขาย — ทำที่หน้าดีล (ต้องส่ง move: true)
-    return badRequest('ดีลนี้ผูกโครงการอยู่แล้ว — ย้ายโครงการทำที่หน้าดีล');
-  }
-
+  /* ⭐ ด่านทุกตัวที่ตัดสินได้จากแถวที่โหลดแล้ว ต้องอยู่ **ก่อน** การผูกโครงการข้างล่าง (มติ 25/09 ข้อ 2)
+     🐞 เดิมบล็อกนี้อยู่หลังการผูก ⇒ ใบที่ยังไม่อนุมัติ/เนื้อหาเปลี่ยนหลังอนุมัติได้ 400 กลับไป
+     แต่ดีลถูกผูกโครงการไปแล้ว (งานไทม์ไลน์ · ลูกค้า/สาย · คำร้อง/SO ย้ายตาม · เธรด+แจ้งเตือน)
+     ทั้งที่การปิด Won ไม่เกิด และไม่มีทางถอดการผูก — ตอนนี้ด่านใบ (สถานะ · บรรทัด · การอนุมัติ ·
+     fingerprint) และด่านดีล (Lost/Won) ครบชุดเดียวกับที่ RPC ตรวจแล้วก่อนแตะอะไร
+     ⚠️ ที่ยังล้มหลังผูกได้คือการชนกันกลางทาง (อีกคนรับใบ/แก้ใบระหว่างคำขอนี้) กับ error ของฐาน
+     ⇒ การผูกค้างไว้ ใช้ต่อได้ตอนกดรับใหม่ (มติ 25/09: การผูกที่เกิดตอนรับใบ **คงอยู่** แม้ย้อนการรับ) */
   const currentFingerprint = quotationApprovalFingerprint(quote);
   // ปิด Won ได้ต่อเมื่อใบผ่านการอนุมัติ (approved + fingerprint ตรง) หรือเป็นใบ grandfather
   // (not_required) — กัน Won ใบที่ยังไม่ได้เซ็นรับรองจากเจ้าของดีล (มติ 2026-07-18).
@@ -81,6 +68,27 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return badRequest(quote.approvalStatus === 'pending'
       ? 'ใบเสนอราคานี้ยังไม่ได้รับการอนุมัติจากเจ้าของดีล — อนุมัติก่อนจึงจะปิด Won ได้'
       : readiness.error);
+  }
+
+  /* ⭐ **ผูกโครงการให้ในคำขอเดียวกัน** (มติผู้ใช้ 2026-08-24) — ตั้งแต่ #1385 ด่าน
+     โครงการเหลือที่เดียวคือตรงนี้ ⇒ ดีลลอยที่พร้อมปิดต้องปลดด่านได้จากโมดัลเลย
+     ไม่ต้องออกไปหน้าดีลก่อนแล้วกลับมา
+     ⚠️ **ทำในคำขอเดียว ไม่ใช่ให้หน้าจอยิงสองครั้ง** — ยิงสองครั้งแล้วครั้งที่สองล้ม
+     = ดีลผูกโครงการไปแล้วโดยที่ยังไม่ Won ซึ่งไม่มีใครสั่งให้เกิด
+     ⚠️ ล้มที่ขั้นผูก = ยังไม่แตะสถานะใบเลย (ผูกก่อน accept โดยตั้งใจ: RPC ต้องเห็น
+     projectId แล้ว ไม่งั้นมันจะ raise deal_project_required)
+     ⚠️ ทิศกลับกัน (ผูกสำเร็จแล้ว accept ล้ม) กันด้วยการตรวจความพร้อมของใบไว้ข้างบนแล้ว */
+  let deal = dealRow;
+  if (!deal.projectId) {
+    const projectId = String(body.projectId || '').trim();
+    if (!projectId) return badRequest('ดีลนี้ยังไม่ผูกโครงการ — เลือกโครงการในโมดัลปิด Won ก่อน');
+    if (!can(user.role, 'pm:edit')) return forbidden('ไม่มีสิทธิ์ผูกโครงการให้ดีล');
+    const linked = await linkDealToProject(supabase, { deal, projectId, user, req });
+    if (linked.error) return fail(linked.error, linked.status);
+    deal = linked.data.deal || { ...deal, projectId };
+  } else if (body.projectId && String(body.projectId) !== String(deal.projectId)) {
+    // ย้ายโครงการเป็นคนละเรื่องกับการปิดการขาย — ทำที่หน้าดีล (ต้องส่ง move: true)
+    return badRequest('ดีลนี้ผูกโครงการอยู่แล้ว — ย้ายโครงการทำที่หน้าดีล');
   }
 
   const { data: result, error: acceptError } = await supabase.rpc('accept_quotation_atomic', {
@@ -104,6 +112,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ⭐ SCENT ปิด Won แล้ว → NPD พี่น้องในโครงการเดียวกันขึ้นเป็น 80% (มติผู้ใช้ 2026-08-05)
   // ลูกค้าจ่ายจริงกับโครงการนี้ไปแล้ว งานพัฒนาสินค้าที่ต่อยอดจึงไม่ใช่ 50% อีกต่อไป
+  // ⚠️ แตะเฉพาะ NPD (มติ 25/09) — ดีลประเภทอื่นในโครงการคง FC% ที่ AE เลือกไว้
   // ⚠️ นอก RPC โดยตั้งใจ: กติกาอยู่ใน JS ที่เดียว (dealProbability.js) ถ้าย้ายลง SQL จะมี
   // กติกาสองชุดที่ต้องแก้พร้อมกันตลอดไป · พลาดแล้วไม่ล้ม accept (ดีลปิดไปแล้วจริง)
   let cascaded = [];
@@ -141,6 +150,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   });
 
   // FC ที่ถูก cascade ต้องมีร่องรอย — ไม่งั้นเลขขยับเองโดยไม่มีใครอธิบายได้
+  // ⚠️ ป้ายมาจาก lib ตัวเดียวกับตัวจับของขาถอย (ย้อนการรับใบอ่านป้ายนี้เพื่อรู้ว่า 80 ไหน cascade ตั้ง)
   for (const row of cascaded) {
     await recordAudit({
       user,
@@ -149,7 +159,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: row.id,
       before: { probability: row.previousProbability },
       after: { probability: row.probability },
-      summary: `FC ${row.previousProbability}% → ${row.probability}% (SCENT ในโครงการเดียวกันปิด Won จากใบ ${quote.quoteNumber})`,
+      summary: npdCascadeAuditSummary(row, quote.quoteNumber),
       request: req,
     });
   }
