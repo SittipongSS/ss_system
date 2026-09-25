@@ -35,7 +35,7 @@ import {
   QUOTATION_ACTIONABLE_STATUSES, isQuotationWaitingOnMe,
 } from '@/lib/sales/quotationWorkflow';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
-import { historicalRowsOnly } from '@/lib/sales/historicalOrders';
+import { historicalRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { isContractWaitingOnMe, latestContractRevisions } from '@/lib/sales/contracts';
 import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
@@ -329,6 +329,13 @@ export const GET = withUser(async ({ user, supabase }) => {
         ? fetchAllResult(() => historicalRowsOnly(supabase.from('sales_orders').select('id, status, createdBy, origin'))
           .eq('status', 'draft').eq('createdBy', user.id).order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
+      /* เลนย้อนการอนุมัติ (มติ 24/09 · #1808) — ใบที่ผู้จัดการย้อนแล้วรอเจ้าของดีลปัจจุบันกด "ออก Rev."
+         ⭐ ชุดข้อมูลเล็ก (ค้างจริงเท่านั้น) ⇒ ดึงทุกใบสถานะนี้ แล้วให้ helper ตัดสินจาก deal.ownerId ที่ฝังมา
+         ⚠️ ขาด deal ใน select = helper ตอบ false ทุกใบ ⇒ ป้ายไม่ขึ้นเงียบ (navCounts.test ล็อกรูปไว้) */
+      const revokedLane = can(user.role, 'salesplan:view')
+        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, createdBy, origin, deal:sales_deals(ownerId)'))
+          .eq('status', 'approval_revoked').order('id', { ascending: true }))
+        : Promise.resolve({ data: [] });
       /* เลนบัญชี — **แคบด้วย `financeStatus` ก่อนเสมอ** ไม่ใช่ดึงใบ approved ทั้งหมด
          (ใบที่อนุมัติแล้วคือทะเบียนทั้งกอง ส่วนคิวบัญชีคือหลักสิบ)
          ⚠️ `awaitsFinanceReview` ต้องได้งวดของใบไปด้วย ไม่งั้นตอบ false ทุกใบ
@@ -340,13 +347,14 @@ export const GET = withUser(async ({ user, supabase }) => {
       const [
         { data: approvalRows, error: approvalError },
         { data: draftRows, error: draftError },
+        { data: revokedRows, error: revokedError },
         { data: financeRows, error: financeError },
-      ] = await Promise.all([approvalLane, draftLane, financeLane]);
+      ] = await Promise.all([approvalLane, draftLane, revokedLane, financeLane]);
       // ทิ้ง error ที่นี่ = เลนนั้นกลายเป็น [] ⇒ ป้ายนับขาดเงียบ (เลนบัญชีเคยเป็นทั้งเลน)
-      if (approvalError || draftError || financeError) throw approvalError || draftError || financeError;
+      if (approvalError || draftError || revokedError || financeError) throw approvalError || draftError || revokedError || financeError;
 
-      // ⚠️ สองเลนไม่มีใบซ้อนกัน — draft ไม่มีทางเป็น pending_approval/rejected
-      const waiting = [...(approvalRows || []), ...(draftRows || [])]
+      // ⚠️ สามเลนไม่มีใบซ้อนกัน — แยกกันด้วยสถานะ (pending_approval/rejected · draft · approval_revoked)
+      const waiting = [...(approvalRows || []), ...(draftRows || []), ...(revokedRows || [])]
         .filter((row) => isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer, role: user.role })).length;
       if (!(financeRows || []).length) return waiting;
 
