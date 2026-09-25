@@ -49,7 +49,8 @@ test('ธง _awaitingMyApproval ติดที่ server ทั้งสอง
   assert.match(orders, /_awaitingMyApproval: isSalesOrderReviewer\(user\.role\)/);
   assert.match(orders, /!isSalesOrderSelfApproval\(row, user\.id\)/, 'ใบของตัวเองต้องถูกตัดที่ server');
   // ธง "รอฉันลงมือ" ต้องส่ง role ตัวเดียวกับที่ป้ายบนเมนูส่ง — ไม่งั้น admin เห็นลิสต์กับป้ายไม่ตรงกัน
-  assert.match(orders, /_waitingOnMe: isSalesOrderWaitingOnMe\(row, \{ userId: user\.id, reviewer: isSalesOrderReviewer\(user\.role\), role: user\.role \}\)/);
+  // ⭐ แถวต้องแนบ deal — ใบที่ถูกย้อนอนุมัติตัดสินจากเจ้าของดีล (มติ 24/09) · ไม่แนบ = ลิสต์ไม่ตรงป้ายบนเมนู
+  assert.match(orders, /_waitingOnMe: isSalesOrderWaitingOnMe\(\{ \.\.\.row, deal: dealById\.get\(row\.dealId\) \|\| null \}, \{ userId: user\.id, reviewer: isSalesOrderReviewer\(user\.role\), role: user\.role \}\)/);
   /* แกนที่สองของใบเดียวกัน — ขั้นบัญชีปิดใบ (mig 0250)
      ⭐ ตั้งแต่มติ 2026-08-30 ด่านนี้ขึ้นกับ **งวดชำระ** ⇒ ต้องป้อนงวดของใบนั้นเข้าไปด้วย
      🪤 เรียกมือเปล่าได้ false ทุกใบ = คิวบัญชีว่างเงียบ ๆ ทั้งที่มีงานรออยู่ */

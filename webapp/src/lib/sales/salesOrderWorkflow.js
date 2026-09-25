@@ -60,6 +60,12 @@ export function isSalesOrderWaitingOnMe(order, { userId = '', reviewer = false, 
   if (reviewer && order.status === 'pending_approval') {
     return role === 'admin' || !isSalesOrderSelfApproval(order, userId);
   }
+  /* ⭐ ใบที่ผู้จัดการย้อนการอนุมัติแล้ว = งานของ **เจ้าของดีลปัจจุบัน** ต้องกด "ออก Rev." (มติ 24/09 · #1808)
+     🐞 SO-26080138-0 ค้างเงียบข้ามวันเพราะไม่มีป้าย/คิวไหนบอก AE · ไม่ใช่ผู้สร้าง (AC สร้างแทนได้) และไม่นับให้ผู้จัดการ
+     (ผู้จัดการกดเองแล้วอนุมัติใบ Rev. ของตัวเองไม่ได้) · ⚠️ ผู้เรียกต้องแนบ `deal` (ownerId) มากับแถว ไม่มี = ไม่นับ */
+  if (order.status === 'approval_revoked') {
+    return Boolean(userId) && order.deal?.ownerId === userId;
+  }
   if (!userId || order.createdBy !== userId) return false;
   if (order.status === 'rejected') return true;
   return order.status === 'draft' && isHistoricalOrder(order);

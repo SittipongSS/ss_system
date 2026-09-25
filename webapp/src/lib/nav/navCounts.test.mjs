@@ -233,7 +233,7 @@ test('ป้ายใบสั่งขาย: เลนอนุมัติพ
   assert.match(job, /fetchAllResult\(\(\) => historicalRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, createdBy, origin'\)\)\s*\.eq\('status', 'draft'\)\.eq\('createdBy', user\.id\)\.order\('id', \{ ascending: true \}\)\)/);
   assert.match(job, /isSalesOrderWaitingOnMe\(row, \{ userId: user\.id, reviewer, role: user\.role \}\)/);
   // error ของเลนร่างต้องโยน ไม่ใช่กลืนเป็น [] (ป้ายนับขาดเงียบ)
-  assert.match(job, /if \(approvalError \|\| draftError \|\| financeError\) throw/);
+  assert.match(job, /if \(approvalError \|\| draftError \|\| revokedError \|\| financeError\) throw/);
   // literal ของ origin มีบ้านเดียว — ห้ามกรองเองในไฟล์นี้
   assert.doesNotMatch(code, /\.eq\(\s*['"]origin['"]/);
 });
@@ -245,6 +245,35 @@ test('ตัวตัดสินของป้าย: ผู้ตรวจไ
   assert.equal(isSalesOrderWaitingOnMe(mine, { userId: 'U-SUP', reviewer: true, role: 'admin' }), true);
   assert.equal(isSalesOrderWaitingOnMe({ status: 'draft', origin: 'historical', createdBy: 'U-AE' },
     { userId: 'U-AE', reviewer: false, role: 'ae' }), true);
+});
+
+// ── ป้ายใบสั่งขาย: ใบที่ถูกย้อนการอนุมัติ รอ AE เจ้าของดีลออก Rev. (มติ 24/09 · #1808) ──────────
+/* 🐞 prod 24–25/09: SO-26080138-0 ถูกย้อนอนุมัติแล้วค้างเงียบข้ามวัน — ไม่มีป้าย ไม่มีคิว ไม่มีอะไรบอก AE ว่าต้องกด
+   "ออก Rev." (หลัง #1808 เจ้าของดีลกดเองได้ และควรเป็นคนกด ไม่งั้นผู้จัดการที่กดจะอนุมัติใบ Rev. เองไม่ได้)
+   ⭐ นับให้ **เจ้าของดีลปัจจุบัน** คนเดียว (deal.ownerId) — ไม่ใช่ผู้สร้างใบ (AC สร้างแทนได้) และไม่ใช่ผู้จัดการ
+   ⚠️ helper ตัดสินจาก deal ที่ฝังมากับแถว ⇒ select ต้องพก deal:sales_deals(ownerId) ไม่งั้นนับ 0 เงียบ */
+test('ป้ายใบสั่งขาย: เลนย้อนการอนุมัติพก deal.ownerId และโยน error ของเลน', () => {
+  const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
+  const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('projectCloses'"));
+  // ⭐ ใบย้อนหลังย้อนอนุมัติไม่ได้ (CHECK 0374) — กรอง pipeline ผ่านตัวกลางตัวเดียว (literal ของ origin มีบ้านเดียว)
+  assert.match(job, /pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, createdBy, origin, deal:sales_deals\(ownerId\)'\)\)\s*\.eq\('status', 'approval_revoked'\)/);
+  assert.match(job, /if \(approvalError \|\| draftError \|\| revokedError \|\| financeError\) throw/);
+  assert.match(job, /\.\.\.\(revokedRows \|\| \[\]\)/);
+});
+
+test('ตัวตัดสินของป้าย: ใบที่ถูกย้อนอนุมัติ = งานของเจ้าของดีลปัจจุบันเท่านั้น', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('../sales/salesOrderWorkflow.js');
+  const revoked = { status: 'approval_revoked', origin: 'pipeline', createdBy: 'U-AC', deal: { ownerId: 'U-AE' } };
+  assert.equal(isSalesOrderWaitingOnMe(revoked, { userId: 'U-AE', reviewer: false, role: 'ae' }), true);
+  // ผู้สร้างใบ (AC) ไม่ใช่คนกด · ผู้จัดการไม่นับ (กดเองแล้วอนุมัติใบ Rev. เองไม่ได้)
+  assert.equal(isSalesOrderWaitingOnMe(revoked, { userId: 'U-AC', reviewer: false, role: 'ac' }), false);
+  assert.equal(isSalesOrderWaitingOnMe(revoked, { userId: 'U-SUP', reviewer: true, role: 'ae_supervisor' }), false);
+  // ไม่มีดีลแนบมา / ไม่มีผู้ใช้ = ไม่นับ (ไม่เดา)
+  assert.equal(isSalesOrderWaitingOnMe({ ...revoked, deal: null }, { userId: 'U-AE' }), false);
+  assert.equal(isSalesOrderWaitingOnMe({ ...revoked, deal: { ownerId: '' } }, { userId: '' }), false);
+  // ใบที่ออก Rev. ไปแล้ว (revised) ไม่ค้างอีก
+  assert.equal(isSalesOrderWaitingOnMe({ ...revoked, status: 'revised' }, { userId: 'U-AE' }), false);
 });
 
 // ── ป้ายสัญญา: เอกสารแทนสัญญาของใบสั่งขายย้อนหลังไม่นับซ้ำกับป้ายใบสั่งขาย (0374) ──────────────
