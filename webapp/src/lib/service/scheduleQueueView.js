@@ -610,7 +610,9 @@ export function draftsInRange(visits = [], { from, to }, teamFilter, crewByUser)
 /** ช่วงวันของ "สัปดาห์" สำหรับชิป "วันเสนอ 20–26 ก.ย." — `from` เป็นวันอาทิตย์เสมอ (range7 ของตาราง · อา–ส) */
 export function weekChipText(from) {
   const to = addDaysIso(from, 6);
-  const [, , d1] = from.split('-').map(Number);
-  const [, , d2] = to.split('-').map(Number);
+  const [, m1, d1] = from.split('-').map(Number);
+  const [, m2, d2] = to.split('-').map(Number);
+  // สัปดาห์ที่คร่อมเดือน (อา. 27 ก.ย. – ส. 3 ต.ค.) ต้องบอกเดือนทั้งสองฝั่ง — "27–3 ต.ค." อ่านเป็นถอยหลัง
+  if (m1 !== m2) return `วันเสนอ ${d1} ${fmtMonthShort(from)}–${d2} ${fmtMonthShort(to)}`;
   return `วันเสนอ ${d1}–${d2} ${fmtMonthShort(to)}`;
 }

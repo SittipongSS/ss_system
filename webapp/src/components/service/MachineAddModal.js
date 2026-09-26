@@ -20,7 +20,7 @@ import { Check, Plus } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
-import Input from "@/components/ui/Input";
+import DateInput from "@/components/ui/DateInput";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Textarea from "@/components/ui/Textarea";
@@ -175,9 +175,12 @@ export default function MachineAddModal({
 
               <label className="form-field">
                 <span>วันที่รับเข้า <em className={styles.req}>ต้องระบุ</em></span>
-                <Input
-                  type="date" value={form.receivedAt || ""} max={businessDate()}
-                  onChange={(e) => patch({ receivedAt: e.target.value })}
+                {/* มติเจ้าของ 26/09 สัปดาห์เริ่มวันอาทิตย์ — ปฏิทินของ DateInput เรียง อา.–ส. เอง
+                    (ปฏิทินของ `type="date"` ดิบเรียงตาม locale ของเครื่อง บังคับไม่ได้) · ค่ายังเป็น ISO เดิม
+                    · `max` ยังกันวันในอนาคต — DateInput ไม่รับวันที่เกินเพดานทั้งพิมพ์และจิ้มปฏิทิน */}
+                <DateInput
+                  value={form.receivedAt || ""} max={businessDate()}
+                  onChange={(iso) => patch({ receivedAt: iso })}
                 />
                 <small className={styles.hintSm}>
                   เดือนในรหัสเครื่องมาจากวันนี้ — ขึ้นทะเบียนย้อนหลังให้ของเก่าได้

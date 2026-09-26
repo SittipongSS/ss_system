@@ -1033,13 +1033,25 @@ export default function AttachmentsPanel({
                 {metaFields.map((f) => (
                   <div key={f.key} className="form-group">
                     <label className="text-[11px]">{f.label}</label>
-                    <input
-                      type={f.type || "text"}
-                      value={meta[f.key] ?? ""}
-                      onChange={(e) => setMeta((m) => ({ ...m, [f.key]: e.target.value }))}
-                      className="premium-input w-full text-xs"
-                      disabled={saving}
-                    />
+                    {/* ช่องวันที่ใช้ตัวเลือกวันของระบบ (อา.–ส. · มติเจ้าของ 26/09 สัปดาห์เริ่มวันอาทิตย์) — `<input type="date">` ดิบ
+                        วาดปฏิทินตาม locale ของเครื่อง (en-GB เริ่มวันจันทร์) · ค่ายังเป็น ISO เหมือนเดิม */}
+                    {f.type === "date" ? (
+                      <DateInput
+                        className="w-full"
+                        value={meta[f.key] ?? ""}
+                        onChange={(iso) => setMeta((m) => ({ ...m, [f.key]: iso }))}
+                        disabled={saving}
+                        ariaLabel={f.label}
+                      />
+                    ) : (
+                      <input
+                        type={f.type || "text"}
+                        value={meta[f.key] ?? ""}
+                        onChange={(e) => setMeta((m) => ({ ...m, [f.key]: e.target.value }))}
+                        className="premium-input w-full text-xs"
+                        disabled={saving}
+                      />
+                    )}
                   </div>
                 ))}
                 <div className="form-group sm:col-span-2">
