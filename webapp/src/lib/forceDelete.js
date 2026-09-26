@@ -690,6 +690,16 @@ export async function cleanupRequestOrphans(supabase, requestId) {
   const { error: taskError } = await supabase
     .from('personal_tasks').delete().eq('inquiryId', requestId);
   if (taskError) throw new Error(`ลบงานที่ผูกคำร้องไม่สำเร็จ: ${taskError.message}`);
+
+  /* งวดชำระที่ผูกคำร้องนี้ (billingRequestId · 0260) — ถอดลิงก์ก่อนลบ ไม่งั้นงวดชี้ไปคำร้องที่ไม่มีแล้ว
+     และติดล็อก "ถอดคำร้องก่อน" ของการปรับแผน (0377) ถาวรโดยไม่มีปุ่มถอดให้กด
+     ⭐ กำหนดวางบิล (26/09): ปุ่ม "ขอใบวางบิลงวดนี้" ผูกงวดตั้งแต่บันทึกร่าง ⇒ "ลบร่างที่ยังไม่ส่ง" กลายเป็นทางปกติ
+     ไม่ใช่เคสหายาก · ร่องรอยอยู่ที่ audit ของการลบคำร้อง (before มี id) */
+  const { error: linkError } = await supabase
+    .from('sales_order_installments')
+    .update({ billingRequestId: null, updatedAt: new Date().toISOString() })
+    .eq('billingRequestId', requestId);
+  if (linkError) throw new Error(`ถอดคำร้องออกจากงวดชำระไม่สำเร็จ: ${linkError.message}`);
 }
 
 export async function formulaForcePreview(supabase, formula) {

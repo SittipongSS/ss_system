@@ -543,3 +543,12 @@ test('dealForcePreview: คำร้องที่ส่งแล้วขึ�
   assert.ok(note, notes.join(' | '));
   assert.match(note, /1 ใบ \(RQ-IQ-26090026\)/);
 });
+
+test('ลบคำร้อง = ถอดลิงก์ billingRequestId บนงวดชำระด้วย (กำหนดวางบิล 26/09 — ปุ่มขอใบวางบิลผูกตั้งแต่ร่าง)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./forceDelete.js', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('export async function cleanupRequestOrphans'), src.indexOf('export async function formulaForcePreview'));
+  assert.match(body, /\.from\('sales_order_installments'\)/);
+  assert.match(body, /billingRequestId: null/);
+  assert.match(body, /\.eq\('billingRequestId', requestId\)/);
+});

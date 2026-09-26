@@ -353,7 +353,10 @@ test('แก้กำหนดชำระได้เสมอ ยกเว้�
   assert.equal(installmentActionError({ status: 'pending' }, 'schedule', SA), null);
   assert.equal(installmentActionError({ status: 'reported' }, 'schedule', SA), null);
   assert.match(installmentActionError({ status: 'confirmed' }, 'schedule', SA), /คอนเฟิร์มแล้ว/);
-  assert.match(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), /ไม่มีสิทธิ์/);
+  /* กำหนดวางบิล · มติเจ้าของ 26/09 ข้อ 4 "แก้ได้" — ฝ่ายบัญชีแก้วันงวดได้แล้ว (เดิมบรรทัดนี้ยืนยันว่า FN แก้ไม่ได้)
+     ⇒ ทดสอบเต็มชุดอยู่ที่ installmentBillingSchedule.test.mjs */
+  assert.equal(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), null);
+  assert.match(installmentActionError({ status: 'pending' }, 'schedule', PC_STAFF), /ไม่มีสิทธิ์/);
 });
 
 // ── ผูก/ถอดคำร้องขอเอกสารการเงิน (B-5 · mig 0260) ───────────────────────

@@ -45,6 +45,8 @@
 /* ── ตารางงวด ─────────────────────────────────────────────────────── */
 .table { width: 100%; border-collapse: collapse; }
 .table strong { display: block; color: var(--text); font-weight: var(--fw-bold); }
+/* ชื่องวดสั้นห้ามแตกบรรทัด ("งวด / สุดท้าย" ตอนคอลัมน์วันวางบิลกว้าง · กำหนดวางบิลรอบสอง) — ดู InstallmentLabel */
+.nowrap { white-space: nowrap; }
 .table small { display: block; color: var(--text-3); font-size: var(--fs-3); }
 .seqCol { width: 44px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .overdue { color: var(--red); font-weight: var(--fw-bold); }
@@ -127,3 +129,103 @@
 .carriedRow > td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 .removedRow > td { color: var(--text-3); }
 .removedRow :global(.num) { text-decoration: line-through; }
+
+/* ── กำหนดวางบิล (mig 0389 · ม็อก mockups/billing-cycle จอ C) ────────────────────────────────────────────
+   ⚠️ ระยะห่าง/ขนาดตัวอักษร/ความสูงบรรทัดใช้โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui เต็มพอดี) · ไม่มีจุดตัดจอ —
+     ทุกแถวเป็น flex-wrap จอแคบตกบรรทัดเอง (เพดานจำนวนจุดตัดจอขึ้นไม่ได้) */
+
+/* บรรทัดรอบวางบิลของลูกค้าใต้หัวการ์ด — เมตาของใบ ไม่ใช่คำเตือน (พื้นอ่อน ไม่ใช่ StatusNotice)
+   ยังไม่ตั้งรอบ = เส้นประ พื้นใส (ช่องว่างที่เติมได้ ไม่ใช่ของเสีย) */
+.ruleLine {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+.ruleLine[data-empty="yes"] { border-style: dashed; background: transparent; }
+.ruleIcon { flex: none; color: var(--navy-ink); }
+.ruleLine[data-empty="yes"] .ruleIcon { color: var(--text-3); }
+.ruleText { flex: 1 1 260px; min-width: 0; }
+.ruleText b { color: var(--text); font-weight: var(--fw-semibold); }
+.ruleText small { display: block; color: var(--text-3); font-size: var(--fs-5); }
+/* ปุ่ม "จัดวันใหม่ตามรอบปัจจุบัน…" + ลิงก์ทะเบียนลูกค้า — ชิดขวาเป็นกลุ่มเดียว (จอแคบตกบรรทัดทั้งกลุ่ม) */
+.ruleActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
+  margin-left: auto;
+}
+.ruleLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+/* เซลล์วันวางบิล — วัน · ป้ายสถานะ · ปุ่มขอใบวางบิล/เลือกรอบ เรียงลงเป็นกอง (ตารางแคบตกบรรทัดเอง) */
+.billCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+/* วัน + ป้ายเสาร์-อาทิตย์ในบรรทัดเดียว (ใช้ทั้งเซลล์วันวางบิล เซลล์กำหนดชำระ และตารางพรีวิวเติมตามรอบ) */
+.dateLine {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-1-5);
+}
+.dateText { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pickAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: var(--fw-semibold);
+}
+
+/* โมดัลเติมตามรอบ — สรุปผลเป็นข้อ ๆ ก่อนตารางพรีวิว */
+.fillLead {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+.fillLead b { color: var(--text); }
+
+/* วันวางบิลที่สั่งล้างแล้วในโมดัลกำหนดชำระ (ลูกค้าไม่มีรอบ) — ขีดฆ่าให้เห็นว่าบันทึกแล้วจะหาย ยังกด "เก็บไว้" คืนได้ */
+.cleared {
+  color: var(--text-3);
+  text-decoration: line-through;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — เซลล์ "เดิม → ใหม่" ของตารางพรีวิว ────────────
+   เดิมจาง+ขีดฆ่า (`.cleared`) อยู่บรรทัดบน · ใหม่ (+ ป้ายเสาร์-อาทิตย์) อยู่บรรทัดล่าง — กวาดตาลงคอลัมน์อ่านวันใหม่ได้ต่อเนื่อง */
+.redateCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.redateFrom {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}

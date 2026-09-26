@@ -46,6 +46,37 @@
   vertical-align: middle;
 }
 
+/* แถบรอบวางบิลของลูกค้าเหนือตารางงวด (mig 0389 · ม็อก billing-cycle จอ B)
+   กล่อง/โทน/ไอคอนเป็นของ StatusNotice กลาง — ที่นี่มีแค่ระยะกับบรรทัดรอง "เงื่อนไขเครดิต"
+   ⚠️ บรรทัดรองใช้สีข้อความของกล่อง (--text-2) ไม่ใช่ --text-3 — พื้นกล่องผสมสีโทน คอนทราสต์ต่ำกว่า AA */
+.termsNotice {
+  margin-bottom: var(--space-3);
+}
+
+.termsLine,
+.termsSub {
+  display: block;
+}
+
+.termsLine b {
+  color: var(--text);
+  font-weight: var(--fw-bold);
+}
+
+.termsSub {
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-5);
+}
+
+.termsLabel {
+  font-weight: var(--fw-semibold);
+}
+
+/* คำอธิบายใต้ตารางงวดเมื่อลูกค้ามีรอบ — ชิปมาจากไหน · ไม่บังคับเลือก */
+.planNote {
+  margin-top: var(--space-2);
+}
+
 /* เงินที่ลูกค้าจ่ายมาก่อนออกใบ — กล่องแยกใต้ตาราง (ธง + ช่องที่โผล่ตามธง) */
 .prepaidBox {
   margin-top: var(--space-3-5);
@@ -74,6 +105,99 @@
 .colPercent { width: 74px; }
 .colAmount { width: 132px; }
 .colDue { width: 176px; }
+
+/* ── ที่แคบกว่าพื้นตาราง: งวดกลายเป็นการ์ดต่องวด (ม็อก billing-cycle จอ B §จอแคบ · review S4 26/09) ──────
+   🐞 เดิมตารางเลื่อนข้างในกรอบ — ที่ 390px คอลัมน์ "เลือกรอบวางบิล" หลุดจอทั้งคอลัมน์ ไม่มีอะไรบอกว่าเลื่อนได้
+      แถวสูงโล่งเพราะตัวเลือกที่มองไม่เห็นดันความสูง · ชิป 5 ตัวในเซลล์แคบอ่านไม่ได้อยู่ดี
+   ⭐ วัดด้วย @container ไม่ใช่ @media (แพตเทิร์น QuotationLineItems.module.css) — เกณฑ์คือ "คอลัมน์เอกสารกว้างพอไหม"
+      จอเท่ากันแต่ที่เหลือไม่เท่ากันเมื่อแถบข้างสลับ · 760 = ตัวเลือกรอบต้องการ ~520px หลังหักงวด/รายละเอียด/%/ยอด
+      (จอ 1200 เหลือ 756 → การ์ด ตรงกับม็อกที่ตัดที่จอ 1200)
+   ⚠️ DOM ชุดเดียวกับตาราง (กฎ AGENTS.md ไม่แยกมาร์กอัปมือถือ) — ป้าย "งวด" / "% ของยอดรวม" / หัวช่อง เป็น span ที่ซ่อนไว้ตอนเป็นตาราง
+   ⚠️ !important เฉพาะช่องที่กฎกลางผูกกับ `.scroll[data-family] td` (specificity สูงกว่าคลาสของหน้า) — ความสูง 48px ·
+      padding · เส้นใต้เซลล์ · การจัดขวาของ `.num` */
+.planContainer {
+  container-type: inline-size;
+}
+
+.cardOnly,
+.cardLabel {
+  display: none;
+}
+
+@container (max-width: 760px) {
+  /* ปลดพื้นความกว้างด้วยตัวแปร — ค่าที่ชนะจริงมาจาก `.scroll table { min-width: var(--table-min-width) }` */
+  .planTable {
+    --table-min-width: 0;
+    display: block;
+  }
+
+  .planTable thead { display: none; }
+  .planTable tbody { display: block; }
+
+  .planTable tbody tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: baseline;
+    column-gap: var(--space-2-5);
+    row-gap: var(--space-0-5);
+    padding: var(--space-3) var(--space-3-5);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .planTable tbody tr:last-child { border-bottom: 0; }
+
+  .planTable tbody td {
+    display: block;
+    width: auto;
+    min-width: 0;
+    height: auto !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  .cellSeq {
+    grid-column: 1;
+    grid-row: 1;
+    white-space: nowrap;
+    font-weight: var(--fw-semibold);
+  }
+
+  .cellLabel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .cellAmount {
+    grid-column: 3;
+    grid-row: 1;
+    white-space: nowrap;
+  }
+
+  .cellPercent {
+    grid-column: 2;
+    grid-row: 2;
+    text-align: left !important;
+    color: var(--text-3);
+    font-size: var(--fs-5);
+  }
+
+  .cellPick {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin-top: var(--space-2-5);
+  }
+
+  .cardOnly { display: inline; }
+
+  .cardLabel {
+    display: block;
+    margin-bottom: var(--space-1-5);
+    color: var(--text-2);
+    font-size: var(--fs-label);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-thai);
+  }
+}
 
 /* ป้ายบอกสถานะความพร้อมบนการ์ดจัดการเอกสาร — คำขยาย ไม่ใช่สถานะของใบ */
 .hintBadge { color: var(--text-3); }

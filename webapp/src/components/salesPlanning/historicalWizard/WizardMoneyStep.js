@@ -39,7 +39,7 @@ import styles from "./HistoricalOrderWizard.module.css";
 
 export default function WizardMoneyStep({
   state, onChange, issues = [], summary = true, plan = null, money = null, evidenceFiles = [], onEvidenceFiles,
-  todayIso = null, busy = false, onOversize,
+  todayIso = null, customerTerms = null, busy = false, onOversize,
 }) {
   const [splitOpen, setSplitOpen] = useState(false);
   const has = (field) => issues.some((issue) => issue.field === field);
@@ -422,6 +422,7 @@ export default function WizardMoneyStep({
         </>
       )}
 
+      {/* `customerTerms` = รอบวางบิลของลูกค้า (mig 0389) → ชิป "ตามรอบของลูกค้า" (ดูหัว `historicalCustomerDueOption`) */}
       <HistoricalSplitModal
         open={splitOpen}
         onClose={() => setSplitOpen(false)}
@@ -430,6 +431,7 @@ export default function WizardMoneyStep({
         amount={chain.remaining}
         gridStart={start || null}
         todayIso={todayIso}
+        customerTerms={customerTerms}
         replacing={rows.length}
         onCreate={(next) => { setRows(next); setSplitOpen(false); }}
       />

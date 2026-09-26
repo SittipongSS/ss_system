@@ -14,6 +14,7 @@ import {
 } from '@/lib/master/customerTaxId';
 import { recordAudit } from '@/lib/audit';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { loadCreateFormBillingTerms } from '@/lib/sales/salesOrderCreateInstallments';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,23 @@ const CUSTOMER_PICKER_COLUMNS = [
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
   const params = new URL(request.url).searchParams;
+
+  /* ⭐ อ่านแคบ `?billingTermsOf=<id>` — รอบวางบิล + เงื่อนไขเครดิตของลูกค้า **รายเดียว** (mig 0389 · กำหนดวางบิล รอบสอง ข้อ 6)
+     ผู้ใช้: วิซาร์ดใบสั่งขายย้อนหลังขั้น ③ (ชิป "ตามรอบของลูกค้า" ในหน้าต่างแบ่งงวด)
+     ⚠️ ไม่เติม `billingRule` ลง CUSTOMER_PICKER_COLUMNS — ทุก picker ของระบบจะแบกคอลัมน์ที่มีจอเดียวใช้
+       และไม่ใช้ GET /api/customers/[id] — เส้นนั้นลากสินค้า/ทะเบียนสรรพสามิต/ใบสั่งทั้งก้อนมาด้วย
+     ⭐ ตัวอ่านตัวเดียวกับหน้าสร้างใบสั่งขาย (`loadCreateFormBillingTerms` — 4 คอลัมน์ · ฐานที่ยังไม่รัน 0389 = supported:false)
+       ⇒ รูปคำตอบเดียวกัน จออ่านด้วย `createFormTermsState` ตัวเดียวกัน
+     รอบของลูกค้าเปิดอ่านอยู่แล้วที่ GET รายตัว (record-level ทุกบทบาท) ⇒ ไม่มีด่านเพิ่ม
+     อ่านไม่ขึ้น = 500 พร้อมเหตุ (จอบอกว่าโหลดรอบไม่สำเร็จ ไม่ใช่ "ลูกค้ายังไม่ตั้งรอบ") */
+  const billingTermsOf = (params.get('billingTermsOf') || '').trim();
+  if (params.has('billingTermsOf')) {
+    if (!billingTermsOf) return Response.json({ error: 'ต้องระบุลูกค้า (billingTermsOf)' }, { status: 400 });
+    const terms = await loadCreateFormBillingTerms(supabase, billingTermsOf);
+    if (terms?.error) return Response.json({ error: `อ่านรอบวางบิลของลูกค้าไม่สำเร็จ: ${terms.error}` }, { status: 500 });
+    return Response.json(terms);
+  }
+
   const manage = params.get('manage') === '1';
   const scopeAll = manage || params.get('scope') === 'all';
 

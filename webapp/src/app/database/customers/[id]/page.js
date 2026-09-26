@@ -9,11 +9,13 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
-import { useCan, useRole, useTeams } from "@/lib/roleContext";
-import { canEditIssuedMasterCode, isSuperuser } from "@/lib/permissions";
+import { useCan, useCapUser, useDepartment, useRole, useTeams } from "@/lib/roleContext";
+import { canEditCustomerBillingRule, canEditIssuedMasterCode, isSuperuser } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
+import CustomerBillingRuleCard from "@/components/database/CustomerBillingRuleCard";
+import { describeBillingRule } from "@/lib/sales/billingRule";
 import { customerNameIn } from "@/lib/master/customerName";
 import { isAutoArCode, isReusableCode, reclaimableArNumber } from "@/lib/master/masterCodes";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
@@ -131,6 +133,8 @@ export default function CustomerDetails() {
   const canViewTax = useCan("history:view");
   const role = useRole();
   const myTeams = useTeams();
+  const capUser = useCapUser();
+  const department = useDepartment();
   const superuser = isSuperuser(role);
   // แอดมินแก้เลข AR ได้ทุกใบ รวมใบที่ระบบออกเลขให้ (มติ 2026-08-24) — ด่านจริงอยู่ที่ PATCH
   const canFixArCode = canEditIssuedMasterCode(role);
@@ -196,6 +200,16 @@ export default function CustomerDetails() {
       .then((d) => { apiCache.set("/api/master/product-types", d || []); setProductTypes(d || []); })
       .catch(() => {});
   }, [id]);
+
+  /* ลิงก์ "ดูที่ทะเบียนลูกค้า"/"ตั้งรอบ" จากหน้าสร้าง SO · แผงงวด · ทะเบียน FN ชี้ `#billing-rule` (กำหนดวางบิล)
+     — การ์ดขึ้นหลังโหลดลูกค้าเสร็จ เบราว์เซอร์เลื่อนไปหา anchor ตอนเปิดหน้าไม่เจอ ⇒ เลื่อนเองครั้งเดียวหลังได้ลูกค้า */
+  const hasCustomer = Boolean(customer);
+  useEffect(() => {
+    if (!hasCustomer || typeof window === "undefined") return;
+    const hash = window.location.hash.slice(1);
+    if (hash !== "billing-rule") return;
+    window.requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView({ block: "start" }));
+  }, [hasCustomer]);
 
   // Cross-module relations (360-view): registrations + projects + ทะเบียนกลิ่น/สูตร
   // from one scoped endpoint instead of fetching every registration and filtering
@@ -462,6 +476,10 @@ export default function CustomerDetails() {
   const workflowSteps = workflowStepsFromIndex(approvalView.steps, approvalView.currentIndex);
 
   const canDecide = approvalView.status === "pending" && canApproveMasterRecord(role, myTeams, customer);
+  /* รอบวางบิล (mig 0389 · มติเจ้าของ 25/09 ข้อ 4) — ฝ่ายขายทีมที่ดูแล **และฝ่ายบัญชี** แก้ได้
+     ⚠️ ด่านคนละตัวกับ `canEdit` ข้างบน: FN ไม่มี customers:edit แต่ต้องเห็นปุ่มแก้รอบวางบิล ·
+     ตัวตัดสินตัวเดียวกับ API (`canEditCustomerBillingRule`) — ส่งฝ่าย + ทีมเข้าไปด้วย ไม่งั้นแคบผิด */
+  const canEditBillingRule = canEditCustomerBillingRule({ ...capUser, department, teams: myTeams }, customer);
   const decideSubject = [customer.arCode, customerNameIn(customer)].filter(Boolean).join(" · ");
   const editAction = canEdit && {
     id: "edit",
@@ -507,6 +525,8 @@ export default function CustomerDetails() {
           { id: "team", label: "ทีมดูแล", value: teamsLabel },
           { id: "tax", label: "เลขผู้เสียภาษี", value: customer.taxId ? fmtNationalId(customer.taxId) : "" },
           { id: "credit", label: "เงื่อนไขเครดิต", value: customer.creditTerms },
+          // รอบวางบิล (mig 0389) — รูปย่อชุดเดียวกับทะเบียนการชำระ · ยังไม่ตั้ง = ขีด
+          { id: "billingRule", label: "รอบวางบิล", value: describeBillingRule(customer.billingRule, { short: true }) },
           { id: "addresses", label: "ที่อยู่", value: `${addresses.length} รายการ` },
           { id: "contacts", label: "ผู้ติดต่อ", value: `${(customer.contacts || []).length} คน` },
         ]}
@@ -534,9 +554,10 @@ export default function CustomerDetails() {
           : null}
         /* ⚠️ ต่างจากสินค้า: ผู้ติดต่อ/ที่อยู่ลิสต์ **ยกเว้น** จากการอนุมัติใหม่
            (CUSTOMER_CONTACT_FIELDS + CUSTOMER_ADDRESS_EXEMPT_FIELDS) — ชื่อ เลขภาษี
-           สาขา ที่อยู่ออกเอกสาร รหัส AR ไม่ยกเว้น เพราะไปโผล่บนเอกสารถึงกรมสรรพสามิต */
+           สาขา ที่อยู่ออกเอกสาร รหัส AR ไม่ยกเว้น เพราะไปโผล่บนเอกสารถึงกรมสรรพสามิต
+           · รอบวางบิล (mig 0389) บันทึกผ่านเส้นแยก `/billing-rule` ซึ่งไม่แตะด่านอนุมัติเลย (มติ 25/09 ข้อ 4) */
         footer={approvalView.status === "approved" && canEdit
-          ? <span>แก้ชื่อ · เลขผู้เสียภาษี · ที่อยู่ออกเอกสาร · รหัส AR = กลับไปรออนุมัติใหม่ และลูกค้าจะหลุดจากรายการเลือกทุกหน้าจนกว่าจะอนุมัติอีกครั้ง (แก้ผู้ติดต่อหรือที่อยู่จัดส่งไม่กระทบ)</span>
+          ? <span>แก้ชื่อ · เลขผู้เสียภาษี · ที่อยู่ออกเอกสาร · รหัส AR = กลับไปรออนุมัติใหม่ และลูกค้าจะหลุดจากรายการเลือกทุกหน้าจนกว่าจะอนุมัติอีกครั้ง (แก้ผู้ติดต่อ ที่อยู่จัดส่ง หรือรอบวางบิลไม่กระทบ)</span>
           : null}
       />
 
@@ -711,6 +732,20 @@ export default function CustomerDetails() {
               </div>
             </div>
           </DetailCard>
+
+          {/* รอบวางบิลและชำระเงิน (mig 0389 · ม็อก A) — ใต้การ์ดข้อมูลลูกค้า ติดกับเงื่อนไขเครดิต
+              ⚠️ บันทึกแล้วเติมเฉพาะช่องรอบวางบิลลงแถวที่มีอยู่ ไม่โหลดทั้งหน้าใหม่ (ฟอร์มแก้ลูกค้า
+              ที่อาจค้างอยู่ไม่ถูกเขียนทับ · ด่านอนุมัติไม่ขยับ จึงไม่มีอะไรอื่นบนหน้าเปลี่ยน) */}
+          <CustomerBillingRuleCard
+            customer={customer}
+            canEdit={canEditBillingRule}
+            onSaved={(fields) => {
+              const { unchanged, ...saved } = fields || {};
+              setCustomer((prev) => (prev ? { ...prev, ...saved } : prev));
+              /* แถว "รอบวางบิล" เพิ่งลงเธรดความเคลื่อนไหว — โหลดเธรดใหม่ทันที ไม่รอรอบ poll (ช้าได้ถึงหลายนาที) */
+              if (!unchanged) setThreadToken((n) => n + 1);
+            }}
+          />
 
           {/* ความสัมพันธ์ทั้งหมดอยู่ในแท็บชุดเดียว — ไม่มีการ์ดโครงการซ้ำด้านบนแล้ว */}
           <div>

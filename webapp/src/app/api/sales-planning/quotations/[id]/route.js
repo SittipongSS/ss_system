@@ -39,6 +39,7 @@ import { purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEv
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { purgeSalesOrderFiles } from '@/lib/sales/salesOrderAttachmentAccess';
+import { loadCreateFormBillingTerms } from '@/lib/sales/salesOrderCreateInstallments';
 
 export const dynamic = 'force-dynamic';
 // PDF ของฉบับเปลี่ยนภาษาสร้างใน `after` ซึ่งกินเพดานเวลาของ route นี้ — เผื่อ cold start ของ chromium
@@ -112,7 +113,7 @@ async function loadProposerSignature(supabase, quote) {
   };
 }
 
-export const GET = withUser(async ({ user, supabase, ctx }) => {
+export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
   const { id } = await ctx.params;
@@ -150,6 +151,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const evidence = await quotationSignatureEvidence(supabase, filledQuote);
   if (evidence.error) console.error('[quotation] ตรวจหลักฐานลายเซ็นไม่สำเร็จ:', evidence.error.message);
   const hasSignatureEvidence = evidence.error ? null : evidence.hasEvidence;
+  /* รอบวางบิล + เงื่อนไขเครดิตของลูกค้า (mig 0389) — **ขอเฉพาะหน้าสร้างใบสั่งขาย** (`?include=billingTerms`)
+     ⇒ หน้าใบเสนอราคา/ทุกผู้เรียกเดิมไม่จ่ายคำขอเพิ่ม · แถวเดียว 4 คอลัมน์แทน `GET /api/customers/[id]` ทั้งก้อน
+     ผ่านด่านดู/ขอบเขตของใบข้างบนแล้ว (รอบของลูกค้าเป็นข้อมูลเปิดอ่านอยู่แล้วที่ทะเบียนลูกค้า)
+     ⚠️ อ่านไม่ขึ้น = `{ error }` ในก้อนนี้ ไม่ทำใบล้ม — ดู loadCreateFormBillingTerms */
+  const withBillingTerms = new URL(req.url).searchParams.get('include') === 'billingTerms';
+  const billingTerms = withBillingTerms ? await loadCreateFormBillingTerms(supabase, filledQuote.customerId) : undefined;
   const canApprove = canApproveQuotation(user, filledQuote.deal);
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
   return ok({
@@ -165,6 +172,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       hasSignatureEvidence: Boolean(hasSignatureEvidence),
     }),
     proposerSignature,
+    ...(withBillingTerms ? { billingTerms } : {}),
   });
 });
 

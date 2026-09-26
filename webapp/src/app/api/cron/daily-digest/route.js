@@ -10,12 +10,19 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { notifyUsers } from '@/lib/notifications';
 import { businessDayKey } from '@/lib/datePeriods';
 import { loadUserDirectory } from '@/lib/usersRepo';
+import { businessDate } from '@/lib/businessDate';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { addDays } from '@/lib/sales/paymentCoverage';
+import { BILLING_REMIND_DAYS } from '@/lib/sales/billingRule';
+import { billingDueNotices } from '@/lib/sales/billingDueNotify';
+import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // GET /api/cron/daily-digest — ทวงงานค้างเข้ากล่องแจ้งเตือน **รายคน**
-// วันนี้มีสามเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์ · สัญญารอ AE Sup อนุมัติ
+// วันนี้มีสี่เรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์ · สัญญารอ AE Sup อนุมัติ
+// · งวดชำระถึงรอบวางบิล (กำหนดวางบิล · mig 0389)
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู webapp/vercel.json) ด้วย Authorization:
 // Bearer CRON_SECRET หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ
 //
@@ -180,6 +187,106 @@ async function notifyPendingContractApprovals(supabase) {
   return { sent, notices: notices.length };
 }
 
+/* ⭐ เตือน "ถึงรอบวางบิล" ก่อนวันวางบิลของงวด 0..BILLING_REMIND_DAYS วัน (กำหนดวางบิล · มติเจ้าของ 25–26/09)
+   ฝ่ายขาย = หนึ่งแถวต่องวด (เจ้าของดีล + เจ้าของใบ) · FN = แถวสรุปวันละแถว ทุกคนในฝ่าย (มติรอบสาม ข้อ 5)
+   กติกา "งวดไหนต้องเตือน ใครได้ ข้อความว่าอะไร" อยู่ที่ `billingDueNotices` (lib/sales/billingDueNotify.js)
+   ที่นี่แค่ดึงข้อมูลกับยิง
+   ⚠️ หน้าต่าง 0..N วัน ไม่ใช่ "วันนี้ = วันวางบิล − N" — cron วิ่งแค่ จ–ศ ⇒ จับวันตรงเป๊ะจะหลุดทุกงวดที่วันเตือน
+      ตรงเสาร์อาทิตย์ · กันยิงซ้ำด้วย dedupeKey ต่องวดต่อวันวางบิล (FN ต่อคนต่อวัน)
+   ⚠️ ต้องอยู่ที่ cron (สิทธิ์ admin เห็นทุกใบทุกทีม) ไม่ใช่กวาดตอนเปิดแผงงวด — กวาดตอนเปิดหน้า = เตือนได้แค่คนที่เปิดอยู่
+   🔴 ก่อนรัน mig 0389 คอลัมน์ `billingDate` ยังไม่มี ⇒ query ตอบ 42703 · ต้องรายงานเป็น error
+      ไม่ใช่ "ไม่มีงวดถึงรอบ" (supabase ไม่ throw — ทิ้ง `.error` = เงียบแบบที่ดูเหมือนปกติ)
+   ⚠️ admin เปิด route นี้เองจากเบราว์เซอร์ = ยิงจริงถึงคนจริง (ฐาน dev = ฐาน prod) — dedupe กันแค่รอบซ้ำ ไม่กันรอบแรก */
+async function notifyBillingDue(supabase) {
+  const todayIso = businessDate();
+  const until = addDays(todayIso, BILLING_REMIND_DAYS);
+  /* กรองหน้าต่างวันที่ที่ query เลย (งวดทั้งระบบโต ~150–180 แถว/เดือน) — ตัวตัดสินจริงยังเป็น
+     `needsBillingReminder` ในไฟล์กติกา ที่นี่แค่ไม่ลากงวดที่ไม่มีทางถึงรอบมาทั้งตาราง
+     · `pending` เท่านั้น: แจ้งชำระแล้ว (reported) = ลูกค้าจ่ายแล้ว รอบัญชีตรวจ ไม่มีอะไรให้วางบิล
+     · `frozenAt` ต้องมี: งวดร่างยอดยังเดินตามแผน QT (ทะเบียนการชำระก็ไม่แสดง) */
+  const { data: installments, error } = await fetchAllResult(() => supabase
+    .from('sales_order_installments')
+    .select('id, "salesOrderId", seq, label, amount, status, kind, "frozenAt", "refundedAt", "billingDate", "billingRequestId"')
+    .eq('status', 'pending')
+    .not('frozenAt', 'is', null)
+    .gte('billingDate', todayIso)
+    .lte('billingDate', until)
+    .order('id', { ascending: true }));
+  if (error) {
+    const missing = error.code === '42703' ? 'ยังไม่ได้รัน mig 0389 (ไม่มีคอลัมน์วันวางบิล) — ' : '';
+    return { sent: 0, error: `${missing}${error.message}` };
+  }
+  const rows = installments || [];
+  if (!rows.length) return { sent: 0, reason: 'ไม่มีงวดถึงรอบวางบิล' };
+
+  const orderIds = [...new Set(rows.map((r) => r.salesOrderId).filter(Boolean))];
+  /* `ownerId` = เจ้าของใบ ณ ตอนอนุมัติ (mig 0294) · เจ้าของดีลวันนี้ต้องไปอ่านที่ดีล
+     `origin` + `quotationId` = วัตถุดิบของด่านงวด (`historicalInstallmentLock` · `pipelineInstallmentLock`) ที่ตัวคัด
+     ถามแทนลิสต์สถานะ — ร่าง Rev. ยังเตือน (มติ D3) · ร่างที่ QT ถูกถอด Won ไม่เตือน ⇒ ต้องรู้สถานะของ QT */
+  const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_orders')
+    .select('id, "orderNumber", status, origin, "totalAmount", "customerId", "customerName", "ownerId", "dealId", "quotationId"')
+    .in('id', chunk)
+    .order('id', { ascending: true })));
+  if (orderError) return { sent: 0, error: orderError.message };
+
+  const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
+  const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
+  const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
+  const requestIds = [...new Set(rows.map((r) => r.billingRequestId).filter(Boolean))];
+  /* ⚠️ `loadUserDirectory(...).catch` ต้องมาก่อน query ของ supabase ในลิสต์นี้ — ยาม supabaseNeverThrows
+     ไล่จาก `supabase.from(` ไปหา `.catch(` ตัวถัดไป · วางไว้ท้ายแล้วยามอ่านว่า builder ถูกต่อ `.catch` */
+  const [directory, dealResult, customerResult, quoteResult, requestResult] = await Promise.all([
+    loadUserDirectory(supabase).catch(() => new Map()),
+    fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase
+      .from('sales_deals').select('id, "ownerId"').in('id', chunk).order('id', { ascending: true }))),
+    /* `arCode` = บรรทัดรองของกระดิ่ง + ตัวตัดลูกค้าสหมิตร (เงินเก็บนอกระบบ · มติ 24/09)
+       `name`/`nameEn` = ชื่อสำรองเมื่อสำเนาชื่อบนใบว่าง (ลูกค้าที่มีแต่ชื่ออังกฤษ) */
+    fetchInChunks(customerIds, (chunk) => fetchAllResult(() => supabase
+      .from('customers').select('id, "arCode", name, "nameEn"').in('id', chunk).order('id', { ascending: true }))),
+    // สถานะของ QT = ตัวตัดสิน "ร่างที่ใช้ต่อไม่ได้" ของ `pipelineInstallmentLock` (ไม่มีค่า = ด่านไม่ตัดสิน)
+    fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
+      .from('quotations').select('id, status, "quoteNumber"').in('id', chunk).order('id', { ascending: true }))),
+    /* "ขอใบวางบิลแล้ว" = ลิงก์ที่ชี้คำร้องที่ส่งแล้วและยังไม่ถูกยกเลิก — ยกเลิกคำร้องไม่ล้างลิงก์บนงวด และปุ่มขอใบ
+       ผูกงวดตั้งแต่บันทึกร่าง ⇒ ต้องอ่านสถานะคำร้องจริง ไม่ใช่ดูแค่ว่า `billingRequestId` มีค่า */
+    fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase
+      .from('dept_requests').select('id, status').in('id', chunk).order('id', { ascending: true }))),
+  ]);
+  const failed = dealResult.error || customerResult.error || quoteResult.error || requestResult.error;
+  if (failed) return { sent: 0, error: failed.message };
+
+  const dealById = new Map((dealResult.data || []).map((d) => [d.id, d]));
+  const quoteById = new Map((quoteResult.data || []).map((q) => [q.id, q]));
+  const ordersById = new Map((orders || []).map((o) => [o.id, {
+    ...o, deal: dealById.get(o.dealId) || null, quotation: quoteById.get(o.quotationId) || null,
+  }]));
+  const customersById = new Map((customerResult.data || []).map((c) => [c.id, c]));
+  const requestsById = new Map((requestResult.data || []).map((r) => [String(r.id), r]));
+
+  const { candidates, sales, fn } = billingDueNotices(rows, {
+    todayIso, ordersById, customersById, requestsById, directory, skipArCodes: [SAHAMIT_AR_CODE],
+  });
+  if (!candidates.length) return { sent: 0, reason: 'ไม่มีงวดถึงรอบวางบิล (ขอใบวางบิลแล้ว/ใบไม่ต้องเก็บเงิน/ลูกค้านอกระบบ)' };
+
+  let sent = 0;
+  /* ⚠️ `notifyUsers` กลืน error เอง (ไม่ throw) แล้วคืน `{ sent: 0, error }` — upsert พัง (ฐานล่ม · หัวข้อตก CHECK ของ 0185)
+     ต้องขึ้นเป็น error ของรอบนี้ ไม่ใช่ `sent: 0` เฉย ๆ ที่อ่านเหมือน "ไม่มีใครต้องรู้" · เก็บตัวแรกพอ (ตัวถัดไปมักเหตุเดียวกัน) */
+  let notifyError = null;
+  for (const notice of [...sales, fn].filter(Boolean)) {
+    const result = await notifyUsers(supabase, { ...notice, actorName: 'สรุปประจำวัน' });
+    sent += result.sent || 0;
+    if (result.error && !notifyError) notifyError = `${notice.kind}: ${result.error}`;
+  }
+  const out = { sent, candidates: candidates.length, sales: sales.length, finance: fn ? fn.userIds.length : 0 };
+  const errors = [];
+  if (notifyError) errors.push(`ยิงกระดิ่งไม่สำเร็จ — ${notifyError}`);
+  /* ⚠️ มีงวดถึงรอบแต่ไม่มีผู้รับฝั่ง FN ≠ ไม่มีงวด — ทะเบียนผู้ใช้อ่านพัง (`loadUserDirectory` หยุดเงียบ ๆ)
+     หรือไม่มีบัญชีฝ่าย FN ที่เปิดอยู่ ⇒ รายงานเป็น error ให้คนที่เปิด cron เองเห็น (ฝั่งขายยังยิงไปแล้ว) */
+  if (!fn) errors.push(`มีงวดถึงรอบวางบิล ${candidates.length} งวด แต่ไม่พบผู้ใช้ฝ่าย FN ที่เปิดอยู่ — กระดิ่งฝั่งบัญชีไม่ถูกส่ง`);
+  if (errors.length) out.error = errors.join(' · ');
+  return out;
+}
+
 export async function GET(request) {
   // ผ่านได้ 2 ทาง: Vercel Cron (Bearer CRON_SECRET) หรือ admin กดทดสอบเองจากเบราว์เซอร์
   //
@@ -212,6 +319,11 @@ export async function GET(request) {
     results.contractApproval = await notifyPendingContractApprovals(supabase);
   } catch (e) {
     results.contractApproval = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.billingDue = await notifyBillingDue(supabase);
+  } catch (e) {
+    results.billingDue = { sent: 0, error: e?.message || String(e) };
   }
 
   return Response.json({ ok: true, at: new Date().toISOString(), results });

@@ -1,0 +1,317 @@
+/* รอบวางบิลของลูกค้า — การ์ดบนหน้าลูกค้า + โมดัลแก้รอบ (mig 0389 · ม็อก A mockups/billing-cycle/a-customer.css)
+   สีจากโทเคนเท่านั้น (สองธีม) · ตรงเสาร์/อาทิตย์เป็นโทน warning — แดงสงวนให้ "เลยกำหนด" (dueDate) */
+
+.nowrap { white-space: nowrap; }
+
+/* ── การ์ด: ประโยครอบ ─────────────────────────────────────────────── */
+.ruleBox {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2-5);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-3-5);
+  border: 1px solid color-mix(in srgb, var(--navy-ink) 22%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--navy-ink) 6%, var(--panel-solid));
+}
+.ruleBox > svg { flex: none; margin-top: var(--space-0-5); color: var(--navy-ink); }
+.ruleBox strong {
+  display: block;
+  color: var(--text);
+  font-size: var(--fs-10);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+.ruleBox small {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: var(--space-4) var(--space-6);
+  align-items: start;
+}
+@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } }
+
+.facts { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; }
+.facts > div {
+  display: grid;
+  grid-template-columns: 8.25rem minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+}
+.facts dt { color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+.facts dd[data-muted] { color: var(--text-3); font-weight: var(--fw-medium); }
+.factSub {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-medium);
+}
+@media (max-width: 480px) {
+  .facts > div { grid-template-columns: minmax(0, 1fr); gap: var(--space-0-5); }
+}
+
+/* ── การ์ด: รอบถัดไป ─────────────────────────────────────────────── */
+.next { min-width: 0; }
+.next h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+.next h3 > svg { color: var(--accent-ink); }
+.nextLead,
+.nextFoot {
+  margin: 0 0 var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+.nextFoot { margin: var(--space-2) 0 0; }
+
+.roundsTable table { width: 100%; font-variant-numeric: tabular-nums; }
+.roundsTable td { white-space: nowrap; }
+.roundNo { color: var(--text-3); font-weight: var(--fw-bold); }
+.dateCell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-1-5); }
+.gap { color: var(--text-3); }
+
+/* ── การ์ด: แก้ล่าสุด ────────────────────────────────────────────── */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-4) calc(-1 * var(--panel-inset)) calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--panel-inset);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+.metaItem { display: inline-flex; align-items: center; gap: var(--space-1-5); }
+.metaItem b { color: var(--text-2); font-weight: var(--fw-semibold); }
+.metaOk {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--green);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── การ์ด: ยังไม่ตั้ง ────────────────────────────────────────────── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4) var(--space-4);
+  text-align: center;
+}
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-3);
+}
+.empty strong { color: var(--text); font-size: var(--fs-9); line-height: var(--lh-thai); }
+.empty p {
+  max-width: 35rem;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  line-height: var(--lh-text);
+}
+.empty > :last-child:not(p):not(strong) { margin-top: var(--space-2); }
+
+/* ═══ โมดัล ═══════════════════════════════════════════════════════════ */
+.modalBody { display: flex; flex-direction: column; gap: var(--space-4-5); }
+
+.field { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+/* ⚠️ ดอกจันต้องอยู่ใน element เดียวกับป้าย (form-design-rules §2) */
+.label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.req { color: var(--red); }
+.opt { color: var(--text-3); font-weight: var(--fw-medium); }
+
+/* ค่าที่ระบบรู้แล้ว = ช่องเส้นประอ่านอย่างเดียว (ไม่ใช่ช่องกรอกที่จางลง) */
+.derived {
+  margin: 0;
+  padding: var(--space-1-5) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ช่องย่อยที่โผล่ใต้แผ่นที่เลือก (ตัวทำให้โผล่อยู่ข้างบนเสมอ) */
+.sub {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-solid));
+}
+.sub small { color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.subRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-2-5);
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.num { width: 4.5rem; text-align: center; font-variant-numeric: tabular-nums; }
+.or { color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-medium); }
+.subRow :global(.segmented) { max-width: 100%; flex-wrap: wrap; }
+
+/* ตัวอย่างรอบถัดไป — คิดสด ไม่ใช่ช่องกรอก */
+.preview {
+  padding: var(--space-3-5) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.previewHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--accent-ink);
+}
+.previewHead > svg { flex: none; margin-top: var(--space-0-5); }
+.previewHead h3 { margin: 0; color: var(--text); font-size: var(--fs-8); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+.previewHead p { margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.previewLead { margin: 0 0 var(--space-1-5); color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.previewEmpty {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  line-height: var(--lh-text);
+}
+.previewEmpty > svg { flex: none; margin-top: var(--space-0-5); }
+.previewFoot { margin: var(--space-3) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
+
+.roundsList { display: flex; flex-direction: column; gap: var(--space-1-5); margin: 0; padding: 0; list-style: none; }
+.roundsList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+.roundsList b { color: var(--text); font-weight: var(--fw-bold); }
+.roundBullet {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+}
+.roundSeg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-0-5) var(--space-1-5); }
+.roundArrow { flex: none; color: var(--text-3); }
+.roundGap { margin-left: auto; color: var(--text-3); font-size: var(--fs-4); white-space: nowrap; }
+@media (max-width: 560px) {
+  .roundsList li {
+    display: grid;
+    grid-template-columns: 1.375rem minmax(0, 1fr) auto;
+    column-gap: var(--space-2);
+    row-gap: var(--space-0-5);
+  }
+  .roundBullet { grid-row: 1 / span 2; }
+  .roundArrow { display: none; }
+  .roundSeg { grid-column: 2; }
+  .roundGap { grid-column: 3; grid-row: 1 / span 2; margin-left: 0; }
+}
+
+/* ท้ายโมดัล: เหตุที่ยังบันทึกไม่ได้ / รอบถัดไป · คำรับประกัน · ปุ่ม */
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+  width: 100%;
+}
+.gate,
+.pin {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.gate { color: var(--amber); font-weight: var(--fw-semibold); }
+.pin { color: var(--text-2); }
+.pin b { color: var(--text); font-weight: var(--fw-bold); }
+.gate > svg,
+.pin > svg { flex: none; margin-top: var(--space-1); }
+.pin > svg { color: var(--accent-ink); }
+.footNote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-right: auto;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+.footNote > svg { flex: none; color: var(--green); }
+.footActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }

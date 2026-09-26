@@ -510,7 +510,8 @@ export default function SalesOrderDetailPage() {
           withdraw: "ดึงกลับแล้ว",
           confirm: "บัญชีรับรองการชำระแล้ว",
           reject: "ตีกลับให้ฝ่ายขายแก้แล้ว",
-          schedule: "บันทึกกำหนดชำระแล้ว",
+          // โมดัล "กำหนดวันงวด" (ลูกค้าที่ตั้งรอบวางบิล · mig 0389) ส่งวันวางบิล/เหตุการณ์มาด้วย — โมดัลแบบเดิมส่งแค่กำหนดชำระ
+          schedule: "billingDate" in options ? "บันทึกวันงวดแล้ว" : "บันทึกกำหนดชำระแล้ว",
           coverage: "บันทึกช่วงครอบบริการแล้ว",
           link: "แนบคำร้องขอเอกสารกับงวดนี้แล้ว",
           unlink: "ถอดคำร้องออกจากงวดแล้ว",
@@ -585,6 +586,66 @@ export default function SalesOrderDetailPage() {
       return true;
     } catch (carryError) {
       setError(carryError.message || "ยกเงินจากใบที่ยกเลิกไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── เติมวันวางบิลตามรอบ เดือนละงวด (กำหนดวางบิล · mig 0389 · มติเจ้าของ 26/09 ข้อ 3) — คำสั่งของทั้งใบ ──────────
+     ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองแล้วเทียบ — ไม่ตรง = 409
+       (รอบ/งวดเพิ่งเปลี่ยน) ⇒ ดึงใบสดให้พรีวิววาดชุดใหม่ แล้วให้คนกดยืนยันจากของที่เห็นจริง
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
+  async function runBillingFill({ plan }) {
+    setBusy("installment-fill-billing");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        json: { action: "fill-billing", plan },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "เติมวันตามรอบไม่สำเร็จ");
+        return false;
+      }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      setToast({ kind: "success", msg: `เติมวันแล้ว ${data.filled || plan.length} งวด` });
+      return true;
+    } catch (fillError) {
+      setError(fillError.message || "เติมวันตามรอบไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — คำสั่งของทั้งใบ พี่น้องของเติมตามรอบ ──────────
+     ⭐ แผงส่งตาราง "เดิม → ใหม่" ที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองด้วยคำร้องสด
+       แล้วเทียบ — ไม่ตรง = 409 ⇒ ดึงใบสด (รวมคำร้องที่งวดผูก) ให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
+  async function runBillingRedate({ plan }) {
+    setBusy("installment-redate-billing");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        json: { action: "redate-billing", plan },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "จัดวันใหม่ไม่สำเร็จ");
+        return false;
+      }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      setToast({ kind: "success", msg: `จัดวันใหม่ตามรอบปัจจุบันแล้ว ${data.redated || plan.length} งวด` });
+      return true;
+    } catch (redateError) {
+      setError(redateError.message || "จัดวันใหม่ไม่สำเร็จ");
       return false;
     } finally {
       setBusy("");
@@ -1442,7 +1503,18 @@ export default function SalesOrderDetailPage() {
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
             // (ที่นั่นมี "Actual ก่อน VAT" พร้อมกองของยอด — Actual/รออนุมัติ/ยังไม่นับ) — วันครบกำหนด
             // เป็นสิ่งที่คนเปิดใบอยากรู้ทันทีมากกว่า
-            { icon: CalendarDays, label: "กำหนดชำระ", value: fmtDate(order.paymentDueDate) },
+            /* ⭐ กำหนดชำระถัดไปจาก **งวด** (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — ตัวเดียวกับแผงงวดและรายการ SO
+               (`paymentSummary.nextDue` = installmentsNextDue ของงวดที่ไม่โมฆะ) · ไม่มีงวดค้างที่มีวัน = ขีด
+               🐞 เดิมอ่าน `order.paymentDueDate` ซึ่งเป็นค่าตายตั้งแต่ย้ายกำหนดชำระไปอยู่ที่งวด (2026-08-18) — SO-26080050-0
+                 หัวใบขึ้น 05/09/2026 ทั้งที่งวดบอก 25 ต.ค. · ⚠️ ช่องนั้นยังอยู่ในฐาน (ใบพิมพ์/ลายนิ้วมือการอนุมัติ/แผนผลิตอ่าน)
+               ⚠️ แดงเมื่อเลยกำหนด อ่าน dueDate ช่องเดียว (วันวางบิลไม่มีทางแดง) */
+            {
+              icon: CalendarDays,
+              label: "กำหนดชำระ",
+              value: paymentSummary.nextDue ? fmtDate(paymentSummary.nextDue) : NA,
+              tone: !paymentSummary.nextDue ? "muted" : paymentSummary.nextDue < todayIso ? "late" : undefined,
+              sub: paymentSummary.nextDue && paymentSummary.nextDue < todayIso ? "เลยกำหนด" : undefined,
+            },
             { icon: FileText, label: "อ้างอิง QT", value: naText(order.quotation?.quoteNumber) },
             { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(order.actualAmount) },
             /* ⭐ **สัญญาบริการอยู่บนหัวใบ ไม่ใช่หลังแท็บ** — งานบริการทั้งเส้นเดินได้ก็ต่อ
@@ -1848,7 +1920,9 @@ export default function SalesOrderDetailPage() {
           <SalesOrderPaymentPanel
             order={order}
             installments={installments}
-            user={{ id: order.meId, role }}
+            /* ⭐ `department` ต้องมากับ user (กำหนดวางบิล · มติข้อ 4 FN แก้วันงวดได้) — ด่านวันงวด/รับรองตัดสินฝ่ายด้วย
+               `canConfirmPayment` · ไม่ส่ง = ถอยไปเดาฝ่ายจาก role ⇒ บัญชีที่ role ไม่ชี้ FN ไม่เห็นเมนูทั้งที่ API ให้ผ่าน */
+            user={{ id: order.meId, role, department: order.meDepartment }}
             todayIso={todayIso}
             canStart={canEdit}
             busy={busy}
@@ -1856,6 +1930,8 @@ export default function SalesOrderDetailPage() {
             onAction={runInstallmentAction}
             onReplan={runInstallmentReplan}
             onCarry={runInstallmentCarry}
+            onFillBilling={runBillingFill}
+            onRedateBilling={runBillingRedate}
             /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** — กดบันทึก
                งวดแล้วโมดัลค้างเงียบ ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้ง 2026-08-27)
                อาการเดียวกับที่ `ReasonDialog.submitError` แก้ไว้เมื่อ 2026-08-19 —
