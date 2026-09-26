@@ -377,7 +377,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     } catch (extrasError) {
       console.error('[sales-order] โหลดของเสริมของใบย้อนหลังไม่สำเร็จ:', id, extrasError);
       historicalExtras = {
-        lineZones: [], serviceContract, serviceContractFiles: [], openingEvidence: [], liveTermWarnings: [],
+        lineZones: [], serviceContract, serviceContractFiles: [], openingEvidence: [], liveTermWarnings: [], duplicateCheck: null,
         extrasError: extrasError?.message || String(extrasError),
       };
     }

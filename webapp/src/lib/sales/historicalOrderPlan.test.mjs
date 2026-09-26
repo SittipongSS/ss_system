@@ -784,11 +784,22 @@ test('v2 ใบที่อาจซ้ำ: วันเริ่มสัญญ
   const sameRef = { id: 'SOR-B', orderNumber: 'SO-26090002-0', orderDate: '2025-01-01', status: 'approved', historicalInvoiceRef: 'iv-2601-0412' };
   const cancelled = { ...sameDate, id: 'SOR-C', orderNumber: 'SO-26090003-0', status: 'cancelled' };
   const self = { ...sameDate, id: 'SOR-SELF', orderNumber: 'SO-26090004-0', status: 'draft' };
-  const plan = planV2({ acknowledgeDuplicates: true }, { existingHistorical: [sameDate, sameRef, cancelled, self], selfOrderId: 'SOR-SELF' });
+  const ctx = { existingHistorical: [sameDate, sameRef, cancelled, self], selfOrderId: 'SOR-SELF' };
+  const plan = planV2({ acknowledgedDuplicateIds: ['SOR-A', 'SOR-B'] }, ctx);
   assert.deepEqual(plan.errors, []);
   assert.deepEqual(plan.duplicates.map((d) => d.id), ['SOR-A', 'SOR-B']);
-  assert.equal(plan.acknowledgeDuplicates, true);
-  assert.equal(planV2().acknowledgeDuplicates, false);
+  assert.equal(plan.acknowledgeDuplicates, true, 'ยืนยันครบทุกใบที่อาจซ้ำตอนนี้');
+  /* ⭐ มติ 26/09: ยืนยันเป็นรายใบ — ใบที่ server พบแต่ผู้คีย์ไม่เคยเห็น = ยังไม่ครบ (409) · id เกินไม่นับ */
+  assert.equal(planV2({ acknowledgedDuplicateIds: ['SOR-A', 'SOR-X'] }, ctx).acknowledgeDuplicates, false);
+  assert.equal(planV2({}, ctx).acknowledgeDuplicates, false);
+  /* แท็บรุ่นก่อน (ธง true) — รับเป็นทุกใบตอนนี้ (บันทึกเป็น basis 'flag' ที่ route) */
+  assert.equal(planV2({ acknowledgeDuplicates: true }, ctx).acknowledgeDuplicates, true);
+  assert.equal(planV2().acknowledgeDuplicates, true, 'ไม่มีใบที่อาจซ้ำ = ไม่มีอะไรต้องยืนยัน');
+  /* เหตุผลไม่บังคับ ≤500 — ยาวเกิน = error ของขั้น ④ · ไม่มีใบที่อาจซ้ำ = ไม่ตรวจ (ไม่ถูกบันทึกอยู่แล้ว) */
+  const long = 'ก'.repeat(501);
+  assert.deepEqual(planV2({ acknowledgedDuplicateIds: ['SOR-A', 'SOR-B'], duplicateNote: long }, ctx).errors.map((e) => e.field), ['duplicateNote']);
+  assert.deepEqual(planV2({ acknowledgedDuplicateIds: ['SOR-A', 'SOR-B'], duplicateNote: 'ก'.repeat(500) }, ctx).errors, []);
+  assert.deepEqual(planV2({ duplicateNote: long }).errors, []);
   /* ⭐ มติ 25/09 (ขั้น ④): บอกว่าตรงกันที่ไหน — วันเริ่มสัญญา หรือเลขเอกสารเดิมตัวไหน (ค่าตามที่ใบนั้นเก็บ) */
   assert.deepEqual(plan.duplicates.map((d) => d.matchedOn), [
     [{ kind: 'startDate', value: '2026-01-01' }],

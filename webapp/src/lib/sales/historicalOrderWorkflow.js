@@ -32,8 +32,9 @@ import {
 import { canSubmitHistoricalSalesOrder, isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 import {
   HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE, canKeyHistoricalSalesOrder, historicalOrderEditable,
-  historicalSchemaMissing, isHistoricalOrder, isOpeningInstallment,
+  historicalRefsOf, historicalRowsOnly, historicalSchemaMissing, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
+import { historicalDuplicateMatches } from '@/lib/sales/historicalDuplicates';
 import { loadLiveTermsByZone, sanitizeHistoricalEvidence } from '@/lib/sales/historicalOrderCommit';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
@@ -257,12 +258,14 @@ export async function approveHistoricalOrder({
  * ⚠️ ทุกการอ่านไล่หน้า/ซอยลิสต์ หรืออ่านด้วย id · อ่านไม่ขึ้น = **โยน** — ผู้เรียกตั้ง `extrasError` ให้จอบอก "โหลดไม่ขึ้น"
  *   (แถวที่หายเงียบ ๆ อ่านเหมือน "ไม่มีเรื่องต้องตรวจ")
  * @param order  แถวใบพร้อม `lines` · `installments` (ดิบ) · `serviceContract` (ถ้าโหลดมาแล้ว)
- * @returns {Promise<{ lineZones, serviceContract, serviceContractFiles, openingEvidence, liveTermWarnings }>}
+ * @returns {Promise<{ lineZones, serviceContract, serviceContractFiles, openingEvidence, liveTermWarnings, duplicateCheck }>}
+ *   `duplicateCheck` = `{ candidates, statusById }` — ใบที่อาจซ้ำ **ตอนนี้** + สถานะปัจจุบันของใบย้อนหลังทุกใบของลูกค้า
+ *   (มติ 26/09 ข้อ 1: ใบที่เกิดหลังผู้คีย์ยืนยัน = เตือนผู้อนุมัติ ไม่บล็อก · ใบที่ผู้คีย์ยืนยันไว้แล้วถูกยกเลิก/ลบไป = บอกด้วย)
  */
 export async function loadHistoricalOrderExtras(supabase, order, { todayIso = businessDate() } = {}) {
   const empty = {
     lineZones: [], serviceContract: order?.serviceContract || null, serviceContractFiles: [],
-    openingEvidence: [], liveTermWarnings: [],
+    openingEvidence: [], liveTermWarnings: [], duplicateCheck: null,
   };
   if (!isHistoricalOrder(order)) return empty;
 
@@ -365,7 +368,25 @@ export async function loadHistoricalOrderExtras(supabase, order, { todayIso = bu
     }
   }
 
-  return { lineZones, serviceContract, serviceContractFiles, openingEvidence, liveTermWarnings };
+  // ── ใบที่อาจซ้ำ — ตรวจใหม่ทุกครั้งที่เปิดใบ (ตัวจับคู่ตัวเดียวกับแผนตอนคีย์ · มติ 26/09) ──
+  /* ⭐ ปิดสองช่องที่บันทึกของผู้คีย์ปิดไม่ได้: ใบที่คนอื่นคีย์หลังผู้คีย์ยืนยัน (แข่งกัน) · และสร้างซ้ำที่ได้ใบเดิมคืนโดยไม่เขียนบันทึกใหม่
+     วันเริ่มสัญญาของใบย้อนหลัง = `orderDate` (0374:921/1044) · อ่านไม่ขึ้น = โยน (ผู้เรียกตั้ง extrasError) ไม่ใช่ "ไม่มีใบซ้ำ" */
+  let duplicateCheck = null;
+  if (order.customerId) {
+    const { data: siblingRows, error: siblingError } = await fetchAllResult(() => historicalRowsOnly(supabase.from('sales_orders')
+      .select('id, "orderNumber", "orderDate", status, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef"')
+      .eq('customerId', order.customerId)).order('id', { ascending: true }));
+    if (siblingError) throw siblingError;
+    const siblings = (siblingRows || []).filter((row) => row.id !== order.id);
+    duplicateCheck = {
+      candidates: historicalDuplicateMatches({
+        rows: siblings, selfOrderId: order.id, startDate: order.orderDate, refs: historicalRefsOf(order),
+      }),
+      statusById: Object.fromEntries(siblings.map((row) => [row.id, row.status || null])),
+    };
+  }
+
+  return { lineZones, serviceContract, serviceContractFiles, openingEvidence, liveTermWarnings, duplicateCheck };
 }
 
 /**

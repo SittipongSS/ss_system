@@ -130,6 +130,8 @@ import {
   historicalWithdrawDetail, historicalWorkflowSteps,
 } from "@/lib/sales/historicalOrderCopy";
 import HistoricalZonesCard from "@/components/salesPlanning/HistoricalZonesCard";
+import HistoricalDuplicateReviewCard from "@/components/salesPlanning/HistoricalDuplicateReviewCard";
+import { historicalDuplicateReviewOf, historicalDuplicateReviewView } from "@/lib/sales/historicalDuplicates";
 import CoverageTimeline from "@/components/salesPlanning/historicalWizard/CoverageTimeline";
 
 /* โทนของ `historicalStatusCopy` → สีของป้ายสถานะบนหัวใบ/การ์ดจัดการ (ชิ้นพวกนั้นรับ `color` ไม่ใช่ tone)
@@ -1179,7 +1181,10 @@ export default function SalesOrderDetailPage() {
       liveTermWarnings: order.liveTermWarnings,
       signedFile: signedFileCandidate,
       extrasError: order.extrasError,
+      duplicateCheck: order.duplicateCheck || null,
     });
+    /* ใบที่อาจซ้ำ (ที่ผู้คีย์ยืนยัน + ที่พบเพิ่มตอนเปิดใบ) — ลิงก์เปิดแท็บใหม่ให้ผู้อนุมัติเทียบก่อนกด (มติ 26/09) */
+    const duplicateRows = historicalDuplicateReviewView(historicalDuplicateReviewOf(order), order.duplicateCheck || null).rows;
     setConfirmState({
       ...historicalApprovalPrompt({ ...facts, override: override ? { note: historicalOverrideNote } : null }),
       /* ลิงก์ ไม่ใช่พรีวิวฝัง — ผู้อนุมัติเปิดไฟล์จริงได้จากในโมดัล ไม่ต้องปิดโมดัลไปตามเอง */
@@ -1202,6 +1207,11 @@ export default function SalesOrderDetailPage() {
               rel="noopener noreferrer"
             >
               หลักฐาน{OPENING_INSTALLMENT_LABEL} · {ref.fileName || "ไฟล์ไม่มีชื่อ"}
+            </a>
+          ))}
+          {duplicateRows.map((row) => (
+            <a key={`dup-${row.id}`} className="linklike" href={`/sa/sales-orders/${encodeURIComponent(row.id)}`} target="_blank" rel="noopener noreferrer">
+              ใบที่อาจซ้ำ{row.isNew ? " (พบเพิ่ม)" : ""} · {row.orderNumber || row.id}
             </a>
           ))}
         </div>
@@ -1625,6 +1635,8 @@ export default function SalesOrderDetailPage() {
               extrasError={order.extrasError}
             />
           ) : null}
+          {/* ⭐ ใบที่อาจซ้ำ — ผู้คีย์ยืนยันใบไหน ใคร เมื่อไร + ที่พบเพิ่มตอนเปิดใบ (มติ 26/09 ข้อ 4 · ขึ้นเฉพาะใบที่มี) */}
+          {historical ? <HistoricalDuplicateReviewCard order={order} duplicateCheck={order.duplicateCheck || null} /> : null}
 
           {/* ⭐ "ช่วงบริการ" (ม็อก SoStatus) — เงินที่บัญชีรับรองแล้วเป็นตัวเปิดด่านของนัดบริการ
               ⇒ คำถามที่ฝ่ายขายถามจริงคือ "นัดเดือนไหนขึ้นได้แล้วบ้าง" ซึ่งตารางงวดตอบเป็นตัวเลข

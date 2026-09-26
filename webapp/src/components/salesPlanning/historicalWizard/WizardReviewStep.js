@@ -10,19 +10,21 @@
 //   (ตารางฝั่งอ่านตัวเดียวกับหน้าใบ) → หลังกดส่ง (รางเดียวกับหน้าใบ)
 // 🚫 ถอด (มติ 25/09): การ์ด 3 ใบที่พูดซ้ำขั้น ①–③ · "อนุมัติ: AE Sup" · รายการคำเตือนทีละบรรทัด · ลำดับหลังบันทึกแบบรหัสฝ่าย ·
 //   กล่องเหลือง "ยังเข้าบริการไม่ได้…" ที่ขึ้นทุกใบ · คำอธิบายเรื่องจำนวน × เดือน (บางรายการใช้ 2 แพ็คต่อเดือน — มติข้อ 4)
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Coins, Copy, ExternalLink, Hash, ListChecks, Lock, Route, Building2, CalendarDays } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Coins, Copy, Hash, History, ListChecks, Lock, Route, Building2, CalendarDays } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { TableScroll } from "@/components/ui/Table";
+import Textarea from "@/components/ui/Textarea";
 import { WorkflowRail } from "@/components/ui/DocumentControlPanel";
 import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
 import { QUOTE_VAT_OPTIONS } from "@/lib/salesPlanning";
-import { fmtDate, naText, NA } from "@/lib/format";
+import { fmtNumber } from "@/lib/format";
 import { HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE } from "@/lib/sales/historicalOrders";
-import { historicalAfterSendRail, historicalStatusCopy } from "@/lib/sales/historicalOrderCopy";
+import { historicalAfterSendRail } from "@/lib/sales/historicalOrderCopy";
+import { HISTORICAL_DUPLICATE_NOTE_MAX, historicalDuplicateAckByline } from "@/lib/sales/historicalDuplicates";
+import HistoricalDuplicateTable from "@/components/salesPlanning/HistoricalDuplicateTable";
 import {
-  historicalLinesSummary, historicalReviewStaleNotice, historicalTotalsView,
+  historicalFieldAnchorId, historicalLinesSummary, historicalReviewStaleNotice, historicalTotalsView,
 } from "@/lib/sales/historicalIntakeForm";
 import { historicalReviewChecklist, historicalReviewFacts } from "@/lib/sales/historicalReviewView";
 import CardHeading from "./CardHeading";
@@ -31,18 +33,11 @@ import styles from "./HistoricalOrderWizard.module.css";
 const FACT_ICONS = { customer: Building2, span: CalendarDays, total: Coins, number: Hash };
 const STEP_NO = { contract: "①", zones: "②", money: "③" };
 
-/* "ตรงกันที่ …" ของใบที่อาจซ้ำ — จากแผน (`matchedOn`) · แผนรุ่นก่อนไม่มี = ขีด */
-const matchedText = (row) => {
-  const parts = (Array.isArray(row?.matchedOn) ? row.matchedOn : []).map((item) => (item.kind === "startDate"
-    ? "วันเริ่มสัญญา"
-    : `เลขเอกสารเดิม ${item.value}`));
-  return parts.join(" · ") || NA;
-};
-
 export default function WizardReviewStep({
   plan, keyerMode = "keyer", keyerName = null, customerLabel = null, orderNumber = null, statusLabel = null,
   contractFiles = {}, evidenceFileCount = 0, duplicates = [], acknowledged = false, onAcknowledge, dupNote = null,
   switchRef = null, busy = false, onEditStep, todayIso = null,
+  previousReview = null, duplicateNote = "", onDuplicateNote, duplicateNoteError = null,
 }) {
   if (!plan) {
     /* 🐞 UAT 23/09: ของเดิมสั่งให้กด “ตรวจอีกครั้ง” ซึ่ง **ไม่มีปุ่มนั้นอยู่บนจอ** — ปุ่มจริงคือปุ่มบันทึก
@@ -91,27 +86,18 @@ export default function WizardReviewStep({
             title={<span id="hist-card-dup">{`ใบที่อาจซ้ำ ${dupes.length} ใบ`}</span>}
             note="วันเริ่มสัญญาหรือเลขเอกสารเดิมตรงกับใบนี้ — เปิดดูในแท็บใหม่ แล้วยืนยันว่าเป็นคนละใบ"
           />
-          <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={560}>
-            <table className="w-full text-sm">
-              <thead><tr><th>เลขที่ใบ</th><th>สถานะ</th><th>วันเริ่มสัญญา</th><th>ตรงกันที่</th><th>เลขเอกสารเดิม</th></tr></thead>
-              <tbody>
-                {dupes.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      {/* แท็บใหม่ = ยามงานยังไม่บันทึกไม่ถาม (มันข้ามลิงก์ target=_blank) และฟอร์มนี้ไม่หาย */}
-                      <a className={styles.dupLink} href={`/sa/sales-orders/${row.id}`} target="_blank" rel="noreferrer">
-                        {naText(row.orderNumber)} <ExternalLink size={12} aria-hidden="true" />
-                      </a>
-                    </td>
-                    <td>{historicalStatusCopy(row.status).label}</td>
-                    <td>{row.orderDate ? fmtDate(row.orderDate) : NA}</td>
-                    <td>{matchedText(row)}</td>
-                    <td>{naText((row.refs || []).join(" · "))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
+          {/* ⭐ มติ 26/09 ข้อ 3: ใบที่ถูกตีกลับ/ดึงกลับแล้วเปิดมาแก้ — สวิตช์เริ่มปิดเสมอ (ต้องยืนยันใหม่ทุกครั้งที่บันทึก)
+              แต่บอกว่ารอบก่อนใครยืนยันไว้ · เหตุผลเดิมเติมให้ในช่องข้างล่าง */}
+          {previousReview && Array.isArray(previousReview.orders) && previousReview.orders.length ? (
+            <p className={styles.prevAck}>
+              <History size={13} aria-hidden="true" />
+              <span>
+                {`รอบก่อน: ${historicalDuplicateAckByline(previousReview)} ยืนยัน ${fmtNumber(previousReview.orders.length)} ใบว่าไม่ซ้ำ`
+                  + " — บันทึกครั้งนี้ต้องยืนยันใหม่ (รายการอาจเปลี่ยนไปแล้ว)"}
+              </span>
+            </p>
+          ) : null}
+          <HistoricalDuplicateTable rows={dupes} mode="keyer" />
           <div className={styles.switchRow}>
             <button
               ref={switchRef}
@@ -128,10 +114,31 @@ export default function WizardReviewStep({
             <span className={styles.switchText}>
               <b>ตรวจแล้ว ไม่ใช่ใบซ้ำ</b>
               <small data-blocked={dupNote && !acknowledged ? "yes" : undefined}>
-                {acknowledged ? "ยืนยันแล้ว — ส่งได้" : (dupNote || "ยังไม่เปิด = ยังส่งไม่ได้")}
+                {acknowledged
+                  ? "ยืนยันแล้ว — ส่งได้ · ผู้จัดการฝ่ายขายจะเห็นรายการนี้พร้อมชื่อคุณและเวลาตอนอนุมัติ"
+                  : (dupNote || "ยังไม่เปิด = ยังส่งไม่ได้")}
               </small>
             </span>
           </div>
+          {/* ⭐ มติ 26/09 ข้อ 2: เหตุผลช่องเดียว ไม่บังคับ ≤500 — ขึ้นเมื่อเปิดสวิตช์ · ผู้อนุมัติเห็นข้อความนี้ (หน้าต่างอนุมัติ + การ์ดหน้าใบ)
+              ⚠️ ค่าอยู่ใน state ของฟอร์มแยกจาก `patch` — แก้ช่องอื่นแล้วสวิตช์ปิดได้ แต่ข้อความที่พิมพ์ไว้ไม่หาย */}
+          {acknowledged ? (
+            <div className={styles.ackNote} id={historicalFieldAnchorId("duplicateNote")}>
+              <label htmlFor="hist-dup-note">ทำไมไม่ใช่ใบซ้ำ <em>(ไม่บังคับ · ผู้อนุมัติเห็นข้อความนี้)</em></label>
+              {/* ⚠️ ไม่ใช้ maxLength ของเบราว์เซอร์ (นับ UTF-16/grapheme ต่างกันไปตามเบราว์เซอร์) — ผู้เรียกตัดด้วย code point ตัวเดียวกับ server */}
+              <Textarea
+                id="hist-dup-note"
+                value={duplicateNote}
+                invalid={Boolean(duplicateNoteError)}
+                aria-describedby="hist-dup-note-count"
+                disabled={busy}
+                placeholder="เช่น ใบเดิมเป็นอาคาร A · ใบนี้คืออาคาร B ที่เพิ่มทีหลัง — คนละโซน"
+                onChange={(event) => onDuplicateNote?.(event.target.value)}
+              />
+              {duplicateNoteError ? <small className={styles.cellBad} role="alert">{duplicateNoteError}</small> : null}
+              <small id="hist-dup-note-count">{`${fmtNumber([...String(duplicateNote || "")].length)}/${fmtNumber(HISTORICAL_DUPLICATE_NOTE_MAX)}`}</small>
+            </div>
+          ) : null}
         </section>
       )}
 

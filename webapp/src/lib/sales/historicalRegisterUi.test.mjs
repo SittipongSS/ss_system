@@ -21,6 +21,7 @@ import * as intakeForm from './historicalIntakeForm.js';
 import * as historicalOrders from './historicalOrders.js';
 import * as orderCopy from './historicalOrderCopy.js';
 import * as reviewView from './historicalReviewView.js';
+import * as duplicatesLib from './historicalDuplicates.js';
 import { HISTORICAL_NEW_PATH } from './historicalOrders.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -623,7 +624,7 @@ test('⭐ ฟอร์มตัดสินด่านใบซ้ำและ�
   /* 🔴 409 ใบซ้ำ = กลับขั้น ④ พร้อมรายการใหม่ + สวิตช์ปิด (ไม่ใช่แผงผิดพลาด) */
   const dup = slice(src, 'if (exit.kind === "duplicate") {', 'return;');
   assert.match(dup, /setDuplicates\(/);
-  assert.match(dup, /setAcknowledged\(false\);/);
+  assert.match(dup, /setAckIds\(\[\]\);/, 'สวิตช์กลับเป็นปิด (ชุด id ที่ยืนยันว่าง)');
   assert.match(dup, /setStep\("review"\);/);
   assert.doesNotMatch(src, /historicalExitActions|historicalSaveFailureState/, 'ตัวตัดสินรุ่นที่มีปุ่ม "บันทึกอีกครั้ง" ข้ามด่าน ถูกถอดแล้ว');
 });
@@ -682,6 +683,8 @@ const HISTORICAL_COMPONENTS = [
   SPLIT,
   CARD_HEADING,
   'components/salesPlanning/historicalWizard/CoverageTimeline.js',
+  'components/salesPlanning/HistoricalDuplicateTable.js',
+  'components/salesPlanning/HistoricalDuplicateReviewCard.js',
   NEW_PAGE,
   EDIT_PAGE,
 ];
@@ -692,6 +695,7 @@ test('⭐ ทุกชื่อที่ขั้นต่าง ๆ import จ�
     '@/lib/sales/historicalOrders': historicalOrders,
     '@/lib/sales/historicalOrderCopy': orderCopy,
     '@/lib/sales/historicalReviewView': reviewView,
+    '@/lib/sales/historicalDuplicates': duplicatesLib,
   };
   const missing = [];
   let checked = 0;
@@ -1533,8 +1537,11 @@ test('⭐ 25/09 ขั้น ④: หัวเอกสารแบบขั้�
   assert.match(review, /<WorkflowRail steps=\{rail\}/);
   assert.match(review, /historicalAfterSendRail\(plan, \{ keyerMode, orderNumber \}\)/);
   /* ลิงก์ใบที่อาจซ้ำเปิดแท็บใหม่ — ยามงานยังไม่บันทึกข้ามลิงก์ target=_blank ⇒ ฟอร์มไม่หาย */
-  assert.match(review, /href=\{`\/sa\/sales-orders\/\$\{row\.id\}`\} target="_blank" rel="noreferrer"/);
-  assert.match(review, /matchedText\(row\)/, 'บอกว่าตรงกันที่ไหน (วันเริ่มสัญญา/เลขเอกสารเดิม)');
+  /* ⭐ มติ 26/09: ตารางใบที่อาจซ้ำเป็นตัวเดียวกับการ์ดหน้าใบ (HistoricalDuplicateTable) — ลิงก์แท็บใหม่ + "ตรงกันที่" อยู่ในตัวนั้น */
+  assert.match(review, /<HistoricalDuplicateTable rows=\{dupes\} mode="keyer" \/>/);
+  const table = code('components/salesPlanning/HistoricalDuplicateTable.js');
+  assert.match(table, /href=\{orderHref\(id\)\} target="_blank" rel="noopener noreferrer"/);
+  assert.match(table, /historicalMatchedOnText\(row\.matchedOn\)/, 'บอกว่าตรงกันที่ไหน (วันเริ่มสัญญา/เลขเอกสารเดิม)');
   /* ทุกแถวที่แก้ได้มีปุ่มพากลับไปขั้น + ช่องนั้น */
   assert.match(review, /onClick=\{\(\) => edit\(row\.step, row\.field\)\}/);
   assert.match(code(WIZARD), /onEditStep=\{\(key, field\) => \{ setStep\(key\); setFocusField\(field \|\| null\); \}\}/);
@@ -1632,3 +1639,77 @@ test('⭐ 25/09 ขั้น ④: ไฟล์ที่อัปไม่ขึ�
   assert.match(wizard, /node\?\.scrollIntoView\?\.\(\{ block: "center", behavior: "smooth" \}\);\s*node\?\.focus\?\.\(\{ preventScroll: true \}\);/);
   assert.match(wizard, /setSaveFailure\(null\);\s*progressRef\.current = null;\s*\}, \[\]\);/, 'แก้ฟอร์ม = แผงผลเก่าหาย');
 });
+
+// ── บันทึกใบซ้ำที่ผู้คีย์ยืนยัน (มติเจ้าของ 26/09) ─────────────────────────────────────────────────────────
+//   ตรรกะตรึงที่ historicalDuplicates.test.mjs · ที่นี่เฝ้าว่าจอต่อสายครบ
+
+test('⭐ 26/09 ใบซ้ำ: ยืนยันเป็นรายใบ — สวิตช์เปิด = id ที่เห็นตอนนั้น · พรีวิวใหม่ได้ใบเพิ่ม = สวิตช์ปิดเอง · body ส่งรายการ ไม่ใช่ธง', () => {
+  const wizard = code(WIZARD);
+  assert.match(wizard, /const \[ackIds, setAckIds\] = useState\(\[\]\);/);
+  assert.match(wizard, /const acknowledged = duplicates\.length > 0 && historicalDuplicatesAcknowledged\(duplicates, \{ ids: ackIds \}\);/,
+    '"ยืนยันแล้ว" คิดจากชุด id เทียบรายการตอนนี้ — ไม่ใช่ธงที่ค้างข้ามพรีวิว');
+  assert.doesNotMatch(wizard, /setAcknowledged|acknowledgeDuplicates:/, 'ธงรุ่นเก่า (ผ่านกับรายการไหนก็ได้) ต้องไม่กลับมา');
+  assert.match(slice(wizard, 'onAcknowledge={(next) => {', '}}'), /setAckIds\(next \? duplicates\.map\(\(row\) => row\.id\) : \[\]\);/);
+  assert.match(wizard, /acknowledgedDuplicateIds: acknowledged \? ackIds : \[\],/);
+  assert.match(wizard, /duplicateNote: acknowledged \? duplicateNote : "",/);
+  /* แก้ฟอร์ม = รายการเดิมหมดอายุ ⇒ ชุดที่ยืนยันล้าง (สวิตช์ปิด) แต่ข้อความเหตุผลไม่หาย (state แยกจาก patch) */
+  const patchFn = slice(wizard, 'const patch = useCallback(', '}, []);');
+  assert.match(patchFn, /setAckIds\(\[\]\);/);
+  assert.doesNotMatch(patchFn, /setDuplicateNote/);
+});
+
+test('⭐ 26/09 ใบซ้ำ: เปิดใบที่ถูกตีกลับมาแก้ — โชว์ "รอบก่อน …" + เติมเหตุผลเดิม แต่สวิตช์ไม่เปิดให้ (มติข้อ 3)', () => {
+  const wizard = code(WIZARD);
+  const hydrate = slice(wizard, 'setState(wizardStateFromOrder(order));', 'setContractId(');
+  assert.match(hydrate, /const previous = historicalDuplicateReviewOf\(order\);/);
+  assert.match(hydrate, /setPreviousReview\(previous\);/);
+  assert.match(hydrate, /if \(previous\?\.note\) setDuplicateNote\(String\(previous\.note\)\);/);
+  assert.doesNotMatch(hydrate, /setAckIds/, 'บันทึกรอบก่อนไม่เปิดสวิตช์ให้ — ต้องยืนยันใหม่ทุกครั้งที่บันทึก');
+  const review = code(STEP_REVIEW);
+  assert.match(review, /รอบก่อน: \$\{historicalDuplicateAckByline\(previousReview\)\} ยืนยัน/);
+  /* ช่องเหตุผล: ขึ้นเมื่อเปิดสวิตช์ · ไม่บังคับ · เพดานเดียวกับ server · มีจุดยึดของช่อง duplicateNote (400 พามาที่นี่) */
+  const note = slice(review, '{acknowledged ? (\n            <div className={styles.ackNote}', ') : null}');
+  assert.match(note, /id=\{historicalFieldAnchorId\("duplicateNote"\)\}/);
+  /* ⚠️ ไม่ใช้ maxLength ของเบราว์เซอร์ (นับคนละหน่วยกับ server) — ตัดด้วย code point ที่ handler · ตัวนับผูกกับช่อง */
+  assert.doesNotMatch(note, /maxLength=/);
+  assert.match(note, /aria-describedby="hist-dup-note-count"/);
+  assert.match(note, /<small id="hist-dup-note-count">/);
+  assert.match(note, /\{duplicateNoteError \? <small className=\{styles\.cellBad\} role="alert">\{duplicateNoteError\}<\/small> : null\}/,
+    '400 ของช่องเหตุผลต้องขึ้นใต้ช่อง (เคยไม่มีที่ไหนแสดง)');
+  assert.match(note, /ไม่บังคับ · ผู้อนุมัติเห็นข้อความนี้/);
+  assert.match(review, /ผู้จัดการฝ่ายขายจะเห็นรายการนี้พร้อมชื่อคุณและเวลาตอนอนุมัติ/);
+});
+
+test('⭐ 26/09 ใบซ้ำ: ผู้อนุมัติเห็น — หน้าต่างอนุมัติได้ผลตรวจใหม่ + ลิงก์แท็บใหม่ · การ์ดหน้าใบต่อจากการ์ดโซน เฉพาะใบย้อนหลัง', () => {
+  const page = code('app/sales-planning/sales-orders/[id]/page.js');
+  const approve = slice(page, 'const openHistoricalApprove = (override = false) => {', 'overrideReason: override,');
+  assert.match(approve, /duplicateCheck: order\.duplicateCheck \|\| null,/);
+  /* 🪤 รีวิว 26/09: ลิงก์ไฟล์เอกสารแทนสัญญาข้างบนก็มี target/rel ⇒ ต้องเทียบในก้อนลิงก์ใบซ้ำเท่านั้น */
+  const dupLinks = slice(approve, '{duplicateRows.map((row) => (', '))}');
+  assert.match(dupLinks, /href=\{`\/sa\/sales-orders\/\$\{encodeURIComponent\(row\.id\)\}`\} target="_blank" rel="noopener noreferrer"/);
+  assert.match(page, /\{historical \? <HistoricalDuplicateReviewCard order=\{order\} duplicateCheck=\{order\.duplicateCheck \|\| null\} \/> : null\}/);
+  assert.ok(page.indexOf('<HistoricalDuplicateReviewCard') > page.indexOf('<HistoricalZonesCard'), 'การ์ดต่อจากการ์ดโซน (มติข้อ 4)');
+  const card = code('components/salesPlanning/HistoricalDuplicateReviewCard.js');
+  assert.match(card, /if \(!view\.show\) return null;/, 'ไม่มีใบที่อาจซ้ำ = ไม่มีการ์ด');
+  assert.match(card, /<HistoricalDuplicateTable rows=\{view\.rows\} mode="review" newTag=\{copy\.newTag\} \/>/);
+  /* ของเสริมที่ล้มยังต้องพกช่องนี้ (null = ยังไม่รู้ ไม่ใช่ "ไม่มีใบซ้ำ") */
+  const route = code('app/api/sales-planning/sales-orders/[id]/route.js');
+  assert.match(route, /liveTermWarnings: \[\], duplicateCheck: null,/);
+});
+
+test('🐞 26/09 ใบซ้ำ (รีวิว): เปลี่ยนการยืนยัน/เหตุผลหลังบันทึกค้างครึ่งทาง = บันทึกใบซ้ำ · เหตุผลตัดด้วย code point · 400 ของช่องขึ้นใต้ช่อง', () => {
+  const wizard = code(WIZARD);
+  const ack = slice(wizard, 'onAcknowledge={(next) => {', '}}');
+  assert.match(ack, /progressRef\.current = null;/, 'รอบใหม่เริ่มที่ "บันทึกใบ" ⇒ บันทึกการยืนยันถูกเขียนใหม่');
+  assert.match(ack, /setSaveFailure\(null\);/);
+  const note = slice(wizard, 'onDuplicateNote={(value) => {', '}}');
+  assert.match(note, /setDuplicateNote\(historicalDuplicateNoteClamp\(value\)\);/);
+  assert.match(note, /setIssues\(\(current\) => current\.filter\(\(issue\) => issue\.field !== "duplicateNote"\)\);/);
+  assert.match(note, /progressRef\.current = null;/);
+  assert.match(wizard, /duplicateNoteError=\{stepIssues\("review"\)\.find\(\(issue\) => issue\.field === "duplicateNote"\)\?\.message \|\| null\}/);
+  /* การ์ดหน้าใบ: ถ้อยคำจากตัวตัดสิน (สถานะบันทึก × สถานะใบ) ไม่ใช่สตริงในการ์ด */
+  const card = code('components/salesPlanning/HistoricalDuplicateReviewCard.js');
+  assert.match(card, /const copy = historicalDuplicateCardCopy\(view, \{ status: order\?\.status \}\);/);
+  assert.doesNotMatch(card, /ก่อนอนุมัติ/, 'คำว่า "ก่อนอนุมัติ" อยู่ในตัวตัดสิน (เฉพาะใบที่รออนุมัติ) เท่านั้น');
+});
+
