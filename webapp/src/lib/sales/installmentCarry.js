@@ -235,7 +235,12 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
     return seq;
   };
   /* ⚠️ ป้ายส่งแบบดิบ — แถวล็อกต้องเท่าในฐานทุกช่อง (แกน 0377 เทียบป้ายแบบ IS NOT DISTINCT FROM) · แถวที่ยก/แถวเปิดได้ป้าย
-     ที่ตัดแล้วจาก labelFor (RPC/แกนเขียน btrim ลงฐานเอง) */
+     ที่ตัดแล้วจาก labelFor (RPC/แกนเขียน btrim ลงฐานเอง)
+     ⭐ `billingDate`/`billingEvent` (กำหนดวางบิล · mig 0389) พกไปด้วยให้แถวของแผนครบรูป (จอ/audit เห็นวันวางบิลของงวดที่ยก)
+       — **ไม่ได้แก้ RPC 0377/0378 โดยตั้งใจ**: แกน `_so_installments_write_plan` อ่านเฉพาะคีย์ที่รู้จัก (คีย์เกินถูกข้าม)
+       และ ④ UPDATE ไม่เอ่ยสองคอลัมน์นี้ ⇒ แถวเดิม (ทั้งแถวที่ยก = ย้ายทั้งแถว และงวดเปิดที่ถูกหัก) **คงวันวางบิลเดิม**
+       · แถวใหม่ของ ⑤ INSERT ไม่มีในเส้นยกเงิน (ยกแถวเดิมเท่านั้น) · แก้ RPC จากไฟล์เมื่อไร = ย้อนสิทธิ์ที่ 0382/0385
+       ปะแก้ไว้ในฐาน (ดู installmentReplanMigration.test.mjs) */
   const payload = (r) => ({
     id: r.id,
     seq: Number(r.seq),
@@ -246,6 +251,8 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
     coversFrom: r.coversFrom || null,
     coversTo: r.coversTo || null,
     note: text(r.note) || null,
+    billingDate: r.billingDate || null,
+    billingEvent: text(r.billingEvent) || null,
   });
   const movedRows = moving.map((r) => {
     const seq = nextSeq();

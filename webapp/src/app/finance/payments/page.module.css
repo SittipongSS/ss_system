@@ -129,3 +129,34 @@
 .mbar::-webkit-progress-bar { background: var(--border); }
 .mbar::-webkit-progress-value { background: var(--green); }
 .mbar::-moz-progress-bar { background: var(--green); }
+
+/* ── รอบวางบิล (mig 0389 · ม็อก D) ─────────────────────────────────────────────
+   ⚠️ **ไม่มีแดงที่นี่** — เลยรอบ/ใกล้ถึงรอบวางบิล = amber (โทนเตือน) · แดงสงวนให้ "เลยกำหนด" ที่อ่านกำหนดชำระ */
+
+/* วันที่ของ "วางบิลถัดไป" — บรรทัดของตัวเอง ไม่ตัดกลางวัน ("จ. 5 ต.ค. 2026" ขาดกลางอ่านเป็นคนละวัน) */
+.billDate {
+  display: block;
+  white-space: nowrap;
+}
+
+/* ใกล้ถึงรอบ/เลยรอบ และยังไม่ขอใบ — สีเตือน + หนาขึ้น (สีไม่ใช่สัญญาณเดียว: คำบอกระยะอยู่ในบรรทัดรองเสมอ) */
+.billWarn {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
+}
+
+/* ป้าย ขอใบแล้ว/ยังไม่ขอ — บรรทัดของตัวเองใต้คำบอกระยะ */
+.billBadge {
+  display: block;
+  margin-top: var(--space-1);
+}
+
+/* รอบวางบิลแบบย่อใต้ชื่อลูกค้า — ไอคอนปฏิทินนำหน้าให้แยกจากชื่อ/รหัสได้ด้วยตา
+   ⚠️ ไม่ทับ `display` ของ `.cell-sub` (ลำดับโหลด globals กับ module ไม่การันตี) — ไอคอนวางแบบ inline แทน flex */
+.billRuleIcon {
+  /* preflight ของ Tailwind ตั้ง svg เป็น block ⇒ ไอคอนตกไปอยู่บรรทัดของตัวเอง เหนือข้อความรอบ */
+  display: inline-block;
+  margin-inline-end: var(--space-1);
+  vertical-align: -2px;
+  color: var(--text-3);
+}

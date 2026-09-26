@@ -132,13 +132,16 @@ test('applyCarryIn: ยกมัดจำ 20,000 เข้าใบ 30/70 — �
   assert.deepEqual(built.rows[0], {
     id: 'S1', seq: 1, label: 'มัดจำ', percent: 20, amount: 20000, dueDate: null,
     coversFrom: '2026-09-01', coversTo: '2026-12-31', note: null,
+    // กำหนดวางบิล (mig 0389) — พกไปให้แถวครบรูป · RPC 0377/0378 ไม่อ่านสองคีย์นี้ (แถวเดิมคงวันวางบิลเอง)
+    billingDate: null, billingEvent: null,
   });
   assert.equal(built.rows[1].dueDate, '2026-10-01');
   assert.equal(built.rows[2].note, 'ส่งของ');
   assert.deepEqual(built.totals, { total: 100000, carried: 20000, locked: 0, sum: 100000, percentSum: 100 });
   // ผลลัพธ์เป็นแถวงวดล้วน — ไม่มีอะไรแตะตัวใบ/ยอด Actual
   for (const r of built.rows) {
-    assert.deepEqual(Object.keys(r).sort(), ['amount', 'coversFrom', 'coversTo', 'dueDate', 'id', 'label', 'note', 'percent', 'seq']);
+    assert.deepEqual(Object.keys(r).sort(), ['amount', 'billingDate', 'billingEvent', 'coversFrom', 'coversTo', 'dueDate', 'id',
+      'label', 'note', 'percent', 'seq']);
   }
   // view: บอกว่าแถวไหนยกมา · แถวไหนถูกหัก/ลบ
   const view = new Map(built.view.map((v) => [v.id, v]));

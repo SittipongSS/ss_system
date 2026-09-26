@@ -8,6 +8,10 @@
 //   ทุกวันที่ n · กรอกเอง) — **ไม่มีค่าตั้งต้นทั้งคู่** · ตัวเลือกที่แบ่งไม่ลงตัวเห็นแต่กดไม่ได้ พร้อมเหตุ
 //   · ดูตัวอย่างก่อนสร้าง · ปุ่มบอกผลก่อนกด · มีงวดอยู่แล้ว = บอกว่าแทนที่กี่งวด (ปุ่มโทนอันตราย)
 // ⚠️ ตัวคิดทั้งหมดอยู่ที่ `historicalSplitOptions` / `historicalSplitPreview` (ทดสอบได้โดยไม่เรนเดอร์)
+// ⭐ กำหนดวางบิล รอบสอง ข้อ 6 (มติ 26/09): ลูกค้าที่ตั้งรอบวางบิลแบบเงินเข้ารายเดือน **เดือนเดียวกับวางบิล** = มีชิป
+//   "ตามรอบของลูกค้า (เงินเข้า…)" เพิ่มในวันครบกำหนด (แปลงเป็น 'day' n / 'monthEnd' ก่อนเข้าตัวคิด — `historicalEffectiveDueRule`)
+//   · **ไม่เลือกให้** · ประโยครอบของลูกค้าโชว์ใต้ชิปเสมอเมื่อตั้งรอบไว้ · เครดิต n วัน / เงินเข้าเดือนถัดไป = ประโยค + เหตุที่ไม่มีชิป
+//   (เหตุอยู่บรรทัดของตัวเอง — รีวิว 26/09 ต่อท้ายประโยครอบแล้วขึ้นขีดยาวสองตัวในบรรทัดเดียว) · ดูหัว `historicalCustomerDueOption`
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -18,7 +22,8 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { NA, fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
 import {
-  HISTORICAL_DUE_RULES, historicalSplitConsequence, historicalSplitOptions, historicalSplitPreview, historicalSplitRows,
+  HISTORICAL_CUSTOMER_DUE_RULE, HISTORICAL_DUE_RULES, historicalCustomerDueOption, historicalCustomerTermsError,
+  historicalEffectiveDueRule, historicalSplitConsequence, historicalSplitOptions, historicalSplitPreview, historicalSplitRows,
 } from "@/lib/sales/historicalIntakeForm";
 import styles from "./HistoricalOrderWizard.module.css";
 
@@ -26,6 +31,7 @@ const PREVIEW_HEAD = 3;
 
 export default function HistoricalSplitModal({
   open, onClose, from = null, to = null, amount = null, todayIso = null, replacing = 0, onCreate, gridStart = null,
+  customerTerms = null,
 }) {
   const [period, setPeriod] = useState(null);
   const [dueRule, setDueRule] = useState(null);
@@ -41,7 +47,21 @@ export default function HistoricalSplitModal({
 
   /* `gridStart` = วันเริ่มสัญญา — ช่วงที่เหลือแบ่งบนตารางเดือนของสัญญา (สัญญาเริ่มวันที่ 29–31 · รีวิว 25/09) */
   const { options, note } = historicalSplitOptions({ from, to, gridStart });
-  const preview = historicalSplitPreview({ from, to, amount, period, dueRule, dueDay, todayIso, gridStart });
+  /* รอบวางบิลของลูกค้า (รูปของ `createFormTermsState`) — ฐานที่ยังไม่รองรับ/ยังไม่ตั้ง/กำลังโหลด = ไม่มีชิป ไม่มีประโยค */
+  const customerRule = customerTerms?.status === "ready" && customerTerms.supported ? customerTerms.rule : null;
+  const customerDue = historicalCustomerDueOption(customerRule);
+  const effectiveDue = historicalEffectiveDueRule({ dueRule, dueDay, customerOption: customerDue.option });
+  const preview = historicalSplitPreview({
+    from, to, amount, period, dueRule: effectiveDue.dueRule, dueDay: effectiveDue.dueDay, todayIso, gridStart,
+  });
+  /* ชิปของลูกค้านำหน้า (เรื่องเฉพาะใบนี้) — ตัวเลือกเดิมครบทุกตัวเสมอ */
+  const dueOptions = [
+    ...(customerDue.option ? [{ value: customerDue.option.value, label: customerDue.option.label }] : []),
+    ...HISTORICAL_DUE_RULES.map((rule) => ({ value: rule.value, label: rule.label })),
+  ];
+  let dueHelp = "ชีตเดิมใช้วันเริ่มงวด · วันที่คงที่ของเดือน (เช่น 25) หรือสิ้นเดือน";
+  if (dueRule === "manual") dueHelp = "งวดที่สร้างมีช่องครบกำหนดว่าง — กรอกเองทีละงวดในตาราง (บังคับทุกงวด)";
+  else if (dueRule === HISTORICAL_CUSTOMER_DUE_RULE && customerDue.option) dueHelp = customerDue.note;
   const consequence = historicalSplitConsequence(preview, { replacing });
   const head = preview.rows.slice(0, PREVIEW_HEAD);
   const hidden = Math.max(0, preview.rows.length - PREVIEW_HEAD - 1);
@@ -92,10 +112,17 @@ export default function HistoricalSplitModal({
           <span>วันครบกำหนด <b className={styles.req}>*</b></span>
           <ChoiceChips
             ariaLabel="วันครบกำหนดของแต่ละงวด"
-            options={HISTORICAL_DUE_RULES.map((rule) => ({ value: rule.value, label: rule.label }))}
+            options={dueOptions}
             value={dueRule}
             onChange={setDueRule}
           />
+          {customerDue.hint ? (
+            <small>รอบวางบิลของลูกค้า: <b>{customerDue.hint}</b></small>
+          ) : null}
+          {customerDue.hint && !customerDue.option ? <small>{customerDue.note}</small> : null}
+          {customerTerms?.status === "error" ? (
+            <small>{historicalCustomerTermsError(customerTerms.detail)}</small>
+          ) : null}
           {dueRule === "day" ? (
             <div className={styles.splitDay}>
               <Input
@@ -110,7 +137,7 @@ export default function HistoricalSplitModal({
               <small>วันแรกที่ตรงวันที่นี้นับจากวันเริ่มของแต่ละงวด · เดือนที่ไม่มีวันนั้นใช้สิ้นเดือน</small>
             </div>
           ) : (
-            <small>{dueRule === "manual" ? "งวดที่สร้างมีช่องครบกำหนดว่าง — กรอกเองทีละงวดในตาราง (บังคับทุกงวด)" : "ชีตเดิมใช้วันเริ่มงวด · วันที่คงที่ของเดือน (เช่น 25) หรือสิ้นเดือน"}</small>
+            <small>{dueHelp}</small>
           )}
         </div>
 

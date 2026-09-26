@@ -152,6 +152,7 @@ test('🔒 ผู้เขียนงวดยกมามีแค่ใบย
     '0377_so_installment_replan.sql', // ปฏิเสธงวดยกมาในการปรับแผน
     '0379_historical_so_quote_lines.sql', // ตัวเขียนใบย้อนหลัง (บรรทัดแบบใบเสนอราคา)
     FILE,
+    '0389_customer_billing_rule.sql', // CHECK ห้ามงวดยกมามีวันวางบิล/รอเหตุการณ์ (ห้ามอย่างเดียว ไม่เขียนงวดยกมา)
   ]);
   const SRC = new URL('../../', import.meta.url);
   const walk = (dir) => readdirSync(dir).flatMap((name) => {

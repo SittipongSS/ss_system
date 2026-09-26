@@ -12,10 +12,11 @@
  * ⚠️ ปุ่มระดับใบอยู่ใน **การ์ดจัดการเอกสาร** บนรางขวา เหมือนทุกเอกสารในระบบ
  * ไม่ใช่แถบปุ่มท้ายฟอร์ม (ผู้ใช้ 2026-08-24: "เป็นภาษาเดียวกันทั้งระบบ")
  */
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Building2, ClipboardList, FileCheck2, FileText, FolderKanban, Handshake, MapPin, Package, Wallet,
+  Building2, CalendarClock, CalendarX, ClipboardList, ExternalLink, FileCheck2, FileText, FolderKanban, Handshake, MapPin, Package, Wallet,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -23,7 +24,10 @@ import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/Docume
 import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
 import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
 import SalesOrderDeliveryDueField from "@/components/salesPlanning/SalesOrderDeliveryDueField";
+import BillingRoundPicker from "@/components/salesPlanning/BillingRoundPicker";
 import AlertBanner from "@/components/ui/AlertBanner";
+import Button from "@/components/ui/Button";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
@@ -36,14 +40,26 @@ import { businessDate } from "@/lib/businessDate";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
 import { previewInstallments } from "@/lib/sales/salesOrderPayments";
+import { describeBillingRule } from "@/lib/sales/billingRule";
+import { EMPTY_PICKER_VALUE } from "@/lib/sales/billingPicker";
+import {
+  createFormBillingBlocker, createFormDateCheck, createFormInstallmentItems, createFormTermsState, createFormVisibleValues,
+} from "@/lib/sales/salesOrderCreateInstallments";
 import { validateOrderConfirmation, MAX_CONFIRM_ATTACHMENTS } from "@/lib/sales/orderConfirmationDocs";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { describeResponseError } from "@/lib/fetchError";
+import { httpLoadFailure, thrownLoadFailure } from "@/lib/ui/loadFailure";
+import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
+import { notifyToast } from "@/lib/feedback";
 import AccessDenied from "@/components/ui/AccessDenied";
 import styles from "./page.module.css";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 
 const EMPTY_CONFIRMATION = { docType: "", docNo: "", docDate: "", attachments: [] };
+
+/* ใบเสนอราคาต้นทาง + รอบวางบิลของลูกค้าในคำขอเดียว (`include=billingTerms` · ดู GET ใบเสนอราคา)
+   ⚠️ ใช้ทั้งตอนโหลดหน้าและตอนโหลดรอบใหม่ — ทางเดียว สองจังหวะอ่านค่าชุดเดียวกันเสมอ */
+const quoteUrl = (quotationId) => `/api/sales-planning/quotations/${encodeURIComponent(quotationId)}?include=billingTerms`;
 
 function NewSalesOrderInner() {
   const router = useRouter();
@@ -69,7 +85,14 @@ function NewSalesOrderInner() {
   const [deliveryDueDate, setDeliveryDueDate] = useState("");
   const [confirmation, setConfirmation] = useState(EMPTY_CONFIRMATION);
   const [confirmFiles, setConfirmFiles] = useState([]);
-  const [dues, setDues] = useState({});           // { [seq]: 'YYYY-MM-DD' }
+  /* วันของงวด `{ [seq]: ค่าตัวเลือกรอบวางบิล }` (รูปของ lib/sales/billingPicker.js) — ลูกค้าที่ยังไม่ตั้งรอบ
+     ใช้รูปเดียวกัน (mode null + dueDate จากช่องกำหนดชำระเดิม) ⇒ รอบโหลดมาทีหลังวันที่พิมพ์ไว้ก็ไม่หาย
+     ⚠️ ไม่มีค่าตั้งต้น — ทุกงวดเริ่มที่ยังไม่เลือก (มติ 26/09: ไม่บังคับ บางที่ไม่มีรอบวาง) */
+  const [billing, setBilling] = useState({});
+  /* รอบวางบิล + เงื่อนไขเครดิตของลูกค้า (mig 0389) — มากับใบเสนอราคา (createFormTermsState)
+     `null` = ใบไม่ผูกลูกค้า · `{ status: 'ready', supported, rule, … }` · `{ status: 'error', detail }` */
+  const [terms, setTerms] = useState(null);
+  const [termsRefreshing, setTermsRefreshing] = useState(false);
   const [firstPaid, setFirstPaid] = useState(false);
   const [firstPaidOn, setFirstPaidOn] = useState("");
   const [firstFiles, setFirstFiles] = useState([]);
@@ -80,11 +103,12 @@ function NewSalesOrderInner() {
     (async () => {
       setLoading(true);
       try {
-        const res = await apiFetch(`/api/sales-planning/quotations/${quotationId}`, { cache: "no-store" });
+        const res = await apiFetch(quoteUrl(quotationId), { cache: "no-store" });
         if (!res.ok) throw new Error(await describeResponseError(res, "โหลดใบเสนอราคาไม่สำเร็จ"));
         const data = await res.json();
         if (!alive) return;
         setQuote(data);
+        setTerms(createFormTermsState(data?.billingTerms));
         setNotes(data?.notes || "");
       } catch (e) {
         if (alive) setError(e.message || "โหลดใบเสนอราคาไม่สำเร็จ");
@@ -94,6 +118,59 @@ function NewSalesOrderInner() {
     })();
     return () => { alive = false; };
   }, [quotationId]);
+
+  /* ── รอบวางบิลของลูกค้า (ม็อก billing-cycle จอ B) ─────────────────────────────
+     มากับใบเสนอราคาในคำขอแรก ⇒ ตารางงวดขึ้นเป็นรูปสุดท้ายตั้งแต่เฟรมแรก (เดิมอ่านทะเบียนลูกค้าทั้งก้อนแยกอีกคำขอ
+     ตารางโชว์ช่องกำหนดชำระก่อนแล้วค่อยสลับเป็นตัวเลือกรอบ · วันที่พิมพ์ไว้ระหว่างนั้นกลายเป็นป้าย "ที่บันทึกอยู่" — review S4 26/09)
+     ⚠️ โหลดไม่ขึ้น = **ไม่บล็อกหน้า** — ตารางกลับเป็นช่องกำหนดชำระแบบเดิม + บอกเหตุพร้อมปุ่มลองใหม่
+     ⚠️ ฐานที่ยังไม่รัน 0389 = `supported: false` = หน้าเหมือนเดิมทุกอย่าง ไม่ขึ้นแถบชวน "ไปตั้งรอบ" ที่ทะเบียนยังรับไม่ได้
+     โหลดรอบใหม่ (ปุ่มลองใหม่ · กลับมาจากแท็บทะเบียนลูกค้า) = ตัวจัดการเหตุการณ์ ไม่ใช่ effect — ไม่มี setState ใน effect
+     ⚠️ โหลดใหม่ล้มขณะที่มีรอบอยู่แล้ว = คงรอบเดิม — สลับไปแถบ error จะพับตัวเลือกรอบที่เลือกไว้ทั้งตาราง
+        (ยังไม่มีรอบ/ล้มอยู่แล้ว = ขึ้นแถบ error ได้ ตารางหน้าตาเดิม: ช่องกำหนดชำระ) */
+  const termsBusy = useRef(false);
+  const refreshTerms = useCallback(async () => {
+    if (!quotationId || termsBusy.current) return;
+    termsBusy.current = true;
+    setTermsRefreshing(true);
+    try {
+      const data = await apiJson(quoteUrl(quotationId), {
+        cache: "no-store", fallbackError: "โหลดรอบวางบิลของลูกค้าไม่สำเร็จ",
+      });
+      setTerms(createFormTermsState(data?.billingTerms));
+    } catch (e) {
+      const failure = e?.status ? httpLoadFailure(e.status, e.data?.error) : thrownLoadFailure(e);
+      setTerms((prev) => (prev?.status === "ready" && prev.supported && prev.rule
+        ? prev
+        : { status: "error", detail: failure.detail }));
+    } finally {
+      termsBusy.current = false;
+      setTermsRefreshing(false);
+    }
+  }, [quotationId]);
+
+  /* ปุ่มทะเบียนลูกค้าเปิด **แท็บใหม่** — ฟอร์มนี้ไม่มีร่างและไม่มีตัวกันออกจากหน้า กดแล้วเปลี่ยนหน้าในแท็บเดิม
+     = เอกสารยืนยัน · ไฟล์ที่เลือก · วันที่ที่กรอก หายหมด (review S4 26/09)
+     ⇒ กลับมาที่แท็บนี้ (focus / visibilitychange) หลังเคยกดปุ่มนั้น = โหลดรอบใหม่ ให้รอบที่เพิ่งตั้งเปิดตัวเลือกได้ทันที
+     ไม่ต้องเริ่มฟอร์มใหม่ · สองเหตุการณ์มาพร้อมกันตอนสลับแท็บ — `termsBusy` กันยิงซ้ำ
+     ⚠️ โหลดใหม่ = GET ใบเสนอราคาทั้งใบ (ทางเดียวกับตอนเปิดหน้า) — ยิงเฉพาะตอนกดลองใหม่/กลับจากแท็บทะเบียน ไม่ใช่ทุกครั้งที่สลับแท็บ
+     คลิกกลาง/Ctrl-คลิก (เปิดแท็บเองโดยไม่ผ่าน onClick) นับด้วย — `onAuxClick` */
+  const registryOpened = useRef(false);
+  const markRegistryOpened = () => { registryOpened.current = true; };
+  useEffect(() => {
+    if (creating) return undefined;
+    const onReturn = () => {
+      if (!registryOpened.current || document.visibilityState !== "visible") return;
+      refreshTerms();
+    };
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, [creating, refreshTerms]);
+  // มีรอบ = แต่ละงวดได้ตัวเลือกรอบ · ไม่มี/โหลดไม่ขึ้น = ช่องกำหนดชำระแบบเดิม
+  const rule = terms?.status === "ready" && terms.supported ? terms.rule : null;
 
   /* เลขที่เอกสารยืนยันเป็นค่าตั้งต้นของ "เอกสารอ้างอิง" (กติกาเดิมของ 0246 ที่เคยไหล
      มาจากตอนปิด Won) — หยุดตามทันทีที่ผู้ใช้พิมพ์ทับ ไม่ใช่ทับของที่เขาแก้ไว้ */
@@ -130,7 +207,17 @@ function NewSalesOrderInner() {
     : firstPaid && !firstFiles.length
       ? "แนบหลักฐานการชำระงวดแรกอย่างน้อย 1 ไฟล์"
       : "";
-  const blockedReason = !confirmationCheck.ok ? confirmationCheck.error : paymentError;
+  /* ค่าที่ส่ง/ที่ด่านตรวจ = ค่าตามที่ตาเห็น — รอบถูกล้าง/โหลดไม่ขึ้น ตารางเหลือแค่กำหนดชำระ
+     ⇒ วันวางบิล/เหตุการณ์ที่ค้างใน state ต้องไม่ถูกส่งและไม่ถูกกัน (ไม่งั้นปุ่มติดด่านที่ไม่มีช่องให้แก้) */
+  const billingValues = useMemo(() => createFormVisibleValues(billing, { withRule: Boolean(rule) }), [billing, rule]);
+  /* ⚠️ ไม่ใช่ด่านบังคับเลือกรอบ (มติ 26/09 ข้อ 2) — กันเฉพาะงวดที่เริ่มเลือกแล้วยังไม่ครบ
+     ("วันอื่น…" ที่ยังไม่ใส่วัน · รอเหตุการณ์ที่ยังไม่มีชื่อ) ไม่งั้นงวดนั้นหลุดเป็น "ยังไม่กำหนด" เงียบ ๆ */
+  const billingBlocker = createFormBillingBlocker(plannedInstallments, billingValues);
+  /* วันที่ผิด (ปีพิมพ์พลาด · วันที่ไม่มีจริง) กันตั้งแต่บนจอด้วยตัวตรวจเดียวกับ POST — เดิมรู้ตัวหลังอัปไฟล์เสร็จแล้วได้ 400 */
+  const dateCheck = useMemo(() => createFormDateCheck(plannedInstallments, billingValues), [plannedInstallments, billingValues]);
+  const blockedReason = !confirmationCheck.ok
+    ? confirmationCheck.error
+    : (paymentError || billingBlocker || dateCheck.error);
 
   const uploadOne = useCallback(async (file) => {
     // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ด้วย signed URL — ไม่ผ่าน function
@@ -171,14 +258,17 @@ function NewSalesOrderInner() {
           confirmation: confirmation.docType
             ? { ...confirmation, attachments: confirmAttachments }
             : null,
-          installments: plannedInstallments
-            .filter((row) => dues[row.seq])
-            .map((row) => ({ seq: row.seq, dueDate: dues[row.seq] })),
+          // กำหนดชำระ + วันวางบิล/รอเหตุการณ์ รายงวด — เฉพาะงวดที่มีค่า (ไม่เลือก = ไม่ส่ง)
+          installments: createFormInstallmentItems(plannedInstallments, billingValues),
           firstPayment: firstPaid ? { paidOn: firstPaidOn, evidence: firstEvidence } : null,
         }),
       });
       if (!res.ok) throw new Error(await describeResponseError(res, "สร้างใบสั่งขายไม่สำเร็จ"));
       const data = await res.json();
+      /* ใบออกแล้วแต่ตั้งงวดตามที่กรอกไม่สำเร็จ (201 + `warning`) — ทักผ่านถาดกลางซึ่งอยู่ที่ layout
+         ⇒ ไม่หายตอน router.push · 🐞 เดิมหน้านี้ไม่อ่านคีย์นี้ = วันที่กรอกหายเงียบ (lib/apiWarnings.js) */
+      const warning = responseWarningText(data);
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       router.push(`/sa/sales-orders/${data.id}`);
     } catch (e) {
       // ⚠️ ล้มแล้วต้องเก็บกวาดไฟล์ที่อัปไปแล้ว ไม่งั้นไฟล์ลอยค้างใน bucket โดยไม่มีใบไหนอ้าง
@@ -190,7 +280,7 @@ function NewSalesOrderInner() {
       setError(e.message || "สร้างใบสั่งขายไม่สำเร็จ");
       setCreating(false);
     }
-  }, [blockedReason, confirmFiles, firstFiles, uploadOne, quotationId, referenceDoc, notes, deliveryDueDate, confirmation, plannedInstallments, dues, firstPaid, firstPaidOn, router]);
+  }, [blockedReason, confirmFiles, firstFiles, uploadOne, quotationId, referenceDoc, notes, deliveryDueDate, confirmation, plannedInstallments, billingValues, firstPaid, firstPaidOn, router]);
 
   if (!canEdit) return <AccessDenied title="สร้างใบสั่งขาย" message="ไม่มีสิทธิ์สร้างใบสั่งขาย" />;
 
@@ -212,6 +302,67 @@ function NewSalesOrderInner() {
 
   const deal = quote.deal || null;
   const project = deal?.project || null;
+  const todayIso = businessDate();
+  const customerHref = quote.customerId ? `/database/customers/${quote.customerId}` : "";
+
+  /* แถบเหนือตารางงวด: รอบของลูกค้า + เงื่อนไขเครดิต (ข้อความอิสระเดิม วางข้างกัน ไม่แปลง) + ทางไปทะเบียนลูกค้า
+     · ยังไม่ตั้งรอบ = บอกทางไปตั้ง ตารางคงช่องกำหนดชำระแบบเดิม · โหลดไม่ขึ้น = บอกเหตุ + ลองใหม่
+       (ไทยนำ + ข้อความดิบเป็นบรรทัดเล็ก — มติ 23/09 · StatusNotice `detail`)
+     · ฐานยังไม่รัน 0389 / ใบไม่ผูกลูกค้า = ไม่มีแถบ (หน้าเหมือนเดิม)
+     ลิงก์ชี้การ์ด `#billing-rule` บนหน้าลูกค้า (CustomerBillingRuleCard) — เปิดแท็บใหม่ ดูเหตุผลที่ `registryOpened` */
+  let termsNotice = null;
+  if (terms?.status === "error") {
+    termsNotice = (
+      <StatusNotice
+        tone="warning"
+        role="note"
+        className={styles.termsNotice}
+        detail={terms.detail || undefined}
+        action={(
+          <Button size="sm" tone="neutral" disabled={termsRefreshing} onClick={refreshTerms}>
+            {termsRefreshing ? "กำลังโหลด…" : "ลองใหม่"}
+          </Button>
+        )}
+      >
+        โหลดรอบวางบิลของลูกค้าไม่สำเร็จ — กรอกกำหนดชำระเองได้ตามเดิม
+      </StatusNotice>
+    );
+  } else if (terms?.status === "ready" && terms.supported) {
+    termsNotice = (
+      <StatusNotice
+        tone={rule ? "info" : "neutral"}
+        role="note"
+        icon={rule ? CalendarClock : CalendarX}
+        className={styles.termsNotice}
+        action={customerHref ? (
+          <Button
+            as={Link}
+            href={`${customerHref}#billing-rule`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={markRegistryOpened}
+            onAuxClick={markRegistryOpened}
+            size="sm"
+            tone="neutral"
+            icon={<ExternalLink size={14} aria-hidden="true" />}
+            aria-label={`${rule ? "ดูที่ทะเบียนลูกค้า" : "เปิดทะเบียนลูกค้า"} (เปิดแท็บใหม่)`}
+          >
+            {rule ? "ดูที่ทะเบียนลูกค้า" : "เปิดทะเบียนลูกค้า"}
+          </Button>
+        ) : null}
+      >
+        <span className={styles.termsLine}>
+          {rule
+            ? <>รอบวางบิลของลูกค้า: <b>{describeBillingRule(rule)}</b></>
+            : "ลูกค้ายังไม่ตั้งรอบวางบิล — ตั้งได้ที่ทะเบียนลูกค้า"}
+        </span>
+        <span className={styles.termsSub}>
+          <span className={styles.termsLabel}>เงื่อนไขเครดิต</span> {naText(terms.creditTerms)}
+        </span>
+      </StatusNotice>
+    );
+  }
+
   const rightRail = (
     <>
       <DocumentSummaryCard
@@ -271,11 +422,13 @@ function NewSalesOrderInner() {
       {error && <AlertBanner tone="danger">{error}</AlertBanner>}
 
       <ContextGrid>
+        {/* 🐞 `quote.customer` ไม่เคยมีใครเติม (quoteSelect มีแค่ดีล) ⇒ รหัส AR หายจากหัวการ์ดมาตลอด ·
+            แถวลูกค้าที่โหลดมาเพื่อรอบวางบิลมีรหัสอยู่แล้ว ใช้ต่อได้ (ทะเบียนสด เหมือนหน้าใบสั่งขาย) */}
         <ContextCard
           icon={Building2}
-          href={quote.customerId ? `/database/customers/${quote.customerId}` : undefined}
+          href={customerHref || undefined}
           eyebrow="ลูกค้า"
-          title={naText(customerHeadline(quote.customerName, quote.customer?.arCode))}
+          title={naText(customerHeadline(quote.customerName, quote.customer?.arCode || terms?.arCode))}
           subtitle="ข้อมูลลูกค้าของเอกสาร"
           facts={[{ label: "ผู้ติดต่อ", value: naText(quote.contactName) }]}
         />
@@ -404,37 +557,80 @@ function NewSalesOrderInner() {
         >
           {plannedInstallments.length ? (
             <>
-              <TableScroll family="editable" surface="auto" cells="stacked" minWidth={620}>
-                <table className={styles.planTable}>
-                  <thead>
-                    <tr>
-                      <th className={styles.colSeq}>งวด</th>
-                      <th>รายละเอียด</th>
-                      <th className={`num ${styles.colPercent}`}>%</th>
-                      <th className={`num ${styles.colAmount}`}>ยอด</th>
-                      <th className={styles.colDue}>กำหนดชำระ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {plannedInstallments.map((row) => (
-                      <tr key={row.seq}>
-                        <td>{row.seq}</td>
-                        <td>{row.label}</td>
-                        {/* หัวคอลัมน์เป็น "%" อยู่แล้ว ⇒ เซลล์เป็นตัวเลขเปล่า 2 ตำแหน่ง ·
-                            ⚠️ จัดรูปแบบเฉพาะใน JSX — `plannedInstallments` ตัวเดียวกันถูกส่งขึ้น API */}
-                        <td className="num">{fmtNumber(row.percent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td className="num">{fmtMoney(row.amount)}</td>
-                        <td>
-                          <DateInput
-                            value={dues[row.seq] || ""} disabled={creating}
-                            onChange={(next) => setDues((prev) => ({ ...prev, [row.seq]: next }))}
-                          />
-                        </td>
+              {termsNotice}
+              {/* ลูกค้ามีรอบ = คอลัมน์สุดท้ายเป็นตัวเลือกรอบ (แตะรอบ · วันอื่น… · รอเหตุการณ์) แทนช่องกำหนดชำระ
+                  ⇒ ตารางต้องกว้างขึ้นให้ชิปไม่บีบคอลัมน์อื่น
+                  ⭐ ที่แคบกว่าพื้นตาราง (คอลัมน์เอกสาร ≤ 760px — มือถือ/แท็บเล็ต/จอ 1200 ที่มีแถบข้าง) แถวกลายเป็นการ์ดต่องวด
+                     ตัวเลือกกินเต็มความกว้างการ์ด (ม็อก billing-cycle จอ B §จอแคบ) — 🐞 เดิมเลื่อนข้างในกรอบ ที่ 390px
+                     คอลัมน์ตัวเลือกหลุดจอทั้งคอลัมน์โดยไม่มีอะไรบอกว่าเลื่อนได้ (review S4 26/09) · DOM ชุดเดียว วัดด้วย @container
+                     ป้าย "งวด" / "% ของยอดรวม" / หัวช่องในการ์ด (`cardOnly` · `cardLabel`) โผล่เฉพาะตอนเป็นการ์ด */}
+              <div className={styles.planContainer}>
+                <TableScroll family="editable" surface="auto" cells="stacked" minWidth={rule ? 700 : 620}>
+                  <table className={styles.planTable}>
+                    <thead>
+                      <tr>
+                        <th className={styles.colSeq}>งวด</th>
+                        <th>รายละเอียด</th>
+                        <th className={`num ${styles.colPercent}`}>%</th>
+                        <th className={`num ${styles.colAmount}`}>ยอด</th>
+                        {rule
+                          ? <th>เลือกรอบวางบิล</th>
+                          : <th className={styles.colDue}>กำหนดชำระ</th>}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableScroll>
+                    </thead>
+                    <tbody>
+                      {plannedInstallments.map((row) => {
+                        const rowLabel = row.label ? `งวด ${row.seq} · ${row.label}` : `งวด ${row.seq}`;
+                        return (
+                          <tr key={row.seq}>
+                            <td className={styles.cellSeq}><span className={styles.cardOnly}>งวด </span>{row.seq}</td>
+                            <td className={styles.cellLabel}>{row.label}</td>
+                            {/* หัวคอลัมน์เป็น "%" อยู่แล้ว ⇒ เซลล์เป็นตัวเลขเปล่า 2 ตำแหน่ง ·
+                                ⚠️ จัดรูปแบบเฉพาะใน JSX — `plannedInstallments` ตัวเดียวกันถูกส่งขึ้น API */}
+                            <td className={`num ${styles.cellPercent}`}>
+                              {fmtNumber(row.percent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              <span className={styles.cardOnly}>% ของยอดรวม</span>
+                            </td>
+                            <td className={`num ${styles.cellAmount}`}>{fmtMoney(row.amount)}</td>
+                            <td className={styles.cellPick}>
+                              {/* ช่อง/ชิปมีชื่อสำหรับเสียงอ่านของตัวเองครบแล้ว — ป้ายนี้มีไว้ให้ตาเห็นตอนหัวตารางหายไป */}
+                              <span className={styles.cardLabel} aria-hidden="true">{rule ? "เลือกรอบวางบิล" : "กำหนดชำระ"}</span>
+                              {rule ? (
+                                <BillingRoundPicker
+                                  compact
+                                  rule={rule}
+                                  todayIso={todayIso}
+                                  value={billing[row.seq] || EMPTY_PICKER_VALUE}
+                                  onChange={(next) => setBilling((prev) => ({ ...prev, [row.seq]: next }))}
+                                  disabled={creating}
+                                  idPrefix={`so-new-billing-${row.seq}`}
+                                  label={rowLabel}
+                                />
+                              ) : (
+                                <DateInput
+                                  value={billingValues[row.seq]?.dueDate || ""}
+                                  disabled={creating}
+                                  ariaLabel={`กำหนดชำระ ${rowLabel}`}
+                                  invalid={dateCheck.invalidSeqs.has(row.seq)}
+                                  onChange={(next) => setBilling((prev) => ({ ...prev, [row.seq]: { ...EMPTY_PICKER_VALUE, dueDate: next } }))}
+                                />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              </div>
+              {rule ? (
+                <p className={`form-note ${styles.planNote}`}>
+                  {rule.billing.mode === "monthly"
+                    ? "ชิปคือ 3 รอบถัดไปของลูกค้านับจากวันนี้ · แตะรอบเดียวได้ทั้งวันวางบิลและกำหนดชำระ · แก้กำหนดชำระทับรายงวดได้"
+                    : "ลูกค้าวางบิลได้ทุกวัน — ใส่วันวางบิล ระบบคิดกำหนดชำระตามรอบของลูกค้าให้"}
+                  {" · "}ไม่เลือกก็สร้างใบได้ — เลือกภายหลังได้ที่การ์ด &ldquo;การชำระ&rdquo; บนใบ
+                </p>
+              ) : null}
 
               {/* เงินที่ลูกค้าจ่ายมาก่อนออกใบ — ธง/โหมดพิเศษใช้สวิตช์ ไม่ใช่ช่องติ๊กลอย */}
               <div className={styles.prepaidBox}>

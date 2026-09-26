@@ -1612,6 +1612,21 @@ export function canEditRecord(user, resource, record, caretakerTeams) {
   return inScope(scope, user, record);
 }
 
+/* ── รอบวางบิลของลูกค้า (mig 0389 · มติเจ้าของ 25/09 ข้อ 4) ─────────────────────────
+   ⭐ แก้ได้ **สองฝ่าย**: ฝ่ายขายทีมที่ดูแลลูกค้า (ด่านเดียวกับแก้ทะเบียนลูกค้า — `canEditRecord`)
+   **และฝ่ายบัญชี** (ด่านเดียวกับคอนเฟิร์มงวด — `canConfirmPayment`) · รอบวางบิลเป็นข้อตกลงเรื่องเงิน
+   ที่ FN รู้ก่อนฝ่ายขายบ่อยครั้ง (ลูกค้าโทรมาแจ้งฝ่ายบัญชีตรง)
+   ⚠️ **ช่องแคบเฉพาะรอบวางบิล** — FN ยังถือแค่ `customers:view` ห้ามให้ `customers:edit` แทน
+      (cap นั้นเปิดทั้งฟอร์มลูกค้า + ด่านไฟล์แนบ `/api/attachments` ทั้งระบบ) · เส้นเขียนแยกที่
+      `/api/customers/[id]/billing-rule` + ช่องแคบของ proxy (`apiWriteAllowed`) คู่กับตัวนี้
+   ⚠️ ตัวเดียวที่ API · หน้าลูกค้า (ปุ่ม "แก้รอบวางบิล") ถาม — ปุ่มกับด่านต้องพูดเรื่องเดียวกัน
+   ผู้เรียกฝั่งจอส่ง `{ role, extraCaps, department, teams }` (ฝ่ายใช้แคบ FN · ทีมใช้แคบทีมที่ดูแล) */
+export function canEditCustomerBillingRule(user, customer) {
+  if (!user?.role || !customer) return false;
+  if (canConfirmPayment(user)) return true;
+  return canEditRecord(user, 'customers', customer);
+}
+
 export function canDeleteRecord(user, resource, record) {
   // ของกลางก็ลบได้ ไม่งั้นร่างไร้ทีมจะค้างระบบไปตลอดโดยมีแต่แอดมินที่เก็บกวาดได้ ·
   // ด่านที่กันของจริงคือด่านสถานะของ handler (ทะเบียน: ร่าง + ไม่มีใบยื่นอ้างถึง ·

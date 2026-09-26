@@ -225,13 +225,15 @@ const ORIGIN_FILTERS = {
 };
 
 /* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
-   ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้ */
+   ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้
+   ⭐ "กำหนดชำระ" = กำหนดชำระถัดไปจาก **งวด** (`payment.nextDue` · กำหนดวางบิลรอบสอง 26/09) ตัวเดียวกับบรรทัด
+     "กำหนด …" ในเซลล์และหัวใบ — 🐞 เดิมเรียงด้วย `paymentDueDate` ค่าตายของใบ ⇒ ลำดับไม่ตรงกับวันที่ตาเห็น */
 function compareOrders(a, b, key, dir) {
   const mul = dir === "desc" ? -1 : 1;
   const text = (value) => String(value || "");
   if (key === "due") {
-    const aDue = a.paymentDueDate || null;
-    const bDue = b.paymentDueDate || null;
+    const aDue = a.payment?.nextDue || null;
+    const bDue = b.payment?.nextDue || null;
     if (!aDue !== !bDue) return aDue ? -1 : 1;
     if (aDue !== bDue) return (String(aDue) < String(bDue) ? -1 : 1) * mul;
   } else if (key === "actual") {
@@ -489,9 +491,11 @@ export default function SalesOrdersPage() {
                       คำเดียวกันสองบรรทัด (เจอตอนกดดูรอบแรก) */}
                   <td className="num mono">
                     {paymentCell(row.payment)}
-                    {/* วันครบกำหนดเป็นบรรทัดรองของงวด — แดงเมื่อเลยกำหนด (โทนเดิม) */}
+                    {/* วันครบกำหนดเป็นบรรทัดรองของงวด — แดงเมื่อเลยกำหนด (โทนเดิม)
+                        ⭐ กำหนดชำระถัดไปจากงวด (`payment.nextDue`) ไม่ใช่ `paymentDueDate` ค่าตายของใบ (กำหนดวางบิลรอบสอง 26/09)
+                        · ไม่มีงวดค้างที่มีวัน / ยังไม่เริ่มติดตาม = ขีด */}
                     <span className={`cell-sub ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>
-                      กำหนด {fmtDate(row.paymentDueDate)}
+                      กำหนด {row.payment?.nextDue ? fmtDate(row.payment.nextDue) : NA}
                     </span>
                   </td>
                   <td className="num mono">{taxInvoiceCell(row.payment)}</td>

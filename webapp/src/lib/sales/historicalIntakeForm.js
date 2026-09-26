@@ -33,6 +33,7 @@ import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney } from '@/lib/s
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
+import { MONTH_END_DAY, billingRuleOf, describeBillingRule } from '@/lib/sales/billingRule';
 import {
   HISTORICAL_APPROVER_LABEL, HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
   charLength, isOpeningInstallment,
@@ -1964,6 +1965,91 @@ export const HISTORICAL_DUE_RULES = Object.freeze([
   { value: 'day', label: 'ทุกวันที่ …' },
   { value: 'manual', label: 'กรอกเองในตาราง' },
 ]);
+
+/* ── ชิป "ตามรอบของลูกค้า" ของหน้าต่างแบ่งงวด (กำหนดวางบิล รอบสอง ข้อ 6 · มติเจ้าของ 26/09 · mig 0389) ──────
+   ⭐ ลูกค้าที่ตั้งรอบวางบิลแบบ **เงินเข้ารายเดือน เดือนเดียวกับวางบิล** ไว้ที่ทะเบียนแล้ว = แตะครั้งเดียวได้วันครบกำหนด
+     ตามวันเงินเข้า (แปลงเป็นกติกาเดิมของตัวคิด: 'day' n · วันที่ 31 = 'monthEnd') — ตัวคิดวันไม่มีสาขาใหม่
+   🔴 **ไม่เลือกให้** (กฎบ้าน: ไม่มีค่าตั้งต้นให้การตัดสินใจ) — แผนชำระของใบย้อนหลังมาจากสัญญา ไม่ใช่รอบวางบิลเสมอไป
+   ⚠️ เงินเข้าแบบเครดิต (นับ n วันจากวันวางบิล) ไม่มีชิป — ใบย้อนหลังไม่มีวันวางบิลให้นับ ⇒ โชว์ประโยครอบเป็นข้อมูลอย่างเดียว
+   🔴 "เดือนถัดไป" (monthOffset 1) **ไม่มีชิป** — เงินเข้าเดือนถัดจากเดือนที่วางบิล ซึ่งใบย้อนหลังไม่มีวันวางบิล
+     🐞 รีวิว 26/09: เดิมชิปใช้แค่วันที่เงินเข้า ("วันที่ 10 แรกนับจากวันเริ่มงวด") ⇒ รอบ "วางบิล 25 · เงินเข้า 10 เดือนถัดไป"
+       ช่วง 01/10/2026–31/03/2027 ได้ 10/10 · 10/11 … ขณะที่ตัวคิดของลูกค้าเอง (`billingRounds`) ได้ วางบิล 25/10 → 10/11
+       = **เร็วไปหนึ่งเดือนทุกงวด และก่อนวันวางบิลของงวดนั้นเอง** ⇒ ขึ้นแดง "เลยกำหนด" + ด่านช่าง (visitGate) บล็อกก่อนเวลา
+       — บั๊กเดียวกับ SO-26080050-0 ที่เรื่องนี้มาแก้ · ขัดมติ 3 "ไม่เดาวัน"
+     ⚠️ normalizeBillingRule ห้าม offset 0 เมื่อวันเงินเข้า < วันวางบิล ⇒ offset 1 คือรูปปกติของลูกค้าที่จ่ายวันต้นกว่าวันวางบิล
+       ทางที่คิดถูก (ถ้าเจ้าของอยากได้): ใช้ `billingRounds(rule, coversFrom, 1)[0].dueDate` รายงวดในตัวคิด = สาขาใหม่ ต้องขอมติก่อน
+   ⚠️ งวดยกมาไม่เกี่ยว — หน้าต่างนี้สร้างเฉพาะงวดที่ยังต้องเก็บ (งวดยกมาไม่มีวันวางบิลเสมอ · CHECK ของ 0389) */
+export const HISTORICAL_CUSTOMER_DUE_RULE = 'customer';
+/* ต้นประโยคเหตุที่ไม่มีชิป — บอกชื่อตัวเลือกที่หายไป ผู้ใช้ไม่ต้องเดาว่าอะไรไม่ขึ้น (กฎบ้าน: ติดด่าน = บอกเหตุ) */
+const NO_CUSTOMER_CHIP = 'ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะ';
+
+/**
+ * รอบวางบิลของลูกค้า → ชิปของหน้าต่างแบ่งงวด
+ * @param billingRule ค่า `customers."billingRule"` (รูปผิด/ไม่ตั้ง = ถือว่ายังไม่ตั้ง)
+ * @returns `{ hint, option, note }`
+ *   · `hint`   = ประโยครอบของลูกค้า ('' = ยังไม่ตั้ง ⇒ ไม่มีอะไรให้โชว์)
+ *   · `option` = `{ value, label, dueRule, dueDay }` เฉพาะเงินเข้ารายเดือน เดือนเดียวกับวางบิล · นอกนั้น null
+ *   · `note`   = บรรทัดอธิบาย — มีชิป: ชิปทำอะไร (โชว์ตอนเลือก) · ไม่มีชิป: ทำไมไม่มี (บรรทัดของตัวเองใต้ประโยครอบ)
+ *     ⚠️ ห้ามมี "—" ใน note ที่ไม่มีชิป — ประโยครอบกับเหตุอยู่ใกล้กัน เคยขึ้นขีดยาวสองตัวในบรรทัดเดียว (รีวิว 26/09)
+ */
+export function historicalCustomerDueOption(billingRule) {
+  const rule = billingRuleOf(billingRule);
+  if (!rule) return { hint: '', option: null, note: null };
+  const hint = describeBillingRule(rule);
+  if (rule.payment.mode !== 'monthly') {
+    return { hint, option: null, note: `${NO_CUSTOMER_CHIP}เงินเข้านับจากวันวางบิล ซึ่งใบย้อนหลังไม่มี · เลือกวันครบกำหนดเอง` };
+  }
+  if (rule.payment.monthOffset === 1) {
+    return {
+      hint,
+      option: null,
+      note: `${NO_CUSTOMER_CHIP}เงินเข้าเดือนถัดจากเดือนที่วางบิล ซึ่งใบย้อนหลังไม่มีวันวางบิล · เลือกวันครบกำหนดเอง`,
+    };
+  }
+  const monthEnd = rule.payment.day === MONTH_END_DAY;
+  /* ป้ายบอกว่าเป็นวัน **เงินเข้า** — ลูกค้า "วางบิล 5 · เงินเข้า 25" เคยอ่านชิป "(ทุกวันที่ 25)" เป็นวันวางบิล (รีวิว 26/09) */
+  const when = monthEnd ? 'เงินเข้าสิ้นเดือน' : `เงินเข้าทุกวันที่ ${rule.payment.day}`;
+  return {
+    hint,
+    option: {
+      value: HISTORICAL_CUSTOMER_DUE_RULE,
+      label: `ตามรอบของลูกค้า (${when})`,
+      dueRule: monthEnd ? 'monthEnd' : 'day',
+      dueDay: monthEnd ? '' : String(rule.payment.day),
+    },
+    note: monthEnd
+      ? 'ครบกำหนดสิ้นเดือนของแต่ละงวด (วันเงินเข้าของลูกค้า)'
+      : `ครบกำหนดวันที่ ${rule.payment.day} แรกนับจากวันเริ่มของแต่ละงวด (วันเงินเข้าของลูกค้า) · เดือนที่ไม่มีวันนั้นใช้สิ้นเดือน`,
+  };
+}
+
+/**
+ * กติกาวันครบกำหนดที่ส่งเข้า `historicalSplitPreview` — ชิปของลูกค้าแปลงเป็นกติกาเดิม ส่วนตัวเลือกอื่นผ่านตรง
+ * ⚠️ เลือกชิปของลูกค้าไว้แล้วรอบหายไป (ลูกค้าล้างรอบ/โหลดใหม่ไม่ขึ้น) = กลับเป็น "ยังไม่เลือก" — ไม่เดาวันต่อ
+ * @returns `{ dueRule, dueDay }`
+ */
+export function historicalEffectiveDueRule({ dueRule = null, dueDay = '', customerOption = null } = {}) {
+  if (dueRule !== HISTORICAL_CUSTOMER_DUE_RULE) return { dueRule, dueDay };
+  if (!customerOption) return { dueRule: null, dueDay: '' };
+  return { dueRule: customerOption.dueRule, dueDay: customerOption.dueDay };
+}
+
+/* ข้อความกลางเมื่อโหลดรอบวางบิลของลูกค้าไม่ขึ้น — วิซาร์ดใช้เป็น fallbackError · หน้าต่างแบ่งงวดใช้เทียบ */
+export const HISTORICAL_TERMS_LOAD_FAILED = 'โหลดรอบวางบิลของลูกค้าไม่สำเร็จ';
+
+/**
+ * บรรทัดบอกเหตุในหน้าต่างแบ่งงวดเมื่อโหลดรอบไม่ขึ้น — **ติดเหตุจากเซิร์ฟเวอร์มาด้วย** (รีวิว 26/09: เดิมโชว์ข้อความกลางเสมอ
+ * ⇒ ภาพหน้าจอที่ส่งมาแยก 400 / 500 / เน็ตหลุด ไม่ออก) · ไม่บล็อกอะไร ตัวเลือกวันครบกำหนดเดิมใช้ได้ครบ
+ * @param detail `customerTerms.detail` (ข้อความของ ApiError — 500 ของเส้นขึ้นต้น "อ่านรอบวางบิลของลูกค้าไม่สำเร็จ: …" อยู่แล้ว)
+ */
+export function historicalCustomerTermsError(detail) {
+  const reason = text(detail);
+  let head = HISTORICAL_TERMS_LOAD_FAILED;
+  if (reason && reason !== HISTORICAL_TERMS_LOAD_FAILED) {
+    head = reason.includes('รอบวางบิล') ? reason : `${HISTORICAL_TERMS_LOAD_FAILED} (${reason})`;
+  }
+  return `${head} · เลือกวันครบกำหนดเองได้ตามเดิม`;
+}
 
 /**
  * ตัวเลือกรอบการเก็บเงินของช่วงที่เหลือ — ตัวที่ใช้ไม่ได้ **โชว์พร้อมเหตุ ไม่ซ่อน** (กฎบ้าน)

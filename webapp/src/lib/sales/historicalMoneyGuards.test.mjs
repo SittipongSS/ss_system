@@ -118,6 +118,9 @@ const SEES_HISTORICAL = new Map([
   ['app/api/service/intake/route.js', { count: 1, reason: 'คิวงานเข้าใหม่ของ TS — ใบย้อนหลังที่อนุมัติแล้วมาพร้อมโซนที่ผูกตอนอนุมัติ (ถังตั้งรอบ · มติ 22/09) · ยอดใช้ตัดสินใบ ฿0 เท่านั้น (paymentNotRequired) ไม่ออกไปกับ response' }],
   ['lib/service/gateContext.js', { count: 1, reason: 'บริบทด่านเข้าไซต์ — ใบของรอบขาย (ใบย้อนหลังที่อนุมัติแล้วด้วยโดยตั้งใจ) · ยอดใช้ตัดสินใบ ฿0 ของข้อ② เท่านั้น (paymentNotRequired) ส่งออกเป็น 0/null ไม่รวมยอด (มติ 22/09)' }],
   ['app/api/finance/payments/route.js', { count: 1, reason: 'ทะเบียนการชำระ — งวดที่ยังต้องเก็บของใบย้อนหลังเป็นเงินจริง (คำตอบข้อ 2) · แถวพก origin' }],
+  /* กำหนดวางบิล (mig 0389 · 26/09): กระดิ่งถึงรอบวางบิล — งวดปกติของใบย้อนหลังที่อนุมัติแล้วก็ต้องวางบิลจริง
+     (เหตุผลเดียวกับทะเบียนการชำระ) · งวดยกมาถูกตัดที่ตัวคัด (billingDueCandidates) */
+  ['app/api/cron/daily-digest/route.js', { count: 1, reason: 'กระดิ่งถึงรอบวางบิล — ใบของงวดที่ถึงรอบ (id จากงวด) · ยอดใช้ตัดสินใบ ฿0 เท่านั้น (paymentNotRequired) ไม่รวมยอด' }],
   ['app/api/sales-planning/sales-orders/route.js', { count: 1, reason: 'ทะเบียนใบสั่งขาย — แถวโชว์ได้ ยอดผ่าน salesOrderAmountKind (ใบย้อนหลัง = excluded)' }],
   ['app/api/sales-planning/deals/[id]/overview/route.js', { count: 1, reason: 'ใบของดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts/salesOrderAmountKind' }],
   ['app/api/sales-planning/deals/[id]/route.js', { count: 1, reason: 'ด่านย้ายเจ้าของดีลภาชนะ (0374) — หาใบย้อนหลังที่ยังไม่อนุมัติของดีลเดียวผ่าน historicalRowsOnly · ไม่รวมยอด' }],

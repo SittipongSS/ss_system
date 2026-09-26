@@ -49,7 +49,7 @@ import {
   canKeyHistoricalSalesOrder, historicalEditPath, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import {
-  HISTORICAL_SAVE_BUTTON_LABEL, HISTORICAL_SAVE_STAGES, HISTORICAL_WIZARD_STEPS,
+  HISTORICAL_SAVE_BUTTON_LABEL, HISTORICAL_SAVE_STAGES, HISTORICAL_TERMS_LOAD_FAILED, HISTORICAL_WIZARD_STEPS,
   HISTORICAL_WIZARD_STEP_ORDER, emptyHistoricalWizard, emptySaveProgress,
   firstStepWithIssues, historicalAsideRows, historicalContractDateWarnings, historicalContractFileCount,
   historicalDuplicateGate,
@@ -64,6 +64,7 @@ import {
   historicalWarningGroups,
 } from "@/lib/sales/historicalReviewView";
 import { uploadContractFiles, uploadOpeningEvidence } from "@/lib/sales/historicalWizardUploads";
+import { createFormTermsState } from "@/lib/sales/salesOrderCreateInstallments";
 import WizardContractStep from "./WizardContractStep";
 import WizardZonesStep from "./WizardZonesStep";
 import WizardMoneyStep from "./WizardMoneyStep";
@@ -263,6 +264,27 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       .finally(() => { if (alive) setProductsBusy(false); });
     return () => { alive = false; };
   }, [customerId, registryRound, productsRound]);
+
+  /* รอบวางบิลของลูกค้า (mig 0389 · กำหนดวางบิล รอบสอง ข้อ 6) — ชิป "ตามรอบของลูกค้า" ในหน้าต่างแบ่งงวดของขั้น ③
+     ⭐ อ่านแคบรายเดียว (`/api/customers?billingTermsOf=` — 4 คอลัมน์) ไม่ใช่ลิสต์ picker: ลิสต์ไม่แบกคอลัมน์นี้โดยเจตนา
+     `null` = ยังไม่เลือกลูกค้า/กำลังโหลด · `{ status: 'ready', supported, rule }` · `{ status: 'error', detail }`
+     (รูปเดียวกับหน้าสร้างใบสั่งขาย — `createFormTermsState`)
+     ⚠️ โหลดไม่ขึ้น **ไม่บล็อกอะไร** — หน้าต่างแบ่งงวดบอกเหตุหนึ่งบรรทัด ตัวเลือกวันครบกำหนดเดิมใช้ได้ครบ
+     ⚠️ ไม่แคช: รอบแก้ได้ตลอด (ทะเบียนลูกค้า — SA/FN ไม่ต้องอนุมัติ) ⇒ เปลี่ยนลูกค้า/รีเฟรชทะเบียนแล้วอ่านใหม่ */
+  const [billingTerms, setBillingTerms] = useState(null);
+  useEffect(() => {
+    if (!customerId) { setBillingTerms(null); return undefined; }
+    let alive = true;
+    setBillingTerms(null);
+    apiJson(`/api/customers?billingTermsOf=${encodeURIComponent(customerId)}`, {
+      cache: "no-store", fallbackError: HISTORICAL_TERMS_LOAD_FAILED,
+    })
+      .then((data) => { if (alive) setBillingTerms(createFormTermsState(data)); })
+      .catch((loadError) => {
+        if (alive) setBillingTerms({ status: "error", detail: loadError?.message || HISTORICAL_TERMS_LOAD_FAILED });
+      });
+    return () => { alive = false; };
+  }, [customerId, registryRound]);
 
   const customerOptions = useMemo(() => customerSelectOptions(customers), [customers]);
   const ownerOptions = useMemo(() => owners.map((person) => ({
@@ -872,6 +894,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         evidenceFiles={evidenceFiles}
         onEvidenceFiles={(files) => { setDirty(true); setEvidenceFiles(files); }}
         todayIso={todayIso}
+        customerTerms={billingTerms}
         busy={busy}
         onOversize={setError}
       />

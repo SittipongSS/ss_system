@@ -10,9 +10,11 @@ import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { canConfirmPayment } from '@/lib/permissions';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
-import { ensureInstallments, loadInstallments, updateInstallment } from '@/lib/sales/salesOrderInstallmentsStore';
+import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
+import { parseCreateFormInstallments } from '@/lib/sales/salesOrderCreateInstallments';
+import { applyCreateFormPayments } from '@/lib/sales/salesOrderCreatePayments';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
 import { orderBusinessLineOf, orderHasServiceRounds } from '@/lib/sales/serviceOrders';
@@ -194,6 +196,8 @@ export const GET = withUser(async ({ user, supabase }) => {
       quotation: quoteById.get(row.quotationId) || null,
       scentRequest: scentRequestByOrder.get(row.id) || null,
       // สรุปงวดพอให้ตารางวาดได้ — รายละเอียดเต็มอยู่ที่หน้ารายละเอียดใบ
+      // ⭐ `payment.nextDue` = กำหนดชำระถัดไปจากงวด (บรรทัด "กำหนด …" + การเรียง "กำหนดชำระ") แทน `paymentDueDate` ค่าตายของใบ
+      //   (กำหนดวางบิลรอบสอง 26/09) — คิดจาก `status` + `dueDate` ที่ loadListInstallments เลือกมาอยู่แล้ว ไม่ต้องอ่านเพิ่ม
       payment: salesOrderPaymentCell(
         installmentsByOrder.get(row.id) || [],
         quoteById.get(row.quotationId)?.paymentPlan,
@@ -256,6 +260,7 @@ export const GET = withUser(async ({ user, supabase }) => {
    แล้ว ref ตามเข้าใบตอนสร้างสำเร็จ
 
    payload: { quotationId, referenceDoc?, notes?, deliveryDueDate?, confirmation?, installments?, firstPayment? }
+   installments: [{ seq, dueDate?, billingDate?, billingEvent? }] — ดู salesOrderCreateInstallments.js
    ⚠️ **เอกสารยืนยันไม่บังคับตอนสร้าง** — AE ที่ยังรอ PO ต้องตั้งใบร่างไว้ก่อนได้
    ด่านจริงคือตอนยื่นอนุมัติ (`salesOrderConfirmationGate`) */
 export const POST = withUser(async ({ user, supabase, req }) => {
@@ -307,6 +312,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   ]);
   if (storageMiss) return badRequest(storageMiss);
 
+  /* วันของงวด: กำหนดชำระ + วันวางบิล/รอเหตุการณ์ (mig 0389 · ม็อก billing-cycle จอ B) — ไม่บังคับ
+     ⭐ ตรวจ **ก่อนออกเลขใบ** — เลขใบใช้ซ้ำไม่ได้ (0241) ⇒ ค่าผิดต้องตอบ 400 ตั้งแต่ยังไม่มีใบ
+        (เดิมค่าผิดถูกข้ามเงียบ ๆ ใน applyCreateFormPayments แล้วใบออกไปโดยงวดไม่มีวันที่คนกรอก) */
+  const installmentDates = parseCreateFormInstallments(body.installments);
+  if (installmentDates.error) return badRequest(installmentDates.error);
+
   const orderId = genId('SOR');
   const { data: order, error } = await supabase.rpc('create_sales_order_draft', {
     p_quote_id: quotationId,
@@ -349,24 +360,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       user,
     });
     await applyCreateFormPayments(supabase, {
-      orderId, dues: body.installments, firstPaidOn, firstEvidence,
+      orderId, dates: installmentDates.rows, firstPaidOn, firstEvidence,
     });
   } catch (installmentError) {
     console.error('create SO: installments failed', orderId, installmentError);
-    installmentWarning = 'ออกใบสำเร็จ แต่ตั้งงวดชำระตามที่กรอกไม่สำเร็จ — ตรวจการ์ด "การชำระ" บนใบ';
+    installmentWarning = 'ออกใบสำเร็จ แต่ตั้งงวดชำระ (กำหนดชำระ · วันวางบิล) ตามที่กรอกไม่สำเร็จ — ตรวจการ์ด "การชำระ" บนใบ';
   }
 
   return ok(installmentWarning ? { ...order, warning: installmentWarning } : order, 201);
 });
 
-/**
- * กำหนดชำระรายงวด + เงินงวดแรกที่กรอกมาจากฟอร์มหน้าสร้าง
- *
- * ⚠️ เขียนหลังงวดเกิดแล้วเท่านั้น (จับคู่ด้วย `seq`) · สถานะไม่ถูกแตะเลย — งวดร่าง
- * ต้องเป็น `pending` ตาม CHECK `sales_order_installments_draft_pending` (0259)
- * `paidOn` + `evidence` บนแถว pending = "งวดร่างที่บันทึกเงินไว้" (installmentPrepaid)
- * ซึ่งจะกลายเป็นคำแจ้งให้บัญชีเองตอนใบอนุมัติ (freezeInstallments)
- */
 /* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·
    `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว) */
 async function loadListInstallments(supabase, orderIds) {
@@ -383,26 +386,4 @@ async function loadListInstallments(supabase, orderIds) {
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true })));
-}
-
-async function applyCreateFormPayments(supabase, { orderId, dues, firstPaidOn, firstEvidence }) {
-  const rows = await loadInstallments(supabase, orderId);
-  if (!rows.length) return;
-  const bySeq = new Map(rows.map((row) => [row.seq, row]));
-
-  for (const item of Array.isArray(dues) ? dues : []) {
-    const row = bySeq.get(Number(item?.seq));
-    const dueDate = String(item?.dueDate || '').trim();
-    if (!row || !dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) continue;
-    await updateInstallment(supabase, row.id, { dueDate });
-  }
-
-  if (!firstPaidOn) return;
-  const first = bySeq.get(1);
-  if (!first) return;
-  await updateInstallment(supabase, first.id, {
-    paidOn: firstPaidOn,
-    evidence: firstEvidence,
-    note: first.note || 'ลูกค้าจ่ายมาก่อนออกใบ — บันทึกจากฟอร์มสร้างใบสั่งขาย',
-  });
 }

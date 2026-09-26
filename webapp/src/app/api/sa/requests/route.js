@@ -35,6 +35,7 @@ import {
   requestStepKey,
 } from '@/lib/master/requestTypes';
 import { findRequest, loadRequests } from '@/lib/materialPricesAdmin';
+import { linkNewBillingRequest } from '@/lib/requests/billingInstallmentLink';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -71,7 +72,8 @@ export async function GET(request) {
 // { kind, dept, title, body?, urgent?, requestedDueDate?,
 //   dealId? | salesOrderId? | scentId? | formulaId?,   ← ตามหัวข้อ
 //   productId?, formulaCode?, formulaName?, costingRequestId?,
-//   items?: ตามรูปร่างบรรทัดของหัวข้อ (พัฒนาสูตร: หมวด×กลิ่น · เอกสาร: ชนิด+รายละเอียด) }
+//   items?: ตามรูปร่างบรรทัดของหัวข้อ (พัฒนาสูตร: หมวด×กลิ่น · เอกสาร: ชนิด+รายละเอียด),
+//   linkInstallmentId?: งวดของ SO ที่ต้องผูกให้ (ปุ่ม "ขอใบวางบิลงวดนี้" — ดูขั้น 4 ท้าย handler) }
 //
 // ⚠️ `title` บังคับทุกหัวข้อ · ของที่ต้องผูก**ต่างกันตามหัวข้อ** (ดู `needs` ใน
 // lib/master/requestTypes.js) — พัฒนากลิ่นผูก SO · พัฒนาสูตรผูกโครงการ+ดีล
@@ -590,12 +592,45 @@ export async function POST(request) {
 
     }
 
+    /* 4) ผูกงวดชำระ (กำหนดวางบิล) — ปุ่ม "ขอใบวางบิลงวดนี้" บนการ์ดการชำระของ SO ส่ง
+       `linkInstallmentId` มา ⇒ ผูกให้เลย ไม่ต้องย้อนไปกด "แนบคำร้องที่ขอไว้แล้ว" อีกรอบ
+       (สัญญาณ "ขอแล้ว" ที่หยุดกระดิ่งก่อนวันวางบิลอ่านจากการผูกนี้ — ไม่ผูก = เตือนต่อทั้งที่ขอไปแล้ว)
+       ⭐ **หลัง** ใบ+บรรทัดลงครบ — ผูกก่อนแล้ว rollback ข้างบนลบใบทิ้ง = งวดชี้ใบที่ไม่มีจริง
+          และ **ก่อน** findRequest ⇒ คำตอบมี `linkedInstallment` ของงวดที่เพิ่งผูกแล้ว
+       ⭐ ด่านทั้งชุด (งวดอยู่ใบที่อ้าง · QT เดียวกัน · สิทธิ์ salesplan:edit · ล็อกทั้งใบ · ไม่ใช่งวดยกมา/
+          รับรองแล้ว/คืนเงินแล้ว/ผูกใบอื่นที่ยังมีชีวิตอยู่) อยู่ใน lib/requests/billingInstallmentLink.js
+       🔴 **ผูกไม่ได้ต้องไม่ล้มการเปิดใบ** — ใบร่างเก็บแล้ว ตอบ error เมื่อไรคนกดซ้ำแล้วได้ใบซ้ำ
+          ⇒ ตัวผูกไม่ throw · ตอบ 201 + `_warning` (lib/apiWarnings) · log อยู่ในตัวผูก
+       ⚠️ `request:` ในก้อนนี้คือ **คำร้องที่เพิ่งสร้าง** ไม่ใช่ HTTP request ของ handler */
+    const link = await linkNewBillingRequest(supabase, {
+      user,
+      request: { id: requestId, kind, quotationId, salesOrderId: salesOrderId || optionalSalesOrderId },
+      installmentId: body.linkInstallmentId,
+    });
+    if (link.after) {
+      // audit ของงวด before/after ทั้งแถว — รูปเดียวกับ PATCH `link` (ทางกู้ทางเดียว ระบบไม่มีถังขยะ)
+      // ทับลิงก์ตาย (คำร้องเดิมถูกลบ/ยกเลิก/ปฏิเสธ) = บอกในสรุปด้วย ไม่ต้องไปไล่เทียบ before/after เอง
+      const replaced = link.replaced
+        ? ` · แทนคำร้องเดิม ${link.replaced.docNo || link.replaced.id} (${link.replaced.status || 'ถูกลบแล้ว'})`
+        : '';
+      await recordAudit({
+        user,
+        action: 'update',
+        entityType: 'sales_order_installments',
+        entityId: link.after.id,
+        before: link.before,
+        after: link.after,
+        summary: `link งวด ${link.before.seq} ของ ${link.order.orderNumber} — ผูกอัตโนมัติตอนเปิดคำร้องจาก "ขอใบวางบิลงวดนี้"${replaced}`,
+        request,
+      });
+    }
+
     const created = await findRequest(supabase, requestId);
     await recordAudit({
       user, action: 'create', entityType: 'dept_request', entityId: requestId, after: created,
       summary: `เปิดคำร้อง "${requestKindLabel(kind)}" ถึงฝ่าย ${dept} (ร่าง)`, request,
     });
-    return Response.json(created, { status: 201 });
+    return Response.json(link.warning ? { ...created, _warning: link.warning } : created, { status: 201 });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }

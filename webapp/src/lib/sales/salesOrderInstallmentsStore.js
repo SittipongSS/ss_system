@@ -4,7 +4,7 @@
 // เพื่อให้ด่าน/การคำนวณทดสอบได้โดยไม่ต้องมีฐานข้อมูล
 import { genId } from '@/lib/id';
 import {
-  buildInstallmentsForOrder, installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen,
+  billingFillPatch, buildInstallmentsForOrder, installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen,
 } from '@/lib/sales/salesOrderPayments';
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
@@ -137,7 +137,7 @@ export async function ensureInstallments(supabase, {
  * ⚠️ **จำนวนงวดต่างกันแก้ด้วยการทับยอดไม่ได้** — QT ถูกแก้หลังกด "เริ่มติดตาม" ได้
  * ⇒ ตั้งใหม่ทั้งชุด (ลบของเดิมแล้วสร้างจากแผนล่าสุด)
  * ⭐ **แต่ของที่คนกรอกเองถูกอุ้มข้ามการตั้งใหม่ตาม `seq`** (แก้ 07/09/2026):
- *   `coversFrom`/`coversTo` · `dueDate` · หมายเหตุ · เดิมหายทั้งหมด และหัวข้อนี้เคยเขียนว่า
+ *   `coversFrom`/`coversTo` · `dueDate` · หมายเหตุ · `billingDate`/`billingEvent` (mig 0389) · เดิมหายทั้งหมด และหัวข้อนี้เคยเขียนว่า
  *   "แลกกับ `dueDate` ที่ SA กรอกไว้ — จอเตือนไว้ก่อนแล้ว" ซึ่งใช้ได้ตอนที่ยังไม่มีช่วงครอบ
  *   ⇒ วันนี้ช่วงครอบหายเมื่อไร `paidThrough` เป็น null และด่านเงินบล็อกนัดทั้งไซต์
  *     (ดูรายละเอียดที่จุดลบข้างล่าง)
@@ -211,13 +211,20 @@ export async function freezeInstallments(supabase, { order, user, now = null, bo
        ⚠️ **ไม่อุ้ม `billingRequestId`** — คำร้องขอใบวางบิลผูกกับ *งวดที่มียอดเท่านั้น*
          และแผนที่เปลี่ยนแปลว่ายอดเปลี่ยน ⇒ ยกมาแปะงวดใหม่คือชี้คำร้องไปที่ยอดคนละตัว
          · ระบบกันแนบซ้ำด้วยการถามว่าคำร้องใบนี้เกาะงวดไหนอยู่ ⇒ ปล่อยให้หลุดแล้ว
-           ให้คนแนบใหม่ ปลอดภัยกว่าแปะผิดงวดเงียบ ๆ */
-    const carried = new Map(draft.map((row) => [row.seq, {
-      coversFrom: row.coversFrom ?? null,
-      coversTo: row.coversTo ?? null,
-      dueDate: row.dueDate ?? null,
-      note: row.note ?? null,
-    }]));
+           ให้คนแนบใหม่ ปลอดภัยกว่าแปะผิดงวดเงียบ ๆ
+       ⭐ **วันวางบิล / รอเหตุการณ์ (mig 0389 · กำหนดวางบิล) อุ้มด้วย** — SA แตะรอบให้งวดตั้งแต่ใบยังเป็นร่าง
+         (ม็อก B/C) ⇒ ไม่อุ้ม = อนุมัติใบแล้ววันวางบิลหายเงียบทั้งที่กำหนดชำระยังอยู่ (สองช่องที่ตั้งมาคู่กันแยกจากกัน)
+         · CHECK "ไม่มีทั้งคู่พร้อมกัน" ของ 0389 ผ่านเสมอ — ค่าคู่นี้มาจากแถวเดิมที่ผ่าน CHECK มาแล้ว
+       🔴 **เก็บเฉพาะค่าที่ไม่ว่าง** (แก้ 26/09) — เดิม `.update(keep)` เขียนทั้งสี่ช่องเมื่อช่องใดช่องหนึ่งมีค่า
+         ⇒ null ของแถวเก่าเขียนทับค่าที่งวดใหม่ได้มา · 🐞 **เคยเสียของจริงแล้ว**: งวดใหม่ได้ `note` ตอนสร้าง (หมายเหตุของ
+         แผนใน QT ผ่าน installmentsFromPaymentPlan · หมายเหตุสลิปที่ยืม) แล้วถูก null ของแถวเก่าลบทิ้งทุกครั้งที่แถวนั้นมี
+         ช่วงครอบ/กำหนดชำระให้อุ้ม ⇒ **พฤติกรรมเปลี่ยน**: หมายเหตุจากแผนรอดแล้ว (หมายเหตุที่คนพิมพ์ไว้ในแถวเก่ายังชนะเหมือนเดิม)
+         · และก่อนรัน 0389 ชื่อคอลัมน์ `billingDate` ใน payload = PostgREST ตอบ PGRST204 ⇒ แถวนั้น **ไม่ได้อุ้มอะไรเลย**
+         รวมช่วงครอบ (ด่านเงินของนัดช่าง) — ตัดค่าว่างทิ้ง ทำให้ใบที่ยังไม่มีวันวางบิลไม่เอ่ยชื่อคอลัมน์ใหม่เลย */
+    const CARRIED = ['coversFrom', 'coversTo', 'dueDate', 'note', 'billingDate', 'billingEvent'];
+    const carried = new Map(draft.map((row) => [row.seq, Object.fromEntries(
+      CARRIED.map((field) => [field, row[field] ?? null]).filter(([, value]) => value !== null && value !== ''),
+    )]));
 
     const { error } = await supabase.from(TABLE).delete().in('id', draft.map((r) => r.id));
     if (error) throw error;
@@ -229,7 +236,7 @@ export async function freezeInstallments(supabase, { order, user, now = null, bo
     const restored = [];
     for (const row of seeded.rows) {
       const keep = carried.get(row.seq);
-      if (!keep || !Object.values(keep).some((v) => v !== null)) { restored.push(row); continue; }
+      if (!keep || !Object.keys(keep).length) { restored.push(row); continue; }
       const { data, error: patchError } = await supabase.from(TABLE)
         .update(keep).eq('id', row.id).select('*').maybeSingle();
       restored.push(patchError ? row : (data || row));
@@ -328,6 +335,37 @@ export async function updateInstallment(supabase, id, patch, { expectedUpdatedAt
   return data;
 }
 
+/**
+ * เขียนวันของ "เติมตามรอบ เดือนละงวด" ทีละงวด (กำหนดวางบิล · mig 0389) — route เรียกหลังด่านผ่าน **ครบทุกงวด** แล้ว
+ * ⭐ เขียนแบบมีเงื่อนไข `updatedAt` ของแถวที่ด่านเพิ่งตัดสิน (ไม่มี RPC ⇒ ไม่มีทรานแซกชัน) ⇒ อีกหน้าต่างเขียนแทรก = หยุดที่งวดนั้น
+ *   งวดที่ลงไปแล้วคงอยู่ (กดซ้ำเติมต่อเฉพาะงวดที่ยังว่าง — installmentBillingFillable) · **ไม่ย้อนงวดที่ลงแล้ว** (ย้อนเองก็แข่งได้อีกชั้น)
+ * ⚠️ พังตั้งแต่งวดแรก = ยังไม่มีอะไรลงฐาน ⇒ **โยน error เดิม** ให้ผู้เรียกแปลแบบเขียนงวดเดียว (0389 ยังไม่รัน · รหัสของฐาน)
+ * @param rows     งวดสดทั้งใบ (ตัวล็อก updatedAt มาจากชุดนี้)
+ * @param planned  แถวของ `billingFillCheck().rows` (id · seq · billingDate · dueDate · keptDue)
+ * @returns `{ before, after, stopped }` — before/after = **เฉพาะงวดที่เขียนจริง** (ป้อน audit ตรง ๆ) ·
+ *   `stopped` = null (ครบ) | `{ seq, error }` (`error` null = แถวเปลี่ยนไปแล้ว · ไม่ null = ฐานตีกลับ)
+ */
+export async function writeBillingFill(supabase, rows, planned) {
+  const byId = new Map((rows || []).map((row) => [row.id, row]));
+  const before = [];
+  const after = [];
+  for (const plan of planned || []) {
+    const row = byId.get(plan.id);
+    if (!row) return { before, after, stopped: { seq: plan.seq, error: null } };
+    let updated;
+    try {
+      updated = await updateInstallment(supabase, row.id, billingFillPatch(plan), { expectedUpdatedAt: row.updatedAt });
+    } catch (error) {
+      if (!after.length) throw error;
+      return { before, after, stopped: { seq: plan.seq, error } };
+    }
+    if (!updated) return { before, after, stopped: { seq: plan.seq, error: null } };
+    before.push(row);
+    after.push(updated);
+  }
+  return { before, after, stopped: null };
+}
+
 export async function loadInstallment(supabase, id) {
   const { data, error } = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle();
   if (error) throw error;
@@ -340,6 +378,9 @@ export async function loadInstallment(supabase, id) {
  * ⭐ RPC `replan_sales_order_installments` ตรวจทุกด่านในทรานแซกชันเดียว (สิทธิ์ · สถานะใบ · บัญชียังไม่ปิด · เหตุผล ·
  *   p_expected ครบทุกแถว · แถวล็อกไม่เปลี่ยน · Σ = ยอดใบ) แล้วเขียนเฉพาะตารางงวด — **ไม่แตะตัวใบ** ⇒ Actual ไม่ขยับ
  * 🛑 ห้ามถอยไปเขียนงวดทีละแถวเองเมื่อ RPC ไม่มี — ข้ามด่านทั้งชุด · ไม่มี = 503 ให้ไปรัน 0377
+ * ⭐ วันวางบิล/รอเหตุการณ์ (mig 0389) **ไม่ได้แก้ RPC ให้รู้จักโดยตั้งใจ** — ④ UPDATE ของแกน 0377 เอ่ยเฉพาะคอลัมน์เดิม
+ *   ⇒ งวดเปิดที่ถูกปรับยอด/ย้ายเลขงวด **คงวันวางบิลเดิม** · งวดใหม่จาก ⑤ INSERT ยังไม่มีวันวางบิล (SA เลือกรอบต่อที่แผง
+ *   หรือกด "เติมตามรอบ") · แก้ RPC จากไฟล์เมื่อไร = ย้อนสิทธิ์ที่ 0382/0385 ปะไว้ในฐาน (installmentReplanMigration.test.mjs)
  * ⚠️ supabase ไม่ throw ⇒ อ่าน `error` เอง · รหัสของ RPC แปลเป็นไทยผ่าน `documentWorkflowError` (ตารางกลาง)
  * @param rows      ชุดสุดท้ายทั้งใบจาก `buildReplanRows().rows` (บาท · เลขงวด · สัดส่วน คำนวณแล้ว)
  * @param expected  `[{ id, updatedAt }]` ของทุกแถวที่ตาเห็นตอนเปิดตัวแก้ (สตริงจาก API ห้ามแปลงรูปเวลา)
@@ -494,4 +535,16 @@ export const INSTALLMENT_REFUND_SCHEMA_MISSING = 'ฐานยังไม่ไ
 export function installmentRefundSchemaError(error) {
   if (!error) return null;
   return error.code === 'PGRST204' || error.code === '42703' ? INSTALLMENT_REFUND_SCHEMA_MISSING : null;
+}
+
+/* ด่านลำดับ deploy ของกำหนดวางบิล (mig 0389 — เจ้าของรันเองใน SQL Editor) — โค้ดขึ้น prod ก่อนมิกได้ (deploy อัตโนมัติ
+   วันละ 3 รอบ) ⇒ เขียน `billingDate`/`billingEvent` ก่อนมีคอลัมน์ = PGRST204 ⇒ บอกให้รันมิก ไม่ใช่ 500 ดิบ
+   ⚠️ ต้องถามตัวนี้ **ก่อน** `installmentRefundSchemaError` — ตัวนั้นเหมารหัสเดียวกันทุกคอลัมน์ว่าเป็น 0378 (คนจะไปรันผิดมิก)
+   ⚠️ ตัดสินจากชื่อคอลัมน์ในข้อความด้วย — รหัสเดียวกันของคอลัมน์อื่นไม่ใช่เรื่องของ 0389 */
+export const INSTALLMENT_BILLING_SCHEMA_MISSING = 'ฐานยังไม่ได้รัน 0389 (วันวางบิลของงวด) — ตอนนี้บันทึกได้เฉพาะกำหนดชำระ'
+  + ' · แจ้งผู้ดูแลระบบ';
+
+export function installmentBillingSchemaError(error) {
+  if (!error || !(error.code === 'PGRST204' || error.code === '42703')) return null;
+  return /billing(Date|Event|Rule)/.test(String(error.message || '')) ? INSTALLMENT_BILLING_SCHEMA_MISSING : null;
 }

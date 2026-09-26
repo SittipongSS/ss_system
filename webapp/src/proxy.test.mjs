@@ -729,3 +729,47 @@ test('ทุก role ที่เห็นปุ่มรับเรื่อ�
     assert.equal(lockedOut({ role, extraCaps: [] }, '/api/sa/requests/DR-1', 'PATCH', true), false, `${role} lockedOut`);
   }
 });
+
+/* ── รอบวางบิลของลูกค้า (mig 0389 · มติเจ้าของ 25/09 ข้อ 4) ─────────────────────────────
+   ⭐ ฝ่ายบัญชีแก้รอบวางบิลได้ ทั้งที่ถือแค่ `customers:view` — ปุ่มบนหน้าลูกค้าโชว์ให้เขา
+   (`canEditCustomerBillingRule`) ⇒ ต้องผ่าน **ทั้งสองด่าน** ของ proxy ถึง handler
+   (บทเรียนเส้นจัดทีม: เทสต์ด่านเดียวแล้วอีกด่านกลืน · ทดสอบด้วย admin ไม่มีวันเห็น)
+   ⚠️ UI เรียกผ่าน `/api/master/customers/...` (alias) — ทดสอบทั้งสองชื่อ */
+const BILLING_RULE_PATHS = ['/api/customers/C1/billing-rule', '/api/master/customers/C1/billing-rule'];
+
+test('⭐ ฝ่ายบัญชีผ่านทั้ง lockedOut และ apiWriteAllowed ของ PATCH รอบวางบิล', () => {
+  const fn = { role: 'finance', extraCaps: [] };
+  assert.equal(can('finance', 'customers:edit'), false, 'บัญชีต้องยังไม่มีสิทธิ์แก้ทะเบียนลูกค้า');
+  for (const path of BILLING_RULE_PATHS) {
+    assert.equal(lockedOut(fn, path, 'PATCH', true), false, `lockedOut ${path}`);
+    assert.equal(apiWriteAllowed('PATCH', path, fn.role, fn.extraCaps), true, `apiWriteAllowed ${path}`);
+  }
+  // ฝ่ายขายยังผ่านเหมือนเดิม (customers:edit) — ด่านทีมที่ดูแลอยู่ใน handler
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor']) {
+    for (const path of BILLING_RULE_PATHS) {
+      assert.equal(lockedOut({ role, extraCaps: [] }, path, 'PATCH', true), false, `${role} lockedOut ${path}`);
+      assert.equal(apiWriteAllowed('PATCH', path, role, []), true, `${role} ${path}`);
+    }
+  }
+});
+
+test('ช่องรอบวางบิลของฝ่ายบัญชีแคบเป๊ะ — ไม่ลามไปแก้ทะเบียนลูกค้าส่วนอื่น', () => {
+  const FN = 'finance';
+  for (const [method, path] of [
+    ['PATCH', '/api/customers/C1'],                     // แก้ข้อมูลลูกค้าทั้งใบ
+    ['PATCH', '/api/master/customers/C1'],
+    ['POST', '/api/customers'],                         // สร้างลูกค้า
+    ['DELETE', '/api/customers/C1'],                    // ลบลูกค้า
+    ['POST', '/api/customers/C1/billing-rule'],         // เมธอดอื่นบนเส้นเดียวกัน
+    ['DELETE', '/api/customers/C1/billing-rule'],
+    ['PATCH', '/api/customers/C1/billing-rule-x'],      // ชื่อคล้าย
+    ['PATCH', '/api/customers/C1/billing-rule/extra'],  // เส้นลูก
+    ['PATCH', '/api/customers/billing-rule'],           // ไม่มี id
+  ]) {
+    assert.equal(apiWriteAllowed(method, path, FN, []), false, `บัญชีต้อง ${method} ${path} ไม่ได้`);
+  }
+  // ฝ่ายที่ไม่ถือทั้ง customers:edit และ payments:confirm ไม่ได้อะไรจากช่องนี้
+  for (const role of ['marketing', 'viewer', 'executive', 'rd', 'ra', 'pc', 'ts']) {
+    assert.equal(apiWriteAllowed('PATCH', '/api/customers/C1/billing-rule', role, []), false, role);
+  }
+});
