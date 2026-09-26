@@ -723,16 +723,7 @@
   .checkValue { grid-column: 1 / -1; grid-row: 2; }
 }
 
-/* เลขที่ใบในตารางใบที่อาจซ้ำ — เปิดแท็บใหม่ (ฟอร์มนี้ไม่หาย) */
-.dupLink {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--accent);
-  font-weight: var(--fw-semibold);
-}
-
-.dupLink:hover { text-decoration: underline; }
+/* ตารางใบที่อาจซ้ำย้ายไปเป็น components/salesPlanning/HistoricalDuplicateTable (ตัวเดียวกับการ์ดหน้าใบ · มติ 26/09) */
 
 /* ── แผงบันทึก (เหนือแถบท้าย · ขั้นไหนก็ได้) — ความคืบหน้าระหว่างบันทึก / ผลที่ล้มพร้อมทางออกไม่เกินหนึ่งปุ่ม ── */
 .savePanel {
@@ -776,3 +767,42 @@
 }
 
 .switchText > small[data-blocked="yes"] { color: var(--amber); }
+
+/* ── ใบที่อาจซ้ำ: รอบก่อนใครยืนยัน + เหตุผลของผู้คีย์ (มติ 26/09) ─────────────────────────── */
+.prevAck {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.prevAck > svg { flex: none; margin-top: 0.2em; color: var(--text-3); }
+
+.ackNote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.ackNote > label {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+  line-height: var(--lh-thai);
+}
+
+.ackNote > label em { font-style: normal; font-weight: var(--fw-normal); color: var(--text-3); }
+
+.ackNote > small {
+  align-self: flex-end;
+  font-size: var(--fs-4);
+  color: var(--text-3);
+}
+

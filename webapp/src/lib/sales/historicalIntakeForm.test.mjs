@@ -124,13 +124,21 @@ test('⭐ หลักฐานงวดยกมาส่งทั้งชุ�
   );
 });
 
-test('expectedUpdatedAt / acknowledgeDuplicates ติดไปเฉพาะตอนมีค่า', () => {
+test('expectedUpdatedAt / การยืนยันใบที่อาจซ้ำ ติดไปเฉพาะตอนมีค่า · ยืนยันเป็นรายใบ ไม่ใช่ธง (มติ 26/09)', () => {
   const plain = historicalWizardBody(filledState(), {});
   assert.ok(!('expectedUpdatedAt' in plain));
-  assert.ok(!('acknowledgeDuplicates' in plain));
-  const full = historicalWizardBody(filledState(), { expectedUpdatedAt: '2026-09-22T10:00:00Z', acknowledgeDuplicates: true });
+  assert.ok(!('acknowledgeDuplicates' in plain), 'ฟอร์มไม่ส่งธง true แล้ว — ผ่านกับรายการไหนก็ได้');
+  assert.ok(!('acknowledgedDuplicateIds' in plain));
+  assert.ok(!('duplicateNote' in plain));
+  const full = historicalWizardBody(filledState(), {
+    expectedUpdatedAt: '2026-09-22T10:00:00Z', acknowledgedDuplicateIds: ['SOR-A', ' SOR-B ', 'SOR-A', ''], duplicateNote: '  คนละอาคาร  ',
+  });
   assert.equal(full.expectedUpdatedAt, '2026-09-22T10:00:00Z');
-  assert.equal(full.acknowledgeDuplicates, true);
+  assert.deepEqual(full.acknowledgedDuplicateIds, ['SOR-A', 'SOR-B']);
+  assert.equal(full.duplicateNote, 'คนละอาคาร');
+  assert.ok(!('acknowledgeDuplicates' in full));
+  /* ช่องเหตุผลสังกัดขั้น ④ (ใต้สวิตช์ในการ์ดใบที่อาจซ้ำ) — 400 ของช่องนี้พากลับขั้น ④ ไม่ใช่ขั้น ① */
+  assert.equal(stepOfField('duplicateNote'), 'review');
 });
 
 // ── ② โหลดใบมาแก้ (ฟอร์มแก้ = ฟอร์มสร้าง) ──────────────────────────────────────────

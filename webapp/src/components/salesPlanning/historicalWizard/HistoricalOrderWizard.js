@@ -65,6 +65,9 @@ import {
 } from "@/lib/sales/historicalReviewView";
 import { uploadContractFiles, uploadOpeningEvidence } from "@/lib/sales/historicalWizardUploads";
 import { createFormTermsState } from "@/lib/sales/salesOrderCreateInstallments";
+import {
+  historicalDuplicateNoteClamp, historicalDuplicateReviewOf, historicalDuplicatesAcknowledged,
+} from "@/lib/sales/historicalDuplicates";
 import WizardContractStep from "./WizardContractStep";
 import WizardZonesStep from "./WizardZonesStep";
 import WizardMoneyStep from "./WizardMoneyStep";
@@ -99,7 +102,14 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   const [serverMoney, setServerMoney] = useState(null);
   const [issues, setIssues] = useState([]);
   const [duplicates, setDuplicates] = useState([]);
-  const [acknowledged, setAcknowledged] = useState(false);
+  /* ⭐ มติ 26/09: ยืนยันใบที่อาจซ้ำ **เป็นรายใบ** — id ที่ผู้คีย์เห็นตอนเปิดสวิตช์ · "ยืนยันครบ" = ทุกใบที่อาจซ้ำตอนนี้อยู่ในชุดนี้
+     🐞 ของเดิมเป็นธง true/false ⇒ พรีวิวใหม่ได้ใบเพิ่ม (อีกคนเพิ่งคีย์) แต่สวิตช์ยังเปิดค้าง แล้ว server รับ true กับรายการใหม่ทั้งชุด */
+  const [ackIds, setAckIds] = useState([]);
+  const acknowledged = duplicates.length > 0 && historicalDuplicatesAcknowledged(duplicates, { ids: ackIds });
+  /* เหตุผลว่าทำไมไม่ใช่ใบซ้ำ (ไม่บังคับ · มติ 26/09 ข้อ 2) — state แยกจาก `patch` ⇒ แก้ช่องอื่นแล้วสวิตช์ปิด แต่ข้อความไม่หาย
+     · บันทึกของรอบก่อน (ใบที่ถูกตีกลับ/ดึงกลับแล้วเปิดมาแก้ · มติข้อ 3) — โชว์ "รอบก่อน …" + เติมเหตุผลเดิมให้ แต่ **ไม่เปิดสวิตช์ให้** */
+  const [duplicateNote, setDuplicateNote] = useState("");
+  const [previousReview, setPreviousReview] = useState(null);
   const [blockedNote, setBlockedNote] = useState(null);
   /* ⭐ แผงบันทึก (ขั้น ④ · มติ 25/09) — `saveRun` = กำลังบันทึกจังหวะไหน นับไฟล์ไปกี่ไฟล์แล้ว · `saveFailure` = ผลที่ล้ม
      (ทางออก · จังหวะที่ล้ม · ใบร่างที่ลงฐานแล้ว · ไฟล์ที่อัปไม่ขึ้น) · อยู่นอกเนื้อขั้น ⇒ รอดการพาไปขั้นอื่น · ล้างทุกครั้งที่แก้ฟอร์ม
@@ -190,6 +200,9 @@ export default function HistoricalOrderWizard({ orderId = null }) {
           return;
         }
         setState(wizardStateFromOrder(order));
+        const previous = historicalDuplicateReviewOf(order);
+        setPreviousReview(previous);
+        if (previous?.note) setDuplicateNote(String(previous.note));
         setContractId(order.serviceContract?.id || order.serviceContractId || null);
         /* 🔴 นับเฉพาะ `external_doc` — ชนิดเดียวที่ RPC ส่งอนุมัติยอมรับ (0374) · นับทุกชนิด =
            ด่านบนจอผ่านด้วยไฟล์ที่ฐานไม่รับ แล้วไปตายที่จังหวะสุดท้ายของการบันทึก */
@@ -384,7 +397,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     /* 🪤 แก้ฟอร์ม = ยอดที่ server ตอบมาเป็นของ payload เก่า ⇒ ทิ้งทันที ไม่งั้นยอดค้างในอดีต */
     setServerMoney(null);
     setDuplicates([]);
-    setAcknowledged(false);
+    setAckIds([]);
     setBlockedNote(null);
     setSaveFailure(null);
     progressRef.current = null;
@@ -581,7 +594,8 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       const body = historicalWizardBody(state, {
         intakeKey: orderRowId ? null : intakeKey,
         expectedUpdatedAt: orderRowId ? updatedAt : null,
-        acknowledgeDuplicates: acknowledged,
+        acknowledgedDuplicateIds: acknowledged ? ackIds : [],
+        duplicateNote: acknowledged ? duplicateNote : "",
         openingEvidenceRefs: evidenceRefs(),
         totalAmount: invoiceTotal,
       });
@@ -689,7 +703,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       /* 409 ใบซ้ำ = **ไม่ใช่จอผิดพลาด** — การ์ดใบที่อาจซ้ำรีเฟรช สวิตช์กลับเป็นปิด เหตุอยู่ใต้สวิตช์ (ไม่มีแผงบันทึก) */
       if (exit.kind === "duplicate") {
         setDuplicates(Array.isArray(exit.duplicates) ? exit.duplicates : []);
-        setAcknowledged(false);
+        setAckIds([]);
         setBlockedNote(exit.message || null);
         setStep("review");
         return;
@@ -718,7 +732,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         landed,
       });
     }
-  }, [state, contractId, contractFiles, evidenceFiles, intakeKey, acknowledged, evidenceRefs, router, reveal, invoiceTotal]);
+  }, [state, contractId, contractFiles, evidenceFiles, intakeKey, acknowledged, ackIds, duplicateNote, evidenceRefs, router, reveal, invoiceTotal]);
 
   /* ทางออกในแผงบันทึก (ไม่เกินหนึ่งปุ่ม · ไม่มีปุ่มหลักตัวที่สอง — ลองใหม่คือปุ่มบันทึกตัวเดิม) */
   const runSaveAction = useCallback(async (action) => {
@@ -912,7 +926,24 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         evidenceFileCount={evidenceFileCount}
         duplicates={duplicates}
         acknowledged={acknowledged}
-        onAcknowledge={(next) => { setAcknowledged(next); setBlockedNote(null); }}
+        onAcknowledge={(next) => {
+          setAckIds(next ? duplicates.map((row) => row.id) : []);
+          setBlockedNote(null);
+          /* 🐞 รีวิว 26/09: บันทึกการยืนยันเขียนตอน "บันทึกใบ" เท่านั้น — กดซ้ำหลังบันทึกค้างครึ่งทางข้ามจังหวะนั้น ⇒ เปลี่ยนการยืนยัน/เหตุผล
+             แล้วต้องบันทึกใบซ้ำ (เริ่มรอบใหม่ = PATCH · ไฟล์ที่อัปแล้วไม่อัปซ้ำ) ไม่งั้นผู้อนุมัติเห็นของรอบก่อน */
+          progressRef.current = null;
+          setSaveFailure(null);
+        }}
+        previousReview={previousReview}
+        duplicateNote={duplicateNote}
+        duplicateNoteError={stepIssues("review").find((issue) => issue.field === "duplicateNote")?.message || null}
+        onDuplicateNote={(value) => {
+          setDirty(true);
+          setDuplicateNote(historicalDuplicateNoteClamp(value));
+          setIssues((current) => current.filter((issue) => issue.field !== "duplicateNote"));
+          progressRef.current = null;
+          setSaveFailure(null);
+        }}
         dupNote={blockedNote}
         switchRef={dupSwitchRef}
         busy={busy}

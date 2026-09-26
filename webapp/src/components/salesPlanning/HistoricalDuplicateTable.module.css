@@ -1,0 +1,36 @@
+/* ตาราง "ใบที่อาจซ้ำ" ของใบย้อนหลัง (ขั้น ④ + การ์ดหน้าใบ · มติ 26/09) — สี/ระยะจากตัวแปรกลางทั้งหมด */
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+.link:hover { text-decoration: underline; }
+
+/* แถวที่ระบบพบตอนเปิดใบ แต่ผู้คีย์ไม่เคยเห็น (มติ 26/09 ข้อ 1 — เตือน ไม่บล็อก) */
+.tagNew {
+  display: inline-block;
+  margin-left: var(--space-1-5);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.muted { color: var(--text-3); }
+
+.now[data-gone="yes"] { color: var(--text-3); text-decoration: line-through; }
+
+/* เหตุผลของผู้คีย์ / ที่มาของการยืนยัน (การ์ดหน้าใบ) */
+.note {
+  margin: 0 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}

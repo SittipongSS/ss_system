@@ -14,6 +14,7 @@ import {
   historicalCancelOpening, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import { addDays, coverageContinuityErrors, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
+import { historicalDuplicateApprovalRows, historicalDuplicateReviewOf } from '@/lib/sales/historicalDuplicates';
 import { paymentNotRequired, salesOrderMoneyOutcome } from '@/lib/sales/salesOrderPayments';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
@@ -306,7 +307,7 @@ export function historicalCoverageVerdictText(start, end) {
 
 export function historicalApprovalFacts(order, {
   installments = [], contract = null, contractFiles = [], lineZones = [], liveTermWarnings = [], signedFile = null,
-  extrasError = null,
+  extrasError = null, duplicateCheck = null,
 } = {}) {
   const rows = orderedRows(installments);
   const opening = rows.find(isOpeningInstallment) || null;
@@ -395,6 +396,13 @@ export function historicalApprovalFacts(order, {
     const until = warning.endDate ? fmtDate(warning.endDate) : 'ไม่ระบุวันสิ้นสุด';
     checklist.push(`⚠️ ${zone}: โซนนี้มีรอบขายของ ${text(warning.orderNumber) || 'ใบอื่น'} อยู่แล้ว (ถึง ${until}) — ตรวจว่าไม่ซ้ำสัญญา`);
   }
+
+  // ── ใบที่อาจซ้ำ: ผู้คีย์ยืนยันใบไหน ใคร เมื่อไร + ที่พบเพิ่มตอนเปิดใบ (เตือน ไม่บล็อก — มติ 26/09) ──
+  /* บันทึกของผู้คีย์มากับแถวใบ (metadata) ⇒ ยังพูดได้แม้ของเสริมโหลดไม่ขึ้น · ไม่มีอะไรจะพูด = ไม่มีแถว */
+  checklist.push(...historicalDuplicateApprovalRows(historicalDuplicateReviewOf(order), duplicateCheck, {
+    statusLabel: (status) => historicalStatusCopy(status).label,
+    loadError: Boolean(extrasError) && !duplicateCheck,
+  }));
 
   // ── สิ่งที่เกิดทันที ──
   effects.push(`เอกสารแทนสัญญา${contractDocText(contract) ? ` ${contractDocText(contract)}` : ''} อนุมัติ ออกเลข CT แล้วผูกกับใบนี้`

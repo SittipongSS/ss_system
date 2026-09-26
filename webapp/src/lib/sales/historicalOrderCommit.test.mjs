@@ -431,8 +431,25 @@ test('ใบที่อาจซ้ำยังไม่ยืนยัน = 40
   assert.equal(blocked.calls.rpc.length, 0);
 
   const acknowledged = fakeDb({ orders, rpc: [created()] });
-  assert.equal((await run(acknowledged, { acknowledgeDuplicates: true })).status, 201);
+  assert.equal((await run(acknowledged, { acknowledgedDuplicateIds: ['SOR-OLD'], duplicateNote: 'คนละอาคาร' })).status, 201);
   assert.equal(acknowledged.calls.rpc.length, 1);
+  /* ⭐ มติ 26/09: บันทึกว่าใบไหน · ใคร · เมื่อไร · เหตุผล ลง intake ในทรานแซกชันเดียวกับใบ (ไม่ต้องแก้ฐาน) */
+  const review = acknowledged.calls.rpc[0].args.p_header.intake.duplicateReview;
+  assert.deepEqual({ ...review, orders: review.orders.map((o) => [o.id, o.orderNumber, o.status, o.matchedOn]) }, {
+    v: 1, checkedAt: NOW.toISOString(), byId: supervisor.id, byName: supervisor.name, byRole: supervisor.role,
+    basis: 'ids', note: 'คนละอาคาร',
+    orders: [['SOR-OLD', 'SO-26090001-0', 'approved', [{ kind: 'startDate', value: '2026-01-01' }]]],
+  });
+
+  /* ยืนยันไม่ครบ (มีใบที่ผู้คีย์ไม่เคยเห็น) = 409 เหมือนไม่ยืนยัน */
+  const partial = fakeDb({ orders: [...orders, { ...orders[0], id: 'SOR-NEW', orderNumber: 'SO-26090009-0' }], rpc: [created()] });
+  assert.equal((await run(partial, { acknowledgedDuplicateIds: ['SOR-OLD'] })).status, 409);
+  assert.equal(partial.calls.rpc.length, 0);
+
+  /* แท็บรุ่นก่อน (ธง true ไม่มีรายการ) ยังบันทึกได้ — บันทึกเป็น basis 'flag' */
+  const legacy = fakeDb({ orders, rpc: [created()] });
+  assert.equal((await run(legacy, { acknowledgeDuplicates: true })).status, 201);
+  assert.equal(legacy.calls.rpc[0].args.p_header.intake.duplicateReview.basis, 'flag');
 
   const self = fakeDb({ orders: [{ ...orders[0], id: REPLAY_ID }], rpc: [created({ replayed: true, dealCreated: false })], auditRow: { id: 'AUD-1' } });
   assert.equal((await run(self)).status, 200);
@@ -464,7 +481,12 @@ test('สร้าง: RPC ครั้งเดียว · อาร์กิ�
     discountAmount: 0, lineTotal: 86400, serviceRounds: 12,
   });
   // intake = ของที่คอลัมน์เก็บไม่ได้แต่ฟอร์มแก้ต้องได้คืน: ตัวเลือก VAT + ชนิด/ค่าส่วนลดท้ายใบ (มติ 25/09 · ไม่ลด = null/0)
-  assert.deepEqual(args.p_header.intake, { vatRate: 7, discountType: null, discountValue: 0 });
+  // + บันทึกการยืนยันใบที่อาจซ้ำ (มติ 26/09) — เขียนทุกครั้งแม้ไม่มีใบที่อาจซ้ำ (`orders: []`) ⇒ "ไม่มีบันทึก" = ใบก่อนมีระบบนี้
+  const { duplicateReview, ...intake } = args.p_header.intake;
+  assert.deepEqual(intake, { vatRate: 7, discountType: null, discountValue: 0 });
+  assert.deepEqual(duplicateReview, {
+    v: 1, checkedAt: NOW.toISOString(), byId: supervisor.id, byName: supervisor.name, byRole: supervisor.role, basis: 'none', orders: [],
+  });
   assert.equal(args.p_header.discountAmount, 0);
   assert.deepEqual(args.p_installments.map((r) => r.kind), ['opening', 'regular']);
   assert.ok(args.p_installments.every((r) => !('evidence' in r)), 'ตอนสร้างยังไม่มีหลักฐาน (โฟลเดอร์ของใบยังไม่เกิด)');
@@ -502,7 +524,8 @@ test('สร้าง: ส่วนลดท้ายใบไหลถึง RP
     { subtotal: args.p_header.subtotal, discountAmount: args.p_header.discountAmount, vatAmount: args.p_header.vatAmount, totalAmount: args.p_header.totalAmount },
     { subtotal: 144000, discountAmount: 1000, vatAmount: 10010, totalAmount: 153010 },
   );
-  assert.deepEqual(args.p_header.intake, { vatRate: 7, discountType: 'amount', discountValue: 1000 });
+  const { duplicateReview: _review, ...intake } = args.p_header.intake;
+  assert.deepEqual(intake, { vatRate: 7, discountType: 'amount', discountValue: 1000 });
   // ส่วนลดท้ายใบไม่ถูกเกลี่ยลงบรรทัด — ฐาน (0374 ⑦) ตรวจ ผลรวมบรรทัด = subtotal
   assert.deepEqual(args.p_lines.map((l) => [l.discountAmount, l.lineTotal]), [[0, 86400], [0, 57600]]);
 
@@ -711,6 +734,9 @@ test('แก้ใบ: RPC update ครั้งเดียว · หลัก
   ]);
   assert.equal(args.p_order_id, EDIT_ID);
   assert.equal(args.p_expected_updated_at, UPDATED_AT);
+  /* ⚠️ RPC แก้ใบแทน historicalIntake ทั้งก้อน — ต้องแนบบันทึกใหม่ทุกครั้ง ไม่งั้นบันทึกเดิมหาย */
+  assert.equal(args.p_header.intake.duplicateReview.basis, 'none');
+  assert.deepEqual(args.p_header.intake.duplicateReview.orders, []);
   const [opening, regular] = args.p_installments;
   assert.equal(opening.kind, 'opening');
   assert.deepEqual(opening.evidence.map((ref) => ref.storagePath), [OWN_REF.storagePath]);
@@ -794,3 +820,20 @@ test('ตัวเขียนไม่ยืมของขั้นอนุ�
   assert.match(routes[1], /orderId: id/);
   assert.match(commit, /loadScoped\(supabase, 'sales_orders', orderId, user, 'edit'\)/);
 });
+
+/* 🔴 มติ 26/09: บันทึกการยืนยันใบที่อาจซ้ำ **ต้องไม่เข้าลายนิ้วมือของคำขอ** — เวลา · ผู้คีย์ · รายการ · เหตุผลที่ต่างกันระหว่างส่งซ้ำ
+   (เน็ตหลุดแล้วกดใหม่) ต้องได้แฮชเดิม ไม่งั้นส่งซ้ำได้ intake_key_conflict ทุกครั้ง · ยามนี้แดงถ้าวันหนึ่งบันทึกถูกย้ายเข้า
+   historicalServiceRpcArgs / plan.header */
+test('🔴 บันทึกการยืนยันใบที่อาจซ้ำไม่เข้าลายนิ้วมือ — เวลา/ผู้คีย์/รายการ/เหตุผลต่างกัน = p_intake_hash เดิม', async () => {
+  const orders = [{ id: 'SOR-OLD', orderNumber: 'SO-26090001-0', orderDate: '2026-01-01', status: 'approved' }];
+  const a = fakeDb({ orders, rpc: [created()] });
+  await run(a, { acknowledgedDuplicateIds: ['SOR-OLD'], duplicateNote: 'รอบแรก' });
+  const b = fakeDb({ orders: [...orders, { ...orders[0], id: 'SOR-OTHER', orderNumber: 'SO-26090002-0' }], rpc: [created()] });
+  await run(b, { acknowledgedDuplicateIds: ['SOR-OLD', 'SOR-OTHER'], duplicateNote: 'รอบสองพิมพ์ใหม่' }, { user: { ...supervisor, id: 'U-OTHER', name: 'อีกคน' } });
+  const c = fakeDb({ rpc: [created()] });
+  await run(c);
+  const hashes = [a, b, c].map((db) => db.calls.rpc[0].args.p_intake_hash);
+  assert.equal(new Set(hashes).size, 1, 'แฮชต้องเท่ากันทั้งสามรอบ');
+  assert.notDeepEqual(a.calls.rpc[0].args.p_header.intake.duplicateReview, b.calls.rpc[0].args.p_header.intake.duplicateReview);
+});
+

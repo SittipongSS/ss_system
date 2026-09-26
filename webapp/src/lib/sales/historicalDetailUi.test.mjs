@@ -147,6 +147,8 @@ test('การ์ดโซน + การ์ดช่วงบริการ �
   assert.match(page, /const historicalCoverage = historical\s*\n\s*\? historicalCoverageSegments\(installments, \{/);
   assert.match(page, /\{historicalCoverage \? \(\s*\n\s*<DetailCard/);
   assert.match(page, /<CoverageTimeline/);
+  /* มติ 26/09: การ์ดใบที่อาจซ้ำ (บันทึกการยืนยันของผู้คีย์) — ใบย้อนหลังเท่านั้น */
+  assert.match(page, /\{historical \? <HistoricalDuplicateReviewCard /);
 });
 
 test('รางก้าว + สถานะของใบย้อนหลังมาจาก historicalOrderCopy — ไม่ใช่ราง 4 ขั้นของใบปกติ', () => {

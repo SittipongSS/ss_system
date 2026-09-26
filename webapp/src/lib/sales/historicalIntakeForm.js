@@ -336,7 +336,7 @@ export function historicalCoverageWarning(state = {}) {
  */
 export function historicalWizardBody(state = {}, options = {}) {
   const {
-    preview = false, intakeKey = null, expectedUpdatedAt = null, acknowledgeDuplicates = false,
+    preview = false, intakeKey = null, expectedUpdatedAt = null, acknowledgedDuplicateIds = null, duplicateNote = '',
     openingEvidenceRefs = null, totalAmount,
   } = options;
   const evidence = openingEvidenceRefs === null ? list(state.openingEvidence) : list(openingEvidenceRefs);
@@ -404,7 +404,11 @@ export function historicalWizardBody(state = {}, options = {}) {
      รหัสนี้เอง (ส่งซ้ำหลังเน็ตหลุด) ไม่ถูกนับเป็น "ใบที่อาจซ้ำ" ของตัวเอง */
   if (intakeKey) body.intakeKey = intakeKey;
   if (expectedUpdatedAt) body.expectedUpdatedAt = expectedUpdatedAt;
-  if (acknowledgeDuplicates) body.acknowledgeDuplicates = true;
+  /* ⭐ มติ 26/09: ยืนยันใบที่อาจซ้ำ **เป็นรายใบ** (id ที่ผู้คีย์เห็นตอนเปิดสวิตช์) + เหตุผลไม่บังคับ — server ตีกลับ 409
+     ถ้ามีใบที่อาจซ้ำที่ไม่อยู่ในรายการ · ไม่ส่ง `acknowledgeDuplicates: true` แล้ว (ผ่านกับรายการไหนก็ได้ — รับไว้เฉพาะแท็บรุ่นก่อน) */
+  const ackIds = list(acknowledgedDuplicateIds).map(text).filter(Boolean);
+  if (ackIds.length) body.acknowledgedDuplicateIds = [...new Set(ackIds)];
+  if (text(duplicateNote)) body.duplicateNote = text(duplicateNote);
   return body;
 }
 
@@ -418,6 +422,8 @@ const FIELD_STEP = new Map([
   /* ⭐ มติ 25/09: VAT กับส่วนลดท้ายใบอยู่ในกล่องสรุปท้ายตารางรายการ (ขั้น ②) แบบใบเสนอราคา */
   ['zones', 'zones'], ['vatRate', 'zones'], ['discount', 'zones'],
   ['opening', 'money'], ['installments', 'money'],
+  /* เหตุผลของการยืนยันใบที่อาจซ้ำ (มติ 26/09) — ช่องอยู่ใต้สวิตช์ในการ์ดใบที่อาจซ้ำของขั้น ④ */
+  ['duplicateNote', 'review'],
 ]);
 
 export function stepOfField(field) {
