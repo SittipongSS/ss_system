@@ -8,6 +8,8 @@
 //     🐞 รีวิว 26/09: ชิปของ offset 1 ให้วันครบกำหนดเร็วไปหนึ่งเดือนทุกงวด (ก่อนวันวางบิลของงวดนั้นเอง)
 //   · **ไม่เลือกให้** — dueRule เริ่ม null เสมอ (ยามเดิมใน historicalRegisterUi ตรึงไว้แล้ว + ข้อท้ายไฟล์นี้)
 //   · รอบหายไประหว่างเลือกชิปไว้ = กลับเป็น "ยังไม่เลือก" ไม่เดาวันต่อ
+//   · รอบรุ่นสอง (mig 0390 · มติ 26/09): ไม่มีเครดิต / หลายรอบต่อเดือน = ไม่มีชิป พร้อมเหตุ · fixture เป็นรูปรุ่นสอง
+//     (รูปรุ่นแรกยังรับ — ข้อ "รูปรุ่นแรก" ท้ายชุดกันไว้)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -21,13 +23,14 @@ import {
 import { billingRounds, describeBillingRule } from './billingRule.js';
 import { createFormTermsState } from './salesOrderCreateInstallments.js';
 
+/* รูปรุ่นสอง (mig 0390): billing.days[] + payment.rounds[] คู่กันทีละรอบ */
 const monthly = (payDay, { billDay = 5, monthOffset = 0 } = {}) => ({
-  billing: { mode: 'monthly', day: billDay },
-  payment: { mode: 'monthly', day: payDay, monthOffset },
+  billing: { mode: 'monthly', days: [billDay] },
+  payment: { mode: 'monthly', rounds: [{ day: payDay, monthOffset }] },
 });
 
 test('ยังไม่ตั้งรอบ / รูปผิด = ไม่มีชิป ไม่มีประโยค', () => {
-  for (const value of [null, undefined, {}, 'x', { billing: { mode: 'monthly', day: 40 }, payment: { mode: 'credit', days: 30 } }]) {
+  for (const value of [null, undefined, {}, 'x', { billing: { mode: 'monthly', days: [40] }, payment: { mode: 'credit', days: 30 } }]) {
     assert.deepEqual(historicalCustomerDueOption(value), { hint: '', option: null, note: null }, JSON.stringify(value));
   }
 });
@@ -52,7 +55,7 @@ test('เงินเข้าวันที่ 31 = สิ้นเดือ�
 });
 
 test('วางบิลได้ทุกวัน + เงินเข้ารายเดือนเดือนเดียวกัน = มีชิป (ชิปดูแค่วันเงินเข้า)', () => {
-  const due = historicalCustomerDueOption({ billing: { mode: 'anyday' }, payment: { mode: 'monthly', day: 10, monthOffset: 0 } });
+  const due = historicalCustomerDueOption({ billing: { mode: 'anyday' }, payment: { mode: 'monthly', rounds: [{ day: 10, monthOffset: 0 }] } });
   assert.equal(due.option?.dueRule, 'day');
   assert.equal(due.option?.dueDay, '10');
   assert.equal(due.hint, 'วางบิลได้ทุกวัน · เงินเข้าทุกวันที่ 10');
@@ -74,7 +77,7 @@ test('"เดือนถัดไป" (monthOffset 1) = ไม่มีชิ�
   assert.doesNotMatch(due.note, /—/);
   /* เหตุที่ต้องไม่มีชิป (ผลโพรบของรีวิว 26/09): "วันที่ 10 แรกนับจากวันเริ่มงวด" = 10/10 แต่ตัวคิดของลูกค้าเอง
      ได้ วางบิล 25/10 → เงินเข้า 10/11 — ชิปแบบเดิมเร็วไปหนึ่งเดือนและก่อนวันวางบิลของงวดนั้นเอง */
-  assert.deepEqual(billingRounds(rule, '2026-10-01', 1), [{ billingDate: '2026-10-25', dueDate: '2026-11-10' }]);
+  assert.deepEqual(billingRounds(rule, '2026-10-01', 1), [{ billingDate: '2026-10-25', dueDate: '2026-11-10', roundIndex: 0 }]);
   const naive = historicalSplitPreview({
     from: '2026-10-01', to: '2027-03-31', amount: 6000, period: '1', dueRule: 'day', dueDay: '10', todayIso: '2026-09-26',
   });
@@ -86,7 +89,7 @@ test('"เดือนถัดไป" (monthOffset 1) = ไม่มีชิ�
 });
 
 test('วางบิลได้ทุกวัน + เงินเข้าเดือนถัดไป = ไม่มีชิป พร้อมเหตุเดียวกัน', () => {
-  const rule = { billing: { mode: 'anyday' }, payment: { mode: 'monthly', day: 10, monthOffset: 1 } };
+  const rule = { billing: { mode: 'anyday' }, payment: { mode: 'monthly', rounds: [{ day: 10, monthOffset: 1 }] } };
   const due = historicalCustomerDueOption(rule);
   assert.equal(due.option, null);
   assert.equal(due.hint, describeBillingRule(rule));
@@ -101,7 +104,7 @@ test('เดือนถัดไป + สิ้นเดือน ก็ไม�
 
 test('เครดิต n วัน (รวม 0 วัน · วางบิลได้ทุกวัน) = ประโยคอย่างเดียว ไม่มีชิป พร้อมเหตุ', () => {
   for (const rule of [
-    { billing: { mode: 'monthly', day: 5 }, payment: { mode: 'credit', days: 30 } },
+    { billing: { mode: 'monthly', days: [5] }, payment: { mode: 'credit', days: 30 } },
     { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 0 } },
   ]) {
     const due = historicalCustomerDueOption(rule);
@@ -113,6 +116,45 @@ test('เครดิต n วัน (รวม 0 วัน · วางบิ�
     /* ประโยครอบเองมี " · " อยู่แล้ว — เหตุเคยต่อท้ายด้วยขีดยาวจนขึ้นขีดยาวสองตัวในบรรทัดเดียว (รีวิว 26/09) */
     assert.doesNotMatch(due.note, /—/);
   }
+});
+
+test('ไม่มีเครดิต (mig 0390) = ประโยค "ไม่มีเครดิต" ไม่มีชิป พร้อมเหตุ', () => {
+  for (const rule of [{ credit: false }, { credit: false, note: 'โอนก่อนส่งของ' }]) {
+    const due = historicalCustomerDueOption(rule);
+    assert.equal(due.hint, 'ไม่มีเครดิต');
+    assert.equal(due.option, null);
+    assert.match(due.note, /^ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะลูกค้าไม่มีเครดิต/);
+    assert.doesNotMatch(due.note, /—/);
+  }
+});
+
+test('หลายรอบต่อเดือน (มติ 26/09 ข้อ 3) = ไม่มีชิป แม้ทุกรอบเงินเข้าเดือนเดียวกัน — ไม่เดาว่างวดไหนอยู่รอบไหน', () => {
+  const twoRounds = {
+    billing: { mode: 'monthly', days: [5, 20] },
+    payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 25, monthOffset: 0 }] },
+  };
+  const mixed = {
+    billing: { mode: 'monthly', days: [10, 25] },
+    payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 10, monthOffset: 1 }] },
+  };
+  for (const rule of [twoRounds, mixed]) {
+    const due = historicalCustomerDueOption(rule);
+    assert.equal(due.option, null, JSON.stringify(rule));
+    assert.equal(due.hint, describeBillingRule(rule));
+    assert.match(due.note, /^ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะลูกค้าวางบิลเดือนละ 2 รอบ/);
+    assert.doesNotMatch(due.note, /—/);
+  }
+  /* เครดิต + หลายรอบ = เหตุของเครดิต (เรื่องที่ใหญ่กว่า) */
+  const credit = historicalCustomerDueOption({ billing: { mode: 'monthly', days: [5, 20] }, payment: { mode: 'credit', days: 30 } });
+  assert.equal(credit.option, null);
+  assert.match(credit.note, /นับจากวันวางบิล/);
+});
+
+test('รูปรุ่นแรก (0389 · ก่อนรัน 0390) ยังได้ชิปเดิม — แปลงเป็นรุ่นสองตอนอ่าน', () => {
+  const v1 = { billing: { mode: 'monthly', day: 5 }, payment: { mode: 'monthly', day: 25, monthOffset: 0 } };
+  assert.deepEqual(historicalCustomerDueOption(v1), historicalCustomerDueOption(monthly(25)));
+  const v1Next = { billing: { mode: 'monthly', day: 25 }, payment: { mode: 'monthly', day: 10, monthOffset: 1 } };
+  assert.equal(historicalCustomerDueOption(v1Next).option, null);
 });
 
 test('historicalCustomerTermsError: ติดเหตุจากเซิร์ฟเวอร์ · ไม่ซ้ำคำ · บอกว่ายังเลือกเองได้', () => {
@@ -193,6 +235,8 @@ test('ยาม: หน้าต่างแบ่งงวดส่งกติ
   assert.match(split, /\.\.\.HISTORICAL_DUE_RULES\.map\(/, 'ตัวเลือกเดิมครบทุกตัวเสมอ');
   assert.doesNotMatch(split, /setDueRule\(\s*HISTORICAL_CUSTOMER_DUE_RULE|useState\(HISTORICAL_CUSTOMER_DUE_RULE/, 'ห้ามเลือกชิปลูกค้าให้');
   assert.match(split, /customerTerms\?\.status === "error"/, 'โหลดรอบไม่ขึ้น = บอกเหตุ ไม่ใช่เงียบ');
+  assert.match(split, /billingRuleNoCredit\(customerRule\) \? "เครดิตของลูกค้า" : "รอบวางบิลของลูกค้า"/,
+    'ไม่มีเครดิตต้องขึ้นเป็นเรื่องเครดิต ไม่ใช่ "รอบวางบิลของลูกค้า: ไม่มีเครดิต"');
   assert.match(split, /historicalCustomerTermsError\(customerTerms\.detail\)/, 'บรรทัดโหลดไม่ขึ้นต้องติดเหตุจากเซิร์ฟเวอร์');
   assert.doesNotMatch(split, /` — \$\{customerDue\.note\}`/, 'เหตุที่ไม่มีชิปอยู่บรรทัดของตัวเอง ไม่ต่อท้ายประโยครอบด้วยขีดยาว');
 });

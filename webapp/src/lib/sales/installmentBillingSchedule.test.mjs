@@ -11,8 +11,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  BILLING_FILL_STALE_MESSAGE, billingFillCheck, billingFillPatch, billingFillStoppedMessage, billingRequestDead,
-  installmentActionError, installmentBillingRequested,
+  BILLING_FILL_STALE_MESSAGE, billingFillCheck, billingFillPatch, billingFillStoppedMessage, billingRedateCheck,
+  billingRequestDead, billingRoundIndexOf, installmentActionError, installmentBillingRequested,
 } from './salesOrderPayments.js';
 import { planMonthlyFill } from './billingRule.js';
 import {
@@ -116,6 +116,72 @@ test('billingFillCheck: ไม่มีแผน = 400 · ลูกค้าไ�
   assert.match(billingFillCheck(anyday, rowsB(), plan, TODAY).error, /ทุกวัน/);
   const filled = rowsB().map((r) => ({ ...r, billingDate: '2026-10-25' }));
   assert.equal(billingFillCheck(RULE_B, filled, plan, TODAY).status, 409);
+});
+
+// ── 3a. รอบรุ่นสอง (mig 0390 · มติ 26/09): หลายรอบต่อเดือน = ต้องบอกรอบ · ไม่มีเครดิต = ไม่มีรอบให้เติม ───────────
+// ลูกค้าสองรอบ: วางบิลวันที่ 10 → เงินเข้า 25 เดือนเดียวกัน · วางบิลวันที่ 25 → เงินเข้า 10 เดือนถัดไป
+const RULE_TWO = {
+  billing: { mode: 'monthly', days: [10, 25] },
+  payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 10, monthOffset: 1 }] },
+};
+const rowsNew = () => [
+  { id: 'N1', seq: 1, status: 'pending', dueDate: null, updatedAt: 't1' },
+  { id: 'N2', seq: 2, status: 'pending', dueDate: null, updatedAt: 't2' },
+];
+
+test('billingFillCheck หลายรอบ: ไม่บอกรอบ = 409 "เลือกรอบก่อน" (จอเก่าที่ยังไม่เคยถาม) · บอกรอบ = คิดซ้ำด้วยรอบนั้น', () => {
+  const planFor = (roundIndex) => planMonthlyFill(RULE_TWO, rowsNew(), TODAY, { roundIndex }).rows
+    .map(({ id, billingDate, dueDate }) => ({ id, billingDate, dueDate }));
+  const second = planFor(1);
+  assert.deepEqual(second, [
+    { id: 'N1', billingDate: '2026-09-25', dueDate: '2026-10-10' },
+    { id: 'N2', billingDate: '2026-10-25', dueDate: '2026-11-10' },
+  ]);
+  const missing = billingFillCheck(RULE_TWO, rowsNew(), second, TODAY);
+  assert.equal(missing.status, 409);
+  assert.match(missing.error, /เลือกก่อนว่าจะใช้รอบไหน/);
+  assert.deepEqual(billingFillCheck(RULE_TWO, rowsNew(), second, TODAY, { roundIndex: 1 }).rows.map((r) => r.billingDate),
+    ['2026-09-25', '2026-10-25']);
+  /* จอพรีวิวรอบ 2 แต่ส่งรอบ 1 (หรือกลับกัน) = แผนไม่ตรง = 409 ไม่เขียนรอบที่คนไม่ได้เห็น */
+  assert.equal(billingFillCheck(RULE_TWO, rowsNew(), second, TODAY, { roundIndex: 0 }).status, 409);
+  assert.match(billingFillCheck(RULE_TWO, rowsNew(), second, TODAY, { roundIndex: 5 }).error, /รอบที่เลือกไม่มี/);
+  /* ลูกค้ารอบเดียวไม่อ่าน roundIndex — ค่าค้างจากตอนลูกค้ามีหลายรอบไม่ทำให้พัง */
+  assert.equal(billingFillCheck(RULE_B, rowsB(), screenPlan(rowsB()), TODAY, { roundIndex: 1 }).error, undefined);
+});
+
+test('billingRedateCheck หลายรอบ: รอบที่เลือกคิดซ้ำที่ server · ไม่มีเครดิต = 409 พร้อมเหตุ', () => {
+  const rows = [
+    { id: 'R1', seq: 1, status: 'pending', billingDate: '2026-10-05', dueDate: '2026-10-25', updatedAt: 't1' },
+    { id: 'R2', seq: 2, status: 'pending', billingDate: '2026-11-05', dueDate: '2026-11-25', updatedAt: 't2' },
+  ];
+  const fresh = billingRedateCheck(RULE_TWO, rows, [{ id: 'R1', billingDate: '2026-10-10', dueDate: '2026-10-25' },
+    { id: 'R2', billingDate: '2026-11-10', dueDate: '2026-11-25' }], TODAY, { roundIndex: 0 });
+  assert.equal(fresh.error, undefined);
+  assert.deepEqual(fresh.rows.map((r) => [r.id, r.billingDate, r.dueDate]),
+    [['R1', '2026-10-10', '2026-10-25'], ['R2', '2026-11-10', '2026-11-25']]);
+  assert.match(billingRedateCheck(RULE_TWO, rows, [{ id: 'R1' }], TODAY).error, /เลือกก่อนว่าจะใช้รอบไหน/);
+  const noCredit = billingRedateCheck({ credit: false }, rows, [{ id: 'R1' }], TODAY);
+  assert.equal(noCredit.status, 409);
+  assert.match(noCredit.error, /ไม่มีเครดิต/);
+  assert.match(billingFillCheck({ credit: false }, rowsNew(), [{ id: 'N1' }], TODAY).error, /ไม่มีเครดิต/);
+});
+
+test('billingRoundIndexOf: ไม่ส่ง = null · เลข/สตริงเลข = index · ค่าผิดส่งต่อให้ตัวคิดตีกลับ (ไม่กลืนเป็น null)', () => {
+  for (const value of [undefined, null, '']) assert.equal(billingRoundIndexOf(value), null);
+  assert.equal(billingRoundIndexOf(0), 0);
+  assert.equal(billingRoundIndexOf(1), 1);
+  assert.equal(billingRoundIndexOf('1'), 1);
+  assert.equal(billingRoundIndexOf('x'), 'x');
+  assert.equal(billingRoundIndexOf(1.5), 1.5);
+  /* รูปอื่นส่งต่อทั้งตัว — ห้ามกลายเป็นเลขรอบ (`[1]` → 1 · ช่องว่าง → 0 = รอบแรก · '1e0' → 1) */
+  assert.deepEqual(billingRoundIndexOf([1]), [1]);
+  assert.equal(billingRoundIndexOf(' '), ' ');
+  assert.equal(billingRoundIndexOf('1e0'), '1e0');
+  assert.equal(billingRoundIndexOf(true), true);
+  assert.equal(billingRoundIndexOf(' 2 '), 2);
+  assert.match(planMonthlyFill(RULE_TWO, rowsNew(), TODAY, { roundIndex: billingRoundIndexOf([1]) }).error, /รอบที่เลือกไม่มี/);
+  /* ค่าผิดถึงตัวคิด = "รอบที่เลือกไม่มี" ไม่ใช่ "เลือกรอบก่อน" (จอเลือกไปแล้ว) */
+  assert.match(planMonthlyFill(RULE_TWO, rowsNew(), TODAY, { roundIndex: billingRoundIndexOf('x') }).error, /รอบที่เลือกไม่มี/);
 });
 
 test('billingFillPatch: งวดที่มีกำหนดชำระแล้วคงวันเดิม — เขียนแค่วันวางบิล · ไม่แตะเหตุการณ์', () => {
@@ -337,7 +403,8 @@ test('route งวด: fill-billing เป็นคำสั่งของท�
   assert.ok(fill.indexOf("if (!installmentScheduleAllowed(user)) return forbidden('ไม่มีสิทธิ์แก้กำหนดชำระ');") >= 0
     && fill.indexOf("if (!installmentScheduleAllowed(user)) return forbidden(") < fill.indexOf('loadOrderForUser('),
     'สิทธิ์ก่อนโหลด — คนที่ผ่าน proxy ด้วย payments:confirm แต่ไม่ใช่ FN ต้องได้ 403 ไม่ใช่เหตุของรอบ/แผน');
-  assert.match(fill, /billingFillCheck\(billing\.rule, live, body\.plan, businessDate\(\)\)/, 'วันนี้ = นาฬิกาไทย · แผนคิดใหม่ที่ server');
+  assert.match(fill, /billingFillCheck\(billing\.rule, live, body\.plan, businessDate\(\), \{ roundIndex \}\)/, 'วันนี้ = นาฬิกาไทย · แผนคิดใหม่ที่ server');
+  assert.match(fill, /const roundIndex = billingRoundIndexOf\(body\.roundIndex\);/, 'รอบที่คนเลือก (ลูกค้าหลายรอบ) คิดซ้ำที่ server');
   assert.match(fill, /installmentActionError\(byId\.get\(planned\.id\), 'schedule', user, \{/);
   assert.match(fill, /orderLock = historicalInstallmentLock\(order\) \|\| pipelineInstallmentLock\(order, 'schedule'\)/);
   assert.match(fill, /written = await writeBillingFill\(supabase, live, built\.rows\)/);
@@ -345,7 +412,7 @@ test('route งวด: fill-billing เป็นคำสั่งของท�
   // audit = เฉพาะงวดที่เขียนจริง (before/after จาก writeBillingFill ตรง ๆ) · หยุดกลางทาง = 409 ด้วยข้อความกลาง
   assert.match(fill, /const \{ before, after \} = written;/);
   assert.match(fill, /before: \{ installments: before \},/);
-  assert.match(fill, /after: \{ installments: after, fill: 'billing-monthly' \},/);
+  assert.match(fill, /after: \{ installments: after, fill: 'billing-monthly', billingRule: billing\.rule, roundIndex \},/);
   assert.ok(fill.indexOf('await recordAudit({') < fill.indexOf('billingFillStoppedMessage(after.length, stopped)'),
     'หยุดกลางทางยังต้องลง audit งวดที่เขียนไปแล้วก่อนตอบ 409');
   assert.match(fill, /if \(stopped\) return fail\(billingFillStoppedMessage\(after\.length, stopped\), 409\);/);
@@ -398,11 +465,11 @@ test('แผงงวด: โมดัลกำหนดวันงวดส่
   // แดง "เลยกำหนด" ยังอ่าน dueDate ช่องเดียว — วันวางบิลไม่มีทางแดง
   assert.match(panel, /const overdue = !installmentVoid\(row, order\) && row\.status !== "confirmed" && row\.dueDate && String\(row\.dueDate\) < String\(todayIso\);/);
   assert.doesNotMatch(panel, /billingDate[^;\n]*<\s*String\(todayIso\)/);
-  assert.match(panel, /colSpan=\{\(single \? 7 : 8\) \+ \(showCoverage \? 1 : 0\) \+ \(billingOn \? 1 : 0\)\}/);
+  assert.match(panel, /colSpan=\{\(single \? 7 : 8\) \+ \(showCoverage \? 1 : 0\) \+ \(billingColumn \? 1 : 0\)\}/);
   const page = code(SO_PAGE);
   assert.match(page, /user=\{\{ id: order\.meId, role, department: order\.meDepartment \}\}/,
     'ด่านวันงวดของ FN ตัดสินฝ่าย — แผงต้องได้ฝ่ายเดียวกับที่ route เห็น');
-  assert.match(page, /json: \{ action: "fill-billing", plan \}/);
+  assert.match(page, /json: \{ action: "fill-billing", plan, roundIndex \}/);
   assert.match(page, /onFillBilling=\{runBillingFill\}/);
 });
 
@@ -416,15 +483,35 @@ test('แผงงวด (review S3): คำร้องอ่านไม่ข
   // ใบย้อนหลังที่ยกเลิกก็ตาย — และงวดโมฆะไม่ส่งลิงก์คำร้องไปคอลัมน์ที่ซ่อนป้ายของมัน
   assert.match(panel, /const deadOrder = deadPipeline \|\| \(historical && order\?\.status === "cancelled"\);/);
   assert.match(panel, /const billingOn = order\?\.billingSchemaReady !== false && !deadOrder && !movedAway;/);
-  assert.match(panel, /row\.billingRequestId && !\(billingOn && !installmentVoid\(row, order\) && billingStateOf\(row\)\.key === "requested"\)/);
+  assert.match(panel, /row\.billingRequestId && !\(billingColumn && !installmentVoid\(row, order\) && billingStateOf\(row\)\.key === "requested"\)/);
+  /* คอลัมน์วันวางบิลซ่อนเมื่อไม่มีรอบ/ไม่มีเครดิตและไม่มีงวดไหนมีวันวางบิล — ลิงก์คำร้องต้องกลับไปอยู่ช่องรายละเอียด (ไม่หายทั้งสองที่) */
+  assert.match(panel, /const billingColumn = billingOn && \(Boolean\(billingRule\)/);
   // ชวนตั้งรอบเฉพาะคนที่ API ตั้งรอบให้ผ่าน
   assert.match(panel, /const canSetBillingRule = order\?\.canEditBillingRule === true;/);
-  assert.match(panel, /\{!billingRule && canSetBillingRule \? "ตั้งรอบวางบิล" : "ดูที่ทะเบียนลูกค้า"\}/);
+  assert.match(panel, /\{!billingRule && !noCredit && canSetBillingRule \? "ตั้งรอบวางบิล" : "ดูที่ทะเบียนลูกค้า"\}/,
+    'ไม่มีเครดิต = ตั้งแล้ว ไม่ชวนไปตั้งรอบ');
   assert.match(panel, /action=\{canSetBillingRule \? \(/);
   // โมดัลเติม: ไม่มีงวดเหลือ = ปุ่มปิดปุ่มเดียว · เหลืองวดเดียวหลังหยุดกลางทางยังยืนยันได้
-  assert.match(panel, /const fillAllowed = fillRows\.length > 0/);
-  assert.match(panel, /const canFill = fillRows\.length >= 2 && fillAllowed;/);
+  assert.match(panel, /const fillAllowed = fillRows\.length > 0 && fillGatesOpen\(fillRows\);/);
+  assert.match(panel, /const canFill = fillCandidates\.length >= 2 && fillGatesOpen\(fillCandidates\);/);
   assert.match(panel, /disabled=\{!!busy \|\| !fillAllowed\} onClick=\{submitFill\}/);
+  // ลูกค้าหลายรอบต่อเดือน: ถามรอบก่อนพรีวิว · ไม่เลือกให้ · เปิดใหม่ล้างที่เลือก · ส่งรอบไปกับแผน
+  assert.match(panel, /const \[fillRound, setFillRound\] = useState\(null\);/);
+  assert.match(panel, /setFillRound\(null\); setFillOpen\(true\);/);
+  assert.match(panel, /planMonthlyFill\(billingRule, saved, todayIso, \{ roundIndex: fillRoundIndex \}\)/);
+  /* state จำ **วันวางบิลของรอบ** (ไม่ใช่ลำดับ) — 409 ดึงรอบใหม่แล้วลำดับเลื่อน ชิปที่เลือกต้องไม่กระโดดไปรอบอื่น */
+  assert.match(panel, /const fillRoundIndex = pickedRoundIndex\(billingRule, fillRound\);/);
+  assert.match(panel, /const fillRoundValue = fillRoundIndex === null \? null : fillRound;/);
+  assert.match(panel, /<BillingRoundChoice choices=\{roundChoices\} value=\{fillRoundValue\} onChange=\{setFillRound\}/);
+  assert.match(panel, /roundIndex: fillRoundIndex,/);
+  /* ยังไม่เลือกรอบ = ปุ่มยืนยันไม่มีจำนวนงวด (เหมือนจัดวันใหม่) — เลขที่นับก่อนเลือกรอบทำให้ปุ่มที่ดับดูพร้อมกด */
+  assert.match(panel, /fillRoundMissing \? "เติมวัน" : `เติมวัน \$\{fillRows\.length\} งวด`/);
+  assert.doesNotMatch(panel, /fillRoundMissing \? fillCandidates : fillRows/);
+  /* รอบลูกค้าไม่เป็นรายเดือนแล้วระหว่างเปิดโมดัล = บอกเหตุจริง ไม่ใช่ "ไม่มีงวดที่ต้องเติมวันแล้ว" */
+  assert.match(panel, /\{monthlyRule \? fillPlan\?\.error \|\| "ไม่มีงวดที่ต้องเติมวันแล้ว" : noMonthlyNote\("เติมวัน"\)\}/);
+  // รอบรุ่นสอง: ไม่มีเครดิต = ทำเหมือนไม่มีรอบ (pickerRuleOf) · ห้ามอ่านช่องรุ่นแรกตรง ๆ
+  assert.match(panel, /const billingRule = billingOn \? pickerRuleOf\(order\?\.customer\?\.billingRule\) : null;/);
+  assert.doesNotMatch(panel, /billingRule\??\.billing\.mode|\.payment\.day|\.billing\.day|\.monthOffset/);
   // ประกาศเลยรอบเป็นสตริงเดียว (thaiText ตัดบรรทัดให้เฉพาะลูกที่เป็นสตริง)
   assert.doesNotMatch(panel, /ยังไม่ขอใบวางบิล`\}\s*\{lateBilling\.length === 1/);
 });

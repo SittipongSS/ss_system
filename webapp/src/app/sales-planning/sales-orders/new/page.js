@@ -40,8 +40,8 @@ import { businessDate } from "@/lib/businessDate";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
 import { previewInstallments } from "@/lib/sales/salesOrderPayments";
-import { describeBillingRule } from "@/lib/sales/billingRule";
-import { EMPTY_PICKER_VALUE } from "@/lib/sales/billingPicker";
+import { billingRuleMonthly, billingRuleNoCredit, describeBillingRule } from "@/lib/sales/billingRule";
+import { EMPTY_PICKER_VALUE, pickerRuleOf } from "@/lib/sales/billingPicker";
 import {
   createFormBillingBlocker, createFormDateCheck, createFormInstallmentItems, createFormTermsState, createFormVisibleValues,
 } from "@/lib/sales/salesOrderCreateInstallments";
@@ -169,8 +169,13 @@ function NewSalesOrderInner() {
       document.removeEventListener("visibilitychange", onReturn);
     };
   }, [creating, refreshTerms]);
-  // มีรอบ = แต่ละงวดได้ตัวเลือกรอบ · ไม่มี/โหลดไม่ขึ้น = ช่องกำหนดชำระแบบเดิม
-  const rule = terms?.status === "ready" && terms.supported ? terms.rule : null;
+  /* มีรอบ (มีเครดิต) = แต่ละงวดได้ตัวเลือกรอบ · ไม่มี/โหลดไม่ขึ้น = ช่องกำหนดชำระแบบเดิม
+     ⭐ ไม่มีเครดิต (มติเจ้าของ 26/09 ข้อ 2) = ทำเหมือนไม่มีรอบทุกอย่าง (`pickerRuleOf` คืน null — ตัวเดียวกับตัวเลือกรอบ/แผงงวด)
+       แต่แถบเหนือตารางบอกว่า "ไม่มีเครดิต" ไม่ใช่ "ยังไม่ตั้ง" (ตั้งแล้ว — ไม่ชวนไปตั้งซ้ำ)
+     ⚠️ ห้ามอ่าน `rule.billing.day` / `.payment.day` ตรง ๆ (รอบรุ่นสอง mig 0390) — ถามตัวช่วยของ billingRule.js */
+  const customerRule = terms?.status === "ready" && terms.supported ? terms.rule : null;
+  const rule = pickerRuleOf(customerRule);
+  const noCredit = billingRuleNoCredit(customerRule);
 
   /* เลขที่เอกสารยืนยันเป็นค่าตั้งต้นของ "เอกสารอ้างอิง" (กติกาเดิมของ 0246 ที่เคยไหล
      มาจากตอนปิด Won) — หยุดตามทันทีที่ผู้ใช้พิมพ์ทับ ไม่ใช่ทับของที่เขาแก้ไว้ */
@@ -305,8 +310,10 @@ function NewSalesOrderInner() {
   const todayIso = businessDate();
   const customerHref = quote.customerId ? `/database/customers/${quote.customerId}` : "";
 
-  /* แถบเหนือตารางงวด: รอบของลูกค้า + เงื่อนไขเครดิต (ข้อความอิสระเดิม วางข้างกัน ไม่แปลง) + ทางไปทะเบียนลูกค้า
-     · ยังไม่ตั้งรอบ = บอกทางไปตั้ง ตารางคงช่องกำหนดชำระแบบเดิม · โหลดไม่ขึ้น = บอกเหตุ + ลองใหม่
+  /* แถบเหนือตารางงวด: รอบของลูกค้า / ไม่มีเครดิต + หมายเหตุการวางบิล + ทางไปทะเบียนลูกค้า
+     · ยังไม่ตั้ง = บอกทางไปตั้ง ตารางคงช่องกำหนดชำระแบบเดิม + **ข้อความเครดิตเดิม** (ช่องอิสระที่ถอดจากฟอร์มลูกค้าแล้ว ·
+       มติ 26/09: เก็บไว้อ่านอย่างเดียว) — ตั้งแล้ว (รวมไม่มีเครดิต) ไม่โชว์ข้อความเดิม: mig 0390 แปลงไปเป็นรอบแล้ว สองแหล่งขัดกันได้
+     · โหลดไม่ขึ้น = บอกเหตุ + ลองใหม่
        (ไทยนำ + ข้อความดิบเป็นบรรทัดเล็ก — มติ 23/09 · StatusNotice `detail`)
      · ฐานยังไม่รัน 0389 / ใบไม่ผูกลูกค้า = ไม่มีแถบ (หน้าเหมือนเดิม)
      ลิงก์ชี้การ์ด `#billing-rule` บนหน้าลูกค้า (CustomerBillingRuleCard) — เปิดแท็บใหม่ ดูเหตุผลที่ `registryOpened` */
@@ -328,11 +335,13 @@ function NewSalesOrderInner() {
       </StatusNotice>
     );
   } else if (terms?.status === "ready" && terms.supported) {
+    const ruleNote = String(customerRule?.note || "").trim();
+    const ruleSet = Boolean(rule) || noCredit;
     termsNotice = (
       <StatusNotice
         tone={rule ? "info" : "neutral"}
         role="note"
-        icon={rule ? CalendarClock : CalendarX}
+        icon={ruleSet ? CalendarClock : CalendarX}
         className={styles.termsNotice}
         action={customerHref ? (
           <Button
@@ -345,20 +354,29 @@ function NewSalesOrderInner() {
             size="sm"
             tone="neutral"
             icon={<ExternalLink size={14} aria-hidden="true" />}
-            aria-label={`${rule ? "ดูที่ทะเบียนลูกค้า" : "เปิดทะเบียนลูกค้า"} (เปิดแท็บใหม่)`}
+            aria-label={`${ruleSet ? "ดูที่ทะเบียนลูกค้า" : "เปิดทะเบียนลูกค้า"} (เปิดแท็บใหม่)`}
           >
-            {rule ? "ดูที่ทะเบียนลูกค้า" : "เปิดทะเบียนลูกค้า"}
+            {ruleSet ? "ดูที่ทะเบียนลูกค้า" : "เปิดทะเบียนลูกค้า"}
           </Button>
         ) : null}
       >
         <span className={styles.termsLine}>
           {rule
             ? <>รอบวางบิลของลูกค้า: <b>{describeBillingRule(rule)}</b></>
-            : "ลูกค้ายังไม่ตั้งรอบวางบิล — ตั้งได้ที่ทะเบียนลูกค้า"}
+            : noCredit
+              ? <>เครดิตของลูกค้า: <b>{describeBillingRule(customerRule)}</b> — กรอกกำหนดชำระเองรายงวด</>
+              : "ลูกค้ายังไม่ตั้งเครดิตและรอบวางบิล — ตั้งได้ที่ทะเบียนลูกค้า"}
         </span>
-        <span className={styles.termsSub}>
-          <span className={styles.termsLabel}>เงื่อนไขเครดิต</span> {naText(terms.creditTerms)}
-        </span>
+        {ruleNote ? (
+          <span className={styles.termsSub}>
+            <span className={styles.termsLabel}>หมายเหตุการวางบิล</span> {ruleNote}
+          </span>
+        ) : null}
+        {!ruleSet && terms.creditTerms ? (
+          <span className={styles.termsSub}>
+            <span className={styles.termsLabel}>ข้อความเครดิตเดิม</span> {terms.creditTerms}
+          </span>
+        ) : null}
       </StatusNotice>
     );
   }
@@ -625,7 +643,7 @@ function NewSalesOrderInner() {
               </div>
               {rule ? (
                 <p className={`form-note ${styles.planNote}`}>
-                  {rule.billing.mode === "monthly"
+                  {billingRuleMonthly(rule)
                     ? "ชิปคือ 3 รอบถัดไปของลูกค้านับจากวันนี้ · แตะรอบเดียวได้ทั้งวันวางบิลและกำหนดชำระ · แก้กำหนดชำระทับรายงวดได้"
                     : "ลูกค้าวางบิลได้ทุกวัน — ใส่วันวางบิล ระบบคิดกำหนดชำระตามรอบของลูกค้าให้"}
                   {" · "}ไม่เลือกก็สร้างใบได้ — เลือกภายหลังได้ที่การ์ด &ldquo;การชำระ&rdquo; บนใบ

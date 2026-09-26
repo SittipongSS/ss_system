@@ -70,6 +70,17 @@ import { apiFetch, apiJson } from "@/lib/apiFetch";
 // แถวความสัมพันธ์ในแท็บ 360-view: ชื่อ + บรรทัดรอง + ของฝั่งขวา · ทุกแท็บทรงเดียวกัน
 // เดิมก๊อปมาร์กอัปชุดนี้ซ้ำทีละแท็บ ซึ่งเป็นวิธีที่แท็บพวกนี้เพี้ยนหากันทีละนิด
 // (กฎเดียวกับ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ใน AGENTS.md)
+/* แถว "เงื่อนไขเครดิต" ของการ์ดสรุป (มติเจ้าของ 26/09 · mig 0390) — ค่าในระบบก่อนข้อความเดิมเสมอ
+   · ตั้งแล้ว = ประโยคของรอบ (รูปย่อชุดเดียวกับทะเบียนการชำระ) / "ไม่มีเครดิต"
+   · ยังไม่ระบุ = ข้อความ "เงื่อนไขเครดิต" ที่พิมพ์ไว้สมัยก่อน **บอกว่าเป็นของเดิม** (ระบบไม่ได้ใช้คิดวัน)
+   · ไม่มีทั้งคู่ = '' → การ์ดขึ้นขีด */
+function creditSummaryOf(customer) {
+  const rule = describeBillingRule(customer?.billingRule, { short: true });
+  if (rule) return rule;
+  const legacy = String(customer?.creditTerms ?? "").trim();
+  return legacy ? `${legacy} (ข้อความเดิม)` : "";
+}
+
 /* หัวข้อย่อยในการ์ดข้อมูลลูกค้า — กินเต็มแถวของกริดสามคอลัมน์ ไม่งั้นหัวข้อไปนั่ง
    หนึ่งในสามของแถว แล้วช่องข้อมูลช่องแรกขึ้นมาอยู่ข้าง ๆ หัวข้อของตัวเอง
    (ตัวเดียวกับ SpecGroup ของหน้าสินค้า ต่างแค่จำนวนคอลัมน์ที่ต้อง span) */
@@ -297,7 +308,8 @@ export default function CustomerDetails() {
       addresses: formData.addresses || [],
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
-      creditTerms: formData.creditTerms || null,
+      /* ⚠️ ไม่ส่ง `creditTerms` แล้ว (มติเจ้าของ 26/09 · mig 0390) — เครดิตตั้งที่การ์ด "เครดิตและรอบวางบิล"
+         ทางเดียว (เส้น `/billing-rule` ไม่ต้องอนุมัติใหม่) · ข้อความเดิมในฐานคงไว้ อ่านอย่างเดียว */
     };
 
     try {
@@ -524,9 +536,9 @@ export default function CustomerDetails() {
           { id: "type", label: "ประเภทลูกค้า", value: customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล" },
           { id: "team", label: "ทีมดูแล", value: teamsLabel },
           { id: "tax", label: "เลขผู้เสียภาษี", value: customer.taxId ? fmtNationalId(customer.taxId) : "" },
-          { id: "credit", label: "เงื่อนไขเครดิต", value: customer.creditTerms },
-          // รอบวางบิล (mig 0389) — รูปย่อชุดเดียวกับทะเบียนการชำระ · ยังไม่ตั้ง = ขีด
-          { id: "billingRule", label: "รอบวางบิล", value: describeBillingRule(customer.billingRule, { short: true }) },
+          /* เงื่อนไขเครดิต (mig 0390 · มติ 26/09) — ประโยคของรอบ (รูปย่อชุดเดียวกับทะเบียนการชำระ · "ไม่มีเครดิต")
+             ยังไม่ระบุ = ข้อความเดิมที่พิมพ์ไว้ (บอกว่าเป็นของเดิม) · ไม่มีทั้งคู่ = ขีด */
+          { id: "credit", label: "เงื่อนไขเครดิต", value: creditSummaryOf(customer) },
           { id: "addresses", label: "ที่อยู่", value: `${addresses.length} รายการ` },
           { id: "contacts", label: "ผู้ติดต่อ", value: `${(customer.contacts || []).length} คน` },
         ]}
@@ -557,7 +569,7 @@ export default function CustomerDetails() {
            สาขา ที่อยู่ออกเอกสาร รหัส AR ไม่ยกเว้น เพราะไปโผล่บนเอกสารถึงกรมสรรพสามิต
            · รอบวางบิล (mig 0389) บันทึกผ่านเส้นแยก `/billing-rule` ซึ่งไม่แตะด่านอนุมัติเลย (มติ 25/09 ข้อ 4) */
         footer={approvalView.status === "approved" && canEdit
-          ? <span>แก้ชื่อ · เลขผู้เสียภาษี · ที่อยู่ออกเอกสาร · รหัส AR = กลับไปรออนุมัติใหม่ และลูกค้าจะหลุดจากรายการเลือกทุกหน้าจนกว่าจะอนุมัติอีกครั้ง (แก้ผู้ติดต่อ ที่อยู่จัดส่ง หรือรอบวางบิลไม่กระทบ)</span>
+          ? <span>แก้ชื่อ · เลขผู้เสียภาษี · ที่อยู่ออกเอกสาร · รหัส AR = กลับไปรออนุมัติใหม่ และลูกค้าจะหลุดจากรายการเลือกทุกหน้าจนกว่าจะอนุมัติอีกครั้ง (แก้ผู้ติดต่อ ที่อยู่จัดส่ง หรือเครดิตและรอบวางบิลไม่กระทบ)</span>
           : null}
       />
 
@@ -634,7 +646,8 @@ export default function CustomerDetails() {
               <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
               <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
               <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
-              <Field label="เงื่อนไขเครดิต (Credit Terms)" value={customer.creditTerms} />
+              {/* เงื่อนไขเครดิตย้ายไปการ์ด "เครดิตและรอบวางบิล" ข้างล่าง (มติ 26/09) — ฟอร์มลูกค้าไม่มีช่องนี้แล้ว
+                  การ์ดนี้เรียงตามฟอร์ม จึงไม่มีช่องนี้เหมือนกัน */}
               {/* แบรนด์เป็นของลูกค้า (customers.brands[]) — สินค้าหยิบไปเป็นตัวเลือก
                   ตอนตั้งแบรนด์ของ FG · เคยอยู่ในรางขวา ซึ่งทำให้คนหาไม่เจอตอนกรอกฟอร์ม */}
               <div className="md:col-span-3">
@@ -733,7 +746,7 @@ export default function CustomerDetails() {
             </div>
           </DetailCard>
 
-          {/* รอบวางบิลและชำระเงิน (mig 0389 · ม็อก A) — ใต้การ์ดข้อมูลลูกค้า ติดกับเงื่อนไขเครดิต
+          {/* เครดิตและรอบวางบิล (mig 0389/0390 · ม็อก A + modal-v2) — ใต้การ์ดข้อมูลลูกค้า · ที่เดียวที่แก้เครดิตได้
               ⚠️ บันทึกแล้วเติมเฉพาะช่องรอบวางบิลลงแถวที่มีอยู่ ไม่โหลดทั้งหน้าใหม่ (ฟอร์มแก้ลูกค้า
               ที่อาจค้างอยู่ไม่ถูกเขียนทับ · ด่านอนุมัติไม่ขยับ จึงไม่มีอะไรอื่นบนหน้าเปลี่ยน) */}
           <CustomerBillingRuleCard

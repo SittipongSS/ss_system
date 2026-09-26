@@ -39,11 +39,11 @@ const THAI_MONTHS_SHORT = [
 // ⚠️ ต้องกัน falsy เอง: new Date(null) = epoch 0 (ไม่ใช่ Invalid) → ถ้าไม่กัน
 // dueDate=null จะถูกนับเป็น 1970 ทำให้ rangeStart เพี้ยน บาร์ถูกดันออกนอกจอ
 const midnight = (v) => { if (!v) return NaN; const d = new Date(v); if (isNaN(d.getTime())) return NaN; d.setHours(0, 0, 0, 0); return d.getTime(); };
-const mondayOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return d.getTime(); };
+const sundayOf = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay()); return d.getTime(); }; // ⭐ สัปดาห์เริ่มวันอาทิตย์ (อา–ส) ทั้งระบบ — มติเจ้าของ 2026-09-26 (เดิมเริ่มวันจันทร์)
 const dayIndexOf = (v, rangeStartMs) => { const t = midnight(v); return isNaN(t) ? NaN : Math.round((t - rangeStartMs) / DAY_MS); };
 const isoFromIndex = (rangeStartMs, idx) => toLocalISODate(new Date(rangeStartMs + idx * DAY_MS));
 
-// gridline + weekend shading ของพื้นหลัง timeline (rangeStart = วันจันทร์เสมอ → เสาร์-อาทิตย์ = ช่อง 5,6)
+// gridline + weekend shading ของพื้นหลัง timeline (rangeStart = วันอาทิตย์เสมอ → อาทิตย์ = ช่อง 0 · เสาร์ = ช่อง 6)
 const weekendShade = "color-mix(in srgb, var(--text-3) 9%, transparent)";
 const buildGridBg = (px) => {
   const wk = px * 7;
@@ -53,8 +53,8 @@ const buildGridBg = (px) => {
   ];
   // เส้นแบ่งวัน (จางลง) เมื่อซูมเข้าพอ
   if (px >= 14) layers.push(`repeating-linear-gradient(90deg, color-mix(in srgb, var(--border) 45%, transparent) 0, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px, transparent ${px}px)`);
-  // แรเงาวันหยุดสุดสัปดาห์ (ล่างสุด)
-  layers.push(`repeating-linear-gradient(90deg, transparent 0, transparent ${px * 5}px, ${weekendShade} ${px * 5}px, ${weekendShade} ${wk}px)`);
+  // แรเงาวันหยุดสุดสัปดาห์ (ล่างสุด) — หัวสัปดาห์ (อา.) กับท้ายสัปดาห์ (ส.) คนละปลาย
+  layers.push(`repeating-linear-gradient(90deg, ${weekendShade} 0, ${weekendShade} ${px}px, transparent ${px}px, transparent ${px * 6}px, ${weekendShade} ${px * 6}px, ${weekendShade} ${wk}px)`);
   return layers.join(", ");
 };
 
@@ -177,16 +177,16 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
     try { localStorage.setItem("pm_gantt_pxPerDay", String(clamped)); } catch { /* ignore */ }
   };
 
-  // ── ขอบเขตเวลา (แกนรายวัน) — rangeStart เป็นวันจันทร์เสมอ ──
+  // ── ขอบเขตเวลา (แกนรายวัน) — rangeStart เป็นวันอาทิตย์เสมอ ──
   const { rangeStartMs, totalDays } = useMemo(() => {
     const starts = tasks.map((t) => midnight(t.startDate)).filter((n) => !isNaN(n));
     const finishes = tasks.map((t) => midnight(t.finishDate)).filter((n) => !isNaN(n));
     const projStart = midnight(project.startDate);
     let minMs = starts.length ? Math.min(...starts) : (isNaN(projStart) ? midnight(nowMs) : projStart);
     const maxMs = finishes.length ? Math.max(...finishes) : minMs + 30 * DAY_MS;
-    const start = mondayOf(minMs - 7 * DAY_MS);             // เผื่อ 1 สัปดาห์ก่อนเริ่ม
-    const endMon = mondayOf(maxMs + 10 * DAY_MS);           // เผื่อท้าย + ปัดเป็นสัปดาห์
-    const end = endMon + 6 * DAY_MS;
+    const start = sundayOf(minMs - 7 * DAY_MS);             // เผื่อ 1 สัปดาห์ก่อนเริ่ม
+    const endSun = sundayOf(maxMs + 10 * DAY_MS);           // เผื่อท้าย + ปัดเป็นสัปดาห์
+    const end = endSun + 6 * DAY_MS;
     const days = Math.round((end - start) / DAY_MS) + 1;
     return { rangeStartMs: start, totalDays: Math.max(days, 14) };
   }, [tasks, project.startDate, nowMs]);
@@ -463,14 +463,14 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
                     {axis.days.map((d) => {
                       const weekend = d.dow === 0 || d.dow === 6;
                       const label = pxPerDay >= 22 ? String(d.date)
-                        : (pxPerDay >= 11 && d.dow === 1 ? String(d.date) : "");
+                        : (pxPerDay >= 11 && d.dow === 0 ? String(d.date) : "");
                       return (
                         <div key={d.i} style={{
                           width: pxPerDay, height: DAY_BAND_H, lineHeight: `${DAY_BAND_H}px`,
                           fontSize: "var(--fs-1)", fontWeight: weekend ? 400 : 500,
                           color: weekend ? "var(--text-3)" : "var(--text-2)", textAlign: "center",
                           background: weekend ? weekendShade : "transparent",
-                          borderLeft: d.dow === 1 ? "1px solid var(--border)" : (pxPerDay >= 14 ? "1px solid color-mix(in srgb, var(--border) 40%, transparent)" : "none"),
+                          borderLeft: d.dow === 0 ? "1px solid var(--border)" : (pxPerDay >= 14 ? "1px solid color-mix(in srgb, var(--border) 40%, transparent)" : "none"),
                           overflow: "hidden",
                         }}>
                           {label}

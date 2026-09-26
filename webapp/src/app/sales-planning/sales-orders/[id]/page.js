@@ -596,14 +596,15 @@ export default function SalesOrderDetailPage() {
      ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองแล้วเทียบ — ไม่ตรง = 409
        (รอบ/งวดเพิ่งเปลี่ยน) ⇒ ดึงใบสดให้พรีวิววาดชุดใหม่ แล้วให้คนกดยืนยันจากของที่เห็นจริง
      ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
-  async function runBillingFill({ plan }) {
+  async function runBillingFill({ plan, roundIndex = null }) {
     setBusy("installment-fill-billing");
     setError("");
     setToast(null);
     try {
       const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
         method: "PATCH",
-        json: { action: "fill-billing", plan },
+        /* `roundIndex` = รอบที่เลือกในโมดัล (ลูกค้าหลายรอบต่อเดือน · มติ 26/09) — route คิดแผนซ้ำด้วยรอบเดียวกัน · รอบเดียว = null */
+        json: { action: "fill-billing", plan, roundIndex },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -626,14 +627,14 @@ export default function SalesOrderDetailPage() {
      ⭐ แผงส่งตาราง "เดิม → ใหม่" ที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองด้วยคำร้องสด
        แล้วเทียบ — ไม่ตรง = 409 ⇒ ดึงใบสด (รวมคำร้องที่งวดผูก) ให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
      ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
-  async function runBillingRedate({ plan }) {
+  async function runBillingRedate({ plan, roundIndex = null }) {
     setBusy("installment-redate-billing");
     setError("");
     setToast(null);
     try {
       const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
         method: "PATCH",
-        json: { action: "redate-billing", plan },
+        json: { action: "redate-billing", plan, roundIndex },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

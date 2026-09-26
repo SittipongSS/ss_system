@@ -1,6 +1,6 @@
 # กำหนดวางบิล — รอบวางบิลของลูกค้า → วันวางบิล / กำหนดชำระรายงวด
 
-> สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-26 · mig 0389 รันบน prod แล้ว · รอบสอง (6 ข้อตามหลัง + จัดวันใหม่ตามรอบ) ประกอบแล้ว · UAT หน้าจอแบบอ่านอย่างเดียวผ่าน · รอใช้จริง (ตั้งรอบ AR-267 แล้วเลือกรอบงวด 1 ของ SO-26080050-0)
+> สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-26 · รอบแรก+รอบสองขึ้น prod แล้ว (#1840) · **รุ่นสอง** (สวิตช์เครดิต · หลายรอบ · โมดัลใหม่ · ปฏิทิน อา–ส) รอ merge — ⚠️ ต้องรัน mig 0390 **ก่อน** deploy รุ่นสอง
 
 ม็อกที่เจ้าของดูผ่าน: `~/ss-team/mockups/billing-cycle/` (5 จอ · brief.md มีมติ + ข้อมูลตัวอย่าง)
 
@@ -31,11 +31,29 @@
 12. (26/09 รอบสอง) หัวใบ SO "กำหนดชำระ" + บรรทัด "กำหนด" / การเรียงในหน้ารายการ = กำหนดชำระของงวดถัดไป (ไม่ใช่ `paymentDueDate`)
     · กระดาษที่พิมพ์ไม่แตะ (ตรึงลายนิ้วมือเอกสาร)
 
+13. (26/09 รุ่นสอง) โมดัลรอบวางบิลใช้แบบ `mockups/billing-cycle/modal-v2/recommended.html` — แตะวันจากตาราง 1–30 + "31 · สิ้นเดือน"
+    (ไม่พิมพ์ · **ไม่ใช่ปฏิทินวันในสัปดาห์** จึงไม่วาง 7 ช่องต่อแถว) · เงินเข้าเลือก [เครดิต | เดือนเดียวกัน | เดือนถัดไป] เห็นวันผลก่อนแตะ ·
+    การ์ดผลลัพธ์ (ประโยค + เส้นเวลา + 3 รอบถัดไป) อยู่ในจอตลอด · เตือนหลังกดบันทึกเท่านั้น
+14. (26/09 รุ่นสอง) **เครดิตเป็นสวิตช์ในโมดัลนี้** [ไม่มีเครดิต | มีเครดิต] (ลูกค้าที่ยังไม่ระบุ ไม่เลือกให้ก่อน) · เปลี่ยนเครดิต **ไม่ต้องอนุมัติ** ·
+    ช่องข้อความ "เงื่อนไขเครดิต" ในฟอร์มลูกค้า (สร้าง/แก้) **ถอดออก** — คอลัมน์ `creditTerms` คงไว้เป็นข้อความเดิมอ่านอย่างเดียว ·
+    mig 0390 แปลงข้อความที่ชัด (≈449 → ไม่มีเครดิต · ≈11 → เครดิต N วัน + หมายเหตุ) ที่เหลือ (AR-267 · 50/50) ให้คนตั้งเอง
+15. (26/09 รุ่นสอง) **วางบิลได้หลายรอบต่อเดือน (สูงสุด 4)** — แต่ละรอบมีวันเงินเข้าของตัวเอง (เดือนเดียวกัน/ถัดไป) · เครดิต N วันใช้กับทุกรอบ ·
+    ปุ่ม "เติมตามรอบ"/"จัดวันใหม่" ของลูกค้าหลายรอบต้องเลือกก่อนว่าใช้รอบไหน (ไม่เลือกให้)
+16. (26/09) **ปฏิทินทุกจอเริ่มวันอาทิตย์ (อา–ส)** — ตารางจัดคิวช่าง · บอร์ดผลิต · ปฏิทินกำหนดส่งคำร้อง RD · ตัวแบ่งสัปดาห์รายงาน/ลีด เปลี่ยนจาก จ–อา ·
+    ยาม `lib/weekStartsSunday.test.mjs`
+
 ## กติกาที่ต้องรู้ก่อนแตะ
 
 - **สองช่องแยกกัน ห้ามรวม** — `billingDate` = วันวางบิล · `dueDate` = กำหนดชำระ · ป้ายแดง "เลยกำหนด" + visitGate
   อ่าน `dueDate` ช่องเดียวเหมือนเดิม · วันวางบิลที่ผ่านแล้ว = "เลยรอบวางบิล" โทนเตือน **ไม่แดง**
 - ห้ามตั้งชื่อ `billingCycle` — จองไว้ให้ความถี่งวดของสัญญาบริการ
+- **รูปของรอบรุ่นสอง** (`normalizeBillingRule` · CHECK ของ 0390): `null` = ยังไม่ระบุ · `{ credit: false }` = ไม่มีเครดิต ·
+  `{ billing: { mode: 'anyday' } | { mode: 'monthly', days: [..] }, payment: { mode: 'credit', days } | { mode: 'monthly', rounds: [{ day, monthOffset }] } }`
+  (rounds คู่กับ days ทีละรอบ) · รูปรุ่นแรก (`billing.day` · `payment.day`) ยังอ่านได้ — **ห้ามอ่านช่องข้างในตรง ๆ** ใช้ตัวช่วย
+  `billingRuleNoCredit` · `billingRuleMonthly` · `billingRoundCount` · `billingRoundLabels`
+- **ไม่มีเครดิต = ทำเหมือนไม่มีรอบ** ในจอ SO (กรอกกำหนดชำระเอง · ไม่มีวันวางบิล/ปุ่มเติม) แต่ **แสดงว่า "ไม่มีเครดิต"** · คอลัมน์ "วันวางบิล"
+  บนแผงงวดซ่อนเมื่อลูกค้าไม่มีรอบ/ไม่มีเครดิตและไม่มีงวดไหนมีวันวางบิล
+- ⚠️ ลูกค้าที่เปลี่ยนจากมีเครดิตเป็นไม่มีเครดิตหลังตั้งวันวางบิลให้งวดไปแล้ว — กระดิ่งยังเตือนตามวันวางบิลที่ค้างในงวด (ล้างที่แผงงวดได้)
 - ตัวคิดวันทั้งหมดอยู่ที่ `webapp/src/lib/sales/billingRule.js` ที่เดียว (รอบ · กำหนดชำระ · เติมหลายงวด · สถานะ · ข้อความ)
 - **"ขอใบวางบิลแล้ว"** ตัดสินที่ `billingRequestLive` ตัวเดียว = คำร้องที่ผูกกับงวด **ส่งถึงบัญชีแล้วและยังไม่ถูกยกเลิก** ·
   ร่างที่ยังไม่ส่ง = ยังไม่ขอ (ปุ่ม "ขอใบวางบิลงวดนี้" ผูกงวดตั้งแต่บันทึกร่าง) · ลบคำร้อง = ถอดลิงก์บนงวด (`cleanupRequestOrphans`)
@@ -51,8 +69,8 @@
 |---|---|
 | ฐานข้อมูล | `supabase/migrations/0389_customer_billing_rule.sql` |
 | ตัวคิด | `lib/sales/billingRule.js` · ค่าในตัวเลือกรอบ `lib/sales/billingPicker.js` |
-| ทะเบียนลูกค้า | `api/customers/[id]/billing-rule` (+ alias ใต้ `api/master`) · `components/database/CustomerBillingRule*` · proxy เปิดเส้นนี้ให้ FN · แถวเธรด `billing_rule` (quiet) `lib/master/customerBillingRuleUpdate.js` |
-| แผงงวด SO | `components/salesPlanning/SalesOrderPaymentPanel.js` · `BillingRoundPicker` · `BillingStateBadge` · action `schedule` / `fill-billing` / `redate-billing` ใน `api/sales-planning/sales-orders/[id]/installments` · ลิงก์ขอใบวางบิล `lib/sales/billingRequestHref.js` (ตัวเดียวกับกระดิ่ง) |
+| ทะเบียนลูกค้า | โมดัล `CustomerBillingRuleModal` (+ `CustomerBillingRuleState`) · `api/customers/[id]/billing-rule` (+ alias ใต้ `api/master`) · `components/database/CustomerBillingRule*` · proxy เปิดเส้นนี้ให้ FN · แถวเธรด `billing_rule` (quiet) `lib/master/customerBillingRuleUpdate.js` |
+| แผงงวด SO | `components/salesPlanning/SalesOrderPaymentPanel.js` · `BillingRoundPicker` · `BillingStateBadge` · action `schedule` / `fill-billing` / `redate-billing` (รับ `roundIndex` เมื่อลูกค้าหลายรอบ) ใน `api/sales-planning/sales-orders/[id]/installments` · ลิงก์ขอใบวางบิล `lib/sales/billingRequestHref.js` (ตัวเดียวกับกระดิ่ง) |
 | หน้าสร้าง SO | `app/sales-planning/sales-orders/new/page.js` · `lib/sales/salesOrderCreateInstallments.js` · `salesOrderCreatePayments.js` |
 | ทะเบียน FN | `lib/finance/paymentLedger.js` · `app/finance/payments` (การ์ด · ตัวกรอง `?billing=soon|7d|month|late` — `soon` = ชุดเดียวกับกระดิ่ง FN · คอลัมน์ · Excel) |
 | กระดิ่ง | `lib/sales/billingDueNotify.js` ในส่วนที่ 3 ของ `api/cron/daily-digest` · kind `sales_order_billing_due` / `sales_order_billing_due_fn` (ลิงก์ `?billing=soon`) · ปุ่ม "ขอใบวางบิลงวดนี้" ในแถว (กระดิ่ง + หน้า /notifications) คิดจากข้อมูลสดตอนเปิด `attachNotificationActions` |

@@ -1,5 +1,6 @@
-// แถว "ความเคลื่อนไหว" ของลูกค้าเมื่อรอบวางบิลเปลี่ยน (มติเจ้าของ 26/09 ข้อ 7)
-// ⭐ สิ่งที่ต้องไม่หลุด: เดิม → ใหม่ ต้องอ่านออกทุกทาง (ตั้ง · แก้ · ล้าง · แก้แค่หมายเหตุ) และชนิดนี้ **ไม่เด้งกระดิ่ง**
+// แถว "ความเคลื่อนไหว" ของลูกค้าเมื่อเครดิต/รอบวางบิลเปลี่ยน (มติเจ้าของ 26/09 ข้อ 7 · รุ่นสอง mig 0390)
+// ⭐ สิ่งที่ต้องไม่หลุด: เดิม → ใหม่ ต้องอ่านออกทุกทาง (ตั้ง · แก้ · ล้าง · แก้แค่หมายเหตุ · ไม่มีเครดิต · หลายรอบ)
+//    และชนิดนี้ **ไม่เด้งกระดิ่ง** · ค่าเดิมรูปรุ่นแรก (0389) เทียบกับรุ่นสองได้ ไม่ขึ้นแถวปลอม
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { billingRuleChangeUpdate, logBillingRuleActivity } from './customerBillingRuleUpdate.js';
@@ -8,27 +9,90 @@ import {
 } from './updateTypes.js';
 import { notifyThreadUpdate } from '../notifications.js';
 
-const MONTHLY = { billing: { mode: 'monthly', day: 5 }, payment: { mode: 'monthly', day: 25, monthOffset: 0 } };
-const CREDIT = { billing: { mode: 'monthly', day: 31 }, payment: { mode: 'credit', days: 30 } };
+const MONTHLY = { billing: { mode: 'monthly', days: [5] }, payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }] } };
+const CREDIT = { billing: { mode: 'monthly', days: [31] }, payment: { mode: 'credit', days: 30 } };
+const NO_CREDIT = { credit: false };
+const TWO_ROUNDS = {
+  billing: { mode: 'monthly', days: [10, 25] },
+  payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 10, monthOffset: 1 }] },
+};
 
-test('ตั้งรอบครั้งแรก = ขีด → ประโยคของรอบ', () => {
+test('ตั้งครั้งแรก = ขีด → ประโยคของรอบ · meta เก็บรูปรุ่นสอง', () => {
   const got = billingRuleChangeUpdate(null, MONTHLY);
-  assert.equal(got.body, 'ตั้งรอบวางบิล: — → วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25');
+  assert.equal(got.body, 'ตั้งเครดิตและรอบวางบิล: — → วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25');
   assert.equal(got.meta.action, 'set');
   assert.equal(got.meta.billingRuleBefore, null);
-  assert.deepEqual(got.meta.billingRuleAfter.billing, { mode: 'monthly', day: 5 });
+  assert.deepEqual(got.meta.billingRuleAfter.billing, { mode: 'monthly', days: [5] });
 });
 
-test('แก้รอบ = ประโยคเดิม → ประโยคใหม่ (ประโยคเดียวกับการ์ด/ใบสั่งขาย)', () => {
+test('แก้ = ประโยคเดิม → ประโยคใหม่ (ประโยคเดียวกับการ์ด/ใบสั่งขาย)', () => {
   const got = billingRuleChangeUpdate(MONTHLY, CREDIT);
-  assert.equal(got.body, 'แก้รอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → วางบิลสิ้นเดือน · เครดิต 30 วัน');
+  assert.equal(got.body, 'แก้เครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → วางบิลสิ้นเดือน · เครดิต 30 วัน');
   assert.equal(got.meta.action, 'change');
+});
+
+test('⭐ สวิตช์เครดิต: ไม่มีเครดิต ↔ มีเครดิต อ่านออกในเธรด', () => {
+  assert.equal(billingRuleChangeUpdate(null, NO_CREDIT).body, 'ตั้งเครดิตและรอบวางบิล: — → ไม่มีเครดิต');
+  assert.equal(billingRuleChangeUpdate(NO_CREDIT, CREDIT).body, 'แก้เครดิตและรอบวางบิล: ไม่มีเครดิต → วางบิลสิ้นเดือน · เครดิต 30 วัน');
+  assert.deepEqual(billingRuleChangeUpdate(null, NO_CREDIT).meta.billingRuleAfter, { credit: false });
+});
+
+/* ⭐ ประโยคหลายรอบมี → ในตัวเอง — ต่อด้วย "เดิม → ใหม่" บรรทัดเดียว = ลูกศรห้าตัว แยกไม่ออกว่าเดิมจบตรงไหน
+      ⇒ ฝั่งไหนมีลูกศรในประโยค เขียนเป็นหัว / เดิม: / ใหม่: (บรรทัดละค่า) */
+const oldNew = (body) => {
+  const [head, ...rest] = body.split('\n');
+  const pick = (label) => rest.find((line) => line.startsWith(`${label}: `))?.slice(label.length + 2);
+  return { head, old: pick('เดิม'), new: pick('ใหม่') };
+};
+
+test('⭐ หลายรอบต่อเดือน — เงินเข้าคนละวัน/เดือน บอกเป็นคู่ทีละรอบ · เดิม/ใหม่ อยู่คนละบรรทัด', () => {
+  const got = billingRuleChangeUpdate(MONTHLY, TWO_ROUNDS);
+  assert.equal(got.body, [
+    'แก้เครดิตและรอบวางบิล',
+    'เดิม: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25',
+    'ใหม่: วางบิล 10 → เงินเข้า 25 · วางบิล 25 → เงินเข้า 10 เดือนถัดไป',
+  ].join('\n'));
+});
+
+test('⭐ หลายรอบ → หลายรอบ: ขอบเดิม/ใหม่ต้องเห็น แม้ทั้งสองฝั่งมีลูกศร (ข้อที่ reviewer จับได้)', () => {
+  const after = {
+    billing: { mode: 'monthly', days: [10, 25] },
+    payment: { mode: 'monthly', rounds: [{ day: 31, monthOffset: 0 }, { day: 10, monthOffset: 1 }] },
+  };
+  const got = oldNew(billingRuleChangeUpdate(TWO_ROUNDS, after).body);
+  assert.equal(got.head, 'แก้เครดิตและรอบวางบิล', 'หัวบรรทัดต้องไม่มีค่าใด ๆ ต่อท้าย');
+  assert.equal(got.old, 'วางบิล 10 → เงินเข้า 25 · วางบิล 25 → เงินเข้า 10 เดือนถัดไป');
+  assert.equal(got.new, 'วางบิล 10 → เงินเข้า สิ้นเดือน · วางบิล 25 → เงินเข้า 10 เดือนถัดไป');
+});
+
+test('⭐ หลายรอบ → ไม่มีเครดิต / ล้าง: ค่าเดิมยังอ่านได้ทั้งประโยค (ค่าเดียวที่ฝ่ายขายย้อนดูได้)', () => {
+  const toNone = oldNew(billingRuleChangeUpdate(TWO_ROUNDS, NO_CREDIT).body);
+  assert.deepEqual(toNone, {
+    head: 'แก้เครดิตและรอบวางบิล',
+    old: 'วางบิล 10 → เงินเข้า 25 · วางบิล 25 → เงินเข้า 10 เดือนถัดไป',
+    new: 'ไม่มีเครดิต',
+  });
+  const cleared = oldNew(billingRuleChangeUpdate(TWO_ROUNDS, null).body);
+  assert.deepEqual(cleared, {
+    head: 'ล้างเครดิตและรอบวางบิล',
+    old: 'วางบิล 10 → เงินเข้า 25 · วางบิล 25 → เงินเข้า 10 เดือนถัดไป',
+    new: '—',
+  });
+});
+
+test('รอบเดียวทั้งสองฝั่ง (ไม่มีลูกศรในประโยค) ยังเป็นบรรทัดเดียว "เดิม → ใหม่" แบบเดิม', () => {
+  assert.equal(billingRuleChangeUpdate(MONTHLY, NO_CREDIT).body, 'แก้เครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → ไม่มีเครดิต');
+});
+
+test('⭐ ค่าเดิมรูปรุ่นแรก (0389) = รุ่นสองตัวเดียวกัน ⇒ ไม่มีอะไรเปลี่ยน (เปิดโมดัลแล้วกดบันทึกเฉย ๆ ต้องไม่ขึ้นแถว)', () => {
+  const v1 = { billing: { mode: 'monthly', day: 5 }, payment: { mode: 'monthly', day: 25, monthOffset: 0 } };
+  assert.equal(billingRuleChangeUpdate(v1, MONTHLY), null);
 });
 
 test('⭐ ล้างรอบ = รอบเดิมยังอ่านได้ในเธรด (ป้ายยืนยันการล้างสัญญาไว้แบบนั้น) — รวมหมายเหตุที่หายไปด้วย', () => {
   const got = billingRuleChangeUpdate({ ...MONTHLY, note: 'แนบสำเนา PO\nวางบิลชั้น 3' }, null);
   assert.equal(got.body, [
-    'ล้างรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → —',
+    'ล้างเครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → —',
     'หมายเหตุ: แนบสำเนา PO วางบิลชั้น 3 → —',
   ].join('\n'));
   assert.equal(got.meta.action, 'clear');
@@ -38,7 +102,7 @@ test('⭐ ล้างรอบ = รอบเดิมยังอ่านไ�
 test('แก้แค่หมายเหตุ ไม่ขึ้น "X → X" ที่อ่านไม่ออกว่าอะไรเปลี่ยน', () => {
   const got = billingRuleChangeUpdate({ ...MONTHLY, note: 'เดิม' }, { ...MONTHLY, note: 'ใหม่' });
   assert.equal(got.body, [
-    'แก้หมายเหตุการวางบิล · รอบคงเดิม: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25',
+    'แก้หมายเหตุการวางบิล · ค่าอื่นคงเดิม: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25',
     'หมายเหตุ: เดิม → ใหม่',
   ].join('\n'));
 });
@@ -123,7 +187,7 @@ test('⭐ ลงสำเร็จ = true · แถวเป็น customer.bill
   assert.equal(row.entityType, 'customer');
   assert.equal(row.entityId, 'CUS-1');
   assert.equal(row.kind, 'billing_rule');
-  assert.equal(row.body, 'ล้างรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → —');
+  assert.equal(row.body, 'ล้างเครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → —');
   assert.equal(row.meta.action, 'clear');
   assert.equal(row.authorId, 'u-fn');
   assert.equal(row.authorName, 'บัญชี ทดสอบ');

@@ -7,9 +7,13 @@ import assert from 'node:assert/strict';
 import {
   EMPTY_PICKER_VALUE,
   applyPick,
+  billingRoundChoices,
+  pickedRoundIndex,
   pickerDueBeforeBilling,
   pickerMissing,
   pickerPayload,
+  pickerRoundOptions,
+  pickerRuleOf,
   pickerValueFromRow,
 } from './billingPicker.js';
 import { normalizeInstallmentBilling } from './billingRule.js';
@@ -212,4 +216,80 @@ test('กำหนดชำระแก้ทับไปก่อนวัน�
   value = applyPick(value, { mode: 'overrideDue', dueDate: '2026-10-01' }, AR267);
   assert.equal(pickerDueBeforeBilling(value), true);
   assert.equal(pickerDueBeforeBilling(EMPTY_PICKER_VALUE), false);
+});
+
+/* ── รอบรุ่นสอง (mig 0390 · มติเจ้าของ 26/09): ไม่มีเครดิต · หลายรอบต่อเดือน ───────────────────────── */
+/* สองรอบ: วางบิลวันที่ 10 → เงินเข้า 25 เดือนเดียวกัน · วางบิลสิ้นเดือน → เงินเข้า 15 เดือนถัดไป */
+const TWO_ROUNDS = {
+  billing: { mode: 'monthly', days: [10, 31] },
+  payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 15, monthOffset: 1 }] },
+};
+
+test('pickerRuleOf: ไม่มีเครดิต = null (ทำเหมือนไม่มีรอบ) · รูปรุ่นแรกแปลงเป็นรุ่นสอง · รูปผิด = null', () => {
+  assert.equal(pickerRuleOf({ credit: false }), null);
+  assert.equal(pickerRuleOf({ credit: false, note: 'โอนก่อนส่ง' }), null);
+  assert.equal(pickerRuleOf(null), null);
+  assert.equal(pickerRuleOf({ billing: 'x' }), null);
+  assert.deepEqual(pickerRuleOf(AR267), {
+    billing: { mode: 'monthly', days: [5] }, payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }] },
+  });
+  assert.deepEqual(pickerRuleOf(TWO_ROUNDS), TWO_ROUNDS);
+});
+
+test('pickerRoundOptions: รอบเดียว = วันอย่างเดียว · หลายรอบ = สลับรอบตามวัน + วันเงินเข้าบนชิป · ไม่มีรอบ/ไม่มีเครดิต = []', () => {
+  assert.deepEqual(pickerRoundOptions(AR267, TODAY), [
+    { value: '2026-10-05', date: '5 ต.ค.', due: '' },
+    { value: '2026-11-05', date: '5 พ.ย.', due: '' },
+    { value: '2026-12-05', date: '5 ธ.ค.', due: '' },
+  ]);
+  /* สองรอบในเดือนเดียวกันต่างกันที่เงินเข้า — ชิปต้องบอกก่อนแตะ */
+  assert.deepEqual(pickerRoundOptions(TWO_ROUNDS, TODAY), [
+    { value: '2026-09-30', date: '30 ก.ย.', due: 'เงินเข้า 15 ต.ค.' },
+    { value: '2026-10-10', date: '10 ต.ค.', due: 'เงินเข้า 25 ต.ค.' },
+    { value: '2026-10-31', date: '31 ต.ค.', due: 'เงินเข้า 15 พ.ย.' },
+  ]);
+  assert.deepEqual(pickerRoundOptions(CREDIT30, TODAY), []);
+  assert.deepEqual(pickerRoundOptions({ credit: false }, TODAY), []);
+  assert.deepEqual(pickerRoundOptions(null, TODAY), []);
+});
+
+test('แตะชิปของลูกค้าหลายรอบ = กำหนดชำระของรอบนั้น · วันอื่น… = รอบที่วันนั้นตกอยู่', () => {
+  const late = applyPick(EMPTY_PICKER_VALUE, { mode: 'round', billingDate: '2026-09-30' }, TWO_ROUNDS);
+  assert.equal(late.dueDate, '2026-10-15');
+  const early = applyPick(EMPTY_PICKER_VALUE, { mode: 'round', billingDate: '2026-10-10' }, TWO_ROUNDS);
+  assert.equal(early.dueDate, '2026-10-25');
+  /* 20 ต.ค. อยู่หลังรอบวันที่ 10 ⇒ ใช้เงินเข้าของรอบวันที่ 10 (25 ต.ค.) */
+  assert.equal(applyPick(EMPTY_PICKER_VALUE, { mode: 'other', billingDate: '2026-10-20' }, TWO_ROUNDS).dueDate, '2026-10-25');
+  /* แถวที่บันทึกตรงชิป = round (ชิปของรอบที่สองก็นับ) */
+  assert.equal(pickerValueFromRow({ billingDate: '2026-10-31', dueDate: '2026-11-15' }, TWO_ROUNDS, TODAY).mode, 'round');
+  assert.equal(pickerValueFromRow({ billingDate: '2026-10-31', dueDate: '2026-11-15' }, TWO_ROUNDS, TODAY).dueOverridden, false);
+});
+
+test('billingRoundChoices + pickedRoundIndex: หลายรอบ = ถาม (ไม่เลือกให้) · รอบเดียว/ไม่มีเครดิต = ไม่ถาม และไม่ส่งรอบ', () => {
+  /* ค่าของชิป = วันวางบิลของรอบ (ไม่ใช่ลำดับ) — ดูเทสต์ถัดไป */
+  assert.deepEqual(billingRoundChoices(TWO_ROUNDS), [
+    { value: 10, label: 'รอบวันที่ 10' },
+    { value: 31, label: 'รอบสิ้นเดือน' },
+  ]);
+  assert.deepEqual(billingRoundChoices(AR267), []);
+  assert.deepEqual(billingRoundChoices(CREDIT30), []);
+  assert.deepEqual(billingRoundChoices({ credit: false }), []);
+  assert.equal(pickedRoundIndex(TWO_ROUNDS, null), null, 'ยังไม่เลือก = ยังไม่คิดแผน (ห้ามเดารอบแรก)');
+  assert.equal(pickedRoundIndex(TWO_ROUNDS, 31), 1);
+  assert.equal(pickedRoundIndex(TWO_ROUNDS, 10), 0);
+  /* ลูกค้าเปลี่ยนเป็นรอบเดียวระหว่างเปิดโมดัล — ค่าค้างต้องไม่ถูกส่ง */
+  assert.equal(pickedRoundIndex(AR267, 5), null);
+  assert.equal(pickedRoundIndex({ credit: false }, 10), null);
+});
+
+test('pickedRoundIndex: รอบลูกค้าเปลี่ยนระหว่างเปิดโมดัล — รอบที่เลือกตามไปถูกลำดับ · รอบที่หายไป = ยังไม่เลือก (ไม่เลื่อนไปรอบข้างเคียง)', () => {
+  const before = { billing: { mode: 'monthly', days: [10, 25] }, payment: { mode: 'credit', days: 30 } };
+  const after = { billing: { mode: 'monthly', days: [5, 10, 25] }, payment: { mode: 'credit', days: 30 } };
+  assert.equal(pickedRoundIndex(before, 25), 1);
+  /* 409 แล้วดึงรอบใหม่ [5,10,25]: "รอบวันที่ 25" ยังเป็น 25 (ลำดับ 2) ไม่ใช่ลำดับ 1 ที่ตอนนี้คือ "รอบวันที่ 10" */
+  assert.equal(pickedRoundIndex(after, 25), 2);
+  /* รอบที่เลือกถูกถอดออก = ถามใหม่ */
+  assert.equal(pickedRoundIndex({ billing: { mode: 'monthly', days: [5, 10] }, payment: { mode: 'credit', days: 30 } }, 25), null);
+  /* ค่าไม่ใช่วันจำนวนเต็ม = ยังไม่เลือก */
+  assert.equal(pickedRoundIndex(before, '25'), null);
 });

@@ -4,7 +4,9 @@
 // ⭐ SA **แตะรอบเดียวได้ทั้งวันวางบิลและกำหนดชำระ** — ไม่ต้องพิมพ์วัน (มติ "คิดให้" = แตะชิป ระบบคิดต่อ)
 //   · ลูกค้าวางบิลทุกเดือน = ชิป 3 รอบถัดไป + "วันอื่น…" + "รอเหตุการณ์"
 //   · ลูกค้าวางบิลได้ทุกวัน = ไม่มีรอบให้แตะ ⇒ ช่องวันวางบิลขึ้นเลย (คิดกำหนดชำระให้) + "รอเหตุการณ์"
-//   · ยังไม่ตั้งรอบ (`rule` ว่าง/รูปผิด) = **ไม่วาดอะไร** ผู้เรียกคงช่องกำหนดชำระแบบเดิมไว้เอง
+//   · ยังไม่ตั้งรอบ (`rule` ว่าง/รูปผิด) **หรือไม่มีเครดิต** = **ไม่วาดอะไร** ผู้เรียกคงช่องกำหนดชำระแบบเดิมไว้เอง
+//     (มติ 26/09 ข้อ 2: ไม่มีเครดิต = ทำเหมือนไม่มีรอบ · ตัดสินที่ `pickerRuleOf` ตัวเดียวกับผู้เรียก)
+//   · ลูกค้าหลายรอบต่อเดือน (ถึง 4 · มติ 26/09 ข้อ 3) = ชิปสลับรอบตามวัน + วันเงินเข้าบนชิป (`pickerRoundOptions`)
 // ⭐ **ไม่มีค่าตั้งต้น** (ยังไม่เลือก = ว่าง) และ **ไม่บังคับ** (บางที่ไม่มีรอบวาง · มติ 26/09 ข้อ 2)
 //   — ผู้เรียกที่อยากกันบันทึกครึ่ง ๆ กลาง ๆ ใช้ `pickerMissing(value)` ของ lib/sales/billingPicker.js
 // ⭐ วันวางบิล/กำหนดชำระตรงเสาร์-อาทิตย์ = **ป้ายเตือนอย่างเดียว ไม่เลื่อนวัน** (มติ 26/09 ข้อ 1)
@@ -25,11 +27,11 @@ import Input from "@/components/ui/Input";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { NA } from "@/lib/format";
 import {
-  BILLING_EVENT_MAX, BILLING_EVENT_PRESETS, billingRounds, billingRuleOf, dueDateForBilling,
-  formatBillingDate, formatRoundChip, weekendNote,
+  BILLING_EVENT_MAX, BILLING_EVENT_PRESETS, billingRoundCount, billingRuleMonthly, dueDateForBilling,
+  formatBillingDate, weekendNote,
 } from "@/lib/sales/billingRule";
 import {
-  applyPick, normalizePickerValue, pickerDueBeforeBilling, pickerMissing,
+  applyPick, normalizePickerValue, pickerDueBeforeBilling, pickerMissing, pickerRoundOptions, pickerRuleOf,
 } from "@/lib/sales/billingPicker";
 import styles from "./BillingRoundPicker.module.css";
 
@@ -44,7 +46,7 @@ function WeekendBadge({ iso }) {
 const dayText = (iso) => formatBillingDate(iso) || NA;
 
 /**
- * @param rule        customers."billingRule" (ดิบจากฐานได้ — อ่านผ่าน billingRuleOf)
+ * @param rule        customers."billingRule" (ดิบจากฐานได้ — อ่านผ่าน pickerRuleOf · ไม่มีเครดิต = ไม่วาด)
  * @param todayIso    businessDate() ของผู้เรียก — ตั้งต้นของ 3 รอบถัดไป
  * @param value       `{ mode, billingDate, billingEvent, dueDate, dueOverridden }` (ดู billingPicker.js)
  * @param onChange    (nextValue) => void
@@ -71,7 +73,7 @@ export default function BillingRoundPicker({
     const node = target === "chips" ? chip : document.getElementById(target) || chip;
     node?.focus();
   }, [focusTick]);
-  const cleanRule = billingRuleOf(rule);
+  const cleanRule = pickerRuleOf(rule);
   if (!cleanRule) return null;
 
   const prefix = idPrefix || autoId;
@@ -85,12 +87,13 @@ export default function BillingRoundPicker({
   const context = label ? ` ${label}` : "";
   /* ชื่อปุ่มข้อความสำหรับเสียงอ่าน — ตารางหลายงวดมีปุ่มชื่อเดียวกันทุกแถว ต่อบริบทงวดท้ายคำที่ตาเห็น (WCAG 2.5.3) */
   const named = (text) => (label ? `${text}${context}` : undefined);
-  const monthly = cleanRule.billing.mode === "monthly";
-  const rounds = monthly ? billingRounds(cleanRule, todayIso, ROUND_COUNT) : [];
+  const monthly = billingRuleMonthly(cleanRule);
+  const perMonth = billingRoundCount(cleanRule);
+  const rounds = monthly ? pickerRoundOptions(cleanRule, todayIso, ROUND_COUNT) : [];
   /* "รอบ" ที่ไม่อยู่ใน 3 รอบถัดไปแล้ว (รอบของลูกค้าเปลี่ยนหลังบันทึก · ผู้เรียกประกอบค่าเอง) = แสดงเป็น "วันอื่น…"
      ไม่งั้นไม่มีชิปติดและไม่มีช่องวัน — ค่าที่ส่ง API เหมือนกันทั้งสองโหมด (pickerPayload) จึงสลับได้ไม่เสียอะไร */
   const raw = normalizePickerValue(value);
-  const staleRound = raw.mode === "round" && !rounds.some((round) => round.billingDate === raw.billingDate);
+  const staleRound = raw.mode === "round" && !rounds.some((round) => round.value === raw.billingDate);
   const v = staleRound ? { ...raw, mode: "other" } : raw;
   const emit = (pick) => onChange?.(applyPick(v, pick, cleanRule));
   const saved = /^\d{4}-\d{2}-\d{2}$/.test(String(savedDueDate || "")) ? savedDueDate : "";
@@ -99,7 +102,12 @@ export default function BillingRoundPicker({
 
   const chipValue = v.mode === "round" ? v.billingDate : v.mode;
   const options = [
-    ...rounds.map((round) => ({ value: round.billingDate, label: formatRoundChip(round.billingDate) })),
+    /* ลูกค้าหลายรอบ: ชิปบอกวันเงินเข้าของรอบนั้นด้วย — สองรอบในเดือนเดียวกันต่างกันที่เงินเข้า (ชื่อเสียงอ่านได้ทั้งสองท่อน) */
+    ...rounds.map((round) => ({
+      value: round.value,
+      /* ห่อเป็นก้อนเดียว — ชิปเป็น inline-flex ช่องว่างระหว่างลูกหายทั้งบนจอและในชื่อเสียงอ่าน ("5 ต.ค.เงินเข้า…") */
+      label: round.due ? <span>{round.date} <small className={styles.chipDue}>{round.due}</small></span> : round.date,
+    })),
     {
       value: "other",
       ghost: true,
@@ -140,7 +148,9 @@ export default function BillingRoundPicker({
         disabled={disabled}
       />
       {!compact && monthly ? (
-        <p className={styles.note}>{ROUND_COUNT} รอบถัดไปของลูกค้า · แตะครั้งเดียวได้ทั้งวันวางบิลและกำหนดชำระ</p>
+        <p className={styles.note}>
+          {ROUND_COUNT} รอบถัดไปของลูกค้า{perMonth > 1 ? ` (วางบิลเดือนละ ${perMonth} รอบ)` : ""} · แตะครั้งเดียวได้ทั้งวันวางบิลและกำหนดชำระ
+        </p>
       ) : null}
 
       {showBillingInput ? (

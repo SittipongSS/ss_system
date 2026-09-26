@@ -14,13 +14,74 @@
 //
 // ⚠️ ตัวคิดวันทั้งหมดอยู่ที่ `billingRule.js` (dueDateForBilling · billingRounds) — ไฟล์นี้แค่ต่อสาย ห้ามคิดวันเอง
 // ⚠️ ไม่อ่านนาฬิกา — `todayIso` มาจาก `businessDate()` ของผู้เรียก (นาฬิกาไทย)
-import { BILLING_EVENT_MAX, billingRounds, dueDateForBilling } from './billingRule.js';
+// ⚠️ รอบรุ่นสอง (mig 0390 · มติ 26/09): สวิตช์เครดิต + วางบิลได้ถึง 4 รอบต่อเดือน — **ห้ามอ่าน `rule.billing.day` /
+//    `rule.payment.day` / `.monthOffset` ตรง ๆ** อีก (รูปรุ่นแรกแปลงตอนอ่าน ช่องพวกนั้นไม่มีแล้ว) ถามผ่านตัวช่วยของ billingRule.js
+import {
+  BILLING_EVENT_MAX, billingRoundCount, billingRoundLabels, billingRounds, billingRuleOf, dueDateForBilling, formatRoundChip,
+} from './billingRule.js';
 
 const dateOf = (value) => {
   const text = String(value ?? '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
 };
 const MODES = new Set(['round', 'other', 'event']);
+
+/**
+ * รอบที่ "ใช้เลือกวันงวดได้" — ตัวเลือกรอบ · แผงงวด · หน้าสร้าง SO ถามตัวนี้ตัวเดียว
+ * ⭐ **ไม่มีเครดิต = null** (มติเจ้าของ 26/09 ข้อ 2): จอ SO ทำเหมือนลูกค้ายังไม่ตั้งรอบทุกอย่าง — ช่องกำหนดชำระแบบเดิม ·
+ *   ไม่มีวันวางบิล · ไม่มีปุ่มเติม/จัดวันใหม่ · ไม่มีชิปรอบ — แต่ **แสดง** ว่า "ไม่มีเครดิต" (ผู้เรียกถาม `billingRuleNoCredit` เอง)
+ * 🐞 ถ้าส่ง `{ credit: false }` เข้าตัวเลือกตรง ๆ ตัวเลือกจะหาชิปรอบจาก `billing` ที่ไม่มีอยู่ (จอล้มทั้งแผง)
+ * @returns รอบรูปมาตรฐาน (มีเครดิต) หรือ null (ไม่ตั้ง · ไม่มีเครดิต · รูปผิด)
+ */
+export function pickerRuleOf(value) {
+  const rule = billingRuleOf(value);
+  return rule && rule.credit !== false ? rule : null;
+}
+
+/**
+ * ชิปรอบถัดไปของตัวเลือก — `[{ value: billingDate, date: '5 ต.ค.', due: 'เงินเข้า 25 ต.ค.' | '' }]`
+ * ⭐ ลูกค้าหลายรอบต่อเดือน (มติ 26/09 ข้อ 3) ชิปเรียงสลับรอบตามวัน (`billingRounds`) · สองรอบในเดือนเดียวกันต่างกันที่
+ *   **เงินเข้า** (แต่ละรอบมีวันเงินเข้าของตัวเอง) ⇒ ชิปของลูกค้าหลายรอบบอกวันเงินเข้าด้วย ให้แยกออกก่อนแตะ
+ *   ไม่ใช่รู้หลังแตะแล้วค่อยเห็นบรรทัดผล · ลูกค้ารอบเดียว = วันเดียวพอ (เงินเข้าทุกชิปแบบเดียวกัน · ชิปแคบในเซลล์ตาราง)
+ * ไม่มีรอบรายเดือน (วางบิลได้ทุกวัน · ไม่มีเครดิต · ไม่ตั้ง) = []
+ */
+export function pickerRoundOptions(value, todayIso, count = 3) {
+  const rule = pickerRuleOf(value);
+  if (!rule) return [];
+  const multi = billingRoundCount(rule) > 1;
+  return billingRounds(rule, todayIso, count).map((round) => ({
+    value: round.billingDate,
+    date: formatRoundChip(round.billingDate),
+    due: multi && round.dueDate ? `เงินเข้า ${formatRoundChip(round.dueDate)}` : '',
+  }));
+}
+
+/**
+ * ตัวเลือก "ใช้รอบไหน" ของปุ่มเดือนละงวด (เติมตามรอบ · จัดวันใหม่) — ลูกค้าหลายรอบต่อเดือนต้องเลือกก่อนเสมอ
+ * (`planMonthlyFill`/`planRedate` ตีกลับเมื่อไม่ส่ง `roundIndex`) · **ไม่มีค่าตั้งต้น** (กฎบ้าน: ไม่เลือกให้)
+ * ⭐ ค่าของชิป = **วันวางบิลของรอบ** ไม่ใช่ลำดับ (review R-B2 26/09) — โมดัลเปิดค้างแล้ว 409 ดึงรอบลูกค้าใหม่
+ *   ([10,25] → [5,10,25]) ลำดับที่ 1 เลื่อนจาก "รอบวันที่ 25" ไปเป็น "รอบวันที่ 10" เงียบ ๆ (ชิปที่เลือกกระโดดเอง)
+ *   · จำวันไว้แล้วถาม `pickedRoundIndex` ทุกครั้งที่วาด = รอบเดิมตามไปถูกที่ หรือหลุดเป็น "ยังไม่เลือก" ถ้ารอบนั้นหายไป
+ * @returns `[{ value: billingDay, label: 'รอบวันที่ 10' | 'รอบสิ้นเดือน' }]` — รอบเดียว/ไม่มีรอบ = [] (ไม่ต้องถาม)
+ */
+export function billingRoundChoices(value) {
+  const rule = pickerRuleOf(value);
+  const labels = billingRoundLabels(rule);
+  return labels.length > 1 ? labels.map((label, index) => ({ value: rule.billing.days[index], label: `รอบ${label}` })) : [];
+}
+
+/**
+ * วันวางบิลของรอบที่ผู้ใช้เลือกไว้ (ค่าของชิปจาก `billingRoundChoices`) → `roundIndex` ที่ส่งเข้า `planMonthlyFill`/`planRedate`/API
+ * · ลูกค้ารอบเดียว = null (ตัวคิดใช้รอบนั้นเอง — ค่าที่ค้างใน state จากตอนลูกค้ามีหลายรอบต้องไม่ถูกส่ง)
+ * · หลายรอบ = ลำดับของวันนั้นใน **รอบปัจจุบัน** ของลูกค้า · ยังไม่เลือก / รอบที่เลือกไม่มีแล้ว = null
+ *   (ผู้เรียกยังไม่คิดแผน — ห้ามเดารอบแรก และห้ามเลื่อนไปรอบข้างเคียงให้เอง)
+ */
+export function pickedRoundIndex(value, pickedDay) {
+  const rule = pickerRuleOf(value);
+  if (billingRoundCount(rule) <= 1 || !Number.isInteger(pickedDay)) return null;
+  const index = rule.billing.days.indexOf(pickedDay);
+  return index >= 0 ? index : null;
+}
 
 /* ค่าว่าง = ยังไม่เลือก (ไม่ใช่ "ทุกวัน" หรือรอบแรก — ไม่มีค่าตั้งต้นให้การตัดสินใจ) */
 export const EMPTY_PICKER_VALUE = Object.freeze({
@@ -45,8 +106,9 @@ export function normalizePickerValue(value) {
  * · กำหนดชำระ **อ่านตามแถวเสมอ** (เปิดแล้วกดบันทึกเลยต้องไม่ทำวันที่มีอยู่หาย) ·
  *   `dueOverridden` = กำหนดชำระที่บันทึกไม่ตรงกับที่คิดจากรอบของวันวางบิลนั้น
  */
-export function pickerValueFromRow(row, rule, todayIso) {
+export function pickerValueFromRow(row, value, todayIso) {
   if (!row) return { ...EMPTY_PICKER_VALUE };
+  const rule = pickerRuleOf(value);
   const billingDate = dateOf(row.billingDate);
   const billingEvent = String(row.billingEvent ?? '').trim();
   const dueDate = dateOf(row.dueDate);
