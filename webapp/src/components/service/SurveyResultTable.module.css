@@ -34,6 +34,15 @@
   gap: var(--space-2);
 }
 
+/* ปุ่มเล็กของการเคาะ (ยกเลิก · บันทึกการเคาะ · ใช้ที่สูตรบอก) — บนจอสัมผัสเป็นเป้านิ้ว 44px เท่าทุกปุ่มของจอหน้างาน
+   (หัวหน้าเคาะจากแท็บเล็ต · review 26/09) · จอเมาส์คงขนาดเล็กตามแถวหัวการ์ด
+   ⚠️ ผูกกับชนิดตัวชี้ ไม่ใช่ความกว้างจอ — แท็บเล็ตแนวนอนกว้างเท่าจอคอมแต่ใช้นิ้ว
+   ⚠️ สามคลาส (.coarseTouch.btn.sm) ชนะ `.btn.sm { min-height: 30px }` ของ globals โดยไม่พึ่งลำดับไฟล์ */
+@media (pointer: coarse) {
+  .coarseTouch:global(.btn.sm) { min-height: var(--ctl-h-touch); }
+  .saveBar { gap: var(--space-3); }
+}
+
 /* เหตุที่ยังกดบันทึกไม่ได้ — ตัวหนังสือในเนื้อการ์ด ไม่ใช่ในแถบ (ข้อความยาวกว่าที่แถวปุ่มรับไหว) */
 .saveBlocked {
   display: flex;
@@ -47,16 +56,119 @@
 
 .saveBlocked > svg { flex: none; margin-block-start: var(--space-0-5); }
 
-/* ป้ายบนแถวที่มีการเคาะค้าง — แถบข้างบนบอกจำนวน ป้ายนี้บอกว่า *แถวไหน* */
+/* ป้ายบนแถวที่มีการเคาะค้าง — แถบข้างบนบอกจำนวน ป้ายนี้บอกว่า *แถวไหน*
+   ⭐ อยู่บรรทัดเดียวกับรหัสพื้นที่ ชิดขวา (AW-3) — ไม่กินบรรทัดของตัวเองในช่องที่แน่นอยู่แล้ว */
 .rowDirty {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin-top: var(--space-1);
   color: var(--blue);
   font-size: var(--fs-2);
   font-weight: var(--fw-semibold);
+  white-space: nowrap;
 }
+
+/* ── ความกว้างขั้นต่ำของคอลัมน์ (ดู TABLE_MIN_WIDTH ในไฟล์ .js) ─────────────
+   ⚠️ ตารางเป็น `table-layout: auto` ⇒ ความกว้างของ `<col>` = ขั้นต่ำ ไม่ใช่ค่าตายตัว · ส่วนที่เหลือ
+      ไหลไปคอลัมน์ที่ไม่ได้ตั้ง (เลือกจุด) ซึ่งเป็นคอลัมน์เดียวที่ห่อบรรทัดได้ไม่เสียอะไร */
+.colZone { width: 13rem; }
+.colPlan { width: 9rem; }
+.colPackage { width: 12rem; }
+
+/* ดอกจันบนหัวคอลัมน์ที่ต้องมีก่อนส่งผล (เฉพาะคนที่เคาะได้) */
+.star { margin-inline-start: var(--space-0-5); color: var(--red); }
+/* คำอธิบายต่อท้ายหัวคอลัมน์ — จางกว่าหัว ไม่ใช่ส่วนหนึ่งของชื่อคอลัมน์ */
+.thNote { color: var(--text-3); font-weight: var(--fw-normal); letter-spacing: 0; }
+
+/* ── ช่อง "พื้นที่ · ผลวัดจากช่าง" ─────────────────────────────────────────── */
+.zoneCell { line-height: var(--lh-thai); }
+
+/* รหัสบน (+ ป้ายยังไม่บันทึกชิดขวา) · ชื่อล่าง — กติกาแสดงผลของตาราง */
+.code {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.zoneName { display: block; font-size: var(--fs-6); }
+
+/* ตัวเลขผลวัด — ตร.ม. · ลบ.ม. เข้มกว่าขนาดรายส่วน (ตัวที่หัวหน้าใช้เทียบกับสูตร) */
+.figures,
+.dimsLine {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.figures b { color: var(--text); font-weight: var(--fw-semibold); }
+
+/* ภาพย่อที่ช่างถ่าย — ขนาดนิ้ว (44px) เพราะแต่ละรูปคือลิงก์ที่แตะได้ · ภาพกว้างก่อน | ภาพจุด */
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1-5);
+}
+
+.thumb {
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+}
+
+.thumb:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.thumbImg { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumbSep { width: 1px; height: var(--space-6); margin-inline: var(--space-0-5); background: var(--border-strong); flex: none; }
+.thumbMore { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-semibold); }
+
+/* ตัวนับสองบรรทัดข้างภาพย่อ — นับไฟล์จริงทุกใบ (ตรงกับด่าน) ไม่ใช่เฉพาะที่มีภาพย่อ */
+.thumbCap {
+  display: flex;
+  flex-direction: column;
+  margin-inline-start: var(--space-1);
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ภาพกว้างยังไม่มี = ด่านของช่างติด — สีเดียวกับบรรทัด "ยังขาด" */
+.thumbCap [data-low] { color: var(--amber); font-weight: var(--fw-semibold); }
+
+/* ── ช่องภาพผัง ───────────────────────────────────────────────────────────
+   🔑 ขนาดรูปย่อของแผงไฟล์แนบกลางคุมผ่านสองตัวแปรนี้ (ท่าเดียวกับการ์ดพื้นที่) — ค่าปริยาย
+   ของแผงคือจัตุรัส 148px ซึ่งกินความสูงของแถวทั้งแถว */
+.planCell {
+  --attach-tile-cols: 1;
+  --attach-tile-h: 72px;
+}
+
+.planState {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-1);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+
+.planState[data-tone="ok"] { flex-direction: row; align-items: center; gap: var(--space-1); color: var(--green); font-weight: var(--fw-semibold); }
+.planState[data-tone="miss"] { color: var(--red); font-weight: var(--fw-semibold); }
+.planState small { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-normal); }
 
 .sub {
   display: block;
@@ -70,14 +182,10 @@
 .cut { opacity: var(--op-muted); }
 .cutCell { color: var(--text-2); line-height: var(--lh-thai); }
 
-.dims { font-variant-numeric: tabular-nums; }
-/* 🐞 ตอนเคาะ คอลัมน์นี้โดนบีบเหลือ ~72px ⇒ "10 × 5 × 4" กับ "200 ลบ.ม." หักกลางเลข แยกเลขจากหน่วย */
-.dims > span { display: block; white-space: nowrap; }
-
 .warnText { color: var(--amber); font-size: var(--fs-3); }
 
 /* ── จุดติดตั้ง ────────────────────────────────────────────────────────── */
-.spots { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.spots { display: flex; flex-wrap: wrap; gap: var(--space-1-5); }
 
 /* ชิปเดียวกันทั้งปุ่ม (หัวหน้าเคาะ) และตัวหนังสือ (ดูอย่างเดียว) — จุดที่เลือกมีไอคอนติ๊กเสมอ */
 .spotChip {
@@ -94,30 +202,85 @@
   white-space: nowrap;
 }
 
-button.spotChip { cursor: pointer; }
+/* ⭐ **ชิปที่กดได้ = ขนาดนิ้ว** (AW-3 · 44px) — หัวหน้าเคาะบนแท็บเล็ตด้วย · 🐞 เดิมสูง 24px
+   ซึ่งต่ำกว่าเป้าแตะของระบบ ⇒ แตะพลาดไปโดนชิปข้าง ๆ แล้วเลือกผิดจุดโดยไม่รู้ตัว
+   ⚠️ ชิปตัวหนังสือ (ดูอย่างเดียว) คงขนาดเดิม — มันไม่ใช่ของที่ต้องแตะ */
+button.spotChip {
+  min-height: var(--ctl-h-touch);
+  height: auto;
+  gap: var(--space-1-5);
+  padding: 0 var(--space-3) 0 var(--space-2-5);
+  border-color: var(--border-strong);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-5);
+  cursor: pointer;
+}
+
+button.spotChip > svg { flex: none; color: var(--text-3); }
 .spotChip[data-on] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-weight: var(--fw-semibold); }
+button.spotChip[data-on] > svg { color: var(--accent-ink); }
+
+/* บันทึกของช่างต่อท้ายชื่อจุด — จาง และตัดยาว (ข้อความเต็มอยู่ในการ์ดพื้นที่ · `title` บนจอเมาส์) */
+.spotNote {
+  max-inline-size: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+  font-weight: var(--fw-normal);
+}
 /* จางเฉพาะตอนกำลังบันทึก — ดูอย่างเดียวไม่ใช่ปุ่มแล้ว */
 .spotChip:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
 .spotChip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
 /* ── ตัวเพิ่ม/ลดแพ็คเกจ ───────────────────────────────────────────────── */
-.stepper { display: inline-flex; align-items: center; gap: var(--space-1-5); }
+/* ตัวเลข + สูตรแถวเดียว (AW-3) · ช่องแคบให้สูตรตกลงใต้ตัวเลขเอง ไม่ดันคอลัมน์ให้กว้าง */
+.packageRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5) var(--space-2); }
+
+/* ⭐ **ปุ่ม −/+ ขนาดนิ้ว (44px) ติดกันเป็นก้อนเดียวกับตัวเลข** (AW-3) — 🐞 เดิมปุ่ม 24px ลอยห่าง
+   ตัวเลข ⇒ แตะบนแท็บเล็ตพลาดบ่อย และอ่านไม่ออกว่าปุ่มไหนคู่กับเลขไหน */
+.stepper {
+  display: inline-grid;
+  grid-template-columns: var(--ctl-h-touch) minmax(var(--space-9), auto) var(--ctl-h-touch);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+}
 
 .stepper button {
-  width: 24px;
-  height: 24px;
+  height: var(--ctl-h-touch);
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
+  padding: 0;
+  border: 0;
+  background: var(--panel-2);
   color: var(--text-2);
   cursor: pointer;
 }
 
 .stepper button:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
-.stepper button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
-.stepper b { min-width: 20px; text-align: center; font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
+.stepper button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+.stepper b {
+  display: grid;
+  place-items: center;
+  border-inline: 1px solid var(--border);
+  font-size: var(--fs-9);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "สูตร N" เหนือป้ายต่างจากสูตร — สองบรรทัดข้างตัวเลข */
+.formula {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.formula b { color: var(--text-2); font-weight: var(--fw-semibold); }
 
 .qty { font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
 
@@ -150,10 +313,13 @@ button.spotChip { cursor: pointer; }
   align-self: flex-start;
 }
 
-/* ── รูป ──────────────────────────────────────────────────────────────── */
-.docs { font-variant-numeric: tabular-nums; color: var(--text-2); }
-.docsVal { display: block; }
-.docs span[data-low] { color: var(--red); font-weight: var(--fw-bold); }
+/* ── ท้ายตาราง: กติกาของผัง vs การเคาะ ──────────────────────────────────── */
+.footnote {
+  margin: var(--space-2) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
 
 /* ── บรรทัด "ยังขาดอะไร" — แถวย่อยเต็มกว้างใต้แถวของพื้นที่ ─────────────────
    🐞 เดิมอยู่ท้ายคอลัมน์ "รูป" ซึ่งแคบที่สุด ⇒ ห่อ 5–6 บรรทัด แถวสูง ~150px ที่ 768
@@ -227,6 +393,8 @@ button.spotChip { cursor: pointer; }
   }
 
   .shell[data-surface][data-family] :global(thead) { display: none; }
+  /* `<col>` ไม่มีความหมายเมื่อตารางเลิกเป็นตาราง — ถอดออกกันกล่องตารางนิรนามที่เบราว์เซอร์สร้างให้ */
+  .shell[data-surface][data-family] :global(colgroup) { display: none; }
   .shell[data-surface][data-family] :global(tbody) { display: block; }
 
   .body tr {
@@ -241,7 +409,7 @@ button.spotChip { cursor: pointer; }
   /* เซลล์ = ป้ายซ้าย ค่าขวา · ค่าที่ยาว (ชิปจุด · ช่องเหตุผล) ตกลงมาทั้งบรรทัดเอง
      ⚠️ **5.5rem ไม่ใช่ 7.5rem** — ป้ายยาวสุดคือ "แพ็คเกจ/เดือน" ซึ่งห่อสองบรรทัดได้
         โดยไม่เสียความหมาย ส่วนคอลัมน์ค่ามีของที่ห่อแล้วอ่านยากจริง (ชื่อพื้นที่ · เหตุผล
-        ที่ตัดออก · "กว้าง / ผัง / จุด") ⇒ ที่ 390px ป้าย 120px กินค่าไปหนึ่งในสาม */
+        ที่ตัดออก · ช่องอัปผัง) ⇒ ที่ 390px ป้าย 120px กินค่าไปหนึ่งในสาม */
   .body td {
     display: grid;
     grid-template-columns: 5.5rem minmax(0, 1fr);

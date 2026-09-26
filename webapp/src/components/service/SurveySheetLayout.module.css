@@ -1,0 +1,112 @@
+/* เปลือกของใบประเมิน (แผน §10.5 จอหน้างานแบบ A · แผนลงมือ §3.2 · ม็อก AW-1 · AW-2 · AW-3 · ชุด S9)
+   ไม่มีราง = คอลัมน์เดียว (หัวงาน → แถบแท็บ → เนื้อ) · มีราง (`data-rail` — JS ส่งมาเฉพาะ ≥1200 และคนเคาะ) = สองคอลัมน์:
+   หัวงานกินเต็มแถว แล้วแท็บ+เนื้อซ้าย รางขวากว้าง 330px ยาวตั้งแต่แถวแท็บลงไป (AW-2)
+   ⚠️ รางไม่มี `@media` — เส้นจอของรางเป็นของ JS (`SURVEY_RAIL_QUERY`) ที่เดียว (`@media` ตัวเดียวในไฟล์คือบรรทัดรวมบนมือถือ) */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.head { grid-area: head; min-width: 0; }
+
+/* หัวงานลงท้ายเนื้อ (ถูกส่งกลับหลังนัดปิด) — แถบของช่างที่ติดขอบตัดระยะท้ายของ `.page` เหลือแค่เมนูล่าง ⇒ หัวงานที่เป็นของชิ้นสุดท้าย
+   ชนเมนูล่างพอดี 0px (🐞 review 26/09) · คืนระยะท้ายให้ที่ตัวหัวงานเอง */
+.sheet[data-header-last] > .head { margin-bottom: var(--space-6); }
+.main {
+  grid-area: main;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* แถบแท็บ + บรรทัดรวมท้ายแถว — เส้นใต้เป็นของแถว (ไม่ใช่ของแถบแท็บ) ⇒ บรรทัดรวมนั่งบนเส้นเดียวกับแท็บ (AW-2)
+   ⚠️ `flex-end` — แถบชี้ของแท็บที่เลือก (`.tab-btn.active::after`) ต้องแตะเส้นของแถวพอดี */
+.tabs {
+  grid-area: tabs;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  column-gap: var(--space-4);
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs > :global(.tabs-header) {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+
+.tabsNote {
+  align-self: center;
+  margin: 0 0 0 auto;
+  padding-block: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+/* คลาสมี display ของตัวเอง ⇒ ต้องประกาศทับให้ `hidden` ทำงาน (บทเรียนของ CollapsibleCard) */
+.head[hidden],
+.tabs[hidden] {
+  display: none;
+}
+
+/* มือถือ: บรรทัดรวมไม่พอที่ข้างแท็บ ⇒ ลงใต้เส้นของแถบแท็บ (ไม่ใช่ห่อขึ้นบรรทัดสองเหนือเส้น — แถบชี้ของแท็บที่เลือกจะลอยจากเส้น)
+   เส้นย้ายไปอยู่ที่แถบแท็บเอง */
+@media (max-width: 680px) {
+  .tabs { border-bottom: 0; }
+
+  .tabs > :global(.tabs-header) {
+    flex-basis: 100%;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tabsNote {
+    margin-left: 0;
+    padding-block: var(--space-1-5) 0;
+  }
+}
+
+.sheet[data-rail] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-areas:
+    "head head"
+    "tabs rail"
+    "main rail";
+  grid-template-rows: auto auto 1fr;
+  align-items: start;
+  gap: var(--space-4) var(--space-4-5);
+}
+
+.sheet[data-rail]:not([data-tabs]) {
+  grid-template-areas:
+    "head head"
+    "main rail";
+  grid-template-rows: auto 1fr;
+}
+
+/* รางปักใต้แถบบน และเตี้ยกว่าจอเสมอ — การ์ดสูงกว่าจอ = รางเลื่อนในตัว ไม่ใช่การ์ดหลุดสายตาทั้งใบ
+   (โทเคนร่วมกับรางของ `DetailPageLayout` และบานรายการ — โจทย์เดียวกัน ห้ามก๊อปสูตรมาเขียนซ้ำ) */
+.rail {
+  grid-area: rail;
+  position: sticky;
+  top: var(--scroll-anchor-top);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  max-height: var(--pinned-box-max);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 🔴 ไม่มีบรรทัดนี้ เพดานความสูงของรางจะบีบการ์ดแทนที่จะให้รางเลื่อน (flex item หดได้เป็นค่าตั้งต้น) */
+.rail > * { flex: none; }

@@ -29,13 +29,23 @@ const initialCountsAsHistory = initialType === "back_forward" || initialType ===
    กดเมนูไป /sa/leads ต่อ แล้วกดเมนูกลับมา /sa/deals — ธงยังค้างจากรอบก่อน
    ค่าที่กรองไว้จึงกลับมาทั้งที่คราวนี้เข้าจากเมนู */
 let armedPath = null;
+/* pathname ที่แอปอยู่ล่าสุด — popstate ที่ **ไม่เปลี่ยน pathname** ไม่ใช่ "การย้อนมาหน้านี้"
+   🐞 UAT 25/09 จอหน้างานใช้ประวัติในหน้าเดียวกันตลอด ("‹ พื้นที่ทั้งหมด" · ปุ่มย้อนจากหน้าพื้นที่ · สองบานย้อนออก)
+   ⇒ ธงติดทุกครั้งแต่ไม่มีใครกิน (ผู้อ่านทำงานเมื่อ pathname เปลี่ยนเท่านั้น) ⇒ ลิงก์ธรรมดาครั้งถัดไป (เมนูล่าง ·
+   แถวย้อน) ถูกนับเป็นการกดย้อน: คืนตำแหน่งเลื่อนเก่า + ตัวกรองเก่ากลับมา (ขัดมติ 2026-08-25) */
+let lastPath = typeof window !== "undefined" ? window.location?.pathname ?? null : null;
 
 if (typeof window !== "undefined") {
-  window.addEventListener("popstate", () => { popPending = true; });
+  window.addEventListener("popstate", () => {
+    const path = window.location?.pathname ?? null;
+    if (path !== lastPath) popPending = true;
+    lastPath = path;
+  });
 }
 
 /** true = มาถึง `pathname` นี้ด้วยการกดย้อน/เดินหน้า */
 export default function arrivedByHistory(pathname) {
+  lastPath = pathname;
   /* หน้าแรกหลังโหลดทั้งหน้า — ตัดสินครั้งเดียวแล้วปล่อยให้กลไก popstate ทำงานต่อ */
   if (!initialHandled) {
     initialHandled = true;

@@ -14,7 +14,9 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService } from '@/lib/permissions';
 import { appendUpdate } from '@/lib/master/updates';
-import { SEND_BACK_DONE_KIND, surveySendBackDoneBody, surveySendBackDoneError } from '@/lib/service/survey';
+import {
+  SEND_BACK_DONE_KIND, surveySendBackDoneBody, surveySendBackDoneError, surveySendBackDoneItems,
+} from '@/lib/service/survey';
 import { loadSurveyFieldState, loadSurveySendBackState } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
@@ -22,7 +24,8 @@ import { notifySurveySendBackDone } from '@/lib/service/surveyFieldDoneNotify';
 
 export const dynamic = 'force-dynamic';
 
-// POST { note? }
+// POST { note?, doneItems?, sendBackId? } — `doneItems` = เลขข้อที่ช่างติ๊ก (นับจาก 0 ตาม `sentBack.items` · แผน §10.5 S3)
+//   `sendBackId` = รอบที่ติ๊ก (ไม่ตรงรอบล่าสุด = 409 · ไม่ส่ง = แท็บเก่า)
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   try {
@@ -55,12 +58,26 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       return conflict(gate);
     }
 
+    /* 🐞 UAT 25/09 — ติ๊กผูกกับรอบแค่บนจอ · เดิมคำขอไม่บอกรอบ ⇒ หัวหน้าส่งกลับรอบใหม่ระหว่างที่แท็บช่างค้างรอบเก่า
+       ติ๊ก [0,1] ของรอบเก่าผ่านด่านทรงของรอบใหม่ได้ แล้วไปปิดรอบใหม่ "แก้แล้ว 2 / 3 ข้อ" ในข้อที่ช่างไม่เคยเห็น
+       ⇒ จอส่ง `sendBackId` ของรอบที่ติ๊ก · ไม่ตรงรอบล่าสุดในฐาน = 409 (ก่อนตรวจทรง — ไม่ใช่ 400 "ผิดรูปแบบ")
+       ⚠️ ไม่ส่งมา = แท็บเก่าก่อนแก้ ⇒ ทำแบบเดิม ไม่ตีกลับ */
+    const staleRound = body.sendBackId == null || body.sendBackId === ''
+      ? false : String(body.sendBackId) !== String(sendBack.sentBack?.id ?? '');
+    if (staleRound) return conflict('หัวหน้าส่งกลับรอบใหม่แล้ว — โหลดหน้าใหม่แล้วดูข้อที่ขอก่อนแจ้ง');
+
+    /* ⭐ ข้อที่ช่างติ๊ก — ตรวจแค่ทรงเทียบกับจำนวนข้อ **จากฐาน** (ไม่เชื่อจำนวนที่จอส่งมา) · ไม่ส่งมา = ไม่รู้
+       ⚠️ ไม่ใช่ด่าน "แก้ครบไหม" — ด่านนั้นคือของขาดข้างบน · ติ๊กไม่ครบก็แจ้งได้ หัวหน้าเห็นว่าข้อไหนยังค้าง */
+    const itemCount = sendBack.sentBack?.items?.length || 0;
+    const ticks = surveySendBackDoneItems(body.doneItems, itemCount);
+    if (ticks.error) return badRequest(ticks.error);
+
     /* 🔴 **แถวเธรดคือสภาพ "แก้แล้ว" ทั้งหมด** — ไม่มีคอลัมน์อื่นเก็บ ⇒ เขียนไม่สำเร็จต้องตอบว่า
        ไม่สำเร็จ และห้ามแจ้งหัวหน้า (ไม่งั้นหัวหน้าได้กระดิ่ง แต่จอยังขึ้นปุ่มให้ช่างกดซ้ำ) */
     const { row, error: writeError } = await appendUpdate(supabase, {
       entityType: 'dept_request', entityId: id, kind: SEND_BACK_DONE_KIND,
-      body: surveySendBackDoneBody(note),
-      meta: { note: note || null, sendBackId: sendBack.sentBack?.id || null },
+      body: surveySendBackDoneBody(note, { doneCount: ticks.value?.length ?? null, itemCount }),
+      meta: { note: note || null, sendBackId: sendBack.sentBack?.id || null, doneItems: ticks.value, itemCount },
       // ชื่อไว้ให้คนอ่านเธรดรู้ว่าใครแจ้ง — แต่ไม่ผูกตัวตน (ดูหัวไฟล์)
       user: { name: user?.name || null, department: user?.department || null },
     });
@@ -72,6 +89,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       sentBack: sendBack.sentBack,
       note,
       doneId: row.id || null,
+      doneItems: ticks.value,
+      itemCount,
     });
 
     await recordAudit({

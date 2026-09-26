@@ -1,0 +1,144 @@
+/* ตัวเลื่อนพื้นที่ (แผน §10.5 จอหน้างานแบบ A · ม็อก A-2 · AT-3)
+   ⚠️ สองผิว: บนแถบกรมท่าของหน้าเต็มจอ (`data-layout="page"`) ตัวหนังสือสีบนกรมท่า · บนหัวบานขวา (`pane`) สีปกติ
+   ⚠️ ทุกปุ่มเป็นเป้านิ้ว 44px (‹ › · พื้นที่ทั้งหมด · ⋮) — จุดเป็นตัวบอกความคืบหน้าอย่างเดียว ไม่ใช่ปุ่ม */
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-2);
+}
+
+.pager[data-layout="page"] {
+  flex: 1 1 auto;
+  color: var(--navy-fg);
+}
+
+.pager button {
+  min-height: var(--ctl-h-touch);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pager button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+  border-radius: var(--radius);
+}
+
+/* "‹ พื้นที่ทั้งหมด" — ทางกลับหน้ารายการ (เท่ากับปุ่มย้อนของเครื่อง — ตัวต่อสายประวัติทำให้สองทางนี้ไปที่เดียวกัน) */
+.list {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-inline-end: auto;
+  padding: 0 var(--space-2) 0 var(--space-1);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pager[data-layout="pane"] .steps { margin-inline-start: auto; }
+
+.arrow {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--ctl-h-touch);
+}
+
+.arrow:disabled {
+  opacity: var(--op-disabled);
+  cursor: default;
+}
+
+/* ตัวบอกความคืบหน้า (ไม่ใช่ปุ่ม · ม็อก A-2 `.zdots`) — จุด 10px ห่าง 6px · วัดแล้ว = ✓ บนวงเขียวอ่อน · ที่เปิดอยู่ = วงขอบ
+   ⚠️ วงของจุดปัจจุบันเป็นขอบด้านใน (border ในกล่อง 10px) — 🐞 UAT 25/09: outline + offset ของแบบเดิมล้นไปทับจุดข้าง ๆ
+   ⚠️ ไม่หด — ที่ไม่พอ = เปลี่ยนเป็น "n / t" (container query ข้างล่าง) ไม่ใช่บีบจุดจนติดกันเป็นก้อน */
+/* หน้าเต็มจอเท่านั้น: แถบกว้างเท่าที่เหลือจาก "พื้นที่ทั้งหมด" กับ ⋮ แล้วให้ container query เลือกจุด/ตัวเลข
+   ⚠️ บานขวาไม่ประกาศ container — ตัวเลื่อนอยู่ในแถวหัวที่ห่อได้ ขนาดของมันมาจากเนื้อใน (container ทำให้เนื้อในนับเป็น 0
+   แล้วลูกศรหลุดกรอบ) · บานขวากว้าง 500px ขึ้นไป จุด 8 จุดพอเสมอ */
+.pager[data-layout="page"] .steps {
+  container: zsteps / inline-size;
+  flex: 1 1 0;
+  justify-content: flex-end;
+}
+
+.indicator {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: 0 var(--space-1);
+}
+
+.dot {
+  flex: none;
+  inline-size: 10px;
+  block-size: 10px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, currentColor 55%, transparent);
+  border-radius: var(--radius-full);
+}
+
+.dot[data-state="done"] {
+  border-color: transparent;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.dot[data-state="cut"] { border-style: dashed; }
+
+/* พื้นที่ที่เปิดอยู่ = วงขอบเต็มสี (รูปทรงต่าง ไม่ใช่สีอย่างเดียว — คนตาบอดสีแยกได้) */
+.dot[data-current] {
+  border: 2px solid currentColor;
+}
+
+.count {
+  display: none;
+  padding: 0 var(--space-1);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.count[data-always] { display: inline; }
+
+/* ที่ต้องใช้ = ‹ › (44 × 2) + จุด n × 10 + ช่อง (n − 1) × 6 + ขอบ 8 ≈ 90 + 16n */
+@container zsteps (max-width: 121px) { .dots[data-n="2"] { display: none; } .dots[data-n="2"] + .count { display: inline; } }
+@container zsteps (max-width: 137px) { .dots[data-n="3"] { display: none; } .dots[data-n="3"] + .count { display: inline; } }
+@container zsteps (max-width: 153px) { .dots[data-n="4"] { display: none; } .dots[data-n="4"] + .count { display: inline; } }
+@container zsteps (max-width: 169px) { .dots[data-n="5"] { display: none; } .dots[data-n="5"] + .count { display: inline; } }
+@container zsteps (max-width: 185px) { .dots[data-n="6"] { display: none; } .dots[data-n="6"] + .count { display: inline; } }
+@container zsteps (max-width: 201px) { .dots[data-n="7"] { display: none; } .dots[data-n="7"] + .count { display: inline; } }
+@container zsteps (max-width: 217px) { .dots[data-n="8"] { display: none; } .dots[data-n="8"] + .count { display: inline; } }
+
+/* ปุ่ม ⋮ ของ `RowActionMenu` เป็น `.btn-icon` 28px ⇒ ขยายเป็นเป้านิ้ว · บนกรมท่าใช้สีบนกรมท่า */
+.menu :global(.btn-icon) {
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  color: inherit;
+}
+
+.pager[data-layout="page"] .menu :global(.btn-icon:hover) {
+  background: color-mix(in srgb, var(--navy-fg) 14%, transparent);
+  color: var(--navy-fg);
+}

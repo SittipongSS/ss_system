@@ -267,6 +267,56 @@ export async function loadSurveySendBackState(supabase, requestId) {
   return surveySendBackState(data || []);
 }
 
+/* ══ ทีมบนนัด — ชื่อคนไป + ผู้ช่วย (แผน §10.5 S5 · หัวงาน "ทีม PA คุณ · NP Nattawut (ผู้ช่วย)") ═══════════
+ *
+ * ⭐ **ถามบัญชีรายคนเฉพาะผู้ช่วย ไม่ไล่ทั้งทะเบียน** — จอนี้โหลดใหม่ทุกครั้งที่บันทึกและทุกครั้งที่กลับจากแอปกล้อง
+ *   `loadUserDirectory` ไล่ผู้ใช้ทั้งระบบทุกรอบ ⇒ ใช้ `getUserById` ต่อคน ยิงขนานกัน และยิงเฉพาะเมื่อมีผู้ช่วย
+ *   (ท่าเดียวกับ `lib/pm/projectOwner.js`) · ชื่อคนไปมีบนนัดอยู่แล้ว (`assigneeName`) ไม่ต้องถาม
+ * ⚠️ **"คุณ" ตอบโดย server** (`you`) — จอไม่รู้ user id ของตัวเอง (ท่าเดียวกับ `canWrite` · `onVisit`)
+ * 🔴 **อ่านชื่อไม่สำเร็จ ≠ ไม่มีคนนี้** (กติกา supabase-never-throws) — ล้ม = ชื่อ `null` + `unknown` ให้จอเขียน
+ *   "ไม่ทราบ" · บัญชีที่ถูกลบไปแล้ว = `gone` (จอเขียนว่าไม่อยู่ในรายชื่อแล้ว) · ไม่ตีกลับทั้งเส้น — ชื่อผู้ช่วย
+ *   เป็นของประกอบ ผลวัดซึ่งเป็นเนื้อหลักอ่านได้แล้ว
+ * @returns `{ crew: [{ id, name, lead, you, gone? }], unknown: boolean }` — คนไปก่อน แล้วผู้ช่วยตามลำดับบนนัด
+ */
+export async function loadSurveyCrew(supabase, visit, { viewerId = null } = {}) {
+  if (!visit) return { crew: [], unknown: false };
+  const me = viewerId != null ? String(viewerId) : null;
+  const leadId = visit.assigneeId != null && visit.assigneeId !== '' ? String(visit.assigneeId) : null;
+  const helperIds = [...new Set((Array.isArray(visit.assistantIds) ? visit.assistantIds : [])
+    .filter((id) => id != null && id !== '').map(String))]
+    .filter((id) => id !== leadId);
+
+  const lookups = await Promise.all(helperIds.map(async (id) => {
+    try {
+      const { data, error } = await supabase.auth.admin.getUserById(id);
+      if (error) {
+        // "ไม่พบ" = บัญชีถูกลบไปแล้ว ไม่ใช่อ่านพลาด
+        if (error.status === 404 || /not.?found/i.test(error.message || '')) return { id, name: null, gone: true };
+        throw error;
+      }
+      const user = data?.user || null;
+      if (!user) return { id, name: null, gone: true };
+      // ชื่อที่แสดง — กติกาเดียวกับทะเบียนผู้ใช้ (`loadUserDirectory`: ชื่อในบัญชี → อีเมล)
+      return { id, name: String(user.user_metadata?.name || user.email || '').trim() || null };
+    } catch (e) {
+      console.error('[survey] อ่านชื่อผู้ช่วยบนนัดไม่สำเร็จ', visit.id, id, e?.message || e);
+      return { id, name: null, failed: true };
+    }
+  }));
+
+  const crew = [];
+  if (leadId || visit.assigneeName) {
+    crew.push({ id: leadId, name: visit.assigneeName || null, lead: true, you: !!me && me === leadId });
+  }
+  for (const hit of lookups) {
+    crew.push({
+      id: hit.id, name: hit.name, lead: false, you: !!me && me === hit.id,
+      ...(hit.gone ? { gone: true } : {}),
+    });
+  }
+  return { crew, unknown: lookups.some((hit) => hit.failed) };
+}
+
 export async function loadSurveySheetContext(supabase, request, zones = []) {
   const unknown = {};
   const rows = Array.isArray(zones) ? zones : [];
@@ -284,9 +334,12 @@ export async function loadSurveySheetContext(supabase, request, zones = []) {
   const zoneIds = [...new Set(rows.map((r) => r.zoneId).filter(Boolean))];
 
   const [siteRes, zoneRes, customerRes, recallRes, sendBackRes] = await Promise.all([
+    /* ⭐ ช่วงเข้าไซต์ · เงื่อนไขการเข้า · ลิงก์แผนที่ (แผน §10.5 S5) — หัวงานของจอหน้างานแบบ A บอกช่างก่อน
+       เดินเข้าตึก ("ให้เข้า จ. 14:30–16:30" · "ฝากมา" · ปุ่ม "นำทาง") · คอลัมน์ชุดเดียวกับที่หน้าจัดคิวอ่าน
+       (`visitsRepo.sitesForVisits`) ⇒ มีจริงบนตารางแล้ว ไม่ต้องมี migration */
     siteId
       ? supabase.from('service_sites')
-        .select('id, code, name, address, "contactName", "contactPhone"')
+        .select('id, code, name, address, "contactName", "contactPhone", "accessFrom", "accessTo", "accessDays", "accessNote", "mapUrl"')
         .eq('id', siteId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     zoneIds.length

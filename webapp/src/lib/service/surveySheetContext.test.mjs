@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { loadSurveySheetContext } from './surveyRepo.js';
+import { loadSurveyCrew, loadSurveySheetContext } from './surveyRepo.js';
 
 /** ตัดคอมเมนต์ออกก่อนค้นซอร์ส — ยามที่ห้ามไฟล์อธิบายตัวเองคือยามที่พังตัวเอง */
 const code = (url) => readFileSync(new URL(url, import.meta.url), 'utf8')
@@ -203,10 +203,10 @@ test('ถามแถวดึงกลับเฉพาะของใบน�
 /* ══ สัญญาของ GET /api/service/surveys/[id] ══════════════════════════════
    ⚠️ จอ PR3/PR4 อ่านชื่อคีย์พวกนี้ตรง ๆ — เปลี่ยนชื่อเมื่อไร การ์ดควบคุมจะได้ค่าว่าง
       โดยไม่มี error ให้เห็น (คีย์ที่ไม่มีอยู่ = `undefined` ไม่ใช่ข้อผิดพลาด) */
-test('GET ต้องส่ง site · customer · recall · unknown ออกมาพร้อมของเดิม', () => {
+test('GET ต้องส่ง site · customer · recall · unknown · crew ออกมาพร้อมของเดิม', () => {
   const route = code('../../app/api/service/surveys/[id]/route.js');
   for (const key of ['site: context.site', 'customer: context.customer',
-    'recall: context.recall', 'unknown: context.unknown']) {
+    'recall: context.recall', 'unknown: context.unknown', 'crew: crewRes.crew']) {
     assert.match(route, new RegExp(key.replace(/[.[\]]/g, '\\$&')), `GET ต้องตอบ ${key}`);
   }
   assert.match(route, /loadSurveySheetContext\(supabase, request, zones\)/);
@@ -215,6 +215,84 @@ test('GET ต้องส่ง site · customer · recall · unknown ออก�
   assert.match(route, /Promise\.all\(\[[\s\S]*?loadSurveySheetContext[\s\S]*?\]\)/);
   // ⚠️ ชิ้นประกอบล้มต้องไม่ตีกลับทั้งเส้น — ผลวัดซึ่งเป็นเนื้อหลักอ่านได้แล้ว
   assert.doesNotMatch(route, /context\.unknown[\s\S]{0,80}return fail/);
+  /* ⭐ ทีมบนนัด (§10.5 S5) — ชื่อผู้ช่วยต้องรอรู้นัดก่อน ⇒ ต่อท้ายนัดในสายเดียวกันของ `Promise.all` ก้อนเดิม
+     (ไม่ใช่ `await` แยกอีกรอบหลังทั้งก้อน) · "คุณ" มาจาก id ของคนที่เปิดจอ · อ่านชื่อล้ม = `unknown.crew` */
+  assert.match(route, /findSurveyVisit\(supabase, id, \{ preferOpen: true \}\)\s*\.then\(async \(found\) => \[found, await loadSurveyCrew\(supabase, found, \{ viewerId: user\?\.id \}\)\]\)/);
+  assert.match(route, /if \(crewRes\.unknown\) context\.unknown\.crew = true;/);
+});
+
+test('ไซต์ของหัวงานพกช่วงเข้าไซต์ · เงื่อนไขการเข้า · ลิงก์แผนที่ (§10.5 S5)', async () => {
+  const supabase = fakeSupabase({
+    service_sites: { data: SITE, error: null },
+    service_zones: { data: [], error: null },
+    customers: { data: CUSTOMER, error: null },
+    entity_updates: { data: [], error: null },
+  });
+  await loadSurveySheetContext(supabase, REQUEST, []);
+  const call = supabase.calls.find((c) => c.table === 'service_sites');
+  for (const col of ['"accessFrom"', '"accessTo"', '"accessDays"', '"accessNote"', '"mapUrl"', '"contactPhone"']) {
+    assert.ok(call.cols.includes(col), `ต้อง select ${col}`);
+  }
+});
+
+/* ══ ทีมบนนัด (`loadSurveyCrew` · §10.5 S5) ══════════════════════════════════════
+   ⭐ ชื่อผู้ช่วยถามบัญชีรายคน (`auth.admin.getUserById`) — ไม่ไล่ผู้ใช้ทั้งระบบทุกครั้งที่จอโหลดใหม่ */
+function fakeAuth(byId) {
+  const asked = [];
+  return {
+    asked,
+    auth: {
+      admin: {
+        async getUserById(id) {
+          asked.push(id);
+          const hit = byId[id];
+          if (hit instanceof Error) throw hit;
+          return hit ?? { data: { user: null }, error: { status: 404, message: 'User not found' } };
+        },
+      },
+    },
+  };
+}
+const CREW_VISIT = { id: 'SV-1', assigneeId: 'u-pa', assigneeName: 'Phuwadol Aoonnankad', assistantIds: ['u-np'] };
+
+test('ทีม: คนไปจากชื่อบนนัด (ไม่ถามบัญชี) · ผู้ช่วยจากบัญชี · "คุณ" = คนที่เปิดจอ', async () => {
+  const supabase = fakeAuth({ 'u-np': { data: { user: { id: 'u-np', email: 'np@x', user_metadata: { name: 'Nattawut Pornprasit' } } }, error: null } });
+  const res = await loadSurveyCrew(supabase, CREW_VISIT, { viewerId: 'u-pa' });
+  assert.deepEqual(res, {
+    crew: [
+      { id: 'u-pa', name: 'Phuwadol Aoonnankad', lead: true, you: true },
+      { id: 'u-np', name: 'Nattawut Pornprasit', lead: false, you: false },
+    ],
+    unknown: false,
+  });
+  assert.deepEqual(supabase.asked, ['u-np'], 'ถามเฉพาะผู้ช่วย');
+});
+
+test('ทีม: ไม่มีผู้ช่วย = ไม่ยิงอะไรเลย · ผู้ช่วยซ้ำ/เป็นคนไปเอง = ไม่ถามซ้ำ · ไม่มีนัด = ทีมว่าง', async () => {
+  const none = fakeAuth({});
+  assert.equal((await loadSurveyCrew(none, { ...CREW_VISIT, assistantIds: [] })).crew.length, 1);
+  assert.deepEqual(none.asked, []);
+  const dup = fakeAuth({ 'u-np': { data: { user: { id: 'u-np', email: 'np@x', user_metadata: {} } }, error: null } });
+  const res = await loadSurveyCrew(dup, { ...CREW_VISIT, assistantIds: ['u-np', 'u-pa', 'u-np', null] });
+  assert.deepEqual(dup.asked, ['u-np']);
+  assert.equal(res.crew[1].name, 'np@x', 'ไม่มีชื่อในบัญชี = อีเมล (กติกาเดียวกับทะเบียนผู้ใช้)');
+  assert.deepEqual(await loadSurveyCrew(fakeAuth({}), null), { crew: [], unknown: false });
+});
+
+test('🔴 ทีม: อ่านชื่อผู้ช่วยล้ม = ชื่อ null + unknown (ไม่ใช่ "ไม่มีคนนี้") · บัญชีถูกลบ = gone ไม่ใช่ล้ม', async () => {
+  const failing = fakeAuth({ 'u-np': new Error('fetch failed') });
+  const [res, logs] = await captureErrors(() => loadSurveyCrew(failing, CREW_VISIT, { viewerId: 'u-np' }));
+  assert.equal(res.unknown, true);
+  assert.deepEqual(res.crew[1], { id: 'u-np', name: null, lead: false, you: true });
+  assert.equal(logs.length, 1, 'ต้อง log ไว้ ไม่ใช่เงียบ');
+
+  const apiError = fakeAuth({ 'u-np': { data: null, error: { status: 500, message: 'PGRST303' } } });
+  const [res2] = await captureErrors(() => loadSurveyCrew(apiError, CREW_VISIT));
+  assert.equal(res2.unknown, true);
+
+  const gone = await loadSurveyCrew(fakeAuth({}), CREW_VISIT);
+  assert.equal(gone.unknown, false);
+  assert.deepEqual(gone.crew[1], { id: 'u-np', name: null, lead: false, you: false, gone: true });
 });
 
 test('🔴 ชั้นไหลทางเดียว — ตัวอ่านฝั่ง server ห้าม import โมดูลประกอบหน้าจอ', () => {

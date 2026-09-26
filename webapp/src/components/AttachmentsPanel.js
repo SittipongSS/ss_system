@@ -23,8 +23,14 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
   Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
-  Eye, FileType, FileSpreadsheet, Link2, Lock, Camera,
+  Eye, FileType, FileSpreadsheet, Link2, Lock, Camera, Check,
 } from "lucide-react";
+import {
+  PHOTO_DELETE_LABEL,
+  photoDeleteConfirm,
+  photoTilesView,
+  runAttachmentUploads,
+} from "@/lib/master/attachmentPhotoTiles";
 import Button from "@/components/ui/Button";
 import GoogleDocViewer from "@/components/GoogleDocViewer";
 import ReasonDialog from "@/components/ui/ReasonDialog";
@@ -138,6 +144,21 @@ export default function AttachmentsPanel({
        จากคลังไม่ได้ · ไม่ใส่ = มือถือถามให้เลือกระหว่างกล้องกับคลังรูปเอง
      ⚠️ คำใบ้ "ลากมาวาง · Ctrl+V" ซ่อนบนจอสัมผัส (ไม่มีทั้งเมาส์และคีย์บอร์ดให้ทำตาม) */
   photoCapture = false,
+  /* โหมด inline + `photoCapture`: **แผ่นรูป** แทนตะแกรง (แผน §10.5 จอหน้างานแบบ A · ม็อก A-3/AT-2/AW-1)
+     — รูปที่ขึ้นแล้ว → รูปที่กำลังส่ง ("กำลังส่ง 64%" รายรูป) → แผ่นสุดท้าย "ถ่าย / เลือกรูป"
+     ⚠️ ไม่มีแถวหัว (คำใบ้ · ปุ่มถ่ายรูป · ตัวนับ) — แผ่นสุดท้ายคือปุ่ม และจำนวนรูปเป็นของหัวข้อผู้เรียก
+     ⚠️ แผ่นรูปแตะแล้ว **เปิดดูอย่างเดียว** · ลบอยู่ในกล่องดูรูปเต็ม ปุ่ม 44px (× 22px มุมรูปต่ำกว่าเป้านิ้ว)
+     ⚠️ ขนาดแผ่นปรับผ่านตัวแปร CSS ของผู้เรียก `--attach-tile-cols` / `--attach-tile-h` (ไม่ใช่ prop — ขนาดที่ต้องการ
+        ต่างตามจอ ตอบได้ใน media query เท่านั้น) · ใช้ `photoRows` ไม่ได้
+     ตรรกะอยู่ที่ `lib/master/attachmentPhotoTiles.js` — ที่นี่วาดอย่างเดียว */
+  photoTiles = false,
+  /* `(busy: boolean) => void` — มีรูป/ไฟล์กำลังอัปอยู่ไหม (แผนลงมือ §3.7: หน้านับเองแล้วโหลดตัวนับใหม่เมื่อจบ ·
+     ถามก่อนออกจากหน้าระหว่างรูปยังขึ้นไม่เสร็จ)
+     ⚠️ **ยิงจากลูปอัปเอง ไม่ใช่จาก effect** — ช่างปิดหน้าพื้นที่ระหว่างอัป (กด "ถัดไป") ลูปยังวิ่งต่อจนจบ
+        และต้องบอก `false` ให้ได้ · effect ของแผงที่ถูกถอดแล้วไม่มีวันรัน = หน้าค้าง "กำลังอัป" ตลอดไป
+     ⚠️ ยิงคู่ `true`/`false` ต่อหนึ่งชุด — สองชุดวิ่งซ้อนกันได้ (แตะแผ่นถ่ายรูปซ้ำระหว่างรูปแรกยังส่ง)
+        ⇒ ผู้เรียกต้อง **นับ** ไม่ใช่เก็บเป็นธงเดียว */
+  onBusyChange,
   /* `(item) => boolean` — ลบ **ไฟล์ใบนี้** ได้ไหม (ด่านรายไฟล์ ต่อจาก `canEdit`) · ไม่ส่ง = ตาม `canEdit`
      ⭐ ใบสั่งขาย (มติ 25/09): แนบได้ทั้งทีม แต่ลบได้เฉพาะคนแนบเอง+แอดมิน — API ปฏิเสธอยู่แล้ว
        ที่นี่คือไม่ยื่นปุ่มที่กดแล้วจะเจอ 403 */
@@ -149,6 +170,8 @@ export default function AttachmentsPanel({
     && (typeof canDeleteItem === "function" ? canDeleteItem(it) : true);
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
   const detailed = metaFields.length > 0; // order = ฟอร์มรายละเอียด; อื่นๆ = การ์ด
+  // แผ่นรูปมีความหมายเฉพาะกล่องรูปของโหมด inline — ส่งมากับโหมดอื่น = ไม่มีผล (หน้าตาเดิม)
+  const tilesMode = photoTiles && inlineUpload && photoCapture;
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -167,6 +190,16 @@ export default function AttachmentsPanel({
   // ไฟล์อินพุตร่วม (card mode) — จำว่ากำลังอัปประเภทไหน
   const cardFileRef = useRef(null);
   const pendingTypeRef = useRef(null);
+
+  // ── โหมดแผ่นรูป: กองรูปที่กำลังส่ง (ชื่อ + %) · คีย์นับเองไม่ซ้ำตลอดอายุแผง ──
+  const [uploads, setUploads] = useState([]);
+  const uploadSeqRef = useRef(0);
+  /* ตัวเรียกกลับตัวล่าสุด — ลูปอัปอ่านผ่าน ref เพราะมันวิ่งข้ามหลายรอบวาด (และข้ามการถอดแผง)
+     ค่าที่ปิดไว้ในลูปตั้งแต่ตอนเริ่มอาจเป็นฟังก์ชันของรอบวาดเก่า */
+  const onBusyChangeRef = useRef(onBusyChange);
+  useEffect(() => {
+    onBusyChangeRef.current = onBusyChange;
+  }, [onBusyChange]);
 
   // รูปที่กำลังเปิดดูขยาย (lightbox) — null = ปิดอยู่
   const [preview, setPreview] = useState(null);
@@ -242,13 +275,35 @@ export default function AttachmentsPanel({
   // อัปไฟล์ขึ้น storage แล้วบันทึก metadata row. คืน true ถ้าสำเร็จ.
   // ⚠️ ตัวอัปจริงอยู่ที่ lib/master/attachmentUpload.js — โมดัลเปิดคำร้องใช้ตัวเดียวกัน
   // (มันอัปหลังคำร้องถูกสร้าง จึง render พาเนลนี้ไม่ได้) · ที่นี่เหลือหน้าที่ toast
-  const upload = async (theFile, theDocType, theMeta) => {
+  const upload = async (theFile, theDocType, theMeta, onProgress = null) => {
     const { ok, error } = await uploadAttachment({
-      entityType, entityId, file: theFile, docType: theDocType, metadata: theMeta,
+      entityType, entityId, file: theFile, docType: theDocType, metadata: theMeta, onProgress,
     });
     if (!ok) notifyToast.error(error);
     return ok;
   };
+
+  /* ── ลูปอัปตัวเดียวของทุกทางเข้าไฟล์ (ปุ่ม · แผ่นถ่ายรูป · ลากวาง · Ctrl+V) ──
+     ลำดับ busy → ทีละไฟล์ → โหลดรายการใหม่ → ปิด busy อยู่ที่ `runAttachmentUploads` (เทสต์ได้)
+     ⚠️ นับ % เฉพาะโหมดแผ่นรูป — โหมดเดิมไม่มีที่วาด % ⇒ ไม่ต้องวาดแผงใหม่ทุกจังหวะของ xhr
+     ⚠️ อ่านแค่ ref/ค่าที่คงที่ตลอดอายุแผง — `acceptFiles` ข้างล่างเก็บฟังก์ชันนี้ไว้ข้ามรอบวาด */
+  const uploadBatch = (typeKey, files) => runAttachmentUploads({
+    batch: files.map((file) => {
+      uploadSeqRef.current += 1;
+      return { key: `up-${uploadSeqRef.current}`, name: file.name, file };
+    }),
+    upload: (file, onProgress) => upload(file, typeKey, {}, onProgress),
+    setUploads: tilesMode ? setUploads : null,
+    setBusy: (busy) => {
+      setUploadingType(busy ? typeKey : null);
+      onBusyChangeRef.current?.(busy);
+    },
+    reload: fetchItems,
+    onError: (err) => {
+      console.error(err);
+      notifyToast.error("เกิดข้อผิดพลาดในการอัปโหลด");
+    },
+  });
 
   // ── card mode: อัปไฟล์เข้าประเภทที่กดในการ์ด ──
   /* ชนิดไฟล์ที่ปุ่มเลือกไฟล์ยอม — docType ที่มีกติกาแคบกว่า (ภาพประกอบใบสเปค = รูปเท่านั้น)
@@ -266,33 +321,17 @@ export default function AttachmentsPanel({
     /* หลายไฟล์ต่อครั้งมาได้เฉพาะโหมด `photoCapture` (input มี `multiple`) — ไฟล์ที่ใหญ่เกิน
        ข้ามทีละไฟล์ ไม่ทิ้งทั้งชุด (ช่างเลือกมาห้ารูป ใหญ่รูปเดียว ต้องได้อีกสี่) */
     const typeKey = pendingTypeRef.current;
-    const files = splitByFileRule(typeKey, Array.from(e.target.files || []));
-    if (!files.length || !typeKey) {
-      pendingTypeRef.current = null;
-      if (cardFileRef.current) cardFileRef.current.value = "";
-      return;
-    }
+    const picked = Array.from(e.target.files || []);
+    /* ⚠️ ปล่อยช่องเลือกไฟล์ **ทันทีที่อ่านแล้ว** ไม่ใช่ตอนอัปจบ — โหมดแผ่นรูปแตะ "ถ่าย / เลือกรูป"
+       ซ้ำได้ระหว่างชุดแรกยังส่ง · 🐞 ถ้าล้างตอนจบ ชุดแรกที่จบระหว่างตัวเลือกไฟล์ของชุดสองเปิดอยู่จะลบ
+       ประเภทที่ชุดสองจองไว้ ⇒ รูปที่เลือกมาหายเงียบ (ไฟล์ที่ copy ออกมาแล้วยังใช้ได้หลังล้างช่อง) */
+    pendingTypeRef.current = null;
+    if (cardFileRef.current) cardFileRef.current.value = "";
+    const files = splitByFileRule(typeKey, picked);
+    if (!files.length || !typeKey) return;
     const ok = files.filter((f) => !tooLarge(f));
-    if (!ok.length) {
-      pendingTypeRef.current = null;
-      if (cardFileRef.current) cardFileRef.current.value = "";
-      return;
-    }
-    setUploadingType(typeKey);
-    try {
-      let landed = false;
-      for (const f of ok) {
-        if (await upload(f, typeKey, {})) landed = true;
-      }
-      if (landed) await fetchItems();
-    } catch (err) {
-      console.error(err);
-      notifyToast.error("เกิดข้อผิดพลาดในการอัปโหลด");
-    } finally {
-      setUploadingType(null);
-      pendingTypeRef.current = null;
-      if (cardFileRef.current) cardFileRef.current.value = "";
-    }
+    if (!ok.length) return;
+    await uploadBatch(typeKey, ok);
   };
 
   // ── ลากมาวาง / วางจากคลิปบอร์ด ──
@@ -302,19 +341,9 @@ export default function AttachmentsPanel({
     const typeKey = types[0]?.key || "other";
     const files = splitByFileRule(typeKey, Array.from(fileList || []).filter(Boolean));
     if (!files.length || !canEdit) return;
-    setUploadingType(typeKey);
-    try {
-      for (const f of files) {
-        if (tooLarge(f)) continue;
-        await upload(f, typeKey, {});
-      }
-      await fetchItems();
-    } catch (err) {
-      console.error(err);
-      notifyToast.error("เกิดข้อผิดพลาดในการอัปโหลด");
-    } finally {
-      setUploadingType(null);
-    }
+    const ok = files.filter((f) => !tooLarge(f));
+    if (!ok.length) return;
+    await uploadBatch(typeKey, ok);
     // upload ใช้ค่าจาก props/closure ที่คงที่ตลอดอายุ panel — ไม่ใส่ใน deps
     // เพื่อไม่ให้ handler ถูกสร้างใหม่ทุก render จนตัว listener หลุด
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -358,8 +387,11 @@ export default function AttachmentsPanel({
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!(await confirmAction("ยืนยันการลบเอกสารนี้?"))) return;
+  /* คืน `true` เมื่อลบสำเร็จ — กล่องดูรูปเต็มของโหมดแผ่นรูปปิดตัวเองเฉพาะตอนลบได้จริง
+     (ลบไม่สำเร็จ = รูปยังอยู่ ⇒ กล่องต้องค้างให้เห็นว่ารูปยังอยู่ ไม่ใช่ปิดแล้วเหมือนลบไปแล้ว)
+     `ask` = คำถามของผู้เรียก (รูปพูดว่า "ลบรูปนี้?" · เอกสารพูดแบบเดิม) */
+  const handleDelete = async (id, ask = "ยืนยันการลบเอกสารนี้?") => {
+    if (!(await confirmAction(ask))) return false;
     try {
       const res = await apiFetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) {
@@ -369,13 +401,22 @@ export default function AttachmentsPanel({
            ต้องบอกผู้ใช้ ไม่งั้นเข้าใจว่าไฟล์ถูกลบไปแล้วจริง */
         const body = await res.json().catch(() => null);
         if (body?.retired && body.message) notifyToast.info(body.message);
+        return true;
       }
       // `(await res.json()).error` เดิมโยน exception เองถ้า body ไม่ใช่ JSON —
       // สาเหตุจริงเลยหายไปกลายเป็น "เกิดข้อผิดพลาดในการลบ" ของ catch ข้างล่าง
-      else notifyToast.error(await describeResponseError(res, "ลบไม่สำเร็จ"));
+      notifyToast.error(await describeResponseError(res, "ลบไม่สำเร็จ"));
     } catch {
       notifyToast.error("เกิดข้อผิดพลาดในการลบ");
     }
+    return false;
+  };
+
+  // ลบจากกล่องดูรูปเต็ม (โหมดแผ่นรูป) — ถามด้วยชื่อรูป · ปิดกล่องเมื่อลบได้จริงเท่านั้น
+  const deletePreview = async () => {
+    const it = preview;
+    if (!it) return;
+    if (await handleDelete(it.id, photoDeleteConfirm(it))) setPreview(null);
   };
 
   // บันทึกวันที่ออกเอกสารทันทีที่เลือก (ไม่มีปุ่มบันทึกแยก — ช่องเดียวช่องเดิม)
@@ -566,7 +607,7 @@ export default function AttachmentsPanel({
         onClick={() => setPreview(it)}
         title={it.fileName || "ดูรูปขนาดเต็ม"}
         style={{
-          display: "block", width: "100%", aspectRatio: "var(--attach-thumb-ratio, 1 / 1)", padding: 0,
+          display: "block", width: "100%", aspectRatio: "1 / 1", padding: 0,
           border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
           background: "var(--panel-2)", cursor: "pointer",
         }}
@@ -632,12 +673,12 @@ export default function AttachmentsPanel({
          292×292** กินความสูงการ์ดทั้งใบ (ผู้ใช้ส่งภาพมา 2026-08-15) · ยิ่งจอกว้าง
          ยิ่งบานเพราะ aspect-ratio 1/1 ผูกความสูงกับความกว้าง
          ⇒ `minmax(0, 148px)` = ช่องโตได้ไม่เกิน 148px แต่ยังหดลงได้บนจอแคบมาก
-         ⭐ **ผู้เรียกปรับขนาดได้ผ่านตัวแปร CSS** (`--attach-thumb-w` / `--attach-thumb-ratio`)
-         — ไม่ใช่ prop เพราะขนาดที่ต้องการต่างกันตามขนาดจอ (จอประเมินพื้นที่ใช้ 76×58
-         และ 64×52 บนมือถือ) ซึ่งเป็นเรื่องที่ตอบได้ใน media query เท่านั้น */
+         🪦 เคยมีตัวแปร CSS `--attach-thumb-w` / `--attach-thumb-ratio` ให้ผู้เรียกปรับขนาด — ผู้เรียกสองรายสุดท้าย
+            (การ์ดพื้นที่ · ช่องผังของตารางสรุป) ย้ายไปใช้แผ่นรูป `photoTiles` แล้ว (UAT 25/09) ⇒ ถอดทิ้ง ไม่ปล่อยเป็นปุ่มลอย
+            ที่ไม่มีใครตั้ง (ด่าน tokenRefsDeclared) · ต้องการขนาดอื่น = ใช้ `photoTiles` + `--attach-tile-*` */
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(0, var(--attach-thumb-w, 148px)))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(0, 148px))",
         gap: 8,
       }}
     >
@@ -645,7 +686,67 @@ export default function AttachmentsPanel({
     </div>
   );
 
-  // กล่องดูรูปขนาดเต็ม — ใช้ Modal ของระบบ (จัดการ Escape/โฟกัสให้แล้ว)
+  /* ── แผ่นรูป (โหมด `photoTiles`) — ม็อก A-3 · AT-2 · AW-1 ─────────────────────────────
+     ลำดับและคำมาจาก `photoTilesView` · ที่นี่วาดอย่างเดียว
+     ⚠️ **ไม่มีปุ่มลบบนแผ่น** — ลบอยู่ในกล่องดูรูปเต็ม (ปุ่ม 44px) · แผ่นรูปแตะแล้วเปิดดู
+     ⚠️ % มาทาง attribute ของ `<progress>` ไม่ใช่ `style={{ width }}` — ชั้น inline style ของ audit:ui
+        เป็นเพดานที่ขึ้นไม่ได้ (ท่าเดียวกับแถบเก็บเงินของ /finance/payments)
+     ⚠️ แผ่นกำลังส่งไม่ใช่ live region — % ขยับทุกจังหวะของ xhr ถ้าประกาศทุกครั้งโปรแกรมอ่านจอพูดไม่หยุด
+        (ค่าอยู่ที่ `<progress>` ให้ถามเองได้) */
+  const renderPhotoTiles = ({ photos, canAdd, addType }) => {
+    const { tiles } = photoTilesView({ photos, uploads, canAdd, canDelete: mayDelete });
+    if (!tiles.length) return null;
+    return (
+      <div className={styles.tiles}>
+        {tiles.map((tile) => {
+          if (tile.kind === "photo") {
+            return (
+              <button
+                key={tile.key}
+                type="button"
+                className={styles.tile}
+                onClick={() => setPreview(tile.item)}
+                aria-label={tile.ariaLabel}
+                title={tile.name}
+              >
+                {/* ภาพย่อที่เปิดไม่ได้ต้องพูด — `PhotoThumb` ตัวเดียวของระบบ · contain ไม่ใช่ cover (IS-26080016) */}
+                <PhotoThumb src={fileHref(tile.item)} alt="" className={styles.tileImg} />
+                <span className={styles.tileChip}><Check size={11} aria-hidden="true" />{tile.chip}</span>
+                <span className={styles.tileName}>{tile.name}</span>
+              </button>
+            );
+          }
+          if (tile.kind === "upload") {
+            return (
+              <div key={tile.key} className={styles.tile} data-kind="upload">
+                <span className={styles.tilePct}>{tile.text}</span>
+                <progress className={styles.tileBar} value={tile.value} max={1} aria-label={tile.ariaLabel} />
+                <span className={styles.tileName}>{tile.name}</span>
+              </div>
+            );
+          }
+          return (
+            <button
+              key={tile.key}
+              type="button"
+              className={styles.tile}
+              data-kind="add"
+              onClick={() => pickForType(addType)}
+            >
+              <Camera size={22} aria-hidden="true" />
+              {tile.label}
+              <small className={`${styles.tileHint} ${styles.pointerOnly}`}>{tile.hint}</small>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  /* กล่องดูรูปขนาดเต็ม — ใช้ Modal ของระบบ (จัดการ Escape/โฟกัสให้แล้ว)
+     ⭐ โหมดแผ่นรูป: **ที่เดียวที่ลบรูปได้** — ปุ่มแถบท้ายสูง 44px (แผ่นรูปไม่มี × 22px) · ด่านรายไฟล์
+        `mayDelete` ตัวเดียวกับโหมดอื่น · ปุ่มเปิดไฟล์ต้นฉบับย้ายลงแถบท้ายคู่กัน (นิ้วเดียวกันกดได้ทั้งคู่)
+     โหมดอื่นหน้าตาเดิมเป๊ะ (ลิงก์เล็กใต้รูป ไม่มีแถบท้าย) */
   const lightbox = (
     <Modal
       open={!!preview}
@@ -653,6 +754,24 @@ export default function AttachmentsPanel({
       title={preview?.fileName || "รูปแนบ"}
       size="lg"
       closeOnOverlay
+      footer={tilesMode && preview ? (
+        <div className={styles.lightboxActions}>
+          <Button
+            as="a" href={fileHref(preview)} target="_blank" rel="noreferrer"
+            className={styles.lightboxBtn} icon={<Download size={16} aria-hidden="true" />}
+          >
+            เปิดไฟล์ต้นฉบับ
+          </Button>
+          {tilesMode && preview && mayDelete(preview) && (
+            <Button
+              tone="danger" variant="outline" className={styles.lightboxBtn}
+              icon={<Trash2 size={16} aria-hidden="true" />} onClick={deletePreview}
+            >
+              {PHOTO_DELETE_LABEL}
+            </Button>
+          )}
+        </div>
+      ) : undefined}
     >
       {preview && (
         <div style={{ textAlign: "center" }}>
@@ -662,14 +781,16 @@ export default function AttachmentsPanel({
             alt={preview.fileName || "รูปแนบ"}
             style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: "var(--radius)" }}
           />
-          <div style={{ marginTop: 12 }}>
-            <a
-              href={fileHref(preview)} target="_blank" rel="noreferrer"
-              className="btn sm"
-            >
-              <Download size={13} /> เปิดไฟล์ต้นฉบับ
-            </a>
-          </div>
+          {!tilesMode && (
+            <div style={{ marginTop: 12 }}>
+              <a
+                href={fileHref(preview)} target="_blank" rel="noreferrer"
+                className="btn sm"
+              >
+                <Download size={13} /> เปิดไฟล์ต้นฉบับ
+              </a>
+            </div>
+          )}
         </div>
       )}
     </Modal>
@@ -744,6 +865,7 @@ export default function AttachmentsPanel({
          `inlineUpload` ใช้ทะเบียนของ entity ทั้งชุด กรองแล้วไฟล์ของเขาจะหาย */
     const scoped = Array.isArray(docTypes) && docTypes.length === 1;
     const shown = scoped ? items.filter((it) => it.docType === inlineType) : items;
+    const tilePhotos = loading ? [] : shown.filter(isPreviewableImage);
 
     return (
       <div className="mt-1" {...(fileUploads ? intake.zoneProps : {})}>
@@ -753,7 +875,8 @@ export default function AttachmentsPanel({
             ⇒ คำใบ้ชิดซ้าย ปุ่มชิดขวา บรรทัดเดียว — ที่ว่างกลางแถวมีของอยู่แล้ว
             ⚠️ `flex-wrap` กันจอแคบ: คำใบ้ยาว 40 ตัวอักษร บีบกับปุ่มแล้วตัดคำมั่ว */}
         {/* แถวหัวมีของให้โชว์เฉพาะเมื่อแนบได้ หรือผู้เรียกยังให้นับไฟล์ — ไม่งั้นเป็นแถวเปล่า 32px */}
-        {((canEdit && fileUploads) || showCount) && (
+        {/* โหมดแผ่นรูปไม่มีแถวนี้ — แผ่นสุดท้ายคือปุ่ม · คำใบ้ลากวางอยู่บนแผ่นนั้น · จำนวนรูปเป็นของหัวข้อผู้เรียก */}
+        {((canEdit && fileUploads) || showCount) && !tilesMode && (
         <div className="flex min-h-8 flex-wrap items-center justify-end gap-x-3 gap-y-1">
           {/* ⚠️ คำสั้น "ลากมาวาง · Ctrl+V" ไม่ใช่ประโยคเต็ม — กล่องนี้ไปโผล่ในรางขวา
               ที่กว้างแค่ 292px ด้วย · ประโยคเต็ม 40 ตัวอักษรบวกปุ่มแล้วตกบรรทัด
@@ -819,13 +942,17 @@ export default function AttachmentsPanel({
 
         {googleDocActions}
 
+        {/* โหมดแผ่นรูป: แผ่นถ่ายรูปขึ้นตั้งแต่ก่อนรายการโหลดจบ — ถ่ายได้โดยไม่ต้องรอรายการ
+            (ไฟล์ที่ไม่ใช่รูป ซึ่งมาทางลากวาง/Ctrl+V ได้ ยังเป็นแถวรายชื่อข้างล่างเหมือนเดิม) */}
+        {tilesMode && renderPhotoTiles({ photos: tilePhotos, canAdd: canEdit && fileUploads, addType: inlineType })}
+
         {!loading && shown.length > 0 && (() => {
           const photos = shown.filter(isPreviewableImage);
           const files = shown.filter((it) => !isPreviewableImage(it));
-          const rowsOf = typeof photoRows === "function" ? photoRows(photos) : null;
+          const rowsOf = !tilesMode && typeof photoRows === "function" ? photoRows(photos) : null;
           return (
             <>
-              {photos.length > 0 && (rowsOf ? renderPhotoRows({ photos, rows: rowsOf }) : renderPhotoGrid({ photos }))}
+              {!tilesMode && photos.length > 0 && (rowsOf ? renderPhotoRows({ photos, rows: rowsOf }) : renderPhotoGrid({ photos }))}
               {files.length > 0 && (
                 <div className="mt-1 divide-y divide-[var(--border)]">
                   {files.map((it) => (<Fragment key={it.id}>{renderFileRow({ it, compact: true })}</Fragment>))}
