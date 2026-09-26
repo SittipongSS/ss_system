@@ -13,6 +13,7 @@
 // ทุก preview เป็น pure-ish (query อย่างเดียว ไม่ลบ) เพื่อให้ ?dryRun=1 ใช้ซ้ำ
 // เส้นทางเดียวกับตอนลบจริง — สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ.
 import { purgeUpdatesMany } from '@/lib/master/updates';
+import { requestsLinkedTo, sentRequestsForceNote, snapshotRequestsForAudit } from '@/lib/requests/cascadeDelete';
 import { registryRefTargets } from '@/lib/master/registryRefs';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -124,6 +125,14 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
 
   const notes = [];
   if (signedNote) notes.push(signedNote);
+  // คำร้องที่ส่งแล้วต้องขึ้นชื่อทีละใบ — ตัวเลขในรายการ cascade ไม่บอกว่ามีงานของฝ่ายอื่นอยู่
+  // (อ่านไม่ขึ้นก็เตือน ไม่ให้พรีวิวพัง — แนวเดียวกับหลักฐานลายเซ็นข้างบน)
+  try {
+    const requestNote = sentRequestsForceNote(await requestsLinkedTo(supabase, 'dealId', id));
+    if (requestNote) notes.push(requestNote);
+  } catch (requestError) {
+    notes.push(`${requestError.message} — ไม่รู้ว่ามีคำร้องที่ส่งแล้วกี่ใบ`);
+  }
   // โครงการไม่ลบตามดีล (เฟส B) — บอกให้ผู้ดูแลเห็นชัดว่าโครงการและงานส่วนที่เหลือยังอยู่
   if (project) {
     notes.push(`โครงการผลิต ${project.code || project.id} จะยังอยู่ (ถอดเฉพาะงานของดีลนี้ออก) — ลบโครงการทำที่หน้าโครงการ`);
@@ -168,13 +177,17 @@ async function purgeTaskAttachments(supabase, column, value) {
   return (data || []).length;
 }
 
-export async function cleanupDealOrphans(supabase, dealId) {
+// `auditRequests(rows)` = ผู้เรียกเขียน audit ของคำร้องทีละใบ (snapshot เต็มแถว + เธรด)
+// **ก่อน** ลบอะไรทั้งนั้น — เดิมคำร้องหายพ่วงดีลโดยไม่มีร่องรอยสักแถว (ดู requests/cascadeDelete)
+export async function cleanupDealOrphans(supabase, dealId, { auditRequests = null } = {}) {
   // คำร้องผูกดีล — ลบเธรด + งานที่ผูกคำร้องก่อน แล้วลบตัวคำร้อง
   const { data: inqs, error: inqError } = await supabase
     .from('dept_requests').select('id').eq('dealId', dealId);
   if (inqError) throw new Error(`อ่านคำร้องข้ามฝ่ายที่ผูกดีลไม่สำเร็จ: ${inqError.message}`);
   const inquiryIds = (inqs || []).map((r) => r.id);
   if (inquiryIds.length) {
+    // snapshot ต้องมาก่อนกวาดเธรด — กวาดแล้วค่อยอ่าน = audit ได้เธรดว่าง
+    if (auditRequests) await auditRequests(await snapshotRequestsForAudit(supabase, inquiryIds));
     // เธรดของคำร้องอยู่ในตารางกลาง (polymorphic ไม่มี FK) — ต้องกวาดเอง
     // บรรทัด/ชั้นจำนวนของคำร้องมี FK CASCADE อยู่แล้ว ปล่อยให้ DB จัดการ
     await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
